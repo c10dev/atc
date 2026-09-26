@@ -30,6 +30,7 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 - This changelog.
 
 ### Changed
+- Ticketless work is shown as **AD HOC** instead of "no ticket" / "—" (FLIGHT STRIPS, the planner's HOLDING reason, naming rules). It is the counterpart of the CHARTER DESK (OCC's request window), where work that needs a ticket becomes an AD HOC FLIGHT.
 - SUPERSEDED reasons name the real rule even when the FLIGHT is no longer in the plan's exclusion list: STAND already exists, no priority, project not mapped, another operator's label. The planner and the reason text share one set of phrases, so they cannot drift apart.
 - TOWER and DISPATCH hooks run from `$CLAUDE_PROJECT_DIR` and are fail-closed (`… || exit 2`): a missing or failing hook now blocks the tool instead of letting it through.
 - FIDS split-flap motion looks like a real board. Tiles no longer go blank mid-flap: the new letter waits behind the falling flap, which speeds up like gravity and darkens as it tilts. Text without tiles (TIME, REMARKS, Glass Cockpit and Night Sky) drops in letter by letter instead of showing half-letters. At most 6 flaps per cell, and the board settles faster.

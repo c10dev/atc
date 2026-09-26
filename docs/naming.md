@@ -15,7 +15,7 @@ claude/voc-<n>-<slug>     # Claude sessions
 codex/voc-<n>-<slug>      # Codex sessions
 ```
 
-- Work without a ticket stays `claude/<slug>`. atc shows it as "no ticket".
+- Work without a ticket stays `claude/<slug>`. atc shows it as **AD HOC** (ticketless work, such as a fix of 5 lines or less handed to a team directly). Work that needs a ticket goes through the CHARTER DESK instead ([occ.md](occ.md)).
 
 ## Worktree directories
 
