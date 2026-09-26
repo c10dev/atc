@@ -10,6 +10,9 @@ const allowed = [
   `node ${HERE}/atcctl.mjs ack abc:12`,
   'node atcctl.mjs issue TEAM_B HOLD --stand vocado-voc-175 -- "DELTA가 끝날 때까지 대기 (a > b 아님)"',
   "node atcctl.mjs readback C-0007 && node atcctl.mjs brief",
+  "node atcctl.mjs issue TEAM_B INFO -- '$(이건 글자 그대로) `이것도`'",
+  'node atcctl.mjs issue TEAM_B INFO -- "가격 \\$5, 100%"',
+  "node atcctl.mjs brief | jq '.events[] | select(.kind == $k)' --arg k x",
 ];
 const blocked = [
   "ls /home/c10/projects/worktrees",
@@ -21,6 +24,12 @@ const blocked = [
   "node atcctl.mjs brief $(touch /tmp/x)",
   "cat <<EOF\nhi\nEOF",
   "FOO=1 node atcctl.mjs brief",
+  'node atcctl.mjs brief -- "$(touch /tmp/x)"',
+  "node atcctl.mjs brief -- \"`touch /tmp/x`\"",
+  "node atcctl.mjs brief -- `touch /tmp/x`",
+  'node atcctl.mjs issue TEAM_B INFO -- "${HOME}"',
+  'node atcctl.mjs issue TEAM_B INFO -- "경로 $HOME"',
+  "jq -r .x <(node atcctl.mjs brief)",
   "",
 ];
 

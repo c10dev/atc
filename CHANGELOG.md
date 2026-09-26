@@ -6,6 +6,9 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 
 ## [Unreleased]
 
+### Security
+- The TOWER and OCC Bash guard (`controller/guard.mjs`) let command substitution through inside double quotes: `node atcctl.mjs brief -- "$(touch /tmp/x)"` passed, and so did a backtick. The shell runs these before the command, so a control session could run arbitrary commands. Command substitution and variable expansion (`$(…)`, backticks, `${…}`, `$VAR`) are now blocked anywhere outside single quotes; single-quoted and backslash-escaped text is still allowed. Reported by TEAM_H.
+
 ### Added
 - OCC stage S1, SCHEDULE drafts in shadow operation ([docs/occ.md](docs/occ.md) sections 5–7). OCC drafts `CLASSIFY` (`type:`, `wake:`, `rating:` labels by [docs/fleet.md](docs/fleet.md) section 4) and `PRIORITIZE` operations for Todo / Backlog FLIGHTs missing them; nothing is written to Linear.
   - Server: an append-only log `~/.local/state/atc/schedule.jsonl` (`server/schedule.ts`) with `GET /api/schedule/brief`, `GET /api/schedule/ops/:id`, `POST /api/schedule/ops` and `POST /api/schedule/ops/:id/verdict`. At most 5 open drafts (409 past that); a new draft for the same FLIGHT and kind supersedes the old one; open drafts close as SUPERSEDED when the FLIGHT leaves Todo / Backlog or Linear already shows the change, and as EXPIRED after 3 days.

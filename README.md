@@ -179,7 +179,7 @@ A Claude session opened in the `controller/` folder becomes the TOWER session (C
 ```
 
 - Role and decision rules: [controller/CLAUDE.en.md](controller/CLAUDE.en.md) (English translation; the session loads the Korean [CLAUDE.md](controller/CLAUDE.md)). One pass: [controller/.claude/skills/tick](controller/.claude/skills/tick/SKILL.en.md).
-- The CONTROLLER doesn't fly: Edit and Write are left out of its permissions, and `guard.mjs` blocks every Bash command except `node atcctl.mjs …` and `jq` (including redirection and command substitution).
+- The CONTROLLER doesn't fly: Edit and Write are left out of its permissions, and `guard.mjs` blocks every Bash command except `node atcctl.mjs …` and `jq`. Redirection is blocked, and so are command substitution and variable expansion anywhere outside single quotes (`$(…)`, backticks, `${…}`, `$VAR`), because the shell expands them even inside double quotes. Put message text in single quotes.
 - CLEARANCE flow: `atcctl issue` records the CLEARANCE in atc and returns a fixed message → the CONTROLLER sends it to the team session with SendMessage → when the team replies `READBACK C-0007`, the CONTROLLER runs `atcctl readback`. FLIGHT STRIPS show it as awaiting READBACK (blue), NO READBACK after 10 minutes (orange), or READBACK (dotted).
 - Example of the fixed message (`formatClearance` in `server/controller.ts`; the instruction line is in Korean):
 

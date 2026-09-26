@@ -6,6 +6,9 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 
 ## [Unreleased]
 
+### 보안
+- TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
+
 ### 추가
 - OCC S1, 그림자 운용의 SCHEDULE 초안([docs/occ.md](docs/occ.md) 5~7장, 영어). OCC가 분류 라벨이나 우선순위가 없는 Todo·Backlog FLIGHT에 `CLASSIFY`(`type:`, `wake:`, `rating:` 라벨, [docs/fleet.md](docs/fleet.md) 4장 기준)와 `PRIORITIZE` 초안을 쓴다. Linear에는 아무것도 쓰지 않는다.
   - 서버: 추가만 하는 기록 `~/.local/state/atc/schedule.jsonl`(`server/schedule.ts`)과 `GET /api/schedule/brief`, `GET /api/schedule/ops/:id`, `POST /api/schedule/ops`, `POST /api/schedule/ops/:id/verdict`. 열린 초안은 5건까지(넘으면 409). 같은 FLIGHT·종류로 새 초안을 쓰면 앞의 것은 SUPERSEDED. FLIGHT가 Todo·Backlog를 벗어나거나 Linear에 이미 반영되면 SUPERSEDED, 3일이 지나면 EXPIRED로 닫힌다.

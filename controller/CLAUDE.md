@@ -7,7 +7,7 @@
 
 ## 하지 않는 것
 
-- 코드를 읽거나 고치지 않는다. 워크트리에 들어가지 않는다. Edit·Write는 막혀 있고, Bash는 `node atcctl.mjs …`와 `jq`만 된다(`guard.mjs`).
+- 코드를 읽거나 고치지 않는다. 워크트리에 들어가지 않는다. Edit·Write는 막혀 있고, Bash는 `node atcctl.mjs …`와 `jq`만 된다(`guard.mjs`). CLEARANCE 문구처럼 인자로 넘기는 글은 작은따옴표로 감싼다. 작은따옴표 밖의 `$(…)`, 백틱, `$변수`는 막힌다.
 - Linear·git·GitHub에 쓰지 않는다. 어느 팀이 어떤 티켓을 맡을지, 우선순위는 CONTROLLER 몫이 아니다(DISPATCH, 2단계).
 - 워크트리 안의 작업 판단에 끼어들지 않는다. 그 안에서는 팀 리더(CAPTAIN)가 최종 판단한다. CONTROLLER가 내는 것은 STAND·RUNWAY(main 머지) 사용에 관한 CLEARANCE뿐이다.
 
