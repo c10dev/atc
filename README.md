@@ -268,6 +268,10 @@ Design: [docs/occ.md](docs/occ.md) sections 5–7. The OCC session drafts the Li
 | `GET /api/schedule/ops/:id` | One SCHEDULE operation and the mode |
 | `POST /api/schedule/ops` | OCC draft. `CLASSIFY` / `PRIORITIZE`: `{kind, flight, reason, type?, wake?, ratings?, priority?}`. `NEW`: `{kind: "NEW", title, body, project, reason, priority?, type?, wake?, ratings?, tail?, parent?, related?, blockedBy?}`; the op has `flight: null` and atc adds `similar: [{key, title}]`. 400 with the reason on bad input, 409 at the open-draft limit |
 | `POST /api/schedule/ops/:id/verdict` | `{verdict: agree\|disagree, reason?}` SUPERVISOR shadow verdict |
+| `POST /api/schedule/ops/:id/approve`, `/reject` | S2 only: SUPERVISOR approves, or rejects with `{reason?}` |
+| `POST /api/schedule/ops/:id/release` | S2 only: OCC releases an approved operation; returns the exact Linear calls (the same ones again if already released) |
+| `GET /api/schedule/released` | Mode and every released call (read by linear-guard) |
+| `POST /api/schedule/mode` | `{mode: shadow\|approval}` |
 
 ## CHARTER DESK (request desk)
 

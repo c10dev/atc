@@ -25,4 +25,5 @@ export const config = {
   landingState: env.ATC_LANDING_STATE || "Ready to Merge",
   linearApiKey: env.LINEAR_API_KEY || "",
   linearTeamKey: (env.LINEAR_TEAM_KEY || "VOC").toUpperCase(),
+  linearTeamName: env.LINEAR_TEAM_NAME || "Vocado", // S2에서 새 이슈를 만들 Linear 팀 이름(MCP save_issue의 team)
 };

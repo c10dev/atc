@@ -22,7 +22,7 @@
 |---|---|---|
 | S0 | OCC 세션: DISPATCH 흡수, 읽기 전용 gh, MCP 읽기만, 지침 다시 읽기 | 운용 중 |
 | S1 | SCHEDULE 초안(그림자): CLASSIFY · PRIORITIZE · NEW(CHARTER DESK) | 운용 중 |
-| S2 | 승인한 초안을 Linear에 씀(linear-guard). vocado "Linear에는 리더만" 규칙 변경 | 판정 20건·80% 후 |
+| S2 | 승인한 초안을 Linear에 씀(linear-guard). vocado "Linear에는 리더만" 규칙 변경 | 만들어 둠, 꺼져 있음 (판정 20건·80% 후 켬) |
 | S3 | 저위험 작업만 자동(예: 머지 뒤 CLOSE). SEC는 계속 사람 승인 | S2 2주 후 |
 
 ## FLEET

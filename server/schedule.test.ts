@@ -167,3 +167,65 @@ test("NEW 동기화: 초안 뒤에 같은 제목 이슈가 생기면 SUPERSEDED,
   const out = syncLines(fold(lines), tickets, NOW);
   assert.deepEqual(out.map((l) => `${l.op}:${l.id}:${"reason" in l ? l.reason : ""}`), ["supersede:S-0001:Linear에 이미 만들어짐 VOC-70", "expire:S-0003:"]);
 });
+
+test("S2 전이: draft → approve → release → apply, 거절은 사유와 함께, 순서를 건너뛴 op는 무시", async () => {
+  const { canApplyOp } = await import("./schedule.ts");
+  const draft = { op: "draft" as const, id: "S-0010", at: iso(30), kind: "PRIORITIZE" as const, flight: "VOC-50", payload: { priority: 2 as const }, reason: "r" };
+  const calls = [{ tool: "save_issue" as const, input: { id: "VOC-50", priority: 2 } }];
+  // release·apply는 approve 전이라 무시된다
+  let ops = fold([draft, { op: "release", id: "S-0010", at: iso(29), calls }, { op: "apply", id: "S-0010", at: iso(28), ref: "VOC-50" }]);
+  assert.equal(ops[0].status, "draft");
+  ops = fold([draft, { op: "approve", id: "S-0010", at: iso(20) }, { op: "release", id: "S-0010", at: iso(19), calls }, { op: "apply", id: "S-0010", at: iso(10), ref: "VOC-50" }]);
+  assert.deepEqual([ops[0].status, ops[0].calls, ops[0].appliedRef], ["applied", calls, "VOC-50"]);
+  ops = fold([draft, { op: "reject", id: "S-0010", at: iso(20), reason: "근거 없음" }]);
+  assert.deepEqual([ops[0].status, ops[0].verdictReason], ["rejected", "근거 없음"]);
+  assert.equal(canApplyOp({ status: "rejected" }, "approve"), false);
+  assert.equal(canApplyOp({ status: "released" }, "release"), true); // 재발부(같은 호출 다시 받기)
+});
+
+test("S2 Linear 호출: 계획 필드만, 라벨 그룹 하위 이름으로, 근거 댓글을 붙인다", async () => {
+  const { callsOf } = await import("./schedule.ts");
+  const base = { at: iso(10), status: "approved" as const, statusAt: iso(5), verdictReason: null, calls: null, appliedRef: null, reason: "락 조건 수정" };
+  const cls = callsOf({ ...base, id: "S-0001", kind: "CLASSIFY", flight: "VOC-195", payload: { type: "MAINT", wake: "M", ratings: ["SEC"] } }, t("VOC-195", { labels: ["type:BUILD", "Risk:Security"] }), "Vocado");
+  assert.deepEqual(cls[0], { tool: "save_issue", input: { id: "VOC-195", addLabels: ["MAINT", "M"], removeLabels: ["BUILD"] } });
+  assert.equal(cls[1].tool, "save_comment");
+  assert.equal(cls[1].input.issueId, "VOC-195");
+  assert.match(String(cls[1].input.body), /^\[OCC S-0001\] 분류 type:MAINT wake:M — 근거: 락 조건 수정 \(SCHEDULE S-0001, SUPERVISOR 승인\)$/);
+  const pri = callsOf({ ...base, id: "S-0002", kind: "PRIORITIZE", flight: "VOC-177", payload: { priority: 2 } }, t("VOC-177", { priority: 0 }), "Vocado");
+  assert.deepEqual(pri[0], { tool: "save_issue", input: { id: "VOC-177", priority: 2 } });
+  const payload = { title: "추천 곡 카드", body: "## 목표\nx", project: "Song Experience", priority: 3 as const, type: "BUILD" as const, wake: "M" as const, ratings: ["UI" as const], tail: "TEAM_F", related: ["VOC-179"], similar: [] };
+  const nu = callsOf({ ...base, id: "S-0003", kind: "NEW", flight: null, payload }, undefined, "Vocado");
+  assert.deepEqual(nu, [{ tool: "save_issue", input: {
+    team: "Vocado", title: "추천 곡 카드", description: "## 목표\nx\n\n— OCC S-0003 · CHARTER REQUEST (SCHEDULE S-0003, SUPERVISOR 승인)",
+    project: "Song Experience", priority: 3, labels: ["BUILD", "M", "rating:UI", "tail:TEAM_F"], relatedTo: ["VOC-179"],
+  } }]);
+  for (const c of [...cls, ...pri, ...nu]) assert.ok(!("state" in c.input) && !("assignee" in c.input), "상태·담당은 쓰지 않는다");
+});
+
+test("S2 동기화: 발부된 작업이 Linear에 보이면 APPLIED, 승인만 된 것은 SUPERSEDED, 오래되면 EXPIRED", () => {
+  const draft = (id: string, flight: string | null, kind: "CLASSIFY" | "NEW", payload: object, minAgo = 30) => ({ op: "draft" as const, id, at: iso(minAgo), kind, flight, payload: payload as never, reason: "r" });
+  const lines = [
+    draft("S-0001", "VOC-60", "CLASSIFY", { type: "MAINT" }), { op: "approve" as const, id: "S-0001", at: iso(20) }, { op: "release" as const, id: "S-0001", at: iso(19), calls: [] },
+    draft("S-0002", "VOC-61", "CLASSIFY", { type: "MAINT" }), { op: "approve" as const, id: "S-0002", at: iso(20) },
+    draft("S-0003", null, "NEW", { title: "새 카드", body: "b", project: "P", similar: [] }), { op: "approve" as const, id: "S-0003", at: iso(20) }, { op: "release" as const, id: "S-0003", at: iso(19), calls: [] },
+    draft("S-0004", "VOC-62", "CLASSIFY", { type: "MAINT" }, 5 * 24 * 60), { op: "approve" as const, id: "S-0004", at: iso(4 * 24 * 60) },
+  ];
+  const tickets = [
+    t("VOC-60", { labels: ["type:MAINT"] }),
+    t("VOC-61", { labels: ["type:MAINT"] }),
+    t("VOC-70", { title: "새 카드", createdAt: iso(5) }),
+    t("VOC-62"),
+  ];
+  const out = syncLines(fold(lines), tickets, NOW);
+  assert.deepEqual(out.map((l) => `${l.op}:${l.id}:${"ref" in l ? l.ref : "reason" in l ? l.reason : ""}`), [
+    "apply:S-0001:VOC-60",
+    "supersede:S-0002:Linear에 이미 반영됨",
+    "apply:S-0003:VOC-70",
+    "expire:S-0004:승인 뒤 3일 동안 발부되지 않음",
+  ]);
+});
+
+test("S2: 진행 중인 같은 FLIGHT·종류가 있으면 새 초안을 받지 않는다", () => {
+  const lines = [{ op: "draft" as const, id: "S-0001", at: iso(30), kind: "CLASSIFY" as const, flight: "VOC-80", payload: { type: "MAINT" as const }, reason: "r" }, { op: "approve" as const, id: "S-0001", at: iso(20) }];
+  assert.throws(() => draftOps(fold(lines), { kind: "CLASSIFY", flight: "VOC-80", type: "BUILD", reason: "x" }, [t("VOC-80")], iso(0), 1), /진행 중인 CLASSIFY S-0001/);
+});

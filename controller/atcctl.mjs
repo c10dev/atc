@@ -49,7 +49,7 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
   node atcctl.mjs dispatch decline <D-0003> -- <사유>
                                             (2b) CAPTAIN이 맡지 못함
 
-SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만, Linear에 쓰지 않음. 판정은 SUPERVISOR)
+SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만. S2 승인 운용: 승인된 작업만 발부해 Linear에 씀. 판정·승인은 SUPERVISOR)
   node atcctl.mjs schedule brief            열린 초안·최근·점검·후보(candidates) (JSON)
   node atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <근거>
                                             분류 라벨 초안. TYPE: BUILD MAINT TEST SURVEY CHECK FERRY
@@ -61,7 +61,9 @@ SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만, Linear에 쓰지
         --reason <근거, "중복 검색: …" 포함> -- <본문>
                                             CHARTER DESK: AD HOC FLIGHT(새 이슈) 초안. 본문의 \n은 줄바꿈.
                                             본문은 네 칸(목표·수정 허용 범위·금지 사항·완료 기준), SEC는 Codex 템플릿
-                                            열린 초안이 한도에 차면 LIMIT으로 끝난다(exit 1)`;
+                                            열린 초안이 한도에 차면 LIMIT으로 끝난다(exit 1)
+  node atcctl.mjs schedule release <S-0001>  (S2) 승인된 작업을 발부하고 Linear 호출(CALL)을 출력. 각 CALL의 도구에
+                                            JSON 입력을 한 글자도 바꾸지 않고 넣는다. 이미 발부됐으면 같은 CALL을 다시 준다`;
 
 // limit: 409(한도 참)일 때 오류 대신 보여 줄 안내. 호출한 세션이 곧바로 멈추게 LIMIT으로 시작한다.
 async function call(method, path, body, { limit } = {}) {
@@ -220,6 +222,11 @@ if (isMain) {
         limit: "이번 바퀴는 SCHEDULE 초안을 더 쓰지 않는다(열린 초안 한도).",
       });
       console.log(draftText(r.op));
+    } else if (cmd === "schedule" && args[0] === "release" && args[1]) {
+      const r = await call("POST", `/api/schedule/ops/${encodeURIComponent(args[1])}/release`);
+      // OCC는 CALL마다 그 Linear MCP 도구를 JSON 입력 그대로 부른다(linear-guard가 비교한다)
+      console.log(`${r.op.id} RELEASED · ${r.calls.length} CALL`);
+      r.calls.forEach((c, i) => console.log(`CALL ${i + 1}/${r.calls.length} · ${c.tool}\n${JSON.stringify(c.input)}`));
     } else if (cmd === "manual" && (args[0] === "check" || args[0] === "ack")) {
       const dir = process.cwd();
       const now = manualHash(dir);

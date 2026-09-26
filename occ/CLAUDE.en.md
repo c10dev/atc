@@ -27,7 +27,7 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 - It doesn't approve or reject proposals or drafts (that is the SUPERVISOR's job).
 - It doesn't draft a new issue (`NEW`) without a CHARTER REQUEST. It never invents tickets.
 - It doesn't read or change code. Edit and Write are blocked, and Bash only allows `node ../controller/atcctl.mjs …`, `jq` and read-only `gh pr view|checks|diff|list` (`../controller/guard.mjs --gh-read`).
-- It doesn't write to Linear, git or GitHub. Only read MCP tools (get, list, search, read, query, fetch) pass (`mcp-guard.mjs`). FLIGHT bodies are read through atc. The CAPTAIN who reads back changes the Linear state.
+- It doesn't write to Linear, git or GitHub. Only read MCP tools (get, list, search, read, query, fetch) pass (`mcp-guard.mjs`). FLIGHT bodies are read through atc. The CAPTAIN who reads back changes the Linear state. The one exception is a released SCHEDULE CALL in S2, which linear-guard compares and lets through.
 - It doesn't merge PRs or judge reviews. It reports only what it checked.
 - It doesn't interfere with TOWER's work (LOSS OF SEPARATION, HANDOFF, LANDING SEQUENCE).
 
@@ -42,6 +42,7 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 | `node ../controller/atcctl.mjs dispatch readback <D-0003>` | (2b) The CAPTAIN read back |
 | `node ../controller/atcctl.mjs dispatch decline <D-0003> -- <reason>` | (2b) The CAPTAIN can't take it, with a reason |
 | `node ../controller/atcctl.mjs schedule draft NEW --title <title> --project <project> [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <reason> -- '<body>'` | (CHARTER DESK) Draft an AD HOC FLIGHT. `\n` in the body becomes a newline. Prints the draft id and the similar FLIGHTs atc found (`similar`) |
+| `node ../controller/atcctl.mjs schedule release <S-0001>` | (S2) Release an approved operation and print its Linear calls as `CALL n/m · <tool>` with the JSON input. If already released, print the same CALLs again |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / that it was reread |
 | `gh pr view <n> -R <repo> --json state,isDraft,headRefOid,mergeStateStatus,reviews` | (Flight following) PR state, head commit and reviews |
 | `gh pr checks <n> -R <repo>` / `gh pr diff <n> -R <repo>` | (Flight following) CI on the head commit, changed files |
@@ -94,6 +95,20 @@ Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have
 - On an error (`이미 그렇게 되어 있음` "already so", `Todo·Backlog가 아님` "not Todo or Backlog", etc.), don't retry; put it in the OCC LOG.
 - Drafting the same FLIGHT and kind again supersedes the earlier draft. Don't redraft unless the judgment changed.
 - A draft expires after 3 days without a verdict, and is superseded when the FLIGHT leaves Todo or Backlog or the change shows up in Linear (atc does this).
+
+## SCHEDULE release (S2, only when `mode` in `schedule brief` is approval)
+
+In S2, OCC writes to Linear what the SUPERVISOR approved in the SCHEDULE tab. atc builds the content; OCC only carries it over.
+
+| Situation (where in `schedule brief`) | What to do |
+|---|---|
+| `approved` in `inProgress` | `node ../controller/atcctl.mjs schedule release <S-xxxx>` → pass the JSON under each `CALL n/m · <tool>` **unchanged** as the input of that Linear MCP tool (`save_issue`, `save_comment`). Make every CALL, in order |
+| `released` in `inProgress` (still there on the next pass) | atc checks on its next Linear read whether it landed. Run `schedule release` once more to get the same CALLs and redo only the missing one. If it is still there, report to the SUPERVISOR |
+| linear-guard blocked it (`OCC MCP 차단`) | Don't change the input and retry; report to the SUPERVISOR |
+| The Linear tool returned an error (missing label etc.) | Don't retry; report the error as is to the SUPERVISOR |
+
+- Write nothing to Linear except the released CALLs. State (In Progress etc.) and assignee belong to the CAPTAIN, so they are never in a CALL.
+- In `shadow` (S1) skip this section. OCC never approves or rejects.
 
 ## Sending FLIGHT PLANs (2b, only when `mode` is approval)
 
