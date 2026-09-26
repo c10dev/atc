@@ -60,6 +60,7 @@ npm install
 npm run build && npm start      # http://localhost:7700 (web/dist 제공)
 npm run dev                     # 개발: vite 7700 + API 서버 7701
 npm run typecheck
+npm test                        # 이양·충돌 판정 단위 테스트
 ```
 
 상시 실행은 systemd 사용자 서비스로 한다.
@@ -81,6 +82,21 @@ journalctl --user -u atc -f           # 로그
 - Bash에서 경로를 언급만 하는 명령(`ls`, `cat`, `grep` 등)은 점유로 치지 않는다. 그래서 리뷰어가 읽기만 해서는 점유가 생기지 않는다.
 - `~/.local/state/atc/claims/<sessionId>/<인코딩된 경로>.json`을 처음 한 번 만들고 이후에는 mtime만 갱신한다. 동시 호출에도 안전하다.
 - 마지막 갱신 뒤 `ATC_CLAIM_TTL_MIN`(기본 180분)이 지나면 점유가 끝난 것으로 본다.
+- 점유 시작 시각(`since`)은 두 경우에 새로 시작한다. TTL이 지난 뒤 다시 건드릴 때, 그리고 내가 손을 뗀 뒤 다른 세션이 잡았던 워크트리를 되찾을 때(A → B → A).
+
+## 관제 이양과 충돌
+
+같은 워크트리를 여러 세션이 점유하면 `server/occupancy.ts`가 점유 구간 `[since, 마지막 접촉]`으로 판정한다. 기준 시간은 `ATC_HANDOFF_GRACE_MIN`(기본 5분)이다.
+
+| 판정 | 조건 | 화면 |
+|---|---|---|
+| 관제 이양 | 앞 세션이 뒤 세션 시작 뒤로 5분 넘게 더 건드리지 않았고, 뒤 세션이 더 늦게까지 건드림 | 앞 세션 점유가 흐려지고 "→ CHARLIE 이양". 이양 목록에 표시. 경보 아님 |
+| 분리 기준 위반(충돌) | 이양이 아니고, 살아 있는 두 세션의 점유 구간이 5분 넘게 겹침 | 경보 |
+| 잠깐 들름 | 겹침이 5분 이하 | 둘 다 점유로 보이고 경보 없음 |
+
+- 이양된 점유는 점유로 치지 않는다(티켓 배지, 체공 대기 판정, 주인 없는 주기장 판정에서 빠진다).
+- 종료된 세션이라도 넘겨준 점유는 고아(무선 두절 점유)로 치지 않는다.
+- 추정 항적(대화 기록 추정) 점유는 판정에 쓰지 않는다.
 - hook을 끄려면 settings.json에서 해당 항목을 지우면 된다. 기록 폴더는 지워도 된다.
 
 ## 폴더 구조
@@ -95,6 +111,7 @@ atc/
 │   │   ├── git.ts          # git worktree list, dirty, 마지막 커밋
 │   │   └── linear.ts       # Linear GraphQL, 1분마다
 │   ├── model.ts            # Session / Workspace / Ticket / Claim / Alert
+│   ├── occupancy.ts        # 이양·충돌 판정 (occupancy.test.ts)
 │   ├── snapshot.ts         # 소스 병합 + 경고 계산
 │   └── index.ts            # /api/snapshot, /api/events
 ├── web/src/                # Vite + React. 연결 / 팀 / 티켓 화면
@@ -106,7 +123,7 @@ atc/
 
 | 종류 (`AlertKind`) | 화면 표기 | 조건 |
 |---|---|---|
-| `conflict` | 분리 기준 위반 | 살아 있는 세션 둘 이상이 같은 워크트리를 hook·cwd로 점유 |
-| `orphan` | 무선 두절 점유 | 종료된 세션의 점유가 TTL 안에 남아 있음 |
+| `conflict` | 분리 기준 위반 | 살아 있는 두 세션이 같은 워크트리에서 5분 넘게 겹쳐 작업 (이양 제외) |
+| `orphan` | 무선 두절 점유 | 종료된 세션이 넘겨주지 않은 점유가 TTL 안에 남아 있음 |
 | `unattended` | 미식별 표적 | 변경 파일이 있는데 점유한 세션이 없음 |
 | `no-workspace` | 레이더 미포착 | Linear started 상태인데 브랜치가 가리키는 워크트리가 없음 |

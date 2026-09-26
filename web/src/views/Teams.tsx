@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Snapshot } from "../../../server/model.ts";
 import { aircraftStatus, aircraftStatusLabel, callsign } from "../aviation.ts";
-import { type Index, projectOf, sortSessions, timeAgo } from "../derive.ts";
+import { activeFirst, hasActiveClaim, type Index, projectOf, sortSessions, timeAgo } from "../derive.ts";
 import { ClaimRow, StatusDot } from "../ui.tsx";
 
 export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; now: number }) {
@@ -9,6 +9,10 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
   const all = sortSessions(snapshot.sessions, idx);
   const visible = showAll ? all : all.filter((s) => s.status === "busy" || idx.claimsBySession.has(s.id));
   const hidden = all.length - visible.length;
+  const nameOf = (id: string) => {
+    const s = idx.sessionById.get(id);
+    return s ? callsign(s) : id.slice(0, 8);
+  };
 
   return (
     <section>
@@ -23,8 +27,8 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
       </div>
       <div className="team-grid">
         {visible.map((s) => {
-          const claims = idx.claimsBySession.get(s.id) ?? [];
-          const status = aircraftStatus(s, claims.length > 0);
+          const claims = activeFirst(idx.claimsBySession.get(s.id) ?? []);
+          const status = aircraftStatus(s, hasActiveClaim(claims));
           const sign = callsign(s);
           return (
             <article key={s.id} className={`card team is-${s.status}`}>
@@ -51,6 +55,7 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
                         claim={c}
                         workspace={ws}
                         ticket={ws?.ticketKey ? idx.ticketByKey.get(ws.ticketKey) : undefined}
+                        handedOffTo={c.handedOffTo ? nameOf(c.handedOffTo) : undefined}
                         now={now}
                       />
                     );

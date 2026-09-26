@@ -50,20 +50,24 @@ export function ClaimRow({
   claim,
   workspace,
   ticket,
+  handedOffTo,
   now,
 }: {
   claim: Claim;
   workspace?: Workspace;
   ticket?: Ticket;
+  handedOffTo?: string;
   now: number;
 }) {
   const label = sourceLabel[claim.source];
+  const handedOff = claim.state === "handed-off";
   return (
-    <li className={`claim is-${claim.source}`}>
+    <li className={`claim is-${claim.source}${handedOff ? " is-handed-off" : ""}`}>
       <div className="claim-head">
         <span className="mono claim-ws" title={claim.workspacePath}>
           {workspace?.name ?? claim.workspacePath.split("/").pop()}
         </span>
+        {handedOff && <span className="tag tag-handoff">→ {handedOffTo ?? "?"} 이양</span>}
         {label && <span className="tag">{label}</span>}
         <span className="claim-time">{timeAgo(claim.lastAt, now)}</span>
       </div>

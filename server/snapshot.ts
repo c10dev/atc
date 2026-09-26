@@ -1,5 +1,6 @@
 import { config } from "./config.ts";
 import type { Alert, Claim, Session, Snapshot, Ticket } from "./model.ts";
+import { type Occupancy, resolveOccupancy } from "./occupancy.ts";
 import { inferTranscriptClaim, readClaudeSessions, readHookClaims } from "./sources/claude.ts";
 import { readCodex } from "./sources/codex.ts";
 import { readWorkspaces } from "./sources/git.ts";
@@ -42,6 +43,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
     sessionById.set(ghost.id, ghost);
   }
 
+  const occupancy = resolveOccupancy(claims, (id) => sessionById.get(id)?.status, config.handoffGraceMs);
+
   const branchKeys = new Set(workspaces.map((w) => w.ticketKey).filter((k): k is string => Boolean(k)));
   const linear = readLinear(branchKeys);
   const tickets: Ticket[] = [...linear.tickets];
@@ -74,7 +77,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
     tickets,
     columns,
     claims,
-    alerts: buildAlerts(sessions, workspaces, tickets, claims),
+    handoffs: occupancy.handoffs,
+    alerts: buildAlerts(sessions, workspaces, tickets, claims, occupancy),
   };
 }
 
@@ -83,28 +87,21 @@ function buildAlerts(
   workspaces: Snapshot["workspaces"],
   tickets: Ticket[],
   claims: Claim[],
+  occupancy: Occupancy,
 ): Alert[] {
   const alerts: Alert[] = [];
-  const status = new Map(sessions.map((s) => [s.id, s.status]));
   const name = new Map(sessions.map((s) => [s.id, s.name]));
 
-  const holders = new Map<string, Set<string>>();
-  for (const c of claims) {
-    if (c.source === "transcript" || status.get(c.sessionId) === "dead") continue;
-    holders.set(c.workspacePath, (holders.get(c.workspacePath) ?? new Set()).add(c.sessionId));
-  }
-  for (const [path, ids] of holders) {
-    if (ids.size < 2) continue;
+  for (const { workspacePath, sessionIds } of occupancy.conflicts) {
     alerts.push({
       kind: "conflict",
-      message: `${[...ids].map((id) => name.get(id)).join(", ")} 가 같은 워크트리를 점유`,
-      workspacePath: path,
-      sessionIds: [...ids],
+      message: `${sessionIds.map((id) => name.get(id)).join(", ")} 가 같은 워크트리에서 동시에 작업`,
+      workspacePath,
+      sessionIds,
     });
   }
 
-  for (const c of claims) {
-    if (status.get(c.sessionId) !== "dead") continue;
+  for (const c of occupancy.orphans) {
     alerts.push({
       kind: "orphan",
       message: `종료된 세션 ${name.get(c.sessionId)} 의 점유가 남아 있음`,

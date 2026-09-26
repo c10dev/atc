@@ -83,6 +83,8 @@ export function readCodex(workspaces: Workspace[]): { sessions: Session[]; claim
         since: meta.timestamp,
         lastAt: st.mtime.toISOString(),
         source: "cwd",
+        state: "active",
+        handedOffTo: null,
         tool: null,
       });
     }

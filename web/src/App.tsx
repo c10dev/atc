@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { alertLabel, alertMessage, callsign, flightNumber } from "./aviation.ts";
-import { buildIndex } from "./derive.ts";
+import { alertLabel, alertMessage, callsign, flightNumber, HANDOFF_LABEL } from "./aviation.ts";
+import { buildIndex, timeAgo } from "./derive.ts";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
 import { MapView } from "./views/Map.tsx";
 import { Teams } from "./views/Teams.tsx";
@@ -41,7 +41,12 @@ export function App() {
   const busy = snapshot?.sessions.filter((s) => s.status === "busy").length ?? 0;
   const inProgress = snapshot?.tickets.filter((t) => t.stateType === "started").length ?? 0;
   const alerts = snapshot?.alerts ?? [];
+  const handoffs = snapshot?.handoffs ?? [];
   const serious = alerts.filter((a) => a.kind === "conflict" || a.kind === "orphan").length;
+  const nameOf = (id: string) => {
+    const session = idx?.sessionById.get(id);
+    return session ? callsign(session) : id.slice(0, 8);
+  };
 
   return (
     <div className="app">
@@ -61,6 +66,10 @@ export function App() {
           <Stat label="비행 중" value={busy} tone="busy" />
           <Stat label="주기장 점유" value={snapshot?.claims.length ?? 0} />
           <Stat label="순항 편" value={inProgress} />
+          <button className="stat stat-button" onClick={() => setAlertsOpen((v) => !v)} aria-expanded={alertsOpen}>
+            <span className="stat-value">{handoffs.length}</span>
+            <span className="stat-label">이양</span>
+          </button>
           <button
             className={`stat stat-button${serious ? " tone-dead" : alerts.length ? " tone-warn" : ""}`}
             onClick={() => setAlertsOpen((v) => !v)}
@@ -72,17 +81,21 @@ export function App() {
         </div>
       </header>
 
-      {alertsOpen && alerts.length > 0 && (
+      {alertsOpen && alerts.length + handoffs.length > 0 && (
         <ul className="alerts">
           {alerts.map((a, i) => (
             <li key={i} className={`alert alert-${a.kind}`}>
               <span className="tag">{alertLabel[a.kind]}</span>
               <span className="mono">{a.ticketKey ? flightNumber(a.ticketKey) : a.workspacePath?.split("/").pop()}</span>
+              <span className="muted">{alertMessage(a, nameOf)}</span>
+            </li>
+          ))}
+          {handoffs.map((h) => (
+            <li key={`${h.workspacePath}:${h.from}`} className="alert alert-handoff">
+              <span className="tag">{HANDOFF_LABEL}</span>
+              <span className="mono">{h.workspacePath.split("/").pop()}</span>
               <span className="muted">
-                {alertMessage(a, (id) => {
-                  const session = idx?.sessionById.get(id);
-                  return session ? callsign(session) : id.slice(0, 8);
-                })}
+                {nameOf(h.from)} → {nameOf(h.to)} · {timeAgo(h.at, now)}
               </span>
             </li>
           ))}

@@ -61,6 +61,16 @@ export interface Claim {
   lastAt: string;
   source: ClaimSource;
   tool: string | null;
+  // handed-off: 다른 세션이 이어받았다. 점유로 치지 않고 기록으로만 보여준다.
+  state: "active" | "handed-off";
+  handedOffTo: string | null;
+}
+
+export interface Handoff {
+  workspacePath: string;
+  from: string;
+  to: string;
+  at: string;
 }
 
 export type AlertKind = "conflict" | "orphan" | "unattended" | "no-workspace";
@@ -81,5 +91,6 @@ export interface Snapshot {
   tickets: Ticket[];
   columns: TicketColumn[];
   claims: Claim[];
+  handoffs: Handoff[];
   alerts: Alert[];
 }

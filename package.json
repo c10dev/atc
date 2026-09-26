@@ -7,7 +7,8 @@
     "dev:server": "ATC_PORT=7701 node --watch server/index.ts",
     "build": "vite build",
     "start": "node server/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test 'server/**/*.test.ts'"
   },
   "engines": {
     "node": ">=24"

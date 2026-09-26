@@ -87,6 +87,8 @@ export function readHookClaims(): Claim[] {
           since: body.since,
           lastAt: statSync(file).mtime.toISOString(),
           source: "hook",
+          state: "active",
+          handedOffTo: null,
           tool: body.tool ?? null,
         });
       } catch {}
@@ -137,6 +139,8 @@ export function inferTranscriptClaim(s: SessionFile, workspaces: Workspace[]): C
     since: new Date(s.startedAt).toISOString(),
     lastAt: st.mtime.toISOString(),
     source: "transcript",
+    state: "active",
+    handedOffTo: null,
     tool: null,
   };
   inferCache.set(s.sessionId, { key, claim });

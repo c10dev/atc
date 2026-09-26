@@ -1,13 +1,13 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Session, Snapshot, Ticket, Workspace } from "../../../server/model.ts";
-import { type Index, projectOf, sortSessions, timeAgo } from "../derive.ts";
+import { hasActiveClaim, type Index, projectOf, sortSessions, timeAgo } from "../derive.ts";
 import { aircraftStatus, aircraftStatusLabel, callsign, flightNumber, flightPhase } from "../aviation.ts";
 import { StatusDot } from "../ui.tsx";
 
 interface Edge {
   from: string;
   to: string;
-  kind: "claim" | "ticket";
+  kind: "claim" | "handoff" | "ticket";
   color: string;
   dashed: boolean;
 }
@@ -93,7 +93,7 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
         <span className="muted">
           항공기 {graph.sessions.length} · 주기장 {graph.workspaces.length} · 편 {graph.tickets.length}
           <span className="legend">
-            <i className="legend-line" /> 관제 확인 <i className="legend-line is-dashed" /> 추정 항적
+            <i className="legend-line" /> 관제 확인 <i className="legend-line is-dashed" /> 추정 항적 <i className="legend-line is-dotted" /> 관제 이양
           </span>
         </span>
         <label className="toggle">
@@ -110,8 +110,8 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
                 key={`${edge.from}>${edge.to}`}
                 d={d}
                 stroke={edge.color}
-                strokeDasharray={edge.dashed ? "4 4" : undefined}
-                className={on ? (lit ? "is-lit" : "") : "is-dim"}
+                strokeDasharray={edge.kind === "handoff" ? "1 4" : edge.dashed ? "4 4" : undefined}
+                className={`${edge.kind === "handoff" ? "is-handoff " : ""}${on ? (lit ? "is-lit" : "") : "is-dim"}`}
               />
             );
           })}
@@ -122,9 +122,9 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
           {graph.sessions.map((s) => (
             <div key={s.id} className={`map-node node-session is-${s.status}`} title={s.name} {...nodeProps(sid(s.id))}>
               <div className="map-node-row">
-                <StatusDot status={s.status} label={aircraftStatusLabel[aircraftStatus(s, true)]} />
+                <StatusDot status={s.status} label={aircraftStatusLabel[aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id)))]} />
                 <strong className="ellipsis">{callsign(s)}</strong>
-                <span className="faint">{aircraftStatusLabel[aircraftStatus(s, true)]}</span>
+                <span className="faint">{aircraftStatusLabel[aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id)))]}</span>
               </div>
               <div className="map-node-sub">
                 <span className="mono">{projectOf(s.cwd)}</span> · {timeAgo(s.lastActiveAt, now)}
@@ -137,7 +137,7 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
         <div className="map-col">
           <h2 className="map-col-title">주기장 · 워크트리</h2>
           {graph.workspaces.map((w) => {
-            const claimed = idx.claimsByWorkspace.has(w.path);
+            const claimed = hasActiveClaim(idx.claimsByWorkspace.get(w.path));
             const alerts = idx.alertsByWorkspace.get(w.path) ?? [];
             return (
               <div
@@ -219,11 +219,12 @@ function layout(snapshot: Snapshot, idx: Index, showAll: boolean) {
   for (const c of snapshot.claims) {
     const s = idx.sessionById.get(c.sessionId) as Session | undefined;
     if (!s || !wsOrder.has(c.workspacePath)) continue;
+    const handedOff = c.state === "handed-off";
     edges.push({
       from: sid(s.id),
       to: wid(c.workspacePath),
-      kind: "claim",
-      color: statusColor[s.status],
+      kind: handedOff ? "handoff" : "claim",
+      color: handedOff ? "var(--faint)" : statusColor[s.status],
       dashed: c.source === "transcript",
     });
   }

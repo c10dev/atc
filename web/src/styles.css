@@ -359,6 +359,18 @@ a.ticket-chip:hover {
   border-radius: 6px;
   border-left: 2px solid var(--accent);
 }
+.claim.is-handed-off {
+  opacity: 0.55;
+  border-left-color: var(--faint);
+}
+.tag-handoff {
+  color: var(--accent);
+  border-color: rgba(122, 162, 255, 0.35);
+}
+.alert-handoff .tag {
+  color: var(--accent);
+  border-color: rgba(122, 162, 255, 0.35);
+}
 .claim.is-transcript {
   border-left-style: dashed;
   border-left-color: var(--faint);
@@ -507,6 +519,11 @@ a.ticket:hover {
   width: 20px;
   border-top: 2px solid var(--muted);
 }
+.legend-line.is-dotted {
+  border-top-style: dotted;
+  border-top-color: var(--faint);
+  margin-left: 8px;
+}
 .legend-line.is-dashed {
   border-top-style: dashed;
   margin-left: 8px;
@@ -533,6 +550,9 @@ a.ticket:hover {
 .map-lines path.is-lit {
   opacity: 1;
   stroke-width: 2.5;
+}
+.map-lines path.is-handoff {
+  opacity: 0.6;
 }
 .map-lines path.is-dim {
   opacity: 0.08;

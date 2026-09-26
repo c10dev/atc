@@ -57,6 +57,8 @@ export const aircraftStatusLabel: Record<AircraftStatus, string> = {
   nordo: "무선 두절",
 };
 
+export const HANDOFF_LABEL = "관제 이양";
+
 export const alertLabel: Record<AlertKind, string> = {
   conflict: "분리 기준 위반",
   orphan: "무선 두절 점유",

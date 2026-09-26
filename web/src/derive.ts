@@ -45,8 +45,17 @@ export function buildIndex(s: Snapshot): Index {
 export function occupantsOf(key: string, idx: Index): Session[] {
   const ids = new Set<string>();
   for (const w of idx.workspacesByTicket.get(key) ?? [])
-    for (const c of idx.claimsByWorkspace.get(w.path) ?? []) ids.add(c.sessionId);
+    for (const c of idx.claimsByWorkspace.get(w.path) ?? []) if (c.state === "active") ids.add(c.sessionId);
   return [...ids].map((id) => idx.sessionById.get(id)).filter((x): x is Session => Boolean(x));
+}
+
+export function hasActiveClaim(claims: Claim[] | undefined): boolean {
+  return Boolean(claims?.some((c) => c.state === "active"));
+}
+
+// 이양된 점유는 뒤로 보낸다.
+export function activeFirst(claims: Claim[]): Claim[] {
+  return [...claims].sort((a, b) => Number(a.state !== "active") - Number(b.state !== "active"));
 }
 
 export function timeAgo(iso: string | null, now: number): string {
