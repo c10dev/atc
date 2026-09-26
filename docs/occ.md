@@ -238,7 +238,7 @@ Shadow verdicts (DISPATCH proposals and SCHEDULE drafts) are decided one by one 
 | **Default** (SUPERVISOR decision, 2026-09-26) | `claude-ocx-opencode-go--muse-spark-1.3-contributor[1m]` (Muse Spark 1.3) | `~/.claude/agents/ocx-muse-spark-1-3-contributor.md` |
 | Fallback | `claude-ocx-native--gpt-5.6-terra` (GPT-5.6 Terra) | `~/.claude/agents/ocx-gpt-5-6-terra.md` |
 
-`crosscheck/.claude/settings.json` sets the model twice: `"model"` for the session and `env.ATC_CROSSCHECK_MODEL` for the marks (below). `crosscheck/settings.test.mjs` fails when the two differ, or when the model is DeepSeek. To switch to the fallback, change both to the terra id.
+`crosscheck/.claude/settings.json` sets `"model"` for sessions launched from the terminal. It no longer sets the model name for marks: the guard reads the real model (below). `crosscheck/settings.test.mjs` fails when the settings model is outside the CROSSCHECK list (Muse or Terra), or when the settings `env` names a model. To switch to the fallback, change `model` to the terra id.
 
 Launch checks (2026-09-26, Claude Code 2.1.283):
 
@@ -258,9 +258,25 @@ So the session is opened in `crosscheck/` with
 env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config
 ```
 
-named `CROSSCHECK`, and run with `/loop 10m /tick`. `--strict-mcp-config` with no `--mcp-config` loads no MCP servers at all. The session then has no MCP tools. It reads GitHub through read-only `gh pr` instead (SUPERVISOR decision, 2026-09-26), the same Bash guard pattern as OCC: when a body, comment or OCC note names a PR condition, it checks the fact with `gh pr view <N> --repo <owner/name> --json state,mergedAt,title` before marking (e.g. "PR #393 머지 전이면 HOLD", "이미 완료됨"). `crosscheck/CLAUDE.md` maps each AIRPORT to its repository (VCDO → `chaehy5665/vocado_nextjs`). `occ/mcp-guard.mjs --read-only` stays in place. When an upstream account is rate-limited, the session stops with an API error; nothing falls back to Claude.
+named `CROSSCHECK`, and run with `/loop 10m /tick`.
 
-**Model on each mark.** The session never names its own model. `atcctl dispatch|schedule crosscheck` sends `model` from the `ATC_CROSSCHECK_MODEL` environment variable. Claude Code sets that variable from the settings' `env` block. The guard blocks command-line overrides (`VAR=… node …`, `env …`, `export …`). The server stores it on the op (`{…, model}`, at most 120 characters); a mark without it, including every mark recorded before this field existed, reads as `"unknown"`. `gateOf(...).crosscheck` keeps the overall `{marked, matched, rate}` and adds `byModel: {<model>: {marked, matched, rate}}`, and `examples` carry the mark's model. If the session is started with a `--model` override, the marks still carry the settings model, so don't override it.
+**From Claude Desktop.** Desktop does not follow the settings `model`; it uses the model picked in the app, and that model goes through the ClaudeRipple proxy (`HTTPS_PROXY` 127.0.0.1:8790), which passes Claude models through as well. Open a session in the `crosscheck/` folder, name it `CROSSCHECK`, **pick `muse-spark-1.3-contributor` in the app's model menu**, then `/loop 10m /tick`. On 2026-09-26 two Desktop sessions ran on the default `claude-opus-5-5` and their marks were recorded under the Muse name (S-0006 and S-0007 are the likely cases); the real-model check below now blocks that.
+
+ `--strict-mcp-config` with no `--mcp-config` loads no MCP servers at all. The session then has no MCP tools. It reads GitHub through read-only `gh pr` instead (SUPERVISOR decision, 2026-09-26), the same Bash guard pattern as OCC: when a body, comment or OCC note names a PR condition, it checks the fact with `gh pr view <N> --repo <owner/name> --json state,mergedAt,title` before marking (e.g. "PR #393 머지 전이면 HOLD", "이미 완료됨"). `crosscheck/CLAUDE.md` maps each AIRPORT to its repository (VCDO → `chaehy5665/vocado_nextjs`). `occ/mcp-guard.mjs --read-only` stays in place. When an upstream account is rate-limited, the session stops with an API error; nothing falls back to Claude.
+
+**Real model on each mark.** A mark must come from Muse or Terra, and must record the model that actually wrote it. Neither the settings nor the proxy can prove that: Desktop ignores the settings model, and ClaudeRipple forwards Claude requests too. So the Bash guard checks the session's own transcript.
+
+- For a mark command (`atcctl dispatch|schedule crosscheck`), `guard.mjs --crosscheck` reads the hook input's `transcript_path` (the session's own JSONL, last 4 MB). It takes `message.model` of the last assistant message, skipping `<synthetic>`.
+- It passes only a model matching `/muse-spark|gpt-5\.6-terra/i`. Anything else is blocked with "앱에서 모델을 Muse로 바꾸거나, 터미널에서 ocx claude로 여세요": a Claude model (`claude-opus-5-5`, `claude-sonnet-5` …), DeepSeek, a missing or unreadable transcript, or no model in it (fail-closed).
+- Read commands (`brief`, `flight`, `gh pr view` …) are not checked.
+- When it passes, the guard answers with PreToolUse `updatedInput`: the same command prefixed with `ATC_CROSSCHECK_MODEL='<real model>'`. atcctl sends that as the mark's `model`. This is the first option from the request, not the fallback.
+- The session cannot supply the name itself:
+  - A variable in front of the command is already blocked.
+  - `--model` in a mark command is blocked.
+  - The mark command must stand alone (no pipes or chains), so the prefix applies to atcctl.
+- Names seen in real transcripts (checked 2026-09-26 in test sessions): `claude-ocx-opencode-go--muse-spark-1.3-contributor` via `ocx claude` (without the `[1m]` of the requested id), `muse-spark-1.3-contributor` via ClaudeRipple (Desktop's path), and `claude-opus-5-5` for opus. On a session's first tool call the transcript has no assistant message yet; mark commands always come later in a pass.
+- The server stores the name on the op (`{…, model}`, at most 120 characters). A mark without it, including every mark recorded before the field existed, reads as `"unknown"`. Marks made before this check keep whatever name they were recorded with.
+- `gateOf(...).crosscheck` keeps the overall `{marked, matched, rate}` and adds `byModel: {<model>: {marked, matched, rate}}`, and `examples` carry the mark's model. The two Muse paths show up as two model rows.
 
 **Web.** Open cards in the DISPATCH and SCHEDULE tabs show a dashed chip `CROSSCHECK agree · <reason>`, and a "CROSSCHECK에 동의" button submits the same decision in one click: shadow → verdict, approval → approve/reject. When agreeing with a `disagree` mark, its reason becomes the decision reason. Approval-mode approvals keep their confirm dialog, since they send a FLIGHT PLAN or write to Linear. The gate panels show "CROSSCHECK 일치 n/m (xx%)" as a reference row outside the gate criteria, with one sub-row per model (short name, e.g. `muse-spark-1.3-contributor`, full id in the tooltip). The chip shows the short model name next to its time, and the chip and RECENT tooltips give the full id.
 

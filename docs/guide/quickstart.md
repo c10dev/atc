@@ -34,7 +34,9 @@ journalctl --user -u atc -f      # 로그
 
   - `ANTHROPIC_BASE_URL`을 export해 두었으면 `ocx claude`가 그 값을 우선하고, `~/.claude/settings.json`의 `HTTPS_PROXY`(ClaudeRipple)가 로컬 프록시 요청을 가로채므로 `NO_PROXY`로 뺀다.
   - `--strict-mcp-config`는 MCP 서버를 하나도 싣지 않는다. Muse는 일부 MCP 도구 스키마(중첩 10단계 초과)를 받지 못해 두 번째 요청에서 멈추기 때문이다. 그래서 CROSSCHECK는 MCP 없이 판정한다. 본문·댓글은 `dispatch flight`로 읽고, 거기 나온 PR이 머지됐는지는 읽기 전용 `gh pr view|checks|list`로 확인한다(OCC와 같은 Bash guard 방식, 쓰는 gh 명령과 `gh pr diff`는 막힘).
-  - `--model`로 모델을 바꾸지 않는다. 예비 판정에 남는 모델 이름은 settings의 `env`에서 오므로, 바꾸면 이름이 틀어진다. 대체 모델로 바꾸려면 settings의 `model`과 `env.ATC_CROSSCHECK_MODEL`을 함께 고친다.
+  - 대체 모델로 바꾸려면 settings의 `model`을 terra id로 고친다.
+  - **Claude Desktop에서 열 때**: Desktop은 settings의 `model`을 따르지 않고 앱에서 고른 모델을 쓴다. `crosscheck` 폴더로 세션을 열고 이름을 CROSSCHECK로 붙인 뒤, **앱의 모델 메뉴에서 `muse-spark-1.3-contributor`를 고르고** `/loop 10m /tick`을 입력한다. 기본 모델(opus)로 두면 예비 판정이 모두 막힌다.
+  - 예비 판정(mark)을 달 때마다 guard가 그 세션의 기록에서 실제 모델을 확인한다. Muse·Terra가 아니면 막고("앱에서 모델을 Muse로 바꾸거나 터미널에서 ocx claude로 여세요"), 통과하면 그 실제 모델 이름을 mark에 남긴다. 그래서 DISPATCH·SCHEDULE 탭의 모델별 일치율에는 경로별 이름이 따로 보인다(`muse-spark-1.3-contributor`는 Desktop, `claude-ocx-…muse…`는 터미널).
 
   판정 방법은 [판정하기](reviewing.md)의 CROSSCHECK.
 

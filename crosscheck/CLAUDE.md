@@ -29,7 +29,7 @@ SUPERVISOR는 DISPATCH·SCHEDULE 탭에서 이 mark를 보고 "CROSSCHECK에 동
 | `gh pr view <N> --repo <owner/name> --json state,mergedAt,title` | 본문·메모에 나온 PR이 열렸는지·머지됐는지. `gh pr checks <N> --repo …`는 CI, `gh pr list --repo … --search <VOC-190>`은 FLIGHT의 PR 찾기 |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
 
-atc는 열린 건(DISPATCH는 HOLD 아닌 `proposed`, SCHEDULE은 `draft`)에만 mark를 받는다. 이유는 500자 이내 한 줄이다. mark에 남는 모델 이름은 atcctl이 settings의 `env`(`ATC_CROSSCHECK_MODEL`)에서 붙인다. 이유에 모델 이름을 쓰지 않고, 명령 앞에 환경 변수를 붙여 바꾸려 하지 않는다(guard가 막는다).
+atc는 열린 건(DISPATCH는 HOLD 아닌 `proposed`, SCHEDULE은 `draft`)에만 mark를 받는다. 이유는 500자 이내 한 줄이다. mark 명령(`dispatch|schedule crosscheck`)은 guard가 이 세션의 기록에서 **실제 모델**을 확인한 뒤에만 실행된다. Muse(`muse-spark`)나 Terra(`gpt-5.6-terra`)가 아니면 막힌다 — 막히면 mark를 달지 말고 CROSSCHECK LOG에 "모델 확인에서 막힘"이라고 적는다(SUPERVISOR가 앱에서 모델을 Muse로 바꾸거나 `ocx claude`로 다시 연다). mark에 남는 모델 이름도 guard가 붙인다. 이유에 모델 이름을 쓰지 않고, `--model`이나 명령 앞 환경 변수로 적으려 하지 않는다(막힌다). mark 명령은 파이프·이어 쓰기 없이 단독으로 쓴다.
 
 ## 판정 순서
 

@@ -17,6 +17,7 @@ description: CROSSCHECK 한 바퀴 — 규정이 바뀌었는지 확인하고, m
 4. DISPATCH 제안이면 `node ../controller/atcctl.mjs dispatch crosscheck <D-xxxx> agree|disagree -- '<이유 한 줄>'`.
 5. SCHEDULE 초안이면 `node ../controller/atcctl.mjs schedule crosscheck <S-xxxx> agree|disagree -- '<이유 한 줄>'`.
    - 409(열린 건이 아님, HOLD 중)가 나오면 그 사이 SUPERVISOR가 판정했거나 상황이 바뀐 것이다. 다시 시도하지 않는다.
+   - mark 명령은 파이프 없이 단독으로 쓴다. guard가 이 세션의 실제 모델을 확인하고 막으면("CROSSCHECK mark 차단 — … 실제 모델") 이번 바퀴의 mark를 모두 멈추고 LOG에 적는다.
 6. 근거가 부족해 정할 수 없는 건은 mark를 달지 않는다.
 7. CROSSCHECK LOG를 한두 줄 남긴다. 아무 일 없으면 "특이 사항 없음".
 

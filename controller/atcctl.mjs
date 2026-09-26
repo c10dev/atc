@@ -153,7 +153,8 @@ export function parseDraft(args) {
 }
 
 // dispatch|schedule crosscheck <ID> agree|disagree -- <이유> → POST 본문. 값 검사(500자 등)는 서버가 한다.
-// 모델 이름은 세션이 적지 않는다: crosscheck/.claude/settings.json의 env ATC_CROSSCHECK_MODEL(없으면 서버가 "unknown").
+// 모델 이름은 세션이 적지 않는다: CROSSCHECK guard가 세션 기록에서 실제 모델을 확인해 ATC_CROSSCHECK_MODEL로 붙인다
+// (없으면 서버가 "unknown").
 export function parseCrosscheck(args) {
   const sep = args.indexOf("--");
   const head = sep < 0 ? args : args.slice(0, sep);

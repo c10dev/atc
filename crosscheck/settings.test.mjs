@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { check } from "../controller/guard.mjs";
+import { check, CROSSCHECK_MODELS } from "../controller/guard.mjs";
 
 const HERE = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const settings = JSON.parse(readFileSync(new URL(".claude/settings.json", import.meta.url), "utf8"));
 
-test("CROSSCHECK 설정: mark에 남는 모델(env)이 세션 모델과 같고, 쓰기·메시지·게시 도구는 막는다", () => {
+test("CROSSCHECK 설정: 모델은 허용 목록 안, mark의 모델은 settings가 아니라 guard가 붙이고, 쓰기·메시지·게시 도구는 막는다", () => {
   assert.ok(settings.model, "model이 필요함");
-  assert.equal(settings.env?.ATC_CROSSCHECK_MODEL, settings.model);
+  assert.match(settings.model, CROSSCHECK_MODELS);
+  // settings env에 모델을 적어 두면 Desktop처럼 다른 모델로 돌 때 거짓 이름이 남는다
+  assert.equal(settings.env?.ATC_CROSSCHECK_MODEL, undefined);
   // DeepSeek(flash-helper와 같은 모델)은 FLEET 규칙상 판정에 쓰지 않는다
   assert.doesNotMatch(settings.model, /deepseek/i);
   for (const t of ["Edit", "Write", "NotebookEdit", "SendMessage", "Agent", "Artifact"]) assert.ok(settings.permissions.deny.includes(t), t);

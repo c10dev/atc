@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { check } from "./guard.mjs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, test } from "node:test";
+import { check, checkMarkModel, lastModelOf } from "./guard.mjs";
 
 const HERE = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 
@@ -132,4 +136,69 @@ test("--crosscheck --gh-read: PR 사실 확인용 gh pr view·checks·list만, �
   for (const c of ["gh pr view 393 --repo chaehy5665/vocado_nextjs", "gh pr checks 393"]) assert.notEqual(check(c, CROSSCHECK, { crosscheck: true }), null, c);
   // OCC(--gh-read만)는 그대로 diff까지
   assert.equal(check("gh pr diff 393 --repo chaehy5665/vocado_nextjs", CROSSCHECK, { ghRead: true }), null);
+});
+
+// ── CROSSCHECK mark의 실제 모델 확인 ──
+
+const TMP = mkdtempSync(join(tmpdir(), "atc-guard-"));
+after(() => rmSync(TMP, { recursive: true, force: true }));
+const line = (type, model) => JSON.stringify({ type, message: { role: type, model, content: [] } });
+const transcript = (...models) => ["{\"type\":\"summary\"}", line("user"), ...models.map((m) => line("assistant", m)), line("user")].join("\n") + "\n";
+const MARK = "node ../controller/atcctl.mjs dispatch crosscheck D-0003 disagree -- 'PR #393 머지 전이면 HOLD'";
+
+test("lastModelOf: 마지막 assistant의 model, <synthetic>·깨진 줄은 건너뜀", () => {
+  assert.equal(lastModelOf(transcript("claude-opus-5-5", "muse-spark-1.3-contributor")), "muse-spark-1.3-contributor");
+  assert.equal(lastModelOf(transcript("muse-spark-1.3-contributor", "<synthetic>") + "{not json\n"), "muse-spark-1.3-contributor");
+  assert.equal(lastModelOf(transcript()), null);
+  assert.equal(lastModelOf(""), null);
+});
+
+test("mark 명령: 실제 모델이 Muse·Terra(두 경로 이름)면 그 이름을 붙이고, Claude·DeepSeek·기록 없음·깨짐은 막는다", () => {
+  for (const m of ["claude-ocx-opencode-go--muse-spark-1.3-contributor", "muse-spark-1.3-contributor", "claude-ocx-native--gpt-5.6-terra"]) {
+    const r = checkMarkModel(MARK, CROSSCHECK, transcript("claude-opus-5-5", m));
+    assert.equal(r.reason, undefined, m);
+    assert.equal(r.command, `ATC_CROSSCHECK_MODEL='${m}' ${MARK}`);
+  }
+  for (const m of ["claude-opus-5-5", "claude-sonnet-5", "deepseek-v4.1-flash"]) assert.match(checkMarkModel(MARK, CROSSCHECK, transcript("muse-spark-1.3-contributor", m)).reason, /쓸 수 없음.*Muse/, m);
+  assert.match(checkMarkModel(MARK, CROSSCHECK, null).reason, /읽지 못해/);
+  assert.match(checkMarkModel(MARK, CROSSCHECK, "{broken\n").reason, /모델이 없어/);
+  assert.match(checkMarkModel(MARK, CROSSCHECK, transcript("muse-spark-1.3-contributor'; x")).reason, /쓸 수 없음/); // 명령에 붙일 수 없는 글자
+  // 세션이 모델을 적으려 하면 막는다
+  assert.match(checkMarkModel("node ../controller/atcctl.mjs dispatch crosscheck D-0003 agree --model muse -- 'x'", CROSSCHECK, transcript("claude-opus-5-5")).reason, /세션이 적지 않는다/);
+  assert.match(checkMarkModel(`${MARK} | jq .`, CROSSCHECK, transcript("muse-spark-1.3-contributor")).reason, /단독으로/);
+  // 읽기 명령은 확인하지 않는다
+  assert.deepEqual(checkMarkModel("node ../controller/atcctl.mjs crosscheck brief", CROSSCHECK, null), { command: "node ../controller/atcctl.mjs crosscheck brief" });
+});
+
+// hook CLI를 settings와 같은 방식으로 부른다(stdin JSON → exit code·stdout)
+const runHook = (command, transcriptPath, flags = ["--crosscheck", "--gh-read"]) =>
+  spawnSync(process.execPath, [join(HERE, "guard.mjs"), ...flags], {
+    input: JSON.stringify({ tool_name: "Bash", tool_input: { command, description: "d" }, cwd: CROSSCHECK, transcript_path: transcriptPath }),
+    encoding: "utf8",
+  });
+
+test("guard CLI: opus 기록이면 exit 2, muse 기록이면 updatedInput으로 실제 모델을 붙이고, 기록이 없으면 exit 2, 읽기 명령은 기록과 무관", () => {
+  const opus = join(TMP, "opus.jsonl");
+  const muse = join(TMP, "muse.jsonl");
+  writeFileSync(opus, transcript("claude-opus-5-5"));
+  writeFileSync(muse, transcript("muse-spark-1.3-contributor"));
+  const blocked = runHook(MARK, opus);
+  assert.equal(blocked.status, 2);
+  assert.match(blocked.stderr, /claude-opus-5-5.*ocx claude/);
+  const ok = runHook(MARK, muse);
+  assert.equal(ok.status, 0, ok.stderr);
+  const out = JSON.parse(ok.stdout).hookSpecificOutput;
+  assert.equal(out.hookEventName, "PreToolUse");
+  assert.equal(out.updatedInput.command, `ATC_CROSSCHECK_MODEL='muse-spark-1.3-contributor' ${MARK}`);
+  assert.equal(out.updatedInput.description, "d");
+  assert.equal(runHook(MARK, join(TMP, "none.jsonl")).status, 2);
+  assert.equal(runHook(MARK, undefined).status, 2);
+  const read = runHook("node ../controller/atcctl.mjs crosscheck brief", undefined);
+  assert.equal(read.status, 0);
+  assert.equal(read.stdout, "");
+  assert.equal(runHook("gh pr view 393 --repo chaehy5665/vocado_nextjs --json state", opus).status, 0);
+  // 세션이 앞에 모델을 적으면(환경 변수) 명령 자체가 막힌다
+  assert.equal(runHook(`ATC_CROSSCHECK_MODEL='muse-spark-1.3-contributor' ${MARK}`, opus).status, 2);
+  // OCC(--crosscheck 없음)는 이 확인을 하지 않는다
+  assert.equal(runHook("node ../controller/atcctl.mjs dispatch brief", undefined, ["--gh-read"]).status, 0);
 });
