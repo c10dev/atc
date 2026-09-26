@@ -9,7 +9,7 @@ atc splits into two control sessions, the way aviation does:
 
 In real aviation the flight dispatcher belongs to the airline's OCC, not to ATC. So DISPATCH (stage 2) moves into OCC, and OCC takes over the work the "President" session does by hand today.
 
-> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and `lane:TEAM_X` in the planner. S1 and later are design only. Decisions are listed under "Decisions" at the end.
+> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and `lane:TEAM_X` in the planner (to be renamed `tail:TEAM_X`, TAIL ASSIGNMENT, see [fleet.md](fleet.md)). S1 and later are design only. Decisions are listed under "Decisions" at the end.
 
 ## 1. Current facts
 
@@ -57,7 +57,7 @@ What went wrong on 2026-09-26, all in one day:
 |---|---|
 | Create an issue (title, body from the template, project) | Move to In Progress when work starts |
 | Priority | PR description (`Fixes VOC-n`), so the GitHub integration moves the state |
-| `lane:TEAM_X` label (which team should fly it) | Short comments at start, PR, blocked, done |
+| `tail:TEAM_X` label (TAIL ASSIGNMENT: which team should fly it) and the classification labels `type:`, `wake:`, `rating:` ([fleet.md](fleet.md)) | Short comments at start, PR, blocked, done |
 | Parent / child links, `blocks` / `blocked by` relations | |
 | Close as Done or Canceled **with an evidence comment**, mark duplicates | |
 
@@ -72,7 +72,8 @@ OCC never writes to Linear freely. It drafts **SCHEDULE operations**. Each one i
 | `NEW` | Create a ticket | Split the batch-processor race out of VOC-193 (became VOC-195) |
 | `CLOSE` | Close as Done or Canceled, with an evidence comment | VOC-56: the `protect main` ruleset already meets every done criterion |
 | `PRIORITIZE` | Set or change priority | VOC-177, VOC-179, VOC-195 have no priority |
-| `LANE` | Add or change `lane:TEAM_X` | VOC-196 → `lane:TEAM_E` (what President decided) |
+| `TAIL` | Add or change `tail:TEAM_X` (TAIL ASSIGNMENT) | VOC-196 → `tail:TEAM_E` (what President decided) |
+| `CLASSIFY` | Set FLIGHT TYPE, WAKE CATEGORY and required TYPE RATING ([fleet.md](fleet.md) section 4) | VOC-195 → `type:MAINT`, `wake:M`, `rating:SEC` |
 | `LINK` | Add a parent, `blocks` or `related` relation | VOC-196 blocked by VOC-52 (written only in the body) |
 | `SPLIT` | Turn a finding into a child or related ticket | P3 items from the PR #400 review |
 | `COMMENT` | Leave a plan comment (not execution) | "Deferred until VOC-52 lands" |
@@ -129,14 +130,14 @@ Candidates for automatic operations in S3, each to be confirmed from S2 data:
 - `LINK` for a prerequisite quoted verbatim from the body
 - `PRIORITIZE` for a `SPLIT` child that inherits its parent's priority
 
-Never automatic: anything with CAUTION, `Canceled`, deleting anything, changes to another team's `lane:` while it is AIRBORNE.
+Never automatic: anything with CAUTION, `Canceled`, deleting anything, adding or removing `rating:SEC`, changes to another team's `tail:` while it is AIRBORNE.
 
 ## 8. Merging DISPATCH and President into OCC
 
 | From | Moves to OCC as |
 |---|---|
 | DISPATCH session (`atc/dispatch/`) | The same work under `atc/occ/`: proposal review, HOLD, FLIGHT PLAN, READBACK. The DISPATCH tab, proposal ids (`D-xxxx`) and send-guard stay as they are |
-| President: assign work | DISPATCH proposals. Until 2b, a person's direct assignment is recorded with `LANE` so the planner can see it |
+| President: assign work | DISPATCH proposals. Until 2b, a person's direct assignment is recorded with `TAIL` so the planner can see it |
 | President: verify team reports | **Flight following**. OCC checks the PR head, CI and review with read-only `gh` (`gh pr view`, `gh pr checks`, `gh pr diff`). The mechanical part becomes ATC's CLEARED TO LAND check (section 9) |
 | President: keep Linear tidy | SCHEDULE operations |
 | President: maintain rule files | A `NEW` ticket that a TEAM implements through a PR |
@@ -146,7 +147,7 @@ OCC's guard is TOWER's Bash guard plus read-only `gh` subcommands (`guard.mjs --
 
 The session reloads its manual: `/tick` starts with `atcctl manual check`, which compares the hash of `CLAUDE.md` and `/tick` with the last `atcctl manual ack` (stored under `~/.local/state/atc/manuals/`). If they changed, the session rereads them before doing anything else. TOWER's `/tick` does the same. That fixes the stale-manual incident from section 1.
 
-**President retires** once all three hold: OCC has run S1 for a week, flight following covers every team report, and `LANE` is in use. Until then President keeps assigning and records each assignment as a `LANE` draft.
+**President retires** once all three hold: OCC has run S1 for a week, flight following covers every team report, and `TAIL` is in use. Until then President keeps assigning and records each assignment as a `tail:` label (by hand until OCC S2).
 
 ## 9. What ATC takes
 
@@ -159,8 +160,8 @@ The session reloads its manual: `/tick` starts with `atcctl manual check`, which
 | Where | What |
 |---|---|
 | `server/schedule.ts` (new) | SCHEDULE log (`~/.local/state/atc/schedule.jsonl`, append-only), state transitions, APPLIED detection from the Linear fetch, daily limits |
-| `server/sources/linear.ts` | Read labels (`lane:`), recently closed issues (for duplicate search), and the `S-xxxx` footer |
-| `server/dispatch.ts` | Respect `lane:TEAM_X`: propose that FLIGHT only to that team |
+| `server/sources/linear.ts` | Read labels (`tail:`, `type:`, `wake:`, `rating:`), recently closed issues (for duplicate search), and the `S-xxxx` footer |
+| `server/dispatch.ts` | Respect `tail:TEAM_X` and the classification rules in [fleet.md](fleet.md) section 5 |
 | API | `GET /api/schedule/brief`, `GET /api/schedule/ops/:id`, `POST /api/schedule/ops` (draft), `POST /api/schedule/ops/:id/{verdict,approve,reject,release}`, `POST /api/schedule/mode` |
 | `atc/occ/` | Moved from `atc/dispatch/`: `CLAUDE.md` (operations manual), `/tick`, send-guard, **linear-guard**, a Bash guard with read-only `gh` |
 | `controller/atcctl.mjs` | `schedule draft`, `schedule release`, `schedule brief` |

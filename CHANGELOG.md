@@ -7,6 +7,7 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 ## [Unreleased]
 
 ### Added
+- FLEET design draft ([docs/fleet.md](docs/fleet.md), English only for now): teams as a FLEET with CREW COMPLEMENT, TYPE RATINGS, ROUTES and TARGETS in a `fleet.json` registry, and FLIGHT classification on three axes (FLIGHT TYPE `BUILD`/`MAINT`/`TEST`/`SURVEY`/`CHECK`/`FERRY`, WAKE CATEGORY `L`/`M`/`H`/`J`, required TYPE RATING `SEC`/`UI`/`DATA`/`DOCS`) as Linear labels the planner uses. `lane:TEAM_X` is to be renamed TAIL ASSIGNMENT (`tail:TEAM_X`).
 - OCC session, stage S0 (`occ/`, [docs/occ.md](docs/occ.md)). The DISPATCH session folder moved from `dispatch/` to `occ/` and keeps its work (proposal review, HOLD, FLIGHT PLAN, READBACK). OCC adds flight following: read-only `gh pr view|checks|diff|list` through `guard.mjs --gh-read`. `occ/mcp-guard.mjs` lets only read MCP tools through, so OCC cannot write to Linear or GitHub in S0.
 - `atcctl manual check` / `manual ack`: a control session's `/tick` (OCC and TOWER) starts by checking whether its `CLAUDE.md` or `/tick` changed since the last ack, and rereads them if so.
 - `lane:TEAM_X` Linear label: the planner proposes that FLIGHT only to that team. If the team cannot take it (AIRBORNE, HOLDING, no such session, another AIRPORT), the FLIGHT is excluded with the reason instead of going to another team.
