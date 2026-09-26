@@ -28,9 +28,33 @@ function hasRedirect(command) {
 // 읽기만 하는 gh 하위 명령. `gh api`는 POST도 되므로 넣지 않는다.
 const GH_READ = new Set(["view", "checks", "diff", "list"]);
 
+// 작은따옴표 밖의 명령 치환·변수 확장($(…), `…`, ${…}, $VAR)은 쉘이 실행 전에 풀어 버린다.
+// 큰따옴표 안에서도 풀리므로("$(touch x)"), 인자 모양만 보는 검사로는 막을 수 없어 통째로 막는다.
+// 작은따옴표 안과 \$처럼 이스케이프한 것은 글자 그대로라 괜찮다.
+function hasExpansion(command) {
+  let quote = null;
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i];
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+      continue;
+    }
+    if (ch === "\\") {
+      i++;
+      continue;
+    }
+    if (quote === '"' && ch === '"') quote = null;
+    else if (!quote && (ch === "'" || ch === '"')) quote = ch;
+    else if (ch === "`") return true;
+    else if (ch === "$" && /[A-Za-z_{(0-9@*#?!$-]/.test(command[i + 1] ?? "")) return true;
+  }
+  return false;
+}
+
 export function check(command, cwd = HERE, { ghRead = false } = {}) {
   if (typeof command !== "string" || !command.trim()) return "빈 명령";
   if (hasRedirect(command)) return "리다이렉션(>, <, heredoc)은 쓸 수 없음";
+  if (hasExpansion(command)) return "명령 치환·변수 확장($(…), `…`, ${…}, $VAR)은 쓸 수 없음 — 문구는 작은따옴표로 감싼다";
   for (const words of simpleCommands(command)) {
     const [cmd, script] = words;
     if (cmd === "jq") continue;

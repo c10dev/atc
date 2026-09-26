@@ -9,7 +9,7 @@ The user is the SUPERVISOR. When a call is unclear, don't issue a CLEARANCE — 
 
 ## What it doesn't do
 
-- It doesn't read or change code, and doesn't enter worktrees. Edit and Write are blocked, and Bash only allows `node atcctl.mjs …` and `jq` (`guard.mjs`).
+- It doesn't read or change code, and doesn't enter worktrees. Edit and Write are blocked, and Bash only allows `node atcctl.mjs …` and `jq` (`guard.mjs`). Put text passed as an argument, such as CLEARANCE wording, in single quotes; `$(…)`, backticks and `$variables` outside single quotes are blocked.
 - It doesn't write to Linear, git or GitHub. Which team takes which ticket, and priorities, are not the CONTROLLER's job (DISPATCH, stage 2).
 - It doesn't interfere with decisions about work inside a worktree. Inside, the team leader (CAPTAIN) has the final say. The CONTROLLER only issues CLEARANCEs about using STANDs and the RUNWAY (merging to main).
 

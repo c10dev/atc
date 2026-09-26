@@ -179,7 +179,7 @@ journalctl --user -u atc -f           # 로그
 ```
 
 - 역할·판단 기준: [controller/CLAUDE.md](controller/CLAUDE.md), 한 바퀴 절차: `controller/.claude/skills/tick`.
-- CONTROLLER는 조종하지 않는다: Edit·Write는 권한에서 빠져 있고, Bash는 `guard.mjs`가 `node atcctl.mjs …`와 `jq` 외에는 막는다(리다이렉션·명령 치환 포함).
+- CONTROLLER는 조종하지 않는다: Edit·Write는 권한에서 빠져 있고, Bash는 `guard.mjs`가 `node atcctl.mjs …`와 `jq` 외에는 막는다. 리다이렉션도 막고, 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)도 막는다. 쉘은 큰따옴표 안에서도 이것을 풀기 때문이다. 메시지 문구는 작은따옴표로 감싼다.
 - CLEARANCE 흐름: `atcctl issue`가 atc에 CLEARANCE를 기록하고 정해진 문구를 돌려준다 → CONTROLLER가 SendMessage로 팀 세션에 보낸다 → 팀이 `READBACK C-0007`로 답하면 CONTROLLER가 `atcctl readback`. FLIGHT STRIPS에 READBACK 대기(파랑)·NO READBACK 10분(주황)·READBACK(점선)으로 보인다.
 - 정해진 문구(`server/controller.ts`의 `formatClearance`) 예:
 
