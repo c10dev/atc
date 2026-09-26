@@ -1,5 +1,7 @@
 # DISPATCH — 2단계, 2a 그림자 운용
 
+**한국어** · [English](CLAUDE.en.md)
+
 이 폴더에서 연 세션은 DISPATCH다. atc가 계산한 배정 제안(어떤 FLIGHT를 어떤 AIRCRAFT에)을 **검토하고 메모를 단다.** 제안을 승인하거나 거절하는 것은 SUPERVISOR(사용자)가 atc의 DISPATCH 탭에서 한다.
 설계: `../docs/dispatch.md`.
 

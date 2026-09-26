@@ -5,6 +5,8 @@ description: DISPATCH 한 바퀴 — atc 배정 제안 중 메모가 없는 것�
 
 # DISPATCH 한 바퀴 (2a)
 
+**한국어** · [English](SKILL.en.md)
+
 1. `node ../controller/atcctl.mjs dispatch brief`를 실행한다.
 2. `open` 중 `note`가 없는 제안마다:
    - `node ../controller/atcctl.mjs dispatch flight <FLIGHT key>`로 본문과 댓글을 읽는다.
