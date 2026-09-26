@@ -101,6 +101,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
   const [brief, setBrief] = useState<Brief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState<{ p: Proposal; resolve: (reason: string | null) => void } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null); // 판정을 보내는 중인 제안(두 번 누름 방지)
 
   const load = useCallback(async () => {
     try {
@@ -142,12 +143,15 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
   const submit = async (p: Proposal, v: "agree" | "disagree", reason: string | null) => {
     if (v === "agree" && brief?.mode === "approval" && p.kind === "ASSIGN" && !confirm(`${p.id}를 승인하면 DISPATCH가 ${p.aircraftName}에게 FLIGHT PLAN을 보냅니다. 승인할까요?`)) return;
     const payload = { reason };
+    setBusy(p.id);
     try {
       if (brief?.mode === "approval") await post(`/api/dispatch/proposals/${p.id}/${v === "agree" ? "approve" : "reject"}`, payload);
       else await post(`/api/dispatch/proposals/${p.id}/verdict`, { verdict: v, reason });
       await load();
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -258,7 +262,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {assign.length ? (
         <div className="dp-cards">
           {assign.map((p) => (
-            <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={verdict} onAccept={acceptCrosscheck} mode={brief.mode} />
+            <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={verdict} onAccept={acceptCrosscheck} mode={brief.mode} busy={busy === p.id} />
           ))}
         </div>
       ) : (
@@ -284,7 +288,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {release.length ? (
         <div className="dp-cards">
           {release.map((p) => (
-            <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={verdict} onAccept={acceptCrosscheck} mode={brief.mode} />
+            <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={verdict} onAccept={acceptCrosscheck} mode={brief.mode} busy={busy === p.id} />
           ))}
         </div>
       ) : (
@@ -423,7 +427,7 @@ function RejectDialog({
 function CrosscheckMini({ m }: { m: Crosscheck | null }) {
   if (!m) return null;
   return (
-    <span className={`dp-xc-mini v-${m.verdict}`} title={`CROSSCHECK ${m.verdict} (${m.by}) — ${m.reason}`}>
+    <span className={`dp-xc-mini v-${m.verdict}`} title={`CROSSCHECK ${m.verdict} (${m.by}) — ${m.reason}`} aria-label={`CROSSCHECK ${m.verdict} (${m.by}) — ${m.reason}`}>
       CROSSCHECK {m.verdict}
     </span>
   );
@@ -538,6 +542,7 @@ function Card({
   mode,
   held,
   onUnhold,
+  busy,
 }: {
   p: Proposal;
   flight: FlightInfo | undefined;
@@ -547,6 +552,7 @@ function Card({
   mode: DispatchConfig["mode"];
   held?: boolean;
   onUnhold?: (p: Proposal) => void;
+  busy?: boolean;
 }) {
   const max = Math.max(1, ...p.factors.map((f) => Math.abs(f.points)));
   const xc = held ? null : markOf(p);
@@ -610,15 +616,16 @@ function Card({
       )}
       {xc && <CrosscheckChip m={xc} now={now} />}
       <div className="dp-actions">
-        <button className="dp-btn agree" onClick={() => onVerdict(p, "agree")}>
+        <button className="dp-btn agree" disabled={busy} onClick={() => onVerdict(p, "agree")}>
           {mode === "approval" ? "승인" : "승인했을 것"}
         </button>
-        <button className="dp-btn disagree" onClick={() => onVerdict(p, "disagree")}>
+        <button className="dp-btn disagree" disabled={busy} onClick={() => onVerdict(p, "disagree")}>
           {mode === "approval" ? "거절" : "거절했을 것"}
         </button>
         {xc && onAccept && (
           <button
             className={`dp-btn dp-xc-accept v-${xc.verdict}`}
+            disabled={busy}
             title={`CROSSCHECK 판정(${xc.verdict})대로 ${xc.verdict === "agree" ? (mode === "approval" ? "승인" : "승인했을 것") : mode === "approval" ? "거절" : "거절했을 것"} 기록${xc.verdict === "disagree" ? " — 사유는 CROSSCHECK 사유" : ""}`}
             onClick={() => onAccept(p, xc)}
           >

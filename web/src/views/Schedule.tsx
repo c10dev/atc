@@ -509,7 +509,7 @@ function useVerdict(op: ScheduleOp, onVerdict: OnVerdict) {
 function CrosscheckMini({ m }: { m: Crosscheck | null }) {
   if (!m) return null;
   return (
-    <span className={`sc-xc-mini v-${m.verdict}`} title={`CROSSCHECK ${m.verdict} (${m.by}) — ${m.reason}`}>
+    <span className={`sc-xc-mini v-${m.verdict}`} title={`CROSSCHECK ${m.verdict} (${m.by}) — ${m.reason}`} aria-label={`CROSSCHECK ${m.verdict} (${m.by}) — ${m.reason}`}>
       CROSSCHECK {m.verdict}
     </span>
   );
