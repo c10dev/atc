@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { alertCode, alertLabel, alertMessage, callsign, flightNumber, HANDOFF_LABEL } from "./aviation.ts";
 import { buildIndex, timeAgo } from "./derive.ts";
 import { MoonIcon, Starfield } from "./Starfield.tsx";
@@ -11,6 +11,7 @@ import { Dispatch } from "./views/Dispatch.tsx";
 import { Fleet } from "./views/Fleet.tsx";
 import { MapView } from "./views/Map.tsx";
 import { Metrics } from "./views/Metrics.tsx";
+import { Schedule } from "./views/Schedule.tsx";
 import { Teams } from "./views/Teams.tsx";
 import { Tickets } from "./views/Tickets.tsx";
 
@@ -22,6 +23,7 @@ const TABS = [
   { id: "fleet", code: "FLEET" },
   { id: "metrics", code: "METRICS" },
   { id: "dispatch", code: "DISPATCH" },
+  { id: "schedule", code: "SCHEDULE" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -48,6 +50,16 @@ export function App() {
 
   useEffect(() => {
     if (location.hash !== `#${tab}`) history.replaceState(null, "", `#${tab}`);
+  }, [tab]);
+  // 탭 줄이 가로로 넘칠 때 선택한 탭이 보이게(글꼴·수치가 늦게 들어와 폭이 바뀌어도)
+  const tabsRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const show = () => el.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const ro = new ResizeObserver(show);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [tab]);
   useEffect(() => {
     const onHash = () => setTab(initialTab());
@@ -90,7 +102,7 @@ export function App() {
           </button>
           {settingsOpen && <SettingsPanel settings={settings} snapshot={snapshot} onClose={closeSettings} />}
         </div>
-        <nav className="tabs" role="tablist">
+        <nav className="tabs" role="tablist" ref={tabsRef}>
           {TABS.map((t) => (
             <button key={t.id} role="tab" aria-selected={tab === t.id} className="tab" onClick={() => setTab(t.id)}>
               <span className="tab-code">{t.code}</span>
@@ -179,6 +191,8 @@ export function App() {
           <Metrics refreshKey={snapshot.at.slice(0, 16)} />
         ) : tab === "dispatch" ? (
           <Dispatch refreshKey={snapshot.at.slice(0, 16)} now={now} />
+        ) : tab === "schedule" ? (
+          <Schedule refreshKey={snapshot.at.slice(0, 16)} now={now} />
         ) : (
           <Tickets snapshot={snapshot} idx={idx} now={now} />
         )}

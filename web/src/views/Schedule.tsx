@@ -1,0 +1,484 @@
+import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import type { ClassifyPayload, PrioritizePayload, ScheduleOp } from "../../../server/schedule.ts";
+import { flightNumber } from "../aviation.ts";
+import { timeAgo } from "../derive.ts";
+import { formatClock, useSettings } from "../settings.ts";
+import { PriorityMark } from "../ui.tsx";
+import "./Schedule.css";
+
+// OCC S1 — SCHEDULE 초안(그림자 운용). OCC가 Linear에 쓸 변경(CLASSIFY 라벨, PRIORITIZE 우선순위)을
+// 초안으로 남기고, SUPERVISOR는 "승인했을 것 / 거절했을 것"만 표시한다. 아무것도 Linear에 쓰지 않는다.
+// 설계: docs/occ.md 5~7장, docs/fleet.md 4·6장.
+
+interface FlightInfo {
+  title: string;
+  state: string;
+  priority: number;
+  project: string | null;
+  url: string | null;
+  cls: string; // "BUILD · M · SEC"
+  labels: string[];
+}
+
+interface Brief {
+  mode: "shadow";
+  open: ScheduleOp[];
+  recent: ScheduleOp[];
+  changes: Record<string, string[]>;
+  gate: { decided: number; agreed: number; agreement: number | null; target: { decided: number; agreement: number }; ready: boolean };
+  limit: number;
+  candidates: { classify: string[]; prioritize: string[] };
+  flights: Record<string, FlightInfo>;
+}
+
+type Clock = "utc" | "local";
+
+// server/dispatch.ts PRIORITY_NAME과 같은 값(서버 모듈을 번들에 넣지 않으려고 따로 둠)
+const PRIORITY_NAME: Record<number, string> = { 0: "없음", 1: "Urgent", 2: "High", 3: "Medium", 4: "Low" };
+
+const statusText: Record<ScheduleOp["status"], string> = {
+  draft: "DRAFT",
+  agreed: "승인했을 것",
+  disagreed: "거절했을 것",
+  superseded: "SUPERSEDED",
+  expired: "EXPIRED",
+};
+
+// 거절 사유 칩. 고른 라벨 뒤에 선택 메모를 붙여 "라벨 — 메모"로 기록한다.
+const REJECT_REASONS: Record<ScheduleOp["kind"], string[]> = {
+  CLASSIFY: ["FLIGHT TYPE이 다름", "WAKE가 다름", "TYPE RATING이 빠지거나 넘침", "근거가 본문과 맞지 않음", "지금 분류할 필요 없음"],
+  PRIORITIZE: ["우선순위가 더 높아야 함", "우선순위가 더 낮아야 함", "근거가 본문과 맞지 않음", "지금 정할 필요 없음"],
+};
+
+const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
+
+// 여러 날에 걸친 기록이므로 시각 앞에 날짜를 붙인다(설정한 시간대 기준).
+function stamp(iso: string, clock: Clock): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const date = clock === "utc" ? iso.slice(5, 10) : `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${date} ${formatClock(iso, clock)}`;
+}
+
+// 초안이 적용할 값 한 줄: "type:MAINT · wake:M · rating:SEC", "priority High"
+function payloadText(op: ScheduleOp): string {
+  if (op.kind === "PRIORITIZE") return `priority ${PRIORITY_NAME[(op.payload as PrioritizePayload).priority]}`;
+  const p = op.payload as ClassifyPayload;
+  return [p.type && `type:${p.type}`, p.wake && `wake:${p.wake}`, ...(p.ratings ?? []).map((r) => `rating:${r}`)].filter(Boolean).join(" · ");
+}
+
+// FLIGHT에 붙은 type:·wake: 라벨. Linear 라벨 그룹은 "type:BUILD"처럼 온다.
+const axisLabel = (labels: string[], axis: "type" | "wake") => labels.find((l) => new RegExp(`^${axis}\\s*:`, "i").test(l.trim())) ?? null;
+
+async function post(path: string, body: unknown) {
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  if (!res.ok || data.error) throw Object.assign(new Error(data.error ?? `HTTP ${res.status}`), { status: res.status });
+  return data;
+}
+
+export function Schedule({ refreshKey, now }: { refreshKey: string; now: number }) {
+  const { clock } = useSettings();
+  const [brief, setBrief] = useState<Brief | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
+  const draftsHead = useRef<HTMLHeadingElement>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/schedule/brief");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setBrief(await res.json());
+      setError(null);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load, refreshKey]);
+
+  // 판정 기록. 카드가 사라지면 초점은 DRAFTS 제목으로. 409·404는 위 알림, 그 밖의 실패는 카드 안에.
+  const verdict = async (op: ScheduleOp, v: "agree" | "disagree", reason: string | null) => {
+    try {
+      await post(`/api/schedule/ops/${op.id}/verdict`, { verdict: v, reason });
+      setNotice({ tone: "ok", text: `${op.id} ${flightNumber(op.flight)} — ${v === "agree" ? "승인했을 것" : "거절했을 것"}으로 기록함` });
+      await load();
+      draftsHead.current?.focus();
+      return null;
+    } catch (e) {
+      const err = e as Error & { status?: number };
+      if (err.status === 409 || err.status === 404) {
+        setNotice({ tone: "error", text: `${op.id}: ${err.message} — 목록을 새로 불러옴` });
+        await load();
+        draftsHead.current?.focus();
+        return null;
+      }
+      return err.message;
+    }
+  };
+
+  if (!brief) return <p className="empty">{error ? `불러오지 못함: ${error}` : "불러오는 중…"}</p>;
+  const { gate, flights } = brief;
+
+  return (
+    <section className="schedule">
+      <div className="toolbar">
+        <span className="muted">
+          <span className="sc-mode">SHADOW</span> OCC S1 · OCC가 Linear에 쓸 변경을 초안으로 남긴다. 판정은 초안 품질을 재는 데만 쓰고{" "}
+          <b className="sc-strong">Linear에는 아무것도 쓰지 않는다.</b>
+        </span>
+      </div>
+      {error && (
+        <p className="sc-error" role="alert">
+          새로 고침 실패: {error}
+        </p>
+      )}
+      <p className={`sc-notice${notice ? ` t-${notice.tone}` : ""}`} role="status" aria-live="polite">
+        {notice?.text}
+      </p>
+
+      <Gate gate={gate} />
+
+      <h2 className="label" ref={draftsHead} tabIndex={-1}>
+        DRAFTS{" "}
+        <em>
+          열린 초안 {brief.open.length} / {brief.limit}
+          {brief.open.length >= brief.limit && " · 가득 참 — 판정해야 OCC가 새 초안을 쓴다"}
+        </em>
+      </h2>
+      {brief.open.length ? (
+        <div className="sc-cards">
+          {brief.open.map((op) => (
+            <DraftCard key={op.id} op={op} flight={flights[op.flight]} changes={brief.changes[op.id] ?? []} now={now} clock={clock} onVerdict={verdict} />
+          ))}
+        </div>
+      ) : (
+        <p className="empty">열린 초안 없음 — OCC가 아직 초안을 쓰지 않았거나 모두 판정했다.</p>
+      )}
+
+      <h2 className="label">
+        CANDIDATES <em>계획 단계(Todo·Backlog)에서 OCC가 초안을 쓸 FLIGHT · 열린 초안이 있는 것은 뺌</em>
+      </h2>
+      <div className="sc-cands">
+        <Candidates kind="CLASSIFY" note="type:·wake: 라벨이 없음" keys={brief.candidates.classify} flights={flights} />
+        <Candidates kind="PRIORITIZE" note="우선순위가 없음" keys={brief.candidates.prioritize} flights={flights} />
+      </div>
+
+      <h2 className="label">
+        RECENT <em>최근 7일 닫힌 초안</em>
+      </h2>
+      {brief.recent.length ? (
+        <table className="sc-table">
+          <thead>
+            <tr>
+              <th scope="col">ID</th>
+              <th scope="col">종류</th>
+              <th scope="col">FLIGHT</th>
+              <th scope="col">결과</th>
+              <th scope="col">언제</th>
+              <th scope="col">사유</th>
+            </tr>
+          </thead>
+          <tbody>
+            {brief.recent.map((op) => (
+              <tr key={op.id} className={`s-${op.status}`}>
+                <td className="sc-c-id mono" data-label="ID">{op.id}</td>
+                <td className={`sc-c-kind k-${op.kind}`} data-label="종류">{op.kind}</td>
+                <td className="sc-c-flight" data-label="FLIGHT">
+                  <span className="mono" title={flights[op.flight]?.title ?? op.flight}>
+                    {flightNumber(op.flight)}
+                  </span>
+                  <span className="sc-payload">{payloadText(op)}</span>
+                </td>
+                <td className="sc-c-status sc-result" data-label="결과">{statusText[op.status]}</td>
+                <td className="sc-c-at faint" data-label="언제">
+                  <time dateTime={op.statusAt} title={stamp(op.statusAt, clock)}>
+                    {timeAgo(op.statusAt, now)}
+                  </time>
+                </td>
+                <td className="sc-c-reason" data-label="사유">{op.verdictReason ?? <span className="faint">—</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="empty">최근 7일 동안 닫힌 초안 없음</p>
+      )}
+    </section>
+  );
+}
+
+function Gate({ gate }: { gate: Brief["gate"] }) {
+  const enough = gate.decided >= gate.target.decided;
+  const rateOk = gate.agreement !== null && gate.agreement >= gate.target.agreement;
+  const rows = [
+    {
+      label: "판정한 초안",
+      value: `${gate.decided} / ${gate.target.decided}`,
+      target: `≥ ${gate.target.decided}건`,
+      state: enough ? "pass" : "fail",
+      fill: Math.min(1, gate.decided / gate.target.decided),
+    },
+    {
+      label: `합의율 · 승인했을 것 ${gate.agreed} · 거절했을 것 ${gate.decided - gate.agreed}`,
+      value: pct(gate.agreement),
+      target: `≥ ${Math.round(gate.target.agreement * 100)}%`,
+      state: gate.decided < 5 ? "insufficient" : rateOk ? "pass" : "fail",
+      fill: gate.agreement ?? 0,
+    },
+  ] as const;
+  const mark = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족" } as const;
+  return (
+    <div className="sc-gate">
+      <h2 className="label">
+        STAGE S2 <em>승인 운용 진입 점검 · {gate.ready ? "준비됨" : "아직"}</em>
+      </h2>
+      <ul>
+        {rows.map((r) => (
+          <li key={r.label} className={`s-${r.state}`}>
+            <span className="sc-gate-label">{r.label}</span>
+            <span className="sc-gate-value">{r.value}</span>
+            <span className="sc-gate-target">기준 {r.target}</span>
+            <span className="sc-gate-state">{mark[r.state]}</span>
+            <span className="sc-gate-bar" aria-hidden>
+              <span style={{ width: `${r.fill * 100}%` }} />
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="sc-gate-note faint">
+        S1 그림자 운용: 판정은 합의율 측정용이다. S2(승인 운용)부터 승인한 초안만 linear-guard를 거쳐 Linear에 쓴다. 판정 없이 3일이 지나면 EXPIRED.
+      </p>
+    </div>
+  );
+}
+
+function DraftCard({
+  op,
+  flight,
+  changes,
+  now,
+  clock,
+  onVerdict,
+}: {
+  op: ScheduleOp;
+  flight: FlightInfo | undefined;
+  changes: string[];
+  now: number;
+  clock: Clock;
+  onVerdict: (op: ScheduleOp, v: "agree" | "disagree", reason: string | null) => Promise<string | null>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState(false);
+  const rejectBtn = useRef<HTMLButtonElement>(null);
+  const labels = flight?.labels ?? [];
+  const clsDefault = Boolean(flight) && (!axisLabel(labels, "type") || !axisLabel(labels, "wake"));
+
+  const submit = async (v: "agree" | "disagree", reason: string | null) => {
+    setBusy(true);
+    setError(null);
+    const err = await onVerdict(op, v, reason);
+    // 성공하면 카드가 사라진다. 실패만 여기서 보인다.
+    setBusy(false);
+    if (err) setError(err);
+  };
+
+  const closeReject = () => {
+    setRejecting(false);
+    requestAnimationFrame(() => rejectBtn.current?.focus());
+  };
+
+  const titleId = `sc-${op.id}-title`;
+  return (
+    <article className={`sc-card k-${op.kind}`} aria-labelledby={titleId} aria-busy={busy}>
+      <header className="sc-card-head">
+        <span className="sc-kind">{op.kind}</span>
+        <span className="mono faint">{op.id}</span>
+        <time className="faint sc-age" dateTime={op.at} title={`초안 작성 ${stamp(op.at, clock)}`}>
+          {timeAgo(op.at, now)}
+        </time>
+      </header>
+      <h3 className="sc-flight" id={titleId}>
+        {flight?.url ? (
+          <a className="mono sc-fn" href={flight.url} target="_blank" rel="noreferrer" title={`${op.flight} — Linear에서 열기`}>
+            {flightNumber(op.flight)}
+          </a>
+        ) : (
+          <span className="mono sc-fn">{flightNumber(op.flight)}</span>
+        )}
+        {flight && <PriorityMark priority={flight.priority} />}
+        <span className="sc-title" title={flight?.title}>
+          {flight?.title ?? "FLIGHT 정보 없음"}
+        </span>
+      </h3>
+
+      <dl className="sc-facts">
+        <dt>지금</dt>
+        <dd>
+          {op.kind === "CLASSIFY" ? (
+            <span className={`sc-class${clsDefault ? " is-default" : ""}`} title="FLIGHT TYPE · WAKE · 필요한 TYPE RATING">
+              {flight?.cls ?? "—"}
+              {clsDefault && <span className="faint"> (기본값 — 라벨 없음)</span>}
+            </span>
+          ) : (
+            <span>priority {flight ? PRIORITY_NAME[flight.priority] ?? "없음" : "—"}</span>
+          )}
+          {flight && <span className="faint"> · {flight.state}</span>}
+        </dd>
+        <dt>바뀜</dt>
+        <dd>
+          {changes.length ? (
+            <ul className="sc-changes">
+              {changes.map((c) => (
+                <li key={c} className="sc-change">
+                  {op.kind === "CLASSIFY" ? `+ ${c}` : c}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="faint">바뀔 것 없음 — 다음 새로 고침에서 SUPERSEDED</span>
+          )}
+        </dd>
+        <dt>근거</dt>
+        <dd className="sc-reason">{op.reason}</dd>
+      </dl>
+
+      {changes.length > 0 && <ManualHint op={op} changes={changes} labels={labels} />}
+
+      {error && (
+        <p className="sc-card-error" role="alert">
+          기록하지 못함: {error}
+        </p>
+      )}
+
+      {rejecting ? (
+        <RejectForm op={op} busy={busy} onCancel={closeReject} onSubmit={(reason) => submit("disagree", reason)} />
+      ) : (
+        <div className="sc-actions">
+          <button className="sc-btn agree" disabled={busy} onClick={() => submit("agree", null)}>
+            승인했을 것
+          </button>
+          <button ref={rejectBtn} className="sc-btn disagree" disabled={busy} onClick={() => setRejecting(true)}>
+            거절했을 것…
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+// SUPERVISOR가 Linear에서 손으로 반영한다면 무엇을 누르는지. 그림자 운용이므로 atc는 쓰지 않는다.
+function ManualHint({ op, changes, labels }: { op: ScheduleOp; changes: string[]; labels: string[] }) {
+  if (op.kind === "PRIORITIZE") {
+    const to = PRIORITY_NAME[(op.payload as PrioritizePayload).priority];
+    return (
+      <div className="sc-hint">
+        <span className="sc-hint-head">LINEAR 수동 반영</span>
+        <span>
+          {op.flight} → Priority <code>{to}</code>
+        </span>
+        <span className="faint sc-hint-note">atc는 Linear에 쓰지 않음 — 승인했을 것이어도 그대로 둔다</span>
+      </div>
+    );
+  }
+  return (
+    <div className="sc-hint">
+      <span className="sc-hint-head">LINEAR 수동 반영</span>
+      <span>
+        {op.flight} 라벨 추가{" "}
+        {changes.map((c) => {
+          const axis = c.startsWith("type:") ? "type" : c.startsWith("wake:") ? "wake" : null;
+          const old = axis ? axisLabel(labels, axis) : null;
+          return (
+            <span key={c} className="sc-hint-label">
+              <code>{c}</code>
+              {old && <span className="faint"> ({old} 대신 — 그룹은 하나만)</span>}
+            </span>
+          );
+        })}
+      </span>
+      <span className="faint sc-hint-note">atc는 Linear에 쓰지 않음 — 승인했을 것이어도 그대로 둔다</span>
+    </div>
+  );
+}
+
+function RejectForm({ op, busy, onCancel, onSubmit }: { op: ScheduleOp; busy: boolean; onCancel: () => void; onSubmit: (reason: string | null) => void }) {
+  const [chip, setChip] = useState<string | null>(null);
+  const [memo, setMemo] = useState("");
+  const reason = [chip, memo.trim()].filter(Boolean).join(" — ");
+  const memoId = `sc-${op.id}-memo`;
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onCancel();
+    }
+  };
+  return (
+    <form
+      className="sc-reject"
+      onKeyDown={onKey}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!busy) onSubmit(reason || null);
+      }}
+    >
+      <div className="sc-chips" role="group" aria-label={`${op.id} 거절 사유 고르기`}>
+        {REJECT_REASONS[op.kind].map((r) => (
+          <button type="button" key={r} className={`sc-chip${chip === r ? " is-on" : ""}`} aria-pressed={chip === r} onClick={() => setChip(chip === r ? null : r)}>
+            {r}
+          </button>
+        ))}
+      </div>
+      <label className="sc-memo-label" htmlFor={memoId}>
+        거절 사유 <span className="faint">(선택이지만 남겨 주세요 — OCC가 다음 초안에 반영)</span>
+      </label>
+      <input id={memoId} className="sc-input" value={memo} autoFocus maxLength={400} placeholder="예: 본문에 migration이 있어 rating:SEC 필요" onChange={(e) => setMemo(e.target.value)} />
+      <div className="sc-actions">
+        <button type="button" className="sc-btn" onClick={onCancel} disabled={busy}>
+          취소
+        </button>
+        <button type="submit" className="sc-btn disagree is-confirm" disabled={busy}>
+          {reason ? "거절했을 것 기록" : "사유 없이 거절 기록"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function Candidates({ kind, note, keys, flights }: { kind: ScheduleOp["kind"]; note: string; keys: string[]; flights: Record<string, FlightInfo> }) {
+  return (
+    <div className={`sc-cand k-${kind}`}>
+      <h3 className="sc-cand-head">
+        <span className="sc-kind">{kind}</span>
+        <b className="sc-cand-count">{keys.length}</b>
+        <span className="faint">{note}</span>
+      </h3>
+      {keys.length ? (
+        <ul className="sc-cand-list">
+          {keys.map((k) => {
+            const f = flights[k];
+            return (
+              <li key={k}>
+                {f?.url ? (
+                  <a className="mono sc-cand-fn" href={f.url} target="_blank" rel="noreferrer" title={`${k} — Linear에서 열기`}>
+                    {flightNumber(k)}
+                  </a>
+                ) : (
+                  <span className="mono sc-cand-fn">{flightNumber(k)}</span>
+                )}
+                <span className="sc-cand-title">
+                  {f?.title ?? k}
+                </span>
+                {f && <span className="faint sc-cand-meta">{kind === "CLASSIFY" ? f.cls : `priority ${PRIORITY_NAME[f.priority] ?? "없음"}`}</span>}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="empty">후보 없음</p>
+      )}
+    </div>
+  );
+}
