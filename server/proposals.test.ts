@@ -80,7 +80,7 @@ test("RELEASE 제안: 같은 FLIGHT는 한 번, 기준에서 벗어나면 SUPERS
 
 test("2b 진입 판정: 결정 20건 이상, 합의율 80% 이상", () => {
   const mk = (n: number, agreed: number): Proposal[] =>
-    Array.from({ length: n }, (_, i) => ({ status: i < agreed ? "agreed" : "disagreed" }) as Proposal);
+    Array.from({ length: n }, (_, i) => ({ status: i < agreed ? "agreed" : "disagreed", timeline: {} }) as Proposal);
   assert.equal(gateOf(mk(19, 19)).ready, false);
   assert.equal(gateOf(mk(20, 16)).ready, true);
   assert.equal(gateOf(mk(20, 15)).ready, false);
@@ -340,6 +340,7 @@ test("CROSSCHECK 일치율: 판정 전에 mark가 있던 사람 판정만, agree
   assert.deepEqual(gateOf(ps).crosscheck, {
     marked: 4, matched: 3, rate: 0.75,
     byModel: { muse: { marked: 3, matched: 2, rate: 2 / 3 }, terra: { marked: 1, matched: 1, rate: 1 } },
+    oneClick: { count: 0, decided: 0 }, // 옛 기록(via 없음)은 세지 않는다
   });
   assert.equal(gateOf(ps).decided, 3); // 게이트는 그대로 사람 그림자 판정만
   assert.deepEqual(humanOf(ps[2]), { verdict: "agree", at: iso(10), reason: null });
@@ -348,4 +349,27 @@ test("CROSSCHECK 일치율: 판정 전에 mark가 있던 사람 판정만, agree
   // 사유 있는 판정 먼저
   assert.deepEqual(brief.examples.slice(0, 2).map((e) => [e.id, e.verdict, e.reason]), [["D-0002", "disagree", "PR #393 머지 전이면 HOLD"], ["D-0004", "disagree", "우선순위가 미정"]]);
   assert.equal(brief.examples.length, 5);
+});
+
+test("판정 방식(via)과 거절 사유 칩: 판정 op에서만 접고, oneClick은 판정 전 mark가 있고 via가 기록된 판정만, reasonCounts는 거절만", () => {
+  const xc = (id: string): Op => ({ op: "crosscheck", id, at: iso(20), by: "CROSSCHECK", model: "muse", verdict: "agree", reason: "r" });
+  const ps = fold([
+    create("D-0001", "VOC-1", "b", 30), xc("D-0001"), { op: "verdict", id: "D-0001", at: iso(10), verdict: "agree", reason: null, via: "crosscheck" },
+    create("D-0002", "VOC-2", "b", 30), xc("D-0002"),
+    { op: "verdict", id: "D-0002", at: iso(10), verdict: "disagree", reason: "이미 완료됨 · 기타 — ruleset 켜짐", via: "manual", reasonCodes: ["already-done", "other"] },
+    create("D-0003", "VOC-3", "b", 30), { op: "reject", id: "D-0003", at: iso(10), reason: "우선순위 미정", via: "crosscheck", reasonCodes: ["no-priority"] }, // mark 없음 → oneClick에 안 셈
+    create("D-0004", "VOC-4", "b", 30), xc("D-0004"), { op: "verdict", id: "D-0004", at: iso(10), verdict: "disagree", reason: "옛 기록" }, // via 없음
+    create("D-0005", "VOC-5", "b", 30), { op: "supersede", id: "D-0005", at: iso(10), reason: "x" }, // 사람 판정 아님
+  ]);
+  assert.equal(ps[0].via, "crosscheck");
+  assert.equal(ps[0].reasonCodes, undefined);
+  assert.deepEqual(ps[1].reasonCodes, ["already-done", "other"]);
+  assert.equal(ps[3].via, undefined); // 채워 넣지 않는다
+  assert.equal("via" in ps[3], false);
+  const gate = gateOf(ps);
+  assert.deepEqual(gate.crosscheck.oneClick, { count: 1, decided: 2 });
+  assert.equal(gate.reasonCounts["already-done"], 1);
+  assert.equal(gate.reasonCounts["no-priority"], 1);
+  assert.equal(gate.reasonCounts.other, 1);
+  assert.equal(gate.reasonCounts["needs-human"], 0);
 });
