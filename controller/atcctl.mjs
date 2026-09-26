@@ -153,6 +153,7 @@ export function parseDraft(args) {
 }
 
 // dispatch|schedule crosscheck <ID> agree|disagree -- <이유> → POST 본문. 값 검사(500자 등)는 서버가 한다.
+// 모델 이름은 세션이 적지 않는다: crosscheck/.claude/settings.json의 env ATC_CROSSCHECK_MODEL(없으면 서버가 "unknown").
 export function parseCrosscheck(args) {
   const sep = args.indexOf("--");
   const head = sep < 0 ? args : args.slice(0, sep);
@@ -162,7 +163,9 @@ export function parseCrosscheck(args) {
   if (verdict !== "agree" && verdict !== "disagree") throw new Error("판정은 agree|disagree");
   if (rest.length) throw new Error(`알 수 없는 인자 ${rest.join(" ")}`);
   if (!reason) throw new Error("-- 뒤에 이유 한 줄이 필요함");
-  return { id, body: { verdict, reason, by: process.env.ATC_CROSSCHECK_BY || "CROSSCHECK" } };
+  const body = { verdict, reason, by: process.env.ATC_CROSSCHECK_BY || "CROSSCHECK" };
+  if (process.env.ATC_CROSSCHECK_MODEL) body.model = process.env.ATC_CROSSCHECK_MODEL;
+  return { id, body };
 }
 
 // crosscheck brief: 두 브리핑에서 CROSSCHECK에 필요한 것만 모은다(FLIGHT 제목·상태 포함)
@@ -265,7 +268,7 @@ if (isMain) {
       const path = cmd === "dispatch" ? `/api/dispatch/proposals/${encodeURIComponent(id)}/crosscheck` : `/api/schedule/ops/${encodeURIComponent(id)}/crosscheck`;
       const r = await call("POST", path, body);
       const x = r.proposal ?? r.op;
-      console.log(`${x.id} CROSSCHECK ${x.crosscheck.verdict} · ${x.crosscheck.reason} (예비 판정, 상태 그대로 ${x.status})`);
+      console.log(`${x.id} CROSSCHECK ${x.crosscheck.verdict} · ${x.crosscheck.reason} (${x.crosscheck.model} · 예비 판정, 상태 그대로 ${x.status})`);
     } else if (cmd === "manual" && (args[0] === "check" || args[0] === "ack")) {
       const dir = process.cwd();
       const now = manualHash(dir);

@@ -23,12 +23,34 @@ interface FlightInfo {
 // CROSSCHECK: 다른 모델(CROSSCHECK 세션)이 열린 제안에 남긴 임시 판정. 사람 판정을 대신하지 않는다.
 interface Crosscheck {
   by: string;
+  model?: string; // 표시한 모델 id. 옛 기록·옛 서버는 "unknown" 또는 없음
   verdict: "agree" | "disagree";
   reason: string;
   at: string;
 }
+interface CrosscheckRate {
+  marked: number;
+  matched: number;
+  rate: number | null;
+}
 // 서버 타입에 아직 없을 수 있어 따로 읽는다(옛 서버면 null)
 const markOf = (p: Proposal): Crosscheck | null => (p as unknown as { crosscheck?: Crosscheck | null }).crosscheck ?? null;
+const modelOf = (m: Crosscheck) => m.model || "unknown";
+// 모델 id를 짧게: claude-ocx-opencode-go--muse-spark-1.3-contributor[1m] → muse-spark-1.3-contributor
+function modelLabel(id: string): string {
+  let s = id.replace(/^claude-ocx-/, "");
+  const cut = s.indexOf("--");
+  if (cut >= 0 && cut + 2 < s.length) s = s.slice(cut + 2);
+  s = s.replace(/\[[^\]]*\]$/, "");
+  return s || id;
+}
+// 모델별 일치: 표시 많은 순(같으면 이름순)
+const byModelRows = (byModel: Record<string, CrosscheckRate> | undefined) =>
+  Object.entries(byModel ?? {}).sort(([a, x], [b, y]) => y.marked - x.marked || a.localeCompare(b));
+// "짧은 이름 (전체 id)", 같으면 하나만
+const modelText = (id: string) => (modelLabel(id) === id ? id : `${modelLabel(id)} (${id})`);
+// 툴팁·aria-label: "CROSSCHECK agree · 모델 (전체 id) — 사유"
+const xcTitle = (m: Crosscheck) => `CROSSCHECK ${m.verdict} · ${modelText(modelOf(m))} — ${m.reason}`;
 
 interface Brief {
   mode: DispatchConfig["mode"];
@@ -46,7 +68,7 @@ interface Brief {
     agreement: number | null;
     target: { decided: number; agreement: number };
     ready: boolean;
-    crosscheck?: { marked: number; matched: number; rate: number | null }; // 참고용, 게이트 기준 아님
+    crosscheck?: CrosscheckRate & { byModel?: Record<string, CrosscheckRate> }; // 참고용, 게이트 기준 아님. byModel은 옛 서버면 없음
   };
   gate3: {
     dispatched: number;
@@ -427,7 +449,7 @@ function RejectDialog({
 function CrosscheckMini({ m }: { m: Crosscheck | null }) {
   if (!m) return null;
   return (
-    <span className={`dp-xc-mini v-${m.verdict}`} title={`CROSSCHECK ${m.verdict} (${m.by}) — ${m.reason}`} aria-label={`CROSSCHECK ${m.verdict} (${m.by}) — ${m.reason}`}>
+    <span className={`dp-xc-mini v-${m.verdict}`} title={xcTitle(m)} aria-label={xcTitle(m)}>
       CROSSCHECK {m.verdict}
     </span>
   );
@@ -436,13 +458,19 @@ function CrosscheckMini({ m }: { m: Crosscheck | null }) {
 // 열린 제안의 CROSSCHECK 칩: "CROSSCHECK agree · 사유"(길면 두 줄에서 자르고 전체는 title)
 function CrosscheckChip({ m, now }: { m: Crosscheck; now: number }) {
   return (
-    <p className={`dp-xc v-${m.verdict}`} title={`CROSSCHECK ${m.verdict} · ${m.by} · ${m.at}\n${m.reason}`}>
+    <p className={`dp-xc v-${m.verdict}`} title={`CROSSCHECK ${m.verdict} · ${modelText(modelOf(m))} · ${m.by} · ${m.at}\n${m.reason}`}>
       <span className="dp-xc-mark">CROSSCHECK</span>
       <b className="dp-xc-verdict">{m.verdict}</b>
       <span className="dp-xc-reason">· {m.reason}</span>
-      <time className="dp-xc-at" dateTime={m.at}>
-        {timeAgo(m.at, now)}
-      </time>
+      {/* 어느 모델이 표시했는지: 시각 옆에 흐리게 */}
+      <span className="dp-xc-meta">
+        <span className="dp-xc-model" title={modelOf(m)}>
+          {modelLabel(modelOf(m))}
+        </span>
+        <time className="dp-xc-at" dateTime={m.at}>
+          {timeAgo(m.at, now)}
+        </time>
+      </span>
     </p>
   );
 }
@@ -490,6 +518,18 @@ function Gate({ gate }: { gate: Brief["gate"] }) {
             <span className="dp-gate-state">참고</span>
           </li>
         )}
+        {xc &&
+          byModelRows(xc.byModel).map(([id, r]) => (
+            <li key={id} className="s-info dp-gate-xc-model" title={`CROSSCHECK 일치 · ${id} · ${r.matched}/${r.marked}`}>
+              <span className="dp-gate-label">
+                <span className="dp-gate-xc-name">└ {modelLabel(id)}</span>
+                <span className="dp-gate-xc-count">
+                  {r.matched}/{r.marked}
+                </span>
+              </span>
+              <span className="dp-gate-value">{pct(r.rate)}</span>
+            </li>
+          ))}
       </ul>
       {xc && <p className="dp-gate-note faint">CROSSCHECK 일치는 참고용이다 — 게이트에는 사람 판정만 셈.</p>}
     </div>

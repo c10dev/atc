@@ -28,12 +28,34 @@ const ModeContext = createContext<Mode>("shadow");
 // CROSSCHECK: 다른 모델(CROSSCHECK 세션)이 열린 초안에 남긴 임시 판정. 사람 판정을 대신하지 않는다.
 interface Crosscheck {
   by: string;
+  model?: string; // 표시한 모델 id. 옛 기록·옛 서버는 "unknown" 또는 없음
   verdict: "agree" | "disagree";
   reason: string;
   at: string;
 }
+interface CrosscheckRate {
+  marked: number;
+  matched: number;
+  rate: number | null;
+}
 // 서버 타입에 아직 없을 수 있어 따로 읽는다(옛 서버면 null)
 const markOf = (op: ScheduleOp): Crosscheck | null => (op as unknown as { crosscheck?: Crosscheck | null }).crosscheck ?? null;
+const modelOf = (m: Crosscheck) => m.model || "unknown";
+// 모델 id를 짧게: claude-ocx-opencode-go--muse-spark-1.3-contributor[1m] → muse-spark-1.3-contributor
+function modelLabel(id: string): string {
+  let s = id.replace(/^claude-ocx-/, "");
+  const cut = s.indexOf("--");
+  if (cut >= 0 && cut + 2 < s.length) s = s.slice(cut + 2);
+  s = s.replace(/\[[^\]]*\]$/, "");
+  return s || id;
+}
+// 모델별 일치: 표시 많은 순(같으면 이름순)
+const byModelRows = (byModel: Record<string, CrosscheckRate> | undefined) =>
+  Object.entries(byModel ?? {}).sort(([a, x], [b, y]) => y.marked - x.marked || a.localeCompare(b));
+// "짧은 이름 (전체 id)", 같으면 하나만
+const modelText = (id: string) => (modelLabel(id) === id ? id : `${modelLabel(id)} (${id})`);
+// 툴팁·aria-label: "CROSSCHECK agree · 모델 (전체 id) — 사유"
+const xcTitle = (m: Crosscheck) => `CROSSCHECK ${m.verdict} · ${modelText(modelOf(m))} — ${m.reason}`;
 
 interface Brief {
   mode: Mode;
@@ -47,7 +69,7 @@ interface Brief {
     agreement: number | null;
     target: { decided: number; agreement: number };
     ready: boolean;
-    crosscheck?: { marked: number; matched: number; rate: number | null }; // 참고용, 게이트 기준 아님
+    crosscheck?: CrosscheckRate & { byModel?: Record<string, CrosscheckRate> }; // 참고용, 게이트 기준 아님. byModel은 옛 서버면 없음
   };
   limit: number;
   candidates: { classify: string[]; prioritize: string[] };
@@ -391,6 +413,18 @@ function Gate({ gate }: { gate: Brief["gate"] }) {
             <span className="sc-gate-state">참고</span>
           </li>
         )}
+        {xc &&
+          byModelRows(xc.byModel).map(([id, r]) => (
+            <li key={id} className="s-info sc-gate-xc-model" title={`CROSSCHECK 일치 · ${id} · ${r.matched}/${r.marked}`}>
+              <span className="sc-gate-label">
+                <span className="sc-gate-xc-name">└ {modelLabel(id)}</span>
+                <span className="sc-gate-xc-count">
+                  {r.matched}/{r.marked}
+                </span>
+              </span>
+              <span className="sc-gate-value">{pct(r.rate)}</span>
+            </li>
+          ))}
       </ul>
       <p className="sc-gate-note faint">
         S1 그림자 운용: 판정은 합의율 측정용이다. S2(승인 운용)부터 승인한 초안만 linear-guard를 거쳐 Linear에 쓴다. 판정 없이 3일이 지나면 EXPIRED.
@@ -509,7 +543,7 @@ function useVerdict(op: ScheduleOp, onVerdict: OnVerdict) {
 function CrosscheckMini({ m }: { m: Crosscheck | null }) {
   if (!m) return null;
   return (
-    <span className={`sc-xc-mini v-${m.verdict}`} title={`CROSSCHECK ${m.verdict} (${m.by}) — ${m.reason}`} aria-label={`CROSSCHECK ${m.verdict} (${m.by}) — ${m.reason}`}>
+    <span className={`sc-xc-mini v-${m.verdict}`} title={xcTitle(m)} aria-label={xcTitle(m)}>
       CROSSCHECK {m.verdict}
     </span>
   );
@@ -518,13 +552,19 @@ function CrosscheckMini({ m }: { m: Crosscheck | null }) {
 // 열린 초안의 CROSSCHECK 칩: "CROSSCHECK agree · 사유"(길면 두 줄에서 자르고 전체는 title)
 function CrosscheckChip({ m, now, clock }: { m: Crosscheck; now: number; clock: Clock }) {
   return (
-    <p className={`sc-xc v-${m.verdict}`} title={`CROSSCHECK ${m.verdict} · ${m.by} · ${stamp(m.at, clock)}\n${m.reason}`}>
+    <p className={`sc-xc v-${m.verdict}`} title={`CROSSCHECK ${m.verdict} · ${modelText(modelOf(m))} · ${m.by} · ${stamp(m.at, clock)}\n${m.reason}`}>
       <span className="sc-xc-mark">CROSSCHECK</span>
       <b className="sc-xc-verdict">{m.verdict}</b>
       <span className="sc-xc-reason">· {m.reason}</span>
-      <time className="sc-xc-at" dateTime={m.at}>
-        {timeAgo(m.at, now)}
-      </time>
+      {/* 어느 모델이 표시했는지: 시각 옆에 흐리게 */}
+      <span className="sc-xc-meta">
+        <span className="sc-xc-model" title={modelOf(m)}>
+          {modelLabel(modelOf(m))}
+        </span>
+        <time className="sc-xc-at" dateTime={m.at}>
+          {timeAgo(m.at, now)}
+        </time>
+      </span>
     </p>
   );
 }

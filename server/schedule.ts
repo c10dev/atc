@@ -4,7 +4,7 @@ import type { Context, Hono } from "hono";
 import { flightNumber } from "./callsign.ts";
 import { config } from "./config.ts";
 import { classLabel, classOf, FLIGHT_TYPES, type FlightType, RATINGS, type Rating, WAKES, type Wake } from "./crew.ts";
-import { type Crosscheck, CrosscheckError, type CrosscheckVerdict, crosscheckRateOf, examplesOf, type HumanDecision, parseCrosscheck } from "./crosscheck.ts";
+import { type Crosscheck, CrosscheckError, type CrosscheckLine, type CrosscheckVerdict, crosscheckRateOf, examplesOf, type HumanDecision, markOf, parseCrosscheck } from "./crosscheck.ts";
 import { DONE_STATES, loadDispatchConfig, PRIORITY_NAME } from "./dispatch.ts";
 import { fleetView, loadFleet } from "./fleet.ts";
 import type { Snapshot, Ticket } from "./model.ts";
@@ -80,7 +80,7 @@ type LogLine =
   | { op: "reject"; id: string; at: string; reason: string | null }
   | { op: "release"; id: string; at: string; calls: LinearCall[] }
   | { op: "apply"; id: string; at: string; ref: string }
-  | ({ op: "crosscheck"; id: string } & Crosscheck);
+  | ({ op: "crosscheck"; id: string } & CrosscheckLine);
 
 export const SCHEDULE_OPEN_LIMIT = 5; // 결정 안 된 초안 최대 수(SUPERVISOR 검토 부담)
 const TTL_MS = 3 * 86_400_000; // 3일 동안 판정이 없으면 EXPIRED
@@ -143,7 +143,7 @@ export function fold(lines: LogLine[]): ScheduleOp[] {
     if (!s) continue;
     if (l.op === "crosscheck") {
       // 열린 초안에만. 나중 mark가 앞의 것을 대신한다
-      if (s.status === "draft") s.crosscheck = { by: l.by, verdict: l.verdict, reason: l.reason, at: l.at };
+      if (s.status === "draft") s.crosscheck = markOf(l);
       continue;
     }
     if (!canApplyOp(s, l.op)) continue; // 닫힌 초안은 바꾸지 않는다
@@ -496,7 +496,7 @@ export function crosscheckBriefOf(ops: ScheduleOp[], changes: Record<string, str
     draft: s.reason,
     verdict: human!.verdict,
     reason: human!.reason,
-    crosscheck: s.crosscheck ? { verdict: s.crosscheck.verdict, reason: s.crosscheck.reason } : null,
+    crosscheck: s.crosscheck ? { model: s.crosscheck.model, verdict: s.crosscheck.verdict, reason: s.crosscheck.reason } : null,
   }));
   return {
     pending: pending.map((s) => ({ id: s.id, kind: s.kind, flight: s.flight, reason: s.reason, changes: changes[s.id] ?? [] })),

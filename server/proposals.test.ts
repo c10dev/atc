@@ -319,25 +319,28 @@ test("CROSSCHECK: 열린 제안에만, 나중 mark가 대신하고, HOLD·판정
   ]);
   const [a, b, c] = ps;
   assert.equal(a.status, "proposed");
-  assert.deepEqual(a.crosscheck, { by: "CROSSCHECK", verdict: "disagree", reason: "이미 완료됨", at: iso(20) });
+  assert.deepEqual(a.crosscheck, { by: "CROSSCHECK", model: "unknown", verdict: "disagree", reason: "이미 완료됨", at: iso(20) }); // 옛 기록(model 없음)은 unknown
   assert.equal(b.crosscheck, null);
   assert.equal(c.crosscheck, null);
 });
 
 test("CROSSCHECK 일치율: 판정 전에 mark가 있던 사람 판정만, agree↔agreed/approved, disagree↔disagreed/rejected", async () => {
   const { crosscheckBriefOf, humanOf } = await import("./proposals.ts");
-  const xc = (id: string, verdict: "agree" | "disagree"): Op => ({ op: "crosscheck", id, at: iso(20), by: "CROSSCHECK", verdict, reason: "r" });
+  const xc = (id: string, verdict: "agree" | "disagree", model = "muse"): Op => ({ op: "crosscheck", id, at: iso(20), by: "CROSSCHECK", model, verdict, reason: "r" });
   const ps = fold([
     create("D-0001", "VOC-1", "b", 30), xc("D-0001", "agree"), { op: "verdict", id: "D-0001", at: iso(10), verdict: "agree", reason: null }, // 일치
     create("D-0002", "VOC-2", "b", 30), xc("D-0002", "agree"), { op: "verdict", id: "D-0002", at: iso(10), verdict: "disagree", reason: "PR #393 머지 전이면 HOLD" }, // 불일치
     create("D-0003", "VOC-3", "b", 30), xc("D-0003", "agree"), { op: "approve", id: "D-0003", at: iso(10) }, { op: "send", id: "D-0003", at: iso(9), message: "m" }, // approval 일치
-    create("D-0004", "VOC-4", "b", 30), xc("D-0004", "disagree"), { op: "reject", id: "D-0004", at: iso(10), reason: "우선순위가 미정" }, // 일치
+    create("D-0004", "VOC-4", "b", 30), xc("D-0004", "disagree", "terra"), { op: "reject", id: "D-0004", at: iso(10), reason: "우선순위가 미정" }, // 일치
     create("D-0005", "VOC-5", "b", 30), { op: "verdict", id: "D-0005", at: iso(10), verdict: "agree", reason: null }, // mark 없음 → 안 셈
     create("D-0006", "VOC-6", "b", 30), xc("D-0006", "agree"), // 아직 판정 없음 → 안 셈, pending도 아님
     create("D-0007", "VOC-7", "b", 30), // pending
     create("D-0008", "VOC-8", "b", 30), xc("D-0008", "agree"), { op: "supersede", id: "D-0008", at: iso(10), reason: "x" }, // 사람 판정 아님
   ]);
-  assert.deepEqual(gateOf(ps).crosscheck, { marked: 4, matched: 3, rate: 0.75 });
+  assert.deepEqual(gateOf(ps).crosscheck, {
+    marked: 4, matched: 3, rate: 0.75,
+    byModel: { muse: { marked: 3, matched: 2, rate: 2 / 3 }, terra: { marked: 1, matched: 1, rate: 1 } },
+  });
   assert.equal(gateOf(ps).decided, 3); // 게이트는 그대로 사람 그림자 판정만
   assert.deepEqual(humanOf(ps[2]), { verdict: "agree", at: iso(10), reason: null });
   const brief = crosscheckBriefOf(ps);

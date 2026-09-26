@@ -42,7 +42,7 @@ codex/voc-<n>-<slug>      # Codex 세션
 | `CROSSCHECK` | `crosscheck/` | OCC와 다른 계열의 모델이 SUPERVISOR 판정 전에 예비 판정을 달아 둔다 |
 
 - **CROSSCHECK**는 조종실의 cross-check(다른 조종사가 설정을 따로 확인하는 절차)에서 따온 말이다. 열린 DISPATCH 제안(`D-xxxx`)이나 SCHEDULE 초안(`S-xxxx`)에 다는 예비 판정(`agree`/`disagree`와 이유 한 줄)이고, **mark**라고도 부른다. 제안·초안의 상태를 바꾸지 않고, 어떤 게이트에도 세지 않는다.
-- **CROSSCHECK 일치**: 사람이 판정한 건 중 판정 전에 mark가 있던 건에서, mark가 사람 판정과 맞은 비율(agree ↔ agreed·approved, disagree ↔ disagreed·rejected).
+- **CROSSCHECK 일치**: 사람이 판정한 건 중 판정 전에 mark가 있던 건에서, mark가 사람 판정과 맞은 비율(agree ↔ agreed·approved, disagree ↔ disagreed·rejected). 전체와 모델별로 보인다. mark마다 CROSSCHECK 세션의 모델 id가 남고(이 필드가 생기기 전의 mark는 `unknown`), 화면에는 짧은 이름(`muse-spark-1.3-contributor`, `gpt-5.6-terra`)으로 보인다.
 
 ## 점유 기록
 

@@ -10,7 +10,7 @@
     "build": "vite build",
     "start": "node server/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --test 'server/**/*.test.ts' 'hooks/**/*.test.mjs' 'controller/**/*.test.mjs' 'occ/**/*.test.mjs'"
+    "test": "node --test 'server/**/*.test.ts' 'hooks/**/*.test.mjs' 'controller/**/*.test.mjs' 'occ/**/*.test.mjs' 'crosscheck/**/*.test.mjs'"
   },
   "engines": {
     "node": ">=24"

@@ -15,7 +15,7 @@ In the DISPATCH and SCHEDULE tabs the SUPERVISOR sees the mark and either follow
 
 - **A mark is only advice.** It never approves, rejects or gives a shadow verdict. atc does not give CROSSCHECK that authority either.
 - It never writes to Linear, git or GitHub. Only read MCP tools pass (`../occ/mcp-guard.mjs --read-only`).
-- It never messages anyone. SendMessage, subagents (Agent), Edit and Write are blocked.
+- It never messages anyone. SendMessage, subagents (Agent), Artifact, Edit and Write are blocked.
 - It does not read or change code. Bash allows only the read commands of `node ../controller/atcctl.mjs` (`manual`, `crosscheck brief`, `dispatch brief|flight`, `schedule brief`), the `crosscheck` commands, and `jq` (`../controller/guard.mjs --crosscheck`). Wrap reasons passed as arguments in single quotes. To trim output, use only `| jq …` (`2>&1`, `head` and redirection are blocked).
 - It does not simply follow OCC's notes (`note`, a draft's `reason`). It treats them as reference and checks the body itself.
 
@@ -30,7 +30,7 @@ In the DISPATCH and SCHEDULE tabs the SUPERVISOR sees the mark and either follow
 | `node ../controller/atcctl.mjs schedule crosscheck <S-0001> agree\|disagree -- '<reason>'` | Provisional verdict on an open SCHEDULE draft |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / reread |
 
-atc accepts a mark only on open items (DISPATCH: `proposed` and not on HOLD; SCHEDULE: `draft`). The reason is one line of at most 500 characters.
+atc accepts a mark only on open items (DISPATCH: `proposed` and not on HOLD; SCHEDULE: `draft`). The reason is one line of at most 500 characters. atcctl adds the model name to the mark from the settings `env` (`ATC_CROSSCHECK_MODEL`). Don't write the model name in the reason, and don't try to change it with a variable in front of the command (the guard blocks it).
 
 ## Order of checks
 
@@ -52,7 +52,7 @@ Read the body (`dispatch flight`) and check in this order. The first check that 
 | SCHEDULE PRIORITIZE | The body or comments give grounds for that priority (a deadline, a FLIGHT it blocks, a SUPERVISOR remark) |
 | SCHEDULE NEW | The four sections (goal, allowed changes, forbidden, acceptance) are filled in and `similar` shows no duplicate |
 
-Check whether a prerequisite PR has merged from the FLIGHT comments and state first. If more is needed, use GitHub MCP read tools (names starting with `list_`, `search_` or `get_`, e.g. `search_pull_requests`). Tools whose names don't start with a read prefix, such as `pull_request_read`, are blocked by the guard. If the merge can't be confirmed, disagree with "prerequisite not confirmed".
+Check whether a prerequisite PR has merged from the FLIGHT comments and state first. The default launch (`--strict-mcp-config`) has no MCP tools. In a session that does load MCP, only GitHub MCP read tools (names starting with `list_`, `search_` or `get_`, e.g. `search_pull_requests`) are usable; tools whose names don't start with a read prefix, such as `pull_request_read`, are blocked by the guard. If the merge can't be confirmed, disagree with "prerequisite not confirmed".
 
 `examples` are recent items the SUPERVISOR actually decided, with reasons. Match that standard (e.g. "이미 완료됨", "PR #393 머지 전이면 HOLD", "우선순위가 미정"). When an example also carries a CROSSCHECK mark, don't repeat a judgment that disagreed with the human.
 

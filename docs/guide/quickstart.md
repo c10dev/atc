@@ -26,13 +26,17 @@ journalctl --user -u atc -f      # 로그
 
 - 첫 바퀴에서 `manual check`가 `CHANGED`를 내고, 세션이 지침(`CLAUDE.md`)을 읽은 뒤 `manual ack`한다. 이후 지침이 바뀌면 다음 바퀴에 스스로 다시 읽는다.
 - 관제 세션은 코드를 고치지 않는다. Bash는 atc CLI·jq(OCC는 읽기 전용 `gh`도, CROSSCHECK는 atc CLI 중 읽기와 `crosscheck` 명령만)만, MCP는 읽기 도구만 된다.
-- CROSSCHECK는 OCC와 다른 계열 모델(gpt-5.6-terra)로 돌아야 한다. `crosscheck/.claude/settings.json`에 모델이 적혀 있고, opencodex 프록시를 거쳐야 그 모델에 닿는다. 그래서 `claude` 대신 아래처럼 연다(평범한 `claude`로 열면 "selected model" 오류로 멈춘다 — 다른 모델로 몰래 돌지 않는다):
+- CROSSCHECK는 OCC와 다른 계열 모델로 돌아야 한다. 기본은 Muse Spark 1.3(`claude-ocx-opencode-go--muse-spark-1.3-contributor[1m]`)이고, 대체 모델은 GPT-5.6 Terra(`claude-ocx-native--gpt-5.6-terra`)다. DeepSeek(flash)은 flash-helper와 같은 모델이라 FLEET 규칙상 판정에 쓰지 않는다. 모델은 `crosscheck/.claude/settings.json`에 적혀 있고, opencodex 프록시를 거쳐야 닿는다. 그래서 `claude` 대신 아래처럼 연다(평범한 `claude`로 열면 "selected model" 오류로 멈춘다 — Claude로 몰래 돌지 않는다):
 
   ```bash
-  cd /home/c10/projects/atc/crosscheck && env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude
+  cd /home/c10/projects/atc/crosscheck && env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config
   ```
 
-  `ANTHROPIC_BASE_URL`을 export해 두었으면 `ocx claude`가 그 값을 우선하고, `~/.claude/settings.json`의 `HTTPS_PROXY`(ClaudeRipple)가 로컬 프록시 요청을 가로채므로 `NO_PROXY`로 뺀다. 세션 안에서 모델을 물으면 `claude-ocx-native--gpt-5.6-terra`라고 답한다. 판정 방법은 [판정하기](reviewing.md)의 CROSSCHECK.
+  - `ANTHROPIC_BASE_URL`을 export해 두었으면 `ocx claude`가 그 값을 우선하고, `~/.claude/settings.json`의 `HTTPS_PROXY`(ClaudeRipple)가 로컬 프록시 요청을 가로채므로 `NO_PROXY`로 뺀다.
+  - `--strict-mcp-config`는 MCP 서버를 하나도 싣지 않는다. Muse는 일부 MCP 도구 스키마(중첩 10단계 초과)를 받지 못해 두 번째 요청에서 멈추기 때문이다. 그래서 CROSSCHECK는 MCP 없이 `dispatch flight`의 본문·댓글만으로 판정한다.
+  - `--model`로 모델을 바꾸지 않는다. 예비 판정에 남는 모델 이름은 settings의 `env`에서 오므로, 바꾸면 이름이 틀어진다. 대체 모델로 바꾸려면 settings의 `model`과 `env.ATC_CROSSCHECK_MODEL`을 함께 고친다.
+
+  판정 방법은 [판정하기](reviewing.md)의 CROSSCHECK.
 
 ## 4. 팀 세션
 

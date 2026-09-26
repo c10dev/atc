@@ -72,7 +72,7 @@ test("판정과 2단계 점검, 후보 목록", () => {
   const ops = fold(lines);
   assert.equal(ops[0].status, "disagreed");
   assert.equal(ops[0].verdictReason, "BUILD임");
-  assert.deepEqual(gateOf(ops), { decided: 1, agreed: 0, agreement: 0, target: { decided: 20, agreement: 0.8 }, ready: false, crosscheck: { marked: 0, matched: 0, rate: null } });
+  assert.deepEqual(gateOf(ops), { decided: 1, agreed: 0, agreement: 0, target: { decided: 20, agreement: 0.8 }, ready: false, crosscheck: { marked: 0, matched: 0, rate: null, byModel: {} } });
   const tickets = [t("VOC-41"), t("VOC-42", { labels: ["type:BUILD", "wake:M"], priority: 0 }), t("VOC-43", { state: "In Progress", stateType: "started" })];
   assert.deepEqual(candidatesOf(tickets, []), { classify: ["VOC-41"], prioritize: ["VOC-42"] });
 });
@@ -243,14 +243,14 @@ test("CROSSCHECK: 열린 초안에만 달리고 상태를 바꾸지 않는다. �
     draft("S-0006", "VOC-6"), { op: "supersede" as const, id: "S-0006", at: iso(10), reason: "x" }, xc("S-0006", "agree", 5),
   ]);
   assert.equal(ops[0].status, "disagreed");
-  assert.deepEqual(ops[0].crosscheck, { by: "CROSSCHECK", verdict: "disagree", reason: "이미 완료됨", at: iso(15) });
+  assert.deepEqual(ops[0].crosscheck, { by: "CROSSCHECK", model: "unknown", verdict: "disagree", reason: "이미 완료됨", at: iso(15) });
   assert.equal(ops[1].status, "applied");
   assert.deepEqual(ops[1].decision, { verdict: "agree", at: iso(10) });
   assert.equal(ops[3].status, "draft");
   assert.equal(ops[5].crosscheck, null);
   const gate = gateOf(ops);
   assert.equal(gate.decided, 1);
-  assert.deepEqual(gate.crosscheck, { marked: 3, matched: 2, rate: 2 / 3 });
+  assert.deepEqual(gate.crosscheck, { marked: 3, matched: 2, rate: 2 / 3, byModel: { unknown: { marked: 3, matched: 2, rate: 2 / 3 } } });
   const brief = crosscheckBriefOf(ops, { "S-0005": ["type:MAINT"] });
   assert.deepEqual(brief.pending, [{ id: "S-0005", kind: "CLASSIFY", flight: "VOC-5", reason: "OCC 근거", changes: ["type:MAINT"] }]);
   assert.deepEqual(brief.examples.map((e) => [e.id, e.verdict, e.reason]), [["S-0001", "disagree", "이미 완료됨"], ["S-0003", "disagree", "BUILD임"], ["S-0002", "agree", null]]);
@@ -261,5 +261,6 @@ test("CROSSCHECK 입력 검사: verdict, 이유 필수·500자 이내, by 기본
   assert.throws(() => parseCrosscheck({ verdict: "maybe", reason: "x" }, iso(0)), /agree\|disagree/);
   assert.throws(() => parseCrosscheck({ verdict: "agree", reason: "  " }, iso(0)), /reason/);
   assert.throws(() => parseCrosscheck({ verdict: "agree", reason: "가".repeat(501) }, iso(0)), /500자/);
-  assert.deepEqual(parseCrosscheck({ verdict: "agree", reason: " 본문상\n제약 없음 " }, iso(0)), { by: "CROSSCHECK", verdict: "agree", reason: "본문상 제약 없음", at: iso(0) });
+  assert.deepEqual(parseCrosscheck({ verdict: "agree", reason: " 본문상\n제약 없음 " }, iso(0)), { by: "CROSSCHECK", model: "unknown", verdict: "agree", reason: "본문상 제약 없음", at: iso(0) });
+  assert.equal(parseCrosscheck({ verdict: "agree", reason: "x", model: " claude-ocx-opencode-go--muse-spark-1.3-contributor[1m] " }, iso(0)).model, "claude-ocx-opencode-go--muse-spark-1.3-contributor[1m]");
 });

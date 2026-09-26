@@ -97,7 +97,13 @@ test("OCC guard(--gh-read)는 현실적인 NEW 명령을 통과시킨다: 따옴
 });
 
 test("crosscheck: <ID> agree|disagree -- <이유>", () => {
+  const saved = process.env.ATC_CROSSCHECK_MODEL;
+  delete process.env.ATC_CROSSCHECK_MODEL;
   assert.deepEqual(parseCrosscheck(argv("D-0003 disagree -- 이미 완료됨 -- PR #390")), { id: "D-0003", body: { verdict: "disagree", reason: "이미 완료됨 -- PR #390", by: "CROSSCHECK" } });
+  process.env.ATC_CROSSCHECK_MODEL = "muse";
+  assert.equal(parseCrosscheck(argv("D-0003 agree -- x")).body.model, "muse"); // 모델은 환경(settings env)에서
+  if (saved === undefined) delete process.env.ATC_CROSSCHECK_MODEL;
+  else process.env.ATC_CROSSCHECK_MODEL = saved;
   assert.throws(() => parseCrosscheck(argv("D-0003 maybe -- x")), /agree\|disagree/);
   assert.throws(() => parseCrosscheck(argv("D-0003 agree")), /이유/);
   assert.throws(() => parseCrosscheck(argv("-- x")), /ID/);

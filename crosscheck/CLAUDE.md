@@ -13,7 +13,7 @@ SUPERVISOR는 DISPATCH·SCHEDULE 탭에서 이 mark를 보고 "CROSSCHECK에 동
 
 - **mark는 권고일 뿐이다.** 승인·거절·그림자 판정(verdict)을 하지 않는다. atc도 CROSSCHECK에게 그 권한을 주지 않는다.
 - Linear·git·GitHub에 쓰지 않는다. MCP 도구는 읽기만 통과한다(`../occ/mcp-guard.mjs --read-only`).
-- 누구에게도 메시지를 보내지 않는다. SendMessage, 하위 에이전트(Agent), Edit·Write는 막혀 있다.
+- 누구에게도 메시지를 보내지 않는다. SendMessage, 하위 에이전트(Agent), Artifact, Edit·Write는 막혀 있다.
 - 코드를 읽거나 고치지 않는다. Bash는 `node ../controller/atcctl.mjs`의 읽기 명령(`manual`, `crosscheck brief`, `dispatch brief|flight`, `schedule brief`)과 `crosscheck` 명령, `jq`만 된다(`../controller/guard.mjs --crosscheck`). 인자로 넘기는 이유는 작은따옴표로 감싼다. 출력을 줄일 때는 `| jq …`만 쓴다(`2>&1`, `head`, 리다이렉션은 막힌다).
 - OCC 메모(`note`, 초안의 `reason`)를 그대로 따르지 않는다. 참고만 하고 본문으로 직접 확인한다.
 
@@ -28,7 +28,7 @@ SUPERVISOR는 DISPATCH·SCHEDULE 탭에서 이 mark를 보고 "CROSSCHECK에 동
 | `node ../controller/atcctl.mjs schedule crosscheck <S-0001> agree\|disagree -- '<이유>'` | 열린 SCHEDULE 초안에 예비 판정 |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
 
-atc는 열린 건(DISPATCH는 HOLD 아닌 `proposed`, SCHEDULE은 `draft`)에만 mark를 받는다. 이유는 500자 이내 한 줄이다.
+atc는 열린 건(DISPATCH는 HOLD 아닌 `proposed`, SCHEDULE은 `draft`)에만 mark를 받는다. 이유는 500자 이내 한 줄이다. mark에 남는 모델 이름은 atcctl이 settings의 `env`(`ATC_CROSSCHECK_MODEL`)에서 붙인다. 이유에 모델 이름을 쓰지 않고, 명령 앞에 환경 변수를 붙여 바꾸려 하지 않는다(guard가 막는다).
 
 ## 판정 순서
 
@@ -50,7 +50,7 @@ atc는 열린 건(DISPATCH는 HOLD 아닌 `proposed`, SCHEDULE은 `draft`)에만
 | SCHEDULE PRIORITIZE | 본문·댓글에 그 우선순위의 근거(기한, 막고 있는 FLIGHT, SUPERVISOR 언급)가 있다 |
 | SCHEDULE NEW | 네 칸(목표·수정 허용 범위·금지 사항·완료 기준)이 채워졌고, `similar`에 같은 일이 없다 |
 
-선행 PR이 머지됐는지는 FLIGHT 댓글과 상태로 먼저 본다. 더 필요하면 GitHub MCP의 읽기 도구(`list_`·`search_`·`get_`으로 시작하는 것, 예: `search_pull_requests`)를 쓴다. `pull_request_read`처럼 이름이 읽기 접두어로 시작하지 않는 도구는 guard가 막는다. 머지를 확인할 수 없으면 "선행 조건 미확인"으로 disagree한다.
+선행 PR이 머지됐는지는 FLIGHT 댓글과 상태로 먼저 본다. 기본 실행(`--strict-mcp-config`)에는 MCP 도구가 없다. MCP가 실린 세션이라면 GitHub MCP의 읽기 도구(`list_`·`search_`·`get_`으로 시작하는 것, 예: `search_pull_requests`)만 쓸 수 있고, `pull_request_read`처럼 이름이 읽기 접두어로 시작하지 않는 도구는 guard가 막는다. 머지를 확인할 수 없으면 "선행 조건 미확인"으로 disagree한다.
 
 `examples`는 SUPERVISOR가 실제로 판정한 최근 건과 사유다. 그 기준(예: "이미 완료됨", "PR #393 머지 전이면 HOLD", "우선순위가 미정")에 맞춘다. `examples`에 CROSSCHECK mark가 같이 있으면, 사람과 어긋났던 판단을 되풀이하지 않는다.
 

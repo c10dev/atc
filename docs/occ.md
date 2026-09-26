@@ -229,20 +229,40 @@ Shadow verdicts (DISPATCH proposals and SCHEDULE drafts) are decided one by one 
 |---|---|
 | Bash | `controller/guard.mjs --crosscheck`: atcctl `manual`, `crosscheck brief`, `dispatch brief\|flight`, `schedule brief` and the two `crosscheck` commands, plus `jq`. Every other atcctl command (note, hold, draft, release, readback …) and `gh` is blocked |
 | MCP | `occ/mcp-guard.mjs --read-only`: read tools only. Unlike OCC, released Linear writes are blocked too |
-| Edit, Write, NotebookEdit, SendMessage, Agent | Denied, and a PreToolUse hook exits 2 |
+| Edit, Write, NotebookEdit, SendMessage, Agent, Artifact | Denied, and a PreToolUse hook exits 2 |
 
-**Model.** It must not be OCC's family (Claude), and not `flash-helper` (FLEET forbids it from giving verdicts). The settings pin `"model": "claude-ocx-native--gpt-5.6-terra"`, the model of `~/.claude/agents/ocx-gpt-5-6-terra.md`, which is served by the local opencodex proxy. Checked on 2026-09-26 with Claude Code 2.1.283:
+**Model.** It must not be OCC's family (Claude). DeepSeek V4.1 Flash is out too: it is the model behind `flash-helper`, and FLEET does not let it give verdicts ([fleet.md](fleet.md)). Two models are set up, both served by the local opencodex proxy:
+
+| Role | Model id | Agent file |
+|---|---|---|
+| **Default** (SUPERVISOR decision, 2026-09-26) | `claude-ocx-opencode-go--muse-spark-1.3-contributor[1m]` (Muse Spark 1.3) | `~/.claude/agents/ocx-muse-spark-1-3-contributor.md` |
+| Fallback | `claude-ocx-native--gpt-5.6-terra` (GPT-5.6 Terra) | `~/.claude/agents/ocx-gpt-5-6-terra.md` |
+
+`crosscheck/.claude/settings.json` sets the model twice: `"model"` for the session and `env.ATC_CROSSCHECK_MODEL` for the marks (below). `crosscheck/settings.test.mjs` fails when the two differ, or when the model is DeepSeek. To switch to the fallback, change both to the terra id.
+
+Launch checks (2026-09-26, Claude Code 2.1.283):
 
 | Launch | Result |
 |---|---|
-| `claude` (settings model or `--agent ocx-gpt-5-6-terra`) | 404 "issue with the selected model". The ClaudeRipple proxy does not route `claude-ocx-*`. This is the safe failure: it never runs silently on another model |
+| `claude` (settings model or `--agent`) | 404 "issue with the selected model", for both models. The ClaudeRipple proxy does not route `claude-ocx-*`. This is the safe failure: it never runs silently on Claude |
 | `ocx claude` with `ANTHROPIC_BASE_URL` exported | 404: an exported `ANTHROPIC_*` overrides the proxy URL `ocx claude` sets |
 | `ocx claude` without `ANTHROPIC_BASE_URL` | 405: the `HTTPS_PROXY` (ClaudeRipple) from `~/.claude/settings.json` intercepts the request to the local proxy |
-| `env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude` | Works, with both the settings model and `--agent ocx-gpt-5-6-terra`. `modelUsage` reports `claude-ocx-native--gpt-5.6-terra` |
+| `env -u ANTHROPIC_BASE_URL NO_PROXY=… ocx claude`, terra | Works (settings model and `--agent`). `modelUsage` reports `claude-ocx-native--gpt-5.6-terra`. A full `/tick` has not run on terra yet: the upstream quota was exhausted |
+| Same, Muse, default tools | 400 "Invalid JSON schema" (the Artifact tool's `pattern` keyword). Fixed by denying `Artifact` in the settings |
+| Same, Muse, Artifact denied | A one-line reply works, but a `/tick` fails on its second request: 400 "JSON schema exceeds the maximum nesting depth of 10 levels". MCP servers that finish connecting after the first request add deeply nested tool schemas |
+| Same, Muse, Artifact denied, `--strict-mcp-config` | Works: a full `/tick` against a test server marked 3 items in 20 turns, and every mark carried the Muse id |
 
-So the session is opened in `crosscheck/` with that last command, named `CROSSCHECK`, and run with `/loop 10m /tick`. When the upstream account is rate-limited, the session stops with an API error; nothing falls back to Claude.
+So the session is opened in `crosscheck/` with
 
-**Web.** Open cards in the DISPATCH and SCHEDULE tabs show a dashed chip `CROSSCHECK agree · <reason>`, and a "CROSSCHECK에 동의" button submits the same decision in one click: shadow → verdict, approval → approve/reject. When agreeing with a `disagree` mark, its reason becomes the decision reason. Approval-mode approvals keep their confirm dialog, since they send a FLIGHT PLAN or write to Linear. The gate panels show "CROSSCHECK 일치 n/m (xx%)" as a reference row outside the gate criteria.
+```bash
+env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config
+```
+
+named `CROSSCHECK`, and run with `/loop 10m /tick`. `--strict-mcp-config` with no `--mcp-config` loads no MCP servers at all. The session then has no MCP tools, including GitHub reads, and judges from `dispatch flight` alone. `occ/mcp-guard.mjs --read-only` stays in place. Whether CROSSCHECK should read GitHub is still open for the SUPERVISOR. When an upstream account is rate-limited, the session stops with an API error; nothing falls back to Claude.
+
+**Model on each mark.** The session never names its own model. `atcctl dispatch|schedule crosscheck` sends `model` from the `ATC_CROSSCHECK_MODEL` environment variable. Claude Code sets that variable from the settings' `env` block. The guard blocks command-line overrides (`VAR=… node …`, `env …`, `export …`). The server stores it on the op (`{…, model}`, at most 120 characters); a mark without it, including every mark recorded before this field existed, reads as `"unknown"`. `gateOf(...).crosscheck` keeps the overall `{marked, matched, rate}` and adds `byModel: {<model>: {marked, matched, rate}}`, and `examples` carry the mark's model. If the session is started with a `--model` override, the marks still carry the settings model, so don't override it.
+
+**Web.** Open cards in the DISPATCH and SCHEDULE tabs show a dashed chip `CROSSCHECK agree · <reason>`, and a "CROSSCHECK에 동의" button submits the same decision in one click: shadow → verdict, approval → approve/reject. When agreeing with a `disagree` mark, its reason becomes the decision reason. Approval-mode approvals keep their confirm dialog, since they send a FLIGHT PLAN or write to Linear. The gate panels show "CROSSCHECK 일치 n/m (xx%)" as a reference row outside the gate criteria, with one sub-row per model (short name, e.g. `muse-spark-1.3-contributor`, full id in the tooltip). The chip shows the short model name next to its time, and the chip and RECENT tooltips give the full id.
 
 ## 11. Criteria for moving on
 
