@@ -1,0 +1,231 @@
+import { type ReactNode, useEffect, useState } from "react";
+import type { Snapshot } from "../../server/model.ts";
+import type { ServerSettings } from "../../server/settings.ts";
+import { callsign } from "./aviation.ts";
+import { timeAgo } from "./derive.ts";
+
+// 설정 창의 LINEAR, AGENTS 탭. 지금은 서버 설정을 읽기만 한다(편집은 .env.local, 서버 재시작 후 반영).
+// 항목마다 환경 변수 이름을 붙여 두어, 나중에 편집을 붙일 때 이 행들을 입력 칸으로 바꾸면 된다.
+
+type Loaded = { state: "loading" } | { state: "error" } | { state: "ready"; data: ServerSettings };
+
+export function useServerSettings(): Loaded {
+  const [loaded, setLoaded] = useState<Loaded>({ state: "loading" });
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/settings")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data: ServerSettings) => alive && setLoaded({ state: "ready", data }))
+      .catch(() => alive && setLoaded({ state: "error" }));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return loaded;
+}
+
+export function LinearSettings({ snapshot, server }: { snapshot: Snapshot | null; server: Loaded }) {
+  const linear = snapshot?.linear;
+  const status = !linear ? null : !linear.enabled ? "off" : linear.error ? "error" : "on";
+  const now = Date.now();
+  return (
+    <>
+      <Block code="CONNECTION" label="연결">
+        <div className="conn">
+          <StatusChip tone={status === "on" ? "ok" : status === "error" ? "bad" : "mute"}>
+            {status === "on" ? "CONNECTED" : status === "error" ? "ERROR" : status === "off" ? "NOT CONNECTED" : "—"}
+          </StatusChip>
+          <span className="conn-meta">
+            {linear?.fetchedAt ? `${timeAgo(linear.fetchedAt, now)} 동기화` : status === "off" ? "브랜치에서 찾은 FLIGHT만 표시" : ""}
+          </span>
+        </div>
+        {linear?.error && <p className="conn-error">{linear.error}</p>}
+        {snapshot && (
+          <p className="settings-hint">
+            FLIGHT {snapshot.tickets.length}개 · 상태 {snapshot.columns.length}개를 불러옴
+          </p>
+        )}
+      </Block>
+
+      <Block code="WORKSPACE" label="Linear 설정">
+        <ServerRows server={server}>
+          {(s) => (
+            <>
+              <ConfigRow label="API KEY" env="LINEAR_API_KEY" value={s.linear.apiKeySet ? "설정됨" : "없음"} tone={s.linear.apiKeySet ? "ok" : "bad"} />
+              <ConfigRow
+                label="TEAM"
+                env="LINEAR_TEAM_KEY"
+                value={s.linear.teamKey}
+                note={`티켓 ${s.linear.teamKey}-191 → FLIGHT ${s.linear.teamKey}191`}
+              />
+              <ConfigRow label="LANDING 상태" env="ATC_LANDING_STATE" value={s.linear.landingState} note="이 상태의 FLIGHT가 LANDING SEQUENCE에 들어감" />
+            </>
+          )}
+        </ServerRows>
+      </Block>
+      <EditNote />
+    </>
+  );
+}
+
+export function AgentSettings({ snapshot, server }: { snapshot: Snapshot | null; server: Loaded }) {
+  const sessions = snapshot?.sessions ?? [];
+  const count = (agent: "claude" | "codex") => {
+    const list = sessions.filter((s) => s.agent === agent);
+    return { total: list.length, busy: list.filter((s) => s.status === "busy").length };
+  };
+  const claude = count("claude");
+  const codex = count("codex");
+  const teams = sessions.filter((s) => callsign(s) !== s.name).sort((a, b) => a.name.localeCompare(b.name));
+
+  return (
+    <>
+      <Block code="SOURCES" label="에이전트">
+        <ServerRows server={server}>
+          {(s) => (
+            <>
+              <AgentRow
+                name="Claude Code"
+                code="CLD"
+                present={s.agents.claude.present}
+                dir={s.agents.claude.sessionsDir}
+                total={claude.total}
+                busy={claude.busy}
+              >
+                <StatusChip tone={s.agents.claude.claimHook ? "ok" : "bad"}>
+                  {s.agents.claude.claimHook ? "CLAIM HOOK ✓" : "CLAIM HOOK 없음"}
+                </StatusChip>
+              </AgentRow>
+              <AgentRow
+                name="Codex"
+                code="CDX"
+                present={s.agents.codex.present}
+                dir={s.agents.codex.sessionsDir}
+                total={codex.total}
+                busy={codex.busy}
+              />
+            </>
+          )}
+        </ServerRows>
+      </Block>
+
+      <Block code="STANDS" label="점유 규칙">
+        <ServerRows server={server}>
+          {(s) => (
+            <>
+              <ConfigRow label="STAND 점유 유지" env="ATC_CLAIM_TTL_MIN" value={`${s.agents.claimTtlMin}분`} note="마지막으로 건드린 뒤 이 시간이 지나면 점유가 풀림" />
+              <ConfigRow label="HANDOFF 유예" env="ATC_HANDOFF_GRACE_MIN" value={`${s.agents.handoffGraceMin}분`} note="앞 세션이 이 안에 손을 떼면 HANDOFF, 더 겹치면 충돌" />
+              <ConfigRow label="AIRPORT 폴더" env="ATC_PROJECTS_DIR" value={s.agents.projectsDir} mono />
+            </>
+          )}
+        </ServerRows>
+      </Block>
+
+      <Block code="CALLSIGNS" label="콜사인">
+        {teams.length ? (
+          <ul className="callsigns">
+            {teams.slice(0, 8).map((s) => (
+              <li key={s.id}>
+                <span className="mono faint">{s.name}</span> → <b>{callsign(s)}</b>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="settings-hint">TEAM_A 같은 세션 이름이 ALPHA 같은 음성 알파벳 콜사인으로 보입니다.</p>
+        )}
+        <p className="settings-hint">세션 이름 TEAM_&lt;글자&gt; → 음성 알파벳. 그 밖의 이름은 그대로.</p>
+      </Block>
+      <EditNote />
+    </>
+  );
+}
+
+function Block({ code, label, children }: { code: string; label: string; children: ReactNode }) {
+  return (
+    <section className="settings-section">
+      <h3 className="label">
+        {code} <em>{label}</em>
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+function ServerRows({ server, children }: { server: Loaded; children: (s: ServerSettings) => ReactNode }) {
+  if (server.state === "loading") return <p className="settings-hint">불러오는 중…</p>;
+  if (server.state === "error") return <p className="conn-error">서버가 설정을 알려주지 않음(/api/settings). 서버를 다시 시작하면 보입니다.</p>;
+  return <dl className="config-rows">{children(server.data)}</dl>;
+}
+
+function ConfigRow({
+  label,
+  env,
+  value,
+  note,
+  tone,
+  mono,
+}: {
+  label: string;
+  env: string;
+  value: string;
+  note?: string;
+  tone?: "ok" | "bad";
+  mono?: boolean;
+}) {
+  return (
+    <div className="config-row">
+      <dt>
+        {label}
+        <code className="config-env">{env}</code>
+      </dt>
+      <dd className={`${mono ? "mono " : ""}${tone ? `tone-${tone}` : ""}`} title={value}>
+        {value}
+      </dd>
+      {note && <p className="config-note">{note}</p>}
+    </div>
+  );
+}
+
+function AgentRow({
+  name,
+  code,
+  present,
+  dir,
+  total,
+  busy,
+  children,
+}: {
+  name: string;
+  code: string;
+  present: boolean;
+  dir: string;
+  total: number;
+  busy: number;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="agent-row">
+      <div className="agent-row-head">
+        <span className="type">{code}</span>
+        <b>{name}</b>
+        <span className="agent-count">
+          {present ? `세션 ${total}개${busy ? ` · AIRBORNE ${busy}` : ""}` : "설치 안 됨"}
+        </span>
+      </div>
+      <div className="agent-row-meta">
+        <code className="config-env" title={dir}>
+          {dir}
+        </code>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function StatusChip({ tone, children }: { tone: "ok" | "bad" | "mute"; children: ReactNode }) {
+  return <span className={`status-chip tone-${tone}`}>{children}</span>;
+}
+
+function EditNote() {
+  return <p className="settings-foot">서버 설정은 .env.local에서 바꾸고 서버를 다시 시작하면 반영됩니다.</p>;
+}

@@ -1,10 +1,29 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import type { Snapshot } from "../../server/model.ts";
 import { formatClock, type Settings, THEMES, updateSettings } from "./settings.ts";
+import { AgentSettings, LinearSettings, useServerSettings } from "./SettingsServer.tsx";
 
-// 로고를 누르면 열리는 설정 창. 바깥을 누르거나 Esc로 닫는다.
-export function SettingsPanel({ settings, onClose }: { settings: Settings; onClose: () => void }) {
+const TABS = [
+  { id: "display", label: "화면" },
+  { id: "linear", label: "LINEAR" },
+  { id: "agents", label: "AGENTS" },
+] as const;
+type Tab = (typeof TABS)[number]["id"];
+
+// 로고를 누르면 열리는 설정 창. 화면 설정은 이 브라우저에, LINEAR·AGENTS는 서버 설정을 읽어 보여 준다.
+// 바깥을 누르거나 Esc로 닫는다.
+export function SettingsPanel({
+  settings,
+  snapshot,
+  onClose,
+}: {
+  settings: Settings;
+  snapshot: Snapshot | null;
+  onClose: () => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
-  const now = Date.now();
+  const [tab, setTab] = useState<Tab>("display");
+  const server = useServerSettings();
 
   useEffect(() => {
     const panel = ref.current;
@@ -34,6 +53,31 @@ export function SettingsPanel({ settings, onClose }: { settings: Settings; onClo
           ×
         </button>
       </header>
+      <nav className="settings-tabs" role="tablist" aria-label="설정 종류">
+        {TABS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      <div role="tabpanel" aria-label={TABS.find((t) => t.id === tab)!.label}>
+        {tab === "display" ? (
+          <DisplaySettings settings={settings} />
+        ) : tab === "linear" ? (
+          <LinearSettings snapshot={snapshot} server={server} />
+        ) : (
+          <AgentSettings snapshot={snapshot} server={server} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DisplaySettings({ settings }: { settings: Settings }) {
+  const now = Date.now();
+  return (
+    <>
 
       <Section code="THEME" label="테마">
         <div className="theme-cards" role="radiogroup" aria-label="테마">
@@ -110,7 +154,7 @@ export function SettingsPanel({ settings, onClose }: { settings: Settings; onClo
       )}
 
       <p className="settings-foot">이 브라우저에만 저장됩니다.</p>
-    </div>
+    </>
   );
 }
 

@@ -1702,7 +1702,7 @@ a.ticket:hover {
   top: calc(100% + 6px);
   left: 10px;
   z-index: 30;
-  width: min(360px, calc(100vw - 20px));
+  width: min(400px, calc(100vw - 20px));
   max-height: calc(100vh - 80px);
   overflow: auto;
   padding: var(--space-3) var(--space-4) var(--space-2);
@@ -1765,6 +1765,162 @@ a.ticket:hover {
   border-top: 1px solid var(--line);
   font-size: var(--text-xs);
   color: var(--faint);
+}
+/* 설정 창 탭: 화면 · LINEAR · AGENTS */
+.settings-tabs {
+  display: flex;
+  gap: var(--space-0-5);
+  margin: var(--space-2) 0 var(--space-1);
+  padding: var(--space-0-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+.settings-tabs button {
+  flex: 1;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.settings-tabs button:hover {
+  color: var(--text);
+}
+.settings-tabs button[aria-selected="true"] {
+  background: var(--panel-3);
+  color: var(--tab-on);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+/* 서버 설정 행: 이름 + 환경 변수 / 값 / 설명 */
+.config-rows {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+.config-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+.config-row dt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.config-row dd {
+  max-width: 190px;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  text-align: right;
+}
+.config-note {
+  grid-column: 1 / -1;
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+.config-env {
+  font: var(--text-2xs) var(--mono);
+  font-weight: 400;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.config-row .tone-ok,
+.status-chip.tone-ok {
+  color: var(--radar);
+}
+.config-row .tone-bad,
+.status-chip.tone-bad {
+  color: var(--alert);
+}
+.status-chip.tone-mute {
+  color: var(--muted);
+}
+.status-chip {
+  display: inline-block;
+  padding: 0 var(--space-1-5);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  font: 700 var(--text-2xs) / 18px var(--mono);
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+.conn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.conn-meta {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.conn-error {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--alert) 45%, transparent);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--alert);
+}
+.agent-row {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+.agent-row-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+.agent-row-head .type {
+  margin: 0;
+  background: var(--text);
+  color: var(--bg);
+}
+.agent-count {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.agent-row-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  min-width: 0;
+}
+.callsigns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.callsigns b {
+  font: 700 var(--text-sm) var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--tab-on);
 }
 .theme-cards {
   display: grid;

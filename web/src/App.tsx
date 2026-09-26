@@ -86,7 +86,7 @@ export function App() {
             </span>
             <GearIcon />
           </button>
-          {settingsOpen && <SettingsPanel settings={settings} onClose={closeSettings} />}
+          {settingsOpen && <SettingsPanel settings={settings} snapshot={snapshot} onClose={closeSettings} />}
         </div>
         <nav className="tabs" role="tablist">
           {TABS.map((t) => (

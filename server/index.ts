@@ -10,6 +10,7 @@ import { mountMetrics } from "./metrics.ts";
 import { DISPATCH_MS, mountDispatch, runDispatch } from "./proposals.ts";
 import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
+import { mountSettings } from "./settings.ts";
 import { buildSnapshot } from "./snapshot.ts";
 
 const TICK_MS = 2_000;
@@ -56,6 +57,7 @@ mountController(app, getSnapshot, eventLog);
 mountAirports(app);
 mountMetrics(app);
 mountDispatch(app, getSnapshot);
+mountSettings(app);
 
 app.get("/api/events", (c) =>
   streamSSE(c, async (stream) => {
