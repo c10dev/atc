@@ -8,7 +8,7 @@ const ISSUE_FIELDS = `identifier title url priority updatedAt createdAt startedA
   state { name type color }
   assignee { displayName }
   project { name }
-  labels(first: 10) { nodes { name } }
+  labels(first: 20) { nodes { name parent { name } } }
   parent { identifier }
   children(first: 50) { nodes { identifier } }
   relations(first: 20) { nodes { type relatedIssue { identifier } } }
@@ -41,7 +41,7 @@ export interface IssueNode {
   state: { name: string; type: string; color: string };
   assignee: { displayName: string } | null;
   project?: { name: string } | null;
-  labels?: { nodes: { name: string }[] };
+  labels?: { nodes: { name: string; parent?: { name: string } | null }[] };
   parent?: { identifier: string } | null;
   children?: { nodes: { identifier: string }[] };
   relations?: { nodes: { type: string; relatedIssue: { identifier: string } | null }[] };
@@ -96,7 +96,8 @@ export function toTicket(n: IssueNode): Ticket {
     url: n.url,
     updatedAt: n.updatedAt,
     project: n.project?.name ?? null,
-    labels: (n.labels?.nodes ?? []).map((l) => l.name),
+    // 라벨 그룹의 하위 라벨은 "그룹:이름"(예: Risk:Security, type:BUILD). 단독 라벨은 이름 그대로.
+    labels: (n.labels?.nodes ?? []).map((l) => (l.parent?.name ? `${l.parent.name}:${l.name}` : l.name)),
     createdAt: n.createdAt ?? null,
     startedAt: n.startedAt ?? null,
     blocks: uniq(out.filter((r) => r.type === "blocks").map((r) => r.relatedIssue!.identifier)),

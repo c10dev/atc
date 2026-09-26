@@ -7,7 +7,7 @@ atc knows each team session as an AIRCRAFT (`TEAM_B`, callsign BRAVO) and its le
 - **FLEET**: the teams, their crews, what they are rated for, their routes and targets.
 - **FLIGHT classification**: the kind of work, its size and the rating it needs.
 
-> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), and the FLEET registry and tab (step 2; observed crew is not shown yet). Decisions are listed at the end.
+> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2; observed crew is not shown yet), and step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules (see section 5 for what is left). Decisions are listed at the end.
 
 Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHEDULE operations), [dispatch.md](dispatch.md) (the planner that uses them).
 
@@ -130,9 +130,11 @@ A FLIGHT may need more than one (`SEC` + `DATA`). An AIRCRAFT must hold all of t
 | TAIL ASSIGNMENT | `tail:TEAM_E` | Any team |
 | FLIGHT TYPE | `type:BUILD` … `type:FERRY` | `BUILD` |
 | WAKE CATEGORY | `wake:L` … `wake:J` | `M` |
-| Required TYPE RATING | `rating:SEC`, `rating:UI`, … | `SEC` if DISPATCH marked the proposal CAUTION, otherwise none |
+| Required TYPE RATING | `rating:SEC`, `rating:UI`, …, or any label in vocado's existing **Risk** group (Security, Migration, Rights, Contract) → `SEC` | None. A CAUTION from DISPATCH does not add `SEC` by itself; OCC turns it into a `rating:SEC` label through a `CLASSIFY` operation (section 6) |
 
 Labels rather than Linear estimates: estimates are one number per team setting, while four axes need four fields. Labels are visible in Linear and easy to filter. Linear estimates can mirror WAKE later if Linear-native reporting is wanted.
+
+**Label groups.** atc reads a label inside a Linear label group as `group:name`: the Risk group's "Security" arrives as `Risk:Security`. So each axis works either as flat labels (`type:BUILD`) or as a Linear label group named `type` with children `BUILD` … `FERRY`. Groups are preferred for `type`, `wake` and `tail` because Linear's single-select groups allow only one value per issue. The old standalone labels `Risk: Security` etc. are read the same way. vocado's `Area` group (Database, Backend, Web, RN) is not used for ratings yet.
 
 ## 5. Planner rules
 
@@ -140,11 +142,15 @@ Applied in this order. The first three are hard rules: a FLIGHT that fails them 
 
 1. **TAIL ASSIGNMENT**: `tail:TEAM_X` → only that AIRCRAFT (what `lane:` does today).
 2. **TYPE RATING**: the AIRCRAFT holds every required rating.
-3. **FLIGHT TYPE vs crew**: the complement can fly it (e.g. no `BUILD` for a crew without an Opus or `ui-builder` position). A `CHECK` never goes to the team that flew the BUILD under review.
-4. **WAKE slots**: the AIRPORT has enough weighted capacity left; `J` is excluded ("must be split").
-5. **Score** (soft): as today, plus **ROUTE** (+1 when the FLIGHT's project is on the AIRCRAFT's routes) and WAKE-scaled conflict risk.
+3. **FLIGHT TYPE vs crew**: the complement can fly it. `BUILD`, `MAINT` and `TEST` need a member who is not `flash-helper` and has no `no BUILD` or `read-only` limit; `CHECK` needs one without `no CHECK verdicts`; `SURVEY` and `FERRY` can go to any crew.
+4. **WAKE slots**: the AIRPORT has enough weighted capacity left (L 0.5, M 1, H 2). An AIRBORNE team counts the largest WAKE among the FLIGHTs it holds, or 1 when unknown. `J` is excluded ("must be split").
+5. **Score** (soft): as today, plus **ROUTE** (+1, weight `route` in `dispatch.json`, when the FLIGHT's project is on the AIRCRAFT's routes).
 
-The DISPATCH card shows the classification next to the score, e.g. `BUILD · H · SEC · tail:TEAM_E`.
+When no live AIRCRAFT could ever qualify (no one holds the rating, or no crew can fly the type), the FLIGHT is excluded with that reason. When qualified AIRCRAFT exist but are busy, it simply waits, as before.
+
+The DISPATCH card shows the classification under the title, e.g. `BUILD · H · SEC · tail:TEAM_E`. It is greyed with "(기본값)" when there is no `type:` or `wake:` label.
+
+Not built yet: `SURVEY` and `CHECK` going to a HOLDING team (they need no STAND), `CHECK` independence from the BUILD it reviews, and WAKE-scaled conflict risk.
 
 ## 6. Who classifies
 
@@ -187,8 +193,8 @@ Stage 4 (network planning) puts these next to the project goals. OCC may draft t
 
 1. ✅ `tail:` in the planner with the `lane:` alias. Then the Linear labels, VOC-196 and the note to President
 2. ✅ `fleet.json` registry, API and FLEET tab (read and edit), with defaults from the vocado crew rules. Observed crew (teammate sessions next to the declared complement) is left for later
-3. Classification labels read by the planner: TYPE RATING and FLIGHT TYPE hard rules, WAKE slots, ROUTE score
-4. DISPATCH card and FIDS show the classification; DISPATCH notes suggest a classification when labels are missing
+3. ✅ Classification labels read by the planner: TYPE RATING and FLIGHT TYPE hard rules, WAKE slots, ROUTE score (the Risk group counts as SEC; label groups are read as `group:name`)
+4. ◐ The DISPATCH card shows the classification. Still to do: FIDS, and DISPATCH notes that suggest a classification when labels are missing
 5. OCC S1 `CLASSIFY` drafts (with the SCHEDULE work in occ.md)
 6. TARGETS and on-time baselines in METRICS / stage 4
 
@@ -209,5 +215,7 @@ Stage 4 (network planning) puts these next to the project goals. OCC may draft t
 | Team concept | Develop it further in atc terms: crew makeup and goals included |
 | Pre-assignment | Proceed with the President note, the Linear labels and VOC-196, under the name settled here |
 | Difficulty classification | Needed; included here as FLIGHT TYPE, WAKE CATEGORY and required TYPE RATING |
+| Linear labels | `type` (BUILD … FERRY) and `wake` (L … J) created as single-select label groups in the Vocado team; `tail:TEAM_A` … `tail:TEAM_F` stay flat labels for now (President already uses them) |
+| First FLEET profiles | From flight history: TEAM_B, TEAM_D, TEAM_E hold `SEC` (security and DB FLIGHTs) with route Beta Readiness; TEAM_F route Song Experience; TEAM_C routes Vocado Visual System (SEED) and Home & Discovery; TEAM_A on defaults |
 
 Still open: the exact TYPE RATING list (starts as `SEC`, `UI`, `DATA`, `DOCS`), the WAKE slot weights, and whether Linear estimates should mirror WAKE.

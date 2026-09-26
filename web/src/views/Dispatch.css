@@ -460,3 +460,14 @@
 .dp-table .s-declined .dp-result {
   color: var(--alert);
 }
+
+/* FLIGHT 분류: FLIGHT TYPE · WAKE · 필요한 TYPE RATING · TAIL ASSIGNMENT (docs/fleet.md) */
+.dp-class {
+  margin: 0;
+  color: var(--cyan);
+  font: 600 var(--text-xs) var(--mono);
+  letter-spacing: 0.06em;
+}
+.dp-class.is-default {
+  color: var(--muted);
+}

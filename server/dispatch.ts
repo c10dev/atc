@@ -2,6 +2,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 
 import { basename, dirname, join } from "node:path";
 import { callsign } from "./callsign.ts";
 import { config } from "./config.ts";
+import { type Classification, canFly, classOf, DEFAULT_FLEET, type FleetFile, profileOf, WAKE_SLOTS } from "./crew.ts";
 import { type Snapshot, type Ticket, parentKeysOf } from "./model.ts";
 
 // 2단계 DISPATCH: 어떤 FLIGHT를 어떤 AIRCRAFT에 보낼지 계산한다(순수 함수 planDispatch).
@@ -18,7 +19,7 @@ export interface DispatchConfig {
     openProposals: number; // 결정 안 된 ASSIGN 제안 최대 수
     openReleases: number;
   };
-  weights: { priority: number; wait: number; unblock: number; affinity: number; conflict: number };
+  weights: { priority: number; wait: number; unblock: number; affinity: number; conflict: number; route: number };
   releaseDays: number; // STAND 없이 이만큼 ENROUTE면 RELEASE 제안
   releaseStates: string[]; // RELEASE 대상 상태 이름
   excludeLabels: string[];
@@ -34,7 +35,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
     "Vocado Visual System (SEED)": null,
   },
   slots: { perTeam: 1, airborne: { VCDO: 4 }, defaultAirborne: 2, openProposals: 5, openReleases: 5 },
-  weights: { priority: 3, wait: 0.5, unblock: 2, affinity: 1, conflict: -2 },
+  weights: { priority: 3, wait: 0.5, unblock: 2, affinity: 1, conflict: -2, route: 1 },
   releaseDays: 3,
   releaseStates: ["In Progress"],
   excludeLabels: ["symphony-pilot"],
@@ -72,7 +73,7 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
 }
 
 export interface Factor {
-  id: "priority" | "wait" | "unblock" | "affinity" | "conflict";
+  id: "priority" | "wait" | "unblock" | "affinity" | "conflict" | "route";
   label: string;
   value: number;
   weight: number;
@@ -160,6 +161,7 @@ export function planDispatch(
   cfg: DispatchConfig,
   now = Date.now(),
   reserved: Reserved = NO_RESERVED,
+  fleet: FleetFile = DEFAULT_FLEET,
 ): Plan {
   const team = new RegExp(cfg.teamPattern, "i");
   const byKey = new Map(s.tickets.map((t) => [t.key, t]));
@@ -193,7 +195,18 @@ export function planDispatch(
   // ── FLIGHT ──
   const excluded: Plan["excluded"] = [];
   const hold: Plan["hold"] = [];
-  const eligible: (Ticket & { airport: string })[] = [];
+  const eligible: (Ticket & { airport: string; cls: Classification })[] = [];
+  // FLEET 규칙(docs/fleet.md 5장): 필요한 TYPE RATING을 모두 가졌고, CREW가 그 FLIGHT TYPE을 날 수 있어야 한다.
+  const qualifies = (ac: AircraftState, cls: Classification) => {
+    const p = profileOf(fleet, ac.name);
+    return cls.ratings.every((r) => p.ratings.includes(r)) && canFly(p.complement, cls.type);
+  };
+  const unqualifiedWhy = (pool: AircraftState[], cls: Classification) => {
+    const need = cls.ratings.map((r) => `rating:${r}`).join("+");
+    const rated = pool.filter((ac) => cls.ratings.every((r) => profileOf(fleet, ac.name).ratings.includes(r)));
+    if (cls.ratings.length && !rated.length) return `${need} — 그 TYPE RATING을 가진 AIRCRAFT 없음 (FLEET 탭에서 지정)`;
+    return `type:${cls.type} — 그 일을 날 수 있는 CREW 없음 (FLEET 탭의 CREW COMPLEMENT)`;
+  };
   for (const t of s.tickets) {
     if (t.stateType !== "unstarted") continue;
     if (parents.has(t.key)) {
@@ -235,12 +248,21 @@ export function planDispatch(
       hold.push({ flight: t.key, blockedBy: blockers });
       continue;
     }
+    const cls = classOf(t.labels);
+    if (cls.wake === "J") {
+      excluded.push({ flight: t.key, reason: "wake:J — 너무 커서 배정하지 않음, 나눠야 함(SPLIT)" });
+      continue;
+    }
     const tails = tailsOf(t);
     if (tails.size) {
       const tailTag = [...tails].map((n) => `tail:${n}`).join(", ") + (usesOldLane(t) ? " (옛 lane: 라벨 — tail:로 바꿀 것)" : "");
       const mine = aircraft.filter((ac) => tails.has(ac.name.toUpperCase()));
       if (!mine.length) {
         excluded.push({ flight: t.key, reason: `${tailTag} — 그 TEAM 세션이 없음` });
+        continue;
+      }
+      if (!mine.some((ac) => qualifies(ac, cls))) {
+        excluded.push({ flight: t.key, reason: `${tailTag} — ${unqualifiedWhy(mine, cls)}` });
         continue;
       }
       if (!mine.some((ac) => ac.available && !ac.reserved && ac.airport === airport)) {
@@ -250,8 +272,11 @@ export function planDispatch(
         excluded.push({ flight: t.key, reason: `${tailTag} — 지정 팀 배정 불가(${why})` });
         continue;
       }
+    } else if (aircraft.length && !aircraft.some((ac) => qualifies(ac, cls))) {
+      excluded.push({ flight: t.key, reason: unqualifiedWhy(aircraft, cls) });
+      continue;
     }
-    eligible.push({ ...t, airport });
+    eligible.push({ ...t, airport, cls });
   }
 
   // ── 점수 ──
@@ -267,6 +292,7 @@ export function planDispatch(
     const flown = (history.get(ac.id) ?? []).filter((k) => k !== t.key);
     const affinity = flown.filter((k) => linked.has(k) || (t.project && byKey.get(k)?.project === t.project));
     const conflicts = [...linked].filter((k) => airborneFlights.has(k));
+    const onRoute = Boolean(t.project && profileOf(fleet, ac.name).routes.includes(t.project));
     const f = (id: Factor["id"], label: string, value: number, weight: number, detail: string): Factor => ({
       id, label, value: round1(value), weight, points: round1(value * weight), detail,
     });
@@ -276,22 +302,30 @@ export function planDispatch(
       f("unblock", "풀어 주는 FLIGHT", unblocks.length, w.unblock, unblocks.join(", ") || "없음"),
       f("affinity", "팀 적합도", affinity.length, w.affinity, affinity.join(", ") || "이력 없음"),
       f("conflict", "충돌 위험", conflicts.length, w.conflict, conflicts.length ? `AIRBORNE과 연결: ${conflicts.join(", ")}` : "없음"),
+      f("route", "ROUTE", onRoute ? 1 : 0, w.route ?? 1, onRoute ? `${t.project} 담당` : "담당 아님"),
     ];
     return { score: round1(factors.reduce((a, x) => a + x.points, 0)), factors };
   };
 
   // ── 배정: 점수 높은 짝부터, AIRPORT 슬롯 안에서 ──
+  // AIRPORT 슬롯은 WAKE CATEGORY로 센다(L 0.5, M 1, H 2). AIRBORNE 팀은 쥐고 있는 FLIGHT 중 가장 큰 WAKE, 모르면 1.
+  const wakeOfKey = (k: string | null | undefined) => (k && byKey.get(k) ? WAKE_SLOTS[classOf(byKey.get(k)!.labels).wake] : 1);
   const airborneAt = new Map<string, number>();
   for (const x of s.sessions) {
     const code = codeOf(x.repo);
-    if (x.status === "busy" && team.test(x.name) && code) airborneAt.set(code, (airborneAt.get(code) ?? 0) + 1);
+    if (x.status !== "busy" || !team.test(x.name) || !code) continue;
+    const keys = active.filter((c) => c.sessionId === x.id).map((c) => wsTicket.get(c.workspacePath));
+    const load = keys.length ? Math.max(...keys.map(wakeOfKey)) : 1;
+    airborneAt.set(code, (airborneAt.get(code) ?? 0) + (Number.isFinite(load) ? load : 1));
   }
   const limitOf = (code: string) => cfg.slots.airborne[code] ?? cfg.slots.defaultAirborne;
   const pairs = eligible
     .flatMap((t) => {
       const tails = tailsOf(t);
       return aircraft
-        .filter((ac) => ac.available && !ac.reserved && ac.airport === t.airport && (!tails.size || tails.has(ac.name.toUpperCase())))
+        .filter(
+          (ac) => ac.available && !ac.reserved && ac.airport === t.airport && (!tails.size || tails.has(ac.name.toUpperCase())) && qualifies(ac, t.cls),
+        )
         .map((ac) => ({ t, ac, ...score(t, ac) }));
     })
     .sort((a, b) => b.score - a.score || a.t.key.localeCompare(b.t.key) || a.ac.name.localeCompare(b.ac.name));
@@ -302,10 +336,11 @@ export function planDispatch(
   for (const p of pairs) {
     if (usedFlights.has(p.t.key) || usedAircraft.has(p.ac.id)) continue;
     const load = (airborneAt.get(p.t.airport) ?? 0) + (planned.get(p.t.airport) ?? 0);
-    if (load >= limitOf(p.t.airport)) continue;
+    const size = WAKE_SLOTS[p.t.cls.wake];
+    if (load + size > limitOf(p.t.airport) + 1e-9) continue;
     usedFlights.add(p.t.key);
     usedAircraft.add(p.ac.id);
-    planned.set(p.t.airport, (planned.get(p.t.airport) ?? 0) + 1);
+    planned.set(p.t.airport, (planned.get(p.t.airport) ?? 0) + size);
     assign.push({ kind: "ASSIGN", flight: p.t.key, aircraft: p.ac.id, aircraftName: p.ac.name, airport: p.t.airport, score: p.score, factors: p.factors });
   }
 
