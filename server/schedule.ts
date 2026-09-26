@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Context, Hono } from "hono";
 import { flightNumber } from "./callsign.ts";
@@ -9,9 +9,12 @@ import { fleetView, loadFleet } from "./fleet.ts";
 import type { Snapshot, Ticket } from "./model.ts";
 import { record } from "./recorder.ts";
 
-// OCC S1 — SCHEDULE 초안(그림자 운용). OCC가 Linear에 쓸 변경을 초안으로 남기고, SUPERVISOR가
-// "승인했을 것 / 거절했을 것"을 표시해 초안 품질을 잰다. 이 단계에서는 아무것도 Linear에 쓰지 않는다.
-// 설계: docs/occ.md 5~7장. 작업 종류는 CLASSIFY(분류 라벨), PRIORITIZE(우선순위), NEW(새 이슈).
+// OCC SCHEDULE — OCC가 Linear에 쓸 변경을 초안으로 남긴다. 설계: docs/occ.md 5~7장.
+// 작업 종류는 CLASSIFY(분류 라벨), PRIORITIZE(우선순위), NEW(새 이슈).
+// - S1(mode "shadow"): SUPERVISOR가 "승인했을 것 / 거절했을 것"만 표시한다. 아무것도 Linear에 쓰지 않는다.
+// - S2(mode "approval"): SUPERVISOR가 승인하면 atc가 Linear 도구 호출 입력(calls)을 정확히 만들고(release),
+//   OCC가 그대로 호출한다. occ/mcp-guard.mjs(linear-guard)가 발부된 입력과 한 글자도 다르지 않은 쓰기만 통과시킨다.
+//   다음 Linear 읽기에서 반영이 보이면 APPLIED.
 
 export const SCHEDULE_KINDS = ["CLASSIFY", "PRIORITIZE", "NEW"] as const;
 export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];
@@ -42,7 +45,14 @@ export interface NewPayload extends ClassifyPayload {
 }
 export type SchedulePayload = ClassifyPayload | PrioritizePayload | NewPayload;
 
-export type ScheduleStatus = "draft" | "agreed" | "disagreed" | "superseded" | "expired";
+export type ScheduleStatus = "draft" | "agreed" | "disagreed" | "approved" | "rejected" | "released" | "applied" | "superseded" | "expired";
+export type ScheduleMode = "shadow" | "approval";
+
+// OCC가 그대로 부를 Linear MCP 도구 호출 하나. input은 도구 입력 그대로(linear-guard가 이것과 비교한다).
+export interface LinearCall {
+  tool: "save_issue" | "save_comment";
+  input: Record<string, unknown>;
+}
 
 export interface ScheduleOp {
   id: string; // "S-0001"
@@ -54,19 +64,45 @@ export interface ScheduleOp {
   status: ScheduleStatus;
   statusAt: string;
   verdictReason: string | null; // 거절 사유, SUPERSEDED·EXPIRED 사유
+  calls: LinearCall[] | null; // S2: release 때 atc가 만든 Linear 호출
+  appliedRef: string | null; // APPLIED: 반영된 FLIGHT key(NEW면 새로 생긴 이슈)
 }
 
 type LogLine =
   | { op: "draft"; id: string; at: string; kind: ScheduleKind; flight: string | null; payload: SchedulePayload; reason: string }
   | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null }
   | { op: "supersede"; id: string; at: string; reason: string }
-  | { op: "expire"; id: string; at: string };
+  | { op: "expire"; id: string; at: string; reason?: string }
+  | { op: "approve"; id: string; at: string }
+  | { op: "reject"; id: string; at: string; reason: string | null }
+  | { op: "release"; id: string; at: string; calls: LinearCall[] }
+  | { op: "apply"; id: string; at: string; ref: string };
 
 export const SCHEDULE_OPEN_LIMIT = 5; // 결정 안 된 초안 최대 수(SUPERVISOR 검토 부담)
 const TTL_MS = 3 * 86_400_000; // 3일 동안 판정이 없으면 EXPIRED
 const GATE = { decided: 20, agreement: 0.8 };
 
 const FILE = () => join(config.stateDir, "schedule.jsonl");
+const MODE_FILE = () => join(config.stateDir, "schedule.json");
+
+export function loadScheduleMode(file = MODE_FILE()): ScheduleMode {
+  try {
+    return JSON.parse(readFileSync(file, "utf8")).mode === "approval" ? "approval" : "shadow";
+  } catch {
+    return "shadow";
+  }
+}
+
+function saveScheduleMode(mode: ScheduleMode, file = MODE_FILE()) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
 
 export class ScheduleError extends Error {
   status: number;
@@ -76,20 +112,29 @@ export class ScheduleError extends Error {
   }
 }
 
+// 상태 전이. 여기 없는 전이는 무시한다(API도 같은 규칙으로 검사한다).
+const NEXT: Partial<Record<ScheduleStatus, Partial<Record<LogLine["op"], ScheduleStatus>>>> = {
+  draft: { verdict: "agreed", approve: "approved", reject: "rejected", supersede: "superseded", expire: "expired" },
+  approved: { release: "released", supersede: "superseded", expire: "expired" },
+  released: { release: "released", apply: "applied", supersede: "superseded", expire: "expired" },
+};
+export const canApplyOp = (s: Pick<ScheduleOp, "status">, op: LogLine["op"]) => Boolean(NEXT[s.status]?.[op]);
+
 export function fold(lines: LogLine[]): ScheduleOp[] {
   const byId = new Map<string, ScheduleOp>();
   for (const l of lines) {
     if (l.op === "draft") {
-      byId.set(l.id, { id: l.id, kind: l.kind, flight: l.flight, payload: l.payload, reason: l.reason, at: l.at, status: "draft", statusAt: l.at, verdictReason: null });
+      byId.set(l.id, { id: l.id, kind: l.kind, flight: l.flight, payload: l.payload, reason: l.reason, at: l.at, status: "draft", statusAt: l.at, verdictReason: null, calls: null, appliedRef: null });
       continue;
     }
     const s = byId.get(l.id);
-    if (!s || s.status !== "draft") continue; // 닫힌 초안은 바꾸지 않는다
-    if (l.op === "verdict") s.status = l.verdict === "agree" ? "agreed" : "disagreed";
-    else if (l.op === "supersede") s.status = "superseded";
-    else s.status = "expired";
+    if (!s || !canApplyOp(s, l.op)) continue; // 닫힌 초안은 바꾸지 않는다
+    s.status = l.op === "verdict" && l.verdict === "disagree" ? "disagreed" : NEXT[s.status]![l.op]!;
     s.statusAt = l.at;
-    s.verdictReason = l.op === "verdict" ? l.reason : l.op === "supersede" ? l.reason : "3일 동안 판정 없음";
+    if (l.op === "verdict" || l.op === "reject" || l.op === "supersede") s.verdictReason = l.reason;
+    else if (l.op === "expire") s.verdictReason = l.reason ?? "3일 동안 판정 없음";
+    else if (l.op === "release") s.calls = l.calls;
+    else if (l.op === "apply") s.appliedRef = l.ref;
   }
   return [...byId.values()];
 }
@@ -322,6 +367,8 @@ export function draftOps(
     if (!changesOf(kind, payload, t).length) throw new ScheduleError(`${flight}에는 이미 그렇게 되어 있음 — 바꿀 것이 없음`);
   }
   const open = existing.filter((s) => s.status === "draft");
+  const inFlight = kind === "NEW" ? undefined : existing.find((s) => (s.status === "approved" || s.status === "released") && s.flight === flight && s.kind === kind);
+  if (inFlight) throw new ScheduleError(`${flight}에는 진행 중인 ${kind} ${inFlight.id}(${inFlight.status})가 있음`, 409);
   const replaced = kind === "NEW" ? [] : open.filter((s) => s.flight === flight && s.kind === kind);
   if (open.length - replaced.length >= SCHEDULE_OPEN_LIMIT) throw new ScheduleError(`열린 초안이 ${SCHEDULE_OPEN_LIMIT}건 — SUPERVISOR 판정을 기다린다`, 409);
   const id = `S-${String(seq + 1).padStart(4, "0")}`;
@@ -331,6 +378,50 @@ export function draftOps(
   ];
 }
 
+// S2: 승인된 작업을 Linear MCP 호출로 옮긴다(순수). 계획 필드만 쓴다(docs/occ.md 4장) — 상태·담당은 건드리지 않는다.
+// 라벨 이름: type·wake는 Linear 라벨 그룹의 하위 라벨(BUILD, M …), rating·tail은 평면 라벨(rating:SEC, tail:TEAM_E).
+export function callsOf(op: ScheduleOp, t: Pick<Ticket, "labels" | "priority"> | undefined, teamName: string): LinearCall[] {
+  const trail = `(SCHEDULE ${op.id}, SUPERVISOR 승인)`;
+  if (op.kind === "NEW") {
+    const n = op.payload as NewPayload;
+    const labels = [n.type, n.wake, ...(n.ratings ?? []).map((r) => `rating:${r}`), n.tail && `tail:${n.tail}`].filter(Boolean) as string[];
+    const input: Record<string, unknown> = {
+      team: teamName,
+      title: n.title,
+      description: `${n.body}\n\n— OCC ${op.id} · CHARTER REQUEST ${trail}`,
+      project: n.project,
+    };
+    if (n.priority) input.priority = n.priority;
+    if (labels.length) input.labels = labels;
+    if (n.parent) input.parentId = n.parent;
+    if (n.blockedBy?.length) input.blockedBy = n.blockedBy;
+    if (n.related?.length) input.relatedTo = n.related;
+    return [{ tool: "save_issue", input }];
+  }
+  const flight = op.flight!;
+  const note = (what: string) => ({ tool: "save_comment" as const, input: { issueId: flight, body: `[OCC ${op.id}] ${what} — 근거: ${op.reason} ${trail}` } });
+  if (op.kind === "PRIORITIZE") {
+    const p = (op.payload as PrioritizePayload).priority;
+    return [{ tool: "save_issue", input: { id: flight, priority: p } }, note(`우선순위 ${PRIORITY_NAME[p]}`)];
+  }
+  const want = op.payload as ClassifyPayload;
+  const c = classOf(t?.labels ?? []);
+  const add: string[] = [];
+  const remove: string[] = [];
+  if (want.type && !(c.explicit.type && c.type === want.type)) {
+    add.push(want.type);
+    if (c.explicit.type) remove.push(c.type);
+  }
+  if (want.wake && !(c.explicit.wake && c.wake === want.wake)) {
+    add.push(want.wake);
+    if (c.explicit.wake) remove.push(c.wake);
+  }
+  for (const r of want.ratings ?? []) if (!c.ratings.includes(r)) add.push(`rating:${r}`);
+  const input: Record<string, unknown> = { id: flight, addLabels: add };
+  if (remove.length) input.removeLabels = remove;
+  return [{ tool: "save_issue", input }, note(`분류 ${changesOf("CLASSIFY", want, t).join(" ")}`)];
+}
+
 // 상황이 바뀐 열린 초안을 닫는다(순수): FLIGHT가 계획 단계를 벗어남, 이미 반영됨, 3일 지남.
 // NEW는 초안 뒤에 같은 제목(정규화)의 이슈가 Linear에 생기면 SUPERSEDED.
 export function syncLines(existing: ScheduleOp[], tickets: Ticket[], nowMs: number): LogLine[] {
@@ -338,18 +429,23 @@ export function syncLines(existing: ScheduleOp[], tickets: Ticket[], nowMs: numb
   const byKey = new Map(tickets.map((t) => [t.key, t]));
   const out: LogLine[] = [];
   for (const s of existing) {
-    if (s.status !== "draft") continue;
+    if (s.status !== "draft" && s.status !== "approved" && s.status !== "released") continue;
+    // 발부(released)된 작업이 Linear에 보이면 APPLIED, 발부 전에 이미 그렇게 됐으면 SUPERSEDED
+    const done = (ref: string, why: string): LogLine =>
+      s.status === "released" ? { op: "apply", id: s.id, at, ref } : { op: "supersede", id: s.id, at, reason: why };
+    const stale = nowMs - Date.parse(s.statusAt) > TTL_MS;
+    const staleWhy = s.status === "draft" ? undefined : s.status === "approved" ? "승인 뒤 3일 동안 발부되지 않음" : "발부 뒤 3일 동안 Linear에 반영되지 않음";
     if (s.kind === "NEW" || s.flight == null) {
       const norm = normTitle((s.payload as NewPayload).title ?? "");
       const made = tickets.find((t) => normTitle(t.title) === norm && t.createdAt != null && Date.parse(t.createdAt) >= Date.parse(s.at));
-      if (made) out.push({ op: "supersede", id: s.id, at, reason: `Linear에 이미 만들어짐 ${made.key}` });
-      else if (nowMs - Date.parse(s.at) > TTL_MS) out.push({ op: "expire", id: s.id, at });
+      if (made) out.push(done(made.key, `Linear에 이미 만들어짐 ${made.key}`));
+      else if (stale) out.push({ op: "expire", id: s.id, at, ...(staleWhy ? { reason: staleWhy } : {}) });
       continue;
     }
     const t = byKey.get(s.flight);
     if (!isOpenTicket(t)) out.push({ op: "supersede", id: s.id, at, reason: `FLIGHT 상태가 바뀜(${t?.state ?? "목록에 없음"})` });
-    else if (!changesOf(s.kind, s.payload, t!).length) out.push({ op: "supersede", id: s.id, at, reason: "Linear에 이미 반영됨" });
-    else if (nowMs - Date.parse(s.at) > TTL_MS) out.push({ op: "expire", id: s.id, at });
+    else if (!changesOf(s.kind, s.payload, t!).length) out.push(done(s.flight, "Linear에 이미 반영됨"));
+    else if (stale) out.push({ op: "expire", id: s.id, at, ...(staleWhy ? { reason: staleWhy } : {}) });
   }
   return out;
 }
@@ -357,6 +453,7 @@ export function syncLines(existing: ScheduleOp[], tickets: Ticket[], nowMs: numb
 export function gateOf(ops: ScheduleOp[]) {
   const decided = ops.filter((s) => s.status === "agreed" || s.status === "disagreed");
   const agreed = decided.filter((s) => s.status === "agreed").length;
+  // (S2 이후의 승인·거절은 이 점검에 넣지 않는다 — 그림자 판정의 합의율만 잰다)
   const agreement = decided.length ? agreed / decided.length : null;
   return {
     decided: decided.length,
@@ -369,7 +466,7 @@ export function gateOf(ops: ScheduleOp[]) {
 
 // OCC가 초안을 쓸 후보: 계획 단계(Todo·Backlog)인데 분류 라벨이 없거나 우선순위가 없는 FLIGHT
 export function candidatesOf(tickets: Ticket[], ops: ScheduleOp[]) {
-  const openFor = new Set(ops.filter((s) => s.status === "draft").map((s) => `${s.kind}|${s.flight}`));
+  const openFor = new Set(ops.filter((s) => s.status === "draft" || s.status === "approved" || s.status === "released").map((s) => `${s.kind}|${s.flight}`));
   const planning = tickets.filter(isOpenTicket);
   return {
     classify: planning.filter((t) => { const c = classOf(t.labels); return !c.explicit.type || !c.explicit.wake; }).filter((t) => !openFor.has(`CLASSIFY|${t.key}`)).map((t) => t.key),
@@ -395,14 +492,17 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const s = await getSnapshot();
     const ops = current(s);
     const now = Date.now();
+    const mode = loadScheduleMode();
     const open = ops.filter((x) => x.status === "draft").sort((a, b) => a.at.localeCompare(b.at));
+    // S2: 승인됐거나 발부돼 Linear 반영을 기다리는 작업
+    const inProgress = ops.filter((x) => x.status === "approved" || x.status === "released").sort((a, b) => a.statusAt.localeCompare(b.statusAt));
     const recent = ops
-      .filter((x) => x.status !== "draft" && now - Date.parse(x.statusAt) < 7 * 86_400_000)
+      .filter((x) => x.status !== "draft" && x.status !== "approved" && x.status !== "released" && now - Date.parse(x.statusAt) < 7 * 86_400_000)
       .sort((a, b) => b.statusAt.localeCompare(a.statusAt))
       .slice(0, 50);
     const candidates = candidatesOf(s.tickets, ops);
     // NEW 초안의 관계·비슷한 FLIGHT도 화면이 제목과 링크를 보이게 넣는다
-    const newKeys = [...open, ...recent].filter((x) => x.kind === "NEW").flatMap((x) => {
+    const newKeys = [...open, ...inProgress, ...recent].filter((x) => x.kind === "NEW").flatMap((x) => {
       const p = x.payload as NewPayload;
       return [p.parent, ...(p.related ?? []), ...(p.blockedBy ?? []), ...(p.similar ?? []).map((m) => m.key)].filter(Boolean) as string[];
     });
@@ -414,14 +514,28 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
         return [k, { title: t.title, state: t.state, priority: t.priority, project: t.project, url: t.url, cls: classLabel(classOf(t.labels)), labels: t.labels }];
       }),
     );
-    const changes = Object.fromEntries(open.map((x) => [x.id, changesOf(x.kind, x.payload, x.flight ? byKey.get(x.flight) : undefined)]));
-    return c.json({ mode: "shadow", open, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, flights });
+    const changes = Object.fromEntries([...open, ...inProgress].map((x) => [x.id, changesOf(x.kind, x.payload, x.flight ? byKey.get(x.flight) : undefined)]));
+    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, flights });
   });
 
   app.get("/api/schedule/ops/:id", async (c) => {
     const id = (c.req.param("id") ?? "").toUpperCase();
     const op = fold(readLines()).find((x) => x.id === id);
-    return op ? c.json({ op, mode: "shadow" }) : c.json({ error: "그런 SCHEDULE 작업이 없음" }, 404);
+    return op ? c.json({ op, mode: loadScheduleMode() }) : c.json({ error: "그런 SCHEDULE 작업이 없음" }, 404);
+  });
+
+  // linear-guard가 읽는 목록: 지금 모드와 발부된(released) 작업의 Linear 호출
+  app.get("/api/schedule/released", (c) => {
+    const ops = fold(readLines()).filter((x) => x.status === "released" && x.calls);
+    return c.json({ mode: loadScheduleMode(), calls: ops.flatMap((x) => x.calls!.map((call) => ({ id: x.id, ...call }))) });
+  });
+
+  app.post("/api/schedule/mode", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    if (body.mode !== "shadow" && body.mode !== "approval") return c.json({ error: "mode는 shadow|approval" }, 400);
+    saveScheduleMode(body.mode);
+    record({ t: new Date().toISOString(), kind: "schedule", op: `mode:${body.mode}`, id: "-" });
+    return c.json({ mode: body.mode });
   });
 
   app.post("/api/schedule/ops", async (c: Context) => {
@@ -444,11 +558,43 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const id = (c.req.param("id") ?? "").toUpperCase();
     const body = await c.req.json().catch(() => ({}));
     if (body.verdict !== "agree" && body.verdict !== "disagree") return c.json({ error: "verdict는 agree|disagree" }, 400);
+    if (loadScheduleMode() !== "shadow") return c.json({ error: "그림자 판정은 shadow 모드(S1)에서만 — approval 모드(S2)에서는 approve/reject" }, 409);
     const op = fold(readLines()).find((x) => x.id === id);
     if (!op) return c.json({ error: "그런 SCHEDULE 작업이 없음" }, 404);
     if (op.status !== "draft") return c.json({ error: `지금 상태(${op.status})에서는 판정할 수 없음` }, 409);
     const reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim().slice(0, 500) : null;
     append([{ op: "verdict", id, at: new Date().toISOString(), verdict: body.verdict, reason }]);
     return c.json({ op: fold(readLines()).find((x) => x.id === id) });
+  });
+
+  // S2: 승인·거절(SUPERVISOR). approval 모드에서만
+  for (const name of ["approve", "reject"] as const) {
+    app.post(`/api/schedule/ops/:id/${name}`, async (c: Context) => {
+      const id = (c.req.param("id") ?? "").toUpperCase();
+      const body = await c.req.json().catch(() => ({}));
+      if (loadScheduleMode() !== "approval") return c.json({ error: "승인·거절은 approval 모드(S2)에서만" }, 409);
+      const op = fold(readLines()).find((x) => x.id === id);
+      if (!op) return c.json({ error: "그런 SCHEDULE 작업이 없음" }, 404);
+      if (!canApplyOp(op, name)) return c.json({ error: `지금 상태(${op.status})에서는 할 수 없음` }, 409);
+      const at = new Date().toISOString();
+      const reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim().slice(0, 500) : null;
+      append([name === "approve" ? { op: "approve", id, at } : { op: "reject", id, at, reason }]);
+      return c.json({ op: fold(readLines()).find((x) => x.id === id) });
+    });
+  }
+
+  // S2: 발부(OCC). 승인된 작업의 Linear 호출을 만들어 기록하고 돌려준다. 이미 발부됐으면 같은 호출을 다시 준다(재시도용).
+  app.post("/api/schedule/ops/:id/release", async (c: Context) => {
+    const id = (c.req.param("id") ?? "").toUpperCase();
+    if (loadScheduleMode() !== "approval") return c.json({ error: "발부는 approval 모드(S2)에서만" }, 409);
+    const s = await getSnapshot();
+    const op = current(s).find((x) => x.id === id);
+    if (!op) return c.json({ error: "그런 SCHEDULE 작업이 없음" }, 404);
+    if (op.status === "released" && op.calls) return c.json({ op, calls: op.calls });
+    if (op.status !== "approved") return c.json({ error: `승인된 작업만 발부한다(지금 ${op.status})` }, 409);
+    if (!s.linear.enabled || !s.linear.fetchedAt) return c.json({ error: "Linear를 아직 읽지 못함 — 잠시 뒤 다시" }, 503);
+    const calls = callsOf(op, op.flight ? s.tickets.find((t) => t.key === op.flight) : undefined, config.linearTeamName);
+    append([{ op: "release", id, at: new Date().toISOString(), calls }]);
+    return c.json({ op: fold(readLines()).find((x) => x.id === id), calls });
   });
 }

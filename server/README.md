@@ -87,6 +87,10 @@ Every `*.test.ts` next to a module is its unit test.
 | `GET /api/schedule/ops/:id` | One SCHEDULE operation and the mode |
 | `POST /api/schedule/ops` | OCC draft. `CLASSIFY` / `PRIORITIZE`: `{kind, flight, reason, type?, wake?, ratings?, priority?}`. `NEW`: `{kind: "NEW", title, body, project, reason, priority?, type?, wake?, ratings?, tail?, parent?, related?, blockedBy?}` → op with `flight: null` and `payload.similar: [{key, title}]`. 400 on bad input, 409 at the open-draft limit |
 | `POST /api/schedule/ops/:id/verdict` | SUPERVISOR's shadow verdict `{verdict: "agree" \| "disagree", reason?}` |
+| `POST /api/schedule/ops/:id/approve`, `/reject` | S2 only: SUPERVISOR approves, or rejects with `{reason?}` |
+| `POST /api/schedule/ops/:id/release` | S2 only: OCC releases an approved operation; returns the exact Linear calls (the same ones again if already released) |
+| `GET /api/schedule/released` | Mode and every released call (read by linear-guard) |
+| `POST /api/schedule/mode` | `{mode: shadow\|approval}` |
 
 ## State on disk
 

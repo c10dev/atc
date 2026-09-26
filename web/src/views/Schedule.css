@@ -658,3 +658,15 @@
     grid-column: 2;
   }
 }
+
+/* S2(승인 운용) 표시와 모드 스위치 */
+.sc-mode.m-approval {
+  color: var(--amber);
+}
+.schedule .toolbar {
+  gap: var(--space-3);
+}
+.sc-mode-switch {
+  flex: none;
+  white-space: nowrap;
+}

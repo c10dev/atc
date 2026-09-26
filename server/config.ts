@@ -23,4 +23,5 @@ export const config = {
   handoffGraceMs: Number(env.ATC_HANDOFF_GRACE_MIN || 5) * 60_000,
   linearApiKey: env.LINEAR_API_KEY || "",
   linearTeamKey: (env.LINEAR_TEAM_KEY || "VOC").toUpperCase(),
+  linearTeamName: env.LINEAR_TEAM_NAME || "Vocado", // S2에서 새 이슈를 만들 Linear 팀 이름(MCP save_issue의 team)
 };

@@ -11,3 +11,25 @@ test("MCP guard: 읽기 도구만 통과, 쓰기·삭제·머지는 차단, MCP�
   }
   assert.equal(checkMcp("Bash"), null);
 });
+
+test("linear-guard: S2(approval)에서 발부된 호출과 도구·입력이 정확히 같을 때만 통과", async () => {
+  const { checkLinear, sameJson } = await import("./mcp-guard.mjs");
+  const released = {
+    mode: "approval",
+    calls: [
+      { id: "S-0001", tool: "save_issue", input: { id: "VOC-195", addLabels: ["BUILD", "M", "rating:SEC"] } },
+      { id: "S-0001", tool: "save_comment", input: { issueId: "VOC-195", body: "[OCC S-0001] 분류 …" } },
+    ],
+  };
+  const ok = () => Promise.resolve(released);
+  assert.equal(await checkLinear("mcp__x__save_issue", { addLabels: ["BUILD", "M", "rating:SEC"], id: "VOC-195" }, ok), null); // 키 순서는 상관없음
+  assert.equal(await checkLinear("mcp__x__save_comment", { issueId: "VOC-195", body: "[OCC S-0001] 분류 …" }, ok), null);
+  assert.match(await checkLinear("mcp__x__save_issue", { id: "VOC-195", addLabels: ["BUILD", "M"] }, ok), /발부된 SCHEDULE 호출과 다름/);
+  assert.match(await checkLinear("mcp__x__save_issue", { id: "VOC-195", addLabels: ["BUILD", "M", "rating:SEC"], state: "Done" }, ok), /다름/);
+  assert.match(await checkLinear("mcp__x__save_issue", { id: "VOC-999", addLabels: ["BUILD", "M", "rating:SEC"] }, ok), /다름/);
+  assert.match(await checkLinear("mcp__x__delete_comment", {}, ok), /Linear 쓰기가 아닌/);
+  assert.match(await checkLinear("mcp__x__save_issue", released.calls[0].input, () => Promise.resolve({ ...released, mode: "shadow" })), /S1\(shadow\)/);
+  assert.match(await checkLinear("mcp__x__save_issue", released.calls[0].input, () => Promise.reject(new Error("ECONNREFUSED"))), /연결할 수 없어/);
+  assert.equal(sameJson([1, 2], [2, 1]), false);
+  assert.equal(sameJson({ a: 1, b: undefined }, { a: 1 }), true);
+});
