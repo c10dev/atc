@@ -114,6 +114,7 @@ Session ──claim──▶ Workspace ──branch──▶ Ticket
 | Codex sessions | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex sessions and their cwd |
 | git | `git worktree list --porcelain` in each repository | Worktree path, branch, HEAD, dirty or not |
 | Linear | GraphQL API (`LINEAR_API_KEY`) | Ticket title, state, assignee, URL |
+| GitHub | `gh pr list --repo <owner/name> --state open` for each AIRPORT with a GitHub remote, every 90 seconds (`server/sources/github.ts`) | Open PRs: head commit, checks, reviews, merge state, Draft; Codex's 👍 and comments via `gh api` for PRs without a head review |
 | Claim | `~/.local/state/atc/claims/<sessionId>/*.json` | Claims recorded by the hook |
 
 Join rules:
@@ -121,6 +122,7 @@ Join rules:
 1. **Workspace → Ticket**: take `voc-(\d+)` from the branch name to get `VOC-n`. Directory names are not used (they are inconsistent today).
 2. **Session → Workspace**: the hook record if there is one (`hook`). For Codex, the session cwd (`cwd`). Otherwise, read the **tool calls** in the transcript (including subagent transcripts) with the same rules as the hook (`hooks/paths.mjs`) and take the most recently worked worktree (`transcript`, shown as an ESTIMATED TRACK). Paths that only appear in tool results or message text don't count, and a worktree is dropped once its last activity is older than the TTL.
    Every team session's cwd is the main `vocado_nextjs` directory, so cwd alone can't tell them apart. Transcript inference is imprecise because one session moves between several worktrees, so the Claim is the source of truth.
+3. **PR → Ticket, Workspace**: `voc-(\d+)` in the PR's branch name (same rule as 1), or else `(VOC-n)` at the end of the PR title, gives the FLIGHT, and the worktree whose branch equals the PR's `headRefName` is its STAND.
 
 ## Running
 
@@ -197,12 +199,26 @@ A Claude session opened in the `controller/` folder becomes the TOWER session (C
 
 | API | What it does |
 |---|---|
-| `GET /api/controller/brief?consumer=controller` | Events since the last ack + current state (open alerts, LANDING SEQUENCE, CLEARANCEs without READBACK, traffic) |
+| `GET /api/controller/brief?consumer=controller` | Events since the last ack + current state (open alerts, LANDING SEQUENCE, GitHub status, CLEARANCEs without READBACK, traffic) |
 | `POST /api/controller/ack` | `{cursor}` mark as handled (`~/.local/state/atc/consumers/`) |
 | `POST /api/clearances` | `{to, type, stand?, flight?, text}` record a CLEARANCE, returns the message to send |
 | `POST /api/clearances/:id/readback` · `/cancel` | Confirm READBACK · cancel |
 
-Events (`server/events.ts`) are differences between snapshots: alerts raised and cleared, HANDOFF, entering and leaving the LANDING SEQUENCE (`ATC_LANDING_STATE`, default `Ready to Merge`), a session ending while holding a claim, OUTSTATION start and end. Snapshots taken right after the server starts, before Linear and git are fully read, are not compared. CLEARANCEs are recorded in `~/.local/state/atc/clearances.jsonl` (append-only).
+Events (`server/events.ts`) are differences between snapshots: alerts raised and cleared, HANDOFF, the LANDING SEQUENCE (`landing.requested` when a PR enters, `landing.cleared` when it becomes CLEARED TO LAND, `landing.blocked` when a block the CAPTAIN has to fix appears, `landing.left` when it is merged, closed or turned back into a Draft), a session ending while holding a claim, OUTSTATION start and end. Snapshots taken right after the server starts, before Linear, git and GitHub are first read, are not compared; LANDING events are only compared once both snapshots have PRs from GitHub.
+
+### LANDING SEQUENCE and CLEARED TO LAND
+
+The LANDING SEQUENCE is the list of open GitHub PRs that aren't Drafts, across every AIRPORT with a GitHub remote. atc checks each PR mechanically (`server/landing.ts`) and marks it **CLEARED TO LAND** only when all of these hold; otherwise it is **APPROACH** with the blocking conditions (a code and a Korean line each):
+
+| Condition | Blocks with |
+|---|---|
+| Not a Draft | `draft` |
+| Every check at the head commit passed (NEUTRAL and SKIPPED count as passed; every check is treated as required) | `checks-pending`, `checks-failed`, `no-checks` (no checks at all) |
+| A review on the head commit by someone other than the PR author (bots included, APPROVED or COMMENTED), or the Codex bot's 👍 reaction on the PR made after the head commit (Codex's "no major issues" signal); and no reviewer whose latest verdict is CHANGES_REQUESTED | `no-review`, `review-stale` (reviews only on older commits), `changes-requested` |
+| No drift from base: `mergeStateStatus` CLEAN, UNSTABLE or HAS_HOOKS | `behind`, `dirty`, `blocked`, `merge-unknown` (GitHub is still computing) |
+| No LOSS OF SEPARATION on the PR's STAND | `los` |
+
+CLEARED PRs come first, in the order they became ready (`readyAt`, the first time every condition held at that head; a new push starts over), then APPROACH PRs in the order they were opened. The TOWER gives `LAND` only to CLEARED PRs and tells the CAPTAIN about new blocks on APPROACH PRs with `INFO`. The reasons behind these rules are in [docs/occ.md](docs/occ.md) section 9. The snapshot carries every open PR, Drafts included, in `pulls`, and the GitHub status in `github` (`{enabled, error, fetchedAt}`). If `gh` fails, the last result stays and the error shows there. CLEARANCEs are recorded in `~/.local/state/atc/clearances.jsonl` (append-only).
 
 ## FLIGHT RECORDER and operating metrics (stage 1.5)
 
@@ -211,14 +227,14 @@ The atc server keeps an append-only log in `~/.local/state/atc/flight-recorder/Y
 | Record | When |
 |---|---|
 | `event` | Every snapshot-difference event (alerts, HANDOFF, LANDING SEQUENCE, NORDO, OUTSTATION) |
-| `sample` | Traffic every 5 minutes: AIRBORNE, HOLDING, claims, conflicts, open alerts, LANDING SEQUENCE, CLEARANCEs without READBACK |
+| `sample` | Traffic every 5 minutes: AIRBORNE, HOLDING, claims, conflicts, open alerts, LANDING SEQUENCE (PRs that aren't Drafts), CLEARANCEs without READBACK |
 | `ack` | When the TOWER session handles a brief — counts the days TOWER actually operated |
 
 `GET /api/metrics?days=1..30` (the Metrics tab) aggregates this log and the CLEARANCE log (`clearances.jsonl`) (`server/metrics.ts`).
 
 - Conflicts: count, median duration, share resolved within 5 minutes (likely false alarms)
 - CLEARANCEs: count by type, READBACK rate (excluding cancelled), median time to READBACK, CLEARANCEs over 10 minutes, cancellations
-- LANDING (merge) wait: median and maximum from entering to leaving the LANDING SEQUENCE
+- LANDING (merge) wait: median and maximum from entering to leaving the LANDING SEQUENCE, per PR
 - HANDOFF, NORDO, OUTSTATION starts, NO CONTACT and UNIDENTIFIED occurrences, daily table
 
 **Stage 2 readiness check** (proposed criteria, `READINESS`): TOWER operated on 3 or more days, READBACK rate of 90% or more, median READBACK time of 5 minutes or less, 30% or fewer conflicts resolved within 5 minutes. With fewer than 5 CLEARANCEs or fewer than 3 resolved conflicts, it shows "not enough data".
@@ -312,6 +328,7 @@ atc/
 │   │   ├── claude.ts       # ~/.claude/sessions, hook records, transcript inference (claude.test.ts)
 │   │   ├── codex.ts        # ~/.codex/sessions (claims by cwd)
 │   │   ├── git.ts          # git worktree list, dirty state, last commit
+│   │   ├── github.ts       # open PRs through gh, every 90 seconds
 │   │   └── linear.ts       # Linear GraphQL, every minute
 │   ├── model.ts            # Session / Workspace / Ticket / Claim / Alert
 │   ├── airports.ts         # AIRPORT registry and API (airports.test.ts)
@@ -322,6 +339,7 @@ atc/
 │   ├── controller.ts       # CONTROLLER API and brief (controller.test.ts)
 │   ├── dispatch.ts         # DISPATCH plan: candidates, slots, scores (dispatch.test.ts)
 │   ├── events.ts           # snapshot differences → events
+│   ├── landing.ts          # CLEARED TO LAND conditions and LANDING SEQUENCE order (landing.test.ts)
 │   ├── metrics.ts          # operating metrics and stage 2 check (metrics.test.ts)
 │   ├── proposals.ts        # DISPATCH proposal log and API (proposals.test.ts)
 │   ├── schedule.ts         # OCC SCHEDULE draft log and API (schedule.test.ts)

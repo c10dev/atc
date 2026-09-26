@@ -54,7 +54,8 @@ The server reads `.env.local` in the repository root by itself (see `.env.exampl
 | `ATC_STATE_DIR` | `~/.local/state/atc` | Claims, AIRPORT registry, CLEARANCEs, FLIGHT RECORDER |
 | `ATC_CLAIM_TTL_MIN` | `180` | Minutes after the last touch before a claim ends |
 | `ATC_HANDOFF_GRACE_MIN` | `5` | Handoff / conflict threshold in minutes |
-| `ATC_LANDING_STATE` | `Ready to Merge` | Linear state that puts a ticket in the LANDING SEQUENCE |
+
+The LANDING SEQUENCE reads open PRs with the GitHub CLI, so `gh` must be installed and logged in (`gh auth status`) for the user the service runs as. Without it, PRs are simply missing and the error shows in the snapshot's `github` field. `ATC_LANDING_STATE` is no longer read; an old line in `.env.local` does nothing.
 
 ## Access from another computer
 

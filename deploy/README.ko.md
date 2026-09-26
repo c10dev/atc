@@ -54,7 +54,8 @@ systemctl --user disable --now atc    # 멈추고 자동 시작에서 빼기
 | `ATC_STATE_DIR` | `~/.local/state/atc` | 점유, AIRPORT 등록부, CLEARANCE, FLIGHT RECORDER |
 | `ATC_CLAIM_TTL_MIN` | `180` | 마지막 접촉 뒤 점유가 끝나는 시간(분) |
 | `ATC_HANDOFF_GRACE_MIN` | `5` | HANDOFF·충돌 판정 기준 시간(분) |
-| `ATC_LANDING_STATE` | `Ready to Merge` | 티켓이 LANDING SEQUENCE에 들어가는 Linear 상태 |
+
+LANDING SEQUENCE는 GitHub CLI로 열린 PR을 읽는다. 서비스를 돌리는 사용자에게 `gh`가 설치되어 로그인되어 있어야 한다(`gh auth status`). 없으면 PR이 빠지고 오류가 스냅샷의 `github` 필드에 뜬다. `ATC_LANDING_STATE`는 더 이상 읽지 않는다. `.env.local`에 남은 줄은 아무 일도 하지 않는다.
 
 ## 다른 컴퓨터에서 접속
 

@@ -9,7 +9,7 @@ atc splits into two control sessions, the way aviation does:
 
 In real aviation the flight dispatcher belongs to the airline's OCC, not to ATC. So DISPATCH (stage 2) moves into OCC, and OCC takes over the work the "President" session does by hand today.
 
-> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 built: SCHEDULE drafts in shadow operation for `CLASSIFY`, `PRIORITIZE` and `NEW` (`server/schedule.ts`, `atcctl schedule brief|draft`, the SCHEDULE tab, OCC rules). `NEW` is the CHARTER DESK: an AD HOC FLIGHT drafted from a CHARTER REQUEST, with body-section checks and a title-similarity duplicate search over the snapshot (issues updated in the last 45 days). At most 5 open drafts of any kind, and drafts expire after 3 days without a verdict. Other operations and S2 and later are design only. Decisions are listed under "Decisions" at the end.
+> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 built: SCHEDULE drafts in shadow operation for `CLASSIFY`, `PRIORITIZE` and `NEW` (`server/schedule.ts`, `atcctl schedule brief|draft`, the SCHEDULE tab, OCC rules). `NEW` is the CHARTER DESK: an AD HOC FLIGHT drafted from a CHARTER REQUEST, with body-section checks and a title-similarity duplicate search over the snapshot (issues updated in the last 45 days). At most 5 open drafts of any kind, and drafts expire after 3 days without a verdict. ATC's CLEARED TO LAND check (section 9) is built: the LANDING SEQUENCE now comes from open GitHub PRs. Other operations and S2 and later are design only. Decisions are listed under "Decisions" at the end.
 
 ## 1. Current facts
 
@@ -151,9 +151,29 @@ The session reloads its manual: `/tick` starts with `atcctl manual check`, which
 
 ## 9. What ATC takes
 
-- **CLEARED TO LAND**: a LANDING SEQUENCE entry is marked ready only when the PR's exact head has green required checks, a review on that head, no base drift and no LOS. This is the mechanical half of what President checks by hand today.
+- **CLEARED TO LAND** (built): a LANDING SEQUENCE entry is marked ready only when the PR's exact head has green required checks, a review on that head, no base drift and no LOS. This is the mechanical half of what President checks by hand today. It catches CI that is green only on an older commit, a review left on an older commit, and drift from main.
 - **Flow management (stage 3)**: merge slots and ground stops when CI backs up, as in `docs/dispatch.md`.
 - ATC keeps reading Linear only. It never drafts SCHEDULE operations.
+
+### 9.1 CLEARED TO LAND as built (2026-09-26)
+
+Source: `server/sources/github.ts` runs `gh pr list --repo <owner/name> --state open --limit 100 --json …` for every open AIRPORT whose git remote is on GitHub, every 90 seconds in the background (`execFile`, no shell). A failing repository keeps its last result and the error shows in the snapshot's `github` field; the snapshot never waits for `gh`. The verdict is a pure function (`server/landing.ts`, tests in `landing.test.ts`). Each PR is linked to a FLIGHT by `voc-(\d+)` in its branch name and to a STAND by the worktree checked out on its branch.
+
+| Condition | Decision | Why |
+|---|---|---|
+| Checks | The head's `statusCheckRollup` must be non-empty and every check passed. NEUTRAL and SKIPPED pass; anything not completed is `checks-pending`; any other conclusion (and StatusContext FAILURE / ERROR) is `checks-failed`. A re-run check counts only in its latest run. **Every check is treated as required** | Knowing which checks are required takes a `gh pr checks --required` call per PR on every poll (vocado alone has about 20 open PRs). vocado's three checks (Database security contract, core-sync-check, Vercel) all matter before a merge anyway. Revisit if a repository adds optional checks that often fail |
+| No checks | Blocks (`no-checks`) | CLEARED means mechanically verified; a PR with no checks has no evidence. It also covers the seconds after a push before checks register. Consequence: repositories without CI (atc itself today) never get CLEARED TO LAND, and the SUPERVISOR decides by hand as before |
+| Review | A review whose `commit.oid` equals the head, by someone other than the PR author (bots count, so the Codex review `chatgpt-codex-connector` does), in state APPROVED or COMMENTED. **Or** a `+1` reaction on the PR by the Codex bot (`CODEX_BOTS` in `server/landing.ts`) created at or after the head commit's committer date. Only older commits reviewed: `review-stale`; none at all: `no-review`. When the Codex bot's latest PR comment after the head is its "usage limits" notice, the text says "Codex 한도 — 사람 리뷰 필요" | The author's own COMMENTED reviews are thread replies (empty body), not reviews. A 👍 is Codex's "no major issues" signal: on a clean PR it leaves no review, only the reaction (seen on merged PRs 377, 378, 393, 400, each 👍 a few minutes after the head commit). The reaction is not tied to a commit, so the committer date is the link: a 👍 kept from before a newer head doesn't count. Limits: the committer date is not the push time, so a commit made before the 👍 but pushed after it would wrongly count; and if Codex ever kept its old 👍 instead of adding a new one after re-reviewing, the new head would show `no-review`. Other comments and reactions don't count. The reactions, the head's committer date and the Codex comments are fetched (`gh api`, read-only) only for non-Draft PRs without a head review; the committer date is cached per sha, and a 👍 already seen at a head isn't fetched again |
+| Changes requested | Blocks (`changes-requested`) when any reviewer's latest verdict (APPROVED / CHANGES_REQUESTED / DISMISSED, ignoring COMMENTED) is CHANGES_REQUESTED, on any commit, or `reviewDecision` says so | Matches how GitHub keeps a change request open until the reviewer approves or it is dismissed |
+| Base drift | `mergeStateStatus` CLEAN, UNSTABLE and HAS_HOOKS pass. BEHIND (`behind`), DIRTY (`dirty`), BLOCKED (`blocked`) and UNKNOWN (`merge-unknown`, "GitHub이 아직 계산 중") block. DRAFT is left to the Draft condition | UNSTABLE means mergeable with checks that didn't pass, and the checks condition already names them. HAS_HOOKS is CLEAN plus server hooks. BEHIND only appears when the base branch requires branches to be up to date (vocado does) |
+| Draft | Blocks (`draft`). Drafts are in `pulls` but **not in the LANDING SEQUENCE** (brief, events, sample) | A Draft hasn't asked to land; listing 15 vocado Drafts to the TOWER would only make noise |
+| LOS | Blocks (`los`) when an open `conflict` alert is on the PR's STAND | Merging while two teams work in the same worktree is how commits get lost |
+
+Order: CLEARED PRs by `readyAt`, the first time every condition held at that head (kept in memory, keyed by `repo#number@head`, so a new push starts over; a transient block at the same head keeps the original time), then APPROACH PRs by `createdAt`. The TOWER numbers `LAND` by that order (`seq`).
+
+**Linear `Ready to Merge`**: dropped, together with the `ATC_LANDING_STATE` setting. vocado's Linear has no such state, the PR already carries everything the check needs, and keeping an unused setting would mislead. The FIDS still shows a Linear state named `Ready to Merge` as CLEARED TO LAND if a team adds one.
+
+**Telling the CAPTAIN**: the TOWER sends `INFO`, not `REPORT`. The blocks are information for the CAPTAIN, who decides how to fix them; `REPORT` would ask for a status report back that the TOWER doesn't need, since atc sees the PR itself. To avoid repeats, atc emits `landing.blocked` only when a block the CAPTAIN has to act on appears (`checks-pending`, `merge-unknown` and `los` don't count: the first two resolve by waiting, LOS has its own alert), and the TOWER sends at most one `INFO` per such event, and none after a server restart.
 
 ## 10. What to add to atc
 
@@ -194,7 +214,7 @@ The session reloads its manual: `/tick` starts with `atcctl manual check`, which
 1. ✅ **S0**: create `atc/occ/` from `atc/dispatch/` (merge), add read-only `gh` to its guard, a read-only MCP guard, reload the manual on change. Still to do: tell President about the handover
 2. ✅ TAIL ASSIGNMENT `tail:TEAM_X` in the planner, first shipped as `lane:TEAM_X` (fixes the VOC-196 double dispatch right away). Labels are read from the existing Linear query
 3. ✅ **S1**: SCHEDULE log, API, `atcctl schedule`, SCHEDULE tab, shadow verdicts. First operations: `CLASSIFY` and `PRIORITIZE`
-4. Flight following in `/tick` (read-only `gh`), CLEARED TO LAND checks in TOWER
+4. Flight following in `/tick` (read-only `gh`), ✅ CLEARED TO LAND checks in TOWER (section 9.1)
 5. **S2**: linear-guard, `schedule release`, APPLIED detection, the vocado `CLAUDE.md` rule change (confirmed with the SUPERVISOR at that time)
 6. **S3**: automatic operations, only those that S2 data supports
 
