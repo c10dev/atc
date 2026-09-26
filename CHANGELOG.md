@@ -13,6 +13,9 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 - Release badge in the READMEs.
 - This changelog.
 
+### Changed
+- FIDS split-flap motion looks like a real board. Tiles no longer go blank mid-flap: the new letter waits behind the falling flap, which speeds up like gravity and darkens as it tilts. Text without tiles (TIME, REMARKS, Glass Cockpit and Night Sky) drops in letter by letter instead of showing half-letters. At most 6 flaps per cell, and the board settles faster.
+
 ## [0.1.0] — 2026-09-26
 
 First release. ✈️ Ready for takeoff.

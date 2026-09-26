@@ -1200,7 +1200,7 @@ a.ticket:hover {
 
 /* ── split-flap 칸의 반쪽 판. 넘기는 움직임은 SplitFlap.tsx가 건다 ── */
 .is-flipping {
-  perspective: 90px;
+  perspective: 140px;
 }
 .fl-sizer {
   visibility: hidden;
@@ -1244,6 +1244,24 @@ a.ticket:hover {
 }
 .fl-bot i {
   top: -100%;
+}
+/* 기울어진 판의 그늘 */
+.fl-shade {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: #000;
+  opacity: 0;
+}
+/* 판이 없는 칸에서 떨어져 앉는 글자 */
+.fl-tick {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.flap-bare .fl-tick {
+  justify-items: start;
 }
 .ticket-title {
   margin-top: var(--space-2);
