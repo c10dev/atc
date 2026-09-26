@@ -142,13 +142,15 @@ function Strip({
                       {ticket && <div className="sub">{flightPhase(ticket)}</div>}
                     </>
                   ) : (
-                    <div className="val big none">—</div>
+                    <div className="val big none" title="티켓 없는 작업(AD HOC). 브랜치 claude/<slug>">
+                      AD HOC
+                    </div>
                   )}
                 </div>
                 <div className="cell cell-route">
                   <span className="cap">ROUTE</span>
                   <div className="route" title={ticket?.title}>
-                    {ticket?.title ?? <span className="none">티켓 없음</span>}
+                    {ticket?.title ?? <span className="none">AD HOC — 티켓 없는 작업</span>}
                   </div>
                 </div>
                 <div className="cell">
