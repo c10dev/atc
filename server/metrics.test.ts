@@ -47,6 +47,18 @@ test("LANDING SEQUENCE와 이벤트 수", () => {
   assert.equal(m.away, 1);
 });
 
+test("LANDING SEQUENCE: PR 단위(저장소#번호)로 짝짓는다. 한 FLIGHT의 PR 여러 개도 따로", () => {
+  const R = "/r/vocado";
+  const records = [
+    ev(at(8), { kind: "landing.requested", repo: R, pull: 1, ticketKey: "VOC-9" }),
+    ev(at(8, 5), { kind: "landing.requested", repo: R, pull: 2, ticketKey: "VOC-9" }),
+    ev(at(8, 10), { kind: "landing.cleared", repo: R, pull: 1, ticketKey: "VOC-9" }),
+    ev(at(8, 30), { kind: "landing.left", repo: R, pull: 1, ticketKey: "VOC-9" }),
+  ];
+  const m = computeMetrics(records, [], NOW, 1);
+  assert.deepEqual(m.landing, { requests: 2, landed: 1, waiting: 1, medianWaitMin: 30, maxWaitMin: 30 });
+});
+
 test("CLEARANCE: READBACK 비율은 취소 제외, 늦은 READBACK·NO READBACK은 overdue", () => {
   const cs = [clr(at(9), at(9, 2)), clr(at(9), at(9, 4)), clr(at(10), at(10, 30)), clr(at(11), null), clr(at(11), null, true)];
   const m = computeMetrics([], cs, NOW, 1);

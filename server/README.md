@@ -2,7 +2,7 @@
 
 **English** · [한국어](README.ko.md)
 
-Node 24 + Hono. Every 2 seconds it reads Claude Code, Codex, git and Linear, merges them into one `Snapshot`, and pushes it to the web UI over SSE. It also records events and samples (FLIGHT RECORDER), keeps the CONTROLLER's CLEARANCEs, DISPATCH proposals and OCC SCHEDULE drafts, and serves `web/dist`. It never writes to git, worktrees or Linear.
+Node 24 + Hono. Every 2 seconds it reads Claude Code, Codex, git, Linear and GitHub PRs, merges them into one `Snapshot`, and pushes it to the web UI over SSE. It also records events and samples (FLIGHT RECORDER), keeps the CONTROLLER's CLEARANCEs, DISPATCH proposals and OCC SCHEDULE drafts, and serves `web/dist`. It never writes to git, worktrees, Linear or GitHub (`gh` is only used to list PRs).
 
 Node runs the TypeScript files directly; there is no build step for the server.
 
@@ -16,9 +16,9 @@ npm test           # node --test for server/**/*.test.ts, hooks and controller
 
 `index.ts` runs `tick()` every 2 seconds:
 
-1. `buildSnapshot()` (`snapshot.ts`) reads the sources, joins session ─ claim ─ worktree ─ ticket, decides handoffs and conflicts (`occupancy.ts`) and computes alerts.
+1. `buildSnapshot()` (`snapshot.ts`) reads the sources, joins session ─ claim ─ worktree ─ ticket, decides handoffs and conflicts (`occupancy.ts`), computes alerts and checks each open PR for CLEARED TO LAND (`landing.ts`).
 2. `diffSnapshots()` (`events.ts`) turns the difference from the previous snapshot into events; each is written to the FLIGHT RECORDER.
-3. Every 5 minutes, once the snapshot is warm (Linear and git fully read), it records a traffic sample and runs DISPATCH (`runDispatch`).
+3. Every 5 minutes, once the snapshot is warm (Linear, git and GitHub read at least once), it records a traffic sample and runs DISPATCH (`runDispatch`).
 4. If anything besides the timestamp changed, the snapshot goes to every SSE listener.
 
 `/api/events` sends the current snapshot on connect, then each change, plus a `ping` every 25 seconds.
@@ -31,6 +31,7 @@ npm test           # node --test for server/**/*.test.ts, hooks and controller
 | `codex.ts` | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex sessions (busy if active in the last 90 s), `cwd` claims |
 | `git.ts` | `git worktree list --porcelain` per AIRPORT | Worktrees, branch, HEAD, dirty state, last commit (details cached 30 s); ticket key from the branch name |
 | `linear.ts` | Linear GraphQL (`LINEAR_API_KEY`), polled every 60 s | Tickets, states, priorities, projects, relations; issue details for DISPATCH |
+| `github.ts` | `gh pr list --repo <owner/name> --state open --json …` per AIRPORT whose git remote is on GitHub, polled every 90 s in the background (`execFile`, no shell) | Open PRs per AIRPORT: head, checks, reviews, merge state, Draft. For non-Draft PRs without a head review, also the Codex bot's 👍 reactions, the head's committer date (cached per sha) and Codex's PR comments (`gh api`, read-only). A failed repository keeps its last result; errors show in `snapshot.github.error`. Without `gh`, `enabled` is false |
 
 ## Modules
 
@@ -38,13 +39,14 @@ npm test           # node --test for server/**/*.test.ts, hooks and controller
 |---|---|
 | `index.ts` | Entry: tick loop, SSE, mounts the APIs, serves `web/dist` |
 | `config.ts` | Loads `.env.local` and environment variables ([deploy](../deploy/README.md#configuration)) |
-| `model.ts` | Shared types: `Session`, `Airport`, `Workspace`, `Ticket`, `Claim`, `Handoff`, `Alert`, `Clearance`, `TrafficEvent`, `Snapshot`. The web UI imports these directly |
-| `snapshot.ts` | Merges sources, keeps fresh claims only, computes alerts |
+| `model.ts` | Shared types: `Session`, `Airport`, `Workspace`, `Ticket`, `Claim`, `Handoff`, `Alert`, `Clearance`, `TrafficEvent`, `PullRequest`, `LandingBlockCode`, `Snapshot`. The web UI imports these directly |
+| `snapshot.ts` | Merges sources, keeps fresh claims only, computes alerts and `pulls`. Snapshot fields: `linear` and `github` status (`{enabled, error, fetchedAt}`), `sessions`, `workspaces`, `tickets`, `columns`, `airports`, `claims`, `handoffs`, `alerts`, `clearances`, `pulls` (open PRs, CLEARED first) |
+| `landing.ts` | CLEARED TO LAND conditions per PR (checks, review on the head, merge state, Draft, LOS), `readyAt` per head, LANDING SEQUENCE order (pure `buildPulls`, `landingBlocks`) |
 | `occupancy.ts` | HANDOFF vs conflict vs brief visit from claim intervals `[since, lastAt]` |
 | `airports.ts` | AIRPORT registry: auto-discovery under `~/projects`, identity by first commit hash, codes, open/close/rename/delete |
 | `away.ts` | OUTSTATION: sessions holding a STAND outside their home AIRPORT (shared with the UI) |
 | `callsign.ts` | Callsigns (`TEAM_A` → `ALPHA`) and FLIGHT NUMBERs (shared with the UI) |
-| `events.ts` | Snapshot differences → events (alerts, handoffs, LANDING SEQUENCE, lost sessions, OUTSTATION), with a cursor-based event log |
+| `events.ts` | Snapshot differences → events (alerts, handoffs, LANDING SEQUENCE `landing.requested` / `cleared` / `blocked` / `left`, lost sessions, OUTSTATION), with a cursor-based event log |
 | `controller.ts` | CONTROLLER (TOWER) API: brief, ack, CLEARANCE issue / readback / cancel, the fixed message format |
 | `clearances.ts` | CLEARANCE log: append-only JSONL folded into current state |
 | `recorder.ts` | FLIGHT RECORDER: daily JSONL (`event`, `sample`, `dispatch`, `ack`, `schedule`), kept 30 days |

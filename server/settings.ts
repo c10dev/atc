@@ -12,7 +12,6 @@ export interface ServerSettings {
   linear: {
     apiKeySet: boolean;
     teamKey: string;
-    landingState: string;
   };
   agents: {
     claude: { sessionsDir: string; present: boolean; claimHook: boolean };
@@ -27,7 +26,6 @@ export interface ServerSettings {
 export interface SettingsPatch {
   apiKey?: string | null;
   teamKey?: string;
-  landingState?: string;
   claimTtlMin?: number;
   handoffGraceMin?: number;
   projectsDir?: string;
@@ -52,7 +50,6 @@ export function readServerSettings(): ServerSettings {
     linear: {
       apiKeySet: Boolean(config.linearApiKey),
       teamKey: config.linearTeamKey,
-      landingState: config.landingState,
     },
     agents: {
       claude: { sessionsDir: claudeSessions, present: existsSync(claudeSessions), claimHook: claimHookInstalled() },
@@ -82,12 +79,6 @@ export function validatePatch(patch: Record<string, unknown>): { env: Record<str
         const v = typeof raw === "string" ? raw.trim().toUpperCase() : "";
         if (/^[A-Z][A-Z0-9]{1,9}$/.test(v)) env.LINEAR_TEAM_KEY = v;
         else errors.teamKey = "영문 대문자로 시작하는 2–10자(예: VOC)";
-        break;
-      }
-      case "landingState": {
-        const v = typeof raw === "string" ? raw.trim() : "";
-        if (v.length >= 1 && v.length <= 64 && plain(v)) env.ATC_LANDING_STATE = v;
-        else errors.landingState = "1–64자, 따옴표·역슬래시 없이";
         break;
       }
       case "claimTtlMin":
@@ -141,7 +132,6 @@ function writeEnvFile(changes: Record<string, string | null>) {
 function applyToConfig(env: Record<string, string | null>) {
   if ("LINEAR_API_KEY" in env) config.linearApiKey = env.LINEAR_API_KEY ?? "";
   if (env.LINEAR_TEAM_KEY) config.linearTeamKey = env.LINEAR_TEAM_KEY;
-  if (env.ATC_LANDING_STATE) config.landingState = env.ATC_LANDING_STATE;
   if (env.ATC_CLAIM_TTL_MIN) config.claimTtlMs = Number(env.ATC_CLAIM_TTL_MIN) * 60_000;
   if (env.ATC_HANDOFF_GRACE_MIN) config.handoffGraceMs = Number(env.ATC_HANDOFF_GRACE_MIN) * 60_000;
   if (env.ATC_PROJECTS_DIR) config.projectsDir = env.ATC_PROJECTS_DIR;

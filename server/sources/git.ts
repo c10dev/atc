@@ -24,6 +24,12 @@ export function ticketKeyFromBranch(branch: string | null): string | null {
   return m ? `${config.linearTeamKey}-${Number(m[1])}` : null;
 }
 
+// PR 제목 끝의 "(VOC-170)". 브랜치에 voc-<n>이 없는 PR의 FLIGHT를 찾을 때 쓴다.
+export function ticketKeyFromTitle(title: string | null, teamKey = config.linearTeamKey): string | null {
+  const m = title?.match(/\(([A-Za-z]+)-(\d+)\)\s*$/);
+  return m && m[1].toUpperCase() === teamKey ? `${teamKey}-${Number(m[2])}` : null;
+}
+
 async function listWorktrees(repo: string): Promise<Workspace[]> {
   const out = await git(repo, ["worktree", "list", "--porcelain"]);
   const result: Workspace[] = [];

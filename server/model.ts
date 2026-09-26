@@ -139,6 +139,8 @@ export type TrafficEventKind =
   | "alert.cleared"
   | "handoff"
   | "landing.requested"
+  | "landing.cleared"
+  | "landing.blocked"
   | "landing.left"
   | "session.lost"
   | "away.started"
@@ -153,13 +155,49 @@ export interface TrafficEvent {
   workspacePath?: string;
   ticketKey?: string;
   sessionIds?: string[];
-  repo?: string; // away.*: OUTSTATION으로 간 AIRPORT(저장소)
+  repo?: string; // away.*: OUTSTATION으로 간 AIRPORT(저장소), landing.*: PR의 AIRPORT
+  pull?: number; // landing.*: PR 번호
+  blocks?: LandingBlockCode[]; // landing.requested·landing.blocked: 그때 막힌 조건
   message?: string;
+}
+
+// CLEARED TO LAND 조건(server/landing.ts). 하나라도 걸리면 APPROACH.
+export type LandingBlockCode =
+  | "draft"
+  | "checks-pending"
+  | "checks-failed"
+  | "no-checks"
+  | "no-review"
+  | "review-stale"
+  | "changes-requested"
+  | "behind"
+  | "dirty"
+  | "blocked"
+  | "merge-unknown"
+  | "los";
+
+// GitHub에 열린 PR. LANDING SEQUENCE의 단위.
+export interface PullRequest {
+  repo: string; // AIRPORT 본 체크아웃 경로 (Workspace.repo와 같은 값)
+  number: number;
+  title: string;
+  url: string;
+  branch: string; // headRefName
+  head: string; // headRefOid
+  base: string;
+  ticketKey: string | null; // 브랜치의 voc-<n>
+  standPath: string | null; // 그 브랜치를 체크아웃한 워크트리 path
+  draft: boolean;
+  landing: "CLEARED" | "APPROACH";
+  blocks: { code: LandingBlockCode; text: string }[]; // 한국어 한 줄씩
+  readyAt: string | null; // 이 head에서 모든 조건이 처음 맞은 시각. CLEARED일 때만
+  createdAt: string; // PR을 연 시각 (APPROACH 정렬, LAND CLEARANCE 짝짓기)
 }
 
 export interface Snapshot {
   at: string;
   linear: { enabled: boolean; error: string | null; fetchedAt: string | null };
+  github: { enabled: boolean; error: string | null; fetchedAt: string | null };
   sessions: Session[];
   workspaces: Workspace[];
   tickets: Ticket[];
@@ -169,4 +207,5 @@ export interface Snapshot {
   handoffs: Handoff[];
   alerts: Alert[];
   clearances: Clearance[]; // READBACK 대기 중이거나 최근 24시간 안의 CLEARANCE
+  pulls: PullRequest[]; // 열린 PR. CLEARED(readyAt 순) 다음 APPROACH(연 순서)
 }

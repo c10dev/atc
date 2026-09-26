@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config.ts";
+import { inSequence } from "./landing.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 
 // FLIGHT RECORDER. 날짜(UTC)별 JSONL에 추가만 한다. 서버를 재시작해도 남아 지표 계산에 쓴다.
@@ -15,7 +16,7 @@ export interface Sample {
   claims: number; // 점유(HANDOFF 제외)
   conflicts: number;
   alerts: number; // 열린 경보 전체
-  landing: number; // LANDING SEQUENCE(머지 대기열) 길이
+  landing: number; // LANDING SEQUENCE(Draft가 아닌 열린 PR) 길이
   pendingClearances: number;
 }
 
@@ -46,7 +47,7 @@ export function sampleOf(s: Snapshot): Sample {
     claims: active.length,
     conflicts: s.alerts.filter((a) => a.kind === "conflict").length,
     alerts: s.alerts.length,
-    landing: s.tickets.filter((t) => t.state === config.landingState).length,
+    landing: s.pulls.filter(inSequence).length,
     pendingClearances: s.clearances.filter((c) => !c.readbackAt && !c.cancelledAt).length,
   };
 }

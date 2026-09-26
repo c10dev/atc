@@ -55,6 +55,8 @@ const median = (xs: number[]) => {
 };
 const round1 = (x: number | null) => (x === null ? null : Math.round(x * 10) / 10);
 const day = (iso: string) => iso.slice(0, 10);
+// LANDING SEQUENCE 한 건: PR(저장소#번호). PR 이전 기록(Linear Ready to Merge)은 티켓 key.
+const landingKey = (e: TrafficEvent) => (e.repo && e.pull ? `${e.repo}#${e.pull}` : (e.ticketKey ?? null));
 
 // 발생 → 해소 짝짓기. key가 같은 다음 cleared/left 이벤트가 끝이다. 끝이 없으면 아직 열려 있다.
 function spans(events: TrafficEvent[], start: (e: TrafficEvent) => string | null, end: (e: TrafficEvent) => string | null, now: number) {
@@ -119,8 +121,8 @@ export function computeMetrics(records: RecordLine[], clearances: Clearance[], n
   );
   const landings = spans(
     events,
-    (e) => (e.kind === "landing.requested" ? e.ticketKey ?? null : null),
-    (e) => (e.kind === "landing.left" ? e.ticketKey ?? null : null),
+    (e) => (e.kind === "landing.requested" ? landingKey(e) : null),
+    (e) => (e.kind === "landing.left" ? landingKey(e) : null),
     now,
   );
   const count = (kind: TrafficEvent["kind"], alertKind?: string) =>

@@ -5,7 +5,8 @@ import { callsign, flightNumber } from "./callsign.ts";
 import { awayOperations } from "./away.ts";
 import { allClearances, CLEARANCE_TYPES, isPending, issueClearance, markClearance } from "./clearances.ts";
 import { config } from "./config.ts";
-import { type EventLog, landingKeys } from "./events.ts";
+import type { EventLog } from "./events.ts";
+import { inSequence } from "./landing.ts";
 import { record } from "./recorder.ts";
 import type { Clearance, ClearanceType, Session, Snapshot, TrafficEvent } from "./model.ts";
 
@@ -46,24 +47,34 @@ export function buildBrief(
     ageMin: Math.round((now - Date.parse(c.at)) / 60_000),
   });
 
-  const landing = landingKeys(s);
-  const landingQueue = s.tickets
-    .filter((t) => landing.has(t.key))
-    .sort((a, b) => (a.updatedAt ?? "").localeCompare(b.updatedAt ?? ""))
-    .map((t) => {
-      const stands = s.workspaces.filter((w) => w.ticketKey === t.key);
-      const lastLand = clearances.filter((c) => c.type === "LAND" && c.flight === t.key && !c.cancelledAt).at(-1);
-      return {
-        flight: flightNumber(t.key),
-        key: t.key,
-        title: t.title,
-        stands: stands.map((w) => ({
-          stand: w.name,
-          holders: active.filter((c) => c.workspacePath === w.path).map((c) => label(c.sessionId)),
-        })),
-        landClearance: lastLand ? { id: lastLand.id, readBack: Boolean(lastLand.readbackAt) } : null,
-      };
-    });
+  // LANDING SEQUENCE: Draft가 아닌 열린 PR. CLEARED TO LAND가 readyAt 순으로 앞(seq 1, 2, …), 그 뒤 APPROACH.
+  const sequence = s.pulls.filter(inSequence);
+  const landingQueue = sequence.map((p) => {
+    const stand = p.standPath ? wsByPath.get(p.standPath) : undefined;
+    // 이 PR을 연 뒤 같은 STAND(없으면 같은 FLIGHT)로 나간 LAND
+    const lastLand = clearances
+      .filter(
+        (c) =>
+          c.type === "LAND" &&
+          !c.cancelledAt &&
+          c.at >= p.createdAt &&
+          ((p.standPath && c.stand === p.standPath) || (!c.stand && p.ticketKey && c.flight === p.ticketKey)),
+      )
+      .at(-1);
+    return {
+      seq: p.landing === "CLEARED" ? sequence.filter((x) => x.landing === "CLEARED").indexOf(p) + 1 : null,
+      landing: p.landing,
+      flight: flight(p.ticketKey) ?? null,
+      key: p.ticketKey,
+      airport: codeOf(p.repo),
+      pr: { number: p.number, url: p.url, title: p.title, branch: p.branch, head: p.head.slice(0, 7) },
+      stand: stand?.name ?? null,
+      holders: p.standPath ? active.filter((c) => c.workspacePath === p.standPath).map((c) => label(c.sessionId)) : [],
+      blocks: p.blocks,
+      readyAt: p.readyAt,
+      landClearance: lastLand ? { id: lastLand.id, readBack: Boolean(lastLand.readbackAt) } : null,
+    };
+  });
 
   const traffic = s.sessions
     .filter((x) => x.status !== "dead" && active.some((c) => c.sessionId === x.id))
@@ -98,6 +109,8 @@ export function buildBrief(
       flight: flight(e.ticketKey),
       sessions: e.sessionIds?.map(label),
       airport: codeOf(e.repo),
+      pr: e.pull,
+      blocks: e.blocks,
       message: e.message,
     })),
     open: {
@@ -115,6 +128,7 @@ export function buildBrief(
       noContact: alertsOf("no-workspace").map((a) => flight(a.ticketKey)),
     },
     landingQueue,
+    github: s.github,
     clearances: {
       pending: pending.map(clearanceView),
       overdue: pending.filter((c) => now - Date.parse(c.at) > OVERDUE_MS).map((c) => c.id),
