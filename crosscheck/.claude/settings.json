@@ -1,8 +1,5 @@
 {
   "model": "claude-ocx-opencode-go--muse-spark-1.3-contributor[1m]",
-  "env": {
-    "ATC_CROSSCHECK_MODEL": "claude-ocx-opencode-go--muse-spark-1.3-contributor[1m]"
-  },
   "permissions": {
     "allow": [
       "Bash(node ../controller/atcctl.mjs *)",

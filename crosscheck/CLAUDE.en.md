@@ -31,7 +31,7 @@ In the DISPATCH and SCHEDULE tabs the SUPERVISOR sees the mark and either follow
 | `gh pr view <N> --repo <owner/name> --json state,mergedAt,title` | Whether a PR named in a body or note is open or merged. `gh pr checks <N> --repo …` for CI, `gh pr list --repo … --search <VOC-190>` to find a FLIGHT's PR |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / reread |
 
-atc accepts a mark only on open items (DISPATCH: `proposed` and not on HOLD; SCHEDULE: `draft`). The reason is one line of at most 500 characters. atcctl adds the model name to the mark from the settings `env` (`ATC_CROSSCHECK_MODEL`). Don't write the model name in the reason, and don't try to change it with a variable in front of the command (the guard blocks it).
+atc accepts a mark only on open items (DISPATCH: `proposed` and not on HOLD; SCHEDULE: `draft`). The reason is one line of at most 500 characters. A mark command (`dispatch|schedule crosscheck`) runs only after the guard confirms this session's **real model** from its transcript. Anything other than Muse (`muse-spark`) or Terra (`gpt-5.6-terra`) is blocked; if blocked, leave no mark and note "blocked by the model check" in the CROSSCHECK LOG (the SUPERVISOR switches the app's model to Muse or reopens with `ocx claude`). The guard also adds the model name to the mark. Don't write the model name in the reason, and don't try to set it with `--model` or a variable in front of the command (both are blocked). Run a mark command on its own, with no pipes or chains.
 
 ## Order of checks
 

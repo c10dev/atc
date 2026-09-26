@@ -16,6 +16,7 @@
 4. For a DISPATCH proposal: `node ../controller/atcctl.mjs dispatch crosscheck <D-xxxx> agree|disagree -- '<one-line reason>'`.
 5. For a SCHEDULE draft: `node ../controller/atcctl.mjs schedule crosscheck <S-xxxx> agree|disagree -- '<one-line reason>'`.
    - A 409 (not open, or on HOLD) means the SUPERVISOR decided in the meantime or the situation changed. Do not retry.
+   - Run a mark command on its own, with no pipe. If the guard's real-model check blocks it ("CROSSCHECK mark 차단 — … 실제 모델"), stop marking for this pass and note it in the LOG.
 6. When the evidence is not enough to decide, leave no mark.
 7. Leave a one- or two-line CROSSCHECK LOG. If nothing happened, "Nothing to report".
 
