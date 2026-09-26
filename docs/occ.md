@@ -9,7 +9,7 @@ atc splits into two control sessions, the way aviation does:
 
 In real aviation the flight dispatcher belongs to the airline's OCC, not to ATC. So DISPATCH (stage 2) moves into OCC, and OCC takes over the work the "President" session does by hand today.
 
-> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and `lane:TEAM_X` in the planner (to be renamed `tail:TEAM_X`, TAIL ASSIGNMENT, see [fleet.md](fleet.md)). S1 and later are design only. Decisions are listed under "Decisions" at the end.
+> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 and later are design only. Decisions are listed under "Decisions" at the end.
 
 ## 1. Current facts
 
@@ -192,7 +192,7 @@ The session reloads its manual: `/tick` starts with `atcctl manual check`, which
 ## 13. Implementation order
 
 1. ✅ **S0**: create `atc/occ/` from `atc/dispatch/` (merge), add read-only `gh` to its guard, a read-only MCP guard, reload the manual on change. Still to do: tell President about the handover
-2. ✅ `lane:TEAM_X` in the planner (fixes the VOC-196 double dispatch right away). Labels are read from the existing Linear query
+2. ✅ TAIL ASSIGNMENT `tail:TEAM_X` in the planner, first shipped as `lane:TEAM_X` (fixes the VOC-196 double dispatch right away). Labels are read from the existing Linear query
 3. **S1**: SCHEDULE log, API, `atcctl schedule`, SCHEDULE tab, shadow verdicts
 4. Flight following in `/tick` (read-only `gh`), CLEARED TO LAND checks in TOWER
 5. **S2**: linear-guard, `schedule release`, APPLIED detection, the vocado `CLAUDE.md` rule change (confirmed with the SUPERVISOR at that time)

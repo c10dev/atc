@@ -92,9 +92,9 @@ CAPTAIN이 "PR 올림", "리뷰 끝남", "끝남"을 보고하거나 SUPERVISOR�
 
 보고와 다른 점이 있으면 사실만 SUPERVISOR에게 알린다. 머지 여부나 리뷰 판정은 말하지 않는다.
 
-## `lane:TEAM_X` 라벨
+## TAIL ASSIGNMENT (`tail:TEAM_X` 라벨)
 
-Linear 라벨 `lane:TEAM_X`가 붙은 FLIGHT는 planner가 그 팀에만 제안한다. 사람(지금은 President나 SUPERVISOR)이 팀을 정해 둔 것이다. 본문에 "TEAM_E가"처럼 팀이 적혀 있는데 라벨이 없으면 메모에 적는다(라벨 추가는 S1부터 SCHEDULE `LANE` 초안).
+Linear 라벨 `tail:TEAM_X`가 붙은 FLIGHT는 planner가 그 AIRCRAFT에만 제안한다. 사람(지금은 President나 SUPERVISOR)이 팀을 정해 둔 것이다(`../docs/fleet.md`). 옛 이름 `lane:TEAM_X`도 2026-10-10까지는 같이 지켜지지만, 제외 사유에 바꾸라고 뜬다. 본문에 "TEAM_E가"처럼 팀이 적혀 있는데 라벨이 없으면 메모에 적는다(라벨 추가는 S1부터 SCHEDULE `TAIL` 초안).
 
 ## OCC LOG
 

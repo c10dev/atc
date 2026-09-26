@@ -7,7 +7,7 @@ atc knows each team session as an AIRCRAFT (`TEAM_B`, callsign BRAVO) and its le
 - **FLEET**: the teams, their crews, what they are rated for, their routes and targets.
 - **FLIGHT classification**: the kind of work, its size and the rating it needs.
 
-> Status: design draft (2026-09-26). The only piece built so far is the `lane:TEAM_X` label (PR #7), which this document renames to TAIL ASSIGNMENT (`tail:TEAM_X`). Decisions are listed at the end.
+> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10). Decisions are listed at the end.
 
 Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHEDULE operations), [dispatch.md](dispatch.md) (the planner that uses them).
 
@@ -185,7 +185,7 @@ Stage 4 (network planning) puts these next to the project goals. OCC may draft t
 
 ## 10. Implementation order
 
-1. `tail:` alias + the Linear labels + VOC-196 + the note to President (small; unblocks VOC-196 now)
+1. ✅ `tail:` in the planner with the `lane:` alias. Then the Linear labels, VOC-196 and the note to President
 2. `fleet.json` registry, API and FLEET tab (read and edit), with defaults from the vocado crew rules
 3. Classification labels read by the planner: TYPE RATING and FLIGHT TYPE hard rules, WAKE slots, ROUTE score
 4. DISPATCH card and FIDS show the classification; DISPATCH notes suggest a classification when labels are missing
