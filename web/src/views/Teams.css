@@ -1,0 +1,213 @@
+/* STRIPS 탭의 PR 착륙 상태. 색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다). */
+
+/* CLEARED TO LAND: 채운 띠, APPROACH: 옅은 시안 띠 + 막는 조건 수 */
+.pr-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-sm);
+  font: 700 var(--text-2xs)/16px var(--mono);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.pr-badge.is-cleared {
+  background: var(--phase-cleared);
+  color: var(--bg);
+  /* 같은 색 HOLDING 막대와 모양으로 구별되게 이중 테두리 */
+  box-shadow: 0 0 0 1px var(--bg), 0 0 0 2px var(--phase-cleared);
+}
+.pr-badge.is-approach {
+  background: color-mix(in srgb, var(--phase-approach) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--phase-approach) 75%, transparent);
+  color: inherit;
+}
+.pr-count {
+  min-width: 14px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--phase-approach);
+  color: var(--bg);
+  text-align: center;
+  line-height: 14px;
+}
+.pr-num {
+  font: 700 var(--text-sm) var(--mono);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.pr-seq {
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+}
+
+/* STAND 줄: 비고 칸 맨 앞에 한 덩어리 */
+.pr-land {
+  flex-basis: 100%;
+  min-width: 0;
+}
+.pr-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.pr-blocks {
+  margin: var(--space-0-5) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  color: var(--paper-muted);
+}
+.pr-blocks li::before {
+  content: "· ";
+}
+.pr-more {
+  margin-top: var(--space-0-5);
+  font-size: var(--text-xs);
+  color: var(--paper-muted);
+}
+.pr-more summary {
+  width: fit-content;
+  cursor: pointer;
+}
+.pr-more .pr-blocks {
+  margin-top: var(--space-1);
+}
+/* 종이 위에서는 시안 테두리가 약하다 */
+.strip .pr-num:focus-visible,
+.strip .pr-more summary:focus-visible {
+  outline-color: var(--paper-ink);
+}
+
+/* PR 상태가 오래됐을 수 있음(GitHub 조회 실패) */
+.ls-stale {
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--amber);
+}
+
+/* ── LANDING SEQUENCE ── */
+.ls-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+.ls-row {
+  display: grid;
+  grid-template-columns: 180px 130px minmax(0, 1fr) 150px;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-1-5) var(--space-3);
+}
+.ls-row + .ls-row {
+  border-top: 1px solid var(--line);
+}
+.ls-row.is-cleared {
+  box-shadow: inset 3px 0 0 var(--phase-cleared);
+}
+.ls-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.ls-seq {
+  min-width: 2ch;
+  font: 700 var(--text-md) var(--mono);
+  text-align: right;
+  color: var(--faint);
+}
+.ls-row.is-cleared .ls-seq {
+  color: var(--phase-cleared);
+}
+.ls-flight {
+  font: 700 var(--text-sm) var(--mono);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ls-pr {
+  min-width: 0;
+}
+.ls-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+.ls-title .pr-num {
+  font-size: var(--text-xs);
+}
+.ls-blocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  margin: var(--space-0-5) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.ls-blocks li::before {
+  content: "· ";
+}
+.ls-stand {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 var(--text-xs) var(--mono);
+  letter-spacing: 0.04em;
+  text-align: right;
+}
+
+/* APPROACH·Draft 묶음: 접어 둔다. Draft는 흐리게 */
+.ls-list + .ls-group,
+.ls-group + .ls-group {
+  margin-top: var(--space-2);
+}
+.ls-group summary {
+  width: fit-content;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.ls-group .ls-list {
+  margin-top: var(--space-2);
+}
+.ls-group.is-draft .ls-list {
+  color: var(--muted);
+}
+.ls-group.is-draft .pr-badge {
+  opacity: 0.8;
+}
+
+:root[data-theme="night"] .pr-badge,
+:root[data-theme="night"] .pr-count {
+  border-radius: var(--radius-pill);
+}
+
+@media (max-width: 860px) {
+  .ls-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: var(--space-1);
+  }
+  .ls-flight {
+    text-align: right;
+  }
+  .ls-pr {
+    grid-column: 1 / -1;
+  }
+  .ls-title {
+    white-space: normal;
+  }
+  .ls-stand {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+}
