@@ -73,7 +73,21 @@
   --fids-title: #e8e8e8;
   --fids-count: #b0955a;
 
-  --radius: 8px;
+  /* 글자 크기: 7단계만 쓴다. 영문 약호(대문자·고정폭)는 10, 한국어 본문은 11 이상 */
+  --text-2xs: 10px; /* 대문자 약호, 캡션 */
+  --text-xs: 11px; /* 보조 설명, 칩 */
+  --text-sm: 12px; /* 표·카드의 부가 정보 */
+  --text-md: 13px; /* 본문 */
+  --text-lg: 15px; /* FLIGHT NUMBER, 콜사인 강조 */
+  --text-xl: 18px; /* 상단 수치, FLIGHT STRIPS 콜사인 */
+  --text-2xl: 24px; /* 지표 큰 숫자 */
+
+  /* 모서리: 칩 2, 컨트롤 4, 패널·카드 8, 알약 모양 999. 원은 50%. 테마가 값만 바꾼다 */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
+  --radius: var(--radius-lg);
 
   /* 간격: 4px 기반 척도. 이 값들만 쓴다(Carbon·Atlassian·Grafana와 같은 척도).
      한 덩어리 안(4–8) < 이웃한 덩어리 사이(8–16) < 무리 사이(24–32) */
@@ -106,7 +120,7 @@ body {
   background-image: var(--backdrop);
   background-attachment: fixed;
   color: var(--text);
-  font: 13px/1.45 var(--sans);
+  font: var(--text-md)/1.45 var(--sans);
   -webkit-font-smoothing: antialiased;
 }
 a {
@@ -124,7 +138,7 @@ button {
 
 .mono {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .muted {
   color: var(--muted);
@@ -152,14 +166,14 @@ button {
   align-items: baseline;
   gap: var(--space-2);
   margin: 0 0 var(--space-2);
-  font: 700 10.5px var(--mono);
+  font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.18em;
   color: var(--faint);
 }
 .label em,
 .readout em,
 .link em {
-  font: 500 11px var(--sans);
+  font: 500 var(--text-xs) var(--sans);
   font-style: normal;
   letter-spacing: 0;
   color: var(--muted);
@@ -223,12 +237,12 @@ button {
 }
 .brand-name {
   display: block;
-  font: 700 15px/1.1 var(--mono);
+  font: 700 var(--text-lg)/1.1 var(--mono);
   letter-spacing: 0.18em;
 }
 .brand-sector {
   display: block;
-  font: 500 9.5px var(--mono);
+  font: 500 var(--text-2xs) var(--mono);
   letter-spacing: 0.14em;
   color: var(--cyan);
 }
@@ -253,11 +267,11 @@ button {
   background: var(--panel);
 }
 .tab-code {
-  font: 700 11px var(--mono);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.16em;
 }
 .tab-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .tab[aria-selected="true"] {
   color: var(--tab-on);
@@ -289,18 +303,18 @@ button {
   background: none;
 }
 .readout b {
-  font: 700 18px/1 var(--mono);
+  font: 700 var(--text-xl)/1 var(--mono);
   letter-spacing: 0.04em;
 }
 .readout > span {
   margin-top: var(--space-1);
-  font: 500 9.5px var(--mono);
+  font: 500 var(--text-2xs) var(--mono);
   letter-spacing: 0.14em;
   color: var(--muted);
   white-space: nowrap;
 }
 .readout em {
-  font-size: 10px;
+  font-size: var(--text-2xs);
 }
 .readout.is-button {
   cursor: pointer;
@@ -376,7 +390,7 @@ button {
   padding: 0 var(--space-3);
   background: var(--amber);
   color: #000;
-  font: 700 11px var(--mono);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.16em;
 }
 .ticker.is-serious .ticker-head {
@@ -390,7 +404,7 @@ button {
   padding: 0 var(--space-4);
   overflow: hidden;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--text-sm);
   mask-image: linear-gradient(90deg, #000 90%, transparent);
 }
 .ticker-item {
@@ -403,8 +417,8 @@ button {
   flex: none;
   padding: 0 var(--space-1-5);
   border: 1px solid currentColor;
-  border-radius: 2px;
-  font: 700 9.5px/15px var(--mono);
+  border-radius: var(--radius-sm);
+  font: 700 var(--text-2xs)/15px var(--mono);
   letter-spacing: 0.1em;
 }
 .alert-conflict,
@@ -449,7 +463,7 @@ button {
 .alerts-close button {
   border: 1px solid var(--line-strong);
   background: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   padding: var(--space-0-5) var(--space-3);
   color: var(--muted);
   cursor: pointer;
@@ -483,8 +497,8 @@ button {
   align-items: center;
   padding: 0 var(--space-1-5);
   border: 1px solid var(--line-strong);
-  border-radius: 3px;
-  font: 500 10.5px var(--mono);
+  border-radius: var(--radius-sm);
+  font: 500 var(--text-2xs) var(--mono);
   letter-spacing: 0.06em;
   color: var(--muted);
   white-space: nowrap;
@@ -507,7 +521,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  font: 700 11px var(--mono);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.08em;
   color: var(--amber);
 }
@@ -518,10 +532,10 @@ button {
   color: var(--alert);
 }
 .prio {
-  font: 700 9.5px/15px var(--mono);
+  font: 700 var(--text-2xs)/15px var(--mono);
   letter-spacing: 0.06em;
   padding: 0 var(--space-1-5);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: #3a3a3a;
   color: #ddd;
 }
@@ -581,7 +595,7 @@ button {
   overflow: hidden;
   padding: var(--space-4) var(--space-6) var(--space-6);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: radial-gradient(ellipse at 50% 45%, var(--scope-glow) 0%, var(--scope) 70%);
   box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.55);
 }
@@ -651,7 +665,7 @@ button {
   min-width: 0;
   padding: var(--space-2) var(--space-3) var(--space-2) var(--space-6);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: var(--blk-bg);
   box-shadow: var(--shadow-1);
   font-family: var(--mono);
@@ -704,7 +718,7 @@ a.blk[href] {
   white-space: nowrap;
 }
 .blk-l1 strong {
-  font-size: 13.5px;
+  font-size: var(--text-md);
   letter-spacing: 0.06em;
 }
 /* AIRPORT(저장소) 코드: RADAR에서는 시안 테두리, FLIGHT STRIPS에서는 종이 잉크 */
@@ -712,8 +726,8 @@ a.blk[href] {
   display: inline-block;
   padding: 0 var(--space-1-5);
   border: 1px solid var(--line-strong);
-  border-radius: 2px;
-  font: 600 9.5px/14px var(--mono);
+  border-radius: var(--radius-sm);
+  font: 600 var(--text-2xs)/14px var(--mono);
   letter-spacing: 0.08em;
   color: var(--cyan);
   vertical-align: 1px;
@@ -727,7 +741,7 @@ a.blk[href] {
   color: var(--paper-ink);
 }
 .blk-code {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   letter-spacing: 0.1em;
   color: var(--faint);
 }
@@ -736,11 +750,11 @@ a.blk[href] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 .blk-l2.sans {
-  font: 12px var(--sans);
+  font: var(--text-sm) var(--sans);
   color: var(--blk-title);
 }
 
@@ -771,7 +785,7 @@ a.blk[href] {
 }
 .ac.is-nordo .tgt {
   border-color: var(--alert);
-  border-radius: 1px;
+  border-radius: var(--radius-sm);
   transform: rotate(45deg);
 }
 
@@ -779,7 +793,7 @@ a.blk[href] {
   border: 1.5px solid var(--cyan);
 }
 .stand strong {
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   font-weight: 500;
 }
 /* 빈 STAND: 흐리게 하지 않고 점선 테두리와 흐린 글자로만 구분 */
@@ -806,15 +820,15 @@ a.blk[href] {
 }
 .los-tag {
   padding: 0 var(--space-1-5);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: var(--alert);
   color: #fff;
-  font-size: 9.5px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   letter-spacing: 0.12em;
 }
 .dirty {
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   color: var(--amber);
 }
 
@@ -828,18 +842,18 @@ a.blk[href] {
   background: var(--tone);
 }
 .fp strong {
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .ph {
   padding: 0 var(--space-1-5);
   border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   color: var(--tone);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   letter-spacing: 0.12em;
 }
 .ph em {
-  font: 500 10.5px var(--sans);
+  font: 500 var(--text-xs) var(--sans);
   font-style: normal;
   letter-spacing: 0;
 }
@@ -850,7 +864,7 @@ a.blk[href] {
   background: var(--amber);
 }
 .nc {
-  font-size: 9.5px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   letter-spacing: 0.12em;
   color: var(--amber);
@@ -899,7 +913,7 @@ a.blk[href] {
   gap: var(--gap-item);
   padding: var(--space-2);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: repeating-linear-gradient(0deg, var(--panel) 0 46px, #131d28 46px 47px);
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
 }
@@ -908,7 +922,7 @@ a.blk[href] {
   grid-template-columns: 10px 190px 1fr;
   min-height: 58px;
   overflow: hidden;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: var(--paper);
   color: var(--paper-ink);
   box-shadow: var(--paper-shadow);
@@ -942,7 +956,7 @@ a.blk[href] {
   border-left: 1px solid var(--paper-line);
 }
 .cs {
-  font: 700 17px/1.15 var(--mono);
+  font: 700 var(--text-xl)/1.15 var(--mono);
   letter-spacing: 0.08em;
   white-space: nowrap;
   overflow: hidden;
@@ -951,10 +965,10 @@ a.blk[href] {
 .type {
   margin-left: var(--space-1-5);
   padding: 0 var(--space-1-5);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: var(--paper-ink);
   color: var(--paper);
-  font: 700 9.5px var(--mono);
+  font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.06em;
   vertical-align: 3px;
 }
@@ -963,7 +977,7 @@ a.blk[href] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--paper-muted);
 }
 .strip-legs {
@@ -992,8 +1006,8 @@ a.blk[href] {
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-bottom: var(--space-0-5);
-  font: 700 8.5px var(--mono);
-  letter-spacing: 0.16em;
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
   color: var(--paper-muted);
 }
 .val {
@@ -1001,10 +1015,10 @@ a.blk[href] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 500 12.5px var(--mono);
+  font: 500 var(--text-sm) var(--mono);
 }
 .val.big {
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -1020,7 +1034,7 @@ a.val:hover {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.35;
 }
 .cell-remarks {
@@ -1033,8 +1047,8 @@ a.val:hover {
   display: inline-block;
   padding: 0 var(--space-1-5);
   border: 1.5px solid;
-  border-radius: 2px;
-  font: 700 9.5px/15px var(--mono);
+  border-radius: var(--radius-sm);
+  font: 700 var(--text-2xs)/15px var(--mono);
   letter-spacing: 0.08em;
   white-space: nowrap;
   transform: rotate(-2deg);
@@ -1067,7 +1081,7 @@ a.val:hover {
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--fids-line);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--fids-bg);
   box-shadow: var(--shadow-1);
 }
@@ -1081,7 +1095,7 @@ a.val:hover {
   background: var(--fids-head);
 }
 .column-code {
-  font: 700 12px var(--mono);
+  font: 700 var(--text-sm) var(--mono);
   letter-spacing: 0.18em;
   color: var(--tone);
   white-space: nowrap;
@@ -1092,7 +1106,7 @@ a.val:hover {
   white-space: nowrap;
 }
 .column-alias {
-  font: 400 10.5px var(--mono);
+  font: 400 var(--text-2xs) var(--mono);
   color: var(--faint);
   min-width: 0;
   overflow: hidden;
@@ -1101,7 +1115,7 @@ a.val:hover {
 }
 .count {
   margin-left: auto;
-  font: 700 12px var(--mono);
+  font: 700 var(--text-sm) var(--mono);
   color: var(--fids-count);
 }
 .column-body {
@@ -1113,7 +1127,7 @@ a.val:hover {
   display: block;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--fids-line);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   background: var(--fids-card);
 }
 a.ticket:hover {
@@ -1137,10 +1151,10 @@ a.ticket:hover {
   place-items: center;
   width: var(--flap-w, 15px);
   height: var(--flap-h, 21px);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: var(--flap-tile);
   box-shadow: inset 0 0 0 1px var(--flap-edge);
-  font: 700 12.5px var(--mono);
+  font: 700 var(--text-sm) var(--mono);
   color: var(--flap-ink);
 }
 .ticket-title {
@@ -1156,14 +1170,14 @@ a.ticket:hover {
 }
 .ticket-assignee {
   margin-left: auto;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .ticket-alert {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-2);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 /* ── 표시 옵션(FIDS) ─────────────────────────── */
@@ -1173,7 +1187,7 @@ a.ticket:hover {
   width: 32px;
   height: 32px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--panel);
   color: var(--muted);
   cursor: pointer;
@@ -1196,7 +1210,7 @@ a.ticket:hover {
   width: 300px;
   padding: var(--space-3);
   border: 1px solid var(--line-strong);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--panel-3);
   box-shadow: var(--shadow-3);
 }
@@ -1212,10 +1226,10 @@ a.ticket:hover {
   gap: var(--space-2);
   height: 40px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--panel);
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 500;
   cursor: pointer;
 }
@@ -1230,7 +1244,7 @@ a.ticket:hover {
 }
 .view-menu-hint {
   margin: var(--space-2) 0 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--faint);
 }
 .view-menu-row {
@@ -1243,7 +1257,7 @@ a.ticket:hover {
 .fids-list {
   overflow: hidden;
   border: 1px solid var(--fids-line);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--fids-bg);
   box-shadow: var(--shadow-1);
 }
@@ -1257,12 +1271,12 @@ a.ticket:hover {
   background: var(--fids-head);
 }
 .fids-list-title {
-  font: 700 16px var(--mono);
+  font: 700 var(--text-lg) var(--mono);
   letter-spacing: 0.2em;
   color: var(--flap-ink);
 }
 .fids-list-meta {
-  font: 700 12px var(--mono);
+  font: 700 var(--text-sm) var(--mono);
   letter-spacing: 0.1em;
   color: var(--fids-count);
 }
@@ -1276,7 +1290,7 @@ a.ticket:hover {
 .fids-table th {
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--fids-line);
-  font: 700 10px var(--mono);
+  font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.16em;
   color: var(--fids-count);
   text-align: left;
@@ -1301,7 +1315,7 @@ a.ticket:hover {
 }
 .fids-table .col-time {
   width: 1%;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--muted);
   white-space: nowrap;
 }
@@ -1331,7 +1345,7 @@ a.ticket:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--muted);
 }
 .fids-table .col-pri {
@@ -1341,7 +1355,7 @@ a.ticket:hover {
   white-space: nowrap;
 }
 .remark {
-  font: 700 12px var(--mono);
+  font: 700 var(--text-sm) var(--mono);
   letter-spacing: 0.12em;
   color: var(--tone);
 }
@@ -1562,7 +1576,7 @@ a.ticket:hover {
   color: var(--magenta);
 }
 :root[data-theme="cockpit"] .strip {
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 :root[data-theme="cockpit"] .type {
   background: var(--cyan);
@@ -1577,7 +1591,7 @@ a.ticket:hover {
 :root[data-theme="cockpit"] .flap b {
   width: auto;
   height: auto;
-  font-size: 14px;
+  font-size: var(--text-lg);
   letter-spacing: 0.04em;
 }
 /* 활성 FLIGHT PLAN은 마젠타 항로선 */
@@ -1586,7 +1600,7 @@ a.ticket:hover {
   display: block;
   height: 2px;
   margin-bottom: var(--space-2);
-  border-radius: 1px;
+  border-radius: var(--radius-sm);
   background: var(--magenta);
   box-shadow: 0 0 6px color-mix(in srgb, var(--magenta) 60%, transparent);
 }
@@ -1605,7 +1619,7 @@ a.ticket:hover {
   overflow: auto;
   padding: var(--space-3) var(--space-4) var(--space-2);
   border: 1px solid var(--line-strong);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--panel-3);
   box-shadow: var(--shadow-3);
   color: var(--text);
@@ -1617,12 +1631,12 @@ a.ticket:hover {
   margin-bottom: var(--space-1);
 }
 .settings-title {
-  font: 700 11px var(--mono);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.18em;
 }
 .settings-title em {
   margin-left: var(--space-2);
-  font: 500 12px var(--sans);
+  font: 500 var(--text-sm) var(--sans);
   font-style: normal;
   letter-spacing: 0;
   color: var(--muted);
@@ -1631,10 +1645,10 @@ a.ticket:hover {
   width: 26px;
   height: 26px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: none;
   color: var(--muted);
-  font-size: 18px;
+  font-size: var(--text-xl);
   line-height: 1;
   cursor: pointer;
 }
@@ -1654,14 +1668,14 @@ a.ticket:hover {
 }
 .settings-hint {
   margin: var(--space-2) 0 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--faint);
 }
 .settings-foot {
   margin: var(--space-0-5) 0 0;
   padding-top: var(--space-2);
   border-top: 1px solid var(--line);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--faint);
 }
 .theme-cards {
@@ -1676,7 +1690,7 @@ a.ticket:hover {
   align-items: center;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--panel-2);
   text-align: left;
   cursor: pointer;
@@ -1693,7 +1707,7 @@ a.ticket:hover {
   display: flex;
   height: 34px;
   overflow: hidden;
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 .theme-swatch i {
@@ -1703,17 +1717,17 @@ a.ticket:hover {
   flex: 2;
 }
 .theme-name {
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 .theme-name b {
   margin-right: var(--space-1-5);
-  font: 700 10.5px var(--mono);
+  font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.12em;
   color: var(--tab-on);
 }
 .theme-note {
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 .segmented {
@@ -1721,17 +1735,17 @@ a.ticket:hover {
   gap: var(--space-0-5);
   padding: var(--space-0-5);
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--panel);
 }
 .segmented button {
   flex: 1;
   padding: var(--space-1) var(--space-2);
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   background: none;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 .segmented button:hover {
@@ -1813,7 +1827,8 @@ a.ticket:hover {
 
   --mono: "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --display: "Space Grotesk", Pretendard, sans-serif;
-  --radius: 14px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
 }
 .starfield {
   position: fixed;
@@ -1861,7 +1876,7 @@ a.ticket:hover {
   height: 40px;
   padding: 0 var(--space-4);
   border: 1px solid transparent;
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   white-space: nowrap;
 }
 :root[data-theme="night"] .tab[aria-selected="true"] {
@@ -1911,11 +1926,11 @@ a.ticket:hover {
 :root[data-theme="night"] .stamp,
 :root[data-theme="night"] .segmented,
 :root[data-theme="night"] .segmented button {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 /* 상단 바가 이미 backdrop-filter를 써서 안쪽 창은 흐림이 먹지 않는다. 뒤가 비치지 않게 거의 불투명하게. */
 :root[data-theme="night"] .settings {
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   background: linear-gradient(180deg, rgba(26, 32, 74, 0.98), rgba(16, 20, 52, 0.98));
   box-shadow:
     0 18px 50px rgba(0, 0, 0, 0.6),
@@ -1925,7 +1940,7 @@ a.ticket:hover {
   background: rgba(40, 50, 108, 0.45);
 }
 :root[data-theme="night"] .theme-card {
-  border-radius: 12px;
+  border-radius: var(--radius-md);
 }
 :root[data-theme="night"] .stamp {
   transform: none;
@@ -1933,7 +1948,7 @@ a.ticket:hover {
 
 /* 성도: 천구 좌표(적위 호, 적경 호) */
 :root[data-theme="night"] .scope-frame {
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.45);
 }
 :root[data-theme="night"] .scope-frame::before {
@@ -1946,7 +1961,7 @@ a.ticket:hover {
 }
 :root[data-theme="night"] .blk {
   padding-left: var(--space-8);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
@@ -2042,7 +2057,7 @@ a.ticket:hover {
 }
 :root[data-theme="night"] .strip {
   position: relative;
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
@@ -2095,13 +2110,13 @@ a.ticket:hover {
 :root[data-theme="night"] .type {
   background: rgba(170, 190, 255, 0.16);
   color: var(--text);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0 var(--space-1-5);
 }
 
 /* FIDS: 유리 기둥, 위쪽에 별빛 선 */
 :root[data-theme="night"] .column {
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
@@ -2124,7 +2139,7 @@ a.ticket:hover {
   gap: var(--space-2);
 }
 :root[data-theme="night"] .ticket {
-  border-radius: 12px;
+  border-radius: var(--radius-md);
 }
 :root[data-theme="night"] .flap {
   gap: 0;
@@ -2133,7 +2148,7 @@ a.ticket:hover {
   color: var(--tone);
   width: auto;
   height: auto;
-  font-size: 15px;
+  font-size: var(--text-lg);
   letter-spacing: 0.08em;
   text-shadow: 0 0 12px color-mix(in srgb, var(--tone) 50%, transparent);
 }
@@ -2199,5 +2214,5 @@ a.ticket:hover {
 }
 /* 판 타일이 있는 Radar Console에서만 글자를 줄인다(다른 테마는 타일 없이 글자만) */
 :root[data-density="compact"][data-theme="radar"] .flap b {
-  font-size: 11.5px;
+  font-size: var(--text-xs);
 }

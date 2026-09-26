@@ -5,7 +5,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font: 700 9.5px var(--mono);
+  font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.08em;
   color: var(--amber);
   white-space: nowrap;

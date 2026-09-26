@@ -24,9 +24,9 @@
   padding: 0 var(--space-3);
   background: var(--bg);
   border: 1px solid var(--line-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   color: var(--text);
-  font: 12.5px var(--mono);
+  font: var(--text-sm) var(--mono);
 }
 .apt-input:focus {
   outline: 2px solid var(--cyan);
@@ -47,9 +47,9 @@
   padding: 0 var(--space-3);
   background: var(--panel-2);
   border: 1px solid var(--line-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   color: var(--text);
-  font: 600 12px var(--sans);
+  font: 600 var(--text-sm) var(--sans);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -81,7 +81,7 @@
   padding: var(--space-2) var(--space-3);
   white-space: nowrap;
   text-align: left;
-  font: 700 10.5px var(--mono);
+  font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.14em;
   color: var(--faint);
   background: var(--panel-2);
@@ -108,9 +108,9 @@
   padding: var(--space-0-5) var(--space-1-5);
   background: transparent;
   border: 1px solid var(--line-strong);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: var(--cyan);
-  font: 700 12px var(--mono);
+  font: 700 var(--text-sm) var(--mono);
   letter-spacing: 0.1em;
   cursor: pointer;
 }
@@ -132,14 +132,14 @@
   margin-left: var(--space-2);
   padding: 0 var(--space-1-5);
   border: 1px solid var(--line-strong);
-  border-radius: 3px;
-  font: 600 10px var(--sans);
+  border-radius: var(--radius-sm);
+  font: 600 var(--text-2xs) var(--sans);
   color: var(--muted);
 }
 
 .apt-status {
   white-space: nowrap;
-  font: 700 11px var(--mono);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.06em;
 }
 .apt-status.s-open {
@@ -153,13 +153,13 @@
 }
 
 .apt-ac {
-  font: 12px var(--mono);
+  font: var(--text-sm) var(--mono);
   color: var(--muted);
 }
 .apt-visiting {
   margin-top: var(--space-0-5);
   color: var(--amber);
-  font: 700 11px var(--mono);
+  font: 700 var(--text-xs) var(--mono);
 }
 .apt-actions {
   display: flex;
