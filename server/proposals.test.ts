@@ -91,13 +91,13 @@ test("Linear 관계: relations의 blocks는 내가 막음, inverseRelations의 b
   const ticket = toTicket({
     identifier: "VOC-10", title: "x", url: "u", priority: 2, updatedAt: iso(0), createdAt: iso(100), startedAt: null,
     state: { name: "Todo", type: "unstarted", color: "#fff" }, assignee: null, project: { name: "Beta Readiness" },
-    labels: { nodes: [{ name: "symphony-pilot" }] },
+    labels: { nodes: [{ name: "symphony-pilot" }, { name: "Security", parent: { name: "Risk" } }] },
     relations: { nodes: [{ type: "blocks", relatedIssue: { identifier: "VOC-12" } }, { type: "related", relatedIssue: { identifier: "VOC-3" } }] },
     inverseRelations: { nodes: [{ type: "blocks", issue: { identifier: "VOC-7" } }, { type: "related", issue: { identifier: "VOC-3" } }, { type: "related", issue: { identifier: "VOC-1" } }] },
   });
   assert.deepEqual(
     { blocks: ticket.blocks, blockedBy: ticket.blockedBy, related: ticket.related, labels: ticket.labels, project: ticket.project },
-    { blocks: ["VOC-12"], blockedBy: ["VOC-7"], related: ["VOC-1", "VOC-3"], labels: ["symphony-pilot"], project: "Beta Readiness" },
+    { blocks: ["VOC-12"], blockedBy: ["VOC-7"], related: ["VOC-1", "VOC-3"], labels: ["symphony-pilot", "Risk:Security"], project: "Beta Readiness" },
   );
 });
 

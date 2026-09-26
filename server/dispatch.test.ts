@@ -233,3 +233,60 @@ test("옛 lane: 라벨은 계속 지키되, 제외 사유에 tail:로 바꾸라�
   assert.deepEqual(p.assign, []);
   assert.equal(p.excluded.find((e) => e.flight === "VOC-90")?.reason, "tail:TEAM_E (옛 lane: 라벨 — tail:로 바꿀 것) — 지정 팀 배정 불가(TEAM_E AIRBORNE)");
 });
+
+test("FLIGHT 분류: rating:SEC·Risk 라벨은 SEC 자격이 있는 팀에만, 없으면 사유와 함께 제외", async () => {
+  const { DEFAULT_FLEET } = await import("./crew.ts");
+  const fleet = { defaults: DEFAULT_FLEET.defaults, aircraft: { TEAM_E: { ratings: ["SEC", "DATA"] as ("SEC" | "DATA")[] } } };
+  const s = snap({
+    sessions: [session("b", "TEAM_B"), session("e", "TEAM_E")],
+    tickets: [ticket("VOC-100", { priority: 1, labels: ["rating:SEC"] }), ticket("VOC-101", { labels: ["Risk:Migration"] }), ticket("VOC-102")],
+  });
+  const p = planDispatch(s, new Map(), cfg(), NOW, undefined, fleet);
+  assert.deepEqual(p.assign.map((a) => `${a.flight}→${a.aircraftName}`).sort(), ["VOC-100→TEAM_E", "VOC-102→TEAM_B"]);
+  // 기본 FLEET에는 SEC 팀이 없다
+  const none = planDispatch(s, new Map(), cfg(), NOW);
+  assert.equal(none.excluded.find((e) => e.flight === "VOC-100")?.reason, "rating:SEC — 그 TYPE RATING을 가진 AIRCRAFT 없음 (FLEET 탭에서 지정)");
+  assert.equal(none.excluded.find((e) => e.flight === "VOC-101")?.reason, "rating:SEC — 그 TYPE RATING을 가진 AIRCRAFT 없음 (FLEET 탭에서 지정)");
+});
+
+test("FLIGHT 분류: BUILD는 구현할 CREW가 있어야 하고, tail 팀에 자격이 없으면 그 이유로 제외", async () => {
+  const { DEFAULT_FLEET } = await import("./crew.ts");
+  const flashOnly = [{ position: "helper", agent: "flash-helper", limits: ["no BUILD", "no SEC"] }];
+  const fleet = { defaults: DEFAULT_FLEET.defaults, aircraft: { TEAM_B: { complement: flashOnly }, TEAM_D: { ratings: ["DOCS"] as "DOCS"[] } } };
+  const s = snap({
+    sessions: [session("b", "TEAM_B"), session("d", "TEAM_D")],
+    tickets: [
+      ticket("VOC-110", { priority: 1 }),
+      ticket("VOC-111", { labels: ["type:SURVEY"] }),
+      ticket("VOC-112", { labels: ["tail:TEAM_D", "rating:SEC"] }),
+    ],
+  });
+  const p = planDispatch(s, new Map(), cfg(), NOW, undefined, fleet);
+  // flash-helper만 태운 TEAM_B는 BUILD를 못 해서 VOC-110은 TEAM_D, SURVEY는 TEAM_B가 받는다
+  assert.deepEqual(p.assign.map((a) => `${a.flight}→${a.aircraftName}`).sort(), ["VOC-110→TEAM_D", "VOC-111→TEAM_B"]);
+  assert.equal(
+    p.excluded.find((e) => e.flight === "VOC-112")?.reason,
+    "tail:TEAM_D — rating:SEC — 그 TYPE RATING을 가진 AIRCRAFT 없음 (FLEET 탭에서 지정)",
+  );
+});
+
+test("WAKE CATEGORY: J는 배정하지 않고, 슬롯은 WAKE로 센다(H는 2)", () => {
+  const s = snap({
+    sessions: [session("a", "TEAM_A"), session("b", "TEAM_B"), session("c", "TEAM_C")],
+    tickets: [ticket("VOC-120", { priority: 1, labels: ["wake:H"] }), ticket("VOC-121", { labels: ["wake:J"] }), ticket("VOC-122", { priority: 2 }), ticket("VOC-123", { priority: 3, labels: ["wake:L"] })],
+  });
+  const p = planDispatch(s, new Map(), cfg({ slots: { ...DEFAULT_DISPATCH_CONFIG.slots, airborne: { VCDO: 3 } } }), NOW);
+  assert.equal(p.excluded.find((e) => e.flight === "VOC-121")?.reason, "wake:J — 너무 커서 배정하지 않음, 나눠야 함(SPLIT)");
+  // 한도 3: H(2) + M(1) = 3 → L(0.5)은 자리가 없다
+  assert.deepEqual(p.assign.map((a) => a.flight).sort(), ["VOC-120", "VOC-122"]);
+  assert.deepEqual(p.slots, [{ airport: "VCDO", airborne: 0, planned: 3, limit: 3 }]);
+});
+
+test("ROUTE: 담당 프로젝트면 점수가 오른다", async () => {
+  const { DEFAULT_FLEET } = await import("./crew.ts");
+  const fleet = { defaults: DEFAULT_FLEET.defaults, aircraft: { TEAM_D: { routes: ["Song Experience"] } } };
+  const s = snap({ sessions: [session("b", "TEAM_B"), session("d", "TEAM_D")], tickets: [ticket("VOC-130", { project: "Song Experience" })] });
+  const p = planDispatch(s, new Map(), cfg(), NOW, undefined, fleet);
+  assert.equal(p.assign[0].aircraftName, "TEAM_D");
+  assert.deepEqual(p.assign[0].factors.find((f) => f.id === "route"), { id: "route", label: "ROUTE", value: 1, weight: 1, points: 1, detail: "Song Experience 담당" });
+});

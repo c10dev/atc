@@ -15,6 +15,9 @@ interface FlightInfo {
   priority: number;
   project: string | null;
   url: string | null;
+  cls?: string; // "BUILD · M · SEC" (docs/fleet.md 4장)
+  clsDefault?: boolean; // 라벨이 없어 기본값으로 본 분류
+  tails?: string[]; // TAIL ASSIGNMENT
 }
 
 interface Brief {
@@ -495,6 +498,13 @@ function Card({
         {flight && <PriorityMark priority={flight.priority} />}
         <span className="dp-title">{flight?.title ?? p.flight}</span>
       </div>
+      {flight?.cls && (
+        <p className={`dp-class${flight.clsDefault ? " is-default" : ""}`} title={flight.clsDefault ? "type:·wake: 라벨이 없어 기본값(BUILD · M)으로 봄" : "FLIGHT TYPE · WAKE · 필요한 TYPE RATING"}>
+          {flight.cls}
+          {flight.tails?.length ? ` · ${flight.tails.map((n) => `tail:${n}`).join(", ")}` : ""}
+          {flight.clsDefault && <span className="faint"> (기본값)</span>}
+        </p>
+      )}
       <div className="dp-target">
         {p.kind === "ASSIGN" ? (
           <>

@@ -19,7 +19,10 @@ import {
   type Reserved,
   saveDispatchMode,
   stateChangedWhy,
+  tailsOf,
 } from "./dispatch.ts";
+import { classLabel, classOf } from "./crew.ts";
+import { loadFleet } from "./fleet.ts";
 import type { Snapshot, Ticket } from "./model.ts";
 import { record } from "./recorder.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
@@ -363,7 +366,7 @@ export function runDispatch(s: Snapshot, now = Date.now()): Plan {
   const cfg = loadDispatchConfig();
   const ops = readOps();
   const existing = fold(ops);
-  const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing));
+  const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing), loadFleet());
   const seq = ops.filter((o) => o.op === "create").length;
   append(syncOps(existing, plan, s, cfg, now, seq));
   return plan;
@@ -377,7 +380,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const cfg = loadDispatchConfig();
     const now = Date.now();
     const proposals = allProposals();
-    const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals));
+    const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals), loadFleet());
     const open = proposals.filter((p) => p.status === "proposed" && !isHeld(p));
     const held = proposals.filter((p) => p.status === "proposed" && isHeld(p));
     const inFlight = proposals.filter(isInFlight).sort((a, b) => a.statusAt.localeCompare(b.statusAt));
@@ -387,7 +390,12 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       .slice(0, 50);
     const keys = new Set([...proposals.map((p) => p.flight), ...plan.hold.flatMap((h) => [h.flight, ...h.blockedBy]), ...plan.excluded.map((e) => e.flight)]);
     const flights = Object.fromEntries(
-      s.tickets.filter((t) => keys.has(t.key)).map((t) => [t.key, { title: t.title, state: t.state, priority: t.priority, project: t.project, url: t.url }]),
+      s.tickets.filter((t) => keys.has(t.key)).map((t) => {
+        const cls = classOf(t.labels);
+        // 분류(FLIGHT TYPE · WAKE · 필요한 TYPE RATING)와 TAIL ASSIGNMENT. 라벨이 없으면 기본값(BUILD · M)이다.
+        const info = { title: t.title, state: t.state, priority: t.priority, project: t.project, url: t.url };
+        return [t.key, { ...info, cls: classLabel(cls), clsDefault: !cls.explicit.type && !cls.explicit.wake, tails: [...tailsOf(t)] }];
+      }),
     );
     return c.json({
       mode: cfg.mode,

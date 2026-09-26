@@ -7,47 +7,21 @@ import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig } from "./dispatch.ts";
 import type { Snapshot } from "./model.ts";
 
 // FLEET 등록부(~/.local/state/atc/fleet.json). 팀(AIRCRAFT)마다 CREW COMPLEMENT, TYPE RATING, ROUTE, TARGETS를 적는다.
-// 설계: docs/fleet.md. 이 단계에서는 보여 주고 고치기만 한다(planner는 아직 쓰지 않는다).
+// 설계: docs/fleet.md. 타입·기본값·판정은 crew.ts에 있고, planner도 그것을 쓴다.
 
-export const RATINGS = ["SEC", "UI", "DATA", "DOCS"] as const;
-export type Rating = (typeof RATINGS)[number];
+import {
+  type AircraftProfile,
+  canHoldSec,
+  type CrewMember,
+  DEFAULT_FLEET,
+  type FleetFile,
+  RATINGS,
+  type Rating,
+  type Targets,
+} from "./crew.ts";
 
-export interface CrewMember {
-  position: string; // backend, ui-builder, ui-qa, flash-helper …
-  agent: string; // 모델이나 에이전트 타입
-  limits?: string[]; // "no SEC" 같은 제약
-}
-export interface Targets {
-  flightsPerWeek?: number;
-  onTime?: number; // 0~1
-}
-export interface AircraftProfile {
-  base?: string | null; // AIRPORT 코드. 없으면 세션의 저장소에서
-  complement?: CrewMember[]; // 없으면 defaults
-  ratings?: Rating[]; // 없으면 defaults
-  routes?: string[]; // Linear 프로젝트 이름
-  targets?: Targets;
-  note?: string;
-}
-export interface FleetFile {
-  defaults: { complement: CrewMember[]; ratings: Rating[] };
-  aircraft: Record<string, AircraftProfile>;
-}
-
-// vocado CLAUDE.md의 팀원 규칙을 옮긴 기본 CREW COMPLEMENT.
-// flash-helper(DeepSeek)는 구현·리뷰 판정·보안·DB·인증·권리·이미지에 쓰지 않는다.
-export const DEFAULT_FLEET: FleetFile = {
-  defaults: {
-    complement: [
-      { position: "backend", agent: "claude-opus-5-5" },
-      { position: "ui-builder", agent: "ui-builder" },
-      { position: "ui-qa", agent: "ui-qa", limits: ["read-only"] },
-      { position: "flash-helper", agent: "flash-helper", limits: ["no BUILD", "no CHECK verdicts", "no SEC"] },
-    ],
-    ratings: ["UI", "DATA", "DOCS"],
-  },
-  aircraft: {},
-};
+export { canHoldSec, DEFAULT_FLEET, RATINGS };
+export type { AircraftProfile, CrewMember, FleetFile, Rating, Targets };
 
 export class FleetError extends Error {
   status: number;
@@ -89,10 +63,6 @@ function saveAircraft(key: string, profile: AircraftProfile | null, file = fleet
   renameSync(tmp, file);
 }
 
-// SEC는 보안 작업을 맡을 수 있는 팀원(flash-helper가 아니고 "no SEC" 제약이 없는)이 있어야 준다.
-export function canHoldSec(complement: CrewMember[]): boolean {
-  return complement.some((m) => m.agent !== "flash-helper" && !(m.limits ?? []).includes("no SEC"));
-}
 
 // PATCH 본문을 검사해 프로필로 만든다. 값이 null이면 그 항목을 지워 기본값으로 돌린다.
 export function applyPatch(current: AircraftProfile, patch: Record<string, unknown>, defaults: FleetFile["defaults"]): AircraftProfile {
