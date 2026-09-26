@@ -250,6 +250,7 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 
 | 폴더 | 들어 있는 것 | 문서 |
 |---|---|---|
+| (루트) | atc 코드를 고치는 세션의 작업 규칙: 워크트리, 검증, git, 용어 | [CLAUDE.md](CLAUDE.md) |
 | `server/` | API 서버: 스냅샷 반복, 소스, CONTROLLER·DISPATCH API, FLIGHT RECORDER | [server/README.ko.md](server/README.ko.md) |
 | `web/` | ATC 화면(Vite + React): 탭, 테마, 설정 | [web/README.ko.md](web/README.ko.md) |
 | `hooks/` | 세션이 어느 워크트리에서 일하는지 기록하는 점유 hook | [hooks/README.ko.md](hooks/README.ko.md) |

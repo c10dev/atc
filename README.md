@@ -252,6 +252,7 @@ Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server com
 
 | Folder | What's there | Docs |
 |---|---|---|
+| (root) | Working rules for sessions that change atc's code: worktrees, verification, git, terms | [CLAUDE.en.md](CLAUDE.en.md) |
 | `server/` | API server: snapshot loop, sources, CONTROLLER and DISPATCH APIs, FLIGHT RECORDER | [server/README.md](server/README.md) |
 | `web/` | The ATC screen (Vite + React): tabs, themes, settings | [web/README.md](web/README.md) |
 | `hooks/` | Claim hook that records which worktree each session works in | [hooks/README.md](hooks/README.md) |
