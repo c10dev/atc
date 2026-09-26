@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { DispatchConfig, Plan } from "../../../server/dispatch.ts";
 import type { Proposal } from "../../../server/proposals.ts";
 import { flightNumber } from "../aviation.ts";
@@ -52,6 +52,25 @@ const modelText = (id: string) => (modelLabel(id) === id ? id : `${modelLabel(id
 // 툴팁·aria-label: "CROSSCHECK agree · 모델 (전체 id) — 사유"
 const xcTitle = (m: Crosscheck) => `CROSSCHECK ${m.verdict} · ${modelText(modelOf(m))} — ${m.reason}`;
 
+// 판정을 어떻게 했는지: CROSSCHECK에 동의 버튼 한 번(crosscheck) 또는 직접(manual). 옛 기록은 없음
+type Via = "crosscheck" | "manual";
+// 거절 사유 코드(서버가 목록을 준다)
+interface ReasonCode {
+  code: string;
+  label: string;
+}
+// 판정 기록. reasonCodes는 거절에만, reason은 자유 메모만(저장할 사유 문장은 서버가 만든다)
+interface VerdictInput {
+  via: Via;
+  reasonCodes?: string[];
+  reason: string | null;
+}
+// 서버 타입에 아직 없을 수 있어 따로 읽는다(옛 기록·옛 서버면 없음)
+const viaOf = (p: Proposal): Via | null => (p as unknown as { via?: Via | null }).via ?? null;
+const codesOf = (p: Proposal): string[] => (p as unknown as { reasonCodes?: string[] | null }).reasonCodes ?? [];
+// 한 번 클릭 비율 설명(툴팁·안내 문장)
+const ONE_CLICK_NOTE = "사람 판정 가운데 CROSSCHECK에 동의 버튼 한 번으로 낸 비율 — 어떻게 판정했는지 기록된 판정만 셈";
+
 interface Brief {
   mode: DispatchConfig["mode"];
   at: string;
@@ -68,7 +87,9 @@ interface Brief {
     agreement: number | null;
     target: { decided: number; agreement: number };
     ready: boolean;
-    crosscheck?: CrosscheckRate & { byModel?: Record<string, CrosscheckRate> }; // 참고용, 게이트 기준 아님. byModel은 옛 서버면 없음
+    // 참고용, 게이트 기준 아님. byModel·oneClick은 옛 서버면 없음
+    crosscheck?: CrosscheckRate & { byModel?: Record<string, CrosscheckRate>; oneClick?: { count: number; decided: number } };
+    reasonCounts?: Record<string, number>; // 거절 사유 코드별 건수(옛 서버면 없음)
   };
   gate3: {
     dispatched: number;
@@ -82,19 +103,8 @@ interface Brief {
     ready: boolean;
   };
   config: DispatchConfig;
+  reasonCodes?: ReasonCode[]; // 거절 사유 칩 목록(옛 서버면 없음)
 }
-
-// 거절 사유 칩. 고른 라벨 뒤에 선택 메모를 붙여 "라벨 — 메모"로 기록한다.
-const REJECT_REASONS = [
-  "상위 이슈 — 하위 이슈를 묶는 컨테이너",
-  "본문에 선행 작업이 있음(blocks 아님)",
-  "사람 결정·외부 입력 대기",
-  "이미 다른 세션이 진행 중",
-  "우선순위 낮음",
-  "AIRBORNE — 지금은 슬롯 없음",
-  "다른 팀이 더 적합",
-  "이미 완료됨 — Linear 이슈만 열려 있음",
-];
 
 const statusText: Record<Proposal["status"], string> = {
   proposed: "PROPOSED",
@@ -122,7 +132,6 @@ async function post(path: string, body: unknown) {
 export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number }) {
   const [brief, setBrief] = useState<Brief | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [rejecting, setRejecting] = useState<{ p: Proposal; resolve: (reason: string | null) => void } | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // 판정을 보내는 중인 제안(두 번 누름 방지)
 
   const load = useCallback(async () => {
@@ -139,39 +148,22 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
     load();
   }, [load, refreshKey]);
 
-  // 거절 사유 칩. [취소]면 null(거절하지 않음), [거절 기록]이면 사유 문자열(비어 있으면 사유 없이 거절).
-  // 창이 닫히거나 사유가 정해지는 순간 resolve되므로 verdict가 그대로 이어서 기록할 수 있다.
-  const askReason = (p: Proposal) =>
-    new Promise<string | null>((resolve) => setRejecting({ p, resolve }));
+  // CROSSCHECK 판정을 그대로 기록한다(한 번 클릭). disagree면 CROSSCHECK 사유를 거절 사유로 쓴다.
+  const acceptCrosscheck = (p: Proposal, m: Crosscheck) => submit(p, m.verdict, { via: "crosscheck", reason: m.verdict === "disagree" ? m.reason : null });
 
-  const answerReason = (raw: { p: Proposal; resolve: (reason: string | null) => void } | null, value: string | null) => {
-    setRejecting(null);
-    raw?.resolve(value);
-  };
-
-  // shadow: 그림자 판정(verdict), approval: 실제 승인·거절
-  const verdict = async (p: Proposal, v: "agree" | "disagree") => {
-    let reason: string | null = null;
-    if (v === "disagree") {
-      reason = await askReason(p);
-      if (reason === null) return;
-    }
-    await submit(p, v, reason);
-  };
-
-  // CROSSCHECK 판정을 그대로 기록한다. disagree면 CROSSCHECK 사유를 거절 사유로 쓴다.
-  const acceptCrosscheck = (p: Proposal, m: Crosscheck) => submit(p, m.verdict, m.verdict === "disagree" ? m.reason : null);
-
-  const submit = async (p: Proposal, v: "agree" | "disagree", reason: string | null) => {
-    if (v === "agree" && brief?.mode === "approval" && p.kind === "ASSIGN" && !confirm(`${p.id}를 승인하면 DISPATCH가 ${p.aircraftName}에게 FLIGHT PLAN을 보냅니다. 승인할까요?`)) return;
-    const payload = { reason };
+  // shadow: 그림자 판정(verdict), approval: 실제 승인·거절. 성공하면 true
+  const submit = async (p: Proposal, v: "agree" | "disagree", input: VerdictInput) => {
+    if (v === "agree" && brief?.mode === "approval" && p.kind === "ASSIGN" && !confirm(`${p.id}를 승인하면 DISPATCH가 ${p.aircraftName}에게 FLIGHT PLAN을 보냅니다. 승인할까요?`)) return false;
+    const payload = { via: input.via, reason: input.reason, ...(v === "disagree" && input.reasonCodes ? { reasonCodes: input.reasonCodes } : {}) };
     setBusy(p.id);
     try {
       if (brief?.mode === "approval") await post(`/api/dispatch/proposals/${p.id}/${v === "agree" ? "approve" : "reject"}`, payload);
-      else await post(`/api/dispatch/proposals/${p.id}/verdict`, { verdict: v, reason });
+      else await post(`/api/dispatch/proposals/${p.id}/verdict`, { verdict: v, ...payload });
       await load();
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     } finally {
       setBusy(null);
     }
@@ -206,6 +198,8 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
 
   if (!brief) return <p className="empty">{error ? `불러오지 못함: ${error}` : "불러오는 중…"}</p>;
   const { plan, gate, flights } = brief;
+  const codes = brief.reasonCodes ?? [];
+  const labelOf = (code: string) => codes.find((c) => c.code === code)?.label ?? code;
   const assign = brief.open.filter((p) => p.kind === "ASSIGN");
   const release = brief.open.filter((p) => p.kind === "RELEASE");
 
@@ -226,7 +220,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
         </p>
       )}
 
-      <Gate gate={gate} />
+      <Gate gate={gate} labelOf={labelOf} />
       {(brief.mode === "approval" || brief.gate3.dispatched > 0) && <Gate3 gate={brief.gate3} />}
 
       {brief.inFlight.length > 0 && (
@@ -284,7 +278,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {assign.length ? (
         <div className="dp-cards">
           {assign.map((p) => (
-            <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={verdict} onAccept={acceptCrosscheck} mode={brief.mode} busy={busy === p.id} />
+            <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
           ))}
         </div>
       ) : (
@@ -298,7 +292,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
           </h2>
           <div className="dp-cards">
             {brief.held.map((p) => (
-              <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={verdict} onUnhold={unhold} mode={brief.mode} held />
+              <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={submit} onUnhold={unhold} codes={codes} mode={brief.mode} held busy={busy === p.id} />
             ))}
           </div>
         </>
@@ -310,7 +304,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {release.length ? (
         <div className="dp-cards">
           {release.map((p) => (
-            <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={verdict} onAccept={acceptCrosscheck} mode={brief.mode} busy={busy === p.id} />
+            <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
           ))}
         </div>
       ) : (
@@ -353,31 +347,31 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
         RECENT <em>최근 7일</em>
       </h2>
       {brief.recent.length ? (
-        <table className="dp-table">
+        <table className="dp-table dp-recent">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>종류</th>
-              <th>FLIGHT</th>
-              <th>AIRCRAFT</th>
-              <th>결과</th>
-              <th>사유</th>
-              <th>언제</th>
+              <th scope="col">ID</th>
+              <th scope="col">종류</th>
+              <th scope="col">FLIGHT</th>
+              <th scope="col">AIRCRAFT</th>
+              <th scope="col">결과</th>
+              <th scope="col">사유</th>
+              <th scope="col">언제</th>
             </tr>
           </thead>
           <tbody>
             {brief.recent.map((p) => (
               <tr key={p.id} className={`s-${p.status}`}>
-                <td className="mono">{p.id}</td>
-                <td className="mono">{p.kind}</td>
-                <td className="mono">{flightNumber(p.flight)}</td>
-                <td>{p.aircraftName ?? "—"}</td>
-                <td className="dp-result">{statusText[p.status]}</td>
-                <td className="dp-reason">
-                  {p.reason ?? "—"}
+                <td className="dp-c-id mono">{p.id}</td>
+                <td className="dp-c-kind mono">{p.kind}</td>
+                <td className="dp-c-flight mono">{flightNumber(p.flight)}</td>
+                <td className="dp-c-air">{p.aircraftName ?? "—"}</td>
+                <td className="dp-c-result dp-result">{statusText[p.status]}</td>
+                <td className="dp-c-reason dp-reason" data-label="사유">
+                  <RecentReason p={p} labelOf={labelOf} />
                   <CrosscheckMini m={markOf(p)} />
                 </td>
-                <td className="faint">{timeAgo(p.statusAt, now)}</td>
+                <td className="dp-c-at faint">{timeAgo(p.statusAt, now)}</td>
               </tr>
             ))}
           </tbody>
@@ -386,62 +380,97 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
         <p className="empty">아직 결정된 제안 없음</p>
       )}
 
-      {rejecting && (
-        <RejectDialog
-          p={rejecting.p}
-          onCancel={() => answerReason(rejecting, null)}
-          onSubmit={(chip, memo) => answerReason(rejecting, [chip, memo.trim()].filter(Boolean).join(" — "))}
-        />
-      )}
     </section>
   );
 }
 
-function RejectDialog({
+// 최근 결정의 사유: 사유 칩, 한 번 클릭 표시, 사유 문장
+function RecentReason({ p, labelOf }: { p: Proposal; labelOf: (code: string) => string }) {
+  const codes = codesOf(p);
+  const oneClick = viaOf(p) === "crosscheck";
+  if (!codes.length && !oneClick) return <>{p.reason ?? "—"}</>;
+  // 서버가 "라벨 · 라벨 — 메모"로 적으니 칩과 겹치는 앞부분은 떼고 메모만 보인다(라벨이 바뀌었으면 전체)
+  const head = codes.map(labelOf).join(" · ");
+  const text = !codes.length || !p.reason ? p.reason : p.reason === head ? null : p.reason.startsWith(`${head} — `) ? p.reason.slice(head.length + 3) : p.reason;
+  return (
+    <>
+      <span className="dp-recent-tags">
+        {oneClick && (
+          <span className="dp-via" title="CROSSCHECK에 동의 버튼 한 번으로 기록한 판정">
+            1-CLICK
+          </span>
+        )}
+        {codes.map((c) => (
+          <span key={c} className="dp-reason-tag" title={c}>
+            {labelOf(c)}
+          </span>
+        ))}
+      </span>
+      {text && <span className="dp-reason-text">{text}</span>}
+    </>
+  );
+}
+
+// 거절 사유 폼(SCHEDULE 탭과 같은 모양): 여러 칩 + 메모. Escape는 취소하고 거절 버튼으로 초점을 돌린다.
+function RejectForm({
   p,
+  codes,
+  mode,
+  busy,
   onCancel,
   onSubmit,
 }: {
   p: Proposal;
+  codes: ReasonCode[];
+  mode: DispatchConfig["mode"];
+  busy?: boolean;
   onCancel: () => void;
-  onSubmit: (chip: string, memo: string) => void;
+  onSubmit: (reasonCodes: string[], memo: string | null) => void;
 }) {
-  const [chip, setChip] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
   const [memo, setMemo] = useState("");
+  const memoId = `dp-${p.id}-memo`;
+  const has = picked.length > 0 || memo.trim() !== "";
+  // 칩 순서는 서버 목록 순서를 따른다
+  const toggle = (code: string) => setPicked((cur) => (cur.includes(code) ? cur.filter((c) => c !== code) : codes.map((c) => c.code).filter((c) => c === code || cur.includes(c))));
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onCancel();
+    }
+  };
+  const word = mode === "approval" ? "거절" : "거절했을 것";
   return (
-    <div className="dp-dialog" role="dialog" aria-modal="true" aria-label={`${p.id} 거절 사유`}>
-      <div className="dp-dialog-box">
-        <h3 className="label">
-          {p.id} 거절 <em>{flightNumber(p.flight)} → {p.aircraftName ?? "—"}</em>
-        </h3>
-        <div className="dp-chips" role="group" aria-label="거절 사유">
-          {REJECT_REASONS.map((r) => (
-            <button key={r} className={`dp-chip${chip === r ? " is-on" : ""}`} onClick={() => setChip(chip === r ? null : r)}>
-              {r}
+    <form
+      className="dp-reject"
+      onKeyDown={onKey}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!busy) onSubmit(picked, memo.trim() || null);
+      }}
+    >
+      {codes.length > 0 && (
+        <div className="dp-chips" role="group" aria-label={`${p.id} 거절 사유 고르기(여러 개)`}>
+          {codes.map((c) => (
+            <button type="button" key={c.code} className={`dp-chip${picked.includes(c.code) ? " is-on" : ""}`} aria-pressed={picked.includes(c.code)} onClick={() => toggle(c.code)}>
+              {c.label}
             </button>
           ))}
         </div>
-        <input
-          className="dp-dialog-memo"
-          value={memo}
-          autoFocus
-          placeholder="메모(선택) — 칩 뒤에 붙습니다"
-          onChange={(e) => setMemo(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && onSubmit(chip ?? "", memo)}
-        />
-        <div className="dp-actions">
-          <button className="dp-btn" onClick={onCancel}>
-            취소
-          </button>
-          <button className="dp-btn disagree" disabled={!chip && !memo.trim()} onClick={() => onSubmit(chip ?? "", memo)}>
-            거절 기록
-          </button>
-        </div>
-        <p className="faint dp-dialog-note">
-          기록되는 사유: <code>{[chip, memo.trim()].filter(Boolean).join(" — ") || "없음"}</code>
-        </p>
+      )}
+      <label className="dp-memo-label" htmlFor={memoId}>
+        거절 사유 <span className="faint">(선택이지만 남겨 주세요 — DISPATCH가 다음 계획에 반영)</span>
+      </label>
+      <input id={memoId} className="dp-input" value={memo} autoFocus maxLength={400} placeholder="예: 선행 FLIGHT가 아직 ENROUTE" onChange={(e) => setMemo(e.target.value)} />
+      <div className="dp-actions">
+        <button type="button" className="dp-btn" onClick={onCancel} disabled={busy}>
+          취소
+        </button>
+        <button type="submit" className="dp-btn disagree is-confirm" disabled={busy}>
+          {has ? `${word} 기록` : `사유 없이 ${word} 기록`}
+        </button>
       </div>
-    </div>
+    </form>
   );
 }
 
@@ -475,7 +504,7 @@ function CrosscheckChip({ m, now }: { m: Crosscheck; now: number }) {
   );
 }
 
-function Gate({ gate }: { gate: Brief["gate"] }) {
+function Gate({ gate, labelOf }: { gate: Brief["gate"]; labelOf: (code: string) => string }) {
   const enough = gate.decided >= gate.target.decided;
   const rateOk = gate.agreement !== null && gate.agreement >= gate.target.agreement;
   const rows = [
@@ -494,6 +523,11 @@ function Gate({ gate }: { gate: Brief["gate"] }) {
   ] as const;
   const mark = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족" } as const;
   const xc = gate.crosscheck; // 옛 서버면 없음
+  const one = xc?.oneClick;
+  // 거절 사유 코드별 건수: 많은 순(같으면 코드순), 0건은 뺀다
+  const reasons = Object.entries(gate.reasonCounts ?? {})
+    .filter(([, n]) => n > 0)
+    .sort(([a, x], [b, y]) => y - x || a.localeCompare(b));
   return (
     <div className="dp-gate">
       <h2 className="label">
@@ -530,8 +564,34 @@ function Gate({ gate }: { gate: Brief["gate"] }) {
               <span className="dp-gate-value">{pct(r.rate)}</span>
             </li>
           ))}
+        {one && (
+          <li className="s-info dp-gate-one" title={ONE_CLICK_NOTE}>
+            <span className="dp-gate-label">
+              한 번 클릭 {one.decided > 0 ? `${one.count}/${one.decided}` : "— (아직 없음)"}
+            </span>
+            <span className="dp-gate-value">{one.decided > 0 ? pct(one.count / one.decided) : "—"}</span>
+            <span className="dp-gate-target">기준 없음</span>
+            <span className="dp-gate-state">참고</span>
+          </li>
+        )}
       </ul>
-      {xc && <p className="dp-gate-note faint">CROSSCHECK 일치는 참고용이다 — 게이트에는 사람 판정만 셈.</p>}
+      {reasons.length > 0 && (
+        <p className="dp-gate-reasons">
+          <span className="dp-gate-reasons-head">거절 사유</span>
+          {reasons.map(([code, n], i) => (
+            <span key={code} className="dp-gate-reason" title={code}>
+              {i > 0 && <span className="faint"> · </span>}
+              {labelOf(code)} <b>{n}</b>
+            </span>
+          ))}
+        </p>
+      )}
+      {xc && (
+        <p className="dp-gate-note faint">
+          CROSSCHECK 일치는 참고용이다 — 게이트에는 사람 판정만 셈.
+          {one && ` 한 번 클릭: ${ONE_CLICK_NOTE}.`}
+        </p>
+      )}
     </div>
   );
 }
@@ -579,6 +639,7 @@ function Card({
   now,
   onVerdict,
   onAccept,
+  codes,
   mode,
   held,
   onUnhold,
@@ -587,8 +648,9 @@ function Card({
   p: Proposal;
   flight: FlightInfo | undefined;
   now: number;
-  onVerdict: (p: Proposal, v: "agree" | "disagree") => void;
+  onVerdict: (p: Proposal, v: "agree" | "disagree", input: VerdictInput) => Promise<boolean>;
   onAccept?: (p: Proposal, m: Crosscheck) => void; // HELD 카드에는 없음
+  codes: ReasonCode[];
   mode: DispatchConfig["mode"];
   held?: boolean;
   onUnhold?: (p: Proposal) => void;
@@ -596,6 +658,16 @@ function Card({
 }) {
   const max = Math.max(1, ...p.factors.map((f) => Math.abs(f.points)));
   const xc = held ? null : markOf(p);
+  const [rejecting, setRejecting] = useState(false);
+  const rejectBtn = useRef<HTMLButtonElement>(null);
+  const closeReject = () => {
+    setRejecting(false);
+    requestAnimationFrame(() => rejectBtn.current?.focus());
+  };
+  // 거절 기록. 성공하면 카드가 사라지고, 실패하면 폼을 그대로 둔다(오류는 위에)
+  const reject = async (reasonCodes: string[], reason: string | null) => {
+    await onVerdict(p, "disagree", { via: "manual", reasonCodes, reason });
+  };
   return (
     <article className={`dp-card k-${p.kind}${p.caution ? " is-caution" : ""}${held ? " is-held" : ""}`}>
       <header className="dp-card-head">
@@ -655,29 +727,33 @@ function Card({
         </p>
       )}
       {xc && <CrosscheckChip m={xc} now={now} />}
-      <div className="dp-actions">
-        <button className="dp-btn agree" disabled={busy} onClick={() => onVerdict(p, "agree")}>
-          {mode === "approval" ? "승인" : "승인했을 것"}
-        </button>
-        <button className="dp-btn disagree" disabled={busy} onClick={() => onVerdict(p, "disagree")}>
-          {mode === "approval" ? "거절" : "거절했을 것"}
-        </button>
-        {xc && onAccept && (
-          <button
-            className={`dp-btn dp-xc-accept v-${xc.verdict}`}
-            disabled={busy}
-            title={`CROSSCHECK 판정(${xc.verdict})대로 ${xc.verdict === "agree" ? (mode === "approval" ? "승인" : "승인했을 것") : mode === "approval" ? "거절" : "거절했을 것"} 기록${xc.verdict === "disagree" ? " — 사유는 CROSSCHECK 사유" : ""}`}
-            onClick={() => onAccept(p, xc)}
-          >
-            CROSSCHECK에 동의
+      {rejecting ? (
+        <RejectForm p={p} codes={codes} mode={mode} busy={busy} onCancel={closeReject} onSubmit={reject} />
+      ) : (
+        <div className="dp-actions">
+          <button className="dp-btn agree" disabled={busy} onClick={() => onVerdict(p, "agree", { via: "manual", reason: null })}>
+            {mode === "approval" ? "승인" : "승인했을 것"}
           </button>
-        )}
-        {held && onUnhold && (
-          <button className="dp-btn unhold" onClick={() => onUnhold(p)}>
-            HOLD 풀기
+          <button ref={rejectBtn} className="dp-btn disagree" disabled={busy} onClick={() => setRejecting(true)}>
+            {mode === "approval" ? "거절…" : "거절했을 것…"}
           </button>
-        )}
-      </div>
+          {xc && onAccept && (
+            <button
+              className={`dp-btn dp-xc-accept v-${xc.verdict}`}
+              disabled={busy}
+              title={`CROSSCHECK 판정(${xc.verdict})대로 ${xc.verdict === "agree" ? (mode === "approval" ? "승인" : "승인했을 것") : mode === "approval" ? "거절" : "거절했을 것"} 기록${xc.verdict === "disagree" ? " — 사유는 CROSSCHECK 사유" : ""}`}
+              onClick={() => onAccept(p, xc)}
+            >
+              CROSSCHECK에 동의
+            </button>
+          )}
+          {held && onUnhold && (
+            <button className="dp-btn unhold" onClick={() => onUnhold(p)}>
+              HOLD 풀기
+            </button>
+          )}
+        </div>
+      )}
     </article>
   );
 }
