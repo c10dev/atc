@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { alertCode, alertLabel, alertMessage, callsign, flightNumber, HANDOFF_LABEL } from "./aviation.ts";
 import { buildIndex, timeAgo } from "./derive.ts";
 import { MoonIcon, Starfield } from "./Starfield.tsx";
-import { applyTheme, storedTheme, type Theme, THEMES } from "./theme.ts";
+import { formatClock, useSettings } from "./settings.ts";
+import { SettingsPanel } from "./SettingsPanel.tsx";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
 import { Airports } from "./views/Airports.tsx";
 import { MapView } from "./views/Map.tsx";
@@ -33,10 +34,11 @@ export function App() {
   const now = useNow();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [alertsOpen, setAlertsOpen] = useState(false);
-  const [theme, setTheme] = useState<Theme>(storedTheme);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const settings = useSettings();
   const idx = useMemo(() => (snapshot ? buildIndex(snapshot) : null), [snapshot]);
 
-  useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => {
     if (location.hash !== `#${tab}`) history.replaceState(null, "", `#${tab}`);
   }, [tab]);
@@ -61,14 +63,25 @@ export function App() {
 
   return (
     <div className="app">
-      {theme === "night" && <Starfield />}
+      {settings.theme === "night" && <Starfield motion={settings.motion} meteors={settings.meteors} />}
       <header className="console">
-        <div className="brand">
-          {theme === "night" ? <MoonIcon /> : <ScopeIcon />}
-          <div>
-            <span className="brand-name">ATC</span>
-            <span className="brand-sector">LOCAL CONTROL · {location.port || "80"}</span>
-          </div>
+        <div className="brand-wrap">
+          <button
+            className="brand"
+            onClick={() => setSettingsOpen((v) => !v)}
+            aria-expanded={settingsOpen}
+            aria-controls="settings"
+            aria-haspopup="dialog"
+            title="설정"
+          >
+            {settings.theme === "night" ? <MoonIcon /> : <ScopeIcon />}
+            <span className="brand-text">
+              <span className="brand-name">ATC</span>
+              <span className="brand-sector">LOCAL CONTROL · {location.port || "80"}</span>
+            </span>
+            <GearIcon />
+          </button>
+          {settingsOpen && <SettingsPanel settings={settings} onClose={closeSettings} />}
         </div>
         <nav className="tabs" role="tablist">
           {TABS.map((t) => (
@@ -78,13 +91,6 @@ export function App() {
             </button>
           ))}
         </nav>
-        <div className="theme-switch" role="radiogroup" aria-label="테마">
-          {THEMES.map((t) => (
-            <button key={t.id} role="radio" aria-checked={theme === t.id} title={t.label} onClick={() => setTheme(t.id)}>
-              {t.code}
-            </button>
-          ))}
-        </div>
         <div className="readouts">
           <Readout code="AIRBORNE" label="비행 중" value={busy} tone="radar" />
           <Readout code="STANDS" label="주기장 점유" value={stands} />
@@ -106,7 +112,7 @@ export function App() {
             </span>
           </button>
           <div className="readout clock">
-            <UtcClock />
+            <Clock clock={settings.clock} />
             <span className={`link link-${connection}`}>
               <i />
               LINK <em>{connectionLabel[connection]}</em>
@@ -186,9 +192,24 @@ function Readout({ code, label, value, tone }: { code: string; label: string; va
 }
 
 // 앱 전체가 매초 다시 그려지지 않도록 시계만 따로 돈다.
-function UtcClock() {
+function Clock({ clock }: { clock: "utc" | "local" }) {
   const now = useNow(1000);
-  return <b className="utc">{new Date(now).toISOString().slice(11, 19)}Z</b>;
+  return <b className="utc">{formatClock(now, clock, true)}</b>;
+}
+
+function GearIcon() {
+  return (
+    <svg className="brand-gear" viewBox="0 0 16 16" aria-hidden>
+      <path
+        d="M6.9 1.5h2.2l.3 1.7a5 5 0 0 1 1.3.7l1.6-.6 1.1 1.9-1.3 1.1a5 5 0 0 1 0 1.5l1.3 1.1-1.1 1.9-1.6-.6a5 5 0 0 1-1.3.7l-.3 1.7H6.9l-.3-1.7a5 5 0 0 1-1.3-.7l-1.6.6-1.1-1.9 1.3-1.1a5 5 0 0 1 0-1.5L2.6 5.2l1.1-1.9 1.6.6a5 5 0 0 1 1.3-.7z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
 }
 
 function ScopeIcon() {

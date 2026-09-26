@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 // Night Sky 테마의 배경 별밭. 세 겹으로 멀수록 작고 느리게 흐르고, 가끔 유성이 지나간다.
-// 상시 띄워 두는 화면이라 30fps로 제한하고, 탭이 가려지면 멈춘다.
+// 상시 띄워 두는 화면이라 30fps로 제한하고, 탭이 가려지면 멈춘다. 애니메이션을 끄면 한 장만 그린다.
 const TINTS = ["255,255,255", "255,236,200", "200,215,255", "220,200,255"];
 const LAYERS = [
   { density: 5, r: [0.3, 0.8], speed: 2, alpha: 0.6 },
@@ -19,14 +19,14 @@ interface Star {
   tint: string;
 }
 
-export function Starfield() {
+export function Starfield({ motion, meteors }: { motion: boolean; meteors: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = ref.current;
     const g = canvas?.getContext("2d");
     if (!canvas || !g) return;
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const still = !motion;
     let w = 0;
     let h = 0;
     let layers: { stars: Star[]; speed: number; alpha: number }[] = [];
@@ -82,7 +82,7 @@ export function Starfield() {
             g.fill();
           }
         }
-      if (!still) {
+      if (!still && meteors) {
         if (!meteor && Math.random() < dt / 12) meteor = { x: w * (0.2 + Math.random() * 0.8), y: h * Math.random() * 0.4, life: 0 };
         if (meteor) {
           meteor.life += dt;
@@ -129,7 +129,7 @@ export function Starfield() {
       removeEventListener("resize", resize);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, []);
+  }, [motion, meteors]);
 
   return <canvas ref={ref} className="starfield" aria-hidden />;
 }

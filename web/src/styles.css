@@ -159,12 +159,40 @@ button {
   border-bottom: 1px solid var(--line);
   box-shadow: var(--shadow-2);
 }
+/* 로고 = 설정 버튼 */
+.brand-wrap {
+  position: relative;
+  display: flex;
+  border-right: 1px solid var(--line);
+}
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 18px;
-  border-right: 1px solid var(--line);
+  padding: 0 14px 0 18px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.brand:hover,
+.brand[aria-expanded="true"] {
+  background: var(--panel);
+}
+.brand-gear {
+  width: 13px;
+  height: 13px;
+  color: var(--faint);
+  transition:
+    color 0.15s,
+    transform 0.3s;
+}
+.brand:hover .brand-gear {
+  color: var(--text);
+}
+.brand[aria-expanded="true"] .brand-gear {
+  color: var(--tab-on);
+  transform: rotate(60deg);
 }
 .scope-icon {
   width: 26px;
@@ -1116,14 +1144,12 @@ a.ticket:hover {
   font-size: 11px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .sweep,
-  .scope-sweep,
-  .dot-busy,
-  .ac.is-airborne .tgt,
-  .stand.is-los .tgt {
-    animation: none;
-  }
+/* 애니메이션 끄기(설정). 기본값은 OS의 동작 줄이기 설정을 따른다. */
+:root[data-motion="off"] *,
+:root[data-motion="off"] *::before,
+:root[data-motion="off"] *::after {
+  animation: none !important;
+  transition-duration: 0s !important;
 }
 
 @media (max-width: 1100px) {
@@ -1144,10 +1170,12 @@ a.ticket:hover {
     height: auto;
     flex-wrap: wrap;
   }
-  .brand {
+  .brand-wrap {
     flex: 1;
-    height: 46px;
     border-right: 0;
+  }
+  .brand {
+    height: 46px;
   }
   .tabs {
     width: 100%;
@@ -1338,47 +1366,153 @@ a.ticket:hover {
   box-shadow: inset 2px 0 0 var(--radar);
 }
 
-/* 테마 전환 */
-.theme-switch {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin: auto 12px;
-  padding: 2px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--panel);
-}
-.theme-switch button {
-  padding: 3px 8px;
-  border: 0;
-  border-radius: 3px;
-  background: none;
-  color: var(--muted);
-  font: 700 10px var(--mono);
-  letter-spacing: 0.12em;
-  cursor: pointer;
-}
-.theme-switch button:hover {
+/* ── 설정 창 ─────────────────────────── */
+.settings {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 10px;
+  z-index: 30;
+  width: min(360px, calc(100vw - 20px));
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--panel-3);
+  box-shadow: var(--shadow-3);
   color: var(--text);
 }
-.theme-switch button[aria-checked="true"] {
-  background: var(--panel-3);
-  color: var(--tab-on);
-  box-shadow: inset 0 0 0 1px var(--line-strong);
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
 }
-/* 좁은 화면: 로고 줄 오른쪽에 붙이고 탭과 수치는 그 아래 줄로 */
-@media (max-width: 860px) {
-  .theme-switch {
-    order: 1;
-    margin: auto 12px;
-  }
-  .tabs {
-    order: 2;
-  }
-  .readouts {
-    order: 3;
-  }
+.settings-title {
+  font: 700 11px var(--mono);
+  letter-spacing: 0.18em;
+}
+.settings-title em {
+  margin-left: 6px;
+  font: 500 12px var(--sans);
+  font-style: normal;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+.settings-close {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.settings-close:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.settings-section {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.settings-section:first-of-type {
+  border-top: 0;
+}
+.settings-section .label {
+  margin-bottom: 8px;
+}
+.settings-hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--faint);
+}
+.settings-foot {
+  margin: 2px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--faint);
+}
+.theme-cards {
+  display: grid;
+  gap: 6px;
+}
+.theme-card {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  text-align: left;
+  cursor: pointer;
+}
+.theme-card:hover {
+  border-color: var(--line-strong);
+}
+.theme-card[aria-checked="true"] {
+  border-color: var(--tab-on);
+  box-shadow: inset 0 0 0 1px var(--tab-on);
+}
+.theme-swatch {
+  grid-row: span 2;
+  display: flex;
+  height: 34px;
+  overflow: hidden;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.theme-swatch i {
+  flex: 1;
+}
+.theme-swatch i:first-child {
+  flex: 2;
+}
+.theme-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.theme-name b {
+  margin-right: 4px;
+  font: 700 10.5px var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--tab-on);
+}
+.theme-note {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+}
+.segmented button {
+  flex: 1;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.segmented button:hover {
+  color: var(--text);
+}
+.segmented button[aria-checked="true"] {
+  background: var(--panel-3);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 
 /* ── 테마: Night Sky ─────────────────────────────
@@ -1547,9 +1681,23 @@ a.ticket:hover {
 :root[data-theme="night"] .los-tag,
 :root[data-theme="night"] .prio,
 :root[data-theme="night"] .stamp,
-:root[data-theme="night"] .theme-switch,
-:root[data-theme="night"] .theme-switch button {
+:root[data-theme="night"] .segmented,
+:root[data-theme="night"] .segmented button {
   border-radius: 999px;
+}
+/* 상단 바가 이미 backdrop-filter를 써서 안쪽 창은 흐림이 먹지 않는다. 뒤가 비치지 않게 거의 불투명하게. */
+:root[data-theme="night"] .settings {
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(26, 32, 74, 0.98), rgba(16, 20, 52, 0.98));
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(190, 205, 255, 0.08) inset;
+}
+:root[data-theme="night"] .theme-card {
+  background: rgba(40, 50, 108, 0.45);
+}
+:root[data-theme="night"] .theme-card {
+  border-radius: 12px;
 }
 :root[data-theme="night"] .stamp {
   transform: none;
@@ -1763,10 +1911,4 @@ a.ticket:hover {
 }
 :root[data-theme="night"] .ticket.is-occupied {
   box-shadow: inset 2px 0 0 var(--gold);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :root[data-theme="night"] .tgt::after {
-    animation: none;
-  }
 }

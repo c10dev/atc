@@ -10,6 +10,7 @@ import {
   flightPhase,
 } from "../aviation.ts";
 import { activeFirst, hasActiveClaim, type Index, sortSessions, timeAgo } from "../derive.ts";
+import { formatClock, useSettings } from "../settings.ts";
 import { AirportCode, SessionPlace } from "../ui.tsx";
 
 const BAYS: AircraftStatus[] = ["airborne", "holding", "nordo", "parked"];
@@ -85,6 +86,7 @@ function Strip({
   nameOf: (id: string) => string;
   clearances: Clearance[];
 }) {
+  const { clock } = useSettings();
   const claims = activeFirst(idx.claimsBySession.get(s.id) ?? []);
   const sign = callsign(s);
   const conflicts = (c: Claim) =>
@@ -152,7 +154,7 @@ function Strip({
                 </div>
                 <div className="cell">
                   <span className="cap">LAST 교신</span>
-                  <div className="val">{zulu(c.lastAt)}</div>
+                  <div className="val">{formatClock(c.lastAt, clock)}</div>
                   <div className="sub">{timeAgo(c.lastAt, now)}</div>
                 </div>
                 <div className="cell cell-remarks">
@@ -189,6 +191,7 @@ const RECENT_READBACK_MS = 30 * 60_000;
 
 // 관제 지시: 복창 대기(파랑), 10분 넘게 미복창(주황), 최근 30분 안에 복창 받음(점선)
 function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: number }) {
+  const { clock } = useSettings();
   const shown = clearances.filter(
     (c) => !c.cancelledAt && (!c.readbackAt || now - Date.parse(c.readbackAt) < RECENT_READBACK_MS),
   );
@@ -200,16 +203,11 @@ function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: nu
         const tone = c.readbackAt ? "dashed" : overdue ? "amber" : "blue";
         const state = c.readbackAt ? "복창" : overdue ? "미복창" : "복창 대기";
         return (
-          <span key={c.id} className={`stamp ${tone}`} title={`${c.text}\n${zulu(c.at)} 발부 · ${state}`}>
+          <span key={c.id} className={`stamp ${tone}`} title={`${c.text}\n${formatClock(c.at, clock)} 발부 · ${state}`}>
             {c.id} {c.type} · {state}
           </span>
         );
       })}
     </div>
   );
-}
-
-// 2026-09-26T06:24:37Z → 06:24Z
-function zulu(iso: string): string {
-  return `${new Date(iso).toISOString().slice(11, 16)}Z`;
 }
