@@ -1,5 +1,26 @@
-import type { Session } from "../../server/model.ts";
+import type { Airport, Session } from "../../server/model.ts";
 import { callsign } from "./aviation.ts";
+import { type Index, sessionLocation } from "./derive.ts";
+
+// 저장소 = 공항 코드(대문자 4자). 마우스를 올리면 저장소 이름과 경로.
+export function AirportCode({ airport }: { airport: Airport | null | undefined }) {
+  if (!airport) return null;
+  return (
+    <span className="apt" title={`${airport.name} (${airport.repo})`}>
+      {airport.code}
+    </span>
+  );
+}
+
+// 세션 위치: "VCDO TWR"(본 체크아웃), "VCDO vocado-voc-187"(워크트리), 저장소 밖이면 폴더 이름.
+export function SessionPlace({ session, idx }: { session: Session; idx: Index }) {
+  const { airport, place } = sessionLocation(session, idx);
+  return (
+    <>
+      <AirportCode airport={airport} /> {place}
+    </>
+  );
+}
 
 const statusLabel = { busy: "비행 중", idle: "대기", dead: "무선 두절" } as const;
 

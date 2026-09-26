@@ -1,4 +1,4 @@
-import type { Alert, Claim, Session, Snapshot, Ticket, Workspace } from "../../server/model.ts";
+import type { Airport, Alert, Claim, Session, Snapshot, Ticket, Workspace } from "../../server/model.ts";
 
 export interface Index {
   sessionById: Map<string, Session>;
@@ -9,6 +9,7 @@ export interface Index {
   workspacesByTicket: Map<string, Workspace[]>;
   alertsByWorkspace: Map<string, Alert[]>;
   alertsByTicket: Map<string, Alert[]>;
+  airportByRepo: Map<string, Airport>;
 }
 
 function push<K, V>(map: Map<K, V[]>, key: K, value: V) {
@@ -27,6 +28,7 @@ export function buildIndex(s: Snapshot): Index {
     workspacesByTicket: new Map(),
     alertsByWorkspace: new Map(),
     alertsByTicket: new Map(),
+    airportByRepo: new Map(s.airports.map((a) => [a.repo, a])),
   };
   const byRecent = [...s.claims].sort((a, b) => b.lastAt.localeCompare(a.lastAt));
   for (const c of byRecent) {
@@ -47,6 +49,14 @@ export function occupantsOf(key: string, idx: Index): Session[] {
   for (const w of idx.workspacesByTicket.get(key) ?? [])
     for (const c of idx.claimsByWorkspace.get(w.path) ?? []) if (c.state === "active") ids.add(c.sessionId);
   return [...ids].map((id) => idx.sessionById.get(id)).filter((x): x is Session => Boolean(x));
+}
+
+// 세션 위치: 본 체크아웃이면 관제탑(TWR), 워크트리 안이면 그 주기장, 저장소 밖이면 폴더 이름.
+export function sessionLocation(s: Session, idx: Index): { airport: Airport | null; place: string } {
+  const airport = s.repo ? (idx.airportByRepo.get(s.repo) ?? null) : null;
+  if (!s.workspacePath) return { airport: null, place: projectOf(s.cwd) };
+  if (s.workspacePath === s.repo) return { airport, place: "TWR" };
+  return { airport, place: idx.wsByPath.get(s.workspacePath)?.name ?? projectOf(s.cwd) };
 }
 
 export function hasActiveClaim(claims: Claim[] | undefined): boolean {

@@ -9,7 +9,8 @@ import {
   flightNumber,
   flightPhase,
 } from "../aviation.ts";
-import { activeFirst, hasActiveClaim, type Index, projectOf, sortSessions, timeAgo } from "../derive.ts";
+import { activeFirst, hasActiveClaim, type Index, sortSessions, timeAgo } from "../derive.ts";
+import { AirportCode, SessionPlace } from "../ui.tsx";
 
 const BAYS: AircraftStatus[] = ["airborne", "holding", "nordo", "parked"];
 const agentCode = { claude: "CLD", codex: "CDX" } as const;
@@ -90,7 +91,7 @@ function Strip({
         </div>
         <div className="sub">
           {sign !== s.name && `${s.name} · `}
-          {projectOf(s.cwd)} · {timeAgo(s.lastActiveAt, now)}
+          <SessionPlace session={s} idx={idx} /> · {timeAgo(s.lastActiveAt, now)}
         </div>
       </div>
       <div className="strip-legs">
@@ -108,6 +109,7 @@ function Strip({
                 <div className="cell">
                   <span className="cap">STAND 주기장</span>
                   <div className="val" title={c.workspacePath}>
+                    <AirportCode airport={ws ? idx.airportByRepo.get(ws.repo) : undefined} />{" "}
                     {ws?.name ?? c.workspacePath.split("/").pop()}
                   </div>
                   <div className="sub">{ws?.branch ?? (ws ? `detached ${ws.head}` : "")}</div>

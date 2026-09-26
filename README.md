@@ -25,6 +25,10 @@
 | `Ticket` | Linear 이슈 | `VOC-191` | 편명 `VOC191` (브랜치·PR에는 `VOC-191` 그대로) |
 | `Claim` | 세션이 워크스페이스를 점유한다는 기록 | `sessionId` + 경로 | 주기장 점유. 기록 추정은 "추정 항적" |
 
+| 저장소 / 본 체크아웃 | — | 본 체크아웃 경로 | 공항 코드(대문자 4자) / 관제탑 `VCDO TWR` |
+
+공항 코드는 [airports.json](airports.json)(저장소 폴더 이름 → 코드)에서 정한다. 목록에 없는 저장소는 이름에서 만든다(첫 글자 + 자음, 예: `tennis` → `TNNS`). 잘못된 값이나 겹치는 값은 무시하고 자동 코드를 쓴다. 파일은 매 스냅샷마다 다시 읽으므로 고치면 재시작 없이 반영된다.
+
 | 상태 | 화면 표기 |
 |---|---|
 | 세션 busy / idle+점유 / idle / dead | 비행 중 / 체공 대기 / 주기 / 무선 두절 |
@@ -114,10 +118,12 @@ atc/
 │   │   ├── git.ts          # git worktree list, dirty, 마지막 커밋
 │   │   └── linear.ts       # Linear GraphQL, 1분마다
 │   ├── model.ts            # Session / Workspace / Ticket / Claim / Alert
+│   ├── airports.ts         # 저장소 → 공항 코드 (airports.test.ts)
 │   ├── occupancy.ts        # 이양·충돌 판정 (occupancy.test.ts)
 │   ├── snapshot.ts         # 소스 병합 + 경고 계산
 │   └── index.ts            # /api/snapshot, /api/events
 ├── web/src/                # Vite + React. 연결 / 팀 / 티켓 화면
+├── airports.json           # 저장소별 공항 코드
 ├── deploy/atc.service      # systemd 사용자 서비스
 └── docs/naming.md
 ```

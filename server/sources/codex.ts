@@ -74,6 +74,8 @@ export function readCodex(workspaces: Workspace[]): { sessions: Session[]; claim
       cwd: meta.cwd,
       startedAt: meta.timestamp,
       lastActiveAt: st.mtime.toISOString(),
+      repo: null,
+      workspacePath: null,
     });
     const ws = workspaces.find((w) => !w.isMain && (meta.cwd === w.path || meta.cwd.startsWith(w.path + "/")));
     if (ws) {

@@ -56,6 +56,8 @@ export function readClaudeSessions(): { sessions: Session[]; files: SessionFile[
       cwd: s.cwd,
       startedAt: new Date(s.startedAt).toISOString(),
       lastActiveAt: mtime(transcriptPath(s))?.toISOString() ?? null,
+      repo: null,
+      workspacePath: null,
     };
   });
   return { sessions, files };

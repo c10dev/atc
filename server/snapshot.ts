@@ -1,5 +1,6 @@
 import { config } from "./config.ts";
 import type { Alert, Claim, Session, Snapshot, Ticket } from "./model.ts";
+import { assignAirports } from "./airports.ts";
 import { type Occupancy, resolveOccupancy } from "./occupancy.ts";
 import { inferTranscriptClaim, readClaudeSessions, readHookClaims } from "./sources/claude.ts";
 import { readCodex } from "./sources/codex.ts";
@@ -38,9 +39,18 @@ export async function buildSnapshot(): Promise<Snapshot> {
       cwd: c.workspacePath,
       startedAt: c.since,
       lastActiveAt: c.lastAt,
+      repo: null,
+      workspacePath: null,
     };
     sessions.push(ghost);
     sessionById.set(ghost.id, ghost);
+  }
+
+  // 세션 cwd를 가장 깊이 포함하는 워크스페이스 (본 체크아웃 안의 .claude/worktrees도 구분된다)
+  const deepestFirst = [...workspaces].sort((a, b) => b.path.length - a.path.length);
+  for (const s of sessions) {
+    const ws = deepestFirst.find((w) => s.cwd === w.path || s.cwd.startsWith(w.path + "/"));
+    if (ws) Object.assign(s, { repo: ws.repo, workspacePath: ws.path });
   }
 
   const occupancy = resolveOccupancy(claims, (id) => sessionById.get(id)?.status, config.handoffGraceMs);
@@ -76,6 +86,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     workspaces,
     tickets,
     columns,
+    airports: assignAirports(workspaces.map((w) => w.repo)),
     claims,
     handoffs: occupancy.handoffs,
     alerts: buildAlerts(sessions, workspaces, tickets, claims, occupancy),

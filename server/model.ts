@@ -9,6 +9,15 @@ export interface Session {
   cwd: string;
   startedAt: string;
   lastActiveAt: string | null;
+  // cwd가 속한 저장소와 워크스페이스. 본 체크아웃이면 workspacePath === repo (관제탑)
+  repo: string | null;
+  workspacePath: string | null;
+}
+
+export interface Airport {
+  repo: string; // 본 체크아웃 경로
+  name: string; // 폴더 이름
+  code: string; // 대문자 4자
 }
 
 export interface Workspace {
@@ -90,6 +99,7 @@ export interface Snapshot {
   workspaces: Workspace[];
   tickets: Ticket[];
   columns: TicketColumn[];
+  airports: Airport[];
   claims: Claim[];
   handoffs: Handoff[];
   alerts: Alert[];

@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Session, Snapshot, Ticket, Workspace } from "../../../server/model.ts";
-import { hasActiveClaim, type Index, projectOf, sortSessions, timeAgo } from "../derive.ts";
+import { hasActiveClaim, type Index, sortSessions, timeAgo } from "../derive.ts";
+import { AirportCode, SessionPlace } from "../ui.tsx";
 import { aircraftStatus, aircraftStatusCode, aircraftStatusLabel, callsign, flightNumber, flightPhase, phaseCode, phaseTone } from "../aviation.ts";
 
 interface Edge {
@@ -132,7 +133,7 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
                   <span className="blk-code">{aircraftStatusCode[status]}</span>
                 </div>
                 <div className="blk-l2">
-                  {projectOf(s.cwd)} · {timeAgo(s.lastActiveAt, now)}
+                  <SessionPlace session={s} idx={idx} /> · {timeAgo(s.lastActiveAt, now)}
                 </div>
               </div>
             );
@@ -156,6 +157,7 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
               >
                 <i className="tgt" />
                 <div className="blk-l1">
+                  <AirportCode airport={idx.airportByRepo.get(w.repo)} />
                   <strong className="ellipsis">{w.name}</strong>
                   {conflict && <span className="los-tag" title="분리 기준 위반">LOS</span>}
                   {w.dirty ? <span className="dirty" title={`변경 파일 ${w.dirty}개`}>Δ{w.dirty}</span> : null}
