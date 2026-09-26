@@ -182,6 +182,10 @@ export function planDispatch(
     .filter((x) => team.test(x.name) && x.status !== "dead")
     .map((x) => {
       const base = { id: x.id, name: x.name, callsign: callsign(x), airport: codeOf(x.repo), reserved: reserved.aircraft.get(x.id) ?? null };
+      // FLEET에서 퇴역시키거나 AOG(잠시 운항 중지)로 둔 AIRCRAFT는 배정하지 않는다
+      const status = profileOf(fleet, x.name);
+      if (status.retired) return { ...base, available: false, reason: "RETIRED" };
+      if (status.aog) return { ...base, available: false, reason: `AOG — ${status.aog.reason}${status.aog.until ? ` (~${status.aog.until})` : ""}` };
       if (x.status === "busy") return { ...base, available: false, reason: "AIRBORNE" };
       const held = active.filter((c) => c.sessionId === x.id).map((c) => wsTicket.get(c.workspacePath));
       const open = held.filter((k) => !k || !isDone(k));

@@ -79,12 +79,16 @@ AIRPORT 목록은 `~/.local/state/atc/airports.json`(기계마다 다른 경로�
 
 ### FLEET 등록부
 
-팀(AIRCRAFT)은 `~/.local/state/atc/fleet.json`에 적고 FLEET 탭에서 고친다([docs/fleet.md](docs/fleet.md), 영어). `TEAM_X`마다 **CREW COMPLEMENT**(CAPTAIN 아래 팀원 POSITION: backend Opus, `ui-builder`, `ui-qa`, `flash-helper` 등), **TYPE RATING**(`SEC`, `UI`, `DATA`, `DOCS`), **ROUTE**(주 담당 Linear 프로젝트), **TARGETS**(주간 FLIGHT 수, 정시성), 메모를 둔다. 정하지 않은 항목은 vocado `CLAUDE.md` 팀원 규칙에서 온 기본값을 따른다. 보안 작업을 맡을 팀원이 없는 구성(`flash-helper`만)에는 `SEC`를 줄 수 없다. 파일에는 바꾼 것만 저장해 기본값은 코드를 계속 따라간다. planner는 TYPE RATING, 팀원, ROUTE를 쓴다(DISPATCH의 FLIGHT 분류 참고).
+팀(AIRCRAFT)은 `~/.local/state/atc/fleet.json`에 적고 FLEET 탭에서 고친다([docs/fleet.md](docs/fleet.md), 영어). `TEAM_X`마다 **CREW COMPLEMENT**(CAPTAIN 아래 팀원 POSITION: backend Opus, `ui-builder`, `ui-qa`, `flash-helper` 등), **TYPE RATING**(`SEC`, `UI`, `DATA`, `DOCS`), **ROUTE**(주 담당 Linear 프로젝트), **TARGETS**(주간 FLIGHT 수, 정시성), 메모를 둔다. 정하지 않은 항목은 vocado `CLAUDE.md` 팀원 규칙에서 온 기본값을 따른다. 보안 작업을 맡을 팀원이 없는 구성(`flash-helper`만)에는 `SEC`를 줄 수 없다. 파일에는 바꾼 것만 저장해 기본값은 코드를 계속 따라간다. planner는 TYPE RATING, 팀원, ROUTE를 쓰고(DISPATCH의 FLIGHT 분류 참고), AOG나 퇴역한 AIRCRAFT는 건너뛴다.
+
+FLEET 탭의 **팀 빌딩**: **ENTRY INTO SERVICE**로 **CONFIGURATION** 템플릿을 골라 새 AIRCRAFT를 들이고, **CREW BRIEFING**으로 그 이름의 새 세션에 붙여 넣을 시작 지시문을 받는다. 세션이 뜨면 atc가 이름으로 연결하며, 세션을 직접 띄우지는 않는다. **AOG**는 사유와 해제 예정일을 남기고 잠시 배정을 멈추고, **RETIREMENT**는 목록에서 뺀다(복귀 가능). `TEAM_X`는 등록번호(REGISTRATION)로 그대로 두고, atc의 말로 팀은 CREW가 모는 AIRCRAFT다.
 
 | API | 하는 일 |
 |---|---|
 | `GET /api/fleet` | TEAM 세션과 등록된 AIRCRAFT 전부(상태, 지금 FLIGHT, 팀원, 자격, 담당 프로젝트, 목표)와 자격 목록·기본값·프로젝트 목록 |
-| `PATCH /api/fleet/:registration` | `{complement?, ratings?, routes?, targets?, base?, note?}`. `null`이면 그 항목을 기본값으로 |
+| `POST /api/fleet` | ENTRY INTO SERVICE: `{registration, configuration?, base?, routes?, note?}`(configuration: `general`, `security`, `ui`, `research`) |
+| `GET /api/fleet/:registration/briefing` | 새 세션에 붙여 넣을 CREW BRIEFING 문구 |
+| `PATCH /api/fleet/:registration` | `{complement?, ratings?, routes?, targets?, base?, note?, aog?, retired?}`. `null`이면 그 항목을 기본값으로. `aog: {reason, until?}`는 잠시 운항 중지, `retired: {reason?}` / `false`는 퇴역·복귀 |
 
 | 상태 | 화면 표기 |
 |---|---|

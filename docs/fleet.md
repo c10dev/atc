@@ -7,7 +7,7 @@ atc knows each team session as an AIRCRAFT (`TEAM_B`, callsign BRAVO) and its le
 - **FLEET**: the teams, their crews, what they are rated for, their routes and targets.
 - **FLIGHT classification**: the kind of work, its size and the rating it needs.
 
-> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2; observed crew is not shown yet), and step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules (see section 5 for what is left). Decisions are listed at the end.
+> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2; observed crew is not shown yet), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules (see section 5 for what is left), and team building (section 8.1). Decisions are listed at the end.
 
 Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHEDULE operations), [dispatch.md](dispatch.md) (the planner that uses them).
 
@@ -182,6 +182,20 @@ Stage 4 (network planning) puts these next to the project goals. OCC may draft t
 - Edit form for the SUPERVISOR (writes `fleet.json`, same pattern as the AIRPORT registry).
 - A classification column in the DISPATCH tab and on FIDS.
 
+### 8.1 Team building
+
+The FLEET tab is also where teams are formed and stood down. atc never starts a Claude session itself: starting sessions from a server would bypass the user's control over cost and permissions, so atc stops at a ready-to-paste briefing.
+
+| Action | Term | What it does |
+|---|---|---|
+| Add a team | **ENTRY INTO SERVICE** | Registration (the next free `TEAM_X` is suggested), base AIRPORT (defaults to where most team sessions live), and a **CONFIGURATION**. The AIRCRAFT shows as NOT IN SERVICE until a session with that name appears, then atc links it by name |
+| Team template | **CONFIGURATION** | `general` (the vocado default crew; follows the defaults), `security` (Opus backend + Codex review; SEC, DATA, DOCS), `ui` (Opus backend + `ui-builder` + `ui-qa`; UI, DOCS), `research` (Opus backend + `flash-helper`; DATA, DOCS) |
+| Start the session | **CREW BRIEFING** | A copyable kickoff text: session name and folder, the CREW to create with their models, TYPE RATINGS (with the SEC rules), ROUTE, and the radio rules (`tail:` labels, `READBACK C-xxxx`; `READBACK D-xxxx` only in approval mode). The user opens a session in that repository, names it, and pastes it |
+| Stand a team down for a while | **AOG** | Reason plus an optional release date. The planner stops proposing to it (`AOG — reason (~date)`) |
+| Remove a team | **RETIREMENT** | The AIRCRAFT leaves the FLEET list (kept under RETIRED with its date and reason) and gets no proposals. A live session is not closed. It can be restored |
+
+Later: **CREW CHANGE** (a briefing for a running team whose complement changed, sent by OCC after approval, from OCC S2) and **CHECKRIDE** (evidence for granting a rating such as SEC, from completed FLIGHTs and reviews).
+
 ## 9. Moving from `lane:` to `tail:`
 
 1. The planner reads `tail:` and keeps reading `lane:` as an alias for two weeks, marking it "deprecated" in the exclusion reason.
@@ -197,6 +211,7 @@ Stage 4 (network planning) puts these next to the project goals. OCC may draft t
 4. ◐ The DISPATCH card shows the classification. Still to do: FIDS, and DISPATCH notes that suggest a classification when labels are missing
 5. OCC S1 `CLASSIFY` drafts (with the SCHEDULE work in occ.md)
 6. TARGETS and on-time baselines in METRICS / stage 4
+7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 
 ## 11. Risks and mitigations
 
@@ -215,6 +230,8 @@ Stage 4 (network planning) puts these next to the project goals. OCC may draft t
 | Team concept | Develop it further in atc terms: crew makeup and goals included |
 | Pre-assignment | Proceed with the President note, the Linear labels and VOC-196, under the name settled here |
 | Difficulty classification | Needed; included here as FLIGHT TYPE, WAKE CATEGORY and required TYPE RATING |
+| Team naming | Keep `TEAM_X` as the **REGISTRATION**: it is the session name the user gives, and vocado rules, President, `tail:` labels and `teamPattern` all depend on it. In atc's own words a team is an **AIRCRAFT** flown by a **CREW** under a **CAPTAIN**, spoken by its callsign (ECHO). The word "team" is kept only for the registration and when talking to people |
+| Team building | In the FLEET tab: ENTRY INTO SERVICE, CONFIGURATION templates, CREW BRIEFING, AOG, RETIREMENT. atc does not start sessions |
 | Linear labels | `type` (BUILD … FERRY) and `wake` (L … J) created as single-select label groups in the Vocado team; `tail:TEAM_A` … `tail:TEAM_F` stay flat labels for now (President already uses them) |
 | First FLEET profiles | From flight history: TEAM_B, TEAM_D, TEAM_E hold `SEC` (security and DB FLIGHTs) with route Beta Readiness; TEAM_F route Song Experience; TEAM_C routes Vocado Visual System (SEED) and Home & Discovery; TEAM_A on defaults |
 

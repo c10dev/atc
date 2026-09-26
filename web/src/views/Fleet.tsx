@@ -1,21 +1,45 @@
-import { useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type { AircraftView, CrewMember, FleetFile, Rating } from "../../../server/fleet.ts";
 import { flightNumber } from "../aviation.ts";
 import "./Fleet.css";
 
 // FLEET: 팀(AIRCRAFT)마다 CREW COMPLEMENT, TYPE RATING, ROUTE, TARGETS. 설계: docs/fleet.md.
-// 이 단계에서는 보여 주고 고치기만 한다. planner는 아직 이 값을 쓰지 않는다.
+// 팀 빌딩: ENTRY INTO SERVICE(새 AIRCRAFT), CONFIGURATION(팀 구성 템플릿), CREW BRIEFING(세션 시작 지시문),
+// AOG(잠시 운항 중지), RETIREMENT(퇴역). 세션은 사람이 연다 — atc는 지시문까지만 만든다.
+
+interface Configuration {
+  id: string;
+  label: string;
+  complement: CrewMember[];
+  ratings: Rating[];
+}
 
 interface FleetBrief {
   ratings: Rating[];
   defaults: FleetFile["defaults"];
   projects: string[];
   aircraft: AircraftView[];
+  configurations: Configuration[];
+  airports: string[];
+  defaultBase: string | null;
+  nextRegistration: string | null;
 }
 
 // RADAR·STRIPS와 같은 말: 작업 중 AIRBORNE, 대기 중 STAND를 쥐었으면 HOLDING, 아니면 PARKED
 const statusOf = (a: AircraftView) =>
-  a.status === "busy" ? "AIRBORNE" : a.status === "idle" ? (a.flying.length ? "HOLDING" : "PARKED") : a.status === "dead" ? "NORDO" : "NOT IN SERVICE";
+  a.retired
+    ? "RETIRED"
+    : a.aog
+      ? "AOG"
+      : a.status === "busy"
+        ? "AIRBORNE"
+        : a.status === "idle"
+          ? a.flying.length
+            ? "HOLDING"
+            : "PARKED"
+          : a.status === "dead"
+            ? "NORDO"
+            : "NOT IN SERVICE";
 
 const ratingHelp: Record<Rating, string> = {
   SEC: "DB·마이그레이션·RLS·인증·권한·보안·권리·배포·결제 (Codex Engineering Task)",
@@ -39,6 +63,7 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
   const [brief, setBrief] = useState<FleetBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  const [briefing, setBriefing] = useState<{ registration: string; text: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -64,14 +89,53 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
     }
   };
 
+  const showBriefing = async (reg: string) => {
+    try {
+      const r = await api("GET", `/api/fleet/${encodeURIComponent(reg)}/briefing`);
+      setBriefing({ registration: reg, text: r.briefing });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const enter = async (input: Record<string, unknown>) => {
+    try {
+      const r = await api("POST", "/api/fleet", input);
+      await load();
+      await showBriefing(r.aircraft.registration);
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
+    }
+  };
+
+  const toggleAog = (a: AircraftView) => {
+    if (a.aog) return save(a.registration, { aog: null });
+    const reason = prompt(`${a.callsign}(${a.registration})를 AOG로 둡니다. 사유는?`);
+    if (!reason?.trim()) return;
+    const until = prompt("해제 예정일(YYYY-MM-DD, 비워도 됨)") ?? "";
+    return save(a.registration, { aog: { reason, until: until.trim() || null } });
+  };
+
+  const retire = (a: AircraftView) => {
+    if (a.retired) return save(a.registration, { retired: false });
+    const live = a.status !== "absent" ? `\n${a.registration} 세션이 아직 살아 있습니다. 퇴역해도 세션은 닫히지 않고, 배정만 멈춥니다.` : "";
+    const reason = prompt(`${a.callsign}(${a.registration})를 퇴역시킬까요? 사유(선택)${live}`);
+    if (reason === null) return;
+    return save(a.registration, { retired: { reason: reason.trim() || null } });
+  };
+
   if (!brief) return <p className="empty">{error ? `불러오지 못함: ${error}` : "불러오는 중…"}</p>;
+  const inService = brief.aircraft.filter((a) => !a.retired);
+  const retired = brief.aircraft.filter((a) => a.retired);
 
   return (
     <section className="fleet">
       <div className="toolbar">
         <span className="muted">
-          팀(AIRCRAFT)마다 태우는 팀원(CREW), 맡을 수 있는 일(TYPE RATING), 주 담당 프로젝트(ROUTE), 목표(TARGETS). 기본값은 vocado
-          CLAUDE.md의 팀원 규칙이다. planner는 아직 이 값을 쓰지 않는다.
+          AIRCRAFT(팀 세션)마다 태우는 CREW, 맡을 수 있는 일(TYPE RATING), 주 담당 프로젝트(ROUTE), 목표(TARGETS). 기본값은 vocado
+          CLAUDE.md의 팀원 규칙이고, DISPATCH planner가 TYPE RATING·CREW·ROUTE를 쓴다.
         </span>
       </div>
       {error && (
@@ -79,28 +143,80 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
           {error}
         </p>
       )}
+      <EntryForm brief={brief} onEnter={enter} />
+      {briefing && <BriefingPanel registration={briefing.registration} text={briefing.text} onClose={() => setBriefing(null)} />}
       <div className="fl-cards">
-        {brief.aircraft.map((a) =>
+        {inService.map((a) =>
           editing === a.registration ? (
             <Editor key={a.registration} a={a} brief={brief} onCancel={() => setEditing(null)} onSave={(p) => save(a.registration, p)} />
           ) : (
-            <Card key={a.registration} a={a} onEdit={() => (setError(null), setEditing(a.registration))} />
+            <Card
+              key={a.registration}
+              a={a}
+              onEdit={() => (setError(null), setEditing(a.registration))}
+              onBriefing={() => showBriefing(a.registration)}
+              onAog={() => toggleAog(a)}
+              onRetire={() => retire(a)}
+            />
           ),
         )}
       </div>
+      {retired.length > 0 && (
+        <>
+          <h2 className="label fl-retired-label">
+            RETIRED <em>{retired.length}</em>
+          </h2>
+          <ul className="fl-retired">
+            {retired.map((a) => (
+              <li key={a.registration}>
+                <b>{a.callsign}</b> <span className="mono faint">{a.registration}</span>
+                <span className="faint">
+                  {" "}
+                  · {a.retired!.at.slice(0, 10)}
+                  {a.retired!.reason ? ` · ${a.retired!.reason}` : ""}
+                </span>
+                <button className="fl-btn" onClick={() => retire(a)}>
+                  복귀
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </section>
   );
 }
 
-function Card({ a, onEdit }: { a: AircraftView; onEdit: () => void }) {
+function Card({
+  a,
+  onEdit,
+  onBriefing,
+  onAog,
+  onRetire,
+}: {
+  a: AircraftView;
+  onEdit: () => void;
+  onBriefing: () => void;
+  onAog: () => void;
+  onRetire: () => void;
+}) {
   return (
-    <article className={`fl-card s-${a.status}`}>
+    <article className={`fl-card s-${a.status}${a.aog ? " is-aog" : ""}`}>
       <header className="fl-head">
         <b className="fl-callsign">{a.callsign}</b>
         <span className="mono faint">{a.registration}</span>
         {a.base && <span className="apt">{a.base}</span>}
         <span className="fl-status">{statusOf(a)}</span>
       </header>
+      {a.aog && (
+        <p className="fl-aog">
+          <span className="fl-aog-mark">AOG</span> {a.aog.reason}
+          {a.aog.until ? <span className="faint"> · ~{a.aog.until}</span> : null}
+        </p>
+      )}
+      {a.status === "absent" && (
+        <p className="fl-absent faint">세션이 없음 — CREW BRIEFING을 새 세션에 붙여 넣으면 IN SERVICE가 된다</p>
+      )}
       {a.flying.length > 0 && <p className="fl-flying">FLYING {a.flying.map(flightNumber).join(", ")}</p>}
 
       <h3 className="fl-sub">
@@ -151,11 +267,119 @@ function Card({ a, onEdit }: { a: AircraftView; onEdit: () => void }) {
       {a.note && <p className="fl-note">{a.note}</p>}
 
       <div className="fl-actions">
+        <button className="fl-btn" onClick={onBriefing}>
+          CREW BRIEFING
+        </button>
+        <button className="fl-btn" onClick={onAog}>
+          {a.aog ? "AOG 해제" : "AOG"}
+        </button>
+        <button className="fl-btn danger" onClick={onRetire}>
+          퇴역
+        </button>
         <button className="fl-btn" onClick={onEdit}>
           고치기
         </button>
       </div>
     </article>
+  );
+}
+
+function EntryForm({ brief, onEnter }: { brief: FleetBrief; onEnter: (input: Record<string, unknown>) => Promise<boolean> }) {
+  const [open, setOpen] = useState(false);
+  const [registration, setRegistration] = useState(brief.nextRegistration ?? "");
+  const [configuration, setConfiguration] = useState("general");
+  const [base, setBase] = useState(brief.defaultBase ?? brief.airports[0] ?? "");
+  const cfg = brief.configurations.find((c) => c.id === configuration);
+
+  if (!open) {
+    return (
+      <div className="fl-entry-toggle">
+        <button className="fl-btn primary" onClick={() => (setRegistration(brief.nextRegistration ?? ""), setOpen(true))}>
+          ENTRY INTO SERVICE — 새 AIRCRAFT 들이기
+        </button>
+      </div>
+    );
+  }
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (await onEnter({ registration: registration.trim(), configuration, base: base || null })) setOpen(false);
+  };
+  return (
+    <form className="fl-entry" onSubmit={submit}>
+      <h2 className="label">ENTRY INTO SERVICE</h2>
+      <label>
+        등록번호{" "}
+        <input
+          className="fl-input fl-reg"
+          value={registration}
+          onChange={(e) => setRegistration(e.target.value.toUpperCase())}
+          aria-label="등록번호"
+          required
+        />
+      </label>
+      <label>
+        CONFIGURATION{" "}
+        <select className="fl-input" value={configuration} onChange={(e) => setConfiguration(e.target.value)} aria-label="CONFIGURATION">
+          {brief.configurations.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        AIRPORT{" "}
+        <select className="fl-input" value={base} onChange={(e) => setBase(e.target.value)} aria-label="AIRPORT">
+          {brief.airports.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </label>
+      {cfg && (
+        <p className="fl-entry-preview faint">
+          CREW {cfg.complement.map((m) => `${m.position}(${m.agent})`).join(", ")} · TYPE RATING {cfg.ratings.join(", ")}
+        </p>
+      )}
+      <div className="fl-actions">
+        <button type="button" className="fl-btn" onClick={() => setOpen(false)}>
+          취소
+        </button>
+        <button type="submit" className="fl-btn primary">
+          들이기
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function BriefingPanel({ registration, text, onClose }: { registration: string; text: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <section className="fl-briefing" aria-label={`${registration} CREW BRIEFING`}>
+      <h2 className="label">
+        CREW BRIEFING <em>{registration} — 새 세션을 그 저장소에서 열고, 세션 이름을 {registration}로 둔 뒤 아래를 붙여 넣는다</em>
+      </h2>
+      <p className="fl-entry-preview faint">Linear에 tail:{registration} 라벨이 없으면 먼저 만들어야 이 팀에 배정 라벨을 붙일 수 있다.</p>
+      <textarea className="fl-briefing-text" readOnly value={text} rows={Math.min(24, text.split("\n").length + 1)} />
+      <div className="fl-actions">
+        <button className="fl-btn" onClick={onClose}>
+          닫기
+        </button>
+        <button className="fl-btn primary" onClick={copy}>
+          {copied ? "복사됨" : "복사"}
+        </button>
+      </div>
+    </section>
   );
 }
 

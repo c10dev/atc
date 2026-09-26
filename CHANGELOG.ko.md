@@ -7,6 +7,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 ## [Unreleased]
 
 ### 추가
+- FLEET 탭의 팀 빌딩([docs/fleet.md](docs/fleet.md) 8.1): **ENTRY INTO SERVICE**로 **CONFIGURATION** 템플릿(`general`, `security`, `ui`, `research`)을 골라 새 AIRCRAFT를 들인다(비어 있는 다음 `TEAM_X`, 기본 AIRPORT는 팀들이 있는 곳). **CREW BRIEFING**은 새 세션에 붙여 넣을 시작 지시문을 주고, **AOG**는 사유와 해제 예정일을 남기고 잠시 배정을 멈추며(planner가 건너뜀), **RETIREMENT**는 목록과 계획에서 뺀다(복귀 가능). atc는 세션을 직접 띄우지 않는다.
 - planner의 FLIGHT 분류([docs/fleet.md](docs/fleet.md) 3단계): Linear 라벨 `type:`, `wake:`, `rating:`(Risk 그룹 라벨은 `SEC`). FLIGHT는 필요한 TYPE RATING을 모두 가졌고 팀원이 그 종류의 일을 할 수 있는 AIRCRAFT에만 간다. 슬롯은 WAKE로 세고(L 0.5, M 1, H 2), `wake:J`는 나누기 전까지 제외하며, 새 ROUTE 요소가 AIRCRAFT의 담당 프로젝트에 +1을 준다. 자격 있는 AIRCRAFT가 아예 없으면 사유와 함께 제외한다. Linear 라벨 그룹의 하위 라벨은 이제 `그룹:이름`(예: `Risk:Security`)으로 읽는다. DISPATCH 카드에 분류가 보인다.
 - FLEET 등록부와 탭([docs/fleet.md](docs/fleet.md) 2단계): `~/.local/state/atc/fleet.json`에 팀마다 CREW COMPLEMENT, TYPE RATING(`SEC`, `UI`, `DATA`, `DOCS`), ROUTE, TARGETS를 두고, 기본값은 vocado 팀원 규칙에서 온다. 보안 작업을 맡을 팀원이 없는 구성에는 `SEC`를 줄 수 없다. FLEET 탭은 AIRCRAFT마다 상태(AIRBORNE / HOLDING / PARKED), 지금 FLIGHT, 프로필을 보여 주고 고친다(`GET /api/fleet`, `PATCH /api/fleet/:registration`). planner는 아직 쓰지 않는다.
 - OCC 세션 S0(`occ/`, [docs/occ.md](docs/occ.md), 영어). DISPATCH 세션 폴더가 `dispatch/`에서 `occ/`로 옮겨졌고 하던 일(제안 검토, HOLD, FLIGHT PLAN, READBACK)은 그대로다. OCC는 운항 추적을 더한다: `guard.mjs --gh-read`로 읽기 전용 `gh pr view|checks|diff|list`를 쓴다. `occ/mcp-guard.mjs`가 읽기 MCP 도구만 통과시켜 S0에서는 Linear·GitHub에 쓸 수 없다.
