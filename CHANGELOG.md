@@ -7,6 +7,12 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 ## [Unreleased]
 
 ### Security
+- The TOWER, OCC and CROSSCHECK Bash guard (`controller/guard.mjs`) let `jq` through with any arguments, so a control session could read any file or its environment. The same held for the filter of gh's built-in `--jq`. CROSSCHECK runs on external providers, so a secret read this way would leave the machine. Reported by structure.
+  - Paths that worked: `jq -R . /home/c10/projects/atc/.env.local` (the Linear API key), `jq . ~/.local/state/atc/fleet.json`, `--rawfile`, `-f`, `jq -n env` / `'$ENV'`, `gh pr view … --jq '$ENV.X'`, and, even on stdin alone, `import "data" as $d {search: "/any/dir"}`, which loads `/any/dir/data.json`.
+  - jq now only filters the output of an earlier command. It may not be the first command, and it takes at most one positional argument (the filter).
+  - Its options are an allowlist: output formatting, `--arg`, `--argjson` and `--indent`. Everything else is blocked, including `-f`/`--from-file`, `--rawfile`, `--slurpfile`, `-L`, `--args` and `--jsonargs`.
+  - The filter may not contain `env`, `$ENV`, `import`, `include`, `modulemeta` or `get_search_list`. gh's `--jq`/`-q` value gets the same filter check, and `-q` clustered with other short flags is blocked.
+  - The TOWER, OCC and CROSSCHECK manuals say jq only goes after a pipe.
 - The TOWER and OCC Bash guard (`controller/guard.mjs`) let command substitution through inside double quotes: `node atcctl.mjs brief -- "$(touch /tmp/x)"` passed, and so did a backtick. The shell runs these before the command, so a control session could run arbitrary commands. Command substitution and variable expansion (`$(…)`, backticks, `${…}`, `$VAR`) are now blocked anywhere outside single quotes; single-quoted and backslash-escaped text is still allowed. Reported by TEAM_H.
 
 ### Added

@@ -26,7 +26,7 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 - **It sends nothing but FLIGHT PLANs.** SendMessage is guarded by `send-guard.mjs`: it passes only in approval mode, and only when the text returned by `dispatch release` is sent **unchanged** to that proposal's CAPTAIN. In shadow mode everything is blocked.
 - It doesn't approve or reject proposals or drafts (that is the SUPERVISOR's job).
 - It doesn't draft a new issue (`NEW`) without a CHARTER REQUEST. It never invents tickets.
-- It doesn't read or change code. Edit and Write are blocked, and Bash only allows `node ../controller/atcctl.mjs …`, `jq` and read-only `gh pr view|checks|diff|list` (`../controller/guard.mjs --gh-read`).
+- It doesn't read or change code. Edit and Write are blocked, and Bash only allows `node ../controller/atcctl.mjs …`, `jq` and read-only `gh pr view|checks|diff|list` (`../controller/guard.mjs --gh-read`). jq only goes after a pipe, as in `node … atcctl.mjs … | jq '<filter>'`. Giving jq a file, options such as `-f`, `--rawfile` or `--slurpfile`, and `env`, `$ENV`, `import` or `include` in the filter are blocked (the same goes for gh's `--jq`).
 - It doesn't write to Linear, git or GitHub. Only read MCP tools (get, list, search, read, query, fetch) pass (`mcp-guard.mjs`). FLIGHT bodies are read through atc. The CAPTAIN who reads back changes the Linear state. The one exception is a released SCHEDULE CALL in S2, which linear-guard compares and lets through.
 - It doesn't merge PRs or judge reviews. It reports only what it checked.
 - It doesn't interfere with TOWER's work (LOSS OF SEPARATION, HANDOFF, LANDING SEQUENCE).

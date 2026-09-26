@@ -202,3 +202,76 @@ test("guard CLI: opus 기록이면 exit 2, muse 기록이면 updatedInput으로 
   // OCC(--crosscheck 없음)는 이 확인을 하지 않는다
   assert.equal(runHook("node ../controller/atcctl.mjs dispatch brief", undefined, ["--gh-read"]).status, 0);
 });
+
+// ── jq: 앞 명령의 출력(stdin)만. 파일·환경·모듈을 읽는 길은 막는다 ──
+test("jq: TOWER·OCC·CROSSCHECK 모두 파일 인자·파일 옵션·env·import를 막고, | jq '<필터>'는 통과", () => {
+  const sessions = [
+    ["TOWER", HERE, {}, "node atcctl.mjs brief"],
+    ["OCC", OCC, { ghRead: true }, "node ../controller/atcctl.mjs dispatch brief"],
+    ["CROSSCHECK", CROSSCHECK, { crosscheck: true, ghRead: true }, "node ../controller/atcctl.mjs dispatch brief"],
+  ];
+  for (const [name, cwd, opts, atc] of sessions) {
+    const ok = [
+      `${atc} | jq '.open'`,
+      `${atc} | jq -r '.open[].id'`,
+      `${atc} | jq -rc '.open[] | {id, flight}'`,
+      `${atc} | jq --arg k VOC-1 '.open[] | select(.flight == $k)'`,
+      `${atc} | jq '.open | length' --argjson n 3 --indent 2`,
+      `${atc} | jq -S --tab .`,
+      `${atc} | jq '.environment'`,
+      `${atc} | jq`,
+      `${atc} | jq -- '.open'`,
+    ];
+    const no = [
+      "jq -R . /home/c10/projects/atc/.env.local",
+      "jq . ~/.local/state/atc/fleet.json",
+      `${atc} | jq . /home/c10/projects/atc/.env.local`,
+      `${atc} | jq -R . /home/c10/.local/state/atc/fleet.json`,
+      `${atc} | jq '.x' -- /etc/hostname`,
+      `${atc} | jq -f /tmp/prog.jq`,
+      `${atc} | jq --from-file /tmp/prog.jq`,
+      `${atc} | jq -rf /tmp/prog.jq`,
+      `${atc} | jq --rawfile s /home/c10/projects/atc/.env.local -n '$s'`,
+      `${atc} | jq --slurpfile s /home/c10/.local/state/atc/fleet.json -n '$s'`,
+      `${atc} | jq -L /tmp '.x'`,
+      `${atc} | jq --library-path /tmp '.x'`,
+      `${atc} | jq -n '.' --args a b`,
+      `${atc} | jq -n '.' --jsonargs 1 2`,
+      `${atc} | jq -n env`,
+      `${atc} | jq -n '$ENV'`,
+      `${atc} | jq -n '$ENV.LINEAR_API_KEY'`,
+      `${atc} | jq '.x as $a | env.HOME'`,
+      `${atc} | jq 'import "data" as $d {search: "/home/c10/.local/state/atc"}; $d'`,
+      `${atc} | jq 'include "m" {search: "/tmp"}; .'`,
+      `${atc} | jq --arg k`,
+      `${atc} | jq --unknown-future-option .`,
+      "jq -n '1'",
+      `${atc} | jq . <(cat /etc/hostname)`,
+    ];
+    for (const c of ok) assert.equal(check(c, cwd, opts), null, `${name} 통과해야 함: ${c}`);
+    for (const c of no) assert.notEqual(check(c, cwd, opts), null, `${name} 막아야 함: ${c}`);
+  }
+});
+
+test("checkJq: 막는 이유를 알려 준다", async () => {
+  const { checkJq } = await import("./guard.mjs");
+  assert.equal(checkJq(["jq", "-r", ".x"]), null);
+  assert.match(checkJq(["jq", ".", "/etc/passwd"]), /파일을 주지 않는다/);
+  assert.match(checkJq(["jq", "--rawfile", "a", "b"]), /--rawfile/);
+  assert.match(checkJq(["jq", "-rf", "p"]), /-f/);
+  assert.match(checkJq(["jq", "-n", "$ENV"]), /env/);
+});
+
+test("gh --jq(-q): 내장 jq도 env·$ENV·import를 막는다(OCC·CROSSCHECK)", async () => {
+  const { checkGhJq } = await import("./guard.mjs");
+  const gh = "gh pr view 393 --repo chaehy5665/vocado_nextjs --json state,title";
+  for (const [cwd, opts] of [[OCC, { ghRead: true }], [CROSSCHECK, { crosscheck: true, ghRead: true }]]) {
+    assert.equal(check(`${gh} --jq '.state'`, cwd, opts), null);
+    assert.equal(check(`${gh} -q .state`, cwd, opts), null);
+    assert.equal(check(`${gh} --template '{{.title}}'`, cwd, opts), null);
+    for (const bad of [`${gh} --jq '$ENV.CLAUDE_CODE_MESSAGING_TOKEN'`, `${gh} -q 'env.HOME'`, `${gh} --jq='$ENV'`, `${gh} -q'$ENV'`, `${gh} -cq '$ENV'`,
+      `${gh} --jq 'import "d" as $d {search: "/home/c10/.local/state/atc"}; $d'`])
+      assert.notEqual(check(bad, cwd, opts), null, bad);
+  }
+  assert.equal(checkGhJq(["gh", "pr", "view", "1", "--", "-q", "$ENV"]), null); // -- 뒤는 인자
+});

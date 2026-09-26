@@ -123,15 +123,77 @@ export function checkMarkModel(command, cwd, transcript) {
   return { command: `ATC_CROSSCHECK_MODEL='${model}' ${command.trimStart()}`, model };
 }
 
+// jq는 앞 명령의 출력(stdin)만 다듬는다. 파일·환경·모듈을 읽는 길을 모두 막는다:
+// 파일 인자, -f·--rawfile·--slurpfile·-L·--args 같은 옵션(허용 목록 밖은 모두 막음),
+// 필터 안의 env·$ENV(환경 변수)와 import·include(`{search: "/dir"}`로 아무 .json·.jq 파일이나 읽는다).
+const JQ_SHORT = new Set("rcesnRjaSCM");
+const JQ_LONG = new Set([
+  "--raw-output", "--raw-output0", "--compact-output", "--exit-status", "--slurp", "--null-input", "--raw-input",
+  "--join-output", "--ascii-output", "--sort-keys", "--color-output", "--monochrome-output", "--tab", "--seq",
+  "--stream", "--stream-errors", "--unbuffered",
+]);
+const JQ_VALUES = { "--indent": 1, "--arg": 2, "--argjson": 2 }; // 뒤에 받는 값 개수
+const JQ_FILTER_BANNED = /(^|[^\w$])(env|import|include|modulemeta|get_search_list)\b|\$ENV\b|\$__prog/;
+
+// jq 한 명령(단어 배열)의 문제. 괜찮으면 null
+export function checkJq(words) {
+  const positional = [];
+  for (let i = 1; i < words.length; i++) {
+    const w = words[i];
+    if (w === "--") {
+      positional.push(...words.slice(i + 1));
+      break;
+    }
+    if (w in JQ_VALUES) {
+      if (i + JQ_VALUES[w] >= words.length) return `jq ${w} 뒤에 값이 모자람`;
+      i += JQ_VALUES[w];
+    } else if (w.startsWith("--")) {
+      if (!JQ_LONG.has(w)) return `jq 옵션 ${w}는 쓸 수 없음`;
+    } else if (w.startsWith("-") && w.length > 1) {
+      const bad = [...w.slice(1)].find((ch) => !JQ_SHORT.has(ch));
+      if (bad) return `jq 옵션 -${bad}는 쓸 수 없음`;
+    } else positional.push(w);
+  }
+  if (positional.length > 1) return "jq에 파일을 주지 않는다 — 앞 명령의 출력(| jq '<필터>')만 읽는다";
+  if (positional.length && JQ_FILTER_BANNED.test(positional[0])) return "jq 필터에서 env·$ENV·import·include는 쓸 수 없음";
+  return null;
+}
+
+// gh의 --jq(-q)는 내장 jq(gojq)라 env·$ENV로 세션의 환경 변수를 읽는다. 같은 필터 검사를 한다.
+// -q가 다른 짧은 옵션과 붙은 꼴(-cq)은 값 위치가 헷갈리므로 막는다.
+export function checkGhJq(words) {
+  for (let i = 3; i < words.length; i++) {
+    const w = words[i];
+    if (w === "--") break;
+    let filter = null;
+    if (w === "-q" || w === "--jq") filter = words[i + 1] ?? "";
+    else if (w.startsWith("--jq=")) filter = w.slice(5);
+    else if (/^-q./.test(w)) filter = w.slice(2);
+    else if (/^-[^-]*q/.test(w)) return `gh 옵션 ${w}: -q는 따로 쓴다`;
+    if (filter !== null && JQ_FILTER_BANNED.test(filter)) return "gh --jq 필터에서 env·$ENV·import·include는 쓸 수 없음";
+  }
+  return null;
+}
+
 export function check(command, cwd = HERE, { ghRead = false, crosscheck = false } = {}) {
   if (typeof command !== "string" || !command.trim()) return "빈 명령";
   if (hasRedirect(command)) return "리다이렉션(>, <, heredoc)은 쓸 수 없음";
   if (hasExpansion(command)) return "명령 치환·변수 확장($(…), `…`, ${…}, $VAR)은 쓸 수 없음 — 문구는 작은따옴표로 감싼다";
-  for (const words of simpleCommands(command)) {
+  for (const [index, words] of simpleCommands(command).entries()) {
     const [cmd, script] = words;
-    if (cmd === "jq") continue;
+    if (cmd === "jq") {
+      // jq는 `node atcctl.mjs … | jq …`처럼 뒤에만 붙는다
+      if (index === 0) return "jq는 명령 맨 앞에 쓰지 않는다 — `node … atcctl.mjs … | jq '<필터>'`처럼 뒤에 붙인다";
+      const bad = checkJq(words);
+      if (bad) return bad;
+      continue;
+    }
     const ghAllowed = crosscheck ? CROSSCHECK_GH_READ : GH_READ;
-    if (ghRead && cmd === "gh" && words[1] === "pr" && ghAllowed.has(words[2]) && !words.includes("--web")) continue;
+    if (ghRead && cmd === "gh" && words[1] === "pr" && ghAllowed.has(words[2]) && !words.includes("--web")) {
+      const bad = checkGhJq(words);
+      if (bad) return bad;
+      continue;
+    }
     if (cmd === "node" && script && resolve(cwd, script) === ATCCTL) {
       if (crosscheck && !CROSSCHECK_CMDS.has(words.slice(2, 4).join(" "))) return `CROSSCHECK가 쓸 수 없는 atc 명령: ${words.slice(2, 4).join(" ") || "(없음)"}`;
       continue;

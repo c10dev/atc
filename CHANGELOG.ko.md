@@ -7,6 +7,12 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 ## [Unreleased]
 
 ### 보안
+- TOWER·OCC·CROSSCHECK의 Bash guard(`controller/guard.mjs`)가 `jq`를 인자 검사 없이 통과시켜, 관제 세션이 아무 파일이나 환경 변수를 읽을 수 있었다. gh의 내장 `--jq` 필터도 마찬가지였다. CROSSCHECK는 외부 제공자로 가는 모델이라 이렇게 읽은 비밀은 곧 반출이 된다. structure가 보고했다.
+  - 통하던 경로: `jq -R . /home/c10/projects/atc/.env.local`(Linear API 키), `jq . ~/.local/state/atc/fleet.json`, `--rawfile`, `-f`, `jq -n env`·`'$ENV'`, `gh pr view … --jq '$ENV.X'`. stdin만 읽어도 `import "data" as $d {search: "/아무/폴더"}`가 `/아무/폴더/data.json`을 읽었다.
+  - 이제 jq는 앞 명령의 출력만 다듬는다. 맨 앞 명령으로 쓸 수 없고, 위치 인자는 필터 하나까지다.
+  - 옵션은 허용 목록이다: 출력 형식, `--arg`·`--argjson`·`--indent`만 된다. `-f`/`--from-file`, `--rawfile`, `--slurpfile`, `-L`, `--args`, `--jsonargs`를 포함해 나머지는 모두 막는다.
+  - 필터에는 `env`·`$ENV`·`import`·`include`·`modulemeta`·`get_search_list`를 쓸 수 없다. gh의 `--jq`/`-q` 값에도 같은 필터 검사를 하고, `-q`를 다른 짧은 옵션과 붙인 꼴은 막는다.
+  - TOWER·OCC·CROSSCHECK 규정에 "jq는 파이프 뒤에만"을 적었다.
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
