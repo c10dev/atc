@@ -25,6 +25,16 @@
   --cyan: #5cd0ff; /* 접근, 정보 */
   --alert: #ff4a4a; /* 분리 기준 위반, 무선 두절 */
   --blue: #8aa8ff; /* 관제 이양 */
+  --ring: var(--radar); /* 레이더 거리 링, 스위프 */
+  --tab-on: var(--radar);
+  --tab-on-bg: linear-gradient(#0b1812, var(--chrome));
+  --blk-bg: rgba(24, 35, 48, 0.94);
+  --blk-free-bg: rgba(15, 23, 32, 0.9);
+  --blk-los-bg: rgba(58, 12, 14, 0.95);
+  --blk-title: #b9c5d1;
+  --scope-glow: #0b1813;
+  --sweep: block;
+  --backdrop: none;
 
   /* 비행 단계 */
   --phase-triage: var(--muted);
@@ -42,12 +52,26 @@
   --paper-ink: #1b2127;
   --paper-muted: #5a6066;
   --paper-line: rgba(27, 33, 39, 0.16);
+  --paper-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.25) inset,
+    0 2px 6px rgba(0, 0, 0, 0.45);
+  --stamp-red: #c21d1d;
+  --stamp-amber: #a86a00;
+  --stamp-blue: #2c55c9;
+  --stamp-gray: #585e64;
 
   /* 운항 정보판: 반전판 */
   --fids-bg: #0b0b0b;
   --fids-card: #151515;
   --fids-line: #2a2a2a;
   --flap-ink: #ffd36b;
+  --flap-tile: linear-gradient(#1c1c1c 0 49%, #000 49% 51%, #161616 51%);
+  --flap-edge: #303030;
+  --fids-head: linear-gradient(#1a1a1a, #101010);
+  --fids-hover: #1c1c1c;
+  --fids-hover-line: #444;
+  --fids-title: #e8e8e8;
+  --fids-count: #b0955a;
 
   --radius: 8px;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -61,6 +85,8 @@
 body {
   margin: 0;
   background: var(--bg);
+  background-image: var(--backdrop);
+  background-attachment: fixed;
   color: var(--text);
   font: 13px/1.45 var(--sans);
   -webkit-font-smoothing: antialiased;
@@ -188,8 +214,8 @@ button {
   font-size: 11px;
 }
 .tab[aria-selected="true"] {
-  color: var(--radar);
-  background: linear-gradient(#0b1812, var(--chrome));
+  color: var(--tab-on);
+  background: var(--tab-on-bg);
 }
 .tab[aria-selected="true"]::after {
   content: "";
@@ -198,8 +224,8 @@ button {
   right: 0;
   bottom: -1px;
   height: 2px;
-  background: var(--radar);
-  box-shadow: 0 0 10px var(--radar);
+  background: var(--tab-on);
+  box-shadow: 0 0 10px var(--tab-on);
 }
 .readouts {
   margin-left: auto;
@@ -238,7 +264,7 @@ button {
 }
 .tone-radar b {
   color: var(--radar);
-  text-shadow: 0 0 12px rgba(62, 240, 143, 0.35);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--radar) 35%, transparent);
 }
 .tone-amber b {
   color: var(--amber);
@@ -469,10 +495,10 @@ button {
 }
 @keyframes ping {
   from {
-    box-shadow: 0 0 0 0 rgba(62, 240, 143, 0.6);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--radar) 60%, transparent);
   }
   to {
-    box-shadow: 0 0 0 8px rgba(62, 240, 143, 0);
+    box-shadow: 0 0 0 8px transparent;
   }
 }
 @keyframes blink {
@@ -510,7 +536,7 @@ button {
   padding: 18px 20px 24px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: radial-gradient(ellipse at 50% 45%, #0b1813 0%, var(--scope) 70%);
+  background: radial-gradient(ellipse at 50% 45%, var(--scope-glow) 0%, var(--scope) 70%);
   box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.55);
 }
 .scope-frame::before {
@@ -519,11 +545,12 @@ button {
   inset: 0;
   pointer-events: none;
   background:
-    repeating-radial-gradient(circle at 50% 50%, transparent 0 139px, rgba(62, 240, 143, 0.07) 139px 140px),
-    linear-gradient(90deg, transparent calc(50% - 0.5px), rgba(62, 240, 143, 0.06) 50%, transparent calc(50% + 0.5px)),
-    linear-gradient(0deg, transparent calc(50% - 0.5px), rgba(62, 240, 143, 0.06) 50%, transparent calc(50% + 0.5px));
+    repeating-radial-gradient(circle at 50% 50%, transparent 0 139px, color-mix(in srgb, var(--ring) 7%, transparent) 139px 140px),
+    linear-gradient(90deg, transparent calc(50% - 0.5px), color-mix(in srgb, var(--ring) 6%, transparent) 50%, transparent calc(50% + 0.5px)),
+    linear-gradient(0deg, transparent calc(50% - 0.5px), color-mix(in srgb, var(--ring) 6%, transparent) 50%, transparent calc(50% + 0.5px));
 }
 .sweep {
+  display: var(--sweep);
   position: absolute;
   left: 50%;
   top: 50%;
@@ -531,7 +558,7 @@ button {
   height: 2000px;
   margin: -1000px 0 0 -1000px;
   border-radius: 50%;
-  background: conic-gradient(from 0deg, rgba(62, 240, 143, 0.07), rgba(62, 240, 143, 0) 50deg, transparent);
+  background: conic-gradient(from 0deg, color-mix(in srgb, var(--ring) 7%, transparent), transparent 50deg);
   animation: sweep 7s linear infinite;
   pointer-events: none;
 }
@@ -579,7 +606,7 @@ button {
   padding: 7px 10px 7px 26px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: rgba(24, 35, 48, 0.94);
+  background: var(--blk-bg);
   box-shadow: var(--shadow-1);
   font-family: var(--mono);
   cursor: default;
@@ -668,7 +695,7 @@ a.blk[href] {
 }
 .blk-l2.sans {
   font: 12px var(--sans);
-  color: #b9c5d1;
+  color: var(--blk-title);
 }
 
 .ac .tgt {
@@ -680,7 +707,7 @@ a.blk[href] {
 }
 .ac.is-airborne strong {
   color: var(--radar);
-  text-shadow: 0 0 10px rgba(62, 240, 143, 0.45);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--radar) 45%, transparent);
 }
 .ac.is-airborne .tgt {
   border: 0;
@@ -712,7 +739,7 @@ a.blk[href] {
 /* 빈 주기장: 흐리게 하지 않고 점선 테두리와 흐린 글자로만 구분 */
 .stand.is-free {
   border-style: dashed;
-  background: rgba(15, 23, 32, 0.9);
+  background: var(--blk-free-bg);
   box-shadow: none;
 }
 .stand.is-free strong {
@@ -724,7 +751,7 @@ a.blk[href] {
 }
 .stand.is-los {
   border-color: var(--alert);
-  background: rgba(58, 12, 14, 0.95);
+  background: var(--blk-los-bg);
 }
 .stand.is-los .tgt {
   border-color: var(--alert);
@@ -838,9 +865,7 @@ a.blk[href] {
   border-radius: 3px;
   background: var(--paper);
   color: var(--paper-ink);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.25) inset,
-    0 2px 6px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--paper-shadow);
 }
 .holder {
   background: var(--amber);
@@ -966,16 +991,16 @@ a.val:hover {
   transform: rotate(-2deg);
 }
 .stamp.red {
-  color: #c21d1d;
+  color: var(--stamp-red);
 }
 .stamp.amber {
-  color: #a86a00;
+  color: var(--stamp-amber);
 }
 .stamp.blue {
-  color: #2c55c9;
+  color: var(--stamp-blue);
 }
 .stamp.dashed {
-  color: #585e64;
+  color: var(--stamp-gray);
   border-style: dashed;
 }
 
@@ -1004,7 +1029,7 @@ a.val:hover {
   padding: 11px 12px 10px;
   border-bottom: 1px solid var(--fids-line);
   border-top: 2px solid var(--tone);
-  background: linear-gradient(#1a1a1a, #101010);
+  background: var(--fids-head);
 }
 .column-code {
   font: 700 12px var(--mono);
@@ -1013,16 +1038,21 @@ a.val:hover {
 }
 .column-label {
   font-weight: 600;
-  color: #e6e6e6;
+  color: var(--fids-title);
+  white-space: nowrap;
 }
 .column-alias {
   font: 400 10.5px var(--mono);
   color: var(--faint);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .count {
   margin-left: auto;
   font: 700 12px var(--mono);
-  color: #b0955a;
+  color: var(--fids-count);
 }
 .column-body {
   display: grid;
@@ -1037,8 +1067,8 @@ a.val:hover {
   background: var(--fids-card);
 }
 a.ticket:hover {
-  border-color: #444;
-  background: #1c1c1c;
+  border-color: var(--fids-hover-line);
+  background: var(--fids-hover);
 }
 .ticket.is-occupied {
   box-shadow: inset 2px 0 0 var(--radar);
@@ -1058,14 +1088,14 @@ a.ticket:hover {
   width: 15px;
   height: 21px;
   border-radius: 2px;
-  background: linear-gradient(#1c1c1c 0 49%, #000 49% 51%, #161616 51%);
-  box-shadow: inset 0 0 0 1px #303030;
+  background: var(--flap-tile);
+  box-shadow: inset 0 0 0 1px var(--flap-edge);
   font: 700 12.5px var(--mono);
   color: var(--flap-ink);
 }
 .ticket-title {
   margin-top: 6px;
-  color: #e8e8e8;
+  color: var(--fids-title);
 }
 .ticket-foot {
   display: flex;
@@ -1182,5 +1212,561 @@ a.ticket:hover {
   .cell-route,
   .leg .cell:nth-child(4) {
     display: none;
+  }
+}
+
+/* ── 테마: Glass Cockpit ─────────────────────────────
+   조종석 디스플레이(EFIS). 색 하나에 뜻 하나: 마젠타는 활성 비행계획(순항),
+   시안은 선택·접근, 녹색은 작동 중(비행 중), 호박은 주의, 빨강은 경고. 서체는 B612. */
+:root[data-theme="cockpit"] {
+  --bg: #060a14;
+  --chrome: #080d1a;
+  --panel: #0d1528;
+  --panel-2: #142038;
+  --panel-3: #1c2b4a;
+  --scope: #070c18;
+  --scope-glow: #0f1b36;
+  --line: #2c3d66;
+  --line-strong: #4260a0;
+  --bracket: #29e0ff;
+
+  --text: #f2f5fa;
+  --muted: #b0bdd6;
+  --faint: #8e9dbe;
+
+  --radar: #3cf06e;
+  --amber: #ffbf1f;
+  --cyan: #29e0ff;
+  --alert: #ff4d4d;
+  --blue: #29e0ff;
+  --magenta: #ff5fdc;
+  --ring: #6f8fd8;
+  --sweep: none;
+  --tab-on: var(--cyan);
+  --tab-on-bg: color-mix(in srgb, var(--cyan) 10%, transparent);
+
+  --phase-filed: var(--text);
+  --phase-enroute: var(--magenta);
+  --phase-approach: var(--cyan);
+  --phase-cleared: var(--radar);
+
+  --blk-bg: rgba(20, 32, 56, 0.95);
+  --blk-free-bg: rgba(13, 21, 40, 0.9);
+  --blk-los-bg: rgba(70, 12, 20, 0.95);
+  --blk-title: #d3dcec;
+
+  /* 스트립: 종이 대신 계기판 패널 */
+  --paper: var(--panel-2);
+  --paper-parked: var(--panel);
+  --paper-ink: var(--text);
+  --paper-muted: var(--muted);
+  --paper-line: var(--line);
+  --paper-shadow: inset 0 0 0 1.5px var(--line), var(--shadow-1);
+  --stamp-red: #ff7a7a;
+  --stamp-amber: var(--amber);
+  --stamp-blue: var(--cyan);
+  --stamp-gray: var(--muted);
+
+  /* 운항 정보판: 반전판 대신 계기 화면 */
+  --fids-bg: var(--panel);
+  --fids-card: var(--panel-2);
+  --fids-line: var(--line);
+  --fids-head: var(--panel-3);
+  --fids-hover: var(--panel-3);
+  --fids-hover-line: var(--line-strong);
+  --fids-title: var(--text);
+  --fids-count: var(--cyan);
+  --flap-ink: var(--magenta);
+  --flap-tile: none;
+  --flap-edge: transparent;
+
+  --mono: "B612 Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sans: B612, Pretendard, -apple-system, "Noto Sans KR", sans-serif;
+}
+/* 화면 위쪽이 살짝 밝은 계기 유리, 수평 눈금 */
+:root[data-theme="cockpit"] .scope-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(60, 110, 220, 0.12), transparent 40%),
+    repeating-linear-gradient(0deg, transparent 0 29px, rgba(140, 160, 210, 0.04) 29px 30px);
+}
+:root[data-theme="cockpit"] .map {
+  z-index: 1;
+}
+:root[data-theme="cockpit"] .tab[aria-selected="true"] {
+  box-shadow: inset 0 0 0 1.5px var(--cyan);
+}
+:root[data-theme="cockpit"] .tab[aria-selected="true"]::after {
+  display: none;
+}
+:root[data-theme="cockpit"] .brand-sector {
+  color: var(--magenta);
+}
+:root[data-theme="cockpit"] .strip {
+  border-radius: 2px;
+}
+:root[data-theme="cockpit"] .type {
+  background: var(--cyan);
+  color: var(--bg);
+}
+:root[data-theme="cockpit"] .bay-rail {
+  background: var(--panel);
+}
+:root[data-theme="cockpit"] .flap {
+  gap: 0;
+}
+:root[data-theme="cockpit"] .flap b {
+  width: auto;
+  height: auto;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+}
+/* 활성 비행계획은 마젠타 항로선 */
+:root[data-theme="cockpit"] .column.tone-enroute .ticket-title::before {
+  content: "";
+  display: block;
+  height: 2px;
+  margin-bottom: 6px;
+  border-radius: 1px;
+  background: var(--magenta);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--magenta) 60%, transparent);
+}
+:root[data-theme="cockpit"] .ticket.is-occupied {
+  box-shadow: inset 2px 0 0 var(--radar);
+}
+
+/* 테마 전환 */
+.theme-switch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: auto 12px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+}
+.theme-switch button {
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--muted);
+  font: 700 10px var(--mono);
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.theme-switch button:hover {
+  color: var(--text);
+}
+.theme-switch button[aria-checked="true"] {
+  background: var(--panel-3);
+  color: var(--tab-on);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+/* 좁은 화면: 로고 줄 오른쪽에 붙이고 탭과 수치는 그 아래 줄로 */
+@media (max-width: 860px) {
+  .theme-switch {
+    order: 1;
+    margin: auto 12px;
+  }
+  .tabs {
+    order: 2;
+  }
+  .readouts {
+    order: 3;
+  }
+}
+
+/* ── 테마: Night Sky ─────────────────────────────
+   천측 항법. 밝고 따뜻한 별일수록 지금 움직이는 것: 비행 중·순항은 금색, 체공 대기는 푸른 별,
+   접근은 청록, 이양은 라일락, 분리 위반은 붉은 거성. 패널은 반투명 유리라 뒤로 별이 비친다. */
+:root[data-theme="night"] {
+  --bg: #03040d;
+  --backdrop:
+    radial-gradient(ellipse 80% 50% at 70% 110%, rgba(120, 70, 200, 0.28), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 10% 100%, rgba(40, 90, 200, 0.18), transparent 70%),
+    linear-gradient(115deg, transparent 38%, rgba(190, 170, 255, 0.04) 46%, rgba(255, 230, 200, 0.05) 50%, rgba(190, 170, 255, 0.04) 54%, transparent 62%),
+    linear-gradient(180deg, #03040d 0%, #080c24 55%, #16103a 100%);
+  --chrome: rgba(6, 8, 26, 0.55);
+  --panel: rgba(18, 24, 58, 0.5);
+  --panel-2: rgba(28, 36, 82, 0.6);
+  --panel-3: rgba(40, 50, 108, 0.85);
+  --scope: rgba(8, 10, 32, 0.3);
+  --scope-glow: rgba(40, 50, 120, 0.18);
+  --line: rgba(170, 190, 255, 0.16);
+  --line-strong: rgba(190, 205, 255, 0.34);
+  --bracket: transparent;
+  --shadow-1: 0 2px 10px rgba(0, 0, 0, 0.35);
+
+  --text: #eef0ff;
+  --muted: #aab3d9;
+  --faint: #8a93c0;
+
+  --radar: #ffd98a; /* 금색 별 */
+  --amber: #9ec2ff; /* 푸른 별: 체공 대기 */
+  --cyan: #7fe8ff;
+  --alert: #ff6b85;
+  --blue: #c3adff;
+  --gold: #ffd98a;
+  --ring: #aab8ff;
+  --sweep: none;
+  --tab-on: var(--gold);
+  --tab-on-bg: rgba(160, 180, 255, 0.1);
+
+  --phase-filed: #c3adff;
+  --phase-enroute: var(--gold);
+  --phase-approach: var(--cyan);
+  --phase-cleared: #f3f1ff;
+
+  --blk-bg: rgba(18, 24, 58, 0.55);
+  --blk-free-bg: rgba(18, 24, 58, 0.25);
+  --blk-los-bg: rgba(80, 20, 50, 0.6);
+  --blk-title: #cfd5f2;
+
+  --paper: rgba(18, 24, 58, 0.55);
+  --paper-parked: rgba(18, 24, 58, 0.3);
+  --paper-ink: var(--text);
+  --paper-muted: var(--muted);
+  --paper-line: rgba(170, 190, 255, 0.1);
+  --paper-shadow: inset 0 0 0 1px var(--line), 0 4px 18px rgba(0, 0, 0, 0.3);
+  --stamp-red: #ffb3c0;
+  --stamp-amber: var(--gold);
+  --stamp-blue: #c3adff;
+  --stamp-gray: var(--muted);
+
+  --fids-bg: rgba(10, 13, 38, 0.45);
+  --fids-card: rgba(28, 36, 82, 0.6);
+  --fids-line: rgba(170, 190, 255, 0.16);
+  --fids-head: transparent;
+  --fids-hover: rgba(40, 50, 108, 0.7);
+  --fids-hover-line: var(--line-strong);
+  --fids-title: #e4e7fb;
+  --fids-count: var(--muted);
+  --flap-tile: none;
+  --flap-edge: transparent;
+
+  --mono: "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --display: "Space Grotesk", Pretendard, sans-serif;
+  --radius: 14px;
+}
+.starfield {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+:root[data-theme="night"] .app {
+  position: relative;
+  z-index: 1;
+}
+:root[data-theme="night"] .console,
+:root[data-theme="night"] .alerts,
+:root[data-theme="night"] .ticker {
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+:root[data-theme="night"] .moon-icon {
+  filter: drop-shadow(0 0 8px rgba(255, 230, 170, 0.45));
+}
+:root[data-theme="night"] .brand-name,
+:root[data-theme="night"] .tab-code,
+:root[data-theme="night"] .readout b,
+:root[data-theme="night"] .label,
+:root[data-theme="night"] .blk-l1 strong,
+:root[data-theme="night"] .cs,
+:root[data-theme="night"] .val.big,
+:root[data-theme="night"] .column-code,
+:root[data-theme="night"] .flap b {
+  font-family: var(--display);
+}
+:root[data-theme="night"] .brand-sector {
+  color: var(--muted);
+  white-space: nowrap;
+}
+:root[data-theme="night"] .tabs {
+  gap: 4px;
+  padding: 0 8px;
+  align-items: center;
+}
+:root[data-theme="night"] .tab {
+  align-items: center;
+  height: 42px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  white-space: nowrap;
+}
+:root[data-theme="night"] .tab[aria-selected="true"] {
+  color: var(--text);
+  border-color: var(--line-strong);
+  box-shadow:
+    0 0 18px rgba(160, 180, 255, 0.18),
+    inset 0 0 12px rgba(160, 180, 255, 0.08);
+}
+:root[data-theme="night"] .tab[aria-selected="true"] .tab-code {
+  color: var(--gold);
+  text-shadow: 0 0 10px rgba(255, 217, 138, 0.6);
+}
+:root[data-theme="night"] .tab[aria-selected="true"]::after {
+  display: none;
+}
+:root[data-theme="night"] .tone-alert {
+  background: none;
+}
+:root[data-theme="night"] .tone-alert b {
+  text-shadow: 0 0 14px rgba(255, 107, 133, 0.55);
+}
+/* 경고성 표시는 푸른 별(체공 대기)과 섞이지 않게 금색 */
+:root[data-theme="night"] .ticker {
+  background: rgba(255, 107, 133, 0.07);
+  border-bottom-color: rgba(255, 107, 133, 0.18);
+}
+:root[data-theme="night"] .ticker-head {
+  background: none;
+  color: var(--alert);
+}
+:root[data-theme="night"] .tone-amber b,
+:root[data-theme="night"] .alert-unattended,
+:root[data-theme="night"] .alert-no-workspace,
+:root[data-theme="night"] .dirty,
+:root[data-theme="night"] .nc {
+  color: var(--gold);
+}
+:root[data-theme="night"] .fp.is-nocontact {
+  border-color: rgba(255, 217, 138, 0.45);
+}
+:root[data-theme="night"] .code-chip,
+:root[data-theme="night"] .apt,
+:root[data-theme="night"] .ph,
+:root[data-theme="night"] .los-tag,
+:root[data-theme="night"] .prio,
+:root[data-theme="night"] .stamp,
+:root[data-theme="night"] .theme-switch,
+:root[data-theme="night"] .theme-switch button {
+  border-radius: 999px;
+}
+:root[data-theme="night"] .stamp {
+  transform: none;
+}
+
+/* 성도: 천구 좌표(적위 호, 적경 호) */
+:root[data-theme="night"] .scope-frame {
+  border-radius: 18px;
+  box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.45);
+}
+:root[data-theme="night"] .scope-frame::before {
+  background:
+    radial-gradient(ellipse 140% 90% at 50% 150%, transparent 0 60%, rgba(170, 190, 255, 0.07) 60.1% 60.3%, transparent 60.4%),
+    radial-gradient(ellipse 140% 90% at 50% 150%, transparent 0 75%, rgba(170, 190, 255, 0.06) 75.1% 75.3%, transparent 75.4%),
+    radial-gradient(ellipse 140% 90% at 50% 150%, transparent 0 90%, rgba(170, 190, 255, 0.05) 90.1% 90.3%, transparent 90.4%),
+    radial-gradient(ellipse 30% 140% at 50% 50%, transparent 0 99%, rgba(170, 190, 255, 0.05) 99.3%, transparent 99.6%),
+    radial-gradient(ellipse 60% 140% at 50% 50%, transparent 0 99.4%, rgba(170, 190, 255, 0.05) 99.6%, transparent 99.8%);
+}
+:root[data-theme="night"] .blk {
+  padding-left: 32px;
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+:root[data-theme="night"] .blk:hover {
+  background: rgba(28, 36, 82, 0.7);
+}
+:root[data-theme="night"] .map-lines path {
+  filter: drop-shadow(0 0 3px currentColor);
+}
+/* 표적 기호 → 별: 색은 --star, 밝은 별은 회절 십자가 반짝인다 */
+:root[data-theme="night"] .tgt,
+:root[data-theme="night"] .fp .tgt,
+:root[data-theme="night"] .stand .tgt,
+:root[data-theme="night"] .ac .tgt,
+:root[data-theme="night"] .ac.is-airborne .tgt,
+:root[data-theme="night"] .stand.is-los .tgt {
+  --star: #f3f1ff;
+  left: 13px;
+  top: 14px;
+  width: 7px;
+  height: 7px;
+  border: 0;
+  border-radius: 50%;
+  transform: none;
+  background: var(--star);
+  box-shadow:
+    0 0 5px 1px var(--star),
+    0 0 12px 2px color-mix(in srgb, var(--star) 40%, transparent);
+  animation: none;
+}
+:root[data-theme="night"] .ac.is-airborne .tgt {
+  --star: var(--gold);
+}
+:root[data-theme="night"] .ac.is-holding .tgt {
+  --star: var(--amber);
+}
+:root[data-theme="night"] .ac.is-parked .tgt {
+  --star: var(--faint);
+}
+:root[data-theme="night"] .ac.is-nordo .tgt {
+  --star: var(--alert);
+}
+:root[data-theme="night"] .stand.is-free .tgt {
+  --star: #c3adff;
+  opacity: 0.6;
+}
+:root[data-theme="night"] .stand.is-los .tgt {
+  --star: var(--alert);
+}
+:root[data-theme="night"] .fp .tgt {
+  --star: var(--tone);
+}
+:root[data-theme="night"] .ac.is-airborne .tgt::after,
+:root[data-theme="night"] .stand.is-los .tgt::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  background:
+    linear-gradient(90deg, transparent 45%, color-mix(in srgb, var(--star) 70%, transparent) 50%, transparent 55%) center / 100% 1px no-repeat,
+    linear-gradient(0deg, transparent 45%, color-mix(in srgb, var(--star) 70%, transparent) 50%, transparent 55%) center / 1px 100% no-repeat;
+  animation: twinkle 3.2s ease-in-out infinite;
+}
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+:root[data-theme="night"] .ac.is-airborne strong {
+  color: var(--gold);
+  text-shadow: 0 0 12px rgba(255, 217, 138, 0.55);
+}
+:root[data-theme="night"] .stand.is-los {
+  box-shadow: 0 0 24px rgba(255, 107, 133, 0.25);
+}
+
+/* 운항 스트립: 유리 줄, 별빛이 왼쪽에서 번진다 */
+:root[data-theme="night"] .bay-rail {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  gap: 10px;
+}
+:root[data-theme="night"] .strip {
+  position: relative;
+  border-radius: 14px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+:root[data-theme="night"] .strip .holder {
+  --star: var(--amber);
+  background: none;
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--star) 70%, transparent);
+}
+:root[data-theme="night"] .strip::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 140px;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 0% 50%, color-mix(in srgb, var(--star, var(--amber)) 22%, transparent), transparent 70%);
+}
+:root[data-theme="night"] .strip.is-airborne {
+  --star: var(--gold);
+}
+:root[data-theme="night"] .strip.is-holding {
+  --star: var(--amber);
+}
+:root[data-theme="night"] .strip.is-nordo,
+:root[data-theme="night"] .strip.is-los {
+  --star: var(--alert);
+}
+:root[data-theme="night"] .strip.is-parked {
+  --star: var(--faint);
+}
+:root[data-theme="night"] .strip.is-airborne .holder,
+:root[data-theme="night"] .strip.is-nordo .holder,
+:root[data-theme="night"] .strip.is-parked .holder,
+:root[data-theme="night"] .strip.is-los .holder {
+  background: none;
+}
+:root[data-theme="night"] .strip.is-los {
+  outline: 1px solid rgba(255, 107, 133, 0.6);
+  outline-offset: -1px;
+  box-shadow: 0 0 28px rgba(255, 107, 133, 0.18);
+}
+:root[data-theme="night"] .strip.is-airborne .cs {
+  color: var(--gold);
+  text-shadow: 0 0 14px rgba(255, 217, 138, 0.5);
+}
+:root[data-theme="night"] .strip.is-holding .cs {
+  color: var(--amber);
+}
+:root[data-theme="night"] .type {
+  background: rgba(170, 190, 255, 0.16);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+/* 운항 정보판: 유리 기둥, 위쪽에 별빛 선 */
+:root[data-theme="night"] .column {
+  border-radius: 16px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+:root[data-theme="night"] .column-head {
+  position: relative;
+  border-top: 0;
+}
+:root[data-theme="night"] .column-head::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 0;
+  height: 1.5px;
+  background: linear-gradient(90deg, transparent, var(--tone), transparent);
+  box-shadow: 0 0 10px var(--tone);
+}
+:root[data-theme="night"] .column-body {
+  padding: 8px;
+  gap: 8px;
+}
+:root[data-theme="night"] .ticket {
+  border-radius: 12px;
+}
+:root[data-theme="night"] .flap {
+  gap: 0;
+}
+:root[data-theme="night"] .flap b {
+  color: var(--tone);
+  width: auto;
+  height: auto;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 12px color-mix(in srgb, var(--tone) 50%, transparent);
+}
+:root[data-theme="night"] .ticket.is-occupied {
+  box-shadow: inset 2px 0 0 var(--gold);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="night"] .tgt::after {
+    animation: none;
   }
 }

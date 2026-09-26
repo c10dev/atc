@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { alertCode, alertLabel, alertMessage, callsign, flightNumber, HANDOFF_LABEL } from "./aviation.ts";
 import { buildIndex, timeAgo } from "./derive.ts";
+import { MoonIcon, Starfield } from "./Starfield.tsx";
+import { applyTheme, storedTheme, type Theme, THEMES } from "./theme.ts";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
 import { MapView } from "./views/Map.tsx";
 import { Teams } from "./views/Teams.tsx";
@@ -29,8 +31,10 @@ export function App() {
   const now = useNow();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const [theme, setTheme] = useState<Theme>(storedTheme);
   const idx = useMemo(() => (snapshot ? buildIndex(snapshot) : null), [snapshot]);
 
+  useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => {
     if (location.hash !== `#${tab}`) history.replaceState(null, "", `#${tab}`);
   }, [tab]);
@@ -55,9 +59,10 @@ export function App() {
 
   return (
     <div className="app">
+      {theme === "night" && <Starfield />}
       <header className="console">
         <div className="brand">
-          <ScopeIcon />
+          {theme === "night" ? <MoonIcon /> : <ScopeIcon />}
           <div>
             <span className="brand-name">ATC</span>
             <span className="brand-sector">LOCAL CONTROL · {location.port || "80"}</span>
@@ -71,6 +76,13 @@ export function App() {
             </button>
           ))}
         </nav>
+        <div className="theme-switch" role="radiogroup" aria-label="테마">
+          {THEMES.map((t) => (
+            <button key={t.id} role="radio" aria-checked={theme === t.id} title={t.label} onClick={() => setTheme(t.id)}>
+              {t.code}
+            </button>
+          ))}
+        </div>
         <div className="readouts">
           <Readout code="AIRBORNE" label="비행 중" value={busy} tone="radar" />
           <Readout code="STANDS" label="주기장 점유" value={stands} />
