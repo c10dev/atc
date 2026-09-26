@@ -14,6 +14,21 @@ DELTA가 끝날 때까지 대기
 - 팀 리더는 그 메시지에 `READBACK C-0007`로 답한다. 따를 수 없거나 판단이 필요하면 READBACK 대신 이유를 답한다(vocado `CLAUDE.md` 규칙).
 - 종류: TRAFFIC · HOLD · CONTINUE · LAND · REPORT · INFO.
 
+## LAND와 LANDING 막힘 알림
+
+- `LAND`는 **CLEARED TO LAND**인 PR에만 나간다([개념](concepts.md)의 LANDING SEQUENCE). 번호는 LANDING SEQUENCE 순번이고, 문구에 `PR #번호`가 들어간다. 앞 PR이 머지되면 rebase한 뒤 LANDING한다. 받는 쪽은 그 PR의 STAND를 쥔 팀이다.
+- APPROACH인 PR은 `LAND`를 받지 않는다. CAPTAIN이 손써야 할 막힘(CI 실패, head 리뷰 없음, Codex 지적, Codex 한도, 변경 요청, rebase·충돌 등)이 새로 생기면 TOWER가 `INFO`로 알린다:
+
+  ```
+  [ATC C-0012] ECHO (TEAM_E) · INFO
+  STAND vocado-voc-52-persistent-exec · FLIGHT VOC52
+  PR #389 LANDING 불가: 리뷰가 이전 커밋 3510a91에만 있음: head 4cbacd8에 리뷰 필요
+  — 받았으면 이 메시지에 "READBACK C-0012"로 답장해 주세요.
+  ```
+
+- 같은 막힘으로는 다시 보내지 않는다. CI 진행 중이나 GitHub 계산 중처럼 기다리면 풀리는 것은 알리지 않는다.
+- 팀은 READBACK만 하고, 고치는 방법은 CAPTAIN이 정한다. 막힘이 풀리면 PR은 저절로 CLEARED TO LAND가 되고 그때 `LAND`가 온다.
+
 ## OCC → CAPTAIN: FLIGHT PLAN (2b부터)
 
 ```

@@ -36,6 +36,17 @@ DISPATCH 탭의 "제외" 목록에 이유가 있다. 흔한 이유:
 
 SCHEDULE 초안은 FLIGHT가 Todo·Backlog를 벗어나거나, Linear에 이미 반영됐거나, 3일 동안 판정이 없으면 닫힌다. 최근 7일 표에서 사유를 본다.
 
+## PR이 CLEARED TO LAND가 안 된다
+
+PR에 붙은 막힌 조건을 본다([개념](concepts.md)의 LANDING SEQUENCE).
+
+- `review-stale` / `no-review` → head(최신 커밋)에 리뷰도, 그 뒤에 달린 Codex 👍도 없다. push 뒤에는 리뷰를 다시 받는다(`@codex review` 등). PR 작성자 계정의 댓글은 세지 않는다. 문구가 "Codex 한도 — 사람 리뷰 필요"면 Codex가 한도에 걸린 것이라 사람이 리뷰해야 한다.
+- `review-findings`(Codex 지적) → Codex가 head에 COMMENTED 리뷰로 문제를 짚었다. PR의 P1·P2 줄 댓글을 반영해 push하면 새 head를 Codex가 다시 본다(필요하면 `@codex review`). 지적이 틀렸다고 판단하면 스레드에 이유를 답하고 `@codex review`로 재리뷰를 받거나, 사람(작성자 계정 아님)이 지적을 보고 head에 APPROVED한다(Codex가 한도에 걸렸을 때도 이 길). 지적 뒤에 달린 Codex 👍나 지적 뒤의 사람 APPROVED가 있어야 풀린다. 지적 전의 APPROVED나 사람 COMMENTED로는 풀리지 않는다.
+- `behind` → main이 앞서 갔다. rebase하고 push한다(CI와 리뷰를 다시 받는다).
+- `no-checks` → 그 저장소에 CI가 없다(atc 등). CLEARED TO LAND가 될 수 없으니 SUPERVISOR가 직접 판단한다.
+- `merge-unknown` → GitHub이 머지 가능 여부를 계산 중이다. 잠시 뒤 풀린다.
+- PR이 아예 안 보인다 → Draft인지(Draft는 LANDING SEQUENCE에 없다), AIRPORT의 git remote가 GitHub인지, 서버 사용자로 `gh auth status`가 되는지 본다. `gh`가 실패하면 스냅샷의 `github.error`에 이유가 뜬다.
+
 ## 코드를 고친 뒤 화면이 그대로다
 
 운영 서비스는 main 체크아웃에서 빌드한다. 머지 뒤 `systemctl --user restart atc`. 새 의존성이 생겼으면 먼저 `npm install`.

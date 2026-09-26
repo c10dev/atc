@@ -47,6 +47,16 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - 이 변경 기록.
 
 ### 변경
+- LANDING SEQUENCE를 Linear 상태 `Ready to Merge`가 아니라 GitHub에 열린 PR로 만든다. vocado의 Linear에는 그 상태가 없어서 대기열이 늘 비어 있었다. GitHub remote가 있는 AIRPORT마다 열린 PR을 읽고(`server/sources/github.ts`: 90초마다 백그라운드로 `gh pr list`, 실패하면 마지막 결과 유지) PR마다 **CLEARED TO LAND**를 따진다(`server/landing.ts`): head 커밋의 체크가 모두 통과, head 커밋에 작성자도 Codex 봇도 아닌 리뷰어의 리뷰(또는 head 뒤 Codex 👍), head에 Codex 지적 없음, CHANGES_REQUESTED 없음, `mergeStateStatus`가 CLEAN·UNSTABLE·HAS_HOOKS, Draft 아님, STAND에 LOSS OF SEPARATION 없음. 아니면 막힌 조건(`draft`, `checks-pending`, `checks-failed`, `no-checks`, `no-review`, `review-stale`, `review-findings`, `changes-requested`, `behind`, `dirty`, `blocked`, `merge-unknown`, `los`)과 한국어 한 줄씩을 붙여 **APPROACH**. 결정 사항은 [docs/occ.md](docs/occ.md) 9절(영어).
+  - 스냅샷: `pulls`(열린 PR 전부. FLIGHT, STAND, `landing`, `blocks`, `readyAt`, `createdAt`. CLEARED가 `readyAt` 순으로 먼저, 그다음 APPROACH가 연 순서)와 `github`(`{enabled, error, fetchedAt}`).
+  - TOWER 브리핑: `landingQueue`는 Draft가 아닌 PR이고, 항목마다 `seq`(CLEARED 안의 순번), AIRPORT, PR 번호·URL·브랜치·head, STAND와 `holders`, `landing`, `blocks`, `readyAt`, `landClearance`. 브리핑에 `github`도 있다. 이벤트: `landing.requested`, `landing.cleared`(새로), `landing.blocked`(새로: CAPTAIN이 손써야 할 막힘이 생김), `landing.left`. PR(`repo`, `pull`) 단위다. LANDING 이벤트는 양쪽 스냅샷 다 PR을 읽었을 때만 비교하고, GitHub이 실패해도 다른 이벤트는 막지 않는다.
+  - TOWER 규정(`controller/CLAUDE.md`, `/tick`): `LAND`는 CLEARED TO LAND PR에만, 번호는 `seq`. APPROACH PR은 `landing.requested`·`landing.blocked` 이벤트에 기다리면 풀리는 것 말고 다른 막힘이 있을 때만 그 STAND의 holders에게 `INFO`로 알리고, 같은 막힘으로 다시 보내지 않으며 서버 재시작 뒤에도 보내지 않는다.
+  - Codex의 👍를 head 리뷰로 친다: Codex는 문제가 없는 PR에 리뷰 대신 `+1` 반응만 남기므로, head 커밋의 committer 시각 이후에 Codex 봇이 단 👍는 리뷰 조건을 채운다(이전 head 때부터 남아 있던 👍는 세지 않는다). 반응, head committer 시각, Codex의 PR 댓글은 head에 통과 리뷰가 없거나 Codex 지적이 있는 Draft 아닌 PR에만 읽기 전용 `gh api`로 읽는다. head 뒤 Codex의 마지막 댓글이 "usage limits" 안내면 막힘 문구가 "Codex 한도 — 사람 리뷰 필요"다.
+  - Codex 리뷰는 통과로 치지 않는다: Codex는 문제를 찾았을 때만 COMMENTED 리뷰("💡 Codex Review", P1·P2 줄 댓글)를 단다. head에 그 리뷰가 있으면 그 리뷰 뒤에 Codex 👍가 달리거나 사람(Codex·작성자 아님)이 head에 APPROVED할 때까지 `review-findings`("Codex 지적 있음(head sha7) — 반영 후 재리뷰 필요", STRIPS 짧은 이름 "Codex 지적")로 막는다. 지적 전 APPROVED나 사람 COMMENTED로는 풀리지 않는다. TOWER는 다른 손쓸 막힘처럼 CAPTAIN에게 알린다. 사람 리뷰어의 head APPROVED·COMMENTED는 그대로 통과다.
+  - 브랜치에 `voc-<n>`이 없는 PR은 제목 끝의 `(VOC-n)`으로 FLIGHT를 찾는다.
+  - STRIPS: 맨 위 LANDING SEQUENCE(CLEARED TO LAND는 `readyAt` 순번, APPROACH는 PR마다 막는 조건과 함께 접어서, Draft는 흐리게 접어서. AIRPORT, FLIGHT, `#PR` 링크, STAND를 쥔 팀), STAND 줄 REMARKS의 PR 배지(`CLEARED TO LAND`, CLEARED PR이 둘 이상이면 `SEQ n`. 또는 `APPROACH`와 막는 조건 수, 펼치는 조건 목록), GitHub을 못 읽으면 "GitHub 조회 실패 · PR 상태가 오래됐을 수 있음".
+  - 지표의 LANDING 대기는 PR 단위로 센다. 교통량 표본의 `landing`은 Draft가 아닌 PR 수다.
+- `ATC_LANDING_STATE` 설정을 없앴다(LINEAR 설정 탭, `PUT /api/settings`의 `landingState`). `.env.local`에 남은 줄은 무시한다.
 - 티켓 없는 작업을 "티켓 없음"·"—" 대신 **AD HOC**으로 표시한다(FLIGHT STRIPS, planner의 HOLDING 사유, 이름 규칙). 티켓이 필요한 일은 OCC의 요청 창구 CHARTER DESK에서 AD HOC FLIGHT가 되고, 이것은 그 짝이다.
 - SUPERSEDED 사유가 계획의 제외 목록에 그 FLIGHT가 없을 때도 실제 규칙을 밝힌다: 이미 STAND가 있음, 우선순위 없음, 매핑 밖 프로젝트, 다른 운항사 라벨. planner와 사유 문구가 같은 문구 모음을 써서 서로 어긋나지 않는다.
 - TOWER·DISPATCH hook은 `$CLAUDE_PROJECT_DIR` 기준으로 돌고 fail-closed(`… || exit 2`)다. hook이 없거나 실패하면 이제 도구를 통과시키지 않고 막는다.

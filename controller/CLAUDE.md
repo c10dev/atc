@@ -15,7 +15,7 @@
 
 | 명령 | 하는 일 |
 |---|---|
-| `node atcctl.mjs brief` | 지난 ack 이후 변화(`events`)와 현재 상태(`open`, `landingQueue`, `clearances`, `traffic`) |
+| `node atcctl.mjs brief` | 지난 ack 이후 변화(`events`)와 현재 상태(`open`, `landingQueue`, `github`, `clearances`, `traffic`) |
 | `node atcctl.mjs ack <cursor>` | 브리핑 처리 완료. 다음 brief는 그 뒤 변화만 준다 |
 | `node atcctl.mjs issue <세션> <TYPE> [--stand <STAND>] [--flight <FLIGHT>] -- <내용>` | CLEARANCE를 기록하고 보낼 대상과 문구를 돌려준다 |
 | `node atcctl.mjs readback <C-0007>` / `cancel <C-0007>` | READBACK 확인 / CLEARANCE 취소 |
@@ -28,7 +28,9 @@ CLEARANCE 종류: `TRAFFIC`(교통 정보) `HOLD`(대기) `CONTINUE`(계속) `LA
 | 상황 (브리핑 위치) | 할 일 |
 |---|---|
 | LOSS OF SEPARATION (`open.conflicts`) | `sessions`는 먼저 들어온 순이다. 첫 번째에 `CONTINUE`, 나머지에 `HOLD`("앞 팀이 끝나 HANDOFF할 때까지 이 STAND를 건드리지 말 것"). 같은 STAND에 READBACK 대기 중인 CLEARANCE가 있으면 새로 보내지 않는다 |
-| LANDING SEQUENCE (`landingQueue`) | `landClearance`가 없는 FLIGHT에 `LAND`로 순서를 준다. 번호는 LANDING SEQUENCE 순서(앞 FLIGHT가 머지된 뒤 rebase하고 LANDING). 대상은 그 STAND의 `holders`. holder가 없으면 SUPERVISOR 보고만 |
+| CLEARED TO LAND (`landingQueue`에서 `landing: "CLEARED"`) | `landClearance`가 없는 PR에만 `LAND`로 순서를 준다. 번호는 `seq`(앞 PR이 머지되면 rebase하고 LANDING). `--stand <stand>`, FLIGHT가 있으면 `--flight`도 붙이고 문구에 `PR #번호`를 넣는다. 대상은 `holders`. holder가 없으면 SUPERVISOR 보고만 |
+| APPROACH (`landing: "APPROACH"`) | `LAND`를 내지 않는다. `events`에 그 PR의 `landing.requested`나 `landing.blocked`가 왔고 `blocks`에 `checks-pending`·`merge-unknown`·`los` 말고 다른 코드가 있을 때만, `holders`에게 `INFO`로 알린다: "PR #번호 LANDING 불가: " 뒤에 `landingQueue`의 `blocks[].text`를 ` · `로 잇는다. 이벤트가 없으면(같은 막힘) 다시 보내지 않고, `reset: true`인 바퀴에는 보내지 않는다. holder가 없으면 ATC LOG에만 남긴다. `los`는 위 LOSS OF SEPARATION 규칙이 맡는다 |
+| GitHub 오류 (`github.error`) | LANDING SEQUENCE가 낡았을 수 있다. 새로 생겼을 때 SUPERVISOR에게 보고 |
 | HANDOFF (`events`의 `handoff`) | ATC LOG에 적기만 한다. 메시지 보내지 않는다 |
 | OUTSTATION (`events`의 `away.started`·`away.ended`, `traffic[].away`) | ATC LOG에 적기만 한다. 어느 팀을 어느 AIRPORT에 둘지(재배치)는 DISPATCH(2단계) 몫이다. OUTSTATION AIRPORT에서 충돌이 나면 위 LOSS OF SEPARATION대로 처리한다 |
 | NORDO STAND (`open.orphans`), `session.lost` | 받을 세션이 없다. SUPERVISOR에게 보고 |

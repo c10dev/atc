@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { fold } from "./clearances.ts";
 import { buildBrief, formatClearance, resolveSession } from "./controller.ts";
 import { diffSnapshots, EventLog } from "./events.ts";
-import type { Alert, Claim, Clearance, Session, Snapshot, Ticket, Workspace } from "./model.ts";
+import type { Alert, Claim, Clearance, LandingBlockCode, PullRequest, Session, Snapshot, Ticket, Workspace } from "./model.ts";
 
 const WT = "/home/c10/projects/worktrees";
 const T0 = Date.parse("2026-09-26T07:00:00.000Z");
@@ -27,12 +27,24 @@ const ticket = (key: string, state: string, updatedAt: number): Ticket => ({
   parent: null, children: [], assignee: null, priority: 0, url: null, updatedAt: iso(updatedAt),
 });
 
+const VCDO = "/home/c10/projects/vocado_nextjs";
+const pr = (number: number, ticketKey: string | null, over: Partial<PullRequest> = {}, codes: LandingBlockCode[] = []): PullRequest => ({
+  repo: VCDO, number, title: `PR ${number}`, url: `https://github.com/o/r/pull/${number}`,
+  branch: `claude/${ticketKey?.toLowerCase() ?? number}`, head: `head${number}abcdef`, base: "main", ticketKey,
+  standPath: ticketKey ? `${WT}/vocado-${ticketKey.toLowerCase()}` : null, draft: false,
+  landing: codes.length ? "APPROACH" : "CLEARED", blocks: codes.map((code) => ({ code, text: code })),
+  readyAt: codes.length ? null : iso(-10), createdAt: iso(-100 + number),
+  ...over,
+});
+
 function snapshot(over: Partial<Snapshot> = {}): Snapshot {
   return {
     at: iso(0), linear: { enabled: true, error: null, fetchedAt: iso(0) },
+    github: { enabled: true, error: null, fetchedAt: iso(0) },
+    pulls: [pr(10, "VOC-191", {}, ["behind"])],
     sessions: [session("s-b", "TEAM_B"), session("s-d", "TEAM_D"), session("s-p", "President")],
     workspaces: [ws("vocado-voc-175", "VOC-175"), ws("vocado-voc-191", "VOC-191")],
-    tickets: [ticket("VOC-175", "In Progress", -30), ticket("VOC-191", "Ready to Merge", -20)],
+    tickets: [ticket("VOC-175", "In Progress", -30), ticket("VOC-191", "In Review", -20)],
     columns: [], airports: [], claims: [], handoffs: [], alerts: [], clearances: [],
     ...over,
   };
@@ -45,7 +57,7 @@ test("스냅샷 차이 → 경보 발생·해제, HANDOFF, LANDING SEQUENCE 진�
   const next = snapshot({
     alerts: [conflict],
     handoffs: [{ workspacePath: `${WT}/vocado-voc-191`, from: "s-p", to: "s-b", at: iso(-5) }],
-    tickets: [ticket("VOC-175", "Ready to Merge", 0), ticket("VOC-191", "Done", 0)],
+    pulls: [pr(11, "VOC-175", {}, ["checks-pending"]), pr(12, "VOC-180", { draft: true }, ["draft"])],
     sessions: [session("s-b", "TEAM_B"), session("s-d", "TEAM_D"), session("s-p", "President", "dead")],
   });
   const kinds = diffSnapshots(prev, next).map((e) => `${e.kind}:${e.alertKind ?? e.ticketKey ?? e.sessionIds?.join(">") ?? ""}`);
@@ -61,8 +73,13 @@ test("스냅샷 차이 → 경보 발생·해제, HANDOFF, LANDING SEQUENCE 진�
 });
 
 test("서버가 막 떠서 덜 읽힌 스냅샷과는 비교하지 않는다", () => {
-  const cold = snapshot({ linear: { enabled: true, error: null, fetchedAt: null }, tickets: [] });
   const warm = snapshot({ alerts: [conflict] });
+  const cold = snapshot({ linear: { enabled: true, error: null, fetchedAt: null }, tickets: [] });
+  const noGithubYet = snapshot({ github: { enabled: true, error: null, fetchedAt: null }, pulls: [] });
+  assert.deepEqual(diffSnapshots(noGithubYet, warm), []);
+  // gh가 실패만 해도 충돌 이벤트는 나간다. LANDING 비교는 양쪽 다 PR을 읽었을 때만
+  const ghFailed = snapshot({ github: { enabled: true, error: "gh: auth", fetchedAt: null }, pulls: [] });
+  assert.deepEqual(diffSnapshots(ghFailed, warm).map((e) => e.kind), ["alert.raised"]);
   assert.deepEqual(diffSnapshots(cold, warm), []);
   const dirtyUnknown = snapshot({ workspaces: [{ ...ws("vocado-voc-175", "VOC-175"), dirty: null }] });
   assert.deepEqual(diffSnapshots(dirtyUnknown, warm), []);
@@ -102,7 +119,8 @@ test("브리핑: 충돌은 먼저 들어온 순, LANDING SEQUENCE, NO READBACK C
   assert.deepEqual(brief.open.conflicts[0].sessions.map((x) => x.callsign), ["BRAVO", "DELTA"]);
   assert.equal(brief.landingQueue.length, 1);
   assert.equal(brief.landingQueue[0].flight, "VOC191");
-  assert.deepEqual(brief.landingQueue[0].stands[0].holders.map((h) => h.name), ["President"]);
+  assert.equal(brief.landingQueue[0].stand, "vocado-voc-191");
+  assert.deepEqual(brief.landingQueue[0].holders.map((h) => h.name), ["President"]);
   assert.deepEqual(brief.clearances.overdue, ["C-0003"]);
   assert.equal(brief.clearances.pending[0].stand, "vocado-voc-175");
   assert.deepEqual(brief.traffic.map((t) => t.callsign).sort(), ["BRAVO", "DELTA", "President"]);
@@ -161,4 +179,53 @@ test("OUTSTATION: 소속 AIRPORT 밖 STAND 점유, HANDOFF된 것과 소속 모�
   assert.equal(bravo.home, "VCDO");
   assert.deepEqual(bravo.away, ["TNNS"]);
   assert.deepEqual(bravo.stands.map((x) => x.airport).sort(), ["TNNS", "VCDO"]);
+});
+
+test("LANDING 이벤트: CLEARED가 됨, 손써야 할 막힘이 새로 생길 때만 landing.blocked", () => {
+  const at = (pulls: PullRequest[]) => snapshot({ pulls });
+  const kinds = (a: PullRequest[], b: PullRequest[]) =>
+    diffSnapshots(at(a), at(b)).map((e) => `${e.kind}:${e.pull}${e.blocks ? `:${e.blocks.join("+")}` : ""}`);
+
+  assert.deepEqual(kinds([pr(10, "VOC-191", {}, ["behind"])], [pr(10, "VOC-191")]), ["landing.cleared:10"]);
+  // 처음부터 CLEARED로 들어오면 진입과 CLEARED 둘 다
+  assert.deepEqual(kinds([], [pr(10, "VOC-191")]), ["landing.requested:10:", "landing.cleared:10"]);
+  // 새 push: CI 진행 중은 기다리면 되지만 리뷰가 이전 커밋에만 있는 것은 새 막힘
+  assert.deepEqual(kinds([pr(10, "VOC-191")], [pr(10, "VOC-191", {}, ["checks-pending", "review-stale"])]), [
+    "landing.blocked:10:checks-pending+review-stale",
+  ]);
+  assert.deepEqual(kinds([pr(10, "VOC-191")], [pr(10, "VOC-191", {}, ["checks-pending", "merge-unknown"])]), []);
+  // 막힘이 줄기만 하면 조용히
+  assert.deepEqual(kinds([pr(10, "VOC-191", {}, ["behind", "no-review"])], [pr(10, "VOC-191", {}, ["no-review"])]), []);
+  assert.deepEqual(kinds([pr(10, "VOC-191", {}, ["no-review"])], [pr(10, "VOC-191", {}, ["no-review", "checks-failed"])]), [
+    "landing.blocked:10:no-review+checks-failed",
+  ]);
+  // Draft로 돌아가면 LANDING SEQUENCE를 떠난다
+  assert.deepEqual(kinds([pr(10, "VOC-191")], [pr(10, "VOC-191", { draft: true }, ["draft"])]), ["landing.left:10"]);
+});
+
+test("브리핑 LANDING SEQUENCE: CLEARED 순번, Draft 제외, LAND CLEARANCE는 이 PR을 연 뒤 같은 STAND로 나간 것", () => {
+  const s = snapshot({
+    pulls: [
+      pr(21, "VOC-175", { readyAt: iso(-30) }),
+      pr(20, "VOC-191", { readyAt: iso(-20) }),
+      pr(22, null, {}, ["no-review"]),
+      pr(23, "VOC-180", { draft: true }, ["draft"]),
+    ],
+    claims: [claim("s-b", "vocado-voc-175", -40, -2)],
+  });
+  const land = (id: string, at: number, stand: string | null, flight: string | null): Clearance => ({
+    id, at: iso(at), to: "s-b", toName: "TEAM_B", type: "LAND", stand: stand && `${WT}/${stand}`, flight,
+    text: "LANDING 1번", readbackAt: iso(at + 1), cancelledAt: null,
+  });
+  const clearances = [
+    land("C-0001", -200, "vocado-voc-175", "VOC-175"), // PR을 열기 전 것
+    land("C-0002", -5, "vocado-voc-175", "VOC-175"),
+    land("C-0003", -5, null, "VOC-191"), // STAND 없이 FLIGHT만
+  ];
+  const q = buildBrief(s, { events: [], reset: false, cursor: "e:0" }, clearances, T0).landingQueue;
+  assert.deepEqual(q.map((x) => [x.pr.number, x.seq, x.landing]), [[21, 1, "CLEARED"], [20, 2, "CLEARED"], [22, null, "APPROACH"]]);
+  assert.deepEqual(q.map((x) => x.landClearance?.id ?? null), ["C-0002", "C-0003", null]);
+  assert.deepEqual(q[0].holders.map((h) => h.name), ["TEAM_B"]);
+  assert.equal(q[2].stand, null);
+  assert.deepEqual(q[2].blocks.map((b) => b.code), ["no-review"]);
 });

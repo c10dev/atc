@@ -5,8 +5,13 @@ import { recentClearances } from "./clearances.ts";
 import { type Occupancy, resolveOccupancy } from "./occupancy.ts";
 import { inferTranscriptClaim, readClaudeSessions, readHookClaims } from "./sources/claude.ts";
 import { readCodex } from "./sources/codex.ts";
-import { readWorkspaces } from "./sources/git.ts";
+import { readWorkspaces, ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
+import { readGithub } from "./sources/github.ts";
 import { readLinear } from "./sources/linear.ts";
+import { buildPulls } from "./landing.ts";
+
+// PR head별로 CLEARED TO LAND가 처음 된 시각 (메모리, 서버를 재시작하면 다시 센다)
+const readySince = new Map<string, string>();
 
 const fresh = (c: Claim) => Date.now() - Date.parse(c.lastAt) < config.claimTtlMs;
 
@@ -90,9 +95,21 @@ export async function buildSnapshot(): Promise<Snapshot> {
     columns.unshift({ name: linear.enabled ? "Linear에 없음" : "Linear 미연결", type: "unknown", color: null });
   }
 
+  const alerts = buildAlerts(sessions, workspaces, tickets, claims, occupancy);
+  const repos = airports.open.map((a) => a.repo);
+  const github = readGithub(repos);
+  const pulls = buildPulls(
+    repos.filter((r) => github.byRepo.has(r)).map((repo) => ({ repo, pulls: github.byRepo.get(repo)! })),
+    workspaces,
+    alerts,
+    readySince,
+    (pr) => ticketKeyFromBranch(pr.headRefName) ?? ticketKeyFromTitle(pr.title),
+  );
+
   return {
     at: new Date().toISOString(),
     linear: { enabled: linear.enabled, error: linear.error, fetchedAt: linear.fetchedAt },
+    github: { enabled: github.enabled, error: github.error, fetchedAt: github.fetchedAt },
     sessions,
     workspaces,
     tickets,
@@ -100,8 +117,9 @@ export async function buildSnapshot(): Promise<Snapshot> {
     airports: airports.open,
     claims,
     handoffs: occupancy.handoffs,
-    alerts: buildAlerts(sessions, workspaces, tickets, claims, occupancy),
+    alerts,
     clearances: recentClearances(),
+    pulls,
   };
 }
 

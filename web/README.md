@@ -34,7 +34,7 @@ Tabs are addressed by URL hash; old bookmarks (`#map`, `#teams`, `#tickets`) sti
 | Tab | Hash | File | Shows |
 |---|---|---|---|
 | RADAR | `#radar` | `views/Map.tsx` | Session ─ worktree ─ ticket columns joined by lines, ordered by barycenter to reduce crossings |
-| STRIPS | `#strips` | `views/Teams.tsx` | One flight strip per session: status, STANDs held, tickets, CLEARANCEs (awaiting READBACK blue, NO READBACK orange, READBACK dotted) |
+| STRIPS | `#strips` | `views/Teams.tsx`, `views/Teams.css` | LANDING SEQUENCE at the top (open PRs from `snapshot.pulls`: CLEARED TO LAND by `readyAt`, then APPROACH folded, Drafts muted and folded; a notice when `github.error` is set), then one flight strip per session: status, STANDs held with each STAND's PR badge (`CLEARED TO LAND` + `SEQ n`, or `APPROACH` + block count and the blocks behind a toggle, `#PR` link), tickets, CLEARANCEs (awaiting READBACK blue, NO READBACK orange, READBACK dotted) |
 | FIDS | `#board` | `views/Tickets.tsx` | A DEPARTURES board (TIME · FLIGHT · DESTINATION · AIRCRAFT · STAND · PRI · REMARKS) or a board by flight phase |
 | AIRPORTS | `#airports` | `views/Airports.tsx` | Repository registry: open, rename, close, reopen, delete; home and TRANSIENT aircraft |
 | METRICS | `#metrics` | `views/Metrics.tsx` | FLIGHT RECORDER metrics and the stage 2 readiness check |

@@ -34,8 +34,37 @@
 | FILED | Todo |
 | ENROUTE | In Progress |
 | APPROACH | In Review |
-| CLEARED TO LAND | Ready to Merge |
 | ARRIVED | Done |
+
+CLEARED TO LAND는 Linear 상태가 아니다. GitHub PR을 보고 atc가 정한다(아래).
+
+## LANDING SEQUENCE
+
+LANDING은 main 머지다. LANDING SEQUENCE는 GitHub에 열린 PR 중 Draft가 아닌 것의 목록이고(atc가 90초마다 `gh`로 읽는다), PR마다 단계가 둘이다.
+
+| 단계 | 뜻 |
+|---|---|
+| APPROACH | PR이 열렸지만 아래 조건 중 막힌 것이 있다. 막힌 조건이 한국어 한 줄씩 붙는다 |
+| CLEARED TO LAND | 조건을 모두 채웠다. 준비된 순서대로 줄을 서고, TOWER가 이 PR에만 `LAND`로 순번을 준다 |
+
+CLEARED TO LAND 조건 — 모두 PR의 **최신 커밋(head)** 기준이다.
+
+| 조건 | 막히면 |
+|---|---|
+| Draft가 아님 | `draft` |
+| CI 체크가 모두 통과(NEUTRAL·SKIPPED도 통과) | `checks-pending`(진행 중), `checks-failed`(실패), `no-checks`(체크 없음) |
+| head 커밋에 PR 작성자도 Codex도 아닌 리뷰어의 리뷰, 또는 head 커밋 뒤에 달린 Codex 👍. head에 Codex 지적이 있으면 그 뒤 Codex 👍나 사람 APPROVED가 있어야 함 | `no-review`(리뷰 없음), `review-stale`(이전 커밋에만 리뷰), `review-findings`(head에 Codex 지적) |
+| 변경 요청(CHANGES_REQUESTED)이 남아 있지 않음 | `changes-requested` |
+| main에서 벗어나지 않음 | `behind`(rebase 필요), `dirty`(충돌), `blocked`(보호 규칙), `merge-unknown`(GitHub이 계산 중) |
+| 그 STAND에 LOSS OF SEPARATION이 없음 | `los` |
+
+- 새로 push하면 head가 바뀌어 CI와 리뷰를 다시 본다. 예전 커밋에서 받은 초록불과 리뷰는 세지 않는다.
+- Codex는 큰 문제가 없으면 리뷰 대신 PR에 👍만 남긴다. 이 👍가 head 커밋 시각 뒤에 달렸으면 head 리뷰로 친다. 새 push 전부터 남아 있던 👍는 세지 않는다.
+- Codex가 문제를 찾으면 COMMENTED 리뷰("💡 Codex Review", P1·P2 줄 댓글)를 단다. 이것은 통과가 아니라 지적이다. head에 이 리뷰가 있으면 `review-findings`로 막히고, 그 리뷰 뒤에 Codex 👍가 달리거나, 사람(Codex·작성자 아닌 리뷰어)이 지적을 보고 head에 APPROVED해야 풀린다. 지적 전 APPROVED나 사람 COMMENTED로는 풀리지 않는다.
+- 사람(Codex·작성자 아닌 리뷰어)의 COMMENTED 리뷰는 APPROVED처럼 통과로 친다.
+- Codex가 한도에 걸리면 "usage limits" 댓글을 단다. 그러면 막힘 문구가 "Codex 한도 — 사람 리뷰 필요"가 된다.
+- PR 브랜치에 `voc-<번호>`가 없으면 PR 제목 끝의 `(VOC-번호)`로 FLIGHT를 찾는다.
+- 판정 이유는 저장소의 `docs/occ.md` 9.1절(영어).
 
 ## 충돌과 인계
 

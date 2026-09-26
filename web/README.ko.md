@@ -34,7 +34,7 @@ npm run typecheck
 | 탭 | 해시 | 파일 | 보여 주는 것 |
 |---|---|---|---|
 | RADAR | `#radar` | `views/Map.tsx` | 세션 ─ 워크트리 ─ 티켓 3열을 선으로 연결. 교차가 줄도록 무게중심(barycenter) 순으로 정렬 |
-| STRIPS | `#strips` | `views/Teams.tsx` | 세션마다 운항 스트립 하나: 상태, 점유한 STAND, 티켓, CLEARANCE(READBACK 대기 파랑, NO READBACK 주황, READBACK 점선) |
+| STRIPS | `#strips` | `views/Teams.tsx`, `views/Teams.css` | 맨 위 LANDING SEQUENCE(`snapshot.pulls`의 열린 PR: CLEARED TO LAND는 `readyAt` 순, APPROACH는 접어서, Draft는 흐리게 접어서. `github.error`가 있으면 안내), 그 아래 세션마다 운항 스트립 하나: 상태, 점유한 STAND와 STAND별 PR 배지(`CLEARED TO LAND` + `SEQ n`, 또는 `APPROACH` + 막는 조건 수와 펼치는 조건 목록, `#PR` 링크), 티켓, CLEARANCE(READBACK 대기 파랑, NO READBACK 주황, READBACK 점선) |
 | FIDS | `#board` | `views/Tickets.tsx` | DEPARTURES 안내판(TIME · FLIGHT · DESTINATION · AIRCRAFT · STAND · PRI · REMARKS) 또는 비행 단계별 보드 |
 | AIRPORTS | `#airports` | `views/Airports.tsx` | 저장소 등록부: 개설·이름 변경·폐쇄·재개·삭제, 소속 AIRCRAFT와 TRANSIENT |
 | METRICS | `#metrics` | `views/Metrics.tsx` | FLIGHT RECORDER 운용 지표와 2단계 진입 점검 |

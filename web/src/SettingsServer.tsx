@@ -49,7 +49,6 @@ export function LinearSettings({ snapshot, server, save }: { snapshot: Snapshot 
   const linear = snapshot?.linear;
   const status = !linear ? null : !linear.enabled ? "off" : linear.error ? "error" : "on";
   const now = Date.now();
-  const states = snapshot?.columns.map((c) => c.name) ?? [];
   return (
     <>
       <Block code="CONNECTION" label="연결">
@@ -87,18 +86,6 @@ export function LinearSettings({ snapshot, server, save }: { snapshot: Snapshot 
                 note={`티켓 ${s.linear.teamKey}-191 → FLIGHT ${s.linear.teamKey}191. 브랜치의 ${s.linear.teamKey.toLowerCase()}-<번호>로 티켓을 찾음`}
                 input={{ kind: "text", upper: true, maxLength: 10 }}
                 onSave={(v) => save({ teamKey: v })}
-              />
-              <EditRow
-                label="LANDING 상태"
-                env="ATC_LANDING_STATE"
-                value={s.linear.landingState}
-                note="이 상태의 FLIGHT가 LANDING SEQUENCE에 들어감"
-                input={
-                  states.length
-                    ? { kind: "select", options: states.includes(s.linear.landingState) ? states : [s.linear.landingState, ...states] }
-                    : { kind: "text", maxLength: 64 }
-                }
-                onSave={(v) => save({ landingState: v })}
               />
             </>
           )}

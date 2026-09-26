@@ -114,6 +114,7 @@ Session ──claim──▶ Workspace ──branch──▶ Ticket
 | Codex 세션 | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex 세션과 cwd |
 | git | 각 저장소 `git worktree list --porcelain` | 워크트리 경로, 브랜치, HEAD, dirty 여부 |
 | Linear | GraphQL API (`LINEAR_API_KEY`) | 티켓 제목, 상태, 담당, URL |
+| GitHub | GitHub remote가 있는 AIRPORT마다 90초에 한 번 `gh pr list --repo <owner/name> --state open` (`server/sources/github.ts`) | 열린 PR: head 커밋, 체크, 리뷰, 머지 상태, Draft. head에 통과 리뷰가 없거나 Codex 지적이 있는 PR은 `gh api`로 Codex의 👍와 댓글 |
 | Claim | `~/.local/state/atc/claims/<sessionId>/*.json` | hook이 남긴 점유 기록 |
 
 연결 규칙:
@@ -121,6 +122,7 @@ Session ──claim──▶ Workspace ──branch──▶ Ticket
 1. **Workspace → Ticket**: 브랜치 이름에서 `voc-(\d+)`를 뽑아 `VOC-n`. 디렉터리 이름은 쓰지 않는다(지금 이름이 제각각이라서).
 2. **Session → Workspace**: hook 기록이 있으면 그것(`hook`). Codex는 세션 cwd(`cwd`). 둘 다 없으면 대화 기록(서브에이전트 기록 포함)의 **도구 호출**을 hook과 같은 규칙(`hooks/paths.mjs`)으로 읽어 가장 최근에 작업한 워크트리(`transcript`, ESTIMATED TRACK으로 표시). 도구 결과·메시지 본문에 경로가 나온 것은 세지 않고, 마지막 작업 시각이 TTL을 넘으면 버린다.
    팀 세션의 cwd는 모두 `vocado_nextjs` 본 디렉터리라 cwd로는 구분이 안 된다. 기록 추정은 한 세션이 여러 워크트리를 오가서 부정확하므로 Claim이 기준이다.
+3. **PR → Ticket, Workspace**: PR 브랜치 이름의 `voc-(\d+)`(1과 같은 규칙), 없으면 PR 제목 끝의 `(VOC-n)`으로 FLIGHT를, 브랜치가 PR의 `headRefName`과 같은 워크트리로 STAND를 찾는다.
 
 ## 실행
 
@@ -195,12 +197,26 @@ journalctl --user -u atc -f           # 로그
 
 | API | 하는 일 |
 |---|---|
-| `GET /api/controller/brief?consumer=controller` | 지난 ack 이후 이벤트 + 현재 상태(열린 경보, LANDING SEQUENCE, READBACK 안 된 CLEARANCE, 교통) |
+| `GET /api/controller/brief?consumer=controller` | 지난 ack 이후 이벤트 + 현재 상태(열린 경보, LANDING SEQUENCE, GitHub 상태, READBACK 안 된 CLEARANCE, 교통) |
 | `POST /api/controller/ack` | `{cursor}` 처리 완료 표시 (`~/.local/state/atc/consumers/`) |
 | `POST /api/clearances` | `{to, type, stand?, flight?, text}` CLEARANCE 기록, 보낼 문구 반환 |
 | `POST /api/clearances/:id/readback` · `/cancel` | READBACK 확인 · 취소 |
 
-이벤트(`server/events.ts`)는 스냅샷 사이의 차이다: 경보 발생·해제, HANDOFF, LANDING SEQUENCE(`ATC_LANDING_STATE`, 기본 `Ready to Merge`) 진입·이탈, 점유 중이던 세션 종료, OUTSTATION 시작·끝. 서버가 막 떠서 Linear·git을 다 읽기 전의 스냅샷과는 비교하지 않는다. CLEARANCE 기록은 `~/.local/state/atc/clearances.jsonl`(추가만 함).
+이벤트(`server/events.ts`)는 스냅샷 사이의 차이다: 경보 발생·해제, HANDOFF, LANDING SEQUENCE(PR이 들어옴 `landing.requested`, CLEARED TO LAND가 됨 `landing.cleared`, CAPTAIN이 손써야 할 막힘이 새로 생김 `landing.blocked`, 머지·닫힘·Draft로 돌아가 떠남 `landing.left`), 점유 중이던 세션 종료, OUTSTATION 시작·끝. 서버가 막 떠서 Linear·git·GitHub을 처음 읽기 전의 스냅샷과는 비교하지 않고, LANDING 이벤트는 양쪽 스냅샷 다 GitHub PR을 읽었을 때만 비교한다.
+
+### LANDING SEQUENCE와 CLEARED TO LAND
+
+LANDING SEQUENCE는 GitHub remote가 있는 모든 AIRPORT의, Draft가 아닌 열린 PR 목록이다. atc가 PR마다 조건을 기계로 따져(`server/landing.ts`) 모두 맞을 때만 **CLEARED TO LAND**로, 아니면 막힌 조건(코드와 한국어 한 줄)을 붙여 **APPROACH**로 둔다.
+
+| 조건 | 막히면 |
+|---|---|
+| Draft가 아님 | `draft` |
+| head 커밋의 체크가 모두 통과(NEUTRAL·SKIPPED도 통과, 모든 체크를 required로 본다) | `checks-pending`, `checks-failed`, `no-checks`(체크가 하나도 없음) |
+| head 커밋에 PR 작성자도 Codex 봇도 아닌 리뷰어의 리뷰(APPROVED·COMMENTED)가 있거나 head 커밋 뒤에 Codex 봇이 PR에 👍 반응을 남겼음(Codex의 "큰 문제 없음" 신호). head에 Codex의 COMMENTED 리뷰가 있으면 지적이라 그 뒤 Codex 👍나 사람의 head APPROVED 전까지 막힘. 마지막 판정이 CHANGES_REQUESTED인 리뷰어가 없음 | `no-review`, `review-stale`(이전 커밋에만 리뷰), `review-findings`(head에 Codex 지적), `changes-requested` |
+| base에서 벗어나지 않음: `mergeStateStatus`가 CLEAN·UNSTABLE·HAS_HOOKS | `behind`, `dirty`, `blocked`, `merge-unknown`(GitHub이 아직 계산 중) |
+| PR의 STAND에 LOSS OF SEPARATION이 없음 | `los` |
+
+CLEARED PR이 준비된 순서(`readyAt`: 그 head에서 조건이 처음 모두 맞은 시각, 새 push면 다시 센다)로 앞에 서고, 그 뒤에 APPROACH PR이 연 순서로 선다. TOWER는 CLEARED PR에만 `LAND`를 주고, APPROACH PR에 새로 생긴 막힘은 CAPTAIN에게 `INFO`로 알린다. 이렇게 정한 이유는 [docs/occ.md](docs/occ.md) 9절에 있다. 스냅샷의 `pulls`에는 Draft를 포함한 열린 PR 전부가, `github`(`{enabled, error, fetchedAt}`)에는 GitHub 상태가 들어 있다. `gh`가 실패하면 마지막 결과를 두고 오류를 거기에 적는다. CLEARANCE 기록은 `~/.local/state/atc/clearances.jsonl`(추가만 함).
 
 ## FLIGHT RECORDER와 운용 지표 (1.5단계)
 
@@ -209,14 +225,14 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 | 기록 | 언제 |
 |---|---|
 | `event` | 스냅샷 차이 이벤트가 날 때마다 (경보, HANDOFF, LANDING SEQUENCE, NORDO, OUTSTATION) |
-| `sample` | 5분마다 교통량: AIRBORNE, HOLDING, 점유, 충돌, 열린 경보, LANDING SEQUENCE, READBACK 안 된 CLEARANCE |
+| `sample` | 5분마다 교통량: AIRBORNE, HOLDING, 점유, 충돌, 열린 경보, LANDING SEQUENCE(Draft가 아닌 PR), READBACK 안 된 CLEARANCE |
 | `ack` | TOWER 세션이 브리핑을 처리할 때 — TOWER가 실제로 운용된 날을 센다 |
 
 `GET /api/metrics?days=1..30`(지표 탭)이 이 기록과 CLEARANCE 기록(`clearances.jsonl`)을 집계한다(`server/metrics.ts`).
 
 - 충돌: 건수, 지속 시간 중앙값, 5분 안에 풀린 비율(오경보 추정)
 - CLEARANCE: 종류별 건수, READBACK 비율(취소 제외), READBACK까지 걸린 시간 중앙값, 10분 넘긴 CLEARANCE, 취소
-- LANDING(머지) 대기: LANDING SEQUENCE 진입부터 이탈까지 중앙값·최대
+- LANDING(머지) 대기: PR마다 LANDING SEQUENCE 진입부터 이탈까지 중앙값·최대
 - HANDOFF, NORDO, OUTSTATION 시작, NO CONTACT·UNIDENTIFIED 발생 수, 일별 표
 
 **2단계 진입 점검**(제안 기준, `READINESS`): TOWER 운용 3일 이상, READBACK 비율 90% 이상, READBACK 중앙값 5분 이하, 5분 안에 풀린 충돌 30% 이하. CLEARANCE가 5건 미만이거나 풀린 충돌이 3건 미만이면 "데이터 부족"으로 표시한다.
@@ -316,6 +332,7 @@ atc/
 │   │   ├── claude.ts       # ~/.claude/sessions, hook 기록, 대화 기록 추정 (claude.test.ts)
 │   │   ├── codex.ts        # ~/.codex/sessions (cwd로 점유)
 │   │   ├── git.ts          # git worktree list, dirty, 마지막 커밋
+│   │   ├── github.ts       # gh로 열린 PR, 90초마다
 │   │   └── linear.ts       # Linear GraphQL, 1분마다
 │   ├── model.ts            # Session / Workspace / Ticket / Claim / Alert
 │   ├── airports.ts         # AIRPORT 등록부·API (airports.test.ts)
@@ -326,6 +343,7 @@ atc/
 │   ├── controller.ts       # CONTROLLER API·브리핑 (controller.test.ts)
 │   ├── dispatch.ts         # DISPATCH 계획: 후보·슬롯·점수 (dispatch.test.ts)
 │   ├── events.ts           # 스냅샷 차이 → 이벤트
+│   ├── landing.ts          # CLEARED TO LAND 조건, LANDING SEQUENCE 순서 (landing.test.ts)
 │   ├── metrics.ts          # 운용 지표·2단계 점검 (metrics.test.ts)
 │   ├── proposals.ts        # DISPATCH 제안 기록·API (proposals.test.ts)
 │   ├── schedule.ts         # OCC SCHEDULE 초안 기록·API (schedule.test.ts)

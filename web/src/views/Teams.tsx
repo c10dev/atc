@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Claim, Clearance, Session, Snapshot } from "../../../server/model.ts";
+import type { Claim, Clearance, LandingBlockCode, PullRequest, Session, Snapshot } from "../../../server/model.ts";
 import {
   type AircraftStatus,
   aircraftStatus,
@@ -12,6 +12,7 @@ import {
 import { activeFirst, hasActiveClaim, type Index, sortSessions, timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { AirportCode, AwayTag, SessionPlace } from "../ui.tsx";
+import "./Teams.css";
 
 const BAYS: AircraftStatus[] = ["airborne", "holding", "nordo", "parked"];
 const agentCode = { claude: "CLD", codex: "CDX" } as const;
@@ -28,6 +29,10 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
 
   const bays = new Map<AircraftStatus, Session[]>(BAYS.map((b) => [b, []]));
   for (const s of visible) bays.get(aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id))))!.push(s);
+  // 옛 서버 스냅샷에는 pulls·github가 없다
+  const pulls = snapshot.pulls ?? [];
+  const github = snapshot.github ?? null;
+  const landing = landingIndex(pulls);
 
   return (
     <section>
@@ -40,6 +45,12 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
           PARKED AIRCRAFT 포함
         </label>
       </div>
+      {github?.error && (
+        <p className="ls-stale" title={github.error}>
+          GitHub 조회 실패 · PR 상태가 오래됐을 수 있음
+        </p>
+      )}
+      <LandingSequence pulls={pulls} landing={landing} idx={idx} nameOf={nameOf} />
       {BAYS.map((bay) => {
         const sessions = bays.get(bay)!;
         if (!sessions.length) return null;
@@ -58,6 +69,7 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
                   idx={idx}
                   now={now}
                   nameOf={nameOf}
+                  landing={landing}
                   clearances={snapshot.clearances.filter((c) => c.to === s.id)}
                 />
               ))}
@@ -75,6 +87,7 @@ function Strip({
   idx,
   now,
   nameOf,
+  landing,
   clearances,
 }: {
   session: Session;
@@ -82,6 +95,7 @@ function Strip({
   idx: Index;
   now: number;
   nameOf: (id: string) => string;
+  landing: LandingIndex;
   clearances: Clearance[];
 }) {
   const { clock } = useSettings();
@@ -161,6 +175,9 @@ function Strip({
                   <div className="sub">{timeAgo(c.lastAt, now)}</div>
                 </div>
                 <div className="cell cell-remarks">
+                  {(landing.byStand.get(c.workspacePath) ?? []).map((pr) => (
+                    <PrLanding key={prKey(pr)} pr={pr} landing={landing} />
+                  ))}
                   {others.length > 0 && (
                     <span className="stamp red" title={`${others.join(", ")}와 같은 STAND`}>
                       LOS {others.join(", ")}
@@ -189,6 +206,200 @@ function Strip({
         )}
       </div>
     </article>
+  );
+}
+
+interface LandingIndex {
+  byStand: Map<string, PullRequest[]>;
+  seq: Map<string, number>; // CLEARED PR의 LANDING SEQUENCE 순번(1부터)
+}
+
+const prKey = (p: PullRequest) => `${p.repo}#${p.number}`;
+
+// LANDING SEQUENCE: CLEARED를 readyAt 이른 순으로. readyAt이 없으면 뒤로
+function landingIndex(pulls: PullRequest[]): LandingIndex {
+  const byStand = new Map<string, PullRequest[]>();
+  for (const p of pulls) {
+    if (!p.standPath) continue;
+    const list = byStand.get(p.standPath);
+    if (list) list.push(p);
+    else byStand.set(p.standPath, [p]);
+  }
+  const cleared = pulls
+    .filter((p) => p.landing === "CLEARED")
+    .sort(
+      (a, b) =>
+        (a.readyAt ?? "\uffff").localeCompare(b.readyAt ?? "\uffff") ||
+        a.repo.localeCompare(b.repo) ||
+        a.number - b.number,
+    );
+  return { byStand, seq: new Map(cleared.map((p, i) => [prKey(p), i + 1])) };
+}
+
+function blocksTip(pr: PullRequest): string {
+  return pr.blocks.map((b) => `· ${b.text}`).join("\n");
+}
+
+// CLEARED TO LAND(호박) 또는 APPROACH(시안) + 막는 조건 수
+function LandingBadge({ pr }: { pr: PullRequest }) {
+  const cleared = pr.landing === "CLEARED";
+  const n = pr.blocks.length;
+  return (
+    <span
+      className={`pr-badge ${cleared ? "is-cleared" : "is-approach"}`}
+      title={cleared ? "CLEARED TO LAND: 머지할 수 있음" : `APPROACH: 막는 조건 ${n}개\n${blocksTip(pr)}`}
+    >
+      {cleared ? "CLEARED TO LAND" : "APPROACH"}
+      {!cleared && n > 0 && <b className="pr-count">{n}</b>}
+    </span>
+  );
+}
+
+function PrLink({ pr }: { pr: PullRequest }) {
+  return (
+    <a
+      className="pr-num"
+      href={pr.url}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={`PR #${pr.number}: ${pr.title}`}
+      title={`${pr.title}\n${pr.base} ← ${pr.branch}`}
+    >
+      #{pr.number}
+    </a>
+  );
+}
+
+// 막는 조건의 짧은 이름(STAND 줄용). 전체 문장은 툴팁과 펼침에
+const blockShort: Record<LandingBlockCode, string> = {
+  draft: "DRAFT",
+  "checks-pending": "CI 진행 중",
+  "checks-failed": "CI 실패",
+  "no-checks": "CI 없음",
+  "no-review": "리뷰 없음",
+  "review-stale": "리뷰 옛 커밋",
+  "review-findings": "Codex 지적",
+  "changes-requested": "변경 요청",
+  behind: "BEHIND",
+  dirty: "충돌",
+  blocked: "BLOCKED",
+  "merge-unknown": "계산 중",
+  los: "LOS",
+};
+
+// 막는 조건: 짧은 이름 한 줄, 펼치면(키보드로도) 전체 문장
+function BlockList({ pr }: { pr: PullRequest }) {
+  if (pr.landing === "CLEARED" || !pr.blocks.length) return null;
+  return (
+    <details className="pr-more">
+      <summary title={blocksTip(pr)}>{pr.blocks.map((b) => blockShort[b.code] ?? b.code).join(" · ")}</summary>
+      <ul className="pr-blocks">
+        {pr.blocks.map((b) => (
+          <li key={b.code}>{b.text}</li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+// STAND 줄의 PR 착륙 상태
+function PrLanding({ pr, landing }: { pr: PullRequest; landing: LandingIndex }) {
+  const seq = landing.seq.get(prKey(pr));
+  return (
+    <div className="pr-land">
+      <div className="pr-head">
+        <LandingBadge pr={pr} />
+        <PrLink pr={pr} />
+        {seq && landing.seq.size > 1 && (
+          <span className="pr-seq" title={`LANDING SEQUENCE ${landing.seq.size}개 중 ${seq}번째`}>
+            SEQ {seq}
+          </span>
+        )}
+      </div>
+      <BlockList pr={pr} />
+    </div>
+  );
+}
+
+// 열린 PR 전체. TOWER landingQueue와 같은 순서: CLEARED(readyAt 순) 다음 APPROACH(연 순서).
+// CLEARED만 펼쳐 두고 APPROACH와 Draft(순서 밖)는 접어 둔다.
+function LandingSequence({
+  pulls,
+  landing,
+  idx,
+  nameOf,
+}: {
+  pulls: PullRequest[];
+  landing: LandingIndex;
+  idx: Index;
+  nameOf: (id: string) => string;
+}) {
+  if (!pulls.length) return null;
+  const byOpened = (a: PullRequest, b: PullRequest) => a.createdAt.localeCompare(b.createdAt) || a.number - b.number;
+  const seqOf = (p: PullRequest) => landing.seq.get(prKey(p)) ?? 0;
+  const cleared = pulls.filter((p) => p.landing === "CLEARED").sort((a, b) => seqOf(a) - seqOf(b));
+  const approach = pulls.filter((p) => p.landing !== "CLEARED" && !p.draft).sort(byOpened);
+  const drafts = pulls.filter((p) => p.landing !== "CLEARED" && p.draft).sort(byOpened);
+
+  const row = (pr: PullRequest) => {
+    const seq = landing.seq.get(prKey(pr));
+    const ws = pr.standPath ? idx.wsByPath.get(pr.standPath) : undefined;
+    const holders = pr.standPath
+      ? (idx.claimsByWorkspace.get(pr.standPath) ?? [])
+          .filter((c) => c.state === "active")
+          .map((c) => nameOf(c.sessionId))
+      : [];
+    const ticket = pr.ticketKey ? idx.ticketByKey.get(pr.ticketKey) : undefined;
+    return (
+      <li key={prKey(pr)} className={`ls-row${seq ? " is-cleared" : ""}`}>
+        <div className="ls-status">
+          <span className="ls-seq" title={seq ? `LANDING SEQUENCE ${seq}번째` : undefined}>
+            {seq ?? "—"}
+          </span>
+          <LandingBadge pr={pr} />
+        </div>
+        <div className="ls-flight" title={ticket?.title}>
+          <AirportCode airport={idx.airportByRepo.get(pr.repo)} />{" "}
+          {pr.ticketKey ? flightNumber(pr.ticketKey) : <span className="faint">AD HOC</span>}
+        </div>
+        <div className="ls-pr">
+          <div className="ls-title">
+            <PrLink pr={pr} /> <span title={pr.title}>{pr.title}</span>
+          </div>
+          {pr.landing !== "CLEARED" && pr.blocks.length > 0 && (
+            <ul className="ls-blocks">
+              {pr.blocks.map((b) => (
+                <li key={b.code}>{b.text}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="ls-stand" title={pr.standPath ?? `${pr.branch}: 체크아웃한 STAND 없음`}>
+          {holders.length ? holders.join(", ") : <span className="faint">{ws ? ws.name : "STAND 없음"}</span>}
+        </div>
+      </li>
+    );
+  };
+
+  return (
+    <div className="bay ls">
+      <h2 className="label">
+        LANDING SEQUENCE <em>CLEARED TO LAND {cleared.length}</em>
+      </h2>
+      {cleared.length > 0 && <ol className="ls-list">{cleared.map(row)}</ol>}
+      {approach.length > 0 && (
+        <details className="ls-group">
+          <summary>APPROACH PR {approach.length}개 · 막는 조건이 남음</summary>
+          <ol className="ls-list">{approach.map(row)}</ol>
+        </details>
+      )}
+      {drafts.length > 0 && (
+        <details className="ls-group is-draft">
+          <summary>DRAFT PR {drafts.length}개 · LANDING SEQUENCE에 들지 않음</summary>
+          <ol className="ls-list">{drafts.map(row)}</ol>
+        </details>
+      )}
+    </div>
   );
 }
 

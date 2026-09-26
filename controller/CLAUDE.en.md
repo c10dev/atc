@@ -17,7 +17,7 @@ The user is the SUPERVISOR. When a call is unclear, don't issue a CLEARANCE — 
 
 | Command | What it does |
 |---|---|
-| `node atcctl.mjs brief` | Changes since the last ack (`events`) and the current state (`open`, `landingQueue`, `clearances`, `traffic`) |
+| `node atcctl.mjs brief` | Changes since the last ack (`events`) and the current state (`open`, `landingQueue`, `github`, `clearances`, `traffic`) |
 | `node atcctl.mjs ack <cursor>` | Marks the brief as handled. The next brief only gives changes after that |
 | `node atcctl.mjs issue <session> <TYPE> [--stand <STAND>] [--flight <FLIGHT>] -- <text>` | Records a CLEARANCE and returns the recipient and the message to send |
 | `node atcctl.mjs readback <C-0007>` / `cancel <C-0007>` | Confirm READBACK / cancel a CLEARANCE |
@@ -30,7 +30,9 @@ CLEARANCE types: `TRAFFIC` (traffic information) `HOLD` (hold) `CONTINUE` (conti
 | Situation (where in the brief) | What to do |
 |---|---|
 | LOSS OF SEPARATION (`open.conflicts`) | `sessions` is in order of arrival. `CONTINUE` to the first, `HOLD` to the rest ("don't touch this STAND until the team ahead finishes and hands it off"). Don't send a new one if a CLEARANCE for the same STAND is still awaiting READBACK |
-| LANDING SEQUENCE (`landingQueue`) | Give an order with `LAND` to FLIGHTs without a `landClearance`. The number is the LANDING SEQUENCE position (rebase after the FLIGHT ahead is merged, then LAND). Send it to that STAND's `holders`. With no holder, only report to the SUPERVISOR |
+| CLEARED TO LAND (`landing: "CLEARED"` in `landingQueue`) | Give an order with `LAND` only to PRs without a `landClearance`. The number is `seq` (rebase after the PR ahead is merged, then LAND). Pass `--stand <stand>`, plus `--flight` when there is a FLIGHT, and put `PR #<number>` in the text. Send it to the `holders`. With no holder, only report to the SUPERVISOR |
+| APPROACH (`landing: "APPROACH"`) | Don't issue `LAND`. Only when `events` has a `landing.requested` or `landing.blocked` for that PR, and its `blocks` has a code other than `checks-pending`, `merge-unknown` or `los`, tell the `holders` with an `INFO`: "PR #<number> LANDING 불가: " followed by the `blocks[].text` from `landingQueue`, joined with ` · `. Without an event (same blocks) don't send it again, and don't send it in a pass with `reset: true`. With no holder, only note it in the ATC LOG. `los` is handled by the LOSS OF SEPARATION rule above |
+| GitHub error (`github.error`) | The LANDING SEQUENCE may be stale. Report to the SUPERVISOR when it newly appears |
 | HANDOFF (`handoff` in `events`) | Only note it in the ATC LOG. Don't send a message |
 | OUTSTATION (`away.started`/`away.ended` in `events`, `traffic[].away`) | Only note it in the ATC LOG. Which team sits at which AIRPORT (repositioning) is DISPATCH's job (stage 2). A conflict at an OUTSTATION AIRPORT is handled as LOSS OF SEPARATION above |
 | NORDO STAND (`open.orphans`), `session.lost` | There is no session to receive it. Report to the SUPERVISOR |

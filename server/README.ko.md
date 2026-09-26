@@ -2,7 +2,7 @@
 
 [English](README.md) · **한국어**
 
-Node 24 + Hono. 2초마다 Claude Code, Codex, git, Linear를 읽어 `Snapshot` 하나로 합치고 SSE로 웹 화면에 보낸다. 이벤트와 표본(FLIGHT RECORDER)을 기록하고, CONTROLLER의 CLEARANCE, DISPATCH 제안, OCC SCHEDULE 초안을 보관하고, `web/dist`를 제공한다. git·워크트리·Linear에는 쓰지 않는다.
+Node 24 + Hono. 2초마다 Claude Code, Codex, git, Linear, GitHub PR을 읽어 `Snapshot` 하나로 합치고 SSE로 웹 화면에 보낸다. 이벤트와 표본(FLIGHT RECORDER)을 기록하고, CONTROLLER의 CLEARANCE, DISPATCH 제안, OCC SCHEDULE 초안을 보관하고, `web/dist`를 제공한다. git·워크트리·Linear·GitHub에는 쓰지 않는다(`gh`는 PR 목록을 읽을 때만 쓴다).
 
 Node가 TypeScript 파일을 바로 실행하므로 서버는 빌드 단계가 없다.
 
@@ -16,9 +16,9 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 
 `index.ts`가 2초마다 `tick()`을 돈다.
 
-1. `buildSnapshot()`(`snapshot.ts`)이 소스를 읽어 세션 ─ 점유 ─ 워크트리 ─ 티켓을 잇고, HANDOFF·충돌을 판정하고(`occupancy.ts`), 경보를 계산한다.
+1. `buildSnapshot()`(`snapshot.ts`)이 소스를 읽어 세션 ─ 점유 ─ 워크트리 ─ 티켓을 잇고, HANDOFF·충돌을 판정하고(`occupancy.ts`), 경보를 계산하고, 열린 PR마다 CLEARED TO LAND 조건을 따진다(`landing.ts`).
 2. `diffSnapshots()`(`events.ts`)가 직전 스냅샷과의 차이를 이벤트로 만들고, 이벤트마다 FLIGHT RECORDER에 기록한다.
-3. 스냅샷이 준비되면(Linear·git을 다 읽은 뒤) 5분마다 교통량 표본을 남기고 DISPATCH(`runDispatch`)를 돌린다.
+3. 스냅샷이 준비되면(Linear·git·GitHub을 한 번 이상 읽은 뒤) 5분마다 교통량 표본을 남기고 DISPATCH(`runDispatch`)를 돌린다.
 4. 시각 말고 바뀐 것이 있으면 SSE 구독자 모두에게 스냅샷을 보낸다.
 
 `/api/events`는 연결하면 현재 스냅샷을 보내고, 이후 바뀔 때마다 보내며, 25초마다 `ping`을 보낸다.
@@ -31,6 +31,7 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 | `codex.ts` | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex 세션(최근 90초 안에 움직였으면 busy), `cwd` 점유 |
 | `git.ts` | AIRPORT마다 `git worktree list --porcelain` | 워크트리, 브랜치, HEAD, dirty 여부, 마지막 커밋(세부는 30초 캐시). 브랜치 이름에서 티켓 키 |
 | `linear.ts` | Linear GraphQL(`LINEAR_API_KEY`), 60초마다 | 티켓, 상태, 우선순위, 프로젝트, 관계. DISPATCH용 이슈 본문 |
+| `github.ts` | git remote가 GitHub인 AIRPORT마다 `gh pr list --repo <owner/name> --state open --json …`, 90초마다 백그라운드로(`execFile`, 셸 없음) | AIRPORT별 열린 PR: head, 체크, 리뷰, 머지 상태, Draft. head에 통과 리뷰가 없거나 Codex 지적이 있는 Draft 아닌 PR은 Codex 봇의 👍 반응, head committer 시각(sha별 캐시), Codex의 PR 댓글도(`gh api`, 읽기 전용). 실패한 저장소는 마지막 결과를 두고 오류는 `snapshot.github.error`에. `gh`가 없으면 `enabled`가 false |
 
 ## 모듈
 
@@ -38,13 +39,14 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 |---|---|
 | `index.ts` | 진입점: tick 반복, SSE, API 연결, `web/dist` 제공 |
 | `config.ts` | `.env.local`과 환경 변수 읽기([deploy](../deploy/README.ko.md#설정)) |
-| `model.ts` | 공용 타입: `Session`, `Airport`, `Workspace`, `Ticket`, `Claim`, `Handoff`, `Alert`, `Clearance`, `TrafficEvent`, `Snapshot`. 웹 화면이 그대로 가져다 쓴다 |
-| `snapshot.ts` | 소스 병합, TTL 안의 점유만 남기기, 경보 계산 |
+| `model.ts` | 공용 타입: `Session`, `Airport`, `Workspace`, `Ticket`, `Claim`, `Handoff`, `Alert`, `Clearance`, `TrafficEvent`, `PullRequest`, `LandingBlockCode`, `Snapshot`. 웹 화면이 그대로 가져다 쓴다 |
+| `snapshot.ts` | 소스 병합, TTL 안의 점유만 남기기, 경보와 `pulls` 계산. 스냅샷 필드: `linear`·`github` 상태(`{enabled, error, fetchedAt}`), `sessions`, `workspaces`, `tickets`, `columns`, `airports`, `claims`, `handoffs`, `alerts`, `clearances`, `pulls`(열린 PR, CLEARED 먼저) |
+| `landing.ts` | PR마다 CLEARED TO LAND 조건(체크, head 리뷰, 머지 상태, Draft, LOS), head별 `readyAt`, LANDING SEQUENCE 순서(순수 함수 `buildPulls`, `landingBlocks`) |
 | `occupancy.ts` | 점유 구간 `[since, lastAt]`으로 HANDOFF·충돌·잠깐 들름 판정 |
 | `airports.ts` | AIRPORT 등록부: `~/projects` 아래 자동 개설, 첫 커밋 해시로 식별, 코드, 개설·폐쇄·이름 변경·삭제 |
 | `away.ts` | OUTSTATION: 소속 AIRPORT 밖 STAND를 점유한 세션(화면과 공용) |
 | `callsign.ts` | 콜사인(`TEAM_A` → `ALPHA`)과 FLIGHT NUMBER(화면과 공용) |
-| `events.ts` | 스냅샷 차이 → 이벤트(경보, HANDOFF, LANDING SEQUENCE, 세션 종료, OUTSTATION). 커서로 읽는 이벤트 기록 |
+| `events.ts` | 스냅샷 차이 → 이벤트(경보, HANDOFF, LANDING SEQUENCE `landing.requested`·`cleared`·`blocked`·`left`, 세션 종료, OUTSTATION). 커서로 읽는 이벤트 기록 |
 | `controller.ts` | CONTROLLER(TOWER) API: 브리핑, ack, CLEARANCE 발행·READBACK·취소, 정해진 문구 |
 | `clearances.ts` | CLEARANCE 기록: 추가만 하는 JSONL을 접어 현재 상태를 만든다 |
 | `recorder.ts` | FLIGHT RECORDER: 날짜별 JSONL(`event`, `sample`, `dispatch`, `ack`, `schedule`), 30일 보관 |
