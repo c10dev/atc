@@ -4,6 +4,7 @@ import type { Context, Hono } from "hono";
 import { flightNumber } from "./callsign.ts";
 import { config } from "./config.ts";
 import { classLabel, classOf, FLIGHT_TYPES, type FlightType, RATINGS, type Rating, WAKES, type Wake } from "./crew.ts";
+import { type Crosscheck, CrosscheckError, type CrosscheckVerdict, crosscheckRateOf, examplesOf, type HumanDecision, parseCrosscheck } from "./crosscheck.ts";
 import { DONE_STATES, loadDispatchConfig, PRIORITY_NAME } from "./dispatch.ts";
 import { fleetView, loadFleet } from "./fleet.ts";
 import type { Snapshot, Ticket } from "./model.ts";
@@ -66,6 +67,8 @@ export interface ScheduleOp {
   verdictReason: string | null; // 거절 사유, SUPERSEDED·EXPIRED 사유
   calls: LinearCall[] | null; // S2: release 때 atc가 만든 Linear 호출
   appliedRef: string | null; // APPLIED: 반영된 FLIGHT key(NEW면 새로 생긴 이슈)
+  decision: { verdict: CrosscheckVerdict; at: string } | null; // SUPERVISOR 판정(verdict·approve·reject). 뒤 상태로 넘어가도 남는다
+  crosscheck: Crosscheck | null; // CROSSCHECK 예비 판정(참고 표시, 상태를 바꾸지 않는다)
 }
 
 type LogLine =
@@ -76,7 +79,8 @@ type LogLine =
   | { op: "approve"; id: string; at: string }
   | { op: "reject"; id: string; at: string; reason: string | null }
   | { op: "release"; id: string; at: string; calls: LinearCall[] }
-  | { op: "apply"; id: string; at: string; ref: string };
+  | { op: "apply"; id: string; at: string; ref: string }
+  | ({ op: "crosscheck"; id: string } & Crosscheck);
 
 export const SCHEDULE_OPEN_LIMIT = 5; // 결정 안 된 초안 최대 수(SUPERVISOR 검토 부담)
 const TTL_MS = 3 * 86_400_000; // 3일 동안 판정이 없으면 EXPIRED
@@ -113,22 +117,38 @@ export class ScheduleError extends Error {
 }
 
 // 상태 전이. 여기 없는 전이는 무시한다(API도 같은 규칙으로 검사한다).
-const NEXT: Partial<Record<ScheduleStatus, Partial<Record<LogLine["op"], ScheduleStatus>>>> = {
+type StatusLine = Exclude<LogLine["op"], "draft" | "crosscheck">;
+const NEXT: Partial<Record<ScheduleStatus, Partial<Record<StatusLine, ScheduleStatus>>>> = {
   draft: { verdict: "agreed", approve: "approved", reject: "rejected", supersede: "superseded", expire: "expired" },
   approved: { release: "released", supersede: "superseded", expire: "expired" },
   released: { release: "released", apply: "applied", supersede: "superseded", expire: "expired" },
 };
-export const canApplyOp = (s: Pick<ScheduleOp, "status">, op: LogLine["op"]) => Boolean(NEXT[s.status]?.[op]);
+export const canApplyOp = (s: Pick<ScheduleOp, "status">, op: StatusLine) => Boolean(NEXT[s.status]?.[op]);
+
+// SUPERVISOR 판정과 그 사유. 사유는 판정한 상태에 머물러 있을 때만(approved 뒤의 verdictReason은 SUPERSEDED·EXPIRED 사유다)
+export function humanOf(s: ScheduleOp): HumanDecision | null {
+  if (!s.decision) return null;
+  const reason = (s.status === "agreed" || s.status === "disagreed" || s.status === "rejected") && s.verdictReason ? s.verdictReason : null;
+  return { ...s.decision, reason };
+}
 
 export function fold(lines: LogLine[]): ScheduleOp[] {
   const byId = new Map<string, ScheduleOp>();
   for (const l of lines) {
     if (l.op === "draft") {
-      byId.set(l.id, { id: l.id, kind: l.kind, flight: l.flight, payload: l.payload, reason: l.reason, at: l.at, status: "draft", statusAt: l.at, verdictReason: null, calls: null, appliedRef: null });
+      byId.set(l.id, { id: l.id, kind: l.kind, flight: l.flight, payload: l.payload, reason: l.reason, at: l.at, status: "draft", statusAt: l.at, verdictReason: null, calls: null, appliedRef: null, decision: null, crosscheck: null });
       continue;
     }
     const s = byId.get(l.id);
-    if (!s || !canApplyOp(s, l.op)) continue; // 닫힌 초안은 바꾸지 않는다
+    if (!s) continue;
+    if (l.op === "crosscheck") {
+      // 열린 초안에만. 나중 mark가 앞의 것을 대신한다
+      if (s.status === "draft") s.crosscheck = { by: l.by, verdict: l.verdict, reason: l.reason, at: l.at };
+      continue;
+    }
+    if (!canApplyOp(s, l.op)) continue; // 닫힌 초안은 바꾸지 않는다
+    if (l.op === "verdict") s.decision = { verdict: l.verdict, at: l.at };
+    else if (l.op === "approve" || l.op === "reject") s.decision = { verdict: l.op === "approve" ? "agree" : "disagree", at: l.at };
     s.status = l.op === "verdict" && l.verdict === "disagree" ? "disagreed" : NEXT[s.status]![l.op]!;
     s.statusAt = l.at;
     if (l.op === "verdict" || l.op === "reject" || l.op === "supersede") s.verdictReason = l.reason;
@@ -461,6 +481,26 @@ export function gateOf(ops: ScheduleOp[]) {
     agreement,
     target: GATE,
     ready: decided.length >= GATE.decided && agreement !== null && agreement >= GATE.agreement,
+    // 게이트와 따로: CROSSCHECK가 SUPERVISOR 판정(S1 판정과 S2 승인·거절)과 얼마나 맞았나
+    crosscheck: crosscheckRateOf(ops.map((s) => ({ crosscheck: s.crosscheck, human: humanOf(s) }))),
+  };
+}
+
+// CROSSCHECK 브리핑: mark가 없는 열린 초안과 보정용 최근 SUPERVISOR 판정
+export function crosscheckBriefOf(ops: ScheduleOp[], changes: Record<string, string[]> = {}) {
+  const pending = ops.filter((s) => s.status === "draft" && !s.crosscheck);
+  const examples = examplesOf(ops.map((s) => ({ s, human: humanOf(s) }))).map(({ s, human }) => ({
+    id: s.id,
+    kind: s.kind,
+    flight: s.flight,
+    draft: s.reason,
+    verdict: human!.verdict,
+    reason: human!.reason,
+    crosscheck: s.crosscheck ? { verdict: s.crosscheck.verdict, reason: s.crosscheck.reason } : null,
+  }));
+  return {
+    pending: pending.map((s) => ({ id: s.id, kind: s.kind, flight: s.flight, reason: s.reason, changes: changes[s.id] ?? [] })),
+    examples,
   };
 }
 
@@ -515,7 +555,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       }),
     );
     const changes = Object.fromEntries([...open, ...inProgress].map((x) => [x.id, changesOf(x.kind, x.payload, x.flight ? byKey.get(x.flight) : undefined)]));
-    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, flights });
+    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, flights, crosscheck: crosscheckBriefOf(ops, changes) });
   });
 
   app.get("/api/schedule/ops/:id", async (c) => {
@@ -564,6 +604,22 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     if (op.status !== "draft") return c.json({ error: `지금 상태(${op.status})에서는 판정할 수 없음` }, 409);
     const reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim().slice(0, 500) : null;
     append([{ op: "verdict", id, at: new Date().toISOString(), verdict: body.verdict, reason }]);
+    return c.json({ op: fold(readLines()).find((x) => x.id === id) });
+  });
+
+  // CROSSCHECK 예비 판정. 판정 권한이 아니라 참고 표시라 mode와 상관없이 받는다
+  app.post("/api/schedule/ops/:id/crosscheck", async (c: Context) => {
+    const id = (c.req.param("id") ?? "").toUpperCase();
+    const body = await c.req.json().catch(() => ({}));
+    const op = fold(readLines()).find((x) => x.id === id);
+    if (!op) return c.json({ error: "그런 SCHEDULE 작업이 없음" }, 404);
+    if (op.status !== "draft") return c.json({ error: `지금 상태(${op.status})에서는 CROSSCHECK를 달 수 없음 — 열린 초안만` }, 409);
+    try {
+      append([{ op: "crosscheck", id, ...parseCrosscheck(body, new Date().toISOString()) }]);
+    } catch (e) {
+      if (e instanceof CrosscheckError) return c.json({ error: e.message }, 400);
+      throw e;
+    }
     return c.json({ op: fold(readLines()).find((x) => x.id === id) });
   });
 

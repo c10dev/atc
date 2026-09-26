@@ -19,12 +19,13 @@ atc(Air Traffic Control)는 여러 Claude Code 세션이 한 저장소에서 동
 SUPERVISOR (사용자) ─ 판정·승인·머지, 최종 권한
    │
    ├─ OCC (운항관제, atc/occ 세션)   무엇을·누가·언제: DISPATCH 제안 검토, SCHEDULE 초안, 팀 보고 확인
+   ├─ CROSSCHECK (atc/crosscheck 세션, 선택)   다른 모델로 예비 판정: 사용자가 판정하기 전에 agree/disagree와 이유
    ├─ TOWER (교통관제, atc/controller 세션)   뜬 것끼리 간격: 충돌, HANDOFF, 머지 순서
    │
    └─ AIRCRAFT (TEAM_A … 팀 세션)   CAPTAIN(리더)이 CREW(팀원)를 데리고 실제 작업
 ```
 
-- **OCC와 TOWER는 코드를 고치지 않는다.** 읽고, 제안하고, 교신만 한다. guard가 기계적으로 막는다.
+- **OCC·TOWER·CROSSCHECK는 코드를 고치지 않는다.** 읽고, 제안하고, 교신만 한다. guard가 기계적으로 막는다.
 - **결정은 사용자가 한다.** 자동화는 그림자 운용 → 승인 운용 → 저위험만 자동 순서로 넓힌다([단계와 로드맵](stages.md)).
 
 ## 어디서 시작하나

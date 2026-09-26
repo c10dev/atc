@@ -64,3 +64,35 @@ test("읽기 전용 gh: --gh-read일 때 gh pr view·checks·diff·list만 허�
   // TOWER(옵션 없음)에서는 gh 자체가 막힌다
   assert.notEqual(check(ok[0], HERE), null);
 });
+
+const CROSSCHECK = HERE.replace(/controller$/, "crosscheck");
+test("--crosscheck: atc CLI 중 읽기와 crosscheck 명령만, gh는 막음", () => {
+  const opts = { crosscheck: true };
+  const ok = [
+    "node ../controller/atcctl.mjs manual check",
+    "node ../controller/atcctl.mjs manual ack",
+    "node ../controller/atcctl.mjs crosscheck brief | jq '.dispatch.pending'",
+    "node ../controller/atcctl.mjs dispatch brief",
+    "node ../controller/atcctl.mjs dispatch flight VOC-193",
+    "node ../controller/atcctl.mjs schedule brief",
+    "node ../controller/atcctl.mjs dispatch crosscheck D-0003 agree -- '본문상 제약 없음'",
+    "node ../controller/atcctl.mjs schedule crosscheck S-0001 disagree -- '이미 완료됨'",
+  ];
+  const no = [
+    "node ../controller/atcctl.mjs dispatch note D-0003 -- x",
+    "node ../controller/atcctl.mjs dispatch release D-0003",
+    "node ../controller/atcctl.mjs dispatch readback D-0003",
+    "node ../controller/atcctl.mjs schedule draft CLASSIFY VOC-1 --type MAINT -- x",
+    "node ../controller/atcctl.mjs schedule release S-0001",
+    "node ../controller/atcctl.mjs issue TEAM_B INFO -- x",
+    "node ../controller/atcctl.mjs readback C-0001",
+    "node ../controller/atcctl.mjs brief",
+    "node ../controller/atcctl.mjs",
+    "gh pr view 400 -R chaehy5665/vocado_nextjs",
+    "node ../controller/atcctl.mjs crosscheck brief > out.json",
+  ];
+  for (const c of ok) assert.equal(check(c, CROSSCHECK, opts), null, c);
+  for (const c of no) assert.notEqual(check(c, CROSSCHECK, opts), null, c);
+  // 옵션 없이는 기존 TOWER 규칙 그대로
+  assert.equal(check("node ../controller/atcctl.mjs dispatch note D-0003 -- x", CROSSCHECK), null);
+});

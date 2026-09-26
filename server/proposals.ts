@@ -22,6 +22,7 @@ import {
   tailsOf,
 } from "./dispatch.ts";
 import { classLabel, classOf } from "./crew.ts";
+import { type Crosscheck, CrosscheckError, crosscheckRateOf, examplesOf, type HumanDecision, parseCrosscheck } from "./crosscheck.ts";
 import { loadFleet } from "./fleet.ts";
 import type { Snapshot, Ticket } from "./model.ts";
 import { record } from "./recorder.ts";
@@ -80,14 +81,16 @@ export interface Proposal {
   holdAt: string | null; // HOLD를 건 시각. hold가 비어 있으면 선행 FLIGHT 없는 HOLD(사람 결정 대기 등, 사유는 note)
   message: string | null; // 보낸 FLIGHT PLAN 문구
   departedStand: string | null;
+  crosscheck: Crosscheck | null; // CROSSCHECK 예비 판정(참고 표시, 상태를 바꾸지 않는다)
 }
 
-type Create = Omit<Proposal, "status" | "decidedAt" | "statusAt" | "timeline" | "reason" | "note" | "caution" | "hold" | "holdAt" | "message" | "departedStand">;
+type Create = Omit<Proposal, "status" | "decidedAt" | "statusAt" | "timeline" | "reason" | "note" | "caution" | "hold" | "holdAt" | "message" | "departedStand" | "crosscheck">;
 export type Op =
   | ({ op: "create" } & Create)
   | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null }
   | { op: "note"; id: string; at: string; text: string; caution: boolean }
   | { op: "hold"; id: string; at: string; blockedBy: string[] }
+  | ({ op: "crosscheck"; id: string } & Crosscheck)
   | { op: "approve"; id: string; at: string }
   | { op: "reject"; id: string; at: string; reason: string | null }
   | { op: "send"; id: string; at: string; message: string }
@@ -97,7 +100,7 @@ export type Op =
   | { op: "supersede"; id: string; at: string; reason: string }
   | { op: "expire"; id: string; at: string; reason?: string };
 
-type StatusOp = Exclude<Op["op"], "create" | "note" | "hold">;
+type StatusOp = Exclude<Op["op"], "create" | "note" | "hold" | "crosscheck">;
 
 // 상태 전이 규칙. 여기 없는 전이는 무시한다(API도 같은 규칙으로 검사한다).
 const NEXT: Partial<Record<ProposalStatus, Partial<Record<StatusOp, ProposalStatus>>>> = {
@@ -112,6 +115,20 @@ export function canApply(p: Proposal, op: StatusOp): boolean {
   return Boolean(NEXT[p.status]?.[op]);
 }
 
+// CROSSCHECK mark는 SUPERVISOR가 판정할 열린 제안(proposed, HOLD 아님)에만 받는다
+export const canCrosscheck = (p: Proposal) => p.status === "proposed" && !isHeld(p);
+
+// SUPERVISOR 판정(shadow agreed/disagreed, approval approved/rejected). 사유는 판정한 상태에 머물러 있을 때만
+// (approved 뒤의 reason은 DECLINED·SUPERSEDED 같은 다른 사유다)
+export function humanOf(p: Proposal): HumanDecision | null {
+  const t = p.timeline;
+  const at = t.agreed ?? t.disagreed ?? t.approved ?? t.rejected;
+  if (!at) return null;
+  const verdict = t.agreed || t.approved ? "agree" : "disagree";
+  const reason = (p.status === "agreed" || p.status === "disagreed" || p.status === "rejected") && p.reason ? p.reason : null;
+  return { verdict, at, reason };
+}
+
 export function fold(ops: Op[]): Proposal[] {
   const byId = new Map<string, Proposal>();
   for (const o of ops) {
@@ -119,7 +136,7 @@ export function fold(ops: Op[]): Proposal[] {
       const { op: _op, ...rest } = o;
       byId.set(o.id, {
         ...rest, status: "proposed", decidedAt: null, statusAt: o.at, timeline: { proposed: o.at },
-        reason: null, note: null, caution: false, hold: [], holdAt: null, message: null, departedStand: null,
+        reason: null, note: null, caution: false, hold: [], holdAt: null, message: null, departedStand: null, crosscheck: null,
       });
       continue;
     }
@@ -133,6 +150,11 @@ export function fold(ops: Op[]): Proposal[] {
     if (o.op === "hold") {
       p.hold = [...new Set(o.blockedBy)].sort();
       p.holdAt = o.at;
+      continue;
+    }
+    if (o.op === "crosscheck") {
+      // 열린(HOLD 아닌) 제안에만. 나중 mark가 앞의 것을 대신한다
+      if (canCrosscheck(p)) p.crosscheck = { by: o.by, verdict: o.verdict, reason: o.reason, at: o.at };
       continue;
     }
     if (!canApply(p, o.op)) continue;
@@ -297,6 +319,26 @@ export function gateOf(proposals: Proposal[]) {
     agreement,
     target: GATE,
     ready: decided.length >= GATE.decided && agreement !== null && agreement >= GATE.agreement,
+    // 게이트와 따로: CROSSCHECK가 SUPERVISOR 판정과 얼마나 맞았나
+    crosscheck: crosscheckRateOf(proposals.filter((p) => p.crosscheck).map((p) => ({ crosscheck: p.crosscheck, human: humanOf(p) }))),
+  };
+}
+
+// CROSSCHECK 브리핑: mark가 없는 열린 제안과 보정용 최근 SUPERVISOR 판정
+export function crosscheckBriefOf(proposals: Proposal[]) {
+  const pending = proposals.filter((p) => canCrosscheck(p) && !p.crosscheck);
+  const examples = examplesOf(proposals.map((p) => ({ p, human: humanOf(p) }))).map(({ p, human }) => ({
+    id: p.id,
+    kind: p.kind,
+    flight: p.flight,
+    aircraft: p.aircraftName,
+    verdict: human!.verdict,
+    reason: human!.reason,
+    crosscheck: p.crosscheck ? { verdict: p.crosscheck.verdict, reason: p.crosscheck.reason } : null,
+  }));
+  return {
+    pending: pending.map((p) => ({ id: p.id, kind: p.kind, flight: p.flight, aircraft: p.aircraftName, airport: p.airport, score: p.score, note: p.note, caution: p.caution })),
+    examples,
   };
 }
 
@@ -409,6 +451,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       flights,
       gate: gateOf(proposals),
       gate3: gate3Of(proposals),
+      crosscheck: crosscheckBriefOf(proposals),
       config: cfg,
     });
   });
@@ -496,6 +539,23 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
   for (const name of ["verdict", "note", "hold", "unhold", "approve", "reject", "release", "accept", "decline"] as const) {
     app.post(`/api/dispatch/proposals/:id/${name}`, act(name));
   }
+
+  // CROSSCHECK 예비 판정. 판정 권한이 아니라 참고 표시라 mode와 상관없이 받는다
+  app.post("/api/dispatch/proposals/:id/crosscheck", async (c) => {
+    const id = (c.req.param("id") ?? "").toUpperCase();
+    const body = await c.req.json().catch(() => ({}));
+    const p = allProposals().find((x) => x.id === id);
+    if (!p) return c.json({ error: "그런 제안이 없음" }, 404);
+    if (isHeld(p)) return c.json({ error: "HOLD 중인 제안에는 CROSSCHECK를 달지 않는다" }, 409);
+    if (!canCrosscheck(p)) return c.json({ error: `지금 상태(${p.status})에서는 CROSSCHECK를 달 수 없음 — 열린 제안만` }, 409);
+    try {
+      append([{ op: "crosscheck", id, ...parseCrosscheck(body, new Date().toISOString()) }]);
+    } catch (e) {
+      if (e instanceof CrosscheckError) return c.json({ error: e.message }, 400);
+      throw e;
+    }
+    return c.json({ proposal: allProposals().find((x) => x.id === id) });
+  });
 
   // 2a ↔ 2b 전환. 2b에서는 승인된 FLIGHT PLAN이 CAPTAIN에게 나간다.
   app.post("/api/dispatch/mode", async (c) => {

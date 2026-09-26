@@ -8,8 +8,8 @@
 | AIRPORTS | `#airports` | 저장소 등록부, 소속 AIRCRAFT, OUTSTATION으로 와 있는 AIRCRAFT | AIRPORT 개설·코드 변경·폐쇄 |
 | FLEET | `#fleet` | 팀별 상태, 지금 FLIGHT, 팀원, 자격, ROUTE, TARGETS | 프로필 편집, ENTRY INTO SERVICE, CREW BRIEFING, AOG, 퇴역 |
 | METRICS | `#metrics` | FLIGHT RECORDER로 본 운용 지표와 추이 | — |
-| DISPATCH | `#dispatch` | 배정 계획과 제안, HELD, IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검 | 판정, HOLD 풀기, 모드 전환 |
-| SCHEDULE | `#schedule` | OCC 초안(CLASSIFY·PRIORITIZE·NEW), S2 점검, 후보 수 | 판정 |
+| DISPATCH | `#dispatch` | 배정 계획과 제안(CROSSCHECK 칩), HELD, IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검과 CROSSCHECK 일치 | 판정, CROSSCHECK에 동의, HOLD 풀기, 모드 전환 |
+| SCHEDULE | `#schedule` | OCC 초안(CLASSIFY·PRIORITIZE·NEW, CROSSCHECK 칩), S2 점검과 CROSSCHECK 일치, 후보 수 | 판정, CROSSCHECK에 동의 |
 | DOCS | `#docs` | 이 안내 | — |
 
 ## 상단

@@ -2,6 +2,7 @@
 // TOWER·OCC 세션의 PreToolUse hook (Bash). 관제 세션은 조종하지 않는다:
 // atc CLI(node atcctl.mjs …)와 jq 외의 명령, 파일로 쓰는 리다이렉션을 막는다. 막으면 exit 2.
 // `--gh-read`로 부르면(OCC) 팀 보고 확인용 읽기 전용 gh(`gh pr view|checks|diff|list`)도 허용한다.
+// `--crosscheck`로 부르면(CROSSCHECK) atc CLI 중 읽기와 crosscheck 명령만 허용한다(쓰는 dispatch·schedule 명령은 막음).
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -51,7 +52,15 @@ function hasExpansion(command) {
   return false;
 }
 
-export function check(command, cwd = HERE, { ghRead = false } = {}) {
+// CROSSCHECK 세션이 쓸 수 있는 atcctl 하위 명령(앞 두 단어)
+const CROSSCHECK_CMDS = new Set([
+  "manual check", "manual ack",
+  "crosscheck brief",
+  "dispatch brief", "dispatch flight", "dispatch crosscheck",
+  "schedule brief", "schedule crosscheck",
+]);
+
+export function check(command, cwd = HERE, { ghRead = false, crosscheck = false } = {}) {
   if (typeof command !== "string" || !command.trim()) return "빈 명령";
   if (hasRedirect(command)) return "리다이렉션(>, <, heredoc)은 쓸 수 없음";
   if (hasExpansion(command)) return "명령 치환·변수 확장($(…), `…`, ${…}, $VAR)은 쓸 수 없음 — 문구는 작은따옴표로 감싼다";
@@ -59,7 +68,10 @@ export function check(command, cwd = HERE, { ghRead = false } = {}) {
     const [cmd, script] = words;
     if (cmd === "jq") continue;
     if (ghRead && cmd === "gh" && words[1] === "pr" && GH_READ.has(words[2]) && !words.includes("--web")) continue;
-    if (cmd === "node" && script && resolve(cwd, script) === ATCCTL) continue;
+    if (cmd === "node" && script && resolve(cwd, script) === ATCCTL) {
+      if (crosscheck && !CROSSCHECK_CMDS.has(words.slice(2, 4).join(" "))) return `CROSSCHECK가 쓸 수 없는 atc 명령: ${words.slice(2, 4).join(" ") || "(없음)"}`;
+      continue;
+    }
     return `허용되지 않은 명령: ${words.slice(0, 3).join(" ")}`;
   }
   return null;
@@ -71,10 +83,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     input = JSON.parse(readFileSync(0, "utf8"));
   } catch {}
   const ghRead = process.argv.includes("--gh-read");
-  const reason = check(input.tool_input?.command, input.cwd || HERE, { ghRead });
+  const crosscheck = process.argv.includes("--crosscheck");
+  const reason = check(input.tool_input?.command, input.cwd || HERE, { ghRead, crosscheck });
   if (reason) {
-    const allowed = ghRead ? "atc CLI(node atcctl.mjs …), jq, 읽기 전용 gh pr view·checks·diff·list" : "atc CLI(node atcctl.mjs …)와 jq";
-    console.error(`관제 세션(TOWER·OCC)은 조종하지 않습니다 — ${reason}. ${allowed}만 쓸 수 있습니다.`);
+    const allowed = crosscheck
+      ? "atc CLI의 읽기(manual·brief·flight)와 crosscheck 명령, jq"
+      : ghRead ? "atc CLI(node atcctl.mjs …), jq, 읽기 전용 gh pr view·checks·diff·list" : "atc CLI(node atcctl.mjs …)와 jq";
+    console.error(`관제 세션(TOWER·OCC·CROSSCHECK)은 조종하지 않습니다 — ${reason}. ${allowed}만 쓸 수 있습니다.`);
     process.exit(2);
   }
 }

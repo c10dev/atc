@@ -320,7 +320,8 @@
 }
 .dp-btn {
   flex: 1;
-  height: 30px;
+  min-height: 30px;
+  padding: var(--space-1) var(--space-2);
   background: var(--panel-2);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
@@ -470,4 +471,83 @@
 }
 .dp-class.is-default {
   color: var(--muted);
+}
+
+/* CROSSCHECK: 다른 모델의 임시 판정. agree는 radar, disagree는 alert. 사람 판정과 헷갈리지 않게 점선. */
+.dp-xc {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1-5);
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px dashed var(--line-strong);
+  border-left: 2px solid currentColor;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+.dp-xc.v-agree {
+  color: var(--radar);
+}
+.dp-xc.v-disagree {
+  color: var(--alert);
+}
+.dp-xc-mark {
+  flex: none;
+  color: var(--faint);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.12em;
+}
+.dp-xc-verdict {
+  flex: none;
+  font: 700 var(--text-xs) var(--mono);
+  letter-spacing: 0.06em;
+}
+.dp-xc-at {
+  flex: none;
+  margin-left: auto;
+  color: var(--faint);
+  font-size: var(--text-xs);
+}
+.dp-xc-reason {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.dp-btn.dp-xc-accept {
+  border-style: dashed;
+}
+.dp-btn.dp-xc-accept.v-agree {
+  border-color: var(--radar);
+  color: var(--radar);
+}
+.dp-btn.dp-xc-accept.v-disagree {
+  border-color: var(--alert);
+  color: var(--alert);
+}
+.dp-xc-mini {
+  display: block;
+  color: var(--faint);
+  font: var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+}
+
+/* 진입 점검의 CROSSCHECK 일치: 참고용이라 판정 색 없이 흐리게 */
+.dp-gate .s-info .dp-gate-label,
+.dp-gate .s-info .dp-gate-value {
+  color: var(--muted);
+}
+.dp-gate .s-info .dp-gate-state {
+  color: var(--faint);
+  font-weight: 400;
+}
+.dp-gate-note {
+  margin: var(--space-1) 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+  font-size: var(--text-xs);
 }

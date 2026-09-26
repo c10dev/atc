@@ -33,6 +33,17 @@ codex/voc-<n>-<slug>      # Codex sessions
 - The session names `TEAM_A` … `TEAM_F` are long-lived lanes of work. Tickets change; team names stay.
 - Subagent tool calls are recorded under the leader's session ID, so when a leader spreads work across several worktrees, all of them show as that team's claims. Teammates that run as separate processes can show up as their own sessions.
 
+## Control sessions
+
+| Session name | Folder | Role |
+|---|---|---|
+| `TOWER` | `controller/` | Traffic control: CLEARANCE, READBACK |
+| `OCC` | `occ/` | Operations control: DISPATCH review, SCHEDULE drafts, flight following |
+| `CROSSCHECK` | `crosscheck/` | A model from a different family than OCC leaves a provisional verdict before the SUPERVISOR decides |
+
+- **CROSSCHECK** is borrowed from the cockpit cross-check, where the second pilot independently checks the first one's setting. Here it is the provisional verdict (`agree`/`disagree` plus a one-line reason) on an open DISPATCH proposal (`D-xxxx`) or SCHEDULE draft (`S-xxxx`). It is also called a **mark**. It never changes a proposal's or draft's state and is never counted in a gate.
+- **CROSSCHECK match** (`CROSSCHECK 일치`): among human decisions that had a mark before the decision, the share where the mark agreed (agree ↔ agreed/approved, disagree ↔ disagreed/rejected).
+
 ## Claim records
 
 - Claims are recorded automatically by the Claude Code hook ([README "Claim hook"](../README.md#claim-hook)). Leaders and teammates don't need to write anything.

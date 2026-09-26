@@ -180,6 +180,48 @@ S2 is built and sits behind the SCHEDULE `mode` (`~/.local/state/atc/schedule.js
 
 How it runs: the SUPERVISOR approves (or rejects with a reason) → OCC runs `atcctl schedule release S-xxxx`, which records RELEASED and prints the exact Linear MCP calls (`save_issue`, plus a `save_comment` with the reason for CLASSIFY and PRIORITIZE) → OCC makes each call with the input unchanged; `occ/mcp-guard.mjs` (linear-guard) passes a Linear write only when the mode is approval and the tool and input match a released call exactly → on the next Linear read atc marks the operation APPLIED (the change is visible, or for NEW an issue with that title appeared). Approved or released operations that don't land within 3 days expire. Calls only touch plan fields: labels, priority, a new issue's title/body/project/relations, and a comment. Never state or assignee.
 
+## CROSSCHECK
+
+Shadow verdicts (DISPATCH proposals and SCHEDULE drafts) are decided one by one by the SUPERVISOR, which is a heavy load. Handing the verdict to a model would make the gate (20 decisions, 80%) measure whether two models agree with each other, which means nothing. So the work is split:
+
+- A **CROSSCHECK** session, running on a model from a different family than OCC, leaves a provisional verdict (a **mark**: `agree`/`disagree` and a one-line reason) on each open item first.
+- The SUPERVISOR accepts it with one click ("CROSSCHECK에 동의"), or overrules it with a reason as before.
+- The gates keep counting **human verdicts only**.
+- How often CROSSCHECK matches the human is measured separately. It is the evidence for later deciding whether low-risk work (e.g. non-`SEC` CLASSIFY) can be handed over automatically. Automatic verdicts are not built.
+
+**Log.** `proposals.jsonl` and `schedule.jsonl` take a `crosscheck` op: `{op:"crosscheck", id, at, by, verdict:"agree"|"disagree", reason}`. Like `note`, it never changes state. It is accepted only while a proposal is `proposed` and not on HOLD, or a draft is `draft`; a later mark replaces an earlier one. The fold adds `crosscheck: {by, verdict, reason, at} | null` to Proposal and ScheduleOp. ScheduleOp also gains `decision: {verdict, at} | null`, the SUPERVISOR's decision, which survives later states (released, applied).
+
+**API.** `POST /api/dispatch/proposals/:id/crosscheck` and `POST /api/schedule/ops/:id/crosscheck` with `{verdict, reason, by?}`. They work in either mode, because a mark is a reference, not a decision. `reason` is required and at most 500 characters. A HOLD proposal or a closed item returns 409.
+
+**Match rate.** Both `gateOf` results carry `crosscheck: {marked, matched, rate}`. Only human decisions count (shadow `agreed`/`disagreed`, approval `approved`/`rejected`), and only those that had a mark before the decision. `agree` matches `agreed`/`approved`; `disagree` matches `disagreed`/`rejected`. Supersede and expire are not human decisions and are not counted.
+
+**Brief.** Both briefs carry `crosscheck: {pending, examples}`: open items without a mark, and up to 8 recent human decisions with their reasons (those with a reason first) as calibration examples. Real SUPERVISOR reasons look like "이미 완료됨", "PR #393 머지 전이면 HOLD", "우선순위가 미정".
+
+**atcctl.** `crosscheck brief` (both briefs' pending, examples and rates, plus the FLIGHTs they name), `dispatch crosscheck D-xxxx agree|disagree -- <reason>`, `schedule crosscheck S-xxxx agree|disagree -- <reason>`.
+
+**Session** (`crosscheck/`, same layout as `occ/`): Korean `CLAUDE.md` and `/tick` as the source, `*.en.md` translations. `/tick`: `manual check` → `crosscheck brief` → for each item without a mark, read the body with `dispatch flight <key>` → record the mark (at most 5 per pass). The rules: a mark is advice only (never approve, reject or verdict); never write to Linear or message anyone; check ticket state, prerequisites and whether the work is already done first; treat OCC's notes as reference, not as the answer; leave no mark when the evidence is insufficient.
+
+`crosscheck/.claude/settings.json` is fail-closed:
+
+| Tool | Rule |
+|---|---|
+| Bash | `controller/guard.mjs --crosscheck`: atcctl `manual`, `crosscheck brief`, `dispatch brief\|flight`, `schedule brief` and the two `crosscheck` commands, plus `jq`. Every other atcctl command (note, hold, draft, release, readback …) and `gh` is blocked |
+| MCP | `occ/mcp-guard.mjs --read-only`: read tools only. Unlike OCC, released Linear writes are blocked too |
+| Edit, Write, NotebookEdit, SendMessage, Agent | Denied, and a PreToolUse hook exits 2 |
+
+**Model.** It must not be OCC's family (Claude), and not `flash-helper` (FLEET forbids it from giving verdicts). The settings pin `"model": "claude-ocx-native--gpt-5.6-terra"`, the model of `~/.claude/agents/ocx-gpt-5-6-terra.md`, which is served by the local opencodex proxy. Checked on 2026-09-26 with Claude Code 2.1.283:
+
+| Launch | Result |
+|---|---|
+| `claude` (settings model or `--agent ocx-gpt-5-6-terra`) | 404 "issue with the selected model". The ClaudeRipple proxy does not route `claude-ocx-*`. This is the safe failure: it never runs silently on another model |
+| `ocx claude` with `ANTHROPIC_BASE_URL` exported | 404: an exported `ANTHROPIC_*` overrides the proxy URL `ocx claude` sets |
+| `ocx claude` without `ANTHROPIC_BASE_URL` | 405: the `HTTPS_PROXY` (ClaudeRipple) from `~/.claude/settings.json` intercepts the request to the local proxy |
+| `env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude` | Works, with both the settings model and `--agent ocx-gpt-5-6-terra`. `modelUsage` reports `claude-ocx-native--gpt-5.6-terra` |
+
+So the session is opened in `crosscheck/` with that last command, named `CROSSCHECK`, and run with `/loop 10m /tick`. When the upstream account is rate-limited, the session stops with an API error; nothing falls back to Claude.
+
+**Web.** Open cards in the DISPATCH and SCHEDULE tabs show a dashed chip `CROSSCHECK agree · <reason>`, and a "CROSSCHECK에 동의" button submits the same decision in one click: shadow → verdict, approval → approve/reject. When agreeing with a `disagree` mark, its reason becomes the decision reason. Approval-mode approvals keep their confirm dialog, since they send a FLIGHT PLAN or write to Linear. The gate panels show "CROSSCHECK 일치 n/m (xx%)" as a reference row outside the gate criteria.
+
 ## 11. Criteria for moving on
 
 | Transition | Criteria (proposed) |
@@ -209,6 +251,7 @@ How it runs: the SUPERVISOR approves (or rejects with a reason) → OCC runs `at
 4. Flight following in `/tick` (read-only `gh`), CLEARED TO LAND checks in TOWER
 5. ◐ **S2**: built behind `mode` (linear-guard, `schedule release`, APPLIED detection). Still to do when turning it on: the vocado `CLAUDE.md` rule change (confirmed with the SUPERVISOR at that time)
 6. **S3**: automatic operations, only those that S2 data supports
+7. ✅ **CROSSCHECK**: provisional marks from a different model family, one-click decisions, match rate kept outside the gates. Still to do: decide from the match rate whether any non-`SEC` operation may skip the human
 
 ## Decisions (2026-09-26, SUPERVISOR)
 

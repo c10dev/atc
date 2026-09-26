@@ -33,6 +33,17 @@ codex/voc-<n>-<slug>      # Codex 세션
 - 세션 이름 `TEAM_A` … `TEAM_F`는 오래 가는 작업 줄(lane)이다. 티켓은 바뀌고 팀 이름은 유지된다.
 - 서브에이전트의 도구 호출은 리더 세션 ID로 기록되므로, 리더가 여러 워크트리에 일을 나눠 보내면 모두 그 팀의 점유로 보인다. 별도 프로세스로 뜨는 팀원은 자기 세션으로 따로 보일 수 있다.
 
+## 관제 세션
+
+| 세션 이름 | 폴더 | 역할 |
+|---|---|---|
+| `TOWER` | `controller/` | 교통관제: CLEARANCE, READBACK |
+| `OCC` | `occ/` | 운항관제: DISPATCH 검토, SCHEDULE 초안, 운항 추적 |
+| `CROSSCHECK` | `crosscheck/` | OCC와 다른 계열의 모델이 SUPERVISOR 판정 전에 예비 판정을 달아 둔다 |
+
+- **CROSSCHECK**는 조종실의 cross-check(다른 조종사가 설정을 따로 확인하는 절차)에서 따온 말이다. 열린 DISPATCH 제안(`D-xxxx`)이나 SCHEDULE 초안(`S-xxxx`)에 다는 예비 판정(`agree`/`disagree`와 이유 한 줄)이고, **mark**라고도 부른다. 제안·초안의 상태를 바꾸지 않고, 어떤 게이트에도 세지 않는다.
+- **CROSSCHECK 일치**: 사람이 판정한 건 중 판정 전에 mark가 있던 건에서, mark가 사람 판정과 맞은 비율(agree ↔ agreed·approved, disagree ↔ disagreed·rejected).
+
 ## 점유 기록
 
 - 점유는 Claude Code hook이 자동으로 남긴다([README.ko.md "점유 hook"](../README.ko.md#점유-hook)). 리더나 팀원이 따로 쓸 것은 없다.

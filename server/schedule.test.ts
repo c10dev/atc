@@ -72,7 +72,7 @@ test("판정과 2단계 점검, 후보 목록", () => {
   const ops = fold(lines);
   assert.equal(ops[0].status, "disagreed");
   assert.equal(ops[0].verdictReason, "BUILD임");
-  assert.deepEqual(gateOf(ops), { decided: 1, agreed: 0, agreement: 0, target: { decided: 20, agreement: 0.8 }, ready: false });
+  assert.deepEqual(gateOf(ops), { decided: 1, agreed: 0, agreement: 0, target: { decided: 20, agreement: 0.8 }, ready: false, crosscheck: { marked: 0, matched: 0, rate: null } });
   const tickets = [t("VOC-41"), t("VOC-42", { labels: ["type:BUILD", "wake:M"], priority: 0 }), t("VOC-43", { state: "In Progress", stateType: "started" })];
   assert.deepEqual(candidatesOf(tickets, []), { classify: ["VOC-41"], prioritize: ["VOC-42"] });
 });
@@ -185,7 +185,7 @@ test("S2 전이: draft → approve → release → apply, 거절은 사유와 �
 
 test("S2 Linear 호출: 계획 필드만, 라벨 그룹 하위 이름으로, 근거 댓글을 붙인다", async () => {
   const { callsOf } = await import("./schedule.ts");
-  const base = { at: iso(10), status: "approved" as const, statusAt: iso(5), verdictReason: null, calls: null, appliedRef: null, reason: "락 조건 수정" };
+  const base = { at: iso(10), status: "approved" as const, statusAt: iso(5), verdictReason: null, calls: null, appliedRef: null, decision: null, crosscheck: null, reason: "락 조건 수정" };
   const cls = callsOf({ ...base, id: "S-0001", kind: "CLASSIFY", flight: "VOC-195", payload: { type: "MAINT", wake: "M", ratings: ["SEC"] } }, t("VOC-195", { labels: ["type:BUILD", "Risk:Security"] }), "Vocado");
   assert.deepEqual(cls[0], { tool: "save_issue", input: { id: "VOC-195", addLabels: ["MAINT", "M"], removeLabels: ["BUILD"] } });
   assert.equal(cls[1].tool, "save_comment");
@@ -228,4 +228,38 @@ test("S2 동기화: 발부된 작업이 Linear에 보이면 APPLIED, 승인만 �
 test("S2: 진행 중인 같은 FLIGHT·종류가 있으면 새 초안을 받지 않는다", () => {
   const lines = [{ op: "draft" as const, id: "S-0001", at: iso(30), kind: "CLASSIFY" as const, flight: "VOC-80", payload: { type: "MAINT" as const }, reason: "r" }, { op: "approve" as const, id: "S-0001", at: iso(20) }];
   assert.throws(() => draftOps(fold(lines), { kind: "CLASSIFY", flight: "VOC-80", type: "BUILD", reason: "x" }, [t("VOC-80")], iso(0), 1), /진행 중인 CLASSIFY S-0001/);
+});
+
+test("CROSSCHECK: 열린 초안에만 달리고 상태를 바꾸지 않는다. 일치율은 S1 판정과 S2 승인·거절, 브리핑은 mark 없는 초안과 예시", async () => {
+  const { crosscheckBriefOf } = await import("./schedule.ts");
+  const draft = (id: string, flight: string) => ({ op: "draft" as const, id, at: iso(30), kind: "CLASSIFY" as const, flight, payload: { type: "MAINT" as const }, reason: "OCC 근거" });
+  const xc = (id: string, verdict: "agree" | "disagree", min = 20) => ({ op: "crosscheck" as const, id, at: iso(min), by: "CROSSCHECK", verdict, reason: "이미 완료됨" });
+  const ops = fold([
+    draft("S-0001", "VOC-1"), xc("S-0001", "agree"), xc("S-0001", "disagree", 15), { op: "verdict" as const, id: "S-0001", at: iso(10), verdict: "disagree" as const, reason: "이미 완료됨" },
+    draft("S-0002", "VOC-2"), xc("S-0002", "agree"), { op: "approve" as const, id: "S-0002", at: iso(10) }, { op: "release" as const, id: "S-0002", at: iso(9), calls: [] }, { op: "apply" as const, id: "S-0002", at: iso(8), ref: "VOC-2" },
+    draft("S-0003", "VOC-3"), xc("S-0003", "agree"), { op: "reject" as const, id: "S-0003", at: iso(10), reason: "BUILD임" },
+    draft("S-0004", "VOC-4"), xc("S-0004", "agree"),
+    draft("S-0005", "VOC-5"),
+    draft("S-0006", "VOC-6"), { op: "supersede" as const, id: "S-0006", at: iso(10), reason: "x" }, xc("S-0006", "agree", 5),
+  ]);
+  assert.equal(ops[0].status, "disagreed");
+  assert.deepEqual(ops[0].crosscheck, { by: "CROSSCHECK", verdict: "disagree", reason: "이미 완료됨", at: iso(15) });
+  assert.equal(ops[1].status, "applied");
+  assert.deepEqual(ops[1].decision, { verdict: "agree", at: iso(10) });
+  assert.equal(ops[3].status, "draft");
+  assert.equal(ops[5].crosscheck, null);
+  const gate = gateOf(ops);
+  assert.equal(gate.decided, 1);
+  assert.deepEqual(gate.crosscheck, { marked: 3, matched: 2, rate: 2 / 3 });
+  const brief = crosscheckBriefOf(ops, { "S-0005": ["type:MAINT"] });
+  assert.deepEqual(brief.pending, [{ id: "S-0005", kind: "CLASSIFY", flight: "VOC-5", reason: "OCC 근거", changes: ["type:MAINT"] }]);
+  assert.deepEqual(brief.examples.map((e) => [e.id, e.verdict, e.reason]), [["S-0001", "disagree", "이미 완료됨"], ["S-0003", "disagree", "BUILD임"], ["S-0002", "agree", null]]);
+});
+
+test("CROSSCHECK 입력 검사: verdict, 이유 필수·500자 이내, by 기본값", async () => {
+  const { parseCrosscheck } = await import("./crosscheck.ts");
+  assert.throws(() => parseCrosscheck({ verdict: "maybe", reason: "x" }, iso(0)), /agree\|disagree/);
+  assert.throws(() => parseCrosscheck({ verdict: "agree", reason: "  " }, iso(0)), /reason/);
+  assert.throws(() => parseCrosscheck({ verdict: "agree", reason: "가".repeat(501) }, iso(0)), /500자/);
+  assert.deepEqual(parseCrosscheck({ verdict: "agree", reason: " 본문상\n제약 없음 " }, iso(0)), { by: "CROSSCHECK", verdict: "agree", reason: "본문상 제약 없음", at: iso(0) });
 });
