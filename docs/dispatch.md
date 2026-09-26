@@ -142,7 +142,7 @@ atc: DEPARTED once that FLIGHT gets a STAND; if not, rechecks after 30 minutes l
 
 Proposal states: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)` (2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED` (2b), with side branches `REJECTED`, `DECLINED` (CAPTAIN gave a reason), `SUPERSEDED` (a person assigned it directly or the situation changed) and `EXPIRED` (24 hours). A `PROPOSED` ASSIGN that carries a `HOLD` leaves the main flow: it waits on the HELD list until released (no 24-hour expiry).
 
-Rejections carry a **reason chip** in the SUPERVISOR's UI: the reason list plus an optional memo, stored as `"<chip> — <memo>"` in `reason`. The chip that matters most is the parent issue (5.1.1), which the planner should also catch by itself.
+Rejections carry **reason chips** in the SUPERVISOR's UI: one or more chips from the server's list (`server/reasons.ts`, `reasonCodes` in the brief) plus an optional memo, stored as `"<chip> · <chip> — <memo>"` in `reason` and as codes in `reasonCodes`; the gate counts them per chip (`reasonCounts`). The chip that matters most is the parent issue (5.1.1), which the planner should also catch by itself.
 
 ## 7. What to add to atc
 

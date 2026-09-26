@@ -50,14 +50,15 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 | `callsign.ts` | Callsigns (`TEAM_A` → `ALPHA`) and FLIGHT NUMBERs (shared with the UI) |
 | `version.ts` | Build id: the entry script path in `index.html` (pure `entryScript`), and whether a tab should show the new-version notice (pure `showNewVersion`, shared with the UI) |
 | `events.ts` | Snapshot differences → events (alerts, handoffs, LANDING SEQUENCE `landing.requested` / `cleared` / `blocked` / `left`, lost sessions, OUTSTATION), with a cursor-based event log |
-| `controller.ts` | CONTROLLER (TOWER) API: brief, ack, CLEARANCE issue / readback / cancel, the fixed message format |
+| `controller.ts` | CONTROLLER (TOWER) API: brief, ack, CLEARANCE issue / readback / cancel, the fixed message format, the LAND text for CLEARED PRs (pure `landTextOf`) |
 | `clearances.ts` | CLEARANCE log: append-only JSONL folded into current state |
 | `recorder.ts` | FLIGHT RECORDER: daily JSONL (`event`, `sample`, `dispatch`, `ack`, `schedule`), kept 30 days |
 | `metrics.ts` | Operating metrics and the stage 2 readiness check (pure `computeMetrics`) |
 | `dispatch.ts` | DISPATCH planning: candidates, slots, scores (pure `planDispatch`); settings in `dispatch.json` |
 | `proposals.ts` | DISPATCH proposal log (append-only JSONL), state transitions (shadow verdicts; approve → sent → accepted → departed), reservations, FLIGHT PLAN text, brief, stage 2b and 3 gates |
 | `schedule.ts` | OCC SCHEDULE draft log (append-only JSONL, S1 shadow): `CLASSIFY` / `PRIORITIZE` drafts and `NEW` (AD HOC FLIGHT from the CHARTER DESK: body sections, project / tail / key checks, `similar` titles from the snapshot, which covers the last 45 days), the 5-open-draft limit, SUPERSEDED / EXPIRED sync, shadow verdicts, candidates, the S2 gate |
-| `crosscheck.ts` | CROSSCHECK marks shared by DISPATCH and SCHEDULE: input checks (agree/disagree, reason ≤ 500 characters), the match rate against human decisions, calibration examples |
+| `crosscheck.ts` | CROSSCHECK marks shared by DISPATCH and SCHEDULE: input checks (agree/disagree, reason ≤ 500 characters), the match rate against human decisions, calibration examples, how a decision was made (`via`, pure `viaOf`) and the one-click count (pure `oneClickOf`) |
+| `reasons.ts` | DISPATCH reject reason chips (`REASON_CODES`), input check, the stored `reason` text (pure `composeReason`), per-chip counts |
 
 Every `*.test.ts` next to a module is its unit test.
 
@@ -72,27 +73,27 @@ Every `*.test.ts` next to a module is its unit test.
 | `POST /api/airports` | Open an AIRPORT `{path, code?, name?}` |
 | `PATCH /api/airports/:id` | Rename, change code, close or reopen `{code?, name?, closed?}` |
 | `DELETE /api/airports/:id` | Remove a manually opened AIRPORT |
-| `GET /api/controller/brief?consumer=controller` | Events since the last ack + current state |
+| `GET /api/controller/brief?consumer=controller` | Events since the last ack + current state (CLEARED `landingQueue` entries carry `repoSeq` and `landText`) |
 | `POST /api/controller/ack` | Mark a brief handled `{cursor}` |
 | `POST /api/clearances` | Record a CLEARANCE `{to, type, stand?, flight?, text}`, returns the message to send |
 | `POST /api/clearances/:id/readback` · `/cancel` | Confirm READBACK · cancel |
 | `GET /api/metrics?days=1..30` | Operating metrics |
-| `GET /api/dispatch/brief` | DISPATCH plan, open and recent proposals, 2b gate, FLIGHT summaries |
-| `POST /api/dispatch/proposals/:id/verdict` | SUPERVISOR's shadow verdict `{verdict: "agree" \| "disagree", reason?}` |
+| `GET /api/dispatch/brief` | DISPATCH plan, open and recent proposals (`via`, `reasonCodes`), 2b gate (`crosscheck.oneClick`, `reasonCounts`), FLIGHT summaries, reject chips `reasonCodes: [{code, label}]` |
+| `POST /api/dispatch/proposals/:id/verdict` | SUPERVISOR's shadow verdict `{verdict: "agree" \| "disagree", reason?, via?, reasonCodes?}` (`reasonCodes` with `disagree` only; 400 on an unknown code) |
 | `POST /api/dispatch/proposals/:id/note` | DISPATCH review note `{text, caution?}` |
 | `POST /api/dispatch/proposals/:id/hold` | DISPATCH sets a prerequisite HOLD `{blockedBy: ["VOC-180"]}`; the proposal moves to HELD. `[]` holds with no prerequisite (needs a note) |
 | `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR releases a HOLD (the proposal is superseded) |
-| `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR decision in approval mode; `reject` takes `{reason?}` |
+| `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR decision in approval mode; both take `{via?}`, `reject` also `{reason?, reasonCodes?}` |
 | `POST /api/dispatch/proposals/:id/release` | Approved → SENT; returns `sendTo` and the FLIGHT PLAN text |
 | `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, or decline with `{reason}` |
 | `GET /api/dispatch/proposals/:id` | One proposal and the current mode (for send-guard) |
 | `POST /api/dispatch/mode` | Switch `{mode: "shadow" \| "approval"}` (saved in `dispatch.json`) |
 | `GET /api/dispatch/flight/:key` | Ticket body and comments from Linear (read-only) |
-| `GET /api/schedule/brief` | SCHEDULE mode (`shadow`), open drafts with what each would change, drafts closed in the last 7 days, S2 gate, open-draft limit, candidates, FLIGHT summaries |
+| `GET /api/schedule/brief` | SCHEDULE mode (`shadow`), open drafts with what each would change, drafts closed in the last 7 days (`via`), S2 gate (`crosscheck.oneClick`), open-draft limit, candidates, FLIGHT summaries |
 | `GET /api/schedule/ops/:id` | One SCHEDULE operation and the mode |
 | `POST /api/schedule/ops` | OCC draft. `CLASSIFY` / `PRIORITIZE`: `{kind, flight, reason, type?, wake?, ratings?, priority?}`. `NEW`: `{kind: "NEW", title, body, project, reason, priority?, type?, wake?, ratings?, tail?, parent?, related?, blockedBy?}` → op with `flight: null` and `payload.similar: [{key, title}]`. 400 on bad input, 409 at the open-draft limit |
-| `POST /api/schedule/ops/:id/verdict` | SUPERVISOR's shadow verdict `{verdict: "agree" \| "disagree", reason?}` |
-| `POST /api/schedule/ops/:id/approve`, `/reject` | S2 only: SUPERVISOR approves, or rejects with `{reason?}` |
+| `POST /api/schedule/ops/:id/verdict` | SUPERVISOR's shadow verdict `{verdict: "agree" \| "disagree", reason?, via?}` |
+| `POST /api/schedule/ops/:id/approve`, `/reject` | S2 only: SUPERVISOR approves, or rejects with `{reason?}`; both take `{via?}` |
 | `POST /api/schedule/ops/:id/release` | S2 only: OCC releases an approved operation; returns the exact Linear calls (the same ones again if already released) |
 | `GET /api/schedule/released` | Mode and every released call (read by linear-guard) |
 | `POST /api/schedule/mode` | `{mode: shadow\|approval}` |
