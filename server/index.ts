@@ -5,7 +5,9 @@ import { streamSSE } from "hono/streaming";
 import { mountAirports } from "./airports.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
-import { diffSnapshots, EventLog } from "./events.ts";
+import { diffSnapshots, EventLog, isWarm } from "./events.ts";
+import { mountMetrics } from "./metrics.ts";
+import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
 import { buildSnapshot } from "./snapshot.ts";
 
@@ -15,12 +17,19 @@ let current: Snapshot | null = null;
 let signature = "";
 const listeners = new Set<(s: Snapshot) => void>();
 const eventLog = new EventLog();
+let lastSampleAt = 0;
 
 async function tick() {
   try {
     const next = await buildSnapshot();
     const sig = JSON.stringify({ ...next, at: null });
-    eventLog.push(diffSnapshots(current, next));
+    for (const event of eventLog.push(diffSnapshots(current, next))) {
+      record({ t: event.at, kind: "event", epoch: eventLog.epoch, event });
+    }
+    if (isWarm(next) && Date.now() - lastSampleAt >= SAMPLE_MS) {
+      lastSampleAt = Date.now();
+      record({ t: next.at, kind: "sample", ...sampleOf(next) });
+    }
     current = next;
     if (sig !== signature) {
       signature = sig;
@@ -39,6 +48,7 @@ const getSnapshot = async () => current ?? (current = await buildSnapshot());
 app.get("/api/snapshot", async (c) => c.json(await getSnapshot()));
 mountController(app, getSnapshot, eventLog);
 mountAirports(app);
+mountMetrics(app);
 
 app.get("/api/events", (c) =>
   streamSSE(c, async (stream) => {
@@ -55,6 +65,7 @@ app.get("/api/events", (c) =>
 
 app.use("/*", serveStatic({ root: new URL("../web/dist", import.meta.url).pathname }));
 
+pruneRecords();
 await tick();
 serve({ fetch: app.fetch, port: config.port, hostname: "127.0.0.1" }, (info) =>
   console.log(`[atc] http://localhost:${info.port}  (linear: ${config.linearApiKey ? "on" : "off"})`),

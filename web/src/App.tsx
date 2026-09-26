@@ -7,6 +7,7 @@ import { SettingsPanel } from "./SettingsPanel.tsx";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
 import { Airports } from "./views/Airports.tsx";
 import { MapView } from "./views/Map.tsx";
+import { Metrics } from "./views/Metrics.tsx";
 import { Teams } from "./views/Teams.tsx";
 import { Tickets } from "./views/Tickets.tsx";
 
@@ -15,6 +16,7 @@ const TABS = [
   { id: "strips", code: "STRIPS", label: "운항 스트립" },
   { id: "board", code: "FIDS", label: "운항 정보판" },
   { id: "airports", code: "AIRPORTS", label: "공항" },
+  { id: "metrics", code: "METRICS", label: "지표" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -170,6 +172,8 @@ export function App() {
           <Teams snapshot={snapshot} idx={idx} now={now} />
         ) : tab === "airports" ? (
           <Airports snapshot={snapshot} />
+        ) : tab === "metrics" ? (
+          <Metrics refreshKey={snapshot.at.slice(0, 16)} />
         ) : (
           <Tickets snapshot={snapshot} idx={idx} now={now} />
         )}

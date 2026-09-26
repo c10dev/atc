@@ -6,6 +6,7 @@ import { awayOperations } from "./away.ts";
 import { allClearances, CLEARANCE_TYPES, isPending, issueClearance, markClearance } from "./clearances.ts";
 import { config } from "./config.ts";
 import { type EventLog, landingKeys } from "./events.ts";
+import { record } from "./recorder.ts";
 import type { Clearance, ClearanceType, Session, Snapshot, TrafficEvent } from "./model.ts";
 
 // 관제사(1단계, 조언 모드)가 쓰는 API. atc는 판단하지 않고, 브리핑을 주고 지시·복창을 기록만 한다.
@@ -186,6 +187,7 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
     const body = await c.req.json().catch(() => ({}));
     if (typeof body.cursor !== "string") return c.json({ error: "cursor가 필요함" }, 400);
     writeCursor(consumerOf(body.consumer), body.cursor);
+    record({ t: new Date().toISOString(), kind: "ack", consumer: consumerOf(body.consumer) });
     return c.json({ ok: true, cursor: body.cursor });
   });
 

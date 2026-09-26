@@ -67,9 +67,11 @@ export class EventLog {
     this.capacity = capacity;
   }
 
-  push(drafts: Draft[], at = new Date().toISOString()) {
-    for (const d of drafts) this.events.push({ ...d, id: ++this.seq, at });
+  push(drafts: Draft[], at = new Date().toISOString()): TrafficEvent[] {
+    const added = drafts.map((d) => ({ ...d, id: ++this.seq, at }));
+    this.events.push(...added);
     if (this.events.length > this.capacity) this.events.splice(0, this.events.length - this.capacity);
+    return added;
   }
 
   get cursor(): string {
