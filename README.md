@@ -244,7 +244,7 @@ Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server com
 | `controller/` | Working folder for the TOWER session (stage 1) | [CLAUDE.en.md](controller/CLAUDE.en.md) · [/tick](controller/.claude/skills/tick/SKILL.en.md) |
 | `occ/` | Working folder for the OCC session (DISPATCH, flight following) | [CLAUDE.en.md](occ/CLAUDE.en.md) · [/tick](occ/.claude/skills/tick/SKILL.en.md) |
 | `deploy/` | systemd user service | [deploy/README.md](deploy/README.md) |
-| `docs/` | Design and conventions | [DISPATCH design](docs/dispatch.md) · [OCC design](docs/occ.md) · [Naming rules](docs/naming.md) |
+| `docs/` | Design and conventions | [DISPATCH design](docs/dispatch.md) · [OCC design](docs/occ.md) · [FLEET design](docs/fleet.md) · [Naming rules](docs/naming.md) |
 | — | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 
 Each has a Korean version next to it (`README.ko.md`, `*.ko.md`; for the session folders the Korean `CLAUDE.md` / `SKILL.md` are the originals the sessions load).
