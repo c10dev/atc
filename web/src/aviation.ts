@@ -42,7 +42,50 @@ export function flightPhase(t: Pick<Ticket, "state" | "stateType"> | TicketColum
   return phaseByStateName[name] ?? phaseByStateType[type] ?? name;
 }
 
+// 비행 단계의 색 계열과 운항 정보판에 쓰는 영문 약호.
+export type PhaseTone = "triage" | "scheduled" | "filed" | "enroute" | "approach" | "cleared" | "arrived" | "canceled";
+
+const toneByStateName: Record<string, PhaseTone> = {
+  "In Progress": "enroute",
+  "In Review": "approach",
+  "Ready to Merge": "cleared",
+};
+
+const toneByStateType: Record<string, PhaseTone> = {
+  triage: "triage",
+  backlog: "scheduled",
+  unstarted: "filed",
+  started: "enroute",
+  completed: "arrived",
+  canceled: "canceled",
+  duplicate: "canceled",
+};
+
+export const phaseCode: Record<PhaseTone, string> = {
+  triage: "TRIAGE",
+  scheduled: "SCHED",
+  filed: "FILED",
+  enroute: "ENROUTE",
+  approach: "APPROACH",
+  cleared: "CLEARED",
+  arrived: "ARRIVED",
+  canceled: "CNX",
+};
+
+export function phaseTone(t: Pick<Ticket, "state" | "stateType"> | TicketColumn): PhaseTone {
+  const name = "state" in t ? t.state : t.name;
+  const type = "stateType" in t ? t.stateType : t.type;
+  return toneByStateName[name] ?? toneByStateType[type] ?? "filed";
+}
+
 export type AircraftStatus = "airborne" | "holding" | "parked" | "nordo";
+
+export const aircraftStatusCode: Record<AircraftStatus, string> = {
+  airborne: "AIRBORNE",
+  holding: "HOLDING",
+  parked: "PARKED",
+  nordo: "NORDO",
+};
 
 export function aircraftStatus(session: Session, hasStand: boolean): AircraftStatus {
   if (session.status === "dead") return "nordo";
@@ -58,6 +101,13 @@ export const aircraftStatusLabel: Record<AircraftStatus, string> = {
 };
 
 export const HANDOFF_LABEL = "관제 이양";
+
+export const alertCode: Record<AlertKind, string> = {
+  conflict: "LOS",
+  orphan: "7600",
+  unattended: "UNID",
+  "no-workspace": "NO CONTACT",
+};
 
 export const alertLabel: Record<AlertKind, string> = {
   conflict: "분리 기준 위반",

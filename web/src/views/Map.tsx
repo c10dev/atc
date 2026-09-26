@@ -1,8 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Session, Snapshot, Ticket, Workspace } from "../../../server/model.ts";
 import { hasActiveClaim, type Index, projectOf, sortSessions, timeAgo } from "../derive.ts";
-import { aircraftStatus, aircraftStatusLabel, callsign, flightNumber, flightPhase } from "../aviation.ts";
-import { StatusDot } from "../ui.tsx";
+import { aircraftStatus, aircraftStatusCode, aircraftStatusLabel, callsign, flightNumber, flightPhase, phaseCode, phaseTone } from "../aviation.ts";
 
 interface Edge {
   from: string;
@@ -21,7 +20,7 @@ const sid = (id: string) => `s:${id}`;
 const wid = (path: string) => `w:${path}`;
 const tid = (key: string) => `t:${key}`;
 
-const statusColor = { busy: "var(--busy)", idle: "var(--idle-line)", dead: "var(--dead)" } as const;
+const statusColor = { busy: "var(--radar)", idle: "var(--amber)", dead: "var(--alert)" } as const;
 
 export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; now: number }) {
   const [showAll, setShowAll] = useState(false);
@@ -101,6 +100,8 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
           빈 주기장 포함
         </label>
       </div>
+      <div className="scope-frame">
+      <div className="sweep" aria-hidden />
       <div className="map" ref={containerRef}>
         <svg className="map-lines" width={size.w} height={size.h} aria-hidden>
           {paths.map(({ d, edge }) => {
@@ -118,65 +119,87 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
         </svg>
 
         <div className="map-col">
-          <h2 className="map-col-title">항공기 · 세션</h2>
-          {graph.sessions.map((s) => (
-            <div key={s.id} className={`map-node node-session is-${s.status}`} title={s.name} {...nodeProps(sid(s.id))}>
-              <div className="map-node-row">
-                <StatusDot status={s.status} label={aircraftStatusLabel[aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id)))]} />
-                <strong className="ellipsis">{callsign(s)}</strong>
-                <span className="faint">{aircraftStatusLabel[aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id)))]}</span>
+          <h2 className="label">
+            AIRCRAFT <em>항공기</em>
+          </h2>
+          {graph.sessions.map((s) => {
+            const status = aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id)));
+            return (
+              <div key={s.id} className={`blk ac is-${status}`} title={`${s.name} · ${aircraftStatusLabel[status]}`} {...nodeProps(sid(s.id))}>
+                <i className="tgt" aria-label={aircraftStatusLabel[status]} />
+                <div className="blk-l1">
+                  <strong className="ellipsis">{callsign(s)}</strong>
+                  <span className="blk-code">{aircraftStatusCode[status]}</span>
+                </div>
+                <div className="blk-l2">
+                  {projectOf(s.cwd)} · {timeAgo(s.lastActiveAt, now)}
+                </div>
               </div>
-              <div className="map-node-sub">
-                <span className="mono">{projectOf(s.cwd)}</span> · {timeAgo(s.lastActiveAt, now)}
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {graph.sessions.length === 0 && <p className="empty">주기장을 점유한 항공기 없음</p>}
         </div>
 
         <div className="map-col">
-          <h2 className="map-col-title">주기장 · 워크트리</h2>
+          <h2 className="label">
+            STANDS <em>주기장</em>
+          </h2>
           {graph.workspaces.map((w) => {
             const claimed = hasActiveClaim(idx.claimsByWorkspace.get(w.path));
-            const alerts = idx.alertsByWorkspace.get(w.path) ?? [];
+            const conflict = (idx.alertsByWorkspace.get(w.path) ?? []).some((a) => a.kind === "conflict");
             return (
               <div
                 key={w.path}
-                className={`map-node node-ws${claimed ? "" : " is-free"}${alerts.some((a) => a.kind === "conflict") ? " is-conflict" : ""}`}
+                className={`blk stand${claimed ? "" : " is-free"}${conflict ? " is-los" : ""}`}
                 title={w.path}
                 {...nodeProps(wid(w.path))}
               >
-                <div className="map-node-row">
-                  <strong className="mono ellipsis">{w.name}</strong>
-                  {w.dirty ? <span className="tag tag-warn">변경 {w.dirty}</span> : null}
+                <i className="tgt" />
+                <div className="blk-l1">
+                  <strong className="ellipsis">{w.name}</strong>
+                  {conflict && <span className="los-tag" title="분리 기준 위반">LOS</span>}
+                  {w.dirty ? <span className="dirty" title={`변경 파일 ${w.dirty}개`}>Δ{w.dirty}</span> : null}
                 </div>
-                <div className="map-node-sub mono ellipsis">{w.branch ?? `detached ${w.head}`}</div>
+                <div className="blk-l2">{w.branch ?? `detached ${w.head}`}</div>
               </div>
             );
           })}
         </div>
 
         <div className="map-col">
-          <h2 className="map-col-title">비행계획 · 티켓</h2>
-          {graph.tickets.map((t) => (
-            <a
-              key={t.key}
-              className={`map-node node-ticket${idx.alertsByTicket.has(t.key) ? " is-orphan" : ""}`}
-              href={t.url ?? undefined}
-              title={`${t.key} · ${t.state}`}
-              target="_blank"
-              rel="noreferrer"
-              {...nodeProps(tid(t.key))}
-            >
-              <div className="map-node-row">
-                <span className="column-dot" style={{ background: t.stateColor ?? "var(--faint)" }} />
-                <strong className="mono">{flightNumber(t.key)}</strong>
-                <span className="faint">{flightPhase(t)}</span>
-              </div>
-              <div className="map-node-sub ellipsis">{t.title}</div>
-            </a>
-          ))}
+          <h2 className="label">
+            FLIGHT PLANS <em>비행계획</em>
+          </h2>
+          {graph.tickets.map((t) => {
+            const noContact = (idx.alertsByTicket.get(t.key) ?? []).some((a) => a.kind === "no-workspace");
+            const tone = phaseTone(t);
+            return (
+              <a
+                key={t.key}
+                className={`blk fp tone-${tone}${noContact ? " is-nocontact" : ""}`}
+                href={t.url ?? undefined}
+                title={`${t.key} · ${t.state}`}
+                target="_blank"
+                rel="noreferrer"
+                {...nodeProps(tid(t.key))}
+              >
+                <i className="tgt" />
+                <div className="blk-l1">
+                  <strong>{flightNumber(t.key)}</strong>
+                  {noContact ? (
+                    <span className="nc" title="순항 중인데 주기장(워크트리)이 없음">NO CONTACT</span>
+                  ) : (
+                    <span className="ph">
+                      {phaseCode[tone]} <em>{flightPhase(t)}</em>
+                    </span>
+                  )}
+                </div>
+                <div className="blk-l2 sans">{t.title}</div>
+              </a>
+            );
+          })}
         </div>
+      </div>
       </div>
     </section>
   );
@@ -230,7 +253,7 @@ function layout(snapshot: Snapshot, idx: Index, showAll: boolean) {
   }
   for (const w of workspaces) {
     const t = w.ticketKey ? ticketSet.get(w.ticketKey) : undefined;
-    if (t) edges.push({ from: wid(w.path), to: tid(t.key), kind: "ticket", color: t.stateColor ?? "var(--faint)", dashed: false });
+    if (t) edges.push({ from: wid(w.path), to: tid(t.key), kind: "ticket", color: `var(--phase-${phaseTone(t)})`, dashed: false });
   }
   return { sessions, workspaces, tickets, edges };
 }
