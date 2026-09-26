@@ -23,7 +23,7 @@ function claim(sessionId: string, since: string, lastAt: string, extra: Partial<
 
 const alive = (): Session["status"] => "idle";
 
-test("앞 세션이 멈춘 뒤 뒤 세션이 시작하면 이양", () => {
+test("앞 세션이 멈춘 뒤 뒤 세션이 시작하면 HANDOFF", () => {
   const a = claim("A", "10:00", "10:30");
   const b = claim("B", "11:00", "11:40");
   const r = resolveOccupancy([a, b], alive, GRACE);
@@ -34,7 +34,7 @@ test("앞 세션이 멈춘 뒤 뒤 세션이 시작하면 이양", () => {
   assert.deepEqual(r.conflicts, []);
 });
 
-test("뒤 세션 시작 직후 잠깐 마무리한 것은 이양으로 본다", () => {
+test("뒤 세션 시작 직후 잠깐 마무리한 것은 HANDOFF로 본다", () => {
   const a = claim("A", "10:00", "11:03");
   const b = claim("B", "11:00", "11:40");
   resolveOccupancy([a, b], alive, GRACE);
@@ -51,7 +51,7 @@ test("둘 다 grace를 넘게 겹쳐 작업하면 충돌", () => {
   assert.deepEqual(r.handoffs, []);
 });
 
-test("잠깐 들른 세션은 이양도 충돌도 아니다", () => {
+test("잠깐 들른 세션은 HANDOFF도 충돌도 아니다", () => {
   const a = claim("A", "10:00", "11:00");
   const b = claim("B", "10:30", "10:32");
   const r = resolveOccupancy([a, b], alive, GRACE);
@@ -61,7 +61,7 @@ test("잠깐 들른 세션은 이양도 충돌도 아니다", () => {
   assert.deepEqual(r.handoffs, []);
 });
 
-test("A → B → C 연쇄 이양", () => {
+test("A → B → C 연쇄 HANDOFF", () => {
   const a = claim("A", "09:00", "09:30");
   const b = claim("B", "10:00", "10:30");
   const c = claim("C", "11:00", "11:10");

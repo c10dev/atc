@@ -1,6 +1,6 @@
 /* 공용 조각(ui.tsx) 스타일. 색·글꼴은 styles.css의 :root 토큰만 쓴다. */
 
-/* 원정 운항: "원정 TNNS" */
+/* OUTSTATION: "OUTSTATION TNNS" */
 .away-tag {
   display: inline-flex;
   align-items: center;
@@ -17,7 +17,7 @@
   align-self: center;
 }
 
-/* 운항 스트립 구간 도장: 소속 공항 밖 주기장 */
+/* FLIGHT STRIPS 구간 도장: 소속 AIRPORT 밖 STAND */
 .stamp.away {
   color: var(--stamp-gray);
 }

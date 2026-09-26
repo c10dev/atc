@@ -39,7 +39,7 @@ function snapshot(over: Partial<Snapshot> = {}): Snapshot {
 
 const conflict: Alert = { kind: "conflict", message: "x", workspacePath: `${WT}/vocado-voc-175`, sessionIds: ["s-b", "s-d"] };
 
-test("스냅샷 차이 → 경보 발생·해제, 이양, 착륙 대기열 진입, 교신 두절", () => {
+test("스냅샷 차이 → 경보 발생·해제, HANDOFF, LANDING SEQUENCE 진입, NORDO", () => {
   const prev = snapshot({ claims: [claim("s-p", "vocado-voc-191", -50, -40)] });
   const next = snapshot({
     alerts: [conflict],
@@ -81,14 +81,14 @@ test("이벤트 커서: 이어 읽기와 재시작 감지", () => {
   assert.equal(restarted.events.length, 3);
 });
 
-test("지시 기록 접기: 복창·취소는 한 번만", () => {
+test("CLEARANCE 기록 접기: READBACK·취소는 한 번만", () => {
   const issue = { op: "issue" as const, id: "C-0001", at: iso(0), to: "s-b", toName: "TEAM_B", type: "HOLD" as const, stand: null, flight: null, text: "대기" };
   const [c] = fold([issue, { op: "readback", id: "C-0001", at: iso(2) }, { op: "readback", id: "C-0001", at: iso(5) }, { op: "cancel", id: "C-9999", at: iso(1) }]);
   assert.equal(c.readbackAt, iso(2));
   assert.equal(c.cancelledAt, null);
 });
 
-test("브리핑: 충돌은 먼저 들어온 순, 착륙 대기열, 미복창 지시", () => {
+test("브리핑: 충돌은 먼저 들어온 순, LANDING SEQUENCE, NO READBACK CLEARANCE", () => {
   const s = snapshot({
     alerts: [conflict],
     claims: [claim("s-d", "vocado-voc-175", -20, -1), claim("s-b", "vocado-voc-175", -40, -2), claim("s-p", "vocado-voc-191", -30, -3)],
@@ -116,18 +116,18 @@ test("세션 찾기: 이름·콜사인·ID, 겹치는 이름은 거절", () => {
   assert.match(resolveSession(s, "nobody") as string, /찾을 수 없음/);
 });
 
-test("지시 문구: 콜사인·주기장·편·복창 요청", () => {
+test("CLEARANCE 문구: 콜사인·STAND·FLIGHT·READBACK 요청", () => {
   const c: Clearance = {
     id: "C-0007", at: iso(0), to: "s-b", toName: "TEAM_B", type: "HOLD", stand: `${WT}/vocado-voc-175`,
     flight: "VOC-175", text: "DELTA 작업이 끝날 때까지 대기", readbackAt: null, cancelledAt: null,
   };
   assert.equal(
     formatClearance(c, snapshot()),
-    '[ATC C-0007] BRAVO (TEAM_B) · HOLD\n주기장 vocado-voc-175 · 편 VOC175\nDELTA 작업이 끝날 때까지 대기\n— 받았으면 이 메시지에 "READBACK C-0007"로 답장해 주세요.',
+    '[ATC C-0007] BRAVO (TEAM_B) · HOLD\nSTAND vocado-voc-175 · FLIGHT VOC175\nDELTA 작업이 끝날 때까지 대기\n— 받았으면 이 메시지에 "READBACK C-0007"로 답장해 주세요.',
   );
 });
 
-test("원정 운항: 소속 공항 밖 주기장 점유, 이양된 것과 소속 모르는 세션은 제외", async () => {
+test("OUTSTATION: 소속 AIRPORT 밖 STAND 점유, HANDOFF된 것과 소속 모르는 세션은 제외", async () => {
   const { awayOperations } = await import("./away.ts");
   const VCDO = "/home/c10/projects/vocado_nextjs";
   const TNNS = "/home/c10/projects/tennis";

@@ -9,8 +9,8 @@ export interface Occupancy {
 const ms = (iso: string) => Date.parse(iso);
 
 // 점유 구간은 [since, lastAt]. 같은 워크트리의 두 점유가
-// - 앞 세션이 뒤 세션 시작 뒤로 graceMs 넘게 더 건드리지 않았고, 뒤 세션이 끝까지 남아 있으면 → 이양
-// - 이양이 아니고 겹친 시간이 graceMs를 넘으면 → 충돌
+// - 앞 세션이 뒤 세션 시작 뒤로 graceMs 넘게 더 건드리지 않았고, 뒤 세션이 끝까지 남아 있으면 → HANDOFF
+// - HANDOFF가 아니고 겹친 시간이 graceMs를 넘으면 → 충돌
 // - 겹침이 graceMs 이하(잠깐 들른 경우)면 둘 다 점유로 두되 충돌로 치지 않는다.
 // transcript(추정) 점유는 판정에 쓰지 않는다. claims의 state/handedOffTo를 채운다.
 export function resolveOccupancy(

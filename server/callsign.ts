@@ -1,4 +1,4 @@
-// 콜사인·편명 규칙. 서버(관제 브리핑)와 화면(web/src/aviation.ts)이 같이 쓴다.
+// 콜사인·FLIGHT NUMBER 규칙. 서버(ATC 브리핑)와 화면(web/src/aviation.ts)이 같이 쓴다.
 import type { Session } from "./model.ts";
 
 const PHONETIC: Record<string, string> = {
@@ -14,7 +14,7 @@ export function callsign(session: Pick<Session, "name">): string {
   return m ? PHONETIC[m[1].toUpperCase()] : session.name;
 }
 
-// VOC-191 → VOC191 (항공사 코드 + 편 번호). 브랜치·PR에는 Linear 표기를 그대로 쓴다.
+// VOC-191 → VOC191 (항공사 코드 + FLIGHT NUMBER). 브랜치·PR에는 Linear 표기를 그대로 쓴다.
 export function flightNumber(ticketKey: string): string {
   return ticketKey.replace("-", "");
 }

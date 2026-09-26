@@ -12,11 +12,11 @@ import { Teams } from "./views/Teams.tsx";
 import { Tickets } from "./views/Tickets.tsx";
 
 const TABS = [
-  { id: "radar", code: "RADAR", label: "레이더" },
-  { id: "strips", code: "STRIPS", label: "운항 스트립" },
-  { id: "board", code: "FIDS", label: "운항 정보판" },
-  { id: "airports", code: "AIRPORTS", label: "공항" },
-  { id: "metrics", code: "METRICS", label: "지표" },
+  { id: "radar", code: "RADAR" },
+  { id: "strips", code: "STRIPS" },
+  { id: "board", code: "FIDS" },
+  { id: "airports", code: "AIRPORTS" },
+  { id: "metrics", code: "METRICS" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -89,19 +89,16 @@ export function App() {
           {TABS.map((t) => (
             <button key={t.id} role="tab" aria-selected={tab === t.id} className="tab" onClick={() => setTab(t.id)}>
               <span className="tab-code">{t.code}</span>
-              <span className="tab-label">{t.label}</span>
             </button>
           ))}
         </nav>
         <div className="readouts">
-          <Readout code="AIRBORNE" label="비행 중" value={busy} tone="radar" />
-          <Readout code="STANDS" label="주기장 점유" value={stands} />
-          <Readout code="ENROUTE" label="순항 편" value={inProgress} />
+          <Readout code="AIRBORNE" value={busy} tone="radar" />
+          <Readout code="STANDS" label="점유" value={stands} />
+          <Readout code="ENROUTE" value={inProgress} />
           <button className="readout is-button" onClick={() => setAlertsOpen((v) => !v)} aria-expanded={alertsOpen}>
             <b>{pad(handoffs.length)}</b>
-            <span>
-              HANDOFF <em>이양</em>
-            </span>
+            <span>HANDOFF</span>
           </button>
           <button
             className={`readout is-button${serious ? " tone-alert" : alerts.length ? " tone-amber" : ""}`}
@@ -109,9 +106,7 @@ export function App() {
             aria-expanded={alertsOpen}
           >
             <b>{pad(alerts.length)}</b>
-            <span>
-              ALERTS <em>경보</em>
-            </span>
+            <span>ALERTS</span>
           </button>
           <div className="readout clock">
             <Clock clock={settings.clock} />
@@ -130,7 +125,8 @@ export function App() {
             {alerts.map((a, i) => (
               <span key={i} className={`ticker-item alert-${a.kind}`}>
                 <span className="code-chip">{alertCode[a.kind]}</span>
-                {alertLabel[a.kind]} · <span className="mono">{subjectOf(a)}</span> · {alertMessage(a, nameOf)}
+                {alertLabel[a.kind] !== alertCode[a.kind] && `${alertLabel[a.kind]} · `}
+                <span className="mono">{subjectOf(a)}</span> · {alertMessage(a, nameOf)}
               </span>
             ))}
           </span>
@@ -142,7 +138,7 @@ export function App() {
           {alerts.map((a, i) => (
             <li key={i} className={`alert alert-${a.kind}`}>
               <span className="code-chip">{alertCode[a.kind]}</span>
-              <span className="alert-label">{alertLabel[a.kind]}</span>
+              {alertLabel[a.kind] !== alertCode[a.kind] && <span className="alert-label">{alertLabel[a.kind]}</span>}
               <span className="mono">{subjectOf(a)}</span>
               <span className="muted">{alertMessage(a, nameOf)}</span>
             </li>
@@ -184,12 +180,13 @@ export function App() {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-function Readout({ code, label, value, tone }: { code: string; label: string; value: number; tone?: string }) {
+function Readout({ code, label, value, tone }: { code: string; label?: string; value: number; tone?: string }) {
   return (
     <div className={`readout${tone ? ` tone-${tone}` : ""}`}>
       <b>{pad(value)}</b>
       <span>
-        {code} <em>{label}</em>
+        {code}
+        {label && <> <em>{label}</em></>}
       </span>
     </div>
   );

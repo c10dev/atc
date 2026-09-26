@@ -3,7 +3,7 @@ import { callsign } from "./aviation.ts";
 import { type Index, sessionLocation } from "./derive.ts";
 import "./ui.css";
 
-// 저장소 = 공항 코드(대문자 4자). 마우스를 올리면 저장소 이름과 경로.
+// 저장소 = AIRPORT 코드(대문자 4자). 마우스를 올리면 저장소 이름과 경로.
 export function AirportCode({ airport }: { airport: Airport | null | undefined }) {
   if (!airport) return null;
   return (
@@ -13,12 +13,12 @@ export function AirportCode({ airport }: { airport: Airport | null | undefined }
   );
 }
 
-// 원정 운항: 소속 공항 밖 주기장을 점유 중일 때 "원정 TNNS"
+// OUTSTATION: 소속 AIRPORT 밖 STAND를 점유 중일 때 "OUTSTATION TNNS"
 export function AwayTag({ airports }: { airports: Airport[] | undefined }) {
   if (!airports?.length) return null;
   return (
-    <span className="away-tag" title="소속 공항 밖 주기장에서 작업 중">
-      원정
+    <span className="away-tag" title="소속 AIRPORT 밖 STAND에서 작업 중">
+      OUTSTATION
       {airports.map((a) => (
         <AirportCode key={a.id} airport={a} />
       ))}
@@ -36,7 +36,7 @@ export function SessionPlace({ session, idx }: { session: Session; idx: Index })
   );
 }
 
-const statusLabel = { busy: "비행 중", idle: "대기", dead: "무선 두절" } as const;
+const statusLabel = { busy: "AIRBORNE", idle: "대기", dead: "NORDO" } as const;
 
 export function StatusDot({ status, label }: { status: Session["status"]; label?: string }) {
   const text = label ?? statusLabel[status];

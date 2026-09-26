@@ -73,7 +73,7 @@ async function refreshDetail(ws: Workspace) {
 
 let refreshing = false;
 
-// 운항 중인 공항(저장소)들의 워크트리. 목록은 매번, dirty/커밋 시각은 30초마다 백그라운드로 갱신한다.
+// 운항 중인 AIRPORT(저장소)들의 워크트리. 목록은 매번, dirty/커밋 시각은 30초마다 백그라운드로 갱신한다.
 export async function readWorkspaces(repos: string[]): Promise<Workspace[]> {
   const lists = await Promise.all(repos.map((r) => listWorktrees(r).catch(() => [])));
   const all = lists.flat();

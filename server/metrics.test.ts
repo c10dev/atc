@@ -33,7 +33,7 @@ test("충돌: 발생·해소 짝짓기, 지속 중앙값, 5분 안에 풀린 비
   assert.equal(m.conflicts.shortShare, 0.5);
 });
 
-test("착륙 대기와 이벤트 수", () => {
+test("LANDING SEQUENCE와 이벤트 수", () => {
   const records = [
     ev(at(8), { kind: "landing.requested", ticketKey: "VOC-1" }), ev(at(8, 40), { kind: "landing.left", ticketKey: "VOC-1" }),
     ev(at(9), { kind: "landing.requested", ticketKey: "VOC-2" }), ev(at(9, 10), { kind: "landing.left", ticketKey: "VOC-2" }),
@@ -47,7 +47,7 @@ test("착륙 대기와 이벤트 수", () => {
   assert.equal(m.away, 1);
 });
 
-test("관제 지시: 복창률은 취소 제외, 늦은 복창·미복창은 overdue", () => {
+test("CLEARANCE: READBACK 비율은 취소 제외, 늦은 READBACK·NO READBACK은 overdue", () => {
   const cs = [clr(at(9), at(9, 2)), clr(at(9), at(9, 4)), clr(at(10), at(10, 30)), clr(at(11), null), clr(at(11), null, true)];
   const m = computeMetrics([], cs, NOW, 1);
   assert.equal(m.clearances.issued, 5);
@@ -80,7 +80,7 @@ test("범위 밖 기록은 빼고, 표본이 많으면 줄인다", () => {
   assert.ok(m.series[0].t < m.series.at(-1)!.t);
 });
 
-test("블랙박스: 날짜 파일에서 범위만 읽고, 30일 지난 파일은 지운다", () => {
+test("FLIGHT RECORDER: 날짜 파일에서 범위만 읽고, 30일 지난 파일은 지운다", () => {
   const dir = mkdtempSync(join(tmpdir(), "atc-rec-"));
   writeFileSync(join(dir, "2026-08-01.jsonl"), JSON.stringify({ t: "2026-08-01T00:00:00.000Z", kind: "ack", consumer: "c" }) + "\n");
   writeFileSync(join(dir, "2026-09-25.jsonl"), [

@@ -3,18 +3,18 @@ import { join } from "node:path";
 import { config } from "./config.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 
-// 블랙박스(비행기록장치). 날짜(UTC)별 JSONL에 추가만 한다. 서버를 재시작해도 남아 지표 계산에 쓴다.
+// FLIGHT RECORDER. 날짜(UTC)별 JSONL에 추가만 한다. 서버를 재시작해도 남아 지표 계산에 쓴다.
 // - event: 스냅샷 차이 이벤트(events.ts)
 // - sample: 5분마다 교통량 표본
-// - ack: 관제사가 브리핑을 처리함(TOWER가 실제로 운용된 날을 센다)
+// - ack: CONTROLLER가 브리핑을 처리함(TOWER가 실제로 운용된 날을 센다)
 
 export interface Sample {
   airborne: number; // 작업 중(busy) 세션
-  holding: number; // 대기 중이지만 주기장을 점유한 세션
-  claims: number; // 점유(이양 제외)
+  holding: number; // 대기 중이지만 STAND를 점유한 세션
+  claims: number; // 점유(HANDOFF 제외)
   conflicts: number;
   alerts: number; // 열린 경보 전체
-  landing: number; // 착륙(머지) 대기열 길이
+  landing: number; // LANDING SEQUENCE(머지 대기열) 길이
   pendingClearances: number;
 }
 

@@ -30,7 +30,7 @@ test("같은 저장소·같은 경로면 바뀐 것 없음", () => {
   assert.equal(r.matched.get("r1")?.path, `${P}/vocado_nextjs`);
 });
 
-test("폴더를 옮기면 같은 공항·같은 코드로 경로만 갱신", () => {
+test("폴더를 옮기면 같은 AIRPORT·같은 코드로 경로만 갱신", () => {
   const entries = [entry("r1", "VCDO", `${P}/vocado_nextjs`)];
   const r = reconcile(entries, [found("r1", `${P}/vocado-web`)], exists([`${P}/vocado-web`]));
   assert.equal(r.changed, true);
@@ -47,7 +47,7 @@ test("같은 저장소의 다른 클론은 따로 개설", () => {
   assert.notEqual(r.entries[1].code, "VCDO");
 });
 
-test("폐쇄한 공항은 코드를 지키고, 새 저장소가 그 코드를 가져가지 못한다", () => {
+test("폐쇄한 AIRPORT는 코드를 지키고, 새 저장소가 그 코드를 가져가지 못한다", () => {
   const entries = [entry("r1", "TNNS", `${P}/tennis`, true)];
   const r = reconcile(entries, [found("r1", `${P}/tennis`), found("r9", `${P}/tennis2`)], exists([`${P}/tennis`, `${P}/tennis2`]), NOW);
   assert.equal(r.entries[0].closed, true);
@@ -61,7 +61,7 @@ test("홈 밖에서 개설한(자동 발견 아닌) 저장소는 등록부에 �
   assert.equal(r2.matched.get("r5")?.discovered, false);
 });
 
-test("같은 첫 커밋 저장소가 여럿일 때 옮겨진 공항은 폴더 이름이 같은 쪽으로", () => {
+test("같은 첫 커밋 저장소가 여럿일 때 옮겨진 AIRPORT는 폴더 이름이 같은 쪽으로", () => {
   const entries = [entry("r1", "ALPH", `${P}/alpha`), entry(cloneId("r1", `${P}/beta`), "BETA", `${P}/beta`)];
   const now = [`${P}/beta`, "/home/c10/elsewhere/alpha", `${P}/gamma`];
   const r = reconcile(entries, [found("r1", now[0]), found("r1", now[1]), found("r1", now[2])], exists(now), NOW);

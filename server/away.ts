@@ -1,8 +1,8 @@
 import type { Snapshot } from "./model.ts";
 
-// 원정 운항: 세션의 소속 공항(작업 폴더가 있는 저장소)이 아닌 공항의 주기장을 점유 중인 것.
-// 소속을 모르는 세션(저장소 밖에서 연 세션)은 원정으로 치지 않는다. 이양된 점유는 제외한다.
-// 반환: 세션 id → 원정 중인 저장소 경로들(정렬)
+// OUTSTATION: 세션의 소속 AIRPORT(작업 폴더가 있는 저장소)가 아닌 AIRPORT의 STAND를 점유 중인 것.
+// 소속을 모르는 세션(저장소 밖에서 연 세션)은 OUTSTATION으로 치지 않는다. HANDOFF된 점유는 제외한다.
+// 반환: 세션 id → OUTSTATION 중인 저장소 경로들(정렬)
 export function awayOperations(s: Pick<Snapshot, "sessions" | "workspaces" | "claims">): Map<string, string[]> {
   const home = new Map(s.sessions.map((x) => [x.id, x.repo]));
   const repoOf = new Map(s.workspaces.map((w) => [w.path, w.repo]));

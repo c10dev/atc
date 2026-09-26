@@ -173,7 +173,7 @@ function transcriptFiles(s: SessionFile): { path: string; size: number; mtimeMs:
   return files;
 }
 
-// hook 기록이 없는 세션용: 가장 최근에 작업하러 들어간 워크트리 하나를 추정 항적으로 돌려준다.
+// hook 기록이 없는 세션용: 가장 최근에 작업하러 들어간 워크트리 하나를 ESTIMATED TRACK으로 돌려준다.
 export function inferTranscriptClaim(s: SessionFile, workspaces: Workspace[]): Claim | null {
   const files = transcriptFiles(s);
   if (!files.length) return null;

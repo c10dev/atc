@@ -3,8 +3,8 @@ import { allClearances } from "./clearances.ts";
 import type { Clearance, TrafficEvent } from "./model.ts";
 import { type RecordLine, readRecords, type Sample } from "./recorder.ts";
 
-// 운용 지표. 블랙박스 기록과 관제 지시 기록을 집계한다(순수 함수 computeMetrics).
-// 2단계(운항 관리)로 넘어갈지 판단하는 근거로 쓴다.
+// 운용 지표. FLIGHT RECORDER 기록과 CLEARANCE 기록을 집계한다(순수 함수 computeMetrics).
+// 2단계(DISPATCH)로 넘어갈지 판단하는 근거로 쓴다.
 
 const MIN = 60_000;
 const DAY = 86_400_000;
@@ -18,7 +18,7 @@ export const READINESS = {
   readbackRate: 0.9,
   readbackMedianMin: 5,
   shortConflictShare: 0.3,
-  minClearances: 5, // 이보다 적으면 복창 지표는 "데이터 부족"
+  minClearances: 5, // 이보다 적으면 READBACK 지표는 "데이터 부족"
   minConflicts: 3,
 };
 
@@ -170,14 +170,14 @@ export function computeMetrics(records: RecordLine[], clearances: Clearance[], n
     },
     {
       id: "readback-rate",
-      label: "복창률",
+      label: "READBACK 비율",
       value: pct(readbackRate),
       target: `≥ ${READINESS.readbackRate * 100}%`,
       status: answerable.length < READINESS.minClearances ? "insufficient" : readbackRate! >= READINESS.readbackRate ? "pass" : "fail",
     },
     {
       id: "readback-median",
-      label: "복창까지 걸린 시간(중앙값)",
+      label: "READBACK까지 걸린 시간(중앙값)",
       value: minutes(readbackMedian),
       target: `≤ ${READINESS.readbackMedianMin}분`,
       status: readBack.length < READINESS.minClearances ? "insufficient" : readbackMedian! <= READINESS.readbackMedianMin * MIN ? "pass" : "fail",

@@ -4,7 +4,7 @@ import type { Sample } from "../../../server/recorder.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import "./Metrics.css";
 
-// 1.5단계 운용 지표. 블랙박스 기록으로 2단계(운항 관리)로 넘어갈지 판단한다.
+// 1.5단계 운용 지표. FLIGHT RECORDER 기록으로 2단계(DISPATCH)로 넘어갈지 판단한다.
 
 const RANGES = [
   { days: 1, label: "24시간" },
@@ -12,11 +12,11 @@ const RANGES = [
   { days: 30, label: "30일" },
 ] as const;
 
-const TRENDS: { key: keyof Sample; label: string; code: string }[] = [
-  { key: "airborne", label: "비행 중", code: "AIRBORNE" },
-  { key: "claims", label: "주기장 점유", code: "STANDS" },
-  { key: "alerts", label: "열린 경보", code: "ALERTS" },
-  { key: "landing", label: "착륙 대기열", code: "LANDING" },
+const TRENDS: { key: keyof Sample; label?: string; code: string }[] = [
+  { key: "airborne", code: "AIRBORNE" },
+  { key: "claims", label: "점유", code: "STANDS" },
+  { key: "alerts", code: "ALERTS" },
+  { key: "landing", code: "LANDING SEQUENCE" },
 ];
 
 const statusMark = {
@@ -58,7 +58,7 @@ export function Metrics({ refreshKey }: { refreshKey: string }) {
     <section className="metrics">
       <div className="toolbar">
         <span className="muted">
-          블랙박스 기록 기준
+          FLIGHT RECORDER 기록 기준
           {data?.recording.since ? ` · ${data.recording.since.slice(0, 10)}부터 기록됨` : " · 아직 기록 없음"}
         </span>
         <div className="mx-range" role="radiogroup" aria-label="기간">
@@ -82,7 +82,7 @@ export function Metrics({ refreshKey }: { refreshKey: string }) {
           <Readiness data={data} />
           <KpiRow data={data} />
           <h2 className="label">
-            TRENDS <em>추이 · 5분 표본</em>
+            TRENDS <em>5분 표본</em>
           </h2>
           {data.series.length < 2 ? (
             <p className="empty mx-empty">표본이 아직 모자람 — 5분마다 하나씩 쌓인다.</p>
@@ -105,7 +105,7 @@ function Readiness({ data }: { data: MetricsData }) {
   return (
     <div className="mx-ready">
       <h2 className="label">
-        STAGE 2 <em>운항 관리 진입 점검 · {passed}/{data.readiness.length} 충족</em>
+        STAGE 2 <em>DISPATCH 진입 점검 · {passed}/{data.readiness.length} 충족</em>
       </h2>
       <ul>
         {data.readiness.map((r) => (
@@ -131,16 +131,16 @@ function KpiRow({ data }: { data: MetricsData }) {
     .map(([t, n]) => `${t} ${n}`)
     .join(" · ");
   const tiles = [
-    { label: "복창률", value: pct(c.readbackRate), sub: `복창 ${c.readBack} / 지시 ${c.issued - c.cancelled} · 중앙값 ${mins(c.readbackMedianMin)}` },
-    { label: "관제 지시", value: String(c.issued), sub: types || "지시 없음" },
-    { label: "분리 기준 위반", value: String(data.conflicts.count), sub: `지속 중앙값 ${mins(data.conflicts.medianMin)} · 열린 ${data.conflicts.open}` },
-    { label: "관제 이양", value: String(data.handoffs), sub: `원정 시작 ${data.away}` },
+    { label: "READBACK 비율", value: pct(c.readbackRate), sub: `READBACK ${c.readBack} / CLEARANCE ${c.issued - c.cancelled} · 중앙값 ${mins(c.readbackMedianMin)}` },
+    { label: "CLEARANCE", value: String(c.issued), sub: types || "CLEARANCE 없음" },
+    { label: "LOSS OF SEPARATION", value: String(data.conflicts.count), sub: `지속 중앙값 ${mins(data.conflicts.medianMin)} · 열린 ${data.conflicts.open}` },
+    { label: "HANDOFF", value: String(data.handoffs), sub: `OUTSTATION 시작 ${data.away}` },
     {
-      label: "착륙 대기(중앙값)",
+      label: "LANDING 대기(중앙값)",
       value: mins(data.landing.medianWaitMin),
-      sub: `착륙 ${data.landing.landed} · 대기 중 ${data.landing.waiting} · 최대 ${mins(data.landing.maxWaitMin)}`,
+      sub: `LANDING ${data.landing.landed} · 대기 중 ${data.landing.waiting} · 최대 ${mins(data.landing.maxWaitMin)}`,
     },
-    { label: "무선 두절", value: String(data.lost), sub: `레이더 미포착 ${data.noContact} · 미식별 ${data.unattended}` },
+    { label: "NORDO", value: String(data.lost), sub: `NO CONTACT ${data.noContact} · UNID ${data.unattended}` },
   ];
   return (
     <div className="mx-kpis">
@@ -156,7 +156,7 @@ function KpiRow({ data }: { data: MetricsData }) {
 }
 
 // 계열 하나짜리 추이. 가로선(마우스·방향키)으로 시각과 값을 읽는다.
-function Trend({ code, label, points, field }: { code: string; label: string; points: SeriesPoint[]; field: keyof Sample }) {
+function Trend({ code, label, points, field }: { code: string; label?: string; points: SeriesPoint[]; field: keyof Sample }) {
   const { clock } = useSettings();
   const [hover, setHover] = useState<number | null>(null);
   const values = points.map((p) => p[field]);
@@ -184,7 +184,7 @@ function Trend({ code, label, points, field }: { code: string; label: string; po
   return (
     <figure className="mx-trend">
       <figcaption>
-        <span className="mx-trend-code">{code}</span> {label}
+        <span className="mx-trend-code">{code}</span>{label && ` ${label}`}
         <span className="mx-trend-now">
           {hover === null ? "최근" : stamp(points[i].t, clock, multiDay)} <b>{values[i]}</b>
         </span>
@@ -193,7 +193,7 @@ function Trend({ code, label, points, field }: { code: string; label: string; po
         className="mx-plot"
         tabIndex={0}
         role="img"
-        aria-label={`${label}: 최근 ${latest}, 최대 ${Math.max(...values)}, 최소 ${Math.min(...values)}. 방향키로 시각별 값`}
+        aria-label={`${code}${label ? ` ${label}` : ""}: 최근 ${latest}, 최대 ${Math.max(...values)}, 최소 ${Math.min(...values)}. 방향키로 시각별 값`}
         onMouseMove={pick}
         onMouseLeave={() => setHover(null)}
         onKeyDown={key}
@@ -226,19 +226,19 @@ function Daily({ data }: { data: MetricsData }) {
   return (
     <>
       <h2 className="label">
-        DAILY <em>일별 · UTC 날짜</em>
+        DAILY <em>UTC 날짜</em>
       </h2>
       <table className="mx-table">
         <thead>
           <tr>
             <th>날짜</th>
             <th>TOWER</th>
-            <th className="num">충돌</th>
-            <th className="num">이양</th>
-            <th className="num">지시</th>
-            <th className="num">복창</th>
-            <th className="num">착륙</th>
-            <th className="num">두절</th>
+            <th className="num">LOS</th>
+            <th className="num">HANDOFF</th>
+            <th className="num">CLEARANCE</th>
+            <th className="num">READBACK</th>
+            <th className="num">LANDING</th>
+            <th className="num">NORDO</th>
           </tr>
         </thead>
         <tbody>

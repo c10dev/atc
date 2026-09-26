@@ -11,7 +11,7 @@ export interface Index {
   alertsByWorkspace: Map<string, Alert[]>;
   alertsByTicket: Map<string, Alert[]>;
   airportByRepo: Map<string, Airport>;
-  awayBySession: Map<string, Airport[]>; // 원정 운항 중인 공항들
+  awayBySession: Map<string, Airport[]>; // OUTSTATION으로 나가 있는 AIRPORT들
 }
 
 function push<K, V>(map: Map<K, V[]>, key: K, value: V) {
@@ -57,7 +57,7 @@ export function occupantsOf(key: string, idx: Index): Session[] {
   return [...ids].map((id) => idx.sessionById.get(id)).filter((x): x is Session => Boolean(x));
 }
 
-// 세션 위치: 본 체크아웃이면 관제탑(TWR), 워크트리 안이면 그 주기장, 저장소 밖이면 폴더 이름.
+// 세션 위치: 본 체크아웃이면 TOWER(TWR), 워크트리 안이면 그 STAND, 저장소 밖이면 폴더 이름.
 export function sessionLocation(s: Session, idx: Index): { airport: Airport | null; place: string } {
   const airport = s.repo ? (idx.airportByRepo.get(s.repo) ?? null) : null;
   if (!s.workspacePath) return { airport: null, place: projectOf(s.cwd) };
@@ -69,7 +69,7 @@ export function hasActiveClaim(claims: Claim[] | undefined): boolean {
   return Boolean(claims?.some((c) => c.state === "active"));
 }
 
-// 이양된 점유는 뒤로 보낸다.
+// HANDOFF된 점유는 뒤로 보낸다.
 export function activeFirst(claims: Claim[]): Claim[] {
   return [...claims].sort((a, b) => Number(a.state !== "active") - Number(b.state !== "active"));
 }

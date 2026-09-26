@@ -9,7 +9,7 @@ export interface Session {
   cwd: string;
   startedAt: string;
   lastActiveAt: string | null;
-  // cwd가 속한 저장소와 워크스페이스. 본 체크아웃이면 workspacePath === repo (관제탑)
+  // cwd가 속한 저장소와 워크스페이스. 본 체크아웃이면 workspacePath === repo (TOWER)
   repo: string | null;
   workspacePath: string | null;
 }
@@ -21,7 +21,7 @@ export interface Airport {
   code: string; // 대문자 4자
 }
 
-// 공항 관리 화면용. open: 운항 중, closed: 폐쇄, missing: 등록된 경로에 저장소가 없음
+// AIRPORT 관리 화면용. open: 운항 중, closed: 폐쇄, missing: 등록된 경로에 저장소가 없음
 export interface AirportStatus extends Airport {
   closed: boolean;
   status: "open" | "closed" | "missing";
@@ -101,7 +101,7 @@ export interface Alert {
   ticketKey?: string;
 }
 
-// 관제 지시. 관제사 세션이 atc에 기록하고 팀 세션에 메시지로 보낸다. 팀이 복창하면 readbackAt이 찍힌다.
+// CLEARANCE. TOWER 세션이 atc에 기록하고 팀 세션에 메시지로 보낸다. 팀이 READBACK하면 readbackAt이 찍힌다.
 export type ClearanceType = "TRAFFIC" | "HOLD" | "CONTINUE" | "LAND" | "REPORT" | "INFO";
 
 export interface Clearance {
@@ -127,7 +127,7 @@ export type TrafficEventKind =
   | "away.started"
   | "away.ended";
 
-// 스냅샷 사이의 변화. 관제사가 "지난번 이후 무엇이 바뀌었나"를 읽는 단위.
+// 스냅샷 사이의 변화. CONTROLLER가 "지난번 이후 무엇이 바뀌었나"를 읽는 단위.
 export interface TrafficEvent {
   id: number;
   at: string;
@@ -136,7 +136,7 @@ export interface TrafficEvent {
   workspacePath?: string;
   ticketKey?: string;
   sessionIds?: string[];
-  repo?: string; // away.*: 원정 간 공항(저장소)
+  repo?: string; // away.*: OUTSTATION으로 간 AIRPORT(저장소)
   message?: string;
 }
 
@@ -151,5 +151,5 @@ export interface Snapshot {
   claims: Claim[];
   handoffs: Handoff[];
   alerts: Alert[];
-  clearances: Clearance[]; // 복창 대기 중이거나 최근 24시간 안의 지시
+  clearances: Clearance[]; // READBACK 대기 중이거나 최근 24시간 안의 CLEARANCE
 }

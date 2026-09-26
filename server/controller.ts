@@ -9,7 +9,7 @@ import { type EventLog, landingKeys } from "./events.ts";
 import { record } from "./recorder.ts";
 import type { Clearance, ClearanceType, Session, Snapshot, TrafficEvent } from "./model.ts";
 
-// 관제사(1단계, 조언 모드)가 쓰는 API. atc는 판단하지 않고, 브리핑을 주고 지시·복창을 기록만 한다.
+// CONTROLLER(1단계, 조언 모드)가 쓰는 API. atc는 판단하지 않고, 브리핑을 주고 CLEARANCE·READBACK을 기록만 한다.
 
 const OVERDUE_MS = 10 * 60_000;
 
@@ -104,7 +104,7 @@ export function buildBrief(
       conflicts: alertsOf("conflict").map((a) => ({
         stand: standName(a.workspacePath),
         standPath: a.workspacePath,
-        // since가 이른 쪽이 먼저 들어온 항공기
+        // since가 이른 쪽이 먼저 들어온 AIRCRAFT
         sessions: active
           .filter((c) => c.workspacePath === a.workspacePath && a.sessionIds?.includes(c.sessionId))
           .sort((x, y) => x.since.localeCompare(y.since))
@@ -127,7 +127,7 @@ export function formatClearance(c: Clearance, s: Snapshot): string {
   const target = s.sessions.find((x) => x.id === c.to);
   const who = target ? `${callsign(target)}${callsign(target) !== target.name ? ` (${target.name})` : ""}` : c.toName;
   const stand = c.stand ? (s.workspaces.find((w) => w.path === c.stand)?.name ?? c.stand) : null;
-  const where = [stand && `주기장 ${stand}`, c.flight && `편 ${flightNumber(c.flight)}`].filter(Boolean).join(" · ");
+  const where = [stand && `STAND ${stand}`, c.flight && `FLIGHT ${flightNumber(c.flight)}`].filter(Boolean).join(" · ");
   return [
     `[ATC ${c.id}] ${who} · ${c.type}`,
     where,
@@ -150,7 +150,7 @@ export function resolveSession(s: Snapshot, to: string): Session | string {
 function resolveStand(s: Snapshot, stand: string | undefined): string | null | { error: string } {
   if (!stand) return null;
   const ws = s.workspaces.find((w) => w.path === stand || w.name === stand);
-  return ws ? ws.path : { error: `"${stand}" 주기장(워크트리)을 찾을 수 없음` };
+  return ws ? ws.path : { error: `"${stand}" STAND(워크트리)를 찾을 수 없음` };
 }
 
 function normalizeFlight(flight: string | undefined): string | null {
@@ -214,7 +214,7 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
   for (const op of ["readback", "cancel"] as const) {
     app.post(`/api/clearances/:id/${op}`, (c) => {
       const cleared = markClearance(c.req.param("id").toUpperCase(), op);
-      return cleared ? c.json({ clearance: cleared }) : c.json({ error: "그런 지시가 없음" }, 404);
+      return cleared ? c.json({ clearance: cleared }) : c.json({ error: "그런 CLEARANCE가 없음" }, 404);
     });
   }
 }

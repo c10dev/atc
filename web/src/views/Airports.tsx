@@ -4,7 +4,7 @@ import type { AirportStatus, Snapshot } from "../../../server/model.ts";
 import { callsign } from "../aviation.ts";
 import "./Airports.css";
 
-const statusLabel = { open: "운항 중", closed: "폐쇄", missing: "경로 없음" } as const;
+const statusLabel = { open: "OPEN", closed: "CLOSED", missing: "MISSING" } as const;
 const MAX_AC = 4;
 
 async function api(method: string, path: string, body?: unknown) {
@@ -18,7 +18,7 @@ async function api(method: string, path: string, body?: unknown) {
   return data;
 }
 
-// 공항(저장소) 등록부. ~/projects 아래는 자동 개설, 그 밖은 여기서 개설한다.
+// AIRPORT(저장소) 등록부. ~/projects 아래는 자동 개설, 그 밖은 여기서 개설한다.
 export function Airports({ snapshot }: { snapshot: Snapshot }) {
   const [airports, setAirports] = useState<AirportStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +34,7 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
     }
   }, []);
 
-  // 스냅샷의 공항 구성이 바뀌면(자동 개설·이동) 목록도 다시 읽는다.
+  // 스냅샷의 AIRPORT 구성이 바뀌면(자동 개설·이동) 목록도 다시 읽는다.
   const openKey = snapshot.airports.map((a) => `${a.id}:${a.code}:${a.repo}`).join("|");
   useEffect(() => {
     load();
@@ -68,7 +68,7 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
   const aircraft = (repo: string) => snapshot.sessions.filter((s) => s.repo === repo && s.status !== "dead");
   const away = awayOperations(snapshot);
   const codeOf = (repo: string) => airports?.find((a) => a.repo === repo)?.code ?? repo.split("/").pop();
-  // 다른 공항 소속인데 이 공항 주기장에서 작업 중인 항공기
+  // 다른 AIRPORT 소속인데 이 AIRPORT의 STAND에서 작업 중인 AIRCRAFT
   const visitors = (repo: string) =>
     snapshot.sessions.filter((s) => s.status !== "dead" && (away.get(s.id) ?? []).includes(repo));
 
@@ -76,15 +76,13 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
     <section className="airports">
       <div className="toolbar">
         <span className="muted">
-          ~/projects 아래 저장소는 자동으로 개설된다. 공항은 첫 커밋으로 알아보므로 폴더를 옮기거나 이름을 바꿔도 같은
-          코드로 이어진다.
+          ~/projects 아래 저장소는 자동으로 개설된다. AIRPORT는 첫 커밋으로 알아보므로 폴더를 옮기거나 이름을 바꿔도 같은
+          AIRPORT 코드로 이어진다.
         </span>
       </div>
 
       <form className="apt-form" onSubmit={submit}>
-        <h2 className="label">
-          OPEN <em>공항 개설</em>
-        </h2>
+        <h2 className="label">OPEN AIRPORT</h2>
         <input
           className="apt-input apt-path"
           placeholder="/home/c10/어딘가/저장소 (워크트리나 하위 폴더도 됨)"
@@ -98,10 +96,10 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
           placeholder="코드"
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
-          aria-label="공항 코드 (비우면 자동)"
+          aria-label="AIRPORT 코드 (비우면 자동)"
         />
         <button className="apt-btn primary" type="submit">
-          개설
+          OPEN
         </button>
       </form>
 
@@ -112,7 +110,7 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
       )}
 
       <h2 className="label">
-        AIRPORTS <em>공항 · {airports?.length ?? "…"}</em>
+        AIRPORTS <em>{airports?.length ?? "…"}</em>
       </h2>
       <table className="apt-table">
         <thead>
@@ -121,8 +119,8 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
             <th>이름</th>
             <th>경로</th>
             <th>상태</th>
-            <th className="num">주기장</th>
-            <th>항공기</th>
+            <th className="num">STAND</th>
+            <th>AIRCRAFT</th>
             <th aria-label="동작" />
           </tr>
         </thead>
@@ -185,8 +183,8 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
                     !visiting.length && <span className="faint">—</span>
                   )}
                   {visiting.length > 0 && (
-                    <div className="apt-visiting" title="다른 공항 소속, 이 공항 주기장에서 작업 중">
-                      입항 {visiting.map((s) => `${callsign(s)}(${s.repo ? codeOf(s.repo) : "?"})`).join(", ")}
+                    <div className="apt-visiting" title="다른 AIRPORT 소속, 이 AIRPORT의 STAND에서 작업 중">
+                      TRANSIENT {visiting.map((s) => `${callsign(s)}(${s.repo ? codeOf(s.repo) : "?"})`).join(", ")}
                     </div>
                   )}
                 </td>
@@ -194,21 +192,21 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
                   <div className="apt-actions">
                   {a.status === "closed" ? (
                     <button className="apt-btn" onClick={() => act(() => api("PATCH", `/api/airports/${encodeURIComponent(a.id)}`, { closed: false }))}>
-                      재개
+                      REOPEN
                     </button>
                   ) : (
                     <button
                       className="apt-btn"
                       onClick={() => act(() => api("PATCH", `/api/airports/${encodeURIComponent(a.id)}`, { closed: true }))}
                     >
-                      폐쇄
+                      CLOSE
                     </button>
                   )}
                   {!a.discovered && (
                     <button
                       className="apt-btn danger"
                       onClick={() => {
-                        if (confirm(`${a.code} ${a.name} 공항을 등록부에서 지울까요? 저장소 폴더는 그대로 둡니다.`))
+                        if (confirm(`${a.code} ${a.name} AIRPORT를 등록부에서 지울까요? 저장소 폴더는 그대로 둡니다.`))
                           act(() => api("DELETE", `/api/airports/${encodeURIComponent(a.id)}`));
                       }}
                     >

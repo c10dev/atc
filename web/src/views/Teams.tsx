@@ -33,11 +33,11 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
     <section>
       <div className="toolbar">
         <span className="muted">
-          항공기 {visible.length}대{hidden > 0 && !showAll ? ` · 주기 중인 ${hidden}대 숨김` : ""}
+          AIRCRAFT {visible.length}대{hidden > 0 && !showAll ? ` · PARKED ${hidden}대 숨김` : ""}
         </span>
         <label className="toggle">
           <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
-          주기 중인 항공기 포함
+          PARKED AIRCRAFT 포함
         </label>
       </div>
       {BAYS.map((bay) => {
@@ -47,9 +47,7 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
           <div key={bay} className={`bay bay-${bay}`}>
             <h2 className="label">
               {aircraftStatusCode[bay]}{" "}
-              <em>
-                {aircraftStatusLabel[bay]} · {sessions.length}
-              </em>
+              <em>{sessions.length}</em>
             </h2>
             <div className="bay-rail">
               {sessions.map((s) => (
@@ -121,7 +119,7 @@ function Strip({
             return (
               <div key={c.workspacePath} className={`leg${c.state === "handed-off" ? " is-handed-off" : ""}`}>
                 <div className="cell">
-                  <span className="cap">STAND 주기장</span>
+                  <span className="cap">STAND</span>
                   <div className="val" title={c.workspacePath}>
                     <AirportCode airport={ws ? idx.airportByRepo.get(ws.repo) : undefined} />{" "}
                     {ws?.name ?? c.workspacePath.split("/").pop()}
@@ -129,7 +127,7 @@ function Strip({
                   <div className="sub">{ws?.branch ?? (ws ? `detached ${ws.head}` : "")}</div>
                 </div>
                 <div className="cell">
-                  <span className="cap">FLIGHT 편</span>
+                  <span className="cap">FLIGHT</span>
                   {ws?.ticketKey ? (
                     <>
                       <a
@@ -148,30 +146,30 @@ function Strip({
                   )}
                 </div>
                 <div className="cell cell-route">
-                  <span className="cap">ROUTE 목적지</span>
+                  <span className="cap">ROUTE</span>
                   <div className="route" title={ticket?.title}>
                     {ticket?.title ?? <span className="none">티켓 없음</span>}
                   </div>
                 </div>
                 <div className="cell">
-                  <span className="cap">LAST 교신</span>
+                  <span className="cap">LAST CONTACT</span>
                   <div className="val">{formatClock(c.lastAt, clock)}</div>
                   <div className="sub">{timeAgo(c.lastAt, now)}</div>
                 </div>
                 <div className="cell cell-remarks">
                   {others.length > 0 && (
-                    <span className="stamp red" title={`${others.join(", ")}와 같은 주기장`}>
+                    <span className="stamp red" title={`${others.join(", ")}와 같은 STAND`}>
                       LOS {others.join(", ")}
                     </span>
                   )}
                   {c.state === "handed-off" && (
-                    <span className="stamp blue">→ {c.handedOffTo ? nameOf(c.handedOffTo) : "?"} 이양</span>
+                    <span className="stamp blue">→ {c.handedOffTo ? nameOf(c.handedOffTo) : "?"} HANDOFF</span>
                   )}
                   {ws && s.repo && ws.repo !== s.repo && c.state === "active" && (
-                    <span className="stamp away" title="소속 공항 밖 주기장">원정</span>
+                    <span className="stamp away" title="소속 AIRPORT 밖 STAND">OUTSTATION</span>
                   )}
                   {ws?.dirty ? <span className="stamp amber">Δ {ws.dirty}</span> : null}
-                  {c.source === "transcript" && <span className="stamp dashed">추정 항적</span>}
+                  {c.source === "transcript" && <span className="stamp dashed">ESTIMATED TRACK</span>}
                   {c.source === "cwd" && <span className="stamp dashed">CWD</span>}
                 </div>
               </div>
@@ -180,8 +178,8 @@ function Strip({
         ) : (
           <div className="leg is-empty">
             <div className="cell">
-              <span className="cap">STAND 주기장</span>
-              <div className="sub">배정된 주기장 없음</div>
+              <span className="cap">STAND</span>
+              <div className="sub">배정된 STAND 없음</div>
             </div>
           </div>
         )}
@@ -193,7 +191,7 @@ function Strip({
 const OVERDUE_MS = 10 * 60_000;
 const RECENT_READBACK_MS = 30 * 60_000;
 
-// 관제 지시: 복창 대기(파랑), 10분 넘게 미복창(주황), 최근 30분 안에 복창 받음(점선)
+// CLEARANCE: READBACK 대기(파랑), 10분 넘게 NO READBACK(주황), 최근 30분 안에 READBACK 받음(점선)
 function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: number }) {
   const { clock } = useSettings();
   const shown = clearances.filter(
@@ -205,7 +203,7 @@ function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: nu
       {shown.map((c) => {
         const overdue = !c.readbackAt && now - Date.parse(c.at) > OVERDUE_MS;
         const tone = c.readbackAt ? "dashed" : overdue ? "amber" : "blue";
-        const state = c.readbackAt ? "복창" : overdue ? "미복창" : "복창 대기";
+        const state = c.readbackAt ? "READBACK" : overdue ? "NO READBACK" : "READBACK 대기";
         return (
           <span key={c.id} className={`stamp ${tone}`} title={`${c.text}\n${formatClock(c.at, clock)} 발부 · ${state}`}>
             {c.id} {c.type} · {state}

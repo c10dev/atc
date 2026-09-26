@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 관제사 세션의 PreToolUse hook (Bash). 관제사는 조종하지 않는다:
+// TOWER 세션의 PreToolUse hook (Bash). CONTROLLER는 조종하지 않는다:
 // atc CLI(node atcctl.mjs …)와 jq 외의 명령, 파일로 쓰는 리다이렉션을 막는다. 막으면 exit 2.
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -43,7 +43,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   } catch {}
   const reason = check(input.tool_input?.command, input.cwd || HERE);
   if (reason) {
-    console.error(`관제사는 조종하지 않습니다 — ${reason}. atc CLI(node atcctl.mjs …)와 jq만 쓸 수 있습니다.`);
+    console.error(`CONTROLLER는 조종하지 않습니다 — ${reason}. atc CLI(node atcctl.mjs …)와 jq만 쓸 수 있습니다.`);
     process.exit(2);
   }
 }

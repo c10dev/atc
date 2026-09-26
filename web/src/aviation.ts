@@ -4,19 +4,19 @@ import type { Alert, AlertKind, Session, Ticket, TicketColumn } from "../../serv
 export { callsign, flightNumber } from "../../server/callsign.ts";
 
 const phaseByStateName: Record<string, string> = {
-  "In Progress": "순항",
-  "In Review": "접근",
-  "Ready to Merge": "착륙 허가",
+  "In Progress": "ENROUTE",
+  "In Review": "APPROACH",
+  "Ready to Merge": "CLEARED TO LAND",
 };
 
 const phaseByStateType: Record<string, string> = {
-  triage: "관제 대기",
-  backlog: "운항 예정",
-  unstarted: "비행계획 제출",
-  started: "순항",
-  completed: "도착",
-  canceled: "결항",
-  duplicate: "합편",
+  triage: "TRIAGE",
+  backlog: "SCHEDULED",
+  unstarted: "FILED",
+  started: "ENROUTE",
+  completed: "ARRIVED",
+  canceled: "CANCELLED",
+  duplicate: "CONSOLIDATED",
 };
 
 // Linear 상태 → 비행 단계. 모르는 상태는 Linear 이름 그대로.
@@ -26,7 +26,7 @@ export function flightPhase(t: Pick<Ticket, "state" | "stateType"> | TicketColum
   return phaseByStateName[name] ?? phaseByStateType[type] ?? name;
 }
 
-// 비행 단계의 색 계열과 운항 정보판에 쓰는 영문 약호.
+// 비행 단계의 색 계열과 FIDS에 쓰는 영문 약호.
 export type PhaseTone = "triage" | "scheduled" | "filed" | "enroute" | "approach" | "cleared" | "arrived" | "canceled";
 
 const toneByStateName: Record<string, PhaseTone> = {
@@ -78,13 +78,13 @@ export function aircraftStatus(session: Session, hasStand: boolean): AircraftSta
 }
 
 export const aircraftStatusLabel: Record<AircraftStatus, string> = {
-  airborne: "비행 중",
-  holding: "체공 대기",
-  parked: "주기",
-  nordo: "무선 두절",
+  airborne: "AIRBORNE",
+  holding: "HOLDING",
+  parked: "PARKED",
+  nordo: "NORDO",
 };
 
-export const HANDOFF_LABEL = "관제 이양";
+export const HANDOFF_LABEL = "HANDOFF";
 
 export const alertCode: Record<AlertKind, string> = {
   conflict: "LOS",
@@ -94,21 +94,21 @@ export const alertCode: Record<AlertKind, string> = {
 };
 
 export const alertLabel: Record<AlertKind, string> = {
-  conflict: "분리 기준 위반",
-  orphan: "무선 두절 점유",
-  unattended: "미식별 표적",
-  "no-workspace": "레이더 미포착",
+  conflict: "LOSS OF SEPARATION",
+  orphan: "NORDO STAND",
+  unattended: "UNIDENTIFIED",
+  "no-workspace": "NO CONTACT",
 };
 
 export function alertMessage(a: Alert, sessionName: (id: string) => string): string {
   switch (a.kind) {
     case "conflict":
-      return `${(a.sessionIds ?? []).map(sessionName).join(", ")} 가 같은 주기장에 있음`;
+      return `${(a.sessionIds ?? []).map(sessionName).join(", ")} 가 같은 STAND에 있음`;
     case "orphan":
-      return `${(a.sessionIds ?? []).map(sessionName).join(", ")} 교신이 끊긴 채 주기장을 점유`;
+      return `${(a.sessionIds ?? []).map(sessionName).join(", ")} CONTACT가 끊긴 채 STAND를 점유`;
     case "unattended":
-      return `점유한 항공기 없이 변경만 있음`;
+      return `점유한 AIRCRAFT 없이 변경만 있음`;
     case "no-workspace":
-      return `순항 중인데 주기장(워크트리)이 없음`;
+      return `ENROUTE인데 STAND(워크트리)가 없음`;
   }
 }

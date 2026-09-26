@@ -91,14 +91,14 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
     <section>
       <div className="toolbar">
         <span className="muted">
-          항공기 {graph.sessions.length} · 주기장 {graph.workspaces.length} · 편 {graph.tickets.length}
+          AIRCRAFT {graph.sessions.length} · STAND {graph.workspaces.length} · FLIGHT {graph.tickets.length}
           <span className="legend">
-            <i className="legend-line" /> 관제 확인 <i className="legend-line is-dashed" /> 추정 항적 <i className="legend-line is-dotted" /> 관제 이양
+            <i className="legend-line" /> IDENTIFIED <i className="legend-line is-dashed" /> ESTIMATED TRACK <i className="legend-line is-dotted" /> HANDOFF
           </span>
         </span>
         <label className="toggle">
           <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
-          빈 주기장 포함
+          빈 STAND 포함
         </label>
       </div>
       <div className="scope-frame">
@@ -120,9 +120,7 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
         </svg>
 
         <div className="map-col">
-          <h2 className="label">
-            AIRCRAFT <em>항공기</em>
-          </h2>
+          <h2 className="label">AIRCRAFT</h2>
           {graph.sessions.map((s) => {
             const status = aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id)));
             return (
@@ -139,13 +137,11 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
               </div>
             );
           })}
-          {graph.sessions.length === 0 && <p className="empty">주기장을 점유한 항공기 없음</p>}
+          {graph.sessions.length === 0 && <p className="empty">STAND를 점유한 AIRCRAFT 없음</p>}
         </div>
 
         <div className="map-col">
-          <h2 className="label">
-            STANDS <em>주기장</em>
-          </h2>
+          <h2 className="label">STANDS</h2>
           {graph.workspaces.map((w) => {
             const claimed = hasActiveClaim(idx.claimsByWorkspace.get(w.path));
             const conflict = (idx.alertsByWorkspace.get(w.path) ?? []).some((a) => a.kind === "conflict");
@@ -160,7 +156,7 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
                 <div className="blk-l1">
                   <AirportCode airport={idx.airportByRepo.get(w.repo)} />
                   <strong className="ellipsis">{w.name}</strong>
-                  {conflict && <span className="los-tag" title="분리 기준 위반">LOS</span>}
+                  {conflict && <span className="los-tag" title="LOSS OF SEPARATION">LOS</span>}
                   {w.dirty ? <span className="dirty" title={`변경 파일 ${w.dirty}개`}>Δ{w.dirty}</span> : null}
                 </div>
                 <div className="blk-l2">{w.branch ?? `detached ${w.head}`}</div>
@@ -170,9 +166,7 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
         </div>
 
         <div className="map-col">
-          <h2 className="label">
-            FLIGHT PLANS <em>비행계획</em>
-          </h2>
+          <h2 className="label">FLIGHT PLANS</h2>
           {graph.tickets.map((t) => {
             const noContact = (idx.alertsByTicket.get(t.key) ?? []).some((a) => a.kind === "no-workspace");
             const tone = phaseTone(t);
@@ -190,10 +184,11 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
                 <div className="blk-l1">
                   <strong>{flightNumber(t.key)}</strong>
                   {noContact ? (
-                    <span className="nc" title="순항 중인데 주기장(워크트리)이 없음">NO CONTACT</span>
+                    <span className="nc" title="ENROUTE인데 STAND(워크트리)가 없음">NO CONTACT</span>
                   ) : (
                     <span className="ph">
-                      {phaseCode[tone]} <em>{flightPhase(t)}</em>
+                      {phaseCode[tone]}
+                      {flightPhase(t) !== phaseCode[tone] && <> <em>{flightPhase(t)}</em></>}
                     </span>
                   )}
                 </div>

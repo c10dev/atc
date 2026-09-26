@@ -7,10 +7,10 @@ import { config } from "./config.ts";
 import type { Context, Hono } from "hono";
 import type { Airport, AirportStatus } from "./model.ts";
 
-// 저장소 = 공항. 등록부(~/.local/state/atc/airports.json)가 공항 목록의 기준이다.
+// 저장소 = AIRPORT. 등록부(~/.local/state/atc/airports.json)가 AIRPORT 목록의 기준이다.
 // - projectsDir 아래 git 저장소는 자동으로 개설되고, 그 밖의 저장소는 API로 개설한다.
-// - 공항은 저장소의 첫 커밋 해시로 알아본다. 폴더를 옮기거나 이름을 바꿔도 같은 공항·같은 코드로 이어진다.
-// - 폐쇄한 공항은 화면에서 빠지지만 등록부에는 남는다.
+// - AIRPORT는 저장소의 첫 커밋 해시로 알아본다. 폴더를 옮기거나 이름을 바꿔도 같은 AIRPORT·같은 코드로 이어진다.
+// - 폐쇄한 AIRPORT는 화면에서 빠지지만 등록부에는 남는다.
 
 const run = promisify(execFile);
 const CODE = /^[A-Z]{4}$/;
@@ -137,7 +137,7 @@ function discoverRepos(): string[] {
 
 const idCache = new Map<string, string>();
 
-// 첫 커밋(루트 커밋) 해시. 커밋이 없는 저장소는 경로로 대신한다(이때는 옮기면 새 공항이 된다).
+// 첫 커밋(루트 커밋) 해시. 커밋이 없는 저장소는 경로로 대신한다(이때는 옮기면 새 AIRPORT가 된다).
 async function rootId(path: string): Promise<string> {
   const cached = idCache.get(path);
   if (cached) return cached;
@@ -204,9 +204,9 @@ export class AirportError extends Error {
 }
 
 function checkCode(code: string, entries: AirportEntry[], selfId?: string) {
-  if (!CODE.test(code)) throw new AirportError(`코드는 대문자 4자여야 함: "${code}"`);
+  if (!CODE.test(code)) throw new AirportError(`AIRPORT 코드는 대문자 4자여야 함: "${code}"`);
   const other = entries.find((e) => e.code === code && e.id !== selfId);
-  if (other) throw new AirportError(`"${code}"는 이미 ${other.name} 공항이 씀`, 409);
+  if (other) throw new AirportError(`"${code}"는 이미 ${other.name} AIRPORT가 씀`, 409);
 }
 
 // 워크트리나 하위 폴더를 줘도 본 체크아웃을 찾는다.
@@ -217,7 +217,7 @@ async function mainCheckout(input: string): Promise<string> {
   try {
     const { stdout } = await run("git", ["-C", path, "rev-parse", "--path-format=absolute", "--git-common-dir"], { timeout: 10_000 });
     const common = stdout.trim();
-    if (basename(common) !== ".git") throw new AirportError("bare 저장소는 공항으로 쓸 수 없음");
+    if (basename(common) !== ".git") throw new AirportError("bare 저장소는 AIRPORT로 쓸 수 없음");
     return dirname(common);
   } catch (e) {
     if (e instanceof AirportError) throw e;
@@ -231,7 +231,7 @@ export async function openAirport(input: { path: string; code?: string; name?: s
   const root = await rootId(path);
   const { entries } = loadRegistry();
   const existing = entries.find((e) => e.path === path || (e.root === root && !existsSync(e.path)));
-  if (existing && !existing.closed && existing.path === path) throw new AirportError(`이미 개설된 공항: ${existing.code}`, 409);
+  if (existing && !existing.closed && existing.path === path) throw new AirportError(`이미 개설된 AIRPORT: ${existing.code}`, 409);
   if (existing) {
     existing.path = path;
     existing.closed = false;
@@ -255,7 +255,7 @@ export async function openAirport(input: { path: string; code?: string; name?: s
 export function updateAirport(id: string, patch: { code?: string; name?: string; closed?: boolean }): AirportEntry {
   const { entries } = loadRegistry();
   const entry = entries.find((e) => e.id === id);
-  if (!entry) throw new AirportError("그런 공항이 없음", 404);
+  if (!entry) throw new AirportError("그런 AIRPORT가 없음", 404);
   if (patch.code !== undefined) {
     const code = String(patch.code).toUpperCase();
     checkCode(code, entries, id);
@@ -274,7 +274,7 @@ export function updateAirport(id: string, patch: { code?: string; name?: string;
 export function removeAirport(id: string) {
   const { entries } = loadRegistry();
   const entry = entries.find((e) => e.id === id);
-  if (!entry) throw new AirportError("그런 공항이 없음", 404);
+  if (!entry) throw new AirportError("그런 AIRPORT가 없음", 404);
   if (discoverRepos().includes(entry.path)) throw new AirportError("자동으로 찾는 저장소는 지울 수 없음 — 폐쇄를 쓰세요", 409);
   saveRegistry(entries.filter((e) => e.id !== id));
 }

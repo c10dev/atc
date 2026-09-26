@@ -59,7 +59,7 @@ export function SettingsPanel({ settings, onClose }: { settings: Settings; onClo
         </div>
       </Section>
 
-      <Section code="MOTION" label="애니메이션" hint="레이더 스위프, 별, 깜빡임">
+      <Section code="MOTION" label="애니메이션" hint="RADAR 스위프, 별, 깜빡임">
         <Segmented
           label="애니메이션"
           value={settings.motion}
@@ -71,7 +71,7 @@ export function SettingsPanel({ settings, onClose }: { settings: Settings; onClo
         />
       </Section>
 
-      <Section code="TIME" label="시각 표시" hint="상단 시계, 운항 스트립의 마지막 교신">
+      <Section code="TIME" label="시각 표시" hint="상단 시계, FLIGHT STRIPS의 LAST CONTACT">
         <Segmented
           label="시각 표시"
           value={settings.clock}

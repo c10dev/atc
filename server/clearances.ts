@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { config } from "./config.ts";
 import type { Clearance, ClearanceType } from "./model.ts";
 
-// 관제 지시 기록. 추가만 하는 JSONL(issue / readback / cancel)을 접어서 현재 상태를 만든다.
+// CLEARANCE 기록. 추가만 하는 JSONL(issue / readback / cancel)을 접어서 현재 상태를 만든다.
 const FILE = join(config.stateDir, "clearances.jsonl");
 export const CLEARANCE_TYPES: ClearanceType[] = ["TRAFFIC", "HOLD", "CONTINUE", "LAND", "REPORT", "INFO"];
 
@@ -55,7 +55,7 @@ export function allClearances(): Clearance[] {
 
 export const isPending = (c: Clearance) => !c.readbackAt && !c.cancelledAt;
 
-// 화면용: 복창 대기 중이거나 최근 24시간 안의 지시
+// 화면용: READBACK 대기 중이거나 최근 24시간 안의 CLEARANCE
 export function recentClearances(now = Date.now()): Clearance[] {
   return allClearances().filter((c) => isPending(c) || now - Date.parse(c.at) < 86_400_000);
 }

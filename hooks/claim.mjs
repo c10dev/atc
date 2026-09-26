@@ -28,7 +28,7 @@ function candidatePaths(input) {
 }
 
 // 내가 마지막으로 건드린 뒤에 다른 세션이 같은 워크트리를 새로 잡았는가.
-// 그렇다면 지금은 되찾는 것이므로 since를 새로 시작해야 이양·충돌 판정이 맞다.
+// 그렇다면 지금은 되찾는 것이므로 since를 새로 시작해야 HANDOFF·충돌 판정이 맞다.
 function takenOverSince(claimsRoot, sessionId, fname, sinceMs) {
   for (const other of readdirSync(claimsRoot)) {
     if (other === sessionId) continue;
