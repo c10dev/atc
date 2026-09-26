@@ -18,6 +18,7 @@ description: OCC 한 바퀴 — 규정이 바뀌었는지 확인하고, 메모 �
    - `node ../controller/atcctl.mjs schedule brief`를 실행하고 `candidates`를 본다.
    - 후보 FLIGHT 3개까지 `dispatch flight <FLIGHT key>`로 읽는다. `candidates.classify`에 있으면 `schedule draft CLASSIFY <FLIGHT> [--type …] [--wake …] [--rating …] -- "<근거>"`. `candidates.prioritize`에 있고 본문·댓글에 근거가 있으면 `schedule draft PRIORITIZE <FLIGHT> --priority <1-4> -- "<근거>"`. 근거가 없으면 PRIORITIZE는 건너뛴다.
    - `LIMIT`이 나오면 이번 바퀴는 초안을 그만 쓴다. Linear에는 쓰지 않는다.
+   - 열린 `NEW`(CHARTER DESK의 AD HOC FLIGHT) 초안도 한도 5건에 든다. CHARTER REQUEST는 바퀴마다 할 일이 아니다 — SUPERVISOR가 이 세션에서 요청할 때 CLAUDE.md의 "CHARTER DESK"대로 한다.
 6. OCC LOG를 한두 줄 남긴다. 아무 일 없으면 "특이 사항 없음".
 
 판정(승인·거절)은 하지 않는다. send-guard가 막으면 다시 시도하지 말고 SUPERVISOR에게 보고한다.

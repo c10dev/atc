@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseDraft, payloadText } from "./atcctl.mjs";
+import { draftText, parseDraft, payloadText } from "./atcctl.mjs";
+import { simpleCommands } from "../hooks/shell.mjs";
 
 const argv = (s) => s.split(" ");
 
@@ -42,4 +43,55 @@ test("payloadText", () => {
   assert.equal(payloadText({ kind: "CLASSIFY", payload: { type: "MAINT", wake: "M", ratings: ["SEC"] } }), "type:MAINT wake:M rating:SEC");
   assert.equal(payloadText({ kind: "CLASSIFY", payload: { ratings: ["UI"] } }), "rating:UI");
   assert.equal(payloadText({ kind: "PRIORITIZE", payload: { priority: 3 } }), "priority 3(Medium)");
+});
+
+// ── NEW (CHARTER DESK, AD HOC FLIGHT 초안) ──
+
+// OCC가 실제로 칠 명령: 여러 단어 인자는 따옴표, 본문은 작은따옴표 안에 \n
+const NEW_CMD = `node ../controller/atcctl.mjs schedule draft NEW --title "Practice 시트: 머리 줄 #2 맞추기" --project "Web UX" --priority 3 --type BUILD --wake M --rating UI --tail TEAM_E --related VOC-60 --related VOC-61 --blocked-by VOC-52 --reason "SUPERVISOR 요청. 중복 검색: VOC-179 비슷함(범위 다름)" -- '## 목표\n머리 줄 정렬\n## 수정 허용 범위\n- \`src/app/**\`\n## 금지 사항\n- DB\n## 완료 기준\n- 390px 확인'`;
+
+test("NEW: 셸이 나눈 인자 그대로 파싱, 본문의 \\n은 줄바꿈", () => {
+  const [words] = simpleCommands(NEW_CMD);
+  assert.deepEqual(parseDraft(words.slice(4)), {
+    kind: "NEW",
+    title: "Practice 시트: 머리 줄 #2 맞추기",
+    project: "Web UX",
+    priority: "3",
+    type: "BUILD",
+    wake: "M",
+    ratings: ["UI"],
+    tail: "TEAM_E",
+    related: ["VOC-60", "VOC-61"],
+    blockedBy: ["VOC-52"],
+    reason: "SUPERVISOR 요청. 중복 검색: VOC-179 비슷함(범위 다름)",
+    body: "## 목표\n머리 줄 정렬\n## 수정 허용 범위\n- `src/app/**`\n## 금지 사항\n- DB\n## 완료 기준\n- 390px 확인",
+  });
+  assert.equal(parseDraft(["new", "--title", "t", "--project", "p", "--reason", "r", "--", "a", "b\\nc"]).body, "a b\nc");
+});
+
+const badNew = [
+  ["제목 없음", ["NEW", "--project", "p", "--reason", "r", "--", "b"], /--title가 필요/],
+  ["프로젝트 없음", ["NEW", "--title", "t", "--reason", "r", "--", "b"], /--project가 필요/],
+  ["근거 없음", ["NEW", "--title", "t", "--project", "p", "--", "b"], /--reason가 필요/],
+  ["본문 없음", ["NEW", "--title", "t", "--project", "p", "--reason", "r"], /본문이 필요/],
+  ["모르는 옵션", ["NEW", "--flight", "VOC-1", "--", "b"], /NEW에 쓸 수 없는 옵션 --flight/],
+  ["값 없는 옵션", ["NEW", "--title", "--project", "p", "--", "b"], /--title 뒤에 값/],
+  ["한 번만 쓰는 옵션", ["NEW", "--title", "a", "--title", "b", "--", "b"], /한 번만/],
+];
+for (const [name, args, re] of badNew) test(`NEW 거부: ${name}`, () => assert.throws(() => parseDraft(args), re));
+
+test("draftText: NEW는 AD HOC FLIGHT 초안과 비슷한 FLIGHT", () => {
+  const op = { id: "S-0007", kind: "NEW", flight: null, payload: { title: "재생 버튼 정리", project: "Web UX", type: "BUILD", tail: "TEAM_E", similar: [{ key: "VOC-60", title: "재생 화면 버튼" }] } };
+  assert.equal(
+    draftText(op),
+    "S-0007 AD HOC FLIGHT 초안 · 재생 버튼 정리\n  Web UX · priority 없음 · type:BUILD tail:TEAM_E (그림자 운용, Linear에 쓰지 않음)\n  비슷한 FLIGHT 1건:\n    VOC-60 재생 화면 버튼",
+  );
+  assert.match(draftText({ ...op, payload: { ...op.payload, priority: 2, similar: [] } }), /Web UX · High · .*\n  비슷한 FLIGHT 없음$/);
+  assert.equal(draftText({ id: "S-0001", kind: "CLASSIFY", flight: "VOC-1", payload: { wake: "L" } }), "S-0001 CLASSIFY VOC-1 초안 · wake:L (그림자 운용, Linear에 쓰지 않음)");
+});
+
+test("OCC guard(--gh-read)는 현실적인 NEW 명령을 통과시킨다: 따옴표 인자, 한국어, #, :, 본문의 \\n과 백틱", async () => {
+  const { check } = await import("./guard.mjs");
+  const OCC = new URL("../occ", import.meta.url).pathname;
+  assert.equal(check(NEW_CMD, OCC, { ghRead: true }), null);
 });

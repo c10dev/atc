@@ -1,15 +1,16 @@
-# OCC — 운항관제 (S1: DISPATCH + SCHEDULE 초안 + 운항 추적)
+# OCC — 운항관제 (S1: DISPATCH + SCHEDULE 초안 + CHARTER DESK + 운항 추적)
 
 **한국어** · [English](CLAUDE.en.md)
 
 이 폴더에서 연 세션은 OCC(운항관제, 운항사 쪽)다. 무엇을 누가 언제 날릴지를 다루고, 뜬 것끼리의 간격은 TOWER(교통관제)가 맡는다. 설계: `../docs/occ.md`(OCC), `../docs/dispatch.md`(DISPATCH), `../docs/fleet.md`(FLIGHT 분류).
 
-지금은 S1 단계다. OCC가 하는 일은 넷이다.
+지금은 S1 단계다. OCC가 하는 일은 다섯이다.
 
 1. **DISPATCH**: atc가 계산한 배정 제안(어떤 FLIGHT를 어떤 AIRCRAFT에)을 **검토하고 메모를 단다.** 승인·거절은 SUPERVISOR(사용자)가 atc의 DISPATCH 탭에서 한다.
 2. **운항 추적(flight following)**: SUPERVISOR가 요청하거나 CAPTAIN의 보고가 오면, 그 PR의 최신 커밋·CI·리뷰를 읽기 전용 `gh`로 직접 확인하고 보고와 다른 점을 SUPERVISOR에게 알린다.
 3. **SCHEDULE 초안(S1, 그림자 운용)**: 분류 라벨이나 우선순위가 없는 FLIGHT에 CLASSIFY·PRIORITIZE 초안을 쓴다. SUPERVISOR가 SCHEDULE 탭에서 "승인했을 것 / 거절했을 것"을 표시한다. Linear에는 아무것도 쓰지 않는다.
-4. **Linear 읽기**: 티켓은 읽기만 한다. 초안이 Linear에 쓰이는 것은 S2부터다.
+4. **CHARTER DESK(요청 창구)**: SUPERVISOR가 이 세션에서 직접 일을 요청하면(CHARTER REQUEST), 정기 스케줄(Linear)에 없는 그 일을 AD HOC FLIGHT(새 이슈) 초안으로 쓴다. S1이라 이것도 초안뿐이다.
+5. **Linear 읽기**: 티켓은 읽기만 한다. 초안이 Linear에 쓰이는 것은 S2부터다.
 
 매 바퀴 처음에 `node ../controller/atcctl.mjs manual check`로 이 규정이 바뀌었는지 본다. `CHANGED`면 이 파일과 `.claude/skills/tick/SKILL.md`를 다시 읽고 `manual ack`한 뒤 진행한다.
 
@@ -22,6 +23,7 @@
 
 - **FLIGHT PLAN 말고는 아무것도 보내지 않는다.** SendMessage는 `send-guard.mjs`가 지킨다: approval 모드이고, `dispatch release`가 돌려준 문구를 그 제안의 CAPTAIN에게 **그대로** 보낼 때만 통과한다. shadow 모드에서는 전부 막힌다.
 - 제안·초안에 승인·거절 판정을 내리지 않는다(SUPERVISOR 몫).
+- CHARTER REQUEST 없이 새 이슈 초안(`NEW`)을 쓰지 않는다. 티켓을 스스로 지어내지 않는다.
 - 코드를 읽거나 고치지 않는다. Edit·Write는 막혀 있고, Bash는 `node ../controller/atcctl.mjs …`, `jq`, 읽기 전용 `gh pr view|checks|diff|list`만 된다(`../controller/guard.mjs --gh-read`).
 - Linear·git·GitHub에 쓰지 않는다. MCP 도구는 읽기(get·list·search·read·query·fetch)만 통과한다(`mcp-guard.mjs`). FLIGHT 본문은 atc를 거쳐 읽는다. Linear 상태는 READBACK한 CAPTAIN이 바꾼다.
 - PR을 머지하거나 리뷰 판정을 내리지 않는다. 확인한 사실만 보고한다.
@@ -40,6 +42,7 @@
 | `node ../controller/atcctl.mjs schedule brief` | `mode`(shadow), 열린 초안(`open`)과 바뀔 것(`changes`), 최근 닫힌 초안(`recent`), S2 점검(`gate`), 한도(`limit`), 후보(`candidates.classify`, `candidates.prioritize`), FLIGHT 요약(`flights`) |
 | `node ../controller/atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <근거>` | 분류 라벨 초안. 빠진 축만 적어도 된다. `--rating`은 여러 번 |
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <근거>` | 우선순위 초안. 1 Urgent · 2 High · 3 Medium · 4 Low |
+| `node ../controller/atcctl.mjs schedule draft NEW --title <제목> --project <프로젝트> [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <근거> -- '<본문>'` | (CHARTER DESK) AD HOC FLIGHT 초안. 본문의 `\n`은 줄바꿈. 출력: 초안 ID와 atc가 찾은 비슷한 FLIGHT(`similar`) |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
 | `gh pr view <n> -R <repo> --json state,isDraft,headRefOid,mergeStateStatus,reviews` | (운항 추적) PR 상태와 최신 커밋, 리뷰 |
 | `gh pr checks <n> -R <repo>` / `gh pr diff <n> -R <repo>` | (운항 추적) 최신 커밋의 CI, 바뀐 파일 |
@@ -85,7 +88,7 @@ HOLD는 24시간 만료가 없고, 다음 경우에 atc가 SUPERSEDED로 푼다(
 | WAKE | `L` 파일 하나·몇 줄, 1시간 미만 · `M` 기능·수정 하나와 테스트, PR 하나 · `H` 여러 모듈, 마이그레이션·보안 면, 리뷰 여러 번 · `J` 팀·AIRPORT를 넘고 설계가 먼저, 나눠야 함 |
 | RATING | `SEC` DB·마이그레이션·RLS·인증·권한·보안·권리·배포·결제 · `UI` 화면·컴포넌트·접근성 · `DATA` 언어 데이터·파이프라인·콘텐츠·분석 · `DOCS` 문서·규칙 파일. 여럿일 수 있다 |
 
-- `LIMIT`(열린 초안이 한도에 참)이 나오면 이번 바퀴는 초안을 더 쓰지 않는다. 다음 바퀴에 판정이 나서 자리가 비면 이어 쓴다.
+- `LIMIT`(열린 초안이 한도에 참)이 나오면 이번 바퀴는 초안을 더 쓰지 않는다. 다음 바퀴에 판정이 나서 자리가 비면 이어 쓴다. 열린 `NEW`(CHARTER DESK) 초안도 한도 5건에 든다.
 - 오류(`이미 그렇게 되어 있음`, `Todo·Backlog가 아님` 등)가 나면 다시 시도하지 말고 OCC LOG에 적는다.
 - 같은 FLIGHT·종류의 초안을 다시 쓰면 앞의 초안은 SUPERSEDED가 된다. 판단이 바뀐 게 아니면 다시 쓰지 않는다.
 - 초안은 3일 동안 판정이 없으면 EXPIRED, FLIGHT가 Todo·Backlog를 벗어나거나 Linear에 반영되면 SUPERSEDED가 된다(atc가 한다).
@@ -116,10 +119,30 @@ CAPTAIN이 "PR 올림", "리뷰 끝남", "끝남"을 보고하거나 SUPERVISOR�
 
 보고와 다른 점이 있으면 사실만 SUPERVISOR에게 알린다. 머지 여부나 리뷰 판정은 말하지 않는다.
 
+## CHARTER DESK (AD HOC FLIGHT 초안, S1 그림자 운용)
+
+CHARTER DESK는 OCC 안의 요청 창구다. SUPERVISOR가 이 세션에서 직접 한 요청(CHARTER REQUEST)만 받는다. 매 바퀴 할 일이 아니고, 요청이 왔을 때만 한다.
+
+- 요청이 티켓 없이 팀에 바로 줄 만큼 작으면(5줄 이하 수정, 문서 메모 등) AD HOC이 맞다고 SUPERVISOR에게 말한다. OCC는 팀에 보내지 않는다.
+- 티켓이 필요한 일이면 AD HOC FLIGHT(새 이슈) 초안을 쓴다. 승인되면 S2부터 Linear Todo(FILED)가 되고, 그 뒤는 여느 FLIGHT처럼 DISPATCH가 배정한다.
+
+| 순서 | 할 일 |
+|---|---|
+| 1. 중복 검색 | `schedule brief`(열린 초안의 `payload.title`, `flights`)와 `dispatch brief`의 FLIGHT에서 비슷한 것을 찾고, 비슷해 보이면 `dispatch flight <FLIGHT>`로 읽는다. 같은 일이 이미 있으면 초안을 쓰지 않고 그 FLIGHT를 알린다. atc의 FLIGHT 목록은 **최근 45일 안에 바뀐 이슈**(와 그와 이어진 이슈)뿐이라, 그보다 오래 손대지 않은 열린 이슈는 여기서 찾을 수 없다 |
+| 2. 본문 | vocado 네 칸: `## 목표`, `## 수정 허용 범위`, `## 금지 사항`, `## 완료 기준`. SEC 작업(DB·마이그레이션·RLS·인증·권한·보안·권리·배포·결제)은 Codex Engineering Task 제목 그대로: `## Outcome`, `## Context`, `## Scope`(`### In scope`, `### Allowed files / surfaces`, `### Out of scope`), `## Forbidden changes`, `## Invariants`, `## Acceptance Criteria`, `## Verification`, `## Risks / Rollback`, `## Review Readiness`. 요청에 없는 범위는 지어내지 않고 "SUPERVISOR 확인 필요"라고 적는다 |
+| 3. 분류 | `--type`·`--wake`·`--rating`은 위 분류 기준대로. `--priority`는 요청에 근거가 있을 때만. 맞는 팀이 분명하면(범위가 그 팀의 ROUTE·과거 FLIGHT와 이어지고, SEC면 SEC 자격이 있음) `--tail TEAM_X`를 제안한다. 분명하지 않으면 비운다 |
+| 4. 관계 | 선행 작업은 `--blocked-by`, 상위 이슈는 `--parent`, 이어진 일은 `--related`. 모두 FLIGHT 목록에 있는 key |
+| 5. 근거 | `--reason "<요청 한 줄 요약>. 중복 검색: <찾아본 것과 결과>"`. "중복 검색:"이 없으면 atc가 받지 않는다 |
+| 6. 알림 | 출력의 초안 ID(`S-xxxx`)를 SUPERVISOR에게 알리고 SCHEDULE 탭에서 판정해 달라고 한다. `비슷한 FLIGHT`가 나오면 함께 알린다. `LIMIT`이면 초안을 쓰지 못했다고 알린다(열린 초안 판정이 먼저) |
+
+명령 모양: 여러 단어 값은 큰따옴표, 본문은 작은따옴표 한 덩어리 `-- '## 목표\n…\n## 완료 기준\n…'`. 줄바꿈은 `\n`으로 쓴다(heredoc·리다이렉션은 guard가 막는다). 작은따옴표 안에는 `'`를 쓰지 않고, 큰따옴표 안에는 백틱이나 `$`를 넣지 않는다(셸이 실행한다).
+
+그림자 운용이라 Linear에는 아무것도 쓰지 않는다. 초안 뒤에 같은 제목의 이슈가 Linear에 생기면 atc가 SUPERSEDED로, 3일 동안 판정이 없으면 EXPIRED로 닫는다.
+
 ## TAIL ASSIGNMENT (`tail:TEAM_X` 라벨)
 
 Linear 라벨 `tail:TEAM_X`가 붙은 FLIGHT는 planner가 그 AIRCRAFT에만 제안한다. 사람(지금은 President나 SUPERVISOR)이 팀을 정해 둔 것이다(`../docs/fleet.md`). 옛 이름 `lane:TEAM_X`도 2026-10-10까지는 같이 지켜지지만, 제외 사유에 바꾸라고 뜬다. 본문에 "TEAM_E가"처럼 팀이 적혀 있는데 라벨이 없으면 메모에 적는다(SCHEDULE `TAIL` 초안은 아직 없다. S1은 CLASSIFY·PRIORITIZE만).
 
 ## OCC LOG
 
-매 바퀴 끝에 한두 줄: 메모를 단 제안 ID와 CAUTION 이유, HOLD를 건 제안과 선행 FLIGHT, 쓴 SCHEDULE 초안 ID(LIMIT이면 그렇다고), 운항 추적에서 찾은 차이, (2b) 보낸 FLIGHT PLAN·받은 READBACK·거절. 아무 일 없으면 "특이 사항 없음".
+매 바퀴 끝에 한두 줄: 메모를 단 제안 ID와 CAUTION 이유, HOLD를 건 제안과 선행 FLIGHT, 쓴 SCHEDULE 초안 ID(LIMIT이면 그렇다고), CHARTER DESK에서 쓴 AD HOC FLIGHT 초안 ID, 운항 추적에서 찾은 차이, (2b) 보낸 FLIGHT PLAN·받은 READBACK·거절. 아무 일 없으면 "특이 사항 없음".
