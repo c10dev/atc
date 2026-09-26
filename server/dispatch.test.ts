@@ -204,25 +204,32 @@ test("우선순위 없는 FLIGHT는 사람이 정할 때까지 ASSIGN 후보가 
   assert.deepEqual(p.excluded.find((e) => e.flight === "VOC-177"), { flight: "VOC-177", reason: "우선순위 없음 — 사람이 정할 때까지 배정하지 않음" });
 });
 
-test("lane:TEAM_X 라벨: 지정 팀에만 제안하고, 그 팀이 못 받으면 다른 팀에 주지 않는다", () => {
+test("TAIL ASSIGNMENT(tail:TEAM_X): 지정 팀에만 제안하고, 그 팀이 못 받으면 다른 팀에 주지 않는다", () => {
   const s = snap({
     sessions: [session("b", "TEAM_B"), session("d", "TEAM_D"), session("e", "TEAM_E", "busy")],
     tickets: [
-      ticket("VOC-80", { priority: 1, labels: ["lane:TEAM_D"] }),
-      ticket("VOC-81", { priority: 1, labels: ["lane:TEAM_E"] }),
-      ticket("VOC-82", { labels: ["Lane: team_z"] }),
+      ticket("VOC-80", { priority: 1, labels: ["tail:TEAM_D"] }),
+      ticket("VOC-81", { priority: 1, labels: ["tail:TEAM_E"] }),
+      ticket("VOC-82", { labels: ["Tail: team_z"] }),
       ticket("VOC-83"),
     ],
   });
   const p = planDispatch(s, new Map([["b", ["VOC-80"]]]), cfg(), NOW);
-  // TEAM_B가 VOC-80 이력(적합도)이 있어도 lane이 TEAM_D라 TEAM_D에게 간다
+  // TEAM_B가 VOC-80 이력(적합도)이 있어도 tail이 TEAM_D라 TEAM_D에게 간다
   assert.deepEqual(p.assign.map((a) => `${a.flight}→${a.aircraftName}`).sort(), ["VOC-80→TEAM_D", "VOC-83→TEAM_B"]);
   const why = Object.fromEntries(p.excluded.map((e) => [e.flight, e.reason]));
-  assert.equal(why["VOC-81"], "lane:TEAM_E — 지정 팀 배정 불가(TEAM_E AIRBORNE)");
-  assert.equal(why["VOC-82"], "lane:TEAM_Z — 그 TEAM 세션이 없음");
+  assert.equal(why["VOC-81"], "tail:TEAM_E — 지정 팀 배정 불가(TEAM_E AIRBORNE)");
+  assert.equal(why["VOC-82"], "tail:TEAM_Z — 그 TEAM 세션이 없음");
 });
 
-test("lanesOf: 대소문자와 공백을 가리지 않고, lane 아닌 라벨은 무시한다", async () => {
-  const { lanesOf } = await import("./dispatch.ts");
-  assert.deepEqual([...lanesOf({ labels: ["lane:TEAM_E", "Lane: team_b", "symphony-pilot", "lane:"] })], ["TEAM_E", "TEAM_B"]);
+test("tailsOf: tail:과 옛 lane:을 함께 읽고, 대소문자·공백을 가리지 않으며, 다른 라벨은 무시한다", async () => {
+  const { tailsOf } = await import("./dispatch.ts");
+  assert.deepEqual([...tailsOf({ labels: ["tail:TEAM_E", "Lane: team_b", "symphony-pilot", "tail:"] })], ["TEAM_E", "TEAM_B"]);
+});
+
+test("옛 lane: 라벨은 계속 지키되, 제외 사유에 tail:로 바꾸라고 적는다", () => {
+  const s = snap({ sessions: [session("b", "TEAM_B"), session("e", "TEAM_E", "busy")], tickets: [ticket("VOC-90", { labels: ["lane:TEAM_E"] })] });
+  const p = planDispatch(s, new Map(), cfg(), NOW);
+  assert.deepEqual(p.assign, []);
+  assert.equal(p.excluded.find((e) => e.flight === "VOC-90")?.reason, "tail:TEAM_E (옛 lane: 라벨 — tail:로 바꿀 것) — 지정 팀 배정 불가(TEAM_E AIRBORNE)");
 });

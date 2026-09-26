@@ -131,11 +131,14 @@ export interface Plan {
 const DAY = 86_400_000;
 export const DONE_STATES = new Set(["completed", "canceled", "duplicate"]);
 
-// `lane:TEAM_X` 라벨: 사람(또는 OCC)이 그 FLIGHT를 맡을 팀을 정해 둔 것. 있으면 그 팀에만 제안한다.
-// 두 배정자(사람의 직접 배정과 DISPATCH)가 같은 FLIGHT를 다른 팀에 주는 일을 막는다.
-export function lanesOf(t: Pick<Ticket, "labels">): Set<string> {
-  return new Set(t.labels.map((l) => /^lane:\s*(\S+)$/i.exec(l.trim())?.[1]?.toUpperCase()).filter(Boolean) as string[]);
+// TAIL ASSIGNMENT(`tail:TEAM_X` 라벨, docs/fleet.md): 사람(또는 OCC)이 그 FLIGHT를 맡을 AIRCRAFT를 정해 둔 것.
+// 있으면 그 팀에만 제안한다. 두 배정자(사람의 직접 배정과 DISPATCH)가 같은 FLIGHT를 다른 팀에 주는 일을 막는다.
+// `lane:`은 옛 이름이라 2026-10-10까지 같이 읽고, 제외 사유에 바꾸라고 적는다.
+const TAIL_LABEL = /^(tail|lane):\s*(\S+)$/i;
+export function tailsOf(t: Pick<Ticket, "labels">): Set<string> {
+  return new Set(t.labels.map((l) => TAIL_LABEL.exec(l.trim())?.[2]?.toUpperCase()).filter(Boolean) as string[]);
 }
+const usesOldLane = (t: Pick<Ticket, "labels">) => t.labels.some((l) => /^lane:/i.test(l.trim()));
 const PRIORITY_VALUE: Record<number, number> = { 0: 1.5, 1: 4, 2: 3, 3: 2, 4: 1 };
 export const PRIORITY_NAME: Record<number, string> = { 0: "없음", 1: "Urgent", 2: "High", 3: "Medium", 4: "Low" };
 const round1 = (x: number) => Math.round(x * 10) / 10;
@@ -224,19 +227,19 @@ export function planDispatch(
       hold.push({ flight: t.key, blockedBy: blockers });
       continue;
     }
-    const lanes = lanesOf(t);
-    if (lanes.size) {
-      const laneTag = [...lanes].map((n) => `lane:${n}`).join(", ");
-      const mine = aircraft.filter((ac) => lanes.has(ac.name.toUpperCase()));
+    const tails = tailsOf(t);
+    if (tails.size) {
+      const tailTag = [...tails].map((n) => `tail:${n}`).join(", ") + (usesOldLane(t) ? " (옛 lane: 라벨 — tail:로 바꿀 것)" : "");
+      const mine = aircraft.filter((ac) => tails.has(ac.name.toUpperCase()));
       if (!mine.length) {
-        excluded.push({ flight: t.key, reason: `${laneTag} — 그 TEAM 세션이 없음` });
+        excluded.push({ flight: t.key, reason: `${tailTag} — 그 TEAM 세션이 없음` });
         continue;
       }
       if (!mine.some((ac) => ac.available && !ac.reserved && ac.airport === airport)) {
         const stateOf = (ac: AircraftState) =>
           !ac.available ? ac.reason : ac.reserved ? `진행 중인 제안 ${ac.reserved}` : `소속 AIRPORT ${ac.airport ?? "없음"}`;
         const why = mine.map((ac) => `${ac.name} ${stateOf(ac)}`).join(", ");
-        excluded.push({ flight: t.key, reason: `${laneTag} — 지정 팀 배정 불가(${why})` });
+        excluded.push({ flight: t.key, reason: `${tailTag} — 지정 팀 배정 불가(${why})` });
         continue;
       }
     }
@@ -278,9 +281,9 @@ export function planDispatch(
   const limitOf = (code: string) => cfg.slots.airborne[code] ?? cfg.slots.defaultAirborne;
   const pairs = eligible
     .flatMap((t) => {
-      const lanes = lanesOf(t);
+      const tails = tailsOf(t);
       return aircraft
-        .filter((ac) => ac.available && !ac.reserved && ac.airport === t.airport && (!lanes.size || lanes.has(ac.name.toUpperCase())))
+        .filter((ac) => ac.available && !ac.reserved && ac.airport === t.airport && (!tails.size || tails.has(ac.name.toUpperCase())))
         .map((ac) => ({ t, ac, ...score(t, ac) }));
     })
     .sort((a, b) => b.score - a.score || a.t.key.localeCompare(b.t.key) || a.ac.name.localeCompare(b.ac.name));

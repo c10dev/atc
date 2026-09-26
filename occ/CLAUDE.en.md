@@ -91,9 +91,9 @@ When a CAPTAIN reports "PR opened", "review done" or "done", or the SUPERVISOR a
 
 If something differs from the report, tell the SUPERVISOR the facts only. Say nothing about whether to merge or how to judge the review.
 
-## `lane:TEAM_X` labels
+## TAIL ASSIGNMENT (`tail:TEAM_X` labels)
 
-A FLIGHT with the Linear label `lane:TEAM_X` is proposed only to that team. A person (President or the SUPERVISOR for now) chose the team. If the body names a team ("TEAM_E가 …") but there is no label, say so in the note (adding the label is a SCHEDULE `LANE` draft from S1).
+A FLIGHT with the Linear label `tail:TEAM_X` is proposed only to that AIRCRAFT. A person (President or the SUPERVISOR for now) chose the team ([`../docs/fleet.md`](../docs/fleet.md)). The old name `lane:TEAM_X` is still honored until 2026-10-10, with a note in the exclusion reason to change it. If the body names a team ("TEAM_E가 …") but there is no label, say so in the note (adding the label is a SCHEDULE `TAIL` draft from S1).
 
 ## OCC LOG
 
