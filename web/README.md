@@ -23,6 +23,7 @@ server ──SSE /api/events (snapshot every 2 s)──▶ useSnapshot ──▶
 ```
 
 - `useSnapshot.ts` opens an `EventSource` on `/api/events` and keeps the latest `Snapshot`. The header shows the connection as live / connecting / lost.
+- The same stream carries `version` (the bundle the server serves). `main.tsx` takes the page's own bundle from `new URL(import.meta.url).pathname` (`/assets/index-<hash>.js` in a build) and `NewVersion.tsx` shows "새 버전이 배포됨 · 새로고침" under the header when they differ (`showNewVersion` in `server/version.ts`). It never reloads on its own; 닫기 hides it for that build while the tab is open. In dev (`/src/main.tsx`) or with no server build it never shows.
 - `derive.ts` builds lookup indexes from a snapshot (ticket → worktree → claim → session, session location, ordering).
 - Types come straight from the server (`../../server/model.ts` and friends), so the UI and API can't drift apart.
 - METRICS, DISPATCH and SCHEDULE fetch their own endpoints (`/api/metrics`, `/api/dispatch/…`, `/api/schedule/brief`) and refetch once a minute (keyed to the snapshot time).
@@ -71,9 +72,10 @@ Themes are sets of CSS tokens under `:root[data-theme="…"]` in `styles.css`; `
 | File | Role |
 |---|---|
 | `index.html` | Entry page |
-| `src/main.tsx` | Applies saved settings before the first paint, mounts `App` |
+| `src/main.tsx` | Applies saved settings before the first paint, reads the page's own bundle path, mounts `App` |
 | `src/App.tsx` | Header, tabs, alert ticker, handoff list, clock |
-| `src/useSnapshot.ts` | SSE connection; `useNow` re-renders relative times |
+| `src/useSnapshot.ts` | SSE connection (snapshots and the server's bundle); `useNow` re-renders relative times |
+| `src/NewVersion.tsx` | "새 버전이 배포됨 · 새로고침" notice (a polite `role="status"` region) |
 | `src/derive.ts` | Indexes and helpers over a snapshot |
 | `src/aviation.ts` | Code names → aviation terms, phase colors and codes |
 | `src/settings.ts` | Settings store, themes, clock formatting |

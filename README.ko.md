@@ -143,6 +143,12 @@ systemctl --user restart atc          # 코드 수정 후 (빌드 포함)
 journalctl --user -u atc -f           # 로그
 ```
 
+재시작 전에 열어 둔 탭은 옛 번들을 계속 돌린다. 서버가 새 번들을 내주기 시작하면 그 탭 머리글 아래에 "새 버전이 배포됨 · 새로고침"이 뜬다. 저절로 새로고침하지는 않는다.
+
+| API | |
+|---|---|
+| `GET /api/version` | `{build, startedAt}`: 지금 내주는 번들(`web/dist/index.html`의 `/assets/index-<hash>.js`, 빌드가 없으면 `null`)과 서버 시작 시각. `/api/events`에도 `event: version`으로 온다 |
+
 `.env.local`에 `LINEAR_API_KEY`가 없으면 Linear 없이 브랜치에서 찾은 티켓만 보여준다.
 
 ## 점유 hook
@@ -350,7 +356,8 @@ atc/
 │   ├── recorder.ts         # FLIGHT RECORDER 기록
 │   ├── occupancy.ts        # HANDOFF·충돌 판정 (occupancy.test.ts)
 │   ├── snapshot.ts         # 소스 병합 + 경고 계산
-│   └── index.ts            # /api/snapshot, /api/events
+│   ├── version.ts          # index.html에서 읽는 번들 정체, 새 버전 판정 (화면과 공용, version.test.ts)
+│   └── index.ts            # /api/snapshot, /api/events, /api/version
 ├── web/src/                # Vite + React. 연결 / 팀 / 티켓 화면
 ├── occ/                    # OCC 세션 작업 폴더 (CLAUDE.md, /tick, 설정, send-guard, mcp-guard)
 ├── crosscheck/             # CROSSCHECK 세션 작업 폴더 (CLAUDE.md, /tick, fail-closed 설정)
