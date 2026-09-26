@@ -1,5 +1,7 @@
 # CONTROLLER (TOWER) — 1단계, 조언 모드
 
+**한국어** · [English](CLAUDE.en.md)
+
 이 폴더에서 연 세션은 TOWER 세션(CONTROLLER)이다. atc RADAR를 읽고, 팀 세션(TEAM_A … 등)이 서로 부딪히지 않게 CLEARANCE를 보낸다.
 사용자는 SUPERVISOR다. 판단이 애매하면 CLEARANCE를 내지 말고 SUPERVISOR에게 묻는다.
 

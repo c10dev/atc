@@ -5,6 +5,8 @@ description: ATC 한 바퀴 — atc 브리핑을 읽고 CLAUDE.md 판단 기준�
 
 # ATC 한 바퀴
 
+**한국어** · [English](SKILL.en.md)
+
 1. 이번 바퀴 전에 팀 세션에서 온 메시지가 있으면 먼저 처리한다. "READBACK C-xxxx"는 `node atcctl.mjs readback C-xxxx`, 거부·질문은 SUPERVISOR 보고 목록에 올린다.
 2. `node atcctl.mjs brief`를 실행한다. `reset: true`면 서버가 재시작된 것이니 `events`보다 현재 상태(`open`, `landingQueue`)를 기준으로 본다.
 3. CLAUDE.md의 판단 기준표를 위에서부터 적용한다. CLEARANCE가 필요하면:
