@@ -1198,9 +1198,8 @@ a.ticket:hover {
   white-space: pre;
 }
 
-/* ── split-flap: 윗장이 앞으로 꺾여 떨어지고(fl-out) 아랫장이 올라와 붙는다(fl-in) ── */
+/* ── split-flap 칸의 반쪽 판. 넘기는 움직임은 SplitFlap.tsx가 건다 ── */
 .is-flipping {
-  --flap-half: 40ms;
   perspective: 90px;
 }
 .fl-sizer {
@@ -1245,35 +1244,6 @@ a.ticket:hover {
 }
 .fl-bot i {
   top: -100%;
-}
-/* 판 뒤에 숨은 면: 새 글자 윗면은 윗장이 떨어진 뒤에, 옛 글자 아랫면은 아랫장이 올라올 때까지만 */
-.fl-next {
-  animation: fl-hidden var(--flap-half);
-}
-.fl-prev {
-  animation: fl-hidden var(--flap-half) var(--flap-half) forwards;
-}
-.fl-out {
-  animation: fl-out var(--flap-half) ease-in forwards;
-}
-.fl-in {
-  animation: fl-in var(--flap-half) var(--flap-half) ease-out both;
-}
-@keyframes fl-hidden {
-  from,
-  to {
-    opacity: 0;
-  }
-}
-@keyframes fl-out {
-  to {
-    transform: rotateX(-90deg);
-  }
-}
-@keyframes fl-in {
-  from {
-    transform: rotateX(90deg);
-  }
 }
 .ticket-title {
   margin-top: var(--space-2);
