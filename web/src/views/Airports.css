@@ -156,6 +156,11 @@
   font: 12px var(--mono);
   color: var(--muted);
 }
+.apt-visiting {
+  margin-top: 2px;
+  color: var(--amber);
+  font: 700 11px var(--mono);
+}
 .apt-actions {
   display: flex;
   gap: 6px;

@@ -11,7 +11,7 @@ import {
 } from "../aviation.ts";
 import { activeFirst, hasActiveClaim, type Index, sortSessions, timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
-import { AirportCode, SessionPlace } from "../ui.tsx";
+import { AirportCode, AwayTag, SessionPlace } from "../ui.tsx";
 
 const BAYS: AircraftStatus[] = ["airborne", "holding", "nordo", "parked"];
 const agentCode = { claude: "CLD", codex: "CDX" } as const;
@@ -100,6 +100,7 @@ function Strip({
         <div className="cs" title={s.name}>
           {sign}
           <span className="type">{agentCode[s.agent]}</span>
+          <AwayTag airports={idx.awayBySession.get(s.id)} />
         </div>
         <div className="sub">
           {sign !== s.name && `${s.name} · `}
@@ -165,6 +166,9 @@ function Strip({
                   )}
                   {c.state === "handed-off" && (
                     <span className="stamp blue">→ {c.handedOffTo ? nameOf(c.handedOffTo) : "?"} 이양</span>
+                  )}
+                  {ws && s.repo && ws.repo !== s.repo && c.state === "active" && (
+                    <span className="stamp away" title="소속 공항 밖 주기장">원정</span>
                   )}
                   {ws?.dirty ? <span className="stamp amber">Δ {ws.dirty}</span> : null}
                   {c.source === "transcript" && <span className="stamp dashed">추정 항적</span>}

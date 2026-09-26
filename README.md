@@ -13,7 +13,7 @@
 | 레이더 (`#radar`) | 세션 ─ 워크트리 ─ 티켓 3열을 선으로 연결. 주인 없는 워크트리, 워크트리 없는 진행 티켓을 강조 |
 | 운항 스트립 (`#strips`) | 세션(ALPHA…, Codex 세션)마다 카드 하나. 상태, 점유 중인 워크트리, 연결된 티켓 |
 | 운항 정보판 (`#board`) | Linear 상태 열에 티켓 카드. 카드에 점유 팀 배지 |
-| 공항 (`#airports`) | 저장소 등록부. 공항 개설·코드 변경·폐쇄·재개·삭제 |
+| 공항 (`#airports`) | 저장소 등록부. 공항 개설·코드 변경·폐쇄·재개·삭제. 소속 항공기와 원정 온 항공기(입항) |
 
 ## 용어
 
@@ -36,6 +36,8 @@
 - 그 밖의 저장소는 공항 탭에서 경로를 넣어 개설한다. 워크트리나 하위 폴더 경로를 넣어도 본 체크아웃을 찾는다. 홈 폴더 밖과 bare 저장소는 안 된다.
 - 공항은 **첫 커밋 해시**로 알아본다. 폴더를 옮기거나 이름을 바꿔도 같은 공항·같은 코드로 이어지고 등록부의 경로만 갱신된다. 같은 첫 커밋의 다른 클론은 `첫커밋~경로해시` id로 따로 개설되고, 여럿 중 옮겨진 것은 폴더 이름이 같은 쪽으로 이어 붙인다. 커밋이 없는 저장소는 경로로 알아본다.
 - 폐쇄한 공항은 레이더·스트립·주기장 목록에서 빠지지만 코드는 계속 예약된다. 삭제는 자동 발견이 아닌(수동 개설) 공항만 된다.
+
+**원정 운항**: 세션의 소속 공항(작업 폴더가 있는 저장소)이 아닌 공항의 주기장을 점유 중이면 원정이다(`server/away.ts`). 레이더 항공기 블록과 운항 스트립 콜사인 옆에 `원정 TNNS`, 스트립 해당 구간에 `원정` 도장, 공항 탭에 `입항 BRAVO(VCDO)`로 보인다. 이양된 점유와 저장소 밖에서 연 세션은 치지 않는다. 관제사 브리핑의 `traffic[].home`·`away`와 이벤트 `away.started`·`away.ended`로도 나온다.
 
 | API | 하는 일 |
 |---|---|
@@ -141,7 +143,7 @@ journalctl --user -u atc -f           # 로그
 | `POST /api/clearances` | `{to, type, stand?, flight?, text}` 지시 기록, 보낼 문구 반환 |
 | `POST /api/clearances/:id/readback` · `/cancel` | 복창 확인 · 취소 |
 
-이벤트(`server/events.ts`)는 스냅샷 사이의 차이다: 경보 발생·해제, 관제 이양, 착륙 대기열(`ATC_LANDING_STATE`, 기본 `Ready to Merge`) 진입·이탈, 점유 중이던 세션 종료. 서버가 막 떠서 Linear·git을 다 읽기 전의 스냅샷과는 비교하지 않는다. 지시 기록은 `~/.local/state/atc/clearances.jsonl`(추가만 함).
+이벤트(`server/events.ts`)는 스냅샷 사이의 차이다: 경보 발생·해제, 관제 이양, 착륙 대기열(`ATC_LANDING_STATE`, 기본 `Ready to Merge`) 진입·이탈, 점유 중이던 세션 종료, 원정 운항 시작·끝. 서버가 막 떠서 Linear·git을 다 읽기 전의 스냅샷과는 비교하지 않는다. 지시 기록은 `~/.local/state/atc/clearances.jsonl`(추가만 함).
 
 ## 폴더 구조
 
@@ -159,6 +161,7 @@ atc/
 │   │   └── linear.ts       # Linear GraphQL, 1분마다
 │   ├── model.ts            # Session / Workspace / Ticket / Claim / Alert
 │   ├── airports.ts         # 공항 등록부·API (airports.test.ts)
+│   ├── away.ts             # 원정 운항 판정 (화면과 공용)
 │   ├── callsign.ts         # 콜사인·편명 (화면과 공용)
 │   ├── clearances.ts       # 관제 지시·복창 기록
 │   ├── controller.ts       # 관제사 API·브리핑 (controller.test.ts)

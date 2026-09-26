@@ -28,6 +28,7 @@
 | 분리 기준 위반 (`open.conflicts`) | `sessions`는 먼저 들어온 순이다. 첫 번째에 `CONTINUE`, 나머지에 `HOLD`("앞 팀이 끝나 이양할 때까지 이 주기장을 건드리지 말 것"). 같은 주기장에 복창 대기 중인 지시가 있으면 새로 보내지 않는다 |
 | 착륙 대기열 (`landingQueue`) | `landClearance`가 없는 편에 `LAND`로 순서를 준다. 번호는 대기열 순서(앞 편이 머지된 뒤 rebase하고 착륙). 대상은 그 주기장의 `holders`. holder가 없으면 감독관 보고만 |
 | 관제 이양 (`events` 의 `handoff`) | 일지에 적기만 한다. 메시지 보내지 않는다 |
+| 원정 운항 (`events`의 `away.started`·`away.ended`, `traffic[].away`) | 일지에 적기만 한다. 어느 팀을 어느 공항에 둘지(재배치)는 운항 관리(2단계) 몫이다. 원정 간 공항에서 충돌이 나면 위 분리 기준 위반대로 처리한다 |
 | 무선 두절 점유 (`open.orphans`), `session.lost` | 받을 세션이 없다. 감독관에게 보고 |
 | 미식별 표적 (`open.unattended`), 레이더 미포착 (`open.noContact`) | 감독관에게 보고. `events`에 새로 뜬 것만 보고하고 이미 보고한 것은 반복하지 않는다 |
 | 미복창 (`clearances.overdue`, 10분) | 같은 지시를 한 번 더 보낸다(문구 맨 앞에 "재송신"). 그래도 답이 없으면 감독관 보고 |

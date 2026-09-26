@@ -1,4 +1,5 @@
 import { config } from "./config.ts";
+import { awayOperations } from "./away.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 
 type Draft = Omit<TrafficEvent, "id" | "at">;
@@ -39,6 +40,13 @@ export function diffSnapshots(prev: Snapshot | null, next: Snapshot): Draft[] {
   const isLanding = landingKeys(next);
   for (const key of isLanding) if (!wasLanding.has(key)) out.push({ kind: "landing.requested", ticketKey: key });
   for (const key of wasLanding) if (!isLanding.has(key)) out.push({ kind: "landing.left", ticketKey: key });
+
+  const pairs = (m: Map<string, string[]>) => new Set([...m].flatMap(([id, repos]) => repos.map((r) => `${id}|${r}`)));
+  const wasAway = pairs(awayOperations(prev));
+  const isAway = pairs(awayOperations(next));
+  const split = (key: string) => key.split("|") as [string, string];
+  for (const key of isAway) if (!wasAway.has(key)) out.push({ kind: "away.started", sessionIds: [split(key)[0]], repo: split(key)[1] });
+  for (const key of wasAway) if (!isAway.has(key)) out.push({ kind: "away.ended", sessionIds: [split(key)[0]], repo: split(key)[1] });
 
   const holding = new Set(prev.claims.filter((c) => c.state === "active").map((c) => c.sessionId));
   const wasAlive = new Set(prev.sessions.filter((s) => s.status !== "dead").map((s) => s.id));

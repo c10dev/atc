@@ -123,7 +123,9 @@ export type TrafficEventKind =
   | "handoff"
   | "landing.requested"
   | "landing.left"
-  | "session.lost";
+  | "session.lost"
+  | "away.started"
+  | "away.ended";
 
 // 스냅샷 사이의 변화. 관제사가 "지난번 이후 무엇이 바뀌었나"를 읽는 단위.
 export interface TrafficEvent {
@@ -134,6 +136,7 @@ export interface TrafficEvent {
   workspacePath?: string;
   ticketKey?: string;
   sessionIds?: string[];
+  repo?: string; // away.*: 원정 간 공항(저장소)
   message?: string;
 }
 

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Session, Snapshot, Ticket, Workspace } from "../../../server/model.ts";
 import { hasActiveClaim, type Index, sortSessions, timeAgo } from "../derive.ts";
-import { AirportCode, SessionPlace } from "../ui.tsx";
+import { AirportCode, AwayTag, SessionPlace } from "../ui.tsx";
 import { aircraftStatus, aircraftStatusCode, aircraftStatusLabel, callsign, flightNumber, flightPhase, phaseCode, phaseTone } from "../aviation.ts";
 
 interface Edge {
@@ -131,6 +131,7 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
                 <div className="blk-l1">
                   <strong className="ellipsis">{callsign(s)}</strong>
                   <span className="blk-code">{aircraftStatusCode[status]}</span>
+                  <AwayTag airports={idx.awayBySession.get(s.id)} />
                 </div>
                 <div className="blk-l2">
                   <SessionPlace session={s} idx={idx} /> · {timeAgo(s.lastActiveAt, now)}

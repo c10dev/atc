@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import { callsign, flightNumber } from "./callsign.ts";
+import { awayOperations } from "./away.ts";
 import { allClearances, CLEARANCE_TYPES, isPending, issueClearance, markClearance } from "./clearances.ts";
 import { config } from "./config.ts";
 import { type EventLog, landingKeys } from "./events.ts";
@@ -29,6 +30,9 @@ export function buildBrief(
   const standName = (path?: string | null) => (path ? (wsByPath.get(path)?.name ?? path.split("/").pop()) : undefined);
   const flight = (key?: string | null) => (key ? flightNumber(key) : undefined);
   const active = s.claims.filter((c) => c.state === "active");
+  const codeOf = (repo: string | null | undefined) =>
+    repo ? (s.airports.find((a) => a.repo === repo)?.code ?? repo.split("/").pop()) : undefined;
+  const away = awayOperations(s);
 
   const pending = clearances.filter(isPending);
   const clearanceView = (c: Clearance) => ({
@@ -64,11 +68,14 @@ export function buildBrief(
     .filter((x) => x.status !== "dead" && active.some((c) => c.sessionId === x.id))
     .map((x) => ({
       ...label(x.id),
+      home: codeOf(x.repo),
+      away: (away.get(x.id) ?? []).map(codeOf),
       stands: active
         .filter((c) => c.sessionId === x.id)
         .map((c) => ({
           stand: standName(c.workspacePath),
           standPath: c.workspacePath,
+          airport: codeOf(wsByPath.get(c.workspacePath)?.repo),
           flight: flight(wsByPath.get(c.workspacePath)?.ticketKey),
           source: c.source,
           since: c.since,
@@ -89,6 +96,7 @@ export function buildBrief(
       stand: standName(e.workspacePath),
       flight: flight(e.ticketKey),
       sessions: e.sessionIds?.map(label),
+      airport: codeOf(e.repo),
       message: e.message,
     })),
     open: {

@@ -1,4 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { awayOperations } from "../../../server/away.ts";
 import type { AirportStatus, Snapshot } from "../../../server/model.ts";
 import { callsign } from "../aviation.ts";
 import "./Airports.css";
@@ -65,6 +66,11 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
 
   const stands = (repo: string) => snapshot.workspaces.filter((w) => w.repo === repo && !w.isMain).length;
   const aircraft = (repo: string) => snapshot.sessions.filter((s) => s.repo === repo && s.status !== "dead");
+  const away = awayOperations(snapshot);
+  const codeOf = (repo: string) => airports?.find((a) => a.repo === repo)?.code ?? repo.split("/").pop();
+  // 다른 공항 소속인데 이 공항 주기장에서 작업 중인 항공기
+  const visitors = (repo: string) =>
+    snapshot.sessions.filter((s) => s.status !== "dead" && (away.get(s.id) ?? []).includes(repo));
 
   return (
     <section className="airports">
@@ -123,6 +129,11 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
         <tbody>
           {airports?.map((a) => {
             const ac = a.status === "open" ? aircraft(a.repo) : [];
+            const visiting = a.status === "open" ? visitors(a.repo) : [];
+            const label = (id: string, name: string) => {
+              const out = away.get(id);
+              return out?.length ? `${name} → ${out.map(codeOf).join(",")}` : name;
+            };
             return (
               <tr key={a.id} className={`is-${a.status}`}>
                 <td>
@@ -164,14 +175,19 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
                   <span className={`apt-status s-${a.status}`}>{statusLabel[a.status]}</span>
                 </td>
                 <td className="num mono">{a.status === "open" ? stands(a.repo) : "—"}</td>
-                <td className="apt-ac" title={ac.map((s) => callsign(s)).join(", ")}>
+                <td className="apt-ac" title={ac.map((s) => label(s.id, callsign(s))).join(", ")}>
                   {ac.length ? (
                     <>
-                      {ac.slice(0, MAX_AC).map((s) => callsign(s)).join(", ")}
+                      {ac.slice(0, MAX_AC).map((s) => label(s.id, callsign(s))).join(", ")}
                       {ac.length > MAX_AC && <span className="faint"> 외 {ac.length - MAX_AC}</span>}
                     </>
                   ) : (
-                    <span className="faint">—</span>
+                    !visiting.length && <span className="faint">—</span>
+                  )}
+                  {visiting.length > 0 && (
+                    <div className="apt-visiting" title="다른 공항 소속, 이 공항 주기장에서 작업 중">
+                      입항 {visiting.map((s) => `${callsign(s)}(${s.repo ? codeOf(s.repo) : "?"})`).join(", ")}
+                    </div>
                   )}
                 </td>
                 <td>

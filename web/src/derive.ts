@@ -1,3 +1,4 @@
+import { awayOperations } from "../../server/away.ts";
 import type { Airport, Alert, Claim, Session, Snapshot, Ticket, Workspace } from "../../server/model.ts";
 
 export interface Index {
@@ -10,6 +11,7 @@ export interface Index {
   alertsByWorkspace: Map<string, Alert[]>;
   alertsByTicket: Map<string, Alert[]>;
   airportByRepo: Map<string, Airport>;
+  awayBySession: Map<string, Airport[]>; // 원정 운항 중인 공항들
 }
 
 function push<K, V>(map: Map<K, V[]>, key: K, value: V) {
@@ -29,7 +31,11 @@ export function buildIndex(s: Snapshot): Index {
     alertsByWorkspace: new Map(),
     alertsByTicket: new Map(),
     airportByRepo: new Map(s.airports.map((a) => [a.repo, a])),
+    awayBySession: new Map(),
   };
+  for (const [id, repos] of awayOperations(s)) {
+    idx.awayBySession.set(id, repos.map((r) => idx.airportByRepo.get(r)).filter((a): a is Airport => Boolean(a)));
+  }
   const byRecent = [...s.claims].sort((a, b) => b.lastAt.localeCompare(a.lastAt));
   for (const c of byRecent) {
     push(idx.claimsBySession, c.sessionId, c);

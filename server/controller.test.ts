@@ -126,3 +126,38 @@ test("지시 문구: 콜사인·주기장·편·복창 요청", () => {
     '[ATC C-0007] BRAVO (TEAM_B) · HOLD\n주기장 vocado-voc-175 · 편 VOC175\nDELTA 작업이 끝날 때까지 대기\n— 받았으면 이 메시지에 "READBACK C-0007"로 답장해 주세요.',
   );
 });
+
+test("원정 운항: 소속 공항 밖 주기장 점유, 이양된 것과 소속 모르는 세션은 제외", async () => {
+  const { awayOperations } = await import("./away.ts");
+  const VCDO = "/home/c10/projects/vocado_nextjs";
+  const TNNS = "/home/c10/projects/tennis";
+  const tennisWs: Workspace = { ...ws("tennis-character", null), repo: TNNS };
+  const s = snapshot({
+    sessions: [
+      { ...session("s-b", "TEAM_B"), repo: VCDO },
+      { ...session("s-d", "TEAM_D"), repo: VCDO },
+      session("s-x", "structure"),
+    ],
+    workspaces: [ws("vocado-voc-175", "VOC-175"), tennisWs],
+    claims: [
+      claim("s-b", "vocado-voc-175", -30, -1),
+      claim("s-b", "tennis-character", -20, -2),
+      { ...claim("s-d", "tennis-character", -60, -50), state: "handed-off", handedOffTo: "s-b" },
+      claim("s-x", "tennis-character", -10, -5),
+    ],
+  });
+  assert.deepEqual([...awayOperations(s)], [["s-b", [TNNS]]]);
+
+  const before = snapshot({ ...s, claims: s.claims.filter((c) => c.workspacePath !== tennisWs.path || c.sessionId !== "s-b") });
+  assert.deepEqual(
+    diffSnapshots(before, s).filter((e) => e.kind.startsWith("away")).map((e) => `${e.kind}:${e.sessionIds}:${e.repo}`),
+    [`away.started:s-b:${TNNS}`],
+  );
+  assert.deepEqual(diffSnapshots(s, before).filter((e) => e.kind.startsWith("away")).map((e) => e.kind), ["away.ended"]);
+
+  const withCodes = { ...s, airports: [{ id: "1", repo: VCDO, name: "vocado_nextjs", code: "VCDO" }, { id: "2", repo: TNNS, name: "tennis", code: "TNNS" }] };
+  const bravo = buildBrief(withCodes, { events: [], reset: false, cursor: "e:0" }, [], T0).traffic.find((t) => t.name === "TEAM_B")!;
+  assert.equal(bravo.home, "VCDO");
+  assert.deepEqual(bravo.away, ["TNNS"]);
+  assert.deepEqual(bravo.stands.map((x) => x.airport).sort(), ["TNNS", "VCDO"]);
+});

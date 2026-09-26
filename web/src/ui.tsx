@@ -1,6 +1,7 @@
 import type { Airport, Session } from "../../server/model.ts";
 import { callsign } from "./aviation.ts";
 import { type Index, sessionLocation } from "./derive.ts";
+import "./ui.css";
 
 // 저장소 = 공항 코드(대문자 4자). 마우스를 올리면 저장소 이름과 경로.
 export function AirportCode({ airport }: { airport: Airport | null | undefined }) {
@@ -8,6 +9,19 @@ export function AirportCode({ airport }: { airport: Airport | null | undefined }
   return (
     <span className="apt" title={`${airport.name} (${airport.repo})`}>
       {airport.code}
+    </span>
+  );
+}
+
+// 원정 운항: 소속 공항 밖 주기장을 점유 중일 때 "원정 TNNS"
+export function AwayTag({ airports }: { airports: Airport[] | undefined }) {
+  if (!airports?.length) return null;
+  return (
+    <span className="away-tag" title="소속 공항 밖 주기장에서 작업 중">
+      원정
+      {airports.map((a) => (
+        <AirportCode key={a.id} airport={a} />
+      ))}
     </span>
   );
 }
