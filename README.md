@@ -77,6 +77,15 @@ The AIRPORT list lives in `~/.local/state/atc/airports.json` (outside git, since
 | `PATCH /api/airports/:id` | `{code?, name?, closed?}` rename, change code, close or reopen |
 | `DELETE /api/airports/:id` | Remove from the registry (manually opened ones only) |
 
+### FLEET registry
+
+Teams (AIRCRAFT) are described in `~/.local/state/atc/fleet.json` and edited in the FLEET tab ([docs/fleet.md](docs/fleet.md)). For each `TEAM_X`: **CREW COMPLEMENT** (positions under the CAPTAIN, such as backend Opus, `ui-builder`, `ui-qa` or `flash-helper`), **TYPE RATING** (`SEC`, `UI`, `DATA`, `DOCS`), **ROUTE** (usual Linear projects), **TARGETS** (FLIGHTs per week, on-time rate) and a note. Anything not set follows the defaults, which come from the vocado `CLAUDE.md` crew rules. `SEC` is refused for a crew that has no member able to do security work (`flash-helper` alone is not enough). The file stores only what was changed, so the defaults keep following the code. The planner does not use these values yet.
+
+| API | What it does |
+|---|---|
+| `GET /api/fleet` | Every TEAM session and registered AIRCRAFT with status, current FLIGHTs, crew, ratings, routes and targets, plus the rating list, defaults and known projects |
+| `PATCH /api/fleet/:registration` | `{complement?, ratings?, routes?, targets?, base?, note?}`; `null` resets a field to the default |
+
 | State | Shown as |
 |---|---|
 | Session busy / idle + holding / idle / dead | AIRBORNE / HOLDING / PARKED / NORDO |
@@ -265,6 +274,7 @@ atc/
 │   │   └── linear.ts       # Linear GraphQL, every minute
 │   ├── model.ts            # Session / Workspace / Ticket / Claim / Alert
 │   ├── airports.ts         # AIRPORT registry and API (airports.test.ts)
+│   ├── fleet.ts            # FLEET registry and API (fleet.test.ts)
 │   ├── away.ts             # OUTSTATION detection (shared with the UI)
 │   ├── callsign.ts         # callsigns and FLIGHT NUMBERs (shared with the UI)
 │   ├── clearances.ts       # CLEARANCE and READBACK records

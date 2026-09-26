@@ -77,6 +77,15 @@ AIRPORT 목록은 `~/.local/state/atc/airports.json`(기계마다 다른 경로�
 | `PATCH /api/airports/:id` | `{code?, name?, closed?}` 코드·이름 변경, 폐쇄·재개 |
 | `DELETE /api/airports/:id` | 등록부에서 삭제 (수동 개설한 것만) |
 
+### FLEET 등록부
+
+팀(AIRCRAFT)은 `~/.local/state/atc/fleet.json`에 적고 FLEET 탭에서 고친다([docs/fleet.md](docs/fleet.md), 영어). `TEAM_X`마다 **CREW COMPLEMENT**(CAPTAIN 아래 팀원 POSITION: backend Opus, `ui-builder`, `ui-qa`, `flash-helper` 등), **TYPE RATING**(`SEC`, `UI`, `DATA`, `DOCS`), **ROUTE**(주 담당 Linear 프로젝트), **TARGETS**(주간 FLIGHT 수, 정시성), 메모를 둔다. 정하지 않은 항목은 vocado `CLAUDE.md` 팀원 규칙에서 온 기본값을 따른다. 보안 작업을 맡을 팀원이 없는 구성(`flash-helper`만)에는 `SEC`를 줄 수 없다. 파일에는 바꾼 것만 저장해 기본값은 코드를 계속 따라간다. planner는 아직 이 값을 쓰지 않는다.
+
+| API | 하는 일 |
+|---|---|
+| `GET /api/fleet` | TEAM 세션과 등록된 AIRCRAFT 전부(상태, 지금 FLIGHT, 팀원, 자격, 담당 프로젝트, 목표)와 자격 목록·기본값·프로젝트 목록 |
+| `PATCH /api/fleet/:registration` | `{complement?, ratings?, routes?, targets?, base?, note?}`. `null`이면 그 항목을 기본값으로 |
+
 | 상태 | 화면 표기 |
 |---|---|
 | 세션 busy / idle+점유 / idle / dead | AIRBORNE / HOLDING / PARKED / NORDO |
@@ -263,6 +272,7 @@ atc/
 │   │   └── linear.ts       # Linear GraphQL, 1분마다
 │   ├── model.ts            # Session / Workspace / Ticket / Claim / Alert
 │   ├── airports.ts         # AIRPORT 등록부·API (airports.test.ts)
+│   ├── fleet.ts            # FLEET 등록부·API (fleet.test.ts)
 │   ├── away.ts             # OUTSTATION 판정 (화면과 공용)
 │   ├── callsign.ts         # 콜사인·FLIGHT NUMBER (화면과 공용)
 │   ├── clearances.ts       # CLEARANCE·READBACK 기록
