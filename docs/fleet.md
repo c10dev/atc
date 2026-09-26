@@ -7,7 +7,7 @@ atc knows each team session as an AIRCRAFT (`TEAM_B`, callsign BRAVO) and its le
 - **FLEET**: the teams, their crews, what they are rated for, their routes and targets.
 - **FLIGHT classification**: the kind of work, its size and the rating it needs.
 
-> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2; observed crew is not shown yet), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules (see section 5 for what is left), and team building (section 8.1). Decisions are listed at the end.
+> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2; observed crew is not shown yet), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules (see section 5 for what is left), team building (section 8.1), and the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2). Decisions are listed at the end.
 
 Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHEDULE operations), [dispatch.md](dispatch.md) (the planner that uses them).
 
@@ -165,20 +165,72 @@ Classification is a bounded choice from fixed options, so it is also the first c
 
 ## 7. TARGETS
 
-Per AIRCRAFT, set by the SUPERVISOR in the FLEET tab. They are shown, not scored:
+Per AIRCRAFT, set by the SUPERVISOR in the FLEET tab. They are shown, not scored: atc never ranks AIRCRAFT by them and the planner does not read them.
 
 | Target | Measured from |
 |---|---|
-| FLIGHTs per week | ARRIVED FLIGHTs in the FLIGHT RECORDER |
-| On-time rate | Actual block time vs the WAKE expectation (then vs the category median) |
-| Reverted work | PRs reverted or reopened FLIGHTs |
-| Conflicts | LOS involving that AIRCRAFT |
+| FLIGHTs per week | LOGBOOK entries that ARRIVED this week (Monday 00:00 local time to now) |
+| On-time rate | LOGBOOK entries of the last 14 days: block time within the expectation of section 7.2 |
+| Reverted work | LOGBOOK entries of the last 14 days marked `reverted` (a `Revert "…"` PR was merged). Reopened FLIGHTs are not counted yet |
+| Conflicts | LOS on the FLIGHT's STANDs while it was flown, summed over LOGBOOK entries of the last 14 days |
 
 Stage 4 (network planning) puts these next to the project goals. OCC may draft target changes; the SUPERVISOR decides.
 
+### 7.1 LOGBOOK
+
+An aircraft logbook records every flight an airframe has flown. atc's LOGBOOK does the same per AIRCRAFT: one line per FLIGHT that ARRIVED, that is, whose PR was merged into the AIRPORT's default branch.
+
+Kept in `~/.local/state/atc/logbook.jsonl`, append-only like the other records. Two operations:
+
+```json
+{"op":"arrived","t":"…","key":"owner/repo#31","aircraft":"TEAM_J","flight":"VOC-201","class":{"type":"BUILD","wake":"M","ratings":["UI"],"explicit":{"type":true,"wake":true}},"airport":"ATCC","pr":{"repo":"owner/repo","number":31,"url":"…","title":"…"},"stands":["/home/…/worktrees/atc-logbook"],"departedAt":"…","departedFrom":"claim","arrivedAt":"…","blockMin":312,"codexFindings":1,"changesRequested":false,"reverted":false,"los":0}
+{"op":"reverted","t":"…","key":"owner/repo#31","by":{"number":35,"url":"…"}}
+```
+
+| Field | Meaning |
+|---|---|
+| `key` | `owner/repo#number`, the dedupe key. A PR is written once |
+| `aircraft` | The REGISTRATION of the team session that flew it (below), upper case. `null` when atc cannot tell; the line is still written |
+| `flight` | Ticket key from the PR branch (`voc-<n>`) or the title's trailing `(VOC-n)`. `null` for AD HOC work |
+| `class` | `classOf(labels)` of that FLIGHT's Linear labels at arrival (FLIGHT TYPE, WAKE, ratings, and whether type and wake came from labels). `null` for AD HOC or when Linear does not know the ticket |
+| `airport` | AIRPORT code of the repository |
+| `pr` | `{repo, number, url, title}` |
+| `stands` | The STANDs (worktree paths) the FLIGHT was flown from |
+| `departedAt` | The earliest claim `since` on those STANDs (claims that started after the merge are ignored). When there is no claim, or the PR was opened earlier, the PR's `createdAt` (`departedFrom: "pr"`): a claim restarts its `since` after 3 idle hours, so the PR can be the earlier sign |
+| `arrivedAt` | The PR's `mergedAt` |
+| `blockMin` | `arrivedAt − departedAt` in whole minutes (wall clock, nights included) |
+| `codexFindings` | Number of Codex `COMMENTED` reviews on the PR over all its commits, i.e. review rounds in which Codex found something. Not only the head: by merge time the head's findings are normally resolved, so the head count would almost always be 0 |
+| `changesRequested` | Anyone left a `CHANGES_REQUESTED` review at some point |
+| `reverted` | Set by a later `reverted` line |
+| `los` | `alert.raised` LOSS OF SEPARATION events in the FLIGHT RECORDER on those STANDs between `departedAt` and `arrivedAt` |
+
+**Which STANDs.** In order, the first that gives any: the `workspacePath` of the PR's `landing.*` events in the FLIGHT RECORDER (30 days), the worktree that still has the PR branch checked out, and worktrees whose name carries the FLIGHT's ticket key (the rule `readFlightHistory` uses).
+
+**Which AIRCRAFT.** Of the sessions with a claim on those STANDs, only those whose name matches the team pattern (`TEAM_X`). When several did, the one with the latest claim activity: after a HANDOFF, the AIRCRAFT that landed it gets the entry. Session names come from the session registry, so a session whose file is gone is unknown.
+
+**How ARRIVED is found.** The open-PR reader stays as it is. A second, light reader runs every 10 minutes: `gh pr list --state merged --limit 30` per AIRPORT with a GitHub remote, keeping PRs into the repository's default branch. PRs already in the LOGBOOK are skipped, so the first run after a restart also back-fills the last 30 merged PRs (with `aircraft: null` where the claims are gone).
+
+**Reverts.** A merged PR titled `Revert "…"` is not a FLIGHT of its own. It adds a `reverted` line for the PR it reverts, found by `Reverts owner/repo#N` in its body or, failing that, by the quoted title in the same repository. A revert of a PR that is not in the LOGBOOK is ignored.
+
+**API.** `GET /api/logbook?aircraft=TEAM_X&days=14` returns the folded entries, newest arrival first. `aircraft` is optional (case-insensitive); `days` defaults to 14 and is capped at 90.
+
+### 7.2 Actuals on the FLEET card
+
+`fleetView` adds `actuals` to each AIRCRAFT, computed from the LOGBOOK:
+
+| Actual | Rule |
+|---|---|
+| This week | Entries that ARRIVED since Monday 00:00 (server local time), shown against `flightsPerWeek`: "이번 주 2/3" |
+| On-time | Of the entries of the last 14 days that have an expectation, the share with `blockMin` within it, shown against `onTime` |
+| Reverted | Entries of the last 14 days marked `reverted` |
+| LOS | Sum of `los` over entries of the last 14 days |
+| Recent | The last 5 entries |
+
+**Expectation.** A FLIGHT whose WAKE comes from a label uses the section 4.2 block time, read as an upper bound: `L` 60 min, `M` 240 min ("a few hours" taken as 4 hours), `H` 2880 min (2 days). `J`, an unlabeled WAKE and AD HOC work have no fixed expectation; they are compared with the median `blockMin` of other LOGBOOK entries of the same FLIGHT TYPE and WAKE (AD HOC is its own group), once there are at least 3. Only entries with a known AIRCRAFT feed the median: back-filled entries without claims are timed from the PR's opening and would pull it down. Otherwise the entry is not counted in the on-time rate. When a category reaches about 20 entries its median may replace the fixed number (section 4.2); that switch is not built yet.
+
 ## 8. FLEET tab
 
-- One card per AIRCRAFT: registration and callsign, base AIRPORT, status, CREW COMPLEMENT declared vs observed, TYPE RATINGS, ROUTES, TARGETS against actuals.
+- One card per AIRCRAFT: registration and callsign, base AIRPORT, status, CREW COMPLEMENT declared vs observed, TYPE RATINGS, ROUTES, TARGETS against the LOGBOOK actuals (section 7.2) with the last few FLIGHTs.
 - Edit form for the SUPERVISOR (writes `fleet.json`, same pattern as the AIRPORT registry).
 - A classification column in the DISPATCH tab and on FIDS.
 
@@ -210,7 +262,7 @@ Later: **CREW CHANGE** (a briefing for a running team whose complement changed, 
 3. ✅ Classification labels read by the planner: TYPE RATING and FLIGHT TYPE hard rules, WAKE slots, ROUTE score (the Risk group counts as SEC; label groups are read as `group:name`)
 4. ◐ The DISPATCH card shows the classification. Still to do: FIDS, and DISPATCH notes that suggest a classification when labels are missing
 5. OCC S1 `CLASSIFY` drafts (with the SCHEDULE work in occ.md)
-6. TARGETS and on-time baselines in METRICS / stage 4
+6. ◐ TARGETS actuals from the LOGBOOK on the FLEET cards (sections 7.1, 7.2). Still to do: on-time baselines from category medians, TARGETS in METRICS / stage 4
 7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 
 ## 11. Risks and mitigations

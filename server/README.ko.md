@@ -33,7 +33,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `codex.ts` | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex 세션(최근 90초 안에 움직였으면 busy), `cwd` 점유 |
 | `git.ts` | AIRPORT마다 `git worktree list --porcelain` | 워크트리, 브랜치, HEAD, dirty 여부, 마지막 커밋(세부는 30초 캐시). 브랜치 이름에서 티켓 키 |
 | `linear.ts` | Linear GraphQL(`LINEAR_API_KEY`), 60초마다 | 티켓, 상태, 우선순위, 프로젝트, 관계. DISPATCH용 이슈 본문 |
-| `github.ts` | git remote가 GitHub인 AIRPORT마다 `gh pr list --repo <owner/name> --state open --json …`, 90초마다 백그라운드로(`execFile`, 셸 없음) | AIRPORT별 열린 PR: head, 체크, 리뷰, 머지 상태, Draft. head에 통과 리뷰가 없거나 Codex 지적이 있는 Draft 아닌 PR은 Codex 봇의 👍 반응, head committer 시각(sha별 캐시), Codex의 PR 댓글도(`gh api`, 읽기 전용). 실패한 저장소는 마지막 결과를 두고 오류는 `snapshot.github.error`에. `gh`가 없으면 `enabled`가 false |
+| `github.ts` | git remote가 GitHub인 AIRPORT마다 `gh pr list --repo <owner/name> --state open --json …`, 90초마다 백그라운드로(`execFile`, 셸 없음) | AIRPORT별 열린 PR: head, 체크, 리뷰, 머지 상태, Draft. head에 통과 리뷰가 없거나 Codex 지적이 있는 Draft 아닌 PR은 Codex 봇의 👍 반응, head committer 시각(sha별 캐시), Codex의 PR 댓글도(`gh api`, 읽기 전용). 실패한 저장소는 마지막 결과를 두고 오류는 `snapshot.github.error`에. `gh`가 없으면 `enabled`가 false. LOGBOOK용 `listMerged`는 기본 브랜치에 머지된 최근 PR 30건을 읽는다(`gh pr list --state merged --base <기본 브랜치>`, 기본 브랜치는 저장소별 캐시) |
 
 ## 모듈
 
@@ -54,6 +54,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `clearances.ts` | CLEARANCE 기록: 추가만 하는 JSONL을 접어 현재 상태를 만든다 |
 | `recorder.ts` | FLIGHT RECORDER: 날짜별 JSONL(`event`, `sample`, `dispatch`, `ack`, `schedule`), 30일 보관 |
 | `metrics.ts` | 운용 지표와 2단계 진입 점검(순수 함수 `computeMetrics`) |
+| `logbook.ts` | LOGBOOK: 10분마다 머지된 PR → ARRIVED FLIGHT마다 `arrived` 줄, 머지된 Revert PR은 `reverted` 줄(순수 함수 `buildEntry`, `planLogbook`, `foldLogbook`). FLEET 카드의 TARGETS 실적(순수 함수 `computeActuals`, `expectationMin`). `GET /api/logbook` |
 | `dispatch.ts` | DISPATCH 계획: 후보, 슬롯, 점수(순수 함수 `planDispatch`). 설정은 `dispatch.json` |
 | `proposals.ts` | DISPATCH 제안 기록(추가만 하는 JSONL), 상태 전이(그림자 판정, approve → sent → accepted → departed), 예약, FLIGHT PLAN 문구, 브리핑, 2b·3단계 점검 |
 | `schedule.ts` | OCC SCHEDULE 초안 기록(추가만 하는 JSONL, S1 그림자 운용): `CLASSIFY`·`PRIORITIZE` 초안과 `NEW`(CHARTER DESK의 AD HOC FLIGHT: 본문 칸, 프로젝트·tail·key 검사, 최근 45일 스냅샷에서 찾은 비슷한 제목 `similar`), 열린 초안 5건 한도, SUPERSEDED·EXPIRED 동기화, 그림자 판정, 후보, S2 점검 |
@@ -108,6 +109,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `clearances.jsonl` | `clearances.ts` | CLEARANCE 기록(추가만 함) |
 | `consumers/<name>.json` | `controller.ts` | 소비자별 브리핑 커서 |
 | `flight-recorder/YYYY-MM-DD.jsonl` | `recorder.ts` | FLIGHT RECORDER(UTC 날짜, 30일 보관) |
+| `logbook.jsonl` | `logbook.ts` | ARRIVED FLIGHT의 LOGBOOK(추가만 함, `arrived`·`reverted` 줄) |
 | `proposals.jsonl` | `proposals.ts` | DISPATCH 제안(추가만 함) |
 | `schedule.jsonl` | `schedule.ts` | OCC SCHEDULE 초안과 SUPERVISOR 판정(추가만 함) |
 | `dispatch.json` | 사용자(선택, 없으면 기본값) | DISPATCH 설정: 프로젝트 → AIRPORT 매핑, 슬롯, 가중치, 모드(`shadow` / `approval`) |

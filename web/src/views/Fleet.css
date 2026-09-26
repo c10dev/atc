@@ -120,6 +120,54 @@
   color: var(--muted);
 }
 
+/* TARGETS 실적(LOGBOOK) */
+.fl-actuals {
+  margin: 0;
+  font: var(--text-sm) var(--mono);
+}
+.fl-actuals.faint {
+  font-size: var(--text-xs);
+}
+.fl-short {
+  color: var(--amber);
+}
+.fl-bad {
+  color: var(--alert);
+}
+.fl-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+  font: var(--text-xs) var(--mono);
+}
+.fl-log li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1-5);
+}
+.fl-log-flight {
+  color: var(--text);
+  text-decoration: none;
+}
+.fl-log-flight:hover,
+.fl-log-flight:focus-visible {
+  color: var(--cyan);
+  text-decoration: underline;
+}
+.fl-log-date {
+  margin-left: auto;
+}
+.fl-ontime {
+  color: var(--radar);
+}
+.fl-late {
+  color: var(--amber);
+}
+
 .fl-actions {
   display: flex;
   justify-content: flex-end;

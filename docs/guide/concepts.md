@@ -38,6 +38,15 @@
 
 CLEARED TO LAND는 Linear 상태가 아니다. GitHub PR을 보고 atc가 정한다(아래).
 
+LOGBOOK의 ARRIVED는 Linear Done이 아니라 PR 머지로 센다. 머지된 PR 하나가 LOGBOOK 한 줄이다([팀 운영](fleet.md)).
+
+| 용어 | 뜻 |
+|---|---|
+| LOGBOOK | AIRCRAFT별로 끝낸(ARRIVED) FLIGHT의 기록. TARGETS 실적을 여기서 센다 |
+| block time | STAND를 처음 점유한 시각부터 PR 머지까지 걸린 시간 |
+| ON TIME / DELAYED | block time이 WAKE 기대치(또는 같은 종류의 중앙값) 안인지 |
+| REVERTED | 머지 뒤 `Revert "…"` PR로 되돌려진 FLIGHT |
+
 ## LANDING SEQUENCE
 
 LANDING은 main 머지다. LANDING SEQUENCE는 GitHub에 열린 PR 중 Draft가 아닌 것의 목록이고(atc가 90초마다 `gh`로 읽는다), PR마다 단계가 둘이다.

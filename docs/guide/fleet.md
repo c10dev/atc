@@ -9,9 +9,28 @@ FLEET 탭에서 팀(AIRCRAFT)을 꾸리고, 쉬게 하고, 퇴역시킨다. 팀 
 | CREW COMPLEMENT | 기본 팀원 구성과 모델 | 그 구성이 할 수 없는 종류의 일은 주지 않음(예: flash-helper만 있으면 BUILD 없음) |
 | TYPE RATING | 맡을 수 있는 일: SEC · UI · DATA · DOCS | 필요한 자격을 모두 가진 팀에만 제안 |
 | ROUTE | 주 담당 Linear 프로젝트 | 담당이면 점수 +1 |
-| TARGETS | 주간 FLIGHT 수, 정시성 | 표시만(점수에 안 씀) |
+| TARGETS | 주간 FLIGHT 수, 정시성 | 표시만(점수에 안 씀). 실적은 LOGBOOK으로 센다(아래) |
 
 정하지 않은 항목은 vocado 팀원 규칙에서 온 기본값을 따른다. SEC는 보안 작업을 맡을 팀원이 있어야 줄 수 있다.
+
+## LOGBOOK과 실적
+
+LOGBOOK은 AIRCRAFT가 끝낸(ARRIVED) FLIGHT의 기록이다. atc가 10분마다 GitHub에서 머지된 PR을 읽어 `~/.local/state/atc/logbook.jsonl`에 한 줄씩 적는다. 사람이 적을 것은 없다.
+
+- **누구 몫인가**: 그 PR의 STAND(워크트리)를 점유했던 `TEAM_X` 세션. 여러 팀이 거쳤으면 마지막까지 만진 팀. 알 수 없으면 비워 두고(카드에 안 보임) 기록은 남긴다.
+- **block time**: 그 STAND를 처음 점유한 시각(PR을 연 시각이 더 이르면 그것)부터 머지까지. 밤도 포함한 벽시계 시간이다.
+- **되돌림**: `Revert "…"` PR이 머지되면 원래 FLIGHT에 REVERTED가 붙는다.
+
+카드의 TARGETS 아래에 실적이 나온다.
+
+| 줄 | 뜻 |
+|---|---|
+| 이번 주 3/3 | 이번 주(월요일 0시부터) ARRIVED 수 / 목표. 목표보다 적으면 노란색 |
+| 정시 67% (목표 80%) | 최근 14일 FLIGHT 중 기대 block time 안에 끝난 비율. 목표보다 낮으면 노란색 |
+| 14일 ARRIVED · 되돌림 · LOS | 최근 14일 합계. 되돌림과 LOS가 있으면 빨간색 |
+| 최근 FLIGHT | 5건: FLIGHT(AD HOC), PR 번호, block time, ON TIME / DELAYED, REVERTED, LOS, 날짜. FLIGHT를 누르면 PR이 열린다 |
+
+기대 block time은 `wake` 라벨이 있으면 L 60분 · M 4시간 · H 2일이다. 라벨이 없거나 J거나 AD HOC이면 같은 FLIGHT TYPE·WAKE로 끝난 다른 FLIGHT(3건 이상)의 중앙값과 비교하고, 모자라면 정시율에서 뺀다. 실적은 보여 주기만 하고 배정 점수에는 쓰지 않는다.
 
 ## 새 팀 들이기
 

@@ -33,7 +33,7 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 | `codex.ts` | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex sessions (busy if active in the last 90 s), `cwd` claims |
 | `git.ts` | `git worktree list --porcelain` per AIRPORT | Worktrees, branch, HEAD, dirty state, last commit (details cached 30 s); ticket key from the branch name |
 | `linear.ts` | Linear GraphQL (`LINEAR_API_KEY`), polled every 60 s | Tickets, states, priorities, projects, relations; issue details for DISPATCH |
-| `github.ts` | `gh pr list --repo <owner/name> --state open --json …` per AIRPORT whose git remote is on GitHub, polled every 90 s in the background (`execFile`, no shell) | Open PRs per AIRPORT: head, checks, reviews, merge state, Draft. For non-Draft PRs without a passing head review or with Codex findings on the head, also the Codex bot's 👍 reactions, the head's committer date (cached per sha) and Codex's PR comments (`gh api`, read-only). A failed repository keeps its last result; errors show in `snapshot.github.error`. Without `gh`, `enabled` is false |
+| `github.ts` | `gh pr list --repo <owner/name> --state open --json …` per AIRPORT whose git remote is on GitHub, polled every 90 s in the background (`execFile`, no shell) | Open PRs per AIRPORT: head, checks, reviews, merge state, Draft. For non-Draft PRs without a passing head review or with Codex findings on the head, also the Codex bot's 👍 reactions, the head's committer date (cached per sha) and Codex's PR comments (`gh api`, read-only). A failed repository keeps its last result; errors show in `snapshot.github.error`. Without `gh`, `enabled` is false. For the LOGBOOK, `listMerged` reads the last 30 PRs merged into the default branch (`gh pr list --state merged --base <default>`, the default branch cached per repository) |
 
 ## Modules
 
@@ -54,6 +54,7 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 | `clearances.ts` | CLEARANCE log: append-only JSONL folded into current state |
 | `recorder.ts` | FLIGHT RECORDER: daily JSONL (`event`, `sample`, `dispatch`, `ack`, `schedule`), kept 30 days |
 | `metrics.ts` | Operating metrics and the stage 2 readiness check (pure `computeMetrics`) |
+| `logbook.ts` | LOGBOOK: every 10 minutes merged PRs → one `arrived` line per ARRIVED FLIGHT, `reverted` lines for merged Revert PRs (pure `buildEntry`, `planLogbook`, `foldLogbook`); TARGETS actuals for the FLEET cards (pure `computeActuals`, `expectationMin`); `GET /api/logbook` |
 | `dispatch.ts` | DISPATCH planning: candidates, slots, scores (pure `planDispatch`); settings in `dispatch.json` |
 | `proposals.ts` | DISPATCH proposal log (append-only JSONL), state transitions (shadow verdicts; approve → sent → accepted → departed), reservations, FLIGHT PLAN text, brief, stage 2b and 3 gates |
 | `schedule.ts` | OCC SCHEDULE draft log (append-only JSONL, S1 shadow): `CLASSIFY` / `PRIORITIZE` drafts and `NEW` (AD HOC FLIGHT from the CHARTER DESK: body sections, project / tail / key checks, `similar` titles from the snapshot, which covers the last 45 days), the 5-open-draft limit, SUPERSEDED / EXPIRED sync, shadow verdicts, candidates, the S2 gate |
@@ -108,6 +109,7 @@ Everything lives under `ATC_STATE_DIR` (default `~/.local/state/atc`), outside g
 | `clearances.jsonl` | `clearances.ts` | CLEARANCE log (append-only) |
 | `consumers/<name>.json` | `controller.ts` | Brief cursor per consumer |
 | `flight-recorder/YYYY-MM-DD.jsonl` | `recorder.ts` | FLIGHT RECORDER (UTC days, 30-day retention) |
+| `logbook.jsonl` | `logbook.ts` | LOGBOOK of ARRIVED FLIGHTs (append-only; `arrived` and `reverted` lines) |
 | `proposals.jsonl` | `proposals.ts` | DISPATCH proposals (append-only) |
 | `schedule.jsonl` | `schedule.ts` | OCC SCHEDULE drafts and SUPERVISOR verdicts (append-only) |
 | `dispatch.json` | you (optional; defaults apply without it) | DISPATCH settings: project → AIRPORT mapping, slots, weights, mode (`shadow` / `approval`) |

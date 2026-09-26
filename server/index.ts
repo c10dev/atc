@@ -7,6 +7,7 @@ import { mountAirports } from "./airports.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { mountFleet } from "./fleet.ts";
+import { mountLogbook, runLogbook } from "./logbook.ts";
 import { diffSnapshots, EventLog, isWarm } from "./events.ts";
 import { mountMetrics } from "./metrics.ts";
 import { DISPATCH_MS, mountDispatch, runDispatch } from "./proposals.ts";
@@ -68,6 +69,8 @@ async function tick() {
       lastDispatchAt = Date.now();
       runDispatch(next);
     }
+    if (isWarm(next)) runLogbook(next); // 10분마다 머지된 PR을 LOGBOOK에 적는다
+
     current = next;
     if (sig !== signature) {
       signature = sig;
@@ -90,6 +93,7 @@ mountAirports(app);
 mountMetrics(app);
 mountDispatch(app, getSnapshot);
 mountFleet(app, getSnapshot);
+mountLogbook(app);
 mountSchedule(app, getSnapshot);
 mountSettings(app);
 
