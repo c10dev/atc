@@ -48,6 +48,7 @@ To see Linear tickets too, put `LINEAR_API_KEY` in `.env.local`. For always-on o
 | FLEET (`#fleet`) | Every AIRCRAFT with its status, current FLIGHTs, crew, TYPE RATINGS, ROUTES and TARGETS. Edit profiles, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
 | DISPATCH (`#dispatch`) | The current plan, proposal cards with OCC notes and would-approve / would-reject verdicts (approve / reject in 2b), HELD, IN FLIGHT, excluded FLIGHTs, stage 2b and 3 checks |
 | SCHEDULE (`#schedule`) | OCC SCHEDULE drafts (S1 shadow): the S2 gate panel, open draft cards with would-approve / would-reject verdicts, candidate counts, a last-7-days table |
+| DOCS (`#docs`) | How to use atc: introduction, quickstart, concepts, requesting work (CHARTER DESK / AD HOC), reviewing, FLEET, radio rules, screens, stages, troubleshooting. Rendered from `docs/guide/*.md` (Korean) |
 
 ## Glossary
 
@@ -292,6 +293,7 @@ CHARTER REQUEST → AD HOC FLIGHT draft (S1: verdict in the SCHEDULE tab) → FI
 | `controller/` | Working folder for the TOWER session (stage 1) | [CLAUDE.en.md](controller/CLAUDE.en.md) · [/tick](controller/.claude/skills/tick/SKILL.en.md) |
 | `occ/` | Working folder for the OCC session (DISPATCH, SCHEDULE drafts, flight following) | [CLAUDE.en.md](occ/CLAUDE.en.md) · [/tick](occ/.claude/skills/tick/SKILL.en.md) |
 | `deploy/` | systemd user service | [deploy/README.md](deploy/README.md) |
+| `docs/guide/` | The user guide shown in the DOCS tab (Korean) | [introduction](docs/guide/introduction.md) |
 | `docs/` | Design and conventions | [DISPATCH design](docs/dispatch.md) · [OCC design](docs/occ.md) · [FLEET design](docs/fleet.md) · [Naming rules](docs/naming.md) |
 | — | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 

@@ -8,6 +8,7 @@ import { SettingsPanel } from "./SettingsPanel.tsx";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
 import { Airports } from "./views/Airports.tsx";
 import { Dispatch } from "./views/Dispatch.tsx";
+import { Docs } from "./views/Docs.tsx";
 import { Fleet } from "./views/Fleet.tsx";
 import { MapView } from "./views/Map.tsx";
 import { Metrics } from "./views/Metrics.tsx";
@@ -24,6 +25,7 @@ const TABS = [
   { id: "metrics", code: "METRICS" },
   { id: "dispatch", code: "DISPATCH" },
   { id: "schedule", code: "SCHEDULE" },
+  { id: "docs", code: "DOCS" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -32,8 +34,9 @@ const LEGACY_HASH: Record<string, Tab> = { map: "radar", teams: "strips", ticket
 
 const connectionLabel = { live: "실시간", connecting: "연결 중", lost: "끊김" } as const;
 
+// 주소 #탭 또는 #탭/하위(예: #docs/requesting). 하위 경로는 그 탭이 읽는다.
 function initialTab(): Tab {
-  const hash = location.hash.slice(1);
+  const hash = location.hash.slice(1).split("/")[0];
   if (hash in LEGACY_HASH) return LEGACY_HASH[hash];
   return TABS.some((t) => t.id === hash) ? (hash as Tab) : "radar";
 }
@@ -49,7 +52,8 @@ export function App() {
   const idx = useMemo(() => (snapshot ? buildIndex(snapshot) : null), [snapshot]);
 
   useEffect(() => {
-    if (location.hash !== `#${tab}`) history.replaceState(null, "", `#${tab}`);
+    // 같은 탭의 하위 경로(#docs/requesting)는 그대로 둔다
+    if (location.hash.slice(1).split("/")[0] !== tab) history.replaceState(null, "", `#${tab}`);
   }, [tab]);
   // 탭 줄이 가로로 넘칠 때 선택한 탭이 보이게(글꼴·수치가 늦게 들어와 폭이 바뀌어도)
   const tabsRef = useRef<HTMLElement>(null);
@@ -193,6 +197,8 @@ export function App() {
           <Dispatch refreshKey={snapshot.at.slice(0, 16)} now={now} />
         ) : tab === "schedule" ? (
           <Schedule refreshKey={snapshot.at.slice(0, 16)} now={now} />
+        ) : tab === "docs" ? (
+          <Docs />
         ) : (
           <Tickets snapshot={snapshot} idx={idx} now={now} />
         )}

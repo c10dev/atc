@@ -48,6 +48,7 @@ Linear 티켓까지 보려면 `.env.local`에 `LINEAR_API_KEY`를 넣는다. 상
 | FLEET (`#fleet`) | AIRCRAFT마다 상태, 지금 FLIGHT, 팀원 구성, TYPE RATING, ROUTE, TARGETS. 프로필 편집, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
 | DISPATCH (`#dispatch`) | 지금 계획, OCC 메모가 달린 제안 카드와 "승인했을 것 / 거절했을 것" 판정(2b에서는 승인·거절), HELD, IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검 |
 | SCHEDULE (`#schedule`) | OCC SCHEDULE 초안(S1 그림자 운용): S2 진입 점검 패널, "승인했을 것 / 거절했을 것" 판정이 있는 열린 초안 카드, 후보 수, 최근 7일 표 |
+| DOCS (`#docs`) | atc 사용 안내: 소개, 빠른 시작, 개념, 일 맡기기(CHARTER DESK / AD HOC), 판정하기, FLEET, 교신 규칙, 화면, 단계, 문제 해결. `docs/guide/*.md`(한국어)를 그대로 보여 준다 |
 
 ## 용어
 
@@ -290,6 +291,7 @@ CHARTER REQUEST → AD HOC FLIGHT 초안(S1: SCHEDULE 탭에서 판정) → FILE
 | `controller/` | TOWER 세션 작업 폴더(1단계) | [CLAUDE.md](controller/CLAUDE.md) · [/tick](controller/.claude/skills/tick/SKILL.md) |
 | `occ/` | OCC 세션 작업 폴더(DISPATCH, SCHEDULE 초안, 운항 추적) | [CLAUDE.md](occ/CLAUDE.md) · [/tick](occ/.claude/skills/tick/SKILL.md) |
 | `deploy/` | systemd 사용자 서비스 | [deploy/README.ko.md](deploy/README.ko.md) |
+| `docs/guide/` | DOCS 탭에 보이는 사용 안내(한국어) | [소개](docs/guide/introduction.md) |
 | `docs/` | 설계와 규칙 | [DISPATCH 설계](docs/dispatch.ko.md) · [OCC 설계(영어)](docs/occ.md) · [FLEET 설계(영어)](docs/fleet.md) · [이름 규칙](docs/naming.ko.md) |
 | — | 변경 기록 | [CHANGELOG.ko.md](CHANGELOG.ko.md) |
 
