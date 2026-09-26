@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fold } from "./clearances.ts";
-import { buildBrief, formatClearance, resolveSession } from "./controller.ts";
+import { buildBrief, formatClearance, landTextOf, resolveSession } from "./controller.ts";
 import { diffSnapshots, EventLog } from "./events.ts";
 import type { Alert, Claim, Clearance, LandingBlockCode, PullRequest, Session, Snapshot, Ticket, Workspace } from "./model.ts";
 
@@ -124,6 +124,37 @@ test("브리핑: 충돌은 먼저 들어온 순, LANDING SEQUENCE, NO READBACK C
   assert.deepEqual(brief.clearances.overdue, ["C-0003"]);
   assert.equal(brief.clearances.pending[0].stand, "vocado-voc-175");
   assert.deepEqual(brief.traffic.map((t) => t.callsign).sort(), ["BRAVO", "DELTA", "President"]);
+});
+
+test("LAND 문구: 같은 저장소·base의 첫 PR은 지금 LANDING, 그 뒤는 앞 PR 머지 뒤 rebase, AIRPORT·FLIGHT 없으면 괄호 없음", () => {
+  assert.equal(landTextOf(1, "VCDO", 389, "VOC52", null), "LANDING 순서 1번 (VCDO): PR #389 (VOC52). 지금 LANDING 가능 — 머지 전에 base가 최신인지 확인.");
+  assert.equal(landTextOf(2, "VCDO", 393, "VOC191", 389), "LANDING 순서 2번 (VCDO): PR #393 (VOC191). 앞 PR #389 머지 뒤 rebase하고 LANDING.");
+  assert.equal(landTextOf(3, null, 40, null, 393), "LANDING 순서 3번: PR #40. 앞 PR #393 머지 뒤 rebase하고 LANDING.");
+});
+
+test("브리핑: CLEARED PR에만 landText, 순서와 앞 PR은 같은 저장소·base 안에서만(두 저장소가 섞여도)", () => {
+  const TNNS = "/home/c10/projects/tennis";
+  const s = snapshot({
+    airports: [{ id: "1", repo: VCDO, name: "vocado_nextjs", code: "VCDO" }, { id: "2", repo: TNNS, name: "tennis", code: "TNNS" }] as Snapshot["airports"],
+    pulls: [
+      pr(21, "VOC-52", { readyAt: iso(-9) }),
+      pr(5, null, { repo: TNNS, readyAt: iso(-8) }),
+      pr(22, null, {}, ["behind"]),
+      pr(23, "VOC-191", { readyAt: iso(-5) }),
+      pr(6, null, { repo: TNNS, readyAt: iso(-3) }),
+      pr(24, null, { base: "release", readyAt: iso(-1) }),
+    ],
+  });
+  const q = buildBrief(s, { events: [], reset: false, cursor: "e:0" }, [], T0).landingQueue;
+  const byPr = new Map(q.map((x) => [x.pr.number, x]));
+  assert.deepEqual([21, 5, 23, 6, 24].map((n) => [byPr.get(n)!.seq, byPr.get(n)!.repoSeq]), [[1, 1], [2, 1], [3, 2], [4, 2], [5, 1]]);
+  assert.equal(byPr.get(21)!.landText, "LANDING 순서 1번 (VCDO): PR #21 (VOC52). 지금 LANDING 가능 — 머지 전에 base가 최신인지 확인.");
+  assert.equal(byPr.get(5)!.landText, "LANDING 순서 1번 (TNNS): PR #5. 지금 LANDING 가능 — 머지 전에 base가 최신인지 확인.");
+  assert.equal(byPr.get(22)!.landText, null); // APPROACH
+  assert.equal(byPr.get(22)!.repoSeq, null);
+  assert.equal(byPr.get(23)!.landText, "LANDING 순서 2번 (VCDO): PR #23 (VOC191). 앞 PR #21 머지 뒤 rebase하고 LANDING.");
+  assert.equal(byPr.get(6)!.landText, "LANDING 순서 2번 (TNNS): PR #6. 앞 PR #5 머지 뒤 rebase하고 LANDING.");
+  assert.equal(byPr.get(24)!.landText, "LANDING 순서 1번 (VCDO): PR #24. 지금 LANDING 가능 — 머지 전에 base가 최신인지 확인."); // 다른 base
 });
 
 test("세션 찾기: 이름·콜사인·ID, 겹치는 이름은 거절", () => {
