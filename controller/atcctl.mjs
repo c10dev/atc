@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// TOWER 세션이 쓰는 atc CLI. atc 서버(기본 http://127.0.0.1:7700)에만 말한다. 의존성 없음.
+// TOWER·DISPATCH 세션이 쓰는 atc CLI. atc 서버(기본 http://127.0.0.1:7700)에만 말한다. 의존성 없음.
 const BASE = process.env.ATC_URL || "http://127.0.0.1:7700";
 
 const USAGE = `사용법:
@@ -9,7 +9,13 @@ const USAGE = `사용법:
                                             TYPE: TRAFFIC HOLD CONTINUE LAND REPORT INFO
                                             보낼 대상(SEND TO)과 보낼 문구를 출력한다
   node atcctl.mjs readback <C-0007>         팀이 READBACK함
-  node atcctl.mjs cancel <C-0007>           CLEARANCE 취소`;
+  node atcctl.mjs cancel <C-0007>           CLEARANCE 취소
+
+DISPATCH (2a 그림자 운용: 제안 검토만, 판정은 SUPERVISOR)
+  node atcctl.mjs dispatch brief            계획·열린 제안·2b 점검 (JSON)
+  node atcctl.mjs dispatch flight <VOC-193> FLIGHT 본문·댓글 (Linear 읽기 전용)
+  node atcctl.mjs dispatch note <D-0003> [--caution] -- <메모>
+                                            제안에 검토 메모를 단다(CAUTION 표시 선택)`;
 
 async function call(method, path, body) {
   const res = await fetch(BASE + path, {
@@ -50,6 +56,17 @@ try {
   } else if (cmd === "issue") {
     const r = await call("POST", "/api/clearances", parseIssue(args));
     console.log(`SEND TO: ${r.sendTo}\n---\n${r.message}`);
+  } else if (cmd === "dispatch" && args[0] === "brief") {
+    console.log(JSON.stringify(await call("GET", "/api/dispatch/brief"), null, 1));
+  } else if (cmd === "dispatch" && args[0] === "flight" && args[1]) {
+    console.log(JSON.stringify(await call("GET", `/api/dispatch/flight/${encodeURIComponent(args[1])}`), null, 1));
+  } else if (cmd === "dispatch" && args[0] === "note" && args[1]) {
+    const sep = args.indexOf("--");
+    const text = sep < 0 ? "" : args.slice(sep + 1).join(" ");
+    if (!text) throw new Error("-- 뒤에 메모가 필요함");
+    const caution = args.slice(2, sep < 0 ? undefined : sep).includes("--caution");
+    const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/note`, { text, caution });
+    console.log(`${r.proposal.id} 메모${r.proposal.caution ? " · CAUTION" : ""}`);
   } else if ((cmd === "readback" || cmd === "cancel") && args[0]) {
     const r = await call("POST", `/api/clearances/${encodeURIComponent(args[0])}/${cmd}`);
     console.log(`${r.clearance.id} ${cmd === "readback" ? "READBACK 확인" : "취소"}`);

@@ -6,6 +6,7 @@ import type { Snapshot, TrafficEvent } from "./model.ts";
 // FLIGHT RECORDER. 날짜(UTC)별 JSONL에 추가만 한다. 서버를 재시작해도 남아 지표 계산에 쓴다.
 // - event: 스냅샷 차이 이벤트(events.ts)
 // - sample: 5분마다 교통량 표본
+// - dispatch: DISPATCH 제안 기록(create / verdict / note / supersede / expire)
 // - ack: CONTROLLER가 브리핑을 처리함(TOWER가 실제로 운용된 날을 센다)
 
 export interface Sample {
@@ -21,7 +22,8 @@ export interface Sample {
 export type RecordLine =
   | { t: string; kind: "event"; epoch: string; event: TrafficEvent }
   | ({ t: string; kind: "sample" } & Sample)
-  | { t: string; kind: "ack"; consumer: string };
+  | { t: string; kind: "ack"; consumer: string }
+  | { t: string; kind: "dispatch"; op: string; id: string };
 
 const DIR = join(config.stateDir, "flight-recorder");
 export const SAMPLE_MS = 5 * 60_000;

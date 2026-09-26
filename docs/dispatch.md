@@ -4,7 +4,9 @@
 
 DISPATCH proposes **which FLIGHT (Linear ticket) to send to which AIRCRAFT (team session), and when**. Where TOWER (stage 1) keeps aircraft that are already airborne from colliding, DISPATCH handles the plan before takeoff. It is the same split as between an airline's operations control center (OCC) and ATC.
 
-> Status: design settled (2026-09-26). Decisions are listed under "Decisions" at the end.
+> Status: 2a (shadow operation) implemented (2026-09-26). Decisions are listed under "Decisions" at the end.
+>
+> Settled while implementing: under the 1-FLIGHT-per-TEAM rule, a HOLDING AIRCRAFT that holds the STAND of an unfinished FLIGHT is never assigned, however long it has been idle (the "30 minutes" rule in 5.1 is not used). RELEASE only looks at projects mapped to an AIRPORT (code work).
 
 ## 1. Current facts
 

@@ -26,3 +26,10 @@ const blocked = [
 
 for (const c of allowed) test(`허용: ${c.slice(0, 60)}`, () => assert.equal(check(c, HERE), null));
 for (const c of blocked) test(`차단: ${JSON.stringify(c).slice(0, 60)}`, () => assert.notEqual(check(c, HERE), null));
+
+const DISPATCH = HERE.replace(/controller$/, "dispatch");
+test("DISPATCH 폴더에서: ../controller/atcctl.mjs는 허용, 폴더 안 가짜 atcctl.mjs는 차단", () => {
+  assert.equal(check("node ../controller/atcctl.mjs dispatch brief | jq '.open'", DISPATCH), null);
+  assert.notEqual(check("node atcctl.mjs dispatch brief", DISPATCH), null);
+  assert.notEqual(check("cat ../docs/dispatch.md", DISPATCH), null);
+});

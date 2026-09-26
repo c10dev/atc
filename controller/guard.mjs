@@ -43,7 +43,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   } catch {}
   const reason = check(input.tool_input?.command, input.cwd || HERE);
   if (reason) {
-    console.error(`CONTROLLER는 조종하지 않습니다 — ${reason}. atc CLI(node atcctl.mjs …)와 jq만 쓸 수 있습니다.`);
+    console.error(`TOWER·DISPATCH 세션은 조종하지 않습니다 — ${reason}. atc CLI(node atcctl.mjs …)와 jq만 쓸 수 있습니다.`);
     process.exit(2);
   }
 }

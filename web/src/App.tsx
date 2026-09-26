@@ -7,6 +7,7 @@ import { formatClock, useSettings } from "./settings.ts";
 import { SettingsPanel } from "./SettingsPanel.tsx";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
 import { Airports } from "./views/Airports.tsx";
+import { Dispatch } from "./views/Dispatch.tsx";
 import { MapView } from "./views/Map.tsx";
 import { Metrics } from "./views/Metrics.tsx";
 import { Teams } from "./views/Teams.tsx";
@@ -18,6 +19,7 @@ const TABS = [
   { id: "board", code: "FIDS" },
   { id: "airports", code: "AIRPORTS" },
   { id: "metrics", code: "METRICS" },
+  { id: "dispatch", code: "DISPATCH" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -171,6 +173,8 @@ export function App() {
           <Airports snapshot={snapshot} />
         ) : tab === "metrics" ? (
           <Metrics refreshKey={snapshot.at.slice(0, 16)} />
+        ) : tab === "dispatch" ? (
+          <Dispatch refreshKey={snapshot.at.slice(0, 16)} now={now} />
         ) : (
           <Tickets snapshot={snapshot} idx={idx} now={now} />
         )}

@@ -7,6 +7,7 @@ import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { diffSnapshots, EventLog, isWarm } from "./events.ts";
 import { mountMetrics } from "./metrics.ts";
+import { DISPATCH_MS, mountDispatch, runDispatch } from "./proposals.ts";
 import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
 import { buildSnapshot } from "./snapshot.ts";
@@ -18,6 +19,7 @@ let signature = "";
 const listeners = new Set<(s: Snapshot) => void>();
 const eventLog = new EventLog();
 let lastSampleAt = 0;
+let lastDispatchAt = 0;
 
 async function tick() {
   try {
@@ -29,6 +31,10 @@ async function tick() {
     if (isWarm(next) && Date.now() - lastSampleAt >= SAMPLE_MS) {
       lastSampleAt = Date.now();
       record({ t: next.at, kind: "sample", ...sampleOf(next) });
+    }
+    if (isWarm(next) && Date.now() - lastDispatchAt >= DISPATCH_MS) {
+      lastDispatchAt = Date.now();
+      runDispatch(next);
     }
     current = next;
     if (sig !== signature) {
@@ -49,6 +55,7 @@ app.get("/api/snapshot", async (c) => c.json(await getSnapshot()));
 mountController(app, getSnapshot, eventLog);
 mountAirports(app);
 mountMetrics(app);
+mountDispatch(app, getSnapshot);
 
 app.get("/api/events", (c) =>
   streamSSE(c, async (stream) => {

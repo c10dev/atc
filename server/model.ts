@@ -61,6 +61,13 @@ export interface Ticket {
   priority: number; // 0 없음, 1 긴급 … 4 낮음
   url: string | null;
   updatedAt: string | null;
+  project: string | null;
+  labels: string[];
+  createdAt: string | null;
+  startedAt: string | null; // started 상태(ENROUTE 등)에 들어간 시각
+  blocks: string[]; // 이 FLIGHT가 막고 있는 FLIGHT key
+  blockedBy: string[]; // 이 FLIGHT를 막고 있는 FLIGHT key
+  related: string[];
 }
 
 export interface TicketColumn {

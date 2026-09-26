@@ -205,9 +205,22 @@ The atc server keeps an append-only log in `~/.local/state/atc/flight-recorder/Y
 
 **Stage 2 readiness check** (proposed criteria, `READINESS`): TOWER operated on 3 or more days, READBACK rate of 90% or more, median READBACK time of 5 minutes or less, 30% or fewer conflicts resolved within 5 minutes. With fewer than 5 CLEARANCEs or fewer than 3 resolved conflicts, it shows "not enough data".
 
-## Next: DISPATCH (stage 2)
+## DISPATCH (stage 2, currently 2a shadow operation)
 
-The design draft is in [docs/dispatch.md](docs/dispatch.md). atc proposes assigning FLIGHTs (tickets) to AIRCRAFT (team sessions), measures proposal quality in shadow operation (2a), then moves to SUPERVISOR-approved operation (2b).
+Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server computes a plan for assigning FLIGHTs (Linear Todo tickets) to AIRCRAFT (TEAM sessions) (`server/dispatch.ts`) and records it as proposals (`server/proposals.ts`, `~/.local/state/atc/proposals.jsonl`). **Nothing is sent to anyone.**
+
+- Proposals: `ASSIGN` (FLIGHT → AIRCRAFT, scored per factor: priority, days waiting, FLIGHTs it unblocks, team affinity, conflict risk) and `RELEASE` (a code-work FLIGHT ENROUTE for more than 3 days without a STAND). FLIGHTs blocked by an unfinished FLIGHT show as `HOLD_DEPARTURE`; excluded FLIGHTs are listed with the reason.
+- Limits: 1 FLIGHT per TEAM, concurrent AIRBORNE per AIRPORT (VCDO 4, others 2), 5 open ASSIGN and 5 open RELEASE proposals. The same pair is not proposed again within 24 hours; proposals become SUPERSEDED when the situation changes and EXPIRED after 24 hours.
+- Settings: `~/.local/state/atc/dispatch.json` (defaults when absent) — project → AIRPORT mapping, slots, weights, RELEASE threshold.
+- **DISPATCH tab**: the SUPERVISOR marks each proposal card "would approve / would reject". 20 or more decisions with 80% or more agreement meet the stage 2b (approval operation) check.
+- **DISPATCH session** (a session opened in the `dispatch/` folder, `/loop 10m /tick`): for each proposal without a note it reads the FLIGHT body and comments and adds a note and CAUTION (DB, security or rights work; waiting for a human decision; prerequisites written only in the body). It never decides, and SendMessage is denied in its permissions. It uses the same guard as TOWER.
+
+| API | What it does |
+|---|---|
+| `GET /api/dispatch/brief` | Current plan, open proposals, recent decisions, stage 2b check, FLIGHT summaries |
+| `POST /api/dispatch/proposals/:id/verdict` | `{verdict: agree\|disagree, reason?}` shadow verdict |
+| `POST /api/dispatch/proposals/:id/note` | `{text, caution?}` DISPATCH review note |
+| `GET /api/dispatch/flight/:key` | FLIGHT body and comments (Linear, read-only) |
 
 ## Project layout
 
@@ -229,13 +242,16 @@ atc/
 │   ├── callsign.ts         # callsigns and FLIGHT NUMBERs (shared with the UI)
 │   ├── clearances.ts       # CLEARANCE and READBACK records
 │   ├── controller.ts       # CONTROLLER API and brief (controller.test.ts)
+│   ├── dispatch.ts         # DISPATCH plan: candidates, slots, scores (dispatch.test.ts)
 │   ├── events.ts           # snapshot differences → events
 │   ├── metrics.ts          # operating metrics and stage 2 check (metrics.test.ts)
+│   ├── proposals.ts        # DISPATCH proposal log and API (proposals.test.ts)
 │   ├── recorder.ts         # FLIGHT RECORDER log
 │   ├── occupancy.ts        # HANDOFF and conflict verdicts (occupancy.test.ts)
 │   ├── snapshot.ts         # merges sources + computes alerts
 │   └── index.ts            # /api/snapshot, /api/events
 ├── web/src/                # Vite + React. Connection / team / ticket screens
+├── dispatch/               # working folder for the DISPATCH session (CLAUDE.md, /tick, settings)
 ├── controller/             # working folder for the TOWER session
 │   ├── CLAUDE.md           # role and decision rules
 │   ├── atcctl.mjs          # atc CLI for the CONTROLLER
