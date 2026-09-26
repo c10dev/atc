@@ -113,7 +113,7 @@ export interface AircraftState {
 export interface Reserved {
   aircraft: Map<string, string>;
   flights: Map<string, string>;
-  // FLIGHT key → HOLD 중인 제안 id. HELD는 AIRCRAFT를 잡지 않으므로 aircraft에는 없다.
+  // FLIGHT key → HOLD 표시("D-0007 — 선행 FLIGHT 대기"). HELD는 AIRCRAFT를 잡지 않으므로 aircraft에는 없다.
   held?: Map<string, string>;
 }
 const NO_RESERVED: Reserved = { aircraft: new Map(), flights: new Map(), held: new Map() };
@@ -204,7 +204,12 @@ export function planDispatch(
     const held = reserved.flights.get(t.key);
     if (held) {
       const parked = reserved.held?.get(t.key);
-      excluded.push({ flight: t.key, reason: parked ? `HOLD ${parked} — 선행 FLIGHT 대기` : `진행 중인 제안 ${held}` });
+      excluded.push({ flight: t.key, reason: parked ? `HOLD ${parked}` : `진행 중인 제안 ${held}` });
+      continue;
+    }
+    // 우선순위가 비어 있으면 사람이 아직 언제 할지 정하지 않은 것이다
+    if (!t.priority) {
+      excluded.push({ flight: t.key, reason: "우선순위 없음 — 사람이 정할 때까지 배정하지 않음" });
       continue;
     }
     // 목록에 없는 선행 FLIGHT는 45일 창 밖(대개 끝난 것)이라 막지 않는 것으로 본다

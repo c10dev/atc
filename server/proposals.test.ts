@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_DISPATCH_CONFIG, type Plan } from "./dispatch.ts";
 import type { Ticket } from "./model.ts";
-import { parentKeysOf } from "./model.ts";import { canApply, fold, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reservedOf, syncOps } from "./proposals.ts";
+import { parentKeysOf } from "./model.ts";
+import { canApply, fold, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reservedOf, syncOps } from "./proposals.ts";
 import { toTicket } from "./sources/linear.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
@@ -219,7 +220,7 @@ test("HOLD: 제안은 열린 목록에서 빠지고, AIRCRAFT는 놓아 주되 F
   // FLIGHT는 잡아 둔다 — 안 그러면 다음 바퀴에 같은 FLIGHT가 다른 AIRCRAFT로 다시 나온다
   const r = reservedOf([p]);
   assert.deepEqual([...r.flights], [["VOC-192", "D-0003"]]);
-  assert.deepEqual([...r.held!], [["VOC-192", "D-0003"]]);
+  assert.deepEqual([...r.held!], [["VOC-192", "D-0003 — 선행 FLIGHT 대기"]]);
 
   // 선행 VOC-180이 아직 In Progress면 HOLD 유지
   const running = [t("VOC-180", "started", "In Progress"), t("VOC-192")];
@@ -231,6 +232,34 @@ test("HOLD: 제안은 열린 목록에서 빠지고, AIRCRAFT는 놓아 주되 F
   assert.deepEqual(ops.map((o) => `${o.op}:${o.id}:${"reason" in o ? o.reason : ""}`), ["supersede:D-0003:선행 FLIGHT(VOC-180)가 끝남 — 다시 후보"]);
   // 선행이 끝나면 FLIGHT도 놓아 준다
   assert.deepEqual([...reservedOf([{ ...p, status: "superseded" }]).flights], []);
+});
+
+test("선행 FLIGHT 없는 HOLD: 사람 결정 대기로 잡아 두고, HOLD 뒤에 FLIGHT가 수정되면 다시 검토", () => {
+  const [p] = fold([
+    create("D-0010", "VOC-177", "b", 30),
+    { op: "note", id: "D-0010", at: iso(21), text: "구현은 사용자 지시 대기", caution: true },
+    { op: "hold", id: "D-0010", at: iso(20), blockedBy: [] },
+  ]);
+  assert.deepEqual(p.hold, []);
+  assert.equal(p.holdAt, iso(20));
+  assert.equal(isHeld(p), true);
+  assert.deepEqual([...reservedOf([p]).held!], [["VOC-177", "D-0010 — 사람 결정 대기"]]);
+
+  const ticket = (updatedMinAgo: number) => ({ ...t("VOC-177"), updatedAt: iso(updatedMinAgo) });
+  // HOLD 전에 수정된 것은 그대로
+  assert.deepEqual(syncOps([p], planOf(), { tickets: [ticket(25)], workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1), []);
+  // HOLD 뒤에 수정되면 풀어서 다시 검토
+  const ops = syncOps([p], planOf(), { tickets: [ticket(5)], workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1);
+  assert.deepEqual(ops.map((o) => `${o.op}:${"reason" in o ? o.reason : ""}`), ["supersede:HOLD 뒤에 FLIGHT가 수정됨 — 다시 검토"]);
+});
+
+test("HOLD는 24시간이 지나도 만료되지 않고, FLIGHT 자체가 Todo가 아니게 되면 닫힌다", () => {
+  const [p] = fold([create("D-0007", "VOC-193", "b", 3 * 24 * 60), { op: "hold", id: "D-0007", at: iso(3 * 24 * 60 - 1), blockedBy: ["VOC-191"] }]);
+  const review = t("VOC-191", "started", "In Review");
+  assert.deepEqual(syncOps([p], planOf(), { tickets: [review, t("VOC-193")], workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1), []);
+  const started = [review, t("VOC-193", "started", "In Progress")];
+  const ops = syncOps([p], planOf(), { tickets: started, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1);
+  assert.deepEqual(ops.map((o) => `${o.op}:${"reason" in o ? o.reason : ""}`), ["supersede:FLIGHT 상태가 바뀜(In Progress)"]);
 });
 
 test("늦음과 3단계 점검: READBACK 비율·중앙값·DEPARTED 비율", () => {

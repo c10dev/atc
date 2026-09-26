@@ -188,11 +188,18 @@ test("예약: 진행 중인 제안이 잡은 AIRCRAFT·FLIGHT는 새 짝에서 �
 test("HELD 제안이 잡은 FLIGHT는 다시 제안하지 않되 AIRCRAFT는 다른 FLIGHT에 쓸 수 있다", () => {
   const s = snap({ sessions: [session("a", "TEAM_A"), session("b", "TEAM_B")], tickets: [ticket("VOC-72", { priority: 1 }), ticket("VOC-73")] });
   // D-0002가 VOC-72를 HOLD로 잡아 둠 — AIRCRAFT는 잡지 않았다
-  const reserved = { aircraft: new Map(), flights: new Map([["VOC-72", "D-0002"]]), held: new Map([["VOC-72", "D-0002"]]) };
+  const reserved = { aircraft: new Map(), flights: new Map([["VOC-72", "D-0002"]]), held: new Map([["VOC-72", "D-0002 — 선행 FLIGHT 대기"]]) };
   const p = planDispatch(s, new Map(), cfg(), NOW, reserved);
   assert.equal(p.assign.find((a) => a.flight === "VOC-72"), undefined);
   assert.deepEqual(p.excluded.find((e) => e.flight === "VOC-72"), { flight: "VOC-72", reason: "HOLD D-0002 — 선행 FLIGHT 대기" });
   // 잡혀 있지 않은 AIRCRAFT 두 대가 남은 FLIGHT 하나를 두고 경쟁한다
   assert.deepEqual(p.assign.map((a) => a.flight), ["VOC-73"]);
   assert.equal(p.aircraft.filter((a) => a.available).length, 2);
+});
+
+test("우선순위 없는 FLIGHT는 사람이 정할 때까지 ASSIGN 후보가 아니다", () => {
+  const s = snap({ sessions: [session("b", "TEAM_B")], tickets: [ticket("VOC-177", { priority: 0 }), ticket("VOC-178")] });
+  const p = planDispatch(s, new Map(), cfg(), NOW);
+  assert.deepEqual(p.assign.map((a) => a.flight), ["VOC-178"]);
+  assert.deepEqual(p.excluded.find((e) => e.flight === "VOC-177"), { flight: "VOC-177", reason: "우선순위 없음 — 사람이 정할 때까지 배정하지 않음" });
 });

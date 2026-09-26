@@ -48,7 +48,7 @@ export type ProposalStatus =
   | "superseded"
   | "expired";
 
-export const isHeld = (p: Proposal) => p.kind === "ASSIGN" && p.hold.length > 0;
+export const isHeld = (p: Proposal) => p.kind === "ASSIGN" && p.holdAt !== null;
 export const isInFlight = (p: Proposal) => p.kind === "ASSIGN" && !isHeld(p) && (p.status === "approved" || p.status === "sent" || p.status === "accepted");
 
 export interface Proposal {
@@ -69,11 +69,12 @@ export interface Proposal {
   note: string | null; // DISPATCH 세션 검토 메모
   caution: boolean;
   hold: string[]; // DISPATCH가 선행 FLIGHT로 지정한 HOLD (본문에만 있던 blocks 관계)
+  holdAt: string | null; // HOLD를 건 시각. hold가 비어 있으면 선행 FLIGHT 없는 HOLD(사람 결정 대기 등, 사유는 note)
   message: string | null; // 보낸 FLIGHT PLAN 문구
   departedStand: string | null;
 }
 
-type Create = Omit<Proposal, "status" | "decidedAt" | "statusAt" | "timeline" | "reason" | "note" | "caution" | "hold" | "message" | "departedStand">;
+type Create = Omit<Proposal, "status" | "decidedAt" | "statusAt" | "timeline" | "reason" | "note" | "caution" | "hold" | "holdAt" | "message" | "departedStand">;
 export type Op =
   | ({ op: "create" } & Create)
   | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null }
@@ -110,7 +111,7 @@ export function fold(ops: Op[]): Proposal[] {
       const { op: _op, ...rest } = o;
       byId.set(o.id, {
         ...rest, status: "proposed", decidedAt: null, statusAt: o.at, timeline: { proposed: o.at },
-        reason: null, note: null, caution: false, hold: [], message: null, departedStand: null,
+        reason: null, note: null, caution: false, hold: [], holdAt: null, message: null, departedStand: null,
       });
       continue;
     }
@@ -123,6 +124,7 @@ export function fold(ops: Op[]): Proposal[] {
     }
     if (o.op === "hold") {
       p.hold = [...new Set(o.blockedBy)].sort();
+      p.holdAt = o.at;
       continue;
     }
     if (!canApply(p, o.op)) continue;
@@ -149,7 +151,7 @@ export function reservedOf(existing: Proposal[]): Reserved {
   return {
     aircraft: new Map(live.map((p) => [p.aircraft!, p.id])),
     flights: new Map([...live, ...held].map((p) => [p.flight, p.id])),
-    held: new Map(held.map((p) => [p.flight, p.id])),
+    held: new Map(held.map((p) => [p.flight, `${p.id} — ${p.hold.length ? "선행 FLIGHT 대기" : "사람 결정 대기"}`])),
   };
 }
 
@@ -184,16 +186,21 @@ export function syncOps(
   };
   // 승인됐지만 아직 안 보낸 ASSIGN이 여전히 유효한가(FLIGHT가 Todo이고 AIRCRAFT가 배정 가능)
   const stillValid = (p: Proposal) =>
-    !p.hold.length && stateOf.get(p.flight)?.stateType === "unstarted" && Boolean(p.aircraft && aircraftOf.get(p.aircraft)?.available);
+    !isHeld(p) && stateOf.get(p.flight)?.stateType === "unstarted" && Boolean(p.aircraft && aircraftOf.get(p.aircraft)?.available);
 
   let open = 0;
   let openRelease = 0;
   for (const p of existing) {
     if (p.status === "proposed") {
-      if (p.kind === "ASSIGN" && p.hold.length) {
-        // DISPATCH가 선행 FLIGHT로 잡아 둔 HOLD — 선행이 끝나면 다시 후보가 된다
+      if (isHeld(p)) {
+        // DISPATCH가 잡아 둔 HOLD는 24시간 만료가 없다. 대신 풀리는 조건이 있다:
+        // FLIGHT 자체가 Todo가 아니게 됨 / 선행 FLIGHT가 모두 끝남 / (선행 없는 HOLD) HOLD 뒤에 FLIGHT가 수정됨
+        const t = stateOf.get(p.flight);
         const blockers = p.hold.filter((k) => stateOf.has(k) && !DONE_STATES.has(stateOf.get(k)!.stateType));
-        if (!blockers.length) ops.push({ op: "supersede", id: p.id, at, reason: `선행 FLIGHT(${p.hold.join(", ")})가 끝남 — 다시 후보` });
+        if (!t || t.stateType !== "unstarted") ops.push({ op: "supersede", id: p.id, at, reason: `FLIGHT 상태가 바뀜(${t?.state ?? "목록에 없음"})` });
+        else if (p.hold.length && !blockers.length) ops.push({ op: "supersede", id: p.id, at, reason: `선행 FLIGHT(${p.hold.join(", ")})가 끝남 — 다시 후보` });
+        else if (!p.hold.length && t.updatedAt && Date.parse(t.updatedAt) > Date.parse(p.holdAt!))
+          ops.push({ op: "supersede", id: p.id, at, reason: "HOLD 뒤에 FLIGHT가 수정됨 — 다시 검토" });
         continue;
       }
       if (now - Date.parse(p.at) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at });
@@ -393,7 +400,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
 
   // 상태를 바꾸는 동작 하나. 모드·전이 규칙을 검사하고 op를 남긴다.
   const act =
-    (name: "verdict" | "note" | "hold" | "approve" | "reject" | "release" | "accept" | "decline") =>
+    (name: "verdict" | "note" | "hold" | "unhold" | "approve" | "reject" | "release" | "accept" | "decline") =>
     async (c: Context) => {
       const id = (c.req.param("id") ?? "").toUpperCase();
       const body = await c.req.json().catch(() => ({}));
@@ -411,10 +418,22 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
         if (p.kind !== "ASSIGN") return c.json({ error: "RELEASE 제안에는 HOLD를 걸지 않는다" }, 400);
         const raw = Array.isArray(body.blockedBy) ? body.blockedBy : [];
         const blockedBy: string[] = [...new Set<string>(raw.map((k: unknown) => String(k).toUpperCase()))];
-        if (!blockedBy.length) return c.json({ error: "blockedBy(선행 FLIGHT key)가 필요함" }, 400);
+        // 선행 FLIGHT 없는 HOLD(사람 결정·외부 입력 대기)는 사유가 note에 있어야 한다
+        if (!blockedBy.length && !p.note) return c.json({ error: "선행 FLIGHT 없는 HOLD는 사유 메모(note)가 먼저 필요함" }, 400);
         const bad = blockedBy.find((k) => !/^[A-Z]+-\d+$/.test(k));
         if (bad) return c.json({ error: `FLIGHT key 형식이 아님: ${bad}` }, 400);
+        if (blockedBy.includes(p.flight)) return c.json({ error: `자기 자신(${p.flight})을 선행 FLIGHT로 걸 수 없음` }, 400);
+        // 목록에 없는 key는 오타일 가능성이 크다. 그대로 두면 풀리지 않는 HOLD가 된다
+        const known = new Set((await getSnapshot()).tickets.map((t) => t.key));
+        const unknown = blockedBy.find((k) => !known.has(k));
+        if (unknown) return c.json({ error: `열린 FLIGHT 목록에 없는 key: ${unknown}` }, 400);
         append([{ op: "hold", id, at, blockedBy }]);
+      } else if (name === "unhold") {
+        // SUPERVISOR가 HOLD를 푼다. 제안은 닫고, FLIGHT는 다음 계획에서 다시 후보가 된다
+        if (!isHeld(p)) return c.json({ error: "HOLD 중인 제안이 아님" }, 409);
+        const bad = closed("supersede");
+        if (bad) return bad;
+        append([{ op: "supersede", id, at, reason: "SUPERVISOR가 HOLD를 풂 — 다시 후보" }]);
       } else if (name === "verdict") {
         if (mode !== "shadow") return c.json({ error: "그림자 판정은 shadow 모드에서만 — approval 모드에서는 approve/reject" }, 409);
         if (body.verdict !== "agree" && body.verdict !== "disagree") return c.json({ error: "verdict는 agree|disagree" }, 400);
@@ -451,7 +470,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       }
       return c.json({ proposal: allProposals().find((x) => x.id === id) });
     };
-  for (const name of ["verdict", "note", "hold", "approve", "reject", "release", "accept", "decline"] as const) {
+  for (const name of ["verdict", "note", "hold", "unhold", "approve", "reject", "release", "accept", "decline"] as const) {
     app.post(`/api/dispatch/proposals/:id/${name}`, act(name));
   }
 

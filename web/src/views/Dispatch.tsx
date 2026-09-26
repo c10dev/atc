@@ -51,6 +51,7 @@ const REJECT_REASONS = [
   "우선순위 낮음",
   "AIRBORNE — 지금은 슬롯 없음",
   "다른 팀이 더 적합",
+  "이미 완료됨 — Linear 이슈만 열려 있음",
 ];
 
 const statusText: Record<Proposal["status"], string> = {
@@ -117,6 +118,17 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
     try {
       if (brief?.mode === "approval") await post(`/api/dispatch/proposals/${p.id}/${v === "agree" ? "approve" : "reject"}`, payload);
       else await post(`/api/dispatch/proposals/${p.id}/verdict`, { verdict: v, reason });
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  // SUPERVISOR가 HOLD를 푼다: 제안은 닫히고 FLIGHT는 다음 계획에서 다시 후보가 된다
+  const unhold = async (p: Proposal) => {
+    if (!confirm(`${p.id}의 HOLD를 풀까요? 제안은 닫히고 ${flightNumber(p.flight)}는 다음 계획에서 다시 후보가 됩니다.`)) return;
+    try {
+      await post(`/api/dispatch/proposals/${p.id}/unhold`, {});
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -229,11 +241,11 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {brief.held.length > 0 && (
         <>
           <h2 className="label">
-            HELD <em>DISPATCH가 선행 FLIGHT로 잡아 둠</em>
+            HELD <em>DISPATCH가 잡아 둠 — 선행 FLIGHT 또는 사람 결정 대기</em>
           </h2>
           <div className="dp-cards">
             {brief.held.map((p) => (
-              <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={verdict} mode={brief.mode} held />
+              <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={verdict} onUnhold={unhold} mode={brief.mode} held />
             ))}
           </div>
         </>
@@ -458,6 +470,7 @@ function Card({
   onVerdict,
   mode,
   held,
+  onUnhold,
 }: {
   p: Proposal;
   flight: FlightInfo | undefined;
@@ -465,6 +478,7 @@ function Card({
   onVerdict: (p: Proposal, v: "agree" | "disagree") => void;
   mode: DispatchConfig["mode"];
   held?: boolean;
+  onUnhold?: (p: Proposal) => void;
 }) {
   const max = Math.max(1, ...p.factors.map((f) => Math.abs(f.points)));
   return (
@@ -493,9 +507,10 @@ function Card({
           {p.score}
         </span>
       </div>
-      {p.hold.length > 0 && (
+      {p.holdAt && (
         <p className="dp-hold">
-          <span className="dp-hold-mark">HOLD</span> 선행 FLIGHT {p.hold.map(flightNumber).join(", ")}가 끝난 뒤
+          <span className="dp-hold-mark">HOLD</span>
+          {p.hold.length ? `선행 FLIGHT ${p.hold.map(flightNumber).join(", ")}가 끝난 뒤` : "사람 결정·외부 입력 대기 — 사유는 메모, FLIGHT가 수정되면 다시 검토"}
         </p>
       )}
       <table className="dp-factors">
@@ -524,6 +539,11 @@ function Card({
         <button className="dp-btn disagree" onClick={() => onVerdict(p, "disagree")}>
           {mode === "approval" ? "거절" : "거절했을 것"}
         </button>
+        {held && onUnhold && (
+          <button className="dp-btn unhold" onClick={() => onUnhold(p)}>
+            HOLD 풀기
+          </button>
+        )}
       </div>
     </article>
   );

@@ -71,6 +71,7 @@ The first implementation covers only `ASSIGN` and `RELEASE`. `RELEASE` does a lo
   - not blocked by a FLIGHT that hasn't ARRIVED (if blocked: `HOLD_DEPARTURE`)
   - has no STAND yet and nobody holds it
   - its project maps to an AIRPORT that is operating (OPEN)
+  - it has a priority (No priority means nobody has decided when to do it yet, so it is excluded)
 
 #### 5.1.1 Parent issues
 
@@ -98,7 +99,7 @@ When slots are full, nothing is proposed instead of an `ASSIGN` (extended to gro
 
 | Factor | Calculation | Default weight |
 |---|---|---|
-| Priority | Urgent 4 · High 3 · Medium 2 · Low 1 · none 1.5 | ×3 |
+| Priority | Urgent 4 · High 3 · Medium 2 · Low 1 (none is excluded from candidates) | ×3 |
 | Wait time | Days spent in Todo (max 14) | ×0.5 |
 | FLIGHTs it unblocks | Number of Todo items this FLIGHT blocks | ×2 |
 | Team fit | How many times this AIRCRAFT flew FLIGHTs in the same project or related ones (FLIGHT RECORDER, claim history) | ×1 |
@@ -111,8 +112,8 @@ Each proposal shows the per-factor scores as they are ("why this flight for this
 For each top candidate the server picks, the DISPATCH session reads the ticket body and comments and:
 
 - Adds a `CAUTION` mark with a reason for DB, migration, security or rights work (what vocado routes to `Codex Engineering Task`).
-- Holds the proposal back when the ticket needs a human decision first (e.g. "after user confirmation").
-- Adds a `HOLD` with `dispatch note <ID> --hold <FLIGHT> -- <note>` when the prerequisite is written only in the body, with no `blocks` relation. The named FLIGHT is the **blocking (prerequisite)** one, and the proposal moves to the HELD list instead of the ASSIGN list. Its own FLIGHT stays reserved so the planner will not offer it again (its AIRCRAFT is left free for other FLIGHTs), it cannot be sent, and its FLIGHT PLAN carries a `HOLD — 선행 FLIGHT …` line. When every named FLIGHT reaches a done state, atc supersedes the proposal so the planner can offer it again.
+- Adds a HOLD with no prerequisite FLIGHT (a bare `--hold`) when the ticket needs a human decision first (e.g. "after user confirmation"). The note carries the reason; if the FLIGHT is edited after the HOLD, atc releases it for another review.
+- Adds a `HOLD` with `dispatch note <ID> --hold <FLIGHT> -- <note>` when the prerequisite is written only in the body, with no `blocks` relation. The named FLIGHT is the **blocking (prerequisite)** one, and the proposal moves to the HELD list instead of the ASSIGN list. Its own FLIGHT stays reserved so the planner will not offer it again (its AIRCRAFT is left free for other FLIGHTs), it cannot be sent, and its FLIGHT PLAN carries a `HOLD — 선행 FLIGHT …` line. When every named FLIGHT reaches a done state, atc supersedes the proposal so the planner can offer it again. A HOLD does not expire after 24 hours; it also closes when the FLIGHT itself is no longer Todo or the SUPERVISOR presses "HOLD 풀기" (release HOLD).
 - Leaves a one- or two-line rationale on the proposal.
 
 ## 6. Flow
@@ -139,7 +140,7 @@ CAPTAIN: READBACK → Linear In Progress, prepares the STAND (same rules as toda
 atc: DEPARTED once that FLIGHT gets a STAND; if not, rechecks after 30 minutes like TOWER does
 ```
 
-Proposal states: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)` (2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED` (2b), with side branches `REJECTED`, `DECLINED` (CAPTAIN gave a reason), `SUPERSEDED` (a person assigned it directly or the situation changed) and `EXPIRED` (24 hours). A `PROPOSED` ASSIGN that carries a `HOLD` leaves the main flow: it waits on the HELD list until its prerequisite is done.
+Proposal states: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)` (2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED` (2b), with side branches `REJECTED`, `DECLINED` (CAPTAIN gave a reason), `SUPERSEDED` (a person assigned it directly or the situation changed) and `EXPIRED` (24 hours). A `PROPOSED` ASSIGN that carries a `HOLD` leaves the main flow: it waits on the HELD list until released (no 24-hour expiry).
 
 Rejections carry a **reason chip** in the SUPERVISOR's UI: the reason list plus an optional memo, stored as `"<chip> — <memo>"` in `reason`. The chip that matters most is the parent issue (5.1.1), which the planner should also catch by itself.
 
