@@ -3,7 +3,11 @@
     "allow": [
       "Bash(node ../controller/atcctl.mjs *)",
       "Bash(node /home/c10/projects/atc/controller/atcctl.mjs *)",
-      "Bash(jq *)"
+      "Bash(jq *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr list *)"
     ],
     "deny": [
       "Edit",
@@ -18,7 +22,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/guard.mjs\" || exit 2",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/guard.mjs\" --gh-read || exit 2",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/mcp-guard.mjs\" || exit 2",
             "timeout": 5
           }
         ]

@@ -4,7 +4,7 @@
 
 DISPATCH proposes **which FLIGHT (Linear ticket) to send to which AIRCRAFT (team session), and when**. Where TOWER (stage 1) keeps aircraft that are already airborne from colliding, DISPATCH handles the plan before takeoff. It is the same split as between an airline's operations control center (OCC) and ATC.
 
-> Status: 2a (shadow operation) running; 2b (approval operation) implemented behind `mode` and off by default (2026-09-26). See "Turning on 2b". Decisions are listed under "Decisions" at the end.
+> Status: the DISPATCH session merged into the OCC session (`atc/occ/`, [occ.md](occ.md)) on 2026-09-26; the work below is unchanged. 2a (shadow operation) running; 2b (approval operation) implemented behind `mode` and off by default (2026-09-26). See "Turning on 2b". Decisions are listed under "Decisions" at the end.
 >
 > Settled while implementing: under the 1-FLIGHT-per-TEAM rule, a HOLDING AIRCRAFT that holds the STAND of an unfinished FLIGHT is never assigned, however long it has been idle (the "30 minutes" rule in 5.1 is not used). RELEASE only looks at projects mapped to an AIRPORT (code work).
 
@@ -40,7 +40,7 @@ Constraints that follow from these facts:
 | Role | Who | Does | May use |
 |---|---|---|---|
 | SUPERVISOR | The user | Approves and rejects proposals, adjusts slots and weights, final authority | Everything |
-| DISPATCH | A new Claude session (`atc/dispatch/`) | Reviews proposals (reads ticket bodies), delivers approved FLIGHT PLANs, records acceptance | atc CLI, SendMessage, Linear **read** |
+| DISPATCH | The OCC session (`atc/occ/`, was `atc/dispatch/`) | Reviews proposals (reads ticket bodies), delivers approved FLIGHT PLANs, records acceptance | atc CLI, SendMessage, Linear **read** |
 | TOWER | The stage 1 CONTROLLER | Conflicts, HANDOFFs, LANDING SEQUENCE | atc CLI, SendMessage |
 | CAPTAIN | Each TEAM leader | Accepts a FLIGHT PLAN (READBACK) or replies with a reason, changes Linear state, prepares the STAND | Its own repository, Linear |
 | Symphony | Another operator | `symphony-pilot` FLIGHTs | DISPATCH leaves them alone |
@@ -156,7 +156,7 @@ Rejections carry a **reason chip** in the SUPERVISOR's UI: the reason list plus 
 | Settings | `~/.local/state/atc/dispatch.json`: project → AIRPORT mapping, slots, weights, mode (`shadow`/`approval`) |
 | UI | DISPATCH tab: proposal cards (FLIGHT, AIRCRAFT, per-factor scores, DISPATCH note, CAUTION), approve/reject buttons, slot status, RELEASE list |
 | Metrics | Shadow agreement rate, proposal → acceptance time, idle AIRCRAFT time (minutes PARKED while Todo items existed), number of neglected ENROUTE FLIGHTs |
-| `atc/dispatch/` | Same structure as TOWER: `CLAUDE.md` (role and decision rules), `/tick`, a guard (atc CLI and jq only; Linear through a read-only MCP only) |
+| `atc/occ/` (was `atc/dispatch/`) | Same structure as TOWER: `CLAUDE.md` (role and decision rules), `/tick`, a guard (atc CLI and jq only; Linear through a read-only MCP only) |
 
 ## 8. Criteria for moving on
 
@@ -193,14 +193,14 @@ Known limit: `dispatch release` marks a proposal SENT before the message goes ou
 1. Extend the Linear query + `dispatch.ts` (candidates, slots, scores) + tests
 2. Proposal log, API and events, shadow mode by default
 3. DISPATCH tab (shadow agreement display) + metrics
-4. `atc/dispatch/` session (review notes, CAUTION)
+4. `atc/dispatch/` session (review notes, CAUTION), now part of `atc/occ/`
 5. Approval operation (2b): approve button, FLIGHT PLAN delivery, READBACK, DEPARTED detection — widen the READBACK line in vocado `CLAUDE.md` to cover `[DISPATCH D-xxxx]`
 
 ## Decisions (2026-09-26, SUPERVISOR)
 
 | Item | Decision |
 |---|---|
-| DISPATCH session | A **separate session** from TOWER (`atc/dispatch/`) |
+| DISPATCH session | A **separate session** from TOWER (`atc/dispatch/`). Merged into OCC (`atc/occ/`) later the same day |
 | Candidate FLIGHTs | **Todo only**. Backlog items qualify only after a person moves them to Todo |
 | Project → AIRPORT | Beta Readiness · Song Experience → **VCDO**. Vocado Pre-seed IR & Pitch Deck · Vocado Visual System (SEED) are **excluded from assignment** |
 | `RELEASE` threshold | **3 days** ENROUTE without a STAND |

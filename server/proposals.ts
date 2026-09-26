@@ -21,9 +21,9 @@ import { fetchIssueDetail } from "./sources/linear.ts";
 
 // DISPATCH 제안 기록. 추가만 하는 JSONL을 접어 현재 상태를 만든다(clearances.ts와 같은 방식).
 // - 2a(mode "shadow"): SUPERVISOR가 "나라면 승인/거절"만 표시하고 아무에게도 보내지 않는다.
-// - 2b(mode "approval"): SUPERVISOR가 승인하면 DISPATCH 세션이 FLIGHT PLAN을 CAPTAIN에게 보내고
+// - 2b(mode "approval"): SUPERVISOR가 승인하면 OCC 세션(DISPATCH)이 FLIGHT PLAN을 CAPTAIN에게 보내고
 //   CAPTAIN의 READBACK으로 수락, STAND가 생기면 DEPARTED. 보내는 문구는 서버가 만들고
-//   dispatch/send-guard.mjs가 그 문구 그대로인지 확인한다.
+//   occ/send-guard.mjs가 그 문구 그대로인지 확인한다.
 
 const FILE = join(config.stateDir, "proposals.jsonl");
 const DAY = 86_400_000;

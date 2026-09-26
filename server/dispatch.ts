@@ -130,6 +130,12 @@ export interface Plan {
 
 const DAY = 86_400_000;
 export const DONE_STATES = new Set(["completed", "canceled", "duplicate"]);
+
+// `lane:TEAM_X` 라벨: 사람(또는 OCC)이 그 FLIGHT를 맡을 팀을 정해 둔 것. 있으면 그 팀에만 제안한다.
+// 두 배정자(사람의 직접 배정과 DISPATCH)가 같은 FLIGHT를 다른 팀에 주는 일을 막는다.
+export function lanesOf(t: Pick<Ticket, "labels">): Set<string> {
+  return new Set(t.labels.map((l) => /^lane:\s*(\S+)$/i.exec(l.trim())?.[1]?.toUpperCase()).filter(Boolean) as string[]);
+}
 const PRIORITY_VALUE: Record<number, number> = { 0: 1.5, 1: 4, 2: 3, 3: 2, 4: 1 };
 export const PRIORITY_NAME: Record<number, string> = { 0: "없음", 1: "Urgent", 2: "High", 3: "Medium", 4: "Low" };
 const round1 = (x: number) => Math.round(x * 10) / 10;
@@ -218,6 +224,22 @@ export function planDispatch(
       hold.push({ flight: t.key, blockedBy: blockers });
       continue;
     }
+    const lanes = lanesOf(t);
+    if (lanes.size) {
+      const laneTag = [...lanes].map((n) => `lane:${n}`).join(", ");
+      const mine = aircraft.filter((ac) => lanes.has(ac.name.toUpperCase()));
+      if (!mine.length) {
+        excluded.push({ flight: t.key, reason: `${laneTag} — 그 TEAM 세션이 없음` });
+        continue;
+      }
+      if (!mine.some((ac) => ac.available && !ac.reserved && ac.airport === airport)) {
+        const stateOf = (ac: AircraftState) =>
+          !ac.available ? ac.reason : ac.reserved ? `진행 중인 제안 ${ac.reserved}` : `소속 AIRPORT ${ac.airport ?? "없음"}`;
+        const why = mine.map((ac) => `${ac.name} ${stateOf(ac)}`).join(", ");
+        excluded.push({ flight: t.key, reason: `${laneTag} — 지정 팀 배정 불가(${why})` });
+        continue;
+      }
+    }
     eligible.push({ ...t, airport });
   }
 
@@ -255,7 +277,12 @@ export function planDispatch(
   }
   const limitOf = (code: string) => cfg.slots.airborne[code] ?? cfg.slots.defaultAirborne;
   const pairs = eligible
-    .flatMap((t) => aircraft.filter((ac) => ac.available && !ac.reserved && ac.airport === t.airport).map((ac) => ({ t, ac, ...score(t, ac) })))
+    .flatMap((t) => {
+      const lanes = lanesOf(t);
+      return aircraft
+        .filter((ac) => ac.available && !ac.reserved && ac.airport === t.airport && (!lanes.size || lanes.has(ac.name.toUpperCase())))
+        .map((ac) => ({ t, ac, ...score(t, ac) }));
+    })
     .sort((a, b) => b.score - a.score || a.t.key.localeCompare(b.t.key) || a.ac.name.localeCompare(b.ac.name));
   const planned = new Map<string, number>();
   const usedFlights = new Set<string>();

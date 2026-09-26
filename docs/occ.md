@@ -9,7 +9,7 @@ atc splits into two control sessions, the way aviation does:
 
 In real aviation the flight dispatcher belongs to the airline's OCC, not to ATC. So DISPATCH (stage 2) moves into OCC, and OCC takes over the work the "President" session does by hand today.
 
-> Status: design draft (2026-09-26). Nothing here is built yet. Decisions are listed under "Decisions" at the end.
+> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and `lane:TEAM_X` in the planner. S1 and later are design only. Decisions are listed under "Decisions" at the end.
 
 ## 1. Current facts
 
@@ -97,7 +97,7 @@ OCC never writes to Linear freely. It drafts **SCHEDULE operations**. Each one i
 
 ## 6. linear-guard
 
-The same pattern as `dispatch/send-guard.mjs`: a PreToolUse hook on OCC's Linear write tools (`mcp__*__save_issue`, `save_comment`, and the relation and label tools). It is fail-closed (`… || exit 2`).
+The same pattern as `occ/send-guard.mjs`: a PreToolUse hook on OCC's Linear write tools (`mcp__*__save_issue`, `save_comment`, and the relation and label tools). It is fail-closed (`… || exit 2`).
 
 A write passes only when all of these hold:
 
@@ -142,9 +142,9 @@ Never automatic: anything with CAUTION, `Canceled`, deleting anything, changes t
 | President: maintain rule files | A `NEW` ticket that a TEAM implements through a PR |
 | President: judge PR reviews and scope | Stays with the SUPERVISOR. OCC can summarize, but does not decide |
 
-OCC's guard is TOWER's Bash guard plus read-only `gh` subcommands. Edit and Write stay denied.
+OCC's guard is TOWER's Bash guard plus read-only `gh` subcommands (`guard.mjs --gh-read`). Edit and Write stay denied. `occ/mcp-guard.mjs` lets only read MCP tools through (names starting with get, list, search, read, query or fetch), so in S0 OCC cannot write to Linear or GitHub even though the connectors are loaded. In S2, linear-guard opens Linear writes for approved operations only.
 
-The session reloads its manual: `/tick` starts by comparing the `CLAUDE.md` hash with the one it read last. If the file changed, it rereads it before doing anything else. That fixes the stale-manual incident from section 1.
+The session reloads its manual: `/tick` starts with `atcctl manual check`, which compares the hash of `CLAUDE.md` and `/tick` with the last `atcctl manual ack` (stored under `~/.local/state/atc/manuals/`). If they changed, the session rereads them before doing anything else. TOWER's `/tick` does the same. That fixes the stale-manual incident from section 1.
 
 **President retires** once all three hold: OCC has run S1 for a week, flight following covers every team report, and `LANE` is in use. Until then President keeps assigning and records each assignment as a `LANE` draft.
 
@@ -190,8 +190,8 @@ The session reloads its manual: `/tick` starts by comparing the `CLAUDE.md` hash
 
 ## 13. Implementation order
 
-1. **S0**: create `atc/occ/` from `atc/dispatch/` (merge), add read-only `gh` to its guard, reload the manual on change, tell President about the handover
-2. `lane:TEAM_X` in the Linear query and the planner (fixes the VOC-196 double dispatch right away)
+1. ✅ **S0**: create `atc/occ/` from `atc/dispatch/` (merge), add read-only `gh` to its guard, a read-only MCP guard, reload the manual on change. Still to do: tell President about the handover
+2. ✅ `lane:TEAM_X` in the planner (fixes the VOC-196 double dispatch right away). Labels are read from the existing Linear query
 3. **S1**: SCHEDULE log, API, `atcctl schedule`, SCHEDULE tab, shadow verdicts
 4. Flight following in `/tick` (read-only `gh`), CLEARED TO LAND checks in TOWER
 5. **S2**: linear-guard, `schedule release`, APPLIED detection, the vocado `CLAUDE.md` rule change (confirmed with the SUPERVISOR at that time)

@@ -7,6 +7,9 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 ## [Unreleased]
 
 ### 추가
+- OCC 세션 S0(`occ/`, [docs/occ.md](docs/occ.md), 영어). DISPATCH 세션 폴더가 `dispatch/`에서 `occ/`로 옮겨졌고 하던 일(제안 검토, HOLD, FLIGHT PLAN, READBACK)은 그대로다. OCC는 운항 추적을 더한다: `guard.mjs --gh-read`로 읽기 전용 `gh pr view|checks|diff|list`를 쓴다. `occ/mcp-guard.mjs`가 읽기 MCP 도구만 통과시켜 S0에서는 Linear·GitHub에 쓸 수 없다.
+- `atcctl manual check` / `manual ack`: 관제 세션(OCC, TOWER)의 `/tick`은 마지막 ack 뒤 `CLAUDE.md`나 `/tick`이 바뀌었는지부터 확인하고, 바뀌었으면 다시 읽는다.
+- Linear 라벨 `lane:TEAM_X`: planner가 그 FLIGHT를 그 팀에만 제안한다. 그 팀이 못 받으면(AIRBORNE, HOLDING, 세션 없음, 다른 AIRPORT) 다른 팀에 주지 않고 사유와 함께 제외한다.
 - 상위 이슈(Linear `children`이 있거나 다른 이슈가 `parent`로 지목한 것)를 작업으로 보지 않는다. ASSIGN 제안도, STAND 없이 아무리 오래 ENROUTE여도 RELEASE 제안도, NO CONTACT 경보도 만들지 않는다. 작업은 그 하위 이슈다. 보드 쿼리가 `parent` / `children`을 읽고, DISPATCH 탭의 "제외" 목록에 하위 건수와 함께 뜬다.
 - `dispatch note --hold <FLIGHT>`: 본문에만 적혀 있고 `blocks` 관계로는 없는 선행 작업을 DISPATCH 세션이 지정한다. 제안은 DISPATCH 탭의 새 HELD 목록으로 가고, 제안 자신의 FLIGHT는 예약된 채로 남아 planner가 다시 올리지 않으며(AIRCRAFT는 다른 FLIGHT가 쓸 수 있게 놓아 둔다), 보낼 수는 없고, FLIGHT PLAN에 `HOLD — 선행 FLIGHT …` 줄이 들어간다. 지정한 FLIGHT가 모두 끝나면 atc가 그 제안을 SUPERSEDED로 풀어 planner가 다시 후보로 올린다. 값 없는 `--hold`는 선행 FLIGHT 없는 HOLD(사람 결정 대기, 사유는 메모)이고, HOLD 뒤에 FLIGHT가 수정되면 풀린다. HOLD에는 24시간 만료가 없다. 대신 FLIGHT 자체가 Todo가 아니게 되거나 SUPERVISOR가 "HOLD 풀기"(`POST /api/dispatch/proposals/:id/unhold`)를 누르면 닫힌다. 선행 FLIGHT는 열린 FLIGHT 목록에 있는 key여야 하고 제안 자신의 FLIGHT일 수 없다.
 - 우선순위가 없는 FLIGHT는 ASSIGN 후보가 아니다. 사람이 아직 언제 할지 정하지 않은 것이라 "제외" 목록에 뜬다.
