@@ -12,6 +12,7 @@ import {
 } from "../aviation.ts";
 import { type Index, occupantsOf, timeAgo } from "../derive.ts";
 import { formatClock, type Settings, updateSettings, useSettings } from "../settings.ts";
+import { SplitFlap } from "../SplitFlap.tsx";
 import { AirportCode, PriorityMark, SessionBadge } from "../ui.tsx";
 
 const RECENT_DONE_MS = 3 * 86_400_000;
@@ -133,7 +134,8 @@ function DepartureBoard({ tickets, idx, clock, now }: { tickets: Ticket[]; idx: 
       <header className="fids-list-head">
         <span className="fids-list-title">DEPARTURES</span>
         <span className="fids-list-meta">
-          {String(tickets.length).padStart(2, "0")} FLIGHTS · {formatClock(now, clock)}
+          <SplitFlap bare text={String(tickets.length).padStart(2, "0")} /> FLIGHTS ·{" "}
+          <SplitFlap bare text={formatClock(now, clock)} />
         </span>
       </header>
       <div className="fids-table-wrap">
@@ -182,7 +184,9 @@ function DepartureRow({ ticket: t, idx, clock }: { ticket: Ticket; idx: Index; c
   const stand = workspaces[0];
   return (
     <tr className={`tone-${tone}${occupants.length ? " is-occupied" : ""}`}>
-      <td className="col-time mono">{t.updatedAt ? formatClock(t.updatedAt, clock) : "—"}</td>
+      <td className="col-time mono">
+        <SplitFlap bare text={t.updatedAt ? formatClock(t.updatedAt, clock) : "—"} />
+      </td>
       <td>
         <SplitFlap text={flightNumber(t.key)} title={t.key} />
       </td>
@@ -213,7 +217,7 @@ function DepartureRow({ ticket: t, idx, clock }: { ticket: Ticket; idx: Index; c
       </td>
       <td className="fids-remark">
         <span className="remark" title={t.state}>
-          {flightPhase(t)}
+          <SplitFlap bare text={flightPhase(t)} />
         </span>
         {noContact && (
           <span className="code-chip alert-no-workspace" title={alertMessage(alerts.find((a) => a.kind === "no-workspace")!, (id) => id)}>
@@ -277,19 +281,6 @@ function TicketCard({ ticket: t, idx }: { ticket: Ticket; idx: Index }) {
     </a>
   ) : (
     <div className={cls}>{body}</div>
-  );
-}
-
-// DEPARTURES 안내판처럼 한 글자씩 판에 새긴다.
-function SplitFlap({ text, title }: { text: string; title: string }) {
-  return (
-    <span className="flap" title={title} aria-label={title}>
-      {[...text].map((c, i) => (
-        <b key={i} aria-hidden>
-          {c}
-        </b>
-      ))}
-    </span>
   );
 }
 
