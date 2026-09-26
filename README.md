@@ -1,10 +1,37 @@
-# atc
+<div align="center">
+
+<img src="docs/assets/banner.svg" alt="ATC — Air traffic control for your AI coding sessions. Ready for takeoff?" width="100%">
+
+**AI 코딩 세션을 위한 관제탑**<br>
+Claude Code·Codex 세션, git 워크트리, Linear 티켓을 레이더 한 화면에.
+
+[![Node](https://img.shields.io/badge/node-%E2%89%A524-3ef08f?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=0b1118)](package.json)
+[![React](https://img.shields.io/badge/react-19-5cd0ff?style=flat-square&logo=react&logoColor=white&labelColor=0b1118)](web/src)
+[![Hono](https://img.shields.io/badge/hono-4-ff4a4a?style=flat-square&logo=hono&logoColor=white&labelColor=0b1118)](server)
+[![Vite](https://img.shields.io/badge/vite-8-8aa8ff?style=flat-square&logo=vite&logoColor=white&labelColor=0b1118)](vite.config.ts)
+[![License: MIT](https://img.shields.io/badge/license-MIT-ffb627?style=flat-square&labelColor=0b1118)](LICENSE)
+![Status](https://img.shields.io/badge/status-READY%20FOR%20TAKEOFF-ffd36b?style=flat-square&labelColor=0b1118)
+
+[이륙 준비](#-ready-for-takeoff) · [화면](#화면) · [용어](#용어) · [실행](#실행) · [폴더 구조](#폴더-구조)
+
+</div>
 
 로컬 관제 웹. 어떤 세션(팀)이 어떤 워크트리를 점유하고, 그 워크트리가 어떤 Linear 티켓을 처리 중인지 한 화면에 보여준다.
 
 - 실행 위치: 이 머신(`/home/c10/projects/atc`), 포트 `7700`
 - 접속(맥에서): `ssh -L 7700:localhost:7700 <host>` 후 `http://localhost:7700`
 - 읽기 전용 관제가 기본이다. 워크트리 생성·삭제나 Linear 쓰기는 하지 않는다.
+
+## 🛫 Ready for takeoff?
+
+> **Pre-flight checklist** — Node 24 이상 · Claude Code 또는 Codex · git 워크트리로 일하는 저장소
+
+```bash
+npm install
+npm run build && npm start      # 🛬 http://localhost:7700
+```
+
+Linear 티켓까지 보려면 `.env.local`에 `LINEAR_API_KEY`를 넣는다. 상시 운항(systemd)과 점유 hook은 [실행](#실행)·[점유 hook](#점유-hook)에서.
 
 ## 화면
 
