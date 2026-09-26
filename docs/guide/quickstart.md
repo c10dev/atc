@@ -33,7 +33,7 @@ journalctl --user -u atc -f      # 로그
   ```
 
   - `ANTHROPIC_BASE_URL`을 export해 두었으면 `ocx claude`가 그 값을 우선하고, `~/.claude/settings.json`의 `HTTPS_PROXY`(ClaudeRipple)가 로컬 프록시 요청을 가로채므로 `NO_PROXY`로 뺀다.
-  - `--strict-mcp-config`는 MCP 서버를 하나도 싣지 않는다. Muse는 일부 MCP 도구 스키마(중첩 10단계 초과)를 받지 못해 두 번째 요청에서 멈추기 때문이다. 그래서 CROSSCHECK는 MCP 없이 `dispatch flight`의 본문·댓글만으로 판정한다.
+  - `--strict-mcp-config`는 MCP 서버를 하나도 싣지 않는다. Muse는 일부 MCP 도구 스키마(중첩 10단계 초과)를 받지 못해 두 번째 요청에서 멈추기 때문이다. 그래서 CROSSCHECK는 MCP 없이 판정한다. 본문·댓글은 `dispatch flight`로 읽고, 거기 나온 PR이 머지됐는지는 읽기 전용 `gh pr view|checks|list`로 확인한다(OCC와 같은 Bash guard 방식, 쓰는 gh 명령과 `gh pr diff`는 막힘).
   - `--model`로 모델을 바꾸지 않는다. 예비 판정에 남는 모델 이름은 settings의 `env`에서 오므로, 바꾸면 이름이 틀어진다. 대체 모델로 바꾸려면 settings의 `model`과 `env.ATC_CROSSCHECK_MODEL`을 함께 고친다.
 
   판정 방법은 [판정하기](reviewing.md)의 CROSSCHECK.

@@ -14,6 +14,10 @@ test("CROSSCHECK 설정: mark에 남는 모델(env)이 세션 모델과 같고, 
   for (const t of ["Edit", "Write", "NotebookEdit", "SendMessage", "Agent", "Artifact"]) assert.ok(settings.permissions.deny.includes(t), t);
   const hooks = settings.hooks.PreToolUse.flatMap((h) => h.hooks.map((x) => x.command));
   assert.ok(hooks.every((c) => c.endsWith("exit 2")), "hook은 fail-closed");
+  // Bash는 guard --crosscheck --gh-read. gh는 읽기 전용 view·checks·list만 allow에 둔다
+  assert.ok(hooks.some((c) => c.includes("guard.mjs\" --crosscheck --gh-read ||")), "Bash guard 옵션");
+  const gh = settings.permissions.allow.filter((a) => a.startsWith("Bash(gh "));
+  assert.deepEqual(gh.sort(), ["Bash(gh pr checks *)", "Bash(gh pr list *)", "Bash(gh pr view *)"]);
 });
 
 test("CROSSCHECK 세션은 명령 앞 환경 변수로 모델 이름을 바꿀 수 없다", () => {

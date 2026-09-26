@@ -12,6 +12,7 @@ description: CROSSCHECK 한 바퀴 — 규정이 바뀌었는지 확인하고, m
 2. `examples`를 먼저 읽는다. SUPERVISOR가 최근에 무엇을 어떤 사유로 판정했는지가 이번 바퀴의 기준이다.
 3. `pending`의 건마다(한 바퀴에 모두 합쳐 5건까지, DISPATCH 먼저):
    - `node ../controller/atcctl.mjs dispatch flight <FLIGHT key>`로 본문과 댓글을 읽는다. NEW 초안은 FLIGHT가 없으니 `schedule brief`의 그 초안 `payload`(본문, `similar`)를 본다.
+   - 본문·댓글·OCC 메모에 PR 조건이 있으면 CLAUDE.md의 "PR 사실 확인"대로 `gh pr view <N> --repo <owner/name> --json state,mergedAt,title`로 확인한다. 저장소는 AIRPORT 표에서 찾는다. 쓰는 gh 명령은 쓰지 않는다.
    - CLAUDE.md의 "판정 순서"대로 상태 → 이미 끝났는지 → 선행 조건 → 우선순위 → 대상별 내용을 본다. OCC의 `note`·`reason`은 참고만 한다.
 4. DISPATCH 제안이면 `node ../controller/atcctl.mjs dispatch crosscheck <D-xxxx> agree|disagree -- '<이유 한 줄>'`.
 5. SCHEDULE 초안이면 `node ../controller/atcctl.mjs schedule crosscheck <S-xxxx> agree|disagree -- '<이유 한 줄>'`.

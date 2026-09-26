@@ -11,6 +11,7 @@
 2. Read `examples` first. What the SUPERVISOR recently decided, and why, is the standard for this pass.
 3. For each item in `pending` (at most 5 per pass in total, DISPATCH first):
    - Read the body and comments with `node ../controller/atcctl.mjs dispatch flight <FLIGHT key>`. A NEW draft has no FLIGHT yet; read that draft's `payload` (body, `similar`) in `schedule brief`.
+   - If the body, comments or OCC note name a PR condition, check it as in "Checking PR facts" in CLAUDE.md: `gh pr view <N> --repo <owner/name> --json state,mergedAt,title`, with the repository from the AIRPORT table. Never use a gh command that writes.
    - Follow "Order of checks" in CLAUDE.md: state → already done → prerequisites → priority → the target-specific check. Treat OCC's `note` and `reason` as reference only.
 4. For a DISPATCH proposal: `node ../controller/atcctl.mjs dispatch crosscheck <D-xxxx> agree|disagree -- '<one-line reason>'`.
 5. For a SCHEDULE draft: `node ../controller/atcctl.mjs schedule crosscheck <S-xxxx> agree|disagree -- '<one-line reason>'`.
