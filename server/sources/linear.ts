@@ -61,6 +61,7 @@ const state: LinearState = {
 };
 let lastFetch = 0;
 let inflight: Promise<void> | null = null;
+let generation = 0; // resetLinear마다 올라간다. 이전 설정으로 가져온 결과는 버린다.
 let wantedKeys = new Set<string>();
 
 async function gql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
@@ -104,6 +105,7 @@ export function toTicket(n: IssueNode): Ticket {
 }
 
 async function fetchAll() {
+  const gen = generation;
   const team = config.linearTeamKey;
   const board = await gql<{
     issues: { nodes: IssueNode[] };
@@ -118,6 +120,7 @@ async function fetchAll() {
     for (const n of extra.issues.nodes) byKey.set(n.identifier, toTicket(n));
   }
 
+  if (gen !== generation) return;
   const typeOrder = ["triage", "backlog", "unstarted", "started", "completed", "canceled", "duplicate"];
   state.columns = board.workflowStates.nodes
     .sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type) || a.position - b.position)
@@ -127,6 +130,17 @@ async function fetchAll() {
   state.error = null;
 }
 
+// 설정 창에서 API 키나 TEAM이 바뀌면 이전 결과를 버리고 다음 호출에서 바로 다시 가져온다.
+export function resetLinear() {
+  generation++;
+  state.enabled = Boolean(config.linearApiKey);
+  state.error = null;
+  state.fetchedAt = null;
+  state.tickets = [];
+  state.columns = [];
+  lastFetch = 0;
+}
+
 // 1분마다 백그라운드로 갱신하고, 호출 시점에는 마지막 결과를 바로 돌려준다.
 export function readLinear(branchKeys: Set<string>): LinearState {
   if (!state.enabled) return state;
@@ -134,8 +148,9 @@ export function readLinear(branchKeys: Set<string>): LinearState {
   wantedKeys = branchKeys;
   if (!inflight && (grew || Date.now() - lastFetch > POLL_MS)) {
     lastFetch = Date.now();
+    const gen = generation;
     inflight = fetchAll()
-      .catch((e) => void (state.error = String(e.message ?? e)))
+      .catch((e) => void (gen === generation && (state.error = String(e.message ?? e))))
       .finally(() => (inflight = null));
   }
   return state;

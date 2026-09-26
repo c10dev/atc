@@ -23,7 +23,7 @@ export function SettingsPanel({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<Tab>("display");
-  const server = useServerSettings();
+  const { server, save } = useServerSettings();
 
   useEffect(() => {
     const panel = ref.current;
@@ -65,9 +65,9 @@ export function SettingsPanel({
         {tab === "display" ? (
           <DisplaySettings settings={settings} />
         ) : tab === "linear" ? (
-          <LinearSettings snapshot={snapshot} server={server} />
+          <LinearSettings snapshot={snapshot} server={server} save={save} />
         ) : (
-          <AgentSettings snapshot={snapshot} server={server} />
+          <AgentSettings snapshot={snapshot} server={server} save={save} />
         )}
       </div>
     </div>

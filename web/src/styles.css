@@ -1837,13 +1837,88 @@ a.ticket:hover {
   font-weight: 600;
 }
 .config-row dd {
-  max-width: 190px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
   margin: 0;
+  font-size: var(--text-sm);
+}
+.config-value {
+  max-width: 170px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* 편집 중에는 입력 칸이 행 전체 폭을 쓴다 */
+.config-row.is-editing {
+  border-color: var(--line-strong);
+}
+.config-row .config-edit {
+  grid-column: 1 / -1;
+  justify-content: stretch;
+  margin-top: var(--space-2);
+}
+.config-edit input,
+.config-edit select {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
   font-size: var(--text-sm);
-  text-align: right;
+}
+.config-edit input.mono {
+  font-family: var(--mono);
+}
+.config-edit input[aria-invalid="true"] {
+  border-color: var(--alert);
+}
+.config-edit .config-value {
+  flex: 1;
+  max-width: none;
+}
+.config-unit {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.config-btn {
+  flex: none;
+  height: 26px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.config-edit .config-btn {
+  height: 30px;
+}
+.config-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel-3);
+}
+.config-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.config-btn.is-primary {
+  border-color: color-mix(in srgb, var(--tab-on) 60%, transparent);
+  color: var(--tab-on);
+}
+.config-btn.is-danger {
+  border-color: color-mix(in srgb, var(--alert) 60%, transparent);
+  color: var(--alert);
+}
+.config-note.is-error {
+  color: var(--alert);
 }
 .config-note {
   grid-column: 1 / -1;

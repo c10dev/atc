@@ -12,9 +12,14 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return stdout;
 }
 
-const ticketPattern = new RegExp(`(?:^|[/_-])${config.linearTeamKey.toLowerCase()}-?(\\d+)(?:$|[/_-])`, "i");
+// TEAM 키는 설정 창에서 바뀔 수 있어서, 바뀌면 다시 만든다.
+let ticketPattern: RegExp | null = null;
+export function resetTicketPattern() {
+  ticketPattern = null;
+}
 
 export function ticketKeyFromBranch(branch: string | null): string | null {
+  ticketPattern ??= new RegExp(`(?:^|[/_-])${config.linearTeamKey.toLowerCase()}-?(\\d+)(?:$|[/_-])`, "i");
   const m = branch?.match(ticketPattern);
   return m ? `${config.linearTeamKey}-${Number(m[1])}` : null;
 }
