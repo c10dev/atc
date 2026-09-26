@@ -215,5 +215,7 @@ Stage 4 (network planning) puts these next to the project goals. OCC may draft t
 | Team concept | Develop it further in atc terms: crew makeup and goals included |
 | Pre-assignment | Proceed with the President note, the Linear labels and VOC-196, under the name settled here |
 | Difficulty classification | Needed; included here as FLIGHT TYPE, WAKE CATEGORY and required TYPE RATING |
+| Linear labels | `type` (BUILD … FERRY) and `wake` (L … J) created as single-select label groups in the Vocado team; `tail:TEAM_A` … `tail:TEAM_F` stay flat labels for now (President already uses them) |
+| First FLEET profiles | From flight history: TEAM_B, TEAM_D, TEAM_E hold `SEC` (security and DB FLIGHTs) with route Beta Readiness; TEAM_F route Song Experience; TEAM_C routes Vocado Visual System (SEED) and Home & Discovery; TEAM_A on defaults |
 
 Still open: the exact TYPE RATING list (starts as `SEC`, `UI`, `DATA`, `DOCS`), the WAKE slot weights, and whether Linear estimates should mirror WAKE.
