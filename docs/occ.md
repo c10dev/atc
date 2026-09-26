@@ -227,7 +227,7 @@ Shadow verdicts (DISPATCH proposals and SCHEDULE drafts) are decided one by one 
 
 | Tool | Rule |
 |---|---|
-| Bash | `controller/guard.mjs --crosscheck`: atcctl `manual`, `crosscheck brief`, `dispatch brief\|flight`, `schedule brief` and the two `crosscheck` commands, plus `jq`. Every other atcctl command (note, hold, draft, release, readback …) and `gh` is blocked |
+| Bash | `controller/guard.mjs --crosscheck --gh-read`: atcctl `manual`, `crosscheck brief`, `dispatch brief\|flight`, `schedule brief` and the two `crosscheck` commands, `jq`, and read-only `gh pr view\|checks\|list` (allowed in `permissions.allow` too). Every other atcctl command (note, hold, draft, release, readback …) is blocked, and so is every other `gh` use: `gh pr diff` (CROSSCHECK doesn't read code; OCC's `--gh-read` alone still allows it), `merge`, `comment`, `review`, `close`, `edit`, `gh api`, `--web`, chained commands and substitutions. With `--crosscheck` alone, `gh` stays blocked |
 | MCP | `occ/mcp-guard.mjs --read-only`: read tools only. Unlike OCC, released Linear writes are blocked too |
 | Edit, Write, NotebookEdit, SendMessage, Agent, Artifact | Denied, and a PreToolUse hook exits 2 |
 
@@ -258,7 +258,7 @@ So the session is opened in `crosscheck/` with
 env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config
 ```
 
-named `CROSSCHECK`, and run with `/loop 10m /tick`. `--strict-mcp-config` with no `--mcp-config` loads no MCP servers at all. The session then has no MCP tools, including GitHub reads, and judges from `dispatch flight` alone. `occ/mcp-guard.mjs --read-only` stays in place. Whether CROSSCHECK should read GitHub is still open for the SUPERVISOR. When an upstream account is rate-limited, the session stops with an API error; nothing falls back to Claude.
+named `CROSSCHECK`, and run with `/loop 10m /tick`. `--strict-mcp-config` with no `--mcp-config` loads no MCP servers at all. The session then has no MCP tools. It reads GitHub through read-only `gh pr` instead (SUPERVISOR decision, 2026-09-26), the same Bash guard pattern as OCC: when a body, comment or OCC note names a PR condition, it checks the fact with `gh pr view <N> --repo <owner/name> --json state,mergedAt,title` before marking (e.g. "PR #393 머지 전이면 HOLD", "이미 완료됨"). `crosscheck/CLAUDE.md` maps each AIRPORT to its repository (VCDO → `chaehy5665/vocado_nextjs`). `occ/mcp-guard.mjs --read-only` stays in place. When an upstream account is rate-limited, the session stops with an API error; nothing falls back to Claude.
 
 **Model on each mark.** The session never names its own model. `atcctl dispatch|schedule crosscheck` sends `model` from the `ATC_CROSSCHECK_MODEL` environment variable. Claude Code sets that variable from the settings' `env` block. The guard blocks command-line overrides (`VAR=… node …`, `env …`, `export …`). The server stores it on the op (`{…, model}`, at most 120 characters); a mark without it, including every mark recorded before this field existed, reads as `"unknown"`. `gateOf(...).crosscheck` keeps the overall `{marked, matched, rate}` and adds `byModel: {<model>: {marked, matched, rate}}`, and `examples` carry the mark's model. If the session is started with a `--model` override, the marks still carry the settings model, so don't override it.
 

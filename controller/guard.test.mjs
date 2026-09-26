@@ -96,3 +96,40 @@ test("--crosscheck: atc CLI 중 읽기와 crosscheck 명령만, gh는 막음", (
   // 옵션 없이는 기존 TOWER 규칙 그대로
   assert.equal(check("node ../controller/atcctl.mjs dispatch note D-0003 -- x", CROSSCHECK), null);
 });
+
+test("--crosscheck --gh-read: PR 사실 확인용 gh pr view·checks·list만, 쓰기·diff·api·--web·이은 명령·치환은 막음", () => {
+  const opts = { crosscheck: true, ghRead: true };
+  const ok = [
+    "gh pr view 393 --repo chaehy5665/vocado_nextjs",
+    "gh pr view 393 --repo chaehy5665/vocado_nextjs --json state,mergedAt,title",
+    "gh pr view 393 --repo chaehy5665/vocado_nextjs --json state,mergedAt | jq -r .state",
+    "gh pr checks 393 --repo chaehy5665/vocado_nextjs",
+    "gh pr list --repo chaehy5665/vocado_nextjs --state merged --search VOC-190",
+    "node ../controller/atcctl.mjs crosscheck brief",
+    "node ../controller/atcctl.mjs dispatch crosscheck D-0003 disagree -- 'PR #393 머지 전 — HOLD'",
+  ];
+  const no = [
+    "gh pr merge 393 --repo chaehy5665/vocado_nextjs",
+    "gh pr comment 393 --body hi",
+    "gh pr review 393 --approve",
+    "gh pr close 393",
+    "gh pr edit 393 --add-label x",
+    "gh pr diff 393 --repo chaehy5665/vocado_nextjs",
+    "gh api repos/chaehy5665/vocado_nextjs/pulls/393",
+    "gh pr view 393 --web",
+    "gh issue view 1",
+    "gh pr view 393 && gh pr merge 393",
+    "gh pr view 393; gh pr comment 393 --body x",
+    "gh pr view 393 | gh pr merge 393",
+    "gh pr view $(gh pr merge 393)",
+    "gh pr view 393 --json state > out.json",
+    "GH_TOKEN=x gh pr view 393",
+    "node ../controller/atcctl.mjs dispatch note D-0003 -- x",
+  ];
+  for (const c of ok) assert.equal(check(c, CROSSCHECK, opts), null, c);
+  for (const c of no) assert.notEqual(check(c, CROSSCHECK, opts), null, c);
+  // --crosscheck만이면 gh는 계속 막힌다
+  for (const c of ["gh pr view 393 --repo chaehy5665/vocado_nextjs", "gh pr checks 393"]) assert.notEqual(check(c, CROSSCHECK, { crosscheck: true }), null, c);
+  // OCC(--gh-read만)는 그대로 diff까지
+  assert.equal(check("gh pr diff 393 --repo chaehy5665/vocado_nextjs", CROSSCHECK, { ghRead: true }), null);
+});

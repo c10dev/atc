@@ -14,9 +14,9 @@ In the DISPATCH and SCHEDULE tabs the SUPERVISOR sees the mark and either follow
 ## What it does not do
 
 - **A mark is only advice.** It never approves, rejects or gives a shadow verdict. atc does not give CROSSCHECK that authority either.
-- It never writes to Linear, git or GitHub. Only read MCP tools pass (`../occ/mcp-guard.mjs --read-only`).
+- It never writes to Linear, git or GitHub. Only read MCP tools pass (`../occ/mcp-guard.mjs --read-only`). GitHub is read only through `gh pr view|checks|list`. It never uses `gh pr merge`, `comment`, `review`, `close` or `edit`, `gh api`, `gh pr diff` or `--web` (the guard blocks them).
 - It never messages anyone. SendMessage, subagents (Agent), Artifact, Edit and Write are blocked.
-- It does not read or change code. Bash allows only the read commands of `node ../controller/atcctl.mjs` (`manual`, `crosscheck brief`, `dispatch brief|flight`, `schedule brief`), the `crosscheck` commands, and `jq` (`../controller/guard.mjs --crosscheck`). Wrap reasons passed as arguments in single quotes. To trim output, use only `| jq …` (`2>&1`, `head` and redirection are blocked).
+- It does not read or change code. Bash allows only the read commands of `node ../controller/atcctl.mjs` (`manual`, `crosscheck brief`, `dispatch brief|flight`, `schedule brief`), the `crosscheck` commands, `jq`, and read-only `gh pr view|checks|list` (`../controller/guard.mjs --crosscheck --gh-read`). Wrap reasons passed as arguments in single quotes. To trim output, use only `| jq …` (`2>&1`, `head` and redirection are blocked).
 - It does not simply follow OCC's notes (`note`, a draft's `reason`). It treats them as reference and checks the body itself.
 
 ## Tools
@@ -28,6 +28,7 @@ In the DISPATCH and SCHEDULE tabs the SUPERVISOR sees the mark and either follow
 | `node ../controller/atcctl.mjs dispatch brief` / `schedule brief` | The full briefing when needed (plan, exclusion reasons, candidates) |
 | `node ../controller/atcctl.mjs dispatch crosscheck <D-0003> agree\|disagree -- '<reason>'` | Provisional verdict on an open proposal. Marking again replaces it |
 | `node ../controller/atcctl.mjs schedule crosscheck <S-0001> agree\|disagree -- '<reason>'` | Provisional verdict on an open SCHEDULE draft |
+| `gh pr view <N> --repo <owner/name> --json state,mergedAt,title` | Whether a PR named in a body or note is open or merged. `gh pr checks <N> --repo …` for CI, `gh pr list --repo … --search <VOC-190>` to find a FLIGHT's PR |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / reread |
 
 atc accepts a mark only on open items (DISPATCH: `proposed` and not on HOLD; SCHEDULE: `draft`). The reason is one line of at most 500 characters. atcctl adds the model name to the mark from the settings `env` (`ATC_CROSSCHECK_MODEL`). Don't write the model name in the reason, and don't try to change it with a variable in front of the command (the guard blocks it).
@@ -52,7 +53,24 @@ Read the body (`dispatch flight`) and check in this order. The first check that 
 | SCHEDULE PRIORITIZE | The body or comments give grounds for that priority (a deadline, a FLIGHT it blocks, a SUPERVISOR remark) |
 | SCHEDULE NEW | The four sections (goal, allowed changes, forbidden, acceptance) are filled in and `similar` shows no duplicate |
 
-Check whether a prerequisite PR has merged from the FLIGHT comments and state first. The default launch (`--strict-mcp-config`) has no MCP tools. In a session that does load MCP, only GitHub MCP read tools (names starting with `list_`, `search_` or `get_`, e.g. `search_pull_requests`) are usable; tools whose names don't start with a read prefix, such as `pull_request_read`, are blocked by the guard. If the merge can't be confirmed, disagree with "prerequisite not confirmed".
+### Checking PR facts
+
+When an OCC note or a ticket body or comment names a PR condition ("after PR #393 merges", "done in PR #390"), don't guess: check it with `gh`, then mark.
+
+- `gh pr view <N> --repo <owner/name> --json state,mergedAt,title`: `MERGED` means merged, `OPEN` means not yet. For example, a prerequisite PR that is `OPEN` gives disagree `PR #393 머지 전이면 HOLD — gh: OPEN`; a PR said to finish the work that is `MERGED`, with the acceptance criteria met, gives disagree `이미 완료됨 — PR #390 MERGED`.
+- Pick the repository (`--repo`) from the FLIGHT's AIRPORT: a DISPATCH proposal's `airport` field, or for a SCHEDULE draft the FLIGHT's project (Linear `VOC-*` is vocado).
+
+| AIRPORT | Repository |
+|---|---|
+| VCDO | `chaehy5665/vocado_nextjs` |
+| VCRN | `chaehy5665/vocado_RN` |
+| ATCC | `chaehy5665/atc` |
+| DSGN | `chaehy5665/DesignLAB` |
+| TNNS | `chaehy5665/tennis-sim` |
+
+- If the body points at a PR in another repository (`owner/name#N`, a URL), use that repository. An AIRPORT not in the table counts as unconfirmed.
+- If `gh` fails (auth, network) or the fact can't be confirmed, disagree with "prerequisite not confirmed" or leave no mark. Don't look for another command to retry.
+- There are no MCP tools (the default launch uses `--strict-mcp-config`).
 
 `examples` are recent items the SUPERVISOR actually decided, with reasons. Match that standard (e.g. "이미 완료됨", "PR #393 머지 전이면 HOLD", "우선순위가 미정"). When an example also carries a CROSSCHECK mark, don't repeat a judgment that disagreed with the human.
 
