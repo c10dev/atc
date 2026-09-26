@@ -24,6 +24,9 @@
 | S1 | SCHEDULE 초안(그림자): CLASSIFY · PRIORITIZE · NEW(CHARTER DESK) | 운용 중 |
 | S2 | 승인한 초안을 Linear에 씀(linear-guard). vocado "Linear에는 리더만" 규칙 변경 | 만들어 둠, 꺼져 있음 (판정 20건·80% 후 켬) |
 | S3 | 저위험 작업만 자동(예: 머지 뒤 CLOSE). SEC는 계속 사람 승인 | S2 2주 후 |
+| CROSSCHECK | 다른 계열 모델의 예비 판정 + 한 번 클릭 판정. 사람 판정과의 일치율을 따로 잼(게이트에는 안 셈) | 만들어 둠, 세션을 열면 운용 |
+
+CROSSCHECK 일치율은 S3에서 SEC가 아닌 CLASSIFY 같은 저위험 작업을 자동으로 넘길지 정할 근거다. 자동 판정 자체는 아직 없다.
 
 ## FLEET
 

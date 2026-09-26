@@ -1,0 +1,51 @@
+{
+  "model": "claude-ocx-native--gpt-5.6-terra",
+  "permissions": {
+    "allow": [
+      "Bash(node ../controller/atcctl.mjs *)",
+      "Bash(node /home/c10/projects/atc/controller/atcctl.mjs *)",
+      "Bash(jq *)"
+    ],
+    "deny": [
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "SendMessage",
+      "Agent"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/guard.mjs\" --crosscheck || exit 2",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../occ/mcp-guard.mjs\" --read-only || exit 2",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|SendMessage|Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'CROSSCHECK는 파일을 고치거나 메시지를 보내거나 하위 에이전트를 부르지 않습니다 — 예비 판정은 atcctl crosscheck 명령으로만.' >&2; exit 2",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

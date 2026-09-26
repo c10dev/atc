@@ -63,7 +63,14 @@ SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만. S2 승인 운용
                                             본문은 네 칸(목표·수정 허용 범위·금지 사항·완료 기준), SEC는 Codex 템플릿
                                             열린 초안이 한도에 차면 LIMIT으로 끝난다(exit 1)
   node atcctl.mjs schedule release <S-0001>  (S2) 승인된 작업을 발부하고 Linear 호출(CALL)을 출력. 각 CALL의 도구에
-                                            JSON 입력을 한 글자도 바꾸지 않고 넣는다. 이미 발부됐으면 같은 CALL을 다시 준다`;
+                                            JSON 입력을 한 글자도 바꾸지 않고 넣는다. 이미 발부됐으면 같은 CALL을 다시 준다
+
+CROSSCHECK (CROSSCHECK 세션이 맡음. SUPERVISOR 판정 전에 다른 모델이 예비 판정을 달아 둔다. 상태는 바꾸지 않음)
+  node atcctl.mjs crosscheck brief          mark가 없는 열린 제안·초안(pending)과 최근 SUPERVISOR 판정 예시(examples) (JSON)
+  node atcctl.mjs dispatch crosscheck <D-0003> agree|disagree -- <이유>
+                                            열린 제안에 예비 판정(이유는 500자 이내). 다시 달면 대신한다
+  node atcctl.mjs schedule crosscheck <S-0001> agree|disagree -- <이유>
+                                            열린 SCHEDULE 초안에 예비 판정`;
 
 // limit: 409(한도 참)일 때 오류 대신 보여 줄 안내. 호출한 세션이 곧바로 멈추게 LIMIT으로 시작한다.
 async function call(method, path, body, { limit } = {}) {
@@ -143,6 +150,29 @@ export function parseDraft(args) {
   if (kind === "PRIORITIZE" && body.priority === undefined) throw new Error("PRIORITIZE에는 --priority <1-4>가 필요함");
   if (!reason) throw new Error("-- 뒤에 근거 한 줄이 필요함");
   return { ...body, reason };
+}
+
+// dispatch|schedule crosscheck <ID> agree|disagree -- <이유> → POST 본문. 값 검사(500자 등)는 서버가 한다.
+export function parseCrosscheck(args) {
+  const sep = args.indexOf("--");
+  const head = sep < 0 ? args : args.slice(0, sep);
+  const reason = sep < 0 ? "" : args.slice(sep + 1).join(" ").trim();
+  const [id, verdict, ...rest] = head;
+  if (!id || id.startsWith("--")) throw new Error("제안·초안 ID가 필요함 (예: D-0003, S-0001)");
+  if (verdict !== "agree" && verdict !== "disagree") throw new Error("판정은 agree|disagree");
+  if (rest.length) throw new Error(`알 수 없는 인자 ${rest.join(" ")}`);
+  if (!reason) throw new Error("-- 뒤에 이유 한 줄이 필요함");
+  return { id, body: { verdict, reason, by: process.env.ATC_CROSSCHECK_BY || "CROSSCHECK" } };
+}
+
+// crosscheck brief: 두 브리핑에서 CROSSCHECK에 필요한 것만 모은다(FLIGHT 제목·상태 포함)
+export function crosscheckBrief(dispatch, schedule) {
+  const pick = (flights, keys) => Object.fromEntries(keys.filter((k) => k && flights?.[k]).map((k) => [k, flights[k]]));
+  const part = (b) => {
+    const cc = b.crosscheck ?? { pending: [], examples: [] };
+    return { mode: b.mode, pending: cc.pending, examples: cc.examples, flights: pick(b.flights, [...cc.pending, ...cc.examples].map((x) => x.flight)) };
+  };
+  return { dispatch: part(dispatch), schedule: part(schedule), rate: { dispatch: dispatch.gate?.crosscheck ?? null, schedule: schedule.gate?.crosscheck ?? null } };
 }
 
 const PRIORITY = { 1: "Urgent", 2: "High", 3: "Medium", 4: "Low" };
@@ -227,6 +257,15 @@ if (isMain) {
       // OCC는 CALL마다 그 Linear MCP 도구를 JSON 입력 그대로 부른다(linear-guard가 비교한다)
       console.log(`${r.op.id} RELEASED · ${r.calls.length} CALL`);
       r.calls.forEach((c, i) => console.log(`CALL ${i + 1}/${r.calls.length} · ${c.tool}\n${JSON.stringify(c.input)}`));
+    } else if (cmd === "crosscheck" && args[0] === "brief") {
+      const [d, s] = await Promise.all([call("GET", "/api/dispatch/brief"), call("GET", "/api/schedule/brief")]);
+      console.log(JSON.stringify(crosscheckBrief(d, s), null, 1));
+    } else if ((cmd === "dispatch" || cmd === "schedule") && args[0] === "crosscheck") {
+      const { id, body } = parseCrosscheck(args.slice(1));
+      const path = cmd === "dispatch" ? `/api/dispatch/proposals/${encodeURIComponent(id)}/crosscheck` : `/api/schedule/ops/${encodeURIComponent(id)}/crosscheck`;
+      const r = await call("POST", path, body);
+      const x = r.proposal ?? r.op;
+      console.log(`${x.id} CROSSCHECK ${x.crosscheck.verdict} · ${x.crosscheck.reason} (예비 판정, 상태 그대로 ${x.status})`);
     } else if (cmd === "manual" && (args[0] === "check" || args[0] === "ack")) {
       const dir = process.cwd();
       const now = manualHash(dir);

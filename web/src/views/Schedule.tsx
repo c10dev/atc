@@ -25,13 +25,30 @@ type Mode = "shadow" | "approval";
 // 판정 버튼 문구가 모드를 따르게(S1 "승인했을 것", S2 "승인")
 const ModeContext = createContext<Mode>("shadow");
 
+// CROSSCHECK: 다른 모델(CROSSCHECK 세션)이 열린 초안에 남긴 임시 판정. 사람 판정을 대신하지 않는다.
+interface Crosscheck {
+  by: string;
+  verdict: "agree" | "disagree";
+  reason: string;
+  at: string;
+}
+// 서버 타입에 아직 없을 수 있어 따로 읽는다(옛 서버면 null)
+const markOf = (op: ScheduleOp): Crosscheck | null => (op as unknown as { crosscheck?: Crosscheck | null }).crosscheck ?? null;
+
 interface Brief {
   mode: Mode;
   open: ScheduleOp[];
   inProgress: ScheduleOp[];
   recent: ScheduleOp[];
   changes: Record<string, string[]>;
-  gate: { decided: number; agreed: number; agreement: number | null; target: { decided: number; agreement: number }; ready: boolean };
+  gate: {
+    decided: number;
+    agreed: number;
+    agreement: number | null;
+    target: { decided: number; agreement: number };
+    ready: boolean;
+    crosscheck?: { marked: number; matched: number; rate: number | null }; // 참고용, 게이트 기준 아님
+  };
   limit: number;
   candidates: { classify: string[]; prioritize: string[] };
   flights: Record<string, FlightInfo>;
@@ -310,7 +327,10 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
                     {timeAgo(op.statusAt, now)}
                   </time>
                 </td>
-                <td className="sc-c-reason" data-label="사유">{op.verdictReason ?? <span className="faint">—</span>}</td>
+                <td className="sc-c-reason" data-label="사유">
+                  {op.verdictReason ?? <span className="faint">—</span>}
+                  <CrosscheckMini m={markOf(op)} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -343,6 +363,7 @@ function Gate({ gate }: { gate: Brief["gate"] }) {
     },
   ] as const;
   const mark = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족" } as const;
+  const xc = gate.crosscheck; // 옛 서버면 없음
   return (
     <div className="sc-gate">
       <h2 className="label">
@@ -360,9 +381,20 @@ function Gate({ gate }: { gate: Brief["gate"] }) {
             </span>
           </li>
         ))}
+        {xc && (
+          <li className="s-info sc-gate-xc">
+            <span className="sc-gate-label">
+              CROSSCHECK 일치 {xc.matched}/{xc.marked}
+            </span>
+            <span className="sc-gate-value">{pct(xc.rate)}</span>
+            <span className="sc-gate-target">기준 없음</span>
+            <span className="sc-gate-state">참고</span>
+          </li>
+        )}
       </ul>
       <p className="sc-gate-note faint">
         S1 그림자 운용: 판정은 합의율 측정용이다. S2(승인 운용)부터 승인한 초안만 linear-guard를 거쳐 Linear에 쓴다. 판정 없이 3일이 지나면 EXPIRED.
+        {xc && " CROSSCHECK 일치는 참고용이다 — 게이트에는 사람 판정만 셈."}
       </p>
     </div>
   );
@@ -445,7 +477,7 @@ function DraftCard({
 
       {changes.length > 0 && <ManualHint op={op} changes={changes} labels={labels} />}
 
-      <VerdictActions op={op} v={v} />
+      <VerdictActions op={op} v={v} now={now} clock={clock} />
     </article>
   );
 }
@@ -473,10 +505,38 @@ function useVerdict(op: ScheduleOp, onVerdict: OnVerdict) {
   return { busy, error, rejecting, setRejecting, submit, closeReject, rejectBtn };
 }
 
-function VerdictActions({ op, v }: { op: ScheduleOp; v: ReturnType<typeof useVerdict> }) {
+// 닫힌 초안에 남은 CROSSCHECK 표시(흐리게)
+function CrosscheckMini({ m }: { m: Crosscheck | null }) {
+  if (!m) return null;
+  return (
+    <span className={`sc-xc-mini v-${m.verdict}`} title={`CROSSCHECK ${m.verdict} (${m.by}) — ${m.reason}`}>
+      CROSSCHECK {m.verdict}
+    </span>
+  );
+}
+
+// 열린 초안의 CROSSCHECK 칩: "CROSSCHECK agree · 사유"(길면 두 줄에서 자르고 전체는 title)
+function CrosscheckChip({ m, now, clock }: { m: Crosscheck; now: number; clock: Clock }) {
+  return (
+    <p className={`sc-xc v-${m.verdict}`} title={`CROSSCHECK ${m.verdict} · ${m.by} · ${stamp(m.at, clock)}\n${m.reason}`}>
+      <span className="sc-xc-mark">CROSSCHECK</span>
+      <b className="sc-xc-verdict">{m.verdict}</b>
+      <span className="sc-xc-reason">· {m.reason}</span>
+      <time className="sc-xc-at" dateTime={m.at}>
+        {timeAgo(m.at, now)}
+      </time>
+    </p>
+  );
+}
+
+function VerdictActions({ op, v, now, clock }: { op: ScheduleOp; v: ReturnType<typeof useVerdict>; now: number; clock: Clock }) {
   const mode = useContext(ModeContext);
+  const xc = markOf(op);
+  // CROSSCHECK 판정을 그대로 기록한다. disagree면 CROSSCHECK 사유를 거절 사유로 쓴다.
+  const word = xc?.verdict === "agree" ? (mode === "approval" ? "승인" : "승인했을 것") : mode === "approval" ? "거절" : "거절했을 것";
   return (
     <>
+      {xc && <CrosscheckChip m={xc} now={now} clock={clock} />}
       {v.error && (
         <p className="sc-card-error" role="alert">
           기록하지 못함: {v.error}
@@ -492,6 +552,16 @@ function VerdictActions({ op, v }: { op: ScheduleOp; v: ReturnType<typeof useVer
           <button ref={v.rejectBtn} className="sc-btn disagree" disabled={v.busy} onClick={() => v.setRejecting(true)}>
             {mode === "approval" ? "거절…" : "거절했을 것…"}
           </button>
+          {xc && (
+            <button
+              className={`sc-btn sc-xc-accept v-${xc.verdict}`}
+              disabled={v.busy}
+              title={`CROSSCHECK 판정(${xc.verdict})대로 ${word} 기록${xc.verdict === "disagree" ? " — 사유는 CROSSCHECK 사유" : ""}`}
+              onClick={() => v.submit(xc.verdict, xc.verdict === "disagree" ? xc.reason : null)}
+            >
+              CROSSCHECK에 동의
+            </button>
+          )}
         </div>
       )}
     </>
@@ -637,7 +707,7 @@ function NewCard({
         <span className="faint sc-hint-note">SHADOW — atc는 Linear에 쓰지 않음. S2부터는 승인한 초안을 OCC가 Linear Todo에 만들어 FILED가 된다.</span>
       </div>
 
-      <VerdictActions op={op} v={v} />
+      <VerdictActions op={op} v={v} now={now} clock={clock} />
     </article>
   );
 }

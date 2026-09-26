@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { draftText, parseDraft, payloadText } from "./atcctl.mjs";
+import { crosscheckBrief, draftText, parseCrosscheck, parseDraft, payloadText } from "./atcctl.mjs";
 import { simpleCommands } from "../hooks/shell.mjs";
 
 const argv = (s) => s.split(" ");
@@ -94,4 +94,23 @@ test("OCC guard(--gh-read)는 현실적인 NEW 명령을 통과시킨다: 따옴
   const { check } = await import("./guard.mjs");
   const OCC = new URL("../occ", import.meta.url).pathname;
   assert.equal(check(NEW_CMD, OCC, { ghRead: true }), null);
+});
+
+test("crosscheck: <ID> agree|disagree -- <이유>", () => {
+  assert.deepEqual(parseCrosscheck(argv("D-0003 disagree -- 이미 완료됨 -- PR #390")), { id: "D-0003", body: { verdict: "disagree", reason: "이미 완료됨 -- PR #390", by: "CROSSCHECK" } });
+  assert.throws(() => parseCrosscheck(argv("D-0003 maybe -- x")), /agree\|disagree/);
+  assert.throws(() => parseCrosscheck(argv("D-0003 agree")), /이유/);
+  assert.throws(() => parseCrosscheck(argv("-- x")), /ID/);
+  assert.throws(() => parseCrosscheck(argv("D-0003 agree --caution -- x")), /알 수 없는 인자/);
+});
+
+test("crosscheck brief: 두 브리핑의 pending·examples와 그 FLIGHT만", () => {
+  const d = { mode: "shadow", gate: { crosscheck: { marked: 1, matched: 1, rate: 1 } }, flights: { "VOC-1": { title: "a" }, "VOC-9": { title: "z" } },
+    crosscheck: { pending: [{ id: "D-0001", flight: "VOC-1" }], examples: [] } };
+  const s = { mode: "approval", gate: {}, flights: { "VOC-2": { title: "b" } }, crosscheck: { pending: [], examples: [{ id: "S-0001", flight: "VOC-2", verdict: "agree", reason: null }] } };
+  const out = crosscheckBrief(d, s);
+  assert.deepEqual(out.dispatch.flights, { "VOC-1": { title: "a" } });
+  assert.deepEqual(out.schedule.flights, { "VOC-2": { title: "b" } });
+  assert.deepEqual(out.rate, { dispatch: { marked: 1, matched: 1, rate: 1 }, schedule: null });
+  assert.deepEqual(crosscheckBrief({ mode: "shadow" }, { mode: "shadow" }).dispatch.pending, []);
 });

@@ -670,3 +670,76 @@
   flex: none;
   white-space: nowrap;
 }
+
+/* CROSSCHECK: 다른 모델의 임시 판정. agree는 radar, disagree는 alert. 사람 판정과 헷갈리지 않게 점선. */
+.sc-xc {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1-5);
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px dashed var(--line-strong);
+  border-left: 2px solid currentColor;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+.sc-xc.v-agree {
+  color: var(--radar);
+}
+.sc-xc.v-disagree {
+  color: var(--alert);
+}
+.sc-xc-mark {
+  flex: none;
+  color: var(--faint);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.12em;
+}
+.sc-xc-verdict {
+  flex: none;
+  font: 700 var(--text-xs) var(--mono);
+  letter-spacing: 0.06em;
+}
+.sc-xc-at {
+  flex: none;
+  margin-left: auto;
+  color: var(--faint);
+  font-size: var(--text-xs);
+}
+.sc-xc-reason {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.sc-btn.sc-xc-accept {
+  border-style: dashed;
+}
+.sc-btn.sc-xc-accept.v-agree {
+  border-color: var(--radar);
+  color: var(--radar);
+}
+.sc-btn.sc-xc-accept.v-disagree {
+  border-color: var(--alert);
+  color: var(--alert);
+}
+.sc-xc-mini {
+  display: block;
+  color: var(--faint);
+  font: var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+}
+
+/* 진입 점검의 CROSSCHECK 일치: 참고용이라 판정 색·막대 없이 흐리게 */
+.sc-gate .s-info .sc-gate-label,
+.sc-gate .s-info .sc-gate-value {
+  color: var(--muted);
+}
+.sc-gate .s-info .sc-gate-state {
+  color: var(--faint);
+  font-weight: 400;
+}

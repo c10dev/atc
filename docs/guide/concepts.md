@@ -64,3 +64,4 @@
 | FLIGHT PLAN | OCC가 승인된 배정을 CAPTAIN에게 보내는 문구(`[DISPATCH D-0003]`, 2b부터) |
 | READBACK | 받았다는 확인(`READBACK C-0007`) |
 | HOLD | 선행 작업이나 사람 결정을 기다리게 잡아 둔 제안 |
+| CROSSCHECK | 사용자가 판정하기 전에 OCC와 다른 계열 모델이 달아 두는 예비 판정(agree/disagree + 이유). 참고 표시라 상태를 바꾸지 않는다 |

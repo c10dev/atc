@@ -16,7 +16,8 @@ guard가 막은 것이다(fail-closed). 관제 세션은 다시 시도하지 않
 
 - **허용되지 않은 명령**: 관제 세션이 할 일이 아니다. 필요하면 사용자가 직접 한다.
 - **명령 치환·변수 확장**: 문구를 작은따옴표로 감싸면 된다.
-- **읽기 전용이 아닌 MCP 도구**: OCC는 S2 전까지 Linear·GitHub에 쓰지 않는다.
+- **읽기 전용이 아닌 MCP 도구**: OCC는 S2 전까지 Linear·GitHub에 쓰지 않는다. CROSSCHECK는 언제나 읽기만 한다.
+- **CROSSCHECK가 쓸 수 없는 atc 명령**: CROSSCHECK는 읽기와 `crosscheck` 명령만 쓴다. 메모·HOLD·초안·판정은 OCC와 사용자 몫이다.
 
 ## 점유가 ESTIMATED TRACK으로만 보인다
 

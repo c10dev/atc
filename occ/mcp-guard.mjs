@@ -3,6 +3,7 @@
 // - 읽기 도구(get_·list_·search_·read·query·fetch로 시작)는 통과.
 // - Linear 쓰기(save_issue, save_comment)는 linear-guard: SCHEDULE이 approval 모드(S2)이고, 입력이 atc가
 //   발부(release)한 호출과 정확히 같을 때만 통과. 그 밖의 쓰기는 모두 막는다(exit 2, fail-closed).
+// - `--read-only`로 부르면(CROSSCHECK) linear-guard 없이 읽기 도구만 통과. Linear 쓰기는 발부된 것도 막는다.
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -55,21 +56,23 @@ export async function checkLinear(toolName, toolInput, fetcher = fetchReleased) 
   return null;
 }
 
+// hook 한 번의 판정. 입력을 읽지 못하면(도구 이름 없음) 막는다 — fail-closed
+export async function decide(input, { readOnly = false, fetcher } = {}) {
+  if (typeof input?.tool_name !== "string") return "hook 입력을 읽지 못함";
+  if (!readOnly && input.tool_name.startsWith("mcp__") && LINEAR_WRITES.has(nameOf(input.tool_name))) return checkLinear(input.tool_name, input.tool_input, fetcher);
+  return checkMcp(input.tool_name);
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   let input = {};
   try {
     input = JSON.parse(readFileSync(0, "utf8"));
   } catch {}
-  const name = nameOf(input.tool_name);
-  // 입력을 읽지 못하면(도구 이름 없음) 막는다 — fail-closed
-  const reason =
-    typeof input.tool_name !== "string"
-      ? "hook 입력을 읽지 못함"
-      : input.tool_name.startsWith("mcp__") && LINEAR_WRITES.has(name)
-        ? await checkLinear(input.tool_name, input.tool_input)
-        : checkMcp(input.tool_name);
+  const readOnly = process.argv.includes("--read-only");
+  const reason = await decide(input, { readOnly });
   if (reason) {
-    console.error(`OCC MCP 차단 — ${reason}. Linear·GitHub에 따로 써야 하면 SUPERVISOR에게 보고하세요.`);
+    const who = readOnly ? "CROSSCHECK" : "OCC";
+    console.error(`${who} MCP 차단 — ${reason}. Linear·GitHub에 따로 써야 하면 SUPERVISOR에게 보고하세요.`);
     process.exit(2);
   }
 }
