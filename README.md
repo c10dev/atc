@@ -207,7 +207,7 @@ The atc server keeps an append-only log in `~/.local/state/atc/flight-recorder/Y
 
 ## Next: DISPATCH (stage 2)
 
-The design draft is in [docs/dispatch.md](docs/dispatch.md) (Korean). atc proposes assigning FLIGHTs (tickets) to AIRCRAFT (team sessions), measures proposal quality in shadow operation (2a), then moves to SUPERVISOR-approved operation (2b).
+The design draft is in [docs/dispatch.md](docs/dispatch.md). atc proposes assigning FLIGHTs (tickets) to AIRCRAFT (team sessions), measures proposal quality in shadow operation (2a), then moves to SUPERVISOR-approved operation (2b).
 
 ## Project layout
 

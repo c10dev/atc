@@ -1,177 +1,179 @@
-# 2단계 DISPATCH 설계 (초안)
+# Stage 2 DISPATCH design (draft)
 
-DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, 언제 보낼지** 제안한다. TOWER(1단계)가 이미 뜬 AIRCRAFT끼리 부딪히지 않게 하는 쪽이라면, DISPATCH는 뜨기 전의 계획을 맡는다. 항공사 운항관리(OCC)와 ATC가 나뉘어 있는 것과 같은 구분이다.
+**English** · [한국어](dispatch.ko.md)
 
-> 상태: 설계 확정(2026-09-26). 결정 사항은 맨 아래 "결정"에 있다.
+DISPATCH proposes **which FLIGHT (Linear ticket) to send to which AIRCRAFT (team session), and when**. Where TOWER (stage 1) keeps aircraft that are already airborne from colliding, DISPATCH handles the plan before takeoff. It is the same split as between an airline's operations control center (OCC) and ATC.
 
-## 1. 지금 사실
+> Status: design settled (2026-09-26). Decisions are listed under "Decisions" at the end.
 
-| 항목 | 현재 |
+## 1. Current facts
+
+| Item | Today |
 |---|---|
-| 배정 방식 | 사용자가 TEAM 세션(CAPTAIN)에 직접 말한다. CAPTAIN이 Linear 이슈를 찾거나 만들고 In Progress로 둔다(vocado `CLAUDE.md`: "Linear에는 리더만 쓴다") |
-| 열린 FLIGHT | 30건. Todo 7 · In Progress 17 · In Review 6 · Backlog 0 |
-| Linear 데이터 | 추정치 0건, 사이클 0건, 라벨 0건. 프로젝트는 30건 모두 있음(Beta Readiness, Song Experience, Vocado Pre-seed IR & Pitch Deck, Vocado Visual System (SEED)). blocks 관계 3개, related 76개. 담당자는 거의 모두 사용자 한 명 |
-| 붐비는 정도 | In Progress 17건 중 STAND(워크트리)가 없는 FLIGHT가 늘 몇 건 있다(NO CONTACT 경보) |
-| 다른 운항사 | Symphony(`vocado_nextjs/WORKFLOW.md`): `symphony-pilot` 라벨 + Beta Readiness 티켓을 Codex로 하나씩 처리. 지금 이 머신에서는 돌지 않음 |
-| TOWER | 1단계 완료, 1.5단계 FLIGHT RECORDER·METRICS로 운용 데이터를 모으는 중 |
+| How work is assigned | The user talks to a TEAM session (CAPTAIN) directly. The CAPTAIN finds or creates the Linear issue and moves it to In Progress (vocado `CLAUDE.md`: "only leaders write to Linear") |
+| Open FLIGHTs | 30. Todo 7 · In Progress 17 · In Review 6 · Backlog 0 |
+| Linear data | 0 estimates, 0 cycles, 0 labels. All 30 have a project (Beta Readiness, Song Experience, Vocado Pre-seed IR & Pitch Deck, Vocado Visual System (SEED)). 3 blocks relations, 76 related. Almost everything is assigned to the one user |
+| Congestion | Of the 17 In Progress, a few FLIGHTs always have no STAND (worktree) (NO CONTACT alerts) |
+| Other operator | Symphony (`vocado_nextjs/WORKFLOW.md`): works `symphony-pilot` label + Beta Readiness tickets one at a time with Codex. Not running on this machine right now |
+| TOWER | Stage 1 done; stage 1.5 FLIGHT RECORDER and METRICS are collecting operating data |
 
-이 사실에서 나오는 제약:
+Constraints that follow from these facts:
 
-- 추정치가 없으므로 **용량은 포인트가 아니라 건수(슬롯)** 로 잰다.
-- 담당자로는 팀을 구분할 수 없으므로 **팀 적합도는 과거 운항 이력**(어느 팀이 관련 FLIGHT를 날았나)으로 추정한다.
-- 라벨이 없으므로 위험 작업(DB·보안·권리)은 **티켓 본문**에서 읽어야 한다. 규칙 계산이 아니라 DISPATCH 세션(LLM)의 몫이다.
-- Backlog는 비어 있고 Todo가 곧 "출발 대기"다.
+- With no estimates, **capacity is measured in counts (slots), not points**.
+- Assignees can't tell teams apart, so **team fit is estimated from past flight history** (which team flew related FLIGHTs).
+- With no labels, risky work (DB, security, rights) has to be read from the **ticket body**. That is the DISPATCH session's (LLM's) job, not a rule calculation.
+- Backlog is empty, so Todo effectively means "waiting to depart".
 
-## 2. 원칙
+## 2. Principles
 
-1. **제안만 한다, 결정은 SUPERVISOR(사용자).** 3단계(ATFM) 전까지 자동 배정은 없다.
-2. **처음에는 그림자 운용(shadow).** 제안을 만들고 화면에만 보인다. 아무에게도 보내지 않고, 사용자가 "나라면 승인/거절"을 표시해 제안의 질을 잰다.
-3. **Linear에 쓰지 않는다.** 승인된 FLIGHT PLAN을 받은 CAPTAIN이 지금처럼 Linear를 다룬다. 그래서 "Linear에는 리더만 쓴다" 규칙을 바꿀 필요가 없다.
-4. **점수는 계산, 판단은 사람과 LLM.** 후보 고르기와 점수는 atc 서버의 순수 함수(테스트 가능, 이유가 보임)로 하고, 티켓 본문의 숨은 제약 읽기와 FLIGHT PLAN 문구는 DISPATCH 세션이 한다.
-5. **TOWER와 섞지 않는다.** 배정한 쪽이 그 결과(LOS)를 심판하지 않도록 세션을 나눈다. DISPATCH도 코드를 만지지 않는다(TOWER와 같은 guard).
-6. **사람이 직접 한 배정이 우선.** 사용자가 TEAM에 직접 일을 주면 DISPATCH는 그걸 따라간다(해당 제안은 superseded).
+1. **Propose only; the SUPERVISOR (user) decides.** No automatic assignment until stage 3 (ATFM).
+2. **Start in shadow mode.** Proposals are made and shown on screen only. Nothing is sent to anyone; the user marks "I would approve / reject" to measure proposal quality.
+3. **Don't write to Linear.** The CAPTAIN who receives an approved FLIGHT PLAN handles Linear as today, so the "only leaders write to Linear" rule doesn't need to change.
+4. **Scores are computed; judgment belongs to people and the LLM.** Picking candidates and scoring are pure functions in the atc server (testable, with visible reasons). Reading hidden constraints in ticket bodies and writing the FLIGHT PLAN text is the DISPATCH session's job.
+5. **Keep it separate from TOWER.** The sessions are split so that whoever assigns doesn't also judge the outcome (LOS). DISPATCH doesn't touch code either (same guard as TOWER).
+6. **Assignments made directly by a person win.** If the user gives a TEAM work directly, DISPATCH follows along (the matching proposal becomes superseded).
 
-## 3. 역할과 권한
+## 3. Roles and permissions
 
-| 역할 | 누구 | 하는 일 | 쓸 수 있는 것 |
+| Role | Who | Does | May use |
 |---|---|---|---|
-| SUPERVISOR | 사용자 | 제안 승인·거절, 슬롯·가중치 조정, 최종 권한 | 전부 |
-| DISPATCH | 새 Claude 세션(`atc/dispatch/`) | 제안 검토(본문 읽기), 승인된 FLIGHT PLAN 전달, 수락 기록 | atc CLI, SendMessage, Linear **읽기** |
-| TOWER | 1단계 CONTROLLER | 충돌·HANDOFF·LANDING SEQUENCE | atc CLI, SendMessage |
-| CAPTAIN | 각 TEAM 리더 | FLIGHT PLAN 수락(READBACK) 또는 사유 회신, Linear 상태 변경, STAND 준비 | 자기 저장소, Linear |
-| Symphony | 다른 운항사 | `symphony-pilot` FLIGHT | DISPATCH는 건드리지 않음 |
+| SUPERVISOR | The user | Approves and rejects proposals, adjusts slots and weights, final authority | Everything |
+| DISPATCH | A new Claude session (`atc/dispatch/`) | Reviews proposals (reads ticket bodies), delivers approved FLIGHT PLANs, records acceptance | atc CLI, SendMessage, Linear **read** |
+| TOWER | The stage 1 CONTROLLER | Conflicts, HANDOFFs, LANDING SEQUENCE | atc CLI, SendMessage |
+| CAPTAIN | Each TEAM leader | Accepts a FLIGHT PLAN (READBACK) or replies with a reason, changes Linear state, prepares the STAND | Its own repository, Linear |
+| Symphony | Another operator | `symphony-pilot` FLIGHTs | DISPATCH leaves them alone |
 
-## 4. 제안의 종류
+## 4. Proposal types
 
-| 종류 | 뜻 | 예 |
+| Type | Meaning | Example |
 |---|---|---|
-| `ASSIGN` | FLIGHT를 AIRCRAFT에 배정 | VOC193 → BRAVO (VCDO) |
-| `HOLD_DEPARTURE` | 지금은 출발시키지 말 것 | VOC192는 VOC191(blocks)이 ARRIVED 될 때까지 대기 |
-| `RELEASE` | STAND도 활동도 없는 ENROUTE FLIGHT를 정리 | VOC34: 7일째 STAND 없음 → Todo로 되돌릴지 SUPERVISOR 확인 |
-| `REPOSITION` | AIRCRAFT를 다른 AIRPORT로(3단계 전까지는 드묾) | DSGN FLIGHT가 쌓였는데 DSGN 소속 AIRCRAFT가 없음 |
+| `ASSIGN` | Assign a FLIGHT to an AIRCRAFT | VOC193 → BRAVO (VCDO) |
+| `HOLD_DEPARTURE` | Don't depart it yet | VOC192 waits until VOC191 (blocks) is ARRIVED |
+| `RELEASE` | Clean up an ENROUTE FLIGHT with no STAND and no activity | VOC34: no STAND for 7 days → SUPERVISOR confirms whether to move it back to Todo |
+| `REPOSITION` | Move an AIRCRAFT to another AIRPORT (rare before stage 3) | DSGN FLIGHTs are piling up but no AIRCRAFT is based at DSGN |
 
-첫 구현은 `ASSIGN`과 `RELEASE`만. `RELEASE`는 In Progress 17건 중 방치된 것을 정리하는 효과가 크고 위험이 낮다(Linear 변경은 SUPERVISOR/CAPTAIN이 한다).
+The first implementation covers only `ASSIGN` and `RELEASE`. `RELEASE` does a lot to clean up neglected items among the 17 In Progress, at low risk (Linear changes are made by the SUPERVISOR or CAPTAIN).
 
-## 5. 판정
+## 5. Rules
 
-### 5.1 후보
+### 5.1 Candidates
 
-- **AIRCRAFT**: 살아 있는 TEAM 세션(이름 규칙 `TEAM_X`) 중
-  - PARKED(대기, STAND 없음) → 배정 가능
-  - HOLDING(대기, STAND 있음) → 마지막 활동이 N분(기본 30) 넘게 없으면 배정 가능, 아니면 마무리 중으로 봄
-  - AIRBORNE, NORDO → 불가
-  - 복창하지 않은 FLIGHT PLAN이 있으면 불가(한 번에 하나)
-- **FLIGHT**: Todo 상태이고
-  - `symphony-pilot` 라벨 아님
-  - 아직 ARRIVED 되지 않은 FLIGHT에 blocks 당하지 않음(당하면 `HOLD_DEPARTURE`)
-  - 이미 STAND가 있거나 누가 점유 중이 아님
-  - 프로젝트가 매핑된 AIRPORT가 운항 중(OPEN)
+- **AIRCRAFT**: among live TEAM sessions (named `TEAM_X`)
+  - PARKED (idle, no STAND) → can be assigned
+  - HOLDING (idle, holds a STAND) → can be assigned if there has been no activity for more than N minutes (default 30); otherwise treated as wrapping up
+  - AIRBORNE, NORDO → cannot
+  - Cannot if it has a FLIGHT PLAN without READBACK (one at a time)
+- **FLIGHT**: in the Todo state, and
+  - not labelled `symphony-pilot`
+  - not blocked by a FLIGHT that hasn't ARRIVED (if blocked: `HOLD_DEPARTURE`)
+  - has no STAND yet and nobody holds it
+  - its project maps to an AIRPORT that is operating (OPEN)
 
-### 5.2 슬롯(용량)
+### 5.2 Slots (capacity)
 
-| 한도 | 기본 | 이유 |
+| Limit | Default | Why |
 |---|---|---|
-| TEAM당 동시 FLIGHT | 1 | vocado 규칙: 팀 작업 한 번 = Linear 이슈 하나 |
-| AIRPORT당 동시 AIRBORNE | VCDO 4, 그 밖 2 | 개발 서버 포트(3001~), CI, LANDING SEQUENCE 혼잡 |
-| 전체 대기 중 제안 | 5 | SUPERVISOR 검토 부담 |
+| Concurrent FLIGHTs per TEAM | 1 | vocado rule: one team job = one Linear issue |
+| Concurrent AIRBORNE per AIRPORT | VCDO 4, others 2 | Dev server ports (3001+), CI, LANDING SEQUENCE congestion |
+| Pending proposals overall | 5 | SUPERVISOR review load |
 
-슬롯이 차면 `ASSIGN` 대신 아무것도 내지 않는다(3단계에서 ground delay로 확장).
+When slots are full, nothing is proposed instead of an `ASSIGN` (extended to ground delay in stage 3).
 
-### 5.3 점수 (높을수록 먼저)
+### 5.3 Score (higher goes first)
 
-| 요소 | 계산 | 기본 가중 |
+| Factor | Calculation | Default weight |
 |---|---|---|
-| 우선순위 | Urgent 4 · High 3 · Medium 2 · Low 1 · 없음 1.5 | ×3 |
-| 대기 시간 | Todo로 머문 일수(최대 14) | ×0.5 |
-| 풀어 주는 FLIGHT | 이 FLIGHT가 blocks 하는 Todo 수 | ×2 |
-| 팀 적합도 | 이 AIRCRAFT가 과거에 같은 프로젝트·related FLIGHT를 날았던 횟수(FLIGHT RECORDER·청구 이력) | ×1 |
-| 충돌 위험 | 지금 AIRBORNE인 FLIGHT와 related로 묶인 수 | ×−2 |
+| Priority | Urgent 4 · High 3 · Medium 2 · Low 1 · none 1.5 | ×3 |
+| Wait time | Days spent in Todo (max 14) | ×0.5 |
+| FLIGHTs it unblocks | Number of Todo items this FLIGHT blocks | ×2 |
+| Team fit | How many times this AIRCRAFT flew FLIGHTs in the same project or related ones (FLIGHT RECORDER, claim history) | ×1 |
+| Conflict risk | Number of currently AIRBORNE FLIGHTs linked by related | ×−2 |
 
-각 제안에 요소별 점수를 그대로 보여 준다("왜 이 팀에 이 편인가"). 가중치는 설정 파일로 SUPERVISOR가 바꾼다.
+Each proposal shows the per-factor scores as they are ("why this flight for this team"). The SUPERVISOR changes the weights in a settings file.
 
-### 5.4 DISPATCH 세션의 검토
+### 5.4 DISPATCH session review
 
-서버가 고른 상위 후보마다 DISPATCH 세션이 티켓 본문과 댓글을 읽고:
+For each top candidate the server picks, the DISPATCH session reads the ticket body and comments and:
 
-- DB·마이그레이션·보안·권리 작업(vocado의 `Codex Engineering Task` 대상)이면 `CAUTION` 표시를 붙이고 사유를 적는다.
-- 사람 결정이 먼저 필요한 티켓(예: "사용자 확인 후")이면 제안을 보류한다.
-- 판단 근거를 한두 줄로 제안에 남긴다.
+- Adds a `CAUTION` mark with a reason for DB, migration, security or rights work (what vocado routes to `Codex Engineering Task`).
+- Holds the proposal back when the ticket needs a human decision first (e.g. "after user confirmation").
+- Leaves a one- or two-line rationale on the proposal.
 
-## 6. 흐름
+## 6. Flow
 
-### 2a — 그림자 운용
+### 2a — Shadow operation
 
 ```
-atc 서버: 5분마다 후보·점수 → PROPOSED 제안 기록
-DISPATCH 세션(/tick): 새 제안 검토 → 메모·CAUTION 추가
-SUPERVISOR: DISPATCH 탭에서 "나라면 승인 / 거절(사유)" 표시
-→ 아무에게도 보내지 않음. 합의율만 잰다.
+atc server: candidates and scores every 5 minutes → records PROPOSED proposals
+DISPATCH session (/tick): reviews new proposals → adds notes and CAUTION
+SUPERVISOR: marks "I would approve / reject (reason)" in the DISPATCH tab
+→ Nothing is sent to anyone. Only the agreement rate is measured.
 ```
 
-### 2b — 승인 운용
+### 2b — Approval operation
 
 ```
-SUPERVISOR 승인 → atc: APPROVED
-DISPATCH 세션: FLIGHT PLAN을 CAPTAIN에게 SendMessage
+SUPERVISOR approves → atc: APPROVED
+DISPATCH session: SendMessage the FLIGHT PLAN to the CAPTAIN
   [DISPATCH D-0003] FLIGHT PLAN · BRAVO (TEAM_B)
   FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High
-  <티켓 제목과 URL, DISPATCH 메모>
-  — 맡으면 이 메시지에 "READBACK D-0003", 못 맡으면 사유로 답장해 주세요.
-CAPTAIN: READBACK → Linear In Progress, STAND 준비(지금 규칙 그대로)
-atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER처럼 재확인
+  <ticket title and URL, DISPATCH note>
+  — If you take it, reply "READBACK D-0003"; if not, reply with the reason.
+CAPTAIN: READBACK → Linear In Progress, prepares the STAND (same rules as today)
+atc: DEPARTED once that FLIGHT gets a STAND; if not, rechecks after 30 minutes like TOWER does
 ```
 
-제안 상태: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)`(2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED`(2b), 곁가지 `REJECTED`, `DECLINED`(CAPTAIN 사유), `SUPERSEDED`(사람이 직접 배정했거나 상황이 바뀜), `EXPIRED`(24시간).
+Proposal states: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)` (2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED` (2b), with side branches `REJECTED`, `DECLINED` (CAPTAIN gave a reason), `SUPERSEDED` (a person assigned it directly or the situation changed) and `EXPIRED` (24 hours).
 
-## 7. atc에 더할 것
+## 7. What to add to atc
 
-| 곳 | 내용 |
+| Where | What |
 |---|---|
-| `server/sources/linear.ts` | 조회에 `relations`(blocks), `labels`, `project`, `createdAt`, 상태 진입 시각(가능하면 `history`) 추가 |
-| `server/dispatch.ts` | 후보·슬롯·점수 계산(순수 함수 + 테스트) |
-| `server/proposals.ts` | 제안 기록(`~/.local/state/atc/proposals.jsonl`, 추가만 함, clearances와 같은 방식) |
+| `server/sources/linear.ts` | Add `relations` (blocks), `labels`, `project`, `createdAt` and the time a state was entered (via `history` if possible) to the query |
+| `server/dispatch.ts` | Candidate, slot and score calculation (pure functions + tests) |
+| `server/proposals.ts` | Proposal log (`~/.local/state/atc/proposals.jsonl`, append-only, same approach as clearances) |
 | API | `GET /api/dispatch/brief`, `POST /api/dispatch/proposals/:id/{agree,disagree,approve,reject,sent,accept,decline}` |
-| 이벤트·기록 | `proposal.created / decided / sent / accepted / departed / superseded`를 FLIGHT RECORDER에 |
-| 설정 | `~/.local/state/atc/dispatch.json`: 프로젝트→AIRPORT 매핑, 슬롯, 가중치, 모드(`shadow`/`approval`) |
-| 화면 | DISPATCH 탭: 제안 카드(FLIGHT·AIRCRAFT·요소별 점수·DISPATCH 메모·CAUTION), 승인/거절 버튼, 슬롯 현황, RELEASE 목록 |
-| 지표 | 그림자 합의율, 제안→수락 시간, 유휴 AIRCRAFT 시간(PARKED인데 Todo가 있던 분), 방치된 ENROUTE 수 |
-| `atc/dispatch/` | TOWER와 같은 구조: `CLAUDE.md`(역할·판단 기준), `/tick`, guard(atc CLI·jq만, Linear는 읽기 MCP만) |
+| Events and records | `proposal.created / decided / sent / accepted / departed / superseded` into the FLIGHT RECORDER |
+| Settings | `~/.local/state/atc/dispatch.json`: project → AIRPORT mapping, slots, weights, mode (`shadow`/`approval`) |
+| UI | DISPATCH tab: proposal cards (FLIGHT, AIRCRAFT, per-factor scores, DISPATCH note, CAUTION), approve/reject buttons, slot status, RELEASE list |
+| Metrics | Shadow agreement rate, proposal → acceptance time, idle AIRCRAFT time (minutes PARKED while Todo items existed), number of neglected ENROUTE FLIGHTs |
+| `atc/dispatch/` | Same structure as TOWER: `CLAUDE.md` (role and decision rules), `/tick`, a guard (atc CLI and jq only; Linear through a read-only MCP only) |
 
-## 8. 넘어가는 기준
+## 8. Criteria for moving on
 
-| 전환 | 기준(제안값) |
+| Transition | Criteria (proposed) |
 |---|---|
-| 1.5 → 2a | 바로 시작 가능(아무것도 보내지 않으므로 1.5와 나란히 운용) |
-| 2a → 2b | 그림자 제안 20건 이상, 합의율 80% 이상, blocks를 어긴 제안 0건. 동시에 1.5 점검 4개 충족 |
-| 2b → 3(ATFM) | 2주 이상, READBACK 비율 90% 이상, DISPATCH가 보낸 FLIGHT에서 난 LOS가 거의 0, 유휴 AIRCRAFT 시간 감소 |
+| 1.5 → 2a | Can start right away (nothing is sent, so it runs alongside 1.5) |
+| 2a → 2b | 20+ shadow proposals, 80%+ agreement, 0 proposals that violated blocks. The four stage 1.5 checks are also met |
+| 2b → 3 (ATFM) | 2+ weeks, READBACK rate 90%+, almost no LOS on FLIGHTs DISPATCH sent, less idle AIRCRAFT time |
 
-## 9. 위험과 대응
+## 9. Risks and mitigations
 
-| 위험 | 대응 |
+| Risk | Mitigation |
 |---|---|
-| 팀에 일을 쏟아붓기 | TEAM당 1, AIRPORT·전체 슬롯, 복창 대기 중이면 추가 배정 없음 |
-| 오래된 Linear 상태(방치된 In Progress) 때문에 판단이 틀림 | 첫 구현에 `RELEASE` 포함, NO CONTACT FLIGHT를 먼저 정리 |
-| Symphony와 같은 티켓을 두고 경합 | `symphony-pilot` 라벨 제외. Symphony 클론이 생기면 별도 AIRPORT로 개설해 보이게 |
-| 사용자가 직접 준 일과 겹침 | 직접 배정을 감지(STAND·Linear In Progress가 제안 없이 생김)하면 관련 제안 SUPERSEDED |
-| 위험 작업을 가볍게 배정 | DISPATCH 세션의 본문 검토와 CAUTION, CAUTION 제안은 3단계에서도 자동 승인 대상에서 제외 |
-| DISPATCH가 코드·Linear를 건드림 | guard(atc CLI·jq만), Linear는 읽기 전용 MCP만 허용 |
+| Flooding teams with work | 1 per TEAM, AIRPORT and overall slots, no new assignment while a READBACK is pending |
+| Wrong calls because of stale Linear state (neglected In Progress) | Include `RELEASE` in the first implementation; clean up NO CONTACT FLIGHTs first |
+| Competing with Symphony for the same ticket | Exclude the `symphony-pilot` label. If a Symphony clone appears, open it as a separate AIRPORT so it is visible |
+| Overlapping with work the user gave directly | When a direct assignment is detected (a STAND or Linear In Progress appears without a proposal), mark related proposals SUPERSEDED |
+| Assigning risky work too lightly | Body review and CAUTION by the DISPATCH session; CAUTION proposals stay excluded from auto-approval even in stage 3 |
+| DISPATCH touching code or Linear | Guard (atc CLI and jq only), Linear through a read-only MCP only |
 
-## 10. 구현 순서
+## 10. Implementation order
 
-1. Linear 조회 확장 + `dispatch.ts`(후보·슬롯·점수) + 테스트
-2. 제안 기록·API·이벤트, 그림자 모드 기본
-3. DISPATCH 탭(그림자 합의 표시) + 지표
-4. `atc/dispatch/` 세션(검토 메모, CAUTION)
-5. 승인 운용(2b): 승인 버튼, FLIGHT PLAN 전달, READBACK, DEPARTED 판정 — vocado `CLAUDE.md`의 READBACK 줄을 `[DISPATCH D-xxxx]`까지 넓힘
+1. Extend the Linear query + `dispatch.ts` (candidates, slots, scores) + tests
+2. Proposal log, API and events, shadow mode by default
+3. DISPATCH tab (shadow agreement display) + metrics
+4. `atc/dispatch/` session (review notes, CAUTION)
+5. Approval operation (2b): approve button, FLIGHT PLAN delivery, READBACK, DEPARTED detection — widen the READBACK line in vocado `CLAUDE.md` to cover `[DISPATCH D-xxxx]`
 
-## 결정 (2026-09-26, SUPERVISOR)
+## Decisions (2026-09-26, SUPERVISOR)
 
-| 항목 | 결정 |
+| Item | Decision |
 |---|---|
-| DISPATCH 세션 | TOWER와 **별도 세션**(`atc/dispatch/`) |
-| 후보 FLIGHT | **Todo만**. Backlog는 사람이 Todo로 올린 뒤에만 대상 |
-| 프로젝트 → AIRPORT | Beta Readiness · Song Experience → **VCDO**. Vocado Pre-seed IR & Pitch Deck · Vocado Visual System (SEED)는 **배정 제외** |
-| `RELEASE` 기준 | STAND 없이 ENROUTE인 채로 **3일** |
-| 슬롯 | 제안값으로 시작: TEAM당 1, VCDO 동시 AIRBORNE 4, 그 밖 2, 대기 중 제안 5 |
+| DISPATCH session | A **separate session** from TOWER (`atc/dispatch/`) |
+| Candidate FLIGHTs | **Todo only**. Backlog items qualify only after a person moves them to Todo |
+| Project → AIRPORT | Beta Readiness · Song Experience → **VCDO**. Vocado Pre-seed IR & Pitch Deck · Vocado Visual System (SEED) are **excluded from assignment** |
+| `RELEASE` threshold | **3 days** ENROUTE without a STAND |
+| Slots | Start with the proposed values: 1 per TEAM, 4 concurrent AIRBORNE at VCDO, 2 elsewhere, 5 pending proposals |
 
-남은 결정: 2b에 들어갈 때 vocado `CLAUDE.md`의 READBACK 규칙을 FLIGHT PLAN(`[DISPATCH D-xxxx]`)까지 넓힐지. 2a에는 필요 없다.
+Still open: when entering 2b, whether to widen the READBACK rule in vocado `CLAUDE.md` to cover FLIGHT PLANs (`[DISPATCH D-xxxx]`). Not needed for 2a.

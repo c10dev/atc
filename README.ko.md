@@ -205,7 +205,7 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 
 ## 다음 단계: DISPATCH (2단계)
 
-설계 초안은 [docs/dispatch.md](docs/dispatch.md)에 있다. FLIGHT(티켓)를 AIRCRAFT(팀 세션)에 배정하는 제안을 만들고, 그림자 운용(2a)으로 제안의 질을 잰 뒤 SUPERVISOR 승인 운용(2b)으로 넘어간다.
+설계 초안은 [docs/dispatch.ko.md](docs/dispatch.ko.md)에 있다. FLIGHT(티켓)를 AIRCRAFT(팀 세션)에 배정하는 제안을 만들고, 그림자 운용(2a)으로 제안의 질을 잰 뒤 SUPERVISOR 승인 운용(2b)으로 넘어간다.
 
 ## 폴더 구조
 
