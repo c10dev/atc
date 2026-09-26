@@ -5,10 +5,9 @@
 import { lstatSync, mkdirSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { workTargets } from "./shell.mjs";
+import { toolPaths } from "./paths.mjs";
 
 const STATE_DIR = process.env.ATC_STATE_DIR || join(homedir(), ".local/state/atc");
-const MAX_PATHS = 12;
 const TTL_MS = Number(process.env.ATC_CLAIM_TTL_MIN || 180) * 60_000;
 
 function worktreeRoot(p) {
@@ -24,24 +23,8 @@ function worktreeRoot(p) {
   return null;
 }
 
-// Bash는 경로를 언급만 해도(ls, cat, grep, echo, heredoc) 잡히지 않도록
-// 명령 위치의 `cd <dir>`와 `git -C <dir>` 대상만 본다(shell.mjs).
-function bashTargets(command, cwd) {
-  return workTargets(command).map((arg) =>
-    resolve(
-      typeof cwd === "string" ? cwd : "/",
-      arg.replace(/^~(?=\/|$)/, homedir()).replace(/^\$\{?HOME\}?(?=\/|$)/, homedir()),
-    ),
-  );
-}
-
 function candidatePaths(input) {
-  const ti = input.tool_input || {};
-  const out = [];
-  for (const k of ["file_path", "notebook_path"]) if (typeof ti[k] === "string") out.push(ti[k]);
-  if (input.tool_name === "Bash" && typeof ti.command === "string") out.push(...bashTargets(ti.command, input.cwd));
-  if (typeof input.cwd === "string") out.push(input.cwd);
-  return out.filter((p) => p.startsWith("/home/")).slice(0, MAX_PATHS);
+  return toolPaths(input.tool_name, input.tool_input, input.cwd);
 }
 
 // 내가 마지막으로 건드린 뒤에 다른 세션이 같은 워크트리를 새로 잡았는가.

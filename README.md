@@ -45,7 +45,7 @@ Session ──claim──▶ Workspace ──branch──▶ Ticket
 | 소스 | 위치 | 얻는 것 |
 |---|---|---|
 | Claude 세션 | `~/.claude/sessions/*.json` | pid, sessionId, cwd, name, status |
-| Claude 기록 | `~/.claude/projects/<cwd-slug>/<sessionId>.jsonl` | 세션이 건드린 워크트리 경로 (추정용) |
+| Claude 기록 | `~/.claude/projects/<cwd-slug>/<sessionId>.jsonl`, `…/<sessionId>/subagents/*.jsonl` | 도구 호출로 들어간 워크트리 (추정용) |
 | Codex 세션 | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex 세션과 cwd |
 | git | 각 저장소 `git worktree list --porcelain` | 워크트리 경로, 브랜치, HEAD, dirty 여부 |
 | Linear | GraphQL API (`LINEAR_API_KEY`) | 티켓 제목, 상태, 담당, URL |
@@ -54,7 +54,7 @@ Session ──claim──▶ Workspace ──branch──▶ Ticket
 연결 규칙:
 
 1. **Workspace → Ticket**: 브랜치 이름에서 `voc-(\d+)`를 뽑아 `VOC-n`. 디렉터리 이름은 쓰지 않는다(지금 이름이 제각각이라서).
-2. **Session → Workspace**: hook 기록이 있으면 그것(`hook`). Codex는 세션 cwd(`cwd`). 둘 다 없으면 대화 기록에서 가장 최근에 언급된 워크트리(`transcript`, 점선으로 표시).
+2. **Session → Workspace**: hook 기록이 있으면 그것(`hook`). Codex는 세션 cwd(`cwd`). 둘 다 없으면 대화 기록(서브에이전트 기록 포함)의 **도구 호출**을 hook과 같은 규칙(`hooks/paths.mjs`)으로 읽어 가장 최근에 작업한 워크트리(`transcript`, 추정 항적으로 표시). 도구 결과·메시지 본문에 경로가 나온 것은 세지 않고, 마지막 작업 시각이 TTL을 넘으면 버린다.
    팀 세션의 cwd는 모두 `vocado_nextjs` 본 디렉터리라 cwd로는 구분이 안 된다. 기록 추정은 한 세션이 여러 워크트리를 오가서 부정확하므로 Claim이 기준이다.
 
 ## 실행
@@ -110,10 +110,11 @@ journalctl --user -u atc -f           # 로그
 atc/
 ├── hooks/
 │   ├── claim.mjs           # PostToolUse hook (의존성 없음)
+│   ├── paths.mjs           # 도구 호출 → 작업 경로. hook과 서버 추정이 같이 씀
 │   └── shell.mjs           # Bash 명령에서 cd·git -C 대상 추출 (shell.test.mjs)
 ├── server/                 # Node 24 + Hono. 2초마다 스냅샷을 만들어 SSE로 푸시
 │   ├── sources/
-│   │   ├── claude.ts       # ~/.claude/sessions, hook 기록, 대화 기록 추정
+│   │   ├── claude.ts       # ~/.claude/sessions, hook 기록, 대화 기록 추정 (claude.test.ts)
 │   │   ├── codex.ts        # ~/.codex/sessions (cwd로 점유)
 │   │   ├── git.ts          # git worktree list, dirty, 마지막 커밋
 │   │   └── linear.ts       # Linear GraphQL, 1분마다

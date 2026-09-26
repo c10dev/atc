@@ -1,6 +1,7 @@
 import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../config.ts";
+import { toolPaths } from "../../hooks/paths.mjs";
 import type { Claim, Session, Workspace } from "../model.ts";
 
 interface SessionFile {
@@ -108,38 +109,87 @@ function readTail(path: string, size: number): string {
     const len = Math.min(size, TAIL_BYTES);
     const buf = Buffer.alloc(len);
     readSync(fd, buf, 0, len, size - len);
-    return buf.toString("utf8");
+    const text = buf.toString("utf8");
+    // 잘린 첫 줄은 버린다
+    return len < size ? text.slice(text.indexOf("\n") + 1) : text;
   } finally {
     closeSync(fd);
   }
 }
 
-// hook 기록이 없는 세션용: 대화 기록 끝부분에서 가장 마지막에 언급된 워크트리를 고른다.
-export function inferTranscriptClaim(s: SessionFile, workspaces: Workspace[]): Claim | null {
-  const path = transcriptPath(s);
-  let st;
-  try {
-    st = statSync(path);
-  } catch {
-    return null;
+// 경로를 가장 깊이 포함하는 linked worktree
+function workspaceOf(path: string, deepestFirst: Workspace[]): Workspace | undefined {
+  const ws = deepestFirst.find((w) => path === w.path || path.startsWith(w.path + "/"));
+  return ws && !ws.isMain ? ws : undefined;
+}
+
+interface Touch {
+  workspacePath: string;
+  at: number;
+}
+
+// 대화 기록 JSONL에서 도구 호출(tool_use)만 읽어 hook과 같은 규칙(toolPaths)으로 워크트리 접촉을 뽑는다.
+// 도구 결과(ls 출력, JSON 등)나 메시지 본문에 경로가 나온 것은 세지 않는다.
+export function touchesFromTranscript(text: string, workspaces: Workspace[]): Touch[] {
+  const deepestFirst = [...workspaces].sort((a, b) => b.path.length - a.path.length);
+  const touches: Touch[] = [];
+  for (const line of text.split("\n")) {
+    if (!line.includes('"tool_use"')) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (entry.type !== "assistant" || !Array.isArray(entry.message?.content)) continue;
+    const at = Date.parse(entry.timestamp);
+    if (Number.isNaN(at)) continue;
+    for (const block of entry.message.content) {
+      if (block?.type !== "tool_use") continue;
+      for (const p of toolPaths(block.name, block.input, entry.cwd)) {
+        const ws = workspaceOf(p, deepestFirst);
+        if (ws) touches.push({ workspacePath: ws.path, at });
+      }
+    }
   }
-  const key = `${st.size}:${st.mtimeMs}`;
+  return touches;
+}
+
+// 본 대화 기록과, 점유 TTL 안에 갱신된 서브에이전트 기록
+function transcriptFiles(s: SessionFile): { path: string; size: number; mtimeMs: number }[] {
+  const main = transcriptPath(s);
+  const candidates = [main];
+  const subDir = join(main.replace(/\.jsonl$/, ""), "subagents");
+  try {
+    for (const f of readdirSync(subDir)) if (f.endsWith(".jsonl")) candidates.push(join(subDir, f));
+  } catch {}
+  const files = [];
+  for (const path of candidates) {
+    try {
+      const st = statSync(path);
+      if (path === main || Date.now() - st.mtimeMs < config.claimTtlMs) files.push({ path, size: st.size, mtimeMs: st.mtimeMs });
+    } catch {}
+  }
+  return files;
+}
+
+// hook 기록이 없는 세션용: 가장 최근에 작업하러 들어간 워크트리 하나를 추정 항적으로 돌려준다.
+export function inferTranscriptClaim(s: SessionFile, workspaces: Workspace[]): Claim | null {
+  const files = transcriptFiles(s);
+  if (!files.length) return null;
+  const key = files.map((f) => `${f.path}:${f.size}:${f.mtimeMs}`).join("|");
   const cached = inferCache.get(s.sessionId);
   if (cached?.key === key) return cached.claim;
 
-  const tail = readTail(path, st.size);
-  let best: { ws: Workspace; at: number } | null = null;
-  for (const ws of workspaces) {
-    if (ws.isMain) continue;
-    // 접미사를 붙여 vocado-yt-occlusion-a 가 -a2 에 걸리지 않게 한다.
-    const at = Math.max(tail.lastIndexOf(ws.path + "/"), tail.lastIndexOf(ws.path + '"'));
-    if (at >= 0 && (!best || at > best.at)) best = { ws, at };
-  }
-  const claim: Claim | null = best && {
+  const touches = files.flatMap((f) => touchesFromTranscript(readTail(f.path, f.size), workspaces));
+  const latest = touches.reduce<Touch | null>((a, b) => (!a || b.at > a.at ? b : a), null);
+  const claim: Claim | null = latest && {
     sessionId: s.sessionId,
-    workspacePath: best.ws.path,
-    since: new Date(s.startedAt).toISOString(),
-    lastAt: st.mtime.toISOString(),
+    workspacePath: latest.workspacePath,
+    since: new Date(
+      Math.min(...touches.filter((t) => t.workspacePath === latest.workspacePath).map((t) => t.at)),
+    ).toISOString(),
+    lastAt: new Date(latest.at).toISOString(),
     source: "transcript",
     state: "active",
     handedOffTo: null,
