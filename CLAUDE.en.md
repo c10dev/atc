@@ -47,6 +47,7 @@ Rules for sessions that change atc's code (team sessions, and sessions working d
 - A team session name `TEAM_X` is a REGISTRATION. In atc's words a team is an AIRCRAFT flown by a CREW under a CAPTAIN (`docs/fleet.md`).
 - Update the English (`*.md`) and Korean (`*.ko.md`) versions together for `README`, `CHANGELOG`, `docs/dispatch`, `docs/naming` and each folder README. `docs/occ.md` and `docs/fleet.md` are English only for now. In the control session folders the Korean `CLAUDE.md` / `SKILL.md` are the originals and `*.en.md` are translations.
 - Record changed behavior under `[Unreleased]` in the `CHANGELOG`.
+- When how the user works changes (tabs, flows, commands, terms), update the user guide in `docs/guide/` (the DOCS tab, Korean) too. Add a new page to `DOC_NAV` in `web/src/views/Docs.tsx`.
 
 ## Radio
 

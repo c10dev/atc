@@ -45,6 +45,7 @@ atc 코드를 고치는 세션(팀 세션, 사용자와 직접 작업하는 세�
 - 팀 세션 이름 `TEAM_X`는 REGISTRATION이다. atc의 말로 팀은 CAPTAIN이 이끄는 CREW가 모는 AIRCRAFT다(`docs/fleet.md`).
 - `README`, `CHANGELOG`, `docs/dispatch`, `docs/naming`, 각 폴더 README는 영어판(`*.md`)과 한국어판(`*.ko.md`)을 함께 고친다. `docs/occ.md`, `docs/fleet.md`는 지금은 영어만 있다. 관제 세션 폴더는 한국어 `CLAUDE.md`·`SKILL.md`가 원본이고 `*.en.md`가 번역이다.
 - 바뀐 동작은 `CHANGELOG`의 `[Unreleased]`에 적는다.
+- 사용자가 쓰는 방법이 바뀌면(탭, 흐름, 명령, 용어) `docs/guide/`의 사용 안내(DOCS 탭, 한국어)도 같이 고친다. 새 쪽을 만들면 `web/src/views/Docs.tsx`의 `DOC_NAV`에 넣는다.
 
 ## 교신
 
