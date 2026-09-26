@@ -9,6 +9,7 @@ Claude Code and Codex sessions, git worktrees and Linear tickets on one radar sc
 [![React](https://img.shields.io/badge/react-19-5cd0ff?style=flat-square&logo=react&logoColor=white&labelColor=0b1118)](web/src)
 [![Hono](https://img.shields.io/badge/hono-4-ff4a4a?style=flat-square&logo=hono&logoColor=white&labelColor=0b1118)](server)
 [![Vite](https://img.shields.io/badge/vite-8-8aa8ff?style=flat-square&logo=vite&logoColor=white&labelColor=0b1118)](vite.config.ts)
+[![Release](https://img.shields.io/github/v/release/chaehy5665/atc?style=flat-square&logo=github&logoColor=white&labelColor=0b1118&color=c3adff)](https://github.com/chaehy5665/atc/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-ffb627?style=flat-square&labelColor=0b1118)](LICENSE)
 ![Status](https://img.shields.io/badge/status-READY%20FOR%20TAKEOFF-ffd36b?style=flat-square&labelColor=0b1118)
 
