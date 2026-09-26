@@ -1,16 +1,23 @@
 /* 관제 콘솔 디자인. 색과 글꼴은 :root 토큰만 바꾸면 무드가 바뀐다. */
 :root {
-  /* 바탕: 레이더 스코프 */
-  --scope: #060a0e;
-  --bg: #080d12;
-  --chrome: #05080b;
-  --panel: #0c131a;
-  --panel-2: #111a23;
-  --line: #1a2530;
-  --line-strong: #27384a;
-  --text: #d6e1ea;
-  --muted: #7d8c9c;
-  --faint: #4a5968;
+  /* 층: 바탕(0) < 패널(1) < 카드(2) < 떠 있는 것(3). 층마다 밝기와 테두리가 한 단계씩 오른다. */
+  --bg: #05080c;
+  --chrome: #0b1118;
+  --panel: #0f1720;
+  --panel-2: #182330;
+  --panel-3: #212e3d;
+  --scope: #070c0f;
+  --line: #2a3a4c;
+  --line-strong: #3d5470;
+  --bracket: #5f7a96;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.5);
+  --shadow-3: 0 10px 30px rgba(0, 0, 0, 0.6);
+
+  /* 글자: 가장 흐린 글자도 모든 층에서 4.5:1 이상 */
+  --text: #dde6ee;
+  --muted: #a3b0bf;
+  --faint: #8494a6;
 
   /* 신호: 색 하나에 뜻 하나 */
   --radar: #3ef08f; /* 비행 중, 순항 */
@@ -33,13 +40,13 @@
   --paper: #ece6d3;
   --paper-parked: #bdb8a8;
   --paper-ink: #1b2127;
-  --paper-muted: #5f656b;
+  --paper-muted: #5a6066;
   --paper-line: rgba(27, 33, 39, 0.16);
 
   /* 운항 정보판: 반전판 */
-  --fids-bg: #030303;
-  --fids-card: #080808;
-  --fids-line: #1c1c1c;
+  --fids-bg: #0b0b0b;
+  --fids-card: #151515;
+  --fids-line: #2a2a2a;
   --flap-ink: #ffd36b;
 
   --radius: 8px;
@@ -124,6 +131,7 @@ button {
   height: 52px;
   background: var(--chrome);
   border-bottom: 1px solid var(--line);
+  box-shadow: var(--shadow-2);
 }
 .brand {
   display: flex;
@@ -170,6 +178,7 @@ button {
 }
 .tab:hover {
   color: var(--text);
+  background: var(--panel);
 }
 .tab-code {
   font: 700 11px var(--mono);
@@ -225,7 +234,7 @@ button {
   cursor: pointer;
 }
 .readout.is-button:hover {
-  background: var(--panel);
+  background: var(--panel-2);
 }
 .tone-radar b {
   color: var(--radar);
@@ -346,8 +355,11 @@ button {
   gap: 5px;
   max-height: 34vh;
   overflow: auto;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
+  position: relative;
+  z-index: 5;
+  background: var(--panel-3);
+  border-bottom: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-3);
 }
 .alert {
   display: flex;
@@ -498,7 +510,8 @@ button {
   padding: 18px 20px 24px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: radial-gradient(ellipse at 50% 45%, #0a1510 0%, var(--scope) 70%);
+  background: radial-gradient(ellipse at 50% 45%, #0b1813 0%, var(--scope) 70%);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.55);
 }
 .scope-frame::before {
   content: "";
@@ -537,8 +550,8 @@ button {
 }
 .map-lines path {
   fill: none;
-  stroke-width: 1.4;
-  opacity: 0.75;
+  stroke-width: 1.6;
+  opacity: 0.85;
   transition: opacity 0.12s;
 }
 .map-lines path.is-lit {
@@ -564,9 +577,10 @@ button {
   display: block;
   min-width: 0;
   padding: 7px 10px 7px 26px;
-  border: 1px solid transparent;
+  border: 1px solid var(--line);
   border-radius: 4px;
-  background: rgba(8, 14, 12, 0.74);
+  background: rgba(24, 35, 48, 0.94);
+  box-shadow: var(--shadow-1);
   font-family: var(--mono);
   cursor: default;
   transition:
@@ -579,7 +593,7 @@ button {
   position: absolute;
   width: 8px;
   height: 8px;
-  border: solid var(--line-strong);
+  border: solid var(--bracket);
 }
 .blk::before {
   top: -1px;
@@ -597,9 +611,10 @@ a.blk[href] {
 .blk:hover,
 .blk:focus-visible {
   border-color: var(--line-strong);
+  background: var(--panel-3);
 }
 .blk[data-dim] {
-  opacity: 0.22;
+  opacity: 0.25;
 }
 .tgt {
   position: absolute;
@@ -653,7 +668,7 @@ a.blk[href] {
 }
 .blk-l2.sans {
   font: 12px var(--sans);
-  color: #aab6c2;
+  color: #b9c5d1;
 }
 
 .ac .tgt {
@@ -694,8 +709,14 @@ a.blk[href] {
   font-size: 12.5px;
   font-weight: 500;
 }
+/* 빈 주기장: 흐리게 하지 않고 점선 테두리와 흐린 글자로만 구분 */
 .stand.is-free {
-  opacity: 0.6;
+  border-style: dashed;
+  background: rgba(15, 23, 32, 0.9);
+  box-shadow: none;
+}
+.stand.is-free strong {
+  color: var(--muted);
 }
 .stand.is-free .tgt {
   border-style: dashed;
@@ -703,7 +724,7 @@ a.blk[href] {
 }
 .stand.is-los {
   border-color: var(--alert);
-  background: rgba(40, 6, 6, 0.85);
+  background: rgba(58, 12, 14, 0.95);
 }
 .stand.is-los .tgt {
   border-color: var(--alert);
@@ -750,7 +771,7 @@ a.blk[href] {
   letter-spacing: 0;
 }
 .fp.is-nocontact {
-  border: 1px dashed rgba(255, 182, 39, 0.45);
+  border: 1px dashed rgba(255, 182, 39, 0.6);
 }
 .fp.is-nocontact .tgt {
   background: var(--amber);
@@ -806,7 +827,8 @@ a.blk[href] {
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: repeating-linear-gradient(0deg, #0b1016 0 46px, #0d131a 46px 47px);
+  background: repeating-linear-gradient(0deg, var(--panel) 0 46px, #131d28 46px 47px);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 .strip {
   display: grid;
@@ -898,7 +920,7 @@ a.blk[href] {
   margin-bottom: 1px;
   font: 700 8.5px var(--mono);
   letter-spacing: 0.16em;
-  color: #7a7f84;
+  color: var(--paper-muted);
 }
 .val {
   display: block;
@@ -953,7 +975,7 @@ a.val:hover {
   color: #2c55c9;
 }
 .stamp.dashed {
-  color: #6a7076;
+  color: #585e64;
   border-style: dashed;
 }
 
@@ -973,6 +995,7 @@ a.val:hover {
   border: 1px solid var(--fids-line);
   border-radius: 8px;
   background: var(--fids-bg);
+  box-shadow: var(--shadow-1);
 }
 .column-head {
   display: flex;
@@ -981,7 +1004,7 @@ a.val:hover {
   padding: 11px 12px 10px;
   border-bottom: 1px solid var(--fids-line);
   border-top: 2px solid var(--tone);
-  background: linear-gradient(#141414, #0a0a0a);
+  background: linear-gradient(#1a1a1a, #101010);
 }
 .column-code {
   font: 700 12px var(--mono);
@@ -999,20 +1022,23 @@ a.val:hover {
 .count {
   margin-left: auto;
   font: 700 12px var(--mono);
-  color: #8a7440;
+  color: #b0955a;
 }
 .column-body {
   display: grid;
-  gap: 1px;
-  background: var(--fids-line);
+  gap: 6px;
+  padding: 6px;
 }
 .ticket {
   display: block;
   padding: 10px 12px;
+  border: 1px solid var(--fids-line);
+  border-radius: 5px;
   background: var(--fids-card);
 }
 a.ticket:hover {
-  background: #111;
+  border-color: #444;
+  background: #1c1c1c;
 }
 .ticket.is-occupied {
   box-shadow: inset 2px 0 0 var(--radar);
@@ -1033,7 +1059,7 @@ a.ticket:hover {
   height: 21px;
   border-radius: 2px;
   background: linear-gradient(#1c1c1c 0 49%, #000 49% 51%, #161616 51%);
-  box-shadow: inset 0 0 0 1px #262626;
+  box-shadow: inset 0 0 0 1px #303030;
   font: 700 12.5px var(--mono);
   color: var(--flap-ink);
 }
