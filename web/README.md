@@ -25,7 +25,7 @@ server ──SSE /api/events (snapshot every 2 s)──▶ useSnapshot ──▶
 - `useSnapshot.ts` opens an `EventSource` on `/api/events` and keeps the latest `Snapshot`. The header shows the connection as live / connecting / lost.
 - `derive.ts` builds lookup indexes from a snapshot (ticket → worktree → claim → session, session location, ordering).
 - Types come straight from the server (`../../server/model.ts` and friends), so the UI and API can't drift apart.
-- METRICS and DISPATCH fetch their own endpoints (`/api/metrics`, `/api/dispatch/…`) and refetch once a minute (keyed to the snapshot time).
+- METRICS, DISPATCH and SCHEDULE fetch their own endpoints (`/api/metrics`, `/api/dispatch/…`, `/api/schedule/brief`) and refetch once a minute (keyed to the snapshot time).
 
 ## Screens
 
@@ -38,7 +38,11 @@ Tabs are addressed by URL hash; old bookmarks (`#map`, `#teams`, `#tickets`) sti
 | FIDS | `#board` | `views/Tickets.tsx` | A DEPARTURES board (TIME · FLIGHT · DESTINATION · AIRCRAFT · STAND · PRI · REMARKS) or a board by flight phase |
 | AIRPORTS | `#airports` | `views/Airports.tsx` | Repository registry: open, rename, close, reopen, delete; home and TRANSIENT aircraft |
 | METRICS | `#metrics` | `views/Metrics.tsx` | FLIGHT RECORDER metrics and the stage 2 readiness check |
+| FLEET | `#fleet` | `views/Fleet.tsx` | Every AIRCRAFT with status, current FLIGHTs and profile (crew, TYPE RATINGS, ROUTES, TARGETS); ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
 | DISPATCH | `#dispatch` | `views/Dispatch.tsx` | Stage 2 proposals: shadow verdicts in 2a; approve / reject, IN FLIGHT (sent, READBACK, overdue) and the stage 3 check in 2b; mode switch with confirmation |
+| SCHEDULE | `#schedule` | `views/Schedule.tsx` | OCC S1 drafts (shadow): the S2 gate panel; open draft cards (FLIGHT, current class, changes, OCC reason) with "승인했을 것 / 거절했을 것" (would approve / would reject; reject with reason chips and a memo) and a hint of what to change in Linear by hand; candidates; RECENT (drafts closed in the last 7 days) |
+
+The header holds the logo, tabs and counters on one row above 1560px; from 861 to 1560px the tabs move to a second header row, and at 860px and below they wrap.
 
 Across the top: the ALERT ticker (`Ticker.tsx`, scrolls only when it overflows, pauses on hover or focus) and the handoff list.
 

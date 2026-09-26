@@ -2,7 +2,7 @@
 
 [English](README.md) · **한국어**
 
-Node 24 + Hono. 2초마다 Claude Code, Codex, git, Linear를 읽어 `Snapshot` 하나로 합치고 SSE로 웹 화면에 보낸다. 이벤트와 표본(FLIGHT RECORDER)을 기록하고, CONTROLLER의 CLEARANCE와 DISPATCH 제안을 보관하고, `web/dist`를 제공한다. git·워크트리·Linear에는 쓰지 않는다.
+Node 24 + Hono. 2초마다 Claude Code, Codex, git, Linear를 읽어 `Snapshot` 하나로 합치고 SSE로 웹 화면에 보낸다. 이벤트와 표본(FLIGHT RECORDER)을 기록하고, CONTROLLER의 CLEARANCE, DISPATCH 제안, OCC SCHEDULE 초안을 보관하고, `web/dist`를 제공한다. git·워크트리·Linear에는 쓰지 않는다.
 
 Node가 TypeScript 파일을 바로 실행하므로 서버는 빌드 단계가 없다.
 
@@ -47,10 +47,11 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 | `events.ts` | 스냅샷 차이 → 이벤트(경보, HANDOFF, LANDING SEQUENCE, 세션 종료, OUTSTATION). 커서로 읽는 이벤트 기록 |
 | `controller.ts` | CONTROLLER(TOWER) API: 브리핑, ack, CLEARANCE 발행·READBACK·취소, 정해진 문구 |
 | `clearances.ts` | CLEARANCE 기록: 추가만 하는 JSONL을 접어 현재 상태를 만든다 |
-| `recorder.ts` | FLIGHT RECORDER: 날짜별 JSONL(`event`, `sample`, `dispatch`, `ack`), 30일 보관 |
+| `recorder.ts` | FLIGHT RECORDER: 날짜별 JSONL(`event`, `sample`, `dispatch`, `ack`, `schedule`), 30일 보관 |
 | `metrics.ts` | 운용 지표와 2단계 진입 점검(순수 함수 `computeMetrics`) |
 | `dispatch.ts` | DISPATCH 계획: 후보, 슬롯, 점수(순수 함수 `planDispatch`). 설정은 `dispatch.json` |
 | `proposals.ts` | DISPATCH 제안 기록(추가만 하는 JSONL), 상태 전이(그림자 판정, approve → sent → accepted → departed), 예약, FLIGHT PLAN 문구, 브리핑, 2b·3단계 점검 |
+| `schedule.ts` | OCC SCHEDULE 초안 기록(추가만 하는 JSONL, S1 그림자 운용): `CLASSIFY`·`PRIORITIZE` 초안, 열린 초안 5건 한도, SUPERSEDED·EXPIRED 동기화, 그림자 판정, 후보, S2 점검 |
 
 모듈 옆의 `*.test.ts`가 그 모듈의 단위 테스트다.
 
@@ -80,6 +81,10 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 | `GET /api/dispatch/proposals/:id` | 제안 하나와 지금 모드(send-guard용) |
 | `POST /api/dispatch/mode` | `{mode: "shadow" \| "approval"}` 전환(`dispatch.json`에 저장) |
 | `GET /api/dispatch/flight/:key` | Linear에서 티켓 본문과 댓글(읽기 전용) |
+| `GET /api/schedule/brief` | SCHEDULE 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안, S2 점검, 열린 초안 한도, 후보, FLIGHT 요약 |
+| `GET /api/schedule/ops/:id` | SCHEDULE 작업 하나와 모드 |
+| `POST /api/schedule/ops` | OCC 초안 `{kind: "CLASSIFY" \| "PRIORITIZE", flight, reason, type?, wake?, ratings?, priority?}`. 열린 초안이 한도면 409 |
+| `POST /api/schedule/ops/:id/verdict` | SUPERVISOR 그림자 판정 `{verdict: "agree" \| "disagree", reason?}` |
 
 ## 디스크에 두는 상태
 
@@ -93,4 +98,5 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 | `consumers/<name>.json` | `controller.ts` | 소비자별 브리핑 커서 |
 | `flight-recorder/YYYY-MM-DD.jsonl` | `recorder.ts` | FLIGHT RECORDER(UTC 날짜, 30일 보관) |
 | `proposals.jsonl` | `proposals.ts` | DISPATCH 제안(추가만 함) |
+| `schedule.jsonl` | `schedule.ts` | OCC SCHEDULE 초안과 SUPERVISOR 판정(추가만 함) |
 | `dispatch.json` | 사용자(선택, 없으면 기본값) | DISPATCH 설정: 프로젝트 → AIRPORT 매핑, 슬롯, 가중치, 모드(`shadow` / `approval`) |

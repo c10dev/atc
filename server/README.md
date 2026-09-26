@@ -2,7 +2,7 @@
 
 **English** · [한국어](README.ko.md)
 
-Node 24 + Hono. Every 2 seconds it reads Claude Code, Codex, git and Linear, merges them into one `Snapshot`, and pushes it to the web UI over SSE. It also records events and samples (FLIGHT RECORDER), keeps the CONTROLLER's CLEARANCEs and DISPATCH proposals, and serves `web/dist`. It never writes to git, worktrees or Linear.
+Node 24 + Hono. Every 2 seconds it reads Claude Code, Codex, git and Linear, merges them into one `Snapshot`, and pushes it to the web UI over SSE. It also records events and samples (FLIGHT RECORDER), keeps the CONTROLLER's CLEARANCEs, DISPATCH proposals and OCC SCHEDULE drafts, and serves `web/dist`. It never writes to git, worktrees or Linear.
 
 Node runs the TypeScript files directly; there is no build step for the server.
 
@@ -47,10 +47,11 @@ npm test           # node --test for server/**/*.test.ts, hooks and controller
 | `events.ts` | Snapshot differences → events (alerts, handoffs, LANDING SEQUENCE, lost sessions, OUTSTATION), with a cursor-based event log |
 | `controller.ts` | CONTROLLER (TOWER) API: brief, ack, CLEARANCE issue / readback / cancel, the fixed message format |
 | `clearances.ts` | CLEARANCE log: append-only JSONL folded into current state |
-| `recorder.ts` | FLIGHT RECORDER: daily JSONL (`event`, `sample`, `dispatch`, `ack`), kept 30 days |
+| `recorder.ts` | FLIGHT RECORDER: daily JSONL (`event`, `sample`, `dispatch`, `ack`, `schedule`), kept 30 days |
 | `metrics.ts` | Operating metrics and the stage 2 readiness check (pure `computeMetrics`) |
 | `dispatch.ts` | DISPATCH planning: candidates, slots, scores (pure `planDispatch`); settings in `dispatch.json` |
 | `proposals.ts` | DISPATCH proposal log (append-only JSONL), state transitions (shadow verdicts; approve → sent → accepted → departed), reservations, FLIGHT PLAN text, brief, stage 2b and 3 gates |
+| `schedule.ts` | OCC SCHEDULE draft log (append-only JSONL, S1 shadow): `CLASSIFY` / `PRIORITIZE` drafts, the 5-open-draft limit, SUPERSEDED / EXPIRED sync, shadow verdicts, candidates, the S2 gate |
 
 Every `*.test.ts` next to a module is its unit test.
 
@@ -80,6 +81,10 @@ Every `*.test.ts` next to a module is its unit test.
 | `GET /api/dispatch/proposals/:id` | One proposal and the current mode (for send-guard) |
 | `POST /api/dispatch/mode` | Switch `{mode: "shadow" \| "approval"}` (saved in `dispatch.json`) |
 | `GET /api/dispatch/flight/:key` | Ticket body and comments from Linear (read-only) |
+| `GET /api/schedule/brief` | SCHEDULE mode (`shadow`), open drafts with what each would change, drafts closed in the last 7 days, S2 gate, open-draft limit, candidates, FLIGHT summaries |
+| `GET /api/schedule/ops/:id` | One SCHEDULE operation and the mode |
+| `POST /api/schedule/ops` | OCC draft `{kind: "CLASSIFY" \| "PRIORITIZE", flight, reason, type?, wake?, ratings?, priority?}`; 409 at the open-draft limit |
+| `POST /api/schedule/ops/:id/verdict` | SUPERVISOR's shadow verdict `{verdict: "agree" \| "disagree", reason?}` |
 
 ## State on disk
 
@@ -93,4 +98,5 @@ Everything lives under `ATC_STATE_DIR` (default `~/.local/state/atc`), outside g
 | `consumers/<name>.json` | `controller.ts` | Brief cursor per consumer |
 | `flight-recorder/YYYY-MM-DD.jsonl` | `recorder.ts` | FLIGHT RECORDER (UTC days, 30-day retention) |
 | `proposals.jsonl` | `proposals.ts` | DISPATCH proposals (append-only) |
+| `schedule.jsonl` | `schedule.ts` | OCC SCHEDULE drafts and SUPERVISOR verdicts (append-only) |
 | `dispatch.json` | you (optional; defaults apply without it) | DISPATCH settings: project → AIRPORT mapping, slots, weights, mode (`shadow` / `approval`) |

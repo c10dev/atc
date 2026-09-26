@@ -45,6 +45,9 @@ Linear 티켓까지 보려면 `.env.local`에 `LINEAR_API_KEY`를 넣는다. 상
 | FIDS (`#board`) | Linear 상태 열에 티켓 카드. 카드에 점유 팀 배지 |
 | 지표 (`#metrics`) | FLIGHT RECORDER 기록으로 본 운용 지표, 2단계 진입 점검, 5분 표본 추이, 일별 표 |
 | AIRPORT (`#airports`) | 저장소 등록부. AIRPORT 개설·코드 변경·폐쇄·재개·삭제. 소속 AIRCRAFT와 OUTSTATION으로 와 있는 AIRCRAFT(TRANSIENT) |
+| FLEET (`#fleet`) | AIRCRAFT마다 상태, 지금 FLIGHT, 팀원 구성, TYPE RATING, ROUTE, TARGETS. 프로필 편집, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
+| DISPATCH (`#dispatch`) | 지금 계획, OCC 메모가 달린 제안 카드와 "승인했을 것 / 거절했을 것" 판정(2b에서는 승인·거절), HELD, IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검 |
+| SCHEDULE (`#schedule`) | OCC SCHEDULE 초안(S1 그림자 운용): S2 진입 점검 패널, "승인했을 것 / 거절했을 것" 판정이 있는 열린 초안 카드, 후보 수, 최근 7일 표 |
 
 ## 용어
 
@@ -246,15 +249,32 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 | `POST /api/dispatch/mode` | `{mode: shadow\|approval}` |
 | `GET /api/dispatch/flight/:key` | FLIGHT 본문·댓글(Linear 읽기 전용) |
 
+## SCHEDULE (OCC S1: 그림자 초안)
+
+설계는 [docs/occ.md](docs/occ.md) 5~7장(영어). OCC 세션이 Linear에 할 변경을 SCHEDULE 작업 초안으로 남긴다(`server/schedule.ts`, `~/.local/state/atc/schedule.jsonl`, 추가만 함). S1은 그림자 운용이라 **Linear에는 아무것도 쓰지 않는다.** SUPERVISOR가 초안마다 판정을 표시하고, 그 합의율로 S2(승인된 초안을 linear-guard를 거쳐 씀)에 들어갈지 정한다.
+
+- 작업: `CLASSIFY`(FLIGHT TYPE·WAKE·TYPE RATING 라벨, [docs/fleet.md](docs/fleet.md) 4장, 영어. 라벨은 더하기만 한다), `PRIORITIZE`(우선순위 1 Urgent … 4 Low). 초안마다 id(`S-0001`), FLIGHT, 바꿀 값, OCC의 근거 한 줄이 있다.
+- 후보: Todo·Backlog인 FLIGHT 중 `type:`이나 `wake:` 라벨이 없는 것(CLASSIFY), 우선순위가 없는 것(PRIORITIZE). 같은 종류의 열린 초안이 있는 FLIGHT는 빠진다. 바뀌는 게 없는 초안은 받지 않는다.
+- 한도: 열린 초안 5건(넘으면 409). 같은 FLIGHT·종류로 새 초안을 쓰면 앞의 것은 SUPERSEDED. FLIGHT가 Todo·Backlog를 벗어나거나 Linear에 이미 반영되면 atc가 열린 초안을 SUPERSEDED로, 3일 동안 판정이 없으면 EXPIRED로 닫는다.
+- **SCHEDULE 탭**(DISPATCH 다음): S2 진입 점검(판정 20건 이상, 합의율 80% 이상), 열린 초안 카드(FLIGHT, 제목, 지금 분류, 바뀔 것, OCC 근거), "승인했을 것 / 거절했을 것" 버튼과 선택 거절 사유, Linear에서 손으로 붙일 라벨 안내, 후보 수, 최근 7일 표.
+- **OCC 세션**: `/tick`마다 `atcctl schedule brief`를 실행하고, 후보 FLIGHT 3개까지 `dispatch flight`로 읽어 `atcctl schedule draft CLASSIFY <FLIGHT> [--type X] [--wake Y] [--rating Z]… -- <근거>`나 `schedule draft PRIORITIZE <FLIGHT> --priority 1-4 -- <근거>`로 초안을 쓴다. PRIORITIZE는 본문·댓글에 근거가 있을 때만 쓴다. `LIMIT`이 나오면 그 바퀴는 초안을 그만 쓴다. Linear는 여전히 읽기 전용이다(`occ/mcp-guard.mjs`).
+
+| API | 하는 일 |
+|---|---|
+| `GET /api/schedule/brief` | 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안, S2 점검, 열린 초안 한도, 후보, FLIGHT 요약 |
+| `GET /api/schedule/ops/:id` | SCHEDULE 작업 하나와 모드 |
+| `POST /api/schedule/ops` | `{kind: CLASSIFY\|PRIORITIZE, flight, reason, type?, wake?, ratings?, priority?}` OCC 초안. 열린 초안이 한도면 409 |
+| `POST /api/schedule/ops/:id/verdict` | `{verdict: agree\|disagree, reason?}` SUPERVISOR 그림자 판정 |
+
 ## 폴더별 문서
 
 | 폴더 | 들어 있는 것 | 문서 |
 |---|---|---|
-| `server/` | API 서버: 스냅샷 반복, 소스, CONTROLLER·DISPATCH API, FLIGHT RECORDER | [server/README.ko.md](server/README.ko.md) |
+| `server/` | API 서버: 스냅샷 반복, 소스, CONTROLLER·DISPATCH·SCHEDULE API, FLIGHT RECORDER | [server/README.ko.md](server/README.ko.md) |
 | `web/` | ATC 화면(Vite + React): 탭, 테마, 설정 | [web/README.ko.md](web/README.ko.md) |
 | `hooks/` | 세션이 어느 워크트리에서 일하는지 기록하는 점유 hook | [hooks/README.ko.md](hooks/README.ko.md) |
 | `controller/` | TOWER 세션 작업 폴더(1단계) | [CLAUDE.md](controller/CLAUDE.md) · [/tick](controller/.claude/skills/tick/SKILL.md) |
-| `occ/` | OCC 세션 작업 폴더(DISPATCH, 운항 추적) | [CLAUDE.md](occ/CLAUDE.md) · [/tick](occ/.claude/skills/tick/SKILL.md) |
+| `occ/` | OCC 세션 작업 폴더(DISPATCH, SCHEDULE 초안, 운항 추적) | [CLAUDE.md](occ/CLAUDE.md) · [/tick](occ/.claude/skills/tick/SKILL.md) |
 | `deploy/` | systemd 사용자 서비스 | [deploy/README.ko.md](deploy/README.ko.md) |
 | `docs/` | 설계와 규칙 | [DISPATCH 설계](docs/dispatch.ko.md) · [OCC 설계(영어)](docs/occ.md) · [FLEET 설계(영어)](docs/fleet.md) · [이름 규칙](docs/naming.ko.md) |
 | — | 변경 기록 | [CHANGELOG.ko.md](CHANGELOG.ko.md) |
@@ -286,6 +306,7 @@ atc/
 │   ├── events.ts           # 스냅샷 차이 → 이벤트
 │   ├── metrics.ts          # 운용 지표·2단계 점검 (metrics.test.ts)
 │   ├── proposals.ts        # DISPATCH 제안 기록·API (proposals.test.ts)
+│   ├── schedule.ts         # OCC SCHEDULE 초안 기록·API (schedule.test.ts)
 │   ├── recorder.ts         # FLIGHT RECORDER 기록
 │   ├── occupancy.ts        # HANDOFF·충돌 판정 (occupancy.test.ts)
 │   ├── snapshot.ts         # 소스 병합 + 경고 계산
@@ -294,7 +315,7 @@ atc/
 ├── occ/                    # OCC 세션 작업 폴더 (CLAUDE.md, /tick, 설정, send-guard, mcp-guard)
 ├── controller/             # TOWER 세션 작업 폴더
 │   ├── CLAUDE.md           # 역할·판단 기준
-│   ├── atcctl.mjs          # CONTROLLER용 atc CLI
+│   ├── atcctl.mjs          # TOWER·OCC용 atc CLI (atcctl.test.mjs)
 │   ├── guard.mjs           # Bash 제한 hook (guard.test.mjs)
 │   └── .claude/            # 권한·hook 설정, /tick 스킬
 ├── deploy/atc.service      # systemd 사용자 서비스

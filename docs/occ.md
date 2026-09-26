@@ -9,7 +9,7 @@ atc splits into two control sessions, the way aviation does:
 
 In real aviation the flight dispatcher belongs to the airline's OCC, not to ATC. So DISPATCH (stage 2) moves into OCC, and OCC takes over the work the "President" session does by hand today.
 
-> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 and later are design only. Decisions are listed under "Decisions" at the end.
+> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 built: SCHEDULE drafts in shadow operation for `CLASSIFY` and `PRIORITIZE` only (`server/schedule.ts`, `atcctl schedule brief|draft`, the SCHEDULE tab, OCC rules); at most 5 open drafts, and drafts expire after 3 days without a verdict. Other operations and S2 and later are design only. Decisions are listed under "Decisions" at the end.
 
 ## 1. Current facts
 
@@ -122,7 +122,7 @@ S2 approval  SUPERVISOR approves → OCC: atcctl schedule release S-0001 → exa
 S3 auto      low-risk operations skip approval (list below); everything else stays as in S2
 ```
 
-Operation states: `DRAFT → (SHADOW_AGREE | SHADOW_DISAGREE)` (S1), `DRAFT → APPROVED → RELEASED → APPLIED` (S2), with side branches `REJECTED`, `SUPERSEDED` (the situation changed, e.g. someone closed the issue by hand) and `EXPIRED` (24 hours).
+Operation states in S1 (as built in `server/schedule.ts`): `draft → (agreed | disagreed)`, with side branches `superseded` (a newer draft for the same FLIGHT and kind, or the situation changed: the FLIGHT left Todo or Backlog, or Linear already shows the change, e.g. someone set it by hand) and `expired` (3 days without a verdict). S2 is to add `approved → released → applied`, with `rejected` as a side branch.
 
 Candidates for automatic operations in S3, each to be confirmed from S2 data:
 
@@ -193,7 +193,7 @@ The session reloads its manual: `/tick` starts with `atcctl manual check`, which
 
 1. ✅ **S0**: create `atc/occ/` from `atc/dispatch/` (merge), add read-only `gh` to its guard, a read-only MCP guard, reload the manual on change. Still to do: tell President about the handover
 2. ✅ TAIL ASSIGNMENT `tail:TEAM_X` in the planner, first shipped as `lane:TEAM_X` (fixes the VOC-196 double dispatch right away). Labels are read from the existing Linear query
-3. **S1**: SCHEDULE log, API, `atcctl schedule`, SCHEDULE tab, shadow verdicts
+3. ✅ **S1**: SCHEDULE log, API, `atcctl schedule`, SCHEDULE tab, shadow verdicts. First operations: `CLASSIFY` and `PRIORITIZE`
 4. Flight following in `/tick` (read-only `gh`), CLEARED TO LAND checks in TOWER
 5. **S2**: linear-guard, `schedule release`, APPLIED detection, the vocado `CLAUDE.md` rule change (confirmed with the SUPERVISOR at that time)
 6. **S3**: automatic operations, only those that S2 data supports
