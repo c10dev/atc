@@ -7,7 +7,7 @@ export const THEMES = [
     id: "radar",
     code: "RDR",
     label: "Radar Console",
-    note: "관제 레이더 스코프와 종이 스트립",
+    note: "ATC RADAR 스코프와 종이 스트립",
     swatch: ["#080d12", "#3ef08f", "#ffb627", "#5cd0ff", "#ece6d3"],
   },
   {
@@ -32,6 +32,8 @@ export interface Settings {
   motion: boolean; // 애니메이션(스위프, 별, 깜빡임)
   clock: "utc" | "local"; // 시각 표시: 06:24Z 또는 15:24L
   meteors: boolean; // Night Sky 유성
+  fidsView: "list" | "board"; // FIDS: DEPARTURES 목록 또는 비행 단계별 보드
+  fidsClosed: boolean; // FIDS에 SCHEDULED·지난 ARRIVED·CANCELLED 포함
 }
 
 const KEY = "atc.settings";
@@ -39,7 +41,7 @@ const LEGACY_THEME_KEY = "atc.theme";
 
 function defaults(): Settings {
   const reduce = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  return { theme: "radar", motion: !reduce, clock: "utc", meteors: true };
+  return { theme: "radar", motion: !reduce, clock: "utc", meteors: true, fidsView: "list", fidsClosed: false };
 }
 
 function load(): Settings {

@@ -1,27 +1,27 @@
-/* 공항 등록부. 색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다). */
+/* AIRPORT 등록부. 색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다). */
 .airports .toolbar {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .apt-form {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 18px;
-  padding: 12px 14px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
 }
 .apt-form .label {
   width: 100%;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .apt-input {
   height: 30px;
-  padding: 0 10px;
+  padding: 0 var(--space-3);
   background: var(--bg);
   border: 1px solid var(--line-strong);
   border-radius: 4px;
@@ -44,7 +44,7 @@
 
 .apt-btn {
   height: 30px;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   background: var(--panel-2);
   border: 1px solid var(--line-strong);
   border-radius: 4px;
@@ -78,7 +78,7 @@
   overflow: hidden;
 }
 .apt-table th {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   white-space: nowrap;
   text-align: left;
   font: 700 10.5px var(--mono);
@@ -88,7 +88,7 @@
   border-bottom: 1px solid var(--line);
 }
 .apt-table td {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
 }
@@ -105,7 +105,7 @@
 }
 
 .apt-code {
-  padding: 1px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   background: transparent;
   border: 1px solid var(--line-strong);
   border-radius: 3px;
@@ -119,7 +119,7 @@
 }
 .apt-edit {
   display: inline-flex;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .apt-path-cell {
@@ -129,8 +129,8 @@
   white-space: nowrap;
 }
 .apt-tag {
-  margin-left: 8px;
-  padding: 0 5px;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1-5);
   border: 1px solid var(--line-strong);
   border-radius: 3px;
   font: 600 10px var(--sans);
@@ -157,13 +157,13 @@
   color: var(--muted);
 }
 .apt-visiting {
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   color: var(--amber);
   font: 700 11px var(--mono);
 }
 .apt-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   justify-content: flex-end;
 }
 

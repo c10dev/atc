@@ -1,4 +1,4 @@
-/* 관제 콘솔 디자인. 색과 글꼴은 :root 토큰만 바꾸면 무드가 바뀐다. */
+/* ATC 콘솔 디자인. 색과 글꼴은 :root 토큰만 바꾸면 무드가 바뀐다. */
 :root {
   /* 층: 바탕(0) < 패널(1) < 카드(2) < 떠 있는 것(3). 층마다 밝기와 테두리가 한 단계씩 오른다. */
   --bg: #05080c;
@@ -20,12 +20,12 @@
   --faint: #8494a6;
 
   /* 신호: 색 하나에 뜻 하나 */
-  --radar: #3ef08f; /* 비행 중, 순항 */
-  --amber: #ffb627; /* 체공 대기, 착륙 허가 */
-  --cyan: #5cd0ff; /* 접근, 정보 */
-  --alert: #ff4a4a; /* 분리 기준 위반, 무선 두절 */
-  --blue: #8aa8ff; /* 관제 이양 */
-  --ring: var(--radar); /* 레이더 거리 링, 스위프 */
+  --radar: #3ef08f; /* AIRBORNE, ENROUTE */
+  --amber: #ffb627; /* HOLDING, CLEARED TO LAND */
+  --cyan: #5cd0ff; /* APPROACH, 정보 */
+  --alert: #ff4a4a; /* LOSS OF SEPARATION, NORDO */
+  --blue: #8aa8ff; /* HANDOFF */
+  --ring: var(--radar); /* RADAR 거리 링, 스위프 */
   --tab-on: var(--radar);
   --tab-on-bg: linear-gradient(#0b1812, var(--chrome));
   --blk-bg: rgba(24, 35, 48, 0.94);
@@ -46,7 +46,7 @@
   --phase-arrived: var(--faint);
   --phase-canceled: var(--faint);
 
-  /* 운항 스트립: 종이 */
+  /* FLIGHT STRIPS: 종이 */
   --paper: #ece6d3;
   --paper-parked: #bdb8a8;
   --paper-ink: #1b2127;
@@ -60,7 +60,7 @@
   --stamp-blue: #2c55c9;
   --stamp-gray: #585e64;
 
-  /* 운항 정보판: 반전판 */
+  /* FIDS: 반전판 */
   --fids-bg: #0b0b0b;
   --fids-card: #151515;
   --fids-line: #2a2a2a;
@@ -74,6 +74,24 @@
   --fids-count: #b0955a;
 
   --radius: 8px;
+
+  /* 간격: 4px 기반 척도. 이 값들만 쓴다(Carbon·Atlassian·Grafana와 같은 척도).
+     한 덩어리 안(4–8) < 이웃한 덩어리 사이(8–16) < 무리 사이(24–32) */
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px; /* 작은 칩의 좌우 여백에만 */
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --gutter: var(--space-6); /* 화면 좌우 여백 */
+  --gap-item: var(--space-2); /* 카드·FLIGHT STRIPS·데이터 블록 사이 */
+  --gap-column: var(--space-4); /* 열 사이 */
+  --gap-section: var(--space-8); /* 베이·구역 사이 */
+  --console-h: 48px;
+
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --sans: Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
   color-scheme: dark;
@@ -125,15 +143,15 @@ button {
 }
 .empty {
   color: var(--faint);
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
 }
 
 /* 영문 약호 + 한글 풀이. 한글에는 자간을 주지 않는다. */
 .label {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  margin: 0 0 10px;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
   font: 700 10.5px var(--mono);
   letter-spacing: 0.18em;
   color: var(--faint);
@@ -154,7 +172,7 @@ button {
   z-index: 10;
   display: flex;
   align-items: stretch;
-  height: 52px;
+  height: var(--console-h);
   background: var(--chrome);
   border-bottom: 1px solid var(--line);
   box-shadow: var(--shadow-2);
@@ -168,8 +186,8 @@ button {
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 14px 0 18px;
+  gap: var(--space-2);
+  padding: 0 var(--space-4) 0 var(--space-4);
   border: 0;
   background: none;
   text-align: left;
@@ -222,8 +240,8 @@ button {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 1px;
-  padding: 0 18px;
+  gap: var(--space-0-5);
+  padding: 0 var(--space-4);
   border: 0;
   border-right: 1px solid var(--line);
   background: none;
@@ -265,7 +283,7 @@ button {
   justify-content: center;
   align-items: flex-end;
   min-width: 84px;
-  padding: 0 16px;
+  padding: 0 var(--space-4);
   border: 0;
   border-left: 1px solid var(--line);
   background: none;
@@ -275,7 +293,7 @@ button {
   letter-spacing: 0.04em;
 }
 .readout > span {
-  margin-top: 3px;
+  margin-top: var(--space-1);
   font: 500 9.5px var(--mono);
   letter-spacing: 0.14em;
   color: var(--muted);
@@ -313,7 +331,7 @@ button {
 .link {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
 }
 .link i {
   width: 6px;
@@ -355,7 +373,7 @@ button {
   flex: none;
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   background: var(--amber);
   color: #000;
   font: 700 11px var(--mono);
@@ -368,8 +386,8 @@ button {
 .ticker-list {
   display: flex;
   align-items: center;
-  gap: 28px;
-  padding: 0 16px;
+  gap: var(--space-6);
+  padding: 0 var(--space-4);
   overflow: hidden;
   white-space: nowrap;
   font-size: 12px;
@@ -378,12 +396,12 @@ button {
 .ticker-item {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   color: var(--amber);
 }
 .code-chip {
   flex: none;
-  padding: 0 5px;
+  padding: 0 var(--space-1-5);
   border: 1px solid currentColor;
   border-radius: 2px;
   font: 700 9.5px/15px var(--mono);
@@ -404,9 +422,9 @@ button {
 .alerts {
   list-style: none;
   margin: 0;
-  padding: 10px 20px;
+  padding: var(--space-2) var(--gutter);
   display: grid;
-  gap: 5px;
+  gap: var(--space-1);
   max-height: 34vh;
   overflow: auto;
   position: relative;
@@ -418,7 +436,7 @@ button {
 .alert {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2);
   min-width: 0;
 }
 .alert-label {
@@ -432,25 +450,25 @@ button {
   border: 1px solid var(--line-strong);
   background: none;
   border-radius: 4px;
-  padding: 1px 10px;
+  padding: var(--space-0-5) var(--space-3);
   color: var(--muted);
   cursor: pointer;
 }
 
 .main {
-  padding: 18px 20px 48px;
+  padding: var(--space-4) var(--gutter) var(--space-12);
 }
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 .toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   color: var(--muted);
   cursor: pointer;
   user-select: none;
@@ -463,7 +481,7 @@ button {
 .tag {
   display: inline-flex;
   align-items: center;
-  padding: 0 6px;
+  padding: 0 var(--space-1-5);
   border: 1px solid var(--line-strong);
   border-radius: 3px;
   font: 500 10.5px var(--mono);
@@ -488,7 +506,7 @@ button {
 .session-badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   font: 700 11px var(--mono);
   letter-spacing: 0.08em;
   color: var(--amber);
@@ -502,7 +520,7 @@ button {
 .prio {
   font: 700 9.5px/15px var(--mono);
   letter-spacing: 0.06em;
-  padding: 0 4px;
+  padding: 0 var(--space-1-5);
   border-radius: 2px;
   background: #3a3a3a;
   color: #ddd;
@@ -535,12 +553,12 @@ button {
   }
 }
 
-/* ── 레이더 ─────────────────────────── */
+/* ── RADAR ─────────────────────────── */
 .legend {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-left: 16px;
+  gap: var(--space-2);
+  margin-left: var(--space-4);
   color: var(--faint);
 }
 .legend-line {
@@ -551,17 +569,17 @@ button {
 .legend-line.is-dashed {
   border-top-style: dashed;
   border-top-color: var(--muted);
-  margin-left: 8px;
+  margin-left: var(--space-2);
 }
 .legend-line.is-dotted {
   border-top-style: dotted;
   border-top-color: var(--faint);
-  margin-left: 8px;
+  margin-left: var(--space-2);
 }
 .scope-frame {
   position: relative;
   overflow: hidden;
-  padding: 18px 20px 24px;
+  padding: var(--space-4) var(--space-6) var(--space-6);
   border: 1px solid var(--line);
   border-radius: 10px;
   background: radial-gradient(ellipse at 50% 45%, var(--scope-glow) 0%, var(--scope) 70%);
@@ -622,7 +640,7 @@ button {
 .map-col {
   position: relative;
   display: grid;
-  gap: 10px;
+  gap: var(--gap-item);
   min-width: 0;
 }
 
@@ -631,7 +649,7 @@ button {
   position: relative;
   display: block;
   min-width: 0;
-  padding: 7px 10px 7px 26px;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-6);
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--blk-bg);
@@ -673,7 +691,7 @@ a.blk[href] {
 }
 .tgt {
   position: absolute;
-  left: 9px;
+  left: var(--space-2);
   top: 12px;
   width: 9px;
   height: 9px;
@@ -681,7 +699,7 @@ a.blk[href] {
 .blk-l1 {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
   white-space: nowrap;
 }
@@ -689,10 +707,10 @@ a.blk[href] {
   font-size: 13.5px;
   letter-spacing: 0.06em;
 }
-/* 공항(저장소) 코드: 레이더에서는 시안 테두리, 운항 스트립에서는 종이 잉크 */
+/* AIRPORT(저장소) 코드: RADAR에서는 시안 테두리, FLIGHT STRIPS에서는 종이 잉크 */
 .apt {
   display: inline-block;
-  padding: 0 3px;
+  padding: 0 var(--space-1-5);
   border: 1px solid var(--line-strong);
   border-radius: 2px;
   font: 600 9.5px/14px var(--mono);
@@ -714,7 +732,7 @@ a.blk[href] {
   color: var(--faint);
 }
 .blk-l2 {
-  margin-top: 1px;
+  margin-top: var(--space-0-5);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -764,7 +782,7 @@ a.blk[href] {
   font-size: 12.5px;
   font-weight: 500;
 }
-/* 빈 주기장: 흐리게 하지 않고 점선 테두리와 흐린 글자로만 구분 */
+/* 빈 STAND: 흐리게 하지 않고 점선 테두리와 흐린 글자로만 구분 */
 .stand.is-free {
   border-style: dashed;
   background: var(--blk-free-bg);
@@ -787,7 +805,7 @@ a.blk[href] {
   animation: blink 1s steps(2) infinite;
 }
 .los-tag {
-  padding: 0 4px;
+  padding: 0 var(--space-1-5);
   border-radius: 2px;
   background: var(--alert);
   color: #fff;
@@ -813,7 +831,7 @@ a.blk[href] {
   font-size: 13px;
 }
 .ph {
-  padding: 0 5px;
+  padding: 0 var(--space-1-5);
   border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
   border-radius: 2px;
   color: var(--tone);
@@ -863,9 +881,9 @@ a.blk[href] {
   --tone: var(--phase-canceled);
 }
 
-/* ── 운항 스트립 ─────────────────────────── */
+/* ── FLIGHT STRIPS ─────────────────────────── */
 .bay {
-  margin-bottom: 22px;
+  margin-bottom: var(--gap-section);
 }
 .bay-airborne .label {
   color: var(--radar);
@@ -878,8 +896,8 @@ a.blk[href] {
 }
 .bay-rail {
   display: grid;
-  gap: 6px;
-  padding: 8px;
+  gap: var(--gap-item);
+  padding: var(--space-2);
   border: 1px solid var(--line);
   border-radius: 6px;
   background: repeating-linear-gradient(0deg, var(--panel) 0 46px, #131d28 46px 47px);
@@ -920,7 +938,7 @@ a.blk[href] {
 }
 .strip-id {
   min-width: 0;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border-left: 1px solid var(--paper-line);
 }
 .cs {
@@ -931,8 +949,8 @@ a.blk[href] {
   text-overflow: ellipsis;
 }
 .type {
-  margin-left: 6px;
-  padding: 0 4px;
+  margin-left: var(--space-1-5);
+  padding: 0 var(--space-1-5);
   border-radius: 2px;
   background: var(--paper-ink);
   color: var(--paper);
@@ -941,7 +959,7 @@ a.blk[href] {
   vertical-align: 3px;
 }
 .strip .sub {
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -965,12 +983,12 @@ a.blk[href] {
 }
 .cell {
   min-width: 0;
-  padding: 7px 10px;
+  padding: var(--space-2) var(--space-3);
   border-left: 1px solid var(--paper-line);
 }
 .cap {
   display: block;
-  margin-bottom: 1px;
+  margin-bottom: var(--space-0-5);
   font: 700 8.5px var(--mono);
   letter-spacing: 0.16em;
   color: var(--paper-muted);
@@ -1006,11 +1024,11 @@ a.val:hover {
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .stamp {
   display: inline-block;
-  padding: 0 4px;
+  padding: 0 var(--space-1-5);
   border: 1.5px solid;
   border-radius: 2px;
   font: 700 9.5px/15px var(--mono);
@@ -1032,14 +1050,14 @@ a.val:hover {
   border-style: dashed;
 }
 
-/* ── 운항 정보판 ─────────────────────────── */
+/* ── FIDS ─────────────────────────── */
 .board {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(260px, 1fr);
-  gap: 12px;
+  gap: var(--gap-column);
   overflow-x: auto;
-  padding-bottom: 8px;
+  padding-bottom: var(--space-2);
 }
 .column {
   --tone: var(--phase-filed);
@@ -1053,8 +1071,8 @@ a.val:hover {
 .column-head {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 11px 12px 10px;
+  gap: var(--space-2);
+  padding: var(--space-3);
   border-bottom: 1px solid var(--fids-line);
   border-top: 2px solid var(--tone);
   background: var(--fids-head);
@@ -1063,6 +1081,7 @@ a.val:hover {
   font: 700 12px var(--mono);
   letter-spacing: 0.18em;
   color: var(--tone);
+  white-space: nowrap;
 }
 .column-label {
   font-weight: 600;
@@ -1084,12 +1103,12 @@ a.val:hover {
 }
 .column-body {
   display: grid;
-  gap: 6px;
-  padding: 6px;
+  gap: var(--gap-item);
+  padding: var(--space-2);
 }
 .ticket {
   display: block;
-  padding: 10px 12px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--fids-line);
   border-radius: 5px;
   background: var(--fids-card);
@@ -1108,7 +1127,7 @@ a.ticket:hover {
 }
 .flap {
   display: inline-flex;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 .flap b {
   display: inline-grid;
@@ -1122,15 +1141,15 @@ a.ticket:hover {
   color: var(--flap-ink);
 }
 .ticket-title {
-  margin-top: 6px;
+  margin-top: var(--space-2);
   color: var(--fids-title);
 }
 .ticket-foot {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 .ticket-assignee {
   margin-left: auto;
@@ -1139,9 +1158,199 @@ a.ticket:hover {
 .ticket-alert {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 7px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
   font-size: 11px;
+}
+
+/* ── 표시 옵션(FIDS) ─────────────────────────── */
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+}
+.icon-button:hover,
+.icon-button[aria-expanded="true"] {
+  border-color: var(--line-strong);
+  background: var(--panel-2);
+  color: var(--text);
+}
+.view-options {
+  position: relative;
+  margin-left: auto;
+}
+.view-menu {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 20;
+  width: 300px;
+  padding: var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--panel-3);
+  box-shadow: var(--shadow-3);
+}
+.view-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+.view-switch button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.view-switch button:hover {
+  color: var(--text);
+}
+.view-switch button[aria-checked="true"] {
+  border-color: var(--line-strong);
+  background: var(--panel-2);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.view-menu-hint {
+  margin: var(--space-2) 0 0;
+  font-size: 11px;
+  color: var(--faint);
+}
+.view-menu-row {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+/* ── FIDS 목록: DEPARTURES 안내판 ─────────────────────────── */
+.fids-list {
+  overflow: hidden;
+  border: 1px solid var(--fids-line);
+  border-radius: 8px;
+  background: var(--fids-bg);
+  box-shadow: var(--shadow-1);
+}
+.fids-list-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--fids-line);
+  background: var(--fids-head);
+}
+.fids-list-title {
+  font: 700 16px var(--mono);
+  letter-spacing: 0.2em;
+  color: var(--flap-ink);
+}
+.fids-list-meta {
+  font: 700 12px var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--fids-count);
+}
+.fids-table-wrap {
+  overflow-x: auto;
+}
+.fids-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.fids-table th {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--fids-line);
+  font: 700 10px var(--mono);
+  letter-spacing: 0.16em;
+  color: var(--fids-count);
+  text-align: left;
+  white-space: nowrap;
+}
+.fids-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid color-mix(in srgb, var(--fids-line) 60%, transparent);
+  vertical-align: middle;
+}
+.fids-table tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--fids-card) 55%, transparent);
+}
+.fids-table tbody tr:hover td {
+  background: var(--fids-hover);
+}
+.fids-table tr.is-occupied td:first-child {
+  box-shadow: inset 2px 0 0 var(--radar);
+}
+.fids-table .none {
+  color: var(--faint);
+}
+.fids-table .col-time {
+  width: 1%;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.fids-dest {
+  width: 42%;
+  max-width: 0;
+}
+.fids-dest a,
+.fids-dest span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fids-title);
+}
+.fids-dest a:hover {
+  text-decoration: underline;
+}
+.fids-aircraft {
+  white-space: nowrap;
+}
+.fids-aircraft .session-badge + .session-badge {
+  margin-left: var(--space-2);
+}
+.fids-table .col-stand {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+.fids-table .col-pri {
+  width: 1%;
+}
+.fids-remark {
+  white-space: nowrap;
+}
+.remark {
+  font: 700 12px var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--tone);
+}
+/* 실제 안내판의 BOARDING처럼 CLEARED TO LAND는 깜빡인다 */
+.fids-table tr.tone-cleared .remark {
+  animation: blink 1.2s steps(2) infinite;
+}
+.fids-remark .code-chip {
+  margin-left: var(--space-2);
+}
+.fids-empty {
+  padding: var(--space-4);
 }
 
 /* 애니메이션 끄기(설정). 기본값은 OS의 동작 줄이기 설정을 따른다. */
@@ -1166,6 +1375,9 @@ a.ticket:hover {
 }
 
 @media (max-width: 860px) {
+  :root {
+    --gutter: var(--space-4);
+  }
   .console {
     height: auto;
     flex-wrap: wrap;
@@ -1175,7 +1387,7 @@ a.ticket:hover {
     border-right: 0;
   }
   .brand {
-    height: 46px;
+    height: var(--console-h);
   }
   .tabs {
     width: 100%;
@@ -1184,7 +1396,7 @@ a.ticket:hover {
   .tab {
     flex: 1;
     align-items: center;
-    padding: 6px 8px;
+    padding: var(--space-2);
   }
   .tab:last-child {
     border-right: 0;
@@ -1199,7 +1411,7 @@ a.ticket:hover {
     flex: 1;
     min-width: 72px;
     align-items: flex-start;
-    padding: 6px 10px;
+    padding: var(--space-2) var(--space-3);
   }
   .readout em,
   .readout.clock {
@@ -1209,7 +1421,7 @@ a.ticket:hover {
     border-left: 0;
   }
   .main {
-    padding: 12px 16px 32px;
+    padding: var(--space-3) var(--gutter) var(--space-8);
   }
   .toolbar {
     flex-wrap: wrap;
@@ -1217,12 +1429,25 @@ a.ticket:hover {
   .legend {
     display: none;
   }
+  .fids-table .col-time,
+  .fids-table .col-stand,
+  .fids-table .col-pri {
+    display: none;
+  }
+  .fids-dest {
+    width: auto;
+    max-width: none;
+  }
+  .fids-dest a,
+  .fids-dest span {
+    white-space: normal;
+  }
   .scope-frame {
-    padding: 14px;
+    padding: var(--space-4);
   }
   .map {
     grid-template-columns: 1fr;
-    row-gap: 22px;
+    row-gap: var(--space-6);
   }
   .map-lines {
     display: none;
@@ -1244,8 +1469,8 @@ a.ticket:hover {
 }
 
 /* ── 테마: Glass Cockpit ─────────────────────────────
-   조종석 디스플레이(EFIS). 색 하나에 뜻 하나: 마젠타는 활성 비행계획(순항),
-   시안은 선택·접근, 녹색은 작동 중(비행 중), 호박은 주의, 빨강은 경고. 서체는 B612. */
+   조종석 디스플레이(EFIS). 색 하나에 뜻 하나: 마젠타는 활성 FLIGHT PLAN(ENROUTE),
+   시안은 선택·APPROACH, 녹색은 작동 중(AIRBORNE), 호박은 주의, 빨강은 경고. 서체는 B612. */
 :root[data-theme="cockpit"] {
   --bg: #060a14;
   --chrome: #080d1a;
@@ -1283,7 +1508,7 @@ a.ticket:hover {
   --blk-los-bg: rgba(70, 12, 20, 0.95);
   --blk-title: #d3dcec;
 
-  /* 스트립: 종이 대신 계기판 패널 */
+  /* FLIGHT STRIPS: 종이 대신 계기판 패널 */
   --paper: var(--panel-2);
   --paper-parked: var(--panel);
   --paper-ink: var(--text);
@@ -1295,7 +1520,7 @@ a.ticket:hover {
   --stamp-blue: var(--cyan);
   --stamp-gray: var(--muted);
 
-  /* 운항 정보판: 반전판 대신 계기 화면 */
+  /* FIDS: 반전판 대신 계기 화면 */
   --fids-bg: var(--panel);
   --fids-card: var(--panel-2);
   --fids-line: var(--line);
@@ -1352,12 +1577,12 @@ a.ticket:hover {
   font-size: 14px;
   letter-spacing: 0.04em;
 }
-/* 활성 비행계획은 마젠타 항로선 */
+/* 활성 FLIGHT PLAN은 마젠타 항로선 */
 :root[data-theme="cockpit"] .column.tone-enroute .ticket-title::before {
   content: "";
   display: block;
   height: 2px;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
   border-radius: 1px;
   background: var(--magenta);
   box-shadow: 0 0 6px color-mix(in srgb, var(--magenta) 60%, transparent);
@@ -1375,7 +1600,7 @@ a.ticket:hover {
   width: min(360px, calc(100vw - 20px));
   max-height: calc(100vh - 80px);
   overflow: auto;
-  padding: 12px 14px 10px;
+  padding: var(--space-3) var(--space-4) var(--space-2);
   border: 1px solid var(--line-strong);
   border-radius: 10px;
   background: var(--panel-3);
@@ -1386,14 +1611,14 @@ a.ticket:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 .settings-title {
   font: 700 11px var(--mono);
   letter-spacing: 0.18em;
 }
 .settings-title em {
-  margin-left: 6px;
+  margin-left: var(--space-2);
   font: 500 12px var(--sans);
   font-style: normal;
   letter-spacing: 0;
@@ -1415,38 +1640,38 @@ a.ticket:hover {
   color: var(--text);
 }
 .settings-section {
-  padding: 12px 0;
+  padding: var(--space-3) 0;
   border-top: 1px solid var(--line);
 }
 .settings-section:first-of-type {
   border-top: 0;
 }
 .settings-section .label {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 .settings-hint {
-  margin: 6px 0 0;
+  margin: var(--space-2) 0 0;
   font-size: 11px;
   color: var(--faint);
 }
 .settings-foot {
-  margin: 2px 0 0;
-  padding-top: 8px;
+  margin: var(--space-0-5) 0 0;
+  padding-top: var(--space-2);
   border-top: 1px solid var(--line);
   font-size: 11px;
   color: var(--faint);
 }
 .theme-cards {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .theme-card {
   display: grid;
   grid-template-columns: 52px 1fr;
   grid-template-rows: auto auto;
-  column-gap: 12px;
+  column-gap: var(--space-3);
   align-items: center;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel-2);
@@ -1479,7 +1704,7 @@ a.ticket:hover {
   font-weight: 600;
 }
 .theme-name b {
-  margin-right: 4px;
+  margin-right: var(--space-1-5);
   font: 700 10.5px var(--mono);
   letter-spacing: 0.12em;
   color: var(--tab-on);
@@ -1490,15 +1715,15 @@ a.ticket:hover {
 }
 .segmented {
   display: flex;
-  gap: 2px;
-  padding: 2px;
+  gap: var(--space-0-5);
+  padding: var(--space-0-5);
   border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--panel);
 }
 .segmented button {
   flex: 1;
-  padding: 5px 8px;
+  padding: var(--space-1) var(--space-2);
   border: 0;
   border-radius: 5px;
   background: none;
@@ -1516,8 +1741,8 @@ a.ticket:hover {
 }
 
 /* ── 테마: Night Sky ─────────────────────────────
-   천측 항법. 밝고 따뜻한 별일수록 지금 움직이는 것: 비행 중·순항은 금색, 체공 대기는 푸른 별,
-   접근은 청록, 이양은 라일락, 분리 위반은 붉은 거성. 패널은 반투명 유리라 뒤로 별이 비친다. */
+   천측 항법. 밝고 따뜻한 별일수록 지금 움직이는 것: AIRBORNE·ENROUTE는 금색, HOLDING은 푸른 별,
+   APPROACH는 청록, HANDOFF는 라일락, LOS는 붉은 거성. 패널은 반투명 유리라 뒤로 별이 비친다. */
 :root[data-theme="night"] {
   --bg: #03040d;
   --backdrop:
@@ -1541,7 +1766,7 @@ a.ticket:hover {
   --faint: #8a93c0;
 
   --radar: #ffd98a; /* 금색 별 */
-  --amber: #9ec2ff; /* 푸른 별: 체공 대기 */
+  --amber: #9ec2ff; /* 푸른 별: HOLDING */
   --cyan: #7fe8ff;
   --alert: #ff6b85;
   --blue: #c3adff;
@@ -1624,14 +1849,14 @@ a.ticket:hover {
   white-space: nowrap;
 }
 :root[data-theme="night"] .tabs {
-  gap: 4px;
-  padding: 0 8px;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
   align-items: center;
 }
 :root[data-theme="night"] .tab {
   align-items: center;
-  height: 42px;
-  padding: 0 16px;
+  height: 40px;
+  padding: 0 var(--space-4);
   border: 1px solid transparent;
   border-radius: 14px;
   white-space: nowrap;
@@ -1656,7 +1881,7 @@ a.ticket:hover {
 :root[data-theme="night"] .tone-alert b {
   text-shadow: 0 0 14px rgba(255, 107, 133, 0.55);
 }
-/* 경고성 표시는 푸른 별(체공 대기)과 섞이지 않게 금색 */
+/* 경고성 표시는 푸른 별(HOLDING)과 섞이지 않게 금색 */
 :root[data-theme="night"] .ticker {
   background: rgba(255, 107, 133, 0.07);
   border-bottom-color: rgba(255, 107, 133, 0.18);
@@ -1717,7 +1942,7 @@ a.ticket:hover {
     radial-gradient(ellipse 60% 140% at 50% 50%, transparent 0 99.4%, rgba(170, 190, 255, 0.05) 99.6%, transparent 99.8%);
 }
 :root[data-theme="night"] .blk {
-  padding-left: 32px;
+  padding-left: var(--space-8);
   border-radius: 12px;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -1804,13 +2029,13 @@ a.ticket:hover {
   box-shadow: 0 0 24px rgba(255, 107, 133, 0.25);
 }
 
-/* 운항 스트립: 유리 줄, 별빛이 왼쪽에서 번진다 */
+/* FLIGHT STRIPS: 유리 줄, 별빛이 왼쪽에서 번진다 */
 :root[data-theme="night"] .bay-rail {
   padding: 0;
   border: 0;
   background: none;
   box-shadow: none;
-  gap: 10px;
+  gap: var(--space-2);
 }
 :root[data-theme="night"] .strip {
   position: relative;
@@ -1868,10 +2093,10 @@ a.ticket:hover {
   background: rgba(170, 190, 255, 0.16);
   color: var(--text);
   border-radius: 999px;
-  padding: 0 6px;
+  padding: 0 var(--space-1-5);
 }
 
-/* 운항 정보판: 유리 기둥, 위쪽에 별빛 선 */
+/* FIDS: 유리 기둥, 위쪽에 별빛 선 */
 :root[data-theme="night"] .column {
   border-radius: 16px;
   backdrop-filter: blur(8px);
@@ -1892,8 +2117,8 @@ a.ticket:hover {
   box-shadow: 0 0 10px var(--tone);
 }
 :root[data-theme="night"] .column-body {
-  padding: 8px;
-  gap: 8px;
+  padding: var(--space-2);
+  gap: var(--space-2);
 }
 :root[data-theme="night"] .ticket {
   border-radius: 12px;
