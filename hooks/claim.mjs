@@ -5,6 +5,7 @@
 import { lstatSync, mkdirSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
+import { workTargets } from "./shell.mjs";
 
 const STATE_DIR = process.env.ATC_STATE_DIR || join(homedir(), ".local/state/atc");
 const MAX_PATHS = 12;
@@ -23,23 +24,15 @@ function worktreeRoot(p) {
   return null;
 }
 
-// Bash는 경로를 언급만 해도(ls, cat, grep) 잡히지 않도록 `cd <dir>`와 `git -C <dir>`의 대상만 본다.
-const ARG = String.raw`(?:"([^"]+)"|'([^']+)'|([^\s;&|()]+))`;
-const BASH_TARGETS = [
-  new RegExp(String.raw`(?:^|[;&|(\s])cd\s+(?:--\s+)?${ARG}`, "g"),
-  // -C는 서브커맨드 앞 전역 옵션일 때만 (git commit -C <commit>은 제외)
-  new RegExp(String.raw`\bgit(?:\s+(?:-c\s+\S+|--?[\w-]+(?:=\S+)?))*?\s+-C\s+${ARG}`, "g"),
-];
-
+// Bash는 경로를 언급만 해도(ls, cat, grep, echo, heredoc) 잡히지 않도록
+// 명령 위치의 `cd <dir>`와 `git -C <dir>` 대상만 본다(shell.mjs).
 function bashTargets(command, cwd) {
-  const out = [];
-  for (const re of BASH_TARGETS) {
-    for (const m of command.matchAll(re)) {
-      const arg = (m[1] ?? m[2] ?? m[3]).replace(/^~(?=\/|$)/, homedir());
-      out.push(resolve(typeof cwd === "string" ? cwd : "/", arg));
-    }
-  }
-  return out;
+  return workTargets(command).map((arg) =>
+    resolve(
+      typeof cwd === "string" ? cwd : "/",
+      arg.replace(/^~(?=\/|$)/, homedir()).replace(/^\$\{?HOME\}?(?=\/|$)/, homedir()),
+    ),
+  );
 }
 
 function candidatePaths(input) {

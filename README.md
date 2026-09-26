@@ -60,7 +60,7 @@ npm install
 npm run build && npm start      # http://localhost:7700 (web/dist 제공)
 npm run dev                     # 개발: vite 7700 + API 서버 7701
 npm run typecheck
-npm test                        # 이양·충돌 판정 단위 테스트
+npm test                        # 이양·충돌 판정, 셸 파싱 단위 테스트
 ```
 
 상시 실행은 systemd 사용자 서비스로 한다.
@@ -80,6 +80,7 @@ journalctl --user -u atc -f           # 로그
 
 - Edit·Write의 파일 경로, Bash의 `cd <dir>`·`git -C <dir>` 대상, 세션 cwd를 보고 `.git`이 **파일**인 디렉터리(linked worktree)를 찾는다. 본 체크아웃은 기록하지 않는다.
 - Bash에서 경로를 언급만 하는 명령(`ls`, `cat`, `grep` 등)은 점유로 치지 않는다. 그래서 리뷰어가 읽기만 해서는 점유가 생기지 않는다.
+- Bash 명령은 `hooks/shell.mjs`가 간이 셸 문법으로 나눠, **명령 위치**의 `cd`와 `git -C`만 본다. `echo`·`printf`·`jq` 등의 인자 문자열, heredoc 본문, here-string, 주석은 건너뛴다. `bash -c "…"` 안은 한 번 더 들여다본다.
 - `~/.local/state/atc/claims/<sessionId>/<인코딩된 경로>.json`을 처음 한 번 만들고 이후에는 mtime만 갱신한다. 동시 호출에도 안전하다.
 - 마지막 갱신 뒤 `ATC_CLAIM_TTL_MIN`(기본 180분)이 지나면 점유가 끝난 것으로 본다.
 - 점유 시작 시각(`since`)은 두 경우에 새로 시작한다. TTL이 지난 뒤 다시 건드릴 때, 그리고 내가 손을 뗀 뒤 다른 세션이 잡았던 워크트리를 되찾을 때(A → B → A).
@@ -103,7 +104,9 @@ journalctl --user -u atc -f           # 로그
 
 ```
 atc/
-├── hooks/claim.mjs         # PostToolUse hook (의존성 없음)
+├── hooks/
+│   ├── claim.mjs           # PostToolUse hook (의존성 없음)
+│   └── shell.mjs           # Bash 명령에서 cd·git -C 대상 추출 (shell.test.mjs)
 ├── server/                 # Node 24 + Hono. 2초마다 스냅샷을 만들어 SSE로 푸시
 │   ├── sources/
 │   │   ├── claude.ts       # ~/.claude/sessions, hook 기록, 대화 기록 추정
