@@ -212,11 +212,12 @@ export function candidatesOf(tickets: Ticket[], ops: ScheduleOp[]) {
 }
 
 export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
-  // 브리핑할 때마다 상황이 바뀐 초안을 먼저 닫는다
-  const current = (tickets: Ticket[]) => {
+  // 브리핑할 때마다 상황이 바뀐 초안을 먼저 닫는다. Linear를 아직 못 읽었으면(시작 직후, 꺼짐) 닫지 않는다 —
+  // 빈 티켓 목록과 맞추면 열린 초안이 모두 SUPERSEDED가 된다.
+  const current = (s: Snapshot) => {
     const lines = readLines();
     const ops = fold(lines);
-    const closing = syncLines(ops, tickets, Date.now());
+    const closing = s.linear.enabled && s.linear.fetchedAt ? syncLines(ops, s.tickets, Date.now()) : [];
     if (closing.length) {
       append(closing);
       return fold([...lines, ...closing]);
@@ -226,7 +227,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
 
   app.get("/api/schedule/brief", async (c) => {
     const s = await getSnapshot();
-    const ops = current(s.tickets);
+    const ops = current(s);
     const now = Date.now();
     const open = ops.filter((x) => x.status === "draft").sort((a, b) => a.at.localeCompare(b.at));
     const recent = ops
@@ -256,7 +257,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const s = await getSnapshot();
     const body = await c.req.json().catch(() => ({}));
     try {
-      const ops = current(s.tickets);
+      const ops = current(s);
       const lines = draftOps(ops, body, s.tickets, new Date().toISOString(), ops.length);
       append(lines);
       const id = lines[lines.length - 1].id;
