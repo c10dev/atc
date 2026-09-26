@@ -15,7 +15,7 @@ Claude Code and Codex sessions, git worktrees and Linear tickets on one radar sc
 
 **English** · [한국어](README.ko.md)
 
-[Ready for takeoff](#-ready-for-takeoff) · [Screens](#screens) · [Glossary](#glossary) · [Running](#running) · [Folder docs](#folder-docs) · [Project layout](#project-layout)
+[Ready for takeoff](#-ready-for-takeoff) · [Screens](#screens) · [Glossary](#glossary) · [Running](#running) · [Folder docs](#folder-docs) · [Project layout](#project-layout) · [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -234,6 +234,7 @@ Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server com
 | `dispatch/` | Working folder for the DISPATCH session (stage 2a) | [CLAUDE.en.md](dispatch/CLAUDE.en.md) · [/tick](dispatch/.claude/skills/tick/SKILL.en.md) |
 | `deploy/` | systemd user service | [deploy/README.md](deploy/README.md) |
 | `docs/` | Design and conventions | [DISPATCH design](docs/dispatch.md) · [Naming rules](docs/naming.md) |
+| — | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 
 Each has a Korean version next to it (`README.ko.md`, `*.ko.md`; for the session folders the Korean `CLAUDE.md` / `SKILL.md` are the originals the sessions load).
 

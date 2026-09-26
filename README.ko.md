@@ -15,7 +15,7 @@ Claude Code·Codex 세션, git 워크트리, Linear 티켓을 레이더 한 화�
 
 [English](README.md) · **한국어**
 
-[이륙 준비](#-ready-for-takeoff) · [화면](#화면) · [용어](#용어) · [실행](#실행) · [폴더별 문서](#폴더별-문서) · [폴더 구조](#폴더-구조)
+[이륙 준비](#-ready-for-takeoff) · [화면](#화면) · [용어](#용어) · [실행](#실행) · [폴더별 문서](#폴더별-문서) · [폴더 구조](#폴더-구조) · [변경 기록](CHANGELOG.ko.md)
 
 </div>
 
@@ -232,6 +232,7 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 | `dispatch/` | DISPATCH 세션 작업 폴더(2a단계) | [CLAUDE.md](dispatch/CLAUDE.md) · [/tick](dispatch/.claude/skills/tick/SKILL.md) |
 | `deploy/` | systemd 사용자 서비스 | [deploy/README.ko.md](deploy/README.ko.md) |
 | `docs/` | 설계와 규칙 | [DISPATCH 설계](docs/dispatch.ko.md) · [이름 규칙](docs/naming.ko.md) |
+| — | 변경 기록 | [CHANGELOG.ko.md](CHANGELOG.ko.md) |
 
 폴더마다 영어판이 옆에 있다(`README.md`, `*.md`, 세션 폴더는 `*.en.md`).
 
