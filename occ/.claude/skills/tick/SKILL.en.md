@@ -17,6 +17,7 @@
    - Run `node ../controller/atcctl.mjs schedule brief` and look at `candidates`.
    - For up to 3 candidate FLIGHTs, read each with `dispatch flight <FLIGHT key>`. If it is in `candidates.classify`, run `schedule draft CLASSIFY <FLIGHT> [--type …] [--wake …] [--rating …] -- "<reason>"`. If it is in `candidates.prioritize` and the body or comments give grounds, `schedule draft PRIORITIZE <FLIGHT> --priority <1-4> -- "<reason>"`. With no grounds, skip PRIORITIZE.
    - On `LIMIT`, stop drafting for this pass. Nothing is written to Linear.
+   - Open `NEW` drafts (AD HOC FLIGHTs from the CHARTER DESK) count toward the limit of 5 too. A CHARTER REQUEST is not a per-pass duty; handle it as in "CHARTER DESK" in CLAUDE.md when the SUPERVISOR asks in this session.
 6. Leave a line or two of OCC LOG. If nothing happened, "특이 사항 없음" ("nothing to report").
 
 It makes no decisions (approve or reject). If send-guard blocks a send, don't retry; report to the SUPERVISOR.

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Ticket } from "./model.ts";
-import { candidatesOf, changesOf, draftOps, fold, gateOf, parsePayload, ScheduleError, syncLines } from "./schedule.ts";
+import { candidatesOf, changesOf, draftOps, fold, gateOf, missingSections, type NewPayload, parseNew, parsePayload, ScheduleError, similarTickets, syncLines, titleTokens } from "./schedule.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
 const iso = (minAgo: number) => new Date(NOW - minAgo * 60_000).toISOString();
@@ -75,4 +75,95 @@ test("판정과 2단계 점검, 후보 목록", () => {
   assert.deepEqual(gateOf(ops), { decided: 1, agreed: 0, agreement: 0, target: { decided: 20, agreement: 0.8 }, ready: false });
   const tickets = [t("VOC-41"), t("VOC-42", { labels: ["type:BUILD", "wake:M"], priority: 0 }), t("VOC-43", { state: "In Progress", stateType: "started" })];
   assert.deepEqual(candidatesOf(tickets, []), { classify: ["VOC-41"], prioritize: ["VOC-42"] });
+});
+
+// ── NEW(새 이슈 초안) ──
+
+const BODY = ["## 목표", "재생 화면 버튼 정리", "## 수정 허용 범위", "- src/app/song/**", "## 금지 사항", "- DB 변경", "## 완료 기준", "- 테스트 통과"].join("\n");
+// Linear의 Codex Engineering Task 템플릿 제목 그대로
+const CODEX = [
+  "## Outcome", "anon 쓰기 거부", "## Context", "VOC-191", "## Scope", "### In scope", "- RLS", "### Allowed files / surfaces", "- supabase/migrations/**",
+  "### Out of scope", "- UI", "## Forbidden changes", "- 다른 테이블", "## Invariants", "- service role 경로 유지", "## Acceptance Criteria", "- anon 쓰기 거부",
+  "## Verification", "- pgTAP", "## Risks / Rollback", "- 마이그레이션 되돌리기", "## Review Readiness", "- Codex 리뷰",
+].join("\n");
+const TAILS = ["TEAM_A", "TEAM_E"];
+const board = [
+  t("VOC-60", { title: "Practice 시트 머리 줄 동작 맞추기", project: "Web UX" }),
+  t("VOC-61", { project: "Beta Readiness" }),
+  t("VOC-62", { title: "Song workspace focus colour sweep", state: "Done", stateType: "completed", updatedAt: iso(60 * 24 * 60), createdAt: iso(90 * 24 * 60) }),
+  t("VOC-63", { title: "Song workspace focus colour cleanup", state: "Done", stateType: "completed", updatedAt: iso(24 * 60), createdAt: iso(90 * 24 * 60) }),
+];
+const newInput = (over: Record<string, unknown> = {}) => ({ kind: "NEW", title: "재생 화면 버튼 정리", body: BODY, project: "web ux", reason: "사용자 요청. 중복 검색: VOC-60 비슷하지 않음", ...over });
+
+test("NEW 본문 칸: 제목 줄·굵은 줄, 한국어·영어, 번호와 콜론은 무시", () => {
+  assert.deepEqual(missingSections(BODY), []);
+  assert.deepEqual(missingSections(CODEX), []);
+  assert.deepEqual(missingSections(CODEX, true), []);
+  assert.deepEqual(missingSections(CODEX.replace("## Invariants", "## Notes").replace("## Verification", "## Checks"), true), ["Invariants", "Verification"]);
+  assert.deepEqual(missingSections("**Goal:** x\n### 1. Allowed files\n### 2. Forbidden changes:\n### 3. Acceptance Criteria"), []);
+  assert.deepEqual(missingSections("**목표**\nx\n**Allowed changes**\n# Forbidden\n## Done criteria"), []);
+  assert.deepEqual(missingSections("## 목표\n본문에 금지 사항이라고만 씀\n완료 기준: 없음"), ["수정 허용 범위", "금지 사항", "완료 기준"]);
+  assert.deepEqual(missingSections(BODY, true), ["Allowed files", "Forbidden changes", "Invariants", "Acceptance Criteria", "Verification"]);
+});
+
+test("NEW 입력 검사", () => {
+  const ok = parseNew(newInput({ priority: "2", type: "build", ratings: ["ui"], tail: "tail:team_e", parent: "voc-61", related: "VOC-60", blockedBy: ["VOC-60", "voc-60"] }), board, TAILS);
+  assert.deepEqual(ok, {
+    title: "재생 화면 버튼 정리", body: BODY, project: "Web UX", type: "BUILD", ratings: ["UI"], priority: 2, tail: "TEAM_E", parent: "VOC-61", related: ["VOC-60"], blockedBy: ["VOC-60"],
+  });
+  assert.throws(() => parseNew(newInput({ title: "  " }), board, TAILS), /1~120자/);
+  assert.throws(() => parseNew(newInput({ title: "x".repeat(121) }), board, TAILS), /1~120자/);
+  assert.throws(() => parseNew(newInput({ body: "## 목표\nx" }), board, TAILS), /빠진 칸: 수정 허용 범위, 금지 사항, 완료 기준/);
+  assert.throws(() => parseNew(newInput({ ratings: ["SEC"] }), board, TAILS), /Codex Engineering Task.*Allowed files/);
+  assert.equal(parseNew(newInput({ body: CODEX, ratings: ["SEC"] }), board, TAILS).ratings?.[0], "SEC");
+  assert.throws(() => parseNew(newInput({ project: "Mobile" }), board, TAILS), /모르는 프로젝트: Mobile/);
+  assert.throws(() => parseNew(newInput({ tail: "TEAM_Z" }), board, TAILS), /FLEET에 없거나 퇴역/);
+  assert.throws(() => parseNew(newInput({ parent: "VOC-99" }), board, TAILS), /parent가 FLIGHT 목록에 없음/);
+  assert.throws(() => parseNew(newInput({ related: ["VOC-60", "VOC-98"] }), board, TAILS), /related가 FLIGHT 목록에 없음: VOC-98/);
+  assert.throws(() => parseNew(newInput({ blockedBy: "VOC-97" }), board, TAILS), /blockedBy가/);
+  assert.throws(() => parseNew(newInput({ type: "PILOT" }), board, TAILS), /FLIGHT TYPE/);
+  assert.throws(() => parseNew(newInput({ priority: 5 }), board, TAILS), /priority/);
+});
+
+test("비슷한 제목: 같은 제목이거나 토큰 2개 이상·겹침 0.5 이상, 닫힌 것은 45일 안에 바뀐 것만", () => {
+  assert.deepEqual([...titleTokens("랜딩 사이트 데이터를 beta DB에서 분리")], ["랜딩", "사이트", "데이터", "beta", "db", "분리"]);
+  assert.deepEqual(similarTickets("Practice 시트의 머리 줄 동작을 맞추기", board, NOW), [{ key: "VOC-60", title: "Practice 시트 머리 줄 동작 맞추기" }]);
+  assert.deepEqual(similarTickets("song workspace: focus colour", board, NOW), [{ key: "VOC-63", title: "Song workspace focus colour cleanup" }]);
+  assert.deepEqual(similarTickets("VOC 61", board, NOW), [{ key: "VOC-61", title: "VOC-61" }]);
+  assert.deepEqual(similarTickets("전혀 다른 일", board, NOW), []);
+});
+
+test("NEW 초안: flight는 null, similar를 채우고, 근거에 중복 검색 필요, 다른 NEW를 대신하지 않고 한도에 든다", () => {
+  const a = draftOps([], newInput({ title: "Practice 시트 머리 줄 동작 맞추기 (2)" }), board, iso(10), 0, { tails: TAILS });
+  assert.equal(a.length, 1);
+  const line = a[0] as Extract<(typeof a)[number], { op: "draft" }>;
+  assert.equal(line.flight, null);
+  assert.deepEqual((line.payload as NewPayload).similar, [{ key: "VOC-60", title: "Practice 시트 머리 줄 동작 맞추기" }]);
+  assert.throws(() => draftOps([], newInput({ reason: "사용자 요청" }), board, iso(0), 0), /중복 검색:/);
+  assert.throws(() => draftOps([], newInput({ reason: " " }), board, iso(0), 0), /근거/);
+  let lines = a;
+  for (let i = 1; i < 5; i++) lines = [...lines, ...draftOps(fold(lines), newInput(), board, iso(0), i)];
+  assert.equal(fold(lines).filter((o) => o.status === "draft").length, 5); // 같은 제목이어도 서로 대신하지 않음
+  assert.throws(() => draftOps(fold(lines), newInput(), board, iso(0), 5), (e) => e instanceof ScheduleError && e.status === 409);
+  assert.throws(() => draftOps(fold(lines), { kind: "CLASSIFY", flight: "VOC-61", type: "BUILD", reason: "r" }, board, iso(0), 5), (e) => e instanceof ScheduleError && e.status === 409);
+});
+
+test("NEW changesOf: 설정된 것만", () => {
+  const base = { title: "재생 화면 버튼 정리", body: BODY, project: "Web UX", similar: [] };
+  assert.deepEqual(changesOf("NEW", base), ["새 이슈: 재생 화면 버튼 정리 · Web UX · 없음"]);
+  assert.deepEqual(changesOf("NEW", { ...base, priority: 2, type: "BUILD", wake: "M", ratings: ["SEC", "UI"], tail: "TEAM_E" }), [
+    "새 이슈: 재생 화면 버튼 정리 · Web UX · High · type:BUILD wake:M rating:SEC rating:UI tail:TEAM_E",
+  ]);
+});
+
+test("NEW 동기화: 초안 뒤에 같은 제목 이슈가 생기면 SUPERSEDED, 전부터 있던 것은 아님, 3일 지나면 EXPIRED", () => {
+  const payload = (title: string) => ({ title, body: BODY, project: "Web UX", similar: [] });
+  const lines = [
+    { op: "draft" as const, id: "S-0001", at: iso(60), kind: "NEW" as const, flight: null, payload: payload("재생 화면 버튼 정리"), reason: "중복 검색: 없음" },
+    { op: "draft" as const, id: "S-0002", at: iso(60), kind: "NEW" as const, flight: null, payload: payload("Practice 시트 머리 줄 동작 맞추기"), reason: "중복 검색: VOC-60" },
+    { op: "draft" as const, id: "S-0003", at: iso(4 * 24 * 60), kind: "NEW" as const, flight: null, payload: payload("오래된 요청"), reason: "중복 검색: 없음" },
+  ];
+  const tickets = [...board, t("VOC-70", { title: "재생 화면: 버튼 정리", createdAt: iso(5) }), t("VOC-60", { title: "Practice 시트 머리 줄 동작 맞추기", createdAt: iso(24 * 60) })];
+  const out = syncLines(fold(lines), tickets, NOW);
+  assert.deepEqual(out.map((l) => `${l.op}:${l.id}:${"reason" in l ? l.reason : ""}`), ["supersede:S-0001:Linear에 이미 만들어짐 VOC-70", "expire:S-0003:"]);
 });

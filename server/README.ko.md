@@ -51,7 +51,7 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 | `metrics.ts` | 운용 지표와 2단계 진입 점검(순수 함수 `computeMetrics`) |
 | `dispatch.ts` | DISPATCH 계획: 후보, 슬롯, 점수(순수 함수 `planDispatch`). 설정은 `dispatch.json` |
 | `proposals.ts` | DISPATCH 제안 기록(추가만 하는 JSONL), 상태 전이(그림자 판정, approve → sent → accepted → departed), 예약, FLIGHT PLAN 문구, 브리핑, 2b·3단계 점검 |
-| `schedule.ts` | OCC SCHEDULE 초안 기록(추가만 하는 JSONL, S1 그림자 운용): `CLASSIFY`·`PRIORITIZE` 초안, 열린 초안 5건 한도, SUPERSEDED·EXPIRED 동기화, 그림자 판정, 후보, S2 점검 |
+| `schedule.ts` | OCC SCHEDULE 초안 기록(추가만 하는 JSONL, S1 그림자 운용): `CLASSIFY`·`PRIORITIZE` 초안과 `NEW`(CHARTER DESK의 AD HOC FLIGHT: 본문 칸, 프로젝트·tail·key 검사, 최근 45일 스냅샷에서 찾은 비슷한 제목 `similar`), 열린 초안 5건 한도, SUPERSEDED·EXPIRED 동기화, 그림자 판정, 후보, S2 점검 |
 
 모듈 옆의 `*.test.ts`가 그 모듈의 단위 테스트다.
 
@@ -83,7 +83,7 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 | `GET /api/dispatch/flight/:key` | Linear에서 티켓 본문과 댓글(읽기 전용) |
 | `GET /api/schedule/brief` | SCHEDULE 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안, S2 점검, 열린 초안 한도, 후보, FLIGHT 요약 |
 | `GET /api/schedule/ops/:id` | SCHEDULE 작업 하나와 모드 |
-| `POST /api/schedule/ops` | OCC 초안 `{kind: "CLASSIFY" \| "PRIORITIZE", flight, reason, type?, wake?, ratings?, priority?}`. 열린 초안이 한도면 409 |
+| `POST /api/schedule/ops` | OCC 초안. `CLASSIFY`·`PRIORITIZE`: `{kind, flight, reason, type?, wake?, ratings?, priority?}`. `NEW`: `{kind: "NEW", title, body, project, reason, priority?, type?, wake?, ratings?, tail?, parent?, related?, blockedBy?}` → `flight: null`, `payload.similar: [{key, title}]`인 작업. 입력이 틀리면 400, 열린 초안이 한도면 409 |
 | `POST /api/schedule/ops/:id/verdict` | SUPERVISOR 그림자 판정 `{verdict: "agree" \| "disagree", reason?}` |
 
 ## 디스크에 두는 상태

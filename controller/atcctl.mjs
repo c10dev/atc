@@ -56,6 +56,11 @@ SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만, Linear에 쓰지
                                             WAKE: L M H J · RATING: SEC UI DATA DOCS (--rating은 여러 번)
   node atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <근거>
                                             우선순위 초안. 1 Urgent · 2 High · 3 Medium · 4 Low
+  node atcctl.mjs schedule draft NEW --title <제목> --project <프로젝트> [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>]
+        [--rating <RATING>]… [--tail <TEAM_X>] [--parent <VOC-1>] [--related <VOC-2>]… [--blocked-by <VOC-3>]…
+        --reason <근거, "중복 검색: …" 포함> -- <본문>
+                                            CHARTER DESK: AD HOC FLIGHT(새 이슈) 초안. 본문의 \n은 줄바꿈.
+                                            본문은 네 칸(목표·수정 허용 범위·금지 사항·완료 기준), SEC는 Codex 템플릿
                                             열린 초안이 한도에 차면 LIMIT으로 끝난다(exit 1)`;
 
 // limit: 409(한도 참)일 때 오류 대신 보여 줄 안내. 호출한 세션이 곧바로 멈추게 LIMIT으로 시작한다.
@@ -92,15 +97,38 @@ function parseIssue(args) {
   return { to, type: type.toUpperCase(), text, ...opts };
 }
 
+// schedule draft NEW [옵션]… --reason <근거> -- <본문> → POST 본문. OCC guard가 heredoc·리다이렉션을 막아
+// 본문은 -- 뒤 인자로 받고, 글자 그대로의 \n을 줄바꿈으로 바꾼다.
+const NEW_ONE = ["--title", "--project", "--priority", "--type", "--wake", "--tail", "--parent", "--reason"];
+const NEW_MANY = { "--rating": "ratings", "--related": "related", "--blocked-by": "blockedBy" };
+function parseNewDraft(args) {
+  const sep = args.indexOf("--");
+  const head = sep < 0 ? args : args.slice(0, sep);
+  const text = sep < 0 ? "" : args.slice(sep + 1).join(" ").replace(/\\n/g, "\n").trim();
+  const out = { kind: "NEW" };
+  for (let i = 0; i < head.length; i += 2) {
+    const [opt, val] = [head[i], head[i + 1]];
+    if (!NEW_ONE.includes(opt) && !NEW_MANY[opt]) throw new Error(`NEW에 쓸 수 없는 옵션 ${opt} (가능: ${[...NEW_ONE, ...Object.keys(NEW_MANY)].join(" ")})`);
+    if (val === undefined || val.startsWith("--")) throw new Error(`${opt} 뒤에 값이 필요함`);
+    if (NEW_MANY[opt]) (out[NEW_MANY[opt]] ??= []).push(val);
+    else if (opt.slice(2) in out) throw new Error(`${opt}는 한 번만`);
+    else out[opt.slice(2)] = val;
+  }
+  for (const f of ["title", "project", "reason"]) if (!out[f]?.trim()) throw new Error(`NEW에는 --${f}가 필요함`);
+  if (!text) throw new Error("-- 뒤에 본문이 필요함");
+  return { ...out, body: text };
+}
+
 // schedule draft <KIND> <FLIGHT> [옵션]… -- <근거> → POST /api/schedule/ops 본문. 값 검사는 서버가 한다.
 const DRAFT_OPTS = { CLASSIFY: ["--type", "--wake", "--rating"], PRIORITIZE: ["--priority"] };
 export function parseDraft(args) {
+  if (String(args[0] ?? "").toUpperCase() === "NEW") return parseNewDraft(args.slice(1));
   const sep = args.indexOf("--");
   const head = sep < 0 ? args : args.slice(0, sep);
   const reason = sep < 0 ? "" : args.slice(sep + 1).join(" ").trim();
   const [kindRaw, flight, ...rest] = head;
   const kind = String(kindRaw ?? "").toUpperCase();
-  if (!DRAFT_OPTS[kind]) throw new Error(`모르는 SCHEDULE 작업: ${kindRaw ?? "(없음)"} (가능: ${Object.keys(DRAFT_OPTS).join(", ")})`);
+  if (!DRAFT_OPTS[kind]) throw new Error(`모르는 SCHEDULE 작업: ${kindRaw ?? "(없음)"} (가능: ${[...Object.keys(DRAFT_OPTS), "NEW"].join(", ")})`);
   if (!flight || flight.startsWith("--")) throw new Error("FLIGHT key가 필요함 (예: VOC-193)");
   const body = { kind, flight };
   for (let i = 0; i < rest.length; i += 2) {
@@ -119,7 +147,22 @@ const PRIORITY = { 1: "Urgent", 2: "High", 3: "Medium", 4: "Low" };
 export function payloadText(op) {
   const p = op.payload;
   if (op.kind === "PRIORITIZE") return `priority ${p.priority}(${PRIORITY[p.priority]})`;
-  return [p.type && `type:${p.type}`, p.wake && `wake:${p.wake}`, ...(p.ratings ?? []).map((r) => `rating:${r}`)].filter(Boolean).join(" ");
+  const labels = [p.type && `type:${p.type}`, p.wake && `wake:${p.wake}`, ...(p.ratings ?? []).map((r) => `rating:${r}`)];
+  if (op.kind !== "NEW") return labels.filter(Boolean).join(" ");
+  return [p.project, p.priority ? PRIORITY[p.priority] : "priority 없음", [...labels, p.tail && `tail:${p.tail}`].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
+}
+
+// 초안 결과 출력. NEW는 AD HOC FLIGHT 초안과 atc가 찾은 비슷한 FLIGHT 목록.
+export function draftText(op) {
+  const shadow = "(그림자 운용, Linear에 쓰지 않음)";
+  if (op.kind !== "NEW") return `${op.id} ${op.kind} ${op.flight} 초안 · ${payloadText(op)} ${shadow}`;
+  const similar = op.payload.similar ?? [];
+  return [
+    `${op.id} AD HOC FLIGHT 초안 · ${op.payload.title}`,
+    `  ${payloadText(op)} ${shadow}`,
+    similar.length ? `  비슷한 FLIGHT ${similar.length}건:` : "  비슷한 FLIGHT 없음",
+    ...similar.map((x) => `    ${x.key} ${x.title}`),
+  ].join("\n");
 }
 
 // 테스트가 import할 때는 CLI를 돌리지 않는다
@@ -176,7 +219,7 @@ if (isMain) {
       const r = await call("POST", "/api/schedule/ops", parseDraft(args.slice(1)), {
         limit: "이번 바퀴는 SCHEDULE 초안을 더 쓰지 않는다(열린 초안 한도).",
       });
-      console.log(`${r.op.id} ${r.op.kind} ${r.op.flight} 초안 · ${payloadText(r.op)} (그림자 운용, Linear에 쓰지 않음)`);
+      console.log(draftText(r.op));
     } else if (cmd === "manual" && (args[0] === "check" || args[0] === "ack")) {
       const dir = process.cwd();
       const now = manualHash(dir);

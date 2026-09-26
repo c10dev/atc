@@ -255,9 +255,9 @@ Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server com
 
 Design: [docs/occ.md](docs/occ.md) sections 5–7. The OCC session drafts the Linear changes it would make as SCHEDULE operations (`server/schedule.ts`, `~/.local/state/atc/schedule.jsonl`, append-only). S1 is shadow operation: **nothing is written to Linear.** The SUPERVISOR marks each draft, and the agreement rate decides when S2 (approved drafts written through linear-guard) can start.
 
-- Operations: `CLASSIFY` (FLIGHT TYPE, WAKE and TYPE RATING labels, [docs/fleet.md](docs/fleet.md) section 4; labels are only added) and `PRIORITIZE` (priority 1 Urgent … 4 Low). Each has an id (`S-0001`), the FLIGHT, the payload and OCC's one-line reason.
+- Operations: `CLASSIFY` (FLIGHT TYPE, WAKE and TYPE RATING labels, [docs/fleet.md](docs/fleet.md) section 4; labels are only added), `PRIORITIZE` (priority 1 Urgent … 4 Low) and `NEW` (a new issue, an AD HOC FLIGHT from the [CHARTER DESK](#charter-desk-request-desk)). Each has an id (`S-0001`), the FLIGHT (`null` for `NEW`), the payload and OCC's one-line reason.
 - Candidates: Todo or Backlog FLIGHTs with no `type:` or `wake:` label (CLASSIFY) or no priority (PRIORITIZE), minus those with an open draft of the same kind. A draft that would change nothing is refused.
-- Limits: 5 open drafts (409 past that). A new draft for the same FLIGHT and kind supersedes the old one. atc closes an open draft as SUPERSEDED when the FLIGHT leaves Todo / Backlog or Linear already shows the change, and as EXPIRED after 3 days without a verdict.
+- Limits: 5 open drafts of any kind, `NEW` included (409 past that). A new draft for the same FLIGHT and kind supersedes the old one; a `NEW` never supersedes another. atc closes an open draft as SUPERSEDED when the FLIGHT leaves Todo / Backlog or Linear already shows the change (for `NEW`: an issue with the same title appears in Linear after the draft), and as EXPIRED after 3 days without a verdict.
 - **SCHEDULE tab** (after DISPATCH): the S2 check (20 or more decided drafts, 80% or more agreement), open draft cards with the FLIGHT, title, current classification, what would change and OCC's reason, "승인했을 것 / 거절했을 것" (would approve / would reject) buttons with an optional reject reason, a hint of the labels to add in Linear by hand, candidate counts, and a table of the last 7 days.
 - **OCC session**: each `/tick` runs `atcctl schedule brief`, reads up to 3 candidate FLIGHTs with `dispatch flight`, and drafts with `atcctl schedule draft CLASSIFY <FLIGHT> [--type X] [--wake Y] [--rating Z]… -- <reason>` or `schedule draft PRIORITIZE <FLIGHT> --priority 1-4 -- <reason>`. It drafts PRIORITIZE only when the body or comments give grounds. On `LIMIT` it stops drafting for that pass. Linear stays read-only (`occ/mcp-guard.mjs`).
 
@@ -265,8 +265,21 @@ Design: [docs/occ.md](docs/occ.md) sections 5–7. The OCC session drafts the Li
 |---|---|
 | `GET /api/schedule/brief` | Mode (`shadow`), open drafts with what each would change, drafts closed in the last 7 days, the S2 check, the open-draft limit, candidates, FLIGHT summaries |
 | `GET /api/schedule/ops/:id` | One SCHEDULE operation and the mode |
-| `POST /api/schedule/ops` | `{kind: CLASSIFY\|PRIORITIZE, flight, reason, type?, wake?, ratings?, priority?}` OCC draft. 409 at the open-draft limit |
+| `POST /api/schedule/ops` | OCC draft. `CLASSIFY` / `PRIORITIZE`: `{kind, flight, reason, type?, wake?, ratings?, priority?}`. `NEW`: `{kind: "NEW", title, body, project, reason, priority?, type?, wake?, ratings?, tail?, parent?, related?, blockedBy?}`; the op has `flight: null` and atc adds `similar: [{key, title}]`. 400 with the reason on bad input, 409 at the open-draft limit |
 | `POST /api/schedule/ops/:id/verdict` | `{verdict: agree\|disagree, reason?}` SUPERVISOR shadow verdict |
+
+## CHARTER DESK (request desk)
+
+The CHARTER DESK is OCC's request desk for work that is not on the schedule (Linear). The SUPERVISOR asks for it in the OCC session (a **CHARTER REQUEST**), and OCC drafts it as a SCHEDULE `NEW` operation: an **AD HOC FLIGHT**, a FLIGHT added outside the regular schedule. Rules for the session: "CHARTER DESK" in [occ/CLAUDE.en.md](occ/CLAUDE.en.md).
+
+```
+CHARTER REQUEST → AD HOC FLIGHT draft (S1: verdict in the SCHEDULE tab) → FILED (S2: Linear Todo) → ASSIGN → ENROUTE → ARRIVED
+```
+
+- Small fixes go straight to a team as **AD HOC** work, with no ticket. Work that needs a ticket goes to the OCC session. The Linear issue is created for real only from S2; in S1 the SUPERVISOR judges the draft and creates the issue by hand if wanted.
+- The body follows vocado's four sections (목표, 수정 허용 범위, 금지 사항, 완료 기준; English Goal / Outcome, Allowed changes or files, Forbidden, Acceptance or Done criteria also count). A `rating:SEC` issue also needs the Codex Engineering Task sections Allowed files (`### Allowed files / surfaces`), Forbidden changes, Invariants, Acceptance Criteria and Verification. The title is 1–120 characters, the project must be one on current tickets, `tail` a FLEET registration that is not retired, and `parent` / `related` / `blockedBy` keys in the FLIGHT list.
+- Duplicate search: OCC's reason must contain "중복 검색:" ("duplicate search:") with what it looked for. atc also lists up to 5 tickets with similar titles in `similar` (same normalized title, or 2+ shared words covering at least half of the shorter title). It searches only the snapshot, which holds issues updated in the last 45 days (plus issues linked to them), so an open issue untouched for longer than 45 days is not found.
+- CLI: `atcctl schedule draft NEW --title <t> --project <p> [--priority n] [--type X] [--wake Y] [--rating Z]… [--tail TEAM_X] [--parent K] [--related K]… [--blocked-by K]… --reason <reason> -- '<body>'`. The body comes after `--` because the OCC guard blocks heredocs and redirection; `\n` in it becomes a newline.
 
 ## Folder docs
 

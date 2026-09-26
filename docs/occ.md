@@ -9,7 +9,7 @@ atc splits into two control sessions, the way aviation does:
 
 In real aviation the flight dispatcher belongs to the airline's OCC, not to ATC. So DISPATCH (stage 2) moves into OCC, and OCC takes over the work the "President" session does by hand today.
 
-> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 built: SCHEDULE drafts in shadow operation for `CLASSIFY` and `PRIORITIZE` only (`server/schedule.ts`, `atcctl schedule brief|draft`, the SCHEDULE tab, OCC rules); at most 5 open drafts, and drafts expire after 3 days without a verdict. Other operations and S2 and later are design only. Decisions are listed under "Decisions" at the end.
+> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 built: SCHEDULE drafts in shadow operation for `CLASSIFY`, `PRIORITIZE` and `NEW` (`server/schedule.ts`, `atcctl schedule brief|draft`, the SCHEDULE tab, OCC rules). `NEW` is the CHARTER DESK: an AD HOC FLIGHT drafted from a CHARTER REQUEST, with body-section checks and a title-similarity duplicate search over the snapshot (issues updated in the last 45 days). At most 5 open drafts of any kind, and drafts expire after 3 days without a verdict. Other operations and S2 and later are design only. Decisions are listed under "Decisions" at the end.
 
 ## 1. Current facts
 
@@ -80,7 +80,7 @@ OCC never writes to Linear freely. It drafts **SCHEDULE operations**. Each one i
 
 ### 5.1 Where operations come from
 
-- **The SUPERVISOR's instructions**: "make a ticket for X" becomes a `NEW` draft.
+- **The SUPERVISOR's instructions (CHARTER DESK)**: a CHARTER REQUEST made directly in the OCC session ("make a ticket for X") becomes a `NEW` draft, an AD HOC FLIGHT (a FLIGHT added outside the regular schedule). Once approved and in Linear Todo (S2) it is FILED like any other FLIGHT. Small ticketless work handed straight to a team is AD HOC and never becomes a SCHEDULE operation. OCC never drafts `NEW` on its own initiative. Its duplicate search (section 5.3) covers atc's snapshot, which holds issues updated in the last 45 days.
 - **Team findings**: a CAPTAIN reports "found Y outside my scope" → `SPLIT`.
 - **PR reviews**: follow-up items in a review → `SPLIT`.
 - **atc signals**: done but still open (`CLOSE`), no priority (`PRIORITIZE`), a body-only prerequisite (`LINK`), neglected ENROUTE (the DISPATCH `RELEASE` case).
