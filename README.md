@@ -206,21 +206,29 @@ The atc server keeps an append-only log in `~/.local/state/atc/flight-recorder/Y
 
 **Stage 2 readiness check** (proposed criteria, `READINESS`): TOWER operated on 3 or more days, READBACK rate of 90% or more, median READBACK time of 5 minutes or less, 30% or fewer conflicts resolved within 5 minutes. With fewer than 5 CLEARANCEs or fewer than 3 resolved conflicts, it shows "not enough data".
 
-## DISPATCH (stage 2, currently 2a shadow operation)
+## DISPATCH (stage 2: 2a shadow operation, 2b approval operation behind a switch)
 
-Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server computes a plan for assigning FLIGHTs (Linear Todo tickets) to AIRCRAFT (TEAM sessions) (`server/dispatch.ts`) and records it as proposals (`server/proposals.ts`, `~/.local/state/atc/proposals.jsonl`). **Nothing is sent to anyone.**
+Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server computes a plan for assigning FLIGHTs (Linear Todo tickets) to AIRCRAFT (TEAM sessions) (`server/dispatch.ts`) and records it as proposals (`server/proposals.ts`, `~/.local/state/atc/proposals.jsonl`). The mode (`mode` in `dispatch.json`) is `shadow` by default: **nothing is sent to anyone.**
 
 - Proposals: `ASSIGN` (FLIGHT → AIRCRAFT, scored per factor: priority, days waiting, FLIGHTs it unblocks, team affinity, conflict risk) and `RELEASE` (a code-work FLIGHT ENROUTE for more than 3 days without a STAND). FLIGHTs blocked by an unfinished FLIGHT show as `HOLD_DEPARTURE`; excluded FLIGHTs are listed with the reason.
 - Limits: 1 FLIGHT per TEAM, concurrent AIRBORNE per AIRPORT (VCDO 4, others 2), 5 open ASSIGN and 5 open RELEASE proposals. The same pair is not proposed again within 24 hours; proposals become SUPERSEDED when the situation changes and EXPIRED after 24 hours.
 - Settings: `~/.local/state/atc/dispatch.json` (defaults when absent) — project → AIRPORT mapping, slots, weights, RELEASE threshold.
 - **DISPATCH tab**: the SUPERVISOR marks each proposal card "would approve / would reject". 20 or more decisions with 80% or more agreement meet the stage 2b (approval operation) check.
-- **DISPATCH session** (a session opened in the `dispatch/` folder, `/loop 10m /tick`): for each proposal without a note it reads the FLIGHT body and comments and adds a note and CAUTION (DB, security or rights work; waiting for a human decision; prerequisites written only in the body). It never decides, and SendMessage is denied in its permissions. It uses the same guard as TOWER.
+- **DISPATCH session** (a session opened in the `dispatch/` folder, `/loop 10m /tick`): for each proposal without a note it reads the FLIGHT body and comments and adds a note and CAUTION (DB, security or rights work; waiting for a human decision; prerequisites written only in the body). It never decides. It uses the same Bash guard as TOWER.
+- **2b approval operation** (`mode: approval`, switched from the DISPATCH tab): the SUPERVISOR approves or rejects proposals. For an approved ASSIGN, the DISPATCH session runs `dispatch release`, which marks it SENT and returns a fixed FLIGHT PLAN (`[DISPATCH D-0003] FLIGHT PLAN · BRAVO (TEAM_B)` …), and sends that text to the CAPTAIN. The CAPTAIN's `READBACK D-0003` makes it ACCEPTED, and when a STAND for the FLIGHT appears atc marks it DEPARTED. Approved, sent and accepted proposals reserve their AIRCRAFT and FLIGHT so they are not proposed twice. Approved RELEASEs are not sent; the SUPERVISOR tidies them up in Linear.
+- **send-guard** (`dispatch/send-guard.mjs`, PreToolUse on SendMessage): lets a message through only in approval mode, only for a SENT proposal, only to that proposal's CAPTAIN, and only if the text is exactly the FLIGHT PLAN atc generated. The hooks of both the TOWER and DISPATCH folders are fail-closed (`… || exit 2`), so a missing or failing hook blocks the tool.
+- Before turning 2b on, extend the READBACK line in the teams' CLAUDE.md to FLIGHT PLANs (`[DISPATCH D-xxxx]`). See "Turning on 2b" in the design.
 
 | API | What it does |
 |---|---|
-| `GET /api/dispatch/brief` | Current plan, open proposals, recent decisions, stage 2b check, FLIGHT summaries |
-| `POST /api/dispatch/proposals/:id/verdict` | `{verdict: agree\|disagree, reason?}` shadow verdict |
+| `GET /api/dispatch/brief` | Mode, current plan, open / in-flight / overdue / recent proposals, stage 2b and 3 checks, FLIGHT summaries |
+| `POST /api/dispatch/proposals/:id/verdict` | `{verdict: agree\|disagree, reason?}` shadow verdict (shadow mode only) |
 | `POST /api/dispatch/proposals/:id/note` | `{text, caution?}` DISPATCH review note |
+| `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR decision (approval mode only), `reject` takes `{reason?}` |
+| `POST /api/dispatch/proposals/:id/release` | Approved → SENT, returns `sendTo` and the FLIGHT PLAN (the same text again if already sent) |
+| `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, or decline with `{reason}` |
+| `GET /api/dispatch/proposals/:id` | One proposal and the mode (used by send-guard) |
+| `POST /api/dispatch/mode` | `{mode: shadow\|approval}` |
 | `GET /api/dispatch/flight/:key` | FLIGHT body and comments (Linear, read-only) |
 
 ## Folder docs
@@ -231,7 +239,7 @@ Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server com
 | `web/` | The ATC screen (Vite + React): tabs, themes, settings | [web/README.md](web/README.md) |
 | `hooks/` | Claim hook that records which worktree each session works in | [hooks/README.md](hooks/README.md) |
 | `controller/` | Working folder for the TOWER session (stage 1) | [CLAUDE.en.md](controller/CLAUDE.en.md) · [/tick](controller/.claude/skills/tick/SKILL.en.md) |
-| `dispatch/` | Working folder for the DISPATCH session (stage 2a) | [CLAUDE.en.md](dispatch/CLAUDE.en.md) · [/tick](dispatch/.claude/skills/tick/SKILL.en.md) |
+| `dispatch/` | Working folder for the DISPATCH session (stage 2a / 2b) | [CLAUDE.en.md](dispatch/CLAUDE.en.md) · [/tick](dispatch/.claude/skills/tick/SKILL.en.md) |
 | `deploy/` | systemd user service | [deploy/README.md](deploy/README.md) |
 | `docs/` | Design and conventions | [DISPATCH design](docs/dispatch.md) · [Naming rules](docs/naming.md) |
 

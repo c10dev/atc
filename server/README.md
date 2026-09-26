@@ -50,7 +50,7 @@ npm test           # node --test for server/**/*.test.ts, hooks and controller
 | `recorder.ts` | FLIGHT RECORDER: daily JSONL (`event`, `sample`, `dispatch`, `ack`), kept 30 days |
 | `metrics.ts` | Operating metrics and the stage 2 readiness check (pure `computeMetrics`) |
 | `dispatch.ts` | DISPATCH planning: candidates, slots, scores (pure `planDispatch`); settings in `dispatch.json` |
-| `proposals.ts` | DISPATCH proposal log (append-only JSONL), brief, verdicts and notes; proposals expire after 24 hours |
+| `proposals.ts` | DISPATCH proposal log (append-only JSONL), state transitions (shadow verdicts; approve → sent → accepted → departed), reservations, FLIGHT PLAN text, brief, stage 2b and 3 gates |
 
 Every `*.test.ts` next to a module is its unit test.
 
@@ -72,6 +72,11 @@ Every `*.test.ts` next to a module is its unit test.
 | `GET /api/dispatch/brief` | DISPATCH plan, open and recent proposals, 2b gate, FLIGHT summaries |
 | `POST /api/dispatch/proposals/:id/verdict` | SUPERVISOR's shadow verdict `{verdict: "agree" \| "disagree", reason?}` |
 | `POST /api/dispatch/proposals/:id/note` | DISPATCH review note `{text, caution?}` |
+| `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR decision in approval mode; `reject` takes `{reason?}` |
+| `POST /api/dispatch/proposals/:id/release` | Approved → SENT; returns `sendTo` and the FLIGHT PLAN text |
+| `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, or decline with `{reason}` |
+| `GET /api/dispatch/proposals/:id` | One proposal and the current mode (for send-guard) |
+| `POST /api/dispatch/mode` | Switch `{mode: "shadow" \| "approval"}` (saved in `dispatch.json`) |
 | `GET /api/dispatch/flight/:key` | Ticket body and comments from Linear (read-only) |
 
 ## State on disk

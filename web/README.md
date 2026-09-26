@@ -38,7 +38,7 @@ Tabs are addressed by URL hash; old bookmarks (`#map`, `#teams`, `#tickets`) sti
 | FIDS | `#board` | `views/Tickets.tsx` | A DEPARTURES board (TIME · FLIGHT · DESTINATION · AIRCRAFT · STAND · PRI · REMARKS) or a board by flight phase |
 | AIRPORTS | `#airports` | `views/Airports.tsx` | Repository registry: open, rename, close, reopen, delete; home and TRANSIENT aircraft |
 | METRICS | `#metrics` | `views/Metrics.tsx` | FLIGHT RECORDER metrics and the stage 2 readiness check |
-| DISPATCH | `#dispatch` | `views/Dispatch.tsx` | Stage 2a shadow proposals — shown only, never sent |
+| DISPATCH | `#dispatch` | `views/Dispatch.tsx` | Stage 2 proposals: shadow verdicts in 2a; approve / reject, IN FLIGHT (sent, READBACK, overdue) and the stage 3 check in 2b; mode switch with confirmation |
 
 Across the top: the ALERT ticker (`Ticker.tsx`, scrolls only when it overflows, pauses on hover or focus) and the handoff list.
 
