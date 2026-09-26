@@ -74,7 +74,7 @@ ATC 로고를 누르면 설정 창이 열린다(`SettingsPanel.tsx`, Esc나 바�
 | `src/aviation.ts` | 코드 이름 → 항공 용어, 비행 단계 색과 약호 |
 | `src/settings.ts` | 설정 저장소, 테마, 시각 표기 |
 | `src/SettingsPanel.tsx` | 설정 창 |
-| `src/SplitFlap.tsx` | Solari 스플릿 플랩 글자. 칸이 드럼(공백, A–Z, 0–9, `: - . /`) 순으로 최대 8판, 왼쪽부터 넘어간다 |
+| `src/SplitFlap.tsx` | Solari 스플릿 플랩 글자. 칸이 드럼(공백, A–Z, 0–9, `: - . /`) 순으로 최대 6판, 왼쪽부터 넘어간다. 판(타일)은 실제 판처럼 떨어지고, 판 없는 글자는 한 글자씩 떨어져 앉는다. 화면에 보이는 판만 움직인다 |
 | `src/Ticker.tsx` | 흐르는 ALERT 티커 |
 | `src/Starfield.tsx` | Night Sky 배경(30fps 제한, 탭이 가려지면 멈춤)과 오늘의 달 모양 아이콘 |
 | `src/ui.tsx` | 작은 공용 조각: AIRPORT 코드, OUTSTATION 표시, 세션 위치, 상태 점, 우선순위 표시 |

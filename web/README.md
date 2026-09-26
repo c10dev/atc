@@ -74,7 +74,7 @@ Themes are sets of CSS tokens under `:root[data-theme="…"]` in `styles.css`; `
 | `src/aviation.ts` | Code names → aviation terms, phase colors and codes |
 | `src/settings.ts` | Settings store, themes, clock formatting |
 | `src/SettingsPanel.tsx` | Settings panel |
-| `src/SplitFlap.tsx` | Solari split-flap characters: cells flip through the drum (space, A–Z, 0–9, `: - . /`), at most 8 flaps, left to right |
+| `src/SplitFlap.tsx` | Solari split-flap characters: cells turn through the drum (space, A–Z, 0–9, `: - . /`), at most 6 flaps, left to right. Tiles fall like real flaps; text without tiles drops in letter by letter. Only flaps on screen move |
 | `src/Ticker.tsx` | Scrolling alert ticker |
 | `src/Starfield.tsx` | Night Sky background (30 fps cap, pauses when hidden) and today's moon phase icon |
 | `src/ui.tsx` | Small shared pieces: AIRPORT code, OUTSTATION tag, session place, status dot, priority mark |
