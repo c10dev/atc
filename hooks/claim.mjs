@@ -22,13 +22,30 @@ function worktreeRoot(p) {
   return null;
 }
 
+// Bash는 경로를 언급만 해도(ls, cat, grep) 잡히지 않도록 `cd <dir>`와 `git -C <dir>`의 대상만 본다.
+const ARG = String.raw`(?:"([^"]+)"|'([^']+)'|([^\s;&|()]+))`;
+const BASH_TARGETS = [
+  new RegExp(String.raw`(?:^|[;&|(\s])cd\s+(?:--\s+)?${ARG}`, "g"),
+  // -C는 서브커맨드 앞 전역 옵션일 때만 (git commit -C <commit>은 제외)
+  new RegExp(String.raw`\bgit(?:\s+(?:-c\s+\S+|--?[\w-]+(?:=\S+)?))*?\s+-C\s+${ARG}`, "g"),
+];
+
+function bashTargets(command, cwd) {
+  const out = [];
+  for (const re of BASH_TARGETS) {
+    for (const m of command.matchAll(re)) {
+      const arg = (m[1] ?? m[2] ?? m[3]).replace(/^~(?=\/|$)/, homedir());
+      out.push(resolve(typeof cwd === "string" ? cwd : "/", arg));
+    }
+  }
+  return out;
+}
+
 function candidatePaths(input) {
   const ti = input.tool_input || {};
   const out = [];
   for (const k of ["file_path", "notebook_path"]) if (typeof ti[k] === "string") out.push(ti[k]);
-  if (input.tool_name === "Bash" && typeof ti.command === "string") {
-    for (const m of ti.command.matchAll(/(?:^|[\s'"=:(])(\/[^\s'"`;|&<>()]+)/g)) out.push(m[1]);
-  }
+  if (input.tool_name === "Bash" && typeof ti.command === "string") out.push(...bashTargets(ti.command, input.cwd));
   if (typeof input.cwd === "string") out.push(input.cwd);
   return out.filter((p) => p.startsWith("/home/")).slice(0, MAX_PATHS);
 }
