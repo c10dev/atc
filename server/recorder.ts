@@ -23,7 +23,8 @@ export type RecordLine =
   | { t: string; kind: "event"; epoch: string; event: TrafficEvent }
   | ({ t: string; kind: "sample" } & Sample)
   | { t: string; kind: "ack"; consumer: string }
-  | { t: string; kind: "dispatch"; op: string; id: string };
+  | { t: string; kind: "dispatch"; op: string; id: string }
+  | { t: string; kind: "schedule"; op: string; id: string };
 
 const DIR = join(config.stateDir, "flight-recorder");
 export const SAMPLE_MS = 5 * 60_000;

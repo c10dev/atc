@@ -195,6 +195,7 @@ button {
 .brand-wrap {
   position: relative;
   display: flex;
+  flex: none;
   border-right: 1px solid var(--line);
 }
 .brand {
@@ -246,8 +247,16 @@ button {
   letter-spacing: 0.14em;
   color: var(--cyan);
 }
+/* 탭이 넘치면 줄 안에서 가로 스크롤. 선택 탭 밑줄(bottom:-1px)이 잘리지 않게 아래로 1px 늘린다. */
 .tabs {
   display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  padding-bottom: 1px;
+  margin-bottom: -1px;
 }
 .tab {
   position: relative;
@@ -1497,6 +1506,25 @@ a.ticket:hover {
   }
 }
 
+/* 탭이 헤더 한 줄에 다 안 들어가는 폭(로고+탭+수치 ≈ 1540px): 탭을 헤더 둘째 줄로 */
+@media (min-width: 861px) and (max-width: 1560px) {
+  .console {
+    height: auto;
+    flex-wrap: wrap;
+  }
+  .brand {
+    height: var(--console-h);
+  }
+  .tabs {
+    order: 1;
+    flex-basis: 100%;
+    border-top: 1px solid var(--line);
+  }
+  .tab {
+    padding: var(--space-2) var(--space-4);
+  }
+}
+
 @media (max-width: 860px) {
   :root {
     --gutter: var(--space-4);
@@ -1514,12 +1542,18 @@ a.ticket:hover {
   }
   .tabs {
     width: 100%;
+    flex-wrap: wrap;
+    overflow: visible;
+    padding-bottom: 0;
+    margin-bottom: 0;
     border-top: 1px solid var(--line);
   }
+  /* 한 줄에 4개씩(night 테마의 gap까지 들어가게 22%) */
   .tab {
-    flex: 1;
+    flex: 1 0 22%;
     align-items: center;
     padding: var(--space-2);
+    border-bottom: 1px solid var(--line);
   }
   .tab:last-child {
     border-right: 0;

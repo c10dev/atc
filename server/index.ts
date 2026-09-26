@@ -11,6 +11,7 @@ import { mountMetrics } from "./metrics.ts";
 import { DISPATCH_MS, mountDispatch, runDispatch } from "./proposals.ts";
 import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
+import { mountSchedule } from "./schedule.ts";
 import { mountSettings } from "./settings.ts";
 import { buildSnapshot } from "./snapshot.ts";
 
@@ -59,6 +60,7 @@ mountAirports(app);
 mountMetrics(app);
 mountDispatch(app, getSnapshot);
 mountFleet(app, getSnapshot);
+mountSchedule(app, getSnapshot);
 mountSettings(app);
 
 app.get("/api/events", (c) =>

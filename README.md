@@ -45,6 +45,9 @@ To see Linear tickets too, put `LINEAR_API_KEY` in `.env.local`. For always-on o
 | FIDS (`#board`) | Ticket cards in Linear state columns, with a badge for the team holding each one |
 | Metrics (`#metrics`) | Operating metrics from the FLIGHT RECORDER, the stage 2 readiness check, 5-minute sample trends, a daily table |
 | AIRPORT (`#airports`) | Repository registry. Open, rename, close, reopen and delete AIRPORTs. Home AIRCRAFT and AIRCRAFT visiting from another airport (TRANSIENT) |
+| FLEET (`#fleet`) | Every AIRCRAFT with its status, current FLIGHTs, crew, TYPE RATINGS, ROUTES and TARGETS. Edit profiles, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
+| DISPATCH (`#dispatch`) | The current plan, proposal cards with OCC notes and would-approve / would-reject verdicts (approve / reject in 2b), HELD, IN FLIGHT, excluded FLIGHTs, stage 2b and 3 checks |
+| SCHEDULE (`#schedule`) | OCC SCHEDULE drafts (S1 shadow): the S2 gate panel, open draft cards with would-approve / would-reject verdicts, candidate counts, a last-7-days table |
 
 ## Glossary
 
@@ -248,16 +251,33 @@ Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server com
 | `POST /api/dispatch/mode` | `{mode: shadow\|approval}` |
 | `GET /api/dispatch/flight/:key` | FLIGHT body and comments (Linear, read-only) |
 
+## SCHEDULE (OCC S1: shadow drafts)
+
+Design: [docs/occ.md](docs/occ.md) sections 5–7. The OCC session drafts the Linear changes it would make as SCHEDULE operations (`server/schedule.ts`, `~/.local/state/atc/schedule.jsonl`, append-only). S1 is shadow operation: **nothing is written to Linear.** The SUPERVISOR marks each draft, and the agreement rate decides when S2 (approved drafts written through linear-guard) can start.
+
+- Operations: `CLASSIFY` (FLIGHT TYPE, WAKE and TYPE RATING labels, [docs/fleet.md](docs/fleet.md) section 4; labels are only added) and `PRIORITIZE` (priority 1 Urgent … 4 Low). Each has an id (`S-0001`), the FLIGHT, the payload and OCC's one-line reason.
+- Candidates: Todo or Backlog FLIGHTs with no `type:` or `wake:` label (CLASSIFY) or no priority (PRIORITIZE), minus those with an open draft of the same kind. A draft that would change nothing is refused.
+- Limits: 5 open drafts (409 past that). A new draft for the same FLIGHT and kind supersedes the old one. atc closes an open draft as SUPERSEDED when the FLIGHT leaves Todo / Backlog or Linear already shows the change, and as EXPIRED after 3 days without a verdict.
+- **SCHEDULE tab** (after DISPATCH): the S2 check (20 or more decided drafts, 80% or more agreement), open draft cards with the FLIGHT, title, current classification, what would change and OCC's reason, "승인했을 것 / 거절했을 것" (would approve / would reject) buttons with an optional reject reason, a hint of the labels to add in Linear by hand, candidate counts, and a table of the last 7 days.
+- **OCC session**: each `/tick` runs `atcctl schedule brief`, reads up to 3 candidate FLIGHTs with `dispatch flight`, and drafts with `atcctl schedule draft CLASSIFY <FLIGHT> [--type X] [--wake Y] [--rating Z]… -- <reason>` or `schedule draft PRIORITIZE <FLIGHT> --priority 1-4 -- <reason>`. It drafts PRIORITIZE only when the body or comments give grounds. On `LIMIT` it stops drafting for that pass. Linear stays read-only (`occ/mcp-guard.mjs`).
+
+| API | What it does |
+|---|---|
+| `GET /api/schedule/brief` | Mode (`shadow`), open drafts with what each would change, drafts closed in the last 7 days, the S2 check, the open-draft limit, candidates, FLIGHT summaries |
+| `GET /api/schedule/ops/:id` | One SCHEDULE operation and the mode |
+| `POST /api/schedule/ops` | `{kind: CLASSIFY\|PRIORITIZE, flight, reason, type?, wake?, ratings?, priority?}` OCC draft. 409 at the open-draft limit |
+| `POST /api/schedule/ops/:id/verdict` | `{verdict: agree\|disagree, reason?}` SUPERVISOR shadow verdict |
+
 ## Folder docs
 
 | Folder | What's there | Docs |
 |---|---|---|
 | (root) | Working rules for sessions that change atc's code: worktrees, verification, git, terms | [CLAUDE.en.md](CLAUDE.en.md) |
-| `server/` | API server: snapshot loop, sources, CONTROLLER and DISPATCH APIs, FLIGHT RECORDER | [server/README.md](server/README.md) |
+| `server/` | API server: snapshot loop, sources, CONTROLLER, DISPATCH and SCHEDULE APIs, FLIGHT RECORDER | [server/README.md](server/README.md) |
 | `web/` | The ATC screen (Vite + React): tabs, themes, settings | [web/README.md](web/README.md) |
 | `hooks/` | Claim hook that records which worktree each session works in | [hooks/README.md](hooks/README.md) |
 | `controller/` | Working folder for the TOWER session (stage 1) | [CLAUDE.en.md](controller/CLAUDE.en.md) · [/tick](controller/.claude/skills/tick/SKILL.en.md) |
-| `occ/` | Working folder for the OCC session (DISPATCH, flight following) | [CLAUDE.en.md](occ/CLAUDE.en.md) · [/tick](occ/.claude/skills/tick/SKILL.en.md) |
+| `occ/` | Working folder for the OCC session (DISPATCH, SCHEDULE drafts, flight following) | [CLAUDE.en.md](occ/CLAUDE.en.md) · [/tick](occ/.claude/skills/tick/SKILL.en.md) |
 | `deploy/` | systemd user service | [deploy/README.md](deploy/README.md) |
 | `docs/` | Design and conventions | [DISPATCH design](docs/dispatch.md) · [OCC design](docs/occ.md) · [FLEET design](docs/fleet.md) · [Naming rules](docs/naming.md) |
 | — | Changelog | [CHANGELOG.md](CHANGELOG.md) |
@@ -289,6 +309,7 @@ atc/
 │   ├── events.ts           # snapshot differences → events
 │   ├── metrics.ts          # operating metrics and stage 2 check (metrics.test.ts)
 │   ├── proposals.ts        # DISPATCH proposal log and API (proposals.test.ts)
+│   ├── schedule.ts         # OCC SCHEDULE draft log and API (schedule.test.ts)
 │   ├── recorder.ts         # FLIGHT RECORDER log
 │   ├── occupancy.ts        # HANDOFF and conflict verdicts (occupancy.test.ts)
 │   ├── snapshot.ts         # merges sources + computes alerts
@@ -297,7 +318,7 @@ atc/
 ├── occ/                    # working folder for the OCC session (CLAUDE.md, /tick, settings, send-guard, mcp-guard)
 ├── controller/             # working folder for the TOWER session
 │   ├── CLAUDE.md           # role and decision rules
-│   ├── atcctl.mjs          # atc CLI for the CONTROLLER
+│   ├── atcctl.mjs          # atc CLI for TOWER and OCC (atcctl.test.mjs)
 │   ├── guard.mjs           # hook that restricts Bash (guard.test.mjs)
 │   └── .claude/            # permissions and hook settings, /tick skill
 ├── deploy/atc.service      # systemd user service

@@ -25,7 +25,7 @@ npm run typecheck
 - `useSnapshot.ts`가 `/api/events`에 `EventSource`를 열고 최신 `Snapshot`을 들고 있다. 머리글에 연결 상태(실시간·연결 중·끊김)를 보인다.
 - `derive.ts`가 스냅샷에서 조회용 색인을 만든다(티켓 → 워크트리 → 점유 → 세션, 세션 위치, 정렬).
 - 타입은 서버에서 그대로 가져온다(`../../server/model.ts` 등). 그래서 화면과 API가 어긋나지 않는다.
-- METRICS와 DISPATCH는 자기 API(`/api/metrics`, `/api/dispatch/…`)를 따로 부르고, 1분마다(스냅샷 시각 기준) 다시 부른다.
+- METRICS, DISPATCH, SCHEDULE은 자기 API(`/api/metrics`, `/api/dispatch/…`, `/api/schedule/brief`)를 따로 부르고, 1분마다(스냅샷 시각 기준) 다시 부른다.
 
 ## 화면
 
@@ -38,7 +38,11 @@ npm run typecheck
 | FIDS | `#board` | `views/Tickets.tsx` | DEPARTURES 안내판(TIME · FLIGHT · DESTINATION · AIRCRAFT · STAND · PRI · REMARKS) 또는 비행 단계별 보드 |
 | AIRPORTS | `#airports` | `views/Airports.tsx` | 저장소 등록부: 개설·이름 변경·폐쇄·재개·삭제, 소속 AIRCRAFT와 TRANSIENT |
 | METRICS | `#metrics` | `views/Metrics.tsx` | FLIGHT RECORDER 운용 지표와 2단계 진입 점검 |
+| FLEET | `#fleet` | `views/Fleet.tsx` | AIRCRAFT마다 상태, 지금 FLIGHT, 프로필(CREW, TYPE RATING, ROUTE, TARGET). ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
 | DISPATCH | `#dispatch` | `views/Dispatch.tsx` | 2단계 제안: 2a에서는 그림자 판정, 2b에서는 승인·거절, IN FLIGHT(SENT, READBACK, 늦음)와 3단계 점검. 확인 창을 거치는 모드 전환 |
+| SCHEDULE | `#schedule` | `views/Schedule.tsx` | OCC S1 초안(그림자 운용): S2 진입 점검 패널, 열린 초안 카드(FLIGHT, 지금 분류, 바뀔 것, OCC 근거)와 "승인했을 것 / 거절했을 것"(거절은 사유 칩과 메모), Linear에서 손으로 바꿀 것 안내, 후보, RECENT(최근 7일 닫힌 초안) |
+
+머리글은 1560px 넘는 폭에서 로고·탭·수치를 한 줄에 둔다. 861~1560px에서는 탭이 머리글 둘째 줄로 내려가고, 860px 이하에서는 탭이 여러 줄로 감긴다.
 
 위쪽에는 ALERT 티커(`Ticker.tsx`, 폭을 넘칠 때만 흐르고 마우스를 올리거나 포커스하면 멈춤)와 HANDOFF 목록이 있다.
 
