@@ -131,6 +131,14 @@ export interface Plan {
 const DAY = 86_400_000;
 export const DONE_STATES = new Set(["completed", "canceled", "duplicate"]);
 
+// ASSIGN 후보에서 빠지는 이유. planner와 syncOps(SUPERSEDED 사유)가 같은 문구를 쓰도록 한 곳에 둔다.
+// 갈라지면 화면의 SUPERSEDED 사유가 실제 이유와 달라진다.
+export const NO_PRIORITY_WHY = "우선순위 없음 — 사람이 정할 때까지 배정하지 않음";
+export const hasStandWhy = () => "이미 STAND가 있음";
+export const stateChangedWhy = (state: string) => `FLIGHT 상태가 바뀜(${state})`;
+export const noProjectWhy = (project: string | null) => (project ? `배정 제외 프로젝트: ${project}` : "프로젝트 없음");
+export const excludedLabelWhy = (label: string) => `라벨 ${label} (다른 운항사)`;
+
 // TAIL ASSIGNMENT(`tail:TEAM_X` 라벨, docs/fleet.md): 사람(또는 OCC)이 그 FLIGHT를 맡을 AIRCRAFT를 정해 둔 것.
 // 있으면 그 팀에만 제안한다. 두 배정자(사람의 직접 배정과 DISPATCH)가 같은 FLIGHT를 다른 팀에 주는 일을 막는다.
 // `lane:`은 옛 이름이라 2026-10-10까지 같이 읽고, 제외 사유에 바꾸라고 적는다.
@@ -194,12 +202,12 @@ export function planDispatch(
     }
     const label = t.labels.find((l) => cfg.excludeLabels.includes(l));
     if (label) {
-      excluded.push({ flight: t.key, reason: `라벨 ${label} (다른 운항사)` });
+      excluded.push({ flight: t.key, reason: excludedLabelWhy(label) });
       continue;
     }
     const airport = t.project ? cfg.projectAirports[t.project] : undefined;
     if (!airport) {
-      excluded.push({ flight: t.key, reason: t.project ? `배정 제외 프로젝트: ${t.project}` : "프로젝트 없음" });
+      excluded.push({ flight: t.key, reason: noProjectWhy(t.project) });
       continue;
     }
     if (!openAirports.has(airport)) {
@@ -207,7 +215,7 @@ export function planDispatch(
       continue;
     }
     if (flightsWithStand.has(t.key)) {
-      excluded.push({ flight: t.key, reason: "이미 STAND가 있음" });
+      excluded.push({ flight: t.key, reason: hasStandWhy() });
       continue;
     }
     const held = reserved.flights.get(t.key);
@@ -218,7 +226,7 @@ export function planDispatch(
     }
     // 우선순위가 비어 있으면 사람이 아직 언제 할지 정하지 않은 것이다
     if (!t.priority) {
-      excluded.push({ flight: t.key, reason: "우선순위 없음 — 사람이 정할 때까지 배정하지 않음" });
+      excluded.push({ flight: t.key, reason: NO_PRIORITY_WHY });
       continue;
     }
     // 목록에 없는 선행 FLIGHT는 45일 창 밖(대개 끝난 것)이라 막지 않는 것으로 본다

@@ -7,13 +7,18 @@ import {
   DONE_STATES,
   type DispatchConfig,
   type Factor,
+  excludedLabelWhy,
+  hasStandWhy,
   loadDispatchConfig,
+  NO_PRIORITY_WHY,
+  noProjectWhy,
   type Plan,
   PRIORITY_NAME,
   planDispatch,
   readFlightHistory,
   type Reserved,
   saveDispatchMode,
+  stateChangedWhy,
 } from "./dispatch.ts";
 import type { Snapshot, Ticket } from "./model.ts";
 import { record } from "./recorder.ts";
@@ -174,15 +179,25 @@ export function syncOps(
   // 계획이 이미 FLIGHT를 뺀 이유(상위 이슈, HOLD, 라벨, STAND 있음 …). SUPERSEDED 사유로 그대로 쓴다:
   // "더 나은 배정으로 바뀜"만으로는 그 FLIGHT가 왜 빠졌는지 화면에서 알 수 없다.
   const excludedWhy = new Map(plan.excluded.map((e) => [e.flight, e.reason]));
+  const standOfTicket = new Set(s.workspaces.map((w) => w.ticketKey).filter(Boolean) as string[]);
   const age = (p: Proposal) => now - Date.parse(p.statusAt);
 
   const why = (p: Proposal): string => {
     const t = stateOf.get(p.flight);
-    if (p.kind === "RELEASE") return t && t.stateType !== "started" ? `FLIGHT 상태가 바뀜(${t.state})` : "STAND가 생겼거나 기준에서 벗어남";
-    if (!t || t.stateType !== "unstarted") return `FLIGHT 상태가 바뀜(${t?.state ?? "목록에 없음"})`;
+    if (p.kind === "RELEASE") return t && t.stateType !== "started" ? stateChangedWhy(t.state) : "STAND가 생겼거나 기준에서 벗어남";
+    if (!t || t.stateType !== "unstarted") return stateChangedWhy(t?.state ?? "목록에 없음");
     const ac = p.aircraft ? aircraftOf.get(p.aircraft) : undefined;
     if (!ac || !ac.available) return `AIRCRAFT 불가: ${ac?.reason ?? "세션 없음"}`;
-    return excludedWhy.get(p.flight) ?? "더 나은 배정으로 바뀜";
+    // 계획의 제외 목록을 먼저 믿는다. 거기에 없을 때만 planner의 규칙을 직접 확인한다 —
+    // plan.excluded는 "지금 후보인 FLIGHT"의 사유만 담아서, 이미 후보에서 빠진 FLIGHT는 여기 없다.
+    const fromPlan = excludedWhy.get(p.flight);
+    if (fromPlan) return fromPlan;
+    if (standOfTicket.has(p.flight)) return hasStandWhy();
+    if (!t.priority) return NO_PRIORITY_WHY;
+    if (!(t.project && cfg.projectAirports[t.project])) return noProjectWhy(t.project);
+    const label = t.labels.find((l) => cfg.excludeLabels.includes(l));
+    if (label) return excludedLabelWhy(label);
+    return "더 나은 배정으로 바뀜";
   };
   // 승인됐지만 아직 안 보낸 ASSIGN이 여전히 유효한가(FLIGHT가 Todo이고 AIRCRAFT가 배정 가능)
   const stillValid = (p: Proposal) =>

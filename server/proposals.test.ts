@@ -188,6 +188,29 @@ test("SUPERSEDED 사유: 계획이 그 FLIGHT를 뺀 이유가 있으면 그대�
   ]);
 });
 
+test("SUPERSEDED 사유: 계획의 제외 목록에 없어도 planner 규칙을 확인해 밝힌다", () => {
+  // plan.excluded에는 "지금 후보인" FLIGHT의 사유만 담긴다. 이미 후보에서 빠진 FLIGHT가
+  // "더 나은 배정으로 바뀜"으로 뭉뚱그려지면 화면에서 실제 이유를 알 수 없다.
+  const mk = (key: string, over: Partial<Ticket> = {}) => ({ ...t(key), project: "Beta Readiness", priority: 3, labels: [], ...over }) as Ticket;
+  const ac = { id: "b", name: "TEAM_B", callsign: "BRAVO", airport: "VCDO", available: true, reason: "PARKED", reserved: null };
+  const cases: [string, Ticket[], string][] = [
+    // STAND가 이미 있음 (배정할 필요가 없어진 것)
+    ["VOC-30", [mk("VOC-30")], "이미 STAND가 있음"],
+    // 우선순위 없음 (사람이 정할 때까지)
+    ["VOC-31", [mk("VOC-31", { priority: 0 })], "우선순위 없음 — 사람이 정할 때까지 배정하지 않음"],
+    // 프로젝트가 매핑 밖
+    ["VOC-32", [mk("VOC-32", { project: "Somewhere Else" })], "배정 제외 프로젝트: Somewhere Else"],
+    // 다른 운항사 라벨
+    ["VOC-33", [mk("VOC-33", { labels: ["symphony-pilot"] })], "라벨 symphony-pilot (다른 운항사)"],
+  ];
+  for (const [flight, tickets, want] of cases) {
+    const p = fold([create("D-0009", flight, "b", 30)]);
+    const workspaces = flight === "VOC-30" ? [ws(flight)] : [];
+    const ops = syncOps(p, planOf({ aircraft: [ac] }), { tickets, workspaces }, DEFAULT_DISPATCH_CONFIG, NOW, 1);
+    assert.deepEqual(ops.map((o) => `${o.op}:${o.id}:${"reason" in o ? o.reason : ""}`), [`supersede:D-0009:${want}`], flight);
+  }
+});
+
 test("FLIGHT PLAN 문구: 콜사인·FLIGHT·AIRPORT·PRIORITY·제목·URL·메모·READBACK 요청", () => {
   const [p] = fold([create("D-0007", "VOC-193", "b", 10), { op: "note", id: "D-0007", at: iso(5), text: "DB 권한 작업", caution: true }]);
   const msg = formatFlightPlan({ ...p, airport: "VCDO" }, { title: "권한 정리", url: "https://linear.app/x/VOC-193", priority: 2 }, "TEAM_B");
