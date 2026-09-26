@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_DISPATCH_CONFIG, type Plan } from "./dispatch.ts";
 import type { Ticket } from "./model.ts";
-import { fold, gateOf, type Op, type Proposal, syncOps } from "./proposals.ts";
+import { canApply, fold, formatFlightPlan, gate3Of, gateOf, type Op, overdueOf, type Proposal, reservedOf, syncOps } from "./proposals.ts";
 import { toTicket } from "./sources/linear.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
@@ -13,8 +13,8 @@ const t = (key: string, stateType: Ticket["stateType"] = "unstarted", state = "T
 const planOf = (over: Partial<Plan> = {}): Plan => ({
   at: iso(0), assign: [], release: [], hold: [], excluded: [], slots: [],
   aircraft: [
-    { id: "b", name: "TEAM_B", callsign: "BRAVO", airport: "VCDO", available: true, reason: "PARKED" },
-    { id: "c", name: "TEAM_C", callsign: "CHARLIE", airport: "VCDO", available: false, reason: "AIRBORNE" },
+    { id: "b", name: "TEAM_B", callsign: "BRAVO", airport: "VCDO", available: true, reason: "PARKED", reserved: null },
+    { id: "c", name: "TEAM_C", callsign: "CHARLIE", airport: "VCDO", available: false, reason: "AIRBORNE", reserved: null },
   ],
   ...over,
 });
@@ -47,7 +47,7 @@ test("동기화: 새 짝은 만들고, 빠진 짝은 사유와 함께 SUPERSEDED
   ]);
   const plan = planOf({ assign: [assign("VOC-1", "b"), assign("VOC-5", "b")] });
   const tickets = [t("VOC-1"), t("VOC-2"), t("VOC-3", "started", "In Progress"), t("VOC-4"), t("VOC-5")];
-  const ops = syncOps(existing, plan, { tickets }, DEFAULT_DISPATCH_CONFIG, NOW, 4);
+  const ops = syncOps(existing, plan, { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 4);
   assert.deepEqual(
     ops.map((o) => `${o.op}:${o.id}${"reason" in o ? `:${o.reason}` : ""}${o.op === "create" ? `:${o.flight}` : ""}`),
     [
@@ -63,14 +63,14 @@ test("동기화: 24시간 안에 거절한 짝은 다시 제안하지 않고, �
   const existing = fold([create("D-0001", "VOC-1", "b", 60), { op: "verdict", id: "D-0001", at: iso(50), verdict: "disagree", reason: null }]);
   const many = ["VOC-1", "VOC-2", "VOC-3", "VOC-4"].map((f) => assign(f, "b"));
   const cfg = { ...DEFAULT_DISPATCH_CONFIG, slots: { ...DEFAULT_DISPATCH_CONFIG.slots, openProposals: 2 } };
-  const ops = syncOps(existing, planOf({ assign: many }), { tickets: [] }, cfg, NOW, 1);
+  const ops = syncOps(existing, planOf({ assign: many }), { tickets: [], workspaces: [] }, cfg, NOW, 1);
   assert.deepEqual(ops.map((o) => (o.op === "create" ? o.flight : o.op)), ["VOC-2", "VOC-3"]);
 });
 
 test("RELEASE 제안: 같은 FLIGHT는 한 번, 기준에서 벗어나면 SUPERSEDED", () => {
   const existing = fold([create("D-0001", "VOC-9", null, 30, "RELEASE")]);
   const release = [{ kind: "RELEASE" as const, flight: "VOC-8", airport: "VCDO", days: 4, score: 4, factors: [] }];
-  const ops = syncOps(existing, planOf({ release }), { tickets: [t("VOC-9", "started", "In Progress")] }, DEFAULT_DISPATCH_CONFIG, NOW, 1);
+  const ops = syncOps(existing, planOf({ release }), { tickets: [t("VOC-9", "started", "In Progress")], workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1);
   assert.deepEqual(
     ops.map((o) => `${o.op}:${o.op === "create" ? o.flight : o.id}`),
     ["supersede:D-0001", "create:VOC-8"],
@@ -98,4 +98,94 @@ test("Linear 관계: relations의 blocks는 내가 막음, inverseRelations의 b
     { blocks: ticket.blocks, blockedBy: ticket.blockedBy, related: ticket.related, labels: ticket.labels, project: ticket.project },
     { blocks: ["VOC-12"], blockedBy: ["VOC-7"], related: ["VOC-1", "VOC-3"], labels: ["symphony-pilot"], project: "Beta Readiness" },
   );
+});
+
+// ── 2b 승인 운용 ──
+
+const ws = (ticketKey: string) => ({ path: `/w/${ticketKey}`, ticketKey }) as import("./model.ts").Workspace;
+
+test("전이: approve → send → accept → depart 순서만, 건너뛰거나 되돌리는 op는 무시", () => {
+  const [p] = fold([
+    create("D-0001", "VOC-1", "b", 60),
+    { op: "send", id: "D-0001", at: iso(59), message: "건너뜀" }, // proposed에서 send 불가
+    { op: "approve", id: "D-0001", at: iso(50) },
+    { op: "verdict", id: "D-0001", at: iso(49), verdict: "agree", reason: null }, // approved에서 verdict 불가
+    { op: "send", id: "D-0001", at: iso(40), message: "FLIGHT PLAN" },
+    { op: "accept", id: "D-0001", at: iso(35) },
+    { op: "decline", id: "D-0001", at: iso(34), reason: "늦음" }, // accepted에서 decline 불가
+    { op: "depart", id: "D-0001", at: iso(20), stand: "/w/VOC-1" },
+  ]);
+  assert.equal(p.status, "departed");
+  assert.equal(p.message, "FLIGHT PLAN");
+  assert.equal(p.departedStand, "/w/VOC-1");
+  assert.equal(p.decidedAt, iso(50));
+  assert.deepEqual(Object.keys(p.timeline), ["proposed", "approved", "sent", "accepted", "departed"]);
+  assert.equal(p.reason, null);
+});
+
+test("RELEASE는 승인해도 보내지 않는다(send 불가)", () => {
+  const [p] = fold([create("D-0001", "VOC-9", null, 30, "RELEASE"), { op: "approve", id: "D-0001", at: iso(20) }]);
+  assert.equal(p.status, "approved");
+  assert.equal(canApply(p, "send"), false);
+});
+
+test("예약: 진행 중인 ASSIGN의 AIRCRAFT·FLIGHT는 reservedOf에 잡힌다", () => {
+  const ps = fold([
+    create("D-0001", "VOC-1", "b", 60), { op: "approve", id: "D-0001", at: iso(50) },
+    create("D-0002", "VOC-2", "c", 60), { op: "reject", id: "D-0002", at: iso(50), reason: null },
+    create("D-0003", "VOC-3", null, 60, "RELEASE"), { op: "approve", id: "D-0003", at: iso(50) },
+  ]);
+  const r = reservedOf(ps);
+  assert.deepEqual([...r.aircraft], [["b", "D-0001"]]);
+  assert.deepEqual([...r.flights], [["VOC-1", "D-0001"]]);
+});
+
+test("동기화(2b): 승인 후 무효면 SUPERSEDED, 보낸 것은 그대로, STAND가 생기면 DEPARTED, 오래되면 EXPIRED", () => {
+  const existing = fold([
+    create("D-0001", "VOC-1", "b", 90), { op: "approve", id: "D-0001", at: iso(80) }, // FLIGHT가 ENROUTE로 → supersede
+    create("D-0002", "VOC-2", "c", 90), { op: "approve", id: "D-0002", at: iso(80) }, { op: "send", id: "D-0002", at: iso(70), message: "m" }, // c는 AIRBORNE이지만 보냈으니 유지
+    create("D-0003", "VOC-3", "b", 90), { op: "approve", id: "D-0003", at: iso(80) }, { op: "send", id: "D-0003", at: iso(70), message: "m" }, { op: "accept", id: "D-0003", at: iso(60) }, // STAND 생김 → depart
+    create("D-0004", "VOC-4", "b", 26 * 60), { op: "approve", id: "D-0004", at: iso(25 * 60) }, { op: "send", id: "D-0004", at: iso(25 * 60) , message: "m" }, // 25시간 READBACK 없음 → expire
+  ]);
+  const tickets = [t("VOC-1", "started", "In Progress"), t("VOC-2"), t("VOC-3"), t("VOC-4")];
+  const ops = syncOps(existing, planOf(), { tickets, workspaces: [ws("VOC-3")] }, DEFAULT_DISPATCH_CONFIG, NOW, 4);
+  assert.deepEqual(
+    ops.map((o) => `${o.op}:${o.id}${"reason" in o && o.reason ? `:${o.reason}` : ""}`),
+    ["supersede:D-0001:FLIGHT 상태가 바뀜(In Progress)", "depart:D-0003", "expire:D-0004:24시간 동안 READBACK 없음"],
+  );
+});
+
+test("FLIGHT PLAN 문구: 콜사인·FLIGHT·AIRPORT·PRIORITY·제목·URL·메모·READBACK 요청", () => {
+  const [p] = fold([create("D-0007", "VOC-193", "b", 10), { op: "note", id: "D-0007", at: iso(5), text: "DB 권한 작업", caution: true }]);
+  const msg = formatFlightPlan({ ...p, airport: "VCDO" }, { title: "권한 정리", url: "https://linear.app/x/VOC-193", priority: 2 }, "TEAM_B");
+  assert.equal(
+    msg,
+    [
+      "[DISPATCH D-0007] FLIGHT PLAN · BRAVO (TEAM_B)",
+      "FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High",
+      "권한 정리",
+      "https://linear.app/x/VOC-193",
+      "DISPATCH 메모: CAUTION · DB 권한 작업",
+      '— 맡으면 이 메시지에 "READBACK D-0007", 못 맡으면 사유로 답장해 주세요.',
+    ].join("\n"),
+  );
+});
+
+test("늦음과 3단계 점검: READBACK 비율·중앙값·DEPARTED 비율", () => {
+  const ops: Op[] = [];
+  for (let i = 1; i <= 10; i++) {
+    const id = `D-${String(i).padStart(4, "0")}`;
+    ops.push(create(id, `VOC-${i}`, "b", 120), { op: "approve", id, at: iso(110) }, { op: "send", id, at: iso(100), message: "m" });
+    if (i <= 9) ops.push({ op: "accept", id, at: iso(100 - i) });
+    if (i <= 8) ops.push({ op: "depart", id, at: iso(50), stand: "/w" });
+  }
+  const ps = fold(ops);
+  const g = gate3Of(ps);
+  assert.equal(g.dispatched, 10);
+  assert.equal(g.readbackRate, 0.9);
+  assert.equal(g.readbackMedianMin, 5);
+  assert.equal(g.departedRate, 8 / 9);
+  assert.equal(g.ready, true);
+  // D-0010은 100분째 READBACK 없음, D-0009는 READBACK 뒤 91분째 STAND 없음
+  assert.deepEqual(overdueOf(ps, NOW), ["D-0009", "D-0010"]);
 });

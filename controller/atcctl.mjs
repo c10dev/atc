@@ -15,7 +15,12 @@ DISPATCH (2a 그림자 운용: 제안 검토만, 판정은 SUPERVISOR)
   node atcctl.mjs dispatch brief            계획·열린 제안·2b 점검 (JSON)
   node atcctl.mjs dispatch flight <VOC-193> FLIGHT 본문·댓글 (Linear 읽기 전용)
   node atcctl.mjs dispatch note <D-0003> [--caution] -- <메모>
-                                            제안에 검토 메모를 단다(CAUTION 표시 선택)`;
+                                            제안에 검토 메모를 단다(CAUTION 표시 선택)
+  node atcctl.mjs dispatch release <D-0003> (2b) 승인된 제안을 sent로 바꾸고 SEND TO와 FLIGHT PLAN 출력
+  node atcctl.mjs dispatch readback <D-0003>
+                                            (2b) CAPTAIN이 READBACK함
+  node atcctl.mjs dispatch decline <D-0003> -- <사유>
+                                            (2b) CAPTAIN이 맡지 못함`;
 
 async function call(method, path, body) {
   const res = await fetch(BASE + path, {
@@ -67,6 +72,18 @@ try {
     const caution = args.slice(2, sep < 0 ? undefined : sep).includes("--caution");
     const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/note`, { text, caution });
     console.log(`${r.proposal.id} 메모${r.proposal.caution ? " · CAUTION" : ""}`);
+  } else if (cmd === "dispatch" && args[0] === "release" && args[1]) {
+    const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/release`);
+    console.log(`SEND TO: ${r.sendTo}\n---\n${r.message}`);
+  } else if (cmd === "dispatch" && args[0] === "readback" && args[1]) {
+    const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/accept`);
+    console.log(`${r.proposal.id} READBACK 확인`);
+  } else if (cmd === "dispatch" && args[0] === "decline" && args[1]) {
+    const sep = args.indexOf("--");
+    const reason = sep < 0 ? "" : args.slice(sep + 1).join(" ");
+    if (!reason) throw new Error("-- 뒤에 CAPTAIN의 사유가 필요함");
+    const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/decline`, { reason });
+    console.log(`${r.proposal.id} DECLINED`);
   } else if ((cmd === "readback" || cmd === "cancel") && args[0]) {
     const r = await call("POST", `/api/clearances/${encodeURIComponent(args[0])}/${cmd}`);
     console.log(`${r.clearance.id} ${cmd === "readback" ? "READBACK 확인" : "취소"}`);

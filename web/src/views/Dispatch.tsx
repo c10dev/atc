@@ -6,7 +6,8 @@ import { timeAgo } from "../derive.ts";
 import { PriorityMark } from "../ui.tsx";
 import "./Dispatch.css";
 
-// 2단계 DISPATCH — 2a 그림자 운용. 제안은 화면에만 보이고 아무에게도 보내지 않는다.
+// 2단계 DISPATCH. shadow(2a): 제안은 화면에만 보이고 아무에게도 보내지 않는다.
+// approval(2b): SUPERVISOR가 승인하면 DISPATCH 세션이 FLIGHT PLAN을 CAPTAIN에게 보낸다.
 
 interface FlightInfo {
   title: string;
@@ -21,9 +22,22 @@ interface Brief {
   at: string;
   plan: Plan;
   open: Proposal[];
+  inFlight: Proposal[];
+  overdue: string[];
   recent: Proposal[];
   flights: Record<string, FlightInfo>;
   gate: { decided: number; agreed: number; agreement: number | null; target: { decided: number; agreement: number }; ready: boolean };
+  gate3: {
+    dispatched: number;
+    readBack: number;
+    departed: number;
+    declined: number;
+    readbackRate: number | null;
+    readbackMedianMin: number | null;
+    departedRate: number | null;
+    target: { dispatched: number; readback: number; departed: number };
+    ready: boolean;
+  };
   config: DispatchConfig;
 }
 
@@ -31,9 +45,17 @@ const statusText: Record<Proposal["status"], string> = {
   proposed: "PROPOSED",
   agreed: "승인했을 것",
   disagreed: "거절했을 것",
+  approved: "APPROVED",
+  rejected: "REJECTED",
+  sent: "SENT · READBACK 대기",
+  accepted: "READBACK",
+  declined: "DECLINED",
+  departed: "DEPARTED",
   superseded: "SUPERSEDED",
   expired: "EXPIRED",
 };
+
+const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 
 async function post(path: string, body: unknown) {
   const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -60,14 +82,33 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
     load();
   }, [load, refreshKey]);
 
+  // shadow: 그림자 판정(verdict), approval: 실제 승인·거절
   const verdict = async (p: Proposal, v: "agree" | "disagree") => {
     let reason: string | null = null;
     if (v === "disagree") {
       reason = prompt(`${p.id} 거절 사유(선택)`) ?? null;
       if (reason === null && !confirm("사유 없이 거절로 기록할까요?")) return;
     }
+    if (v === "agree" && brief?.mode === "approval" && p.kind === "ASSIGN" && !confirm(`${p.id}를 승인하면 DISPATCH가 ${p.aircraftName}에게 FLIGHT PLAN을 보냅니다. 승인할까요?`)) return;
     try {
-      await post(`/api/dispatch/proposals/${p.id}/verdict`, { verdict: v, reason });
+      if (brief?.mode === "approval") await post(`/api/dispatch/proposals/${p.id}/${v === "agree" ? "approve" : "reject"}`, { reason });
+      else await post(`/api/dispatch/proposals/${p.id}/verdict`, { verdict: v, reason });
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const switchMode = async () => {
+    if (!brief) return;
+    const next = brief.mode === "shadow" ? "approval" : "shadow";
+    const text =
+      next === "approval"
+        ? `2b(승인 운용)를 켤까요?\n\n켜면 승인한 제안이 DISPATCH 세션을 거쳐 CAPTAIN(팀 세션)에게 FLIGHT PLAN으로 나갑니다.\n2b 진입 점검: 판정 ${brief.gate.decided}/${brief.gate.target.decided}건, 합의율 ${pct(brief.gate.agreement)} (기준 ${brief.gate.target.agreement * 100}%) — ${brief.gate.ready ? "충족" : "아직 미달"}\n팀 세션의 CLAUDE.md에 [DISPATCH D-xxxx] READBACK 규칙이 있는지도 확인하세요.`
+        : "2a(그림자 운용)로 돌아갈까요? 이미 보낸 FLIGHT PLAN은 그대로 두고, 새로 보내지는 않습니다.";
+    if (!confirm(text)) return;
+    try {
+      await post("/api/dispatch/mode", { mode: next });
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -84,8 +125,11 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       <div className="toolbar">
         <span className="muted">
           <span className={`dp-mode m-${brief.mode}`}>{brief.mode === "shadow" ? "SHADOW" : "APPROVAL"}</span> 5분마다 계획
-          {brief.mode === "shadow" && " · 아무에게도 보내지 않음"} · 계산 {timeAgo(brief.at, now)}
+          {brief.mode === "shadow" ? " · 아무에게도 보내지 않음" : " · 승인한 제안은 CAPTAIN에게 FLIGHT PLAN으로 나감"} · 계산 {timeAgo(brief.at, now)}
         </span>
+        <button className={`dp-btn dp-mode-switch${brief.mode === "shadow" ? "" : " back"}`} onClick={switchMode}>
+          {brief.mode === "shadow" ? "2b 승인 운용 켜기" : "2a 그림자 운용으로"}
+        </button>
       </div>
       {error && (
         <p className="dp-error" role="alert">
@@ -94,6 +138,42 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       )}
 
       <Gate gate={gate} />
+      {(brief.mode === "approval" || brief.gate3.dispatched > 0) && <Gate3 gate={brief.gate3} />}
+
+      {brief.inFlight.length > 0 && (
+        <>
+          <h2 className="label">
+            IN FLIGHT <em>승인 뒤 진행 중</em>
+          </h2>
+          <table className="dp-table dp-inflight">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>FLIGHT</th>
+                <th>AIRCRAFT</th>
+                <th>상태</th>
+                <th>언제부터</th>
+              </tr>
+            </thead>
+            <tbody>
+              {brief.inFlight.map((p) => (
+                <tr key={p.id} className={`s-${p.status}${brief.overdue.includes(p.id) ? " is-overdue" : ""}`}>
+                  <td className="mono">{p.id}</td>
+                  <td className="mono" title={flights[p.flight]?.title}>
+                    {flightNumber(p.flight)}
+                  </td>
+                  <td>{p.aircraftName}</td>
+                  <td className="dp-result">
+                    {statusText[p.status]}
+                    {brief.overdue.includes(p.id) && <span className="dp-overdue">{p.status === "sent" ? "NO READBACK" : "NO DEPARTURE"}</span>}
+                  </td>
+                  <td className="faint">{timeAgo(p.statusAt, now)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
 
       <div className="dp-slots" aria-label="슬롯">
         {plan.slots.map((s) => (
@@ -115,7 +195,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {assign.length ? (
         <div className="dp-cards">
           {assign.map((p) => (
-            <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={verdict} />
+            <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={verdict} mode={brief.mode} />
           ))}
         </div>
       ) : (
@@ -128,7 +208,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {release.length ? (
         <div className="dp-cards">
           {release.map((p) => (
-            <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={verdict} />
+            <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={verdict} mode={brief.mode} />
           ))}
         </div>
       ) : (
@@ -139,10 +219,10 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
         <div>
           <h2 className="label">AIRCRAFT</h2>
           <ul className="dp-list">
-            {[...plan.aircraft].sort((a, b) => Number(b.available) - Number(a.available) || a.callsign.localeCompare(b.callsign)).map((a) => (
-              <li key={a.id} className={a.available ? "is-available" : ""}>
+            {[...plan.aircraft].sort((a, b) => Number(b.available && !b.reserved) - Number(a.available && !a.reserved) || a.callsign.localeCompare(b.callsign)).map((a) => (
+              <li key={a.id} className={a.available && !a.reserved ? "is-available" : ""}>
                 <b>{a.callsign}</b> <span className="faint">{a.name}</span>
-                <span className="dp-list-note">{a.available ? `가능 · ${a.reason}` : a.reason}</span>
+                <span className="dp-list-note">{a.reserved ? `진행 중인 제안 ${a.reserved}` : a.available ? `가능 · ${a.reason}` : a.reason}</span>
               </li>
             ))}
           </ul>
@@ -192,7 +272,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
                 <td>{p.aircraftName ?? "—"}</td>
                 <td className="dp-result">{statusText[p.status]}</td>
                 <td className="dp-reason">{p.reason ?? "—"}</td>
-                <td className="faint">{timeAgo(p.decidedAt ?? p.at, now)}</td>
+                <td className="faint">{timeAgo(p.statusAt, now)}</td>
               </tr>
             ))}
           </tbody>
@@ -241,16 +321,55 @@ function Gate({ gate }: { gate: Brief["gate"] }) {
   );
 }
 
+function Gate3({ gate }: { gate: Brief["gate3"] }) {
+  const mark = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족" } as const;
+  const few = gate.dispatched < 3;
+  const rows = [
+    { label: "보낸 FLIGHT PLAN", value: `${gate.dispatched}건`, target: `≥ ${gate.target.dispatched}건`, state: gate.dispatched >= gate.target.dispatched ? "pass" : "fail" },
+    {
+      label: `READBACK 비율 · 중앙값 ${gate.readbackMedianMin === null ? "—" : `${gate.readbackMedianMin}분`}`,
+      value: pct(gate.readbackRate),
+      target: `≥ ${gate.target.readback * 100}%`,
+      state: few ? "insufficient" : gate.readbackRate !== null && gate.readbackRate >= gate.target.readback ? "pass" : "fail",
+    },
+    {
+      label: "READBACK 뒤 DEPARTED 비율",
+      value: pct(gate.departedRate),
+      target: `≥ ${gate.target.departed * 100}%`,
+      state: few ? "insufficient" : gate.departedRate !== null && gate.departedRate >= gate.target.departed ? "pass" : "fail",
+    },
+  ] as const;
+  return (
+    <div className="dp-gate">
+      <h2 className="label">
+        STAGE 3 <em>ATFM 진입 점검 · DECLINED {gate.declined} · {gate.ready ? "준비됨" : "아직"}</em>
+      </h2>
+      <ul>
+        {rows.map((r) => (
+          <li key={r.label} className={`s-${r.state}`}>
+            <span className="dp-gate-label">{r.label}</span>
+            <span className="dp-gate-value">{r.value}</span>
+            <span className="dp-gate-target">기준 {r.target}</span>
+            <span className="dp-gate-state">{mark[r.state]}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function Card({
   p,
   flight,
   now,
   onVerdict,
+  mode,
 }: {
   p: Proposal;
   flight: FlightInfo | undefined;
   now: number;
   onVerdict: (p: Proposal, v: "agree" | "disagree") => void;
+  mode: DispatchConfig["mode"];
 }) {
   const max = Math.max(1, ...p.factors.map((f) => Math.abs(f.points)));
   return (
@@ -300,10 +419,10 @@ function Card({
       )}
       <div className="dp-actions">
         <button className="dp-btn agree" onClick={() => onVerdict(p, "agree")}>
-          승인했을 것
+          {mode === "approval" ? "승인" : "승인했을 것"}
         </button>
         <button className="dp-btn disagree" onClick={() => onVerdict(p, "disagree")}>
-          거절했을 것
+          {mode === "approval" ? "거절" : "거절했을 것"}
         </button>
       </div>
     </article>
