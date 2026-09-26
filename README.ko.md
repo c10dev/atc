@@ -14,7 +14,7 @@ Claude Code·Codex 세션, git 워크트리, Linear 티켓을 레이더 한 화�
 
 [English](README.md) · **한국어**
 
-[이륙 준비](#-ready-for-takeoff) · [화면](#화면) · [용어](#용어) · [실행](#실행) · [폴더 구조](#폴더-구조)
+[이륙 준비](#-ready-for-takeoff) · [화면](#화면) · [용어](#용어) · [실행](#실행) · [폴더별 문서](#폴더별-문서) · [폴더 구조](#폴더-구조)
 
 </div>
 
@@ -219,6 +219,20 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 | `POST /api/dispatch/proposals/:id/verdict` | `{verdict: agree\|disagree, reason?}` 그림자 판정 |
 | `POST /api/dispatch/proposals/:id/note` | `{text, caution?}` DISPATCH 검토 메모 |
 | `GET /api/dispatch/flight/:key` | FLIGHT 본문·댓글(Linear 읽기 전용) |
+
+## 폴더별 문서
+
+| 폴더 | 들어 있는 것 | 문서 |
+|---|---|---|
+| `server/` | API 서버: 스냅샷 반복, 소스, CONTROLLER·DISPATCH API, FLIGHT RECORDER | [server/README.ko.md](server/README.ko.md) |
+| `web/` | ATC 화면(Vite + React): 탭, 테마, 설정 | [web/README.ko.md](web/README.ko.md) |
+| `hooks/` | 세션이 어느 워크트리에서 일하는지 기록하는 점유 hook | [hooks/README.ko.md](hooks/README.ko.md) |
+| `controller/` | TOWER 세션 작업 폴더(1단계) | [CLAUDE.md](controller/CLAUDE.md) · [/tick](controller/.claude/skills/tick/SKILL.md) |
+| `dispatch/` | DISPATCH 세션 작업 폴더(2a단계) | [CLAUDE.md](dispatch/CLAUDE.md) · [/tick](dispatch/.claude/skills/tick/SKILL.md) |
+| `deploy/` | systemd 사용자 서비스 | [deploy/README.ko.md](deploy/README.ko.md) |
+| `docs/` | 설계와 규칙 | [DISPATCH 설계](docs/dispatch.ko.md) · [이름 규칙](docs/naming.ko.md) |
+
+폴더마다 영어판이 옆에 있다(`README.md`, `*.md`, 세션 폴더는 `*.en.md`).
 
 ## 폴더 구조
 

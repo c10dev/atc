@@ -14,7 +14,7 @@ Claude Code and Codex sessions, git worktrees and Linear tickets on one radar sc
 
 **English** · [한국어](README.ko.md)
 
-[Ready for takeoff](#-ready-for-takeoff) · [Screens](#screens) · [Glossary](#glossary) · [Running](#running) · [Project layout](#project-layout)
+[Ready for takeoff](#-ready-for-takeoff) · [Screens](#screens) · [Glossary](#glossary) · [Running](#running) · [Folder docs](#folder-docs) · [Project layout](#project-layout)
 
 </div>
 
@@ -221,6 +221,20 @@ Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server com
 | `POST /api/dispatch/proposals/:id/verdict` | `{verdict: agree\|disagree, reason?}` shadow verdict |
 | `POST /api/dispatch/proposals/:id/note` | `{text, caution?}` DISPATCH review note |
 | `GET /api/dispatch/flight/:key` | FLIGHT body and comments (Linear, read-only) |
+
+## Folder docs
+
+| Folder | What's there | Docs |
+|---|---|---|
+| `server/` | API server: snapshot loop, sources, CONTROLLER and DISPATCH APIs, FLIGHT RECORDER | [server/README.md](server/README.md) |
+| `web/` | The ATC screen (Vite + React): tabs, themes, settings | [web/README.md](web/README.md) |
+| `hooks/` | Claim hook that records which worktree each session works in | [hooks/README.md](hooks/README.md) |
+| `controller/` | Working folder for the TOWER session (stage 1) | [CLAUDE.en.md](controller/CLAUDE.en.md) · [/tick](controller/.claude/skills/tick/SKILL.en.md) |
+| `dispatch/` | Working folder for the DISPATCH session (stage 2a) | [CLAUDE.en.md](dispatch/CLAUDE.en.md) · [/tick](dispatch/.claude/skills/tick/SKILL.en.md) |
+| `deploy/` | systemd user service | [deploy/README.md](deploy/README.md) |
+| `docs/` | Design and conventions | [DISPATCH design](docs/dispatch.md) · [Naming rules](docs/naming.md) |
+
+Each has a Korean version next to it (`README.ko.md`, `*.ko.md`; for the session folders the Korean `CLAUDE.md` / `SKILL.md` are the originals the sessions load).
 
 ## Project layout
 
