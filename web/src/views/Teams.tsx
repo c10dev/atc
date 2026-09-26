@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Claim, Session, Snapshot } from "../../../server/model.ts";
+import type { Claim, Clearance, Session, Snapshot } from "../../../server/model.ts";
 import {
   type AircraftStatus,
   aircraftStatus,
@@ -52,7 +52,15 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
             </h2>
             <div className="bay-rail">
               {sessions.map((s) => (
-                <Strip key={s.id} session={s} status={bay} idx={idx} now={now} nameOf={nameOf} />
+                <Strip
+                  key={s.id}
+                  session={s}
+                  status={bay}
+                  idx={idx}
+                  now={now}
+                  nameOf={nameOf}
+                  clearances={snapshot.clearances.filter((c) => c.to === s.id)}
+                />
               ))}
             </div>
           </div>
@@ -68,12 +76,14 @@ function Strip({
   idx,
   now,
   nameOf,
+  clearances,
 }: {
   session: Session;
   status: AircraftStatus;
   idx: Index;
   now: number;
   nameOf: (id: string) => string;
+  clearances: Clearance[];
 }) {
   const claims = activeFirst(idx.claimsBySession.get(s.id) ?? []);
   const sign = callsign(s);
@@ -93,6 +103,7 @@ function Strip({
           {sign !== s.name && `${s.name} · `}
           <SessionPlace session={s} idx={idx} /> · {timeAgo(s.lastActiveAt, now)}
         </div>
+        <ClearanceStamps clearances={clearances} now={now} />
       </div>
       <div className="strip-legs">
         {claims.length ? (
@@ -170,6 +181,31 @@ function Strip({
         )}
       </div>
     </article>
+  );
+}
+
+const OVERDUE_MS = 10 * 60_000;
+const RECENT_READBACK_MS = 30 * 60_000;
+
+// 관제 지시: 복창 대기(파랑), 10분 넘게 미복창(주황), 최근 30분 안에 복창 받음(점선)
+function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: number }) {
+  const shown = clearances.filter(
+    (c) => !c.cancelledAt && (!c.readbackAt || now - Date.parse(c.readbackAt) < RECENT_READBACK_MS),
+  );
+  if (!shown.length) return null;
+  return (
+    <div className="sub">
+      {shown.map((c) => {
+        const overdue = !c.readbackAt && now - Date.parse(c.at) > OVERDUE_MS;
+        const tone = c.readbackAt ? "dashed" : overdue ? "amber" : "blue";
+        const state = c.readbackAt ? "복창" : overdue ? "미복창" : "복창 대기";
+        return (
+          <span key={c.id} className={`stamp ${tone}`} title={`${c.text}\n${zulu(c.at)} 발부 · ${state}`}>
+            {c.id} {c.type} · {state}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 

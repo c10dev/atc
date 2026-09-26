@@ -92,6 +92,42 @@ export interface Alert {
   ticketKey?: string;
 }
 
+// 관제 지시. 관제사 세션이 atc에 기록하고 팀 세션에 메시지로 보낸다. 팀이 복창하면 readbackAt이 찍힌다.
+export type ClearanceType = "TRAFFIC" | "HOLD" | "CONTINUE" | "LAND" | "REPORT" | "INFO";
+
+export interface Clearance {
+  id: string; // "C-0007"
+  at: string;
+  to: string; // sessionId
+  toName: string; // 보낼 때의 세션 이름 (SendMessage 주소)
+  type: ClearanceType;
+  stand: string | null; // 워크스페이스 경로
+  flight: string | null; // "VOC-191"
+  text: string;
+  readbackAt: string | null;
+  cancelledAt: string | null;
+}
+
+export type TrafficEventKind =
+  | "alert.raised"
+  | "alert.cleared"
+  | "handoff"
+  | "landing.requested"
+  | "landing.left"
+  | "session.lost";
+
+// 스냅샷 사이의 변화. 관제사가 "지난번 이후 무엇이 바뀌었나"를 읽는 단위.
+export interface TrafficEvent {
+  id: number;
+  at: string;
+  kind: TrafficEventKind;
+  alertKind?: AlertKind;
+  workspacePath?: string;
+  ticketKey?: string;
+  sessionIds?: string[];
+  message?: string;
+}
+
 export interface Snapshot {
   at: string;
   linear: { enabled: boolean; error: string | null; fetchedAt: string | null };
@@ -103,4 +139,5 @@ export interface Snapshot {
   claims: Claim[];
   handoffs: Handoff[];
   alerts: Alert[];
+  clearances: Clearance[]; // 복창 대기 중이거나 최근 24시간 안의 지시
 }

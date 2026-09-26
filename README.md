@@ -104,6 +104,30 @@ journalctl --user -u atc -f           # 로그
 - 추정 항적(대화 기록 추정) 점유는 판정에 쓰지 않는다.
 - hook을 끄려면 settings.json에서 해당 항목을 지우면 된다. 기록 폴더는 지워도 된다.
 
+## 관제사 (1단계, 조언 모드)
+
+`controller/` 폴더에서 연 Claude 세션이 관제사(TOWER)가 된다. atc 레이더를 읽고 팀 세션에 지시를 보낸다. 결정은 관제사가, 기록과 표시는 atc가 한다.
+
+```
+1. Claude Desktop에서 /home/c10/projects/atc/controller 폴더로 새 세션을 열고 이름을 TOWER로 바꾼다
+   (처음 한 번 폴더 신뢰 확인이 뜬다)
+2. /loop 3m /tick
+```
+
+- 역할·판단 기준: [controller/CLAUDE.md](controller/CLAUDE.md), 한 바퀴 절차: `controller/.claude/skills/tick`.
+- 관제사는 조종하지 않는다: Edit·Write는 권한에서 빠져 있고, Bash는 `guard.mjs`가 `node atcctl.mjs …`와 `jq` 외에는 막는다(리다이렉션·명령 치환 포함).
+- 지시 흐름: `atcctl issue`가 atc에 지시를 기록하고 정해진 문구를 돌려준다 → 관제사가 SendMessage로 팀 세션에 보낸다 → 팀이 `READBACK C-0007`로 답하면 관제사가 `atcctl readback`. 운항 스트립에 복창 대기(파랑)·미복창 10분(주황)·복창(점선)으로 보인다.
+- 팀 세션과 관제사 세션의 권한 모드(자동 승인 여부)가 다르면 메시지가 사용자 승인 대기로 잡힐 수 있다.
+
+| API | 하는 일 |
+|---|---|
+| `GET /api/controller/brief?consumer=controller` | 지난 ack 이후 이벤트 + 현재 상태(열린 경보, 착륙 대기열, 미복창 지시, 교통) |
+| `POST /api/controller/ack` | `{cursor}` 처리 완료 표시 (`~/.local/state/atc/consumers/`) |
+| `POST /api/clearances` | `{to, type, stand?, flight?, text}` 지시 기록, 보낼 문구 반환 |
+| `POST /api/clearances/:id/readback` · `/cancel` | 복창 확인 · 취소 |
+
+이벤트(`server/events.ts`)는 스냅샷 사이의 차이다: 경보 발생·해제, 관제 이양, 착륙 대기열(`ATC_LANDING_STATE`, 기본 `Ready to Merge`) 진입·이탈, 점유 중이던 세션 종료. 서버가 막 떠서 Linear·git을 다 읽기 전의 스냅샷과는 비교하지 않는다. 지시 기록은 `~/.local/state/atc/clearances.jsonl`(추가만 함).
+
 ## 폴더 구조
 
 ```
@@ -120,11 +144,20 @@ atc/
 │   │   └── linear.ts       # Linear GraphQL, 1분마다
 │   ├── model.ts            # Session / Workspace / Ticket / Claim / Alert
 │   ├── airports.ts         # 저장소 → 공항 코드 (airports.test.ts)
+│   ├── callsign.ts         # 콜사인·편명 (화면과 공용)
+│   ├── clearances.ts       # 관제 지시·복창 기록
+│   ├── controller.ts       # 관제사 API·브리핑 (controller.test.ts)
+│   ├── events.ts           # 스냅샷 차이 → 이벤트
 │   ├── occupancy.ts        # 이양·충돌 판정 (occupancy.test.ts)
 │   ├── snapshot.ts         # 소스 병합 + 경고 계산
 │   └── index.ts            # /api/snapshot, /api/events
 ├── web/src/                # Vite + React. 연결 / 팀 / 티켓 화면
 ├── airports.json           # 저장소별 공항 코드
+├── controller/             # 관제사 세션 작업 폴더
+│   ├── CLAUDE.md           # 역할·판단 기준
+│   ├── atcctl.mjs          # 관제사용 atc CLI
+│   ├── guard.mjs           # Bash 제한 hook (guard.test.mjs)
+│   └── .claude/            # 권한·hook 설정, /tick 스킬
 ├── deploy/atc.service      # systemd 사용자 서비스
 └── docs/naming.md
 ```

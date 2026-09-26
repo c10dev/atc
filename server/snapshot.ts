@@ -1,6 +1,7 @@
 import { config } from "./config.ts";
 import type { Alert, Claim, Session, Snapshot, Ticket } from "./model.ts";
 import { assignAirports } from "./airports.ts";
+import { recentClearances } from "./clearances.ts";
 import { type Occupancy, resolveOccupancy } from "./occupancy.ts";
 import { inferTranscriptClaim, readClaudeSessions, readHookClaims } from "./sources/claude.ts";
 import { readCodex } from "./sources/codex.ts";
@@ -90,6 +91,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     claims,
     handoffs: occupancy.handoffs,
     alerts: buildAlerts(sessions, workspaces, tickets, claims, occupancy),
+    clearances: recentClearances(),
   };
 }
 

@@ -20,6 +20,8 @@ export const config = {
   claimTtlMs: Number(env.ATC_CLAIM_TTL_MIN || 180) * 60_000,
   // 앞 세션이 이만큼 안에서 손을 떼면 이양, 둘이 이보다 오래 겹치면 충돌.
   handoffGraceMs: Number(env.ATC_HANDOFF_GRACE_MIN || 5) * 60_000,
+  // 이 Linear 상태에 들어온 티켓이 착륙(머지) 대기열이 된다.
+  landingState: env.ATC_LANDING_STATE || "Ready to Merge",
   linearApiKey: env.LINEAR_API_KEY || "",
   linearTeamKey: (env.LINEAR_TEAM_KEY || "VOC").toUpperCase(),
 };

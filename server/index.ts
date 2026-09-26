@@ -3,6 +3,8 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { config } from "./config.ts";
+import { mountController } from "./controller.ts";
+import { diffSnapshots, EventLog } from "./events.ts";
 import type { Snapshot } from "./model.ts";
 import { buildSnapshot } from "./snapshot.ts";
 
@@ -11,11 +13,13 @@ const TICK_MS = 2_000;
 let current: Snapshot | null = null;
 let signature = "";
 const listeners = new Set<(s: Snapshot) => void>();
+const eventLog = new EventLog();
 
 async function tick() {
   try {
     const next = await buildSnapshot();
     const sig = JSON.stringify({ ...next, at: null });
+    eventLog.push(diffSnapshots(current, next));
     current = next;
     if (sig !== signature) {
       signature = sig;
@@ -29,7 +33,10 @@ async function tick() {
 
 const app = new Hono();
 
-app.get("/api/snapshot", async (c) => c.json(current ?? (current = await buildSnapshot())));
+const getSnapshot = async () => current ?? (current = await buildSnapshot());
+
+app.get("/api/snapshot", async (c) => c.json(await getSnapshot()));
+mountController(app, getSnapshot, eventLog);
 
 app.get("/api/events", (c) =>
   streamSSE(c, async (stream) => {
