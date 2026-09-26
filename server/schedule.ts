@@ -486,6 +486,15 @@ export function gateOf(ops: ScheduleOp[]) {
   };
 }
 
+// OCC 보정용 예시: 최근 SUPERVISOR 판정(사유 있는 것 먼저)과 OCC가 냈던 초안. 같은 실수를 되풀이하지 않게 초안 쓰기 전에 본다.
+// NEW의 본문·비슷한 FLIGHT는 빼고 분류·우선순위만 남긴다.
+export function occExamplesOf(ops: ScheduleOp[]) {
+  return examplesOf(ops.map((s) => ({ s, human: humanOf(s) }))).map(({ s, human }) => {
+    const { body: _b, similar: _s, ...proposed } = s.payload as NewPayload;
+    return { id: s.id, kind: s.kind, flight: s.flight, proposed, draft: s.reason, verdict: human!.verdict, reason: human!.reason };
+  });
+}
+
 // CROSSCHECK 브리핑: mark가 없는 열린 초안과 보정용 최근 SUPERVISOR 판정
 export function crosscheckBriefOf(ops: ScheduleOp[], changes: Record<string, string[]> = {}) {
   const pending = ops.filter((s) => s.status === "draft" && !s.crosscheck);
@@ -555,7 +564,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       }),
     );
     const changes = Object.fromEntries([...open, ...inProgress].map((x) => [x.id, changesOf(x.kind, x.payload, x.flight ? byKey.get(x.flight) : undefined)]));
-    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, flights, crosscheck: crosscheckBriefOf(ops, changes) });
+    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes) });
   });
 
   app.get("/api/schedule/ops/:id", async (c) => {
