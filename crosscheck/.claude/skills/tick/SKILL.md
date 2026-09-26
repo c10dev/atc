@@ -14,6 +14,7 @@ description: CROSSCHECK 한 바퀴 — 규정이 바뀌었는지 확인하고, m
    - `node ../controller/atcctl.mjs dispatch flight <FLIGHT key>`로 본문과 댓글을 읽는다. NEW 초안은 FLIGHT가 없으니 `schedule brief`의 그 초안 `payload`(본문, `similar`)를 본다.
    - 본문·댓글·OCC 메모에 PR 조건이 있으면 CLAUDE.md의 "PR 사실 확인"대로 `gh pr view <N> --repo <owner/name> --json state,mergedAt,title`로 확인한다. 저장소는 AIRPORT 표에서 찾는다. 쓰는 gh 명령은 쓰지 않는다.
    - CLAUDE.md의 "판정 순서"대로 상태 → 이미 끝났는지 → 선행 조건 → 우선순위 → 대상별 내용을 본다. OCC의 `note`·`reason`은 참고만 한다.
+   - CLASSIFY·NEW 초안이 있으면 그 바퀴에 먼저 `../docs/fleet.md`를 Read로 읽고(4.1 FLIGHT TYPE, 4.2 WAKE, 4.3 TYPE RATING), 이유에 해당 기준을 인용한다.
 4. DISPATCH 제안이면 `node ../controller/atcctl.mjs dispatch crosscheck <D-xxxx> agree|disagree -- '<이유 한 줄>'`.
 5. SCHEDULE 초안이면 `node ../controller/atcctl.mjs schedule crosscheck <S-xxxx> agree|disagree -- '<이유 한 줄>'`.
    - 409(열린 건이 아님, HOLD 중)가 나오면 그 사이 SUPERVISOR가 판정했거나 상황이 바뀐 것이다. 다시 시도하지 않는다.

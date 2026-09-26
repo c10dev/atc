@@ -16,6 +16,9 @@
       "SendMessage",
       "Agent",
       "Artifact"
+    ],
+    "additionalDirectories": [
+      "../docs"
     ]
   },
   "hooks": {
@@ -36,6 +39,16 @@
           {
             "type": "command",
             "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../occ/mcp-guard.mjs\" --read-only || exit 2",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/read-guard.mjs\" || exit 2",
             "timeout": 5
           }
         ]
