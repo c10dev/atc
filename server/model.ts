@@ -68,6 +68,16 @@ export interface Ticket {
   blocks: string[]; // 이 FLIGHT가 막고 있는 FLIGHT key
   blockedBy: string[]; // 이 FLIGHT를 막고 있는 FLIGHT key
   related: string[];
+  parent: string | null; // 상위 이슈 key (Linear parent)
+  children: string[]; // 하위 이슈 key (Linear children)
+}
+
+// 상위 이슈(하위 이슈를 묶는 컨테이너). Linear의 children이 있거나 다른 FLIGHT의 parent로 지목된 것.
+// 이런 FLIGHT는 그 자체로 작업 대상이 아니다: 배정하지 않고, 방치(RELEASE·NO CONTACT)로도 보지 않는다.
+export function parentKeysOf(tickets: Ticket[]): Set<string> {
+  const keys = new Set(tickets.filter((t) => t.children.length).map((t) => t.key));
+  for (const t of tickets) if (t.parent) keys.add(t.parent);
+  return keys;
 }
 
 export interface TicketColumn {

@@ -4,6 +4,7 @@ import type { Context, Hono } from "hono";
 import { config } from "./config.ts";
 import { callsign, flightNumber } from "./callsign.ts";
 import {
+  DONE_STATES,
   type DispatchConfig,
   type Factor,
   loadDispatchConfig,
@@ -47,7 +48,8 @@ export type ProposalStatus =
   | "superseded"
   | "expired";
 
-export const isInFlight = (p: Proposal) => p.kind === "ASSIGN" && (p.status === "approved" || p.status === "sent" || p.status === "accepted");
+export const isHeld = (p: Proposal) => p.kind === "ASSIGN" && p.holdAt !== null;
+export const isInFlight = (p: Proposal) => p.kind === "ASSIGN" && !isHeld(p) && (p.status === "approved" || p.status === "sent" || p.status === "accepted");
 
 export interface Proposal {
   id: string; // "D-0001"
@@ -66,15 +68,18 @@ export interface Proposal {
   reason: string | null; // 거절·SUPERSEDED·EXPIRED·DECLINED 사유
   note: string | null; // DISPATCH 세션 검토 메모
   caution: boolean;
+  hold: string[]; // DISPATCH가 선행 FLIGHT로 지정한 HOLD (본문에만 있던 blocks 관계)
+  holdAt: string | null; // HOLD를 건 시각. hold가 비어 있으면 선행 FLIGHT 없는 HOLD(사람 결정 대기 등, 사유는 note)
   message: string | null; // 보낸 FLIGHT PLAN 문구
   departedStand: string | null;
 }
 
-type Create = Omit<Proposal, "status" | "decidedAt" | "statusAt" | "timeline" | "reason" | "note" | "caution" | "message" | "departedStand">;
+type Create = Omit<Proposal, "status" | "decidedAt" | "statusAt" | "timeline" | "reason" | "note" | "caution" | "hold" | "holdAt" | "message" | "departedStand">;
 export type Op =
   | ({ op: "create" } & Create)
   | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null }
   | { op: "note"; id: string; at: string; text: string; caution: boolean }
+  | { op: "hold"; id: string; at: string; blockedBy: string[] }
   | { op: "approve"; id: string; at: string }
   | { op: "reject"; id: string; at: string; reason: string | null }
   | { op: "send"; id: string; at: string; message: string }
@@ -84,7 +89,7 @@ export type Op =
   | { op: "supersede"; id: string; at: string; reason: string }
   | { op: "expire"; id: string; at: string; reason?: string };
 
-type StatusOp = Exclude<Op["op"], "create" | "note">;
+type StatusOp = Exclude<Op["op"], "create" | "note" | "hold">;
 
 // 상태 전이 규칙. 여기 없는 전이는 무시한다(API도 같은 규칙으로 검사한다).
 const NEXT: Partial<Record<ProposalStatus, Partial<Record<StatusOp, ProposalStatus>>>> = {
@@ -106,7 +111,7 @@ export function fold(ops: Op[]): Proposal[] {
       const { op: _op, ...rest } = o;
       byId.set(o.id, {
         ...rest, status: "proposed", decidedAt: null, statusAt: o.at, timeline: { proposed: o.at },
-        reason: null, note: null, caution: false, message: null, departedStand: null,
+        reason: null, note: null, caution: false, hold: [], holdAt: null, message: null, departedStand: null,
       });
       continue;
     }
@@ -115,6 +120,11 @@ export function fold(ops: Op[]): Proposal[] {
     if (o.op === "note") {
       p.note = o.text;
       p.caution = o.caution;
+      continue;
+    }
+    if (o.op === "hold") {
+      p.hold = [...new Set(o.blockedBy)].sort();
+      p.holdAt = o.at;
       continue;
     }
     if (!canApply(p, o.op)) continue;
@@ -132,11 +142,16 @@ export function fold(ops: Op[]): Proposal[] {
 }
 
 // approved·sent·accepted인 ASSIGN의 AIRCRAFT·FLIGHT — 새 계획에서 빼서 중복 배정을 막는다.
+// HOLD 걸린 ASSIGN은 FLIGHT만 잡아 둔다: AIRCRAFT는 아직 아무도 안 쥐었지만,
+// FLIGHT는 DISPATCH가 "선행이 끝날 때까지 착수하지 않는다"고 정한 것이라 다시 제안하면 안 된다.
+// (이게 없으면 HELD 제안을 만든 다음 바퀴에 같은 FLIGHT가 다른 AIRCRAFT로 곧바로 다시 나온다.)
 export function reservedOf(existing: Proposal[]): Reserved {
   const live = existing.filter(isInFlight);
+  const held = existing.filter((p) => p.status === "proposed" && isHeld(p));
   return {
     aircraft: new Map(live.map((p) => [p.aircraft!, p.id])),
-    flights: new Map(live.map((p) => [p.flight, p.id])),
+    flights: new Map([...live, ...held].map((p) => [p.flight, p.id])),
+    held: new Map(held.map((p) => [p.flight, `${p.id} — ${p.hold.length ? "선행 FLIGHT 대기" : "사람 결정 대기"}`])),
   };
 }
 
@@ -156,6 +171,9 @@ export function syncOps(
   const planned = new Set(plan.assign.map((a) => `${a.flight}|${a.aircraft}`));
   const releasing = new Set(plan.release.map((r) => r.flight));
   const standOf = new Map(s.workspaces.filter((w) => w.ticketKey).map((w) => [w.ticketKey!, w.path]));
+  // 계획이 이미 FLIGHT를 뺀 이유(상위 이슈, HOLD, 라벨, STAND 있음 …). SUPERSEDED 사유로 그대로 쓴다:
+  // "더 나은 배정으로 바뀜"만으로는 그 FLIGHT가 왜 빠졌는지 화면에서 알 수 없다.
+  const excludedWhy = new Map(plan.excluded.map((e) => [e.flight, e.reason]));
   const age = (p: Proposal) => now - Date.parse(p.statusAt);
 
   const why = (p: Proposal): string => {
@@ -164,15 +182,27 @@ export function syncOps(
     if (!t || t.stateType !== "unstarted") return `FLIGHT 상태가 바뀜(${t?.state ?? "목록에 없음"})`;
     const ac = p.aircraft ? aircraftOf.get(p.aircraft) : undefined;
     if (!ac || !ac.available) return `AIRCRAFT 불가: ${ac?.reason ?? "세션 없음"}`;
-    return "더 나은 배정으로 바뀜";
+    return excludedWhy.get(p.flight) ?? "더 나은 배정으로 바뀜";
   };
   // 승인됐지만 아직 안 보낸 ASSIGN이 여전히 유효한가(FLIGHT가 Todo이고 AIRCRAFT가 배정 가능)
-  const stillValid = (p: Proposal) => stateOf.get(p.flight)?.stateType === "unstarted" && Boolean(p.aircraft && aircraftOf.get(p.aircraft)?.available);
+  const stillValid = (p: Proposal) =>
+    !isHeld(p) && stateOf.get(p.flight)?.stateType === "unstarted" && Boolean(p.aircraft && aircraftOf.get(p.aircraft)?.available);
 
   let open = 0;
   let openRelease = 0;
   for (const p of existing) {
     if (p.status === "proposed") {
+      if (isHeld(p)) {
+        // DISPATCH가 잡아 둔 HOLD는 24시간 만료가 없다. 대신 풀리는 조건이 있다:
+        // FLIGHT 자체가 Todo가 아니게 됨 / 선행 FLIGHT가 모두 끝남 / (선행 없는 HOLD) HOLD 뒤에 FLIGHT가 수정됨
+        const t = stateOf.get(p.flight);
+        const blockers = p.hold.filter((k) => stateOf.has(k) && !DONE_STATES.has(stateOf.get(k)!.stateType));
+        if (!t || t.stateType !== "unstarted") ops.push({ op: "supersede", id: p.id, at, reason: `FLIGHT 상태가 바뀜(${t?.state ?? "목록에 없음"})` });
+        else if (p.hold.length && !blockers.length) ops.push({ op: "supersede", id: p.id, at, reason: `선행 FLIGHT(${p.hold.join(", ")})가 끝남 — 다시 후보` });
+        else if (!p.hold.length && t.updatedAt && Date.parse(t.updatedAt) > Date.parse(p.holdAt!))
+          ops.push({ op: "supersede", id: p.id, at, reason: "HOLD 뒤에 FLIGHT가 수정됨 — 다시 검토" });
+        continue;
+      }
       if (now - Date.parse(p.at) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at });
       else if (p.kind === "ASSIGN" && !planned.has(`${p.flight}|${p.aircraft}`)) ops.push({ op: "supersede", id: p.id, at, reason: why(p) });
       else if (p.kind === "RELEASE" && !releasing.has(p.flight)) ops.push({ op: "supersede", id: p.id, at, reason: why(p) });
@@ -215,12 +245,14 @@ export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "ur
   const sign = callsign({ name: sessionName });
   const who = sign === sessionName ? sessionName : `${sign} (${sessionName})`;
   const note = p.note ? `DISPATCH 메모: ${p.caution ? "CAUTION · " : ""}${p.note}` : p.caution ? "DISPATCH 메모: CAUTION" : null;
+  const hold = p.hold.length ? `HOLD — 선행 FLIGHT ${p.hold.map(flightNumber).join(", ")}가 끝난 뒤 착수` : null;
   return [
     `[DISPATCH ${p.id}] FLIGHT PLAN · ${who}`,
     `FLIGHT ${flightNumber(p.flight)} · AIRPORT ${p.airport ?? "—"} · PRIORITY ${PRIORITY_NAME[ticket?.priority ?? 0] ?? "없음"}`,
     ticket?.title ?? p.flight,
     ticket?.url ?? null,
     note,
+    hold,
     `— 맡으면 이 메시지에 "READBACK ${p.id}", 못 맡으면 사유로 답장해 주세요.`,
   ]
     .filter(Boolean)
@@ -331,7 +363,8 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const now = Date.now();
     const proposals = allProposals();
     const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals));
-    const open = proposals.filter((p) => p.status === "proposed");
+    const open = proposals.filter((p) => p.status === "proposed" && !isHeld(p));
+    const held = proposals.filter((p) => p.status === "proposed" && isHeld(p));
     const inFlight = proposals.filter(isInFlight).sort((a, b) => a.statusAt.localeCompare(b.statusAt));
     const recent = proposals
       .filter((p) => p.status !== "proposed" && !isInFlight(p) && now - Date.parse(p.statusAt) < 7 * DAY)
@@ -346,6 +379,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       at: new Date(now).toISOString(),
       plan,
       open,
+      held,
       inFlight,
       overdue: overdueOf(proposals, now),
       recent,
@@ -366,7 +400,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
 
   // 상태를 바꾸는 동작 하나. 모드·전이 규칙을 검사하고 op를 남긴다.
   const act =
-    (name: "verdict" | "note" | "approve" | "reject" | "release" | "accept" | "decline") =>
+    (name: "verdict" | "note" | "hold" | "unhold" | "approve" | "reject" | "release" | "accept" | "decline") =>
     async (c: Context) => {
       const id = (c.req.param("id") ?? "").toUpperCase();
       const body = await c.req.json().catch(() => ({}));
@@ -379,6 +413,27 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       if (name === "note") {
         if (typeof body.text !== "string" || !body.text.trim()) return c.json({ error: "text가 필요함" }, 400);
         append([{ op: "note", id, at, text: body.text.trim(), caution: Boolean(body.caution) }]);
+      } else if (name === "hold") {
+        if (p.status !== "proposed") return c.json({ error: `지금 상태(${p.status})에서는 HOLD를 바꿀 수 없음` }, 409);
+        if (p.kind !== "ASSIGN") return c.json({ error: "RELEASE 제안에는 HOLD를 걸지 않는다" }, 400);
+        const raw = Array.isArray(body.blockedBy) ? body.blockedBy : [];
+        const blockedBy: string[] = [...new Set<string>(raw.map((k: unknown) => String(k).toUpperCase()))];
+        // 선행 FLIGHT 없는 HOLD(사람 결정·외부 입력 대기)는 사유가 note에 있어야 한다
+        if (!blockedBy.length && !p.note) return c.json({ error: "선행 FLIGHT 없는 HOLD는 사유 메모(note)가 먼저 필요함" }, 400);
+        const bad = blockedBy.find((k) => !/^[A-Z]+-\d+$/.test(k));
+        if (bad) return c.json({ error: `FLIGHT key 형식이 아님: ${bad}` }, 400);
+        if (blockedBy.includes(p.flight)) return c.json({ error: `자기 자신(${p.flight})을 선행 FLIGHT로 걸 수 없음` }, 400);
+        // 목록에 없는 key는 오타일 가능성이 크다. 그대로 두면 풀리지 않는 HOLD가 된다
+        const known = new Set((await getSnapshot()).tickets.map((t) => t.key));
+        const unknown = blockedBy.find((k) => !known.has(k));
+        if (unknown) return c.json({ error: `열린 FLIGHT 목록에 없는 key: ${unknown}` }, 400);
+        append([{ op: "hold", id, at, blockedBy }]);
+      } else if (name === "unhold") {
+        // SUPERVISOR가 HOLD를 푼다. 제안은 닫고, FLIGHT는 다음 계획에서 다시 후보가 된다
+        if (!isHeld(p)) return c.json({ error: "HOLD 중인 제안이 아님" }, 409);
+        const bad = closed("supersede");
+        if (bad) return bad;
+        append([{ op: "supersede", id, at, reason: "SUPERVISOR가 HOLD를 풂 — 다시 후보" }]);
       } else if (name === "verdict") {
         if (mode !== "shadow") return c.json({ error: "그림자 판정은 shadow 모드에서만 — approval 모드에서는 approve/reject" }, 409);
         if (body.verdict !== "agree" && body.verdict !== "disagree") return c.json({ error: "verdict는 agree|disagree" }, 400);
@@ -415,7 +470,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       }
       return c.json({ proposal: allProposals().find((x) => x.id === id) });
     };
-  for (const name of ["verdict", "note", "approve", "reject", "release", "accept", "decline"] as const) {
+  for (const name of ["verdict", "note", "hold", "unhold", "approve", "reject", "release", "accept", "decline"] as const) {
     app.post(`/api/dispatch/proposals/:id/${name}`, act(name));
   }
 

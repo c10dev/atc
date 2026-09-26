@@ -72,6 +72,8 @@ Every `*.test.ts` next to a module is its unit test.
 | `GET /api/dispatch/brief` | DISPATCH plan, open and recent proposals, 2b gate, FLIGHT summaries |
 | `POST /api/dispatch/proposals/:id/verdict` | SUPERVISOR's shadow verdict `{verdict: "agree" \| "disagree", reason?}` |
 | `POST /api/dispatch/proposals/:id/note` | DISPATCH review note `{text, caution?}` |
+| `POST /api/dispatch/proposals/:id/hold` | DISPATCH sets a prerequisite HOLD `{blockedBy: ["VOC-180"]}`; the proposal moves to HELD. `[]` holds with no prerequisite (needs a note) |
+| `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR releases a HOLD (the proposal is superseded) |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR decision in approval mode; `reject` takes `{reason?}` |
 | `POST /api/dispatch/proposals/:id/release` | Approved → SENT; returns `sendTo` and the FLIGHT PLAN text |
 | `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, or decline with `{reason}` |

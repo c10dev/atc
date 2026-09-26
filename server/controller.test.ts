@@ -24,7 +24,7 @@ const claim = (sessionId: string, wsName: string, since: number, lastAt: number)
 const ticket = (key: string, state: string, updatedAt: number): Ticket => ({
   key, title: `${key} title`, state, stateType: "started", stateColor: null,
   project: null, labels: [], createdAt: null, startedAt: null, blocks: [], blockedBy: [], related: [],
-  assignee: null, priority: 0, url: null, updatedAt: iso(updatedAt),
+  parent: null, children: [], assignee: null, priority: 0, url: null, updatedAt: iso(updatedAt),
 });
 
 function snapshot(over: Partial<Snapshot> = {}): Snapshot {

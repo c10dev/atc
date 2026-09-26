@@ -18,7 +18,7 @@ const session = (id: string, name: string, status: Session["status"] = "idle", r
 const ticket = (key: string, over: Partial<Ticket> = {}): Ticket => ({
   key, title: key, state: "Todo", stateType: "unstarted", stateColor: null, assignee: null, priority: 3,
   url: null, updatedAt: daysAgo(1), project: "Beta Readiness", labels: [], createdAt: daysAgo(2), startedAt: null,
-  blocks: [], blockedBy: [], related: [], ...over,
+  blocks: [], blockedBy: [], related: [], parent: null, children: [], ...over,
 });
 const ws = (name: string, ticketKey: string | null): Workspace => ({
   path: `${WT}/${name}`, name, repo: VCDO, isMain: false, branch: null, head: "", dirty: 0, lastCommitAt: null, ticketKey,
@@ -148,6 +148,25 @@ test("RELEASE: STAND 없이 기준 일수를 넘긴 In Progress, 코드 작업 �
   assert.deepEqual(p.release.map((r) => `${r.flight}:${r.days}:${r.airport}`), ["VOC-60:5:VCDO", "VOC-66:4:VCDO"]);
 });
 
+test("상위 이슈: children이나 남의 parent로 지목된 FLIGHT는 ASSIGN·RELEASE 양쪽에서 뺀다", () => {
+  const s = snap({
+    sessions: [session("a", "TEAM_A")],
+    tickets: [
+      ticket("VOC-80", { children: ["VOC-81", "VOC-82"] }), // children 보유 → 상위
+      ticket("VOC-81", { parent: "VOC-80" }), // 하위 → 후보
+      ticket("VOC-82", { parent: "VOC-80" }),
+      ticket("VOC-83", { parent: "VOC-80", state: "In Progress", stateType: "started", startedAt: daysAgo(9) }),
+      ticket("VOC-80", { state: "In Progress", stateType: "started", startedAt: daysAgo(40) }), // 상위라 RELEASE 아님
+    ],
+  });
+  const p = planDispatch(s, new Map(), cfg(), NOW);
+  assert.equal(p.excluded.find((e) => e.flight === "VOC-80")?.reason, "상위 이슈 — 하위 3건을 묶음");
+  assert.deepEqual(p.release.map((r) => r.flight), ["VOC-83"]);
+  assert.equal(p.assign[0].flight, "VOC-81");
+  // RELEASE에서 빠진 상위 이슈는 조용히 사라지지 않고 제외 목록에 이유가 남는다
+  assert.ok(p.excluded.some((e) => e.flight === "VOC-80"));
+});
+
 test("운항 이력: 청구 기록 파일 이름에서 FLIGHT key를 뽑는다", () => {
   const dir = mkdtempSync(join(tmpdir(), "atc-hist-"));
   mkdirSync(join(dir, "s1"));
@@ -164,4 +183,23 @@ test("예약: 진행 중인 제안이 잡은 AIRCRAFT·FLIGHT는 새 짝에서 �
   assert.deepEqual(p.assign.map((a) => `${a.flight}→${a.aircraftName}`), ["VOC-71→TEAM_D"]);
   assert.equal(p.aircraft.find((a) => a.id === "b")?.reserved, "D-0009");
   assert.deepEqual(p.excluded.find((e) => e.flight === "VOC-70"), { flight: "VOC-70", reason: "진행 중인 제안 D-0009" });
+});
+
+test("HELD 제안이 잡은 FLIGHT는 다시 제안하지 않되 AIRCRAFT는 다른 FLIGHT에 쓸 수 있다", () => {
+  const s = snap({ sessions: [session("a", "TEAM_A"), session("b", "TEAM_B")], tickets: [ticket("VOC-72", { priority: 1 }), ticket("VOC-73")] });
+  // D-0002가 VOC-72를 HOLD로 잡아 둠 — AIRCRAFT는 잡지 않았다
+  const reserved = { aircraft: new Map(), flights: new Map([["VOC-72", "D-0002"]]), held: new Map([["VOC-72", "D-0002 — 선행 FLIGHT 대기"]]) };
+  const p = planDispatch(s, new Map(), cfg(), NOW, reserved);
+  assert.equal(p.assign.find((a) => a.flight === "VOC-72"), undefined);
+  assert.deepEqual(p.excluded.find((e) => e.flight === "VOC-72"), { flight: "VOC-72", reason: "HOLD D-0002 — 선행 FLIGHT 대기" });
+  // 잡혀 있지 않은 AIRCRAFT 두 대가 남은 FLIGHT 하나를 두고 경쟁한다
+  assert.deepEqual(p.assign.map((a) => a.flight), ["VOC-73"]);
+  assert.equal(p.aircraft.filter((a) => a.available).length, 2);
+});
+
+test("우선순위 없는 FLIGHT는 사람이 정할 때까지 ASSIGN 후보가 아니다", () => {
+  const s = snap({ sessions: [session("b", "TEAM_B")], tickets: [ticket("VOC-177", { priority: 0 }), ticket("VOC-178")] });
+  const p = planDispatch(s, new Map(), cfg(), NOW);
+  assert.deepEqual(p.assign.map((a) => a.flight), ["VOC-178"]);
+  assert.deepEqual(p.excluded.find((e) => e.flight === "VOC-177"), { flight: "VOC-177", reason: "우선순위 없음 — 사람이 정할 때까지 배정하지 않음" });
 });

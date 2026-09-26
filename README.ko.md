@@ -208,20 +208,22 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 
 설계는 [docs/dispatch.ko.md](docs/dispatch.ko.md). atc 서버가 5분마다 FLIGHT(Linear Todo 티켓)를 AIRCRAFT(TEAM 세션)에 배정하는 계획을 계산해(`server/dispatch.ts`) 제안으로 기록한다(`server/proposals.ts`, `~/.local/state/atc/proposals.jsonl`). 모드(`dispatch.json`의 `mode`)는 기본이 `shadow`라 **아무에게도 보내지 않는다.**
 
-- 제안: `ASSIGN`(FLIGHT → AIRCRAFT, 요소별 점수: 우선순위·대기 일수·풀어 주는 FLIGHT·팀 적합도·충돌 위험), `RELEASE`(STAND 없이 3일 넘게 ENROUTE인 코드 작업 FLIGHT). 선행 FLIGHT에 막힌 것은 `HOLD_DEPARTURE`, 제외된 것은 사유와 함께 보인다.
+- 제안: `ASSIGN`(FLIGHT → AIRCRAFT, 요소별 점수: 우선순위·대기 일수·풀어 주는 FLIGHT·팀 적합도·충돌 위험), `RELEASE`(STAND 없이 3일 넘게 ENROUTE인 코드 작업 FLIGHT). 선행 FLIGHT에 막힌 것은 `HOLD_DEPARTURE`, 제외된 것은 사유와 함께 보인다. 상위 이슈(`children`이 있거나 다른 이슈가 `parent`로 지목한 것)는 작업이 아니라 컨테이너라 ASSIGN·RELEASE에서 빠지고 NO CONTACT 경보도 내지 않는다. 우선순위가 없는 FLIGHT는 누가 정할 때까지 ASSIGN 후보가 아니다.
 - 한도: TEAM당 동시 FLIGHT 1, AIRPORT별 동시 AIRBORNE(VCDO 4, 그 밖 2), 열린 ASSIGN·RELEASE 각 5. 같은 짝은 24시간 안에 다시 제안하지 않고, 상황이 바뀌면 SUPERSEDED, 24시간 지나면 EXPIRED.
 - 설정: `~/.local/state/atc/dispatch.json`(없으면 기본값) — 프로젝트 → AIRPORT 매핑, 슬롯, 가중치, RELEASE 기준.
-- **DISPATCH 탭**: 제안 카드마다 SUPERVISOR가 "승인했을 것 / 거절했을 것"을 표시한다. 20건 이상, 합의율 80% 이상이면 2b(승인 운용) 진입 점검이 충족된다.
-- **DISPATCH 세션**(`dispatch/` 폴더에서 연 세션, `/loop 10m /tick`): 메모 없는 제안마다 FLIGHT 본문·댓글을 읽고 메모와 CAUTION(DB·보안·권리, 사람 결정 대기, 본문에만 적힌 선행 작업)을 단다. 판정하지 않는다. Bash guard는 TOWER와 같다.
+- **DISPATCH 탭**: 제안 카드마다 SUPERVISOR가 "승인했을 것 / 거절했을 것"을 표시한다. 거절할 때는 사유 칩(상위 이슈, 본문에만 있는 선행 작업, 사람 결정 대기, 이미 진행 중, 우선순위 낮음, 슬롯 없음, 다른 팀이 더 적합, 이미 완료됨) 중 하나를 고르고 메모를 선택으로 덧붙인다. 20건 이상, 합의율 80% 이상이면 2b(승인 운용) 진입 점검이 충족된다.
+- **DISPATCH 세션**(`dispatch/` 폴더에서 연 세션, `/loop 10m /tick`): 메모 없는 제안마다 FLIGHT 본문·댓글을 읽고 메모와 CAUTION(DB·보안·권리, 사람 결정 대기)을 단다. 선행 작업이 본문에만 있고 `blocks` 관계로는 없으면 `--hold <FLIGHT>`를 걸어 그 FLIGHT가 끝날 때까지 제안을 HELD 목록으로 보낸다. 사람 결정을 기다리는 경우는 값 없는 `--hold`로 걸고, FLIGHT가 수정되면 풀린다. HELD 제안은 만료되지 않고, SUPERVISOR가 "HOLD 풀기"로 풀 수 있다. 판정하지 않는다. Bash guard는 TOWER와 같다.
 - **2b 승인 운용**(`mode: approval`, DISPATCH 탭에서 전환): SUPERVISOR가 제안을 승인·거절한다. 승인된 ASSIGN은 DISPATCH 세션이 `dispatch release`로 SENT로 바꾸고 정해진 FLIGHT PLAN(`[DISPATCH D-0003] FLIGHT PLAN · BRAVO (TEAM_B)` …)을 받아 CAPTAIN에게 보낸다. CAPTAIN의 `READBACK D-0003`으로 ACCEPTED, 그 FLIGHT의 STAND가 생기면 atc가 DEPARTED로 바꾼다. 승인·전달·수락된 제안은 AIRCRAFT와 FLIGHT를 예약해 두 번 제안되지 않는다. 승인된 RELEASE는 보내지 않고 SUPERVISOR가 Linear에서 정리한다.
 - **send-guard**(`dispatch/send-guard.mjs`, SendMessage의 PreToolUse): approval 모드이고, SENT 상태인 제안을, 그 제안의 CAPTAIN에게, atc가 만든 FLIGHT PLAN 문구 그대로 보낼 때만 통과시킨다. TOWER·DISPATCH 폴더의 hook은 모두 fail-closed(`… || exit 2`)라 hook이 없거나 실패하면 도구가 막힌다.
 - 2b를 켜기 전에 팀 CLAUDE.md의 READBACK 규칙을 FLIGHT PLAN(`[DISPATCH D-xxxx]`)까지 넓힌다. 설계 문서의 "2b 켜는 법" 참고.
 
 | API | 하는 일 |
 |---|---|
-| `GET /api/dispatch/brief` | 모드, 지금 계획, 열린·진행 중·늦은·최근 제안, 2b·3단계 점검, FLIGHT 요약 |
+| `GET /api/dispatch/brief` | 모드, 지금 계획, 열린·HELD·진행 중·늦은·최근 제안, 2b·3단계 점검, FLIGHT 요약 |
 | `POST /api/dispatch/proposals/:id/verdict` | `{verdict: agree\|disagree, reason?}` 그림자 판정(shadow 모드에서만) |
 | `POST /api/dispatch/proposals/:id/note` | `{text, caution?}` DISPATCH 검토 메모 |
+| `POST /api/dispatch/proposals/:id/hold` | `{blockedBy: ["VOC-180"]}` DISPATCH 선행 HOLD, 제안은 HELD로 간다. `[]`는 선행 없는 HOLD(메모 필요) |
+| `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR가 HOLD를 풂. 제안은 SUPERSEDED, FLIGHT는 다시 후보 |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR 결정(approval 모드에서만), `reject`는 `{reason?}` |
 | `POST /api/dispatch/proposals/:id/release` | 승인 → SENT, `sendTo`와 FLIGHT PLAN 반환(이미 보냈으면 같은 문구) |
 | `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, 또는 `{reason}`과 함께 거절 |
