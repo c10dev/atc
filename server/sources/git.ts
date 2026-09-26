@@ -1,0 +1,103 @@
+import { execFile } from "node:child_process";
+import { readdirSync, statSync, existsSync } from "node:fs";
+import { basename, join } from "node:path";
+import { promisify } from "node:util";
+import { config } from "../config.ts";
+import type { Workspace } from "../model.ts";
+
+const run = promisify(execFile);
+
+async function git(cwd: string, args: string[]): Promise<string> {
+  const { stdout } = await run("git", ["-C", cwd, ...args], { timeout: 10_000, maxBuffer: 4 << 20 });
+  return stdout;
+}
+
+function discoverRepos(): string[] {
+  const repos: string[] = [];
+  for (const name of readdirSync(config.projectsDir)) {
+    const dir = join(config.projectsDir, name);
+    try {
+      if (statSync(join(dir, ".git")).isDirectory()) repos.push(dir);
+    } catch {}
+  }
+  return repos;
+}
+
+const ticketPattern = new RegExp(`(?:^|[/_-])${config.linearTeamKey.toLowerCase()}-?(\\d+)(?:$|[/_-])`, "i");
+
+export function ticketKeyFromBranch(branch: string | null): string | null {
+  const m = branch?.match(ticketPattern);
+  return m ? `${config.linearTeamKey}-${Number(m[1])}` : null;
+}
+
+async function listWorktrees(repo: string): Promise<Workspace[]> {
+  const out = await git(repo, ["worktree", "list", "--porcelain"]);
+  const result: Workspace[] = [];
+  for (const block of out.trim().split("\n\n")) {
+    const fields = new Map<string, string>();
+    for (const line of block.split("\n")) {
+      const i = line.indexOf(" ");
+      fields.set(i < 0 ? line : line.slice(0, i), i < 0 ? "" : line.slice(i + 1));
+    }
+    const path = fields.get("worktree");
+    if (!path || fields.has("prunable") || fields.has("bare") || !existsSync(path)) continue;
+    const branch = fields.get("branch")?.replace(/^refs\/heads\//, "") ?? null;
+    result.push({
+      path,
+      name: path === repo ? basename(repo) : basename(path),
+      repo,
+      isMain: path === repo,
+      branch,
+      head: (fields.get("HEAD") ?? "").slice(0, 8),
+      dirty: null,
+      lastCommitAt: null,
+      ticketKey: ticketKeyFromBranch(branch),
+    });
+  }
+  return result;
+}
+
+interface Detail {
+  dirty: number;
+  lastCommitAt: string | null;
+  checkedAt: number;
+}
+
+const details = new Map<string, Detail>();
+const DETAIL_TTL_MS = 30_000;
+
+async function refreshDetail(ws: Workspace) {
+  try {
+    const [status, log] = await Promise.all([
+      git(ws.path, ["status", "--porcelain"]),
+      git(ws.path, ["log", "-1", "--format=%cI"]),
+    ]);
+    details.set(ws.path, {
+      dirty: status.split("\n").filter(Boolean).length,
+      lastCommitAt: log.trim() || null,
+      checkedAt: Date.now(),
+    });
+  } catch {
+    details.set(ws.path, { dirty: 0, lastCommitAt: null, checkedAt: Date.now() });
+  }
+}
+
+let refreshing = false;
+
+// 워크트리 목록은 매번, dirty/커밋 시각은 30초마다 백그라운드로 갱신한다.
+export async function readWorkspaces(): Promise<Workspace[]> {
+  const lists = await Promise.all(discoverRepos().map((r) => listWorktrees(r).catch(() => [])));
+  const all = lists.flat();
+  const stale = all.filter((w) => (details.get(w.path)?.checkedAt ?? 0) < Date.now() - DETAIL_TTL_MS);
+  if (stale.length && !refreshing) {
+    refreshing = true;
+    (async () => {
+      for (let i = 0; i < stale.length; i += 6) await Promise.all(stale.slice(i, i + 6).map(refreshDetail));
+    })().finally(() => (refreshing = false));
+  }
+  for (const w of all) {
+    const d = details.get(w.path);
+    if (d) Object.assign(w, { dirty: d.dirty, lastCommitAt: d.lastCommitAt });
+  }
+  return all;
+}

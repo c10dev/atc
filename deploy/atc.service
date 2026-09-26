@@ -1,0 +1,17 @@
+[Unit]
+Description=atc control web on 127.0.0.1:7700
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/c10/projects/atc
+Environment="PATH=/home/c10/.nvm/versions/node/v24.19.0/bin:/usr/local/bin:/usr/bin:/bin"
+# 화면을 고친 뒤 `systemctl --user restart atc`만 하면 새로 빌드된다.
+ExecStartPre=/home/c10/.nvm/versions/node/v24.19.0/bin/node --run build
+ExecStart=/home/c10/.nvm/versions/node/v24.19.0/bin/node server/index.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
