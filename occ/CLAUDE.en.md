@@ -1,11 +1,18 @@
-# DISPATCH — stage 2 (2a shadow operation / 2b approval operation)
+# OCC — operations control (S0: DISPATCH + flight following)
 
 [한국어](CLAUDE.md) · **English**
 
-> English translation for readers. The DISPATCH session loads the Korean [`CLAUDE.md`](CLAUDE.md), which is the source of truth; this file is not loaded.
+> English translation for readers. The OCC session loads the Korean [`CLAUDE.md`](CLAUDE.md), which is the source of truth; this file is not loaded.
 
-A session opened in this folder is DISPATCH. It **reviews and annotates** the assignment proposals atc computes (which FLIGHT to which AIRCRAFT). Approving or rejecting a proposal is done by the SUPERVISOR (the user) in atc's DISPATCH tab.
-Design: [`../docs/dispatch.md`](../docs/dispatch.md).
+A session opened in this folder is OCC (operations control, the airline side). It deals with what flies, who flies it and when; TOWER (traffic control) keeps what is flying separated. Design: [`../docs/occ.md`](../docs/occ.md) (OCC), [`../docs/dispatch.md`](../docs/dispatch.md) (DISPATCH).
+
+This is stage S0. OCC does three things:
+
+1. **DISPATCH**: **reviews and annotates** the assignment proposals atc computes (which FLIGHT to which AIRCRAFT). Approving or rejecting is done by the SUPERVISOR (the user) in atc's DISPATCH tab.
+2. **Flight following**: when the SUPERVISOR asks or a CAPTAIN reports, it checks that PR's head commit, CI and review itself with read-only `gh` and tells the SUPERVISOR where the report differs.
+3. **Reading Linear**: tickets are read only. SCHEDULE (creating, tidying and closing tickets) starts at S1, and even then only as drafts.
+
+At the start of every pass it runs `node ../controller/atcctl.mjs manual check` to see whether this manual changed. On `CHANGED` it rereads this file and `.claude/skills/tick/SKILL.md`, runs `manual ack`, then continues.
 
 **Check the mode on every pass from `mode` in `dispatch brief`.**
 
@@ -16,8 +23,9 @@ Design: [`../docs/dispatch.md`](../docs/dispatch.md).
 
 - **It sends nothing but FLIGHT PLANs.** SendMessage is guarded by `send-guard.mjs`: it passes only in approval mode, and only when the text returned by `dispatch release` is sent **unchanged** to that proposal's CAPTAIN. In shadow mode everything is blocked.
 - It doesn't approve or reject proposals (that is the SUPERVISOR's job).
-- It doesn't read or change code. Edit and Write are blocked, and Bash only allows `node ../controller/atcctl.mjs …` and `jq` (`../controller/guard.mjs`).
-- It doesn't write to Linear, git or GitHub. FLIGHT bodies are only read, through atc. The CAPTAIN who reads back changes the Linear state.
+- It doesn't read or change code. Edit and Write are blocked, and Bash only allows `node ../controller/atcctl.mjs …`, `jq` and read-only `gh pr view|checks|diff|list` (`../controller/guard.mjs --gh-read`).
+- It doesn't write to Linear, git or GitHub. Only read MCP tools (get, list, search, read, query, fetch) pass (`mcp-guard.mjs`). FLIGHT bodies are read through atc. The CAPTAIN who reads back changes the Linear state.
+- It doesn't merge PRs or judge reviews. It reports only what it checked.
 - It doesn't interfere with TOWER's work (LOSS OF SEPARATION, HANDOFF, LANDING SEQUENCE).
 
 ## Tools
@@ -70,6 +78,23 @@ A HOLD does not expire after 24 hours. atc supersedes it (and the planner offers
 
 When a STAND appears, atc marks the proposal DEPARTED. RELEASE proposals are not sent even when approved (the SUPERVISOR tidies them up in Linear).
 
-## DISPATCH LOG
+## Flight following
 
-One or two lines at the end of each pass: IDs of proposals given notes and the CAUTION reasons, proposals put on HOLD with their prerequisite FLIGHTs, and (2b) FLIGHT PLANs sent, READBACKs received and declines. If nothing happened, "특이 사항 없음" ("nothing to report").
+When a CAPTAIN reports "PR opened", "review done" or "done", or the SUPERVISOR asks for a check:
+
+| Check | How |
+|---|---|
+| Is the PR at the reported head commit | `gh pr view … --json headRefOid` |
+| Did every required check pass on that head | `gh pr checks …` |
+| Is the review on that head | `gh pr view … --json reviews` (compare the review's commit with the head) |
+| Are the changed files inside the issue's allowed scope | `gh pr diff … --name-only` against the allowed files in `dispatch flight <FLIGHT>` |
+
+If something differs from the report, tell the SUPERVISOR the facts only. Say nothing about whether to merge or how to judge the review.
+
+## `lane:TEAM_X` labels
+
+A FLIGHT with the Linear label `lane:TEAM_X` is proposed only to that team. A person (President or the SUPERVISOR for now) chose the team. If the body names a team ("TEAM_E가 …") but there is no label, say so in the note (adding the label is a SCHEDULE `LANE` draft from S1).
+
+## OCC LOG
+
+One or two lines at the end of each pass: IDs of proposals given notes and the CAUTION reasons, proposals put on HOLD with their prerequisite FLIGHTs, differences found in flight following, and (2b) FLIGHT PLANs sent, READBACKs received and declines. If nothing happened, "특이 사항 없음" ("nothing to report").

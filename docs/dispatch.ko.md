@@ -4,7 +4,7 @@
 
 DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, 언제 보낼지** 제안한다. TOWER(1단계)가 이미 뜬 AIRCRAFT끼리 부딪히지 않게 하는 쪽이라면, DISPATCH는 뜨기 전의 계획을 맡는다. 항공사 운항관리(OCC)와 ATC가 나뉘어 있는 것과 같은 구분이다.
 
-> 상태: 2a(그림자 운용) 운용 중, 2b(승인 운용)는 `mode` 뒤에 구현돼 있고 기본은 꺼짐(2026-09-26). "2b 켜는 법" 참고. 결정 사항은 맨 아래 "결정"에 있다.
+> 상태: DISPATCH 세션은 2026-09-26 OCC 세션(`atc/occ/`, [occ.md](occ.md), 영어)에 합쳐졌다. 아래 일은 그대로다. 2a(그림자 운용) 운용 중, 2b(승인 운용)는 `mode` 뒤에 구현돼 있고 기본은 꺼짐(2026-09-26). "2b 켜는 법" 참고. 결정 사항은 맨 아래 "결정"에 있다.
 >
 > 구현하며 정리한 것: TEAM당 동시 FLIGHT 1 규칙에 따라, 끝나지 않은 FLIGHT의 STAND를 쥔 HOLDING AIRCRAFT는 대기 시간과 상관없이 배정하지 않는다(5.1의 "30분" 기준은 쓰지 않음). RELEASE는 AIRPORT에 매핑된 프로젝트(코드 작업)만 본다.
 
@@ -40,7 +40,7 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
 | 역할 | 누구 | 하는 일 | 쓸 수 있는 것 |
 |---|---|---|---|
 | SUPERVISOR | 사용자 | 제안 승인·거절, 슬롯·가중치 조정, 최종 권한 | 전부 |
-| DISPATCH | 새 Claude 세션(`atc/dispatch/`) | 제안 검토(본문 읽기), 승인된 FLIGHT PLAN 전달, 수락 기록 | atc CLI, SendMessage, Linear **읽기** |
+| DISPATCH | OCC 세션(`atc/occ/`, 전 `atc/dispatch/`) | 제안 검토(본문 읽기), 승인된 FLIGHT PLAN 전달, 수락 기록 | atc CLI, SendMessage, Linear **읽기** |
 | TOWER | 1단계 CONTROLLER | 충돌·HANDOFF·LANDING SEQUENCE | atc CLI, SendMessage |
 | CAPTAIN | 각 TEAM 리더 | FLIGHT PLAN 수락(READBACK) 또는 사유 회신, Linear 상태 변경, STAND 준비 | 자기 저장소, Linear |
 | Symphony | 다른 운항사 | `symphony-pilot` FLIGHT | DISPATCH는 건드리지 않음 |
@@ -156,7 +156,7 @@ atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER
 | 설정 | `~/.local/state/atc/dispatch.json`: 프로젝트→AIRPORT 매핑, 슬롯, 가중치, 모드(`shadow`/`approval`) |
 | 화면 | DISPATCH 탭: 제안 카드(FLIGHT·AIRCRAFT·요소별 점수·DISPATCH 메모·CAUTION·HOLD), 승인/거절 버튼(거절은 사유 칩 + 선택 메모), HELD 목록, 슬롯 현황, RELEASE 목록 |
 | 지표 | 그림자 합의율, 제안→수락 시간, 유휴 AIRCRAFT 시간(PARKED인데 Todo가 있던 분), 방치된 ENROUTE 수 |
-| `atc/dispatch/` | TOWER와 같은 구조: `CLAUDE.md`(역할·판단 기준), `/tick`, guard(atc CLI·jq만, Linear는 읽기 MCP만) |
+| `atc/occ/`(전 `atc/dispatch/`) | TOWER와 같은 구조: `CLAUDE.md`(역할·판단 기준), `/tick`, guard(atc CLI·jq만, Linear는 읽기 MCP만) |
 
 ## 8. 넘어가는 기준
 
@@ -193,14 +193,14 @@ atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER
 1. Linear 조회 확장 + `dispatch.ts`(후보·슬롯·점수) + 테스트
 2. 제안 기록·API·이벤트, 그림자 모드 기본
 3. DISPATCH 탭(그림자 합의 표시) + 지표
-4. `atc/dispatch/` 세션(검토 메모, CAUTION)
+4. `atc/dispatch/` 세션(검토 메모, CAUTION), 지금은 `atc/occ/`의 일부
 5. 승인 운용(2b): 승인 버튼, FLIGHT PLAN 전달, READBACK, DEPARTED 판정 — vocado `CLAUDE.md`의 READBACK 줄을 `[DISPATCH D-xxxx]`까지 넓힘
 
 ## 결정 (2026-09-26, SUPERVISOR)
 
 | 항목 | 결정 |
 |---|---|
-| DISPATCH 세션 | TOWER와 **별도 세션**(`atc/dispatch/`) |
+| DISPATCH 세션 | TOWER와 **별도 세션**(`atc/dispatch/`). 같은 날 OCC(`atc/occ/`)로 합침 |
 | 후보 FLIGHT | **Todo만**. Backlog는 사람이 Todo로 올린 뒤에만 대상 |
 | 프로젝트 → AIRPORT | Beta Readiness · Song Experience → **VCDO**. Vocado Pre-seed IR & Pitch Deck · Vocado Visual System (SEED)는 **배정 제외** |
 | `RELEASE` 기준 | STAND 없이 ENROUTE인 채로 **3일** |

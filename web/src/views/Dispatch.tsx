@@ -7,7 +7,7 @@ import { PriorityMark } from "../ui.tsx";
 import "./Dispatch.css";
 
 // 2단계 DISPATCH. shadow(2a): 제안은 화면에만 보이고 아무에게도 보내지 않는다.
-// approval(2b): SUPERVISOR가 승인하면 DISPATCH 세션이 FLIGHT PLAN을 CAPTAIN에게 보낸다.
+// approval(2b): SUPERVISOR가 승인하면 OCC 세션(DISPATCH)이 FLIGHT PLAN을 CAPTAIN에게 보낸다.
 
 interface FlightInfo {
   title: string;
@@ -140,7 +140,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
     const next = brief.mode === "shadow" ? "approval" : "shadow";
     const text =
       next === "approval"
-        ? `2b(승인 운용)를 켤까요?\n\n켜면 승인한 제안이 DISPATCH 세션을 거쳐 CAPTAIN(팀 세션)에게 FLIGHT PLAN으로 나갑니다.\n2b 진입 점검: 판정 ${brief.gate.decided}/${brief.gate.target.decided}건, 합의율 ${pct(brief.gate.agreement)} (기준 ${brief.gate.target.agreement * 100}%) — ${brief.gate.ready ? "충족" : "아직 미달"}\n팀 세션의 CLAUDE.md에 [DISPATCH D-xxxx] READBACK 규칙이 있는지도 확인하세요.`
+        ? `2b(승인 운용)를 켤까요?\n\n켜면 승인한 제안이 OCC 세션을 거쳐 CAPTAIN(팀 세션)에게 FLIGHT PLAN으로 나갑니다.\n2b 진입 점검: 판정 ${brief.gate.decided}/${brief.gate.target.decided}건, 합의율 ${pct(brief.gate.agreement)} (기준 ${brief.gate.target.agreement * 100}%) — ${brief.gate.ready ? "충족" : "아직 미달"}\n팀 세션의 CLAUDE.md에 [DISPATCH D-xxxx] READBACK 규칙이 있는지도 확인하세요.`
         : "2a(그림자 운용)로 돌아갈까요? 이미 보낸 FLIGHT PLAN은 그대로 두고, 새로 보내지는 않습니다.";
     if (!confirm(text)) return;
     try {

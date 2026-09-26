@@ -1,6 +1,28 @@
 #!/usr/bin/env node
-// TOWER·DISPATCH 세션이 쓰는 atc CLI. atc 서버(기본 http://127.0.0.1:7700)에만 말한다. 의존성 없음.
+// TOWER·OCC 세션이 쓰는 atc CLI. atc 서버(기본 http://127.0.0.1:7700)에만 말한다. 의존성 없음.
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 const BASE = process.env.ATC_URL || "http://127.0.0.1:7700";
+const STATE = process.env.ATC_STATE_DIR || join(homedir(), ".local/state/atc");
+
+// 관제 세션의 운영 규정(CLAUDE.md, /tick). 오래 도는 세션이 바뀐 규정을 모른 채 돌지 않게 해시로 비교한다.
+const MANUAL = ["CLAUDE.md", ".claude/skills/tick/SKILL.md"];
+function manualHash(dir) {
+  const h = createHash("sha256");
+  for (const f of MANUAL) {
+    h.update(`${f}\0`);
+    try {
+      h.update(readFileSync(join(dir, f)));
+    } catch {
+      h.update("(없음)");
+    }
+  }
+  return h.digest("hex");
+}
+const manualFile = (dir) => join(STATE, "manuals", `${dir.replace(/[^A-Za-z0-9._-]+/g, "_")}.sha`);
 
 const USAGE = `사용법:
   node atcctl.mjs brief                     지난 확인 이후 변화 + 현재 상태 (JSON)
@@ -10,8 +32,10 @@ const USAGE = `사용법:
                                             보낼 대상(SEND TO)과 보낼 문구를 출력한다
   node atcctl.mjs readback <C-0007>         팀이 READBACK함
   node atcctl.mjs cancel <C-0007>           CLEARANCE 취소
+  node atcctl.mjs manual check              이 폴더의 CLAUDE.md·/tick이 마지막 ack 뒤 바뀌었는지 (UNCHANGED | CHANGED)
+  node atcctl.mjs manual ack                지금 규정을 다시 읽었다고 기록
 
-DISPATCH (2a 그림자 운용: 제안 검토만, 판정은 SUPERVISOR)
+DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은 SUPERVISOR)
   node atcctl.mjs dispatch brief            계획·열린 제안·2b 점검 (JSON)
   node atcctl.mjs dispatch flight <VOC-193> FLIGHT 본문·댓글 (Linear 읽기 전용)
   node atcctl.mjs dispatch note <D-0003> [--caution] [--hold [<FLIGHT>]]… -- <메모>
@@ -98,6 +122,25 @@ try {
     if (!reason) throw new Error("-- 뒤에 CAPTAIN의 사유가 필요함");
     const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/decline`, { reason });
     console.log(`${r.proposal.id} DECLINED`);
+  } else if (cmd === "manual" && (args[0] === "check" || args[0] === "ack")) {
+    const dir = process.cwd();
+    const now = manualHash(dir);
+    const file = manualFile(dir);
+    if (args[0] === "ack") {
+      mkdirSync(join(STATE, "manuals"), { recursive: true });
+      writeFileSync(file, now + "\n");
+      console.log(`ACK ${now.slice(0, 8)}`);
+    } else {
+      let last = "";
+      try {
+        last = readFileSync(file, "utf8").trim();
+      } catch {}
+      console.log(
+        last === now
+          ? `UNCHANGED ${now.slice(0, 8)}`
+          : `CHANGED ${now.slice(0, 8)} — CLAUDE.md와 .claude/skills/tick/SKILL.md를 다시 읽은 뒤 \`manual ack\``,
+      );
+    }
   } else if ((cmd === "readback" || cmd === "cancel") && args[0]) {
     const r = await call("POST", `/api/clearances/${encodeURIComponent(args[0])}/${cmd}`);
     console.log(`${r.clearance.id} ${cmd === "readback" ? "READBACK 확인" : "취소"}`);
