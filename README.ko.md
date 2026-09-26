@@ -253,9 +253,9 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 
 설계는 [docs/occ.md](docs/occ.md) 5~7장(영어). OCC 세션이 Linear에 할 변경을 SCHEDULE 작업 초안으로 남긴다(`server/schedule.ts`, `~/.local/state/atc/schedule.jsonl`, 추가만 함). S1은 그림자 운용이라 **Linear에는 아무것도 쓰지 않는다.** SUPERVISOR가 초안마다 판정을 표시하고, 그 합의율로 S2(승인된 초안을 linear-guard를 거쳐 씀)에 들어갈지 정한다.
 
-- 작업: `CLASSIFY`(FLIGHT TYPE·WAKE·TYPE RATING 라벨, [docs/fleet.md](docs/fleet.md) 4장, 영어. 라벨은 더하기만 한다), `PRIORITIZE`(우선순위 1 Urgent … 4 Low). 초안마다 id(`S-0001`), FLIGHT, 바꿀 값, OCC의 근거 한 줄이 있다.
+- 작업: `CLASSIFY`(FLIGHT TYPE·WAKE·TYPE RATING 라벨, [docs/fleet.md](docs/fleet.md) 4장, 영어. 라벨은 더하기만 한다), `PRIORITIZE`(우선순위 1 Urgent … 4 Low), `NEW`(새 이슈. [CHARTER DESK](#charter-desk-요청-창구)의 AD HOC FLIGHT). 초안마다 id(`S-0001`), FLIGHT(`NEW`는 `null`), 바꿀 값, OCC의 근거 한 줄이 있다.
 - 후보: Todo·Backlog인 FLIGHT 중 `type:`이나 `wake:` 라벨이 없는 것(CLASSIFY), 우선순위가 없는 것(PRIORITIZE). 같은 종류의 열린 초안이 있는 FLIGHT는 빠진다. 바뀌는 게 없는 초안은 받지 않는다.
-- 한도: 열린 초안 5건(넘으면 409). 같은 FLIGHT·종류로 새 초안을 쓰면 앞의 것은 SUPERSEDED. FLIGHT가 Todo·Backlog를 벗어나거나 Linear에 이미 반영되면 atc가 열린 초안을 SUPERSEDED로, 3일 동안 판정이 없으면 EXPIRED로 닫는다.
+- 한도: 종류와 상관없이 열린 초안 5건, `NEW`도 든다(넘으면 409). 같은 FLIGHT·종류로 새 초안을 쓰면 앞의 것은 SUPERSEDED. `NEW`는 다른 `NEW`를 대신하지 않는다. FLIGHT가 Todo·Backlog를 벗어나거나 Linear에 이미 반영되면(`NEW`는 초안 뒤에 같은 제목의 이슈가 Linear에 생기면) atc가 열린 초안을 SUPERSEDED로, 3일 동안 판정이 없으면 EXPIRED로 닫는다.
 - **SCHEDULE 탭**(DISPATCH 다음): S2 진입 점검(판정 20건 이상, 합의율 80% 이상), 열린 초안 카드(FLIGHT, 제목, 지금 분류, 바뀔 것, OCC 근거), "승인했을 것 / 거절했을 것" 버튼과 선택 거절 사유, Linear에서 손으로 붙일 라벨 안내, 후보 수, 최근 7일 표.
 - **OCC 세션**: `/tick`마다 `atcctl schedule brief`를 실행하고, 후보 FLIGHT 3개까지 `dispatch flight`로 읽어 `atcctl schedule draft CLASSIFY <FLIGHT> [--type X] [--wake Y] [--rating Z]… -- <근거>`나 `schedule draft PRIORITIZE <FLIGHT> --priority 1-4 -- <근거>`로 초안을 쓴다. PRIORITIZE는 본문·댓글에 근거가 있을 때만 쓴다. `LIMIT`이 나오면 그 바퀴는 초안을 그만 쓴다. Linear는 여전히 읽기 전용이다(`occ/mcp-guard.mjs`).
 
@@ -263,8 +263,21 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 |---|---|
 | `GET /api/schedule/brief` | 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안, S2 점검, 열린 초안 한도, 후보, FLIGHT 요약 |
 | `GET /api/schedule/ops/:id` | SCHEDULE 작업 하나와 모드 |
-| `POST /api/schedule/ops` | `{kind: CLASSIFY\|PRIORITIZE, flight, reason, type?, wake?, ratings?, priority?}` OCC 초안. 열린 초안이 한도면 409 |
+| `POST /api/schedule/ops` | OCC 초안. `CLASSIFY`·`PRIORITIZE`: `{kind, flight, reason, type?, wake?, ratings?, priority?}`. `NEW`: `{kind: "NEW", title, body, project, reason, priority?, type?, wake?, ratings?, tail?, parent?, related?, blockedBy?}`. 작업의 `flight`는 `null`이고 atc가 `similar: [{key, title}]`을 붙인다. 입력이 틀리면 사유와 함께 400, 열린 초안이 한도면 409 |
 | `POST /api/schedule/ops/:id/verdict` | `{verdict: agree\|disagree, reason?}` SUPERVISOR 그림자 판정 |
+
+## CHARTER DESK (요청 창구)
+
+CHARTER DESK는 스케줄(Linear)에 없는 일을 받는 OCC의 요청 창구다. SUPERVISOR가 OCC 세션에서 요청하면(**CHARTER REQUEST**) OCC가 SCHEDULE `NEW` 작업으로 초안을 쓴다. 이것이 **AD HOC FLIGHT**, 정기 스케줄 밖에서 더한 FLIGHT다. 세션 규정은 [occ/CLAUDE.md](occ/CLAUDE.md)의 "CHARTER DESK".
+
+```
+CHARTER REQUEST → AD HOC FLIGHT 초안(S1: SCHEDULE 탭에서 판정) → FILED(S2: Linear Todo) → ASSIGN → ENROUTE → ARRIVED
+```
+
+- 작은 수정은 티켓 없이 팀에 바로 주는 **AD HOC**이다. 티켓이 필요한 일은 OCC 세션으로 간다. Linear 이슈가 실제로 만들어지는 것은 S2부터이고, S1에서는 SUPERVISOR가 초안을 판정하고 원하면 손으로 이슈를 만든다.
+- 본문은 vocado 네 칸(목표, 수정 허용 범위, 금지 사항, 완료 기준. 영어 Goal·Outcome, Allowed changes·files, Forbidden, Acceptance·Done criteria도 된다)을 따른다. `rating:SEC` 이슈는 Codex Engineering Task 칸 Allowed files(`### Allowed files / surfaces`), Forbidden changes, Invariants, Acceptance Criteria, Verification이 더 있어야 한다. 제목은 1~120자, 프로젝트는 지금 티켓에 있는 이름, `tail`은 퇴역하지 않은 FLEET 등록번호, `parent`·`related`·`blockedBy`는 FLIGHT 목록에 있는 key여야 한다.
+- 중복 검색: OCC의 근거에는 무엇을 찾아봤는지와 함께 "중복 검색:"이 있어야 한다. atc도 제목이 비슷한 티켓을 5개까지 `similar`로 붙인다(정규화한 제목이 같거나, 겹치는 단어가 2개 이상이고 짧은 쪽 제목의 절반 이상). 찾는 범위는 스냅샷뿐이고, 스냅샷에는 최근 45일 안에 바뀐 이슈(와 그와 이어진 이슈)만 있다. 45일 넘게 손대지 않은 열린 이슈는 찾지 못한다.
+- CLI: `atcctl schedule draft NEW --title <t> --project <p> [--priority n] [--type X] [--wake Y] [--rating Z]… [--tail TEAM_X] [--parent K] [--related K]… [--blocked-by K]… --reason <근거> -- '<본문>'`. OCC guard가 heredoc·리다이렉션을 막아 본문은 `--` 뒤에 받고, 본문의 `\n`은 줄바꿈이 된다.
 
 ## 폴더별 문서
 

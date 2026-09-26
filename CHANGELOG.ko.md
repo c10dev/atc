@@ -7,6 +7,10 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 ## [Unreleased]
 
 ### 추가
+- CHARTER DESK, OCC의 요청 창구: SCHEDULE `NEW` 초안(여전히 S1 그림자 운용이라 Linear에는 쓰지 않는다). SUPERVISOR가 OCC 세션에서 CHARTER REQUEST를 하면 OCC가 AD HOC FLIGHT(정기 스케줄 밖의 새 이슈) 초안을 쓰고, 승인되어 S2부터 Linear Todo가 되면 FILED다.
+  - 서버: `POST /api/schedule/ops`가 `{kind: "NEW", title, body, project, reason, priority?, type?, wake?, ratings?, tail?, parent?, related?, blockedBy?}`를 받고, 작업의 `flight`는 `null`이다. 본문에는 vocado 네 칸(목표, 수정 허용 범위, 금지 사항, 완료 기준 또는 영어 이름)이 있어야 하고, `rating:SEC`는 Codex Engineering Task 칸(Allowed files, Forbidden changes, Invariants, Acceptance Criteria, Verification)도 있어야 한다. 프로젝트, tail(퇴역하지 않은 FLEET 등록번호), parent·related·blockedBy key를 검사한다. 근거에는 "중복 검색:"이 있어야 한다. atc가 제목이 비슷한 티켓을 5개까지 `similar`로 남기며, 찾는 범위는 스냅샷(최근 45일 안에 바뀐 이슈)뿐이다. `NEW` 초안은 열린 초안 5건 한도에 들고, 서로 대신하지 않으며, 초안 뒤에 같은 제목의 이슈가 Linear에 생기면 SUPERSEDED로 닫힌다.
+  - `atcctl schedule draft NEW --title … --project … [--priority n] [--type X] [--wake Y] [--rating Z]… [--tail TEAM_X] [--parent K] [--related K]… [--blocked-by K]… --reason … -- <본문>`. 본문의 `\n`은 줄바꿈이고, 초안 ID, "AD HOC FLIGHT 초안", 비슷한 FLIGHT를 출력한다.
+  - OCC 규정(`occ/CLAUDE.md`, `/tick`): CHARTER DESK 절 — CHARTER REQUEST가 있을 때만 쓰고, 먼저 중복을 찾고, 템플릿대로 본문을 쓰고, 팀이 분명하면 tail을 제안하고, 초안 ID를 SUPERVISOR에게 알린다.
 - OCC S1, 그림자 운용의 SCHEDULE 초안([docs/occ.md](docs/occ.md) 5~7장, 영어). OCC가 분류 라벨이나 우선순위가 없는 Todo·Backlog FLIGHT에 `CLASSIFY`(`type:`, `wake:`, `rating:` 라벨, [docs/fleet.md](docs/fleet.md) 4장 기준)와 `PRIORITIZE` 초안을 쓴다. Linear에는 아무것도 쓰지 않는다.
   - 서버: 추가만 하는 기록 `~/.local/state/atc/schedule.jsonl`(`server/schedule.ts`)과 `GET /api/schedule/brief`, `GET /api/schedule/ops/:id`, `POST /api/schedule/ops`, `POST /api/schedule/ops/:id/verdict`. 열린 초안은 5건까지(넘으면 409). 같은 FLIGHT·종류로 새 초안을 쓰면 앞의 것은 SUPERSEDED. FLIGHT가 Todo·Backlog를 벗어나거나 Linear에 이미 반영되면 SUPERSEDED, 3일이 지나면 EXPIRED로 닫힌다.
   - `atcctl schedule brief`, `schedule draft CLASSIFY <FLIGHT> [--type X] [--wake Y] [--rating Z]… -- <근거>`, `schedule draft PRIORITIZE <FLIGHT> --priority 1-4 -- <근거>`. 한도에 차면 `LIMIT: …`을 출력해 세션이 초안 쓰기를 멈추게 한다.
