@@ -134,6 +134,9 @@
 .sc-card.k-PRIORITIZE {
   border-left-color: var(--amber);
 }
+.sc-card.k-NEW {
+  border-left-color: var(--blue);
+}
 .sc-card[aria-busy="true"] {
   opacity: 0.7;
 }
@@ -151,6 +154,10 @@
 .k-PRIORITIZE .sc-kind,
 .sc-table .k-PRIORITIZE {
   color: var(--amber);
+}
+.k-NEW .sc-kind,
+.sc-table .k-NEW {
+  color: var(--blue);
 }
 .sc-age {
   margin-left: auto;
@@ -261,6 +268,100 @@
 }
 .sc-hint-note {
   font-size: var(--text-xs);
+}
+
+/* NEW: AD HOC FLIGHT 초안 */
+.sc-new-title {
+  min-width: 0;
+  color: var(--text);
+  font: 700 var(--text-lg) var(--sans);
+  overflow-wrap: anywhere;
+}
+.sc-new-subject {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.sc-key {
+  font-weight: 700;
+  color: var(--text);
+}
+.sc-key + .sc-key {
+  margin-left: var(--space-1-5);
+}
+.sc-rels,
+.sc-similar {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sc-similar li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.sc-similar .sc-key {
+  flex: none;
+}
+.sc-similar-title {
+  min-width: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.sc-body {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.sc-body summary {
+  padding: var(--space-1) var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.sc-body summary:hover {
+  color: var(--text);
+}
+.sc-body[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+.sc-pre {
+  max-height: 320px;
+  margin: 0;
+  padding: var(--space-2);
+  overflow: auto;
+  background: var(--bg);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  color: var(--text);
+  font: var(--text-xs) / 1.6 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.sc-copy-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-1) 0;
+}
+.sc-copy {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+.sc-copy-btn {
+  flex: none;
+}
+.sc-copy-state {
+  font-size: var(--text-xs);
+}
+.sc-copy-state.t-ok {
+  color: var(--radar);
+}
+.sc-copy-state.t-fail {
+  color: var(--alert);
+}
+.sc-hint-code + .sc-hint-code {
+  margin-left: var(--space-1-5);
 }
 
 .sc-card-error {

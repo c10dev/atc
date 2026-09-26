@@ -401,7 +401,12 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       .sort((a, b) => b.statusAt.localeCompare(a.statusAt))
       .slice(0, 50);
     const candidates = candidatesOf(s.tickets, ops);
-    const keys = new Set([...(ops.map((x) => x.flight).filter(Boolean) as string[]), ...candidates.classify, ...candidates.prioritize]);
+    // NEW 초안의 관계·비슷한 FLIGHT도 화면이 제목과 링크를 보이게 넣는다
+    const newKeys = [...open, ...recent].filter((x) => x.kind === "NEW").flatMap((x) => {
+      const p = x.payload as NewPayload;
+      return [p.parent, ...(p.related ?? []), ...(p.blockedBy ?? []), ...(p.similar ?? []).map((m) => m.key)].filter(Boolean) as string[];
+    });
+    const keys = new Set([...(ops.map((x) => x.flight).filter(Boolean) as string[]), ...candidates.classify, ...candidates.prioritize, ...newKeys]);
     const byKey = new Map(s.tickets.map((t) => [t.key, t]));
     const flights = Object.fromEntries(
       [...keys].filter((k) => byKey.has(k)).map((k) => {

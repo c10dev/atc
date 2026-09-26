@@ -1,5 +1,5 @@
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
-import type { ClassifyPayload, PrioritizePayload, ScheduleOp } from "../../../server/schedule.ts";
+import type { ClassifyPayload, NewPayload, PrioritizePayload, ScheduleOp } from "../../../server/schedule.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
@@ -48,7 +48,18 @@ const statusText: Record<ScheduleOp["status"], string> = {
 const REJECT_REASONS: Record<ScheduleOp["kind"], string[]> = {
   CLASSIFY: ["FLIGHT TYPE이 다름", "WAKE가 다름", "TYPE RATING이 빠지거나 넘침", "근거가 본문과 맞지 않음", "지금 분류할 필요 없음"],
   PRIORITIZE: ["우선순위가 더 높아야 함", "우선순위가 더 낮아야 함", "근거가 본문과 맞지 않음", "지금 정할 필요 없음"],
+  NEW: ["중복임", "본문 템플릿 부족", "프로젝트·라벨이 다름", "티켓 없이 AD HOC로 충분", "지금 만들 필요 없음"],
 };
+
+// 화면에 보이는 작업 이름. NEW가 만드는 FLIGHT는 AD HOC FLIGHT.
+const kindCode = (kind: ScheduleOp["kind"]) => (kind === "NEW" ? "AD HOC FLIGHT" : kind);
+
+// 초안의 대상: FLIGHT 번호, NEW는 아직 없는 이슈라 제목
+const subjectOf = (op: ScheduleOp) => (op.flight ? flightNumber(op.flight) : `"${(op.payload as NewPayload).title}"`);
+
+// NEW 라벨: type:·wake:·rating:·tail:
+const newLabels = (p: NewPayload) =>
+  [p.type && `type:${p.type}`, p.wake && `wake:${p.wake}`, ...(p.ratings ?? []).map((r) => `rating:${r}`), p.tail && `tail:${p.tail}`].filter(Boolean) as string[];
 
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 
@@ -62,6 +73,10 @@ function stamp(iso: string, clock: Clock): string {
 
 // 초안이 적용할 값 한 줄: "type:MAINT · wake:M · rating:SEC", "priority High"
 function payloadText(op: ScheduleOp): string {
+  if (op.kind === "NEW") {
+    const p = op.payload as NewPayload;
+    return [p.project, p.priority && `priority ${PRIORITY_NAME[p.priority]}`, ...newLabels(p)].filter(Boolean).join(" · ");
+  }
   if (op.kind === "PRIORITIZE") return `priority ${PRIORITY_NAME[(op.payload as PrioritizePayload).priority]}`;
   const p = op.payload as ClassifyPayload;
   return [p.type && `type:${p.type}`, p.wake && `wake:${p.wake}`, ...(p.ratings ?? []).map((r) => `rating:${r}`)].filter(Boolean).join(" · ");
@@ -102,7 +117,7 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
   const verdict = async (op: ScheduleOp, v: "agree" | "disagree", reason: string | null) => {
     try {
       await post(`/api/schedule/ops/${op.id}/verdict`, { verdict: v, reason });
-      setNotice({ tone: "ok", text: `${op.id} ${flightNumber(op.flight)} — ${v === "agree" ? "승인했을 것" : "거절했을 것"}으로 기록함` });
+      setNotice({ tone: "ok", text: `${op.id} ${subjectOf(op)} — ${v === "agree" ? "승인했을 것" : "거절했을 것"}으로 기록함` });
       await load();
       draftsHead.current?.focus();
       return null;
@@ -120,13 +135,17 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
 
   if (!brief) return <p className="empty">{error ? `불러오지 못함: ${error}` : "불러오는 중…"}</p>;
   const { gate, flights } = brief;
+  // FLIGHT 링크: brief에 있으면 그 주소, 없으면 아는 Linear 주소에서 키만 바꿔 만든다
+  const base = Object.values(flights).map((f) => f.url?.match(/^https:\/\/linear\.app\/[^/]+\/issue\//)?.[0]).find(Boolean);
+  const hrefOf = (key: string) => flights[key]?.url ?? (base ? `${base}${key}` : null);
 
   return (
     <section className="schedule">
       <div className="toolbar">
         <span className="muted">
           <span className="sc-mode">SHADOW</span> OCC S1 · OCC가 Linear에 쓸 변경을 초안으로 남긴다. 판정은 초안 품질을 재는 데만 쓰고{" "}
-          <b className="sc-strong">Linear에는 아무것도 쓰지 않는다.</b>
+          <b className="sc-strong">Linear에는 아무것도 쓰지 않는다.</b> CLASSIFY·PRIORITIZE는 atc 신호에서, AD HOC FLIGHT 초안은
+          SUPERVISOR가 OCC 세션에 낸 CHARTER REQUEST에서 나온다.
         </span>
       </div>
       {error && (
@@ -149,9 +168,13 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
       </h2>
       {brief.open.length ? (
         <div className="sc-cards">
-          {brief.open.map((op) => (
-            <DraftCard key={op.id} op={op} flight={flights[op.flight]} changes={brief.changes[op.id] ?? []} now={now} clock={clock} onVerdict={verdict} />
-          ))}
+          {brief.open.map((op) =>
+            op.kind === "NEW" ? (
+              <NewCard key={op.id} op={op} flights={flights} hrefOf={hrefOf} now={now} clock={clock} onVerdict={verdict} />
+            ) : (
+              <DraftCard key={op.id} op={op} flight={flights[op.flight ?? ""]} changes={brief.changes[op.id] ?? []} now={now} clock={clock} onVerdict={verdict} />
+            ),
+          )}
         </div>
       ) : (
         <p className="empty">열린 초안 없음 — OCC가 아직 초안을 쓰지 않았거나 모두 판정했다.</p>
@@ -184,11 +207,15 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
             {brief.recent.map((op) => (
               <tr key={op.id} className={`s-${op.status}`}>
                 <td className="sc-c-id mono" data-label="ID">{op.id}</td>
-                <td className={`sc-c-kind k-${op.kind}`} data-label="종류">{op.kind}</td>
+                <td className={`sc-c-kind k-${op.kind}`} data-label="종류">{kindCode(op.kind)}</td>
                 <td className="sc-c-flight" data-label="FLIGHT">
-                  <span className="mono" title={flights[op.flight]?.title ?? op.flight}>
-                    {flightNumber(op.flight)}
-                  </span>
+                  {op.flight ? (
+                    <span className="mono" title={flights[op.flight]?.title ?? op.flight}>
+                      {flightNumber(op.flight)}
+                    </span>
+                  ) : (
+                    <span className="sc-new-subject">{(op.payload as NewPayload).title}</span>
+                  )}
                   <span className="sc-payload">{payloadText(op)}</span>
                 </td>
                 <td className="sc-c-status sc-result" data-label="결과">{statusText[op.status]}</td>
@@ -269,30 +296,14 @@ function DraftCard({
   clock: Clock;
   onVerdict: (op: ScheduleOp, v: "agree" | "disagree", reason: string | null) => Promise<string | null>;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [rejecting, setRejecting] = useState(false);
-  const rejectBtn = useRef<HTMLButtonElement>(null);
+  const v = useVerdict(op, onVerdict);
+  const key = op.flight ?? "";
   const labels = flight?.labels ?? [];
   const clsDefault = Boolean(flight) && (!axisLabel(labels, "type") || !axisLabel(labels, "wake"));
 
-  const submit = async (v: "agree" | "disagree", reason: string | null) => {
-    setBusy(true);
-    setError(null);
-    const err = await onVerdict(op, v, reason);
-    // 성공하면 카드가 사라진다. 실패만 여기서 보인다.
-    setBusy(false);
-    if (err) setError(err);
-  };
-
-  const closeReject = () => {
-    setRejecting(false);
-    requestAnimationFrame(() => rejectBtn.current?.focus());
-  };
-
   const titleId = `sc-${op.id}-title`;
   return (
-    <article className={`sc-card k-${op.kind}`} aria-labelledby={titleId} aria-busy={busy}>
+    <article className={`sc-card k-${op.kind}`} aria-labelledby={titleId} aria-busy={v.busy}>
       <header className="sc-card-head">
         <span className="sc-kind">{op.kind}</span>
         <span className="mono faint">{op.id}</span>
@@ -302,11 +313,11 @@ function DraftCard({
       </header>
       <h3 className="sc-flight" id={titleId}>
         {flight?.url ? (
-          <a className="mono sc-fn" href={flight.url} target="_blank" rel="noreferrer" title={`${op.flight} — Linear에서 열기`}>
-            {flightNumber(op.flight)}
+          <a className="mono sc-fn" href={flight.url} target="_blank" rel="noreferrer" title={`${key} — Linear에서 열기`}>
+            {flightNumber(key)}
           </a>
         ) : (
-          <span className="mono sc-fn">{flightNumber(op.flight)}</span>
+          <span className="mono sc-fn">{flightNumber(key)}</span>
         )}
         {flight && <PriorityMark priority={flight.priority} />}
         <span className="sc-title" title={flight?.title}>
@@ -347,25 +358,224 @@ function DraftCard({
 
       {changes.length > 0 && <ManualHint op={op} changes={changes} labels={labels} />}
 
-      {error && (
+      <VerdictActions op={op} v={v} />
+    </article>
+  );
+}
+
+type OnVerdict = (op: ScheduleOp, v: "agree" | "disagree", reason: string | null) => Promise<string | null>;
+
+// 카드 하나의 판정 상태(기록 중, 실패, 거절 사유 입력)
+function useVerdict(op: ScheduleOp, onVerdict: OnVerdict) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState(false);
+  const rejectBtn = useRef<HTMLButtonElement>(null);
+  const submit = async (v: "agree" | "disagree", reason: string | null) => {
+    setBusy(true);
+    setError(null);
+    const err = await onVerdict(op, v, reason);
+    // 성공하면 카드가 사라진다. 실패만 여기서 보인다.
+    setBusy(false);
+    if (err) setError(err);
+  };
+  const closeReject = () => {
+    setRejecting(false);
+    requestAnimationFrame(() => rejectBtn.current?.focus());
+  };
+  return { busy, error, rejecting, setRejecting, submit, closeReject, rejectBtn };
+}
+
+function VerdictActions({ op, v }: { op: ScheduleOp; v: ReturnType<typeof useVerdict> }) {
+  return (
+    <>
+      {v.error && (
         <p className="sc-card-error" role="alert">
-          기록하지 못함: {error}
+          기록하지 못함: {v.error}
         </p>
       )}
-
-      {rejecting ? (
-        <RejectForm op={op} busy={busy} onCancel={closeReject} onSubmit={(reason) => submit("disagree", reason)} />
+      {v.rejecting ? (
+        <RejectForm op={op} busy={v.busy} onCancel={v.closeReject} onSubmit={(reason) => v.submit("disagree", reason)} />
       ) : (
         <div className="sc-actions">
-          <button className="sc-btn agree" disabled={busy} onClick={() => submit("agree", null)}>
+          <button className="sc-btn agree" disabled={v.busy} onClick={() => v.submit("agree", null)}>
             승인했을 것
           </button>
-          <button ref={rejectBtn} className="sc-btn disagree" disabled={busy} onClick={() => setRejecting(true)}>
+          <button ref={v.rejectBtn} className="sc-btn disagree" disabled={v.busy} onClick={() => v.setRejecting(true)}>
             거절했을 것…
           </button>
         </div>
       )}
+    </>
+  );
+}
+
+// FLIGHT 키 링크(주소를 모르면 글자만)
+function FlightLink({ k, hrefOf, title }: { k: string; hrefOf: (key: string) => string | null; title?: string }) {
+  const href = hrefOf(k);
+  return href ? (
+    <a className="mono sc-key" href={href} target="_blank" rel="noreferrer" title={title ? `${k} ${title}` : `${k} — Linear에서 열기`}>
+      {flightNumber(k)}
+    </a>
+  ) : (
+    <span className="mono sc-key">{flightNumber(k)}</span>
+  );
+}
+
+// NEW: CHARTER REQUEST로 만들 AD HOC FLIGHT 초안
+function NewCard({
+  op,
+  flights,
+  hrefOf,
+  now,
+  clock,
+  onVerdict,
+}: {
+  op: ScheduleOp;
+  flights: Record<string, FlightInfo>;
+  hrefOf: (key: string) => string | null;
+  now: number;
+  clock: Clock;
+  onVerdict: OnVerdict;
+}) {
+  const v = useVerdict(op, onVerdict);
+  const p = op.payload as NewPayload;
+  const labels = newLabels(p);
+  const relations = [
+    ...(p.parent ? [["parent", [p.parent]] as const] : []),
+    ...(p.related?.length ? [["related", p.related] as const] : []),
+    ...(p.blockedBy?.length ? [["blocked by", p.blockedBy] as const] : []),
+  ];
+  const lines = p.body.split("\n").length;
+  const titleId = `sc-${op.id}-title`;
+  return (
+    <article className="sc-card k-NEW" aria-labelledby={titleId} aria-busy={v.busy}>
+      <header className="sc-card-head">
+        <span className="sc-kind">{kindCode(op.kind)}</span>
+        <span className="mono faint">{op.id}</span>
+        <time className="faint sc-age" dateTime={op.at} title={`초안 작성 ${stamp(op.at, clock)}`}>
+          {timeAgo(op.at, now)}
+        </time>
+      </header>
+      <h3 className="sc-flight" id={titleId}>
+        <span className="sc-new-title">{p.title}</span>
+        {p.priority ? <PriorityMark priority={p.priority} /> : null}
+      </h3>
+
+      <dl className="sc-facts">
+        <dt>프로젝트</dt>
+        <dd>{p.project}</dd>
+        <dt>priority</dt>
+        <dd>{p.priority ? PRIORITY_NAME[p.priority] : <span className="faint">없음</span>}</dd>
+        <dt>라벨</dt>
+        <dd>
+          {labels.length ? (
+            <ul className="sc-changes">
+              {labels.map((l) => (
+                <li key={l} className="sc-change">
+                  {l}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="faint">없음 — 기본값 BUILD · M</span>
+          )}
+        </dd>
+        {relations.length > 0 && (
+          <>
+            <dt>관계</dt>
+            <dd>
+              <ul className="sc-rels">
+                {relations.map(([name, keys]) => (
+                  <li key={name}>
+                    <span className="faint">{name}</span>{" "}
+                    {keys.map((k) => (
+                      <FlightLink key={k} k={k} hrefOf={hrefOf} title={flights[k]?.title} />
+                    ))}
+                  </li>
+                ))}
+              </ul>
+            </dd>
+          </>
+        )}
+        <dt>비슷한</dt>
+        <dd>
+          {p.similar.length ? (
+            <ul className="sc-similar">
+              {p.similar.map((x) => (
+                <li key={x.key}>
+                  <FlightLink k={x.key} hrefOf={hrefOf} />
+                  <span className="sc-similar-title">{x.title}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="faint">비슷한 FLIGHT 없음</span>
+          )}
+        </dd>
+        <dt>근거</dt>
+        <dd className="sc-reason">{op.reason}</dd>
+      </dl>
+
+      <details className="sc-body">
+        <summary>본문 {lines}줄</summary>
+        <pre className="sc-pre" tabIndex={0} aria-label={`${op.id} 본문`}>
+          {p.body}
+        </pre>
+      </details>
+
+      <div className="sc-hint">
+        <span className="sc-hint-head">LINEAR 수동 반영</span>
+        <span>Linear에 손으로 만들 때 이 제목·본문·라벨을 쓰세요.</span>
+        <div className="sc-copy-row">
+          <CopyButton label="제목 복사" text={p.title} />
+          <CopyButton label="본문 복사" text={p.body} />
+        </div>
+        <span>
+          프로젝트 <code>{p.project}</code>
+          {p.priority ? (
+            <>
+              {" "}
+              · Priority <code>{PRIORITY_NAME[p.priority]}</code>
+            </>
+          ) : null}
+          {labels.length > 0 && (
+            <>
+              {" "}
+              · 라벨 {labels.map((l) => <code key={l} className="sc-hint-code">{l}</code>)}
+            </>
+          )}
+        </span>
+        <span className="faint sc-hint-note">SHADOW — atc는 Linear에 쓰지 않음. S2부터는 승인한 초안을 OCC가 Linear Todo에 만들어 FILED가 된다.</span>
+      </div>
+
+      <VerdictActions op={op} v={v} />
     </article>
+  );
+}
+
+// 클립보드 복사. 못 쓰는 창이면 직접 선택하라고 알린다.
+function CopyButton({ label, text }: { label: string; text: string }) {
+  const [state, setState] = useState<"idle" | "ok" | "fail">("idle");
+  const copy = async () => {
+    try {
+      if (!navigator.clipboard) throw new Error("no clipboard");
+      await navigator.clipboard.writeText(text);
+      setState("ok");
+    } catch {
+      setState("fail");
+    }
+    setTimeout(() => setState("idle"), 2500);
+  };
+  return (
+    <span className="sc-copy">
+      <button type="button" className="sc-btn sc-copy-btn" onClick={copy}>
+        {label}
+      </button>
+      <span className={`sc-copy-state t-${state}`} role="status" aria-live="polite">
+        {state === "ok" ? "복사함" : state === "fail" ? "복사 못 함 — 본문을 펼쳐 직접 선택하세요" : ""}
+      </span>
+    </span>
   );
 }
 
