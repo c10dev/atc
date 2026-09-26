@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_DISPATCH_CONFIG, type Plan } from "./dispatch.ts";
 import type { Ticket } from "./model.ts";
-import { canApply, fold, formatFlightPlan, gate3Of, gateOf, type Op, overdueOf, type Proposal, reservedOf, syncOps } from "./proposals.ts";
+import { parentKeysOf } from "./model.ts";import { canApply, fold, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reservedOf, syncOps } from "./proposals.ts";
 import { toTicket } from "./sources/linear.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
@@ -100,6 +100,26 @@ test("Linear 관계: relations의 blocks는 내가 막음, inverseRelations의 b
   );
 });
 
+test("Linear parent/children: 상위·하위 이슈 관계를 Ticket에 담는다", () => {
+  const parent = toTicket({
+    identifier: "VOC-34", title: "상위", url: "u", priority: 0, updatedAt: iso(0),
+    state: { name: "In Progress", type: "started", color: "#fff" }, assignee: null,
+    children: { nodes: [{ identifier: "VOC-40" }, { identifier: "VOC-41" }, { identifier: "VOC-40" }] },
+  });
+  const child = toTicket({
+    identifier: "VOC-40", title: "하위", url: "u", priority: 0, updatedAt: iso(0),
+    state: { name: "Todo", type: "unstarted", color: "#fff" }, assignee: null,
+    parent: { identifier: "VOC-34" },
+  });
+  assert.equal(parent.parent, null);
+  assert.deepEqual(parent.children, ["VOC-40", "VOC-41"]);
+  assert.equal(child.parent, "VOC-34");
+  assert.deepEqual([...parentKeysOf([parent, child])], ["VOC-34"]);
+  // 하위만 있고 상위 이슈가 목록에 없어도, parent로 지목된 key는 상위로 본다
+  assert.equal(child.parent, "VOC-34");
+  assert.deepEqual([...parentKeysOf([child])], ["VOC-34"]);
+});
+
 // ── 2b 승인 운용 ──
 
 const ws = (ticketKey: string) => ({ path: `/w/${ticketKey}`, ticketKey }) as import("./model.ts").Workspace;
@@ -155,6 +175,18 @@ test("동기화(2b): 승인 후 무효면 SUPERSEDED, 보낸 것은 그대로, S
   );
 });
 
+test("SUPERSEDED 사유: 계획이 그 FLIGHT를 뺀 이유가 있으면 그대로 쓴다(더 나은 배정으로 바뀜 대신)", () => {
+  const existing = fold([create("D-0001", "VOC-1", "b", 30)]);
+  const plan = planOf({
+    aircraft: [{ id: "b", name: "TEAM_B", callsign: "BRAVO", airport: "VCDO", available: true, reason: "PARKED", reserved: null }],
+    excluded: [{ flight: "VOC-1", reason: "HOLD D-0002 — 선행 FLIGHT 대기" }],
+  });
+  const ops = syncOps(existing, plan, { tickets: [t("VOC-1")], workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1);
+  assert.deepEqual(ops.map((o) => `${o.op}:${o.id}:${"reason" in o ? o.reason : ""}`), [
+    "supersede:D-0001:HOLD D-0002 — 선행 FLIGHT 대기",
+  ]);
+});
+
 test("FLIGHT PLAN 문구: 콜사인·FLIGHT·AIRPORT·PRIORITY·제목·URL·메모·READBACK 요청", () => {
   const [p] = fold([create("D-0007", "VOC-193", "b", 10), { op: "note", id: "D-0007", at: iso(5), text: "DB 권한 작업", caution: true }]);
   const msg = formatFlightPlan({ ...p, airport: "VCDO" }, { title: "권한 정리", url: "https://linear.app/x/VOC-193", priority: 2 }, "TEAM_B");
@@ -169,6 +201,36 @@ test("FLIGHT PLAN 문구: 콜사인·FLIGHT·AIRPORT·PRIORITY·제목·URL·메
       '— 맡으면 이 메시지에 "READBACK D-0007", 못 맡으면 사유로 답장해 주세요.',
     ].join("\n"),
   );
+});
+
+test("FLIGHT PLAN 문구: HOLD가 있으면 선행 FLIGHT 줄이 들어간다", () => {
+  const [p] = fold([create("D-0008", "VOC-192", "b", 10), { op: "hold", id: "D-0008", at: iso(9), blockedBy: ["VOC-180"] }]);
+  const msg = formatFlightPlan({ ...p, airport: "VCDO" }, { title: "별도 이슈", url: "u", priority: 2 }, "TEAM_F");
+  assert.ok(msg.includes("HOLD — 선행 FLIGHT VOC180가 끝난 뒤 착수"));
+});
+
+test("HOLD: 제안은 열린 목록에서 빠지고, AIRCRAFT는 놓아 주되 FLIGHT는 잡아 둔 채 선행이 끝나면 풀린다", () => {
+  const [p] = fold([create("D-0003", "VOC-192", "b", 30), { op: "hold", id: "D-0003", at: iso(20), blockedBy: ["VOC-180"] }]);
+  assert.deepEqual(p.hold, ["VOC-180"]);
+  assert.equal(isHeld(p), true);
+  assert.equal(isInFlight(p), false);
+  // AIRCRAFT는 아직 아무도 안 쥐었다 — 다른 FLIGHT에 쓸 수 있다
+  assert.deepEqual([...reservedOf([{ ...p, status: "approved" }]).aircraft], []);
+  // FLIGHT는 잡아 둔다 — 안 그러면 다음 바퀴에 같은 FLIGHT가 다른 AIRCRAFT로 다시 나온다
+  const r = reservedOf([p]);
+  assert.deepEqual([...r.flights], [["VOC-192", "D-0003"]]);
+  assert.deepEqual([...r.held!], [["VOC-192", "D-0003"]]);
+
+  // 선행 VOC-180이 아직 In Progress면 HOLD 유지
+  const running = [t("VOC-180", "started", "In Progress"), t("VOC-192")];
+  assert.deepEqual(syncOps([p], planOf(), { tickets: running, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1), []);
+
+  // 선행이 끝나면 후보로 되돌린다
+  const done = [t("VOC-180", "completed", "Done"), t("VOC-192")];
+  const ops = syncOps([p], planOf(), { tickets: done, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1);
+  assert.deepEqual(ops.map((o) => `${o.op}:${o.id}:${"reason" in o ? o.reason : ""}`), ["supersede:D-0003:선행 FLIGHT(VOC-180)가 끝남 — 다시 후보"]);
+  // 선행이 끝나면 FLIGHT도 놓아 준다
+  assert.deepEqual([...reservedOf([{ ...p, status: "superseded" }]).flights], []);
 });
 
 test("늦음과 3단계 점검: READBACK 비율·중앙값·DEPARTED 비율", () => {

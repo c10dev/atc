@@ -7,6 +7,10 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 ## [Unreleased]
 
 ### 추가
+- 상위 이슈(Linear `children`이 있거나 다른 이슈가 `parent`로 지목한 것)를 작업으로 보지 않는다. ASSIGN 제안도, STAND 없이 아무리 오래 ENROUTE여도 RELEASE 제안도, NO CONTACT 경보도 만들지 않는다. 작업은 그 하위 이슈다. 보드 쿼리가 `parent` / `children`을 읽고, DISPATCH 탭의 "제외" 목록에 하위 건수와 함께 뜬다.
+- `dispatch note --hold <FLIGHT>`: 본문에만 적혀 있고 `blocks` 관계로는 없는 선행 작업을 DISPATCH 세션이 지정한다. 제안은 DISPATCH 탭의 새 HELD 목록으로 가고, 제안 자신의 FLIGHT는 예약된 채로 남아 planner가 다시 올리지 않으며(AIRCRAFT는 다른 FLIGHT가 쓸 수 있게 놓아 둔다), 보낼 수는 없고, FLIGHT PLAN에 `HOLD — 선행 FLIGHT …` 줄이 들어간다. 지정한 FLIGHT가 모두 끝나면 atc가 그 제안을 SUPERSEDED로 풀어 planner가 다시 후보로 올린다.
+- DISPATCH 탭의 거절 사유 칩. 거절할 때 사유 목록(상위 이슈, 본문에만 있는 선행 작업, 사람 결정 대기, 이미 진행 중, 우선순위 낮음, 슬롯 없음, 다른 팀이 더 적합) 중 하나를 고르고 메모를 선택으로 덧붙이며, `"<칩> — <메모>"` 형태로 제안의 사유에 저장된다.
+- SUPERSEDED 사유가 계획의 제외 사유를 그대로 쓴다. FLIGHT가 상위 이슈·HOLD·라벨·STAND 때문에 빠진 경우 "더 나은 배정으로 바뀜" 대신 그 이유(`HOLD D-0005 — 선행 FLIGHT 대기`)가 남는다.
 - DISPATCH 2b 승인 운용. `mode`(`shadow` / `approval`) 뒤에 있고 기본은 꺼짐. approval 모드에서 SUPERVISOR가 DISPATCH 탭에서 제안을 승인·거절하고, DISPATCH는 승인된 ASSIGN을 정해진 FLIGHT PLAN으로 CAPTAIN에게 보내며(`dispatch release`), `READBACK D-xxxx`나 거절을 기록한다. 그 FLIGHT의 STAND가 생기면 atc가 DEPARTED로 바꾼다. 승인·전달·수락된 제안은 AIRCRAFT와 FLIGHT를 예약한다. 탭에 IN FLIGHT 목록(NO READBACK / NO DEPARTURE 표시), 3단계(ATFM) 점검, 확인 창을 거치는 모드 전환이 생겼다.
 - `dispatch/send-guard.mjs`: DISPATCH의 SendMessage는 approval 모드에서, SENT 상태인 제안을, 그 CAPTAIN에게, atc가 만든 FLIGHT PLAN 문구 그대로 보낼 때만 통과한다.
 - 설정 창에 LINEAR·AGENTS 탭. 새 `GET /api/settings`로 서버 설정을 읽기 전용으로 보여 주고, 비밀 값은 돌려주지 않는다.

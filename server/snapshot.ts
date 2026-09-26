@@ -1,5 +1,5 @@
 import { config } from "./config.ts";
-import type { Alert, Claim, Session, Snapshot, Ticket } from "./model.ts";
+import { type Alert, type Claim, parentKeysOf, type Session, type Snapshot, type Ticket } from "./model.ts";
 import { resolveAirports } from "./airports.ts";
 import { recentClearances } from "./clearances.ts";
 import { type Occupancy, resolveOccupancy } from "./occupancy.ts";
@@ -77,6 +77,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
       blocks: [],
       blockedBy: [],
       related: [],
+      parent: null,
+      children: [],
       assignee: null,
       priority: 0,
       url: null,
@@ -138,8 +140,10 @@ function buildAlerts(
   }
 
   const ticketsWithWs = new Set(workspaces.map((w) => w.ticketKey));
+  // 상위 이슈는 하위 이슈를 묶는 컨테이너라, 그 자체에 워크트리가 없는 것은 방치가 아니다.
+  const parents = parentKeysOf(tickets);
   for (const t of tickets) {
-    if (t.stateType !== "started" || ticketsWithWs.has(t.key)) continue;
+    if (t.stateType !== "started" || ticketsWithWs.has(t.key) || parents.has(t.key)) continue;
     alerts.push({ kind: "no-workspace", message: `진행 중인데 워크트리가 없음`, ticketKey: t.key });
   }
   return alerts;

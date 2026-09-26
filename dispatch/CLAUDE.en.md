@@ -24,9 +24,9 @@ Design: [`../docs/dispatch.md`](../docs/dispatch.md).
 
 | Command | What it does |
 |---|---|
-| `node ../controller/atcctl.mjs dispatch brief` | `mode`, plan (`plan`), open proposals (`open`), in progress (`inFlight`: approved, sent, accepted), late ones (`overdue`), recent (`recent`), checks (`gate`, `gate3`), FLIGHT summaries (`flights`) |
+| `node ../controller/atcctl.mjs dispatch brief` | `mode`, plan (`plan`), open proposals (`open`), held (`held`), in progress (`inFlight`: approved, sent, accepted), late ones (`overdue`), recent (`recent`), checks (`gate`, `gate3`), FLIGHT summaries (`flights`) |
 | `node ../controller/atcctl.mjs dispatch flight <VOC-193>` | FLIGHT body and comments (up to 20) |
-| `node ../controller/atcctl.mjs dispatch note <D-0003> [--caution] -- <note>` | Add a review note to a proposal. A new note on the same proposal replaces the old one |
+| `node ../controller/atcctl.mjs dispatch note <D-0003> [--caution] [--hold <FLIGHT>]… -- <note>` | Add a review note to a proposal. A new note on the same proposal replaces the old one. `--hold` names the prerequisite FLIGHT and moves the proposal to HELD |
 | `node ../controller/atcctl.mjs dispatch release <D-0003>` | (2b) Mark an approved proposal sent and print `SEND TO` and the FLIGHT PLAN text. If already sent, print the same text again (for a resend) |
 | `node ../controller/atcctl.mjs dispatch readback <D-0003>` | (2b) The CAPTAIN read back |
 | `node ../controller/atcctl.mjs dispatch decline <D-0003> -- <reason>` | (2b) The CAPTAIN can't take it, with a reason |
@@ -39,12 +39,15 @@ For each proposal in `open` without a `note`, read the FLIGHT body and comments 
 |---|---|
 | DB, migration, RLS, permission, security, rights (copyright), deployment or payment work | `--caution`. In vocado this falls under `Codex Engineering Task` |
 | A human decision or outside input is needed first ("after user confirmation", waiting for design sign-off, etc.) | `--caution`, and what it is waiting for |
-| A prerequisite written only in the body, not as a blocks relation | `--caution`, and the prerequisite FLIGHT |
+| A prerequisite written only in the body, not as a blocks relation | `--caution` + `--hold <prerequisite FLIGHT>` (the FLIGHT you name is the **blocking** one). HELD proposals show on the HELD list, not the ASSIGN list |
 | Work that continues the assigned team's past FLIGHTs (team affinity in `factors`) | One line on the connection |
 | A RELEASE proposal where recent comments or PR mentions show it is actually in progress | The evidence. It means the RELEASE is wrong |
+| A parent issue (a container for child issues) that should not have been a candidate | The planner now filters these out, so it normally won't appear. If one does, the proposal is wrong — report to the SUPERVISOR and note why |
 | Nothing notable | One line: "본문상 제약 없음" ("no constraints in the body") |
 
 Keep notes short and factual. Leave any judgment about changing scores or assignments to the SUPERVISOR.
+
+A HOLD is set with `dispatch note` together with the note, or by calling `--hold` alone on a proposal that already has one. When the prerequisite FLIGHTs are done, atc supersedes the proposal and the planner offers it again (with a new proposal id).
 
 ## Sending FLIGHT PLANs (2b, only when `mode` is approval)
 
@@ -61,4 +64,4 @@ When a STAND appears, atc marks the proposal DEPARTED. RELEASE proposals are not
 
 ## DISPATCH LOG
 
-One or two lines at the end of each pass: IDs of proposals given notes and the CAUTION reasons, and (2b) FLIGHT PLANs sent, READBACKs received and declines. If nothing happened, "특이 사항 없음" ("nothing to report").
+One or two lines at the end of each pass: IDs of proposals given notes and the CAUTION reasons, proposals put on HOLD with their prerequisite FLIGHTs, and (2b) FLIGHT PLANs sent, READBACKs received and declines. If nothing happened, "특이 사항 없음" ("nothing to report").

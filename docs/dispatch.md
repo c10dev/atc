@@ -66,10 +66,23 @@ The first implementation covers only `ASSIGN` and `RELEASE`. `RELEASE` does a lo
   - AIRBORNE, NORDO → cannot
   - Cannot if it has a FLIGHT PLAN without READBACK (one at a time)
 - **FLIGHT**: in the Todo state, and
+  - not a **parent issue** (a container for child issues — see 5.1.1)
   - not labelled `symphony-pilot`
   - not blocked by a FLIGHT that hasn't ARRIVED (if blocked: `HOLD_DEPARTURE`)
   - has no STAND yet and nobody holds it
   - its project maps to an AIRPORT that is operating (OPEN)
+
+#### 5.1.1 Parent issues
+
+A FLIGHT whose Linear `children` is non-empty, or that another FLIGHT names as its `parent`, is treated as a **container, not work**. Its children are the work. The silence of a container is not neglect, so it is left out on both sides:
+
+- no `ASSIGN` proposal (it appears under "excluded": `상위 이슈 — 하위 N건을 묶음`)
+- no `RELEASE` proposal, however long it sits ENROUTE without a STAND
+- no NO CONTACT alert (it is not expected to have a STAND of its own)
+
+Children are planned normally. The parent link is one level: a grandchild is judged by its own direct parent.
+
+The relation is read from Linear (`parent` / `children(first: 50)`), not guessed from the body. Failing that, a prerequisite written only in the body has no `blocks` relation for the planner to see, so it is handled by hand (5.4).
 
 ### 5.2 Slots (capacity)
 
@@ -99,6 +112,7 @@ For each top candidate the server picks, the DISPATCH session reads the ticket b
 
 - Adds a `CAUTION` mark with a reason for DB, migration, security or rights work (what vocado routes to `Codex Engineering Task`).
 - Holds the proposal back when the ticket needs a human decision first (e.g. "after user confirmation").
+- Adds a `HOLD` with `dispatch note <ID> --hold <FLIGHT> -- <note>` when the prerequisite is written only in the body, with no `blocks` relation. The named FLIGHT is the **blocking (prerequisite)** one, and the proposal moves to the HELD list instead of the ASSIGN list. Its own FLIGHT stays reserved so the planner will not offer it again (its AIRCRAFT is left free for other FLIGHTs), it cannot be sent, and its FLIGHT PLAN carries a `HOLD — 선행 FLIGHT …` line. When every named FLIGHT reaches a done state, atc supersedes the proposal so the planner can offer it again.
 - Leaves a one- or two-line rationale on the proposal.
 
 ## 6. Flow
@@ -125,16 +139,18 @@ CAPTAIN: READBACK → Linear In Progress, prepares the STAND (same rules as toda
 atc: DEPARTED once that FLIGHT gets a STAND; if not, rechecks after 30 minutes like TOWER does
 ```
 
-Proposal states: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)` (2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED` (2b), with side branches `REJECTED`, `DECLINED` (CAPTAIN gave a reason), `SUPERSEDED` (a person assigned it directly or the situation changed) and `EXPIRED` (24 hours).
+Proposal states: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)` (2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED` (2b), with side branches `REJECTED`, `DECLINED` (CAPTAIN gave a reason), `SUPERSEDED` (a person assigned it directly or the situation changed) and `EXPIRED` (24 hours). A `PROPOSED` ASSIGN that carries a `HOLD` leaves the main flow: it waits on the HELD list until its prerequisite is done.
+
+Rejections carry a **reason chip** in the SUPERVISOR's UI: the reason list plus an optional memo, stored as `"<chip> — <memo>"` in `reason`. The chip that matters most is the parent issue (5.1.1), which the planner should also catch by itself.
 
 ## 7. What to add to atc
 
 | Where | What |
 |---|---|
-| `server/sources/linear.ts` | Add `relations` (blocks), `labels`, `project`, `createdAt` and the time a state was entered (via `history` if possible) to the query |
-| `server/dispatch.ts` | Candidate, slot and score calculation (pure functions + tests) |
-| `server/proposals.ts` | Proposal log (`~/.local/state/atc/proposals.jsonl`, append-only, same approach as clearances) |
-| API | `GET /api/dispatch/brief`, `POST /api/dispatch/proposals/:id/{agree,disagree,approve,reject,sent,accept,decline}` |
+| `server/sources/linear.ts` | Add `relations` (blocks), `labels`, `project`, `createdAt`, `parent` / `children` and the time a state was entered (via `history` if possible) to the query |
+| `server/dispatch.ts` | Candidate, slot and score calculation (pure functions + tests); parent issues (5.1.1) are excluded from both ASSIGN and RELEASE |
+| `server/proposals.ts` | Proposal log (`~/.local/state/atc/proposals.jsonl`, append-only, same approach as clearances); `hold` operations for prerequisites written only in the body |
+| API | `GET /api/dispatch/brief`, `POST /api/dispatch/proposals/:id/{note,hold,agree,disagree,approve,reject,sent,accept,decline}` |
 | Events and records | `proposal.created / decided / sent / accepted / departed / superseded` into the FLIGHT RECORDER |
 | Settings | `~/.local/state/atc/dispatch.json`: project → AIRPORT mapping, slots, weights, mode (`shadow`/`approval`) |
 | UI | DISPATCH tab: proposal cards (FLIGHT, AIRCRAFT, per-factor scores, DISPATCH note, CAUTION), approve/reject buttons, slot status, RELEASE list |

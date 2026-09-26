@@ -129,6 +129,94 @@
   border-color: var(--alert);
   border-left-color: var(--alert);
 }
+.dp-card.is-held {
+  border-left-color: var(--muted);
+}
+
+/* DISPATCH가 선행 FLIGHT로 잡아 둔 제안 */
+.dp-hold {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-1-5) var(--space-2);
+  background: var(--panel-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.dp-hold-mark {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+
+/* 거절 사유 칩 */
+.dp-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: rgb(0 0 0 / 0.55);
+}
+.dp-dialog-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(560px, 100%);
+  padding: var(--space-4);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+}
+.dp-dialog-box .label {
+  margin-top: 0;
+}
+.dp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+.dp-chip {
+  padding: var(--space-1) var(--space-2);
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  font: var(--text-sm) var(--sans);
+  cursor: pointer;
+}
+.dp-chip:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.dp-chip.is-on {
+  border-color: var(--alert);
+  color: var(--alert);
+}
+.dp-dialog-memo {
+  height: 32px;
+  padding: 0 var(--space-3);
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font: var(--text-sm) var(--sans);
+}
+.dp-dialog-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  word-break: break-word;
+}
+.dp-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 .dp-card-head {
   display: flex;
   align-items: baseline;

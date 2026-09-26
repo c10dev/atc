@@ -14,8 +14,9 @@ const USAGE = `사용법:
 DISPATCH (2a 그림자 운용: 제안 검토만, 판정은 SUPERVISOR)
   node atcctl.mjs dispatch brief            계획·열린 제안·2b 점검 (JSON)
   node atcctl.mjs dispatch flight <VOC-193> FLIGHT 본문·댓글 (Linear 읽기 전용)
-  node atcctl.mjs dispatch note <D-0003> [--caution] -- <메모>
-                                            제안에 검토 메모를 단다(CAUTION 표시 선택)
+  node atcctl.mjs dispatch note <D-0003> [--caution] [--hold <FLIGHT>]… -- <메모>
+                                            제안에 검토 메모를 단다(CAUTION 표시 선택).
+                                            --hold는 선행 FLIGHT를 지정해 그 제안을 HOLD로 돌린다
   node atcctl.mjs dispatch release <D-0003> (2b) 승인된 제안을 sent로 바꾸고 SEND TO와 FLIGHT PLAN 출력
   node atcctl.mjs dispatch readback <D-0003>
                                             (2b) CAPTAIN이 READBACK함
@@ -69,9 +70,19 @@ try {
     const sep = args.indexOf("--");
     const text = sep < 0 ? "" : args.slice(sep + 1).join(" ");
     if (!text) throw new Error("-- 뒤에 메모가 필요함");
-    const caution = args.slice(2, sep < 0 ? undefined : sep).includes("--caution");
-    const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/note`, { text, caution });
-    console.log(`${r.proposal.id} 메모${r.proposal.caution ? " · CAUTION" : ""}`);
+    const head = args.slice(2, sep < 0 ? undefined : sep);
+    const blockedBy = [];
+    for (let i = 0; i < head.length; i++) {
+      if (head[i] === "--hold") {
+        if (!head[i + 1]) throw new Error("--hold 뒤에 선행 FLIGHT key가 필요함");
+        blockedBy.push(head[++i]);
+      } else if (head[i] !== "--caution") {
+        throw new Error(`알 수 없는 옵션 ${head[i]}`);
+      }
+    }
+    const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/note`, { text, caution: head.includes("--caution") });
+    if (blockedBy.length) await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/hold`, { blockedBy });
+    console.log(`${r.proposal.id} 메모${r.proposal.caution ? " · CAUTION" : ""}${blockedBy.length ? ` · HOLD (선행 ${blockedBy.join(", ")})` : ""}`);
   } else if (cmd === "dispatch" && args[0] === "release" && args[1]) {
     const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/release`);
     console.log(`SEND TO: ${r.sendTo}\n---\n${r.message}`);

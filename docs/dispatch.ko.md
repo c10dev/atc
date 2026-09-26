@@ -66,10 +66,23 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
   - AIRBORNE, NORDO → 불가
   - 복창하지 않은 FLIGHT PLAN이 있으면 불가(한 번에 하나)
 - **FLIGHT**: Todo 상태이고
+  - **상위 이슈**(하위 이슈를 묶는 컨테이너)가 아님 — 5.1.1
   - `symphony-pilot` 라벨 아님
   - 아직 ARRIVED 되지 않은 FLIGHT에 blocks 당하지 않음(당하면 `HOLD_DEPARTURE`)
   - 이미 STAND가 있거나 누가 점유 중이 아님
   - 프로젝트가 매핑된 AIRPORT가 운항 중(OPEN)
+
+#### 5.1.1 상위 이슈
+
+Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는 **작업이 아니라 컨테이너**로 본다. 작업은 그 하위 이슈다. 컨테이너가 조용한 것은 방치가 아니므로 양쪽에서 뺀다.
+
+- `ASSIGN` 제안을 만들지 않는다("제외" 목록에 `상위 이슈 — 하위 N건을 묶음`으로 뜬다)
+- STAND 없이 아무리 오래 ENROUTE여도 `RELEASE` 제안을 만들지 않는다
+- NO CONTACT 경보를 내지 않는다(자체 STAND가 있을 것으로 기대하지 않는다)
+
+하위 이슈는 평소대로 계획한다. 관계는 한 단계만 본다(손자 이슈는 자기 직계 상위로 판단).
+
+관계는 추측이 아니라 Linear에서 읽는다(`parent` / `children(first: 50)`). 그렇게 잡히지 않고 본문에만 적힌 선행 작업은 planner가 볼 `blocks` 관계가 없으므로 손으로 처리한다(5.4).
 
 ### 5.2 슬롯(용량)
 
@@ -99,6 +112,7 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
 
 - DB·마이그레이션·보안·권리 작업(vocado의 `Codex Engineering Task` 대상)이면 `CAUTION` 표시를 붙이고 사유를 적는다.
 - 사람 결정이 먼저 필요한 티켓(예: "사용자 확인 후")이면 제안을 보류한다.
+- 선행 작업이 본문에만 적혀 있고 `blocks` 관계로는 없으면 `dispatch note <ID> --hold <FLIGHT> -- <메모>`로 HOLD를 건다. 지정하는 FLIGHT는 **막는(선행) FLIGHT**이고, 제안은 ASSIGN 목록이 아니라 HELD 목록으로 간다. 제안 자신의 FLIGHT는 예약된 채로 남아 planner가 다시 올리지 않는다(AIRCRAFT는 다른 FLIGHT가 쓸 수 있게 놓아 둔다). 보낼 수는 없고, FLIGHT PLAN에 `HOLD — 선행 FLIGHT …` 줄이 들어간다. 지정한 FLIGHT가 모두 끝난 상태가 되면 atc가 그 제안을 SUPERSEDED로 풀어 다시 후보가 되게 한다.
 - 판단 근거를 한두 줄로 제안에 남긴다.
 
 ## 6. 흐름
@@ -125,7 +139,9 @@ CAPTAIN: READBACK → Linear In Progress, STAND 준비(지금 규칙 그대로)
 atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER처럼 재확인
 ```
 
-제안 상태: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)`(2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED`(2b), 곁가지 `REJECTED`, `DECLINED`(CAPTAIN 사유), `SUPERSEDED`(사람이 직접 배정했거나 상황이 바뀜), `EXPIRED`(24시간).
+제안 상태: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)`(2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED`(2b), 곁가지 `REJECTED`, `DECLINED`(CAPTAIN 사유), `SUPERSEDED`(사람이 직접 배정했거나 상황이 바뀜), `EXPIRED`(24시간). `HOLD`가 걸린 `PROPOSED` ASSIGN은 주 흐름에서 빠져, 선행 FLIGHT가 끝날 때까지 HELD 목록에서 기다린다.
+
+거절에는 **사유 칩**을 쓴다. SUPERVISOR 화면에서 사유 목록 중 하나를 고르고 메모를 선택으로 덧붙이며, `"<칩> — <메모>"` 형태로 `reason`에 저장된다. 가장 중요한 칩은 상위 이슈(5.1.1)로, 이건 planner가 스스로도 걸러 낸다.
 
 ## 7. atc에 더할 것
 
@@ -134,10 +150,10 @@ atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER
 | `server/sources/linear.ts` | 조회에 `relations`(blocks), `labels`, `project`, `createdAt`, 상태 진입 시각(가능하면 `history`) 추가 |
 | `server/dispatch.ts` | 후보·슬롯·점수 계산(순수 함수 + 테스트) |
 | `server/proposals.ts` | 제안 기록(`~/.local/state/atc/proposals.jsonl`, 추가만 함, clearances와 같은 방식) |
-| API | `GET /api/dispatch/brief`, `POST /api/dispatch/proposals/:id/{agree,disagree,approve,reject,sent,accept,decline}` |
+| API | `GET /api/dispatch/brief`, `POST /api/dispatch/proposals/:id/{note,hold,agree,disagree,approve,reject,sent,accept,decline}` |
 | 이벤트·기록 | `proposal.created / decided / sent / accepted / departed / superseded`를 FLIGHT RECORDER에 |
 | 설정 | `~/.local/state/atc/dispatch.json`: 프로젝트→AIRPORT 매핑, 슬롯, 가중치, 모드(`shadow`/`approval`) |
-| 화면 | DISPATCH 탭: 제안 카드(FLIGHT·AIRCRAFT·요소별 점수·DISPATCH 메모·CAUTION), 승인/거절 버튼, 슬롯 현황, RELEASE 목록 |
+| 화면 | DISPATCH 탭: 제안 카드(FLIGHT·AIRCRAFT·요소별 점수·DISPATCH 메모·CAUTION·HOLD), 승인/거절 버튼(거절은 사유 칩 + 선택 메모), HELD 목록, 슬롯 현황, RELEASE 목록 |
 | 지표 | 그림자 합의율, 제안→수락 시간, 유휴 AIRCRAFT 시간(PARKED인데 Todo가 있던 분), 방치된 ENROUTE 수 |
 | `atc/dispatch/` | TOWER와 같은 구조: `CLAUDE.md`(역할·판단 기준), `/tick`, guard(atc CLI·jq만, Linear는 읽기 MCP만) |
 

@@ -2,7 +2,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 
 import { basename, dirname, join } from "node:path";
 import { callsign } from "./callsign.ts";
 import { config } from "./config.ts";
-import type { Snapshot, Ticket } from "./model.ts";
+import { type Snapshot, type Ticket, parentKeysOf } from "./model.ts";
 
 // 2단계 DISPATCH: 어떤 FLIGHT를 어떤 AIRCRAFT에 보낼지 계산한다(순수 함수 planDispatch).
 // 제안을 기록하고 보이는 것은 proposals.ts, 설계는 docs/dispatch.md.
@@ -113,8 +113,10 @@ export interface AircraftState {
 export interface Reserved {
   aircraft: Map<string, string>;
   flights: Map<string, string>;
+  // FLIGHT key → HOLD 중인 제안 id. HELD는 AIRCRAFT를 잡지 않으므로 aircraft에는 없다.
+  held?: Map<string, string>;
 }
-const NO_RESERVED: Reserved = { aircraft: new Map(), flights: new Map() };
+const NO_RESERVED: Reserved = { aircraft: new Map(), flights: new Map(), held: new Map() };
 
 export interface Plan {
   at: string;
@@ -127,7 +129,7 @@ export interface Plan {
 }
 
 const DAY = 86_400_000;
-const DONE = new Set(["completed", "canceled", "duplicate"]);
+export const DONE_STATES = new Set(["completed", "canceled", "duplicate"]);
 const PRIORITY_VALUE: Record<number, number> = { 0: 1.5, 1: 4, 2: 3, 3: 2, 4: 1 };
 export const PRIORITY_NAME: Record<number, string> = { 0: "없음", 1: "Urgent", 2: "High", 3: "Medium", 4: "Low" };
 const round1 = (x: number) => Math.round(x * 10) / 10;
@@ -149,7 +151,11 @@ export function planDispatch(
   const active = s.claims.filter((c) => c.state === "active");
   const wsTicket = new Map(s.workspaces.map((w) => [w.path, w.ticketKey]));
   const flightsWithStand = new Set(s.workspaces.map((w) => w.ticketKey).filter(Boolean) as string[]);
-  const isDone = (key: string) => DONE.has(byKey.get(key)?.stateType ?? "");
+  const isDone = (key: string) => DONE_STATES.has(byKey.get(key)?.stateType ?? "");
+  // 상위 이슈(하위 이슈를 묶는 컨테이너)는 그 자체로 작업 대상이 아니다.
+  const parents = parentKeysOf(s.tickets);
+  const childrenOf = (t: Ticket) => new Set([...t.children, ...s.tickets.filter((x) => x.parent === t.key).map((x) => x.key)]).size;
+  const parentWhy = (t: Ticket) => `상위 이슈 — 하위 ${childrenOf(t)}건을 묶음`;
 
   // ── AIRCRAFT ──
   // 배정 가능: TEAM 세션, 대기(idle), 끝나지 않은 FLIGHT의 STAND를 쥐고 있지 않음(TEAM당 1)
@@ -173,6 +179,10 @@ export function planDispatch(
   const eligible: (Ticket & { airport: string })[] = [];
   for (const t of s.tickets) {
     if (t.stateType !== "unstarted") continue;
+    if (parents.has(t.key)) {
+      excluded.push({ flight: t.key, reason: parentWhy(t) });
+      continue;
+    }
     const label = t.labels.find((l) => cfg.excludeLabels.includes(l));
     if (label) {
       excluded.push({ flight: t.key, reason: `라벨 ${label} (다른 운항사)` });
@@ -193,7 +203,8 @@ export function planDispatch(
     }
     const held = reserved.flights.get(t.key);
     if (held) {
-      excluded.push({ flight: t.key, reason: `진행 중인 제안 ${held}` });
+      const parked = reserved.held?.get(t.key);
+      excluded.push({ flight: t.key, reason: parked ? `HOLD ${parked} — 선행 FLIGHT 대기` : `진행 중인 제안 ${held}` });
       continue;
     }
     // 목록에 없는 선행 FLIGHT는 45일 창 밖(대개 끝난 것)이라 막지 않는 것으로 본다
@@ -257,8 +268,15 @@ export function planDispatch(
 
   // ── RELEASE: STAND 없이 오래 ENROUTE ──
   // 코드 작업(AIRPORT에 매핑된 프로젝트)만 본다. 발표 자료처럼 STAND가 원래 없는 일은 방치가 아니다.
+  // 컨테이너(상위 이슈)는 RELEASE 대상이 아니지만, 왜 빠졌는지 화면에서 보이게 남긴다.
+  for (const t of s.tickets) {
+    if (!parents.has(t.key) || t.stateType !== "started" || !cfg.releaseStates.includes(t.state)) continue;
+    if (flightsWithStand.has(t.key) || !(t.project && cfg.projectAirports[t.project])) continue;
+    excluded.push({ flight: t.key, reason: parentWhy(t) });
+  }
   const release: ReleasePlan[] = s.tickets
     .filter((t) => t.stateType === "started" && cfg.releaseStates.includes(t.state) && !flightsWithStand.has(t.key))
+    .filter((t) => !parents.has(t.key))
     .filter((t) => Boolean(t.project && cfg.projectAirports[t.project]))
     .map((t) => ({ t, days: (now - Date.parse(t.startedAt ?? t.updatedAt ?? new Date(now).toISOString())) / DAY }))
     .filter((x) => x.days >= cfg.releaseDays)

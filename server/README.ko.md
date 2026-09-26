@@ -72,6 +72,7 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 | `GET /api/dispatch/brief` | DISPATCH 계획, 열린·최근 제안, 2b 점검, FLIGHT 요약 |
 | `POST /api/dispatch/proposals/:id/verdict` | SUPERVISOR의 그림자 판정 `{verdict: "agree" \| "disagree", reason?}` |
 | `POST /api/dispatch/proposals/:id/note` | DISPATCH 검토 메모 `{text, caution?}` |
+| `POST /api/dispatch/proposals/:id/hold` | DISPATCH가 선행 FLIGHT로 HOLD `{blockedBy: ["VOC-180"]}`, 제안은 HELD로 간다 |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | approval 모드에서 SUPERVISOR 결정, `reject`는 `{reason?}` |
 | `POST /api/dispatch/proposals/:id/release` | 승인 → SENT, `sendTo`와 FLIGHT PLAN 문구 반환 |
 | `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, 또는 `{reason}`과 함께 거절 |

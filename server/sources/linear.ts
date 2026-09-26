@@ -9,6 +9,8 @@ const ISSUE_FIELDS = `identifier title url priority updatedAt createdAt startedA
   assignee { displayName }
   project { name }
   labels(first: 10) { nodes { name } }
+  parent { identifier }
+  children(first: 50) { nodes { identifier } }
   relations(first: 20) { nodes { type relatedIssue { identifier } } }
   inverseRelations(first: 20) { nodes { type issue { identifier } } }`;
 
@@ -40,6 +42,8 @@ export interface IssueNode {
   assignee: { displayName: string } | null;
   project?: { name: string } | null;
   labels?: { nodes: { name: string }[] };
+  parent?: { identifier: string } | null;
+  children?: { nodes: { identifier: string }[] };
   relations?: { nodes: { type: string; relatedIssue: { identifier: string } | null }[] };
   inverseRelations?: { nodes: { type: string; issue: { identifier: string } | null }[] };
 }
@@ -101,6 +105,8 @@ export function toTicket(n: IssueNode): Ticket {
       ...out.filter((r) => r.type === "related").map((r) => r.relatedIssue!.identifier),
       ...inn.filter((r) => r.type === "related").map((r) => r.issue!.identifier),
     ]),
+    parent: n.parent?.identifier ?? null,
+    children: uniq((n.children?.nodes ?? []).map((c) => c.identifier)),
   };
 }
 

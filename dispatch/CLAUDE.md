@@ -22,9 +22,9 @@
 
 | 명령 | 하는 일 |
 |---|---|
-| `node ../controller/atcctl.mjs dispatch brief` | `mode`, 계획(`plan`), 열린 제안(`open`), 진행 중(`inFlight`: approved·sent·accepted), 늦은 것(`overdue`), 최근(`recent`), 점검(`gate`, `gate3`), FLIGHT 요약(`flights`) |
+| `node ../controller/atcctl.mjs dispatch brief` | `mode`, 계획(`plan`), 열린 제안(`open`), HELD(`held`), 진행 중(`inFlight`: approved·sent·accepted), 늦은 것(`overdue`), 최근(`recent`), 점검(`gate`, `gate3`), FLIGHT 요약(`flights`) |
 | `node ../controller/atcctl.mjs dispatch flight <VOC-193>` | FLIGHT 본문과 댓글(최대 20개) |
-| `node ../controller/atcctl.mjs dispatch note <D-0003> [--caution] -- <메모>` | 제안에 검토 메모. 같은 제안에 다시 달면 덮어쓴다 |
+| `node ../controller/atcctl.mjs dispatch note <D-0003> [--caution] [--hold <FLIGHT>]… -- <메모>` | 제안에 검토 메모. 같은 제안에 다시 달면 덮어쓴다. `--hold`는 선행 FLIGHT를 지정해 제안을 HELD로 돌린다 |
 | `node ../controller/atcctl.mjs dispatch release <D-0003>` | (2b) 승인된 제안을 sent로 바꾸고 `SEND TO`와 FLIGHT PLAN 문구를 출력. 이미 sent면 같은 문구를 다시 출력(재송신용) |
 | `node ../controller/atcctl.mjs dispatch readback <D-0003>` | (2b) CAPTAIN이 READBACK함 |
 | `node ../controller/atcctl.mjs dispatch decline <D-0003> -- <사유>` | (2b) CAPTAIN이 사유를 들어 맡지 못함 |
@@ -37,12 +37,15 @@
 |---|---|
 | DB·마이그레이션·RLS·권한·보안·권리(저작권)·배포·결제 | `--caution`. vocado에서는 `Codex Engineering Task` 대상이다 |
 | 사람 결정이나 외부 입력이 먼저 필요함("사용자 확인 후", 디자인 확정 대기 등) | `--caution`, 무엇을 기다리는지 |
-| 선행 작업이 본문에만 적혀 있고 blocks 관계로는 없음 | `--caution`, 선행 FLIGHT |
+| 선행 작업이 본문에만 적혀 있고 blocks 관계로는 없음 | `--caution` + `--hold <선행 FLIGHT>`(지정하는 것은 **막는 FLIGHT**). HOLD 제안은 HELD 목록에 뜨고 ASSIGN 목록에는 없다 |
 | 배정받은 팀의 과거 FLIGHT(`factors`의 팀 적합도)와 이어지는 일 | 이어지는 점을 한 줄로 |
 | RELEASE 제안인데 최근 댓글이나 PR 언급으로 보아 실제로는 진행 중 | 그 근거. RELEASE가 틀렸다는 뜻이다 |
+| 상위 이슈(하위 이슈를 묶는 컨테이너)라 후보에 오르면 안 되는 것 | 이제 planner가 걸러 내므로 보통은 뜨지 않는다. 그래도 뜨면 제안이 틀렸다는 뜻 — SUPERVISOR에게 보고하고, 메모에는 그 이유를 적는다 |
 | 특이 사항 없음 | "본문상 제약 없음" 한 줄 |
 
 메모는 사실만 짧게 쓴다. 점수나 배정을 바꾸자는 판단은 SUPERVISOR에게 맡긴다.
+
+HOLD는 `dispatch note`로 메모와 함께 걸거나, 이미 메모를 단 제안에 `--hold`만 붙여 다시 부르면 된다. 선행 FLIGHT가 끝나면 atc가 그 제안을 SUPERSEDED로 풀고 planner가 다시 후보로 올린다(그때 새 제안 번호가 붙는다).
 
 ## FLIGHT PLAN 전달 (2b, `mode`가 approval일 때만)
 
@@ -59,4 +62,4 @@ STAND가 생기면 atc가 DEPARTED로 바꾼다. RELEASE 제안은 승인돼도 
 
 ## DISPATCH LOG
 
-매 바퀴 끝에 한두 줄: 메모를 단 제안 ID와 CAUTION 이유, (2b) 보낸 FLIGHT PLAN·받은 READBACK·거절. 아무 일 없으면 "특이 사항 없음".
+매 바퀴 끝에 한두 줄: 메모를 단 제안 ID와 CAUTION 이유, HOLD를 건 제안과 선행 FLIGHT, (2b) 보낸 FLIGHT PLAN·받은 READBACK·거절. 아무 일 없으면 "특이 사항 없음".

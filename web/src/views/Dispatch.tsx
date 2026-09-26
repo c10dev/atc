@@ -22,6 +22,7 @@ interface Brief {
   at: string;
   plan: Plan;
   open: Proposal[];
+  held: Proposal[];
   inFlight: Proposal[];
   overdue: string[];
   recent: Proposal[];
@@ -40,6 +41,17 @@ interface Brief {
   };
   config: DispatchConfig;
 }
+
+// 거절 사유 칩. 고른 라벨 뒤에 선택 메모를 붙여 "라벨 — 메모"로 기록한다.
+const REJECT_REASONS = [
+  "상위 이슈 — 하위 이슈를 묶는 컨테이너",
+  "본문에 선행 작업이 있음(blocks 아님)",
+  "사람 결정·외부 입력 대기",
+  "이미 다른 세션이 진행 중",
+  "우선순위 낮음",
+  "AIRBORNE — 지금은 슬롯 없음",
+  "다른 팀이 더 적합",
+];
 
 const statusText: Record<Proposal["status"], string> = {
   proposed: "PROPOSED",
@@ -67,6 +79,7 @@ async function post(path: string, body: unknown) {
 export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number }) {
   const [brief, setBrief] = useState<Brief | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<{ p: Proposal; resolve: (reason: string | null) => void } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -82,16 +95,27 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
     load();
   }, [load, refreshKey]);
 
+  // 거절 사유 칩. [취소]면 null(거절하지 않음), [거절 기록]이면 사유 문자열(비어 있으면 사유 없이 거절).
+  // 창이 닫히거나 사유가 정해지는 순간 resolve되므로 verdict가 그대로 이어서 기록할 수 있다.
+  const askReason = (p: Proposal) =>
+    new Promise<string | null>((resolve) => setRejecting({ p, resolve }));
+
+  const answerReason = (raw: { p: Proposal; resolve: (reason: string | null) => void } | null, value: string | null) => {
+    setRejecting(null);
+    raw?.resolve(value);
+  };
+
   // shadow: 그림자 판정(verdict), approval: 실제 승인·거절
   const verdict = async (p: Proposal, v: "agree" | "disagree") => {
     let reason: string | null = null;
     if (v === "disagree") {
-      reason = prompt(`${p.id} 거절 사유(선택)`) ?? null;
-      if (reason === null && !confirm("사유 없이 거절로 기록할까요?")) return;
+      reason = await askReason(p);
+      if (reason === null) return;
     }
     if (v === "agree" && brief?.mode === "approval" && p.kind === "ASSIGN" && !confirm(`${p.id}를 승인하면 DISPATCH가 ${p.aircraftName}에게 FLIGHT PLAN을 보냅니다. 승인할까요?`)) return;
+    const payload = { reason };
     try {
-      if (brief?.mode === "approval") await post(`/api/dispatch/proposals/${p.id}/${v === "agree" ? "approve" : "reject"}`, { reason });
+      if (brief?.mode === "approval") await post(`/api/dispatch/proposals/${p.id}/${v === "agree" ? "approve" : "reject"}`, payload);
       else await post(`/api/dispatch/proposals/${p.id}/verdict`, { verdict: v, reason });
       await load();
     } catch (e) {
@@ -202,6 +226,19 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
         <p className="empty">열린 ASSIGN 제안 없음 — 배정할 수 있는 AIRCRAFT나 FLIGHT가 없거나 슬롯이 찼다.</p>
       )}
 
+      {brief.held.length > 0 && (
+        <>
+          <h2 className="label">
+            HELD <em>DISPATCH가 선행 FLIGHT로 잡아 둠</em>
+          </h2>
+          <div className="dp-cards">
+            {brief.held.map((p) => (
+              <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={verdict} mode={brief.mode} held />
+            ))}
+          </div>
+        </>
+      )}
+
       <h2 className="label">
         RELEASE <em>STAND 없이 {brief.config.releaseDays}일 넘게 ENROUTE</em>
       </h2>
@@ -280,7 +317,63 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       ) : (
         <p className="empty">아직 결정된 제안 없음</p>
       )}
+
+      {rejecting && (
+        <RejectDialog
+          p={rejecting.p}
+          onCancel={() => answerReason(rejecting, null)}
+          onSubmit={(chip, memo) => answerReason(rejecting, [chip, memo.trim()].filter(Boolean).join(" — "))}
+        />
+      )}
     </section>
+  );
+}
+
+function RejectDialog({
+  p,
+  onCancel,
+  onSubmit,
+}: {
+  p: Proposal;
+  onCancel: () => void;
+  onSubmit: (chip: string, memo: string) => void;
+}) {
+  const [chip, setChip] = useState<string | null>(null);
+  const [memo, setMemo] = useState("");
+  return (
+    <div className="dp-dialog" role="dialog" aria-modal="true" aria-label={`${p.id} 거절 사유`}>
+      <div className="dp-dialog-box">
+        <h3 className="label">
+          {p.id} 거절 <em>{flightNumber(p.flight)} → {p.aircraftName ?? "—"}</em>
+        </h3>
+        <div className="dp-chips" role="group" aria-label="거절 사유">
+          {REJECT_REASONS.map((r) => (
+            <button key={r} className={`dp-chip${chip === r ? " is-on" : ""}`} onClick={() => setChip(chip === r ? null : r)}>
+              {r}
+            </button>
+          ))}
+        </div>
+        <input
+          className="dp-dialog-memo"
+          value={memo}
+          autoFocus
+          placeholder="메모(선택) — 칩 뒤에 붙습니다"
+          onChange={(e) => setMemo(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && onSubmit(chip ?? "", memo)}
+        />
+        <div className="dp-actions">
+          <button className="dp-btn" onClick={onCancel}>
+            취소
+          </button>
+          <button className="dp-btn disagree" disabled={!chip && !memo.trim()} onClick={() => onSubmit(chip ?? "", memo)}>
+            거절 기록
+          </button>
+        </div>
+        <p className="faint dp-dialog-note">
+          기록되는 사유: <code>{[chip, memo.trim()].filter(Boolean).join(" — ") || "없음"}</code>
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -364,16 +457,18 @@ function Card({
   now,
   onVerdict,
   mode,
+  held,
 }: {
   p: Proposal;
   flight: FlightInfo | undefined;
   now: number;
   onVerdict: (p: Proposal, v: "agree" | "disagree") => void;
   mode: DispatchConfig["mode"];
+  held?: boolean;
 }) {
   const max = Math.max(1, ...p.factors.map((f) => Math.abs(f.points)));
   return (
-    <article className={`dp-card k-${p.kind}${p.caution ? " is-caution" : ""}`}>
+    <article className={`dp-card k-${p.kind}${p.caution ? " is-caution" : ""}${held ? " is-held" : ""}`}>
       <header className="dp-card-head">
         <span className="dp-kind">{p.kind}</span>
         <span className="mono faint">{p.id}</span>
@@ -398,6 +493,11 @@ function Card({
           {p.score}
         </span>
       </div>
+      {p.hold.length > 0 && (
+        <p className="dp-hold">
+          <span className="dp-hold-mark">HOLD</span> 선행 FLIGHT {p.hold.map(flightNumber).join(", ")}가 끝난 뒤
+        </p>
+      )}
       <table className="dp-factors">
         <tbody>
           {p.factors.map((f) => (
