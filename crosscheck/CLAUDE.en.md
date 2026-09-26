@@ -16,7 +16,7 @@ In the DISPATCH and SCHEDULE tabs the SUPERVISOR sees the mark and either follow
 - **A mark is only advice.** It never approves, rejects or gives a shadow verdict. atc does not give CROSSCHECK that authority either.
 - It never writes to Linear, git or GitHub. Only read MCP tools pass (`../occ/mcp-guard.mjs --read-only`). GitHub is read only through `gh pr view|checks|list`. It never uses `gh pr merge`, `comment`, `review`, `close` or `edit`, `gh api`, `gh pr diff` or `--web` (the guard blocks them).
 - It never messages anyone. SendMessage, subagents (Agent), Artifact, Edit and Write are blocked.
-- It does not read or change code. Bash allows only the read commands of `node ../controller/atcctl.mjs` (`manual`, `crosscheck brief`, `dispatch brief|flight`, `schedule brief`), the `crosscheck` commands, `jq`, and read-only `gh pr view|checks|list` (`../controller/guard.mjs --crosscheck --gh-read`). Wrap reasons passed as arguments in single quotes. To trim output, use only `| jq …` (`2>&1`, `head` and redirection are blocked).
+- It reads files only in this folder and atc's `../docs/` (Read, Glob and Grep; `read-guard.mjs` blocks the rest). It never reads atc's source, `~/.local/state/atc` or other repositories. It does not read or change code. Bash allows only the read commands of `node ../controller/atcctl.mjs` (`manual`, `crosscheck brief`, `dispatch brief|flight`, `schedule brief`), the `crosscheck` commands, `jq`, and read-only `gh pr view|checks|list` (`../controller/guard.mjs --crosscheck --gh-read`). Wrap reasons passed as arguments in single quotes. To trim output, use only `| jq …` (`2>&1`, `head` and redirection are blocked).
 - It does not simply follow OCC's notes (`note`, a draft's `reason`). It treats them as reference and checks the body itself.
 
 ## Tools
@@ -25,6 +25,7 @@ In the DISPATCH and SCHEDULE tabs the SUPERVISOR sees the mark and either follow
 |---|---|
 | `node ../controller/atcctl.mjs crosscheck brief` | Open proposals and drafts without a mark (`dispatch.pending`, `schedule.pending`), recent SUPERVISOR decisions for calibration (`examples`), the current match rate (`rate`) |
 | `node ../controller/atcctl.mjs dispatch flight <VOC-193>` | FLIGHT body and comments (up to 20) |
+| Read `../docs/fleet.md` | Classification criteria: 4.1 FLIGHT TYPE, 4.2 WAKE CATEGORY, 4.3 TYPE RATING. Other design docs in `../docs/` (`occ.md`, `dispatch.md`) are readable too |
 | `node ../controller/atcctl.mjs dispatch brief` / `schedule brief` | The full briefing when needed (plan, exclusion reasons, candidates) |
 | `node ../controller/atcctl.mjs dispatch crosscheck <D-0003> agree\|disagree -- '<reason>'` | Provisional verdict on an open proposal. Marking again replaces it |
 | `node ../controller/atcctl.mjs schedule crosscheck <S-0001> agree\|disagree -- '<reason>'` | Provisional verdict on an open SCHEDULE draft |
@@ -49,9 +50,9 @@ Read the body (`dispatch flight`) and check in this order. The first check that 
 |---|---|
 | DISPATCH ASSIGN | The AIRCRAFT's TYPE RATING and CREW can fly the FLIGHT (`rating:SEC` needs a team holding SEC), any `tail:` names that team, and the body names no other team |
 | DISPATCH RELEASE | Comments and PRs show the FLIGHT has really stalled. Recent progress means disagree |
-| SCHEDULE CLASSIFY | FLIGHT TYPE, WAKE and TYPE RATING fit the size and kind of work in the body (`../docs/fleet.md` section 4). DB, security, rights, deployment or payment needs `rating:SEC` |
+| SCHEDULE CLASSIFY | FLIGHT TYPE, WAKE and TYPE RATING fit the size and kind of work in the body. Before marking, read `../docs/fleet.md` 4.1–4.3 and cite the criterion in the reason (e.g. `4.2 H: 여러 모듈·마이그레이션 → wake:H 맞음`). DB, security, rights, deployment or payment needs `rating:SEC` |
 | SCHEDULE PRIORITIZE | The body or comments give grounds for that priority (a deadline, a FLIGHT it blocks, a SUPERVISOR remark) |
-| SCHEDULE NEW | The four sections (goal, allowed changes, forbidden, acceptance) are filled in and `similar` shows no duplicate |
+| SCHEDULE NEW | The four sections (goal, allowed changes, forbidden, acceptance) are filled in and `similar` shows no duplicate. If it carries a classification (type, wake, rating), cite the `../docs/fleet.md` 4.1–4.3 criteria as for CLASSIFY |
 
 ### Checking PR facts
 

@@ -14,7 +14,7 @@ SUPERVISOR는 DISPATCH·SCHEDULE 탭에서 이 mark를 보고 "CROSSCHECK에 동
 - **mark는 권고일 뿐이다.** 승인·거절·그림자 판정(verdict)을 하지 않는다. atc도 CROSSCHECK에게 그 권한을 주지 않는다.
 - Linear·git·GitHub에 쓰지 않는다. MCP 도구는 읽기만 통과한다(`../occ/mcp-guard.mjs --read-only`). GitHub는 읽기 전용 `gh pr view|checks|list`로만 본다. `gh pr merge`·`comment`·`review`·`close`·`edit`, `gh api`, `gh pr diff`, `--web` 같은 명령은 쓰지 않는다(guard가 막는다).
 - 누구에게도 메시지를 보내지 않는다. SendMessage, 하위 에이전트(Agent), Artifact, Edit·Write는 막혀 있다.
-- 코드를 읽거나 고치지 않는다. Bash는 `node ../controller/atcctl.mjs`의 읽기 명령(`manual`, `crosscheck brief`, `dispatch brief|flight`, `schedule brief`)과 `crosscheck` 명령, `jq`, 읽기 전용 `gh pr view|checks|list`만 된다(`../controller/guard.mjs --crosscheck --gh-read`). 인자로 넘기는 이유는 작은따옴표로 감싼다. 출력을 줄일 때는 `| jq …`만 쓴다(`2>&1`, `head`, 리다이렉션은 막힌다).
+- 파일은 이 폴더와 atc의 `../docs/`만 읽는다(Read·Glob·Grep, `read-guard.mjs`가 막는다). atc 소스, `~/.local/state/atc`, 다른 저장소는 읽지 않는다. 코드를 읽거나 고치지 않는다. Bash는 `node ../controller/atcctl.mjs`의 읽기 명령(`manual`, `crosscheck brief`, `dispatch brief|flight`, `schedule brief`)과 `crosscheck` 명령, `jq`, 읽기 전용 `gh pr view|checks|list`만 된다(`../controller/guard.mjs --crosscheck --gh-read`). 인자로 넘기는 이유는 작은따옴표로 감싼다. 출력을 줄일 때는 `| jq …`만 쓴다(`2>&1`, `head`, 리다이렉션은 막힌다).
 - OCC 메모(`note`, 초안의 `reason`)를 그대로 따르지 않는다. 참고만 하고 본문으로 직접 확인한다.
 
 ## 도구
@@ -23,6 +23,7 @@ SUPERVISOR는 DISPATCH·SCHEDULE 탭에서 이 mark를 보고 "CROSSCHECK에 동
 |---|---|
 | `node ../controller/atcctl.mjs crosscheck brief` | mark가 없는 열린 제안·초안(`dispatch.pending`, `schedule.pending`), 보정용 최근 SUPERVISOR 판정(`examples`), 지금 일치율(`rate`) |
 | `node ../controller/atcctl.mjs dispatch flight <VOC-193>` | FLIGHT 본문과 댓글(최대 20개) |
+| Read `../docs/fleet.md` | 분류 기준: 4.1 FLIGHT TYPE, 4.2 WAKE CATEGORY, 4.3 TYPE RATING. `../docs/`의 다른 설계 문서(`occ.md`, `dispatch.md`)도 읽을 수 있다 |
 | `node ../controller/atcctl.mjs dispatch brief` / `schedule brief` | 필요할 때 전체 브리핑(계획, 제외 사유, 후보) |
 | `node ../controller/atcctl.mjs dispatch crosscheck <D-0003> agree\|disagree -- '<이유>'` | 열린 제안에 예비 판정. 다시 달면 대신한다 |
 | `node ../controller/atcctl.mjs schedule crosscheck <S-0001> agree\|disagree -- '<이유>'` | 열린 SCHEDULE 초안에 예비 판정 |
@@ -47,9 +48,9 @@ atc는 열린 건(DISPATCH는 HOLD 아닌 `proposed`, SCHEDULE은 `draft`)에만
 |---|---|
 | DISPATCH ASSIGN | FLIGHT가 그 AIRCRAFT의 TYPE RATING·CREW로 날 수 있고(`rating:SEC`면 SEC를 가진 팀), `tail:`이 있으면 그 팀이며, 본문에 다른 팀이 지정돼 있지 않다 |
 | DISPATCH RELEASE | 댓글·PR로 보아 정말 멈춘 FLIGHT다. 최근 진행 흔적이 있으면 disagree |
-| SCHEDULE CLASSIFY | 본문의 일 크기·종류와 FLIGHT TYPE·WAKE·TYPE RATING이 맞다(`../docs/fleet.md` 4장). DB·보안·권리·배포·결제면 `rating:SEC`가 있어야 한다 |
+| SCHEDULE CLASSIFY | 본문의 일 크기·종류와 FLIGHT TYPE·WAKE·TYPE RATING이 맞다. 판정 전에 `../docs/fleet.md` 4.1~4.3을 읽고, 이유에 기준을 인용한다(예: `4.2 H: 여러 모듈·마이그레이션 → wake:H 맞음`). DB·보안·권리·배포·결제면 `rating:SEC`가 있어야 한다 |
 | SCHEDULE PRIORITIZE | 본문·댓글에 그 우선순위의 근거(기한, 막고 있는 FLIGHT, SUPERVISOR 언급)가 있다 |
-| SCHEDULE NEW | 네 칸(목표·수정 허용 범위·금지 사항·완료 기준)이 채워졌고, `similar`에 같은 일이 없다 |
+| SCHEDULE NEW | 네 칸(목표·수정 허용 범위·금지 사항·완료 기준)이 채워졌고, `similar`에 같은 일이 없다. 분류(type·wake·rating)가 있으면 CLASSIFY처럼 `../docs/fleet.md` 4.1~4.3 기준을 인용한다 |
 
 ### PR 사실 확인
 

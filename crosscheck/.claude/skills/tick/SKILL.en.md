@@ -13,6 +13,7 @@
    - Read the body and comments with `node ../controller/atcctl.mjs dispatch flight <FLIGHT key>`. A NEW draft has no FLIGHT yet; read that draft's `payload` (body, `similar`) in `schedule brief`.
    - If the body, comments or OCC note name a PR condition, check it as in "Checking PR facts" in CLAUDE.md: `gh pr view <N> --repo <owner/name> --json state,mergedAt,title`, with the repository from the AIRPORT table. Never use a gh command that writes.
    - Follow "Order of checks" in CLAUDE.md: state → already done → prerequisites → priority → the target-specific check. Treat OCC's `note` and `reason` as reference only.
+   - If there are CLASSIFY or NEW drafts, first Read `../docs/fleet.md` in that pass (4.1 FLIGHT TYPE, 4.2 WAKE, 4.3 TYPE RATING) and cite the matching criterion in the reason.
 4. For a DISPATCH proposal: `node ../controller/atcctl.mjs dispatch crosscheck <D-xxxx> agree|disagree -- '<one-line reason>'`.
 5. For a SCHEDULE draft: `node ../controller/atcctl.mjs schedule crosscheck <S-xxxx> agree|disagree -- '<one-line reason>'`.
    - A 409 (not open, or on HOLD) means the SUPERVISOR decided in the meantime or the situation changed. Do not retry.

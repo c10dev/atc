@@ -29,3 +29,13 @@ test("CROSSCHECK 세션은 명령 앞 환경 변수로 모델 이름을 바꿀 �
   assert.notEqual(check("env ATC_CROSSCHECK_MODEL=x node ../controller/atcctl.mjs dispatch crosscheck D-0001 agree -- 'x'", HERE, opts), null);
   assert.notEqual(check("export ATC_CROSSCHECK_MODEL=x; node ../controller/atcctl.mjs dispatch crosscheck D-0001 agree -- 'x'", HERE, opts), null);
 });
+
+test("CROSSCHECK 읽기: 허용은 ../docs 하나(additionalDirectories)이고, Read·Glob·Grep은 read-guard가 뿌리 밖을 막는다", () => {
+  assert.deepEqual(settings.permissions.additionalDirectories, ["../docs"]);
+  // 파일 읽기 allow 규칙으로 범위를 넓히지 않는다
+  assert.deepEqual(settings.permissions.allow.filter((a) => /^(Read|Glob|Grep)\b/.test(a)), []);
+  for (const t of ["Edit", "Write", "NotebookEdit"]) assert.ok(settings.permissions.deny.includes(t), t);
+  const read = settings.hooks.PreToolUse.find((h) => h.matcher === "Read|Glob|Grep");
+  assert.ok(read, "Read|Glob|Grep hook");
+  assert.match(read.hooks[0].command, /read-guard\.mjs" \|\| exit 2$/);
+});
