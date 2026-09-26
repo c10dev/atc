@@ -83,6 +83,18 @@ export function SettingsPanel({ settings, onClose }: { settings: Settings; onClo
         />
       </Section>
 
+      <Section code="DENSITY" label="밀도" hint="촘촘하게: RADAR 블록, FLIGHT STRIPS, 카드, FIDS 행을 한 단계(4px)씩 줄여 한 화면에 더 많이">
+        <Segmented
+          label="밀도"
+          value={settings.density}
+          options={[
+            ["comfortable", "기본"],
+            ["compact", "촘촘하게"],
+          ]}
+          onChange={(density) => updateSettings({ density })}
+        />
+      </Section>
+
       {settings.theme === "night" && (
         <Section code="METEORS" label="유성" hint="Night Sky에서 가끔 지나가는 유성">
           <Segmented

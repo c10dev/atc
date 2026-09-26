@@ -120,7 +120,7 @@ function Strip({
               <div key={c.workspacePath} className={`leg${c.state === "handed-off" ? " is-handed-off" : ""}`}>
                 <div className="cell">
                   <span className="cap">STAND</span>
-                  <div className="val" title={c.workspacePath}>
+                  <div className="val" title={ws?.branch ? `${c.workspacePath}\n${ws.branch}` : c.workspacePath}>
                     <AirportCode airport={ws ? idx.airportByRepo.get(ws.repo) : undefined} />{" "}
                     {ws?.name ?? c.workspacePath.split("/").pop()}
                   </div>
@@ -135,7 +135,7 @@ function Strip({
                         href={ticket?.url ?? undefined}
                         target="_blank"
                         rel="noreferrer"
-                        title={ws.ticketKey}
+                        title={ticket ? `${ws.ticketKey} · ${flightPhase(ticket)}` : ws.ticketKey}
                       >
                         {flightNumber(ws.ticketKey)}
                       </a>
@@ -153,7 +153,9 @@ function Strip({
                 </div>
                 <div className="cell">
                   <span className="cap">LAST CONTACT</span>
-                  <div className="val">{formatClock(c.lastAt, clock)}</div>
+                  <div className="val" title={timeAgo(c.lastAt, now)}>
+                    {formatClock(c.lastAt, clock)}
+                  </div>
                   <div className="sub">{timeAgo(c.lastAt, now)}</div>
                 </div>
                 <div className="cell cell-remarks">

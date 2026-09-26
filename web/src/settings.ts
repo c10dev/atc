@@ -31,6 +31,7 @@ export interface Settings {
   theme: Theme;
   motion: boolean; // 애니메이션(스위프, 별, 깜빡임)
   clock: "utc" | "local"; // 시각 표시: 06:24Z 또는 15:24L
+  density: "comfortable" | "compact"; // 밀도: 한 단계(4px)씩 낮춰 한 화면에 더 많이
   meteors: boolean; // Night Sky 유성
   fidsView: "list" | "board"; // FIDS: DEPARTURES 목록 또는 비행 단계별 보드
   fidsClosed: boolean; // FIDS에 SCHEDULED·지난 ARRIVED·CANCELLED 포함
@@ -41,7 +42,7 @@ const LEGACY_THEME_KEY = "atc.theme";
 
 function defaults(): Settings {
   const reduce = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  return { theme: "radar", motion: !reduce, clock: "utc", meteors: true, fidsView: "list", fidsClosed: false };
+  return { theme: "radar", motion: !reduce, clock: "utc", density: "comfortable", meteors: true, fidsView: "list", fidsClosed: false };
 }
 
 function load(): Settings {
@@ -65,6 +66,7 @@ function apply(s: Settings) {
   const root = document.documentElement;
   root.dataset.theme = s.theme;
   root.dataset.motion = s.motion ? "on" : "off";
+  root.dataset.density = s.density;
 }
 
 export function initSettings() {
