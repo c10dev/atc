@@ -8,6 +8,7 @@ import { SettingsPanel } from "./SettingsPanel.tsx";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
 import { Airports } from "./views/Airports.tsx";
 import { Dispatch } from "./views/Dispatch.tsx";
+import { Fleet } from "./views/Fleet.tsx";
 import { MapView } from "./views/Map.tsx";
 import { Metrics } from "./views/Metrics.tsx";
 import { Teams } from "./views/Teams.tsx";
@@ -18,6 +19,7 @@ const TABS = [
   { id: "strips", code: "STRIPS" },
   { id: "board", code: "FIDS" },
   { id: "airports", code: "AIRPORTS" },
+  { id: "fleet", code: "FLEET" },
   { id: "metrics", code: "METRICS" },
   { id: "dispatch", code: "DISPATCH" },
 ] as const;
@@ -171,6 +173,8 @@ export function App() {
           <Teams snapshot={snapshot} idx={idx} now={now} />
         ) : tab === "airports" ? (
           <Airports snapshot={snapshot} />
+        ) : tab === "fleet" ? (
+          <Fleet refreshKey={snapshot.at.slice(0, 16)} />
         ) : tab === "metrics" ? (
           <Metrics refreshKey={snapshot.at.slice(0, 16)} />
         ) : tab === "dispatch" ? (

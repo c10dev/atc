@@ -5,6 +5,7 @@ import { streamSSE } from "hono/streaming";
 import { mountAirports } from "./airports.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
+import { mountFleet } from "./fleet.ts";
 import { diffSnapshots, EventLog, isWarm } from "./events.ts";
 import { mountMetrics } from "./metrics.ts";
 import { DISPATCH_MS, mountDispatch, runDispatch } from "./proposals.ts";
@@ -57,6 +58,7 @@ mountController(app, getSnapshot, eventLog);
 mountAirports(app);
 mountMetrics(app);
 mountDispatch(app, getSnapshot);
+mountFleet(app, getSnapshot);
 mountSettings(app);
 
 app.get("/api/events", (c) =>

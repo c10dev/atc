@@ -7,6 +7,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 ## [Unreleased]
 
 ### 추가
+- FLEET 등록부와 탭([docs/fleet.md](docs/fleet.md) 2단계): `~/.local/state/atc/fleet.json`에 팀마다 CREW COMPLEMENT, TYPE RATING(`SEC`, `UI`, `DATA`, `DOCS`), ROUTE, TARGETS를 두고, 기본값은 vocado 팀원 규칙에서 온다. 보안 작업을 맡을 팀원이 없는 구성에는 `SEC`를 줄 수 없다. FLEET 탭은 AIRCRAFT마다 상태(AIRBORNE / HOLDING / PARKED), 지금 FLIGHT, 프로필을 보여 주고 고친다(`GET /api/fleet`, `PATCH /api/fleet/:registration`). planner는 아직 쓰지 않는다.
 - OCC 세션 S0(`occ/`, [docs/occ.md](docs/occ.md), 영어). DISPATCH 세션 폴더가 `dispatch/`에서 `occ/`로 옮겨졌고 하던 일(제안 검토, HOLD, FLIGHT PLAN, READBACK)은 그대로다. OCC는 운항 추적을 더한다: `guard.mjs --gh-read`로 읽기 전용 `gh pr view|checks|diff|list`를 쓴다. `occ/mcp-guard.mjs`가 읽기 MCP 도구만 통과시켜 S0에서는 Linear·GitHub에 쓸 수 없다.
 - `atcctl manual check` / `manual ack`: 관제 세션(OCC, TOWER)의 `/tick`은 마지막 ack 뒤 `CLAUDE.md`나 `/tick`이 바뀌었는지부터 확인하고, 바뀌었으면 다시 읽는다.
 - TAIL ASSIGNMENT, Linear 라벨 `tail:TEAM_X`(처음엔 `lane:TEAM_X`로 나왔고, 2026-10-10까지 별칭으로 읽으며 제외 사유에 바꾸라고 적는다): planner가 그 FLIGHT를 그 팀에만 제안한다. 그 팀이 못 받으면(AIRBORNE, HOLDING, 세션 없음, 다른 AIRPORT) 다른 팀에 주지 않고 사유와 함께 제외한다.
