@@ -38,7 +38,7 @@ npm run typecheck
 | FIDS | `#board` | `views/Tickets.tsx` | DEPARTURES 안내판(TIME · FLIGHT · DESTINATION · AIRCRAFT · STAND · PRI · REMARKS) 또는 비행 단계별 보드 |
 | AIRPORTS | `#airports` | `views/Airports.tsx` | 저장소 등록부: 개설·이름 변경·폐쇄·재개·삭제, 소속 AIRCRAFT와 TRANSIENT |
 | METRICS | `#metrics` | `views/Metrics.tsx` | FLIGHT RECORDER 운용 지표와 2단계 진입 점검 |
-| DISPATCH | `#dispatch` | `views/Dispatch.tsx` | 2a 그림자 운용 제안. 화면에만 보이고 아무에게도 보내지 않는다 |
+| DISPATCH | `#dispatch` | `views/Dispatch.tsx` | 2단계 제안: 2a에서는 그림자 판정, 2b에서는 승인·거절, IN FLIGHT(SENT, READBACK, 늦음)와 3단계 점검. 확인 창을 거치는 모드 전환 |
 
 위쪽에는 ALERT 티커(`Ticker.tsx`, 폭을 넘칠 때만 흐르고 마우스를 올리거나 포커스하면 멈춤)와 HANDOFF 목록이 있다.
 

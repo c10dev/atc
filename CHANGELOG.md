@@ -7,6 +7,8 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 ## [Unreleased]
 
 ### Added
+- DISPATCH stage 2b approval operation, off by default behind `mode` (`shadow` / `approval`). In approval mode the SUPERVISOR approves or rejects proposals in the DISPATCH tab; DISPATCH sends approved ASSIGNs to the CAPTAIN as a fixed FLIGHT PLAN (`dispatch release`), records `READBACK D-xxxx` or a decline, and atc marks the proposal DEPARTED when a STAND for the FLIGHT appears. Approved, sent and accepted proposals reserve their AIRCRAFT and FLIGHT. The tab gains an IN FLIGHT list with NO READBACK / NO DEPARTURE flags, a stage 3 (ATFM) check and a confirmed mode switch.
+- `dispatch/send-guard.mjs`: DISPATCH's SendMessage goes through only in approval mode, for a SENT proposal, to its CAPTAIN, with exactly the FLIGHT PLAN text atc generated.
 - Settings panel tabs LINEAR and AGENTS. They show read-only server settings from the new `GET /api/settings`, which never returns secrets.
   - LINEAR: connection status, last sync, API key presence, team key, LANDING state.
   - AGENTS: session counts, session folders, claim hook installed or not, TTL and handoff grace.
@@ -14,6 +16,7 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 - This changelog.
 
 ### Changed
+- TOWER and DISPATCH hooks run from `$CLAUDE_PROJECT_DIR` and are fail-closed (`… || exit 2`): a missing or failing hook now blocks the tool instead of letting it through.
 - FIDS split-flap motion looks like a real board. Tiles no longer go blank mid-flap: the new letter waits behind the falling flap, which speeds up like gravity and darkens as it tilts. Text without tiles (TIME, REMARKS, Glass Cockpit and Night Sky) drops in letter by letter instead of showing half-letters. At most 6 flaps per cell, and the board settles faster.
 
 ## [0.1.0] — 2026-09-26

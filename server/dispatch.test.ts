@@ -156,3 +156,12 @@ test("운항 이력: 청구 기록 파일 이름에서 FLIGHT key를 뽑는다",
   }
   assert.deepEqual([...readFlightHistory("VOC", dir)], [["s1", ["VOC-185", "VOC-191"]]]);
 });
+
+test("예약: 진행 중인 제안이 잡은 AIRCRAFT·FLIGHT는 새 짝에서 빠진다", () => {
+  const s = snap({ sessions: [session("b", "TEAM_B"), session("d", "TEAM_D")], tickets: [ticket("VOC-70", { priority: 1 }), ticket("VOC-71")] });
+  const reserved = { aircraft: new Map([["b", "D-0009"]]), flights: new Map([["VOC-70", "D-0009"]]) };
+  const p = planDispatch(s, new Map(), cfg(), NOW, reserved);
+  assert.deepEqual(p.assign.map((a) => `${a.flight}→${a.aircraftName}`), ["VOC-71→TEAM_D"]);
+  assert.equal(p.aircraft.find((a) => a.id === "b")?.reserved, "D-0009");
+  assert.deepEqual(p.excluded.find((e) => e.flight === "VOC-70"), { flight: "VOC-70", reason: "진행 중인 제안 D-0009" });
+});

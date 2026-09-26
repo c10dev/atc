@@ -25,7 +25,21 @@
   color: var(--amber);
 }
 
-/* 2b 진입 점검 */
+.dispatch .toolbar .dp-mode-switch {
+  flex: none;
+  padding: 0 var(--space-3);
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.dispatch .toolbar .dp-mode-switch.back {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+
+/* 진입 점검(2b, 3) */
+.dp-gate + .dp-gate {
+  margin-top: var(--space-3);
+}
 .dp-gate {
   padding: var(--space-3) var(--space-4) var(--space-2);
   background: var(--panel);
@@ -326,4 +340,35 @@
   .dp-table td:nth-child(6) {
     display: none;
   }
+}
+
+/* IN FLIGHT: 승인 뒤 진행 중 */
+.dp-inflight .s-approved .dp-result {
+  color: var(--cyan);
+}
+.dp-inflight .s-sent .dp-result {
+  color: var(--amber);
+}
+.dp-inflight .s-accepted .dp-result {
+  color: var(--radar);
+}
+.dp-inflight tr.is-overdue td {
+  background: var(--blk-los-bg);
+}
+.dp-overdue {
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--alert);
+  border-radius: var(--radius-sm);
+  color: var(--alert);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+.dp-table .s-approved .dp-result,
+.dp-table .s-departed .dp-result {
+  color: var(--radar);
+}
+.dp-table .s-rejected .dp-result,
+.dp-table .s-declined .dp-result {
+  color: var(--alert);
 }

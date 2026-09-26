@@ -50,7 +50,7 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 | `recorder.ts` | FLIGHT RECORDER: 날짜별 JSONL(`event`, `sample`, `dispatch`, `ack`), 30일 보관 |
 | `metrics.ts` | 운용 지표와 2단계 진입 점검(순수 함수 `computeMetrics`) |
 | `dispatch.ts` | DISPATCH 계획: 후보, 슬롯, 점수(순수 함수 `planDispatch`). 설정은 `dispatch.json` |
-| `proposals.ts` | DISPATCH 제안 기록(추가만 하는 JSONL), 브리핑, 판정과 메모. 제안은 24시간 뒤 만료 |
+| `proposals.ts` | DISPATCH 제안 기록(추가만 하는 JSONL), 상태 전이(그림자 판정, approve → sent → accepted → departed), 예약, FLIGHT PLAN 문구, 브리핑, 2b·3단계 점검 |
 
 모듈 옆의 `*.test.ts`가 그 모듈의 단위 테스트다.
 
@@ -72,6 +72,11 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 | `GET /api/dispatch/brief` | DISPATCH 계획, 열린·최근 제안, 2b 점검, FLIGHT 요약 |
 | `POST /api/dispatch/proposals/:id/verdict` | SUPERVISOR의 그림자 판정 `{verdict: "agree" \| "disagree", reason?}` |
 | `POST /api/dispatch/proposals/:id/note` | DISPATCH 검토 메모 `{text, caution?}` |
+| `POST /api/dispatch/proposals/:id/{approve,reject}` | approval 모드에서 SUPERVISOR 결정, `reject`는 `{reason?}` |
+| `POST /api/dispatch/proposals/:id/release` | 승인 → SENT, `sendTo`와 FLIGHT PLAN 문구 반환 |
+| `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, 또는 `{reason}`과 함께 거절 |
+| `GET /api/dispatch/proposals/:id` | 제안 하나와 지금 모드(send-guard용) |
+| `POST /api/dispatch/mode` | `{mode: "shadow" \| "approval"}` 전환(`dispatch.json`에 저장) |
 | `GET /api/dispatch/flight/:key` | Linear에서 티켓 본문과 댓글(읽기 전용) |
 
 ## 디스크에 두는 상태

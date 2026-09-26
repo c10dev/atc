@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { callsign } from "./callsign.ts";
 import { config } from "./config.ts";
 import type { Snapshot, Ticket } from "./model.ts";
@@ -41,7 +41,21 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   teamPattern: "^TEAM[\\s_-]?[A-Z]$",
 };
 
-export function loadDispatchConfig(file = join(config.stateDir, "dispatch.json")): DispatchConfig {
+const CONFIG_FILE = join(config.stateDir, "dispatch.json");
+
+// mode만 바꿔 저장한다. 사용자가 적어 둔 다른 설정은 그대로 둔다.
+export function saveDispatchMode(mode: DispatchConfig["mode"], file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
+export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
   try {
     const user = JSON.parse(readFileSync(file, "utf8"));
     const d = DEFAULT_DISPATCH_CONFIG;
@@ -92,7 +106,15 @@ export interface AircraftState {
   airport: string | null;
   available: boolean;
   reason: string;
+  reserved: string | null; // 이 AIRCRAFT로 진행 중인 제안 id(approved·sent·accepted)
 }
+
+// 진행 중인 제안이 잡고 있는 AIRCRAFT·FLIGHT → 제안 id. 새 계획에서 뺀다.
+export interface Reserved {
+  aircraft: Map<string, string>;
+  flights: Map<string, string>;
+}
+const NO_RESERVED: Reserved = { aircraft: new Map(), flights: new Map() };
 
 export interface Plan {
   at: string;
@@ -107,13 +129,19 @@ export interface Plan {
 const DAY = 86_400_000;
 const DONE = new Set(["completed", "canceled", "duplicate"]);
 const PRIORITY_VALUE: Record<number, number> = { 0: 1.5, 1: 4, 2: 3, 3: 2, 4: 1 };
-const PRIORITY_NAME: Record<number, string> = { 0: "없음", 1: "Urgent", 2: "High", 3: "Medium", 4: "Low" };
+export const PRIORITY_NAME: Record<number, string> = { 0: "없음", 1: "Urgent", 2: "High", 3: "Medium", 4: "Low" };
 const round1 = (x: number) => Math.round(x * 10) / 10;
 
 // 과거 운항 이력: 세션 id → 그 세션이 STAND를 점유했던 FLIGHT key들
 export type FlightHistory = Map<string, string[]>;
 
-export function planDispatch(s: Snapshot, history: FlightHistory, cfg: DispatchConfig, now = Date.now()): Plan {
+export function planDispatch(
+  s: Snapshot,
+  history: FlightHistory,
+  cfg: DispatchConfig,
+  now = Date.now(),
+  reserved: Reserved = NO_RESERVED,
+): Plan {
   const team = new RegExp(cfg.teamPattern, "i");
   const byKey = new Map(s.tickets.map((t) => [t.key, t]));
   const codeOf = (repo: string | null) => (repo ? (s.airports.find((a) => a.repo === repo)?.code ?? null) : null);
@@ -128,7 +156,7 @@ export function planDispatch(s: Snapshot, history: FlightHistory, cfg: DispatchC
   const aircraft: AircraftState[] = s.sessions
     .filter((x) => team.test(x.name) && x.status !== "dead")
     .map((x) => {
-      const base = { id: x.id, name: x.name, callsign: callsign(x), airport: codeOf(x.repo) };
+      const base = { id: x.id, name: x.name, callsign: callsign(x), airport: codeOf(x.repo), reserved: reserved.aircraft.get(x.id) ?? null };
       if (x.status === "busy") return { ...base, available: false, reason: "AIRBORNE" };
       const held = active.filter((c) => c.sessionId === x.id).map((c) => wsTicket.get(c.workspacePath));
       const open = held.filter((k) => !k || !isDone(k));
@@ -161,6 +189,11 @@ export function planDispatch(s: Snapshot, history: FlightHistory, cfg: DispatchC
     }
     if (flightsWithStand.has(t.key)) {
       excluded.push({ flight: t.key, reason: "이미 STAND가 있음" });
+      continue;
+    }
+    const held = reserved.flights.get(t.key);
+    if (held) {
+      excluded.push({ flight: t.key, reason: `진행 중인 제안 ${held}` });
       continue;
     }
     // 목록에 없는 선행 FLIGHT는 45일 창 밖(대개 끝난 것)이라 막지 않는 것으로 본다
@@ -206,7 +239,7 @@ export function planDispatch(s: Snapshot, history: FlightHistory, cfg: DispatchC
   }
   const limitOf = (code: string) => cfg.slots.airborne[code] ?? cfg.slots.defaultAirborne;
   const pairs = eligible
-    .flatMap((t) => aircraft.filter((ac) => ac.available && ac.airport === t.airport).map((ac) => ({ t, ac, ...score(t, ac) })))
+    .flatMap((t) => aircraft.filter((ac) => ac.available && !ac.reserved && ac.airport === t.airport).map((ac) => ({ t, ac, ...score(t, ac) })))
     .sort((a, b) => b.score - a.score || a.t.key.localeCompare(b.t.key) || a.ac.name.localeCompare(b.ac.name));
   const planned = new Map<string, number>();
   const usedFlights = new Set<string>();

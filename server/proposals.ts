@@ -2,21 +2,52 @@ import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Context, Hono } from "hono";
 import { config } from "./config.ts";
-import { type DispatchConfig, type Factor, loadDispatchConfig, type Plan, planDispatch, readFlightHistory } from "./dispatch.ts";
-import type { Snapshot } from "./model.ts";
+import { callsign, flightNumber } from "./callsign.ts";
+import {
+  type DispatchConfig,
+  type Factor,
+  loadDispatchConfig,
+  type Plan,
+  PRIORITY_NAME,
+  planDispatch,
+  readFlightHistory,
+  type Reserved,
+  saveDispatchMode,
+} from "./dispatch.ts";
+import type { Snapshot, Ticket } from "./model.ts";
 import { record } from "./recorder.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 
 // DISPATCH 제안 기록. 추가만 하는 JSONL을 접어 현재 상태를 만든다(clearances.ts와 같은 방식).
-// 2a(그림자 운용)에서는 SUPERVISOR가 "나라면 승인/거절"만 표시하고 아무에게도 보내지 않는다.
+// - 2a(mode "shadow"): SUPERVISOR가 "나라면 승인/거절"만 표시하고 아무에게도 보내지 않는다.
+// - 2b(mode "approval"): SUPERVISOR가 승인하면 DISPATCH 세션이 FLIGHT PLAN을 CAPTAIN에게 보내고
+//   CAPTAIN의 READBACK으로 수락, STAND가 생기면 DEPARTED. 보내는 문구는 서버가 만들고
+//   dispatch/send-guard.mjs가 그 문구 그대로인지 확인한다.
 
 const FILE = join(config.stateDir, "proposals.jsonl");
 const DAY = 86_400_000;
 export const PROPOSAL_TTL_MS = DAY;
 export const DISPATCH_MS = 5 * 60_000;
 export const GATE = { decided: 20, agreement: 0.8 };
+// 2b → 3(ATFM) 제안 기준
+export const GATE3 = { dispatched: 10, readback: 0.9, departed: 0.8 };
+export const READBACK_OVERDUE_MS = 10 * 60_000;
+export const DEPARTURE_OVERDUE_MS = 30 * 60_000;
 
-export type ProposalStatus = "proposed" | "agreed" | "disagreed" | "superseded" | "expired";
+export type ProposalStatus =
+  | "proposed"
+  | "agreed" // 2a: 나라면 승인
+  | "disagreed" // 2a: 나라면 거절
+  | "approved" // 2b: SUPERVISOR 승인(RELEASE는 여기서 끝 — SUPERVISOR가 Linear에서 정리)
+  | "rejected"
+  | "sent" // FLIGHT PLAN 보냄, READBACK 대기
+  | "accepted" // CAPTAIN READBACK
+  | "declined" // CAPTAIN이 사유로 거절
+  | "departed" // FLIGHT에 STAND가 생김
+  | "superseded"
+  | "expired";
+
+export const isInFlight = (p: Proposal) => p.kind === "ASSIGN" && (p.status === "approved" || p.status === "sent" || p.status === "accepted");
 
 export interface Proposal {
   id: string; // "D-0001"
@@ -29,26 +60,54 @@ export interface Proposal {
   score: number;
   factors: Factor[];
   status: ProposalStatus;
-  decidedAt: string | null;
-  reason: string | null; // 거절·SUPERSEDED 사유
+  decidedAt: string | null; // proposed에서 처음 벗어난 시각
+  statusAt: string; // 마지막 상태 변경
+  timeline: Partial<Record<ProposalStatus, string>>;
+  reason: string | null; // 거절·SUPERSEDED·EXPIRED·DECLINED 사유
   note: string | null; // DISPATCH 세션 검토 메모
   caution: boolean;
+  message: string | null; // 보낸 FLIGHT PLAN 문구
+  departedStand: string | null;
 }
 
-type Create = Omit<Proposal, "status" | "decidedAt" | "reason" | "note" | "caution">;
+type Create = Omit<Proposal, "status" | "decidedAt" | "statusAt" | "timeline" | "reason" | "note" | "caution" | "message" | "departedStand">;
 export type Op =
   | ({ op: "create" } & Create)
   | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null }
   | { op: "note"; id: string; at: string; text: string; caution: boolean }
+  | { op: "approve"; id: string; at: string }
+  | { op: "reject"; id: string; at: string; reason: string | null }
+  | { op: "send"; id: string; at: string; message: string }
+  | { op: "accept"; id: string; at: string }
+  | { op: "decline"; id: string; at: string; reason: string }
+  | { op: "depart"; id: string; at: string; stand: string }
   | { op: "supersede"; id: string; at: string; reason: string }
-  | { op: "expire"; id: string; at: string };
+  | { op: "expire"; id: string; at: string; reason?: string };
+
+type StatusOp = Exclude<Op["op"], "create" | "note">;
+
+// 상태 전이 규칙. 여기 없는 전이는 무시한다(API도 같은 규칙으로 검사한다).
+const NEXT: Partial<Record<ProposalStatus, Partial<Record<StatusOp, ProposalStatus>>>> = {
+  proposed: { verdict: "agreed", approve: "approved", reject: "rejected", supersede: "superseded", expire: "expired" },
+  approved: { send: "sent", supersede: "superseded", expire: "expired" },
+  sent: { accept: "accepted", decline: "declined", expire: "expired" },
+  accepted: { depart: "departed", expire: "expired" },
+};
+
+export function canApply(p: Proposal, op: StatusOp): boolean {
+  if (op === "send" && p.kind !== "ASSIGN") return false;
+  return Boolean(NEXT[p.status]?.[op]);
+}
 
 export function fold(ops: Op[]): Proposal[] {
   const byId = new Map<string, Proposal>();
   for (const o of ops) {
     if (o.op === "create") {
       const { op: _op, ...rest } = o;
-      byId.set(o.id, { ...rest, status: "proposed", decidedAt: null, reason: null, note: null, caution: false });
+      byId.set(o.id, {
+        ...rest, status: "proposed", decidedAt: null, statusAt: o.at, timeline: { proposed: o.at },
+        reason: null, note: null, caution: false, message: null, departedStand: null,
+      });
       continue;
     }
     const p = byId.get(o.id);
@@ -56,28 +115,48 @@ export function fold(ops: Op[]): Proposal[] {
     if (o.op === "note") {
       p.note = o.text;
       p.caution = o.caution;
-    } else if (p.status === "proposed") {
-      p.decidedAt = o.at;
-      if (o.op === "verdict") {
-        p.status = o.verdict === "agree" ? "agreed" : "disagreed";
-        p.reason = o.reason;
-      } else if (o.op === "supersede") {
-        p.status = "superseded";
-        p.reason = o.reason;
-      } else p.status = "expired";
+      continue;
     }
+    if (!canApply(p, o.op)) continue;
+    let next = NEXT[p.status]![o.op]!;
+    if (o.op === "verdict" && o.verdict === "disagree") next = "disagreed";
+    if (p.status === "proposed") p.decidedAt = o.at;
+    p.status = next;
+    p.statusAt = o.at;
+    p.timeline[next] = o.at;
+    if ("reason" in o && o.reason) p.reason = o.reason;
+    if (o.op === "send") p.message = o.message;
+    if (o.op === "depart") p.departedStand = o.stand;
   }
   return [...byId.values()];
 }
 
+// approved·sent·accepted인 ASSIGN의 AIRCRAFT·FLIGHT — 새 계획에서 빼서 중복 배정을 막는다.
+export function reservedOf(existing: Proposal[]): Reserved {
+  const live = existing.filter(isInFlight);
+  return {
+    aircraft: new Map(live.map((p) => [p.aircraft!, p.id])),
+    flights: new Map(live.map((p) => [p.flight, p.id])),
+  };
+}
+
 // 새 계획과 열린 제안을 맞춘다. 순수 함수: 추가할 op만 돌려준다.
-export function syncOps(existing: Proposal[], plan: Plan, s: Pick<Snapshot, "tickets">, cfg: DispatchConfig, now: number, seq: number): Op[] {
+export function syncOps(
+  existing: Proposal[],
+  plan: Plan,
+  s: Pick<Snapshot, "tickets" | "workspaces">,
+  cfg: DispatchConfig,
+  now: number,
+  seq: number,
+): Op[] {
   const at = new Date(now).toISOString();
   const ops: Op[] = [];
   const stateOf = new Map(s.tickets.map((t) => [t.key, t]));
   const aircraftOf = new Map(plan.aircraft.map((a) => [a.id, a]));
   const planned = new Set(plan.assign.map((a) => `${a.flight}|${a.aircraft}`));
   const releasing = new Set(plan.release.map((r) => r.flight));
+  const standOf = new Map(s.workspaces.filter((w) => w.ticketKey).map((w) => [w.ticketKey!, w.path]));
+  const age = (p: Proposal) => now - Date.parse(p.statusAt);
 
   const why = (p: Proposal): string => {
     const t = stateOf.get(p.flight);
@@ -87,15 +166,29 @@ export function syncOps(existing: Proposal[], plan: Plan, s: Pick<Snapshot, "tic
     if (!ac || !ac.available) return `AIRCRAFT 불가: ${ac?.reason ?? "세션 없음"}`;
     return "더 나은 배정으로 바뀜";
   };
+  // 승인됐지만 아직 안 보낸 ASSIGN이 여전히 유효한가(FLIGHT가 Todo이고 AIRCRAFT가 배정 가능)
+  const stillValid = (p: Proposal) => stateOf.get(p.flight)?.stateType === "unstarted" && Boolean(p.aircraft && aircraftOf.get(p.aircraft)?.available);
 
   let open = 0;
   let openRelease = 0;
-  for (const p of existing.filter((x) => x.status === "proposed")) {
-    if (now - Date.parse(p.at) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at });
-    else if (p.kind === "ASSIGN" && !planned.has(`${p.flight}|${p.aircraft}`)) ops.push({ op: "supersede", id: p.id, at, reason: why(p) });
-    else if (p.kind === "RELEASE" && !releasing.has(p.flight)) ops.push({ op: "supersede", id: p.id, at, reason: why(p) });
-    else if (p.kind === "ASSIGN") open++;
-    else openRelease++;
+  for (const p of existing) {
+    if (p.status === "proposed") {
+      if (now - Date.parse(p.at) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at });
+      else if (p.kind === "ASSIGN" && !planned.has(`${p.flight}|${p.aircraft}`)) ops.push({ op: "supersede", id: p.id, at, reason: why(p) });
+      else if (p.kind === "RELEASE" && !releasing.has(p.flight)) ops.push({ op: "supersede", id: p.id, at, reason: why(p) });
+      else if (p.kind === "ASSIGN") open++;
+      else openRelease++;
+    } else if (p.kind === "ASSIGN" && p.status === "approved") {
+      if (age(p) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at, reason: "승인 뒤 24시간 동안 전달되지 않음" });
+      else if (!stillValid(p)) ops.push({ op: "supersede", id: p.id, at, reason: why(p) });
+    } else if (p.status === "sent") {
+      // 보낸 뒤에는 CAPTAIN이 쥐고 있으니 자동 SUPERSEDED 하지 않는다
+      if (age(p) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at, reason: "24시간 동안 READBACK 없음" });
+    } else if (p.status === "accepted") {
+      const stand = standOf.get(p.flight);
+      if (stand) ops.push({ op: "depart", id: p.id, at, stand });
+      else if (age(p) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at, reason: "READBACK 뒤 24시간 동안 STAND가 생기지 않음" });
+    }
   }
 
   // 같은 짝(RELEASE는 같은 FLIGHT)을 24시간 안에 다시 제안하지 않는다(거절한 것도 포함).
@@ -117,6 +210,33 @@ export function syncOps(existing: Proposal[], plan: Plan, s: Pick<Snapshot, "tic
   return ops;
 }
 
+// CAPTAIN에게 보낼 FLIGHT PLAN. send-guard는 DISPATCH가 이 문구를 그대로 보내는지 확인한다.
+export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "url" | "priority"> | undefined, sessionName: string): string {
+  const sign = callsign({ name: sessionName });
+  const who = sign === sessionName ? sessionName : `${sign} (${sessionName})`;
+  const note = p.note ? `DISPATCH 메모: ${p.caution ? "CAUTION · " : ""}${p.note}` : p.caution ? "DISPATCH 메모: CAUTION" : null;
+  return [
+    `[DISPATCH ${p.id}] FLIGHT PLAN · ${who}`,
+    `FLIGHT ${flightNumber(p.flight)} · AIRPORT ${p.airport ?? "—"} · PRIORITY ${PRIORITY_NAME[ticket?.priority ?? 0] ?? "없음"}`,
+    ticket?.title ?? p.flight,
+    ticket?.url ?? null,
+    note,
+    `— 맡으면 이 메시지에 "READBACK ${p.id}", 못 맡으면 사유로 답장해 주세요.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function overdueOf(proposals: Proposal[], now: number): string[] {
+  return proposals
+    .filter(
+      (p) =>
+        (p.status === "sent" && now - Date.parse(p.statusAt) > READBACK_OVERDUE_MS) ||
+        (p.status === "accepted" && now - Date.parse(p.statusAt) > DEPARTURE_OVERDUE_MS),
+    )
+    .map((p) => p.id);
+}
+
 export function gateOf(proposals: Proposal[]) {
   const decided = proposals.filter((p) => p.status === "agreed" || p.status === "disagreed");
   const agreed = decided.filter((p) => p.status === "agreed").length;
@@ -127,6 +247,37 @@ export function gateOf(proposals: Proposal[]) {
     agreement,
     target: GATE,
     ready: decided.length >= GATE.decided && agreement !== null && agreement >= GATE.agreement,
+  };
+}
+
+const median = (xs: number[]) => {
+  if (!xs.length) return null;
+  const v = [...xs].sort((a, b) => a - b);
+  const m = v.length >> 1;
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+};
+
+// 2b → 3(ATFM) 점검: 보낸 FLIGHT PLAN 중 READBACK 받은 비율, READBACK까지 걸린 시간, READBACK 뒤 DEPARTED 비율
+export function gate3Of(proposals: Proposal[]) {
+  const dispatched = proposals.filter((p) => p.timeline.sent);
+  const readBack = dispatched.filter((p) => p.timeline.accepted);
+  const departed = readBack.filter((p) => p.timeline.departed);
+  const readbackRate = dispatched.length ? readBack.length / dispatched.length : null;
+  const departedRate = readBack.length ? departed.length / readBack.length : null;
+  const mins = median(readBack.map((p) => (Date.parse(p.timeline.accepted!) - Date.parse(p.timeline.sent!)) / 60_000));
+  return {
+    dispatched: dispatched.length,
+    readBack: readBack.length,
+    departed: departed.length,
+    declined: dispatched.filter((p) => p.status === "declined").length,
+    readbackRate,
+    readbackMedianMin: mins === null ? null : Math.round(mins * 10) / 10,
+    departedRate,
+    target: GATE3,
+    ready:
+      dispatched.length >= GATE3.dispatched &&
+      readbackRate !== null && readbackRate >= GATE3.readback &&
+      departedRate !== null && departedRate >= GATE3.departed,
   };
 }
 
@@ -163,10 +314,11 @@ export function allProposals(): Proposal[] {
 // 서버 tick에서 5분마다 부른다.
 export function runDispatch(s: Snapshot, now = Date.now()): Plan {
   const cfg = loadDispatchConfig();
-  const plan = planDispatch(s, readFlightHistory(), cfg, now);
   const ops = readOps();
+  const existing = fold(ops);
+  const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing));
   const seq = ops.filter((o) => o.op === "create").length;
-  append(syncOps(fold(ops), plan, s, cfg, now, seq));
+  append(syncOps(existing, plan, s, cfg, now, seq));
   return plan;
 }
 
@@ -177,38 +329,104 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const s = await getSnapshot();
     const cfg = loadDispatchConfig();
     const now = Date.now();
-    const plan = planDispatch(s, readFlightHistory(), cfg, now);
     const proposals = allProposals();
+    const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals));
     const open = proposals.filter((p) => p.status === "proposed");
+    const inFlight = proposals.filter(isInFlight).sort((a, b) => a.statusAt.localeCompare(b.statusAt));
     const recent = proposals
-      .filter((p) => p.status !== "proposed" && now - Date.parse(p.decidedAt ?? p.at) < 7 * DAY)
-      .sort((a, b) => (b.decidedAt ?? b.at).localeCompare(a.decidedAt ?? a.at))
+      .filter((p) => p.status !== "proposed" && !isInFlight(p) && now - Date.parse(p.statusAt) < 7 * DAY)
+      .sort((a, b) => b.statusAt.localeCompare(a.statusAt))
       .slice(0, 50);
     const keys = new Set([...proposals.map((p) => p.flight), ...plan.hold.flatMap((h) => [h.flight, ...h.blockedBy]), ...plan.excluded.map((e) => e.flight)]);
     const flights = Object.fromEntries(
       s.tickets.filter((t) => keys.has(t.key)).map((t) => [t.key, { title: t.title, state: t.state, priority: t.priority, project: t.project, url: t.url }]),
     );
-    return c.json({ mode: cfg.mode, at: new Date(now).toISOString(), plan, open, recent, flights, gate: gateOf(proposals), config: cfg });
+    return c.json({
+      mode: cfg.mode,
+      at: new Date(now).toISOString(),
+      plan,
+      open,
+      inFlight,
+      overdue: overdueOf(proposals, now),
+      recent,
+      flights,
+      gate: gateOf(proposals),
+      gate3: gate3Of(proposals),
+      config: cfg,
+    });
   });
 
-  const verdictOrNote = (op: "verdict" | "note") => async (c: Context) => {
-    const id = (c.req.param("id") ?? "").toUpperCase();
+  // send-guard가 쓰는 단건 조회
+  app.get("/api/dispatch/proposals/:id", (c) => {
+    const p = allProposals().find((x) => x.id === c.req.param("id").toUpperCase());
+    return p ? c.json({ proposal: p, mode: loadDispatchConfig().mode }) : c.json({ error: "그런 제안이 없음" }, 404);
+  });
+
+  const reasonOf = (body: { reason?: unknown }) => (typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : null);
+
+  // 상태를 바꾸는 동작 하나. 모드·전이 규칙을 검사하고 op를 남긴다.
+  const act =
+    (name: "verdict" | "note" | "approve" | "reject" | "release" | "accept" | "decline") =>
+    async (c: Context) => {
+      const id = (c.req.param("id") ?? "").toUpperCase();
+      const body = await c.req.json().catch(() => ({}));
+      const p = allProposals().find((x) => x.id === id);
+      if (!p) return c.json({ error: "그런 제안이 없음" }, 404);
+      const mode = loadDispatchConfig().mode;
+      const at = new Date().toISOString();
+      const closed = (op: StatusOp) => (canApply(p, op) ? null : c.json({ error: `지금 상태(${p.status})에서는 할 수 없음` }, 409));
+
+      if (name === "note") {
+        if (typeof body.text !== "string" || !body.text.trim()) return c.json({ error: "text가 필요함" }, 400);
+        append([{ op: "note", id, at, text: body.text.trim(), caution: Boolean(body.caution) }]);
+      } else if (name === "verdict") {
+        if (mode !== "shadow") return c.json({ error: "그림자 판정은 shadow 모드에서만 — approval 모드에서는 approve/reject" }, 409);
+        if (body.verdict !== "agree" && body.verdict !== "disagree") return c.json({ error: "verdict는 agree|disagree" }, 400);
+        const bad = closed("verdict");
+        if (bad) return bad;
+        append([{ op: "verdict", id, at, verdict: body.verdict, reason: reasonOf(body) }]);
+      } else if (name === "approve" || name === "reject") {
+        if (mode !== "approval") return c.json({ error: "승인·거절은 approval 모드(2b)에서만" }, 409);
+        const bad = closed(name);
+        if (bad) return bad;
+        append([name === "approve" ? { op: "approve", id, at } : { op: "reject", id, at, reason: reasonOf(body) }]);
+      } else if (name === "release") {
+        if (mode !== "approval") return c.json({ error: "FLIGHT PLAN은 approval 모드(2b)에서만 보낸다" }, 409);
+        if (p.kind !== "ASSIGN") return c.json({ error: "RELEASE 제안은 보내지 않는다" }, 400);
+        // 재송신: 이미 보낸 제안이면 같은 문구를 다시 돌려준다
+        if (p.status === "sent") return c.json({ proposal: p, sendTo: p.aircraftName, message: p.message });
+        const bad = closed("send");
+        if (bad) return bad;
+        const s = await getSnapshot();
+        const message = formatFlightPlan(p, s.tickets.find((t) => t.key === p.flight), p.aircraftName ?? "");
+        append([{ op: "send", id, at, message }]);
+        const sent = allProposals().find((x) => x.id === id)!;
+        return c.json({ proposal: sent, sendTo: sent.aircraftName, message: sent.message });
+      } else if (name === "accept") {
+        const bad = closed("accept");
+        if (bad) return bad;
+        append([{ op: "accept", id, at }]);
+      } else {
+        const reason = reasonOf(body);
+        if (!reason) return c.json({ error: "decline에는 CAPTAIN의 사유(reason)가 필요함" }, 400);
+        const bad = closed("decline");
+        if (bad) return bad;
+        append([{ op: "decline", id, at, reason }]);
+      }
+      return c.json({ proposal: allProposals().find((x) => x.id === id) });
+    };
+  for (const name of ["verdict", "note", "approve", "reject", "release", "accept", "decline"] as const) {
+    app.post(`/api/dispatch/proposals/:id/${name}`, act(name));
+  }
+
+  // 2a ↔ 2b 전환. 2b에서는 승인된 FLIGHT PLAN이 CAPTAIN에게 나간다.
+  app.post("/api/dispatch/mode", async (c) => {
     const body = await c.req.json().catch(() => ({}));
-    const p = allProposals().find((x) => x.id === id);
-    if (!p) return c.json({ error: "그런 제안이 없음" }, 404);
-    const at = new Date().toISOString();
-    if (op === "verdict") {
-      if (body.verdict !== "agree" && body.verdict !== "disagree") return c.json({ error: "verdict는 agree|disagree" }, 400);
-      if (p.status !== "proposed") return c.json({ error: `이미 닫힌 제안(${p.status})` }, 409);
-      append([{ op: "verdict", id, at, verdict: body.verdict, reason: typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : null }]);
-    } else {
-      if (typeof body.text !== "string" || !body.text.trim()) return c.json({ error: "text가 필요함" }, 400);
-      append([{ op: "note", id, at, text: body.text.trim(), caution: Boolean(body.caution) }]);
-    }
-    return c.json({ proposal: allProposals().find((x) => x.id === id) });
-  };
-  app.post("/api/dispatch/proposals/:id/verdict", verdictOrNote("verdict"));
-  app.post("/api/dispatch/proposals/:id/note", verdictOrNote("note"));
+    if (body.mode !== "shadow" && body.mode !== "approval") return c.json({ error: "mode는 shadow|approval" }, 400);
+    saveDispatchMode(body.mode);
+    record({ t: new Date().toISOString(), kind: "dispatch", op: `mode:${body.mode}`, id: "-" });
+    return c.json({ mode: loadDispatchConfig().mode });
+  });
 
   // DISPATCH 세션이 티켓 본문을 읽는 창구(Linear 읽기 전용)
   app.get("/api/dispatch/flight/:key", async (c) => {

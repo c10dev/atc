@@ -5,7 +5,11 @@
       "Bash(node /home/c10/projects/atc/controller/atcctl.mjs *)",
       "Bash(jq *)"
     ],
-    "deny": ["Edit", "Write", "NotebookEdit", "SendMessage"]
+    "deny": [
+      "Edit",
+      "Write",
+      "NotebookEdit"
+    ]
   },
   "hooks": {
     "PreToolUse": [
@@ -14,7 +18,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"/home/c10/projects/atc/controller/guard.mjs\"",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/guard.mjs\" || exit 2",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/send-guard.mjs\" || exit 2",
             "timeout": 5
           }
         ]
