@@ -285,6 +285,7 @@ CHARTER REQUEST → AD HOC FLIGHT draft (S1: verdict in the SCHEDULE tab) → FI
 
 | Folder | What's there | Docs |
 |---|---|---|
+| (root) | Working rules for sessions that change atc's code: worktrees, verification, git, terms | [CLAUDE.en.md](CLAUDE.en.md) |
 | `server/` | API server: snapshot loop, sources, CONTROLLER, DISPATCH and SCHEDULE APIs, FLIGHT RECORDER | [server/README.md](server/README.md) |
 | `web/` | The ATC screen (Vite + React): tabs, themes, settings | [web/README.md](web/README.md) |
 | `hooks/` | Claim hook that records which worktree each session works in | [hooks/README.md](hooks/README.md) |
