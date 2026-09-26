@@ -1187,6 +1187,94 @@ a.ticket:hover {
   font: 700 var(--text-sm) var(--mono);
   color: var(--flap-ink);
 }
+/* 판 없이 글자만 넘기는 칸(TIME·REMARKS 등). 글꼴과 색은 둘러싼 글에서 받는다. */
+.flap-bare b {
+  display: inline-block;
+  font: inherit;
+}
+.flap b,
+.flap-bare b {
+  position: relative;
+  white-space: pre;
+}
+
+/* ── split-flap: 윗장이 앞으로 꺾여 떨어지고(fl-out) 아랫장이 올라와 붙는다(fl-in) ── */
+.is-flipping {
+  --flap-half: 40ms;
+  perspective: 90px;
+}
+.fl-sizer {
+  visibility: hidden;
+}
+.fl-half {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50%;
+  overflow: visible clip;
+  border-radius: inherit;
+  background: var(--flap-tile);
+  background-size: 100% 200%;
+  box-shadow: inherit;
+  backface-visibility: hidden;
+}
+.flap-bare .fl-half {
+  background: none;
+}
+.fl-half i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 200%;
+  display: grid;
+  place-items: center;
+  font-style: normal;
+}
+.flap-bare .fl-half i {
+  justify-items: start;
+}
+.fl-top {
+  top: 0;
+  background-position: top;
+  transform-origin: bottom;
+}
+.fl-bot {
+  top: 50%;
+  background-position: bottom;
+  transform-origin: top;
+}
+.fl-bot i {
+  top: -100%;
+}
+/* 판 뒤에 숨은 면: 새 글자 윗면은 윗장이 떨어진 뒤에, 옛 글자 아랫면은 아랫장이 올라올 때까지만 */
+.fl-next {
+  animation: fl-hidden var(--flap-half);
+}
+.fl-prev {
+  animation: fl-hidden var(--flap-half) var(--flap-half) forwards;
+}
+.fl-out {
+  animation: fl-out var(--flap-half) ease-in forwards;
+}
+.fl-in {
+  animation: fl-in var(--flap-half) var(--flap-half) ease-out both;
+}
+@keyframes fl-hidden {
+  from,
+  to {
+    opacity: 0;
+  }
+}
+@keyframes fl-out {
+  to {
+    transform: rotateX(-90deg);
+  }
+}
+@keyframes fl-in {
+  from {
+    transform: rotateX(90deg);
+  }
+}
 .ticket-title {
   margin-top: var(--space-2);
   color: var(--fids-title);
