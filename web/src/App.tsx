@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { alertCode, alertLabel, alertMessage, callsign, flightNumber, HANDOFF_LABEL } from "./aviation.ts";
 import { buildIndex, timeAgo } from "./derive.ts";
 import { MoonIcon, Starfield } from "./Starfield.tsx";
+import { Ticker } from "./Ticker.tsx";
 import { formatClock, useSettings } from "./settings.ts";
 import { SettingsPanel } from "./SettingsPanel.tsx";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
@@ -121,7 +122,7 @@ export function App() {
       {alerts.length > 0 && !alertsOpen && (
         <button className={`ticker${serious ? " is-serious" : ""}`} onClick={() => setAlertsOpen(true)} aria-label="경보 목록 펼치기">
           <span className="ticker-head">ALERT</span>
-          <span className="ticker-list">
+          <Ticker>
             {alerts.map((a, i) => (
               <span key={i} className={`ticker-item alert-${a.kind}`}>
                 <span className="code-chip">{alertCode[a.kind]}</span>
@@ -129,7 +130,7 @@ export function App() {
                 <span className="mono">{subjectOf(a)}</span> · {alertMessage(a, nameOf)}
               </span>
             ))}
-          </span>
+          </Ticker>
         </button>
       )}
 

@@ -400,12 +400,42 @@ button {
 .ticker-list {
   display: flex;
   align-items: center;
-  gap: var(--space-6);
+  flex: 1;
+  min-width: 0;
   padding: 0 var(--space-4);
   overflow: hidden;
   white-space: nowrap;
   font-size: var(--text-sm);
-  mask-image: linear-gradient(90deg, #000 90%, transparent);
+}
+/* 흐를 때는 양 끝을 흐리게 해 글자가 스며들고 빠져나가게 */
+.ticker-list.is-running {
+  padding: 0;
+  mask-image: linear-gradient(90deg, transparent, #000 var(--space-6), #000 calc(100% - var(--space-12)), transparent);
+}
+.ticker-track {
+  display: flex;
+  flex: none;
+}
+.ticker-list.is-running .ticker-track {
+  animation: ticker-scroll var(--duration) linear infinite;
+}
+.ticker:hover .ticker-track,
+.ticker:focus-visible .ticker-track {
+  animation-play-state: paused;
+}
+.ticker-copy {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-6);
+}
+.ticker-list.is-running .ticker-copy {
+  padding-left: var(--space-6);
+}
+@keyframes ticker-scroll {
+  to {
+    transform: translateX(calc(-1 * var(--loop)));
+  }
 }
 .ticker-item {
   display: inline-flex;
