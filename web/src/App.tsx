@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { alertCode, alertLabel, alertMessage, callsign, flightNumber, HANDOFF_LABEL } from "./aviation.ts";
 import { buildIndex, timeAgo } from "./derive.ts";
+import { NewVersionBar } from "./NewVersion.tsx";
 import { MoonIcon, Starfield } from "./Starfield.tsx";
 import { Ticker } from "./Ticker.tsx";
 import { formatClock, useSettings } from "./settings.ts";
@@ -41,8 +42,8 @@ function initialTab(): Tab {
   return TABS.some((t) => t.id === hash) ? (hash as Tab) : "radar";
 }
 
-export function App() {
-  const { snapshot, connection } = useSnapshot();
+export function App({ build }: { build: string }) {
+  const { snapshot, connection, serverBuild } = useSnapshot();
   const now = useNow();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [alertsOpen, setAlertsOpen] = useState(false);
@@ -138,6 +139,8 @@ export function App() {
           </div>
         </div>
       </header>
+
+      <NewVersionBar own={build} server={serverBuild} />
 
       {alerts.length > 0 && !alertsOpen && (
         <button className={`ticker${serious ? " is-serious" : ""}`} onClick={() => setAlertsOpen(true)} aria-label="경보 목록 펼치기">

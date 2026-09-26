@@ -143,6 +143,12 @@ systemctl --user restart atc          # after code changes (includes the build)
 journalctl --user -u atc -f           # logs
 ```
 
+Tabs opened before a restart keep running the old bundle; when the server starts serving a new one, they show "새 버전이 배포됨 · 새로고침" (new version deployed · reload) under the header. They never reload on their own.
+
+| API | |
+|---|---|
+| `GET /api/version` | `{build, startedAt}`: the served bundle (`/assets/index-<hash>.js` from `web/dist/index.html`, `null` without a build) and the server start time. Also sent as an `event: version` on `/api/events` |
+
 Without `LINEAR_API_KEY` in `.env.local`, it shows only the tickets found in branch names, without Linear data.
 
 ## Claim hook
@@ -352,7 +358,8 @@ atc/
 │   ├── recorder.ts         # FLIGHT RECORDER log
 │   ├── occupancy.ts        # HANDOFF and conflict verdicts (occupancy.test.ts)
 │   ├── snapshot.ts         # merges sources + computes alerts
-│   └── index.ts            # /api/snapshot, /api/events
+│   ├── version.ts          # served bundle id from index.html, new-version check (shared with the UI; version.test.ts)
+│   └── index.ts            # /api/snapshot, /api/events, /api/version
 ├── web/src/                # Vite + React. Connection / team / ticket screens
 ├── occ/                    # working folder for the OCC session (CLAUDE.md, /tick, settings, send-guard, mcp-guard)
 ├── crosscheck/             # working folder for the CROSSCHECK session (CLAUDE.md, /tick, fail-closed settings)

@@ -23,6 +23,7 @@ npm run typecheck
 ```
 
 - `useSnapshot.ts`가 `/api/events`에 `EventSource`를 열고 최신 `Snapshot`을 들고 있다. 머리글에 연결 상태(실시간·연결 중·끊김)를 보인다.
+- 같은 스트림으로 `version`(서버가 내주는 번들)도 온다. `main.tsx`가 `new URL(import.meta.url).pathname`(빌드에서는 `/assets/index-<hash>.js`)으로 이 화면의 번들을 재고, 둘이 다르면 `NewVersion.tsx`가 머리글 아래에 "새 버전이 배포됨 · 새로고침"을 띄운다(`server/version.ts`의 `showNewVersion`). 저절로 새로고침하지 않고, 닫기를 누르면 탭이 떠 있는 동안 그 빌드에 대해서는 숨긴다. 개발 서버(`/src/main.tsx`)이거나 서버에 빌드가 없으면 뜨지 않는다.
 - `derive.ts`가 스냅샷에서 조회용 색인을 만든다(티켓 → 워크트리 → 점유 → 세션, 세션 위치, 정렬).
 - 타입은 서버에서 그대로 가져온다(`../../server/model.ts` 등). 그래서 화면과 API가 어긋나지 않는다.
 - METRICS, DISPATCH, SCHEDULE은 자기 API(`/api/metrics`, `/api/dispatch/…`, `/api/schedule/brief`)를 따로 부르고, 1분마다(스냅샷 시각 기준) 다시 부른다.
@@ -71,9 +72,10 @@ ATC 로고를 누르면 설정 창이 열린다(`SettingsPanel.tsx`, Esc나 바�
 | 파일 | 역할 |
 |---|---|
 | `index.html` | 진입 페이지 |
-| `src/main.tsx` | 첫 화면을 그리기 전에 저장된 설정을 적용하고 `App`을 띄운다 |
+| `src/main.tsx` | 첫 화면을 그리기 전에 저장된 설정을 적용하고, 이 화면의 번들 경로를 재고, `App`을 띄운다 |
 | `src/App.tsx` | 머리글, 탭, ALERT 티커, HANDOFF 목록, 시계 |
-| `src/useSnapshot.ts` | SSE 연결. `useNow`는 상대 시간이 흘러가도록 다시 그린다 |
+| `src/useSnapshot.ts` | SSE 연결(스냅샷과 서버의 번들). `useNow`는 상대 시간이 흘러가도록 다시 그린다 |
+| `src/NewVersion.tsx` | "새 버전이 배포됨 · 새로고침" 알림(polite `role="status"` 영역) |
 | `src/derive.ts` | 스냅샷 색인과 도우미 함수 |
 | `src/aviation.ts` | 코드 이름 → 항공 용어, 비행 단계 색과 약호 |
 | `src/settings.ts` | 설정 저장소, 테마, 시각 표기 |

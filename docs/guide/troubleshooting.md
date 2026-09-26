@@ -47,6 +47,10 @@ PR에 붙은 막힌 조건을 본다([개념](concepts.md)의 LANDING SEQUENCE).
 - `merge-unknown` → GitHub이 머지 가능 여부를 계산 중이다. 잠시 뒤 풀린다.
 - PR이 아예 안 보인다 → Draft인지(Draft는 LANDING SEQUENCE에 없다), AIRPORT의 git remote가 GitHub인지, 서버 사용자로 `gh auth status`가 되는지 본다. `gh`가 실패하면 스냅샷의 `github.error`에 이유가 뜬다.
 
-## 코드를 고친 뒤 화면이 그대로다
+## 새 기능이 안 보인다 · 코드를 고친 뒤 화면이 그대로다
 
 운영 서비스는 main 체크아웃에서 빌드한다. 머지 뒤 `systemctl --user restart atc`. 새 의존성이 생겼으면 먼저 `npm install`.
+
+배포 전에 열어 둔 탭은 옛 화면을 계속 돌린다. 서버가 새 번들을 내주기 시작하면 그 탭 상단(콘솔 바로 아래)에 **"새 버전이 배포됨 · 새로고침"** 알림이 뜬다. 새로고침을 눌러야 새 화면이 된다. 입력 중인 내용(거절 사유 등)이 날아가지 않게 저절로 새로고침하지 않는다. 닫기를 누르면 그 번들에 대해서는 다시 뜨지 않고, 다음 배포 때 다시 뜬다.
+
+알림이 없는데도 새 기능이 안 보이면 서비스가 다시 빌드됐는지 본다: `curl -s localhost:7700/api/version`의 `build`(`/assets/index-<hash>.js`)와 `startedAt`.

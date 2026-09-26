@@ -21,7 +21,9 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 3. 스냅샷이 준비되면(Linear·git·GitHub을 한 번 이상 읽은 뒤) 5분마다 교통량 표본을 남기고 DISPATCH(`runDispatch`)를 돌린다.
 4. 시각 말고 바뀐 것이 있으면 SSE 구독자 모두에게 스냅샷을 보낸다.
 
-`/api/events`는 연결하면 현재 스냅샷을 보내고, 이후 바뀔 때마다 보내며, 25초마다 `ping`을 보낸다.
+tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 때만 다시 읽음). 화면이 불러오는 진입 스크립트 `/assets/index-<hash>.js`가 빌드 정체(build)다. 같은 번들로 재시작하면 그대로고, 다시 빌드하면 재시작하지 않아도 바뀐다. 빌드가 없으면 `null`.
+
+`/api/events`는 연결하면 `event: version`(`{build, startedAt}`)과 현재 스냅샷을 보내고, 이후 스냅샷이 바뀔 때마다, build가 바뀔 때마다 `version`을 다시 보내며, 25초마다 `ping`을 보낸다. 재시작 뒤 EventSource가 스스로 다시 붙으므로, 열려 있던 탭은 폴링 없이 배포를 알고 "새 버전이 배포됨 · 새로고침" 알림을 띄운다.
 
 ## 소스 (`sources/`)
 
@@ -46,6 +48,7 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 | `airports.ts` | AIRPORT 등록부: `~/projects` 아래 자동 개설, 첫 커밋 해시로 식별, 코드, 개설·폐쇄·이름 변경·삭제 |
 | `away.ts` | OUTSTATION: 소속 AIRPORT 밖 STAND를 점유한 세션(화면과 공용) |
 | `callsign.ts` | 콜사인(`TEAM_A` → `ALPHA`)과 FLIGHT NUMBER(화면과 공용) |
+| `version.ts` | 빌드 정체: `index.html`의 진입 스크립트 경로(순수 함수 `entryScript`)와 탭이 새 버전 알림을 띄울지(순수 함수 `showNewVersion`, 화면과 공용) |
 | `events.ts` | 스냅샷 차이 → 이벤트(경보, HANDOFF, LANDING SEQUENCE `landing.requested`·`cleared`·`blocked`·`left`, 세션 종료, OUTSTATION). 커서로 읽는 이벤트 기록 |
 | `controller.ts` | CONTROLLER(TOWER) API: 브리핑, ack, CLEARANCE 발행·READBACK·취소, 정해진 문구 |
 | `clearances.ts` | CLEARANCE 기록: 추가만 하는 JSONL을 접어 현재 상태를 만든다 |
@@ -63,7 +66,8 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 | 메서드와 경로 | 하는 일 |
 |---|---|
 | `GET /api/snapshot` | 현재 스냅샷 |
-| `GET /api/events` | 스냅샷 SSE 스트림 |
+| `GET /api/events` | SSE 스트림: 연결할 때와 바뀔 때 `version`·`snapshot`, 그리고 `ping` |
+| `GET /api/version` | `{build, startedAt}`: 지금 내주는 번들(`/assets/index-<hash>.js`, 빌드가 없으면 `null`)과 서버 시작 시각 |
 | `GET /api/airports` | 전체 AIRPORT와 상태 |
 | `POST /api/airports` | AIRPORT 개설 `{path, code?, name?}` |
 | `PATCH /api/airports/:id` | 이름·코드 변경, 폐쇄·재개 `{code?, name?, closed?}` |

@@ -21,7 +21,9 @@ npm test           # node --test for server/**/*.test.ts, hooks and controller
 3. Every 5 minutes, once the snapshot is warm (Linear, git and GitHub read at least once), it records a traffic sample and runs DISPATCH (`runDispatch`).
 4. If anything besides the timestamp changed, the snapshot goes to every SSE listener.
 
-`/api/events` sends the current snapshot on connect, then each change, plus a `ping` every 25 seconds.
+Each tick also checks `web/dist/index.html` (only re-read when its mtime or size changes) for the entry script the page loads, `/assets/index-<hash>.js`. That path is the build id: a restart with the same bundle keeps it, a rebuild changes it, even without a restart. No build gives `null`.
+
+`/api/events` sends `event: version` (`{build, startedAt}`) and the current snapshot on connect, then each snapshot change, a new `version` whenever the build id changes, and a `ping` every 25 seconds. EventSource reconnects on its own after a restart, so open tabs learn about a deploy without polling and show the "새 버전이 배포됨 · 새로고침" notice.
 
 ## Sources (`sources/`)
 
@@ -46,6 +48,7 @@ npm test           # node --test for server/**/*.test.ts, hooks and controller
 | `airports.ts` | AIRPORT registry: auto-discovery under `~/projects`, identity by first commit hash, codes, open/close/rename/delete |
 | `away.ts` | OUTSTATION: sessions holding a STAND outside their home AIRPORT (shared with the UI) |
 | `callsign.ts` | Callsigns (`TEAM_A` → `ALPHA`) and FLIGHT NUMBERs (shared with the UI) |
+| `version.ts` | Build id: the entry script path in `index.html` (pure `entryScript`), and whether a tab should show the new-version notice (pure `showNewVersion`, shared with the UI) |
 | `events.ts` | Snapshot differences → events (alerts, handoffs, LANDING SEQUENCE `landing.requested` / `cleared` / `blocked` / `left`, lost sessions, OUTSTATION), with a cursor-based event log |
 | `controller.ts` | CONTROLLER (TOWER) API: brief, ack, CLEARANCE issue / readback / cancel, the fixed message format |
 | `clearances.ts` | CLEARANCE log: append-only JSONL folded into current state |
@@ -63,7 +66,8 @@ Every `*.test.ts` next to a module is its unit test.
 | Method and path | What it does |
 |---|---|
 | `GET /api/snapshot` | The current snapshot |
-| `GET /api/events` | SSE stream of snapshots |
+| `GET /api/events` | SSE stream: `version` on connect and on change, `snapshot` on connect and on change, `ping` |
+| `GET /api/version` | `{build, startedAt}`: the served bundle (`/assets/index-<hash>.js`, `null` without a build) and the server start time |
 | `GET /api/airports` | All AIRPORTs with state |
 | `POST /api/airports` | Open an AIRPORT `{path, code?, name?}` |
 | `PATCH /api/airports/:id` | Rename, change code, close or reopen `{code?, name?, closed?}` |

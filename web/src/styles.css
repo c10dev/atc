@@ -508,6 +508,51 @@ button {
   cursor: pointer;
 }
 
+/* 새 버전 알림: 배포 전에 열린 탭에 "새 버전이 배포됨 · 새로고침" */
+.new-version-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--gutter);
+  background: color-mix(in srgb, var(--cyan) 10%, var(--chrome));
+  border-bottom: 1px solid color-mix(in srgb, var(--cyan) 35%, transparent);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.new-version-text {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.new-version-text i {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--cyan);
+}
+.new-version-bar button {
+  min-height: 28px;
+  border: 1px solid var(--line-strong);
+  background: none;
+  border-radius: var(--radius-md);
+  padding: var(--space-0-5) var(--space-3);
+  color: var(--muted);
+  cursor: pointer;
+}
+.new-version-bar button:hover {
+  color: var(--text);
+}
+.new-version-bar .new-version-reload {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+.new-version-close {
+  margin-left: auto;
+}
+
 .main {
   padding: var(--space-4) var(--gutter) var(--space-12);
 }
@@ -2215,7 +2260,8 @@ a.ticket:hover {
 }
 :root[data-theme="night"] .console,
 :root[data-theme="night"] .alerts,
-:root[data-theme="night"] .ticker {
+:root[data-theme="night"] .ticker,
+:root[data-theme="night"] .new-version-bar {
   backdrop-filter: blur(14px) saturate(140%);
   -webkit-backdrop-filter: blur(14px) saturate(140%);
 }
