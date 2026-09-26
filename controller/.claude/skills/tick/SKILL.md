@@ -9,7 +9,7 @@ description: ATC 한 바퀴 — atc 브리핑을 읽고 CLAUDE.md 판단 기준�
 
 0. `node atcctl.mjs manual check`. `CHANGED`면 `CLAUDE.md`와 이 파일을 다시 읽고 `node atcctl.mjs manual ack`한 뒤, 다시 읽은 규정대로 진행한다.
 1. 이번 바퀴 전에 팀 세션에서 온 메시지가 있으면 먼저 처리한다. "READBACK C-xxxx"는 `node atcctl.mjs readback C-xxxx`, 거부·질문은 SUPERVISOR 보고 목록에 올린다.
-2. `node atcctl.mjs brief`를 실행한다. `reset: true`면 서버가 재시작된 것이니 `events`보다 현재 상태(`open`, `landingQueue`)를 기준으로 본다.
+2. `node atcctl.mjs brief`를 실행한다. `reset: true`면 서버가 재시작된 것이니 `events`보다 현재 상태(`open`, `landingQueue`)를 기준으로 본다. 이때 APPROACH PR의 막힘 INFO는 보내지 않는다(이미 보냈을 수 있다).
 3. CLAUDE.md의 판단 기준표를 위에서부터 적용한다. CLEARANCE가 필요하면:
    - `node atcctl.mjs issue <세션> <TYPE> --stand <STAND> --flight <FLIGHT> -- <내용>`
    - 출력의 `SEND TO` 세션에 `---` 아래 문구를 그대로 SendMessage로 보낸다.

@@ -8,7 +8,7 @@
 
 0. `node atcctl.mjs manual check`. On `CHANGED`, reread `CLAUDE.md` and this file, run `node atcctl.mjs manual ack`, then continue under the reread manual.
 1. If messages from team sessions arrived before this pass, handle them first. For "READBACK C-xxxx" run `node atcctl.mjs readback C-xxxx`; put refusals and questions on the list to report to the SUPERVISOR.
-2. Run `node atcctl.mjs brief`. If it has `reset: true`, the server restarted, so go by the current state (`open`, `landingQueue`) rather than `events`.
+2. Run `node atcctl.mjs brief`. If it has `reset: true`, the server restarted, so go by the current state (`open`, `landingQueue`) rather than `events`. In that pass, don't send block INFOs for APPROACH PRs (they may have been sent already).
 3. Apply the decision rules table in CLAUDE.md from the top. When a CLEARANCE is needed:
    - `node atcctl.mjs issue <session> <TYPE> --stand <STAND> --flight <FLIGHT> -- <text>`
    - Send the text below `---` verbatim with SendMessage to the `SEND TO` session in the output.
