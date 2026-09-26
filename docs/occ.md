@@ -9,7 +9,7 @@ atc splits into two control sessions, the way aviation does:
 
 In real aviation the flight dispatcher belongs to the airline's OCC, not to ATC. So DISPATCH (stage 2) moves into OCC, and OCC takes over the work the "President" session does by hand today.
 
-> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 built: SCHEDULE drafts in shadow operation for `CLASSIFY`, `PRIORITIZE` and `NEW` (`server/schedule.ts`, `atcctl schedule brief|draft`, the SCHEDULE tab, OCC rules). `NEW` is the CHARTER DESK: an AD HOC FLIGHT drafted from a CHARTER REQUEST, with body-section checks and a title-similarity duplicate search over the snapshot (issues updated in the last 45 days). At most 5 open drafts of any kind, and drafts expire after 3 days without a verdict. Other operations and S2 and later are design only. Decisions are listed under "Decisions" at the end.
+> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 built: SCHEDULE drafts in shadow operation for `CLASSIFY`, `PRIORITIZE` and `NEW` (`server/schedule.ts`, `atcctl schedule brief|draft`, the SCHEDULE tab, OCC rules). `NEW` is the CHARTER DESK: an AD HOC FLIGHT drafted from a CHARTER REQUEST, with body-section checks and a title-similarity duplicate search over the snapshot (issues updated in the last 45 days). At most 5 open drafts of any kind, and drafts expire after 3 days without a verdict. Other operations (`CLOSE`, `TAIL`, `LINK`, `SPLIT`, `COMMENT`) and S3 are design only. S2 (approval operation: linear-guard, `schedule release`, APPLIED detection) is built behind `mode` and off by default — see "Turning on S2". Decisions are listed under "Decisions" at the end.
 
 ## 1. Current facts
 
@@ -168,6 +168,18 @@ The session reloads its manual: `/tick` starts with `atcctl manual check`, which
 | UI | SCHEDULE tab: drafts with reason, payload preview and duplicate-search result; verdict and approve buttons; applied history |
 | Records | `schedule.drafted / decided / released / applied` in the FLIGHT RECORDER; metrics: agreement rate, operations reverted by a person, tickets created per week |
 
+## Turning on S2
+
+S2 is built and sits behind the SCHEDULE `mode` (`~/.local/state/atc/schedule.json`, default `shadow`). Turning it on lets OCC write approved operations to Linear, so do it in this order:
+
+1. Check the S2 gate in the SCHEDULE tab (20 or more shadow verdicts, 80% or more agreement).
+2. Change the vocado `CLAUDE.md` rule "only leaders write to Linear" to "OCC and leaders write to Linear; OCC writes plan fields (through approved SCHEDULE operations), leaders write execution fields" (section 4). Confirm with the SUPERVISOR at that time.
+3. Create the flat Linear labels `rating:SEC`, `rating:UI`, `rating:DATA`, `rating:DOCS` (the `type` and `wake` label groups and `tail:TEAM_X` already exist). A CLASSIFY or NEW call that names a missing label fails, and OCC reports it.
+4. Press "S2 승인 운용 켜기" in the SCHEDULE tab (or `POST /api/schedule/mode {"mode":"approval"}`). OCC picks it up on its next pass.
+5. To stop, switch back to shadow: linear-guard then blocks every Linear write, and released operations stay as they are.
+
+How it runs: the SUPERVISOR approves (or rejects with a reason) → OCC runs `atcctl schedule release S-xxxx`, which records RELEASED and prints the exact Linear MCP calls (`save_issue`, plus a `save_comment` with the reason for CLASSIFY and PRIORITIZE) → OCC makes each call with the input unchanged; `occ/mcp-guard.mjs` (linear-guard) passes a Linear write only when the mode is approval and the tool and input match a released call exactly → on the next Linear read atc marks the operation APPLIED (the change is visible, or for NEW an issue with that title appeared). Approved or released operations that don't land within 3 days expire. Calls only touch plan fields: labels, priority, a new issue's title/body/project/relations, and a comment. Never state or assignee.
+
 ## 11. Criteria for moving on
 
 | Transition | Criteria (proposed) |
@@ -195,7 +207,7 @@ The session reloads its manual: `/tick` starts with `atcctl manual check`, which
 2. ✅ TAIL ASSIGNMENT `tail:TEAM_X` in the planner, first shipped as `lane:TEAM_X` (fixes the VOC-196 double dispatch right away). Labels are read from the existing Linear query
 3. ✅ **S1**: SCHEDULE log, API, `atcctl schedule`, SCHEDULE tab, shadow verdicts. First operations: `CLASSIFY` and `PRIORITIZE`
 4. Flight following in `/tick` (read-only `gh`), CLEARED TO LAND checks in TOWER
-5. **S2**: linear-guard, `schedule release`, APPLIED detection, the vocado `CLAUDE.md` rule change (confirmed with the SUPERVISOR at that time)
+5. ◐ **S2**: built behind `mode` (linear-guard, `schedule release`, APPLIED detection). Still to do when turning it on: the vocado `CLAUDE.md` rule change (confirmed with the SUPERVISOR at that time)
 6. **S3**: automatic operations, only those that S2 data supports
 
 ## Decisions (2026-09-26, SUPERVISOR)

@@ -10,7 +10,7 @@
 2. **운항 추적(flight following)**: SUPERVISOR가 요청하거나 CAPTAIN의 보고가 오면, 그 PR의 최신 커밋·CI·리뷰를 읽기 전용 `gh`로 직접 확인하고 보고와 다른 점을 SUPERVISOR에게 알린다.
 3. **SCHEDULE 초안(S1, 그림자 운용)**: 분류 라벨이나 우선순위가 없는 FLIGHT에 CLASSIFY·PRIORITIZE 초안을 쓴다. SUPERVISOR가 SCHEDULE 탭에서 "승인했을 것 / 거절했을 것"을 표시한다. Linear에는 아무것도 쓰지 않는다.
 4. **CHARTER DESK(요청 창구)**: SUPERVISOR가 이 세션에서 직접 일을 요청하면(CHARTER REQUEST), 정기 스케줄(Linear)에 없는 그 일을 AD HOC FLIGHT(새 이슈) 초안으로 쓴다. S1이라 이것도 초안뿐이다.
-5. **Linear 읽기**: 티켓은 읽기만 한다. 초안이 Linear에 쓰이는 것은 S2부터다.
+5. **Linear 읽기**: 티켓은 읽기만 한다. 초안이 Linear에 쓰이는 것은 S2(`schedule brief`의 `mode`가 approval)부터이고, 그때도 SUPERVISOR가 승인해 atc가 발부한 CALL만 쓴다("SCHEDULE 발부").
 
 매 바퀴 처음에 `node ../controller/atcctl.mjs manual check`로 이 규정이 바뀌었는지 본다. `CHANGED`면 이 파일과 `.claude/skills/tick/SKILL.md`를 다시 읽고 `manual ack`한 뒤 진행한다.
 
@@ -25,7 +25,7 @@
 - 제안·초안에 승인·거절 판정을 내리지 않는다(SUPERVISOR 몫).
 - CHARTER REQUEST 없이 새 이슈 초안(`NEW`)을 쓰지 않는다. 티켓을 스스로 지어내지 않는다.
 - 코드를 읽거나 고치지 않는다. Edit·Write는 막혀 있고, Bash는 `node ../controller/atcctl.mjs …`, `jq`, 읽기 전용 `gh pr view|checks|diff|list`만 된다(`../controller/guard.mjs --gh-read`).
-- Linear·git·GitHub에 쓰지 않는다. MCP 도구는 읽기(get·list·search·read·query·fetch)만 통과한다(`mcp-guard.mjs`). FLIGHT 본문은 atc를 거쳐 읽는다. Linear 상태는 READBACK한 CAPTAIN이 바꾼다.
+- Linear·git·GitHub에 쓰지 않는다. MCP 도구는 읽기(get·list·search·read·query·fetch)만 통과한다(`mcp-guard.mjs`). 예외는 S2의 발부된 SCHEDULE CALL 하나뿐이고, linear-guard가 입력을 비교해 그것만 통과시킨다. FLIGHT 본문은 atc를 거쳐 읽는다. Linear 상태는 READBACK한 CAPTAIN이 바꾼다.
 - PR을 머지하거나 리뷰 판정을 내리지 않는다. 확인한 사실만 보고한다.
 - TOWER의 일(LOSS OF SEPARATION, HANDOFF, LANDING SEQUENCE)에 끼어들지 않는다.
 
@@ -43,6 +43,7 @@
 | `node ../controller/atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <근거>` | 분류 라벨 초안. 빠진 축만 적어도 된다. `--rating`은 여러 번 |
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <근거>` | 우선순위 초안. 1 Urgent · 2 High · 3 Medium · 4 Low |
 | `node ../controller/atcctl.mjs schedule draft NEW --title <제목> --project <프로젝트> [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <근거> -- '<본문>'` | (CHARTER DESK) AD HOC FLIGHT 초안. 본문의 `\n`은 줄바꿈. 출력: 초안 ID와 atc가 찾은 비슷한 FLIGHT(`similar`) |
+| `node ../controller/atcctl.mjs schedule release <S-0001>` | (S2) 승인된 작업을 발부하고 Linear 호출을 `CALL n/m · <도구>`와 JSON 입력으로 출력. 이미 발부됐으면 같은 CALL을 다시 준다 |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
 | `gh pr view <n> -R <repo> --json state,isDraft,headRefOid,mergeStateStatus,reviews` | (운항 추적) PR 상태와 최신 커밋, 리뷰 |
 | `gh pr checks <n> -R <repo>` / `gh pr diff <n> -R <repo>` | (운항 추적) 최신 커밋의 CI, 바뀐 파일 |
@@ -92,6 +93,20 @@ HOLD는 24시간 만료가 없고, 다음 경우에 atc가 SUPERSEDED로 푼다(
 - 오류(`이미 그렇게 되어 있음`, `Todo·Backlog가 아님` 등)가 나면 다시 시도하지 말고 OCC LOG에 적는다.
 - 같은 FLIGHT·종류의 초안을 다시 쓰면 앞의 초안은 SUPERSEDED가 된다. 판단이 바뀐 게 아니면 다시 쓰지 않는다.
 - 초안은 3일 동안 판정이 없으면 EXPIRED, FLIGHT가 Todo·Backlog를 벗어나거나 Linear에 반영되면 SUPERSEDED가 된다(atc가 한다).
+
+## SCHEDULE 발부 (S2, `schedule brief`의 `mode`가 approval일 때만)
+
+S2에서는 SUPERVISOR가 SCHEDULE 탭에서 승인한 작업을 OCC가 Linear에 쓴다. 쓰는 내용은 atc가 만들고, OCC는 그대로 옮기기만 한다.
+
+| 상황 (`schedule brief` 위치) | 할 일 |
+|---|---|
+| `inProgress` 중 `approved` | `node ../controller/atcctl.mjs schedule release <S-xxxx>` → 출력의 `CALL n/m · <도구>` 아래 JSON을 **한 글자도 바꾸지 않고** 그 Linear MCP 도구(`save_issue`, `save_comment`)의 입력으로 넣는다. CALL을 순서대로 모두 |
+| `inProgress` 중 `released`(다음 바퀴에도 남음) | Linear에 반영됐는지 atc가 다음 읽기에서 본다. 한 번 더 `schedule release`로 같은 CALL을 받아 빠진 호출만 다시 한다. 그래도 남으면 SUPERVISOR 보고 |
+| linear-guard가 막음(`OCC MCP 차단`) | 입력을 고쳐 다시 시도하지 말고 SUPERVISOR 보고 |
+| Linear 도구가 오류(라벨 없음 등) | 다시 시도하지 말고 오류 그대로 SUPERVISOR 보고 |
+
+- 발부된 CALL 말고는 Linear에 아무것도 쓰지 않는다. 상태(In Progress 등)·담당은 CAPTAIN 몫이라 CALL에도 없다.
+- `shadow`(S1)면 이 절을 건너뛴다. 승인·거절은 OCC가 하지 않는다.
 
 ## FLIGHT PLAN 전달 (2b, `mode`가 approval일 때만)
 

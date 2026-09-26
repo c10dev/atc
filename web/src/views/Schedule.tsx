@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { createContext, type KeyboardEvent, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ClassifyPayload, NewPayload, PrioritizePayload, ScheduleOp } from "../../../server/schedule.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
@@ -6,8 +6,9 @@ import { formatClock, useSettings } from "../settings.ts";
 import { PriorityMark } from "../ui.tsx";
 import "./Schedule.css";
 
-// OCC S1 — SCHEDULE 초안(그림자 운용). OCC가 Linear에 쓸 변경(CLASSIFY 라벨, PRIORITIZE 우선순위)을
-// 초안으로 남기고, SUPERVISOR는 "승인했을 것 / 거절했을 것"만 표시한다. 아무것도 Linear에 쓰지 않는다.
+// OCC SCHEDULE — OCC가 Linear에 쓸 변경(CLASSIFY 라벨, PRIORITIZE 우선순위, NEW 새 이슈)을 초안으로 남긴다.
+// S1(shadow): SUPERVISOR는 "승인했을 것 / 거절했을 것"만 표시하고 아무것도 Linear에 쓰지 않는다.
+// S2(approval): 승인한 작업을 OCC가 발부받아 Linear에 쓴다(linear-guard가 입력을 비교). 기본은 S1.
 // 설계: docs/occ.md 5~7장, docs/fleet.md 4·6장.
 
 interface FlightInfo {
@@ -20,9 +21,14 @@ interface FlightInfo {
   labels: string[];
 }
 
+type Mode = "shadow" | "approval";
+// 판정 버튼 문구가 모드를 따르게(S1 "승인했을 것", S2 "승인")
+const ModeContext = createContext<Mode>("shadow");
+
 interface Brief {
-  mode: "shadow";
+  mode: Mode;
   open: ScheduleOp[];
+  inProgress: ScheduleOp[];
   recent: ScheduleOp[];
   changes: Record<string, string[]>;
   gate: { decided: number; agreed: number; agreement: number | null; target: { decided: number; agreement: number }; ready: boolean };
@@ -40,6 +46,10 @@ const statusText: Record<ScheduleOp["status"], string> = {
   draft: "DRAFT",
   agreed: "승인했을 것",
   disagreed: "거절했을 것",
+  approved: "APPROVED",
+  rejected: "REJECTED",
+  released: "RELEASED",
+  applied: "APPLIED",
   superseded: "SUPERSEDED",
   expired: "EXPIRED",
 };
@@ -115,9 +125,13 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
 
   // 판정 기록. 카드가 사라지면 초점은 DRAFTS 제목으로. 409·404는 위 알림, 그 밖의 실패는 카드 안에.
   const verdict = async (op: ScheduleOp, v: "agree" | "disagree", reason: string | null) => {
+    const approval = brief?.mode === "approval";
+    if (approval && v === "agree" && !confirm(`${op.id} ${subjectOf(op)}를 승인하면 OCC가 다음 바퀴에 Linear에 씁니다. 승인할까요?`)) return null;
     try {
-      await post(`/api/schedule/ops/${op.id}/verdict`, { verdict: v, reason });
-      setNotice({ tone: "ok", text: `${op.id} ${subjectOf(op)} — ${v === "agree" ? "승인했을 것" : "거절했을 것"}으로 기록함` });
+      if (approval) await post(`/api/schedule/ops/${op.id}/${v === "agree" ? "approve" : "reject"}`, { reason });
+      else await post(`/api/schedule/ops/${op.id}/verdict`, { verdict: v, reason });
+      const word = approval ? (v === "agree" ? "승인" : "거절") : v === "agree" ? "승인했을 것" : "거절했을 것";
+      setNotice({ tone: "ok", text: `${op.id} ${subjectOf(op)} — ${word}으로 기록함` });
       await load();
       draftsHead.current?.focus();
       return null;
@@ -133,6 +147,24 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
     }
   };
 
+  // S1 ↔ S2 전환(SUPERVISOR). 켜기 전 점검 상태와 준비할 것을 확인 창에 보인다.
+  const switchMode = async () => {
+    if (!brief) return;
+    const next: Mode = brief.mode === "shadow" ? "approval" : "shadow";
+    const text =
+      next === "approval"
+        ? `S2(승인 운용)를 켤까요?\n\n켜면 승인한 SCHEDULE 작업을 OCC가 Linear에 씁니다(linear-guard가 입력을 비교).\nS2 진입 점검: 판정 ${brief.gate.decided}/${brief.gate.target.decided}건, 합의율 ${pct(brief.gate.agreement)} (기준 ${brief.gate.target.agreement * 100}%) — ${brief.gate.ready ? "충족" : "아직 미달"}\n준비: vocado CLAUDE.md의 "Linear에는 리더만 쓴다" 규칙 변경, Linear에 rating:SEC·UI·DATA·DOCS 라벨.`
+        : "S1(그림자 운용)로 돌아갈까요? 이미 발부한 작업은 그대로 두고, 새로 발부하지 않습니다(linear-guard가 모든 쓰기를 막음).";
+    if (!confirm(text)) return;
+    try {
+      await post("/api/schedule/mode", { mode: next });
+      setNotice({ tone: "ok", text: `SCHEDULE 모드: ${next === "approval" ? "S2 승인 운용" : "S1 그림자 운용"}` });
+      await load();
+    } catch (e) {
+      setNotice({ tone: "error", text: (e as Error).message });
+    }
+  };
+
   if (!brief) return <p className="empty">{error ? `불러오지 못함: ${error}` : "불러오는 중…"}</p>;
   const { gate, flights } = brief;
   // FLIGHT 링크: brief에 있으면 그 주소, 없으면 아는 Linear 주소에서 키만 바꿔 만든다
@@ -140,13 +172,24 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
   const hrefOf = (key: string) => flights[key]?.url ?? (base ? `${base}${key}` : null);
 
   return (
+    <ModeContext.Provider value={brief.mode}>
     <section className="schedule">
       <div className="toolbar">
-        <span className="muted">
-          <span className="sc-mode">SHADOW</span> OCC S1 · OCC가 Linear에 쓸 변경을 초안으로 남긴다. 판정은 초안 품질을 재는 데만 쓰고{" "}
-          <b className="sc-strong">Linear에는 아무것도 쓰지 않는다.</b> CLASSIFY·PRIORITIZE는 atc 신호에서, AD HOC FLIGHT 초안은
-          SUPERVISOR가 OCC 세션에 낸 CHARTER REQUEST에서 나온다.
-        </span>
+        {brief.mode === "shadow" ? (
+          <span className="muted">
+            <span className="sc-mode">SHADOW</span> OCC S1 · OCC가 Linear에 쓸 변경을 초안으로 남긴다. 판정은 초안 품질을 재는 데만 쓰고{" "}
+            <b className="sc-strong">Linear에는 아무것도 쓰지 않는다.</b> CLASSIFY·PRIORITIZE는 atc 신호에서, AD HOC FLIGHT 초안은
+            SUPERVISOR가 OCC 세션에 낸 CHARTER REQUEST에서 나온다.
+          </span>
+        ) : (
+          <span className="muted">
+            <span className="sc-mode m-approval">APPROVAL</span> OCC S2 · <b className="sc-strong">승인한 작업은 OCC가 Linear에 쓴다.</b>{" "}
+            atc가 쓸 내용(CALL)을 만들고, linear-guard가 그 입력과 한 글자도 다르지 않은 쓰기만 통과시킨다.
+          </span>
+        )}
+        <button className="sc-btn sc-mode-switch" onClick={switchMode}>
+          {brief.mode === "shadow" ? "S2 승인 운용 켜기" : "S1 그림자 운용으로"}
+        </button>
       </div>
       {error && (
         <p className="sc-error" role="alert">
@@ -178,6 +221,49 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
         </div>
       ) : (
         <p className="empty">열린 초안 없음 — OCC가 아직 초안을 쓰지 않았거나 모두 판정했다.</p>
+      )}
+
+      {(brief.mode === "approval" || brief.inProgress.length > 0) && (
+        <>
+          <h2 className="label">
+            IN PROGRESS <em>승인됨(APPROVED) → OCC가 발부(RELEASED) → Linear에 보이면 APPLIED</em>
+          </h2>
+          {brief.inProgress.length ? (
+            <table className="sc-table">
+              <thead>
+                <tr>
+                  <th scope="col">ID</th>
+                  <th scope="col">종류</th>
+                  <th scope="col">FLIGHT</th>
+                  <th scope="col">상태</th>
+                  <th scope="col">바뀔 것</th>
+                  <th scope="col">언제</th>
+                </tr>
+              </thead>
+              <tbody>
+                {brief.inProgress.map((op) => (
+                  <tr key={op.id} className={`s-${op.status}`}>
+                    <td className="sc-c-id mono" data-label="ID">{op.id}</td>
+                    <td className={`sc-c-kind k-${op.kind}`} data-label="종류">{kindCode(op.kind)}</td>
+                    <td className="sc-c-flight" data-label="FLIGHT">{subjectOf(op)}</td>
+                    <td className="sc-c-status sc-result" data-label="상태">
+                      {statusText[op.status]}
+                      <span className="faint">{op.status === "approved" ? " · 발부 대기" : ` · CALL ${op.calls?.length ?? 0}건, 반영 대기`}</span>
+                    </td>
+                    <td className="sc-c-reason" data-label="바뀔 것">{(brief.changes[op.id] ?? []).join(" ") || "—"}</td>
+                    <td className="sc-c-at faint" data-label="언제">
+                      <time dateTime={op.statusAt} title={stamp(op.statusAt, clock)}>
+                        {timeAgo(op.statusAt, now)}
+                      </time>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="empty">진행 중인 작업 없음</p>
+          )}
+        </>
       )}
 
       <h2 className="label">
@@ -233,6 +319,7 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
         <p className="empty">최근 7일 동안 닫힌 초안 없음</p>
       )}
     </section>
+    </ModeContext.Provider>
   );
 }
 
@@ -387,6 +474,7 @@ function useVerdict(op: ScheduleOp, onVerdict: OnVerdict) {
 }
 
 function VerdictActions({ op, v }: { op: ScheduleOp; v: ReturnType<typeof useVerdict> }) {
+  const mode = useContext(ModeContext);
   return (
     <>
       {v.error && (
@@ -399,10 +487,10 @@ function VerdictActions({ op, v }: { op: ScheduleOp; v: ReturnType<typeof useVer
       ) : (
         <div className="sc-actions">
           <button className="sc-btn agree" disabled={v.busy} onClick={() => v.submit("agree", null)}>
-            승인했을 것
+            {mode === "approval" ? "승인" : "승인했을 것"}
           </button>
           <button ref={v.rejectBtn} className="sc-btn disagree" disabled={v.busy} onClick={() => v.setRejecting(true)}>
-            거절했을 것…
+            {mode === "approval" ? "거절…" : "거절했을 것…"}
           </button>
         </div>
       )}
