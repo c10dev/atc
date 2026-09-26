@@ -7,6 +7,9 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 ## [Unreleased]
 
 ### 추가
+- 설정 창에 LINEAR·AGENTS 탭. 새 `GET /api/settings`로 서버 설정을 읽기 전용으로 보여 주고, 비밀 값은 돌려주지 않는다.
+  - LINEAR: 연결 상태, 마지막 동기화, API 키 설정 여부, 팀 키, LANDING 상태.
+  - AGENTS: 세션 수, 세션 폴더, 점유 hook 설치 여부, TTL과 HANDOFF 기준 시간.
 - README에 릴리스 배지.
 - 이 변경 기록.
 

@@ -7,6 +7,9 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 ## [Unreleased]
 
 ### Added
+- Settings panel tabs LINEAR and AGENTS. They show read-only server settings from the new `GET /api/settings`, which never returns secrets.
+  - LINEAR: connection status, last sync, API key presence, team key, LANDING state.
+  - AGENTS: session counts, session folders, claim hook installed or not, TTL and handoff grace.
 - Release badge in the READMEs.
 - This changelog.
 
