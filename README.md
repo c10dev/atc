@@ -79,12 +79,16 @@ The AIRPORT list lives in `~/.local/state/atc/airports.json` (outside git, since
 
 ### FLEET registry
 
-Teams (AIRCRAFT) are described in `~/.local/state/atc/fleet.json` and edited in the FLEET tab ([docs/fleet.md](docs/fleet.md)). For each `TEAM_X`: **CREW COMPLEMENT** (positions under the CAPTAIN, such as backend Opus, `ui-builder`, `ui-qa` or `flash-helper`), **TYPE RATING** (`SEC`, `UI`, `DATA`, `DOCS`), **ROUTE** (usual Linear projects), **TARGETS** (FLIGHTs per week, on-time rate) and a note. Anything not set follows the defaults, which come from the vocado `CLAUDE.md` crew rules. `SEC` is refused for a crew that has no member able to do security work (`flash-helper` alone is not enough). The file stores only what was changed, so the defaults keep following the code. The planner uses the TYPE RATINGS, crew and ROUTES (see FLIGHT classification under DISPATCH).
+Teams (AIRCRAFT) are described in `~/.local/state/atc/fleet.json` and edited in the FLEET tab ([docs/fleet.md](docs/fleet.md)). For each `TEAM_X`: **CREW COMPLEMENT** (positions under the CAPTAIN, such as backend Opus, `ui-builder`, `ui-qa` or `flash-helper`), **TYPE RATING** (`SEC`, `UI`, `DATA`, `DOCS`), **ROUTE** (usual Linear projects), **TARGETS** (FLIGHTs per week, on-time rate) and a note. Anything not set follows the defaults, which come from the vocado `CLAUDE.md` crew rules. `SEC` is refused for a crew that has no member able to do security work (`flash-helper` alone is not enough). The file stores only what was changed, so the defaults keep following the code. The planner uses the TYPE RATINGS, crew and ROUTES (see FLIGHT classification under DISPATCH), and skips AIRCRAFT that are AOG or retired.
+
+**Team building** in the FLEET tab: **ENTRY INTO SERVICE** adds a new AIRCRAFT from a **CONFIGURATION** template, then a **CREW BRIEFING** gives a kickoff text to paste into a new session with that name. atc links the session by name once it appears; it never starts sessions itself. **AOG** stands a team down with a reason and optional date; **RETIREMENT** removes it from the list (restorable). `TEAM_X` stays the REGISTRATION; in atc's words a team is an AIRCRAFT flown by a CREW.
 
 | API | What it does |
 |---|---|
 | `GET /api/fleet` | Every TEAM session and registered AIRCRAFT with status, current FLIGHTs, crew, ratings, routes and targets, plus the rating list, defaults and known projects |
-| `PATCH /api/fleet/:registration` | `{complement?, ratings?, routes?, targets?, base?, note?}`; `null` resets a field to the default |
+| `POST /api/fleet` | ENTRY INTO SERVICE: `{registration, configuration?, base?, routes?, note?}` (configurations: `general`, `security`, `ui`, `research`) |
+| `GET /api/fleet/:registration/briefing` | CREW BRIEFING text to paste into the new session |
+| `PATCH /api/fleet/:registration` | `{complement?, ratings?, routes?, targets?, base?, note?, aog?, retired?}`; `null` resets a field to the default. `aog: {reason, until?}` stands a team down; `retired: {reason?}` / `false` retires or restores it |
 
 | State | Shown as |
 |---|---|

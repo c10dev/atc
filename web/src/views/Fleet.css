@@ -206,3 +206,95 @@
 .fl-wide {
   width: 100%;
 }
+
+/* 팀 빌딩: ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT */
+.fl-entry-toggle {
+  margin-bottom: var(--space-3);
+}
+.fl-entry,
+.fl-briefing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius);
+}
+.fl-entry .label,
+.fl-briefing .label,
+.fl-entry-preview {
+  width: 100%;
+  margin: 0;
+}
+.fl-entry label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--text-sm);
+}
+.fl-entry .fl-actions,
+.fl-briefing .fl-actions {
+  width: 100%;
+}
+.fl-reg {
+  width: 96px;
+  flex: none;
+  font-family: var(--mono);
+  letter-spacing: 0.08em;
+}
+.fl-briefing-text {
+  width: 100%;
+  padding: var(--space-2);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font: var(--text-sm) / 1.5 var(--mono);
+  resize: vertical;
+}
+.fl-card.is-aog {
+  border-left-color: var(--amber);
+}
+.fl-aog {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.fl-aog-mark {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-sm);
+  color: var(--amber);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+.fl-absent {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+.fl-btn.danger {
+  color: var(--alert);
+}
+.fl-actions {
+  flex-wrap: wrap;
+}
+.fl-retired-label {
+  margin-top: var(--space-4);
+}
+.fl-retired {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.fl-retired li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}

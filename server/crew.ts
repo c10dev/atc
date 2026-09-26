@@ -28,6 +28,10 @@ export interface AircraftProfile {
   routes?: string[];
   targets?: Targets;
   note?: string;
+  configuration?: ConfigurationId; // ENTRY INTO SERVICE 때 고른 템플릿(기록용)
+  enteredAt?: string; // ENTRY INTO SERVICE 시각
+  aog?: { reason: string; until?: string | null; at: string }; // 잠시 운항 중지: planner가 배정하지 않는다
+  retired?: { at: string; reason?: string | null }; // 퇴역: FLEET에서 빠지고 배정하지 않는다
 }
 export interface FleetFile {
   defaults: { complement: CrewMember[]; ratings: Rating[] };
@@ -56,8 +60,45 @@ export function profileOf(fleet: FleetFile, registration: string) {
     complement: p.complement ?? fleet.defaults.complement,
     ratings: p.ratings ?? fleet.defaults.ratings,
     routes: p.routes ?? [],
+    aog: p.aog ?? null,
+    retired: p.retired ?? null,
   };
 }
+
+// CONFIGURATION: 새 AIRCRAFT를 들일 때 고르는 팀 구성 템플릿. vocado 팀원 규칙 안에서 조합한다.
+export const CONFIGURATIONS = {
+  general: {
+    label: "일반",
+    complement: DEFAULT_FLEET.defaults.complement,
+    ratings: ["UI", "DATA", "DOCS"] as Rating[],
+  },
+  security: {
+    label: "보안·DB",
+    complement: [
+      { position: "backend", agent: "claude-opus-5-5" },
+      { position: "reviewer", agent: "codex (GitHub 리뷰)", limits: ["read-only"] },
+    ] as CrewMember[],
+    ratings: ["SEC", "DATA", "DOCS"] as Rating[],
+  },
+  ui: {
+    label: "UI",
+    complement: [
+      { position: "backend", agent: "claude-opus-5-5" },
+      { position: "ui-builder", agent: "ui-builder" },
+      { position: "ui-qa", agent: "ui-qa", limits: ["read-only"] },
+    ] as CrewMember[],
+    ratings: ["UI", "DOCS"] as Rating[],
+  },
+  research: {
+    label: "리서치·문서",
+    complement: [
+      { position: "backend", agent: "claude-opus-5-5" },
+      { position: "flash-helper", agent: "flash-helper", limits: ["no BUILD", "no CHECK verdicts", "no SEC"] },
+    ] as CrewMember[],
+    ratings: ["DATA", "DOCS"] as Rating[],
+  },
+} as const;
+export type ConfigurationId = keyof typeof CONFIGURATIONS;
 
 const can = (m: CrewMember, limit: string) => !(m.limits ?? []).includes(limit) && !(m.limits ?? []).includes("read-only");
 

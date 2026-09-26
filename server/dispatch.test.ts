@@ -290,3 +290,15 @@ test("ROUTE: 담당 프로젝트면 점수가 오른다", async () => {
   assert.equal(p.assign[0].aircraftName, "TEAM_D");
   assert.deepEqual(p.assign[0].factors.find((f) => f.id === "route"), { id: "route", label: "ROUTE", value: 1, weight: 1, points: 1, detail: "Song Experience 담당" });
 });
+
+test("AOG·RETIRED AIRCRAFT는 배정하지 않는다", async () => {
+  const { DEFAULT_FLEET } = await import("./crew.ts");
+  const fleet = { defaults: DEFAULT_FLEET.defaults, aircraft: { TEAM_B: { aog: { reason: "컨텍스트 정리", until: "2026-09-27", at: "t" } }, TEAM_C: { retired: { at: "t" } } } };
+  const s = snap({ sessions: [session("b", "TEAM_B"), session("c", "TEAM_C"), session("d", "TEAM_D")], tickets: [ticket("VOC-140")] });
+  const p = planDispatch(s, new Map(), cfg(), NOW, undefined, fleet);
+  assert.deepEqual(p.assign.map((a) => a.aircraftName), ["TEAM_D"]);
+  assert.deepEqual(
+    p.aircraft.map((a) => `${a.name}:${a.reason}`),
+    ["TEAM_B:AOG — 컨텍스트 정리 (~2026-09-27)", "TEAM_C:RETIRED", "TEAM_D:PARKED"],
+  );
+});
