@@ -169,6 +169,7 @@ export type LandingBlockCode =
   | "no-checks"
   | "no-review"
   | "review-stale"
+  | "review-findings" // head에 Codex 지적(COMMENTED 리뷰)이 있고 그 뒤 👍가 없음
   | "changes-requested"
   | "behind"
   | "dirty"

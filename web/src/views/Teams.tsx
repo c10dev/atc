@@ -278,6 +278,7 @@ const blockShort: Record<LandingBlockCode, string> = {
   "no-checks": "CI 없음",
   "no-review": "리뷰 없음",
   "review-stale": "리뷰 옛 커밋",
+  "review-findings": "Codex 지적",
   "changes-requested": "변경 요청",
   behind: "BEHIND",
   dirty: "충돌",

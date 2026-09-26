@@ -114,7 +114,7 @@ Session ──claim──▶ Workspace ──branch──▶ Ticket
 | Codex sessions | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex sessions and their cwd |
 | git | `git worktree list --porcelain` in each repository | Worktree path, branch, HEAD, dirty or not |
 | Linear | GraphQL API (`LINEAR_API_KEY`) | Ticket title, state, assignee, URL |
-| GitHub | `gh pr list --repo <owner/name> --state open` for each AIRPORT with a GitHub remote, every 90 seconds (`server/sources/github.ts`) | Open PRs: head commit, checks, reviews, merge state, Draft; Codex's 👍 and comments via `gh api` for PRs without a head review |
+| GitHub | `gh pr list --repo <owner/name> --state open` for each AIRPORT with a GitHub remote, every 90 seconds (`server/sources/github.ts`) | Open PRs: head commit, checks, reviews, merge state, Draft; Codex's 👍 and comments via `gh api` for PRs without a passing head review or with Codex findings on the head |
 | Claim | `~/.local/state/atc/claims/<sessionId>/*.json` | Claims recorded by the hook |
 
 Join rules:
@@ -214,7 +214,7 @@ The LANDING SEQUENCE is the list of open GitHub PRs that aren't Drafts, across e
 |---|---|
 | Not a Draft | `draft` |
 | Every check at the head commit passed (NEUTRAL and SKIPPED count as passed; every check is treated as required) | `checks-pending`, `checks-failed`, `no-checks` (no checks at all) |
-| A review on the head commit by someone other than the PR author (bots included, APPROVED or COMMENTED), or the Codex bot's 👍 reaction on the PR made after the head commit (Codex's "no major issues" signal); and no reviewer whose latest verdict is CHANGES_REQUESTED | `no-review`, `review-stale` (reviews only on older commits), `changes-requested` |
+| A review on the head commit (APPROVED or COMMENTED) by someone other than the PR author and the Codex bot, or the Codex bot's 👍 reaction on the PR made after the head commit (Codex's "no major issues" signal). A Codex COMMENTED review on the head means findings and blocks until a Codex 👍 or a human APPROVED on the head after it; and no reviewer whose latest verdict is CHANGES_REQUESTED | `no-review`, `review-stale` (reviews only on older commits), `review-findings` (Codex findings on the head), `changes-requested` |
 | No drift from base: `mergeStateStatus` CLEAN, UNSTABLE or HAS_HOOKS | `behind`, `dirty`, `blocked`, `merge-unknown` (GitHub is still computing) |
 | No LOSS OF SEPARATION on the PR's STAND | `los` |
 

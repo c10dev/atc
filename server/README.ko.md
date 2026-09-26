@@ -31,7 +31,7 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 | `codex.ts` | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex 세션(최근 90초 안에 움직였으면 busy), `cwd` 점유 |
 | `git.ts` | AIRPORT마다 `git worktree list --porcelain` | 워크트리, 브랜치, HEAD, dirty 여부, 마지막 커밋(세부는 30초 캐시). 브랜치 이름에서 티켓 키 |
 | `linear.ts` | Linear GraphQL(`LINEAR_API_KEY`), 60초마다 | 티켓, 상태, 우선순위, 프로젝트, 관계. DISPATCH용 이슈 본문 |
-| `github.ts` | git remote가 GitHub인 AIRPORT마다 `gh pr list --repo <owner/name> --state open --json …`, 90초마다 백그라운드로(`execFile`, 셸 없음) | AIRPORT별 열린 PR: head, 체크, 리뷰, 머지 상태, Draft. head 리뷰가 없는 Draft 아닌 PR은 Codex 봇의 👍 반응, head committer 시각(sha별 캐시), Codex의 PR 댓글도(`gh api`, 읽기 전용). 실패한 저장소는 마지막 결과를 두고 오류는 `snapshot.github.error`에. `gh`가 없으면 `enabled`가 false |
+| `github.ts` | git remote가 GitHub인 AIRPORT마다 `gh pr list --repo <owner/name> --state open --json …`, 90초마다 백그라운드로(`execFile`, 셸 없음) | AIRPORT별 열린 PR: head, 체크, 리뷰, 머지 상태, Draft. head에 통과 리뷰가 없거나 Codex 지적이 있는 Draft 아닌 PR은 Codex 봇의 👍 반응, head committer 시각(sha별 캐시), Codex의 PR 댓글도(`gh api`, 읽기 전용). 실패한 저장소는 마지막 결과를 두고 오류는 `snapshot.github.error`에. `gh`가 없으면 `enabled`가 false |
 
 ## 모듈
 

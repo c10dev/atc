@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildPulls, checkBlocks, type GhCheck, type GhPull, type GhReview, isCodexBot, landingBlocks, mergeBlocks, reviewBlocks } from "./landing.ts";
+import { actionableBlocks } from "./events.ts";
+import { buildPulls, checkBlocks, codexThumbsPass, type GhCheck, type GhPull, type GhReview, isCodexBot, landingBlocks, mergeBlocks, needsCodexSignal, reviewBlocks } from "./landing.ts";
 import type { Alert, Workspace } from "./model.ts";
 import { ticketKeyFromTitle } from "./sources/git.ts";
 import { githubSlug } from "./sources/github.ts";
@@ -20,7 +21,7 @@ const gh = (over: Partial<GhPull> = {}): GhPull => ({
   number: 389, title: "VOC-191 fix", url: "https://github.com/o/r/pull/389", headRefName: "claude/voc-191-fix",
   headRefOid: HEAD, baseRefName: "main", isDraft: false, mergeStateStatus: "CLEAN", reviewDecision: "",
   createdAt: "2026-09-26T06:00:00Z", author: { login: "chaehy5665" }, statusCheckRollup: green,
-  reviews: [review("chatgpt-codex-connector", "COMMENTED", HEAD)], reactionGroups: [],
+  reviews: [review("president", "APPROVED", HEAD)], reactionGroups: [],
   ...over,
 });
 const codes = (bs: { code: string }[]) => bs.map((b) => b.code);
@@ -38,9 +39,11 @@ test("CI: 모두 통과·NEUTRAL·SKIPPED면 통과, 진행 중·실패·없음�
   assert.deepEqual(checkBlocks(rerun), []);
 });
 
-test("리뷰: head 커밋에 작성자 아닌 사람(봇 포함)의 리뷰가 있어야 한다", () => {
-  assert.deepEqual(reviewBlocks(gh()), []);
+test("리뷰: head 커밋에 작성자도 Codex도 아닌 리뷰어의 리뷰가 있어야 한다", () => {
+  // 사람의 APPROVED는 통과
   assert.deepEqual(reviewBlocks(gh({ reviews: [review("president", "APPROVED", HEAD)] })), []);
+  // 결정: 사람(Codex 아닌 리뷰어)의 COMMENTED도 통과로 친다
+  assert.deepEqual(reviewBlocks(gh({ reviews: [review("kim", "COMMENTED", HEAD)] })), []);
   // 작성자 자신의 COMMENTED(스레드 답글)는 세지 않는다
   assert.deepEqual(codes(reviewBlocks(gh({ reviews: [review("chaehy5665", "COMMENTED", HEAD)] }))), ["no-review"]);
   assert.deepEqual(codes(reviewBlocks(gh({ reviews: [] }))), ["no-review"]);
@@ -77,6 +80,61 @@ test("리뷰: Codex 👍가 head 커밋 뒤에 달렸으면 head 리뷰로 친�
   assert.doesNotMatch(reviewBlocks(gh({ reviews: [], codex: signal(null, { at: "2026-09-26T15:00:00Z", limit: false }) }))[0].text, /한도/);
   // 봇 로그인 목록
   assert.ok(isCodexBot("chatgpt-codex-connector[bot]") && isCodexBot("chatgpt-codex-connector") && !isCodexBot("chaehy5665"));
+});
+
+test("리뷰: head의 Codex COMMENTED는 지적이라 통과가 아니고, 그 뒤 Codex 👍나 사람 APPROVED가 있어야 풀린다", () => {
+  const HEAD_AT = "2026-09-26T07:50:00Z";
+  const REVIEW_AT = "2026-09-26T08:00:00Z";
+  const codex = review("chatgpt-codex-connector", "COMMENTED", HEAD, REVIEW_AT);
+  const signal = (thumbsAt: string | null) => ({ headAt: HEAD_AT, thumbsAt, lastComment: null });
+
+  // head에 Codex 지적만 있으면 review-findings
+  const only = reviewBlocks(gh({ reviews: [codex] }));
+  assert.deepEqual(codes(only), ["review-findings"]);
+  assert.equal(only[0].text, "Codex 지적 있음(head aaaaaaa) — 반영 후 재리뷰 필요");
+  assert.deepEqual(codes(reviewBlocks(gh({ reviews: [codex], codex: signal(null) }))), ["review-findings"]);
+  // REST식 로그인([bot])도 같다
+  assert.deepEqual(codes(reviewBlocks(gh({ reviews: [review("chatgpt-codex-connector[bot]", "COMMENTED", HEAD)] }))), ["review-findings"]);
+
+  // 지적 뒤에 Codex 👍가 달리면 통과
+  assert.deepEqual(reviewBlocks(gh({ reviews: [codex], codex: signal("2026-09-26T08:10:00Z") })), []);
+  // 👍가 head 뒤라도 지적보다 먼저(또는 같은 시각)면 여전히 review-findings
+  assert.deepEqual(codes(reviewBlocks(gh({ reviews: [codex], codex: signal("2026-09-26T07:55:00Z") }))), ["review-findings"]);
+  assert.deepEqual(codes(reviewBlocks(gh({ reviews: [codex], codex: signal(REVIEW_AT) }))), ["review-findings"]);
+  // 같은 head에 지적이 두 번이면 마지막 지적보다 뒤여야 한다
+  const twice = [codex, review("chatgpt-codex-connector", "COMMENTED", HEAD, "2026-09-26T08:20:00Z")];
+  assert.deepEqual(codes(reviewBlocks(gh({ reviews: twice, codex: signal("2026-09-26T08:10:00Z") }))), ["review-findings"]);
+
+  // 지적 뒤 사람(Codex·작성자 아닌 리뷰어)의 head APPROVED는 지적을 판단한 것이라 풀린다(👍 없이도)
+  const approvedAfter = [review("president", "APPROVED", HEAD, "2026-09-26T08:30:00Z"), codex];
+  assert.deepEqual(reviewBlocks(gh({ reviews: approvedAfter })), []);
+  // 지적 전 APPROVED는 세지 않는다. 그 뒤 👍가 있으면 풀린다
+  const approvedBefore = [review("president", "APPROVED", HEAD, "2026-09-26T07:58:00Z"), codex];
+  assert.deepEqual(codes(reviewBlocks(gh({ reviews: approvedBefore }))), ["review-findings"]);
+  assert.deepEqual(reviewBlocks(gh({ reviews: approvedBefore, codex: signal("2026-09-26T08:10:00Z") })), []);
+  // 지적 뒤라도 사람 COMMENTED, 이전 커밋의 APPROVED, 작성자 APPROVED로는 풀리지 않는다
+  for (const r of [review("kim", "COMMENTED", HEAD, "2026-09-26T08:30:00Z"), review("president", "APPROVED", OLD, "2026-09-26T08:30:00Z"), review("chaehy5665", "APPROVED", HEAD, "2026-09-26T08:30:00Z")]) {
+    assert.deepEqual(codes(reviewBlocks(gh({ reviews: [r, codex] }))), ["review-findings"], `${r.author!.login} ${r.state}`);
+  }
+
+  // 변경 요청과는 함께 뜬다
+  const both = reviewBlocks(gh({ reviews: [review("kim", "CHANGES_REQUESTED", OLD, "2026-09-26T07:00:00Z"), codex] }));
+  assert.deepEqual(codes(both), ["changes-requested", "review-findings"]);
+
+  // Codex 신호를 읽을 PR: head 통과 리뷰가 없거나 head에 Codex 지적이 있을 때
+  assert.equal(needsCodexSignal(gh({ reviews: [codex] })), true);
+  assert.equal(needsCodexSignal(gh({ reviews: approvedBefore })), true);
+  assert.equal(needsCodexSignal(gh({ reviews: approvedAfter })), false); // 사람 APPROVED가 풀었으면 읽지 않는다
+  assert.equal(needsCodexSignal(gh({ reviews: [review("president", "APPROVED", HEAD)] })), false);
+  assert.equal(needsCodexSignal(gh({ reviews: [] })), true);
+  // 👍 캐시 판단: 지적보다 앞선 👍로는 통과하지 않는다
+  assert.equal(codexThumbsPass(gh({ reviews: [] }), signal("2026-09-26T07:55:00Z")), true);
+  assert.equal(codexThumbsPass(gh({ reviews: [codex] }), signal("2026-09-26T07:55:00Z")), false);
+
+  // PR 목록에서는 APPROACH, CAPTAIN이 손써야 하는 막힘(landing.blocked·INFO 대상)
+  const [pr] = buildPulls([{ repo: "/r/vocado", pulls: [gh({ reviews: [codex] })] }], [], [], new Map(), () => null);
+  assert.equal(pr.landing, "APPROACH");
+  assert.deepEqual(actionableBlocks(pr), ["review-findings"]);
 });
 
 test("FLIGHT: 브랜치에 없으면 PR 제목 끝의 (VOC-n)", () => {

@@ -17,7 +17,7 @@ DELTA가 끝날 때까지 대기
 ## LAND와 LANDING 막힘 알림
 
 - `LAND`는 **CLEARED TO LAND**인 PR에만 나간다([개념](concepts.md)의 LANDING SEQUENCE). 번호는 LANDING SEQUENCE 순번이고, 문구에 `PR #번호`가 들어간다. 앞 PR이 머지되면 rebase한 뒤 LANDING한다. 받는 쪽은 그 PR의 STAND를 쥔 팀이다.
-- APPROACH인 PR은 `LAND`를 받지 않는다. CAPTAIN이 손써야 할 막힘(CI 실패, head 리뷰 없음, Codex 한도, 변경 요청, rebase·충돌 등)이 새로 생기면 TOWER가 `INFO`로 알린다:
+- APPROACH인 PR은 `LAND`를 받지 않는다. CAPTAIN이 손써야 할 막힘(CI 실패, head 리뷰 없음, Codex 지적, Codex 한도, 변경 요청, rebase·충돌 등)이 새로 생기면 TOWER가 `INFO`로 알린다:
 
   ```
   [ATC C-0012] ECHO (TEAM_E) · INFO

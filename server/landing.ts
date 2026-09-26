@@ -3,8 +3,10 @@ import type { Alert, LandingBlockCode, PullRequest, Workspace } from "./model.ts
 // CLEARED TO LAND 판정. GitHub에 열린 PR 하나마다 머지 전에 기계로 볼 수 있는 조건을 모두 따진다.
 // 결정 사항(docs/occ.md 9절):
 // - CI: rollup(head 커밋 기준)의 체크를 모두 required로 본다. NEUTRAL·SKIPPED는 통과. 체크가 하나도 없으면 막는다.
-// - 리뷰: head 커밋에 PR 작성자가 아닌 사람(봇 포함)의 APPROVED·COMMENTED 리뷰가 있어야 한다.
+// - 리뷰: head 커밋에 PR 작성자도 Codex도 아닌 리뷰어의 APPROVED·COMMENTED 리뷰가 있어야 한다.
 //   또는 Codex 봇의 👍(+1) 반응이 head 커밋의 committer 시각 이후에 달렸다(Codex의 "큰 문제 없음" 신호).
+//   Codex의 COMMENTED 리뷰는 지적이 있다는 뜻이라 통과로 치지 않는다. head에 그 리뷰가 있으면 그 뒤 Codex 👍나
+//   사람(Codex·작성자 아닌 리뷰어)의 head APPROVED가 있어야 풀린다. 사람 COMMENTED로는 풀리지 않는다.
 //   그 밖의 댓글·반응은 세지 않는다. 누군가의 마지막 판정이 CHANGES_REQUESTED면 막는다.
 // - base: CLEAN·UNSTABLE·HAS_HOOKS는 통과(UNSTABLE의 원인은 CI 조건이 따로 잡는다). BEHIND·DIRTY·BLOCKED·UNKNOWN은 막는다.
 
@@ -31,7 +33,7 @@ export interface GhReview {
 export const CODEX_BOTS = ["chatgpt-codex-connector", "chatgpt-codex-connector[bot]"];
 export const isCodexBot = (login: string | null | undefined) => Boolean(login && CODEX_BOTS.includes(login));
 
-// head 리뷰가 없는 PR에만 따로 읽는 Codex 신호(sources/github.ts)
+// head 리뷰가 없거나 head에 Codex 지적이 있는 PR에만 따로 읽는 Codex 신호(sources/github.ts)
 export interface CodexSignal {
   headAt: string | null; // head 커밋의 committer 시각
   thumbsAt: string | null; // Codex 봇의 👍(+1) 반응 시각
@@ -101,17 +103,47 @@ const VERDICT = new Set(["APPROVED", "CHANGES_REQUESTED", "DISMISSED"]);
 
 type ReviewInput = Pick<GhPull, "headRefOid" | "author" | "reviews" | "reviewDecision" | "codex">;
 
-// 작성자가 아닌 사람의 리뷰(APPROVED·COMMENTED)
+// 작성자가 아닌 사람의 리뷰(APPROVED·COMMENTED). Codex의 COMMENTED도 든다(이전 커밋 리뷰 표시용).
 function countedReviews(pr: ReviewInput): GhReview[] {
   const author = pr.author?.login ?? null;
   return (pr.reviews ?? []).filter((r) => (r.author?.login !== author || author === null) && COUNTS_AS_REVIEW.has(r.state) && r.commit?.oid);
 }
 
-// head 커밋에 리뷰가 있나. 없으면 atc가 Codex 👍·댓글을 따로 읽는다.
-export const hasHeadReview = (pr: ReviewInput) => countedReviews(pr).some((r) => r.commit!.oid === pr.headRefOid);
-
 const atOrAfter = (t: string | null | undefined, since: string | null | undefined) =>
   Boolean(t && since && Date.parse(t) >= Date.parse(since));
+const after = (t: string | null | undefined, since: string | null | undefined) =>
+  Boolean(t && since && Date.parse(t) > Date.parse(since));
+
+// 통과로 치는 리뷰: Codex 것은 빼고(Codex의 통과 신호는 👍뿐)
+const passingReviews = (pr: ReviewInput) => countedReviews(pr).filter((r) => !isCodexBot(r.author?.login));
+
+// head 커밋에 통과 리뷰가 있나
+export const hasHeadReview = (pr: ReviewInput) => passingReviews(pr).some((r) => r.commit!.oid === pr.headRefOid);
+
+// head 커밋에 달린 Codex의 마지막 COMMENTED 리뷰(= 지적 있음)
+export function codexFindings(pr: ReviewInput): GhReview | null {
+  const mine = (pr.reviews ?? []).filter((r) => isCodexBot(r.author?.login) && r.state === "COMMENTED" && r.commit?.oid === pr.headRefOid);
+  return mine.reduce<GhReview | null>((a, b) => (!a || (b.submittedAt ?? "") > (a.submittedAt ?? "") ? b : a), null);
+}
+
+// head의 Codex 지적 뒤에 사람이 head에 APPROVED했나(지적을 보고 판단함). 지적 전 APPROVED는 세지 않는다.
+export function humanApprovedFindings(pr: ReviewInput): boolean {
+  const findings = codexFindings(pr);
+  return Boolean(
+    findings?.submittedAt &&
+      passingReviews(pr).some((r) => r.state === "APPROVED" && r.commit!.oid === pr.headRefOid && after(r.submittedAt, findings.submittedAt)),
+  );
+}
+
+// atc가 Codex 👍·댓글을 따로 읽어야 하나: head 통과 리뷰가 없거나, head의 Codex 지적을 사람 APPROVED가 풀지 않았을 때
+export const needsCodexSignal = (pr: ReviewInput) => !hasHeadReview(pr) || (codexFindings(pr) !== null && !humanApprovedFindings(pr));
+
+// Codex 👍가 이 head를 통과시키나: head committer 시각 이후, head에 Codex 지적이 있으면 그 리뷰보다 뒤
+export function codexThumbsPass(pr: ReviewInput, c: CodexSignal | undefined = pr.codex): boolean {
+  if (!atOrAfter(c?.thumbsAt, c?.headAt)) return false;
+  const findings = codexFindings(pr);
+  return !findings || after(c!.thumbsAt, findings.submittedAt);
+}
 
 export function reviewBlocks(pr: ReviewInput): Block[] {
   const author = pr.author?.login ?? null;
@@ -127,10 +159,14 @@ export function reviewBlocks(pr: ReviewInput): Block[] {
   if (requesters.length) out.push(block("changes-requested", `${names(requesters)}의 변경 요청(CHANGES_REQUESTED)이 남아 있음`));
   else if (pr.reviewDecision === "CHANGES_REQUESTED") out.push(block("changes-requested", "변경 요청(CHANGES_REQUESTED)이 남아 있음"));
 
-  if (hasHeadReview(pr)) return out;
-  // Codex는 문제가 없으면 리뷰 대신 PR에 👍만 단다. head 커밋 뒤에 달린 것만 이 head의 리뷰로 친다.
+  // Codex는 지적이 있으면 COMMENTED 리뷰를, 없으면 PR에 👍만 단다. head의 지적은 그 뒤 👍나 사람 APPROVED가 있어야 풀린다.
   const c = pr.codex;
-  if (atOrAfter(c?.thumbsAt, c?.headAt)) return out;
+  const thumbsOk = codexThumbsPass(pr);
+  if (codexFindings(pr) && !thumbsOk && !humanApprovedFindings(pr)) {
+    out.push(block("review-findings", `Codex 지적 있음(head ${short(pr.headRefOid)}) — 반영 후 재리뷰 필요`));
+    return out;
+  }
+  if (hasHeadReview(pr) || thumbsOk) return out;
   const limited = Boolean(c?.lastComment?.limit && atOrAfter(c.lastComment.at, c.headAt));
   const note = limited ? "Codex 한도 — 사람 리뷰 필요" : `head ${short(pr.headRefOid)}에 리뷰 필요${c?.thumbsAt ? " (Codex 👍는 이전 커밋 것)" : ""}`;
   const counted = countedReviews(pr);
@@ -167,7 +203,7 @@ export function landingBlocks(pr: GhPull, los: boolean): Block[] {
   if (pr.isDraft) out.push(block("draft", "Draft PR"));
   out.push(...checkBlocks(pr.statusCheckRollup), ...reviewBlocks(pr), ...mergeBlocks(pr.mergeStateStatus));
   if (los) out.push(block("los", "STAND에 LOSS OF SEPARATION이 열려 있음"));
-  const order: LandingBlockCode[] = ["draft", "checks-failed", "checks-pending", "no-checks", "changes-requested", "no-review", "review-stale", "dirty", "behind", "blocked", "merge-unknown", "los"];
+  const order: LandingBlockCode[] = ["draft", "checks-failed", "checks-pending", "no-checks", "changes-requested", "review-findings", "no-review", "review-stale", "dirty", "behind", "blocked", "merge-unknown", "los"];
   return out.sort((a, b) => order.indexOf(a.code) - order.indexOf(b.code));
 }
 

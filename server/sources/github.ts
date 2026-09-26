@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { type CodexSignal, type GhPull, hasHeadReview, isCodexBot } from "../landing.ts";
+import { type CodexSignal, codexThumbsPass, type GhPull, isCodexBot, needsCodexSignal } from "../landing.ts";
 
 const run = promisify(execFile);
 
@@ -56,14 +56,15 @@ const tsv = (out: string) => out.split("\n").filter(Boolean).map((l) => l.split(
 
 // 커밋 시각은 바뀌지 않으니 sha별로 계속 둔다. 이번 목록에 없는 sha는 지운다.
 const headDates = new Map<string, string>();
-// head에서 Codex 👍를 이미 확인한 PR(키: 저장소#번호@sha)은 다시 읽지 않는다.
+// head에서 통과하는 Codex 👍를 이미 확인한 PR(키: 저장소#번호@sha)은 다시 읽지 않는다.
+// 같은 head에 그 뒤 Codex 지적이 새로 달리면 캐시가 통과하지 않으니 다시 읽는다.
 const thumbsOk = new Map<string, CodexSignal>();
 
-// head 리뷰가 없는 PR의 Codex 신호: head committer 시각, Codex 👍 시각, Codex 마지막 댓글(한도 안내인지)
+// head 리뷰가 없거나 head에 Codex 지적이 있는 PR의 Codex 신호: head committer 시각, Codex 👍 시각, Codex 마지막 댓글(한도 안내인지)
 async function codexSignal(slug: string, pr: GhPull): Promise<CodexSignal> {
   const key = `${slug}#${pr.number}@${pr.headRefOid}`;
   const cached = thumbsOk.get(key);
-  if (cached) return cached;
+  if (cached && codexThumbsPass(pr, cached)) return cached;
   let headAt = headDates.get(pr.headRefOid) ?? null;
   if (!headAt) {
     headAt = (await gh(["api", `repos/${slug}/commits/${pr.headRefOid}`, "--jq", ".commit.committer.date"])).trim() || null;
@@ -75,7 +76,7 @@ async function codexSignal(slug: string, pr: GhPull): Promise<CodexSignal> {
     thumbsAt = rows.filter(([login]) => isCodexBot(login)).map(([, at]) => at).sort().at(-1) ?? null;
   }
   const signal: CodexSignal = { headAt, thumbsAt, lastComment: null };
-  if (headAt && thumbsAt && Date.parse(thumbsAt) >= Date.parse(headAt)) {
+  if (codexThumbsPass(pr, signal)) {
     thumbsOk.set(key, signal);
     return signal;
   }
@@ -85,9 +86,10 @@ async function codexSignal(slug: string, pr: GhPull): Promise<CodexSignal> {
   return signal;
 }
 
-// Draft가 아니고 head 리뷰가 없는 PR에만 Codex 신호를 붙인다. 실패한 PR은 신호 없이(리뷰 없음으로) 둔다.
+// Draft가 아니고 head 리뷰가 없거나 head에 Codex 지적이 있는 PR에만 Codex 신호를 붙인다.
+// 실패한 PR은 신호 없이(리뷰 없음·Codex 지적으로) 둔다.
 async function attachCodex(slug: string, pulls: GhPull[], errors: string[]) {
-  const need = pulls.filter((p) => !p.isDraft && !hasHeadReview(p));
+  const need = pulls.filter((p) => !p.isDraft && needsCodexSignal(p));
   for (let i = 0; i < need.length; i += 4) {
     await Promise.all(
       need.slice(i, i + 4).map(async (p) => {

@@ -114,7 +114,7 @@ Session ──claim──▶ Workspace ──branch──▶ Ticket
 | Codex 세션 | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex 세션과 cwd |
 | git | 각 저장소 `git worktree list --porcelain` | 워크트리 경로, 브랜치, HEAD, dirty 여부 |
 | Linear | GraphQL API (`LINEAR_API_KEY`) | 티켓 제목, 상태, 담당, URL |
-| GitHub | GitHub remote가 있는 AIRPORT마다 90초에 한 번 `gh pr list --repo <owner/name> --state open` (`server/sources/github.ts`) | 열린 PR: head 커밋, 체크, 리뷰, 머지 상태, Draft. head 리뷰가 없는 PR은 `gh api`로 Codex의 👍와 댓글 |
+| GitHub | GitHub remote가 있는 AIRPORT마다 90초에 한 번 `gh pr list --repo <owner/name> --state open` (`server/sources/github.ts`) | 열린 PR: head 커밋, 체크, 리뷰, 머지 상태, Draft. head에 통과 리뷰가 없거나 Codex 지적이 있는 PR은 `gh api`로 Codex의 👍와 댓글 |
 | Claim | `~/.local/state/atc/claims/<sessionId>/*.json` | hook이 남긴 점유 기록 |
 
 연결 규칙:
@@ -212,7 +212,7 @@ LANDING SEQUENCE는 GitHub remote가 있는 모든 AIRPORT의, Draft가 아닌 �
 |---|---|
 | Draft가 아님 | `draft` |
 | head 커밋의 체크가 모두 통과(NEUTRAL·SKIPPED도 통과, 모든 체크를 required로 본다) | `checks-pending`, `checks-failed`, `no-checks`(체크가 하나도 없음) |
-| head 커밋에 PR 작성자가 아닌 사람(봇 포함)의 리뷰(APPROVED·COMMENTED)가 있거나 head 커밋 뒤에 Codex 봇이 PR에 👍 반응을 남겼고(Codex의 "큰 문제 없음" 신호), 마지막 판정이 CHANGES_REQUESTED인 리뷰어가 없음 | `no-review`, `review-stale`(이전 커밋에만 리뷰), `changes-requested` |
+| head 커밋에 PR 작성자도 Codex 봇도 아닌 리뷰어의 리뷰(APPROVED·COMMENTED)가 있거나 head 커밋 뒤에 Codex 봇이 PR에 👍 반응을 남겼음(Codex의 "큰 문제 없음" 신호). head에 Codex의 COMMENTED 리뷰가 있으면 지적이라 그 뒤 Codex 👍나 사람의 head APPROVED 전까지 막힘. 마지막 판정이 CHANGES_REQUESTED인 리뷰어가 없음 | `no-review`, `review-stale`(이전 커밋에만 리뷰), `review-findings`(head에 Codex 지적), `changes-requested` |
 | base에서 벗어나지 않음: `mergeStateStatus`가 CLEAN·UNSTABLE·HAS_HOOKS | `behind`, `dirty`, `blocked`, `merge-unknown`(GitHub이 아직 계산 중) |
 | PR의 STAND에 LOSS OF SEPARATION이 없음 | `los` |
 

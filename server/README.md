@@ -31,7 +31,7 @@ npm test           # node --test for server/**/*.test.ts, hooks and controller
 | `codex.ts` | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex sessions (busy if active in the last 90 s), `cwd` claims |
 | `git.ts` | `git worktree list --porcelain` per AIRPORT | Worktrees, branch, HEAD, dirty state, last commit (details cached 30 s); ticket key from the branch name |
 | `linear.ts` | Linear GraphQL (`LINEAR_API_KEY`), polled every 60 s | Tickets, states, priorities, projects, relations; issue details for DISPATCH |
-| `github.ts` | `gh pr list --repo <owner/name> --state open --json …` per AIRPORT whose git remote is on GitHub, polled every 90 s in the background (`execFile`, no shell) | Open PRs per AIRPORT: head, checks, reviews, merge state, Draft. For non-Draft PRs without a head review, also the Codex bot's 👍 reactions, the head's committer date (cached per sha) and Codex's PR comments (`gh api`, read-only). A failed repository keeps its last result; errors show in `snapshot.github.error`. Without `gh`, `enabled` is false |
+| `github.ts` | `gh pr list --repo <owner/name> --state open --json …` per AIRPORT whose git remote is on GitHub, polled every 90 s in the background (`execFile`, no shell) | Open PRs per AIRPORT: head, checks, reviews, merge state, Draft. For non-Draft PRs without a passing head review or with Codex findings on the head, also the Codex bot's 👍 reactions, the head's committer date (cached per sha) and Codex's PR comments (`gh api`, read-only). A failed repository keeps its last result; errors show in `snapshot.github.error`. Without `gh`, `enabled` is false |
 
 ## Modules
 
