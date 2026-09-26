@@ -2,7 +2,7 @@
 
 DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, 언제 보낼지** 제안한다. TOWER(1단계)가 이미 뜬 AIRCRAFT끼리 부딪히지 않게 하는 쪽이라면, DISPATCH는 뜨기 전의 계획을 맡는다. 항공사 운항관리(OCC)와 ATC가 나뉘어 있는 것과 같은 구분이다.
 
-> 상태: 설계 초안(2026-09-26). 결정이 필요한 항목은 맨 아래 "결정할 것"에 있다.
+> 상태: 설계 확정(2026-09-26). 결정 사항은 맨 아래 "결정"에 있다.
 
 ## 1. 지금 사실
 
@@ -164,11 +164,14 @@ atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER
 4. `atc/dispatch/` 세션(검토 메모, CAUTION)
 5. 승인 운용(2b): 승인 버튼, FLIGHT PLAN 전달, READBACK, DEPARTED 판정 — vocado `CLAUDE.md`의 READBACK 줄을 `[DISPATCH D-xxxx]`까지 넓힘
 
-## 결정할 것
+## 결정 (2026-09-26, SUPERVISOR)
 
-1. **DISPATCH를 별도 세션으로** 둘지(추천), TOWER가 겸할지.
-2. **후보는 Todo만**(추천)인지, Backlog도 넣을지.
-3. **슬롯 기본값**: TEAM당 1, VCDO 동시 AIRBORNE 4, 그 밖 2, 대기 중 제안 5.
-4. **프로젝트 → AIRPORT 매핑**: Beta Readiness·Song Experience → VCDO로 보고, Pitch Deck과 Visual System(SEED)은 어디로 보낼지(DSGN? 배정 제외?).
-5. **`RELEASE` 기준**: STAND 없이 ENROUTE인 채로 며칠이 지나면 정리를 제안할지(기본 3일).
-6. 2b에 들어갈 때 vocado `CLAUDE.md`의 READBACK 규칙을 FLIGHT PLAN(`[DISPATCH D-xxxx]`)까지 넓혀도 되는지.
+| 항목 | 결정 |
+|---|---|
+| DISPATCH 세션 | TOWER와 **별도 세션**(`atc/dispatch/`) |
+| 후보 FLIGHT | **Todo만**. Backlog는 사람이 Todo로 올린 뒤에만 대상 |
+| 프로젝트 → AIRPORT | Beta Readiness · Song Experience → **VCDO**. Vocado Pre-seed IR & Pitch Deck · Vocado Visual System (SEED)는 **배정 제외** |
+| `RELEASE` 기준 | STAND 없이 ENROUTE인 채로 **3일** |
+| 슬롯 | 제안값으로 시작: TEAM당 1, VCDO 동시 AIRBORNE 4, 그 밖 2, 대기 중 제안 5 |
+
+남은 결정: 2b에 들어갈 때 vocado `CLAUDE.md`의 READBACK 규칙을 FLIGHT PLAN(`[DISPATCH D-xxxx]`)까지 넓힐지. 2a에는 필요 없다.
