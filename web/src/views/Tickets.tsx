@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Snapshot, Ticket } from "../../../server/model.ts";
+import { alertLabel, alertMessage, callsign, flightNumber, flightPhase } from "../aviation.ts";
 import { type Index, occupantsOf, timeAgo } from "../derive.ts";
 import { PriorityMark, SessionBadge } from "../ui.tsx";
 
@@ -22,13 +23,13 @@ export function Tickets({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
       <div className="toolbar">
         <span className="muted">
           {snapshot.linear.enabled
-            ? `Linear ${snapshot.linear.fetchedAt ? timeAgo(snapshot.linear.fetchedAt, now) : "불러오는 중"} 갱신`
-            : "Linear 미연결 — 브랜치에서 찾은 티켓만 표시"}
+            ? `운항 정보 ${snapshot.linear.fetchedAt ? timeAgo(snapshot.linear.fetchedAt, now) : "불러오는 중"} 갱신 (Linear)`
+            : "Linear 미연결 — 브랜치에서 찾은 편만 표시"}
           {snapshot.linear.error && <span className="error"> · {snapshot.linear.error}</span>}
         </span>
         <label className="toggle">
           <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} />
-          Backlog·지난 완료·취소 포함
+          운항 예정·지난 도착·결항 포함
         </label>
       </div>
       <div className="board">
@@ -38,9 +39,10 @@ export function Tickets({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
             .sort((a, b) => occupantsOf(b.key, idx).length - occupantsOf(a.key, idx).length || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
           return (
             <div key={col.name} className="column">
-              <header className="column-head">
+              <header className="column-head" title={col.name}>
                 <span className="column-dot" style={{ background: col.color ?? "var(--faint)" }} />
-                {col.name}
+                {flightPhase(col)}
+                {flightPhase(col) !== col.name && <span className="column-alias">{col.name}</span>}
                 <span className="count">{tickets.length}</span>
               </header>
               <div className="column-body">
@@ -63,7 +65,9 @@ function TicketCard({ ticket: t, idx }: { ticket: Ticket; idx: Index }) {
   const body = (
     <>
       <div className="ticket-top">
-        <span className="mono faint">{t.key}</span>
+        <span className="mono faint" title={t.key}>
+          {flightNumber(t.key)}
+        </span>
         <PriorityMark priority={t.priority} />
       </div>
       <div className="ticket-title">{t.title}</div>
@@ -73,14 +77,14 @@ function TicketCard({ ticket: t, idx }: { ticket: Ticket; idx: Index }) {
             <SessionBadge key={s.id} session={s} />
           ))}
           {occupants.length === 0 && workspaces.length > 0 && (
-            <span className="tag">워크트리 {workspaces.length}</span>
+            <span className="tag">주기장 {workspaces.length}</span>
           )}
           {t.assignee && <span className="faint ticket-assignee">{t.assignee}</span>}
         </div>
       )}
       {alerts.map((a) => (
         <div key={a.kind} className="ticket-alert">
-          {a.message}
+          {alertLabel[a.kind]} · {alertMessage(a, (id) => callsign(idx.sessionById.get(id) ?? { name: id }))}
         </div>
       ))}
     </>

@@ -10,20 +10,27 @@
 
 | 화면 | 보여주는 것 |
 |---|---|
-| Teams | 세션(TEAM_A…F, Codex 세션)마다 카드 하나. 상태(busy/idle), 점유 중인 워크트리, 연결된 티켓 |
-| Tickets | Linear 보드처럼 상태 열(Todo / In Progress / In Review / Done)에 VOC 티켓 카드. 카드에 점유 팀 배지 |
-| Map | 세션 ─ 워크트리 ─ 티켓 3열을 선으로 연결. 주인 없는 워크트리, 워크트리 없는 In Progress 티켓을 강조 |
+| 레이더 (`#radar`) | 세션 ─ 워크트리 ─ 티켓 3열을 선으로 연결. 주인 없는 워크트리, 워크트리 없는 진행 티켓을 강조 |
+| 운항 스트립 (`#strips`) | 세션(ALPHA…, Codex 세션)마다 카드 하나. 상태, 점유 중인 워크트리, 연결된 티켓 |
+| 운항 정보판 (`#board`) | Linear 상태 열에 티켓 카드. 카드에 점유 팀 배지 |
 
-## 용어 (코드에서 쓰는 이름)
+## 용어
 
-| 이름 | 뜻 | 식별자 |
-|---|---|---|
-| `Session` | Claude Code / Codex 세션 하나 | `sessionId` |
-| `Workspace` | git worktree 하나 (본 체크아웃 포함) | 절대 경로 |
-| `Ticket` | Linear 이슈 | `VOC-191` 같은 key |
-| `Claim` | 세션이 워크스페이스를 점유한다는 기록 | `sessionId` + 경로 |
+코드와 API는 왼쪽 이름을 쓰고, 화면은 항공 용어로 보여준다(`web/src/aviation.ts`).
 
-"팀"은 UI 표기일 뿐 코드에서는 `Session`이다.
+| 코드 | 뜻 | 식별자 | 화면 표기 |
+|---|---|---|---|
+| `Session` | Claude Code / Codex 세션 하나 | `sessionId` | 항공기. `TEAM_A` → `ALPHA` (음성 알파벳) |
+| `Workspace` | git worktree 하나 (본 체크아웃 포함) | 절대 경로 | 주기장 |
+| `Ticket` | Linear 이슈 | `VOC-191` | 편명 `VOC191` (브랜치·PR에는 `VOC-191` 그대로) |
+| `Claim` | 세션이 워크스페이스를 점유한다는 기록 | `sessionId` + 경로 | 주기장 점유. 기록 추정은 "추정 항적" |
+
+| 상태 | 화면 표기 |
+|---|---|
+| 세션 busy / idle+점유 / idle / dead | 비행 중 / 체공 대기 / 주기 / 무선 두절 |
+| Backlog / Todo | 운항 예정 / 비행계획 제출 |
+| In Progress / In Review / Ready to Merge | 순항 / 접근 / 착륙 허가 |
+| Done / Canceled / Duplicate | 도착 / 결항 / 합편 |
 
 ## 데이터 소스와 연결 키
 
@@ -97,9 +104,9 @@ atc/
 
 ## 경고
 
-| 종류 | 조건 |
-|---|---|
-| 충돌 | 살아 있는 세션 둘 이상이 같은 워크트리를 hook·cwd로 점유 |
-| 고아 점유 | 종료된 세션의 점유가 TTL 안에 남아 있음 |
-| 주인 없는 변경 | 변경 파일이 있는데 점유한 세션이 없음 |
-| 워크트리 없는 진행 티켓 | Linear started 상태인데 브랜치가 가리키는 워크트리가 없음 |
+| 종류 (`AlertKind`) | 화면 표기 | 조건 |
+|---|---|---|
+| `conflict` | 분리 기준 위반 | 살아 있는 세션 둘 이상이 같은 워크트리를 hook·cwd로 점유 |
+| `orphan` | 무선 두절 점유 | 종료된 세션의 점유가 TTL 안에 남아 있음 |
+| `unattended` | 미식별 표적 | 변경 파일이 있는데 점유한 세션이 없음 |
+| `no-workspace` | 레이더 미포착 | Linear started 상태인데 브랜치가 가리키는 워크트리가 없음 |

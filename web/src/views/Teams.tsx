@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Snapshot } from "../../../server/model.ts";
+import { aircraftStatus, aircraftStatusLabel, callsign } from "../aviation.ts";
 import { type Index, projectOf, sortSessions, timeAgo } from "../derive.ts";
 import { ClaimRow, StatusDot } from "../ui.tsx";
 
@@ -13,23 +14,27 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
     <section>
       <div className="toolbar">
         <span className="muted">
-          세션 {visible.length}개{hidden > 0 && !showAll ? ` · 대기 중인 빈 세션 ${hidden}개 숨김` : ""}
+          항공기 {visible.length}대{hidden > 0 && !showAll ? ` · 주기 중인 ${hidden}대 숨김` : ""}
         </span>
         <label className="toggle">
           <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
-          모든 세션
+          주기 중인 항공기 포함
         </label>
       </div>
       <div className="team-grid">
         {visible.map((s) => {
           const claims = idx.claimsBySession.get(s.id) ?? [];
+          const status = aircraftStatus(s, claims.length > 0);
+          const sign = callsign(s);
           return (
             <article key={s.id} className={`card team is-${s.status}`}>
               <header className="team-head">
-                <StatusDot status={s.status} />
+                <StatusDot status={s.status} label={aircraftStatusLabel[status]} />
                 <h3 className="team-name" title={s.name}>
-                  {s.name}
+                  {sign}
+                  {sign !== s.name && <span className="team-alias">{s.name}</span>}
                 </h3>
+                <span className={`phase phase-${status}`}>{aircraftStatusLabel[status]}</span>
                 <span className={`agent agent-${s.agent}`}>{s.agent}</span>
               </header>
               <div className="team-sub muted">
@@ -52,7 +57,7 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
                   })}
                 </ul>
               ) : (
-                <p className="empty">점유한 워크트리 없음</p>
+                <p className="empty">배정된 주기장 없음</p>
               )}
             </article>
           );

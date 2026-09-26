@@ -1,17 +1,19 @@
 import type { Claim, Session, Ticket, Workspace } from "../../server/model.ts";
+import { callsign, flightNumber, flightPhase } from "./aviation.ts";
 import { timeAgo } from "./derive.ts";
 
-const statusLabel = { busy: "작업 중", idle: "대기", dead: "종료됨" } as const;
+const statusLabel = { busy: "비행 중", idle: "대기", dead: "무선 두절" } as const;
 
-export function StatusDot({ status }: { status: Session["status"] }) {
-  return <span className={`dot dot-${status}`} title={statusLabel[status]} aria-label={statusLabel[status]} />;
+export function StatusDot({ status, label }: { status: Session["status"]; label?: string }) {
+  const text = label ?? statusLabel[status];
+  return <span className={`dot dot-${status}`} title={text} aria-label={text} />;
 }
 
 export function SessionBadge({ session }: { session: Session }) {
   return (
-    <span className={`session-badge is-${session.status}`}>
+    <span className={`session-badge is-${session.status}`} title={session.name}>
       <StatusDot status={session.status} />
-      {session.name}
+      {callsign(session)}
     </span>
   );
 }
@@ -21,22 +23,28 @@ export function TicketChip({ ticket, ticketKey }: { ticket?: Ticket; ticketKey: 
   const inner = (
     <>
       <span className="ticket-chip-state" style={{ background: color }} />
-      <span className="mono">{ticketKey}</span>
-      {ticket && <span className="ticket-chip-name">{ticket.state}</span>}
+      <span className="mono">{flightNumber(ticketKey)}</span>
+      {ticket && <span className="ticket-chip-name">{flightPhase(ticket)}</span>}
     </>
   );
   return ticket?.url ? (
-    <a className="ticket-chip" href={ticket.url} target="_blank" rel="noreferrer" title={ticket.title}>
+    <a
+      className="ticket-chip"
+      href={ticket.url}
+      target="_blank"
+      rel="noreferrer"
+      title={`${ticketKey} · ${ticket.state} · ${ticket.title}`}
+    >
       {inner}
     </a>
   ) : (
-    <span className="ticket-chip" title={ticket?.title}>
+    <span className="ticket-chip" title={ticket ? `${ticketKey} · ${ticket.state} · ${ticket.title}` : ticketKey}>
       {inner}
     </span>
   );
 }
 
-const sourceLabel = { hook: null, cwd: "cwd", transcript: "추정" } as const;
+const sourceLabel = { hook: null, cwd: "cwd", transcript: "추정 항적" } as const;
 
 export function ClaimRow({
   claim,

@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Session, Snapshot, Ticket, Workspace } from "../../../server/model.ts";
 import { type Index, projectOf, sortSessions, timeAgo } from "../derive.ts";
+import { aircraftStatus, aircraftStatusLabel, callsign, flightNumber, flightPhase } from "../aviation.ts";
 import { StatusDot } from "../ui.tsx";
 
 interface Edge {
@@ -90,14 +91,14 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
     <section>
       <div className="toolbar">
         <span className="muted">
-          세션 {graph.sessions.length} · 워크트리 {graph.workspaces.length} · 티켓 {graph.tickets.length}
+          항공기 {graph.sessions.length} · 주기장 {graph.workspaces.length} · 편 {graph.tickets.length}
           <span className="legend">
-            <i className="legend-line" /> hook·cwd 점유 <i className="legend-line is-dashed" /> 기록 추정
+            <i className="legend-line" /> 관제 확인 <i className="legend-line is-dashed" /> 추정 항적
           </span>
         </span>
         <label className="toggle">
           <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
-          모든 워크트리
+          빈 주기장 포함
         </label>
       </div>
       <div className="map" ref={containerRef}>
@@ -117,23 +118,24 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
         </svg>
 
         <div className="map-col">
-          <h2 className="map-col-title">세션</h2>
+          <h2 className="map-col-title">항공기 · 세션</h2>
           {graph.sessions.map((s) => (
-            <div key={s.id} className={`map-node node-session is-${s.status}`} {...nodeProps(sid(s.id))}>
+            <div key={s.id} className={`map-node node-session is-${s.status}`} title={s.name} {...nodeProps(sid(s.id))}>
               <div className="map-node-row">
-                <StatusDot status={s.status} />
-                <strong className="ellipsis">{s.name}</strong>
+                <StatusDot status={s.status} label={aircraftStatusLabel[aircraftStatus(s, true)]} />
+                <strong className="ellipsis">{callsign(s)}</strong>
+                <span className="faint">{aircraftStatusLabel[aircraftStatus(s, true)]}</span>
               </div>
               <div className="map-node-sub">
                 <span className="mono">{projectOf(s.cwd)}</span> · {timeAgo(s.lastActiveAt, now)}
               </div>
             </div>
           ))}
-          {graph.sessions.length === 0 && <p className="empty">점유 중인 세션 없음</p>}
+          {graph.sessions.length === 0 && <p className="empty">주기장을 점유한 항공기 없음</p>}
         </div>
 
         <div className="map-col">
-          <h2 className="map-col-title">워크트리</h2>
+          <h2 className="map-col-title">주기장 · 워크트리</h2>
           {graph.workspaces.map((w) => {
             const claimed = idx.claimsByWorkspace.has(w.path);
             const alerts = idx.alertsByWorkspace.get(w.path) ?? [];
@@ -155,20 +157,21 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
         </div>
 
         <div className="map-col">
-          <h2 className="map-col-title">티켓</h2>
+          <h2 className="map-col-title">비행계획 · 티켓</h2>
           {graph.tickets.map((t) => (
             <a
               key={t.key}
               className={`map-node node-ticket${idx.alertsByTicket.has(t.key) ? " is-orphan" : ""}`}
               href={t.url ?? undefined}
+              title={`${t.key} · ${t.state}`}
               target="_blank"
               rel="noreferrer"
               {...nodeProps(tid(t.key))}
             >
               <div className="map-node-row">
                 <span className="column-dot" style={{ background: t.stateColor ?? "var(--faint)" }} />
-                <strong className="mono">{t.key}</strong>
-                <span className="faint">{t.state}</span>
+                <strong className="mono">{flightNumber(t.key)}</strong>
+                <span className="faint">{flightPhase(t)}</span>
               </div>
               <div className="map-node-sub ellipsis">{t.title}</div>
             </a>

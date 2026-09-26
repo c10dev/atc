@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AlertKind } from "../../server/model.ts";
+import { alertLabel, alertMessage, callsign, flightNumber } from "./aviation.ts";
 import { buildIndex } from "./derive.ts";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
 import { MapView } from "./views/Map.tsx";
@@ -7,22 +7,19 @@ import { Teams } from "./views/Teams.tsx";
 import { Tickets } from "./views/Tickets.tsx";
 
 const TABS = [
-  { id: "map", label: "연결" },
-  { id: "teams", label: "팀" },
-  { id: "tickets", label: "티켓" },
+  { id: "radar", label: "레이더" },
+  { id: "strips", label: "운항 스트립" },
+  { id: "board", label: "운항 정보판" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
-const alertLabel: Record<AlertKind, string> = {
-  conflict: "충돌",
-  orphan: "고아 점유",
-  unattended: "주인 없는 변경",
-  "no-workspace": "워크트리 없는 진행 티켓",
-};
+// 이전 주소(#map, #teams, #tickets) 북마크도 열리게 한다.
+const LEGACY_HASH: Record<string, Tab> = { map: "radar", teams: "strips", tickets: "board" };
 
 function initialTab(): Tab {
   const hash = location.hash.slice(1);
-  return TABS.some((t) => t.id === hash) ? (hash as Tab) : "map";
+  if (hash in LEGACY_HASH) return LEGACY_HASH[hash];
+  return TABS.some((t) => t.id === hash) ? (hash as Tab) : "radar";
 }
 
 export function App() {
@@ -61,16 +58,16 @@ export function App() {
           ))}
         </nav>
         <div className="stats">
-          <Stat label="작업 중" value={busy} tone="busy" />
-          <Stat label="점유" value={snapshot?.claims.length ?? 0} />
-          <Stat label="진행 티켓" value={inProgress} />
+          <Stat label="비행 중" value={busy} tone="busy" />
+          <Stat label="주기장 점유" value={snapshot?.claims.length ?? 0} />
+          <Stat label="순항 편" value={inProgress} />
           <button
             className={`stat stat-button${serious ? " tone-dead" : alerts.length ? " tone-warn" : ""}`}
             onClick={() => setAlertsOpen((v) => !v)}
             aria-expanded={alertsOpen}
           >
             <span className="stat-value">{alerts.length}</span>
-            <span className="stat-label">경고</span>
+            <span className="stat-label">경보</span>
           </button>
         </div>
       </header>
@@ -80,8 +77,13 @@ export function App() {
           {alerts.map((a, i) => (
             <li key={i} className={`alert alert-${a.kind}`}>
               <span className="tag">{alertLabel[a.kind]}</span>
-              <span className="mono">{a.ticketKey ?? a.workspacePath?.split("/").pop()}</span>
-              <span className="muted">{a.message}</span>
+              <span className="mono">{a.ticketKey ? flightNumber(a.ticketKey) : a.workspacePath?.split("/").pop()}</span>
+              <span className="muted">
+                {alertMessage(a, (id) => {
+                  const session = idx?.sessionById.get(id);
+                  return session ? callsign(session) : id.slice(0, 8);
+                })}
+              </span>
             </li>
           ))}
         </ul>
@@ -90,9 +92,9 @@ export function App() {
       <main className="main">
         {!snapshot || !idx ? (
           <p className="empty">{connection === "lost" ? "서버에 연결할 수 없음" : "불러오는 중…"}</p>
-        ) : tab === "map" ? (
+        ) : tab === "radar" ? (
           <MapView snapshot={snapshot} idx={idx} now={now} />
-        ) : tab === "teams" ? (
+        ) : tab === "strips" ? (
           <Teams snapshot={snapshot} idx={idx} now={now} />
         ) : (
           <Tickets snapshot={snapshot} idx={idx} now={now} />
