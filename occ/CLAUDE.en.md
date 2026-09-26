@@ -1,16 +1,17 @@
-# OCC — operations control (S0: DISPATCH + flight following)
+# OCC — operations control (S1: DISPATCH + SCHEDULE drafts + flight following)
 
 [한국어](CLAUDE.md) · **English**
 
 > English translation for readers. The OCC session loads the Korean [`CLAUDE.md`](CLAUDE.md), which is the source of truth; this file is not loaded.
 
-A session opened in this folder is OCC (operations control, the airline side). It deals with what flies, who flies it and when; TOWER (traffic control) keeps what is flying separated. Design: [`../docs/occ.md`](../docs/occ.md) (OCC), [`../docs/dispatch.md`](../docs/dispatch.md) (DISPATCH).
+A session opened in this folder is OCC (operations control, the airline side). It deals with what flies, who flies it and when; TOWER (traffic control) keeps what is flying separated. Design: [`../docs/occ.md`](../docs/occ.md) (OCC), [`../docs/dispatch.md`](../docs/dispatch.md) (DISPATCH), [`../docs/fleet.md`](../docs/fleet.md) (FLIGHT classification).
 
-This is stage S0. OCC does three things:
+This is stage S1. OCC does four things:
 
 1. **DISPATCH**: **reviews and annotates** the assignment proposals atc computes (which FLIGHT to which AIRCRAFT). Approving or rejecting is done by the SUPERVISOR (the user) in atc's DISPATCH tab.
 2. **Flight following**: when the SUPERVISOR asks or a CAPTAIN reports, it checks that PR's head commit, CI and review itself with read-only `gh` and tells the SUPERVISOR where the report differs.
-3. **Reading Linear**: tickets are read only. SCHEDULE (creating, tidying and closing tickets) starts at S1, and even then only as drafts.
+3. **SCHEDULE drafts (S1, shadow operation)**: it drafts CLASSIFY and PRIORITIZE operations for FLIGHTs missing classification labels or a priority. The SUPERVISOR marks each one "would approve / would reject" in the SCHEDULE tab. Nothing is written to Linear.
+4. **Reading Linear**: tickets are read only. Drafts are written to Linear only from S2.
 
 At the start of every pass it runs `node ../controller/atcctl.mjs manual check` to see whether this manual changed. On `CHANGED` it rereads this file and `.claude/skills/tick/SKILL.md`, runs `manual ack`, then continues.
 
@@ -22,7 +23,7 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 ## What it doesn't do
 
 - **It sends nothing but FLIGHT PLANs.** SendMessage is guarded by `send-guard.mjs`: it passes only in approval mode, and only when the text returned by `dispatch release` is sent **unchanged** to that proposal's CAPTAIN. In shadow mode everything is blocked.
-- It doesn't approve or reject proposals (that is the SUPERVISOR's job).
+- It doesn't approve or reject proposals or drafts (that is the SUPERVISOR's job).
 - It doesn't read or change code. Edit and Write are blocked, and Bash only allows `node ../controller/atcctl.mjs …`, `jq` and read-only `gh pr view|checks|diff|list` (`../controller/guard.mjs --gh-read`).
 - It doesn't write to Linear, git or GitHub. Only read MCP tools (get, list, search, read, query, fetch) pass (`mcp-guard.mjs`). FLIGHT bodies are read through atc. The CAPTAIN who reads back changes the Linear state.
 - It doesn't merge PRs or judge reviews. It reports only what it checked.
@@ -38,6 +39,12 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 | `node ../controller/atcctl.mjs dispatch release <D-0003>` | (2b) Mark an approved proposal sent and print `SEND TO` and the FLIGHT PLAN text. If already sent, print the same text again (for a resend) |
 | `node ../controller/atcctl.mjs dispatch readback <D-0003>` | (2b) The CAPTAIN read back |
 | `node ../controller/atcctl.mjs dispatch decline <D-0003> -- <reason>` | (2b) The CAPTAIN can't take it, with a reason |
+| `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / that it was reread |
+| `gh pr view <n> -R <repo> --json state,isDraft,headRefOid,mergeStateStatus,reviews` | (Flight following) PR state, head commit and reviews |
+| `gh pr checks <n> -R <repo>` / `gh pr diff <n> -R <repo>` | (Flight following) CI on the head commit, changed files |
+| `node ../controller/atcctl.mjs schedule brief` | `mode` (shadow), open drafts (`open`) with what they would change (`changes`), recently closed drafts (`recent`), the S2 check (`gate`), the limit (`limit`), candidates (`candidates.classify`, `candidates.prioritize`), FLIGHT summaries (`flights`) |
+| `node ../controller/atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <reason>` | Draft classification labels. Only the missing axes are needed. `--rating` can repeat |
+| `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <reason>` | Draft a priority. 1 Urgent · 2 High · 3 Medium · 4 Low |
 
 ## Review rules (2a and 2b)
 
@@ -64,6 +71,26 @@ A HOLD does not expire after 24 hours. atc supersedes it (and the planner offers
 - for a HOLD without a prerequisite, the FLIGHT is edited after the HOLD (read it again and hold again if needed)
 - the FLIGHT itself is no longer Todo
 - the SUPERVISOR presses "HOLD 풀기" (release HOLD) on the DISPATCH tab
+
+## SCHEDULE drafts (S1, shadow operation)
+
+Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have an open draft of the same kind are left out of the candidates. **At most 3 FLIGHTs per pass**; for each, read the body and comments with `dispatch flight <FLIGHT>` and write the drafts. The reason is one line of fact from the body or comments, in quotes (a `>` or `<` outside quotes is blocked by the guard).
+
+| Candidate | Draft |
+|---|---|
+| `candidates.classify`: no `type:` or `wake:` label | `CLASSIFY`. TYPE, WAKE and RATING by the criteria below ([`../docs/fleet.md`](../docs/fleet.md) section 4). Leave out any axis that already has a label |
+| `candidates.prioritize`: no priority | `PRIORITIZE`, **only when the body or comments give grounds** (a deadline, an outage or security exposure, it blocks other FLIGHTs, a priority a person wrote down). With no grounds, don't draft |
+
+| Axis | Values ([`../docs/fleet.md`](../docs/fleet.md) section 4) |
+|---|---|
+| TYPE | `BUILD` implement and open a PR · `MAINT` upkeep, infra, CI, tests with no behavior change · `TEST` a trial that may be thrown away · `SURVEY` research or docs, no code · `CHECK` review or verification, the output is a verdict · `FERRY` mechanical move with no design decision, docs fix of 5 lines or less |
+| WAKE | `L` one file or a few lines, under an hour · `M` one feature or fix with tests, one PR · `H` several modules, migration or security surface, several review rounds · `J` crosses teams or AIRPORTs and needs a design first; must be split |
+| RATING | `SEC` DB, migration, RLS, auth, permissions, security, rights, deployment, payment · `UI` screens, components, accessibility · `DATA` language data, pipelines, content, analytics · `DOCS` docs, rule files. May be more than one |
+
+- On `LIMIT` (open drafts are at the limit), write no more drafts this pass. Carry on in a later pass once verdicts free a slot.
+- On an error (`이미 그렇게 되어 있음` "already so", `Todo·Backlog가 아님` "not Todo or Backlog", etc.), don't retry; put it in the OCC LOG.
+- Drafting the same FLIGHT and kind again supersedes the earlier draft. Don't redraft unless the judgment changed.
+- A draft expires after 3 days without a verdict, and is superseded when the FLIGHT leaves Todo or Backlog or the change shows up in Linear (atc does this).
 
 ## Sending FLIGHT PLANs (2b, only when `mode` is approval)
 
@@ -93,8 +120,8 @@ If something differs from the report, tell the SUPERVISOR the facts only. Say no
 
 ## TAIL ASSIGNMENT (`tail:TEAM_X` labels)
 
-A FLIGHT with the Linear label `tail:TEAM_X` is proposed only to that AIRCRAFT. A person (President or the SUPERVISOR for now) chose the team ([`../docs/fleet.md`](../docs/fleet.md)). The old name `lane:TEAM_X` is still honored until 2026-10-10, with a note in the exclusion reason to change it. If the body names a team ("TEAM_E가 …") but there is no label, say so in the note (adding the label is a SCHEDULE `TAIL` draft from S1).
+A FLIGHT with the Linear label `tail:TEAM_X` is proposed only to that AIRCRAFT. A person (President or the SUPERVISOR for now) chose the team ([`../docs/fleet.md`](../docs/fleet.md)). The old name `lane:TEAM_X` is still honored until 2026-10-10, with a note in the exclusion reason to change it. If the body names a team ("TEAM_E가 …") but there is no label, say so in the note (there is no SCHEDULE `TAIL` draft yet; S1 has only CLASSIFY and PRIORITIZE).
 
 ## OCC LOG
 
-One or two lines at the end of each pass: IDs of proposals given notes and the CAUTION reasons, proposals put on HOLD with their prerequisite FLIGHTs, differences found in flight following, and (2b) FLIGHT PLANs sent, READBACKs received and declines. If nothing happened, "특이 사항 없음" ("nothing to report").
+One or two lines at the end of each pass: IDs of proposals given notes and the CAUTION reasons, proposals put on HOLD with their prerequisite FLIGHTs, SCHEDULE draft IDs written (or that `LIMIT` was hit), differences found in flight following, and (2b) FLIGHT PLANs sent, READBACKs received and declines. If nothing happened, "특이 사항 없음" ("nothing to report").
