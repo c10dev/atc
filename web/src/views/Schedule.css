@@ -674,6 +674,7 @@
 /* CROSSCHECK: 다른 모델의 임시 판정. agree는 radar, disagree는 alert. 사람 판정과 헷갈리지 않게 점선. */
 .sc-xc {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-1-5);
   margin: 0;
@@ -700,14 +701,30 @@
   font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.06em;
 }
+/* 모델·시각 묶음: 오른쪽 끝. 좁으면 사유 아래 줄로 내려간다 */
+.sc-xc-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1-5);
+  min-width: 0;
+  max-width: 100%;
+  margin-left: auto;
+}
+.sc-xc-model {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--faint);
+  font: var(--text-2xs) var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .sc-xc-at {
   flex: none;
-  margin-left: auto;
   color: var(--faint);
   font-size: var(--text-xs);
 }
 .sc-xc-reason {
-  flex: 1;
+  flex: 1 1 12em;
   min-width: 0;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -742,4 +759,41 @@
 .sc-gate .s-info .sc-gate-state {
   color: var(--faint);
   font-weight: 400;
+}
+/* 모델별 CROSSCHECK 일치: 전체 줄 밑에 붙여 작게 */
+.sc-gate li.sc-gate-xc-model {
+  padding: 0 0 var(--space-1);
+  border-top: 0;
+}
+.sc-gate-xc-model .sc-gate-label {
+  display: flex;
+  gap: var(--space-1-5);
+  min-width: 0;
+  font-size: var(--text-xs);
+}
+.sc-gate-xc-name {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sc-gate-xc-count {
+  flex: none;
+  font-family: var(--mono);
+}
+.sc-gate .sc-gate-xc-model .sc-gate-value {
+  font: var(--text-sm) var(--mono);
+}
+@media (max-width: 860px) {
+  /* 모델별 줄은 이름과 비율을 한 줄에 */
+  .sc-gate li.sc-gate-xc-model {
+    grid-template-columns: 1fr auto;
+  }
+  .sc-gate-xc-model .sc-gate-label {
+    grid-column: auto;
+  }
+  .sc-gate-xc-model .sc-gate-value {
+    text-align: right;
+  }
 }

@@ -6,6 +6,7 @@ export type CrosscheckVerdict = "agree" | "disagree";
 
 export interface Crosscheck {
   by: string; // 표시한 세션(기본 "CROSSCHECK")
+  model: string; // 표시한 모델 id. 세션이 아니라 crosscheck/.claude/settings.json의 env가 정한다. 옛 기록은 "unknown"
   verdict: CrosscheckVerdict;
   reason: string;
   at: string;
@@ -20,6 +21,12 @@ export interface HumanDecision {
 
 export const CROSSCHECK_REASON_MAX = 500;
 const BY_MAX = 60;
+const MODEL_MAX = 120;
+export const UNKNOWN_MODEL = "unknown";
+
+// 기록 한 줄(옛 기록에는 model이 없다)
+export type CrosscheckLine = Omit<Crosscheck, "model"> & { model?: string };
+export const markOf = (l: CrosscheckLine): Crosscheck => ({ by: l.by, model: l.model || UNKNOWN_MODEL, verdict: l.verdict, reason: l.reason, at: l.at });
 
 export class CrosscheckError extends Error {}
 
@@ -30,15 +37,27 @@ export function parseCrosscheck(body: Record<string, unknown>, at: string): Cros
   if (!reason) throw new CrosscheckError("reason(이유 한 줄)이 필요함");
   if (reason.length > CROSSCHECK_REASON_MAX) throw new CrosscheckError(`reason은 ${CROSSCHECK_REASON_MAX}자 이내 (지금 ${reason.length}자)`);
   const by = typeof body.by === "string" && body.by.trim() ? body.by.trim().slice(0, BY_MAX) : "CROSSCHECK";
-  return { by, verdict: body.verdict, reason, at };
+  const model = typeof body.model === "string" && body.model.trim() ? body.model.trim().slice(0, MODEL_MAX) : UNKNOWN_MODEL;
+  return { by, model, verdict: body.verdict, reason, at };
+}
+
+export interface CrosscheckRate {
+  marked: number;
+  matched: number;
+  rate: number | null;
 }
 
 // 일치율: 사람이 판정한 건 중 판정 전에 mark가 있던 건만 센다.
-// agree는 agreed/approved와, disagree는 disagreed/rejected와 맞으면 일치.
+// agree는 agreed/approved와, disagree는 disagreed/rejected와 맞으면 일치. 전체 합계와 모델별(byModel).
 export function crosscheckRateOf(items: { crosscheck: Crosscheck | null; human: HumanDecision | null }[]) {
   const marked = items.filter((x) => x.crosscheck && x.human && Date.parse(x.crosscheck.at) <= Date.parse(x.human.at));
-  const matched = marked.filter((x) => x.crosscheck!.verdict === x.human!.verdict).length;
-  return { marked: marked.length, matched, rate: marked.length ? matched / marked.length : null };
+  const rateOf = (xs: typeof marked): CrosscheckRate => {
+    const matched = xs.filter((x) => x.crosscheck!.verdict === x.human!.verdict).length;
+    return { marked: xs.length, matched, rate: xs.length ? matched / xs.length : null };
+  };
+  const models = [...new Set(marked.map((x) => x.crosscheck!.model || UNKNOWN_MODEL))].sort();
+  const byModel: Record<string, CrosscheckRate> = Object.fromEntries(models.map((m) => [m, rateOf(marked.filter((x) => (x.crosscheck!.model || UNKNOWN_MODEL) === m))]));
+  return { ...rateOf(marked), byModel };
 }
 
 // 보정용 예시: 최근 사람 판정(사유가 있는 것 먼저). CROSSCHECK 세션이 SUPERVISOR의 기준을 보고 맞추게 한다.

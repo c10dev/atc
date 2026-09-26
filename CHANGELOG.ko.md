@@ -10,6 +10,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- CROSSCHECK 모델별 일치율. mark마다 `model`이 남는다. `atcctl`이 세션 settings `env`의 `ATC_CROSSCHECK_MODEL`에서 가져오고(세션이 스스로 적지 않음, 명령 앞 환경 변수로 바꾸는 것은 guard가 막음), 없는 mark는 `unknown`으로 읽는다. `gate.crosscheck`는 전체 `{marked, matched, rate}`를 그대로 두고 `byModel`을 더했다. DISPATCH·SCHEDULE 점검 패널에 모델마다 한 줄, 칩과 RECENT 툴팁에 모델 이름. `crosscheck/settings.test.mjs`가 settings 모델과 기록될 모델이 같은지, DeepSeek이 아닌지 확인한다.
 - CROSSCHECK: SUPERVISOR가 판정하기 전에 OCC와 다른 계열의 모델이 예비 판정을 먼저 달아 둔다([docs/occ.md](docs/occ.md) "CROSSCHECK"). 게이트에는 계속 사람 판정만 세고, CROSSCHECK와 사람의 일치율은 따로 잰다.
   - 서버: `proposals.jsonl`·`schedule.jsonl`의 `crosscheck` op(`{op, id, at, by, verdict, reason}`). `note`처럼 상태를 바꾸지 않는다. HOLD가 아닌 `proposed` 제안과 `draft` 초안에만 받고, 나중 mark가 앞의 것을 대신한다. Proposal·ScheduleOp에 `crosscheck`, ScheduleOp에 `decision`(발부 뒤에도 남는 SUPERVISOR 판정)이 생겼다. `POST /api/dispatch/proposals/:id/crosscheck`, `POST /api/schedule/ops/:id/crosscheck`는 모드와 상관없이 받고, `reason`은 필수·500자 이내. 두 게이트에 `crosscheck: {marked, matched, rate}`(판정 전에 mark가 있던 사람 판정만; agree ↔ agreed·approved, disagree ↔ disagreed·rejected), 두 브리핑에 `crosscheck: {pending, examples}`.
   - `atcctl crosscheck brief`, `atcctl dispatch crosscheck D-xxxx agree|disagree -- <이유>`, `atcctl schedule crosscheck S-xxxx agree|disagree -- <이유>`.
@@ -57,6 +58,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - STRIPS: 맨 위 LANDING SEQUENCE(CLEARED TO LAND는 `readyAt` 순번, APPROACH는 PR마다 막는 조건과 함께 접어서, Draft는 흐리게 접어서. AIRPORT, FLIGHT, `#PR` 링크, STAND를 쥔 팀), STAND 줄 REMARKS의 PR 배지(`CLEARED TO LAND`, CLEARED PR이 둘 이상이면 `SEQ n`. 또는 `APPROACH`와 막는 조건 수, 펼치는 조건 목록), GitHub을 못 읽으면 "GitHub 조회 실패 · PR 상태가 오래됐을 수 있음".
   - 지표의 LANDING 대기는 PR 단위로 센다. 교통량 표본의 `landing`은 Draft가 아닌 PR 수다.
 - `ATC_LANDING_STATE` 설정을 없앴다(LINEAR 설정 탭, `PUT /api/settings`의 `landingState`). `.env.local`에 남은 줄은 무시한다.
+- CROSSCHECK 기본 모델을 Muse Spark 1.3(`claude-ocx-opencode-go--muse-spark-1.3-contributor[1m]`)으로 바꿨다(SUPERVISOR 결정). GPT-5.6 Terra는 대체 모델로 문서에 남겼다. DeepSeek은 flash-helper와 같은 모델이라 FLEET 규칙상 판정에 쓰지 않는다. Muse가 일부 도구 스키마를 받지 못해 CROSSCHECK 설정에서 `Artifact`도 막고, 세션은 `ocx claude --strict-mcp-config`(MCP 서버 없음; GitHub 읽기는 아직 미정)로 연다. [docs/occ.md](docs/occ.md) "CROSSCHECK" 참고.
 - 티켓 없는 작업을 "티켓 없음"·"—" 대신 **AD HOC**으로 표시한다(FLIGHT STRIPS, planner의 HOLDING 사유, 이름 규칙). 티켓이 필요한 일은 OCC의 요청 창구 CHARTER DESK에서 AD HOC FLIGHT가 되고, 이것은 그 짝이다.
 - SUPERSEDED 사유가 계획의 제외 목록에 그 FLIGHT가 없을 때도 실제 규칙을 밝힌다: 이미 STAND가 있음, 우선순위 없음, 매핑 밖 프로젝트, 다른 운항사 라벨. planner와 사유 문구가 같은 문구 모음을 써서 서로 어긋나지 않는다.
 - TOWER·DISPATCH hook은 `$CLAUDE_PROJECT_DIR` 기준으로 돌고 fail-closed(`… || exit 2`)다. hook이 없거나 실패하면 이제 도구를 통과시키지 않고 막는다.

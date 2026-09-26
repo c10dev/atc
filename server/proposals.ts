@@ -22,7 +22,7 @@ import {
   tailsOf,
 } from "./dispatch.ts";
 import { classLabel, classOf } from "./crew.ts";
-import { type Crosscheck, CrosscheckError, crosscheckRateOf, examplesOf, type HumanDecision, parseCrosscheck } from "./crosscheck.ts";
+import { type Crosscheck, CrosscheckError, type CrosscheckLine, crosscheckRateOf, examplesOf, type HumanDecision, markOf, parseCrosscheck } from "./crosscheck.ts";
 import { loadFleet } from "./fleet.ts";
 import type { Snapshot, Ticket } from "./model.ts";
 import { record } from "./recorder.ts";
@@ -90,7 +90,7 @@ export type Op =
   | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null }
   | { op: "note"; id: string; at: string; text: string; caution: boolean }
   | { op: "hold"; id: string; at: string; blockedBy: string[] }
-  | ({ op: "crosscheck"; id: string } & Crosscheck)
+  | ({ op: "crosscheck"; id: string } & CrosscheckLine)
   | { op: "approve"; id: string; at: string }
   | { op: "reject"; id: string; at: string; reason: string | null }
   | { op: "send"; id: string; at: string; message: string }
@@ -154,7 +154,7 @@ export function fold(ops: Op[]): Proposal[] {
     }
     if (o.op === "crosscheck") {
       // 열린(HOLD 아닌) 제안에만. 나중 mark가 앞의 것을 대신한다
-      if (canCrosscheck(p)) p.crosscheck = { by: o.by, verdict: o.verdict, reason: o.reason, at: o.at };
+      if (canCrosscheck(p)) p.crosscheck = markOf(o);
       continue;
     }
     if (!canApply(p, o.op)) continue;
@@ -334,7 +334,7 @@ export function crosscheckBriefOf(proposals: Proposal[]) {
     aircraft: p.aircraftName,
     verdict: human!.verdict,
     reason: human!.reason,
-    crosscheck: p.crosscheck ? { verdict: p.crosscheck.verdict, reason: p.crosscheck.reason } : null,
+    crosscheck: p.crosscheck ? { model: p.crosscheck.model, verdict: p.crosscheck.verdict, reason: p.crosscheck.reason } : null,
   }));
   return {
     pending: pending.map((p) => ({ id: p.id, kind: p.kind, flight: p.flight, aircraft: p.aircraftName, airport: p.airport, score: p.score, note: p.note, caution: p.caution })),
