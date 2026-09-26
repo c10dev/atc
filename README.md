@@ -13,6 +13,7 @@
 | 레이더 (`#radar`) | 세션 ─ 워크트리 ─ 티켓 3열을 선으로 연결. 주인 없는 워크트리, 워크트리 없는 진행 티켓을 강조 |
 | 운항 스트립 (`#strips`) | 세션(ALPHA…, Codex 세션)마다 카드 하나. 상태, 점유 중인 워크트리, 연결된 티켓 |
 | 운항 정보판 (`#board`) | Linear 상태 열에 티켓 카드. 카드에 점유 팀 배지 |
+| 공항 (`#airports`) | 저장소 등록부. 공항 개설·코드 변경·폐쇄·재개·삭제 |
 
 ## 용어
 
@@ -27,7 +28,21 @@
 
 | 저장소 / 본 체크아웃 | — | 본 체크아웃 경로 | 공항 코드(대문자 4자) / 관제탑 `VCDO TWR` |
 
-공항 코드는 [airports.json](airports.json)(저장소 폴더 이름 → 코드)에서 정한다. 목록에 없는 저장소는 이름에서 만든다(첫 글자 + 자음, 예: `tennis` → `TNNS`). 잘못된 값이나 겹치는 값은 무시하고 자동 코드를 쓴다. 파일은 매 스냅샷마다 다시 읽으므로 고치면 재시작 없이 반영된다.
+### 공항 등록부
+
+공항 목록은 `~/.local/state/atc/airports.json`(기계마다 다른 경로가 들어가므로 git 밖)에 있고, 공항 탭이나 API로 관리한다.
+
+- `~/projects` 아래 git 저장소는 자동으로 개설된다. 코드는 이름에서 만든다(첫 글자 + 자음, 예: `tennis` → `TNNS`).
+- 그 밖의 저장소는 공항 탭에서 경로를 넣어 개설한다. 워크트리나 하위 폴더 경로를 넣어도 본 체크아웃을 찾는다. 홈 폴더 밖과 bare 저장소는 안 된다.
+- 공항은 **첫 커밋 해시**로 알아본다. 폴더를 옮기거나 이름을 바꿔도 같은 공항·같은 코드로 이어지고 등록부의 경로만 갱신된다. 같은 첫 커밋의 다른 클론은 `첫커밋~경로해시` id로 따로 개설되고, 여럿 중 옮겨진 것은 폴더 이름이 같은 쪽으로 이어 붙인다. 커밋이 없는 저장소는 경로로 알아본다.
+- 폐쇄한 공항은 레이더·스트립·주기장 목록에서 빠지지만 코드는 계속 예약된다. 삭제는 자동 발견이 아닌(수동 개설) 공항만 된다.
+
+| API | 하는 일 |
+|---|---|
+| `GET /api/airports` | 전체 공항과 상태(`open` 운항 / `closed` 폐쇄 / `missing` 경로 없음) |
+| `POST /api/airports` | `{path, code?, name?}` 개설 |
+| `PATCH /api/airports/:id` | `{code?, name?, closed?}` 코드·이름 변경, 폐쇄·재개 |
+| `DELETE /api/airports/:id` | 등록부에서 삭제 (수동 개설한 것만) |
 
 | 상태 | 화면 표기 |
 |---|---|
@@ -143,7 +158,7 @@ atc/
 │   │   ├── git.ts          # git worktree list, dirty, 마지막 커밋
 │   │   └── linear.ts       # Linear GraphQL, 1분마다
 │   ├── model.ts            # Session / Workspace / Ticket / Claim / Alert
-│   ├── airports.ts         # 저장소 → 공항 코드 (airports.test.ts)
+│   ├── airports.ts         # 공항 등록부·API (airports.test.ts)
 │   ├── callsign.ts         # 콜사인·편명 (화면과 공용)
 │   ├── clearances.ts       # 관제 지시·복창 기록
 │   ├── controller.ts       # 관제사 API·브리핑 (controller.test.ts)
@@ -152,7 +167,6 @@ atc/
 │   ├── snapshot.ts         # 소스 병합 + 경고 계산
 │   └── index.ts            # /api/snapshot, /api/events
 ├── web/src/                # Vite + React. 연결 / 팀 / 티켓 화면
-├── airports.json           # 저장소별 공항 코드
 ├── controller/             # 관제사 세션 작업 폴더
 │   ├── CLAUDE.md           # 역할·판단 기준
 │   ├── atcctl.mjs          # 관제사용 atc CLI

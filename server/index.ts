@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import { mountAirports } from "./airports.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { diffSnapshots, EventLog } from "./events.ts";
@@ -37,6 +38,7 @@ const getSnapshot = async () => current ?? (current = await buildSnapshot());
 
 app.get("/api/snapshot", async (c) => c.json(await getSnapshot()));
 mountController(app, getSnapshot, eventLog);
+mountAirports(app);
 
 app.get("/api/events", (c) =>
   streamSSE(c, async (stream) => {

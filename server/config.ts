@@ -16,6 +16,7 @@ export const config = {
   claudeDir: join(HOME, ".claude"),
   codexDir: join(HOME, ".codex"),
   stateDir: env.ATC_STATE_DIR || join(HOME, ".local/state/atc"),
+  airportsFile: env.ATC_AIRPORTS_FILE || join(env.ATC_STATE_DIR || join(HOME, ".local/state/atc"), "airports.json"),
   // 마지막으로 건드린 뒤 이 시간이 지나면 점유가 끝난 것으로 본다.
   claimTtlMs: Number(env.ATC_CLAIM_TTL_MIN || 180) * 60_000,
   // 앞 세션이 이만큼 안에서 손을 떼면 이양, 둘이 이보다 오래 겹치면 충돌.

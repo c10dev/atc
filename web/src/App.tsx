@@ -4,6 +4,7 @@ import { buildIndex, timeAgo } from "./derive.ts";
 import { MoonIcon, Starfield } from "./Starfield.tsx";
 import { applyTheme, storedTheme, type Theme, THEMES } from "./theme.ts";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
+import { Airports } from "./views/Airports.tsx";
 import { MapView } from "./views/Map.tsx";
 import { Teams } from "./views/Teams.tsx";
 import { Tickets } from "./views/Tickets.tsx";
@@ -12,6 +13,7 @@ const TABS = [
   { id: "radar", code: "RADAR", label: "레이더" },
   { id: "strips", code: "STRIPS", label: "운항 스트립" },
   { id: "board", code: "FIDS", label: "운항 정보판" },
+  { id: "airports", code: "AIRPORTS", label: "공항" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -160,6 +162,8 @@ export function App() {
           <MapView snapshot={snapshot} idx={idx} now={now} />
         ) : tab === "strips" ? (
           <Teams snapshot={snapshot} idx={idx} now={now} />
+        ) : tab === "airports" ? (
+          <Airports snapshot={snapshot} />
         ) : (
           <Tickets snapshot={snapshot} idx={idx} now={now} />
         )}

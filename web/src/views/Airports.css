@@ -1,0 +1,172 @@
+/* 공항 등록부. 색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다). */
+.airports .toolbar {
+  margin-bottom: 16px;
+}
+
+.apt-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.apt-form .label {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.apt-input {
+  height: 30px;
+  padding: 0 10px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--text);
+  font: 12.5px var(--mono);
+}
+.apt-input:focus {
+  outline: 2px solid var(--cyan);
+  outline-offset: 1px;
+}
+.apt-path {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+.apt-code-input {
+  width: 72px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.apt-btn {
+  height: 30px;
+  padding: 0 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--text);
+  font: 600 12px var(--sans);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.apt-btn:hover {
+  background: var(--panel-3);
+}
+.apt-btn.primary {
+  border-color: var(--radar);
+  color: var(--radar);
+}
+.apt-btn.danger {
+  color: var(--alert);
+}
+
+.apt-error {
+  margin: -8px 0 16px;
+  color: var(--alert);
+}
+
+.apt-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.apt-table th {
+  padding: 8px 12px;
+  white-space: nowrap;
+  text-align: left;
+  font: 700 10.5px var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--faint);
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+}
+.apt-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.apt-table tr:last-child td {
+  border-bottom: 0;
+}
+.apt-table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+.apt-table tr.is-closed td,
+.apt-table tr.is-missing td {
+  color: var(--faint);
+}
+
+.apt-code {
+  padding: 1px 6px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  color: var(--cyan);
+  font: 700 12px var(--mono);
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+.apt-code:hover {
+  border-color: var(--cyan);
+}
+.apt-edit {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.apt-path-cell {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.apt-tag {
+  margin-left: 8px;
+  padding: 0 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  font: 600 10px var(--sans);
+  color: var(--muted);
+}
+
+.apt-status {
+  white-space: nowrap;
+  font: 700 11px var(--mono);
+  letter-spacing: 0.06em;
+}
+.apt-status.s-open {
+  color: var(--radar);
+}
+.apt-status.s-closed {
+  color: var(--faint);
+}
+.apt-status.s-missing {
+  color: var(--amber);
+}
+
+.apt-ac {
+  font: 12px var(--mono);
+  color: var(--muted);
+}
+.apt-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 860px) {
+  .apt-table th:nth-child(3),
+  .apt-table td:nth-child(3),
+  .apt-table th:nth-child(6),
+  .apt-table td:nth-child(6) {
+    display: none;
+  }
+}

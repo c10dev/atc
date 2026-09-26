@@ -15,9 +15,18 @@ export interface Session {
 }
 
 export interface Airport {
+  id: string; // 첫 커밋 해시 (폴더를 옮겨도 같다)
   repo: string; // 본 체크아웃 경로
-  name: string; // 폴더 이름
+  name: string;
   code: string; // 대문자 4자
+}
+
+// 공항 관리 화면용. open: 운항 중, closed: 폐쇄, missing: 등록된 경로에 저장소가 없음
+export interface AirportStatus extends Airport {
+  closed: boolean;
+  status: "open" | "closed" | "missing";
+  discovered: boolean;
+  addedAt: string;
 }
 
 export interface Workspace {

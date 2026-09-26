@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { readdirSync, statSync, existsSync } from "node:fs";
-import { basename, join } from "node:path";
+import { existsSync } from "node:fs";
+import { basename } from "node:path";
 import { promisify } from "node:util";
 import { config } from "../config.ts";
 import type { Workspace } from "../model.ts";
@@ -10,17 +10,6 @@ const run = promisify(execFile);
 async function git(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await run("git", ["-C", cwd, ...args], { timeout: 10_000, maxBuffer: 4 << 20 });
   return stdout;
-}
-
-function discoverRepos(): string[] {
-  const repos: string[] = [];
-  for (const name of readdirSync(config.projectsDir)) {
-    const dir = join(config.projectsDir, name);
-    try {
-      if (statSync(join(dir, ".git")).isDirectory()) repos.push(dir);
-    } catch {}
-  }
-  return repos;
 }
 
 const ticketPattern = new RegExp(`(?:^|[/_-])${config.linearTeamKey.toLowerCase()}-?(\\d+)(?:$|[/_-])`, "i");
@@ -84,9 +73,9 @@ async function refreshDetail(ws: Workspace) {
 
 let refreshing = false;
 
-// 워크트리 목록은 매번, dirty/커밋 시각은 30초마다 백그라운드로 갱신한다.
-export async function readWorkspaces(): Promise<Workspace[]> {
-  const lists = await Promise.all(discoverRepos().map((r) => listWorktrees(r).catch(() => [])));
+// 운항 중인 공항(저장소)들의 워크트리. 목록은 매번, dirty/커밋 시각은 30초마다 백그라운드로 갱신한다.
+export async function readWorkspaces(repos: string[]): Promise<Workspace[]> {
+  const lists = await Promise.all(repos.map((r) => listWorktrees(r).catch(() => [])));
   const all = lists.flat();
   const stale = all.filter((w) => (details.get(w.path)?.checkedAt ?? 0) < Date.now() - DETAIL_TTL_MS);
   if (stale.length && !refreshing) {

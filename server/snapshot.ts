@@ -1,6 +1,6 @@
 import { config } from "./config.ts";
 import type { Alert, Claim, Session, Snapshot, Ticket } from "./model.ts";
-import { assignAirports } from "./airports.ts";
+import { resolveAirports } from "./airports.ts";
 import { recentClearances } from "./clearances.ts";
 import { type Occupancy, resolveOccupancy } from "./occupancy.ts";
 import { inferTranscriptClaim, readClaudeSessions, readHookClaims } from "./sources/claude.ts";
@@ -11,7 +11,8 @@ import { readLinear } from "./sources/linear.ts";
 const fresh = (c: Claim) => Date.now() - Date.parse(c.lastAt) < config.claimTtlMs;
 
 export async function buildSnapshot(): Promise<Snapshot> {
-  const workspaces = await readWorkspaces();
+  const airports = await resolveAirports();
+  const workspaces = await readWorkspaces(airports.open.map((a) => a.repo));
   const wsByPath = new Map(workspaces.map((w) => [w.path, w]));
 
   const claude = readClaudeSessions();
@@ -87,7 +88,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     workspaces,
     tickets,
     columns,
-    airports: assignAirports(workspaces.map((w) => w.repo)),
+    airports: airports.open,
     claims,
     handoffs: occupancy.handoffs,
     alerts: buildAlerts(sessions, workspaces, tickets, claims, occupancy),
