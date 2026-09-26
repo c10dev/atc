@@ -47,7 +47,7 @@ DISPATCH 메모: CAUTION · …
 
 | guard | 지키는 것 |
 |---|---|
-| `controller/guard.mjs` | TOWER·OCC의 Bash: atc CLI·jq만(OCC는 읽기 전용 `gh pr view·checks·diff·list`도). 리다이렉션과 작은따옴표 밖의 `$(…)`·백틱·`$변수`는 막는다 |
+| `controller/guard.mjs` | TOWER·OCC·CROSSCHECK의 Bash: atc CLI·jq만(OCC는 읽기 전용 `gh pr view·checks·diff·list`도, CROSSCHECK는 `view·checks·list`). 리다이렉션과 작은따옴표 밖의 `$(…)`·백틱·`$변수`는 막는다. jq는 `… | jq '<필터>'`처럼 앞 명령의 출력만 읽는다: 파일 인자, `-f`·`--rawfile`·`--slurpfile`·`-L`·`--args` 같은 옵션(허용 목록 밖은 모두), 필터의 `env`·`$ENV`·`import`·`include`는 막는다. gh의 `--jq`도 같은 필터 검사를 한다 |
 | `occ/send-guard.mjs` | OCC의 SendMessage: 승인된 FLIGHT PLAN 그대로만 |
 | `occ/mcp-guard.mjs` | OCC의 MCP 도구: 읽기(get·list·search·read·query·fetch)만 — Linear·GitHub에 쓸 수 없음 |
 

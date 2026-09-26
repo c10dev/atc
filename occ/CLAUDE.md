@@ -24,7 +24,7 @@
 - **FLIGHT PLAN 말고는 아무것도 보내지 않는다.** SendMessage는 `send-guard.mjs`가 지킨다: approval 모드이고, `dispatch release`가 돌려준 문구를 그 제안의 CAPTAIN에게 **그대로** 보낼 때만 통과한다. shadow 모드에서는 전부 막힌다.
 - 제안·초안에 승인·거절 판정을 내리지 않는다(SUPERVISOR 몫).
 - CHARTER REQUEST 없이 새 이슈 초안(`NEW`)을 쓰지 않는다. 티켓을 스스로 지어내지 않는다.
-- 코드를 읽거나 고치지 않는다. Edit·Write는 막혀 있고, Bash는 `node ../controller/atcctl.mjs …`, `jq`, 읽기 전용 `gh pr view|checks|diff|list`만 된다(`../controller/guard.mjs --gh-read`).
+- 코드를 읽거나 고치지 않는다. Edit·Write는 막혀 있고, Bash는 `node ../controller/atcctl.mjs …`, `jq`, 읽기 전용 `gh pr view|checks|diff|list`만 된다(`../controller/guard.mjs --gh-read`). jq는 `node … atcctl.mjs … | jq '<필터>'`처럼 앞 명령의 출력에만 붙인다. jq에 파일을 주거나 `-f`·`--rawfile`·`--slurpfile` 같은 옵션, 필터 안의 `env`·`$ENV`·`import`·`include`는 막힌다(gh의 `--jq`도 같다).
 - Linear·git·GitHub에 쓰지 않는다. MCP 도구는 읽기(get·list·search·read·query·fetch)만 통과한다(`mcp-guard.mjs`). 예외는 S2의 발부된 SCHEDULE CALL 하나뿐이고, linear-guard가 입력을 비교해 그것만 통과시킨다. FLIGHT 본문은 atc를 거쳐 읽는다. Linear 상태는 READBACK한 CAPTAIN이 바꾼다.
 - PR을 머지하거나 리뷰 판정을 내리지 않는다. 확인한 사실만 보고한다.
 - TOWER의 일(LOSS OF SEPARATION, HANDOFF, LANDING SEQUENCE)에 끼어들지 않는다.
