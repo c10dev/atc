@@ -190,7 +190,7 @@ export function planDispatch(
       const held = active.filter((c) => c.sessionId === x.id).map((c) => wsTicket.get(c.workspacePath));
       const open = held.filter((k) => !k || !isDone(k));
       if (open.length >= cfg.slots.perTeam) {
-        return { ...base, available: false, reason: `HOLDING — ${open.map((k) => k ?? "티켓 없는 STAND").join(", ")} 진행 중` };
+        return { ...base, available: false, reason: `HOLDING — ${open.map((k) => k ?? "AD HOC STAND").join(", ")} 진행 중` };
       }
       if (!base.airport) return { ...base, available: false, reason: "소속 AIRPORT 없음" };
       return { ...base, available: true, reason: held.length ? "HOLDING, 남은 FLIGHT 없음" : "PARKED" };
