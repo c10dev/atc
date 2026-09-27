@@ -9,7 +9,7 @@
 | FLEET | `#fleet` | 팀별 상태, 지금 FLIGHT, 팀원, 자격, ROUTE, TARGETS와 LOGBOOK 실적(이번 주, 정시, 되돌림, LOS, 최근 FLIGHT), CHECKRIDE(TYPE RATING 근거와 추천) | 프로필 편집, ENTRY INTO SERVICE, CREW BRIEFING, AOG, 퇴역, rating 부여·회수 |
 | NETWORK | `#network` | 4단계 운항 개요(읽기 전용): ROUTE(Linear 프로젝트)별 열린 FLIGHT·14일 ARRIVED·도는 AIRCRAFT·착륙 대기·프로젝트 목표, AIRCRAFT별 TARGETS 대 실적, 28일 추세(ARRIVED·착륙 대기·되돌림, 게이트 판정·합의율·CROSSCHECK 일치율) | — |
 | METRICS | `#metrics` | FLIGHT RECORDER로 본 운용 지표와 추이 | — |
-| DISPATCH | `#dispatch` | 배정 계획과 제안(CROSSCHECK 칩), HELD, IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검과 CROSSCHECK 일치, ATFM 블록(출발 중지, main CI, 머지 슬롯, 자동 배정·S3 대상 그림자 판정) | 판정, CROSSCHECK에 동의, HOLD 풀기, 모드 전환, ATFM 스위치(main 깨짐·수동)와 수동 출발 중지, ATFM OFF |
+| DISPATCH | `#dispatch` | 배정 계획과 제안(CROSSCHECK 칩), HELD, IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검과 CROSSCHECK 일치, ATFM 블록(출발 중지, main CI, 머지 슬롯, 자동 배정·S3 대상 그림자 판정), FLIGHT FOLLOWING 블록(배정된 FLIGHT의 단계 막대, 지연·불일치, OCC가 보고했는지) | 판정, CROSSCHECK에 동의, HOLD 풀기, 모드 전환, ATFM 스위치(main 깨짐·수동)와 수동 출발 중지, ATFM OFF |
 | SCHEDULE | `#schedule` | OCC 초안(CLASSIFY·PRIORITIZE·NEW, CROSSCHECK 칩), S2 점검과 CROSSCHECK 일치, 후보 수 | 판정, CROSSCHECK에 동의 |
 | DOCS | `#docs` | 이 안내 | — |
 

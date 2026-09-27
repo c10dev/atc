@@ -5,6 +5,7 @@ import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import { PriorityMark } from "../ui.tsx";
 import { AtfmPanel } from "./Atfm.tsx";
+import { FollowingPanel } from "./Following.tsx";
 import "./Dispatch.css";
 
 // 2단계 DISPATCH. shadow(2a): 제안은 화면에만 보이고 아무에게도 보내지 않는다.
@@ -264,6 +265,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       <Gate gate={gate} labelOf={labelOf} stats={brief.reasonStats} />
       {(brief.mode === "approval" || brief.gate3.dispatched > 0) && <Gate3 gate={brief.gate3} />}
       <AtfmPanel refreshKey={refreshKey} now={now} />
+      <FollowingPanel refreshKey={refreshKey} now={now} />
 
       {brief.inFlight.length > 0 && (
         <>

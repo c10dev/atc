@@ -16,6 +16,13 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- OCC의 FLIGHT FOLLOWING(운항 추적) ([docs/occ.md](docs/occ.md) 8.1, `server/following.ts`, 순수 계산. `proposals.ts`·`schedule.ts`는 읽기만 한다).
+  - **대상**: accepted·departed·recalling인 ASSIGN과 `tail:`이 붙은 In Progress FLIGHT.
+  - **단계**: READBACK → DEPARTED → PR 열림 → CLEARED → ARRIVED. 제안 timeline, `departures.jsonl`, `snapshot.pulls`, LOGBOOK에서 가져온다.
+  - **지연·불일치**: WAKE 기대치의 1.5배, Linear In Review·Done과 PR의 어긋남, 머지됐는데 Done 아님(정보).
+  - **창구**: `GET /api/following`, `POST /api/following/ack`(`following-state.json`, 반복 보고 방지), `atcctl following`·`following ack`, DISPATCH 탭 블록.
+  - **OCC**: `occ/CLAUDE.md`와 `/tick`(ko/en)이 새 문제만 보고하고 팀에는 메시지를 보내지 않게 했다.
+  - docs/occ.md 13장 4번을 마쳤다.
 - DISPATCH가 STAND 없는 FLIGHT를 쉬는 팀에도 제안하고, CHECK를 만든 팀에는 주지 않는다([docs/fleet.md](docs/fleet.md) 5.1~5.2). planner가 STAND 자리가 빈 팀에만 제안해서 그림자 판정이 쌓이지 않았다.
   - **STAND 없는 짝짓기**: STAND 규칙(그대로)으로 짝을 지은 뒤, 남은 `SURVEY`·`CHECK` FLIGHT(`crew.ts`의 `needsStand`. `FERRY`는 여전히 STAND가 필요)를 그 규칙 밖으로 HOLDING·PARKED AIRCRAFT에 준다. AIRBORNE·AOG·RETIRED에는 주지 않는다. 한도는 진행 중인 제안까지 세어 AIRCRAFT당 STAND 없는 FLIGHT 1건, 한 계획에서 AIRCRAFT당 제안 1건이다. TAIL ASSIGNMENT·TYPE RATING·CREW·WAKE 슬롯은 그대로 적용되고 점수도 그대로다.
   - **예약**: `reservedOf`가 `aircraftFlights`(AIRCRAFT → 진행 중인 FLIGHT)를 더 돌려준다. `AircraftState.reserved`는 이제 STAND가 필요한 예약만, `reservedLight`는 STAND 없는 예약을 담고, `resting`은 HOLDING·PARKED를 표시한다. `dispatch.ts`의 `canTakeNow`로 `syncOps`가 HOLDING 팀에 승인된 STAND 없는 제안을 유효하게 둔다.
