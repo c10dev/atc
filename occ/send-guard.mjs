@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // DISPATCH 세션의 PreToolUse hook (SendMessage).
-// 통과 조건: atc가 approval 모드(2b)이고, 메시지가 [DISPATCH D-xxxx]로 시작하며, 그 제안이 sent 상태이고,
-// 받는 사람이 그 제안의 CAPTAIN이며, 본문이 atc가 만든 FLIGHT PLAN과 정확히 같을 때. 아니면 exit 2로 막는다.
+// 통과 조건: atc가 approval 모드(2b)이고, 메시지가 [DISPATCH D-xxxx]로 시작하며, 받는 사람이 그 제안의 CAPTAIN이고,
+// - FLIGHT PLAN: 그 제안이 sent 상태이고 본문이 atc가 만든 FLIGHT PLAN과 정확히 같을 때
+// - RECALL([DISPATCH D-xxxx] RECALL …): 그 제안이 recalling 상태이고 본문이 atc가 만든 RECALL 문구와 정확히 같을 때
+// 아니면 exit 2로 막는다.
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -20,7 +22,7 @@ const bareName = (to) => String(to ?? "").replace(/\s*\[[0-9a-f]+\]\s*$/i, "").t
 export async function checkSend(toolInput, fetcher = fetchProposal) {
   const message = typeof toolInput?.message === "string" ? toolInput.message : null;
   if (!message) return "메시지가 문자열이 아님(구조화된 메시지는 보내지 않는다)";
-  const m = message.match(/^\[DISPATCH (D-\d{4,})\]/);
+  const m = message.match(/^\[DISPATCH (D-\d{4,})\]( RECALL\b)?/);
   if (!m) return "DISPATCH는 FLIGHT PLAN([DISPATCH D-xxxx]로 시작)만 보낼 수 있음";
   let found;
   try {
@@ -30,10 +32,14 @@ export async function checkSend(toolInput, fetcher = fetchProposal) {
   }
   if (!found) return `${m[1]} 제안이 atc에 없음`;
   const { proposal, mode } = found;
-  if (mode !== "approval") return "지금은 2a(shadow) — FLIGHT PLAN을 보내지 않는다";
-  if (proposal.status !== "sent") return `${proposal.id}는 보낼 상태가 아님(${proposal.status}) — 먼저 dispatch release`;
+  if (mode !== "approval") return "지금은 2a(shadow) — FLIGHT PLAN·RECALL을 보내지 않는다";
+  const recall = Boolean(m[2]);
+  if (recall && proposal.status !== "recalling") return `${proposal.id}는 RECALL 요청된 제안이 아님(${proposal.status})`;
+  if (!recall && proposal.status !== "sent") return `${proposal.id}는 보낼 상태가 아님(${proposal.status}) — 먼저 dispatch release`;
   if (bareName(toolInput.to) !== proposal.aircraftName) return `받는 사람이 ${proposal.id}의 CAPTAIN(${proposal.aircraftName})이 아님`;
-  if (message.trim() !== String(proposal.message ?? "").trim()) return "문구가 dispatch release가 돌려준 FLIGHT PLAN과 다름 — 그대로 보내야 함";
+  const expected = recall ? proposal.recallMessage : proposal.message;
+  if (!expected || message.trim() !== String(expected).trim())
+    return recall ? "문구가 dispatch recall-send가 돌려준 RECALL과 다름 — 그대로 보내야 함" : "문구가 dispatch release가 돌려준 FLIGHT PLAN과 다름 — 그대로 보내야 함";
   return null;
 }
 

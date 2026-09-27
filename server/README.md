@@ -55,7 +55,8 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 | `clearances.ts` | CLEARANCE log: append-only JSONL folded into current state |
 | `recorder.ts` | FLIGHT RECORDER: daily JSONL (`event`, `sample`, `dispatch`, `ack`, `schedule`, `checkride`), kept 30 days |
 | `metrics.ts` | Operating metrics and the stage 2 readiness check (pure `computeMetrics`) |
-| `logbook.ts` | LOGBOOK: every 10 minutes merged PRs → one `arrived` line per ARRIVED FLIGHT, `reverted` lines for merged Revert PRs (pure `buildEntry`, `planLogbook`, `foldLogbook`); TARGETS actuals for the FLEET cards (pure `computeActuals`, `expectationMin`); `GET /api/logbook` |
+| `logbook.ts` | LOGBOOK: every 10 minutes merged PRs → one `arrived` line per ARRIVED FLIGHT, `reverted` lines for merged Revert PRs (pure `buildEntry`, `planLogbook`, `foldLogbook`); TARGETS actuals for the FLEET cards (pure `computeActuals`, `expectationMin`); `GET /api/logbook`. AIRCRAFT and departure fall back to the DEPARTURE LOG, and `attributed` lines fill old unknown ones (pure `attribution`) |
+| `departures.ts` | DEPARTURE LOG: each warm tick compares claims and worktrees with the last AIRCRAFT per STAND and appends `stand` / `claim` / `handoff` lines (pure `diffDepartures`, `foldDepartures`); `matchDepartures` finds the AIRCRAFT and first time for a branch, FLIGHT or STAND |
 | `crew-observed.ts` | OBSERVED CREW: the subagent calls under each AIRCRAFT's sessions in the last 14 days, from session metadata only (`subagents/*.meta.json` agentType and model, file time; `custom-title.json` for the session name), cached by mtime and rescanned at most every 30 s. Pure `parseMeta`, `positionOf` (agentType + model → declared POSITION), `observeCrew` (grouping and drift) |
 | `crew-change.ts` | CREW CHANGE: when the complement of an in-service AIRCRAFT changes through `PATCH /api/fleet/:registration`, a text for the CAPTAIN, stored append-only and never sent (pure `diffCrew`, `ratingImpact`, `crewChangeText`, `planCrewChange`, `foldCrewChanges`); `withCrew` adds `observedCrew`, `crewDrift` and `pendingCrewChange` to the FLEET view; `GET /api/fleet/crew-changes`, `POST /api/fleet/:registration/crew-change/:id/delivered` |
 | `checkride.ts` | CHECKRIDE: each FLIGHT's required rating from labels or accepted SCHEDULE CLASSIFY drafts (pure `flightRating`), GRANT / REVIEW / BLOCKED / BUILDING / HOLDS per AIRCRAFT and rating (pure `judge`, `checkrideRows`); `GET /api/fleet/checkride`, and `POST /api/fleet/:registration/checkride` for the SUPERVISOR's grant or revoke through `applyPatch`, recorded as a `checkride` line |
@@ -117,7 +118,8 @@ Everything lives under `ATC_STATE_DIR` (default `~/.local/state/atc`), outside g
 | `crew-changes.jsonl` | `crew-change.ts` | CREW CHANGE texts (append-only; `created`, `delivered`, `superseded` lines) |
 | `consumers/<name>.json` | `controller.ts` | Brief cursor per consumer |
 | `flight-recorder/YYYY-MM-DD.jsonl` | `recorder.ts` | FLIGHT RECORDER (UTC days, 30-day retention) |
-| `logbook.jsonl` | `logbook.ts` | LOGBOOK of ARRIVED FLIGHTs (append-only; `arrived` and `reverted` lines) |
+| `logbook.jsonl` | `logbook.ts` | LOGBOOK of ARRIVED FLIGHTs (append-only; `arrived`, `reverted` and `attributed` lines) |
+| `departures.jsonl` | `departures.ts` | DEPARTURE LOG: first STAND or claim of a FLIGHT and HANDOFFs, written only on change (append-only) |
 | `proposals.jsonl` | `proposals.ts` | DISPATCH proposals (append-only) |
 | `schedule.jsonl` | `schedule.ts` | OCC SCHEDULE drafts and SUPERVISOR verdicts (append-only) |
 | `dispatch.json` | you (optional; defaults apply without it) | DISPATCH settings: project → AIRPORT mapping, slots, weights, mode (`shadow` / `approval`) |

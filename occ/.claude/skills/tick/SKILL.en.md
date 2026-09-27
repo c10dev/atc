@@ -7,12 +7,12 @@
 **Description:** One OCC pass — check whether the manual changed, review assignment proposals that have no note yet against the FLIGHT body and add notes and CAUTION; in approval mode, send approved proposals as FLIGHT PLANs and record READBACKs; write SCHEDULE drafts (CLASSIFY, PRIORITIZE, shadow operation) for FLIGHTs with no classification or priority. Run it with `/loop 10m /tick`.
 
 0. `node ../controller/atcctl.mjs manual check`. On `CHANGED`, reread `CLAUDE.md` and this file, run `node ../controller/atcctl.mjs manual ack`, then continue under the reread manual.
-1. First handle any replies from CAPTAINs since the last pass. Check PR, review and done reports with `gh` as in "Flight following" in CLAUDE.md. For FLIGHT PLAN replies: "READBACK D-xxxx", run `node ../controller/atcctl.mjs dispatch readback D-xxxx`; for a decline with a reason, `dispatch decline D-xxxx -- <reason>`.
+1. First handle any replies from CAPTAINs since the last pass. Check PR, review and done reports with `gh` as in "Flight following" in CLAUDE.md. For FLIGHT PLAN replies: "READBACK D-xxxx", run `node ../controller/atcctl.mjs dispatch readback D-xxxx`; for a decline with a reason, `dispatch decline D-xxxx -- <reason>`. A RECALL reply "READBACK D-xxxx RECALL" is `dispatch recalled D-xxxx`.
 2. Run `node ../controller/atcctl.mjs dispatch brief` and check `mode`.
 3. For each proposal in `open` without a `note`:
    - Read the body and comments with `node ../controller/atcctl.mjs dispatch flight <FLIGHT key>`.
    - Following the review rules in CLAUDE.md, run `node ../controller/atcctl.mjs dispatch note <ID> [--caution] [--hold [<FLIGHT>]] -- <note>`. A prerequisite written only in the body, or a wait for a human decision, gets a `--hold`, not just a note.
-4. If `mode` is `approval`, follow "Sending FLIGHT PLANs" in CLAUDE.md: approved in `inFlight` → `dispatch release` → SendMessage the printed text unchanged, and handle `overdue`. In `shadow`, skip this step.
+4. If `mode` is `approval`, follow "Sending FLIGHT PLANs" in CLAUDE.md: approved in `inFlight` → `dispatch release` → SendMessage the printed text unchanged; recalling in `inFlight` → `dispatch recall-send` → SendMessage the RECALL text unchanged; and handle `overdue`. In `shadow`, skip this step.
 5. SCHEDULE drafts (S1, shadow operation), following "SCHEDULE drafts" in CLAUDE.md:
    - Run `node ../controller/atcctl.mjs schedule brief` and look at `candidates` and `examples` (the SUPERVISOR's recent decisions and rejection reasons). Don't repeat a mistake a rejection reason names.
    - If there are CLASSIFY candidates, first Read `../docs/fleet.md` (4.1 FLIGHT TYPE, 4.2 WAKE, 4.3 TYPE RATING). Decide the FLIGHT TYPE in the order from "Before a CLASSIFY" in CLAUDE.md (BUILD only when behavior users see changes), and cite the sections applied in the reason.

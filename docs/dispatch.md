@@ -204,6 +204,50 @@ The brief's `reasonStats` turns the chips into a to-do list for the planner: per
 | Assigning risky work too lightly | Body review and CAUTION by the DISPATCH session; CAUTION proposals stay excluded from auto-approval even in stage 3 |
 | DISPATCH touching code or Linear | Guard (atc CLI and jq only), Linear through a read-only MCP only |
 
+## RECALL
+
+A FLIGHT PLAN that was sent (`sent`) or read back (`accepted`) can be pulled back by the SUPERVISOR. This is decision 4 of [atfm.md](atfm.md): it is built before any automatic assignment.
+
+```
+SUPERVISOR: "RECALL…" on the in-flight card (or POST /api/dispatch/proposals/:id/recall {reason}) → atc: RECALLING
+OCC:        atcctl dispatch recall-send D-0003 → SendMessage the RECALL text to the CAPTAIN
+CAPTAIN:    stops work, leaves the STAND as it is, replies "READBACK D-0003 RECALL"
+OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
+```
+
+- **States:** `sent` or `accepted` → `recalling` → `recalled`.
+  - A `recalling` proposal still holds its AIRCRAFT and FLIGHT. If a STAND appears, it does not become DEPARTED, because the FLIGHT was told to stop.
+  - After 24 hours without the RECALL READBACK it expires, and after 10 minutes it shows in `overdue`.
+  - A `departed` FLIGHT (a STAND exists) is not recalled; the SUPERVISOR deals with the CAPTAIN directly.
+- **After RECALLED:** the FLIGHT is a candidate again. The same FLIGHT–AIRCRAFT pair is not proposed for 24 hours from the RECALL READBACK. A different AIRCRAFT can get it right away.
+- **Who does what:**
+  - Only the SUPERVISOR requests a RECALL (DISPATCH tab or API), with a reason of up to 300 characters.
+  - OCC never creates one; its atcctl has no command for it. OCC only sends the server's text and records the READBACK.
+  - An enforced ATFM ground stop does not block a RECALL, because pulling work back is the safe direction.
+- **Text:** the server builds it when the RECALL is requested, like `formatFlightPlan`, and stores it on the proposal (`recallMessage`):
+
+  ```
+  [DISPATCH D-0003] RECALL · BRAVO (TEAM_B)
+  FLIGHT VOC193 · AIRPORT VCDO — 이 FLIGHT PLAN을 거둬들입니다.
+  <ticket title>
+  사유: <SUPERVISOR's reason>
+  작업을 멈추세요. STAND(워크트리)는 정리하지 말고 그대로 두세요 — 다른 AIRCRAFT가 이어받을 수 있게.
+  — 받았으면 이 메시지에 "READBACK D-0003 RECALL"로 답장해 주세요.
+  ```
+
+  The reply names the RECALL (`READBACK D-0003 RECALL`) so it can't be confused with the FLIGHT PLAN's `READBACK D-0003`.
+- **send-guard:** a message starting `[DISPATCH D-xxxx] RECALL` passes only when all of these hold:
+  - the mode is approval;
+  - the proposal is `recalling`;
+  - the recipient is that proposal's CAPTAIN;
+  - the text equals `recallMessage` exactly.
+
+  Any other `[DISPATCH D-xxxx]` message is checked as a FLIGHT PLAN, as before. In shadow mode nothing is sent, so the SUPERVISOR tells the CAPTAIN directly.
+- **API:**
+  - `POST /api/dispatch/proposals/:id/recall {reason}` (SUPERVISOR);
+  - `POST …/recall-send` returns `{sendTo, message}` and changes nothing (OCC, approval mode only);
+  - `POST …/recalled` (OCC, after the CAPTAIN's READBACK).
+
 ## Turning on 2b
 
 2b is built and sits behind `mode`. Turning it on sends approved proposals to real team sessions, so do it in this order:

@@ -601,3 +601,102 @@ test("현실적인 스냅샷: HOLDING 4대·PARKED 1대·AIRBORNE 1대에서 BUI
   const tight = planDispatch(s, new Map(), cfg(), NOW, undefined, fleet, undefined, logbook);
   assert.deepEqual(pairsOf(tight), ["VOC-125→TEAM_B", "VOC-181→TEAM_F"]);
 });
+
+// ── RECALL(recalling)과 예약, LOGBOOK attributed와 CHECK 독립성 ──
+
+test("RECALL: recalling인 STAND 없는 제안은 두 번째 STAND 없는 FLIGHT를 막고 BUILD는 막지 않는다(accepted와 같다). recalling BUILD는 BUILD를 막는다", async () => {
+  const { fold, reservedOf } = await import("./proposals.ts");
+  const at = new Date(NOW - 60 * 60_000).toISOString();
+  const flow = (id: string, flight: string, aircraft: string, until: "accepted" | "recalling") =>
+    [
+      { op: "create" as const, id, at, kind: "ASSIGN" as const, flight, aircraft, aircraftName: aircraft, airport: "VCDO", score: 1, factors: [] },
+      { op: "approve" as const, id, at },
+      { op: "send" as const, id, at, message: "m" },
+      { op: "accept" as const, id, at },
+      ...(until === "recalling" ? [{ op: "recall" as const, id, at, reason: "우선순위 바뀜", message: "R" }] : []),
+    ];
+  const s = snap({
+    sessions: [session("b", "TEAM_B")],
+    tickets: [
+      ticket("VOC-300", { labels: ["type:SURVEY", "wake:L"] }),
+      ticket("VOC-301", { labels: ["type:SURVEY", "wake:L"] }),
+      ticket("VOC-302", { priority: 1 }),
+      ticket("VOC-303"),
+    ],
+  });
+  // (a) SURVEY VOC-300이 accepted·recalling이면 SURVEY VOC-301은 못 받고 BUILD VOC-302는 받는다
+  for (const until of ["accepted", "recalling"] as const) {
+    const ps = fold(flow("D-0001", "VOC-300", "b", until));
+    assert.equal(ps[0].status, until);
+    const r = reservedOf(ps);
+    assert.deepEqual([...r.aircraftFlights!], [["b", ["VOC-300"]]]);
+    const p = planDispatch(s, new Map(), cfg(), NOW, r);
+    assert.deepEqual(pairsOf(p), ["VOC-302→TEAM_B"], until);
+    assert.deepEqual(p.aircraft.map((a) => `${a.reserved}:${a.reservedLight}`), ["null:D-0001"], until);
+    assert.equal(p.excluded.find((e) => e.flight === "VOC-300")?.reason, "진행 중인 제안 D-0001");
+  }
+  // (b) BUILD VOC-302가 recalling이면 다른 BUILD(VOC-303)는 못 받는다. SURVEY 하나는 받는다
+  const q = planDispatch(s, new Map(), cfg(), NOW, reservedOf(fold(flow("D-0002", "VOC-302", "b", "recalling"))));
+  assert.deepEqual(pairsOf(q), ["VOC-300→TEAM_B"]);
+  assert.equal(q.aircraft[0].reserved, "D-0002");
+  assert.ok(!q.assign.some((a) => a.flight === "VOC-303"));
+});
+
+test("RECALL: syncOps는 recalling 제안을 AIRCRAFT가 HOLDING·AIRBORNE이어도 건드리지 않고 RECALL READBACK을 기다린다(24시간 뒤 만료만)", async () => {
+  const { fold, syncOps } = await import("./proposals.ts");
+  const mk = (id: string, flight: string, minAgo: number) => {
+    const at = new Date(NOW - minAgo * 60_000).toISOString();
+    return [
+      { op: "create" as const, id, at, kind: "ASSIGN" as const, flight, aircraft: "c", aircraftName: "TEAM_C", airport: "VCDO", score: 1, factors: [] },
+      { op: "approve" as const, id, at },
+      { op: "send" as const, id, at, message: "m" },
+      { op: "accept" as const, id, at },
+      { op: "recall" as const, id, at, reason: "우선순위 바뀜", message: "R" },
+    ];
+  };
+  const existing = fold([...mk("D-0001", "VOC-310", 30), ...mk("D-0002", "VOC-311", 30), ...mk("D-0003", "VOC-312", 25 * 60)]);
+  assert.deepEqual(existing.map((p) => p.status), ["recalling", "recalling", "recalling"]);
+  const tickets = [ticket("VOC-310", { labels: ["type:SURVEY"] }), ticket("VOC-311"), ticket("VOC-312", { labels: ["type:CHECK"] })];
+  for (const ac of [
+    { available: false, resting: true, reason: "HOLDING — VOC-10 진행 중" },
+    { available: false, resting: false, reason: "AIRBORNE" },
+  ]) {
+    const plan = {
+      at: new Date(NOW).toISOString(), assign: [], release: [], hold: [], excluded: [], slots: [],
+      aircraft: [{ id: "c", name: "TEAM_C", callsign: "CHARLIE", airport: "VCDO", reserved: null, ...ac }],
+    };
+    // STAND가 생겨도 DEPARTED로 바꾸지 않는다
+    const ops = syncOps(existing, plan, { tickets, workspaces: [ws("vocado-voc-311", "VOC-311")] }, DEFAULT_DISPATCH_CONFIG, NOW, 3);
+    assert.deepEqual(ops.map((o) => `${o.op}:${o.id}`), ["expire:D-0003"], ac.reason);
+  }
+});
+
+test("LOGBOOK: attributed 줄로만 AIRCRAFT를 안 기록도 접은 목록에서 CHECK 독립성의 만든 팀이 된다", async () => {
+  const { foldLogbook } = await import("./logbook.ts");
+  const arrivedLine = {
+    op: "arrived" as const, t: daysAgo(1), key: "chaehy5665/vocado_nextjs#420", aircraft: null, flight: "VOC-320", class: null, airport: "VCDO",
+    pr: { repo: "chaehy5665/vocado_nextjs", number: 420, url: "", title: "" }, stands: [], departedAt: daysAgo(2), departedFrom: "pr" as const,
+    arrivedAt: daysAgo(1), blockMin: null, landingWaitMin: 60, codexFindings: 0, changesRequested: false, reverted: false, los: 0,
+  };
+  const attributed = { op: "attributed" as const, t: daysAgo(0.5), key: "chaehy5665/vocado_nextjs#420", aircraft: "TEAM_D", via: "departures" as const };
+  // 접기 전의 arrived 줄만으로는 모른다
+  const raw = planDispatch(
+    snap({ sessions: [session("d", "TEAM_D")], tickets: [ticket("VOC-321", { labels: ["type:CHECK"], related: ["VOC-320"] })] }),
+    new Map(), cfg(), NOW, undefined, undefined, undefined, [arrivedLine],
+  );
+  assert.equal(raw.assign[0]?.factors.find((f) => f.id === "independence")?.detail, "확인 못 함 — VOC-320을 만든 AIRCRAFT를 모름");
+  const folded = foldLogbook([arrivedLine, attributed]);
+  assert.equal(folded[0].aircraft, "TEAM_D");
+  const { checkBuildersOf } = await import("./dispatch.ts");
+  const builders = checkBuildersOf({ flights: ["VOC-320"], prs: [420] }, { code: "VCDO", repo: VCDO }, {
+    logbook: folded, pulls: [], claims: [], workspaces: [], sessions: [], history: new Map(), team: /^TEAM[\s_-]?[A-Z]$/i,
+  });
+  assert.deepEqual(Object.fromEntries(builders), { TEAM_D: ["PR #420 LOGBOOK", "VOC-320 LOGBOOK"] });
+  // planner에 접은 목록을 주면 유일한 AIRCRAFT가 만든 팀이라 CHECK는 제외된다
+  const p = planDispatch(
+    snap({ sessions: [session("d", "TEAM_D")], tickets: [ticket("VOC-321", { labels: ["type:CHECK"], related: ["VOC-320"] })] }),
+    new Map(), cfg(), NOW, undefined, undefined, undefined, folded,
+  );
+  assert.deepEqual(p.assign, []);
+  assert.match(p.excluded.find((e) => e.flight === "VOC-321")!.reason, /^CHECK 독립성 — 검토 대상을 만든 TEAM_D/);
+});

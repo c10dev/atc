@@ -40,6 +40,16 @@ OCC가 Linear에 쓸 변경을 초안으로 남긴다. 지금은 S1이라 Linear
 - **S2 진입 점검**: 판정 20건 이상, 합의율 80% 이상. 그때 Linear 쓰기가 열린다(승인한 초안만, linear-guard로).
 - **S2(승인 운용)**: SCHEDULE 탭의 "S2 승인 운용 켜기"로 켠다(만들어 두었고 기본은 꺼짐). 켜면 버튼이 "승인 / 거절"이 되고, 승인한 작업은 IN PROGRESS에 APPROVED → RELEASED(OCC가 Linear에 씀) → APPLIED(Linear에 보임)로 보인다. OCC가 쓰는 내용은 atc가 만들고, linear-guard가 그 입력과 다른 쓰기는 모두 막는다. 켜기 전 준비는 저장소의 `docs/occ.md` "Turning on S2".
 
+## RECALL: 보낸 FLIGHT PLAN 거둬들이기
+
+2b에서 FLIGHT PLAN을 보냈거나 CAPTAIN이 READBACK했는데 거둬들여야 하면(우선순위가 바뀜, 잘못 배정됨 등), DISPATCH 탭 진행 중 목록의 **RECALL…**을 누르고 사유를 적는다.
+
+- OCC가 CAPTAIN에게 RECALL 문구를 보낸다. CAPTAIN은 작업을 멈추고 STAND(워크트리)를 정리하지 않은 채 두고 "READBACK D-xxxx RECALL"로 답한다. 그러면 RECALLED가 된다.
+- RECALL 중에는 "RECALL 중"으로 보이고, 10분 넘게 답이 없으면 "RECALL READBACK 없음 10분+"가 뜬다.
+- FLIGHT는 다시 후보가 된다. 같은 팀에는 24시간 제안하지 않는다.
+- STAND가 생긴 뒤(DEPARTED)에는 RECALL 버튼이 없다. 그때는 CAPTAIN에게 직접 말한다.
+- 출발 중지가 켜져 있어도 RECALL은 된다.
+
 ## CROSSCHECK: 예비 판정 먼저 보기
 
 CROSSCHECK 세션이 켜져 있으면, 열린 제안과 초안마다 OCC와 다른 계열의 모델이 예비 판정을 먼저 달아 둔다. 카드의 점선 칩이 그것이다: `CROSSCHECK agree · 본문상 제약 없음`, `CROSSCHECK disagree · 이미 완료됨`.
