@@ -287,6 +287,18 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 | `POST /api/dispatch/mode` | `{mode: shadow\|approval}` |
 | `GET /api/dispatch/flight/:key` | FLIGHT 본문·댓글(Linear 읽기 전용) |
 
+## ATFM (3단계: 데이터와 그림자 운용)
+
+설계와 결정은 [docs/atfm.md](docs/atfm.md)(영어)에 있다. 스위치는 `~/.local/state/atc/atfm.json`에 두고 원자적으로 바꿔 쓰며, 기본값은 모두 off나 shadow다.
+
+- **데이터**: GitHub을 읽을 때마다 AIRPORT마다 기본 브랜치 head의 CI를 읽는다(`success`·`failure`·`pending`, CI가 없으면 `none`). 체크 소요 시간, 열린 PR이 BEHIND가 된 일, S2로 붙인 라벨이 사라진 일은 FLIGHT RECORDER의 `atfm` 줄로 남긴다.
+- **GROUND STOP**: 스냅샷마다 계산한다. 조건은 main 깨짐, CI 실패 몰림, CI 혼잡(GROUND DELAY), LOS 증가, 수동이다.
+  - 켤 수 있는 것은 "main 깨짐"(`groundStop.mainBroken`: off/shadow/on)과 "수동"(`groundStop.manual`: off/on)뿐이고, 나머지는 그림자다.
+  - 켜진 출발 중지가 걸리면 그 AIRPORT의 ASSIGN이 계획에서 빠지고(`GROUND STOP — …`), `dispatch release`가 거절된다. TOWER는 그 AIRPORT에 LAND를 내지 않는다: `landingQueue` 항목에 `groundStop`이 붙고, `groundstop.started`·`groundstop.ended` 이벤트에 HOLD·CONTINUE를 보낸다.
+- **머지 슬롯(그림자)**: `landingQueue[].slot`에 `in-slot`·`waiting-slot`이 붙는다. CI가 있는 저장소(vocado_nextjs)는 1개, 없는 저장소는 무제한이다. Urgent가 앞에 오되 이미 LAND가 나간 PR은 밀어내지 않고, LAND는 30분이 지나면 만료된다. TOWER는 아직 따르지 않는다.
+- **자동 배정 대상(그림자)**: 열린 ASSIGN마다 A1~A10, CLASSIFY 초안마다 S1~S4를 판정하고 빠진 조건을 보여 준다. 사람 판정과 맞춘 그림자 정확도와 켜는 조건도 보여 준다. 자동으로 승인하는 것은 없다.
+- **API와 화면**: `GET /api/atfm`, `POST /api/atfm/switch|off|stops|stops/:airport/release`, DISPATCH 탭의 ATFM 블록. `via: "atfm"`은 사람 판정 점검과 CROSSCHECK 일치에서 모두 뺀다.
+
 ## SCHEDULE (OCC S1: 그림자 초안)
 
 설계는 [docs/occ.md](docs/occ.md) 5~7장(영어). OCC 세션이 Linear에 할 변경을 SCHEDULE 작업 초안으로 남긴다(`server/schedule.ts`, `~/.local/state/atc/schedule.jsonl`, 추가만 함). S1은 그림자 운용이라 **Linear에는 아무것도 쓰지 않는다.** SUPERVISOR가 초안마다 판정을 표시하고, 그 합의율로 S2(승인된 초안을 linear-guard를 거쳐 씀)에 들어갈지 정한다.
@@ -334,7 +346,7 @@ CHARTER REQUEST → AD HOC FLIGHT 초안(S1: SCHEDULE 탭에서 판정) → FILE
 | `crosscheck/` | CROSSCHECK 세션 작업 폴더(다른 모델의 예비 판정) | [CLAUDE.md](crosscheck/CLAUDE.md) · [/tick](crosscheck/.claude/skills/tick/SKILL.md) |
 | `deploy/` | systemd 사용자 서비스 | [deploy/README.ko.md](deploy/README.ko.md) |
 | `docs/guide/` | DOCS 탭에 보이는 사용 안내(한국어) | [소개](docs/guide/introduction.md) |
-| `docs/` | 설계와 규칙 | [DISPATCH 설계](docs/dispatch.ko.md) · [OCC 설계(영어)](docs/occ.md) · [FLEET 설계(영어)](docs/fleet.md) · [ATFM 설계(3단계 초안, 영어)](docs/atfm.md) · [이름 규칙](docs/naming.ko.md) |
+| `docs/` | 설계와 규칙 | [DISPATCH 설계](docs/dispatch.ko.md) · [OCC 설계(영어)](docs/occ.md) · [FLEET 설계(영어)](docs/fleet.md) · [ATFM 설계(3단계, 영어)](docs/atfm.md) · [이름 규칙](docs/naming.ko.md) |
 | — | 변경 기록 | [CHANGELOG.ko.md](CHANGELOG.ko.md) |
 
 폴더마다 영어판이 옆에 있다(`README.md`, `*.md`, 세션 폴더는 `*.en.md`).
@@ -372,6 +384,8 @@ atc/
 │   ├── landing.ts          # CLEARED TO LAND 조건, LANDING SEQUENCE 순서 (landing.test.ts)
 │   ├── metrics.ts          # 운용 지표·2단계 점검 (metrics.test.ts)
 │   ├── proposals.ts        # DISPATCH 제안 기록·API (proposals.test.ts)
+│   ├── atfm.ts             # ATFM: 스위치, 출발 중지, 머지 슬롯, 자동 배정 대상 판정 (atfm.test.ts)
+│   ├── atfm-run.ts         # ATFM 기록과 /api/atfm
 │   ├── reasons.ts          # DISPATCH 거절 사유 칩 (reasons.test.ts)
 │   ├── schedule.ts         # OCC SCHEDULE 초안 기록·API (schedule.test.ts)
 │   ├── recorder.ts         # FLIGHT RECORDER 기록

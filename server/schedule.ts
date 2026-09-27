@@ -128,7 +128,7 @@ export const canApplyOp = (s: Pick<ScheduleOp, "status">, op: StatusLine) => Boo
 
 // SUPERVISOR 판정과 그 사유. 사유는 판정한 상태에 머물러 있을 때만(approved 뒤의 verdictReason은 SUPERSEDED·EXPIRED 사유다)
 export function humanOf(s: ScheduleOp): HumanDecision | null {
-  if (!s.decision) return null;
+  if (!s.decision || s.via === "atfm") return null; // 자동 판정(ATFM)은 사람 판정으로 세지 않는다
   const reason = (s.status === "agreed" || s.status === "disagreed" || s.status === "rejected") && s.verdictReason ? s.verdictReason : null;
   return { ...s.decision, reason, ...(s.via ? { via: s.via } : {}) };
 }
@@ -476,7 +476,7 @@ export function syncLines(existing: ScheduleOp[], tickets: Ticket[], nowMs: numb
 }
 
 export function gateOf(ops: ScheduleOp[]) {
-  const decided = ops.filter((s) => s.status === "agreed" || s.status === "disagreed");
+  const decided = ops.filter((s) => (s.status === "agreed" || s.status === "disagreed") && s.via !== "atfm");
   const agreed = decided.filter((s) => s.status === "agreed").length;
   // (S2 이후의 승인·거절은 이 점검에 넣지 않는다 — 그림자 판정의 합의율만 잰다)
   const agreement = decided.length ? agreed / decided.length : null;

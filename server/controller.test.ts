@@ -41,6 +41,7 @@ function snapshot(over: Partial<Snapshot> = {}): Snapshot {
   return {
     at: iso(0), linear: { enabled: true, error: null, fetchedAt: iso(0) },
     github: { enabled: true, error: null, fetchedAt: iso(0) },
+    atfm: { mains: [], groundStops: [] },
     pulls: [pr(10, "VOC-191", {}, ["behind"])],
     sessions: [session("s-b", "TEAM_B"), session("s-d", "TEAM_D"), session("s-p", "President")],
     workspaces: [ws("vocado-voc-175", "VOC-175"), ws("vocado-voc-191", "VOC-191")],
@@ -259,4 +260,21 @@ test("브리핑 LANDING SEQUENCE: CLEARED 순번, Draft 제외, LAND CLEARANCE�
   assert.deepEqual(q[0].holders.map((h) => h.name), ["TEAM_B"]);
   assert.equal(q[2].stand, null);
   assert.deepEqual(q[2].blocks.map((b) => b.code), ["no-review"]);
+});
+
+test("ATFM: 켜진 GROUND STOP은 그 AIRPORT의 landingQueue에 groundStop을 붙이고 이벤트를 낸다(그림자는 이벤트 없음), 머지 슬롯은 그림자로 붙는다", () => {
+  const gs = (enforced: boolean) => ({ airport: "VCDO", repo: VCDO, trigger: "main-broken" as const, kind: "stop" as const, enforced, text: "main 깨짐: main abc 실패 체크 build", evidence: [], since: iso(-1) });
+  const mains = [{ repo: VCDO, slug: "o/v", branch: "main", sha: "abc", state: "failure" as const, failing: ["build"], checks: 1, at: iso(0) }];
+  const airports = [{ id: "1", repo: VCDO, name: "vocado_nextjs", code: "VCDO" }] as Snapshot["airports"];
+  const s = snapshot({ airports, pulls: [pr(21, "VOC-52", { readyAt: iso(-9) }), pr(23, "VOC-191", { readyAt: iso(-5) })], atfm: { mains, groundStops: [gs(true)] } });
+  const q = buildBrief(s, { events: [], reset: false, cursor: "e:0" }, [], T0).landingQueue;
+  assert.deepEqual(q.map((x) => x.groundStop?.trigger ?? null), ["main-broken", "main-broken"]);
+  assert.deepEqual(q.map((x) => x.slot?.slot), ["in-slot", "waiting-slot"]); // CI 있는 저장소는 1개
+  const shadow = snapshot({ airports, pulls: s.pulls, atfm: { mains, groundStops: [gs(false)] } });
+  assert.deepEqual(buildBrief(shadow, { events: [], reset: false, cursor: "e:0" }, [], T0).landingQueue.map((x) => x.groundStop), [null, null]);
+  const off = snapshot({ airports, pulls: s.pulls, atfm: { mains: [], groundStops: [] } });
+  const kinds = (a: Snapshot, b: Snapshot) => diffSnapshots(a, b).filter((e) => e.kind.startsWith("groundstop")).map((e) => `${e.kind}:${e.message}`);
+  assert.deepEqual(kinds(off, s), ["groundstop.started:main 깨짐: main abc 실패 체크 build"]);
+  assert.deepEqual(kinds(s, off), ["groundstop.ended:main 깨짐: main abc 실패 체크 build"]);
+  assert.deepEqual(kinds(off, shadow), []);
 });

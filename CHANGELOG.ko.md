@@ -17,6 +17,16 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 
 ### 추가
 - NETWORK: 4단계 읽기 전용 운항 개요([docs/fleet.md](docs/fleet.md) 7.3, `server/network.ts`). `GET /api/network`는 아무것도 쓰지 않고 다음을 돌려준다. `routes`: ROUTE(Linear 프로젝트)마다 상태별 열린 FLIGHT(`todo`는 unstarted, `inReview`는 상태 이름 In Review·Ready to Merge, `inProgress`는 그 밖의 started. backlog·triage·끝난 것·상위 이슈는 세지 않음), `arrived14`(FLIGHT가 그 프로젝트인 최근 14일 LOGBOOK 기록), FLEET ROUTE에 그 프로젝트가 있는 AIRCRAFT, 그 기록의 착륙 대기 중앙값, 프로젝트 `goal`(`targetDate`, `progress`, `state`) 또는 `null`(`state`는 프로젝트 `status.type`, 없으면 `status.name`). `aircraft`: TARGETS(`flightsPerWeek`, `onTime`)와 FLEET 카드와 같은 `computeActuals` 숫자(퇴역 AIRCRAFT 제외). `trend.days`: 28일 동안 날마다 ARRIVED, 착륙 대기 중앙값, 머지된 되돌림. `trend.gates`: 28일 동안 날마다 DISPATCH·SCHEDULE 그림자 판정 수와 누적 합의율(마지막 날 값이 각 게이트의 `agreement`와 같다), 둘을 합친 누적 CROSSCHECK 일치율. `sources`: Linear·GitHub·LOGBOOK을 읽었나. 프로젝트 목표는 TEAM 프로젝트를 읽는 새 읽기 전용 Linear 쿼리 하나(`server/sources/linear-projects.ts`, 10분 캐시)에서 온다. 키가 없거나 실패하면 목표는 `null`. OCC의 TARGETS·ROUTE 변경 초안은 [docs/fleet.md](docs/fleet.md) 7.4에 설계만 적었다(만들지 않음).
+- ATFM 3단계, [docs/atfm.md](docs/atfm.md) 8장의 1~5단계. SUPERVISOR의 결정 10가지를 설계에 반영했다. 스위치는 `~/.local/state/atc/atfm.json`(원자적 쓰기, 기본값 off·shadow)에 있다.
+  - **데이터**: AIRPORT마다 기본 브랜치 head CI(`snapshot.atfm.mains`), PR 체크의 `completedAt`. 체크 소요 시간, BEHIND 전이, 대상 판정, 되돌린 S2 라벨, 출발 중지, 스위치 변경을 FLIGHT RECORDER의 `atfm` 줄로 남긴다(`atfm-state.json`으로 중복을 막는다).
+  - **GROUND STOP**: `snapshot.atfm.groundStops`. 조건은 main 깨짐, CI 실패 몰림, CI 혼잡(GROUND DELAY), LOS 증가, 수동이다.
+    - 켤 수 있는 것은 `groundStop.mainBroken`과 `groundStop.manual`뿐이고, 둘 다 기본은 켜져 있지 않다.
+    - 켜진 출발 중지가 걸리면 그 AIRPORT의 ASSIGN이 계획에서 빠지고(`GROUND STOP — …`, 열린 제안은 이 사유로 SUPERSEDED), `dispatch release`가 거절되며, TOWER 브리핑의 `landingQueue` 항목에 `groundStop`이 붙는다.
+    - 새 이벤트 `groundstop.started`·`groundstop.ended`에 TOWER가 HOLD·CONTINUE를 보낸다(TOWER·OCC `CLAUDE.md` 갱신).
+  - **머지 슬롯(그림자)**: `landingQueue[].slot`. CI가 있는 저장소는 1개, 없으면 무제한. Urgent가 앞이되 LAND는 밀어내지 않고, LAND는 30분에 만료된다. TOWER는 아직 따르지 않는다.
+  - **자동 배정 대상(그림자)**: 열린 ASSIGN은 A1~A10, CLASSIFY 초안은 S1~S4로 판정하고, 그림자 정확도와 켜는 조건을 보여 준다. 자동으로 승인하는 것은 없다.
+  - **API와 화면**: `GET /api/atfm`, `POST /api/atfm/switch`·`/off`·`/stops`·`/stops/:airport/release`, DISPATCH 탭의 ATFM 블록.
+  - **판정 출처**: `via: "atfm"`은 서버 안에서만 붙는다. `humanOf`, 2a·S1 게이트, `gate3`, CROSSCHECK 일치, 한 번 클릭 수에서 모두 뺀다.
 - DISPATCH가 이미 끝났거나 작업 중인 FLIGHT를 뺀다([docs/dispatch.md](docs/dispatch.md) 5.1.2). 그림자 판정에서 가장 흔한 거절이 "이미 완료됨"이었다. 이제 planner는 PR이 LOGBOOK에 ARRIVED로 있고 되돌리지 않은 FLIGHT(Linear가 아직 Todo여도, `이미 완료됨 — PR <repo>#N 머지됨(LOGBOOK)`)와 열린 PR(Draft 포함)이 있는 FLIGHT(`열린 PR #N 있음`)를 제외한다. 진행 중인 제안보다 먼저 보므로, `syncOps`가 그런 FLIGHT의 열린 제안, 승인했지만 안 보낸 제안, HOLD를 같은 사유로 SUPERSEDED하고, AIRCRAFT 쪽 사유보다 이 사유를 먼저 쓴다. 문구는 `dispatch.ts`(`landedWhy`, `openPrWhy`, `workedWhy`)에 있고, `planDispatch`와 `syncOps`는 LOGBOOK 색인(`landedOf`)을 새 선택 인자로 받아 순수 함수로 남는다.
 - DISPATCH 브리핑 `reasonStats`: 거절 사유 칩마다 건수, 최근 예시 FLIGHT 3건까지, planner가 그 사유를 이미 거르는지(`auto`, `partial`, `manual`과 방법, `dispatch.ts`의 `REASON_FILTERS`). DISPATCH 점검 패널의 한 줄 칩 건수 자리에 "거절 사유 → 배정 규칙"으로 보인다.
 - CHECKRIDE로 rating을 부여·회수하면 그 AIRCRAFT의 대기 중인 CREW CHANGE를 다시 써서 TYPE RATING 줄과 rating 영향이 새 rating을 따른다(TEAM_H가 알려 옴). `checkride.ts`가 저장 뒤 기존 `noteCrewChange` 훅을 부르고, 대기 중인 CREW CHANGE가 없으면 아무것도 쓰지 않는다.

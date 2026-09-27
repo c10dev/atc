@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { type MainStatus, mainStateOf } from "../atfm.ts";
 import { type CodexSignal, codexThumbsPass, type GhPull, isCodexBot, needsCodexSignal } from "../landing.ts";
 
 const run = promisify(execFile);
@@ -16,9 +17,11 @@ export interface GithubState {
   fetchedAt: string | null;
   // AIRPORT 본 체크아웃 경로별 마지막 결과. 실패한 저장소는 이전 결과를 그대로 둔다.
   byRepo: Map<string, GhPull[]>;
+  // 기본 브랜치 head의 CI(ATFM "main 깨짐"). 실패한 저장소는 이전 결과를 그대로 둔다.
+  mainByRepo: Map<string, MainStatus>;
 }
 
-const state: GithubState = { enabled: true, error: null, fetchedAt: null, byRepo: new Map() };
+const state: GithubState = { enabled: true, error: null, fetchedAt: null, byRepo: new Map(), mainByRepo: new Map() };
 let lastFetch = 0;
 let inflight: Promise<void> | null = null;
 let known = new Set<string>();
@@ -121,6 +124,12 @@ async function fetchAll(repos: string[]) {
         await attachCodex(slug, pulls, errors);
         state.byRepo.set(repo, pulls);
         ok++;
+        try {
+          state.mainByRepo.set(repo, await readMain(repo, slug));
+        } catch (e) {
+          const err = e as { stderr?: string; message?: string };
+          errors.push(`${slug} main CI: ${(err.stderr?.trim() || err.message || String(e)).split("\n")[0]}`);
+        }
       } catch (e) {
         const err = e as NodeJS.ErrnoException & { stderr?: string };
         if (err.code === "ENOENT" && err.path === "gh") {
@@ -134,6 +143,7 @@ async function fetchAll(repos: string[]) {
     }),
   );
   for (const repo of state.byRepo.keys()) if (!repos.includes(repo)) state.byRepo.delete(repo);
+  for (const repo of state.mainByRepo.keys()) if (!repos.includes(repo)) state.mainByRepo.delete(repo);
   const heads = new Set([...state.byRepo.values()].flat().map((p) => p.headRefOid));
   for (const sha of headDates.keys()) if (!heads.has(sha)) headDates.delete(sha);
   for (const key of thumbsOk.keys()) if (!heads.has(key.split("@")[1])) thumbsOk.delete(key);
@@ -158,15 +168,29 @@ export interface GhMerged {
 const MERGED_FIELDS = "number,title,url,headRefName,baseRefName,createdAt,mergedAt,body,reviews";
 const defaultBranches = new Map<string, string>();
 
-// GitHub remote가 없으면 null
-export async function listMerged(repo: string, limit = 30): Promise<{ slug: string; pulls: GhMerged[] } | null> {
-  const slug = await slugOf(repo);
-  if (!slug) return null;
+async function defaultBranchOf(slug: string): Promise<string> {
   let base = defaultBranches.get(slug);
   if (!base) {
     base = (await gh(["repo", "view", slug, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"])).trim() || "main";
     defaultBranches.set(slug, base);
   }
+  return base;
+}
+
+// 기본 브랜치 head의 check-runs와 commit status(읽기 전용 gh api)
+async function readMain(repo: string, slug: string): Promise<MainStatus> {
+  const branch = await defaultBranchOf(slug);
+  const runs = tsv(await gh(["api", `repos/${slug}/commits/${branch}/check-runs?per_page=100`, "--jq", '.check_runs[] | [.name, .status, (.conclusion // "")] | @tsv']))
+    .map(([name, status, conclusion]) => ({ name, status, conclusion: conclusion || null }));
+  const combined = JSON.parse(await gh(["api", `repos/${slug}/commits/${branch}/status`, "--jq", "{sha, statuses: [.statuses[] | {context, state}]}"])) as { sha: string | null; statuses: { context: string; state: string }[] };
+  return { repo, slug, branch, sha: combined.sha, ...mainStateOf(runs, combined.statuses), at: new Date().toISOString() };
+}
+
+// GitHub remote가 없으면 null
+export async function listMerged(repo: string, limit = 30): Promise<{ slug: string; pulls: GhMerged[] } | null> {
+  const slug = await slugOf(repo);
+  if (!slug) return null;
+  const base = await defaultBranchOf(slug);
   const out = await gh(["pr", "list", "--repo", slug, "--state", "merged", "--base", base, "--limit", String(limit), "--json", MERGED_FIELDS]);
   return { slug, pulls: (JSON.parse(out) as GhMerged[]).filter((p) => p.mergedAt) };
 }

@@ -25,6 +25,7 @@ import {
   tailsOf,
   workedWhy,
 } from "./dispatch.ts";
+import { applyGroundStops, enforcedStops, groundStopWhy } from "./atfm.ts";
 import { classLabel, classOf } from "./crew.ts";
 import { type Crosscheck, CrosscheckError, type CrosscheckLine, crosscheckRateOf, examplesOf, type HumanDecision, markOf, oneClickOf, parseCrosscheck, type Via, viaOf } from "./crosscheck.ts";
 import { loadFleet } from "./fleet.ts";
@@ -129,6 +130,7 @@ export const canCrosscheck = (p: Proposal) => p.status === "proposed" && !isHeld
 // SUPERVISOR 판정(shadow agreed/disagreed, approval approved/rejected). 사유는 판정한 상태에 머물러 있을 때만
 // (approved 뒤의 reason은 DECLINED·SUPERSEDED 같은 다른 사유다)
 export function humanOf(p: Proposal): HumanDecision | null {
+  if (p.via === "atfm") return null; // 자동 판정(ATFM)은 사람 판정으로 세지 않는다
   const t = p.timeline;
   const at = t.agreed ?? t.disagreed ?? t.approved ?? t.rejected;
   if (!at) return null;
@@ -327,7 +329,7 @@ export function overdueOf(proposals: Proposal[], now: number): string[] {
 }
 
 export function gateOf(proposals: Proposal[]) {
-  const decided = proposals.filter((p) => p.status === "agreed" || p.status === "disagreed");
+  const decided = proposals.filter((p) => (p.status === "agreed" || p.status === "disagreed") && p.via !== "atfm");
   const agreed = decided.filter((p) => p.status === "agreed").length;
   const agreement = decided.length ? agreed / decided.length : null;
   return {
@@ -389,7 +391,7 @@ const median = (xs: number[]) => {
 
 // 2b → 3(ATFM) 점검: 보낸 FLIGHT PLAN 중 READBACK 받은 비율, READBACK까지 걸린 시간, READBACK 뒤 DEPARTED 비율
 export function gate3Of(proposals: Proposal[]) {
-  const dispatched = proposals.filter((p) => p.timeline.sent);
+  const dispatched = proposals.filter((p) => p.timeline.sent && p.via !== "atfm"); // 2b 점검은 사람이 승인한 FLIGHT PLAN만
   const readBack = dispatched.filter((p) => p.timeline.accepted);
   const departed = readBack.filter((p) => p.timeline.departed);
   const readbackRate = dispatched.length ? readBack.length / dispatched.length : null;
@@ -447,7 +449,8 @@ export function runDispatch(s: Snapshot, now = Date.now()): Plan {
   const ops = readOps();
   const existing = fold(ops);
   const landed = landedOf(loadLogbook());
-  const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing), loadFleet(), landed);
+  // 켜진 GROUND STOP이 걸린 AIRPORT의 ASSIGN은 계획에서 뺀다(docs/atfm.md 6장). 열린 제안은 그 사유로 SUPERSEDED
+  const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing), loadFleet(), landed), s.atfm?.groundStops ?? []);
   const seq = ops.filter((o) => o.op === "create").length;
   append(syncOps(existing, plan, s, cfg, now, seq, landed));
   return plan;
@@ -461,7 +464,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const cfg = loadDispatchConfig();
     const now = Date.now();
     const proposals = allProposals();
-    const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals), loadFleet(), landedOf(loadLogbook()));
+    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals), loadFleet(), landedOf(loadLogbook())), s.atfm?.groundStops ?? []);
     const open = proposals.filter((p) => p.status === "proposed" && !isHeld(p));
     const held = proposals.filter((p) => p.status === "proposed" && isHeld(p));
     const inFlight = proposals.filter(isInFlight).sort((a, b) => a.statusAt.localeCompare(b.statusAt));
@@ -577,6 +580,9 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
         if (p.kind !== "ASSIGN") return c.json({ error: "RELEASE 제안은 보내지 않는다" }, 400);
         // 재송신: 이미 보낸 제안이면 같은 문구를 다시 돌려준다
         if (p.status === "sent") return c.json({ proposal: p, sendTo: p.aircraftName, message: p.message });
+        // 켜진 GROUND STOP이 걸린 AIRPORT에는 FLIGHT PLAN을 보내지 않는다(승인된 제안은 풀릴 때까지 기다린다)
+        const stop = p.airport ? enforcedStops((await getSnapshot()).atfm?.groundStops ?? []).get(p.airport) : undefined;
+        if (stop) return c.json({ error: `${groundStopWhy(stop)} — 풀릴 때까지 보내지 않는다` }, 409);
         const bad = closed("send");
         if (bad) return bad;
         const s = await getSnapshot();

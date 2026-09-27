@@ -138,6 +138,7 @@ S2에서는 SUPERVISOR가 SCHEDULE 탭에서 승인한 작업을 OCC가 Linear�
 | `overdue`에 든 sent(10분 넘게 READBACK 없음) | `dispatch release <ID>`로 같은 문구를 받아 한 번 더 보낸다. 그래도 없으면 SUPERVISOR 보고 |
 | `overdue`에 든 accepted(READBACK 뒤 30분 넘게 STAND 없음) | SUPERVISOR 보고만 |
 | send-guard가 막음 | 문구나 받는 사람을 고쳐 다시 시도하지 말고 SUPERVISOR 보고 |
+| `dispatch release`가 `GROUND STOP — …`으로 거절(켜진 출발 중지가 그 AIRPORT에 걸림) | 보내지 않는다. 승인된 제안은 풀릴 때까지 그대로 둔다. OCC LOG에 출발 중지 사유를 적고, "main 깨짐"이면 실패한 체크와 커밋을 읽기 전용 `gh`로 확인해 SUPERVISOR에게 보고 |
 
 STAND가 생기면 atc가 DEPARTED로 바꾼다. RELEASE 제안은 승인돼도 보내지 않는다(SUPERVISOR가 Linear에서 정리).
 

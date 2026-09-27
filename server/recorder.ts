@@ -28,7 +28,9 @@ export type RecordLine =
   | { t: string; kind: "dispatch"; op: string; id: string }
   | { t: string; kind: "schedule"; op: string; id: string }
   // CHECKRIDE 부여·회수: 누가, 추천이었나, 근거(LOGBOOK key·FLIGHT·출처)
-  | { t: string; kind: "checkride"; op: "grant" | "revoke"; aircraft: string; rating: string; by: string; recommended: boolean; status: string; reason: string; evidence: string[] };
+  | { t: string; kind: "checkride"; op: "grant" | "revoke"; aircraft: string; rating: string; by: string; recommended: boolean; status: string; reason: string; evidence: string[] }
+  // ATFM(docs/atfm.md): 출발 중지 시작·끝, CI 소요 시간, BEHIND 전이, 그림자 판정(eligible, s3-eligible), 되돌린 라벨, 스위치
+  | { t: string; kind: "atfm"; op: string; id?: string; airport?: string; data?: Record<string, unknown> };
 
 const DIR = join(config.stateDir, "flight-recorder");
 export const SAMPLE_MS = 5 * 60_000;

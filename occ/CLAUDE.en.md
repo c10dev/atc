@@ -140,6 +140,7 @@ In S2, OCC writes to Linear what the SUPERVISOR approved in the SCHEDULE tab. at
 | A sent proposal in `overdue` (no READBACK for over 10 minutes) | Get the same text with `dispatch release <ID>` and send it once more. If there's still nothing, report to the SUPERVISOR |
 | An accepted proposal in `overdue` (no STAND for over 30 minutes after READBACK) | Report to the SUPERVISOR only |
 | send-guard blocks the send | Don't retry with changed text or recipient; report to the SUPERVISOR |
+| `dispatch release` refuses with `GROUND STOP — …` (an enforced ground stop covers that AIRPORT) | Don't send. Leave the approved proposal as it is until the stop is released. Put the stop's reason in the OCC LOG; for "main 깨짐" (main broken), check the failing check and commit with read-only `gh` and report to the SUPERVISOR |
 
 When a STAND appears, atc marks the proposal DEPARTED. RELEASE proposals are not sent even when approved (the SUPERVISOR tidies them up in Linear).
 

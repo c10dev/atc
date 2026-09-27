@@ -9,9 +9,12 @@ import { readWorkspaces, ticketKeyFromBranch, ticketKeyFromTitle } from "./sourc
 import { readGithub } from "./sources/github.ts";
 import { readLinear } from "./sources/linear.ts";
 import { buildPulls } from "./landing.ts";
+import { type GroundStop, groundStopsOf, loadAtfm, stopKey } from "./atfm.ts";
 
 // PR head별로 CLEARED TO LAND가 처음 된 시각 (메모리, 서버를 재시작하면 다시 센다)
 const readySince = new Map<string, string>();
+// 출발 중지를 처음 본 시각 (메모리, 재시작하면 다시 센다)
+const stopSince = new Map<string, string>();
 
 const fresh = (c: Claim) => Date.now() - Date.parse(c.lastAt) < config.claimTtlMs;
 
@@ -106,6 +109,27 @@ export async function buildSnapshot(): Promise<Snapshot> {
     (pr) => ticketKeyFromBranch(pr.headRefName) ?? ticketKeyFromTitle(pr.title),
   );
 
+  // ATFM 출발 중지(docs/atfm.md 6장). GitHub을 아직 못 읽었으면 계산하지 않는다(빈 상태를 "풀림"으로 보지 않게).
+  const now = Date.now();
+  let groundStops: GroundStop[] = [];
+  if (github.fetchedAt) {
+    const repoOf = new Map(workspaces.map((w) => [w.path, w.repo]));
+    const losOpen = new Map<string, number>();
+    for (const a of alerts) {
+      const repo = a.kind === "conflict" && a.workspacePath ? repoOf.get(a.workspacePath) : undefined;
+      if (repo) losOpen.set(repo, (losOpen.get(repo) ?? 0) + 1);
+    }
+    const found = groundStopsOf({ airports: airports.open, mains: github.mainByRepo, pulls: github.byRepo, losOpen, cfg: loadAtfm(), now });
+    const at = new Date(now).toISOString();
+    const keys = new Set(found.map(stopKey));
+    for (const k of stopSince.keys()) if (!keys.has(k)) stopSince.delete(k);
+    groundStops = found.map((s) => {
+      const k = stopKey(s);
+      if (!stopSince.has(k)) stopSince.set(k, at);
+      return { ...s, since: stopSince.get(k)! };
+    });
+  }
+
   return {
     at: new Date().toISOString(),
     linear: { enabled: linear.enabled, error: linear.error, fetchedAt: linear.fetchedAt },
@@ -120,6 +144,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     alerts,
     clearances: recentClearances(),
     pulls,
+    atfm: { mains: [...github.mainByRepo.values()].filter((m) => repos.includes(m.repo)), groundStops },
   };
 }
 

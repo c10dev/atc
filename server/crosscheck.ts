@@ -14,8 +14,9 @@ export interface Crosscheck {
 
 // 판정을 어떻게 내렸나: "CROSSCHECK에 동의" 한 번 클릭(crosscheck) 또는 직접 고름(manual).
 // 옛 기록에는 없다(undefined 그대로 — 채워 넣지 않는다).
-export type Via = "crosscheck" | "manual";
-// API 입력: "crosscheck"만 그대로, 나머지(없음 포함)는 manual
+// "atfm"은 3단계 자동 판정이다(서버 안에서만 붙인다). 모든 사람 판정 점검과 일치율에서 뺀다(docs/atfm.md 원칙 2).
+export type Via = "crosscheck" | "manual" | "atfm";
+// API 입력: "crosscheck"만 그대로, 나머지(없음·"atfm" 포함)는 manual — 밖에서 atfm이라고 적을 수 없다
 export const viaOf = (body: { via?: unknown }): Via => (body.via === "crosscheck" ? "crosscheck" : "manual");
 
 // 사람이 내린 판정: shadow의 agreed/disagreed, approval의 approved/rejected

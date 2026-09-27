@@ -4,6 +4,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { mountAirports } from "./airports.ts";
+import { mountAtfm, runAtfm } from "./atfm-run.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { mountCrewChange } from "./crew-change.ts";
@@ -73,6 +74,7 @@ async function tick() {
       runDispatch(next);
     }
     if (isWarm(next)) runLogbook(next); // 10분마다 머지된 PR을 LOGBOOK에 적는다
+    if (isWarm(next)) runAtfm(next); // 출발 중지 시작·끝, 1분마다 ATFM 데이터와 그림자 판정(docs/atfm.md)
 
     current = next;
     if (sig !== signature) {
@@ -101,6 +103,7 @@ mountCheckride(app, getSnapshot);
 mountLogbook(app);
 mountNetwork(app, getSnapshot);
 mountSchedule(app, getSnapshot);
+mountAtfm(app, getSnapshot);
 mountSettings(app);
 
 app.get("/api/events", (c) =>
