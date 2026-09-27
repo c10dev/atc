@@ -152,6 +152,8 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - SUPERSEDED 사유가 계획의 제외 목록에 그 FLIGHT가 없을 때도 실제 규칙을 밝힌다: 이미 STAND가 있음, 우선순위 없음, 매핑 밖 프로젝트, 다른 운항사 라벨. planner와 사유 문구가 같은 문구 모음을 써서 서로 어긋나지 않는다.
 - TOWER·DISPATCH hook은 `$CLAUDE_PROJECT_DIR` 기준으로 돌고 fail-closed(`… || exit 2`)다. hook이 없거나 실패하면 이제 도구를 통과시키지 않고 막는다.
 - FIDS 스플릿 플랩 모션이 실제 안내판처럼 보인다. 판(타일)이 넘어가는 중간에 비지 않는다. 새 글자는 떨어지는 판 뒤에 미리 걸려 있고, 판은 중력처럼 점점 빨라지며 기울수록 어두워진다. 판 없는 글자(TIME, REMARKS, Glass Cockpit·Night Sky 테마)는 반쪽 글자 대신 한 글자씩 떨어져 앉는다. 칸마다 최대 6판이고, 안내판이 더 빨리 멈춘다.
+- `lane:` 별칭은 2026-10-10(KST, `server/dispatch.ts`의 `LANE_CUTOFF`)에 끝난다. 그때부터 `tailsOf`는 `tail:`만 읽고, `lane:` 라벨만 붙은 FLIGHT는 어느 팀에도 제안하지 않고 `옛 lane:TEAM_X 라벨은 2026-10-10부터 읽지 않음 — tail:TEAM_X로 바꿀 것`으로 제외한다(`oldLaneOnly`)([docs/fleet.ko.md](docs/fleet.ko.md) 9장).
+- ATFM의 `eligible`·`s3-eligible` 기록 줄에 확인한 조건 코드(A1–A10, S1–S4)가 `checked`로 남는다. 대상 판정을 나중에 설명할 수 있게.
 
 ### 수정
 - DISPATCH가 판정받기 전에 제안을 잃었다([docs/dispatch.md](docs/dispatch.md) 6.1). 제안 19건 중 10건이 판정 전에 SUPERSEDED됐고, 그중 7건이 "더 나은 배정으로 바뀜"이었다. D-0017(VOC-196 → TEAM_E, `tail:TEAM_E`)은 planner가 TEAM_E에게 VOC-177을 줘서 닫혔는데, 그 짝은 D-0010에서 거절돼 `syncOps`가 제안할 수 없었다. 결국 두 FLIGHT 모두 제안이 없었다.
@@ -164,6 +166,14 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - ARRIVED는 제안의 `arrived` 상태(`timeline.arrived`)에서 오고, FOLLOWING 항목은 CAPTAIN 보고를 `arrival: {note, url}`로 싣는다. 제안 없는 `tail:` FLIGHT는 DEPARTED가 Linear 시작 시각, ARRIVED가 Linear Done이다.
   - 새 지연 코드 `no-arrival`(warn): DEPARTED 뒤 WAKE 기대치의 1.5배가 지나도 ARRIVED 보고가 없음. recalling인 FLIGHT는 보지 않는다.
   - FOLLOWING 탭은 이 FLIGHT에 세 칸짜리 단계 막대를 보이고 결과를 링크한다. OCC 문제 표(`occ/CLAUDE.md`)에 `no-arrival`을 넣었다.
+- linear-guard가 release된 같은 호출을 몇 번이든 통과시켰다. 그래서 다음 Linear 조회 전에 release된 `save_comment`를 되풀이하면 댓글이 두 번 달렸다(NEW의 `save_issue`를 되풀이하면 이슈가 둘 생겼을 것이다)([docs/occ.ko.md](docs/occ.ko.md) 6장).
+  - 이제 `occ/mcp-guard.mjs`는 쓰기를 통과시키기 전에 호출을 claim한다. `POST /api/schedule/released/claim {tool, input}`이 아직 쓰지 않은, 맞는 release 호출을 찾아 `use` 줄을 남긴다(순수 함수 `claimOf`). 똑같은 두 번째 호출은 `… 이미 한 번 통과함`으로 막힌다. claim이 실패하거나 atc에 닿지 않으면 쓰기를 막는다(fail-closed).
+  - 작업은 `released` 그대로이고 APPLIED 판정은 바뀌지 않았다. `GET /api/schedule/released`가 호출마다 `used`를 보인다. 다시 release해도 같은 호출과 같은 표시가 돌아오고, 표시를 지우는 길은 없다. Linear 쓰기가 실패했으면 SUPERVISOR가 직접 바꾼다.
+  - OCC 규칙(`occ/CLAUDE.md`): 이미 통과한 호출은 다시 하지 않는다.
+- ATFM S3 대상 판정이 사람이 맡아야 할 FLIGHT를 통과시킬 수 있었다([docs/atfm.ko.md](docs/atfm.ko.md) 4장).
+  - S2는 이제 그 FLIGHT의 DISPATCH 제안에 OCC CAUTION이 있거나 atc가 FLIGHT를 읽지 못해도 떨어진다. `Risk:` 라벨은 원래 SEC로 읽었다(`classOf`). 테스트에 옛 단독 라벨 `Risk: Security`도 넣었다.
+  - S4는 이제 FLIGHT가 DISPATCH 제안으로 날고 있을 때(`isInFlight`)도 떨어진다. STAND 없이 READBACK 때 DEPARTED한 FLIGHT도 여기에 든다.
+- ATFM 켜는 조건 줄 "2b 승인 운용 2주 이상"과 "S2 승인 운용 2주 이상"은 운용 기간을 재지 않아 통과할 수 없었다. 이제 FLIGHT RECORDER의 마지막 `mode:` 전환에서 잰다(`approvalRunOf`, 14일). 모드는 `approval`인데 맞는 전환 기록이 없으면 판정 대신 "△ 확인 필요"(새 상태 `check`)를 보인다.
 
 ### 문서
 - 한국어 번역(#51)에서 찾은 설계 문서의 오류와 낡은 서술 35건을 `*.md`와 `*.ko.md` 모두에서 고쳤다. 코드를 기준으로 삼았고, 만들지 않은 것은 "아직 만들지 않음"으로 적었다.

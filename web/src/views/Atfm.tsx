@@ -9,7 +9,7 @@ import "./Atfm.css";
 type StopMode = "off" | "shadow" | "on";
 type ShadowMode = "off" | "shadow";
 type Trigger = "main-broken" | "failure-wave" | "congestion" | "los" | "manual";
-type TurnState = "pass" | "fail" | "insufficient";
+type TurnState = "pass" | "fail" | "insufficient" | "check";
 
 interface AtfmConfig {
   groundStop: { mainBroken: StopMode; manual: "off" | "on"; failureWave: ShadowMode; congestion: ShadowMode; los: ShadowMode };
@@ -104,7 +104,7 @@ const TRIGGER_TEXT: Record<Trigger, string> = {
 };
 const MAIN_TEXT: Record<MainView["state"], string> = { success: "success", failure: "failure", pending: "pending", none: "CI 없음" };
 const MODE_TEXT: Record<StopMode, string> = { off: "꺼짐", shadow: "그림자", on: "켜짐" };
-const TURN_MARK: Record<TurnState, string> = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족" };
+const TURN_MARK: Record<TurnState, string> = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족", check: "△ 확인 필요" };
 // 켜면 멈추는 것(확인 문구에 씀)
 const ON_EFFECT = "켜면 해당 AIRPORT에 새 ASSIGN과 LAND가 멈춘다.";
 

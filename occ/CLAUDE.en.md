@@ -139,7 +139,7 @@ In S2, OCC writes to Linear what the SUPERVISOR approved in the SCHEDULE tab. at
 | Situation (where in `schedule brief`) | What to do |
 |---|---|
 | `approved` in `inProgress` | `node ../controller/atcctl.mjs schedule release <S-xxxx>` → pass the JSON under each `CALL n/m · <tool>` **unchanged** as the input of that Linear MCP tool (`save_issue`, `save_comment`). Make every CALL, in order |
-| `released` in `inProgress` (still there on the next pass) | atc checks on its next Linear read whether it landed. Run `schedule release` once more to get the same CALLs and redo only the missing one. If it is still there, report to the SUPERVISOR |
+| `released` in `inProgress` (still there on the next pass) | atc checks on its next Linear read whether it landed. Run `schedule release` once more to get the same CALLs and redo only the missing one. A call that already passed is blocked by linear-guard with `이미 한 번 통과함` (so a repeat never writes twice) — don't redo it. If it is still there, report to the SUPERVISOR |
 | linear-guard blocked it (`OCC MCP 차단`) | Don't change the input and retry; report to the SUPERVISOR |
 | The Linear tool returned an error (missing label etc.) | Don't retry; report the error as is to the SUPERVISOR |
 

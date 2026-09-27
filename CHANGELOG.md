@@ -154,6 +154,8 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 - SUPERSEDED reasons name the real rule even when the FLIGHT is no longer in the plan's exclusion list: STAND already exists, no priority, project not mapped, another operator's label. The planner and the reason text share one set of phrases, so they cannot drift apart.
 - TOWER and DISPATCH hooks run from `$CLAUDE_PROJECT_DIR` and are fail-closed (`… || exit 2`): a missing or failing hook now blocks the tool instead of letting it through.
 - FIDS split-flap motion looks like a real board. Tiles no longer go blank mid-flap: the new letter waits behind the falling flap, which speeds up like gravity and darkens as it tilts. Text without tiles (TIME, REMARKS, Glass Cockpit and Night Sky) drops in letter by letter instead of showing half-letters. At most 6 flaps per cell, and the board settles faster.
+- The `lane:` alias ends on 2026-10-10 (KST, `LANE_CUTOFF` in `server/dispatch.ts`). From then on `tailsOf` reads only `tail:`, and a FLIGHT with only a `lane:` label is proposed to no team and excluded with `옛 lane:TEAM_X 라벨은 2026-10-10부터 읽지 않음 — tail:TEAM_X로 바꿀 것` (`oldLaneOnly`) ([docs/fleet.md](docs/fleet.md) 9).
+- ATFM `eligible` and `s3-eligible` recorder lines now carry `checked`, the condition codes that were checked (A1–A10, S1–S4), so an eligibility result can be explained afterwards.
 
 ### Fixed
 - DISPATCH lost proposals before they were judged ([docs/dispatch.md](docs/dispatch.md) 6.1). Of 19 proposals, 10 were SUPERSEDED unjudged, 7 as "더 나은 배정으로 바뀜". D-0017 (VOC-196 → TEAM_E, `tail:TEAM_E`) closed because the planner gave TEAM_E VOC-177, whose pair had been rejected as D-0010, so `syncOps` could not propose it; neither FLIGHT got a proposal.
@@ -166,6 +168,14 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
   - ARRIVED comes from the proposal's `arrived` status (`timeline.arrived`), and the FOLLOWING item carries the CAPTAIN's report as `arrival: {note, url}`. For a `tail:` FLIGHT without a proposal, DEPARTED is the Linear start and ARRIVED is Linear Done.
   - New delay code `no-arrival` (warn): DEPARTED longer ago than 1.5× the WAKE expectation with no ARRIVED report. A recalling FLIGHT is not checked.
   - The FOLLOWING tab shows a three-step stage bar for these FLIGHTs and links the result. The OCC issue table (`occ/CLAUDE.md`) lists `no-arrival`.
+- linear-guard let the same released call through any number of times, so repeating a released `save_comment` before the next Linear fetch posted the comment twice (and a repeated NEW `save_issue` would create two issues) ([docs/occ.md](docs/occ.md) 6).
+  - Before letting a write through, `occ/mcp-guard.mjs` now claims the call: `POST /api/schedule/released/claim {tool, input}` finds a matching released call that is not used yet and records a `use` line (pure `claimOf`). A second identical call is blocked with `… 이미 한 번 통과함`. If the claim fails or atc can't be reached, the write is blocked (fail-closed).
+  - The operation stays `released`, and APPLIED detection is unchanged. `GET /api/schedule/released` shows `used` per call. A re-release returns the same calls with the same marks; nothing un-marks a call. If the write failed in Linear, the SUPERVISOR makes the change by hand.
+  - OCC rules (`occ/CLAUDE.md`): don't redo a call that already passed.
+- ATFM S3 eligibility could pass FLIGHTs that must stay human ([docs/atfm.md](docs/atfm.md) 4).
+  - S2 now also fails when a DISPATCH proposal for the FLIGHT has an OCC CAUTION, or when atc cannot read the FLIGHT. `Risk:` labels were already read as SEC (`classOf`); the tests now cover the old single `Risk: Security` label too.
+  - S4 now also fails while the FLIGHT is in flight on a DISPATCH proposal (`isInFlight`), which covers a STAND-free FLIGHT that departed at READBACK without a STAND.
+- The ATFM turn-on rows "2b 승인 운용 2주 이상" and "S2 승인 운용 2주 이상" could never pass: the run time was not measured. They now measure it from the last `mode:` switch in the FLIGHT RECORDER (`approvalRunOf`, 14 days). When the mode is `approval` but no matching switch is recorded, the row shows "△ 확인 필요" (new state `check`) instead of a verdict.
 
 ### Docs
 - Fixed the 35 errors and outdated statements that the Korean translation (#51) found in the design docs, in both `*.md` and `*.ko.md`. The code was taken as the truth; unbuilt parts are marked "Not built yet".

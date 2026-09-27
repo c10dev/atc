@@ -338,7 +338,8 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 | `POST /api/schedule/ops/:id/verdict` | `{verdict: agree\|disagree, reason?, via?}` SUPERVISOR 그림자 판정(`via`: `crosscheck`나 `manual`) |
 | `POST /api/schedule/ops/:id/approve`, `/reject` | S2에서만: SUPERVISOR 승인, 또는 `{reason?}`와 함께 거절. 둘 다 `{via?}` |
 | `POST /api/schedule/ops/:id/release` | S2에서만: OCC가 승인된 작업을 발부. 정확한 Linear 호출을 돌려준다(이미 발부됐으면 같은 호출). `CLOSE`는 409로 거절 |
-| `GET /api/schedule/released` | 모드와 발부된 호출 전부(linear-guard가 읽음) |
+| `GET /api/schedule/released` | 모드와 발부된 호출 전부, 호출마다 `used`(linear-guard가 읽음) |
+| `POST /api/schedule/released/claim` | `{tool, input}`: linear-guard가 쓰기를 통과시키기 전에 맞는 발부 호출을 한 번 쓴 것으로 기록. 이미 쓴 호출이나 없는 호출은 409 |
 | `POST /api/schedule/mode` | `{mode: shadow\|approval}` |
 
 ## CHARTER DESK (요청 창구)

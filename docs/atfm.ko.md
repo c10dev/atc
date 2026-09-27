@@ -58,7 +58,7 @@ ATFM(air traffic flow management, 교통 흐름 관리)은 atc의 3단계다. 1�
 
 **켜는 조건**(모두 만족해야 한다. 데이터로 확인하고, DISPATCH 탭의 기존 게이트 옆 "STAGE 3" 패널에 보인다):
 
-1. 2b를 2주 이상 돌렸고 `gate3`가 준비됐다. [dispatch.ko.md](dispatch.ko.md) 8장의 기준은 2주 이상, READBACK 90% 이상, DEPARTED 80% 이상, DISPATCH가 보낸 FLIGHT의 LOS가 거의 0, 유휴 AIRCRAFT 시간 감소다. 코드(`gate3Of`, `GATE3`)는 사람이 승인해 보낸 FLIGHT PLAN 10건 이상, READBACK 90% 이상, DEPARTED 80% 이상을 본다. 10건 최소치는 코드가 정한 것이다. LOS는 아래 5번 조건이 본다. 2주 기간(줄에는 DISPATCH 모드만 보인다)과 유휴 AIRCRAFT 시간 감소는 재지 않는다: 아직 만들지 않음. DEPARTED 비율은 STAND가 필요한 FLIGHT만 센다. STAND 없는 FLIGHT는 READBACK 때 DEPARTED하므로 READBACK 비율에만 들어가고, `gate3.standFree`로 따로 보인다.
+1. 2b를 2주 이상 돌렸고 `gate3`가 준비됐다. [dispatch.ko.md](dispatch.ko.md) 8장의 기준은 2주 이상, READBACK 90% 이상, DEPARTED 80% 이상, DISPATCH가 보낸 FLIGHT의 LOS가 거의 0, 유휴 AIRCRAFT 시간 감소다. 코드(`gate3Of`, `GATE3`)는 사람이 승인해 보낸 FLIGHT PLAN 10건 이상, READBACK 90% 이상, DEPARTED 80% 이상을 본다. 10건 최소치는 코드가 정한 것이다. LOS는 아래 5번 조건이 본다. 2주 기간은 FLIGHT RECORDER의 마지막 DISPATCH `mode:` 전환에서 잰다(`approvalRunOf`). `approval`로 14일 이상이면 통과다. 모드는 `approval`인데 마지막 전환 기록이 그렇지 않으면(파일을 직접 고쳤거나 전환이 기록 보존 기간 30일보다 오래됨) 판정 대신 "확인 필요"를 보인다. 유휴 AIRCRAFT 시간 감소는 재지 않는다: 아직 만들지 않음. DEPARTED 비율은 STAND가 필요한 FLIGHT만 센다. STAND 없는 FLIGHT는 READBACK 때 DEPARTED하므로 READBACK 비율에만 들어가고, `gate3.standFree`로 따로 보인다.
 2. **자동 대상의 그림자 정밀도**: SUPERVISOR가 판정한 자동 대상 ASSIGN이 20건 이상이고, 그중 95% 이상이 승인됐고, `already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`으로 거절된 것이 하나도 없다.
 3. **DISPATCH의 CROSSCHECK, 모델 계열별**: 지금 쓰는 모델 계열(`byModel`, `modelFamily`로 묶음)의 mark가 달린 판정 20건 이상, 일치 90% 이상.
    - 전체 비율로는 부족하다. 모델이 이미 한 번 바뀌었기 때문이다.
@@ -90,9 +90,9 @@ ATFM(air traffic flow management, 교통 흐름 관리)은 atc의 3단계다. 1�
 | # | 조건 |
 |---|---|
 | S1 | 종류가 `CLASSIFY`이고, 라벨이 없는 축에 라벨을 **더하기만** 한다(호출에 `removeLabels` 없음). 있는 라벨을 바꾸는 것은 사람의 결정이다(결정 5: 지금 S3 단계 범위는 이것이 전부) |
-| S2 | `rating:SEC`를 더하지도 빼지도 않고, FLIGHT에 `rating:SEC`·Risk 라벨·CAUTION이 없다 |
+| S2 | `rating:SEC`를 더하지 않고, FLIGHT에 `rating:SEC`, Risk 그룹 라벨(`Risk:Security`, 또는 옛 단독 라벨 `Risk: Security`. `classOf`는 `Risk:` 라벨을 모두 SEC로 읽는다), 그 FLIGHT의 DISPATCH 제안에 붙은 OCC CAUTION이 없다. atc가 FLIGHT를 읽지 못하면 S2에서 떨어진다: SEC 작업은 절대 자동이 아니다 |
 | S3 | 이 초안에 허용된 모델의 CROSSCHECK `agree` mark가 있고, OCC 사유가 정하는 축마다 fleet.md의 절을 인용한다(#29 규칙) |
-| S4 | FLIGHT가 Todo나 Backlog이고, 다른 팀의 `tail:`로 AIRBORNE 중이 아니다 |
+| S4 | FLIGHT가 Todo나 Backlog이고 어느 팀도 날고 있지 않다: STAND가 없고, 승인에서 ARRIVED 사이의 DISPATCH 제안이 없다(`isInFlight`. READBACK 때 DEPARTED한 STAND 없는 FLIGHT도 포함). `tail:` 라벨만으로는 막지 않는다. 미리 배정일 뿐이다 |
 
 조건이 하나 더 있지만 초안마다 보는 것은 아니다. S2 단계(승인 운용)가 켜져 있어야 한다. 그래야 Linear 호출이 atc가 release하고 linear-guard가 비교하는 호출이 된다. 이 조건은 모든 초안에 한꺼번에 맞거나 한꺼번에 안 맞는다. 그래서 아래 켜는 조건 1번이 본다.
 
@@ -106,7 +106,7 @@ ATFM(air traffic flow management, 교통 흐름 관리)은 atc의 3단계다. 1�
 
 **켜는 조건.**
 
-1. S2 단계를 2주 돌렸고([occ.ko.md](occ.ko.md) 11장), 사람이 되돌린 APPLIED 작업이 없다. "되돌림"은 OCC가 더한 라벨이 7일 안에 사라진 것으로 감지한다.
+1. S2 단계를 2주 돌렸고([occ.ko.md](occ.ko.md) 11장. 3장 1번처럼 마지막 SCHEDULE `mode:` 전환에서 잰다), 사람이 되돌린 APPLIED 작업이 없다. "되돌림"은 OCC가 더한 라벨이 7일 안에 사라진 것으로 감지한다.
 2. #29 이후 쓴 CLASSIFY 초안에 대한 사람 일치: 판정 20건 이상, 일치 85% 이상.
 3. SCHEDULE CLASSIFY의 CROSSCHECK, 지금 모델 계열별(3장과 같음, `unknown`은 세지 않음): mark 20건 이상, 일치 90% 이상(지금: 7건 중 7건, 그중 5건이 `unknown`).
 4. 그림자 정밀도: 판정된 자동 대상 초안 20건 이상, 승인 95% 이상.
@@ -198,7 +198,7 @@ Codex 사용 한도 알림(`no-review`에서 "Codex 한도"로 멈춘 PR)은 GRO
 | 한도 | 자동 ASSIGN: 전체 하루 3건까지, 그리고 AIRCRAFT당 ARRIVED하지 않은 자동 배정 FLIGHT 1건까지. WAKE 슬롯과 함께 센다(결정 3). S3 자동 작업: 하루 5건까지. 하루는 KST 기준이다. 한도에 닿으면 대상 항목은 보통의 사람 흐름으로 돌아간다 |
 | 자동 trip | 장치마다 trip 조건이 있다(3–4장). 걸리면 스위치를 `shadow`로 돌리고 경보를 띄운다. 다시 켜는 것은 SUPERVISOR가 한다 |
 | 알림 | 모든 자동 동작은 `/api/events`의 이벤트이자, 그 탭 "AUTO" 목록의 한 줄이다. trip과 GROUND STOP은 ALERT다. OCC와 TOWER는 LOG 줄에 자동 동작을 적는다 |
-| 기록 | 종류 `atfm`의 FLIGHT RECORDER 줄: `{op, id?, airport?, data?}`. 구현된 op는 10장에 있다(`ground-stop`, `ground-release`, `ci`, `behind`, `eligible`, `s3-eligible`, `undone`, `switch`, `off`, `manual-stop`, `manual-release`). 아직 만들지 않음: `auto-approve`, `auto-apply`, `trip`, `slot-hold`, 그리고 함께 올 `rule`·`inputs` 필드. `inputs`는 확인한 조건의 snapshot이 될 것이다. 그래서 어떤 자동 동작이든 나중에 설명할 수 있다 |
+| 기록 | 종류 `atfm`의 FLIGHT RECORDER 줄: `{op, id?, airport?, data?}`. 구현된 op는 10장에 있다(`ground-stop`, `ground-release`, `ci`, `behind`, `eligible`, `s3-eligible`, `undone`, `switch`, `off`, `manual-stop`, `manual-release`). `eligible`과 `s3-eligible`에는 확인한 조건 코드(A1–A10, S1–S4)가 `checked`로 남는다. 아직 만들지 않음: `auto-approve`, `auto-apply`, `trip`, `slot-hold`, 그리고 함께 올 `rule`·`inputs` 필드. `inputs`는 조건마다 근거가 된 값의 snapshot이 될 것이다. 그래서 어떤 자동 동작이든 나중에 설명할 수 있다 |
 | 귀속 | 자동 승인은 `by: "atfm"`, `via: "atfm"`인 `approve` op다. 사람 게이트와 CROSSCHECK 일치율에서 빠진다(원칙 2) |
 | guard | 자동 FLIGHT PLAN은 `dispatch release`와 send-guard를, 자동 Linear 쓰기는 `schedule release`와 linear-guard를 거친다. 어느 guard에도 우회로가 없다 |
 
@@ -240,8 +240,8 @@ Codex 사용 한도 알림(`no-review`에서 "Codex 한도"로 멈춘 PR)은 GRO
 | 적용(켰을 때만) | `server/proposals.ts`, `server/controller.ts`, `server/events.ts`, TOWER·OCC `CLAUDE.md` | planner가 멈춘 AIRPORT의 ASSIGN을 `GROUND STOP — …`로 `excluded`에 옮긴다. 그래서 거기 열린 제안은 그 사유로 SUPERSEDED된다. `dispatch release`는 거부한다. TOWER 브리핑이 `landingQueue` 항목마다 `groundStop`을 붙이고, TOWER는 거기에 LAND를 주지 않는다. `groundstop.started`·`groundstop.ended` 이벤트로 TOWER가 HOLD와 CONTINUE를 보낸다. 그림자 멈춤은 이벤트를 만들지 않는다 |
 | 머지 슬롯(그림자) | `server/atfm.ts` `slotsOf`, TOWER 브리핑 `landingQueue[].slot` | `in-slot`이나 `waiting-slot`, 줄 순서, Urgent, LAND 시각과 30분 제한 시간. TOWER는 아직 따르지 않는다 |
 | 자동 대상 판정(그림자) | `server/atfm.ts` `autoEligibility`(A1–A10), `s3Eligibility`(S1–S4) | 열린 ASSIGN과 CLASSIFY 초안마다, 못 맞춘 조건과 함께 계산한다 |
-| 그림자 정밀도와 켜는 조건 줄 | `server/atfm-run.ts` `atfmView` | 정밀도는 한 번이라도 대상으로 기록된 항목을 사람 결정과 비교해 잰다. 막았어야 할 거절(`already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`)도 센다. 3·4장의 켜는 조건마다 통과/실패/데이터 부족 줄이 된다. CROSSCHECK 비율은 `unknown`이 아닌 가장 최근 mark의 계열로 잰다(`currentModelRate`) |
-| 기록 | FLIGHT RECORDER 줄 `kind: "atfm"` | `ground-stop`, `ground-release`, `ci`, `behind`(열린 PR이 BEHIND가 됨), `eligible`, `s3-eligible`, `undone`(S2로 적용한 라벨이 7일 안에 사라짐), `switch`, `off`, `manual-stop`, `manual-release`. `~/.local/state/atc/atfm-state.json`이 무엇을 기록했는지 기억해서, 재시작해도 줄이 겹치지 않는다 |
+| 그림자 정밀도와 켜는 조건 줄 | `server/atfm-run.ts` `atfmView` | 정밀도는 한 번이라도 대상으로 기록된 항목을 사람 결정과 비교해 잰다. 막았어야 할 거절(`already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`)도 센다. 3·4장의 켜는 조건마다 통과/실패/데이터 부족 줄이 된다(2주 줄은 "확인 필요"도 될 수 있다. `approvalRunOf`). CROSSCHECK 비율은 `unknown`이 아닌 가장 최근 mark의 계열로 잰다(`currentModelRate`) |
+| 기록 | FLIGHT RECORDER 줄 `kind: "atfm"` | `ground-stop`, `ground-release`, `ci`, `behind`(열린 PR이 BEHIND가 됨), `eligible`과 `s3-eligible`(`checked` 포함), `undone`(S2로 적용한 라벨이 7일 안에 사라짐), `switch`, `off`, `manual-stop`, `manual-release`. `~/.local/state/atc/atfm-state.json`이 무엇을 기록했는지 기억해서, 재시작해도 줄이 겹치지 않는다 |
 | API | `server/atfm-run.ts` | `GET /api/atfm`(스위치, main CI, GROUND STOP, 슬롯, 못 맞춘 조건이 붙은 대상 판정, 정밀도, 켜는 조건 줄, 데이터), `POST /api/atfm/switch {key, value}`, `POST /api/atfm/off`, `POST /api/atfm/stops {airport, reason}`(`groundStop.manual`이 켜져 있을 때만), `POST /api/atfm/stops/:airport/release` |
 | 화면 | DISPATCH 탭 "ATFM" 블록(`web/src/views/Atfm.tsx`) | GROUND STOP(ENFORCED 또는 그림자), 확인을 거쳐 켤 수 있는 스위치 두 개, 수동 멈춤 입력, AIRPORT별 main CI, 슬롯, 대상 판정, S3, 데이터, ATFM OFF. 나중에 NETWORK 탭으로 옮길 수 있다 |
 | 귀속 | `server/crosscheck.ts` `Via`, `humanOf`, 게이트 | `via: "atfm"`은 서버 안에서만 붙일 수 있다. `humanOf`는 여기에 아무것도 돌려주지 않는다. 2a·S1 게이트는 이를 건너뛰고, `gate3`는 사람이 승인한 FLIGHT PLAN만 세고, CROSSCHECK 비율과 한 번 클릭 수에서도 빠진다 |

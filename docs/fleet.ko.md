@@ -553,7 +553,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 네 단계 모두 끝났다.
 
-1. ✅ planner는 `tail:`을 읽고, 2026-10-10까지 `lane:`을 별칭으로 계속 읽는다. `lane:` FLIGHT의 제외 사유에는 `(옛 lane: 라벨 — tail:로 바꿀 것)`이 붙는다. 코드에 끝나는 날짜는 없다. 별칭은 손으로 지운다.
+1. ✅ planner는 `tail:`을 읽고, 2026-10-10까지 `lane:`을 별칭으로 계속 읽는다. `lane:` FLIGHT의 제외 사유에는 `(옛 lane: 라벨 — tail:로 바꿀 것)`이 붙는다. 2026-10-10(KST, `LANE_CUTOFF`)부터 planner는 `lane:`을 읽지 않는다. `lane:` 라벨만 붙은 FLIGHT는 어느 팀에도 제안하지 않고 `옛 lane:TEAM_X 라벨은 2026-10-10부터 읽지 않음 — tail:TEAM_X로 바꿀 것`으로 제외하며, `tail:`도 붙은 FLIGHT는 `tail:`을 따른다.
 2. ✅ Linear 라벨 `tail:TEAM_A` … `tail:TEAM_F`를 만들고 VOC-196에 `tail:TEAM_E`를 붙였다(2026-09-26 SUPERVISOR 승인).
 3. ✅ President에게 알렸다: 배정은 Linear에 `tail:TEAM_X`로 한다. OCC 인계는 occ.ko.md 8장을 따른다.
 4. ✅ `occ/CLAUDE.md`, README, CHANGELOG에서 이름을 바꿨다.

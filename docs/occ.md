@@ -149,11 +149,14 @@ A Linear write passes only when all of these hold:
 
 1. The SCHEDULE mode is `approval` (S2, section 7). In shadow, every Linear write is blocked.
 2. The tool and its input **exactly** match (key order aside) a call atc has released: `GET /api/schedule/released` lists the calls of operations in state `released`. A call drops off that list once its operation is APPLIED, superseded or expired.
-3. atc answers within 3 seconds. If it can't be reached, the write is blocked.
+3. That call has not passed before. Right before letting the write through, the guard claims it: `POST /api/schedule/released/claim {tool, input}` finds a matching released call that is not used yet and records a `use` line for it (the operation stays `released`). A second identical call is blocked with `… 이미 한 번 통과함`, so repeating a released `save_comment` or `save_issue` cannot post a comment or create an issue twice. `GET /api/schedule/released` shows `used` on each call.
+4. atc answers within 3 seconds, both for the list and for the claim. If it can't be reached, or it does not record the claim, the write is blocked.
 
 The guard checks nothing else. The rest follows from the fact that only atc builds released calls (`callsOf`, see "Turning on S2"): an issue body ends with `— OCC S-0001 · CHARTER REQUEST …` and a comment starts with `[OCC S-0001]`, and no call touches state or assignee, so moving an issue to In Progress or In Review can never match.
 
 Everything else is blocked with `OCC MCP 차단 — …`. As with send-guard, OCC never retries a blocked write by rewording it. It reports to the SUPERVISOR.
+
+A used call stays used: releasing the operation again returns the same calls with the same `used` marks, and nothing un-marks one. If the Linear write failed after the guard let it through, OCC reports it, and the SUPERVISOR makes the change in Linear by hand; atc still marks the operation APPLIED when the next fetch shows it (or it expires after 3 days).
 
 atc marks a released operation APPLIED when the next Linear fetch shows the change: for `NEW`, an issue with the same title (normalized) created after the draft; for `CLASSIFY` and `PRIORITIZE`, the labels or priority as drafted; for `CLOSE`, a Done or Canceled issue. If the change shows before the operation is released, it is SUPERSEDED instead.
 
@@ -281,7 +284,7 @@ S2 is built and sits behind the SCHEDULE `mode` (`~/.local/state/atc/schedule.js
 4. Press "S2 승인 운용 켜기" in the SCHEDULE tab (or `POST /api/schedule/mode {"mode":"approval"}`). OCC picks it up on its next pass.
 5. To stop, switch back to shadow: linear-guard then blocks every Linear write, and released operations stay as they are.
 
-How it runs: the SUPERVISOR approves (or rejects with a reason) → OCC runs `atcctl schedule release S-xxxx`, which records RELEASED and prints the exact Linear MCP calls (`save_issue`, plus a `save_comment` with the reason for CLASSIFY and PRIORITIZE) → OCC makes each call with the input unchanged; `occ/mcp-guard.mjs` (linear-guard) passes a Linear write only when the mode is approval and the tool and input match a released call exactly → on the next Linear read atc marks the operation APPLIED (the change is visible, or for NEW an issue with that title appeared). Approved or released operations that don't land within 3 days expire. Calls only touch plan fields: labels, priority, a new issue's title/body/project/relations, and a comment. Never state or assignee.
+How it runs: the SUPERVISOR approves (or rejects with a reason) → OCC runs `atcctl schedule release S-xxxx`, which records RELEASED and prints the exact Linear MCP calls (`save_issue`, plus a `save_comment` with the reason for CLASSIFY and PRIORITIZE) → OCC makes each call with the input unchanged; `occ/mcp-guard.mjs` (linear-guard) passes a Linear write only when the mode is approval, the tool and input match a released call exactly, and that call has not passed before (section 6) → on the next Linear read atc marks the operation APPLIED (the change is visible, or for NEW an issue with that title appeared). Approved or released operations that don't land within 3 days expire. Calls only touch plan fields: labels, priority, a new issue's title/body/project/relations, and a comment. Never state or assignee.
 
 ## CROSSCHECK
 
