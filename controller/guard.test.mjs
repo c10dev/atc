@@ -310,3 +310,25 @@ test("crew-change: OCC(--gh-read)는 brief·send·readback 통과, CROSSCHECK는
   assert.notEqual(check("node ../controller/atcctl.mjs crew-change send CC-0003 > out.txt", OCC, { ghRead: true }), null);
   assert.notEqual(check("node ../controller/atcctl.mjs crew-change send $(echo CC-0003)", OCC, { ghRead: true }), null);
 });
+
+test("CROSSCHECK landing review(ATC-7): 자료 읽기는 통과, 기록(--verdict)은 실제 모델 확인 뒤 모델을 붙인다. 다른 landing 명령은 막는다", () => {
+  const READ = "node ../controller/atcctl.mjs landing review vocado_nextjs#391";
+  const WRITE = "node ../controller/atcctl.mjs landing review vocado_nextjs#391 --head abc1234 --verdict pass -- '완료 기준 충족, P2 없음'";
+  const opts = { crosscheck: true };
+  assert.equal(check(READ, CROSSCHECK, opts), null);
+  assert.equal(check(`${READ} | jq '.diffTruncated'`, CROSSCHECK, opts), null);
+  assert.equal(check(WRITE, CROSSCHECK, opts), null);
+  assert.notEqual(check("node ../controller/atcctl.mjs landing reviews", CROSSCHECK, opts), null);
+  assert.notEqual(check("node ../controller/atcctl.mjs landing clear vocado_nextjs#391", CROSSCHECK, opts), null);
+  // 읽기에는 모델 확인이 없다
+  assert.deepEqual(checkMarkModel(READ, CROSSCHECK, null), { command: READ });
+  // 기록은 mark처럼: Muse면 모델을 붙이고, Claude·기록 없음은 막고, 이어 쓰기·--model도 막는다
+  const ok = checkMarkModel(WRITE, CROSSCHECK, transcript("claude-opus-5-5", "muse-spark-1.3-contributor"));
+  assert.equal(ok.command, `ATC_CROSSCHECK_MODEL='muse-spark-1.3-contributor' ${WRITE}`);
+  assert.match(checkMarkModel(WRITE, CROSSCHECK, transcript("claude-opus-5-5")).reason, /쓸 수 없음/);
+  assert.match(checkMarkModel(WRITE, CROSSCHECK, null).reason, /읽지 못해/);
+  assert.match(checkMarkModel(`${WRITE} && node ../controller/atcctl.mjs crosscheck brief`, CROSSCHECK, transcript("muse-spark-1.3-contributor")).reason, /단독으로/);
+  assert.match(checkMarkModel(WRITE.replace("--verdict pass", "--model x --verdict pass"), CROSSCHECK, transcript("muse-spark-1.3-contributor")).reason, /세션이 적지 않는다/);
+  // -- 뒤 리뷰 글에 --verdict가 있어도 읽기가 기록이 되지는 않는다
+  assert.deepEqual(checkMarkModel(`${READ} -- --verdict`, CROSSCHECK, null), { command: `${READ} -- --verdict` });
+});

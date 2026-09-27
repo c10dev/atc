@@ -255,6 +255,22 @@ function LandingBadge({ pr }: { pr: PullRequest }) {
   );
 }
 
+// Codex 한도 때 Muse 리뷰 상태(ATC-7). Codex를 쓸 수 있으면 없음
+function MuseTag({ pr }: { pr: PullRequest }) {
+  const m = pr.muse;
+  if (!m) return null;
+  const codex = pr.codexUnavailable?.why === "silent" ? "Codex 무응답" : "Codex 한도";
+  const r = m.review;
+  const text =
+    m.status === "pass" ? `REVIEW: MUSE (${codex})` : m.status === "findings" ? `MUSE 지적 (${codex})` : m.status === "waiting" ? `${codex} · MUSE 리뷰 대기` : `Muse 리뷰 제외 — ${m.reason}`;
+  const tip = r ? `Muse 리뷰 ${r.verdict} · ${r.family} (${r.model}) · ${r.at}\nP0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}\n${r.text}` : m.status === "excluded" ? "기밀 작업은 Muse에 보내지 않는다 — Codex나 SUPERVISOR 리뷰" : "CROSSCHECK(Muse)가 이 head를 리뷰하면 CLEARED TO LAND 근거가 된다";
+  return (
+    <span className={`pr-muse is-${m.status}`} title={tip}>
+      {text}
+    </span>
+  );
+}
+
 function PrLink({ pr }: { pr: PullRequest }) {
   return (
     <a
@@ -278,7 +294,7 @@ const blockShort: Record<LandingBlockCode, string> = {
   "no-checks": "CI 없음",
   "no-review": "리뷰 없음",
   "review-stale": "리뷰 옛 커밋",
-  "review-findings": "Codex 지적",
+  "review-findings": "리뷰 지적",
   "changes-requested": "변경 요청",
   behind: "BEHIND",
   dirty: "충돌",
@@ -310,6 +326,7 @@ function PrLanding({ pr, landing }: { pr: PullRequest; landing: LandingIndex }) 
       <div className="pr-head">
         <LandingBadge pr={pr} />
         <PrLink pr={pr} />
+        <MuseTag pr={pr} />
         {seq && landing.seq.size > 1 && (
           <span className="pr-seq" title={`LANDING SEQUENCE ${landing.seq.size}개 중 ${seq}번째`}>
             SEQ {seq}
@@ -364,7 +381,7 @@ function LandingSequence({
         </div>
         <div className="ls-pr">
           <div className="ls-title">
-            <PrLink pr={pr} /> <span title={pr.title}>{pr.title}</span>
+            <PrLink pr={pr} /> <MuseTag pr={pr} /> <span title={pr.title}>{pr.title}</span>
           </div>
           {pr.landing !== "CLEARED" && pr.blocks.length > 0 && (
             <ul className="ls-blocks">
