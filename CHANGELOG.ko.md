@@ -251,6 +251,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - ATFM의 `eligible`·`s3-eligible` 기록 줄에 확인한 조건 코드(A1–A10, S1–S4)가 `checked`로 남는다. 대상 판정을 나중에 설명할 수 있게.
 
 ### 수정
+- LANDING CLEARANCE 등급이 REVIEW 관제 폴더(`review/`, ATC-27)를 몰라, REVIEW 규정만 바꾼 PR이 `auto`로 나왔다. 이제 `review/`도 다른 관제 폴더처럼 `flagged`이고, 그 guard 파일은 그대로 `user`다.
 - LANDING CLEARANCE 등급이 루트 `.claude/skills/`의 skill을 `auto`로 봤다. 루트 skill은 루트 `CLAUDE.md`처럼 팀 세션 지침이라, 이제 루트 `.claude/` 아래는 모두 `user`다. 관제 세션 폴더의 skill은 그대로 `flagged`.
 - DISPATCH가 판정받기 전에 제안을 잃었다([docs/dispatch.md](docs/dispatch.md) 6.1). 제안 19건 중 10건이 판정 전에 SUPERSEDED됐고, 그중 7건이 "더 나은 배정으로 바뀜"이었다. D-0017(VOC-196 → TEAM_E, `tail:TEAM_E`)은 planner가 TEAM_E에게 VOC-177을 줘서 닫혔는데, 그 짝은 D-0010에서 거절돼 `syncOps`가 제안할 수 없었다. 결국 두 FLIGHT 모두 제안이 없었다.
   - 이제 planner는 최근 24시간 안에 제안됐다 닫힌 짝을 뺀다(`recentPairsOf`로 만든 `Reserved.recentPairs`, `syncOps`의 `seen`과 같은 기간). 그래서 AIRCRAFT는 다음으로 좋은 FLIGHT를 받는다. 뺀 짝은 `plan.blockedPairs`에 적고, 배정 가능한 짝이 모두 막힌 FLIGHT는 `24시간 안에 제안된 짝(D-xxxx) — MM-DD HH:MM부터 다시`로 제외한다.

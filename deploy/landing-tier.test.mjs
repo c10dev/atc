@@ -10,6 +10,8 @@ test("관제 세션 매뉴얼·CLI는 flagged", () => {
   assert.equal(tierOf(["server/proposals.ts", "occ/CLAUDE.md"]).tier, "flagged");
   assert.equal(tierOf(["controller/atcctl.mjs"]).tier, "flagged");
   assert.equal(tierOf(["crosscheck/CLAUDE.md"]).tier, "flagged");
+  assert.equal(tierOf(["review/CLAUDE.md"]).tier, "flagged");
+  assert.equal(tierOf(["review/read-guard.mjs"]).tier, "user");
   assert.equal(tierOf(["occ/.claude/skills/tick/SKILL.md"]).tier, "flagged");
 });
 

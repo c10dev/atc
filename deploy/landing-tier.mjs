@@ -19,7 +19,7 @@ const USER = [
   [/^deploy\/(?!README)/, "배포·등급 규칙"],
 ];
 // 강조 등급: 관제 세션의 매뉴얼과 CLI(guard 제외)
-const FLAGGED = [[/^(controller|occ|crosscheck|dispatch)\//, "관제 세션"]];
+const FLAGGED = [[/^(controller|occ|crosscheck|review|dispatch)\//, "관제 세션"]];
 
 const RANK = { auto: 0, flagged: 1, user: 2 };
 
