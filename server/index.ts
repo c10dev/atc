@@ -10,6 +10,7 @@ import { mountController } from "./controller.ts";
 import { mountCrewChange } from "./crew-change.ts";
 import { mountCheckride } from "./checkride.ts";
 import { mountFleet } from "./fleet.ts";
+import { recordDepartures } from "./departures.ts";
 import { mountLogbook, runLogbook } from "./logbook.ts";
 import { diffSnapshots, EventLog, isWarm } from "./events.ts";
 import { mountMetrics } from "./metrics.ts";
@@ -73,6 +74,7 @@ async function tick() {
       lastDispatchAt = Date.now();
       runDispatch(next);
     }
+    if (isWarm(next)) recordDepartures(next); // FLIGHT의 첫 STAND·claim과 HANDOFF를 착수 기록에(바뀔 때만). 첫 번은 기준선
     if (isWarm(next)) runLogbook(next); // 10분마다 머지된 PR을 LOGBOOK에 적는다
     if (isWarm(next)) runAtfm(next); // 출발 중지 시작·끝, 1분마다 ATFM 데이터와 그림자 판정(docs/atfm.md)
 

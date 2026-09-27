@@ -196,7 +196,8 @@ Kept in `~/.local/state/atc/logbook.jsonl`, append-only like the other records. 
 | `airport` | AIRPORT code of the repository |
 | `pr` | `{repo, number, url, title}` |
 | `stands` | The STANDs (worktree paths) the FLIGHT was flown from |
-| `departedAt` | The earliest claim `since` on those STANDs (claims that started after the merge are ignored). When there is no claim, or the PR was opened earlier, the PR's `createdAt` (`departedFrom: "pr"`): a claim restarts its `since` after 3 idle hours, so the PR can be the earlier sign |
+| `departedAt` | The earliest of the claim `since` on those STANDs (`departedFrom: "claim"`) and the first matching DEPARTURE LOG line (`"departure"`, section 7.5); anything after the merge is ignored. When neither exists, or the PR was opened earlier, the PR's `createdAt` (`departedFrom: "pr"`): a claim restarts its `since` after 3 idle hours, so the PR can be the earlier sign |
+| `branch` | The PR's head branch, used to match the DEPARTURE LOG. Missing on lines written before 2026-09-27 |
 | `arrivedAt` | The PR's `mergedAt` |
 | `blockMin` | The team's block time: PR `createdAt − departedAt` in whole minutes (wall clock, nights included). `null` when `departedFrom` is `"pr"`: with no claim before the PR was opened, atc does not know when the team started (the zero it would compute is not a real duration) |
 | `landingWaitMin` | The landing wait: `arrivedAt − ` PR `createdAt` in whole minutes, time spent on review and merge by the SUPERVISOR. Not part of the on-time rate |
@@ -205,13 +206,21 @@ Kept in `~/.local/state/atc/logbook.jsonl`, append-only like the other records. 
 | `reverted` | Set by a later `reverted` line |
 | `los` | `alert.raised` LOSS OF SEPARATION events in the FLIGHT RECORDER on those STANDs between `departedAt` and `arrivedAt` |
 
-**Which STANDs.** In order, the first that gives any: the `workspacePath` of the PR's `landing.*` events in the FLIGHT RECORDER (30 days), the worktree that still has the PR branch checked out, and worktrees whose name carries the FLIGHT's ticket key (the rule `readFlightHistory` uses).
+**Which STANDs.** In order, the first that gives any: the `workspacePath` of the PR's `landing.*` events in the FLIGHT RECORDER (30 days), the worktree that still has the PR branch checked out, worktrees whose name carries the FLIGHT's ticket key (the rule `readFlightHistory` uses), and finally the STANDs in the DEPARTURE LOG for that branch (the worktree may be gone by then).
 
-**Which AIRCRAFT.** Of the sessions with a claim on those STANDs, only those whose name matches the team pattern (`TEAM_X`). When several did, the one with the latest claim activity: after a HANDOFF, the AIRCRAFT that landed it gets the entry. Session names come from the session registry, so a session whose file is gone is unknown.
+**Which AIRCRAFT.** Of the sessions with a claim on those STANDs, only those whose name matches the team pattern (`TEAM_X`). When several did, the one with the latest claim activity: after a HANDOFF, the AIRCRAFT that landed it gets the entry. Session names come from the session registry, so a session whose file is gone is unknown. When no claim is left, the last AIRCRAFT in the DEPARTURE LOG for that branch (else that FLIGHT or STAND) before the merge (section 7.5); otherwise `null`.
 
 **How ARRIVED is found.** The open-PR reader stays as it is. A second, light reader runs every 10 minutes: `gh pr list --state merged --limit 30` per AIRPORT with a GitHub remote, keeping PRs into the repository's default branch. PRs already in the LOGBOOK are skipped, so the first run after a restart also back-fills the last 30 merged PRs (with `aircraft: null` where the claims are gone).
 
 **Reverts.** A merged PR titled `Revert "…"` is not a FLIGHT of its own. It adds a `reverted` line for the PR it reverts, found by `Reverts owner/repo#N` in its body or, failing that, by the quoted title in the same repository. A revert of a PR that is not in the LOGBOOK is ignored.
+
+**Filling in later.** A third operation fills a line whose AIRCRAFT was unknown, without rewriting the file:
+
+```json
+{"op":"attributed","t":"…","key":"owner/repo#32","aircraft":"TEAM_J","via":"departures","departedAt":"…","blockMin":30}
+```
+
+Each LOGBOOK run looks up every `aircraft: null` line of the repositories it read in the DEPARTURE LOG (by branch, else FLIGHT or STAND, before the merge). A match writes one `attributed` line; when the line had no departure (`departedFrom: "pr"`) and the DEPARTURE LOG is earlier than the PR, it also carries `departedAt` and `blockMin`. Folding applies it only to a line that is still `null` (the entry then shows `attributedBy: "departures"`), so a known AIRCRAFT is never overwritten and nothing is written twice. Lines from before the DEPARTURE LOG existed mostly stay `null`; that is expected.
 
 **API.** `GET /api/logbook?aircraft=TEAM_X&days=14` returns the folded entries, newest arrival first. `aircraft` is optional (case-insensitive); `days` defaults to 14 and is capped at 90.
 
@@ -278,6 +287,26 @@ Not built. ROUTES and TARGETS stay the SUPERVISOR's (section 3); this is how OCC
 - **Superseded** when `fleet.json` already has the proposed value (set by hand), or the AIRCRAFT is retired.
 
 **Where it plugs in.** `SCHEDULE_KINDS` gains `TARGET` and `ROUTE`; `parsePayload` validates them; `changesOf` compares with the FLEET profile instead of a ticket; `syncLines` checks `loadFleet()`; `callsOf` returns no calls, and in S2 `approve` applies directly instead of waiting for `release`. OCC gets `atcctl schedule draft TARGET|ROUTE` and reads `GET /api/network` before drafting.
+
+### 7.5 DEPARTURE LOG
+
+Why: by the time a PR merges, the claims are often cleaned up or restarted after 3 idle hours, and the worktree deleted, so on 2026-09-27 48 of the 62 LOGBOOK lines of the last 14 days had no AIRCRAFT. The DEPARTURE LOG writes down who started a FLIGHT at the moment it happens.
+
+Kept in `~/.local/state/atc/departures.jsonl`, append-only (`server/departures.ts`). Every warm server tick compares the snapshot with the last AIRCRAFT recorded per STAND and writes only changes:
+
+```json
+{"t":"…","flight":"VOC-201","aircraft":"TEAM_J","stand":"/home/…/worktrees/atc-logbook","branch":"claude/logbook","repo":"/home/…/atc","via":"claim"}
+```
+
+| `via` | When | `t` | `aircraft` |
+|---|---|---|---|
+| `stand` | A worktree appears while the server runs | Now | `null` (no claim yet) |
+| `claim` | The first `TEAM_X` session with an active claim on a STAND that had none | That claim's `since` | That AIRCRAFT |
+| `handoff` | Another `TEAM_X` session takes the STAND after the recorded one no longer holds an active claim | The new claim's `since` | The new AIRCRAFT |
+
+- The main checkout and non-`TEAM_X` sessions are ignored. `flight` is the branch's ticket key, `null` for AD HOC.
+- During a LOSS OF SEPARATION both sessions are active, so the recorded AIRCRAFT stays; a HANDOFF is written once the first one lets go.
+- On start the server folds the file to rebuild the last AIRCRAFT per STAND, so a restart writes nothing twice. The first warm snapshot is the baseline: worktrees that already exist get a `claim` line if a team holds them, but no `stand` line.
 
 ## 8. FLEET tab
 
