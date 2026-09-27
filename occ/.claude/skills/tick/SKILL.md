@@ -1,6 +1,6 @@
 ---
 name: tick
-description: OCC 한 바퀴 — 규정이 바뀌었는지 확인하고, 메모 없는 배정 제안을 FLIGHT 본문으로 검토해 메모·CAUTION을 달고, approval 모드면 승인된 제안을 FLIGHT PLAN으로 보내고 READBACK을 기록한다. 분류·우선순위 없는 FLIGHT에 SCHEDULE 초안(CLASSIFY·PRIORITIZE, 그림자 운용)을 쓴다. `/loop 10m /tick`으로 돌린다.
+description: OCC 한 바퀴 — 규정이 바뀌었는지 확인하고, 메모 없는 배정 제안을 FLIGHT 본문으로 검토해 메모·CAUTION을 달고, approval 모드면 승인된 제안을 FLIGHT PLAN으로 보내고 READBACK을 기록한다. 분류·우선순위 없는 FLIGHT와 PR이 머지됐는데 열린 FLIGHT에 SCHEDULE 초안(CLASSIFY·PRIORITIZE·CLOSE, 그림자 운용)을 쓴다. `/loop 10m /tick`으로 돌린다.
 ---
 
 # OCC 한 바퀴
@@ -18,9 +18,11 @@ description: OCC 한 바퀴 — 규정이 바뀌었는지 확인하고, 메모 �
    - `node ../controller/atcctl.mjs schedule brief`를 실행하고 `candidates`와 `examples`(SUPERVISOR의 최근 판정과 거절 사유)를 본다. 거절 사유와 같은 실수를 되풀이하지 않는다.
    - CLASSIFY 후보가 있으면 먼저 `../docs/fleet.md`를 Read로 읽는다(4.1 FLIGHT TYPE, 4.2 WAKE, 4.3 TYPE RATING). FLIGHT TYPE은 CLAUDE.md "CLASSIFY 전에"의 순서로 정하고(BUILD는 사용자가 보는 동작이 바뀔 때만), 근거에 적용한 절 번호를 인용한다.
    - 후보 FLIGHT 3개까지 `dispatch flight <FLIGHT key>`로 읽는다. `candidates.classify`에 있으면 `schedule draft CLASSIFY <FLIGHT> [--type …] [--wake …] [--rating …] -- "<근거>"`. `candidates.prioritize`에 있고 본문·댓글에 근거가 있으면 `schedule draft PRIORITIZE <FLIGHT> --priority <1-4> -- "<근거>"`. 근거가 없으면 PRIORITIZE는 건너뛴다.
+   - `candidates.close`에 있으면 CLAUDE.md "CLOSE 전에"대로 `close.<FLIGHT>`의 PR을 읽기 전용 `gh pr view`로 확인하고 `schedule draft CLOSE <FLIGHT> -- "<PR·머지 시각·Fixes 여부>"`. `Fixes`가 없고 완료 기준이 남아 보이면 쓰지 않는다. 한 바퀴 3개 상한과 열린 초안 5건 한도에 함께 든다.
    - `LIMIT`이 나오면 이번 바퀴는 초안을 그만 쓴다. Linear에는 쓰지 않는다.
    - 열린 `NEW`(CHARTER DESK의 AD HOC FLIGHT) 초안도 한도 5건에 든다. CHARTER REQUEST는 바퀴마다 할 일이 아니다 — SUPERVISOR가 이 세션에서 요청할 때 CLAUDE.md의 "CHARTER DESK"대로 한다.
-6. `schedule brief`의 `mode`가 `approval`(S2)이면 CLAUDE.md의 "SCHEDULE 발부"를 따른다: `inProgress`의 approved마다 `schedule release <S-xxxx>` → 출력의 CALL마다 그 Linear 도구에 JSON 입력을 그대로. linear-guard가 막거나 Linear 오류면 다시 시도하지 말고 SUPERVISOR 보고. `shadow`면 건너뛴다.
-7. OCC LOG를 한두 줄 남긴다. 아무 일 없으면 "특이 사항 없음".
+6. `schedule brief`의 `mode`가 `approval`(S2)이면 CLAUDE.md의 "SCHEDULE 발부"를 따른다: `inProgress`의 approved마다(CLOSE는 빼고 — 발부되지 않는다) `schedule release <S-xxxx>` → 출력의 CALL마다 그 Linear 도구에 JSON 입력을 그대로. linear-guard가 막거나 Linear 오류면 다시 시도하지 말고 SUPERVISOR 보고. `shadow`면 건너뛴다.
+7. 운항 추적: `node ../controller/atcctl.mjs following`을 실행한다. `fresh: true`인 문제만 하나에 한 줄로 OCC LOG에 적고, `severity: "warn"`이면 SUPERVISOR에게 보고한다. 그다음 `node ../controller/atcctl.mjs following ack`. 이미 보고한 것(`fresh: false`)은 다시 보고하지 않고, 팀에 메시지를 보내지 않는다.
+8. OCC LOG를 한두 줄 남긴다. 아무 일 없으면 "특이 사항 없음".
 
 판정(승인·거절)은 하지 않는다. send-guard가 막으면 다시 시도하지 말고 SUPERVISOR에게 보고한다.

@@ -34,10 +34,13 @@ OCC가 Linear에 쓸 변경을 초안으로 남긴다. 지금은 S1이라 Linear
 | CLASSIFY | 분류 라벨 제안: type · wake · rating. 후보 목록은 제목이 리서치·검토·비교·계획처럼 보이는 FLIGHT가 앞에 온다(SURVEY·CHECK로 분류되면 HOLDING 팀도 받을 수 있어서) |
 | PRIORITIZE | 우선순위 제안(본문·댓글에 근거가 있을 때만) |
 | NEW (AD HOC FLIGHT) | 사용자가 OCC에 요청한 새 티켓 |
+| CLOSE | PR이 머지됐는데(LOGBOOK ARRIVED) Linear에서 아직 열린 FLIGHT를 Done으로. 카드에 PR 링크, 머지 시각, 본문이 `Fixes`인지가 있다. `Part of`(일부만)면 노란색으로 표시된다 |
 
 - 카드에 "바뀔 것"과 OCC 근거가 있다. 맞으면 승인했을 것, 아니면 거절했을 것(사유 선택).
 - 라벨이 당장 필요하면 카드 안내대로 Linear에서 직접 붙인다. 그러면 초안은 "Linear에 이미 반영됨"으로 스스로 닫힌다.
 - 열린 초안은 5건까지. 3일 동안 판정이 없으면 EXPIRED.
+- **CLOSE는 Linear에서 직접 닫는다.** vocado 규칙상 OCC는 이슈 상태를 바꾸지 않으므로 S2에서도 CLOSE는 발부되지 않는다. 승인한 CLOSE(그림자 운용이면 "승인했을 것")는 SCHEDULE 탭의 **LINEAR에서 직접 DONE** 목록에 이슈·PR 링크와 함께 뜬다. Linear에서 Done으로 바꾸면 다음 새로 고침에 목록과 초안이 함께 닫힌다. PR이 되돌려지면 초안은 스스로 SUPERSEDED된다.
+- CLOSE 판정 기준: PR 본문이 `Fixes VOC-n`이고 완료 기준이 그 PR로 채워졌으면 승인, `Part of`이거나 남은 일·되돌림이 있으면 거절(사유 칩 "Part of — 일부만 끝남", "남은 작업이 있음" …).
 - **S2 진입 점검**: 판정 20건 이상, 합의율 80% 이상. 그때 Linear 쓰기가 열린다(승인한 초안만, linear-guard로).
 - **S2(승인 운용)**: SCHEDULE 탭의 "S2 승인 운용 켜기"로 켠다(만들어 두었고 기본은 꺼짐). 켜면 버튼이 "승인 / 거절"이 되고, 승인한 작업은 IN PROGRESS에 APPROVED → RELEASED(OCC가 Linear에 씀) → APPLIED(Linear에 보임)로 보인다. OCC가 쓰는 내용은 atc가 만들고, linear-guard가 그 입력과 다른 쓰기는 모두 막는다. 켜기 전 준비는 저장소의 `docs/occ.md` "Turning on S2".
 

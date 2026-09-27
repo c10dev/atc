@@ -48,7 +48,7 @@ Linear 티켓까지 보려면 `.env.local`에 `LINEAR_API_KEY`를 넣는다. 상
 | FLEET (`#fleet`) | AIRCRAFT마다 상태, 지금 FLIGHT, 선언한 팀원과 관측한 팀원(최근 14일), 복사할 CREW CHANGE 대기, TYPE RATING, ROUTE, TARGETS와 LOGBOOK 실적(이번 주, 정시, 되돌림, LOS, 최근 FLIGHT), CHECKRIDE(TYPE RATING 근거와 부여·재검토 추천). 프로필 편집, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT, rating 부여·회수 |
 | NETWORK (`#network`) | 4단계 읽기 전용 운항 개요: ROUTE(Linear 프로젝트)마다 상태별 열린 FLIGHT(Todo·In Progress·In Review), 최근 14일 ARRIVED, 그 ROUTE를 도는 AIRCRAFT, 착륙 대기 중앙값, 프로젝트 목표(목표일·진척·상태). AIRCRAFT마다 TARGETS와 FLEET 카드와 같은 LOGBOOK 실적. 최근 28일 추세: ARRIVED·착륙 대기·되돌림, DISPATCH·SCHEDULE 게이트(날마다 판정 수, 누적 합의율, CROSSCHECK 일치율) |
 | DISPATCH (`#dispatch`) | 지금 계획, OCC 메모가 달린 제안 카드와 "승인했을 것 / 거절했을 것" 판정(2b에서는 승인·거절), HELD, IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검 |
-| SCHEDULE (`#schedule`) | OCC SCHEDULE 초안(S1 그림자 운용): S2 진입 점검 패널, "승인했을 것 / 거절했을 것" 판정이 있는 열린 초안 카드, 후보 수, 최근 7일 표 |
+| SCHEDULE (`#schedule`) | OCC SCHEDULE 초안(S1 그림자 운용): S2 진입 점검 패널, "승인했을 것 / 거절했을 것" 판정이 있는 열린 초안 카드, 후보 수(CLASSIFY·PRIORITIZE·CLOSE), 승인한 CLOSE의 "LINEAR에서 직접 DONE" 목록, 최근 7일 표 |
 | DOCS (`#docs`) | atc 사용 안내: 소개, 빠른 시작, 개념, 일 맡기기(CHARTER DESK / AD HOC), 판정하기, FLEET, 교신 규칙, 화면, 단계, 문제 해결. `docs/guide/*.md`(한국어)를 그대로 보여 준다 |
 
 ## 용어
@@ -290,6 +290,17 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 | `POST /api/dispatch/mode` | `{mode: shadow\|approval}` |
 | `GET /api/dispatch/flight/:key` | FLIGHT 본문·댓글(Linear 읽기 전용) |
 
+## FLIGHT FOLLOWING (운항 추적, OCC)
+
+[docs/occ.md](docs/occ.md) 8.1(영어), `server/following.ts`. atc가 배정된 FLIGHT를 따라간다. 대상은 accepted·departed·recalling인 DISPATCH ASSIGN과, 2b 전이라도 `tail:`이 붙은 In Progress FLIGHT다.
+
+- **단계**: READBACK → DEPARTED(STAND·착수 기록) → PR 열림 → CLEARED → ARRIVED(LOGBOOK). 모두 있는 기록에서 가져온다.
+- **지연**(WAKE 기대치의 1.5배를 넘도록 다음 단계가 없음): `no-departure`, `no-pr`, `pr-not-cleared`. CLEARED 뒤 1시간 넘게 착륙하지 않는 `landing-wait`은 정보만이다.
+- **불일치**: Linear는 In Review인데 PR 없음, Done인데 머지된 PR 없음, 그리고 (정보만) PR은 머지됐는데 Linear가 Done이 아님.
+- **API**: `GET /api/following`은 OCC가 아직 보고하지 않은 문제에 `fresh`를 붙인다. `POST /api/following/ack`는 보고한 것을 `following-state.json`에 적는다. 풀린 문제는 지워서 다시 생기면 다시 보고한다.
+- **OCC**: 바퀴마다 `atcctl following`과 `following ack`를 돌리고, 새 warn 문제만 SUPERVISOR에게 보고한다. 팀에는 메시지를 보내지 않는다.
+- **화면**: DISPATCH 탭의 FLIGHT FOLLOWING 블록에 FLIGHT마다 단계 막대, 문제, OCC 보고 여부가 보인다.
+
 ## ATFM (3단계: 데이터와 그림자 운용)
 
 설계와 결정은 [docs/atfm.md](docs/atfm.md)(영어)에 있다. 스위치는 `~/.local/state/atc/atfm.json`에 두고 원자적으로 바꿔 쓰며, 기본값은 모두 off나 shadow다.
@@ -306,20 +317,21 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 
 설계는 [docs/occ.md](docs/occ.md) 5~7장(영어). OCC 세션이 Linear에 할 변경을 SCHEDULE 작업 초안으로 남긴다(`server/schedule.ts`, `~/.local/state/atc/schedule.jsonl`, 추가만 함). S1은 그림자 운용이라 **Linear에는 아무것도 쓰지 않는다.** SUPERVISOR가 초안마다 판정을 표시하고, 그 합의율로 S2(승인된 초안을 linear-guard를 거쳐 씀)에 들어갈지 정한다.
 
-- 작업: `CLASSIFY`(FLIGHT TYPE·WAKE·TYPE RATING 라벨, [docs/fleet.md](docs/fleet.md) 4장, 영어. 라벨은 더하기만 한다), `PRIORITIZE`(우선순위 1 Urgent … 4 Low), `NEW`(새 이슈. [CHARTER DESK](#charter-desk-요청-창구)의 AD HOC FLIGHT). 초안마다 id(`S-0001`), FLIGHT(`NEW`는 `null`), 바꿀 값, OCC의 근거 한 줄이 있다.
+- 작업: `CLASSIFY`(FLIGHT TYPE·WAKE·TYPE RATING 라벨, [docs/fleet.md](docs/fleet.md) 4장, 영어. 라벨은 더하기만 한다), `PRIORITIZE`(우선순위 1 Urgent … 4 Low), `NEW`(새 이슈. [CHARTER DESK](#charter-desk-요청-창구)의 AD HOC FLIGHT), `CLOSE`(PR이 머지된 FLIGHT를 Done으로, [docs/occ.md](docs/occ.md) 5.5, 영어). 초안마다 id(`S-0001`), FLIGHT(`NEW`는 `null`), 바꿀 값, OCC의 근거 한 줄이 있다.
 - 후보: Todo·Backlog인 FLIGHT 중 `type:`이나 `wake:` 라벨이 없는 것(CLASSIFY), 우선순위가 없는 것(PRIORITIZE). 같은 종류의 열린 초안이 있는 FLIGHT는 빠진다. 바뀌는 게 없는 초안은 받지 않는다.
+- **CLOSE**: 후보는 PR이 LOGBOOK에 ARRIVED로 있는데(되돌림 아님) Linear가 Done·Canceled가 아닌 FLIGHT다(열린 상태면 무엇이든). 본문이 `Part of VOC-n`인 PR은 뺀다(vocado 규칙상 `Fixes`만 이슈를 끝낸다). 본문 관계는 새 LOGBOOK 줄에 남기고, 옛 줄은 읽기 전용 `gh pr view`로 한 번 읽는다. `atcctl schedule draft CLOSE <FLIGHT> -- <근거>`로 쓰면 atc가 LOGBOOK에서 `{pr, mergedAt, fixes?, partOf?}`를 채운다. Linear가 Done·Canceled가 되면(발부됐으면 APPLIED) 또는 PR이 되돌려지면 초안이 닫힌다. **CLOSE는 발부하지 않는다**: 이슈 상태를 바꾸는 일이라 vocado의 OCC 예외가 허용하지 않으므로 `release`는 409로 거절하고, SCHEDULE 탭이 승인한 CLOSE(그림자 운용이면 "승인했을 것")를 SUPERVISOR가 Linear에서 직접 닫을 목록으로 보여 준다.
 - 한도: 종류와 상관없이 열린 초안 5건, `NEW`도 든다(넘으면 409). 같은 FLIGHT·종류로 새 초안을 쓰면 앞의 것은 SUPERSEDED. `NEW`는 다른 `NEW`를 대신하지 않는다. FLIGHT가 Todo·Backlog를 벗어나거나 Linear에 이미 반영되면(`NEW`는 초안 뒤에 같은 제목의 이슈가 Linear에 생기면) atc가 열린 초안을 SUPERSEDED로, 3일 동안 판정이 없으면 EXPIRED로 닫는다.
 - **SCHEDULE 탭**(DISPATCH 다음): S2 진입 점검(판정 20건 이상, 합의율 80% 이상), 열린 초안 카드(FLIGHT, 제목, 지금 분류, 바뀔 것, OCC 근거), "승인했을 것 / 거절했을 것" 버튼과 선택 거절 사유, Linear에서 손으로 붙일 라벨 안내, 후보 수, 최근 7일 표.
 - **OCC 세션**: `/tick`마다 `atcctl schedule brief`를 실행하고, 후보 FLIGHT 3개까지 `dispatch flight`로 읽어 `atcctl schedule draft CLASSIFY <FLIGHT> [--type X] [--wake Y] [--rating Z]… -- <근거>`나 `schedule draft PRIORITIZE <FLIGHT> --priority 1-4 -- <근거>`로 초안을 쓴다. PRIORITIZE는 본문·댓글에 근거가 있을 때만 쓴다. `LIMIT`이 나오면 그 바퀴는 초안을 그만 쓴다. Linear는 여전히 읽기 전용이다(`occ/mcp-guard.mjs`).
 
 | API | 하는 일 |
 |---|---|
-| `GET /api/schedule/brief` | 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안(판정된 것은 `via`), S2 점검(`gate.crosscheck.oneClick`), 열린 초안 한도, 후보, FLIGHT 요약 |
+| `GET /api/schedule/brief` | 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안(판정된 것은 `via`), S2 점검(`gate.crosscheck.oneClick`), 열린 초안 한도, 후보(`classify`, `prioritize`, `close`), CLOSE 후보의 PR·머지 시각·본문 관계(`close`), 직접 닫을 승인된 CLOSE(`closeManual`), FLIGHT 요약 |
 | `GET /api/schedule/ops/:id` | SCHEDULE 작업 하나와 모드 |
 | `POST /api/schedule/ops` | OCC 초안. `CLASSIFY`·`PRIORITIZE`: `{kind, flight, reason, type?, wake?, ratings?, priority?}`. `NEW`: `{kind: "NEW", title, body, project, reason, priority?, type?, wake?, ratings?, tail?, parent?, related?, blockedBy?}`. 작업의 `flight`는 `null`이고 atc가 `similar: [{key, title}]`을 붙인다. 입력이 틀리면 사유와 함께 400, 열린 초안이 한도면 409 |
 | `POST /api/schedule/ops/:id/verdict` | `{verdict: agree\|disagree, reason?, via?}` SUPERVISOR 그림자 판정(`via`: `crosscheck`나 `manual`) |
 | `POST /api/schedule/ops/:id/approve`, `/reject` | S2에서만: SUPERVISOR 승인, 또는 `{reason?}`와 함께 거절. 둘 다 `{via?}` |
-| `POST /api/schedule/ops/:id/release` | S2에서만: OCC가 승인된 작업을 발부. 정확한 Linear 호출을 돌려준다(이미 발부됐으면 같은 호출) |
+| `POST /api/schedule/ops/:id/release` | S2에서만: OCC가 승인된 작업을 발부. 정확한 Linear 호출을 돌려준다(이미 발부됐으면 같은 호출). `CLOSE`는 409로 거절 |
 | `GET /api/schedule/released` | 모드와 발부된 호출 전부(linear-guard가 읽음) |
 | `POST /api/schedule/mode` | `{mode: shadow\|approval}` |
 

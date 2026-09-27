@@ -7,17 +7,19 @@ import { classLabel, classOf, FLIGHT_TYPES, type FlightType, RATINGS, type Ratin
 import { type Crosscheck, CrosscheckError, type CrosscheckLine, type CrosscheckVerdict, crosscheckRateOf, examplesOf, type HumanDecision, markOf, oneClickOf, parseCrosscheck, type Via, viaOf } from "./crosscheck.ts";
 import { DONE_STATES, loadDispatchConfig, PRIORITY_NAME } from "./dispatch.ts";
 import { fleetView, loadFleet } from "./fleet.ts";
+import { type LogEntry, loadLogbook, type PrLink, prLinkOf } from "./logbook.ts";
 import type { Snapshot, Ticket } from "./model.ts";
 import { record } from "./recorder.ts";
+import { cachedPrBody, fetchPrBody } from "./sources/github.ts";
 
 // OCC SCHEDULE — OCC가 Linear에 쓸 변경을 초안으로 남긴다. 설계: docs/occ.md 5~7장.
-// 작업 종류는 CLASSIFY(분류 라벨), PRIORITIZE(우선순위), NEW(새 이슈).
+// 작업 종류는 CLASSIFY(분류 라벨), PRIORITIZE(우선순위), NEW(새 이슈), CLOSE(PR이 머지된 FLIGHT를 Done으로).
 // - S1(mode "shadow"): SUPERVISOR가 "승인했을 것 / 거절했을 것"만 표시한다. 아무것도 Linear에 쓰지 않는다.
 // - S2(mode "approval"): SUPERVISOR가 승인하면 atc가 Linear 도구 호출 입력(calls)을 정확히 만들고(release),
 //   OCC가 그대로 호출한다. occ/mcp-guard.mjs(linear-guard)가 발부된 입력과 한 글자도 다르지 않은 쓰기만 통과시킨다.
 //   다음 Linear 읽기에서 반영이 보이면 APPLIED.
 
-export const SCHEDULE_KINDS = ["CLASSIFY", "PRIORITIZE", "NEW"] as const;
+export const SCHEDULE_KINDS = ["CLASSIFY", "PRIORITIZE", "NEW", "CLOSE"] as const;
 export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];
 
 export interface ClassifyPayload {
@@ -44,7 +46,18 @@ export interface NewPayload extends ClassifyPayload {
   blockedBy?: string[];
   similar: SimilarTicket[]; // 초안을 쓸 때 atc가 찾은 비슷한 제목(중복 검색 결과)
 }
-export type SchedulePayload = ClassifyPayload | PrioritizePayload | NewPayload;
+// PR이 머지돼(LOGBOOK ARRIVED) 끝난 FLIGHT를 닫자는 초안. 이슈 상태를 바꾸는 일이라 vocado 규칙상 OCC가 쓰지 않는다 —
+// 승인되면 SUPERVISOR가 Linear에서 직접 Done으로 바꾼다(docs/occ.md 5장). payload는 atc가 LOGBOOK에서 채운다.
+export interface ClosePayload {
+  pr: { repo: string; number: number; url: string };
+  mergedAt: string;
+  fixes?: boolean; // PR 본문에 `Fixes VOC-n` — vocado 규칙상 이것만 이슈를 끝낸다
+  partOf?: boolean; // PR 본문에 `Part of VOC-n` — 일부만. 후보에서는 빠지고, 초안이면 "일부만"으로 보인다
+}
+export type SchedulePayload = ClassifyPayload | PrioritizePayload | NewPayload | ClosePayload;
+
+// CLOSE는 발부하지 않는다(Linear 상태 변경은 vocado 규칙상 OCC 몫이 아님). 나중에 규칙이 바뀌면 여기서 켠다(docs/occ.md 5.3)
+export const CLOSE_RELEASE_WHY = "CLOSE는 SUPERVISOR가 Linear에서 직접 — vocado 규칙상 OCC는 상태를 바꾸지 않음";
 
 export type ScheduleStatus = "draft" | "agreed" | "disagreed" | "approved" | "rejected" | "released" | "applied" | "superseded" | "expired";
 export type ScheduleMode = "shadow" | "approval";
@@ -191,13 +204,19 @@ function append(lines: LogLine[], file = FILE()) {
 const isOpenTicket = (t: Ticket | undefined) => Boolean(t && (t.stateType === "unstarted" || t.stateType === "backlog"));
 
 // 초안이 지금 티켓에 적용하면 무엇이 바뀌는지. 바뀌는 게 없으면 빈 배열. NEW는 티켓 없이 한 줄.
-export function changesOf(kind: ScheduleKind, payload: SchedulePayload, t?: Pick<Ticket, "labels" | "priority">): string[] {
+export function changesOf(kind: ScheduleKind, payload: SchedulePayload, t?: Pick<Ticket, "labels" | "priority"> & Partial<Pick<Ticket, "state" | "stateType">>): string[] {
   if (kind === "NEW") {
     const n = payload as NewPayload;
     const labels = [n.type && `type:${n.type}`, n.wake && `wake:${n.wake}`, ...(n.ratings ?? []).map((r) => `rating:${r}`), n.tail && `tail:${n.tail}`].filter(Boolean);
     return [[`새 이슈: ${n.title}`, n.project, n.priority ? PRIORITY_NAME[n.priority] : "없음", labels.join(" ")].filter(Boolean).join(" · ")];
   }
   if (!t) return [];
+  if (kind === "CLOSE") {
+    const c = payload as ClosePayload;
+    if (DONE_STATES.has(t.stateType ?? "")) return [];
+    const repo = c.pr.repo.split("/").pop();
+    return [`${t.state ?? "?"} → Done · PR ${repo}#${c.pr.number} 머지 ${c.mergedAt.slice(0, 10)}${c.partOf ? " · Part of(일부만)" : c.fixes ? " · Fixes" : ""}`];
+  }
   if (kind === "PRIORITIZE") {
     const p = (payload as PrioritizePayload).priority;
     return t.priority === p ? [] : [`priority ${PRIORITY_NAME[t.priority] ?? "없음"} → ${PRIORITY_NAME[p]}`];
@@ -242,6 +261,7 @@ function parseClass(raw: Record<string, unknown>): ClassifyPayload {
 // 입력을 검사해 payload로 만든다(CLASSIFY·PRIORITIZE). NEW는 parseNew.
 export function parsePayload(kind: unknown, raw: Record<string, unknown>): { kind: "CLASSIFY" | "PRIORITIZE"; payload: ClassifyPayload | PrioritizePayload } {
   if (kind === "NEW") throw new ScheduleError("NEW는 parseNew로 검사한다");
+  if (kind === "CLOSE") throw new ScheduleError("CLOSE의 payload는 atc가 LOGBOOK에서 채운다(draftOps)");
   if (!SCHEDULE_KINDS.includes(kind as ScheduleKind)) throw new ScheduleError(`모르는 SCHEDULE 작업: ${kind} (가능: ${SCHEDULE_KINDS.join(", ")})`);
   if (kind === "PRIORITIZE") return { kind, payload: { priority: parsePriority(raw.priority) } };
   const payload = parseClass(raw);
@@ -362,6 +382,41 @@ export function parseNew(raw: Record<string, unknown>, tickets: Ticket[], tails:
   return out;
 }
 
+// CLOSE 후보: LOGBOOK에 ARRIVED(되돌림 아님)인데 Linear 이슈가 아직 Done·Canceled가 아닌 FLIGHT.
+// FLIGHT에 PR이 여럿이면 Fixes인 것을 먼저, 없으면 가장 최근 것. 모든 PR이 되돌려졌으면 reverted.
+// link가 null이면 PR 본문을 아직 모른다(옛 LOGBOOK 줄 — 서버가 gh로 읽기 전용으로 가져온다).
+export interface Closable {
+  flight: string;
+  key: string; // LOGBOOK key "owner/repo#N"
+  pr: ClosePayload["pr"];
+  mergedAt: string;
+  link: PrLink | null;
+}
+export function closableOf(entries: Pick<LogEntry, "key" | "flight" | "pr" | "arrivedAt" | "reverted" | "link">[], tickets: Ticket[], bodyOf: (key: string) => string | undefined) {
+  const byKey = new Map(tickets.map((t) => [t.key, t]));
+  const byFlight = new Map<string, typeof entries>();
+  for (const e of entries) if (e.flight) byFlight.set(e.flight, [...(byFlight.get(e.flight) ?? []), e]);
+  const closable = new Map<string, Closable>();
+  const reverted = new Set<string>();
+  for (const [flight, list] of byFlight) {
+    const live = list.filter((e) => !e.reverted).sort((a, b) => b.arrivedAt.localeCompare(a.arrivedAt));
+    if (!live.length) {
+      reverted.add(flight);
+      continue;
+    }
+    const t = byKey.get(flight);
+    if (!t || DONE_STATES.has(t.stateType)) continue;
+    const linkOf = (e: (typeof live)[number]): PrLink | null => {
+      if (e.link) return e.link;
+      const body = bodyOf(e.key);
+      return body === undefined ? null : prLinkOf(body, flight);
+    };
+    const pick = live.find((e) => linkOf(e) === "fixes") ?? live[0];
+    closable.set(flight, { flight, key: pick.key, pr: { repo: pick.pr.repo, number: pick.pr.number, url: pick.pr.url }, mergedAt: pick.arrivedAt, link: linkOf(pick) });
+  }
+  return { closable, reverted };
+}
+
 // 새 초안 만들기(순수). 같은 FLIGHT·종류의 열린 초안은 새 초안이 SUPERSEDED로 대신한다.
 // NEW는 FLIGHT 없이 쓰고, 다른 NEW를 대신하지 않는다. ctx.tails: tail로 쓸 수 있는 FLEET 등록번호.
 export function draftOps(
@@ -370,7 +425,7 @@ export function draftOps(
   tickets: Ticket[],
   now: string,
   seq: number,
-  ctx: { tails?: string[] } = {},
+  ctx: { tails?: string[]; closable?: Map<string, Closable> } = {},
 ): LogLine[] {
   const reason = typeof input.reason === "string" ? input.reason.trim() : "";
   let kind: ScheduleKind;
@@ -382,6 +437,18 @@ export function draftOps(
     if (!reason.includes("중복 검색:")) throw new ScheduleError("NEW 근거에는 \"중복 검색:\"과 찾아본 결과가 필요함");
     kind = "NEW";
     payload = { ...base, similar: similarTickets(base.title, tickets, Date.parse(now)) };
+  } else if (input.kind === "CLOSE") {
+    // CLOSE: 계획 단계가 아니어도 된다(In Progress·In Review가 흔하다). 닫히지 않았고 LOGBOOK에 ARRIVED여야 한다
+    flight = String(input.flight ?? "").toUpperCase();
+    const t = tickets.find((x) => x.key === flight);
+    if (!t) throw new ScheduleError(`FLIGHT 목록에 없음: ${flight || "(비었음)"}`);
+    if (DONE_STATES.has(t.stateType)) throw new ScheduleError(`${flight}는 이미 닫힘(${t.state})`);
+    const c = ctx.closable?.get(flight);
+    if (!c) throw new ScheduleError(`${flight}는 LOGBOOK에 ARRIVED 기록이 없음(또는 PR이 되돌려짐) — 머지된 PR이 있어야 CLOSE를 쓴다`);
+    if (!c.link) throw new ScheduleError(`${flight}의 PR 본문을 아직 읽지 못함 — 잠시 뒤 다시`, 503);
+    if (!reason) throw new ScheduleError("근거(reason) 한 줄이 필요함");
+    kind = "CLOSE";
+    payload = { pr: c.pr, mergedAt: c.mergedAt, ...(c.link === "fixes" ? { fixes: true } : {}), ...(c.link === "part-of" ? { partOf: true } : {}) };
   } else {
     flight = String(input.flight ?? "").toUpperCase();
     const t = tickets.find((x) => x.key === flight);
@@ -406,6 +473,7 @@ export function draftOps(
 // S2: 승인된 작업을 Linear MCP 호출로 옮긴다(순수). 계획 필드만 쓴다(docs/occ.md 4장) — 상태·담당은 건드리지 않는다.
 // 라벨 이름: type·wake는 Linear 라벨 그룹의 하위 라벨(BUILD, M …), rating·tail은 평면 라벨(rating:SEC, tail:TEAM_E).
 export function callsOf(op: ScheduleOp, t: Pick<Ticket, "labels" | "priority"> | undefined, teamName: string): LinearCall[] {
+  if (op.kind === "CLOSE") throw new ScheduleError(CLOSE_RELEASE_WHY, 409);
   const trail = `(SCHEDULE ${op.id}, SUPERVISOR 승인)`;
   if (op.kind === "NEW") {
     const n = op.payload as NewPayload;
@@ -449,7 +517,8 @@ export function callsOf(op: ScheduleOp, t: Pick<Ticket, "labels" | "priority"> |
 
 // 상황이 바뀐 열린 초안을 닫는다(순수): FLIGHT가 계획 단계를 벗어남, 이미 반영됨, 3일 지남.
 // NEW는 초안 뒤에 같은 제목(정규화)의 이슈가 Linear에 생기면 SUPERSEDED.
-export function syncLines(existing: ScheduleOp[], tickets: Ticket[], nowMs: number): LogLine[] {
+// CLOSE는 Linear가 Done·Canceled가 되면 닫고(발부된 것이면 APPLIED), PR이 되돌려지면 SUPERSEDED.
+export function syncLines(existing: ScheduleOp[], tickets: Ticket[], nowMs: number, ctx: { reverted?: Set<string> } = {}): LogLine[] {
   const at = new Date(nowMs).toISOString();
   const byKey = new Map(tickets.map((t) => [t.key, t]));
   const out: LogLine[] = [];
@@ -468,6 +537,14 @@ export function syncLines(existing: ScheduleOp[], tickets: Ticket[], nowMs: numb
       continue;
     }
     const t = byKey.get(s.flight);
+    if (s.kind === "CLOSE") {
+      const closeStale = s.status === "approved" ? "승인 뒤 3일 동안 Linear에서 닫히지 않음" : staleWhy;
+      if (!t) out.push({ op: "supersede", id: s.id, at, reason: "FLIGHT가 목록에 없음" });
+      else if (DONE_STATES.has(t.stateType)) out.push(done(s.flight, `Linear에서 닫힘(${t.state})`));
+      else if (ctx.reverted?.has(s.flight)) out.push({ op: "supersede", id: s.id, at, reason: "PR이 되돌려짐(LOGBOOK)" });
+      else if (stale) out.push({ op: "expire", id: s.id, at, ...(closeStale ? { reason: closeStale } : {}) });
+      continue;
+    }
     if (!isOpenTicket(t)) out.push({ op: "supersede", id: s.id, at, reason: `FLIGHT 상태가 바뀜(${t?.state ?? "목록에 없음"})` });
     else if (!changesOf(s.kind, s.payload, t!).length) out.push(done(s.flight, "Linear에 이미 반영됨"));
     else if (stale) out.push({ op: "expire", id: s.id, at, ...(staleWhy ? { reason: staleWhy } : {}) });
@@ -525,8 +602,13 @@ export const standFreeHint = (title: string) => STAND_FREE_HINT.test(title);
 
 // OCC가 초안을 쓸 후보: 계획 단계(Todo·Backlog)인데 분류 라벨이 없거나 우선순위가 없는 FLIGHT.
 // classify는 SURVEY·CHECK로 보이는 FLIGHT를 앞에 둔다(나머지 순서는 그대로).
-export function candidatesOf(tickets: Ticket[], ops: ScheduleOp[]) {
+// close: 닫을 FLIGHT(Closable). Part of인 PR과 본문을 아직 모르는 것은 뺀다. 오래 머지된 것부터.
+// 최근 7일 안에 판정된 CLOSE가 있는 FLIGHT도 뺀다: 승인했을 것이면 "직접 Done" 목록에 있고, 거절이면 다시 쓰지 않는다.
+export function candidatesOf(tickets: Ticket[], ops: ScheduleOp[], closable: Map<string, Closable> = new Map(), nowMs = Date.now()) {
   const openFor = new Set(ops.filter((s) => s.status === "draft" || s.status === "approved" || s.status === "released").map((s) => `${s.kind}|${s.flight}`));
+  const decidedClose = new Set(
+    ops.filter((s) => s.kind === "CLOSE" && (s.status === "agreed" || s.status === "disagreed" || s.status === "rejected") && nowMs - Date.parse(s.statusAt) < 7 * 86_400_000).map((s) => s.flight),
+  );
   const planning = tickets.filter(isOpenTicket);
   return {
     classify: planning
@@ -535,16 +617,26 @@ export function candidatesOf(tickets: Ticket[], ops: ScheduleOp[]) {
       .sort((x, y) => Number(standFreeHint(y.title ?? "")) - Number(standFreeHint(x.title ?? "")))
       .map((t) => t.key),
     prioritize: planning.filter((t) => !t.priority && !openFor.has(`PRIORITIZE|${t.key}`)).map((t) => t.key),
+    close: [...closable.values()]
+      .filter((c) => c.link && c.link !== "part-of" && !openFor.has(`CLOSE|${c.flight}`) && !decidedClose.has(c.flight))
+      .sort((a, b) => a.mergedAt.localeCompare(b.mergedAt))
+      .map((c) => c.flight),
   };
 }
 
 export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
   // 브리핑할 때마다 상황이 바뀐 초안을 먼저 닫는다. Linear를 아직 못 읽었으면(시작 직후, 꺼짐) 닫지 않는다 —
   // 빈 티켓 목록과 맞추면 열린 초안이 모두 SUPERSEDED가 된다.
+  // CLOSE 후보. 옛 LOGBOOK 줄의 PR 본문은 gh로 읽기 전용으로 가져온다(백그라운드, 다음 브리핑에 반영)
+  const closeInfo = (s: Snapshot) => {
+    const info = closableOf(loadLogbook(), s.tickets, cachedPrBody);
+    for (const c of info.closable.values()) if (!c.link) void fetchPrBody(c.key);
+    return info;
+  };
   const current = (s: Snapshot) => {
     const lines = readLines();
     const ops = fold(lines);
-    const closing = s.linear.enabled && s.linear.fetchedAt ? syncLines(ops, s.tickets, Date.now()) : [];
+    const closing = s.linear.enabled && s.linear.fetchedAt ? syncLines(ops, s.tickets, Date.now(), { reverted: closeInfo(s).reverted }) : [];
     if (closing.length) {
       append(closing);
       return fold([...lines, ...closing]);
@@ -564,13 +656,20 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       .filter((x) => x.status !== "draft" && x.status !== "approved" && x.status !== "released" && now - Date.parse(x.statusAt) < 7 * 86_400_000)
       .sort((a, b) => b.statusAt.localeCompare(a.statusAt))
       .slice(0, 50);
-    const candidates = candidatesOf(s.tickets, ops);
+    const { closable } = closeInfo(s);
+    const candidates = candidatesOf(s.tickets, ops, closable, now);
+    // SUPERVISOR가 Linear에서 직접 Done으로 바꿀 것: 승인된 CLOSE, 그림자 운용이면 "승인했을 것"(7일 안) 중 아직 열린 이슈
+    const byKeyAll = new Map(s.tickets.map((t) => [t.key, t]));
+    const closeManual = ops
+      .filter((x) => x.kind === "CLOSE" && (x.status === "approved" || (x.status === "agreed" && now - Date.parse(x.statusAt) < 7 * 86_400_000)))
+      .filter((x) => !DONE_STATES.has(byKeyAll.get(x.flight ?? "")?.stateType ?? "completed"))
+      .sort((a, b) => a.statusAt.localeCompare(b.statusAt));
     // NEW 초안의 관계·비슷한 FLIGHT도 화면이 제목과 링크를 보이게 넣는다
     const newKeys = [...open, ...inProgress, ...recent].filter((x) => x.kind === "NEW").flatMap((x) => {
       const p = x.payload as NewPayload;
       return [p.parent, ...(p.related ?? []), ...(p.blockedBy ?? []), ...(p.similar ?? []).map((m) => m.key)].filter(Boolean) as string[];
     });
-    const keys = new Set([...(ops.map((x) => x.flight).filter(Boolean) as string[]), ...candidates.classify, ...candidates.prioritize, ...newKeys]);
+    const keys = new Set([...(ops.map((x) => x.flight).filter(Boolean) as string[]), ...candidates.classify, ...candidates.prioritize, ...candidates.close, ...newKeys]);
     const byKey = new Map(s.tickets.map((t) => [t.key, t]));
     const flights = Object.fromEntries(
       [...keys].filter((k) => byKey.has(k)).map((k) => {
@@ -579,7 +678,9 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       }),
     );
     const changes = Object.fromEntries([...open, ...inProgress].map((x) => [x.id, changesOf(x.kind, x.payload, x.flight ? byKey.get(x.flight) : undefined)]));
-    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes) });
+    // CLOSE 후보의 PR·머지 시각·Fixes 여부(초안 근거와 화면용)
+    const closeInfoOut = Object.fromEntries(candidates.close.map((k) => { const c = closable.get(k)!; return [k, { pr: c.pr, mergedAt: c.mergedAt, link: c.link }]; }));
+    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, close: closeInfoOut, closeManual, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes) });
   });
 
   app.get("/api/schedule/ops/:id", async (c) => {
@@ -608,7 +709,17 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     try {
       const ops = current(s);
       const tails = body.kind === "NEW" ? fleetView(s, loadFleet(), loadDispatchConfig().teamPattern).filter((a) => !a.retired).map((a) => a.registration) : [];
-      const lines = draftOps(ops, body, s.tickets, new Date().toISOString(), ops.length, { tails });
+      let closable: Map<string, Closable> | undefined;
+      if (body.kind === "CLOSE") {
+        // PR 본문을 아직 모르면 여기서 읽고(읽기 전용) 다시 계산한다
+        closable = closeInfo(s).closable;
+        const c = closable.get(String(body.flight ?? "").toUpperCase());
+        if (c && !c.link) {
+          await fetchPrBody(c.key);
+          closable = closeInfo(s).closable;
+        }
+      }
+      const lines = draftOps(ops, body, s.tickets, new Date().toISOString(), ops.length, { tails, closable });
       append(lines);
       const op = fold(readLines()).find((x) => x.id === lines[lines.length - 1].id);
       return c.json({ op, label: op?.flight ? flightNumber(op.flight) : null });
@@ -674,7 +785,13 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     if (op.status === "released" && op.calls) return c.json({ op, calls: op.calls });
     if (op.status !== "approved") return c.json({ error: `승인된 작업만 발부한다(지금 ${op.status})` }, 409);
     if (!s.linear.enabled || !s.linear.fetchedAt) return c.json({ error: "Linear를 아직 읽지 못함 — 잠시 뒤 다시" }, 503);
-    const calls = callsOf(op, op.flight ? s.tickets.find((t) => t.key === op.flight) : undefined, config.linearTeamName);
+    let calls: LinearCall[];
+    try {
+      calls = callsOf(op, op.flight ? s.tickets.find((t) => t.key === op.flight) : undefined, config.linearTeamName);
+    } catch (e) {
+      if (e instanceof ScheduleError) return c.json({ error: e.message }, e.status as 409);
+      throw e;
+    }
     append([{ op: "release", id, at: new Date().toISOString(), calls }]);
     return c.json({ op: fold(readLines()).find((x) => x.id === id), calls });
   });

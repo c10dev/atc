@@ -46,6 +46,8 @@ Read the body (`dispatch flight`) and check in this order. The first check that 
 | 4 | Priority and timing: priority undecided, or the body says "later"? | "Priority not decided" |
 | 5 | Target-specific content | The table below |
 
+A SCHEDULE `CLOSE` asks to close an issue, so checks 1 and 2 are reversed: the issue may be In Progress or In Review, and being done is the condition for agree. Skip checks 3 and 4.
+
 | Target | agree when |
 |---|---|
 | DISPATCH ASSIGN | The AIRCRAFT's TYPE RATING and CREW can fly the FLIGHT (`rating:SEC` needs a team holding SEC), any `tail:` names that team, and the body names no other team |
@@ -53,6 +55,7 @@ Read the body (`dispatch flight`) and check in this order. The first check that 
 | SCHEDULE CLASSIFY | FLIGHT TYPE, WAKE and TYPE RATING fit the size and kind of work in the body. Before marking, read `../docs/fleet.md` 4.1–4.3 and cite the criterion in the reason (e.g. `4.2 H: 여러 모듈·마이그레이션 → wake:H 맞음`). DB, security, rights, deployment or payment needs `rating:SEC` |
 | SCHEDULE PRIORITIZE | The body or comments give grounds for that priority (a deadline, a FLIGHT it blocks, a SUPERVISOR remark) |
 | SCHEDULE NEW | The four sections (goal, allowed changes, forbidden, acceptance) are filled in and `similar` shows no duplicate. If it carries a classification (type, wake, rating), cite the `../docs/fleet.md` 4.1–4.3 criteria as for CLASSIFY |
+| SCHEDULE CLOSE | The draft's PR (`gh pr view <N> --repo <owner/name> --json state,mergedAt,body`) is `MERGED`, its body says `Fixes <that FLIGHT>`, and the acceptance criteria are covered by that PR. **If the body says `Part of`, disagree** (`Part of — only a part; by vocado's rule only Fixes ends an issue`). **If there is a revert PR or remaining follow-up work is written down, disagree.** If the draft says "본문에 Fixes 없음" (no Fixes in the body), compare the acceptance criteria with the body and disagree if any are open |
 
 ### Checking PR facts
 

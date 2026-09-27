@@ -1,0 +1,237 @@
+/* FLIGHT FOLLOWING 블록(DISPATCH 탭 안). 색·글꼴·간격은 styles.css의 :root 토큰만 쓴다. 판은 .atfm과 같은 모양. */
+.ff {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+}
+.ff-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+.dispatch .ff .label {
+  margin: 0;
+}
+.ff-counts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.ff-counts b {
+  font-family: var(--mono);
+  color: var(--text);
+}
+.ff-counts .has-warn b {
+  color: var(--amber);
+}
+.ff-at {
+  margin-left: auto;
+  font-size: var(--text-xs);
+}
+.ff .empty {
+  margin: var(--space-2) 0 var(--space-1);
+}
+
+/* FLIGHT 한 줄 */
+.ff-list {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.ff-item {
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--line);
+}
+.ff-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+}
+.ff-flight {
+  flex: none;
+  font-weight: 700;
+  color: var(--text);
+}
+a.ff-flight:hover {
+  color: var(--cyan);
+}
+.ff-title {
+  flex: 1 1 12em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.ff-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1-5);
+  margin-left: auto;
+  font-size: var(--text-xs);
+}
+
+/* 작은 표시: 출처, WAKE, merged, NEW */
+.ff-tag {
+  flex: none;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.ff-tag.t-merged {
+  border-color: var(--radar);
+  color: var(--radar);
+}
+.ff-tag.t-new {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+
+/* 단계 막대 + PR */
+.ff-track {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-1-5);
+}
+.ff-stages {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  flex: 1 1 auto;
+  max-width: 560px;
+  gap: var(--space-0-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ff-stages li {
+  position: relative;
+  min-width: 0;
+  padding: var(--space-0-5) var(--space-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+  border: 1px dashed var(--line);
+  color: var(--faint);
+  cursor: help;
+}
+.ff-stages li:first-child {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+.ff-stages li:last-child {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+.ff-stages li.is-reached {
+  background: var(--panel-3);
+  border: 1px solid var(--line-strong);
+  color: var(--muted);
+}
+.ff-stages li.is-current {
+  background: var(--panel-3);
+  border: 1px solid var(--radar);
+  color: var(--radar);
+  box-shadow: inset 0 -2px 0 var(--radar);
+}
+.ff-stages li.is-na {
+  border-style: dotted;
+  opacity: 0.6;
+}
+.ff-st-short {
+  display: none;
+}
+.ff-pr {
+  display: inline-flex;
+  flex: none;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+.ff-pr a:hover {
+  color: var(--cyan);
+}
+
+/* 지연·불일치: 지연은 실선, 불일치는 점선. warn은 경고색, info는 흐리게 */
+.ff-issues {
+  margin: var(--space-1-5) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.ff-issues li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1-5);
+  padding: var(--space-0-5) 0;
+}
+.ff-issues li.s-warn {
+  color: var(--amber);
+}
+.ff-issues li.s-info {
+  color: var(--muted);
+}
+.ff-kind {
+  flex: none;
+  padding: 0 var(--space-1);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  font: 600 var(--text-xs) var(--sans);
+}
+.ff-issues li.k-mismatch .ff-kind {
+  border-style: dashed;
+}
+.ff-text {
+  flex: 1 1 14em;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ff-reported {
+  flex: none;
+  font-size: var(--text-xs);
+}
+
+/* 화면에서는 숨기고 스크린 리더에는 남긴다 */
+.ff-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  /* 좁으면 단계 이름을 약호로, PR은 막대 아래로 */
+  .ff-st-long {
+    display: none;
+  }
+  .ff-st-short {
+    display: inline;
+  }
+  .ff-track {
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+  }
+  .ff-stages {
+    flex-basis: 100%;
+  }
+  .ff-meta {
+    margin-left: 0;
+  }
+  .ff {
+    padding: var(--space-3);
+  }
+}
