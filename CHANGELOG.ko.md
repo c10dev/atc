@@ -121,6 +121,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - 이 변경 기록.
 
 ### 변경
+- 웹 화면이 탭을 필요할 때 불러온다([web/README](web/README.ko.md) "데이터 흐름"). RADAR와 공용 부분(머리글, 새 버전 알림, SSE)만 메인 번들에 있고, 다른 탭은 자기 CSS와 함께 `React.lazy` 청크가 되며, DOCS는 `marked`와 안내 Markdown을 가져간다. 메인 JS는 512 kB(gzip 159 kB)에서 261 kB(gzip 83 kB)가 됐고 Vite의 "500 kB보다 큰 청크" 경고가 없어졌다. 배포 전에 연 탭이 지워진 청크를 부르면, 조용히 실패하는 대신 그 탭 안에 "이 화면을 불러오지 못함"과 새로고침 버튼이 뜬다(탭별 오류 경계, `server/version.ts`의 `isChunkLoadError`). 기존 새 버전 알림도 함께 뜨고, 저절로 새로고침하지 않는다. 탭 안의 다른 렌더 오류도 같은 방식으로 그 탭에 가둔다. 빌드 정체(진입 스크립트)는 청크나 CSS가 바뀔 때마다 바뀌어 새 버전 알림이 계속 맞다. `#docs/<쪽>` 같은 `#탭/하위` 해시는 그대로 동작한다.
 - CROSSCHECK 모델별 일치를 모델 계열별로 센다. `modelFamily`(`server/crosscheck.ts`)가 경로 접두어(`claude-ocx-opencode-go--`, `claude-ocx-native--`), `[1m]` 같은 접미어, `-contributor`를 뗀다. 그래서 같은 Muse가 `byModel`에서 이름 셋으로 쪼개지고 ATFM의 모델별 90%/20건 표본이 나뉘던 문제가 없어졌다.
   - mark에는 원래 모델 이름이 그대로 남고, 집계와 표시만 계열로 한다. 게이트 패널은 계열을 보여 주고, 칩 툴팁은 원래 이름을 둔다.
   - `unknown`(모델 기록 전의 mark 5건)은 따로 한 줄로 남고, ATFM 켜는 조건의 "지금 계열"에는 세지 않는다.

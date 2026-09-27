@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { entryScript, showNewVersion } from "./version.ts";
+import { entryScript, isChunkLoadError, showNewVersion } from "./version.ts";
 
 const OLD = "/assets/index-DZervX0u.js";
 const NEW = "/assets/index-CuqNYoi2.js";
@@ -56,4 +56,17 @@ test("새 버전 알림: 닫은 번들은 다시 띄우지 않고, 그 다음 �
   assert.equal(showNewVersion(OLD, "/assets/index-third.js", NEW), true);
   // 닫은 뒤 서버가 원래 번들로 돌아가면(되돌림 배포) 알릴 것이 없다
   assert.equal(showNewVersion(OLD, OLD, NEW), false);
+});
+
+test("청크를 못 불러온 오류: 브라우저마다 다른 문구를 알아보고, 다른 오류는 아니다", () => {
+  for (const m of [
+    "Failed to fetch dynamically imported module: http://127.0.0.1:7700/assets/Docs-yNT5vvwm.js",
+    "error loading dynamically imported module: http://127.0.0.1:7700/assets/Fleet-CA9mCL4L.js",
+    "Importing a module script failed.",
+    "Unable to preload CSS for /assets/Fleet-NzDF3V66.css",
+  ]) assert.equal(isChunkLoadError(new TypeError(m)), true, m);
+  assert.equal(isChunkLoadError("Failed to fetch dynamically imported module: x"), true);
+  assert.equal(isChunkLoadError(new TypeError("Cannot read properties of undefined (reading 'map')")), false);
+  assert.equal(isChunkLoadError(new TypeError("Failed to fetch")), false); // API fetch 실패는 청크 오류가 아니다
+  assert.equal(isChunkLoadError(null), false);
 });
