@@ -187,6 +187,82 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
   );
 }
 
+const pct = (x: number) => `${Math.round(x * 100)}%`;
+
+// block time: 45m, 3h30m, 2d4h
+function blockTime(min: number) {
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h${min % 60 ? `${String(min % 60).padStart(2, "0")}m` : ""}`;
+  return `${Math.floor(h / 24)}d${h % 24 ? `${h % 24}h` : ""}`;
+}
+
+// TARGETS 옆 실적(LOGBOOK, docs/fleet.md 7.2). 보여 주기만 한다.
+function Actuals({ a }: { a: AircraftView }) {
+  const x = a.actuals;
+  const t = a.targets;
+  const weekShort = t.flightsPerWeek != null && x.week < t.flightsPerWeek;
+  const lateShort = t.onTime != null && x.onTime.rate != null && x.onTime.rate < t.onTime;
+  return (
+    <>
+      <p className="fl-actuals">
+        <span className={weekShort ? "fl-short" : undefined}>
+          이번 주 {x.week}
+          {t.flightsPerWeek != null && `/${t.flightsPerWeek}`}
+        </span>
+        {" · "}
+        <span
+          className={lateShort ? "fl-short" : undefined}
+          title={`최근 14일, 기대 block time이 있는 ${x.onTime.measured}건 중 ${x.onTime.within}건이 기대치 안`}
+        >
+          정시 {x.onTime.rate == null ? "—" : pct(x.onTime.rate)}
+          {t.onTime != null && <span className="faint"> (목표 {pct(t.onTime)})</span>}
+        </span>
+      </p>
+      <p className="fl-actuals faint">
+        14일 ARRIVED {x.total} · 되돌림 <span className={x.reverted ? "fl-bad" : undefined}>{x.reverted}</span> · LOS{" "}
+        <span className={x.los ? "fl-bad" : undefined}>{x.los}</span>
+      </p>
+      {x.landingWait.medianMin != null && (
+        <p className="fl-actuals faint" title="PR을 연 뒤 머지될 때까지(리뷰·머지 대기). 정시율에는 넣지 않는다">
+          착륙 대기 중앙값 {blockTime(Math.round(x.landingWait.medianMin))}
+        </p>
+      )}
+      {x.recent.length ? (
+        <ul className="fl-log" aria-label={`${a.registration} 최근 FLIGHT`}>
+          {x.recent.map((e) => (
+            <li key={e.key} title={e.pr.title}>
+              <a className="fl-log-flight" href={e.pr.url} target="_blank" rel="noreferrer">
+                {e.flight ? flightNumber(e.flight) : "AD HOC"}
+              </a>
+              <span className="faint">#{e.pr.number}</span>
+              <span
+                className="fl-log-block"
+                title={
+                  e.blockMin == null
+                    ? "팀 소요 시간 모름(점유가 PR보다 늦게 잡힘)"
+                    : `팀 소요 시간(착수 → PR)${e.expectMin == null ? ", 기대치 없음" : `, 기대 ${blockTime(Math.round(e.expectMin))} 이내`}`
+                }
+              >
+                {e.blockMin == null ? "—" : blockTime(e.blockMin)}
+              </span>
+              <span className="faint" title="착륙 대기(PR → 머지)">
+                +{blockTime(e.landingWaitMin)}
+              </span>
+              {e.onTime != null && <span className={e.onTime ? "fl-ontime" : "fl-late"}>{e.onTime ? "ON TIME" : "DELAYED"}</span>}
+              {e.reverted && <span className="fl-bad">REVERTED</span>}
+              {e.los > 0 && <span className="fl-bad">LOS {e.los}</span>}
+              <span className="faint fl-log-date">{e.arrivedAt.slice(5, 10)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="fl-line faint">LOGBOOK에 ARRIVED 기록 없음</p>
+      )}
+    </>
+  );
+}
+
 function Card({
   a,
   onEdit,
@@ -260,10 +336,11 @@ function Card({
           <>
             {a.targets.flightsPerWeek != null && <>주 {a.targets.flightsPerWeek} FLIGHT</>}
             {a.targets.flightsPerWeek != null && a.targets.onTime != null && " · "}
-            {a.targets.onTime != null && <>정시성 {Math.round(a.targets.onTime * 100)}%</>}
+            {a.targets.onTime != null && <>정시성 {pct(a.targets.onTime)}</>}
           </>
         )}
       </p>
+      <Actuals a={a} />
       {a.note && <p className="fl-note">{a.note}</p>}
 
       <div className="fl-actions">

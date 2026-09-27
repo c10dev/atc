@@ -45,7 +45,7 @@ To see Linear tickets too, put `LINEAR_API_KEY` in `.env.local`. For always-on o
 | FIDS (`#board`) | Ticket cards in Linear state columns, with a badge for the team holding each one |
 | Metrics (`#metrics`) | Operating metrics from the FLIGHT RECORDER, the stage 2 readiness check, 5-minute sample trends, a daily table |
 | AIRPORT (`#airports`) | Repository registry. Open, rename, close, reopen and delete AIRPORTs. Home AIRCRAFT and AIRCRAFT visiting from another airport (TRANSIENT) |
-| FLEET (`#fleet`) | Every AIRCRAFT with its status, current FLIGHTs, crew, TYPE RATINGS, ROUTES and TARGETS. Edit profiles, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
+| FLEET (`#fleet`) | Every AIRCRAFT with its status, current FLIGHTs, crew, TYPE RATINGS, ROUTES and TARGETS with LOGBOOK actuals (this week, on-time, reverts, LOS, last FLIGHTs). Edit profiles, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
 | DISPATCH (`#dispatch`) | The current plan, proposal cards with OCC notes and would-approve / would-reject verdicts (approve / reject in 2b), HELD, IN FLIGHT, excluded FLIGHTs, stage 2b and 3 checks |
 | SCHEDULE (`#schedule`) | OCC SCHEDULE drafts (S1 shadow): the S2 gate panel, open draft cards with would-approve / would-reject verdicts, candidate counts, a last-7-days table |
 | DOCS (`#docs`) | How to use atc: introduction, quickstart, concepts, requesting work (CHARTER DESK / AD HOC), reviewing, FLEET, radio rules, screens, stages, troubleshooting. Rendered from `docs/guide/*.md` (Korean) |
@@ -87,12 +87,15 @@ Teams (AIRCRAFT) are described in `~/.local/state/atc/fleet.json` and edited in 
 
 **Team building** in the FLEET tab: **ENTRY INTO SERVICE** adds a new AIRCRAFT from a **CONFIGURATION** template, then a **CREW BRIEFING** gives a kickoff text to paste into a new session with that name. atc links the session by name once it appears; it never starts sessions itself. **AOG** stands a team down with a reason and optional date; **RETIREMENT** removes it from the list (restorable). `TEAM_X` stays the REGISTRATION; in atc's words a team is an AIRCRAFT flown by a CREW.
 
+**LOGBOOK** ([docs/fleet.md](docs/fleet.md) 7.1–7.2, `server/logbook.ts`): every 10 minutes atc reads the last 30 PRs merged into each AIRPORT's default branch (`gh pr list --state merged`) and appends one line per new one to `~/.local/state/atc/logbook.jsonl` (append-only; the key is `owner/repo#number`, so the first run after a restart also back-fills). A line holds the AIRCRAFT (the `TEAM_X` session with a claim on the FLIGHT's STAND; `null` when unknown), the FLIGHT and its classification, departure (earliest claim, or the PR's opening) and arrival (merge) times, the team's block time (start to PR opened; unknown when no claim came before the PR), the landing wait (PR opened to merge), Codex finding rounds, whether changes were requested, and LOS on the STAND. A merged `Revert "…"` PR adds a `reverted` line to the PR it reverts. The FLEET cards show the actuals next to the TARGETS: FLIGHTs ARRIVED this week (from Monday, local time), the 14-day on-time rate (the team's block time within the WAKE expectation L 60 min, M 4 h, H 2 days; otherwise the median of the same FLIGHT TYPE and WAKE; the landing wait is not counted), 14-day reverts and LOS, the median landing wait, and the last 5 FLIGHTs. Shown only; nothing is scored or used for assignment.
+
 | API | What it does |
 |---|---|
-| `GET /api/fleet` | Every TEAM session and registered AIRCRAFT with status, current FLIGHTs, crew, ratings, routes and targets, plus the rating list, defaults and known projects |
+| `GET /api/fleet` | Every TEAM session and registered AIRCRAFT with status, current FLIGHTs, crew, ratings, routes, targets and LOGBOOK `actuals`, plus the rating list, defaults and known projects |
 | `POST /api/fleet` | ENTRY INTO SERVICE: `{registration, configuration?, base?, routes?, note?}` (configurations: `general`, `security`, `ui`, `research`) |
 | `GET /api/fleet/:registration/briefing` | CREW BRIEFING text to paste into the new session |
 | `PATCH /api/fleet/:registration` | `{complement?, ratings?, routes?, targets?, base?, note?, aog?, retired?}`; `null` resets a field to the default. `aog: {reason, until?}` stands a team down; `retired: {reason?}` / `false` retires or restores it |
+| `GET /api/logbook?aircraft=TEAM_X&days=14` | LOGBOOK entries, newest arrival first (`aircraft` optional, `days` 1–90), with the reader's last run and error |
 
 | State | Shown as |
 |---|---|
@@ -114,7 +117,7 @@ Session ──claim──▶ Workspace ──branch──▶ Ticket
 | Codex sessions | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex sessions and their cwd |
 | git | `git worktree list --porcelain` in each repository | Worktree path, branch, HEAD, dirty or not |
 | Linear | GraphQL API (`LINEAR_API_KEY`) | Ticket title, state, assignee, URL |
-| GitHub | `gh pr list --repo <owner/name> --state open` for each AIRPORT with a GitHub remote, every 90 seconds (`server/sources/github.ts`) | Open PRs: head commit, checks, reviews, merge state, Draft; Codex's 👍 and comments via `gh api` for PRs without a passing head review or with Codex findings on the head |
+| GitHub | `gh pr list --repo <owner/name> --state open` for each AIRPORT with a GitHub remote, every 90 seconds (`server/sources/github.ts`) | Open PRs: head commit, checks, reviews, merge state, Draft; Codex's 👍 and comments via `gh api` for PRs without a passing head review or with Codex findings on the head. Every 10 minutes also the last 30 merged PRs for the LOGBOOK |
 | Claim | `~/.local/state/atc/claims/<sessionId>/*.json` | Claims recorded by the hook |
 
 Join rules:
@@ -345,6 +348,7 @@ atc/
 │   ├── model.ts            # Session / Workspace / Ticket / Claim / Alert
 │   ├── airports.ts         # AIRPORT registry and API (airports.test.ts)
 │   ├── fleet.ts            # FLEET registry and API (fleet.test.ts)
+│   ├── logbook.ts          # LOGBOOK of ARRIVED FLIGHTs, TARGETS actuals (logbook.test.ts)
 │   ├── away.ts             # OUTSTATION detection (shared with the UI)
 │   ├── callsign.ts         # callsigns and FLIGHT NUMBERs (shared with the UI)
 │   ├── clearances.ts       # CLEARANCE and READBACK records

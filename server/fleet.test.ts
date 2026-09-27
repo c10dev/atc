@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { applyPatch, canHoldSec, DEFAULT_FLEET, FleetError, fleetView, loadFleet } from "./fleet.ts";
+import { computeActuals } from "./logbook.ts";
 import type { Session } from "./model.ts";
 
 const D = DEFAULT_FLEET.defaults;
@@ -97,7 +98,7 @@ test("CREW BRIEFING: 등록번호·폴더·팀원·자격·교신 규칙을 담�
   const a = {
     registration: "TEAM_G", callsign: "GOLF", status: "absent" as const, base: "VCDO", complement: D.complement, complementIsDefault: true,
     ratings: ["SEC", "DATA"] as ("SEC" | "DATA")[], ratingsIsDefault: false, routes: ["Beta Readiness"], targets: {}, note: null, flying: [],
-    configuration: "security" as const, enteredAt: null, aog: null, retired: null,
+    configuration: "security" as const, enteredAt: null, aog: null, retired: null, actuals: computeActuals([], "TEAM_G", 0),
   };
   const text = crewBriefing(a, "/home/c10/projects/vocado_nextjs", "shadow");
   assert.ok(text.startsWith("[ATC FLEET] CREW BRIEFING · GOLF (TEAM_G) · AIRPORT VCDO"));

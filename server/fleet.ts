@@ -4,6 +4,7 @@ import type { Context, Hono } from "hono";
 import { callsign } from "./callsign.ts";
 import { config } from "./config.ts";
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig } from "./dispatch.ts";
+import { type Actuals, computeActuals, type LogEntry, loadLogbook } from "./logbook.ts";
 import type { Snapshot } from "./model.ts";
 
 // FLEET 등록부(~/.local/state/atc/fleet.json). 팀(AIRCRAFT)마다 CREW COMPLEMENT, TYPE RATING, ROUTE, TARGETS를 적는다.
@@ -181,10 +182,17 @@ export interface AircraftView {
   enteredAt: string | null;
   aog: AircraftProfile["aog"] | null;
   retired: AircraftProfile["retired"] | null;
+  actuals: Actuals; // LOGBOOK에서 센 TARGETS 실적(보여 주기만 함, docs/fleet.md 7.2)
 }
 
 // 스냅샷의 TEAM 세션과 등록부를 합친다. 세션이 없는 등록 항목도 "absent"로 보인다.
-export function fleetView(s: Pick<Snapshot, "sessions" | "claims" | "workspaces" | "airports">, fleet: FleetFile, teamPattern = DEFAULT_DISPATCH_CONFIG.teamPattern): AircraftView[] {
+export function fleetView(
+  s: Pick<Snapshot, "sessions" | "claims" | "workspaces" | "airports">,
+  fleet: FleetFile,
+  teamPattern = DEFAULT_DISPATCH_CONFIG.teamPattern,
+  logbook: LogEntry[] = [],
+  now = Date.now(),
+): AircraftView[] {
   const team = new RegExp(teamPattern, "i");
   const codeOf = (repo: string | null) => s.airports.find((a) => a.repo === repo)?.code ?? null;
   const wsTicket = new Map(s.workspaces.map((w) => [w.path, w.ticketKey]));
@@ -213,6 +221,7 @@ export function fleetView(s: Pick<Snapshot, "sessions" | "claims" | "workspaces"
       enteredAt: profile.enteredAt ?? null,
       aog: profile.aog ?? null,
       retired: profile.retired ?? null,
+      actuals: computeActuals(logbook, reg, now),
     };
   });
 }
@@ -293,7 +302,7 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const s = await getSnapshot();
     const fleet = loadFleet();
     const projects = [...new Set(s.tickets.map((t) => t.project).filter(Boolean) as string[])].sort();
-    const aircraft = fleetView(s, fleet, loadDispatchConfig().teamPattern);
+    const aircraft = fleetView(s, fleet, loadDispatchConfig().teamPattern, loadLogbook());
     const configurations = Object.entries(CONFIGURATIONS).map(([id, t]) => ({ id, label: t.label, complement: t.complement, ratings: t.ratings }));
     return c.json({
       ratings: RATINGS,
@@ -318,7 +327,7 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       const { registration, profile } = entryIntoService(fleet, { ...body, base }, live, teamPattern);
       saveAircraft(registration, profile);
       fleet.aircraft[registration] = profile;
-      return c.json({ ok: true, aircraft: fleetView(s, fleet, teamPattern).find((a) => a.registration === registration) });
+      return c.json({ ok: true, aircraft: fleetView(s, fleet, teamPattern, loadLogbook()).find((a) => a.registration === registration) });
     } catch (e) {
       if (e instanceof FleetError) return c.json({ error: e.message }, e.status as 400);
       throw e;
@@ -345,7 +354,7 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       saveAircraft(key, next);
       if (Object.keys(next).length) fleet.aircraft[key] = next;
       else delete fleet.aircraft[key];
-      return c.json({ ok: true, aircraft: fleetView(await getSnapshot(), fleet, teamPattern).find((a) => a.registration === reg) });
+      return c.json({ ok: true, aircraft: fleetView(await getSnapshot(), fleet, teamPattern, loadLogbook()).find((a) => a.registration === reg) });
     } catch (e) {
       if (e instanceof FleetError) return c.json({ error: e.message }, e.status as 400);
       throw e;

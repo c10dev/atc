@@ -142,6 +142,35 @@ async function fetchAll(repos: string[]) {
   state.error = errors.length ? [...new Set(errors)].join(" · ") : null;
 }
 
+// LOGBOOK용: 기본 브랜치에 머지된 최근 PR. 열린 PR 읽기와 따로, 필요한 필드만 가볍게 읽는다.
+export interface GhMerged {
+  number: number;
+  title: string;
+  url: string;
+  headRefName: string;
+  baseRefName: string;
+  createdAt: string;
+  mergedAt: string;
+  body: string;
+  reviews: GhPull["reviews"];
+}
+
+const MERGED_FIELDS = "number,title,url,headRefName,baseRefName,createdAt,mergedAt,body,reviews";
+const defaultBranches = new Map<string, string>();
+
+// GitHub remote가 없으면 null
+export async function listMerged(repo: string, limit = 30): Promise<{ slug: string; pulls: GhMerged[] } | null> {
+  const slug = await slugOf(repo);
+  if (!slug) return null;
+  let base = defaultBranches.get(slug);
+  if (!base) {
+    base = (await gh(["repo", "view", slug, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"])).trim() || "main";
+    defaultBranches.set(slug, base);
+  }
+  const out = await gh(["pr", "list", "--repo", slug, "--state", "merged", "--base", base, "--limit", String(limit), "--json", MERGED_FIELDS]);
+  return { slug, pulls: (JSON.parse(out) as GhMerged[]).filter((p) => p.mergedAt) };
+}
+
 // 90초마다 백그라운드로 갱신하고, 호출 시점에는 마지막 결과를 바로 돌려준다(스냅샷을 막지 않는다).
 export function readGithub(repos: string[]): GithubState {
   if (!state.enabled) return state;
