@@ -797,3 +797,16 @@
     text-align: right;
   }
 }
+
+/* 최근 초안: CROSSCHECK에 동의 버튼 한 번으로 기록한 판정 */
+.sc-via {
+  display: inline-block;
+  margin-right: var(--space-1-5);
+  padding: 0 var(--space-1);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--faint);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}

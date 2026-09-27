@@ -72,7 +72,7 @@ test("판정과 2단계 점검, 후보 목록", () => {
   const ops = fold(lines);
   assert.equal(ops[0].status, "disagreed");
   assert.equal(ops[0].verdictReason, "BUILD임");
-  assert.deepEqual(gateOf(ops), { decided: 1, agreed: 0, agreement: 0, target: { decided: 20, agreement: 0.8 }, ready: false, crosscheck: { marked: 0, matched: 0, rate: null, byModel: {} } });
+  assert.deepEqual(gateOf(ops), { decided: 1, agreed: 0, agreement: 0, target: { decided: 20, agreement: 0.8 }, ready: false, crosscheck: { marked: 0, matched: 0, rate: null, byModel: {}, oneClick: { count: 0, decided: 0 } } });
   const tickets = [t("VOC-41"), t("VOC-42", { labels: ["type:BUILD", "wake:M"], priority: 0 }), t("VOC-43", { state: "In Progress", stateType: "started" })];
   assert.deepEqual(candidatesOf(tickets, []), { classify: ["VOC-41"], prioritize: ["VOC-42"] });
 });
@@ -250,7 +250,7 @@ test("CROSSCHECK: 열린 초안에만 달리고 상태를 바꾸지 않는다. �
   assert.equal(ops[5].crosscheck, null);
   const gate = gateOf(ops);
   assert.equal(gate.decided, 1);
-  assert.deepEqual(gate.crosscheck, { marked: 3, matched: 2, rate: 2 / 3, byModel: { unknown: { marked: 3, matched: 2, rate: 2 / 3 } } });
+  assert.deepEqual(gate.crosscheck, { marked: 3, matched: 2, rate: 2 / 3, byModel: { unknown: { marked: 3, matched: 2, rate: 2 / 3 } }, oneClick: { count: 0, decided: 0 } });
   const brief = crosscheckBriefOf(ops, { "S-0005": ["type:MAINT"] });
   assert.deepEqual(brief.pending, [{ id: "S-0005", kind: "CLASSIFY", flight: "VOC-5", reason: "OCC 근거", changes: ["type:MAINT"] }]);
   assert.deepEqual(brief.examples.map((e) => [e.id, e.verdict, e.reason]), [["S-0001", "disagree", "이미 완료됨"], ["S-0003", "disagree", "BUILD임"], ["S-0002", "agree", null]]);
@@ -263,6 +263,22 @@ test("CROSSCHECK 입력 검사: verdict, 이유 필수·500자 이내, by 기본
   assert.throws(() => parseCrosscheck({ verdict: "agree", reason: "가".repeat(501) }, iso(0)), /500자/);
   assert.deepEqual(parseCrosscheck({ verdict: "agree", reason: " 본문상\n제약 없음 " }, iso(0)), { by: "CROSSCHECK", model: "unknown", verdict: "agree", reason: "본문상 제약 없음", at: iso(0) });
   assert.equal(parseCrosscheck({ verdict: "agree", reason: "x", model: " claude-ocx-opencode-go--muse-spark-1.3-contributor[1m] " }, iso(0)).model, "claude-ocx-opencode-go--muse-spark-1.3-contributor[1m]");
+});
+
+test("판정 방식(via): verdict·approve·reject에서만 접고 뒤 상태로 넘어가도 남는다. oneClick은 판정 전 mark가 있고 via가 기록된 판정만", async () => {
+  const { humanOf } = await import("./schedule.ts");
+  const draft = (id: string, flight: string) => ({ op: "draft" as const, id, at: iso(30), kind: "CLASSIFY" as const, flight, payload: { type: "MAINT" as const }, reason: "r" });
+  const xc = (id: string) => ({ op: "crosscheck" as const, id, at: iso(20), by: "CROSSCHECK", model: "muse", verdict: "agree" as const, reason: "r" });
+  const ops = fold([
+    draft("S-0001", "VOC-1"), xc("S-0001"), { op: "verdict" as const, id: "S-0001", at: iso(10), verdict: "agree" as const, reason: null, via: "crosscheck" as const },
+    draft("S-0002", "VOC-2"), xc("S-0002"), { op: "approve" as const, id: "S-0002", at: iso(10), via: "manual" as const }, { op: "release" as const, id: "S-0002", at: iso(9), calls: [] },
+    draft("S-0003", "VOC-3"), { op: "reject" as const, id: "S-0003", at: iso(10), reason: "BUILD임", via: "crosscheck" as const }, // mark 없음 → oneClick에 안 셈
+    draft("S-0004", "VOC-4"), { op: "verdict" as const, id: "S-0004", at: iso(10), verdict: "disagree" as const, reason: "옛 기록" },
+  ]);
+  assert.deepEqual(ops.map((o) => o.via), ["crosscheck", "manual", "crosscheck", undefined]);
+  assert.deepEqual(humanOf(ops[2]), { verdict: "disagree", at: iso(10), reason: "BUILD임", via: "crosscheck" });
+  assert.deepEqual(humanOf(ops[3]), { verdict: "disagree", at: iso(10), reason: "옛 기록" });
+  assert.deepEqual(gateOf(ops).crosscheck.oneClick, { count: 1, decided: 2 });
 });
 
 test("OCC 보정 예시: 사람 판정만, 사유 있는 것 먼저, OCC가 냈던 분류와 근거를 담고 NEW 본문은 뺀다", async () => {

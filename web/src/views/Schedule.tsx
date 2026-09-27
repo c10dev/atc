@@ -57,6 +57,12 @@ const modelText = (id: string) => (modelLabel(id) === id ? id : `${modelLabel(id
 // 툴팁·aria-label: "CROSSCHECK agree · 모델 (전체 id) — 사유"
 const xcTitle = (m: Crosscheck) => `CROSSCHECK ${m.verdict} · ${modelText(modelOf(m))} — ${m.reason}`;
 
+// 판정을 어떻게 했는지: CROSSCHECK에 동의 버튼 한 번(crosscheck) 또는 직접(manual). 옛 기록은 없음
+type Via = "crosscheck" | "manual";
+const viaOf = (op: ScheduleOp): Via | null => (op as unknown as { via?: Via | null }).via ?? null;
+// 한 번 클릭 비율 설명(툴팁·안내 문장)
+const ONE_CLICK_NOTE = "사람 판정 가운데 CROSSCHECK에 동의 버튼 한 번으로 낸 비율 — 어떻게 판정했는지 기록된 판정만 셈";
+
 interface Brief {
   mode: Mode;
   open: ScheduleOp[];
@@ -69,7 +75,8 @@ interface Brief {
     agreement: number | null;
     target: { decided: number; agreement: number };
     ready: boolean;
-    crosscheck?: CrosscheckRate & { byModel?: Record<string, CrosscheckRate> }; // 참고용, 게이트 기준 아님. byModel은 옛 서버면 없음
+    // 참고용, 게이트 기준 아님. byModel·oneClick은 옛 서버면 없음
+    crosscheck?: CrosscheckRate & { byModel?: Record<string, CrosscheckRate>; oneClick?: { count: number; decided: number } };
   };
   limit: number;
   candidates: { classify: string[]; prioritize: string[] };
@@ -163,12 +170,12 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
   }, [load, refreshKey]);
 
   // 판정 기록. 카드가 사라지면 초점은 DRAFTS 제목으로. 409·404는 위 알림, 그 밖의 실패는 카드 안에.
-  const verdict = async (op: ScheduleOp, v: "agree" | "disagree", reason: string | null) => {
+  const verdict = async (op: ScheduleOp, v: "agree" | "disagree", reason: string | null, via: Via) => {
     const approval = brief?.mode === "approval";
     if (approval && v === "agree" && !confirm(`${op.id} ${subjectOf(op)}를 승인하면 OCC가 다음 바퀴에 Linear에 씁니다. 승인할까요?`)) return null;
     try {
-      if (approval) await post(`/api/schedule/ops/${op.id}/${v === "agree" ? "approve" : "reject"}`, { reason });
-      else await post(`/api/schedule/ops/${op.id}/verdict`, { verdict: v, reason });
+      if (approval) await post(`/api/schedule/ops/${op.id}/${v === "agree" ? "approve" : "reject"}`, { reason, via });
+      else await post(`/api/schedule/ops/${op.id}/verdict`, { verdict: v, reason, via });
       const word = approval ? (v === "agree" ? "승인" : "거절") : v === "agree" ? "승인했을 것" : "거절했을 것";
       setNotice({ tone: "ok", text: `${op.id} ${subjectOf(op)} — ${word}으로 기록함` });
       await load();
@@ -350,6 +357,11 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
                   </time>
                 </td>
                 <td className="sc-c-reason" data-label="사유">
+                  {viaOf(op) === "crosscheck" && (
+                    <span className="sc-via" title="CROSSCHECK에 동의 버튼 한 번으로 기록한 판정">
+                      1-CLICK
+                    </span>
+                  )}
                   {op.verdictReason ?? <span className="faint">—</span>}
                   <CrosscheckMini m={markOf(op)} />
                 </td>
@@ -386,6 +398,7 @@ function Gate({ gate }: { gate: Brief["gate"] }) {
   ] as const;
   const mark = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족" } as const;
   const xc = gate.crosscheck; // 옛 서버면 없음
+  const one = xc?.oneClick;
   return (
     <div className="sc-gate">
       <h2 className="label">
@@ -425,10 +438,19 @@ function Gate({ gate }: { gate: Brief["gate"] }) {
               <span className="sc-gate-value">{pct(r.rate)}</span>
             </li>
           ))}
+        {one && (
+          <li className="s-info sc-gate-one" title={ONE_CLICK_NOTE}>
+            <span className="sc-gate-label">한 번 클릭 {one.decided > 0 ? `${one.count}/${one.decided}` : "— (아직 없음)"}</span>
+            <span className="sc-gate-value">{one.decided > 0 ? pct(one.count / one.decided) : "—"}</span>
+            <span className="sc-gate-target">기준 없음</span>
+            <span className="sc-gate-state">참고</span>
+          </li>
+        )}
       </ul>
       <p className="sc-gate-note faint">
         S1 그림자 운용: 판정은 합의율 측정용이다. S2(승인 운용)부터 승인한 초안만 linear-guard를 거쳐 Linear에 쓴다. 판정 없이 3일이 지나면 EXPIRED.
         {xc && " CROSSCHECK 일치는 참고용이다 — 게이트에는 사람 판정만 셈."}
+        {one && ` 한 번 클릭: ${ONE_CLICK_NOTE}.`}
       </p>
     </div>
   );
@@ -447,7 +469,7 @@ function DraftCard({
   changes: string[];
   now: number;
   clock: Clock;
-  onVerdict: (op: ScheduleOp, v: "agree" | "disagree", reason: string | null) => Promise<string | null>;
+  onVerdict: OnVerdict;
 }) {
   const v = useVerdict(op, onVerdict);
   const key = op.flight ?? "";
@@ -516,7 +538,7 @@ function DraftCard({
   );
 }
 
-type OnVerdict = (op: ScheduleOp, v: "agree" | "disagree", reason: string | null) => Promise<string | null>;
+type OnVerdict = (op: ScheduleOp, v: "agree" | "disagree", reason: string | null, via: Via) => Promise<string | null>;
 
 // 카드 하나의 판정 상태(기록 중, 실패, 거절 사유 입력)
 function useVerdict(op: ScheduleOp, onVerdict: OnVerdict) {
@@ -524,10 +546,10 @@ function useVerdict(op: ScheduleOp, onVerdict: OnVerdict) {
   const [error, setError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const rejectBtn = useRef<HTMLButtonElement>(null);
-  const submit = async (v: "agree" | "disagree", reason: string | null) => {
+  const submit = async (v: "agree" | "disagree", reason: string | null, via: Via = "manual") => {
     setBusy(true);
     setError(null);
-    const err = await onVerdict(op, v, reason);
+    const err = await onVerdict(op, v, reason, via);
     // 성공하면 카드가 사라진다. 실패만 여기서 보인다.
     setBusy(false);
     if (err) setError(err);
@@ -597,7 +619,7 @@ function VerdictActions({ op, v, now, clock }: { op: ScheduleOp; v: ReturnType<t
               className={`sc-btn sc-xc-accept v-${xc.verdict}`}
               disabled={v.busy}
               title={`CROSSCHECK 판정(${xc.verdict})대로 ${word} 기록${xc.verdict === "disagree" ? " — 사유는 CROSSCHECK 사유" : ""}`}
-              onClick={() => v.submit(xc.verdict, xc.verdict === "disagree" ? xc.reason : null)}
+              onClick={() => v.submit(xc.verdict, xc.verdict === "disagree" ? xc.reason : null, "crosscheck")}
             >
               CROSSCHECK에 동의
             </button>
