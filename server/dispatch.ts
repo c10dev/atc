@@ -3,6 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { callsign } from "./callsign.ts";
 import { config } from "./config.ts";
 import { type Classification, canFly, classOf, DEFAULT_FLEET, type FleetFile, needsStand, profileOf, WAKE_SLOTS } from "./crew.ts";
+import { keyInName, keyPatternOf, teamOfKey } from "./linear-keys.ts";
 import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
 import { REASON_CODES } from "./reasons.ts";
@@ -12,8 +13,12 @@ import { REASON_CODES } from "./reasons.ts";
 
 export interface DispatchConfig {
   mode: "shadow" | "approval";
-  // Linear 프로젝트 이름 → AIRPORT 코드. null이면 배정 제외. 목록에 없는 프로젝트도 제외.
+  // Linear 프로젝트 이름 → AIRPORT 코드. null이면 배정 제외. 목록에 없는 프로젝트는 팀의 기본 AIRPORT로, 그것도 없으면 제외.
   projectAirports: Record<string, string | null>;
+  // Linear 팀 key → 기본 AIRPORT(프로젝트 매핑에 없는 이슈). 예: ATC → ATCC
+  teamAirports: Record<string, string | null>;
+  // DISPATCH·SCHEDULE 후보가 되는 Linear 팀. 비었으면 주 팀(LINEAR_TEAM_KEY)만. 나머지 팀은 보여 주기만(RADAR·FIDS·NETWORK)
+  candidateTeams: string[];
   slots: {
     perTeam: number;
     airborne: Record<string, number>; // AIRPORT별 동시 AIRBORNE 한도
@@ -36,6 +41,8 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
     "Vocado Pre-seed IR & Pitch Deck": null,
     "Vocado Visual System (SEED)": null,
   },
+  teamAirports: { ATC: "ATCC" },
+  candidateTeams: [],
   slots: { perTeam: 1, airborne: { VCDO: 4 }, defaultAirborne: 2, openProposals: 5, openReleases: 5 },
   weights: { priority: 3, wait: 0.5, unblock: 2, affinity: 1, conflict: -2, route: 1 },
   releaseDays: 3,
@@ -66,12 +73,26 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       ...d,
       ...user,
       projectAirports: { ...d.projectAirports, ...user.projectAirports },
+      teamAirports: { ...d.teamAirports, ...user.teamAirports },
+      candidateTeams: Array.isArray(user.candidateTeams) ? user.candidateTeams.map((k: unknown) => String(k).toUpperCase()) : d.candidateTeams,
       slots: { ...d.slots, ...user.slots, airborne: { ...d.slots.airborne, ...user.slots?.airborne } },
       weights: { ...d.weights, ...user.weights },
     };
   } catch {
     return DEFAULT_DISPATCH_CONFIG;
   }
+}
+
+// DISPATCH·SCHEDULE 후보 팀(설정이 비었으면 주 팀만)
+export function candidateTeamsOf(cfg: Pick<DispatchConfig, "candidateTeams">, primary = config.linearTeamKey): Set<string> {
+  return new Set(cfg.candidateTeams.length ? cfg.candidateTeams : [primary]);
+}
+export const isCandidateTicket = (t: Pick<Ticket, "key">, teams: Set<string>) => teams.has(teamOfKey(t.key));
+
+// FLIGHT의 AIRPORT: 프로젝트 매핑이 먼저(null이면 제외), 매핑에 없는 프로젝트·프로젝트 없음은 팀의 기본 AIRPORT
+export function airportOfTicket(t: Pick<Ticket, "key" | "project">, cfg: Pick<DispatchConfig, "projectAirports" | "teamAirports">): string | null {
+  if (t.project && t.project in cfg.projectAirports) return cfg.projectAirports[t.project];
+  return cfg.teamAirports[teamOfKey(t.key)] ?? null;
 }
 
 export interface Factor {
@@ -336,6 +357,7 @@ export function planDispatch(
   const byKey = new Map(s.tickets.map((t) => [t.key, t]));
   const codeOf = (repo: string | null) => (repo ? (s.airports.find((a) => a.repo === repo)?.code ?? null) : null);
   const openAirports = new Set(s.airports.map((a) => a.code));
+  const candidates = candidateTeamsOf(cfg);
   const active = s.claims.filter((c) => c.state === "active");
   const wsTicket = new Map(s.workspaces.map((w) => [w.path, w.ticketKey]));
   const flightsWithStand = new Set(s.workspaces.map((w) => w.ticketKey).filter(Boolean) as string[]);
@@ -411,6 +433,7 @@ export function planDispatch(
     `CHECK 독립성 — 검토 대상을 만든 ${[...ind.builders.keys()].join(", ")} 말고 이 CHECK를 날 AIRCRAFT 없음 (${independenceDetail(ind)})`;
   for (const t of s.tickets) {
     if (t.stateType !== "unstarted") continue;
+    if (!isCandidateTicket(t, candidates)) continue; // 보여 주기만 하는 팀(설정 candidateTeams)
     if (parents.has(t.key)) {
       excluded.push({ flight: t.key, reason: parentWhy(t) });
       continue;
@@ -420,7 +443,7 @@ export function planDispatch(
       excluded.push({ flight: t.key, reason: excludedLabelWhy(label) });
       continue;
     }
-    const airport = t.project ? cfg.projectAirports[t.project] : undefined;
+    const airport = airportOfTicket(t, cfg);
     if (!airport) {
       excluded.push({ flight: t.key, reason: noProjectWhy(t.project) });
       continue;
@@ -621,20 +644,20 @@ export function planDispatch(
   // 컨테이너(상위 이슈)는 RELEASE 대상이 아니지만, 왜 빠졌는지 화면에서 보이게 남긴다.
   for (const t of s.tickets) {
     if (!parents.has(t.key) || t.stateType !== "started" || !cfg.releaseStates.includes(t.state)) continue;
-    if (flightsWithStand.has(t.key) || !(t.project && cfg.projectAirports[t.project])) continue;
+    if (flightsWithStand.has(t.key) || !isCandidateTicket(t, candidates) || !airportOfTicket(t, cfg)) continue;
     excluded.push({ flight: t.key, reason: parentWhy(t) });
   }
   const release: ReleasePlan[] = s.tickets
     .filter((t) => t.stateType === "started" && cfg.releaseStates.includes(t.state) && !flightsWithStand.has(t.key))
     .filter((t) => !parents.has(t.key))
-    .filter((t) => Boolean(t.project && cfg.projectAirports[t.project]))
+    .filter((t) => isCandidateTicket(t, candidates) && Boolean(airportOfTicket(t, cfg)))
     .map((t) => ({ t, days: (now - Date.parse(t.startedAt ?? t.updatedAt ?? new Date(now).toISOString())) / DAY }))
     .filter((x) => x.days >= cfg.releaseDays)
     .sort((a, b) => b.days - a.days)
     .map(({ t, days }) => ({
       kind: "RELEASE" as const,
       flight: t.key,
-      airport: cfg.projectAirports[t.project!] ?? null,
+      airport: airportOfTicket(t, cfg),
       days: round1(days),
       score: round1(days),
       factors: [
@@ -642,7 +665,8 @@ export function planDispatch(
       ],
     }));
 
-  const slots = [...new Set([...openAirports].filter((c) => Object.values(cfg.projectAirports).includes(c)))].map((code) => ({
+  const mapped = new Set([...Object.values(cfg.projectAirports), ...[...candidates].map((k) => cfg.teamAirports[k])]);
+  const slots = [...new Set([...openAirports].filter((c) => mapped.has(c)))].map((code) => ({
     airport: code,
     airborne: airborneAt.get(code) ?? 0,
     planned: planned.get(code) ?? 0,
@@ -653,8 +677,9 @@ export function planDispatch(
 }
 
 // 청구 기록(~/.local/state/atc/claims)으로 세션별 과거 FLIGHT를 모은다. TTL과 상관없이 전부 본다.
-export function readFlightHistory(teamKey = config.linearTeamKey, dir = join(config.stateDir, "claims")): FlightHistory {
-  const re = new RegExp(`(?:^|[/_-])${teamKey.toLowerCase()}-?(\\d+)(?:$|[/_-])`, "i");
+export function readFlightHistory(teamKeys: string | string[] = config.linearTeamKeys, dir = join(config.stateDir, "claims")): FlightHistory {
+  const keysOf = typeof teamKeys === "string" ? [teamKeys] : teamKeys;
+  const re = keyPatternOf(keysOf);
   const out: FlightHistory = new Map();
   let sessions: string[] = [];
   try {
@@ -666,8 +691,8 @@ export function readFlightHistory(teamKey = config.linearTeamKey, dir = join(con
     const keys = new Set<string>();
     try {
       for (const f of readdirSync(join(dir, id))) {
-        const m = basename(decodeURIComponent(f.replace(/\.json$/, ""))).match(re);
-        if (m) keys.add(`${teamKey}-${Number(m[1])}`);
+        const key = keyInName(basename(decodeURIComponent(f.replace(/\.json$/, ""))), keysOf, re);
+        if (key) keys.add(key);
       }
     } catch {}
     if (keys.size) out.set(id, [...keys].sort());

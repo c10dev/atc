@@ -129,6 +129,11 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - AGENTS: 세션 수, 세션 폴더, 점유 hook 설치 여부, TTL과 HANDOFF 기준 시간.
 - README에 릴리스 배지.
 - 이 변경 기록.
+- atc가 Linear 팀을 여럿 읽는다(ATC-1). `LINEAR_TEAM_KEYS=VOC,ATC`에 읽을 팀을 모두 적는다. 주 팀(`LINEAR_TEAM_KEY`)이 언제나 맨 앞이고, 새 변수가 없으면 전처럼 주 팀 하나만 읽는다. 설정 창 LINEAR 탭에 **TEAMS** 줄이 생겼다.
+  - `server/sources/linear.ts`는 팀마다 따로 읽고(한 팀의 이슈 200건이 다른 팀을 밀어내지 않게) 상태 목록은 이름으로 합친다. 실패한 팀은 마지막 결과를 쓰고 오류에 팀을 적는다. 한 번도 읽지 못한 팀이 있으면 전체를 실패로 둔다. 그래야 SCHEDULE이 그 팀 티켓이 사라졌다고 보지 않는다.
+  - 모든 팀의 key를 브랜치·워크트리 이름과 PR 제목에서 찾는다(`voc-123`, `atc-12`, `(ATC-12)`. 새 파일 `server/linear-keys.ts`). STAND, LOGBOOK의 STAND, 점유 기록, 착륙이 이것을 쓴다. key는 첫 글자 뒤에 숫자가 있어도 된다.
+  - `dispatch.json`에 `teamAirports`(프로젝트 매핑에 없는 이슈에 쓸 팀별 기본 AIRPORT. 기본 `{ATC: "ATCC"}`)와 `candidateTeams`(Todo FLIGHT가 DISPATCH·SCHEDULE 후보가 되는 팀. 기본은 비어 있음 = 주 팀만)가 생겼다.
+  - 다른 팀은 보여 주기만 한다(RADAR·STRIPS·FIDS). planner는 제외 줄 없이 건너뛰고, SCHEDULE 브리핑은 후보에서 빼고, 그 팀에 쓴 SCHEDULE 초안은 409로 거절한다. `candidateTeams`에 팀을 넣으면 그 팀 FLIGHT는 그 팀 AIRPORT가 거점인 AIRCRAFT에만 제안한다(ATC → ATCC). 스위치는 꺼 두었다.
 
 ### 변경
 - DISPATCH 거절 사유 칩이 차단 범위를 정한다([docs/dispatch.ko.md](docs/dispatch.ko.md) 6.1). 24시간 규칙(`recentPairsOf`)은 FLIGHT–AIRCRAFT 짝만 막아서, FLIGHT 자체의 문제로 거절돼도 곧바로 다음 팀에 제안됐다. D-0022(VOC-177 → TEAM_D, "사용자 지시를 기다림")와 D-0023(VOC-125 → TEAM_A, "사용자 모집·관찰 필요") 뒤에 D-0024(VOC-125 → TEAM_D)와 D-0025(VOC-177 → TEAM_B)가 나왔다.

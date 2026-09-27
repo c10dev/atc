@@ -37,3 +37,10 @@ test(".env.local 병합: 있는 줄은 바꾸고, 없는 키는 끝에 붙이고
   assert.equal(mergeEnv("", { ATC_CLAIM_TTL_MIN: "90" }), "ATC_CLAIM_TTL_MIN=90\n");
   assert.equal(mergeEnv("A=1\n", { A: null }), "");
 });
+
+test("읽는 팀(LINEAR_TEAM_KEYS): 쉼표 목록을 대문자로, 틀린 key는 오류, 비우면 지움", async () => {
+  const { validatePatch } = await import("./settings.ts");
+  assert.deepEqual(validatePatch({ teamKeys: "voc, atc" }).env, { LINEAR_TEAM_KEYS: "VOC,ATC" });
+  assert.deepEqual(validatePatch({ teamKeys: "" }).env, { LINEAR_TEAM_KEYS: null });
+  assert.deepEqual(Object.keys(validatePatch({ teamKeys: "VOC, 1X" }).errors), ["teamKeys"]);
+});

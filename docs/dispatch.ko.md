@@ -203,7 +203,7 @@ CAPTAIN(STAND 없는 FLIGHT만): 마쳤다고 보고 → OCC: atcctl dispatch ar
 | `server/proposals.ts` | 제안 기록(`~/.local/state/atc/proposals.jsonl`, 추가만 함, clearances와 같은 방식) |
 | API | `GET /api/dispatch/brief`, `POST /api/dispatch/proposals/:id/{note,hold,agree,disagree,approve,reject,sent,accept,decline}` |
 | 이벤트·기록 | `proposal.created / decided / sent / accepted / departed / superseded`를 FLIGHT RECORDER에 |
-| 설정 | `~/.local/state/atc/dispatch.json`: 프로젝트→AIRPORT 매핑, 슬롯, 가중치, 모드(`shadow`/`approval`) |
+| 설정 | `~/.local/state/atc/dispatch.json`: 프로젝트→AIRPORT 매핑, 팀별 기본 AIRPORT(`teamAirports`), 후보 Linear 팀(`candidateTeams`, 비면 주 팀), 슬롯, 가중치, 모드(`shadow`/`approval`) |
 | 화면 | DISPATCH 탭: 제안 카드(FLIGHT·AIRCRAFT·요소별 점수·DISPATCH 메모·CAUTION·HOLD), 승인/거절 버튼(거절은 사유 칩 + 선택 메모), HELD 목록, 슬롯 현황, RELEASE 목록 |
 | 지표 | 그림자 합의율, 제안→수락 시간, 유휴 AIRCRAFT 시간(PARKED인데 Todo가 있던 분), 방치된 ENROUTE 수 |
 | `atc/occ/`(전 `atc/dispatch/`) | TOWER와 같은 구조: `CLAUDE.md`(역할·판단 기준), `/tick`, guard(atc CLI·jq만, Linear는 읽기 MCP만) |

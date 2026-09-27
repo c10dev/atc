@@ -5,7 +5,8 @@ import { flightNumber } from "./callsign.ts";
 import { config } from "./config.ts";
 import { classLabel, classOf, FLIGHT_TYPES, type FlightType, RATINGS, type Rating, WAKES, type Wake } from "./crew.ts";
 import { type Crosscheck, CrosscheckError, type CrosscheckLine, type CrosscheckVerdict, crosscheckRateOf, examplesOf, type HumanDecision, markOf, oneClickOf, parseCrosscheck, type Via, viaOf } from "./crosscheck.ts";
-import { DONE_STATES, loadDispatchConfig, PRIORITY_NAME } from "./dispatch.ts";
+import { candidateTeamsOf, DONE_STATES, isCandidateTicket, loadDispatchConfig, PRIORITY_NAME } from "./dispatch.ts";
+import { teamOfKey } from "./linear-keys.ts";
 import { fleetView, loadFleet } from "./fleet.ts";
 import { type LogEntry, loadLogbook, type PrLink, prLinkOf } from "./logbook.ts";
 import type { Snapshot, Ticket } from "./model.ts";
@@ -465,9 +466,14 @@ export function draftOps(
   tickets: Ticket[],
   now: string,
   seq: number,
-  ctx: { tails?: string[]; closable?: Map<string, Closable> } = {},
+  ctx: { tails?: string[]; closable?: Map<string, Closable>; teams?: Set<string> } = {},
 ): LogLine[] {
   const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+  // 후보 팀(dispatch.json candidateTeams)이 아닌 FLIGHT에는 초안을 쓰지 않는다. 보여 주기만 하는 팀이고, 분류 라벨도 없다
+  if (input.kind !== "NEW" && ctx.teams && input.flight != null) {
+    const team = teamOfKey(String(input.flight));
+    if (!ctx.teams.has(team)) throw new ScheduleError(`${team} 팀은 SCHEDULE 후보가 아님(dispatch.json candidateTeams) — 보여 주기만 한다`, 409);
+  }
   let kind: ScheduleKind;
   let flight: string | null = null;
   let payload: SchedulePayload;
@@ -697,7 +703,9 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       .sort((a, b) => b.statusAt.localeCompare(a.statusAt))
       .slice(0, 50);
     const { closable } = closeInfo(s);
-    const candidates = candidatesOf(s.tickets, ops, closable, now);
+    const teams = candidateTeamsOf(loadDispatchConfig());
+    const mine = new Map([...closable].filter(([flight]) => teams.has(teamOfKey(flight))));
+    const candidates = candidatesOf(s.tickets.filter((t) => isCandidateTicket(t, teams)), ops, mine, now);
     // SUPERVISOR가 Linear에서 직접 Done으로 바꿀 것: 승인된 CLOSE, 그림자 운용이면 "승인했을 것"(7일 안) 중 아직 열린 이슈
     const byKeyAll = new Map(s.tickets.map((t) => [t.key, t]));
     const closeManual = ops
@@ -769,7 +777,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
           closable = closeInfo(s).closable;
         }
       }
-      const lines = draftOps(ops, body, s.tickets, new Date().toISOString(), ops.length, { tails, closable });
+      const lines = draftOps(ops, body, s.tickets, new Date().toISOString(), ops.length, { tails, closable, teams: candidateTeamsOf(loadDispatchConfig()) });
       append(lines);
       const op = fold(readLines()).find((x) => x.id === lines[lines.length - 1].id);
       return c.json({ op, label: op?.flight ? flightNumber(op.flight) : null });

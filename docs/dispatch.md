@@ -203,7 +203,7 @@ The brief's `reasonStats` turns the chips into a to-do list for the planner: per
 | `server/proposals.ts` | Proposal log (`~/.local/state/atc/proposals.jsonl`, append-only, same approach as clearances); `hold` operations for prerequisites written only in the body |
 | API | `GET /api/dispatch/brief`, `POST /api/dispatch/proposals/:id/{note,hold,agree,disagree,approve,reject,sent,accept,decline}` |
 | Events and records | `proposal.created / decided / sent / accepted / departed / superseded` into the FLIGHT RECORDER |
-| Settings | `~/.local/state/atc/dispatch.json`: project → AIRPORT mapping, slots, weights, mode (`shadow`/`approval`) |
+| Settings | `~/.local/state/atc/dispatch.json`: project → AIRPORT mapping, per-team default AIRPORT (`teamAirports`), candidate Linear teams (`candidateTeams`, empty = the main team), slots, weights, mode (`shadow`/`approval`) |
 | UI | DISPATCH tab: proposal cards (FLIGHT, AIRCRAFT, per-factor scores, DISPATCH note, CAUTION), approve/reject buttons, slot status, RELEASE list |
 | Metrics | Shadow agreement rate, proposal → acceptance time, idle AIRCRAFT time (minutes PARKED while Todo items existed), number of neglected ENROUTE FLIGHTs |
 | `atc/occ/` (was `atc/dispatch/`) | Same structure as TOWER: `CLAUDE.md` (role and decision rules), `/tick`, a guard (atc CLI and jq only; Linear through a read-only MCP only) |

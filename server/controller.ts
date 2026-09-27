@@ -209,7 +209,7 @@ function resolveStand(s: Snapshot, stand: string | undefined): string | null | {
 
 function normalizeFlight(flight: string | undefined): string | null {
   if (!flight) return null;
-  const m = flight.toUpperCase().match(/^([A-Z]+)-?(\d+)$/);
+  const m = flight.toUpperCase().match(/^([A-Z][A-Z0-9]*?)-?(\d+)$/);
   return m ? `${m[1]}-${Number(m[2])}` : flight;
 }
 

@@ -32,7 +32,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `claude.ts` | `~/.claude/sessions/*.json`, hook 점유 파일, 대화 기록(`~/.claude/projects/…`) | Claude 세션, `hook` 점유, `transcript` 점유(ESTIMATED TRACK, `hooks/paths.mjs`와 같은 규칙) |
 | `codex.ts` | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex 세션(최근 90초 안에 움직였으면 busy), `cwd` 점유 |
 | `git.ts` | AIRPORT마다 `git worktree list --porcelain` | 워크트리, 브랜치, HEAD, dirty 여부, 마지막 커밋(세부는 30초 캐시). 브랜치 이름에서 티켓 키 |
-| `linear.ts` | Linear GraphQL(`LINEAR_API_KEY`), 60초마다 | 티켓, 상태, 우선순위, 프로젝트, 관계. DISPATCH용 이슈 본문 |
+| `linear.ts` | Linear GraphQL(`LINEAR_API_KEY`), 60초마다, `LINEAR_TEAM_KEYS`의 팀마다 따로 | 티켓, 상태(팀끼리 이름으로 합침), 우선순위, 프로젝트, 관계. DISPATCH용 이슈 본문. 실패한 팀은 마지막 결과를 쓰고, 한 번도 읽지 못한 팀이 있으면 전체가 실패 |
 | `linear-projects.ts` | Linear GraphQL, TEAM 프로젝트를 읽는 읽기 전용 쿼리 하나, 10분 캐시 | NETWORK ROUTE 목표용 프로젝트 `name`, `targetDate`, `progress`, `status { name type }`(`state`로: type, 없으면 name). 키가 없거나 실패하면 목표는 `null` |
 | `github.ts` | git remote가 GitHub인 AIRPORT마다 `gh pr list --repo <owner/name> --state open --json …`, 90초마다 백그라운드로(`execFile`, 셸 없음) | AIRPORT별 열린 PR: head, 체크, 리뷰, 머지 상태, Draft. head에 통과 리뷰가 없거나 Codex 지적이 있는 Draft 아닌 PR은 Codex 봇의 👍 반응, head committer 시각(sha별 캐시), Codex의 PR 댓글도(`gh api`, 읽기 전용). 실패한 저장소는 마지막 결과를 두고 오류는 `snapshot.github.error`에. `gh`가 없으면 `enabled`가 false. LOGBOOK용 `listMerged`는 기본 브랜치에 머지된 최근 PR 30건을 읽는다(`gh pr list --state merged --base <기본 브랜치>`, 기본 브랜치는 저장소별 캐시) |
 
@@ -61,7 +61,8 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `crew-change.ts` | CREW CHANGE: 운항 중인 AIRCRAFT의 COMPLEMENT가 `PATCH /api/fleet/:registration`으로 바뀌면 CAPTAIN에게 줄 지시문을 만들어 추가만 하는 기록에 남긴다. 상태는 pending → approved(SUPERVISOR, approval 모드만) → sent(OCC `atcctl crew-change send`) → acknowledged(READBACK), 또는 delivered·superseded(순수 함수 `diffCrew`, `ratingImpact`, `crewChangeText`, `crewChangeMessage`, `planCrewChange`, `foldCrewChanges`, `approveRefusal`, `sendRefusal`, `openCrewChangeOf`, `crewChangeBriefOf`, 2b 점검표용 `selfCheckCrewChange`). `withCrew`가 FLEET 화면에 `observedCrew`, `crewDrift`, `pendingCrewChange`를 붙인다. `GET /api/fleet/crew-changes`, `…/crew-changes/brief`, `…/crew-changes/:id`, `POST /api/fleet/:registration/crew-change/:id/{approve,delivered}`, `POST /api/fleet/crew-changes/:id/{send,readback}` |
 | `checkride.ts` | CHECKRIDE: FLIGHT에 필요했던 rating을 라벨이나 받아들인 SCHEDULE CLASSIFY 초안에서 읽고(순수 함수 `flightRating`), AIRCRAFT·rating마다 GRANT·REVIEW·BLOCKED·BUILDING·HOLDS(순수 함수 `judge`, `checkrideRows`). `GET /api/fleet/checkride`, SUPERVISOR의 부여·회수 `POST /api/fleet/:registration/checkride`(`applyPatch`로 바꾸고 `checkride` 줄로 기록) |
 | `network.ts` | NETWORK(4단계, 읽기 전용): ROUTE마다 열린 FLIGHT, 14일 ARRIVED, AIRCRAFT, 착륙 대기(순수 함수 `routeRows`, `openPhase`). AIRCRAFT마다 TARGETS 대 `fleetView` 실적(순수 함수 `aircraftRows`). 28일 LOGBOOK·게이트 추세(순수 함수 `logbookTrend`, `gateTrend` — `proposals.ts`·`schedule.ts` fold와 `crosscheckRateOf` 위에서). `GET /api/network` |
-| `dispatch.ts` | DISPATCH 계획: 후보, 슬롯, 점수(순수 함수 `planDispatch`). 설정은 `dispatch.json` |
+| `dispatch.ts` | DISPATCH 계획: 후보, 슬롯, 점수(순수 함수 `planDispatch`). 설정은 `dispatch.json`(`teamAirports`, `candidateTeams` 포함. `airportOfTicket`, `candidateTeamsOf`) |
+| `linear-keys.ts` | Linear 팀·이슈 key: `parseTeamKeys`(`LINEAR_TEAM_KEY` + `LINEAR_TEAM_KEYS`), 읽는 모든 팀의 key를 브랜치·워크트리 이름과 PR 제목에서 찾기 |
 | `proposals.ts` | DISPATCH 제안 기록(추가만 하는 JSONL), 상태 전이(그림자 판정, approve → sent → accepted → departed, STAND 없는 FLIGHT는 READBACK에 departed → CAPTAIN 보고로 arrived), 예약, FLIGHT PLAN 문구, 브리핑, 2b·3단계 점검, 2b 점검표용 코드 사실(`selfCheck2b`) |
 | `readiness.ts` | "2b 켜기 점검표"(순수 함수 `readiness2bOf`, `vocadoReadbackOf`, `sendGuardOf`. 코드 사실은 `selfCheck2b`와 `selfCheckCrewChange`, `vocado-readback`은 `[DISPATCH D-xxxx]`와 `[OCC CC-xxxx]` 규칙이 다 있어야 ready). `occ/send-guard.mjs`와 vocado `CLAUDE.md`를 읽기만 한다(`ATC_VOCADO_CLAUDE_MD`, 없으면 `<projectsDir>/vocado_nextjs/CLAUDE.md`) |
 | `schedule.ts` | OCC SCHEDULE 초안 기록(추가만 하는 JSONL, S1 그림자 운용): `CLASSIFY`·`PRIORITIZE` 초안과 `NEW`(CHARTER DESK의 AD HOC FLIGHT: 본문 칸, 프로젝트·tail·key 검사, 최근 45일 스냅샷에서 찾은 비슷한 제목 `similar`), 열린 초안 5건 한도, SUPERSEDED·EXPIRED 동기화, 그림자 판정, 후보, S2 점검 |
@@ -105,7 +106,8 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `POST /api/schedule/ops/:id/verdict` | SUPERVISOR 그림자 판정 `{verdict: "agree" \| "disagree", reason?, via?}` |
 | `POST /api/schedule/ops/:id/approve`, `/reject` | S2에서만: SUPERVISOR 승인, 또는 `{reason?}`와 함께 거절. 둘 다 `{via?}` |
 | `POST /api/schedule/ops/:id/release` | S2에서만: OCC가 승인된 작업을 발부. 정확한 Linear 호출을 돌려준다(이미 발부됐으면 같은 호출) |
-| `GET /api/schedule/released` | 모드와 발부된 호출 전부(linear-guard가 읽음) |
+| `GET /api/schedule/released` | 모드와 발부된 호출 전부, 호출마다 `used`(linear-guard가 읽음) |
+| `POST /api/schedule/released/claim` | `{tool, input}`: linear-guard가 맞는 발부 호출을 한 번 쓴 것으로 기록. 이미 쓴 호출이나 없는 호출은 409 |
 | `POST /api/schedule/mode` | `{mode: shadow\|approval}` |
 
 ## 디스크에 두는 상태

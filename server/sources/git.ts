@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { promisify } from "node:util";
 import { config } from "../config.ts";
+import { keyInName, keyInTitle, keyPatternOf } from "../linear-keys.ts";
 import type { Workspace } from "../model.ts";
 
 const run = promisify(execFile);
@@ -12,22 +13,20 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return stdout;
 }
 
-// TEAM 키는 설정 창에서 바뀔 수 있어서, 바뀌면 다시 만든다.
+// TEAM 키는 설정 창에서 바뀔 수 있어서, 바뀌면 다시 만든다. 읽는 팀 key 모두(voc-123, atc-12)
 let ticketPattern: RegExp | null = null;
 export function resetTicketPattern() {
   ticketPattern = null;
 }
 
 export function ticketKeyFromBranch(branch: string | null): string | null {
-  ticketPattern ??= new RegExp(`(?:^|[/_-])${config.linearTeamKey.toLowerCase()}-?(\\d+)(?:$|[/_-])`, "i");
-  const m = branch?.match(ticketPattern);
-  return m ? `${config.linearTeamKey}-${Number(m[1])}` : null;
+  ticketPattern ??= keyPatternOf(config.linearTeamKeys);
+  return keyInName(branch, config.linearTeamKeys, ticketPattern);
 }
 
 // PR 제목 끝의 "(VOC-170)". 브랜치에 voc-<n>이 없는 PR의 FLIGHT를 찾을 때 쓴다.
-export function ticketKeyFromTitle(title: string | null, teamKey = config.linearTeamKey): string | null {
-  const m = title?.match(/\(([A-Za-z]+)-(\d+)\)\s*$/);
-  return m && m[1].toUpperCase() === teamKey ? `${teamKey}-${Number(m[2])}` : null;
+export function ticketKeyFromTitle(title: string | null, teamKeys: string | string[] = config.linearTeamKeys): string | null {
+  return keyInTitle(title, typeof teamKeys === "string" ? [teamKeys] : teamKeys);
 }
 
 async function listWorktrees(repo: string): Promise<Workspace[]> {

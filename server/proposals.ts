@@ -10,9 +10,12 @@ import {
   DONE_STATES,
   FLIGHT_HOLD_CODES,
   type DispatchConfig,
+  airportOfTicket,
+  candidateTeamsOf,
   type Factor,
   excludedLabelWhy,
   hasStandWhy,
+  isCandidateTicket,
   type Landed,
   landedOf,
   loadDispatchConfig,
@@ -29,6 +32,7 @@ import {
   tailsOf,
   workedWhy,
 } from "./dispatch.ts";
+import { teamOfKey } from "./linear-keys.ts";
 import { applyGroundStops, enforcedStops, groundStopWhy } from "./atfm.ts";
 import { classLabel, classOf, needsStand } from "./crew.ts";
 import { selfCheckCrewChange } from "./crew-change.ts";
@@ -357,7 +361,8 @@ export function syncOps(
     if (fromPlan) return fromPlan;
     if (standOfTicket.has(p.flight)) return hasStandWhy();
     if (!t.priority) return NO_PRIORITY_WHY;
-    if (!(t.project && cfg.projectAirports[t.project])) return noProjectWhy(t.project);
+    if (!isCandidateTicket(t, candidateTeamsOf(cfg))) return `${teamOfKey(t.key)} 팀은 DISPATCH 후보가 아님(설정 candidateTeams)`;
+    if (!airportOfTicket(t, cfg)) return noProjectWhy(t.project);
     const label = t.labels.find((l) => cfg.excludeLabels.includes(l));
     if (label) return excludedLabelWhy(label);
     return BETTER_WHY;

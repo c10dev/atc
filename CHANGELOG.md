@@ -131,6 +131,11 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
   - AGENTS: session counts, session folders, claim hook installed or not, TTL and handoff grace.
 - Release badge in the READMEs.
 - This changelog.
+- atc reads several Linear teams (ATC-1). `LINEAR_TEAM_KEYS=VOC,ATC` lists every team to read; the main team (`LINEAR_TEAM_KEY`) always comes first, and without the new variable atc reads the main team only, as before. The settings window's LINEAR tab has a **TEAMS** row for it.
+  - `server/sources/linear.ts` reads each team separately (so one team's 200 issues don't crowd out another) and merges the workflow states by name. A team that fails keeps its last result, and the error names it. A team that was never read fails the whole read, so SCHEDULE never sees that team's tickets as gone.
+  - Keys of every team are found in branch and worktree names and PR titles (`voc-123`, `atc-12`, `(ATC-12)`; new `server/linear-keys.ts`). This is used for STANDs, LOGBOOK STANDs, claim history and landing. Keys may contain digits after the first letter.
+  - `dispatch.json` gets `teamAirports` (a default AIRPORT per team for issues whose project is not mapped; default `{ATC: "ATCC"}`) and `candidateTeams` (teams whose Todo FLIGHTs are DISPATCH and SCHEDULE candidates; default empty = the main team only).
+  - Other teams are display-only (RADAR, STRIPS, FIDS): the planner skips them without an exclusion line, the SCHEDULE brief leaves them out of its candidates, and a SCHEDULE draft on them answers 409. With a team added to `candidateTeams`, its FLIGHTs are proposed only to AIRCRAFT based at that team's AIRPORT (ATC → ATCC). The switch is off.
 
 ### Changed
 - DISPATCH rejection chips now decide what gets blocked ([docs/dispatch.md](docs/dispatch.md) 6.1). The 24-hour rule (`recentPairsOf`) only blocked the FLIGHT–AIRCRAFT pair, so a FLIGHT rejected for its own reasons went straight to the next team: after D-0022 (VOC-177 → TEAM_D, "wait for the user's instruction") and D-0023 (VOC-125 → TEAM_A, "needs recruiting and observing users"), D-0024 (VOC-125 → TEAM_D) and D-0025 (VOC-177 → TEAM_B) followed.

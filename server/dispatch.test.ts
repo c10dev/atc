@@ -765,3 +765,37 @@ test("FLIGHT 보류: FLIGHT 자체의 문제로 거절되면 모든 AIRCRAFT에�
   const later = Date.parse(until) + 1;
   assert.deepEqual(planDispatch(s, new Map(), cfg(), later, reserved).assign.map((a) => a.flight).sort(), ["VOC-125", "VOC-9"]);
 });
+
+test("여러 Linear 팀: 기본은 주 팀만 후보, 다른 팀(ATC)은 보여 주기만. 켜면 팀의 기본 AIRPORT(ATCC) AIRCRAFT에만", async () => {
+  const { airportOfTicket, candidateTeamsOf } = await import("./dispatch.ts");
+  const ATC = "/home/c10/projects/atc";
+  const airports = [{ id: "r1", code: "VCDO", name: "vocado_nextjs", repo: VCDO }, { id: "r2", code: "ATCC", name: "atc", repo: ATC }];
+  // 프로젝트 매핑이 먼저(null이면 제외), 매핑에 없으면 팀의 기본 AIRPORT
+  assert.equal(airportOfTicket({ key: "VOC-1", project: "Beta Readiness" }, cfg()), "VCDO");
+  assert.equal(airportOfTicket({ key: "VOC-1", project: "Somewhere Else" }, cfg()), null);
+  assert.equal(airportOfTicket({ key: "ATC-1", project: "atc" }, cfg()), "ATCC");
+  assert.equal(airportOfTicket({ key: "ATC-1", project: "Vocado Visual System (SEED)" }, cfg()), null);
+  assert.deepEqual([...candidateTeamsOf(cfg(), "VOC")], ["VOC"]);
+  assert.deepEqual([...candidateTeamsOf(cfg({ candidateTeams: ["VOC", "ATC"] }), "VOC")], ["VOC", "ATC"]);
+
+  const s = snap({
+    airports,
+    sessions: [session("b", "TEAM_B"), session("i", "TEAM_I", "idle", ATC)],
+    tickets: [ticket("VOC-1"), ticket("ATC-1", { project: "atc" })],
+  });
+  const off = planDispatch(s, new Map(), cfg(), NOW);
+  assert.deepEqual(off.assign.map((a) => `${a.flight}→${a.aircraftName}`), ["VOC-1→TEAM_B"]);
+  assert.equal(off.excluded.some((e) => e.flight === "ATC-1"), false); // 사유 없이 빠진다(후보가 아님)
+  assert.deepEqual(off.slots.map((x) => x.airport), ["VCDO"]);
+  const on = planDispatch(s, new Map(), cfg({ candidateTeams: ["VOC", "ATC"] }), NOW);
+  assert.deepEqual(on.assign.map((a) => `${a.flight}→${a.aircraftName}@${a.airport}`).sort(), ["ATC-1→TEAM_I@ATCC", "VOC-1→TEAM_B@VCDO"]);
+  assert.deepEqual(on.slots.map((x) => x.airport).sort(), ["ATCC", "VCDO"]);
+});
+
+test("청구 기록의 FLIGHT: 읽는 팀 key 모두", () => {
+  const dir = mkdtempSync(join(tmpdir(), "claims-"));
+  mkdirSync(join(dir, "s1"));
+  for (const f of ["vocado-voc-185", "atc-1-linear-teams", "atc-doc-fixes"]) writeFileSync(join(dir, "s1", `${encodeURIComponent(`/wt/${f}`)}.json`), "{}");
+  assert.deepEqual([...readFlightHistory(["VOC", "ATC"], dir)], [["s1", ["ATC-1", "VOC-185"]]]);
+  assert.deepEqual([...readFlightHistory("VOC", dir)], [["s1", ["VOC-185"]]]);
+});

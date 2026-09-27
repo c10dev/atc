@@ -433,3 +433,14 @@ test("linear-guard 한 번 쓰기: 발부된 호출은 한 번만 통과하고, 
   ops = fold([...base, { op: "apply", id: "S-0010", at: iso(10), ref: "VOC-50" }]);
   assert.match((claimOf(ops, "approval", "save_issue", calls[0].input) as { error: string }).error, /다름/);
 });
+
+test("후보 팀이 아닌 FLIGHT(ATC)에는 초안을 쓰지 않는다. NEW는 주 팀에 만들므로 상관없음", () => {
+  const tickets = [t("VOC-10"), t("ATC-1")];
+  const teams = new Set(["VOC"]);
+  assert.throws(
+    () => draftOps([], { kind: "CLASSIFY", flight: "atc-1", type: "MAINT", reason: "r" }, tickets, iso(0), 0, { teams }),
+    (e) => e instanceof ScheduleError && e.status === 409 && /ATC 팀은 SCHEDULE 후보가 아님/.test(e.message),
+  );
+  assert.equal(draftOps([], { kind: "CLASSIFY", flight: "VOC-10", type: "MAINT", reason: "r" }, tickets, iso(0), 0, { teams }).length, 1);
+  assert.equal(draftOps([], { kind: "CLASSIFY", flight: "ATC-1", type: "MAINT", reason: "r" }, tickets, iso(0), 0, { teams: new Set(["VOC", "ATC"]) }).length, 1);
+});
