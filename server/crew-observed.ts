@@ -5,7 +5,7 @@ import type { CrewMember } from "./crew.ts";
 import type { Session } from "./model.ts";
 import { sessionDir } from "./sources/claude.ts";
 
-// OBSERVED CREW: CAPTAIN 세션의 서브에이전트 기록으로 본 실제 CREW. 설계: docs/fleet.md 8.2.
+// OBSERVED CREW: CAPTAIN 세션의 서브에이전트 기록으로 본 실제 CREW. 설계: docs/fleet.md 8.3.
 // 세션 메타데이터만 읽는다 — subagents/agent-*.meta.json의 agentType·model과 파일 시각, custom-title.json의 세션 이름.
 // 대화 기록(.jsonl 본문)과 meta의 description은 읽지도 저장하지도 않는다.
 

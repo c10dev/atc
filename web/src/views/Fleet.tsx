@@ -2,6 +2,7 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type { AircraftView, CrewMember, FleetFile, Rating } from "../../../server/fleet.ts";
 import { flightNumber } from "../aviation.ts";
 import { FleetCrew } from "./FleetCrew.tsx";
+import { Checkride } from "./Checkride.tsx";
 import "./Fleet.css";
 
 // FLEET: 팀(AIRCRAFT)마다 CREW COMPLEMENT, TYPE RATING, ROUTE, TARGETS. 설계: docs/fleet.md.
@@ -165,6 +166,7 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
           ),
         )}
       </div>
+      <Checkride refreshKey={refreshKey} onChanged={load} />
       {retired.length > 0 && (
         <>
           <h2 className="label fl-retired-label">

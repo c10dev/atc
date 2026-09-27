@@ -9,6 +9,7 @@ import type { Snapshot, TrafficEvent } from "./model.ts";
 // - sample: 5분마다 교통량 표본
 // - dispatch: DISPATCH 제안 기록(create / verdict / note / supersede / expire)
 // - ack: CONTROLLER가 브리핑을 처리함(TOWER가 실제로 운용된 날을 센다)
+// - checkride: SUPERVISOR의 TYPE RATING 부여·회수와 그 근거(checkride.ts)
 
 export interface Sample {
   airborne: number; // 작업 중(busy) 세션
@@ -25,7 +26,9 @@ export type RecordLine =
   | ({ t: string; kind: "sample" } & Sample)
   | { t: string; kind: "ack"; consumer: string }
   | { t: string; kind: "dispatch"; op: string; id: string }
-  | { t: string; kind: "schedule"; op: string; id: string };
+  | { t: string; kind: "schedule"; op: string; id: string }
+  // CHECKRIDE 부여·회수: 누가, 추천이었나, 근거(LOGBOOK key·FLIGHT·출처)
+  | { t: string; kind: "checkride"; op: "grant" | "revoke"; aircraft: string; rating: string; by: string; recommended: boolean; status: string; reason: string; evidence: string[] };
 
 const DIR = join(config.stateDir, "flight-recorder");
 export const SAMPLE_MS = 5 * 60_000;

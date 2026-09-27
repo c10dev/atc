@@ -7,7 +7,7 @@ import { type AircraftProfile, canFly, canHoldSec, type CrewMember, type FleetFi
 import { type CrewDrift, type ObservedMember, observeCrew, spawnsFor } from "./crew-observed.ts";
 import type { Snapshot } from "./model.ts";
 
-// CREW CHANGE: 운항 중인 AIRCRAFT의 CREW COMPLEMENT가 바뀌면 CAPTAIN에게 줄 지시문을 만든다. 설계: docs/fleet.md 8.3.
+// CREW CHANGE: 운항 중인 AIRCRAFT의 CREW COMPLEMENT가 바뀌면 CAPTAIN에게 줄 지시문을 만든다. 설계: docs/fleet.md 8.4.
 // atc는 보내지 않는다 — SUPERVISOR가 복사해 붙여 넣고 "전달함"을 누른다. OCC 발송은 나중에 스위치 뒤에서.
 // 기록은 추가만 하는 JSONL(~/.local/state/atc/crew-changes.jsonl): created / delivered / superseded.
 

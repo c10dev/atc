@@ -57,7 +57,7 @@ export function loadFleet(file = fleetFile()): FleetFile {
   };
 }
 
-function saveAircraft(key: string, profile: AircraftProfile | null, file = fleetFile()) {
+export function saveAircraft(key: string, profile: AircraftProfile | null, file = fleetFile()) {
   const raw = readRaw(file);
   const aircraft = { ...(raw.aircraft ?? {}) };
   if (profile && Object.keys(profile).length) aircraft[key] = profile;

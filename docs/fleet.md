@@ -7,7 +7,7 @@ atc knows each team session as an AIRCRAFT (`TEAM_B`, callsign BRAVO) and its le
 - **FLEET**: the teams, their crews, what they are rated for, their routes and targets.
 - **FLIGHT classification**: the kind of work, its size and the rating it needs.
 
-> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE step 1 (sections 8.2 and 8.3), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules (see section 5 for what is left), team building (section 8.1), and the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2). Decisions are listed at the end.
+> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE step 1 (sections 8.3 and 8.4), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules (see section 5 for what is left), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), and CHECKRIDE recommendations for TYPE RATINGS (section 8.2). Decisions are listed at the end.
 
 Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHEDULE operations), [dispatch.md](dispatch.md) (the planner that uses them).
 
@@ -69,7 +69,7 @@ Kept in `~/.local/state/atc/fleet.json`, like the AIRPORT registry (`airports.js
 }
 ```
 
-- **CREW COMPLEMENT** is declared, not detected. atc also shows the crew it actually observes (subagent calls recorded under the CAPTAIN's sessions, section 8.2). The FLEET tab shows both side by side, so drift is visible.
+- **CREW COMPLEMENT** is declared, not detected. atc also shows the crew it actually observes (subagent calls recorded under the CAPTAIN's sessions, section 8.3). The FLEET tab shows both side by side, so drift is visible.
 - **TYPE RATING** starts from what the complement allows. A crew whose only helper is `flash-helper` cannot hold `SEC`, because vocado forbids DeepSeek for security work.
 - **ROUTES** and **TARGETS** are set by the SUPERVISOR. OCC may draft changes (stage 4) but never applies them.
 
@@ -248,9 +248,35 @@ The FLEET tab is also where teams are formed and stood down. atc never starts a 
 | Stand a team down for a while | **AOG** | Reason plus an optional release date. The planner stops proposing to it (`AOG — reason (~date)`) |
 | Remove a team | **RETIREMENT** | The AIRCRAFT leaves the FLEET list (kept under RETIRED with its date and reason) and gets no proposals. A live session is not closed. It can be restored |
 
-Later: sending **CREW CHANGE** through OCC after approval, from OCC S2 (step 1, the text without sending, is section 8.3), and **CHECKRIDE** (evidence for granting a rating such as SEC, from completed FLIGHTs and reviews).
+Later: sending **CREW CHANGE** through OCC after approval, from OCC S2 (step 1, the text without sending, is section 8.4).
 
-### 8.2 Declared vs observed crew
+### 8.2 CHECKRIDE
+
+A checkride is the flight in which a pilot shows an examiner that they can hold a rating. atc's CHECKRIDE collects, for each AIRCRAFT and each TYPE RATING (`SEC`, `UI`, `DATA`, `DOCS`), the LOGBOOK FLIGHTs that needed that rating, and recommends a grant or a review. It only recommends: a rating changes only when the SUPERVISOR presses 부여 (grant) or 회수 (revoke), and nothing is granted or revoked automatically.
+
+**Which rating a FLIGHT needed.** In order; the first that gives any ratings wins, and each piece of evidence shows its source:
+
+1. **Label**: the ratings `classOf` reads from the FLIGHT's Linear labels (`rating:X`, or the Risk group for `SEC`), from the current ticket, or from the LOGBOOK line's `class` when the ticket is no longer loaded. Few tickets carry `rating:` labels yet.
+2. **SCHEDULE**: the ratings of the latest CLASSIFY draft for that FLIGHT that the SUPERVISOR accepted (`agree` in shadow, `approve` in approval, so the status is agreed, approved, released or applied) and that names ratings.
+3. Otherwise the FLIGHT is not evidence for any rating. AD HOC FLIGHTs never are.
+
+Only LOGBOOK entries with a known AIRCRAFT count, so every piece of evidence is a FLIGHT that AIRCRAFT flew.
+
+**Proposed thresholds** (first values, to be tuned; constants in `server/checkride.ts`):
+
+| Recommendation | When |
+|---|---|
+| **GRANT** (부여 추천) | The AIRCRAFT does not hold the rating; in the last 30 days it ARRIVED at least 3 FLIGHTs needing it; none of them was reverted; their average Codex finding rounds (`codexFindings`) is below 3 |
+| **REVIEW** (재검토 추천) | The AIRCRAFT holds the rating; in the last 14 days a FLIGHT needing it was reverted, or at least 2 such FLIGHTs averaged 3 or more Codex finding rounds |
+| **BLOCKED** | GRANT would apply to `SEC`, but the CREW COMPLEMENT has no member who can do security work (`canHoldSec`). The reason is shown and there is no grant button |
+| **BUILDING** | Not holding it, with some evidence but not enough yet ("근거 1/3") |
+| **HOLDS** | Holding it, nothing to review |
+
+**Grant and revoke.** `POST /api/fleet/:registration/checkride` with `{rating, action: "grant" | "revoke"}` goes through the same path as the FLEET edit form (`applyPatch`, then the atomic write of `fleet.json`), so the `SEC` rule still holds. It then writes a `checkride` line to the FLIGHT RECORDER: the AIRCRAFT, the rating, the action, who (`SUPERVISOR`, the FLEET tab has no other user), whether it was recommended, and the evidence (LOGBOOK keys with their sources). A grant turns a default rating list into an explicit one.
+
+**API.** `GET /api/fleet/checkride` returns one row per AIRCRAFT in service and rating, with its status, reason, counts (FLIGHTs, reverts, average Codex rounds in each window) and evidence.
+
+### 8.3 Declared vs observed crew
 
 The complement is what the SUPERVISOR declared. The observed crew is what the AIRCRAFT's sessions actually called in the last 14 days (`OBSERVED_WINDOW_DAYS`, also returned as `observedWindowDays` by `GET /api/fleet`). Built in `server/crew-observed.ts`.
 
@@ -287,7 +313,7 @@ Calls are grouped by `agentType` and `model`: `observedCrew: {agentType, positio
 
 **Gap: agent-team teammates.** Teammates spawned by the CAPTAIN with the Agent tool (named or not, background or not) are recorded under the CAPTAIN's `subagents/` and are observed. Teammates of a Claude Code agent team that run as separate sessions (registered under `~/.claude/teams/<team>/`) are not: atc does not read the team config, and those sessions carry their own names. They show as `unused` if declared. Seeing them would need a metadata source that names the lead session; none is used yet.
 
-### 8.3 CREW CHANGE (step 1: text, never sent)
+### 8.4 CREW CHANGE (step 1: text, never sent)
 
 When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT through `PATCH /api/fleet/:registration`, atc writes a CREW CHANGE: a text for the CAPTAIN, like the CREW BRIEFING but for a running team. Built in `server/crew-change.ts`; the only hook in `fleet.ts` is one call after the profile is saved.
 
@@ -309,12 +335,13 @@ When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT throug
 ## 10. Implementation order
 
 1. ✅ `tail:` in the planner with the `lane:` alias. Then the Linear labels, VOC-196 and the note to President
-2. ✅ `fleet.json` registry, API and FLEET tab (read and edit), with defaults from the vocado crew rules. Observed crew next to the declared complement and CREW CHANGE step 1 are in sections 8.2 and 8.3
+2. ✅ `fleet.json` registry, API and FLEET tab (read and edit), with defaults from the vocado crew rules. Observed crew next to the declared complement and CREW CHANGE step 1 are in sections 8.3 and 8.4
 3. ✅ Classification labels read by the planner: TYPE RATING and FLIGHT TYPE hard rules, WAKE slots, ROUTE score (the Risk group counts as SEC; label groups are read as `group:name`)
 4. ◐ The DISPATCH card shows the classification. Still to do: FIDS, and DISPATCH notes that suggest a classification when labels are missing
 5. OCC S1 `CLASSIFY` drafts (with the SCHEDULE work in occ.md)
 6. ◐ TARGETS actuals from the LOGBOOK on the FLEET cards (sections 7.1, 7.2). Still to do: on-time baselines from category medians, TARGETS in METRICS / stage 4
 7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
+8. ✅ CHECKRIDE (section 8.2): TYPE RATING evidence from the LOGBOOK, GRANT and REVIEW recommendations, grant and revoke by the SUPERVISOR
 
 ## 11. Risks and mitigations
 
