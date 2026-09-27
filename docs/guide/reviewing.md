@@ -4,11 +4,15 @@ atc의 자동화는 **그림자 운용**에서 시작한다. 제안과 초안을
 
 ## DISPATCH 탭: 배정 제안
 
-5분마다 atc가 "어떤 FLIGHT를 어떤 AIRCRAFT에" 계획하고, OCC가 제안마다 티켓 본문을 읽어 메모·CAUTION·HOLD를 단다.
+5분마다 atc가 "어떤 FLIGHT를 어떤 AIRCRAFT에" 계획하고, OCC가 제안마다 티켓 본문을 읽어 BRIEFING·메모·CAUTION·HOLD를 단다. 티켓 내용을 기억하지 못해도 카드만 보고 판정할 수 있게 위에서 아래로 읽는다.
 
 | 카드에서 볼 것 | 뜻 |
 |---|---|
-| FLIGHT → AIRCRAFT, 점수 | 우선순위·대기 일수·풀어 주는 FLIGHT·팀 적합도·충돌 위험·ROUTE |
+| BRIEFING(맨 위 세 줄) | OCC가 쓴 쉬운 한국어 세 줄. **무슨 일**(끝나면 무엇이 달라지나), **왜 이 AIRCRAFT**(기지·TYPE RATING·같은 ROUTE 최근 FLIGHT), **걸리는 점**(선행·위험·사람이 정할 것) |
+| `BRIEFING 대기` | OCC가 아직 세 줄을 쓰지 않았다. 대신 제목과 본문 첫 문장이 보인다. 다음 tick에 채워진다 |
+| 사실 줄 | 서버가 계산한 것(모델 없음): PRIORITY, 대기 일수, ROUTE와 WAYPOINT("Beta Ready WAYPOINT(지금 구간) · 남은 3건 중 하나"), 선행 FLIGHT와 상태(끝났으면 초록 ✓, 아니면 주황), 그 AIRCRAFT가 같은 ROUTE에서 최근 맡은 FLIGHT. HELD 카드에는 CROSSCHECK 판정과 사유도 붙는다 |
+| 점수 요소 · 본문 · 메모(접힘) | 누르면(키보드는 Enter) 점수 요소 표, OCC 메모, 티켓 본문 전체가 열린다. 본문은 열 때 Linear에서 읽는다. CAUTION 표시는 접혀 있어도 카드 머리에 보인다 |
+| FLIGHT → AIRCRAFT, 점수 | 우선순위·대기 일수·풀어 주는 FLIGHT·팀 적합도·충돌 위험·ROUTE를 합친 점수. 요소별 점수는 접힌 자세히에 있다 |
 | 분류 줄 | `BUILD · M · SEC · tail:TEAM_E`. 라벨이 없으면 회색 "(기본값)" |
 | OCC 메모 | 본문에서 찾은 제약. CAUTION이면 보안·DB·사람 결정 대기 |
 | HELD 목록 | 선행 FLIGHT나 사람 결정을 기다리는 제안. 선행이 끝나면 자동으로 풀린다 |

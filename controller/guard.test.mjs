@@ -17,6 +17,8 @@ const allowed = [
   "node atcctl.mjs issue TEAM_B INFO -- '$(이건 글자 그대로) `이것도`'",
   'node atcctl.mjs issue TEAM_B INFO -- "가격 \\$5, 100%"',
   "node atcctl.mjs brief | jq '.events[] | select(.kind == $k)' --arg k x",
+  // OCC BRIEFING(ATC-4): 새 하위 명령도 atc CLI라 guard를 바꾸지 않고 통과한다
+  "node atcctl.mjs dispatch briefing D-0003 --what '재생 화면 버튼 정리' --why 'TEAM_F가 같은 ROUTE를 막 끝냄' --risk '디자인 확인 필요'",
 ];
 const blocked = [
   "ls /home/c10/projects/worktrees",
@@ -84,6 +86,7 @@ test("--crosscheck: atc CLI 중 읽기와 crosscheck 명령만, gh는 막음", (
   ];
   const no = [
     "node ../controller/atcctl.mjs dispatch note D-0003 -- x",
+    "node ../controller/atcctl.mjs dispatch briefing D-0003 --what a --why b --risk c",
     "node ../controller/atcctl.mjs dispatch release D-0003",
     "node ../controller/atcctl.mjs dispatch readback D-0003",
     "node ../controller/atcctl.mjs dispatch arrived D-0003 -- x",

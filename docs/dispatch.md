@@ -142,6 +142,18 @@ For each top candidate the server picks, the DISPATCH session reads the ticket b
 - Adds a HOLD with no prerequisite FLIGHT (a bare `--hold`) when the ticket needs a human decision first (e.g. "after user confirmation"). The note carries the reason; if the FLIGHT is edited after the HOLD, atc releases it for another review.
 - Adds a `HOLD` with `dispatch note <ID> --hold <FLIGHT> -- <note>` when the prerequisite is written only in the body, with no `blocks` relation. The named FLIGHT is the **blocking (prerequisite)** one, and the proposal moves to the HELD list instead of the ASSIGN list. Its own FLIGHT stays reserved so the planner will not offer it again (its AIRCRAFT is left free for other FLIGHTs), it cannot be sent, and its FLIGHT PLAN carries a `HOLD — 선행 FLIGHT …` line. When every named FLIGHT reaches a done state, atc supersedes the proposal so the planner can offer it again. A HOLD does not expire after 24 hours; it also closes when the FLIGHT itself is no longer Todo or the SUPERVISOR presses "HOLD 풀기" (release HOLD).
 - Leaves a one- or two-line rationale on the proposal.
+- Writes a **BRIEFING** (ATC-4) on each open or HELD proposal: three plain Korean lines, `dispatch briefing <ID> --what … --why … --risk …`, stored as an append-only `brief` op; writing again replaces it. See "Proposal cards" below.
+
+### 5.5 Proposal cards (BRIEFING, ATC-4)
+
+The SUPERVISOR often doesn't remember what a ticket is about (VOC-195, VOC-172), and should not have to open Linear to judge a proposal. Every open and HELD card reads top to bottom:
+
+1. **BRIEFING**: 무슨 일 (what the work is), 왜 이 AIRCRAFT (why this AIRCRAFT), 걸리는 점 (prerequisites, risk, what a person must decide), written by OCC (`occ/CLAUDE.md` "BRIEFING"). Until OCC writes one, the card shows the title and the first sentence of the body, marked "BRIEFING 대기". atc reads the body from Linear in the background and caches it for 30 minutes (`server/briefing.ts`, `leadOf`).
+2. **Facts line**, computed by the server with no model (`factsOf`): PRIORITY, wait days since the FLIGHT was created, ROUTE and WAYPOINT from the ROUTE MAP (for example "Beta Ready WAYPOINT(지금 구간) · 남은 3건 중 하나"), each prerequisite FLIGHT (Linear `blockedBy` and the DISPATCH HOLD) with its state, the AIRCRAFT's recent FLIGHTs on the same ROUTE (LOGBOOK ARRIVED in 30 days and its in-flight ASSIGNs, at most three), and on HELD cards the CROSSCHECK verdict and reason (open cards show it in the CROSSCHECK chip).
+3. Classification, AIRCRAFT and score, HOLD line, CROSSCHECK chip and the verdict buttons, as before.
+4. **Collapsed details** ("점수 요소 · 본문 · 메모"): the score factors, the DISPATCH note and the full body, read from Linear when opened.
+
+`GET /api/dispatch/brief` adds `briefs: { <ID>: { facts, lead } }` for open and HELD proposals; `lead` is null once a BRIEFING exists. `POST /api/dispatch/proposals/:id/briefing {what, why, risk}` is accepted only while the proposal is `proposed`; each line is required, whitespace is collapsed and 300 characters is the limit. The OCC guard needed no change: `dispatch briefing` is an atc CLI command like `dispatch note`, and CROSSCHECK's allowlist does not include it.
 
 ## 6. Flow
 

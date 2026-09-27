@@ -37,12 +37,14 @@ import { applyGroundStops, enforcedStops, groundStopWhy } from "./atfm.ts";
 import { classLabel, classOf, needsStand } from "./crew.ts";
 import { selfCheckCrewChange } from "./crew-change.ts";
 import { type Crosscheck, CrosscheckError, type CrosscheckLine, crosscheckRateOf, examplesOf, type HumanDecision, markOf, oneClickOf, parseCrosscheck, type Via, viaOf } from "./crosscheck.ts";
+import { type Briefing, BriefingError, factsOf, leadOf, parseBriefing, waypointIndex } from "./briefing.ts";
 import { loadFleet } from "./fleet.ts";
 import { loadLogbook } from "./logbook.ts";
 import type { Snapshot, Ticket } from "./model.ts";
 import { composeReason, parseReasonCodes, REASON_CODES, ReasonCodeError, reasonCountsOf } from "./reasons.ts";
 import { readiness2bOf, readinessFiles } from "./readiness.ts";
 import { record } from "./recorder.ts";
+import { loadRoutes } from "./routes.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 
 // DISPATCH 제안 기록. 추가만 하는 JSONL을 접어 현재 상태를 만든다(clearances.ts와 같은 방식).
@@ -126,6 +128,7 @@ export interface Proposal {
   crosscheck: Crosscheck | null; // CROSSCHECK 예비 판정(참고 표시, 상태를 바꾸지 않는다)
   via?: Via; // SUPERVISOR 판정을 어떻게 내렸나(옛 기록에는 없다)
   reasonCodes?: string[]; // 거절 사유 칩(disagree·reject, 고른 것이 있을 때만)
+  briefing?: Briefing; // OCC가 쓴 쉬운 세 줄(ATC-4). 다시 쓰면 덮어쓴다. 옛 기록에는 없다
 }
 
 type Create = Omit<Proposal, "status" | "decidedAt" | "statusAt" | "timeline" | "reason" | "note" | "caution" | "hold" | "holdAt" | "message" | "departedStand" | "crosscheck">;
@@ -133,6 +136,7 @@ export type Op =
   | ({ op: "create" } & Create)
   | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null; via?: Via; reasonCodes?: string[] }
   | { op: "note"; id: string; at: string; text: string; caution: boolean }
+  | ({ op: "brief"; id: string } & Briefing)
   | { op: "hold"; id: string; at: string; blockedBy: string[] }
   | ({ op: "crosscheck"; id: string } & CrosscheckLine)
   | { op: "approve"; id: string; at: string; via?: Via }
@@ -147,7 +151,7 @@ export type Op =
   | { op: "supersede"; id: string; at: string; reason: string }
   | { op: "expire"; id: string; at: string; reason?: string };
 
-type StatusOp = Exclude<Op["op"], "create" | "note" | "hold" | "crosscheck">;
+type StatusOp = Exclude<Op["op"], "create" | "note" | "brief" | "hold" | "crosscheck">;
 
 // 상태 전이 규칙. 여기 없는 전이는 무시한다(API도 같은 규칙으로 검사한다).
 const NEXT: Partial<Record<ProposalStatus, Partial<Record<StatusOp, ProposalStatus>>>> = {
@@ -210,6 +214,10 @@ export function fold(ops: Op[]): Proposal[] {
     if (o.op === "note") {
       p.note = o.text;
       p.caution = o.caution;
+      continue;
+    }
+    if (o.op === "brief") {
+      p.briefing = { what: o.what, why: o.why, risk: o.risk, at: o.at };
       continue;
     }
     if (o.op === "hold") {
@@ -677,9 +685,20 @@ export function runDispatch(s: Snapshot, now = Date.now()): Plan {
 
 // ── API ──
 
+// 열린·HELD 카드의 사실 줄(서버 계산)과, BRIEFING이 없으면 본문 첫 문장(ATC-4)
+async function cardBriefsOf(cards: Proposal[], s: Snapshot, all: Proposal[], logbook: ReturnType<typeof loadLogbook>, now: number) {
+  const routes = await loadRoutes(s, logbook, now);
+  const index = waypointIndex(routes);
+  const flying = all.filter((p) => isInFlight(p) || isStandFreeAirborne(p)).map((p) => ({ flight: p.flight, aircraftName: p.aircraftName, at: p.statusAt }));
+  const ctx = { now, tickets: s.tickets, routes, entries: logbook, flying };
+  return Object.fromEntries(
+    cards.map((p) => [p.id, { facts: factsOf(p, ctx, index), lead: p.briefing ? null : leadOf(p.flight, now) }]),
+  );
+}
+
 // POST /api/dispatch/proposals/:id/<동작>. 2b 점검표(readiness.ts)도 이 목록으로 RECALL·ARRIVED 창구를 확인한다
 export const DISPATCH_ACTIONS = [
-  "verdict", "note", "hold", "unhold", "approve", "reject", "release", "accept", "decline", "recall", "recall-send", "recalled", "arrived",
+  "verdict", "note", "briefing", "hold", "unhold", "approve", "reject", "release", "accept", "decline", "recall", "recall-send", "recalled", "arrived",
 ] as const;
 type DispatchAction = (typeof DISPATCH_ACTIONS)[number];
 
@@ -715,6 +734,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       plan,
       open,
       held,
+      briefs: await cardBriefsOf([...open, ...held], s, proposals, logbook, now),
       inFlight,
       overdue: overdueOf(proposals, now),
       recent,
@@ -763,6 +783,15 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       if (name === "note") {
         if (typeof body.text !== "string" || !body.text.trim()) return c.json({ error: "text가 필요함" }, 400);
         append([{ op: "note", id, at, text: body.text.trim(), caution: Boolean(body.caution) }]);
+      } else if (name === "briefing") {
+        // 판정 전(열린 제안·HELD)에만. 다시 쓰면 덮어쓴다
+        if (p.status !== "proposed") return c.json({ error: `지금 상태(${p.status})에서는 BRIEFING을 쓸 수 없음` }, 409);
+        try {
+          append([{ op: "brief", id, at, ...parseBriefing(body) }]);
+        } catch (e) {
+          if (e instanceof BriefingError) return c.json({ error: e.message }, 400);
+          throw e;
+        }
       } else if (name === "hold") {
         if (p.status !== "proposed") return c.json({ error: `지금 상태(${p.status})에서는 HOLD를 바꿀 수 없음` }, 409);
         if (p.kind !== "ASSIGN") return c.json({ error: "RELEASE 제안에는 HOLD를 걸지 않는다" }, 400);

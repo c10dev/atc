@@ -285,9 +285,10 @@ Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server com
 
 | API | What it does |
 |---|---|
-| `GET /api/dispatch/brief` | Mode, current plan, open / held / in-flight / overdue / recent proposals (with `via` and `reasonCodes` once decided), stage 2b and 3 checks (`gate.crosscheck.oneClick`, `gate.reasonCounts`, `gate3.standFree`), the 2b readiness checklist `readiness2b: {items: [{id, label, status, detail, link?, suggestion?}]}`, FLIGHT summaries, reject chips `reasonCodes: [{code, label}]` |
+| `GET /api/dispatch/brief` | Mode, current plan, open / held / in-flight / overdue / recent proposals (with `via` and `reasonCodes` once decided), stage 2b and 3 checks (`gate.crosscheck.oneClick`, `gate.reasonCounts`, `gate3.standFree`), the 2b readiness checklist `readiness2b: {items: [{id, label, status, detail, link?, suggestion?}]}`, FLIGHT summaries, reject chips `reasonCodes: [{code, label}]`; `briefs` (per open and HELD card: server-computed `facts` and, until a BRIEFING exists, the body `lead`) |
 | `POST /api/dispatch/proposals/:id/verdict` | `{verdict: agree\|disagree, reason?, via?, reasonCodes?}` shadow verdict (shadow mode only). `via` is `crosscheck` or `manual` (anything else is `manual`); `reasonCodes` only with `disagree` (400 on an unknown code) |
 | `POST /api/dispatch/proposals/:id/note` | `{text, caution?}` DISPATCH review note |
+| `POST /api/dispatch/proposals/:id/briefing` | `{what, why, risk}` BRIEFING: three plain lines at the top of the card, written by OCC (`proposed` only; writing again replaces it) |
 | `POST /api/dispatch/proposals/:id/hold` | `{blockedBy: ["VOC-180"]}` DISPATCH prerequisite HOLD; the proposal moves to HELD. `[]` holds with no prerequisite (needs a note) |
 | `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR releases a HOLD; the proposal is superseded and the FLIGHT becomes a candidate again |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR decision (approval mode only), both take `{via?}`, `reject` also `{reason?, reasonCodes?}` |
@@ -412,6 +413,7 @@ atc/
 │   ├── landing.ts          # CLEARED TO LAND conditions and LANDING SEQUENCE order (landing.test.ts)
 │   ├── metrics.ts          # operating metrics and stage 2 check (metrics.test.ts)
 │   ├── proposals.ts        # DISPATCH proposal log and API (proposals.test.ts)
+│   ├── briefing.ts         # DISPATCH card BRIEFING and facts line (briefing.test.ts)
 │   ├── atfm.ts             # ATFM: switches, ground stops, merge slots, auto-eligibility (atfm.test.ts)
 │   ├── atfm-run.ts         # ATFM recording and /api/atfm
 │   ├── reasons.ts          # DISPATCH reject reason chips (reasons.test.ts)

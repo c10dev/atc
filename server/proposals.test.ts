@@ -759,3 +759,14 @@ test("한 번 클릭 판정(via crosscheck)도 사유 칩이 남는다", () => {
   assert.equal(p.via, "crosscheck");
   assert.deepEqual(gateOf([p]).reasonCounts?.["needs-human"], 1);
 });
+
+test("접기: brief는 BRIEFING 세 줄을 덮어쓰고 상태는 바꾸지 않는다", () => {
+  const [p] = fold([
+    create("D-0001", "VOC-1", "TEAM_B", 30),
+    { op: "brief", id: "D-0001", at: iso(20), what: "a", why: "b", risk: "c" },
+    { op: "brief", id: "D-0001", at: iso(10), what: "a2", why: "b2", risk: "c2" },
+  ]);
+  assert.equal(p.status, "proposed");
+  assert.deepEqual(p.briefing, { what: "a2", why: "b2", risk: "c2", at: iso(10) });
+  assert.equal(fold([create("D-0002", "VOC-2", "TEAM_B", 5)])[0].briefing, undefined);
+});

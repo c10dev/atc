@@ -34,8 +34,9 @@
 
 | 명령 | 하는 일 |
 |---|---|
-| `node ../controller/atcctl.mjs dispatch brief` | `mode`, 계획(`plan`), 열린 제안(`open`), HELD(`held`), 진행 중(`inFlight`: approved·sent·accepted·recalling, ARRIVED 전의 STAND 없는 departed), 늦은 것(`overdue`), 최근(`recent`), 점검(`gate`, `gate3`), FLIGHT 요약(`flights`) |
+| `node ../controller/atcctl.mjs dispatch brief` | `mode`, 계획(`plan`), 열린 제안(`open`), HELD(`held`), 진행 중(`inFlight`: approved·sent·accepted·recalling, ARRIVED 전의 STAND 없는 departed), 늦은 것(`overdue`), 최근(`recent`), 점검(`gate`, `gate3`), FLIGHT 요약(`flights`), 열린·HELD 카드의 사실 줄과 본문 첫 문장(`briefs`) |
 | `node ../controller/atcctl.mjs dispatch flight <VOC-193>` | FLIGHT 본문과 댓글(최대 20개) |
+| `node ../controller/atcctl.mjs dispatch briefing <D-0003> --what '<무슨 일>' --why '<왜 이 AIRCRAFT>' --risk '<걸리는 점>'` | 카드 맨 위의 쉬운 세 줄(BRIEFING). 열린 제안과 HELD에만 쓴다. 다시 쓰면 덮어쓴다. 세 줄 모두 필요하고 한 줄 300자 이내 |
 | `node ../controller/atcctl.mjs dispatch note <D-0003> [--caution] [--hold [<FLIGHT>]]… -- <메모>` | 제안에 검토 메모. 같은 제안에 다시 달면 덮어쓴다. `--hold <FLIGHT>`는 선행 FLIGHT를 지정해 제안을 HELD로 돌린다. 값 없는 `--hold`는 선행 FLIGHT 없는 HOLD(사유는 메모) |
 | `node ../controller/atcctl.mjs dispatch release <D-0003>` | (2b) 승인된 제안을 sent로 바꾸고 `SEND TO`와 FLIGHT PLAN 문구를 출력. 이미 sent면 같은 문구를 다시 출력(재송신용) |
 | `node ../controller/atcctl.mjs dispatch readback <D-0003>` | (2b) CAPTAIN이 READBACK함 |
@@ -81,6 +82,22 @@ HOLD는 24시간 만료가 없고, 다음 경우에 atc가 SUPERSEDED로 푼다(
 - 선행 FLIGHT 없는 HOLD는 HOLD 뒤에 FLIGHT가 수정됨(다시 읽고 필요하면 다시 건다)
 - FLIGHT 자체가 Todo가 아니게 됨
 - SUPERVISOR가 DISPATCH 탭에서 "HOLD 풀기"
+
+### BRIEFING (카드 맨 위 세 줄)
+
+SUPERVISOR는 티켓 내용을 기억하지 못한 채 카드만 보고 판정한다. 메모와 별도로, `open`과 `held` 중 `briefing`이 없는 제안마다 본문·댓글을 읽은 뒤 `dispatch briefing`으로 세 줄을 쓴다.
+
+| 줄 | 쓰는 것 |
+|---|---|
+| `--what` 무슨 일 | 이 일이 끝나면 무엇이 달라지는지 쉬운 한국어 한 문장. 코드 이름·테이블 이름·약어는 쓰지 않는다 |
+| `--why` 왜 이 AIRCRAFT | 기지 AIRPORT, TYPE RATING, 같은 ROUTE에서 최근에 맡은 FLIGHT 가운데 이 배정을 설명하는 것 하나 |
+| `--risk` 걸리는 점 | 선행 FLIGHT, 위험(DB·권한·배포 등), 사람이 정해야 할 것. 없으면 "특별히 걸리는 점 없음" |
+
+- 한 줄에 한 문장, 되도록 80자 안쪽. 사실만 쓰고 승인·거절 의견은 쓰지 않는다.
+- PRIORITY, 대기 일수, ROUTE·WAYPOINT, 선행 FLIGHT 상태, 최근 FLIGHT는 서버가 카드의 사실 줄에 따로 보인다(`dispatch brief`의 `briefs.<ID>.facts`). 세 줄은 그 숫자를 되풀이하지 말고 뜻을 풀어 쓴다.
+- 문구는 작은따옴표로 감싸고, 안에 작은따옴표·`$`·백틱을 쓰지 않는다(guard가 막는다).
+- HOLD를 걸거나 풀 때, 또는 본문이 바뀌어 다시 읽었을 때는 다시 써서 덮어쓴다.
+- BRIEFING이 없는 카드는 제목과 본문 첫 문장에 "BRIEFING 대기"가 붙어 보인다.
 
 ### "사용자가 정한다" 문구
 

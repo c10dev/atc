@@ -233,6 +233,10 @@ A `tail:` FLIGHT without a proposal counts as STAND-free when its FLIGHT TYPE is
 - A FLIGHT that has ARRIVED and is closed in Linear stays visible for a day, then drops off. A STAND-free FLIGHT stays visible for a day after its ARRIVED, like the others.
 - `following-state.json` keeps the keys (`FLIGHT|code`) OCC has reported. An issue that clears is forgotten, so if it comes back it is reported again.
 
+### 8.2 BRIEFING in the tick (ATC-4)
+
+In step 3 of `/tick`, besides the review note, OCC writes a BRIEFING on every open or HELD proposal that has none: `atcctl dispatch briefing <D-xxxx> --what '…' --why '…' --risk '…'`, three plain Korean sentences (무슨 일, 왜 이 AIRCRAFT, 걸리는 점). It writes again when it sets or lifts a HOLD or rereads a changed body. The numbers (PRIORITY, wait days, ROUTE and WAYPOINT, prerequisites, recent FLIGHTs) come from the server in `briefs.<ID>.facts`; the BRIEFING explains them instead of repeating them. See docs/dispatch.md 5.5 for the card.
+
 ## 9. What ATC takes
 
 - **CLEARED TO LAND** (built): a LANDING SEQUENCE entry is marked ready only when the PR's exact head has green required checks, a passing review on that head (for Codex, a 👍 after the head: its COMMENTED review means findings), no base drift and no LOS. This is the mechanical half of what President checks by hand today. It catches CI that is green only on an older commit, a review left on an older commit, and drift from main.

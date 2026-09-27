@@ -6,6 +6,7 @@ import { timeAgo } from "../derive.ts";
 import { PriorityMark } from "../ui.tsx";
 import { AtfmPanel } from "./Atfm.tsx";
 import { type ReadinessItem, Readiness2b } from "./Readiness2b.tsx";
+import { BriefingLines, CardDetails, type CardBrief, FactsLine } from "./DispatchBriefing.tsx";
 import { FollowingPanel } from "./Following.tsx";
 import "./Dispatch.css";
 
@@ -81,6 +82,7 @@ interface Brief {
   plan: Plan;
   open: Proposal[];
   held: Proposal[];
+  briefs?: Record<string, CardBrief>; // 열린·HELD 카드의 사실 줄과 본문 첫 문장(옛 서버면 없음)
   inFlight: Proposal[];
   overdue: string[];
   recent: Proposal[];
@@ -334,7 +336,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {assign.length ? (
         <div className="dp-cards">
           {assign.map((p) => (
-            <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
+            <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
           ))}
         </div>
       ) : (
@@ -348,7 +350,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
           </h2>
           <div className="dp-cards">
             {brief.held.map((p) => (
-              <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={submit} onUnhold={unhold} codes={codes} mode={brief.mode} held busy={busy === p.id} />
+              <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} now={now} onVerdict={submit} onUnhold={unhold} codes={codes} mode={brief.mode} held busy={busy === p.id} />
             ))}
           </div>
         </>
@@ -360,7 +362,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {release.length ? (
         <div className="dp-cards">
           {release.map((p) => (
-            <Card key={p.id} p={p} flight={flights[p.flight]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
+            <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
           ))}
         </div>
       ) : (
@@ -902,6 +904,7 @@ function Gate3({ gate }: { gate: Brief["gate3"] }) {
 function Card({
   p,
   flight,
+  info,
   now,
   onVerdict,
   onAccept,
@@ -913,6 +916,7 @@ function Card({
 }: {
   p: Proposal;
   flight: FlightInfo | undefined;
+  info?: CardBrief;
   now: number;
   onVerdict: (p: Proposal, v: "agree" | "disagree", input: VerdictInput) => Promise<boolean>;
   onAccept?: (p: Proposal, m: Crosscheck) => void; // HELD 카드에는 없음
@@ -940,6 +944,7 @@ function Card({
         <span className="dp-kind">{p.kind}</span>
         <span className="mono faint">{p.id}</span>
         <span className="faint dp-age">{timeAgo(p.at, now)}</span>
+        {p.caution && <span className="dp-caution">CAUTION</span>}
       </header>
       <div className="dp-flight">
         <a className="mono dp-fn" href={flight?.url ?? undefined} target="_blank" rel="noreferrer" title={p.flight}>
@@ -948,6 +953,8 @@ function Card({
         {flight && <PriorityMark priority={flight.priority} />}
         <span className="dp-title">{flight?.title ?? p.flight}</span>
       </div>
+      <BriefingLines p={p} title={flight?.title ?? null} info={info} />
+      <FactsLine info={info} now={now} aircraft={p.kind === "ASSIGN" ? p.aircraftName : null} showCrosscheck={!xc} />
       {flight?.cls && (
         <p className={`dp-class${flight.clsDefault ? " is-default" : ""}`} title={flight.clsDefault ? "type:·wake: 라벨이 없어 기본값(BUILD · M)으로 봄" : "FLIGHT TYPE · WAKE · 필요한 TYPE RATING"}>
           {flight.cls}
@@ -971,25 +978,6 @@ function Card({
         <p className="dp-hold">
           <span className="dp-hold-mark">HOLD</span>
           {p.hold.length ? `선행 FLIGHT ${p.hold.map(flightNumber).join(", ")}가 끝난 뒤` : "사람 결정·외부 입력 대기 — 사유는 메모, FLIGHT가 수정되면 다시 검토"}
-        </p>
-      )}
-      <table className="dp-factors">
-        <tbody>
-          {p.factors.map((f) => (
-            <tr key={f.id}>
-              <td>{f.label}</td>
-              <td className="dp-factor-detail">{f.detail}</td>
-              <td className="dp-factor-bar" aria-hidden>
-                <span className={f.points < 0 ? "neg" : ""} style={{ width: `${(Math.abs(f.points) / max) * 100}%` }} />
-              </td>
-              <td className="num">{f.points > 0 ? `+${f.points}` : f.points}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {(p.note || p.caution) && (
-        <p className="dp-note">
-          {p.caution && <span className="dp-caution">CAUTION</span>} {p.note}
         </p>
       )}
       {xc && <CrosscheckChip m={xc} now={now} labelOf={(c) => codes.find((r) => r.code === c)?.label ?? c} />}
@@ -1020,6 +1008,27 @@ function Card({
           )}
         </div>
       )}
+      <CardDetails flight={p.flight}>
+        <table className="dp-factors">
+          <tbody>
+            {p.factors.map((f) => (
+              <tr key={f.id}>
+                <td>{f.label}</td>
+                <td className="dp-factor-detail">{f.detail}</td>
+                <td className="dp-factor-bar" aria-hidden>
+                  <span className={f.points < 0 ? "neg" : ""} style={{ width: `${(Math.abs(f.points) / max) * 100}%` }} />
+                </td>
+                <td className="num">{f.points > 0 ? `+${f.points}` : f.points}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {p.note && (
+          <p className="dp-note">
+            {p.caution && <span className="dp-caution">CAUTION</span>} {p.note}
+          </p>
+        )}
+      </CardDetails>
     </article>
   );
 }

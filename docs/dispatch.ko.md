@@ -142,6 +142,18 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 - 사람 결정이 먼저 필요한 티켓(예: "사용자 확인 후")이면 값 없는 `--hold`로 선행 FLIGHT 없는 HOLD를 건다. 사유는 메모에 적고, HOLD 뒤에 FLIGHT가 수정되면 atc가 풀어 다시 검토하게 한다.
 - 선행 작업이 본문에만 적혀 있고 `blocks` 관계로는 없으면 `dispatch note <ID> --hold <FLIGHT> -- <메모>`로 HOLD를 건다. 지정하는 FLIGHT는 **막는(선행) FLIGHT**이고, 제안은 ASSIGN 목록이 아니라 HELD 목록으로 간다. 제안 자신의 FLIGHT는 예약된 채로 남아 planner가 다시 올리지 않는다(AIRCRAFT는 다른 FLIGHT가 쓸 수 있게 놓아 둔다). 보낼 수는 없고, FLIGHT PLAN에 `HOLD — 선행 FLIGHT …` 줄이 들어간다. 지정한 FLIGHT가 모두 끝난 상태가 되면 atc가 그 제안을 SUPERSEDED로 풀어 다시 후보가 되게 한다. HOLD에는 24시간 만료가 없다. 대신 FLIGHT 자체가 Todo가 아니게 되거나 SUPERVISOR가 "HOLD 풀기"를 누르면 닫힌다.
 - 판단 근거를 한두 줄로 제안에 남긴다.
+- 열린 제안과 HELD 제안마다 **BRIEFING**(ATC-4)을 쓴다. 쉬운 한국어 세 줄이고, `dispatch briefing <ID> --what … --why … --risk …`로 쓴다. 추가만 하는 `brief` op로 저장하고, 다시 쓰면 덮어쓴다. 아래 "제안 카드"를 본다.
+
+### 5.5 제안 카드 (BRIEFING, ATC-4)
+
+SUPERVISOR는 티켓 내용을 기억하지 못할 때가 많다(VOC-195, VOC-172). 제안을 판정하려고 Linear를 열지 않아도 되게 한다. 열린 카드와 HELD 카드는 위에서 아래로 이렇게 읽힌다.
+
+1. **BRIEFING**: 무슨 일, 왜 이 AIRCRAFT, 걸리는 점(선행, 위험, 사람이 정할 것). OCC가 쓴다(`occ/CLAUDE.md` "BRIEFING"). OCC가 쓰기 전에는 제목과 본문 첫 문장에 "BRIEFING 대기"가 붙어 보인다. 본문은 atc가 백그라운드로 Linear에서 읽어 30분 동안 캐시한다(`server/briefing.ts`, `leadOf`).
+2. **사실 줄**: 모델 없이 서버가 계산한다(`factsOf`). PRIORITY, FLIGHT를 만든 뒤 대기 일수, ROUTE MAP의 ROUTE와 WAYPOINT(예: "Beta Ready WAYPOINT(지금 구간) · 남은 3건 중 하나"), 선행 FLIGHT(Linear `blockedBy`와 DISPATCH HOLD)와 그 상태, 그 AIRCRAFT가 같은 ROUTE에서 최근 맡은 FLIGHT(30일 안 LOGBOOK ARRIVED와 날고 있는 ASSIGN, 셋까지), HELD 카드에서는 CROSSCHECK 판정과 사유(열린 카드는 CROSSCHECK 칩에 보인다).
+3. 분류, AIRCRAFT와 점수, HOLD 줄, CROSSCHECK 칩, 판정 버튼은 전과 같다.
+4. **접어 둔 자세히**("점수 요소 · 본문 · 메모"): 점수 요소, DISPATCH 메모, 본문 전체. 본문은 열 때 Linear에서 읽는다.
+
+`GET /api/dispatch/brief`에 열린·HELD 제안의 `briefs: { <ID>: { facts, lead } }`가 더해진다. BRIEFING이 있으면 `lead`는 null이다. `POST /api/dispatch/proposals/:id/briefing {what, why, risk}`는 제안이 `proposed`일 때만 받는다. 세 줄 모두 필요하고, 공백은 한 칸으로 모으며, 한 줄 300자까지다. OCC guard는 바꾸지 않았다. `dispatch briefing`은 `dispatch note`와 같은 atc CLI 명령이고, CROSSCHECK의 허용 목록에는 없다.
 
 ## 6. 흐름
 

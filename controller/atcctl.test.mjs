@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CREW_CHANGE_CMDS, crosscheckBrief, draftText, parseArrived, parseCrewChange, parseCrosscheck, parseDraft, payloadText } from "./atcctl.mjs";
+import { CREW_CHANGE_CMDS, crosscheckBrief, draftText, parseArrived, parseBriefingArgs, parseCrewChange, parseCrosscheck, parseDraft, payloadText } from "./atcctl.mjs";
 import { simpleCommands } from "../hooks/shell.mjs";
 
 const argv = (s) => s.split(" ");
@@ -217,4 +217,14 @@ test("crew-change send·readback: 서버 창구를 부르고 SEND TO와 문구�
   } finally {
     server.close();
   }
+});
+
+test("dispatch briefing: <D-ID> --what --why --risk 세 줄 모두", () => {
+  const args = ["D-0012", "--what", "재생 화면 버튼 정리", "--why", "TEAM_F가 같은 ROUTE를 막 끝냈다", "--risk", "디자인 확인 필요"];
+  assert.deepEqual(parseBriefingArgs(args), { id: "D-0012", body: { what: "재생 화면 버튼 정리", why: "TEAM_F가 같은 ROUTE를 막 끝냈다", risk: "디자인 확인 필요" } });
+  assert.throws(() => parseBriefingArgs(["D-0012", "--what", "a", "--why", "b"]), /--risk가 필요함/);
+  assert.throws(() => parseBriefingArgs(["D-0012", "--what", "--why", "b"]), /--what 뒤에 한 줄/);
+  assert.throws(() => parseBriefingArgs(["D-0012", "--what", "a", "--what", "b"]), /두 번/);
+  assert.throws(() => parseBriefingArgs(["D-0012", "--note", "a"]), /알 수 없는 인자/);
+  assert.throws(() => parseBriefingArgs(["--what", "a"]), /제안 ID/);
 });
