@@ -4,7 +4,7 @@
 
 > English translation for readers. The OCC session reads the Korean [`schedule.md`](schedule.md), which is the source of truth; this file is not loaded.
 
-Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it in `/tick` steps 5 and 6, when `schedule brief` has candidates, `waypointGaps` or S2 releases, and when a CHARTER REQUEST comes in. `CLAUDE.md` sets the role and what OCC doesn't do.
+Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it in `/tick` steps 5 and 6, when `schedule brief` has candidates, `waypointGaps` or S2 releases, when TARGET and ROUTE drafts are due, and when a CHARTER REQUEST comes in. `CLAUDE.md` sets the role and what OCC doesn't do.
 
 ## Commands
 
@@ -14,6 +14,9 @@ Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it in `/tick` st
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <reason>` | Draft a priority. 1 Urgent · 2 High · 3 Medium · 4 Low |
 | `node ../controller/atcctl.mjs schedule draft CLOSE <VOC-193> -- <reason>` | Draft a close. atc fills in the PR, merge time and Fixes status from the LOGBOOK. Never released (the SUPERVISOR moves it to Done in Linear) |
 | `node ../controller/atcctl.mjs schedule draft NEW --title <title> --project <project> [--milestone <milestone>] [--gap] [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <reason> -- '<body>'` | (CHARTER DESK) Draft an AD HOC FLIGHT. `\n` in the body becomes a newline. Prints the draft id and the similar FLIGHTs atc found (`similar`). `--milestone` is a milestone (WAYPOINT) name of that project. `--gap` marks a WAYPOINT gap draft: it needs `--milestone`, and atc refuses it if a similar FLIGHT exists |
+| `node ../controller/atcctl.mjs network` | NETWORK overview (JSON): ROUTE rows (`routes`: open FLIGHTs, ARRIVED in 14 days, AIRCRAFT, the project's `goal.state`), AIRCRAFT TARGETS against actuals (`aircraft`), 28-day trends |
+| `node ../controller/atcctl.mjs schedule draft TARGET <TEAM_X> [--flights-per-week <n\|none>] [--on-time <0-1\|none>] -- <reason>` | Draft a change to an AIRCRAFT's FLEET TARGETS. `none` clears a target. atc attaches the evidence numbers |
+| `node ../controller/atcctl.mjs schedule draft ROUTE <TEAM_X> [--add <project>]… [--remove <project>]… -- <reason>` | Draft a change to an AIRCRAFT's ROUTE. Add only Linear projects that are not finished; remove only projects on its ROUTE now |
 | `node ../controller/atcctl.mjs schedule slip-ack [<key>]…` | Record the WAYPOINT slip warnings (`slips` in `schedule brief`) as reported. Without a key, every warning that is fresh now. A reported warning doesn't become fresh again, unless it clears and comes back |
 | `node ../controller/atcctl.mjs schedule release <S-0001>` | (S2) Release an approved operation and print its Linear calls as `CALL n/m · <tool>` with the JSON input. If already released, print the same CALLs again |
 
@@ -97,6 +100,17 @@ With too few FLIGHTs to assign, the gate doesn't fill. The ROUTE MAP knows each 
 6. If atc refuses with `비슷한 FLIGHT가 있어 … 쓰지 않음` (a similar FLIGHT exists), don't retry; note that FLIGHT in the OCC LOG. On `LIMIT`, stop for this pass.
 
 CROSSCHECK marks these drafts like any other SCHEDULE draft. Once approved in S2, the released call carries the milestone id, so the new issue lands on that WAYPOINT.
+
+## TARGET and ROUTE drafts (shadow verdicts only)
+
+FLEET TARGETS (`flightsPerWeek`, `onTime`) and ROUTEs are the SUPERVISOR's. OCC only drafts changes from NETWORK numbers. Whatever the mode, these drafts only get shadow verdicts, and approving one doesn't make atc write `fleet.json`. OCC never writes it either (`../docs/fleet.md` 7.4).
+
+1. **Once in 24 hours.** If `open` or `recent` in `schedule brief` has a `TARGET` or `ROUTE` draft written in the last 24 hours, skip. Otherwise read `node ../controller/atcctl.mjs network`.
+2. **Remove a ROUTE**: when a project on an AIRCRAFT's ROUTE has ended (`goal.state` in `routes` is completed or canceled), `schedule draft ROUTE <TEAM_X> --remove <project>`. This is the draft with the clearest evidence.
+3. **Add a ROUTE**: `--add` only when most of that AIRCRAFT's ARRIVED FLIGHTs in the last 14 days went to one project that is not on its ROUTE. atc attaches "where the 14-day ARRIVED FLIGHTs went" to the draft, so check that number first.
+4. **TARGET**: only when `targets.flightsPerWeek` in `aircraft` and the actuals (`actuals.weekDone`, ARRIVED in 14 days) have been far apart for more than two weeks (for example 6 or more a week against a target of 3, or under half the target). Change `flightsPerWeek` by at most 2 or 50%, whichever is larger, and `onTime` by at most 0.1 (atc refuses bigger steps). atc also refuses when the AIRCRAFT has fewer than 3 ARRIVED in 14 days, or is AOG or retired.
+5. **At most 1 per pass.** The reason is one line of numbers: `"14일 ARRIVED 9 · 주별 4·5 · 목표 3"`. atc attaches the numbers again, so don't guess; write only what you saw in `network`.
+6. These drafts count toward the limit of 5 open drafts and expire after 3 days. A new draft for the same AIRCRAFT and kind replaces the earlier one. If the SUPERVISOR already changed it on the FLEET tab, atc closes the draft as SUPERSEDED.
 
 ## CHARTER DESK (AD HOC FLIGHT drafts, S1 shadow operation)
 

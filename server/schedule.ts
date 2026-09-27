@@ -13,18 +13,21 @@ import type { Snapshot, Ticket } from "./model.ts";
 import { record } from "./recorder.ts";
 import { cachedPrBody, fetchPrBody } from "./sources/github.ts";
 import { loadLinearProjects, type Milestone } from "./sources/linear-projects.ts";
+import { isNetworkKind, type NetworkCtx, NetworkDraftError, type NetworkKind, type NetworkPayload, networkChangesOf, networkSupersedeReason, parseNetwork } from "./network-drafts.ts";
+import { routeRows } from "./network.ts";
 import { loadRoutes } from "./routes.ts";
 import { waypointGapsOf } from "./waypoint-gaps.ts";
 import { ackSlips, freshSlipKeys, loadSlipsReported, saveSlipsReported, slipsOf, waypointEtasOf } from "./waypoint-slips.ts";
 
 // OCC SCHEDULE — OCC가 Linear에 쓸 변경을 초안으로 남긴다. 설계: docs/occ.md 5~7장.
-// 작업 종류는 CLASSIFY(분류 라벨), PRIORITIZE(우선순위), NEW(새 이슈), CLOSE(PR이 머지된 FLIGHT를 Done으로).
+// 작업 종류는 CLASSIFY(분류 라벨), PRIORITIZE(우선순위), NEW(새 이슈), CLOSE(PR이 머지된 FLIGHT를 Done으로),
+// TARGET·ROUTE(AIRCRAFT의 FLEET TARGETS·ROUTE 변경, ATC-25 — network-drafts.ts. 지금은 모드와 상관없이 그림자 판정만).
 // - S1(mode "shadow"): SUPERVISOR가 "승인했을 것 / 거절했을 것"만 표시한다. 아무것도 Linear에 쓰지 않는다.
 // - S2(mode "approval"): SUPERVISOR가 승인하면 atc가 Linear 도구 호출 입력(calls)을 정확히 만들고(release),
 //   OCC가 그대로 호출한다. occ/mcp-guard.mjs(linear-guard)가 발부된 입력과 한 글자도 다르지 않은 쓰기만 통과시킨다.
 //   다음 Linear 읽기에서 반영이 보이면 APPLIED.
 
-export const SCHEDULE_KINDS = ["CLASSIFY", "PRIORITIZE", "NEW", "CLOSE"] as const;
+export const SCHEDULE_KINDS = ["CLASSIFY", "PRIORITIZE", "NEW", "CLOSE", "TARGET", "ROUTE"] as const;
 export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];
 
 export interface ClassifyPayload {
@@ -61,7 +64,12 @@ export interface ClosePayload {
   fixes?: boolean; // PR 본문에 `Fixes VOC-n` — vocado 규칙상 이것만 이슈를 끝낸다
   partOf?: boolean; // PR 본문에 `Part of VOC-n` — 일부만. 후보에서는 빠지고, 초안이면 "일부만"으로 보인다
 }
-export type SchedulePayload = ClassifyPayload | PrioritizePayload | NewPayload | ClosePayload;
+export type SchedulePayload = ClassifyPayload | PrioritizePayload | NewPayload | ClosePayload | NetworkPayload;
+
+// TARGET·ROUTE는 Linear 쓰기 게이트(판정 20건·합의율 80%)와 CROSSCHECK 일치율에 넣지 않고 따로 센다(docs/fleet.md 7.4)
+export const countsForGate = (s: Pick<ScheduleOp, "kind">) => !isNetworkKind(s.kind);
+// TARGET·ROUTE의 S2 적용(fleet.json 쓰기)은 아직 없다 — approval 모드에서도 그림자 판정만 받는다
+export const NETWORK_APPLY_WHY = "TARGET·ROUTE는 아직 그림자 판정만 — 승인해도 fleet.json에 쓰는 길이 없음(docs/fleet.md 7.4)";
 
 // CLOSE는 발부하지 않는다(Linear 상태 변경은 vocado 규칙상 OCC 몫이 아님). 나중에 규칙이 바뀌면 여기서 켠다(docs/occ.md 5.3)
 export const CLOSE_RELEASE_WHY = "CLOSE는 SUPERVISOR가 Linear에서 직접 — vocado 규칙상 OCC는 상태를 바꾸지 않음";
@@ -251,7 +259,14 @@ function append(lines: LogLine[], file = FILE()) {
 const isOpenTicket = (t: Ticket | undefined) => Boolean(t && (t.stateType === "unstarted" || t.stateType === "backlog"));
 
 // 초안이 지금 티켓에 적용하면 무엇이 바뀌는지. 바뀌는 게 없으면 빈 배열. NEW는 티켓 없이 한 줄.
-export function changesOf(kind: ScheduleKind, payload: SchedulePayload, t?: Pick<Ticket, "labels" | "priority"> & Partial<Pick<Ticket, "state" | "stateType">>): string[] {
+// TARGET·ROUTE는 티켓 대신 그 AIRCRAFT의 FLEET 보기(view)와 비교한다.
+export function changesOf(
+  kind: ScheduleKind,
+  payload: SchedulePayload,
+  t?: Pick<Ticket, "labels" | "priority"> & Partial<Pick<Ticket, "state" | "stateType">>,
+  view?: Parameters<typeof networkChangesOf>[2],
+): string[] {
+  if (isNetworkKind(kind)) return networkChangesOf(kind, payload as NetworkPayload, view);
   if (kind === "NEW") {
     const n = payload as NewPayload;
     const labels = [n.type && `type:${n.type}`, n.wake && `wake:${n.wake}`, ...(n.ratings ?? []).map((r) => `rating:${r}`), n.tail && `tail:${n.tail}`].filter(Boolean);
@@ -309,6 +324,7 @@ function parseClass(raw: Record<string, unknown>): ClassifyPayload {
 export function parsePayload(kind: unknown, raw: Record<string, unknown>): { kind: "CLASSIFY" | "PRIORITIZE"; payload: ClassifyPayload | PrioritizePayload } {
   if (kind === "NEW") throw new ScheduleError("NEW는 parseNew로 검사한다");
   if (kind === "CLOSE") throw new ScheduleError("CLOSE의 payload는 atc가 LOGBOOK에서 채운다(draftOps)");
+  if (isNetworkKind(kind)) throw new ScheduleError(`${kind}는 parseNetwork로 검사한다`);
   if (!SCHEDULE_KINDS.includes(kind as ScheduleKind)) throw new ScheduleError(`모르는 SCHEDULE 작업: ${kind} (가능: ${SCHEDULE_KINDS.join(", ")})`);
   if (kind === "PRIORITIZE") return { kind, payload: { priority: parsePriority(raw.priority) } };
   const payload = parseClass(raw);
@@ -481,7 +497,7 @@ export function draftOps(
   tickets: Ticket[],
   now: string,
   seq: number,
-  ctx: { tails?: string[]; closable?: Map<string, Closable>; teams?: Set<string>; milestones?: Milestone[] | null } = {},
+  ctx: { tails?: string[]; closable?: Map<string, Closable>; teams?: Set<string>; milestones?: Milestone[] | null; network?: NetworkCtx } = {},
 ): LogLine[] {
   const reason = typeof input.reason === "string" ? input.reason.trim() : "";
   // 후보 팀(dispatch.json candidateTeams)이 아닌 FLIGHT에는 초안을 쓰지 않는다. 보여 주기만 하는 팀이고, 분류 라벨도 없다
@@ -492,7 +508,18 @@ export function draftOps(
   let kind: ScheduleKind;
   let flight: string | null = null;
   let payload: SchedulePayload;
-  if (input.kind === "NEW") {
+  if (isNetworkKind(input.kind)) {
+    // TARGET·ROUTE: FLIGHT 없이 AIRCRAFT 하나에 대해. 근거 숫자는 atc가 붙인다
+    if (!ctx.network) throw new ScheduleError("FLEET·NETWORK 자료가 없음", 503);
+    if (!reason) throw new ScheduleError("근거(reason) 한 줄이 필요함");
+    kind = input.kind;
+    try {
+      payload = parseNetwork(input.kind, input, ctx.network);
+    } catch (e) {
+      if (e instanceof NetworkDraftError) throw new ScheduleError(e.message, e.status);
+      throw e;
+    }
+  } else if (input.kind === "NEW") {
     const base = parseNew(input, tickets, ctx.tails ?? [], ctx.milestones ?? null);
     if (!reason) throw new ScheduleError("근거(reason) 한 줄이 필요함");
     if (!reason.includes("중복 검색:")) throw new ScheduleError("NEW 근거에는 \"중복 검색:\"과 찾아본 결과가 필요함");
@@ -526,9 +553,12 @@ export function draftOps(
     if (!changesOf(kind, payload, t).length) throw new ScheduleError(`${flight}에는 이미 그렇게 되어 있음 — 바꿀 것이 없음`);
   }
   const open = existing.filter((s) => s.status === "draft");
-  const inFlight = kind === "NEW" ? undefined : existing.find((s) => (s.status === "approved" || s.status === "released") && s.flight === flight && s.kind === kind);
-  if (inFlight) throw new ScheduleError(`${flight}에는 진행 중인 ${kind} ${inFlight.id}(${inFlight.status})가 있음`, 409);
-  const replaced = kind === "NEW" ? [] : open.filter((s) => s.flight === flight && s.kind === kind);
+  // 같은 대상: FLIGHT, TARGET·ROUTE는 AIRCRAFT(AIRCRAFT·종류마다 열린 초안 하나 — 새것이 대신한다)
+  const reg = isNetworkKind(kind) ? (payload as NetworkPayload).registration : null;
+  const same = (s: ScheduleOp) => s.kind === kind && (reg ? (s.payload as NetworkPayload).registration === reg : s.flight === flight);
+  const inFlight = kind === "NEW" ? undefined : existing.find((s) => (s.status === "approved" || s.status === "released") && same(s));
+  if (inFlight) throw new ScheduleError(`${reg ?? flight}에는 진행 중인 ${kind} ${inFlight.id}(${inFlight.status})가 있음`, 409);
+  const replaced = kind === "NEW" ? [] : open.filter(same);
   if (open.length - replaced.length >= SCHEDULE_OPEN_LIMIT) throw new ScheduleError(`열린 초안이 ${SCHEDULE_OPEN_LIMIT}건 — SUPERVISOR 판정을 기다린다`, 409);
   const id = `S-${String(seq + 1).padStart(4, "0")}`;
   return [
@@ -541,6 +571,7 @@ export function draftOps(
 // 라벨 이름: type·wake는 Linear 라벨 그룹의 하위 라벨(BUILD, M …), rating·tail은 평면 라벨(rating:SEC, tail:TEAM_E).
 export function callsOf(op: ScheduleOp, t: Pick<Ticket, "labels" | "priority"> | undefined, teamName: string): LinearCall[] {
   if (op.kind === "CLOSE") throw new ScheduleError(CLOSE_RELEASE_WHY, 409);
+  if (isNetworkKind(op.kind)) throw new ScheduleError(NETWORK_APPLY_WHY, 409);
   const trail = `(SCHEDULE ${op.id}, SUPERVISOR 승인)`;
   if (op.kind === "NEW") {
     const n = op.payload as NewPayload;
@@ -586,7 +617,8 @@ export function callsOf(op: ScheduleOp, t: Pick<Ticket, "labels" | "priority"> |
 // 상황이 바뀐 열린 초안을 닫는다(순수): FLIGHT가 계획 단계를 벗어남, 이미 반영됨, 3일 지남.
 // NEW는 초안 뒤에 같은 제목(정규화)의 이슈가 Linear에 생기면 SUPERSEDED.
 // CLOSE는 Linear가 Done·Canceled가 되면 닫고(발부된 것이면 APPLIED), PR이 되돌려지면 SUPERSEDED.
-export function syncLines(existing: ScheduleOp[], tickets: Ticket[], nowMs: number, ctx: { reverted?: Set<string> } = {}): LogLine[] {
+// TARGET·ROUTE는 AIRCRAFT가 없거나 퇴역했거나 FLEET 탭에서 이미 그렇게 바뀌면 SUPERSEDED(ctx.views가 있을 때).
+export function syncLines(existing: ScheduleOp[], tickets: Ticket[], nowMs: number, ctx: { reverted?: Set<string>; views?: NetworkCtx["views"] } = {}): LogLine[] {
   const at = new Date(nowMs).toISOString();
   const byKey = new Map(tickets.map((t) => [t.key, t]));
   const out: LogLine[] = [];
@@ -597,6 +629,12 @@ export function syncLines(existing: ScheduleOp[], tickets: Ticket[], nowMs: numb
       s.status === "released" ? { op: "apply", id: s.id, at, ref } : { op: "supersede", id: s.id, at, reason: why };
     const stale = nowMs - Date.parse(s.statusAt) > TTL_MS;
     const staleWhy = s.status === "draft" ? undefined : s.status === "approved" ? "승인 뒤 3일 동안 발부되지 않음" : "발부 뒤 3일 동안 Linear에 반영되지 않음";
+    if (isNetworkKind(s.kind)) {
+      const why = ctx.views ? networkSupersedeReason(s.kind, s.payload as NetworkPayload, ctx.views) : null;
+      if (why) out.push({ op: "supersede", id: s.id, at, reason: why });
+      else if (stale) out.push({ op: "expire", id: s.id, at, ...(staleWhy ? { reason: staleWhy } : {}) });
+      continue;
+    }
     if (s.kind === "NEW" || s.flight == null) {
       const norm = normTitle((s.payload as NewPayload).title ?? "");
       const made = tickets.find((t) => normTitle(t.title) === norm && t.createdAt != null && Date.parse(t.createdAt) >= Date.parse(s.at));
@@ -620,7 +658,8 @@ export function syncLines(existing: ScheduleOp[], tickets: Ticket[], nowMs: numb
   return out;
 }
 
-export function gateOf(ops: ScheduleOp[]) {
+export function gateOf(all: ScheduleOp[]) {
+  const ops = all.filter(countsForGate);
   const decided = ops.filter((s) => (s.status === "agreed" || s.status === "disagreed") && s.via !== "atfm");
   const agreed = decided.filter((s) => s.status === "agreed").length;
   // (S2 이후의 승인·거절은 이 점검에 넣지 않는다 — 그림자 판정의 합의율만 잰다)
@@ -633,14 +672,25 @@ export function gateOf(ops: ScheduleOp[]) {
     ready: decided.length >= GATE.decided && agreement !== null && agreement >= GATE.agreement,
     // 게이트와 따로: CROSSCHECK가 SUPERVISOR 판정(S1 판정과 S2 승인·거절)과 얼마나 맞았나
     crosscheck: { ...crosscheckRateOf(ops.map((s) => ({ crosscheck: s.crosscheck, human: humanOf(s) }))), oneClick: oneClickOf(ops.map((s) => ({ crosscheck: s.crosscheck, human: humanOf(s) }))) },
+    // TARGET·ROUTE 그림자 판정(게이트와 따로, 종류마다). S3 자동 처리 대상이 아니다
+    network: networkGateOf(all),
   };
+}
+
+export function networkGateOf(ops: ScheduleOp[]) {
+  const per = (kind: NetworkKind) => {
+    const decided = ops.filter((s) => s.kind === kind && s.decision && s.via !== "atfm");
+    const agreed = decided.filter((s) => s.decision!.verdict === "agree").length;
+    return { decided: decided.length, agreed, agreement: decided.length ? agreed / decided.length : null };
+  };
+  return { TARGET: per("TARGET"), ROUTE: per("ROUTE") };
 }
 
 // OCC 보정용 예시: 최근 SUPERVISOR 판정(사유 있는 것 먼저)과 OCC가 냈던 초안. 같은 실수를 되풀이하지 않게 초안 쓰기 전에 본다.
 // NEW의 본문·비슷한 FLIGHT는 빼고 분류·우선순위만 남긴다.
 export function occExamplesOf(ops: ScheduleOp[]) {
   return examplesOf(ops.map((s) => ({ s, human: humanOf(s) }))).map(({ s, human }) => {
-    const { body: _b, similar: _s, ...proposed } = s.payload as NewPayload;
+    const { body: _b, similar: _s, evidence: _e, ...proposed } = s.payload as NewPayload & { evidence?: unknown };
     return { id: s.id, kind: s.kind, flight: s.flight, proposed, draft: s.reason, verdict: human!.verdict, reason: human!.reason };
   });
 }
@@ -701,10 +751,21 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     for (const c of info.closable.values()) if (!c.link) void fetchPrBody(c.key);
     return info;
   };
+  // TARGET·ROUTE 초안을 쓰고 보이는 데 드는 FLEET 보기(실적 포함). 열린 TARGET·ROUTE가 없으면 만들지 않는다
+  const viewsOf = (s: Snapshot, entries = loadLogbook(), now = Date.now()) => fleetView(s, loadFleet(), loadDispatchConfig().teamPattern, entries, now);
+  const networkCtxOf = async (s: Snapshot): Promise<NetworkCtx> => {
+    const now = Date.now();
+    const entries = loadLogbook();
+    const views = viewsOf(s, entries, now);
+    const lp = await loadLinearProjects();
+    const goals = lp.ok ? lp.projects : null;
+    return { views, entries, tickets: s.tickets, goals, routeRows: routeRows({ tickets: s.tickets, entries, views, goals, now }), now };
+  };
   const current = (s: Snapshot) => {
     const lines = readLines();
     const ops = fold(lines);
-    const closing = s.linear.enabled && s.linear.fetchedAt ? syncLines(ops, s.tickets, Date.now(), { reverted: closeInfo(s).reverted }) : [];
+    const openNetwork = ops.some((x) => x.status === "draft" && isNetworkKind(x.kind));
+    const closing = s.linear.enabled && s.linear.fetchedAt ? syncLines(ops, s.tickets, Date.now(), { reverted: closeInfo(s).reverted, views: openNetwork ? viewsOf(s) : undefined }) : [];
     if (closing.length) {
       append(closing);
       return fold([...lines, ...closing]);
@@ -747,7 +808,9 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
         return [k, { title: t.title, state: t.state, priority: t.priority, project: t.project, url: t.url, cls: classLabel(classOf(t.labels)), labels: t.labels }];
       }),
     );
-    const changes = Object.fromEntries([...open, ...inProgress].map((x) => [x.id, changesOf(x.kind, x.payload, x.flight ? byKey.get(x.flight) : undefined)]));
+    const views = [...open, ...inProgress].some((x) => isNetworkKind(x.kind)) ? viewsOf(s) : [];
+    const viewOf = (x: ScheduleOp) => (isNetworkKind(x.kind) ? views.find((v) => v.registration === (x.payload as NetworkPayload).registration) : undefined);
+    const changes = Object.fromEntries([...open, ...inProgress].map((x) => [x.id, changesOf(x.kind, x.payload, x.flight ? byKey.get(x.flight) : undefined, viewOf(x))]));
     // CLOSE 후보의 PR·머지 시각·Fixes 여부(초안 근거와 화면용)
     const closeInfoOut = Object.fromEntries(candidates.close.map((k) => { const c = closable.get(k)!; return [k, { pr: c.pr, mergedAt: c.mergedAt, link: c.link }]; }));
     // ROUTE마다 지금·다음 WAYPOINT의 완료 기준과 이슈(ATC-8). 마일스톤을 못 읽었으면 null
@@ -823,7 +886,8 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
         }
       }
       const milestones = body.kind === "NEW" && body.milestone != null ? (await loadLinearProjects()).milestones : null;
-      const lines = draftOps(ops, body, s.tickets, new Date().toISOString(), ops.length, { tails, closable, teams: candidateTeamsOf(loadDispatchConfig()), milestones });
+      const network = isNetworkKind(body.kind) ? await networkCtxOf(s) : undefined;
+      const lines = draftOps(ops, body, s.tickets, new Date().toISOString(), ops.length, { tails, closable, teams: candidateTeamsOf(loadDispatchConfig()), milestones, network });
       append(lines);
       const op = fold(readLines()).find((x) => x.id === lines[lines.length - 1].id);
       return c.json({ op, label: op?.flight ? flightNumber(op.flight) : null });
@@ -837,9 +901,10 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const id = (c.req.param("id") ?? "").toUpperCase();
     const body = await c.req.json().catch(() => ({}));
     if (body.verdict !== "agree" && body.verdict !== "disagree") return c.json({ error: "verdict는 agree|disagree" }, 400);
-    if (loadScheduleMode() !== "shadow") return c.json({ error: "그림자 판정은 shadow 모드(S1)에서만 — approval 모드(S2)에서는 approve/reject" }, 409);
     const op = fold(readLines()).find((x) => x.id === id);
     if (!op) return c.json({ error: "그런 SCHEDULE 작업이 없음" }, 404);
+    // TARGET·ROUTE는 적용하는 길이 아직 없어 approval 모드에서도 그림자 판정을 받는다
+    if (loadScheduleMode() !== "shadow" && !isNetworkKind(op.kind)) return c.json({ error: "그림자 판정은 shadow 모드(S1)에서만 — approval 모드(S2)에서는 approve/reject" }, 409);
     if (op.status !== "draft") return c.json({ error: `지금 상태(${op.status})에서는 판정할 수 없음` }, 409);
     const reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim().slice(0, 500) : null;
     append([{ op: "verdict", id, at: new Date().toISOString(), verdict: body.verdict, reason, via: viaOf(body) }]);
@@ -870,6 +935,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       if (loadScheduleMode() !== "approval") return c.json({ error: "승인·거절은 approval 모드(S2)에서만" }, 409);
       const op = fold(readLines()).find((x) => x.id === id);
       if (!op) return c.json({ error: "그런 SCHEDULE 작업이 없음" }, 404);
+      if (isNetworkKind(op.kind)) return c.json({ error: `${NETWORK_APPLY_WHY} — verdict로 판정` }, 409);
       if (!canApplyOp(op, name)) return c.json({ error: `지금 상태(${op.status})에서는 할 수 없음` }, 409);
       const at = new Date().toISOString();
       const reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim().slice(0, 500) : null;

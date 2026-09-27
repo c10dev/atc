@@ -295,3 +295,22 @@ test("manual check: 절차 파일이 바뀌면 CHANGED, 번역만 바뀌면 그�
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("schedule draft TARGET·ROUTE(ATC-25): AIRCRAFT와 옵션, 근거", () => {
+  assert.deepEqual(parseDraft(argv("target team_i --flights-per-week 5 --on-time none -- 14일 5건")), {
+    kind: "TARGET", registration: "TEAM_I", flightsPerWeek: "5", onTime: "none", reason: "14일 5건",
+  });
+  assert.deepEqual(parseDraft(["ROUTE", "TEAM_C", "--add", "Beta Readiness", "--add", "Song Catalog", "--remove", "Home & Discovery", "--", "완료된", "ROUTE"]), {
+    kind: "ROUTE", registration: "TEAM_C", add: ["Beta Readiness", "Song Catalog"], remove: ["Home & Discovery"], reason: "완료된 ROUTE",
+  });
+  assert.throws(() => parseDraft(argv("TARGET -- x")), /REGISTRATION/);
+  assert.throws(() => parseDraft(argv("TARGET TEAM_I -- x")), /--flights-per-week이나 --on-time/);
+  assert.throws(() => parseDraft(argv("TARGET TEAM_I --add X -- x")), /쓸 수 없는 옵션/);
+  assert.throws(() => parseDraft(argv("TARGET TEAM_I --on-time 0.9 --on-time 0.8 -- x")), /한 번만/);
+  assert.throws(() => parseDraft(argv("ROUTE TEAM_I --add X")), /근거/);
+  assert.equal(
+    draftText({ id: "S-0009", kind: "TARGET", flight: null, payload: { registration: "TEAM_I", flightsPerWeek: 5, from: { flightsPerWeek: 3, onTime: 0.8 } } }),
+    "S-0009 TARGET TEAM_I 초안 · flightsPerWeek 3 → 5 (그림자 판정만, FLEET에 쓰지 않음)",
+  );
+  assert.equal(payloadText({ kind: "ROUTE", payload: { registration: "TEAM_C", add: ["A"], remove: ["B"] } }), "+ A · − B");
+});

@@ -875,3 +875,34 @@
   margin: var(--space-1) 0 var(--space-4);
   font-size: var(--text-xs);
 }
+
+/* TARGET·ROUTE(ATC-25): FLIGHT가 아니라 AIRCRAFT 하나의 FLEET 변경 초안. 그림자 판정만 */
+.sc-card.k-TARGET,
+.sc-card.k-ROUTE {
+  border-left-color: var(--line-strong);
+}
+.k-TARGET .sc-kind,
+.k-ROUTE .sc-kind,
+.sc-table .k-TARGET,
+.sc-table .k-ROUTE {
+  color: var(--text);
+}
+.sc-net-evidence p {
+  margin: 0 0 var(--space-1);
+  overflow-wrap: anywhere;
+}
+.sc-net-routes {
+  margin: 0 0 var(--space-1);
+  padding: 0;
+  list-style: none;
+}
+.sc-net-routes li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  overflow-wrap: anywhere;
+}
+.sc-manual {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+}

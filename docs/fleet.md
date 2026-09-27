@@ -240,7 +240,7 @@ Per AIRCRAFT, set by the SUPERVISOR in the FLEET tab. They are shown, not scored
 | Reverted work | LOGBOOK entries of the last 14 days marked `reverted` (a `Revert "…"` PR was merged). Reopened FLIGHTs are not counted yet |
 | Conflicts | LOS on the FLIGHT's STANDs while it was flown, summed over LOGBOOK entries of the last 14 days |
 
-Stage 4 (network planning) puts these next to the project goals (section 7.3). OCC may draft target changes (section 7.4, design only); the SUPERVISOR decides.
+Stage 4 (network planning) puts these next to the project goals (section 7.3). OCC drafts target and ROUTE changes in shadow (section 7.4, S1 built); the SUPERVISOR decides.
 
 ### 7.1 LOGBOOK
 
@@ -322,9 +322,9 @@ Stage 4 puts TARGETS next to the project goals in one read-only view: `GET /api/
 | `trend.gates` | 28 days: DISPATCH and SCHEDULE shadow decisions (`agreed` / `disagreed`) made that day, the cumulative agreement up to the end of that day (the last day equals each gate's `agreement`), and the cumulative CROSSCHECK match rate over both logs (`crosscheckRateOf`). Approval-stage approve / reject is not counted, as in the gates |
 | `sources` | Whether Linear (fetched), GitHub (fetched) and the LOGBOOK file were available |
 
-### 7.4 OCC target-change drafts (design only)
+### 7.4 OCC target-change drafts (S1 built 2026-09-27, ATC-25)
 
-Not built. ROUTES and TARGETS stay the SUPERVISOR's (section 3); this is how OCC could propose changes to them the way it proposes Linear changes, without ever applying them.
+S1 (shadow) is built; S2 (apply on approve) is not. See "As built" at the end of this section. ROUTES and TARGETS stay the SUPERVISOR's (section 3); this is how OCC could propose changes to them the way it proposes Linear changes, without ever applying them.
 
 **Operations.** Two new SCHEDULE kinds, each about one AIRCRAFT, with `flight: null` and an `aircraft` field:
 
@@ -353,6 +353,17 @@ Not built. ROUTES and TARGETS stay the SUPERVISOR's (section 3); this is how OCC
 - **Superseded** when `fleet.json` already has the proposed value (set by hand), or the AIRCRAFT is retired.
 
 **Where it plugs in.** `SCHEDULE_KINDS` gains `TARGET` and `ROUTE`; `parsePayload` validates them; `changesOf` compares with the FLEET profile instead of a ticket; `syncLines` checks `loadFleet()`; `callsOf` returns no calls, and in S2 `approve` applies directly instead of waiting for `release`. OCC gets `atcctl schedule draft TARGET|ROUTE` and reads `GET /api/network` before drafting.
+
+**As built (S1, ATC-25).**
+
+- `server/network-drafts.ts` holds the pure checks and evidence (`parseTarget`, `parseRoute`, `networkChangesOf`, `networkSupersedeReason`); `server/schedule.ts` plugs them in. There is no separate `aircraft` field: the payload's `registration` is the AIRCRAFT, and `flight` is `null`.
+- The payload also keeps `from` (the values when drafted) and `evidence` (`TARGET`: the NETWORK AIRCRAFT row, `arrived14`, `weekly` ARRIVED for 4 weeks, the ROUTE rows of its routes; `ROUTE`: the ROUTE rows of the touched projects and `where`, its 14-day ARRIVED by project).
+- Step limit: `flightsPerWeek` by at most 2 or 50% of the current value, **whichever is larger**; no limit when there is no current value (a first target) or when clearing. `onTime` by at most 0.1 the same way.
+- Verdicts: `TARGET` and `ROUTE` take the shadow `verdict` in **both** modes, because nothing applies them yet; in approval mode `approve`/`reject` answer 409 and `callsOf` refuses. The SCHEDULE tab shows their cards with shadow buttons in both modes.
+- Counting: `gateOf` leaves them out of the gate and the CROSSCHECK match rate and reports them in `gate.network` (`TARGET`, `ROUTE`: decided, agreed, agreement); NETWORK's gate trend leaves them out too (`countsForGate`).
+- `syncLines` supersedes an open draft when the AIRCRAFT is gone or retired, or when `fleet.json` already has the change (the SUPERVISOR set it on the FLEET tab).
+- OCC reads `atcctl network` at most once in 24 hours and writes at most 1 draft per pass (`occ/.claude/skills/tick/schedule.md` "TARGET and ROUTE drafts").
+- Not built yet: S2 apply on approve (`applyPatch` + atomic `fleet.json` save + FLIGHT RECORDER), and the "one applied `TARGET` per AIRCRAFT per 14 days" rule that comes with it.
 
 ### 7.5 DEPARTURE LOG
 
@@ -511,7 +522,7 @@ All four steps are done:
 3. ✅ Classification labels read by the planner: TYPE RATING and FLIGHT TYPE hard rules, WAKE slots, ROUTE score (the Risk group counts as SEC; label groups are read as `group:name`), STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (sections 5.1, 5.2)
 4. ◐ The DISPATCH card shows the classification. Still to do: FIDS, and DISPATCH notes that suggest a classification when labels are missing
 5. ✅ OCC S1 `CLASSIFY` drafts (with the SCHEDULE work in occ.md; `server/schedule.ts`, section 6)
-6. ◐ TARGETS actuals from the LOGBOOK on the FLEET cards (sections 7.1, 7.2), and next to the project goals in NETWORK (section 7.3). Still to do: on-time baselines from category medians, OCC target-change drafts (section 7.4, designed only)
+6. ◐ TARGETS actuals from the LOGBOOK on the FLEET cards (sections 7.1, 7.2), and next to the project goals in NETWORK (section 7.3). Still to do: on-time baselines from category medians, OCC target-change drafts in S2 (section 7.4; S1 built)
 7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE (section 8.2): TYPE RATING evidence from the LOGBOOK, GRANT and REVIEW recommendations, grant and revoke by the SUPERVISOR
 

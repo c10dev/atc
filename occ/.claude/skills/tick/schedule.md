@@ -2,7 +2,7 @@
 
 **한국어** · [English](schedule.en.md)
 
-[`CLAUDE.md`](../../../CLAUDE.md)에서 옮긴 절차다. `/tick` 5·6단계에서 `schedule brief`에 후보·`waypointGaps`나 S2 발부할 것이 있을 때, 그리고 CHARTER REQUEST가 왔을 때 Read한다. 역할과 하지 않는 것은 `CLAUDE.md`가 정한다.
+[`CLAUDE.md`](../../../CLAUDE.md)에서 옮긴 절차다. `/tick` 5·6단계에서 `schedule brief`에 후보·`waypointGaps`나 S2 발부할 것이 있을 때, TARGET·ROUTE 초안을 볼 차례일 때, 그리고 CHARTER REQUEST가 왔을 때 Read한다. 역할과 하지 않는 것은 `CLAUDE.md`가 정한다.
 
 ## 명령
 
@@ -12,6 +12,9 @@
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <근거>` | 우선순위 초안. 1 Urgent · 2 High · 3 Medium · 4 Low |
 | `node ../controller/atcctl.mjs schedule draft CLOSE <VOC-193> -- <근거>` | 닫기 초안. PR·머지 시각·Fixes 여부는 atc가 LOGBOOK에서 채운다. 발부하지 않는다(SUPERVISOR가 Linear에서 직접 Done) |
 | `node ../controller/atcctl.mjs schedule draft NEW --title <제목> --project <프로젝트> [--milestone <마일스톤>] [--gap] [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <근거> -- '<본문>'` | (CHARTER DESK) AD HOC FLIGHT 초안. 본문의 `\n`은 줄바꿈. 출력: 초안 ID와 atc가 찾은 비슷한 FLIGHT(`similar`). `--milestone`은 그 프로젝트의 마일스톤(WAYPOINT) 이름. `--gap`은 WAYPOINT gap 초안 표시로, `--milestone`이 필요하고 비슷한 FLIGHT가 있으면 atc가 받지 않는다 |
+| `node ../controller/atcctl.mjs network` | NETWORK 개요(JSON): ROUTE 행(`routes`: 열린 FLIGHT, 14일 ARRIVED, AIRCRAFT, 프로젝트 `goal.state`), AIRCRAFT TARGETS 대 실적(`aircraft`), 28일 추세 |
+| `node ../controller/atcctl.mjs schedule draft TARGET <TEAM_X> [--flights-per-week <n\|none>] [--on-time <0~1\|none>] -- <근거>` | AIRCRAFT의 FLEET TARGETS 변경 초안. `none`은 목표를 지운다. 근거 숫자는 atc가 붙인다 |
+| `node ../controller/atcctl.mjs schedule draft ROUTE <TEAM_X> [--add <프로젝트>]… [--remove <프로젝트>]… -- <근거>` | AIRCRAFT의 ROUTE 변경 초안. 더하는 것은 끝나지 않은 Linear 프로젝트, 빼는 것은 지금 ROUTE에 있는 것 |
 | `node ../controller/atcctl.mjs schedule slip-ack [<key>]…` | 보고한 WAYPOINT 지연 경고(`schedule brief`의 `slips`)를 적는다. key가 없으면 지금 fresh 전부. 같은 경고는 다시 fresh가 되지 않고, 풀렸다가 다시 생기면 다시 fresh다 |
 | `node ../controller/atcctl.mjs schedule release <S-0001>` | (S2) 승인된 작업을 발부하고 Linear 호출을 `CALL n/m · <도구>`와 JSON 입력으로 출력. 이미 발부됐으면 같은 CALL을 다시 준다 |
 
@@ -95,6 +98,17 @@ S2에서는 SUPERVISOR가 SCHEDULE 탭에서 승인한 작업을 OCC가 Linear�
 6. atc가 `비슷한 FLIGHT가 있어 … 쓰지 않음`으로 거절하면 다시 쓰지 않고 OCC LOG에 그 FLIGHT를 적는다. `LIMIT`이면 이번 바퀴는 멈춘다.
 
 CROSSCHECK는 다른 SCHEDULE 초안처럼 이 초안에도 mark를 단다. S2에서 승인되면 발부 호출에 마일스톤 id가 들어가, 새 이슈가 그 WAYPOINT에 바로 붙는다.
+
+## TARGET·ROUTE 초안 (그림자 판정만)
+
+FLEET TARGETS(`flightsPerWeek`, `onTime`)와 ROUTE는 SUPERVISOR가 정한다. OCC는 NETWORK 숫자를 보고 바꾸자는 초안만 올린다. 모드와 상관없이 그림자 판정만 받고, 승인돼도 atc는 `fleet.json`에 쓰지 않는다. OCC도 쓰지 않는다(`../docs/fleet.md` 7.4).
+
+1. **24시간에 한 번.** `schedule brief`의 `open`·`recent`에 24시간 안에 쓴 `TARGET`이나 `ROUTE` 초안이 있으면 건너뛴다. 없으면 `node ../controller/atcctl.mjs network`를 읽는다.
+2. **ROUTE 빼기**: AIRCRAFT의 ROUTE에 있는 프로젝트가 끝났으면(`routes`의 `goal.state`가 completed·canceled) `schedule draft ROUTE <TEAM_X> --remove <프로젝트>`. 근거가 가장 분명한 초안이다.
+3. **ROUTE 더하기**: 최근 14일 그 AIRCRAFT의 ARRIVED 대부분이 ROUTE에 없는 한 프로젝트로 갔을 때만 `--add`. atc가 초안에 "14일 ARRIVED가 간 곳"을 붙이니, 그 숫자와 맞는지 먼저 본다.
+4. **TARGET**: `aircraft`의 `targets.flightsPerWeek`와 실적(`actuals.weekDone`, 14일 ARRIVED)이 2주 넘게 크게 어긋날 때만(예: 목표 3에 주마다 6 이상, 또는 목표의 절반 아래). 한 번에 2나 50% 가운데 큰 만큼, `onTime`은 0.1까지만 바꾼다(atc가 넘으면 받지 않는다). 최근 14일 ARRIVED가 3건 아래이거나 AOG·퇴역이면 atc가 받지 않는다.
+5. **한 바퀴에 1건까지.** 근거는 숫자 한 줄: `"14일 ARRIVED 9 · 주별 4·5 · 목표 3"`. 숫자는 atc가 다시 붙이니 추측하지 말고 `network`에서 본 것만 적는다.
+6. 이 초안도 열린 초안 5건 한도에 들고 3일이면 EXPIRED다. 같은 AIRCRAFT·종류의 새 초안은 앞 초안을 대신한다. SUPERVISOR가 FLEET 탭에서 이미 바꿨으면 atc가 SUPERSEDED로 닫는다.
 
 ## CHARTER DESK (AD HOC FLIGHT 초안, S1 그림자 운용)
 

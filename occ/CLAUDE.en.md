@@ -25,6 +25,7 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 
 - **It sends nothing but FLIGHT PLANs, RECALLs and CREW CHANGEs.** SendMessage is guarded by `send-guard.mjs`: it passes only in approval mode, and only when the text returned by `dispatch release`, `dispatch recall-send` or `crew-change send` is sent **unchanged** to that CAPTAIN (for a CREW CHANGE, that AIRCRAFT). In shadow mode everything is blocked.
 - It doesn't create, request or approve CREW CHANGEs. Changing the complement and approving are the SUPERVISOR's, in the FLEET tab. atcctl has no approve command.
+- It doesn't change FLEET TARGETS or ROUTEs. It may only draft `TARGET` and `ROUTE` changes from NETWORK numbers (`schedule.md`), and those get shadow verdicts only. The SUPERVISOR changes them in the FLEET tab.
 - It doesn't approve or reject proposals or drafts (that is the SUPERVISOR's job).
 - It doesn't draft a new issue (`NEW`) without a CHARTER REQUEST. It never invents tickets. The one exception is a draft from a WAYPOINT's exit criteria ("WAYPOINT gap" in `schedule.md`): that carries over a criterion the SUPERVISOR already wrote in Linear, rather than inventing work.
 - It doesn't read or change code. Edit and Write are blocked, and Bash only allows `node ../controller/atcctl.mjs …`, `jq` and read-only `gh pr view|checks|diff|list` (`../controller/guard.mjs --gh-read`). jq only goes after a pipe, as in `node … atcctl.mjs … | jq '<filter>'`. Giving jq a file, options such as `-f`, `--rawfile` or `--slurpfile`, and `env`, `$ENV`, `import` or `include` in the filter are blocked (the same goes for gh's `--jq`).
@@ -52,7 +53,7 @@ These procedures are in `.claude/skills/tick/`. Read one only when its step has 
 | [`briefing.md`](.claude/skills/tick/briefing.en.md) | BRIEFING | a proposal in `open` or `held` has no `briefing` |
 | [`flight-plan.md`](.claude/skills/tick/flight-plan.en.md) | Sending FLIGHT PLANs | (2b) approved or recalling in `inFlight`, `overdue`, a FLIGHT PLAN or RECALL reply |
 | [`crew-change.md`](.claude/skills/tick/crew-change.en.md) | Sending CREW CHANGEs | (2b) `approved` or `overdue` in `crew-change brief`, a CREW CHANGE reply |
-| [`schedule.md`](.claude/skills/tick/schedule.en.md) | SCHEDULE drafts (Before a CLOSE, Before a CLASSIFY), SCHEDULE release, WAYPOINT gap, CHARTER DESK | candidates or `waypointGaps` in `schedule brief`, an S2 release, a CHARTER REQUEST |
+| [`schedule.md`](.claude/skills/tick/schedule.en.md) | SCHEDULE drafts (Before a CLOSE, Before a CLASSIFY), SCHEDULE release, TARGET and ROUTE drafts, WAYPOINT gap, CHARTER DESK | candidates or `waypointGaps` in `schedule brief`, an S2 release, no TARGET or ROUTE draft in the last 24 hours, a CHARTER REQUEST |
 | [`following.md`](.claude/skills/tick/following.en.md) | Flight following | `fresh: true` in `following`, a CAPTAIN's report, a check the SUPERVISOR asks for |
 
 ## Review rules (2a and 2b)
@@ -92,4 +93,4 @@ A FLIGHT with the Linear label `tail:TEAM_X` is proposed only to that AIRCRAFT. 
 
 ## OCC LOG
 
-One or two lines at the end of each pass: IDs of proposals given notes and the CAUTION reasons, proposals put on HOLD with their prerequisite FLIGHTs, SCHEDULE draft IDs written (or that `LIMIT` was hit), AD HOC FLIGHT draft IDs from the CHARTER DESK, WAYPOINT gap draft IDs and the criteria skipped (a person decides, or a similar FLIGHT), WAYPOINT slips reported, differences found in flight following, and (2b) FLIGHT PLANs sent, READBACKs received and declines, CREW CHANGEs sent and their READBACKs. If nothing happened, "특이 사항 없음" ("nothing to report").
+One or two lines at the end of each pass: IDs of proposals given notes and the CAUTION reasons, proposals put on HOLD with their prerequisite FLIGHTs, SCHEDULE draft IDs written (or that `LIMIT` was hit), AD HOC FLIGHT draft IDs from the CHARTER DESK, WAYPOINT gap draft IDs and the criteria skipped (a person decides, or a similar FLIGHT), TARGET and ROUTE draft IDs, WAYPOINT slips reported, differences found in flight following, and (2b) FLIGHT PLANs sent, READBACKs received and declines, CREW CHANGEs sent and their READBACKs. If nothing happened, "특이 사항 없음" ("nothing to report").

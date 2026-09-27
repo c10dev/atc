@@ -79,8 +79,9 @@ OCC never writes to Linear freely. It drafts **SCHEDULE operations**. Each one i
 | `LINK` | Add a parent, `blocks` or `related` relation | VOC-196 blocked by VOC-52 (written only in the body) |
 | `SPLIT` | Turn a finding into a child or related ticket | P3 items from the PR #400 review |
 | `COMMENT` | Leave a plan comment (not execution) | "Deferred until VOC-52 lands" |
+| `TARGET`, `ROUTE` | ✅ S1 built (ATC-25): change an AIRCRAFT's FLEET TARGETS or ROUTE, not Linear. Shadow verdicts only in both modes, counted apart from the gate ([fleet.md](fleet.md) 7.4) | TEAM_C remove `Home & Discovery` (completed) |
 
-Built: `NEW` (CHARTER DESK, 5.1), `CLOSE` (5.5), `PRIORITIZE`, `CLASSIFY`. Not built yet: `TAIL`, `LINK`, `SPLIT`, `COMMENT`.
+Built: `NEW` (CHARTER DESK, 5.1), `CLOSE` (5.5), `PRIORITIZE`, `CLASSIFY`, and `TARGET`/`ROUTE` in shadow ([fleet.md](fleet.md) 7.4). Not built yet: `TAIL`, `LINK`, `SPLIT`, `COMMENT`.
 
 ### 5.1 Where operations come from
 

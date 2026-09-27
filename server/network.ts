@@ -8,7 +8,7 @@ import { type AircraftView, fleetView, loadFleet } from "./fleet.ts";
 import { ACTUALS_DAYS, type LogEntry, loadLogbook } from "./logbook.ts";
 import { parentKeysOf, type Snapshot, type Ticket } from "./model.ts";
 import { allProposals, humanOf as proposalHuman, type Proposal } from "./proposals.ts";
-import { humanOf as scheduleHuman, loadScheduleOps, type ScheduleOp } from "./schedule.ts";
+import { countsForGate, humanOf as scheduleHuman, loadScheduleOps, type ScheduleOp } from "./schedule.ts";
 import { loadLinearProjects, type ProjectGoal } from "./sources/linear-projects.ts";
 
 // NETWORK(4단계): ROUTE(Linear 프로젝트)·AIRCRAFT·추세를 한 화면에 모은 읽기 전용 운항 개요.
@@ -184,7 +184,9 @@ export function logbookTrend(entries: LogEntry[], now: number, days = NETWORK_DA
 // 그날 끝까지의 누적 합의율. 마지막 날 값은 proposals.gateOf·schedule.gateOf의 agreement와 같다.
 // 승인 단계(2b·S2)의 approve·reject는 게이트처럼 세지 않는다.
 // crosscheckMatch: DISPATCH와 SCHEDULE을 합친 CROSSCHECK 일치율(crosscheckRateOf), 그날 끝까지 사람 판정이 난 것 누적.
-export function gateTrend(proposals: Proposal[], ops: ScheduleOp[], now: number, days = NETWORK_DAYS): GateRow[] {
+// TARGET·ROUTE(countsForGate가 아닌 것)는 게이트처럼 빼고 센다.
+export function gateTrend(proposals: Proposal[], allOps: ScheduleOp[], now: number, days = NETWORK_DAYS): GateRow[] {
+  const ops = allOps.filter(countsForGate);
   const shadow = <T>(xs: T[], status: (x: T) => string, at: (x: T) => string | null | undefined) =>
     xs
       .filter((x) => status(x) === "agreed" || status(x) === "disagreed")

@@ -23,6 +23,7 @@
 
 - **FLIGHT PLAN·RECALL·CREW CHANGE 말고는 아무것도 보내지 않는다.** SendMessage는 `send-guard.mjs`가 지킨다: approval 모드이고, `dispatch release`·`dispatch recall-send`·`crew-change send`가 돌려준 문구를 그 CAPTAIN(CREW CHANGE는 그 AIRCRAFT)에게 **그대로** 보낼 때만 통과한다. shadow 모드에서는 전부 막힌다.
 - CREW CHANGE를 만들거나 요청하거나 승인하지 않는다. COMPLEMENT를 바꾸는 것도, 승인도 SUPERVISOR가 FLEET 탭에서 한다. atcctl에는 승인 명령이 없다.
+- FLEET TARGETS·ROUTE를 바꾸지 않는다. NETWORK 숫자에서 `TARGET`·`ROUTE` 초안을 올릴 수만 있고(`schedule.md`), 그림자 판정만 받는다. 바꾸는 것은 SUPERVISOR가 FLEET 탭에서 한다.
 - 제안·초안에 승인·거절 판정을 내리지 않는다(SUPERVISOR 몫).
 - CHARTER REQUEST 없이 새 이슈 초안(`NEW`)을 쓰지 않는다. 티켓을 스스로 지어내지 않는다. 예외는 하나, WAYPOINT의 완료 기준에서 올리는 초안이다(`schedule.md`의 "WAYPOINT gap"). 이것도 SUPERVISOR가 Linear에 적어 둔 기준을 옮기는 것이지 새 일을 지어내는 것이 아니다.
 - 코드를 읽거나 고치지 않는다. Edit·Write는 막혀 있고, Bash는 `node ../controller/atcctl.mjs …`, `jq`, 읽기 전용 `gh pr view|checks|diff|list`만 된다(`../controller/guard.mjs --gh-read`). jq는 `node … atcctl.mjs … | jq '<필터>'`처럼 앞 명령의 출력에만 붙인다. jq에 파일을 주거나 `-f`·`--rawfile`·`--slurpfile` 같은 옵션, 필터 안의 `env`·`$ENV`·`import`·`include`는 막힌다(gh의 `--jq`도 같다).
@@ -50,7 +51,7 @@
 | [`briefing.md`](.claude/skills/tick/briefing.md) | BRIEFING | `open`·`held`에 `briefing` 없는 제안 |
 | [`flight-plan.md`](.claude/skills/tick/flight-plan.md) | FLIGHT PLAN 전달 | (2b) `inFlight`의 approved·recalling, `overdue`, FLIGHT PLAN·RECALL 답장 |
 | [`crew-change.md`](.claude/skills/tick/crew-change.md) | CREW CHANGE 발부 | (2b) `crew-change brief`의 `approved`·`overdue`, CREW CHANGE 답장 |
-| [`schedule.md`](.claude/skills/tick/schedule.md) | SCHEDULE 초안(CLOSE 전에, CLASSIFY 전에), SCHEDULE 발부, WAYPOINT gap, CHARTER DESK | `schedule brief`의 후보·`waypointGaps`, S2 발부, CHARTER REQUEST |
+| [`schedule.md`](.claude/skills/tick/schedule.md) | SCHEDULE 초안(CLOSE 전에, CLASSIFY 전에), SCHEDULE 발부, TARGET·ROUTE 초안, WAYPOINT gap, CHARTER DESK | `schedule brief`의 후보·`waypointGaps`, S2 발부, 24시간 안에 쓴 TARGET·ROUTE 초안이 없을 때, CHARTER REQUEST |
 | [`following.md`](.claude/skills/tick/following.md) | 운항 추적 | `following`의 `fresh: true`, CAPTAIN 보고, SUPERVISOR 확인 요청 |
 
 ## 검토 기준 (2a·2b 공통)
@@ -90,4 +91,4 @@ Linear 라벨 `tail:TEAM_X`가 붙은 FLIGHT는 planner가 그 AIRCRAFT에만 �
 
 ## OCC LOG
 
-매 바퀴 끝에 한두 줄: 메모를 단 제안 ID와 CAUTION 이유, HOLD를 건 제안과 선행 FLIGHT, 쓴 SCHEDULE 초안 ID(LIMIT이면 그렇다고), CHARTER DESK에서 쓴 AD HOC FLIGHT 초안 ID, WAYPOINT gap으로 쓴 초안 ID와 건너뛴 기준(사람 결정·비슷한 FLIGHT), 보고한 WAYPOINT 지연, 운항 추적에서 찾은 차이, (2b) 보낸 FLIGHT PLAN·받은 READBACK·거절, 보낸 CREW CHANGE와 그 READBACK. 아무 일 없으면 "특이 사항 없음".
+매 바퀴 끝에 한두 줄: 메모를 단 제안 ID와 CAUTION 이유, HOLD를 건 제안과 선행 FLIGHT, 쓴 SCHEDULE 초안 ID(LIMIT이면 그렇다고), CHARTER DESK에서 쓴 AD HOC FLIGHT 초안 ID, WAYPOINT gap으로 쓴 초안 ID와 건너뛴 기준(사람 결정·비슷한 FLIGHT), TARGET·ROUTE 초안 ID, 보고한 WAYPOINT 지연, 운항 추적에서 찾은 차이, (2b) 보낸 FLIGHT PLAN·받은 READBACK·거절, 보낸 CREW CHANGE와 그 READBACK. 아무 일 없으면 "특이 사항 없음".
