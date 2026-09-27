@@ -173,6 +173,8 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 
 ### 변경
 - `.gitattributes`가 `CHANGELOG.md`·`CHANGELOG.ko.md`를 `merge=union`으로 합친다. 모든 PR이 `[Unreleased]` 맨 위에 줄을 더해 새 main으로 rebase할 때마다 거기서 충돌했다. 이제 로컬 rebase가 양쪽을 모두 남긴다. GitHub 머지 버튼은 이를 모르므로 PR은 여전히 rebase가 필요하다.
+- OCC 규정을 나눠, 바퀴마다 그때 하는 절차만 읽게 했다(ATC-9). `occ/CLAUDE.md`에는 역할, 하지 않는 것, 늘 쓰는 명령, 검토 기준, "절차 파일" 표만 남았다(284줄 → 93줄). 절차는 `occ/.claude/skills/tick/`으로 글자 그대로 옮겼다: `briefing.md`(BRIEFING), `flight-plan.md`(FLIGHT PLAN 전달), `crew-change.md`(CREW CHANGE 발부), `schedule.md`(SCHEDULE 초안, CLOSE 전에, CLASSIFY 전에, SCHEDULE 발부, WAYPOINT gap, CHARTER DESK), `following.md`(운항 추적). 그 절차에서만 쓰는 명령은 그 파일의 표로 옮겼다. `/tick`은 단계마다 어느 파일을 Read할지 적고, 그 단계에 할 일이 있을 때만 읽게 한다. 파일마다 영어 번역(`*.en.md`)이 있다. 규칙은 그대로이고 바뀐 것은 가리키는 말과 제목 단계 하나뿐이다.
+  - `atcctl manual check`·`manual ack`가 `CLAUDE.md`와 `SKILL.md` 뒤에 그 폴더 `.claude/skills/tick/`의 한국어 `*.md`를 모두 해시한다. 절차 파일이 바뀌어도 OCC가 규정을 다시 읽는다. 번역은 빠진다. 절차 파일이 없는 폴더(TOWER, CROSSCHECK)의 해시는 전과 같다.
 - DISPATCH 한 번 클릭 비율(`gate.crosscheck.oneClick`)에서 blind 판정을 뺀다. blind 카드는 한 번 클릭이 막혀 있어, 세면 비율이 실제보다 낮아 보였다(ATC-6).
 - DISPATCH 게이트는 AIRCRAFT 선택만 잰다(ATC-5, [docs/dispatch.ko.md](docs/dispatch.ko.md) 6.3). PREFLIGHT 전의 거절 6건은 모두 티켓 문제였고 게이트를 3/9(33%)에 묶어 두었다.
   - `gateOf`는 사유 칩이 모두 FLIGHT 칩(`FLIGHT_HOLD_CODES`)인 `disagreed` 제안을 빼고 `gate.notReady`로 센다. 점검 패널에 PREFLIGHT HELD 옆으로 "준비 안 됨 거절 n건 (게이트 제외)"이 보이고, 판정 줄은 "판정한 제안(HELD·준비 안 됨 제외)"이 됐다. 승인했을 것과 `wrong-aircraft`·`other`·칩 없는 거절은 전처럼 센다.

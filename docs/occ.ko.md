@@ -121,7 +121,7 @@ OCC는 Linear에 마음대로 쓰지 않는다. **SCHEDULE 작업**(operation)�
 - **S-0001 (VOC-195), S-0004 (VOC-196):** [fleet.ko.md](fleet.ko.md) 4.1은 `MAINT`인데 FLIGHT TYPE을 `BUILD`로 했다. 하나는 lock race 수정, 하나는 CI·정적 게이트였고, 둘 다 제품 동작을 바꾸지 않는다.
 - **S-0006 (VOC-181):** 4.2는 `L`인데 WAKE를 `M`으로 했다. 파일 하나에 규칙 둘, 새 테스트 없음.
 
-4.1을 인용한 CROSSCHECK는 이것들을 맞혔다. 이제 OCC도 같은 방식으로 한다(`occ/CLAUDE.md` "CLASSIFY 전에").
+4.1을 인용한 CROSSCHECK는 이것들을 맞혔다. 이제 OCC도 같은 방식으로 한다(`occ/.claude/skills/tick/schedule.md` "CLASSIFY 전에").
 
 - **기준을 읽는다:** 한 바퀴에서 CLASSIFY를 하기 전에 OCC는 `docs/fleet.md` 4.1–4.3을 읽는다. `occ/.claude/settings.json`이 `permissions.additionalDirectories: ["../docs"]`를 더해서, 비대화형 세션도 Read할 수 있다. 이게 없으면 읽기가 거부됐다.
 - **FLIGHT TYPE은 정해진 순서로:** CHECK(결과물이 판정) → SURVEY(조사나 계획, 코드 없음) → TEST(버릴 spike) → FERRY(기계적 이동) → MAINT(제품 동작 그대로: 리팩터, 인프라, CI, 정적 게이트, 테스트, 보이지 않는 race·lock 수정) → BUILD. BUILD는 사용자가 보는 기능·동작·화면이 바뀔 때만이다. 보안 면이나 테스트만으로는 BUILD가 되지 않는다.
@@ -164,7 +164,7 @@ Linear 정리는 원래 President의 일이었다. 이제 OCC가 초안을 쓰�
 2026-09-27에 VOC Todo는 6건이었고 배정할 수 있는 것이 없어 DISPATCH 게이트에 새 제안이 쌓이지 않았다. ROUTE MAP은 WAYPOINT마다 완료 기준과 이슈를 이미 알고 있으니([routes.ko.md](routes.ko.md)), 덮는 이슈가 없는 기준을 `NEW` 초안으로 올린다. 지금은 SCHEDULE 게이트를 채우고, S2에서 이슈가 만들어지면 DISPATCH로 이어진다.
 
 - **데이터.** `schedule brief`에 `waypointGaps`가 있다(`server/waypoint-gaps.ts`, 순수 함수 `waypointGapsOf`). 끝나지 않은 ROUTE마다 지금 구간 WAYPOINT와 그다음 WAYPOINT가 있고, 각각 `criteria`("Exit criteria" 아래 번호 목록), 목록이 없으면 `description`, 그 마일스톤의 `issues`(key·제목·상태, 취소·중복 제외), `truncated`가 붙는다. WAYPOINT가 없거나 모두 지난 ROUTE는 뺀다. `null`이면 마일스톤을 못 읽은 것이다.
-- **판단은 OCC가 한다.** 서버는 기준과 이슈를 짝짓지 않는다. OCC는 바퀴마다 gap을 읽고 열린·끝난 이슈 가운데 어느 것도 덮지 않는 기준을 가린다. 사람이 정할 기준("SUPERVISOR decides", 사용자 모집·인터뷰)과 확인할 끝 조건이 없는 설명은 건너뛰고, **바퀴마다 2건까지** 지금 구간 WAYPOINT부터 올린다(`occ/CLAUDE.md` "WAYPOINT gap").
+- **판단은 OCC가 한다.** 서버는 기준과 이슈를 짝짓지 않는다. OCC는 바퀴마다 gap을 읽고 열린·끝난 이슈 가운데 어느 것도 덮지 않는 기준을 가린다. 사람이 정할 기준("SUPERVISOR decides", 사용자 모집·인터뷰)과 확인할 끝 조건이 없는 설명은 건너뛰고, **바퀴마다 2건까지** 지금 구간 WAYPOINT부터 올린다(`occ/.claude/skills/tick/schedule.md` "WAYPOINT gap").
 - **초안.** `schedule draft NEW --gap --project <ROUTE> --milestone <WAYPOINT> …`. 본문은 네 칸이고 `## 목표`에 기준을 인용한다. `milestone`은 그 프로젝트의 마일스톤(이름이나 id)인지 검사하고 `changesOf`에 보인다("WAYPOINT Beta Ready"). `--gap`은 마일스톤이 있어야 하고, `similarTickets`가 비슷한 FLIGHT를 찾으면 atc가 받지 않는다. OCC가 놓쳐도 "중복이면 쓰지 않는다"가 지켜진다. gap 초안도 열린 초안 5건 한도에 든다.
 - **S2.** 발부된 `save_issue` 호출에 `milestone: <마일스톤 id>`가 들어가 새 이슈가 그 WAYPOINT에 붙는다. linear-guard(`occ/mcp-guard.mjs`, 바꾸지 않음)는 그 입력과 똑같을 때만 통과시킨다. 마일스톤을 빼거나 이름·다른 id를 넣으면 막히는 것을 `occ/mcp-guard.test.mjs`가 확인한다.
 - CROSSCHECK는 다른 SCHEDULE 초안처럼 이 초안에도 mark를 단다.
@@ -221,7 +221,7 @@ S3 자동 작업 후보. 각각 S2 데이터로 확인한다.
 
 OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더한 것이다(`guard.mjs --gh-read`). Edit과 Write는 계속 거부된다. `occ/mcp-guard.mjs`는 읽기 MCP 도구(이름이 get, list, search, read, query, fetch로 시작)만 통과시킨다. 그래서 S0에서는 커넥터가 로드돼 있어도 OCC가 Linear나 GitHub에 쓸 수 없다. S2에서는 linear-guard가 승인된 작업의 release된 호출에 한해 Linear 쓰기를 연다(6장).
 
-세션은 매뉴얼을 다시 읽는다. `/tick`은 `atcctl manual check`로 시작한다. `CLAUDE.md`와 `/tick`의 해시를 마지막 `atcctl manual ack`(`~/.local/state/atc/manuals/`에 저장)와 비교한다. 바뀌었으면 세션은 다른 일보다 먼저 다시 읽는다. TOWER의 `/tick`도 같다. 1장의 옛 매뉴얼 사건은 이것으로 고쳐진다.
+세션은 매뉴얼을 다시 읽는다. `/tick`은 `atcctl manual check`로 시작한다. `CLAUDE.md`, `/tick`, 그 절차 파일(`.claude/skills/tick/`의 한국어 `*.md` 모두)의 해시를 마지막 `atcctl manual ack`(`~/.local/state/atc/manuals/`에 저장)와 비교한다. 바뀌었으면 세션은 다른 일보다 먼저 다시 읽는다. TOWER의 `/tick`도 같다. OCC의 `CLAUDE.md`에는 핵심(역할, 하지 않는 것, 늘 쓰는 명령, 검토 기준)만 두고, 절차(BRIEFING, FLIGHT PLAN, CREW CHANGE, SCHEDULE, 운항 추적)는 `/tick` 옆 파일로 두어 할 일이 있는 단계에서만 읽는다. 늘 읽히는 규정이 짧게 유지된다(ATC-9). 1장의 옛 매뉴얼 사건은 이것으로 고쳐진다.
 
 **President는 물러난다.** 세 가지가 모두 되면: OCC가 S1을 일주일 운용했고, 운항 추적이 모든 팀 보고를 다루고, `TAIL` 작업을 쓰고 있다(아직 만들지 않음). 그때까지 President는 계속 일을 맡기고, 배정마다 `tail:` 라벨을 손으로 붙인다.
 
@@ -324,7 +324,7 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 | `server/sources/linear.ts` | 라벨(`tail:`, `type:`, `wake:`, `rating:`), 최근 닫힌 이슈(중복 검색용) 읽기. NEW의 APPLIED는 `S-xxxx` footer가 아니라 제목으로 감지한다(6장) |
 | `server/dispatch.ts` | `tail:TEAM_X`와 [fleet.ko.md](fleet.ko.md) 5장의 분류 규칙 따르기 |
 | API | `GET /api/schedule/brief`, `GET /api/schedule/ops/:id`, `POST /api/schedule/ops`(초안), `POST /api/schedule/ops/:id/{verdict,approve,reject,release}`, `POST /api/schedule/mode` |
-| `atc/occ/` | `atc/dispatch/`에서 옮김: `CLAUDE.md`(운영 매뉴얼), `/tick`, send-guard, **linear-guard**, 읽기 전용 `gh`가 있는 Bash guard |
+| `atc/occ/` | `atc/dispatch/`에서 옮김: `CLAUDE.md`(운영 매뉴얼의 핵심), `/tick`과 그 절차 파일, send-guard, **linear-guard**, 읽기 전용 `gh`가 있는 Bash guard |
 | `controller/atcctl.mjs` | `schedule draft`, `schedule release`, `schedule brief` |
 | 화면 | SCHEDULE 탭: 이유·payload 미리보기·중복 검색 결과가 있는 초안, 판정·승인 버튼, 적용 이력 |
 | 기록 | FLIGHT RECORDER에 `schedule.drafted / decided / released / applied`. 지표: 합의율, 사람이 되돌린 작업, 주당 만든 티켓 |

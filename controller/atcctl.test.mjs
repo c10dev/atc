@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CREW_CHANGE_CMDS, crosscheckBrief, draftText, parseArrived, parseBriefingArgs, parseCrewChange, parseCrosscheck, parseDraft, parseLandingReview, payloadText } from "./atcctl.mjs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CREW_CHANGE_CMDS, crosscheckBrief, draftText, manualFiles, manualHash, parseArrived, parseBriefingArgs, parseCrewChange, parseCrosscheck, parseDraft, parseLandingReview, payloadText } from "./atcctl.mjs";
 import { simpleCommands } from "../hooks/shell.mjs";
 
 const argv = (s) => s.split(" ");
@@ -250,4 +254,44 @@ test("landing review(ATC-7): 읽기는 대상만, 기록은 --head·--verdict·�
   assert.throws(() => parseLandingReview(argv("v#1 --head abc1234 --verdict maybe -- ok")), /pass\|findings/);
   assert.throws(() => parseLandingReview(argv("v#1 --head abc1234 --verdict pass")), /리뷰 내용/);
   assert.throws(() => parseLandingReview(argv("v#1 --head abc1234 --verdict pass --model x -- ok")), /알 수 없는 인자/);
+});
+
+test("manual check: OCC 절차 파일까지 해시한다, 번역(*.en.md)은 뺀다(ATC-9)", () => {
+  const OCC = new URL("../occ", import.meta.url).pathname;
+  const files = manualFiles(OCC);
+  assert.deepEqual(files.slice(0, 2), ["CLAUDE.md", ".claude/skills/tick/SKILL.md"]);
+  for (const f of ["briefing", "crew-change", "flight-plan", "following", "schedule"]) assert.ok(files.includes(`.claude/skills/tick/${f}.md`), f);
+  assert.ok(files.every((f) => !f.endsWith(".en.md")));
+  // 절차 파일마다 영어판이 있고, CLAUDE.md의 "절차 파일" 표와 /tick이 그 파일을 가리킨다.
+  const core = readFileSync(join(OCC, "CLAUDE.md"), "utf8");
+  const tick = readFileSync(join(OCC, ".claude/skills/tick/SKILL.md"), "utf8");
+  for (const f of files.slice(2)) {
+    const name = f.split("/").pop();
+    assert.ok(existsSync(join(OCC, f.replace(/\.md$/, ".en.md"))), `${name} 영어판`);
+    assert.ok(core.includes(`(${f})`), `CLAUDE.md 표에 ${name}`);
+    assert.ok(tick.includes(name), `/tick에 ${name}`);
+  }
+});
+
+test("manual check: 절차 파일이 바뀌면 CHANGED, 번역만 바뀌면 그대로. 절차 파일 없는 폴더는 전과 같은 해시", () => {
+  const dir = mkdtempSync(join(tmpdir(), "atc-manual-"));
+  try {
+    mkdirSync(join(dir, ".claude/skills/tick"), { recursive: true });
+    writeFileSync(join(dir, "CLAUDE.md"), "핵심");
+    writeFileSync(join(dir, ".claude/skills/tick/SKILL.md"), "tick");
+    // 예전 방식(CLAUDE.md와 SKILL.md 두 파일)과 같은 값: TOWER·CROSSCHECK는 배포 뒤에도 CHANGED가 뜨지 않는다.
+    const old = createHash("sha256");
+    for (const f of ["CLAUDE.md", ".claude/skills/tick/SKILL.md"]) old.update(`${f}\0`).update(readFileSync(join(dir, f)));
+    assert.equal(manualHash(dir), old.digest("hex"));
+
+    writeFileSync(join(dir, ".claude/skills/tick/schedule.md"), "초안 v1");
+    const v1 = manualHash(dir);
+    writeFileSync(join(dir, ".claude/skills/tick/schedule.en.md"), "drafts v1");
+    writeFileSync(join(dir, ".claude/skills/tick/SKILL.en.md"), "tick en");
+    assert.equal(manualHash(dir), v1);
+    writeFileSync(join(dir, ".claude/skills/tick/schedule.md"), "초안 v2");
+    assert.notEqual(manualHash(dir), v1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

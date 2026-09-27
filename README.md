@@ -356,7 +356,7 @@ Design: [docs/occ.md](docs/occ.md) sections 5–7. The OCC session drafts the Li
 
 ## CHARTER DESK (request desk)
 
-The CHARTER DESK is OCC's request desk for work that is not on the schedule (Linear). The SUPERVISOR asks for it in the OCC session (a **CHARTER REQUEST**), and OCC drafts it as a SCHEDULE `NEW` operation: an **AD HOC FLIGHT**, a FLIGHT added outside the regular schedule. Rules for the session: "CHARTER DESK" in [occ/CLAUDE.en.md](occ/CLAUDE.en.md).
+The CHARTER DESK is OCC's request desk for work that is not on the schedule (Linear). The SUPERVISOR asks for it in the OCC session (a **CHARTER REQUEST**), and OCC drafts it as a SCHEDULE `NEW` operation: an **AD HOC FLIGHT**, a FLIGHT added outside the regular schedule. Rules for the session: "CHARTER DESK" in [occ/.claude/skills/tick/schedule.en.md](occ/.claude/skills/tick/schedule.en.md).
 
 ```
 CHARTER REQUEST → AD HOC FLIGHT draft (S1: verdict in the SCHEDULE tab) → FILED (S2: Linear Todo) → ASSIGN → ENROUTE → ARRIVED
