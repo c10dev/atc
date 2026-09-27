@@ -1,14 +1,14 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { type MainStatus, mainStateOf } from "../atfm.ts";
-import { type CodexSignal, codexThumbsPass, type GhPull, isCodexBot, needsCodexSignal } from "../landing.ts";
+import { type CodexSignal, codexFindings, codexThumbsPass, type GhPull, hasHeadReview, isCodexBot, needsCodexSignal } from "../landing.ts";
 
 const run = promisify(execFile);
 
 const POLL_MS = 90_000;
 const FIELDS = [
   "number", "title", "url", "headRefName", "headRefOid", "baseRefName", "isDraft", "mergeStateStatus",
-  "reviewDecision", "statusCheckRollup", "reviews", "author", "createdAt", "reactionGroups",
+  "reviewDecision", "statusCheckRollup", "reviews", "author", "createdAt", "reactionGroups", "labels",
 ].join(",");
 
 export interface GithubState {
@@ -62,6 +62,18 @@ const headDates = new Map<string, string>();
 // head에서 통과하는 Codex 👍를 이미 확인한 PR(키: 저장소#번호@sha)은 다시 읽지 않는다.
 // 같은 head에 그 뒤 Codex 지적이 새로 달리면 캐시가 통과하지 않으니 다시 읽는다.
 const thumbsOk = new Map<string, CodexSignal>();
+// head에 Codex 리뷰가 없는 PR의 바뀐 파일 경로(키: 저장소#번호@sha). Muse 리뷰 제외(비밀·키 경로) 판단에 쓴다(ATC-7)
+const filesByHead = new Map<string, string[]>();
+
+async function filesOf(slug: string, pr: GhPull): Promise<string[]> {
+  const key = `${slug}#${pr.number}@${pr.headRefOid}`;
+  let files = filesByHead.get(key);
+  if (!files) {
+    files = tsv(await gh(["api", "--paginate", `repos/${slug}/pulls/${pr.number}/files?per_page=100`, "--jq", ".[] | [.filename] | @tsv"])).map(([f]) => f);
+    filesByHead.set(key, files);
+  }
+  return files;
+}
 
 // head 리뷰가 없거나 head에 Codex 지적이 있는 PR의 Codex 신호: head committer 시각, Codex 👍 시각, Codex 마지막 댓글(한도 안내인지)
 async function codexSignal(slug: string, pr: GhPull): Promise<CodexSignal> {
@@ -98,6 +110,8 @@ async function attachCodex(slug: string, pulls: GhPull[], errors: string[]) {
       need.slice(i, i + 4).map(async (p) => {
         try {
           p.codex = await codexSignal(slug, p);
+          // Codex 리뷰도 사람 리뷰도 head에 없으면 Muse로 갈 수 있다: 바뀐 파일을 읽어 둔다
+          if (!hasHeadReview(p) && !codexFindings(p) && !codexThumbsPass(p)) p.files = await filesOf(slug, p);
         } catch (e) {
           const err = e as Error & { stderr?: string };
           errors.push(`${slug}#${p.number} Codex 확인: ${(err.stderr?.trim() || err.message).split("\n")[0]}`);
@@ -147,6 +161,7 @@ async function fetchAll(repos: string[]) {
   const heads = new Set([...state.byRepo.values()].flat().map((p) => p.headRefOid));
   for (const sha of headDates.keys()) if (!heads.has(sha)) headDates.delete(sha);
   for (const key of thumbsOk.keys()) if (!heads.has(key.split("@")[1])) thumbsOk.delete(key);
+  for (const key of filesByHead.keys()) if (!heads.has(key.split("@")[1])) filesByHead.delete(key);
   // 한 저장소라도 읽었으면 fetchedAt을 넘긴다(landing 이벤트 비교 기준). 오류는 저장소별로 모아 둔다.
   if (ok || !repos.length) state.fetchedAt = new Date().toISOString();
   state.error = errors.length ? [...new Set(errors)].join(" · ") : null;
@@ -229,4 +244,25 @@ export function readGithub(repos: string[]): GithubState {
       .finally(() => (inflight = null));
   }
   return state;
+}
+
+// Muse 리뷰 자료(ATC-7): PR 제목·본문·head·바뀐 파일·라벨과 diff(읽기 전용 gh). CROSSCHECK는 gh를 못 쓰니 atc가 읽어 준다
+export interface ReviewSource {
+  title: string;
+  body: string;
+  headRefOid: string;
+  files: string[];
+  labels: string[];
+  diff: string;
+}
+export async function fetchReviewSource(slug: string, number: number): Promise<ReviewSource> {
+  const view = JSON.parse(await gh(["pr", "view", String(number), "--repo", slug, "--json", "title,body,headRefOid,files,labels"])) as {
+    title: string;
+    body: string;
+    headRefOid: string;
+    files: { path: string }[] | null;
+    labels: { name: string }[] | null;
+  };
+  const diff = await gh(["pr", "diff", String(number), "--repo", slug]);
+  return { title: view.title, body: view.body ?? "", headRefOid: view.headRefOid, files: (view.files ?? []).map((f) => f.path), labels: (view.labels ?? []).map((l) => l.name), diff };
 }

@@ -103,6 +103,10 @@ export function buildBrief(
       holders: p.standPath ? active.filter((c) => c.workspacePath === p.standPath).map((c) => label(c.sessionId)) : [],
       blocks: p.blocks,
       readyAt: p.readyAt,
+      // CODEX UNAVAILABLE(ATC-7): Codex 한도·무응답이면 Muse 리뷰 상태. review가 "MUSE"면 Muse 통과로 CLEARED("REVIEW: MUSE (Codex 한도)")
+      codex: p.codexUnavailable ?? null,
+      muse: p.muse ? { status: p.muse.status, reason: p.muse.reason, family: p.muse.review?.family ?? null, at: p.muse.review?.at ?? null } : null,
+      review: p.landing === "CLEARED" && p.muse?.status === "pass" ? "MUSE" : null,
       landClearance: lastLand ? { id: lastLand.id, readBack: Boolean(lastLand.readbackAt) } : null,
       // CLEARED에만. TOWER가 LAND CLEARANCE 본문으로 그대로 쓴다
       repoSeq,

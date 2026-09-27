@@ -226,6 +226,9 @@ journalctl --user -u atc -f           # 로그
 |---|---|
 | `GET /api/controller/brief?consumer=controller` | 지난 ack 이후 이벤트 + 현재 상태(열린 경보, LANDING SEQUENCE와 CLEARED PR의 `landText`, GitHub 상태, READBACK 안 된 CLEARANCE, 교통) |
 | `POST /api/controller/ack` | `{cursor}` 처리 완료 표시 (`~/.local/state/atc/consumers/`) |
+| `GET /api/landing/reviews` | Codex를 쓸 수 없어 Muse 리뷰를 기다리는 PR(`pending`), Muse에 보내지 않는 PR(`excluded`, 사유), 최근 리뷰(ATC-7, [docs/occ.ko.md](docs/occ.ko.md) 9.2) |
+| `GET /api/landing/review/:repo/:pr` | 리뷰 자료: PR 제목·본문, FLIGHT 완료 기준·금지 사항, head, 바뀐 파일, diff(크기 제한, `diffTruncated`). 제외 PR(FLIGHT 없음, rating:SEC, Risk, 비밀 경로)은 403, Draft·Codex를 쓸 수 있는 PR·head가 바뀐 PR은 409 |
+| `POST /api/landing/review/:repo/:pr` | `{head, verdict: pass\|findings, text, model}` 현재 head의 Muse 리뷰를 `landing-reviews.jsonl`에 추가. 등급 P0·P1·P2, `pass`에는 P0·P1 없음. Codex를 쓸 수 없는 동안(`ATC_CODEX_SILENT_HOURS`, 기본 6) pass가 CLEARED TO LAND의 head 리뷰가 된다 |
 | `POST /api/clearances` | `{to, type, stand?, flight?, text}` CLEARANCE 기록, 보낼 문구 반환 |
 | `POST /api/clearances/:id/readback` · `/cancel` | READBACK 확인 · 취소 |
 

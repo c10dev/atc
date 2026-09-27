@@ -4,7 +4,8 @@
 // `--gh-read`로 부르면(OCC) 팀 보고 확인용 읽기 전용 gh(`gh pr view|checks|diff|list`)도 허용한다.
 // `--crosscheck`로 부르면(CROSSCHECK) atc CLI 중 읽기와 crosscheck 명령만 허용한다(쓰는 dispatch·schedule 명령은 막음).
 // `--crosscheck --gh-read`면 gh는 PR 사실 확인용 `gh pr view|checks|list`만(코드를 읽지 않으므로 diff는 뺀다).
-// `--crosscheck`에서 mark를 다는 명령(dispatch|schedule crosscheck)은 그 세션의 실제 모델을 확인한다:
+// `--crosscheck`에서 mark를 다는 명령(dispatch|schedule crosscheck)과 Muse 리뷰를 남기는 명령(landing review … --verdict)은
+// 그 세션의 실제 모델을 확인한다:
 // hook 입력의 transcript_path(세션 자신의 기록)에서 마지막 assistant 메시지의 model을 읽어 허용 목록에 맞을 때만
 // 통과시키고, 그 이름을 ATC_CROSSCHECK_MODEL로 붙여(updatedInput) mark에 실제 모델이 남게 한다.
 import { closeSync, openSync, readSync, fstatSync, readFileSync } from "node:fs";
@@ -63,6 +64,7 @@ const CROSSCHECK_CMDS = new Set([
   "crosscheck brief",
   "dispatch brief", "dispatch flight", "dispatch crosscheck",
   "schedule brief", "schedule crosscheck",
+  "landing review", // Codex 한도 때 Muse 리뷰(ATC-7): 자료 읽기, --verdict면 기록
 ]);
 
 // CROSSCHECK로 쓸 수 있는 모델: Muse Spark 1.3(기본), GPT-5.6 Terra(대체). 두 경로에서 기록되는 이름:
@@ -103,8 +105,16 @@ export function readTranscriptTail(path) {
   }
 }
 
+// --verdict가 -- 앞에 있으면 기록(쓰기)
+const writesReview = (words) => {
+  const sep = words.indexOf("--");
+  return (sep < 0 ? words : words.slice(0, sep)).some((w) => w === "--verdict" || w.startsWith("--verdict="));
+};
 const isMarkCommand = (words, cwd) =>
-  words[0] === "node" && words[1] && resolve(cwd, words[1]) === ATCCTL && (words[2] === "dispatch" || words[2] === "schedule") && words[3] === "crosscheck";
+  words[0] === "node" &&
+  words[1] &&
+  resolve(cwd, words[1]) === ATCCTL &&
+  (((words[2] === "dispatch" || words[2] === "schedule") && words[3] === "crosscheck") || (words[2] === "landing" && words[3] === "review" && writesReview(words)));
 
 const SWITCH_MODEL = "앱에서 모델을 Muse(muse-spark-1.3-contributor)로 바꾸거나, 터미널에서 ocx claude로 여세요";
 
@@ -230,7 +240,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   }
   if (reason) {
     const allowed = crosscheck
-      ? `atc CLI의 읽기(manual·brief·flight)와 crosscheck 명령, jq${ghRead ? ", 읽기 전용 gh pr view·checks·list" : ""}`
+      ? `atc CLI의 읽기(manual·brief·flight)와 crosscheck·landing review 명령, jq${ghRead ? ", 읽기 전용 gh pr view·checks·list" : ""}`
       : ghRead ? "atc CLI(node atcctl.mjs …), jq, 읽기 전용 gh pr view·checks·diff·list" : "atc CLI(node atcctl.mjs …)와 jq";
     console.error(`관제 세션(TOWER·OCC·CROSSCHECK)은 조종하지 않습니다 — ${reason}. ${allowed}만 쓸 수 있습니다.`);
     process.exit(2);

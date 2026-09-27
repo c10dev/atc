@@ -26,5 +26,7 @@ export const config = {
   linearTeamKey: (env.LINEAR_TEAM_KEY || "VOC").toUpperCase(), // 주 팀
   // 읽는 팀 전부(주 팀이 맨 앞). LINEAR_TEAM_KEYS=VOC,ATC. 없으면 주 팀 하나
   linearTeamKeys: parseTeamKeys(env.LINEAR_TEAM_KEY || "VOC", env.LINEAR_TEAM_KEYS),
+  // Codex 신호 없이 이 시간이 지나면 CODEX UNAVAILABLE로 보고 Muse 리뷰로 넘긴다(ATC-7)
+  codexSilentMs: Number(env.ATC_CODEX_SILENT_HOURS || 6) * 3_600_000,
   linearTeamName: env.LINEAR_TEAM_NAME || "Vocado", // S2에서 새 이슈를 만들 Linear 팀 이름(MCP save_issue의 team)
 };

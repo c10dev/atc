@@ -9,6 +9,7 @@ import { readWorkspaces, ticketKeyFromBranch, ticketKeyFromTitle } from "./sourc
 import { readGithub } from "./sources/github.ts";
 import { readLinear } from "./sources/linear.ts";
 import { buildPulls } from "./landing.ts";
+import { readLandingReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, loadAtfm, stopKey } from "./atfm.ts";
 
 // PR head별로 CLEARED TO LAND가 처음 된 시각 (메모리, 서버를 재시작하면 다시 센다)
@@ -107,6 +108,9 @@ export async function buildSnapshot(): Promise<Snapshot> {
     alerts,
     readySince,
     (pr) => ticketKeyFromBranch(pr.headRefName) ?? ticketKeyFromTitle(pr.title),
+    undefined,
+    // Codex 한도 때 Muse 리뷰(ATC-7): FLIGHT 라벨로 제외(rating:SEC·Risk)를 보고, 이 head의 Muse 리뷰를 찾는다
+    { silentMs: config.codexSilentMs, reviews: readLandingReviews(), ticketLabelsOf: (key) => tickets.find((t) => t.key === key)?.labels ?? [] },
   );
 
   // ATFM 출발 중지(docs/atfm.md 6장). GitHub을 아직 못 읽었으면 계산하지 않는다(빈 상태를 "풀림"으로 보지 않게).

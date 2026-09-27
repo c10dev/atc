@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CREW_CHANGE_CMDS, crosscheckBrief, draftText, parseArrived, parseBriefingArgs, parseCrewChange, parseCrosscheck, parseDraft, payloadText } from "./atcctl.mjs";
+import { CREW_CHANGE_CMDS, crosscheckBrief, draftText, parseArrived, parseBriefingArgs, parseCrewChange, parseCrosscheck, parseDraft, parseLandingReview, payloadText } from "./atcctl.mjs";
 import { simpleCommands } from "../hooks/shell.mjs";
 
 const argv = (s) => s.split(" ");
@@ -234,4 +234,20 @@ test("NEW --milestone·--gap: WAYPOINT gap 초안(ATC-8)", () => {
   assert.deepEqual(got, { kind: "NEW", gap: true, title: "t", project: "Song Experience", milestone: "Beta Ready", reason: "r", body: "b" });
   assert.equal(parseDraft(["NEW", "--title", "t", "--project", "p", "--reason", "r", "--", "b"]).gap, undefined);
   assert.throws(() => parseDraft(["NEW", "--title", "t", "--project", "p", "--milestone", "--reason", "r", "--", "b"]), /--milestone 뒤에 값/);
+});
+
+test("landing review(ATC-7): 읽기는 대상만, 기록은 --head·--verdict·리뷰 글. 모델은 환경에서", () => {
+  assert.deepEqual(parseLandingReview(argv("vocado_nextjs#391")), { path: "/api/landing/review/vocado_nextjs/391", write: null });
+  assert.equal(parseLandingReview(argv("chaehy5665/vocado_nextjs#391")).path, "/api/landing/review/chaehy5665%2Fvocado_nextjs/391");
+  const saved = process.env.ATC_CROSSCHECK_MODEL;
+  process.env.ATC_CROSSCHECK_MODEL = "muse-spark-1.3-contributor"; // guard가 붙이는 실제 모델
+  const w = parseLandingReview(argv("vocado_nextjs#391 --head abc1234 --verdict findings -- P1 폴백 경로에서 캐시를 지우지 않음"));
+  if (saved === undefined) delete process.env.ATC_CROSSCHECK_MODEL;
+  else process.env.ATC_CROSSCHECK_MODEL = saved;
+  assert.deepEqual(w.write, { head: "abc1234", verdict: "findings", text: "P1 폴백 경로에서 캐시를 지우지 않음", by: "CROSSCHECK", model: "muse-spark-1.3-contributor" });
+  assert.throws(() => parseLandingReview(argv("391")), /<repo>#<PR>/);
+  assert.throws(() => parseLandingReview(argv("v#1 --verdict pass -- ok")), /--head/);
+  assert.throws(() => parseLandingReview(argv("v#1 --head abc1234 --verdict maybe -- ok")), /pass\|findings/);
+  assert.throws(() => parseLandingReview(argv("v#1 --head abc1234 --verdict pass")), /리뷰 내용/);
+  assert.throws(() => parseLandingReview(argv("v#1 --head abc1234 --verdict pass --model x -- ok")), /알 수 없는 인자/);
 });
