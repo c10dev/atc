@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { Context, Hono } from "hono";
 import { config } from "./config.ts";
+import { parseTeamKeys, TEAM_KEY } from "./linear-keys.ts";
 import { resetTicketPattern } from "./sources/git.ts";
 import { resetLinear } from "./sources/linear.ts";
 
@@ -11,7 +12,8 @@ import { resetLinear } from "./sources/linear.ts";
 export interface ServerSettings {
   linear: {
     apiKeySet: boolean;
-    teamKey: string;
+    teamKey: string; // 주 팀
+    teamKeys: string[]; // 읽는 팀 전부(주 팀이 맨 앞)
   };
   agents: {
     claude: { sessionsDir: string; present: boolean; claimHook: boolean };
@@ -26,6 +28,7 @@ export interface ServerSettings {
 export interface SettingsPatch {
   apiKey?: string | null;
   teamKey?: string;
+  teamKeys?: string; // 쉼표로 구분한 팀 key. 비우면 주 팀만
   claimTtlMin?: number;
   handoffGraceMin?: number;
   projectsDir?: string;
@@ -50,6 +53,7 @@ export function readServerSettings(): ServerSettings {
     linear: {
       apiKeySet: Boolean(config.linearApiKey),
       teamKey: config.linearTeamKey,
+      teamKeys: config.linearTeamKeys,
     },
     agents: {
       claude: { sessionsDir: claudeSessions, present: existsSync(claudeSessions), claimHook: claimHookInstalled() },
@@ -79,6 +83,12 @@ export function validatePatch(patch: Record<string, unknown>): { env: Record<str
         const v = typeof raw === "string" ? raw.trim().toUpperCase() : "";
         if (/^[A-Z][A-Z0-9]{1,9}$/.test(v)) env.LINEAR_TEAM_KEY = v;
         else errors.teamKey = "영문 대문자로 시작하는 2–10자(예: VOC)";
+        break;
+      }
+      case "teamKeys": {
+        const list = (typeof raw === "string" ? raw : "").split(/[\s,]+/).map((k) => k.trim().toUpperCase()).filter(Boolean);
+        if (typeof raw !== "string" || list.some((k) => !TEAM_KEY.test(k))) errors.teamKeys = "쉼표로 구분한 팀 key(예: VOC, ATC)";
+        else env.LINEAR_TEAM_KEYS = list.length ? [...new Set(list)].join(",") : null;
         break;
       }
       case "claimTtlMin":
@@ -132,11 +142,13 @@ function writeEnvFile(changes: Record<string, string | null>) {
 function applyToConfig(env: Record<string, string | null>) {
   if ("LINEAR_API_KEY" in env) config.linearApiKey = env.LINEAR_API_KEY ?? "";
   if (env.LINEAR_TEAM_KEY) config.linearTeamKey = env.LINEAR_TEAM_KEY;
+  const keysChanged = Boolean(env.LINEAR_TEAM_KEY) || "LINEAR_TEAM_KEYS" in env;
+  if (keysChanged) config.linearTeamKeys = parseTeamKeys(config.linearTeamKey, "LINEAR_TEAM_KEYS" in env ? (env.LINEAR_TEAM_KEYS ?? "") : config.linearTeamKeys.slice(1).join(","));
   if (env.ATC_CLAIM_TTL_MIN) config.claimTtlMs = Number(env.ATC_CLAIM_TTL_MIN) * 60_000;
   if (env.ATC_HANDOFF_GRACE_MIN) config.handoffGraceMs = Number(env.ATC_HANDOFF_GRACE_MIN) * 60_000;
   if (env.ATC_PROJECTS_DIR) config.projectsDir = env.ATC_PROJECTS_DIR;
-  if (env.LINEAR_TEAM_KEY) resetTicketPattern();
-  if ("LINEAR_API_KEY" in env || env.LINEAR_TEAM_KEY) resetLinear();
+  if (keysChanged) resetTicketPattern();
+  if ("LINEAR_API_KEY" in env || keysChanged) resetLinear();
 }
 
 // 이 화면(localhost)에서 온 JSON 요청만 받는다. 다른 사이트가 브라우저를 통해 설정을 바꾸지 못하게.

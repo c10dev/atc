@@ -5,6 +5,7 @@ import { config } from "./config.ts";
 import { type Classification, classOf, type Wake } from "./crew.ts";
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig } from "./dispatch.ts";
 import { isCodexBot } from "./landing.ts";
+import { keyInName, teamOfKey } from "./linear-keys.ts";
 import type { Claim, Snapshot, TrafficEvent } from "./model.ts";
 import { readRecords } from "./recorder.ts";
 import { type Departure, matchDepartures, readDepartures } from "./departures.ts";
@@ -133,15 +134,12 @@ export interface EntryContext {
   nameOf: (sessionId: string) => string | null;
   teamPattern: string;
   los: Pick<TrafficEvent, "at" | "workspacePath">[]; // LOS 발생(alert.raised conflict)
-  teamKey: string;
   departures?: Departure[]; // 착수 기록(departures.jsonl)
 }
 
-// 워크트리 이름에 그 FLIGHT의 ticket key가 있나(readFlightHistory와 같은 규칙)
-function pathHasKey(path: string, flight: string, teamKey: string) {
-  const n = Number(flight.split("-")[1]);
-  const m = new RegExp(`(?:^|[/_-])${teamKey.toLowerCase()}-?(\\d+)(?:$|[/_-])`, "i").exec(basename(path));
-  return Boolean(m && Number(m[1]) === n);
+// 워크트리 이름에 그 FLIGHT의 ticket key가 있나(readFlightHistory와 같은 규칙. 팀은 FLIGHT key의 접두어)
+function pathHasKey(path: string, flight: string) {
+  return keyInName(basename(path), [teamOfKey(flight)]) === flight;
 }
 
 // 이 FLIGHT를 몬 STAND: landing 이벤트 → 아직 그 브랜치를 체크아웃한 워크트리 → 이름에 ticket key가 있는 워크트리
@@ -152,7 +150,7 @@ export function standsOf(pr: GhMerged, flight: string | null, ctx: EntryContext)
   if (checkedOut.length) return checkedOut.sort();
   if (!flight) return [];
   const paths = new Set([...ctx.claims.map((c) => c.workspacePath), ...ctx.workspaces.filter((w) => !w.isMain).map((w) => w.path)]);
-  return [...paths].filter((p) => pathHasKey(p, flight, ctx.teamKey)).sort();
+  return [...paths].filter((p) => pathHasKey(p, flight)).sort();
 }
 
 export function buildEntry(pr: GhMerged, ctx: EntryContext): LogEntry {
@@ -347,7 +345,6 @@ function contextFor(s: Snapshot, repo: string, slug: string, records: ReturnType
     nameOf: (id) => names.get(id) ?? null,
     teamPattern: loadDispatchConfig().teamPattern ?? DEFAULT_DISPATCH_CONFIG.teamPattern,
     los: events.filter((e) => e.kind === "alert.raised" && e.alertKind === "conflict"),
-    teamKey: config.linearTeamKey,
     departures: readDepartures(),
   };
 }

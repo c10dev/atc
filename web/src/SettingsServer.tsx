@@ -87,6 +87,14 @@ export function LinearSettings({ snapshot, server, save }: { snapshot: Snapshot 
                 input={{ kind: "text", upper: true, maxLength: 10 }}
                 onSave={(v) => save({ teamKey: v })}
               />
+              <EditRow
+                label="TEAMS"
+                env="LINEAR_TEAM_KEYS"
+                value={s.linear.teamKeys.join(", ")}
+                note={`읽는 팀 전부(쉼표로 구분, 예: VOC, ATC). ${s.linear.teamKey}가 맨 앞. 다른 팀은 보여 주기만 하고, DISPATCH·SCHEDULE 후보는 dispatch.json의 candidateTeams(비면 ${s.linear.teamKey}만)`}
+                input={{ kind: "text", upper: true, maxLength: 60 }}
+                onSave={(v) => save({ teamKeys: v })}
+              />
             </>
           )}
         </ServerRows>

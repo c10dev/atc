@@ -53,7 +53,6 @@ const ctx = (over: Partial<EntryContext> = {}): EntryContext => ({
     { at: "2026-09-26T15:00:00Z", workspacePath: "/w/atc-logbook" }, // 머지 뒤
     { at: "2026-09-26T12:30:00Z", workspacePath: "/w/atc-other" },
   ],
-  teamKey: "VOC",
   ...over,
 });
 

@@ -31,6 +31,16 @@ DISPATCH 탭의 "제외" 목록에 이유가 있다. 흔한 이유:
 - 상위 이슈 → 하위 이슈가 작업이다.
 - `tail:` 팀이 바쁨 / 자격 있는 팀 없음 → FLEET 탭에서 자격을 주거나 라벨을 조정한다.
 - 거절한 짝은 24시간 동안 다시 제안하지 않는다.
+- 다른 Linear 팀(예: ATC)의 FLIGHT → 기본은 보여 주기만 한다. 제외 목록에도 나오지 않는다(아래 "다른 Linear 팀이 안 보인다").
+
+## 다른 Linear 팀이 안 보인다
+
+atc는 `.env.local`의 `LINEAR_TEAM_KEY`(주 팀)만 읽는다. 팀을 더 읽으려면 설정 창 LINEAR 탭의 **TEAMS**에 쉼표로 적는다(`LINEAR_TEAM_KEYS=VOC,ATC`). 저장하면 바로 다시 읽는다.
+
+- 한 팀을 읽지 못하면 연결 상태에 그 팀과 오류가 나온다. 그 팀은 마지막으로 읽은 티켓을 계속 보인다.
+- 더 읽은 팀의 FLIGHT는 RADAR·STRIPS·FIDS에만 보인다. DISPATCH 제안과 SCHEDULE 초안은 `~/.local/state/atc/dispatch.json`의 `candidateTeams`에 든 팀만 받는다(비면 주 팀만). 그 밖의 팀에 SCHEDULE 초안을 쓰면 "SCHEDULE 후보가 아님"으로 거절된다.
+- 팀의 FLIGHT가 어느 AIRPORT인지는 프로젝트 매핑이 먼저이고, 매핑에 없으면 `teamAirports`(기본 `ATC → ATCC`)를 쓴다.
+- 브랜치·워크트리 이름에는 그 팀의 key를 넣는다(`claude/atc-12-…`). 그래야 STAND와 LOGBOOK이 그 FLIGHT를 찾는다.
 
 ## 초안이 사라졌다
 

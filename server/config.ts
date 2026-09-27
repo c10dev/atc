@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { parseTeamKeys } from "./linear-keys.ts";
 
 try {
   process.loadEnvFile(new URL("../.env.local", import.meta.url));
@@ -22,6 +23,8 @@ export const config = {
   // 앞 세션이 이만큼 안에서 손을 떼면 HANDOFF, 둘이 이보다 오래 겹치면 충돌.
   handoffGraceMs: Number(env.ATC_HANDOFF_GRACE_MIN || 5) * 60_000,
   linearApiKey: env.LINEAR_API_KEY || "",
-  linearTeamKey: (env.LINEAR_TEAM_KEY || "VOC").toUpperCase(),
+  linearTeamKey: (env.LINEAR_TEAM_KEY || "VOC").toUpperCase(), // 주 팀
+  // 읽는 팀 전부(주 팀이 맨 앞). LINEAR_TEAM_KEYS=VOC,ATC. 없으면 주 팀 하나
+  linearTeamKeys: parseTeamKeys(env.LINEAR_TEAM_KEY || "VOC", env.LINEAR_TEAM_KEYS),
   linearTeamName: env.LINEAR_TEAM_NAME || "Vocado", // S2에서 새 이슈를 만들 Linear 팀 이름(MCP save_issue의 team)
 };

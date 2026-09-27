@@ -1,4 +1,5 @@
 import { config } from "../config.ts";
+import { teamOfKey } from "../linear-keys.ts";
 import type { Ticket, TicketColumn, TicketStateType } from "../model.ts";
 
 const POLL_MS = 60_000;
@@ -111,35 +112,61 @@ export function toTicket(n: IssueNode): Ticket {
   };
 }
 
-async function fetchAll() {
-  const gen = generation;
-  const team = config.linearTeamKey;
-  const board = await gql<{
-    issues: { nodes: IssueNode[] };
-    workflowStates: { nodes: { name: string; type: string; color: string; position: number }[] };
-  }>(BOARD_QUERY, { team });
-  const byKey = new Map(board.issues.nodes.map((n) => [n.identifier, toTicket(n)]));
+type WorkflowState = { name: string; type: string; color: string; position: number };
 
-  // 브랜치가 가리키는데 45일 창 밖에 있는 티켓은 번호로 따로 가져온다.
-  const missing = [...wantedKeys].filter((k) => !byKey.has(k)).map((k) => Number(k.split("-")[1]));
+// 팀 하나: 45일 안에 바뀐 이슈와 상태 목록, 브랜치가 가리키는데 창 밖에 있는 이슈(번호로 따로)
+async function fetchTeam(team: string, wanted: string[]): Promise<{ tickets: Ticket[]; states: WorkflowState[] }> {
+  const board = await gql<{ issues: { nodes: IssueNode[] }; workflowStates: { nodes: WorkflowState[] } }>(BOARD_QUERY, { team });
+  const byKey = new Map(board.issues.nodes.map((n) => [n.identifier, toTicket(n)]));
+  const missing = wanted.filter((k) => !byKey.has(k)).map((k) => Number(k.split("-")[1]));
   if (missing.length) {
     const extra = await gql<{ issues: { nodes: IssueNode[] } }>(BY_NUMBER_QUERY, { team, numbers: missing });
     for (const n of extra.issues.nodes) byKey.set(n.identifier, toTicket(n));
   }
+  return { tickets: [...byKey.values()], states: board.workflowStates.nodes };
+}
 
-  if (gen !== generation) return;
+// 팀마다 다른 상태 목록을 이름으로 합친다(같은 이름이면 먼저 읽은 팀, 즉 주 팀의 것). 순서는 종류 → 팀 안의 위치
+export function mergeColumns(perTeam: WorkflowState[][]): TicketColumn[] {
   const typeOrder = ["triage", "backlog", "unstarted", "started", "completed", "canceled", "duplicate"];
-  state.columns = board.workflowStates.nodes
+  const seen = new Map<string, WorkflowState>();
+  for (const states of perTeam) for (const s of states) if (!seen.has(s.name)) seen.set(s.name, s);
+  return [...seen.values()]
     .sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type) || a.position - b.position)
     .map((s) => ({ name: s.name, type: s.type as TicketStateType, color: s.color }));
-  state.tickets = [...byKey.values()];
+}
+
+// 팀마다 따로 읽는다(한 팀의 200건이 다른 팀을 밀어내지 않게). 한 팀이 실패하면 그 팀은 마지막으로 읽은 결과를 쓰고
+// 오류에 팀을 적는다. 한 번도 읽지 못한 팀이 있으면 전체를 실패로 둔다 — 그 팀 티켓이 빈 채로 fetchedAt이 서면
+// SCHEDULE이 그 팀의 열린 초안을 모두 SUPERSEDED로 닫는다.
+let lastByTeam = new Map<string, { tickets: Ticket[]; states: WorkflowState[] }>();
+async function fetchAll() {
+  const gen = generation;
+  const teams = config.linearTeamKeys;
+  const results = await Promise.allSettled(teams.map((team) => fetchTeam(team, [...wantedKeys].filter((k) => teamOfKey(k) === team))));
+  if (gen !== generation) return;
+  const errors: string[] = [];
+  const merged = teams.map((team, i) => {
+    const r = results[i];
+    if (r.status === "fulfilled") {
+      lastByTeam.set(team, r.value);
+      return r.value;
+    }
+    errors.push(`${team}: ${String(r.reason?.message ?? r.reason)}`);
+    return lastByTeam.get(team) ?? null;
+  });
+  if (merged.some((m) => !m)) throw new Error(errors.join(" · "));
+  const got = merged as { tickets: Ticket[]; states: WorkflowState[] }[];
+  state.columns = mergeColumns(got.map((r) => r.states));
+  state.tickets = got.flatMap((r) => r.tickets);
   state.fetchedAt = new Date().toISOString();
-  state.error = null;
+  state.error = errors.length ? `일부 팀을 읽지 못해 마지막 결과를 씀 — ${errors.join(" · ")}` : null;
 }
 
 // 설정 창에서 API 키나 TEAM이 바뀌면 이전 결과를 버리고 다음 호출에서 바로 다시 가져온다.
 export function resetLinear() {
   generation++;
+  lastByTeam = new Map();
   state.enabled = Boolean(config.linearApiKey);
   state.error = null;
   state.fetchedAt = null;
@@ -175,7 +202,7 @@ const DETAIL_QUERY = `query Detail($id: String!) {
 
 export async function fetchIssueDetail(key: string) {
   if (!config.linearApiKey) throw new Error("Linear 미연결");
-  if (!/^[A-Z]+-\d+$/.test(key)) throw new Error(`FLIGHT key 형식이 아님: ${key}`);
+  if (!/^[A-Z][A-Z0-9]*-\d+$/.test(key)) throw new Error(`FLIGHT key 형식이 아님: ${key}`);
   const data = await gql<{ issue: null | Record<string, unknown> & { comments: { nodes: unknown[] } } }>(DETAIL_QUERY, { id: key });
   if (!data.issue) throw new Error(`${key}를 찾을 수 없음`);
   return { ...data.issue, comments: data.issue.comments.nodes };

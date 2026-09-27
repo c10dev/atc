@@ -169,6 +169,8 @@ journalctl --user -u atc -f           # 로그
 
 `.env.local`에 `LINEAR_API_KEY`가 없으면 Linear 없이 브랜치에서 찾은 티켓만 보여준다.
 
+**여러 Linear 팀.** `LINEAR_TEAM_KEYS=VOC,ATC`로 적은 팀을 모두 읽는다(주 팀 `LINEAR_TEAM_KEY`가 맨 앞. 없으면 주 팀 하나). 모든 팀의 티켓이 RADAR·STRIPS·FIDS에 보이고, 브랜치·워크트리 이름과 PR 제목의 key도 모든 팀에서 찾는다(`voc-123`, `atc-12`, `(ATC-12)`). 한 팀을 읽지 못하면 그 팀은 마지막 결과를 쓰고 오류에 팀을 적는다. DISPATCH·SCHEDULE 후보는 `dispatch.json`의 `candidateTeams`에 든 팀에서만 나온다(기본: 주 팀). 다른 팀은 보여 주기만 한다.
+
 ## 점유 hook
 
 `~/.claude/settings.json`의 `PostToolUse`(Edit·Write·MultiEdit·NotebookEdit·Bash, async)가 `hooks/claim.mjs`를 실행한다.
@@ -267,7 +269,7 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 
 - 제안: `ASSIGN`(FLIGHT → AIRCRAFT, 요소별 점수: 우선순위·대기 일수·풀어 주는 FLIGHT·팀 적합도·충돌 위험), `RELEASE`(STAND 없이 3일 넘게 ENROUTE인 코드 작업 FLIGHT). 선행 FLIGHT에 막힌 것은 `HOLD_DEPARTURE`, 제외된 것은 사유와 함께 보인다. 상위 이슈(`children`이 있거나 다른 이슈가 `parent`로 지목한 것)는 작업이 아니라 컨테이너라 ASSIGN·RELEASE에서 빠지고 NO CONTACT 경보도 내지 않는다. 우선순위가 없는 FLIGHT는 누가 정할 때까지 ASSIGN 후보가 아니다.
 - 한도: TEAM당 동시 FLIGHT 1, AIRPORT별 동시 AIRBORNE(VCDO 4, 그 밖 2), 열린 ASSIGN·RELEASE 각 5. 같은 짝은 24시간 안에 다시 제안하지 않고, 상황이 바뀌면 SUPERSEDED, 24시간 지나면 EXPIRED.
-- 설정: `~/.local/state/atc/dispatch.json`(없으면 기본값) — 프로젝트 → AIRPORT 매핑, 슬롯, 가중치, RELEASE 기준.
+- 설정: `~/.local/state/atc/dispatch.json`(없으면 기본값) — 프로젝트 → AIRPORT 매핑, 슬롯, 가중치, RELEASE 기준. `teamAirports`는 프로젝트가 매핑에 없는 이슈에 쓸 Linear 팀별 기본 AIRPORT(`{ATC: "ATCC"}`), `candidateTeams`는 Todo FLIGHT가 후보가 되는 팀(비면 주 팀만)이다. `ATC`를 넣으면 ATC FLIGHT는 ATCC가 거점인 AIRCRAFT에만 제안한다.
 - **DISPATCH 탭**: 제안 카드마다 SUPERVISOR가 "승인했을 것 / 거절했을 것"을 표시한다. 거절할 때는 사유 칩을 하나 이상 고르고 메모를 선택으로 덧붙인다. 칩은 서버의 목록 하나(`server/reasons.ts`, 브리핑의 `reasonCodes`)이고 지난 거절 사유에서 골랐다: `already-done` 이미 완료됨, `parent-issue` 상위 이슈(하위로 나뉨), `waiting-on-prior` 선행 FLIGHT·PR 대기, `needs-human` 사람 결정 필요, `no-priority` 우선순위 미정, `out-of-repo` 저장소 밖 작업, `wrong-aircraft` AIRCRAFT 부적합, `other` 기타. 기록되는 `reason`은 `"<label> · <label> — <메모>"`라 CROSSCHECK와 OCC도 칩을 읽고, `gate.reasonCounts`가 칩별 거절 건수를 센다. 20건 이상, 합의율 80% 이상이면 2b(승인 운용) 진입 점검이 충족된다.
 - **OCC 세션**(운항관제. `occ/` 폴더에서 연 세션, `/loop 10m /tick`. 설계: [docs/occ.ko.md](docs/occ.ko.md)). DISPATCH 일을 맡는다: 메모 없는 제안마다 FLIGHT 본문·댓글을 읽고 메모와 CAUTION(DB·보안·권리, 사람 결정 대기)을 단다. 선행 작업이 본문에만 있고 `blocks` 관계로는 없으면 `--hold <FLIGHT>`를 걸어 그 FLIGHT가 끝날 때까지 제안을 HELD 목록으로 보낸다. 사람 결정을 기다리는 경우는 값 없는 `--hold`로 걸고, FLIGHT가 수정되면 풀린다. HELD 제안은 만료되지 않고, SUPERVISOR가 "HOLD 풀기"로 풀 수 있다. 판정하지 않는다. 운항 추적도 한다: CAPTAIN이 보고하거나 SUPERVISOR가 요청하면 PR의 최신 커밋·CI·리뷰를 읽기 전용 `gh`로 확인하고 다른 점을 보고한다. Bash guard는 TOWER 것에 읽기 전용 `gh pr view|checks|diff|list`를 더한 것이고(`guard.mjs --gh-read`), `occ/mcp-guard.mjs`가 읽기 MCP 도구만 통과시켜 Linear·GitHub에 쓸 수 없다. `/tick`은 매번 `atcctl manual check`로 시작해 `CLAUDE.md`가 바뀌었으면 다시 읽는다(TOWER도 같다).
 - **이미 끝났거나 작업 중**([docs/dispatch.md](docs/dispatch.md) 5.1.2): PR이 LOGBOOK에 ARRIVED로 있거나(되돌리지 않음) 열린 PR이 있는 FLIGHT는 Linear가 아직 Todo여도 제외하고, 그 FLIGHT의 열린 제안은 그 사유로 SUPERSEDED한다. 브리핑의 `reasonStats`는 거절 사유 칩마다 몇 번 쓰였는지와 planner가 이미 거르는지를 보여 준다.
