@@ -6,7 +6,7 @@ DISPATCH proposes **which FLIGHT (Linear ticket) to send to which AIRCRAFT (team
 
 > Status: the DISPATCH session merged into the OCC session (`atc/occ/`, [occ.md](occ.md)) on 2026-09-26; the work below is unchanged. 2a (shadow operation) running; 2b (approval operation) implemented behind `mode` and off by default (2026-09-26). See "Turning on 2b". Decisions are listed under "Decisions" at the end.
 >
-> Settled while implementing: under the 1-FLIGHT-per-TEAM rule, a HOLDING AIRCRAFT that holds the STAND of an unfinished FLIGHT is never assigned, however long it has been idle (the "30 minutes" rule in 5.1 is not used). RELEASE only looks at projects mapped to an AIRPORT (code work).
+> Settled while implementing: under the 1-FLIGHT-per-TEAM rule, a HOLDING AIRCRAFT that holds the STAND of an unfinished FLIGHT is never assigned a FLIGHT that needs a STAND, however long it has been idle (the "30 minutes" rule in 5.1 is not used). It can take one `SURVEY` or `CHECK`, which need no STAND ([fleet.md](fleet.md) 5.1, 2026-09-27). RELEASE only looks at projects mapped to an AIRPORT (code work).
 
 ## 1. Current facts
 
@@ -65,6 +65,7 @@ The first implementation covers only `ASSIGN` and `RELEASE`. `RELEASE` does a lo
   - HOLDING (idle, holds a STAND) → can be assigned if there has been no activity for more than N minutes (default 30); otherwise treated as wrapping up
   - AIRBORNE, NORDO → cannot
   - Cannot if it has a FLIGHT PLAN without READBACK (one at a time)
+  - **STAND-free FLIGHTs** (`type:SURVEY`, `type:CHECK`): after the STAND rule, a HOLDING or PARKED AIRCRAFT can take one more, outside it: at most one STAND-free FLIGHT per AIRCRAFT counting in-flight proposals, one proposal per AIRCRAFT per plan, same WAKE slots. Never an AIRBORNE one. A `CHECK` never goes to the AIRCRAFT that built what it reviews. Rules in [fleet.md](fleet.md) 5.1 and 5.2
 - **FLIGHT**: in the Todo state, and
   - not a **parent issue** (a container for child issues — see 5.1.1)
   - not labelled `symphony-pilot`
@@ -90,6 +91,7 @@ Every FLIGHT left out of `ASSIGN` is listed under "excluded" with one of these r
 | No priority | `우선순위 없음 — 사람이 정할 때까지 배정하지 않음` | |
 | `wake:J` | `wake:J — 너무 커서 배정하지 않음, 나눠야 함(SPLIT)` | |
 | TAIL ASSIGNMENT, TYPE RATING, crew ([fleet.md](fleet.md) 5) | `tail:TEAM_X — …`, `rating:SEC — …`, `type:BUILD — …` | |
+| **CHECK independence**: only the AIRCRAFT that built what the `CHECK` reviews could fly it ([fleet.md](fleet.md) 5.2) | `CHECK 독립성 — 검토 대상을 만든 TEAM_X 말고 이 CHECK를 날 AIRCRAFT 없음 (…)` | 2026-09-27 |
 
 The two new rules come from the shadow verdicts: "이미 완료됨" (already done) was the most common rejection, because a merged PR does not move the Linear issue to Done by itself. They are checked before open proposals, so an open, approved or held proposal on such a FLIGHT is SUPERSEDED with that reason (the FLIGHT reason comes before any AIRCRAFT reason). A reverted PR puts the FLIGHT back among the candidates.
 
@@ -109,7 +111,7 @@ The relation is read from Linear (`parent` / `children(first: 50)`), not guessed
 
 | Limit | Default | Why |
 |---|---|---|
-| Concurrent FLIGHTs per TEAM | 1 | vocado rule: one team job = one Linear issue |
+| Concurrent FLIGHTs per TEAM | 1, plus one STAND-free FLIGHT (`SURVEY`, `CHECK`) | vocado rule: one team job = one Linear issue. A SURVEY or CHECK needs no worktree ([fleet.md](fleet.md) 5.1) |
 | Concurrent AIRBORNE per AIRPORT | VCDO 4, others 2 | Dev server ports (3001+), CI, LANDING SEQUENCE congestion |
 | Pending proposals overall | 5 | SUPERVISOR review load |
 
@@ -124,8 +126,11 @@ When slots are full, nothing is proposed instead of an `ASSIGN` (extended to gro
 | FLIGHTs it unblocks | Number of Todo items this FLIGHT blocks | ×2 |
 | Team fit | How many times this AIRCRAFT flew FLIGHTs in the same project or related ones (FLIGHT RECORDER, claim history) | ×1 |
 | Conflict risk | Number of currently AIRBORNE FLIGHTs linked by related | ×−2 |
+| ROUTE | The FLIGHT's project is on the AIRCRAFT's routes ([fleet.md](fleet.md) 5) | ×1 |
 
 Each proposal shows the per-factor scores as they are ("why this flight for this team"). The SUPERVISOR changes the weights in a settings file.
+
+Two marks add no points and only explain the pair: `STAND 없이` (a SURVEY or CHECK given outside the STAND rule, with the AIRCRAFT's state, e.g. `HOLDING — VOC-10 진행 중`), and `CHECK 독립성` on every CHECK (the builder that was left out, or `확인 못 함 — …` when atc could not tell who built it). There is no bonus for idle AIRCRAFT.
 
 ### 5.4 DISPATCH session review
 

@@ -4,6 +4,7 @@ import type { Context, Hono } from "hono";
 import { config } from "./config.ts";
 import { callsign, flightNumber } from "./callsign.ts";
 import {
+  canTakeNow,
   DONE_STATES,
   type DispatchConfig,
   type Factor,
@@ -210,6 +211,8 @@ export function reservedOf(existing: Proposal[]): Reserved {
     aircraft: new Map(live.map((p) => [p.aircraft!, p.id])),
     flights: new Map([...live, ...held].map((p) => [p.flight, p.id])),
     held: new Map(held.map((p) => [p.flight, `${p.id} — ${p.hold.length ? "선행 FLIGHT 대기" : "사람 결정 대기"}`])),
+    // AIRCRAFT가 STAND 있는 FLIGHT와 없는 FLIGHT(SURVEY·CHECK)를 함께 쥘 수 있어 한 대의 제안을 모두 넘긴다
+    aircraftFlights: live.reduce((m, p) => m.set(p.aircraft!, [...(m.get(p.aircraft!) ?? []), p.flight]), new Map<string, string[]>()),
   };
 }
 
@@ -246,7 +249,7 @@ export function syncOps(
     const done = worked(p.flight);
     if (done) return done;
     const ac = p.aircraft ? aircraftOf.get(p.aircraft) : undefined;
-    if (!ac || !ac.available) return `AIRCRAFT 불가: ${ac?.reason ?? "세션 없음"}`;
+    if (!ac || !canTakeNow(ac, t)) return `AIRCRAFT 불가: ${ac?.reason ?? "세션 없음"}`;
     // 계획의 제외 목록을 먼저 믿는다. 거기에 없을 때만 planner의 규칙을 직접 확인한다 —
     // plan.excluded는 "지금 후보인 FLIGHT"의 사유만 담아서, 이미 후보에서 빠진 FLIGHT는 여기 없다.
     const fromPlan = excludedWhy.get(p.flight);
@@ -260,7 +263,10 @@ export function syncOps(
   };
   // 승인됐지만 아직 안 보낸 ASSIGN이 여전히 유효한가(FLIGHT가 Todo이고 AIRCRAFT가 배정 가능)
   const stillValid = (p: Proposal) =>
-    !isHeld(p) && stateOf.get(p.flight)?.stateType === "unstarted" && !worked(p.flight) && Boolean(p.aircraft && aircraftOf.get(p.aircraft)?.available);
+    !isHeld(p) &&
+    stateOf.get(p.flight)?.stateType === "unstarted" &&
+    !worked(p.flight) &&
+    Boolean(p.aircraft && aircraftOf.get(p.aircraft) && canTakeNow(aircraftOf.get(p.aircraft)!, stateOf.get(p.flight)));
 
   let open = 0;
   let openRelease = 0;
@@ -482,9 +488,10 @@ export function runDispatch(s: Snapshot, now = Date.now()): Plan {
   const cfg = loadDispatchConfig();
   const ops = readOps();
   const existing = fold(ops);
-  const landed = landedOf(loadLogbook());
+  const logbook = loadLogbook();
+  const landed = landedOf(logbook);
   // 켜진 GROUND STOP이 걸린 AIRPORT의 ASSIGN은 계획에서 뺀다(docs/atfm.md 6장). 열린 제안은 그 사유로 SUPERSEDED
-  const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing), loadFleet(), landed), s.atfm?.groundStops ?? []);
+  const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing), loadFleet(), landed, logbook), s.atfm?.groundStops ?? []);
   const seq = ops.filter((o) => o.op === "create").length;
   append(syncOps(existing, plan, s, cfg, now, seq, landed));
   return plan;
@@ -498,7 +505,8 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const cfg = loadDispatchConfig();
     const now = Date.now();
     const proposals = allProposals();
-    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals), loadFleet(), landedOf(loadLogbook())), s.atfm?.groundStops ?? []);
+    const logbook = loadLogbook();
+    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals), loadFleet(), landedOf(logbook), logbook), s.atfm?.groundStops ?? []);
     const open = proposals.filter((p) => p.status === "proposed" && !isHeld(p));
     const held = proposals.filter((p) => p.status === "proposed" && isHeld(p));
     const inFlight = proposals.filter(isInFlight).sort((a, b) => a.statusAt.localeCompare(b.statusAt));

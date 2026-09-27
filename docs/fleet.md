@@ -7,7 +7,7 @@ atc knows each team session as an AIRCRAFT (`TEAM_B`, callsign BRAVO) and its le
 - **FLEET**: the teams, their crews, what they are rated for, their routes and targets.
 - **FLIGHT classification**: the kind of work, its size and the rating it needs.
 
-> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE step 1 (sections 8.3 and 8.4), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules (see section 5 for what is left), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), and CHECKRIDE recommendations for TYPE RATINGS (section 8.2). Decisions are listed at the end.
+> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE step 1 (sections 8.3 and 8.4), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules, then STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (see section 5 for what is left), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), and CHECKRIDE recommendations for TYPE RATINGS (section 8.2). Decisions are listed at the end.
 
 Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHEDULE operations), [dispatch.md](dispatch.md) (the planner that uses them).
 
@@ -90,8 +90,8 @@ Three independent axes. Each is a Linear label that OCC owns (a plan field in oc
 
 What it changes:
 
-- `SURVEY` and `CHECK` need no worktree, so they don't count against the 1-FLIGHT-per-TEAM STAND rule. A HOLDING team can take one.
-- `CHECK` is never assigned to the team that flew the BUILD it reviews (independence, like TOWER not judging its own assignments).
+- `SURVEY` and `CHECK` need no worktree, so they don't count against the 1-FLIGHT-per-TEAM STAND rule. A HOLDING team can take one (section 5.1).
+- `CHECK` is never assigned to the team that flew the BUILD it reviews (independence, like TOWER not judging its own assignments; section 5.2).
 - `FERRY` FLIGHTs can be batched: one CAPTAIN takes several in one pass.
 
 ### 4.2 WAKE CATEGORY: how big
@@ -138,19 +138,63 @@ Labels rather than Linear estimates: estimates are one number per team setting, 
 
 ## 5. Planner rules
 
-Applied in this order. The first three are hard rules: a FLIGHT that fails them is excluded with the reason, never given to another team.
+Applied in this order. The first four are hard rules: a FLIGHT that fails them is excluded with the reason, never given to another team.
 
 1. **TAIL ASSIGNMENT**: `tail:TEAM_X` → only that AIRCRAFT (what `lane:` does today).
 2. **TYPE RATING**: the AIRCRAFT holds every required rating.
-3. **FLIGHT TYPE vs crew**: the complement can fly it. `BUILD`, `MAINT` and `TEST` need a member who is not `flash-helper` and has no `no BUILD` or `read-only` limit; `CHECK` needs one without `no CHECK verdicts`; `SURVEY` and `FERRY` can go to any crew.
-4. **WAKE slots**: the AIRPORT has enough weighted capacity left (L 0.5, M 1, H 2). An AIRBORNE team counts the largest WAKE among the FLIGHTs it holds, or 1 when unknown. `J` is excluded ("must be split").
-5. **Score** (soft): as today, plus **ROUTE** (+1, weight `route` in `dispatch.json`, when the FLIGHT's project is on the AIRCRAFT's routes).
+3. **FLIGHT TYPE vs crew**: the complement can fly it. `BUILD`, `MAINT` and `TEST` need a member who is not `flash-helper` and has no `no BUILD` or `read-only` limit; `CHECK` needs one without `no CHECK verdicts` or `read-only`; `SURVEY` and `FERRY` can go to any crew.
+4. **CHECK independence**: a `CHECK` never goes to an AIRCRAFT that built what it reviews (section 5.2).
+5. **WAKE slots**: the AIRPORT has enough weighted capacity left (L 0.5, M 1, H 2). An AIRBORNE team counts the largest WAKE among the FLIGHTs it holds, or 1 when unknown. `J` is excluded ("must be split"). STAND-free FLIGHTs take slots too.
+6. **STAND**: the STAND rule, then STAND-free FLIGHTs outside it (section 5.1).
+7. **Score** (soft): as today, plus **ROUTE** (+1, weight `route` in `dispatch.json`, when the FLIGHT's project is on the AIRCRAFT's routes). No bonus for idle AIRCRAFT.
 
-When no live AIRCRAFT could ever qualify (no one holds the rating, or no crew can fly the type), the FLIGHT is excluded with that reason. When qualified AIRCRAFT exist but are busy, it simply waits, as before.
+When no live AIRCRAFT could ever qualify (no one holds the rating, no crew can fly the type, or only the builder could fly the CHECK), the FLIGHT is excluded with that reason. When qualified AIRCRAFT exist but are busy, it simply waits, as before.
 
 The DISPATCH card shows the classification under the title, e.g. `BUILD · H · SEC · tail:TEAM_E`. It is greyed with "(기본값)" when there is no `type:` or `wake:` label.
 
-Not built yet: `SURVEY` and `CHECK` going to a HOLDING team (they need no STAND), `CHECK` independence from the BUILD it reviews, and WAKE-scaled conflict risk.
+### 5.1 STAND rule and STAND-free FLIGHTs
+
+`SURVEY` and `CHECK` need no worktree (`needsStand` in `server/crew.ts`). `FERRY` "sometimes" needs one (section 4.1), so the planner treats it as needing a STAND. A FLIGHT with no `type:` label is `BUILD` and needs one.
+
+The plan is made in two passes over the same eligible FLIGHTs:
+
+1. **STAND rule** (unchanged): an AIRCRAFT that is PARKED, or HOLDING only the STAND of a finished FLIGHT, with no STAND-needing proposal in flight, gets at most one FLIGHT. STAND-free FLIGHTs take part too, as before.
+2. **STAND-free pass**: the STAND-free FLIGHTs left over are matched again, outside the STAND rule:
+
+| | Rule |
+|---|---|
+| Eligible AIRCRAFT | **HOLDING** (idle, holding the STAND of an unfinished FLIGHT) and **PARKED**. Both: section 4.1 says a HOLDING team can take one, and a PARKED team with a BUILD proposal in flight (approved, sent or accepted, not yet DEPARTED) can take one for the same reason |
+| Not eligible | **AIRBORNE** (the session is busy): the CAPTAIN is mid-turn and a FLIGHT PLAN would queue behind it. A team flips back to HOLDING between turns and the planner runs every 5 minutes, so it is picked up then. Also AOG, RETIRED, no base AIRPORT, another AIRPORT |
+| Cap | One STAND-free FLIGHT per AIRCRAFT, counting its in-flight proposals (`Reserved.aircraftFlights` from `reservedOf`). One proposal per AIRCRAFT per plan across both passes, so a PARKED team never gets a BUILD and a SURVEY in the same plan |
+| Open proposals | Not counted apart: an undecided proposal is a pair of the previous plan, and `syncOps` supersedes any pair the new plan no longer makes, so the same AIRCRAFT cannot collect two |
+| Reservations are split | An in-flight STAND-free proposal does not block the STAND rule (a team doing a SURVEY can still be given a BUILD), and an in-flight BUILD proposal does not block a STAND-free FLIGHT. `AircraftState.reserved` is the STAND-needing reservation, `reservedLight` the STAND-free one. A reserved FLIGHT the snapshot no longer knows counts as needing a STAND |
+| Same rules | TAIL ASSIGNMENT (a HOLDING tail team can take a STAND-free FLIGHT), TYPE RATING, crew, CHECK independence, WAKE slots |
+| Order | STAND rule first, so BUILD work keeps its place; STAND-free FLIGHTs fill what is left. Within the pass, by score |
+| Shown as | A 0-point factor `STAND 없이` with the AIRCRAFT's state: `HOLDING — VOC-10 진행 중 — SURVEY는 STAND가 필요 없어 STAND 규칙 밖(AIRCRAFT당 1건)` |
+| Approval mode | An approved STAND-free proposal stays valid while its AIRCRAFT is HOLDING (`canTakeNow`); `syncOps` uses the same rule for the SUPERSEDED reason |
+
+Only labelled FLIGHTs take this path. The SCHEDULE `classify` candidates put titles that look like research, review, comparison or planning first (`standFreeHint` in `server/schedule.ts`), so OCC classifies likely `SURVEY` and `CHECK` FLIGHTs sooner. The order is a hint; the label is still OCC's call.
+
+### 5.2 CHECK independence
+
+Pure functions in `server/dispatch.ts`, applied to every `CHECK` in both passes.
+
+**What it reviews** (`checkTargetOf`): the FLIGHTs in its Linear relations (`blockedBy`, `related`, `blocks`, `parent`), and the FLIGHT keys and PR numbers in its title (`VOC-205`, `PR #400`, `#400`, `…/pull/400`). The snapshot has no issue body, so the body is not read.
+
+**Who built it** (`checkBuildersOf`), every source that answers:
+
+| Source | Match |
+|---|---|
+| LOGBOOK | Entries whose `flight` is a target, or whose PR number is a target in the CHECK's AIRPORT → `aircraft` |
+| Open PRs | A PR whose number is a target in the AIRPORT's repository, or whose ticket key is a target → the TEAM sessions with a claim on its `standPath`. A PR found by number adds its ticket key as a target |
+| STANDs | Worktrees whose ticket key is a target → the TEAM sessions with a claim on them (handed-off claims included) |
+| Claim history | Sessions whose claim records name a target FLIGHT (`readFlightHistory`) |
+
+Session names are matched against `teamPattern` and upper-cased, like the LOGBOOK. Every builder found is excluded (after a HANDOFF both AIRCRAFT count). If only builders could fly the CHECK, it is excluded: `CHECK 독립성 — 검토 대상을 만든 TEAM_D 말고 이 CHECK를 날 AIRCRAFT 없음 (…)`.
+
+**When the builder is unknown** (no target, or no source names one), the CHECK is not blocked. The card carries a 0-point factor `CHECK 독립성` saying `확인 못 함 — …`, so the SUPERVISOR checks it by hand. When it is known, the factor names the builder that was left out.
+
+Not built yet: WAKE-scaled conflict risk, and DEPARTED for STAND-free FLIGHTs: an accepted SURVEY or CHECK never gets a STAND, so in approval mode it expires after 24 hours instead of departing. ATFM's auto-eligibility (A8) still requires an assignable AIRCRAFT, so a STAND-free proposal to a HOLDING team is never auto-eligible.
 
 ## 6. Who classifies
 
@@ -414,7 +458,7 @@ When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT throug
 
 1. ✅ `tail:` in the planner with the `lane:` alias. Then the Linear labels, VOC-196 and the note to President
 2. ✅ `fleet.json` registry, API and FLEET tab (read and edit), with defaults from the vocado crew rules. Observed crew next to the declared complement and CREW CHANGE step 1 are in sections 8.3 and 8.4
-3. ✅ Classification labels read by the planner: TYPE RATING and FLIGHT TYPE hard rules, WAKE slots, ROUTE score (the Risk group counts as SEC; label groups are read as `group:name`)
+3. ✅ Classification labels read by the planner: TYPE RATING and FLIGHT TYPE hard rules, WAKE slots, ROUTE score (the Risk group counts as SEC; label groups are read as `group:name`), STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (sections 5.1, 5.2)
 4. ◐ The DISPATCH card shows the classification. Still to do: FIDS, and DISPATCH notes that suggest a classification when labels are missing
 5. OCC S1 `CLASSIFY` drafts (with the SCHEDULE work in occ.md)
 6. ◐ TARGETS actuals from the LOGBOOK on the FLEET cards (sections 7.1, 7.2), and next to the project goals in NETWORK (section 7.3). Still to do: on-time baselines from category medians, OCC target-change drafts (section 7.4, designed only)
