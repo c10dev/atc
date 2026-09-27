@@ -7,7 +7,7 @@
 | FIDS | `#board` | Linear 상태 열별 FLIGHT 카드와 점유 팀 배지 | — |
 | AIRPORTS | `#airports` | 저장소 등록부, 소속 AIRCRAFT, OUTSTATION으로 와 있는 AIRCRAFT | AIRPORT 개설·코드 변경·폐쇄 |
 | FLEET | `#fleet` | 팀별 상태, 지금 FLIGHT, 팀원, 자격, ROUTE, TARGETS와 LOGBOOK 실적(이번 주, 정시, 되돌림, LOS, 최근 FLIGHT), CHECKRIDE(TYPE RATING 근거와 추천) | 프로필 편집, ENTRY INTO SERVICE, CREW BRIEFING, AOG, 퇴역, rating 부여·회수 |
-| NETWORK | `#network` | 4단계 운항 개요(읽기 전용): ROUTE(Linear 프로젝트)별 열린 FLIGHT·14일 ARRIVED·도는 AIRCRAFT·착륙 대기·프로젝트 목표, AIRCRAFT별 TARGETS 대 실적, 28일 추세(ARRIVED·착륙 대기·되돌림, 게이트 판정·합의율·CROSSCHECK 일치율) | — |
+| NETWORK | `#network` | 4단계 운항 개요(읽기 전용): ROUTE MAP(ROUTE마다 WAYPOINT 경로·지금 구간·ETA), ROUTE(Linear 프로젝트)별 열린 FLIGHT·14일 ARRIVED·도는 AIRCRAFT·착륙 대기·프로젝트 목표, AIRCRAFT별 TARGETS 대 실적, 28일 추세(ARRIVED·착륙 대기·되돌림, 게이트 판정·합의율·CROSSCHECK 일치율) | — |
 | METRICS | `#metrics` | FLIGHT RECORDER로 본 운용 지표와 추이 | — |
 | DISPATCH | `#dispatch` | 배정 계획과 제안(CROSSCHECK 칩), HELD, IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검과 CROSSCHECK 일치, ATFM 블록(출발 중지, main CI, 머지 슬롯, 자동 배정·S3 대상 그림자 판정), FLIGHT FOLLOWING 블록(배정된 FLIGHT의 단계 막대, 지연·불일치, OCC가 보고했는지) | 판정, CROSSCHECK에 동의, HOLD 풀기, 모드 전환, ATFM 스위치(main 깨짐·수동)와 수동 출발 중지, ATFM OFF |
 | SCHEDULE | `#schedule` | OCC 초안(CLASSIFY·PRIORITIZE·NEW, CROSSCHECK 칩), S2 점검과 CROSSCHECK 일치, 후보 수 | 판정, CROSSCHECK에 동의 |
@@ -17,6 +17,11 @@
 
 ROUTE·AIRCRAFT·추세를 한 화면에서 보는 읽기 전용 개요다. 아무것도 바꾸지 않고, 배정 점수에도 쓰지 않는다. 숫자를 읽는 법:
 
+- **ROUTE MAP**: 맨 위. ROUTE(Linear 프로젝트)마다 WAYPOINT(프로젝트 마일스톤)를 가로 경로로 잇는다. ●는 지난 WAYPOINT(Linear에서 done), ◉는 지금 구간(끝나지 않은 것 중 순서상 첫 번째)과 진행률, ○는 앞으로 갈 WAYPOINT다. 지금 구간 위의 ✈는 그 WAYPOINT의 FLIGHT를 모는 AIRCRAFT다(FOLLOWING과 같은 규칙: ASSIGN 제안, 없으면 `tail:` 라벨). 주황은 지연이다.
+  - WAYPOINT를 누르면(Tab으로 옮겨 Enter·Space도 된다) 진행률, 목표일, ETA, 완료 기준(마일스톤 설명의 "Exit criteria" 번호 목록), FLIGHT 목록(진행·막힘·계획·완료와 AIRCRAFT)이 열린다. 한 번 더 누르거나 ✕로 닫는다.
+  - **ETA**: 그 ROUTE에서 최근 28일에 끝난 FLIGHT 수(LOGBOOK ARRIVED와 Linear 완료 시각)로 하루 속도를 내고, 이 WAYPOINT까지 남은 FLIGHT(앞 구간 것 포함)를 나눈다. 28일 완료가 3개 미만이거나, 남은 FLIGHT가 없거나, FLIGHT가 50개를 넘으면 "모름"이다. 목표일이 ETA보다 앞이거나 이미 지났으면 "지연"이다.
+  - 마일스톤이 없는 ROUTE는 아래쪽에 "WAYPOINT 없음" 점선으로, 열린 FLIGHT 수(진행·계획·막힘)와 AIRCRAFT만 보인다. WAYPOINT를 만들려면 Linear 프로젝트에 마일스톤을 추가한다(atc는 읽기만 한다).
+  - 좁은 화면에서는 경로가 자기 상자 안에서 가로로 넘어간다.
 - **ROUTE 표**: Linear 프로젝트마다 한 줄. 열린 FLIGHT는 Todo(FILED)·In Progress(ENROUTE)·In Review(APPROACH, Ready to Merge 포함)로 나눠 센다. Backlog·끝난 것·상위 이슈는 세지 않는다. ARRIVED 14일은 그 프로젝트 FLIGHT의 LOGBOOK 기록이고, 착륙 대기는 그 기록의 중앙값이다. 목표(목표일·진척·상태)는 Linear 프로젝트에서 10분마다 읽고, 못 읽으면 비어 있다.
 - **AIRCRAFT 표**: FLEET 카드와 같은 숫자다(이번 주 ARRIVED 대 `flightsPerWeek`, 14일 정시율 대 `onTime`, 착륙 대기, 되돌림, LOS). 퇴역 AIRCRAFT는 빠진다.
 - **추세**: 최근 28일. 날마다 ARRIVED 수, 착륙 대기 중앙값, 되돌림. 게이트 줄은 날마다 DISPATCH·SCHEDULE 그림자 판정 수와 그날까지의 누적 합의율(마지막 날이 DISPATCH·SCHEDULE 탭의 게이트 숫자와 같다), 둘을 합친 CROSSCHECK 일치율.
