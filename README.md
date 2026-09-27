@@ -277,15 +277,16 @@ Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server com
 
 | API | What it does |
 |---|---|
-| `GET /api/dispatch/brief` | Mode, current plan, open / held / in-flight / overdue / recent proposals (with `via` and `reasonCodes` once decided), stage 2b and 3 checks (`gate.crosscheck.oneClick`, `gate.reasonCounts`), FLIGHT summaries, reject chips `reasonCodes: [{code, label}]` |
+| `GET /api/dispatch/brief` | Mode, current plan, open / held / in-flight / overdue / recent proposals (with `via` and `reasonCodes` once decided), stage 2b and 3 checks (`gate.crosscheck.oneClick`, `gate.reasonCounts`, `gate3.standFree`), the 2b readiness checklist `readiness2b: {items: [{id, label, status, detail, link?, suggestion?}]}`, FLIGHT summaries, reject chips `reasonCodes: [{code, label}]` |
 | `POST /api/dispatch/proposals/:id/verdict` | `{verdict: agree\|disagree, reason?, via?, reasonCodes?}` shadow verdict (shadow mode only). `via` is `crosscheck` or `manual` (anything else is `manual`); `reasonCodes` only with `disagree` (400 on an unknown code) |
 | `POST /api/dispatch/proposals/:id/note` | `{text, caution?}` DISPATCH review note |
 | `POST /api/dispatch/proposals/:id/hold` | `{blockedBy: ["VOC-180"]}` DISPATCH prerequisite HOLD; the proposal moves to HELD. `[]` holds with no prerequisite (needs a note) |
 | `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR releases a HOLD; the proposal is superseded and the FLIGHT becomes a candidate again |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR decision (approval mode only), both take `{via?}`, `reject` also `{reason?, reasonCodes?}` |
 | `POST /api/dispatch/proposals/:id/release` | Approved → SENT, returns `sendTo` and the FLIGHT PLAN (the same text again if already sent) |
-| `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, or decline with `{reason}` |
-| `POST /api/dispatch/proposals/:id/recall` | SUPERVISOR: `{reason}`, SENT or ACCEPTED → RECALLING (not after DEPARTED; allowed during ground stops) |
+| `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, or decline with `{reason}`. A STAND-free FLIGHT (SURVEY, CHECK) is DEPARTED at the READBACK (`departedStand: null`, `departedVia: "readback"`) |
+| `POST /api/dispatch/proposals/:id/arrived` | OCC: `{note}` (result link or one line, 500 characters), the CAPTAIN's report that a STAND-free DEPARTED FLIGHT is done → ARRIVED (`arrivedNote`, `arrivedUrl`) |
+| `POST /api/dispatch/proposals/:id/recall` | SUPERVISOR: `{reason}`, SENT, ACCEPTED or STAND-free DEPARTED → RECALLING (not after a DEPARTED with a STAND; allowed during ground stops) |
 | `POST /api/dispatch/proposals/:id/{recall-send,recalled}` | OCC: the RECALL text and `sendTo` (approval mode, no state change) / CAPTAIN's `READBACK D-xxxx RECALL` → RECALLED |
 | `GET /api/dispatch/proposals/:id` | One proposal and the mode (used by send-guard) |
 | `POST /api/dispatch/mode` | `{mode: shadow\|approval}` |
