@@ -108,7 +108,7 @@ One row per ROUTE: the ROUTE name, its progress, then a horizontal SVG line. A R
 4. ETA from the ROUTE's completion rate, late mark (built).
 5. Read projects and milestones for every team in `LINEAR_TEAM_KEYS` (ATC-1), so the `ATC` ROUTE shows next to the vocado ones. Not built yet.
 6. Tie atc gates to WAYPOINTs: the verdict gate, the 2b readiness checklist and the ATFM switch-on conditions shown as exit criteria of M15–M20. Not built yet.
-7. OCC briefing: a late WAYPOINT becomes a briefing line. Not built yet.
+7. OCC briefing: ETAs and slip warnings (built, ATC-24). `schedule brief` adds `waypointEtas` and `slips` (`server/waypoint-slips.ts`); OCC reports each new slip to the SUPERVISOR once and acks it, and the SCHEDULE tab lists them under LATE WAYPOINTS (docs/occ.md 5.7).
 8. DISPATCH: FLIGHTs on the active WAYPOINT score higher. Not built yet.
 9. SCHEDULE: a "set milestone" draft for FLIGHTs of a ROUTE with no WAYPOINT. Not built yet.
 10. SCHEDULE: WAYPOINT gaps (built, ATC-8). `schedule brief` adds `waypointGaps` (`server/waypoint-gaps.ts`): per ROUTE, the active WAYPOINT and the next one with their exit criteria (or the description when there is no numbered list) and their issues. The server doesn't match criteria to issues; OCC judges and drafts `NEW --gap --milestone <WAYPOINT>` for uncovered criteria, at most 2 per pass (docs/occ.md 5.6). A `NEW` can carry a milestone of its project, and the S2 released call carries its id.
@@ -126,7 +126,7 @@ One row per ROUTE: the ROUTE name, its progress, then a horizontal SVG line. A R
 ## 9. Not built yet
 
 - Projects and milestones of every team in `LINEAR_TEAM_KEYS`, not only the main team (step 5).
-- WAYPOINTs tied to atc gates (step 6), OCC late-WAYPOINT briefing (step 7), DISPATCH WAYPOINT score (step 8), SCHEDULE "set milestone" draft (step 9).
+- WAYPOINTs tied to atc gates (step 6), DISPATCH WAYPOINT score (step 8), SCHEDULE "set milestone" draft (step 9).
 - An OCC notice for ROUTEs without WAYPOINTs (the API already keeps them with `waypoints: []`).
 
 ## Decisions (2026-09-27, TEAM_J with structure)

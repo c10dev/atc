@@ -13,7 +13,9 @@ import type { Snapshot, Ticket } from "./model.ts";
 import { record } from "./recorder.ts";
 import { cachedPrBody, fetchPrBody } from "./sources/github.ts";
 import { loadLinearProjects, type Milestone } from "./sources/linear-projects.ts";
+import { loadRoutes } from "./routes.ts";
 import { waypointGapsOf } from "./waypoint-gaps.ts";
+import { ackSlips, freshSlipKeys, loadSlipsReported, saveSlipsReported, slipsOf, waypointEtasOf } from "./waypoint-slips.ts";
 
 // OCC SCHEDULE — OCC가 Linear에 쓸 변경을 초안으로 남긴다. 설계: docs/occ.md 5~7장.
 // 작업 종류는 CLASSIFY(분류 라벨), PRIORITIZE(우선순위), NEW(새 이슈), CLOSE(PR이 머지된 FLIGHT를 Done으로).
@@ -751,7 +753,27 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     // ROUTE마다 지금·다음 WAYPOINT의 완료 기준과 이슈(ATC-8). 마일스톤을 못 읽었으면 null
     const lp = await loadLinearProjects();
     const waypointGaps = lp.milestones ? waypointGapsOf(lp.milestones, lp.ok ? lp.projects : null) : null;
-    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, close: closeInfoOut, closeManual, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes), waypointGaps });
+    // 지나지 않은 WAYPOINT의 ETA와 지연 경고(ATC-24). fresh는 OCC가 아직 SUPERVISOR에게 보고하지 않은 경고
+    const waypointEtas = lp.milestones ? waypointEtasOf(await loadRoutes(s, loadLogbook(), now)) : null;
+    const reported = loadSlipsReported();
+    const slipList = waypointEtas ? slipsOf(waypointEtas, now) : [];
+    const freshSlips = new Set(freshSlipKeys(slipList, reported));
+    const slips = waypointEtas ? slipList.map((x) => ({ ...x, fresh: freshSlips.has(x.key), reportedAt: reported.reported[x.key] ?? null })) : null;
+    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, close: closeInfoOut, closeManual, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes), waypointGaps, waypointEtas, slips });
+  });
+
+  // OCC가 SUPERVISOR에게 보고한 WAYPOINT 지연 경고를 적는다. keys가 없으면 지금 fresh 전부
+  app.post("/api/schedule/slips/ack", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const lp = await loadLinearProjects();
+    if (!lp.milestones) return c.json({ error: "마일스톤을 읽지 못해 지연 경고가 없음" }, 503);
+    const now = Date.now();
+    const slipList = slipsOf(waypointEtasOf(await loadRoutes(await getSnapshot(), loadLogbook(), now)), now);
+    const r = loadSlipsReported();
+    const keys: string[] = Array.isArray(body.keys) ? body.keys.map(String) : freshSlipKeys(slipList, r);
+    const next = ackSlips(slipList, r, keys, new Date(now).toISOString());
+    saveSlipsReported(next);
+    return c.json({ acked: keys.filter((k) => k in next.reported), reported: Object.keys(next.reported).length });
   });
 
   app.get("/api/schedule/ops/:id", async (c) => {

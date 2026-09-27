@@ -38,7 +38,7 @@
 | `node ../controller/atcctl.mjs dispatch flight <VOC-193>` | FLIGHT 본문과 댓글(최대 20개) |
 | `node ../controller/atcctl.mjs dispatch note <D-0003> [--caution] [--hold [<FLIGHT>]]… -- <메모>` | 제안에 검토 메모. 같은 제안에 다시 달면 덮어쓴다. `--hold <FLIGHT>`는 선행 FLIGHT를 지정해 제안을 HELD로 돌린다. 값 없는 `--hold`는 선행 FLIGHT 없는 HOLD(사유는 메모) |
 | `node ../controller/atcctl.mjs crew-change brief` | (2b) CREW CHANGE: 보낼 것(`approved`), 앞 건의 READBACK을 기다리는 것(`waiting`, `waitingFor`), READBACK 대기(`sent`), 늦은 것(`overdue`), SUPERVISOR 승인 대기(`pending`, 참고만) |
-| `node ../controller/atcctl.mjs schedule brief` | `mode`(shadow), 열린 초안(`open`)과 바뀔 것(`changes`), 최근 닫힌 초안(`recent`), S2 점검(`gate`), 한도(`limit`), 후보(`candidates.classify`, `candidates.prioritize`, `candidates.close`), CLOSE 후보의 PR·머지 시각·Fixes 여부(`close`), FLIGHT 요약(`flights`), 보정용 최근 SUPERVISOR 판정(`examples`: OCC가 냈던 분류 `proposed`, 근거 `draft`, 판정·사유) |
+| `node ../controller/atcctl.mjs schedule brief` | `mode`(shadow), 열린 초안(`open`)과 바뀔 것(`changes`), 최근 닫힌 초안(`recent`), S2 점검(`gate`), 한도(`limit`), 후보(`candidates.classify`, `candidates.prioritize`, `candidates.close`), CLOSE 후보의 PR·머지 시각·Fixes 여부(`close`), FLIGHT 요약(`flights`), 보정용 최근 SUPERVISOR 판정(`examples`: OCC가 냈던 분류 `proposed`, 근거 `draft`, 판정·사유), WAYPOINT gap(`waypointGaps`), 지나지 않은 WAYPOINT의 ETA(`waypointEtas`), 지연 경고(`slips`, `fresh`는 아직 보고 안 한 것) |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick과 그 절차 파일)이 바뀌었는지 / 다시 읽었음 |
 
 ## 절차 파일
@@ -90,4 +90,4 @@ Linear 라벨 `tail:TEAM_X`가 붙은 FLIGHT는 planner가 그 AIRCRAFT에만 �
 
 ## OCC LOG
 
-매 바퀴 끝에 한두 줄: 메모를 단 제안 ID와 CAUTION 이유, HOLD를 건 제안과 선행 FLIGHT, 쓴 SCHEDULE 초안 ID(LIMIT이면 그렇다고), CHARTER DESK에서 쓴 AD HOC FLIGHT 초안 ID, WAYPOINT gap으로 쓴 초안 ID와 건너뛴 기준(사람 결정·비슷한 FLIGHT), 운항 추적에서 찾은 차이, (2b) 보낸 FLIGHT PLAN·받은 READBACK·거절, 보낸 CREW CHANGE와 그 READBACK. 아무 일 없으면 "특이 사항 없음".
+매 바퀴 끝에 한두 줄: 메모를 단 제안 ID와 CAUTION 이유, HOLD를 건 제안과 선행 FLIGHT, 쓴 SCHEDULE 초안 ID(LIMIT이면 그렇다고), CHARTER DESK에서 쓴 AD HOC FLIGHT 초안 ID, WAYPOINT gap으로 쓴 초안 ID와 건너뛴 기준(사람 결정·비슷한 FLIGHT), 보고한 WAYPOINT 지연, 운항 추적에서 찾은 차이, (2b) 보낸 FLIGHT PLAN·받은 READBACK·거절, 보낸 CREW CHANGE와 그 READBACK. 아무 일 없으면 "특이 사항 없음".

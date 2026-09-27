@@ -841,3 +841,37 @@
   letter-spacing: 0.1em;
   white-space: nowrap;
 }
+
+/* LATE WAYPOINTS(ATC-24) */
+.sc-slips {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.sc-slips li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1-5) 0;
+  border-top: 1px solid var(--line);
+}
+.sc-slip-code {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  color: var(--amber);
+  white-space: nowrap;
+}
+.sc-slip-code.c-target-passed {
+  color: var(--alert);
+}
+.sc-slip-where {
+  flex: 1 1 14em;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sc-slips-more {
+  margin: var(--space-1) 0 var(--space-4);
+  font-size: var(--text-xs);
+}

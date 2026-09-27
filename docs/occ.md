@@ -152,6 +152,15 @@ On 2026-09-27 VOC Todo had 6 FLIGHTs and none could be assigned, so the DISPATCH
 - **S2.** The released `save_issue` call carries `milestone: <milestone id>`, so the issue lands on the WAYPOINT. linear-guard (`occ/mcp-guard.mjs`, unchanged) passes only that exact input; `occ/mcp-guard.test.mjs` checks that dropping the milestone, or passing its name or another id, is refused.
 - CROSSCHECK marks these drafts like any SCHEDULE draft.
 
+### 5.7 WAYPOINT ETAs and slip warnings (built 2026-09-27, ATC-24)
+
+The ROUTE MAP already knows each WAYPOINT's ETA and whether it is late ([routes.md](routes.md) 5). This brings both to OCC and the SUPERVISOR.
+
+- **Data.** `schedule brief` has `waypointEtas` (`server/waypoint-slips.ts`, pure `waypointEtasOf`): every WAYPOINT not yet passed, per ROUTE (ROUTE name order, ROUTE MAP order within), with `targetDate`, `progress`, `eta` (or `null` with `reason`), `remaining`, `cumulative` and `late`. It also has `slips`: one warning per late WAYPOINT (`slipOf`, the same condition as the ROUTE MAP's late mark), with `code`, `days` and a one-line `text`. Both are `null` when the milestones couldn't be read.
+- **Codes.** `target-passed`: the target date is past and the WAYPOINT is not passed (`days` since the target). `eta-after-target`: the ETA is after the target date (`days` late). `linear-overdue`: Linear says overdue with no target date to compare. A past target is checked first.
+- **Report once.** Like FLIGHT FOLLOWING, each warning has a `key` (`<milestone id>:<code>`) and `fresh` (not reported yet). In `/tick` step 5, OCC writes each fresh warning as one line in the OCC LOG, reports it to the SUPERVISOR and runs `atcctl schedule slip-ack` (`POST /api/schedule/slips/ack`). Reported keys live in `waypoint-slips.json`; a warning that clears is forgotten, so it is fresh again if it comes back. When `eta-after-target` becomes `target-passed`, the key changes and OCC reports it once more. OCC doesn't message teams or draft anything because of a slip.
+- **Screen.** The SCHEDULE tab lists the warnings under **LATE WAYPOINTS** (code, ROUTE · WAYPOINT, target, ETA, days, and when OCC reported it), with a link to the ROUTE MAP.
+
 ## 6. linear-guard
 
 linear-guard is part of `occ/mcp-guard.mjs`, the PreToolUse hook on all of OCC's MCP tools (matcher `mcp__.*`, fail-closed `… || exit 2`). Read tools pass as in S0. linear-guard judges the two Linear write tools, `save_issue` and `save_comment`. Every other write tool (relations, labels, GitHub) is blocked as in S0.
@@ -294,7 +303,7 @@ On 2026-09-27, 17 vocado PRs (#366–#399) sat at APPROACH for 26–49 hours wit
 | `server/schedule.ts` (new) | SCHEDULE log (`~/.local/state/atc/schedule.jsonl`, append-only), state transitions, APPLIED detection from the Linear fetch, the open-draft limit (daily limits: Not built yet) |
 | `server/sources/linear.ts` | Read labels (`tail:`, `type:`, `wake:`, `rating:`), recently closed issues (for duplicate search). NEW is detected as APPLIED by title, not by an `S-xxxx` footer (section 6) |
 | `server/dispatch.ts` | Respect `tail:TEAM_X` and the classification rules in [fleet.md](fleet.md) section 5 |
-| API | `GET /api/schedule/brief`, `GET /api/schedule/ops/:id`, `POST /api/schedule/ops` (draft), `POST /api/schedule/ops/:id/{verdict,approve,reject,release}`, `POST /api/schedule/mode` |
+| API | `GET /api/schedule/brief`, `GET /api/schedule/ops/:id`, `POST /api/schedule/ops` (draft), `POST /api/schedule/ops/:id/{verdict,approve,reject,release}`, `POST /api/schedule/mode`, `POST /api/schedule/slips/ack` |
 | `atc/occ/` | Moved from `atc/dispatch/`: `CLAUDE.md` (operations manual, core), `/tick` and its procedure files, send-guard, **linear-guard**, a Bash guard with read-only `gh` |
 | `controller/atcctl.mjs` | `schedule draft`, `schedule release`, `schedule brief` |
 | UI | SCHEDULE tab: drafts with reason, payload preview and duplicate-search result; verdict and approve buttons; applied history |

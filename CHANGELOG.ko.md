@@ -16,6 +16,11 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- OCC 브리핑에 WAYPOINT ETA와 지연 경고(ATC-24, [docs/occ.ko.md](docs/occ.ko.md) 5.7).
+  - `schedule brief`에 `waypointEtas`가 더해진다. 지나지 않은 WAYPOINT마다 목표일, ETA(모르면 그 이유), 남은 FLIGHT, 지연 표시이고, ROUTE MAP과 같은 계산이다(`server/waypoint-slips.ts`).
+  - `slips`도 더해진다. 지연된 WAYPOINT마다 경고 하나이고, `target-passed`(목표일이 지남), `eta-after-target`(ETA가 목표일보다 늦음), `linear-overdue` 가운데 하나와 날수, 한 줄 설명이 붙는다.
+  - 경고는 OCC가 보고하기 전까지 `fresh`다. `/tick` 5단계에서 OCC가 fresh 경고를 SUPERVISOR에게 한 번 보고하고 `atcctl schedule slip-ack`(`POST /api/schedule/slips/ack`, `waypoint-slips.json`)를 실행한다. 풀린 경고는 잊고, `eta-after-target`이 `target-passed`가 되면 다시 보고한다(OCC 규정과 `/tick`, 한국어·영어).
+  - SCHEDULE 탭의 **LATE WAYPOINTS**에 경고가 보인다. OCC가 보고한 때와 ROUTE MAP 링크가 있다.
 - 팀 세션 skill `atc-task`(`.claude/skills/atc-task`). "ATC-n 진행"을 받은 팀 세션이 atc API로 이슈를 읽고, 워크트리에서 작업하고, 문서 점검표와 검증을 돌리고, LANDING CLEARANCE 등급을 확인한 뒤 PR을 올리고 일을 맡긴 세션에 보고한다. 규칙의 원본은 루트 `CLAUDE.md`이고, skill은 그 순서를 고정한다.
 - WAYPOINT gap: 덮는 이슈가 없는 완료 기준을 OCC가 NEW 초안으로 올린다(ATC-8, [docs/occ.ko.md](docs/occ.ko.md) 5.6).
   - `schedule brief`에 `waypointGaps`가 더해진다(`server/waypoint-gaps.ts`). ROUTE마다 지금 구간과 다음 WAYPOINT의 완료 기준(번호 목록이 없으면 설명), 이슈(key·제목·상태), `truncated`를 보인다. 기준과 이슈를 짝짓는 것은 OCC 몫이다.

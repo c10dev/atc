@@ -16,6 +16,11 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 - The TOWER and OCC Bash guard (`controller/guard.mjs`) let command substitution through inside double quotes: `node atcctl.mjs brief -- "$(touch /tmp/x)"` passed, and so did a backtick. The shell runs these before the command, so a control session could run arbitrary commands. Command substitution and variable expansion (`$(…)`, backticks, `${…}`, `$VAR`) are now blocked anywhere outside single quotes; single-quoted and backslash-escaped text is still allowed. Reported by TEAM_H.
 
 ### Added
+- WAYPOINT ETAs and slip warnings in the OCC briefing (ATC-24, [docs/occ.md](docs/occ.md) 5.7).
+  - `schedule brief` adds `waypointEtas`: every WAYPOINT not yet passed, with target date, ETA (or why it is unknown), remaining FLIGHTs and the late mark, from the same calculation as the ROUTE MAP (`server/waypoint-slips.ts`).
+  - It also adds `slips`: one warning per late WAYPOINT, `target-passed` (the target date is past), `eta-after-target` (the ETA is after the target date) or `linear-overdue`, with the number of days and a one-line text.
+  - Each warning is `fresh` until OCC reports it. In `/tick` step 5, OCC reports fresh warnings to the SUPERVISOR once and runs `atcctl schedule slip-ack` (`POST /api/schedule/slips/ack`, `waypoint-slips.json`). A warning that clears is forgotten; one that turns from `eta-after-target` into `target-passed` is reported again (OCC rules and `/tick`, Korean and English).
+  - The SCHEDULE tab lists the warnings under **LATE WAYPOINTS**, with when OCC reported each one and a link to the ROUTE MAP.
 - Team-session skill `atc-task` (`.claude/skills/atc-task`). A team session told "ATC-n 진행" reads the issue through the atc API, works in a worktree, runs the docs checklist and the checks, sees its LANDING CLEARANCE tier, opens the PR and reports to the session that assigned it. The rules stay in the root `CLAUDE.md`; the skill fixes their order.
 - WAYPOINT gaps: OCC drafts NEW issues for exit criteria no issue covers (ATC-8, [docs/occ.md](docs/occ.md) 5.6).
   - `schedule brief` adds `waypointGaps` (`server/waypoint-gaps.ts`): per ROUTE, the active and next WAYPOINT with their exit criteria (or the description when there is no numbered list), their issues (key, title, state) and `truncated`. Matching criteria to issues is left to OCC.

@@ -79,7 +79,9 @@ FLIGHT FOLLOWING (OCC 세션이 맡음. 읽기 전용: 배정된 FLIGHT의 단�
   node atcctl.mjs following                 FLIGHT마다 단계(READBACK·DEPARTED·PR·CLEARED·ARRIVED)와 문제(issues). fresh는 아직 보고 안 한 문제 (JSON)
   node atcctl.mjs following ack [<key>]…    보고한 문제를 적는다(key 없으면 지금 fresh 전부). 같은 문제는 다시 fresh가 되지 않는다
 SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만. S2 승인 운용: 승인된 작업만 발부해 Linear에 씀. 판정·승인은 SUPERVISOR)
-  node atcctl.mjs schedule brief            열린 초안·최근·점검·후보(candidates) (JSON)
+  node atcctl.mjs schedule brief            열린 초안·최근·점검·후보(candidates), WAYPOINT gap·ETA·지연 경고(slips) (JSON)
+  node atcctl.mjs schedule slip-ack [<key>]…
+                                            보고한 WAYPOINT 지연 경고를 적는다(key 없으면 지금 fresh 전부). 같은 경고는 다시 fresh가 되지 않는다
   node atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <근거>
                                             분류 라벨 초안. TYPE: BUILD MAINT TEST SURVEY CHECK FERRY
                                             WAKE: L M H J · RATING: SEC UI DATA DOCS (--rating은 여러 번)
@@ -406,6 +408,9 @@ if (isMain) {
       }
     } else if (cmd === "schedule" && args[0] === "brief") {
       console.log(JSON.stringify(await call("GET", "/api/schedule/brief"), null, 1));
+    } else if (cmd === "schedule" && args[0] === "slip-ack") {
+      const r = await call("POST", "/api/schedule/slips/ack", args.length > 1 ? { keys: args.slice(1) } : {});
+      console.log(`ACK ${r.acked.length}건 (보고한 지연 경고 ${r.reported}건 기억)`);
     } else if (cmd === "schedule" && args[0] === "draft" && args[1]) {
       const r = await call("POST", "/api/schedule/ops", parseDraft(args.slice(1)), {
         limit: "이번 바퀴는 SCHEDULE 초안을 더 쓰지 않는다(열린 초안 한도).",

@@ -84,7 +84,24 @@ interface Brief {
   close?: Record<string, { pr: ClosePayload["pr"]; mergedAt: string; link: "fixes" | "part-of" | "none" | null }>;
   closeManual?: ScheduleOp[]; // SUPERVISOR가 Linear에서 직접 Done으로 바꿀 CLOSE
   flights: Record<string, FlightInfo>;
+  slips?: Slip[] | null; // WAYPOINT 지연 경고(ATC-24). 옛 서버면 없고, 마일스톤을 못 읽었으면 null
 }
+
+// server/waypoint-slips.ts Slip과 같은 모양(fresh·reportedAt은 brief가 더함)
+interface Slip {
+  key: string;
+  code: "target-passed" | "eta-after-target" | "linear-overdue";
+  route: string;
+  waypoint: string;
+  targetDate: string | null;
+  eta: string | null;
+  days: number | null;
+  text: string;
+  fresh: boolean;
+  reportedAt: string | null;
+}
+
+const slipCode: Record<Slip["code"], string> = { "target-passed": "목표일 지남", "eta-after-target": "ETA 늦음", "linear-overdue": "Linear overdue" };
 
 type Clock = "utc" | "local";
 
@@ -258,6 +275,40 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
       </p>
 
       <Gate gate={gate} />
+
+      {(brief.slips?.length ?? 0) > 0 && (
+        <>
+          <h2 className="label">
+            LATE WAYPOINTS <em>ETA가 목표일을 넘거나 목표일이 지난 WAYPOINT — OCC가 새 경고를 한 번 보고한다. 자세한 것은 NETWORK 탭 ROUTE MAP</em>
+          </h2>
+          <ul className="sc-slips">
+            {brief.slips!.map((x) => (
+              <li key={x.key}>
+                <span className={`sc-slip-code c-${x.code}`}>{slipCode[x.code]}</span>
+                <span className="sc-slip-where">
+                  {x.route} · <b>{x.waypoint}</b>
+                </span>
+                <span className="mono faint">
+                  목표 {x.targetDate ?? "—"} · ETA {x.eta ?? "모름"}
+                  {x.days != null && ` · ${x.days}일`}
+                </span>
+                <span className="faint">
+                  {x.reportedAt ? (
+                    <time dateTime={x.reportedAt} title={stamp(x.reportedAt, clock)}>
+                      OCC 보고 {timeAgo(x.reportedAt, now)}
+                    </time>
+                  ) : (
+                    "OCC 보고 전"
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="faint sc-slips-more">
+            <a href="#network">NETWORK → ROUTE MAP</a>
+          </p>
+        </>
+      )}
 
       <h2 className="label" ref={draftsHead} tabIndex={-1}>
         DRAFTS{" "}
