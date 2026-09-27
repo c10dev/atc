@@ -22,14 +22,16 @@ atc 코드를 고치는 세션(팀 세션, 사용자와 직접 작업하는 세�
 
 ## 운영
 
-- 운영 서비스(7700)를 재시작하지 않는다. 머지와 배포는 사용자가 한다(사용자가 맡기면 그때).
+- 운영 서비스(7700)를 재시작하지 않는다. 배포(main fast-forward와 재시작)는 머지한 쪽, 곧 structure 세션이나 사용자가 한다.
 - 관제 세션의 guard(`controller/guard.mjs`, `occ/send-guard.mjs`, `occ/mcp-guard.mjs`)는 fail-closed(`… || exit 2`)를 유지한다. 막는 조건을 약하게 바꾸려면 사용자에게 먼저 묻는다.
 
 ## git과 PR
 
 - 커밋·푸시·PR은 작업 지시가 요구할 때 한다. 커밋 메시지와 PR 제목·본문은 영어로 쓴다.
 - 커밋 메시지에 attribution 줄(Co-Authored-By 등)을 넣지 않는다. PR 본문 끝은 `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
-- 머지는 사용자가 한다.
+- 팀 세션은 머지하지 않는다. 머지는 LANDING CLEARANCE 등급(`deploy/landing-tier.mjs`, 바뀐 파일 경로로 정함)을 따른다.
+  - `auto`(서버·화면·문서·테스트)와 `flagged`(관제 세션 매뉴얼·CLI): CI(`check`)가 통과하고 structure 세션이 검토(테스트·타입·빌드·충돌)한 뒤 structure가 머지하고 배포한 다음 사용자에게 알린다. `flagged`는 보고에 바뀐 관제 규칙을 따로 적는다. GitHub auto-merge는 쓰지 않는다.
+  - `user`(guard, `.claude/` 설정, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`)는 사용자가 머지한다. 운영 상태 형식을 바꾸거나 되돌리기 어려운 PR, 검토에서 의심이 남는 PR도 structure가 `user`로 올린다.
 
 ## 코드
 

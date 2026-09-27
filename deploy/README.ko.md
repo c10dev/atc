@@ -41,6 +41,24 @@ systemctl --user disable --now atc    # 멈추고 자동 시작에서 빼기
 
 `atc.service` 자체를 고쳤으면 다시 복사하고 `systemctl --user daemon-reload`한 뒤 재시작한다.
 
+## CI와 LANDING CLEARANCE 등급
+
+`.github/workflows/ci.yml`은 모든 PR과 main 푸시에서 `check` 작업을 돌린다: `npm ci`, `npm test`, `npx tsc --noEmit -p .`, `npx vite build`. PR에서는 그 PR의 LANDING CLEARANCE 등급도 실행 요약에 적는다.
+
+`deploy/landing-tier.mjs`는 바뀐 파일 경로만으로 등급을 정한다:
+
+| 등급 | 경로 | 뜻 |
+|---|---|---|
+| `user` | guard(`*guard*.mjs`), `.claude/` 설정(`skills/` 제외), 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`(README 제외) | 사용자가 정해야 함 |
+| `flagged` | `controller/`, `occ/`, `crosscheck/`, `dispatch/`(매뉴얼, skill, atc CLI, guard 테스트) | 관제 세션이 하는 일이 바뀜. 바뀐 규칙을 따로 알린다 |
+| `auto` | 나머지(서버, 화면, 문서, 테스트) | 안전장치·권한과 무관 |
+
+바뀐 파일 중 가장 높은 등급을 쓴다. 등급마다 누가 머지하는지는 루트 `CLAUDE.md`가 정한다.
+
+```bash
+gh pr diff 61 --name-only | node deploy/landing-tier.mjs
+```
+
 ## 설정
 
 서버가 저장소 루트의 `.env.local`을 직접 읽는다(`.env.example` 참고). 유닛에 `EnvironmentFile`은 필요 없다.

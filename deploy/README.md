@@ -41,6 +41,24 @@ systemctl --user disable --now atc    # stop and remove from startup
 
 After editing `atc.service` itself, copy it again and run `systemctl --user daemon-reload` before restarting.
 
+## CI and LANDING CLEARANCE tier
+
+`.github/workflows/ci.yml` runs the job `check` on every pull request and on pushes to main: `npm ci`, `npm test`, `npx tsc --noEmit -p .` and `npx vite build`. On a pull request it also writes the PR's LANDING CLEARANCE tier to the run summary.
+
+`deploy/landing-tier.mjs` decides the tier from the changed paths only:
+
+| Tier | Paths | Meaning |
+|---|---|---|
+| `user` | guards (`*guard*.mjs`), `.claude/` settings (not `skills/`), the root `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/` (not the README) | Needs the user's decision |
+| `flagged` | `controller/`, `occ/`, `crosscheck/`, `dispatch/` (manuals, skills, the atc CLI, guard tests) | Changes what a control session does; call out the changed rules |
+| `auto` | everything else (server, UI, docs, tests) | No safety or permission surface |
+
+The highest tier among the changed files wins. Who may merge each tier is set in the root `CLAUDE.md`.
+
+```bash
+gh pr diff 61 --name-only | node deploy/landing-tier.mjs
+```
+
 ## Configuration
 
 The server reads `.env.local` in the repository root by itself (see `.env.example`); the unit doesn't need an `EnvironmentFile`.
