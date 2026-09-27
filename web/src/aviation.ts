@@ -91,6 +91,7 @@ export const alertCode: Record<AlertKind, string> = {
   orphan: "7600",
   unattended: "UNID",
   "no-workspace": "NO CONTACT",
+  stranded: "STRANDED",
 };
 
 export const alertLabel: Record<AlertKind, string> = {
@@ -98,6 +99,7 @@ export const alertLabel: Record<AlertKind, string> = {
   orphan: "NORDO STAND",
   unattended: "UNIDENTIFIED",
   "no-workspace": "NO CONTACT",
+  stranded: "STRANDED",
 };
 
 export function alertMessage(a: Alert, sessionName: (id: string) => string): string {
@@ -110,5 +112,7 @@ export function alertMessage(a: Alert, sessionName: (id: string) => string): str
       return `점유한 AIRCRAFT 없이 변경만 있음`;
     case "no-workspace":
       return `ENROUTE인데 STAND(워크트리)가 없음`;
+    case "stranded":
+      return a.message; // 서버가 만든 문구: 어느 PR이 어느 브랜치에 머지돼 main에 닿지 않았나
   }
 }

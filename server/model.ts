@@ -1,4 +1,4 @@
-import type { CodexFindingSummary, CodexUnavailable, ExtReviewState } from "./landing.ts";
+import type { CodexFindingSummary, CodexUnavailable, ExtReviewState, Stranded } from "./landing.ts";
 import type { GroundStop, MainStatus } from "./atfm.ts";
 export type Agent = "claude" | "codex";
 
@@ -110,7 +110,7 @@ export interface Handoff {
   at: string;
 }
 
-export type AlertKind = "conflict" | "orphan" | "unattended" | "no-workspace";
+export type AlertKind = "conflict" | "orphan" | "unattended" | "no-workspace" | "stranded"; // stranded: 기본 브랜치에 닿지 않은 머지(ATC-29)
 
 export interface Alert {
   kind: AlertKind;
@@ -167,6 +167,7 @@ export interface TrafficEvent {
 
 // CLEARED TO LAND 조건(server/landing.ts). 하나라도 걸리면 APPROACH.
 export type LandingBlockCode =
+  | "stacked" // base가 기본 브랜치가 아님(쌓인 PR, ATC-29). 이 PR은 CLEARED가 되지 않는다
   | "draft"
   | "checks-pending"
   | "checks-failed"
@@ -197,6 +198,7 @@ export interface PullRequest {
   blocks: { code: LandingBlockCode; text: string }[]; // 한국어 한 줄씩
   readyAt: string | null; // 이 head에서 모든 조건이 처음 맞은 시각. CLEARED일 때만
   createdAt: string; // PR을 연 시각 (APPROACH 정렬, LAND CLEARANCE 짝짓기)
+  stack?: { base: number | null; chain: number[] } | null; // 쌓인 PR의 사슬(아래부터, ATC-29). base: 바로 아래 열린 PR
   codexFindings?: CodexFindingSummary | null; // 현재 head의 Codex 인라인 지적 등급별 수(ATC-28). ok면 P3만·모두 해결·답글이라 착륙을 막지 않음
   codexUnavailable?: CodexUnavailable | null; // CODEX UNAVAILABLE(ATC-7): Codex 한도·무응답
   extReview?: ExtReviewState | null; // Codex를 쓸 수 없을 때 Muse 리뷰 상태(제외·대기·통과·지적). Codex를 쓸 수 있으면 null
@@ -216,5 +218,6 @@ export interface Snapshot {
   alerts: Alert[];
   clearances: Clearance[]; // READBACK 대기 중이거나 최근 24시간 안의 CLEARANCE
   pulls: PullRequest[]; // 열린 PR. CLEARED(readyAt 순) 다음 APPROACH(연 순서)
+  stranded?: Stranded[]; // 기본 브랜치에 닿지 않은 머지(ATC-29). 경보(kind stranded)와 FLIGHT FOLLOWING이 읽는다
   atfm: { mains: MainStatus[]; groundStops: GroundStop[] }; // 기본 브랜치 CI와 출발 중지(docs/atfm.md)
 }

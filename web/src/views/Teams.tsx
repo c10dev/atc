@@ -244,6 +244,14 @@ function blocksTip(pr: PullRequest): string {
 function LandingBadge({ pr }: { pr: PullRequest }) {
   const cleared = pr.landing === "CLEARED";
   const n = pr.blocks.length;
+  // 쌓인 PR(base가 기본 브랜치가 아님, ATC-29): CLEARED가 되지 않는다. 사슬을 함께 보인다
+  if (pr.blocks.some((b) => b.code === "stacked")) {
+    return (
+      <span className="pr-badge is-approach" title={`STACKED: ${blocksTip(pr)}`}>
+        STACKED{pr.stack ? ` ${pr.stack.chain.map((x) => `#${x}`).join(" → ")}` : ""}
+      </span>
+    );
+  }
   return (
     <span
       className={`pr-badge ${cleared ? "is-cleared" : "is-approach"}`}
@@ -306,6 +314,7 @@ function PrLink({ pr }: { pr: PullRequest }) {
 
 // 막는 조건의 짧은 이름(STAND 줄용). 전체 문장은 툴팁과 펼침에
 const blockShort: Record<LandingBlockCode, string> = {
+  stacked: "STACKED",
   draft: "DRAFT",
   "checks-pending": "CI 진행 중",
   "checks-failed": "CI 실패",

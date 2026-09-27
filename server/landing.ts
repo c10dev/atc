@@ -427,7 +427,7 @@ export function landingBlocks(pr: GhPull, los: boolean, ext?: ExtReviewContext, 
   if (pr.isDraft) out.push(block("draft", "Draft PR"));
   out.push(...checkBlocks(pr.statusCheckRollup), ...reviewBlocks(pr, ext, silentMs), ...mergeBlocks(pr.mergeStateStatus, pr.threads?.filter((t) => !t.resolved).length));
   if (los) out.push(block("los", "STAND에 LOSS OF SEPARATION이 열려 있음"));
-  const order: LandingBlockCode[] = ["draft", "checks-failed", "checks-pending", "no-checks", "changes-requested", "review-findings", "no-review", "review-stale", "dirty", "behind", "blocked", "merge-unknown", "los"];
+  const order: LandingBlockCode[] = ["stacked", "draft", "checks-failed", "checks-pending", "no-checks", "changes-requested", "review-findings", "no-review", "review-stale", "dirty", "behind", "blocked", "merge-unknown", "los"];
   return out.sort((a, b) => order.indexOf(a.code) - order.indexOf(b.code));
 }
 
@@ -448,19 +448,20 @@ export function orderPulls(pulls: PullRequest[]): PullRequest[] {
 
 // gh 결과 → PullRequest[]. ready는 readyKey → 시각 기록(호출한 쪽이 들고 있다). 이번에 없는 키는 지운다.
 export function buildPulls(
-  sources: { repo: string; pulls: GhPull[] }[],
+  sources: { repo: string; pulls: GhPull[]; defaultBranch?: string | null }[],
   workspaces: Workspace[],
   alerts: Alert[],
   ready: Map<string, string>,
   ticketKeyOf: (pr: GhPull) => string | null,
   now = new Date().toISOString(),
+  // sources[].defaultBranch: 저장소의 기본 브랜치(모르면 쌓인 PR을 가리지 않는다, ATC-29)
   // Codex 한도 때 착륙 리뷰(ATC-7·27). 없으면 예전처럼(Codex·사람 리뷰만)
   ext?: { silentMs: number; reviews: readonly LandingReview[]; ticketLabelsOf: (key: string | null) => string[]; ticketTitleOf?: (key: string | null) => string | null },
 ): PullRequest[] {
   const losStands = new Set(alerts.filter((a) => a.kind === "conflict" && a.workspacePath).map((a) => a.workspacePath!));
   const seen = new Set<string>();
   const out: PullRequest[] = [];
-  for (const { repo, pulls } of sources) {
+  for (const { repo, pulls, defaultBranch } of sources) {
     for (const gh of pulls) {
       const stand = workspaces.find((w) => w.repo === repo && w.branch === gh.headRefName) ?? null;
       const ticketKey = ticketKeyOf(gh);
@@ -474,6 +475,9 @@ export function buildPulls(
           }
         : undefined;
       const blocks = landingBlocks(gh, Boolean(stand && losStands.has(stand.path)), ctx, ext?.silentMs);
+      // 쌓인 PR: base가 기본 브랜치가 아니면 CLEARED가 되지 않는다(아래 PR이 먼저 기본 브랜치에 들어간 뒤 base를 바꾼다)
+      const stack = defaultBranch ? stackOf(gh, pulls, defaultBranch) : null;
+      if (defaultBranch && gh.baseRefName !== defaultBranch) blocks.unshift(block("stacked", stackedText(gh, stack, defaultBranch)));
       const key = readyKey({ repo, number: gh.number, head: gh.headRefOid });
       seen.add(key);
       let readyAt: string | null = null;
@@ -503,12 +507,86 @@ export function buildPulls(
           return f?.length ? codexFindingSummaryOf(f) : null;
         })() : null,
         extReview: extReviewStateOf(ctx),
+        stack,
       });
     }
   }
   for (const key of ready.keys()) if (!seen.has(key)) ready.delete(key);
   return orderPulls(out);
 }
+
+// ── 쌓인 PR과 STRANDED 머지(ATC-29) ──
+// 2026-09-27 vocado #395 ← #396 ← #397 ← #398이 아래에서부터 각자 바로 아래 브랜치로 squash 머지돼
+// #397·#398이 중간 브랜치에 남았다(main으로 가는 #395에 들어가지 않음). atc는 base가 main이 아닌 #396~#398을 CLEARED로 보였다.
+
+// 사슬: 바로 아래(base 브랜치를 head로 가진 열린 PR)를 따라 내려가 맨 아래를 찾고, 거기서 위(그 head를 base로 가진 열린 PR,
+// 여럿이면 번호가 작은 것)로 올라간다. 둘 이상이 이어질 때만 준다
+export function stackOf(pr: Pick<GhPull, "number" | "baseRefName" | "headRefName">, pulls: readonly Pick<GhPull, "number" | "baseRefName" | "headRefName">[], defaultBranch: string): { base: number | null; chain: number[] } | null {
+  const byHead = new Map(pulls.map((p) => [p.headRefName, p]));
+  const below = (p: Pick<GhPull, "baseRefName">) => (p.baseRefName === defaultBranch ? undefined : byHead.get(p.baseRefName));
+  let bottom = pr;
+  const seen = new Set([pr.number]);
+  for (let b = below(bottom); b && !seen.has(b.number); b = below(bottom)) {
+    seen.add(b.number);
+    bottom = b;
+  }
+  const chain = [bottom.number];
+  for (let cur = bottom; ; ) {
+    const up = pulls.filter((p) => p.baseRefName === cur.headRefName && !chain.includes(p.number)).sort((a, b) => a.number - b.number)[0];
+    if (!up) break;
+    chain.push(up.number);
+    cur = up;
+  }
+  if (!chain.includes(pr.number)) chain.push(pr.number); // 갈래가 여럿이면 이 PR이 사슬 끝에 붙는다
+  return chain.length > 1 ? { base: below(pr)?.number ?? null, chain } : null;
+}
+// "main으로", "master로"(읽는 소리의 받침), 모르면 "(으)로"
+const ig = (branch: string) => (/^(main|trunk)$/i.test(branch) ? `${branch}이` : /^(master|develop|dev)$/i.test(branch) ? `${branch}가` : `${branch}이(가)`);
+const ro = (branch: string) => (/^(main|trunk)$/i.test(branch) ? `${branch}으로` : /^(master|develop|dev)$/i.test(branch) ? `${branch}로` : `${branch}(으)로`);
+export function stackedText(pr: Pick<GhPull, "number" | "baseRefName">, stack: { base: number | null; chain: number[] } | null, defaultBranch: string): string {
+  if (!stack?.base) return `쌓인 PR — base가 ${ig(defaultBranch)} 아님(${pr.baseRefName}) — base를 ${ro(defaultBranch)} 바꿔야 착륙할 수 있음`;
+  const ahead = stack.chain.slice(0, stack.chain.indexOf(pr.number));
+  return `쌓인 PR — ${ahead.map((n) => `#${n}`).join(", ")}가 먼저 ${defaultBranch}에 들어간 뒤 base를 ${ro(defaultBranch)} 바꿈 (${stack.chain.map((n) => `#${n}`).join(" → ")})`;
+}
+
+// 기본 브랜치가 아닌 곳으로 머지된 PR(STRANDED 후보). reach: 머지 커밋이나 head가 닿은 곳(sources/github.ts가 compare로 본다)
+export interface MergedElsewhere {
+  repo: string; // AIRPORT 본 체크아웃 경로
+  number: number;
+  title: string;
+  url: string;
+  base: string;
+  mergedAt: string;
+  mergeCommit: string | null;
+  head: string;
+  flight: string | null; // 브랜치·제목의 FLIGHT key 또는 본문의 Fixes
+  reached: string | null; // "main" 또는 "#395"(그 열린 PR의 head에 들어 있음). null: 어디에도 닿지 않음. undefined면 아직 모름
+}
+export interface Stranded {
+  repo: string;
+  number: number;
+  url: string;
+  title: string;
+  flight: string;
+  base: string;
+  mergedAt: string;
+  mergeCommit: string | null;
+}
+// FLIGHT가 있는 머지 중 기본 브랜치에도, 기본 브랜치로 가는 열린 PR에도 닿지 않은 것
+export const strandedOf = (merged: readonly MergedElsewhere[]): Stranded[] =>
+  merged
+    .filter((m) => m.flight && m.reached === null)
+    .map((m) => ({ repo: m.repo, number: m.number, url: m.url, title: m.title, flight: m.flight!, base: m.base, mergedAt: m.mergedAt, mergeCommit: m.mergeCommit }));
+// 커밋 중 하나가 닿은 첫 대상(기본 브랜치, 그다음 기본 브랜치로 가는 열린 PR). contains(target, commit): commit이 target의 조상인가
+export async function firstReach(commits: readonly string[], targets: readonly { label: string; ref: string }[], contains: (target: string, commit: string) => Promise<boolean>): Promise<string | null> {
+  for (const t of targets) for (const c of commits) if (await contains(t.ref, c)) return t.label;
+  return null;
+}
+// 본문의 Fixes·Closes·Resolves FLIGHT key
+export const fixesKeyOf = (body: string | null | undefined) => /\b(?:fix(?:es|ed)?|close[sd]?|resolve[sd]?)\s+([A-Z][A-Z0-9]*-\d+)\b/i.exec(body ?? "")?.[1]?.toUpperCase() ?? null;
+// 경보 문구. Linear가 Done이어도 경보는 그대로 둔다(Done이 틀렸다는 뜻이다)
+export const strandedMessage = (s: Pick<Stranded, "number" | "flight" | "base">, defaultBranch: string, ticketState?: string | null) =>
+  `STRANDED — #${s.number}(${s.flight})이 ${defaultBranch}에 닿지 않음 — ${s.base}에 머지됐고 그 커밋이 ${ro(defaultBranch)} 가는 PR에도 없음${ticketState ? ` (Linear는 ${ticketState})` : ""}`;
 
 // PR URL → "owner/name"
 export const slugOfUrl = (url: string) => /github\.com\/([\w.-]+\/[\w.-]+)\/pull\/\d+/.exec(url)?.[1] ?? null;

@@ -194,6 +194,10 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - 다른 팀은 보여 주기만 한다(RADAR·STRIPS·FIDS). planner는 제외 줄 없이 건너뛰고, SCHEDULE 브리핑은 후보에서 빼고, 그 팀에 쓴 SCHEDULE 초안은 409로 거절한다. `candidateTeams`에 팀을 넣으면 그 팀 FLIGHT는 그 팀 AIRPORT가 거점인 AIRCRAFT에만 제안한다(ATC → ATCC). 스위치는 꺼 두었다.
 
 ### 변경
+- 쌓인 PR은 CLEARED가 되지 않고, STRANDED 머지에 경보를 낸다(ATC-29, [docs/occ.ko.md](docs/occ.ko.md) 9.4). vocado VOC-189/190 스택(#395 → main ← #396 ← #397 ← #398)이 14:41에 아래에서부터 각자 아래 브랜치로 squash 머지돼, #397·#398이 중간 브랜치에 남고 VOC-190은 main에 닿지 않은 채 Done이 됐다. atc는 #396~#398을 CLEARED로 보였다.
+  - base가 기본 브랜치가 아닌 PR에는 `stacked` 막힘이 붙는다: "쌓인 PR — #395가 먼저 main에 들어간 뒤 base를 main으로 바꿈 (#395 → #396 → #397 → #398)". `PullRequest.stack`·`landingQueue[].stack`과 `stacked`에 사슬이 있고, 스트립에 `STACKED #395 → …`가 뜬다. 기본 브랜치는 저장소마다 읽는다(`defaultByRepo`).
+  - 새 경보 `stranded`: 최근 14일 안에 기본 브랜치가 아닌 곳으로 머지된, FLIGHT key(브랜치, 제목, `Fixes`)가 있는 PR 중 머지 커밋이나 head가 기본 브랜치나 그리로 가는 열린 PR의 조상이 아닌 것(읽기 전용 `gh api compare`, SHA끼리 캐시). "STRANDED — #398(VOC-190)이 main에 닿지 않음 — …". Linear가 Done이어도 남는다. TOWER는 `open.stranded`로, FLIGHT FOLLOWING은 `stranded` 문제로 본다.
+  - TOWER 규정과 OCC FOLLOWING 절차(한국어·영어)에 다루는 법을, 가이드에 STACKED와 STRANDED를 적었다.
 - Codex 지적을 등급으로 읽는다: head의 Codex 지적이 모두 P3이고 스레드마다 resolve됐거나 답글이 달렸으면 `review-findings`로 막지 않는다(ATC-28, [docs/occ.ko.md](docs/occ.ko.md) 9.3). vocado #394는 head의 Codex COMMENTED 리뷰가 등급과 상관없이 막아서 수정 → `@codex review` → 더 작은 지적(P2, 그다음 P3)을 되풀이했다.
   - 등급은 Codex 댓글이 현재 head에 달린 리뷰 스레드의 인라인 배지(`![P2 Badge](…)`)에서 읽고, 표시가 없으면 P2로 본다. head에 Codex 지적이 있는 PR과 BLOCKED인 PR의 리뷰 스레드를 읽는다(읽기 전용 GraphQL).
   - P0~P2는 전처럼 막고 수를 보인다("Codex 지적 있음(head …, P2 1 · P3 1)"). 해결도 답글도 없는 P3는 따로 적어 막는다. 인라인 지적 없는 head 리뷰나 스레드를 못 읽은 경우는 전처럼 막는다.

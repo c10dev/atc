@@ -113,6 +113,9 @@ export function buildBrief(
       // CLEARED에만. TOWER가 LAND CLEARANCE 본문으로 그대로 쓴다
       repoSeq,
       landText: repoSeq ? landTextOf(repoSeq, airport, p.number, fl, repoSeq > 1 ? lane[repoSeq - 2].number : null, p.codexFindings?.ok ? p.codexFindings.p3 : 0) : null,
+      // 쌓인 PR(base가 기본 브랜치가 아님, ATC-29): CLEARED가 되지 않고 LAND를 내지 않는다. stack.chain은 아래부터
+      stacked: p.blocks.some((b) => b.code === "stacked"),
+      stack: p.stack ?? null,
       // 현재 head의 Codex 인라인 지적(등급별 수, ok면 P3만·모두 해결·답글이라 착륙을 막지 않음). 없으면 null(ATC-28)
       codexFindings: p.codexFindings ?? null,
       // 켜진 GROUND STOP이 이 AIRPORT에 걸려 있으면 LAND를 내지 않는다
@@ -173,6 +176,8 @@ export function buildBrief(
       orphans: alertsOf("orphan").map((a) => ({ stand: standName(a.workspacePath), sessions: a.sessionIds?.map(label) })),
       unattended: alertsOf("unattended").map((a) => ({ stand: standName(a.workspacePath), message: a.message })),
       noContact: alertsOf("no-workspace").map((a) => flight(a.ticketKey)),
+      // STRANDED(ATC-29): 기본 브랜치에 닿지 않은 머지. Linear Done이어도 남는다
+      stranded: (s.stranded ?? []).map((x) => ({ flight: flight(x.flight), key: x.flight, pr: x.number, url: x.url, base: x.base, mergedAt: x.mergedAt, message: alertsOf("stranded").find((a) => a.ticketKey === x.flight)?.message ?? null })),
     },
     landingQueue,
     // ATFM 출발 중지. enforced만 실제로 막는다(나머지는 그림자)

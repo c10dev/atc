@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { type MainStatus, mainStateOf } from "../atfm.ts";
-import { type CodexSignal, codexFindings, codexThumbsPass, type GhPull, type GhThread, hasHeadReview, isCodexBot, needsCodexSignal } from "../landing.ts";
+import { type CodexSignal, codexFindings, codexThumbsPass, firstReach, fixesKeyOf, type GhPull, type GhThread, hasHeadReview, isCodexBot, type MergedElsewhere, needsCodexSignal } from "../landing.ts";
+import { ticketKeyFromBranch, ticketKeyFromTitle } from "./git.ts";
 
 const run = promisify(execFile);
 
@@ -19,9 +20,13 @@ export interface GithubState {
   byRepo: Map<string, GhPull[]>;
   // 기본 브랜치 head의 CI(ATFM "main 깨짐"). 실패한 저장소는 이전 결과를 그대로 둔다.
   mainByRepo: Map<string, MainStatus>;
+  // 저장소의 기본 브랜치(쌓인 PR 판단, ATC-29)
+  defaultByRepo: Map<string, string>;
+  // 기본 브랜치가 아닌 곳으로 최근 머지된 PR과 그 커밋이 닿은 곳(STRANDED 판단, ATC-29). 실패한 저장소는 이전 결과를 둔다
+  mergedElsewhereByRepo: Map<string, MergedElsewhere[]>;
 }
 
-const state: GithubState = { enabled: true, error: null, fetchedAt: null, byRepo: new Map(), mainByRepo: new Map() };
+const state: GithubState = { enabled: true, error: null, fetchedAt: null, byRepo: new Map(), mainByRepo: new Map(), defaultByRepo: new Map(), mergedElsewhereByRepo: new Map() };
 let lastFetch = 0;
 let inflight: Promise<void> | null = null;
 let known = new Set<string>();
@@ -175,6 +180,8 @@ async function fetchAll(repos: string[]) {
           return;
         }
         const pulls = await listPulls(slug);
+        const base = await defaultBranchOf(slug);
+        state.defaultByRepo.set(repo, base);
         await attachCodex(slug, pulls, errors);
         await attachThreads(slug, pulls, errors);
         state.byRepo.set(repo, pulls);
@@ -184,6 +191,12 @@ async function fetchAll(repos: string[]) {
         } catch (e) {
           const err = e as { stderr?: string; message?: string };
           errors.push(`${slug} main CI: ${(err.stderr?.trim() || err.message || String(e)).split("\n")[0]}`);
+        }
+        try {
+          state.mergedElsewhereByRepo.set(repo, await mergedElsewhere(repo, slug, base, pulls, state.mainByRepo.get(repo)?.sha ?? null, errors));
+        } catch (e) {
+          const err = e as { stderr?: string; message?: string };
+          errors.push(`${slug} 쌓인 머지: ${(err.stderr?.trim() || err.message || String(e)).split("\n")[0]}`);
         }
       } catch (e) {
         const err = e as NodeJS.ErrnoException & { stderr?: string };
@@ -199,6 +212,8 @@ async function fetchAll(repos: string[]) {
   );
   for (const repo of state.byRepo.keys()) if (!repos.includes(repo)) state.byRepo.delete(repo);
   for (const repo of state.mainByRepo.keys()) if (!repos.includes(repo)) state.mainByRepo.delete(repo);
+  for (const repo of state.defaultByRepo.keys()) if (!repos.includes(repo)) state.defaultByRepo.delete(repo);
+  for (const repo of state.mergedElsewhereByRepo.keys()) if (!repos.includes(repo)) state.mergedElsewhereByRepo.delete(repo);
   const heads = new Set([...state.byRepo.values()].flat().map((p) => p.headRefOid));
   for (const sha of headDates.keys()) if (!heads.has(sha)) headDates.delete(sha);
   for (const key of thumbsOk.keys()) if (!heads.has(key.split("@")[1])) thumbsOk.delete(key);
@@ -206,6 +221,53 @@ async function fetchAll(repos: string[]) {
   // 한 저장소라도 읽었으면 fetchedAt을 넘긴다(landing 이벤트 비교 기준). 오류는 저장소별로 모아 둔다.
   if (ok || !repos.length) state.fetchedAt = new Date().toISOString();
   state.error = errors.length ? [...new Set(errors)].join(" · ") : null;
+}
+
+// ── STRANDED(ATC-29): 기본 브랜치가 아닌 곳으로 머지된 PR의 커밋이 기본 브랜치나 그리로 가는 열린 PR에 닿았나 ──
+const STRANDED_WINDOW_MS = 14 * 86_400_000;
+const ELSEWHERE_FIELDS = "number,title,url,headRefName,headRefOid,baseRefName,mergedAt,mergeCommit,body";
+// "target|commit" → commit이 target의 조상(또는 같음)인가. 둘 다 SHA면 결과가 바뀌지 않아 계속 둔다
+const containsCache = new Map<string, boolean>();
+const isSha = (x: string) => /^[0-9a-f]{40}$/.test(x);
+async function contains(slug: string, target: string, commit: string): Promise<boolean> {
+  const key = `${slug}|${target}|${commit}`;
+  const hit = containsCache.get(key);
+  if (hit !== undefined) return hit;
+  const status = (await gh(["api", `repos/${slug}/compare/${target}...${commit}`, "--jq", ".status"])).trim();
+  const ok = status === "behind" || status === "identical";
+  if (isSha(target)) {
+    if (containsCache.size > 5000) containsCache.clear();
+    containsCache.set(key, ok);
+  }
+  return ok;
+}
+async function mergedElsewhere(repo: string, slug: string, base: string, open: GhPull[], mainSha: string | null, errors: string[]): Promise<MergedElsewhere[]> {
+  type Row = { number: number; title: string; url: string; headRefName: string; headRefOid: string; baseRefName: string; mergedAt: string | null; mergeCommit: { oid: string } | null; body: string };
+  const rows = JSON.parse(await gh(["pr", "list", "--repo", slug, "--state", "merged", "--limit", "60", "--json", ELSEWHERE_FIELDS])) as Row[];
+  const now = Date.now();
+  const cands = rows.filter((r) => r.baseRefName !== base && r.mergedAt && now - Date.parse(r.mergedAt) < STRANDED_WINDOW_MS);
+  // 닿을 수 있는 곳: 기본 브랜치, 그리고 기본 브랜치로 가는 열린 PR의 head. 이 PR의 base 브랜치를 head로 가진 PR을 먼저 본다
+  const intoBase = open.filter((p) => p.baseRefName === base);
+  const out: MergedElsewhere[] = [];
+  for (const r of cands) {
+    const flight = ticketKeyFromBranch(r.headRefName) ?? ticketKeyFromTitle(r.title) ?? fixesKeyOf(r.body);
+    const row: MergedElsewhere = { repo, number: r.number, title: r.title, url: r.url, base: r.baseRefName, mergedAt: r.mergedAt!, mergeCommit: r.mergeCommit?.oid ?? null, head: r.headRefOid, flight, reached: null };
+    if (!flight) {
+      out.push(row); // FLIGHT가 없으면 경보 대상이 아니다(닿았는지 보지 않는다)
+      continue;
+    }
+    const targets = [{ label: base, ref: mainSha ?? base }, ...[...intoBase].sort((a, b) => Number(b.headRefName === r.baseRefName) - Number(a.headRefName === r.baseRefName)).map((p) => ({ label: `#${p.number}`, ref: p.headRefOid }))];
+    const commits = [row.mergeCommit, row.head].filter((c): c is string => Boolean(c));
+    try {
+      row.reached = await firstReach(commits, targets, (target, commit) => contains(slug, target, commit));
+      out.push(row);
+    } catch (e) {
+      // 확인하지 못하면 경보를 내지 않는다(모름을 STRANDED로 보지 않는다)
+      const err = e as { stderr?: string; message?: string };
+      errors.push(`${slug}#${r.number} STRANDED 확인: ${(err.stderr?.trim() || err.message || String(e)).split("\n")[0]}`);
+    }
+  }
+  return out;
 }
 
 // LOGBOOK용: 기본 브랜치에 머지된 최근 PR. 열린 PR 읽기와 따로, 필요한 필드만 가볍게 읽는다.
