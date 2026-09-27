@@ -9,6 +9,7 @@ import { readWorkspaces, ticketKeyFromBranch, ticketKeyFromTitle } from "./sourc
 import { readGithub } from "./sources/github.ts";
 import { readLinear } from "./sources/linear.ts";
 import { buildPulls, strandedMessage, strandedOf } from "./landing.ts";
+import { loadDispatchConfig } from "./dispatch.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, loadAtfm, stopKey } from "./atfm.ts";
 
@@ -115,6 +116,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
       reviews: readLandingReviews(),
       ticketLabelsOf: (key) => tickets.find((t) => t.key === key)?.labels ?? [],
       ticketTitleOf: (key) => tickets.find((t) => t.key === key)?.title ?? null,
+      // 보안 규칙에만 걸린 PR도 DeepSeek에 보낼까(ATC-30, 설정 창). 기본 "exclude"
+      security: loadDispatchConfig().externalReview.security,
     },
   );
 

@@ -52,7 +52,7 @@ STAND 줄의 REMARKS 칸에도 그 STAND 브랜치의 PR 배지가 붙는다.
 - **숫자판**: AIRBORNE(작업 중 세션), STANDS(점유), ENROUTE(진행 FLIGHT), HANDOFF, ALERTS.
 - **새 버전 알림**: 이 탭을 연 뒤에 atc가 새로 배포되면 콘솔 바로 아래에 "새 버전이 배포됨"과 새로고침·닫기 버튼이 뜬다. 저절로 새로고침하지 않는다(입력 중인 내용을 지키려고). 닫으면 다음 배포 때까지 안 뜬다.
 - **ALERT 줄**: 경보가 흘러간다. 누르면 목록이 열린다.
-- **ATC 로고**: 설정(테마, 움직임, 시계).
+- **ATC 로고**: 설정(테마, 움직임, 시계, LINEAR, AGENTS). AGENTS 탭의 **REVIEW** 줄(`externalReview.security`)은 Codex 한도 때 보안 PR도 DeepSeek 착륙 리뷰어에게 보낼지 정한다. 기본 exclude, deepseek으로 바꾸면 보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나간다(`.env`·비밀 경로와 FLIGHT 없는 PR은 계속 빠짐). 스트립에는 "REVIEW: DEEPSEEK (보안, Codex 한도)"로 보인다.
 
 ## 경보 종류
 
@@ -60,5 +60,6 @@ STAND 줄의 REMARKS 칸에도 그 STAND 브랜치의 PR 배지가 붙는다.
 |---|---|
 | LOSS OF SEPARATION | 두 세션이 같은 STAND를 겹쳐 건드림 |
 | NORDO STAND | 죽은 세션이 쥔 STAND |
+| STRANDED | FLIGHT의 PR이 main이 아닌 브랜치에 머지돼 main에 닿지 않음(Linear가 Done이어도 뜬다, ATC-29) |
 | NO CONTACT | ENROUTE인데 STAND가 없는 FLIGHT(상위 이슈는 제외) |
 | UNIDENTIFIED | 점유한 AIRCRAFT 없이 바뀐 STAND |

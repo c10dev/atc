@@ -31,7 +31,12 @@ export interface DispatchConfig {
   releaseStates: string[]; // RELEASE 대상 상태 이름
   excludeLabels: string[];
   teamPattern: string; // 배정 대상 세션 이름
+  // 외부 착륙 리뷰(ATC-30). security: 보안 규칙(라벨·경로·키워드)에만 걸린 PR을 DeepSeek REVIEW에 보낼까.
+  // "exclude"(기본): 보내지 않음. "deepseek": 보냄(SUPERVISOR 결정 2026-09-27). 비밀·키 경로와 FLIGHT 없는 PR은 어느 쪽이든 보내지 않는다
+  externalReview: { security: ExternalReviewSecurity };
 }
+export type ExternalReviewSecurity = "exclude" | "deepseek";
+export const EXTERNAL_REVIEW_SECURITY: readonly ExternalReviewSecurity[] = ["exclude", "deepseek"];
 
 export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   mode: "shadow",
@@ -49,9 +54,23 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   releaseStates: ["In Progress"],
   excludeLabels: ["symphony-pilot"],
   teamPattern: "^TEAM[\\s_-]?[A-Z]$",
+  externalReview: { security: "exclude" },
 };
 
 const CONFIG_FILE = join(config.stateDir, "dispatch.json");
+
+// externalReview.security만 바꿔 저장한다(설정 창, ATC-30). 다른 설정은 그대로 둔다
+export function saveExternalReviewSecurity(security: ExternalReviewSecurity, file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  const prev = (user.externalReview ?? {}) as Record<string, unknown>;
+  writeFileSync(tmp, JSON.stringify({ ...user, externalReview: { ...prev, security } }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
 
 // mode만 바꿔 저장한다. 사용자가 적어 둔 다른 설정은 그대로 둔다.
 export function saveDispatchMode(mode: DispatchConfig["mode"], file = CONFIG_FILE) {
@@ -77,6 +96,8 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       candidateTeams: Array.isArray(user.candidateTeams) ? user.candidateTeams.map((k: unknown) => String(k).toUpperCase()) : d.candidateTeams,
       slots: { ...d.slots, ...user.slots, airborne: { ...d.slots.airborne, ...user.slots?.airborne } },
       weights: { ...d.weights, ...user.weights },
+      // 모르는 값은 기본("exclude")으로 — 보안 PR을 잘못 내보내지 않게
+      externalReview: { security: user.externalReview?.security === "deepseek" ? "deepseek" : "exclude" },
     };
   } catch {
     return DEFAULT_DISPATCH_CONFIG;

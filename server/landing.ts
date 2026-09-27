@@ -182,23 +182,33 @@ export function securityWordOf(texts: readonly (string | null | undefined)[]): s
   }
   return null;
 }
-export function externalExclusionOf(x: {
+export interface ExclusionInput {
   flight: string | null;
   ticketLabels: readonly string[];
   prLabels: readonly string[];
   files: readonly string[] | null; // 아직 못 읽었으면 null(자료를 줄 때 실제 diff로 다시 본다)
   texts: readonly (string | null | undefined)[]; // PR 제목·본문, FLIGHT 제목(·본문)
-}): string | null {
-  if (!x.flight) return "FLIGHT 없음";
-  if (x.ticketLabels.some((l) => l.toLowerCase() === "rating:sec")) return "rating:SEC";
+}
+// 외부 리뷰에서 빼는 까닭을 둘로 나눈다(ATC-30). hard: 어느 모드에서든 보내지 않음(FLIGHT 없음, .env·비밀·키·자격 증명 경로).
+// security: 보안 규칙(rating:SEC·Risk 라벨, 보안 경로, 보안 키워드) — externalReview.security가 "deepseek"이면 보낸다
+export function externalGateOf(x: ExclusionInput): { hard: string | null; security: string | null } {
+  if (!x.flight) return { hard: "FLIGHT 없음", security: null };
+  const secret = secretPathOf(x.files ?? []);
+  if (secret) return { hard: `비밀·키 경로 ${secret}`, security: null };
+  if (x.ticketLabels.some((l) => l.toLowerCase() === "rating:sec")) return { hard: null, security: "rating:SEC" };
   for (const l of [...x.ticketLabels, ...x.prLabels]) {
     const m = RISK_LABEL.exec(l.trim());
-    if (m) return `Risk: ${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()}`;
+    if (m) return { hard: null, security: `Risk: ${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()}` };
   }
   const path = securityPathOf(x.files ?? []);
-  if (path) return path.tag;
+  if (path) return { hard: null, security: path.tag };
   const word = securityWordOf(x.texts);
-  return word ? `키워드 ${word}` : null;
+  return { hard: null, security: word ? `키워드 ${word}` : null };
+}
+// 외부 리뷰에서 빼는 사유. security가 "deepseek"이면 hard만 뺀다
+export function externalExclusionOf(x: ExclusionInput, security: "exclude" | "deepseek" = "exclude"): string | null {
+  const g = externalGateOf(x);
+  return g.hard ?? (security === "exclude" ? g.security : null);
 }
 
 // 리뷰어 이름(모델 계열 앞머리): deepseek-v4.1-flash → DEEPSEEK, muse-spark-1.3 → MUSE
@@ -218,6 +228,7 @@ export interface LandingReview {
   p0: number;
   p1: number;
   p2: number;
+  security?: true; // 보안 규칙에 걸린 PR을 스위치(externalReview.security "deepseek")로 리뷰한 기록(ATC-30)
 }
 export const severityOf = (text: string) => {
   const n = (k: string) => (text.match(new RegExp(`\\bP${k}\\b`, "g")) ?? []).length;
@@ -232,20 +243,23 @@ export const reviewPasses = (r: LandingReview | null) => Boolean(r && r.verdict 
 export interface ExtReviewState {
   status: "excluded" | "waiting" | "pass" | "findings";
   reason: string | null; // excluded: 제외 사유
+  security?: string | null; // 보안 규칙에 걸렸지만 스위치가 "deepseek"이라 보낸 PR의 사유(ATC-30). 화면·기록에 보안 리뷰임을 남긴다
   review: Pick<LandingReview, "at" | "model" | "family" | "verdict" | "p0" | "p1" | "p2" | "text"> | null;
 }
 export interface ExtReviewContext {
   unavailable: CodexUnavailable | null;
   exclusion: string | null;
+  security?: string | null; // 스위치로 보낸 보안 PR의 사유(ATC-30)
   review: LandingReview | null; // 이 head의 마지막 착륙 리뷰
 }
 export function extReviewStateOf(ctx: ExtReviewContext | undefined): ExtReviewState | null {
   if (!ctx?.unavailable) return null;
   if (ctx.exclusion) return { status: "excluded", reason: ctx.exclusion, review: null };
+  const security = ctx.security ?? null;
   const r = ctx.review;
-  if (!r) return { status: "waiting", reason: null, review: null };
+  if (!r) return { status: "waiting", reason: null, review: null, security };
   const review = { at: r.at, model: r.model, family: r.family, verdict: r.verdict, p0: r.p0, p1: r.p1, p2: r.p2, text: r.text };
-  return { status: reviewPasses(r) ? "pass" : "findings", reason: null, review };
+  return { status: reviewPasses(r) ? "pass" : "findings", reason: null, review, security };
 }
 const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n)}…` : t);
 const codexWhy = (u: CodexUnavailable, silentMs: number) => (u.why === "limit" ? "Codex 한도" : `Codex ${Math.round(silentMs / 3_600_000)}시간 응답 없음`);
@@ -375,7 +389,7 @@ export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs =
   if (ms?.status === "pass") return out;
   if (ms?.status === "findings") {
     const r = ms.review!;
-    out.push(block("review-findings", `${reviewerOf(r.family)} 지적(${codexWhy(ext!.unavailable!, silentMs)}, head ${short(pr.headRefOid)}, P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}): ${clip(r.text, 400)} — 반영 후 새 head에서 재리뷰`));
+    out.push(block("review-findings", `${reviewerOf(r.family)} 지적(${ms.security ? "보안, " : ""}${codexWhy(ext!.unavailable!, silentMs)}, head ${short(pr.headRefOid)}, P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}): ${clip(r.text, 400)} — 반영 후 새 head에서 재리뷰`));
     return out;
   }
   const limited = Boolean(c?.lastComment?.limit && atOrAfter(c.lastComment.at, c.headAt));
@@ -383,7 +397,7 @@ export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs =
     ms?.status === "excluded"
       ? `${codexWhy(ext!.unavailable!, silentMs)} — 외부 리뷰 제외(${ms.reason}) — Codex나 SUPERVISOR 리뷰 필요`
       : ms?.status === "waiting"
-        ? `${codexWhy(ext!.unavailable!, silentMs)} — 착륙 리뷰 대기(REVIEW 세션)`
+        ? `${codexWhy(ext!.unavailable!, silentMs)} — 착륙 리뷰 대기(REVIEW 세션${ms.security ? `, 보안 PR: ${ms.security}` : ""})`
         : limited
           ? "Codex 한도 — 사람 리뷰 필요"
           : `head ${short(pr.headRefOid)}에 리뷰 필요${c?.thumbsAt ? " (Codex 👍는 이전 커밋 것)" : ""}`;
@@ -456,7 +470,13 @@ export function buildPulls(
   now = new Date().toISOString(),
   // sources[].defaultBranch: 저장소의 기본 브랜치(모르면 쌓인 PR을 가리지 않는다, ATC-29)
   // Codex 한도 때 착륙 리뷰(ATC-7·27). 없으면 예전처럼(Codex·사람 리뷰만)
-  ext?: { silentMs: number; reviews: readonly LandingReview[]; ticketLabelsOf: (key: string | null) => string[]; ticketTitleOf?: (key: string | null) => string | null },
+  ext?: {
+    silentMs: number;
+    reviews: readonly LandingReview[];
+    ticketLabelsOf: (key: string | null) => string[];
+    ticketTitleOf?: (key: string | null) => string | null;
+    security?: "exclude" | "deepseek"; // dispatch.json externalReview.security(ATC-30). 없으면 "exclude"
+  },
 ): PullRequest[] {
   const losStands = new Set(alerts.filter((a) => a.kind === "conflict" && a.workspacePath).map((a) => a.workspacePath!));
   const seen = new Set<string>();
@@ -470,7 +490,11 @@ export function buildPulls(
       const ctx: ExtReviewContext | undefined = unavailable
         ? {
             unavailable,
-            exclusion: externalExclusionOf({ flight: ticketKey, ticketLabels: ext!.ticketLabelsOf(ticketKey), prLabels: (gh.labels ?? []).map((l) => l.name), files: gh.files ?? null, texts: [gh.title, gh.body, ext!.ticketTitleOf?.(ticketKey)] }),
+            ...(() => {
+              const g = externalGateOf({ flight: ticketKey, ticketLabels: ext!.ticketLabelsOf(ticketKey), prLabels: (gh.labels ?? []).map((l) => l.name), files: gh.files ?? null, texts: [gh.title, gh.body, ext!.ticketTitleOf?.(ticketKey)] });
+              const allow = ext!.security === "deepseek";
+              return { exclusion: g.hard ?? (allow ? null : g.security), security: !g.hard && allow ? g.security : null };
+            })(),
             review: landingReviewOf(ext!.reviews, slug!, gh.number, gh.headRefOid),
           }
         : undefined;

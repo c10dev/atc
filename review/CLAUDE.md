@@ -13,7 +13,7 @@ CROSSCHECK(Muse)는 DISPATCH·SCHEDULE 예비 판정만 한다. 착륙 리뷰는
 - 누구에게도 메시지를 보내지 않는다. SendMessage, 하위 에이전트(Agent), Artifact, Edit·Write는 막혀 있다.
 - 파일은 이 폴더와 atc의 `../docs/`만 읽는다(Read·Glob·Grep, `read-guard.mjs`가 막는다). atc 소스, `~/.local/state/atc`, 다른 저장소는 읽지 않는다. 코드는 atc가 주는 리뷰 자료(diff)로만 본다.
 - Bash는 `node ../controller/atcctl.mjs`의 `manual`, `landing queue`, `landing review`와 `jq`만 된다(`../controller/guard.mjs --review`). 인자로 넘기는 리뷰 글은 작은따옴표로 감싼다. 출력을 줄일 때는 `| jq …`만 쓴다.
-- **외부 리뷰 제외 PR은 건드리지 않는다.** 보안·기밀 작업은 외부 모델에 보내지 않는다(vocado 규칙, 요청 자료가 학습에 쓰인다). 서버가 `excluded`로 빼 두고, 자료를 달라고 하면 403으로 막는다.
+- **외부 리뷰 제외 PR은 건드리지 않는다.** 기밀 작업은 외부 모델에 보내지 않는다(vocado 규칙, 요청 자료가 학습에 쓰인다). 서버가 `excluded`로 빼 두고, 자료를 달라고 하면 403으로 막는다. 보안 PR은 SUPERVISOR가 설정(`externalReview.security: "deepseek"`)을 켰을 때만 이 세션에 온다(ATC-30). `.env`·비밀·키 경로와 FLIGHT 없는 PR은 어느 경우에도 오지 않는다.
 
 ## 도구
 
@@ -29,8 +29,9 @@ CROSSCHECK(Muse)는 DISPATCH·SCHEDULE 예비 판정만 한다. 착륙 리뷰는
 
 ## 리뷰하는 법
 
-- **대상**: `landing queue`의 `pending`만. 서버가 Codex를 쓸 수 없고 외부 리뷰에서 빠지지 않은 PR만 골라 둔다. `excluded`(FLIGHT 없음, rating:SEC·Risk 라벨, migrations·SQL·auth·session·admission·RLS·policy·middleware·비밀 경로, security·privilege·RLS·grant·revoke·EXECUTE·definer·admission·auth·ACL·"use server"·exposure 같은 키워드)는 Codex나 SUPERVISOR를 기다린다.
-- **보는 것**: diff가 완료 기준을 채우는가, 금지 사항을 어기지 않는가, 버그·데이터 손상·되돌리기 어려운 변경이 없는가. 스타일 취향은 지적하지 않는다. diff에 보안 성격(권한, 인증, 비밀)이 보이면 리뷰하지 말고 `findings`(P0 "보안 변경 — 외부 리뷰 대상 아님, Codex나 SUPERVISOR 리뷰 필요")로 남긴다.
+- **대상**: `landing queue`의 `pending`만. 서버가 Codex를 쓸 수 없고 외부 리뷰에서 빠지지 않은 PR만 골라 둔다. `excluded`는 Codex나 SUPERVISOR를 기다린다: 늘 FLIGHT 없음과 비밀·키 경로, 그리고 설정이 꺼져 있으면(기본) 보안 규칙(rating:SEC·Risk 라벨, migrations·SQL·auth·session·admission·RLS·policy·middleware 경로, security·privilege·RLS·grant·revoke·EXECUTE·definer·admission·auth·ACL·"use server"·exposure 같은 키워드).
+- **보는 것**: diff가 완료 기준을 채우는가, 금지 사항을 어기지 않는가, 버그·데이터 손상·되돌리기 어려운 변경이 없는가. 스타일 취향은 지적하지 않는다. diff에 보안 성격(권한, 인증, 비밀)이 보이는데 자료에 `security`가 없으면(서버가 보안 PR로 알아보지 못함) 리뷰하지 말고 `findings`(P0 "보안 변경 — 외부 리뷰 대상 아님, Codex나 SUPERVISOR 리뷰 필요")로 남긴다.
+- **보안 PR**(자료에 `security`가 있음: 설정으로 보낸 PR): 리뷰한다. 권한(GRANT·REVOKE·EXECUTE·SECURITY DEFINER), RLS·policy, 인증·세션·admission 검사, 마이그레이션을 되돌릴 수 있는지, 비밀이 코드나 로그에 새지 않는지를 특히 본다. 확신이 없으면 pass하지 않고 P1로 남긴다. 기록에는 서버가 `security: true`를 붙인다.
 - **등급**: Codex처럼 P0(머지하면 안 됨), P1(머지 전에 고칠 것), P2(나중에 해도 됨). P0·P1이 하나도 없으면 `pass`, 있으면 `findings`. 지적마다 `P1 파일:줄 — 무엇이 왜 문제인지` 한 줄로 쓴다. `pass`에도 본 범위와 P2를 적는다.
 - **잘린 diff**: 본 범위를 적는다. 잘린 부분에 위험이 있을 수 있으면 `findings`(P1 "diff가 잘려 X를 확인하지 못함")로 남긴다.
 - **기록**: `--head`는 자료의 `head`. 4000자 이내. head가 바뀌었으면 409 — 다음 바퀴에 새 자료로 다시 본다. `findings`는 TOWER가 CAPTAIN에게 전한다.
