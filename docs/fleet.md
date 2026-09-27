@@ -7,7 +7,7 @@ atc knows each team session as an AIRCRAFT (`TEAM_B`, callsign BRAVO) and its le
 - **FLEET**: the teams, their crews, what they are rated for, their routes and targets.
 - **FLIGHT classification**: the kind of work, its size and the rating it needs.
 
-> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2; observed crew is not shown yet), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules (see section 5 for what is left), team building (section 8.1), and the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2). Decisions are listed at the end.
+> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2; observed crew is not shown yet), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules (see section 5 for what is left), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), and CHECKRIDE recommendations for TYPE RATINGS (section 8.2). Decisions are listed at the end.
 
 Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHEDULE operations), [dispatch.md](dispatch.md) (the planner that uses them).
 
@@ -248,7 +248,33 @@ The FLEET tab is also where teams are formed and stood down. atc never starts a 
 | Stand a team down for a while | **AOG** | Reason plus an optional release date. The planner stops proposing to it (`AOG — reason (~date)`) |
 | Remove a team | **RETIREMENT** | The AIRCRAFT leaves the FLEET list (kept under RETIRED with its date and reason) and gets no proposals. A live session is not closed. It can be restored |
 
-Later: **CREW CHANGE** (a briefing for a running team whose complement changed, sent by OCC after approval, from OCC S2) and **CHECKRIDE** (evidence for granting a rating such as SEC, from completed FLIGHTs and reviews).
+Later: **CREW CHANGE** (a briefing for a running team whose complement changed, sent by OCC after approval, from OCC S2).
+
+### 8.2 CHECKRIDE
+
+A checkride is the flight in which a pilot shows an examiner that they can hold a rating. atc's CHECKRIDE collects, for each AIRCRAFT and each TYPE RATING (`SEC`, `UI`, `DATA`, `DOCS`), the LOGBOOK FLIGHTs that needed that rating, and recommends a grant or a review. It only recommends: a rating changes only when the SUPERVISOR presses 부여 (grant) or 회수 (revoke), and nothing is granted or revoked automatically.
+
+**Which rating a FLIGHT needed.** In order; the first that gives any ratings wins, and each piece of evidence shows its source:
+
+1. **Label**: the ratings `classOf` reads from the FLIGHT's Linear labels (`rating:X`, or the Risk group for `SEC`), from the current ticket, or from the LOGBOOK line's `class` when the ticket is no longer loaded. Few tickets carry `rating:` labels yet.
+2. **SCHEDULE**: the ratings of the latest CLASSIFY draft for that FLIGHT that the SUPERVISOR accepted (`agree` in shadow, `approve` in approval, so the status is agreed, approved, released or applied) and that names ratings.
+3. Otherwise the FLIGHT is not evidence for any rating. AD HOC FLIGHTs never are.
+
+Only LOGBOOK entries with a known AIRCRAFT count, so every piece of evidence is a FLIGHT that AIRCRAFT flew.
+
+**Proposed thresholds** (first values, to be tuned; constants in `server/checkride.ts`):
+
+| Recommendation | When |
+|---|---|
+| **GRANT** (부여 추천) | The AIRCRAFT does not hold the rating; in the last 30 days it ARRIVED at least 3 FLIGHTs needing it; none of them was reverted; their average Codex finding rounds (`codexFindings`) is below 3 |
+| **REVIEW** (재검토 추천) | The AIRCRAFT holds the rating; in the last 14 days a FLIGHT needing it was reverted, or at least 2 such FLIGHTs averaged 3 or more Codex finding rounds |
+| **BLOCKED** | GRANT would apply to `SEC`, but the CREW COMPLEMENT has no member who can do security work (`canHoldSec`). The reason is shown and there is no grant button |
+| **BUILDING** | Not holding it, with some evidence but not enough yet ("근거 1/3") |
+| **HOLDS** | Holding it, nothing to review |
+
+**Grant and revoke.** `POST /api/fleet/:registration/checkride` with `{rating, action: "grant" | "revoke"}` goes through the same path as the FLEET edit form (`applyPatch`, then the atomic write of `fleet.json`), so the `SEC` rule still holds. It then writes a `checkride` line to the FLIGHT RECORDER: the AIRCRAFT, the rating, the action, who (`SUPERVISOR`, the FLEET tab has no other user), whether it was recommended, and the evidence (LOGBOOK keys with their sources). A grant turns a default rating list into an explicit one.
+
+**API.** `GET /api/fleet/checkride` returns one row per AIRCRAFT in service and rating, with its status, reason, counts (FLIGHTs, reverts, average Codex rounds in each window) and evidence.
 
 ## 9. Moving from `lane:` to `tail:`
 
@@ -266,6 +292,7 @@ Later: **CREW CHANGE** (a briefing for a running team whose complement changed, 
 5. OCC S1 `CLASSIFY` drafts (with the SCHEDULE work in occ.md)
 6. ◐ TARGETS actuals from the LOGBOOK on the FLEET cards (sections 7.1, 7.2). Still to do: on-time baselines from category medians, TARGETS in METRICS / stage 4
 7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
+8. ✅ CHECKRIDE (section 8.2): TYPE RATING evidence from the LOGBOOK, GRANT and REVIEW recommendations, grant and revoke by the SUPERVISOR
 
 ## 11. Risks and mitigations
 

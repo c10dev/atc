@@ -45,7 +45,7 @@ To see Linear tickets too, put `LINEAR_API_KEY` in `.env.local`. For always-on o
 | FIDS (`#board`) | Ticket cards in Linear state columns, with a badge for the team holding each one |
 | Metrics (`#metrics`) | Operating metrics from the FLIGHT RECORDER, the stage 2 readiness check, 5-minute sample trends, a daily table |
 | AIRPORT (`#airports`) | Repository registry. Open, rename, close, reopen and delete AIRPORTs. Home AIRCRAFT and AIRCRAFT visiting from another airport (TRANSIENT) |
-| FLEET (`#fleet`) | Every AIRCRAFT with its status, current FLIGHTs, crew, TYPE RATINGS, ROUTES and TARGETS with LOGBOOK actuals (this week, on-time, reverts, LOS, last FLIGHTs). Edit profiles, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
+| FLEET (`#fleet`) | Every AIRCRAFT with its status, current FLIGHTs, crew, TYPE RATINGS, ROUTES and TARGETS with LOGBOOK actuals (this week, on-time, reverts, LOS, last FLIGHTs), and CHECKRIDE rows (TYPE RATING evidence with grant / review recommendations). Edit profiles, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT, grant or revoke a rating |
 | DISPATCH (`#dispatch`) | The current plan, proposal cards with OCC notes and would-approve / would-reject verdicts (approve / reject in 2b), HELD, IN FLIGHT, excluded FLIGHTs, stage 2b and 3 checks |
 | SCHEDULE (`#schedule`) | OCC SCHEDULE drafts (S1 shadow): the S2 gate panel, open draft cards with would-approve / would-reject verdicts, candidate counts, a last-7-days table |
 | DOCS (`#docs`) | How to use atc: introduction, quickstart, concepts, requesting work (CHARTER DESK / AD HOC), reviewing, FLEET, radio rules, screens, stages, troubleshooting. Rendered from `docs/guide/*.md` (Korean) |
@@ -89,12 +89,16 @@ Teams (AIRCRAFT) are described in `~/.local/state/atc/fleet.json` and edited in 
 
 **LOGBOOK** ([docs/fleet.md](docs/fleet.md) 7.1–7.2, `server/logbook.ts`): every 10 minutes atc reads the last 30 PRs merged into each AIRPORT's default branch (`gh pr list --state merged`) and appends one line per new one to `~/.local/state/atc/logbook.jsonl` (append-only; the key is `owner/repo#number`, so the first run after a restart also back-fills). A line holds the AIRCRAFT (the `TEAM_X` session with a claim on the FLIGHT's STAND; `null` when unknown), the FLIGHT and its classification, departure (earliest claim, or the PR's opening) and arrival (merge) times, the team's block time (start to PR opened; unknown when no claim came before the PR), the landing wait (PR opened to merge), Codex finding rounds, whether changes were requested, and LOS on the STAND. A merged `Revert "…"` PR adds a `reverted` line to the PR it reverts. The FLEET cards show the actuals next to the TARGETS: FLIGHTs ARRIVED this week (from Monday, local time), the 14-day on-time rate (the team's block time within the WAKE expectation L 60 min, M 4 h, H 2 days; otherwise the median of the same FLIGHT TYPE and WAKE; the landing wait is not counted), 14-day reverts and LOS, the median landing wait, and the last 5 FLIGHTs. Shown only; nothing is scored or used for assignment.
 
+**CHECKRIDE** ([docs/fleet.md](docs/fleet.md) 8.2, `server/checkride.ts`): for each AIRCRAFT and TYPE RATING, the LOGBOOK FLIGHTs that needed that rating, taken from the FLIGHT's `rating:` / Risk labels or else the SUPERVISOR-accepted SCHEDULE CLASSIFY draft (each piece of evidence shows its source). It recommends a **grant** (30 days: 3 or more such FLIGHTs, none reverted, average Codex finding rounds below 3) or a **review** of a rating already held (14 days: a revert, or 2 or more FLIGHTs averaging 3 or more rounds). `SEC` is not recommended to a CREW that cannot hold it (`canHoldSec`), with the reason. The FLEET tab lists them under the cards; 부여 (grant) and 회수 (revoke) are pressed by the SUPERVISOR only, go through the same `applyPatch` path as the edit form, and write a `checkride` line (who, recommendation, evidence) to the FLIGHT RECORDER. Nothing is granted or revoked automatically.
+
 | API | What it does |
 |---|---|
 | `GET /api/fleet` | Every TEAM session and registered AIRCRAFT with status, current FLIGHTs, crew, ratings, routes, targets and LOGBOOK `actuals`, plus the rating list, defaults and known projects |
 | `POST /api/fleet` | ENTRY INTO SERVICE: `{registration, configuration?, base?, routes?, note?}` (configurations: `general`, `security`, `ui`, `research`) |
 | `GET /api/fleet/:registration/briefing` | CREW BRIEFING text to paste into the new session |
 | `PATCH /api/fleet/:registration` | `{complement?, ratings?, routes?, targets?, base?, note?, aog?, retired?}`; `null` resets a field to the default. `aog: {reason, until?}` stands a team down; `retired: {reason?}` / `false` retires or restores it |
+| `GET /api/fleet/checkride` | CHECKRIDE rows: AIRCRAFT × TYPE RATING with status (`GRANT`, `REVIEW`, `BLOCKED`, `BUILDING`, `HOLDS`), reason, counts and evidence, plus the criteria |
+| `POST /api/fleet/:registration/checkride` | `{rating, action: "grant" \| "revoke"}`: the SUPERVISOR grants or revokes a rating; recorded in the FLIGHT RECORDER |
 | `GET /api/logbook?aircraft=TEAM_X&days=14` | LOGBOOK entries, newest arrival first (`aircraft` optional, `days` 1–90), with the reader's last run and error |
 
 | State | Shown as |
@@ -349,6 +353,7 @@ atc/
 │   ├── airports.ts         # AIRPORT registry and API (airports.test.ts)
 │   ├── fleet.ts            # FLEET registry and API (fleet.test.ts)
 │   ├── logbook.ts          # LOGBOOK of ARRIVED FLIGHTs, TARGETS actuals (logbook.test.ts)
+│   ├── checkride.ts        # CHECKRIDE: TYPE RATING evidence and recommendations (checkride.test.ts)
 │   ├── away.ts             # OUTSTATION detection (shared with the UI)
 │   ├── callsign.ts         # callsigns and FLIGHT NUMBERs (shared with the UI)
 │   ├── clearances.ts       # CLEARANCE and READBACK records

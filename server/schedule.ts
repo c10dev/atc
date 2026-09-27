@@ -178,6 +178,9 @@ function readLines(file = FILE()): LogLine[] {
   return out;
 }
 
+// 접은 SCHEDULE 작업 전부(CHECKRIDE가 받아들인 CLASSIFY의 rating을 읽는다)
+export const loadScheduleOps = (file = FILE()) => fold(readLines(file));
+
 function append(lines: LogLine[], file = FILE()) {
   if (!lines.length) return;
   mkdirSync(dirname(file), { recursive: true });
