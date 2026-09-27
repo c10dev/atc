@@ -46,6 +46,7 @@ To see Linear tickets too, put `LINEAR_API_KEY` in `.env.local`. For always-on o
 | Metrics (`#metrics`) | Operating metrics from the FLIGHT RECORDER, the stage 2 readiness check, 5-minute sample trends, a daily table |
 | AIRPORT (`#airports`) | Repository registry. Open, rename, close, reopen and delete AIRPORTs. Home AIRCRAFT and AIRCRAFT visiting from another airport (TRANSIENT) |
 | FLEET (`#fleet`) | Every AIRCRAFT with its status, current FLIGHTs, crew declared vs observed (last 14 days) with a pending CREW CHANGE to copy, TYPE RATINGS, ROUTES and TARGETS with LOGBOOK actuals (this week, on-time, reverts, LOS, last FLIGHTs), and CHECKRIDE rows (TYPE RATING evidence with grant / review recommendations). Edit profiles, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT, grant or revoke a rating |
+| NETWORK (`#network`) | Stage 4, read-only operations overview: per ROUTE (Linear project) the open FLIGHTs by state (Todo / In Progress / In Review), FLIGHTs ARRIVED in the last 14 days, the AIRCRAFT flying it, the median landing wait and the project goal (target date, progress, state); per AIRCRAFT the TARGETS against the same LOGBOOK actuals as the FLEET cards; 28-day trends of ARRIVED, landing wait and reverts, and of the DISPATCH / SCHEDULE gates (decisions per day, cumulative agreement, CROSSCHECK match) |
 | DISPATCH (`#dispatch`) | The current plan, proposal cards with OCC notes and would-approve / would-reject verdicts (approve / reject in 2b), HELD, IN FLIGHT, excluded FLIGHTs, stage 2b and 3 checks |
 | SCHEDULE (`#schedule`) | OCC SCHEDULE drafts (S1 shadow): the S2 gate panel, open draft cards with would-approve / would-reject verdicts, candidate counts, a last-7-days table |
 | DOCS (`#docs`) | How to use atc: introduction, quickstart, concepts, requesting work (CHARTER DESK / AD HOC), reviewing, FLEET, radio rules, screens, stages, troubleshooting. Rendered from `docs/guide/*.md` (Korean) |
@@ -104,6 +105,7 @@ Teams (AIRCRAFT) are described in `~/.local/state/atc/fleet.json` and edited in 
 | `GET /api/fleet/checkride` | CHECKRIDE rows: AIRCRAFT × TYPE RATING with status (`GRANT`, `REVIEW`, `BLOCKED`, `BUILDING`, `HOLDS`), reason, counts and evidence, plus the criteria |
 | `POST /api/fleet/:registration/checkride` | `{rating, action: "grant" \| "revoke"}`: the SUPERVISOR grants or revokes a rating; recorded in the FLIGHT RECORDER |
 | `GET /api/logbook?aircraft=TEAM_X&days=14` | LOGBOOK entries, newest arrival first (`aircraft` optional, `days` 1–90), with the reader's last run and error |
+| `GET /api/network` | NETWORK overview (read-only): `routes` (open FLIGHTs by state, `arrived14`, `aircraft`, `landingWaitMedianMin`, Linear project `goal` or `null`), `aircraft` (`targets` vs `actuals` from `computeActuals`), `trend.days` and `trend.gates` over 28 days, and `sources` (whether Linear, GitHub and the LOGBOOK were available) |
 
 | State | Shown as |
 |---|---|
@@ -353,6 +355,7 @@ atc/
 │   │   ├── codex.ts        # ~/.codex/sessions (claims by cwd)
 │   │   ├── git.ts          # git worktree list, dirty state, last commit
 │   │   ├── github.ts       # open PRs through gh, every 90 seconds
+│   │   ├── linear-projects.ts # Linear project goals for NETWORK, every 10 minutes
 │   │   └── linear.ts       # Linear GraphQL, every minute
 │   ├── model.ts            # Session / Workspace / Ticket / Claim / Alert
 │   ├── airports.ts         # AIRPORT registry and API (airports.test.ts)
@@ -361,6 +364,7 @@ atc/
 │   ├── crew-change.ts      # CREW CHANGE texts, never sent (crew-change.test.ts)
 │   ├── logbook.ts          # LOGBOOK of ARRIVED FLIGHTs, TARGETS actuals (logbook.test.ts)
 │   ├── checkride.ts        # CHECKRIDE: TYPE RATING evidence and recommendations (checkride.test.ts)
+│   ├── network.ts          # NETWORK: stage 4 read-only overview of ROUTES, TARGETS and trends (network.test.ts)
 │   ├── away.ts             # OUTSTATION detection (shared with the UI)
 │   ├── callsign.ts         # callsigns and FLIGHT NUMBERs (shared with the UI)
 │   ├── clearances.ts       # CLEARANCE and READBACK records

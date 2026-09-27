@@ -7,10 +7,22 @@
 | FIDS | `#board` | Linear 상태 열별 FLIGHT 카드와 점유 팀 배지 | — |
 | AIRPORTS | `#airports` | 저장소 등록부, 소속 AIRCRAFT, OUTSTATION으로 와 있는 AIRCRAFT | AIRPORT 개설·코드 변경·폐쇄 |
 | FLEET | `#fleet` | 팀별 상태, 지금 FLIGHT, 팀원, 자격, ROUTE, TARGETS와 LOGBOOK 실적(이번 주, 정시, 되돌림, LOS, 최근 FLIGHT), CHECKRIDE(TYPE RATING 근거와 추천) | 프로필 편집, ENTRY INTO SERVICE, CREW BRIEFING, AOG, 퇴역, rating 부여·회수 |
+| NETWORK | `#network` | 4단계 운항 개요(읽기 전용): ROUTE(Linear 프로젝트)별 열린 FLIGHT·14일 ARRIVED·도는 AIRCRAFT·착륙 대기·프로젝트 목표, AIRCRAFT별 TARGETS 대 실적, 28일 추세(ARRIVED·착륙 대기·되돌림, 게이트 판정·합의율·CROSSCHECK 일치율) | — |
 | METRICS | `#metrics` | FLIGHT RECORDER로 본 운용 지표와 추이 | — |
 | DISPATCH | `#dispatch` | 배정 계획과 제안(CROSSCHECK 칩), HELD, IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검과 CROSSCHECK 일치 | 판정, CROSSCHECK에 동의, HOLD 풀기, 모드 전환 |
 | SCHEDULE | `#schedule` | OCC 초안(CLASSIFY·PRIORITIZE·NEW, CROSSCHECK 칩), S2 점검과 CROSSCHECK 일치, 후보 수 | 판정, CROSSCHECK에 동의 |
 | DOCS | `#docs` | 이 안내 | — |
+
+## NETWORK
+
+ROUTE·AIRCRAFT·추세를 한 화면에서 보는 읽기 전용 개요다. 아무것도 바꾸지 않고, 배정 점수에도 쓰지 않는다. 숫자를 읽는 법:
+
+- **ROUTE 표**: Linear 프로젝트마다 한 줄. 열린 FLIGHT는 Todo(FILED)·In Progress(ENROUTE)·In Review(APPROACH, Ready to Merge 포함)로 나눠 센다. Backlog·끝난 것·상위 이슈는 세지 않는다. ARRIVED 14일은 그 프로젝트 FLIGHT의 LOGBOOK 기록이고, 착륙 대기는 그 기록의 중앙값이다. 목표(목표일·진척·상태)는 Linear 프로젝트에서 10분마다 읽고, 못 읽으면 비어 있다.
+- **AIRCRAFT 표**: FLEET 카드와 같은 숫자다(이번 주 ARRIVED 대 `flightsPerWeek`, 14일 정시율 대 `onTime`, 착륙 대기, 되돌림, LOS). 퇴역 AIRCRAFT는 빠진다.
+- **추세**: 최근 28일. 날마다 ARRIVED 수, 착륙 대기 중앙값, 되돌림. 게이트 줄은 날마다 DISPATCH·SCHEDULE 그림자 판정 수와 그날까지의 누적 합의율(마지막 날이 DISPATCH·SCHEDULE 탭의 게이트 숫자와 같다), 둘을 합친 CROSSCHECK 일치율.
+- Linear·GitHub·LOGBOOK 중 못 읽은 것이 있으면 그 표시가 뜬다. 그 출처에서 온 숫자는 비거나 0일 수 있다.
+
+TARGETS·ROUTE를 바꾸는 것은 지금처럼 FLEET 탭에서 SUPERVISOR가 한다. OCC가 변경 초안을 내는 흐름은 설계만 있다(`docs/fleet.md` 7.4).
 
 ## STRIPS의 LANDING SEQUENCE
 

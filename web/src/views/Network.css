@@ -1,0 +1,206 @@
+/* NETWORK: 읽기 전용 운항 개요. 표·차트는 Metrics.css를 그대로 쓰고 여기엔 차이만 둔다.
+   색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다). */
+.network .nw-sub {
+  margin-top: var(--space-4);
+}
+.nw-empty {
+  margin-bottom: var(--space-2);
+}
+
+/* 스크린 리더에만 보이는 글자 */
+.nw-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 출처 알림: 글자로 말한다(색은 보조) */
+.nw-sources {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--amber);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.nw-sources li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.nw-source-code {
+  flex: none;
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--amber);
+}
+
+/* 넓은 표는 이 상자 안에서만 가로로 넘긴다 */
+/* position: 안쪽의 화면 밖 글자(.nw-sr)가 상자를 벗어나 쪽 전체를 넓히지 않게 */
+.nw-scroll {
+  position: relative;
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius);
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.nw-scroll:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+/* 행 머리가 붙으려면 표 자체가 넘침을 자르지 않아야 한다(.mx-table의 overflow: hidden이 sticky를 가둔다).
+   모서리는 .nw-scroll이 둥글게 자른다. collapse 대신 separate로 칸 테두리를 칸에 붙인다. */
+.nw-table {
+  overflow: visible;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.nw-table td,
+.nw-table th {
+  white-space: nowrap;
+}
+/* 머리 줄의 한글 풀이: .label em처럼 자간 없이 */
+.nw-table thead em {
+  font: 500 var(--text-xs) var(--sans);
+  font-style: normal;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+/* 행 머리(ROUTE·AIRCRAFT·날짜): 가로로 넘겨도 왼쪽에 붙어 있다 */
+.nw-table tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  font: 600 var(--text-sm) var(--sans);
+  letter-spacing: 0;
+  color: var(--text);
+  /* 반투명 패널 테마(night)에서도 밑으로 지나가는 칸이 비치지 않게 불투명 바탕 위에 겹친다 */
+  background: linear-gradient(var(--panel), var(--panel)), var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.nw-table tr:last-child th {
+  border-bottom: 0;
+}
+.nw-table thead th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: linear-gradient(var(--panel-2), var(--panel-2)), var(--bg);
+}
+.nw-table tbody th.mono {
+  font: 600 var(--text-sm) var(--mono);
+}
+.nw-reg {
+  font: 700 var(--text-sm) var(--mono);
+  letter-spacing: 0.06em;
+}
+.nw-cs {
+  margin-left: var(--space-2);
+  font: var(--text-xs) var(--mono);
+  color: var(--muted);
+}
+.nw-status {
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.nw-status em {
+  font: 500 var(--text-xs) var(--sans);
+  font-style: normal;
+  letter-spacing: 0;
+}
+.nw-status .dot {
+  display: inline-block;
+  margin-right: var(--space-1-5);
+  vertical-align: middle;
+}
+
+/* 목표 미달: ▼ + 글자 + 호박색 */
+.nw-short {
+  color: var(--amber);
+  font-weight: 700;
+}
+
+/* 프로젝트 목표: 기한 · 진척 막대 · 상태 */
+.nw-goal {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.nw-goal-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.nw-goal-track {
+  position: relative;
+  width: 48px;
+  height: 4px;
+  background: var(--panel-3);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.nw-goal-track span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--cyan);
+}
+.nw-goal-state {
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--faint);
+}
+
+/* 추이: 세로축 값이 "100%"·"3h20m"처럼 길어 왼쪽 여백을 넓힌다 */
+.nw-trend .mx-plot {
+  margin-left: var(--space-8);
+}
+.nw-trend .mx-ymax {
+  left: calc(-1 * var(--space-8));
+  width: 28px;
+}
+.nw-trend .mx-xaxis {
+  margin-left: var(--space-8);
+}
+.nw-trend-empty {
+  margin: var(--space-6) 0;
+  text-align: center;
+}
+/* 앞뒤가 비어 선으로 이어지지 않는 날 */
+.nw-pt {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  border-radius: 50%;
+  background: var(--cyan);
+  pointer-events: none;
+}
+
+/* 일별 표(차트의 글 대안) */
+.nw-daily {
+  margin-top: var(--space-2);
+}
+.nw-daily summary {
+  padding: var(--space-1) 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.nw-daily summary:hover {
+  color: var(--text);
+}
+.nw-daily[open] summary {
+  margin-bottom: var(--space-2);
+}

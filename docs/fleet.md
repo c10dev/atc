@@ -174,7 +174,7 @@ Per AIRCRAFT, set by the SUPERVISOR in the FLEET tab. They are shown, not scored
 | Reverted work | LOGBOOK entries of the last 14 days marked `reverted` (a `Revert "…"` PR was merged). Reopened FLIGHTs are not counted yet |
 | Conflicts | LOS on the FLIGHT's STANDs while it was flown, summed over LOGBOOK entries of the last 14 days |
 
-Stage 4 (network planning) puts these next to the project goals. OCC may draft target changes; the SUPERVISOR decides.
+Stage 4 (network planning) puts these next to the project goals (section 7.3). OCC may draft target changes (section 7.4, design only); the SUPERVISOR decides.
 
 ### 7.1 LOGBOOK
 
@@ -229,6 +229,55 @@ Kept in `~/.local/state/atc/logbook.jsonl`, append-only like the other records. 
 | Recent | The last 5 entries: team block time (or `—`), `+` landing wait, ON TIME / DELAYED |
 
 **Expectation.** A FLIGHT whose WAKE comes from a label uses the section 4.2 block time, read as an upper bound: `L` 60 min, `M` 240 min ("a few hours" taken as 4 hours), `H` 2880 min (2 days). `J`, an unlabeled WAKE and AD HOC work have no fixed expectation; they are compared with the median `blockMin` of other LOGBOOK entries of the same FLIGHT TYPE and WAKE (AD HOC is its own group), once there are at least 3. Only entries with a known AIRCRAFT and a known `blockMin` feed the median. Otherwise the entry is not counted in the on-time rate. When a category reaches about 20 entries its median may replace the fixed number (section 4.2); that switch is not built yet.
+
+### 7.3 NETWORK (stage 4, read-only)
+
+Stage 4 puts TARGETS next to the project goals in one read-only view: `GET /api/network` (`server/network.ts`), shown in the NETWORK tab. It writes nothing and changes no score or assignment. Every number is a pure function over the snapshot, the LOGBOOK, the FLEET registry, the DISPATCH and SCHEDULE logs and one Linear project query.
+
+| Part | Rule |
+|---|---|
+| ROUTE rows | One per Linear project that has open FLIGHTs, ARRIVED FLIGHTs in the last 14 days, an AIRCRAFT with it in `routes`, or is a team project whose status type is not `completed` / `canceled`. Busiest first (open + ARRIVED), then by name |
+| Open FLIGHTs | By the UI's phase rule: `todo` = state type `unstarted`, `inReview` = state named `In Review` or `Ready to Merge`, `inProgress` = any other `started`. Backlog, triage, finished and parent issues are not counted. Only tickets in atc's snapshot (updated in the last 45 days) |
+| `arrived14` | LOGBOOK entries of the last 14 days whose FLIGHT's ticket is in that project. Entries whose ticket the snapshot does not know, and AD HOC entries, belong to no ROUTE |
+| `aircraft` | Registrations whose FLEET `routes` include the project (retired AIRCRAFT left out) |
+| `landingWaitMedianMin` | Median `landingWaitMin` of the same 14-day entries |
+| `goal` | `{targetDate, progress, state}` of the Linear project from `server/sources/linear-projects.ts`: one read-only query (`projects` filtered by the team key; `name targetDate progress status { name type }`), cached 10 minutes. `state` is `status.type` (`backlog`, `planned`, `started`, `paused`, `completed`, `canceled`), else `status.name`; the deprecated `Project.state` is not read. `null` when there is no key, the query failed, or the project is not in the list |
+| AIRCRAFT rows | `targets` (`flightsPerWeek`, `onTime`) and `actuals` copied from `fleetView` (section 7.2): `weekDone` = `week`, `onTimeRate` = `onTime.rate`, `landingWaitMedianMin`, `reverts` = `reverted`, `los`. The same numbers as the FLEET cards. Retired AIRCRAFT are left out |
+| `trend.days` | 28 days (server local dates, oldest first, today last): ARRIVED that day, the median landing wait of those entries, and reverts whose Revert PR merged that day |
+| `trend.gates` | 28 days: DISPATCH and SCHEDULE shadow decisions (`agreed` / `disagreed`) made that day, the cumulative agreement up to the end of that day (the last day equals each gate's `agreement`), and the cumulative CROSSCHECK match rate over both logs (`crosscheckRateOf`). Approval-stage approve / reject is not counted, as in the gates |
+| `sources` | Whether Linear (fetched), GitHub (fetched) and the LOGBOOK file were available |
+
+### 7.4 OCC target-change drafts (design only)
+
+Not built. ROUTES and TARGETS stay the SUPERVISOR's (section 3); this is how OCC could propose changes to them the way it proposes Linear changes, without ever applying them.
+
+**Operations.** Two new SCHEDULE kinds, each about one AIRCRAFT, with `flight: null` and an `aircraft` field:
+
+| Kind | Payload | Example |
+|---|---|---|
+| `TARGET` | `{registration, flightsPerWeek?: number \| null, onTime?: number \| null}`; `null` clears a target | TEAM_I `flightsPerWeek` 3 → 5 |
+| `ROUTE` | `{registration, add?: string[], remove?: string[]}` (Linear project names) | TEAM_C remove `Home & Discovery` (completed) |
+
+**Evidence.** OCC writes the one-line reason; atc attaches the numbers itself when the draft is made, from the same functions as `GET /api/network`, so the SUPERVISOR sees what OCC saw and OCC cannot misquote it:
+
+- `TARGET`: the AIRCRAFT row (targets and actuals), ARRIVED per week for the last 4 weeks from the LOGBOOK, and the ROUTE rows of its routes (open FLIGHTs waiting).
+- `ROUTE`: the ROUTE rows of the projects added or removed (open FLIGHTs, `arrived14`, AIRCRAFT already on it, `goal.state`), and where the AIRCRAFT's last 14 days of ARRIVED FLIGHTs actually went, by project.
+
+**Limits.**
+
+- Same validation as `PATCH /api/fleet` (`applyPatch`): `flightsPerWeek` 0–100, `onTime` 0–1. `ROUTE` names must be team projects that are not `completed` or `canceled`, except in `remove`.
+- A step limit per draft: `flightsPerWeek` by at most 2 or 50%, `onTime` by at most 0.1. Bigger changes are the SUPERVISOR's to make by hand.
+- `TARGET` needs at least 3 ARRIVED entries in the 14-day window as evidence; no drafts for retired or AOG AIRCRAFT; at most one open draft per AIRCRAFT and kind (a newer one supersedes); at most one applied `TARGET` per AIRCRAFT per 14 days (one actuals window).
+- They count toward the SCHEDULE open-draft limit (5) and expire after 3 days like the others.
+- Never automatic: not an S3 candidate, whatever the agreement rate.
+
+**Verdict and approval.**
+
+- **S1 (shadow).** The draft shows in the SCHEDULE tab with its evidence; the SUPERVISOR marks would-approve / would-reject with a reason, and CROSSCHECK may mark it first. Nothing is written. These verdicts are counted apart (per kind) so they neither help nor hurt the Linear-write gate (20 decisions, 80%).
+- **S2 (approval).** There is no Linear call and no linear-guard step: approving is the write. On approve atc applies the payload through `applyPatch` and the atomic `fleet.json` save (the path `PATCH /api/fleet/:registration` uses), records it in the FLIGHT RECORDER, and marks the operation `applied` at once. OCC never writes `fleet.json`.
+- **Superseded** when `fleet.json` already has the proposed value (set by hand), or the AIRCRAFT is retired.
+
+**Where it plugs in.** `SCHEDULE_KINDS` gains `TARGET` and `ROUTE`; `parsePayload` validates them; `changesOf` compares with the FLEET profile instead of a ticket; `syncLines` checks `loadFleet()`; `callsOf` returns no calls, and in S2 `approve` applies directly instead of waiting for `release`. OCC gets `atcctl schedule draft TARGET|ROUTE` and reads `GET /api/network` before drafting.
 
 ## 8. FLEET tab
 
@@ -339,7 +388,7 @@ When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT throug
 3. ✅ Classification labels read by the planner: TYPE RATING and FLIGHT TYPE hard rules, WAKE slots, ROUTE score (the Risk group counts as SEC; label groups are read as `group:name`)
 4. ◐ The DISPATCH card shows the classification. Still to do: FIDS, and DISPATCH notes that suggest a classification when labels are missing
 5. OCC S1 `CLASSIFY` drafts (with the SCHEDULE work in occ.md)
-6. ◐ TARGETS actuals from the LOGBOOK on the FLEET cards (sections 7.1, 7.2). Still to do: on-time baselines from category medians, TARGETS in METRICS / stage 4
+6. ◐ TARGETS actuals from the LOGBOOK on the FLEET cards (sections 7.1, 7.2), and next to the project goals in NETWORK (section 7.3). Still to do: on-time baselines from category medians, OCC target-change drafts (section 7.4, designed only)
 7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE (section 8.2): TYPE RATING evidence from the LOGBOOK, GRANT and REVIEW recommendations, grant and revoke by the SUPERVISOR
 

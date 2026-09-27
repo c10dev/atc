@@ -13,6 +13,7 @@ import { Docs } from "./views/Docs.tsx";
 import { Fleet } from "./views/Fleet.tsx";
 import { MapView } from "./views/Map.tsx";
 import { Metrics } from "./views/Metrics.tsx";
+import { Network } from "./views/Network.tsx";
 import { Schedule } from "./views/Schedule.tsx";
 import { Teams } from "./views/Teams.tsx";
 import { Tickets } from "./views/Tickets.tsx";
@@ -24,6 +25,7 @@ const TABS = [
   { id: "airports", code: "AIRPORTS" },
   { id: "fleet", code: "FLEET" },
   { id: "metrics", code: "METRICS" },
+  { id: "network", code: "NETWORK" },
   { id: "dispatch", code: "DISPATCH" },
   { id: "schedule", code: "SCHEDULE" },
   { id: "docs", code: "DOCS" },
@@ -196,6 +198,8 @@ export function App({ build }: { build: string }) {
           <Fleet refreshKey={snapshot.at.slice(0, 16)} />
         ) : tab === "metrics" ? (
           <Metrics refreshKey={snapshot.at.slice(0, 16)} />
+        ) : tab === "network" ? (
+          <Network refreshKey={snapshot.at.slice(0, 16)} />
         ) : tab === "dispatch" ? (
           <Dispatch refreshKey={snapshot.at.slice(0, 16)} now={now} />
         ) : tab === "schedule" ? (
