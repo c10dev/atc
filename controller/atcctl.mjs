@@ -43,6 +43,8 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
                                             제안에 검토 메모를 단다(CAUTION 표시 선택).
                                             --hold <FLIGHT>는 선행 FLIGHT를 지정해 그 제안을 HOLD로 돌린다.
                                             값 없는 --hold는 선행 FLIGHT 없는 HOLD(사람 결정 대기 등, 사유는 메모)
+  node atcctl.mjs dispatch briefing <D-0003> --what '<무슨 일>' --why '<왜 이 AIRCRAFT>' --risk '<걸리는 점>'
+                                            제안 카드 맨 위의 쉬운 세 줄(BRIEFING). 열린 제안·HELD에만, 다시 쓰면 덮어쓴다
   node atcctl.mjs dispatch release <D-0003> (2b) 승인된 제안을 sent로 바꾸고 SEND TO와 FLIGHT PLAN 출력
   node atcctl.mjs dispatch readback <D-0003>
                                             (2b) CAPTAIN이 READBACK함
@@ -185,6 +187,24 @@ export function parseArrived(args) {
   return { id, body: { note } };
 }
 
+// dispatch briefing <D-0003> --what … --why … --risk … → { id, body: { what, why, risk } }. 길이 검사는 서버가 한다
+const BRIEFING_OPTS = ["--what", "--why", "--risk"];
+export function parseBriefingArgs(args) {
+  const [id, ...rest] = args;
+  if (!id || id.startsWith("--")) throw new Error("제안 ID가 필요함 (예: D-0003)");
+  const body = {};
+  for (let i = 0; i < rest.length; i += 2) {
+    const [opt, val] = [rest[i], rest[i + 1]];
+    if (!BRIEFING_OPTS.includes(opt)) throw new Error(`알 수 없는 인자 ${opt} (가능: ${BRIEFING_OPTS.join(" ")})`);
+    if (val === undefined || val.startsWith("--") || !val.trim()) throw new Error(`${opt} 뒤에 한 줄이 필요함`);
+    if (body[opt.slice(2)] !== undefined) throw new Error(`${opt}를 두 번 줬음`);
+    body[opt.slice(2)] = val.trim();
+  }
+  const missing = BRIEFING_OPTS.filter((o) => body[o.slice(2)] === undefined);
+  if (missing.length) throw new Error(`${missing.join(" ")}가 필요함 — 세 줄을 모두 쓴다`);
+  return { id, body };
+}
+
 // crew-change <brief|send|readback> [<CC-0001>] → { action, id }. 승인(approve)은 SUPERVISOR 몫이라 없다
 export const CREW_CHANGE_CMDS = ["brief", "send", "readback"];
 export function parseCrewChange(args) {
@@ -294,6 +314,10 @@ if (isMain) {
       if (hold) await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/hold`, { blockedBy });
       const holdText = !hold ? "" : blockedBy.length ? ` · HOLD (선행 ${blockedBy.join(", ")})` : " · HOLD (선행 FLIGHT 없음, 사유는 메모)";
       console.log(`${r.proposal.id} 메모${r.proposal.caution ? " · CAUTION" : ""}${holdText}`);
+    } else if (cmd === "dispatch" && args[0] === "briefing") {
+      const { id, body } = parseBriefingArgs(args.slice(1));
+      const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(id)}/briefing`, body);
+      console.log(`${r.proposal.id} BRIEFING`);
     } else if (cmd === "dispatch" && args[0] === "release" && args[1]) {
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/release`);
       console.log(`SEND TO: ${r.sendTo}\n---\n${r.message}`);

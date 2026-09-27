@@ -250,6 +250,10 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 - ARRIVED했고 Linear에서도 닫힌 FLIGHT는 하루 동안 보이고 빠진다. STAND 없는 FLIGHT도 다른 것처럼 ARRIVED 뒤 하루 동안 보인다.
 - `following-state.json`은 OCC가 보고한 키(`FLIGHT|code`)를 가진다. 풀린 문제는 잊으므로, 다시 생기면 다시 보고한다.
 
+### 8.2 tick의 BRIEFING (ATC-4)
+
+`/tick` 3단계에서 OCC는 검토 메모와 별도로, BRIEFING이 없는 열린·HELD 제안마다 `atcctl dispatch briefing <D-xxxx> --what '…' --why '…' --risk '…'`로 쉬운 한국어 세 문장(무슨 일, 왜 이 AIRCRAFT, 걸리는 점)을 쓴다. HOLD를 걸거나 풀 때, 또는 바뀐 본문을 다시 읽었을 때는 다시 쓴다. 숫자(PRIORITY, 대기 일수, ROUTE·WAYPOINT, 선행, 최근 FLIGHT)는 서버가 `briefs.<ID>.facts`로 주니, BRIEFING은 그것을 되풀이하지 않고 뜻을 풀어 쓴다. 카드는 docs/dispatch.ko.md 5.5를 본다.
+
 ## 9. ATC가 맡는 것
 
 - **CLEARED TO LAND**(구현): LANDING SEQUENCE 항목은 아래를 모두 만족할 때만 준비됨으로 표시된다.

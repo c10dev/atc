@@ -16,6 +16,12 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- DISPATCH 제안 카드에 BRIEFING(ATC-4, [docs/dispatch.ko.md](docs/dispatch.ko.md) 5.5). SUPERVISOR가 티켓 내용을 기억하지 못해도 카드만 보고 판정할 수 있다.
+  - **쉬운 세 줄**: 열린 카드와 HELD 카드 맨 위에 무슨 일, 왜 이 AIRCRAFT, 걸리는 점이 보인다. OCC가 tick에서 `atcctl dispatch briefing <D-xxxx> --what … --why … --risk …`(`POST /api/dispatch/proposals/:id/briefing`)로 쓰고, 추가만 하는 `brief` op로 저장한다. 다시 쓰면 덮어쓴다. 쓰는 법은 `occ/CLAUDE.md`와 `/tick`(한국어·영어)에 있다.
+  - **사실 줄**: 모델 없이 서버가 계산한다(`server/briefing.ts`). PRIORITY, 대기 일수, ROUTE MAP의 ROUTE와 WAYPOINT, 선행 FLIGHT와 상태, 그 AIRCRAFT가 같은 ROUTE에서 최근 맡은 FLIGHT, HELD 카드에서는 CROSSCHECK 판정과 사유. `GET /api/dispatch/brief`에 `briefs`가 더해진다.
+  - **대신 보이는 것**: BRIEFING이 없으면 제목과 본문 첫 문장에 "BRIEFING 대기"가 붙는다.
+  - **접어 둔 자세히**: 점수 요소, DISPATCH 메모, 본문 전체(열 때 읽는다). CAUTION은 카드 머리에 그대로 보인다.
+  - OCC Bash guard는 바꾸지 않았다. `dispatch briefing`은 atc CLI 명령이라 통과하고, CROSSCHECK 허용 목록에는 없어 막힌다(테스트 추가).
 - NETWORK 탭에 ROUTE MAP(ATC-2, [docs/routes.ko.md](docs/routes.ko.md)): ROUTE(Linear 프로젝트)마다 WAYPOINT(프로젝트 마일스톤)를 잇는 경로를 그린다.
   - **데이터**: `server/sources/linear-projects.ts`가 프로젝트 마일스톤도 읽는다(루트 `projectMilestones`, 쪽 단위, 마일스톤마다 이슈 50개와 그 상태·완료 시각). FLIGHT 보드 쿼리(`linear.ts`)는 그대로다.
   - **`GET /api/routes`**: ROUTE마다 단계별 열린 FLIGHT, 그 FLIGHT를 모는 AIRCRAFT, 28일 완료 속도, WAYPOINT 목록. WAYPOINT에는 `passed`(Linear `done`)·`active`(순서상 첫 미완료)·`planned` 상태, 진행률, 목표일, 완료 기준("Exit criteria" 아래 번호 목록), FLIGHT(완료·진행·막힘·계획과 AIRCRAFT), `late`, `eta`가 들어간다. 마일스톤이 없는 ROUTE도 `waypoints: []`로 남고, 끝난(completed·canceled) ROUTE는 뺀다.

@@ -283,9 +283,10 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 
 | API | 하는 일 |
 |---|---|
-| `GET /api/dispatch/brief` | 모드, 지금 계획, 열린·HELD·진행 중·늦은·최근 제안(판정된 것은 `via`·`reasonCodes`), 2b·3단계 점검(`gate.crosscheck.oneClick`, `gate.reasonCounts`, `gate3.standFree`), 2b 켜기 점검표 `readiness2b: {items: [{id, label, status, detail, link?, suggestion?}]}`, FLIGHT 요약, 거절 칩 `reasonCodes: [{code, label}]` |
+| `GET /api/dispatch/brief` | 모드, 지금 계획, 열린·HELD·진행 중·늦은·최근 제안(판정된 것은 `via`·`reasonCodes`), 2b·3단계 점검(`gate.crosscheck.oneClick`, `gate.reasonCounts`, `gate3.standFree`), 2b 켜기 점검표 `readiness2b: {items: [{id, label, status, detail, link?, suggestion?}]}`, FLIGHT 요약, 거절 칩 `reasonCodes: [{code, label}]`. `briefs`(열린·HELD 카드마다 서버가 계산한 `facts`, BRIEFING이 없으면 본문 첫 문장 `lead`) |
 | `POST /api/dispatch/proposals/:id/verdict` | `{verdict: agree\|disagree, reason?, via?, reasonCodes?}` 그림자 판정(shadow 모드에서만). `via`는 `crosscheck`나 `manual`(그 밖은 `manual`), `reasonCodes`는 `disagree`에만(모르는 code는 400) |
 | `POST /api/dispatch/proposals/:id/note` | `{text, caution?}` DISPATCH 검토 메모 |
+| `POST /api/dispatch/proposals/:id/briefing` | `{what, why, risk}` BRIEFING: OCC가 쓰는 카드 맨 위 쉬운 세 줄(`proposed`에만, 다시 쓰면 덮어씀) |
 | `POST /api/dispatch/proposals/:id/hold` | `{blockedBy: ["VOC-180"]}` DISPATCH 선행 HOLD, 제안은 HELD로 간다. `[]`는 선행 없는 HOLD(메모 필요) |
 | `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR가 HOLD를 풂. 제안은 SUPERSEDED, FLIGHT는 다시 후보 |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR 결정(approval 모드에서만), 둘 다 `{via?}`, `reject`는 `{reason?, reasonCodes?}`도 |
@@ -410,6 +411,7 @@ atc/
 │   ├── landing.ts          # CLEARED TO LAND 조건, LANDING SEQUENCE 순서 (landing.test.ts)
 │   ├── metrics.ts          # 운용 지표·2단계 점검 (metrics.test.ts)
 │   ├── proposals.ts        # DISPATCH 제안 기록·API (proposals.test.ts)
+│   ├── briefing.ts         # DISPATCH 카드 BRIEFING과 사실 줄 (briefing.test.ts)
 │   ├── atfm.ts             # ATFM: 스위치, 출발 중지, 머지 슬롯, 자동 배정 대상 판정 (atfm.test.ts)
 │   ├── atfm-run.ts         # ATFM 기록과 /api/atfm
 │   ├── reasons.ts          # DISPATCH 거절 사유 칩 (reasons.test.ts)

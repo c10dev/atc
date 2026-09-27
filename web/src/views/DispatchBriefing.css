@@ -1,0 +1,105 @@
+/* BRIEFING(ATC-4): 카드 맨 위 세 줄, 사실 줄, 접어 둔 자세히. 색·글꼴은 styles.css의 :root 토큰만 쓴다. */
+.dp-brief {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-0-5) var(--space-2);
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--panel-2);
+  border-left: 2px solid var(--cyan);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+}
+.dp-brief dt {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.7;
+  white-space: nowrap;
+}
+.dp-brief dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.dp-brief.is-waiting {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border-left-color: var(--faint);
+}
+.dp-brief.is-waiting p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.dp-brief.is-waiting b {
+  color: var(--text);
+  font-weight: 600;
+}
+.dp-brief-tag {
+  align-self: flex-start;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--faint);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+
+/* 사실 줄: 서버가 계산한 것만 */
+.dp-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-0-5) var(--space-3);
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.dp-fact {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dp-fact-ok {
+  color: var(--radar);
+}
+.dp-fact-warn {
+  color: var(--amber);
+}
+
+/* 접어 둔 자세히 */
+.dp-more {
+  font-size: var(--text-xs);
+}
+.dp-more summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.dp-more summary:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+.dp-more[open] summary {
+  margin-bottom: var(--space-2);
+}
+.dp-more > * + * {
+  margin-top: var(--space-2);
+}
+.dp-more-h {
+  margin: var(--space-2) 0 var(--space-1);
+  color: var(--muted);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.12em;
+}
+.dp-body {
+  max-height: 320px;
+  overflow: auto;
+  padding: var(--space-2);
+  background: var(--panel-2);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

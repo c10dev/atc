@@ -261,25 +261,27 @@ export function buildRoutes(i: RoutesInput): Omit<Routes, "at" | "ok" | "error">
 
 // ---- 입출력 ----
 
+async function routesInput(s: Snapshot, entries: LogEntry[], now: number): Promise<RoutesInput & { lp: Awaited<ReturnType<typeof loadLinearProjects>> }> {
+  const lp = await loadLinearProjects();
+  const aircraftOf = new Map<string, string>();
+  for (const t of targetsOf({ proposals: allProposals(), tickets: s.tickets })) if (t.aircraft) aircraftOf.set(t.flight, t.aircraft);
+  return { lp, now, goals: lp.ok ? lp.projects : null, milestones: lp.milestones, tickets: s.tickets, entries, aircraftOf };
+}
+
+// DISPATCH BRIEFING의 사실 줄(ROUTE·WAYPOINT)이 쓴다
+export async function loadRoutes(s: Snapshot, entries: LogEntry[], now: number): Promise<Route[]> {
+  return buildRoutes(await routesInput(s, entries, now)).routes;
+}
+
 export function mountRoutes(app: Hono, getSnapshot: () => Promise<Snapshot>) {
   app.get("/api/routes", async (c) => {
-    const s = await getSnapshot();
-    const lp = await loadLinearProjects();
-    const aircraftOf = new Map<string, string>();
-    for (const t of targetsOf({ proposals: allProposals(), tickets: s.tickets })) if (t.aircraft) aircraftOf.set(t.flight, t.aircraft);
     const now = Date.now();
+    const input = await routesInput(await getSnapshot(), loadLogbook(), now);
     const body: Routes = {
       at: new Date(now).toISOString(),
-      ok: lp.ok,
-      error: lp.error ?? lp.milestonesError,
-      ...buildRoutes({
-        now,
-        goals: lp.ok ? lp.projects : null,
-        milestones: lp.milestones,
-        tickets: s.tickets,
-        entries: loadLogbook(),
-        aircraftOf,
-      }),
+      ok: input.lp.ok,
+      error: input.lp.error ?? input.lp.milestonesError,
+      ...buildRoutes(input),
     };
     return c.json(body);
   });
