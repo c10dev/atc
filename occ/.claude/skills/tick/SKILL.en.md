@@ -7,7 +7,7 @@
 **Description:** One OCC pass — check whether the manual changed, review assignment proposals that have no note yet against the FLIGHT body and add notes and CAUTION; in approval mode, send approved proposals as FLIGHT PLANs and record READBACKs; write SCHEDULE drafts (CLASSIFY, PRIORITIZE, CLOSE, shadow operation) for FLIGHTs with no classification or priority, or whose PR was merged while the issue is still open. Run it with `/loop 10m /tick`.
 
 0. `node ../controller/atcctl.mjs manual check`. On `CHANGED`, reread `CLAUDE.md` and this file, run `node ../controller/atcctl.mjs manual ack`, then continue under the reread manual.
-1. First handle any replies from CAPTAINs since the last pass. Check PR, review and done reports with `gh` as in "Flight following" in CLAUDE.md. For FLIGHT PLAN replies: "READBACK D-xxxx", run `node ../controller/atcctl.mjs dispatch readback D-xxxx`; for a decline with a reason, `dispatch decline D-xxxx -- <reason>`. A RECALL reply "READBACK D-xxxx RECALL" is `dispatch recalled D-xxxx`.
+1. First handle any replies from CAPTAINs since the last pass. Check PR, review and done reports with `gh` as in "Flight following" in CLAUDE.md. For FLIGHT PLAN replies: "READBACK D-xxxx", run `node ../controller/atcctl.mjs dispatch readback D-xxxx`; for a decline with a reason, `dispatch decline D-xxxx -- <reason>`. A RECALL reply "READBACK D-xxxx RECALL" is `dispatch recalled D-xxxx`. A report that a STAND-free FLIGHT (SURVEY, CHECK) is done is `dispatch arrived D-xxxx -- '<result link or one line>'`.
 2. Run `node ../controller/atcctl.mjs dispatch brief` and check `mode`.
 3. For each proposal in `open` without a `note`:
    - Read the body and comments with `node ../controller/atcctl.mjs dispatch flight <FLIGHT key>`.

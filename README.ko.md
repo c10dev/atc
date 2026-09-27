@@ -275,15 +275,16 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 
 | API | 하는 일 |
 |---|---|
-| `GET /api/dispatch/brief` | 모드, 지금 계획, 열린·HELD·진행 중·늦은·최근 제안(판정된 것은 `via`·`reasonCodes`), 2b·3단계 점검(`gate.crosscheck.oneClick`, `gate.reasonCounts`), FLIGHT 요약, 거절 칩 `reasonCodes: [{code, label}]` |
+| `GET /api/dispatch/brief` | 모드, 지금 계획, 열린·HELD·진행 중·늦은·최근 제안(판정된 것은 `via`·`reasonCodes`), 2b·3단계 점검(`gate.crosscheck.oneClick`, `gate.reasonCounts`, `gate3.standFree`), 2b 켜기 점검표 `readiness2b: {items: [{id, label, status, detail, link?, suggestion?}]}`, FLIGHT 요약, 거절 칩 `reasonCodes: [{code, label}]` |
 | `POST /api/dispatch/proposals/:id/verdict` | `{verdict: agree\|disagree, reason?, via?, reasonCodes?}` 그림자 판정(shadow 모드에서만). `via`는 `crosscheck`나 `manual`(그 밖은 `manual`), `reasonCodes`는 `disagree`에만(모르는 code는 400) |
 | `POST /api/dispatch/proposals/:id/note` | `{text, caution?}` DISPATCH 검토 메모 |
 | `POST /api/dispatch/proposals/:id/hold` | `{blockedBy: ["VOC-180"]}` DISPATCH 선행 HOLD, 제안은 HELD로 간다. `[]`는 선행 없는 HOLD(메모 필요) |
 | `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR가 HOLD를 풂. 제안은 SUPERSEDED, FLIGHT는 다시 후보 |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR 결정(approval 모드에서만), 둘 다 `{via?}`, `reject`는 `{reason?, reasonCodes?}`도 |
 | `POST /api/dispatch/proposals/:id/release` | 승인 → SENT, `sendTo`와 FLIGHT PLAN 반환(이미 보냈으면 같은 문구) |
-| `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, 또는 `{reason}`과 함께 거절 |
-| `POST /api/dispatch/proposals/:id/recall` | SUPERVISOR: `{reason}`, SENT·ACCEPTED → RECALLING(DEPARTED 뒤에는 안 됨, 출발 중지 중에도 됨) |
+| `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, 또는 `{reason}`과 함께 거절. STAND 없는 FLIGHT(SURVEY·CHECK)는 READBACK에 DEPARTED(`departedStand: null`, `departedVia: "readback"`) |
+| `POST /api/dispatch/proposals/:id/arrived` | OCC: `{note}`(결과 링크나 한 줄, 500자). STAND 없이 DEPARTED한 FLIGHT를 CAPTAIN이 마쳤다는 보고 → ARRIVED(`arrivedNote`, `arrivedUrl`) |
+| `POST /api/dispatch/proposals/:id/recall` | SUPERVISOR: `{reason}`, SENT·ACCEPTED·STAND 없는 DEPARTED → RECALLING(STAND가 있는 DEPARTED 뒤에는 안 됨, 출발 중지 중에도 됨) |
 | `POST /api/dispatch/proposals/:id/{recall-send,recalled}` | OCC: RECALL 문구와 `sendTo`(approval 모드, 상태 그대로) / CAPTAIN의 `READBACK D-xxxx RECALL` → RECALLED |
 | `GET /api/dispatch/proposals/:id` | 제안 하나와 모드(send-guard가 씀) |
 | `POST /api/dispatch/mode` | `{mode: shadow\|approval}` |

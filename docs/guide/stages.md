@@ -9,12 +9,12 @@
 | 1 | TOWER: 충돌·HANDOFF·머지 순서, CLEARANCE와 READBACK | 운용 중 |
 | 1.5 | FLIGHT RECORDER와 METRICS: 운용 데이터 수집 | 운용 중 |
 | 2a | DISPATCH 그림자 운용: 배정 제안과 판정 | 운용 중 |
-| 2b | DISPATCH 승인 운용: 승인한 제안을 FLIGHT PLAN으로 보냄 | 만들어 둠, 꺼져 있음 |
+| 2b | DISPATCH 승인 운용: 승인한 제안을 FLIGHT PLAN으로 보냄. STAND 없는 FLIGHT는 READBACK에 DEPARTED, CAPTAIN 보고로 ARRIVED | 만들어 둠, 꺼져 있음. 켜기 전 점검표는 DISPATCH 탭 |
 | 3 | ATFM(흐름 관리): 저위험 배정 자동 승인, 머지 슬롯, CI 혼잡 시 출발 중지 | 데이터·그림자 판정 운용 중, "main 깨짐"·"수동" 출발 중지는 스위치로 켤 수 있음(기본 꺼짐), 자동 배정은 아직 없음 |
 | 4 | 네트워크 계획: 목표·지표 운영 화면, 에이전트는 초안까지 | NETWORK 탭(읽기 전용 개요) 운용 중. OCC 목표 변경 초안은 설계만 |
 
 - 2a → 2b: 판정 20건 이상, 합의율 80% 이상.
-- 2b → 3: 2주 이상, READBACK 90% 이상, DISPATCH가 보낸 FLIGHT에서 난 충돌이 거의 없음.
+- 2b → 3: 2주 이상, READBACK 90% 이상, DEPARTED 80% 이상(STAND가 필요한 FLIGHT만), DISPATCH가 보낸 FLIGHT에서 난 충돌이 거의 없음.
 - 3단계 설계(저장소의 `docs/atfm.md`, 영어)는 네 가지를 다룬다. 모두 그림자 운용(계산해서 보여 주기만 함)으로 먼저 잰 뒤 사용자가 켠다.
   - **저위험 배정 자동 승인**: WAKE L·M, SEC 아님, CAUTION 없음, 명시 라벨, TAIL·ROUTE 일치, CROSSCHECK agree일 때만.
   - **S3 자동 처리**: SEC가 아닌 CLASSIFY로, 빈 축에 라벨을 붙이는 것만.
@@ -27,7 +27,7 @@
   - 나머지(CI 실패 몰림, CI 혼잡, LOS 증가)는 그림자다.
   - **ATFM OFF**를 누르면 모두 그림자로 돌아간다.
   - 스위치는 `~/.local/state/atc/atfm.json`에 있다.
-- 다음은 RECALL(자동 배정을 거두는 문구)이고, 그다음이 자동 배정이다.
+- RECALL(보낸 FLIGHT PLAN을 거두는 문구)은 만들어 뒀다. 다음은 자동 배정이다.
 
 ## OCC 단계 (SCHEDULE)
 

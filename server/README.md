@@ -62,7 +62,8 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 | `checkride.ts` | CHECKRIDE: each FLIGHT's required rating from labels or accepted SCHEDULE CLASSIFY drafts (pure `flightRating`), GRANT / REVIEW / BLOCKED / BUILDING / HOLDS per AIRCRAFT and rating (pure `judge`, `checkrideRows`); `GET /api/fleet/checkride`, and `POST /api/fleet/:registration/checkride` for the SUPERVISOR's grant or revoke through `applyPatch`, recorded as a `checkride` line |
 | `network.ts` | NETWORK (stage 4, read-only): per ROUTE open FLIGHTs, 14-day ARRIVED, AIRCRAFT and landing wait (pure `routeRows`, `openPhase`); per AIRCRAFT TARGETS vs `fleetView` actuals (pure `aircraftRows`); 28-day LOGBOOK and gate trends (pure `logbookTrend`, `gateTrend` over the `proposals.ts` / `schedule.ts` folds and `crosscheckRateOf`); `GET /api/network` |
 | `dispatch.ts` | DISPATCH planning: candidates, slots, scores (pure `planDispatch`); settings in `dispatch.json` |
-| `proposals.ts` | DISPATCH proposal log (append-only JSONL), state transitions (shadow verdicts; approve → sent → accepted → departed), reservations, FLIGHT PLAN text, brief, stage 2b and 3 gates |
+| `proposals.ts` | DISPATCH proposal log (append-only JSONL), state transitions (shadow verdicts; approve → sent → accepted → departed; STAND-free: departed at READBACK → arrived on the CAPTAIN's report), reservations, FLIGHT PLAN text, brief, stage 2b and 3 gates, code facts for the 2b checklist (`selfCheck2b`) |
+| `readiness.ts` | The "2b 켜기 점검표" (pure `readiness2bOf`, `vocadoReadbackOf`, `sendGuardOf`); reads `occ/send-guard.mjs` and vocado `CLAUDE.md` read-only (`ATC_VOCADO_CLAUDE_MD`, else `<projectsDir>/vocado_nextjs/CLAUDE.md`) |
 | `schedule.ts` | OCC SCHEDULE draft log (append-only JSONL, S1 shadow): `CLASSIFY` / `PRIORITIZE` drafts and `NEW` (AD HOC FLIGHT from the CHARTER DESK: body sections, project / tail / key checks, `similar` titles from the snapshot, which covers the last 45 days), the 5-open-draft limit, SUPERSEDED / EXPIRED sync, shadow verdicts, candidates, the S2 gate |
 | `crosscheck.ts` | CROSSCHECK marks shared by DISPATCH and SCHEDULE: input checks (agree/disagree, reason ≤ 500 characters), the match rate against human decisions, calibration examples, how a decision was made (`via`, pure `viaOf`) and the one-click count (pure `oneClickOf`) |
 | `reasons.ts` | DISPATCH reject reason chips (`REASON_CODES`), input check, the stored `reason` text (pure `composeReason`), per-chip counts |
@@ -86,14 +87,15 @@ Every `*.test.ts` next to a module is its unit test.
 | `POST /api/clearances/:id/readback` · `/cancel` | Confirm READBACK · cancel |
 | `GET /api/metrics?days=1..30` | Operating metrics |
 | `GET /api/network` | NETWORK overview: routes, AIRCRAFT TARGETS vs actuals, 28-day trends, source availability (read-only) |
-| `GET /api/dispatch/brief` | DISPATCH plan, open and recent proposals (`via`, `reasonCodes`), 2b gate (`crosscheck.oneClick`, `reasonCounts`), FLIGHT summaries, reject chips `reasonCodes: [{code, label}]` |
+| `GET /api/dispatch/brief` | DISPATCH plan, open and recent proposals (`via`, `reasonCodes`), 2b gate (`crosscheck.oneClick`, `reasonCounts`), `gate3.standFree`, the 2b readiness checklist `readiness2b` (`readiness.ts`), FLIGHT summaries, reject chips `reasonCodes: [{code, label}]` |
 | `POST /api/dispatch/proposals/:id/verdict` | SUPERVISOR's shadow verdict `{verdict: "agree" \| "disagree", reason?, via?, reasonCodes?}` (`reasonCodes` with `disagree` only; 400 on an unknown code) |
 | `POST /api/dispatch/proposals/:id/note` | DISPATCH review note `{text, caution?}` |
 | `POST /api/dispatch/proposals/:id/hold` | DISPATCH sets a prerequisite HOLD `{blockedBy: ["VOC-180"]}`; the proposal moves to HELD. `[]` holds with no prerequisite (needs a note) |
 | `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR releases a HOLD (the proposal is superseded) |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR decision in approval mode; both take `{via?}`, `reject` also `{reason?, reasonCodes?}` |
 | `POST /api/dispatch/proposals/:id/release` | Approved → SENT; returns `sendTo` and the FLIGHT PLAN text |
-| `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, or decline with `{reason}` |
+| `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, or decline with `{reason}`. A STAND-free FLIGHT is DEPARTED at the READBACK (`readbackOps`) |
+| `POST /api/dispatch/proposals/:id/arrived` | OCC records the CAPTAIN's report `{note}` for a STAND-free DEPARTED FLIGHT → ARRIVED |
 | `GET /api/dispatch/proposals/:id` | One proposal and the current mode (for send-guard) |
 | `POST /api/dispatch/mode` | Switch `{mode: "shadow" \| "approval"}` (saved in `dispatch.json`) |
 | `GET /api/dispatch/flight/:key` | Ticket body and comments from Linear (read-only) |

@@ -52,6 +52,8 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
                                             (2b) SUPERVISOR가 RECALL을 요청한 제안의 SEND TO와 RECALL 문구 출력(재송신도 같은 문구)
   node atcctl.mjs dispatch recalled <D-0003>
                                             (2b) CAPTAIN이 "READBACK D-0003 RECALL"로 답함
+  node atcctl.mjs dispatch arrived <D-0003> -- <결과 링크나 한 줄>
+                                            (2b) STAND 없는 FLIGHT(SURVEY·CHECK)를 CAPTAIN이 마쳤다고 보고함(ARRIVED)
 
 FLIGHT FOLLOWING (OCC 세션이 맡음. 읽기 전용: 배정된 FLIGHT의 단계와 지연·불일치)
   node atcctl.mjs following                 FLIGHT마다 단계(READBACK·DEPARTED·PR·CLEARED·ARRIVED)와 문제(issues). fresh는 아직 보고 안 한 문제 (JSON)
@@ -162,6 +164,18 @@ export function parseDraft(args) {
   return { ...body, reason };
 }
 
+// dispatch arrived <D-0003> -- <결과 링크나 한 줄> → { id, body: { note } }. 500자 검사는 서버가 한다
+export function parseArrived(args) {
+  const sep = args.indexOf("--");
+  const head = sep < 0 ? args : args.slice(0, sep);
+  const note = sep < 0 ? "" : args.slice(sep + 1).join(" ").trim();
+  const [id, ...rest] = head;
+  if (!id || id.startsWith("--")) throw new Error("제안 ID가 필요함 (예: D-0003)");
+  if (rest.length) throw new Error(`알 수 없는 인자 ${rest.join(" ")}`);
+  if (!note) throw new Error("-- 뒤에 CAPTAIN 보고(결과 링크나 한 줄)가 필요함");
+  return { id, body: { note } };
+}
+
 // dispatch|schedule crosscheck <ID> agree|disagree -- <이유> → POST 본문. 값 검사(500자 등)는 서버가 한다.
 // 모델 이름은 세션이 적지 않는다: CROSSCHECK guard가 세션 기록에서 실제 모델을 확인해 ATC_CROSSCHECK_MODEL로 붙인다
 // (없으면 서버가 "unknown").
@@ -260,6 +274,10 @@ if (isMain) {
     } else if (cmd === "dispatch" && args[0] === "recalled" && args[1]) {
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/recalled`);
       console.log(`${r.proposal.id} RECALLED — FLIGHT는 다시 후보(같은 AIRCRAFT에는 24시간 제안하지 않음)`);
+    } else if (cmd === "dispatch" && args[0] === "arrived") {
+      const { id, body } = parseArrived(args.slice(1));
+      const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(id)}/arrived`, body);
+      console.log(`${r.proposal.id} ARRIVED · ${r.proposal.arrivedNote}`);
     } else if (cmd === "dispatch" && args[0] === "decline" && args[1]) {
       const sep = args.indexOf("--");
       const reason = sep < 0 ? "" : args.slice(sep + 1).join(" ");

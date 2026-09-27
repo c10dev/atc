@@ -243,7 +243,7 @@ export function atfmView(s: Snapshot, cfg: AtfmConfig = loadAtfm(), now = Date.n
   const dispatchMode = loadDispatchConfig().mode;
   const autoTurnOn: Row[] = [
     { id: "2b", label: "2b 승인 운용 2주 이상", value: dispatchMode, target: "approval · 2주", status: dispatchMode === "approval" ? "insufficient" : "fail" },
-    { id: "gate3", label: "2b 점검(gate3): READBACK·DEPARTED", value: `${g3.dispatched}건 · READBACK ${pct(g3.readbackRate)} · DEPARTED ${pct(g3.departedRate)}`, target: "≥ 10건 · 90% · 80%", status: g3.ready ? "pass" : g3.dispatched < 3 ? "insufficient" : "fail" },
+    { id: "gate3", label: "2b 점검(gate3): READBACK·DEPARTED", value: `${g3.dispatched}건 · READBACK ${pct(g3.readbackRate)} · DEPARTED ${pct(g3.departedRate)}${g3.standFree.readBack ? ` · STAND 없음 ${g3.standFree.readBack}건(ARRIVED ${g3.standFree.arrived})` : ""}`, target: "≥ 10건 · 90% · 80%", status: g3.ready ? "pass" : g3.dispatched < 3 ? "insufficient" : "fail" },
     {
       id: "precision", label: "그림자 정확도(대상 중 사람 승인)",
       value: `${pct(autoPrecision.rate)} (${autoPrecision.decided}건${autoPrecision.bad ? ` · 막아야 했던 거절 ${autoPrecision.bad}` : ""})`,

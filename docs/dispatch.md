@@ -164,9 +164,18 @@ DISPATCH session: SendMessage the FLIGHT PLAN to the CAPTAIN
   — If you take it, reply "READBACK D-0003"; if not, reply with the reason.
 CAPTAIN: READBACK → Linear In Progress, prepares the STAND (same rules as today)
 atc: DEPARTED once that FLIGHT gets a STAND; if not, rechecks after 30 minutes like TOWER does
+     STAND-free FLIGHT (SURVEY, CHECK): DEPARTED at the READBACK itself (no STAND to wait for)
+CAPTAIN (STAND-free only): reports it done → OCC: atcctl dispatch arrived D-0003 -- '<result link or one line>' → atc: ARRIVED
 ```
 
-Proposal states: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)` (2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED` (2b), with side branches `REJECTED`, `DECLINED` (CAPTAIN gave a reason), `SUPERSEDED` (a person assigned it directly or the situation changed) and `EXPIRED` (24 hours). A `PROPOSED` ASSIGN that carries a `HOLD` leaves the main flow: it waits on the HELD list until released (no 24-hour expiry).
+Proposal states: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)` (2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED` (2b), `… → ACCEPTED → DEPARTED → ARRIVED` for a STAND-free FLIGHT, with side branches `REJECTED`, `DECLINED` (CAPTAIN gave a reason), `SUPERSEDED` (a person assigned it directly or the situation changed) and `EXPIRED` (24 hours). A `PROPOSED` ASSIGN that carries a `HOLD` leaves the main flow: it waits on the HELD list until released (no 24-hour expiry).
+
+**STAND-free FLIGHTs** (built 2026-09-27, rules in [fleet.md](fleet.md) 5.1.1). A STAND-needing FLIGHT's end is the merged PR in the LOGBOOK, so atc tracks it no further. A SURVEY or CHECK has neither a STAND nor usually a PR, so:
+
+- **DEPARTED at READBACK.** `POST …/accept` records `accept` and `depart` at the same time, with `stand: null` and `via: "readback"`; the proposal gets `departedStand: null` and `departedVia: "readback"` (a STAND departure has `departedVia: "stand"`). The FLIGHT's labels are read at that moment; an unknown FLIGHT is treated as needing a STAND, and a STAND-free `accepted` left over departs on the next sync.
+- **ARRIVED on the CAPTAIN's report.** OCC records it with `atcctl dispatch arrived D-xxxx -- '<result link or one line>'` (`POST …/arrived {note}`, 500 characters). The proposal gets `status: "arrived"`, `arrivedNote` and `arrivedUrl` (the first link in the note). Only a STAND-free `departed` proposal can arrive.
+- **Held until ARRIVED.** It stays in `inFlight`, keeps its AIRCRAFT and FLIGHT, never expires and is never superseded. After 24 hours without a report it shows in `overdue`. It can be RECALLED like a `sent` or `accepted` one.
+- **gate3.** STAND-free READBACKs count toward the READBACK rate but not the DEPARTED rate, since they depart by definition and would inflate it. `gate3.standFree` shows their READBACK and ARRIVED counts.
 
 #### 6.1 Recent pairs and keeping proposals open
 
@@ -203,7 +212,7 @@ The brief's `reasonStats` turns the chips into a to-do list for the planner: per
 |---|---|
 | 1.5 → 2a | Can start right away (nothing is sent, so it runs alongside 1.5) |
 | 2a → 2b | 20+ shadow proposals, 80%+ agreement, 0 proposals that violated blocks. The four stage 1.5 checks are also met |
-| 2b → 3 (ATFM) | 2+ weeks, READBACK rate 90%+, almost no LOS on FLIGHTs DISPATCH sent, less idle AIRCRAFT time |
+| 2b → 3 (ATFM) | 2+ weeks, READBACK rate 90%+, DEPARTED rate 80%+ (STAND-needing FLIGHTs only, `GATE3`), almost no LOS on FLIGHTs DISPATCH sent, less idle AIRCRAFT time |
 
 ## 9. Risks and mitigations
 
@@ -218,7 +227,7 @@ The brief's `reasonStats` turns the chips into a to-do list for the planner: per
 
 ## RECALL
 
-A FLIGHT PLAN that was sent (`sent`) or read back (`accepted`) can be pulled back by the SUPERVISOR. This is decision 4 of [atfm.md](atfm.md): it is built before any automatic assignment.
+A FLIGHT PLAN that was sent (`sent`), read back (`accepted`), or read back as a STAND-free FLIGHT that has not ARRIVED (`departed` with `departedVia: "readback"`) can be pulled back by the SUPERVISOR. This is decision 4 of [atfm.md](atfm.md): it is built before any automatic assignment.
 
 ```
 SUPERVISOR: "RECALL…" on the in-flight card (or POST /api/dispatch/proposals/:id/recall {reason}) → atc: RECALLING
@@ -227,10 +236,10 @@ CAPTAIN:    stops work, leaves the STAND as it is, replies "READBACK D-0003 RECA
 OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 ```
 
-- **States:** `sent` or `accepted` → `recalling` → `recalled`.
+- **States:** `sent`, `accepted` or STAND-free `departed` → `recalling` → `recalled`.
   - A `recalling` proposal still holds its AIRCRAFT and FLIGHT. If a STAND appears, it does not become DEPARTED, because the FLIGHT was told to stop.
   - After 24 hours without the RECALL READBACK it expires, and after 10 minutes it shows in `overdue`.
-  - A `departed` FLIGHT (a STAND exists) is not recalled; the SUPERVISOR deals with the CAPTAIN directly.
+  - A `departed` FLIGHT with a STAND is not recalled; the SUPERVISOR deals with the CAPTAIN directly. A STAND-free one has no STAND to protect, so it can be; its RECALL text asks for any partial result instead of "leave the STAND".
 - **After RECALLED:** the FLIGHT is a candidate again. The same FLIGHT–AIRCRAFT pair is not proposed for 24 hours from the RECALL READBACK. A different AIRCRAFT can get it right away.
 - **Who does what:**
   - Only the SUPERVISOR requests a RECALL (DISPATCH tab or API), with a reason of up to 300 characters.
@@ -264,12 +273,34 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 
 2b is built and sits behind `mode`. Turning it on sends approved proposals to real team sessions, so do it in this order:
 
-1. Check the stage 2b gate in the DISPATCH tab (20 or more shadow decisions, 80% or more agreement).
-2. Extend the READBACK line in the teams' CLAUDE.md (`vocado_nextjs/CLAUDE.md`) so CAPTAINs also answer `[DISPATCH D-xxxx]` FLIGHT PLANs with `READBACK D-xxxx` (or a reason).
+1. Check the "2b 켜기 점검표" in the DISPATCH tab (below) and the stage 2b gate (20 or more shadow decisions, 80% or more agreement).
+2. Extend the READBACK line in the teams' CLAUDE.md (`vocado_nextjs/CLAUDE.md`) so CAPTAINs also answer `[DISPATCH D-xxxx]` FLIGHT PLANs with `READBACK D-xxxx` (or a reason). The checklist's `vocado-readback` item gives the sentence to add.
 3. Press "2b 승인 운용 켜기" in the DISPATCH tab (or `POST /api/dispatch/mode {"mode":"approval"}`). The running DISPATCH session picks up the mode on its next pass.
 4. To stop, switch back to shadow. FLIGHT PLANs already sent stay as they are; no new ones go out.
 
-Known limit: `dispatch release` marks a proposal SENT before the message goes out. If delivery fails (the CAPTAIN session is gone, or the message is held for approval), it stays SENT; after 10 minutes it shows as NO READBACK, DISPATCH resends once, then reports to the SUPERVISOR.
+### 2b readiness checklist
+
+`GET /api/dispatch/brief` returns `readiness2b: {items: [{id, label, status, detail, link?, suggestion?}]}` (`server/readiness.ts`). `status` is `ready`, `not-ready` or `check` (a person must look). It only displays; switching the mode stays with the SUPERVISOR.
+
+| id | How it is computed |
+|---|---|
+| `gate` | `gateOf`: `ready` when the 2a gate is met (20 decisions, 80% agreement) |
+| `recall` | Code facts, not a constant: a synthetic log folds `sent → recalling → recalled` and releases the reservation, `formatRecall` produces the header, the `recall`, `recall-send` and `recalled` endpoints are registered (`DISPATCH_ACTIONS`), and `controller/atcctl.mjs` has the `recall-send` and `recalled` commands (`selfCheck2b`) |
+| `send-guard` | The server does not run tests. It reads `occ/send-guard.mjs` and looks for the `checkSend` export, the approval-mode check, the FLIGHT PLAN (`proposal.message`) and RECALL (`proposal.recallMessage`) comparisons, the recipient check and `exit 2`, and shows the file's sha256 prefix. All present → `check` with a pointer to `node --test occ/send-guard.test.mjs`; something missing or no file → `not-ready` |
+| `vocado-readback` | Reads `vocado_nextjs/CLAUDE.md` (read-only; `ATC_VOCADO_CLAUDE_MD`, else `<projectsDir>/vocado_nextjs/CLAUDE.md`). `ready` when one line holds both `[DISPATCH D-` and `READBACK D-`; otherwise `not-ready` with the sentence to add in `detail` and `suggestion`; `check` when the file cannot be read |
+| `stand-free` | Code facts like `recall`: READBACK of a SURVEY departs with no STAND, it stays reserved and does not expire after 30 days, ARRIVED releases it, the `arrived` endpoint and `atcctl dispatch arrived` exist |
+| `known-gaps` | Always `check`, linking to the section below |
+
+### Known gaps before turning on 2b
+
+- `dispatch release` marks a proposal SENT before the message goes out. If delivery fails (the CAPTAIN session is gone, or the message is held for approval), it stays SENT; after 10 minutes it shows as NO READBACK, DISPATCH resends once, then reports to the SUPERVISOR.
+- A STAND-free FLIGHT ARRIVES only on the CAPTAIN's report. There is no automatic detection yet (a review on the target PR, a docs PR or issue comment). A forgotten report keeps the AIRCRAFT's one STAND-free slot until the SUPERVISOR follows up from `overdue` (24 hours); OCC cannot ask the CAPTAIN itself, since send-guard lets through only FLIGHT PLANs and RECALLs.
+- A STAND-free READBACK counts as DEPARTED even if the CAPTAIN never starts; nothing else shows the work began.
+- A STAND-free ARRIVED does not enter the LOGBOOK, so it does not count toward TARGETS. The planner excludes the FLIGHT for 7 days after ARRIVED; after that it trusts Linear, so the FLIGHT should be closed there.
+- The FLIGHT TYPE is read at READBACK. Relabelling afterwards does not change a recorded departure.
+- A DEPARTED FLIGHT with a STAND cannot be RECALLED; the SUPERVISOR talks to the CAPTAIN directly.
+- send-guard's behaviour is only proven by its tests; the checklist shows `check`, not `ready`.
+- The `vocado-readback` check looks for the two markers on one line. It does not judge the wording.
 
 ## 10. Implementation order
 

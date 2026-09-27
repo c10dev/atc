@@ -810,3 +810,241 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* 2b 켜기 점검표: 표시만(모드 버튼은 그대로). 다 준비되면 접힌다 */
+.dp-rd {
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius);
+}
+.dp-rd.is-ready {
+  border-left-color: var(--radar);
+}
+.dp-rd-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+/* 접힘 표시(flex라 기본 표식이 사라져 직접 그린다) */
+.dp-rd-head::before {
+  content: "▸";
+  color: var(--faint);
+  font-size: var(--text-xs);
+}
+.dp-rd[open] > .dp-rd-head::before {
+  content: "▾";
+}
+.dp-rd-title {
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--faint);
+}
+.dp-rd-sum {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.dp-rd.is-ready .dp-rd-sum {
+  color: var(--radar);
+}
+.dp-rd-note {
+  margin: var(--space-1-5) 0 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.dp-rd-list {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.dp-rd-item {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1-5) 0;
+  border-top: 1px solid var(--line);
+}
+.dp-rd-badge {
+  justify-self: start;
+  padding: 0 var(--space-1-5);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.dp-rd-item.s-ready .dp-rd-badge {
+  color: var(--radar);
+}
+.dp-rd-item.s-not-ready .dp-rd-badge {
+  color: var(--alert);
+}
+/* 확인 필요는 점선으로도 구분 */
+.dp-rd-item.s-check .dp-rd-badge {
+  border-style: dashed;
+  color: var(--amber);
+}
+.dp-rd-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+.dp-rd-label {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.dp-rd-detail {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.dp-rd-link {
+  align-self: start;
+  max-width: 100%;
+  color: var(--cyan);
+  font: var(--text-xs) var(--mono);
+  overflow-wrap: anywhere;
+}
+/* 다른 저장소 CLAUDE.md에 붙여 넣을 문장 */
+.dp-rd-paste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  padding: var(--space-1-5) var(--space-2);
+  background: var(--panel-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+}
+.dp-rd-paste-head {
+  color: var(--faint);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+.dp-rd-code {
+  display: block;
+  color: var(--text);
+  font: var(--text-sm) var(--mono);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.dp-rd-paste-act {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.dp-rd-copy-state {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.dp-btn.dp-rd-copy {
+  flex: none;
+  padding: var(--space-1) var(--space-3);
+}
+
+/* STAND 없는 FLIGHT: READBACK으로 착수(DEPARTED) → ARRIVED(OCC 기록) */
+.dp-life {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-0-5) var(--space-2);
+}
+.dp-life-note {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.dp-life-report {
+  flex-basis: 100%;
+}
+.dp-life-link {
+  color: var(--cyan);
+  font-size: var(--text-xs);
+}
+.dp-overdue {
+  white-space: nowrap;
+}
+.dp-table .s-arrived .dp-result {
+  color: var(--phase-arrived);
+}
+/* 진입 점검 STAGE 3의 STAND 없는 FLIGHT 줄: 위 줄 밑에 작게 */
+.dp-gate li.dp-gate-sub {
+  padding: 0 0 var(--space-1);
+  border-top: 0;
+}
+.dp-gate-sub .dp-gate-label {
+  font-size: var(--text-xs);
+}
+.dp-gate .dp-gate-sub .dp-gate-value {
+  font: var(--text-sm) var(--mono);
+}
+
+/* 좁은 화면: IN FLIGHT도 행마다 블록으로(STAND 없는 FLIGHT 메모·RECALL 버튼이 가로 스크롤 없이 들어가게) */
+@media (max-width: 640px) {
+  .dp-inflight,
+  .dp-inflight tbody {
+    display: block;
+  }
+  .dp-inflight thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .dp-inflight tr {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      "id flight at"
+      "air air act"
+      "result result result";
+    align-items: center;
+    gap: var(--space-0-5) var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--line);
+  }
+  .dp-inflight tr:last-child {
+    border-bottom: 0;
+  }
+  .dp-inflight tr.is-overdue {
+    background: var(--blk-los-bg);
+  }
+  .dp-inflight td {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+  }
+  .dp-inflight .dp-c-air {
+    text-align: left;
+  }
+  .dp-inflight .dp-c-act {
+    grid-area: act;
+    width: auto;
+  }
+  .dp-inflight .dp-recall-row {
+    display: block;
+    background: var(--panel-2);
+  }
+  .dp-inflight .dp-recall-row td {
+    display: block;
+  }
+  /* 거절 사유 → 배정 규칙: 예시는 다음 줄로 */
+  .dp-gate .dp-gate-rules li {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+  .dp-gate-rule-ex {
+    grid-column: 1 / -1;
+  }
+}

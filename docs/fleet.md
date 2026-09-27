@@ -171,9 +171,31 @@ The plan is made in two passes over the same eligible FLIGHTs:
 | Same rules | TAIL ASSIGNMENT (a HOLDING tail team can take a STAND-free FLIGHT), TYPE RATING, crew, CHECK independence, WAKE slots |
 | Order | STAND rule first, so BUILD work keeps its place; STAND-free FLIGHTs fill what is left. Within the pass, by score |
 | Shown as | A 0-point factor `STAND 없이` with the AIRCRAFT's state: `HOLDING — VOC-10 진행 중 — SURVEY는 STAND가 필요 없어 STAND 규칙 밖(AIRCRAFT당 1건)` |
-| Approval mode | An approved STAND-free proposal stays valid while its AIRCRAFT is HOLDING (`canTakeNow`); `syncOps` uses the same rule for the SUPERSEDED reason |
+| Approval mode | An approved STAND-free proposal stays valid while its AIRCRAFT is HOLDING (`canTakeNow`); `syncOps` uses the same rule for the SUPERSEDED reason. Departure and arrival: section 5.1.1 |
 
 Only labelled FLIGHTs take this path. The SCHEDULE `classify` candidates put titles that look like research, review, comparison or planning first (`standFreeHint` in `server/schedule.ts`), so OCC classifies likely `SURVEY` and `CHECK` FLIGHTs sooner. The order is a hint; the label is still OCC's call.
+
+#### 5.1.1 Departure and arrival without a STAND
+
+A STAND-needing FLIGHT DEPARTS when its STAND appears and ARRIVES when its PR merges (LOGBOOK). A STAND-free FLIGHT has neither signal, so in approval mode (2b) atc uses the READBACK and the CAPTAIN's report instead (built 2026-09-27):
+
+```
+CAPTAIN: "READBACK D-0012"  → OCC: atcctl dispatch readback D-0012
+                            → atc: ACCEPTED and DEPARTED at the same moment (departedStand null, departedVia "readback")
+CAPTAIN: "done: <link>"     → OCC: atcctl dispatch arrived D-0012 -- '<result link or one line>'
+                            → atc: ARRIVED (arrivedNote, arrivedUrl)
+```
+
+| Point | Rule |
+|---|---|
+| Which FLIGHTs | `needsStand` false for the FLIGHT's labels at READBACK time (`type:SURVEY`, `type:CHECK`). An unknown FLIGHT counts as needing a STAND. An `accepted` STAND-free proposal left over (old records, or the FLIGHT was not in the snapshot) departs on the next sync |
+| Reservation | A STAND-free `departed` proposal stays in `inFlight` and keeps its AIRCRAFT (`reservedLight`) and FLIGHT until ARRIVED or RECALLED. It never expires and is never superseded, whatever Linear says. After 24 hours without a report it shows in `overdue` |
+| After ARRIVED | The reservation is released. For 7 days the planner excludes the FLIGHT as `이미 완료됨 — D-0012 ARRIVED(CAPTAIN 보고)`, because nothing reaches the LOGBOOK and Linear may still say Todo. After that, Linear decides |
+| RECALL | Allowed on a STAND-free `departed` proposal, like `sent` and `accepted`. The RECALL text asks for any partial result instead of "leave the STAND". A STAND-needing DEPARTED is still not recalled. RECALLED releases the reservation like any other RECALL |
+| gate3 | STAND-free READBACKs count toward the READBACK rate but not the DEPARTED rate (they would inflate it); `gate3.standFree` shows their READBACK and ARRIVED counts |
+| ATFM A8 | An AIRCRAFT flying a STAND-free FLIGHT that has not ARRIVED is not auto-eligible, even when its session is idle |
+
+**Why a report, not detection.** Automatic ARRIVED was considered: a review on the target PR for a CHECK, a docs PR or an issue comment for a SURVEY. It needs per-type heuristics (which review, whose comment) and a wrong match would release an AIRCRAFT early. The CAPTAIN already reports back to OCC, so the report is the first step; detection can later be added as a suggestion OCC confirms.
 
 ### 5.2 CHECK independence
 
@@ -194,7 +216,7 @@ Session names are matched against `teamPattern` and upper-cased, like the LOGBOO
 
 **When the builder is unknown** (no target, or no source names one), the CHECK is not blocked. The card carries a 0-point factor `CHECK 독립성` saying `확인 못 함 — …`, so the SUPERVISOR checks it by hand. When it is known, the factor names the builder that was left out.
 
-Not built yet: WAKE-scaled conflict risk (a same-area approach is sketched in [issue #41](https://github.com/chaehy5665/atc/issues/41)), and DEPARTED for STAND-free FLIGHTs: an accepted SURVEY or CHECK never gets a STAND, so in approval mode it expires after 24 hours instead of departing. ATFM's auto-eligibility (A8) still requires an assignable AIRCRAFT, so a STAND-free proposal to a HOLDING team is never auto-eligible.
+Not built yet: WAKE-scaled conflict risk (a same-area approach is sketched in [issue #41](https://github.com/chaehy5665/atc/issues/41)), automatic ARRIVED detection for STAND-free FLIGHTs (section 5.1.1), and LOGBOOK entries for them (a STAND-free ARRIVED does not count toward TARGETS). ATFM's auto-eligibility (A8) still requires an assignable AIRCRAFT, so a STAND-free proposal to a HOLDING team is never auto-eligible (A3 excludes SURVEY and CHECK anyway).
 
 ## 6. Who classifies
 

@@ -86,6 +86,7 @@ test("--crosscheck: atc CLI 중 읽기와 crosscheck 명령만, gh는 막음", (
     "node ../controller/atcctl.mjs dispatch note D-0003 -- x",
     "node ../controller/atcctl.mjs dispatch release D-0003",
     "node ../controller/atcctl.mjs dispatch readback D-0003",
+    "node ../controller/atcctl.mjs dispatch arrived D-0003 -- x",
     "node ../controller/atcctl.mjs schedule draft CLASSIFY VOC-1 --type MAINT -- x",
     "node ../controller/atcctl.mjs schedule release S-0001",
     "node ../controller/atcctl.mjs issue TEAM_B INFO -- x",
@@ -274,4 +275,19 @@ test("gh --jq(-q): 내장 jq도 env·$ENV·import를 막는다(OCC·CROSSCHECK)"
       assert.notEqual(check(bad, cwd, opts), null, bad);
   }
   assert.equal(checkGhJq(["gh", "pr", "view", "1", "--", "-q", "$ENV"]), null); // -- 뒤는 인자
+});
+
+test("OCC(--gh-read): dispatch arrived는 결과 링크·한국어 한 줄과 함께 통과, 치환·리다이렉션은 막음", () => {
+  const ok = [
+    "node ../controller/atcctl.mjs dispatch arrived D-0012 -- 'https://github.com/chaehy5665/vocado_nextjs/pull/401#pullrequestreview-1'",
+    "node ../controller/atcctl.mjs dispatch arrived D-0012 -- 'VOC-201 조사 끝 — 결론: 캐시 문제 아님, 이슈 댓글에 정리'",
+    "node ../controller/atcctl.mjs dispatch arrived D-0012 -- 'https://github.com/o/r/issues/5?x=1&y=2'",
+  ];
+  const no = [
+    "node ../controller/atcctl.mjs dispatch arrived D-0012 -- \"$(cat /etc/passwd)\"",
+    "node ../controller/atcctl.mjs dispatch arrived D-0012 -- x > out.txt",
+    "node ../controller/atcctl.mjs dispatch arrived D-0012 -- x; gh pr merge 1",
+  ];
+  for (const c of ok) assert.equal(check(c, OCC, { ghRead: true }), null, c);
+  for (const c of no) assert.notEqual(check(c, OCC, { ghRead: true }), null, c);
 });

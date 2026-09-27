@@ -5,6 +5,7 @@ import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import { PriorityMark } from "../ui.tsx";
 import { AtfmPanel } from "./Atfm.tsx";
+import { type ReadinessItem, Readiness2b } from "./Readiness2b.tsx";
 import { FollowingPanel } from "./Following.tsx";
 import "./Dispatch.css";
 
@@ -103,8 +104,10 @@ interface Brief {
     departedRate: number | null;
     target: { dispatched: number; readback: number; departed: number };
     ready: boolean;
+    standFree?: { readBack: number; arrived: number }; // STAND 없는 FLIGHT: 표시만(옛 서버면 없음)
   };
   config: DispatchConfig;
+  readiness2b?: { items: ReadinessItem[] }; // 2b 켜기 점검표(옛 서버면 없음)
   reasonCodes?: ReasonCode[]; // 거절 사유 칩 목록(옛 서버면 없음)
   reasonStats?: ReasonStat[]; // 거절 사유별 건수·예시·planner가 거르나(옛 서버면 없음)
 }
@@ -120,7 +123,8 @@ interface ReasonStat {
 
 const AUTO_TEXT: Record<ReasonStat["auto"], string> = { auto: "자동 거름", partial: "일부 거름", manual: "사람만" };
 
-const statusText: Record<Proposal["status"], string> = {
+// arrived는 옛 서버 타입에 없을 수 있어 따로 더한다
+const statusText: Record<Proposal["status"] | "arrived", string> = {
   proposed: "PROPOSED",
   agreed: "승인했을 것",
   disagreed: "거절했을 것",
@@ -130,17 +134,29 @@ const statusText: Record<Proposal["status"], string> = {
   accepted: "READBACK",
   declined: "DECLINED",
   departed: "DEPARTED",
+  arrived: "ARRIVED",
   superseded: "SUPERSEDED",
   expired: "EXPIRED",
   recalling: "RECALL 중",
   recalled: "RECALLED",
 };
 
-// RECALL은 보냈거나(sent) READBACK 받은(accepted) FLIGHT PLAN에만
-const canRecall = (p: Proposal) => p.status === "sent" || p.status === "accepted";
+// STAND 없는 FLIGHT(SURVEY·CHECK)의 흐름: READBACK에서 바로 DEPARTED(departedVia "readback"), ARRIVED는 OCC가 기록.
+// 서버 타입에 아직 없을 수 있어 따로 읽는다(옛 서버·옛 기록이면 없음)
+interface Lifecycle {
+  departedVia?: "readback" | "stand" | null;
+  arrivedNote?: string | null; // CAPTAIN이 남긴 보고 한 줄 또는 링크
+  arrivedUrl?: string | null; // 보고 안 첫 http(s) 링크
+}
+const lifeOf = (p: Proposal) => p as unknown as Lifecycle;
+const standFreeDeparted = (p: Proposal) => p.status === "departed" && !p.departedStand && lifeOf(p).departedVia === "readback";
+
+// RECALL은 보냈거나(sent) READBACK 받은(accepted) FLIGHT PLAN, 그리고 STAND 없이 DEPARTED한 것에만
+const canRecall = (p: Proposal) => p.status === "sent" || p.status === "accepted" || standFreeDeparted(p);
 const RECALL_MAX = 300;
 // 늦음 표시: 상태마다 무엇을 기다리는지
-const overdueText = (p: Proposal) => (p.status === "recalling" ? "RECALL READBACK 없음 10분+" : p.status === "sent" ? "NO READBACK" : "NO DEPARTURE");
+const overdueText = (p: Proposal) =>
+  p.status === "recalling" ? "RECALL READBACK 없음 10분+" : p.status === "sent" ? "NO READBACK" : p.status === "departed" ? "NO ARRIVAL 24h+" : "NO DEPARTURE";
 
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 
@@ -195,8 +211,8 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
   const recall = async (p: Proposal, reason: string) => {
     const how =
       brief?.mode === "approval"
-        ? `OCC가 ${p.aircraftName}의 CAPTAIN에게 RECALL 문구를 보내고, CAPTAIN은 작업을 멈추고 STAND를 그대로 둡니다.`
-        : `지금은 2a라 OCC가 보내지 않습니다 — ${p.aircraftName}의 CAPTAIN에게 직접 알리세요. CAPTAIN은 작업을 멈추고 STAND를 그대로 둡니다.`;
+        ? `OCC가 ${p.aircraftName}의 CAPTAIN에게 RECALL 문구를 보내고, CAPTAIN은 작업을 멈추고 ${p.departedStand === null && p.status === "departed" ? "그때까지의 결과를 남깁니다" : "STAND를 그대로 둡니다"}.`
+        : `지금은 2a라 OCC가 보내지 않습니다 — ${p.aircraftName}의 CAPTAIN에게 직접 알리세요. CAPTAIN은 작업을 멈추고 ${p.departedStand === null && p.status === "departed" ? "그때까지의 결과를 남깁니다" : "STAND를 그대로 둡니다"}.`;
     if (!confirm(`${p.id}(${flightNumber(p.flight)})를 RECALL할까요?\n\n${how}\nCAPTAIN이 RECALL을 READBACK하면 ${flightNumber(p.flight)}는 다시 후보가 됩니다.\n\n사유: ${reason}`)) return false;
     setBusy(p.id);
     try {
@@ -256,6 +272,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
           {brief.mode === "shadow" ? "2b 승인 운용 켜기" : "2a 그림자 운용으로"}
         </button>
       </div>
+      {brief.readiness2b?.items?.length ? <Readiness2b items={brief.readiness2b.items} mode={brief.mode} /> : null}
       {error && (
         <p className="dp-error" role="alert">
           {error}
@@ -402,7 +419,9 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
                 <td className="dp-c-kind mono">{p.kind}</td>
                 <td className="dp-c-flight mono">{flightNumber(p.flight)}</td>
                 <td className="dp-c-air">{p.aircraftName ?? "—"}</td>
-                <td className="dp-c-result dp-result">{statusText[p.status]}</td>
+                <td className="dp-c-result dp-result">
+                  <StatusLabel p={p} />
+                </td>
                 <td className="dp-c-reason dp-reason" data-label="사유">
                   <RecentReason p={p} labelOf={labelOf} />
                   <CrosscheckMini m={markOf(p)} />
@@ -448,12 +467,12 @@ function InFlightRow({
   return (
     <Fragment>
       <tr className={`s-${p.status}${overdue ? " is-overdue" : ""}`}>
-        <td className="mono">{p.id}</td>
-        <td className="mono" title={flight?.title}>
+        <td className="dp-c-id mono">{p.id}</td>
+        <td className="dp-c-flight mono" title={flight?.title}>
           {flightNumber(p.flight)}
         </td>
-        <td>{p.aircraftName}</td>
-        <td className="dp-result">
+        <td className="dp-c-air">{p.aircraftName}</td>
+        <td className="dp-c-result dp-result">
           {p.status === "recalling" ? (
             <span className="dp-recall">
               <span className="dp-recall-mark">RECALL</span>
@@ -463,11 +482,11 @@ function InFlightRow({
               {p.recallReason && <span className="dp-recall-reason">사유: {p.recallReason}</span>}
             </span>
           ) : (
-            statusText[p.status]
+            <StatusLabel p={p} />
           )}
           {overdue && <span className="dp-overdue">{overdueText(p)}</span>}
         </td>
-        <td className="faint">{timeAgo(p.statusAt, now)}</td>
+        <td className="dp-c-at faint">{timeAgo(p.statusAt, now)}</td>
         <td className="dp-c-act">
           {canRecall(p) && !open && (
             <button
@@ -532,7 +551,7 @@ function RecallForm({
     >
       <p id={helpId} className="dp-recall-help">
         {mode === "approval" ? "OCC가 CAPTAIN에게 RECALL 문구를 보내고, " : "지금은 2a라 OCC가 보내지 않는다 — CAPTAIN에게 직접 알린다. "}
-        CAPTAIN은 작업을 멈추고 STAND를 그대로 둔다. RECALL을 READBACK하면 {flightNumber(p.flight)}는 다시 후보가 된다.
+        CAPTAIN은 작업을 멈추고 {p.departedStand === null && p.status === "departed" ? "그때까지의 결과를 남긴다" : "STAND를 그대로 둔다"}. RECALL을 READBACK하면 {flightNumber(p.flight)}는 다시 후보가 된다.
       </p>
       <label className="dp-memo-label" htmlFor={inputId}>
         RECALL 사유 <span className="faint">(필수 · CAPTAIN에게 그대로 전달)</span>
@@ -561,6 +580,36 @@ function RecallForm({
         </button>
       </div>
     </form>
+  );
+}
+
+// 상태 글자. STAND 없이 DEPARTED면 "READBACK으로 착수", ARRIVED면 CAPTAIN 보고(글 또는 링크)를 붙인다
+function StatusLabel({ p }: { p: Proposal }) {
+  const text = statusText[p.status] ?? String(p.status).toUpperCase();
+  if (standFreeDeparted(p))
+    return (
+      <span className="dp-life">
+        {text}
+        <span className="dp-life-note" title="STAND가 필요 없는 FLIGHT(SURVEY·CHECK) — READBACK을 받은 때를 DEPARTED로 봄">
+          READBACK으로 착수 · STAND 없음
+        </span>
+      </span>
+    );
+  if ((p.status as string) !== "arrived") return <>{text}</>;
+  const { arrivedNote: note, arrivedUrl: url } = lifeOf(p);
+  // 보고가 링크 하나뿐이면 링크만 보인다
+  const bare = !!url && note?.trim() === url;
+  return (
+    <span className="dp-life">
+      {text}
+      {note && !bare && <span className="dp-life-note dp-life-report">{note}</span>}
+      {url && (
+        <a className="dp-life-link" href={url} target="_blank" rel="noreferrer" title={url} aria-label={`${p.id} ARRIVED 보고 열기 (새 탭)`}>
+          보고 ↗
+        </a>
+      )}
+      {!note && !url && <span className="dp-life-note">보고 없음</span>}
+    </span>
   );
 }
 
@@ -808,7 +857,7 @@ function Gate3({ gate }: { gate: Brief["gate3"] }) {
       state: few ? "insufficient" : gate.readbackRate !== null && gate.readbackRate >= gate.target.readback ? "pass" : "fail",
     },
     {
-      label: "READBACK 뒤 DEPARTED 비율",
+      label: gate.standFree ? "READBACK 뒤 DEPARTED 비율 (STAND FLIGHT)" : "READBACK 뒤 DEPARTED 비율",
       value: pct(gate.departedRate),
       target: `≥ ${gate.target.departed * 100}%`,
       state: few ? "insufficient" : gate.departedRate !== null && gate.departedRate >= gate.target.departed ? "pass" : "fail",
@@ -828,6 +877,18 @@ function Gate3({ gate }: { gate: Brief["gate3"] }) {
             <span className="dp-gate-state">{mark[r.state]}</span>
           </li>
         ))}
+        {gate.standFree && gate.standFree.readBack > 0 && (
+          <li className="s-info dp-gate-sub" title="STAND 없는 FLIGHT(SURVEY·CHECK)는 READBACK에서 바로 DEPARTED — 게이트 비율에 세지 않음">
+            <span className="dp-gate-label">
+              └ STAND 없는 FLIGHT · READBACK {gate.standFree.readBack} · ARRIVED {gate.standFree.arrived}
+            </span>
+            <span className="dp-gate-value">
+              {gate.standFree.arrived}/{gate.standFree.readBack}
+            </span>
+            <span className="dp-gate-target">기준 없음</span>
+            <span className="dp-gate-state">참고</span>
+          </li>
+        )}
       </ul>
     </div>
   );

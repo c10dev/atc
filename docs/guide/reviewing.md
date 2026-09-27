@@ -23,6 +23,7 @@ atc의 자동화는 **그림자 운용**에서 시작한다. 제안과 초안을
 - **CHECK는 만든 팀에 가지 않는다**: LOGBOOK, 열린 PR의 STAND, 워크트리 점유, 청구 기록에서 검토 대상을 만든 팀을 찾아 뺀다. 대상은 Linear 관계와 제목(FLIGHT key, `PR #400`)에서만 찾으므로 본문에만 적혀 있으면 모른다. `CHECK 독립성: 확인 못 함`이면 받는 팀이 그 대상을 만들지 않았는지 직접 확인하고, 만든 팀이면 "AIRCRAFT 부적합"으로 거절한다. 만든 팀만 남으면 제안 대신 "제외" 목록에 `CHECK 독립성 — …`으로 뜬다.
 - 조건부로 승인하고 싶으면(예: "PR #393 머지 뒤") HOLD로 두는 게 맞다.
 - **2b 진입 점검**: 판정 20건 이상, 합의율 80% 이상. 켜면 승인한 제안이 FLIGHT PLAN으로 CAPTAIN에게 간다.
+- **2b 켜기 점검표**: 켜기 전에 볼 항목이 준비됨·안 됨·확인 필요로 보인다. 2a 게이트, RECALL, send-guard, vocado READBACK 규칙, STAND 없는 FLIGHT, 알려진 빈틈 순서다. vocado READBACK 규칙이 "안 됨"이면 `vocado_nextjs/CLAUDE.md`에 더할 문장이 함께 나온다. send-guard는 서버가 테스트를 돌리지 않아 늘 "확인 필요"다(`node --test occ/send-guard.test.mjs`). 점검표는 보여 주기만 하고, 켜는 것은 SUPERVISOR다.
 
 ## SCHEDULE 탭: 티켓 초안
 
@@ -50,8 +51,17 @@ OCC가 Linear에 쓸 변경을 초안으로 남긴다. 지금은 S1이라 Linear
 - OCC가 CAPTAIN에게 RECALL 문구를 보낸다. CAPTAIN은 작업을 멈추고 STAND(워크트리)를 정리하지 않은 채 두고 "READBACK D-xxxx RECALL"로 답한다. 그러면 RECALLED가 된다.
 - RECALL 중에는 "RECALL 중"으로 보이고, 10분 넘게 답이 없으면 "RECALL READBACK 없음 10분+"가 뜬다.
 - FLIGHT는 다시 후보가 된다. 같은 팀에는 24시간 제안하지 않는다.
-- STAND가 생긴 뒤(DEPARTED)에는 RECALL 버튼이 없다. 그때는 CAPTAIN에게 직접 말한다.
+- STAND가 생긴 뒤(DEPARTED)에는 RECALL 버튼이 없다. 그때는 CAPTAIN에게 직접 말한다. STAND 없는 FLIGHT(SURVEY·CHECK)는 DEPARTED여도 ARRIVED 전이면 RECALL할 수 있다. 그 RECALL 문구는 STAND 대신 중간 결과를 남기라고 한다.
 - 출발 중지가 켜져 있어도 RECALL은 된다.
+
+## STAND 없는 FLIGHT: READBACK에 DEPARTED, 보고로 ARRIVED
+
+2b에서 SURVEY·CHECK는 워크트리가 없어 STAND로 출발을 알 수 없고, PR 머지(LOGBOOK)로 도착을 알 수도 없다.
+
+- CAPTAIN이 READBACK하면 바로 DEPARTED가 된다(`departedVia: "readback"`, STAND 없음). 진행 중 목록에 ARRIVED까지 남고, 그 팀의 STAND 없는 칸 하나를 잡는다. 24시간이 지나도 만료되지 않는다.
+- CAPTAIN이 마쳤다고 알리면 OCC가 `dispatch arrived D-xxxx -- '<결과 링크나 한 줄>'`로 적는다. 그러면 ARRIVED가 되고 보고 한 줄(링크)이 카드에 남는다. ARRIVED한 FLIGHT는 Linear가 아직 Todo여도 7일 동안 다시 제안하지 않는다.
+- 보고 없이 24시간이 지나면 늦은 것(overdue)에 뜬다. OCC는 CAPTAIN에게 직접 물을 수 없으니 SUPERVISOR가 챙긴다.
+- 2b → 3 점검의 DEPARTED 비율에는 STAND가 필요한 FLIGHT만 센다. STAND 없는 FLIGHT는 READBACK 비율에만 들어가고, READBACK·ARRIVED 수가 따로 보인다.
 
 ## CROSSCHECK: 예비 판정 먼저 보기
 

@@ -219,3 +219,14 @@ test("되돌린 라벨: 7일 안에 APPLIED된 CLASSIFY의 라벨이 Linear에�
   assert.deepEqual(undoneOf([applied, old], [ticket({ labels: [] })], changes, NOW), ["S-0001"]);
   assert.deepEqual(undoneOf([applied], [ticket({ labels: ["type:MAINT"] })], changes, NOW), []);
 });
+
+test("A8: ARRIVED 전 STAND 없는 FLIGHT를 날고 있는 AIRCRAFT는 대상이 아니다(ARRIVED·RECALLED·STAND DEPARTED는 괜찮음)", () => {
+  const light = (over: Partial<Proposal>) =>
+    proposal({ id: "D-0000", flight: "VOC-9", status: "departed", departedStand: null, departedVia: "readback", timeline: { departed: ago(90) }, ...over });
+  assert.deepEqual(failedCodes(proposal(), autoCtx({ history: [light({})] })), ["A8"]);
+  assert.deepEqual(failedCodes(proposal(), autoCtx({ history: [light({ status: "arrived" })] })), []);
+  assert.deepEqual(failedCodes(proposal(), autoCtx({ history: [light({ status: "recalled" })] })), []);
+  assert.deepEqual(failedCodes(proposal(), autoCtx({ history: [light({ departedStand: "/w/VOC-9", departedVia: "stand" })] })), []);
+  // 다른 AIRCRAFT의 것은 상관없다
+  assert.deepEqual(failedCodes(proposal(), autoCtx({ history: [light({ aircraftName: "TEAM_B" })] })), []);
+});

@@ -383,7 +383,13 @@ export function autoEligibility(p: Proposal, ctx: AutoContext): Eligibility {
   const mine = ctx.history.filter((x) => (x.aircraftName ?? "").toUpperCase() === name);
   const noReadback = mine.some((x) => x.status === "sent" && ctx.now - Date.parse(x.statusAt) > 10 * MIN);
   const declined = mine.some((x) => x.timeline.declined && ctx.now - Date.parse(x.timeline.declined) < 7 * DAY);
-  add("A8", Boolean(ctx.state?.available) && !ctx.aircraft?.aog && ratingsOk && !noReadback && !declined, "AIRCRAFT가 배정 가능하고 AOG 아님, rating을 모두 가짐, NO READBACK·7일 안 DECLINED 없음");
+  // STAND 없이 DEPARTED한 FLIGHT(SURVEY·CHECK)를 날고 있는 AIRCRAFT는 세션이 쉬고 있어도 실제로는 바쁘다(ARRIVED 보고 전)
+  const flyingLight = mine.some((x) => x.status === "departed" && x.departedVia === "readback");
+  add(
+    "A8",
+    Boolean(ctx.state?.available) && !ctx.aircraft?.aog && ratingsOk && !noReadback && !declined && !flyingLight,
+    "AIRCRAFT가 배정 가능하고 AOG 아님, rating을 모두 가짐, NO READBACK·7일 안 DECLINED 없음, ARRIVED 전 STAND 없는 FLIGHT 없음",
+  );
   const before = ctx.history.filter((x) => x.flight === p.flight && x.id !== p.id);
   const rejectedBefore = before.some((x) => x.status === "disagreed" || x.status === "rejected" || x.status === "declined");
   add("A9", Boolean(t && t.priority > 0 && !ctx.parentKeys.has(t.key)) && !rejectedBefore, "우선순위가 있고 상위 이슈 아님, 전에 거절·DECLINED된 적 없음");

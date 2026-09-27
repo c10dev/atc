@@ -35,7 +35,7 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 
 | Command | What it does |
 |---|---|
-| `node ../controller/atcctl.mjs dispatch brief` | `mode`, plan (`plan`), open proposals (`open`), held (`held`), in progress (`inFlight`: approved, sent, accepted), late ones (`overdue`), recent (`recent`), checks (`gate`, `gate3`), FLIGHT summaries (`flights`) |
+| `node ../controller/atcctl.mjs dispatch brief` | `mode`, plan (`plan`), open proposals (`open`), held (`held`), in progress (`inFlight`: approved, sent, accepted, recalling, and STAND-free departed before ARRIVED), late ones (`overdue`), recent (`recent`), checks (`gate`, `gate3`), FLIGHT summaries (`flights`) |
 | `node ../controller/atcctl.mjs dispatch flight <VOC-193>` | FLIGHT body and comments (up to 20) |
 | `node ../controller/atcctl.mjs dispatch note <D-0003> [--caution] [--hold [<FLIGHT>]]… -- <note>` | Add a review note to a proposal. A new note on the same proposal replaces the old one. `--hold <FLIGHT>` names the prerequisite FLIGHT and moves the proposal to HELD. A bare `--hold` holds it with no prerequisite FLIGHT (the note is the reason) |
 | `node ../controller/atcctl.mjs dispatch release <D-0003>` | (2b) Mark an approved proposal sent and print `SEND TO` and the FLIGHT PLAN text. If already sent, print the same text again (for a resend) |
@@ -43,6 +43,7 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 | `node ../controller/atcctl.mjs dispatch decline <D-0003> -- <reason>` | (2b) The CAPTAIN can't take it, with a reason |
 | `node ../controller/atcctl.mjs dispatch recall-send <D-0003>` | (2b) `SEND TO` and the RECALL text for a proposal the SUPERVISOR asked to recall (`recalling`). A resend gets the same text |
 | `node ../controller/atcctl.mjs dispatch recalled <D-0003>` | (2b) The CAPTAIN replied "READBACK D-0003 RECALL" |
+| `node ../controller/atcctl.mjs dispatch arrived <D-0003> -- <result link or one line>` | (2b) The CAPTAIN reported a STAND-free FLIGHT (SURVEY, CHECK) done |
 | `node ../controller/atcctl.mjs schedule draft NEW --title <title> --project <project> [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <reason> -- '<body>'` | (CHARTER DESK) Draft an AD HOC FLIGHT. `\n` in the body becomes a newline. Prints the draft id and the similar FLIGHTs atc found (`similar`) |
 | `node ../controller/atcctl.mjs schedule release <S-0001>` | (S2) Release an approved operation and print its Linear calls as `CALL n/m · <tool>` with the JSON input. If already released, print the same CALLs again |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / that it was reread |
@@ -148,12 +149,13 @@ In S2, OCC writes to Linear what the SUPERVISOR approved in the SCHEDULE tab. at
 |---|---|
 | An `approved` ASSIGN in `inFlight` | `dispatch release <ID>` → SendMessage the text below `---` **unchanged** to the `SEND TO` session. One per CAPTAIN per pass |
 | The CAPTAIN replies "READBACK D-xxxx" | `dispatch readback D-xxxx` |
+| The CAPTAIN reports a STAND-free FLIGHT (SURVEY, CHECK; DEPARTED at READBACK) done | `dispatch arrived D-xxxx -- '<result link or one line>'` |
 | `recalling` in `inFlight` (the SUPERVISOR requested a RECALL in the tab or API) | `dispatch recall-send <ID>` → SendMessage the RECALL text below `---` to the printed `SEND TO` session **unchanged**. Only the SUPERVISOR requests a RECALL; OCC never creates one. Send it even during an enforced ground stop (recalling is the safe direction) |
 | The CAPTAIN replies "READBACK D-xxxx RECALL" | `dispatch recalled D-xxxx`. The FLIGHT becomes a candidate again and is not proposed to the same AIRCRAFT for 24 hours. A "READBACK D-xxxx" without "RECALL" is a FLIGHT PLAN READBACK; don't mix them up |
 | A recalling proposal in `overdue` (no READBACK for over 10 minutes after the RECALL) | Get the same text with `dispatch recall-send <ID>` and send it once more. If there's still nothing, report to the SUPERVISOR |
 | The CAPTAIN declines with a reason | `dispatch decline D-xxxx -- <reason summary>`. Report to the SUPERVISOR |
 | A sent proposal in `overdue` (no READBACK for over 10 minutes) | Get the same text with `dispatch release <ID>` and send it once more. If there's still nothing, report to the SUPERVISOR |
-| An accepted proposal in `overdue` (no STAND for over 30 minutes after READBACK) | Report to the SUPERVISOR only |
+| An accepted proposal in `overdue` (no STAND for over 30 minutes after READBACK), or a STAND-free departed one (no ARRIVED report for over 24 hours) | Report to the SUPERVISOR only |
 | send-guard blocks the send | Don't retry with changed text or recipient; report to the SUPERVISOR |
 | `dispatch release` refuses with `GROUND STOP — …` (an enforced ground stop covers that AIRPORT) | Don't send. Leave the approved proposal as it is until the stop is released. Put the stop's reason in the OCC LOG; for "main 깨짐" (main broken), check the failing check and commit with read-only `gh` and report to the SUPERVISOR |
 
