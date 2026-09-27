@@ -12,6 +12,7 @@ import { mountFleet } from "./fleet.ts";
 import { mountLogbook, runLogbook } from "./logbook.ts";
 import { diffSnapshots, EventLog, isWarm } from "./events.ts";
 import { mountMetrics } from "./metrics.ts";
+import { mountNetwork } from "./network.ts";
 import { DISPATCH_MS, mountDispatch, runDispatch } from "./proposals.ts";
 import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
@@ -98,6 +99,7 @@ mountCrewChange(app);
 mountFleet(app, getSnapshot);
 mountCheckride(app, getSnapshot);
 mountLogbook(app);
+mountNetwork(app, getSnapshot);
 mountSchedule(app, getSnapshot);
 mountSettings(app);
 
