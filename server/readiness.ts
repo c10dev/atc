@@ -6,6 +6,7 @@ import { config } from "./config.ts";
 
 // "2b 켜기 점검표": 2b(approval)를 켜기 전에 볼 것. 표시만 하고 모드는 바꾸지 않는다(SUPERVISOR가 바꾼다).
 // 계산은 순수 함수(readiness2bOf, vocadoReadbackOf, sendGuardOf), 파일 읽기는 readinessFiles.
+// 코드 사실 점검은 proposals.ts selfCheck2b(RECALL·STAND 없는 FLIGHT)와 crew-change.ts selfCheckCrewChange.
 // 설계: docs/dispatch.md "Turning on 2b".
 
 export interface ReadinessItem {
@@ -25,28 +26,43 @@ export const SEND_GUARD_TEST_LINK = `${REPO}occ/send-guard.test.mjs`;
 export const VOCADO_READBACK_SUGGESTION =
   "- atc OCC(운항관제 세션)에서 `[DISPATCH D-xxxx]`로 시작하는 FLIGHT PLAN을 받으면 리더가 그 메시지에 `READBACK D-xxxx`로 답하고, 맡지 못하면 READBACK 대신 이유를 답한다. " +
   "`[DISPATCH D-xxxx] RECALL`을 받으면 작업을 멈추고 `READBACK D-xxxx RECALL`로 답한다. " +
+  "`[OCC CC-xxxx]`로 시작하는 CREW CHANGE를 받으면 `READBACK CC-xxxx`로 답하고 그대로 팀원을 바꾼다. " +
   "STAND(worktree) 없이 하는 SURVEY·CHECK FLIGHT를 마치면 OCC에 결과 링크나 한 줄로 알린다.";
 
-// vocado READBACK 규칙이 DISPATCH FLIGHT PLAN을 다루나: 한 줄에 `[DISPATCH D-`와 `READBACK D-`가 함께 있어야 ready
+// vocado READBACK 규칙이 OCC 메시지를 다루나: 한 줄에 `[DISPATCH D-`와 `READBACK D-`(FLIGHT PLAN),
+// 한 줄에 `[OCC CC-`와 `READBACK CC-`(CREW CHANGE)가 모두 있어야 ready
 export function vocadoReadbackOf(text: string | null, path: string): ReadinessItem {
   const base = { id: "vocado-readback", label: "vocado READBACK 규칙" };
   if (text === null) return { ...base, status: "check", detail: `${path}을 읽지 못함 — 직접 확인(ATC_VOCADO_CLAUDE_MD로 경로 지정)` };
   const lines = text.split("\n");
-  const hit = lines.findIndex((l) => /\[DISPATCH D-/.test(l) && /READBACK D-/.test(l));
-  if (hit >= 0) return { ...base, status: "ready", detail: `${path}:${hit + 1} — [DISPATCH D-xxxx] FLIGHT PLAN에 READBACK D-xxxx로 답하는 규칙 있음` };
-  const atc = lines.findIndex((l) => /\[ATC C-/.test(l) && /READBACK C-/.test(l));
-  const where = atc >= 0 ? `${path}:${atc + 1}은 [ATC C-xxxx] → READBACK C-xxxx만 다룬다` : `${path}에 READBACK 규칙이 없다`;
+  const find = (a: RegExp, b: RegExp) => lines.findIndex((l) => a.test(l) && b.test(l));
+  const plan = find(/\[DISPATCH D-/, /READBACK D-/);
+  const cc = find(/\[OCC CC-/, /READBACK CC-/);
+  if (plan >= 0 && cc >= 0)
+    return {
+      ...base,
+      status: "ready",
+      detail: `${path}:${plan + 1} — [DISPATCH D-xxxx] FLIGHT PLAN에 READBACK D-xxxx, ${path}:${cc + 1} — [OCC CC-xxxx] CREW CHANGE에 READBACK CC-xxxx로 답하는 규칙 있음`,
+    };
+  const atc = find(/\[ATC C-/, /READBACK C-/);
+  const where =
+    plan >= 0
+      ? `${path}:${plan + 1}은 [DISPATCH D-xxxx]만 다루고 [OCC CC-xxxx] → READBACK CC-xxxx가 없다`
+      : atc >= 0
+        ? `${path}:${atc + 1}은 [ATC C-xxxx] → READBACK C-xxxx만 다룬다`
+        : `${path}에 READBACK 규칙이 없다`;
+  const missing = [plan < 0 && "FLIGHT PLAN", cc < 0 && "CREW CHANGE"].filter(Boolean).join("·");
   return {
     ...base,
     status: "not-ready",
-    detail: `${where}. CAPTAIN이 FLIGHT PLAN에 답할 규칙이 없음. 추가할 문장: ${VOCADO_READBACK_SUGGESTION}`,
+    detail: `${where}. CAPTAIN이 ${missing}에 답할 규칙이 없음. 추가할 문장: ${VOCADO_READBACK_SUGGESTION}`,
     suggestion: VOCADO_READBACK_SUGGESTION,
   };
 }
 
 // send-guard: 서버는 테스트를 돌리지 않는다. 파일이 있고 FLIGHT PLAN·RECALL 비교가 들어 있는지만 보고 "check"로 둔다
 export function sendGuardOf(source: string | null, testExists: boolean): ReadinessItem {
-  const base = { id: "send-guard", label: "send-guard (FLIGHT PLAN·RECALL)", link: SEND_GUARD_TEST_LINK };
+  const base = { id: "send-guard", label: "send-guard (FLIGHT PLAN·RECALL·CREW CHANGE)", link: SEND_GUARD_TEST_LINK };
   if (source === null) return { ...base, status: "not-ready", detail: "occ/send-guard.mjs가 없음 — OCC의 SendMessage를 지킬 hook이 없다" };
   const need: [string, RegExp][] = [
     ["checkSend export", /export\s+async\s+function\s+checkSend\b/],
@@ -54,6 +70,8 @@ export function sendGuardOf(source: string | null, testExists: boolean): Readine
     ["FLIGHT PLAN 문구 비교(proposal.message)", /proposal\.message/],
     ["RECALL 문구 비교(proposal.recallMessage)", /proposal\.recallMessage/],
     ["받는 사람 확인(aircraftName)", /aircraftName/],
+    ["CREW CHANGE 문구 비교(change.message)", /change\.message/],
+    ["CREW CHANGE 받는 사람 확인(change.registration)", /change\.registration/],
     ["fail-closed(exit 2)", /process\.exit\(2\)/],
   ];
   const missing = need.filter(([, re]) => !re.test(source)).map(([name]) => name);
@@ -73,6 +91,7 @@ export interface ReadinessInput {
   // 코드 사실 점검(proposals.ts selfCheck2b). 빠진 것 목록, 비어 있으면 갖춰짐
   recallMissing: string[];
   standFreeMissing: string[];
+  crewChangeMissing: string[]; // crew-change.ts selfCheckCrewChange
   sendGuard: ReadinessItem;
   vocado: ReadinessItem;
 }
@@ -101,6 +120,12 @@ export function readiness2bOf(f: ReadinessInput): { items: ReadinessItem[] } {
         "STAND 없는 FLIGHT(SURVEY·CHECK)",
         f.standFreeMissing,
         "READBACK에 DEPARTED(stand 없음) → ARRIVED 보고(dispatch arrived)까지 AIRCRAFT·FLIGHT를 잡아 둠, 만료 없음",
+      ),
+      built(
+        "crew-change",
+        "CREW CHANGE 발부",
+        f.crewChangeMissing,
+        "SUPERVISOR 승인(approval 모드만) → crew-change send(sent) → READBACK CC-xxxx(acknowledged) 전이, [OCC CC-xxxx] 문구, 10분 overdue, approved는 대신하고 sent는 READBACK까지 기다림, approve·send·readback API, atcctl crew-change send·readback이 있음",
       ),
       {
         id: "known-gaps",

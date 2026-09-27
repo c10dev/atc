@@ -291,3 +291,19 @@ test("OCC(--gh-read): dispatch arrived는 결과 링크·한국어 한 줄과 �
   for (const c of ok) assert.equal(check(c, OCC, { ghRead: true }), null, c);
   for (const c of no) assert.notEqual(check(c, OCC, { ghRead: true }), null, c);
 });
+
+test("crew-change: OCC(--gh-read)는 brief·send·readback 통과, CROSSCHECK는 쓰는 명령처럼 모두 막음", () => {
+  const OCC = HERE.replace(/controller$/, "occ");
+  const cmds = [
+    "node ../controller/atcctl.mjs crew-change brief",
+    "node ../controller/atcctl.mjs crew-change brief | jq '.approved'",
+    "node ../controller/atcctl.mjs crew-change send CC-0003",
+    "node ../controller/atcctl.mjs crew-change readback CC-0003",
+  ];
+  for (const c of cmds) assert.equal(check(c, OCC, { ghRead: true }), null, c);
+  for (const opts of [{ crosscheck: true }, { crosscheck: true, ghRead: true }])
+    for (const c of cmds) assert.match(check(c, CROSSCHECK, opts) ?? "", /CROSSCHECK가 쓸 수 없는 atc 명령: crew-change/, c);
+  // 치환·리다이렉션은 OCC에서도 막힌다
+  assert.notEqual(check("node ../controller/atcctl.mjs crew-change send CC-0003 > out.txt", OCC, { ghRead: true }), null);
+  assert.notEqual(check("node ../controller/atcctl.mjs crew-change send $(echo CC-0003)", OCC, { ghRead: true }), null);
+});

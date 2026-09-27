@@ -55,6 +55,13 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
   node atcctl.mjs dispatch arrived <D-0003> -- <결과 링크나 한 줄>
                                             (2b) STAND 없는 FLIGHT(SURVEY·CHECK)를 CAPTAIN이 마쳤다고 보고함(ARRIVED)
 
+CREW CHANGE (OCC 세션이 맡음. approval 모드(2b)만. 승인은 SUPERVISOR가 FLEET 탭에서, OCC는 만들거나 승인하지 않음)
+  node atcctl.mjs crew-change brief         보낼 것(approved)·기다리는 것(waiting)·READBACK 대기(sent)·늦은 것(overdue) (JSON)
+  node atcctl.mjs crew-change send <CC-0001>
+                                            승인된 CREW CHANGE를 sent로 바꾸고 SEND TO와 문구 출력(이미 sent면 같은 문구)
+  node atcctl.mjs crew-change readback <CC-0001>
+                                            CAPTAIN이 "READBACK CC-0001"로 답함
+
 FLIGHT FOLLOWING (OCC 세션이 맡음. 읽기 전용: 배정된 FLIGHT의 단계와 지연·불일치)
   node atcctl.mjs following                 FLIGHT마다 단계(READBACK·DEPARTED·PR·CLEARED·ARRIVED)와 문제(issues). fresh는 아직 보고 안 한 문제 (JSON)
   node atcctl.mjs following ack [<key>]…    보고한 문제를 적는다(key 없으면 지금 fresh 전부). 같은 문제는 다시 fresh가 되지 않는다
@@ -176,6 +183,20 @@ export function parseArrived(args) {
   return { id, body: { note } };
 }
 
+// crew-change <brief|send|readback> [<CC-0001>] → { action, id }. 승인(approve)은 SUPERVISOR 몫이라 없다
+export const CREW_CHANGE_CMDS = ["brief", "send", "readback"];
+export function parseCrewChange(args) {
+  const [action, id, ...rest] = args;
+  if (!CREW_CHANGE_CMDS.includes(action)) throw new Error(`crew-change 명령은 ${CREW_CHANGE_CMDS.join("|")} (승인은 SUPERVISOR가 FLEET 탭에서)`);
+  if (action === "brief") {
+    if (id !== undefined) throw new Error(`알 수 없는 인자 ${args.slice(1).join(" ")}`);
+    return { action };
+  }
+  if (!id || !/^CC-\d{4,}$/i.test(id)) throw new Error("CREW CHANGE ID가 필요함 (예: CC-0001)");
+  if (rest.length) throw new Error(`알 수 없는 인자 ${rest.join(" ")}`);
+  return { action, id: id.toUpperCase() };
+}
+
 // dispatch|schedule crosscheck <ID> agree|disagree -- <이유> → POST 본문. 값 검사(500자 등)는 서버가 한다.
 // 모델 이름은 세션이 적지 않는다: CROSSCHECK guard가 세션 기록에서 실제 모델을 확인해 ATC_CROSSCHECK_MODEL로 붙인다
 // (없으면 서버가 "unknown").
@@ -284,6 +305,17 @@ if (isMain) {
       if (!reason) throw new Error("-- 뒤에 CAPTAIN의 사유가 필요함");
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/decline`, { reason });
       console.log(`${r.proposal.id} DECLINED`);
+    } else if (cmd === "crew-change") {
+      const { action, id } = parseCrewChange(args);
+      if (action === "brief") {
+        console.log(JSON.stringify(await call("GET", "/api/fleet/crew-changes/brief"), null, 1));
+      } else if (action === "send") {
+        const r = await call("POST", `/api/fleet/crew-changes/${encodeURIComponent(id)}/send`);
+        console.log(`SEND TO: ${r.sendTo}\n---\n${r.message}`);
+      } else {
+        const r = await call("POST", `/api/fleet/crew-changes/${encodeURIComponent(id)}/readback`);
+        console.log(`${r.change.id} READBACK 확인 (${r.change.registration})`);
+      }
     } else if (cmd === "schedule" && args[0] === "brief") {
       console.log(JSON.stringify(await call("GET", "/api/schedule/brief"), null, 1));
     } else if (cmd === "schedule" && args[0] === "draft" && args[1]) {
