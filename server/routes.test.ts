@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { LogEntry } from "./logbook.ts";
 import type { Ticket } from "./model.ts";
 import { dayKey } from "./network.ts";
-import { buildRoutes, completedIn, criteriaOf, etaOf, isBlocked, isLate, phaseOf, waypointStates } from "./routes.ts";
+import { activeWaypointsOf, buildRoutes, completedIn, criteriaOf, etaOf, isBlocked, isLate, phaseOf, waypointStates } from "./routes.ts";
 import { mergeByTeam, type Milestone, type MilestoneIssue, toGoal, toMilestone } from "./sources/linear-projects.ts";
 
 const DAY = 86_400_000;
@@ -180,4 +180,16 @@ test("여러 팀 읽기: toGoal·toMilestone은 읽은 팀을 적고, mergeByTea
   assert.deepEqual(merged.map((x) => `${x.id}:${x.teams.join("+")}`), ["a:VOC", "b:VOC+ATC", "c:ATC"]);
   const goals = mergeByTeam([[toGoal({ name: "Shared" }, "VOC")!], [toGoal({ name: "Shared" }, "ATC")!, toGoal({ name: "atc" }, "ATC")!]], (g) => g.name);
   assert.deepEqual(goals.map((g) => `${g.name}:${g.teams.join("+")}`), ["Shared:VOC+ATC", "atc:ATC"]);
+});
+
+test("activeWaypointsOf: ROUTE마다 지나지 않은 첫 WAYPOINT의 이슈만 'ROUTE · WAYPOINT'로", () => {
+  const m = (project: string, name: string, sortOrder: number, status: string, keys: string[]) => ({ project, name, sortOrder, status, issues: keys.map((k) => issue(k)) });
+  const got = activeWaypointsOf([
+    m("Song Catalog", "Foundation", 1, "done", ["VOC-1"]),
+    m("Song Catalog", "Beta Ready", 2, "next", ["VOC-2", "VOC-3"]),
+    m("Song Catalog", "Launch", 3, "unstarted", ["VOC-4"]),
+    m("atc", "M15", 1, "done", ["ATC-1"]),
+  ]);
+  assert.deepEqual([...got], [["VOC-2", "Song Catalog · Beta Ready"], ["VOC-3", "Song Catalog · Beta Ready"]]);
+  assert.equal(activeWaypointsOf(null).size, 0);
 });

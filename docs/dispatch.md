@@ -129,6 +129,7 @@ When slots are full, nothing is proposed instead of an `ASSIGN` (extended to gro
 | Team fit | How many times this AIRCRAFT flew FLIGHTs in the same project or related ones (FLIGHT RECORDER, claim history) | ×1 |
 | Conflict risk | Number of currently AIRBORNE FLIGHTs linked by related | ×−2 |
 | ROUTE | The FLIGHT's project is on the AIRCRAFT's routes ([fleet.md](fleet.md) 5) | ×1 |
+| Active WAYPOINT | The FLIGHT is an issue of its ROUTE's active WAYPOINT (the first unpassed Linear milestone, [routes.md](routes.md) step 8); the detail names the ROUTE and WAYPOINT. `weights.waypoint` in `dispatch.json` | ×1 |
 
 Each proposal shows the per-factor scores as they are ("why this flight for this team"). The SUPERVISOR changes the weights in a settings file.
 

@@ -799,3 +799,17 @@ test("청구 기록의 FLIGHT: 읽는 팀 key 모두", () => {
   assert.deepEqual([...readFlightHistory(["VOC", "ATC"], dir)], [["s1", ["ATC-1", "VOC-185"]]]);
   assert.deepEqual([...readFlightHistory("VOC", dir)], [["s1", ["VOC-185"]]]);
 });
+
+test("지금 WAYPOINT(routes 8단계): 지금 구간 WAYPOINT에 붙은 FLIGHT가 점수를 더 받아 먼저 배정되고, 가중치는 설정으로 바꾼다", () => {
+  const s = snap({ sessions: [session("a", "TEAM_A")], tickets: [ticket("VOC-40"), ticket("VOC-41")] });
+  const active = new Map([["VOC-41", "Beta Readiness · Beta Ready"]]);
+  const base = planDispatch(s, new Map(), cfg(), NOW);
+  assert.equal(base.assign[0].flight, "VOC-40"); // 같은 점수면 key 순
+  assert.equal(base.assign[0].factors.find((f) => f.id === "waypoint")!.detail, "아님");
+  const p = planDispatch(s, new Map(), cfg(), NOW, undefined, undefined, undefined, [], active);
+  assert.equal(p.assign[0].flight, "VOC-41");
+  const wp = p.assign[0].factors.find((f) => f.id === "waypoint")!;
+  assert.deepEqual([wp.value, wp.weight, wp.points, wp.detail], [1, 1, 1, "Beta Readiness · Beta Ready"]);
+  const off = planDispatch(s, new Map(), cfg({ weights: { ...DEFAULT_DISPATCH_CONFIG.weights, waypoint: 0 } }), NOW, undefined, undefined, undefined, [], active);
+  assert.equal(off.assign[0].flight, "VOC-40"); // 가중치 0이면 순서가 그대로
+});
