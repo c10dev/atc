@@ -343,6 +343,13 @@ vocado #394는 수정 → `@codex review` → 더 작은 새 지적(P2, 그다�
 - **BLOCKED 사유**: vocado 보호 규칙 "리뷰 스레드 해결 필수"는 GitHub에서 그대로 적용된다. 해결 안 된 스레드가 있는 BLOCKED PR은 "GitHub 보호 규칙이 머지를 막음 — 해결 안 된 리뷰 스레드 N개(스레드 해결 필수: resolve해야 머지된다)"로 보인다. head에 P2와 P3가 열려 있는 #394가 이 경우다.
 - **보이는 곳**: `PullRequest.codexFindings`와 `landingQueue[].codexFindings`(`p0`–`p3`, `unmarked`, `open`, `ok`). 스트립에는 "Codex P3 2건(해결됨) — 착륙 막지 않음", LAND 글 끝에는 "Codex P3 지적 2건은 남아 있음(해결·답글됨, 착륙은 막지 않음)."이 붙는다.
 
+### 9.4 쌓인 PR과 STRANDED 머지 (2026-09-27, ATC-29)
+
+vocado VOC-189/190 스택(#395 → main ← #396 ← #397 ← #398, 각자 바로 아래 브랜치가 base)이 14:41에 아래에서부터 각자 바로 아래 브랜치로 squash 머지됐다. #396의 squash 커밋은 #395 브랜치에 들어갔지만, #397과 #398의 것은 #395가 싣지 않는 중간 브랜치에 남았다. GitHub은 MERGED로, Linear는 VOC-190을 Done으로 보였지만 보안 수정은 main에 없었다. atc는 base가 main이 아닌 #396~#398을 CLEARED로 보였다.
+
+- **STACKED**(`stackOf`, `stackedText`, `server/landing.ts`): base가 저장소의 기본 브랜치(저장소마다 한 번 읽는다, `defaultByRepo`)가 아닌 PR에는 `stacked` 막힘이 붙고 CLEARED가 되지 않는다. 글에는 먼저 들어가야 할 것과 사슬이 있다: "쌓인 PR — #395가 먼저 main에 들어간 뒤 base를 main으로 바꿈 (#395 → #396 → #397 → #398)". 사슬은 base 브랜치를 따라 열린 PR을 내려가고, 그 head를 base로 가진 PR을 따라 올라간다(갈래가 있으면 번호가 작은 쪽). `PullRequest.stack`과 `landingQueue[].stack`(`stacked: true`)에 있다. base 브랜치에 열린 PR이 없으면 base를 바꾸라고만 한다. 기본 브랜치를 모르면 쌓인 PR로 가리지 않는다. 스트립에는 `STACKED #395 → #396 → …`가 뜬다. 나머지에게는 APPROACH 그대로라 TOWER는 LAND를 내지 않는다.
+- **STRANDED**(`strandedOf`, `firstReach`, `strandedMessage`, `server/sources/github.ts`): 매 바퀴 atc는 최근 14일 안에 기본 브랜치가 아닌 곳으로 머지된 PR을 읽는다(`gh pr list --state merged`, 모든 base). 그중 FLIGHT key(브랜치, 제목, 본문의 `Fixes`·`Closes`·`Resolves`)가 있는 것마다, 머지 커밋이나 head가 기본 브랜치나 그리로 가는 열린 PR의 head의 조상인지 읽기 전용 `gh api …/compare/<대상>...<커밋>`으로 본다(머지된 PR의 base를 head로 가진 PR을 먼저 본다). 고정된 SHA끼리의 결과는 캐시한다. 어디에도 닿지 않으면 `stranded` 경보가 선다: "STRANDED — #398(VOC-190)이 main에 닿지 않음 — … (Linear는 Done)". Linear가 Done이어도 남고, 커밋이 main이나 그리로 가는 열린 PR에 닿아야 풀린다. 확인이 실패하면 경보를 내지 않는다. TOWER 브리핑의 `open.stranded`에 있고, FLIGHT FOLLOWING은 그 FLIGHT에 `stranded` 문제(warn)를 붙인다(이미 Done이어도).
+
 ## 10. atc에 더할 것
 
 | 곳 | 내용 |

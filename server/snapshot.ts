@@ -8,7 +8,7 @@ import { readCodex } from "./sources/codex.ts";
 import { readWorkspaces, ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
 import { readGithub } from "./sources/github.ts";
 import { readLinear } from "./sources/linear.ts";
-import { buildPulls } from "./landing.ts";
+import { buildPulls, strandedMessage, strandedOf } from "./landing.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, loadAtfm, stopKey } from "./atfm.ts";
 
@@ -103,7 +103,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
   const repos = airports.open.map((a) => a.repo);
   const github = readGithub(repos);
   const pulls = buildPulls(
-    repos.filter((r) => github.byRepo.has(r)).map((repo) => ({ repo, pulls: github.byRepo.get(repo)! })),
+    repos.filter((r) => github.byRepo.has(r)).map((repo) => ({ repo, pulls: github.byRepo.get(repo)!, defaultBranch: github.defaultByRepo.get(repo) ?? null })),
     workspaces,
     alerts,
     readySince,
@@ -117,6 +117,14 @@ export async function buildSnapshot(): Promise<Snapshot> {
       ticketTitleOf: (key) => tickets.find((t) => t.key === key)?.title ?? null,
     },
   );
+
+  // STRANDED(ATC-29): FLIGHT가 있는 PR이 기본 브랜치가 아닌 곳에 머지됐고, 그 커밋이 기본 브랜치에도 그리로 가는 열린 PR에도 없음.
+  // Linear가 Done이어도 경보를 둔다(Done이 틀렸다는 뜻이다)
+  const stranded = strandedOf(repos.flatMap((r) => github.mergedElsewhereByRepo.get(r) ?? []));
+  for (const x of stranded) {
+    const state = tickets.find((t) => t.key === x.flight)?.state ?? null;
+    alerts.push({ kind: "stranded", ticketKey: x.flight, message: strandedMessage(x, github.defaultByRepo.get(x.repo) ?? "main", state) });
+  }
 
   // ATFM 출발 중지(docs/atfm.md 6장). GitHub을 아직 못 읽었으면 계산하지 않는다(빈 상태를 "풀림"으로 보지 않게).
   const now = Date.now();
@@ -153,6 +161,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     alerts,
     clearances: recentClearances(),
     pulls,
+    stranded,
     atfm: { mains: [...github.mainByRepo.values()].filter((m) => repos.includes(m.repo)), groundStops },
   };
 }

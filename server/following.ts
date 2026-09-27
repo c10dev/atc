@@ -6,6 +6,7 @@ import { classOf, type Wake } from "./crew.ts";
 import { type Departure, readDepartures } from "./departures.ts";
 import { tailsOf } from "./dispatch.ts";
 import { type LogEntry, loadLogbook, WAKE_EXPECT_MIN } from "./logbook.ts";
+import type { Stranded } from "./landing.ts";
 import type { PullRequest, Snapshot, Ticket, Workspace } from "./model.ts";
 import { allProposals, type Proposal, standFreeTicket } from "./proposals.ts";
 
@@ -26,7 +27,7 @@ export const STAGES = ["readback", "departed", "prOpened", "cleared", "arrived"]
 export type Stage = (typeof STAGES)[number];
 
 export interface FollowIssue {
-  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done";
+  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded";
   kind: "delay" | "mismatch";
   severity: "warn" | "info"; // info: 보여 주기만(착륙 대기는 SUPERVISOR 몫, 머지 뒤 Done 아님은 CLOSE 초안 몫)
   text: string;
@@ -61,6 +62,7 @@ export interface FollowInput {
   logbook: LogEntry[];
   departures: Departure[];
   now: number;
+  stranded?: Stranded[]; // 기본 브랜치에 닿지 않은 머지(ATC-29)
 }
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -167,10 +169,28 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
 }
 
 // 전체(순수). ARRIVED하고 Linear도 끝난 지 하루가 지난 FLIGHT는 뺀다(STAND 없는 FLIGHT는 ARRIVED 보고 뒤 하루).
+// STRANDED(ATC-29)인 FLIGHT는 따라가는 대상이 아니어도(이미 Done이어도) 넣고, 경보가 풀릴 때까지 빼지 않는다
 export function followingOf(inp: FollowInput): FollowItem[] {
-  return targetsOf(inp)
-    .map((t) => followOne(t, inp))
+  const targets = targetsOf(inp);
+  for (const x of inp.stranded ?? []) if (!targets.some((t) => t.flight === x.flight)) targets.push({ flight: x.flight, proposal: null, aircraft: null });
+  return targets
+    .map((t) => {
+      const f = followOne(t, inp);
+      for (const x of (inp.stranded ?? []).filter((y) => y.flight === t.flight)) {
+        const done = isDone(inp.tickets.find((y) => y.key === t.flight));
+        f.issues.push({
+          code: "stranded",
+          kind: "mismatch",
+          severity: "warn",
+          text: `STRANDED — PR #${x.number}이 ${x.base}에 머지돼 기본 브랜치에 닿지 않음${done ? " (Linear는 Done이지만 변경은 main에 없음)" : ""}`,
+          since: x.mergedAt,
+          key: `${t.flight}|stranded|${x.number}`,
+        });
+      }
+      return f;
+    })
     .filter((f) => {
+      if (f.issues.some((i) => i.code === "stranded")) return true;
       if (!f.stages.arrived || inp.now - Date.parse(f.stages.arrived) <= KEEP_ARRIVED_MS) return true;
       return !(f.standFree || isClosed(inp.tickets.find((t) => t.key === f.flight)));
     });
@@ -212,7 +232,7 @@ export function ackReported(items: FollowItem[], r: Reported, keys: string[], no
 // ── API ──
 
 export function followingNow(s: Snapshot, now = Date.now()): FollowItem[] {
-  return followingOf({ proposals: allProposals(), tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now });
+  return followingOf({ proposals: allProposals(), tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [] });
 }
 
 export function mountFollowing(app: Hono, getSnapshot: () => Promise<Snapshot>) {

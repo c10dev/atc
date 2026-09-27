@@ -54,6 +54,8 @@ PR에 붙은 막힌 조건을 본다([개념](concepts.md)의 LANDING SEQUENCE).
 - `review-findings`(리뷰 지적) → Codex가 head에 COMMENTED 리뷰로 문제를 짚었거나, Codex 한도 때 착륙 리뷰 세션(DeepSeek)이 P0·P1 지적을 남겼다(글이 "DEEPSEEK 지적(…)"으로 시작하고 지적 내용이 들어 있다. TOWER가 CAPTAIN에게 전한다). Codex 지적이면 PR의 P1·P2 줄 댓글을 반영해 push하면 새 head를 Codex가 다시 본다(필요하면 `@codex review`). 지적이 틀렸다고 판단하면 스레드에 이유를 답하고 `@codex review`로 재리뷰를 받거나, 사람(작성자 계정 아님)이 지적을 보고 head에 APPROVED한다(Codex가 한도에 걸렸을 때도 이 길). 지적 뒤에 달린 Codex 👍나 지적 뒤의 사람 APPROVED가 있어야 풀린다. 지적 전의 APPROVED나 사람 COMMENTED로는 풀리지 않는다.
 - `review-findings` 글이 "Codex P3 지적 … 해결·답글 없음"이면 → P3만 남았다. 고칠 만하면 고쳐 push하고, 아니면 스레드에 이유를 답글로 달거나 resolve한다. 그러면 착륙을 막지 않는다.
 - `blocked` 글에 "해결 안 된 리뷰 스레드 N개"가 있으면 → vocado 보호 규칙(스레드 해결 필수)이다. 지적을 반영했거나 답했으면 GitHub에서 스레드를 resolve한다.
+- `stacked`(STACKED) → base가 main이 아닌 쌓인 PR이다. 사슬의 아래 PR부터 main에 머지하고, 그다음 이 PR의 base를 main으로 바꾼다(GitHub에서 base 변경). 아래 PR에 squash 머지하지 않는다 — 그러면 변경이 중간 브랜치에 남는다(STRANDED).
+- 경보 STRANDED → FLIGHT의 PR이 main이 아닌 브랜치에 머지돼 main에 닿지 않았다. Linear가 Done이어도 변경은 main에 없다. 그 커밋을 main으로 가는 새 PR로 옮기거나(cherry-pick), 남은 PR을 main으로 다시 연다.
 - `behind` → main이 앞서 갔다. rebase하고 push한다(CI와 리뷰를 다시 받는다).
 - `no-checks` → 그 저장소에 CI가 없다(atc 등). CLEARED TO LAND가 될 수 없으니 SUPERVISOR가 직접 판단한다.
 - `merge-unknown` → GitHub이 머지 가능 여부를 계산 중이다. 잠시 뒤 풀린다.
