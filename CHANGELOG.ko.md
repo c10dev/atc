@@ -25,6 +25,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - **API와 CLI**: `GET /api/fleet`에 `dispatchMode`, `pendingCrewChange`에 `status`·`message`·`approvedAt`·`sentAt`·`overdue`·`waitingFor`가 붙고 acknowledged·delivered·superseded 전까지 보인다. 새 창구 `GET /api/fleet/crew-changes/brief`·`…/:id`, `POST /api/fleet/crew-changes/:id/send`·`…/readback`. 기록에는 새 상태와 `acknowledgedAt`이 들어간다. `atcctl crew-change brief|send|readback`(순수 함수 `parseCrewChange`). OCC guard는 통과시키고 CROSSCHECK guard는 막는다.
   - **OCC 규정**: `occ/CLAUDE.md`와 tick 스킬에 보내고 READBACK을 기록할 때, 승인은 SUPERVISOR만 한다는 것, 늦은 건 처리를 적었다.
   - **2b 점검표**: 코드 사실로 계산하는 `crew-change`("CREW CHANGE 발부") 항목을 더했다(`selfCheckCrewChange`). `vocado-readback`은 vocado `CLAUDE.md`가 `[OCC CC-xxxx]`에도 `READBACK CC-xxxx`로 답해야 ready이고, 제안 문장에 그 규칙이 들어갔다. `send-guard` 항목도 CREW CHANGE 비교를 본다.
+- 설계 문서 한국어판: `docs/occ.ko.md`, `docs/fleet.ko.md`, `docs/atfm.ko.md`(SUPERVISOR 결정 "우선 영어만, 추후에 한글 추가"). 원본에는 언어 전환 줄만 더했다. 루트 `CLAUDE.md`가 `docs/occ`·`docs/fleet`·`docs/atfm`도 영어판과 한국어판을 함께 고치라고 하게 바꿨고, 한국어 README·`docs/dispatch.ko.md`·`docs/naming.ko.md`·guide의 링크를 한국어판으로 바꿨다.
 - 2b에서 STAND 없는 FLIGHT의 출발과 도착([docs/fleet.md](docs/fleet.md) 5.1.1, [docs/dispatch.ko.md](docs/dispatch.ko.md) 6). READBACK 받은 SURVEY·CHECK는 STAND가 생기지 않아 DEPARTED가 되지 못하고 24시간 뒤 만료됐다.
   - **READBACK에 DEPARTED**: STAND 없는 FLIGHT는 `POST …/accept`(`atcctl dispatch readback`)가 `accept`와 `depart`(`stand: null`, `via: "readback"`)를 함께 남긴다(`readbackOps`). 제안에 `departedStand: null`, `departedVia: "readback"`이 붙고, STAND로 DEPARTED하면 `departedVia: "stand"`다. `accepted`에 남은 STAND 없는 제안은 다음 동기화에 DEPARTED가 된다.
   - **CAPTAIN 보고로 ARRIVED**: 새 상태 `arrived`, op `arrived`, `POST /api/dispatch/proposals/:id/arrived {note}`, `atcctl dispatch arrived D-xxxx -- <결과 링크나 한 줄>`(순수 함수 `parseArrived`). 제안에 `arrivedNote`, `arrivedUrl`이 남는다. STAND 없이 DEPARTED한 것만 ARRIVED할 수 있고, 자동 감지는 나중으로 미뤘다.
@@ -130,6 +131,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - 이 변경 기록.
 
 ### 변경
+- 웹 화면이 탭을 필요할 때 불러온다([web/README](web/README.ko.md) "데이터 흐름"). RADAR와 공용 부분(머리글, 새 버전 알림, SSE)만 메인 번들에 있고, 다른 탭은 자기 CSS와 함께 `React.lazy` 청크가 되며, DOCS는 `marked`와 안내 Markdown을 가져간다. 메인 JS는 512 kB(gzip 159 kB)에서 261 kB(gzip 83 kB)가 됐고 Vite의 "500 kB보다 큰 청크" 경고가 없어졌다. 배포 전에 연 탭이 지워진 청크를 부르면, 조용히 실패하는 대신 그 탭 안에 "이 화면을 불러오지 못함"과 새로고침 버튼이 뜬다(탭별 오류 경계, `server/version.ts`의 `isChunkLoadError`). 기존 새 버전 알림도 함께 뜨고, 저절로 새로고침하지 않는다. 탭 안의 다른 렌더 오류도 같은 방식으로 그 탭에 가둔다. 빌드 정체(진입 스크립트)는 청크나 CSS가 바뀔 때마다 바뀌어 새 버전 알림이 계속 맞다. `#docs/<쪽>` 같은 `#탭/하위` 해시는 그대로 동작한다.
 - CROSSCHECK 모델별 일치를 모델 계열별로 센다. `modelFamily`(`server/crosscheck.ts`)가 경로 접두어(`claude-ocx-opencode-go--`, `claude-ocx-native--`), `[1m]` 같은 접미어, `-contributor`를 뗀다. 그래서 같은 Muse가 `byModel`에서 이름 셋으로 쪼개지고 ATFM의 모델별 90%/20건 표본이 나뉘던 문제가 없어졌다.
   - mark에는 원래 모델 이름이 그대로 남고, 집계와 표시만 계열로 한다. 게이트 패널은 계열을 보여 주고, 칩 툴팁은 원래 이름을 둔다.
   - `unknown`(모델 기록 전의 mark 5건)은 따로 한 줄로 남고, ATFM 켜는 조건의 "지금 계열"에는 세지 않는다.

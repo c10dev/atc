@@ -1,6 +1,6 @@
 # ATFM design (stage 3)
 
-English only for now, like [occ.md](occ.md) and [fleet.md](fleet.md).
+**English** · [한국어](atfm.ko.md)
 
 ATFM (air traffic flow management) is stage 3 of atc. Stages 1–2 made atc see traffic (TOWER), propose work (DISPATCH), draft ticket changes (OCC SCHEDULE) and get a second opinion (CROSSCHECK), with every decision left to the SUPERVISOR. Stage 3 lets atc act on its own in the narrow cases where the data shows the SUPERVISOR would decide the same way, and lets it slow traffic down when the system is congested or broken.
 

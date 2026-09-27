@@ -24,6 +24,8 @@ server ──SSE /api/events (snapshot every 2 s)──▶ useSnapshot ──▶
 
 - `useSnapshot.ts` opens an `EventSource` on `/api/events` and keeps the latest `Snapshot`. The header shows the connection as live / connecting / lost.
 - The same stream carries `version` (the bundle the server serves). `main.tsx` takes the page's own bundle from `new URL(import.meta.url).pathname` (`/assets/index-<hash>.js` in a build) and `NewVersion.tsx` shows "새 버전이 배포됨 · 새로고침" under the header when they differ (`showNewVersion` in `server/version.ts`). It never reloads on its own; 닫기 hides it for that build while the tab is open. In dev (`/src/main.tsx`) or with no server build it never shows.
+- **Code splitting.** Only RADAR (the default tab) and the shared parts (header, new-version notice, SSE) are in the main bundle. Every other tab is a `React.lazy` chunk loaded the first time it opens, with its CSS and any library only it uses (DOCS carries `marked` and the guide Markdown). `lazyTab.tsx` wraps the named-export views. While a chunk loads, the tab shows "화면 불러오는 중…". Build (2026-09-27): main `index` 261 kB (83 kB gzip, was 512 kB / 159 kB in one bundle) plus 47.7 kB CSS; DOCS 107 kB; DISPATCH 46 kB; SCHEDULE 28 kB; FLEET 24 kB; NETWORK 16 kB; the rest under 12 kB. The 500 kB warning is gone.
+- **Old tab after a deploy.** The build empties `web/dist`, so a tab opened before a deploy asks for chunk files that no longer exist (404). Each tab sits in its own error boundary (`TabBoundary`): a failed chunk shows "이 화면을 불러오지 못함" in that tab only, with a 새로고침 (reload) button. The text says a new version was deployed when the server's build differs from the page's (`showNewVersion`), and otherwise that the file could not be fetched. `isChunkLoadError` (`server/version.ts`) recognises the Chrome, Firefox, Safari and Vite CSS-preload messages. Tabs already loaded keep working, the page never reloads on its own (typed text survives), and the new-version notice still shows. Any other error in a tab is caught the same way instead of blanking the whole screen. The build id stays the entry script: its hash changes whenever any lazy chunk or its CSS changes, because the entry embeds their file names.
 - `derive.ts` builds lookup indexes from a snapshot (ticket → worktree → claim → session, session location, ordering).
 - Types come straight from the server (`../../server/model.ts` and friends), so the UI and API can't drift apart.
 - METRICS, DISPATCH and SCHEDULE fetch their own endpoints (`/api/metrics`, `/api/dispatch/…`, `/api/schedule/brief`) and refetch once a minute (keyed to the snapshot time).
@@ -74,7 +76,8 @@ Themes are sets of CSS tokens under `:root[data-theme="…"]` in `styles.css`; `
 |---|---|
 | `index.html` | Entry page |
 | `src/main.tsx` | Applies saved settings before the first paint, reads the page's own bundle path, mounts `App` |
-| `src/App.tsx` | Header, tabs, alert ticker, handoff list, clock |
+| `src/App.tsx` | Header, tabs, alert ticker, handoff list, clock; loads tab views lazily (`tabView`) |
+| `src/lazyTab.tsx` | `lazyTab` (React.lazy for named exports), `TabLoading` placeholder, `TabBoundary` (per-tab error boundary with the chunk-load message) |
 | `src/useSnapshot.ts` | SSE connection (snapshots and the server's bundle); `useNow` re-renders relative times |
 | `src/NewVersion.tsx` | "새 버전이 배포됨 · 새로고침" notice (a polite `role="status"` region) |
 | `src/derive.ts` | Indexes and helpers over a snapshot |

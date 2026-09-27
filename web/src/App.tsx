@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { showNewVersion } from "../../server/version.ts";
 import { alertCode, alertLabel, alertMessage, callsign, flightNumber, HANDOFF_LABEL } from "./aviation.ts";
 import { buildIndex, timeAgo } from "./derive.ts";
 import { NewVersionBar } from "./NewVersion.tsx";
@@ -6,17 +7,23 @@ import { MoonIcon, Starfield } from "./Starfield.tsx";
 import { Ticker } from "./Ticker.tsx";
 import { formatClock, useSettings } from "./settings.ts";
 import { SettingsPanel } from "./SettingsPanel.tsx";
+import { lazyTab, TabBoundary, TabLoading } from "./lazyTab.tsx";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
-import { Airports } from "./views/Airports.tsx";
-import { Dispatch } from "./views/Dispatch.tsx";
-import { Docs } from "./views/Docs.tsx";
-import { Fleet } from "./views/Fleet.tsx";
 import { MapView } from "./views/Map.tsx";
-import { Metrics } from "./views/Metrics.tsx";
-import { Network } from "./views/Network.tsx";
-import { Schedule } from "./views/Schedule.tsx";
-import { Teams } from "./views/Teams.tsx";
-import { Tickets } from "./views/Tickets.tsx";
+import type { Snapshot } from "../../server/model.ts";
+import type { Index } from "./derive.ts";
+
+// 첫 화면(RADAR)만 메인 번들에 두고, 나머지 탭은 처음 열 때 불러온다(청크마다 그 탭의 CSS·라이브러리까지, 예: DOCS의 marked).
+type SnapProps = { snapshot: Snapshot; idx: Index; now: number };
+const Teams = lazyTab<SnapProps>(() => import("./views/Teams.tsx"), "Teams");
+const Tickets = lazyTab<SnapProps>(() => import("./views/Tickets.tsx"), "Tickets");
+const Airports = lazyTab<{ snapshot: Snapshot }>(() => import("./views/Airports.tsx"), "Airports");
+const Fleet = lazyTab<{ refreshKey: string }>(() => import("./views/Fleet.tsx"), "Fleet");
+const Metrics = lazyTab<{ refreshKey: string }>(() => import("./views/Metrics.tsx"), "Metrics");
+const Network = lazyTab<{ refreshKey: string }>(() => import("./views/Network.tsx"), "Network");
+const Dispatch = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Dispatch.tsx"), "Dispatch");
+const Schedule = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Schedule.tsx"), "Schedule");
+const Docs = lazyTab<Record<string, never>>(() => import("./views/Docs.tsx"), "Docs");
 
 const TABS = [
   { id: "radar", code: "RADAR" },
@@ -188,30 +195,42 @@ export function App({ build }: { build: string }) {
       <main className="main">
         {!snapshot || !idx ? (
           <p className="empty">{connection === "lost" ? "서버에 연결할 수 없음" : "불러오는 중…"}</p>
-        ) : tab === "radar" ? (
-          <MapView snapshot={snapshot} idx={idx} now={now} />
-        ) : tab === "strips" ? (
-          <Teams snapshot={snapshot} idx={idx} now={now} />
-        ) : tab === "airports" ? (
-          <Airports snapshot={snapshot} />
-        ) : tab === "fleet" ? (
-          <Fleet refreshKey={snapshot.at.slice(0, 16)} />
-        ) : tab === "metrics" ? (
-          <Metrics refreshKey={snapshot.at.slice(0, 16)} />
-        ) : tab === "network" ? (
-          <Network refreshKey={snapshot.at.slice(0, 16)} />
-        ) : tab === "dispatch" ? (
-          <Dispatch refreshKey={snapshot.at.slice(0, 16)} now={now} />
-        ) : tab === "schedule" ? (
-          <Schedule refreshKey={snapshot.at.slice(0, 16)} now={now} />
-        ) : tab === "docs" ? (
-          <Docs />
         ) : (
-          <Tickets snapshot={snapshot} idx={idx} now={now} />
+          // 탭마다 오류 경계를 새로 둔다(한 탭의 오류·못 불러온 청크가 다른 탭을 막지 않게)
+          <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
+            <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now)}</Suspense>
+          </TabBoundary>
         )}
       </main>
     </div>
   );
+}
+
+// 탭 이름 → view. 하위 경로(#docs/requesting)는 그 view가 location.hash에서 읽는다.
+function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number) {
+  const refreshKey = snapshot.at.slice(0, 16);
+  switch (tab) {
+    case "radar":
+      return <MapView snapshot={snapshot} idx={idx} now={now} />;
+    case "strips":
+      return <Teams snapshot={snapshot} idx={idx} now={now} />;
+    case "airports":
+      return <Airports snapshot={snapshot} />;
+    case "fleet":
+      return <Fleet refreshKey={refreshKey} />;
+    case "metrics":
+      return <Metrics refreshKey={refreshKey} />;
+    case "network":
+      return <Network refreshKey={refreshKey} />;
+    case "dispatch":
+      return <Dispatch refreshKey={refreshKey} now={now} />;
+    case "schedule":
+      return <Schedule refreshKey={refreshKey} now={now} />;
+    case "docs":
+      return <Docs />;
+    default:
+      return <Tickets snapshot={snapshot} idx={idx} now={now} />;
+  }
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
