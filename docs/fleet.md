@@ -7,7 +7,7 @@ atc knows each team session as an AIRCRAFT (`TEAM_B`, callsign BRAVO) and its le
 - **FLEET**: the teams, their crews, what they are rated for, their routes and targets.
 - **FLIGHT classification**: the kind of work, its size and the rating it needs.
 
-> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE step 1 (sections 8.3 and 8.4), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules, then STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (see section 5 for what is left), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), and CHECKRIDE recommendations for TYPE RATINGS (section 8.2). Decisions are listed at the end.
+> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE steps 1 and 2 (sections 8.3 and 8.4; step 2, OCC sending it, only in DISPATCH approval mode), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules, then STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (see section 5 for what is left), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), and CHECKRIDE recommendations for TYPE RATINGS (section 8.2). Decisions are listed at the end.
 
 Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHEDULE operations), [dispatch.md](dispatch.md) (the planner that uses them).
 
@@ -392,7 +392,7 @@ The FLEET tab is also where teams are formed and stood down. atc never starts a 
 | Stand a team down for a while | **AOG** | Reason plus an optional release date. The planner stops proposing to it (`AOG — reason (~date)`) |
 | Remove a team | **RETIREMENT** | The AIRCRAFT leaves the FLEET list (kept under RETIRED with its date and reason) and gets no proposals. A live session is not closed. It can be restored |
 
-Later: sending **CREW CHANGE** through OCC after approval, from OCC S2 (step 1, the text without sending, is section 8.4).
+A running AIRCRAFT whose complement changes gets a **CREW CHANGE** instead (section 8.4): the SUPERVISOR pastes it, or in DISPATCH approval mode approves it and OCC sends it.
 
 ### 8.2 CHECKRIDE
 
@@ -457,17 +457,43 @@ Calls are grouped by `agentType` and `model`: `observedCrew: {agentType, positio
 
 **Gap: agent-team teammates.** Teammates spawned by the CAPTAIN with the Agent tool (named or not, background or not) are recorded under the CAPTAIN's `subagents/` and are observed. Teammates of a Claude Code agent team that run as separate sessions (registered under `~/.claude/teams/<team>/`) are not: atc does not read the team config, and those sessions carry their own names. They show as `unused` if declared. Seeing them would need a metadata source that names the lead session; none is used yet.
 
-### 8.4 CREW CHANGE (step 1: text, never sent)
+### 8.4 CREW CHANGE
 
-When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT through `PATCH /api/fleet/:registration`, atc writes a CREW CHANGE: a text for the CAPTAIN, like the CREW BRIEFING but for a running team. Built in `server/crew-change.ts`; the only hook in `fleet.ts` is one call after the profile is saved.
+When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT through `PATCH /api/fleet/:registration`, atc writes a CREW CHANGE: a text for the CAPTAIN, like the CREW BRIEFING but for a running team. Built in `server/crew-change.ts`; the only hook in `fleet.ts` is one call after the profile is saved. Step 1 (below, first part) is the text and the SUPERVISOR's manual delivery. Step 2 (the rest) lets OCC send it in DISPATCH approval mode (2b).
 
 - **In service** means not retired and a live session with that name exists. An AIRCRAFT that has not entered service gets its crew from the CREW BRIEFING instead. AOG AIRCRAFT count as in service.
 - **Diff** (`diffCrew`): members are compared by their one-line form `position: agent (limits)`, the same as the CREW BRIEFING. A member whose agent or limits changed is removed and added; the text pairs a POSITION that leaves and returns once as "바뀌는 CREW".
 - **TYPE RATING impact** (`ratingImpact`), from the planner rules of sections 4.3 and 5: losing or gaining `BUILD`/`MAINT`/`TEST` (a member who is not `flash-helper` and has no `no BUILD` or `read-only`), `CHECK` (no `no CHECK verdicts`), the ability to hold `SEC` (`canHoldSec`; `applyPatch` still refuses `SEC` without it), ratings added or removed in the same PATCH, and `UI` kept without both `ui-builder` and `ui-qa`.
 - **Text** (`crewChangeText`): header `[ATC FLEET] CREW CHANGE · <CALLSIGN> (<REG>) · CC-0001`, then crew leaving, joining and changing, the full new complement, TYPE RATING with the impact, and how to apply it (stop leaving teammates after their current work, create joining ones with the given agent and model, tell changed ones their new limits), ending with `"<REG> CREW CHANGE CC-0001 COMPLETE"`.
-- **Record**: `~/.local/state/atc/crew-changes.jsonl`, append-only. `{"op":"created","id":"CC-0001","registration","at","before":{complement,ratings},"after":{…},"added","removed","ratingImpact","text"}`, then `{"op":"delivered","id","at"}` or `{"op":"superseded","id","at","by"}`. Folded status: `pending` → `delivered` or `superseded`.
-- **Superseding**: a new complement change while one is pending closes it (`by` the new id) and writes a new one diffed from the pending one's original `before` to the latest `after`. If that diff is empty (the crew went back), the pending one is closed with `by: null` and nothing new is written. A PATCH that changes only the ratings rewrites a pending CREW CHANGE (so its TYPE RATING lines stay true) but never starts one.
-- **Never sent.** There is no send path. The FLEET card shows `pendingCrewChange: {id, at, text, added, removed, ratingImpact}` with a copy button; the SUPERVISOR pastes it to the CAPTAIN and presses 전달함, which calls `POST /api/fleet/:registration/crew-change/:id/delivered` (404 unknown, 409 already closed). `GET /api/fleet/crew-changes?registration=&limit=` returns the recent history. Sending through OCC comes later, behind a switch.
+- **Record**: `~/.local/state/atc/crew-changes.jsonl`, append-only. `{"op":"created","id":"CC-0001","registration","at","before":{complement,ratings},"after":{…},"added","removed","ratingImpact","text"}`, then status lines `{"op":"approved"|"acknowledged"|"delivered","id","at"}`, `{"op":"sent","id","at","message"}` and `{"op":"superseded","id","at","by"}`.
+- **Manual delivery** (both modes): the FLEET card shows the open CREW CHANGE with a copy button; the SUPERVISOR pastes it to the CAPTAIN and presses 전달함, which calls `POST /api/fleet/:registration/crew-change/:id/delivered`. `GET /api/fleet/crew-changes?registration=&limit=` returns the recent history with every status and timestamp.
+
+**States** (`foldCrewChanges`; an op that does not fit the current state is ignored):
+
+| From | Op | To | Who |
+|---|---|---|---|
+| `pending` | `approved` | `approved` | SUPERVISOR, FLEET tab or API, approval mode only |
+| `approved` | `sent` | `sent` | OCC, `atcctl crew-change send CC-xxxx` |
+| `sent` | `acknowledged` | `acknowledged` | OCC, `atcctl crew-change readback CC-xxxx` after the CAPTAIN's `READBACK CC-xxxx` |
+| `pending`, `approved` | `delivered` | `delivered` | SUPERVISOR, 전달함 (pasted by hand) |
+| `pending`, `approved` | `superseded` | `superseded` | atc, on a newer complement change |
+
+`acknowledged`, `delivered` and `superseded` are closed. OCC never creates, requests or approves a CREW CHANGE: `atcctl` has no approve command and the OCC Bash guard allows nothing but `atcctl`, `jq` and read-only `gh`.
+
+**Decisions (2026-09-27):**
+
+- **Approval needs approval mode.** `POST /api/fleet/:registration/crew-change/:id/approve` returns 409 unless `dispatch.json` `mode` is `approval`. There is no approve-then-wait: in shadow nobody would send it, and 전달함 is the shadow path.
+- **An `approved` one can still be delivered by hand.** If the SUPERVISOR switches back to shadow, or pastes it first, 전달함 closes it and OCC never sends it. A `sent` one cannot be marked delivered (409): it is already with the CAPTAIN and waits for READBACK.
+- **Superseding.** A newer complement change while one is `pending` or `approved` closes it (`by` the new id) and writes a new one diffed from its original `before` to the latest `after`; an approved one needs approval again. If that diff is empty (the crew went back), the open one is closed with `by: null` and nothing new is written. A PATCH that changes only the ratings rewrites an unsent CREW CHANGE (so its TYPE RATING lines stay true) but never starts one. A `sent` one is never superseded: it stays open until READBACK. A newer change is diffed from the current declaration (the `sent` one's `after`), can be approved, and waits: `crew-change send` refuses it (409, "READBACK 대기 중인 CC-xxxx") until the `sent` one is acknowledged.
+- **Sending** (`POST /api/fleet/crew-changes/:id/send`, approval mode only): `approved` → `sent`, stores the exact message and returns `{change, sendTo, message}`. On a `sent` one it returns the same message again (resend). The message (`crewChangeMessage`) is the header `[OCC CC-0001] CREW CHANGE · <CALLSIGN> (<REG>)`, a blank line, the text without its `[ATC FLEET] …` header (an `[OCC CC-xxxx] …` header is stripped too, so it never doubles), a blank line and `— 받았으면 이 메시지에 "READBACK CC-0001"로 답장해 주세요.`, the same form as the FLIGHT PLAN and RECALL.
+- **READBACK** (`POST /api/fleet/crew-changes/:id/readback`): `sent` → `acknowledged`, in any mode (a sent one must be closable after switching back to shadow). A "CREW CHANGE CC-xxxx COMPLETE" line alone also shows the CAPTAIN got it; OCC records the READBACK for it.
+- **Overdue**: a `sent` one with no READBACK after 10 minutes (`CREW_CHANGE_READBACK_OVERDUE_MS`). OCC resends the same text once (`crew-change send` again), then reports to the SUPERVISOR.
+
+**send-guard** (`occ/send-guard.mjs`, the OCC session's SendMessage hook, fail-closed): a message starting with `[OCC CC-xxxx]` passes only when `GET /api/fleet/crew-changes/:id` answers `{change, mode}` with `mode: "approval"`, `change.status: "sent"` (so `crew-change send` ran first), the recipient's bare name equal to `change.registration`, and the trimmed body equal to the stored `change.message`. atc unreachable, an unknown id or any mismatch blocks with exit 2. The DISPATCH checks are unchanged.
+
+**Views.** `GET /api/fleet` returns `dispatchMode` and, per AIRCRAFT, `pendingCrewChange: {id, at, text, added, removed, ratingImpact, status: "pending" | "approved" | "sent", message, approvedAt, sentAt, overdue, waitingFor}` (`openCrewChangeOf`): the unsent one when there is one, otherwise the `sent` one, until it is acknowledged, delivered or superseded. `waitingFor` is the id of the `sent` one an unsent one waits behind. `GET /api/fleet/crew-changes/brief` (`atcctl crew-change brief`) returns `{mode, approved, waiting, sent, overdue, pending}` for OCC: `approved` ready to send, `waiting` approved but behind a `sent` one, `sent` waiting for READBACK, `overdue` ids, `pending` ids waiting for the SUPERVISOR.
+
+**2b checklist.** The `crew-change` item ("CREW CHANGE 발부", `selfCheckCrewChange`) checks these transitions, the refusals, the message, the overdue rule, the endpoints and the `atcctl` commands from code facts. The `vocado-readback` item is ready only when vocado `CLAUDE.md` also answers `[OCC CC-xxxx]` with `READBACK CC-xxxx` ([dispatch.md](dispatch.md) "2b readiness checklist").
 
 ## 9. Moving from `lane:` to `tail:`
 
@@ -479,7 +505,7 @@ When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT throug
 ## 10. Implementation order
 
 1. ✅ `tail:` in the planner with the `lane:` alias. Then the Linear labels, VOC-196 and the note to President
-2. ✅ `fleet.json` registry, API and FLEET tab (read and edit), with defaults from the vocado crew rules. Observed crew next to the declared complement and CREW CHANGE step 1 are in sections 8.3 and 8.4
+2. ✅ `fleet.json` registry, API and FLEET tab (read and edit), with defaults from the vocado crew rules. Observed crew next to the declared complement and CREW CHANGE (the text, and OCC sending it in approval mode) are in sections 8.3 and 8.4
 3. ✅ Classification labels read by the planner: TYPE RATING and FLIGHT TYPE hard rules, WAKE slots, ROUTE score (the Risk group counts as SEC; label groups are read as `group:name`), STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (sections 5.1, 5.2)
 4. ◐ The DISPATCH card shows the classification. Still to do: FIDS, and DISPATCH notes that suggest a classification when labels are missing
 5. OCC S1 `CLASSIFY` drafts (with the SCHEDULE work in occ.md)

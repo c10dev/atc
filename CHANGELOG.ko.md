@@ -16,6 +16,15 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- CREW CHANGE 2단계: DISPATCH approval 모드(2b)에서 OCC가 보낸다([docs/fleet.md](docs/fleet.md) 8.4, `server/crew-change.ts`).
+  - **상태**: `pending` → `approved`(SUPERVISOR, `POST /api/fleet/:registration/crew-change/:id/approve`, approval 모드가 아니면 409) → `sent`(OCC, `atcctl crew-change send CC-xxxx`) → `acknowledged`(CAPTAIN의 `READBACK CC-xxxx` 뒤 OCC가 `atcctl crew-change readback CC-xxxx`). 전달함(`delivered`)은 `pending`에서 그대로 되고 이제 `approved`에서도 된다. `sent`에서는 안 된다. OCC는 만들거나 요청하거나 승인하지 않는다.
+  - **대신하기**: 새 COMPLEMENT 변경은 `pending`·`approved`를 대신한다(승인됐던 것은 다시 승인). `sent`는 대신하지 않고 READBACK까지 열어 둔다. 새 건은 승인할 수 있지만 그때까지 `crew-change send`가 409로 거절한다.
+  - **문구**: `crewChangeMessage`가 `[OCC CC-xxxx] CREW CHANGE · <CALLSIGN> (<REG>)`, 옛 `[ATC FLEET]` 머리를 뗀 지시문 본문, `— 받았으면 이 메시지에 "READBACK CC-xxxx"로 답장해 주세요.`를 만들고 `sent` 줄에 저장한다. sent 건을 다시 send하면 같은 문구를 준다.
+  - **늦음**: `sent` 뒤 10분 넘게 READBACK이 없으면 `overdue`. OCC가 한 번 다시 보내고, 그래도 없으면 SUPERVISOR에게 보고한다.
+  - **send-guard**(`occ/send-guard.mjs`)에 CREW CHANGE 분기를 fail-closed로 더했다: `[OCC CC-xxxx]`로 시작하는 메시지는 approval 모드이고, `sent` 상태인 건을, 그 REGISTRATION에게, 저장된 문구 그대로 보낼 때만 통과한다(`GET /api/fleet/crew-changes/:id` → `{change, mode}`). DISPATCH 확인은 그대로이고, 막을 때 머리말은 `OCC 전송 차단`이다.
+  - **API와 CLI**: `GET /api/fleet`에 `dispatchMode`, `pendingCrewChange`에 `status`·`message`·`approvedAt`·`sentAt`·`overdue`·`waitingFor`가 붙고 acknowledged·delivered·superseded 전까지 보인다. 새 창구 `GET /api/fleet/crew-changes/brief`·`…/:id`, `POST /api/fleet/crew-changes/:id/send`·`…/readback`. 기록에는 새 상태와 `acknowledgedAt`이 들어간다. `atcctl crew-change brief|send|readback`(순수 함수 `parseCrewChange`). OCC guard는 통과시키고 CROSSCHECK guard는 막는다.
+  - **OCC 규정**: `occ/CLAUDE.md`와 tick 스킬에 보내고 READBACK을 기록할 때, 승인은 SUPERVISOR만 한다는 것, 늦은 건 처리를 적었다.
+  - **2b 점검표**: 코드 사실로 계산하는 `crew-change`("CREW CHANGE 발부") 항목을 더했다(`selfCheckCrewChange`). `vocado-readback`은 vocado `CLAUDE.md`가 `[OCC CC-xxxx]`에도 `READBACK CC-xxxx`로 답해야 ready이고, 제안 문장에 그 규칙이 들어갔다. `send-guard` 항목도 CREW CHANGE 비교를 본다.
 - 2b에서 STAND 없는 FLIGHT의 출발과 도착([docs/fleet.md](docs/fleet.md) 5.1.1, [docs/dispatch.ko.md](docs/dispatch.ko.md) 6). READBACK 받은 SURVEY·CHECK는 STAND가 생기지 않아 DEPARTED가 되지 못하고 24시간 뒤 만료됐다.
   - **READBACK에 DEPARTED**: STAND 없는 FLIGHT는 `POST …/accept`(`atcctl dispatch readback`)가 `accept`와 `depart`(`stand: null`, `via: "readback"`)를 함께 남긴다(`readbackOps`). 제안에 `departedStand: null`, `departedVia: "readback"`이 붙고, STAND로 DEPARTED하면 `departedVia: "stand"`다. `accepted`에 남은 STAND 없는 제안은 다음 동기화에 DEPARTED가 된다.
   - **CAPTAIN 보고로 ARRIVED**: 새 상태 `arrived`, op `arrived`, `POST /api/dispatch/proposals/:id/arrived {note}`, `atcctl dispatch arrived D-xxxx -- <결과 링크나 한 줄>`(순수 함수 `parseArrived`). 제안에 `arrivedNote`, `arrivedUrl`이 남는다. STAND 없이 DEPARTED한 것만 ARRIVED할 수 있고, 자동 감지는 나중으로 미뤘다.
