@@ -340,7 +340,8 @@ Design: [docs/occ.md](docs/occ.md) sections 5–7. The OCC session drafts the Li
 | `POST /api/schedule/ops/:id/verdict` | `{verdict: agree\|disagree, reason?, via?}` SUPERVISOR shadow verdict (`via`: `crosscheck` or `manual`) |
 | `POST /api/schedule/ops/:id/approve`, `/reject` | S2 only: SUPERVISOR approves, or rejects with `{reason?}`; both take `{via?}` |
 | `POST /api/schedule/ops/:id/release` | S2 only: OCC releases an approved operation; returns the exact Linear calls (the same ones again if already released). A `CLOSE` is refused with 409 |
-| `GET /api/schedule/released` | Mode and every released call (read by linear-guard) |
+| `GET /api/schedule/released` | Mode and every released call, each with `used` (read by linear-guard) |
+| `POST /api/schedule/released/claim` | `{tool, input}`: linear-guard claims a matching released call once before letting the write through; a used or unknown call answers 409 |
 | `POST /api/schedule/mode` | `{mode: shadow\|approval}` |
 
 ## CHARTER DESK (request desk)

@@ -30,7 +30,7 @@ import { fleetView, loadFleet } from "./fleet.ts";
 import { pullKey } from "./landing.ts";
 import { loadLogbook } from "./logbook.ts";
 import { parentKeysOf, type Snapshot } from "./model.ts";
-import { allProposals, gate3Of, gateOf as dispatchGateOf, humanOf as proposalHuman, reservedOf } from "./proposals.ts";
+import { allProposals, gate3Of, gateOf as dispatchGateOf, humanOf as proposalHuman, isInFlight, reservedOf } from "./proposals.ts";
 import { readRecords, record, type RecordLine } from "./recorder.ts";
 import { changesOf, gateOf as scheduleGateOf, humanOf as scheduleHuman, loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { readGithub } from "./sources/github.ts";
@@ -143,13 +143,13 @@ function heavy(s: Snapshot, st: RunState, now: number): boolean {
   for (const e of view.auto) {
     if (!e.eligible || st.eligible.includes(e.id)) continue;
     st.eligible.push(e.id);
-    record(atfmLine("eligible", { id: e.id, airport: e.airport, data: { flight: e.flight, aircraft: e.aircraft } }));
+    record(atfmLine("eligible", { id: e.id, airport: e.airport, data: { flight: e.flight, aircraft: e.aircraft, checked: e.checked } }));
     dirty = true;
   }
   for (const e of view.s3) {
     if (!e.eligible || st.s3.includes(e.id)) continue;
     st.s3.push(e.id);
-    record(atfmLine("s3-eligible", { id: e.id, data: { flight: e.flight } }));
+    record(atfmLine("s3-eligible", { id: e.id, data: { flight: e.flight, checked: e.checked } }));
     dirty = true;
   }
   const ops = loadScheduleOps();
@@ -191,13 +191,34 @@ export function eligibilityView(s: Snapshot, now = Date.now()) {
       return { ...e, aircraft: p.aircraftName, airport: p.airport };
     });
   const ops = loadScheduleOps();
-  const standTickets = new Set(s.workspaces.map((w) => w.ticketKey).filter(Boolean) as string[]);
-  const s3 = ops.filter((o) => o.status === "draft" && o.kind === "CLASSIFY").map((o) => s3Eligibility(o, o.flight ? byKey.get(o.flight) : undefined, standTickets));
+  const s3ctx = {
+    standTickets: new Set(s.workspaces.map((w) => w.ticketKey).filter(Boolean) as string[]),
+    inFlight: new Set(proposals.filter(isInFlight).map((p) => p.flight)),
+    cautions: new Set(proposals.filter((p) => p.caution).map((p) => p.flight)),
+  };
+  const s3 = ops.filter((o) => o.status === "draft" && o.kind === "CLASSIFY").map((o) => s3Eligibility(o, o.flight ? byKey.get(o.flight) : undefined, s3ctx));
   return { auto, s3, proposals, ops };
 }
 
-type Row = { id: string; label: string; value: string; target: string; status: "pass" | "fail" | "insufficient" };
+type Row = { id: string; label: string; value: string; target: string; status: "pass" | "fail" | "insufficient" | "check" };
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
+
+// approval 운용 기간(켜는 조건 "2주 이상"). FLIGHT RECORDER의 마지막 `mode:` 줄에서 잰다.
+// 지금 모드가 approval인데 마지막 전환 기록이 approval이 아니거나 없으면(파일을 직접 고쳤거나 보존 기간 30일 밖) 잴 수 없어 "check"(확인 필요).
+export const APPROVAL_RUN_DAYS = 14;
+export function approvalRunOf(records: { t: string; kind: string; op?: string }[], kind: "dispatch" | "schedule", mode: string, now: number): { status: Row["status"]; since: string | null; days: number | null } {
+  if (mode !== "approval") return { status: "fail", since: null, days: null };
+  const last = records.filter((r) => r.kind === kind && typeof r.op === "string" && r.op.startsWith("mode:")).sort((a, b) => a.t.localeCompare(b.t)).at(-1);
+  if (!last || last.op !== "mode:approval") return { status: "check", since: null, days: null };
+  const days = (now - Date.parse(last.t)) / DAY;
+  return { status: days >= APPROVAL_RUN_DAYS ? "pass" : "insufficient", since: last.t, days };
+}
+const runRow = (id: string, label: string, mode: string, run: ReturnType<typeof approvalRunOf>): Row => ({
+  id, label,
+  value: run.since ? `${mode} · ${Math.floor(run.days!)}일째(${run.since.slice(0, 10)}부터)` : run.status === "check" ? `${mode} · 전환 기록 없음(확인 필요)` : mode,
+  target: `approval · ${APPROVAL_RUN_DAYS}일`,
+  status: run.status,
+});
 
 // 지금 쓰는 CROSSCHECK 모델 계열(가장 최근 mark의 계열)의 일치율. unknown(모델 기록 전의 mark)은 세지 않는다
 export function currentModelRate(items: { crosscheck: { model: string; at: string } | null }[], byModel: Record<string, { marked: number; matched: number; rate: number | null }>) {
@@ -229,7 +250,8 @@ export function atfmView(s: Snapshot, cfg: AtfmConfig = loadAtfm(), now = Date.n
     .map((p) => ({ airport: codeOf(p.repo), pr: p.number, title: p.title, url: p.url, ...slotMap.get(pullKey(p))! }))
     .sort((a, b) => (a.airport ?? "").localeCompare(b.airport ?? "") || a.lanePos - b.lanePos);
 
-  const records = readRecords(now - 30 * DAY).filter((r) => r.kind === "atfm") as Extract<RecordLine, { kind: "atfm" }>[];
+  const all = readRecords(now - 30 * DAY);
+  const records = all.filter((r) => r.kind === "atfm") as Extract<RecordLine, { kind: "atfm" }>[];
   const ids = (op: string) => new Set(records.filter((r) => r.op === op && r.id).map((r) => r.id!));
   const { auto, s3, proposals, ops } = eligibilityView(s, now);
 
@@ -242,7 +264,7 @@ export function atfmView(s: Snapshot, cfg: AtfmConfig = loadAtfm(), now = Date.n
   const losRecent = logbook.filter((e) => now - Date.parse(e.arrivedAt) < 14 * DAY && e.los > 0).length;
   const dispatchMode = loadDispatchConfig().mode;
   const autoTurnOn: Row[] = [
-    { id: "2b", label: "2b 승인 운용 2주 이상", value: dispatchMode, target: "approval · 2주", status: dispatchMode === "approval" ? "insufficient" : "fail" },
+    runRow("2b", "2b 승인 운용 2주 이상", dispatchMode, approvalRunOf(all as { t: string; kind: string; op?: string }[], "dispatch", dispatchMode, now)),
     { id: "gate3", label: "2b 점검(gate3): READBACK·DEPARTED", value: `${g3.dispatched}건 · READBACK ${pct(g3.readbackRate)} · DEPARTED ${pct(g3.departedRate)}${g3.standFree.readBack ? ` · STAND 없음 ${g3.standFree.readBack}건(ARRIVED ${g3.standFree.arrived})` : ""}`, target: "≥ 10건 · 90% · 80%", status: g3.ready ? "pass" : g3.dispatched < 3 ? "insufficient" : "fail" },
     {
       id: "precision", label: "그림자 정확도(대상 중 사람 승인)",
@@ -264,7 +286,7 @@ export function atfmView(s: Snapshot, cfg: AtfmConfig = loadAtfm(), now = Date.n
   const undone = ids("undone").size;
   const scheduleMode = loadScheduleMode();
   const s3TurnOn: Row[] = [
-    { id: "s2", label: "S2 승인 운용 2주 이상", value: scheduleMode, target: "approval · 2주", status: scheduleMode === "approval" ? "insufficient" : "fail" },
+    runRow("s2", "S2 승인 운용 2주 이상", scheduleMode, approvalRunOf(all as { t: string; kind: string; op?: string }[], "schedule", scheduleMode, now)),
     { id: "classify", label: "CLASSIFY 사람 합의(fleet.md 절을 인용한 초안)", value: `${pct(citedAgree)} (${cited.length}건)`, target: "≥ 85% · 20건", status: cited.length < 20 ? "insufficient" : (citedAgree ?? 0) >= 0.85 ? "pass" : "fail" },
     rateRow("crosscheck", "CROSSCHECK 일치(SCHEDULE, 지금 모델)", sRate, THRESHOLDS.crosscheckN, THRESHOLDS.crosscheck),
     {

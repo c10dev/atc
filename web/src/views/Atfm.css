@@ -333,6 +333,9 @@
 .atfm-turn .s-insufficient .atfm-turn-state {
   color: var(--faint);
 }
+.atfm-turn .s-check .atfm-turn-state {
+  color: var(--amber);
+}
 
 /* 데이터 한 줄씩 */
 .atfm-data {

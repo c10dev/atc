@@ -499,7 +499,7 @@ When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT throug
 
 All four steps are done:
 
-1. ✅ The planner reads `tail:` and keeps reading `lane:` as an alias until 2026-10-10. An exclusion reason for a `lane:` FLIGHT adds `(옛 lane: 라벨 — tail:로 바꿀 것)`. The code has no cutoff date; the alias is removed by hand.
+1. ✅ The planner reads `tail:` and keeps reading `lane:` as an alias until 2026-10-10. An exclusion reason for a `lane:` FLIGHT adds `(옛 lane: 라벨 — tail:로 바꿀 것)`. From 2026-10-10 (KST, `LANE_CUTOFF`) the planner stops reading `lane:`: a FLIGHT with only a `lane:` label is proposed to no team and excluded with `옛 lane:TEAM_X 라벨은 2026-10-10부터 읽지 않음 — tail:TEAM_X로 바꿀 것`, and a FLIGHT that also has `tail:` follows the `tail:`.
 2. ✅ Linear labels `tail:TEAM_A` … `tail:TEAM_F` were created and VOC-196 got `tail:TEAM_E` (approved by the SUPERVISOR on 2026-09-26).
 3. ✅ President was told: assignments go on Linear as `tail:TEAM_X`; the OCC handover follows occ.md section 8.
 4. ✅ Renamed in `occ/CLAUDE.md`, README and CHANGELOG.

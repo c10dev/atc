@@ -22,14 +22,23 @@ test("linear-guard: S2(approval)에서 발부된 호출과 도구·입력이 정
     ],
   };
   const ok = () => Promise.resolve(released);
-  assert.equal(await checkLinear("mcp__x__save_issue", { addLabels: ["BUILD", "M", "rating:SEC"], id: "VOC-195" }, ok), null); // 키 순서는 상관없음
-  assert.equal(await checkLinear("mcp__x__save_comment", { issueId: "VOC-195", body: "[OCC S-0001] 분류 …" }, ok), null);
+  const claimed = [];
+  const claimer = async (body) => (claimed.push(body), { id: "S-0001", call: 0 });
+  assert.equal(await checkLinear("mcp__x__save_issue", { addLabels: ["BUILD", "M", "rating:SEC"], id: "VOC-195" }, ok, claimer), null); // 키 순서는 상관없음
+  assert.equal(await checkLinear("mcp__x__save_comment", { issueId: "VOC-195", body: "[OCC S-0001] 분류 …" }, ok, claimer), null);
+  assert.deepEqual(claimed.map((c) => c.tool), ["save_issue", "save_comment"]); // 통과 전에 atc에 한 번 쓴 것으로 기록
   assert.match(await checkLinear("mcp__x__save_issue", { id: "VOC-195", addLabels: ["BUILD", "M"] }, ok), /발부된 SCHEDULE 호출과 다름/);
   assert.match(await checkLinear("mcp__x__save_issue", { id: "VOC-195", addLabels: ["BUILD", "M", "rating:SEC"], state: "Done" }, ok), /다름/);
   assert.match(await checkLinear("mcp__x__save_issue", { id: "VOC-999", addLabels: ["BUILD", "M", "rating:SEC"] }, ok), /다름/);
   assert.match(await checkLinear("mcp__x__delete_comment", {}, ok), /Linear 쓰기가 아닌/);
   assert.match(await checkLinear("mcp__x__save_issue", released.calls[0].input, () => Promise.resolve({ ...released, mode: "shadow" })), /S1\(shadow\)/);
   assert.match(await checkLinear("mcp__x__save_issue", released.calls[0].input, () => Promise.reject(new Error("ECONNREFUSED"))), /연결할 수 없어/);
+  // 한 번 쓰기: 이미 통과한 호출, atc가 기록을 거절, 기록 요청이 실패 — 모두 막는다(fail-closed)
+  const usedList = () => Promise.resolve({ mode: "approval", calls: [{ ...released.calls[1], used: true }] });
+  assert.match(await checkLinear("mcp__x__save_comment", released.calls[1].input, usedList, claimer), /이미 한 번 통과함/);
+  assert.match(await checkLinear("mcp__x__save_issue", released.calls[0].input, ok, async () => ({ error: "S-0001의 이 호출은 이미 한 번 통과함" })), /이미 한 번 통과함/);
+  assert.match(await checkLinear("mcp__x__save_issue", released.calls[0].input, ok, () => Promise.reject(new Error("timeout"))), /연결할 수 없어/);
+  assert.match(await checkLinear("mcp__x__save_issue", released.calls[0].input, ok, async () => ({})), /기록하지 못함/);
   assert.equal(sameJson([1, 2], [2, 1]), false);
   assert.equal(sameJson({ a: 1, b: undefined }, { a: 1 }), true);
 });
@@ -38,7 +47,8 @@ test("--read-only(CROSSCHECK): 발부된 Linear 쓰기도 막고 읽기만 통�
   const input = { issueId: "VOC-1", body: "x" };
   const fetcher = async () => ({ mode: "approval", calls: [{ id: "S-0001", tool: "save_comment", input }] });
   const write = { tool_name: "mcp__linear__save_comment", tool_input: input };
-  assert.equal(await decide(write, { fetcher }), null); // OCC: 발부된 호출이면 통과
+  const claimer = async () => ({ id: "S-0001", call: 0 });
+  assert.equal(await decide(write, { fetcher, claimer }), null); // OCC: 발부된 호출이면 통과
   assert.match(await decide(write, { readOnly: true, fetcher }), /읽기 전용이 아닌/);
   assert.equal(await decide({ tool_name: "mcp__linear__get_issue" }, { readOnly: true }), null);
   assert.match(await decide({ tool_name: "mcp__github__merge_pull_request" }, { readOnly: true }), /읽기 전용이 아닌/);

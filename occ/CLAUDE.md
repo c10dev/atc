@@ -137,7 +137,7 @@ S2에서는 SUPERVISOR가 SCHEDULE 탭에서 승인한 작업을 OCC가 Linear�
 | 상황 (`schedule brief` 위치) | 할 일 |
 |---|---|
 | `inProgress` 중 `approved` | `node ../controller/atcctl.mjs schedule release <S-xxxx>` → 출력의 `CALL n/m · <도구>` 아래 JSON을 **한 글자도 바꾸지 않고** 그 Linear MCP 도구(`save_issue`, `save_comment`)의 입력으로 넣는다. CALL을 순서대로 모두 |
-| `inProgress` 중 `released`(다음 바퀴에도 남음) | Linear에 반영됐는지 atc가 다음 읽기에서 본다. 한 번 더 `schedule release`로 같은 CALL을 받아 빠진 호출만 다시 한다. 그래도 남으면 SUPERVISOR 보고 |
+| `inProgress` 중 `released`(다음 바퀴에도 남음) | Linear에 반영됐는지 atc가 다음 읽기에서 본다. 한 번 더 `schedule release`로 같은 CALL을 받아 빠진 호출만 다시 한다. 이미 통과한 호출은 linear-guard가 `이미 한 번 통과함`으로 막는다(되풀이해도 두 번 쓰지 않게) — 다시 하지 않는다. 그래도 남으면 SUPERVISOR 보고 |
 | linear-guard가 막음(`OCC MCP 차단`) | 입력을 고쳐 다시 시도하지 말고 SUPERVISOR 보고 |
 | Linear 도구가 오류(라벨 없음 등) | 다시 시도하지 말고 오류 그대로 SUPERVISOR 보고 |
 

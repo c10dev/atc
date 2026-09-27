@@ -166,11 +166,14 @@ Linear 쓰기는 아래를 모두 만족할 때만 통과한다.
 
 1. SCHEDULE 모드가 `approval`이다(S2, 7장). 그림자에서는 Linear 쓰기가 모두 막힌다.
 2. 도구와 입력이 atc가 release한 호출과 **정확히** 같다(키 순서는 상관없음). `GET /api/schedule/released`가 `released` 상태인 작업의 호출을 준다. 작업이 APPLIED, SUPERSEDED, EXPIRED가 되면 그 호출은 목록에서 빠진다.
-3. atc가 3초 안에 답한다. 연결할 수 없으면 쓰기를 막는다.
+3. 그 호출이 전에 통과한 적이 없다. guard는 쓰기를 통과시키기 직전에 호출을 쓴 것으로 기록한다(claim): `POST /api/schedule/released/claim {tool, input}`이 아직 쓰지 않은, 맞는 release 호출을 찾아 `use` 줄을 남긴다(작업은 `released` 그대로). 똑같은 두 번째 호출은 `… 이미 한 번 통과함`으로 막힌다. 그래서 release된 `save_comment`나 `save_issue`를 되풀이해도 댓글이 두 번 달리거나 이슈가 두 개 생기지 않는다. `GET /api/schedule/released`는 호출마다 `used`를 보인다.
+4. atc가 목록과 claim 모두 3초 안에 답한다. 연결할 수 없거나 claim을 기록하지 않으면 쓰기를 막는다.
 
 guard는 이것 말고는 보지 않는다. 나머지는 release되는 호출을 atc만 만든다는 데서 나온다(`callsOf`, "S2 켜는 법" 참고). 이슈 본문은 `— OCC S-0001 · CHARTER REQUEST …`로 끝나고, 댓글은 `[OCC S-0001]`로 시작한다. 어느 호출도 상태나 담당자를 건드리지 않는다. 그래서 이슈를 In Progress나 In Review로 옮기는 쓰기는 맞을 수가 없다.
 
 그 밖에는 모두 `OCC MCP 차단 — …`으로 막힌다. send-guard처럼 OCC는 막힌 쓰기를 말만 바꿔 다시 시도하지 않는다. SUPERVISOR에게 보고한다.
+
+쓴 호출은 계속 쓴 것으로 남는다. 작업을 다시 release해도 같은 호출과 같은 `used` 표시가 돌아오고, 표시를 지우는 길은 없다. guard를 통과한 뒤 Linear 쓰기가 실패했으면 OCC가 보고하고 SUPERVISOR가 Linear에서 직접 바꾼다. 다음 조회에서 바뀐 것이 보이면 atc가 여전히 APPLIED로 표시한다(아니면 3일 뒤 만료).
 
 다음 Linear 조회에 변경이 보이면 atc가 release된 작업을 APPLIED로 표시한다. `NEW`는 초안 뒤에 만들어진 같은 제목(정규화)의 이슈, `CLASSIFY`와 `PRIORITIZE`는 초안대로 된 라벨이나 우선순위, `CLOSE`는 Done이나 Canceled가 된 이슈다. release 전에 이미 변경이 보이면 APPLIED가 아니라 SUPERSEDED다.
 
@@ -314,7 +317,7 @@ S2는 구현돼 있고 SCHEDULE `mode`(`~/.local/state/atc/schedule.json`, 기�
 
 1. SUPERVISOR가 승인한다(또는 사유와 함께 거절한다).
 2. OCC가 `atcctl schedule release S-xxxx`를 돌린다. 이 명령은 RELEASED를 기록하고, 정확한 Linear MCP 호출(`save_issue`, CLASSIFY·PRIORITIZE에는 이유를 담은 `save_comment`도)을 출력한다.
-3. OCC는 입력을 바꾸지 않고 호출을 하나씩 한다. `occ/mcp-guard.mjs`(linear-guard)는 모드가 approval이고 도구와 입력이 release된 호출과 정확히 같을 때만 Linear 쓰기를 통과시킨다.
+3. OCC는 입력을 바꾸지 않고 호출을 하나씩 한다. `occ/mcp-guard.mjs`(linear-guard)는 모드가 approval이고, 도구와 입력이 release된 호출과 정확히 같고, 그 호출이 전에 통과한 적이 없을 때만 Linear 쓰기를 통과시킨다(6장).
 4. 다음 Linear 읽기에서 atc가 작업을 APPLIED로 표시한다(변경이 보이거나, NEW이면 그 제목의 이슈가 생김).
 
 승인되거나 release됐는데 3일 안에 적용되지 않은 작업은 만료된다. 호출은 계획 필드만 건드린다: 라벨, 우선순위, 새 이슈의 제목·본문·프로젝트·관계, 댓글. 상태나 담당자는 절대 아니다.

@@ -408,3 +408,28 @@ test("CLOSE 닫기: Linear가 Done·Canceled면 SUPERSEDED(발부 전)·APPLIED(
   const released = fold([draft("S-0007", "VOC-1"), { op: "approve", id: "S-0007", at: iso(5) }, { op: "release", id: "S-0007", at: iso(4), calls: [] }]);
   assert.deepEqual(syncLines(released, tickets, NOW), [{ op: "apply", id: "S-0007", at: new Date(NOW).toISOString(), ref: "VOC-1" }]);
 });
+
+test("linear-guard 한 번 쓰기: 발부된 호출은 한 번만 통과하고, 두 번째는 막힌다. 상태는 APPLIED 판정 전까지 released", async () => {
+  const { claimOf } = await import("./schedule.ts");
+  const draft = { op: "draft" as const, id: "S-0010", at: iso(30), kind: "CLASSIFY" as const, flight: "VOC-50", payload: { type: "MAINT" as const }, reason: "r" };
+  const calls = [
+    { tool: "save_issue" as const, input: { id: "VOC-50", labels: ["MAINT"] } },
+    { tool: "save_comment" as const, input: { issueId: "VOC-50", body: "[OCC S-0010] 분류" } },
+  ];
+  const base = [draft, { op: "approve" as const, id: "S-0010", at: iso(20) }, { op: "release" as const, id: "S-0010", at: iso(19), calls }];
+  let ops = fold(base);
+  assert.deepEqual(claimOf(ops, "approval", "save_comment", { body: "[OCC S-0010] 분류", issueId: "VOC-50" }), { id: "S-0010", call: 1 }); // 키 순서 무관
+  assert.match((claimOf(ops, "shadow", "save_comment", calls[1].input) as { error: string }).error, /S1\(shadow\)/);
+  assert.match((claimOf(ops, "approval", "save_comment", { issueId: "VOC-50", body: "다른 글" }) as { error: string }).error, /다름/);
+  ops = fold([...base, { op: "use", id: "S-0010", at: iso(18), call: 1 }]);
+  assert.deepEqual([ops[0].status, ops[0].used], ["released", [1]]);
+  assert.match((claimOf(ops, "approval", "save_comment", calls[1].input) as { error: string }).error, /이미 한 번 통과함/);
+  assert.deepEqual(claimOf(ops, "approval", "save_issue", calls[0].input), { id: "S-0010", call: 0 }); // 다른 호출은 따로
+  // 같은 호출을 다시 발부해도(재시도용 release) 쓴 표시는 남는다. 없는 번호·released가 아닌 작업의 use는 무시
+  ops = fold([...base, { op: "use", id: "S-0010", at: iso(18), call: 1 }, { op: "release", id: "S-0010", at: iso(17), calls }, { op: "use", id: "S-0010", at: iso(16), call: 7 }]);
+  assert.deepEqual(ops[0].used, [1]);
+  assert.equal(fold([draft, { op: "use", id: "S-0010", at: iso(18), call: 0 }])[0].used, undefined);
+  // APPLIED 뒤에는 발부 목록에서 빠지므로 어떤 호출도 통과하지 않는다
+  ops = fold([...base, { op: "apply", id: "S-0010", at: iso(10), ref: "VOC-50" }]);
+  assert.match((claimOf(ops, "approval", "save_issue", calls[0].input) as { error: string }).error, /다름/);
+});
