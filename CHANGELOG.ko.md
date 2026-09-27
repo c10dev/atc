@@ -15,6 +15,9 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - TOWER·OCC·CROSSCHECK 규정에 "jq는 파이프 뒤에만"을 적었다.
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
+### 바뀜
+- Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
+
 ### 추가
 - ATFM 7번: 머지 슬롯을 켤 수 있다(ATC-22, [docs/atfm.ko.md](docs/atfm.ko.md) 5장).
   - `atfm.json` `slots`가 `off | shadow | on`을 받는다(기본은 그대로 `shadow`). DISPATCH 탭 ATFM 블록에 확인을 거치는 스위치가 있고, ATFM OFF는 `on`을 `shadow`로 되돌린다.

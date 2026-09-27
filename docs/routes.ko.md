@@ -106,7 +106,7 @@ ROUTE마다 한 줄: ROUTE 이름, 진행률, 그다음 가로 SVG 경로. WAYPO
 2. `server/routes.ts` 순수 함수와 `GET /api/routes`(만듦).
 3. NETWORK 탭의 ROUTE MAP(만듦).
 4. ROUTE 완료 속도로 ETA, 지연 표시(만듦).
-5. `LINEAR_TEAM_KEYS`(ATC-1)의 모든 팀에서 프로젝트와 마일스톤 읽기. `ATC` ROUTE가 vocado ROUTE 옆에 보인다. 아직 없음.
+5. `LINEAR_TEAM_KEYS`(ATC-1)의 모든 팀에서 프로젝트와 마일스톤 읽기. `ATC` ROUTE가 vocado ROUTE 옆에 보인다. 만듦: `linear-projects.ts`가 두 질의를 팀마다 차례로 돌리고, 여러 팀이 함께 쓰는 프로젝트(이름)와 마일스톤(id)은 합쳐 읽은 팀 키를 `teams`에 적는다. ROUTE MAP, NETWORK, `waypointEtas`, `slips`는 모든 팀을 보인다. `waypointGaps`와 NEW의 `--milestone`은 후보 팀(`dispatch.json` `candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 6. atc 게이트를 WAYPOINT에 잇기: 판정 게이트, 2b 점검표, ATFM 켜기 조건을 M15~M20의 완료 기준으로 보인다. 아직 없음.
 7. OCC 브리핑: ETA와 지연 경고(만듦, ATC-24). `schedule brief`에 `waypointEtas`와 `slips`가 더해진다(`server/waypoint-slips.ts`). OCC는 새 지연 경고를 SUPERVISOR에게 한 번 보고하고 ack하며, SCHEDULE 탭 LATE WAYPOINTS에 보인다(docs/occ.ko.md 5.7).
 8. DISPATCH: 지금 구간 WAYPOINT의 FLIGHT에 점수를 더 준다. 아직 없음.
@@ -125,7 +125,6 @@ ROUTE마다 한 줄: ROUTE 이름, 진행률, 그다음 가로 SVG 경로. WAYPO
 
 ## 9. 아직 없는 것 (Not built yet)
 
-- 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 프로젝트와 마일스톤 읽기(5단계).
 - atc 게이트와 WAYPOINT 잇기(6단계), DISPATCH WAYPOINT 점수(8단계), SCHEDULE "마일스톤 지정" 초안(9단계).
 - WAYPOINT 없는 ROUTE에 대한 OCC 알림(API는 이미 `waypoints: []`로 남긴다).
 

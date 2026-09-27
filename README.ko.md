@@ -170,7 +170,7 @@ journalctl --user -u atc -f           # 로그
 
 `.env.local`에 `LINEAR_API_KEY`가 없으면 Linear 없이 브랜치에서 찾은 티켓만 보여준다.
 
-**여러 Linear 팀.** `LINEAR_TEAM_KEYS=VOC,ATC`로 적은 팀을 모두 읽는다(주 팀 `LINEAR_TEAM_KEY`가 맨 앞. 없으면 주 팀 하나). 모든 팀의 티켓이 RADAR·STRIPS·FIDS에 보이고, 브랜치·워크트리 이름과 PR 제목의 key도 모든 팀에서 찾는다(`voc-123`, `atc-12`, `(ATC-12)`). 한 팀을 읽지 못하면 그 팀은 마지막 결과를 쓰고 오류에 팀을 적는다. DISPATCH·SCHEDULE 후보는 `dispatch.json`의 `candidateTeams`에 든 팀에서만 나온다(기본: 주 팀). 다른 팀은 보여 주기만 한다.
+**여러 Linear 팀.** `LINEAR_TEAM_KEYS=VOC,ATC`로 적은 팀을 모두 읽는다(주 팀 `LINEAR_TEAM_KEY`가 맨 앞. 없으면 주 팀 하나). 모든 팀의 티켓이 RADAR·STRIPS·FIDS에 보이고, 브랜치·워크트리 이름과 PR 제목의 key도 모든 팀에서 찾는다(`voc-123`, `atc-12`, `(ATC-12)`). 한 팀을 읽지 못하면 그 팀은 마지막 결과를 쓰고 오류에 팀을 적는다. DISPATCH·SCHEDULE 후보는 `dispatch.json`의 `candidateTeams`에 든 팀에서만 나온다(기본: 주 팀). 다른 팀은 보여 주기만 한다. Linear 프로젝트와 마일스톤도 모든 팀에서 읽으므로, 그 팀의 ROUTE와 WAYPOINT(예: atc의 M15–M20)가 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. WAYPOINT gap 초안은 후보 팀 것만 쓴다.
 
 ## 점유 hook
 

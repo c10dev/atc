@@ -446,7 +446,7 @@ test("후보 팀이 아닌 FLIGHT(ATC)에는 초안을 쓰지 않는다. NEW는 
 });
 
 test("NEW milestone(ATC-8): 그 프로젝트의 마일스톤 이름·id만, changesOf와 S2 호출에 들어간다, gap은 비슷한 FLIGHT가 있으면 거절", () => {
-  const ms = (id: string, name: string, project: string) => ({ id, name, project, description: "", targetDate: null, progress: 0, sortOrder: 1, status: "next", issues: [], truncated: false });
+  const ms = (id: string, name: string, project: string) => ({ id, name, project, description: "", targetDate: null, progress: 0, sortOrder: 1, status: "next", issues: [], truncated: false, teams: ["VOC"] });
   const milestones = [ms("m-1", "Beta Ready", "Web UX"), ms("m-2", "Launch", "Beta Readiness")];
   const ok = parseNew(newInput({ milestone: "beta ready" }), board, TAILS, milestones);
   assert.deepEqual(ok.milestone, { id: "m-1", name: "Beta Ready" });

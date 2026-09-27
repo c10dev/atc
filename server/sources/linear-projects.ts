@@ -1,6 +1,7 @@
 import { config } from "../config.ts";
 
-// NETWORK 탭용: TEAM의 Linear 프로젝트(ROUTE) 목표와 마일스톤(WAYPOINT). 읽기 전용, 10분 캐시.
+// NETWORK 탭용: 읽는 팀 전부(LINEAR_TEAM_KEYS)의 Linear 프로젝트(ROUTE) 목표와 마일스톤(WAYPOINT). 읽기 전용, 10분 캐시.
+// 여러 팀이 함께 쓰는 프로젝트·마일스톤은 이름·id로 합치고, 어느 팀에서 읽었는지 teams에 남긴다(docs/routes.md 7장 5단계).
 // linear.ts(티켓 보드)와 따로 둔다. 키가 없거나 실패하면 빈 목록(목표는 null로 보인다).
 
 const TTL_MS = 10 * 60_000;
@@ -27,6 +28,7 @@ export interface ProjectGoal {
   targetDate: string | null;
   progress: number | null; // 0~1
   state: string | null; // status.type(backlog·planned·started·paused·completed·canceled), 없으면 status.name
+  teams: string[]; // 이 프로젝트를 읽은 팀 키(LINEAR_TEAM_KEYS 순서)
 }
 
 // 응답 한 줄(Linear Project). 옛 state 필드는 deprecated라 status를 읽는다
@@ -56,6 +58,7 @@ export interface Milestone {
   status: string | null; // done·next·overdue·unstarted
   issues: MilestoneIssue[];
   truncated: boolean; // 이슈가 50개를 넘어 다 못 읽었다
+  teams: string[]; // 이 마일스톤을 읽은 팀 키(프로젝트의 팀)
 }
 
 export interface MilestoneNode {
@@ -118,7 +121,7 @@ async function fetchMilestones(team: string, key: string) {
 }
 
 // 응답 한 줄 → ProjectGoal. state는 status.type, 없으면 status.name. 모르는 값은 null
-export function toGoal(n: ProjectNode): ProjectGoal | null {
+export function toGoal(n: ProjectNode, team?: string): ProjectGoal | null {
   if (typeof n?.name !== "string" || !n.name) return null;
   const str = (v: unknown) => (typeof v === "string" && v ? v : null);
   return {
@@ -126,11 +129,12 @@ export function toGoal(n: ProjectNode): ProjectGoal | null {
     targetDate: str(n.targetDate),
     progress: typeof n.progress === "number" && Number.isFinite(n.progress) ? n.progress : null,
     state: str(n.status?.type) ?? str(n.status?.name),
+    teams: team ? [team] : [],
   };
 }
 
 // 응답 한 줄 → Milestone. 이름·id·프로젝트가 없으면 버린다. 진행률은 0~1로 바꾼다
-export function toMilestone(n: MilestoneNode): Milestone | null {
+export function toMilestone(n: MilestoneNode, team?: string): Milestone | null {
   const str = (v: unknown) => (typeof v === "string" && v ? v : null);
   const id = str(n?.id);
   const name = str(n?.name);
@@ -155,14 +159,28 @@ export function toMilestone(n: MilestoneNode): Milestone | null {
     status: str(n.status),
     issues,
     truncated: n.issues?.pageInfo?.hasNextPage === true,
+    teams: team ? [team] : [],
   };
+}
+
+// 팀마다 읽은 목록을 합친다(순수). 같은 key(프로젝트 이름, 마일스톤 id)는 처음 것을 쓰고 teams만 더한다
+export function mergeByTeam<T extends { teams: string[] }>(lists: T[][], keyOf: (x: T) => string): T[] {
+  const byKey = new Map<string, T>();
+  for (const list of lists) {
+    for (const x of list) {
+      const had = byKey.get(keyOf(x));
+      if (had) had.teams = [...new Set([...had.teams, ...x.teams])];
+      else byKey.set(keyOf(x), { ...x, teams: [...x.teams] });
+    }
+  }
+  return [...byKey.values()];
 }
 
 // 호출 시점에는 마지막 결과를 바로 돌려주고, 10분이 지났으면 백그라운드로 다시 가져온다.
 export function readLinearProjects(): LinearProjectsState {
   const key = config.linearApiKey;
-  const team = config.linearTeamKey;
-  const id = `${team}|${key}`;
+  const teams = config.linearTeamKeys;
+  const id = `${teams.join(",")}|${key}`;
   if (id !== cacheFor) {
     cacheFor = id;
     Object.assign(state, { ok: false, error: null, fetchedAt: null, projects: [], milestones: null, milestonesError: null });
@@ -173,14 +191,21 @@ export function readLinearProjects(): LinearProjectsState {
     lastFetch = Date.now();
     const msg = (e: unknown) => String((e as Error).message ?? e);
     // 마일스톤이 실패해도 프로젝트 목표는 쓴다(따로 기록)
-    const milestones = fetchMilestones(team, key).then(
-      (nodes) => ({ ok: true as const, list: nodes.map(toMilestone).filter(Boolean) as Milestone[] }),
+    // 팀마다 차례로(동시에 여러 팀을 물어 Linear 한도를 쓰지 않게). 한 팀이라도 실패하면 그 종류 전체를 실패로 본다
+    const eachTeam = async <T>(read: (team: string) => Promise<T[]>) => {
+      const out: T[][] = [];
+      for (const team of teams) out.push(await read(team));
+      return out;
+    };
+    const milestones = eachTeam(async (team) => (await fetchMilestones(team, key)).map((n) => toMilestone(n, team)).filter(Boolean) as Milestone[]).then(
+      (lists) => ({ ok: true as const, list: mergeByTeam(lists, (m) => m.id) }),
       (e) => ({ ok: false as const, error: msg(e) }),
     );
-    inflight = Promise.all([fetchProjects(team, key), milestones])
-      .then(([nodes, ms]) => {
+    const projects = eachTeam(async (team) => (await fetchProjects(team, key)).map((n) => toGoal(n, team)).filter(Boolean) as ProjectGoal[]);
+    inflight = Promise.all([projects, milestones])
+      .then(([lists, ms]) => {
         if (cacheFor !== id) return;
-        state.projects = nodes.map(toGoal).filter(Boolean) as ProjectGoal[];
+        state.projects = mergeByTeam(lists, (g) => g.name);
         state.ok = true;
         state.error = null;
         state.fetchedAt = new Date().toISOString();

@@ -34,8 +34,13 @@ export interface WaypointGap {
 const DROPPED = new Set(["canceled", "duplicate"]);
 export const GAP_DESCRIPTION_MAX = 1500;
 
-// 끝난(completed·canceled) ROUTE와 WAYPOINT가 없거나 모두 지난 ROUTE는 뺀다. ROUTE 이름순
-export function waypointGapsOf(milestones: Milestone[], goals: ProjectGoal[] | null): WaypointGap[] {
+// 후보 팀(teams, dispatch.json candidateTeams)의 마일스톤만 이 팀들의 ROUTE다(docs/routes.md 7장 5단계).
+// NEW 초안은 주 팀에 이슈를 만들므로, 다른 팀(예: ATC) 프로젝트의 기준을 VOC 이슈로 올리지 않게 거른다.
+export const ofTeams = (milestones: Milestone[], teams: Set<string>) => milestones.filter((m) => m.teams.some((t) => teams.has(t)));
+
+// 끝난(completed·canceled) ROUTE와 WAYPOINT가 없거나 모두 지난 ROUTE는 뺀다. ROUTE 이름순. teams가 있으면 그 팀 마일스톤만
+export function waypointGapsOf(all: Milestone[], goals: ProjectGoal[] | null, teams?: Set<string>): WaypointGap[] {
+  const milestones = teams ? ofTeams(all, teams) : all;
   const ended = new Set((goals ?? []).filter((g) => g.state === "completed" || g.state === "canceled").map((g) => g.name));
   const byProject = new Map<string, Milestone[]>();
   for (const m of milestones) byProject.set(m.project, [...(byProject.get(m.project) ?? []), m]);

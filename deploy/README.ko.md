@@ -67,7 +67,7 @@ gh pr diff 61 --name-only | node deploy/landing-tier.mjs
 |---|---|---|
 | `ATC_PORT` | `7700` | 포트(항상 `127.0.0.1`에만 연다) |
 | `LINEAR_API_KEY` | — | Linear 개인 API 키. 없으면 브랜치 이름에서 찾은 티켓만 보인다 |
-| `LINEAR_TEAM_KEY` | `VOC` | 주 Linear 팀 키(S2의 새 이슈, NETWORK의 프로젝트 목표가 이 팀을 쓴다) |
+| `LINEAR_TEAM_KEY` | `VOC` | 주 Linear 팀 키(S2의 새 이슈가 이 팀에 만들어진다) |
 | `LINEAR_TEAM_KEYS` | 주 팀 | 읽을 Linear 팀 전부. 쉼표로 구분(예: `VOC,ATC`). 주 팀이 언제나 맨 앞. DISPATCH·SCHEDULE 후보는 `dispatch.json`의 `candidateTeams`에 든 팀만(기본: 주 팀). 나머지는 보여 주기만 |
 | `ATC_PROJECTS_DIR` | `~/projects` | git 저장소를 AIRPORT로 자동 개설하는 폴더 |
 | `ATC_STATE_DIR` | `~/.local/state/atc` | 점유, AIRPORT 등록부, CLEARANCE, FLIGHT RECORDER |

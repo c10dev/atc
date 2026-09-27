@@ -170,7 +170,7 @@ Tabs opened before a restart keep running the old bundle; when the server starts
 
 Without `LINEAR_API_KEY` in `.env.local`, it shows only the tickets found in branch names, without Linear data.
 
-**Several Linear teams.** `LINEAR_TEAM_KEYS=VOC,ATC` reads each listed team (the main team `LINEAR_TEAM_KEY` first; without it, the main team only). Tickets of every team show on RADAR, STRIPS and FIDS, and branch, worktree and PR-title keys are found for every team (`voc-123`, `atc-12`, `(ATC-12)`). If one team fails to load, its last result stays and the error names the team. DISPATCH and SCHEDULE candidates come only from the teams in `candidateTeams` in `dispatch.json` (default: the main team). The other teams are shown only.
+**Several Linear teams.** `LINEAR_TEAM_KEYS=VOC,ATC` reads each listed team (the main team `LINEAR_TEAM_KEY` first; without it, the main team only). Tickets of every team show on RADAR, STRIPS and FIDS, and branch, worktree and PR-title keys are found for every team (`voc-123`, `atc-12`, `(ATC-12)`). If one team fails to load, its last result stays and the error names the team. DISPATCH and SCHEDULE candidates come only from the teams in `candidateTeams` in `dispatch.json` (default: the main team). The other teams are shown only. Linear projects and milestones are read for every team too, so their ROUTEs and WAYPOINTs (for example atc's M15–M20) show on the ROUTE MAP and in the WAYPOINT ETAs and slip warnings; WAYPOINT gap drafts stay with the candidate teams.
 
 ## Claim hook
 

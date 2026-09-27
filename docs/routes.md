@@ -106,7 +106,7 @@ One row per ROUTE: the ROUTE name, its progress, then a horizontal SVG line. A R
 2. `server/routes.ts` pure functions and `GET /api/routes` (built).
 3. ROUTE MAP on the NETWORK tab (built).
 4. ETA from the ROUTE's completion rate, late mark (built).
-5. Read projects and milestones for every team in `LINEAR_TEAM_KEYS` (ATC-1), so the `ATC` ROUTE shows next to the vocado ones. Not built yet.
+5. Read projects and milestones for every team in `LINEAR_TEAM_KEYS` (ATC-1), so the `ATC` ROUTE shows next to the vocado ones. Built: `linear-projects.ts` runs both queries per team in turn and merges shared projects (by name) and milestones (by id), recording the team keys in `teams`. ROUTE MAP, NETWORK, `waypointEtas` and `slips` cover every team; `waypointGaps` and NEW's `--milestone` only take milestones of the candidate teams (`dispatch.json` `candidateTeams`), because NEW creates its issue in the main team.
 6. Tie atc gates to WAYPOINTs: the verdict gate, the 2b readiness checklist and the ATFM switch-on conditions shown as exit criteria of M15–M20. Not built yet.
 7. OCC briefing: ETAs and slip warnings (built, ATC-24). `schedule brief` adds `waypointEtas` and `slips` (`server/waypoint-slips.ts`); OCC reports each new slip to the SUPERVISOR once and acks it, and the SCHEDULE tab lists them under LATE WAYPOINTS (docs/occ.md 5.7).
 8. DISPATCH: FLIGHTs on the active WAYPOINT score higher. Not built yet.
@@ -125,7 +125,6 @@ One row per ROUTE: the ROUTE name, its progress, then a horizontal SVG line. A R
 
 ## 9. Not built yet
 
-- Projects and milestones of every team in `LINEAR_TEAM_KEYS`, not only the main team (step 5).
 - WAYPOINTs tied to atc gates (step 6), DISPATCH WAYPOINT score (step 8), SCHEDULE "set milestone" draft (step 9).
 - An OCC notice for ROUTEs without WAYPOINTs (the API already keeps them with `waypoints: []`).
 
