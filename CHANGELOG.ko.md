@@ -16,6 +16,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- CI와 LANDING CLEARANCE 등급([deploy/README.ko.md](deploy/README.ko.md)). GitHub Actions가 모든 PR과 main에서 `check` 작업(테스트, 타입 검사, 빌드)을 돌린다. `deploy/landing-tier.mjs`는 바뀐 경로로 PR을 `auto`, `flagged`, `user`로 나누고, 등급을 실행 요약에 적는다. 루트 `CLAUDE.md`가 등급마다 머지할 쪽을 정한다: `auto`·`flagged`는 CI와 검토 뒤 structure가 머지하고 배포하며, `user`는 사용자가 머지한다.
 - DISPATCH 제안 카드에 BRIEFING(ATC-4, [docs/dispatch.ko.md](docs/dispatch.ko.md) 5.5). SUPERVISOR가 티켓 내용을 기억하지 못해도 카드만 보고 판정할 수 있다.
   - **쉬운 세 줄**: 열린 카드와 HELD 카드 맨 위에 무슨 일, 왜 이 AIRCRAFT, 걸리는 점이 보인다. OCC가 tick에서 `atcctl dispatch briefing <D-xxxx> --what … --why … --risk …`(`POST /api/dispatch/proposals/:id/briefing`)로 쓰고, 추가만 하는 `brief` op로 저장한다. 다시 쓰면 덮어쓴다. 쓰는 법은 `occ/CLAUDE.md`와 `/tick`(한국어·영어)에 있다.
   - **사실 줄**: 모델 없이 서버가 계산한다(`server/briefing.ts`). PRIORITY, 대기 일수, ROUTE MAP의 ROUTE와 WAYPOINT, 선행 FLIGHT와 상태, 그 AIRCRAFT가 같은 ROUTE에서 최근 맡은 FLIGHT, HELD 카드에서는 CROSSCHECK 판정과 사유. `GET /api/dispatch/brief`에 `briefs`가 더해진다.

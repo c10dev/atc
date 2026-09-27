@@ -24,14 +24,16 @@ Rules for sessions that change atc's code (team sessions, and sessions working d
 
 ## Operations
 
-- Don't restart the production service (7700). Merging and deploying are the user's (or done when the user asks).
+- Don't restart the production service (7700). Whoever merges deploys (main fast-forward and restart): the structure session or the user.
 - Keep the control sessions' guards (`controller/guard.mjs`, `occ/send-guard.mjs`, `occ/mcp-guard.mjs`) fail-closed (`… || exit 2`). Ask the user before loosening what they block.
 
 ## git and PRs
 
 - Commit, push and open PRs when the task asks for it. Commit messages and PR titles and bodies are in English.
 - No attribution lines (Co-Authored-By etc.) in commit messages. PR bodies end with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
-- The user merges.
+- Team sessions don't merge. Merging follows the LANDING CLEARANCE tier (`deploy/landing-tier.mjs`, decided by the changed paths).
+  - `auto` (server, UI, docs, tests) and `flagged` (control-session manuals and CLI): once CI (`check`) passes and the structure session has reviewed the PR (tests, types, build, conflicts), structure merges, deploys and then tells the user. For `flagged`, the report lists the changed control rules separately. GitHub auto-merge is not used.
+  - `user` (guards, `.claude/` settings, the root `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`): the user merges. Structure also raises a PR to `user` when it changes the production state format, is hard to undo, or leaves doubts after review.
 
 ## Code
 
