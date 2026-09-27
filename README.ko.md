@@ -45,7 +45,7 @@ Linear 티켓까지 보려면 `.env.local`에 `LINEAR_API_KEY`를 넣는다. 상
 | FIDS (`#board`) | Linear 상태 열에 티켓 카드. 카드에 점유 팀 배지 |
 | 지표 (`#metrics`) | FLIGHT RECORDER 기록으로 본 운용 지표, 2단계 진입 점검, 5분 표본 추이, 일별 표 |
 | AIRPORT (`#airports`) | 저장소 등록부. AIRPORT 개설·코드 변경·폐쇄·재개·삭제. 소속 AIRCRAFT와 OUTSTATION으로 와 있는 AIRCRAFT(TRANSIENT) |
-| FLEET (`#fleet`) | AIRCRAFT마다 상태, 지금 FLIGHT, 팀원 구성, TYPE RATING, ROUTE, TARGETS와 LOGBOOK 실적(이번 주, 정시, 되돌림, LOS, 최근 FLIGHT). 프로필 편집, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
+| FLEET (`#fleet`) | AIRCRAFT마다 상태, 지금 FLIGHT, 선언한 팀원과 관측한 팀원(최근 14일), 복사할 CREW CHANGE 대기, TYPE RATING, ROUTE, TARGETS와 LOGBOOK 실적(이번 주, 정시, 되돌림, LOS, 최근 FLIGHT). 프로필 편집, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
 | DISPATCH (`#dispatch`) | 지금 계획, OCC 메모가 달린 제안 카드와 "승인했을 것 / 거절했을 것" 판정(2b에서는 승인·거절), HELD, IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검 |
 | SCHEDULE (`#schedule`) | OCC SCHEDULE 초안(S1 그림자 운용): S2 진입 점검 패널, "승인했을 것 / 거절했을 것" 판정이 있는 열린 초안 카드, 후보 수, 최근 7일 표 |
 | DOCS (`#docs`) | atc 사용 안내: 소개, 빠른 시작, 개념, 일 맡기기(CHARTER DESK / AD HOC), 판정하기, FLEET, 교신 규칙, 화면, 단계, 문제 해결. `docs/guide/*.md`(한국어)를 그대로 보여 준다 |
@@ -87,14 +87,18 @@ AIRPORT 목록은 `~/.local/state/atc/airports.json`(기계마다 다른 경로�
 
 FLEET 탭의 **팀 빌딩**: **ENTRY INTO SERVICE**로 **CONFIGURATION** 템플릿을 골라 새 AIRCRAFT를 들이고, **CREW BRIEFING**으로 그 이름의 새 세션에 붙여 넣을 시작 지시문을 받는다. 세션이 뜨면 atc가 이름으로 연결하며, 세션을 직접 띄우지는 않는다. **AOG**는 사유와 해제 예정일을 남기고 잠시 배정을 멈추고, **RETIREMENT**는 목록에서 뺀다(복귀 가능). `TEAM_X`는 등록번호(REGISTRATION)로 그대로 두고, atc의 말로 팀은 CREW가 모는 AIRCRAFT다.
 
+**관측 CREW와 CREW CHANGE**([docs/fleet.md](docs/fleet.md) 8.2~8.3, 영어). 카드마다 선언한 COMPLEMENT 옆에 최근 14일 동안 실제로 본 팀원이 나온다: AIRCRAFT 세션들이 부른 서브에이전트를 agent type·모델별로 묶은 횟수와 마지막 시각. POSITION에 맞추고(`ui-builder`·`ui-qa`·`flash-helper`는 이름으로, Opus이거나 모델 지정이 없는 `general-purpose`·`claude`는 `backend`로), 선언에 없는 타입(`Explore` 등)과 선언했지만 안 쓴 POSITION을 drift로 보여 준다. atc는 세션 메타데이터만 읽는다(`subagents/*.meta.json`의 agent type·모델, 파일 시각, `custom-title.json`). 대화 기록과 작업 설명은 읽지 않는다. agent team처럼 따로 세션으로 도는 팀원은 보이지 않는다. SUPERVISOR가 운항 중인 AIRCRAFT(퇴역 아님, 세션 살아 있음)의 COMPLEMENT를 바꾸면 atc가 CAPTAIN에게 줄 **CREW CHANGE** 지시문(내리고 타는 POSITION과 모델, TYPE RATING 영향)을 `~/.local/state/atc/crew-changes.jsonl`에 `CC-0001`로 남긴다. atc는 보내지 않는다. 카드에서 복사해 붙여 넣고 전달함을 누른다. 대기 중에 또 바꾸면 처음 구성 기준으로 합친 새 지시문이 앞의 것을 대신한다.
+
 **LOGBOOK**([docs/fleet.md](docs/fleet.md) 7.1~7.2, `server/logbook.ts`): atc가 10분마다 AIRPORT마다 기본 브랜치에 머지된 최근 PR 30건(`gh pr list --state merged`)을 읽고, 새 PR마다 `~/.local/state/atc/logbook.jsonl`에 한 줄씩 추가한다(추가만 함. 키가 `owner/repo#번호`라 재시작 뒤 첫 번에 과거분도 채운다). 한 줄에는 AIRCRAFT(그 FLIGHT의 STAND를 점유한 `TEAM_X` 세션, 모르면 `null`), FLIGHT와 분류, 출발(가장 이른 점유, 또는 PR을 연 시각)·도착(머지) 시각, 팀 소요 시간(착수 → PR을 연 시각, PR 전에 점유가 없으면 모름), 착륙 대기(PR → 머지), Codex 지적 회차, 변경 요청 여부, STAND의 LOS가 들어간다. `Revert "…"` PR이 머지되면 되돌린 PR에 `reverted` 줄을 덧붙인다. FLEET 카드는 TARGETS 옆에 실적을 보여 준다: 이번 주(월요일부터, 로컬 시간) ARRIVED 수, 14일 정시율(팀 소요 시간이 WAKE 기대치 L 60분·M 4시간·H 2일 안, 기대치가 없으면 같은 FLIGHT TYPE·WAKE의 중앙값 이하. 착륙 대기는 넣지 않음), 14일 되돌림과 LOS, 착륙 대기 중앙값, 최근 FLIGHT 5건. 보여 주기만 하고 점수나 배정에 쓰지 않는다.
 
 | API | 하는 일 |
 |---|---|
-| `GET /api/fleet` | TEAM 세션과 등록된 AIRCRAFT 전부(상태, 지금 FLIGHT, 팀원, 자격, 담당 프로젝트, 목표, LOGBOOK 실적 `actuals`)와 자격 목록·기본값·프로젝트 목록 |
+| `GET /api/fleet` | TEAM 세션과 등록된 AIRCRAFT 전부(상태, 지금 FLIGHT, 팀원, 자격, 담당 프로젝트, 목표, LOGBOOK 실적 `actuals`, `observedCrew`, `crewDrift`, `pendingCrewChange`)와 자격 목록·기본값·프로젝트 목록·`observedWindowDays`(14) |
 | `POST /api/fleet` | ENTRY INTO SERVICE: `{registration, configuration?, base?, routes?, note?}`(configuration: `general`, `security`, `ui`, `research`) |
 | `GET /api/fleet/:registration/briefing` | 새 세션에 붙여 넣을 CREW BRIEFING 문구 |
-| `PATCH /api/fleet/:registration` | `{complement?, ratings?, routes?, targets?, base?, note?, aog?, retired?}`. `null`이면 그 항목을 기본값으로. `aog: {reason, until?}`는 잠시 운항 중지, `retired: {reason?}` / `false`는 퇴역·복귀 |
+| `PATCH /api/fleet/:registration` | `{complement?, ratings?, routes?, targets?, base?, note?, aog?, retired?}`. `null`이면 그 항목을 기본값으로. `aog: {reason, until?}`는 잠시 운항 중지, `retired: {reason?}` / `false`는 퇴역·복귀. 운항 중인 AIRCRAFT의 COMPLEMENT를 바꾸면 CREW CHANGE를 남긴다(보내지 않음) |
+| `GET /api/fleet/crew-changes` | 최근 CREW CHANGE 기록, 새것 먼저(`?registration=TEAM_X&limit=20`). 상태는 `pending`·`delivered`·`superseded` |
+| `POST /api/fleet/:registration/crew-change/:id/delivered` | 대기 중인 CREW CHANGE를 CAPTAIN에게 붙여 넣었다고 표시. 없으면 404, 이미 닫혔으면 409 |
 | `GET /api/logbook?aircraft=TEAM_X&days=14` | LOGBOOK 기록, 도착 최신순(`aircraft`는 선택, `days`는 1~90). 마지막으로 읽은 시각과 오류도 |
 
 | 상태 | 화면 표기 |
@@ -346,6 +350,8 @@ atc/
 │   ├── model.ts            # Session / Workspace / Ticket / Claim / Alert
 │   ├── airports.ts         # AIRPORT 등록부·API (airports.test.ts)
 │   ├── fleet.ts            # FLEET 등록부·API (fleet.test.ts)
+│   ├── crew-observed.ts    # 세션 메타데이터로 본 관측 CREW (crew-observed.test.ts)
+│   ├── crew-change.ts      # CREW CHANGE 지시문, 보내지 않음 (crew-change.test.ts)
 │   ├── logbook.ts          # ARRIVED FLIGHT의 LOGBOOK, TARGETS 실적 (logbook.test.ts)
 │   ├── away.ts             # OUTSTATION 판정 (화면과 공용)
 │   ├── callsign.ts         # 콜사인·FLIGHT NUMBER (화면과 공용)
