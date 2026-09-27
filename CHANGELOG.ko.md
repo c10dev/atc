@@ -16,6 +16,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- 착수 기록(DEPARTURE LOG)으로 LOGBOOK의 AIRCRAFT 모름 줄을 줄인다([docs/fleet.md](docs/fleet.md) 7.1, 7.5). 2026-09-27 기준 최근 14일 LOGBOOK 62건 중 48건이 AIRCRAFT를 몰랐다. 머지될 때쯤이면 claim이 정리되거나 다시 시작되고 워크트리도 지워지기 때문이다. 이제 따뜻한 tick마다 점유와 워크트리를 STAND별 마지막 AIRCRAFT와 비교해, 바뀔 때만 `~/.local/state/atc/departures.jsonl`에 `{t, flight, aircraft, stand, branch, repo, via}`를 추가한다. `via`는 `stand`(새 워크트리), `claim`(첫 `TEAM_X` 점유, 시각은 그 `since`), `handoff`(앞 팀이 손을 뗀 뒤 다른 팀이 잡음. 동시 점유 중에는 앞 팀 유지)다. 재시작하면 파일을 먼저 접어 같은 줄을 다시 쓰지 않는다. 새 ARRIVED 줄은 AIRCRAFT를 지금 점유에서, 없으면 머지 전 그 PR 브랜치(없으면 FLIGHT·STAND)의 착수 기록 마지막 AIRCRAFT에서 찾는다. 워크트리가 지워졌으면 STAND도 착수 기록에서 찾고, `departedAt`은 점유와 착수 기록 중 가장 이른 것(`departedFrom: "departure"`)이라 `blockMin` 모름도 줄어든다. 줄에 `branch`를 남긴다. AIRCRAFT를 몰랐던 옛 줄은 새 `attributed` op로 채운다(AIRCRAFT, 출발을 몰랐으면 `departedAt`·`blockMin`도). 아직 모르는 줄에만 적용되며, 착수 기록이 생기기 전 줄은 대부분 그대로 모름이 정상이다.
 - DISPATCH RECALL(ATFM 결정 4: 자동 배정보다 먼저 만듦, [docs/dispatch.ko.md](docs/dispatch.ko.md) "RECALL").
   - SUPERVISOR가 보냈거나 READBACK 받은 FLIGHT PLAN을 거둬들인다: 진행 중 행의 "RECALL…" 버튼, 또는 `POST /api/dispatch/proposals/:id/recall {reason}`.
   - 새 상태 RECALLING·RECALLED. RECALLING은 AIRCRAFT·FLIGHT를 잡아 두고, DEPARTED로 바뀌지 않으며, 10분이면 overdue, 24시간이면 만료된다. DEPARTED는 RECALL하지 않는다.

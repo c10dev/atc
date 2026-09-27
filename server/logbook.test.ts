@@ -3,8 +3,10 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import type { Departure } from "./departures.ts";
 import {
   appendLogbook,
+  attribution,
   buildEntry,
   computeActuals,
   type EntryContext,
@@ -219,4 +221,52 @@ test("주 시작은 로컬 시간 월요일 00:00", () => {
   assert.equal(weekStartOf(new Date(2026, 8, 26, 15, 0).getTime()), monday); // 토요일
   assert.equal(weekStartOf(new Date(2026, 8, 27, 23, 59).getTime()), monday); // 일요일
   assert.equal(weekStartOf(monday), monday);
+});
+
+const dep = (t: string, over: Partial<Departure> = {}): Departure => ({
+  t, flight: "VOC-201", aircraft: "TEAM_J", stand: "/w/atc-logbook", branch: "claude/logbook", repo: "/r/atc", via: "claim", ...over,
+});
+
+test("착수 기록 귀속: 점유가 정리되고 워크트리가 지워져도 같은 브랜치의 착수 기록으로 AIRCRAFT·STAND·출발을 채운다", () => {
+  const gone = ctx({ landingStands: new Map(), workspaces: [], claims: [], departures: [dep("2026-09-26T10:00:00Z", { via: "stand", aircraft: null }), dep("2026-09-26T10:05:00Z")] });
+  const e = buildEntry(pr(), gone);
+  assert.equal(e.aircraft, "TEAM_J");
+  assert.deepEqual(e.stands, ["/w/atc-logbook"]);
+  assert.equal(e.departedFrom, "departure");
+  assert.equal(e.departedAt, "2026-09-26T10:00:00Z");
+  assert.equal(e.blockMin, 120); // 10:00 → PR 12:00
+  assert.equal(e.branch, "claude/logbook");
+  // 지금 점유가 있으면 그쪽이 먼저(AIRCRAFT). 출발은 둘 중 이른 것
+  const both = buildEntry(pr(), ctx({ departures: [dep("2026-09-26T09:00:00Z", { aircraft: "TEAM_H" })] }));
+  assert.equal(both.aircraft, "TEAM_J");
+  assert.equal(both.departedFrom, "departure");
+  assert.equal(both.departedAt, "2026-09-26T09:00:00Z");
+  // 착수 기록이 PR보다 늦으면(PR 뒤에 착수) 출발은 여전히 모름
+  const late = buildEntry(pr(), ctx({ landingStands: new Map(), claims: [], departures: [dep("2026-09-26T13:00:00Z")] }));
+  assert.equal(late.aircraft, "TEAM_J");
+  assert.equal(late.departedFrom, "pr");
+  assert.equal(late.blockMin, null);
+});
+
+test("attributed 보정: AIRCRAFT를 몰랐던 줄을 착수 기록으로 한 번만 채우고, 아는 AIRCRAFT는 바꾸지 않는다", () => {
+  const dir = mkdtempSync(join(tmpdir(), "atc-logbook-attr-"));
+  const file = join(dir, "logbook.jsonl");
+  // 착수 기록이 생기기 전에 들어온 줄: AIRCRAFT·출발 모름
+  appendLogbook(planLogbook([{ ctx: ctx({ landingStands: new Map(), claims: [], workspaces: [] }), pulls: [pr()] }], [], "2026-09-26T14:05:00Z"), file);
+  assert.equal(foldLogbook(readLogbook(file))[0].aircraft, null);
+  const withLog = ctx({ landingStands: new Map(), claims: [], workspaces: [], departures: [dep("2026-09-26T11:00:00Z")] });
+  const fix = planLogbook([{ ctx: withLog, pulls: [pr()] }], readLogbook(file), "2026-09-26T15:00:00Z");
+  assert.deepEqual(fix, [{ op: "attributed", t: "2026-09-26T15:00:00Z", key: "o/atc#31", aircraft: "TEAM_J", via: "departures", departedAt: "2026-09-26T11:00:00Z", blockMin: 60 }]);
+  appendLogbook(fix, file);
+  const [e] = foldLogbook(readLogbook(file));
+  assert.equal(e.aircraft, "TEAM_J");
+  assert.equal(e.attributedBy, "departures");
+  assert.equal(e.departedFrom, "departure");
+  assert.equal(e.blockMin, 60);
+  assert.equal(planLogbook([{ ctx: withLog, pulls: [pr()] }], readLogbook(file)).length, 0); // 다시 쓰지 않는다
+  // 이미 아는 AIRCRAFT에는 보정 줄이 와도 무시
+  const known = foldLogbook([...readLogbook(file), { op: "attributed", t: "x", key: "o/atc#31", aircraft: "TEAM_B", via: "departures" }]);
+  assert.equal(known[0].aircraft, "TEAM_J");
+  // 착수 기록이 없는 과거 줄은 그대로 모름(정상)
+  assert.equal(attribution({ ...e, aircraft: null, branch: undefined, flight: null, stands: [] }, "/r/atc", [], "now"), null);
 });

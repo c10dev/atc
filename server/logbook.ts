@@ -7,6 +7,7 @@ import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig } from "./dispatch.ts";
 import { isCodexBot } from "./landing.ts";
 import type { Claim, Snapshot, TrafficEvent } from "./model.ts";
 import { readRecords } from "./recorder.ts";
+import { type Departure, matchDepartures, readDepartures } from "./departures.ts";
 import { readHookClaims } from "./sources/claude.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
 import { type GhMerged, listMerged } from "./sources/github.ts";
@@ -31,9 +32,11 @@ export interface LogEntry {
   class: Pick<Classification, "type" | "wake" | "ratings" | "explicit"> | null;
   airport: string | null;
   pr: { repo: string; number: number; url: string; title: string };
+  branch?: string | null; // PR 브랜치(옛 줄에는 없다). 착수 기록과 맞출 때 쓴다
   stands: string[];
   departedAt: string;
-  departedFrom: "claim" | "pr";
+  departedFrom: "claim" | "departure" | "pr"; // departure: 착수 기록(departures.jsonl)의 첫 시각
+  attributedBy?: "departures"; // 나중에 attributed 줄로 AIRCRAFT를 채웠으면
   arrivedAt: string;
   blockMin: number | null; // 팀 소요 시간: departedAt → PR을 연 시각. 점유가 없거나 PR 뒤에 생겼으면 null(모름)
   landingWaitMin: number; // 착륙 대기: PR을 연 시각 → 머지. 정시율에 넣지 않는다
@@ -46,7 +49,9 @@ export interface LogEntry {
 
 export type LogLine =
   | ({ op: "arrived"; t: string } & LogEntry)
-  | { op: "reverted"; t: string; key: string; by: { number: number; url: string } };
+  | { op: "reverted"; t: string; key: string; by: { number: number; url: string } }
+  // AIRCRAFT를 몰랐던 줄을 착수 기록으로 나중에 채운다. 출발 시각을 몰랐으면(departedFrom "pr") 그것도
+  | { op: "attributed"; t: string; key: string; aircraft: string; via: "departures"; departedAt?: string; blockMin?: number };
 
 const logbookFile = () => join(config.stateDir, "logbook.jsonl");
 
@@ -84,6 +89,11 @@ export function foldLogbook(lines: LogLine[]): LogEntry[] {
     } else if (l.op === "reverted") {
       const e = byKey.get(l.key);
       if (e && !e.reverted) Object.assign(e, { reverted: true, revertedBy: { ...l.by, at: l.t } });
+    } else if (l.op === "attributed") {
+      const e = byKey.get(l.key);
+      if (!e || e.aircraft) continue; // 이미 아는 AIRCRAFT는 바꾸지 않는다
+      Object.assign(e, { aircraft: l.aircraft, attributedBy: l.via });
+      if (l.departedAt && l.blockMin != null && e.departedFrom === "pr") Object.assign(e, { departedAt: l.departedAt, departedFrom: "departure", blockMin: l.blockMin });
     }
   }
   return [...byKey.values()].sort((a, b) => b.arrivedAt.localeCompare(a.arrivedAt));
@@ -114,6 +124,7 @@ export interface EntryContext {
   teamPattern: string;
   los: Pick<TrafficEvent, "at" | "workspacePath">[]; // LOS 발생(alert.raised conflict)
   teamKey: string;
+  departures?: Departure[]; // 착수 기록(departures.jsonl)
 }
 
 // 워크트리 이름에 그 FLIGHT의 ticket key가 있나(readFlightHistory와 같은 규칙)
@@ -138,7 +149,10 @@ export function buildEntry(pr: GhMerged, ctx: EntryContext): LogEntry {
   const flight = ctx.ticketKeyOf(pr);
   const labels = flight ? ctx.labelsOf(flight) : null;
   const c = labels ? classOf(labels) : null;
-  const stands = standsOf(pr, flight, ctx);
+  const found = standsOf(pr, flight, ctx);
+  // 착수 기록: 같은 브랜치(없으면 FLIGHT·STAND)의 마지막 AIRCRAFT와 첫 시각. 워크트리가 지워졌으면 STAND도 여기서
+  const dep = matchDepartures(ctx.departures ?? [], { repo: ctx.repo, branch: pr.headRefName, flight, stands: found, before: pr.mergedAt });
+  const stands = found.length ? found : dep.stands;
   const arrivedMs = Date.parse(pr.mergedAt);
   // 머지 뒤에 새로 잡은 점유(같은 STAND의 다음 작업)는 이 FLIGHT가 아니다
   const claims = ctx.claims.filter((x) => stands.includes(x.workspacePath) && Date.parse(x.since) <= arrivedMs);
@@ -147,25 +161,30 @@ export function buildEntry(pr: GhMerged, ctx: EntryContext): LogEntry {
     .map((x) => ({ ...x, name: ctx.nameOf(x.sessionId) }))
     .filter((x) => x.name && team.test(x.name))
     .sort((a, b) => b.lastAt.localeCompare(a.lastAt));
-  // 점유의 since는 3시간 쉬면 새로 시작하므로 PR을 연 시각이 더 이를 수 있다
+  // 출발: 점유와 착수 기록 중 가장 이른 것. 점유의 since는 3시간 쉬면 새로 시작하므로 PR을 연 시각이 더 이를 수 있다
   const firstClaim = claims.map((x) => x.since).sort()[0] ?? null;
-  const departedFrom = firstClaim && firstClaim <= pr.createdAt ? "claim" : "pr";
-  const departedAt = departedFrom === "claim" ? firstClaim! : pr.createdAt;
+  const first = [
+    ...(firstClaim ? [{ t: firstClaim, from: "claim" as const }] : []),
+    ...(dep.firstAt ? [{ t: dep.firstAt, from: "departure" as const }] : []),
+  ].sort((a, b) => a.t.localeCompare(b.t))[0];
+  const departedFrom = first && first.t <= pr.createdAt ? first.from : "pr";
+  const departedAt = departedFrom === "pr" ? pr.createdAt : first!.t;
   const departedMs = Date.parse(departedAt);
   const openedMs = Date.parse(pr.createdAt);
   const reviews = pr.reviews ?? [];
   return {
     key: `${ctx.slug}#${pr.number}`,
-    aircraft: flown[0]?.name?.toUpperCase() ?? null,
+    aircraft: flown[0]?.name?.toUpperCase() ?? dep.aircraft,
     flight,
     class: c && { type: c.type, wake: c.wake, ratings: c.ratings, explicit: c.explicit },
     airport: ctx.airport,
     pr: { repo: ctx.slug, number: pr.number, url: pr.url, title: pr.title },
+    branch: pr.headRefName,
     stands,
     departedAt,
     departedFrom,
     arrivedAt: pr.mergedAt,
-    blockMin: departedFrom === "claim" ? Math.max(0, Math.round((openedMs - departedMs) / MIN)) : null,
+    blockMin: departedFrom === "pr" ? null : Math.max(0, Math.round((openedMs - departedMs) / MIN)),
     landingWaitMin: Math.max(0, Math.round((arrivedMs - openedMs) / MIN)),
     codexFindings: reviews.filter((r) => isCodexBot(r.author?.login) && r.state === "COMMENTED").length,
     changesRequested: reviews.some((r) => r.state === "CHANGES_REQUESTED"),
@@ -199,7 +218,29 @@ export function planLogbook(merged: { ctx: EntryContext; pulls: GhMerged[] }[], 
     entries.push(entry);
     seen.add(key);
   }
+  // 이미 있던 AIRCRAFT 모름 줄을 착수 기록으로 채운다(그 저장소를 이번에 읽었을 때만)
+  const bySlug = new Map(merged.map(({ ctx }) => [ctx.slug, ctx]));
+  for (const e of entries) {
+    const ctx = bySlug.get(e.pr.repo);
+    if (e.aircraft || !ctx) continue;
+    const line = attribution(e, ctx.repo, ctx.departures ?? [], now);
+    if (line) out.push(line);
+  }
   return out;
+}
+
+// AIRCRAFT를 몰랐던 LOGBOOK 줄 하나에 대한 보정 줄. 착수 기록이 생기기 전 FLIGHT는 대개 채우지 못한다(정상).
+export function attribution(e: LogEntry, repo: string, departures: Departure[], now: string): Extract<LogLine, { op: "attributed" }> | null {
+  const m = matchDepartures(departures, { repo, branch: e.branch ?? null, flight: e.flight, stands: e.stands, before: e.arrivedAt });
+  if (!m.aircraft) return null;
+  const line: Extract<LogLine, { op: "attributed" }> = { op: "attributed", t: now, key: e.key, aircraft: m.aircraft, via: "departures" };
+  // 출발 시각을 몰랐고(PR을 연 시각) 착수 기록이 PR보다 이르면 팀 소요 시간도 채운다
+  const openedMs = Date.parse(e.arrivedAt) - e.landingWaitMin * MIN;
+  if (e.departedFrom === "pr" && m.firstAt && Date.parse(m.firstAt) <= openedMs) {
+    line.departedAt = m.firstAt;
+    line.blockMin = Math.max(0, Math.round((openedMs - Date.parse(m.firstAt)) / MIN));
+  }
+  return line;
 }
 
 // ---- TARGETS 실적 ----
@@ -296,6 +337,7 @@ function contextFor(s: Snapshot, repo: string, slug: string, records: ReturnType
     teamPattern: loadDispatchConfig().teamPattern ?? DEFAULT_DISPATCH_CONFIG.teamPattern,
     los: events.filter((e) => e.kind === "alert.raised" && e.alertKind === "conflict"),
     teamKey: config.linearTeamKey,
+    departures: readDepartures(),
   };
 }
 
