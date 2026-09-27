@@ -330,6 +330,14 @@
 .dp-btn.disagree {
   color: var(--muted);
 }
+/* HELD(PREFLIGHT) 카드: 대기열로 / FLIGHT 보류 확정 */
+.dp-btn.requeue {
+  border-color: var(--radar);
+  color: var(--radar);
+}
+.dp-btn.confirm-hold {
+  color: var(--muted);
+}
 
 /* AIRCRAFT · HOLD_DEPARTURE 목록 */
 .dp-grid {
@@ -552,6 +560,16 @@
 }
 
 /* CROSSCHECK: 다른 모델의 임시 판정. agree는 radar, disagree는 alert. 사람 판정과 헷갈리지 않게 점선. */
+/* CROSSCHECK가 아직 보지 않은 제안 */
+.dp-xc-wait {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--faint);
+  font: 600 var(--text-xs) var(--mono);
+  letter-spacing: 0.05em;
+}
 .dp-xc {
   display: flex;
   flex-wrap: wrap;

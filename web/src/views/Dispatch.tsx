@@ -73,6 +73,9 @@ interface VerdictInput {
 // 서버 타입에 아직 없을 수 있어 따로 읽는다(옛 기록·옛 서버면 없음)
 const viaOf = (p: Proposal): Via | null => (p as unknown as { via?: Via | null }).via ?? null;
 const codesOf = (p: Proposal): string[] => (p as unknown as { reasonCodes?: string[] | null }).reasonCodes ?? [];
+// PREFLIGHT 줄 설명(툴팁)
+const PREFLIGHT_NOTE =
+  "HELD: CROSSCHECK FLIGHT 칩이나 OCC HOLD로 판정 전에 빠진 제안(대기열로 돌렸거나 확정했어도 셈). 판정 건수·합의율에는 넣지 않는다. 준비율: HOLD 없이 판정까지 간 제안 ÷ (그것 + HELD) — 티켓 공급 품질";
 // 한 번 클릭 비율 설명(툴팁·안내 문장)
 const ONE_CLICK_NOTE = "사람 판정 가운데 CROSSCHECK에 동의 버튼 한 번으로 낸 비율 — 어떻게 판정했는지 기록된 판정만 셈";
 
@@ -96,6 +99,8 @@ interface Brief {
     // 참고용, 게이트 기준 아님. byModel·oneClick은 옛 서버면 없음
     crosscheck?: CrosscheckRate & { byModel?: Record<string, CrosscheckRate>; oneClick?: { count: number; decided: number } };
     reasonCounts?: Record<string, number>; // 거절 사유 코드별 건수(옛 서버면 없음)
+    // PREFLIGHT(게이트 밖): HOLD된 제안 수와 준비율(옛 서버면 없음)
+    preflight?: { held: number; holding: number; passed: number; readyRate: number | null };
   };
   gate3: {
     dispatched: number;
@@ -232,14 +237,17 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
     }
   };
 
-  // SUPERVISOR가 HOLD를 푼다: 제안은 닫히고 FLIGHT는 다음 계획에서 다시 후보가 된다
-  const unhold = async (p: Proposal) => {
-    if (!confirm(`${p.id}의 HOLD를 풀까요? 제안은 닫히고 ${flightNumber(p.flight)}는 다음 계획에서 다시 후보가 됩니다.`)) return;
+  // HELD(PREFLIGHT) 한 번 클릭: 대기열로(같은 제안을 판정 대기로) | FLIGHT 보류 확정(모든 AIRCRAFT에서 24시간, 이슈가 바뀌면 풀림)
+  const heldAction = async (p: Proposal, action: "requeue" | "confirm-hold") => {
+    setBusy(p.id);
+    setError(null);
     try {
-      await post(`/api/dispatch/proposals/${p.id}/unhold`, {});
+      await post(`/api/dispatch/proposals/${p.id}/${action}`, {});
       await load();
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -263,8 +271,10 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
   const { plan, gate, flights } = brief;
   const codes = brief.reasonCodes ?? [];
   const labelOf = (code: string) => codes.find((c) => c.code === code)?.label ?? code;
-  const assign = brief.open.filter((p) => p.kind === "ASSIGN");
-  const release = brief.open.filter((p) => p.kind === "RELEASE");
+  // CROSSCHECK가 아직 안 본 제안은 뒤로(PREFLIGHT 거름이 돌기 전에 판정하지 않게). 안정 정렬이라 나머지 순서는 서버 그대로
+  const byMarked = (a: Proposal, b: Proposal) => Number(!markOf(a)) - Number(!markOf(b));
+  const assign = brief.open.filter((p) => p.kind === "ASSIGN").sort(byMarked);
+  const release = brief.open.filter((p) => p.kind === "RELEASE").sort(byMarked);
 
   return (
     <section className="dispatch">
@@ -346,11 +356,11 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {brief.held.length > 0 && (
         <>
           <h2 className="label">
-            HELD <em>DISPATCH가 잡아 둠 — 선행 FLIGHT 또는 사람 결정 대기</em>
+            HELD <em>PREFLIGHT — 아직 시작할 상태가 아님(CROSSCHECK FLIGHT 칩 · OCC HOLD). 판정하지 않고 대기열로 돌리거나 확정</em>
           </h2>
           <div className="dp-cards">
             {brief.held.map((p) => (
-              <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} now={now} onVerdict={submit} onUnhold={unhold} codes={codes} mode={brief.mode} held busy={busy === p.id} />
+              <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} now={now} onVerdict={submit} onHeld={heldAction} codes={codes} mode={brief.mode} held busy={busy === p.id} />
             ))}
           </div>
         </>
@@ -747,7 +757,7 @@ function Gate({ gate, labelOf, stats }: { gate: Brief["gate"]; labelOf: (code: s
   const rateOk = gate.agreement !== null && gate.agreement >= gate.target.agreement;
   const rows = [
     {
-      label: "결정한 제안",
+      label: "판정한 제안(HELD 제외)",
       value: `${gate.decided}건`,
       target: `≥ ${gate.target.decided}건`,
       state: enough ? "pass" : "fail",
@@ -762,6 +772,7 @@ function Gate({ gate, labelOf, stats }: { gate: Brief["gate"]; labelOf: (code: s
   const mark = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족" } as const;
   const xc = gate.crosscheck; // 옛 서버면 없음
   const one = xc?.oneClick;
+  const pf = gate.preflight; // 옛 서버면 없음
   // 거절 사유 코드별 건수: 많은 순(같으면 코드순), 0건은 뺀다
   const reasons = Object.entries(gate.reasonCounts ?? {})
     .filter(([, n]) => n > 0)
@@ -780,6 +791,16 @@ function Gate({ gate, labelOf, stats }: { gate: Brief["gate"]; labelOf: (code: s
             <span className="dp-gate-state">{mark[r.state]}</span>
           </li>
         ))}
+        {pf && (
+          <li className="s-info dp-gate-pf" title={PREFLIGHT_NOTE}>
+            <span className="dp-gate-label">
+              PREFLIGHT HELD {pf.held}건{pf.holding ? ` (지금 ${pf.holding})` : ""}
+            </span>
+            <span className="dp-gate-value">준비율 {pf.readyRate === null ? "—" : `${pf.passed}/${pf.passed + pf.held} ${pct(pf.readyRate)}`}</span>
+            <span className="dp-gate-target">게이트 밖</span>
+            <span className="dp-gate-state">참고</span>
+          </li>
+        )}
         {xc && (
           <li className="s-info dp-gate-xc">
             <span className="dp-gate-label">
@@ -911,7 +932,7 @@ function Card({
   codes,
   mode,
   held,
-  onUnhold,
+  onHeld,
   busy,
 }: {
   p: Proposal;
@@ -923,11 +944,12 @@ function Card({
   codes: ReasonCode[];
   mode: DispatchConfig["mode"];
   held?: boolean;
-  onUnhold?: (p: Proposal) => void;
+  onHeld?: (p: Proposal, action: "requeue" | "confirm-hold") => void;
   busy?: boolean;
 }) {
   const max = Math.max(1, ...p.factors.map((f) => Math.abs(f.points)));
-  const xc = held ? null : markOf(p);
+  const xc = markOf(p); // HELD 카드에도 보인다(누가·칩·이유). 한 번 클릭 버튼은 대기열 카드에만
+  const labelOf = (c: string) => codes.find((r) => r.code === c)?.label ?? c;
   const [rejecting, setRejecting] = useState(false);
   const rejectBtn = useRef<HTMLButtonElement>(null);
   const closeReject = () => {
@@ -976,12 +998,40 @@ function Card({
       </div>
       {p.holdAt && (
         <p className="dp-hold">
-          <span className="dp-hold-mark">HOLD</span>
-          {p.hold.length ? `선행 FLIGHT ${p.hold.map(flightNumber).join(", ")}가 끝난 뒤` : "사람 결정·외부 입력 대기 — 사유는 메모, FLIGHT가 수정되면 다시 검토"}
+          <span className="dp-hold-mark">{p.preflight ? "PREFLIGHT" : "HOLD"}</span>
+          {p.preflight
+            ? `CROSSCHECK(${modelLabel(p.preflight.model)})가 FLIGHT 칩으로 disagree: ${p.preflight.codes.map(labelOf).join(" · ")} — FLIGHT가 수정되면 다시 검토`
+            : p.hold.length
+              ? `선행 FLIGHT ${p.hold.map(flightNumber).join(", ")}가 끝난 뒤`
+              : "OCC: 사람 결정·외부 입력 대기 — 사유는 메모, FLIGHT가 수정되면 다시 검토"}
         </p>
       )}
-      {xc && <CrosscheckChip m={xc} now={now} labelOf={(c) => codes.find((r) => r.code === c)?.label ?? c} />}
-      {rejecting ? (
+      {xc ? (
+        <CrosscheckChip m={xc} now={now} labelOf={labelOf} />
+      ) : (
+        !held && (
+          <p className="dp-xc-wait" title="CROSSCHECK가 아직 이 제안을 보지 않음 — FLIGHT 자체의 문제는 CROSSCHECK가 걸러 HELD로 보낸다">
+            CROSSCHECK 대기
+          </p>
+        )
+      )}
+      {held ? (
+        <div className="dp-actions">
+          <button className="dp-btn requeue" disabled={busy} title="HOLD를 풀고 이 제안을 판정 대기열로 돌린다(24시간은 지금부터)" onClick={() => onHeld?.(p, "requeue")}>
+            대기열로
+          </button>
+          {!p.hold.length && (
+            <button
+              className="dp-btn confirm-hold"
+              disabled={busy}
+              title="FLIGHT 보류 확정 — 이 FLIGHT를 모든 AIRCRAFT에서 24시간 빼고(이슈가 바뀌면 그 전에 풀림) 제안을 닫는다. 사람 판정(게이트)에는 세지 않음"
+              onClick={() => onHeld?.(p, "confirm-hold")}
+            >
+              FLIGHT 보류 확정
+            </button>
+          )}
+        </div>
+      ) : rejecting ? (
         <RejectForm p={p} codes={codes} mode={mode} busy={busy} onCancel={closeReject} onSubmit={reject} />
       ) : (
         <div className="dp-actions">
@@ -999,11 +1049,6 @@ function Card({
               onClick={() => onAccept(p, xc)}
             >
               CROSSCHECK에 동의
-            </button>
-          )}
-          {held && onUnhold && (
-            <button className="dp-btn unhold" onClick={() => onUnhold(p)}>
-              HOLD 풀기
             </button>
           )}
         </div>
