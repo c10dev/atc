@@ -148,7 +148,7 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 
 SUPERVISOR는 티켓 내용을 기억하지 못할 때가 많다(VOC-195, VOC-172). 제안을 판정하려고 Linear를 열지 않아도 되게 한다. 열린 카드와 HELD 카드는 위에서 아래로 이렇게 읽힌다.
 
-1. **BRIEFING**: 무슨 일, 왜 이 AIRCRAFT, 걸리는 점(선행, 위험, 사람이 정할 것). OCC가 쓴다(`occ/CLAUDE.md` "BRIEFING"). OCC가 쓰기 전에는 제목과 본문 첫 문장에 "BRIEFING 대기"가 붙어 보인다. 본문은 atc가 백그라운드로 Linear에서 읽어 30분 동안 캐시한다(`server/briefing.ts`, `leadOf`).
+1. **BRIEFING**: 무슨 일, 왜 이 AIRCRAFT, 걸리는 점(선행, 위험, 사람이 정할 것). OCC가 쓴다(`occ/.claude/skills/tick/briefing.md` "BRIEFING"). OCC가 쓰기 전에는 제목과 본문 첫 문장에 "BRIEFING 대기"가 붙어 보인다. 본문은 atc가 백그라운드로 Linear에서 읽어 30분 동안 캐시한다(`server/briefing.ts`, `leadOf`).
 2. **사실 줄**: 모델 없이 서버가 계산한다(`factsOf`). PRIORITY, FLIGHT를 만든 뒤 대기 일수, ROUTE MAP의 ROUTE와 WAYPOINT(예: "Beta Ready WAYPOINT(지금 구간) · 남은 3건 중 하나"), 선행 FLIGHT(Linear `blockedBy`와 DISPATCH HOLD)와 그 상태, 그 AIRCRAFT가 같은 ROUTE에서 최근 맡은 FLIGHT(30일 안 LOGBOOK ARRIVED와 날고 있는 ASSIGN, 셋까지), HELD 카드에서는 CROSSCHECK 판정과 사유(열린 카드는 CROSSCHECK 칩에 보인다).
 3. 분류, AIRCRAFT와 점수, HOLD 줄, CROSSCHECK 칩, 판정 버튼은 전과 같다.
 4. **접어 둔 자세히**("점수 요소 · 본문 · 메모"): 점수 요소, DISPATCH 메모, 본문 전체. 본문은 열 때 Linear에서 읽는다.
