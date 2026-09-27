@@ -78,6 +78,10 @@ HOLD는 24시간 만료가 없고, 다음 경우에 atc가 SUPERSEDED로 푼다(
 - FLIGHT 자체가 Todo가 아니게 됨
 - SUPERVISOR가 DISPATCH 탭에서 "HOLD 풀기"
 
+### "사용자가 정한다" 문구
+
+본문·댓글에 착수를 사람에게 맡기는 문구가 있으면 AIRCRAFT와 상관없이 선행 없는 HOLD를 건다: `dispatch note <D-xxxx> --caution --hold -- "사용자 지시 대기: <문구 인용>"`. 예: "사용자가 정한다", "사용자 지시를 기다린다", "사용자 확인 후", "The user decides when to start", "user decides", "구현은 나중에(사람이 정함)". 사람 손이 필요한 일(사용자 모집·관찰·인터뷰)도 같다. VOC-195는 이렇게 HOLD됐지만 VOC-177·VOC-125는 걸러지지 않아 팀을 바꿔 가며 거절이 되풀이됐다.
+
 ## SCHEDULE 초안 (S1, 그림자 운용)
 
 매 바퀴 `schedule brief`의 `candidates`에서 고른다. 후보에는 이미 같은 종류의 열린 초안이 있는 FLIGHT가 빠져 있다. **한 바퀴에 FLIGHT 3개까지**, 하나마다 `dispatch flight <FLIGHT>`로 본문·댓글을 읽고 초안을 쓴다. 근거는 본문·댓글에서 본 사실 한 줄이고 따옴표로 감싼다(`>`·`<`가 따옴표 밖에 있으면 guard가 막는다).

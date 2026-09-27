@@ -79,8 +79,10 @@ SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만. S2 승인 운용
 
 CROSSCHECK (CROSSCHECK 세션이 맡음. SUPERVISOR 판정 전에 다른 모델이 예비 판정을 달아 둔다. 상태는 바꾸지 않음)
   node atcctl.mjs crosscheck brief          mark가 없는 열린 제안·초안(pending)과 최근 SUPERVISOR 판정 예시(examples) (JSON)
-  node atcctl.mjs dispatch crosscheck <D-0003> agree|disagree -- <이유>
-                                            열린 제안에 예비 판정(이유는 500자 이내). 다시 달면 대신한다
+  node atcctl.mjs dispatch crosscheck <D-0003> agree|disagree [--code <코드>[,<코드>]] -- <이유>
+                                            열린 제안에 예비 판정(이유는 500자 이내). 다시 달면 대신한다.
+                                            disagree는 --code로 거절 사유 칩: already-done parent-issue waiting-on-prior
+                                            needs-human no-priority out-of-repo wrong-aircraft other
   node atcctl.mjs schedule crosscheck <S-0001> agree|disagree -- <이유>
                                             열린 SCHEDULE 초안에 예비 판정`;
 
@@ -186,9 +188,18 @@ export function parseCrosscheck(args) {
   const [id, verdict, ...rest] = head;
   if (!id || id.startsWith("--")) throw new Error("제안·초안 ID가 필요함 (예: D-0003, S-0001)");
   if (verdict !== "agree" && verdict !== "disagree") throw new Error("판정은 agree|disagree");
-  if (rest.length) throw new Error(`알 수 없는 인자 ${rest.join(" ")}`);
+  // --code <코드>[,<코드>]… (여러 번 가능): DISPATCH disagree의 거절 사유 칩. 값 검사는 서버가 한다
+  const codes = [];
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] !== "--code") throw new Error(`알 수 없는 인자 ${rest.slice(i).join(" ")}`);
+    const val = rest[++i];
+    if (val === undefined || val.startsWith("--")) throw new Error("--code 뒤에 사유 코드가 필요함 (예: needs-human)");
+    codes.push(...val.split(",").map((c) => c.trim()).filter(Boolean));
+  }
+  if (codes.length && verdict !== "disagree") throw new Error("--code는 disagree에만");
   if (!reason) throw new Error("-- 뒤에 이유 한 줄이 필요함");
   const body = { verdict, reason, by: process.env.ATC_CROSSCHECK_BY || "CROSSCHECK" };
+  if (codes.length) body.reasonCodes = [...new Set(codes)];
   if (process.env.ATC_CROSSCHECK_MODEL) body.model = process.env.ATC_CROSSCHECK_MODEL;
   return { id, body };
 }

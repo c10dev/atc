@@ -8,6 +8,7 @@ import {
   BETTER_WHY,
   DEFAULT_DISPATCH_CONFIG,
   DONE_STATES,
+  FLIGHT_HOLD_CODES,
   type DispatchConfig,
   type Factor,
   excludedLabelWhy,
@@ -273,6 +274,22 @@ export function recentPairsOf(existing: Proposal[], now: number): Map<string, { 
   return out;
 }
 
+// FLIGHT 자체의 문제로 거절된 ASSIGN(사유 칩이 FLIGHT_HOLD_CODES 중 하나) → 그 FLIGHT를 모든 AIRCRAFT에서 보류.
+// 판정(decidedAt)부터 24시간. 이슈가 판정 뒤에 바뀌면 planner가 먼저 푼다. 칩이 없는 옛 판정은 짝 차단만 받는다.
+export function recentFlightsOf(existing: Proposal[], now: number): NonNullable<Reserved["recentFlights"]> {
+  const out: NonNullable<Reserved["recentFlights"]> = new Map();
+  for (const p of existing) {
+    if (p.kind !== "ASSIGN" || (p.status !== "disagreed" && p.status !== "rejected") || !p.decidedAt) continue;
+    const codes = (p.reasonCodes ?? []).filter((c) => (FLIGHT_HOLD_CODES as readonly string[]).includes(c));
+    if (!codes.length) continue;
+    const until = Date.parse(p.decidedAt) + PROPOSAL_TTL_MS;
+    if (until <= now) continue;
+    const prev = out.get(p.flight);
+    if (!prev || prev.decidedAt < p.decidedAt) out.set(p.flight, { id: p.id, decidedAt: p.decidedAt, until: new Date(until).toISOString(), codes });
+  }
+  return out;
+}
+
 export function reservedOf(existing: Proposal[], now = Date.now()): Reserved {
   const live = existing.filter(isInFlight);
   const held = existing.filter((p) => p.status === "proposed" && isHeld(p));
@@ -283,6 +300,7 @@ export function reservedOf(existing: Proposal[], now = Date.now()): Reserved {
     // AIRCRAFT가 STAND 있는 FLIGHT와 없는 FLIGHT(SURVEY·CHECK)를 함께 쥘 수 있어 한 대의 제안을 모두 넘긴다
     aircraftFlights: live.reduce((m, p) => m.set(p.aircraft!, [...(m.get(p.aircraft!) ?? []), p.flight]), new Map<string, string[]>()),
     recentPairs: recentPairsOf(existing, now),
+    recentFlights: recentFlightsOf(existing, now),
     arrived: arrivedOf(existing, now),
   };
 }
@@ -854,7 +872,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     if (isHeld(p)) return c.json({ error: "HOLD 중인 제안에는 CROSSCHECK를 달지 않는다" }, 409);
     if (!canCrosscheck(p)) return c.json({ error: `지금 상태(${p.status})에서는 CROSSCHECK를 달 수 없음 — 열린 제안만` }, 409);
     try {
-      append([{ op: "crosscheck", id, ...parseCrosscheck(body, new Date().toISOString()) }]);
+      append([{ op: "crosscheck", id, ...parseCrosscheck(body, new Date().toISOString(), REASON_CODES) }]);
     } catch (e) {
       if (e instanceof CrosscheckError) return c.json({ error: e.message }, 400);
       throw e;

@@ -27,7 +27,7 @@ In the DISPATCH and SCHEDULE tabs the SUPERVISOR sees the mark and either follow
 | `node ../controller/atcctl.mjs dispatch flight <VOC-193>` | FLIGHT body and comments (up to 20) |
 | Read `../docs/fleet.md` | Classification criteria: 4.1 FLIGHT TYPE, 4.2 WAKE CATEGORY, 4.3 TYPE RATING. Other design docs in `../docs/` (`occ.md`, `dispatch.md`) are readable too |
 | `node ../controller/atcctl.mjs dispatch brief` / `schedule brief` | The full briefing when needed (plan, exclusion reasons, candidates) |
-| `node ../controller/atcctl.mjs dispatch crosscheck <D-0003> agree\|disagree -- '<reason>'` | Provisional verdict on an open proposal. Marking again replaces it |
+| `node ../controller/atcctl.mjs dispatch crosscheck <D-0003> agree\|disagree [--code <code>[,<code>]] -- '<reason>'` | Provisional verdict on an open proposal. On disagree, pick rejection chips with `--code` (see "Reason chips" below). Marking again replaces it |
 | `node ../controller/atcctl.mjs schedule crosscheck <S-0001> agree\|disagree -- '<reason>'` | Provisional verdict on an open SCHEDULE draft |
 | `gh pr view <N> --repo <owner/name> --json state,mergedAt,title` | Whether a PR named in a body or note is open or merged. `gh pr checks <N> --repo …` for CI, `gh pr list --repo … --search <VOC-190>` to find a FLIGHT's PR |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / reread |
@@ -85,6 +85,23 @@ If the body can't be read or the evidence is not enough to choose, leave no mark
 - One line, facts only. Put the deciding evidence first: `이미 완료됨 — VOC-190 댓글에 PR #390 머지`.
 - agree gets a reason too: `본문상 제약 없음, TEAM_B가 SEC 보유`.
 - Aviation terms stay in English (FLIGHT, AIRCRAFT, HOLD …).
+
+### Reason chips (DISPATCH disagree)
+
+On a DISPATCH disagree, pick one or more chips with `--code`. When the SUPERVISOR presses "CROSSCHECK에 동의", the chips are recorded too, and **the chips decide what gets blocked**. A problem with the FLIGHT itself holds that FLIGHT from every AIRCRAFT for 24 hours (or until the issue changes); a problem with this AIRCRAFT only blocks the pair. SCHEDULE drafts get no chips.
+
+| Code | Pick when | Blocks |
+|---|---|---|
+| `already-done` | The done criteria are already met | FLIGHT |
+| `parent-issue` | A parent issue, split into children | FLIGHT |
+| `waiting-on-prior` | Waiting on a prior FLIGHT, PR or design sign-off | FLIGHT |
+| `needs-human` | The body says "the user decides" / "wait for the user's instruction", or it needs a person's hands (recruiting, observing …) | FLIGHT |
+| `no-priority` | Priority undecided, "later" | FLIGHT |
+| `out-of-repo` | Work outside the repository | FLIGHT |
+| `wrong-aircraft` | Only this AIRCRAFT is wrong (TYPE RATING, another team named) | Pair |
+| `other` | None of the above | Pair |
+
+Decide first whether the problem is the FLIGHT's or the AIRCRAFT's. Don't put a FLIGHT chip on work another team could fly.
 
 ## CROSSCHECK LOG
 

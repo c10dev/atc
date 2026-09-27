@@ -16,7 +16,7 @@ description: CROSSCHECK 한 바퀴 — 규정이 바뀌었는지 확인하고, m
    - CLAUDE.md의 "판정 순서"대로 상태 → 이미 끝났는지 → 선행 조건 → 우선순위 → 대상별 내용을 본다. OCC의 `note`·`reason`은 참고만 한다.
    - CLASSIFY·NEW 초안이 있으면 그 바퀴에 먼저 `../docs/fleet.md`를 Read로 읽고(4.1 FLIGHT TYPE, 4.2 WAKE, 4.3 TYPE RATING), 이유에 해당 기준을 인용한다.
    - CLOSE 초안이면 CLAUDE.md의 "SCHEDULE CLOSE" 기준대로 PR을 `gh pr view`로 확인한다. `Part of`이거나 되돌림·남은 작업이 있으면 disagree.
-4. DISPATCH 제안이면 `node ../controller/atcctl.mjs dispatch crosscheck <D-xxxx> agree|disagree -- '<이유 한 줄>'`.
+4. DISPATCH 제안이면 `node ../controller/atcctl.mjs dispatch crosscheck <D-xxxx> agree|disagree -- '<이유 한 줄>'`. disagree면 CLAUDE.md "사유 칩"대로 `--code <코드>`를 붙인다(FLIGHT의 문제인지 AIRCRAFT의 문제인지 먼저 가른다).
 5. SCHEDULE 초안이면 `node ../controller/atcctl.mjs schedule crosscheck <S-xxxx> agree|disagree -- '<이유 한 줄>'`.
    - 409(열린 건이 아님, HOLD 중)가 나오면 그 사이 SUPERVISOR가 판정했거나 상황이 바뀐 것이다. 다시 시도하지 않는다.
    - mark 명령은 파이프 없이 단독으로 쓴다. guard가 이 세션의 실제 모델을 확인하고 막으면("CROSSCHECK mark 차단 — … 실제 모델") 이번 바퀴의 mark를 모두 멈추고 LOG에 적는다.

@@ -1,3 +1,5 @@
+import { parseReasonCodes, type ReasonCode, ReasonCodeError } from "./reasons.ts";
+
 // CROSSCHECK — OCC와 다른 계열의 모델이 SHADOW 판정 대상(DISPATCH 제안, SCHEDULE 초안)에 먼저 달아 두는 예비 판정.
 // 상태를 바꾸지 않는 참고 표시다(note와 같은 방식). SUPERVISOR는 한 번 클릭으로 따르거나 이유를 적고 뒤집는다.
 // 게이트(20건·80%)에는 계속 사람 판정만 센다. CROSSCHECK가 사람과 얼마나 맞았는지는 따로 잰다(crosscheckRateOf).
@@ -10,6 +12,7 @@ export interface Crosscheck {
   verdict: CrosscheckVerdict;
   reason: string;
   at: string;
+  reasonCodes?: string[]; // DISPATCH disagree의 거절 사유 칩(server/reasons.ts). 옛 mark에는 없다 — 이유 문장에서 추정하지 않는다
 }
 
 // 판정을 어떻게 내렸나: "CROSSCHECK에 동의" 한 번 클릭(crosscheck) 또는 직접 고름(manual).
@@ -44,19 +47,38 @@ export function modelFamily(model: string | null | undefined): string {
   return s || raw;
 }
 
-export const markOf = (l: CrosscheckLine): Crosscheck => ({ by: l.by, model: l.model || UNKNOWN_MODEL, verdict: l.verdict, reason: l.reason, at: l.at });
+export const markOf = (l: CrosscheckLine): Crosscheck => ({
+  by: l.by,
+  model: l.model || UNKNOWN_MODEL,
+  verdict: l.verdict,
+  reason: l.reason,
+  at: l.at,
+  ...(l.reasonCodes?.length ? { reasonCodes: l.reasonCodes } : {}),
+});
 
 export class CrosscheckError extends Error {}
 
 // API 입력 검사. verdict는 agree|disagree, reason은 필수 500자 이내.
-export function parseCrosscheck(body: Record<string, unknown>, at: string): Crosscheck {
+// reasonCodes는 DISPATCH disagree에서만(codes에 거절 사유 칩 목록을 넘긴 경우). SCHEDULE은 칩이 달라 받지 않는다.
+export function parseCrosscheck(body: Record<string, unknown>, at: string, codes?: readonly ReasonCode[]): Crosscheck {
   if (body.verdict !== "agree" && body.verdict !== "disagree") throw new CrosscheckError("verdict는 agree|disagree");
   const reason = typeof body.reason === "string" ? body.reason.trim().replace(/\s+/g, " ") : "";
   if (!reason) throw new CrosscheckError("reason(이유 한 줄)이 필요함");
   if (reason.length > CROSSCHECK_REASON_MAX) throw new CrosscheckError(`reason은 ${CROSSCHECK_REASON_MAX}자 이내 (지금 ${reason.length}자)`);
   const by = typeof body.by === "string" && body.by.trim() ? body.by.trim().slice(0, BY_MAX) : "CROSSCHECK";
   const model = typeof body.model === "string" && body.model.trim() ? body.model.trim().slice(0, MODEL_MAX) : UNKNOWN_MODEL;
-  return { by, model, verdict: body.verdict, reason, at };
+  let reasonCodes: string[] = [];
+  if (body.reasonCodes != null) {
+    if (!codes) throw new CrosscheckError("reasonCodes(사유 칩)는 DISPATCH 제안에만");
+    if (body.verdict !== "disagree") throw new CrosscheckError("reasonCodes(사유 칩)는 disagree에만");
+    try {
+      reasonCodes = parseReasonCodes(body.reasonCodes, codes);
+    } catch (e) {
+      if (e instanceof ReasonCodeError) throw new CrosscheckError(e.message);
+      throw e;
+    }
+  }
+  return { by, model, verdict: body.verdict, reason, at, ...(reasonCodes.length ? { reasonCodes } : {}) };
 }
 
 export interface CrosscheckRate {

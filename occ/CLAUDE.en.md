@@ -80,6 +80,10 @@ A HOLD does not expire after 24 hours. atc supersedes it (and the planner offers
 - the FLIGHT itself is no longer Todo
 - the SUPERVISOR presses "HOLD 풀기" (release HOLD) on the DISPATCH tab
 
+### "The user decides" wording
+
+If the body or comments leave the start to a person, put a HOLD without a prerequisite, whatever the AIRCRAFT: `dispatch note <D-xxxx> --caution --hold -- "waiting for the user: <quoted wording>"`. Examples: "사용자가 정한다", "사용자 지시를 기다린다", "사용자 확인 후", "The user decides when to start", "user decides", "implementation later (a person decides)". Work that needs a person's hands (recruiting, observing, interviewing users) is the same. VOC-195 was held this way, but VOC-177 and VOC-125 were not, so the same rejection repeated across teams.
+
 ## SCHEDULE drafts (S1, shadow operation)
 
 Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have an open draft of the same kind are left out of the candidates. **At most 3 FLIGHTs per pass**; for each, read the body and comments with `dispatch flight <FLIGHT>` and write the drafts. The reason is one line of fact from the body or comments, in quotes (a `>` or `<` outside quotes is blocked by the guard).
