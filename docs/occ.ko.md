@@ -305,6 +305,17 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 - 반복을 막으려고, atc는 CAPTAIN이 손써야 하는 막힘이 새로 생길 때만 `landing.blocked`를 낸다. `checks-pending`, `merge-unknown`, `los`는 세지 않는다. 앞의 둘은 기다리면 풀리고, LOS는 자기 경보가 있다.
 - TOWER는 그런 이벤트마다 `INFO`를 최대 한 번 보내고, 서버가 재시작한 뒤에는 보내지 않는다.
 
+### 9.2 Codex를 쓸 수 없을 때 Muse 리뷰 (2026-09-27, ATC-7)
+
+2026-09-27에 vocado PR 17개(#366–#399)가 CI는 초록인데 26–49시간째 APPROACH에 서 있었다. Codex가 "You have reached your Codex usage limits"로 답했고 다른 리뷰어가 없었다. SUPERVISOR는 CROSSCHECK의 Muse 리뷰가 Codex를 대신해도 된다고 정했다.
+
+- **CODEX UNAVAILABLE**(`codexUnavailableOf`, `server/landing.ts`): 현재 head에 Codex 리뷰(Codex 지적, head 뒤 Codex 👍)도 사람 통과 리뷰도 없고, head 뒤에 Codex 봇이 한도 댓글을 남겼거나(`why: "limit"`), head 커밋과 PR을 연 때 중 늦은 쪽부터 `ATC_CODEX_SILENT_HOURS`(기본 6)시간 동안 Codex 신호가 없는(`why: "silent"`) PR. 한도가 아닌 Codex 댓글이 오면 기다림은 다시 센다. Draft는 Codex 신호를 읽지 않으므로 해당하지 않는다. PR에는 `codexUnavailable`과 `muse`(`excluded`, `waiting`, `pass`, `findings`)가 붙고, TOWER 브리핑의 `landingQueue`에는 `codex`, `muse`, `review`가 있다.
+- **Muse에 보내지 않는 PR**(`museExclusionOf`): vocado 규칙은 요청 자료가 학습에 쓰이므로 기밀 작업에 Muse를 쓰지 않는다. FLIGHT에 `rating:SEC`, `Risk: Security`·`Risk/Security`·`Security` 라벨, PR이나 FLIGHT에 `Risk: Rights`·`Rights`, `Risk: Contract`·`Contract` 라벨이 있거나, 바뀐 경로가 `.env*`, `secrets/`, `keys/`, `certs/`, `*.pem`·`*.key`, `id_rsa…`, 이름에 secret·credential·private key·service account·API key가 든 파일이면 뺀다. atc는 head에 Codex 리뷰가 없는 PR마다 바뀐 경로를 읽어 두고(`gh api …/pulls/N/files`, head별 캐시), 자료를 주기 직전에 실제 diff로 다시 본다. 이런 PR은 Codex나 SUPERVISOR 리뷰를 기다리고, 막힘 글이 그렇게 말한다: "Codex 한도 — Muse 리뷰 제외(rating:SEC) — Codex나 SUPERVISOR 리뷰 필요".
+- **리뷰 자료**: `GET /api/landing/review/:repo/:pr`(`:repo`는 저장소 이름이나 `owner/name`)가 PR 제목·본문(8,000자), FLIGHT의 완료 기준과 금지 사항(Linear 본문에서 완료 기준/Acceptance/Exit criteria/Done when, 금지/Forbidden/Do not/Out of scope 머리글 아래, 본문은 6,000자까지), head SHA, 바뀐 파일, diff(80,000자, 넘으면 줄 경계에서 자르고 `diffTruncated`)를 준다. CROSSCHECK는 `gh pr diff`를 못 쓰므로 atc가 읽기 전용 `gh pr view`·`gh pr diff`로 읽는다. 제외된 PR은 403, Draft·Codex를 쓸 수 있는 PR·head가 바뀐 PR은 409.
+- **리뷰 기록**: `POST /api/landing/review/:repo/:pr {head, verdict, text, model}`이 `landing-reviews.jsonl`에 추가한다(`at, repo, number, head, verdict, text, by, model, family, p0, p1, p2`). head는 지금 head여야 한다(7자 이상 앞부분도 된다). `pass`에는 P2만 적을 수 있고 P0·P1은 안 되며, `findings`에는 P0·P1·P2가 하나 이상 있어야 한다. model은 필수다: CROSSCHECK guard가 세션 기록에서 실제 모델을 읽어 붙이고(mark와 같다, 2026-09-26), 계열은 `modelFamily`로 남긴다. `atcctl landing review <repo>#<pr> [--head <sha> --verdict pass|findings -- <글>]`이 두 호출을 감싸고, `crosscheck brief`는 `GET /api/landing/reviews`의 `landing.pending`·`landing.excluded`를 보여 준다.
+- **착륙 규칙**(`reviewBlocks`): 제외되지 않은 CODEX UNAVAILABLE PR에서, 현재 head의 P0·P1 없는 Muse `pass`는 head 리뷰로 쳐서 CLEARED TO LAND가 될 수 있다. 스트립에는 "REVIEW: MUSE (Codex 한도)"(또는 "Codex 무응답")로 보인다. Muse `findings`는 등급과 리뷰 글이 든 `review-findings` 막힘이 되어("Muse 지적(Codex 한도, head abc1234, P0 0 · P1 1 · P2 0): …") TOWER가 Codex 지적처럼 CAPTAIN에게 전한다. 새 head는 새 리뷰가 필요하다. Codex가 돌아와 head를 리뷰하면(👍나 지적) Codex가 이기고 Muse 리뷰는 무시된다. `changes-requested`는 그대로 막는다.
+- **guard**: `controller/guard.mjs --crosscheck`가 기존 명령에 더해 `landing review`를 허용한다. 기록(`--` 앞에 `--verdict`)은 mark와 같은 실제 모델 확인과 바꿔 쓰기를 거친다. `crosscheck/read-guard.mjs`는 그대로다. guard를 바꾸므로 이 PR은 `user` 등급이다.
+
 ## 10. atc에 더할 것
 
 | 곳 | 내용 |
@@ -368,6 +379,8 @@ S2는 구현돼 있고 SCHEDULE `mode`(`~/.local/state/atc/schedule.json`, 기�
 - OCC HOLD(`dispatch note … --hold`)는 전처럼 HELD로 간다.
 - `wrong-aircraft`, `other`, 칩 없는 mark는 대기열에 남는다. mark가 없는 제안은 `CROSSCHECK 대기`로 표시하고 뒤로 정렬한다.
 - HELD 제안에는 SUPERVISOR가 판정하지 않는다(409). "대기열로"(`POST …/requeue`)는 같은 제안을 대기열로 돌리고, OCC는 그것을 다시 HOLD할 수 없다(409). "FLIGHT 보류 확정"(`POST …/confirm-hold`, 선행 HOLD에는 없음)은 `via: "preflight"`와 칩으로 닫아 FLIGHT를 모든 AIRCRAFT에서 24시간(이슈가 바뀌면 그 전까지) 뺀다. 둘 다 게이트와 CROSSCHECK 일치율에 세지 않는다.
+
+**LANDING 리뷰**(2026-09-27, ATC-7. 9.2): Codex를 쓸 수 없으면 CROSSCHECK는 atc가 주는 PR diff도 리뷰하고(`atcctl landing review`) P0·P1·P2로 `pass`·`findings`를 남긴다. 현재 head의 pass는 착륙 근거가 된다. 기밀 PR(rating:SEC, Risk, 비밀 경로)은 보내지 않는다.
 
 **세션**(`crosscheck/`, `occ/`와 같은 구조): 한국어 `CLAUDE.md`와 `/tick`이 원본이고, `*.en.md`가 번역이다.
 - `/tick`: `manual check` → `crosscheck brief` → mark 없는 항목마다 `dispatch flight <key>`로 본문 읽기 → mark 기록(한 바퀴에 최대 5건).

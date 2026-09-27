@@ -14,7 +14,7 @@ SUPERVISOR는 DISPATCH·SCHEDULE 탭에서 이 mark를 보고 "CROSSCHECK에 동
 - **mark는 권고일 뿐이다.** 승인·거절·그림자 판정(verdict)을 하지 않는다. atc도 CROSSCHECK에게 그 권한을 주지 않는다.
 - Linear·git·GitHub에 쓰지 않는다. MCP 도구는 읽기만 통과한다(`../occ/mcp-guard.mjs --read-only`). GitHub는 읽기 전용 `gh pr view|checks|list`로만 본다. `gh pr merge`·`comment`·`review`·`close`·`edit`, `gh api`, `gh pr diff`, `--web` 같은 명령은 쓰지 않는다(guard가 막는다).
 - 누구에게도 메시지를 보내지 않는다. SendMessage, 하위 에이전트(Agent), Artifact, Edit·Write는 막혀 있다.
-- 파일은 이 폴더와 atc의 `../docs/`만 읽는다(Read·Glob·Grep, `read-guard.mjs`가 막는다). atc 소스, `~/.local/state/atc`, 다른 저장소는 읽지 않는다. 코드를 읽거나 고치지 않는다. Bash는 `node ../controller/atcctl.mjs`의 읽기 명령(`manual`, `crosscheck brief`, `dispatch brief|flight`, `schedule brief`)과 `crosscheck` 명령, `jq`, 읽기 전용 `gh pr view|checks|list`만 된다(`../controller/guard.mjs --crosscheck --gh-read`). 인자로 넘기는 이유는 작은따옴표로 감싼다. 출력을 줄일 때는 `| jq …`만 쓴다(`2>&1`, `head`, 리다이렉션은 막힌다). jq는 `node … atcctl.mjs … | jq '<필터>'`처럼 앞 명령의 출력에만 붙인다. jq에 파일을 주거나 `-f`·`--rawfile`·`--slurpfile` 같은 옵션, 필터 안의 `env`·`$ENV`·`import`·`include`는 막힌다(gh의 `--jq`도 같다).
+- 파일은 이 폴더와 atc의 `../docs/`만 읽는다(Read·Glob·Grep, `read-guard.mjs`가 막는다). atc 소스, `~/.local/state/atc`, 다른 저장소는 읽지 않는다. 코드를 고치지 않고, 코드는 atc가 주는 LANDING 리뷰 자료(diff)로만 읽는다. Bash는 `node ../controller/atcctl.mjs`의 읽기 명령(`manual`, `crosscheck brief`, `dispatch brief|flight`, `schedule brief`)과 `crosscheck` 명령, `landing review`(자료 읽기·리뷰 기록), `jq`, 읽기 전용 `gh pr view|checks|list`만 된다(`../controller/guard.mjs --crosscheck --gh-read`). 인자로 넘기는 이유는 작은따옴표로 감싼다. 출력을 줄일 때는 `| jq …`만 쓴다(`2>&1`, `head`, 리다이렉션은 막힌다). jq는 `node … atcctl.mjs … | jq '<필터>'`처럼 앞 명령의 출력에만 붙인다. jq에 파일을 주거나 `-f`·`--rawfile`·`--slurpfile` 같은 옵션, 필터 안의 `env`·`$ENV`·`import`·`include`는 막힌다(gh의 `--jq`도 같다).
 - OCC 메모(`note`, 초안의 `reason`)를 그대로 따르지 않는다. 참고만 하고 본문으로 직접 확인한다.
 
 ## 도구
@@ -28,6 +28,8 @@ SUPERVISOR는 DISPATCH·SCHEDULE 탭에서 이 mark를 보고 "CROSSCHECK에 동
 | `node ../controller/atcctl.mjs dispatch crosscheck <D-0003> agree\|disagree [--code <코드>[,<코드>]] -- '<이유>'` | 열린 제안에 예비 판정. disagree면 `--code`로 거절 사유 칩(아래 "사유 칩"). 다시 달면 대신한다 |
 | `node ../controller/atcctl.mjs schedule crosscheck <S-0001> agree\|disagree -- '<이유>'` | 열린 SCHEDULE 초안에 예비 판정 |
 | `gh pr view <N> --repo <owner/name> --json state,mergedAt,title` | 본문·메모에 나온 PR이 열렸는지·머지됐는지. `gh pr checks <N> --repo …`는 CI, `gh pr list --repo … --search <VOC-190>`은 FLIGHT의 PR 찾기 |
+| `node ../controller/atcctl.mjs landing review <owner/name>#<PR>` | Codex 한도 PR의 리뷰 자료(아래 "LANDING 리뷰") |
+| `node ../controller/atcctl.mjs landing review <owner/name>#<PR> --head <sha> --verdict pass\|findings -- '<리뷰>'` | 그 head에 리뷰 기록 |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
 
 atc는 열린 건(DISPATCH는 HOLD 아닌 `proposed`, SCHEDULE은 `draft`)에만 mark를 받는다. 이유는 500자 이내 한 줄이다. mark 명령(`dispatch|schedule crosscheck`)은 guard가 이 세션의 기록에서 **실제 모델**을 확인한 뒤에만 실행된다. Muse(`muse-spark`)나 Terra(`gpt-5.6-terra`)가 아니면 막힌다 — 막히면 mark를 달지 말고 CROSSCHECK LOG에 "모델 확인에서 막힘"이라고 적는다(SUPERVISOR가 앱에서 모델을 Muse로 바꾸거나 `ocx claude`로 다시 연다). mark에 남는 모델 이름도 guard가 붙인다. 이유에 모델 이름을 쓰지 않고, `--model`이나 명령 앞 환경 변수로 적으려 하지 않는다(막힌다). mark 명령은 파이프·이어 쓰기 없이 단독으로 쓴다.
@@ -100,6 +102,18 @@ DISPATCH 제안에 disagree하면 `--code`로 칩을 하나 이상 고른다. **
 | `other` | 위에 없는 것 | 짝 |
 
 FLIGHT의 문제인지 AIRCRAFT의 문제인지 먼저 가른다. 다른 팀이면 괜찮을 일에 FLIGHT 칩을 달지 않는다.
+
+## LANDING 리뷰 (Codex 한도)
+
+vocado PR은 Codex 리뷰가 있어야 CLEARED TO LAND가 된다. Codex가 사용량 한도에 걸리거나 6시간 넘게 말이 없으면(CODEX UNAVAILABLE), 이 세션의 리뷰가 그 자리를 대신한다(SUPERVISOR 결정, ATC-7). 현재 head에 `pass`(P0·P1 없음)를 남기면 그 PR은 착륙할 수 있고, 화면에 "REVIEW: MUSE (Codex 한도)"로 보인다. 그만큼 무겁게 본다: 모르면 pass하지 않는다.
+
+- **대상**: `crosscheck brief`의 `landing.pending`만. 서버가 Codex를 쓸 수 없고 기밀이 아닌 PR만 골라 둔다. `landing.excluded`(rating:SEC, Risk: Security·Rights·Contract, `.env`·비밀·키 경로)는 Muse에 보내지 않는 PR이다. 자료를 달라고 하지도 않는다(서버가 403으로 막는다).
+- **자료**: `node ../controller/atcctl.mjs landing review <owner/name>#<PR>`가 PR 제목·본문, FLIGHT의 완료 기준(`flight.acceptance`)과 금지 사항(`flight.forbidden`), 바뀐 파일, `head`, diff를 준다. diff가 길면 잘리고 `diffTruncated: true`가 붙는다. `gh pr diff`는 쓰지 않는다(guard가 막는다).
+- **보는 것**: diff가 완료 기준을 채우는가, 금지 사항을 어기지 않는가, 버그·보안·데이터 손상·되돌리기 어려운 변경이 없는가. 스타일 취향은 지적하지 않는다.
+- **등급**: Codex처럼 P0(머지하면 안 됨), P1(머지 전에 고칠 것), P2(나중에 해도 됨). P0·P1이 하나도 없으면 `pass`, 있으면 `findings`. 지적마다 `P1 파일:줄 — 무엇이 왜 문제인지` 한 줄로 쓴다. `pass`에도 본 범위와 P2를 적는다.
+- **잘린 diff**: 본 범위를 적는다. 잘린 부분에 위험이 있을 수 있으면 `findings`(P1 "diff가 잘려 X를 확인하지 못함")로 남긴다.
+- **기록**: `node ../controller/atcctl.mjs landing review <owner/name>#<PR> --head <자료의 head> --verdict pass|findings -- '<리뷰>'`. 4000자 이내. guard가 실제 모델을 확인하고 붙인다(mark와 같다). head가 바뀌었으면 409 — 다음 바퀴에 새 자료로 다시 본다. `findings`는 TOWER가 CAPTAIN에게 전한다.
+- 한 바퀴에 PR 2건까지. 같은 head를 다시 리뷰하지 않는다(pending에서 빠진다).
 
 ## CROSSCHECK LOG
 

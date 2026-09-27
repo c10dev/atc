@@ -21,6 +21,13 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - `NEW` 초안이 `milestone`(이름이나 id)을 받는다. 그 프로젝트의 마일스톤인지 검사하고, `changesOf`와 SCHEDULE 탭에 보인다. S2 발부 `save_issue` 호출에 마일스톤 id가 들어가고, linear-guard가 그 호출과 똑같을 때만 통과시키는 것을 테스트로 확인한다(`occ/mcp-guard.mjs`는 그대로).
   - `--gap`은 WAYPOINT gap 초안 표시다. 마일스톤이 있어야 하고, 비슷한 FLIGHT가 있으면 atc가 받지 않는다.
   - OCC tick은 바퀴마다 2건까지, 기준을 인용해 올리고, 사람이 정할 기준은 건너뛴다(`occ/CLAUDE.md` "WAYPOINT gap", `/tick`, 한국어·영어).
+- Codex 한도 때 Muse 리뷰를 착륙 근거로(ATC-7, [docs/occ.ko.md](docs/occ.ko.md) 9.2). vocado PR 17개가 CI는 초록인데 Codex가 "usage limits"로 답해 26–49시간째 APPROACH에 있었다.
+  - **CODEX UNAVAILABLE**: 현재 head에 Codex 리뷰도 사람 리뷰도 없고, head 뒤에 Codex 한도 댓글이 있거나 `ATC_CODEX_SILENT_HOURS`(기본 6)시간 동안 Codex 신호가 없음. PR·FLIGHT 스트립("Codex 한도 · MUSE 리뷰 대기")과 TOWER 브리핑(`landingQueue[].codex`, `muse`, `review`)에 보인다.
+  - **리뷰 자료** `GET /api/landing/review/:repo/:pr`: PR 제목·본문, Linear의 FLIGHT 완료 기준·금지 사항, head, 바뀐 파일, diff(80,000자, `diffTruncated`). 읽기 전용 `gh`로 읽는다.
+  - **리뷰 기록** `POST /api/landing/review/:repo/:pr` → 추가만 하는 `landing-reviews.jsonl`(P0·P1·P2 수, 실제 모델과 계열). `atcctl landing review <repo>#<pr> [--head <sha> --verdict pass|findings -- <리뷰>]`, `crosscheck brief`에 `landing.pending`·`excluded`(`GET /api/landing/reviews`).
+  - **착륙 규칙**: 현재 head의 P0·P1 없는 Muse `pass`는 head 리뷰로 쳐서 "REVIEW: MUSE (Codex 한도)"로 보인다. `findings`는 리뷰 글이 든 `review-findings` 막힘이 되어 TOWER가 CAPTAIN에게 전한다. 새 head는 새 리뷰가 필요하고, head의 Codex 리뷰가 이긴다.
+  - **Muse에 보내지 않음**: `rating:SEC`·Risk: Security인 FLIGHT, Risk: Rights·Contract인 PR·FLIGHT, `.env*`·비밀·키·자격 증명 경로를 건드리는 diff("Muse 리뷰 제외 — rating:SEC"). 자료 요청도 실제 diff로 다시 보고 403으로 거절한다.
+  - **guard**: `controller/guard.mjs --crosscheck`가 `landing review`도 허용하고, 기록은 mark처럼 실제 모델을 확인한다. `crosscheck/read-guard.mjs`는 그대로다. CROSSCHECK 규정과 `/tick`(한국어·영어)에 "LANDING 리뷰" 절을, TOWER 규정(한국어·영어)에 읽는 법을 더했다.
 - DISPATCH 대기열에 빠른 길(ATC-6, [docs/dispatch.ko.md](docs/dispatch.ko.md) 5.6).
   - **동의 묶음**: CROSSCHECK가 `agree`로 표시한 열린 ASSIGN 카드는 맨 위에 한 줄씩 모인다(BRIEFING의 "무슨 일", FLIGHT, AIRCRAFT, **동의**). 동의는 기존 한 번 클릭 표시와 함께 판정을 남긴다. 줄을 펼치면 전체 카드가 보이고, 칩과 함께 하는 거절은 거기서 그대로 한다. "모두 동의"는 없다.
   - CROSSCHECK가 반대한 카드는 펼친 채로 남고, CROSSCHECK를 기다리는 카드는 묶음에 들어가지 않는다.
