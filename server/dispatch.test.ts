@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DEFAULT_DISPATCH_CONFIG, type DispatchConfig, planDispatch, readFlightHistory } from "./dispatch.ts";
-import type { Claim, Session, Snapshot, Ticket, Workspace } from "./model.ts";
+import { DEFAULT_DISPATCH_CONFIG, type DispatchConfig, landedOf, planDispatch, readFlightHistory, workedWhy } from "./dispatch.ts";
+import type { Claim, PullRequest, Session, Snapshot, Ticket, Workspace } from "./model.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
 const daysAgo = (d: number) => new Date(NOW - d * 86_400_000).toISOString();
@@ -302,4 +302,32 @@ test("AOG·RETIRED AIRCRAFT는 배정하지 않는다", async () => {
     p.aircraft.map((a) => `${a.name}:${a.reason}`),
     ["TEAM_B:AOG — 컨텍스트 정리 (~2026-09-27)", "TEAM_C:RETIRED", "TEAM_D:PARKED"],
   );
+});
+
+const logged = (flight: string | null, number: number, reverted = false) => ({ flight, reverted, pr: { repo: "chaehy5665/vocado_nextjs", number, url: "", title: "" } });
+const pull = (number: number, ticketKey: string | null, draft = false) =>
+  ({ repo: VCDO, number, title: "", url: "", branch: "", head: "", base: "main", ticketKey, standPath: null, draft, landing: "APPROACH", blocks: [], readyAt: null, createdAt: daysAgo(0) }) as PullRequest;
+
+test("LOGBOOK에 ARRIVED한 FLIGHT는 Linear가 Todo여도 제외하고, 되돌린 것은 다시 후보가 된다", () => {
+  const landed = landedOf([logged("VOC-1", 400), logged("VOC-2", 401, true), logged(null, 402), logged("VOC-1", 399)]);
+  assert.deepEqual([...landed], [["VOC-1", "vocado_nextjs#400"]]);
+  const s = snap({ sessions: [session("a", "TEAM_A")], tickets: [ticket("VOC-1"), ticket("VOC-2")] });
+  const p = planDispatch(s, new Map(), cfg(), NOW, undefined, undefined, landed);
+  assert.deepEqual(p.excluded, [{ flight: "VOC-1", reason: "이미 완료됨 — PR vocado_nextjs#400 머지됨(LOGBOOK)" }]);
+  assert.deepEqual(p.assign.map((a) => a.flight), ["VOC-2"]);
+});
+
+test("열린 PR(Draft 포함)이 있는 FLIGHT는 제외한다. 진행 중인 제안보다 먼저 봐서 이 사유가 보인다", () => {
+  const s = snap({
+    sessions: [session("a", "TEAM_A")],
+    tickets: [ticket("VOC-1"), ticket("VOC-2"), ticket("VOC-3")],
+    pulls: [pull(410, "VOC-1"), pull(411, "VOC-2", true), pull(412, null)],
+  });
+  const reserved = { aircraft: new Map(), flights: new Map([["VOC-2", "D-0009"]]), held: new Map() };
+  const p = planDispatch(s, new Map(), cfg(), NOW, reserved);
+  assert.deepEqual(Object.fromEntries(p.excluded.map((e) => [e.flight, e.reason])), { "VOC-1": "열린 PR #410 있음", "VOC-2": "열린 PR #411 있음" });
+  assert.deepEqual(p.assign.map((a) => a.flight), ["VOC-3"]);
+  // LOGBOOK이 열린 PR보다 먼저다
+  assert.equal(workedWhy("VOC-1", landedOf([logged("VOC-1", 400)]), [pull(410, "VOC-1")]), "이미 완료됨 — PR vocado_nextjs#400 머지됨(LOGBOOK)");
+  assert.equal(workedWhy("VOC-9", new Map(), []), null);
 });

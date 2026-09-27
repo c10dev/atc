@@ -61,6 +61,8 @@ test("planCrewChange: 대기 건이 있으면 원래 '전'에서 최신 '후'로
   // 대기 중이면 TYPE RATING만 바뀌어도 지시문을 새로 쓴다
   const rated = planCrewChange(foldCrewChanges([...first, ...second]).find((c) => c.status === "pending")!, withSonnet, { ...withSonnet, ratings: ["DOCS"] }, ctx("CC-0003"));
   assert.equal(rated.length, 2);
+  // CHECKRIDE 부여·회수도 이 길로 온다: 새 지시문의 TYPE RATING 줄이 바뀐 rating을 따른다
+  assert.ok((rated[1] as Extract<CrewChangeOp, { op: "created" }>).text.includes("TYPE RATING: DOCS"));
   // 원래 구성으로 돌리면 대기 건만 닫는다
   const back = planCrewChange(foldCrewChanges([...first, ...second]).find((c) => c.status === "pending")!, withSonnet, DEFAULT, ctx("CC-0003"));
   assert.deepEqual(back, [{ op: "superseded", id: "CC-0002", at: "2026-09-27T01:00:00.000Z", by: null }]);
