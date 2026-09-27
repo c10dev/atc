@@ -9,6 +9,8 @@ import {
   type Factor,
   excludedLabelWhy,
   hasStandWhy,
+  type Landed,
+  landedOf,
   loadDispatchConfig,
   NO_PRIORITY_WHY,
   noProjectWhy,
@@ -16,14 +18,17 @@ import {
   PRIORITY_NAME,
   planDispatch,
   readFlightHistory,
+  REASON_FILTERS,
   type Reserved,
   saveDispatchMode,
   stateChangedWhy,
   tailsOf,
+  workedWhy,
 } from "./dispatch.ts";
 import { classLabel, classOf } from "./crew.ts";
 import { type Crosscheck, CrosscheckError, type CrosscheckLine, crosscheckRateOf, examplesOf, type HumanDecision, markOf, oneClickOf, parseCrosscheck, type Via, viaOf } from "./crosscheck.ts";
 import { loadFleet } from "./fleet.ts";
+import { loadLogbook } from "./logbook.ts";
 import type { Snapshot, Ticket } from "./model.ts";
 import { composeReason, parseReasonCodes, REASON_CODES, ReasonCodeError, reasonCountsOf } from "./reasons.ts";
 import { record } from "./recorder.ts";
@@ -194,10 +199,11 @@ export function reservedOf(existing: Proposal[]): Reserved {
 export function syncOps(
   existing: Proposal[],
   plan: Plan,
-  s: Pick<Snapshot, "tickets" | "workspaces">,
+  s: Pick<Snapshot, "tickets" | "workspaces"> & Partial<Pick<Snapshot, "pulls">>,
   cfg: DispatchConfig,
   now: number,
   seq: number,
+  landed: Landed = new Map(),
 ): Op[] {
   const at = new Date(now).toISOString();
   const ops: Op[] = [];
@@ -211,11 +217,16 @@ export function syncOps(
   const excludedWhy = new Map(plan.excluded.map((e) => [e.flight, e.reason]));
   const standOfTicket = new Set(s.workspaces.map((w) => w.ticketKey).filter(Boolean) as string[]);
   const age = (p: Proposal) => now - Date.parse(p.statusAt);
+  // 이미 끝났거나(LOGBOOK) 열린 PR이 있는 FLIGHT. planner와 같은 문구
+  const worked = (flight: string) => workedWhy(flight, landed, s.pulls ?? []);
 
   const why = (p: Proposal): string => {
     const t = stateOf.get(p.flight);
     if (p.kind === "RELEASE") return t && t.stateType !== "started" ? stateChangedWhy(t.state) : "STAND가 생겼거나 기준에서 벗어남";
     if (!t || t.stateType !== "unstarted") return stateChangedWhy(t?.state ?? "목록에 없음");
+    // FLIGHT가 이미 끝났거나 누가 작업 중이면 AIRCRAFT 사정보다 그것이 먼저다
+    const done = worked(p.flight);
+    if (done) return done;
     const ac = p.aircraft ? aircraftOf.get(p.aircraft) : undefined;
     if (!ac || !ac.available) return `AIRCRAFT 불가: ${ac?.reason ?? "세션 없음"}`;
     // 계획의 제외 목록을 먼저 믿는다. 거기에 없을 때만 planner의 규칙을 직접 확인한다 —
@@ -231,7 +242,7 @@ export function syncOps(
   };
   // 승인됐지만 아직 안 보낸 ASSIGN이 여전히 유효한가(FLIGHT가 Todo이고 AIRCRAFT가 배정 가능)
   const stillValid = (p: Proposal) =>
-    !isHeld(p) && stateOf.get(p.flight)?.stateType === "unstarted" && Boolean(p.aircraft && aircraftOf.get(p.aircraft)?.available);
+    !isHeld(p) && stateOf.get(p.flight)?.stateType === "unstarted" && !worked(p.flight) && Boolean(p.aircraft && aircraftOf.get(p.aircraft)?.available);
 
   let open = 0;
   let openRelease = 0;
@@ -243,6 +254,7 @@ export function syncOps(
         const t = stateOf.get(p.flight);
         const blockers = p.hold.filter((k) => stateOf.has(k) && !DONE_STATES.has(stateOf.get(k)!.stateType));
         if (!t || t.stateType !== "unstarted") ops.push({ op: "supersede", id: p.id, at, reason: `FLIGHT 상태가 바뀜(${t?.state ?? "목록에 없음"})` });
+        else if (worked(p.flight)) ops.push({ op: "supersede", id: p.id, at, reason: worked(p.flight)! });
         else if (p.hold.length && !blockers.length) ops.push({ op: "supersede", id: p.id, at, reason: `선행 FLIGHT(${p.hold.join(", ")})가 끝남 — 다시 후보` });
         else if (!p.hold.length && t.updatedAt && Date.parse(t.updatedAt) > Date.parse(p.holdAt!))
           ops.push({ op: "supersede", id: p.id, at, reason: "HOLD 뒤에 FLIGHT가 수정됨 — 다시 검토" });
@@ -334,6 +346,22 @@ export function gateOf(proposals: Proposal[]) {
   };
 }
 
+// 거절 사유 칩별 건수, 최근 예시 FLIGHT, 지금 planner가 그 사유를 스스로 거르나(REASON_FILTERS).
+// 어느 사유를 규칙으로 옮길지 고르는 근거다.
+export function reasonStatsOf(proposals: Proposal[]) {
+  const rejected = proposals
+    .filter((p) => humanOf(p)?.verdict === "disagree")
+    .sort((a, b) => (b.decidedAt ?? b.statusAt).localeCompare(a.decidedAt ?? a.statusAt));
+  const counts = reasonCountsOf(rejected);
+  return REASON_CODES.map((r) => ({
+    code: r.code,
+    label: r.label,
+    count: counts[r.code] ?? 0,
+    examples: [...new Set(rejected.filter((p) => p.reasonCodes?.includes(r.code)).map((p) => p.flight))].slice(0, 3),
+    ...(REASON_FILTERS[r.code] ?? { auto: "manual" as const, how: "—" }),
+  }));
+}
+
 // CROSSCHECK 브리핑: mark가 없는 열린 제안과 보정용 최근 SUPERVISOR 판정
 export function crosscheckBriefOf(proposals: Proposal[]) {
   const pending = proposals.filter((p) => canCrosscheck(p) && !p.crosscheck);
@@ -418,9 +446,10 @@ export function runDispatch(s: Snapshot, now = Date.now()): Plan {
   const cfg = loadDispatchConfig();
   const ops = readOps();
   const existing = fold(ops);
-  const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing), loadFleet());
+  const landed = landedOf(loadLogbook());
+  const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing), loadFleet(), landed);
   const seq = ops.filter((o) => o.op === "create").length;
-  append(syncOps(existing, plan, s, cfg, now, seq));
+  append(syncOps(existing, plan, s, cfg, now, seq, landed));
   return plan;
 }
 
@@ -432,7 +461,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const cfg = loadDispatchConfig();
     const now = Date.now();
     const proposals = allProposals();
-    const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals), loadFleet());
+    const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals), loadFleet(), landedOf(loadLogbook()));
     const open = proposals.filter((p) => p.status === "proposed" && !isHeld(p));
     const held = proposals.filter((p) => p.status === "proposed" && isHeld(p));
     const inFlight = proposals.filter(isInFlight).sort((a, b) => a.statusAt.localeCompare(b.statusAt));
@@ -460,6 +489,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       recent,
       flights,
       gate: gateOf(proposals),
+      reasonStats: reasonStatsOf(proposals),
       gate3: gate3Of(proposals),
       crosscheck: crosscheckBriefOf(proposals),
       reasonCodes: REASON_CODES,

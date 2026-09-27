@@ -72,6 +72,26 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
   - 이미 STAND가 있거나 누가 점유 중이 아님
   - 프로젝트가 매핑된 AIRPORT가 운항 중(OPEN)
   - 우선순위가 정해져 있음(No priority는 사람이 아직 언제 할지 정하지 않은 것이라 제외)
+  - LOGBOOK에 이미 ARRIVED로 없음(PR이 머지됐으면 Linear가 아직 Todo여도 제외), 열린 PR(Draft 포함)도 없음
+
+#### 5.1.2 제외 사유
+
+`ASSIGN`에서 빠진 FLIGHT는 모두 "제외" 목록에 아래 사유 중 하나로 뜬다. 열린 제안이 닫힐 때(SUPERSEDED)도 같은 문구를 써서 DISPATCH 탭에서 이유가 보인다. 이 순서로 본다.
+
+| 규칙 | 보이는 사유 | 도입 |
+|---|---|---|
+| 상위 이슈(5.1.1) | `상위 이슈 — 하위 N건을 묶음` | |
+| 다른 운항사 라벨 | `라벨 symphony-pilot (다른 운항사)` | |
+| 매핑 없는 프로젝트, 닫힌 AIRPORT | `배정 제외 프로젝트: <프로젝트>`, `프로젝트 없음`, `<CODE> AIRPORT가 운항 중이 아님` | |
+| **이미 완료됨**: 그 FLIGHT의 PR이 LOGBOOK에 ARRIVED로 있고 되돌리지 않음([fleet.md](fleet.md) 7.1) | `이미 완료됨 — PR <repo>#N 머지됨(LOGBOOK)` | 2026-09-27 |
+| **작업 중**: ticket key가 그 FLIGHT인 열린 PR(Draft 포함) | `열린 PR #N 있음` | 2026-09-27 |
+| 워크트리(STAND)가 이미 있음 | `이미 STAND가 있음` | |
+| 진행 중인 제안·HOLD가 있음 | `진행 중인 제안 D-xxxx`, `HOLD D-xxxx — …` | |
+| 우선순위 없음 | `우선순위 없음 — 사람이 정할 때까지 배정하지 않음` | |
+| `wake:J` | `wake:J — 너무 커서 배정하지 않음, 나눠야 함(SPLIT)` | |
+| TAIL ASSIGNMENT, TYPE RATING, CREW([fleet.md](fleet.md) 5장) | `tail:TEAM_X — …`, `rating:SEC — …`, `type:BUILD — …` | |
+
+새 규칙 둘은 그림자 판정에서 나왔다. 가장 흔한 거절이 "이미 완료됨"이었는데, PR이 머지돼도 Linear 이슈가 저절로 Done이 되지 않기 때문이다. 진행 중인 제안보다 먼저 보므로, 그런 FLIGHT의 열린·승인된·HOLD 제안은 이 사유로 SUPERSEDED된다(FLIGHT 쪽 사유가 AIRCRAFT 쪽 사유보다 먼저). PR을 되돌리면 그 FLIGHT는 다시 후보가 된다.
 
 #### 5.1.1 상위 이슈
 
@@ -143,6 +163,8 @@ atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER
 제안 상태: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)`(2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED`(2b), 곁가지 `REJECTED`, `DECLINED`(CAPTAIN 사유), `SUPERSEDED`(사람이 직접 배정했거나 상황이 바뀜), `EXPIRED`(24시간). `HOLD`가 걸린 `PROPOSED` ASSIGN은 주 흐름에서 빠져, 풀릴 때까지 HELD 목록에서 기다린다(24시간 만료 없음).
 
 거절에는 **사유 칩**을 쓴다. SUPERVISOR 화면에서 서버의 사유 목록(`server/reasons.ts`, 브리핑의 `reasonCodes`) 중 하나 이상을 고르고 메모를 선택으로 덧붙이며, `"<칩> · <칩> — <메모>"` 형태로 `reason`에, code는 `reasonCodes`에 저장된다. 점검은 칩별로 센다(`reasonCounts`). 가장 중요한 칩은 상위 이슈(5.1.1)로, 이건 planner가 스스로도 걸러 낸다.
+
+브리핑의 `reasonStats`는 칩을 planner의 할 일 목록으로 바꾼다. 칩마다 건수, 최근 예시 FLIGHT 3건까지, 그리고 planner가 그 사유를 이미 스스로 거르는지(`auto`, `partial`, `manual`과 방법)를 준다. 지금은: 이미 완료됨 → LOGBOOK·열린 PR 규칙과 Linear Done 상태(auto), 상위 이슈 → 5.1.1(auto), 우선순위 미정 → 우선순위 없음 규칙(auto), 선행 FLIGHT·PR 대기 → Linear `blockedBy`는 HOLD, 다른 PR은 OCC HOLD로만(partial), 저장소 밖 작업 → 프로젝트 매핑만(partial), AIRCRAFT 부적합 → TYPE RATING·CREW·`tail:` 규칙(partial), 사람 결정 필요·기타 → manual. DISPATCH 점검 패널에 "거절 사유 → 배정 규칙"으로 보인다.
 
 ## 7. atc에 더할 것
 

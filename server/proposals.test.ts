@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { DEFAULT_DISPATCH_CONFIG, type Plan } from "./dispatch.ts";
 import type { Ticket } from "./model.ts";
 import { parentKeysOf } from "./model.ts";
-import { canApply, fold, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reservedOf, syncOps } from "./proposals.ts";
+import { canApply, fold, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, reservedOf, syncOps } from "./proposals.ts";
 import { toTicket } from "./sources/linear.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
@@ -372,4 +372,45 @@ test("판정 방식(via)과 거절 사유 칩: 판정 op에서만 접고, oneCli
   assert.equal(gate.reasonCounts["no-priority"], 1);
   assert.equal(gate.reasonCounts.other, 1);
   assert.equal(gate.reasonCounts["needs-human"], 0);
+});
+
+test("SUPERSEDED 사유: LOGBOOK ARRIVED·열린 PR인 FLIGHT는 열린 제안, 승인된 ASSIGN, HOLD 모두 그 사유로 닫는다", () => {
+  const landed = new Map([["VOC-40", "vocado_nextjs#400"]]);
+  const pulls = [{ ticketKey: "VOC-41", number: 411 }, { ticketKey: "VOC-42", number: 412 }] as never;
+  const existing = fold([
+    create("D-0001", "VOC-40", "c", 30), // 열린 제안, 이미 완료됨(AIRCRAFT가 AIRBORNE이어도 이 사유가 먼저)
+    create("D-0002", "VOC-41", "b", 60),
+    { op: "approve", id: "D-0002", at: iso(50) }, // 승인됐지만 아직 안 보냄, 열린 PR 있음
+    create("D-0003", "VOC-42", null, 30),
+    { op: "hold", id: "D-0003", at: iso(20), blockedBy: ["VOC-99"] }, // HOLD, 열린 PR 있음
+  ]);
+  const tickets = [t("VOC-40"), t("VOC-41"), t("VOC-42"), t("VOC-99", "started", "In Progress")];
+  const ops = syncOps(existing, planOf(), { tickets, workspaces: [], pulls }, DEFAULT_DISPATCH_CONFIG, NOW, 3, landed);
+  assert.deepEqual(ops.map((o) => `${o.op}:${o.id}:${"reason" in o ? o.reason : ""}`), [
+    "supersede:D-0001:이미 완료됨 — PR vocado_nextjs#400 머지됨(LOGBOOK)",
+    "supersede:D-0002:열린 PR #411 있음",
+    "supersede:D-0003:열린 PR #412 있음",
+  ]);
+  // LOGBOOK·열린 PR이 없으면 승인된 ASSIGN은 그대로
+  assert.deepEqual(syncOps(existing.slice(1, 2), planOf(), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 3), []);
+});
+
+test("거절 사유 집계: 칩별 건수와 최근 예시 FLIGHT, planner가 그 사유를 스스로 거르나", () => {
+  const ps = fold([
+    create("D-0001", "VOC-1", "b", 60),
+    { op: "verdict", id: "D-0001", at: iso(50), verdict: "disagree", reason: "이미 완료됨", reasonCodes: ["already-done"] },
+    create("D-0002", "VOC-2", "b", 60),
+    { op: "verdict", id: "D-0002", at: iso(40), verdict: "disagree", reason: "이미 완료됨 · 우선순위 미정", reasonCodes: ["already-done", "no-priority"] },
+    create("D-0003", "VOC-3", "b", 60),
+    { op: "verdict", id: "D-0003", at: iso(30), verdict: "agree", reason: null },
+    create("D-0004", "VOC-4", "b", 60),
+    { op: "verdict", id: "D-0004", at: iso(20), verdict: "disagree", reason: "옛 기록 — 칩 없음" },
+  ]);
+  const stats = Object.fromEntries(reasonStatsOf(ps).map((r) => [r.code, r]));
+  assert.deepEqual(stats["already-done"], { code: "already-done", label: "이미 완료됨", count: 2, examples: ["VOC-2", "VOC-1"], auto: "auto", how: "LOGBOOK ARRIVED·열린 PR 규칙, Linear Done 상태" });
+  assert.equal(stats["no-priority"].count, 1);
+  assert.equal(stats["no-priority"].auto, "auto");
+  assert.equal(stats["waiting-on-prior"].auto, "partial");
+  assert.equal(stats["needs-human"].auto, "manual");
+  assert.equal(stats.other.count, 0);
 });

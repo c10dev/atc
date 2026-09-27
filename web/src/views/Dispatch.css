@@ -664,6 +664,55 @@
   border-top: 1px solid var(--line);
   font-size: var(--text-xs);
 }
+/* 거절 사유 → 배정 규칙: 칩별 건수와 planner가 그 사유를 스스로 거르나 */
+.dp-gate-rules {
+  padding: var(--space-1-5) 0;
+  border-top: 1px solid var(--line);
+}
+.dp-gate-rules .dp-gate-reasons-head {
+  margin: 0 0 var(--space-1);
+}
+.dp-gate-rules ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+/* 게이트 표의 줄 모양(테두리·여백)을 덜어 작게. 칸은 표와 맞춘다 */
+.dp-gate .dp-gate-rules li {
+  grid-template-columns: minmax(180px, 280px) 64px 100px auto;
+  padding: 1px 0;
+  border-top: 0;
+}
+.dp-gate-rules li.faint {
+  opacity: 0.6;
+}
+.dp-gate-rule-label {
+  color: var(--muted);
+}
+.dp-gate-rules b {
+  color: var(--text);
+  font-family: var(--mono);
+}
+.dp-gate-auto {
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.05em;
+}
+.dp-gate-auto.a-auto {
+  color: var(--radar);
+}
+.dp-gate-auto.a-partial {
+  color: var(--amber);
+}
+.dp-gate-auto.a-manual {
+  color: var(--faint);
+}
+.dp-gate-rule-ex {
+  font: var(--text-xs) var(--mono);
+}
 /* 모델별 CROSSCHECK 일치: 전체 줄 밑에 붙여 작게 */
 .dp-gate li.dp-gate-xc-model {
   padding: 0 0 var(--space-1);

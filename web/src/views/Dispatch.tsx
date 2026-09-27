@@ -104,7 +104,19 @@ interface Brief {
   };
   config: DispatchConfig;
   reasonCodes?: ReasonCode[]; // 거절 사유 칩 목록(옛 서버면 없음)
+  reasonStats?: ReasonStat[]; // 거절 사유별 건수·예시·planner가 거르나(옛 서버면 없음)
 }
+
+interface ReasonStat {
+  code: string;
+  label: string;
+  count: number;
+  examples: string[];
+  auto: "auto" | "partial" | "manual";
+  how: string;
+}
+
+const AUTO_TEXT: Record<ReasonStat["auto"], string> = { auto: "자동 거름", partial: "일부 거름", manual: "사람만" };
 
 const statusText: Record<Proposal["status"], string> = {
   proposed: "PROPOSED",
@@ -220,7 +232,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
         </p>
       )}
 
-      <Gate gate={gate} labelOf={labelOf} />
+      <Gate gate={gate} labelOf={labelOf} stats={brief.reasonStats} />
       {(brief.mode === "approval" || brief.gate3.dispatched > 0) && <Gate3 gate={brief.gate3} />}
 
       {brief.inFlight.length > 0 && (
@@ -504,7 +516,7 @@ function CrosscheckChip({ m, now }: { m: Crosscheck; now: number }) {
   );
 }
 
-function Gate({ gate, labelOf }: { gate: Brief["gate"]; labelOf: (code: string) => string }) {
+function Gate({ gate, labelOf, stats }: { gate: Brief["gate"]; labelOf: (code: string) => string; stats?: ReasonStat[] }) {
   const enough = gate.decided >= gate.target.decided;
   const rateOk = gate.agreement !== null && gate.agreement >= gate.target.agreement;
   const rows = [
@@ -575,7 +587,25 @@ function Gate({ gate, labelOf }: { gate: Brief["gate"]; labelOf: (code: string) 
           </li>
         )}
       </ul>
-      {reasons.length > 0 && (
+      {stats ? (
+        <div className="dp-gate-rules">
+          <p className="dp-gate-reasons-head">거절 사유 → 배정 규칙</p>
+          <ul>
+            {[...stats]
+              .sort((a, b) => b.count - a.count || stats.indexOf(a) - stats.indexOf(b))
+              .map((r) => (
+                <li key={r.code} className={r.count ? undefined : "faint"}>
+                  <span className="dp-gate-rule-label">{r.label}</span>
+                  <b>{r.count}</b>
+                  <span className={`dp-gate-auto a-${r.auto}`} title={r.how}>
+                    {AUTO_TEXT[r.auto]}
+                  </span>
+                  {r.examples.length > 0 && <span className="faint dp-gate-rule-ex">{r.examples.map(flightNumber).join(", ")}</span>}
+                </li>
+              ))}
+          </ul>
+        </div>
+      ) : reasons.length > 0 && (
         <p className="dp-gate-reasons">
           <span className="dp-gate-reasons-head">거절 사유</span>
           {reasons.map(([code, n], i) => (
