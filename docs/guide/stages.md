@@ -15,7 +15,7 @@
 
 - 2a → 2b: 판정 20건 이상, 합의율 80% 이상.
 - 2b → 3: 2주 이상, READBACK 90% 이상, DEPARTED 80% 이상(STAND가 필요한 FLIGHT만), DISPATCH가 보낸 FLIGHT에서 난 충돌이 거의 없음.
-- 3단계 설계(저장소의 `docs/atfm.md`, 영어)는 네 가지를 다룬다. 모두 그림자 운용(계산해서 보여 주기만 함)으로 먼저 잰 뒤 사용자가 켠다.
+- 3단계 설계(저장소의 `docs/atfm.ko.md`)는 네 가지를 다룬다. 모두 그림자 운용(계산해서 보여 주기만 함)으로 먼저 잰 뒤 사용자가 켠다.
   - **저위험 배정 자동 승인**: WAKE L·M, SEC 아님, CAUTION 없음, 명시 라벨, TAIL·ROUTE 일치, CROSSCHECK agree일 때만.
   - **S3 자동 처리**: SEC가 아닌 CLASSIFY로, 빈 축에 라벨을 붙이는 것만.
   - **머지 슬롯**: 저장소마다 동시에 LAND를 받는 PR 수를 정한다.
@@ -51,4 +51,4 @@ CROSSCHECK 일치율은 S3에서 SEC가 아닌 CLASSIFY 같은 저위험 작업�
 | — | 팀 빌딩(ENTRY INTO SERVICE, CREW BRIEFING, AOG, 퇴역) | 완료 |
 | 다음 | CREW CHANGE, CHECKRIDE, 실제 관측 팀원, TARGETS 실적 | 예정 |
 
-설계 문서: 저장소의 `docs/dispatch.md`, `docs/occ.md`, `docs/fleet.md`.
+설계 문서: 저장소의 `docs/dispatch.ko.md`, `docs/occ.ko.md`, `docs/fleet.ko.md`, `docs/atfm.ko.md`.

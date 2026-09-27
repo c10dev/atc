@@ -1,6 +1,6 @@
 # FLEET design (draft)
 
-English only for now; a Korean version will follow.
+**English** · [한국어](fleet.ko.md)
 
 atc knows each team session as an AIRCRAFT (`TEAM_B`, callsign BRAVO) and its leader as the CAPTAIN. It knows nothing else about the team: who is on board, what kind of work it can fly, which projects it usually flies, or what it is aiming for. It knows just as little about a FLIGHT: whether it is a big build, a quick fix, research or a review. This document adds both sides, in airline operations terms:
 
