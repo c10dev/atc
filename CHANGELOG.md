@@ -201,6 +201,7 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 - ATFM `eligible` and `s3-eligible` recorder lines now carry `checked`, the condition codes that were checked (A1–A10, S1–S4), so an eligibility result can be explained afterwards.
 
 ### Fixed
+- The LANDING CLEARANCE tier treated skills under the root `.claude/skills/` as `auto`. They are team-session instructions like the root `CLAUDE.md`, so everything under the root `.claude/` is now `user`. Skills in the control-session folders stay `flagged`.
 - DISPATCH lost proposals before they were judged ([docs/dispatch.md](docs/dispatch.md) 6.1). Of 19 proposals, 10 were SUPERSEDED unjudged, 7 as "더 나은 배정으로 바뀜". D-0017 (VOC-196 → TEAM_E, `tail:TEAM_E`) closed because the planner gave TEAM_E VOC-177, whose pair had been rejected as D-0010, so `syncOps` could not propose it; neither FLIGHT got a proposal.
   - The planner now leaves out pairs proposed in the last 24 hours and since closed (`Reserved.recentPairs`, from `recentPairsOf`, the same window `syncOps` uses for `seen`), so the AIRCRAFT gets its next-best FLIGHT. Skipped pairs are listed in `plan.blockedPairs`. A FLIGHT with every qualifying pair blocked is excluded as `24시간 안에 제안된 짝(D-xxxx) — MM-DD HH:MM부터 다시`.
   - A pair closed as "더 나은 배정으로 바뀜" was never judged, so it is exempt from the 24-hour rule.

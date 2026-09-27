@@ -24,6 +24,8 @@ test("guard 테스트만 바꾸면 flagged, guard 코드는 user", () => {
 test("설정·지침·CI·의존성·hook·배포는 user", () => {
   for (const f of [
     "occ/.claude/settings.json",
+    ".claude/skills/atc-task/SKILL.md",
+    ".claude/settings.json",
     "CLAUDE.md",
     "CLAUDE.en.md",
     ".github/workflows/ci.yml",
