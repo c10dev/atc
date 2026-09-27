@@ -120,6 +120,13 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·DISPATCH hook은 `$CLAUDE_PROJECT_DIR` 기준으로 돌고 fail-closed(`… || exit 2`)다. hook이 없거나 실패하면 이제 도구를 통과시키지 않고 막는다.
 - FIDS 스플릿 플랩 모션이 실제 안내판처럼 보인다. 판(타일)이 넘어가는 중간에 비지 않는다. 새 글자는 떨어지는 판 뒤에 미리 걸려 있고, 판은 중력처럼 점점 빨라지며 기울수록 어두워진다. 판 없는 글자(TIME, REMARKS, Glass Cockpit·Night Sky 테마)는 반쪽 글자 대신 한 글자씩 떨어져 앉는다. 칸마다 최대 6판이고, 안내판이 더 빨리 멈춘다.
 
+### 수정
+- DISPATCH가 판정받기 전에 제안을 잃었다([docs/dispatch.md](docs/dispatch.md) 6.1). 제안 19건 중 10건이 판정 전에 SUPERSEDED됐고, 그중 7건이 "더 나은 배정으로 바뀜"이었다. D-0017(VOC-196 → TEAM_E, `tail:TEAM_E`)은 planner가 TEAM_E에게 VOC-177을 줘서 닫혔는데, 그 짝은 D-0010에서 거절돼 `syncOps`가 제안할 수 없었다. 결국 두 FLIGHT 모두 제안이 없었다.
+  - 이제 planner는 최근 24시간 안에 제안됐다 닫힌 짝을 뺀다(`recentPairsOf`로 만든 `Reserved.recentPairs`, `syncOps`의 `seen`과 같은 기간). 그래서 AIRCRAFT는 다음으로 좋은 FLIGHT를 받는다. 뺀 짝은 `plan.blockedPairs`에 적고, 배정 가능한 짝이 모두 막힌 FLIGHT는 `24시간 안에 제안된 짝(D-xxxx) — MM-DD HH:MM부터 다시`로 제외한다.
+  - "더 나은 배정으로 바뀜"으로 닫힌 짝은 판정받지 못한 것이라 24시간 규칙에서 뺀다.
+  - 더 나은 배정 때문에만 계획에서 빠진 PROPOSED ASSIGN은 열어 둔다. 같은 sync에서 같은 FLIGHT나 AIRCRAFT에 점수가 20% 이상 높은 새 제안이 만들어질 때만 SUPERSEDED하고(`REPLACE_MARGIN`), 사유에 새 id와 두 점수를 적는다. 상태가 바뀌면 지금처럼 바로 닫는다.
+  - 운영 데이터(읽기 전용 모의 실행, 2026-09-27 04:55Z): main은 VOC-125 → TEAM_F, VOC-177 → TEAM_E를 계획했지만 둘 다 막힌 짝이라 아무것도 만들지 않았다(HOLD 아닌 열린 제안 0건). 이 브랜치는 VOC-125 → TEAM_B, VOC-196 → TEAM_E(D-0017의 짝이 돌아옴), VOC-177 → TEAM_D를 계획하고 만든다(열린 제안 3건).
+
 ## [0.1.0] — 2026-09-26
 
 첫 릴리스. ✈️ Ready for takeoff.

@@ -122,6 +122,13 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 - TOWER and DISPATCH hooks run from `$CLAUDE_PROJECT_DIR` and are fail-closed (`… || exit 2`): a missing or failing hook now blocks the tool instead of letting it through.
 - FIDS split-flap motion looks like a real board. Tiles no longer go blank mid-flap: the new letter waits behind the falling flap, which speeds up like gravity and darkens as it tilts. Text without tiles (TIME, REMARKS, Glass Cockpit and Night Sky) drops in letter by letter instead of showing half-letters. At most 6 flaps per cell, and the board settles faster.
 
+### Fixed
+- DISPATCH lost proposals before they were judged ([docs/dispatch.md](docs/dispatch.md) 6.1). Of 19 proposals, 10 were SUPERSEDED unjudged, 7 as "더 나은 배정으로 바뀜". D-0017 (VOC-196 → TEAM_E, `tail:TEAM_E`) closed because the planner gave TEAM_E VOC-177, whose pair had been rejected as D-0010, so `syncOps` could not propose it; neither FLIGHT got a proposal.
+  - The planner now leaves out pairs proposed in the last 24 hours and since closed (`Reserved.recentPairs`, from `recentPairsOf`, the same window `syncOps` uses for `seen`), so the AIRCRAFT gets its next-best FLIGHT. Skipped pairs are listed in `plan.blockedPairs`. A FLIGHT with every qualifying pair blocked is excluded as `24시간 안에 제안된 짝(D-xxxx) — MM-DD HH:MM부터 다시`.
+  - A pair closed as "더 나은 배정으로 바뀜" was never judged, so it is exempt from the 24-hour rule.
+  - A PROPOSED ASSIGN that leaves the plan only for a better assignment stays open. It is superseded only when the same sync creates a proposal for the same FLIGHT or AIRCRAFT that scores at least 20% higher (`REPLACE_MARGIN`), with the new id and both scores in the reason. State changes still close proposals right away.
+  - On production data (read-only dry run, 2026-09-27 04:55Z): main planned VOC-125 → TEAM_F and VOC-177 → TEAM_E, both blocked, and created nothing (0 open non-HOLD proposals). This branch plans and creates VOC-125 → TEAM_B, VOC-196 → TEAM_E (D-0017's pair back) and VOC-177 → TEAM_D (3 open).
+
 ## [0.1.0] — 2026-09-26
 
 First release. ✈️ Ready for takeoff.

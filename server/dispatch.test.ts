@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DEFAULT_DISPATCH_CONFIG, type DispatchConfig, landedOf, planDispatch, readFlightHistory, workedWhy } from "./dispatch.ts";
+import { DEFAULT_DISPATCH_CONFIG, type DispatchConfig, landedOf, pairBlockedWhy, planDispatch, readFlightHistory, workedWhy } from "./dispatch.ts";
 import type { Claim, PullRequest, Session, Snapshot, Ticket, Workspace } from "./model.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
@@ -699,4 +699,34 @@ test("LOGBOOK: attributed 줄로만 AIRCRAFT를 안 기록도 접은 목록에�
   );
   assert.deepEqual(p.assign, []);
   assert.match(p.excluded.find((e) => e.flight === "VOC-321")!.reason, /^CHECK 독립성 — 검토 대상을 만든 TEAM_D/);
+});
+
+test("24시간 안에 제안됐다 닫힌 짝은 계획에서 빼고, AIRCRAFT는 다음으로 좋은 FLIGHT를 받는다(D-0017 사례)", () => {
+  // 배정 가능한 AIRCRAFT는 TEAM_E뿐. TEAM_E에게는 VOC-177(High)이 VOC-196(Medium, tail:TEAM_E)보다 점수가 높지만,
+  // VOC-177 → TEAM_E는 D-0010에서 거절됐다
+  const tickets = [ticket("VOC-177", { priority: 2 }), ticket("VOC-196", { labels: ["tail:TEAM_E"] })];
+  const s = snap({ sessions: [session("e", "TEAM_E")], tickets });
+  const before = planDispatch(s, new Map(), cfg(), NOW);
+  assert.deepEqual(before.assign.map((a) => `${a.flight}>${a.aircraftName}`), ["VOC-177>TEAM_E"]); // 예전: syncOps가 못 만드는 짝, VOC-196은 갈 곳 없음
+  const until = new Date(NOW + 3 * 3_600_000).toISOString();
+  const reserved = { aircraft: new Map(), flights: new Map(), held: new Map(), recentPairs: new Map([["VOC-177|e", { id: "D-0010", until }]]) };
+  const p = planDispatch(s, new Map(), cfg(), NOW, reserved);
+  assert.deepEqual(p.assign.map((a) => `${a.flight}>${a.aircraftName}`), ["VOC-196>TEAM_E"]);
+  assert.deepEqual(p.blockedPairs, [{ flight: "VOC-177", aircraft: "e", aircraftName: "TEAM_E", proposal: "D-0010", until }]);
+  assert.deepEqual(p.excluded, [{ flight: "VOC-177", reason: pairBlockedWhy("D-0010", until) }]);
+
+  // 다른 AIRCRAFT가 있으면 막힌 FLIGHT는 그쪽으로 가고, 제외가 아니다
+  const both = planDispatch(snap({ sessions: [session("e", "TEAM_E"), session("z", "TEAM_Z")], tickets }), new Map(), cfg(), NOW, reserved);
+  assert.deepEqual(both.assign.map((a) => `${a.flight}>${a.aircraftName}`).sort(), ["VOC-177>TEAM_Z", "VOC-196>TEAM_E"]);
+  assert.deepEqual(both.excluded, []);
+});
+
+test("배정할 짝이 모두 24시간 규칙에 걸린 FLIGHT는 제외 사유로 남는다", () => {
+  const s = snap({ sessions: [session("e", "TEAM_E")], tickets: [ticket("VOC-196", { labels: ["tail:TEAM_E"] })] });
+  const until = new Date(NOW + 5 * 3_600_000).toISOString();
+  const reserved = { aircraft: new Map(), flights: new Map(), held: new Map(), recentPairs: new Map([["VOC-196|e", { id: "D-0017", until }]]) };
+  const p = planDispatch(s, new Map(), cfg(), NOW, reserved);
+  assert.deepEqual(p.assign, []);
+  assert.deepEqual(p.excluded, [{ flight: "VOC-196", reason: pairBlockedWhy("D-0017", until) }]);
+  assert.match(pairBlockedWhy("D-0017", until), /^24시간 안에 제안된 짝\(D-0017\) — \d{2}-\d{2} \d{2}:\d{2}부터 다시$/);
 });
