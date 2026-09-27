@@ -1,6 +1,6 @@
 # OCC design (draft)
 
-English only for now; a Korean version will follow.
+**English** · [한국어](occ.ko.md)
 
 atc splits into two control sessions, the way aviation does:
 

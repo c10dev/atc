@@ -15,7 +15,7 @@ claude/voc-<n>-<slug>     # Claude 세션
 codex/voc-<n>-<slug>      # Codex 세션
 ```
 
-- 티켓 없는 작업은 `claude/<slug>` 그대로 둔다. atc에서는 **AD HOC**(티켓 없는 작업, 예: 팀에 직접 맡긴 5줄 이하 수정)으로 표시된다. 티켓이 필요한 일은 CHARTER DESK를 거친다([occ.md](occ.md), 영어).
+- 티켓 없는 작업은 `claude/<slug>` 그대로 둔다. atc에서는 **AD HOC**(티켓 없는 작업, 예: 팀에 직접 맡긴 5줄 이하 수정)으로 표시된다. 티켓이 필요한 일은 CHARTER DESK를 거친다([occ.ko.md](occ.ko.md)).
 
 ## 워크트리 디렉터리
 

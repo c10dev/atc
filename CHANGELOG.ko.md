@@ -16,6 +16,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- 설계 문서 한국어판: `docs/occ.ko.md`, `docs/fleet.ko.md`, `docs/atfm.ko.md`(SUPERVISOR 결정 "우선 영어만, 추후에 한글 추가"). 원본에는 언어 전환 줄만 더했다. 루트 `CLAUDE.md`가 `docs/occ`·`docs/fleet`·`docs/atfm`도 영어판과 한국어판을 함께 고치라고 하게 바꿨고, 한국어 README·`docs/dispatch.ko.md`·`docs/naming.ko.md`·guide의 링크를 한국어판으로 바꿨다.
 - 2b에서 STAND 없는 FLIGHT의 출발과 도착([docs/fleet.md](docs/fleet.md) 5.1.1, [docs/dispatch.ko.md](docs/dispatch.ko.md) 6). READBACK 받은 SURVEY·CHECK는 STAND가 생기지 않아 DEPARTED가 되지 못하고 24시간 뒤 만료됐다.
   - **READBACK에 DEPARTED**: STAND 없는 FLIGHT는 `POST …/accept`(`atcctl dispatch readback`)가 `accept`와 `depart`(`stand: null`, `via: "readback"`)를 함께 남긴다(`readbackOps`). 제안에 `departedStand: null`, `departedVia: "readback"`이 붙고, STAND로 DEPARTED하면 `departedVia: "stand"`다. `accepted`에 남은 STAND 없는 제안은 다음 동기화에 DEPARTED가 된다.
   - **CAPTAIN 보고로 ARRIVED**: 새 상태 `arrived`, op `arrived`, `POST /api/dispatch/proposals/:id/arrived {note}`, `atcctl dispatch arrived D-xxxx -- <결과 링크나 한 줄>`(순수 함수 `parseArrived`). 제안에 `arrivedNote`, `arrivedUrl`이 남는다. STAND 없이 DEPARTED한 것만 ARRIVED할 수 있고, 자동 감지는 나중으로 미뤘다.
