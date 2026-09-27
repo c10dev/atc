@@ -785,3 +785,19 @@ test("접기: blind 판정은 제안에 blind를 남기고, gateOf가 blind 합�
   assert.equal(g.decided, 3);
   assert.deepEqual(g.blind, { decided: 2, agreed: 1, agreement: 0.5 });
 });
+
+test("gateOf: 한 번 클릭 비율에서 blind 판정은 뺀다(한 번 클릭이 막혀 있다)", () => {
+  const mark = { op: "crosscheck" as const, by: "CROSSCHECK", model: "muse-spark-1.3", verdict: "agree" as const, reason: "ok" };
+  const ps = fold([
+    create("D-0001", "VOC-1", "TEAM_B", 30),
+    create("D-0002", "VOC-2", "TEAM_B", 30),
+    create("D-0003", "VOC-3", "TEAM_B", 30),
+    { ...mark, id: "D-0001", at: iso(20) },
+    { ...mark, id: "D-0002", at: iso(20) },
+    { ...mark, id: "D-0003", at: iso(20) },
+    { op: "verdict", id: "D-0001", at: iso(10), verdict: "agree", reason: null, via: "crosscheck" },
+    { op: "verdict", id: "D-0002", at: iso(10), verdict: "agree", reason: null, via: "manual" },
+    { op: "verdict", id: "D-0003", at: iso(10), verdict: "agree", reason: null, via: "manual", blind: true },
+  ]);
+  assert.deepEqual(gateOf(ps).crosscheck.oneClick, { count: 1, decided: 2 });
+});

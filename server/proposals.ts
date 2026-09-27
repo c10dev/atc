@@ -576,7 +576,8 @@ export function gateOf(proposals: Proposal[]) {
     // 게이트와 따로: CROSSCHECK가 SUPERVISOR 판정과 얼마나 맞았나, 그중 "CROSSCHECK에 동의" 한 번 클릭은 몇 건인가
     crosscheck: {
       ...crosscheckRateOf(proposals.filter((p) => p.crosscheck).map((p) => ({ crosscheck: p.crosscheck, human: humanOf(p) }))),
-      oneClick: oneClickOf(proposals.map((p) => ({ crosscheck: p.crosscheck, human: humanOf(p) }))),
+      // blind 판정은 뺀다: blind 카드는 한 번 클릭이 막혀 있어 분모에 넣으면 비율이 실제보다 낮아 보인다(ATC-6)
+      oneClick: oneClickOf(proposals.filter((p) => !p.blind).map((p) => ({ crosscheck: p.crosscheck, human: humanOf(p) }))),
     },
     // 거절 사유 칩별 건수(사람이 disagree·reject한 것 중 칩이 있는 것)
     reasonCounts: reasonCountsOf(proposals.filter((p) => humanOf(p)?.verdict === "disagree")),

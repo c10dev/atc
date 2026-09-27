@@ -159,6 +159,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - 다른 팀은 보여 주기만 한다(RADAR·STRIPS·FIDS). planner는 제외 줄 없이 건너뛰고, SCHEDULE 브리핑은 후보에서 빼고, 그 팀에 쓴 SCHEDULE 초안은 409로 거절한다. `candidateTeams`에 팀을 넣으면 그 팀 FLIGHT는 그 팀 AIRPORT가 거점인 AIRCRAFT에만 제안한다(ATC → ATCC). 스위치는 꺼 두었다.
 
 ### 변경
+- DISPATCH 한 번 클릭 비율(`gate.crosscheck.oneClick`)에서 blind 판정을 뺀다. blind 카드는 한 번 클릭이 막혀 있어, 세면 비율이 실제보다 낮아 보였다(ATC-6).
 - DISPATCH 게이트는 AIRCRAFT 선택만 잰다(ATC-5, [docs/dispatch.ko.md](docs/dispatch.ko.md) 6.3). PREFLIGHT 전의 거절 6건은 모두 티켓 문제였고 게이트를 3/9(33%)에 묶어 두었다.
   - `gateOf`는 사유 칩이 모두 FLIGHT 칩(`FLIGHT_HOLD_CODES`)인 `disagreed` 제안을 빼고 `gate.notReady`로 센다. 점검 패널에 PREFLIGHT HELD 옆으로 "준비 안 됨 거절 n건 (게이트 제외)"이 보이고, 판정 줄은 "판정한 제안(HELD·준비 안 됨 제외)"이 됐다. 승인했을 것과 `wrong-aircraft`·`other`·칩 없는 거절은 전처럼 센다.
   - `POST /api/dispatch/proposals/:id/codes {codes}`는 지난 그림자 거절에 `recode` op(`by: "SUPERVISOR"`)로 칩을 단다. 사람이 판정한 `disagreed`가 아니면 409다. fold는 칩을 게이트만 읽는 `gateCodes`로 두어서, recode는 #56의 FLIGHT 보류를 걸지 않고 사유 문장, `reasonCounts`, `reasonStats`, CROSSCHECK 일치와 한 번 클릭 수치도 바꾸지 않는다. 배포 뒤 structure가 D-0001, D-0003, D-0006, D-0010, D-0022, D-0023에 적용한다.
