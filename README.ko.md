@@ -354,7 +354,7 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 
 ## CHARTER DESK (요청 창구)
 
-CHARTER DESK는 스케줄(Linear)에 없는 일을 받는 OCC의 요청 창구다. SUPERVISOR가 OCC 세션에서 요청하면(**CHARTER REQUEST**) OCC가 SCHEDULE `NEW` 작업으로 초안을 쓴다. 이것이 **AD HOC FLIGHT**, 정기 스케줄 밖에서 더한 FLIGHT다. 세션 규정은 [occ/CLAUDE.md](occ/CLAUDE.md)의 "CHARTER DESK".
+CHARTER DESK는 스케줄(Linear)에 없는 일을 받는 OCC의 요청 창구다. SUPERVISOR가 OCC 세션에서 요청하면(**CHARTER REQUEST**) OCC가 SCHEDULE `NEW` 작업으로 초안을 쓴다. 이것이 **AD HOC FLIGHT**, 정기 스케줄 밖에서 더한 FLIGHT다. 세션 규정은 [occ/.claude/skills/tick/schedule.md](occ/.claude/skills/tick/schedule.md)의 "CHARTER DESK".
 
 ```
 CHARTER REQUEST → AD HOC FLIGHT 초안(S1: SCHEDULE 탭에서 판정) → FILED(S2: Linear Todo) → ASSIGN → ENROUTE → ARRIVED

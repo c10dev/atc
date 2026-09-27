@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // TOWER·OCC 세션이 쓰는 atc CLI. atc 서버(기본 http://127.0.0.1:7700)에만 말한다. 의존성 없음.
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,11 +9,22 @@ import { fileURLToPath } from "node:url";
 const BASE = process.env.ATC_URL || "http://127.0.0.1:7700";
 const STATE = process.env.ATC_STATE_DIR || join(homedir(), ".local/state/atc");
 
-// 관제 세션의 운영 규정(CLAUDE.md, /tick). 오래 도는 세션이 바뀐 규정을 모른 채 돌지 않게 해시로 비교한다.
+// 관제 세션의 운영 규정(CLAUDE.md, /tick과 그 절차 파일). 오래 도는 세션이 바뀐 규정을 모른 채 돌지 않게 해시로 비교한다.
 const MANUAL = ["CLAUDE.md", ".claude/skills/tick/SKILL.md"];
-function manualHash(dir) {
+// 절차 파일은 tick 폴더의 한국어 *.md다(*.en.md 번역은 읽히지 않아 뺀다). 앞 두 파일 뒤에 이름순으로 붙어, 절차 파일이 없는 폴더의 해시는 전과 같다.
+export function manualFiles(dir) {
+  let procedures = [];
+  try {
+    procedures = readdirSync(join(dir, ".claude/skills/tick"))
+      .filter((f) => f.endsWith(".md") && !f.endsWith(".en.md") && f !== "SKILL.md")
+      .sort()
+      .map((f) => `.claude/skills/tick/${f}`);
+  } catch {}
+  return [...MANUAL, ...procedures];
+}
+export function manualHash(dir) {
   const h = createHash("sha256");
-  for (const f of MANUAL) {
+  for (const f of manualFiles(dir)) {
     h.update(`${f}\0`);
     try {
       h.update(readFileSync(join(dir, f)));
@@ -33,7 +44,7 @@ const USAGE = `사용법:
                                             보낼 대상(SEND TO)과 보낼 문구를 출력한다
   node atcctl.mjs readback <C-0007>         팀이 READBACK함
   node atcctl.mjs cancel <C-0007>           CLEARANCE 취소
-  node atcctl.mjs manual check              이 폴더의 CLAUDE.md·/tick이 마지막 ack 뒤 바뀌었는지 (UNCHANGED | CHANGED)
+  node atcctl.mjs manual check              이 폴더의 CLAUDE.md·/tick(절차 파일 포함)이 마지막 ack 뒤 바뀌었는지 (UNCHANGED | CHANGED)
   node atcctl.mjs manual ack                지금 규정을 다시 읽었다고 기록
 
 DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은 SUPERVISOR)
@@ -442,7 +453,7 @@ if (isMain) {
         console.log(
           last === now
             ? `UNCHANGED ${now.slice(0, 8)}`
-            : `CHANGED ${now.slice(0, 8)} — CLAUDE.md와 .claude/skills/tick/SKILL.md를 다시 읽은 뒤 \`manual ack\``,
+            : `CHANGED ${now.slice(0, 8)} — CLAUDE.md와 .claude/skills/tick/SKILL.md를 다시 읽은 뒤 \`manual ack\`${manualFiles(dir).length > MANUAL.length ? ". 절차 파일은 그 단계에서 다시 Read" : ""}`,
         );
       }
     } else if ((cmd === "readback" || cmd === "cancel") && args[0]) {

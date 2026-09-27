@@ -107,7 +107,7 @@ In the first seven SCHEDULE verdicts (2026-09-26), all three drafts the SUPERVIS
 - **S-0001 (VOC-195), S-0004 (VOC-196):** FLIGHT TYPE `BUILD` where [fleet.md](fleet.md) 4.1 gives `MAINT`. One was a lock race fix, the other a CI and static gate, and neither changes product behavior.
 - **S-0006 (VOC-181):** WAKE `M` where 4.2 gives `L`: two rules in one file, no new tests.
 
-CROSSCHECK, which cited 4.1, had these right. OCC now works the same way (`occ/CLAUDE.md` "CLASSIFY 전에"):
+CROSSCHECK, which cited 4.1, had these right. OCC now works the same way (`occ/.claude/skills/tick/schedule.md` "CLASSIFY 전에"):
 
 - **Read the criteria:** before any CLASSIFY in a pass, OCC reads `docs/fleet.md` 4.1–4.3. `occ/.claude/settings.json` adds `permissions.additionalDirectories: ["../docs"]` so a non-interactive session can Read it; without it the read was denied.
 - **FLIGHT TYPE in a fixed order:** CHECK (the output is a verdict) → SURVEY (research or a plan, no code) → TEST (a throwaway spike) → FERRY (a mechanical move) → MAINT (product behavior unchanged: refactor, infra, CI, static gates, tests, invisible race and lock fixes) → BUILD, only when a feature, behavior or screen users see changes. A security surface or tests alone never make a FLIGHT BUILD.
@@ -147,7 +147,7 @@ Linear clean-up used to be President's job. Now OCC drafts it, and the SCHEDULE 
 On 2026-09-27 VOC Todo had 6 FLIGHTs and none could be assigned, so the DISPATCH gate got no new proposals. The ROUTE MAP already knows each WAYPOINT's exit criteria and issues ([routes.md](routes.md)), so uncovered criteria become `NEW` drafts. They feed the SCHEDULE gate now, and DISPATCH once S2 creates them.
 
 - **Data.** `schedule brief` has `waypointGaps` (`server/waypoint-gaps.ts`, pure `waypointGapsOf`): per ROUTE that is not completed or canceled, the active WAYPOINT and the next one, each with `criteria` (the numbered list under "Exit criteria"), `description` when there is no list, and the milestone's `issues` (key, title, state; canceled and duplicate left out) and `truncated`. ROUTEs without WAYPOINTs, or with every WAYPOINT passed, are left out. `null` means the milestones couldn't be read.
-- **Judgment stays with OCC.** The server doesn't match criteria to issues. Each pass OCC reads the gaps, decides which criteria no open or finished issue covers, skips criteria a person must decide ("SUPERVISOR decides", recruiting, interviews) and descriptions without a checkable end condition, and drafts at most **2 per pass**, the active WAYPOINT first (`occ/CLAUDE.md` "WAYPOINT gap").
+- **Judgment stays with OCC.** The server doesn't match criteria to issues. Each pass OCC reads the gaps, decides which criteria no open or finished issue covers, skips criteria a person must decide ("SUPERVISOR decides", recruiting, interviews) and descriptions without a checkable end condition, and drafts at most **2 per pass**, the active WAYPOINT first (`occ/.claude/skills/tick/schedule.md` "WAYPOINT gap").
 - **The draft.** `schedule draft NEW --gap --project <ROUTE> --milestone <WAYPOINT> …`, with the four body sections and the criterion quoted in `## 목표`. `milestone` is checked against that project's milestones (name or id) and shown in `changesOf` ("WAYPOINT Beta Ready"). `--gap` requires a milestone, and atc refuses the draft when `similarTickets` finds a similar FLIGHT, so the "no duplicate" rule holds even if OCC misses one. Gap drafts count toward the 5 open drafts.
 - **S2.** The released `save_issue` call carries `milestone: <milestone id>`, so the issue lands on the WAYPOINT. linear-guard (`occ/mcp-guard.mjs`, unchanged) passes only that exact input; `occ/mcp-guard.test.mjs` checks that dropping the milestone, or passing its name or another id, is refused.
 - CROSSCHECK marks these drafts like any SCHEDULE draft.
@@ -204,7 +204,7 @@ Never automatic: anything with CAUTION, `Canceled`, deleting anything, adding or
 
 OCC's guard is TOWER's Bash guard plus read-only `gh` subcommands (`guard.mjs --gh-read`). Edit and Write stay denied. `occ/mcp-guard.mjs` lets only read MCP tools through (names starting with get, list, search, read, query or fetch), so in S0 OCC cannot write to Linear or GitHub even though the connectors are loaded. In S2, linear-guard opens Linear writes for released calls of approved operations only (section 6).
 
-The session reloads its manual: `/tick` starts with `atcctl manual check`, which compares the hash of `CLAUDE.md` and `/tick` with the last `atcctl manual ack` (stored under `~/.local/state/atc/manuals/`). If they changed, the session rereads them before doing anything else. TOWER's `/tick` does the same. That fixes the stale-manual incident from section 1.
+The session reloads its manual: `/tick` starts with `atcctl manual check`, which compares the hash of `CLAUDE.md`, `/tick` and its procedure files (every Korean `*.md` in `.claude/skills/tick/`) with the last `atcctl manual ack` (stored under `~/.local/state/atc/manuals/`). If they changed, the session rereads them before doing anything else. TOWER's `/tick` does the same. OCC's `CLAUDE.md` holds only the core (role, prohibitions, always-used commands, review rules); each procedure (BRIEFING, FLIGHT PLAN, CREW CHANGE, SCHEDULE, flight following) is a file next to `/tick`, read only at the step that has work, so the always-loaded manual stays short (ATC-9). That fixes the stale-manual incident from section 1.
 
 **President retires** once all three hold: OCC has run S1 for a week, flight following covers every team report, and the `TAIL` operation is in use (Not built yet). Until then President keeps assigning and records each assignment as a `tail:` label by hand.
 
@@ -295,7 +295,7 @@ On 2026-09-27, 17 vocado PRs (#366–#399) sat at APPROACH for 26–49 hours wit
 | `server/sources/linear.ts` | Read labels (`tail:`, `type:`, `wake:`, `rating:`), recently closed issues (for duplicate search). NEW is detected as APPLIED by title, not by an `S-xxxx` footer (section 6) |
 | `server/dispatch.ts` | Respect `tail:TEAM_X` and the classification rules in [fleet.md](fleet.md) section 5 |
 | API | `GET /api/schedule/brief`, `GET /api/schedule/ops/:id`, `POST /api/schedule/ops` (draft), `POST /api/schedule/ops/:id/{verdict,approve,reject,release}`, `POST /api/schedule/mode` |
-| `atc/occ/` | Moved from `atc/dispatch/`: `CLAUDE.md` (operations manual), `/tick`, send-guard, **linear-guard**, a Bash guard with read-only `gh` |
+| `atc/occ/` | Moved from `atc/dispatch/`: `CLAUDE.md` (operations manual, core), `/tick` and its procedure files, send-guard, **linear-guard**, a Bash guard with read-only `gh` |
 | `controller/atcctl.mjs` | `schedule draft`, `schedule release`, `schedule brief` |
 | UI | SCHEDULE tab: drafts with reason, payload preview and duplicate-search result; verdict and approve buttons; applied history |
 | Records | `schedule.drafted / decided / released / applied` in the FLIGHT RECORDER; metrics: agreement rate, operations reverted by a person, tickets created per week |
