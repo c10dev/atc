@@ -89,8 +89,9 @@ OCC는 Linear에 마음대로 쓰지 않는다. **SCHEDULE 작업**(operation)�
 | `LINK` | 상위, `blocks`, `related` 관계 더하기 | VOC-196은 VOC-52에 막혀 있음(본문에만 적힘) |
 | `SPLIT` | 발견한 것을 하위나 related 티켓으로 | PR #400 리뷰의 P3 항목 |
 | `COMMENT` | 계획 댓글 남기기(실행 댓글이 아님) | "VOC-52가 끝날 때까지 미룸" |
+| `TARGET`, `ROUTE` | ✅ S1 만듦(ATC-25): Linear가 아니라 AIRCRAFT의 FLEET TARGETS·ROUTE 변경. 두 모드 모두 그림자 판정만, 게이트와 따로 센다([fleet.ko.md](fleet.ko.md) 7.4) | TEAM_C에서 `Home & Discovery` 빼기(completed) |
 
-구현: `NEW`(CHARTER DESK, 5.1), `CLOSE`(5.5), `PRIORITIZE`, `CLASSIFY`. 아직 만들지 않음: `TAIL`, `LINK`, `SPLIT`, `COMMENT`.
+구현: `NEW`(CHARTER DESK, 5.1), `CLOSE`(5.5), `PRIORITIZE`, `CLASSIFY`, 그림자 운용의 `TARGET`·`ROUTE`([fleet.ko.md](fleet.ko.md) 7.4). 아직 만들지 않음: `TAIL`, `LINK`, `SPLIT`, `COMMENT`.
 
 ### 5.1 작업은 어디서 오나
 

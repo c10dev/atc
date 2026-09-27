@@ -266,7 +266,7 @@ AIRCRAFT마다 SUPERVISOR가 FLEET 탭에서 정한다. 보여 주기만 하고 
 | 되돌린 작업 | 최근 14일 LOGBOOK 항목 중 `reverted`로 표시된 것(`Revert "…"` PR이 머지됨). 다시 열린 FLIGHT는 아직 세지 않는다 |
 | 충돌 | FLIGHT를 나는 동안 그 STAND에서 난 LOS. 최근 14일 LOGBOOK 항목을 합한다 |
 
-4단계(네트워크 계획)는 이것을 프로젝트 목표 옆에 둔다(7.3). OCC가 목표 변경 초안을 쓸 수 있고(7.4, 설계만), 결정은 SUPERVISOR가 한다.
+4단계(네트워크 계획)는 이것을 프로젝트 목표 옆에 둔다(7.3). OCC가 목표·ROUTE 변경 초안을 그림자 운용으로 쓰고(7.4, S1 만듦), 결정은 SUPERVISOR가 한다.
 
 ### 7.1 LOGBOOK
 
@@ -363,9 +363,9 @@ LOGBOOK은 돌 때마다 읽은 저장소의 `aircraft: null` 줄을 모두 DEPA
 | `trend.gates` | 28일: 그날 내린 DISPATCH·SCHEDULE 그림자 판정(`agreed` / `disagreed`), 그날 끝까지의 누적 일치율(마지막 날은 각 게이트의 `agreement`와 같다), 두 기록을 합친 누적 CROSSCHECK 일치율(`crosscheckRateOf`). 게이트처럼 승인 단계의 approve / reject는 세지 않는다 |
 | `sources` | Linear(가져옴), GitHub(가져옴), LOGBOOK 파일을 쓸 수 있었는지 |
 
-### 7.4 OCC 목표 변경 초안 (설계만)
+### 7.4 OCC 목표 변경 초안 (S1 만듦 2026-09-27, ATC-25)
 
-만들지 않았다. ROUTES와 TARGETS는 SUPERVISOR의 몫으로 남는다(3장). 이 절은 OCC가 Linear 변경을 제안하듯 이것들의 변경을 제안하되, 결코 적용하지 않는 방법이다.
+S1(그림자)은 만들었고 S2(승인하면 적용)는 아직 없다. 이 절 끝의 "만든 대로"를 보라. ROUTES와 TARGETS는 SUPERVISOR의 몫으로 남는다(3장). 이 절은 OCC가 Linear 변경을 제안하듯 이것들의 변경을 제안하되, 결코 적용하지 않는 방법이다.
 
 **작업.** 새 SCHEDULE 종류 둘. 각각 AIRCRAFT 하나에 대한 것이고, `flight: null`과 `aircraft` 필드를 갖는다.
 
@@ -394,6 +394,17 @@ LOGBOOK은 돌 때마다 읽은 저장소의 `aircraft: null` 줄을 모두 DEPA
 - **SUPERSEDED**: `fleet.json`에 이미 제안한 값이 있을 때(손으로 바꿈), 또는 AIRCRAFT가 RETIRED일 때.
 
 **끼우는 곳.** `SCHEDULE_KINDS`에 `TARGET`과 `ROUTE`를 더한다. `parsePayload`가 이를 검사한다. `changesOf`는 티켓 대신 FLEET 프로필과 비교한다. `syncLines`는 `loadFleet()`를 본다. `callsOf`는 호출을 돌려주지 않고, S2에서 `approve`는 `release`를 기다리지 않고 바로 적용한다. OCC는 `atcctl schedule draft TARGET|ROUTE`를 얻고, 초안을 쓰기 전에 `GET /api/network`를 읽는다.
+
+**만든 대로 (S1, ATC-25).**
+
+- 순수 검사와 근거는 `server/network-drafts.ts`에 있고(`parseTarget`, `parseRoute`, `networkChangesOf`, `networkSupersedeReason`), `server/schedule.ts`가 끼운다. `aircraft` 필드는 따로 없다. payload의 `registration`이 AIRCRAFT이고 `flight`는 `null`이다.
+- payload에는 `from`(초안을 쓸 때의 값)과 `evidence`도 남는다. `TARGET`: NETWORK AIRCRAFT 행, `arrived14`, 4주 `weekly` ARRIVED, 그 routes의 ROUTE 행. `ROUTE`: 건드리는 프로젝트의 ROUTE 행과 `where`(14일 ARRIVED가 간 프로젝트).
+- 변화 한도: `flightsPerWeek`는 지금 값의 2나 50% 가운데 **큰 쪽**까지. 지금 값이 없거나(처음 정함) 지울 때는 한도가 없다. `onTime`도 같은 방식으로 0.1까지.
+- 판정: `TARGET`·`ROUTE`는 아직 적용하는 길이 없어 **두 모드 모두** 그림자 `verdict`를 받는다. approval 모드의 `approve`·`reject`는 409이고 `callsOf`는 거절한다. SCHEDULE 탭은 두 모드 모두 이 카드에 그림자 버튼을 보인다.
+- 세기: `gateOf`는 이 판정을 게이트와 CROSSCHECK 일치율에서 빼고 `gate.network`(`TARGET`, `ROUTE`: 판정 수, 승인했을 것, 합의율)로 따로 보인다. NETWORK 게이트 추세도 뺀다(`countsForGate`).
+- `syncLines`는 AIRCRAFT가 없거나 퇴역했거나, `fleet.json`에 이미 그 변경이 있으면(SUPERVISOR가 FLEET 탭에서 바꿈) 열린 초안을 SUPERSEDED로 닫는다.
+- OCC는 `atcctl network`를 24시간에 한 번까지 읽고, 한 바퀴에 초안 1건까지 쓴다(`occ/.claude/skills/tick/schedule.md` "TARGET·ROUTE 초안").
+- 아직 없음: S2 승인하면 적용(`applyPatch`, 원자적 `fleet.json` 저장, FLIGHT RECORDER)과, 그와 함께 오는 "AIRCRAFT당 적용된 `TARGET`은 14일에 하나" 규칙.
 
 ### 7.5 DEPARTURE LOG
 
@@ -565,7 +576,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 3. ✅ planner가 분류 라벨을 읽음: TYPE RATING·FLIGHT TYPE 강한 규칙, WAKE 슬롯, ROUTE 점수(Risk 그룹은 SEC로 셈. 라벨 그룹은 `group:name`으로 읽음), HOLDING·PARKED 팀의 STAND 없는 FLIGHT와 CHECK 독립성(5.1, 5.2)
 4. ◐ DISPATCH 카드에 분류 표시. 남은 일: FIDS, 라벨이 없을 때 분류를 제안하는 DISPATCH 메모
 5. ✅ OCC S1 `CLASSIFY` 초안(occ.ko.md의 SCHEDULE 작업과 함께. `server/schedule.ts`, 6장)
-6. ◐ FLEET 카드의 LOGBOOK 기반 TARGETS 실적(7.1, 7.2)과 NETWORK의 프로젝트 목표 옆 표시(7.3). 남은 일: 분류별 중앙값으로 정시 기준 잡기, OCC 목표 변경 초안(7.4, 설계만)
+6. ◐ FLEET 카드의 LOGBOOK 기반 TARGETS 실적(7.1, 7.2)과 NETWORK의 프로젝트 목표 옆 표시(7.3). 남은 일: 분류별 중앙값으로 정시 기준 잡기, OCC 목표 변경 초안의 S2(7.4, S1은 만듦)
 7. ✅ FLEET 탭의 팀 꾸리기(8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE(8.2): LOGBOOK의 TYPE RATING 근거, GRANT·REVIEW 추천, SUPERVISOR의 부여·회수
 

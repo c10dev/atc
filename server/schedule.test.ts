@@ -73,7 +73,7 @@ test("판정과 2단계 점검, 후보 목록", () => {
   const ops = fold(lines);
   assert.equal(ops[0].status, "disagreed");
   assert.equal(ops[0].verdictReason, "BUILD임");
-  assert.deepEqual(gateOf(ops), { decided: 1, agreed: 0, agreement: 0, target: { decided: 20, agreement: 0.8 }, ready: false, crosscheck: { marked: 0, matched: 0, rate: null, byModel: {}, oneClick: { count: 0, decided: 0 } } });
+  assert.deepEqual(gateOf(ops), { decided: 1, agreed: 0, agreement: 0, target: { decided: 20, agreement: 0.8 }, ready: false, crosscheck: { marked: 0, matched: 0, rate: null, byModel: {}, oneClick: { count: 0, decided: 0 } }, network: { TARGET: { decided: 0, agreed: 0, agreement: null }, ROUTE: { decided: 0, agreed: 0, agreement: null } } });
   const tickets = [t("VOC-41"), t("VOC-42", { labels: ["type:BUILD", "wake:M"], priority: 0 }), t("VOC-43", { state: "In Progress", stateType: "started" })];
   assert.deepEqual(candidatesOf(tickets, []), { classify: ["VOC-41"], prioritize: ["VOC-42"], close: [] });
 });

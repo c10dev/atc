@@ -99,6 +99,11 @@ SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만. S2 승인 운용
                                             --milestone: 그 프로젝트의 마일스톤(WAYPOINT) 이름이나 id.
                                             --gap: WAYPOINT gap 초안(schedule brief의 waypointGaps). --milestone이 필요하고,
                                             비슷한 FLIGHT(similar)가 있으면 atc가 받지 않는다
+  node atcctl.mjs schedule draft TARGET <TEAM_X> [--flights-per-week <n|none>] [--on-time <0~1|none>] -- <근거>
+                                            (ATC-25) AIRCRAFT의 FLEET TARGETS 변경 초안. 근거 숫자는 atc가 붙인다. 그림자 판정만
+  node atcctl.mjs schedule draft ROUTE <TEAM_X> [--add <프로젝트>]… [--remove <프로젝트>]… -- <근거>
+                                            (ATC-25) AIRCRAFT의 ROUTE 변경 초안. 더하는 것은 끝나지 않은 Linear 프로젝트만. 그림자 판정만
+  node atcctl.mjs network                   NETWORK 개요: ROUTE 행, AIRCRAFT TARGETS 대 실적, 28일 추세 (JSON)
   node atcctl.mjs schedule release <S-0001>  (S2) 승인된 작업을 발부하고 Linear 호출(CALL)을 출력. 각 CALL의 도구에
                                             JSON 입력을 한 글자도 바꾸지 않고 넣는다. 이미 발부됐으면 같은 CALL을 다시 준다
 
@@ -179,16 +184,45 @@ function parseNewDraft(args) {
   return { ...out, body: text };
 }
 
+// schedule draft TARGET|ROUTE <TEAM_X> [옵션]… -- <근거> → POST 본문(ATC-25). 값 검사와 근거 숫자는 서버가 한다.
+// TARGET: --flights-per-week <n|none>, --on-time <0~1|none>(none은 목표를 지움). ROUTE: --add·--remove <프로젝트>(여러 번)
+const NETWORK_OPTS = {
+  TARGET: { "--flights-per-week": "flightsPerWeek", "--on-time": "onTime" },
+  ROUTE: { "--add": "add", "--remove": "remove" },
+};
+function parseNetworkDraft(args) {
+  const sep = args.indexOf("--");
+  const head = sep < 0 ? args : args.slice(0, sep);
+  const reason = sep < 0 ? "" : args.slice(sep + 1).join(" ").trim();
+  const [kindRaw, registration, ...rest] = head;
+  const kind = String(kindRaw).toUpperCase();
+  const opts = NETWORK_OPTS[kind];
+  if (!registration || registration.startsWith("--")) throw new Error("AIRCRAFT(REGISTRATION)가 필요함 (예: TEAM_I)");
+  const body = { kind, registration: registration.toUpperCase() };
+  for (let i = 0; i < rest.length; i += 2) {
+    const [opt, val] = [rest[i], rest[i + 1]];
+    if (!opts[opt]) throw new Error(`${kind}에 쓸 수 없는 옵션 ${opt} (가능: ${Object.keys(opts).join(" ")})`);
+    if (val === undefined || val.startsWith("--")) throw new Error(`${opt} 뒤에 값이 필요함`);
+    if (kind === "ROUTE") (body[opts[opt]] ??= []).push(val);
+    else if (opts[opt] in body) throw new Error(`${opt}는 한 번만`);
+    else body[opts[opt]] = val;
+  }
+  if (Object.keys(body).length === 2) throw new Error(`${kind}에는 ${Object.keys(opts).join("이나 ")}가 필요함`);
+  if (!reason) throw new Error("-- 뒤에 근거 한 줄이 필요함");
+  return { ...body, reason };
+}
+
 // schedule draft <KIND> <FLIGHT> [옵션]… -- <근거> → POST /api/schedule/ops 본문. 값 검사는 서버가 한다.
 const DRAFT_OPTS = { CLASSIFY: ["--type", "--wake", "--rating"], PRIORITIZE: ["--priority"], CLOSE: [] };
 export function parseDraft(args) {
   if (String(args[0] ?? "").toUpperCase() === "NEW") return parseNewDraft(args.slice(1));
+  if (NETWORK_OPTS[String(args[0] ?? "").toUpperCase()]) return parseNetworkDraft(args);
   const sep = args.indexOf("--");
   const head = sep < 0 ? args : args.slice(0, sep);
   const reason = sep < 0 ? "" : args.slice(sep + 1).join(" ").trim();
   const [kindRaw, flight, ...rest] = head;
   const kind = String(kindRaw ?? "").toUpperCase();
-  if (!DRAFT_OPTS[kind]) throw new Error(`모르는 SCHEDULE 작업: ${kindRaw ?? "(없음)"} (가능: ${[...Object.keys(DRAFT_OPTS), "NEW"].join(", ")})`);
+  if (!DRAFT_OPTS[kind]) throw new Error(`모르는 SCHEDULE 작업: ${kindRaw ?? "(없음)"} (가능: ${[...Object.keys(DRAFT_OPTS), "NEW", ...Object.keys(NETWORK_OPTS)].join(", ")})`);
   if (!flight || flight.startsWith("--")) throw new Error("FLIGHT key가 필요함 (예: VOC-193)");
   const body = { kind, flight };
   for (let i = 0; i < rest.length; i += 2) {
@@ -314,6 +348,14 @@ const PRIORITY = { 1: "Urgent", 2: "High", 3: "Medium", 4: "Low" };
 export function payloadText(op) {
   const p = op.payload;
   if (op.kind === "PRIORITIZE") return `priority ${p.priority}(${PRIORITY[p.priority]})`;
+  if (op.kind === "TARGET") {
+    const v = (n) => (n == null ? "없음" : n);
+    return [
+      "flightsPerWeek" in p && `flightsPerWeek ${v(p.from.flightsPerWeek)} → ${v(p.flightsPerWeek)}`,
+      "onTime" in p && `onTime ${v(p.from.onTime)} → ${v(p.onTime)}`,
+    ].filter(Boolean).join(" · ");
+  }
+  if (op.kind === "ROUTE") return [...(p.add ?? []).map((x) => `+ ${x}`), ...(p.remove ?? []).map((x) => `− ${x}`)].join(" · ");
   if (op.kind === "CLOSE") return `→ Done · PR ${p.pr.repo.split("/").pop()}#${p.pr.number} 머지 ${p.mergedAt.slice(0, 16)}Z · ${p.partOf ? "Part of(일부만)" : p.fixes ? "Fixes" : "본문에 Fixes 없음"}`;
   const labels = [p.type && `type:${p.type}`, p.wake && `wake:${p.wake}`, ...(p.ratings ?? []).map((r) => `rating:${r}`)];
   if (op.kind !== "NEW") return labels.filter(Boolean).join(" ");
@@ -323,6 +365,7 @@ export function payloadText(op) {
 // 초안 결과 출력. NEW는 AD HOC FLIGHT 초안과 atc가 찾은 비슷한 FLIGHT 목록.
 export function draftText(op) {
   const shadow = "(그림자 운용, Linear에 쓰지 않음)";
+  if (op.kind === "TARGET" || op.kind === "ROUTE") return `${op.id} ${op.kind} ${op.payload.registration} 초안 · ${payloadText(op)} (그림자 판정만, FLEET에 쓰지 않음)`;
   if (op.kind !== "NEW") return `${op.id} ${op.kind} ${op.flight} 초안 · ${payloadText(op)} ${shadow}`;
   const similar = op.payload.similar ?? [];
   return [
@@ -421,6 +464,8 @@ if (isMain) {
       // OCC는 CALL마다 그 Linear MCP 도구를 JSON 입력 그대로 부른다(linear-guard가 비교한다)
       console.log(`${r.op.id} RELEASED · ${r.calls.length} CALL`);
       r.calls.forEach((c, i) => console.log(`CALL ${i + 1}/${r.calls.length} · ${c.tool}\n${JSON.stringify(c.input)}`));
+    } else if (cmd === "network" && !args[0]) {
+      console.log(JSON.stringify(await call("GET", "/api/network"), null, 1));
     } else if (cmd === "following" && !args[0]) {
       console.log(JSON.stringify(await call("GET", "/api/following"), null, 1));
     } else if (cmd === "following" && args[0] === "ack") {

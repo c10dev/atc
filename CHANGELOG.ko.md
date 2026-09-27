@@ -16,6 +16,12 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- OCC가 FLEET TARGET·ROUTE 변경을 그림자 운용으로 초안한다(ATC-25, [docs/fleet.ko.md](docs/fleet.ko.md) 7.4).
+  - AIRCRAFT 하나에 대한 SCHEDULE 종류 둘(`flight: null`): `TARGET`(`flightsPerWeek`, `onTime`, `none`이면 지움)과 `ROUTE`(Linear 프로젝트 `add`·`remove`). `atcctl schedule draft TARGET|ROUTE <TEAM_X> … -- <근거>`, NETWORK 개요를 읽는 `atcctl network`.
+  - 근거는 초안을 만들 때 atc가 NETWORK 함수로 붙인다. `TARGET`: 그 AIRCRAFT의 목표와 실적, 14일 ARRIVED, 4주 주별 ARRIVED, ROUTE 행. `ROUTE`: 건드리는 프로젝트의 행과 최근 14일 ARRIVED가 간 곳(`server/network-drafts.ts`).
+  - 검사: FLEET 탭과 같은 범위, 초안당 `flightsPerWeek`는 2나 50% 가운데 큰 쪽까지, `onTime`은 0.1까지, `TARGET`은 14일 ARRIVED 3건 이상, AOG·퇴역 AIRCRAFT 제외, 더하는 프로젝트는 끝나지 않은 Linear 프로젝트. AIRCRAFT·종류마다 열린 초안 하나, 열린 초안 5건 한도에 들고 3일이면 만료. FLEET 탭에 이미 그 변경이 있으면 SUPERSEDED.
+  - 두 모드 모두 그림자 판정만 받는다. 아무것도 `fleet.json`에 쓰지 않는다(S2 적용은 아직 없음). 판정은 `gate.network`로 따로 세고, S2 게이트·CROSSCHECK 일치율·NETWORK 게이트 추세에는 넣지 않는다.
+  - SCHEDULE 탭에 TARGET·ROUTE 카드가 보인다: 지금 값, 바뀔 것, OCC 근거, atc 숫자. OCC는 `network`를 24시간에 한 번까지 읽고 한 바퀴 1건까지 쓴다(OCC 규정과 `/tick`, 한국어·영어).
 - OCC 브리핑에 WAYPOINT ETA와 지연 경고(ATC-24, [docs/occ.ko.md](docs/occ.ko.md) 5.7).
   - `schedule brief`에 `waypointEtas`가 더해진다. 지나지 않은 WAYPOINT마다 목표일, ETA(모르면 그 이유), 남은 FLIGHT, 지연 표시이고, ROUTE MAP과 같은 계산이다(`server/waypoint-slips.ts`).
   - `slips`도 더해진다. 지연된 WAYPOINT마다 경고 하나이고, `target-passed`(목표일이 지남), `eta-after-target`(ETA가 목표일보다 늦음), `linear-overdue` 가운데 하나와 날수, 한 줄 설명이 붙는다.

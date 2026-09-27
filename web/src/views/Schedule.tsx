@@ -1,4 +1,5 @@
 import { createContext, type KeyboardEvent, useCallback, useContext, useEffect, useRef, useState } from "react";
+import type { RoutePayload, TargetPayload } from "../../../server/network-drafts.ts";
 import type { ClassifyPayload, ClosePayload, NewPayload, PrioritizePayload, ScheduleOp } from "../../../server/schedule.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
@@ -10,7 +11,8 @@ import "./Schedule.css";
 // CLOSE는 이슈 상태를 바꾸는 일이라 OCC가 발부하지 않고, 승인되면 SUPERVISOR가 Linear에서 직접 Done으로 바꾼다.
 // S1(shadow): SUPERVISOR는 "승인했을 것 / 거절했을 것"만 표시하고 아무것도 Linear에 쓰지 않는다.
 // S2(approval): 승인한 작업을 OCC가 발부받아 Linear에 쓴다(linear-guard가 입력을 비교). 기본은 S1.
-// 설계: docs/occ.md 5~7장, docs/fleet.md 4·6장.
+// TARGET·ROUTE(ATC-25)는 AIRCRAFT의 FLEET TARGETS·ROUTE 변경 제안이다. 적용하는 길이 아직 없어 모드와 상관없이 그림자 판정만 받는다.
+// 설계: docs/occ.md 5~7장, docs/fleet.md 4·6장·7.4.
 
 interface FlightInfo {
   title: string;
@@ -78,6 +80,8 @@ interface Brief {
     ready: boolean;
     // 참고용, 게이트 기준 아님. byModel·oneClick은 옛 서버면 없음
     crosscheck?: CrosscheckRate & { byModel?: Record<string, CrosscheckRate>; oneClick?: { count: number; decided: number } };
+    // TARGET·ROUTE 그림자 판정(게이트와 따로). 옛 서버면 없음
+    network?: Record<"TARGET" | "ROUTE", { decided: number; agreed: number; agreement: number | null }>;
   };
   limit: number;
   candidates: { classify: string[]; prioritize: string[]; close?: string[] }; // close는 옛 서버면 없음
@@ -126,7 +130,14 @@ const REJECT_REASONS: Record<ScheduleOp["kind"], string[]> = {
   PRIORITIZE: ["우선순위가 더 높아야 함", "우선순위가 더 낮아야 함", "근거가 본문과 맞지 않음", "지금 정할 필요 없음"],
   NEW: ["중복임", "본문 템플릿 부족", "프로젝트·라벨이 다름", "티켓 없이 AD HOC로 충분", "지금 만들 필요 없음"],
   CLOSE: ["Part of — 일부만 끝남", "남은 작업이 있음", "PR이 되돌려졌거나 불완전", "지금 닫을 필요 없음"],
+  TARGET: ["목표가 너무 높음", "목표가 너무 낮음", "근거 기간이 짧음", "지금 바꿀 필요 없음"],
+  ROUTE: ["이 AIRCRAFT에 맞지 않는 ROUTE", "ROUTE가 아직 끝나지 않음", "다른 AIRCRAFT가 맡는 게 나음", "지금 바꿀 필요 없음"],
 };
+
+// TARGET·ROUTE: FLIGHT가 아니라 AIRCRAFT 하나에 대한 초안. 모드와 상관없이 그림자 판정
+const isNetworkOp = (op: Pick<ScheduleOp, "kind">) => op.kind === "TARGET" || op.kind === "ROUTE";
+const regOf = (op: ScheduleOp) => (op.payload as TargetPayload | RoutePayload).registration;
+const num = (n: number | null | undefined) => (n == null ? "없음" : String(n));
 
 // PR 한 줄: "vocado_nextjs#400"
 const prName = (p: ClosePayload["pr"]) => `${p.repo.split("/").pop()}#${p.number}`;
@@ -135,7 +146,7 @@ const prName = (p: ClosePayload["pr"]) => `${p.repo.split("/").pop()}#${p.number
 const kindCode = (kind: ScheduleOp["kind"]) => (kind === "NEW" ? "AD HOC FLIGHT" : kind);
 
 // 초안의 대상: FLIGHT 번호, NEW는 아직 없는 이슈라 제목
-const subjectOf = (op: ScheduleOp) => (op.flight ? flightNumber(op.flight) : `"${(op.payload as NewPayload).title}"`);
+const subjectOf = (op: ScheduleOp) => (isNetworkOp(op) ? regOf(op) : op.flight ? flightNumber(op.flight) : `"${(op.payload as NewPayload).title}"`);
 
 // NEW 라벨: type:·wake:·rating:·tail:
 const newLabels = (p: NewPayload) =>
@@ -158,6 +169,17 @@ function payloadText(op: ScheduleOp): string {
     return [p.project, p.milestone && `WAYPOINT ${p.milestone.name}`, p.priority && `priority ${PRIORITY_NAME[p.priority]}`, ...newLabels(p)].filter(Boolean).join(" · ");
   }
   if (op.kind === "PRIORITIZE") return `priority ${PRIORITY_NAME[(op.payload as PrioritizePayload).priority]}`;
+  if (op.kind === "TARGET") {
+    const t = op.payload as TargetPayload;
+    return [
+      t.flightsPerWeek !== undefined && `flightsPerWeek ${num(t.from.flightsPerWeek)} → ${num(t.flightsPerWeek)}`,
+      t.onTime !== undefined && `onTime ${t.from.onTime == null ? "없음" : pct(t.from.onTime)} → ${t.onTime == null ? "없음" : pct(t.onTime)}`,
+    ].filter(Boolean).join(" · ");
+  }
+  if (op.kind === "ROUTE") {
+    const r = op.payload as RoutePayload;
+    return [...(r.add ?? []).map((x) => `+ ${x}`), ...(r.remove ?? []).map((x) => `− ${x}`)].join(" · ");
+  }
   if (op.kind === "CLOSE") {
     const c = op.payload as ClosePayload;
     return [`→ Done`, `PR ${prName(c.pr)}`, c.partOf ? "Part of(일부만)" : c.fixes ? "Fixes" : "본문에 Fixes 없음"].join(" · ");
@@ -199,7 +221,7 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
 
   // 판정 기록. 카드가 사라지면 초점은 DRAFTS 제목으로. 409·404는 위 알림, 그 밖의 실패는 카드 안에.
   const verdict = async (op: ScheduleOp, v: "agree" | "disagree", reason: string | null, via: Via) => {
-    const approval = brief?.mode === "approval";
+    const approval = brief?.mode === "approval" && !isNetworkOp(op);
     if (approval && v === "agree" && !confirm(`${op.id} ${subjectOf(op)}를 승인하면 OCC가 다음 바퀴에 Linear에 씁니다. 승인할까요?`)) return null;
     try {
       if (approval) await post(`/api/schedule/ops/${op.id}/${v === "agree" ? "approve" : "reject"}`, { reason, via });
@@ -322,6 +344,8 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
           {brief.open.map((op) =>
             op.kind === "NEW" ? (
               <NewCard key={op.id} op={op} flights={flights} hrefOf={hrefOf} now={now} clock={clock} onVerdict={verdict} />
+            ) : isNetworkOp(op) ? (
+              <NetworkCard key={op.id} op={op} changes={brief.changes[op.id] ?? []} now={now} clock={clock} onVerdict={verdict} />
             ) : (
               <DraftCard key={op.id} op={op} flight={flights[op.flight ?? ""]} changes={brief.changes[op.id] ?? []} now={now} clock={clock} onVerdict={verdict} />
             ),
@@ -449,7 +473,9 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
                 <td className="sc-c-id mono" data-label="ID">{op.id}</td>
                 <td className={`sc-c-kind k-${op.kind}`} data-label="종류">{kindCode(op.kind)}</td>
                 <td className="sc-c-flight" data-label="FLIGHT">
-                  {op.flight ? (
+                  {isNetworkOp(op) ? (
+                    <span className="mono">{regOf(op)}</span>
+                  ) : op.flight ? (
                     <span className="mono" title={flights[op.flight]?.title ?? op.flight}>
                       {flightNumber(op.flight)}
                     </span>
@@ -546,6 +572,19 @@ function Gate({ gate }: { gate: Brief["gate"] }) {
               <span className="sc-gate-value">{pct(r.rate)}</span>
             </li>
           ))}
+        {gate.network &&
+          (["TARGET", "ROUTE"] as const)
+            .filter((k) => gate.network![k].decided > 0)
+            .map((k) => (
+              <li key={k} className="s-info sc-gate-net" title={`${k} 초안의 그림자 판정 — S2 게이트와 CROSSCHECK 일치에 세지 않음`}>
+                <span className="sc-gate-label">
+                  {k} 판정 {gate.network![k].agreed}/{gate.network![k].decided}
+                </span>
+                <span className="sc-gate-value">{pct(gate.network![k].agreement)}</span>
+                <span className="sc-gate-target">게이트와 따로</span>
+                <span className="sc-gate-state">참고</span>
+              </li>
+            ))}
         {one && (
           <li className="s-info sc-gate-one" title={ONE_CLICK_NOTE}>
             <span className="sc-gate-label">한 번 클릭 {one.decided > 0 ? `${one.count}/${one.decided}` : "— (아직 없음)"}</span>
@@ -660,6 +699,96 @@ function DraftCard({
   );
 }
 
+// TARGET·ROUTE 초안 카드: 지금 값, 바뀔 것, OCC 근거, atc가 초안을 쓸 때 붙인 숫자(NETWORK와 같은 계산)
+function NetworkCard({ op, changes, now, clock, onVerdict }: { op: ScheduleOp; changes: string[]; now: number; clock: Clock; onVerdict: OnVerdict }) {
+  const v = useVerdict(op, onVerdict);
+  const titleId = `sc-${op.id}-title`;
+  const target = op.kind === "TARGET" ? (op.payload as TargetPayload) : null;
+  const route = op.kind === "ROUTE" ? (op.payload as RoutePayload) : null;
+  const rows = (target ?? route)!.evidence.routes;
+  return (
+    <article className={`sc-card k-${op.kind}`} aria-labelledby={titleId} aria-busy={v.busy}>
+      <header className="sc-card-head">
+        <span className="sc-kind">{op.kind}</span>
+        <span className="mono faint">{op.id}</span>
+        <time className="faint sc-age" dateTime={op.at} title={`초안 작성 ${stamp(op.at, clock)}`}>
+          {timeAgo(op.at, now)}
+        </time>
+      </header>
+      <h3 className="sc-flight" id={titleId}>
+        <a className="mono sc-fn" href="#fleet" title="FLEET 탭에서 보기">
+          ✈ {regOf(op)}
+        </a>
+        <span className="sc-title">{target ? "TARGETS 변경" : "ROUTE 변경"}</span>
+      </h3>
+
+      <dl className="sc-facts">
+        <dt>지금</dt>
+        <dd>
+          {target ? (
+            <span className="mono">
+              flightsPerWeek {num(target.from.flightsPerWeek)} · onTime {target.from.onTime == null ? "없음" : pct(target.from.onTime)}
+            </span>
+          ) : (
+            <span>{route!.from.length ? route!.from.join(" · ") : "ROUTE 없음"}</span>
+          )}
+        </dd>
+        <dt>바뀜</dt>
+        <dd>
+          {changes.length ? (
+            <ul className="sc-changes">
+              {changes.map((c) => (
+                <li key={c} className="sc-change">
+                  {c}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="faint">바뀔 것 없음 — 다음 새로 고침에서 SUPERSEDED</span>
+          )}
+        </dd>
+        <dt>근거</dt>
+        <dd className="sc-reason">{op.reason}</dd>
+        <dt>숫자</dt>
+        <dd className="sc-net-evidence">
+          {target && (
+            <p className="mono">
+              14일 ARRIVED {target.evidence.arrived14} · 이번 주 {target.evidence.aircraft.actuals.weekDone} · 정시율 {pct(target.evidence.aircraft.actuals.onTimeRate)} · 주별{" "}
+              {target.evidence.weekly.map((w) => w.arrived).join(" · ")}
+            </p>
+          )}
+          {route && route.evidence.where.length > 0 && (
+            <p>
+              <span className="faint">14일 ARRIVED가 간 곳 </span>
+              {route.evidence.where.map((w) => `${w.project ?? "AD HOC·모름"} ${w.arrived}`).join(" · ")}
+            </p>
+          )}
+          {rows.length > 0 && (
+            <ul className="sc-net-routes">
+              {rows.map((r) => (
+                <li key={r.project}>
+                  <span>{r.project}</span>
+                  <span className="mono faint">
+                    대기 {r.open.todo} · 진행 {r.open.inProgress + r.open.inReview} · 14일 ARRIVED {r.arrived14}
+                    {r.aircraft.length > 0 && ` · ${r.aircraft.join(" ")}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="faint">초안을 쓸 때 atc가 붙인 숫자(NETWORK 탭과 같은 계산)</p>
+        </dd>
+      </dl>
+
+      <p className="sc-manual faint">
+        그림자 판정만 — 승인해도 FLEET에 쓰지 않는다. 당장 바꾸려면 <a href="#fleet">FLEET 탭</a>에서 직접.
+      </p>
+
+      <VerdictActions op={op} v={v} now={now} clock={clock} />
+    </article>
+  );
+}
+
 type OnVerdict = (op: ScheduleOp, v: "agree" | "disagree", reason: string | null, via: Via) => Promise<string | null>;
 
 // 카드 하나의 판정 상태(기록 중, 실패, 거절 사유 입력)
@@ -714,7 +843,8 @@ function CrosscheckChip({ m, now, clock }: { m: Crosscheck; now: number; clock: 
 }
 
 function VerdictActions({ op, v, now, clock }: { op: ScheduleOp; v: ReturnType<typeof useVerdict>; now: number; clock: Clock }) {
-  const mode = useContext(ModeContext);
+  const ctxMode = useContext(ModeContext);
+  const mode = isNetworkOp(op) ? "shadow" : ctxMode; // TARGET·ROUTE는 S2에서도 그림자 판정
   const xc = markOf(op);
   // CROSSCHECK 판정을 그대로 기록한다. disagree면 CROSSCHECK 사유를 거절 사유로 쓴다.
   const word = xc?.verdict === "agree" ? (mode === "approval" ? "승인" : "승인했을 것") : mode === "approval" ? "거절" : "거절했을 것";
