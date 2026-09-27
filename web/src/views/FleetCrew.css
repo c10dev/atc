@@ -1,0 +1,119 @@
+/* FLEET 카드의 OBSERVED CREW와 CREW CHANGE 대기. 색·글꼴은 styles.css의 :root 토큰만 쓴다. */
+.fc-obs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.fc-obs li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-1-5);
+  min-width: 0;
+}
+.fc-obs .fl-pos {
+  flex: none;
+}
+.fc-model {
+  font: var(--text-xs) var(--mono);
+}
+.fc-count {
+  color: var(--muted);
+  font: var(--text-xs) var(--mono);
+}
+.fc-last {
+  margin-left: auto;
+  font-size: var(--text-xs);
+}
+
+.fc-drift {
+  margin: 0;
+  color: var(--amber);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.fc-drift.is-unused {
+  color: var(--muted);
+}
+.fc-drift-mark {
+  font-weight: 600;
+}
+.fc-drift-mark::after {
+  content: ":";
+}
+.fc-drift .mono {
+  font-size: var(--text-xs);
+}
+.fc-note {
+  margin: 0;
+  font-size: var(--text-2xs);
+}
+
+/* CREW CHANGE 대기: CREW BRIEFING 패널과 같은 모양(amber 왼쪽 줄) */
+.fc-change {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius-md);
+}
+.fc-change-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--amber);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+.fc-change-head em {
+  color: var(--faint);
+  font: var(--text-2xs) var(--sans);
+  font-style: normal;
+  letter-spacing: 0;
+}
+.fc-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  font: 600 var(--text-xs) var(--mono);
+  overflow-wrap: anywhere;
+}
+.fc-add {
+  color: var(--radar);
+}
+.fc-remove {
+  color: var(--alert);
+}
+.fc-impact {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.fc-error {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+.fc-change .fl-actions {
+  align-items: center;
+  padding-top: 0;
+}
+.fc-copy-state {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.fc-change .fl-btn:disabled {
+  color: var(--faint);
+  cursor: default;
+}

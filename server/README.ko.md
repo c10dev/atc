@@ -55,6 +55,8 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `recorder.ts` | FLIGHT RECORDER: 날짜별 JSONL(`event`, `sample`, `dispatch`, `ack`, `schedule`, `checkride`), 30일 보관 |
 | `metrics.ts` | 운용 지표와 2단계 진입 점검(순수 함수 `computeMetrics`) |
 | `logbook.ts` | LOGBOOK: 10분마다 머지된 PR → ARRIVED FLIGHT마다 `arrived` 줄, 머지된 Revert PR은 `reverted` 줄(순수 함수 `buildEntry`, `planLogbook`, `foldLogbook`). FLEET 카드의 TARGETS 실적(순수 함수 `computeActuals`, `expectationMin`). `GET /api/logbook` |
+| `crew-observed.ts` | OBSERVED CREW: AIRCRAFT 세션들의 최근 14일 서브에이전트 호출. 세션 메타데이터만 읽는다(`subagents/*.meta.json`의 agentType·model과 파일 시각, 세션 이름은 `custom-title.json`). mtime으로 캐시하고 30초에 한 번까지만 다시 훑는다. 순수 함수 `parseMeta`, `positionOf`(agentType + model → 선언된 POSITION), `observeCrew`(묶기와 drift) |
+| `crew-change.ts` | CREW CHANGE: 운항 중인 AIRCRAFT의 COMPLEMENT가 `PATCH /api/fleet/:registration`으로 바뀌면 CAPTAIN에게 줄 지시문을 만들어 추가만 하는 기록에 남긴다. 보내지 않는다(순수 함수 `diffCrew`, `ratingImpact`, `crewChangeText`, `planCrewChange`, `foldCrewChanges`). `withCrew`가 FLEET 화면에 `observedCrew`, `crewDrift`, `pendingCrewChange`를 붙인다. `GET /api/fleet/crew-changes`, `POST /api/fleet/:registration/crew-change/:id/delivered` |
 | `checkride.ts` | CHECKRIDE: FLIGHT에 필요했던 rating을 라벨이나 받아들인 SCHEDULE CLASSIFY 초안에서 읽고(순수 함수 `flightRating`), AIRCRAFT·rating마다 GRANT·REVIEW·BLOCKED·BUILDING·HOLDS(순수 함수 `judge`, `checkrideRows`). `GET /api/fleet/checkride`, SUPERVISOR의 부여·회수 `POST /api/fleet/:registration/checkride`(`applyPatch`로 바꾸고 `checkride` 줄로 기록) |
 | `dispatch.ts` | DISPATCH 계획: 후보, 슬롯, 점수(순수 함수 `planDispatch`). 설정은 `dispatch.json` |
 | `proposals.ts` | DISPATCH 제안 기록(추가만 하는 JSONL), 상태 전이(그림자 판정, approve → sent → accepted → departed), 예약, FLIGHT PLAN 문구, 브리핑, 2b·3단계 점검 |
@@ -109,6 +111,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `claims/<sessionId>/*.json` | [점유 hook](../hooks/README.ko.md) | 워크트리 점유(서버는 읽기만 함) |
 | `airports.json` | `airports.ts` | AIRPORT 등록부 |
 | `clearances.jsonl` | `clearances.ts` | CLEARANCE 기록(추가만 함) |
+| `crew-changes.jsonl` | `crew-change.ts` | CREW CHANGE 지시문(추가만 함, `created`·`delivered`·`superseded` 줄) |
 | `consumers/<name>.json` | `controller.ts` | 소비자별 브리핑 커서 |
 | `flight-recorder/YYYY-MM-DD.jsonl` | `recorder.ts` | FLIGHT RECORDER(UTC 날짜, 30일 보관) |
 | `logbook.jsonl` | `logbook.ts` | ARRIVED FLIGHT의 LOGBOOK(추가만 함, `arrived`·`reverted` 줄) |

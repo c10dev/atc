@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type { AircraftView, CrewMember, FleetFile, Rating } from "../../../server/fleet.ts";
 import { flightNumber } from "../aviation.ts";
+import { FleetCrew } from "./FleetCrew.tsx";
 import { Checkride } from "./Checkride.tsx";
 import "./Fleet.css";
 
@@ -24,6 +25,7 @@ interface FleetBrief {
   airports: string[];
   defaultBase: string | null;
   nextRegistration: string | null;
+  observedWindowDays?: number; // 관측 CREW를 세는 기간(옛 서버엔 없음)
 }
 
 // RADAR·STRIPS와 같은 말: 작업 중 AIRBORNE, 대기 중 STAND를 쥐었으면 HOLDING, 아니면 PARKED
@@ -158,6 +160,8 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
               onBriefing={() => showBriefing(a.registration)}
               onAog={() => toggleAog(a)}
               onRetire={() => retire(a)}
+              windowDays={brief.observedWindowDays}
+              onCrewChanged={load}
             />
           ),
         )}
@@ -271,12 +275,16 @@ function Card({
   onBriefing,
   onAog,
   onRetire,
+  windowDays,
+  onCrewChanged,
 }: {
   a: AircraftView;
   onEdit: () => void;
   onBriefing: () => void;
   onAog: () => void;
   onRetire: () => void;
+  windowDays?: number;
+  onCrewChanged: () => void;
 }) {
   return (
     <article className={`fl-card s-${a.status}${a.aog ? " is-aog" : ""}`}>
@@ -311,6 +319,7 @@ function Card({
           </li>
         ))}
       </ul>
+      <FleetCrew a={a} windowDays={windowDays} onChanged={onCrewChanged} />
 
       <h3 className="fl-sub">
         TYPE RATING {a.ratingsIsDefault && <em>기본값</em>}

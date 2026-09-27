@@ -55,6 +55,8 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 | `recorder.ts` | FLIGHT RECORDER: daily JSONL (`event`, `sample`, `dispatch`, `ack`, `schedule`, `checkride`), kept 30 days |
 | `metrics.ts` | Operating metrics and the stage 2 readiness check (pure `computeMetrics`) |
 | `logbook.ts` | LOGBOOK: every 10 minutes merged PRs → one `arrived` line per ARRIVED FLIGHT, `reverted` lines for merged Revert PRs (pure `buildEntry`, `planLogbook`, `foldLogbook`); TARGETS actuals for the FLEET cards (pure `computeActuals`, `expectationMin`); `GET /api/logbook` |
+| `crew-observed.ts` | OBSERVED CREW: the subagent calls under each AIRCRAFT's sessions in the last 14 days, from session metadata only (`subagents/*.meta.json` agentType and model, file time; `custom-title.json` for the session name), cached by mtime and rescanned at most every 30 s. Pure `parseMeta`, `positionOf` (agentType + model → declared POSITION), `observeCrew` (grouping and drift) |
+| `crew-change.ts` | CREW CHANGE: when the complement of an in-service AIRCRAFT changes through `PATCH /api/fleet/:registration`, a text for the CAPTAIN, stored append-only and never sent (pure `diffCrew`, `ratingImpact`, `crewChangeText`, `planCrewChange`, `foldCrewChanges`); `withCrew` adds `observedCrew`, `crewDrift` and `pendingCrewChange` to the FLEET view; `GET /api/fleet/crew-changes`, `POST /api/fleet/:registration/crew-change/:id/delivered` |
 | `checkride.ts` | CHECKRIDE: each FLIGHT's required rating from labels or accepted SCHEDULE CLASSIFY drafts (pure `flightRating`), GRANT / REVIEW / BLOCKED / BUILDING / HOLDS per AIRCRAFT and rating (pure `judge`, `checkrideRows`); `GET /api/fleet/checkride`, and `POST /api/fleet/:registration/checkride` for the SUPERVISOR's grant or revoke through `applyPatch`, recorded as a `checkride` line |
 | `dispatch.ts` | DISPATCH planning: candidates, slots, scores (pure `planDispatch`); settings in `dispatch.json` |
 | `proposals.ts` | DISPATCH proposal log (append-only JSONL), state transitions (shadow verdicts; approve → sent → accepted → departed), reservations, FLIGHT PLAN text, brief, stage 2b and 3 gates |
@@ -109,6 +111,7 @@ Everything lives under `ATC_STATE_DIR` (default `~/.local/state/atc`), outside g
 | `claims/<sessionId>/*.json` | the [claim hook](../hooks/README.md) | Worktree claims (read-only for the server) |
 | `airports.json` | `airports.ts` | AIRPORT registry |
 | `clearances.jsonl` | `clearances.ts` | CLEARANCE log (append-only) |
+| `crew-changes.jsonl` | `crew-change.ts` | CREW CHANGE texts (append-only; `created`, `delivered`, `superseded` lines) |
 | `consumers/<name>.json` | `controller.ts` | Brief cursor per consumer |
 | `flight-recorder/YYYY-MM-DD.jsonl` | `recorder.ts` | FLIGHT RECORDER (UTC days, 30-day retention) |
 | `logbook.jsonl` | `logbook.ts` | LOGBOOK of ARRIVED FLIGHTs (append-only; `arrived` and `reverted` lines) |

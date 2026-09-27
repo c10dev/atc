@@ -34,6 +34,40 @@ LOGBOOK은 AIRCRAFT가 끝낸(ARRIVED) FLIGHT의 기록이다. atc가 10분마�
 
 기대 block time은 `wake` 라벨이 있으면 L 60분 · M 4시간 · H 2일이다. 라벨이 없거나 J거나 AD HOC이면 같은 FLIGHT TYPE·WAKE로 끝난 다른 FLIGHT(3건 이상)의 중앙값과 비교하고, 모자라면 정시율에서 뺀다. 실적은 보여 주기만 하고 배정 점수에는 쓰지 않는다.
 
+## 관측 CREW와 drift
+
+카드의 OBSERVED CREW는 선언한 CREW COMPLEMENT 옆에 최근 14일 동안 실제로 본 팀원을 보여 준다. 그 등록번호 이름의 세션(지금 살아 있는 세션과 이름이 같았던 지난 세션)이 부른 서브에이전트를 agent type·모델별로 묶어, 부른 횟수와 마지막 시각을 적는다.
+
+atc는 세션 메타데이터만 읽는다: 서브에이전트의 agent type, 부를 때 준 모델, 파일 시각, 세션 이름. 대화 기록, 지시문, 작업 설명은 읽지 않는다.
+
+관측한 팀원은 선언한 POSITION에 이렇게 맞춘다.
+
+| 관측 | POSITION |
+|---|---|
+| `ui-builder`, `ui-qa`, `flash-helper`처럼 선언한 POSITION이나 agent와 이름이 같은 타입 | 그 POSITION |
+| `general-purpose`·`claude` + Opus 모델 | `backend`(agent에 opus가 든 팀원) |
+| `general-purpose`·`claude` + 모델 지정 없음 | `backend`로 본다. CAPTAIN의 모델(Opus)을 물려받기 때문이다. 실제 모델은 보이지 않아 모델 칸은 비어 있다 |
+| `Explore`, `Plan`, `claude-code-guide` 같은 내장 타입, 그 밖의 타입 | 맞추지 않음. 선언에 agent로 적으면 맞춘다 |
+
+drift 두 줄의 뜻:
+
+- **선언에 없음: Explore** — 불렀지만 선언에 없는 타입. 모델을 줬으면 `general-purpose (sonnet)`처럼 붙는다. 자주 쓰면 COMPLEMENT에 넣을지 정한다.
+- **최근 14일 안 씀: flash-helper** — 선언했지만 기간 안에 부르지 않은 POSITION. 잘못이 아니라 "안 보였다"는 뜻이다. Codex 리뷰(`security` 구성의 reviewer)처럼 서브에이전트로 부르지 않는 POSITION은 늘 여기에 뜬다.
+
+이름이 같은 세션이 없으면 관측 CREW는 나오지 않는다. agent team처럼 팀원이 따로 세션으로 도는 경우 그 팀원은 보이지 않는다(CAPTAIN이 Agent로 부른 팀원은 보인다).
+
+## CREW CHANGE
+
+운항 중인 AIRCRAFT(퇴역하지 않았고 그 이름의 세션이 살아 있음)의 CREW COMPLEMENT를 바꿔 저장하면, atc가 CAPTAIN에게 줄 **CREW CHANGE** 지시문을 만든다. 카드에 **CREW CHANGE 대기**로 나온다.
+
+- 내리고(−) 타는(+) 팀원과 모델, 그리고 TYPE RATING 영향이 보인다. 예: 유일한 구현 팀원을 내리면 "BUILD·MAINT·TEST를 더는 날 수 없음", 판정할 팀원이 없으면 "CHECK를 더는 날 수 없음".
+- 지시문은 `[ATC FLEET] CREW CHANGE · HOTEL (TEAM_H) · CC-0001`로 시작하고, 팀원을 멈추거나 그 모델로 만드는 법을 적은 뒤 `"TEAM_H CREW CHANGE CC-0001 COMPLETE"` 한 줄로 답하라고 끝난다.
+- **atc는 보내지 않는다.** **복사**를 눌러 그 팀의 CAPTAIN 세션에 붙여 넣고 **전달함**을 누른다. 대기 카드가 사라지고 기록에 전달 시각이 남는다.
+- 전달하기 전에 또 바꾸면 처음 구성 기준으로 합친 새 지시문(`CC-0002`)이 앞의 것을 대신한다. 원래 구성으로 되돌리면 대기 건만 닫힌다.
+- 아직 운항 전인 AIRCRAFT는 CREW CHANGE 없이 CREW BRIEFING에 새 구성이 들어간다.
+
+기록은 `~/.local/state/atc/crew-changes.jsonl`에 추가만 한다.
+
 ## 새 팀 들이기
 
 1. **ENTRY INTO SERVICE**를 누른다. 다음 빈 등록번호(`TEAM_G` …)와 AIRPORT가 채워진다.

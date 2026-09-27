@@ -7,7 +7,7 @@ atc knows each team session as an AIRCRAFT (`TEAM_B`, callsign BRAVO) and its le
 - **FLEET**: the teams, their crews, what they are rated for, their routes and targets.
 - **FLIGHT classification**: the kind of work, its size and the rating it needs.
 
-> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2; observed crew is not shown yet), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules (see section 5 for what is left), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), and CHECKRIDE recommendations for TYPE RATINGS (section 8.2). Decisions are listed at the end.
+> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE step 1 (sections 8.3 and 8.4), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules (see section 5 for what is left), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), and CHECKRIDE recommendations for TYPE RATINGS (section 8.2). Decisions are listed at the end.
 
 Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHEDULE operations), [dispatch.md](dispatch.md) (the planner that uses them).
 
@@ -69,7 +69,7 @@ Kept in `~/.local/state/atc/fleet.json`, like the AIRPORT registry (`airports.js
 }
 ```
 
-- **CREW COMPLEMENT** is declared, not detected. atc also shows the crew it actually observes (teammate sessions and subagent calls recorded under the CAPTAIN). The FLEET tab shows both side by side, so drift is visible.
+- **CREW COMPLEMENT** is declared, not detected. atc also shows the crew it actually observes (subagent calls recorded under the CAPTAIN's sessions, section 8.3). The FLEET tab shows both side by side, so drift is visible.
 - **TYPE RATING** starts from what the complement allows. A crew whose only helper is `flash-helper` cannot hold `SEC`, because vocado forbids DeepSeek for security work.
 - **ROUTES** and **TARGETS** are set by the SUPERVISOR. OCC may draft changes (stage 4) but never applies them.
 
@@ -248,7 +248,7 @@ The FLEET tab is also where teams are formed and stood down. atc never starts a 
 | Stand a team down for a while | **AOG** | Reason plus an optional release date. The planner stops proposing to it (`AOG — reason (~date)`) |
 | Remove a team | **RETIREMENT** | The AIRCRAFT leaves the FLEET list (kept under RETIRED with its date and reason) and gets no proposals. A live session is not closed. It can be restored |
 
-Later: **CREW CHANGE** (a briefing for a running team whose complement changed, sent by OCC after approval, from OCC S2).
+Later: sending **CREW CHANGE** through OCC after approval, from OCC S2 (step 1, the text without sending, is section 8.4).
 
 ### 8.2 CHECKRIDE
 
@@ -276,6 +276,55 @@ Only LOGBOOK entries with a known AIRCRAFT count, so every piece of evidence is 
 
 **API.** `GET /api/fleet/checkride` returns one row per AIRCRAFT in service and rating, with its status, reason, counts (FLIGHTs, reverts, average Codex rounds in each window) and evidence.
 
+### 8.3 Declared vs observed crew
+
+The complement is what the SUPERVISOR declared. The observed crew is what the AIRCRAFT's sessions actually called in the last 14 days (`OBSERVED_WINDOW_DAYS`, also returned as `observedWindowDays` by `GET /api/fleet`). Built in `server/crew-observed.ts`.
+
+**Privacy.** atc reads session metadata only:
+
+| Read | For |
+|---|---|
+| `~/.claude/projects/<project>/<sessionId>/custom-title.json` → `customTitle` | The session name, to link past sessions to a REGISTRATION |
+| `…/<sessionId>/subagents/agent-<id>.meta.json` → `agentType`, `model` | Who was called and on which model (`model` is there only when the call passed one) |
+| mtime of the meta file | The call time (the meta file has no timestamp; in the files checked its mtime equals its birth time, but a rewritten meta file moves the time later) |
+| mtime of the session folder, `subagents/` and `<sessionId>.jsonl` | Whether the session was active in the window. Only `stat`, never opened |
+
+Transcripts (`*.jsonl` bodies), prompts and the meta `description` are never read, stored or returned. The meta file is parsed and everything except `agentType` and `model` is dropped at once (`parseMeta`).
+
+**Which sessions.** A session belongs to an AIRCRAFT when its name equals the REGISTRATION: a live Claude session in the snapshot (the way atc links AIRCRAFT today), or any session folder whose `custom-title.json` says so and that was active in the window. When there is none, `observedCrew` and `crewDrift` are `null` (the card shows nothing observed, not "unused").
+
+**Mapping to POSITIONs** (`positionOf`, against the declared complement):
+
+| Observed | POSITION |
+|---|---|
+| An `agentType` equal to a member's `position` or `agent` (`ui-builder`, `ui-qa`, `flash-helper`, or anything the SUPERVISOR declared by agent type) | That member's POSITION |
+| `general-purpose` or `claude` with a `model` | The member whose `agent` contains the model family (`opus` → `claude-opus-5-5` → `backend`). No such member: none |
+| `general-purpose` or `claude` without a `model` | Treated as Opus: the call inherits the CAPTAIN's model, and CAPTAINs run on Opus. atc cannot see the real model, so `model` stays `null` |
+| Built-ins (`Explore`, `Plan`, `claude-code-guide`, `statusline-setup`) and other agent types | None, unless declared by name |
+
+Calls are grouped by `agentType` and `model`: `observedCrew: {agentType, position, model, count, lastAt}[]`, newest first.
+
+**Drift** (`crewDrift`):
+
+- `undeclared`: observed calls with no POSITION, by agent type, with the model when one was given (`Explore`, `general-purpose (sonnet)`). The card shows "선언에 없음: Explore".
+- `unused`: declared POSITIONs with no call in the window. A POSITION that is never a subagent (the `codex` reviewer of the `security` CONFIGURATION, which works through GitHub reviews) always shows here. Read it as "not seen", not as a fault.
+
+**Cost.** The server rescans `~/.claude/projects` for `custom-title.json` at most every 30 seconds. Titles are cached by file mtime and each session's calls by the mtime of its `subagents/` folder, so an unchanged session is not re-read.
+
+**Gap: agent-team teammates.** Teammates spawned by the CAPTAIN with the Agent tool (named or not, background or not) are recorded under the CAPTAIN's `subagents/` and are observed. Teammates of a Claude Code agent team that run as separate sessions (registered under `~/.claude/teams/<team>/`) are not: atc does not read the team config, and those sessions carry their own names. They show as `unused` if declared. Seeing them would need a metadata source that names the lead session; none is used yet.
+
+### 8.4 CREW CHANGE (step 1: text, never sent)
+
+When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT through `PATCH /api/fleet/:registration`, atc writes a CREW CHANGE: a text for the CAPTAIN, like the CREW BRIEFING but for a running team. Built in `server/crew-change.ts`; the only hook in `fleet.ts` is one call after the profile is saved.
+
+- **In service** means not retired and a live session with that name exists. An AIRCRAFT that has not entered service gets its crew from the CREW BRIEFING instead. AOG AIRCRAFT count as in service.
+- **Diff** (`diffCrew`): members are compared by their one-line form `position: agent (limits)`, the same as the CREW BRIEFING. A member whose agent or limits changed is removed and added; the text pairs a POSITION that leaves and returns once as "바뀌는 CREW".
+- **TYPE RATING impact** (`ratingImpact`), from the planner rules of sections 4.3 and 5: losing or gaining `BUILD`/`MAINT`/`TEST` (a member who is not `flash-helper` and has no `no BUILD` or `read-only`), `CHECK` (no `no CHECK verdicts`), the ability to hold `SEC` (`canHoldSec`; `applyPatch` still refuses `SEC` without it), ratings added or removed in the same PATCH, and `UI` kept without both `ui-builder` and `ui-qa`.
+- **Text** (`crewChangeText`): header `[ATC FLEET] CREW CHANGE · <CALLSIGN> (<REG>) · CC-0001`, then crew leaving, joining and changing, the full new complement, TYPE RATING with the impact, and how to apply it (stop leaving teammates after their current work, create joining ones with the given agent and model, tell changed ones their new limits), ending with `"<REG> CREW CHANGE CC-0001 COMPLETE"`.
+- **Record**: `~/.local/state/atc/crew-changes.jsonl`, append-only. `{"op":"created","id":"CC-0001","registration","at","before":{complement,ratings},"after":{…},"added","removed","ratingImpact","text"}`, then `{"op":"delivered","id","at"}` or `{"op":"superseded","id","at","by"}`. Folded status: `pending` → `delivered` or `superseded`.
+- **Superseding**: a new complement change while one is pending closes it (`by` the new id) and writes a new one diffed from the pending one's original `before` to the latest `after`. If that diff is empty (the crew went back), the pending one is closed with `by: null` and nothing new is written. A PATCH that changes only the ratings rewrites a pending CREW CHANGE (so its TYPE RATING lines stay true) but never starts one.
+- **Never sent.** There is no send path. The FLEET card shows `pendingCrewChange: {id, at, text, added, removed, ratingImpact}` with a copy button; the SUPERVISOR pastes it to the CAPTAIN and presses 전달함, which calls `POST /api/fleet/:registration/crew-change/:id/delivered` (404 unknown, 409 already closed). `GET /api/fleet/crew-changes?registration=&limit=` returns the recent history. Sending through OCC comes later, behind a switch.
+
 ## 9. Moving from `lane:` to `tail:`
 
 1. The planner reads `tail:` and keeps reading `lane:` as an alias for two weeks, marking it "deprecated" in the exclusion reason.
@@ -286,7 +335,7 @@ Only LOGBOOK entries with a known AIRCRAFT count, so every piece of evidence is 
 ## 10. Implementation order
 
 1. ✅ `tail:` in the planner with the `lane:` alias. Then the Linear labels, VOC-196 and the note to President
-2. ✅ `fleet.json` registry, API and FLEET tab (read and edit), with defaults from the vocado crew rules. Observed crew (teammate sessions next to the declared complement) is left for later
+2. ✅ `fleet.json` registry, API and FLEET tab (read and edit), with defaults from the vocado crew rules. Observed crew next to the declared complement and CREW CHANGE step 1 are in sections 8.3 and 8.4
 3. ✅ Classification labels read by the planner: TYPE RATING and FLIGHT TYPE hard rules, WAKE slots, ROUTE score (the Risk group counts as SEC; label groups are read as `group:name`)
 4. ◐ The DISPATCH card shows the classification. Still to do: FIDS, and DISPATCH notes that suggest a classification when labels are missing
 5. OCC S1 `CLASSIFY` drafts (with the SCHEDULE work in occ.md)
