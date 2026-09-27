@@ -361,3 +361,9 @@
     display: none;
   }
 }
+
+/* 머지 슬롯 스위치 옆 안내(7단계) */
+.atfm-note {
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}

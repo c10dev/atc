@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fold } from "./clearances.ts";
 import { buildBrief, formatClearance, landTextOf, resolveSession } from "./controller.ts";
+import { DEFAULT_ATFM } from "./atfm.ts";
 import { diffSnapshots, EventLog } from "./events.ts";
 import type { Alert, Claim, Clearance, LandingBlockCode, PullRequest, Session, Snapshot, Ticket, Workspace } from "./model.ts";
 
@@ -270,6 +271,9 @@ test("ATFM: 켜진 GROUND STOP은 그 AIRPORT의 landingQueue에 groundStop을 �
   const q = buildBrief(s, { events: [], reset: false, cursor: "e:0" }, [], T0).landingQueue;
   assert.deepEqual(q.map((x) => x.groundStop?.trigger ?? null), ["main-broken", "main-broken"]);
   assert.deepEqual(q.map((x) => x.slot?.slot), ["in-slot", "waiting-slot"]); // CI 있는 저장소는 1개
+  assert.deepEqual(q.map((x) => x.slotHold), [null, null]); // 그림자(기본): TOWER는 따르지 않는다
+  const slotsOn = buildBrief(s, { events: [], reset: false, cursor: "e:0" }, [], T0, { ...DEFAULT_ATFM, slots: "on" }).landingQueue;
+  assert.deepEqual(slotsOn.map((x) => x.slotHold?.text ?? null), [null, "머지 슬롯 대기 — 저장소 안 2번째, 동시 LAND 1"]); // 7단계
   const shadow = snapshot({ airports, pulls: s.pulls, atfm: { mains, groundStops: [gs(false)] } });
   assert.deepEqual(buildBrief(shadow, { events: [], reset: false, cursor: "e:0" }, [], T0).landingQueue.map((x) => x.groundStop), [null, null]);
   const off = snapshot({ airports, pulls: s.pulls, atfm: { mains: [], groundStops: [] } });

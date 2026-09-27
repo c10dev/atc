@@ -325,7 +325,7 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 - **GROUND STOP**: 스냅샷마다 계산한다. 조건은 main 깨짐, CI 실패 몰림, CI 혼잡(GROUND DELAY), LOS 증가, 수동이다.
   - 켤 수 있는 것은 "main 깨짐"(`groundStop.mainBroken`: off/shadow/on)과 "수동"(`groundStop.manual`: off/on)뿐이고, 나머지는 그림자다.
   - 켜진 출발 중지가 걸리면 그 AIRPORT의 ASSIGN이 계획에서 빠지고(`GROUND STOP — …`), `dispatch release`가 거절된다. TOWER는 그 AIRPORT에 LAND를 내지 않는다: `landingQueue` 항목에 `groundStop`이 붙고, `groundstop.started`·`groundstop.ended` 이벤트에 HOLD·CONTINUE를 보낸다.
-- **머지 슬롯(그림자)**: `landingQueue[].slot`에 `in-slot`·`waiting-slot`이 붙는다. CI가 있는 저장소(vocado_nextjs)는 1개, 없는 저장소는 무제한이다. Urgent가 앞에 오되 이미 LAND가 나간 PR은 밀어내지 않고, LAND는 30분이 지나면 만료된다. TOWER는 아직 따르지 않는다.
+- **머지 슬롯**: `landingQueue[].slot`에 `in-slot`·`waiting-slot`이 붙는다. CI가 있는 저장소(vocado_nextjs)는 1개, 없는 저장소는 무제한이다. Urgent가 앞에 오되 이미 LAND가 나간 PR은 밀어내지 않고, LAND는 30분이 지나면 만료된다. 기본은 그림자라 TOWER가 따르지 않는다. `atfm.json` `slots`를 `on`으로 켜면(ATC-22) `waiting-slot` PR에 `slotHold`가 붙고 TOWER는 그 PR에 LAND를 내지 않는다(`slot-hold` 기록).
 - **자동 배정 대상(그림자)**: 열린 ASSIGN마다 A1~A10, CLASSIFY 초안마다 S1~S4를 판정하고 빠진 조건을 보여 준다. 사람 판정과 맞춘 그림자 정확도와 켜는 조건도 보여 준다. 자동으로 승인하는 것은 없다.
 - **API와 화면**: `GET /api/atfm`, `POST /api/atfm/switch|off|stops|stops/:airport/release`, DISPATCH 탭의 ATFM 블록. `via: "atfm"`은 사람 판정 점검과 CROSSCHECK 일치에서 모두 뺀다.
 

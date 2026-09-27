@@ -4,7 +4,7 @@ import { timeAgo } from "../derive.ts";
 import "./Atfm.css";
 
 // ATFM 3단계(docs/atfm.md). 대부분 그림자 운용: 계산해서 보여 주기만 한다.
-// 켤 수 있는 것은 GROUND STOP 두 가지(main 깨짐, 수동)뿐이다.
+// 켤 수 있는 것은 GROUND STOP 두 가지(main 깨짐, 수동)와 머지 슬롯(7단계: 켜면 TOWER가 in-slot PR에만 LAND)이다.
 
 type StopMode = "off" | "shadow" | "on";
 type ShadowMode = "off" | "shadow";
@@ -13,7 +13,7 @@ type TurnState = "pass" | "fail" | "insufficient" | "check";
 
 interface AtfmConfig {
   groundStop: { mainBroken: StopMode; manual: "off" | "on"; failureWave: ShadowMode; congestion: ShadowMode; los: ShadowMode };
-  slots: ShadowMode;
+  slots: StopMode;
   autoAssign: ShadowMode;
   s3: ShadowMode;
   slotLimits: Record<string, number | null>;
@@ -107,6 +107,7 @@ const MODE_TEXT: Record<StopMode, string> = { off: "꺼짐", shadow: "그림자"
 const TURN_MARK: Record<TurnState, string> = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족", check: "△ 확인 필요" };
 // 켜면 멈추는 것(확인 문구에 씀)
 const ON_EFFECT = "켜면 해당 AIRPORT에 새 ASSIGN과 LAND가 멈춘다.";
+const SLOTS_ON_EFFECT = "켜면 TOWER가 저장소마다 in-slot PR에만 LAND를 낸다(vocado_nextjs는 한 번에 1개). waiting-slot PR은 앞 PR이 머지되거나 LAND 뒤 30분이 지날 때까지 LAND를 기다린다.";
 
 const pct = (x: number | null | undefined) => (x === null || x === undefined ? "—" : `${Math.round(x * 100)}%`);
 const aptOf = (a: string | null) => a ?? "—";
@@ -285,8 +286,21 @@ export function AtfmPanel({ refreshKey, now }: { refreshKey: string; now: number
 
       <details className="atfm-sec">
         <summary>
-          머지 슬롯 <em>{MODE_TEXT[config.slots]} · CLEARED PR {brief.slots.length}</em>
+          머지 슬롯 <em>{config.slots === "on" ? "ENFORCED" : MODE_TEXT[config.slots]} · CLEARED PR {brief.slots.length}</em>
         </summary>
+        <div className="atfm-switches">
+          <Segmented
+            label="머지 슬롯"
+            value={config.slots}
+            options={["off", "shadow", "on"]}
+            disabled={busy}
+            onPick={(v) => {
+              if (v === "on" && !confirm(`머지 슬롯을 켤까요?\n\n${SLOTS_ON_EFFECT}`)) return;
+              act("/api/atfm/switch", { key: "slots", value: v });
+            }}
+          />
+          <span className="faint atfm-note">{config.slots === "on" ? "TOWER가 waiting-slot PR에는 LAND를 내지 않는다" : "그림자: 계산해서 보여 주기만, TOWER는 따르지 않는다"}</span>
+        </div>
         {brief.slots.length ? (
           <ul className="atfm-list">
             {brief.slots.map((s) => (
@@ -296,6 +310,7 @@ export function AtfmPanel({ refreshKey, now }: { refreshKey: string; now: number
                   #{s.pr}
                 </a>
                 <span className="atfm-slot">{s.slot === "in-slot" ? "in-slot" : "waiting-slot"}</span>
+                {config.slots === "on" && s.slot === "waiting-slot" && <span className="atfm-tag t-on">LAND 보류</span>}
                 <span className="mono faint" title="저장소 안 슬롯 순서 / 동시 LAND 수">
                   {s.lanePos}/{s.limit ?? "∞"}
                 </span>
@@ -362,7 +377,7 @@ export function AtfmPanel({ refreshKey, now }: { refreshKey: string; now: number
 // 켤 수 있는 스위치: 버튼 묶음(aria-pressed)
 function Segmented<T extends string>({ label, value, options, disabled, onPick }: { label: string; value: T; options: readonly T[]; disabled?: boolean; onPick: (v: T) => void }) {
   return (
-    <span className="atfm-seg" role="group" aria-label={`${label} GROUND STOP 스위치`}>
+    <span className="atfm-seg" role="group" aria-label={`${label} 스위치`}>
       <span className="atfm-seg-label">{label}</span>
       {options.map((o) => (
         <button key={o} type="button" className={`atfm-seg-btn m-${o}`} aria-pressed={o === value} disabled={disabled} onClick={() => o !== value && onPick(o)}>

@@ -40,7 +40,7 @@ export interface AtfmConfig {
     congestion: ShadowMode;
     los: ShadowMode;
   };
-  slots: ShadowMode;
+  slots: StopMode; // on이면 TOWER가 in-slot PR에만 LAND(7단계)
   autoAssign: ShadowMode;
   s3: ShadowMode;
   slotLimits: Record<string, number | null>; // AIRPORT 코드 → 동시에 LAND를 받는 PR 수(null은 무제한). 없으면 기본 규칙
@@ -82,7 +82,7 @@ export function parseAtfm(raw: unknown): AtfmConfig {
       congestion: pick(g.congestion, ["off", "shadow"] as const, d.congestion),
       los: pick(g.los, ["off", "shadow"] as const, d.los),
     },
-    slots: pick(r.slots, ["off", "shadow"] as const, DEFAULT_ATFM.slots),
+    slots: pick(r.slots, ["off", "shadow", "on"] as const, DEFAULT_ATFM.slots),
     autoAssign: pick(r.autoAssign, ["off", "shadow"] as const, DEFAULT_ATFM.autoAssign),
     s3: pick(r.s3, ["off", "shadow"] as const, DEFAULT_ATFM.s3),
     slotLimits: limits,
@@ -113,7 +113,7 @@ const SWITCHES: Record<string, readonly string[]> = {
   "groundStop.failureWave": ["off", "shadow"],
   "groundStop.congestion": ["off", "shadow"],
   "groundStop.los": ["off", "shadow"],
-  slots: ["off", "shadow"],
+  slots: ["off", "shadow", "on"],
   autoAssign: ["off", "shadow"],
   s3: ["off", "shadow"],
 };
@@ -131,7 +131,7 @@ export function setSwitch(cfg: AtfmConfig, key: unknown, value: unknown): AtfmCo
 // 모든 스위치를 그림자(켤 수 없는 것은 그대로, on은 shadow로, 수동은 off)로 — "ATFM OFF"
 export function allShadow(cfg: AtfmConfig): AtfmConfig {
   const g = cfg.groundStop;
-  return { ...cfg, groundStop: { ...g, mainBroken: g.mainBroken === "on" ? "shadow" : g.mainBroken, manual: "off" } };
+  return { ...cfg, groundStop: { ...g, mainBroken: g.mainBroken === "on" ? "shadow" : g.mainBroken, manual: "off" }, slots: cfg.slots === "on" ? "shadow" : cfg.slots };
 }
 
 // ── 데이터: 기본 브랜치 head의 CI (sources/github.ts가 채운다) ──
@@ -280,7 +280,7 @@ export function applyGroundStops<P extends { assign: { flight: string; airport: 
   return { ...plan, assign: keep, excluded: [...plan.excluded, ...moved] };
 }
 
-// ── 머지 슬롯 (그림자) ──
+// ── 머지 슬롯 (그림자, 켜면 TOWER가 따른다 — 7단계) ──
 
 export const LAND_TIMEOUT_MS = 30 * MIN; // 결정 7
 
@@ -324,6 +324,13 @@ export function slotsOf(
     });
   }
   return out;
+}
+
+// 슬롯이 켜졌을 때(slots "on") LAND를 내지 않을 이유(순수). 그림자·꺼짐이거나 in-slot이면 null
+export function slotHoldOf(slot: SlotView | null | undefined, mode: AtfmConfig["slots"]): { text: string } | null {
+  if (mode !== "on" || !slot || slot.slot !== "waiting-slot") return null;
+  if (slot.landTimedOut) return { text: `LAND 뒤 ${LAND_TIMEOUT_MS / MIN}분이 지나도 머지되지 않아 슬롯을 비움 — 다음 PR이 먼저` };
+  return { text: `머지 슬롯 대기 — 저장소 안 ${slot.lanePos}번째, 동시 LAND ${slot.limit ?? "무제한"}` };
 }
 
 // 이 PR을 연 뒤 같은 STAND(없으면 같은 FLIGHT)로 나간 마지막 LAND(controller.ts의 짝짓기와 같다)

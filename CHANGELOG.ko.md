@@ -16,6 +16,11 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- ATFM 7번: 머지 슬롯을 켤 수 있다(ATC-22, [docs/atfm.ko.md](docs/atfm.ko.md) 5장).
+  - `atfm.json` `slots`가 `off | shadow | on`을 받는다(기본은 그대로 `shadow`). DISPATCH 탭 ATFM 블록에 확인을 거치는 스위치가 있고, ATFM OFF는 `on`을 `shadow`로 되돌린다.
+  - `on`이면 TOWER 브리핑의 `waiting-slot` PR마다 `slotHold`가 붙는다(`slotHoldOf`: 슬롯을 쥔 PR 뒤에서 기다림, 또는 LAND 30분이 지나 슬롯을 비움). TOWER는 그 PR에 LAND도 메시지도 보내지 않고, 앞 PR이 머지되거나 그 LAND가 30분을 넘기면 `slotHold`가 사라져 LAND를 낸다(TOWER 규정, 한국어·영어).
+  - 막은 PR head마다 FLIGHT RECORDER에 `atfm` `slot-hold` 줄이 한 번 남는다.
+  - 아직 없음: 1주 그림자 비교 숫자(저장소별 동시 LAND, 머지마다 BEHIND).
 - OCC가 FLEET TARGET·ROUTE 변경을 그림자 운용으로 초안한다(ATC-25, [docs/fleet.ko.md](docs/fleet.ko.md) 7.4).
   - AIRCRAFT 하나에 대한 SCHEDULE 종류 둘(`flight: null`): `TARGET`(`flightsPerWeek`, `onTime`, `none`이면 지움)과 `ROUTE`(Linear 프로젝트 `add`·`remove`). `atcctl schedule draft TARGET|ROUTE <TEAM_X> … -- <근거>`, NETWORK 개요를 읽는 `atcctl network`.
   - 근거는 초안을 만들 때 atc가 NETWORK 함수로 붙인다. `TARGET`: 그 AIRCRAFT의 목표와 실적, 14일 ARRIVED, 4주 주별 ARRIVED, ROUTE 행. `ROUTE`: 건드리는 프로젝트의 행과 최근 14일 ARRIVED가 간 곳(`server/network-drafts.ts`).
