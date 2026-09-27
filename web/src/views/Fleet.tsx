@@ -223,6 +223,11 @@ function Actuals({ a }: { a: AircraftView }) {
         14일 ARRIVED {x.total} · 되돌림 <span className={x.reverted ? "fl-bad" : undefined}>{x.reverted}</span> · LOS{" "}
         <span className={x.los ? "fl-bad" : undefined}>{x.los}</span>
       </p>
+      {x.landingWait.medianMin != null && (
+        <p className="fl-actuals faint" title="PR을 연 뒤 머지될 때까지(리뷰·머지 대기). 정시율에는 넣지 않는다">
+          착륙 대기 중앙값 {blockTime(Math.round(x.landingWait.medianMin))}
+        </p>
+      )}
       {x.recent.length ? (
         <ul className="fl-log" aria-label={`${a.registration} 최근 FLIGHT`}>
           {x.recent.map((e) => (
@@ -231,8 +236,18 @@ function Actuals({ a }: { a: AircraftView }) {
                 {e.flight ? flightNumber(e.flight) : "AD HOC"}
               </a>
               <span className="faint">#{e.pr.number}</span>
-              <span className="fl-log-block" title={e.expectMin == null ? "기대치 없음" : `기대 ${blockTime(Math.round(e.expectMin))} 이내`}>
-                {blockTime(e.blockMin)}
+              <span
+                className="fl-log-block"
+                title={
+                  e.blockMin == null
+                    ? "팀 소요 시간 모름(점유가 PR보다 늦게 잡힘)"
+                    : `팀 소요 시간(착수 → PR)${e.expectMin == null ? ", 기대치 없음" : `, 기대 ${blockTime(Math.round(e.expectMin))} 이내`}`
+                }
+              >
+                {e.blockMin == null ? "—" : blockTime(e.blockMin)}
+              </span>
+              <span className="faint" title="착륙 대기(PR → 머지)">
+                +{blockTime(e.landingWaitMin)}
               </span>
               {e.onTime != null && <span className={e.onTime ? "fl-ontime" : "fl-late"}>{e.onTime ? "ON TIME" : "DELAYED"}</span>}
               {e.reverted && <span className="fl-bad">REVERTED</span>}

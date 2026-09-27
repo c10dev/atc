@@ -35,7 +35,8 @@ export interface LogEntry {
   departedAt: string;
   departedFrom: "claim" | "pr";
   arrivedAt: string;
-  blockMin: number;
+  blockMin: number | null; // 팀 소요 시간: departedAt → PR을 연 시각. 점유가 없거나 PR 뒤에 생겼으면 null(모름)
+  landingWaitMin: number; // 착륙 대기: PR을 연 시각 → 머지. 정시율에 넣지 않는다
   codexFindings: number; // Codex COMMENTED 리뷰 수(모든 커밋) = Codex가 지적한 리뷰 회차
   changesRequested: boolean;
   reverted: boolean;
@@ -151,6 +152,7 @@ export function buildEntry(pr: GhMerged, ctx: EntryContext): LogEntry {
   const departedFrom = firstClaim && firstClaim <= pr.createdAt ? "claim" : "pr";
   const departedAt = departedFrom === "claim" ? firstClaim! : pr.createdAt;
   const departedMs = Date.parse(departedAt);
+  const openedMs = Date.parse(pr.createdAt);
   const reviews = pr.reviews ?? [];
   return {
     key: `${ctx.slug}#${pr.number}`,
@@ -163,7 +165,8 @@ export function buildEntry(pr: GhMerged, ctx: EntryContext): LogEntry {
     departedAt,
     departedFrom,
     arrivedAt: pr.mergedAt,
-    blockMin: Math.max(0, Math.round((arrivedMs - departedMs) / MIN)),
+    blockMin: departedFrom === "claim" ? Math.max(0, Math.round((openedMs - departedMs) / MIN)) : null,
+    landingWaitMin: Math.max(0, Math.round((arrivedMs - openedMs) / MIN)),
     codexFindings: reviews.filter((r) => isCodexBot(r.author?.login) && r.state === "COMMENTED").length,
     changesRequested: reviews.some((r) => r.state === "CHANGES_REQUESTED"),
     reverted: false,
@@ -208,6 +211,7 @@ export interface Actuals {
   reverted: number; // 최근 14일
   los: number; // 최근 14일 LOS 합
   total: number; // 최근 14일 ARRIVED
+  landingWait: { medianMin: number | null; count: number }; // 최근 14일 착륙 대기(PR을 연 뒤 머지까지) 중앙값
   recent: (LogEntry & { expectMin: number | null; onTime: boolean | null })[];
 }
 
@@ -230,10 +234,10 @@ const groupOf = (e: LogEntry) => (e.class ? `${e.class.type}·${e.class.wake}` :
 
 // 기대 block time(분). 라벨로 정한 L·M·H는 고정값, 그 밖(J, WAKE 라벨 없음, AD HOC)은
 // 같은 FLIGHT TYPE·WAKE(AD HOC은 AD HOC끼리) 다른 기록의 중앙값. 3건이 안 되면 null(정시율에서 뺀다).
-// 중앙값에는 AIRCRAFT를 아는 기록만 쓴다: 점유가 없는 과거분은 PR을 연 뒤부터만 재서 block time이 짧게 나온다.
+// 중앙값에는 AIRCRAFT와 팀 소요 시간을 아는 기록만 쓴다.
 export function expectationMin(e: LogEntry, all: LogEntry[]): number | null {
   if (e.class?.explicit.wake && WAKE_EXPECT_MIN[e.class.wake] != null) return WAKE_EXPECT_MIN[e.class.wake]!;
-  const others = all.filter((x) => x.key !== e.key && x.aircraft && groupOf(x) === groupOf(e)).map((x) => x.blockMin);
+  const others = all.filter((x) => x.key !== e.key && x.aircraft && x.blockMin !== null && groupOf(x) === groupOf(e)).map((x) => x.blockMin!);
   return others.length >= MEDIAN_MIN_SAMPLES ? median(others) : null;
 }
 
@@ -244,7 +248,8 @@ export function computeActuals(entries: LogEntry[], registration: string, now: n
   const window = mine.filter((e) => Date.parse(e.arrivedAt) >= since && Date.parse(e.arrivedAt) <= now);
   const judged = (e: LogEntry) => {
     const expectMin = expectationMin(e, entries);
-    return { ...e, expectMin, onTime: expectMin === null ? null : e.blockMin <= expectMin };
+    // 팀 소요 시간을 모르면(null) 정시율에서 뺀다
+    return { ...e, expectMin, onTime: expectMin === null || e.blockMin === null ? null : e.blockMin <= expectMin };
   };
   const measured = window.map(judged).filter((e) => e.onTime !== null);
   const within = measured.filter((e) => e.onTime).length;
@@ -255,6 +260,7 @@ export function computeActuals(entries: LogEntry[], registration: string, now: n
     reverted: window.filter((e) => e.reverted).length,
     los: window.reduce((a, e) => a + e.los, 0),
     total: window.length,
+    landingWait: { medianMin: median(window.map((e) => e.landingWaitMin)), count: window.length },
     recent: mine.slice(0, RECENT).map(judged),
   };
 }

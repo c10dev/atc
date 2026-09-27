@@ -74,7 +74,8 @@ test("LOGBOOK 한 줄: STAND의 점유로 AIRCRAFT·출발 시각을, 리뷰로 
   assert.deepEqual(e.stands, ["/w/atc-logbook"]);
   assert.equal(e.departedAt, "2026-09-26T10:30:00Z"); // 그 STAND의 가장 이른 점유(누구든)
   assert.equal(e.departedFrom, "claim");
-  assert.equal(e.blockMin, 210);
+  assert.equal(e.blockMin, 90); // 팀 소요 시간: 착수 → PR을 연 시각
+  assert.equal(e.landingWaitMin, 120); // 착륙 대기: PR → 머지
   assert.equal(e.codexFindings, 2);
   assert.equal(e.changesRequested, true);
   assert.equal(e.los, 1);
@@ -88,7 +89,8 @@ test("LOGBOOK 한 줄: 점유가 없으면 PR을 연 시각에서 출발하고, 
   assert.equal(e.aircraft, null);
   assert.deepEqual(e.stands, []);
   assert.equal(e.departedFrom, "pr");
-  assert.equal(e.blockMin, 120);
+  assert.equal(e.blockMin, null); // 팀 소요 시간은 모름
+  assert.equal(e.landingWaitMin, 120);
 });
 
 test("LOGBOOK STAND 찾기: landing 기록이 없으면 그 브랜치의 워크트리, 그다음 이름에 ticket key가 있는 워크트리", () => {
@@ -145,11 +147,35 @@ const entry = (n: number, over: Partial<LogEntry> = {}): LogEntry => ({
   departedFrom: "claim",
   arrivedAt: "2026-09-24T10:00:00Z",
   blockMin: 100,
+  landingWaitMin: 60,
   codexFindings: 0,
   changesRequested: false,
   reverted: false,
   los: 0,
   ...over,
+});
+
+test("점유가 PR보다 늦게 잡히면 PR을 연 시각에서 출발하고, 팀 소요 시간은 모름(null)으로 정시율·중앙값에서 뺀다", () => {
+  const late = buildEntry(
+    pr(),
+    ctx({ claims: [{ sessionId: "j", workspacePath: "/w/atc-logbook", since: "2026-09-26T12:30:00Z", lastAt: "2026-09-26T13:50:00Z" }] }),
+  );
+  assert.equal(late.aircraft, "TEAM_J"); // AIRCRAFT는 그대로 안다
+  assert.equal(late.departedFrom, "pr");
+  assert.equal(late.departedAt, "2026-09-26T12:00:00Z");
+  assert.equal(late.blockMin, null);
+  assert.equal(late.landingWaitMin, 120);
+
+  const now = Date.parse("2026-09-26T12:00:00Z");
+  const unknown = entry(1, { blockMin: null, landingWaitMin: 300, arrivedAt: "2026-09-25T10:00:00Z" });
+  const known = entry(2, { blockMin: 100, landingWaitMin: 100, arrivedAt: "2026-09-24T10:00:00Z" });
+  const a = computeActuals([unknown, known], "TEAM_J", now, Date.parse("2026-09-21T00:00:00Z"));
+  assert.deepEqual(a.onTime, { rate: 1, within: 1, measured: 1 });
+  assert.equal(a.recent[0].onTime, null);
+  assert.deepEqual(a.landingWait, { medianMin: 200, count: 2 }); // 착륙 대기는 둘 다 센다
+  const group = (n: number, blockMin: number | null) =>
+    entry(n, { blockMin, class: { type: "BUILD", wake: "M", ratings: [], explicit: { type: false, wake: false } } });
+  assert.equal(expectationMin(group(9, 50), [group(1, null), group(2, null), group(3, 40), group(4, 60)]), null); // 아는 것 2건뿐
 });
 
 test("정시 기대치: 라벨로 정한 L·M·H는 고정값, 그 밖은 같은 TYPE·WAKE 중앙값(3건 이상)", () => {

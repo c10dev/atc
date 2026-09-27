@@ -170,7 +170,7 @@ Per AIRCRAFT, set by the SUPERVISOR in the FLEET tab. They are shown, not scored
 | Target | Measured from |
 |---|---|
 | FLIGHTs per week | LOGBOOK entries that ARRIVED this week (Monday 00:00 local time to now) |
-| On-time rate | LOGBOOK entries of the last 14 days: block time within the expectation of section 7.2 |
+| On-time rate | LOGBOOK entries of the last 14 days: the team's block time (start to PR opened) within the expectation of section 7.2. The wait for review and merge is shown apart as the landing wait |
 | Reverted work | LOGBOOK entries of the last 14 days marked `reverted` (a `Revert "…"` PR was merged). Reopened FLIGHTs are not counted yet |
 | Conflicts | LOS on the FLIGHT's STANDs while it was flown, summed over LOGBOOK entries of the last 14 days |
 
@@ -183,7 +183,7 @@ An aircraft logbook records every flight an airframe has flown. atc's LOGBOOK do
 Kept in `~/.local/state/atc/logbook.jsonl`, append-only like the other records. Two operations:
 
 ```json
-{"op":"arrived","t":"…","key":"owner/repo#31","aircraft":"TEAM_J","flight":"VOC-201","class":{"type":"BUILD","wake":"M","ratings":["UI"],"explicit":{"type":true,"wake":true}},"airport":"ATCC","pr":{"repo":"owner/repo","number":31,"url":"…","title":"…"},"stands":["/home/…/worktrees/atc-logbook"],"departedAt":"…","departedFrom":"claim","arrivedAt":"…","blockMin":312,"codexFindings":1,"changesRequested":false,"reverted":false,"los":0}
+{"op":"arrived","t":"…","key":"owner/repo#31","aircraft":"TEAM_J","flight":"VOC-201","class":{"type":"BUILD","wake":"M","ratings":["UI"],"explicit":{"type":true,"wake":true}},"airport":"ATCC","pr":{"repo":"owner/repo","number":31,"url":"…","title":"…"},"stands":["/home/…/worktrees/atc-logbook"],"departedAt":"…","departedFrom":"claim","arrivedAt":"…","blockMin":190,"landingWaitMin":122,"codexFindings":1,"changesRequested":false,"reverted":false,"los":0}
 {"op":"reverted","t":"…","key":"owner/repo#31","by":{"number":35,"url":"…"}}
 ```
 
@@ -198,7 +198,8 @@ Kept in `~/.local/state/atc/logbook.jsonl`, append-only like the other records. 
 | `stands` | The STANDs (worktree paths) the FLIGHT was flown from |
 | `departedAt` | The earliest claim `since` on those STANDs (claims that started after the merge are ignored). When there is no claim, or the PR was opened earlier, the PR's `createdAt` (`departedFrom: "pr"`): a claim restarts its `since` after 3 idle hours, so the PR can be the earlier sign |
 | `arrivedAt` | The PR's `mergedAt` |
-| `blockMin` | `arrivedAt − departedAt` in whole minutes (wall clock, nights included) |
+| `blockMin` | The team's block time: PR `createdAt − departedAt` in whole minutes (wall clock, nights included). `null` when `departedFrom` is `"pr"`: with no claim before the PR was opened, atc does not know when the team started (the zero it would compute is not a real duration) |
+| `landingWaitMin` | The landing wait: `arrivedAt − ` PR `createdAt` in whole minutes, time spent on review and merge by the SUPERVISOR. Not part of the on-time rate |
 | `codexFindings` | Number of Codex `COMMENTED` reviews on the PR over all its commits, i.e. review rounds in which Codex found something. Not only the head: by merge time the head's findings are normally resolved, so the head count would almost always be 0 |
 | `changesRequested` | Anyone left a `CHANGES_REQUESTED` review at some point |
 | `reverted` | Set by a later `reverted` line |
@@ -221,12 +222,13 @@ Kept in `~/.local/state/atc/logbook.jsonl`, append-only like the other records. 
 | Actual | Rule |
 |---|---|
 | This week | Entries that ARRIVED since Monday 00:00 (server local time), shown against `flightsPerWeek`: "이번 주 2/3" |
-| On-time | Of the entries of the last 14 days that have an expectation, the share with `blockMin` within it, shown against `onTime` |
+| On-time | Of the entries of the last 14 days that have both an expectation and a `blockMin`, the share with `blockMin` within the expectation, shown against `onTime`. Entries with `blockMin: null` are left out, not counted as on time |
+| Landing wait | Median `landingWaitMin` of the entries of the last 14 days (all of them, since the PR times are always known): "착륙 대기 중앙값 5h" |
 | Reverted | Entries of the last 14 days marked `reverted` |
 | LOS | Sum of `los` over entries of the last 14 days |
-| Recent | The last 5 entries |
+| Recent | The last 5 entries: team block time (or `—`), `+` landing wait, ON TIME / DELAYED |
 
-**Expectation.** A FLIGHT whose WAKE comes from a label uses the section 4.2 block time, read as an upper bound: `L` 60 min, `M` 240 min ("a few hours" taken as 4 hours), `H` 2880 min (2 days). `J`, an unlabeled WAKE and AD HOC work have no fixed expectation; they are compared with the median `blockMin` of other LOGBOOK entries of the same FLIGHT TYPE and WAKE (AD HOC is its own group), once there are at least 3. Only entries with a known AIRCRAFT feed the median: back-filled entries without claims are timed from the PR's opening and would pull it down. Otherwise the entry is not counted in the on-time rate. When a category reaches about 20 entries its median may replace the fixed number (section 4.2); that switch is not built yet.
+**Expectation.** A FLIGHT whose WAKE comes from a label uses the section 4.2 block time, read as an upper bound: `L` 60 min, `M` 240 min ("a few hours" taken as 4 hours), `H` 2880 min (2 days). `J`, an unlabeled WAKE and AD HOC work have no fixed expectation; they are compared with the median `blockMin` of other LOGBOOK entries of the same FLIGHT TYPE and WAKE (AD HOC is its own group), once there are at least 3. Only entries with a known AIRCRAFT and a known `blockMin` feed the median. Otherwise the entry is not counted in the on-time rate. When a category reaches about 20 entries its median may replace the fixed number (section 4.2); that switch is not built yet.
 
 ## 8. FLEET tab
 

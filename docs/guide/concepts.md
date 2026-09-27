@@ -43,7 +43,8 @@ LOGBOOK의 ARRIVED는 Linear Done이 아니라 PR 머지로 센다. 머지된 PR
 | 용어 | 뜻 |
 |---|---|
 | LOGBOOK | AIRCRAFT별로 끝낸(ARRIVED) FLIGHT의 기록. TARGETS 실적을 여기서 센다 |
-| block time | STAND를 처음 점유한 시각부터 PR 머지까지 걸린 시간 |
+| block time | 팀 소요 시간: STAND를 처음 점유한 시각부터 PR을 연 시각까지 |
+| 착륙 대기 | PR을 연 시각부터 머지까지(리뷰·머지 대기). 정시율에 넣지 않는다 |
 | ON TIME / DELAYED | block time이 WAKE 기대치(또는 같은 종류의 중앙값) 안인지 |
 | REVERTED | 머지 뒤 `Revert "…"` PR로 되돌려진 FLIGHT |
 
