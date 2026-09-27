@@ -229,7 +229,7 @@ A Claude session opened in the `controller/` folder becomes the TOWER session (C
 | `GET /api/controller/brief?consumer=controller` | Events since the last ack + current state (open alerts, LANDING SEQUENCE with `landText` for CLEARED PRs, GitHub status, CLEARANCEs without READBACK, traffic) |
 | `POST /api/controller/ack` | `{cursor}` mark as handled (`~/.local/state/atc/consumers/`) |
 | `GET /api/landing/reviews` | Codex-unavailable PRs waiting for a Muse review (`pending`), PRs never sent to Muse (`excluded`, with the reason) and recent reviews (ATC-7, [docs/occ.md](docs/occ.md) 9.2) |
-| `GET /api/landing/review/:repo/:pr` | Review packet: PR title and body, the FLIGHT's acceptance criteria and forbidden changes, head, changed files, diff (capped, `diffTruncated`). 403 for excluded PRs (rating:SEC, Risk, secret paths), 409 for drafts, PRs Codex can review, or a changed head |
+| `GET /api/landing/review/:repo/:pr` | Review packet: PR title and body, the FLIGHT's acceptance criteria and forbidden changes, head, changed files, diff (capped, `diffTruncated`). 403 for excluded PRs (no FLIGHT, rating:SEC, Risk, secret paths), 409 for drafts, PRs Codex can review, or a changed head |
 | `POST /api/landing/review/:repo/:pr` | `{head, verdict: pass\|findings, text, model}` Muse review of the current head, appended to `landing-reviews.jsonl`. P0/P1/P2 severities; `pass` has no P0/P1. A pass counts as the head review for CLEARED TO LAND while Codex is unavailable (`ATC_CODEX_SILENT_HOURS`, default 6) |
 | `POST /api/clearances` | `{to, type, stand?, flight?, text}` record a CLEARANCE, returns the message to send |
 | `POST /api/clearances/:id/readback` · `/cancel` | Confirm READBACK · cancel |

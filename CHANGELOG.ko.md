@@ -26,7 +26,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - **리뷰 자료** `GET /api/landing/review/:repo/:pr`: PR 제목·본문, Linear의 FLIGHT 완료 기준·금지 사항, head, 바뀐 파일, diff(80,000자, `diffTruncated`). 읽기 전용 `gh`로 읽는다.
   - **리뷰 기록** `POST /api/landing/review/:repo/:pr` → 추가만 하는 `landing-reviews.jsonl`(P0·P1·P2 수, 실제 모델과 계열). `atcctl landing review <repo>#<pr> [--head <sha> --verdict pass|findings -- <리뷰>]`, `crosscheck brief`에 `landing.pending`·`excluded`(`GET /api/landing/reviews`).
   - **착륙 규칙**: 현재 head의 P0·P1 없는 Muse `pass`는 head 리뷰로 쳐서 "REVIEW: MUSE (Codex 한도)"로 보인다. `findings`는 리뷰 글이 든 `review-findings` 막힘이 되어 TOWER가 CAPTAIN에게 전한다. 새 head는 새 리뷰가 필요하고, head의 Codex 리뷰가 이긴다.
-  - **Muse에 보내지 않음**: `rating:SEC`·Risk: Security인 FLIGHT, Risk: Rights·Contract인 PR·FLIGHT, `.env*`·비밀·키·자격 증명 경로를 건드리는 diff("Muse 리뷰 제외 — rating:SEC"). 자료 요청도 실제 diff로 다시 보고 403으로 거절한다.
+  - **Muse에 보내지 않음**: FLIGHT key가 없는 PR("Muse 리뷰 제외 — FLIGHT 없음", 예: DesignLAB의 오래된 문서 PR), `rating:SEC`·Risk: Security인 FLIGHT, Risk: Rights·Contract인 PR·FLIGHT, `.env*`·비밀·키·자격 증명 경로를 건드리는 diff("Muse 리뷰 제외 — rating:SEC"). 자료 요청도 실제 diff로 다시 보고 403으로 거절한다.
   - **guard**: `controller/guard.mjs --crosscheck`가 `landing review`도 허용하고, 기록은 mark처럼 실제 모델을 확인한다. `crosscheck/read-guard.mjs`는 그대로다. CROSSCHECK 규정과 `/tick`(한국어·영어)에 "LANDING 리뷰" 절을, TOWER 규정(한국어·영어)에 읽는 법을 더했다.
 - DISPATCH 대기열에 빠른 길(ATC-6, [docs/dispatch.ko.md](docs/dispatch.ko.md) 5.6).
   - **동의 묶음**: CROSSCHECK가 `agree`로 표시한 열린 ASSIGN 카드는 맨 위에 한 줄씩 모인다(BRIEFING의 "무슨 일", FLIGHT, AIRCRAFT, **동의**). 동의는 기존 한 번 클릭 표시와 함께 판정을 남긴다. 줄을 펼치면 전체 카드가 보이고, 칩과 함께 하는 거절은 거기서 그대로 한다. "모두 동의"는 없다.

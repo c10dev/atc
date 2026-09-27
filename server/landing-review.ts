@@ -159,7 +159,7 @@ export function mountLandingReview(app: Hono, getSnapshot: () => Promise<Snapsho
       // 보내기 직전에 한 번 더: 실제 diff의 파일·라벨로 제외 사유를 본다
       const ticket = s.tickets.find((t) => t.key === p.ticketKey);
       const diffFiles = [...src.diff.matchAll(/^diff --git a\/(\S+) b\/(\S+)$/gm)].flatMap((m) => [m[1], m[2]]);
-      const exclusion = museExclusionOf({ ticketLabels: ticket?.labels ?? [], prLabels: src.labels, files: [...src.files, ...diffFiles] });
+      const exclusion = museExclusionOf({ flight: p.ticketKey, ticketLabels: ticket?.labels ?? [], prLabels: src.labels, files: [...src.files, ...diffFiles] });
       if (exclusion) throw new ReviewError(`Muse 리뷰 제외 — ${exclusion}`, 403);
       let flight: Record<string, unknown> | null = null;
       if (p.ticketKey) {

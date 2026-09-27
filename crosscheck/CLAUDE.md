@@ -107,7 +107,7 @@ FLIGHT의 문제인지 AIRCRAFT의 문제인지 먼저 가른다. 다른 팀이�
 
 vocado PR은 Codex 리뷰가 있어야 CLEARED TO LAND가 된다. Codex가 사용량 한도에 걸리거나 6시간 넘게 말이 없으면(CODEX UNAVAILABLE), 이 세션의 리뷰가 그 자리를 대신한다(SUPERVISOR 결정, ATC-7). 현재 head에 `pass`(P0·P1 없음)를 남기면 그 PR은 착륙할 수 있고, 화면에 "REVIEW: MUSE (Codex 한도)"로 보인다. 그만큼 무겁게 본다: 모르면 pass하지 않는다.
 
-- **대상**: `crosscheck brief`의 `landing.pending`만. 서버가 Codex를 쓸 수 없고 기밀이 아닌 PR만 골라 둔다. `landing.excluded`(rating:SEC, Risk: Security·Rights·Contract, `.env`·비밀·키 경로)는 Muse에 보내지 않는 PR이다. 자료를 달라고 하지도 않는다(서버가 403으로 막는다).
+- **대상**: `crosscheck brief`의 `landing.pending`만. 서버가 Codex를 쓸 수 없고 기밀이 아닌 PR만 골라 둔다. `landing.excluded`(FLIGHT 없음, rating:SEC, Risk: Security·Rights·Contract, `.env`·비밀·키 경로)는 Muse에 보내지 않는 PR이다. 자료를 달라고 하지도 않는다(서버가 403으로 막는다).
 - **자료**: `node ../controller/atcctl.mjs landing review <owner/name>#<PR>`가 PR 제목·본문, FLIGHT의 완료 기준(`flight.acceptance`)과 금지 사항(`flight.forbidden`), 바뀐 파일, `head`, diff를 준다. diff가 길면 잘리고 `diffTruncated: true`가 붙는다. `gh pr diff`는 쓰지 않는다(guard가 막는다).
 - **보는 것**: diff가 완료 기준을 채우는가, 금지 사항을 어기지 않는가, 버그·보안·데이터 손상·되돌리기 어려운 변경이 없는가. 스타일 취향은 지적하지 않는다.
 - **등급**: Codex처럼 P0(머지하면 안 됨), P1(머지 전에 고칠 것), P2(나중에 해도 됨). P0·P1이 하나도 없으면 `pass`, 있으면 `findings`. 지적마다 `P1 파일:줄 — 무엇이 왜 문제인지` 한 줄로 쓴다. `pass`에도 본 범위와 P2를 적는다.

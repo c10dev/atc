@@ -80,7 +80,8 @@ export function codexUnavailableOf(pr: ReviewInput & Pick<GhPull, "createdAt">, 
 }
 
 // Muse에 보내지 않는 PR(vocado 규칙: 기밀 작업에는 Muse를 쓰지 않는다 — 요청 자료가 학습에 쓰임).
-// FLIGHT의 rating:SEC·Risk: Security, PR이나 FLIGHT의 Risk: Rights·Contract, diff의 .env·비밀·키·자격 증명 경로.
+// FLIGHT 없는 PR(필요 없는 코드를 외부 모델로 보내지 않는다), FLIGHT의 rating:SEC·Risk: Security,
+// PR이나 FLIGHT의 Risk: Rights·Contract, diff의 .env·비밀·키·자격 증명 경로.
 const RISK_LABEL = /^(?:risk\s*[:/]\s*)?(security|rights|contract)$/i;
 const SECRET_PATHS = [
   /(^|\/)\.env($|[.\/_-])/i,
@@ -90,7 +91,8 @@ const SECRET_PATHS = [
   /(^|\/)[^/]*(secret|credential|private[-_]?key|service[-_]?account|api[-_]?key)[^/]*$/i,
 ];
 export const secretPathOf = (files: readonly string[]): string | null => files.find((f) => SECRET_PATHS.some((re) => re.test(f))) ?? null;
-export function museExclusionOf(x: { ticketLabels: readonly string[]; prLabels: readonly string[]; files: readonly string[] | null }): string | null {
+export function museExclusionOf(x: { flight: string | null; ticketLabels: readonly string[]; prLabels: readonly string[]; files: readonly string[] | null }): string | null {
+  if (!x.flight) return "FLIGHT 없음";
   if (x.ticketLabels.some((l) => l.toLowerCase() === "rating:sec")) return "rating:SEC";
   for (const l of [...x.ticketLabels, ...x.prLabels]) {
     const m = RISK_LABEL.exec(l.trim());
@@ -348,7 +350,7 @@ export function buildPulls(
       const ctx: MuseContext | undefined = unavailable
         ? {
             unavailable,
-            exclusion: museExclusionOf({ ticketLabels: muse!.ticketLabelsOf(ticketKey), prLabels: (gh.labels ?? []).map((l) => l.name), files: gh.files ?? null }),
+            exclusion: museExclusionOf({ flight: ticketKey, ticketLabels: muse!.ticketLabelsOf(ticketKey), prLabels: (gh.labels ?? []).map((l) => l.name), files: gh.files ?? null }),
             review: museReviewOf(muse!.reviews, slug!, gh.number, gh.headRefOid),
           }
         : undefined;

@@ -54,7 +54,7 @@ test("CODEX UNAVAILABLE: head 뒤 한도 댓글, 또는 head 뒤 6시간 Codex �
 });
 
 test("Muse 제외: rating:SEC·Risk: Security·Risk/Security(FLIGHT), Risk: Rights·Contract(PR·FLIGHT), .env·비밀·키 경로", () => {
-  const ex = (ticketLabels: string[], prLabels: string[] = [], files: string[] | null = []) => museExclusionOf({ ticketLabels, prLabels, files });
+  const ex = (ticketLabels: string[], prLabels: string[] = [], files: string[] | null = []) => museExclusionOf({ flight: "VOC-201", ticketLabels, prLabels, files });
   assert.equal(ex(["rating:SEC"]), "rating:SEC");
   assert.equal(ex(["Risk: Security"]), "Risk: Security");
   assert.equal(ex(["Risk/Security"]), "Risk: Security");
@@ -66,6 +66,15 @@ test("Muse 제외: rating:SEC·Risk: Security·Risk/Security(FLIGHT), Risk: Righ
     assert.match(ex([], [], ["README.md", f]) ?? "", /비밀·키 경로/, f);
   }
   assert.equal(ex([], [], null), null); // 파일을 아직 못 읽음: 자료를 줄 때 diff로 다시 본다
+});
+
+test("Muse 대상은 FLIGHT가 붙은 PR만: FLIGHT 없는 PR(DesignLAB 문서 PR 등)은 제외, 스트립에 \"FLIGHT 없음\"", () => {
+  assert.equal(museExclusionOf({ flight: null, ticketLabels: [], prLabels: [], files: ["docs/guide.md"] }), "FLIGHT 없음");
+  const g = pr({ url: "https://github.com/chaehy5665/DesignLAB/pull/21", title: "docs(guide): formScript 판정 상수 갱신", headRefName: "docs/formscript" });
+  const p = buildPulls([{ repo: "/r/DesignLAB", pulls: [g] }], [], [], new Map(), () => null, at(3), { silentMs: SIX, reviews: [], ticketLabelsOf: () => [] })[0];
+  assert.deepEqual([p.muse?.status, p.muse?.reason], ["excluded", "FLIGHT 없음"]);
+  assert.match(p.blocks.find((b) => b.code === "no-review")!.text, /Muse 리뷰 제외\(FLIGHT 없음\)/);
+  assert.throws(() => assertMuseTarget(p), (e) => e instanceof ReviewError && e.status === 403 && /FLIGHT 없음/.test(e.message));
 });
 
 test("착륙: Codex 한도 + 현재 head Muse pass(P0·P1 없음)면 CLEARED, 표시는 MUSE 통과", () => {
