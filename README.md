@@ -417,6 +417,7 @@ atc/
 │   ├── metrics.ts          # operating metrics and stage 2 check (metrics.test.ts)
 │   ├── proposals.ts        # DISPATCH proposal log and API (proposals.test.ts)
 │   ├── briefing.ts         # DISPATCH card BRIEFING and facts line (briefing.test.ts)
+│   ├── blind.ts            # DISPATCH blind sample for the anchoring check (blind.test.ts)
 │   ├── atfm.ts             # ATFM: switches, ground stops, merge slots, auto-eligibility (atfm.test.ts)
 │   ├── atfm-run.ts         # ATFM recording and /api/atfm
 │   ├── reasons.ts          # DISPATCH reject reason chips (reasons.test.ts)

@@ -1,4 +1,4 @@
-import { Fragment, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, type KeyboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { DispatchConfig, Plan } from "../../../server/dispatch.ts";
 import type { Proposal } from "../../../server/proposals.ts";
 import { flightNumber } from "../aviation.ts";
@@ -80,6 +80,8 @@ const PREFLIGHT_NOTE =
 const NOT_READY_NOTE =
   "사유 칩이 모두 FLIGHT 칩(이미 완료됨·상위 이슈·선행 대기·사람 결정·우선순위 미정·저장소 밖)인 거절. 팀 선택이 아니라 티켓 문제라 판정 건수·합의율에서 뺀다. AIRCRAFT 부적합·기타·칩 없음이 섞이면 게이트에 센다";
 // 한 번 클릭 비율 설명(툴팁·안내 문장)
+const BLIND_NOTE =
+  "blind 표본(카드의 약 1/5, 제안 ID로 정함)에서 CROSSCHECK를 보지 않고 낸 판정의 합의율. 전체 합의율보다 크게 낮으면 한 번 클릭을 기본값처럼 따르고 있다는 뜻(anchoring 점검)";
 const ONE_CLICK_NOTE = "사람 판정 가운데 CROSSCHECK에 동의 버튼 한 번으로 낸 비율 — 어떻게 판정했는지 기록된 판정만 셈";
 
 interface Brief {
@@ -101,6 +103,7 @@ interface Brief {
     ready: boolean;
     // 참고용, 게이트 기준 아님. byModel·oneClick은 옛 서버면 없음
     crosscheck?: CrosscheckRate & { byModel?: Record<string, CrosscheckRate>; oneClick?: { count: number; decided: number } };
+    blind?: { decided: number; agreed: number; agreement: number | null }; // blind 표본 합의율(옛 서버면 없음)
     reasonCounts?: Record<string, number>; // 거절 사유 코드별 건수(옛 서버면 없음)
     // PREFLIGHT(게이트 밖): HOLD된 제안 수와 준비율(옛 서버면 없음)
     preflight?: { held: number; holding: number; passed: number; notReady?: number; readyRate: number | null };
@@ -278,6 +281,10 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
   // CROSSCHECK가 아직 안 본 제안은 뒤로(PREFLIGHT 거름이 돌기 전에 판정하지 않게). 안정 정렬이라 나머지 순서는 서버 그대로
   const byMarked = (a: Proposal, b: Proposal) => Number(!markOf(a)) - Number(!markOf(b));
   const assign = brief.open.filter((p) => p.kind === "ASSIGN").sort(byMarked);
+  const isBlindCard = (p: Proposal) => Boolean(brief.briefs?.[p.id]?.blind);
+  // 동의 묶음(ATC-6): CROSSCHECK가 agree한 열린 ASSIGN(blind 제외)은 맨 위에 한 줄씩. 나머지는 펼친 카드로
+  const agreeLane = assign.filter((p) => !isBlindCard(p) && markOf(p)?.verdict === "agree");
+  const expanded = assign.filter((p) => !agreeLane.includes(p));
   const release = brief.open.filter((p) => p.kind === "RELEASE").sort(byMarked);
 
   return (
@@ -347,13 +354,25 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       <h2 className="label">
         ASSIGN <em>FLIGHT → AIRCRAFT</em>
       </h2>
-      {assign.length ? (
+      {agreeLane.length > 0 && (
+        <AgreeLane
+          items={agreeLane}
+          mode={brief.mode}
+          busy={busy}
+          onAgree={(p) => acceptCrosscheck(p, markOf(p)!)}
+          renderCard={(p) => (
+            <Card p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
+          )}
+          flights={flights}
+        />
+      )}
+      {expanded.length ? (
         <div className="dp-cards">
-          {assign.map((p) => (
+          {expanded.map((p) => (
             <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
           ))}
         </div>
-      ) : (
+      ) : agreeLane.length ? null : (
         <p className="empty">열린 ASSIGN 제안 없음 — 배정할 수 있는 AIRCRAFT나 FLIGHT가 없거나 슬롯이 찼다.</p>
       )}
 
@@ -813,6 +832,16 @@ function Gate({ gate, labelOf, stats }: { gate: Brief["gate"]; labelOf: (code: s
             <span className="dp-gate-state">참고</span>
           </li>
         )}
+        {gate.blind && (
+          <li className="s-info dp-gate-blind" title={BLIND_NOTE}>
+            <span className="dp-gate-label">
+              BLIND 합의율 {gate.blind.decided > 0 ? `${gate.blind.agreed}/${gate.blind.decided}` : "— (아직 없음)"}
+            </span>
+            <span className="dp-gate-value">{pct(gate.blind.agreement)}</span>
+            <span className="dp-gate-target">전체 합의율과 비교</span>
+            <span className="dp-gate-state">참고</span>
+          </li>
+        )}
         {xc && (
           <li className="s-info dp-gate-xc">
             <span className="dp-gate-label">
@@ -934,6 +963,78 @@ function Gate3({ gate }: { gate: Brief["gate3"] }) {
   );
 }
 
+// 동의 묶음(ATC-6): CROSSCHECK가 agree한 카드를 한 줄씩. [동의]는 한 번 클릭(via crosscheck)으로 agree 판정.
+// 한 번에 하나씩만 — "모두 동의"는 두지 않는다. 줄을 펼치면 전체 카드(거절은 거기서 칩과 함께)
+function AgreeLane({
+  items,
+  flights,
+  mode,
+  busy,
+  onAgree,
+  renderCard,
+}: {
+  items: Proposal[];
+  flights: Record<string, FlightInfo>;
+  mode: DispatchConfig["mode"];
+  busy: string | null;
+  onAgree: (p: Proposal) => void;
+  renderCard: (p: Proposal) => ReactNode;
+}) {
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <section className="dp-agree" aria-label="CROSSCHECK 동의 묶음">
+      <p className="dp-agree-head">
+        CROSSCHECK 동의 <b>{items.length}</b> <span className="faint">— 한 줄씩 확인하고 [동의]. 거절은 펼쳐서</span>
+      </p>
+      <ul className="dp-agree-list">
+        {items.map((p) => {
+          const f = flights[p.flight];
+          const what = p.briefing?.what ?? f?.title ?? p.flight;
+          const isOpen = open === p.id;
+          return (
+            <li key={p.id} className={`dp-agree-row${isOpen ? " is-open" : ""}`}>
+              <div className="dp-agree-line">
+                <button
+                  type="button"
+                  className="dp-agree-toggle"
+                  aria-expanded={isOpen}
+                  aria-controls={`agree-${p.id}`}
+                  aria-label={`${p.id} ${isOpen ? "접기" : "카드 펼치기"}`}
+                  onClick={() => setOpen(isOpen ? null : p.id)}
+                >
+                  {isOpen ? "▾" : "▸"}
+                </button>
+                <span className="dp-agree-what" title={what}>
+                  {what}
+                  {!p.briefing && <span className="faint"> (BRIEFING 대기)</span>}
+                </span>
+                <span className="mono dp-agree-fn">{flightNumber(p.flight)}</span>
+                <span className="dp-agree-ac">
+                  → <b>{p.aircraftName}</b>
+                </span>
+                <button
+                  type="button"
+                  className="dp-btn agree dp-agree-btn"
+                  disabled={busy === p.id}
+                  title={`CROSSCHECK agree대로 ${mode === "approval" ? "승인" : "승인했을 것"}으로 기록(한 번 클릭)`}
+                  onClick={() => onAgree(p)}
+                >
+                  동의
+                </button>
+              </div>
+              {isOpen && (
+                <div id={`agree-${p.id}`} className="dp-agree-card">
+                  {renderCard(p)}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function Card({
   p,
   flight,
@@ -960,7 +1061,10 @@ function Card({
   busy?: boolean;
 }) {
   const max = Math.max(1, ...p.factors.map((f) => Math.abs(f.points)));
-  const xc = markOf(p); // HELD 카드에도 보인다(누가·칩·이유). 한 번 클릭 버튼은 대기열 카드에만
+  // HELD 카드에도 보인다(누가·칩·이유). 한 번 클릭 버튼은 대기열 카드에만. blind 카드는 판정 전까지 숨긴다(ATC-6)
+  const blind = !held && Boolean(info?.blind);
+  const marked = markOf(p);
+  const xc = blind ? null : marked;
   const labelOf = (c: string) => codes.find((r) => r.code === c)?.label ?? c;
   const [rejecting, setRejecting] = useState(false);
   const rejectBtn = useRef<HTMLButtonElement>(null);
@@ -988,7 +1092,7 @@ function Card({
         <span className="dp-title">{flight?.title ?? p.flight}</span>
       </div>
       <BriefingLines p={p} title={flight?.title ?? null} info={info} />
-      <FactsLine info={info} now={now} aircraft={p.kind === "ASSIGN" ? p.aircraftName : null} showCrosscheck={!xc} />
+      <FactsLine info={info} now={now} aircraft={p.kind === "ASSIGN" ? p.aircraftName : null} showCrosscheck={!xc && !blind} />
       {flight?.cls && (
         <p className={`dp-class${flight.clsDefault ? " is-default" : ""}`} title={flight.clsDefault ? "type:·wake: 라벨이 없어 기본값(BUILD · M)으로 봄" : "FLIGHT TYPE · WAKE · 필요한 TYPE RATING"}>
           {flight.cls}
@@ -1018,7 +1122,12 @@ function Card({
               : "OCC: 사람 결정·외부 입력 대기 — 사유는 메모, FLIGHT가 수정되면 다시 검토"}
         </p>
       )}
-      {xc ? (
+      {blind ? (
+        <p className="dp-blind" title="blind 표본: 약 5장에 1장은 판정할 때까지 CROSSCHECK 판정을 숨긴다(제안 ID로 정함). 이 카드의 판정은 anchoring 점검에 쓰인다">
+          <span className="dp-blind-mark">BLIND</span>
+          {marked ? "CROSSCHECK 판정 숨김 — 카드를 보고 직접 판정" : "CROSSCHECK 대기 — 판정이 와도 숨긴다"}
+        </p>
+      ) : xc ? (
         <CrosscheckChip m={xc} now={now} labelOf={labelOf} />
       ) : (
         !held && (

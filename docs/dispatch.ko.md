@@ -155,6 +155,16 @@ SUPERVISOR는 티켓 내용을 기억하지 못할 때가 많다(VOC-195, VOC-17
 
 `GET /api/dispatch/brief`에 열린·HELD 제안의 `briefs: { <ID>: { facts, lead } }`가 더해진다. BRIEFING이 있으면 `lead`는 null이다. `POST /api/dispatch/proposals/:id/briefing {what, why, risk}`는 제안이 `proposed`일 때만 받는다. 세 줄 모두 필요하고, 공백은 한 칸으로 모으며, 한 줄 300자까지다. OCC guard는 바꾸지 않았다. `dispatch briefing`은 `dispatch note`와 같은 atc CLI 명령이고, CROSSCHECK의 허용 목록에는 없다.
 
+### 5.6 빠른 길과 blind 표본 (ATC-6)
+
+PREFLIGHT와 BRIEFING 뒤로 SUPERVISOR에게 오는 카드는 대부분 "이 AIRCRAFT가 맞다"만 확인하면 된다. 그래서 대기열을 나눠 그런 카드는 한 번 클릭으로 끝내고, 게이트가 뜻을 잃지 않게 일부는 blind로 둔다.
+
+- **동의 묶음.** CROSSCHECK mark가 `agree`인 열린 ASSIGN 카드(blind 제외)는 ASSIGN 목록 맨 위에 한 줄씩 모인다. 줄에는 BRIEFING의 "무슨 일"(BRIEFING이 없으면 제목), FLIGHT, AIRCRAFT, **동의** 버튼이 있다. 버튼은 SUPERVISOR의 `agree` 판정(shadow)이나 승인(2b)을 기존 한 번 클릭 표시(`via: "crosscheck"`)와 함께 남긴다. 줄을 펼치면(▸, 키보드 Enter) 전체 카드가 보이고, 거절은 거기서 칩과 함께 한다. **"모두 동의"는 없다.** 판정마다 한 번씩 누른다.
+- **반대는 펼친 채로.** CROSSCHECK가 disagree한 카드(`wrong-aircraft`, `other`. FLIGHT 칩은 이미 HELD로 간다)는 CROSSCHECK 칩과 "CROSSCHECK에 동의"가 있는 전체 카드로 남는다.
+- **CROSSCHECK 대기.** 아직 mark가 없는 카드는 ATC-3의 "CROSSCHECK 대기" 상태로 mark가 있는 카드 뒤에 오고, 동의 묶음에 들어가지 않는다.
+- **blind 표본.** 열린 카드의 약 5장에 1장이 blind다. 제안 ID로 정하므로(FNV-1a 해시를 5로 나눈 나머지, `server/blind.ts`) 새로고침해도 바뀌지 않는다. blind 카드는 판정할 때까지 CROSSCHECK 칩과 한 번 클릭 버튼 대신 **BLIND**를 보이고, CROSSCHECK가 agree해도 펼친 목록에 있다. 서버는 verdict·approve·reject에 `blind: true`를 남기고, blind 카드의 한 번 클릭(`via: "crosscheck"`) 판정은 409로 거절한다. HELD 카드는 blind가 아니다(HOLD 자체가 CROSSCHECK 판단을 드러낸다).
+- **anchoring 점검.** 게이트 패널에 "BLIND 합의율"이 더해진다. 게이트가 세는 판정 가운데 blind 카드에서 SUPERVISOR가 DISPATCH에 동의한 비율이다(`gateOf`의 `gate.blind`. 수치만 더하고 게이트에 넣고 빼는 규칙은 바꾸지 않는다). 전체 합의율보다 크게 낮으면 한 번 클릭을 기본값처럼 따르고 있다는 뜻이다.
+
 ## 6. 흐름
 
 ### 2a — 그림자 운용
@@ -357,5 +367,6 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 | 슬롯 | 제안값으로 시작: TEAM당 1, VCDO 동시 AIRBORNE 4, 그 밖 2, 대기 중 제안 5 |
 | 게이트가 재는 것 (2026-09-27, ATC-5) | **AIRCRAFT 선택만.** 준비 상태는 PREFLIGHT(6.2)가 거르고, 칩이 모두 FLIGHT 칩인 거절은 판정 건수와 합의율에서 빼 따로 보인다(6.3). 지난 판정에는 `recode`로 칩을 달고, 이것은 게이트만 바꾼다 |
 | HELD 제안과 게이트 (2026-09-27, ATC-3) | **게이트 밖.** PREFLIGHT나 OCC가 잡아 둔 제안은 SUPERVISOR 판정이 아니고, 확정한 HOLD는 `via: "preflight"`로 남아 세지 않는다. 게이트는 준비된 티켓에서의 팀 선택을 재고, 티켓 준비 상태는 준비율(6.2)로 따로 보인다 |
+| 빠른 길 (2026-09-27, ATC-6) | CROSSCHECK가 agree한 카드는 **동의 묶음**에 한 줄씩, 한 번 클릭으로. **한꺼번에 동의는 없다.** 제안 ID로 고른 **20% blind 표본**을 두고, 그 합의율을 게이트 패널에 anchoring 점검으로 따로 보인다(5.6) |
 
 남은 결정: 2b에 들어갈 때 vocado `CLAUDE.md`의 READBACK 규칙을 FLIGHT PLAN(`[DISPATCH D-xxxx]`)까지 넓힐지. 2a에는 필요 없다.

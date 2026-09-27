@@ -19,6 +19,7 @@ export interface Facts {
 export interface CardBrief {
   facts: Facts;
   lead: string | null; // BRIEFING이 없을 때 본문 첫 문장(서버가 읽는 중이면 null)
+  blind?: boolean; // blind 표본: 판정 전까지 CROSSCHECK mark를 숨긴다(ATC-6, 옛 서버면 없음)
 }
 
 const PRIORITY = ["없음", "긴급", "높음", "보통", "낮음"];

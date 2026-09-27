@@ -770,3 +770,18 @@ test("접기: brief는 BRIEFING 세 줄을 덮어쓰고 상태는 바꾸지 않�
   assert.deepEqual(p.briefing, { what: "a2", why: "b2", risk: "c2", at: iso(10) });
   assert.equal(fold([create("D-0002", "VOC-2", "TEAM_B", 5)])[0].briefing, undefined);
 });
+
+test("접기: blind 판정은 제안에 blind를 남기고, gateOf가 blind 합의율을 따로 센다", () => {
+  const ps = fold([
+    create("D-0001", "VOC-1", "TEAM_B", 30),
+    create("D-0002", "VOC-2", "TEAM_B", 30),
+    create("D-0003", "VOC-3", "TEAM_B", 30),
+    { op: "verdict", id: "D-0001", at: iso(10), verdict: "agree", reason: null, via: "manual", blind: true },
+    { op: "verdict", id: "D-0002", at: iso(10), verdict: "disagree", reason: null, via: "manual", blind: true },
+    { op: "verdict", id: "D-0003", at: iso(10), verdict: "agree", reason: null, via: "crosscheck" },
+  ]);
+  assert.deepEqual(ps.map((p) => p.blind), [true, true, undefined]);
+  const g = gateOf(ps);
+  assert.equal(g.decided, 3);
+  assert.deepEqual(g.blind, { decided: 2, agreed: 1, agreement: 0.5 });
+});
