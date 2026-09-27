@@ -52,12 +52,28 @@ DISPATCH 메모: CAUTION · …
 - 지금은 2a(그림자 운용)라 보내지 않는다. 2b를 켜기 전에 vocado `CLAUDE.md`의 READBACK 규칙을 FLIGHT PLAN까지 넓힌다.
 - OCC의 SendMessage는 send-guard가 지킨다: approval 모드, SENT 상태 제안, 그 CAPTAIN, atc가 만든 문구 그대로일 때만 통과.
 
+## OCC → CAPTAIN: RECALL (2b부터)
+
+SUPERVISOR가 보낸 FLIGHT PLAN을 거둬들이면 OCC가 서버가 만든 문구를 그대로 보낸다:
+
+```
+[DISPATCH D-0003] RECALL · BRAVO (TEAM_B)
+FLIGHT VOC193 · AIRPORT VCDO — 이 FLIGHT PLAN을 거둬들입니다.
+권한 정리
+사유: 우선순위 바뀜
+작업을 멈추세요. STAND(워크트리)는 정리하지 말고 그대로 두세요 — 다른 AIRCRAFT가 이어받을 수 있게.
+— 받았으면 이 메시지에 "READBACK D-0003 RECALL"로 답장해 주세요.
+```
+
+- CAPTAIN은 작업을 멈추고, 워크트리는 그대로 두고, `READBACK D-0003 RECALL`로 답한다(RECALL을 꼭 붙인다).
+- send-guard는 RECALL 요청된 제안의 CAPTAIN에게 이 문구 그대로 보낼 때만 통과시킨다.
+
 ## 기계적 안전장치
 
 | guard | 지키는 것 |
 |---|---|
 | `controller/guard.mjs` | TOWER·OCC·CROSSCHECK의 Bash: atc CLI·jq만(OCC는 읽기 전용 `gh pr view·checks·diff·list`도, CROSSCHECK는 `view·checks·list`). 리다이렉션과 작은따옴표 밖의 `$(…)`·백틱·`$변수`는 막는다. jq는 `… | jq '<필터>'`처럼 앞 명령의 출력만 읽는다: 파일 인자, `-f`·`--rawfile`·`--slurpfile`·`-L`·`--args` 같은 옵션(허용 목록 밖은 모두), 필터의 `env`·`$ENV`·`import`·`include`는 막는다. gh의 `--jq`도 같은 필터 검사를 한다 |
-| `occ/send-guard.mjs` | OCC의 SendMessage: 승인된 FLIGHT PLAN 그대로만 |
+| `occ/send-guard.mjs` | OCC의 SendMessage: 승인된 FLIGHT PLAN이나 RECALL 요청된 제안의 RECALL 문구 그대로만 |
 | `occ/mcp-guard.mjs` | OCC의 MCP 도구: 읽기(get·list·search·read·query·fetch)만 — Linear·GitHub에 쓸 수 없음 |
 
 모든 hook은 fail-closed다: 스크립트가 없거나 실패하면 도구가 막힌다. 막히면 관제 세션은 다시 시도하지 않고 사용자에게 보고한다.

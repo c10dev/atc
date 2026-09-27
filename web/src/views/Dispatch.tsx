@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { DispatchConfig, Plan } from "../../../server/dispatch.ts";
 import type { Proposal } from "../../../server/proposals.ts";
 import { flightNumber } from "../aviation.ts";
@@ -131,7 +131,15 @@ const statusText: Record<Proposal["status"], string> = {
   departed: "DEPARTED",
   superseded: "SUPERSEDED",
   expired: "EXPIRED",
+  recalling: "RECALL 중",
+  recalled: "RECALLED",
 };
+
+// RECALL은 보냈거나(sent) READBACK 받은(accepted) FLIGHT PLAN에만
+const canRecall = (p: Proposal) => p.status === "sent" || p.status === "accepted";
+const RECALL_MAX = 300;
+// 늦음 표시: 상태마다 무엇을 기다리는지
+const overdueText = (p: Proposal) => (p.status === "recalling" ? "RECALL READBACK 없음 10분+" : p.status === "sent" ? "NO READBACK" : "NO DEPARTURE");
 
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 
@@ -172,6 +180,26 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
     try {
       if (brief?.mode === "approval") await post(`/api/dispatch/proposals/${p.id}/${v === "agree" ? "approve" : "reject"}`, payload);
       else await post(`/api/dispatch/proposals/${p.id}/verdict`, { verdict: v, ...payload });
+      await load();
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // SUPERVISOR가 FLIGHT PLAN을 거둬들인다(RECALL). OCC가 CAPTAIN에게 RECALL 문구를 보내고 READBACK을 기다린다. 성공하면 true
+  const recall = async (p: Proposal, reason: string) => {
+    const how =
+      brief?.mode === "approval"
+        ? `OCC가 ${p.aircraftName}의 CAPTAIN에게 RECALL 문구를 보내고, CAPTAIN은 작업을 멈추고 STAND를 그대로 둡니다.`
+        : `지금은 2a라 OCC가 보내지 않습니다 — ${p.aircraftName}의 CAPTAIN에게 직접 알리세요. CAPTAIN은 작업을 멈추고 STAND를 그대로 둡니다.`;
+    if (!confirm(`${p.id}(${flightNumber(p.flight)})를 RECALL할까요?\n\n${how}\nCAPTAIN이 RECALL을 READBACK하면 ${flightNumber(p.flight)}는 다시 후보가 됩니다.\n\n사유: ${reason}`)) return false;
+    setBusy(p.id);
+    try {
+      await post(`/api/dispatch/proposals/${p.id}/recall`, { reason });
       await load();
       return true;
     } catch (e) {
@@ -250,22 +278,14 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
                 <th>AIRCRAFT</th>
                 <th>상태</th>
                 <th>언제부터</th>
+                <th>
+                  <span className="dp-sr">조치</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {brief.inFlight.map((p) => (
-                <tr key={p.id} className={`s-${p.status}${brief.overdue.includes(p.id) ? " is-overdue" : ""}`}>
-                  <td className="mono">{p.id}</td>
-                  <td className="mono" title={flights[p.flight]?.title}>
-                    {flightNumber(p.flight)}
-                  </td>
-                  <td>{p.aircraftName}</td>
-                  <td className="dp-result">
-                    {statusText[p.status]}
-                    {brief.overdue.includes(p.id) && <span className="dp-overdue">{p.status === "sent" ? "NO READBACK" : "NO DEPARTURE"}</span>}
-                  </td>
-                  <td className="faint">{timeAgo(p.statusAt, now)}</td>
-                </tr>
+                <InFlightRow key={p.id} p={p} flight={flights[p.flight]} now={now} overdue={brief.overdue.includes(p.id)} mode={brief.mode} busy={busy === p.id} onRecall={recall} />
               ))}
             </tbody>
           </table>
@@ -398,10 +418,156 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
   );
 }
 
+// IN FLIGHT 한 줄. sent·accepted면 RECALL… 버튼, 누르면 아래 줄에 사유 폼이 열린다
+function InFlightRow({
+  p,
+  flight,
+  now,
+  overdue,
+  mode,
+  busy,
+  onRecall,
+}: {
+  p: Proposal;
+  flight: FlightInfo | undefined;
+  now: number;
+  overdue: boolean;
+  mode: DispatchConfig["mode"];
+  busy: boolean;
+  onRecall: (p: Proposal, reason: string) => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const btn = useRef<HTMLButtonElement>(null);
+  const formId = `dp-${p.id}-recall`;
+  const close = () => {
+    setOpen(false);
+    requestAnimationFrame(() => btn.current?.focus());
+  };
+  return (
+    <Fragment>
+      <tr className={`s-${p.status}${overdue ? " is-overdue" : ""}`}>
+        <td className="mono">{p.id}</td>
+        <td className="mono" title={flight?.title}>
+          {flightNumber(p.flight)}
+        </td>
+        <td>{p.aircraftName}</td>
+        <td className="dp-result">
+          {p.status === "recalling" ? (
+            <span className="dp-recall">
+              <span className="dp-recall-mark">RECALL</span>
+              <span className="dp-recall-text">
+                READBACK 대기 · 요청 <time dateTime={p.statusAt}>{timeAgo(p.statusAt, now)}</time>
+              </span>
+              {p.recallReason && <span className="dp-recall-reason">사유: {p.recallReason}</span>}
+            </span>
+          ) : (
+            statusText[p.status]
+          )}
+          {overdue && <span className="dp-overdue">{overdueText(p)}</span>}
+        </td>
+        <td className="faint">{timeAgo(p.statusAt, now)}</td>
+        <td className="dp-c-act">
+          {canRecall(p) && !open && (
+            <button
+              ref={btn}
+              className="dp-btn dp-recall-btn"
+              disabled={busy}
+              aria-label={`${p.id} ${flightNumber(p.flight)} RECALL — 사유 입력`}
+              onClick={() => setOpen(true)}
+            >
+              RECALL…
+            </button>
+          )}
+        </td>
+      </tr>
+      {open && canRecall(p) && (
+        <tr className="dp-recall-row">
+          <td colSpan={6}>
+            <RecallForm id={formId} p={p} mode={mode} busy={busy} onCancel={close} onSubmit={async (reason) => (await onRecall(p, reason)) && setOpen(false)} />
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  );
+}
+
+// RECALL 사유 폼(필수, 300자 이내). Escape는 취소하고 RECALL 버튼으로 초점을 돌린다
+function RecallForm({
+  id,
+  p,
+  mode,
+  busy,
+  onCancel,
+  onSubmit,
+}: {
+  id: string;
+  p: Proposal;
+  mode: DispatchConfig["mode"];
+  busy: boolean;
+  onCancel: () => void;
+  onSubmit: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const inputId = `${id}-reason`;
+  const helpId = `${id}-help`;
+  const text = reason.trim();
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onCancel();
+    }
+  };
+  return (
+    <form
+      id={id}
+      className="dp-reject dp-recall-form"
+      aria-label={`${p.id} RECALL 사유`}
+      onKeyDown={onKey}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!busy && text) onSubmit(text);
+      }}
+    >
+      <p id={helpId} className="dp-recall-help">
+        {mode === "approval" ? "OCC가 CAPTAIN에게 RECALL 문구를 보내고, " : "지금은 2a라 OCC가 보내지 않는다 — CAPTAIN에게 직접 알린다. "}
+        CAPTAIN은 작업을 멈추고 STAND를 그대로 둔다. RECALL을 READBACK하면 {flightNumber(p.flight)}는 다시 후보가 된다.
+      </p>
+      <label className="dp-memo-label" htmlFor={inputId}>
+        RECALL 사유 <span className="faint">(필수 · CAPTAIN에게 그대로 전달)</span>
+      </label>
+      <textarea
+        id={inputId}
+        className="dp-input dp-textarea"
+        value={reason}
+        autoFocus
+        required
+        rows={2}
+        maxLength={RECALL_MAX}
+        aria-describedby={helpId}
+        placeholder="예: 우선순위가 바뀌어 다른 AIRCRAFT에 맡김"
+        onChange={(e) => setReason(e.target.value)}
+      />
+      <div className="dp-actions">
+        <span className="faint dp-count" aria-live="polite">
+          {reason.length}/{RECALL_MAX}
+        </span>
+        <button type="button" className="dp-btn" onClick={onCancel} disabled={busy}>
+          취소
+        </button>
+        <button type="submit" className="dp-btn dp-recall-btn is-confirm" disabled={busy || !text}>
+          RECALL 요청
+        </button>
+      </div>
+    </form>
+  );
+}
+
 // 최근 결정의 사유: 사유 칩, 한 번 클릭 표시, 사유 문장
 function RecentReason({ p, labelOf }: { p: Proposal; labelOf: (code: string) => string }) {
   const codes = codesOf(p);
   const oneClick = viaOf(p) === "crosscheck";
+  // RECALLED는 SUPERVISOR의 RECALL 사유를 보인다
+  if (p.status === "recalled") return <>{p.recallReason ?? p.reason ?? "—"}</>;
   if (!codes.length && !oneClick) return <>{p.reason ?? "—"}</>;
   // 서버가 "라벨 · 라벨 — 메모"로 적으니 칩과 겹치는 앞부분은 떼고 메모만 보인다(라벨이 바뀌었으면 전체)
   const head = codes.map(labelOf).join(" · ");

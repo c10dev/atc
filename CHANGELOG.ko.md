@@ -16,6 +16,14 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- DISPATCH RECALL(ATFM 결정 4: 자동 배정보다 먼저 만듦, [docs/dispatch.ko.md](docs/dispatch.ko.md) "RECALL").
+  - SUPERVISOR가 보냈거나 READBACK 받은 FLIGHT PLAN을 거둬들인다: 진행 중 행의 "RECALL…" 버튼, 또는 `POST /api/dispatch/proposals/:id/recall {reason}`.
+  - 새 상태 RECALLING·RECALLED. RECALLING은 AIRCRAFT·FLIGHT를 잡아 두고, DEPARTED로 바뀌지 않으며, 10분이면 overdue, 24시간이면 만료된다. DEPARTED는 RECALL하지 않는다.
+  - 서버가 `[DISPATCH D-xxxx] RECALL · <callsign>` 문구(FLIGHT, 사유, "멈추고 STAND는 그대로", 답장 `READBACK D-xxxx RECALL`)를 만든다. OCC는 `atcctl dispatch recall-send`로 보내고 `atcctl dispatch recalled`로 답을 기록한다.
+  - send-guard는 approval 모드이고, RECALLING 제안이고, 그 CAPTAIN에게, 문구 그대로일 때만 RECALL을 통과시킨다.
+  - RECALLED FLIGHT는 다시 후보가 되지만, 같은 짝은 RECALL READBACK부터 24시간 제안하지 않는다.
+  - ATFM 출발 중지는 RECALL을 막지 않는다.
+  - OCC 규정·`/tick`, dispatch 문서와 guide, atfm.md(결정 4를 built로 표시)를 고쳤다.
 - NETWORK: 4단계 읽기 전용 운항 개요([docs/fleet.md](docs/fleet.md) 7.3, `server/network.ts`). `GET /api/network`는 아무것도 쓰지 않고 다음을 돌려준다. `routes`: ROUTE(Linear 프로젝트)마다 상태별 열린 FLIGHT(`todo`는 unstarted, `inReview`는 상태 이름 In Review·Ready to Merge, `inProgress`는 그 밖의 started. backlog·triage·끝난 것·상위 이슈는 세지 않음), `arrived14`(FLIGHT가 그 프로젝트인 최근 14일 LOGBOOK 기록), FLEET ROUTE에 그 프로젝트가 있는 AIRCRAFT, 그 기록의 착륙 대기 중앙값, 프로젝트 `goal`(`targetDate`, `progress`, `state`) 또는 `null`(`state`는 프로젝트 `status.type`, 없으면 `status.name`). `aircraft`: TARGETS(`flightsPerWeek`, `onTime`)와 FLEET 카드와 같은 `computeActuals` 숫자(퇴역 AIRCRAFT 제외). `trend.days`: 28일 동안 날마다 ARRIVED, 착륙 대기 중앙값, 머지된 되돌림. `trend.gates`: 28일 동안 날마다 DISPATCH·SCHEDULE 그림자 판정 수와 누적 합의율(마지막 날 값이 각 게이트의 `agreement`와 같다), 둘을 합친 누적 CROSSCHECK 일치율. `sources`: Linear·GitHub·LOGBOOK을 읽었나. 프로젝트 목표는 TEAM 프로젝트를 읽는 새 읽기 전용 Linear 쿼리 하나(`server/sources/linear-projects.ts`, 10분 캐시)에서 온다. 키가 없거나 실패하면 목표는 `null`. OCC의 TARGETS·ROUTE 변경 초안은 [docs/fleet.md](docs/fleet.md) 7.4에 설계만 적었다(만들지 않음).
 - ATFM 3단계, [docs/atfm.md](docs/atfm.md) 8장의 1~5단계. SUPERVISOR의 결정 10가지를 설계에 반영했다. 스위치는 `~/.local/state/atc/atfm.json`(원자적 쓰기, 기본값 off·shadow)에 있다.
   - **데이터**: AIRPORT마다 기본 브랜치 head CI(`snapshot.atfm.mains`), PR 체크의 `completedAt`. 체크 소요 시간, BEHIND 전이, 대상 판정, 되돌린 S2 라벨, 출발 중지, 스위치 변경을 FLIGHT RECORDER의 `atfm` 줄로 남긴다(`atfm-state.json`으로 중복을 막는다).
