@@ -16,6 +16,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- 팀 세션 skill `atc-task`(`.claude/skills/atc-task`). "ATC-n 진행"을 받은 팀 세션이 atc API로 이슈를 읽고, 워크트리에서 작업하고, 문서 점검표와 검증을 돌리고, LANDING CLEARANCE 등급을 확인한 뒤 PR을 올리고 일을 맡긴 세션에 보고한다. 규칙의 원본은 루트 `CLAUDE.md`이고, skill은 그 순서를 고정한다.
 - WAYPOINT gap: 덮는 이슈가 없는 완료 기준을 OCC가 NEW 초안으로 올린다(ATC-8, [docs/occ.ko.md](docs/occ.ko.md) 5.6).
   - `schedule brief`에 `waypointGaps`가 더해진다(`server/waypoint-gaps.ts`). ROUTE마다 지금 구간과 다음 WAYPOINT의 완료 기준(번호 목록이 없으면 설명), 이슈(key·제목·상태), `truncated`를 보인다. 기준과 이슈를 짝짓는 것은 OCC 몫이다.
   - `NEW` 초안이 `milestone`(이름이나 id)을 받는다. 그 프로젝트의 마일스톤인지 검사하고, `changesOf`와 SCHEDULE 탭에 보인다. S2 발부 `save_issue` 호출에 마일스톤 id가 들어가고, linear-guard가 그 호출과 똑같을 때만 통과시키는 것을 테스트로 확인한다(`occ/mcp-guard.mjs`는 그대로).
