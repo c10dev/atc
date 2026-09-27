@@ -1,0 +1,360 @@
+/* ATFM 3단계 블록(DISPATCH 탭 안). 색·글꼴·간격은 styles.css의 :root 토큰만 쓴다. 판(패널)은 .dp-gate와 같은 모양. */
+.atfm {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+}
+.atfm-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.dispatch .atfm .label {
+  margin: 0;
+}
+.atfm .dp-btn.atfm-off {
+  flex: none;
+  margin-left: auto;
+  padding: 0 var(--space-3);
+  border-color: var(--cyan);
+  color: var(--cyan);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.12em;
+}
+.atfm-error {
+  margin: var(--space-2) 0 0;
+}
+
+/* 접는 구역 */
+.atfm-sec {
+  padding: var(--space-1-5) 0;
+  border-top: 1px solid var(--line);
+}
+.atfm-head + .atfm-sec,
+.atfm-error + .atfm-sec {
+  margin-top: var(--space-2);
+}
+.atfm-sec > summary {
+  cursor: pointer;
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--faint);
+}
+.atfm-sec > summary em {
+  margin-left: var(--space-1);
+  font: 500 var(--text-xs) var(--sans);
+  font-style: normal;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+.atfm-sec .empty {
+  margin: var(--space-1) 0;
+}
+
+/* 줄 목록: GROUND STOP, 슬롯, 대상 */
+.atfm-list {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.atfm-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1-5);
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--line);
+  color: var(--text);
+}
+.atfm-list li:first-child {
+  border-top: 0;
+}
+.atfm-list li.is-shadow {
+  color: var(--muted);
+}
+.atfm-list li.is-enforced {
+  color: var(--alert);
+}
+.atfm-trigger {
+  font-weight: 600;
+}
+.atfm-text {
+  flex: 1 1 12em;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.atfm-at {
+  margin-left: auto;
+  font-size: var(--text-xs);
+}
+
+/* 작은 표시: ENFORCED, 그림자, URGENT, 수동 */
+.atfm-tag {
+  flex: none;
+  padding: 0 var(--space-1);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--faint);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+.atfm-tag.t-on {
+  border: 1px solid var(--alert);
+  color: var(--alert);
+}
+.atfm-tag.t-warn {
+  border: 1px solid var(--amber);
+  color: var(--amber);
+}
+
+/* 스위치 */
+.atfm-switches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-2);
+}
+.atfm-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+.atfm-seg-label {
+  margin-right: var(--space-2);
+  color: var(--muted);
+}
+.atfm-seg-btn {
+  min-height: 26px;
+  padding: 0 var(--space-2);
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  color: var(--muted);
+  font: 600 var(--text-xs) var(--sans);
+  cursor: pointer;
+}
+.atfm-seg-btn + .atfm-seg-btn {
+  border-left: 0;
+}
+.atfm-seg-btn:first-of-type {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+.atfm-seg-btn:last-child {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+.atfm-seg-btn:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.atfm-seg-btn[aria-pressed="true"] {
+  background: var(--panel-3);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 currentColor;
+}
+.atfm-seg-btn.m-shadow[aria-pressed="true"] {
+  color: var(--cyan);
+}
+.atfm-seg-btn.m-on[aria-pressed="true"] {
+  color: var(--alert);
+}
+.atfm-seg-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.atfm-ro {
+  color: var(--faint);
+}
+.atfm-mode {
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+}
+.atfm-mode.m-shadow {
+  color: var(--cyan);
+}
+.atfm-mode.m-off {
+  color: var(--faint);
+}
+
+/* 수동 GROUND STOP 선언 */
+.atfm-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.atfm-form select.dp-input {
+  font-family: var(--mono);
+}
+.atfm-form .atfm-reason {
+  flex: 1 1 14em;
+}
+.atfm .dp-btn.atfm-mini {
+  flex: none;
+  min-height: 26px;
+  padding: 0 var(--space-3);
+}
+.atfm .dp-btn.t-stop {
+  border-color: var(--alert);
+  color: var(--alert);
+}
+.atfm-manual {
+  margin-top: var(--space-2);
+}
+.atfm-manual .atfm-at {
+  margin-left: 0;
+}
+.atfm-manual .atfm-text {
+  flex: 1 1 auto;
+}
+
+/* main CI 한 줄 */
+.atfm-mains {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-2) 0 0;
+  font: var(--text-xs) var(--mono);
+}
+.atfm-head-mini {
+  margin-right: var(--space-2);
+  color: var(--faint);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+.atfm-main b {
+  color: var(--text);
+}
+.atfm-main.c-success {
+  color: var(--radar);
+}
+.atfm-main.c-failure {
+  color: var(--alert);
+}
+.atfm-main.c-pending {
+  color: var(--amber);
+}
+.atfm-main.c-none {
+  color: var(--faint);
+}
+
+/* 머지 슬롯 */
+.atfm-slot {
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+}
+.sl-in-slot .atfm-slot {
+  color: var(--cyan);
+}
+.sl-waiting-slot .atfm-slot {
+  color: var(--amber);
+}
+.atfm-list li .atfm-text.faint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 자동 배정·S3 대상 */
+.atfm-line {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+}
+.atfm-line b {
+  font-family: var(--mono);
+  color: var(--text);
+}
+.atfm-line b.atfm-bad {
+  color: var(--alert);
+}
+.atfm-ok {
+  color: var(--radar);
+  font-weight: 600;
+}
+.atfm-codes {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.atfm-code {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font: 600 var(--text-2xs) var(--mono);
+  cursor: help;
+}
+/* 화면에서는 숨기고 스크린 리더에는 남긴다 */
+.atfm-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 켜기 점검: .dp-gate 줄과 같은 칸 */
+.atfm-turn {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.atfm-turn li {
+  display: grid;
+  grid-template-columns: minmax(180px, 280px) 64px 100px 110px;
+  justify-content: start;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--line);
+}
+.atfm-turn-value {
+  font: 700 var(--text-md) var(--mono);
+  text-align: right;
+}
+.atfm-turn-target {
+  padding-left: var(--space-2);
+  font: var(--text-sm) var(--mono);
+  color: var(--faint);
+}
+.atfm-turn-state {
+  font: 700 var(--text-sm) var(--mono);
+}
+.atfm-turn .s-pass .atfm-turn-state {
+  color: var(--radar);
+}
+.atfm-turn .s-fail .atfm-turn-state {
+  color: var(--alert);
+}
+.atfm-turn .s-insufficient .atfm-turn-state {
+  color: var(--faint);
+}
+
+/* 데이터 한 줄씩 */
+.atfm-data {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+}
+.atfm-data li {
+  padding: var(--space-0-5) 0;
+}
+.atfm-data b {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+@media (max-width: 860px) {
+  /* 좁으면 기준만 숨긴다(충족 여부는 남김) */
+  .atfm-turn li {
+    grid-template-columns: 1fr auto auto;
+  }
+  .atfm-turn-target {
+    display: none;
+  }
+}

@@ -414,3 +414,18 @@ test("거절 사유 집계: 칩별 건수와 최근 예시 FLIGHT, planner가 �
   assert.equal(stats["needs-human"].auto, "manual");
   assert.equal(stats.other.count, 0);
 });
+
+test("ATFM 자동 판정(via: atfm)은 사람 판정·게이트·2b 점검에 세지 않는다", async () => {
+  const { humanOf } = await import("./proposals.ts");
+  const ps = fold([
+    create("D-0001", "VOC-1", "b", 30),
+    { op: "approve", id: "D-0001", at: iso(20), via: "atfm" },
+    { op: "send", id: "D-0001", at: iso(19), message: "m" },
+    create("D-0002", "VOC-2", "b", 30),
+    { op: "approve", id: "D-0002", at: iso(20), via: "manual" },
+    { op: "send", id: "D-0002", at: iso(19), message: "m" },
+  ]);
+  assert.equal(humanOf(ps[0]), null);
+  assert.equal(humanOf(ps[1])?.verdict, "agree");
+  assert.equal(gate3Of(ps).dispatched, 1);
+});

@@ -36,6 +36,7 @@ DELTA가 끝날 때까지 대기
 
 - 같은 막힘으로는 다시 보내지 않는다. CI 진행 중이나 GitHub 계산 중처럼 기다리면 풀리는 것은 알리지 않는다.
 - 팀은 READBACK만 하고, 고치는 방법은 CAPTAIN이 정한다. 막힘이 풀리면 PR은 저절로 CLEARED TO LAND가 되고 그때 `LAND`가 온다.
+- **GROUND STOP**(3단계 출발 중지, 스위치로 켰을 때만): 그 AIRPORT에는 `LAND`가 나가지 않는다. 시작할 때 CLEARED PR의 팀에 `HOLD`("GROUND STOP: <사유> — LAND 보류")가, 풀릴 때 `CONTINUE`("GROUND STOP 풀림 — LANDING SEQUENCE대로 진행")가 간다. 그 AIRPORT에는 새 배정도 나가지 않는다.
 
 ## OCC → CAPTAIN: FLIGHT PLAN (2b부터)
 

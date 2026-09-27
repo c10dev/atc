@@ -20,6 +20,7 @@ export interface GhCheck {
   conclusion?: string | null; // CheckRun: SUCCESS | FAILURE | NEUTRAL | SKIPPED …
   state?: string; // StatusContext: SUCCESS | PENDING | FAILURE | ERROR | EXPECTED
   startedAt?: string | null;
+  completedAt?: string | null; // CheckRun만. ATFM이 CI 소요 시간을 잰다
 }
 
 export interface GhReview {

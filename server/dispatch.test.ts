@@ -31,7 +31,7 @@ const claim = (sessionId: string, wsName: string): Claim => ({
 function snap(over: Partial<Snapshot>): Snapshot {
   return {
     at: new Date(NOW).toISOString(), linear: { enabled: true, error: null, fetchedAt: daysAgo(0) },
-    github: { enabled: true, error: null, fetchedAt: daysAgo(0) }, pulls: [],
+    github: { enabled: true, error: null, fetchedAt: daysAgo(0) }, pulls: [], atfm: { mains: [], groundStops: [] },
     sessions: [], workspaces: [], tickets: [], columns: [], claims: [], handoffs: [], alerts: [], clearances: [],
     airports: [{ id: "r1", code: "VCDO", name: "vocado_nextjs", repo: VCDO }],
     ...over,

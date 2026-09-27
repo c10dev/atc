@@ -1,0 +1,454 @@
+import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { flightNumber } from "../aviation.ts";
+import { timeAgo } from "../derive.ts";
+import "./Atfm.css";
+
+// ATFM 3단계(docs/atfm.md). 대부분 그림자 운용: 계산해서 보여 주기만 한다.
+// 켤 수 있는 것은 GROUND STOP 두 가지(main 깨짐, 수동)뿐이다.
+
+type StopMode = "off" | "shadow" | "on";
+type ShadowMode = "off" | "shadow";
+type Trigger = "main-broken" | "failure-wave" | "congestion" | "los" | "manual";
+type TurnState = "pass" | "fail" | "insufficient";
+
+interface AtfmConfig {
+  groundStop: { mainBroken: StopMode; manual: "off" | "on"; failureWave: ShadowMode; congestion: ShadowMode; los: ShadowMode };
+  slots: ShadowMode;
+  autoAssign: ShadowMode;
+  s3: ShadowMode;
+  slotLimits: Record<string, number | null>;
+  manualStops: { airport: string; reason: string; at: string }[];
+}
+interface MainView {
+  repo: string;
+  slug: string;
+  branch: string;
+  sha: string | null;
+  state: "success" | "failure" | "pending" | "none";
+  failing: string[];
+  checks: number;
+  at: string;
+  airport: string | null;
+}
+interface GroundStopView {
+  airport: string;
+  repo: string | null;
+  trigger: Trigger;
+  kind: "stop" | "delay";
+  enforced: boolean;
+  text: string;
+  evidence: string[];
+  since: string;
+}
+interface SlotRow {
+  airport: string | null;
+  pr: number;
+  title: string;
+  url: string;
+  slot: "in-slot" | "waiting-slot";
+  lanePos: number;
+  limit: number | null;
+  urgent: boolean;
+  landAt: string | null;
+  landTimedOut: boolean;
+}
+interface OpenItem {
+  id: string;
+  flight: string | null;
+  aircraft: string | null;
+  eligible: boolean;
+  failed: { code: string; text: string }[];
+}
+interface Precision {
+  eligible: number;
+  decided: number;
+  approved: number;
+  rate: number | null;
+  bad: number;
+}
+interface TurnOn {
+  id: string;
+  label: string;
+  value: string;
+  target: string;
+  status: TurnState;
+}
+interface AutoView {
+  mode: ShadowMode;
+  open: OpenItem[];
+  precision: Precision;
+  turnOn: TurnOn[];
+}
+interface AtfmBrief {
+  config: AtfmConfig;
+  mains: MainView[];
+  groundStops: GroundStopView[];
+  slots: SlotRow[];
+  auto: AutoView;
+  s3: AutoView;
+  data: {
+    ci: { airport: string | null; samples: number; medianMin: number | null }[];
+    behind: { airport: string | null; merges: number; behind: number; perMerge: number | null }[];
+    undone: number;
+  };
+  caps: { assignPerDay: number; s3PerDay: number; inFlightPerAircraft: number };
+  thresholds: { precision: number; precisionN: number; crosscheck: number; crosscheckN: number; trip: number };
+}
+
+const TRIGGER_TEXT: Record<Trigger, string> = {
+  "main-broken": "main 깨짐",
+  "failure-wave": "CI 실패 몰림",
+  congestion: "CI 혼잡(GROUND DELAY)",
+  los: "LOS 증가",
+  manual: "수동",
+};
+const MAIN_TEXT: Record<MainView["state"], string> = { success: "success", failure: "failure", pending: "pending", none: "CI 없음" };
+const MODE_TEXT: Record<StopMode, string> = { off: "꺼짐", shadow: "그림자", on: "켜짐" };
+const TURN_MARK: Record<TurnState, string> = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족" };
+// 켜면 멈추는 것(확인 문구에 씀)
+const ON_EFFECT = "켜면 해당 AIRPORT에 새 ASSIGN과 LAND가 멈춘다.";
+
+const pct = (x: number | null | undefined) => (x === null || x === undefined ? "—" : `${Math.round(x * 100)}%`);
+const aptOf = (a: string | null) => a ?? "—";
+
+async function post(path: string, body: unknown) {
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
+  return data;
+}
+
+// 옛 서버·만드는 중인 서버가 필드를 빠뜨려도 그리게 기본값을 채운다
+const EMPTY_AUTO: AutoView = { mode: "shadow", open: [], precision: { eligible: 0, decided: 0, approved: 0, rate: null, bad: 0 }, turnOn: [] };
+function normalize(raw: Partial<AtfmBrief> | null): AtfmBrief | null {
+  if (!raw || typeof raw !== "object" || !raw.config?.groundStop) return null;
+  const auto = (a: Partial<AutoView> | undefined): AutoView => ({ ...EMPTY_AUTO, ...a, open: a?.open ?? [], turnOn: a?.turnOn ?? [], precision: { ...EMPTY_AUTO.precision, ...a?.precision } });
+  return {
+    config: { ...raw.config, manualStops: raw.config.manualStops ?? [], slotLimits: raw.config.slotLimits ?? {} },
+    mains: raw.mains ?? [],
+    groundStops: raw.groundStops ?? [],
+    slots: raw.slots ?? [],
+    auto: auto(raw.auto),
+    s3: auto(raw.s3),
+    data: { ci: raw.data?.ci ?? [], behind: raw.data?.behind ?? [], undone: raw.data?.undone ?? 0 },
+    caps: raw.caps ?? { assignPerDay: 0, s3PerDay: 0, inFlightPerAircraft: 0 },
+    thresholds: raw.thresholds ?? { precision: 0, precisionN: 0, crosscheck: 0, crosscheckN: 0, trip: 0 },
+  };
+}
+
+export function AtfmPanel({ refreshKey, now }: { refreshKey: string; now: number }) {
+  const [brief, setBrief] = useState<AtfmBrief | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // 서버에 ATFM이 없거나(404) 실패하면 아무것도 그리지 않는다
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/atfm");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setBrief(normalize(await res.json()));
+    } catch {
+      setBrief(null);
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load, refreshKey]);
+
+  const act = async (path: string, body: unknown) => {
+    setBusy(true);
+    try {
+      await post(path, body);
+      setError(null);
+      await load();
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!brief) return null;
+  const { config, mains, groundStops } = brief;
+
+  const allOff = () => {
+    if (!confirm("ATFM OFF\n\n모든 스위치를 그림자 운용으로 되돌리고 수동 GROUND STOP을 끕니다.\n멈춰 있던 ASSIGN과 LAND가 다시 나갑니다. 계속할까요?")) return;
+    act("/api/atfm/off", {});
+  };
+  const setSwitch = (key: string, name: string, value: string) => {
+    if (value === "on" && !confirm(`${name} GROUND STOP을 켤까요?\n\n${ON_EFFECT}`)) return;
+    act("/api/atfm/switch", { key, value });
+  };
+
+  const airports = [...new Set(mains.map((m) => m.airport).filter((a): a is string => !!a))].sort();
+  const enforced = groundStops.filter((s) => s.enforced).length;
+
+  return (
+    <section className="atfm" aria-labelledby="atfm-title">
+      <header className="atfm-head">
+        <h2 className="label" id="atfm-title">
+          ATFM <em>3단계 · 그림자 운용{enforced ? ` · 실제 GROUND STOP ${enforced}` : ""}</em>
+        </h2>
+        <button className="dp-btn atfm-off" onClick={allOff} disabled={busy} title="모든 스위치를 그림자로, 수동 GROUND STOP은 끔">
+          ATFM OFF
+        </button>
+      </header>
+      {error && (
+        <p className="dp-error atfm-error" role="alert">
+          {error}
+        </p>
+      )}
+
+      <details className="atfm-sec" open>
+        <summary>
+          GROUND STOP <em>{groundStops.length ? `${groundStops.length}건` : "없음"}</em>
+        </summary>
+        {groundStops.length ? (
+          <ul className="atfm-list">
+            {groundStops.map((s) => {
+              const on = s.enforced && s.kind === "stop";
+              return (
+                <li key={`${s.airport}|${s.trigger}|${s.text}`} className={on ? "is-enforced" : "is-shadow"} title={s.evidence.join("\n") || undefined}>
+                  <span className={`atfm-tag${on ? " t-on" : s.enforced ? " t-warn" : ""}`}>{on ? "ENFORCED" : s.enforced ? "GROUND DELAY" : "그림자"}</span>
+                  <span className="apt">{s.airport}</span>
+                  <span className="atfm-trigger">{TRIGGER_TEXT[s.trigger] ?? s.trigger}</span>
+                  <span className="atfm-text">{s.text}</span>
+                  <time className="faint atfm-at" dateTime={s.since}>
+                    {timeAgo(s.since, now)}
+                  </time>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="empty">출발 중지 없음</p>
+        )}
+
+        <div className="atfm-switches">
+          <Segmented
+            label="main 깨짐"
+            value={config.groundStop.mainBroken}
+            options={["off", "shadow", "on"]}
+            disabled={busy}
+            onPick={(v) => setSwitch("groundStop.mainBroken", "main 깨짐", v)}
+          />
+          <Segmented label="수동" value={config.groundStop.manual} options={["off", "on"]} disabled={busy} onPick={(v) => setSwitch("groundStop.manual", "수동", v)} />
+          {(
+            [
+              ["CI 실패 몰림", config.groundStop.failureWave],
+              ["CI 혼잡", config.groundStop.congestion],
+              ["LOS 증가", config.groundStop.los],
+            ] as const
+          ).map(([name, v]) => (
+            <span key={name} className="atfm-ro" title="그림자까지만 — 켤 수 없음">
+              {name} <b className={`atfm-mode m-${v}`}>{MODE_TEXT[v]}</b>
+            </span>
+          ))}
+        </div>
+
+        {config.groundStop.manual === "on" && <ManualForm airports={airports} busy={busy} onSubmit={(airport, reason) => act("/api/atfm/stops", { airport, reason })} />}
+        {config.manualStops.length > 0 && (
+          <ul className="atfm-list atfm-manual">
+            {config.manualStops.map((m) => (
+              <li key={m.airport}>
+                <span className="atfm-tag">수동</span>
+                <span className="apt">{m.airport}</span>
+                <span className="atfm-text">{m.reason}</span>
+                <time className="faint atfm-at" dateTime={m.at}>
+                  {timeAgo(m.at, now)}
+                </time>
+                <button className="dp-btn atfm-mini" disabled={busy} aria-label={`${m.airport} 수동 GROUND STOP 풀기`} onClick={() => act(`/api/atfm/stops/${encodeURIComponent(m.airport)}/release`, {})}>
+                  풀기
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {mains.length > 0 && (
+          <p className="atfm-mains" aria-label="AIRPORT별 main CI">
+            <span className="atfm-head-mini">main CI</span>
+            {mains.map((m) => (
+              <span
+                key={`${m.repo}@${m.branch}`}
+                className={`atfm-main c-${m.state}`}
+                title={`${m.slug} ${m.branch}${m.sha ? ` @${m.sha.slice(0, 7)}` : ""} · 체크 ${m.checks}${m.failing.length ? `\n실패: ${m.failing.join(", ")}` : ""}`}
+              >
+                <b>{m.airport ?? m.slug}</b> {MAIN_TEXT[m.state]}
+              </span>
+            ))}
+          </p>
+        )}
+      </details>
+
+      <details className="atfm-sec">
+        <summary>
+          머지 슬롯 <em>{MODE_TEXT[config.slots]} · CLEARED PR {brief.slots.length}</em>
+        </summary>
+        {brief.slots.length ? (
+          <ul className="atfm-list">
+            {brief.slots.map((s) => (
+              <li key={`${s.airport}#${s.pr}`} className={`sl-${s.slot}`}>
+                <span className="apt">{aptOf(s.airport)}</span>
+                <a className="mono" href={s.url} target="_blank" rel="noreferrer" title={s.title}>
+                  #{s.pr}
+                </a>
+                <span className="atfm-slot">{s.slot === "in-slot" ? "in-slot" : "waiting-slot"}</span>
+                <span className="mono faint" title="저장소 안 슬롯 순서 / 동시 LAND 수">
+                  {s.lanePos}/{s.limit ?? "∞"}
+                </span>
+                {s.urgent && <span className="atfm-tag t-warn">URGENT</span>}
+                {s.landTimedOut && (
+                  <span className="atfm-tag t-on" title={s.landAt ? `LAND ${s.landAt}` : undefined}>
+                    LAND 30분 초과
+                  </span>
+                )}
+                <span className="atfm-text faint">{s.title}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="empty">CLEARED PR 없음</p>
+        )}
+      </details>
+
+      <AutoSection
+        title="자동 배정 대상"
+        view={brief.auto}
+        caps={`하루 ${brief.caps.assignPerDay}건 · AIRCRAFT당 IN FLIGHT ${brief.caps.inFlightPerAircraft}`}
+        withAircraft
+      />
+      <AutoSection title="S3 대상" view={brief.s3} caps={`하루 ${brief.caps.s3PerDay}건`} />
+
+      <details className="atfm-sec">
+        <summary>
+          데이터 <em>그림자 판단의 근거</em>
+        </summary>
+        <ul className="atfm-data">
+          <li>
+            <span className="atfm-head-mini">CI 중앙값</span>
+            {brief.data.ci.length
+              ? brief.data.ci.map((c, i) => (
+                  <span key={c.airport ?? i} title={`표본 ${c.samples}`}>
+                    {i > 0 && <span className="faint"> · </span>}
+                    {aptOf(c.airport)} <b>{c.medianMin === null ? "—" : `${c.medianMin}분`}</b>
+                  </span>
+                ))
+              : "—"}
+          </li>
+          <li>
+            <span className="atfm-head-mini">BEHIND/머지</span>
+            {brief.data.behind.length
+              ? brief.data.behind.map((b, i) => (
+                  <span key={b.airport ?? i} title={`머지 ${b.merges} · BEHIND ${b.behind}`}>
+                    {i > 0 && <span className="faint"> · </span>}
+                    {aptOf(b.airport)} <b>{b.perMerge === null ? "—" : b.perMerge}</b>
+                  </span>
+                ))
+              : "—"}
+          </li>
+          <li>
+            <span className="atfm-head-mini">되돌린 CLASSIFY</span>
+            S2로 붙인 라벨이 7일 안에 사라짐 <b>{brief.data.undone}</b>건
+          </li>
+        </ul>
+      </details>
+    </section>
+  );
+}
+
+// 켤 수 있는 스위치: 버튼 묶음(aria-pressed)
+function Segmented<T extends string>({ label, value, options, disabled, onPick }: { label: string; value: T; options: readonly T[]; disabled?: boolean; onPick: (v: T) => void }) {
+  return (
+    <span className="atfm-seg" role="group" aria-label={`${label} GROUND STOP 스위치`}>
+      <span className="atfm-seg-label">{label}</span>
+      {options.map((o) => (
+        <button key={o} type="button" className={`atfm-seg-btn m-${o}`} aria-pressed={o === value} disabled={disabled} onClick={() => o !== value && onPick(o)}>
+          {MODE_TEXT[o as StopMode] ?? o}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+// 수동 GROUND STOP 선언: AIRPORT와 사유
+function ManualForm({ airports, busy, onSubmit }: { airports: string[]; busy: boolean; onSubmit: (airport: string, reason: string) => Promise<boolean> }) {
+  const [airport, setAirport] = useState("");
+  const [reason, setReason] = useState("");
+  const pick = airport || airports[0] || "";
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!pick || busy) return;
+    if (!confirm(`${pick}에 수동 GROUND STOP을 선언할까요?\n\n${ON_EFFECT}`)) return;
+    if (await onSubmit(pick, reason.trim())) setReason("");
+  };
+  return (
+    <form className="atfm-form" onSubmit={submit} aria-label="수동 GROUND STOP 선언">
+      <select className="dp-input" aria-label="AIRPORT" value={pick} onChange={(e) => setAirport(e.target.value)} disabled={!airports.length}>
+        {airports.map((a) => (
+          <option key={a} value={a}>
+            {a}
+          </option>
+        ))}
+      </select>
+      <input className="dp-input atfm-reason" aria-label="사유" placeholder="사유 (예: 배포 동결)" maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} />
+      <button type="submit" className="dp-btn atfm-mini t-stop" disabled={busy || !pick}>
+        선언
+      </button>
+    </form>
+  );
+}
+
+// 자동 배정·S3 대상(그림자): 건수, precision, 열린 항목, 켜기 점검
+function AutoSection({ title, view, caps, withAircraft }: { title: string; view: AutoView; caps: string; withAircraft?: boolean }) {
+  const eligible = view.open.filter((o) => o.eligible).length;
+  const p = view.precision;
+  return (
+    <details className="atfm-sec">
+      <summary>
+        {title} <em>{MODE_TEXT[view.mode]} · 대상 {eligible}/{view.open.length}</em>
+      </summary>
+      <p className="atfm-line">
+        판정 {p.decided}, 승인 {p.approved} ({pct(p.rate)}) · 대상이 된 적 {p.eligible} · 막았어야 할 거절 <b className={p.bad ? "atfm-bad" : undefined}>{p.bad}</b>
+        <span className="faint"> · 상한 {caps}</span>
+      </p>
+      {view.open.length > 0 && (
+        <ul className="atfm-list">
+          {view.open.map((o) => (
+            <li key={o.id}>
+              <span className="mono faint">{o.id}</span>
+              <span className="mono">{o.flight ? flightNumber(o.flight) : "—"}</span>
+              {withAircraft && <span>{o.aircraft ?? "—"}</span>}
+              {o.eligible ? (
+                <span className="atfm-ok">✓ 대상</span>
+              ) : (
+                <span className="atfm-codes">
+                  {o.failed.map((f) => (
+                    <span key={f.code} className="atfm-code" title={f.text}>
+                      {f.code}
+                      <span className="atfm-sr">: {f.text}</span>
+                    </span>
+                  ))}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {view.turnOn.length > 0 && (
+        <ul className="atfm-turn">
+          {view.turnOn.map((r) => (
+            <li key={r.id} className={`s-${r.status}`}>
+              <span>{r.label}</span>
+              <span className="atfm-turn-value">{r.value}</span>
+              <span className="atfm-turn-target">기준 {r.target}</span>
+              <span className="atfm-turn-state">{TURN_MARK[r.status]}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </details>
+  );
+}

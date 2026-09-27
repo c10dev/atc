@@ -289,6 +289,18 @@ Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server com
 | `POST /api/dispatch/mode` | `{mode: shadow\|approval}` |
 | `GET /api/dispatch/flight/:key` | FLIGHT body and comments (Linear, read-only) |
 
+## ATFM (stage 3: data and shadow operation)
+
+Design and decisions: [docs/atfm.md](docs/atfm.md). The switches live in `~/.local/state/atc/atfm.json` (written atomically), and every default is off or shadow.
+
+- **Data**: every GitHub poll reads each AIRPORT's default branch head CI (`success`, `failure`, `pending`, or `none` when the repository has no CI). Check durations, open PRs turning BEHIND, and labels applied through S2 that are later removed go to the FLIGHT RECORDER as `atfm` lines.
+- **GROUND STOP**: computed with every snapshot for these triggers: main broken, CI failure wave, CI congestion (a GROUND DELAY), LOS rising, and manual.
+  - Only "main broken" (`groundStop.mainBroken`: off / shadow / on) and "manual" (`groundStop.manual`: off / on) can be switched on; the rest are shadow.
+  - An enforced stop moves that AIRPORT's ASSIGNs out of the plan (`GROUND STOP — …`), and `dispatch release` refuses. TOWER issues no LAND there: the `landingQueue` item carries `groundStop`, and `groundstop.started` / `groundstop.ended` events trigger HOLD / CONTINUE.
+- **Merge slots (shadow)**: `landingQueue[].slot` shows `in-slot` or `waiting-slot`. Repositories with CI (vocado_nextjs) get 1 slot, those without get unlimited. Urgent goes first but never displaces a PR that already has a LAND, and a LAND expires after 30 minutes. TOWER does not follow it yet.
+- **Auto-eligibility (shadow)**: every open ASSIGN is checked against A1–A10 and every CLASSIFY draft against S1–S4, with the failed conditions. Shadow precision against human decisions and the turn-on conditions are shown. Nothing is approved automatically.
+- **API and screen**: `GET /api/atfm`, `POST /api/atfm/switch|off|stops|stops/:airport/release`, and the ATFM block in the DISPATCH tab. `via: "atfm"` is excluded from every human gate and from the CROSSCHECK match.
+
 ## SCHEDULE (OCC S1: shadow drafts)
 
 Design: [docs/occ.md](docs/occ.md) sections 5–7. The OCC session drafts the Linear changes it would make as SCHEDULE operations (`server/schedule.ts`, `~/.local/state/atc/schedule.jsonl`, append-only). S1 is shadow operation: **nothing is written to Linear.** The SUPERVISOR marks each draft, and the agreement rate decides when S2 (approved drafts written through linear-guard) can start.
@@ -336,7 +348,7 @@ CHARTER REQUEST → AD HOC FLIGHT draft (S1: verdict in the SCHEDULE tab) → FI
 | `crosscheck/` | Working folder for the CROSSCHECK session (provisional verdicts from a different model) | [CLAUDE.en.md](crosscheck/CLAUDE.en.md) · [/tick](crosscheck/.claude/skills/tick/SKILL.en.md) |
 | `deploy/` | systemd user service | [deploy/README.md](deploy/README.md) |
 | `docs/guide/` | The user guide shown in the DOCS tab (Korean) | [introduction](docs/guide/introduction.md) |
-| `docs/` | Design and conventions | [DISPATCH design](docs/dispatch.md) · [OCC design](docs/occ.md) · [FLEET design](docs/fleet.md) · [ATFM design (stage 3, draft)](docs/atfm.md) · [Naming rules](docs/naming.md) |
+| `docs/` | Design and conventions | [DISPATCH design](docs/dispatch.md) · [OCC design](docs/occ.md) · [FLEET design](docs/fleet.md) · [ATFM design (stage 3)](docs/atfm.md) · [Naming rules](docs/naming.md) |
 | — | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 
 Each has a Korean version next to it (`README.ko.md`, `*.ko.md`; for the session folders the Korean `CLAUDE.md` / `SKILL.md` are the originals the sessions load).
@@ -374,6 +386,8 @@ atc/
 │   ├── landing.ts          # CLEARED TO LAND conditions and LANDING SEQUENCE order (landing.test.ts)
 │   ├── metrics.ts          # operating metrics and stage 2 check (metrics.test.ts)
 │   ├── proposals.ts        # DISPATCH proposal log and API (proposals.test.ts)
+│   ├── atfm.ts             # ATFM: switches, ground stops, merge slots, auto-eligibility (atfm.test.ts)
+│   ├── atfm-run.ts         # ATFM recording and /api/atfm
 │   ├── reasons.ts          # DISPATCH reject reason chips (reasons.test.ts)
 │   ├── schedule.ts         # OCC SCHEDULE draft log and API (schedule.test.ts)
 │   ├── recorder.ts         # FLIGHT RECORDER log

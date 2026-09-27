@@ -6,7 +6,8 @@ import { awayOperations } from "./away.ts";
 import { allClearances, CLEARANCE_TYPES, isPending, issueClearance, markClearance } from "./clearances.ts";
 import { config } from "./config.ts";
 import type { EventLog } from "./events.ts";
-import { inSequence } from "./landing.ts";
+import { type AtfmConfig, DEFAULT_ATFM, enforcedStops, landOf, loadAtfm, slotLimitOf, slotsOf } from "./atfm.ts";
+import { inSequence, pullKey } from "./landing.ts";
 import { record } from "./recorder.ts";
 import type { Clearance, ClearanceType, Session, Snapshot, TrafficEvent } from "./model.ts";
 
@@ -34,6 +35,7 @@ export function buildBrief(
   since: { events: TrafficEvent[]; reset: boolean; cursor: string },
   clearances: Clearance[],
   now = Date.now(),
+  atfm: AtfmConfig = DEFAULT_ATFM,
 ) {
   const sessionById = new Map(s.sessions.map((x) => [x.id, x]));
   const label = (id: string) => sessionLabel(sessionById.get(id), id);
@@ -58,6 +60,19 @@ export function buildBrief(
 
   // LANDING SEQUENCE: Draft가 아닌 열린 PR. CLEARED TO LAND가 readyAt 순으로 앞(seq 1, 2, …), 그 뒤 APPROACH.
   const sequence = s.pulls.filter(inSequence);
+  // ATFM: 켜진 출발 중지(그 AIRPORT에는 LAND를 내지 않는다)와 머지 슬롯(그림자, TOWER는 아직 따르지 않는다)
+  const stopped = enforcedStops(s.atfm?.groundStops ?? []);
+  const mainOf = new Map((s.atfm?.mains ?? []).map((m) => [m.repo, m]));
+  const priorityOf = new Map(s.tickets.map((t) => [t.key, t.priority]));
+  const slots =
+    atfm.slots === "off"
+      ? new Map()
+      : slotsOf(s.pulls, {
+          limitOf: (repo) => slotLimitOf(codeOf(repo) ?? null, mainOf.get(repo), atfm),
+          priorityOf: (k) => (k ? (priorityOf.get(k) ?? 0) : 0),
+          landOf: (p) => landOf(p, clearances),
+          now,
+        });
   const cleared = sequence.filter((x) => x.landing === "CLEARED");
   const landingQueue = sequence.map((p) => {
     const stand = p.standPath ? wsByPath.get(p.standPath) : undefined;
@@ -92,6 +107,10 @@ export function buildBrief(
       // CLEARED에만. TOWER가 LAND CLEARANCE 본문으로 그대로 쓴다
       repoSeq,
       landText: repoSeq ? landTextOf(repoSeq, airport, p.number, fl, repoSeq > 1 ? lane[repoSeq - 2].number : null) : null,
+      // 켜진 GROUND STOP이 이 AIRPORT에 걸려 있으면 LAND를 내지 않는다
+      groundStop: airport && stopped.has(airport) ? { trigger: stopped.get(airport)!.trigger, text: stopped.get(airport)!.text, since: stopped.get(airport)!.since } : null,
+      // 머지 슬롯(그림자): 참고만. TOWER는 이 값으로 LAND를 거르지 않는다
+      slot: slots.get(pullKey(p)) ?? null,
     };
   });
 
@@ -147,6 +166,8 @@ export function buildBrief(
       noContact: alertsOf("no-workspace").map((a) => flight(a.ticketKey)),
     },
     landingQueue,
+    // ATFM 출발 중지. enforced만 실제로 막는다(나머지는 그림자)
+    groundStops: (s.atfm?.groundStops ?? []).map((g) => ({ airport: g.airport, trigger: g.trigger, kind: g.kind, enforced: g.enforced, text: g.text, since: g.since })),
     github: s.github,
     clearances: {
       pending: pending.map(clearanceView),
@@ -213,7 +234,7 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
   app.get("/api/controller/brief", async (c) => {
     const consumer = consumerOf(c.req.query("consumer"));
     const since = log.since(c.req.query("cursor") ?? readCursor(consumer));
-    return c.json(buildBrief(await getSnapshot(), since, allClearances()));
+    return c.json(buildBrief(await getSnapshot(), since, allClearances(), Date.now(), loadAtfm()));
   });
 
   app.post("/api/controller/ack", async (c) => {

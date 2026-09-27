@@ -1,3 +1,4 @@
+import type { GroundStop, MainStatus } from "./atfm.ts";
 export type Agent = "claude" | "codex";
 
 export interface Session {
@@ -144,7 +145,9 @@ export type TrafficEventKind =
   | "landing.left"
   | "session.lost"
   | "away.started"
-  | "away.ended";
+  | "away.ended"
+  | "groundstop.started" // 켜진 스위치로 실제로 막는 출발 중지만(그림자는 FLIGHT RECORDER에만)
+  | "groundstop.ended";
 
 // 스냅샷 사이의 변화. CONTROLLER가 "지난번 이후 무엇이 바뀌었나"를 읽는 단위.
 export interface TrafficEvent {
@@ -209,4 +212,5 @@ export interface Snapshot {
   alerts: Alert[];
   clearances: Clearance[]; // READBACK 대기 중이거나 최근 24시간 안의 CLEARANCE
   pulls: PullRequest[]; // 열린 PR. CLEARED(readyAt 순) 다음 APPROACH(연 순서)
+  atfm: { mains: MainStatus[]; groundStops: GroundStop[] }; // 기본 브랜치 CI와 출발 중지(docs/atfm.md)
 }

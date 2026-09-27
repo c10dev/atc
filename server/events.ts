@@ -1,3 +1,4 @@
+import { stopKey } from "./atfm.ts";
 import { awayOperations } from "./away.ts";
 import { inSequence, pullKey } from "./landing.ts";
 import type { LandingBlockCode, PullRequest, Snapshot, TrafficEvent } from "./model.ts";
@@ -46,7 +47,7 @@ export function diffSnapshots(prev: Snapshot | null, next: Snapshot): Draft[] {
     if (!seen.has(handoffKey(h))) out.push({ kind: "handoff", workspacePath: h.workspacePath, sessionIds: [h.from, h.to] });
   }
 
-  if (prev.github.fetchedAt && next.github.fetchedAt) out.push(...diffLanding(prev, next));
+  if (prev.github.fetchedAt && next.github.fetchedAt) out.push(...diffLanding(prev, next), ...diffGroundStops(prev, next));
 
   const pairs = (m: Map<string, string[]>) => new Set([...m].flatMap(([id, repos]) => repos.map((r) => `${id}|${r}`)));
   const wasAway = pairs(awayOperations(prev));
@@ -118,4 +119,16 @@ export class EventLog {
     const after = reset ? 0 : Number(seq) || 0;
     return { events: this.events.filter((e) => e.id > after), reset: Boolean(cursor) && reset, cursor: this.cursor };
   }
+}
+
+// 켜진 스위치로 실제로 막는 출발 중지(GROUND STOP)의 시작·끝. TOWER가 HOLD·CONTINUE CLEARANCE를 낸다.
+// 그림자 출발 중지는 이벤트를 내지 않는다(FLIGHT RECORDER의 atfm 줄에만 남는다).
+export function diffGroundStops(prev: Snapshot, next: Snapshot): Draft[] {
+  const on = (s: Snapshot) => new Map((s.atfm?.groundStops ?? []).filter((g) => g.enforced && g.kind === "stop").map((g) => [stopKey(g), g]));
+  const was = on(prev);
+  const is = on(next);
+  const out: Draft[] = [];
+  for (const [k, g] of is) if (!was.has(k)) out.push({ kind: "groundstop.started", repo: g.repo ?? undefined, message: g.text });
+  for (const [k, g] of was) if (!is.has(k)) out.push({ kind: "groundstop.ended", repo: g.repo ?? undefined, message: g.text });
+  return out;
 }
