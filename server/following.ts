@@ -1,0 +1,223 @@
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import type { Hono } from "hono";
+import { config } from "./config.ts";
+import { classOf, type Wake } from "./crew.ts";
+import { type Departure, readDepartures } from "./departures.ts";
+import { tailsOf } from "./dispatch.ts";
+import { type LogEntry, loadLogbook, WAKE_EXPECT_MIN } from "./logbook.ts";
+import type { PullRequest, Snapshot, Ticket, Workspace } from "./model.ts";
+import { allProposals, type Proposal } from "./proposals.ts";
+
+// FLIGHT FOLLOWING(운항 추적, docs/occ.md 8장). 배정된 FLIGHT의 진행을 기존 기록으로 따라가고,
+// 늦거나(지연) Linear와 어긋나면(불일치) OCC가 SUPERVISOR에게 보고한다. 팀에 묻지는 않는다.
+// 단계: READBACK(제안 timeline) → DEPARTED(제안 timeline, 착수 기록 departures.jsonl) → PR 열림(snapshot.pulls,
+// LOGBOOK) → CLEARED(landing readyAt) → ARRIVED(LOGBOOK). 계산은 순수 함수, 반복 보고를 막는 기록만 파일에 둔다.
+
+const MIN = 60_000;
+const DAY = 86_400_000;
+export const DELAY_FACTOR = 1.5; // WAKE 기대치의 1.5배
+export const LANDING_INFO_MS = 60 * MIN; // CLEARED 뒤 착륙 대기(정보)
+export const KEEP_ARRIVED_MS = DAY; // ARRIVED하고 Linear도 끝난 FLIGHT는 하루 보이고 빠진다
+
+export const STAGES = ["readback", "departed", "prOpened", "cleared", "arrived"] as const;
+export type Stage = (typeof STAGES)[number];
+
+export interface FollowIssue {
+  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "review-no-pr" | "done-not-merged" | "merged-not-done";
+  kind: "delay" | "mismatch";
+  severity: "warn" | "info"; // info: 보여 주기만(착륙 대기는 SUPERVISOR 몫, 머지 뒤 Done 아님은 CLOSE 초안 몫)
+  text: string;
+  since: string; // 이 상태가 된 시각(기준 시각 + 허용 시간)
+}
+
+export interface FollowItem {
+  flight: string;
+  title: string | null;
+  url: string | null;
+  state: string | null; // Linear 상태 이름
+  aircraft: string | null;
+  source: "dispatch" | "tail"; // DISPATCH 제안 또는 tail: 라벨(사람이 직접 배정)
+  proposal: { id: string; status: Proposal["status"] } | null;
+  wake: Wake;
+  expectMin: number;
+  stages: Record<Stage, string | null>;
+  stage: Stage | null; // 지금까지 닿은 마지막 단계
+  stageAt: string | null;
+  stand: string | null; // 지금 있는 STAND(워크트리) 경로
+  pr: { repo: string; number: number; url: string; merged: boolean } | null;
+  issues: (FollowIssue & { key: string })[];
+}
+
+export interface FollowInput {
+  proposals: Proposal[];
+  tickets: Ticket[];
+  workspaces: Pick<Workspace, "path" | "ticketKey">[];
+  pulls: PullRequest[];
+  logbook: LogEntry[];
+  departures: Departure[];
+  now: number;
+}
+
+const iso = (ms: number) => new Date(ms).toISOString();
+const hours = (ms: number) => {
+  const h = ms / 3_600_000;
+  return h >= 1 ? `${Math.round(h * 10) / 10}시간` : `${Math.round(ms / MIN)}분`;
+};
+const isReview = (t: Ticket | undefined) => Boolean(t && /review/i.test(t.state));
+const isDone = (t: Ticket | undefined) => t?.stateType === "completed";
+const isClosed = (t: Ticket | undefined) => Boolean(t && (t.stateType === "completed" || t.stateType === "canceled" || t.stateType === "duplicate"));
+
+// 따라갈 FLIGHT: accepted·departed·recalling인 ASSIGN, 그리고 2b 전이라도 tail:이 붙은 In Progress FLIGHT
+export function targetsOf(inp: Pick<FollowInput, "proposals" | "tickets">): { flight: string; proposal: Proposal | null; aircraft: string | null }[] {
+  const out = new Map<string, { flight: string; proposal: Proposal | null; aircraft: string | null }>();
+  const live = inp.proposals
+    .filter((p) => p.kind === "ASSIGN" && (p.status === "accepted" || p.status === "departed" || p.status === "recalling"))
+    .sort((a, b) => a.statusAt.localeCompare(b.statusAt));
+  for (const p of live) out.set(p.flight, { flight: p.flight, proposal: p, aircraft: p.aircraftName });
+  for (const t of inp.tickets) {
+    if (out.has(t.key) || t.stateType !== "started") continue;
+    const tails = [...tailsOf(t)];
+    if (tails.length) out.set(t.key, { flight: t.key, proposal: null, aircraft: tails[0] });
+  }
+  return [...out.values()];
+}
+
+// FLIGHT 하나의 단계·지연·불일치(순수)
+export function followOne(target: { flight: string; proposal: Proposal | null; aircraft: string | null }, inp: FollowInput): FollowItem {
+  const { flight, proposal } = target;
+  const t = inp.tickets.find((x) => x.key === flight);
+  const cls = classOf(t?.labels ?? []);
+  const expectMin = WAKE_EXPECT_MIN[cls.wake] ?? WAKE_EXPECT_MIN.H!;
+  const allow = expectMin * MIN * DELAY_FACTOR;
+
+  const dep = inp.departures.filter((d) => d.flight === flight).map((d) => d.t).sort()[0] ?? null;
+  const stand = inp.workspaces.find((w) => w.ticketKey === flight)?.path ?? null;
+  const open = inp.pulls.filter((p) => p.ticketKey === flight).sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+  const merged = inp.logbook
+    .filter((e) => e.flight === flight && !e.reverted)
+    .sort((a, b) => b.arrivedAt.localeCompare(a.arrivedAt))[0];
+  const mergedOpenedAt = merged ? iso(Date.parse(merged.arrivedAt) - merged.landingWaitMin * MIN) : null;
+
+  const stages: Record<Stage, string | null> = {
+    readback: proposal?.timeline.accepted ?? null,
+    departed: proposal?.timeline.departed ?? dep,
+    prOpened: open?.createdAt ?? mergedOpenedAt,
+    cleared: open?.landing === "CLEARED" ? open.readyAt : null,
+    arrived: merged?.arrivedAt ?? null,
+  };
+  const reached = STAGES.filter((s) => stages[s]);
+  const stage = reached.at(-1) ?? null;
+
+  const issues: FollowIssue[] = [];
+  const late = (from: string | null, ms: number) => (from && inp.now - Date.parse(from) > ms ? iso(Date.parse(from) + ms) : null);
+  if (!stages.arrived && proposal?.status !== "recalling") {
+    const noDep = !stages.departed && !stand ? late(stages.readback, allow) : null;
+    if (noDep) issues.push({ code: "no-departure", kind: "delay", severity: "warn", text: `READBACK 뒤 ${hours(inp.now - Date.parse(stages.readback!))} 동안 착수(STAND) 없음 — WAKE ${cls.wake} 기대 ${expectMin}분의 ${DELAY_FACTOR}배를 넘음`, since: noDep });
+    const startedAt = stages.departed ?? (stand ? stages.readback : null);
+    const noPr = !stages.prOpened ? late(startedAt, allow) : null;
+    if (noPr) issues.push({ code: "no-pr", kind: "delay", severity: "warn", text: `STAND는 있는데 ${hours(inp.now - Date.parse(startedAt!))} 동안 PR 없음 — WAKE ${cls.wake} 기대 ${expectMin}분의 ${DELAY_FACTOR}배를 넘음`, since: noPr });
+    const notCleared = open && !stages.cleared ? late(stages.prOpened, allow) : null;
+    if (notCleared) issues.push({ code: "pr-not-cleared", kind: "delay", severity: "warn", text: `PR #${open!.number}이 ${hours(inp.now - Date.parse(stages.prOpened!))} 동안 CLEARED TO LAND가 안 됨: ${open!.blocks.map((b) => b.text).join(" · ") || "막힘 없음"}`, since: notCleared });
+    const waiting = late(stages.cleared, LANDING_INFO_MS);
+    if (waiting) issues.push({ code: "landing-wait", kind: "delay", severity: "info", text: `PR #${open!.number}이 CLEARED 뒤 ${hours(inp.now - Date.parse(stages.cleared!))} 동안 착륙하지 않음(착륙 대기는 SUPERVISOR 몫)`, since: waiting });
+  }
+  if (isReview(t) && !open && !merged) issues.push({ code: "review-no-pr", kind: "mismatch", severity: "warn", text: `Linear는 ${t!.state}인데 PR이 없음`, since: t!.updatedAt ?? iso(inp.now) });
+  if (isDone(t) && !merged) issues.push({ code: "done-not-merged", kind: "mismatch", severity: "warn", text: `Linear는 ${t!.state}인데 ${open ? `PR #${open.number}이 머지되지 않음` : "머지된 PR이 없음"}`, since: t!.updatedAt ?? iso(inp.now) });
+  if (merged && t && !isClosed(t)) issues.push({ code: "merged-not-done", kind: "mismatch", severity: "info", text: `PR #${merged.pr.number}은 머지됐는데 Linear는 ${t.state} — CLOSE 초안 대상`, since: merged.arrivedAt });
+
+  return {
+    flight,
+    title: t?.title ?? null,
+    url: t?.url ?? null,
+    state: t?.state ?? null,
+    aircraft: target.aircraft,
+    source: proposal ? "dispatch" : "tail",
+    proposal: proposal ? { id: proposal.id, status: proposal.status } : null,
+    wake: cls.wake,
+    expectMin,
+    stages,
+    stage,
+    stageAt: stage ? stages[stage] : null,
+    stand,
+    pr: open ? { repo: open.repo, number: open.number, url: open.url, merged: false } : merged ? { repo: merged.pr.repo, number: merged.pr.number, url: merged.pr.url, merged: true } : null,
+    issues: issues.map((i) => ({ ...i, key: `${flight}|${i.code}` })),
+  };
+}
+
+// 전체(순수). ARRIVED하고 Linear도 끝난 지 하루가 지난 FLIGHT는 뺀다.
+export function followingOf(inp: FollowInput): FollowItem[] {
+  return targetsOf(inp)
+    .map((t) => followOne(t, inp))
+    .filter((f) => !(f.stages.arrived && isClosed(inp.tickets.find((t) => t.key === f.flight)) && inp.now - Date.parse(f.stages.arrived) > KEEP_ARRIVED_MS));
+}
+
+// ── 반복 보고 막기: OCC가 보고한 문제의 key를 적어 둔다. 풀린 문제는 지워서 다시 생기면 새로 보고한다 ──
+
+const STATE_FILE = () => join(config.stateDir, "following-state.json");
+export interface Reported {
+  reported: Record<string, string>; // issue key → 보고한 시각
+}
+export function loadReported(file = STATE_FILE()): Reported {
+  try {
+    const r = JSON.parse(readFileSync(file, "utf8"));
+    return { reported: r.reported && typeof r.reported === "object" ? r.reported : {} };
+  } catch {
+    return { reported: {} };
+  }
+}
+function saveReported(r: Reported, file = STATE_FILE()) {
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(r, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
+// 지금 문제 중 아직 보고하지 않은 것(순수)
+export const freshKeys = (items: FollowItem[], r: Reported) => items.flatMap((f) => f.issues.map((i) => i.key)).filter((k) => !(k in r.reported));
+
+// 보고했다고 적는다(순수): 지금 있는 문제만 남기고(풀린 것은 지움), ack한 key를 더한다
+export function ackReported(items: FollowItem[], r: Reported, keys: string[], now: string): Reported {
+  const current = new Set(items.flatMap((f) => f.issues.map((i) => i.key)));
+  const next: Record<string, string> = {};
+  for (const [k, at] of Object.entries(r.reported)) if (current.has(k)) next[k] = at;
+  for (const k of keys) if (current.has(k)) next[k] ??= now;
+  return { reported: next };
+}
+
+// ── API ──
+
+export function followingNow(s: Snapshot, now = Date.now()): FollowItem[] {
+  return followingOf({ proposals: allProposals(), tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now });
+}
+
+export function mountFollowing(app: Hono, getSnapshot: () => Promise<Snapshot>) {
+  // 읽기만 한다. fresh는 아직 OCC가 보고하지 않은 문제
+  app.get("/api/following", async (c) => {
+    const s = await getSnapshot();
+    const now = Date.now();
+    const items = followingNow(s, now);
+    const r = loadReported();
+    const fresh = new Set(freshKeys(items, r));
+    return c.json({
+      at: iso(now),
+      linear: s.linear.fetchedAt,
+      github: s.github.fetchedAt,
+      items: items.map((f) => ({ ...f, issues: f.issues.map((i) => ({ ...i, fresh: fresh.has(i.key), reportedAt: r.reported[i.key] ?? null })) })),
+      fresh: [...fresh],
+    });
+  });
+
+  // OCC가 보고한 문제를 적는다. keys가 없으면 지금 fresh 전부
+  app.post("/api/following/ack", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const s = await getSnapshot();
+    const now = Date.now();
+    const items = followingNow(s, now);
+    const r = loadReported();
+    const keys = Array.isArray(body.keys) ? body.keys.map(String) : freshKeys(items, r);
+    const next = ackReported(items, r, keys, iso(now));
+    saveReported(next);
+    return c.json({ acked: keys.filter((k: string) => k in next.reported), reported: Object.keys(next.reported).length });
+  });
+}

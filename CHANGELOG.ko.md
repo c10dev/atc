@@ -21,6 +21,13 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - 초안: `atcctl schedule draft CLOSE <FLIGHT> -- <근거>`. atc가 `{pr, mergedAt, fixes?, partOf?}`를 채우고, 열린 상태면 무엇이든 되며, 이슈가 닫혔거나 ARRIVED 줄이 없으면 거절한다. `Part of` 초안은 받되 "Part of — 일부만"으로 보인다. `syncLines`는 Linear가 Done·Canceled가 되면(발부됐으면 APPLIED) 또는 PR이 되돌려지면 초안을 닫는다. 열린 초안 한도(5)를 함께 쓴다.
   - 발부하지 않는다: CLOSE는 이슈 상태를 바꾸는 일이라 vocado의 OCC 예외가 허용하지 않는다. `callsOf`가 거절하고 `schedule release`는 409 `CLOSE는 SUPERVISOR가 Linear에서 직접 — vocado 규칙상 OCC는 상태를 바꾸지 않음`으로 답한다. SCHEDULE 탭은 승인한 CLOSE(그림자 운용이면 7일 안의 "승인했을 것")를 "LINEAR에서 직접 DONE"으로 보여 준다. 근거 댓글만 발부하는 안은 검토했지만 넣지 않았다(이유와, 규칙이 바뀌면 발부를 켤 자리는 문서에).
   - OCC 규정·`/tick`(ko/en)에 후보, 읽기 전용 `gh pr view`로 하는 "CLOSE 전에" 확인, 발부하지 않는 규칙을 더했다. CROSSCHECK 규정·`/tick`(ko/en)은 CLOSE에서 "이미 끝났나" 확인을 뒤집고, `Part of`·되돌림·남은 작업이면 disagree한다. 안내(판정하기, 일 맡기기)와 README에 적었다.
+- OCC의 FLIGHT FOLLOWING(운항 추적) ([docs/occ.md](docs/occ.md) 8.1, `server/following.ts`, 순수 계산. `proposals.ts`·`schedule.ts`는 읽기만 한다).
+  - **대상**: accepted·departed·recalling인 ASSIGN과 `tail:`이 붙은 In Progress FLIGHT.
+  - **단계**: READBACK → DEPARTED → PR 열림 → CLEARED → ARRIVED. 제안 timeline, `departures.jsonl`, `snapshot.pulls`, LOGBOOK에서 가져온다.
+  - **지연·불일치**: WAKE 기대치의 1.5배, Linear In Review·Done과 PR의 어긋남, 머지됐는데 Done 아님(정보).
+  - **창구**: `GET /api/following`, `POST /api/following/ack`(`following-state.json`, 반복 보고 방지), `atcctl following`·`following ack`, DISPATCH 탭 블록.
+  - **OCC**: `occ/CLAUDE.md`와 `/tick`(ko/en)이 새 문제만 보고하고 팀에는 메시지를 보내지 않게 했다.
+  - docs/occ.md 13장 4번을 마쳤다.
 - DISPATCH가 STAND 없는 FLIGHT를 쉬는 팀에도 제안하고, CHECK를 만든 팀에는 주지 않는다([docs/fleet.md](docs/fleet.md) 5.1~5.2). planner가 STAND 자리가 빈 팀에만 제안해서 그림자 판정이 쌓이지 않았다.
   - **STAND 없는 짝짓기**: STAND 규칙(그대로)으로 짝을 지은 뒤, 남은 `SURVEY`·`CHECK` FLIGHT(`crew.ts`의 `needsStand`. `FERRY`는 여전히 STAND가 필요)를 그 규칙 밖으로 HOLDING·PARKED AIRCRAFT에 준다. AIRBORNE·AOG·RETIRED에는 주지 않는다. 한도는 진행 중인 제안까지 세어 AIRCRAFT당 STAND 없는 FLIGHT 1건, 한 계획에서 AIRCRAFT당 제안 1건이다. TAIL ASSIGNMENT·TYPE RATING·CREW·WAKE 슬롯은 그대로 적용되고 점수도 그대로다.
   - **예약**: `reservedOf`가 `aircraftFlights`(AIRCRAFT → 진행 중인 FLIGHT)를 더 돌려준다. `AircraftState.reserved`는 이제 STAND가 필요한 예약만, `reservedLight`는 STAND 없는 예약을 담고, `resting`은 HOLDING·PARKED를 표시한다. `dispatch.ts`의 `canTakeNow`로 `syncOps`가 HOLDING 팀에 승인된 STAND 없는 제안을 유효하게 둔다.

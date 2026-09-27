@@ -21,6 +21,7 @@
    - On `LIMIT`, stop drafting for this pass. Nothing is written to Linear.
    - Open `NEW` drafts (AD HOC FLIGHTs from the CHARTER DESK) count toward the limit of 5 too. A CHARTER REQUEST is not a per-pass duty; handle it as in "CHARTER DESK" in CLAUDE.md when the SUPERVISOR asks in this session.
 6. If `mode` in `schedule brief` is `approval` (S2), follow "SCHEDULE release" in CLAUDE.md: for each approved in `inProgress` (except CLOSE — it is never released), `schedule release <S-xxxx>` → for each CALL in the output, pass its JSON unchanged to that Linear tool. If linear-guard blocks it or Linear returns an error, don't retry; report to the SUPERVISOR. In `shadow`, skip this step.
-7. Leave a line or two of OCC LOG. If nothing happened, "특이 사항 없음" ("nothing to report").
+7. Flight following: run `node ../controller/atcctl.mjs following`. Put only issues with `fresh: true` in the OCC LOG, one line each, and report those with `severity: "warn"` to the SUPERVISOR. Then run `node ../controller/atcctl.mjs following ack`. Don't report already-reported ones (`fresh: false`) again, and don't message teams.
+8. Leave a line or two of OCC LOG. If nothing happened, "특이 사항 없음" ("nothing to report").
 
 It makes no decisions (approve or reject). If send-guard blocks a send, don't retry; report to the SUPERVISOR.

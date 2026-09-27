@@ -179,7 +179,7 @@ Never automatic: anything with CAUTION, `Canceled`, deleting anything, adding or
 |---|---|
 | DISPATCH session (`atc/dispatch/`) | The same work under `atc/occ/`: proposal review, HOLD, FLIGHT PLAN, READBACK. The DISPATCH tab, proposal ids (`D-xxxx`) and send-guard stay as they are |
 | President: assign work | DISPATCH proposals. Until 2b, a person's direct assignment is recorded with `TAIL` so the planner can see it |
-| President: verify team reports | **Flight following**. OCC checks the PR head, CI and review with read-only `gh` (`gh pr view`, `gh pr checks`, `gh pr diff`). The mechanical part becomes ATC's CLEARED TO LAND check (section 9) |
+| President: verify team reports | **Flight following**. atc follows every assigned FLIGHT (`server/following.ts`, `GET /api/following`): DISPATCH ASSIGNs that are accepted, departed or recalling, plus In Progress FLIGHTs with a `tail:` label. It tracks the stages READBACK → DEPARTED → PR opened → CLEARED → ARRIVED, and flags delays (no next stage after 1.5× the WAKE expectation) and mismatches between Linear and the PR. Each pass, OCC runs `atcctl following`, reports only new issues and records them with `following ack`, so nothing is reported twice. It never messages teams. For a team report or a SUPERVISOR request, OCC still checks the PR head, CI and review with read-only `gh` (`gh pr view`, `gh pr checks`, `gh pr diff`). The mechanical landing check is ATC's CLEARED TO LAND (section 9) |
 | President: keep Linear tidy | SCHEDULE operations |
 | President: maintain rule files | A `NEW` ticket that a TEAM implements through a PR |
 | President: judge PR reviews and scope | Stays with the SUPERVISOR. OCC can summarize, but does not decide |
@@ -189,6 +189,30 @@ OCC's guard is TOWER's Bash guard plus read-only `gh` subcommands (`guard.mjs --
 The session reloads its manual: `/tick` starts with `atcctl manual check`, which compares the hash of `CLAUDE.md` and `/tick` with the last `atcctl manual ack` (stored under `~/.local/state/atc/manuals/`). If they changed, the session rereads them before doing anything else. TOWER's `/tick` does the same. That fixes the stale-manual incident from section 1.
 
 **President retires** once all three hold: OCC has run S1 for a week, flight following covers every team report, and `TAIL` is in use. Until then President keeps assigning and records each assignment as a `tail:` label (by hand until OCC S2).
+
+### 8.1 Flight following in detail
+
+| Stage | Source |
+|---|---|
+| READBACK | the proposal's `timeline.accepted` (none for `tail:` FLIGHTs) |
+| DEPARTED | `timeline.departed`, else the first departure record (`departures.jsonl`) for the FLIGHT |
+| PR opened | an open PR for the FLIGHT (`snapshot.pulls`), else the LOGBOOK entry (merge time minus landing wait) |
+| CLEARED | the open PR's `readyAt` while it is CLEARED TO LAND |
+| ARRIVED | the FLIGHT's LOGBOOK entry (not reverted) |
+
+| Issue | When | Severity |
+|---|---|---|
+| `no-departure` | READBACK, no STAND and no departure after 1.5× the WAKE expectation (L 60, M 240 min, H 2 days, as in the LOGBOOK) | warn |
+| `no-pr` | a STAND or departure, no PR after 1.5× | warn |
+| `pr-not-cleared` | a PR, not CLEARED after 1.5×; the text lists its landing blocks | warn |
+| `landing-wait` | CLEARED for more than 1 hour without landing; landing is the SUPERVISOR's call | info |
+| `review-no-pr` | Linear says In Review but there is no PR | warn |
+| `done-not-merged` | Linear says Done but there is no merged PR | warn |
+| `merged-not-done` | the PR merged but Linear isn't Done; this is what a `CLOSE` draft handles | info |
+
+- A recalling FLIGHT is not checked for delays, because it was told to stop.
+- A FLIGHT that has ARRIVED and is closed in Linear stays visible for a day, then drops off.
+- `following-state.json` keeps the keys (`FLIGHT|code`) OCC has reported. An issue that clears is forgotten, so if it comes back it is reported again.
 
 ## 9. What ATC takes
 
@@ -348,7 +372,7 @@ named `CROSSCHECK`, and run with `/loop 10m /tick`.
 1. ✅ **S0**: create `atc/occ/` from `atc/dispatch/` (merge), add read-only `gh` to its guard, a read-only MCP guard, reload the manual on change. Still to do: tell President about the handover
 2. ✅ TAIL ASSIGNMENT `tail:TEAM_X` in the planner, first shipped as `lane:TEAM_X` (fixes the VOC-196 double dispatch right away). Labels are read from the existing Linear query
 3. ✅ **S1**: SCHEDULE log, API, `atcctl schedule`, SCHEDULE tab, shadow verdicts. First operations: `CLASSIFY` and `PRIORITIZE`
-4. Flight following in `/tick` (read-only `gh`), ✅ CLEARED TO LAND checks in TOWER (section 9.1)
+4. ✅ Flight following in `/tick`: `atcctl following` (stages, delays, mismatches, no repeat reports) plus read-only `gh` for team reports. ✅ CLEARED TO LAND checks in TOWER (section 9.1)
 5. ◐ **S2**: built behind `mode` (linear-guard, `schedule release`, APPLIED detection). Still to do when turning it on: the vocado `CLAUDE.md` rule change (confirmed with the SUPERVISOR at that time)
 6. **S3**: automatic operations, only those that S2 data supports
 7. ✅ **CROSSCHECK**: provisional marks from a different model family, one-click decisions, match rate kept outside the gates. Still to do: decide from the match rate whether any non-`SEC` operation may skip the human

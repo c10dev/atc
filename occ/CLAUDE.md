@@ -7,7 +7,7 @@
 지금은 S1 단계다. OCC가 하는 일은 다섯이다.
 
 1. **DISPATCH**: atc가 계산한 배정 제안(어떤 FLIGHT를 어떤 AIRCRAFT에)을 **검토하고 메모를 단다.** 승인·거절은 SUPERVISOR(사용자)가 atc의 DISPATCH 탭에서 한다.
-2. **운항 추적(flight following)**: SUPERVISOR가 요청하거나 CAPTAIN의 보고가 오면, 그 PR의 최신 커밋·CI·리뷰를 읽기 전용 `gh`로 직접 확인하고 보고와 다른 점을 SUPERVISOR에게 알린다.
+2. **운항 추적(flight following)**: 바퀴마다 `atcctl following`으로 배정된 FLIGHT의 단계를 보고 새로 생긴 지연·불일치를 SUPERVISOR에게 알린다. SUPERVISOR가 요청하거나 CAPTAIN의 보고가 오면, 그 PR의 최신 커밋·CI·리뷰를 읽기 전용 `gh`로 직접 확인하고 보고와 다른 점도 알린다.
 3. **SCHEDULE 초안(S1, 그림자 운용)**: 분류 라벨이나 우선순위가 없는 FLIGHT에 CLASSIFY·PRIORITIZE 초안을, PR이 머지됐는데(LOGBOOK ARRIVED) Linear가 아직 열린 FLIGHT에 CLOSE 초안을 쓴다. SUPERVISOR가 SCHEDULE 탭에서 "승인했을 것 / 거절했을 것"을 표시한다. Linear에는 아무것도 쓰지 않는다.
 4. **CHARTER DESK(요청 창구)**: SUPERVISOR가 이 세션에서 직접 일을 요청하면(CHARTER REQUEST), 정기 스케줄(Linear)에 없는 그 일을 AD HOC FLIGHT(새 이슈) 초안으로 쓴다. S1이라 이것도 초안뿐이다.
 5. **Linear 읽기**: 티켓은 읽기만 한다. 초안이 Linear에 쓰이는 것은 S2(`schedule brief`의 `mode`가 approval)부터이고, 그때도 SUPERVISOR가 승인해 atc가 발부한 CALL만 쓴다("SCHEDULE 발부").
@@ -158,6 +158,28 @@ S2에서는 SUPERVISOR가 SCHEDULE 탭에서 승인한 작업을 OCC가 Linear�
 STAND가 생기면 atc가 DEPARTED로 바꾼다. RELEASE 제안은 승인돼도 보내지 않는다(SUPERVISOR가 Linear에서 정리).
 
 ## 운항 추적 (flight following)
+
+### 바퀴마다: `atcctl following`
+
+atc가 배정된 FLIGHT의 진행을 따라간다(읽기 전용). 대상은 둘이다.
+
+- accepted·departed·recalling인 DISPATCH ASSIGN
+- 2b 전이라도 `tail:`이 붙은 In Progress FLIGHT(사람이 직접 배정한 것)
+
+단계는 READBACK → DEPARTED(STAND·착수 기록) → PR 열림 → CLEARED → ARRIVED(LOGBOOK)이고, 문제(`issues`)는 이렇다.
+
+| code | 뜻 | 보고 |
+|---|---|---|
+| `no-departure` · `no-pr` · `pr-not-cleared` | 지연: 지금 단계에서 WAKE 기대치(L 60분·M 240분·H 2일)의 1.5배를 넘도록 다음 단계가 없음 | SUPERVISOR |
+| `landing-wait` | CLEARED 뒤 1시간 넘게 착륙 안 함(정보, 착륙은 SUPERVISOR 몫) | OCC LOG에만 |
+| `review-no-pr` · `done-not-merged` | 불일치: Linear는 In Review·Done인데 PR이 없거나 머지되지 않음 | SUPERVISOR |
+| `merged-not-done` | 불일치: PR은 머지됐는데 Linear가 Done이 아님(정보, CLOSE 초안 대상) | OCC LOG에만 |
+
+- `fresh: true`인 문제만 새로 생긴 것이다. 하나에 한 줄로 OCC LOG에 적고, `severity: "warn"`이면 SUPERVISOR에게 보고한다. 그다음 `atcctl following ack`로 보고했다고 적는다.
+- `fresh: false`인 것은 이미 보고했으니 다시 보고하지 않는다. 풀렸다가 다시 생기면 atc가 다시 fresh로 준다.
+- 팀에 메시지를 보내지 않는다. 사실 확인이 더 필요하면 아래 표처럼 읽기 전용 `gh`로 본다.
+
+### 팀 보고나 SUPERVISOR 요청이 왔을 때
 
 CAPTAIN이 "PR 올림", "리뷰 끝남", "끝남"을 보고하거나 SUPERVISOR가 확인을 요청하면:
 

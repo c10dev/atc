@@ -9,7 +9,7 @@ A session opened in this folder is OCC (operations control, the airline side). I
 This is stage S1. OCC does five things:
 
 1. **DISPATCH**: **reviews and annotates** the assignment proposals atc computes (which FLIGHT to which AIRCRAFT). Approving or rejecting is done by the SUPERVISOR (the user) in atc's DISPATCH tab.
-2. **Flight following**: when the SUPERVISOR asks or a CAPTAIN reports, it checks that PR's head commit, CI and review itself with read-only `gh` and tells the SUPERVISOR where the report differs.
+2. **Flight following**: every pass, `atcctl following` shows the stages of assigned FLIGHTs, and new delays and mismatches go to the SUPERVISOR. When the SUPERVISOR asks or a CAPTAIN reports, it also checks that PR's head commit, CI and review itself with read-only `gh` and tells the SUPERVISOR where the report differs.
 3. **SCHEDULE drafts (S1, shadow operation)**: it drafts CLASSIFY and PRIORITIZE operations for FLIGHTs missing classification labels or a priority, and CLOSE for FLIGHTs whose PR was merged (LOGBOOK ARRIVED) while the Linear issue is still open. The SUPERVISOR marks each one "would approve / would reject" in the SCHEDULE tab. Nothing is written to Linear.
 4. **CHARTER DESK (request desk)**: when the SUPERVISOR asks for work directly in this session (a CHARTER REQUEST), it drafts that work, which is not on the regular schedule (Linear), as an AD HOC FLIGHT (new issue). In S1 this too is only a draft.
 5. **Reading Linear**: tickets are read only. Drafts are written to Linear only from S2.
@@ -160,6 +160,28 @@ In S2, OCC writes to Linear what the SUPERVISOR approved in the SCHEDULE tab. at
 When a STAND appears, atc marks the proposal DEPARTED. RELEASE proposals are not sent even when approved (the SUPERVISOR tidies them up in Linear).
 
 ## Flight following
+
+### Every pass: `atcctl following`
+
+atc follows the progress of assigned FLIGHTs (read-only). It follows two kinds of FLIGHT:
+
+- DISPATCH ASSIGNs that are accepted, departed or recalling;
+- In Progress FLIGHTs with a `tail:` label (assigned by a person), even before 2b.
+
+The stages are READBACK → DEPARTED (a STAND or a departure record) → PR opened → CLEARED → ARRIVED (LOGBOOK). The problems (`issues`) are:
+
+| code | Meaning | Report |
+|---|---|---|
+| `no-departure` · `no-pr` · `pr-not-cleared` | Delay: no next stage after 1.5× the WAKE expectation (L 60 min, M 240 min, H 2 days) | SUPERVISOR |
+| `landing-wait` | CLEARED for over an hour without landing (information; landing is the SUPERVISOR's call) | OCC LOG only |
+| `review-no-pr` · `done-not-merged` | Mismatch: Linear says In Review or Done but there's no PR, or it isn't merged | SUPERVISOR |
+| `merged-not-done` | Mismatch: the PR merged but Linear isn't Done (information; a CLOSE draft candidate) | OCC LOG only |
+
+- Only issues with `fresh: true` are new. Put each in one OCC LOG line; report the ones with `severity: "warn"` to the SUPERVISOR. Then run `atcctl following ack` to record that they were reported.
+- `fresh: false` issues were already reported; don't report them again. If one clears and comes back, atc marks it fresh again.
+- Don't message teams. If a fact needs checking, use read-only `gh` as in the table below.
+
+### When a team reports or the SUPERVISOR asks
 
 When a CAPTAIN reports "PR opened", "review done" or "done", or the SUPERVISOR asks for a check:
 
