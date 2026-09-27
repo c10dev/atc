@@ -193,7 +193,7 @@ atc가 배정된 FLIGHT의 진행을 따라간다(읽기 전용). 대상은 둘�
 
 | code | 뜻 | 보고 |
 |---|---|---|
-| `no-departure` · `no-pr` · `pr-not-cleared` | 지연: 지금 단계에서 WAKE 기대치(L 60분·M 240분·H 2일)의 1.5배를 넘도록 다음 단계가 없음 | SUPERVISOR |
+| `no-departure` · `no-pr` · `pr-not-cleared` · `no-arrival` | 지연: 지금 단계에서 WAKE 기대치(L 60분·M 240분·H 2일)의 1.5배를 넘도록 다음 단계가 없음. STAND 없는 FLIGHT(SURVEY·CHECK)는 PR 단계가 없어 `no-arrival`(DEPARTED 뒤 ARRIVED 보고 없음)만 본다 | SUPERVISOR |
 | `landing-wait` | CLEARED 뒤 1시간 넘게 착륙 안 함(정보, 착륙은 SUPERVISOR 몫) | OCC LOG에만 |
 | `review-no-pr` · `done-not-merged` | 불일치: Linear는 In Review·Done인데 PR이 없거나 머지되지 않음 | SUPERVISOR |
 | `merged-not-done` | 불일치: PR은 머지됐는데 Linear가 Done이 아님(정보, CLOSE 초안 대상) | OCC LOG에만 |

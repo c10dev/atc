@@ -161,6 +161,17 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
   - A pair closed as "더 나은 배정으로 바뀜" was never judged, so it is exempt from the 24-hour rule.
   - A PROPOSED ASSIGN that leaves the plan only for a better assignment stays open. It is superseded only when the same sync creates a proposal for the same FLIGHT or AIRCRAFT that scores at least 20% higher (`REPLACE_MARGIN`), with the new id and both scores in the reason. State changes still close proposals right away.
   - On production data (read-only dry run, 2026-09-27 04:55Z): main planned VOC-125 → TEAM_F and VOC-177 → TEAM_E, both blocked, and created nothing (0 open non-HOLD proposals). This branch plans and creates VOC-125 → TEAM_B, VOC-196 → TEAM_E (D-0017's pair back) and VOC-177 → TEAM_D (3 open).
+- FLIGHT FOLLOWING warned `no-pr` about STAND-free FLIGHTs (SURVEY, CHECK), which never open a PR ([docs/occ.md](docs/occ.md) 8.1).
+  - A STAND-free FLIGHT (`departedVia: "readback"`, or a `tail:` SURVEY/CHECK without a proposal) now follows READBACK → DEPARTED → ARRIVED. The PR stage is skipped, and so are `no-departure`, `no-pr`, `pr-not-cleared`, `landing-wait` and the three Linear/PR mismatch checks.
+  - ARRIVED comes from the proposal's `arrived` status (`timeline.arrived`), and the FOLLOWING item carries the CAPTAIN's report as `arrival: {note, url}`. For a `tail:` FLIGHT without a proposal, DEPARTED is the Linear start and ARRIVED is Linear Done.
+  - New delay code `no-arrival` (warn): DEPARTED longer ago than 1.5× the WAKE expectation with no ARRIVED report. A recalling FLIGHT is not checked.
+  - The FOLLOWING tab shows a three-step stage bar for these FLIGHTs and links the result. The OCC issue table (`occ/CLAUDE.md`) lists `no-arrival`.
+
+### Docs
+- Fixed the 35 errors and outdated statements that the Korean translation (#51) found in the design docs, in both `*.md` and `*.ko.md`. The code was taken as the truth; unbuilt parts are marked "Not built yet".
+  - `docs/occ.md` (13): `CLOSE` is built but never released; the §1 table is a 2026-09-26 snapshot; a merge closes an issue only with `Fixes VOC-n`; S2 is built behind `mode` with superseded/expired operations; the linear-guard section matches `occ/mcp-guard.mjs` (only `save_issue`/`save_comment`, exact match to released calls); only the 5-open-drafts limit exists; `TAIL` is not built; flight following covers STAND-free FLIGHTs and `no-arrival`; §9 points to `atfm.md`; the S2 gate does not count later duplicates; CROSSCHECK and §13 wording.
+  - `docs/fleet.md` (11): status line; §1 "Today" column (WAKE-weighted slots, one STAND-free FLIGHT per TEAM, `tail:`); `ui-qa` is `read-only` in the example; HOLDING or PARKED teams; the LOGBOOK median is not built; OCC S1 `CLASSIFY` is built; LOGBOOK `branch` and one line per merged PR; classification shows on DISPATCH cards, not FIDS; the security reviewer is `codex`; the `tail:` rename is done; label wording. Section 8.4 is unchanged.
+  - `docs/atfm.md` (11): `CLOSE` drafts are built; S1–S4 are condition codes, not OCC stages, and S5 is covered by turn-on condition 1; ground-stop triggers as built (CI over 30 min in more than 4 PRs, 2 or more open LOS); "main broken" and "manual" can be enforced; gate3 as `gate3Of` checks it; slots take effect from step 7; rates are per model family; the recorder ops that exist; steps 4–5 are built; the slot limit changes only through `slotLimits`.
 
 ## [0.1.0] — 2026-09-26
 

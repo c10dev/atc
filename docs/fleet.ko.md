@@ -7,14 +7,18 @@ atc는 팀 세션 하나를 AIRCRAFT(`TEAM_B`, callsign BRAVO)로, 그 리더를
 - **FLEET**: 팀, 그 CREW, 자격(rating), ROUTE, TARGETS.
 - **FLIGHT 분류**: 일의 종류, 크기, 필요한 rating.
 
-> 상태: 설계 초안(2026-09-26). 지금까지 만든 것:
+> 상태: 설계 초안(2026-09-26, 2026-09-27 갱신). 지금까지 만든 것:
 >
 > - TAIL ASSIGNMENT(`tail:TEAM_X`. `lane:TEAM_X`는 2026-10-10까지 별칭으로 읽음)
 > - FLEET 등록부와 탭(구현 순서 2번)
 > - 관찰한 CREW와 CREW CHANGE 1·2단계(8.3, 8.4. OCC가 보내는 2단계는 DISPATCH approval 모드에서만)
 > - 구현 순서 3번: planner가 분류 라벨을 읽고 TYPE RATING·CREW·WAKE·ROUTE 규칙을 적용. 이어서 HOLDING·PARKED 팀의 STAND 없는 FLIGHT와 CHECK 독립성(남은 일은 5장)
+> - STAND 없는 출발과 도착(5.1.1)
+> - OCC S1 `CLASSIFY` 초안(6장)
 > - 팀 꾸리기(8.1)
 > - LOGBOOK과 FLEET 카드의 TARGETS 실적(7.1, 7.2)
+> - NETWORK(7.3)
+> - DEPARTURE LOG(7.5)
 > - TYPE RATING의 CHECKRIDE 추천(8.2)
 >
 > 결정 사항은 맨 아래에 있다.
@@ -29,10 +33,10 @@ atc는 팀 세션 하나를 AIRCRAFT(`TEAM_B`, callsign BRAVO)로, 그 리더를
 | CREW 규칙 | vocado `CLAUDE.md`: 팀원은 기본 `claude-opus-5-5`. `ui-builder`(Opus)는 UI를 만든다. `ui-qa`(Muse Spark 1.3)는 읽기 전용 화면·접근성 QA. `flash-helper`(DeepSeek V4.1 Flash)는 검색, 요약, 참고 자료 모으기, 정확히 지정된 기계적 수정을 한다. 구현, 리뷰 판정, 보안, DB, 인증, 권리, 이미지가 필요한 일은 하지 않는다 |
 | 위험 작업 | DB, 마이그레이션, 보안, 권리 작업은 `Codex Engineering Task` 템플릿을 쓴다. DISPATCH는 CAUTION을 붙인다 |
 | atc가 보는 팀 정보 | 세션 이름, 상태(AIRBORNE / HOLDING / PARKED), 점유한 워크트리, 지난 FLIGHT(팀 적합도) |
-| 크기 | Linear 추정치 0건. planner는 수고가 아니라 슬롯(TEAM당 FLIGHT 1)을 센다 |
-| 미리 배정 | `lane:TEAM_X` 라벨(PR #7): 그 팀에만 제안 |
+| 크기 | Linear 추정치 0건. planner는 WAKE 가중 AIRPORT 슬롯(L 0.5, M 1, H 2. 5장)을 센다. STAND 규칙으로 TEAM당 FLIGHT 1, 여기에 TEAM당 STAND 없는 FLIGHT 최대 1(5.1) |
+| 미리 배정 | `tail:TEAM_X` 라벨: 그 팀에만 제안. `lane:TEAM_X`(PR #7)도 2026-10-10까지 별칭으로 읽는다(9장) |
 
-2026-09-26에 이 때문에 생긴 일:
+예전 상태(FLIGHT마다 슬롯 1, `lane:`만)가 2026-09-26에 낳은 일:
 
 - VOC-196(보안 정적 게이트)이 TEAM_D에, 그다음 TEAM_B에 제안됐다. 본문에는 "TEAM_E, on Opus"라고 적혀 있었다. atc에는 그것을 나타낼 방법이 없었다.
 - 보안 티켓과 한 줄 문서 수정이 planner에게는 똑같아 보인다. 둘 다 슬롯 하나, 아무 팀.
@@ -66,7 +70,7 @@ AIRPORT 등록부(`airports.json`)처럼 `~/.local/state/atc/fleet.json`에 둔�
     "complement": [
       { "position": "backend", "agent": "claude-opus-5-5" },
       { "position": "ui-builder", "agent": "ui-builder" },
-      { "position": "ui-qa", "agent": "ui-qa" },
+      { "position": "ui-qa", "agent": "ui-qa", "limits": ["read-only"] },
       { "position": "flash-helper", "agent": "flash-helper", "limits": ["no BUILD", "no CHECK verdicts", "no SEC"] }
     ],
     "ratings": ["UI", "DATA", "DOCS"]
@@ -100,7 +104,7 @@ AIRPORT 등록부(`airports.json`)처럼 `~/.local/state/atc/fleet.json`에 둔�
 
 바뀌는 것:
 
-- `SURVEY`와 `CHECK`는 워크트리가 필요 없다. 그래서 TEAM당 FLIGHT 1이라는 STAND 규칙에 세지 않는다. HOLDING 팀도 하나 받을 수 있다(5.1).
+- `SURVEY`와 `CHECK`는 워크트리가 필요 없다. 그래서 TEAM당 FLIGHT 1이라는 STAND 규칙에 세지 않는다. HOLDING·PARKED 팀이 AIRCRAFT당 하나 받을 수 있다(5.1).
 - `CHECK`는 그것이 검토하는 BUILD를 날았던 팀에 주지 않는다(독립성. TOWER가 자기 배정을 심판하지 않는 것과 같다. 5.2).
 - `FERRY` FLIGHT는 묶을 수 있다. CAPTAIN 한 명이 한 번에 여러 개를 맡는다.
 
@@ -119,7 +123,7 @@ AIRPORT 등록부(`airports.json`)처럼 `~/.local/state/atc/fleet.json`에 둔�
 
 - **슬롯**: AIRPORT 용량을 WAKE 가중 슬롯으로 센다. 예를 들어 VCDO의 4는 `H` 둘이나 `M` 넷이다.
 - **Separation**(간격): `related`로 묶였거나 같은 영역을 건드리는 `H` FLIGHT 둘은 `L` 둘보다 충돌 감점이 크다.
-- **정시**: 실제 이력이 대신할 때까지 예상 block time이 4단계 정시 지표의 기준이다. 분류마다 FLIGHT가 20건쯤 쌓이면 FLIGHT RECORDER의 중앙값이 대신한다.
+- **정시**: 실제 이력이 대신할 때까지 예상 block time이 4단계 정시 지표의 기준이다. 분류마다 LOGBOOK 항목이 20건쯤 쌓이면 그 중앙값이 대신할 예정이다. 아직 만들지 않음(7.2).
 - **`J`**는 날라는 신호가 아니라 계획하라는 신호다.
 
 ### 4.3 필요한 TYPE RATING: 무엇을 건드리나
@@ -154,7 +158,7 @@ Linear 추정치가 아니라 라벨을 쓴다. 추정치는 팀 설정당 숫�
 
 ## 5. Planner 규칙
 
-이 순서로 적용한다. 처음 넷은 강한 규칙(hard rule)이다. 이를 통과하지 못한 FLIGHT는 사유와 함께 제외되고, 다른 팀에 주지 않는다.
+이 순서로 적용한다. 처음 넷은 강한 규칙(hard rule)이다. 5번의 `J` 제외도 그렇다. 이를 통과하지 못한 FLIGHT는 사유와 함께 제외되고, 다른 팀에 주지 않는다.
 
 1. **TAIL ASSIGNMENT**: `tail:TEAM_X` → 그 AIRCRAFT에만(지금 `lane:`이 하는 일).
 2. **TYPE RATING**: AIRCRAFT가 필요한 rating을 모두 가진다.
@@ -244,10 +248,10 @@ ATFM의 자동 대상 판정(A8)은 여전히 배정 가능한 AIRCRAFT를 요�
 
 | 단계 | 라벨을 쓰는 쪽 |
 |---|---|
-| 지금(OCC S2 전) | SUPERVISOR나 President가 손으로. DISPATCH는 본문에서 읽은 분류를 메모한다 |
-| OCC S1 | OCC가 새 Todo나 분류 안 된 Todo마다 SCHEDULE `CLASSIFY` 작업 초안을 쓴다: FLIGHT TYPE, WAKE, rating과 한 줄 이유. SUPERVISOR가 그림자 판정을 표시한다 |
-| OCC S2 | 승인된 `CLASSIFY` 작업을 linear-guard를 거쳐 쓴다 |
-| OCC S3 | S2 일치율이 높으면 `SEC`가 아닌 FLIGHT의 `CLASSIFY`는 자동이 될 수 있다. `rating:SEC`를 붙이거나 떼는 것은 늘 승인이 필요하다 |
+| 손으로(어느 단계든) | SUPERVISOR나 President. 아직 만들지 않음: 본문을 보고 분류를 제안하는 DISPATCH 메모 |
+| OCC S1(만듦) | OCC가 `type:`이나 `wake:` 라벨이 없는 Todo·Backlog FLIGHT마다 SCHEDULE `CLASSIFY` 작업 초안을 쓴다(`server/schedule.ts`의 `candidatesOf`. `SURVEY`·`CHECK`일 것 같은 것이 먼저): FLIGHT TYPE, WAKE, rating과 한 줄 이유. SUPERVISOR가 그림자 판정을 표시한다 |
+| OCC S2(만듦, 기본은 꺼짐) | SCHEDULE `mode`가 `approval`일 때, 승인된 `CLASSIFY` 작업을 linear-guard를 거쳐 쓴다(occ.ko.md) |
+| OCC S3(아직 만들지 않음) | S2 일치율이 높으면 `SEC`가 아닌 FLIGHT의 `CLASSIFY`는 자동이 될 수 있다. `rating:SEC`를 붙이거나 떼는 것은 늘 승인이 필요하다 |
 
 분류는 정해진 선택지 중에서 고르는 일이다. 그래서 typed-judgment 모델(DISPATCH 노트의 Jev 평가)의 첫 후보이기도 하다. SUPERVISOR의 그림자 판정과 비교해 잰다.
 
@@ -266,12 +270,12 @@ AIRCRAFT마다 SUPERVISOR가 FLEET 탭에서 정한다. 보여 주기만 하고 
 
 ### 7.1 LOGBOOK
 
-항공기 logbook은 기체가 날았던 모든 비행을 적는다. atc의 LOGBOOK도 AIRCRAFT마다 같은 일을 한다. ARRIVED한 FLIGHT, 곧 PR이 AIRPORT의 기본 브랜치에 머지된 FLIGHT마다 한 줄이다.
+항공기 logbook은 기체가 날았던 모든 비행을 적는다. atc의 LOGBOOK도 AIRCRAFT마다 같은 일을 한다. AIRPORT의 기본 브랜치에 머지된 PR마다 한 줄이다. 그때 그 FLIGHT(또는 AD HOC 작업)가 ARRIVED한다. PR 여러 개로 난 FLIGHT는 줄도 여러 개다. `Revert` PR은 따로 줄을 만들지 않는다.
 
 다른 기록처럼 `~/.local/state/atc/logbook.jsonl`에 추가만 하며 둔다. 작업은 둘이다.
 
 ```json
-{"op":"arrived","t":"…","key":"owner/repo#31","aircraft":"TEAM_J","flight":"VOC-201","class":{"type":"BUILD","wake":"M","ratings":["UI"],"explicit":{"type":true,"wake":true}},"airport":"ATCC","pr":{"repo":"owner/repo","number":31,"url":"…","title":"…"},"stands":["/home/…/worktrees/atc-logbook"],"departedAt":"…","departedFrom":"claim","arrivedAt":"…","blockMin":190,"landingWaitMin":122,"codexFindings":1,"changesRequested":false,"reverted":false,"los":0}
+{"op":"arrived","t":"…","key":"owner/repo#31","aircraft":"TEAM_J","flight":"VOC-201","class":{"type":"BUILD","wake":"M","ratings":["UI"],"explicit":{"type":true,"wake":true}},"airport":"ATCC","pr":{"repo":"owner/repo","number":31,"url":"…","title":"…"},"branch":"claude/logbook","stands":["/home/…/worktrees/atc-logbook"],"departedAt":"…","departedFrom":"claim","arrivedAt":"…","blockMin":190,"landingWaitMin":122,"codexFindings":1,"changesRequested":false,"reverted":false,"los":0}
 {"op":"reverted","t":"…","key":"owner/repo#31","by":{"number":35,"url":"…"}}
 ```
 
@@ -415,7 +419,7 @@ LOGBOOK은 돌 때마다 읽은 저장소의 `aircraft: null` 줄을 모두 DEPA
 
 - AIRCRAFT마다 카드 하나: REGISTRATION과 callsign, 기지 AIRPORT, 상태, 선언한 CREW COMPLEMENT 대 관찰한 CREW, TYPE RATING, ROUTES, LOGBOOK 실적 대 TARGETS(7.2)와 최근 FLIGHT 몇 개.
 - SUPERVISOR용 수정 양식(`fleet.json`을 씀, AIRPORT 등록부와 같은 방식).
-- DISPATCH 탭과 FIDS의 분류 열.
+- DISPATCH 카드마다 제목 아래 분류(5장). 아직 만들지 않음: FIDS의 분류 표시.
 
 ### 8.1 팀 꾸리기
 
@@ -488,7 +492,7 @@ COMPLEMENT는 SUPERVISOR가 선언한 것이다. 관찰한 CREW는 AIRCRAFT의 �
 **어긋남**(`crewDrift`):
 
 - `undeclared`: POSITION이 없는 관찰된 호출. agent type별이고, 모델이 주어졌으면 함께 적는다(`Explore`, `general-purpose (sonnet)`). 카드에는 "선언에 없음: Explore"로 보인다.
-- `unused`: 창 안에 호출이 없는 선언된 POSITION. 서브에이전트가 아닌 POSITION(`security` CONFIGURATION의 `codex` 리뷰어. GitHub 리뷰로 일한다)은 늘 여기 보인다. 잘못이 아니라 "보지 못함"으로 읽는다.
+- `unused`: 창 안에 호출이 없는 선언된 POSITION. 서브에이전트가 아닌 POSITION(`security` CONFIGURATION의 `reviewer` POSITION, agent `codex (GitHub 리뷰)`. GitHub 리뷰로 일한다)은 늘 여기 보인다. 잘못이 아니라 "보지 못함"으로 읽는다.
 
 **비용.** 서버는 `~/.claude/projects`에서 `custom-title.json`을 많아야 30초에 한 번 다시 훑는다. 제목은 파일 mtime으로, 세션별 호출은 `subagents/` 폴더의 mtime으로 캐시한다. 그래서 바뀌지 않은 세션은 다시 읽지 않는다.
 
@@ -547,10 +551,12 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 ## 9. `lane:`에서 `tail:`로 옮기기
 
-1. planner는 `tail:`을 읽고, 2주 동안 `lane:`을 별칭으로 계속 읽는다. 제외 사유에 "deprecated"로 표시한다.
-2. Linear 라벨 `tail:TEAM_A` … `tail:TEAM_F`를 만들고 VOC-196에 `tail:TEAM_E`를 붙인다(2026-09-26 SUPERVISOR 승인).
-3. President에게 알린다: 앞으로 배정은 Linear에 `tail:TEAM_X`로 한다. OCC 인계는 occ.ko.md 8장을 따른다.
-4. `occ/CLAUDE.md`, README, CHANGELOG에서 이름을 바꾼다.
+네 단계 모두 끝났다.
+
+1. ✅ planner는 `tail:`을 읽고, 2026-10-10까지 `lane:`을 별칭으로 계속 읽는다. `lane:` FLIGHT의 제외 사유에는 `(옛 lane: 라벨 — tail:로 바꿀 것)`이 붙는다. 코드에 끝나는 날짜는 없다. 별칭은 손으로 지운다.
+2. ✅ Linear 라벨 `tail:TEAM_A` … `tail:TEAM_F`를 만들고 VOC-196에 `tail:TEAM_E`를 붙였다(2026-09-26 SUPERVISOR 승인).
+3. ✅ President에게 알렸다: 배정은 Linear에 `tail:TEAM_X`로 한다. OCC 인계는 occ.ko.md 8장을 따른다.
+4. ✅ `occ/CLAUDE.md`, README, CHANGELOG에서 이름을 바꿨다.
 
 ## 10. 구현 순서
 
@@ -558,7 +564,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 2. ✅ `fleet.json` 등록부, API, FLEET 탭(읽기와 수정). 기본값은 vocado CREW 규칙에서. 선언한 COMPLEMENT 옆의 관찰한 CREW와 CREW CHANGE(문구, 그리고 approval 모드에서 OCC가 보내기)는 8.3, 8.4
 3. ✅ planner가 분류 라벨을 읽음: TYPE RATING·FLIGHT TYPE 강한 규칙, WAKE 슬롯, ROUTE 점수(Risk 그룹은 SEC로 셈. 라벨 그룹은 `group:name`으로 읽음), HOLDING·PARKED 팀의 STAND 없는 FLIGHT와 CHECK 독립성(5.1, 5.2)
 4. ◐ DISPATCH 카드에 분류 표시. 남은 일: FIDS, 라벨이 없을 때 분류를 제안하는 DISPATCH 메모
-5. OCC S1 `CLASSIFY` 초안(occ.ko.md의 SCHEDULE 작업과 함께)
+5. ✅ OCC S1 `CLASSIFY` 초안(occ.ko.md의 SCHEDULE 작업과 함께. `server/schedule.ts`, 6장)
 6. ◐ FLEET 카드의 LOGBOOK 기반 TARGETS 실적(7.1, 7.2)과 NETWORK의 프로젝트 목표 옆 표시(7.3). 남은 일: 분류별 중앙값으로 정시 기준 잡기, OCC 목표 변경 초안(7.4, 설계만)
 7. ✅ FLEET 탭의 팀 꾸리기(8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE(8.2): LOGBOOK의 TYPE RATING 근거, GRANT·REVIEW 추천, SUPERVISOR의 부여·회수
@@ -570,7 +576,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 | 라벨이 실제와 어긋남(사실은 "H"인 "M") | 먼저 그림자 `CLASSIFY`. 정시 데이터가 오래 걸리는 분류를 보여 준다. CAPTAIN이 재분류를 보고할 수 있다 |
 | 강한 규칙이 너무 많아 배정할 것이 없음 | 모든 제외에 규칙이 보인다. SUPERVISOR가 `tail:`을 떼거나 rating을 더할 수 있다 |
 | 선언한 CREW와 실제 CREW가 다름 | FLEET 탭이 선언과 관찰을 나란히 보여 준다 |
-| Linear 라벨이 어지러워짐 | 접두사 넷만(`tail:`, `type:`, `wake:`, `rating:`), 한 번만 만든다 |
+| Linear 라벨이 어지러워짐 | 축 넷만, 한 번만 만든다: `tail:`과 `rating:`은 평면 라벨, `type`과 `wake`는 라벨 그룹. vocado의 기존 Risk 그룹도 `SEC`로 읽으므로 새 라벨이 필요 없다 |
 | `SEC`를 너무 쉽게 줌 | `rating:SEC` 변경과 AIRCRAFT의 `SEC` rating에는 늘 SUPERVISOR가 필요하다 |
 
 ## 결정 (2026-09-26, SUPERVISOR)

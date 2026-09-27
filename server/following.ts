@@ -7,12 +7,14 @@ import { type Departure, readDepartures } from "./departures.ts";
 import { tailsOf } from "./dispatch.ts";
 import { type LogEntry, loadLogbook, WAKE_EXPECT_MIN } from "./logbook.ts";
 import type { PullRequest, Snapshot, Ticket, Workspace } from "./model.ts";
-import { allProposals, type Proposal } from "./proposals.ts";
+import { allProposals, type Proposal, standFreeTicket } from "./proposals.ts";
 
 // FLIGHT FOLLOWING(운항 추적, docs/occ.md 8장). 배정된 FLIGHT의 진행을 기존 기록으로 따라가고,
 // 늦거나(지연) Linear와 어긋나면(불일치) OCC가 SUPERVISOR에게 보고한다. 팀에 묻지는 않는다.
 // 단계: READBACK(제안 timeline) → DEPARTED(제안 timeline, 착수 기록 departures.jsonl) → PR 열림(snapshot.pulls,
 // LOGBOOK) → CLEARED(landing readyAt) → ARRIVED(LOGBOOK). 계산은 순수 함수, 반복 보고를 막는 기록만 파일에 둔다.
+// STAND 없는 FLIGHT(SURVEY·CHECK, READBACK이 곧 DEPARTED)는 PR·CLEARED를 건너뛴다: READBACK → DEPARTED → ARRIVED이고,
+// ARRIVED는 CAPTAIN 보고(제안의 arrived, OCC가 dispatch arrived로 기록)에서 온다. tail: FLIGHT면 Linear 완료로 본다.
 
 const MIN = 60_000;
 const DAY = 86_400_000;
@@ -24,7 +26,7 @@ export const STAGES = ["readback", "departed", "prOpened", "cleared", "arrived"]
 export type Stage = (typeof STAGES)[number];
 
 export interface FollowIssue {
-  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "review-no-pr" | "done-not-merged" | "merged-not-done";
+  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done";
   kind: "delay" | "mismatch";
   severity: "warn" | "info"; // info: 보여 주기만(착륙 대기는 SUPERVISOR 몫, 머지 뒤 Done 아님은 CLOSE 초안 몫)
   text: string;
@@ -38,6 +40,8 @@ export interface FollowItem {
   state: string | null; // Linear 상태 이름
   aircraft: string | null;
   source: "dispatch" | "tail"; // DISPATCH 제안 또는 tail: 라벨(사람이 직접 배정)
+  standFree: boolean; // STAND 없는 FLIGHT: 단계는 READBACK → DEPARTED → ARRIVED(PR·CLEARED 없음)
+  arrival: { note: string; url: string | null } | null; // STAND 없는 FLIGHT의 ARRIVED 보고
   proposal: { id: string; status: Proposal["status"] } | null;
   wake: Wake;
   expectMin: number;
@@ -68,11 +72,12 @@ const isReview = (t: Ticket | undefined) => Boolean(t && /review/i.test(t.state)
 const isDone = (t: Ticket | undefined) => t?.stateType === "completed";
 const isClosed = (t: Ticket | undefined) => Boolean(t && (t.stateType === "completed" || t.stateType === "canceled" || t.stateType === "duplicate"));
 
-// 따라갈 FLIGHT: accepted·departed·recalling인 ASSIGN, 그리고 2b 전이라도 tail:이 붙은 In Progress FLIGHT
+// 따라갈 FLIGHT: accepted·departed·recalling인 ASSIGN(STAND 없는 FLIGHT는 arrived도 하루 보인다),
+// 그리고 2b 전이라도 tail:이 붙은 In Progress FLIGHT
 export function targetsOf(inp: Pick<FollowInput, "proposals" | "tickets">): { flight: string; proposal: Proposal | null; aircraft: string | null }[] {
   const out = new Map<string, { flight: string; proposal: Proposal | null; aircraft: string | null }>();
   const live = inp.proposals
-    .filter((p) => p.kind === "ASSIGN" && (p.status === "accepted" || p.status === "departed" || p.status === "recalling"))
+    .filter((p) => p.kind === "ASSIGN" && (p.status === "accepted" || p.status === "departed" || p.status === "recalling" || p.status === "arrived"))
     .sort((a, b) => a.statusAt.localeCompare(b.statusAt));
   for (const p of live) out.set(p.flight, { flight: p.flight, proposal: p, aircraft: p.aircraftName });
   for (const t of inp.tickets) {
@@ -98,20 +103,34 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
     .filter((e) => e.flight === flight && !e.reverted)
     .sort((a, b) => b.arrivedAt.localeCompare(a.arrivedAt))[0];
   const mergedOpenedAt = merged ? iso(Date.parse(merged.arrivedAt) - merged.landingWaitMin * MIN) : null;
+  // STAND 없는 FLIGHT: 제안이 READBACK으로 DEPARTED했거나, (tail: FLIGHT처럼 제안이 없으면) FLIGHT TYPE이 SURVEY·CHECK
+  const standFree = proposal ? proposal.departedVia === "readback" || (!proposal.timeline.departed && standFreeTicket(t)) : standFreeTicket(t);
 
-  const stages: Record<Stage, string | null> = {
-    readback: proposal?.timeline.accepted ?? null,
-    departed: proposal?.timeline.departed ?? dep,
-    prOpened: open?.createdAt ?? mergedOpenedAt,
-    cleared: open?.landing === "CLEARED" ? open.readyAt : null,
-    arrived: merged?.arrivedAt ?? null,
-  };
+  const stages: Record<Stage, string | null> = standFree
+    ? {
+        readback: proposal?.timeline.accepted ?? null,
+        departed: proposal?.timeline.departed ?? dep ?? (proposal ? null : (t?.startedAt ?? null)),
+        prOpened: null,
+        cleared: null,
+        arrived: proposal ? (proposal.timeline.arrived ?? null) : isDone(t) ? (t!.updatedAt ?? null) : null,
+      }
+    : {
+        readback: proposal?.timeline.accepted ?? null,
+        departed: proposal?.timeline.departed ?? dep,
+        prOpened: open?.createdAt ?? mergedOpenedAt,
+        cleared: open?.landing === "CLEARED" ? open.readyAt : null,
+        arrived: merged?.arrivedAt ?? null,
+      };
   const reached = STAGES.filter((s) => stages[s]);
   const stage = reached.at(-1) ?? null;
 
   const issues: FollowIssue[] = [];
   const late = (from: string | null, ms: number) => (from && inp.now - Date.parse(from) > ms ? iso(Date.parse(from) + ms) : null);
-  if (!stages.arrived && proposal?.status !== "recalling") {
+  if (standFree) {
+    // PR이 없는 일이라 PR·착륙·Linear-PR 불일치는 보지 않는다. DEPARTED 뒤 1.5배가 지나도 ARRIVED 보고가 없으면 지연
+    const noArrival = !stages.arrived && proposal?.status !== "recalling" ? late(stages.departed, allow) : null;
+    if (noArrival) issues.push({ code: "no-arrival", kind: "delay", severity: "warn", text: `DEPARTED 뒤 ${hours(inp.now - Date.parse(stages.departed!))} 동안 ARRIVED 보고 없음(STAND 없는 ${cls.type}) — WAKE ${cls.wake} 기대 ${expectMin}분의 ${DELAY_FACTOR}배를 넘음`, since: noArrival });
+  } else if (!stages.arrived && proposal?.status !== "recalling") {
     const noDep = !stages.departed && !stand ? late(stages.readback, allow) : null;
     if (noDep) issues.push({ code: "no-departure", kind: "delay", severity: "warn", text: `READBACK 뒤 ${hours(inp.now - Date.parse(stages.readback!))} 동안 착수(STAND) 없음 — WAKE ${cls.wake} 기대 ${expectMin}분의 ${DELAY_FACTOR}배를 넘음`, since: noDep });
     const startedAt = stages.departed ?? (stand ? stages.readback : null);
@@ -122,9 +141,9 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
     const waiting = late(stages.cleared, LANDING_INFO_MS);
     if (waiting) issues.push({ code: "landing-wait", kind: "delay", severity: "info", text: `PR #${open!.number}이 CLEARED 뒤 ${hours(inp.now - Date.parse(stages.cleared!))} 동안 착륙하지 않음(착륙 대기는 SUPERVISOR 몫)`, since: waiting });
   }
-  if (isReview(t) && !open && !merged) issues.push({ code: "review-no-pr", kind: "mismatch", severity: "warn", text: `Linear는 ${t!.state}인데 PR이 없음`, since: t!.updatedAt ?? iso(inp.now) });
-  if (isDone(t) && !merged) issues.push({ code: "done-not-merged", kind: "mismatch", severity: "warn", text: `Linear는 ${t!.state}인데 ${open ? `PR #${open.number}이 머지되지 않음` : "머지된 PR이 없음"}`, since: t!.updatedAt ?? iso(inp.now) });
-  if (merged && t && !isClosed(t)) issues.push({ code: "merged-not-done", kind: "mismatch", severity: "info", text: `PR #${merged.pr.number}은 머지됐는데 Linear는 ${t.state} — CLOSE 초안 대상`, since: merged.arrivedAt });
+  if (!standFree && isReview(t) && !open && !merged) issues.push({ code: "review-no-pr", kind: "mismatch", severity: "warn", text: `Linear는 ${t!.state}인데 PR이 없음`, since: t!.updatedAt ?? iso(inp.now) });
+  if (!standFree && isDone(t) && !merged) issues.push({ code: "done-not-merged", kind: "mismatch", severity: "warn", text: `Linear는 ${t!.state}인데 ${open ? `PR #${open.number}이 머지되지 않음` : "머지된 PR이 없음"}`, since: t!.updatedAt ?? iso(inp.now) });
+  if (!standFree && merged && t && !isClosed(t)) issues.push({ code: "merged-not-done", kind: "mismatch", severity: "info", text: `PR #${merged.pr.number}은 머지됐는데 Linear는 ${t.state} — CLOSE 초안 대상`, since: merged.arrivedAt });
 
   return {
     flight,
@@ -133,6 +152,8 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
     state: t?.state ?? null,
     aircraft: target.aircraft,
     source: proposal ? "dispatch" : "tail",
+    standFree,
+    arrival: proposal?.arrivedNote ? { note: proposal.arrivedNote, url: proposal.arrivedUrl ?? null } : null,
     proposal: proposal ? { id: proposal.id, status: proposal.status } : null,
     wake: cls.wake,
     expectMin,
@@ -145,11 +166,14 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
   };
 }
 
-// 전체(순수). ARRIVED하고 Linear도 끝난 지 하루가 지난 FLIGHT는 뺀다.
+// 전체(순수). ARRIVED하고 Linear도 끝난 지 하루가 지난 FLIGHT는 뺀다(STAND 없는 FLIGHT는 ARRIVED 보고 뒤 하루).
 export function followingOf(inp: FollowInput): FollowItem[] {
   return targetsOf(inp)
     .map((t) => followOne(t, inp))
-    .filter((f) => !(f.stages.arrived && isClosed(inp.tickets.find((t) => t.key === f.flight)) && inp.now - Date.parse(f.stages.arrived) > KEEP_ARRIVED_MS));
+    .filter((f) => {
+      if (!f.stages.arrived || inp.now - Date.parse(f.stages.arrived) <= KEEP_ARRIVED_MS) return true;
+      return !(f.standFree || isClosed(inp.tickets.find((t) => t.key === f.flight)));
+    });
 }
 
 // ── 반복 보고 막기: OCC가 보고한 문제의 key를 적어 둔다. 풀린 문제는 지워서 다시 생기면 새로 보고한다 ──

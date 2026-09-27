@@ -301,6 +301,7 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 
 - **단계**: READBACK → DEPARTED(STAND·착수 기록) → PR 열림 → CLEARED → ARRIVED(LOGBOOK). 모두 있는 기록에서 가져온다.
 - **지연**(WAKE 기대치의 1.5배를 넘도록 다음 단계가 없음): `no-departure`, `no-pr`, `pr-not-cleared`. CLEARED 뒤 1시간 넘게 착륙하지 않는 `landing-wait`은 정보만이다.
+- **STAND 없는 FLIGHT**(SURVEY·CHECK): READBACK → DEPARTED → ARRIVED. ARRIVED는 CAPTAIN 보고(`dispatch arrived`)에서 온다. PR 단계와 PR 불일치는 없고, 지연은 `no-arrival` 하나다.
 - **불일치**: Linear는 In Review인데 PR 없음, Done인데 머지된 PR 없음, 그리고 (정보만) PR은 머지됐는데 Linear가 Done이 아님.
 - **API**: `GET /api/following`은 OCC가 아직 보고하지 않은 문제에 `fresh`를 붙인다. `POST /api/following/ack`는 보고한 것을 `following-state.json`에 적는다. 풀린 문제는 지워서 다시 생기면 다시 보고한다.
 - **OCC**: 바퀴마다 `atcctl following`과 `following ack`를 돌리고, 새 warn 문제만 SUPERVISOR에게 보고한다. 팀에는 메시지를 보내지 않는다.

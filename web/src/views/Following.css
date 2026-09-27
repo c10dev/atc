@@ -116,6 +116,11 @@ a.ff-flight:hover {
   padding: 0;
   list-style: none;
 }
+/* STAND 없는 FLIGHT: READBACK → DEPARTED → ARRIVED 3단계 */
+.ff-stages.is-short {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 336px;
+}
 .ff-stages li {
   position: relative;
   min-width: 0;
