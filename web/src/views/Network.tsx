@@ -2,6 +2,7 @@ import { type KeyboardEvent, type MouseEvent, type ReactNode, useEffect, useStat
 import { formatClock, useSettings } from "../settings.ts";
 import "./Metrics.css";
 import "./Network.css";
+import { RouteMap } from "./RouteMap.tsx";
 
 // 4단계 NETWORK: ROUTE(Linear 프로젝트)·AIRCRAFT·28일 추이를 한눈에. 읽기만 한다.
 // 차트는 METRICS와 같은 모양(인라인 SVG, 계열 하나)으로 그린다.
@@ -176,6 +177,7 @@ export function Network({ refreshKey }: { refreshKey: string }) {
       ) : (
         <>
           <Sources sources={data.sources} />
+          <RouteMap refreshKey={refreshKey} />
           <Routes routes={data.routes} />
           <Aircraft aircraft={data.aircraft} />
           <Trends days={data.trend.days} gates={data.trend.gates} windowDays={data.windowDays} />

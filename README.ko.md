@@ -46,7 +46,7 @@ Linear 티켓까지 보려면 `.env.local`에 `LINEAR_API_KEY`를 넣는다. 상
 | 지표 (`#metrics`) | FLIGHT RECORDER 기록으로 본 운용 지표, 2단계 진입 점검, 5분 표본 추이, 일별 표 |
 | AIRPORT (`#airports`) | 저장소 등록부. AIRPORT 개설·코드 변경·폐쇄·재개·삭제. 소속 AIRCRAFT와 OUTSTATION으로 와 있는 AIRCRAFT(TRANSIENT) |
 | FLEET (`#fleet`) | AIRCRAFT마다 상태, 지금 FLIGHT, 선언한 팀원과 관측한 팀원(최근 14일), 복사할 CREW CHANGE 대기, TYPE RATING, ROUTE, TARGETS와 LOGBOOK 실적(이번 주, 정시, 되돌림, LOS, 최근 FLIGHT), CHECKRIDE(TYPE RATING 근거와 부여·재검토 추천). 프로필 편집, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT, rating 부여·회수 |
-| NETWORK (`#network`) | 4단계 읽기 전용 운항 개요: ROUTE(Linear 프로젝트)마다 상태별 열린 FLIGHT(Todo·In Progress·In Review), 최근 14일 ARRIVED, 그 ROUTE를 도는 AIRCRAFT, 착륙 대기 중앙값, 프로젝트 목표(목표일·진척·상태). AIRCRAFT마다 TARGETS와 FLEET 카드와 같은 LOGBOOK 실적. 최근 28일 추세: ARRIVED·착륙 대기·되돌림, DISPATCH·SCHEDULE 게이트(날마다 판정 수, 누적 합의율, CROSSCHECK 일치율) |
+| NETWORK (`#network`) | 4단계 읽기 전용 운항 개요: ROUTE MAP은 ROUTE마다 WAYPOINT(Linear 프로젝트 마일스톤)를 잇는 경로를 그린다(지남 ●, 지금 구간 ◉과 진행률·운항 중인 AIRCRAFT, 앞으로 ○. 누르면 완료 기준·FLIGHT·목표일·ETA, [docs/routes.ko.md](docs/routes.ko.md)). ROUTE(Linear 프로젝트)마다 상태별 열린 FLIGHT(Todo·In Progress·In Review), 최근 14일 ARRIVED, 그 ROUTE를 도는 AIRCRAFT, 착륙 대기 중앙값, 프로젝트 목표(목표일·진척·상태). AIRCRAFT마다 TARGETS와 FLEET 카드와 같은 LOGBOOK 실적. 최근 28일 추세: ARRIVED·착륙 대기·되돌림, DISPATCH·SCHEDULE 게이트(날마다 판정 수, 누적 합의율, CROSSCHECK 일치율) |
 | DISPATCH (`#dispatch`) | 지금 계획, OCC 메모가 달린 제안 카드와 "승인했을 것 / 거절했을 것" 판정(2b에서는 승인·거절), HELD, IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검 |
 | SCHEDULE (`#schedule`) | OCC SCHEDULE 초안(S1 그림자 운용): S2 진입 점검 패널, "승인했을 것 / 거절했을 것" 판정이 있는 열린 초안 카드, 후보 수(CLASSIFY·PRIORITIZE·CLOSE), 승인한 CLOSE의 "LINEAR에서 직접 DONE" 목록, 최근 7일 표 |
 | DOCS (`#docs`) | atc 사용 안내: 소개, 빠른 시작, 개념, 일 맡기기(CHARTER DESK / AD HOC), 판정하기, FLEET, 교신 규칙, 화면, 단계, 문제 해결. `docs/guide/*.md`(한국어)를 그대로 보여 준다 |
@@ -110,6 +110,7 @@ FLEET 탭의 **팀 빌딩**: **ENTRY INTO SERVICE**로 **CONFIGURATION** 템플�
 | `GET /api/fleet/checkride` | CHECKRIDE 행: AIRCRAFT × TYPE RATING마다 상태(`GRANT`, `REVIEW`, `BLOCKED`, `BUILDING`, `HOLDS`), 이유, 건수, 근거와 기준값 |
 | `POST /api/fleet/:registration/checkride` | `{rating, action: "grant" \| "revoke"}`: SUPERVISOR의 rating 부여·회수. FLIGHT RECORDER에 남는다 |
 | `GET /api/logbook?aircraft=TEAM_X&days=14` | LOGBOOK 기록, 도착 최신순(`aircraft`는 선택, `days`는 1~90). 마지막으로 읽은 시각과 오류도 |
+| `GET /api/routes` | ROUTE MAP(읽기 전용): `routes`마다 단계별 열린 FLIGHT, `aircraft`, 28일 완료 `rate`, `waypoints`(상태, Linear status, 진행률, 목표일, 완료 기준 `criteria`, `flights`, `counts`, `late`, `eta`). 마일스톤이 없는 ROUTE는 `waypoints: []`. `ok`·`milestones`·`error`가 무엇을 읽었는지 말한다 |
 | `GET /api/network` | NETWORK 개요(읽기 전용): `routes`(상태별 열린 FLIGHT, `arrived14`, `aircraft`, `landingWaitMedianMin`, Linear 프로젝트 `goal` 또는 `null`), `aircraft`(`targets` 대 `computeActuals`의 `actuals`), 28일 `trend.days`·`trend.gates`, `sources`(Linear·GitHub·LOGBOOK을 읽었나) |
 
 | 상태 | 화면 표기 |
@@ -389,7 +390,7 @@ atc/
 │   │   ├── codex.ts        # ~/.codex/sessions (cwd로 점유)
 │   │   ├── git.ts          # git worktree list, dirty, 마지막 커밋
 │   │   ├── github.ts       # gh로 열린 PR, 90초마다
-│   │   ├── linear-projects.ts # NETWORK용 Linear 프로젝트 목표, 10분마다
+│   │   ├── linear-projects.ts # NETWORK용 Linear 프로젝트 목표와 마일스톤, 10분마다
 │   │   └── linear.ts       # Linear GraphQL, 1분마다
 │   ├── model.ts            # Session / Workspace / Ticket / Claim / Alert
 │   ├── airports.ts         # AIRPORT 등록부·API (airports.test.ts)
@@ -399,6 +400,7 @@ atc/
 │   ├── logbook.ts          # ARRIVED FLIGHT의 LOGBOOK, TARGETS 실적 (logbook.test.ts)
 │   ├── checkride.ts        # CHECKRIDE: TYPE RATING 근거와 추천 (checkride.test.ts)
 │   ├── network.ts          # NETWORK: 4단계 읽기 전용 개요(ROUTE, TARGETS, 추세) (network.test.ts)
+│   ├── routes.ts           # ROUTE MAP: ROUTE마다 WAYPOINT·FLIGHT·ETA (routes.test.ts)
 │   ├── away.ts             # OUTSTATION 판정 (화면과 공용)
 │   ├── callsign.ts         # 콜사인·FLIGHT NUMBER (화면과 공용)
 │   ├── clearances.ts       # CLEARANCE·READBACK 기록

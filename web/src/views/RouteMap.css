@@ -1,0 +1,268 @@
+/* ROUTE MAP: ROUTE마다 WAYPOINT 가로 경로. 색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다).
+   지남 --radar, 지금 구간 --cyan, 앞으로 --faint, 지연 --amber, 막힘 --alert. */
+.rm-list {
+  display: grid;
+  gap: var(--gap-item);
+  margin-bottom: var(--space-4);
+}
+.rm-sub {
+  margin: var(--space-2) 0 0;
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+.rm-route {
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.rm-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+}
+.rm-name {
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.rm-counts {
+  color: var(--muted);
+}
+.rm-counts b {
+  font-family: var(--mono);
+  color: var(--text);
+}
+.rm-blocked,
+.rm-blocked b {
+  color: var(--alert);
+}
+.rm-ac {
+  color: var(--radar);
+}
+.rm-rate {
+  margin-left: auto;
+}
+
+/* 경로: 이 상자 안에서만 가로로 넘긴다 */
+.rm-scroll {
+  margin-top: var(--space-1);
+}
+.rm-svg {
+  display: block;
+}
+.rm-seg {
+  stroke-width: 2;
+}
+.rm-seg-passed {
+  stroke: var(--radar);
+}
+.rm-seg-active {
+  stroke: var(--cyan);
+}
+.rm-seg-planned {
+  stroke: var(--line-strong);
+  stroke-dasharray: 4 4;
+}
+.rm-flying {
+  font: 700 var(--text-2xs) var(--mono);
+  fill: var(--radar);
+}
+.rm-wp {
+  cursor: pointer;
+  outline: none;
+}
+.rm-hit {
+  fill: transparent;
+  stroke: none;
+}
+.rm-wp:hover .rm-hit {
+  fill: var(--panel-2);
+}
+.rm-wp:focus-visible .rm-hit,
+.rm-wp.rm-sel .rm-hit {
+  stroke: var(--cyan);
+  stroke-width: 1.5;
+}
+.rm-wp.rm-sel .rm-hit {
+  fill: var(--panel-2);
+}
+.rm-dot {
+  stroke-width: 2;
+}
+.rm-wp-passed .rm-dot {
+  fill: var(--radar);
+  stroke: var(--radar);
+}
+.rm-wp-planned .rm-dot {
+  fill: var(--panel);
+  stroke: var(--faint);
+}
+.rm-dot-ring {
+  fill: var(--panel);
+  stroke: var(--cyan);
+  stroke-width: 2;
+}
+.rm-dot-core {
+  fill: var(--cyan);
+}
+.rm-late .rm-dot,
+.rm-late .rm-dot-ring {
+  stroke: var(--amber);
+}
+.rm-wp-name {
+  font: var(--text-2xs) var(--mono);
+  fill: var(--muted);
+}
+.rm-wp-active .rm-wp-name {
+  font-weight: 700;
+  fill: var(--text);
+}
+.rm-wp-sub {
+  font: var(--text-2xs) var(--mono);
+  fill: var(--faint);
+}
+.rm-wp-active .rm-wp-sub {
+  fill: var(--cyan);
+}
+.rm-late .rm-wp-sub {
+  fill: var(--amber);
+}
+
+/* WAYPOINT 없는 ROUTE: 점선 하나와 표시 */
+.rm-bare {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.rm-bare-line {
+  flex: 1;
+  border-top: 2px dashed var(--line-strong);
+}
+.rm-bare-tag {
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+/* WAYPOINT 자세히 */
+.rm-detail {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--cyan);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+.rm-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.rm-detail-head strong {
+  font-size: var(--text-md);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.rm-chip {
+  padding: 0 var(--space-1-5);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+}
+.rm-chip-passed {
+  color: var(--radar);
+}
+.rm-chip-active {
+  color: var(--cyan);
+}
+.rm-chip-planned {
+  color: var(--faint);
+}
+.rm-chip-late {
+  color: var(--amber);
+}
+.rm-close {
+  margin-left: auto;
+  padding: var(--space-0-5) var(--space-2);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.rm-close:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+.rm-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-0-5) var(--space-3);
+  margin: var(--space-2) 0;
+}
+.rm-facts dt {
+  color: var(--muted);
+}
+.rm-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.rm-h4 {
+  margin: var(--space-2) 0 var(--space-1);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+.rm-criteria {
+  margin: 0;
+  padding-left: var(--space-6);
+  color: var(--text);
+}
+.rm-flights {
+  display: grid;
+  gap: var(--space-0-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rm-f {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-2);
+  min-width: 0;
+}
+.rm-f a {
+  color: var(--cyan);
+}
+.rm-f-phase {
+  flex: none;
+  width: 3em;
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+.rm-f-active .rm-f-phase {
+  color: var(--radar);
+}
+.rm-f-blocked .rm-f-phase {
+  color: var(--alert);
+}
+.rm-f-done {
+  color: var(--faint);
+}
+.rm-f-title {
+  flex: 1 1 12em;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
