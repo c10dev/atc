@@ -10,6 +10,7 @@ import { mountController } from "./controller.ts";
 import { mountCrewChange } from "./crew-change.ts";
 import { mountCheckride } from "./checkride.ts";
 import { mountFleet } from "./fleet.ts";
+import { mountFollowing } from "./following.ts";
 import { recordDepartures } from "./departures.ts";
 import { mountLogbook, runLogbook } from "./logbook.ts";
 import { diffSnapshots, EventLog, isWarm } from "./events.ts";
@@ -105,6 +106,7 @@ mountCheckride(app, getSnapshot);
 mountLogbook(app);
 mountNetwork(app, getSnapshot);
 mountSchedule(app, getSnapshot);
+mountFollowing(app, getSnapshot);
 mountAtfm(app, getSnapshot);
 mountSettings(app);
 

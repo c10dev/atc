@@ -46,6 +46,7 @@ LOGBOOK의 ARRIVED는 Linear Done이 아니라 PR 머지로 센다. 머지된 PR
 | block time | 팀 소요 시간: STAND를 처음 점유한 시각부터 PR을 연 시각까지 |
 | 착륙 대기 | PR을 연 시각부터 머지까지(리뷰·머지 대기). 정시율에 넣지 않는다 |
 | ON TIME / DELAYED | block time이 WAKE 기대치(또는 같은 종류의 중앙값) 안인지 |
+| FLIGHT FOLLOWING(운항 추적) | 배정된 FLIGHT가 READBACK → DEPARTED → PR → CLEARED → ARRIVED 중 어디까지 왔는지 따라가고, WAKE 기대치의 1.5배를 넘도록 다음 단계가 없거나(지연) Linear 상태와 PR이 어긋나면(불일치) OCC가 SUPERVISOR에게 알린다 |
 | REVERTED | 머지 뒤 `Revert "…"` PR로 되돌려진 FLIGHT |
 | CHECKRIDE | LOGBOOK 근거로 팀의 TYPE RATING 부여·재검토를 추천하는 것. 부여·회수는 SUPERVISOR가 누른다 |
 

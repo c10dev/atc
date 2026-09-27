@@ -53,6 +53,9 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
   node atcctl.mjs dispatch recalled <D-0003>
                                             (2b) CAPTAIN이 "READBACK D-0003 RECALL"로 답함
 
+FLIGHT FOLLOWING (OCC 세션이 맡음. 읽기 전용: 배정된 FLIGHT의 단계와 지연·불일치)
+  node atcctl.mjs following                 FLIGHT마다 단계(READBACK·DEPARTED·PR·CLEARED·ARRIVED)와 문제(issues). fresh는 아직 보고 안 한 문제 (JSON)
+  node atcctl.mjs following ack [<key>]…    보고한 문제를 적는다(key 없으면 지금 fresh 전부). 같은 문제는 다시 fresh가 되지 않는다
 SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만. S2 승인 운용: 승인된 작업만 발부해 Linear에 씀. 판정·승인은 SUPERVISOR)
   node atcctl.mjs schedule brief            열린 초안·최근·점검·후보(candidates) (JSON)
   node atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <근거>
@@ -271,6 +274,11 @@ if (isMain) {
       // OCC는 CALL마다 그 Linear MCP 도구를 JSON 입력 그대로 부른다(linear-guard가 비교한다)
       console.log(`${r.op.id} RELEASED · ${r.calls.length} CALL`);
       r.calls.forEach((c, i) => console.log(`CALL ${i + 1}/${r.calls.length} · ${c.tool}\n${JSON.stringify(c.input)}`));
+    } else if (cmd === "following" && !args[0]) {
+      console.log(JSON.stringify(await call("GET", "/api/following"), null, 1));
+    } else if (cmd === "following" && args[0] === "ack") {
+      const r = await call("POST", "/api/following/ack", args.length > 1 ? { keys: args.slice(1) } : {});
+      console.log(`ACK ${r.acked.length}건 (보고한 문제 ${r.reported}건 기억)`);
     } else if (cmd === "crosscheck" && args[0] === "brief") {
       const [d, s] = await Promise.all([call("GET", "/api/dispatch/brief"), call("GET", "/api/schedule/brief")]);
       console.log(JSON.stringify(crosscheckBrief(d, s), null, 1));

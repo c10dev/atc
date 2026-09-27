@@ -16,6 +16,13 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 - The TOWER and OCC Bash guard (`controller/guard.mjs`) let command substitution through inside double quotes: `node atcctl.mjs brief -- "$(touch /tmp/x)"` passed, and so did a backtick. The shell runs these before the command, so a control session could run arbitrary commands. Command substitution and variable expansion (`$(…)`, backticks, `${…}`, `$VAR`) are now blocked anywhere outside single quotes; single-quoted and backslash-escaped text is still allowed. Reported by TEAM_H.
 
 ### Added
+- FLIGHT FOLLOWING for OCC ([docs/occ.md](docs/occ.md) 8.1, `server/following.ts`, pure computation; `proposals.ts` and `schedule.ts` are only read).
+  - **Scope:** accepted, departed and recalling ASSIGNs, and In Progress FLIGHTs with a `tail:` label.
+  - **Stages:** READBACK → DEPARTED → PR opened → CLEARED → ARRIVED, from the proposal timeline, `departures.jsonl`, `snapshot.pulls` and the LOGBOOK.
+  - **Delays and mismatches:** 1.5× the WAKE expectation; Linear In Review or Done vs the PR; merged but not Done (information only).
+  - **Interfaces:** `GET /api/following` and `POST /api/following/ack` (`following-state.json`, so nothing is reported twice); `atcctl following` and `following ack`; a DISPATCH-tab block.
+  - **OCC:** `occ/CLAUDE.md` and `/tick` (ko/en) report only new issues and never message teams.
+  - This closes item 4 of docs/occ.md section 13.
 - DISPATCH proposes STAND-free FLIGHTs to resting teams, and keeps a CHECK away from its builder ([docs/fleet.md](docs/fleet.md) 5.1–5.2). Shadow verdicts had stalled because the planner only proposed to teams with a free STAND slot.
   - **STAND-free pass**: after the unchanged STAND rule, `SURVEY` and `CHECK` FLIGHTs left over (`needsStand` in `crew.ts`; `FERRY` still needs a STAND) go to HOLDING or PARKED AIRCRAFT outside it. AIRBORNE, AOG and RETIRED AIRCRAFT get none. The cap is one STAND-free FLIGHT per AIRCRAFT, counting in-flight proposals, and one proposal per AIRCRAFT per plan. TAIL ASSIGNMENT, TYPE RATING, crew and WAKE slots apply as before, and the score is unchanged.
   - **Reservations**: `reservedOf` adds `aircraftFlights` (AIRCRAFT → its in-flight FLIGHTs). `AircraftState.reserved` now holds only the STAND-needing reservation, `reservedLight` the STAND-free one, and `resting` marks HOLDING or PARKED. `canTakeNow` in `dispatch.ts` lets `syncOps` keep an approved STAND-free proposal to a HOLDING team valid.
