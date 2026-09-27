@@ -6,7 +6,7 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
 
 > 상태: DISPATCH 세션은 2026-09-26 OCC 세션(`atc/occ/`, [occ.md](occ.md), 영어)에 합쳐졌다. 아래 일은 그대로다. 2a(그림자 운용) 운용 중, 2b(승인 운용)는 `mode` 뒤에 구현돼 있고 기본은 꺼짐(2026-09-26). "2b 켜는 법" 참고. 결정 사항은 맨 아래 "결정"에 있다.
 >
-> 구현하며 정리한 것: TEAM당 동시 FLIGHT 1 규칙에 따라, 끝나지 않은 FLIGHT의 STAND를 쥔 HOLDING AIRCRAFT는 대기 시간과 상관없이 배정하지 않는다(5.1의 "30분" 기준은 쓰지 않음). RELEASE는 AIRPORT에 매핑된 프로젝트(코드 작업)만 본다.
+> 구현하며 정리한 것: TEAM당 동시 FLIGHT 1 규칙에 따라, 끝나지 않은 FLIGHT의 STAND를 쥔 HOLDING AIRCRAFT에는 대기 시간과 상관없이 STAND가 필요한 FLIGHT를 배정하지 않는다(5.1의 "30분" 기준은 쓰지 않음). STAND가 필요 없는 `SURVEY`·`CHECK`는 하나 받을 수 있다([fleet.md](fleet.md) 5.1, 2026-09-27). RELEASE는 AIRPORT에 매핑된 프로젝트(코드 작업)만 본다.
 
 ## 1. 지금 사실
 
@@ -65,6 +65,7 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
   - HOLDING(대기, STAND 있음) → 마지막 활동이 N분(기본 30) 넘게 없으면 배정 가능, 아니면 마무리 중으로 봄
   - AIRBORNE, NORDO → 불가
   - 복창하지 않은 FLIGHT PLAN이 있으면 불가(한 번에 하나)
+  - **STAND 없는 FLIGHT**(`type:SURVEY`, `type:CHECK`): STAND 규칙으로 짝을 지은 뒤, HOLDING·PARKED AIRCRAFT가 그 규칙 밖으로 하나 더 받을 수 있다. 진행 중인 제안까지 세어 AIRCRAFT당 STAND 없는 FLIGHT 1건, 한 계획에서 AIRCRAFT당 제안 1건, WAKE 슬롯은 같이 센다. AIRBORNE은 받지 않는다. `CHECK`는 검토 대상을 만든 AIRCRAFT에 주지 않는다. 규칙은 [fleet.md](fleet.md) 5.1·5.2
 - **FLIGHT**: Todo 상태이고
   - **상위 이슈**(하위 이슈를 묶는 컨테이너)가 아님 — 5.1.1
   - `symphony-pilot` 라벨 아님
@@ -90,6 +91,7 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
 | 우선순위 없음 | `우선순위 없음 — 사람이 정할 때까지 배정하지 않음` | |
 | `wake:J` | `wake:J — 너무 커서 배정하지 않음, 나눠야 함(SPLIT)` | |
 | TAIL ASSIGNMENT, TYPE RATING, CREW([fleet.md](fleet.md) 5장) | `tail:TEAM_X — …`, `rating:SEC — …`, `type:BUILD — …` | |
+| **CHECK 독립성**: `CHECK`가 검토하는 것을 만든 AIRCRAFT만 그 CHECK를 날 수 있음([fleet.md](fleet.md) 5.2) | `CHECK 독립성 — 검토 대상을 만든 TEAM_X 말고 이 CHECK를 날 AIRCRAFT 없음 (…)` | 2026-09-27 |
 
 새 규칙 둘은 그림자 판정에서 나왔다. 가장 흔한 거절이 "이미 완료됨"이었는데, PR이 머지돼도 Linear 이슈가 저절로 Done이 되지 않기 때문이다. 진행 중인 제안보다 먼저 보므로, 그런 FLIGHT의 열린·승인된·HOLD 제안은 이 사유로 SUPERSEDED된다(FLIGHT 쪽 사유가 AIRCRAFT 쪽 사유보다 먼저). PR을 되돌리면 그 FLIGHT는 다시 후보가 된다.
 
@@ -109,7 +111,7 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 
 | 한도 | 기본 | 이유 |
 |---|---|---|
-| TEAM당 동시 FLIGHT | 1 | vocado 규칙: 팀 작업 한 번 = Linear 이슈 하나 |
+| TEAM당 동시 FLIGHT | 1, 여기에 STAND 없는 FLIGHT(`SURVEY`·`CHECK`) 1 | vocado 규칙: 팀 작업 한 번 = Linear 이슈 하나. SURVEY·CHECK는 워크트리가 필요 없다([fleet.md](fleet.md) 5.1) |
 | AIRPORT당 동시 AIRBORNE | VCDO 4, 그 밖 2 | 개발 서버 포트(3001~), CI, LANDING SEQUENCE 혼잡 |
 | 전체 대기 중 제안 | 5 | SUPERVISOR 검토 부담 |
 
@@ -124,8 +126,11 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 | 풀어 주는 FLIGHT | 이 FLIGHT가 blocks 하는 Todo 수 | ×2 |
 | 팀 적합도 | 이 AIRCRAFT가 과거에 같은 프로젝트·related FLIGHT를 날았던 횟수(FLIGHT RECORDER·청구 이력) | ×1 |
 | 충돌 위험 | 지금 AIRBORNE인 FLIGHT와 related로 묶인 수 | ×−2 |
+| ROUTE | FLIGHT의 프로젝트가 그 AIRCRAFT의 routes에 있음([fleet.md](fleet.md) 5장) | ×1 |
 
 각 제안에 요소별 점수를 그대로 보여 준다("왜 이 팀에 이 편인가"). 가중치는 설정 파일로 SUPERVISOR가 바꾼다.
+
+점수 없이 짝의 이유만 보여 주는 표시가 둘 있다. `STAND 없이`(STAND 규칙 밖으로 준 SURVEY·CHECK, AIRCRAFT 상태와 함께. 예: `HOLDING — VOC-10 진행 중`)와 모든 CHECK에 붙는 `CHECK 독립성`(빼 둔 만든 팀, 누가 만들었는지 모르면 `확인 못 함 — …`). 쉬는 AIRCRAFT에 주는 가산점은 없다.
 
 ### 5.4 DISPATCH 세션의 검토
 
