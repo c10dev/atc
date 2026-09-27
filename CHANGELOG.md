@@ -166,6 +166,7 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
   - Other teams are display-only (RADAR, STRIPS, FIDS): the planner skips them without an exclusion line, the SCHEDULE brief leaves them out of its candidates, and a SCHEDULE draft on them answers 409. With a team added to `candidateTeams`, its FLIGHTs are proposed only to AIRCRAFT based at that team's AIRPORT (ATC → ATCC). The switch is off.
 
 ### Changed
+- `.gitattributes` merges `CHANGELOG.md` and `CHANGELOG.ko.md` with `merge=union`. Every PR adds lines at the top of `[Unreleased]`, so rebasing onto a new main conflicted there almost every time. A local rebase now keeps both sides. GitHub's merge button doesn't use it, so a PR still needs that rebase.
 - The DISPATCH one-click rate (`gate.crosscheck.oneClick`) leaves blind verdicts out of its count. One click is blocked on blind cards, so counting them made the rate look lower than it was (ATC-6).
 - The DISPATCH gate measures the AIRCRAFT choice only (ATC-5, [docs/dispatch.md](docs/dispatch.md) 6.3). The six rejections from before PREFLIGHT were all about the ticket and held the gate at 3/9 (33%).
   - `gateOf` leaves out a `disagreed` proposal whose reason chips are all FLIGHT chips (`FLIGHT_HOLD_CODES`) and counts it in `gate.notReady`. The gate panel shows "준비 안 됨 거절 n건 (게이트 제외)" next to PREFLIGHT HELD, and the decided row reads "판정한 제안(HELD·준비 안 됨 제외)". Agreed verdicts and rejections with `wrong-aircraft`, `other` or no chip count as before.

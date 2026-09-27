@@ -1,0 +1,4 @@
+# CHANGELOG는 모든 PR이 [Unreleased] 맨 위에 한 줄씩 더해 rebase 때마다 충돌한다.
+# union은 양쪽 줄을 모두 남긴다(로컬 git의 rebase·merge에만 적용되고 GitHub 머지 버튼은 모른다).
+CHANGELOG.md merge=union
+CHANGELOG.ko.md merge=union
