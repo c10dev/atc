@@ -97,12 +97,13 @@ OCC는 Linear에 마음대로 쓰지 않는다. **SCHEDULE 작업**(operation)�
 - **SUPERVISOR의 지시(CHARTER DESK)**: OCC 세션에서 바로 하는 CHARTER REQUEST("X 티켓 만들어 줘")는 `NEW` 초안, 곧 AD HOC FLIGHT(정규 스케줄 밖에서 더한 FLIGHT)가 된다.
   - 승인되고 Linear Todo에 오르면(S2) 다른 FLIGHT처럼 FILED된다.
   - 팀에 바로 맡긴 작은 티켓 없는 일은 AD HOC이고, SCHEDULE 작업이 되지 않는다.
-  - OCC는 스스로 `NEW`를 쓰지 않는다.
+  - OCC는 스스로 `NEW`를 쓰지 않는다. 예외는 하나, 덮는 이슈가 없는 WAYPOINT 완료 기준이다(5.6). SUPERVISOR가 이미 적어 둔 기준을 옮기는 것이다.
   - 중복 검색(5.3)은 atc의 스냅숏을 본다. 스냅숏에는 최근 45일 안에 바뀐 이슈가 있다.
 - **팀의 발견**: CAPTAIN이 "범위 밖에서 Y를 찾았다"고 보고 → `SPLIT`.
 - **PR 리뷰**: 리뷰의 후속 항목 → `SPLIT`.
 - **atc 신호**: 끝났는데 열려 있음(`CLOSE`), 우선순위 없음(`PRIORITIZE`), 본문에만 적힌 선행 작업(`LINK`), 방치된 ENROUTE(DISPATCH의 `RELEASE` 경우).
 - **4단계 네트워크 계획**: 목표를 티켓으로 나눈 것. 초안으로만.
+- **WAYPOINT gap**(5.6): 지금 구간이나 다음 WAYPOINT의 완료 기준 가운데 덮는 이슈가 없는 것 → 마일스톤을 단 `NEW`.
 
 ### 5.2 티켓 본문
 
@@ -157,6 +158,16 @@ Linear 정리는 원래 President의 일이었다. 이제 OCC가 초안을 쓰�
   - SUPERVISOR가 Done으로 옮기면 다음 브리핑에서 빠진다.
 - **근거 댓글: 일부러 만들지 않았다.** `save_comment`(`[OCC S-xxxx] PR … 머지됨`)만 release하면 OCC의 계획 필드 안에 머문다. 하지만 SUPERVISOR가 바로 뒤에 손으로 닫고, PR은 GitHub 연동으로 이미 연결돼 있고, 닫는 이슈마다 봇 댓글이 붙으면 소음이 된다. 권장은 SUPERVISOR가 이슈 자체에 감사 기록을 원하지 않는 한 끄는 것이다. 만든다면 `callsOf`에서 댓글 하나짜리 CALL 목록이 된다.
 - **나중을 위한 스위치.** vocado 규칙이 바뀌어 OCC가 이슈를 닫을 수 있게 되면, 바꿀 곳은 `callsOf` 하나다. `save_issue {id, state: "Done"}`과 근거 댓글을 돌려주고, 거부 상수 `CLOSE_RELEASE_WHY`를 없앤다. 나머지(초안, 판정, linear-guard)는 바꿀 것이 없다.
+
+### 5.6 WAYPOINT gap (2026-09-27 구현, ATC-8)
+
+2026-09-27에 VOC Todo는 6건이었고 배정할 수 있는 것이 없어 DISPATCH 게이트에 새 제안이 쌓이지 않았다. ROUTE MAP은 WAYPOINT마다 완료 기준과 이슈를 이미 알고 있으니([routes.ko.md](routes.ko.md)), 덮는 이슈가 없는 기준을 `NEW` 초안으로 올린다. 지금은 SCHEDULE 게이트를 채우고, S2에서 이슈가 만들어지면 DISPATCH로 이어진다.
+
+- **데이터.** `schedule brief`에 `waypointGaps`가 있다(`server/waypoint-gaps.ts`, 순수 함수 `waypointGapsOf`). 끝나지 않은 ROUTE마다 지금 구간 WAYPOINT와 그다음 WAYPOINT가 있고, 각각 `criteria`("Exit criteria" 아래 번호 목록), 목록이 없으면 `description`, 그 마일스톤의 `issues`(key·제목·상태, 취소·중복 제외), `truncated`가 붙는다. WAYPOINT가 없거나 모두 지난 ROUTE는 뺀다. `null`이면 마일스톤을 못 읽은 것이다.
+- **판단은 OCC가 한다.** 서버는 기준과 이슈를 짝짓지 않는다. OCC는 바퀴마다 gap을 읽고 열린·끝난 이슈 가운데 어느 것도 덮지 않는 기준을 가린다. 사람이 정할 기준("SUPERVISOR decides", 사용자 모집·인터뷰)과 확인할 끝 조건이 없는 설명은 건너뛰고, **바퀴마다 2건까지** 지금 구간 WAYPOINT부터 올린다(`occ/CLAUDE.md` "WAYPOINT gap").
+- **초안.** `schedule draft NEW --gap --project <ROUTE> --milestone <WAYPOINT> …`. 본문은 네 칸이고 `## 목표`에 기준을 인용한다. `milestone`은 그 프로젝트의 마일스톤(이름이나 id)인지 검사하고 `changesOf`에 보인다("WAYPOINT Beta Ready"). `--gap`은 마일스톤이 있어야 하고, `similarTickets`가 비슷한 FLIGHT를 찾으면 atc가 받지 않는다. OCC가 놓쳐도 "중복이면 쓰지 않는다"가 지켜진다. gap 초안도 열린 초안 5건 한도에 든다.
+- **S2.** 발부된 `save_issue` 호출에 `milestone: <마일스톤 id>`가 들어가 새 이슈가 그 WAYPOINT에 붙는다. linear-guard(`occ/mcp-guard.mjs`, 바꾸지 않음)는 그 입력과 똑같을 때만 통과시킨다. 마일스톤을 빼거나 이름·다른 id를 넣으면 막히는 것을 `occ/mcp-guard.test.mjs`가 확인한다.
+- CROSSCHECK는 다른 SCHEDULE 초안처럼 이 초안에도 mark를 단다.
 
 ## 6. linear-guard
 

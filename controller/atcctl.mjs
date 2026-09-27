@@ -77,12 +77,15 @@ SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만. S2 승인 운용
   node atcctl.mjs schedule draft CLOSE <VOC-193> -- <근거>
                                             닫기 초안: LOGBOOK에 PR 머지(ARRIVED)가 있는데 Linear가 Done·Canceled가 아님.
                                             PR·머지 시각·Fixes 여부는 atc가 채운다. 발부하지 않는다(SUPERVISOR가 Linear에서 직접)
-  node atcctl.mjs schedule draft NEW --title <제목> --project <프로젝트> [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>]
+  node atcctl.mjs schedule draft NEW --title <제목> --project <프로젝트> [--milestone <마일스톤>] [--gap] [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>]
         [--rating <RATING>]… [--tail <TEAM_X>] [--parent <VOC-1>] [--related <VOC-2>]… [--blocked-by <VOC-3>]…
         --reason <근거, "중복 검색: …" 포함> -- <본문>
                                             CHARTER DESK: AD HOC FLIGHT(새 이슈) 초안. 본문의 \n은 줄바꿈.
                                             본문은 네 칸(목표·수정 허용 범위·금지 사항·완료 기준), SEC는 Codex 템플릿
                                             열린 초안이 한도에 차면 LIMIT으로 끝난다(exit 1)
+                                            --milestone: 그 프로젝트의 마일스톤(WAYPOINT) 이름이나 id.
+                                            --gap: WAYPOINT gap 초안(schedule brief의 waypointGaps). --milestone이 필요하고,
+                                            비슷한 FLIGHT(similar)가 있으면 atc가 받지 않는다
   node atcctl.mjs schedule release <S-0001>  (S2) 승인된 작업을 발부하고 Linear 호출(CALL)을 출력. 각 CALL의 도구에
                                             JSON 입력을 한 글자도 바꾸지 않고 넣는다. 이미 발부됐으면 같은 CALL을 다시 준다
 
@@ -132,13 +135,19 @@ function parseIssue(args) {
 
 // schedule draft NEW [옵션]… --reason <근거> -- <본문> → POST 본문. OCC guard가 heredoc·리다이렉션을 막아
 // 본문은 -- 뒤 인자로 받고, 글자 그대로의 \n을 줄바꿈으로 바꾼다.
-const NEW_ONE = ["--title", "--project", "--priority", "--type", "--wake", "--tail", "--parent", "--reason"];
+const NEW_ONE = ["--title", "--project", "--milestone", "--priority", "--type", "--wake", "--tail", "--parent", "--reason"];
 const NEW_MANY = { "--rating": "ratings", "--related": "related", "--blocked-by": "blockedBy" };
 function parseNewDraft(args) {
   const sep = args.indexOf("--");
-  const head = sep < 0 ? args : args.slice(0, sep);
+  const head = args.slice(0, sep < 0 ? undefined : sep);
   const text = sep < 0 ? "" : args.slice(sep + 1).join(" ").replace(/\\n/g, "\n").trim();
   const out = { kind: "NEW" };
+  // --gap: WAYPOINT gap 초안(값 없음). --milestone이 필요하고, 비슷한 FLIGHT가 있으면 서버가 받지 않는다
+  const gapAt = head.indexOf("--gap");
+  if (gapAt >= 0) {
+    head.splice(gapAt, 1);
+    out.gap = true;
+  }
   for (let i = 0; i < head.length; i += 2) {
     const [opt, val] = [head[i], head[i + 1]];
     if (!NEW_ONE.includes(opt) && !NEW_MANY[opt]) throw new Error(`NEW에 쓸 수 없는 옵션 ${opt} (가능: ${[...NEW_ONE, ...Object.keys(NEW_MANY)].join(" ")})`);
@@ -263,7 +272,7 @@ export function payloadText(op) {
   if (op.kind === "CLOSE") return `→ Done · PR ${p.pr.repo.split("/").pop()}#${p.pr.number} 머지 ${p.mergedAt.slice(0, 16)}Z · ${p.partOf ? "Part of(일부만)" : p.fixes ? "Fixes" : "본문에 Fixes 없음"}`;
   const labels = [p.type && `type:${p.type}`, p.wake && `wake:${p.wake}`, ...(p.ratings ?? []).map((r) => `rating:${r}`)];
   if (op.kind !== "NEW") return labels.filter(Boolean).join(" ");
-  return [p.project, p.priority ? PRIORITY[p.priority] : "priority 없음", [...labels, p.tail && `tail:${p.tail}`].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
+  return [p.project, p.milestone && `WAYPOINT ${p.milestone.name}`, p.priority ? PRIORITY[p.priority] : "priority 없음", [...labels, p.tail && `tail:${p.tail}`].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
 }
 
 // 초안 결과 출력. NEW는 AD HOC FLIGHT 초안과 atc가 찾은 비슷한 FLIGHT 목록.

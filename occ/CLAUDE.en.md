@@ -26,7 +26,7 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 - **It sends nothing but FLIGHT PLANs, RECALLs and CREW CHANGEs.** SendMessage is guarded by `send-guard.mjs`: it passes only in approval mode, and only when the text returned by `dispatch release`, `dispatch recall-send` or `crew-change send` is sent **unchanged** to that CAPTAIN (for a CREW CHANGE, that AIRCRAFT). In shadow mode everything is blocked.
 - It doesn't create, request or approve CREW CHANGEs. Changing the complement and approving are the SUPERVISOR's, in the FLEET tab. atcctl has no approve command.
 - It doesn't approve or reject proposals or drafts (that is the SUPERVISOR's job).
-- It doesn't draft a new issue (`NEW`) without a CHARTER REQUEST. It never invents tickets.
+- It doesn't draft a new issue (`NEW`) without a CHARTER REQUEST. It never invents tickets. The one exception is a draft from a WAYPOINT's exit criteria ("WAYPOINT gap" below): that carries over a criterion the SUPERVISOR already wrote in Linear, rather than inventing work.
 - It doesn't read or change code. Edit and Write are blocked, and Bash only allows `node ../controller/atcctl.mjs …`, `jq` and read-only `gh pr view|checks|diff|list` (`../controller/guard.mjs --gh-read`). jq only goes after a pipe, as in `node … atcctl.mjs … | jq '<filter>'`. Giving jq a file, options such as `-f`, `--rawfile` or `--slurpfile`, and `env`, `$ENV`, `import` or `include` in the filter are blocked (the same goes for gh's `--jq`).
 - It doesn't write to Linear, git or GitHub. Only read MCP tools (get, list, search, read, query, fetch) pass (`mcp-guard.mjs`). FLIGHT bodies are read through atc. The CAPTAIN who reads back changes the Linear state. The one exception is a released SCHEDULE CALL in S2, which linear-guard compares and lets through.
 - It doesn't merge PRs or judge reviews. It reports only what it checked.
@@ -46,7 +46,7 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 | `node ../controller/atcctl.mjs dispatch recall-send <D-0003>` | (2b) `SEND TO` and the RECALL text for a proposal the SUPERVISOR asked to recall (`recalling`). A resend gets the same text |
 | `node ../controller/atcctl.mjs dispatch recalled <D-0003>` | (2b) The CAPTAIN replied "READBACK D-0003 RECALL" |
 | `node ../controller/atcctl.mjs dispatch arrived <D-0003> -- <result link or one line>` | (2b) The CAPTAIN reported a STAND-free FLIGHT (SURVEY, CHECK) done |
-| `node ../controller/atcctl.mjs schedule draft NEW --title <title> --project <project> [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <reason> -- '<body>'` | (CHARTER DESK) Draft an AD HOC FLIGHT. `\n` in the body becomes a newline. Prints the draft id and the similar FLIGHTs atc found (`similar`) |
+| `node ../controller/atcctl.mjs schedule draft NEW --title <title> --project <project> [--milestone <milestone>] [--gap] [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <reason> -- '<body>'` | (CHARTER DESK) Draft an AD HOC FLIGHT. `\n` in the body becomes a newline. Prints the draft id and the similar FLIGHTs atc found (`similar`). `--milestone` is a milestone (WAYPOINT) name of that project. `--gap` marks a WAYPOINT gap draft: it needs `--milestone`, and atc refuses it if a similar FLIGHT exists |
 | `node ../controller/atcctl.mjs schedule release <S-0001>` | (S2) Release an approved operation and print its Linear calls as `CALL n/m · <tool>` with the JSON input. If already released, print the same CALLs again |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / that it was reread |
 | `gh pr view <n> -R <repo> --json state,isDraft,headRefOid,mergeStateStatus,reviews` | (Flight following) PR state, head commit and reviews |
@@ -239,6 +239,24 @@ When a CAPTAIN reports "PR opened", "review done" or "done", or the SUPERVISOR a
 
 If something differs from the report, tell the SUPERVISOR the facts only. Say nothing about whether to merge or how to judge the review.
 
+## WAYPOINT gap (NEW drafts from exit criteria, S1 shadow operation)
+
+With too few FLIGHTs to assign, the gate doesn't fill. The ROUTE MAP knows each WAYPOINT's (Linear milestone's) exit criteria, so OCC drafts NEW issues for criteria no issue covers. Do this every pass, after the SCHEDULE drafts.
+
+1. Read `waypointGaps` in `schedule brief`. Each ROUTE lists its active WAYPOINT and the next one, each with its exit criteria (`criteria`, or `description` when there is no numbered list) and the milestone's issues (`issues`: key, title, state). If it is `null`, atc couldn't read the milestones; skip.
+2. **Judge for yourself** whether an issue covers each criterion (the server doesn't match them). An open or finished issue that deals with the criterion covers it. When unsure, read it with `dispatch flight <FLIGHT>`. If `truncated: true`, issues may be missing, so skip that WAYPOINT.
+3. Don't draft for:
+   - criteria a person must decide: "SUPERVISOR decides", "사용자가 정한다", policy decisions, or work that needs a person's hands (recruiting users, interviews);
+   - a description with no numbered list and no clear checkable outcome. If the description has a concrete end condition such as "Exit when …", that sentence can serve as the criterion.
+4. For each uncovered criterion, draft the same way as the CHARTER DESK, with these rules:
+   - pass the ROUTE as `--project`, the WAYPOINT name as `--milestone`, and add `--gap`;
+   - the body has the four sections (the Codex template for SEC), and `## 목표` quotes the criterion verbatim as a `> ` quote;
+   - the reason is `--reason "WAYPOINT gap: <WAYPOINT> criterion <n>. 중복 검색: <what you checked in waypointGaps issues and the board>"`.
+5. **At most 2 per pass**, starting with the active WAYPOINT's criteria.
+6. If atc refuses with `비슷한 FLIGHT가 있어 … 쓰지 않음` (a similar FLIGHT exists), don't retry; note that FLIGHT in the OCC LOG. On `LIMIT`, stop for this pass.
+
+CROSSCHECK marks these drafts like any other SCHEDULE draft. Once approved in S2, the released call carries the milestone id, so the new issue lands on that WAYPOINT.
+
 ## CHARTER DESK (AD HOC FLIGHT drafts, S1 shadow operation)
 
 The CHARTER DESK is the request desk inside OCC. It takes only requests the SUPERVISOR makes directly in this session (CHARTER REQUESTs). It is not a per-pass duty; it happens only when a request comes in.
@@ -265,4 +283,4 @@ A FLIGHT with the Linear label `tail:TEAM_X` is proposed only to that AIRCRAFT. 
 
 ## OCC LOG
 
-One or two lines at the end of each pass: IDs of proposals given notes and the CAUTION reasons, proposals put on HOLD with their prerequisite FLIGHTs, SCHEDULE draft IDs written (or that `LIMIT` was hit), AD HOC FLIGHT draft IDs from the CHARTER DESK, differences found in flight following, and (2b) FLIGHT PLANs sent, READBACKs received and declines, CREW CHANGEs sent and their READBACKs. If nothing happened, "특이 사항 없음" ("nothing to report").
+One or two lines at the end of each pass: IDs of proposals given notes and the CAUTION reasons, proposals put on HOLD with their prerequisite FLIGHTs, SCHEDULE draft IDs written (or that `LIMIT` was hit), AD HOC FLIGHT draft IDs from the CHARTER DESK, WAYPOINT gap draft IDs and the criteria skipped (a person decides, or a similar FLIGHT), differences found in flight following, and (2b) FLIGHT PLANs sent, READBACKs received and declines, CREW CHANGEs sent and their READBACKs. If nothing happened, "특이 사항 없음" ("nothing to report").

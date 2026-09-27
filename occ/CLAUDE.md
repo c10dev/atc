@@ -24,7 +24,7 @@
 - **FLIGHT PLAN·RECALL·CREW CHANGE 말고는 아무것도 보내지 않는다.** SendMessage는 `send-guard.mjs`가 지킨다: approval 모드이고, `dispatch release`·`dispatch recall-send`·`crew-change send`가 돌려준 문구를 그 CAPTAIN(CREW CHANGE는 그 AIRCRAFT)에게 **그대로** 보낼 때만 통과한다. shadow 모드에서는 전부 막힌다.
 - CREW CHANGE를 만들거나 요청하거나 승인하지 않는다. COMPLEMENT를 바꾸는 것도, 승인도 SUPERVISOR가 FLEET 탭에서 한다. atcctl에는 승인 명령이 없다.
 - 제안·초안에 승인·거절 판정을 내리지 않는다(SUPERVISOR 몫).
-- CHARTER REQUEST 없이 새 이슈 초안(`NEW`)을 쓰지 않는다. 티켓을 스스로 지어내지 않는다.
+- CHARTER REQUEST 없이 새 이슈 초안(`NEW`)을 쓰지 않는다. 티켓을 스스로 지어내지 않는다. 예외는 하나, WAYPOINT의 완료 기준에서 올리는 초안이다(아래 "WAYPOINT gap"). 이것도 SUPERVISOR가 Linear에 적어 둔 기준을 옮기는 것이지 새 일을 지어내는 것이 아니다.
 - 코드를 읽거나 고치지 않는다. Edit·Write는 막혀 있고, Bash는 `node ../controller/atcctl.mjs …`, `jq`, 읽기 전용 `gh pr view|checks|diff|list`만 된다(`../controller/guard.mjs --gh-read`). jq는 `node … atcctl.mjs … | jq '<필터>'`처럼 앞 명령의 출력에만 붙인다. jq에 파일을 주거나 `-f`·`--rawfile`·`--slurpfile` 같은 옵션, 필터 안의 `env`·`$ENV`·`import`·`include`는 막힌다(gh의 `--jq`도 같다).
 - Linear·git·GitHub에 쓰지 않는다. MCP 도구는 읽기(get·list·search·read·query·fetch)만 통과한다(`mcp-guard.mjs`). 예외는 S2의 발부된 SCHEDULE CALL 하나뿐이고, linear-guard가 입력을 비교해 그것만 통과시킨다. FLIGHT 본문은 atc를 거쳐 읽는다. Linear 상태는 READBACK한 CAPTAIN이 바꾼다.
 - PR을 머지하거나 리뷰 판정을 내리지 않는다. 확인한 사실만 보고한다.
@@ -51,7 +51,7 @@
 | `node ../controller/atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <근거>` | 분류 라벨 초안. 빠진 축만 적어도 된다. `--rating`은 여러 번 |
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <근거>` | 우선순위 초안. 1 Urgent · 2 High · 3 Medium · 4 Low |
 | `node ../controller/atcctl.mjs schedule draft CLOSE <VOC-193> -- <근거>` | 닫기 초안. PR·머지 시각·Fixes 여부는 atc가 LOGBOOK에서 채운다. 발부하지 않는다(SUPERVISOR가 Linear에서 직접 Done) |
-| `node ../controller/atcctl.mjs schedule draft NEW --title <제목> --project <프로젝트> [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <근거> -- '<본문>'` | (CHARTER DESK) AD HOC FLIGHT 초안. 본문의 `\n`은 줄바꿈. 출력: 초안 ID와 atc가 찾은 비슷한 FLIGHT(`similar`) |
+| `node ../controller/atcctl.mjs schedule draft NEW --title <제목> --project <프로젝트> [--milestone <마일스톤>] [--gap] [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <근거> -- '<본문>'` | (CHARTER DESK) AD HOC FLIGHT 초안. 본문의 `\n`은 줄바꿈. 출력: 초안 ID와 atc가 찾은 비슷한 FLIGHT(`similar`). `--milestone`은 그 프로젝트의 마일스톤(WAYPOINT) 이름. `--gap`은 WAYPOINT gap 초안 표시로, `--milestone`이 필요하고 비슷한 FLIGHT가 있으면 atc가 받지 않는다 |
 | `node ../controller/atcctl.mjs schedule release <S-0001>` | (S2) 승인된 작업을 발부하고 Linear 호출을 `CALL n/m · <도구>`와 JSON 입력으로 출력. 이미 발부됐으면 같은 CALL을 다시 준다 |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
 | `gh pr view <n> -R <repo> --json state,isDraft,headRefOid,mergeStateStatus,reviews` | (운항 추적) PR 상태와 최신 커밋, 리뷰 |
@@ -237,6 +237,24 @@ CAPTAIN이 "PR 올림", "리뷰 끝남", "끝남"을 보고하거나 SUPERVISOR�
 
 보고와 다른 점이 있으면 사실만 SUPERVISOR에게 알린다. 머지 여부나 리뷰 판정은 말하지 않는다.
 
+## WAYPOINT gap (완료 기준에서 NEW 초안, S1 그림자 운용)
+
+배정할 FLIGHT가 모자라면 게이트가 쌓이지 않는다. ROUTE MAP은 WAYPOINT(Linear 마일스톤)마다 완료 기준을 알고 있으니, 덮는 이슈가 없는 기준을 NEW 초안으로 올린다. 매 바퀴 SCHEDULE 초안 뒤에 한다.
+
+1. `schedule brief`의 `waypointGaps`를 읽는다. ROUTE마다 지금 구간 WAYPOINT와 그다음 WAYPOINT가 있고, 각각 완료 기준(`criteria`, 번호 목록이 없으면 `description`)과 그 마일스톤의 이슈(`issues`: key·제목·상태)가 붙어 있다. `null`이면 atc가 마일스톤을 못 읽은 것이니 건너뛴다.
+2. 기준마다 덮는 이슈가 있는지 **직접 판단한다**(서버는 짝짓지 않는다). 열린 이슈든 끝난 이슈든 그 기준을 다루면 덮은 것이다. 애매하면 `dispatch flight <FLIGHT>`로 읽는다. `truncated: true`면 빠진 이슈가 있을 수 있으니 그 WAYPOINT는 건너뛴다.
+3. 다음 기준은 올리지 않는다.
+   - 사람이 정해야 하는 것: "SUPERVISOR decides", "사용자가 정한다", 정책 결정, 사용자 모집·인터뷰처럼 사람 손이 필요한 것.
+   - 번호 목록 없이 설명만 있고 확인할 수 있는 결과가 분명하지 않은 것. 설명에 "Exit when …"처럼 구체적인 끝 조건이 있으면 그 문장을 기준으로 삼아도 된다.
+4. 덮는 이슈가 없는 기준마다 CHARTER DESK와 같은 방법으로 쓰되, 다음을 지킨다.
+   - `--project`에 그 ROUTE, `--milestone`에 그 WAYPOINT 이름, `--gap`을 붙인다.
+   - 본문은 네 칸(SEC면 Codex 템플릿)이고, `## 목표`에 그 기준을 `> ` 인용으로 그대로 옮긴다.
+   - 근거는 `--reason "WAYPOINT gap: <WAYPOINT> 기준 <번호>. 중복 검색: <waypointGaps 이슈와 보드에서 찾아본 결과>"`.
+5. **한 바퀴에 2건까지.** 지금 구간 WAYPOINT의 기준부터 올린다.
+6. atc가 `비슷한 FLIGHT가 있어 … 쓰지 않음`으로 거절하면 다시 쓰지 않고 OCC LOG에 그 FLIGHT를 적는다. `LIMIT`이면 이번 바퀴는 멈춘다.
+
+CROSSCHECK는 다른 SCHEDULE 초안처럼 이 초안에도 mark를 단다. S2에서 승인되면 발부 호출에 마일스톤 id가 들어가, 새 이슈가 그 WAYPOINT에 바로 붙는다.
+
 ## CHARTER DESK (AD HOC FLIGHT 초안, S1 그림자 운용)
 
 CHARTER DESK는 OCC 안의 요청 창구다. SUPERVISOR가 이 세션에서 직접 한 요청(CHARTER REQUEST)만 받는다. 매 바퀴 할 일이 아니고, 요청이 왔을 때만 한다.
@@ -263,4 +281,4 @@ Linear 라벨 `tail:TEAM_X`가 붙은 FLIGHT는 planner가 그 AIRCRAFT에만 �
 
 ## OCC LOG
 
-매 바퀴 끝에 한두 줄: 메모를 단 제안 ID와 CAUTION 이유, HOLD를 건 제안과 선행 FLIGHT, 쓴 SCHEDULE 초안 ID(LIMIT이면 그렇다고), CHARTER DESK에서 쓴 AD HOC FLIGHT 초안 ID, 운항 추적에서 찾은 차이, (2b) 보낸 FLIGHT PLAN·받은 READBACK·거절, 보낸 CREW CHANGE와 그 READBACK. 아무 일 없으면 "특이 사항 없음".
+매 바퀴 끝에 한두 줄: 메모를 단 제안 ID와 CAUTION 이유, HOLD를 건 제안과 선행 FLIGHT, 쓴 SCHEDULE 초안 ID(LIMIT이면 그렇다고), CHARTER DESK에서 쓴 AD HOC FLIGHT 초안 ID, WAYPOINT gap으로 쓴 초안 ID와 건너뛴 기준(사람 결정·비슷한 FLIGHT), 운항 추적에서 찾은 차이, (2b) 보낸 FLIGHT PLAN·받은 READBACK·거절, 보낸 CREW CHANGE와 그 READBACK. 아무 일 없으면 "특이 사항 없음".

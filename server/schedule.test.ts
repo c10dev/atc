@@ -444,3 +444,26 @@ test("후보 팀이 아닌 FLIGHT(ATC)에는 초안을 쓰지 않는다. NEW는 
   assert.equal(draftOps([], { kind: "CLASSIFY", flight: "VOC-10", type: "MAINT", reason: "r" }, tickets, iso(0), 0, { teams }).length, 1);
   assert.equal(draftOps([], { kind: "CLASSIFY", flight: "ATC-1", type: "MAINT", reason: "r" }, tickets, iso(0), 0, { teams: new Set(["VOC", "ATC"]) }).length, 1);
 });
+
+test("NEW milestone(ATC-8): 그 프로젝트의 마일스톤 이름·id만, changesOf와 S2 호출에 들어간다, gap은 비슷한 FLIGHT가 있으면 거절", () => {
+  const ms = (id: string, name: string, project: string) => ({ id, name, project, description: "", targetDate: null, progress: 0, sortOrder: 1, status: "next", issues: [], truncated: false });
+  const milestones = [ms("m-1", "Beta Ready", "Web UX"), ms("m-2", "Launch", "Beta Readiness")];
+  const ok = parseNew(newInput({ milestone: "beta ready" }), board, TAILS, milestones);
+  assert.deepEqual(ok.milestone, { id: "m-1", name: "Beta Ready" });
+  assert.deepEqual(parseNew(newInput({ milestone: "m-1" }), board, TAILS, milestones).milestone, { id: "m-1", name: "Beta Ready" });
+  assert.throws(() => parseNew(newInput({ milestone: "Launch" }), board, TAILS, milestones), /Web UX의 마일스톤이 아님: Launch \(가능: Beta Ready\)/);
+  assert.throws(() => parseNew(newInput({ milestone: "Beta Ready" }), board, TAILS, null), /마일스톤을 아직 읽지 못함/);
+  assert.equal(parseNew(newInput(), board, TAILS, null).milestone, undefined);
+  const payload = { ...ok, similar: [] };
+  assert.match(changesOf("NEW", payload)[0], /^새 이슈: 재생 화면 버튼 정리 · Web UX · WAYPOINT Beta Ready · /);
+  const base = { at: iso(10), status: "approved" as const, statusAt: iso(5), verdictReason: null, calls: null, appliedRef: null, decision: null, crosscheck: null, reason: "r" };
+  const [call] = callsOf({ ...base, id: "S-0009", kind: "NEW", flight: null, payload }, undefined, "Vocado");
+  assert.equal(call.input.milestone, "m-1");
+  // gap: milestone이 있어야 하고, 비슷한 FLIGHT가 있으면 쓰지 않는다
+  const gapOf = (over: Record<string, unknown>) => draftOps([], { ...newInput(over), gap: true }, board, iso(0), 0, { tails: TAILS, milestones });
+  assert.throws(() => gapOf({}), /milestone이 필요함/);
+  assert.throws(() => gapOf({ milestone: "Beta Ready", title: "Practice 시트 머리 줄 동작 맞추기" }), /비슷한 FLIGHT가 있어.*VOC-60/);
+  const [line] = gapOf({ milestone: "Beta Ready", title: "재생 화면 버튼 정리" });
+  assert.equal(line.op, "draft");
+  assert.equal((line as { payload: NewPayload }).payload.gap, true);
+});
