@@ -34,6 +34,16 @@ export const UNKNOWN_MODEL = "unknown";
 
 // 기록 한 줄(옛 기록에는 model이 없다)
 export type CrosscheckLine = Omit<Crosscheck, "model"> & { model?: string };
+// 모델 계열: 경로 접두어(claude-ocx-opencode-go--, claude-ocx-native--)와 [1m] 같은 접미어, -contributor를 뗀다.
+// 같은 모델이 경로(ocx, ClaudeRipple)마다 다른 이름으로 기록되므로 집계·표시는 계열로 한다. 기록(mark의 model)은 그대로 둔다.
+// claude-ocx-opencode-go--muse-spark-1.3-contributor[1m] → muse-spark-1.3, claude-ocx-native--gpt-5.6-terra → gpt-5.6-terra
+export function modelFamily(model: string | null | undefined): string {
+  const raw = String(model ?? "").trim().toLowerCase();
+  if (!raw || raw === UNKNOWN_MODEL) return UNKNOWN_MODEL;
+  const s = raw.slice(raw.lastIndexOf("--") >= 0 ? raw.lastIndexOf("--") + 2 : 0).replace(/\[[^\]]*\]$/, "").replace(/-contributor$/, "");
+  return s || raw;
+}
+
 export const markOf = (l: CrosscheckLine): Crosscheck => ({ by: l.by, model: l.model || UNKNOWN_MODEL, verdict: l.verdict, reason: l.reason, at: l.at });
 
 export class CrosscheckError extends Error {}
@@ -56,15 +66,16 @@ export interface CrosscheckRate {
 }
 
 // 일치율: 사람이 판정한 건 중 판정 전에 mark가 있던 건만 센다.
-// agree는 agreed/approved와, disagree는 disagreed/rejected와 맞으면 일치. 전체 합계와 모델별(byModel).
+// agree는 agreed/approved와, disagree는 disagreed/rejected와 맞으면 일치. 전체 합계와 모델 계열별(byModel, 키는 modelFamily).
 export function crosscheckRateOf(items: { crosscheck: Crosscheck | null; human: HumanDecision | null }[]) {
   const marked = items.filter((x) => x.crosscheck && x.human && Date.parse(x.crosscheck.at) <= Date.parse(x.human.at));
   const rateOf = (xs: typeof marked): CrosscheckRate => {
     const matched = xs.filter((x) => x.crosscheck!.verdict === x.human!.verdict).length;
     return { marked: xs.length, matched, rate: xs.length ? matched / xs.length : null };
   };
-  const models = [...new Set(marked.map((x) => x.crosscheck!.model || UNKNOWN_MODEL))].sort();
-  const byModel: Record<string, CrosscheckRate> = Object.fromEntries(models.map((m) => [m, rateOf(marked.filter((x) => (x.crosscheck!.model || UNKNOWN_MODEL) === m))]));
+  const familyOf = (x: (typeof marked)[number]) => modelFamily(x.crosscheck!.model);
+  const families = [...new Set(marked.map(familyOf))].sort();
+  const byModel: Record<string, CrosscheckRate> = Object.fromEntries(families.map((f) => [f, rateOf(marked.filter((x) => familyOf(x) === f))]));
   return { ...rateOf(marked), byModel };
 }
 

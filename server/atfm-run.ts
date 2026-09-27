@@ -24,6 +24,7 @@ import {
   undoneOf,
 } from "./atfm.ts";
 import { config } from "./config.ts";
+import { modelFamily, UNKNOWN_MODEL } from "./crosscheck.ts";
 import { landedOf, loadDispatchConfig, planDispatch, readFlightHistory } from "./dispatch.ts";
 import { fleetView, loadFleet } from "./fleet.ts";
 import { pullKey } from "./landing.ts";
@@ -198,10 +199,13 @@ export function eligibilityView(s: Snapshot, now = Date.now()) {
 type Row = { id: string; label: string; value: string; target: string; status: "pass" | "fail" | "insufficient" };
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 
-// 지금 쓰는 CROSSCHECK 모델(가장 최근 mark의 모델)의 일치율
-function currentModelRate(items: { crosscheck: { model: string; at: string } | null }[], byModel: Record<string, { marked: number; matched: number; rate: number | null }>) {
-  const latest = items.filter((x) => x.crosscheck).sort((a, b) => b.crosscheck!.at.localeCompare(a.crosscheck!.at))[0]?.crosscheck?.model ?? null;
-  return latest ? { model: latest, ...(byModel[latest] ?? { marked: 0, matched: 0, rate: null }) } : null;
+// 지금 쓰는 CROSSCHECK 모델 계열(가장 최근 mark의 계열)의 일치율. unknown(모델 기록 전의 mark)은 세지 않는다
+export function currentModelRate(items: { crosscheck: { model: string; at: string } | null }[], byModel: Record<string, { marked: number; matched: number; rate: number | null }>) {
+  const latest = items.filter((x) => x.crosscheck && modelFamily(x.crosscheck.model) !== UNKNOWN_MODEL).sort((a, b) => b.crosscheck!.at.localeCompare(a.crosscheck!.at))[0]?.crosscheck?.model;
+  if (!latest) return null;
+  const family = modelFamily(latest);
+  const r = byModel[family] ?? { marked: 0, matched: 0, rate: null };
+  return { model: family, marked: r.marked, matched: r.matched, rate: r.rate };
 }
 const rateRow = (id: string, label: string, r: { marked: number; rate: number | null; model?: string } | null, n: number, min: number): Row => ({
   id, label: r?.model ? `${label} · ${r.model}` : label,
