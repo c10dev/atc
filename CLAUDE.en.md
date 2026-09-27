@@ -54,7 +54,7 @@ Rules for sessions that change atc's code (team sessions, and sessions working d
 - Ideas not yet decided go in a GitHub Issue labelled `idea`, not in the repository docs.
 - Once decided, write a design draft in `docs/<topic>.md` (Status line, Current facts, Principles, Implementation order, Risks, Decisions). New design docs start in English. Link the doc from the issue when it is adopted.
 - Put a stage in `docs/guide/stages.md`, work left in that design doc's "Not built yet", and finished work in the `CHANGELOG`.
-- atc's own work is not tracked in Linear. atc reads only the `LINEAR_TEAM_KEY` team, and that team's Todo FLIGHTs become DISPATCH candidates.
+- atc's own work lives in the Linear `atc` team (ATC). atc reads every team in `LINEAR_TEAM_KEYS`, but only the configured teams (`candidateTeams` in `dispatch.json`; empty means the main team) produce DISPATCH and SCHEDULE candidates. The classification labels (`type`, `wake`, `rating:*`, `Risk`, `tail:*`) are workspace labels shared by both teams. Ideas stay in GitHub `idea` issues.
 
 ## Radio
 
