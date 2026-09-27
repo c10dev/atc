@@ -239,3 +239,15 @@ test("보안 경로·키워드: supabase migrations·functions, *.sql, auth·ses
   // 보안 아닌 #385는 대상 그대로(DeepSeek 리뷰를 받을 수 있다)
   assert.equal(build(pr()).extReview?.status, "waiting");
 });
+
+test("vocado PR 템플릿의 판에 박힌 줄은 키워드로 치지 않는다(모든 PR이 빠지지 않게). 바뀌었다고 적은 계약 줄은 본다", () => {
+  // #385(보안 아님) 본문의 실제 템플릿 줄
+  const template = [
+    "## Contracts Preserved / Changed", "", "- API routes: unchanged", "- auth/session: unchanged", "- database schema: unchanged", "- migrations: none",
+    "- Supabase RLS/policies: unchanged", "- RPC / functions / triggers: unchanged", "- auth/session: preserved (admission in `route.ts`)",
+    "- [ ] Merge gate completed: human authorization (record which; Human Preview remains separate)", "- [ ] No auth/session behavior changed unless explicitly intended",
+  ].join("\n");
+  assert.equal(securityWordOf(["Give the landing's cards, join button and header links their pointer responses (VOC-173)", template]), null);
+  assert.equal(securityWordOf([template + "\n- auth/session: changed — the beta cookie now carries the locale"]), "auth");
+  assert.equal(securityWordOf([template + "\nThis closes the direct EXECUTE path."]), "EXECUTE");
+});

@@ -115,9 +115,15 @@ export function securityPathOf(files: readonly string[]): { tag: string; path: s
 }
 // 제목·본문의 보안 키워드. EXECUTE는 SQL 권한이라 대문자만(영어 문장의 execute는 뺀다)
 const SECURITY_WORDS = /\b(security|privileges?|rls|grant(?:s|ed|ing)?|revok(?:e|es|ed|ing)|definer|admission|auth|authn|authz|authentication|authorization|acl|exposure|exposed)\b/i;
+// vocado PR 템플릿의 판에 박힌 줄은 키워드를 보지 않는다: "Contracts Preserved / Changed"의 바뀌지 않은 줄
+// ("- auth/session: unchanged", "- Supabase RLS/policies: unchanged", "- migrations: none", "- auth/session: preserved (…)")과 체크리스트("- [ ] No auth/session …").
+// 계약 줄이 바뀌었다고 적었으면("- auth/session: changed — …") 그대로 본다(진짜 신호다)
+const TEMPLATE_LINE = /^\s*[-*]\s*(\[[ xX]\]|[^:\n]{1,60}:\s*(unchanged|preserved|none|n\/a|not changed|no change)\b)/i;
+export const withoutTemplate = (text: string) => text.split("\n").filter((l) => !TEMPLATE_LINE.test(l)).join("\n");
 export function securityWordOf(texts: readonly (string | null | undefined)[]): string | null {
-  for (const t of texts) {
-    if (!t) continue;
+  for (const raw of texts) {
+    if (!raw) continue;
+    const t = withoutTemplate(raw);
     if (/\bEXECUTE\b/.test(t)) return "EXECUTE";
     if (/use server/i.test(t)) return "use server";
     const m = SECURITY_WORDS.exec(t);
