@@ -194,6 +194,9 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - 다른 팀은 보여 주기만 한다(RADAR·STRIPS·FIDS). planner는 제외 줄 없이 건너뛰고, SCHEDULE 브리핑은 후보에서 빼고, 그 팀에 쓴 SCHEDULE 초안은 409로 거절한다. `candidateTeams`에 팀을 넣으면 그 팀 FLIGHT는 그 팀 AIRPORT가 거점인 AIRCRAFT에만 제안한다(ATC → ATCC). 스위치는 꺼 두었다.
 
 ### 변경
+- main 병합만 한 head에 리뷰를 이어 준다(ATC-31, [docs/occ.ko.md](docs/occ.ko.md) 9.6). vocado의 `strict` 규칙 때문에 머지마다 다른 PR이 `behind`가 되고, `origin/main`을 병합하면 head가 바뀌어 리뷰가 떨어졌다(#394: 18700c1의 DeepSeek pass 뒤, 변경이 같은 main 병합 c12b706이 재리뷰를 기다림).
+  - head에 리뷰가 없는 PR마다 커밋을 거꾸로 따라가 나머지 부모가 기본 브랜치에 있는 병합인 동안의 이전 커밋 `R` 중, PR 자신의 변경(`compare(main...R)`과 `compare(main...head)`의 파일·상태·blob SHA)이 head와 같은 것을 모은다. 읽기 전용 GitHub API이고 `strict`는 그대로다.
+  - `R`의 사람 `APPROVED`, `R` 뒤 Codex 👍, `R`의 DeepSeek pass(외부 리뷰 제외 PR은 아님, Muse는 잇지 않음)는 리뷰 조건을 채우고, `R`의 지적은 `review-findings`로 남는다. 이어받은 PR은 REVIEW 대기열에 들어가지 않는다. `PullRequest.carried`·`landingQueue[].carried`, 스트립 "REVIEW: … (carried from R, main merge only)", `landing.cleared`의 `carriedFrom`.
 - 스위치로 Codex 한도 때 DeepSeek 착륙 리뷰어가 보안 PR도 맡을 수 있다(ATC-30, [docs/occ.ko.md](docs/occ.ko.md) 9.5). Codex 5시간 한도로 vocado #392와 #395가 리뷰어 없이 멈췄다.
   - `dispatch.json`의 `externalReview.security`: `"exclude"`(기본, 지금 동작)나 `"deepseek"`. 설정 창 AGENTS 탭의 REVIEW 줄에서 경고 "보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나감"과 함께 고친다(`PUT /api/settings {reviewSecurity}`).
   - 제외를 hard(FLIGHT 없음, `.env`·비밀·키 경로 — 어느 모드에서든)와 security(rating:SEC·Risk 라벨, 보안 경로, 보안 키워드 — 스위치가 `"deepseek"`이면 보냄)로 나눴다. 보낸 PR은 REVIEW 대기열에 들어가고, 통과하면 "REVIEW: DEEPSEEK (보안, Codex 한도)"로 보이며, 기록에 `security: true`가 남는다. 자료에는 더 엄격한 안내가 붙는다.

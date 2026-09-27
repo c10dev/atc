@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { type MainStatus, mainStateOf } from "../atfm.ts";
-import { type CodexSignal, codexFindings, codexThumbsPass, firstReach, fixesKeyOf, type GhPull, type GhThread, hasHeadReview, isCodexBot, type MergedElsewhere, needsCodexSignal } from "../landing.ts";
+import { type CarryCandidate, type CodexSignal, codexFindings, codexThumbsPass, firstReach, fixesKeyOf, mergeOnlyChain, sameChange, type GhPull, type GhThread, hasHeadReview, isCodexBot, type MergedElsewhere, needsCodexSignal } from "../landing.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./git.ts";
 
 const run = promisify(execFile);
@@ -130,7 +130,7 @@ async function threadsOf(slug: string, number: number): Promise<GhThread[]> {
 
 // Draft가 아니고 head 리뷰가 없거나 head에 Codex 지적이 있는 PR에만 Codex 신호를 붙인다.
 // 실패한 PR은 신호 없이(리뷰 없음·Codex 지적으로) 둔다.
-async function attachCodex(slug: string, pulls: GhPull[], errors: string[]) {
+async function attachCodex(slug: string, pulls: GhPull[], errors: string[], mainSha: string | null = null) {
   const need = pulls.filter((p) => !p.isDraft && needsCodexSignal(p));
   for (let i = 0; i < need.length; i += 4) {
     await Promise.all(
@@ -138,7 +138,11 @@ async function attachCodex(slug: string, pulls: GhPull[], errors: string[]) {
         try {
           p.codex = await codexSignal(slug, p);
           // Codex 리뷰도 사람 리뷰도 head에 없으면 착륙 리뷰로 갈 수 있다: 바뀐 파일을 읽어 둔다
-          if (!hasHeadReview(p) && !codexFindings(p) && !codexThumbsPass(p)) p.files = await filesOf(slug, p);
+          if (!hasHeadReview(p) && !codexFindings(p) && !codexThumbsPass(p)) {
+            p.files = await filesOf(slug, p);
+            // main 병합만 한 head면 이전 커밋의 리뷰를 이을 수 있다(ATC-31)
+            if (mainSha) p.carryFrom = await carryCandidates(slug, p, mainSha);
+          }
           if (codexFindings(p)) p.threads = await threadsOf(slug, p.number);
         } catch (e) {
           const err = e as Error & { stderr?: string };
@@ -182,7 +186,9 @@ async function fetchAll(repos: string[]) {
         const pulls = await listPulls(slug);
         const base = await defaultBranchOf(slug);
         state.defaultByRepo.set(repo, base);
-        await attachCodex(slug, pulls, errors);
+        // 기본 브랜치 head(리뷰 이어받기의 main 병합 확인·비교 기준, ATC-31)
+        const mainSha = (await gh(["api", `repos/${slug}/commits/${base}`, "--jq", ".sha"]).catch(() => "")).trim() || null;
+        await attachCodex(slug, pulls, errors, mainSha);
         await attachThreads(slug, pulls, errors);
         state.byRepo.set(repo, pulls);
         ok++;
@@ -267,6 +273,39 @@ async function mergedElsewhere(repo: string, slug: string, base: string, open: G
       errors.push(`${slug}#${r.number} STRANDED 확인: ${(err.stderr?.trim() || err.message || String(e)).split("\n")[0]}`);
     }
   }
+  return out;
+}
+
+// ── 리뷰 이어받기(ATC-31): head에서 거꾸로, main 병합(둘째 부모가 기본 브랜치에 있음)만 이어진 동안의 이전 커밋 R 중
+// PR 자신의 변경(merge-base 대비 바뀐 파일과 blob)이 head와 같은 것. 읽기 전용 GitHub API(PR 커밋 목록, compare)
+const commitsByHead = new Map<string, { sha: string; parents: string[]; at: string | null }[]>();
+async function prCommits(slug: string, pr: GhPull) {
+  const key = `${slug}#${pr.number}@${pr.headRefOid}`;
+  let list = commitsByHead.get(key);
+  if (!list) {
+    list = tsv(await gh(["api", "--paginate", `repos/${slug}/pulls/${pr.number}/commits?per_page=100`, "--jq", '.[] | [.sha, (.parents | map(.sha) | join(",")), (.commit.committer.date // "")] | @tsv'])).map(([sha, parents, at]) => ({ sha, parents: parents ? parents.split(",") : [], at: at || null }));
+    if (commitsByHead.size > 500) commitsByHead.clear();
+    commitsByHead.set(key, list);
+  }
+  return list;
+}
+// merge-base(main, sha)..sha의 바뀐 파일 → "상태:blob". 300개(한도)면 null(다 못 봤으니 잇지 않는다). main SHA와 커밋이 고정이라 캐시한다
+const changeCache = new Map<string, Map<string, string> | null>();
+async function changeOf(slug: string, mainSha: string, sha: string): Promise<Map<string, string> | null> {
+  const key = `${slug}|${mainSha}|${sha}`;
+  if (changeCache.has(key)) return changeCache.get(key)!;
+  const rows = tsv(await gh(["api", `repos/${slug}/compare/${mainSha}...${sha}`, "--jq", '.files[] | [.filename, .status, (.sha // "")] | @tsv']));
+  const out = rows.length >= 300 ? null : new Map(rows.map(([f, st, blob]) => [f, `${st}:${blob}`]));
+  if (changeCache.size > 2000) changeCache.clear();
+  changeCache.set(key, out);
+  return out;
+}
+async function carryCandidates(slug: string, pr: GhPull, mainSha: string): Promise<CarryCandidate[]> {
+  const chain = await mergeOnlyChain(await prCommits(slug, pr), pr.headRefOid, (sha) => contains(slug, mainSha, sha));
+  if (!chain.length) return [];
+  const head = await changeOf(slug, mainSha, pr.headRefOid);
+  const out: CarryCandidate[] = [];
+  for (const r of chain) if (sameChange(await changeOf(slug, mainSha, r.sha), head)) out.push(r);
   return out;
 }
 
