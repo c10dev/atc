@@ -86,6 +86,7 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
 | 매핑 없는 프로젝트, 닫힌 AIRPORT | `배정 제외 프로젝트: <프로젝트>`, `프로젝트 없음`, `<CODE> AIRPORT가 운항 중이 아님` | |
 | **이미 완료됨**: 그 FLIGHT의 PR이 LOGBOOK에 ARRIVED로 있고 되돌리지 않음([fleet.ko.md](fleet.ko.md) 7.1) | `이미 완료됨 — PR <repo>#N 머지됨(LOGBOOK)` | 2026-09-27 |
 | **작업 중**: ticket key가 그 FLIGHT인 열린 PR(Draft 포함) | `열린 PR #N 있음` | 2026-09-27 |
+| **FLIGHT 보류**: 최근 24시간 안에 FLIGHT 칩으로 거절된 ASSIGN이 있고, 그 뒤로 이슈가 바뀌지 않음(6.1) | `FLIGHT 보류 — <칩> (D-xxxx 판정) — 이슈가 바뀌거나 MM-DD HH:MM부터 다시` | 2026-09-27 |
 | 워크트리(STAND)가 이미 있음 | `이미 STAND가 있음` | |
 | 진행 중인 제안·HOLD가 있음 | `진행 중인 제안 D-xxxx`, `HOLD D-xxxx — …` | |
 | 배정 가능한 AIRCRAFT가 모두 최근 24시간 안에 이 FLIGHT와 제안됐다 닫힌 짝(6.1) | `24시간 안에 제안된 짝(D-xxxx) — MM-DD HH:MM부터 다시` | 2026-09-27 |
@@ -183,6 +184,7 @@ CAPTAIN(STAND 없는 FLIGHT만): 마쳤다고 보고 → OCC: atcctl dispatch ar
 
 - **한 규칙을 두 곳에서.** 최근 24시간 안에 제안됐다가 닫힌 FLIGHT–AIRCRAFT 짝(거절, SUPERSEDED, EXPIRED, DECLINED, RECALLED. RECALL은 READBACK부터 24시간)은 다시 제안하지 않는다. `proposals.ts`의 `recentPairsOf`가 한 번 계산한다. planner는 이것을 `Reserved.recentPairs`로 받아 후보 조합에서 빼므로, AIRCRAFT는 다음으로 좋은 FLIGHT를 받는다. `syncOps`의 `seen`도 같은 기간을 쓴다. 열린(`PROPOSED`) 짝은 막지 않아 계획에 그대로 남는다.
 - **보이게.** 계획은 뺀 짝을 `blockedPairs`(FLIGHT, AIRCRAFT, 제안, 다시 가능한 시각)에 적는다. 배정 가능한 AIRCRAFT가 모두 막힌 FLIGHT는 "제외" 목록에 `24시간 안에 제안된 짝(D-xxxx) — MM-DD HH:MM부터 다시`(로컬 시각)로 뜬다.
+- **FLIGHT 보류.** 짝 규칙은 AIRCRAFT가 문제였다고 본다. 문제가 FLIGHT에 있으면 FLIGHT를 다음 팀으로 넘길 뿐이다. D-0022(VOC-177 → TEAM_D, "사용자 지시를 기다림")와 D-0023(VOC-125 → TEAM_A, "사용자 모집·관찰 필요")을 거절하자 곧바로 D-0024(VOC-125 → TEAM_D)와 D-0025(VOC-177 → TEAM_B)가 나왔다. 그래서 사유 칩이 차단 범위를 정한다. 거절된(그림자 disagree 포함) ASSIGN에 `already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`, `no-priority`, `out-of-repo` 중 하나라도 있으면 `recentFlightsOf`가 **FLIGHT 전체**를 모든 AIRCRAFT에서 보류한다(`Reserved.recentFlights`). "제외" 목록에는 `FLIGHT 보류 — <칩> (D-xxxx 판정) — 이슈가 바뀌거나 MM-DD HH:MM부터 다시`로 뜨고, 그 FLIGHT의 다른 AIRCRAFT 열린 제안도 같은 사유로 SUPERSEDED된다. 판정부터 24시간이 지나거나, Linear 이슈의 `updatedAt`이 판정 뒤로 바뀌면(본문 수정, 답변, 우선순위 변경) 그 전에 풀린다. `wrong-aircraft`, `other`, 칩 없는 판정(옛 판정 포함)은 짝 규칙만 받는다.
 - **오락가락은 막지 않는다.** "더 나은 배정으로 바뀜"으로 닫힌 제안은 판정받지 못한 것이라 24시간 규칙에서 빼고 곧바로 다시 제안될 수 있다. D-0017의 짝이 이것으로 돌아온다.
 - **판정 대기 중인 제안 지키기.** PROPOSED ASSIGN이 계획에서 빠졌는데 이유가 "더 나은 배정"뿐이면(상태 변화 없음) 열어 둔다. 같은 `syncOps`에서 같은 FLIGHT나 같은 AIRCRAFT에 점수가 20% 이상 높은 새 제안이 실제로 만들어질 때만 SUPERSEDED한다(`REPLACE_MARGIN`, 차이를 점수의 절댓값과 비교). 그때 사유에 새 제안과 두 점수를 적는다: `더 나은 배정으로 바뀜 — D-0021 (10.3 → 13)`. 기준에 못 미치면 새 제안을 만들지 않고 기존 제안이 판정을 기다린다.
 - **왜 20%.** 점수는 천천히 움직이고(대기 하루에 0.5), 우선순위 한 단계는 3점(흔한 10점짜리 점수의 약 30%)이다. 20%면 새로 급해진 FLIGHT처럼 확실히 나은 것은 바꾸고, 작은 흔들림 때문에 SUPERVISOR가 판정할 기회를 잃지는 않는다. 처음 제안값이다.
@@ -190,7 +192,7 @@ CAPTAIN(STAND 없는 FLIGHT만): 마쳤다고 보고 → OCC: atcctl dispatch ar
 
 거절에는 **사유 칩**을 쓴다. SUPERVISOR 화면에서 서버의 사유 목록(`server/reasons.ts`, 브리핑의 `reasonCodes`) 중 하나 이상을 고르고 메모를 선택으로 덧붙이며, `"<칩> · <칩> — <메모>"` 형태로 `reason`에, code는 `reasonCodes`에 저장된다. 점검은 칩별로 센다(`reasonCounts`). 가장 중요한 칩은 상위 이슈(5.1.1)로, 이건 planner가 스스로도 걸러 낸다.
 
-브리핑의 `reasonStats`는 칩을 planner의 할 일 목록으로 바꾼다. 칩마다 건수, 최근 예시 FLIGHT 3건까지, 그리고 planner가 그 사유를 이미 스스로 거르는지(`auto`, `partial`, `manual`과 방법)를 준다. 지금은: 이미 완료됨 → LOGBOOK·열린 PR 규칙과 Linear Done 상태(auto), 상위 이슈 → 5.1.1(auto), 우선순위 미정 → 우선순위 없음 규칙(auto), 선행 FLIGHT·PR 대기 → Linear `blockedBy`는 HOLD, 다른 PR은 OCC HOLD로만(partial), 저장소 밖 작업 → 프로젝트 매핑만(partial), AIRCRAFT 부적합 → TYPE RATING·CREW·`tail:` 규칙(partial), 사람 결정 필요·기타 → manual. DISPATCH 점검 패널에 "거절 사유 → 배정 규칙"으로 보인다.
+브리핑의 `reasonStats`는 칩을 planner의 할 일 목록으로 바꾼다. 칩마다 건수, 최근 예시 FLIGHT 3건까지, 그리고 planner가 그 사유를 이미 스스로 거르는지(`auto`, `partial`, `manual`과 방법)를 준다. 지금은: 이미 완료됨 → LOGBOOK·열린 PR 규칙과 Linear Done 상태(auto), 상위 이슈 → 5.1.1(auto), 우선순위 미정 → 우선순위 없음 규칙(auto), 선행 FLIGHT·PR 대기 → Linear `blockedBy`는 HOLD, 다른 PR은 OCC HOLD로만(partial), 저장소 밖 작업 → 프로젝트 매핑만(partial), AIRCRAFT 부적합 → TYPE RATING·CREW·`tail:` 규칙(partial), 사람 결정 필요 → "사용자가 정한다"류 문구는 OCC HOLD(partial), 기타 → manual. 칩마다 차단 범위(`scope`: `flight`나 `pair`, 위 FLIGHT 보류)도 붙는다. DISPATCH 점검 패널에 "거절 사유 → 배정 규칙"으로 보인다.
 
 ## 7. atc에 더할 것
 

@@ -131,6 +131,11 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - 이 변경 기록.
 
 ### 변경
+- DISPATCH 거절 사유 칩이 차단 범위를 정한다([docs/dispatch.ko.md](docs/dispatch.ko.md) 6.1). 24시간 규칙(`recentPairsOf`)은 FLIGHT–AIRCRAFT 짝만 막아서, FLIGHT 자체의 문제로 거절돼도 곧바로 다음 팀에 제안됐다. D-0022(VOC-177 → TEAM_D, "사용자 지시를 기다림")와 D-0023(VOC-125 → TEAM_A, "사용자 모집·관찰 필요") 뒤에 D-0024(VOC-125 → TEAM_D)와 D-0025(VOC-177 → TEAM_B)가 나왔다.
+  - `already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`, `no-priority`, `out-of-repo` 중 하나라도 달고 거절(그림자 disagree 포함)된 ASSIGN은 FLIGHT 전체를 모든 AIRCRAFT에서 보류한다(`recentFlightsOf`, `Reserved.recentFlights`). 제외 목록에 `FLIGHT 보류 — <칩> (D-xxxx 판정) — 이슈가 바뀌거나 MM-DD HH:MM부터 다시`로 뜨고, 그 FLIGHT의 다른 AIRCRAFT 열린 제안도 같은 사유로 SUPERSEDED된다. 24시간이 지나거나, Linear 이슈의 `updatedAt`이 판정 뒤로 바뀌면 그 전에 풀린다.
+  - `wrong-aircraft`, `other`, 칩 없는 판정(옛 판정 포함)은 지금처럼 짝만 막는다. `reasonStats`에 칩마다 차단 범위(`flight`나 `pair`)가 붙고, `needs-human`은 `partial`이 됐다.
+  - DISPATCH disagree CROSSCHECK mark에 칩을 선택으로 달 수 있다: `atcctl dispatch crosscheck D-xxxx disagree --code needs-human[,…] -- <이유>`(`reasonCodes`, `server/reasons.ts` 목록으로 검사, SCHEDULE mark는 받지 않음). mark 칩에 보이고, "CROSSCHECK에 동의"가 판정에 그대로 넣으므로 한 번 클릭 거절도 `reasonCounts`에 세이고 차단 범위를 정한다. 옛 mark에는 칩이 없고 이유 문장에서 추정하지 않는다. CROSSCHECK 규정(`crosscheck/CLAUDE.md`, `/tick`, 영어 번역)에 고르는 기준을 넣었다.
+  - OCC 규정(`occ/CLAUDE.md`, `/tick`, 영어 번역): 본문이 착수를 사람에게 맡기면("사용자가 정한다", "사용자 지시를 기다린다", "user decides") 선행 없는 HOLD를 건다.
 - 웹 화면이 탭을 필요할 때 불러온다([web/README](web/README.ko.md) "데이터 흐름"). RADAR와 공용 부분(머리글, 새 버전 알림, SSE)만 메인 번들에 있고, 다른 탭은 자기 CSS와 함께 `React.lazy` 청크가 되며, DOCS는 `marked`와 안내 Markdown을 가져간다. 메인 JS는 512 kB(gzip 159 kB)에서 261 kB(gzip 83 kB)가 됐고 Vite의 "500 kB보다 큰 청크" 경고가 없어졌다. 배포 전에 연 탭이 지워진 청크를 부르면, 조용히 실패하는 대신 그 탭 안에 "이 화면을 불러오지 못함"과 새로고침 버튼이 뜬다(탭별 오류 경계, `server/version.ts`의 `isChunkLoadError`). 기존 새 버전 알림도 함께 뜨고, 저절로 새로고침하지 않는다. 탭 안의 다른 렌더 오류도 같은 방식으로 그 탭에 가둔다. 빌드 정체(진입 스크립트)는 청크나 CSS가 바뀔 때마다 바뀌어 새 버전 알림이 계속 맞다. `#docs/<쪽>` 같은 `#탭/하위` 해시는 그대로 동작한다.
 - CROSSCHECK 모델별 일치를 모델 계열별로 센다. `modelFamily`(`server/crosscheck.ts`)가 경로 접두어(`claude-ocx-opencode-go--`, `claude-ocx-native--`), `[1m]` 같은 접미어, `-contributor`를 뗀다. 그래서 같은 Muse가 `byModel`에서 이름 셋으로 쪼개지고 ATFM의 모델별 90%/20건 표본이 나뉘던 문제가 없어졌다.
   - mark에는 원래 모델 이름이 그대로 남고, 집계와 표시만 계열로 한다. 게이트 패널은 계열을 보여 주고, 칩 툴팁은 원래 이름을 둔다.
