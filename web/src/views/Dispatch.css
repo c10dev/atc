@@ -738,3 +738,75 @@
 .dp-gate .dp-gate-xc-model .dp-gate-value {
   font: var(--text-sm) var(--mono);
 }
+
+/* RECALL: SUPERVISOR가 보낸 FLIGHT PLAN을 거둬들임(recalling → recalled) */
+.dp-inflight .s-recalling .dp-result,
+.dp-table .s-recalled .dp-result {
+  color: var(--amber);
+}
+.dp-c-act {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+.dp-btn.dp-recall-btn {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.dp-c-act .dp-btn {
+  flex: 0 0 auto;
+}
+.dp-recall {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-0-5) var(--space-2);
+}
+.dp-recall-mark {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-sm);
+  color: var(--amber);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+.dp-recall-text {
+  font-size: var(--text-sm);
+}
+.dp-recall-reason {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.dp-inflight .dp-recall-row td {
+  background: var(--panel-2);
+}
+.dp-recall-form {
+  padding-top: 0;
+  border-top: 0;
+}
+.dp-recall-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.dp-input.dp-textarea {
+  height: auto;
+  padding: var(--space-1-5) var(--space-3);
+  resize: vertical;
+}
+.dp-count {
+  align-self: center;
+  margin-right: auto;
+  font: var(--text-xs) var(--mono);
+}
+/* 화면에서는 숨기고 스크린 리더에는 남긴다 */
+.dp-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

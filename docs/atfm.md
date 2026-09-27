@@ -4,7 +4,7 @@ English only for now, like [occ.md](occ.md) and [fleet.md](fleet.md).
 
 ATFM (air traffic flow management) is stage 3 of atc. Stages 1–2 made atc see traffic (TOWER), propose work (DISPATCH), draft ticket changes (OCC SCHEDULE) and get a second opinion (CROSSCHECK), with every decision left to the SUPERVISOR. Stage 3 lets atc act on its own in the narrow cases where the data shows the SUPERVISOR would decide the same way, and lets it slow traffic down when the system is congested or broken.
 
-> Status (2026-09-27): the SUPERVISOR decided the ten open questions (see "Decisions" at the end). Steps 1–5 of section 8 are built: data collection, ground stops, merge slots, and auto-eligibility for DISPATCH and S3, all in shadow operation (computed, shown and recorded, never acted on). The only mechanisms that can be switched to `on` are the "main broken" and "manual" ground stops, and both are off by default. Automatic assignment, automatic S3 and RECALL are not built. Section 10 describes what exists.
+> Status (2026-09-27): the SUPERVISOR decided the ten open questions (see "Decisions" at the end). Steps 1–5 of section 8 are built: data collection, ground stops, merge slots, and auto-eligibility for DISPATCH and S3, all in shadow operation (computed, shown and recorded, never acted on). The only mechanisms that can be switched to `on` are the "main broken" and "manual" ground stops, and both are off by default. Step 8, RECALL, is also built (docs/dispatch.md "RECALL"). Automatic assignment and automatic S3 are not built. Section 10 describes what exists.
 
 Related: [dispatch.md](dispatch.md) section 8 (the 2b → 3 criteria), [occ.md](occ.md) sections 7 and 11 (S3), [fleet.md](fleet.md) section 4 (classification), `server/landing.ts` (CLEARED TO LAND), `server/proposals.ts` (`gate3Of`), `server/crosscheck.ts` (match rate, one-click count), `server/logbook.ts` (LOGBOOK).
 
@@ -65,7 +65,7 @@ Read-only from the running atc (`/api/dispatch/brief`, `/api/schedule/brief`, `/
 
 - Switch: `atfm.json` `autoAssign` (decision 10). Today it only takes `off | shadow` (default `shadow`: computes, shows and records); `on` comes with the automatic assignment PR.
 - Automatic trips (switch goes back to `shadow` and an alert is raised): an auto-sent FLIGHT PLAN is DECLINED or has NO READBACK after 10 minutes; the SUPERVISOR supersedes or recalls an auto-approved proposal; an auto-sent FLIGHT is part of a LOS; the per-model CROSSCHECK match over the last 20 decisions falls below 85%.
-- Rollback of one FLIGHT: FLIGHT PLANs already sent stay sent (like turning 2b off). The SUPERVISOR can **recall** an auto-sent proposal: OCC sends a fixed `[DISPATCH D-xxxx] RECALL` text (send-guard extended to allow it only for proposals marked recalled), and the CAPTAIN answers `READBACK D-xxxx`. Decision 4: RECALL is built before automatic assignment (the next PR).
+- Rollback of one FLIGHT: FLIGHT PLANs already sent stay sent (like turning 2b off). The SUPERVISOR can **recall** an auto-sent proposal: OCC sends a fixed `[DISPATCH D-xxxx] RECALL` text (send-guard allows it only for proposals in `recalling`), and the CAPTAIN answers `READBACK D-xxxx RECALL`. Decision 4: built before automatic assignment — see docs/dispatch.md "RECALL".
 
 **Metrics.** Auto-eligible count and the failed-condition histogram; shadow precision; auto-sent per day; READBACK and DEPARTED rates of auto-sent vs human-approved FLIGHT PLANs; declines; recalls; LOS on auto FLIGHTs; block time against the WAKE expectation (`WAKE_EXPECT_MIN`) once enough LOGBOOK entries have an AIRCRAFT and a class.
 
@@ -174,11 +174,11 @@ Each step is one PR. Shadow steps change nothing that teams or Linear see.
 5. **Auto-eligibility for S3, shadow**: the same for CLASSIFY drafts.
 6. **Ground stop on**: planner exclusion, `dispatch release` refusal, TOWER HOLD/CONTINUE rules. After the SUPERVISOR accepts the week of shadow.
 7. **Merge slots on**: TOWER issues LAND only to `in-slot` PRs.
-8. **Recall** (`[DISPATCH D-xxxx] RECALL`, send-guard extension) — needed before automatic assignment.
+8. ✅ **Recall** (`[DISPATCH D-xxxx] RECALL`, send-guard extension) — built (docs/dispatch.md "RECALL"), needed before automatic assignment.
 9. **Automatic assignment on**: switch, caps, trips, attribution. Only after the section 3 turn-on conditions hold.
 10. **S3 automatic CLASSIFY on**: after the section 4 turn-on conditions hold.
 
-Steps 1–5 are built (section 10). In step 6, the "main broken" and "manual" ground stops are also built behind switches that are off by default (decision 8). The other triggers stay in shadow. Step 8 (RECALL) is next (decision 4).
+Steps 1–5 are built (section 10). In step 6, the "main broken" and "manual" ground stops are also built behind switches that are off by default (decision 8). The other triggers stay in shadow. Step 8 (RECALL) is built too (decision 4). Next is step 9, automatic assignment, once the section 3 turn-on conditions hold.
 
 ## 9. Risks and mitigations
 
@@ -214,7 +214,7 @@ Steps 1–5 are built (section 10). In step 6, the "main broken" and "manual" gr
 | 1 | Automatically approved FLIGHT TYPEs: BUILD, MAINT and FERRY only. SURVEY is excluded |
 | 2 | Thresholds as proposed: shadow precision 95% over 20, CROSSCHECK per-model match 90% over 20, trip at 85% |
 | 3 | Caps: 3 automatic ASSIGNs per day overall, 5 S3 operations per day. The per-AIRCRAFT limit is not "1 per day" but an in-progress limit: at most 1 automatically assigned FLIGHT per AIRCRAFT that has not ARRIVED, applied together with the WAKE slots |
-| 4 | Build `[DISPATCH D-xxxx] RECALL` before automatic approval |
+| 4 | Build `[DISPATCH D-xxxx] RECALL` before automatic approval — **built** |
 | 5 | S3 scope: CLASSIFY that adds labels on empty axes only. `CLOSE` after merge is reviewed after 2 weeks of S2 |
 | 6 | Merge slots: 1 for vocado_nextjs, unlimited for repositories without CI (atc and others). An Urgent FLIGHT goes to the front of its repository's line but never displaces a PR that already has a LAND |
 | 7 | LAND timeout: 30 minutes |

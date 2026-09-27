@@ -199,6 +199,50 @@ atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER
 | 위험 작업을 가볍게 배정 | DISPATCH 세션의 본문 검토와 CAUTION, CAUTION 제안은 3단계에서도 자동 승인 대상에서 제외 |
 | DISPATCH가 코드·Linear를 건드림 | guard(atc CLI·jq만), Linear는 읽기 전용 MCP만 허용 |
 
+## RECALL
+
+보냈거나(`sent`) READBACK 받은(`accepted`) FLIGHT PLAN을 SUPERVISOR가 거둬들인다. [atfm.md](atfm.md)의 결정 4에 따라 자동 배정보다 먼저 만들었다.
+
+```
+SUPERVISOR: 진행 중 카드의 "RECALL…"(또는 POST /api/dispatch/proposals/:id/recall {reason}) → atc: RECALLING
+OCC:        atcctl dispatch recall-send D-0003 → CAPTAIN에게 RECALL 문구를 SendMessage
+CAPTAIN:    작업을 멈추고 STAND는 그대로 둔 채 "READBACK D-0003 RECALL"로 답한다
+OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
+```
+
+- **상태**: `sent`·`accepted` → `recalling` → `recalled`.
+  - `recalling`은 AIRCRAFT와 FLIGHT를 계속 잡아 둔다. STAND가 생겨도 DEPARTED로 바꾸지 않는다(멈추라고 한 FLIGHT다).
+  - RECALL READBACK이 10분 넘게 없으면 `overdue`에 들고, 24시간이면 EXPIRED가 된다.
+  - STAND가 생긴 `departed`는 RECALL하지 않는다. 이때는 SUPERVISOR가 CAPTAIN에게 직접 말한다.
+- **RECALLED 뒤**: FLIGHT는 다시 후보가 된다. 같은 FLIGHT·AIRCRAFT 짝은 RECALL READBACK부터 24시간 제안하지 않고, 다른 AIRCRAFT에는 바로 제안할 수 있다.
+- **누가 하나**:
+  - RECALL 요청은 SUPERVISOR만 한다(DISPATCH 탭이나 API, 사유 300자 이내).
+  - OCC는 요청을 만들지 않고(atcctl에 그 명령이 없다), 서버 문구를 보내고 READBACK을 기록하기만 한다.
+  - ATFM 출발 중지가 켜져 있어도 RECALL은 막지 않는다. 회수는 안전 쪽 동작이다.
+- **문구**: `formatFlightPlan`처럼 서버가 RECALL 요청 때 만들어 제안에 저장한다(`recallMessage`).
+
+  ```
+  [DISPATCH D-0003] RECALL · BRAVO (TEAM_B)
+  FLIGHT VOC193 · AIRPORT VCDO — 이 FLIGHT PLAN을 거둬들입니다.
+  <티켓 제목>
+  사유: <SUPERVISOR의 사유>
+  작업을 멈추세요. STAND(워크트리)는 정리하지 말고 그대로 두세요 — 다른 AIRCRAFT가 이어받을 수 있게.
+  — 받았으면 이 메시지에 "READBACK D-0003 RECALL"로 답장해 주세요.
+  ```
+
+  답장에 RECALL을 붙이게 해서(`READBACK D-0003 RECALL`) FLIGHT PLAN의 `READBACK D-0003`과 헷갈리지 않는다.
+- **send-guard**: `[DISPATCH D-xxxx] RECALL`로 시작하는 메시지는 다음을 모두 만족할 때만 통과한다.
+  - approval 모드다.
+  - 그 제안이 `recalling`이다.
+  - 받는 사람이 그 제안의 CAPTAIN이다.
+  - 본문이 `recallMessage`와 정확히 같다.
+
+  그 밖의 `[DISPATCH D-xxxx]` 메시지는 전처럼 FLIGHT PLAN으로 검사한다. shadow 모드에서는 보내지 않으므로 SUPERVISOR가 CAPTAIN에게 직접 말한다.
+- **API**:
+  - `POST /api/dispatch/proposals/:id/recall {reason}`: SUPERVISOR.
+  - `POST …/recall-send`: `{sendTo, message}`를 돌려주고 상태는 바꾸지 않는다(OCC, approval 모드만).
+  - `POST …/recalled`: CAPTAIN의 READBACK 뒤 OCC.
+
 ## 2b 켜는 법
 
 2b는 구현돼 있고 `mode` 뒤에 있다. 켜면 승인한 제안이 실제 팀 세션에 나가므로 이 순서로 한다.
