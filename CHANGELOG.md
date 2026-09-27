@@ -15,6 +15,9 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
   - The TOWER, OCC and CROSSCHECK manuals say jq only goes after a pipe.
 - The TOWER and OCC Bash guard (`controller/guard.mjs`) let command substitution through inside double quotes: `node atcctl.mjs brief -- "$(touch /tmp/x)"` passed, and so did a backtick. The shell runs these before the command, so a control session could run arbitrary commands. Command substitution and variable expansion (`$(…)`, backticks, `${…}`, `$VAR`) are now blocked anywhere outside single quotes; single-quoted and backslash-escaped text is still allowed. Reported by TEAM_H.
 
+### Changed
+- Linear projects and milestones are read for every team in `LINEAR_TEAM_KEYS`, not only the main team ([docs/routes.md](docs/routes.md) step 5). atc's own ROUTE (M15–M20) now shows on the NETWORK tab's ROUTE MAP and in the WAYPOINT ETAs and slip warnings. Shared projects and milestones are merged, and each carries the team keys it was read from (`teams`). WAYPOINT gaps and NEW's `--milestone` still take only milestones of the candidate teams (`candidateTeams`), because NEW creates its issue in the main team.
+
 ### Added
 - ATFM step 7: merge slots can be switched on (ATC-22, [docs/atfm.md](docs/atfm.md) 5).
   - `atfm.json` `slots` now takes `off | shadow | on` (default still `shadow`). The DISPATCH tab's ATFM block has the switch with a confirmation, and ATFM OFF puts `on` back to `shadow`.

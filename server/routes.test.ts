@@ -4,7 +4,7 @@ import type { LogEntry } from "./logbook.ts";
 import type { Ticket } from "./model.ts";
 import { dayKey } from "./network.ts";
 import { buildRoutes, completedIn, criteriaOf, etaOf, isBlocked, isLate, phaseOf, waypointStates } from "./routes.ts";
-import { type Milestone, type MilestoneIssue, toMilestone } from "./sources/linear-projects.ts";
+import { mergeByTeam, type Milestone, type MilestoneIssue, toGoal, toMilestone } from "./sources/linear-projects.ts";
 
 const DAY = 86_400_000;
 const NOW = new Date(2026, 8, 27, 12, 0).getTime(); // 2026-09-27 12:00 로컬
@@ -17,7 +17,7 @@ const ticket = (key: string, over: Partial<Ticket> = {}): Ticket => ({
 });
 const issue = (key: string, stateType = "unstarted", completedAt: string | null = null): MilestoneIssue => ({ key, title: key, state: stateType, stateType, completedAt });
 const ms = (name: string, sortOrder: number, over: Partial<Milestone> = {}): Milestone => ({
-  id: name, project: "Song Experience", name, description: "", targetDate: null, progress: 0, sortOrder, status: "unstarted", issues: [], truncated: false,
+  id: name, project: "Song Experience", name, description: "", targetDate: null, progress: 0, sortOrder, status: "unstarted", issues: [], truncated: false, teams: ["VOC"],
   ...over,
 });
 const entry = (flight: string, arrivedAt: string): LogEntry => ({
@@ -132,10 +132,10 @@ test("buildRoutes: WAYPOINT·FLIGHT·AIRCRAFT·누적 ETA, WAYPOINT 없는 ROUTE
   const r = buildRoutes({
     now: NOW,
     goals: [
-      { name: "Song Experience", targetDate: null, progress: 0.8, state: "started" },
-      { name: "Beta Readiness", targetDate: null, progress: 0.85, state: "started" },
-      { name: "Home & Discovery", targetDate: null, progress: 1, state: "completed" },
-      { name: "Idle", targetDate: null, progress: 0, state: "planned" },
+      { name: "Song Experience", targetDate: null, progress: 0.8, state: "started", teams: ["VOC"] },
+      { name: "Beta Readiness", targetDate: null, progress: 0.85, state: "started", teams: ["VOC"] },
+      { name: "Home & Discovery", targetDate: null, progress: 1, state: "completed", teams: ["VOC"] },
+      { name: "Idle", targetDate: null, progress: 0, state: "planned", teams: ["VOC"] },
     ],
     milestones,
     tickets,
@@ -167,7 +167,17 @@ test("buildRoutes: WAYPOINT·FLIGHT·AIRCRAFT·누적 ETA, WAYPOINT 없는 ROUTE
 });
 
 test("buildRoutes: 마일스톤을 못 읽으면 milestones false, ROUTE는 WAYPOINT 없이", () => {
-  const r = buildRoutes({ now: NOW, goals: [{ name: "P", targetDate: null, progress: null, state: "started" }], milestones: null, tickets: [], entries: [], aircraftOf: new Map() });
+  const r = buildRoutes({ now: NOW, goals: [{ name: "P", targetDate: null, progress: null, state: "started", teams: ["VOC"] }], milestones: null, tickets: [], entries: [], aircraftOf: new Map() });
   assert.equal(r.milestones, false);
   assert.deepEqual(r.routes.map((x) => [x.project, x.waypoints.length]), [["P", 0]]);
+});
+
+test("여러 팀 읽기: toGoal·toMilestone은 읽은 팀을 적고, mergeByTeam은 같은 프로젝트·마일스톤을 합쳐 teams를 더한다", () => {
+  assert.deepEqual(toGoal({ name: "atc", status: { type: "started" } }, "ATC")?.teams, ["ATC"]);
+  assert.deepEqual(toGoal({ name: "atc" })?.teams, []);
+  const m = (id: string, team: string) => toMilestone({ id, name: id, project: { name: "P" } }, team)!;
+  const merged = mergeByTeam([[m("a", "VOC"), m("b", "VOC")], [m("b", "ATC"), m("c", "ATC")]], (x) => x.id);
+  assert.deepEqual(merged.map((x) => `${x.id}:${x.teams.join("+")}`), ["a:VOC", "b:VOC+ATC", "c:ATC"]);
+  const goals = mergeByTeam([[toGoal({ name: "Shared" }, "VOC")!], [toGoal({ name: "Shared" }, "ATC")!, toGoal({ name: "atc" }, "ATC")!]], (g) => g.name);
+  assert.deepEqual(goals.map((g) => `${g.name}:${g.teams.join("+")}`), ["Shared:VOC+ATC", "atc:ATC"]);
 });

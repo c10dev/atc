@@ -67,7 +67,7 @@ The server reads `.env.local` in the repository root by itself (see `.env.exampl
 |---|---|---|
 | `ATC_PORT` | `7700` | Port (always bound to `127.0.0.1`) |
 | `LINEAR_API_KEY` | — | Linear personal API key. Without it, tickets come only from branch names |
-| `LINEAR_TEAM_KEY` | `VOC` | Main Linear team key (new issues from S2 and the NETWORK project goals use it) |
+| `LINEAR_TEAM_KEY` | `VOC` | Main Linear team key (new issues from S2 are created in it) |
 | `LINEAR_TEAM_KEYS` | the main team | Every Linear team to read, comma-separated, e.g. `VOC,ATC`. The main team always comes first. Only the teams in `candidateTeams` in `dispatch.json` (default: the main team) get DISPATCH and SCHEDULE candidates; the rest are shown only |
 | `ATC_PROJECTS_DIR` | `~/projects` | Where git repositories are discovered as AIRPORTs |
 | `ATC_STATE_DIR` | `~/.local/state/atc` | Claims, AIRPORT registry, CLEARANCEs, FLIGHT RECORDER |

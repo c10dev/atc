@@ -16,7 +16,7 @@ import { loadLinearProjects, type Milestone } from "./sources/linear-projects.ts
 import { isNetworkKind, type NetworkCtx, NetworkDraftError, type NetworkKind, type NetworkPayload, networkChangesOf, networkSupersedeReason, parseNetwork } from "./network-drafts.ts";
 import { routeRows } from "./network.ts";
 import { loadRoutes } from "./routes.ts";
-import { waypointGapsOf } from "./waypoint-gaps.ts";
+import { ofTeams, waypointGapsOf } from "./waypoint-gaps.ts";
 import { ackSlips, freshSlipKeys, loadSlipsReported, saveSlipsReported, slipsOf, waypointEtasOf } from "./waypoint-slips.ts";
 
 // OCC SCHEDULE — OCC가 Linear에 쓸 변경을 초안으로 남긴다. 설계: docs/occ.md 5~7장.
@@ -815,7 +815,8 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const closeInfoOut = Object.fromEntries(candidates.close.map((k) => { const c = closable.get(k)!; return [k, { pr: c.pr, mergedAt: c.mergedAt, link: c.link }]; }));
     // ROUTE마다 지금·다음 WAYPOINT의 완료 기준과 이슈(ATC-8). 마일스톤을 못 읽었으면 null
     const lp = await loadLinearProjects();
-    const waypointGaps = lp.milestones ? waypointGapsOf(lp.milestones, lp.ok ? lp.projects : null) : null;
+    // 후보 팀 마일스톤만(NEW는 주 팀에 이슈를 만든다). ETA·지연 경고는 읽는 팀 전부
+    const waypointGaps = lp.milestones ? waypointGapsOf(lp.milestones, lp.ok ? lp.projects : null, teams) : null;
     // 지나지 않은 WAYPOINT의 ETA와 지연 경고(ATC-24). fresh는 OCC가 아직 SUPERVISOR에게 보고하지 않은 경고
     const waypointEtas = lp.milestones ? waypointEtasOf(await loadRoutes(s, loadLogbook(), now)) : null;
     const reported = loadSlipsReported();
@@ -885,7 +886,9 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
           closable = closeInfo(s).closable;
         }
       }
-      const milestones = body.kind === "NEW" && body.milestone != null ? (await loadLinearProjects()).milestones : null;
+      // NEW의 --milestone은 후보 팀 마일스톤만(다른 팀 WAYPOINT에 주 팀 이슈를 붙이지 않는다)
+      const allMs = body.kind === "NEW" && body.milestone != null ? (await loadLinearProjects()).milestones : null;
+      const milestones = allMs ? ofTeams(allMs, candidateTeamsOf(loadDispatchConfig())) : null;
       const network = isNetworkKind(body.kind) ? await networkCtxOf(s) : undefined;
       const lines = draftOps(ops, body, s.tickets, new Date().toISOString(), ops.length, { tails, closable, teams: candidateTeamsOf(loadDispatchConfig()), milestones, network });
       append(lines);

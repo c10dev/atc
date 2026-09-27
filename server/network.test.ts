@@ -70,9 +70,9 @@ test("NETWORK ROUTE: 상태별 열린 FLIGHT, 14일 ARRIVED, ROUTE를 가진 AIR
   const fleet = { defaults: DEFAULT_FLEET.defaults, aircraft: { TEAM_B: { routes: ["Beta Readiness"] }, TEAM_E: { routes: ["Beta Readiness", "Song Experience"] }, TEAM_Z: { routes: ["Beta Readiness"], retired: { at: "", reason: null } } } };
   const views = fleetView(snap, fleet, undefined, entries, NOW);
   const goals = [
-    { name: "Beta Readiness", targetDate: "2026-10-31", progress: 0.84, state: "started" },
-    { name: "Home & Discovery", targetDate: null, progress: 1, state: "completed" }, // 끝났고 활동이 없으면 뺀다
-    { name: "Lyrics Canonical Data", targetDate: null, progress: 0.2, state: "planned" },
+    { name: "Beta Readiness", targetDate: "2026-10-31", progress: 0.84, state: "started", teams: ["VOC"] },
+    { name: "Home & Discovery", targetDate: null, progress: 1, state: "completed", teams: ["VOC"] }, // 끝났고 활동이 없으면 뺀다
+    { name: "Lyrics Canonical Data", targetDate: null, progress: 0.2, state: "planned", teams: ["VOC"] },
   ];
   const rows = routeRows({ tickets, entries, views, goals, now: NOW });
   assert.deepEqual(rows.map((r) => r.project), ["Beta Readiness", "Lyrics Canonical Data", "Song Experience"]);
@@ -171,9 +171,9 @@ test("NETWORK 전체: 응답 모양과 출처 표시", () => {
 });
 
 test("Linear 프로젝트 목표: state는 status.type, 없으면 status.name. 모르는 값은 null, 이름 없으면 버림", () => {
-  assert.deepEqual(toGoal({ name: "Beta Readiness", targetDate: "2026-10-31", progress: 0.5, status: { name: "In Progress", type: "started" } }), { name: "Beta Readiness", targetDate: "2026-10-31", progress: 0.5, state: "started" });
+  assert.deepEqual(toGoal({ name: "Beta Readiness", targetDate: "2026-10-31", progress: 0.5, status: { name: "In Progress", type: "started" } }), { name: "Beta Readiness", targetDate: "2026-10-31", progress: 0.5, state: "started", teams: [] });
   assert.equal(toGoal({ name: "X", status: { name: "Custom", type: null } })!.state, "Custom");
-  assert.deepEqual(toGoal({ name: "X" }), { name: "X", targetDate: null, progress: null, state: null });
+  assert.deepEqual(toGoal({ name: "X" }), { name: "X", targetDate: null, progress: null, state: null, teams: [] });
   assert.equal(toGoal({ name: "X", status: null })!.state, null);
   assert.equal(toGoal({ progress: 1 }), null);
 });
