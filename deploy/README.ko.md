@@ -50,7 +50,7 @@ systemctl --user disable --now atc    # 멈추고 자동 시작에서 빼기
 | 등급 | 경로 | 뜻 |
 |---|---|---|
 | `user` | guard(`*guard*.mjs`), `.claude/` 설정(관제 세션 폴더의 `skills/` 제외), 루트 `.claude/` 전부(팀 세션 skill), 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`(README 제외) | 사용자가 정해야 함 |
-| `flagged` | `controller/`, `occ/`, `crosscheck/`, `dispatch/`(매뉴얼, skill, atc CLI, guard 테스트) | 관제 세션이 하는 일이 바뀜. 바뀐 규칙을 따로 알린다 |
+| `flagged` | `controller/`, `occ/`, `crosscheck/`, `review/`, `dispatch/`(매뉴얼, skill, atc CLI, guard 테스트) | 관제 세션이 하는 일이 바뀜. 바뀐 규칙을 따로 알린다 |
 | `auto` | 나머지(서버, 화면, 문서, 테스트) | 안전장치·권한과 무관 |
 
 바뀐 파일 중 가장 높은 등급을 쓴다. 등급마다 누가 머지하는지는 루트 `CLAUDE.md`가 정한다.
