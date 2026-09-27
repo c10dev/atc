@@ -75,11 +75,11 @@ function diffLanding(prev: Snapshot, next: Snapshot): Draft[] {
     const before = was.get(key);
     if (!before) {
       out.push({ kind: "landing.requested", ...ref(p), blocks: codes(p), message: p.title });
-      if (p.landing === "CLEARED") out.push({ kind: "landing.cleared", ...ref(p) });
+      if (p.landing === "CLEARED") out.push({ kind: "landing.cleared", ...ref(p), ...(p.carried && !p.carried.findings ? { carriedFrom: p.carried.from } : {}) });
       continue;
     }
     if (p.landing === "CLEARED") {
-      if (before.landing !== "CLEARED") out.push({ kind: "landing.cleared", ...ref(p) });
+      if (before.landing !== "CLEARED") out.push({ kind: "landing.cleared", ...ref(p), ...(p.carried && !p.carried.findings ? { carriedFrom: p.carried.from } : {}) });
       continue;
     }
     const had = new Set(actionableBlocks(before));

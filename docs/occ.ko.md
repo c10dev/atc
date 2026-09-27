@@ -358,6 +358,14 @@ Codex가 5시간 한도에 걸려 vocado #392(admission 키워드)와 #395(SQL �
 - **제외 두 가지**(`externalGateOf`): **hard**는 어느 모드에서든 뺀다: FLIGHT 없음, `.env*`·비밀·키·자격 증명 경로(먼저 본다). **security**는 rating:SEC·Risk 라벨, 보안 경로, 보안 키워드다. `"deepseek"`이면 보안 규칙에만 걸린 PR이 REVIEW 대기열로 간다. `extReview.security`에 사유가 남고, 대기 글은 "보안 PR: …", 스트립은 "REVIEW: DEEPSEEK (보안, Codex 한도)", 지적은 "DEEPSEEK 지적(보안, …)"이며, 자료에 `security`와 더 엄격한 안내가 붙고 기록에 `security: true`가 남는다. 현재 head의 DeepSeek pass는 다른 PR처럼 착륙 근거가 된다.
 - Muse는 여전히 착륙 리뷰에 쓰지 않고(서버는 DeepSeek V4.1 Flash만 받는다) guard도 그대로다. REVIEW 규정에 보안 PR 리뷰법(권한, RLS, 인증, 마이그레이션 되돌림, 유출, 불확실하면 P1)을 적었다.
 
+### 9.6 main 병합만 한 head에 리뷰 이어받기 (2026-09-27, ATC-31)
+
+vocado의 `main` 규칙은 최신 main을 요구해서(`strict`) 머지가 있을 때마다 다른 열린 PR이 `behind`가 된다. 팀이 `origin/main`을 브랜치에 병합하면 head가 바뀌고, atc가 인정하던 리뷰는 `review-stale`이 됐다. 2026-09-27에 #394는 18700c1에 DeepSeek pass가 있었는데, 변경이 같은 main 병합 c12b706이 새 리뷰를 1시간 반 기다렸다. SUPERVISOR는 `strict`는 두고, main 병합만 한 head에는 atc가 리뷰를 이어 주기로 정했다.
+
+- **후보**(`mergeOnlyChain`, `sameChange`, `server/sources/github.ts`의 `carryCandidates`): head에 리뷰가 없는 PR(Draft 아님)마다, atc는 head에서 PR 커밋을 거꾸로 따라간다(`gh api …/pulls/N/commits`, head별 캐시). 커밋이 병합이고 나머지 부모가 모두 기본 브랜치에 있는 동안(지금 main SHA와 `compare`) 첫째 부모를 후보 `R`로 모은다. `R`과 head에서 PR 자신의 변경이 같을 때만 후보로 친다: `compare(main...R)`과 `compare(main...head)`의 바뀐 파일, 상태, blob SHA가 같아야 한다(300개 한도나 읽기 실패면 잇지 않는다). PR 파일 안의 충돌을 풀며 main을 병합했으면 blob이 달라져 새 리뷰가 필요하다. 모두 읽기 전용이고 `strict`와 GitHub 설정은 그대로다.
+- **무엇을 잇나**(`carriedReviewOf`, 최근 `R`부터): `R`의 사람 `APPROVED`, `R` 커밋 뒤에 달린 Codex 👍, `R`의 DeepSeek 착륙 리뷰 기록(외부 리뷰에서 빠지지 않은 PR만, Muse 기록은 잇지 않음). 지적은 지적으로 잇는다: 뒤 👍로 풀리지 않은 `R`의 Codex COMMENTED 리뷰나 `R`의 DeepSeek `findings`는 head에서 `review-findings`가 된다("Codex 지적이 이전 커밋 18700c1에 남아 있음(그 뒤 main 병합만) — 반영 후 재리뷰 필요").
+- **결과**: 이어받은 pass는 리뷰 조건을 채워 CI와 base가 맞으면 곧바로 CLEARED가 된다. REVIEW 대기열에 넣지 않으므로(`extReview` 없음) DeepSeek이 한 번 더 돌지 않는다. `PullRequest.carried`·`landingQueue[].carried`(`from`, `by`, `findings`), 스트립 "REVIEW: DEEPSEEK (carried from 18700c1, main merge only)", `landing.cleared` 이벤트의 `carriedFrom`.
+
 ## 10. atc에 더할 것
 
 | 곳 | 내용 |
@@ -536,5 +544,6 @@ env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localh
 | Linear 쓰기 | OCC는 S2부터 Linear에 쓸 수 있다. vocado의 "Linear에는 리더만 쓴다" 규칙은 S2에서 **바꿀 수 있다** |
 | 순서 | 설계 문서 먼저 |
 | 보안 PR을 DeepSeek에 (2026-09-27, ATC-30) | Codex를 쓸 수 없을 때 DeepSeek V4.1 Flash 착륙 리뷰어가 보안 PR도 리뷰할 수 있다 — **`externalReview.security`가 `"deepseek"`일 때만**. 그러면 vocado 보안 diff와 Linear 이슈 본문이 DeepSeek로 나간다. `.env`·비밀·키 경로와 FLIGHT 없는 PR은 보내지 않고, Muse는 착륙에 쓰지 않는다(9.5) |
+| main 병합만 한 head의 리뷰 (2026-09-27, ATC-31) | vocado의 `strict`(최신 main 필수)는 그대로 둔다. head까지 main 병합뿐이고 PR 자신의 변경(merge-base 대비 파일과 blob)이 같으면 이전 커밋의 리뷰를 잇는다. 지적은 지적으로 잇는다(9.6) |
 
 남은 결정: S3 자동 목록의 정확한 범위(S2 데이터 뒤), 그리고 TOWER 세션 이름을 ATC로 바꿀지 그대로 둘지.

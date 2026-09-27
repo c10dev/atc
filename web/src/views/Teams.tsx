@@ -288,6 +288,22 @@ function ExtReviewTag({ pr }: { pr: PullRequest }) {
   );
 }
 
+// main 병합만 한 head에 이어받은 이전 커밋의 리뷰(ATC-31). SUPERVISOR가 물려받은 리뷰임을 알아보게
+function CarriedTag({ pr }: { pr: PullRequest }) {
+  const c = pr.carried;
+  if (!c) return null;
+  const who = c.by === "human" ? "HUMAN" : c.by === "codex" ? "CODEX" : "DEEPSEEK";
+  const from = c.from.slice(0, 7);
+  return (
+    <span
+      className={`pr-extreview ${c.findings ? "is-findings" : "is-pass"}`}
+      title={`${from}의 리뷰를 이어받음: 그 뒤 커밋은 main 병합뿐이고 PR의 변경(바뀐 파일과 blob)이 그대로다${c.findings ? " — 그 리뷰의 지적도 그대로 남는다" : ""}`}
+    >
+      {c.findings ? `${who} 지적 (carried from ${from})` : `REVIEW: ${who} (carried from ${from}, main merge only)`}
+    </span>
+  );
+}
+
 // Codex P3 지적만 남고 모두 해결·답글이면 착륙을 막지 않는다(ATC-28). 그때 남은 수를 보인다
 function CodexP3Tag({ pr }: { pr: PullRequest }) {
   const f = pr.codexFindings;
@@ -356,6 +372,7 @@ function PrLanding({ pr, landing }: { pr: PullRequest; landing: LandingIndex }) 
         <LandingBadge pr={pr} />
         <PrLink pr={pr} />
         <ExtReviewTag pr={pr} />
+        <CarriedTag pr={pr} />
         <CodexP3Tag pr={pr} />
         {seq && landing.seq.size > 1 && (
           <span className="pr-seq" title={`LANDING SEQUENCE ${landing.seq.size}개 중 ${seq}번째`}>
@@ -411,7 +428,7 @@ function LandingSequence({
         </div>
         <div className="ls-pr">
           <div className="ls-title">
-            <PrLink pr={pr} /> <ExtReviewTag pr={pr} /> <CodexP3Tag pr={pr} /> <span title={pr.title}>{pr.title}</span>
+            <PrLink pr={pr} /> <ExtReviewTag pr={pr} /> <CarriedTag pr={pr} /> <CodexP3Tag pr={pr} /> <span title={pr.title}>{pr.title}</span>
           </div>
           {pr.landing !== "CLEARED" && pr.blocks.length > 0 && (
             <ul className="ls-blocks">

@@ -61,7 +61,66 @@ export interface GhPull {
   files?: string[]; // atc가 붙인다(Codex 리뷰가 head에 없는 PR만). 외부 리뷰 제외(보안 경로) 판단용
   body?: string | null;
   threads?: GhThread[]; // atc가 붙인다(head에 Codex 지적이 있거나 BLOCKED인 PR만). 없으면 아직 안 읽었음
+  // atc가 붙인다(ATC-31): head에 리뷰가 없을 때, 리뷰를 이어받을 수 있는 이전 커밋 R(최근 것 먼저).
+  // R..head가 main 병합뿐이고 PR 자신의 변경(merge-base 대비 바뀐 파일과 blob)이 R과 head에서 같은 것만
+  carryFrom?: CarryCandidate[];
 }
+
+// ── main 병합만 한 head에 이전 리뷰 이어받기(ATC-31) ──
+// vocado main 규칙 strict(최신 main 필수) 때문에 머지가 있을 때마다 다른 PR이 behind가 되고, 팀이 main을 병합하면
+// head가 바뀌어 리뷰가 review-stale이 됐다. PR 자신의 변경이 그대로면 R의 리뷰를 head에 이어 준다.
+export interface CarryCandidate {
+  sha: string;
+  at: string | null; // R의 커밋 시각(Codex 👍가 R 뒤에 달렸나 볼 때)
+}
+export interface CarriedReview {
+  from: string; // 리뷰가 달린 커밋 R(전체 SHA)
+  by: "human" | "codex" | "deepseek";
+  findings: boolean; // R의 지적이 남아 있음: 통과가 아니라 지적으로 이어진다
+}
+// 이어받을 리뷰: 최근 R부터 사람 APPROVED → Codex 지적(뒤 👍로 풀리지 않은 것) → Codex 👍(R 뒤) → DeepSeek 착륙 리뷰.
+// allowExternal: 이 PR이 외부 리뷰에서 빠지지 않았나(빠졌으면 DeepSeek 기록을 잇지 않는다)
+export function carriedReviewOf(
+  pr: ReviewInput & Pick<GhPull, "carryFrom">,
+  landingReviews: readonly Pick<LandingReview, "head" | "verdict" | "p0" | "p1" | "family">[],
+  allowExternal: boolean,
+): CarriedReview | null {
+  for (const r of pr.carryFrom ?? []) {
+    if (passingReviews(pr).some((x) => x.state === "APPROVED" && x.commit!.oid === r.sha)) return { from: r.sha, by: "human", findings: false };
+    const thumbs = pr.codex?.thumbsAt ?? null;
+    const found = (pr.reviews ?? [])
+      .filter((x) => isCodexBot(x.author?.login) && x.state === "COMMENTED" && x.commit?.oid === r.sha)
+      .reduce<GhReview | null>((a, b) => (!a || (b.submittedAt ?? "") > (a.submittedAt ?? "") ? b : a), null);
+    if (found && !after(thumbs, found.submittedAt)) return { from: r.sha, by: "codex", findings: true };
+    if (thumbs && r.at && atOrAfter(thumbs, r.at)) return { from: r.sha, by: "codex", findings: false };
+    const d = allowExternal ? landingReviews.filter((x) => x.head === r.sha && /^deepseek/i.test(x.family)).at(-1) : undefined;
+    if (d) return { from: r.sha, by: "deepseek", findings: !reviewPasses(d as LandingReview) };
+  }
+  return null;
+}
+// head에서 거꾸로: main 병합(둘째 뒤 부모가 모두 기본 브랜치에 있음)인 동안 첫째 부모(브랜치 쪽 이전 커밋)를 모은다. 최근 것 먼저
+export async function mergeOnlyChain(
+  commits: readonly { sha: string; parents: string[]; at: string | null }[],
+  head: string,
+  inMain: (sha: string) => Promise<boolean>,
+): Promise<CarryCandidate[]> {
+  const bySha = new Map(commits.map((c) => [c.sha, c]));
+  const chain: CarryCandidate[] = [];
+  for (let cur = bySha.get(head); cur && cur.parents.length >= 2; ) {
+    let fromMain = true;
+    for (const o of cur.parents.slice(1)) if (!(await inMain(o))) fromMain = false;
+    if (!fromMain) break;
+    const prev = bySha.get(cur.parents[0]);
+    if (!prev) break;
+    chain.push({ sha: prev.sha, at: prev.at });
+    cur = prev;
+  }
+  return chain;
+}
+// PR 자신의 변경(merge-base 대비 바뀐 파일 → "상태:blob")이 같은가. 못 읽었으면(null) 다르다고 본다
+export const sameChange = (a: ReadonlyMap<string, string> | null, b: ReadonlyMap<string, string> | null) =>
+  Boolean(a && b && a.size === b.size && [...a].every(([f, v]) => b.get(f) === v));
+const carriedWho = (c: CarriedReview) => (c.by === "human" ? "사람 APPROVED" : c.by === "codex" ? "Codex" : "DEEPSEEK");
 
 // ── Codex 지적의 등급(ATC-28): P3만 남고 스레드가 해결·답글이면 착륙을 막지 않는다 ──
 
@@ -351,7 +410,7 @@ export function codexThumbsPass(pr: ReviewInput, c: CodexSignal | undefined = pr
   return !findings || after(c!.thumbsAt, findings.submittedAt);
 }
 
-export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs = 6 * 3_600_000): Block[] {
+export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs = 6 * 3_600_000, carried?: CarriedReview | null): Block[] {
   const author = pr.author?.login ?? null;
   const reviews = (pr.reviews ?? []).filter((r) => r.author?.login !== author || author === null);
   const out: Block[] = [];
@@ -383,6 +442,12 @@ export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs =
     return out;
   }
   if (hasHeadReview(pr) || thumbsOk) return out;
+  // 이전 커밋 R의 리뷰를 이어받음(ATC-31): R 뒤로 main 병합뿐이고 PR 자신의 변경이 같다. 통과면 막지 않고, 지적이면 지적으로 막는다
+  if (carried && !carried.findings) return out;
+  if (carried?.findings) {
+    out.push(block("review-findings", `${carriedWho(carried)} 지적이 이전 커밋 ${short(carried.from)}에 남아 있음(그 뒤 main 병합만) — 반영 후 재리뷰 필요`));
+    return out;
+  }
   // Codex를 쓸 수 없으면 착륙 리뷰(현재 head, P0·P1 없음)가 리뷰를 대신한다. 새 head는 새 리뷰가 필요하다.
   // 외부 리뷰에서 뺀 PR(보안 경로·키워드 등)은 기록에 pass가 있어도 근거가 아니다(excluded)
   const ms = extReviewStateOf(ext);
@@ -436,10 +501,10 @@ export function mergeBlocks(state: string, unresolvedThreads?: number): Block[] 
 }
 
 // 막힌 조건 목록. 비어 있으면 CLEARED TO LAND.
-export function landingBlocks(pr: GhPull, los: boolean, ext?: ExtReviewContext, silentMs?: number): Block[] {
+export function landingBlocks(pr: GhPull, los: boolean, ext?: ExtReviewContext, silentMs?: number, carried?: CarriedReview | null): Block[] {
   const out: Block[] = [];
   if (pr.isDraft) out.push(block("draft", "Draft PR"));
-  out.push(...checkBlocks(pr.statusCheckRollup), ...reviewBlocks(pr, ext, silentMs), ...mergeBlocks(pr.mergeStateStatus, pr.threads?.filter((t) => !t.resolved).length));
+  out.push(...checkBlocks(pr.statusCheckRollup), ...reviewBlocks(pr, ext, silentMs, carried), ...mergeBlocks(pr.mergeStateStatus, pr.threads?.filter((t) => !t.resolved).length));
   if (los) out.push(block("los", "STAND에 LOSS OF SEPARATION이 열려 있음"));
   const order: LandingBlockCode[] = ["stacked", "draft", "checks-failed", "checks-pending", "no-checks", "changes-requested", "review-findings", "no-review", "review-stale", "dirty", "behind", "blocked", "merge-unknown", "los"];
   return out.sort((a, b) => order.indexOf(a.code) - order.indexOf(b.code));
@@ -486,19 +551,22 @@ export function buildPulls(
       const stand = workspaces.find((w) => w.repo === repo && w.branch === gh.headRefName) ?? null;
       const ticketKey = ticketKeyOf(gh);
       const slug = slugOfUrl(gh.url);
-      const unavailable = ext && slug ? codexUnavailableOf(gh, Date.parse(now), ext.silentMs) : null;
+      // 외부 리뷰 제외(ATC-27·30): 착륙 리뷰 대기열과, 이전 커밋의 DeepSeek 기록을 이어받을지(ATC-31)에 쓴다
+      const gate = ext && slug ? externalGateOf({ flight: ticketKey, ticketLabels: ext.ticketLabelsOf(ticketKey), prLabels: (gh.labels ?? []).map((l) => l.name), files: gh.files ?? null, texts: [gh.title, gh.body, ext.ticketTitleOf?.(ticketKey)] }) : null;
+      const allowSec = ext?.security === "deepseek";
+      const exclusion = gate ? (gate.hard ?? (allowSec ? null : gate.security)) : null;
+      // main 병합만 한 head: 이전 커밋의 리뷰를 잇는다(ATC-31). 이으면 REVIEW 대기열에 넣지 않는다
+      const carried = ext && slug ? carriedReviewOf(gh, ext.reviews.filter((r) => r.repo === slug && r.number === gh.number), Boolean(gate) && !exclusion) : null;
+      const unavailable = ext && slug && !carried ? codexUnavailableOf(gh, Date.parse(now), ext.silentMs) : null;
       const ctx: ExtReviewContext | undefined = unavailable
         ? {
             unavailable,
-            ...(() => {
-              const g = externalGateOf({ flight: ticketKey, ticketLabels: ext!.ticketLabelsOf(ticketKey), prLabels: (gh.labels ?? []).map((l) => l.name), files: gh.files ?? null, texts: [gh.title, gh.body, ext!.ticketTitleOf?.(ticketKey)] });
-              const allow = ext!.security === "deepseek";
-              return { exclusion: g.hard ?? (allow ? null : g.security), security: !g.hard && allow ? g.security : null };
-            })(),
+            exclusion,
+            security: gate && !gate.hard && allowSec ? gate.security : null,
             review: landingReviewOf(ext!.reviews, slug!, gh.number, gh.headRefOid),
           }
         : undefined;
-      const blocks = landingBlocks(gh, Boolean(stand && losStands.has(stand.path)), ctx, ext?.silentMs);
+      const blocks = landingBlocks(gh, Boolean(stand && losStands.has(stand.path)), ctx, ext?.silentMs, carried);
       // 쌓인 PR: base가 기본 브랜치가 아니면 CLEARED가 되지 않는다(아래 PR이 먼저 기본 브랜치에 들어간 뒤 base를 바꾼다)
       const stack = defaultBranch ? stackOf(gh, pulls, defaultBranch) : null;
       if (defaultBranch && gh.baseRefName !== defaultBranch) blocks.unshift(block("stacked", stackedText(gh, stack, defaultBranch)));
@@ -531,6 +599,8 @@ export function buildPulls(
           return f?.length ? codexFindingSummaryOf(f) : null;
         })() : null,
         extReview: extReviewStateOf(ctx),
+        // 이어받은 리뷰(ATC-31): 스트립 "REVIEW: … (carried from R, main merge only)", landing.cleared 기록의 carriedFrom
+        carried: carried ?? null,
         stack,
       });
     }

@@ -329,6 +329,14 @@ Codex hit its 5-hour limit and left vocado #392 (admission keyword) and #395 (SQ
 - **Two kinds of exclusion** (`externalGateOf`): **hard**, in every mode: no FLIGHT, `.env*`, secret, key or credential paths (checked first); **security**: rating:SEC or Risk labels, security paths, security keywords. With `"deepseek"`, a PR excluded only by the security rules goes to the REVIEW queue; its `extReview.security` keeps the reason, the waiting text says "보안 PR: …", the strip shows "REVIEW: DEEPSEEK (보안, Codex 한도)", findings read "DEEPSEEK 지적(보안, …)", the packet carries `security` and a stricter guide, and the record gets `security: true`. A DeepSeek pass on the current head then counts as landing evidence like any other.
 - Muse is still never used for landing reviews (the server accepts only DeepSeek V4.1 Flash), and the guards are unchanged. The REVIEW manual says how to review a security PR (permissions, RLS, authentication, migration rollback, leaks; unsure → P1).
 
+### 9.6 Reviews carry across main-only merges (2026-09-27, ATC-31)
+
+vocado's `main` ruleset requires branches to be up to date (`strict`), so every merge puts the other open PRs `behind`. The team merges `origin/main` into its branch, the head moves, and the review atc had turned into `review-stale`. On 2026-09-27 #394 had a DeepSeek pass at 18700c1; c12b706 was only a main merge with the same change, and it still waited 1.5 hours for a new review. The SUPERVISOR decided to keep `strict` and let atc carry a review across main-only merges.
+
+- **Candidates** (`mergeOnlyChain`, `sameChange`; `server/sources/github.ts` `carryCandidates`): for a non-draft PR with no review on its head, atc walks back from the head through the PR's commits (`gh api …/pulls/N/commits`, cached per head) while each commit is a merge whose other parents are already in the default branch (`compare` against the current main SHA), collecting the first parents as candidates `R`. A candidate counts only if the PR's own change is the same at `R` and at the head: `compare(main...R)` and `compare(main...head)` list the same files with the same status and blob SHA (300 files or a failed read → no carry). A main merge that resolved a conflict inside a PR file changes a blob, so it needs a new review. All reads are read-only; `strict` and GitHub settings are unchanged.
+- **What carries** (`carriedReviewOf`, latest `R` first): a human `APPROVED` on `R`; a Codex 👍 posted after `R` was committed; a DeepSeek landing-review record on `R` (only if the PR is not excluded from external review; Muse records don't carry). Findings carry as findings: a Codex COMMENTED review on `R` not cleared by a later 👍, or a DeepSeek `findings` on `R`, becomes `review-findings` on the head ("Codex 지적이 이전 커밋 18700c1에 남아 있음(그 뒤 main 병합만) — 반영 후 재리뷰 필요").
+- **Effects**: a carried pass clears the review condition, so the PR is CLEARED as soon as CI and the base are fine. It doesn't enter the REVIEW queue (no `extReview`), so DeepSeek doesn't spend a run on it. `PullRequest.carried` / `landingQueue[].carried` (`from`, `by`, `findings`); the strip shows "REVIEW: DEEPSEEK (carried from 18700c1, main merge only)"; the `landing.cleared` event records `carriedFrom`.
+
 ## 10. What to add to atc
 
 | Where | What |
@@ -481,5 +489,6 @@ named `CROSSCHECK`, and run with `/loop 10m /tick`.
 | Linear writes | OCC may write to Linear from S2; the vocado "only leaders write to Linear" rule **may be changed** at S2 |
 | Order | Design document first |
 | Security PRs to DeepSeek (2026-09-27, ATC-30) | When Codex is unavailable, the DeepSeek V4.1 Flash landing reviewer may review security PRs **if `externalReview.security` is `"deepseek"`**; vocado security diffs and Linear issue bodies then go to DeepSeek. `.env`, secret and key paths and PRs without a FLIGHT never do, and Muse is never used for landing (9.5) |
+| Reviews across main-only merges (2026-09-27, ATC-31) | Keep `strict` (up to date with main) on vocado. A review on an earlier commit carries to a head reached only by main merges when the PR's own change (files and blobs against the merge base) is the same; findings carry as findings (9.6) |
 
 Still open: the exact S3 automatic list (after S2 data), and whether the TOWER session is renamed ATC or keeps its name.

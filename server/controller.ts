@@ -115,6 +115,8 @@ export function buildBrief(
       landText: repoSeq ? landTextOf(repoSeq, airport, p.number, fl, repoSeq > 1 ? lane[repoSeq - 2].number : null, p.codexFindings?.ok ? p.codexFindings.p3 : 0) : null,
       // 쌓인 PR(base가 기본 브랜치가 아님, ATC-29): CLEARED가 되지 않고 LAND를 내지 않는다. stack.chain은 아래부터
       stacked: p.blocks.some((b) => b.code === "stacked"),
+      // 이어받은 리뷰(ATC-31): main 병합만 한 head에 이전 커밋 R의 리뷰. findings면 지적으로 막는다
+      carried: p.carried ? { from: p.carried.from.slice(0, 7), by: p.carried.by, findings: p.carried.findings } : null,
       stack: p.stack ?? null,
       // 현재 head의 Codex 인라인 지적(등급별 수, ok면 P3만·모두 해결·답글이라 착륙을 막지 않음). 없으면 null(ATC-28)
       codexFindings: p.codexFindings ?? null,
