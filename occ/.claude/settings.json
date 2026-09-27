@@ -13,6 +13,9 @@
       "Edit",
       "Write",
       "NotebookEdit"
+    ],
+    "additionalDirectories": [
+      "../docs"
     ]
   },
   "hooks": {

@@ -264,3 +264,21 @@ test("CROSSCHECK 입력 검사: verdict, 이유 필수·500자 이내, by 기본
   assert.deepEqual(parseCrosscheck({ verdict: "agree", reason: " 본문상\n제약 없음 " }, iso(0)), { by: "CROSSCHECK", model: "unknown", verdict: "agree", reason: "본문상 제약 없음", at: iso(0) });
   assert.equal(parseCrosscheck({ verdict: "agree", reason: "x", model: " claude-ocx-opencode-go--muse-spark-1.3-contributor[1m] " }, iso(0)).model, "claude-ocx-opencode-go--muse-spark-1.3-contributor[1m]");
 });
+
+test("OCC 보정 예시: 사람 판정만, 사유 있는 것 먼저, OCC가 냈던 분류와 근거를 담고 NEW 본문은 뺀다", async () => {
+  const { occExamplesOf } = await import("./schedule.ts");
+  const draft = (id: string, flight: string, payload: object, reason = "OCC 근거") => ({ op: "draft" as const, id, at: iso(30), kind: "CLASSIFY" as const, flight, payload, reason });
+  const ops = fold([
+    draft("S-0001", "VOC-195", { type: "BUILD", wake: "M", ratings: ["SEC"] }, "락 조건 수정"),
+    { op: "verdict" as const, id: "S-0001", at: iso(20), verdict: "disagree" as const, reason: "FLIGHT TYPE은 MAINT — fleet.md 4.1" },
+    draft("S-0002", "VOC-179", { type: "BUILD", wake: "M", ratings: ["UI"] }),
+    { op: "verdict" as const, id: "S-0002", at: iso(10), verdict: "agree" as const, reason: null },
+    draft("S-0003", "VOC-181", { type: "BUILD" }), // 판정 없음 → 빠짐
+    { op: "draft" as const, id: "S-0004", at: iso(30), kind: "NEW" as const, flight: null, payload: { title: "t", body: "## 목표\nx", project: "Web UX", type: "BUILD", wake: "M", similar: [{ key: "VOC-1", title: "a" }] }, reason: "중복 검색: 없음" },
+    { op: "verdict" as const, id: "S-0004", at: iso(5), verdict: "disagree" as const, reason: "중복" },
+  ]);
+  const ex = occExamplesOf(ops);
+  assert.deepEqual(ex.map((e) => e.id), ["S-0004", "S-0001", "S-0002"]); // 사유 있는 것(최근 순) 먼저
+  assert.deepEqual(ex[1], { id: "S-0001", kind: "CLASSIFY", flight: "VOC-195", proposed: { type: "BUILD", wake: "M", ratings: ["SEC"] }, draft: "락 조건 수정", verdict: "disagree", reason: "FLIGHT TYPE은 MAINT — fleet.md 4.1" });
+  assert.deepEqual(ex[0].proposed, { title: "t", project: "Web UX", type: "BUILD", wake: "M" });
+});

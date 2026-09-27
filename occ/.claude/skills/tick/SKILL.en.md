@@ -14,7 +14,8 @@
    - Following the review rules in CLAUDE.md, run `node ../controller/atcctl.mjs dispatch note <ID> [--caution] [--hold [<FLIGHT>]] -- <note>`. A prerequisite written only in the body, or a wait for a human decision, gets a `--hold`, not just a note.
 4. If `mode` is `approval`, follow "Sending FLIGHT PLANs" in CLAUDE.md: approved in `inFlight` → `dispatch release` → SendMessage the printed text unchanged, and handle `overdue`. In `shadow`, skip this step.
 5. SCHEDULE drafts (S1, shadow operation), following "SCHEDULE drafts" in CLAUDE.md:
-   - Run `node ../controller/atcctl.mjs schedule brief` and look at `candidates`.
+   - Run `node ../controller/atcctl.mjs schedule brief` and look at `candidates` and `examples` (the SUPERVISOR's recent decisions and rejection reasons). Don't repeat a mistake a rejection reason names.
+   - If there are CLASSIFY candidates, first Read `../docs/fleet.md` (4.1 FLIGHT TYPE, 4.2 WAKE, 4.3 TYPE RATING). Decide the FLIGHT TYPE in the order from "Before a CLASSIFY" in CLAUDE.md (BUILD only when behavior users see changes), and cite the sections applied in the reason.
    - For up to 3 candidate FLIGHTs, read each with `dispatch flight <FLIGHT key>`. If it is in `candidates.classify`, run `schedule draft CLASSIFY <FLIGHT> [--type …] [--wake …] [--rating …] -- "<reason>"`. If it is in `candidates.prioritize` and the body or comments give grounds, `schedule draft PRIORITIZE <FLIGHT> --priority <1-4> -- "<reason>"`. With no grounds, skip PRIORITIZE.
    - On `LIMIT`, stop drafting for this pass. Nothing is written to Linear.
    - Open `NEW` drafts (AD HOC FLIGHTs from the CHARTER DESK) count toward the limit of 5 too. A CHARTER REQUEST is not a per-pass duty; handle it as in "CHARTER DESK" in CLAUDE.md when the SUPERVISOR asks in this session.

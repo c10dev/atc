@@ -120,3 +120,23 @@ test("crosscheck brief: 두 브리핑의 pending·examples와 그 FLIGHT만", ()
   assert.deepEqual(out.rate, { dispatch: { marked: 1, matched: 1, rate: 1 }, schedule: null });
   assert.deepEqual(crosscheckBrief({ mode: "shadow" }, { mode: "shadow" }).dispatch.pending, []);
 });
+
+test("schedule brief: OCC 보정 예시(examples)가 JSON 출력에 그대로 나온다", async () => {
+  const { createServer } = await import("node:http");
+  const { execFile } = await import("node:child_process");
+  const brief = { mode: "shadow", open: [], candidates: { classify: [], prioritize: [] }, examples: [{ id: "S-0001", kind: "CLASSIFY", flight: "VOC-195", proposed: { type: "BUILD" }, draft: "d", verdict: "disagree", reason: "FLIGHT TYPE은 MAINT — fleet.md 4.1" }] };
+  const server = createServer((req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(req.url === "/api/schedule/brief" ? brief : { error: "nope" }));
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const out = await new Promise((resolve, reject) =>
+      execFile(process.execPath, [new URL("./atcctl.mjs", import.meta.url).pathname, "schedule", "brief"], { env: { ...process.env, ATC_URL: url } }, (err, stdout) => (err ? reject(err) : resolve(stdout))),
+    );
+    assert.deepEqual(JSON.parse(out).examples, brief.examples);
+  } finally {
+    server.close();
+  }
+});
