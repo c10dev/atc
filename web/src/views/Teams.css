@@ -38,6 +38,10 @@
   border-style: solid;
   color: var(--phase-cleared);
 }
+.pr-extreview.is-p3 {
+  color: var(--muted);
+  border-style: solid;
+}
 .pr-extreview.is-findings {
   color: var(--phase-approach);
 }

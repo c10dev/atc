@@ -333,6 +333,16 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 - **착륙 규칙**(`reviewBlocks`): **제외되지 않은** CODEX UNAVAILABLE PR에서, 현재 head의 P0·P1 없는 `pass`는 head 리뷰로 쳐서 CLEARED TO LAND가 될 수 있다. 스트립에는 "REVIEW: DEEPSEEK (Codex 한도)"(또는 "Codex 무응답". 이름은 기록의 계열)로 보인다. 제외된 PR에는 기록이 무엇이든 외부 pass가 근거가 되지 않는다: Muse pass로 CLEARED였던 PR은 APPROACH로 돌아갔다. `findings`는 등급과 리뷰 글이 든 `review-findings` 막힘이 되어("DEEPSEEK 지적(Codex 한도, head abc1234, P0 0 · P1 1 · P2 0): …") TOWER가 Codex 지적처럼 CAPTAIN에게 전한다. 새 head는 새 리뷰가 필요하다. Codex가 돌아와 head를 리뷰하면(👍나 지적) Codex가 이긴다. `changes-requested`는 그대로 막는다.
 - guard와 settings를 바꾸므로 이 PR들은 `user` 등급이다.
 
+### 9.3 Codex 지적의 등급: P3만 남은 head는 막지 않는다 (2026-09-27, ATC-28)
+
+vocado #394는 수정 → `@codex review` → 더 작은 새 지적(P2, 그다음 P3) → 수정 → …을 되풀이했다. Codex는 리뷰할 때마다 조금 더 작은 것을 찾는데, 착륙 규칙은 head의 Codex COMMENTED 리뷰를 등급과 상관없이 `review-findings`로 막았다. SUPERVISOR는 P3만 남은 지적은 착륙을 막지 않는다고 정했다.
+
+- **등급**(`findingSeverityOf`, `codexHeadFindingsOf`, `server/landing.ts`): Codex의 인라인 지적에는 배지(`![P2 Badge](https://img.shields.io/badge/P2-yellow…)`)가 붙는다. atc는 Codex 댓글이 현재 head에 달린(`originalCommit` = head) 리뷰 스레드마다 첫 댓글에서 배지를 읽는다. 배지를 읽을 수 없으면 P2로 본다. 이전 커밋의 지적은 세지 않는다.
+- **착륙 규칙**(`reviewBlocks`): head의 지적이 모두 P3이고 P3 스레드마다 resolve됐거나 Codex 아닌 사람의 답글이 달렸으면, Codex의 head 리뷰를 리뷰로 치고 `review-findings`로 막지 않는다. P0·P1·P2가 하나라도 있으면 전처럼 막고 수를 보인다: "Codex 지적 있음(head b1c684c, P2 1 · P3 1) — 반영 후 재리뷰 필요". 해결도 답글도 없는 P3가 있으면 "Codex P3 지적 2건 중 1건이 해결·답글 없음 … — 스레드를 resolve하거나 답글을 달면 P3는 착륙을 막지 않음"으로 막는다. 인라인 지적 없는 head 리뷰, atc가 스레드를 못 읽은 경우는 전처럼 막는다. 뒤이은 Codex 👍나 사람 APPROVED는 여전히 풀어 준다.
+- **스레드**: atc는 head에 Codex 지적이 있는 PR과 BLOCKED인 PR(Draft 아님)의 리뷰 스레드를 읽는다(`gh api graphql`, `reviewThreads`, 읽기 전용, 매 바퀴, 캐시 없음).
+- **BLOCKED 사유**: vocado 보호 규칙 "리뷰 스레드 해결 필수"는 GitHub에서 그대로 적용된다. 해결 안 된 스레드가 있는 BLOCKED PR은 "GitHub 보호 규칙이 머지를 막음 — 해결 안 된 리뷰 스레드 N개(스레드 해결 필수: resolve해야 머지된다)"로 보인다. head에 P2와 P3가 열려 있는 #394가 이 경우다.
+- **보이는 곳**: `PullRequest.codexFindings`와 `landingQueue[].codexFindings`(`p0`–`p3`, `unmarked`, `open`, `ok`). 스트립에는 "Codex P3 2건(해결됨) — 착륙 막지 않음", LAND 글 끝에는 "Codex P3 지적 2건은 남아 있음(해결·답글됨, 착륙은 막지 않음)."이 붙는다.
+
 ## 10. atc에 더할 것
 
 | 곳 | 내용 |

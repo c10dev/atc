@@ -194,6 +194,11 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - 다른 팀은 보여 주기만 한다(RADAR·STRIPS·FIDS). planner는 제외 줄 없이 건너뛰고, SCHEDULE 브리핑은 후보에서 빼고, 그 팀에 쓴 SCHEDULE 초안은 409로 거절한다. `candidateTeams`에 팀을 넣으면 그 팀 FLIGHT는 그 팀 AIRPORT가 거점인 AIRCRAFT에만 제안한다(ATC → ATCC). 스위치는 꺼 두었다.
 
 ### 변경
+- Codex 지적을 등급으로 읽는다: head의 Codex 지적이 모두 P3이고 스레드마다 resolve됐거나 답글이 달렸으면 `review-findings`로 막지 않는다(ATC-28, [docs/occ.ko.md](docs/occ.ko.md) 9.3). vocado #394는 head의 Codex COMMENTED 리뷰가 등급과 상관없이 막아서 수정 → `@codex review` → 더 작은 지적(P2, 그다음 P3)을 되풀이했다.
+  - 등급은 Codex 댓글이 현재 head에 달린 리뷰 스레드의 인라인 배지(`![P2 Badge](…)`)에서 읽고, 표시가 없으면 P2로 본다. head에 Codex 지적이 있는 PR과 BLOCKED인 PR의 리뷰 스레드를 읽는다(읽기 전용 GraphQL).
+  - P0~P2는 전처럼 막고 수를 보인다("Codex 지적 있음(head …, P2 1 · P3 1)"). 해결도 답글도 없는 P3는 따로 적어 막는다. 인라인 지적 없는 head 리뷰나 스레드를 못 읽은 경우는 전처럼 막는다.
+  - 해결 안 된 스레드가 있는 BLOCKED PR은 그렇게 보인다: "GitHub 보호 규칙이 머지를 막음 — 해결 안 된 리뷰 스레드 N개(스레드 해결 필수 …)".
+  - `PullRequest.codexFindings`·`landingQueue[].codexFindings`(`p0`–`p3`, `unmarked`, `open`, `ok`). 스트립에 "Codex P3 2건(해결됨) — 착륙 막지 않음", LAND 글에 남은 P3가 적힌다. TOWER 규정(한국어·영어)과 가이드에 읽는 법을 적었다.
 - 착륙 리뷰를 DeepSeek V4.1 Flash의 별도 REVIEW 세션으로 옮기고, 보안 diff는 어떤 외부 리뷰어에도 보내지 않는다(ATC-27, [docs/occ.ko.md](docs/occ.ko.md) 9.2, [review/README.ko.md](review/README.ko.md)). ATC-7의 제외 규칙은 Linear 라벨만 보았고 VOC FLIGHT에는 라벨이 거의 없어서, 보안 diff 7개(#382, #388, #391, #395–#398)가 Muse로 나갔고 그중 4개(#391, #396, #397, #398)는 Muse pass만으로 CLEARED가 됐다.
   - **새 관제 폴더 `review/`**(tmux `atc-review`, `claude-ocx-opencode-go--deepseek-v4.1-flash`로 `ocx claude`): 한국어 `CLAUDE.md`와 `/tick`(영어 번역), 여는 명령이 든 `README`(en/ko), fail-closed `.claude/settings.json`, CROSSCHECK의 규칙을 `review/` 기준으로 쓰는 `read-guard.mjs`. 새 guard 모드 `controller/guard.mjs --review`: `atcctl manual`, `landing queue`, `landing review`와 jq만. 리뷰 기록은 세션 기록의 실제 모델이 DeepSeek V4.1 Flash여야 하고(`REVIEW_MODELS`) `ATC_REVIEW_MODEL`이 붙는다. 서버도 다른 모델의 리뷰를 받지 않는다.
   - **CROSSCHECK는 착륙 리뷰를 하지 않는다**: "LANDING 리뷰" 절과 `/tick` 단계를 뺐고, `--crosscheck`는 `landing` 명령을 모두 막으며, `crosscheck brief`에서 착륙 PR 목록이 빠졌다. CROSSCHECK는 DISPATCH·SCHEDULE mark에 Muse를 계속 쓴다.

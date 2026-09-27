@@ -1,4 +1,4 @@
-import type { CodexUnavailable, ExtReviewState } from "./landing.ts";
+import type { CodexFindingSummary, CodexUnavailable, ExtReviewState } from "./landing.ts";
 import type { GroundStop, MainStatus } from "./atfm.ts";
 export type Agent = "claude" | "codex";
 
@@ -197,6 +197,7 @@ export interface PullRequest {
   blocks: { code: LandingBlockCode; text: string }[]; // 한국어 한 줄씩
   readyAt: string | null; // 이 head에서 모든 조건이 처음 맞은 시각. CLEARED일 때만
   createdAt: string; // PR을 연 시각 (APPROACH 정렬, LAND CLEARANCE 짝짓기)
+  codexFindings?: CodexFindingSummary | null; // 현재 head의 Codex 인라인 지적 등급별 수(ATC-28). ok면 P3만·모두 해결·답글이라 착륙을 막지 않음
   codexUnavailable?: CodexUnavailable | null; // CODEX UNAVAILABLE(ATC-7): Codex 한도·무응답
   extReview?: ExtReviewState | null; // Codex를 쓸 수 없을 때 Muse 리뷰 상태(제외·대기·통과·지적). Codex를 쓸 수 있으면 null
 }

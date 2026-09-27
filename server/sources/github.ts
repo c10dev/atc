@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { type MainStatus, mainStateOf } from "../atfm.ts";
-import { type CodexSignal, codexFindings, codexThumbsPass, type GhPull, hasHeadReview, isCodexBot, needsCodexSignal } from "../landing.ts";
+import { type CodexSignal, codexFindings, codexThumbsPass, type GhPull, type GhThread, hasHeadReview, isCodexBot, needsCodexSignal } from "../landing.ts";
 
 const run = promisify(execFile);
 
@@ -101,6 +101,28 @@ async function codexSignal(slug: string, pr: GhPull): Promise<CodexSignal> {
   return signal;
 }
 
+// 리뷰 스레드(해결 여부, 댓글 작성자·원래 커밋·본문). Codex 지적의 등급(P0~P3)과 "스레드 해결 필수"로 막힌 까닭을 본다(ATC-28).
+// 해결 여부는 수시로 바뀌므로 캐시하지 않는다(대상 PR만, 90초마다)
+const THREADS_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes {
+    isResolved isOutdated path
+    comments(first: 20) { nodes { author { login } createdAt originalCommit { oid } body } }
+  } } } }
+}`;
+async function threadsOf(slug: string, number: number): Promise<GhThread[]> {
+  const [owner, name] = slug.split("/");
+  const out = await gh(["api", "graphql", "-f", `query=${THREADS_QUERY}`, "-F", `owner=${owner}`, "-F", `name=${name}`, "-F", `number=${number}`]);
+  type Node = { isResolved: boolean; isOutdated: boolean; path: string | null; comments: { nodes: { author: { login: string } | null; createdAt: string; originalCommit: { oid: string } | null; body: string }[] } };
+  const nodes = (JSON.parse(out).data?.repository?.pullRequest?.reviewThreads?.nodes ?? []) as Node[];
+  return nodes.map((t) => ({
+    resolved: t.isResolved,
+    outdated: t.isOutdated,
+    path: t.path,
+    // 본문은 등급 배지만 보면 되니 앞부분만 둔다
+    comments: t.comments.nodes.map((c) => ({ author: c.author?.login ?? null, at: c.createdAt, commit: c.originalCommit?.oid ?? null, body: c.body.slice(0, 600) })),
+  }));
+}
+
 // Draft가 아니고 head 리뷰가 없거나 head에 Codex 지적이 있는 PR에만 Codex 신호를 붙인다.
 // 실패한 PR은 신호 없이(리뷰 없음·Codex 지적으로) 둔다.
 async function attachCodex(slug: string, pulls: GhPull[], errors: string[]) {
@@ -112,9 +134,27 @@ async function attachCodex(slug: string, pulls: GhPull[], errors: string[]) {
           p.codex = await codexSignal(slug, p);
           // Codex 리뷰도 사람 리뷰도 head에 없으면 착륙 리뷰로 갈 수 있다: 바뀐 파일을 읽어 둔다
           if (!hasHeadReview(p) && !codexFindings(p) && !codexThumbsPass(p)) p.files = await filesOf(slug, p);
+          if (codexFindings(p)) p.threads = await threadsOf(slug, p.number);
         } catch (e) {
           const err = e as Error & { stderr?: string };
           errors.push(`${slug}#${p.number} Codex 확인: ${(err.stderr?.trim() || err.message).split("\n")[0]}`);
+        }
+      }),
+    );
+  }
+}
+
+// BLOCKED인 PR(Draft 아님) 중 아직 스레드를 안 읽은 것: 해결 안 된 스레드 수로 막힌 까닭을 보인다
+async function attachThreads(slug: string, pulls: GhPull[], errors: string[]) {
+  const need = pulls.filter((p) => !p.isDraft && !p.threads && p.mergeStateStatus === "BLOCKED");
+  for (let i = 0; i < need.length; i += 4) {
+    await Promise.all(
+      need.slice(i, i + 4).map(async (p) => {
+        try {
+          p.threads = await threadsOf(slug, p.number);
+        } catch (e) {
+          const err = e as Error & { stderr?: string };
+          errors.push(`${slug}#${p.number} 리뷰 스레드: ${(err.stderr?.trim() || err.message).split("\n")[0]}`);
         }
       }),
     );
@@ -136,6 +176,7 @@ async function fetchAll(repos: string[]) {
         }
         const pulls = await listPulls(slug);
         await attachCodex(slug, pulls, errors);
+        await attachThreads(slug, pulls, errors);
         state.byRepo.set(repo, pulls);
         ok++;
         try {
