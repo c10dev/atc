@@ -120,6 +120,20 @@ export function isBlocked(t: Pick<Ticket, "blockedBy"> | undefined, byKey: Map<s
 }
 
 // 지난 WAYPOINT(Linear done) 말고 sortOrder로 첫 것이 active, 나머지 planned
+// DISPATCH 점수(docs/routes.md 7장 8단계): FLIGHT key → 그 FLIGHT가 붙은 지금 구간 WAYPOINT("ROUTE · WAYPOINT"). 순수.
+// ROUTE마다 지나지 않은 첫 WAYPOINT만. 이슈 목록이 잘린 마일스톤도 읽은 이슈는 넣는다
+export function activeWaypointsOf(milestones: Pick<Milestone, "project" | "name" | "status" | "sortOrder" | "issues">[] | null): Map<string, string> {
+  const out = new Map<string, string>();
+  const byProject = new Map<string, typeof milestones & object>();
+  for (const m of milestones ?? []) byProject.set(m.project, [...(byProject.get(m.project) ?? []), m]);
+  for (const [project, ms] of byProject) {
+    const i = waypointStates(ms).indexOf("active");
+    if (i < 0) continue;
+    for (const iss of ms[i].issues) out.set(iss.key, `${project} · ${ms[i].name}`);
+  }
+  return out;
+}
+
 export function waypointStates(ms: Pick<Milestone, "status" | "sortOrder">[]): WaypointState[] {
   const order = ms.map((m, i) => ({ m, i })).sort((a, b) => a.m.sortOrder - b.m.sortOrder);
   const out: WaypointState[] = ms.map(() => "planned");

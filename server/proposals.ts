@@ -46,7 +46,8 @@ import type { Snapshot, Ticket } from "./model.ts";
 import { composeReason, parseReasonCodes, REASON_CODES, ReasonCodeError, reasonCountsOf } from "./reasons.ts";
 import { readiness2bOf, readinessFiles } from "./readiness.ts";
 import { record } from "./recorder.ts";
-import { loadRoutes } from "./routes.ts";
+import { activeWaypointsOf, loadRoutes } from "./routes.ts";
+import { readLinearProjects } from "./sources/linear-projects.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 
 // DISPATCH 제안 기록. 추가만 하는 JSONL을 접어 현재 상태를 만든다(clearances.ts와 같은 방식).
@@ -753,7 +754,7 @@ export function runDispatch(s: Snapshot, now = Date.now()): Plan {
   const logbook = loadLogbook();
   const landed = landedOf(logbook);
   // 켜진 GROUND STOP이 걸린 AIRPORT의 ASSIGN은 계획에서 뺀다(docs/atfm.md 6장). 열린 제안은 그 사유로 SUPERSEDED
-  const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), loadFleet(), landed, logbook), s.atfm?.groundStops ?? []);
+  const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), loadFleet(), landed, logbook, activeWaypointsOf(readLinearProjects().milestones)), s.atfm?.groundStops ?? []);
   const seq = ops.filter((o) => o.op === "create").length;
   append(syncOps(existing, plan, s, cfg, now, seq, landed));
   return plan;
@@ -788,7 +789,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const now = Date.now();
     const proposals = allProposals();
     const logbook = loadLogbook();
-    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), loadFleet(), landedOf(logbook), logbook), s.atfm?.groundStops ?? []);
+    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), loadFleet(), landedOf(logbook), logbook, activeWaypointsOf(readLinearProjects().milestones)), s.atfm?.groundStops ?? []);
     const open = proposals.filter((p) => p.status === "proposed" && !isHeld(p));
     const held = proposals.filter((p) => p.status === "proposed" && isHeld(p));
     const inFlight = proposals.filter(isInFlight).sort((a, b) => a.statusAt.localeCompare(b.statusAt));

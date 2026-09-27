@@ -4,7 +4,7 @@
 
 The ROUTE MAP shows each ROUTE (a Linear project) as a line through its WAYPOINTs (Linear project milestones): which WAYPOINTs are passed, where the ROUTE is now, which FLIGHTs are flying that leg, and when the next WAYPOINTs are likely to be reached. It lives on the NETWORK tab, above the ROUTES table.
 
-> Status (2026-09-27): steps 1–4 of "Implementation order" are built (ATC-2): read-only WAYPOINT data, `GET /api/routes`, the ROUTE MAP on NETWORK and the ETA. Step 10 is built too (ATC-8): OCC drafts NEW issues for exit criteria no issue covers. Steps 5 (every team's milestones), 6 (atc gates on exit criteria) and 7 (ETAs and slip warnings for OCC, ATC-24) are built; steps 8–9 are not.
+> Status (2026-09-27): steps 1–4 of "Implementation order" are built (ATC-2): read-only WAYPOINT data, `GET /api/routes`, the ROUTE MAP on NETWORK and the ETA. Step 10 is built too (ATC-8): OCC drafts NEW issues for exit criteria no issue covers. Steps 5 (every team's milestones), 6 (atc gates on exit criteria), 7 (ETAs and slip warnings for OCC, ATC-24) and 8 (DISPATCH WAYPOINT score) are built; step 9 is not.
 
 Related: [fleet.md](fleet.md) section 7.3 (NETWORK), `server/network.ts` (ROUTES table), `server/sources/linear-projects.ts` (Linear projects and milestones), `server/routes.ts` (this design), `server/following.ts` (which AIRCRAFT flies a FLIGHT).
 
@@ -109,7 +109,7 @@ One row per ROUTE: the ROUTE name, its progress, then a horizontal SVG line. A R
 5. Read projects and milestones for every team in `LINEAR_TEAM_KEYS` (ATC-1), so the `ATC` ROUTE shows next to the vocado ones. Built: `linear-projects.ts` runs both queries per team in turn and merges shared projects (by name) and milestones (by id), recording the team keys in `teams`. ROUTE MAP, NETWORK, `waypointEtas` and `slips` cover every team; `waypointGaps` and NEW's `--milestone` only take milestones of the candidate teams (`dispatch.json` `candidateTeams`), because NEW creates its issue in the main team.
 6. Tie atc gates to WAYPOINTs: the verdict gate, the 2b readiness checklist and the ATFM switch-on conditions shown as exit criteria of M15–M20. Built: `server/waypoint-gates.ts` matches each exit criterion against rules (regular expressions, English and Korean) and turns the matching gate into a check `{id, state, value, target}` (`pass`, `fail`, `insufficient`, `check`). `GET /api/routes` adds `checks` to every WAYPOINT, aligned with `criteria` (`null` where no rule matches). Rules: DISPATCH and SCHEDULE shadow gates, the 2b readiness checklist (`fail` if any item is not ready, `check` if some need a human look), DISPATCH and SCHEDULE mode, "2b has run for two weeks" (ATFM rows `2b` and `gate3`), "shadow precision … CROSSCHECK" (rows `precision` and `crosscheck`), "RECALL is in use" (`check` once a RECALL was read back, since "steps 6–10 are built" is for a person to confirm). The facts are gathered only when a criterion matches and cached for 60 s. The ROUTE MAP shows the check under the criterion in the WAYPOINT detail. atc never marks a milestone done; Linear still decides what is passed.
 7. OCC briefing: ETAs and slip warnings (built, ATC-24). `schedule brief` adds `waypointEtas` and `slips` (`server/waypoint-slips.ts`); OCC reports each new slip to the SUPERVISOR once and acks it, and the SCHEDULE tab lists them under LATE WAYPOINTS (docs/occ.md 5.7).
-8. DISPATCH: FLIGHTs on the active WAYPOINT score higher. Not built yet.
+8. DISPATCH: FLIGHTs on the active WAYPOINT score higher. Built: the `waypoint` factor (1 when the FLIGHT is an issue of its ROUTE's active WAYPOINT, weight `weights.waypoint`, default 1 like `route`), from `activeWaypointsOf` over the cached milestones; its detail is "ROUTE · WAYPOINT". The FLIGHT's own milestone decides, not the project, so FLIGHTs of later WAYPOINTs get no bonus.
 9. SCHEDULE: a "set milestone" draft for FLIGHTs of a ROUTE with no WAYPOINT. Not built yet.
 10. SCHEDULE: WAYPOINT gaps (built, ATC-8). `schedule brief` adds `waypointGaps` (`server/waypoint-gaps.ts`): per ROUTE, the active WAYPOINT and the next one with their exit criteria (or the description when there is no numbered list) and their issues. The server doesn't match criteria to issues; OCC judges and drafts `NEW --gap --milestone <WAYPOINT>` for uncovered criteria, at most 2 per pass (docs/occ.md 5.6). A `NEW` can carry a milestone of its project, and the S2 released call carries its id.
 
@@ -125,7 +125,7 @@ One row per ROUTE: the ROUTE name, its progress, then a horizontal SVG line. A R
 
 ## 9. Not built yet
 
-- DISPATCH WAYPOINT score (step 8), SCHEDULE "set milestone" draft (step 9).
+- SCHEDULE "set milestone" draft (step 9).
 - An OCC notice for ROUTEs without WAYPOINTs (the API already keeps them with `waypoints: []`).
 
 ## Decisions (2026-09-27, TEAM_J with structure)

@@ -129,6 +129,7 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 | 팀 적합도 | 이 AIRCRAFT가 과거에 같은 프로젝트·related FLIGHT를 날았던 횟수(FLIGHT RECORDER·청구 이력) | ×1 |
 | 충돌 위험 | 지금 AIRBORNE인 FLIGHT와 related로 묶인 수 | ×−2 |
 | ROUTE | FLIGHT의 프로젝트가 그 AIRCRAFT의 routes에 있음([fleet.ko.md](fleet.ko.md) 5장) | ×1 |
+| 지금 WAYPOINT | FLIGHT가 그 ROUTE의 지금 구간 WAYPOINT(지나지 않은 첫 Linear 마일스톤) 이슈임([routes.ko.md](routes.ko.md) 8단계). 설명에 ROUTE와 WAYPOINT가 보인다. `dispatch.json`의 `weights.waypoint` | ×1 |
 
 각 제안에 요소별 점수를 그대로 보여 준다("왜 이 팀에 이 편인가"). 가중치는 설정 파일로 SUPERVISOR가 바꾼다.
 

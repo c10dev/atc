@@ -34,7 +34,9 @@ import { parentKeysOf, type Snapshot } from "./model.ts";
 import { allProposals, gate3Of, gateOf as dispatchGateOf, humanOf as proposalHuman, isInFlight, reservedOf } from "./proposals.ts";
 import { readRecords, record, type RecordLine } from "./recorder.ts";
 import { changesOf, gateOf as scheduleGateOf, humanOf as scheduleHuman, loadScheduleMode, loadScheduleOps } from "./schedule.ts";
+import { activeWaypointsOf } from "./routes.ts";
 import { readGithub } from "./sources/github.ts";
+import { readLinearProjects } from "./sources/linear-projects.ts";
 
 // ATFM 실행부: 스냅샷마다 출발 중지의 시작·끝을, 1분마다 데이터(CI 소요 시간, BEHIND 전이, 되돌린 라벨)와
 // 그림자 판정(자동 배정 대상, S3 대상)을 FLIGHT RECORDER의 atfm 줄로 남기고, /api/atfm으로 보여 준다.
@@ -182,7 +184,7 @@ export function eligibilityView(s: Snapshot, now = Date.now()) {
   const proposals = allProposals();
   const fleet = loadFleet();
   const logbook = loadLogbook();
-  const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals), fleet, landedOf(logbook), logbook);
+  const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals), fleet, landedOf(logbook), logbook, activeWaypointsOf(readLinearProjects().milestones));
   const aircraftViews = fleetView(s, fleet, cfg.teamPattern, logbook, now);
   const byKey = new Map(s.tickets.map((t) => [t.key, t]));
   const parentKeys = parentKeysOf(s.tickets);

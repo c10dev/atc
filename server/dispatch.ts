@@ -26,7 +26,7 @@ export interface DispatchConfig {
     openProposals: number; // 결정 안 된 ASSIGN 제안 최대 수
     openReleases: number;
   };
-  weights: { priority: number; wait: number; unblock: number; affinity: number; conflict: number; route: number };
+  weights: { priority: number; wait: number; unblock: number; affinity: number; conflict: number; route: number; waypoint: number };
   releaseDays: number; // STAND 없이 이만큼 ENROUTE면 RELEASE 제안
   releaseStates: string[]; // RELEASE 대상 상태 이름
   excludeLabels: string[];
@@ -44,7 +44,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   teamAirports: { ATC: "ATCC" },
   candidateTeams: [],
   slots: { perTeam: 1, airborne: { VCDO: 4 }, defaultAirborne: 2, openProposals: 5, openReleases: 5 },
-  weights: { priority: 3, wait: 0.5, unblock: 2, affinity: 1, conflict: -2, route: 1 },
+  weights: { priority: 3, wait: 0.5, unblock: 2, affinity: 1, conflict: -2, route: 1, waypoint: 1 },
   releaseDays: 3,
   releaseStates: ["In Progress"],
   excludeLabels: ["symphony-pilot"],
@@ -97,7 +97,7 @@ export function airportOfTicket(t: Pick<Ticket, "key" | "project">, cfg: Pick<Di
 
 export interface Factor {
   // standFree·independence는 0점짜리 표시(점수를 바꾸지 않고 왜 이 짝인지 보여 준다)
-  id: "priority" | "wait" | "unblock" | "affinity" | "conflict" | "route" | "standFree" | "independence";
+  id: "priority" | "wait" | "unblock" | "affinity" | "conflict" | "route" | "waypoint" | "standFree" | "independence";
   label: string;
   value: number;
   weight: number;
@@ -352,6 +352,7 @@ export function planDispatch(
   fleet: FleetFile = DEFAULT_FLEET,
   landed: Landed = new Map(),
   logbook: BuilderSources["logbook"] = [], // CHECK 독립성: 검토 대상을 만든 AIRCRAFT
+  activeWaypoint: Map<string, string> = new Map(), // FLIGHT key → 지금 구간 WAYPOINT(routes.ts activeWaypointsOf, 8단계)
 ): Plan {
   const team = new RegExp(cfg.teamPattern, "i");
   const byKey = new Map(s.tickets.map((t) => [t.key, t]));
@@ -561,6 +562,8 @@ export function planDispatch(
       f("affinity", "팀 적합도", affinity.length, w.affinity, affinity.join(", ") || "이력 없음"),
       f("conflict", "충돌 위험", conflicts.length, w.conflict, conflicts.length ? `AIRBORNE과 연결: ${conflicts.join(", ")}` : "없음"),
       f("route", "ROUTE", onRoute ? 1 : 0, w.route ?? 1, onRoute ? `${t.project} 담당` : "담당 아님"),
+      // 지금 구간 WAYPOINT의 FLIGHT: ROUTE를 앞으로 미는 일(docs/routes.md 8단계)
+      f("waypoint", "지금 WAYPOINT", activeWaypoint.has(t.key) ? 1 : 0, w.waypoint ?? 1, activeWaypoint.get(t.key) ?? "아님"),
     ];
     return { score: round1(factors.reduce((a, x) => a + x.points, 0)), factors };
   };
