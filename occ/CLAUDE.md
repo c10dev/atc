@@ -81,7 +81,8 @@ HOLD는 24시간 만료가 없고, 다음 경우에 atc가 SUPERSEDED로 푼다(
 - 선행 FLIGHT가 모두 끝남
 - 선행 FLIGHT 없는 HOLD는 HOLD 뒤에 FLIGHT가 수정됨(다시 읽고 필요하면 다시 건다)
 - FLIGHT 자체가 Todo가 아니게 됨
-- SUPERVISOR가 DISPATCH 탭에서 "HOLD 풀기"
+
+HELD 제안은 SUPERVISOR가 판정하지 않고 "대기열로"(같은 제안을 판정 대기로) 또는 "FLIGHT 보류 확정"(FLIGHT를 24시간 보류하고 닫음)을 누른다. CROSSCHECK가 FLIGHT 칩으로 disagree한 제안은 서버가 PREFLIGHT HOLD로 먼저 HELD에 보내 둔다(메모만 덧붙여도 된다). **SUPERVISOR가 대기열로 돌린 제안에는 다시 HOLD를 걸지 않는다**(서버도 409로 막는다). 메모로만 남긴다.
 
 ### BRIEFING (카드 맨 위 세 줄)
 

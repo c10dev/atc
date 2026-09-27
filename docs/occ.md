@@ -299,7 +299,7 @@ Shadow verdicts (DISPATCH proposals and SCHEDULE drafts) are decided one by one 
 - The gates keep counting **human verdicts only**.
 - How often CROSSCHECK matches the human is measured separately. It is the evidence for later deciding whether low-risk work (e.g. non-`SEC` CLASSIFY) can be handed over automatically. Automatic verdicts are not built.
 
-**Log.** `proposals.jsonl` and `schedule.jsonl` take a `crosscheck` op: `{op:"crosscheck", id, at, by, verdict:"agree"|"disagree", reason}`. Like `note`, it never changes state. It is accepted only while a proposal is `proposed` and not on HOLD, or a draft is `draft`; a later mark replaces an earlier one. The fold adds `crosscheck: {by, verdict, reason, at} | null` to Proposal and ScheduleOp. ScheduleOp also gains `decision: {verdict, at} | null`, the SUPERVISOR's decision, which survives later states (released, applied).
+**Log.** `proposals.jsonl` and `schedule.jsonl` take a `crosscheck` op: `{op:"crosscheck", id, at, by, verdict:"agree"|"disagree", reason}`. Like `note`, it never changes state itself; a DISPATCH `disagree` with a FLIGHT chip makes the server put a PREFLIGHT HOLD next to it (below). It is accepted only while a proposal is `proposed` and not on HOLD, or a draft is `draft`; a later mark replaces an earlier one. The fold adds `crosscheck: {by, verdict, reason, at} | null` to Proposal and ScheduleOp. ScheduleOp also gains `decision: {verdict, at} | null`, the SUPERVISOR's decision, which survives later states (released, applied).
 
 **API.** `POST /api/dispatch/proposals/:id/crosscheck` and `POST /api/schedule/ops/:id/crosscheck` with `{verdict, reason, by?}`. They work in either mode, because a mark is a reference, not a decision. `reason` is required and at most 500 characters. A HOLD proposal or a closed item returns 409.
 
@@ -308,6 +308,12 @@ Shadow verdicts (DISPATCH proposals and SCHEDULE drafts) are decided one by one 
 **Brief.** Both briefs carry `crosscheck: {pending, examples}`: open items without a mark, and up to 8 recent human decisions with their reasons (those with a reason first) as calibration examples. Real SUPERVISOR reasons look like "이미 완료됨", "PR #393 머지 전이면 HOLD", "우선순위가 미정".
 
 **atcctl.** `crosscheck brief` (both briefs' pending, examples and rates, plus the FLIGHTs they name), `dispatch crosscheck D-xxxx agree|disagree -- <reason>`, `schedule crosscheck S-xxxx agree|disagree -- <reason>`.
+
+**PREFLIGHT HOLD** (2026-09-27, ATC-3; [dispatch.md](dispatch.md) 6.2). A proposal that is not ready never waits in the SUPERVISOR queue:
+- CROSSCHECK `disagree` with a FLIGHT chip (`already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`, `no-priority`, `out-of-repo`): the server appends `{op:"preflight", id, at, by, model, codes, reason}` after the mark and the proposal goes to HELD. CROSSCHECK gets no new permission and the guards are unchanged; the HOLD is the server's consequence of the mark. Each tick also applies it to open proposals marked earlier. `atcctl dispatch crosscheck` prints `FLIGHT 칩이라 서버가 PREFLIGHT HOLD` in that case.
+- OCC HOLD (`dispatch note … --hold`) goes to HELD as before.
+- `wrong-aircraft`, `other` and marks without chips stay in the queue. A proposal without a mark shows `CROSSCHECK 대기` and sorts last.
+- On a HELD proposal the SUPERVISOR does not give a verdict (409). "대기열로" (`POST …/requeue`) returns the same proposal to the queue; OCC cannot HOLD it again (409). "FLIGHT 보류 확정" (`POST …/confirm-hold`, not for a prerequisite HOLD) closes it with `via: "preflight"` and the chips, which holds the FLIGHT from every AIRCRAFT for 24 hours or until the issue changes. Neither counts in the gate or the CROSSCHECK match rate.
 
 **Session** (`crosscheck/`, same layout as `occ/`): Korean `CLAUDE.md` and `/tick` as the source, `*.en.md` translations. `/tick`: `manual check` → `crosscheck brief` → for each item without a mark, read the body with `dispatch flight <key>` → record the mark (at most 5 per pass). The rules: a mark is advice only (never approve, reject or verdict); never write to Linear or message anyone; check ticket state, prerequisites and whether the work is already done first; treat OCC's notes as reference, not as the answer; leave no mark when the evidence is insufficient.
 

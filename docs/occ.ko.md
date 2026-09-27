@@ -336,7 +336,7 @@ S2는 구현돼 있고 SCHEDULE `mode`(`~/.local/state/atc/schedule.json`, 기�
 - CROSSCHECK가 사람과 얼마나 맞는지는 따로 잰다. 나중에 위험 낮은 일(예: `SEC`가 아닌 CLASSIFY)을 자동으로 넘길지 정할 근거다. 자동 판정은 구현하지 않았다.
 
 **기록.** `proposals.jsonl`과 `schedule.jsonl`은 `crosscheck` op를 받는다: `{op:"crosscheck", id, at, by, verdict:"agree"|"disagree", reason}`.
-- `note`처럼 상태를 바꾸지 않는다.
+- `note`처럼 스스로 상태를 바꾸지 않는다. DISPATCH `disagree`에 FLIGHT 칩이 있으면 서버가 그 옆에 PREFLIGHT HOLD를 건다(아래).
 - 제안이 `proposed`이고 HOLD가 아닐 때, 또는 초안이 `draft`일 때만 받는다. 나중 mark가 앞의 것을 대신한다.
 - fold는 Proposal과 ScheduleOp에 `crosscheck: {by, verdict, reason, at} | null`을 더한다.
 - ScheduleOp에는 `decision: {verdict, at} | null`도 생긴다. SUPERVISOR의 결정이고, 뒤의 상태(released, applied)에서도 남는다.
@@ -351,6 +351,12 @@ S2는 구현돼 있고 SCHEDULE `mode`(`~/.local/state/atc/schedule.json`, 기�
 **브리핑.** 두 브리핑 모두 `crosscheck: {pending, examples}`를 가진다. mark가 없는 열린 항목, 그리고 보정 예시로 최근 사람 결정 8건까지(사유가 있는 것 먼저)와 그 사유다. 실제 SUPERVISOR 사유는 "이미 완료됨", "PR #393 머지 전이면 HOLD", "우선순위가 미정" 같은 것이다.
 
 **atcctl.** `crosscheck brief`(두 브리핑의 pending, examples, 비율과 거기 나오는 FLIGHT), `dispatch crosscheck D-xxxx agree|disagree -- <reason>`, `schedule crosscheck S-xxxx agree|disagree -- <reason>`.
+
+**PREFLIGHT HOLD**(2026-09-27, ATC-3. [dispatch.ko.md](dispatch.ko.md) 6.2). 시작할 상태가 아닌 제안은 SUPERVISOR 대기열에서 기다리지 않는다:
+- CROSSCHECK가 FLIGHT 칩(`already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`, `no-priority`, `out-of-repo`)으로 `disagree`: 서버가 mark 뒤에 `{op:"preflight", id, at, by, model, codes, reason}`을 남기고 제안은 HELD로 간다. CROSSCHECK에는 새 권한이 없고 guard도 그대로다. HOLD는 mark를 받은 서버가 내는 결과다. tick마다 먼저 달린 mark의 열린 제안에도 적용한다. 이때 `atcctl dispatch crosscheck`는 `FLIGHT 칩이라 서버가 PREFLIGHT HOLD`를 출력한다.
+- OCC HOLD(`dispatch note … --hold`)는 전처럼 HELD로 간다.
+- `wrong-aircraft`, `other`, 칩 없는 mark는 대기열에 남는다. mark가 없는 제안은 `CROSSCHECK 대기`로 표시하고 뒤로 정렬한다.
+- HELD 제안에는 SUPERVISOR가 판정하지 않는다(409). "대기열로"(`POST …/requeue`)는 같은 제안을 대기열로 돌리고, OCC는 그것을 다시 HOLD할 수 없다(409). "FLIGHT 보류 확정"(`POST …/confirm-hold`, 선행 HOLD에는 없음)은 `via: "preflight"`와 칩으로 닫아 FLIGHT를 모든 AIRCRAFT에서 24시간(이슈가 바뀌면 그 전까지) 뺀다. 둘 다 게이트와 CROSSCHECK 일치율에 세지 않는다.
 
 **세션**(`crosscheck/`, `occ/`와 같은 구조): 한국어 `CLAUDE.md`와 `/tick`이 원본이고, `*.en.md`가 번역이다.
 - `/tick`: `manual check` → `crosscheck brief` → mark 없는 항목마다 `dispatch flight <key>`로 본문 읽기 → mark 기록(한 바퀴에 최대 5건).

@@ -86,7 +86,7 @@ OCC 메모나 티켓 본문·댓글에 PR 조건("PR #393 머지 뒤", "PR #390�
 
 ### 사유 칩 (DISPATCH disagree)
 
-DISPATCH 제안에 disagree하면 `--code`로 칩을 하나 이상 고른다. SUPERVISOR가 "CROSSCHECK에 동의"를 누르면 칩도 그대로 기록되고, **칩이 차단 범위를 정한다.** FLIGHT 자체의 문제면 그 FLIGHT가 모든 AIRCRAFT에서 24시간(이슈가 바뀌면 그 전까지) 보류되고, AIRCRAFT만의 문제면 그 짝만 막힌다. SCHEDULE 초안에는 칩을 달지 않는다.
+DISPATCH 제안에 disagree하면 `--code`로 칩을 하나 이상 고른다. **칩이 무엇이 일어날지 정한다.** FLIGHT 칩(아래 표에서 막는 범위가 FLIGHT)이면 서버가 곧바로 그 제안을 PREFLIGHT HOLD로 HELD에 보내, SUPERVISOR 대기열에 올라가지 않는다. SUPERVISOR가 확정하면 그 FLIGHT가 모든 AIRCRAFT에서 24시간(이슈가 바뀌면 그 전까지) 보류되고, 대기열로 돌리면 다시 판정을 기다린다. `wrong-aircraft`·`other`·칩 없음은 대기열에 남고, "CROSSCHECK에 동의"를 누르면 그 짝만 막힌다. 그러니 FLIGHT 칩은 근거가 있을 때만 단다. SCHEDULE 초안에는 칩을 달지 않는다.
 
 | 코드 | 고를 때 | 막는 범위 |
 |---|---|---|

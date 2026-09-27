@@ -140,7 +140,7 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 
 - DB·마이그레이션·보안·권리 작업(vocado의 `Codex Engineering Task` 대상)이면 `CAUTION` 표시를 붙이고 사유를 적는다.
 - 사람 결정이 먼저 필요한 티켓(예: "사용자 확인 후")이면 값 없는 `--hold`로 선행 FLIGHT 없는 HOLD를 건다. 사유는 메모에 적고, HOLD 뒤에 FLIGHT가 수정되면 atc가 풀어 다시 검토하게 한다.
-- 선행 작업이 본문에만 적혀 있고 `blocks` 관계로는 없으면 `dispatch note <ID> --hold <FLIGHT> -- <메모>`로 HOLD를 건다. 지정하는 FLIGHT는 **막는(선행) FLIGHT**이고, 제안은 ASSIGN 목록이 아니라 HELD 목록으로 간다. 제안 자신의 FLIGHT는 예약된 채로 남아 planner가 다시 올리지 않는다(AIRCRAFT는 다른 FLIGHT가 쓸 수 있게 놓아 둔다). 보낼 수는 없고, FLIGHT PLAN에 `HOLD — 선행 FLIGHT …` 줄이 들어간다. 지정한 FLIGHT가 모두 끝난 상태가 되면 atc가 그 제안을 SUPERSEDED로 풀어 다시 후보가 되게 한다. HOLD에는 24시간 만료가 없다. 대신 FLIGHT 자체가 Todo가 아니게 되거나 SUPERVISOR가 "HOLD 풀기"를 누르면 닫힌다.
+- 선행 작업이 본문에만 적혀 있고 `blocks` 관계로는 없으면 `dispatch note <ID> --hold <FLIGHT> -- <메모>`로 HOLD를 건다. 지정하는 FLIGHT는 **막는(선행) FLIGHT**이고, 제안은 ASSIGN 목록이 아니라 HELD 목록으로 간다. 제안 자신의 FLIGHT는 예약된 채로 남아 planner가 다시 올리지 않는다(AIRCRAFT는 다른 FLIGHT가 쓸 수 있게 놓아 둔다). 보낼 수는 없고, FLIGHT PLAN에 `HOLD — 선행 FLIGHT …` 줄이 들어간다. 지정한 FLIGHT가 모두 끝난 상태가 되면 atc가 그 제안을 SUPERSEDED로 풀어 다시 후보가 되게 한다. HOLD에는 24시간 만료가 없다. 대신 FLIGHT 자체가 Todo가 아니게 되면 닫힌다. SUPERVISOR는 HELD 제안을 판정하지 않는다: "대기열로"는 대기열로 돌리고, "FLIGHT 보류 확정"은 FLIGHT 보류를 걸어 닫는다(6.2).
 - 판단 근거를 한두 줄로 제안에 남긴다.
 - 열린 제안과 HELD 제안마다 **BRIEFING**(ATC-4)을 쓴다. 쉬운 한국어 세 줄이고, `dispatch briefing <ID> --what … --why … --risk …`로 쓴다. 추가만 하는 `brief` op로 저장하고, 다시 쓰면 덮어쓴다. 아래 "제안 카드"를 본다.
 
@@ -181,7 +181,7 @@ atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER
 CAPTAIN(STAND 없는 FLIGHT만): 마쳤다고 보고 → OCC: atcctl dispatch arrived D-0003 -- '<결과 링크나 한 줄>' → atc: ARRIVED
 ```
 
-제안 상태: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)`(2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED`(2b), STAND 없는 FLIGHT는 `… → ACCEPTED → DEPARTED → ARRIVED`, 곁가지 `REJECTED`, `DECLINED`(CAPTAIN 사유), `SUPERSEDED`(사람이 직접 배정했거나 상황이 바뀜), `EXPIRED`(24시간). `HOLD`가 걸린 `PROPOSED` ASSIGN은 주 흐름에서 빠져, 풀릴 때까지 HELD 목록에서 기다린다(24시간 만료 없음).
+제안 상태: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)`(2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED`(2b), STAND 없는 FLIGHT는 `… → ACCEPTED → DEPARTED → ARRIVED`, 곁가지 `REJECTED`, `DECLINED`(CAPTAIN 사유), `SUPERSEDED`(사람이 직접 배정했거나 상황이 바뀜), `EXPIRED`(24시간). `HOLD`가 걸린 `PROPOSED` ASSIGN은 주 흐름에서 빠져, 풀릴 때까지 HELD 목록에서 기다린다(24시간 만료 없음). SUPERVISOR는 이것을 판정하지 않는다(6.2).
 
 **STAND 없는 FLIGHT**(2026-09-27 구현, 규칙은 [fleet.ko.md](fleet.ko.md) 5.1.1). STAND가 필요한 FLIGHT는 PR이 머지돼 LOGBOOK에 오르면 끝이라 atc가 더 따라가지 않는다. SURVEY·CHECK는 STAND도, 대개 PR도 없어서 이렇게 한다.
 
@@ -205,6 +205,19 @@ CAPTAIN(STAND 없는 FLIGHT만): 마쳤다고 보고 → OCC: atcctl dispatch ar
 거절에는 **사유 칩**을 쓴다. SUPERVISOR 화면에서 서버의 사유 목록(`server/reasons.ts`, 브리핑의 `reasonCodes`) 중 하나 이상을 고르고 메모를 선택으로 덧붙이며, `"<칩> · <칩> — <메모>"` 형태로 `reason`에, code는 `reasonCodes`에 저장된다. 점검은 칩별로 센다(`reasonCounts`). 가장 중요한 칩은 상위 이슈(5.1.1)로, 이건 planner가 스스로도 걸러 낸다.
 
 브리핑의 `reasonStats`는 칩을 planner의 할 일 목록으로 바꾼다. 칩마다 건수, 최근 예시 FLIGHT 3건까지, 그리고 planner가 그 사유를 이미 스스로 거르는지(`auto`, `partial`, `manual`과 방법)를 준다. 지금은: 이미 완료됨 → LOGBOOK·열린 PR 규칙과 Linear Done 상태(auto), 상위 이슈 → 5.1.1(auto), 우선순위 미정 → 우선순위 없음 규칙(auto), 선행 FLIGHT·PR 대기 → Linear `blockedBy`는 HOLD, 다른 PR은 OCC HOLD로만(partial), 저장소 밖 작업 → 프로젝트 매핑만(partial), AIRCRAFT 부적합 → TYPE RATING·CREW·`tail:` 규칙(partial), 사람 결정 필요 → "사용자가 정한다"류 문구는 OCC HOLD(partial), 기타 → manual. 칩마다 차단 범위(`scope`: `flight`나 `pair`, 위 FLIGHT 보류)도 붙는다. DISPATCH 점검 패널에 "거절 사유 → 배정 규칙"으로 보인다.
+
+#### 6.2 PREFLIGHT: 시작할 상태가 아닌 FLIGHT 잡아 두기
+
+2026-09-27에 만들었다(ATC-3). 처음 DISPATCH 판정 9건 중 6건이 거절이었고, 6건 모두 티켓이 아직 시작할 상태가 아니어서였다: 상위 이슈(VOC-34), 이미 완료됨, 사람의 결정이나 손이 필요함(VOC-177, VOC-125 …), 우선순위·담당 없음. AIRCRAFT 때문인 것은 없었다. 게이트(9/20, 33%)는 대부분 티켓 준비 상태를 재고 있었고, SUPERVISOR는 CROSSCHECK가 같은 사유로 이미 짚은 것을 잡으려고 티켓을 모두 읽어야 했다.
+
+- **SUPERVISOR가 보기 전에 HELD로 가는 것.** (a) CROSSCHECK가 FLIGHT 칩(`already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`, `no-priority`, `out-of-repo`. 6.1의 FLIGHT 보류와 같은 목록)으로 `disagree`를 달거나, (b) OCC가 HOLD를 걸면(5.4) 제안은 대기열에서 빠져 HELD로 간다. (a)는 서버가 `crosscheck` op 바로 뒤에 `preflight` op(`{op:"preflight", id, at, by, model, codes, reason}`)를 남긴다. CROSSCHECK에는 새 권한이 없다: HOLD는 기존 mark를 받은 서버가 내는 결과다. 서버 tick마다 열린 제안도 훑으므로 이 변경 전에 달린 mark에도 적용된다.
+- **대기열에 남는 것.** `wrong-aircraft`, `other`, 칩 없는 mark, `agree`. 팀 선택은 게이트가 재야 할 것이다.
+- **HELD 카드**에는 누가 걸었는지(`PREFLIGHT`: CROSSCHECK와 모델 계열, 칩. OCC면 `HOLD`와 메모), CROSSCHECK mark(있으면), 한 번 클릭 동작 두 개가 있다. 판정 버튼은 없다: HELD 제안에 `verdict`·`approve`·`reject`는 409다.
+  - **대기열로(requeue)**: `{op:"requeue"}`가 HOLD를 풀고 같은 제안을 SUPERVISOR 대기열로 돌린다. 24시간(만료와 짝 규칙)은 돌린 때부터 센다. 다시 HOLD되지 않는다: tick은 건너뛰고, OCC의 `hold`는 409다.
+  - **FLIGHT 보류 확정(confirm-hold)**: 제안을 `via: "preflight"`와 칩으로 disagreed(그림자)나 rejected(승인 운용)로 닫는다. 그러면 6.1의 FLIGHT 보류(모든 AIRCRAFT에서 24시간, 이슈가 바뀌면 그 전에 풀림)가 걸린다. 칩은 PREFLIGHT의 칩, 없으면 HOLD 전에 달린 mark의 FLIGHT 칩, 그것도 없으면 선행 없는 OCC HOLD라 `needs-human`(정의상 사람을 기다리는 HOLD)이다. 이유 문장에서 추정하지 않는다. 선행 FLIGHT가 있는 HOLD는 확정하지 않는다. 선행이 끝나면 atc가 푼다.
+- **HOLD는 지금처럼 저절로도 풀린다**: FLIGHT가 Todo가 아니게 됨, 끝났거나 열린 PR이 있음, (선행 없는 HOLD) HOLD 뒤에 이슈가 바뀜.
+- **CROSSCHECK 대기.** mark가 없는 열린 제안은 `CROSSCHECK 대기`로 표시하고 mark가 있는 것 뒤로 정렬한다. 거름이 돌기 전에 SUPERVISOR가 판정하지 않게.
+- **게이트.** HELD 제안은 게이트 밖이다(결정 표). 확정(`via: "preflight"`)은 사람 판정이 아니어서 판정 건수, 합의율, CROSSCHECK 일치율, `reasonCounts`에서 빠지지만, `reasonStats`는 planner의 할 일로 그 칩을 센다. `gate.preflight`는 `held`(OCC·PREFLIGHT로 한 번이라도 HOLD된 ASSIGN, 뒤에 대기열로 돌렸거나 확정한 것 포함), `holding`(지금 HOLD 중), `passed`(HOLD 없이 SUPERVISOR 판정까지 감), `readyRate = passed / (passed + held)`를 준다. 기준 없는 공급 품질 지표다. 점검 패널에 `PREFLIGHT HELD n건 · 준비율`로 보인다.
 
 ## 7. atc에 더할 것
 
@@ -335,5 +348,6 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 | 프로젝트 → AIRPORT | Beta Readiness · Song Experience → **VCDO**. Vocado Pre-seed IR & Pitch Deck · Vocado Visual System (SEED)는 **배정 제외** |
 | `RELEASE` 기준 | STAND 없이 ENROUTE인 채로 **3일** |
 | 슬롯 | 제안값으로 시작: TEAM당 1, VCDO 동시 AIRBORNE 4, 그 밖 2, 대기 중 제안 5 |
+| HELD 제안과 게이트 (2026-09-27, ATC-3) | **게이트 밖.** PREFLIGHT나 OCC가 잡아 둔 제안은 SUPERVISOR 판정이 아니고, 확정한 HOLD는 `via: "preflight"`로 남아 세지 않는다. 게이트는 준비된 티켓에서의 팀 선택을 재고, 티켓 준비 상태는 준비율(6.2)로 따로 보인다 |
 
 남은 결정: 2b에 들어갈 때 vocado `CLAUDE.md`의 READBACK 규칙을 FLIGHT PLAN(`[DISPATCH D-xxxx]`)까지 넓힐지. 2a에는 필요 없다.

@@ -23,6 +23,12 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - **대신 보이는 것**: BRIEFING이 없으면 제목과 본문 첫 문장에 "BRIEFING 대기"가 붙는다.
   - **접어 둔 자세히**: 점수 요소, DISPATCH 메모, 본문 전체(열 때 읽는다). CAUTION은 카드 머리에 그대로 보인다.
   - OCC Bash guard는 바꾸지 않았다. `dispatch briefing`은 atc CLI 명령이라 통과하고, CROSSCHECK 허용 목록에는 없어 막힌다(테스트 추가).
+- DISPATCH 탭에 PREFLIGHT(ATC-3, [docs/dispatch.ko.md](docs/dispatch.ko.md) 6.2): 티켓이 아직 시작할 상태가 아닌 제안은 SUPERVISOR가 보기 전에 HELD로 간다. 처음 DISPATCH 판정 9건 중 거절 6건이 모두 티켓 문제(상위 이슈, 이미 완료됨, 사람의 결정·손, 우선순위 없음)였고 AIRCRAFT 문제는 없어서, 게이트가 티켓 준비 상태를 재고 있었다.
+  - CROSSCHECK가 DISPATCH 제안에 FLIGHT 칩(`already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`, `no-priority`, `out-of-repo`)으로 `disagree`를 달면 서버가 `preflight` op(`by`, `model`, `codes`, `reason`)를 남기고 제안은 HELD로 간다. CROSSCHECK에 새 권한은 없고 guard도 그대로다. tick마다 먼저 달린 mark의 열린 제안에도 적용한다. OCC HOLD는 전처럼 HELD로 간다. `wrong-aircraft`, `other`, 칩 없는 mark는 대기열에 남는다.
+  - HELD 카드에는 누가 걸었는지(`PREFLIGHT`와 모델 계열·칩, 또는 OCC의 `HOLD`와 메모)와 CROSSCHECK mark가 보인다. 판정 버튼은 없고(HELD 제안에 `verdict`·`approve`·`reject`는 409) "대기열로"(`POST …/requeue`, `requeue` op: 같은 제안이 대기열로 돌아오고 24시간은 다시 시작하며, 다시 HOLD되지 않음)와 "FLIGHT 보류 확정"(`POST …/confirm-hold`, 선행 HOLD에는 없음: `via: "preflight"`와 칩으로 닫아 #56의 FLIGHT 보류를 건다)만 있다. 확정 칩은 PREFLIGHT의 칩, 없으면 HOLD 전 mark의 FLIGHT 칩, 그것도 없으면 선행 없는 OCC HOLD라 `needs-human`이다.
+  - 확정은 사람 판정이 아니다: 판정 건수, 합의율, CROSSCHECK 일치, `reasonCounts`에서 빠지고, `reasonStats`는 그 칩을 센다. `gate.preflight`에 `held`, `holding`, `passed`, `readyRate`(passed ÷ (passed + held))가 생기고, 점검 패널에 `PREFLIGHT HELD n건 · 준비율`로 보인다. 판정 줄은 "판정한 제안(HELD 제외)"이 됐다.
+  - CROSSCHECK mark가 없는 열린 제안은 `CROSSCHECK 대기`로 표시하고 mark가 있는 것 뒤로 정렬한다.
+  - `atcctl dispatch crosscheck`는 그 경우 `FLIGHT 칩이라 서버가 PREFLIGHT HOLD`를 출력한다. OCC 규정(`occ/CLAUDE.md`, 영어 번역)에서 "HOLD 풀기"를 빼고, SUPERVISOR가 대기열로 돌린 제안은 다시 HOLD하지 않는다고 적었다. CROSSCHECK 규정(`crosscheck/CLAUDE.md`, 영어 번역)에 FLIGHT 칩이면 제안이 HELD로 간다고 적었다.
 - NETWORK 탭에 ROUTE MAP(ATC-2, [docs/routes.ko.md](docs/routes.ko.md)): ROUTE(Linear 프로젝트)마다 WAYPOINT(프로젝트 마일스톤)를 잇는 경로를 그린다.
   - **데이터**: `server/sources/linear-projects.ts`가 프로젝트 마일스톤도 읽는다(루트 `projectMilestones`, 쪽 단위, 마일스톤마다 이슈 50개와 그 상태·완료 시각). FLIGHT 보드 쿼리(`linear.ts`)는 그대로다.
   - **`GET /api/routes`**: ROUTE마다 단계별 열린 FLIGHT, 그 FLIGHT를 모는 AIRCRAFT, 28일 완료 속도, WAYPOINT 목록. WAYPOINT에는 `passed`(Linear `done`)·`active`(순서상 첫 미완료)·`planned` 상태, 진행률, 목표일, 완료 기준("Exit criteria" 아래 번호 목록), FLIGHT(완료·진행·막힘·계획과 AIRCRAFT), `late`, `eta`가 들어간다. 마일스톤이 없는 ROUTE도 `waypoints: []`로 남고, 끝난(completed·canceled) ROUTE는 뺀다.

@@ -15,7 +15,8 @@ atc의 자동화는 **그림자 운용**에서 시작한다. 제안과 초안을
 | FLIGHT → AIRCRAFT, 점수 | 우선순위·대기 일수·풀어 주는 FLIGHT·팀 적합도·충돌 위험·ROUTE를 합친 점수. 요소별 점수는 접힌 자세히에 있다 |
 | 분류 줄 | `BUILD · M · SEC · tail:TEAM_E`. 라벨이 없으면 회색 "(기본값)" |
 | OCC 메모 | 본문에서 찾은 제약. CAUTION이면 보안·DB·사람 결정 대기 |
-| HELD 목록 | 선행 FLIGHT나 사람 결정을 기다리는 제안. 선행이 끝나면 자동으로 풀린다 |
+| HELD 목록 | 아직 시작할 상태가 아닌 제안(PREFLIGHT). CROSSCHECK가 FLIGHT 칩으로 disagree했거나 OCC가 HOLD한 것. 판정하지 않는다(아래 PREFLIGHT) |
+| `CROSSCHECK 대기` | CROSSCHECK가 아직 보지 않은 제안. mark가 있는 제안 뒤에 온다 |
 | `STAND 없이` 줄 | STAND 규칙 밖으로 준 SURVEY·CHECK. 받는 팀이 다른 FLIGHT의 STAND를 쥔 HOLDING이어도 나온다. 점수는 0 |
 | `CHECK 독립성` 줄 | CHECK마다 붙는다. 검토 대상을 만든 팀을 뺐으면 그 팀 이름, 모르면 "확인 못 함". 점수는 0 |
 
@@ -27,6 +28,10 @@ atc의 자동화는 **그림자 운용**에서 시작한다. 제안과 초안을
 - **HOLDING 팀에 가는 SURVEY·CHECK**: `type:SURVEY`나 `type:CHECK` 라벨이 붙은 FLIGHT는 워크트리가 필요 없어서, 이미 다른 FLIGHT를 들고 있는(HOLDING) 팀에도 하나까지 제안된다. AIRBORNE(지금 일하는 중)인 팀에는 가지 않는다. 판정할 때는 "그 팀이 지금 하던 일을 두고 이걸 볼 여유가 있나", "SURVEY·CHECK 라벨이 맞나"를 본다. 라벨 없는 FLIGHT는 BUILD로 보므로 이 길로 오지 않는다.
 - **CHECK는 만든 팀에 가지 않는다**: LOGBOOK, 열린 PR의 STAND, 워크트리 점유, 청구 기록에서 검토 대상을 만든 팀을 찾아 뺀다. 대상은 Linear 관계와 제목(FLIGHT key, `PR #400`)에서만 찾으므로 본문에만 적혀 있으면 모른다. `CHECK 독립성: 확인 못 함`이면 받는 팀이 그 대상을 만들지 않았는지 직접 확인하고, 만든 팀이면 "AIRCRAFT 부적합"으로 거절한다. 만든 팀만 남으면 제안 대신 "제외" 목록에 `CHECK 독립성 — …`으로 뜬다.
 - 조건부로 승인하고 싶으면(예: "PR #393 머지 뒤") HOLD로 두는 게 맞다.
+- **PREFLIGHT — HELD는 판정하지 않는다**: 티켓이 아직 시작할 상태가 아닌 제안은 대기열에 오지 않고 HELD로 간다. CROSSCHECK가 FLIGHT 칩(이미 완료됨 · 상위 이슈 · 선행 FLIGHT·PR 대기 · 사람 결정 필요 · 우선순위 미정 · 저장소 밖 작업)으로 disagree하면 서버가 곧바로 보내고(카드에 `PREFLIGHT`, 모델과 칩), OCC가 HOLD하면 전처럼 간다(`HOLD`와 메모). AIRCRAFT 부적합 · 기타는 팀 선택 문제라 대기열에 남는다. HELD 카드에는 판정 버튼 대신 둘이 있다.
+  - **대기열로**: 걸러진 게 틀렸다고 보면. 같은 제안이 대기열로 돌아와 판정을 기다리고(24시간은 지금부터), 다시 HOLD되지 않는다.
+  - **FLIGHT 보류 확정**: 맞게 걸렀으면. 제안이 닫히고 그 FLIGHT가 모든 팀에서 24시간(이슈가 바뀌면 그 전까지) 빠진다. 선행 FLIGHT를 기다리는 HOLD에는 이 버튼이 없다(선행이 끝나면 저절로 풀린다).
+  - 둘 다 판정이 아니라 2b 게이트(판정 건수·합의율)에 세지 않는다. 점검 패널의 `PREFLIGHT HELD n건 · 준비율`이 따로 보여 준다: 준비율은 HOLD 없이 판정까지 간 제안의 비율, 즉 들어오는 티켓이 얼마나 준비돼 있었나다.
 - **2b 진입 점검**: 판정 20건 이상, 합의율 80% 이상. 켜면 승인한 제안이 FLIGHT PLAN으로 CAPTAIN에게 간다.
 - **2b 켜기 점검표**: 켜기 전에 볼 항목이 준비됨·안 됨·확인 필요로 보인다. 2a 게이트, RECALL, send-guard, vocado READBACK 규칙, STAND 없는 FLIGHT, CREW CHANGE 발부, 알려진 빈틈 순서다. vocado READBACK 규칙은 FLIGHT PLAN(`[DISPATCH D-xxxx]` → `READBACK D-xxxx`)과 CREW CHANGE(`[OCC CC-xxxx]` → `READBACK CC-xxxx`)를 다 다뤄야 "준비됨"이고, "안 됨"이면 `vocado_nextjs/CLAUDE.md`에 더할 문장이 함께 나온다(그 파일은 SUPERVISOR가 고친다). send-guard는 서버가 테스트를 돌리지 않아 늘 "확인 필요"다(`node --test occ/send-guard.test.mjs`). 점검표는 보여 주기만 하고, 켜는 것은 SUPERVISOR다.
 
@@ -79,7 +84,7 @@ CROSSCHECK 세션이 켜져 있으면, 열린 제안과 초안마다 OCC와 다�
 - **CROSSCHECK 일치** 줄(점검 패널): 사람이 판정한 건 중 판정 전에 mark가 있던 건에서, mark가 사람 판정과 맞은 비율. 게이트 기준은 아니고, 나중에 위험이 낮은 일(SEC가 아닌 CLASSIFY 등)을 자동으로 넘길지 정할 근거다.
 - 모델별로도 보인다: 일치 줄 아래 `└ muse-spark-1.3-contributor 3/4 75%`처럼 모델마다 한 줄. 칩에도 mark를 단 모델의 짧은 이름이 시각 옆에 있고, 전체 id는 칩과 RECENT에 마우스를 올리면 보인다. 모델 이름이 생기기 전의 mark는 `unknown`으로 센다.
 - 본문이나 OCC 메모에 PR 조건("PR #393 머지 뒤")이 있으면, CROSSCHECK가 `gh pr view`로 그 PR의 상태를 확인하고 이유에 적는다(예: `PR #393 머지 전이면 HOLD — gh: OPEN`).
-- HOLD 중인 제안에는 mark가 달리지 않는다.
+- HOLD 중인 제안에는 mark가 달리지 않는다. FLIGHT 칩 disagree mark가 달리면 그 제안은 곧바로 HELD로 간다(PREFLIGHT). "CROSSCHECK에 동의"는 대기열에 남은 제안(팀 선택 문제, agree)에만 쓴다.
 
 CROSSCHECK 세션을 여는 법은 [빠른 시작](quickstart.md)의 관제 세션 표에 있다.
 

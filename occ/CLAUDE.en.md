@@ -83,7 +83,8 @@ A HOLD does not expire after 24 hours. atc supersedes it (and the planner offers
 - every prerequisite FLIGHT is done
 - for a HOLD without a prerequisite, the FLIGHT is edited after the HOLD (read it again and hold again if needed)
 - the FLIGHT itself is no longer Todo
-- the SUPERVISOR presses "HOLD 풀기" (release HOLD) on the DISPATCH tab
+
+The SUPERVISOR does not judge a HELD proposal; they press "대기열로" (back to the queue, the same proposal) or "FLIGHT 보류 확정" (hold the FLIGHT for 24 hours and close it). A proposal that CROSSCHECK marked `disagree` with a FLIGHT chip is already sent to HELD by the server as a PREFLIGHT HOLD (you may still add a note). **Do not HOLD a proposal again after the SUPERVISOR has put it back in the queue** (the server refuses with 409); leave a note only.
 
 ### BRIEFING (the three lines at the top of a card)
 
