@@ -48,6 +48,10 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
                                             (2b) CAPTAIN이 READBACK함
   node atcctl.mjs dispatch decline <D-0003> -- <사유>
                                             (2b) CAPTAIN이 맡지 못함
+  node atcctl.mjs dispatch recall-send <D-0003>
+                                            (2b) SUPERVISOR가 RECALL을 요청한 제안의 SEND TO와 RECALL 문구 출력(재송신도 같은 문구)
+  node atcctl.mjs dispatch recalled <D-0003>
+                                            (2b) CAPTAIN이 "READBACK D-0003 RECALL"로 답함
 
 SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만. S2 승인 운용: 승인된 작업만 발부해 Linear에 씀. 판정·승인은 SUPERVISOR)
   node atcctl.mjs schedule brief            열린 초안·최근·점검·후보(candidates) (JSON)
@@ -243,6 +247,12 @@ if (isMain) {
     } else if (cmd === "dispatch" && args[0] === "readback" && args[1]) {
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/accept`);
       console.log(`${r.proposal.id} READBACK 확인`);
+    } else if (cmd === "dispatch" && args[0] === "recall-send" && args[1]) {
+      const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/recall-send`);
+      console.log(`SEND TO: ${r.sendTo}\n---\n${r.message}`);
+    } else if (cmd === "dispatch" && args[0] === "recalled" && args[1]) {
+      const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/recalled`);
+      console.log(`${r.proposal.id} RECALLED — FLIGHT는 다시 후보(같은 AIRCRAFT에는 24시간 제안하지 않음)`);
     } else if (cmd === "dispatch" && args[0] === "decline" && args[1]) {
       const sep = args.indexOf("--");
       const reason = sep < 0 ? "" : args.slice(sep + 1).join(" ");

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_DISPATCH_CONFIG, type Plan } from "./dispatch.ts";
-import type { Ticket } from "./model.ts";
+import type { Ticket, Workspace } from "./model.ts";
 import { parentKeysOf } from "./model.ts";
 import { canApply, fold, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, reservedOf, syncOps } from "./proposals.ts";
 import { toTicket } from "./sources/linear.ts";
@@ -428,4 +428,52 @@ test("ATFM 자동 판정(via: atfm)은 사람 판정·게이트·2b 점검에 �
   assert.equal(humanOf(ps[0]), null);
   assert.equal(humanOf(ps[1])?.verdict, "agree");
   assert.equal(gate3Of(ps).dispatched, 1);
+});
+
+test("RECALL: sent·accepted → recalling → recalled, departed·approved에서는 안 됨, recalling은 AIRCRAFT를 잡아 두고 10분 넘으면 overdue", async () => {
+  const { formatRecall } = await import("./proposals.ts");
+  const base = [create("D-0001", "VOC-1", "b", 60), { op: "approve" as const, id: "D-0001", at: iso(50) }, { op: "send" as const, id: "D-0001", at: iso(40), message: "m" }];
+  const recall = (min: number): Op => ({ op: "recall", id: "D-0001", at: iso(min), reason: "우선순위 바뀜", message: "R" });
+  let [p] = fold([...base, recall(30)]);
+  assert.equal(p.status, "recalling");
+  assert.equal(p.recallReason, "우선순위 바뀜");
+  assert.equal(p.recallMessage, "R");
+  assert.equal(isInFlight(p), true);
+  assert.equal(reservedOf([p]).aircraft.get("b"), "D-0001");
+  assert.deepEqual(overdueOf([p], NOW), ["D-0001"]); // 30분 전 RECALL, READBACK 없음
+  [p] = fold([...base, recall(30), { op: "recalled", id: "D-0001", at: iso(20) }]);
+  assert.equal(p.status, "recalled");
+  assert.equal(isInFlight(p), false);
+  // accepted에서도 되고, departed·approved에서는 무시
+  assert.equal(fold([...base, { op: "accept", id: "D-0001", at: iso(35) }, recall(30)])[0].status, "recalling");
+  assert.equal(fold([...base, { op: "accept", id: "D-0001", at: iso(35) }, { op: "depart", id: "D-0001", at: iso(33), stand: "/wt/x" }, recall(30)])[0].status, "departed");
+  assert.equal(fold([...base.slice(0, 2), recall(30)])[0].status, "approved");
+  assert.equal(canApply(fold([...base])[0], "recall"), true);
+  // 문구: 머리, FLIGHT, 사유, STAND를 두라는 말, READBACK 방법
+  const text = formatRecall(fold(base)[0], { title: "권한 정리" }, "TEAM_B", "우선순위 바뀜");
+  assert.equal(text.split("\n")[0], "[DISPATCH D-0001] RECALL · BRAVO (TEAM_B)");
+  assert.match(text, /FLIGHT VOC1 · AIRPORT VCDO — 이 FLIGHT PLAN을 거둬들입니다/);
+  assert.match(text, /사유: 우선순위 바뀜/);
+  assert.match(text, /STAND\(워크트리\)는 정리하지 말고 그대로/);
+  assert.match(text, /"READBACK D-0001 RECALL"/);
+});
+
+test("RECALL 동기화: recalling은 STAND가 생겨도 DEPARTED로 바꾸지 않고 24시간 뒤 EXPIRED, recalled 짝은 READBACK부터 24시간 다시 제안하지 않는다", () => {
+  const sentAt = (min: number): Op[] => [create("D-0001", "VOC-1", "b", 30 * 60), { op: "approve", id: "D-0001", at: iso(min + 2) }, { op: "send", id: "D-0001", at: iso(min + 1), message: "m" }];
+  const stand = { path: "/wt/voc-1", ticketKey: "VOC-1" } as Workspace;
+  const recalling = fold([...sentAt(60), { op: "recall", id: "D-0001", at: iso(60), reason: "r", message: "R" }]);
+  const tickets = [t("VOC-1")];
+  const plan = planOf({ assign: [assign("VOC-1", "b")] });
+  assert.deepEqual(syncOps(recalling, plan, { tickets, workspaces: [stand] }, DEFAULT_DISPATCH_CONFIG, NOW, 1).filter((o) => o.id === "D-0001"), []);
+  const old = fold([...sentAt(25 * 60), { op: "recall", id: "D-0001", at: iso(25 * 60), reason: "r", message: "R" }]);
+  assert.deepEqual(syncOps(old, plan, { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1).filter((o) => o.id === "D-0001").map((o) => o.op), ["expire"]);
+  // 30시간 전에 만든 제안이 1시간 전에 RECALLED → 같은 짝은 아직 제안하지 않고, 다른 AIRCRAFT에는 제안한다
+  const recalled = fold([...sentAt(120), { op: "recall", id: "D-0001", at: iso(90), reason: "r", message: "R" }, { op: "recalled", id: "D-0001", at: iso(60) }]);
+  const again = syncOps(recalled, plan, { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1);
+  assert.deepEqual(again.filter((o) => o.op === "create"), []);
+  const other = syncOps(recalled, planOf({ assign: [assign("VOC-1", "c")] }), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1);
+  assert.deepEqual(other.filter((o) => o.op === "create").map((o) => o.op === "create" && `${o.flight}|${o.aircraft}`), ["VOC-1|c"]);
+  // RECALLED 뒤 25시간이면 다시 제안
+  const later = fold([...sentAt(50 * 60), { op: "recall", id: "D-0001", at: iso(49 * 60), reason: "r", message: "R" }, { op: "recalled", id: "D-0001", at: iso(25 * 60) }]);
+  assert.deepEqual(syncOps(later, plan, { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1).filter((o) => o.op === "create").length, 1);
 });

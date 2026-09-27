@@ -40,6 +40,9 @@ import { fetchIssueDetail } from "./sources/linear.ts";
 // - 2b(mode "approval"): SUPERVISOR가 승인하면 OCC 세션(DISPATCH)이 FLIGHT PLAN을 CAPTAIN에게 보내고
 //   CAPTAIN의 READBACK으로 수락, STAND가 생기면 DEPARTED. 보내는 문구는 서버가 만들고
 //   occ/send-guard.mjs가 그 문구 그대로인지 확인한다.
+// - RECALL: 보냈거나(sent) READBACK 받은(accepted) FLIGHT PLAN을 SUPERVISOR가 사유를 적어 거둬들인다(recalling).
+//   OCC가 서버가 만든 RECALL 문구를 CAPTAIN에게 보내고, CAPTAIN의 "READBACK D-xxxx RECALL"로 recalled.
+//   STAND가 생긴(departed) 뒤에는 RECALL하지 않는다(SUPERVISOR가 직접 처리).
 
 const FILE = join(config.stateDir, "proposals.jsonl");
 const DAY = 86_400_000;
@@ -61,11 +64,15 @@ export type ProposalStatus =
   | "accepted" // CAPTAIN READBACK
   | "declined" // CAPTAIN이 사유로 거절
   | "departed" // FLIGHT에 STAND가 생김
+  | "recalling" // SUPERVISOR가 RECALL 요청, RECALL 문구의 READBACK 대기
+  | "recalled" // CAPTAIN이 RECALL을 READBACK함. FLIGHT는 다시 후보(같은 짝은 24시간 제안하지 않음)
   | "superseded"
   | "expired";
 
 export const isHeld = (p: Proposal) => p.kind === "ASSIGN" && p.holdAt !== null;
-export const isInFlight = (p: Proposal) => p.kind === "ASSIGN" && !isHeld(p) && (p.status === "approved" || p.status === "sent" || p.status === "accepted");
+// recalling도 CAPTAIN이 아직 쥐고 있을 수 있으니 AIRCRAFT·FLIGHT를 잡아 둔다(recalled가 되면 풀린다)
+export const isInFlight = (p: Proposal) =>
+  p.kind === "ASSIGN" && !isHeld(p) && (p.status === "approved" || p.status === "sent" || p.status === "accepted" || p.status === "recalling");
 
 export interface Proposal {
   id: string; // "D-0001"
@@ -88,6 +95,8 @@ export interface Proposal {
   holdAt: string | null; // HOLD를 건 시각. hold가 비어 있으면 선행 FLIGHT 없는 HOLD(사람 결정 대기 등, 사유는 note)
   message: string | null; // 보낸 FLIGHT PLAN 문구
   departedStand: string | null;
+  recallReason?: string; // SUPERVISOR의 RECALL 사유
+  recallMessage?: string; // CAPTAIN에게 보낼 RECALL 문구(send-guard가 비교한다)
   crosscheck: Crosscheck | null; // CROSSCHECK 예비 판정(참고 표시, 상태를 바꾸지 않는다)
   via?: Via; // SUPERVISOR 판정을 어떻게 내렸나(옛 기록에는 없다)
   reasonCodes?: string[]; // 거절 사유 칩(disagree·reject, 고른 것이 있을 때만)
@@ -106,6 +115,8 @@ export type Op =
   | { op: "accept"; id: string; at: string }
   | { op: "decline"; id: string; at: string; reason: string }
   | { op: "depart"; id: string; at: string; stand: string }
+  | { op: "recall"; id: string; at: string; reason: string; message: string } // SUPERVISOR 요청
+  | { op: "recalled"; id: string; at: string } // CAPTAIN이 RECALL을 READBACK
   | { op: "supersede"; id: string; at: string; reason: string }
   | { op: "expire"; id: string; at: string; reason?: string };
 
@@ -115,8 +126,9 @@ type StatusOp = Exclude<Op["op"], "create" | "note" | "hold" | "crosscheck">;
 const NEXT: Partial<Record<ProposalStatus, Partial<Record<StatusOp, ProposalStatus>>>> = {
   proposed: { verdict: "agreed", approve: "approved", reject: "rejected", supersede: "superseded", expire: "expired" },
   approved: { send: "sent", supersede: "superseded", expire: "expired" },
-  sent: { accept: "accepted", decline: "declined", expire: "expired" },
-  accepted: { depart: "departed", expire: "expired" },
+  sent: { accept: "accepted", decline: "declined", recall: "recalling", expire: "expired" },
+  accepted: { depart: "departed", recall: "recalling", expire: "expired" },
+  recalling: { recalled: "recalled", expire: "expired" },
 };
 
 export function canApply(p: Proposal, op: StatusOp): boolean {
@@ -176,6 +188,10 @@ export function fold(ops: Op[]): Proposal[] {
     p.timeline[next] = o.at;
     if ("reason" in o && o.reason) p.reason = o.reason;
     if (o.op === "send") p.message = o.message;
+    if (o.op === "recall") {
+      p.recallReason = o.reason;
+      p.recallMessage = o.message;
+    }
     if (o.op === "depart") p.departedStand = o.stand;
     if ((o.op === "verdict" || o.op === "approve" || o.op === "reject") && o.via) p.via = o.via;
     if ((o.op === "verdict" || o.op === "reject") && o.reasonCodes?.length) p.reasonCodes = o.reasonCodes;
@@ -273,6 +289,9 @@ export function syncOps(
     } else if (p.status === "sent") {
       // 보낸 뒤에는 CAPTAIN이 쥐고 있으니 자동 SUPERSEDED 하지 않는다
       if (age(p) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at, reason: "24시간 동안 READBACK 없음" });
+    } else if (p.status === "recalling") {
+      // RECALL 문구의 READBACK을 기다린다. STAND가 생겨도 DEPARTED로 바꾸지 않는다(멈추라고 한 FLIGHT다)
+      if (age(p) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at, reason: "RECALL 뒤 24시간 동안 READBACK 없음" });
     } else if (p.status === "accepted") {
       const stand = standOf.get(p.flight);
       if (stand) ops.push({ op: "depart", id: p.id, at, stand });
@@ -281,7 +300,8 @@ export function syncOps(
   }
 
   // 같은 짝(RELEASE는 같은 FLIGHT)을 24시간 안에 다시 제안하지 않는다(거절한 것도 포함).
-  const recent = existing.filter((x) => now - Date.parse(x.at) < PROPOSAL_TTL_MS);
+  // RECALL된 짝은 RECALL READBACK 시각부터 24시간 다시 제안하지 않는다
+  const recent = existing.filter((x) => now - Date.parse(x.at) < PROPOSAL_TTL_MS || (x.timeline.recalled && now - Date.parse(x.timeline.recalled) < PROPOSAL_TTL_MS));
   const seen = new Set(recent.map((x) => (x.kind === "ASSIGN" ? `${x.flight}|${x.aircraft}` : `R|${x.flight}`)));
   const nextId = () => `D-${String(++seq).padStart(4, "0")}`;
   for (const a of plan.assign) {
@@ -318,11 +338,25 @@ export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "ur
     .join("\n");
 }
 
+// CAPTAIN에게 보낼 RECALL. send-guard는 OCC가 이 문구를 그대로 보내는지 확인한다(docs/dispatch.md "RECALL").
+export function formatRecall(p: Proposal, ticket: Pick<Ticket, "title"> | undefined, sessionName: string, reason: string): string {
+  const sign = callsign({ name: sessionName });
+  const who = sign === sessionName ? sessionName : `${sign} (${sessionName})`;
+  return [
+    `[DISPATCH ${p.id}] RECALL · ${who}`,
+    `FLIGHT ${flightNumber(p.flight)} · AIRPORT ${p.airport ?? "—"} — 이 FLIGHT PLAN을 거둬들입니다.`,
+    ticket?.title ?? p.flight,
+    `사유: ${reason}`,
+    "작업을 멈추세요. STAND(워크트리)는 정리하지 말고 그대로 두세요 — 다른 AIRCRAFT가 이어받을 수 있게.",
+    `— 받았으면 이 메시지에 "READBACK ${p.id} RECALL"로 답장해 주세요.`,
+  ].join("\n");
+}
+
 export function overdueOf(proposals: Proposal[], now: number): string[] {
   return proposals
     .filter(
       (p) =>
-        (p.status === "sent" && now - Date.parse(p.statusAt) > READBACK_OVERDUE_MS) ||
+        ((p.status === "sent" || p.status === "recalling") && now - Date.parse(p.statusAt) > READBACK_OVERDUE_MS) ||
         (p.status === "accepted" && now - Date.parse(p.statusAt) > DEPARTURE_OVERDUE_MS),
     )
     .map((p) => p.id);
@@ -520,7 +554,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
 
   // 상태를 바꾸는 동작 하나. 모드·전이 규칙을 검사하고 op를 남긴다.
   const act =
-    (name: "verdict" | "note" | "hold" | "unhold" | "approve" | "reject" | "release" | "accept" | "decline") =>
+    (name: "verdict" | "note" | "hold" | "unhold" | "approve" | "reject" | "release" | "accept" | "decline" | "recall" | "recall-send" | "recalled") =>
     async (c: Context) => {
       const id = (c.req.param("id") ?? "").toUpperCase();
       const body = await c.req.json().catch(() => ({}));
@@ -590,6 +624,26 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
         append([{ op: "send", id, at, message }]);
         const sent = allProposals().find((x) => x.id === id)!;
         return c.json({ proposal: sent, sendTo: sent.aircraftName, message: sent.message });
+      } else if (name === "recall") {
+        // SUPERVISOR만(화면·API). OCC의 atcctl에는 이 명령이 없다. 출발 중지와 상관없이 받는다(회수는 안전 쪽 동작)
+        const reason = reasonOf(body);
+        if (!reason) return c.json({ error: "RECALL에는 사유(reason)가 필요함" }, 400);
+        if (reason.length > 300) return c.json({ error: "사유는 300자 이내" }, 400);
+        if (p.status === "departed") return c.json({ error: "STAND가 생긴(DEPARTED) FLIGHT는 RECALL하지 않는다 — SUPERVISOR가 CAPTAIN에게 직접" }, 409);
+        const bad = closed("recall");
+        if (bad) return bad;
+        const s = await getSnapshot();
+        const message = formatRecall(p, s.tickets.find((t) => t.key === p.flight), p.aircraftName ?? "", reason);
+        append([{ op: "recall", id, at, reason, message }]);
+      } else if (name === "recall-send") {
+        // OCC가 보낼 RECALL 문구(상태는 바꾸지 않는다, 재송신도 같은 문구)
+        if (mode !== "approval") return c.json({ error: "RECALL은 approval 모드(2b)에서만 보낸다 — shadow면 SUPERVISOR가 CAPTAIN에게 직접" }, 409);
+        if (p.status !== "recalling" || !p.recallMessage) return c.json({ error: `RECALL 요청된 제안이 아님(${p.status})` }, 409);
+        return c.json({ proposal: p, sendTo: p.aircraftName, message: p.recallMessage });
+      } else if (name === "recalled") {
+        const bad = closed("recalled");
+        if (bad) return bad;
+        append([{ op: "recalled", id, at }]);
       } else if (name === "accept") {
         const bad = closed("accept");
         if (bad) return bad;
@@ -603,7 +657,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       }
       return c.json({ proposal: allProposals().find((x) => x.id === id) });
     };
-  for (const name of ["verdict", "note", "hold", "unhold", "approve", "reject", "release", "accept", "decline"] as const) {
+  for (const name of ["verdict", "note", "hold", "unhold", "approve", "reject", "release", "accept", "decline", "recall", "recall-send", "recalled"] as const) {
     app.post(`/api/dispatch/proposals/:id/${name}`, act(name));
   }
 
