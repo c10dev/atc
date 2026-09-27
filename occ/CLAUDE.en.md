@@ -46,7 +46,7 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / that it was reread |
 | `gh pr view <n> -R <repo> --json state,isDraft,headRefOid,mergeStateStatus,reviews` | (Flight following) PR state, head commit and reviews |
 | `gh pr checks <n> -R <repo>` / `gh pr diff <n> -R <repo>` | (Flight following) CI on the head commit, changed files |
-| `node ../controller/atcctl.mjs schedule brief` | `mode` (shadow), open drafts (`open`) with what they would change (`changes`), recently closed drafts (`recent`), the S2 check (`gate`), the limit (`limit`), candidates (`candidates.classify`, `candidates.prioritize`), FLIGHT summaries (`flights`) |
+| `node ../controller/atcctl.mjs schedule brief` | `mode` (shadow), open drafts (`open`) with what they would change (`changes`), recently closed drafts (`recent`), the S2 check (`gate`), the limit (`limit`), candidates (`candidates.classify`, `candidates.prioritize`), FLIGHT summaries (`flights`), recent SUPERVISOR decisions for calibration (`examples`: the classification OCC drafted `proposed`, its reason `draft`, the verdict and reason) |
 | `node ../controller/atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <reason>` | Draft classification labels. Only the missing axes are needed. `--rating` can repeat |
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <reason>` | Draft a priority. 1 Urgent · 2 High · 3 Medium · 4 Low |
 
@@ -82,7 +82,7 @@ Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have
 
 | Candidate | Draft |
 |---|---|
-| `candidates.classify`: no `type:` or `wake:` label | `CLASSIFY`. TYPE, WAKE and RATING by the criteria below ([`../docs/fleet.md`](../docs/fleet.md) section 4). Leave out any axis that already has a label |
+| `candidates.classify`: no `type:` or `wake:` label | `CLASSIFY`. Read `../docs/fleet.md` 4.1–4.3 as in "Before a CLASSIFY" below, then TYPE, WAKE and RATING, with section numbers in the reason. Leave out any axis that already has a label |
 | `candidates.prioritize`: no priority | `PRIORITIZE`, **only when the body or comments give grounds** (a deadline, an outage or security exposure, it blocks other FLIGHTs, a priority a person wrote down). With no grounds, don't draft |
 
 | Axis | Values ([`../docs/fleet.md`](../docs/fleet.md) section 4) |
@@ -90,6 +90,26 @@ Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have
 | TYPE | `BUILD` implement and open a PR · `MAINT` upkeep, infra, CI, tests with no behavior change · `TEST` a trial that may be thrown away · `SURVEY` research or docs, no code · `CHECK` review or verification, the output is a verdict · `FERRY` mechanical move with no design decision, docs fix of 5 lines or less |
 | WAKE | `L` one file or a few lines, under an hour · `M` one feature or fix with tests, one PR · `H` several modules, migration or security surface, several review rounds · `J` crosses teams or AIRPORTs and needs a design first; must be split |
 | RATING | `SEC` DB, migration, RLS, auth, permissions, security, rights, deployment, payment · `UI` screens, components, accessibility · `DATA` language data, pipelines, content, analytics · `DOCS` docs, rule files. May be more than one |
+
+
+### Before a CLASSIFY
+
+1. **Read the criteria.** Before writing any CLASSIFY in a pass, open `../docs/fleet.md` with Read and read 4.1 FLIGHT TYPE, 4.2 WAKE CATEGORY and 4.3 TYPE RATING. The table above is only a summary.
+2. **Look at the examples.** `examples` in `schedule brief` are the SUPERVISOR's recent decisions (`proposed` is the classification OCC drafted, `draft` its reason then, `reason` the rejection reason). **Don't repeat a mistake a rejection reason names.** For example: "FLIGHT TYPE은 MAINT — 수정 허용 범위가 tests·CI 게이트뿐, 제품 동작 변경 없음(4.1)", "WAKE는 L — 파일 하나·두 규칙, 새 테스트 없음(4.2)".
+3. **Decide the FLIGHT TYPE in this order** (4.1). Stop at the first match.
+
+| Order | Question | If yes |
+|---|---|---|
+| 1 | Is the output a review or audit verdict? | `CHECK` |
+| 2 | Does it produce only research, an audit, an inventory or a plan, with no code (implementation said to come later)? | `SURVEY` |
+| 3 | Is it a spike or prototype that may be thrown away? | `TEST` |
+| 4 | Is it a mechanical move with no design decision (dependency bump, rename, docs fix of 5 lines or less)? | `FERRY` |
+| 5 | **Does product behavior stay the same?** Refactoring, cleanup, infra, CI and static gates, tests, a race or lock fix users don't see (4.1's example: VOC-195 lock race fix) | `MAINT` |
+| 6 | Does a feature, behavior or screen users see or experience appear or change? | `BUILD` |
+
+   `BUILD` is only for 6. A security surface (SEC) or the presence of tests does not make it BUILD; those belong to RATING and WAKE.
+4. **WAKE by the real size of the change** (4.2): one file or a few lines with no new tests needed is `L`; one feature or fix with tests in one PR is `M`; several modules or services, a migration, a security surface or several review rounds is `H`; crossing teams or AIRPORTs with design first is `J`. Test files listed in the allowed scope don't mean new tests are needed.
+5. **Cite the section numbers in the reason.** In the one-line reason, name the section applied for each axis you set: `"4.1 MAINT: 허용 범위가 tests 정적 규칙뿐, 제품 동작 변경 없음 · 4.2 M: 규칙 하나와 테스트 · 4.3 SEC: GRANT EXECUTE 게이트"`.
 
 - On `LIMIT` (open drafts are at the limit), write no more drafts this pass. Carry on in a later pass once verdicts free a slot. Open `NEW` (CHARTER DESK) drafts count toward the limit of 5 too.
 - On an error (`이미 그렇게 되어 있음` "already so", `Todo·Backlog가 아님` "not Todo or Backlog", etc.), don't retry; put it in the OCC LOG.

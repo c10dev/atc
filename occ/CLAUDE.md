@@ -39,7 +39,7 @@
 | `node ../controller/atcctl.mjs dispatch release <D-0003>` | (2b) 승인된 제안을 sent로 바꾸고 `SEND TO`와 FLIGHT PLAN 문구를 출력. 이미 sent면 같은 문구를 다시 출력(재송신용) |
 | `node ../controller/atcctl.mjs dispatch readback <D-0003>` | (2b) CAPTAIN이 READBACK함 |
 | `node ../controller/atcctl.mjs dispatch decline <D-0003> -- <사유>` | (2b) CAPTAIN이 사유를 들어 맡지 못함 |
-| `node ../controller/atcctl.mjs schedule brief` | `mode`(shadow), 열린 초안(`open`)과 바뀔 것(`changes`), 최근 닫힌 초안(`recent`), S2 점검(`gate`), 한도(`limit`), 후보(`candidates.classify`, `candidates.prioritize`), FLIGHT 요약(`flights`) |
+| `node ../controller/atcctl.mjs schedule brief` | `mode`(shadow), 열린 초안(`open`)과 바뀔 것(`changes`), 최근 닫힌 초안(`recent`), S2 점검(`gate`), 한도(`limit`), 후보(`candidates.classify`, `candidates.prioritize`), FLIGHT 요약(`flights`), 보정용 최근 SUPERVISOR 판정(`examples`: OCC가 냈던 분류 `proposed`, 근거 `draft`, 판정·사유) |
 | `node ../controller/atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <근거>` | 분류 라벨 초안. 빠진 축만 적어도 된다. `--rating`은 여러 번 |
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <근거>` | 우선순위 초안. 1 Urgent · 2 High · 3 Medium · 4 Low |
 | `node ../controller/atcctl.mjs schedule draft NEW --title <제목> --project <프로젝트> [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <근거> -- '<본문>'` | (CHARTER DESK) AD HOC FLIGHT 초안. 본문의 `\n`은 줄바꿈. 출력: 초안 ID와 atc가 찾은 비슷한 FLIGHT(`similar`) |
@@ -80,7 +80,7 @@ HOLD는 24시간 만료가 없고, 다음 경우에 atc가 SUPERSEDED로 푼다(
 
 | 후보 | 초안 |
 |---|---|
-| `candidates.classify`: `type:`이나 `wake:` 라벨이 없음 | `CLASSIFY`. 아래 분류 기준(`../docs/fleet.md` 4장)대로 TYPE·WAKE·RATING. 이미 라벨이 있는 축은 비워 둔다 |
+| `candidates.classify`: `type:`이나 `wake:` 라벨이 없음 | `CLASSIFY`. 아래 "CLASSIFY 전에"대로 `../docs/fleet.md` 4.1~4.3을 읽고 TYPE·WAKE·RATING, 근거에 절 번호. 이미 라벨이 있는 축은 비워 둔다 |
 | `candidates.prioritize`: 우선순위 없음 | `PRIORITIZE`. **본문·댓글에 근거가 있을 때만**(기한, 장애·보안 노출, 다른 FLIGHT를 막음, 사람이 적어 둔 우선순위). 근거가 없으면 쓰지 않는다 |
 
 | 축 | 값 (`../docs/fleet.md` 4장) |
@@ -88,6 +88,26 @@ HOLD는 24시간 만료가 없고, 다음 경우에 atc가 SUPERSEDED로 푼다(
 | TYPE | `BUILD` 구현하고 PR · `MAINT` 동작이 안 바뀌는 정비·인프라·CI·테스트 · `TEST` 버릴 수도 있는 시험 · `SURVEY` 조사·문서, 코드 없음 · `CHECK` 리뷰·검증, 결과가 판정 · `FERRY` 설계 결정 없는 기계적 이동, 5줄 이하 문서 수정 |
 | WAKE | `L` 파일 하나·몇 줄, 1시간 미만 · `M` 기능·수정 하나와 테스트, PR 하나 · `H` 여러 모듈, 마이그레이션·보안 면, 리뷰 여러 번 · `J` 팀·AIRPORT를 넘고 설계가 먼저, 나눠야 함 |
 | RATING | `SEC` DB·마이그레이션·RLS·인증·권한·보안·권리·배포·결제 · `UI` 화면·컴포넌트·접근성 · `DATA` 언어 데이터·파이프라인·콘텐츠·분석 · `DOCS` 문서·규칙 파일. 여럿일 수 있다 |
+
+
+### CLASSIFY 전에
+
+1. **기준을 읽는다.** 그 바퀴에 CLASSIFY를 쓰기 전에 `../docs/fleet.md`를 Read로 열어 4.1 FLIGHT TYPE, 4.2 WAKE CATEGORY, 4.3 TYPE RATING을 읽는다. 위 표는 요약일 뿐이다.
+2. **예시를 본다.** `schedule brief`의 `examples`는 SUPERVISOR의 최근 판정이다(`proposed`는 OCC가 냈던 분류, `draft`는 그때 근거, `reason`은 거절 사유). **거절 사유와 같은 실수를 되풀이하지 않는다.** 예: "FLIGHT TYPE은 MAINT — 수정 허용 범위가 tests·CI 게이트뿐, 제품 동작 변경 없음(4.1)", "WAKE는 L — 파일 하나·두 규칙, 새 테스트 없음(4.2)".
+3. **FLIGHT TYPE은 이 순서로 정한다**(4.1). 앞에서 맞으면 거기서 멈춘다.
+
+| 순서 | 물음 | 맞으면 |
+|---|---|---|
+| 1 | 결과가 리뷰·감사의 판정인가 | `CHECK` |
+| 2 | 코드 없이 조사·감사·목록·계획 문서만 내는가(구현은 나중이라고 적혀 있음) | `SURVEY` |
+| 3 | 버려도 되는 스파이크·시제품인가 | `TEST` |
+| 4 | 설계 판단 없는 기계적 이동인가(의존성 올리기, 이름 바꾸기, 5줄 이하 문서 수정) | `FERRY` |
+| 5 | **제품 동작이 바뀌지 않는가** — 리팩터, 정리, 인프라, CI·정적 게이트, 테스트, 사용자에게 보이지 않는 경쟁 조건·락 수정(4.1의 예: VOC-195 lock race fix) | `MAINT` |
+| 6 | 사용자가 보거나 겪는 기능·동작·화면이 새로 생기거나 바뀌는가 | `BUILD` |
+
+   `BUILD`는 6에서만 붙인다. 보안 면(SEC)이나 테스트가 있다는 것만으로 BUILD가 아니다 — 그건 RATING·WAKE의 일이다.
+4. **WAKE는 실제 바뀔 크기로**(4.2): 파일 하나·몇 줄이고 새 테스트가 필요 없으면 `L`, 기능·수정 하나와 테스트·PR 하나면 `M`, 여러 모듈·서비스나 마이그레이션·보안 면·리뷰 여러 번이면 `H`, 팀·AIRPORT를 넘고 설계가 먼저면 `J`. 허용 범위에 테스트 파일이 적혀 있다고 새 테스트가 있는 것은 아니다.
+5. **근거에 절 번호를 인용한다.** 근거 한 줄에 판단한 축마다 적용한 절을 적는다: `"4.1 MAINT: 허용 범위가 tests 정적 규칙뿐, 제품 동작 변경 없음 · 4.2 M: 규칙 하나와 테스트 · 4.3 SEC: GRANT EXECUTE 게이트"`.
 
 - `LIMIT`(열린 초안이 한도에 참)이 나오면 이번 바퀴는 초안을 더 쓰지 않는다. 다음 바퀴에 판정이 나서 자리가 비면 이어 쓴다. 열린 `NEW`(CHARTER DESK) 초안도 한도 5건에 든다.
 - 오류(`이미 그렇게 되어 있음`, `Todo·Backlog가 아님` 등)가 나면 다시 시도하지 말고 OCC LOG에 적는다.
