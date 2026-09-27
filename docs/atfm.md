@@ -57,7 +57,7 @@ Read-only from the running atc (`/api/dispatch/brief`, `/api/schedule/brief`, `/
 
 1. 2b has run for 2 weeks or more and `gate3` is ready: 10 or more FLIGHT PLANs, READBACK 90%+, DEPARTED 80%+ (dispatch.md section 8, `GATE3`).
 2. **Shadow precision of the auto-eligible set**: 20 or more auto-eligible ASSIGNs decided by the SUPERVISOR, of which 95% or more approved, and none rejected with `already-done`, `parent-issue`, `waiting-on-prior` or `needs-human`.
-3. **CROSSCHECK on DISPATCH, per model**: 20 or more marked decisions for the model currently in use (`byModel`), matching 90% or more. The overall rate is not enough, because the model changed once already.
+3. **CROSSCHECK on DISPATCH, per model family**: 20 or more marked decisions for the model family currently in use (`byModel`, keyed by `modelFamily`), matching 90% or more. The overall rate is not enough, because the model changed once already. A family merges the names the same model gets on different paths: `claude-ocx-opencode-go--muse-spark-1.3-contributor`, `…[1m]` and `muse-spark-1.3-contributor` all count as `muse-spark-1.3`. Marks recorded before model names existed read as `unknown`: they stay visible as their own row, but they are never the "current family" and never count toward this condition.
 4. **One-click share**: among auto-eligible ASSIGNs, the share the SUPERVISOR approved with "CROSSCHECK에 동의" (`oneClick`). This is supporting evidence, not a gate: a high share shows those decisions are already routine, but it measures convenience, not correctness.
 5. No LOS involving a FLIGHT that DISPATCH sent, in the last 2 weeks.
 
@@ -91,12 +91,12 @@ Later candidates, each only after its own S2 record (occ.md section 7). Decision
 
 1. S2 has run for 2 weeks (occ.md section 11), with no APPLIED operation undone by a person. "Undone" is detected as a label that OCC added and that is gone within 7 days.
 2. Human agreement on CLASSIFY drafts written after #29: 20 or more decided, 85% or more agreed.
-3. CROSSCHECK on SCHEDULE CLASSIFY, per current model: 20 or more marked, 90% or more matched (today: 7 of 7, 2 of them from Muse).
+3. CROSSCHECK on SCHEDULE CLASSIFY, per current model family (as in section 3; `unknown` is not counted): 20 or more marked, 90% or more matched (today: 7 of 7, 5 of them `unknown`).
 4. Shadow precision: 20 or more auto-eligible drafts decided, 95% or more approved.
 
 **Turn-off and rollback.** Switch `atfm.json` `s3` (today `off | shadow`, default `shadow`). Trips back to `shadow`: a human rejects a draft the rule marked eligible (in shadow) or removes an auto-applied label (in `on`), a linear-guard block, or the per-model match falling below 85%. Rollback of one applied CLASSIFY: atc drafts the inverse operation (remove exactly the labels it added) as a normal S2 draft for the SUPERVISOR to approve; nothing is removed automatically.
 
-**Metrics.** Eligible and applied per day, undone within 7 days, human agreement on CLASSIFY, per-model CROSSCHECK match, label mismatches found later by DISPATCH (a FLIGHT excluded or re-classified after auto-apply).
+**Metrics.** Eligible and applied per day, undone within 7 days, human agreement on CLASSIFY, per-family CROSSCHECK match, label mismatches found later by DISPATCH (a FLIGHT excluded or re-classified after auto-apply).
 
 **Data needed.** Post-#29 CLASSIFY verdicts; S2 turned on; label-removal detection in the Linear source (compare labels between fetches).
 
@@ -212,7 +212,7 @@ Steps 1–5 are built (section 10). In step 6, the "main broken" and "manual" gr
 | # | Decision |
 |---|---|
 | 1 | Automatically approved FLIGHT TYPEs: BUILD, MAINT and FERRY only. SURVEY is excluded |
-| 2 | Thresholds as proposed: shadow precision 95% over 20, CROSSCHECK per-model match 90% over 20, trip at 85% |
+| 2 | Thresholds as proposed: shadow precision 95% over 20, CROSSCHECK per-model-family match 90% over 20 (`unknown` not counted), trip at 85% |
 | 3 | Caps: 3 automatic ASSIGNs per day overall, 5 S3 operations per day. The per-AIRCRAFT limit is not "1 per day" but an in-progress limit: at most 1 automatically assigned FLIGHT per AIRCRAFT that has not ARRIVED, applied together with the WAKE slots |
 | 4 | Build `[DISPATCH D-xxxx] RECALL` before automatic approval — **built** |
 | 5 | S3 scope: CLASSIFY that adds labels on empty axes only. `CLOSE` after merge is reviewed after 2 weeks of S2 |

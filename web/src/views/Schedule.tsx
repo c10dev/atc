@@ -41,12 +41,12 @@ interface CrosscheckRate {
 // 서버 타입에 아직 없을 수 있어 따로 읽는다(옛 서버면 null)
 const markOf = (op: ScheduleOp): Crosscheck | null => (op as unknown as { crosscheck?: Crosscheck | null }).crosscheck ?? null;
 const modelOf = (m: Crosscheck) => m.model || "unknown";
-// 모델 id를 짧게: claude-ocx-opencode-go--muse-spark-1.3-contributor[1m] → muse-spark-1.3-contributor
+// 모델 계열(서버 modelFamily와 같다): claude-ocx-opencode-go--muse-spark-1.3-contributor[1m] → muse-spark-1.3
 function modelLabel(id: string): string {
   let s = id.replace(/^claude-ocx-/, "");
   const cut = s.indexOf("--");
   if (cut >= 0 && cut + 2 < s.length) s = s.slice(cut + 2);
-  s = s.replace(/\[[^\]]*\]$/, "");
+  s = s.replace(/\[[^\]]*\]$/, "").replace(/-contributor$/, "");
   return s || id;
 }
 // 모델별 일치: 표시 많은 순(같으면 이름순)
@@ -428,7 +428,7 @@ function Gate({ gate }: { gate: Brief["gate"] }) {
         )}
         {xc &&
           byModelRows(xc.byModel).map(([id, r]) => (
-            <li key={id} className="s-info sc-gate-xc-model" title={`CROSSCHECK 일치 · ${id} · ${r.matched}/${r.marked}`}>
+            <li key={id} className="s-info sc-gate-xc-model" title={`CROSSCHECK 일치 · 모델 계열 ${id}${id === "unknown" ? " (모델 기록 전의 mark — ATFM 기준에 세지 않음)" : " (경로별 이름을 묶음 — 원래 이름은 칩에)"} · ${r.matched}/${r.marked}`}>
               <span className="sc-gate-label">
                 <span className="sc-gate-xc-name">└ {modelLabel(id)}</span>
                 <span className="sc-gate-xc-count">
