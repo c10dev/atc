@@ -32,3 +32,12 @@ export function showNewVersion(own: string, server: string | null | undefined, d
   if (!own.startsWith(BUNDLE_PREFIX) || !server) return false;
   return server !== own && server !== dismissed;
 }
+
+// 탭 청크를 불러오지 못한 오류인가(대개 배포 뒤 예전 탭이 지워진 청크를 부름). 브라우저마다 문구가 다르다:
+// Chrome "Failed to fetch dynamically imported module", Firefox "error loading dynamically imported module",
+// Safari "Importing a module script failed", Vite의 CSS 미리 읽기 "Unable to preload CSS".
+const CHUNK_ERROR = /dynamically imported module|Importing a module script failed|Unable to preload CSS/i;
+export function isChunkLoadError(e: unknown): boolean {
+  const message = e instanceof Error ? e.message : typeof e === "string" ? e : String((e as { message?: unknown } | null)?.message ?? "");
+  return CHUNK_ERROR.test(message);
+}
