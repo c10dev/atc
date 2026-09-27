@@ -1,7 +1,26 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type CrewMember, DEFAULT_FLEET } from "./crew.ts";
-import { type CrewChangeOp, type CrewState, diffCrew, foldCrewChanges, nextCrewChangeId, pairChanges, planCrewChange, ratingImpact } from "./crew-change.ts";
+import { readFileSync } from "node:fs";
+import {
+  approveRefusal,
+  CREW_CHANGE_READBACK_OVERDUE_MS,
+  type CrewChange,
+  type CrewChangeOp,
+  type CrewState,
+  crewChangeBriefOf,
+  crewChangeMessage,
+  diffCrew,
+  foldCrewChanges,
+  isCrewChangeOverdue,
+  nextCrewChangeId,
+  openCrewChangeOf,
+  pairChanges,
+  planCrewChange,
+  ratingImpact,
+  selfCheckCrewChange,
+  sendRefusal,
+} from "./crew-change.ts";
 
 const D = DEFAULT_FLEET.defaults;
 const DEFAULT: CrewState = { complement: D.complement, ratings: D.ratings };
@@ -96,4 +115,163 @@ test("pairChanges: 같은 POSITION이 한 번씩 내리고 타면 바뀜으로 �
   assert.ok(c.text.includes("바뀌는 CREW (같은 POSITION)\n- backend: claude-opus-5-5 → claude-opus-5-5 (no CHECK verdicts)"));
   assert.ok(c.text.includes("제약만 바뀐 팀원은"));
   assert.ok(!c.text.includes("agent나 모델이 바뀐 팀원은"));
+});
+
+// ── 2단계: 승인 → OCC 발부 → READBACK ──
+
+const T0 = "2026-09-27T01:00:00.000Z";
+const at = (min: number) => new Date(Date.parse(T0) + min * 60_000).toISOString();
+const noFlash = { complement: D.complement.filter((m) => m.position !== "flash-helper"), ratings: D.ratings };
+const created = (id = "CC-0001", reg = "TEAM_H") => planCrewChange(null, DEFAULT, noFlash, { registration: reg, id, at: T0 });
+const one = (ops: CrewChangeOp[], id = "CC-0001") => foldCrewChanges(ops).find((c) => c.id === id)!;
+const sentOps = (id = "CC-0001", reg = "TEAM_H"): CrewChangeOp[] => {
+  const base = created(id, reg);
+  const c = one(base, id);
+  return [...base, { op: "approved", id, at: at(1) }, { op: "sent", id, at: at(2), message: crewChangeMessage(c) }];
+};
+
+test("foldCrewChanges: pending → approved → sent → acknowledged, 시각과 보낸 문구를 남긴다", () => {
+  const ops = [...sentOps(), { op: "acknowledged" as const, id: "CC-0001", at: at(5) }];
+  const c = one(ops);
+  assert.equal(c.status, "acknowledged");
+  assert.deepEqual([c.approvedAt, c.sentAt, c.acknowledgedAt, c.deliveredAt, c.supersededAt], [at(1), at(2), at(5), null, null]);
+  assert.ok(c.message?.startsWith("[OCC CC-0001] CREW CHANGE · HOTEL (TEAM_H)\n"));
+  assert.equal(one(sentOps()).status, "sent");
+  assert.equal(one(sentOps().slice(0, 2)).status, "approved");
+});
+
+test("foldCrewChanges: 순서를 건너뛰거나 닫힌 건을 바꾸는 op는 무시한다", () => {
+  const base = created();
+  const msg = crewChangeMessage(one(base));
+  // 승인 없이 sent·acknowledged는 안 된다
+  assert.equal(one([...base, { op: "sent", id: "CC-0001", at: at(1), message: msg }]).status, "pending");
+  assert.equal(one([...base, { op: "acknowledged", id: "CC-0001", at: at(1) }]).status, "pending");
+  // approved도 전달함(delivered)·대신하기(superseded)가 된다
+  assert.equal(one([...base, { op: "approved", id: "CC-0001", at: at(1) }, { op: "delivered", id: "CC-0001", at: at(2) }]).status, "delivered");
+  assert.equal(one([...base, { op: "approved", id: "CC-0001", at: at(1) }, { op: "superseded", id: "CC-0001", at: at(2), by: "CC-0002" }]).status, "superseded");
+  // sent는 전달함·대신하기·다시 승인되지 않고 READBACK만 기다린다
+  for (const op of [
+    { op: "delivered", id: "CC-0001", at: at(3) },
+    { op: "superseded", id: "CC-0001", at: at(3), by: "CC-0002" },
+    { op: "approved", id: "CC-0001", at: at(3) },
+    { op: "sent", id: "CC-0001", at: at(3), message: "다른 문구" },
+  ] as CrewChangeOp[]) {
+    const c = one([...sentOps(), op]);
+    assert.deepEqual([c.status, c.sentAt, c.message], ["sent", at(2), msg], op.op);
+  }
+  // acknowledged·delivered는 닫힌 건
+  assert.equal(one([...sentOps(), { op: "acknowledged", id: "CC-0001", at: at(5) }, { op: "superseded", id: "CC-0001", at: at(6), by: null }]).status, "acknowledged");
+  assert.equal(one([...base, { op: "delivered", id: "CC-0001", at: at(1) }, { op: "approved", id: "CC-0001", at: at(2) }]).status, "delivered");
+});
+
+test("crewChangeMessage: [OCC CC-xxxx] 머리 + 지시문 본문(옛 머리 뗌) + READBACK 요청 줄. 두 번 감싸도 같다", () => {
+  const c = one(created());
+  const m = crewChangeMessage(c);
+  const lines = m.split("\n");
+  assert.equal(lines[0], "[OCC CC-0001] CREW CHANGE · HOTEL (TEAM_H)");
+  assert.equal(lines[1], "");
+  assert.equal(lines[2], "TEAM_H CAPTAIN, SUPERVISOR가 이 AIRCRAFT의 CREW COMPLEMENT를 바꿨습니다. 아래대로 팀원을 바꿔 주세요.");
+  assert.ok(!m.includes("[ATC FLEET]"));
+  assert.ok(m.includes('"TEAM_H CREW CHANGE CC-0001 COMPLETE" 한 줄만 남기세요.\n\n— 받았으면 이 메시지에 "READBACK CC-0001"로 답장해 주세요.'));
+  assert.ok(m.endsWith('— 받았으면 이 메시지에 "READBACK CC-0001"로 답장해 주세요.'));
+  // 본문은 지시문 그대로(머리 두 줄만 다름)
+  assert.equal(lines.slice(2, -2).join("\n"), c.text.split("\n").slice(2).join("\n"));
+  // 이미 [OCC …] 머리가 붙은 본문도 머리를 한 번만 둔다
+  assert.equal(crewChangeMessage({ ...c, text: m.split("\n").slice(0, -2).join("\n") }), m);
+  // 머리가 없는 본문은 그대로 감싼다. callsign이 없는 이름은 REGISTRATION만
+  assert.equal(crewChangeMessage({ id: "CC-0009", registration: "OPS", text: "본문" }), '[OCC CC-0009] CREW CHANGE · OPS\n\n본문\n\n— 받았으면 이 메시지에 "READBACK CC-0009"로 답장해 주세요.');
+});
+
+test("planCrewChange: approved는 새 변경이 대신하고(다시 승인), sent는 그대로 두고 새 건은 지금 선언에서 시작한다", () => {
+  const withSonnet = { complement: [...noFlash.complement, { position: "reviewer", agent: "sonnet" }], ratings: D.ratings };
+  // approved → superseded, 새 건은 원래 "전"에서 합쳐 pending
+  const approvedOps = [...created(), { op: "approved" as const, id: "CC-0001", at: at(1) }];
+  const next = planCrewChange(one(approvedOps), noFlash, withSonnet, ctx("CC-0002", at(3)));
+  assert.deepEqual(next[0], { op: "superseded", id: "CC-0001", at: at(3), by: "CC-0002" });
+  const merged = foldCrewChanges([...approvedOps, ...next]);
+  assert.deepEqual(merged.map((c) => c.status), ["superseded", "pending"]);
+  assert.deepEqual(merged[1].before, DEFAULT);
+  // sent가 열려 있으면 부르는 쪽(noteCrewChange)은 대기 건 없이 부른다: sent는 그대로, 새 건은 sent의 "후"에서
+  const later = planCrewChange(null, noFlash, withSonnet, ctx("CC-0002", at(3)));
+  assert.equal(later.length, 1);
+  const both = foldCrewChanges([...sentOps(), ...later]);
+  assert.deepEqual(both.map((c) => c.status), ["sent", "pending"]);
+  assert.deepEqual(both[1].before, noFlash);
+  assert.deepEqual(both[1].added, ["reviewer: sonnet"]);
+  assert.deepEqual(both[1].removed, []);
+});
+
+test("isCrewChangeOverdue: sent 뒤 10분 넘게 READBACK이 없으면", () => {
+  const c = one(sentOps());
+  const sentAt = Date.parse(at(2));
+  assert.equal(CREW_CHANGE_READBACK_OVERDUE_MS, 10 * 60_000);
+  assert.equal(isCrewChangeOverdue(c, sentAt + 10 * 60_000), false);
+  assert.equal(isCrewChangeOverdue(c, sentAt + 10 * 60_000 + 1), true);
+  assert.equal(isCrewChangeOverdue({ ...c, status: "acknowledged" }, sentAt + 60 * 60_000), false);
+  assert.equal(isCrewChangeOverdue(one(created()), sentAt + 60 * 60_000), false);
+});
+
+test("approveRefusal: approval 모드의 pending만. 아니면 404·409", () => {
+  const pending = one(created());
+  assert.equal(approveRefusal(pending, "approval"), null);
+  assert.deepEqual(approveRefusal(undefined, "approval")?.[0], 404);
+  assert.match(approveRefusal(pending, "shadow")?.[1] ?? "", /approval 모드\(2b\)에서만/);
+  for (const c of [one(sentOps().slice(0, 2)), one(sentOps()), { ...pending, status: "delivered" as const }, { ...pending, status: "superseded" as const }])
+    assert.deepEqual(approveRefusal(c, "approval"), [409, `CC-0001는 승인할 상태가 아님(${c.status})`]);
+});
+
+test("sendRefusal: approval 모드의 approved(또는 재송신할 sent)만, 같은 AIRCRAFT에 READBACK 대기 건이 있으면 기다린다", () => {
+  const approved = one(sentOps().slice(0, 2));
+  const sent = one(sentOps());
+  assert.equal(sendRefusal(approved, [approved], "approval"), null);
+  assert.equal(sendRefusal(sent, [sent], "approval"), null); // 재송신
+  assert.match(sendRefusal(approved, [approved], "shadow")?.[1] ?? "", /approval 모드/);
+  assert.match(sendRefusal(one(created()), [], "approval")?.[1] ?? "", /보낼 상태가 아님\(pending\) — SUPERVISOR 승인/);
+  assert.equal(sendRefusal(undefined, [], "approval")?.[0], 404);
+  const next = { ...approved, id: "CC-0002" };
+  assert.deepEqual(sendRefusal(next, [sent, next], "approval"), [409, "TEAM_H에 READBACK 대기 중인 CC-0001가 있음 — 그 READBACK 뒤에 보낸다"]);
+  // 다른 AIRCRAFT의 sent는 상관없다
+  assert.equal(sendRefusal({ ...next, registration: "TEAM_B" }, [sent, next], "approval"), null);
+});
+
+test("openCrewChangeOf: 카드에는 보내지 않은 건을 먼저, 없으면 READBACK 대기 건. waitingFor·overdue", () => {
+  const sentAt = Date.parse(at(2));
+  const withNext = [...sentOps(), ...planCrewChange(null, noFlash, DEFAULT, ctx("CC-0002", at(4)))];
+  const all = foldCrewChanges(withNext);
+  const card = openCrewChangeOf(all, "team_h", sentAt + 11 * 60_000)!;
+  assert.deepEqual([card.id, card.status, card.waitingFor, card.overdue, card.message], ["CC-0002", "pending", "CC-0001", false, null]);
+  const only = openCrewChangeOf(foldCrewChanges(sentOps()), "TEAM_H", sentAt + 11 * 60_000)!;
+  assert.deepEqual([only.id, only.status, only.waitingFor, only.overdue, only.sentAt, only.approvedAt], ["CC-0001", "sent", null, true, at(2), at(1)]);
+  assert.ok(only.message?.startsWith("[OCC CC-0001]"));
+  assert.equal(openCrewChangeOf(foldCrewChanges([...sentOps(), { op: "acknowledged", id: "CC-0001", at: at(5) }]), "TEAM_H", sentAt), null);
+  assert.equal(openCrewChangeOf(all, "TEAM_B", sentAt), null);
+});
+
+test("crewChangeBriefOf: 보낼 것(approved), 기다리는 것(waiting), READBACK 대기(sent), 늦은 것, 승인 대기(pending)", () => {
+  const h = sentOps("CC-0001", "TEAM_H");
+  const hNext = planCrewChange(null, noFlash, DEFAULT, { registration: "TEAM_H", id: "CC-0002", at: at(3) });
+  const b = created("CC-0003", "TEAM_B");
+  const c = created("CC-0004", "TEAM_C");
+  const ops: CrewChangeOp[] = [...h, ...hNext, { op: "approved", id: "CC-0002", at: at(4) }, ...b, { op: "approved", id: "CC-0003", at: at(4) }, ...c];
+  const brief = crewChangeBriefOf(foldCrewChanges(ops), "approval", Date.parse(at(13)));
+  assert.equal(brief.mode, "approval");
+  assert.deepEqual(brief.approved.map((x) => x.id), ["CC-0003"]);
+  assert.deepEqual(brief.waiting.map((x) => [x.id, x.waitingFor]), [["CC-0002", "CC-0001"]]);
+  assert.deepEqual(brief.sent.map((x) => [x.id, x.overdue]), [["CC-0001", true]]);
+  assert.deepEqual(brief.overdue, ["CC-0001"]);
+  assert.deepEqual(brief.pending, ["CC-0004"]);
+  // 기록 안의 문구·지시문은 브리핑에 싣지 않는다(보낼 문구는 crew-change send가 준다)
+  assert.ok(!JSON.stringify(brief).includes("CAPTAIN,"));
+});
+
+test("selfCheckCrewChange: 지금 코드와 atcctl에서 빠진 것이 없고, atcctl이 없으면 명령이 빠졌다고 한다", () => {
+  const src = readFileSync(new URL("../controller/atcctl.mjs", import.meta.url), "utf8");
+  assert.deepEqual(selfCheckCrewChange(src), []);
+  assert.deepEqual(selfCheckCrewChange(null), ["atcctl crew-change send", "atcctl crew-change readback"]);
+  assert.deepEqual(selfCheckCrewChange(src.replace('"brief", "send", "readback"', '"brief", "send"')), ["atcctl crew-change readback"]);
+});
+
+test("CrewChange 기록 형: 새 필드는 만든 때 null", () => {
+  const c: CrewChange = one(created());
+  assert.deepEqual([c.status, c.approvedAt, c.sentAt, c.message, c.acknowledgedAt], ["pending", null, null, null, null]);
 });

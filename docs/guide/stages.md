@@ -15,14 +15,14 @@
 
 - 2a → 2b: 판정 20건 이상, 합의율 80% 이상.
 - 2b → 3: 2주 이상, READBACK 90% 이상, DEPARTED 80% 이상(STAND가 필요한 FLIGHT만), DISPATCH가 보낸 FLIGHT에서 난 충돌이 거의 없음.
-- 3단계 설계(저장소의 `docs/atfm.md`, 영어)는 네 가지를 다룬다. 모두 그림자 운용(계산해서 보여 주기만 함)으로 먼저 잰 뒤 사용자가 켠다.
+- 3단계 설계(저장소의 `docs/atfm.ko.md`)는 네 가지를 다룬다. 모두 그림자 운용(계산해서 보여 주기만 함)으로 먼저 잰 뒤 사용자가 켠다.
   - **저위험 배정 자동 승인**: WAKE L·M, SEC 아님, CAUTION 없음, 명시 라벨, TAIL·ROUTE 일치, CROSSCHECK agree일 때만.
   - **S3 자동 처리**: SEC가 아닌 CLASSIFY로, 빈 축에 라벨을 붙이는 것만.
   - **머지 슬롯**: 저장소마다 동시에 LAND를 받는 PR 수를 정한다.
   - **출발 중지(GROUND STOP)**: main이 깨지거나, CI 실패가 몰리거나, LOS가 늘면 새 배정과 LAND를 멈춘다.
 - 모든 자동 동작에는 끄는 스위치, 하루 상한, 스스로 꺼지는 조건, FLIGHT RECORDER 기록이 붙는다. 자동 판정은 사람 판정 점검(게이트)에 세지 않는다.
 - 지금 만들어진 것(1~5단계):
-  - DISPATCH 탭의 **ATFM** 블록에서 볼 수 있다: 저장소마다 main CI, 출발 중지(ENFORCED·그림자), 머지 슬롯, 자동 배정·S3 대상 판정과 정확도, 켜는 조건.
+  - DISPATCH 탭의 **ATFM** 블록에서 볼 수 있다: 저장소마다 main CI, 출발 중지(ENFORCED·그림자), 머지 슬롯, 자동 배정·S3 대상 판정과 정확도, 켜는 조건. "2주 운용" 줄은 모드를 approval로 바꾼 기록에서 재고, 기록을 찾지 못하면 "△ 확인 필요"로 보인다.
   - 켤 수 있는 것은 두 가지뿐이다. **main 깨짐**을 켜면 그 AIRPORT에 새 배정과 LAND가 멈춘다. **수동**을 켜면 AIRPORT마다 이유를 적어 출발 중지를 선언하고 푼다.
   - 나머지(CI 실패 몰림, CI 혼잡, LOS 증가)는 그림자다.
   - **ATFM OFF**를 누르면 모두 그림자로 돌아간다.
@@ -51,4 +51,4 @@ CROSSCHECK 일치율은 S3에서 SEC가 아닌 CLASSIFY 같은 저위험 작업�
 | — | 팀 빌딩(ENTRY INTO SERVICE, CREW BRIEFING, AOG, 퇴역) | 완료 |
 | 다음 | CREW CHANGE, CHECKRIDE, 실제 관측 팀원, TARGETS 실적 | 예정 |
 
-설계 문서: 저장소의 `docs/dispatch.md`, `docs/occ.md`, `docs/fleet.md`.
+설계 문서: 저장소의 `docs/dispatch.ko.md`, `docs/occ.ko.md`, `docs/fleet.ko.md`, `docs/atfm.ko.md`.

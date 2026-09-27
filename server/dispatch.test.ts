@@ -225,7 +225,20 @@ test("TAIL ASSIGNMENT(tail:TEAM_X): 지정 팀에만 제안하고, 그 팀이 �
 
 test("tailsOf: tail:과 옛 lane:을 함께 읽고, 대소문자·공백을 가리지 않으며, 다른 라벨은 무시한다", async () => {
   const { tailsOf } = await import("./dispatch.ts");
-  assert.deepEqual([...tailsOf({ labels: ["tail:TEAM_E", "Lane: team_b", "symphony-pilot", "tail:"] })], ["TEAM_E", "TEAM_B"]);
+  assert.deepEqual([...tailsOf({ labels: ["tail:TEAM_E", "Lane: team_b", "symphony-pilot", "tail:"] }, NOW)], ["TEAM_E", "TEAM_B"]);
+});
+
+test("lane: 별칭은 2026-10-10(KST)에 끊긴다: 그 뒤 lane:만 붙은 FLIGHT는 아무 팀에도 주지 않고 제외 사유로 알림", async () => {
+  const { tailsOf, oldLaneOnly, LANE_CUTOFF } = await import("./dispatch.ts");
+  const after = LANE_CUTOFF;
+  assert.deepEqual([...tailsOf({ labels: ["lane:TEAM_B"] }, after - 1)], ["TEAM_B"]);
+  assert.deepEqual([...tailsOf({ labels: ["lane:TEAM_B", "tail:TEAM_E"] }, after)], ["TEAM_E"]);
+  assert.equal(oldLaneOnly({ labels: ["lane:TEAM_B"] }, after - 1), null);
+  assert.equal(oldLaneOnly({ labels: ["lane:TEAM_B", "tail:TEAM_E"] }, after), null); // tail:이 있으면 그것을 따른다
+  const s = snap({ sessions: [session("b", "TEAM_B"), session("e", "TEAM_E")], tickets: [ticket("VOC-90", { labels: ["lane:TEAM_B"] })] });
+  const p = planDispatch(s, new Map(), cfg(), after);
+  assert.deepEqual(p.assign, []);
+  assert.equal(p.excluded.find((e) => e.flight === "VOC-90")?.reason, "옛 lane:TEAM_B 라벨은 2026-10-10부터 읽지 않음 — tail:TEAM_B로 바꿀 것");
 });
 
 test("옛 lane: 라벨은 계속 지키되, 제외 사유에 tail:로 바꾸라고 적는다", () => {

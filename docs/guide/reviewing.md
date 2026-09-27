@@ -23,7 +23,7 @@ atc의 자동화는 **그림자 운용**에서 시작한다. 제안과 초안을
 - **CHECK는 만든 팀에 가지 않는다**: LOGBOOK, 열린 PR의 STAND, 워크트리 점유, 청구 기록에서 검토 대상을 만든 팀을 찾아 뺀다. 대상은 Linear 관계와 제목(FLIGHT key, `PR #400`)에서만 찾으므로 본문에만 적혀 있으면 모른다. `CHECK 독립성: 확인 못 함`이면 받는 팀이 그 대상을 만들지 않았는지 직접 확인하고, 만든 팀이면 "AIRCRAFT 부적합"으로 거절한다. 만든 팀만 남으면 제안 대신 "제외" 목록에 `CHECK 독립성 — …`으로 뜬다.
 - 조건부로 승인하고 싶으면(예: "PR #393 머지 뒤") HOLD로 두는 게 맞다.
 - **2b 진입 점검**: 판정 20건 이상, 합의율 80% 이상. 켜면 승인한 제안이 FLIGHT PLAN으로 CAPTAIN에게 간다.
-- **2b 켜기 점검표**: 켜기 전에 볼 항목이 준비됨·안 됨·확인 필요로 보인다. 2a 게이트, RECALL, send-guard, vocado READBACK 규칙, STAND 없는 FLIGHT, 알려진 빈틈 순서다. vocado READBACK 규칙이 "안 됨"이면 `vocado_nextjs/CLAUDE.md`에 더할 문장이 함께 나온다. send-guard는 서버가 테스트를 돌리지 않아 늘 "확인 필요"다(`node --test occ/send-guard.test.mjs`). 점검표는 보여 주기만 하고, 켜는 것은 SUPERVISOR다.
+- **2b 켜기 점검표**: 켜기 전에 볼 항목이 준비됨·안 됨·확인 필요로 보인다. 2a 게이트, RECALL, send-guard, vocado READBACK 규칙, STAND 없는 FLIGHT, CREW CHANGE 발부, 알려진 빈틈 순서다. vocado READBACK 규칙은 FLIGHT PLAN(`[DISPATCH D-xxxx]` → `READBACK D-xxxx`)과 CREW CHANGE(`[OCC CC-xxxx]` → `READBACK CC-xxxx`)를 다 다뤄야 "준비됨"이고, "안 됨"이면 `vocado_nextjs/CLAUDE.md`에 더할 문장이 함께 나온다(그 파일은 SUPERVISOR가 고친다). send-guard는 서버가 테스트를 돌리지 않아 늘 "확인 필요"다(`node --test occ/send-guard.test.mjs`). 점검표는 보여 주기만 하고, 켜는 것은 SUPERVISOR다.
 
 ## SCHEDULE 탭: 티켓 초안
 
@@ -42,7 +42,7 @@ OCC가 Linear에 쓸 변경을 초안으로 남긴다. 지금은 S1이라 Linear
 - **CLOSE는 Linear에서 직접 닫는다.** vocado 규칙상 OCC는 이슈 상태를 바꾸지 않으므로 S2에서도 CLOSE는 발부되지 않는다. 승인한 CLOSE(그림자 운용이면 "승인했을 것")는 SCHEDULE 탭의 **LINEAR에서 직접 DONE** 목록에 이슈·PR 링크와 함께 뜬다. Linear에서 Done으로 바꾸면 다음 새로 고침에 목록과 초안이 함께 닫힌다. PR이 되돌려지면 초안은 스스로 SUPERSEDED된다.
 - CLOSE 판정 기준: PR 본문이 `Fixes VOC-n`이고 완료 기준이 그 PR로 채워졌으면 승인, `Part of`이거나 남은 일·되돌림이 있으면 거절(사유 칩 "Part of — 일부만 끝남", "남은 작업이 있음" …).
 - **S2 진입 점검**: 판정 20건 이상, 합의율 80% 이상. 그때 Linear 쓰기가 열린다(승인한 초안만, linear-guard로).
-- **S2(승인 운용)**: SCHEDULE 탭의 "S2 승인 운용 켜기"로 켠다(만들어 두었고 기본은 꺼짐). 켜면 버튼이 "승인 / 거절"이 되고, 승인한 작업은 IN PROGRESS에 APPROVED → RELEASED(OCC가 Linear에 씀) → APPLIED(Linear에 보임)로 보인다. OCC가 쓰는 내용은 atc가 만들고, linear-guard가 그 입력과 다른 쓰기는 모두 막는다. 켜기 전 준비는 저장소의 `docs/occ.md` "Turning on S2".
+- **S2(승인 운용)**: SCHEDULE 탭의 "S2 승인 운용 켜기"로 켠다(만들어 두었고 기본은 꺼짐). 켜면 버튼이 "승인 / 거절"이 되고, 승인한 작업은 IN PROGRESS에 APPROVED → RELEASED(OCC가 Linear에 씀) → APPLIED(Linear에 보임)로 보인다. OCC가 쓰는 내용은 atc가 만들고, linear-guard가 그 입력과 다른 쓰기는 모두 막는다. 같은 호출은 한 번만 통과하므로 되풀이해도 댓글이 두 번 달리지 않는다. RELEASED인데 Linear에 반영되지 않았으면 OCC가 보고하고, Linear에서 직접 바꾸면 APPLIED로 닫힌다. 켜기 전 준비는 저장소의 `docs/occ.ko.md` "S2 켜는 법".
 
 ## RECALL: 보낸 FLIGHT PLAN 거둬들이기
 

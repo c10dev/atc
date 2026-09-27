@@ -274,7 +274,7 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 2b is built and sits behind `mode`. Turning it on sends approved proposals to real team sessions, so do it in this order:
 
 1. Check the "2b 켜기 점검표" in the DISPATCH tab (below) and the stage 2b gate (20 or more shadow decisions, 80% or more agreement).
-2. Extend the READBACK line in the teams' CLAUDE.md (`vocado_nextjs/CLAUDE.md`) so CAPTAINs also answer `[DISPATCH D-xxxx]` FLIGHT PLANs with `READBACK D-xxxx` (or a reason). The checklist's `vocado-readback` item gives the sentence to add.
+2. Extend the READBACK line in the teams' CLAUDE.md (`vocado_nextjs/CLAUDE.md`) so CAPTAINs also answer `[DISPATCH D-xxxx]` FLIGHT PLANs with `READBACK D-xxxx` (or a reason) and `[OCC CC-xxxx]` CREW CHANGEs with `READBACK CC-xxxx`. The checklist's `vocado-readback` item gives the sentence to add; the SUPERVISOR edits that file, atc only reads it.
 3. Press "2b 승인 운용 켜기" in the DISPATCH tab (or `POST /api/dispatch/mode {"mode":"approval"}`). The running DISPATCH session picks up the mode on its next pass.
 4. To stop, switch back to shadow. FLIGHT PLANs already sent stay as they are; no new ones go out.
 
@@ -286,19 +286,21 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 |---|---|
 | `gate` | `gateOf`: `ready` when the 2a gate is met (20 decisions, 80% agreement) |
 | `recall` | Code facts, not a constant: a synthetic log folds `sent → recalling → recalled` and releases the reservation, `formatRecall` produces the header, the `recall`, `recall-send` and `recalled` endpoints are registered (`DISPATCH_ACTIONS`), and `controller/atcctl.mjs` has the `recall-send` and `recalled` commands (`selfCheck2b`) |
-| `send-guard` | The server does not run tests. It reads `occ/send-guard.mjs` and looks for the `checkSend` export, the approval-mode check, the FLIGHT PLAN (`proposal.message`) and RECALL (`proposal.recallMessage`) comparisons, the recipient check and `exit 2`, and shows the file's sha256 prefix. All present → `check` with a pointer to `node --test occ/send-guard.test.mjs`; something missing or no file → `not-ready` |
-| `vocado-readback` | Reads `vocado_nextjs/CLAUDE.md` (read-only; `ATC_VOCADO_CLAUDE_MD`, else `<projectsDir>/vocado_nextjs/CLAUDE.md`). `ready` when one line holds both `[DISPATCH D-` and `READBACK D-`; otherwise `not-ready` with the sentence to add in `detail` and `suggestion`; `check` when the file cannot be read |
+| `send-guard` | The server does not run tests. It reads `occ/send-guard.mjs` and looks for the `checkSend` export, the approval-mode check, the FLIGHT PLAN (`proposal.message`), RECALL (`proposal.recallMessage`) and CREW CHANGE (`change.message`, recipient `change.registration`) comparisons, the recipient check and `exit 2`, and shows the file's sha256 prefix. All present → `check` with a pointer to `node --test occ/send-guard.test.mjs`; something missing or no file → `not-ready` |
+| `vocado-readback` | Reads `vocado_nextjs/CLAUDE.md` (read-only; `ATC_VOCADO_CLAUDE_MD`, else `<projectsDir>/vocado_nextjs/CLAUDE.md`). `ready` when one line holds both `[DISPATCH D-` and `READBACK D-` and one line (the same or another) holds both `[OCC CC-` and `READBACK CC-`; otherwise `not-ready` with the sentence to add in `detail` and `suggestion`; `check` when the file cannot be read |
 | `stand-free` | Code facts like `recall`: READBACK of a SURVEY departs with no STAND, it stays reserved and does not expire after 30 days, ARRIVED releases it, the `arrived` endpoint and `atcctl dispatch arrived` exist |
+| `crew-change` | Code facts like `recall` (`selfCheckCrewChange` in `server/crew-change.ts`): a synthetic log folds `pending → approved → sent → acknowledged`, a `sent` one is overdue after 10 minutes, approval is refused in shadow mode, `crewChangeMessage` produces the `[OCC CC-xxxx]` header and the `READBACK CC-xxxx` line, a newer change supersedes an `approved` one and waits behind a `sent` one, the `approve`, `send` and `readback` endpoints exist, and `controller/atcctl.mjs` has `crew-change send` and `readback` ([fleet.md](fleet.md) 8.4) |
 | `known-gaps` | Always `check`, linking to the section below |
 
 ### Known gaps before turning on 2b
 
 - `dispatch release` marks a proposal SENT before the message goes out. If delivery fails (the CAPTAIN session is gone, or the message is held for approval), it stays SENT; after 10 minutes it shows as NO READBACK, DISPATCH resends once, then reports to the SUPERVISOR.
-- A STAND-free FLIGHT ARRIVES only on the CAPTAIN's report. There is no automatic detection yet (a review on the target PR, a docs PR or issue comment). A forgotten report keeps the AIRCRAFT's one STAND-free slot until the SUPERVISOR follows up from `overdue` (24 hours); OCC cannot ask the CAPTAIN itself, since send-guard lets through only FLIGHT PLANs and RECALLs.
+- A STAND-free FLIGHT ARRIVES only on the CAPTAIN's report. There is no automatic detection yet (a review on the target PR, a docs PR or issue comment). A forgotten report keeps the AIRCRAFT's one STAND-free slot until the SUPERVISOR follows up from `overdue` (24 hours); OCC cannot ask the CAPTAIN itself, since send-guard lets through only FLIGHT PLANs, RECALLs and CREW CHANGEs.
 - A STAND-free READBACK counts as DEPARTED even if the CAPTAIN never starts; nothing else shows the work began.
 - A STAND-free ARRIVED does not enter the LOGBOOK, so it does not count toward TARGETS. The planner excludes the FLIGHT for 7 days after ARRIVED; after that it trusts Linear, so the FLIGHT should be closed there.
 - The FLIGHT TYPE is read at READBACK. Relabelling afterwards does not change a recorded departure.
 - A DEPARTED FLIGHT with a STAND cannot be RECALLED; the SUPERVISOR talks to the CAPTAIN directly.
+- `crew-change send` marks a CREW CHANGE SENT before the message goes out, like `dispatch release`. A failed delivery shows as overdue after 10 minutes; OCC resends once, then reports. While it waits for READBACK, a newer CREW CHANGE for the same AIRCRAFT waits too ([fleet.md](fleet.md) 8.4).
 - send-guard's behaviour is only proven by its tests; the checklist shows `check`, not `ready`.
 - The `vocado-readback` check looks for the two markers on one line. It does not judge the wording.
 

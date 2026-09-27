@@ -1,10 +1,10 @@
 # ATFM design (stage 3)
 
-English only for now, like [occ.md](occ.md) and [fleet.md](fleet.md).
+**English** · [한국어](atfm.ko.md)
 
 ATFM (air traffic flow management) is stage 3 of atc. Stages 1–2 made atc see traffic (TOWER), propose work (DISPATCH), draft ticket changes (OCC SCHEDULE) and get a second opinion (CROSSCHECK), with every decision left to the SUPERVISOR. Stage 3 lets atc act on its own in the narrow cases where the data shows the SUPERVISOR would decide the same way, and lets it slow traffic down when the system is congested or broken.
 
-> Status (2026-09-27): the SUPERVISOR decided the ten open questions (see "Decisions" at the end). Steps 1–5 of section 8 are built: data collection, ground stops, merge slots, and auto-eligibility for DISPATCH and S3, all in shadow operation (computed, shown and recorded, never acted on). The only mechanisms that can be switched to `on` are the "main broken" and "manual" ground stops, and both are off by default. Step 8, RECALL, is also built (docs/dispatch.md "RECALL"). Automatic assignment and automatic S3 are not built. Section 10 describes what exists.
+> Status (2026-09-27): the SUPERVISOR decided the ten open questions (see "Decisions" at the end). Steps 1–5 of section 8 are built: data collection, ground stops, merge slots, and auto-eligibility for DISPATCH and S3, all in shadow operation (computed, shown and recorded, never acted on). Part of step 6 is built too: the "main broken" and "manual" ground stops can be switched `on`, and then they are enforced. They are the only mechanisms that can be, and both are off by default. Step 8, RECALL, is also built (docs/dispatch.md "RECALL"). Automatic assignment and automatic S3 are not built. Section 10 describes what exists.
 
 Related: [dispatch.md](dispatch.md) section 8 (the 2b → 3 criteria), [occ.md](occ.md) sections 7 and 11 (S3), [fleet.md](fleet.md) section 4 (classification), `server/landing.ts` (CLEARED TO LAND), `server/proposals.ts` (`gate3Of`), `server/crosscheck.ts` (match rate, one-click count), `server/logbook.ts` (LOGBOOK).
 
@@ -55,7 +55,7 @@ Read-only from the running atc (`/api/dispatch/brief`, `/api/schedule/brief`, `/
 
 **Turn-on conditions** (all, checked from data, shown in the DISPATCH tab as a "STAGE 3" panel next to the existing gates):
 
-1. 2b has run for 2 weeks or more and `gate3` is ready: 10 or more FLIGHT PLANs, READBACK 90%+, DEPARTED 80%+ (dispatch.md section 8, `GATE3`). The DEPARTED rate counts STAND-needing FLIGHTs only: a STAND-free FLIGHT departs at READBACK, so it counts toward the READBACK rate and is shown apart as `gate3.standFree`.
+1. 2b has run for 2 weeks or more and `gate3` is ready. dispatch.md section 8 asks for 2+ weeks, READBACK 90%+, DEPARTED 80%+, almost no LOS on FLIGHTs DISPATCH sent, and less idle AIRCRAFT time. The code (`gate3Of`, `GATE3`) checks 10 or more human-approved FLIGHT PLANs sent, READBACK 90%+ and DEPARTED 80%+; the minimum of 10 is the code's own. LOS is condition 5 below. The 2-week duration is measured from the last DISPATCH `mode:` switch in the FLIGHT RECORDER (`approvalRunOf`): 14 days or more in `approval` passes. When the mode is `approval` but the last switch recorded is not (the file was edited by hand, or the switch is older than the recorder's 30 days), the row shows "확인 필요" (check) instead of a verdict. Less idle AIRCRAFT time is not measured: Not built yet. The DEPARTED rate counts STAND-needing FLIGHTs only: a STAND-free FLIGHT departs at READBACK, so it counts toward the READBACK rate and is shown apart as `gate3.standFree`.
 2. **Shadow precision of the auto-eligible set**: 20 or more auto-eligible ASSIGNs decided by the SUPERVISOR, of which 95% or more approved, and none rejected with `already-done`, `parent-issue`, `waiting-on-prior` or `needs-human`.
 3. **CROSSCHECK on DISPATCH, per model family**: 20 or more marked decisions for the model family currently in use (`byModel`, keyed by `modelFamily`), matching 90% or more. The overall rate is not enough, because the model changed once already. A family merges the names the same model gets on different paths: `claude-ocx-opencode-go--muse-spark-1.3-contributor`, `…[1m]` and `muse-spark-1.3-contributor` all count as `muse-spark-1.3`. Marks recorded before model names existed read as `unknown`: they stay visible as their own row, but they are never the "current family" and never count toward this condition.
 4. **One-click share**: among auto-eligible ASSIGNs, the share the SUPERVISOR approved with "CROSSCHECK에 동의" (`oneClick`). This is supporting evidence, not a gate: a high share shows those decisions are already routine, but it measures convenience, not correctness.
@@ -64,7 +64,7 @@ Read-only from the running atc (`/api/dispatch/brief`, `/api/schedule/brief`, `/
 **Turn-off and rollback.**
 
 - Switch: `atfm.json` `autoAssign` (decision 10). Today it only takes `off | shadow` (default `shadow`: computes, shows and records); `on` comes with the automatic assignment PR.
-- Automatic trips (switch goes back to `shadow` and an alert is raised): an auto-sent FLIGHT PLAN is DECLINED or has NO READBACK after 10 minutes; the SUPERVISOR supersedes or recalls an auto-approved proposal; an auto-sent FLIGHT is part of a LOS; the per-model CROSSCHECK match over the last 20 decisions falls below 85%.
+- Automatic trips (switch goes back to `shadow` and an alert is raised): an auto-sent FLIGHT PLAN is DECLINED or has NO READBACK after 10 minutes; the SUPERVISOR supersedes or recalls an auto-approved proposal; an auto-sent FLIGHT is part of a LOS; the CROSSCHECK match of the current model family over the last 20 decisions falls below 85%.
 - Rollback of one FLIGHT: FLIGHT PLANs already sent stay sent (like turning 2b off). The SUPERVISOR can **recall** an auto-sent proposal: OCC sends a fixed `[DISPATCH D-xxxx] RECALL` text (send-guard allows it only for proposals in `recalling`), and the CAPTAIN answers `READBACK D-xxxx RECALL`. Decision 4: built before automatic assignment — see docs/dispatch.md "RECALL".
 
 **Metrics.** Auto-eligible count and the failed-condition histogram; shadow precision; auto-sent per day; READBACK and DEPARTED rates of auto-sent vs human-approved FLIGHT PLANs; declines; recalls; LOS on auto FLIGHTs; block time against the WAKE expectation (`WAKE_EXPECT_MIN`) once enough LOGBOOK entries have an AIRCRAFT and a class.
@@ -75,30 +75,31 @@ Read-only from the running atc (`/api/dispatch/brief`, `/api/schedule/brief`, `/
 
 **Purpose.** Let OCC apply routine plan-field changes without an approval click, starting with classification labels, while anything that changes risk stays human.
 
-**Rule: a SCHEDULE operation is auto-eligible only if all hold.**
+**Rule: a SCHEDULE operation is auto-eligible only if all hold.** S1–S4 are condition codes, the ones `s3Eligibility` reports as failed conditions. They are not the OCC stages S1–S3 ([occ.md](occ.md) section 11), such as S3 in this section's title. Where a stage is meant in the conditions and below them, it is written "stage S2" or "stage S3".
 
 | # | Condition |
 |---|---|
-| S1 | Kind is `CLASSIFY` and it only **adds** labels on axes that have none (no `removeLabels` in its calls). Replacing an existing label is a human decision (decision 5: this is the whole S3 scope for now) |
-| S2 | It neither adds nor removes `rating:SEC`, and the FLIGHT has no `rating:SEC`, no Risk label and no CAUTION |
+| S1 | Kind is `CLASSIFY` and it only **adds** labels on axes that have none (no `removeLabels` in its calls). Replacing an existing label is a human decision (decision 5: this is the whole stage S3 scope for now) |
+| S2 | It does not add `rating:SEC`, and the FLIGHT has no `rating:SEC`, no label from the Risk group (`Risk:Security`, or the old single `Risk: Security`; `classOf` reads every `Risk:` label as SEC) and no OCC CAUTION on any DISPATCH proposal for it. If atc cannot read the FLIGHT, S2 fails: SEC work is never automatic |
 | S3 | A CROSSCHECK `agree` mark from an allowed model on this draft, and OCC's reason cites fleet.md sections for every axis it sets (the #29 rule) |
-| S4 | The FLIGHT is Todo or Backlog and not AIRBORNE on another team's `tail:` |
-| S5 | S2 (approval mode) is on, so the Linear call is the one atc releases and linear-guard compares |
+| S4 | The FLIGHT is Todo or Backlog and no team is flying it: no STAND, and no DISPATCH proposal between approval and ARRIVED (`isInFlight`, which includes a STAND-free FLIGHT that departed at READBACK). A `tail:` label alone does not block it; it only pre-assigns |
 
-Later candidates, each only after its own S2 record (occ.md section 7). Decision 5: `CLOSE` after merge is reviewed once S2 has run for 2 weeks. `CLOSE` as Done when the FLIGHT's PR is in the LOGBOOK as merged, not reverted, 1 hour has passed, and every done-criteria box in the body is checked (OCC reads it; `CLOSE` itself is not built yet); `LINK` for a prerequisite quoted verbatim from the body. `PRIORITIZE` stays human: priority follows the SUPERVISOR's plans, which ticket bodies rarely state. Never automatic: `rating:SEC` added or removed, CAUTION, `Canceled`, deletion, changing a `tail:` of an AIRBORNE team.
+One more condition is not a per-draft check: stage S2 (approval operation) must be on, so the Linear call is the one atc releases and linear-guard compares. It holds for every draft or for none, so it is turn-on condition 1 below.
+
+Later candidates, each only after its own stage S2 record (occ.md section 7). Decision 5: `CLOSE` after merge is reviewed once stage S2 has run for 2 weeks. `CLOSE` as Done when the FLIGHT's PR is in the LOGBOOK as merged, not reverted, 1 hour has passed, and every done-criteria box in the body is checked (OCC reads it). The `CLOSE` draft is built ([occ.md](occ.md) section 5.5), but atc never releases it: the SUPERVISOR moves the issue to Done in Linear. Automatic `CLOSE` is not built yet. `LINK` for a prerequisite quoted verbatim from the body. `PRIORITIZE` stays human: priority follows the SUPERVISOR's plans, which ticket bodies rarely state. Never automatic: `rating:SEC` added or removed, CAUTION, `Canceled`, deletion, changing a `tail:` of an AIRBORNE team.
 
 **Turn-on conditions.**
 
-1. S2 has run for 2 weeks (occ.md section 11), with no APPLIED operation undone by a person. "Undone" is detected as a label that OCC added and that is gone within 7 days.
+1. Stage S2 has run for 2 weeks (occ.md section 11), measured from the last SCHEDULE `mode:` switch like condition 1 of section 3, with no APPLIED operation undone by a person. "Undone" is detected as a label that OCC added and that is gone within 7 days.
 2. Human agreement on CLASSIFY drafts written after #29: 20 or more decided, 85% or more agreed.
 3. CROSSCHECK on SCHEDULE CLASSIFY, per current model family (as in section 3; `unknown` is not counted): 20 or more marked, 90% or more matched (today: 7 of 7, 5 of them `unknown`).
 4. Shadow precision: 20 or more auto-eligible drafts decided, 95% or more approved.
 
-**Turn-off and rollback.** Switch `atfm.json` `s3` (today `off | shadow`, default `shadow`). Trips back to `shadow`: a human rejects a draft the rule marked eligible (in shadow) or removes an auto-applied label (in `on`), a linear-guard block, or the per-model match falling below 85%. Rollback of one applied CLASSIFY: atc drafts the inverse operation (remove exactly the labels it added) as a normal S2 draft for the SUPERVISOR to approve; nothing is removed automatically.
+**Turn-off and rollback.** Switch `atfm.json` `s3` (today `off | shadow`, default `shadow`). Trips back to `shadow`: a human rejects a draft the rule marked eligible (in shadow) or removes an auto-applied label (in `on`), a linear-guard block, or the current model family's match falling below 85%. Rollback of one applied CLASSIFY: atc drafts the inverse operation (remove exactly the labels it added) as a normal stage S2 draft for the SUPERVISOR to approve; nothing is removed automatically.
 
 **Metrics.** Eligible and applied per day, undone within 7 days, human agreement on CLASSIFY, per-family CROSSCHECK match, label mismatches found later by DISPATCH (a FLIGHT excluded or re-classified after auto-apply).
 
-**Data needed.** Post-#29 CLASSIFY verdicts; S2 turned on; label-removal detection in the Linear source (compare labels between fetches).
+**Data needed.** Post-#29 CLASSIFY verdicts; stage S2 turned on; label-removal detection in the Linear source (compare labels between fetches).
 
 ## 5. Merge slots
 
@@ -106,11 +107,11 @@ Later candidates, each only after its own S2 record (occ.md section 7). Decision
 
 **Rules.**
 
-- **Slots per repository and base.** At most N PRs at a time hold a LAND CLEARANCE that has not landed yet. Decision 6: 1 for vocado_nextjs, unlimited for repositories without CI (atc and others). In code: 1 when the default branch head has any check, unlimited when it has none; `atfm.json` `slotLimits` (AIRPORT code → number or `null`) overrides it. A PR that is CLEARED but outside the slots stays in the sequence with its number, and TOWER does not send it LAND yet.
+- **Slots per repository and base.** At most N PRs at a time hold a LAND CLEARANCE that has not landed yet. Decision 6: 1 for vocado_nextjs, unlimited for repositories without CI (atc and others). In code: 1 when the default branch head has any check, unlimited when it has none; `atfm.json` `slotLimits` (AIRPORT code → number or `null`) overrides it. A PR that is CLEARED but outside the slots stays in the sequence with its number; from step 7, TOWER does not send it LAND until it is in a slot.
 - **Order.** PRs that already hold a LAND come first and are never displaced; then Urgent-priority FLIGHTs; then the rest by `readyAt` (decision 6).
 - **Pacing.** The next LAND in the same repository goes out when the previous one merged, or when its LAND is older than the LAND timeout (30 min, decision 7: atc's p90 landing wait is 12 min, so 30 min leaves margin. vocado's longer LOGBOOK waits run from PR opened to merged, which includes review time before the PR is CLEARED, so they overstate the time after LAND). A timed-out LAND is reported to the SUPERVISOR and its slot freed.
-- **Rebase cost.** After a merge, PRs in the same repository that turn `BEHIND` are counted. If more than 2 PRs are made `BEHIND` per merge on average over a day, the slot stays at 1; if CI duration is short (median under 10 min), the slot can be raised to 2.
-- **Where it runs.** atc computes `slot` for each PR in `landingQueue` (`in-slot` / `waiting-slot`); TOWER's rules issue LAND only to `in-slot` PRs. No new write path.
+- **Rebase cost.** Open PRs that turn `BEHIND` are recorded (`behind`), so `BEHIND` per merge can be counted. The limit stays as decision 6 sets it; only the SUPERVISOR changes it, through `slotLimits`. The adjustment first proposed here (keep 1 when more than 2 PRs go `BEHIND` per merge on average over a day, raise to 2 when the CI median is under 10 min) is not built yet, and it would need a new decision.
+- **Where it runs.** atc computes `slot` for each PR in `landingQueue` (`in-slot` / `waiting-slot`); from step 7, TOWER's rules issue LAND only to `in-slot` PRs. Not built yet: today TOWER reads `slot` but does not follow it. No new write path.
 
 **Turn-on.** Run in shadow (show `waiting-slot` in STRIPS, TOWER still issues LAND as today) for 1 week, then compare: how often two LANDs in the same repository were active at once, and how many PRs went `BEHIND` after each merge.
 
@@ -130,9 +131,11 @@ Later candidates, each only after its own S2 record (occ.md section 7). Decision
 |---|---|---|
 | **Main broken**: the default branch head has a failing required check | New ASSIGN and all LAND for that AIRPORT (new work would branch from a broken base; merges would pile on) | The default branch head is green, or the SUPERVISOR releases it |
 | **CI failure wave**: 3 or more PRs in the same repository fail the same check within 1 hour | New ASSIGN and LAND | The failing check passes on a newer head in 2 PRs, or the SUPERVISOR releases it |
-| **CI congestion**: more than 4 PRs with pending checks for over 30 min, or median check duration over 2× the 7-day baseline | GROUND DELAY: AIRBORNE slots −1; LAND continues so the queue drains | Below the threshold for 30 min |
-| **LOS rising**: 2 or more open LOS at the AIRPORT, or 3 or more LOS there in 24 h | New ASSIGN | No open LOS for 30 min |
+| **CI congestion**: more than 4 PRs with a check running for over 30 min. The second trigger, median check duration over 2× the 7-day baseline, is not built yet | GROUND DELAY: AIRBORNE slots −1; LAND continues so the queue drains | Below the threshold for 30 min |
+| **LOS rising**: 2 or more open LOS at the AIRPORT. The second trigger, 3 or more LOS there in 24 h, is not built yet | New ASSIGN | No open LOS for 30 min |
 | **Manual**: the SUPERVISOR declares a ground stop with a reason | Whatever the SUPERVISOR selects | The SUPERVISOR releases it |
+
+In code a stop ends at the first snapshot where its trigger no longer holds. The release rules above that wait (30 min below the threshold, the check passing in 2 PRs) are not built yet; the triggers that use them are shadow-only.
 
 Codex usage-limit notices (PRs stuck on `no-review` with "Codex 한도") are reported as INFO, not a ground stop: they block landing by themselves.
 
@@ -159,7 +162,7 @@ Codex usage-limit notices (PRs stuck on `no-review` with "Codex 한도") are rep
 | Caps | Automatic ASSIGNs: at most 3 per day overall, and at most 1 automatically assigned FLIGHT per AIRCRAFT that has not ARRIVED, together with the WAKE slots (decision 3). S3 automatic operations: at most 5 per day. Days are KST. At a cap, eligible items fall back to the normal human flow |
 | Automatic trips | Each mechanism has trip conditions (sections 3–4) that set its switch back to `shadow` and raise an alert. Turning it back on is a SUPERVISOR action |
 | Notification | Every automatic action is an event in `/api/events` and a line in an "AUTO" list in its tab. Trips and ground stops are ALERTs. OCC and TOWER mention automatic actions in their LOG lines |
-| Record | FLIGHT RECORDER lines of a new kind `atfm`: `{op: "auto-approve" \| "auto-apply" \| "trip" \| "ground-stop" \| "ground-release" \| "slot-hold" \| "switch", id, rule, inputs}`. `inputs` is the snapshot of the conditions that were checked, so any automatic action can be explained afterwards |
+| Record | FLIGHT RECORDER lines of kind `atfm`: `{op, id?, airport?, data?}`. The built ops are listed in section 10 (`ground-stop`, `ground-release`, `ci`, `behind`, `eligible`, `s3-eligible`, `undone`, `switch`, `off`, `manual-stop`, `manual-release`). `eligible` and `s3-eligible` carry `checked`, the condition codes that were checked (A1–A10, S1–S4). Not built yet: `auto-approve`, `auto-apply`, `trip` and `slot-hold`, and the `rule` and `inputs` fields that come with them. `inputs` is to be the snapshot of the values behind each condition, so any automatic action can be explained afterwards |
 | Attribution | Automatic approvals are `approve` ops with `by: "atfm"` and `via: "atfm"`. They are excluded from the human gates and the CROSSCHECK match rate (principle 2) |
 | Guards | Automatic FLIGHT PLANs go through `dispatch release` and send-guard; automatic Linear writes through `schedule release` and linear-guard. No guard gets a bypass |
 
@@ -189,9 +192,9 @@ Steps 1–5 are built (section 10). In step 6, the "main broken" and "manual" gr
 | Slots slow down repositories that don't need them | Slots default to unlimited for repositories without CI; per-repository settings |
 | An automatic FLIGHT PLAN lands on a team that is busy in reality | A8 (PARKED, no recent NO READBACK or DECLINED), at most 1 unfinished automatic FLIGHT per AIRCRAFT, recall |
 | Labels drift and make A1–A4 wrong | A1 requires explicit labels, S3 only adds labels on empty axes, human agreement on CLASSIFY is part of the S3 gate |
-| Too little data to ever turn things on | Shadow eligibility (steps 4–5) starts now, during 2a and S1, so the precision record builds up in parallel |
+| Too little data to ever turn things on | Shadow eligibility (steps 4–5) is built and runs during 2a and S1, so the precision record builds up in parallel |
 
-## 10. What is built (steps 1–5)
+## 10. What is built (steps 1–5 and part of step 6)
 
 | Piece | Where | What it does |
 |---|---|---|
@@ -201,8 +204,8 @@ Steps 1–5 are built (section 10). In step 6, the "main broken" and "manual" gr
 | Enforcement (on only) | `server/proposals.ts`, `server/controller.ts`, `server/events.ts`, TOWER and OCC `CLAUDE.md` | The planner moves ASSIGNs at a stopped AIRPORT to `excluded` with `GROUND STOP — …`, so open proposals there are SUPERSEDED with that reason. `dispatch release` refuses. The TOWER brief puts `groundStop` on each `landingQueue` item, and TOWER issues no LAND there. `groundstop.started` and `groundstop.ended` events make TOWER send HOLD and CONTINUE. Shadow stops produce no events |
 | Merge slots (shadow) | `server/atfm.ts` `slotsOf`, TOWER brief `landingQueue[].slot` | `in-slot` or `waiting-slot`, lane position, Urgent, LAND time and the 30-minute timeout. TOWER does not follow it yet |
 | Auto-eligibility (shadow) | `server/atfm.ts` `autoEligibility` (A1–A10), `s3Eligibility` (S1–S4) | Computed for every open ASSIGN and CLASSIFY draft, with the failed conditions |
-| Shadow precision and turn-on rows | `server/atfm-run.ts` `atfmView` | Precision is taken over items ever recorded as eligible, compared with human decisions. It also counts rejections that should have been blocked (`already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`). Each section 3/4 turn-on condition becomes a pass/fail/insufficient row, and the CROSSCHECK rate is taken for the model of the latest mark |
-| Recording | FLIGHT RECORDER lines `kind: "atfm"` | `ground-stop`, `ground-release`, `ci`, `behind` (an open PR turning BEHIND), `eligible`, `s3-eligible`, `undone` (a label applied through S2 that disappears within 7 days), `switch`, `off`, `manual-stop`, `manual-release`. `~/.local/state/atc/atfm-state.json` remembers what was recorded, so a restart doesn't duplicate lines |
+| Shadow precision and turn-on rows | `server/atfm-run.ts` `atfmView` | Precision is taken over items ever recorded as eligible, compared with human decisions. It also counts rejections that should have been blocked (`already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`). Each section 3/4 turn-on condition becomes a pass/fail/insufficient row (the 2-week rows can also be "check", `approvalRunOf`), and the CROSSCHECK rate is taken for the family of the latest non-`unknown` mark (`currentModelRate`) |
+| Recording | FLIGHT RECORDER lines `kind: "atfm"` | `ground-stop`, `ground-release`, `ci`, `behind` (an open PR turning BEHIND), `eligible` and `s3-eligible` (with `checked`), `undone` (a label applied through S2 that disappears within 7 days), `switch`, `off`, `manual-stop`, `manual-release`. `~/.local/state/atc/atfm-state.json` remembers what was recorded, so a restart doesn't duplicate lines |
 | API | `server/atfm-run.ts` | `GET /api/atfm` (switches, main CI, ground stops, slots, eligibility with failed conditions, precision, turn-on rows, data), `POST /api/atfm/switch {key, value}`, `POST /api/atfm/off`, `POST /api/atfm/stops {airport, reason}` (only while `groundStop.manual` is on), `POST /api/atfm/stops/:airport/release` |
 | Screen | DISPATCH tab, "ATFM" block (`web/src/views/Atfm.tsx`) | Ground stops (ENFORCED or shadow), the two switchable switches with confirmation, a manual stop form, main CI per AIRPORT, slots, eligibility, S3, data, and ATFM OFF. It may move to the NETWORK tab later |
 | Attribution | `server/crosscheck.ts` `Via`, `humanOf`, gates | `via: "atfm"` can only be set inside the server. `humanOf` returns nothing for it, the 2a and S1 gates skip it, `gate3` counts only human-approved FLIGHT PLANs, and the CROSSCHECK rate and one-click count exclude it |
@@ -226,10 +229,8 @@ The questions as they were asked are kept below for reference.
 
 ## Questions put to the SUPERVISOR (answered above)
 
-
-
 1. **Auto-eligible FLIGHT TYPEs**: BUILD, MAINT and FERRY only (proposed), or also SURVEY?
-2. **Thresholds**: shadow precision 95% over 20, CROSSCHECK per-model match 90% over 20, trip at 85% — keep, or change?
+2. **Thresholds**: shadow precision 95% over 20, CROSSCHECK per-model-family match 90% over 20, trip at 85% — keep, or change?
 3. **Daily caps**: 3 automatic ASSIGNs per day, 1 per AIRCRAFT; 5 S3 operations per day?
 4. **Recall**: build `[DISPATCH D-xxxx] RECALL` before automatic assignment (proposed), or accept that rollback is a direct message from the SUPERVISOR?
 5. **S3 scope**: CLASSIFY on empty axes only (proposed); when to consider `CLOSE` after merge?

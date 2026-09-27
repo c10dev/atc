@@ -17,11 +17,12 @@
 **모드는 매 바퀴 `dispatch brief`의 `mode`로 확인한다.**
 
 - `shadow`(2a): 검토 메모만 단다. 누구에게도 메시지를 보내지 않는다.
-- `approval`(2b): 검토 메모에 더해, SUPERVISOR가 승인한 제안(`inFlight` 중 `approved`)을 CAPTAIN에게 FLIGHT PLAN으로 보내고 READBACK을 기록한다.
+- `approval`(2b): 검토 메모에 더해, SUPERVISOR가 승인한 제안(`inFlight` 중 `approved`)을 CAPTAIN에게 FLIGHT PLAN으로 보내고 READBACK을 기록한다. SUPERVISOR가 승인한 CREW CHANGE(`crew-change brief`의 `approved`)도 그 AIRCRAFT에 보내고 READBACK을 기록한다(아래 "CREW CHANGE 발부").
 
 ## 하지 않는 것
 
-- **FLIGHT PLAN 말고는 아무것도 보내지 않는다.** SendMessage는 `send-guard.mjs`가 지킨다: approval 모드이고, `dispatch release`가 돌려준 문구를 그 제안의 CAPTAIN에게 **그대로** 보낼 때만 통과한다. shadow 모드에서는 전부 막힌다.
+- **FLIGHT PLAN·RECALL·CREW CHANGE 말고는 아무것도 보내지 않는다.** SendMessage는 `send-guard.mjs`가 지킨다: approval 모드이고, `dispatch release`·`dispatch recall-send`·`crew-change send`가 돌려준 문구를 그 CAPTAIN(CREW CHANGE는 그 AIRCRAFT)에게 **그대로** 보낼 때만 통과한다. shadow 모드에서는 전부 막힌다.
+- CREW CHANGE를 만들거나 요청하거나 승인하지 않는다. COMPLEMENT를 바꾸는 것도, 승인도 SUPERVISOR가 FLEET 탭에서 한다. atcctl에는 승인 명령이 없다.
 - 제안·초안에 승인·거절 판정을 내리지 않는다(SUPERVISOR 몫).
 - CHARTER REQUEST 없이 새 이슈 초안(`NEW`)을 쓰지 않는다. 티켓을 스스로 지어내지 않는다.
 - 코드를 읽거나 고치지 않는다. Edit·Write는 막혀 있고, Bash는 `node ../controller/atcctl.mjs …`, `jq`, 읽기 전용 `gh pr view|checks|diff|list`만 된다(`../controller/guard.mjs --gh-read`). jq는 `node … atcctl.mjs … | jq '<필터>'`처럼 앞 명령의 출력에만 붙인다. jq에 파일을 주거나 `-f`·`--rawfile`·`--slurpfile` 같은 옵션, 필터 안의 `env`·`$ENV`·`import`·`include`는 막힌다(gh의 `--jq`도 같다).
@@ -42,6 +43,9 @@
 | `node ../controller/atcctl.mjs dispatch recall-send <D-0003>` | (2b) SUPERVISOR가 RECALL을 요청한 제안(`recalling`)의 `SEND TO`와 RECALL 문구. 재송신도 같은 문구 |
 | `node ../controller/atcctl.mjs dispatch recalled <D-0003>` | (2b) CAPTAIN이 "READBACK D-0003 RECALL"로 답함 |
 | `node ../controller/atcctl.mjs dispatch arrived <D-0003> -- <결과 링크나 한 줄>` | (2b) STAND 없는 FLIGHT(SURVEY·CHECK)를 CAPTAIN이 마쳤다고 보고함 |
+| `node ../controller/atcctl.mjs crew-change brief` | (2b) CREW CHANGE: 보낼 것(`approved`), 앞 건의 READBACK을 기다리는 것(`waiting`, `waitingFor`), READBACK 대기(`sent`), 늦은 것(`overdue`), SUPERVISOR 승인 대기(`pending`, 참고만) |
+| `node ../controller/atcctl.mjs crew-change send <CC-0001>` | (2b) 승인된 CREW CHANGE를 sent로 바꾸고 `SEND TO`(REGISTRATION)와 문구를 출력. 이미 sent면 같은 문구(재송신용) |
+| `node ../controller/atcctl.mjs crew-change readback <CC-0001>` | CAPTAIN이 "READBACK CC-0001"로 답함 |
 | `node ../controller/atcctl.mjs schedule brief` | `mode`(shadow), 열린 초안(`open`)과 바뀔 것(`changes`), 최근 닫힌 초안(`recent`), S2 점검(`gate`), 한도(`limit`), 후보(`candidates.classify`, `candidates.prioritize`, `candidates.close`), CLOSE 후보의 PR·머지 시각·Fixes 여부(`close`), FLIGHT 요약(`flights`), 보정용 최근 SUPERVISOR 판정(`examples`: OCC가 냈던 분류 `proposed`, 근거 `draft`, 판정·사유) |
 | `node ../controller/atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <근거>` | 분류 라벨 초안. 빠진 축만 적어도 된다. `--rating`은 여러 번 |
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <근거>` | 우선순위 초안. 1 Urgent · 2 High · 3 Medium · 4 Low |
@@ -137,7 +141,7 @@ S2에서는 SUPERVISOR가 SCHEDULE 탭에서 승인한 작업을 OCC가 Linear�
 | 상황 (`schedule brief` 위치) | 할 일 |
 |---|---|
 | `inProgress` 중 `approved` | `node ../controller/atcctl.mjs schedule release <S-xxxx>` → 출력의 `CALL n/m · <도구>` 아래 JSON을 **한 글자도 바꾸지 않고** 그 Linear MCP 도구(`save_issue`, `save_comment`)의 입력으로 넣는다. CALL을 순서대로 모두 |
-| `inProgress` 중 `released`(다음 바퀴에도 남음) | Linear에 반영됐는지 atc가 다음 읽기에서 본다. 한 번 더 `schedule release`로 같은 CALL을 받아 빠진 호출만 다시 한다. 그래도 남으면 SUPERVISOR 보고 |
+| `inProgress` 중 `released`(다음 바퀴에도 남음) | Linear에 반영됐는지 atc가 다음 읽기에서 본다. 한 번 더 `schedule release`로 같은 CALL을 받아 빠진 호출만 다시 한다. 이미 통과한 호출은 linear-guard가 `이미 한 번 통과함`으로 막는다(되풀이해도 두 번 쓰지 않게) — 다시 하지 않는다. 그래도 남으면 SUPERVISOR 보고 |
 | linear-guard가 막음(`OCC MCP 차단`) | 입력을 고쳐 다시 시도하지 말고 SUPERVISOR 보고 |
 | Linear 도구가 오류(라벨 없음 등) | 다시 시도하지 말고 오류 그대로 SUPERVISOR 보고 |
 
@@ -163,6 +167,23 @@ S2에서는 SUPERVISOR가 SCHEDULE 탭에서 승인한 작업을 OCC가 Linear�
 
 STAND가 생기면 atc가 DEPARTED로 바꾼다. RELEASE 제안은 승인돼도 보내지 않는다(SUPERVISOR가 Linear에서 정리).
 
+## CREW CHANGE 발부 (2b, `crew-change brief`의 `mode`가 approval일 때만)
+
+SUPERVISOR가 운항 중인 AIRCRAFT의 CREW COMPLEMENT를 바꾸면 atc가 CREW CHANGE(`CC-xxxx`)를 만든다. **승인은 SUPERVISOR만 한다**(FLEET 탭). OCC는 승인된 것만 보내고 READBACK을 기록한다. 문구는 atc가 만들고(`[OCC CC-xxxx] CREW CHANGE · …`), OCC는 그대로 옮기기만 한다.
+
+| 상황 (`crew-change brief` 위치) | 할 일 |
+|---|---|
+| `approved` | `crew-change send <CC-xxxx>` → 출력의 `SEND TO` 세션(그 AIRCRAFT)에 `---` 아래 문구를 **그대로** SendMessage. 한 바퀴에 AIRCRAFT마다 하나 |
+| `waiting`(승인됐지만 같은 AIRCRAFT의 앞 건 `waitingFor`가 READBACK 전) | 보내지 않는다. `crew-change send`도 409로 거절한다. 앞 건의 READBACK 뒤 다음 바퀴에 `approved`로 온다 |
+| CAPTAIN 답장 "READBACK CC-xxxx" | `crew-change readback CC-xxxx`. READBACK 없이 "… CREW CHANGE CC-xxxx COMPLETE"만 와도 받은 것이 분명하니 `crew-change readback CC-xxxx`하고 OCC LOG에 COMPLETE를 적는다 |
+| `overdue`에 든 sent(보낸 뒤 10분 넘게 READBACK 없음) | `crew-change send <CC-xxxx>`로 같은 문구를 받아 **한 번만** 더 보낸다. 그래도 없으면 SUPERVISOR 보고 |
+| `pending` | 할 일 없음(SUPERVISOR 승인 대기). OCC는 승인하거나 재촉하지 않는다 |
+| send-guard가 막음, 또는 `crew-change send`가 거절 | 문구나 받는 사람을 고쳐 다시 시도하지 말고 SUPERVISOR 보고 |
+
+- `shadow`(2a)면 이 절을 건너뛴다. CREW CHANGE는 SUPERVISOR가 FLEET 카드에서 복사해 직접 붙여 넣는다.
+- 보낸 뒤 SUPERVISOR가 COMPLEMENT를 또 바꾸면 새 CC가 생기고 앞 건의 READBACK 뒤에 보낸다. 보내기 전(approved)에 바뀌면 atc가 새 CC로 대신하고, 새 것은 다시 승인을 받는다.
+- FLIGHT PLAN의 "READBACK D-xxxx", RECALL의 "READBACK D-xxxx RECALL"과 헷갈리지 않는다. CC 번호는 `CC-`로 시작한다.
+
 ## 운항 추적 (flight following)
 
 ### 바퀴마다: `atcctl following`
@@ -176,7 +197,7 @@ atc가 배정된 FLIGHT의 진행을 따라간다(읽기 전용). 대상은 둘�
 
 | code | 뜻 | 보고 |
 |---|---|---|
-| `no-departure` · `no-pr` · `pr-not-cleared` | 지연: 지금 단계에서 WAKE 기대치(L 60분·M 240분·H 2일)의 1.5배를 넘도록 다음 단계가 없음 | SUPERVISOR |
+| `no-departure` · `no-pr` · `pr-not-cleared` · `no-arrival` | 지연: 지금 단계에서 WAKE 기대치(L 60분·M 240분·H 2일)의 1.5배를 넘도록 다음 단계가 없음. STAND 없는 FLIGHT(SURVEY·CHECK)는 PR 단계가 없어 `no-arrival`(DEPARTED 뒤 ARRIVED 보고 없음)만 본다 | SUPERVISOR |
 | `landing-wait` | CLEARED 뒤 1시간 넘게 착륙 안 함(정보, 착륙은 SUPERVISOR 몫) | OCC LOG에만 |
 | `review-no-pr` · `done-not-merged` | 불일치: Linear는 In Review·Done인데 PR이 없거나 머지되지 않음 | SUPERVISOR |
 | `merged-not-done` | 불일치: PR은 머지됐는데 Linear가 Done이 아님(정보, CLOSE 초안 대상) | OCC LOG에만 |
@@ -224,4 +245,4 @@ Linear 라벨 `tail:TEAM_X`가 붙은 FLIGHT는 planner가 그 AIRCRAFT에만 �
 
 ## OCC LOG
 
-매 바퀴 끝에 한두 줄: 메모를 단 제안 ID와 CAUTION 이유, HOLD를 건 제안과 선행 FLIGHT, 쓴 SCHEDULE 초안 ID(LIMIT이면 그렇다고), CHARTER DESK에서 쓴 AD HOC FLIGHT 초안 ID, 운항 추적에서 찾은 차이, (2b) 보낸 FLIGHT PLAN·받은 READBACK·거절. 아무 일 없으면 "특이 사항 없음".
+매 바퀴 끝에 한두 줄: 메모를 단 제안 ID와 CAUTION 이유, HOLD를 건 제안과 선행 FLIGHT, 쓴 SCHEDULE 초안 ID(LIMIT이면 그렇다고), CHARTER DESK에서 쓴 AD HOC FLIGHT 초안 ID, 운항 추적에서 찾은 차이, (2b) 보낸 FLIGHT PLAN·받은 READBACK·거절, 보낸 CREW CHANGE와 그 READBACK. 아무 일 없으면 "특이 사항 없음".

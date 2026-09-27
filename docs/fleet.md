@@ -1,13 +1,13 @@
 # FLEET design (draft)
 
-English only for now; a Korean version will follow.
+**English** · [한국어](fleet.ko.md)
 
 atc knows each team session as an AIRCRAFT (`TEAM_B`, callsign BRAVO) and its leader as the CAPTAIN. It knows nothing else about the team: who is on board, what kind of work it can fly, which projects it usually flies, or what it is aiming for. It knows just as little about a FLIGHT: whether it is a big build, a quick fix, research or a review. This document adds both sides, in airline operations terms:
 
 - **FLEET**: the teams, their crews, what they are rated for, their routes and targets.
 - **FLIGHT classification**: the kind of work, its size and the rating it needs.
 
-> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE step 1 (sections 8.3 and 8.4), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules, then STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (see section 5 for what is left), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), and CHECKRIDE recommendations for TYPE RATINGS (section 8.2). Decisions are listed at the end.
+> Status: design draft (2026-09-26, updated 2026-09-27). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE steps 1 and 2 (sections 8.3 and 8.4; step 2, OCC sending it, only in DISPATCH approval mode), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules, then STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (see section 5 for what is left), STAND-free departure and arrival (section 5.1.1), OCC S1 `CLASSIFY` drafts (section 6), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), NETWORK (section 7.3), the DEPARTURE LOG (section 7.5), and CHECKRIDE recommendations for TYPE RATINGS (section 8.2). Decisions are listed at the end.
 
 Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHEDULE operations), [dispatch.md](dispatch.md) (the planner that uses them).
 
@@ -19,10 +19,10 @@ Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHE
 | Crew rules | vocado `CLAUDE.md`: teammates default to `claude-opus-5-5`; `ui-builder` (Opus) builds UI; `ui-qa` (Muse Spark 1.3) is read-only visual and accessibility QA; `flash-helper` (DeepSeek V4.1 Flash) does search, summaries, reference collection and exactly specified mechanical edits, and never implementation, review verdicts, security, DB, auth, rights or anything needing images |
 | Risky work | DB, migration, security and rights work uses the `Codex Engineering Task` template; DISPATCH marks it CAUTION |
 | What atc sees of a team | Session name, status (AIRBORNE / HOLDING / PARKED), claimed worktrees, past FLIGHTs (team fit) |
-| Sizing | Linear has 0 estimates. The planner counts slots (1 FLIGHT per TEAM), not effort |
-| Pre-assignment | `lane:TEAM_X` label (PR #7): proposed only to that team |
+| Sizing | Linear has 0 estimates. The planner counts WAKE-weighted AIRPORT slots (L 0.5, M 1, H 2; section 5), 1 FLIGHT per TEAM under the STAND rule, plus at most one STAND-free FLIGHT per TEAM (section 5.1) |
+| Pre-assignment | `tail:TEAM_X` label: proposed only to that team. `lane:TEAM_X` (PR #7) is still read as an alias until 2026-10-10 (section 9) |
 
-What this caused on 2026-09-26:
+What the old state (1 slot per FLIGHT, `lane:` only) caused on 2026-09-26:
 
 - VOC-196 (a security static gate) was proposed to TEAM_D, then TEAM_B, while its body said "TEAM_E, on Opus". Nothing in atc could express that.
 - A security ticket and a one-line docs fix look the same to the planner: one slot each, any team.
@@ -56,7 +56,7 @@ Kept in `~/.local/state/atc/fleet.json`, like the AIRPORT registry (`airports.js
     "complement": [
       { "position": "backend", "agent": "claude-opus-5-5" },
       { "position": "ui-builder", "agent": "ui-builder" },
-      { "position": "ui-qa", "agent": "ui-qa" },
+      { "position": "ui-qa", "agent": "ui-qa", "limits": ["read-only"] },
       { "position": "flash-helper", "agent": "flash-helper", "limits": ["no BUILD", "no CHECK verdicts", "no SEC"] }
     ],
     "ratings": ["UI", "DATA", "DOCS"]
@@ -90,7 +90,7 @@ Three independent axes. Each is a Linear label that OCC owns (a plan field in oc
 
 What it changes:
 
-- `SURVEY` and `CHECK` need no worktree, so they don't count against the 1-FLIGHT-per-TEAM STAND rule. A HOLDING team can take one (section 5.1).
+- `SURVEY` and `CHECK` need no worktree, so they don't count against the 1-FLIGHT-per-TEAM STAND rule. A HOLDING or PARKED team can take one, one per AIRCRAFT (section 5.1).
 - `CHECK` is never assigned to the team that flew the BUILD it reviews (independence, like TOWER not judging its own assignments; section 5.2).
 - `FERRY` FLIGHTs can be batched: one CAPTAIN takes several in one pass.
 
@@ -109,7 +109,7 @@ What it changes:
 
 - **Slots**: AIRPORT capacity is counted in WAKE-weighted slots. VCDO's 4 means, for example, two `H` or four `M`.
 - **Separation**: two `H` FLIGHTs linked by `related` or touching the same area get a larger conflict penalty than two `L`.
-- **On-time**: the expected block time is the baseline for the stage 4 on-time metric until real history replaces it. After about 20 FLIGHTs per category, the medians from the FLIGHT RECORDER take over.
+- **On-time**: the expected block time is the baseline for the stage 4 on-time metric until real history replaces it. After about 20 LOGBOOK entries per category, their median is meant to take over. Not built yet (section 7.2).
 - **`J`** is a signal to plan, not to fly.
 
 ### 4.3 Required TYPE RATING: what it touches
@@ -138,7 +138,7 @@ Labels rather than Linear estimates: estimates are one number per team setting, 
 
 ## 5. Planner rules
 
-Applied in this order. The first four are hard rules: a FLIGHT that fails them is excluded with the reason, never given to another team.
+Applied in this order. The first four are hard rules, and so is the `J` exclusion in rule 5: a FLIGHT that fails them is excluded with the reason, never given to another team.
 
 1. **TAIL ASSIGNMENT**: `tail:TEAM_X` → only that AIRCRAFT (what `lane:` does today).
 2. **TYPE RATING**: the AIRCRAFT holds every required rating.
@@ -222,10 +222,10 @@ Not built yet: WAKE-scaled conflict risk (a same-area approach is sketched in [i
 
 | Stage | Who writes the labels |
 |---|---|
-| Now (before OCC S2) | The SUPERVISOR or President by hand. DISPATCH notes the classification it reads from the body |
-| OCC S1 | OCC drafts a SCHEDULE `CLASSIFY` operation for each new or unclassified Todo: FLIGHT TYPE, WAKE, ratings, with a one-line reason. The SUPERVISOR marks it in shadow |
-| OCC S2 | Approved `CLASSIFY` operations are written through linear-guard |
-| OCC S3 | `CLASSIFY` may become automatic for non-`SEC` FLIGHTs if S2 agreement is high. Adding or removing `rating:SEC` always needs approval |
+| By hand (any stage) | The SUPERVISOR or President. Not built yet: DISPATCH notes that suggest a classification from the body |
+| OCC S1 (built) | OCC drafts a SCHEDULE `CLASSIFY` operation for each Todo or Backlog FLIGHT missing a `type:` or `wake:` label (`candidatesOf` in `server/schedule.ts`, likely `SURVEY` and `CHECK` first): FLIGHT TYPE, WAKE, ratings, with a one-line reason. The SUPERVISOR marks it in shadow |
+| OCC S2 (built, off by default) | Approved `CLASSIFY` operations are written through linear-guard, when the SCHEDULE `mode` is `approval` (occ.md) |
+| OCC S3 (not built yet) | `CLASSIFY` may become automatic for non-`SEC` FLIGHTs if S2 agreement is high. Adding or removing `rating:SEC` always needs approval |
 
 Classification is a bounded choice from fixed options, so it is also the first candidate for a typed-judgment model (the Jev evaluation in the DISPATCH notes), measured against the SUPERVISOR's shadow marks.
 
@@ -244,12 +244,12 @@ Stage 4 (network planning) puts these next to the project goals (section 7.3). O
 
 ### 7.1 LOGBOOK
 
-An aircraft logbook records every flight an airframe has flown. atc's LOGBOOK does the same per AIRCRAFT: one line per FLIGHT that ARRIVED, that is, whose PR was merged into the AIRPORT's default branch.
+An aircraft logbook records every flight an airframe has flown. atc's LOGBOOK does the same per AIRCRAFT: one line per PR merged into the AIRPORT's default branch, which is when its FLIGHT (or AD HOC work) ARRIVED. A FLIGHT flown in several PRs has several lines; a `Revert` PR adds none of its own.
 
 Kept in `~/.local/state/atc/logbook.jsonl`, append-only like the other records. Two operations:
 
 ```json
-{"op":"arrived","t":"…","key":"owner/repo#31","aircraft":"TEAM_J","flight":"VOC-201","class":{"type":"BUILD","wake":"M","ratings":["UI"],"explicit":{"type":true,"wake":true}},"airport":"ATCC","pr":{"repo":"owner/repo","number":31,"url":"…","title":"…"},"stands":["/home/…/worktrees/atc-logbook"],"departedAt":"…","departedFrom":"claim","arrivedAt":"…","blockMin":190,"landingWaitMin":122,"codexFindings":1,"changesRequested":false,"reverted":false,"los":0}
+{"op":"arrived","t":"…","key":"owner/repo#31","aircraft":"TEAM_J","flight":"VOC-201","class":{"type":"BUILD","wake":"M","ratings":["UI"],"explicit":{"type":true,"wake":true}},"airport":"ATCC","pr":{"repo":"owner/repo","number":31,"url":"…","title":"…"},"branch":"claude/logbook","stands":["/home/…/worktrees/atc-logbook"],"departedAt":"…","departedFrom":"claim","arrivedAt":"…","blockMin":190,"landingWaitMin":122,"codexFindings":1,"changesRequested":false,"reverted":false,"los":0}
 {"op":"reverted","t":"…","key":"owner/repo#31","by":{"number":35,"url":"…"}}
 ```
 
@@ -378,7 +378,7 @@ Kept in `~/.local/state/atc/departures.jsonl`, append-only (`server/departures.t
 
 - One card per AIRCRAFT: registration and callsign, base AIRPORT, status, CREW COMPLEMENT declared vs observed, TYPE RATINGS, ROUTES, TARGETS against the LOGBOOK actuals (section 7.2) with the last few FLIGHTs.
 - Edit form for the SUPERVISOR (writes `fleet.json`, same pattern as the AIRPORT registry).
-- A classification column in the DISPATCH tab and on FIDS.
+- The classification on each DISPATCH card, under the title (section 5). Not built yet: the classification on FIDS.
 
 ### 8.1 Team building
 
@@ -392,7 +392,7 @@ The FLEET tab is also where teams are formed and stood down. atc never starts a 
 | Stand a team down for a while | **AOG** | Reason plus an optional release date. The planner stops proposing to it (`AOG — reason (~date)`) |
 | Remove a team | **RETIREMENT** | The AIRCRAFT leaves the FLEET list (kept under RETIRED with its date and reason) and gets no proposals. A live session is not closed. It can be restored |
 
-Later: sending **CREW CHANGE** through OCC after approval, from OCC S2 (step 1, the text without sending, is section 8.4).
+A running AIRCRAFT whose complement changes gets a **CREW CHANGE** instead (section 8.4): the SUPERVISOR pastes it, or in DISPATCH approval mode approves it and OCC sends it.
 
 ### 8.2 CHECKRIDE
 
@@ -451,38 +451,66 @@ Calls are grouped by `agentType` and `model`: `observedCrew: {agentType, positio
 **Drift** (`crewDrift`):
 
 - `undeclared`: observed calls with no POSITION, by agent type, with the model when one was given (`Explore`, `general-purpose (sonnet)`). The card shows "선언에 없음: Explore".
-- `unused`: declared POSITIONs with no call in the window. A POSITION that is never a subagent (the `codex` reviewer of the `security` CONFIGURATION, which works through GitHub reviews) always shows here. Read it as "not seen", not as a fault.
+- `unused`: declared POSITIONs with no call in the window. A POSITION that is never a subagent (the `reviewer` POSITION of the `security` CONFIGURATION, agent `codex (GitHub 리뷰)`, which works through GitHub reviews) always shows here. Read it as "not seen", not as a fault.
 
 **Cost.** The server rescans `~/.claude/projects` for `custom-title.json` at most every 30 seconds. Titles are cached by file mtime and each session's calls by the mtime of its `subagents/` folder, so an unchanged session is not re-read.
 
 **Gap: agent-team teammates.** Teammates spawned by the CAPTAIN with the Agent tool (named or not, background or not) are recorded under the CAPTAIN's `subagents/` and are observed. Teammates of a Claude Code agent team that run as separate sessions (registered under `~/.claude/teams/<team>/`) are not: atc does not read the team config, and those sessions carry their own names. They show as `unused` if declared. Seeing them would need a metadata source that names the lead session; none is used yet.
 
-### 8.4 CREW CHANGE (step 1: text, never sent)
+### 8.4 CREW CHANGE
 
-When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT through `PATCH /api/fleet/:registration`, atc writes a CREW CHANGE: a text for the CAPTAIN, like the CREW BRIEFING but for a running team. Built in `server/crew-change.ts`; the only hook in `fleet.ts` is one call after the profile is saved.
+When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT through `PATCH /api/fleet/:registration`, atc writes a CREW CHANGE: a text for the CAPTAIN, like the CREW BRIEFING but for a running team. Built in `server/crew-change.ts`; the only hook in `fleet.ts` is one call after the profile is saved. Step 1 (below, first part) is the text and the SUPERVISOR's manual delivery. Step 2 (the rest) lets OCC send it in DISPATCH approval mode (2b).
 
 - **In service** means not retired and a live session with that name exists. An AIRCRAFT that has not entered service gets its crew from the CREW BRIEFING instead. AOG AIRCRAFT count as in service.
 - **Diff** (`diffCrew`): members are compared by their one-line form `position: agent (limits)`, the same as the CREW BRIEFING. A member whose agent or limits changed is removed and added; the text pairs a POSITION that leaves and returns once as "바뀌는 CREW".
 - **TYPE RATING impact** (`ratingImpact`), from the planner rules of sections 4.3 and 5: losing or gaining `BUILD`/`MAINT`/`TEST` (a member who is not `flash-helper` and has no `no BUILD` or `read-only`), `CHECK` (no `no CHECK verdicts`), the ability to hold `SEC` (`canHoldSec`; `applyPatch` still refuses `SEC` without it), ratings added or removed in the same PATCH, and `UI` kept without both `ui-builder` and `ui-qa`.
 - **Text** (`crewChangeText`): header `[ATC FLEET] CREW CHANGE · <CALLSIGN> (<REG>) · CC-0001`, then crew leaving, joining and changing, the full new complement, TYPE RATING with the impact, and how to apply it (stop leaving teammates after their current work, create joining ones with the given agent and model, tell changed ones their new limits), ending with `"<REG> CREW CHANGE CC-0001 COMPLETE"`.
-- **Record**: `~/.local/state/atc/crew-changes.jsonl`, append-only. `{"op":"created","id":"CC-0001","registration","at","before":{complement,ratings},"after":{…},"added","removed","ratingImpact","text"}`, then `{"op":"delivered","id","at"}` or `{"op":"superseded","id","at","by"}`. Folded status: `pending` → `delivered` or `superseded`.
-- **Superseding**: a new complement change while one is pending closes it (`by` the new id) and writes a new one diffed from the pending one's original `before` to the latest `after`. If that diff is empty (the crew went back), the pending one is closed with `by: null` and nothing new is written. A PATCH that changes only the ratings rewrites a pending CREW CHANGE (so its TYPE RATING lines stay true) but never starts one.
-- **Never sent.** There is no send path. The FLEET card shows `pendingCrewChange: {id, at, text, added, removed, ratingImpact}` with a copy button; the SUPERVISOR pastes it to the CAPTAIN and presses 전달함, which calls `POST /api/fleet/:registration/crew-change/:id/delivered` (404 unknown, 409 already closed). `GET /api/fleet/crew-changes?registration=&limit=` returns the recent history. Sending through OCC comes later, behind a switch.
+- **Record**: `~/.local/state/atc/crew-changes.jsonl`, append-only. `{"op":"created","id":"CC-0001","registration","at","before":{complement,ratings},"after":{…},"added","removed","ratingImpact","text"}`, then status lines `{"op":"approved"|"acknowledged"|"delivered","id","at"}`, `{"op":"sent","id","at","message"}` and `{"op":"superseded","id","at","by"}`.
+- **Manual delivery** (both modes): the FLEET card shows the open CREW CHANGE with a copy button; the SUPERVISOR pastes it to the CAPTAIN and presses 전달함, which calls `POST /api/fleet/:registration/crew-change/:id/delivered`. `GET /api/fleet/crew-changes?registration=&limit=` returns the recent history with every status and timestamp.
+
+**States** (`foldCrewChanges`; an op that does not fit the current state is ignored):
+
+| From | Op | To | Who |
+|---|---|---|---|
+| `pending` | `approved` | `approved` | SUPERVISOR, FLEET tab or API, approval mode only |
+| `approved` | `sent` | `sent` | OCC, `atcctl crew-change send CC-xxxx` |
+| `sent` | `acknowledged` | `acknowledged` | OCC, `atcctl crew-change readback CC-xxxx` after the CAPTAIN's `READBACK CC-xxxx` |
+| `pending`, `approved` | `delivered` | `delivered` | SUPERVISOR, 전달함 (pasted by hand) |
+| `pending`, `approved` | `superseded` | `superseded` | atc, on a newer complement change |
+
+`acknowledged`, `delivered` and `superseded` are closed. OCC never creates, requests or approves a CREW CHANGE: `atcctl` has no approve command and the OCC Bash guard allows nothing but `atcctl`, `jq` and read-only `gh`.
+
+**Decisions (2026-09-27):**
+
+- **Approval needs approval mode.** `POST /api/fleet/:registration/crew-change/:id/approve` returns 409 unless `dispatch.json` `mode` is `approval`. There is no approve-then-wait: in shadow nobody would send it, and 전달함 is the shadow path.
+- **An `approved` one can still be delivered by hand.** If the SUPERVISOR switches back to shadow, or pastes it first, 전달함 closes it and OCC never sends it. A `sent` one cannot be marked delivered (409): it is already with the CAPTAIN and waits for READBACK.
+- **Superseding.** A newer complement change while one is `pending` or `approved` closes it (`by` the new id) and writes a new one diffed from its original `before` to the latest `after`; an approved one needs approval again. If that diff is empty (the crew went back), the open one is closed with `by: null` and nothing new is written. A PATCH that changes only the ratings rewrites an unsent CREW CHANGE (so its TYPE RATING lines stay true) but never starts one. A `sent` one is never superseded: it stays open until READBACK. A newer change is diffed from the current declaration (the `sent` one's `after`), can be approved, and waits: `crew-change send` refuses it (409, "READBACK 대기 중인 CC-xxxx") until the `sent` one is acknowledged.
+- **Sending** (`POST /api/fleet/crew-changes/:id/send`, approval mode only): `approved` → `sent`, stores the exact message and returns `{change, sendTo, message}`. On a `sent` one it returns the same message again (resend). The message (`crewChangeMessage`) is the header `[OCC CC-0001] CREW CHANGE · <CALLSIGN> (<REG>)`, a blank line, the text without its `[ATC FLEET] …` header (an `[OCC CC-xxxx] …` header is stripped too, so it never doubles), a blank line and `— 받았으면 이 메시지에 "READBACK CC-0001"로 답장해 주세요.`, the same form as the FLIGHT PLAN and RECALL.
+- **READBACK** (`POST /api/fleet/crew-changes/:id/readback`): `sent` → `acknowledged`, in any mode (a sent one must be closable after switching back to shadow). A "CREW CHANGE CC-xxxx COMPLETE" line alone also shows the CAPTAIN got it; OCC records the READBACK for it.
+- **Overdue**: a `sent` one with no READBACK after 10 minutes (`CREW_CHANGE_READBACK_OVERDUE_MS`). OCC resends the same text once (`crew-change send` again), then reports to the SUPERVISOR.
+
+**send-guard** (`occ/send-guard.mjs`, the OCC session's SendMessage hook, fail-closed): a message starting with `[OCC CC-xxxx]` passes only when `GET /api/fleet/crew-changes/:id` answers `{change, mode}` with `mode: "approval"`, `change.status: "sent"` (so `crew-change send` ran first), the recipient's bare name equal to `change.registration`, and the trimmed body equal to the stored `change.message`. atc unreachable, an unknown id or any mismatch blocks with exit 2. The DISPATCH checks are unchanged.
+
+**Views.** `GET /api/fleet` returns `dispatchMode` and, per AIRCRAFT, `pendingCrewChange: {id, at, text, added, removed, ratingImpact, status: "pending" | "approved" | "sent", message, approvedAt, sentAt, overdue, waitingFor}` (`openCrewChangeOf`): the unsent one when there is one, otherwise the `sent` one, until it is acknowledged, delivered or superseded. `waitingFor` is the id of the `sent` one an unsent one waits behind. `GET /api/fleet/crew-changes/brief` (`atcctl crew-change brief`) returns `{mode, approved, waiting, sent, overdue, pending}` for OCC: `approved` ready to send, `waiting` approved but behind a `sent` one, `sent` waiting for READBACK, `overdue` ids, `pending` ids waiting for the SUPERVISOR.
+
+**2b checklist.** The `crew-change` item ("CREW CHANGE 발부", `selfCheckCrewChange`) checks these transitions, the refusals, the message, the overdue rule, the endpoints and the `atcctl` commands from code facts. The `vocado-readback` item is ready only when vocado `CLAUDE.md` also answers `[OCC CC-xxxx]` with `READBACK CC-xxxx` ([dispatch.md](dispatch.md) "2b readiness checklist").
 
 ## 9. Moving from `lane:` to `tail:`
 
-1. The planner reads `tail:` and keeps reading `lane:` as an alias for two weeks, marking it "deprecated" in the exclusion reason.
-2. Create Linear labels `tail:TEAM_A` … `tail:TEAM_F` and put `tail:TEAM_E` on VOC-196 (approved by the SUPERVISOR on 2026-09-26).
-3. Tell President: assignments go on Linear as `tail:TEAM_X` from now on; the OCC handover follows occ.md section 8.
-4. Rename in `occ/CLAUDE.md`, README and CHANGELOG.
+All four steps are done:
+
+1. ✅ The planner reads `tail:` and keeps reading `lane:` as an alias until 2026-10-10. An exclusion reason for a `lane:` FLIGHT adds `(옛 lane: 라벨 — tail:로 바꿀 것)`. From 2026-10-10 (KST, `LANE_CUTOFF`) the planner stops reading `lane:`: a FLIGHT with only a `lane:` label is proposed to no team and excluded with `옛 lane:TEAM_X 라벨은 2026-10-10부터 읽지 않음 — tail:TEAM_X로 바꿀 것`, and a FLIGHT that also has `tail:` follows the `tail:`.
+2. ✅ Linear labels `tail:TEAM_A` … `tail:TEAM_F` were created and VOC-196 got `tail:TEAM_E` (approved by the SUPERVISOR on 2026-09-26).
+3. ✅ President was told: assignments go on Linear as `tail:TEAM_X`; the OCC handover follows occ.md section 8.
+4. ✅ Renamed in `occ/CLAUDE.md`, README and CHANGELOG.
 
 ## 10. Implementation order
 
 1. ✅ `tail:` in the planner with the `lane:` alias. Then the Linear labels, VOC-196 and the note to President
-2. ✅ `fleet.json` registry, API and FLEET tab (read and edit), with defaults from the vocado crew rules. Observed crew next to the declared complement and CREW CHANGE step 1 are in sections 8.3 and 8.4
+2. ✅ `fleet.json` registry, API and FLEET tab (read and edit), with defaults from the vocado crew rules. Observed crew next to the declared complement and CREW CHANGE (the text, and OCC sending it in approval mode) are in sections 8.3 and 8.4
 3. ✅ Classification labels read by the planner: TYPE RATING and FLIGHT TYPE hard rules, WAKE slots, ROUTE score (the Risk group counts as SEC; label groups are read as `group:name`), STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (sections 5.1, 5.2)
 4. ◐ The DISPATCH card shows the classification. Still to do: FIDS, and DISPATCH notes that suggest a classification when labels are missing
-5. OCC S1 `CLASSIFY` drafts (with the SCHEDULE work in occ.md)
+5. ✅ OCC S1 `CLASSIFY` drafts (with the SCHEDULE work in occ.md; `server/schedule.ts`, section 6)
 6. ◐ TARGETS actuals from the LOGBOOK on the FLEET cards (sections 7.1, 7.2), and next to the project goals in NETWORK (section 7.3). Still to do: on-time baselines from category medians, OCC target-change drafts (section 7.4, designed only)
 7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE (section 8.2): TYPE RATING evidence from the LOGBOOK, GRANT and REVIEW recommendations, grant and revoke by the SUPERVISOR
@@ -494,7 +522,7 @@ When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT throug
 | Labels drift from reality (a "M" that is really "H") | Shadow `CLASSIFY` first; on-time data shows categories that run long; the CAPTAIN can report a reclassification |
 | Too many hard rules leave nothing assignable | Every exclusion shows its rule; the SUPERVISOR can drop `tail:` or add a rating |
 | Declared crew differs from the real crew | The FLEET tab shows declared vs observed side by side |
-| Label clutter in Linear | Four prefixes only (`tail:`, `type:`, `wake:`, `rating:`), created once |
+| Label clutter in Linear | Four axes only, created once: `tail:` and `rating:` as flat labels, `type` and `wake` as label groups. vocado's existing Risk group is also read as `SEC`, so it needs no new label |
 | `SEC` given away too easily | `rating:SEC` changes and `SEC` ratings on AIRCRAFT always need the SUPERVISOR |
 
 ## Decisions (2026-09-26, SUPERVISOR)

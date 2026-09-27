@@ -22,7 +22,7 @@ ROUTE·AIRCRAFT·추세를 한 화면에서 보는 읽기 전용 개요다. 아�
 - **추세**: 최근 28일. 날마다 ARRIVED 수, 착륙 대기 중앙값, 되돌림. 게이트 줄은 날마다 DISPATCH·SCHEDULE 그림자 판정 수와 그날까지의 누적 합의율(마지막 날이 DISPATCH·SCHEDULE 탭의 게이트 숫자와 같다), 둘을 합친 CROSSCHECK 일치율.
 - Linear·GitHub·LOGBOOK 중 못 읽은 것이 있으면 그 표시가 뜬다. 그 출처에서 온 숫자는 비거나 0일 수 있다.
 
-TARGETS·ROUTE를 바꾸는 것은 지금처럼 FLEET 탭에서 SUPERVISOR가 한다. OCC가 변경 초안을 내는 흐름은 설계만 있다(`docs/fleet.md` 7.4).
+TARGETS·ROUTE를 바꾸는 것은 지금처럼 FLEET 탭에서 SUPERVISOR가 한다. OCC가 변경 초안을 내는 흐름은 설계만 있다(`docs/fleet.ko.md` 7.4).
 
 ## STRIPS의 LANDING SEQUENCE
 

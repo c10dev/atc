@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { crosscheckBrief, draftText, parseArrived, parseCrosscheck, parseDraft, payloadText } from "./atcctl.mjs";
+import { CREW_CHANGE_CMDS, crosscheckBrief, draftText, parseArrived, parseCrewChange, parseCrosscheck, parseDraft, payloadText } from "./atcctl.mjs";
 import { simpleCommands } from "../hooks/shell.mjs";
 
 const argv = (s) => s.split(" ");
@@ -169,4 +169,52 @@ test("dispatch crosscheck --code: 쉼표·여러 번, disagree에만", () => {
   assert.throws(() => parseCrosscheck(argv("D-0022 agree --code needs-human -- x")), /disagree에만/);
   assert.throws(() => parseCrosscheck(argv("D-0022 disagree --code -- x")), /사유 코드가 필요함/);
   assert.throws(() => parseCrosscheck(argv("D-0022 disagree --flag x -- y")), /알 수 없는 인자/);
+});
+
+test("crew-change: brief | send <CC-ID> | readback <CC-ID>. 승인(approve)은 없다", () => {
+  assert.deepEqual(CREW_CHANGE_CMDS, ["brief", "send", "readback"]);
+  assert.deepEqual(parseCrewChange(argv("brief")), { action: "brief" });
+  assert.deepEqual(parseCrewChange(argv("send CC-0003")), { action: "send", id: "CC-0003" });
+  assert.deepEqual(parseCrewChange(argv("readback cc-0003")), { action: "readback", id: "CC-0003" });
+  assert.throws(() => parseCrewChange(argv("approve CC-0003")), /승인은 SUPERVISOR/);
+  assert.throws(() => parseCrewChange(argv("delivered CC-0003")), /brief\|send\|readback/);
+  assert.throws(() => parseCrewChange([]), /brief\|send\|readback/);
+  assert.throws(() => parseCrewChange(argv("send")), /CREW CHANGE ID/);
+  assert.throws(() => parseCrewChange(argv("send D-0003")), /CREW CHANGE ID/);
+  assert.throws(() => parseCrewChange(argv("send CC-3")), /CREW CHANGE ID/);
+  assert.throws(() => parseCrewChange(argv("readback CC-0003 extra")), /알 수 없는 인자/);
+  assert.throws(() => parseCrewChange(argv("brief CC-0003")), /알 수 없는 인자/);
+});
+
+test("crew-change send·readback: 서버 창구를 부르고 SEND TO와 문구를 그대로 출력한다", async () => {
+  const { createServer } = await import("node:http");
+  const { execFile } = await import("node:child_process");
+  const message = '[OCC CC-0003] CREW CHANGE · HOTEL (TEAM_H)\n\n본문\n\n— 받았으면 이 메시지에 "READBACK CC-0003"로 답장해 주세요.';
+  const seen = [];
+  const server = createServer((req, res) => {
+    seen.push(`${req.method} ${req.url}`);
+    res.setHeader("Content-Type", "application/json");
+    if (req.url === "/api/fleet/crew-changes/CC-0003/send") return res.end(JSON.stringify({ change: { id: "CC-0003" }, sendTo: "TEAM_H", message }));
+    if (req.url === "/api/fleet/crew-changes/CC-0003/readback") return res.end(JSON.stringify({ ok: true, change: { id: "CC-0003", registration: "TEAM_H" } }));
+    res.statusCode = 409;
+    res.end(JSON.stringify({ error: "CC-0004는 보낼 상태가 아님(pending)" }));
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const run = (...args) =>
+    new Promise((resolve) =>
+      execFile(process.execPath, [new URL("./atcctl.mjs", import.meta.url).pathname, "crew-change", ...args], { env: { ...process.env, ATC_URL: url } }, (err, stdout, stderr) =>
+        resolve({ code: err?.code ?? 0, stdout, stderr }),
+      ),
+    );
+  try {
+    assert.equal((await run("send", "cc-0003")).stdout, `SEND TO: TEAM_H\n---\n${message}\n`);
+    assert.equal((await run("readback", "CC-0003")).stdout, "CC-0003 READBACK 확인 (TEAM_H)\n");
+    const refused = await run("send", "CC-0004");
+    assert.equal(refused.code, 1);
+    assert.match(refused.stderr, /보낼 상태가 아님\(pending\)/);
+    assert.deepEqual(seen, ["POST /api/fleet/crew-changes/CC-0003/send", "POST /api/fleet/crew-changes/CC-0003/readback", "POST /api/fleet/crew-changes/CC-0004/send"]);
+  } finally {
+    server.close();
+  }
 });

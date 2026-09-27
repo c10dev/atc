@@ -4,9 +4,9 @@
 
 DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, 언제 보낼지** 제안한다. TOWER(1단계)가 이미 뜬 AIRCRAFT끼리 부딪히지 않게 하는 쪽이라면, DISPATCH는 뜨기 전의 계획을 맡는다. 항공사 운항관리(OCC)와 ATC가 나뉘어 있는 것과 같은 구분이다.
 
-> 상태: DISPATCH 세션은 2026-09-26 OCC 세션(`atc/occ/`, [occ.md](occ.md), 영어)에 합쳐졌다. 아래 일은 그대로다. 2a(그림자 운용) 운용 중, 2b(승인 운용)는 `mode` 뒤에 구현돼 있고 기본은 꺼짐(2026-09-26). "2b 켜는 법" 참고. 결정 사항은 맨 아래 "결정"에 있다.
+> 상태: DISPATCH 세션은 2026-09-26 OCC 세션(`atc/occ/`, [occ.ko.md](occ.ko.md))에 합쳐졌다. 아래 일은 그대로다. 2a(그림자 운용) 운용 중, 2b(승인 운용)는 `mode` 뒤에 구현돼 있고 기본은 꺼짐(2026-09-26). "2b 켜는 법" 참고. 결정 사항은 맨 아래 "결정"에 있다.
 >
-> 구현하며 정리한 것: TEAM당 동시 FLIGHT 1 규칙에 따라, 끝나지 않은 FLIGHT의 STAND를 쥔 HOLDING AIRCRAFT에는 대기 시간과 상관없이 STAND가 필요한 FLIGHT를 배정하지 않는다(5.1의 "30분" 기준은 쓰지 않음). STAND가 필요 없는 `SURVEY`·`CHECK`는 하나 받을 수 있다([fleet.md](fleet.md) 5.1, 2026-09-27). RELEASE는 AIRPORT에 매핑된 프로젝트(코드 작업)만 본다.
+> 구현하며 정리한 것: TEAM당 동시 FLIGHT 1 규칙에 따라, 끝나지 않은 FLIGHT의 STAND를 쥔 HOLDING AIRCRAFT에는 대기 시간과 상관없이 STAND가 필요한 FLIGHT를 배정하지 않는다(5.1의 "30분" 기준은 쓰지 않음). STAND가 필요 없는 `SURVEY`·`CHECK`는 하나 받을 수 있다([fleet.ko.md](fleet.ko.md) 5.1, 2026-09-27). RELEASE는 AIRPORT에 매핑된 프로젝트(코드 작업)만 본다.
 
 ## 1. 지금 사실
 
@@ -65,7 +65,7 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
   - HOLDING(대기, STAND 있음) → 마지막 활동이 N분(기본 30) 넘게 없으면 배정 가능, 아니면 마무리 중으로 봄
   - AIRBORNE, NORDO → 불가
   - 복창하지 않은 FLIGHT PLAN이 있으면 불가(한 번에 하나)
-  - **STAND 없는 FLIGHT**(`type:SURVEY`, `type:CHECK`): STAND 규칙으로 짝을 지은 뒤, HOLDING·PARKED AIRCRAFT가 그 규칙 밖으로 하나 더 받을 수 있다. 진행 중인 제안까지 세어 AIRCRAFT당 STAND 없는 FLIGHT 1건, 한 계획에서 AIRCRAFT당 제안 1건, WAKE 슬롯은 같이 센다. AIRBORNE은 받지 않는다. `CHECK`는 검토 대상을 만든 AIRCRAFT에 주지 않는다. 규칙은 [fleet.md](fleet.md) 5.1·5.2
+  - **STAND 없는 FLIGHT**(`type:SURVEY`, `type:CHECK`): STAND 규칙으로 짝을 지은 뒤, HOLDING·PARKED AIRCRAFT가 그 규칙 밖으로 하나 더 받을 수 있다. 진행 중인 제안까지 세어 AIRCRAFT당 STAND 없는 FLIGHT 1건, 한 계획에서 AIRCRAFT당 제안 1건, WAKE 슬롯은 같이 센다. AIRBORNE은 받지 않는다. `CHECK`는 검토 대상을 만든 AIRCRAFT에 주지 않는다. 규칙은 [fleet.ko.md](fleet.ko.md) 5.1·5.2
 - **FLIGHT**: Todo 상태이고
   - **상위 이슈**(하위 이슈를 묶는 컨테이너)가 아님 — 5.1.1
   - `symphony-pilot` 라벨 아님
@@ -84,15 +84,15 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
 | 상위 이슈(5.1.1) | `상위 이슈 — 하위 N건을 묶음` | |
 | 다른 운항사 라벨 | `라벨 symphony-pilot (다른 운항사)` | |
 | 매핑 없는 프로젝트, 닫힌 AIRPORT | `배정 제외 프로젝트: <프로젝트>`, `프로젝트 없음`, `<CODE> AIRPORT가 운항 중이 아님` | |
-| **이미 완료됨**: 그 FLIGHT의 PR이 LOGBOOK에 ARRIVED로 있고 되돌리지 않음([fleet.md](fleet.md) 7.1) | `이미 완료됨 — PR <repo>#N 머지됨(LOGBOOK)` | 2026-09-27 |
+| **이미 완료됨**: 그 FLIGHT의 PR이 LOGBOOK에 ARRIVED로 있고 되돌리지 않음([fleet.ko.md](fleet.ko.md) 7.1) | `이미 완료됨 — PR <repo>#N 머지됨(LOGBOOK)` | 2026-09-27 |
 | **작업 중**: ticket key가 그 FLIGHT인 열린 PR(Draft 포함) | `열린 PR #N 있음` | 2026-09-27 |
 | 워크트리(STAND)가 이미 있음 | `이미 STAND가 있음` | |
 | 진행 중인 제안·HOLD가 있음 | `진행 중인 제안 D-xxxx`, `HOLD D-xxxx — …` | |
 | 배정 가능한 AIRCRAFT가 모두 최근 24시간 안에 이 FLIGHT와 제안됐다 닫힌 짝(6.1) | `24시간 안에 제안된 짝(D-xxxx) — MM-DD HH:MM부터 다시` | 2026-09-27 |
 | 우선순위 없음 | `우선순위 없음 — 사람이 정할 때까지 배정하지 않음` | |
 | `wake:J` | `wake:J — 너무 커서 배정하지 않음, 나눠야 함(SPLIT)` | |
-| TAIL ASSIGNMENT, TYPE RATING, CREW([fleet.md](fleet.md) 5장) | `tail:TEAM_X — …`, `rating:SEC — …`, `type:BUILD — …` | |
-| **CHECK 독립성**: `CHECK`가 검토하는 것을 만든 AIRCRAFT만 그 CHECK를 날 수 있음([fleet.md](fleet.md) 5.2) | `CHECK 독립성 — 검토 대상을 만든 TEAM_X 말고 이 CHECK를 날 AIRCRAFT 없음 (…)` | 2026-09-27 |
+| TAIL ASSIGNMENT, TYPE RATING, CREW([fleet.ko.md](fleet.ko.md) 5장) | `tail:TEAM_X — …`, `rating:SEC — …`, `type:BUILD — …` | |
+| **CHECK 독립성**: `CHECK`가 검토하는 것을 만든 AIRCRAFT만 그 CHECK를 날 수 있음([fleet.ko.md](fleet.ko.md) 5.2) | `CHECK 독립성 — 검토 대상을 만든 TEAM_X 말고 이 CHECK를 날 AIRCRAFT 없음 (…)` | 2026-09-27 |
 
 새 규칙 둘은 그림자 판정에서 나왔다. 가장 흔한 거절이 "이미 완료됨"이었는데, PR이 머지돼도 Linear 이슈가 저절로 Done이 되지 않기 때문이다. 진행 중인 제안보다 먼저 보므로, 그런 FLIGHT의 열린·승인된·HOLD 제안은 이 사유로 SUPERSEDED된다(FLIGHT 쪽 사유가 AIRCRAFT 쪽 사유보다 먼저). PR을 되돌리면 그 FLIGHT는 다시 후보가 된다.
 
@@ -112,7 +112,7 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 
 | 한도 | 기본 | 이유 |
 |---|---|---|
-| TEAM당 동시 FLIGHT | 1, 여기에 STAND 없는 FLIGHT(`SURVEY`·`CHECK`) 1 | vocado 규칙: 팀 작업 한 번 = Linear 이슈 하나. SURVEY·CHECK는 워크트리가 필요 없다([fleet.md](fleet.md) 5.1) |
+| TEAM당 동시 FLIGHT | 1, 여기에 STAND 없는 FLIGHT(`SURVEY`·`CHECK`) 1 | vocado 규칙: 팀 작업 한 번 = Linear 이슈 하나. SURVEY·CHECK는 워크트리가 필요 없다([fleet.ko.md](fleet.ko.md) 5.1) |
 | AIRPORT당 동시 AIRBORNE | VCDO 4, 그 밖 2 | 개발 서버 포트(3001~), CI, LANDING SEQUENCE 혼잡 |
 | 전체 대기 중 제안 | 5 | SUPERVISOR 검토 부담 |
 
@@ -127,7 +127,7 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 | 풀어 주는 FLIGHT | 이 FLIGHT가 blocks 하는 Todo 수 | ×2 |
 | 팀 적합도 | 이 AIRCRAFT가 과거에 같은 프로젝트·related FLIGHT를 날았던 횟수(FLIGHT RECORDER·청구 이력) | ×1 |
 | 충돌 위험 | 지금 AIRBORNE인 FLIGHT와 related로 묶인 수 | ×−2 |
-| ROUTE | FLIGHT의 프로젝트가 그 AIRCRAFT의 routes에 있음([fleet.md](fleet.md) 5장) | ×1 |
+| ROUTE | FLIGHT의 프로젝트가 그 AIRCRAFT의 routes에 있음([fleet.ko.md](fleet.ko.md) 5장) | ×1 |
 
 각 제안에 요소별 점수를 그대로 보여 준다("왜 이 팀에 이 편인가"). 가중치는 설정 파일로 SUPERVISOR가 바꾼다.
 
@@ -170,7 +170,7 @@ CAPTAIN(STAND 없는 FLIGHT만): 마쳤다고 보고 → OCC: atcctl dispatch ar
 
 제안 상태: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)`(2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED`(2b), STAND 없는 FLIGHT는 `… → ACCEPTED → DEPARTED → ARRIVED`, 곁가지 `REJECTED`, `DECLINED`(CAPTAIN 사유), `SUPERSEDED`(사람이 직접 배정했거나 상황이 바뀜), `EXPIRED`(24시간). `HOLD`가 걸린 `PROPOSED` ASSIGN은 주 흐름에서 빠져, 풀릴 때까지 HELD 목록에서 기다린다(24시간 만료 없음).
 
-**STAND 없는 FLIGHT**(2026-09-27 구현, 규칙은 [fleet.md](fleet.md) 5.1.1). STAND가 필요한 FLIGHT는 PR이 머지돼 LOGBOOK에 오르면 끝이라 atc가 더 따라가지 않는다. SURVEY·CHECK는 STAND도, 대개 PR도 없어서 이렇게 한다.
+**STAND 없는 FLIGHT**(2026-09-27 구현, 규칙은 [fleet.ko.md](fleet.ko.md) 5.1.1). STAND가 필요한 FLIGHT는 PR이 머지돼 LOGBOOK에 오르면 끝이라 atc가 더 따라가지 않는다. SURVEY·CHECK는 STAND도, 대개 PR도 없어서 이렇게 한다.
 
 - **READBACK에 DEPARTED.** `POST …/accept`가 `accept`와 `depart`(`stand: null`, `via: "readback"`)를 같은 시각에 남긴다. 제안에는 `departedStand: null`, `departedVia: "readback"`이 붙는다(STAND로 DEPARTED하면 `departedVia: "stand"`). FLIGHT 라벨은 그때 읽는다. 모르는 FLIGHT는 STAND가 필요한 쪽으로 보고, `accepted`에 남은 STAND 없는 제안은 다음 동기화에 DEPARTED가 된다.
 - **CAPTAIN 보고로 ARRIVED.** OCC가 `atcctl dispatch arrived D-xxxx -- '<결과 링크나 한 줄>'`(`POST …/arrived {note}`, 500자)로 적는다. 제안은 `status: "arrived"`, `arrivedNote`, `arrivedUrl`(보고의 첫 링크)을 갖는다. STAND 없이 `departed`인 제안만 ARRIVED할 수 있다.
@@ -227,7 +227,7 @@ CAPTAIN(STAND 없는 FLIGHT만): 마쳤다고 보고 → OCC: atcctl dispatch ar
 
 ## RECALL
 
-보냈거나(`sent`) READBACK 받은(`accepted`) FLIGHT PLAN, 그리고 READBACK으로 DEPARTED했지만 아직 ARRIVED하지 않은 STAND 없는 FLIGHT(`departed`, `departedVia: "readback"`)를 SUPERVISOR가 거둬들인다. [atfm.md](atfm.md)의 결정 4에 따라 자동 배정보다 먼저 만들었다.
+보냈거나(`sent`) READBACK 받은(`accepted`) FLIGHT PLAN, 그리고 READBACK으로 DEPARTED했지만 아직 ARRIVED하지 않은 STAND 없는 FLIGHT(`departed`, `departedVia: "readback"`)를 SUPERVISOR가 거둬들인다. [atfm.ko.md](atfm.ko.md)의 결정 4에 따라 자동 배정보다 먼저 만들었다.
 
 ```
 SUPERVISOR: 진행 중 카드의 "RECALL…"(또는 POST /api/dispatch/proposals/:id/recall {reason}) → atc: RECALLING
@@ -274,7 +274,7 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 2b는 구현돼 있고 `mode` 뒤에 있다. 켜면 승인한 제안이 실제 팀 세션에 나가므로 이 순서로 한다.
 
 1. DISPATCH 탭에서 "2b 켜기 점검표"(아래)와 2b 진입 점검(그림자 판정 20건 이상, 합의율 80% 이상)을 확인한다.
-2. 팀 CLAUDE.md(`vocado_nextjs/CLAUDE.md`)의 READBACK 규칙을 넓혀, CAPTAIN이 `[DISPATCH D-xxxx]` FLIGHT PLAN에도 `READBACK D-xxxx`(또는 사유)로 답하게 한다. 점검표의 `vocado-readback` 항목이 더할 문장을 준다.
+2. 팀 CLAUDE.md(`vocado_nextjs/CLAUDE.md`)의 READBACK 규칙을 넓혀, CAPTAIN이 `[DISPATCH D-xxxx]` FLIGHT PLAN에도 `READBACK D-xxxx`(또는 사유)로, `[OCC CC-xxxx]` CREW CHANGE에는 `READBACK CC-xxxx`로 답하게 한다. 점검표의 `vocado-readback` 항목이 더할 문장을 준다. 그 파일은 SUPERVISOR가 고치고 atc는 읽기만 한다.
 3. DISPATCH 탭의 "2b 승인 운용 켜기"(또는 `POST /api/dispatch/mode {"mode":"approval"}`). 돌고 있는 DISPATCH 세션은 다음 바퀴에 모드를 읽는다.
 4. 멈추려면 shadow로 되돌린다. 이미 보낸 FLIGHT PLAN은 그대로 두고, 새로 보내지는 않는다.
 
@@ -286,19 +286,21 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 |---|---|
 | `gate` | `gateOf`: 2a 게이트(판정 20건, 일치 80%)를 넘으면 `ready` |
 | `recall` | 상수가 아니라 코드 사실로 본다. 합성 기록이 `sent → recalling → recalled`로 접히고 예약이 풀리는지, `formatRecall`이 머리 줄을 만드는지, `recall`·`recall-send`·`recalled` API가 등록됐는지(`DISPATCH_ACTIONS`), `controller/atcctl.mjs`에 `recall-send`·`recalled` 명령이 있는지(`selfCheck2b`) |
-| `send-guard` | 서버는 테스트를 돌리지 않는다. `occ/send-guard.mjs`를 읽어 `checkSend` export, approval 모드 확인, FLIGHT PLAN(`proposal.message`)·RECALL(`proposal.recallMessage`) 비교, 받는 사람 확인, `exit 2`가 있는지 보고 파일 sha256 앞자리를 보인다. 모두 있으면 `check`(`node --test occ/send-guard.test.mjs`로 확인하라는 안내), 빠지거나 파일이 없으면 `not-ready` |
-| `vocado-readback` | `vocado_nextjs/CLAUDE.md`를 읽기만 한다(`ATC_VOCADO_CLAUDE_MD`, 없으면 `<projectsDir>/vocado_nextjs/CLAUDE.md`). 한 줄에 `[DISPATCH D-`와 `READBACK D-`가 함께 있으면 `ready`, 아니면 `not-ready`와 더할 문장(`detail`, `suggestion`), 파일을 못 읽으면 `check` |
+| `send-guard` | 서버는 테스트를 돌리지 않는다. `occ/send-guard.mjs`를 읽어 `checkSend` export, approval 모드 확인, FLIGHT PLAN(`proposal.message`)·RECALL(`proposal.recallMessage`)·CREW CHANGE(`change.message`, 받는 사람 `change.registration`) 비교, 받는 사람 확인, `exit 2`가 있는지 보고 파일 sha256 앞자리를 보인다. 모두 있으면 `check`(`node --test occ/send-guard.test.mjs`로 확인하라는 안내), 빠지거나 파일이 없으면 `not-ready` |
+| `vocado-readback` | `vocado_nextjs/CLAUDE.md`를 읽기만 한다(`ATC_VOCADO_CLAUDE_MD`, 없으면 `<projectsDir>/vocado_nextjs/CLAUDE.md`). 한 줄에 `[DISPATCH D-`와 `READBACK D-`가 함께 있고, 한 줄(같은 줄이든 다른 줄이든)에 `[OCC CC-`와 `READBACK CC-`가 함께 있으면 `ready`, 아니면 `not-ready`와 더할 문장(`detail`, `suggestion`), 파일을 못 읽으면 `check` |
 | `stand-free` | `recall`처럼 코드 사실: SURVEY의 READBACK이 STAND 없이 DEPARTED하고, 30일이 지나도 잡혀 있고 만료되지 않으며, ARRIVED가 풀어 주고, `arrived` API와 `atcctl dispatch arrived`가 있는지 |
+| `crew-change` | `recall`처럼 코드 사실(`server/crew-change.ts`의 `selfCheckCrewChange`): 합성 기록이 `pending → approved → sent → acknowledged`로 접히는지, `sent`가 10분 뒤 overdue인지, shadow 모드 승인을 거절하는지, `crewChangeMessage`가 `[OCC CC-xxxx]` 머리와 `READBACK CC-xxxx` 줄을 만드는지, 새 변경이 `approved`는 대신하고 `sent` 뒤에서는 기다리는지, `approve`·`send`·`readback` API와 `atcctl crew-change send`·`readback`이 있는지([fleet.md](fleet.md) 8.4) |
 | `known-gaps` | 늘 `check`, 아래 절로 링크 |
 
 ### 2b 켜기 전 알려진 빈틈
 
 - `dispatch release`는 메시지를 보내기 전에 제안을 SENT로 바꾼다. 전달이 실패하면(CAPTAIN 세션이 없거나 메시지가 승인 대기로 잡힘) SENT로 남고, 10분 뒤 NO READBACK으로 보이면 DISPATCH가 한 번 재송신한 뒤 SUPERVISOR에게 보고한다.
-- STAND 없는 FLIGHT는 CAPTAIN 보고로만 ARRIVED한다. 자동 감지(대상 PR의 리뷰, 문서 PR·이슈 댓글)는 아직 없다. 보고를 잊으면 SUPERVISOR가 `overdue`(24시간)를 보고 챙길 때까지 그 AIRCRAFT의 STAND 없는 칸 하나가 잡혀 있다. send-guard가 FLIGHT PLAN·RECALL만 통과시키므로 OCC가 CAPTAIN에게 직접 묻지 못한다.
+- STAND 없는 FLIGHT는 CAPTAIN 보고로만 ARRIVED한다. 자동 감지(대상 PR의 리뷰, 문서 PR·이슈 댓글)는 아직 없다. 보고를 잊으면 SUPERVISOR가 `overdue`(24시간)를 보고 챙길 때까지 그 AIRCRAFT의 STAND 없는 칸 하나가 잡혀 있다. send-guard가 FLIGHT PLAN·RECALL·CREW CHANGE만 통과시키므로 OCC가 CAPTAIN에게 직접 묻지 못한다.
 - STAND 없는 READBACK은 CAPTAIN이 실제로 시작하지 않아도 DEPARTED로 센다. 일이 시작됐다는 다른 신호가 없다.
 - STAND 없는 ARRIVED는 LOGBOOK에 오르지 않아 TARGETS에 세지 않는다. planner는 ARRIVED 뒤 7일 동안 그 FLIGHT를 빼고, 그 뒤에는 Linear를 믿으므로 Linear에서 닫아야 한다.
 - FLIGHT TYPE은 READBACK 때 읽는다. 그 뒤에 라벨을 바꿔도 기록된 DEPARTED는 바뀌지 않는다.
 - STAND가 있는 DEPARTED는 RECALL할 수 없다. SUPERVISOR가 CAPTAIN에게 직접 말한다.
+- `crew-change send`도 `dispatch release`처럼 메시지를 보내기 전에 SENT로 바꾼다. 전달이 실패하면 10분 뒤 overdue로 보이고, OCC가 한 번 재송신한 뒤 보고한다. READBACK을 기다리는 동안 같은 AIRCRAFT의 새 CREW CHANGE도 기다린다([fleet.md](fleet.md) 8.4).
 - send-guard의 동작은 테스트로만 증명된다. 점검표는 `ready`가 아니라 `check`로 보인다.
 - `vocado-readback`은 두 표지가 한 줄에 있는지만 본다. 문장 내용은 판단하지 않는다.
 

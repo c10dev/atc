@@ -79,6 +79,7 @@ export interface ScheduleOp {
   statusAt: string;
   verdictReason: string | null; // 거절 사유, SUPERSEDED·EXPIRED 사유
   calls: LinearCall[] | null; // S2: release 때 atc가 만든 Linear 호출
+  used?: number[]; // linear-guard가 이미 한 번 통과시킨 호출의 번호(calls 안의 위치). 같은 호출은 두 번 통과하지 않는다
   appliedRef: string | null; // APPLIED: 반영된 FLIGHT key(NEW면 새로 생긴 이슈)
   decision: { verdict: CrosscheckVerdict; at: string } | null; // SUPERVISOR 판정(verdict·approve·reject). 뒤 상태로 넘어가도 남는다
   crosscheck: Crosscheck | null; // CROSSCHECK 예비 판정(참고 표시, 상태를 바꾸지 않는다)
@@ -94,6 +95,7 @@ type LogLine =
   | { op: "reject"; id: string; at: string; reason: string | null; via?: Via }
   | { op: "release"; id: string; at: string; calls: LinearCall[] }
   | { op: "apply"; id: string; at: string; ref: string }
+  | { op: "use"; id: string; at: string; call: number }
   | ({ op: "crosscheck"; id: string } & CrosscheckLine);
 
 export const SCHEDULE_OPEN_LIMIT = 5; // 결정 안 된 초안 최대 수(SUPERVISOR 검토 부담)
@@ -131,7 +133,7 @@ export class ScheduleError extends Error {
 }
 
 // 상태 전이. 여기 없는 전이는 무시한다(API도 같은 규칙으로 검사한다).
-type StatusLine = Exclude<LogLine["op"], "draft" | "crosscheck">;
+type StatusLine = Exclude<LogLine["op"], "draft" | "crosscheck" | "use">;
 const NEXT: Partial<Record<ScheduleStatus, Partial<Record<StatusLine, ScheduleStatus>>>> = {
   draft: { verdict: "agreed", approve: "approved", reject: "rejected", supersede: "superseded", expire: "expired" },
   approved: { release: "released", supersede: "superseded", expire: "expired" },
@@ -160,6 +162,11 @@ export function fold(lines: LogLine[]): ScheduleOp[] {
       if (s.status === "draft") s.crosscheck = markOf(l);
       continue;
     }
+    if (l.op === "use") {
+      // 발부된 호출이 linear-guard를 통과함. 상태는 그대로(APPLIED는 Linear 조회로 판정)
+      if (s.status === "released" && s.calls?.[l.call] && !(s.used ?? []).includes(l.call)) s.used = [...(s.used ?? []), l.call];
+      continue;
+    }
     if (!canApplyOp(s, l.op)) continue; // 닫힌 초안은 바꾸지 않는다
     if (l.op === "verdict") s.decision = { verdict: l.verdict, at: l.at };
     else if (l.op === "approve" || l.op === "reject") s.decision = { verdict: l.op === "approve" ? "agree" : "disagree", at: l.at };
@@ -172,6 +179,39 @@ export function fold(lines: LogLine[]): ScheduleOp[] {
     else if (l.op === "apply") s.appliedRef = l.ref;
   }
   return [...byId.values()];
+}
+
+// 키 순서와 상관없이 같은 값인가(JSON 값만. occ/mcp-guard.mjs의 sameJson과 같다)
+export function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => sameJson(x, b[i]));
+  }
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const oa = a as Record<string, unknown>;
+    const ob = b as Record<string, unknown>;
+    const ka = Object.keys(oa).filter((k) => oa[k] !== undefined).sort();
+    const kb = Object.keys(ob).filter((k) => ob[k] !== undefined).sort();
+    return ka.length === kb.length && ka.every((k, i) => k === kb[i] && sameJson(oa[k], ob[k]));
+  }
+  return false;
+}
+
+// linear-guard의 한 번 쓰기: 도구·입력이 같은, 아직 쓰지 않은 발부 호출을 찾는다(순수).
+// 같은 호출이 이미 한 번 통과했으면 막는다 — 반복 호출로 댓글·이슈가 두 번 생기지 않게.
+export function claimOf(ops: ScheduleOp[], mode: ScheduleMode, tool: unknown, input: unknown): { id: string; call: number } | { error: string } {
+  if (mode !== "approval") return { error: "SCHEDULE이 S1(shadow) — Linear에 쓰지 않는다" };
+  let usedMatch: string | null = null;
+  for (const op of ops) {
+    if (op.status !== "released" || !op.calls) continue;
+    for (const [i, c] of op.calls.entries()) {
+      if (c.tool !== tool || !sameJson(c.input, input ?? {})) continue;
+      if ((op.used ?? []).includes(i)) usedMatch ??= op.id;
+      else return { id: op.id, call: i };
+    }
+  }
+  if (usedMatch) return { error: `${usedMatch}의 이 호출은 이미 한 번 통과함 — 같은 쓰기를 두 번 하지 않는다. Linear에 반영이 안 됐으면 SUPERVISOR에게 보고` };
+  return { error: "입력이 발부된 SCHEDULE 호출과 다름 — `atcctl schedule release`가 준 입력을 그대로 써야 함" };
 }
 
 function readLines(file = FILE()): LogLine[] {
@@ -692,7 +732,17 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
   // linear-guard가 읽는 목록: 지금 모드와 발부된(released) 작업의 Linear 호출
   app.get("/api/schedule/released", (c) => {
     const ops = fold(readLines()).filter((x) => x.status === "released" && x.calls);
-    return c.json({ mode: loadScheduleMode(), calls: ops.flatMap((x) => x.calls!.map((call) => ({ id: x.id, ...call }))) });
+    return c.json({ mode: loadScheduleMode(), calls: ops.flatMap((x) => x.calls!.map((call, i) => ({ id: x.id, ...call, used: (x.used ?? []).includes(i) }))) });
+  });
+
+  // linear-guard가 통과시키기 직전에 부른다: 맞는 발부 호출을 한 번 쓴 것으로 기록한다. 읽기와 기록 사이에 await가 없어 두 번 통과하지 않는다.
+  app.post("/api/schedule/released/claim", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object") return c.json({ error: "요청 본문을 읽지 못함" }, 400);
+    const r = claimOf(fold(readLines()), loadScheduleMode(), body.tool, body.input);
+    if ("error" in r) return c.json({ error: r.error }, 409);
+    append([{ op: "use", id: r.id, at: new Date().toISOString(), call: r.call }]);
+    return c.json(r);
   });
 
   app.post("/api/schedule/mode", async (c) => {

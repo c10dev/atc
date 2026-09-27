@@ -159,6 +159,7 @@ const failedCodes = (p: Proposal, ctx = autoCtx()) => autoEligibility(p, ctx).fa
 
 test("자동 배정 대상(A1~A10): 모두 맞으면 대상, 조건마다 빠진다", () => {
   assert.deepEqual(autoEligibility(proposal(), autoCtx()).eligible, true);
+  assert.deepEqual(autoEligibility(proposal(), autoCtx()).checked, ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10"]);
   assert.deepEqual(failedCodes(proposal(), autoCtx({ ticket: ticket({ labels: ["rating:UI"] }) })), ["A1"]); // 기본값 BUILD·M
   assert.deepEqual(failedCodes(proposal(), autoCtx({ ticket: ticket({ labels: ["type:BUILD", "wake:H", "rating:UI"] }) })), ["A2"]);
   assert.deepEqual(failedCodes(proposal(), autoCtx({ ticket: ticket({ labels: ["type:SURVEY", "wake:L", "rating:UI"] }) })), ["A3"]); // 결정 1
@@ -188,8 +189,11 @@ const draft = (over: Partial<ScheduleOp> = {}): ScheduleOp => ({
 
 test("S3 대상(S1~S4): 빈 축에만 더하고, SEC 없고, 허용 모델 agree와 절 인용, Todo·Backlog이고 STAND 없음", () => {
   const t = ticket({ labels: ["rating:UI"] });
-  assert.equal(s3Eligibility(draft(), t, new Set()).eligible, true);
-  const codes = (op: ScheduleOp, tk = t, stands = new Set<string>()) => s3Eligibility(op, tk, stands).failed.map((c) => c.code);
+  const ctx = (over: Partial<Parameters<typeof s3Eligibility>[2]> = {}) => ({ standTickets: new Set<string>(), inFlight: new Set<string>(), cautions: new Set<string>(), ...over });
+  const ok = s3Eligibility(draft(), t, ctx());
+  assert.equal(ok.eligible, true);
+  assert.deepEqual(ok.checked, ["S1", "S2", "S3", "S4"]);
+  const codes = (op: ScheduleOp, tk = t, stands = new Set<string>()) => s3Eligibility(op, tk, ctx({ standTickets: stands })).failed.map((c) => c.code);
   assert.deepEqual(codes(draft(), ticket({ labels: ["type:BUILD"] })), ["S1"]); // 있는 type을 바꿈
   assert.deepEqual(codes(draft({ kind: "PRIORITIZE", payload: { priority: 2 } as never })), ["S1"]);
   assert.deepEqual(codes(draft({ payload: { type: "MAINT", ratings: ["SEC"] }, reason: "4.1 MAINT · 4.3 SEC" })), ["S2"]);
@@ -198,6 +202,13 @@ test("S3 대상(S1~S4): 빈 축에만 더하고, SEC 없고, 허용 모델 agree
   assert.deepEqual(codes(draft({ crosscheck: null })), ["S3"]);
   assert.deepEqual(codes(draft(), ticket({ labels: [], stateType: "started", state: "In Progress" })), ["S4"]);
   assert.deepEqual(codes(draft(), t, new Set(["VOC-10"])), ["S4"]);
+  // SEC는 절대 자동으로: Risk 그룹 라벨, 옛 단독 Risk 라벨, OCC CAUTION, 티켓을 모름
+  assert.deepEqual(codes(draft(), ticket({ labels: ["Risk: Security"] })), ["S2"]);
+  assert.deepEqual(codes(draft(), ticket({ labels: ["rating:SEC"] })), ["S2"]);
+  assert.deepEqual(s3Eligibility(draft(), t, ctx({ cautions: new Set(["VOC-10"]) })).failed.map((c) => c.code), ["S2"]);
+  assert.deepEqual(s3Eligibility(draft(), undefined, ctx()).failed.map((c) => c.code), ["S2", "S4"]);
+  // STAND 없이 날고 있는 FLIGHT(READBACK 뒤 끝나지 않은 제안)도 S4에서 빠진다
+  assert.deepEqual(s3Eligibility(draft(), t, ctx({ inFlight: new Set(["VOC-10"]) })).failed.map((c) => c.code), ["S4"]);
 });
 
 test("그림자 정확도: 대상이 된 건 중 사람 판정, 막아야 했던 사유로 거절된 수", () => {

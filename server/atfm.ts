@@ -351,6 +351,7 @@ export interface Eligibility {
   flight: string | null;
   eligible: boolean;
   failed: Check[];
+  checked: string[]; // 본 조건 코드(FLIGHT RECORDER에 남긴다)
 }
 
 export interface AutoContext {
@@ -374,7 +375,7 @@ export function autoEligibility(p: Proposal, ctx: AutoContext): Eligibility {
   add("A3", AUTO_TYPES.has(cls.type), `FLIGHT TYPE BUILD·MAINT·FERRY만 (지금 ${cls.type})`);
   add("A4", !cls.ratings.includes("SEC"), "rating:SEC·Risk 라벨이 없어야 함");
   add("A5", Boolean(p.note) && !p.caution && p.holdAt === null, "OCC 메모가 있고 CAUTION·HOLD가 없어야 함");
-  const tails = t ? tailsOf(t) : new Set<string>();
+  const tails = t ? tailsOf(t, ctx.now) : new Set<string>();
   const routeOk = tails.size ? tails.has(name) : Boolean(t?.project && ctx.aircraft?.routes.includes(t.project));
   add("A6", routeOk, tails.size ? `tail:${[...tails].join(",")}이 이 AIRCRAFT여야 함` : `프로젝트(${t?.project ?? "없음"})가 이 AIRCRAFT의 ROUTE에 있어야 함`);
   const mark = p.crosscheck;
@@ -396,26 +397,41 @@ export function autoEligibility(p: Proposal, ctx: AutoContext): Eligibility {
   const stop = p.airport ? ctx.stopped.get(p.airport) : undefined;
   add("A10", !stop, stop ? groundStopWhy(stop) : "출발 중지 없음");
   const failed = checks.filter((c) => !c.ok);
-  return { id: p.id, flight: p.flight, eligible: !failed.length, failed };
+  return { id: p.id, flight: p.flight, eligible: !failed.length, failed, checked: checks.map((c) => c.code) };
 }
 
 // ── S3 자동 처리 대상 판정 (그림자, docs/atfm.md 4장 S1~S4. S5=S2 운용 중은 켜는 조건으로 따로 본다) ──
 
 const cites = (reason: string, section: string) => new RegExp(`(^|[^\\d.])${section.replace(".", "\\.")}(?![\\d])`).test(reason);
 
-export function s3Eligibility(op: ScheduleOp, ticket: Ticket | undefined, standTickets: Set<string>): Eligibility {
+export interface S3Context {
+  standTickets: Set<string>; // STAND(워크트리)가 있는 FLIGHT
+  inFlight: Set<string>; // DISPATCH 제안이 READBACK 뒤 아직 끝나지 않은 FLIGHT(STAND 없는 FLIGHT 포함)
+  cautions: Set<string>; // OCC가 CAUTION을 단 제안이 있는 FLIGHT
+}
+
+// SEC 관련은 절대 자동으로 처리하지 않는다: 티켓을 모르면(라벨을 확인할 수 없으면) S2도 떨어진다
+export function s3Eligibility(op: ScheduleOp, ticket: Ticket | undefined, ctx: S3Context): Eligibility {
   const checks: Check[] = [];
   const add = (code: string, ok: boolean, text: string) => checks.push({ code, ok, text });
   const p = op.payload as { type?: string; wake?: string; ratings?: string[] };
   const cls = classOf(ticket?.labels ?? []);
   add("S1", op.kind === "CLASSIFY" && !(p.type && cls.explicit.type) && !(p.wake && cls.explicit.wake), "CLASSIFY이고 빈 축에 라벨을 더하기만(있는 라벨을 바꾸지 않음)");
-  add("S2", !(p.ratings ?? []).includes("SEC") && !cls.ratings.includes("SEC"), "rating:SEC를 더하지 않고 FLIGHT에도 SEC·Risk가 없어야 함");
+  add(
+    "S2",
+    Boolean(ticket) && !(p.ratings ?? []).includes("SEC") && !cls.ratings.includes("SEC") && !(op.flight && ctx.cautions.has(op.flight)),
+    "rating:SEC를 더하지 않고, FLIGHT에 rating:SEC·Risk 라벨(Risk:Security 등)과 OCC CAUTION이 없어야 함",
+  );
   const mark = op.crosscheck;
   const cited = (!p.type || cites(op.reason, "4.1")) && (!p.wake || cites(op.reason, "4.2")) && (!(p.ratings ?? []).length || cites(op.reason, "4.3"));
   add("S3", Boolean(mark && mark.verdict === "agree" && CROSSCHECK_MODELS.test(mark.model)) && cited, "허용 모델의 CROSSCHECK agree, 근거에 정한 축마다 fleet.md 절(4.1·4.2·4.3) 인용");
-  add("S4", Boolean(ticket && (ticket.stateType === "unstarted" || ticket.stateType === "backlog") && !standTickets.has(ticket.key)), "Todo·Backlog이고 STAND가 없어야 함");
+  add(
+    "S4",
+    Boolean(ticket && (ticket.stateType === "unstarted" || ticket.stateType === "backlog") && !ctx.standTickets.has(ticket.key) && !ctx.inFlight.has(ticket.key)),
+    "Todo·Backlog이고 어느 팀도 날고 있지 않아야 함(STAND 없음, READBACK 뒤 끝나지 않은 제안 없음)",
+  );
   const failed = checks.filter((c) => !c.ok);
-  return { id: op.id, flight: op.flight, eligible: !failed.length, failed };
+  return { id: op.id, flight: op.flight, eligible: !failed.length, failed, checked: checks.map((c) => c.code) };
 }
 
 // ── 그림자 정확도 ──

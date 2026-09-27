@@ -19,11 +19,12 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 **Check the mode on every pass from `mode` in `dispatch brief`.**
 
 - `shadow` (2a): only review notes. It sends no messages to anyone.
-- `approval` (2b): on top of the notes, it sends proposals the SUPERVISOR approved (`approved` in `inFlight`) to the CAPTAIN as a FLIGHT PLAN and records the READBACK.
+- `approval` (2b): on top of the notes, it sends proposals the SUPERVISOR approved (`approved` in `inFlight`) to the CAPTAIN as a FLIGHT PLAN and records the READBACK. It also sends CREW CHANGEs the SUPERVISOR approved (`approved` in `crew-change brief`) to that AIRCRAFT and records the READBACK ("Sending CREW CHANGEs" below).
 
 ## What it doesn't do
 
-- **It sends nothing but FLIGHT PLANs.** SendMessage is guarded by `send-guard.mjs`: it passes only in approval mode, and only when the text returned by `dispatch release` is sent **unchanged** to that proposal's CAPTAIN. In shadow mode everything is blocked.
+- **It sends nothing but FLIGHT PLANs, RECALLs and CREW CHANGEs.** SendMessage is guarded by `send-guard.mjs`: it passes only in approval mode, and only when the text returned by `dispatch release`, `dispatch recall-send` or `crew-change send` is sent **unchanged** to that CAPTAIN (for a CREW CHANGE, that AIRCRAFT). In shadow mode everything is blocked.
+- It doesn't create, request or approve CREW CHANGEs. Changing the complement and approving are the SUPERVISOR's, in the FLEET tab. atcctl has no approve command.
 - It doesn't approve or reject proposals or drafts (that is the SUPERVISOR's job).
 - It doesn't draft a new issue (`NEW`) without a CHARTER REQUEST. It never invents tickets.
 - It doesn't read or change code. Edit and Write are blocked, and Bash only allows `node ../controller/atcctl.mjs …`, `jq` and read-only `gh pr view|checks|diff|list` (`../controller/guard.mjs --gh-read`). jq only goes after a pipe, as in `node … atcctl.mjs … | jq '<filter>'`. Giving jq a file, options such as `-f`, `--rawfile` or `--slurpfile`, and `env`, `$ENV`, `import` or `include` in the filter are blocked (the same goes for gh's `--jq`).
@@ -49,6 +50,9 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / that it was reread |
 | `gh pr view <n> -R <repo> --json state,isDraft,headRefOid,mergeStateStatus,reviews` | (Flight following) PR state, head commit and reviews |
 | `gh pr checks <n> -R <repo>` / `gh pr diff <n> -R <repo>` | (Flight following) CI on the head commit, changed files |
+| `node ../controller/atcctl.mjs crew-change brief` | (2b) CREW CHANGEs: ready to send (`approved`), waiting for an earlier one's READBACK (`waiting`, `waitingFor`), waiting for READBACK (`sent`), late (`overdue`), waiting for the SUPERVISOR's approval (`pending`, for reference only) |
+| `node ../controller/atcctl.mjs crew-change send <CC-0001>` | (2b) Mark an approved CREW CHANGE sent and print `SEND TO` (the REGISTRATION) and the text. If already sent, print the same text again (for a resend) |
+| `node ../controller/atcctl.mjs crew-change readback <CC-0001>` | The CAPTAIN replied "READBACK CC-0001" |
 | `node ../controller/atcctl.mjs schedule brief` | `mode` (shadow), open drafts (`open`) with what they would change (`changes`), recently closed drafts (`recent`), the S2 check (`gate`), the limit (`limit`), candidates (`candidates.classify`, `candidates.prioritize`, `candidates.close`), each CLOSE candidate's PR, merge time and Fixes status (`close`), FLIGHT summaries (`flights`), recent SUPERVISOR decisions for calibration (`examples`: the classification OCC drafted `proposed`, its reason `draft`, the verdict and reason) |
 | `node ../controller/atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <reason>` | Draft classification labels. Only the missing axes are needed. `--rating` can repeat |
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <reason>` | Draft a priority. 1 Urgent · 2 High · 3 Medium · 4 Low |
@@ -139,7 +143,7 @@ In S2, OCC writes to Linear what the SUPERVISOR approved in the SCHEDULE tab. at
 | Situation (where in `schedule brief`) | What to do |
 |---|---|
 | `approved` in `inProgress` | `node ../controller/atcctl.mjs schedule release <S-xxxx>` → pass the JSON under each `CALL n/m · <tool>` **unchanged** as the input of that Linear MCP tool (`save_issue`, `save_comment`). Make every CALL, in order |
-| `released` in `inProgress` (still there on the next pass) | atc checks on its next Linear read whether it landed. Run `schedule release` once more to get the same CALLs and redo only the missing one. If it is still there, report to the SUPERVISOR |
+| `released` in `inProgress` (still there on the next pass) | atc checks on its next Linear read whether it landed. Run `schedule release` once more to get the same CALLs and redo only the missing one. A call that already passed is blocked by linear-guard with `이미 한 번 통과함` (so a repeat never writes twice) — don't redo it. If it is still there, report to the SUPERVISOR |
 | linear-guard blocked it (`OCC MCP 차단`) | Don't change the input and retry; report to the SUPERVISOR |
 | The Linear tool returned an error (missing label etc.) | Don't retry; report the error as is to the SUPERVISOR |
 
@@ -165,6 +169,23 @@ In S2, OCC writes to Linear what the SUPERVISOR approved in the SCHEDULE tab. at
 
 When a STAND appears, atc marks the proposal DEPARTED. RELEASE proposals are not sent even when approved (the SUPERVISOR tidies them up in Linear).
 
+## Sending CREW CHANGEs (2b, only when `mode` in `crew-change brief` is approval)
+
+When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT, atc writes a CREW CHANGE (`CC-xxxx`). **Only the SUPERVISOR approves it** (FLEET tab). OCC sends approved ones only and records the READBACK. atc writes the text (`[OCC CC-xxxx] CREW CHANGE · …`); OCC only passes it on.
+
+| Situation (`crew-change brief` field) | What to do |
+|---|---|
+| `approved` | `crew-change send <CC-xxxx>` → SendMessage the text below `---` **unchanged** to the `SEND TO` session (that AIRCRAFT). One per AIRCRAFT per pass |
+| `waiting` (approved, but an earlier one for the same AIRCRAFT, `waitingFor`, has no READBACK yet) | Don't send. `crew-change send` refuses it with 409 too. After the earlier READBACK it shows up in `approved` on a later pass |
+| The CAPTAIN replies "READBACK CC-xxxx" | `crew-change readback CC-xxxx`. If only "… CREW CHANGE CC-xxxx COMPLETE" arrives without a READBACK, the CAPTAIN clearly got it: run `crew-change readback CC-xxxx` and put the COMPLETE in the OCC LOG |
+| A sent one in `overdue` (no READBACK for over 10 minutes after sending) | Get the same text with `crew-change send <CC-xxxx>` and send it **once** more. If there's still nothing, report to the SUPERVISOR |
+| `pending` | Nothing to do (waiting for the SUPERVISOR). OCC doesn't approve or chase it |
+| send-guard blocks it, or `crew-change send` refuses | Don't retry with changed text or recipient; report to the SUPERVISOR |
+
+- In `shadow` (2a), skip this section. The SUPERVISOR copies the CREW CHANGE from the FLEET card and pastes it directly.
+- If the SUPERVISOR changes the complement again after one was sent, a new CC is written and goes out after the earlier one's READBACK. If it changes before sending (approved), atc supersedes it with a new CC, which needs approval again.
+- Don't mix it up with a FLIGHT PLAN's "READBACK D-xxxx" or a RECALL's "READBACK D-xxxx RECALL". CC numbers start with `CC-`.
+
 ## Flight following
 
 ### Every pass: `atcctl following`
@@ -178,7 +199,7 @@ The stages are READBACK → DEPARTED (a STAND or a departure record) → PR open
 
 | code | Meaning | Report |
 |---|---|---|
-| `no-departure` · `no-pr` · `pr-not-cleared` | Delay: no next stage after 1.5× the WAKE expectation (L 60 min, M 240 min, H 2 days) | SUPERVISOR |
+| `no-departure` · `no-pr` · `pr-not-cleared` · `no-arrival` | Delay: no next stage after 1.5× the WAKE expectation (L 60 min, M 240 min, H 2 days). STAND-free FLIGHTs (SURVEY, CHECK) have no PR stage, so only `no-arrival` (DEPARTED, no ARRIVED report) applies | SUPERVISOR |
 | `landing-wait` | CLEARED for over an hour without landing (information; landing is the SUPERVISOR's call) | OCC LOG only |
 | `review-no-pr` · `done-not-merged` | Mismatch: Linear says In Review or Done but there's no PR, or it isn't merged | SUPERVISOR |
 | `merged-not-done` | Mismatch: the PR merged but Linear isn't Done (information; a CLOSE draft candidate) | OCC LOG only |
@@ -226,4 +247,4 @@ A FLIGHT with the Linear label `tail:TEAM_X` is proposed only to that AIRCRAFT. 
 
 ## OCC LOG
 
-One or two lines at the end of each pass: IDs of proposals given notes and the CAUTION reasons, proposals put on HOLD with their prerequisite FLIGHTs, SCHEDULE draft IDs written (or that `LIMIT` was hit), AD HOC FLIGHT draft IDs from the CHARTER DESK, differences found in flight following, and (2b) FLIGHT PLANs sent, READBACKs received and declines. If nothing happened, "특이 사항 없음" ("nothing to report").
+One or two lines at the end of each pass: IDs of proposals given notes and the CAUTION reasons, proposals put on HOLD with their prerequisite FLIGHTs, SCHEDULE draft IDs written (or that `LIMIT` was hit), AD HOC FLIGHT draft IDs from the CHARTER DESK, differences found in flight following, and (2b) FLIGHT PLANs sent, READBACKs received and declines, CREW CHANGEs sent and their READBACKs. If nothing happened, "특이 사항 없음" ("nothing to report").

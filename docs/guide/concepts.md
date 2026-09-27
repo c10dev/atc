@@ -76,7 +76,7 @@ CLEARED TO LAND 조건 — 모두 PR의 **최신 커밋(head)** 기준이다.
 - 사람(Codex·작성자 아닌 리뷰어)의 COMMENTED 리뷰는 APPROVED처럼 통과로 친다.
 - Codex가 한도에 걸리면 "usage limits" 댓글을 단다. 그러면 막힘 문구가 "Codex 한도 — 사람 리뷰 필요"가 된다.
 - PR 브랜치에 `voc-<번호>`가 없으면 PR 제목 끝의 `(VOC-번호)`로 FLIGHT를 찾는다.
-- 판정 이유는 저장소의 `docs/occ.md` 9.1절(영어).
+- 판정 이유는 저장소의 `docs/occ.ko.md` 9.1절.
 
 ## 충돌과 인계
 
@@ -95,7 +95,7 @@ CLEARED TO LAND 조건 — 모두 PR의 **최신 커밋(head)** 기준이다.
 | TYPE RATING | `rating:` 또는 Risk 그룹 | SEC(보안·DB·권리) · UI · DATA · DOCS |
 | TAIL ASSIGNMENT | `tail:TEAM_X` | 이 팀에만 제안 |
 
-라벨이 없으면 BUILD · M로 본다. 자세한 규칙은 저장소의 `docs/fleet.md`.
+라벨이 없으면 BUILD · M로 본다. 자세한 규칙은 저장소의 `docs/fleet.ko.md`.
 
 ## 교신
 

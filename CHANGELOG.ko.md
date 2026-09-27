@@ -16,6 +16,16 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- CREW CHANGE 2단계: DISPATCH approval 모드(2b)에서 OCC가 보낸다([docs/fleet.md](docs/fleet.md) 8.4, `server/crew-change.ts`).
+  - **상태**: `pending` → `approved`(SUPERVISOR, `POST /api/fleet/:registration/crew-change/:id/approve`, approval 모드가 아니면 409) → `sent`(OCC, `atcctl crew-change send CC-xxxx`) → `acknowledged`(CAPTAIN의 `READBACK CC-xxxx` 뒤 OCC가 `atcctl crew-change readback CC-xxxx`). 전달함(`delivered`)은 `pending`에서 그대로 되고 이제 `approved`에서도 된다. `sent`에서는 안 된다. OCC는 만들거나 요청하거나 승인하지 않는다.
+  - **대신하기**: 새 COMPLEMENT 변경은 `pending`·`approved`를 대신한다(승인됐던 것은 다시 승인). `sent`는 대신하지 않고 READBACK까지 열어 둔다. 새 건은 승인할 수 있지만 그때까지 `crew-change send`가 409로 거절한다.
+  - **문구**: `crewChangeMessage`가 `[OCC CC-xxxx] CREW CHANGE · <CALLSIGN> (<REG>)`, 옛 `[ATC FLEET]` 머리를 뗀 지시문 본문, `— 받았으면 이 메시지에 "READBACK CC-xxxx"로 답장해 주세요.`를 만들고 `sent` 줄에 저장한다. sent 건을 다시 send하면 같은 문구를 준다.
+  - **늦음**: `sent` 뒤 10분 넘게 READBACK이 없으면 `overdue`. OCC가 한 번 다시 보내고, 그래도 없으면 SUPERVISOR에게 보고한다.
+  - **send-guard**(`occ/send-guard.mjs`)에 CREW CHANGE 분기를 fail-closed로 더했다: `[OCC CC-xxxx]`로 시작하는 메시지는 approval 모드이고, `sent` 상태인 건을, 그 REGISTRATION에게, 저장된 문구 그대로 보낼 때만 통과한다(`GET /api/fleet/crew-changes/:id` → `{change, mode}`). DISPATCH 확인은 그대로이고, 막을 때 머리말은 `OCC 전송 차단`이다.
+  - **API와 CLI**: `GET /api/fleet`에 `dispatchMode`, `pendingCrewChange`에 `status`·`message`·`approvedAt`·`sentAt`·`overdue`·`waitingFor`가 붙고 acknowledged·delivered·superseded 전까지 보인다. 새 창구 `GET /api/fleet/crew-changes/brief`·`…/:id`, `POST /api/fleet/crew-changes/:id/send`·`…/readback`. 기록에는 새 상태와 `acknowledgedAt`이 들어간다. `atcctl crew-change brief|send|readback`(순수 함수 `parseCrewChange`). OCC guard는 통과시키고 CROSSCHECK guard는 막는다.
+  - **OCC 규정**: `occ/CLAUDE.md`와 tick 스킬에 보내고 READBACK을 기록할 때, 승인은 SUPERVISOR만 한다는 것, 늦은 건 처리를 적었다.
+  - **2b 점검표**: 코드 사실로 계산하는 `crew-change`("CREW CHANGE 발부") 항목을 더했다(`selfCheckCrewChange`). `vocado-readback`은 vocado `CLAUDE.md`가 `[OCC CC-xxxx]`에도 `READBACK CC-xxxx`로 답해야 ready이고, 제안 문장에 그 규칙이 들어갔다. `send-guard` 항목도 CREW CHANGE 비교를 본다.
+- 설계 문서 한국어판: `docs/occ.ko.md`, `docs/fleet.ko.md`, `docs/atfm.ko.md`(SUPERVISOR 결정 "우선 영어만, 추후에 한글 추가"). 원본에는 언어 전환 줄만 더했다. 루트 `CLAUDE.md`가 `docs/occ`·`docs/fleet`·`docs/atfm`도 영어판과 한국어판을 함께 고치라고 하게 바꿨고, 한국어 README·`docs/dispatch.ko.md`·`docs/naming.ko.md`·guide의 링크를 한국어판으로 바꿨다.
 - 2b에서 STAND 없는 FLIGHT의 출발과 도착([docs/fleet.md](docs/fleet.md) 5.1.1, [docs/dispatch.ko.md](docs/dispatch.ko.md) 6). READBACK 받은 SURVEY·CHECK는 STAND가 생기지 않아 DEPARTED가 되지 못하고 24시간 뒤 만료됐다.
   - **READBACK에 DEPARTED**: STAND 없는 FLIGHT는 `POST …/accept`(`atcctl dispatch readback`)가 `accept`와 `depart`(`stand: null`, `via: "readback"`)를 함께 남긴다(`readbackOps`). 제안에 `departedStand: null`, `departedVia: "readback"`이 붙고, STAND로 DEPARTED하면 `departedVia: "stand"`다. `accepted`에 남은 STAND 없는 제안은 다음 동기화에 DEPARTED가 된다.
   - **CAPTAIN 보고로 ARRIVED**: 새 상태 `arrived`, op `arrived`, `POST /api/dispatch/proposals/:id/arrived {note}`, `atcctl dispatch arrived D-xxxx -- <결과 링크나 한 줄>`(순수 함수 `parseArrived`). 제안에 `arrivedNote`, `arrivedUrl`이 남는다. STAND 없이 DEPARTED한 것만 ARRIVED할 수 있고, 자동 감지는 나중으로 미뤘다.
@@ -142,6 +152,8 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - SUPERSEDED 사유가 계획의 제외 목록에 그 FLIGHT가 없을 때도 실제 규칙을 밝힌다: 이미 STAND가 있음, 우선순위 없음, 매핑 밖 프로젝트, 다른 운항사 라벨. planner와 사유 문구가 같은 문구 모음을 써서 서로 어긋나지 않는다.
 - TOWER·DISPATCH hook은 `$CLAUDE_PROJECT_DIR` 기준으로 돌고 fail-closed(`… || exit 2`)다. hook이 없거나 실패하면 이제 도구를 통과시키지 않고 막는다.
 - FIDS 스플릿 플랩 모션이 실제 안내판처럼 보인다. 판(타일)이 넘어가는 중간에 비지 않는다. 새 글자는 떨어지는 판 뒤에 미리 걸려 있고, 판은 중력처럼 점점 빨라지며 기울수록 어두워진다. 판 없는 글자(TIME, REMARKS, Glass Cockpit·Night Sky 테마)는 반쪽 글자 대신 한 글자씩 떨어져 앉는다. 칸마다 최대 6판이고, 안내판이 더 빨리 멈춘다.
+- `lane:` 별칭은 2026-10-10(KST, `server/dispatch.ts`의 `LANE_CUTOFF`)에 끝난다. 그때부터 `tailsOf`는 `tail:`만 읽고, `lane:` 라벨만 붙은 FLIGHT는 어느 팀에도 제안하지 않고 `옛 lane:TEAM_X 라벨은 2026-10-10부터 읽지 않음 — tail:TEAM_X로 바꿀 것`으로 제외한다(`oldLaneOnly`)([docs/fleet.ko.md](docs/fleet.ko.md) 9장).
+- ATFM의 `eligible`·`s3-eligible` 기록 줄에 확인한 조건 코드(A1–A10, S1–S4)가 `checked`로 남는다. 대상 판정을 나중에 설명할 수 있게.
 
 ### 수정
 - DISPATCH가 판정받기 전에 제안을 잃었다([docs/dispatch.md](docs/dispatch.md) 6.1). 제안 19건 중 10건이 판정 전에 SUPERSEDED됐고, 그중 7건이 "더 나은 배정으로 바뀜"이었다. D-0017(VOC-196 → TEAM_E, `tail:TEAM_E`)은 planner가 TEAM_E에게 VOC-177을 줘서 닫혔는데, 그 짝은 D-0010에서 거절돼 `syncOps`가 제안할 수 없었다. 결국 두 FLIGHT 모두 제안이 없었다.
@@ -149,6 +161,25 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - "더 나은 배정으로 바뀜"으로 닫힌 짝은 판정받지 못한 것이라 24시간 규칙에서 뺀다.
   - 더 나은 배정 때문에만 계획에서 빠진 PROPOSED ASSIGN은 열어 둔다. 같은 sync에서 같은 FLIGHT나 AIRCRAFT에 점수가 20% 이상 높은 새 제안이 만들어질 때만 SUPERSEDED하고(`REPLACE_MARGIN`), 사유에 새 id와 두 점수를 적는다. 상태가 바뀌면 지금처럼 바로 닫는다.
   - 운영 데이터(읽기 전용 모의 실행, 2026-09-27 04:55Z): main은 VOC-125 → TEAM_F, VOC-177 → TEAM_E를 계획했지만 둘 다 막힌 짝이라 아무것도 만들지 않았다(HOLD 아닌 열린 제안 0건). 이 브랜치는 VOC-125 → TEAM_B, VOC-196 → TEAM_E(D-0017의 짝이 돌아옴), VOC-177 → TEAM_D를 계획하고 만든다(열린 제안 3건).
+- 운항 추적이 PR을 만들지 않는 STAND 없는 FLIGHT(SURVEY, CHECK)에 `no-pr`를 경고했다([docs/occ.ko.md](docs/occ.ko.md) 8.1).
+  - STAND 없는 FLIGHT(`departedVia: "readback"`, 또는 제안 없이 `tail:`이 붙은 SURVEY·CHECK)는 이제 READBACK → DEPARTED → ARRIVED로 따라간다. PR 단계를 건너뛰고 `no-departure`, `no-pr`, `pr-not-cleared`, `landing-wait`와 Linear·PR 불일치 세 가지도 보지 않는다.
+  - ARRIVED는 제안의 `arrived` 상태(`timeline.arrived`)에서 오고, FOLLOWING 항목은 CAPTAIN 보고를 `arrival: {note, url}`로 싣는다. 제안 없는 `tail:` FLIGHT는 DEPARTED가 Linear 시작 시각, ARRIVED가 Linear Done이다.
+  - 새 지연 코드 `no-arrival`(warn): DEPARTED 뒤 WAKE 기대치의 1.5배가 지나도 ARRIVED 보고가 없음. recalling인 FLIGHT는 보지 않는다.
+  - FOLLOWING 탭은 이 FLIGHT에 세 칸짜리 단계 막대를 보이고 결과를 링크한다. OCC 문제 표(`occ/CLAUDE.md`)에 `no-arrival`을 넣었다.
+- linear-guard가 release된 같은 호출을 몇 번이든 통과시켰다. 그래서 다음 Linear 조회 전에 release된 `save_comment`를 되풀이하면 댓글이 두 번 달렸다(NEW의 `save_issue`를 되풀이하면 이슈가 둘 생겼을 것이다)([docs/occ.ko.md](docs/occ.ko.md) 6장).
+  - 이제 `occ/mcp-guard.mjs`는 쓰기를 통과시키기 전에 호출을 claim한다. `POST /api/schedule/released/claim {tool, input}`이 아직 쓰지 않은, 맞는 release 호출을 찾아 `use` 줄을 남긴다(순수 함수 `claimOf`). 똑같은 두 번째 호출은 `… 이미 한 번 통과함`으로 막힌다. claim이 실패하거나 atc에 닿지 않으면 쓰기를 막는다(fail-closed).
+  - 작업은 `released` 그대로이고 APPLIED 판정은 바뀌지 않았다. `GET /api/schedule/released`가 호출마다 `used`를 보인다. 다시 release해도 같은 호출과 같은 표시가 돌아오고, 표시를 지우는 길은 없다. Linear 쓰기가 실패했으면 SUPERVISOR가 직접 바꾼다.
+  - OCC 규칙(`occ/CLAUDE.md`): 이미 통과한 호출은 다시 하지 않는다.
+- ATFM S3 대상 판정이 사람이 맡아야 할 FLIGHT를 통과시킬 수 있었다([docs/atfm.ko.md](docs/atfm.ko.md) 4장).
+  - S2는 이제 그 FLIGHT의 DISPATCH 제안에 OCC CAUTION이 있거나 atc가 FLIGHT를 읽지 못해도 떨어진다. `Risk:` 라벨은 원래 SEC로 읽었다(`classOf`). 테스트에 옛 단독 라벨 `Risk: Security`도 넣었다.
+  - S4는 이제 FLIGHT가 DISPATCH 제안으로 날고 있을 때(`isInFlight`)도 떨어진다. STAND 없이 READBACK 때 DEPARTED한 FLIGHT도 여기에 든다.
+- ATFM 켜는 조건 줄 "2b 승인 운용 2주 이상"과 "S2 승인 운용 2주 이상"은 운용 기간을 재지 않아 통과할 수 없었다. 이제 FLIGHT RECORDER의 마지막 `mode:` 전환에서 잰다(`approvalRunOf`, 14일). 모드는 `approval`인데 맞는 전환 기록이 없으면 판정 대신 "△ 확인 필요"(새 상태 `check`)를 보인다.
+
+### 문서
+- 한국어 번역(#51)에서 찾은 설계 문서의 오류와 낡은 서술 35건을 `*.md`와 `*.ko.md` 모두에서 고쳤다. 코드를 기준으로 삼았고, 만들지 않은 것은 "아직 만들지 않음"으로 적었다.
+  - `docs/occ.md`(13건): `CLOSE`는 만들었지만 release하지 않음. §1 표는 2026-09-26 기준. 머지는 `Fixes VOC-n`일 때만 이슈를 닫음. S2는 `mode` 뒤에 만들었고 superseded·expired가 있음. linear-guard 절을 `occ/mcp-guard.mjs`에 맞춤(`save_issue`·`save_comment`만, release된 호출과 정확히 일치). 한도는 열린 초안 5건뿐. `TAIL`은 아직 만들지 않음. 운항 추적에 STAND 없는 FLIGHT와 `no-arrival`. §9는 `atfm.md`로. S2 게이트는 나중 중복을 세지 않음. CROSSCHECK·§13 문구.
+  - `docs/fleet.md`(11건): Status 줄. §1 "지금" 열(WAKE 가중 슬롯, TEAM당 STAND 없는 FLIGHT 1건, `tail:`). 예시의 `ui-qa`는 `read-only`. HOLDING·PARKED 팀. LOGBOOK 중앙값은 아직 만들지 않음. OCC S1 `CLASSIFY`는 만듦. LOGBOOK `branch`와 머지된 PR마다 한 줄. 분류는 FIDS가 아니라 DISPATCH 카드에 보임. 보안 reviewer는 `codex`. `tail:` 이름 바꾸기 끝남. 라벨 문구. 8.4절은 그대로.
+  - `docs/atfm.md`(11건): `CLOSE` 초안은 만듦. S1–S4는 OCC 단계가 아니라 조건 코드이고 S5는 켜기 조건 1이 다룸. ground stop 조건은 만든 대로(CI 30분 넘는 PR 4건 초과, 열린 LOS 2건 이상). "main broken"·"manual"은 강제할 수 있음. gate3는 `gate3Of`가 보는 대로. 슬롯은 7번부터. 비율은 모델 계열별. 있는 recorder op. 4–5번은 만듦. 슬롯 한도는 `slotLimits`로만 바뀜.
 
 ## [0.1.0] — 2026-09-26
 

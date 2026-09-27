@@ -1,6 +1,6 @@
 # OCC design (draft)
 
-English only for now; a Korean version will follow.
+**English** · [한국어](occ.ko.md)
 
 atc splits into two control sessions, the way aviation does:
 
@@ -9,17 +9,19 @@ atc splits into two control sessions, the way aviation does:
 
 In real aviation the flight dispatcher belongs to the airline's OCC, not to ATC. So DISPATCH (stage 2) moves into OCC, and OCC takes over the work the "President" session does by hand today.
 
-> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 built: SCHEDULE drafts in shadow operation for `CLASSIFY`, `PRIORITIZE` and `NEW` (`server/schedule.ts`, `atcctl schedule brief|draft`, the SCHEDULE tab, OCC rules). `NEW` is the CHARTER DESK: an AD HOC FLIGHT drafted from a CHARTER REQUEST, with body-section checks and a title-similarity duplicate search over the snapshot (issues updated in the last 45 days). At most 5 open drafts of any kind, and drafts expire after 3 days without a verdict. ATC's CLEARED TO LAND check (section 9) is built: the LANDING SEQUENCE now comes from open GitHub PRs. Other operations (`CLOSE`, `TAIL`, `LINK`, `SPLIT`, `COMMENT`) and S3 are design only. S2 (approval operation: linear-guard, `schedule release`, APPLIED detection) is built behind `mode` and off by default — see "Turning on S2". Decisions are listed under "Decisions" at the end.
+> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 built: SCHEDULE drafts in shadow operation for `CLASSIFY`, `PRIORITIZE`, `NEW` and `CLOSE` (`server/schedule.ts`, `atcctl schedule brief|draft`, the SCHEDULE tab, OCC rules). `NEW` is the CHARTER DESK: an AD HOC FLIGHT drafted from a CHARTER REQUEST, with body-section checks and a title-similarity duplicate search over the snapshot (issues updated in the last 45 days). `CLOSE` (section 5.5, built 2026-09-27) drafts closing a FLIGHT whose PR is merged; it is never released, and the SUPERVISOR closes the issue in Linear. At most 5 open drafts of any kind, and drafts expire after 3 days without a verdict. ATC's CLEARED TO LAND check (section 9) is built: the LANDING SEQUENCE now comes from open GitHub PRs. Other operations (`TAIL`, `LINK`, `SPLIT`, `COMMENT`) and S3 are design only (Not built yet). S2 (approval operation: linear-guard, `schedule release`, APPLIED detection) is built behind `mode` and off by default — see "Turning on S2". Decisions are listed under "Decisions" at the end.
 
 ## 1. Current facts
 
-| Item | Today |
+A snapshot from 2026-09-26, before S0. What has changed since is in the status line above.
+
+| Item | Today (2026-09-26) |
 |---|---|
 | Group head | A "President" session in `vocado_nextjs`, above TEAM_A … TEAM_F. It delegates work, verifies team reports against GitHub, Linear and the DB, reviews PRs and judges Codex findings, keeps Linear tidy, maintains rule files (`CLAUDE.md`, PR template), and routes merge, close and scope decisions to the user. It writes no product code and cannot merge |
-| DISPATCH | A separate session (`atc/dispatch/`) in shadow operation (2a). It reviews proposals and adds notes, CAUTION and HOLDs. It does not write to Linear |
+| DISPATCH | A separate session (`atc/dispatch/`) in shadow operation (2a). It reviews proposals and adds notes, CAUTION and HOLDs. It does not write to Linear. Merged into OCC at S0; the folder is now `occ/` |
 | TOWER | Stage 1 controller: LOSS OF SEPARATION, HANDOFF, LANDING SEQUENCE |
 | Who writes Linear | Only team leaders (vocado `CLAUDE.md`: "only leaders write to Linear"). In practice President also creates, reprioritizes and closes issues |
-| State changes | The GitHub integration moves issues through In Progress / In Review, and a merge moves them to Done |
+| State changes | The GitHub integration moves issues through In Progress / In Review. A merge moves them to Done only when the PR body says `Fixes VOC-n`; after any other merge the issue stays open, which is what `CLOSE` (5.5) and `merged-not-done` (8.1) cover |
 
 What went wrong on 2026-09-26, all in one day:
 
@@ -78,6 +80,8 @@ OCC never writes to Linear freely. It drafts **SCHEDULE operations**. Each one i
 | `SPLIT` | Turn a finding into a child or related ticket | P3 items from the PR #400 review |
 | `COMMENT` | Leave a plan comment (not execution) | "Deferred until VOC-52 lands" |
 
+Built: `NEW` (CHARTER DESK, 5.1), `CLOSE` (5.5), `PRIORITIZE`, `CLASSIFY`. Not built yet: `TAIL`, `LINK`, `SPLIT`, `COMMENT`.
+
 ### 5.1 Where operations come from
 
 - **The SUPERVISOR's instructions (CHARTER DESK)**: a CHARTER REQUEST made directly in the OCC session ("make a ticket for X") becomes a `NEW` draft, an AD HOC FLIGHT (a FLIGHT added outside the regular schedule). Once approved and in Linear Todo (S2) it is FILED like any other FLIGHT. Small ticketless work handed straight to a team is AD HOC and never becomes a SCHEDULE operation. OCC never drafts `NEW` on its own initiative. Its duplicate search (section 5.3) covers atc's snapshot, which holds issues updated in the last 45 days.
@@ -93,7 +97,7 @@ OCC never writes to Linear freely. It drafts **SCHEDULE operations**. Each one i
 ### 5.3 Duplicates and limits
 
 - Before any `NEW` or `SPLIT`, OCC searches open and recently closed issues and records what it found in the operation ("no duplicate: searched X, Y").
-- At most 5 open drafts and 10 applied `NEW` / `SPLIT` per day (settings file). Past that, OCC stops drafting and reports.
+- At most 5 open drafts of any kind (`SCHEDULE_OPEN_LIMIT` in `server/schedule.ts`). Past that, atc refuses a new draft (409), and OCC stops drafting and reports. A daily cap on applied `NEW` / `SPLIT` (10 per day, from a settings file) is Not built yet.
 - A `CLOSE` needs evidence OCC checked itself: a merged PR, a config read, a comment. "Looks done" is not enough.
 
 ### 5.4 CLASSIFY accuracy
@@ -139,19 +143,22 @@ Linear clean-up used to be President's job. Now OCC drafts it, and the SCHEDULE 
 
 ## 6. linear-guard
 
-The same pattern as `occ/send-guard.mjs`: a PreToolUse hook on OCC's Linear write tools (`mcp__*__save_issue`, `save_comment`, and the relation and label tools). It is fail-closed (`… || exit 2`).
+linear-guard is part of `occ/mcp-guard.mjs`, the PreToolUse hook on all of OCC's MCP tools (matcher `mcp__.*`, fail-closed `… || exit 2`). Read tools pass as in S0. linear-guard judges the two Linear write tools, `save_issue` and `save_comment`. Every other write tool (relations, labels, GitHub) is blocked as in S0.
 
-A write passes only when all of these hold:
+A Linear write passes only when all of these hold:
 
-1. The SCHEDULE mode allows writes (section 7). In shadow, every Linear write is blocked.
-2. The payload carries a SCHEDULE id. Issue bodies end with `— OCC S-0001` and comments start with `[OCC S-0001]`.
-3. That operation is **approved** (or automatic under section 7) and not yet applied.
-4. The payload is **exactly** the operation's payload, as fetched from atc (`GET /api/schedule/ops/:id`).
-5. It touches only OCC's fields (section 4). Moving an issue to In Progress or In Review is always blocked.
+1. The SCHEDULE mode is `approval` (S2, section 7). In shadow, every Linear write is blocked.
+2. The tool and its input **exactly** match (key order aside) a call atc has released: `GET /api/schedule/released` lists the calls of operations in state `released`. A call drops off that list once its operation is APPLIED, superseded or expired.
+3. That call has not passed before. Right before letting the write through, the guard claims it: `POST /api/schedule/released/claim {tool, input}` finds a matching released call that is not used yet and records a `use` line for it (the operation stays `released`). A second identical call is blocked with `… 이미 한 번 통과함`, so repeating a released `save_comment` or `save_issue` cannot post a comment or create an issue twice. `GET /api/schedule/released` shows `used` on each call.
+4. atc answers within 3 seconds, both for the list and for the claim. If it can't be reached, or it does not record the claim, the write is blocked.
 
-Everything else is blocked with `SCHEDULE 쓰기 차단 — …`. As with send-guard, OCC never retries a blocked write by rewording it. It reports to the SUPERVISOR.
+The guard checks nothing else. The rest follows from the fact that only atc builds released calls (`callsOf`, see "Turning on S2"): an issue body ends with `— OCC S-0001 · CHARTER REQUEST …` and a comment starts with `[OCC S-0001]`, and no call touches state or assignee, so moving an issue to In Progress or In Review can never match.
 
-atc marks an operation APPLIED when the next Linear fetch shows the change (an issue with footer `S-0001`, the new priority, the closed state), the same way DISPATCH detects DEPARTED.
+Everything else is blocked with `OCC MCP 차단 — …`. As with send-guard, OCC never retries a blocked write by rewording it. It reports to the SUPERVISOR.
+
+A used call stays used: releasing the operation again returns the same calls with the same `used` marks, and nothing un-marks one. If the Linear write failed after the guard let it through, OCC reports it, and the SUPERVISOR makes the change in Linear by hand; atc still marks the operation APPLIED when the next fetch shows it (or it expires after 3 days).
+
+atc marks a released operation APPLIED when the next Linear fetch shows the change: for `NEW`, an issue with the same title (normalized) created after the draft; for `CLASSIFY` and `PRIORITIZE`, the labels or priority as drafted; for `CLOSE`, a Done or Canceled issue. If the change shows before the operation is released, it is SUPERSEDED instead.
 
 ## 7. Flow and stages
 
@@ -163,11 +170,11 @@ S2 approval  SUPERVISOR approves → OCC: atcctl schedule release S-0001 → exa
 S3 auto      low-risk operations skip approval (list below); everything else stays as in S2
 ```
 
-Operation states in S1 (as built in `server/schedule.ts`): `draft → (agreed | disagreed)`, with side branches `superseded` (a newer draft for the same FLIGHT and kind, or the situation changed: the FLIGHT left Todo or Backlog, or Linear already shows the change, e.g. someone set it by hand) and `expired` (3 days without a verdict). S2 is to add `approved → released → applied`, with `rejected` as a side branch.
+Operation states in S1 (as built in `server/schedule.ts`): `draft → (agreed | disagreed)`, with side branches `superseded` (a newer draft for the same FLIGHT and kind, or the situation changed: the FLIGHT left Todo or Backlog, or Linear already shows the change, e.g. someone set it by hand) and `expired` (3 days without a verdict). S2 adds (built, behind `mode`) `approved → released → applied`, with `rejected` as a side branch; approved and released operations can also become `superseded` or `expired` (3 days without being released or applied).
 
 Candidates for automatic operations in S3, each to be confirmed from S2 data:
 
-- `CLOSE` as Done when the issue's PR is merged, every done criterion is checked and the evidence is linked
+- `CLOSE` as Done when the issue's PR is merged, every done criterion is checked and the evidence is linked. Only if vocado's rule changes to let OCC change state (5.5): until then a `CLOSE` is never released, so it can't be automatic
 - `LINK` for a prerequisite quoted verbatim from the body
 - `PRIORITIZE` for a `SPLIT` child that inherits its parent's priority
 
@@ -178,17 +185,17 @@ Never automatic: anything with CAUTION, `Canceled`, deleting anything, adding or
 | From | Moves to OCC as |
 |---|---|
 | DISPATCH session (`atc/dispatch/`) | The same work under `atc/occ/`: proposal review, HOLD, FLIGHT PLAN, READBACK. The DISPATCH tab, proposal ids (`D-xxxx`) and send-guard stay as they are |
-| President: assign work | DISPATCH proposals. Until 2b, a person's direct assignment is recorded with `TAIL` so the planner can see it |
-| President: verify team reports | **Flight following**. atc follows every assigned FLIGHT (`server/following.ts`, `GET /api/following`): DISPATCH ASSIGNs that are accepted, departed or recalling, plus In Progress FLIGHTs with a `tail:` label. It tracks the stages READBACK → DEPARTED → PR opened → CLEARED → ARRIVED, and flags delays (no next stage after 1.5× the WAKE expectation) and mismatches between Linear and the PR. Each pass, OCC runs `atcctl following`, reports only new issues and records them with `following ack`, so nothing is reported twice. It never messages teams. For a team report or a SUPERVISOR request, OCC still checks the PR head, CI and review with read-only `gh` (`gh pr view`, `gh pr checks`, `gh pr diff`). The mechanical landing check is ATC's CLEARED TO LAND (section 9) |
+| President: assign work | DISPATCH proposals. Until 2b, a person's direct assignment is recorded as a `tail:TEAM_X` label so the planner can see it. For now that is done by hand: the SCHEDULE `TAIL` operation is Not built yet |
+| President: verify team reports | **Flight following**. atc follows every assigned FLIGHT (`server/following.ts`, `GET /api/following`): DISPATCH ASSIGNs that are accepted, departed or recalling, plus In Progress FLIGHTs with a `tail:` label. It tracks the stages READBACK → DEPARTED → PR opened → CLEARED → ARRIVED (STAND-free FLIGHTs: READBACK → DEPARTED → ARRIVED, section 8.1), and flags delays (no next stage after 1.5× the WAKE expectation) and mismatches between Linear and the PR. Each pass, OCC runs `atcctl following`, reports only new issues and records them with `following ack`, so nothing is reported twice. It never messages teams. For a team report or a SUPERVISOR request, OCC still checks the PR head, CI and review with read-only `gh` (`gh pr view`, `gh pr checks`, `gh pr diff`). The mechanical landing check is ATC's CLEARED TO LAND (section 9) |
 | President: keep Linear tidy | SCHEDULE operations |
 | President: maintain rule files | A `NEW` ticket that a TEAM implements through a PR |
 | President: judge PR reviews and scope | Stays with the SUPERVISOR. OCC can summarize, but does not decide |
 
-OCC's guard is TOWER's Bash guard plus read-only `gh` subcommands (`guard.mjs --gh-read`). Edit and Write stay denied. `occ/mcp-guard.mjs` lets only read MCP tools through (names starting with get, list, search, read, query or fetch), so in S0 OCC cannot write to Linear or GitHub even though the connectors are loaded. In S2, linear-guard opens Linear writes for approved operations only.
+OCC's guard is TOWER's Bash guard plus read-only `gh` subcommands (`guard.mjs --gh-read`). Edit and Write stay denied. `occ/mcp-guard.mjs` lets only read MCP tools through (names starting with get, list, search, read, query or fetch), so in S0 OCC cannot write to Linear or GitHub even though the connectors are loaded. In S2, linear-guard opens Linear writes for released calls of approved operations only (section 6).
 
 The session reloads its manual: `/tick` starts with `atcctl manual check`, which compares the hash of `CLAUDE.md` and `/tick` with the last `atcctl manual ack` (stored under `~/.local/state/atc/manuals/`). If they changed, the session rereads them before doing anything else. TOWER's `/tick` does the same. That fixes the stale-manual incident from section 1.
 
-**President retires** once all three hold: OCC has run S1 for a week, flight following covers every team report, and `TAIL` is in use. Until then President keeps assigning and records each assignment as a `tail:` label (by hand until OCC S2).
+**President retires** once all three hold: OCC has run S1 for a week, flight following covers every team report, and the `TAIL` operation is in use (Not built yet). Until then President keeps assigning and records each assignment as a `tail:` label by hand.
 
 ### 8.1 Flight following in detail
 
@@ -200,24 +207,36 @@ The session reloads its manual: `/tick` starts with `atcctl manual check`, which
 | CLEARED | the open PR's `readyAt` while it is CLEARED TO LAND |
 | ARRIVED | the FLIGHT's LOGBOOK entry (not reverted) |
 
+**STAND-free FLIGHTs** (SURVEY and CHECK: the proposal DEPARTED on READBACK, `departedVia: "readback"`) produce no PR. They skip the PR opened and CLEARED stages, so their stage bar is READBACK → DEPARTED → ARRIVED:
+
+| Stage | Source |
+|---|---|
+| READBACK | the proposal's `timeline.accepted` |
+| DEPARTED | the proposal's `timeline.departed` (the READBACK itself) |
+| ARRIVED | the proposal's `arrived` status (`timeline.arrived`, with `arrivedNote` / `arrivedUrl`): the CAPTAIN's report, recorded by OCC with `atcctl dispatch arrived D-xxxx -- <result link or one line>` |
+
+A `tail:` FLIGHT without a proposal counts as STAND-free when its FLIGHT TYPE is SURVEY or CHECK; then DEPARTED is the Linear start time and ARRIVED is Linear Done.
+
 | Issue | When | Severity |
 |---|---|---|
 | `no-departure` | READBACK, no STAND and no departure after 1.5× the WAKE expectation (L 60, M 240 min, H 2 days, as in the LOGBOOK) | warn |
 | `no-pr` | a STAND or departure, no PR after 1.5× | warn |
 | `pr-not-cleared` | a PR, not CLEARED after 1.5×; the text lists its landing blocks | warn |
 | `landing-wait` | CLEARED for more than 1 hour without landing; landing is the SUPERVISOR's call | info |
+| `no-arrival` | STAND-free FLIGHTs only: DEPARTED, no ARRIVED after 1.5× the WAKE expectation | warn |
 | `review-no-pr` | Linear says In Review but there is no PR | warn |
 | `done-not-merged` | Linear says Done but there is no merged PR | warn |
 | `merged-not-done` | the PR merged but Linear isn't Done; this is what a `CLOSE` draft handles | info |
 
 - A recalling FLIGHT is not checked for delays, because it was told to stop.
-- A FLIGHT that has ARRIVED and is closed in Linear stays visible for a day, then drops off.
+- For STAND-free FLIGHTs, `no-departure`, `no-pr`, `pr-not-cleared` and `landing-wait` don't apply, and neither do the Linear/PR mismatches (`review-no-pr`, `done-not-merged`, `merged-not-done`). `no-arrival` is their only delay.
+- A FLIGHT that has ARRIVED and is closed in Linear stays visible for a day, then drops off. A STAND-free FLIGHT stays visible for a day after its ARRIVED, like the others.
 - `following-state.json` keeps the keys (`FLIGHT|code`) OCC has reported. An issue that clears is forgotten, so if it comes back it is reported again.
 
 ## 9. What ATC takes
 
 - **CLEARED TO LAND** (built): a LANDING SEQUENCE entry is marked ready only when the PR's exact head has green required checks, a passing review on that head (for Codex, a 👍 after the head: its COMMENTED review means findings), no base drift and no LOS. This is the mechanical half of what President checks by hand today. It catches CI that is green only on an older commit, a review left on an older commit, and drift from main.
-- **Flow management (stage 3)**: merge slots and ground stops when CI backs up, as in `docs/dispatch.md`.
+- **Flow management (stage 3)**: merge slots and ground stops when CI backs up, designed in [atfm.md](atfm.md) and partly built there (in shadow operation, see its status line).
 - ATC keeps reading Linear only. It never drafts SCHEDULE operations.
 
 ### 9.1 CLEARED TO LAND as built (2026-09-26)
@@ -246,8 +265,8 @@ Order: CLEARED PRs by `readyAt`, the first time every condition held at that hea
 
 | Where | What |
 |---|---|
-| `server/schedule.ts` (new) | SCHEDULE log (`~/.local/state/atc/schedule.jsonl`, append-only), state transitions, APPLIED detection from the Linear fetch, daily limits |
-| `server/sources/linear.ts` | Read labels (`tail:`, `type:`, `wake:`, `rating:`), recently closed issues (for duplicate search), and the `S-xxxx` footer |
+| `server/schedule.ts` (new) | SCHEDULE log (`~/.local/state/atc/schedule.jsonl`, append-only), state transitions, APPLIED detection from the Linear fetch, the open-draft limit (daily limits: Not built yet) |
+| `server/sources/linear.ts` | Read labels (`tail:`, `type:`, `wake:`, `rating:`), recently closed issues (for duplicate search). NEW is detected as APPLIED by title, not by an `S-xxxx` footer (section 6) |
 | `server/dispatch.ts` | Respect `tail:TEAM_X` and the classification rules in [fleet.md](fleet.md) section 5 |
 | API | `GET /api/schedule/brief`, `GET /api/schedule/ops/:id`, `POST /api/schedule/ops` (draft), `POST /api/schedule/ops/:id/{verdict,approve,reject,release}`, `POST /api/schedule/mode` |
 | `atc/occ/` | Moved from `atc/dispatch/`: `CLAUDE.md` (operations manual), `/tick`, send-guard, **linear-guard**, a Bash guard with read-only `gh` |
@@ -259,13 +278,13 @@ Order: CLEARED PRs by `readyAt`, the first time every condition held at that hea
 
 S2 is built and sits behind the SCHEDULE `mode` (`~/.local/state/atc/schedule.json`, default `shadow`). Turning it on lets OCC write approved operations to Linear, so do it in this order:
 
-1. Check the S2 gate in the SCHEDULE tab (20 or more shadow verdicts, 80% or more agreement).
+1. Check the S2 gate in the SCHEDULE tab (20 or more shadow verdicts, 80% or more agreement). The gate atc shows (`gateOf`) checks only these two; the "0 duplicates found after the fact" criterion of section 11 is not counted by atc (Not built yet).
 2. Change the vocado `CLAUDE.md` rule "only leaders write to Linear" to "OCC and leaders write to Linear; OCC writes plan fields (through approved SCHEDULE operations), leaders write execution fields" (section 4). Confirm with the SUPERVISOR at that time.
 3. Create the flat Linear labels `rating:SEC`, `rating:UI`, `rating:DATA`, `rating:DOCS` (the `type` and `wake` label groups and `tail:TEAM_X` already exist). A CLASSIFY or NEW call that names a missing label fails, and OCC reports it.
 4. Press "S2 승인 운용 켜기" in the SCHEDULE tab (or `POST /api/schedule/mode {"mode":"approval"}`). OCC picks it up on its next pass.
 5. To stop, switch back to shadow: linear-guard then blocks every Linear write, and released operations stay as they are.
 
-How it runs: the SUPERVISOR approves (or rejects with a reason) → OCC runs `atcctl schedule release S-xxxx`, which records RELEASED and prints the exact Linear MCP calls (`save_issue`, plus a `save_comment` with the reason for CLASSIFY and PRIORITIZE) → OCC makes each call with the input unchanged; `occ/mcp-guard.mjs` (linear-guard) passes a Linear write only when the mode is approval and the tool and input match a released call exactly → on the next Linear read atc marks the operation APPLIED (the change is visible, or for NEW an issue with that title appeared). Approved or released operations that don't land within 3 days expire. Calls only touch plan fields: labels, priority, a new issue's title/body/project/relations, and a comment. Never state or assignee.
+How it runs: the SUPERVISOR approves (or rejects with a reason) → OCC runs `atcctl schedule release S-xxxx`, which records RELEASED and prints the exact Linear MCP calls (`save_issue`, plus a `save_comment` with the reason for CLASSIFY and PRIORITIZE) → OCC makes each call with the input unchanged; `occ/mcp-guard.mjs` (linear-guard) passes a Linear write only when the mode is approval, the tool and input match a released call exactly, and that call has not passed before (section 6) → on the next Linear read atc marks the operation APPLIED (the change is visible, or for NEW an issue with that title appeared). Approved or released operations that don't land within 3 days expire. Calls only touch plan fields: labels, priority, a new issue's title/body/project/relations, and a comment. Never state or assignee.
 
 ## CROSSCHECK
 
@@ -328,14 +347,14 @@ named `CROSSCHECK`, and run with `/loop 10m /tick`.
 
 **From Claude Desktop.** Desktop does not follow the settings `model`; it uses the model picked in the app, and that model goes through the ClaudeRipple proxy (`HTTPS_PROXY` 127.0.0.1:8790), which passes Claude models through as well. Open a session in the `crosscheck/` folder, name it `CROSSCHECK`, **pick `muse-spark-1.3-contributor` in the app's model menu**, then `/loop 10m /tick`. On 2026-09-26 two Desktop sessions ran on the default `claude-opus-5-5` and their marks were recorded under the Muse name (S-0006 and S-0007 are the likely cases); the real-model check below now blocks that.
 
- `--strict-mcp-config` with no `--mcp-config` loads no MCP servers at all. The session then has no MCP tools. It reads GitHub through read-only `gh pr` instead (SUPERVISOR decision, 2026-09-26), the same Bash guard pattern as OCC: when a body, comment or OCC note names a PR condition, it checks the fact with `gh pr view <N> --repo <owner/name> --json state,mergedAt,title` before marking (e.g. "PR #393 머지 전이면 HOLD", "이미 완료됨"). `crosscheck/CLAUDE.md` maps each AIRPORT to its repository (VCDO → `chaehy5665/vocado_nextjs`). `occ/mcp-guard.mjs --read-only` stays in place. When an upstream account is rate-limited, the session stops with an API error; nothing falls back to Claude.
+`--strict-mcp-config` with no `--mcp-config` loads no MCP servers at all. The session then has no MCP tools. It reads GitHub through read-only `gh pr` instead (SUPERVISOR decision, 2026-09-26), the same Bash guard pattern as OCC: when a body, comment or OCC note names a PR condition, it checks the fact with `gh pr view <N> --repo <owner/name> --json state,mergedAt,title` before marking (e.g. "PR #393 머지 전이면 HOLD", "이미 완료됨"). `crosscheck/CLAUDE.md` maps each AIRPORT to its repository (VCDO → `chaehy5665/vocado_nextjs`). `occ/mcp-guard.mjs --read-only` stays in place. When an upstream account is rate-limited, the session stops with an API error; nothing falls back to Claude.
 
 **Real model on each mark.** A mark must come from Muse or Terra, and must record the model that actually wrote it. Neither the settings nor the proxy can prove that: Desktop ignores the settings model, and ClaudeRipple forwards Claude requests too. So the Bash guard checks the session's own transcript.
 
 - For a mark command (`atcctl dispatch|schedule crosscheck`), `guard.mjs --crosscheck` reads the hook input's `transcript_path` (the session's own JSONL, last 4 MB). It takes `message.model` of the last assistant message, skipping `<synthetic>`.
 - It passes only a model matching `/muse-spark|gpt-5\.6-terra/i`. Anything else is blocked with "앱에서 모델을 Muse로 바꾸거나, 터미널에서 ocx claude로 여세요": a Claude model (`claude-opus-5-5`, `claude-sonnet-5` …), DeepSeek, a missing or unreadable transcript, or no model in it (fail-closed).
 - Read commands (`brief`, `flight`, `gh pr view` …) are not checked.
-- When it passes, the guard answers with PreToolUse `updatedInput`: the same command prefixed with `ATC_CROSSCHECK_MODEL='<real model>'`. atcctl sends that as the mark's `model`. This is the first option from the request, not the fallback.
+- When it passes, the guard answers with PreToolUse `updatedInput`: the same command prefixed with `ATC_CROSSCHECK_MODEL='<real model>'`. atcctl sends that as the mark's `model`.
 - The session cannot supply the name itself:
   - A variable in front of the command is already blocked.
   - `--model` in a mark command is blocked.
@@ -352,26 +371,26 @@ named `CROSSCHECK`, and run with `/loop 10m /tick`.
 |---|---|
 | S0 (OCC session, DISPATCH merged, Linear read-only) | Can start right away |
 | S0 → S1 | SCHEDULE log, tab and `atcctl schedule draft` exist |
-| S1 → S2 | 20+ decided drafts, 80%+ agreement, 0 duplicates found after the fact. **Vocado `CLAUDE.md` changes "only leaders write to Linear" to "OCC and leaders write to Linear; OCC writes plan fields, leaders write execution fields"** |
+| S1 → S2 | 20+ decided drafts, 80%+ agreement (atc's gate, `gateOf`), 0 duplicates found after the fact (not counted by atc: Not built yet). **Vocado `CLAUDE.md` changes "only leaders write to Linear" to "OCC and leaders write to Linear; OCC writes plan fields, leaders write execution fields"** |
 | S2 → S3 | 2+ weeks in S2, almost no operations reverted by a person, no linear-guard block caused by a wrong payload |
 
 ## 12. Risks and mitigations
 
 | Risk | Mitigation |
 |---|---|
-| Ticket spam fills the backlog | Daily limits, mandatory duplicate search, shadow first to measure draft quality |
+| Ticket spam fills the backlog | The open-draft limit (5; daily limits Not built yet), mandatory duplicate search, shadow first to measure draft quality |
 | A security ticket gets the wrong scope | vocado templates (allowed files, forbidden changes, invariants); CAUTION operations are never automatic |
-| Closing an issue that isn't done | `CLOSE` needs checked evidence; automatic `CLOSE` only after a merged PR and checked done criteria |
+| Closing an issue that isn't done | `CLOSE` needs checked evidence (a merged PR in the LOGBOOK), is never released, and the SUPERVISOR closes the issue in Linear (5.5) |
 | OCC creates work and then dispatches it to itself | The SUPERVISOR approves both steps; ATC, a separate session, judges the conflicts |
 | OCC and a CAPTAIN write the same field | Field ownership (section 4), enforced by linear-guard |
-| Linear API rate limits | Batched fetches, no API attachments, daily write limits |
+| Linear API rate limits | Batched fetches, no API attachments, daily write limits (Not built yet) |
 | A stale operations manual | `/tick` rereads `CLAUDE.md` when its hash changes |
 
 ## 13. Implementation order
 
-1. ✅ **S0**: create `atc/occ/` from `atc/dispatch/` (merge), add read-only `gh` to its guard, a read-only MCP guard, reload the manual on change. Still to do: tell President about the handover
+1. ✅ **S0**: create `atc/occ/` from `atc/dispatch/` (merge), add read-only `gh` to its guard, a read-only MCP guard, reload the manual on change. Still to do as of 2026-09-26 (not rechecked since): tell President about the handover
 2. ✅ TAIL ASSIGNMENT `tail:TEAM_X` in the planner, first shipped as `lane:TEAM_X` (fixes the VOC-196 double dispatch right away). Labels are read from the existing Linear query
-3. ✅ **S1**: SCHEDULE log, API, `atcctl schedule`, SCHEDULE tab, shadow verdicts. First operations: `CLASSIFY` and `PRIORITIZE`
+3. ✅ **S1**: SCHEDULE log, API, `atcctl schedule`, SCHEDULE tab, shadow verdicts. First operations: `CLASSIFY` and `PRIORITIZE`, then `NEW` (CHARTER DESK, 5.1) and ✅ `CLOSE` (5.5, 2026-09-27)
 4. ✅ Flight following in `/tick`: `atcctl following` (stages, delays, mismatches, no repeat reports) plus read-only `gh` for team reports. ✅ CLEARED TO LAND checks in TOWER (section 9.1)
 5. ◐ **S2**: built behind `mode` (linear-guard, `schedule release`, APPLIED detection). Still to do when turning it on: the vocado `CLAUDE.md` rule change (confirmed with the SUPERVISOR at that time)
 6. **S3**: automatic operations, only those that S2 data supports
