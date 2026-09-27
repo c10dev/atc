@@ -229,6 +229,27 @@
   padding-left: var(--space-6);
   color: var(--text);
 }
+/* 완료 기준에 이어진 atc 게이트(6단계): 기준 아래 한 줄 */
+.rm-check {
+  display: block;
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.rm-check b {
+  font-weight: 600;
+}
+.rm-check.c-pass b {
+  color: var(--radar);
+}
+.rm-check.c-fail b {
+  color: var(--alert);
+}
+.rm-check.c-insufficient b,
+.rm-check.c-check b {
+  color: var(--amber);
+}
 .rm-flights {
   display: grid;
   gap: var(--space-0-5);

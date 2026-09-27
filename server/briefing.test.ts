@@ -19,7 +19,7 @@ const entry = (flight: string, aircraft: string, d: number): LogEntry => ({
   departedAt: ago(d), departedFrom: "pr", arrivedAt: ago(d), blockMin: null, landingWaitMin: 1, codexFindings: 0, changesRequested: false, reverted: false, los: 0,
 });
 const wp = (name: string, keys: string[], counts: Waypoint["counts"], state: Waypoint["state"] = "active"): Waypoint => ({
-  id: name, name, state, linearStatus: null, progress: 0.5, targetDate: null, criteria: [], truncated: false, late: false, eta: null, counts,
+  id: name, name, state, linearStatus: null, progress: 0.5, targetDate: null, criteria: [], checks: [], truncated: false, late: false, eta: null, counts,
   flights: keys.map((key) => ({ key, title: key, phase: "planned", aircraft: null, url: null })),
 });
 const route = (project: string, waypoints: Waypoint[]): Route => ({

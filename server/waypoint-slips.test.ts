@@ -7,7 +7,7 @@ const NOW = new Date(2026, 8, 27, 12, 0).getTime(); // 2026-09-27 12:00 로컬
 
 const wp = (name: string, over: Partial<Waypoint> = {}): Waypoint => ({
   id: `m-${name}`, name, state: "planned", linearStatus: "unstarted", progress: 0, targetDate: null, criteria: [], flights: [],
-  counts: { done: 0, active: 0, blocked: 0, planned: 0 }, truncated: false, late: false, eta: null,
+  counts: { done: 0, active: 0, blocked: 0, planned: 0 }, truncated: false, late: false, eta: null, checks: [],
   ...over,
 });
 const route = (project: string, waypoints: Waypoint[]): Route => ({

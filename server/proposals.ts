@@ -560,6 +560,11 @@ export function notReadyOf(p: Pick<Proposal, "status" | "gateCodes" | "reasonCod
   return p.status === "disagreed" && codes.length > 0 && codes.every((c) => (FLIGHT_HOLD_CODES as readonly string[]).includes(c));
 }
 
+// 2b 켜기 점검표(표시만). DISPATCH 브리핑과 ROUTE MAP의 WAYPOINT 점검(docs/routes.md 6단계)이 같이 쓴다
+export function readiness2bNow(gate: ReturnType<typeof gateOf>, now = Date.now(), files = readinessFiles()) {
+  return readiness2bOf({ gate, ...selfCheck2b(files.atcctl, now), crewChangeMissing: selfCheckCrewChange(files.atcctl, now), sendGuard: files.sendGuard, vocado: files.vocado });
+}
+
 export function gateOf(proposals: Proposal[]) {
   // 게이트는 AIRCRAFT 선택만 잰다(2026-09-27, SUPERVISOR): 사람 판정 중 준비 안 됨 거절은 따로 센다
   const judged = proposals.filter((p) => (p.status === "agreed" || p.status === "disagreed") && p.via !== "atfm" && p.via !== "preflight");
@@ -818,7 +823,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       gate3: gate3Of(proposals),
       crosscheck: crosscheckBriefOf(proposals),
       // 2b 켜기 점검표(표시만)
-      readiness2b: readiness2bOf({ gate, ...selfCheck2b(files.atcctl, now), crewChangeMissing: selfCheckCrewChange(files.atcctl, now), sendGuard: files.sendGuard, vocado: files.vocado }),
+      readiness2b: readiness2bNow(gate, now, files),
       reasonCodes: REASON_CODES,
       config: cfg,
     });

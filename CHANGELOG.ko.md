@@ -19,6 +19,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- ROUTE MAP: WAYPOINT 완료 기준에 atc 게이트([docs/routes.ko.md](docs/routes.ko.md) 6단계). WAYPOINT 상세에서 atc가 잴 수 있는 완료 기준 아래에 지금 점검이 보인다: DISPATCH·SCHEDULE 그림자 게이트, 2b 점검표, DISPATCH·SCHEDULE 모드, ATFM 켜기 조건(2b 2주와 gate3, 그림자 정확도와 CROSSCHECK), RECALL 사용. ✓ 충족, ✗ 미달, ○ 데이터 부족, △ 확인 필요로 보인다. `GET /api/routes`의 `criteria` 옆 `checks`에 있다(`server/waypoint-gates.ts`). atc는 여전히 마일스톤을 끝냈다고 표시하지 않는다.
 - ATFM 7번: 머지 슬롯을 켤 수 있다(ATC-22, [docs/atfm.ko.md](docs/atfm.ko.md) 5장).
   - `atfm.json` `slots`가 `off | shadow | on`을 받는다(기본은 그대로 `shadow`). DISPATCH 탭 ATFM 블록에 확인을 거치는 스위치가 있고, ATFM OFF는 `on`을 `shadow`로 되돌린다.
   - `on`이면 TOWER 브리핑의 `waiting-slot` PR마다 `slotHold`가 붙는다(`slotHoldOf`: 슬롯을 쥔 PR 뒤에서 기다림, 또는 LAND 30분이 지나 슬롯을 비움). TOWER는 그 PR에 LAND도 메시지도 보내지 않고, 앞 PR이 머지되거나 그 LAND가 30분을 넘기면 `slotHold`가 사라져 LAND를 낸다(TOWER 규정, 한국어·영어).
