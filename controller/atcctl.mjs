@@ -116,11 +116,14 @@ CROSSCHECK (CROSSCHECK 세션이 맡음. SUPERVISOR 판정 전에 다른 모델�
                                             needs-human no-priority out-of-repo wrong-aircraft other
   node atcctl.mjs schedule crosscheck <S-0001> agree|disagree -- <이유>
                                             열린 SCHEDULE 초안에 예비 판정
-  node atcctl.mjs landing review <repo>#<PR>  Codex 한도 때 Muse 리뷰 자료(JSON): PR 본문, FLIGHT 완료 기준·금지 사항,
-                                            head, 크기를 제한한 diff. Muse 제외(rating:SEC·Risk·비밀 경로)면 403
+
+REVIEW (착륙 리뷰 세션, review/ 폴더, DeepSeek V4.1 Flash. Codex 한도 PR만 — ATC-27)
+  node atcctl.mjs landing queue             리뷰를 기다리는 PR(pending), 외부 리뷰에서 뺀 PR(excluded, 사유), 최근 리뷰 (JSON)
+  node atcctl.mjs landing review <repo>#<PR>  리뷰 자료(JSON): PR 본문, FLIGHT 완료 기준·금지 사항, head,
+                                            크기를 제한한 diff. 외부 리뷰 제외(보안 경로·키워드·라벨, FLIGHT 없음)면 403
   node atcctl.mjs landing review <repo>#<PR> --head <sha> --verdict pass|findings -- <리뷰>
-                                            그 head에 Muse 리뷰를 남긴다(4000자 이내). 지적은 P0·P1·P2,
-                                            P0·P1이 없으면 pass. head가 바뀌었으면 409`;
+                                            그 head에 착륙 리뷰를 남긴다(4000자 이내). 지적은 P0·P1·P2,
+                                            P0·P1이 없으면 pass. head가 바뀌었으면 409. 모델은 guard가 붙인다`;
 
 // limit: 409(한도 참)일 때 오류 대신 보여 줄 안내. 호출한 세션이 곧바로 멈추게 LIMIT으로 시작한다.
 async function call(method, path, body, { limit } = {}) {
@@ -308,7 +311,7 @@ export function parseCrosscheck(args) {
 }
 
 // crosscheck brief: 두 브리핑에서 CROSSCHECK에 필요한 것만 모은다(FLIGHT 제목·상태 포함)
-// landing review <repo>#<PR> [--head <sha> --verdict pass|findings -- <리뷰>]. 모델 이름은 guard가 붙인다(ATC_CROSSCHECK_MODEL)
+// landing review <repo>#<PR> [--head <sha> --verdict pass|findings -- <리뷰>]. 모델 이름은 REVIEW guard가 붙인다(ATC_REVIEW_MODEL)
 export function parseLandingReview(args) {
   const sep = args.indexOf("--");
   const head = sep < 0 ? args : args.slice(0, sep);
@@ -329,19 +332,18 @@ export function parseLandingReview(args) {
   if (!opts.head) throw new Error("--head <sha>가 필요함(자료의 head)");
   if (opts.verdict !== "pass" && opts.verdict !== "findings") throw new Error("--verdict는 pass|findings");
   if (!text) throw new Error("-- 뒤에 리뷰 내용이 필요함");
-  const body = { head: opts.head, verdict: opts.verdict, text, by: "CROSSCHECK" };
-  if (process.env.ATC_CROSSCHECK_MODEL) body.model = process.env.ATC_CROSSCHECK_MODEL;
+  const body = { head: opts.head, verdict: opts.verdict, text, by: "REVIEW" };
+  if (process.env.ATC_REVIEW_MODEL) body.model = process.env.ATC_REVIEW_MODEL;
   return { path, write: body };
 }
 
-export function crosscheckBrief(dispatch, schedule, landing = null) {
+export function crosscheckBrief(dispatch, schedule) {
   const pick = (flights, keys) => Object.fromEntries(keys.filter((k) => k && flights?.[k]).map((k) => [k, flights[k]]));
   const part = (b) => {
     const cc = b.crosscheck ?? { pending: [], examples: [] };
     return { mode: b.mode, pending: cc.pending, examples: cc.examples, flights: pick(b.flights, [...cc.pending, ...cc.examples].map((x) => x.flight)) };
   };
-  // landing: Codex 한도로 Muse 리뷰를 기다리는 PR(ATC-7). 옛 서버면 null
-  return { dispatch: part(dispatch), schedule: part(schedule), landing, rate: { dispatch: dispatch.gate?.crosscheck ?? null, schedule: schedule.gate?.crosscheck ?? null } };
+  return { dispatch: part(dispatch), schedule: part(schedule), rate: { dispatch: dispatch.gate?.crosscheck ?? null, schedule: schedule.gate?.crosscheck ?? null } };
 }
 
 const PRIORITY = { 1: "Urgent", 2: "High", 3: "Medium", 4: "Low" };
@@ -472,14 +474,17 @@ if (isMain) {
       const r = await call("POST", "/api/following/ack", args.length > 1 ? { keys: args.slice(1) } : {});
       console.log(`ACK ${r.acked.length}건 (보고한 문제 ${r.reported}건 기억)`);
     } else if (cmd === "crosscheck" && args[0] === "brief") {
-      const [d, s, l] = await Promise.all([call("GET", "/api/dispatch/brief"), call("GET", "/api/schedule/brief"), call("GET", "/api/landing/reviews").catch(() => null)]);
-      console.log(JSON.stringify(crosscheckBrief(d, s, l), null, 1));
+      const [d, s] = await Promise.all([call("GET", "/api/dispatch/brief"), call("GET", "/api/schedule/brief")]);
+      console.log(JSON.stringify(crosscheckBrief(d, s), null, 1));
+    } else if (cmd === "landing" && args[0] === "queue") {
+      if (args.length > 1) throw new Error(`알 수 없는 인자 ${args.slice(1).join(" ")}`);
+      console.log(JSON.stringify(await call("GET", "/api/landing/reviews"), null, 1));
     } else if (cmd === "landing" && args[0] === "review") {
       const { path, write } = parseLandingReview(args.slice(1));
       if (!write) console.log(JSON.stringify(await call("GET", path), null, 1));
       else {
         const { review: r } = await call("POST", path, write);
-        console.log(`${r.repo}#${r.number} MUSE REVIEW ${r.verdict} · head ${r.head.slice(0, 7)} · P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2} (${r.model})`);
+        console.log(`${r.repo}#${r.number} LANDING REVIEW ${r.verdict} · head ${r.head.slice(0, 7)} · P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2} (${r.model})`);
       }
     } else if ((cmd === "dispatch" || cmd === "schedule") && args[0] === "crosscheck") {
       const { id, body } = parseCrosscheck(args.slice(1));

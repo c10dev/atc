@@ -1,4 +1,4 @@
-import type { CodexUnavailable, MuseState } from "./landing.ts";
+import type { CodexUnavailable, ExtReviewState } from "./landing.ts";
 import type { GroundStop, MainStatus } from "./atfm.ts";
 export type Agent = "claude" | "codex";
 
@@ -198,7 +198,7 @@ export interface PullRequest {
   readyAt: string | null; // 이 head에서 모든 조건이 처음 맞은 시각. CLEARED일 때만
   createdAt: string; // PR을 연 시각 (APPROACH 정렬, LAND CLEARANCE 짝짓기)
   codexUnavailable?: CodexUnavailable | null; // CODEX UNAVAILABLE(ATC-7): Codex 한도·무응답
-  muse?: MuseState | null; // Codex를 쓸 수 없을 때 Muse 리뷰 상태(제외·대기·통과·지적). Codex를 쓸 수 있으면 null
+  extReview?: ExtReviewState | null; // Codex를 쓸 수 없을 때 Muse 리뷰 상태(제외·대기·통과·지적). Codex를 쓸 수 있으면 null
 }
 
 export interface Snapshot {

@@ -58,10 +58,11 @@ export interface GhPull {
   reactionGroups?: { content: string; users: { totalCount: number } }[] | null;
   labels?: { name: string }[] | null;
   codex?: CodexSignal; // atc가 붙인다. 없으면 아직 안 읽었음
-  files?: string[]; // atc가 붙인다(Codex 리뷰가 head에 없는 PR만). Muse 제외(비밀 경로) 판단용
+  files?: string[]; // atc가 붙인다(Codex 리뷰가 head에 없는 PR만). 외부 리뷰 제외(보안 경로) 판단용
+  body?: string | null;
 }
 
-// ── Codex 한도 때 Muse 리뷰(ATC-7, docs/occ.md 9.2) ──
+// ── Codex 한도 때 외부 모델 착륙 리뷰(ATC-7, ATC-27: DeepSeek V4.1 Flash REVIEW 세션, docs/occ.md 9.2) ──
 
 // CODEX UNAVAILABLE: head에 Codex 리뷰(지적·👍)도 사람 통과 리뷰도 없고, head 뒤에 Codex가 한도 댓글을 남겼거나
 // head(또는 PR을 연 때) 뒤로 silentMs 동안 Codex 신호가 없음. Codex 신호를 아직 안 읽은 PR(Draft 포함)은 null.
@@ -79,9 +80,9 @@ export function codexUnavailableOf(pr: ReviewInput & Pick<GhPull, "createdAt">, 
   return now >= quietUntil ? { why: "silent", since: new Date(quietUntil).toISOString() } : null;
 }
 
-// Muse에 보내지 않는 PR(vocado 규칙: 기밀 작업에는 Muse를 쓰지 않는다 — 요청 자료가 학습에 쓰임).
-// FLIGHT 없는 PR(필요 없는 코드를 외부 모델로 보내지 않는다), FLIGHT의 rating:SEC·Risk: Security,
-// PR이나 FLIGHT의 Risk: Rights·Contract, diff의 .env·비밀·키·자격 증명 경로.
+// 외부 리뷰(착륙 리뷰 세션)에 보내지 않는 PR. vocado 규칙: 기밀 작업은 외부 모델에 보내지 않는다(요청 자료가 학습에 쓰임).
+// VOC FLIGHT에는 분류 라벨이 거의 없어(ATC-27) 라벨이 없어도 diff 경로와 제목·본문 키워드로 뺀다. 하나라도 맞으면 제외:
+// FLIGHT 없음, FLIGHT의 rating:SEC·Risk: Security·Rights·Contract(PR 라벨 포함), 보안 경로, 보안 키워드.
 const RISK_LABEL = /^(?:risk\s*[:/]\s*)?(security|rights|contract)$/i;
 const SECRET_PATHS = [
   /(^|\/)\.env($|[.\/_-])/i,
@@ -91,19 +92,63 @@ const SECRET_PATHS = [
   /(^|\/)[^/]*(secret|credential|private[-_]?key|service[-_]?account|api[-_]?key)[^/]*$/i,
 ];
 export const secretPathOf = (files: readonly string[]): string | null => files.find((f) => SECRET_PATHS.some((re) => re.test(f))) ?? null;
-export function museExclusionOf(x: { flight: string | null; ticketLabels: readonly string[]; prLabels: readonly string[]; files: readonly string[] | null }): string | null {
+// 보안 경로 → 짧은 이름(스트립 "외부 리뷰 제외 — migrations"). 위에서부터 먼저 맞는 것
+const B = "(^|[\\/_.\\-\\[(])"; // 경로 조각의 앞 경계
+const E = "([\\/_.\\-\\])]|$)"; // 뒤 경계
+const SECURITY_PATHS: [RegExp, string][] = [
+  [/(^|\/)supabase\/migrations\//i, "migrations"],
+  [/(^|\/)supabase\/functions\//i, "supabase functions"],
+  [/\.sql$/i, "SQL"],
+  [new RegExp(`${B}(auth|oauth|authn|authz|authenticat\\w*|authoriz\\w*)${E}`, "i"), "auth"],
+  [new RegExp(`${B}sessions?${E}`, "i"), "session"],
+  [/admission/i, "admission"],
+  [new RegExp(`${B}(rls|polic(y|ies))${E}`, "i"), "RLS·policy"],
+  [/(^|\/)middleware(\.[cm]?[jt]sx?$|\/|$)/i, "middleware"],
+];
+export function securityPathOf(files: readonly string[]): { tag: string; path: string } | null {
+  for (const [re, tag] of SECURITY_PATHS) {
+    const path = files.find((f) => re.test(f));
+    if (path) return { tag, path };
+  }
+  const secret = secretPathOf(files);
+  return secret ? { tag: "비밀·키 경로", path: secret } : null;
+}
+// 제목·본문의 보안 키워드. EXECUTE는 SQL 권한이라 대문자만(영어 문장의 execute는 뺀다)
+const SECURITY_WORDS = /\b(security|privileges?|rls|grant(?:s|ed|ing)?|revok(?:e|es|ed|ing)|definer|admission|auth|authn|authz|authentication|authorization|acl|exposure|exposed)\b/i;
+export function securityWordOf(texts: readonly (string | null | undefined)[]): string | null {
+  for (const t of texts) {
+    if (!t) continue;
+    if (/\bEXECUTE\b/.test(t)) return "EXECUTE";
+    if (/use server/i.test(t)) return "use server";
+    const m = SECURITY_WORDS.exec(t);
+    if (m) return m[1].toLowerCase();
+  }
+  return null;
+}
+export function externalExclusionOf(x: {
+  flight: string | null;
+  ticketLabels: readonly string[];
+  prLabels: readonly string[];
+  files: readonly string[] | null; // 아직 못 읽었으면 null(자료를 줄 때 실제 diff로 다시 본다)
+  texts: readonly (string | null | undefined)[]; // PR 제목·본문, FLIGHT 제목(·본문)
+}): string | null {
   if (!x.flight) return "FLIGHT 없음";
   if (x.ticketLabels.some((l) => l.toLowerCase() === "rating:sec")) return "rating:SEC";
   for (const l of [...x.ticketLabels, ...x.prLabels]) {
     const m = RISK_LABEL.exec(l.trim());
     if (m) return `Risk: ${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()}`;
   }
-  const secret = secretPathOf(x.files ?? []);
-  return secret ? `비밀·키 경로 ${secret}` : null;
+  const path = securityPathOf(x.files ?? []);
+  if (path) return path.tag;
+  const word = securityWordOf(x.texts);
+  return word ? `키워드 ${word}` : null;
 }
 
-// Muse 리뷰 기록(landing-reviews.jsonl 한 줄). 지적 등급은 Codex처럼 P0·P1·P2
-export interface MuseReview {
+// 리뷰어 이름(모델 계열 앞머리): deepseek-v4.1-flash → DEEPSEEK, muse-spark-1.3 → MUSE
+export const reviewerOf = (family: string) => (family.split(/[-.\s]/)[0] || family).toUpperCase();
+
+// 착륙 리뷰 기록(landing-reviews.jsonl 한 줄). 지적 등급은 Codex처럼 P0·P1·P2. 옛 Muse 기록도 그대로 둔다
+export interface LandingReview {
   at: string;
   repo: string; // owner/name
   number: number;
@@ -121,29 +166,29 @@ export const severityOf = (text: string) => {
   const n = (k: string) => (text.match(new RegExp(`\\bP${k}\\b`, "g")) ?? []).length;
   return { p0: n("0"), p1: n("1"), p2: n("2") };
 };
-// 이 PR의 이 head에 대한 마지막 Muse 리뷰
-export const museReviewOf = (reviews: readonly MuseReview[], repo: string, number: number, head: string): MuseReview | null =>
+// 이 PR의 이 head에 대한 마지막 착륙 리뷰
+export const landingReviewOf = (reviews: readonly LandingReview[], repo: string, number: number, head: string): LandingReview | null =>
   reviews.filter((r) => r.repo === repo && r.number === number && r.head === head).at(-1) ?? null;
-export const musePasses = (r: MuseReview | null) => Boolean(r && r.verdict === "pass" && !r.p0 && !r.p1);
+export const reviewPasses = (r: LandingReview | null) => Boolean(r && r.verdict === "pass" && !r.p0 && !r.p1);
 
-// PR 한 줄에 붙는 Muse 상태. Codex를 쓸 수 있으면 null
-export interface MuseState {
+// PR 한 줄에 붙는 외부 리뷰 상태. Codex를 쓸 수 있으면 null. 제외 PR은 외부 리뷰의 pass가 있어도 excluded(착륙 근거가 아니다)
+export interface ExtReviewState {
   status: "excluded" | "waiting" | "pass" | "findings";
   reason: string | null; // excluded: 제외 사유
-  review: Pick<MuseReview, "at" | "model" | "family" | "verdict" | "p0" | "p1" | "p2" | "text"> | null;
+  review: Pick<LandingReview, "at" | "model" | "family" | "verdict" | "p0" | "p1" | "p2" | "text"> | null;
 }
-export interface MuseContext {
+export interface ExtReviewContext {
   unavailable: CodexUnavailable | null;
   exclusion: string | null;
-  review: MuseReview | null; // 이 head의 마지막 Muse 리뷰
+  review: LandingReview | null; // 이 head의 마지막 착륙 리뷰
 }
-export function museStateOf(ctx: MuseContext | undefined): MuseState | null {
+export function extReviewStateOf(ctx: ExtReviewContext | undefined): ExtReviewState | null {
   if (!ctx?.unavailable) return null;
   if (ctx.exclusion) return { status: "excluded", reason: ctx.exclusion, review: null };
   const r = ctx.review;
   if (!r) return { status: "waiting", reason: null, review: null };
   const review = { at: r.at, model: r.model, family: r.family, verdict: r.verdict, p0: r.p0, p1: r.p1, p2: r.p2, text: r.text };
-  return { status: musePasses(r) ? "pass" : "findings", reason: null, review };
+  return { status: reviewPasses(r) ? "pass" : "findings", reason: null, review };
 }
 const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n)}…` : t);
 const codexWhy = (u: CodexUnavailable, silentMs: number) => (u.why === "limit" ? "Codex 한도" : `Codex ${Math.round(silentMs / 3_600_000)}시간 응답 없음`);
@@ -235,7 +280,7 @@ export function codexThumbsPass(pr: ReviewInput, c: CodexSignal | undefined = pr
   return !findings || after(c!.thumbsAt, findings.submittedAt);
 }
 
-export function reviewBlocks(pr: ReviewInput, muse?: MuseContext, silentMs = 6 * 3_600_000): Block[] {
+export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs = 6 * 3_600_000): Block[] {
   const author = pr.author?.login ?? null;
   const reviews = (pr.reviews ?? []).filter((r) => r.author?.login !== author || author === null);
   const out: Block[] = [];
@@ -257,20 +302,21 @@ export function reviewBlocks(pr: ReviewInput, muse?: MuseContext, silentMs = 6 *
     return out;
   }
   if (hasHeadReview(pr) || thumbsOk) return out;
-  // Codex를 쓸 수 없으면 Muse 리뷰(현재 head, P0·P1 없음)가 리뷰를 대신한다. 새 head는 새 리뷰가 필요하다
-  const ms = museStateOf(muse);
+  // Codex를 쓸 수 없으면 착륙 리뷰(현재 head, P0·P1 없음)가 리뷰를 대신한다. 새 head는 새 리뷰가 필요하다.
+  // 외부 리뷰에서 뺀 PR(보안 경로·키워드 등)은 기록에 pass가 있어도 근거가 아니다(excluded)
+  const ms = extReviewStateOf(ext);
   if (ms?.status === "pass") return out;
   if (ms?.status === "findings") {
     const r = ms.review!;
-    out.push(block("review-findings", `Muse 지적(${codexWhy(muse!.unavailable!, silentMs)}, head ${short(pr.headRefOid)}, P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}): ${clip(r.text, 400)} — 반영 후 새 head에서 재리뷰`));
+    out.push(block("review-findings", `${reviewerOf(r.family)} 지적(${codexWhy(ext!.unavailable!, silentMs)}, head ${short(pr.headRefOid)}, P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}): ${clip(r.text, 400)} — 반영 후 새 head에서 재리뷰`));
     return out;
   }
   const limited = Boolean(c?.lastComment?.limit && atOrAfter(c.lastComment.at, c.headAt));
   const note =
     ms?.status === "excluded"
-      ? `${codexWhy(muse!.unavailable!, silentMs)} — Muse 리뷰 제외(${ms.reason}) — Codex나 SUPERVISOR 리뷰 필요`
+      ? `${codexWhy(ext!.unavailable!, silentMs)} — 외부 리뷰 제외(${ms.reason}) — Codex나 SUPERVISOR 리뷰 필요`
       : ms?.status === "waiting"
-        ? `${codexWhy(muse!.unavailable!, silentMs)} — Muse 리뷰 대기(CROSSCHECK)`
+        ? `${codexWhy(ext!.unavailable!, silentMs)} — 착륙 리뷰 대기(REVIEW 세션)`
         : limited
           ? "Codex 한도 — 사람 리뷰 필요"
           : `head ${short(pr.headRefOid)}에 리뷰 필요${c?.thumbsAt ? " (Codex 👍는 이전 커밋 것)" : ""}`;
@@ -303,10 +349,10 @@ export function mergeBlocks(state: string): Block[] {
 }
 
 // 막힌 조건 목록. 비어 있으면 CLEARED TO LAND.
-export function landingBlocks(pr: GhPull, los: boolean, muse?: MuseContext, silentMs?: number): Block[] {
+export function landingBlocks(pr: GhPull, los: boolean, ext?: ExtReviewContext, silentMs?: number): Block[] {
   const out: Block[] = [];
   if (pr.isDraft) out.push(block("draft", "Draft PR"));
-  out.push(...checkBlocks(pr.statusCheckRollup), ...reviewBlocks(pr, muse, silentMs), ...mergeBlocks(pr.mergeStateStatus));
+  out.push(...checkBlocks(pr.statusCheckRollup), ...reviewBlocks(pr, ext, silentMs), ...mergeBlocks(pr.mergeStateStatus));
   if (los) out.push(block("los", "STAND에 LOSS OF SEPARATION이 열려 있음"));
   const order: LandingBlockCode[] = ["draft", "checks-failed", "checks-pending", "no-checks", "changes-requested", "review-findings", "no-review", "review-stale", "dirty", "behind", "blocked", "merge-unknown", "los"];
   return out.sort((a, b) => order.indexOf(a.code) - order.indexOf(b.code));
@@ -335,8 +381,8 @@ export function buildPulls(
   ready: Map<string, string>,
   ticketKeyOf: (pr: GhPull) => string | null,
   now = new Date().toISOString(),
-  // Codex 한도 때 Muse 리뷰(ATC-7). 없으면 예전처럼(Codex·사람 리뷰만)
-  muse?: { silentMs: number; reviews: readonly MuseReview[]; ticketLabelsOf: (key: string | null) => string[] },
+  // Codex 한도 때 착륙 리뷰(ATC-7·27). 없으면 예전처럼(Codex·사람 리뷰만)
+  ext?: { silentMs: number; reviews: readonly LandingReview[]; ticketLabelsOf: (key: string | null) => string[]; ticketTitleOf?: (key: string | null) => string | null },
 ): PullRequest[] {
   const losStands = new Set(alerts.filter((a) => a.kind === "conflict" && a.workspacePath).map((a) => a.workspacePath!));
   const seen = new Set<string>();
@@ -346,15 +392,15 @@ export function buildPulls(
       const stand = workspaces.find((w) => w.repo === repo && w.branch === gh.headRefName) ?? null;
       const ticketKey = ticketKeyOf(gh);
       const slug = slugOfUrl(gh.url);
-      const unavailable = muse && slug ? codexUnavailableOf(gh, Date.parse(now), muse.silentMs) : null;
-      const ctx: MuseContext | undefined = unavailable
+      const unavailable = ext && slug ? codexUnavailableOf(gh, Date.parse(now), ext.silentMs) : null;
+      const ctx: ExtReviewContext | undefined = unavailable
         ? {
             unavailable,
-            exclusion: museExclusionOf({ flight: ticketKey, ticketLabels: muse!.ticketLabelsOf(ticketKey), prLabels: (gh.labels ?? []).map((l) => l.name), files: gh.files ?? null }),
-            review: museReviewOf(muse!.reviews, slug!, gh.number, gh.headRefOid),
+            exclusion: externalExclusionOf({ flight: ticketKey, ticketLabels: ext!.ticketLabelsOf(ticketKey), prLabels: (gh.labels ?? []).map((l) => l.name), files: gh.files ?? null, texts: [gh.title, gh.body, ext!.ticketTitleOf?.(ticketKey)] }),
+            review: landingReviewOf(ext!.reviews, slug!, gh.number, gh.headRefOid),
           }
         : undefined;
-      const blocks = landingBlocks(gh, Boolean(stand && losStands.has(stand.path)), ctx, muse?.silentMs);
+      const blocks = landingBlocks(gh, Boolean(stand && losStands.has(stand.path)), ctx, ext?.silentMs);
       const key = readyKey({ repo, number: gh.number, head: gh.headRefOid });
       seen.add(key);
       let readyAt: string | null = null;
@@ -378,7 +424,7 @@ export function buildPulls(
         readyAt,
         createdAt: gh.createdAt,
         codexUnavailable: unavailable,
-        muse: museStateOf(ctx),
+        extReview: extReviewStateOf(ctx),
       });
     }
   }

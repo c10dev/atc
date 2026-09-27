@@ -109,8 +109,13 @@ export async function buildSnapshot(): Promise<Snapshot> {
     readySince,
     (pr) => ticketKeyFromBranch(pr.headRefName) ?? ticketKeyFromTitle(pr.title),
     undefined,
-    // Codex 한도 때 Muse 리뷰(ATC-7): FLIGHT 라벨로 제외(rating:SEC·Risk)를 보고, 이 head의 Muse 리뷰를 찾는다
-    { silentMs: config.codexSilentMs, reviews: readLandingReviews(), ticketLabelsOf: (key) => tickets.find((t) => t.key === key)?.labels ?? [] },
+    // Codex 한도 때 착륙 리뷰(ATC-7·27): FLIGHT 라벨·제목, PR 경로·제목·본문으로 외부 리뷰 제외를 보고, 이 head의 착륙 리뷰를 찾는다
+    {
+      silentMs: config.codexSilentMs,
+      reviews: readLandingReviews(),
+      ticketLabelsOf: (key) => tickets.find((t) => t.key === key)?.labels ?? [],
+      ticketTitleOf: (key) => tickets.find((t) => t.key === key)?.title ?? null,
+    },
   );
 
   // ATFM 출발 중지(docs/atfm.md 6장). GitHub을 아직 못 읽었으면 계산하지 않는다(빈 상태를 "풀림"으로 보지 않게).

@@ -240,15 +240,15 @@ test("NEW --milestone·--gap: WAYPOINT gap 초안(ATC-8)", () => {
   assert.throws(() => parseDraft(["NEW", "--title", "t", "--project", "p", "--milestone", "--reason", "r", "--", "b"]), /--milestone 뒤에 값/);
 });
 
-test("landing review(ATC-7): 읽기는 대상만, 기록은 --head·--verdict·리뷰 글. 모델은 환경에서", () => {
+test("landing review(ATC-7·27): 읽기는 대상만, 기록은 --head·--verdict·리뷰 글. 모델은 REVIEW guard가 붙인 환경에서", () => {
   assert.deepEqual(parseLandingReview(argv("vocado_nextjs#391")), { path: "/api/landing/review/vocado_nextjs/391", write: null });
   assert.equal(parseLandingReview(argv("chaehy5665/vocado_nextjs#391")).path, "/api/landing/review/chaehy5665%2Fvocado_nextjs/391");
-  const saved = process.env.ATC_CROSSCHECK_MODEL;
-  process.env.ATC_CROSSCHECK_MODEL = "muse-spark-1.3-contributor"; // guard가 붙이는 실제 모델
+  const saved = process.env.ATC_REVIEW_MODEL;
+  process.env.ATC_REVIEW_MODEL = "deepseek-v4.1-flash"; // REVIEW guard가 붙이는 실제 모델
   const w = parseLandingReview(argv("vocado_nextjs#391 --head abc1234 --verdict findings -- P1 폴백 경로에서 캐시를 지우지 않음"));
-  if (saved === undefined) delete process.env.ATC_CROSSCHECK_MODEL;
-  else process.env.ATC_CROSSCHECK_MODEL = saved;
-  assert.deepEqual(w.write, { head: "abc1234", verdict: "findings", text: "P1 폴백 경로에서 캐시를 지우지 않음", by: "CROSSCHECK", model: "muse-spark-1.3-contributor" });
+  if (saved === undefined) delete process.env.ATC_REVIEW_MODEL;
+  else process.env.ATC_REVIEW_MODEL = saved;
+  assert.deepEqual(w.write, { head: "abc1234", verdict: "findings", text: "P1 폴백 경로에서 캐시를 지우지 않음", by: "REVIEW", model: "deepseek-v4.1-flash" });
   assert.throws(() => parseLandingReview(argv("391")), /<repo>#<PR>/);
   assert.throws(() => parseLandingReview(argv("v#1 --verdict pass -- ok")), /--head/);
   assert.throws(() => parseLandingReview(argv("v#1 --head abc1234 --verdict maybe -- ok")), /pass\|findings/);

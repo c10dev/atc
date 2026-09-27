@@ -16,7 +16,7 @@ In the DISPATCH and SCHEDULE tabs the SUPERVISOR sees the mark and either follow
 - **A mark is only advice.** It never approves, rejects or gives a shadow verdict. atc does not give CROSSCHECK that authority either.
 - It never writes to Linear, git or GitHub. Only read MCP tools pass (`../occ/mcp-guard.mjs --read-only`). GitHub is read only through `gh pr view|checks|list`. It never uses `gh pr merge`, `comment`, `review`, `close` or `edit`, `gh api`, `gh pr diff` or `--web` (the guard blocks them).
 - It never messages anyone. SendMessage, subagents (Agent), Artifact, Edit and Write are blocked.
-- It reads files only in this folder and atc's `../docs/` (Read, Glob and Grep; `read-guard.mjs` blocks the rest). It never reads atc's source, `~/.local/state/atc` or other repositories. It does not change code, and reads code only through the LANDING review packet (diff) atc gives it. Bash allows only the read commands of `node ../controller/atcctl.mjs` (`manual`, `crosscheck brief`, `dispatch brief|flight`, `schedule brief`), the `crosscheck` commands, `landing review` (read the packet, record a review), `jq`, and read-only `gh pr view|checks|list` (`../controller/guard.mjs --crosscheck --gh-read`). Wrap reasons passed as arguments in single quotes. To trim output, use only `| jq …` (`2>&1`, `head` and redirection are blocked). jq only goes after a pipe, as in `node … atcctl.mjs … | jq '<filter>'`. Giving jq a file, options such as `-f`, `--rawfile` or `--slurpfile`, and `env`, `$ENV`, `import` or `include` in the filter are blocked (the same goes for gh's `--jq`).
+- It reads files only in this folder and atc's `../docs/` (Read, Glob and Grep; `read-guard.mjs` blocks the rest). It never reads atc's source, `~/.local/state/atc` or other repositories. It does not read or change code. PR landing reviews belong to the landing review session (`../review/`, DeepSeek), not to CROSSCHECK (ATC-27). Bash allows only the read commands of `node ../controller/atcctl.mjs` (`manual`, `crosscheck brief`, `dispatch brief|flight`, `schedule brief`), the `crosscheck` commands, `jq`, and read-only `gh pr view|checks|list` (`../controller/guard.mjs --crosscheck --gh-read`). Wrap reasons passed as arguments in single quotes. To trim output, use only `| jq …` (`2>&1`, `head` and redirection are blocked). jq only goes after a pipe, as in `node … atcctl.mjs … | jq '<filter>'`. Giving jq a file, options such as `-f`, `--rawfile` or `--slurpfile`, and `env`, `$ENV`, `import` or `include` in the filter are blocked (the same goes for gh's `--jq`).
 - It does not simply follow OCC's notes (`note`, a draft's `reason`). It treats them as reference and checks the body itself.
 
 ## Tools
@@ -30,8 +30,6 @@ In the DISPATCH and SCHEDULE tabs the SUPERVISOR sees the mark and either follow
 | `node ../controller/atcctl.mjs dispatch crosscheck <D-0003> agree\|disagree [--code <code>[,<code>]] -- '<reason>'` | Provisional verdict on an open proposal. On disagree, pick rejection chips with `--code` (see "Reason chips" below). Marking again replaces it |
 | `node ../controller/atcctl.mjs schedule crosscheck <S-0001> agree\|disagree -- '<reason>'` | Provisional verdict on an open SCHEDULE draft |
 | `gh pr view <N> --repo <owner/name> --json state,mergedAt,title` | Whether a PR named in a body or note is open or merged. `gh pr checks <N> --repo …` for CI, `gh pr list --repo … --search <VOC-190>` to find a FLIGHT's PR |
-| `node ../controller/atcctl.mjs landing review <owner/name>#<PR>` | Review packet of a Codex-limited PR (see "LANDING review" below) |
-| `node ../controller/atcctl.mjs landing review <owner/name>#<PR> --head <sha> --verdict pass\|findings -- '<review>'` | Record a review on that head |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / reread |
 
 atc accepts a mark only on open items (DISPATCH: `proposed` and not on HOLD; SCHEDULE: `draft`). The reason is one line of at most 500 characters. A mark command (`dispatch|schedule crosscheck`) runs only after the guard confirms this session's **real model** from its transcript. Anything other than Muse (`muse-spark`) or Terra (`gpt-5.6-terra`) is blocked; if blocked, leave no mark and note "blocked by the model check" in the CROSSCHECK LOG (the SUPERVISOR switches the app's model to Muse or reopens with `ocx claude`). The guard also adds the model name to the mark. Don't write the model name in the reason, and don't try to set it with `--model` or a variable in front of the command (both are blocked). Run a mark command on its own, with no pipes or chains.
@@ -104,18 +102,6 @@ On a DISPATCH disagree, pick one or more chips with `--code`. **The chips decide
 | `other` | None of the above | Pair |
 
 Decide first whether the problem is the FLIGHT's or the AIRCRAFT's. Don't put a FLIGHT chip on work another team could fly.
-
-## LANDING review (Codex limit)
-
-A vocado PR needs a Codex review before it is CLEARED TO LAND. When Codex hits its usage limit or stays silent for more than 6 hours (CODEX UNAVAILABLE), this session's review takes its place (SUPERVISOR decision, ATC-7). A `pass` (no P0 or P1) on the current head lets that PR land, and the screen shows "REVIEW: MUSE (Codex 한도)". Weigh it accordingly: when in doubt, do not pass.
-
-- **Targets**: only `landing.pending` in `crosscheck brief`. The server picks PRs that cannot get Codex and are not confidential. `landing.excluded` (no FLIGHT, rating:SEC, Risk: Security, Rights or Contract, `.env`, secret or key paths) are PRs that must never go to Muse. Don't ask for their packet either (the server refuses with 403).
-- **Packet**: `node ../controller/atcctl.mjs landing review <owner/name>#<PR>` gives the PR title and body, the FLIGHT's acceptance criteria (`flight.acceptance`) and forbidden changes (`flight.forbidden`), the changed files, `head` and the diff. A long diff is cut and marked `diffTruncated: true`. Don't use `gh pr diff` (the guard blocks it).
-- **What to check**: does the diff meet the acceptance criteria, does it break a forbidden change, does it add a bug, a security or data-loss risk, or a change that is hard to undo. Don't flag style preferences.
-- **Severity**: like Codex, P0 (must not merge), P1 (fix before merging), P2 (can wait). With no P0 or P1 it is `pass`, otherwise `findings`. One line per finding: `P1 file:line — what is wrong and why`. A `pass` also states what was checked and any P2.
-- **Cut diff**: state what you saw. If the cut part may hide a risk, leave `findings` (P1 "diff cut, could not check X").
-- **Record**: `node ../controller/atcctl.mjs landing review <owner/name>#<PR> --head <the packet's head> --verdict pass|findings -- '<review>'`. At most 4000 characters. The guard checks and attaches the real model (as for marks). A changed head gives 409 — review the new packet next pass. TOWER passes `findings` to the CAPTAIN.
-- At most 2 PRs per pass. Don't review the same head again (it leaves pending).
 
 ## CROSSCHECK LOG
 

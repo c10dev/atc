@@ -255,17 +255,24 @@ function LandingBadge({ pr }: { pr: PullRequest }) {
   );
 }
 
-// Codex 한도 때 Muse 리뷰 상태(ATC-7). Codex를 쓸 수 있으면 없음
-function MuseTag({ pr }: { pr: PullRequest }) {
-  const m = pr.muse;
+// Codex 한도 때 착륙 리뷰 상태(ATC-7·27). Codex를 쓸 수 있으면 없음
+// 리뷰어 이름은 모델 계열 앞머리(서버 reviewerOf와 같다): deepseek-v4.1-flash → DEEPSEEK
+const reviewerOf = (family: string) => (family.split(/[-.\s]/)[0] || family).toUpperCase();
+function ExtReviewTag({ pr }: { pr: PullRequest }) {
+  const m = pr.extReview;
   if (!m) return null;
   const codex = pr.codexUnavailable?.why === "silent" ? "Codex 무응답" : "Codex 한도";
   const r = m.review;
+  const who = r ? reviewerOf(r.family) : "";
   const text =
-    m.status === "pass" ? `REVIEW: MUSE (${codex})` : m.status === "findings" ? `MUSE 지적 (${codex})` : m.status === "waiting" ? `${codex} · MUSE 리뷰 대기` : `Muse 리뷰 제외 — ${m.reason}`;
-  const tip = r ? `Muse 리뷰 ${r.verdict} · ${r.family} (${r.model}) · ${r.at}\nP0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}\n${r.text}` : m.status === "excluded" ? "기밀 작업은 Muse에 보내지 않는다 — Codex나 SUPERVISOR 리뷰" : "CROSSCHECK(Muse)가 이 head를 리뷰하면 CLEARED TO LAND 근거가 된다";
+    m.status === "pass" ? `REVIEW: ${who} (${codex})` : m.status === "findings" ? `${who} 지적 (${codex})` : m.status === "waiting" ? `${codex} · 착륙 리뷰 대기` : `외부 리뷰 제외 — ${m.reason}`;
+  const tip = r
+    ? `착륙 리뷰 ${r.verdict} · ${r.family} (${r.model}) · ${r.at}\nP0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}\n${r.text}`
+    : m.status === "excluded"
+      ? "보안·기밀 작업은 외부 모델에 보내지 않는다 — Codex나 SUPERVISOR 리뷰"
+      : "REVIEW 세션(DeepSeek)이 이 head를 리뷰하면 CLEARED TO LAND 근거가 된다";
   return (
-    <span className={`pr-muse is-${m.status}`} title={tip}>
+    <span className={`pr-extreview is-${m.status}`} title={tip}>
       {text}
     </span>
   );
@@ -326,7 +333,7 @@ function PrLanding({ pr, landing }: { pr: PullRequest; landing: LandingIndex }) 
       <div className="pr-head">
         <LandingBadge pr={pr} />
         <PrLink pr={pr} />
-        <MuseTag pr={pr} />
+        <ExtReviewTag pr={pr} />
         {seq && landing.seq.size > 1 && (
           <span className="pr-seq" title={`LANDING SEQUENCE ${landing.seq.size}개 중 ${seq}번째`}>
             SEQ {seq}
@@ -381,7 +388,7 @@ function LandingSequence({
         </div>
         <div className="ls-pr">
           <div className="ls-title">
-            <PrLink pr={pr} /> <MuseTag pr={pr} /> <span title={pr.title}>{pr.title}</span>
+            <PrLink pr={pr} /> <ExtReviewTag pr={pr} /> <span title={pr.title}>{pr.title}</span>
           </div>
           {pr.landing !== "CLEARED" && pr.blocks.length > 0 && (
             <ul className="ls-blocks">
