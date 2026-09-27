@@ -115,7 +115,7 @@ test("준비율: HOLD된 제안(OCC·PREFLIGHT, 돌렸거나 확정했어도)과
     { op: "requeue", id: "D-4", at: iso(8) }, { op: "verdict", id: "D-4", at: iso(5), verdict: "agree", reason: null }, // held(돌린 뒤 판정)
     create("D-5", "VOC-5", "b", 60), // 아직 판정 전: 세지 않는다
   ]);
-  assert.deepEqual(preflightStatsOf(ps), { held: 2, holding: 1, passed: 2, readyRate: 0.5 });
+  assert.deepEqual(preflightStatsOf(ps), { held: 2, holding: 1, passed: 2, notReady: 0, readyRate: 0.5 });
   assert.equal(gateOf(ps).decided, 3); // 돌린 뒤 사람이 판정한 D-4는 게이트에 센다
-  assert.deepEqual(preflightStatsOf([]), { held: 0, holding: 0, passed: 0, readyRate: null });
+  assert.deepEqual(preflightStatsOf([]), { held: 0, holding: 0, passed: 0, notReady: 0, readyRate: null });
 });

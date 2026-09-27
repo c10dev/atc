@@ -75,7 +75,10 @@ const viaOf = (p: Proposal): Via | null => (p as unknown as { via?: Via | null }
 const codesOf = (p: Proposal): string[] => (p as unknown as { reasonCodes?: string[] | null }).reasonCodes ?? [];
 // PREFLIGHT 줄 설명(툴팁)
 const PREFLIGHT_NOTE =
-  "HELD: CROSSCHECK FLIGHT 칩이나 OCC HOLD로 판정 전에 빠진 제안(대기열로 돌렸거나 확정했어도 셈). 판정 건수·합의율에는 넣지 않는다. 준비율: HOLD 없이 판정까지 간 제안 ÷ (그것 + HELD) — 티켓 공급 품질";
+  "HELD: CROSSCHECK FLIGHT 칩이나 OCC HOLD로 판정 전에 빠진 제안(대기열로 돌렸거나 확정했어도 셈). 판정 건수·합의율에는 넣지 않는다. 준비율: HOLD 없이 판정까지 가서 준비 안 됨 거절이 아닌 제안 ÷ (그것 + HELD + 준비 안 됨 거절) — 티켓 공급 품질";
+// 준비 안 됨 거절 줄 설명(툴팁)
+const NOT_READY_NOTE =
+  "사유 칩이 모두 FLIGHT 칩(이미 완료됨·상위 이슈·선행 대기·사람 결정·우선순위 미정·저장소 밖)인 거절. 팀 선택이 아니라 티켓 문제라 판정 건수·합의율에서 뺀다. AIRCRAFT 부적합·기타·칩 없음이 섞이면 게이트에 센다";
 // 한 번 클릭 비율 설명(툴팁·안내 문장)
 const ONE_CLICK_NOTE = "사람 판정 가운데 CROSSCHECK에 동의 버튼 한 번으로 낸 비율 — 어떻게 판정했는지 기록된 판정만 셈";
 
@@ -100,7 +103,8 @@ interface Brief {
     crosscheck?: CrosscheckRate & { byModel?: Record<string, CrosscheckRate>; oneClick?: { count: number; decided: number } };
     reasonCounts?: Record<string, number>; // 거절 사유 코드별 건수(옛 서버면 없음)
     // PREFLIGHT(게이트 밖): HOLD된 제안 수와 준비율(옛 서버면 없음)
-    preflight?: { held: number; holding: number; passed: number; readyRate: number | null };
+    preflight?: { held: number; holding: number; passed: number; notReady?: number; readyRate: number | null };
+    notReady?: number; // 준비 안 됨 거절(칩이 모두 FLIGHT 칩): 게이트에서 뺀 판정 수(옛 서버면 없음)
   };
   gate3: {
     dispatched: number;
@@ -757,7 +761,7 @@ function Gate({ gate, labelOf, stats }: { gate: Brief["gate"]; labelOf: (code: s
   const rateOk = gate.agreement !== null && gate.agreement >= gate.target.agreement;
   const rows = [
     {
-      label: "판정한 제안(HELD 제외)",
+      label: "판정한 제안(HELD·준비 안 됨 제외)",
       value: `${gate.decided}건`,
       target: `≥ ${gate.target.decided}건`,
       state: enough ? "pass" : "fail",
@@ -796,8 +800,16 @@ function Gate({ gate, labelOf, stats }: { gate: Brief["gate"]; labelOf: (code: s
             <span className="dp-gate-label">
               PREFLIGHT HELD {pf.held}건{pf.holding ? ` (지금 ${pf.holding})` : ""}
             </span>
-            <span className="dp-gate-value">준비율 {pf.readyRate === null ? "—" : `${pf.passed}/${pf.passed + pf.held} ${pct(pf.readyRate)}`}</span>
+            <span className="dp-gate-value">준비율 {pf.readyRate === null ? "—" : `${pf.passed}/${pf.passed + pf.held + (pf.notReady ?? 0)} ${pct(pf.readyRate)}`}</span>
             <span className="dp-gate-target">게이트 밖</span>
+            <span className="dp-gate-state">참고</span>
+          </li>
+        )}
+        {gate.notReady !== undefined && (
+          <li className="s-info dp-gate-notready" title={NOT_READY_NOTE}>
+            <span className="dp-gate-label">준비 안 됨 거절 {gate.notReady}건</span>
+            <span className="dp-gate-value">—</span>
+            <span className="dp-gate-target">게이트 제외</span>
             <span className="dp-gate-state">참고</span>
           </li>
         )}

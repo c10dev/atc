@@ -283,7 +283,7 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 
 | API | 하는 일 |
 |---|---|
-| `GET /api/dispatch/brief` | 모드, 지금 계획, 열린·HELD·진행 중·늦은·최근 제안(판정된 것은 `via`·`reasonCodes`), 2b·3단계 점검(`gate.crosscheck.oneClick`, `gate.reasonCounts`, `gate.preflight`, `gate3.standFree`), 2b 켜기 점검표 `readiness2b: {items: [{id, label, status, detail, link?, suggestion?}]}`, FLIGHT 요약, 거절 칩 `reasonCodes: [{code, label}]`. `briefs`(열린·HELD 카드마다 서버가 계산한 `facts`, BRIEFING이 없으면 본문 첫 문장 `lead`) |
+| `GET /api/dispatch/brief` | 모드, 지금 계획, 열린·HELD·진행 중·늦은·최근 제안(판정된 것은 `via`·`reasonCodes`), 2b·3단계 점검(`gate.crosscheck.oneClick`, `gate.reasonCounts`, `gate.preflight`, `gate.notReady`, `gate3.standFree`), 2b 켜기 점검표 `readiness2b: {items: [{id, label, status, detail, link?, suggestion?}]}`, FLIGHT 요약, 거절 칩 `reasonCodes: [{code, label}]`. `briefs`(열린·HELD 카드마다 서버가 계산한 `facts`, BRIEFING이 없으면 본문 첫 문장 `lead`) |
 | `POST /api/dispatch/proposals/:id/verdict` | `{verdict: agree\|disagree, reason?, via?, reasonCodes?}` 그림자 판정(shadow 모드에서만). `via`는 `crosscheck`나 `manual`(그 밖은 `manual`), `reasonCodes`는 `disagree`에만(모르는 code는 400) |
 | `POST /api/dispatch/proposals/:id/note` | `{text, caution?}` DISPATCH 검토 메모 |
 | `POST /api/dispatch/proposals/:id/briefing` | `{what, why, risk}` BRIEFING: OCC가 쓰는 카드 맨 위 쉬운 세 줄(`proposed`에만, 다시 쓰면 덮어씀) |
@@ -291,6 +291,7 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 | `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR가 HOLD를 풂. 제안은 SUPERSEDED, FLIGHT는 다시 후보 |
 | `POST /api/dispatch/proposals/:id/requeue` | PREFLIGHT: SUPERVISOR가 HELD 제안을 대기열로 돌림(24시간은 다시 시작, 다시 HOLD되지 않음) |
 | `POST /api/dispatch/proposals/:id/confirm-hold` | PREFLIGHT: SUPERVISOR가 선행 없는 HOLD를 확정. `via: "preflight"`와 FLIGHT 칩으로 닫는다(FLIGHT 보류, 게이트에 세지 않음). HELD 제안에 `verdict`·`approve`·`reject`는 409 |
+| `POST /api/dispatch/proposals/:id/codes` | `{codes: ["needs-human", …]}` SUPERVISOR가 지난 그림자 거절에 사유 칩을 단다(`disagreed`에만, 그 밖은 409). 게이트만 읽는 `recode` op를 남긴다: 칩이 모두 FLIGHT 칩인 거절은 게이트에서 빠진다(`gate.notReady`). FLIGHT 보류는 걸지 않는다 |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR 결정(approval 모드에서만), 둘 다 `{via?}`, `reject`는 `{reason?, reasonCodes?}`도 |
 | `POST /api/dispatch/proposals/:id/release` | 승인 → SENT, `sendTo`와 FLIGHT PLAN 반환(이미 보냈으면 같은 문구) |
 | `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, 또는 `{reason}`과 함께 거절. STAND 없는 FLIGHT(SURVEY·CHECK)는 READBACK에 DEPARTED(`departedStand: null`, `departedVia: "readback"`) |
