@@ -10,7 +10,7 @@
 | NETWORK | `#network` | 4단계 운항 개요(읽기 전용): ROUTE MAP(ROUTE마다 WAYPOINT 경로·지금 구간·ETA), ROUTE(Linear 프로젝트)별 열린 FLIGHT·14일 ARRIVED·도는 AIRCRAFT·착륙 대기·프로젝트 목표, AIRCRAFT별 TARGETS 대 실적, 28일 추세(ARRIVED·착륙 대기·되돌림, 게이트 판정·합의율·CROSSCHECK 일치율) | — |
 | METRICS | `#metrics` | FLIGHT RECORDER로 본 운용 지표와 추이 | — |
 | DISPATCH | `#dispatch` | 배정 계획과 제안(CROSSCHECK 동의 묶음, BRIEFING 세 줄, 사실 줄, CROSSCHECK 칩, `CROSSCHECK 대기`, BLIND 표본, 접힌 점수 요소·본문·메모), HELD(PREFLIGHT), IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검과 CROSSCHECK 일치, BLIND 합의율, PREFLIGHT HELD·준비율, ATFM 블록(출발 중지, main CI, 머지 슬롯, 자동 배정·S3 대상 그림자 판정), FLIGHT FOLLOWING 블록(배정된 FLIGHT의 단계 막대, 지연·불일치, OCC가 보고했는지) | 판정, CROSSCHECK에 동의, HELD 대기열로·FLIGHT 보류 확정, 모드 전환, ATFM 스위치(main 깨짐·수동)와 수동 출발 중지, ATFM OFF |
-| SCHEDULE | `#schedule` | OCC 초안(CLASSIFY·PRIORITIZE·NEW, CROSSCHECK 칩), S2 점검과 CROSSCHECK 일치, 후보 수 | 판정, CROSSCHECK에 동의 |
+| SCHEDULE | `#schedule` | OCC 초안(CLASSIFY·PRIORITIZE·NEW, CROSSCHECK 칩), S2 점검과 CROSSCHECK 일치, LATE WAYPOINTS(지연 경고), 후보 수 | 판정, CROSSCHECK에 동의 |
 | DOCS | `#docs` | 이 안내 | — |
 
 ## NETWORK

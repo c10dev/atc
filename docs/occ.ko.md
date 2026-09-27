@@ -169,6 +169,15 @@ Linear 정리는 원래 President의 일이었다. 이제 OCC가 초안을 쓰�
 - **S2.** 발부된 `save_issue` 호출에 `milestone: <마일스톤 id>`가 들어가 새 이슈가 그 WAYPOINT에 붙는다. linear-guard(`occ/mcp-guard.mjs`, 바꾸지 않음)는 그 입력과 똑같을 때만 통과시킨다. 마일스톤을 빼거나 이름·다른 id를 넣으면 막히는 것을 `occ/mcp-guard.test.mjs`가 확인한다.
 - CROSSCHECK는 다른 SCHEDULE 초안처럼 이 초안에도 mark를 단다.
 
+### 5.7 WAYPOINT ETA와 지연 경고 (2026-09-27 만듦, ATC-24)
+
+ROUTE MAP은 이미 WAYPOINT마다 ETA와 지연 여부를 안다([routes.ko.md](routes.ko.md) 5장). 이것을 OCC와 SUPERVISOR에게 가져온다.
+
+- **자료.** `schedule brief`에 `waypointEtas`가 있다(`server/waypoint-slips.ts`, 순수 함수 `waypointEtasOf`). ROUTE마다(ROUTE 이름순, 그 안은 ROUTE MAP 순서) 지나지 않은 WAYPOINT 전부의 `targetDate`, `progress`, `eta`(모르면 `null`과 `reason`), `remaining`, `cumulative`, `late`다. `slips`도 있다. 지연된 WAYPOINT마다 경고 하나이고(`slipOf`, ROUTE MAP의 지연 표시와 같은 조건), `code`, `days`, 한 줄 `text`를 갖는다. 마일스톤을 못 읽었으면 둘 다 `null`이다.
+- **코드.** `target-passed`: 목표일이 지났는데 WAYPOINT를 지나지 못함(`days`는 목표일부터 지난 날수). `eta-after-target`: ETA가 목표일보다 늦음(`days`는 늦는 날수). `linear-overdue`: 목표일 없이 Linear가 overdue라 함. 목표일이 지난 것을 먼저 본다.
+- **한 번만 보고.** FLIGHT FOLLOWING처럼 경고마다 `key`(`<마일스톤 id>:<code>`)와 `fresh`(아직 보고 안 함)가 있다. `/tick` 5단계에서 OCC는 fresh 경고를 하나에 한 줄로 OCC LOG에 적고 SUPERVISOR에게 보고한 뒤 `atcctl schedule slip-ack`(`POST /api/schedule/slips/ack`)를 실행한다. 보고한 key는 `waypoint-slips.json`에 둔다. 풀린 경고는 잊으니 다시 생기면 다시 fresh다. `eta-after-target`이 `target-passed`가 되면 key가 바뀌어 한 번 더 보고한다. 지연 때문에 팀에 메시지를 보내거나 초안을 쓰지 않는다.
+- **화면.** SCHEDULE 탭의 **LATE WAYPOINTS**에 경고가 보인다(코드, ROUTE · WAYPOINT, 목표일, ETA, 날수, OCC가 보고한 때). ROUTE MAP으로 가는 링크가 있다.
+
 ## 6. linear-guard
 
 linear-guard는 `occ/mcp-guard.mjs` 안에 있다. OCC의 MCP 도구 전부에 거는 PreToolUse hook이다(matcher `mcp__.*`, fail-closed `… || exit 2`). 읽기 도구는 S0처럼 통과한다. linear-guard는 Linear 쓰기 도구 둘, `save_issue`와 `save_comment`를 판정한다. 다른 쓰기 도구(관계, 라벨, GitHub)는 S0처럼 모두 막힌다.
@@ -323,7 +332,7 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 | `server/schedule.ts` (새 파일) | SCHEDULE 기록(`~/.local/state/atc/schedule.jsonl`, 추가만 함), 상태 전이, Linear 조회로 APPLIED 감지, 열린 초안 한도(하루 한도는 아직 만들지 않음) |
 | `server/sources/linear.ts` | 라벨(`tail:`, `type:`, `wake:`, `rating:`), 최근 닫힌 이슈(중복 검색용) 읽기. NEW의 APPLIED는 `S-xxxx` footer가 아니라 제목으로 감지한다(6장) |
 | `server/dispatch.ts` | `tail:TEAM_X`와 [fleet.ko.md](fleet.ko.md) 5장의 분류 규칙 따르기 |
-| API | `GET /api/schedule/brief`, `GET /api/schedule/ops/:id`, `POST /api/schedule/ops`(초안), `POST /api/schedule/ops/:id/{verdict,approve,reject,release}`, `POST /api/schedule/mode` |
+| API | `GET /api/schedule/brief`, `GET /api/schedule/ops/:id`, `POST /api/schedule/ops`(초안), `POST /api/schedule/ops/:id/{verdict,approve,reject,release}`, `POST /api/schedule/mode`, `POST /api/schedule/slips/ack` |
 | `atc/occ/` | `atc/dispatch/`에서 옮김: `CLAUDE.md`(운영 매뉴얼의 핵심), `/tick`과 그 절차 파일, send-guard, **linear-guard**, 읽기 전용 `gh`가 있는 Bash guard |
 | `controller/atcctl.mjs` | `schedule draft`, `schedule release`, `schedule brief` |
 | 화면 | SCHEDULE 탭: 이유·payload 미리보기·중복 검색 결과가 있는 초안, 판정·승인 버튼, 적용 이력 |

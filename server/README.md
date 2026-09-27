@@ -70,6 +70,7 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 | `readiness.ts` | The "2b 켜기 점검표" (pure `readiness2bOf`, `vocadoReadbackOf`, `sendGuardOf`; code facts from `selfCheck2b` and `selfCheckCrewChange`; `vocado-readback` needs both `[DISPATCH D-xxxx]` and `[OCC CC-xxxx]` rules); reads `occ/send-guard.mjs` and vocado `CLAUDE.md` read-only (`ATC_VOCADO_CLAUDE_MD`, else `<projectsDir>/vocado_nextjs/CLAUDE.md`) |
 | `schedule.ts` | OCC SCHEDULE draft log (append-only JSONL, S1 shadow): `CLASSIFY` / `PRIORITIZE` drafts and `NEW` (AD HOC FLIGHT from the CHARTER DESK: body sections, project / tail / key checks, `similar` titles from the snapshot, which covers the last 45 days), the 5-open-draft limit, SUPERSEDED / EXPIRED sync, shadow verdicts, candidates, the S2 gate |
 | `waypoint-gaps.ts` | WAYPOINT gaps for OCC (ATC-8, [docs/occ.md](../docs/occ.md) 5.6): per ROUTE the active and next WAYPOINT with exit criteria (or the description), issues and `truncated` (pure `waypointGapsOf`, over `routes.ts` `waypointStates` and `criteriaOf`). Matching criteria to issues is left to OCC |
+| `waypoint-slips.ts` | WAYPOINT ETAs and slip warnings for OCC (ATC-24, [docs/occ.md](../docs/occ.md) 5.7): `waypointEtasOf` over the ROUTE MAP, `slipOf` (`target-passed`, `eta-after-target`, `linear-overdue`), and the reported keys in `waypoint-slips.json` (`ackSlips`, like FOLLOWING) |
 | `crosscheck.ts` | CROSSCHECK marks shared by DISPATCH and SCHEDULE: input checks (agree/disagree, reason ≤ 500 characters), the match rate against human decisions, calibration examples, how a decision was made (`via`, pure `viaOf`) and the one-click count (pure `oneClickOf`) |
 | `reasons.ts` | DISPATCH reject reason chips (`REASON_CODES`), input check, the stored `reason` text (pure `composeReason`), per-chip counts |
 
@@ -106,7 +107,8 @@ Every `*.test.ts` next to a module is its unit test.
 | `GET /api/dispatch/proposals/:id` | One proposal and the current mode (for send-guard) |
 | `POST /api/dispatch/mode` | Switch `{mode: "shadow" \| "approval"}` (saved in `dispatch.json`) |
 | `GET /api/dispatch/flight/:key` | Ticket body and comments from Linear (read-only) |
-| `GET /api/schedule/brief` | SCHEDULE mode (`shadow`), open drafts with what each would change, drafts closed in the last 7 days (`via`), S2 gate (`crosscheck.oneClick`), open-draft limit, candidates, FLIGHT summaries; `waypointGaps` (ATC-8) |
+| `GET /api/schedule/brief` | SCHEDULE mode (`shadow`), open drafts with what each would change, drafts closed in the last 7 days (`via`), S2 gate (`crosscheck.oneClick`), open-draft limit, candidates, FLIGHT summaries; `waypointGaps` (ATC-8); `waypointEtas` and `slips` with `fresh` (ATC-24) |
+| `POST /api/schedule/slips/ack` | Record WAYPOINT slip warnings OCC reported (`{keys?}`, all fresh ones without keys) in `waypoint-slips.json` |
 | `GET /api/schedule/ops/:id` | One SCHEDULE operation and the mode |
 | `POST /api/schedule/ops` | OCC draft. `CLASSIFY` / `PRIORITIZE`: `{kind, flight, reason, type?, wake?, ratings?, priority?}`. `NEW`: `{kind: "NEW", title, body, project, reason, priority?, type?, wake?, ratings?, tail?, parent?, related?, blockedBy?}` → op with `flight: null` and `payload.similar: [{key, title}]`. 400 on bad input, 409 at the open-draft limit |
 | `POST /api/schedule/ops/:id/verdict` | SUPERVISOR's shadow verdict `{verdict: "agree" \| "disagree", reason?, via?}` |

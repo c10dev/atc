@@ -342,7 +342,8 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 
 | API | 하는 일 |
 |---|---|
-| `GET /api/schedule/brief` | 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안(판정된 것은 `via`), S2 점검(`gate.crosscheck.oneClick`), 열린 초안 한도, 후보(`classify`, `prioritize`, `close`), CLOSE 후보의 PR·머지 시각·본문 관계(`close`), 직접 닫을 승인된 CLOSE(`closeManual`), FLIGHT 요약. `waypointGaps`(ROUTE마다 지금·다음 WAYPOINT의 완료 기준과 이슈, ATC-8) |
+| `GET /api/schedule/brief` | 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안(판정된 것은 `via`), S2 점검(`gate.crosscheck.oneClick`), 열린 초안 한도, 후보(`classify`, `prioritize`, `close`), CLOSE 후보의 PR·머지 시각·본문 관계(`close`), 직접 닫을 승인된 CLOSE(`closeManual`), FLIGHT 요약. `waypointGaps`(ROUTE마다 지금·다음 WAYPOINT의 완료 기준과 이슈, ATC-8). `waypointEtas`와 `slips`(지나지 않은 WAYPOINT의 ETA와 지연 경고, OCC가 보고하기 전까지 `fresh`, ATC-24) |
+| `POST /api/schedule/slips/ack` | OCC가 보고한 WAYPOINT 지연 경고를 적는다(`waypoint-slips.json`) |
 | `GET /api/schedule/ops/:id` | SCHEDULE 작업 하나와 모드 |
 | `POST /api/schedule/ops` | OCC 초안. `CLASSIFY`·`PRIORITIZE`: `{kind, flight, reason, type?, wake?, ratings?, priority?}`. `NEW`: `{kind: "NEW", title, body, project, reason, priority?, type?, wake?, ratings?, tail?, parent?, related?, blockedBy?}`. 작업의 `flight`는 `null`이고 atc가 `similar: [{key, title}]`을 붙인다. 입력이 틀리면 사유와 함께 400, 열린 초안이 한도면 409 |
 | `POST /api/schedule/ops/:id/verdict` | `{verdict: agree\|disagree, reason?, via?}` SUPERVISOR 그림자 판정(`via`: `crosscheck`나 `manual`) |

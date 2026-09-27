@@ -12,6 +12,7 @@
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <근거>` | 우선순위 초안. 1 Urgent · 2 High · 3 Medium · 4 Low |
 | `node ../controller/atcctl.mjs schedule draft CLOSE <VOC-193> -- <근거>` | 닫기 초안. PR·머지 시각·Fixes 여부는 atc가 LOGBOOK에서 채운다. 발부하지 않는다(SUPERVISOR가 Linear에서 직접 Done) |
 | `node ../controller/atcctl.mjs schedule draft NEW --title <제목> --project <프로젝트> [--milestone <마일스톤>] [--gap] [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <근거> -- '<본문>'` | (CHARTER DESK) AD HOC FLIGHT 초안. 본문의 `\n`은 줄바꿈. 출력: 초안 ID와 atc가 찾은 비슷한 FLIGHT(`similar`). `--milestone`은 그 프로젝트의 마일스톤(WAYPOINT) 이름. `--gap`은 WAYPOINT gap 초안 표시로, `--milestone`이 필요하고 비슷한 FLIGHT가 있으면 atc가 받지 않는다 |
+| `node ../controller/atcctl.mjs schedule slip-ack [<key>]…` | 보고한 WAYPOINT 지연 경고(`schedule brief`의 `slips`)를 적는다. key가 없으면 지금 fresh 전부. 같은 경고는 다시 fresh가 되지 않고, 풀렸다가 다시 생기면 다시 fresh다 |
 | `node ../controller/atcctl.mjs schedule release <S-0001>` | (S2) 승인된 작업을 발부하고 Linear 호출을 `CALL n/m · <도구>`와 JSON 입력으로 출력. 이미 발부됐으면 같은 CALL을 다시 준다 |
 
 ## SCHEDULE 초안 (S1, 그림자 운용)
