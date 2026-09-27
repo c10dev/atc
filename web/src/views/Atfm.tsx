@@ -90,6 +90,8 @@ interface AtfmBrief {
     ci: { airport: string | null; samples: number; medianMin: number | null }[];
     behind: { airport: string | null; merges: number; behind: number; perMerge: number | null }[];
     undone: number;
+    // 머지 슬롯 켜기 판단(7일, docs/atfm.md 5장). 옛 서버면 없음
+    lands: { airport: string; lands: number; concurrent: number; mergedMedianMin: number | null; timeouts: number }[];
   };
   caps: { assignPerDay: number; s3PerDay: number; inFlightPerAircraft: number };
   thresholds: { precision: number; precisionN: number; crosscheck: number; crosscheckN: number; trip: number };
@@ -131,7 +133,7 @@ function normalize(raw: Partial<AtfmBrief> | null): AtfmBrief | null {
     slots: raw.slots ?? [],
     auto: auto(raw.auto),
     s3: auto(raw.s3),
-    data: { ci: raw.data?.ci ?? [], behind: raw.data?.behind ?? [], undone: raw.data?.undone ?? 0 },
+    data: { ci: raw.data?.ci ?? [], behind: raw.data?.behind ?? [], undone: raw.data?.undone ?? 0, lands: raw.data?.lands ?? [] },
     caps: raw.caps ?? { assignPerDay: 0, s3PerDay: 0, inFlightPerAircraft: 0 },
     thresholds: raw.thresholds ?? { precision: 0, precisionN: 0, crosscheck: 0, crosscheckN: 0, trip: 0 },
   };
@@ -301,6 +303,7 @@ export function AtfmPanel({ refreshKey, now }: { refreshKey: string; now: number
           />
           <span className="faint atfm-note">{config.slots === "on" ? "TOWER가 waiting-slot PR에는 LAND를 내지 않는다" : "그림자: 계산해서 보여 주기만, TOWER는 따르지 않는다"}</span>
         </div>
+        <SlotFigures lands={brief.data.lands} behind={brief.data.behind} />
         {brief.slots.length ? (
           <ul className="atfm-list">
             {brief.slots.map((s) => (
@@ -375,6 +378,40 @@ export function AtfmPanel({ refreshKey, now }: { refreshKey: string; now: number
 }
 
 // 켤 수 있는 스위치: 버튼 묶음(aria-pressed)
+// 머지 슬롯 켜기 판단(7일): 같은 저장소에서 동시에 살아 있던 LAND와 머지마다 BEHIND가 된 PR(docs/atfm.md 5장 Turn-on)
+function SlotFigures({ lands, behind }: { lands: AtfmBrief["data"]["lands"]; behind: AtfmBrief["data"]["behind"] }) {
+  const airports = [...new Set([...lands.map((l) => l.airport), ...behind.filter((b) => b.merges > 0).map((b) => b.airport ?? "")])].filter(Boolean).sort();
+  return (
+    <div className="atfm-figures">
+      <span className="atfm-head-mini">켜기 판단 (7일)</span>
+      {airports.length ? (
+        <ul className="atfm-list">
+          {airports.map((a) => {
+            const l = lands.find((x) => x.airport === a);
+            const b = behind.find((x) => x.airport === a);
+            return (
+              <li key={a}>
+                <span className="apt">{a}</span>
+                <span className="mono" title="같은 저장소의 다른 LAND와 겹쳐 살아 있던 LAND / 나간 LAND">
+                  동시 LAND {l ? `${l.concurrent}/${l.lands}` : "0/0"}
+                </span>
+                <span className="mono faint" title="LAND에서 머지까지 중앙값 · LAND 뒤 30분 안에 머지되지 않은 LAND">
+                  LAND→머지 {l?.mergedMedianMin == null ? "—" : `${l.mergedMedianMin}분`} · 30분 초과 {l?.timeouts ?? 0} ·
+                </span>
+                <span className="mono faint" title={b ? `머지 ${b.merges} · BEHIND ${b.behind}` : undefined}>
+                  BEHIND/머지 {b?.perMerge == null ? "—" : b.perMerge}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="empty">7일 동안 LAND·머지 없음</p>
+      )}
+    </div>
+  );
+}
+
 function Segmented<T extends string>({ label, value, options, disabled, onPick }: { label: string; value: T; options: readonly T[]; disabled?: boolean; onPick: (v: T) => void }) {
   return (
     <span className="atfm-seg" role="group" aria-label={`${label} 스위치`}>

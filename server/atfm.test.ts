@@ -10,6 +10,8 @@ import {
   type GroundStop,
   groundStopsOf,
   LAND_TIMEOUT_MS,
+  landFiguresOf,
+  landSpansOf,
   mainStateOf,
   type MainStatus,
   parseAtfm,
@@ -257,4 +259,31 @@ test("slotHoldOf: slots가 on이고 waiting-slot일 때만 LAND를 막는 이유
   assert.equal(slotHoldOf(null, "on"), null);
   assert.equal(slotHoldOf(v("waiting-slot"), "on")!.text, "머지 슬롯 대기 — 저장소 안 2번째, 동시 LAND 1");
   assert.match(slotHoldOf(v("waiting-slot", { landTimedOut: true, landAt: "2026-09-27T00:00:00Z" }), "on")!.text, /30분이 지나도 머지되지 않아/);
+});
+
+test("머지 슬롯 켜기 판단: LAND를 머지에 짝지어 동시 LAND·LAND→머지·30분 초과를 AIRPORT별로 센다", () => {
+  const T = Date.parse("2026-09-27T12:00:00Z");
+  const at = (min: number) => new Date(T + min * 60_000).toISOString();
+  const land = (min: number, stand: string | null, flight: string | null = null, cancelled: number | null = null) => ({ type: "LAND" as const, at: at(min), stand, flight, cancelledAt: cancelled === null ? null : at(cancelled) });
+  const entries = [
+    { airport: "VCDO", arrivedAt: at(20), stands: ["/wt/a"], flight: "VOC-1" },
+    { airport: "VCDO", arrivedAt: at(50), stands: ["/wt/b"], flight: "VOC-2" },
+    { airport: "ATCC", arrivedAt: at(5), stands: [], flight: "ATC-9" },
+  ];
+  const spans = landSpansOf(
+    [land(0, "/wt/a"), land(10, "/wt/b"), land(60, "/wt/c"), land(0, null, "ATC-9"), { ...land(1, "/wt/x"), type: "TAXI" as never }, land(70, "/wt/unknown")],
+    entries,
+    (c) => (c.stand === "/wt/c" ? "VCDO" : null),
+    T + 120 * 60_000,
+  );
+  assert.deepEqual(spans.map((x) => `${x.airport}:${x.mergedMin}:${x.timedOut}`), ["VCDO:20:false", "VCDO:40:true", "VCDO:null:true", "ATCC:5:false"]);
+  const figures = landFiguresOf(spans, T - 1);
+  assert.deepEqual(figures, [
+    { airport: "ATCC", lands: 1, concurrent: 0, mergedMedianMin: 5, timeouts: 0 },
+    { airport: "VCDO", lands: 3, concurrent: 2, mergedMedianMin: 30, timeouts: 2 }, // a(0~20)와 b(10~50)가 겹침, c(60~90)는 따로
+  ]);
+  assert.deepEqual(landFiguresOf(spans, T + 30 * 60_000).map((f) => `${f.airport}:${f.lands}`), ["VCDO:1"]); // 창 밖 LAND는 뺀다
+  // 취소된 LAND는 취소 시각에 끝나고 시간 초과가 아니다
+  const [c] = landSpansOf([land(0, "/wt/c", null, 5)], [], () => "VCDO", T + 120 * 60_000);
+  assert.deepEqual([c.end - c.start, c.timedOut], [5 * 60_000, false]);
 });

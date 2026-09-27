@@ -19,6 +19,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- ATFM 머지 슬롯 켜기 판단 숫자(ATC-22, [docs/atfm.ko.md](docs/atfm.ko.md) 5장). AIRPORT마다 7일 동안 나간 LAND, 같은 AIRPORT의 다른 LAND와 동시에 살아 있던 LAND 수, LAND → 머지 중앙값, 30분 안에 머지되지 않은 LAND(`GET /api/atfm`의 `data.lands`). 슬롯 스위치 아래 "켜기 판단 (7일)"에 머지당 BEHIND와 함께 보인다. SUPERVISOR가 슬롯을 켜기 전에 비교하는 숫자다.
 - DISPATCH: ROUTE의 지금 구간 WAYPOINT에 붙은 FLIGHT가 점수를 더 받는다([docs/routes.ko.md](docs/routes.ko.md) 8단계). 새 점수 요소 `waypoint`는 FLIGHT가 그 프로젝트의 지나지 않은 첫 Linear 마일스톤 이슈면 1이고, 가중치는 `dispatch.json`의 `weights.waypoint`(기본 1, `route`와 같음)다. 카드에 "지금 WAYPOINT"로 ROUTE와 WAYPOINT가 보인다.
 - ROUTE MAP: WAYPOINT 완료 기준에 atc 게이트([docs/routes.ko.md](docs/routes.ko.md) 6단계). WAYPOINT 상세에서 atc가 잴 수 있는 완료 기준 아래에 지금 점검이 보인다: DISPATCH·SCHEDULE 그림자 게이트, 2b 점검표, DISPATCH·SCHEDULE 모드, ATFM 켜기 조건(2b 2주와 gate3, 그림자 정확도와 CROSSCHECK), RECALL 사용. ✓ 충족, ✗ 미달, ○ 데이터 부족, △ 확인 필요로 보인다. `GET /api/routes`의 `criteria` 옆 `checks`에 있다(`server/waypoint-gates.ts`). atc는 여전히 마일스톤을 끝냈다고 표시하지 않는다.
 - ATFM 7번: 머지 슬롯을 켤 수 있다(ATC-22, [docs/atfm.ko.md](docs/atfm.ko.md) 5장).

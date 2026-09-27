@@ -367,3 +367,8 @@
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
+
+/* 머지 슬롯 켜기 판단(7일) */
+.atfm-figures {
+  margin: var(--space-2) 0;
+}

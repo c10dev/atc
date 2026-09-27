@@ -333,6 +333,69 @@ export function slotHoldOf(slot: SlotView | null | undefined, mode: AtfmConfig["
   return { text: `머지 슬롯 대기 — 저장소 안 ${slot.lanePos}번째, 동시 LAND ${slot.limit ?? "무제한"}` };
 }
 
+// ── 머지 슬롯 켜기 판단 숫자(5장 Turn-on): 같은 저장소에서 동시에 살아 있던 LAND, LAND → 머지 시간, 시간 초과 ──
+
+// LAND 하나가 살아 있던 구간. 머지(LOGBOOK ARRIVED)로 끝나면 merged, 짝이 없으면 취소 시각이나 시간 제한까지
+export interface LandSpan {
+  airport: string;
+  start: number;
+  end: number;
+  mergedMin: number | null; // LAND → 머지(분), 머지를 못 찾으면 null
+  timedOut: boolean; // LAND 뒤 30분 안에 머지되지 않음
+}
+
+// LAND를 머지된 LOGBOOK 줄에 짝짓는다(순수): 같은 STAND(없으면 같은 FLIGHT), LAND 뒤 가장 이른 ARRIVED.
+// AIRPORT는 짝의 airport, 짝이 없으면 airportOf(STAND·FLIGHT로 찾음). 둘 다 모르면 뺀다
+export function landSpansOf(
+  lands: Pick<Clearance, "type" | "at" | "stand" | "flight" | "cancelledAt">[],
+  entries: { airport: string | null; arrivedAt: string; stands: string[]; flight: string | null }[],
+  airportOf: (land: Pick<Clearance, "stand" | "flight">) => string | null,
+  now: number,
+): LandSpan[] {
+  const out: LandSpan[] = [];
+  for (const c of lands) {
+    if (c.type !== "LAND") continue;
+    const start = Date.parse(c.at);
+    const match = entries
+      .filter((e) => Date.parse(e.arrivedAt) >= start && ((c.stand && e.stands.includes(c.stand)) || (!c.stand && c.flight && e.flight === c.flight)))
+      .sort((a, b) => a.arrivedAt.localeCompare(b.arrivedAt))[0];
+    const airport = match?.airport ?? airportOf(c);
+    if (!airport) continue;
+    if (match) {
+      const end = Date.parse(match.arrivedAt);
+      out.push({ airport, start, end, mergedMin: Math.round((end - start) / MIN), timedOut: end - start > LAND_TIMEOUT_MS });
+    } else {
+      const cancelled = c.cancelledAt ? Date.parse(c.cancelledAt) : null;
+      const end = Math.min(now, cancelled ?? Infinity, start + LAND_TIMEOUT_MS);
+      out.push({ airport, start, end, mergedMin: null, timedOut: cancelled === null && now - start > LAND_TIMEOUT_MS });
+    }
+  }
+  return out;
+}
+
+export interface LandFigure {
+  airport: string;
+  lands: number; // 창 안에서 나간 LAND
+  concurrent: number; // 같은 AIRPORT의 다른 LAND와 겹쳐 살아 있던 LAND 수
+  mergedMedianMin: number | null; // LAND → 머지 중앙값
+  timeouts: number; // 30분 안에 머지되지 않은 LAND
+}
+
+// AIRPORT별 LAND 숫자(순수). 창(from 이후 시작한 LAND)만 센다. 겹침은 같은 AIRPORT 안에서 구간이 겹치는 것
+export function landFiguresOf(spans: LandSpan[], from: number): LandFigure[] {
+  const byAirport = new Map<string, LandSpan[]>();
+  for (const x of spans) if (x.start >= from) byAirport.set(x.airport, [...(byAirport.get(x.airport) ?? []), x]);
+  return [...byAirport]
+    .map(([airport, xs]) => ({
+      airport,
+      lands: xs.length,
+      concurrent: xs.filter((a) => xs.some((b) => b !== a && a.start < b.end && b.start < a.end)).length,
+      mergedMedianMin: median(xs.map((x) => x.mergedMin).filter((m): m is number => m !== null)),
+      timeouts: xs.filter((x) => x.timedOut).length,
+    }))
+    .sort((a, b) => a.airport.localeCompare(b.airport));
+}
+
 // 이 PR을 연 뒤 같은 STAND(없으면 같은 FLIGHT)로 나간 마지막 LAND(controller.ts의 짝짓기와 같다)
 export function landOf(p: PullRequest, clearances: Clearance[]): string | null {
   const land = clearances
