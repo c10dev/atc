@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 const USER = [
   [/(^|\/)[^/]*guard[^/]*\.mjs$/, "guard"],
   [/(^|\/)\.claude\/(?!skills\/)/, ".claude/ 설정"], // skills/는 매뉴얼이라 아래 flagged
+  [/^\.claude\//, "루트 .claude/(팀 세션 skill·설정)"], // 루트 skill은 팀 세션 지침이라 CLAUDE.md와 같다
   [/^CLAUDE(\.en)?\.md$/, "루트 CLAUDE.md"],
   [/^\.github\//, "CI"],
   [/^package(-lock)?\.json$/, "의존성"],

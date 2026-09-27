@@ -49,7 +49,7 @@ After editing `atc.service` itself, copy it again and run `systemctl --user daem
 
 | Tier | Paths | Meaning |
 |---|---|---|
-| `user` | guards (`*guard*.mjs`), `.claude/` settings (not `skills/`), the root `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/` (not the README) | Needs the user's decision |
+| `user` | guards (`*guard*.mjs`), `.claude/` settings (not `skills/` in a control-session folder), everything under the root `.claude/` (team-session skills), the root `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/` (not the README) | Needs the user's decision |
 | `flagged` | `controller/`, `occ/`, `crosscheck/`, `dispatch/` (manuals, skills, the atc CLI, guard tests) | Changes what a control session does; call out the changed rules |
 | `auto` | everything else (server, UI, docs, tests) | No safety or permission surface |
 
