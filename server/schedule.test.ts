@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Ticket } from "./model.ts";
-import { candidatesOf, changesOf, standFreeHint, draftOps, fold, gateOf, missingSections, type NewPayload, parseNew, parsePayload, ScheduleError, similarTickets, syncLines, titleTokens } from "./schedule.ts";
+import { callsOf, candidatesOf, changesOf, CLOSE_RELEASE_WHY, closableOf, standFreeHint, draftOps, fold, gateOf, missingSections, type NewPayload, parseNew, parsePayload, ScheduleError, similarTickets, syncLines, titleTokens } from "./schedule.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
 const iso = (minAgo: number) => new Date(NOW - minAgo * 60_000).toISOString();
@@ -11,7 +11,8 @@ const t = (key: string, over: Partial<Ticket> = {}) =>
 test("CLASSIFY·PRIORITIZE 입력 검사", () => {
   assert.deepEqual(parsePayload("CLASSIFY", { type: "maint", wake: "h", ratings: ["sec", "SEC"] }), { kind: "CLASSIFY", payload: { type: "MAINT", wake: "H", ratings: ["SEC"] } });
   assert.deepEqual(parsePayload("PRIORITIZE", { priority: "2" }), { kind: "PRIORITIZE", payload: { priority: 2 } });
-  assert.throws(() => parsePayload("CLOSE", {}), /모르는 SCHEDULE 작업/);
+  assert.throws(() => parsePayload("TAIL", {}), /모르는 SCHEDULE 작업/);
+  assert.throws(() => parsePayload("CLOSE", {}), /LOGBOOK에서 채운다/);
   assert.throws(() => parsePayload("CLASSIFY", {}), /하나 이상/);
   assert.throws(() => parsePayload("CLASSIFY", { type: "PILOT" }), /FLIGHT TYPE/);
   assert.throws(() => parsePayload("PRIORITIZE", { priority: 0 }), /priority/);
@@ -74,7 +75,7 @@ test("판정과 2단계 점검, 후보 목록", () => {
   assert.equal(ops[0].verdictReason, "BUILD임");
   assert.deepEqual(gateOf(ops), { decided: 1, agreed: 0, agreement: 0, target: { decided: 20, agreement: 0.8 }, ready: false, crosscheck: { marked: 0, matched: 0, rate: null, byModel: {}, oneClick: { count: 0, decided: 0 } } });
   const tickets = [t("VOC-41"), t("VOC-42", { labels: ["type:BUILD", "wake:M"], priority: 0 }), t("VOC-43", { state: "In Progress", stateType: "started" })];
-  assert.deepEqual(candidatesOf(tickets, []), { classify: ["VOC-41"], prioritize: ["VOC-42"] });
+  assert.deepEqual(candidatesOf(tickets, []), { classify: ["VOC-41"], prioritize: ["VOC-42"], close: [] });
 });
 
 test("분류 후보: SURVEY·CHECK로 보이는 제목(리서치·검토·비교·계획)을 앞에, 나머지는 원래 순서", () => {
@@ -309,4 +310,101 @@ test("OCC 보정 예시: 사람 판정만, 사유 있는 것 먼저, OCC가 냈�
   assert.deepEqual(ex.map((e) => e.id), ["S-0004", "S-0001", "S-0002"]); // 사유 있는 것(최근 순) 먼저
   assert.deepEqual(ex[1], { id: "S-0001", kind: "CLASSIFY", flight: "VOC-195", proposed: { type: "BUILD", wake: "M", ratings: ["SEC"] }, draft: "락 조건 수정", verdict: "disagree", reason: "FLIGHT TYPE은 MAINT — fleet.md 4.1" });
   assert.deepEqual(ex[0].proposed, { title: "t", project: "Web UX", type: "BUILD", wake: "M" });
+});
+
+// ── CLOSE ──
+const arrived = (n: number, flight: string | null, over: Record<string, unknown> = {}) => ({
+  key: `o/vocado_nextjs#${n}`, flight, pr: { repo: "o/vocado_nextjs", number: n, url: `https://github.com/o/vocado_nextjs/pull/${n}`, title: "" },
+  arrivedAt: iso(60 * n), reverted: false, ...over,
+}) as never;
+
+test("CLOSE 후보: LOGBOOK ARRIVED(되돌림 아님)인데 Linear가 열린 FLIGHT. Fixes인 PR을 먼저, 본문을 모르면 link null", () => {
+  const tickets = [
+    t("VOC-1", { state: "In Review", stateType: "started" }),
+    t("VOC-2", { state: "Done", stateType: "completed" }),
+    t("VOC-3"),
+    t("VOC-4", { state: "In Progress", stateType: "started" }),
+    t("VOC-5"),
+  ];
+  const entries = [
+    arrived(1, "VOC-1", { link: "part-of" }),
+    arrived(2, "VOC-1", { link: "fixes" }), // 같은 FLIGHT의 다른 PR: Fixes가 먼저
+    arrived(3, "VOC-2", { link: "fixes" }), // 이미 Done
+    arrived(4, "VOC-3", { reverted: true }), // 되돌림뿐
+    arrived(5, "VOC-4"), // 옛 줄: link 없음 → 본문으로
+    arrived(6, "VOC-5"), // 본문을 아직 모름
+    arrived(7, null),
+  ];
+  const bodies: Record<string, string> = { "o/vocado_nextjs#5": "Part of VOC-4" };
+  const { closable, reverted } = closableOf(entries, tickets, (k) => bodies[k]);
+  assert.deepEqual([...closable.values()].map((c) => `${c.flight}:${c.pr.number}:${c.link}`).sort(), ["VOC-1:2:fixes", "VOC-4:5:part-of", "VOC-5:6:null"]);
+  assert.deepEqual([...reverted], ["VOC-3"]);
+  // 후보: Part of와 본문 모름은 빼고, 열린 CLOSE 초안이 있는 것도 뺀다
+  assert.deepEqual(candidatesOf(tickets, [], closable).close, ["VOC-1"]);
+  const open = fold([{ op: "draft", id: "S-0001", at: iso(1), kind: "CLOSE", flight: "VOC-1", payload: { pr: { repo: "o/v", number: 2, url: "" }, mergedAt: iso(120) }, reason: "x" }]);
+  assert.deepEqual(candidatesOf(tickets, open, closable).close, []);
+  // 판정된 CLOSE(7일 안)가 있으면 다시 후보가 되지 않는다(승인했을 것은 "직접 Done" 목록에 있다)
+  const decided = fold([
+    { op: "draft", id: "S-0001", at: iso(10), kind: "CLOSE", flight: "VOC-1", payload: { pr: { repo: "o/v", number: 2, url: "" }, mergedAt: iso(120) }, reason: "x" },
+    { op: "verdict", id: "S-0001", at: iso(5), verdict: "agree", reason: null },
+  ]);
+  assert.deepEqual(candidatesOf(tickets, decided, closable, NOW).close, []);
+  assert.deepEqual(candidatesOf(tickets, decided, closable, NOW + 8 * 86_400_000).close, ["VOC-1"]);
+});
+
+test("CLOSE 초안: 닫히지 않았고 LOGBOOK에 있어야 하며, payload는 atc가 채운다. Part of는 표시한다", () => {
+  const tickets = [t("VOC-1", { state: "In Review", stateType: "started" }), t("VOC-2", { state: "Done", stateType: "completed" }), t("VOC-4", { state: "Todo" }), t("VOC-9")];
+  const { closable } = closableOf(
+    [arrived(1, "VOC-1", { link: "fixes" }), arrived(2, "VOC-4", { link: "part-of" }), arrived(3, "VOC-9")],
+    tickets,
+    () => undefined,
+  );
+  const lines = draftOps([], { kind: "CLOSE", flight: "voc-1", reason: "PR 1 머지, Fixes VOC-1" }, tickets, iso(0), 0, { closable });
+  assert.deepEqual(lines, [{ op: "draft", id: "S-0001", at: iso(0), kind: "CLOSE", flight: "VOC-1", payload: { pr: { repo: "o/vocado_nextjs", number: 1, url: "https://github.com/o/vocado_nextjs/pull/1" }, mergedAt: iso(60), fixes: true }, reason: "PR 1 머지, Fixes VOC-1" }]);
+  const part = draftOps([], { kind: "CLOSE", flight: "VOC-4", reason: "x" }, tickets, iso(0), 0, { closable })[0] as { payload: unknown };
+  assert.deepEqual(part.payload, { pr: { repo: "o/vocado_nextjs", number: 2, url: "https://github.com/o/vocado_nextjs/pull/2" }, mergedAt: iso(120), partOf: true });
+  assert.throws(() => draftOps([], { kind: "CLOSE", flight: "VOC-2", reason: "x" }, tickets, iso(0), 0, { closable }), /이미 닫힘/);
+  assert.throws(() => draftOps([], { kind: "CLOSE", flight: "VOC-9", reason: "x" }, tickets, iso(0), 0, { closable }), /본문을 아직 읽지 못함/);
+  assert.throws(() => draftOps([], { kind: "CLOSE", flight: "VOC-1", reason: "x" }, tickets, iso(0), 0), /ARRIVED 기록이 없음/);
+  assert.throws(() => draftOps([], { kind: "CLOSE", flight: "VOC-1", reason: " " }, tickets, iso(0), 0, { closable }), /근거/);
+  // 바뀔 것: 상태 → Done, 닫혔으면 없음
+  const payload = { pr: { repo: "o/vocado_nextjs", number: 400, url: "" }, mergedAt: "2026-09-26T13:41:00Z", fixes: true };
+  assert.deepEqual(changesOf("CLOSE", payload, tickets[0]), ["In Review → Done · PR vocado_nextjs#400 머지 2026-09-26 · Fixes"]);
+  assert.deepEqual(changesOf("CLOSE", payload, tickets[1]), []);
+});
+
+test("CLOSE 발부는 거절한다(vocado 규칙상 OCC는 상태를 바꾸지 않음)", () => {
+  const [op] = fold([{ op: "draft", id: "S-0001", at: iso(1), kind: "CLOSE", flight: "VOC-1", payload: { pr: { repo: "o/v", number: 2, url: "" }, mergedAt: iso(120) }, reason: "x" }]);
+  assert.throws(() => callsOf(op, undefined, "Vocado"), (e) => e instanceof ScheduleError && e.message === CLOSE_RELEASE_WHY && e.status === 409);
+});
+
+test("CLOSE 닫기: Linear가 Done·Canceled면 SUPERSEDED(발부 전)·APPLIED(발부됨), PR이 되돌려지면 SUPERSEDED, 3일이면 EXPIRED", () => {
+  const draft = (id: string, flight: string, minAgo = 10) => ({ op: "draft" as const, id, at: iso(minAgo), kind: "CLOSE" as const, flight, payload: { pr: { repo: "o/v", number: 1, url: "" }, mergedAt: iso(500) }, reason: "x" });
+  const ops = fold([
+    draft("S-0001", "VOC-1"),
+    draft("S-0002", "VOC-2"),
+    { op: "approve", id: "S-0002", at: iso(5) },
+    draft("S-0003", "VOC-3"),
+    draft("S-0004", "VOC-4", 4 * 24 * 60),
+    draft("S-0005", "VOC-5"),
+    draft("S-0006", "VOC-6"),
+  ]);
+  const tickets = [
+    t("VOC-1", { state: "Done", stateType: "completed" }),
+    t("VOC-2", { state: "Canceled", stateType: "canceled" }),
+    t("VOC-3", { state: "In Review", stateType: "started" }),
+    t("VOC-4", { state: "In Review", stateType: "started" }),
+    t("VOC-5", { state: "In Progress", stateType: "started" }), // 계획 단계가 아니어도 열린 CLOSE는 그대로
+  ];
+  const out = syncLines(ops, tickets, NOW, { reverted: new Set(["VOC-3"]) });
+  assert.deepEqual(out.map((l) => `${l.op}:${l.id}:${"reason" in l ? l.reason : ""}`), [
+    "supersede:S-0001:Linear에서 닫힘(Done)",
+    "supersede:S-0002:Linear에서 닫힘(Canceled)",
+    "supersede:S-0003:PR이 되돌려짐(LOGBOOK)",
+    "expire:S-0004:",
+    "supersede:S-0006:FLIGHT가 목록에 없음",
+  ]);
+  // 발부된(released) CLOSE는 APPLIED(나중에 발부를 켜면)
+  const released = fold([draft("S-0007", "VOC-1"), { op: "approve", id: "S-0007", at: iso(5) }, { op: "release", id: "S-0007", at: iso(4), calls: [] }]);
+  assert.deepEqual(syncLines(released, tickets, NOW), [{ op: "apply", id: "S-0007", at: new Date(NOW).toISOString(), ref: "VOC-1" }]);
 });

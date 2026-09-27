@@ -1,12 +1,13 @@
 import { createContext, type KeyboardEvent, useCallback, useContext, useEffect, useRef, useState } from "react";
-import type { ClassifyPayload, NewPayload, PrioritizePayload, ScheduleOp } from "../../../server/schedule.ts";
+import type { ClassifyPayload, ClosePayload, NewPayload, PrioritizePayload, ScheduleOp } from "../../../server/schedule.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { PriorityMark } from "../ui.tsx";
 import "./Schedule.css";
 
-// OCC SCHEDULE — OCC가 Linear에 쓸 변경(CLASSIFY 라벨, PRIORITIZE 우선순위, NEW 새 이슈)을 초안으로 남긴다.
+// OCC SCHEDULE — OCC가 Linear에 쓸 변경(CLASSIFY 라벨, PRIORITIZE 우선순위, NEW 새 이슈, CLOSE 닫기)을 초안으로 남긴다.
+// CLOSE는 이슈 상태를 바꾸는 일이라 OCC가 발부하지 않고, 승인되면 SUPERVISOR가 Linear에서 직접 Done으로 바꾼다.
 // S1(shadow): SUPERVISOR는 "승인했을 것 / 거절했을 것"만 표시하고 아무것도 Linear에 쓰지 않는다.
 // S2(approval): 승인한 작업을 OCC가 발부받아 Linear에 쓴다(linear-guard가 입력을 비교). 기본은 S1.
 // 설계: docs/occ.md 5~7장, docs/fleet.md 4·6장.
@@ -79,7 +80,9 @@ interface Brief {
     crosscheck?: CrosscheckRate & { byModel?: Record<string, CrosscheckRate>; oneClick?: { count: number; decided: number } };
   };
   limit: number;
-  candidates: { classify: string[]; prioritize: string[] };
+  candidates: { classify: string[]; prioritize: string[]; close?: string[] }; // close는 옛 서버면 없음
+  close?: Record<string, { pr: ClosePayload["pr"]; mergedAt: string; link: "fixes" | "part-of" | "none" | null }>;
+  closeManual?: ScheduleOp[]; // SUPERVISOR가 Linear에서 직접 Done으로 바꿀 CLOSE
   flights: Record<string, FlightInfo>;
 }
 
@@ -105,7 +108,11 @@ const REJECT_REASONS: Record<ScheduleOp["kind"], string[]> = {
   CLASSIFY: ["FLIGHT TYPE이 다름", "WAKE가 다름", "TYPE RATING이 빠지거나 넘침", "근거가 본문과 맞지 않음", "지금 분류할 필요 없음"],
   PRIORITIZE: ["우선순위가 더 높아야 함", "우선순위가 더 낮아야 함", "근거가 본문과 맞지 않음", "지금 정할 필요 없음"],
   NEW: ["중복임", "본문 템플릿 부족", "프로젝트·라벨이 다름", "티켓 없이 AD HOC로 충분", "지금 만들 필요 없음"],
+  CLOSE: ["Part of — 일부만 끝남", "남은 작업이 있음", "PR이 되돌려졌거나 불완전", "지금 닫을 필요 없음"],
 };
+
+// PR 한 줄: "vocado_nextjs#400"
+const prName = (p: ClosePayload["pr"]) => `${p.repo.split("/").pop()}#${p.number}`;
 
 // 화면에 보이는 작업 이름. NEW가 만드는 FLIGHT는 AD HOC FLIGHT.
 const kindCode = (kind: ScheduleOp["kind"]) => (kind === "NEW" ? "AD HOC FLIGHT" : kind);
@@ -134,6 +141,10 @@ function payloadText(op: ScheduleOp): string {
     return [p.project, p.priority && `priority ${PRIORITY_NAME[p.priority]}`, ...newLabels(p)].filter(Boolean).join(" · ");
   }
   if (op.kind === "PRIORITIZE") return `priority ${PRIORITY_NAME[(op.payload as PrioritizePayload).priority]}`;
+  if (op.kind === "CLOSE") {
+    const c = op.payload as ClosePayload;
+    return [`→ Done`, `PR ${prName(c.pr)}`, c.partOf ? "Part of(일부만)" : c.fixes ? "Fixes" : "본문에 Fixes 없음"].join(" · ");
+  }
   const p = op.payload as ClassifyPayload;
   return [p.type && `type:${p.type}`, p.wake && `wake:${p.wake}`, ...(p.ratings ?? []).map((r) => `rating:${r}`)].filter(Boolean).join(" · ");
 }
@@ -294,7 +305,9 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
                     <td className="sc-c-flight" data-label="FLIGHT">{subjectOf(op)}</td>
                     <td className="sc-c-status sc-result" data-label="상태">
                       {statusText[op.status]}
-                      <span className="faint">{op.status === "approved" ? " · 발부 대기" : ` · CALL ${op.calls?.length ?? 0}건, 반영 대기`}</span>
+                      <span className="faint">
+                        {op.kind === "CLOSE" ? " · SUPERVISOR가 Linear에서 Done" : op.status === "approved" ? " · 발부 대기" : ` · CALL ${op.calls?.length ?? 0}건, 반영 대기`}
+                      </span>
                     </td>
                     <td className="sc-c-reason" data-label="바뀔 것">{(brief.changes[op.id] ?? []).join(" ") || "—"}</td>
                     <td className="sc-c-at faint" data-label="언제">
@@ -312,12 +325,56 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
         </>
       )}
 
+      {(brief.closeManual?.length ?? 0) > 0 && (
+        <>
+          <h2 className="label">
+            LINEAR에서 직접 DONE <em>승인한 CLOSE — vocado 규칙상 OCC는 이슈 상태를 바꾸지 않는다. 닫으면 다음 새로 고침에서 빠진다</em>
+          </h2>
+          <ul className="sc-close-manual">
+            {brief.closeManual!.map((op) => {
+              const c = op.payload as ClosePayload;
+              const f = flights[op.flight ?? ""];
+              return (
+                <li key={op.id}>
+                  <span className="mono faint">{op.id}</span>
+                  {f?.url ? (
+                    <a className="mono sc-fn" href={f.url} target="_blank" rel="noreferrer" title={`${op.flight} — Linear에서 열기`}>
+                      {flightNumber(op.flight ?? "")}
+                    </a>
+                  ) : (
+                    <span className="mono sc-fn">{flightNumber(op.flight ?? "")}</span>
+                  )}
+                  <span className="sc-close-title">{f?.title ?? op.flight}</span>
+                  <span className="faint">{f?.state ?? "?"} → Done</span>
+                  <a className="mono" href={c.pr.url} target="_blank" rel="noreferrer">
+                    PR {prName(c.pr)}
+                  </a>
+                  <span className="faint">{statusText[op.status]}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+
       <h2 className="label">
-        CANDIDATES <em>계획 단계(Todo·Backlog)에서 OCC가 초안을 쓸 FLIGHT · 열린 초안이 있는 것은 뺌</em>
+        CANDIDATES <em>계획 단계(Todo·Backlog)에서 OCC가 초안을 쓸 FLIGHT, CLOSE는 PR이 머지됐는데 열린 FLIGHT · 열린 초안이 있는 것은 뺌</em>
       </h2>
       <div className="sc-cands">
         <Candidates kind="CLASSIFY" note="type:·wake: 라벨이 없음" keys={brief.candidates.classify} flights={flights} />
         <Candidates kind="PRIORITIZE" note="우선순위가 없음" keys={brief.candidates.prioritize} flights={flights} />
+        {brief.candidates.close && (
+          <Candidates
+            kind="CLOSE"
+            note="LOGBOOK ARRIVED, Linear는 열림"
+            keys={brief.candidates.close}
+            flights={flights}
+            metaOf={(k) => {
+              const c = brief.close?.[k];
+              return c ? `PR ${prName(c.pr)} · 머지 ${stamp(c.mergedAt, clock)} · ${c.link === "fixes" ? "Fixes" : "본문에 Fixes 없음"}` : null;
+            }}
+          />
+        )}
       </div>
 
       <h2 className="label">
@@ -507,6 +564,20 @@ function DraftCard({
             <span className={`sc-class${clsDefault ? " is-default" : ""}`} title="FLIGHT TYPE · WAKE · 필요한 TYPE RATING">
               {flight?.cls ?? "—"}
               {clsDefault && <span className="faint"> (기본값 — 라벨 없음)</span>}
+            </span>
+          ) : op.kind === "CLOSE" ? (
+            <span>
+              <a className="mono" href={(op.payload as ClosePayload).pr.url} target="_blank" rel="noreferrer">
+                PR {prName((op.payload as ClosePayload).pr)}
+              </a>{" "}
+              머지 {stamp((op.payload as ClosePayload).mergedAt, clock)}
+              {(op.payload as ClosePayload).partOf ? (
+                <span className="sc-partof"> · Part of — 일부만</span>
+              ) : (op.payload as ClosePayload).fixes ? (
+                <span className="faint"> · Fixes</span>
+              ) : (
+                <span className="faint"> · 본문에 Fixes 없음</span>
+              )}
             </span>
           ) : (
             <span>priority {flight ? PRIORITY_NAME[flight.priority] ?? "없음" : "—"}</span>
@@ -801,6 +872,17 @@ function CopyButton({ label, text }: { label: string; text: string }) {
 
 // SUPERVISOR가 Linear에서 손으로 반영한다면 무엇을 누르는지. 그림자 운용이므로 atc는 쓰지 않는다.
 function ManualHint({ op, changes, labels }: { op: ScheduleOp; changes: string[]; labels: string[] }) {
+  if (op.kind === "CLOSE") {
+    return (
+      <div className="sc-hint">
+        <span className="sc-hint-head">LINEAR 수동 반영</span>
+        <span>
+          {op.flight} → Status <code>Done</code>
+        </span>
+        <span className="faint sc-hint-note">CLOSE는 S2에서도 OCC가 쓰지 않음 — 승인하면 SUPERVISOR가 Linear에서 직접</span>
+      </div>
+    );
+  }
   if (op.kind === "PRIORITIZE") {
     const to = PRIORITY_NAME[(op.payload as PrioritizePayload).priority];
     return (
@@ -877,7 +959,19 @@ function RejectForm({ op, busy, onCancel, onSubmit }: { op: ScheduleOp; busy: bo
   );
 }
 
-function Candidates({ kind, note, keys, flights }: { kind: ScheduleOp["kind"]; note: string; keys: string[]; flights: Record<string, FlightInfo> }) {
+function Candidates({
+  kind,
+  note,
+  keys,
+  flights,
+  metaOf,
+}: {
+  kind: ScheduleOp["kind"];
+  note: string;
+  keys: string[];
+  flights: Record<string, FlightInfo>;
+  metaOf?: (key: string) => string | null;
+}) {
   return (
     <div className={`sc-cand k-${kind}`}>
       <h3 className="sc-cand-head">
@@ -901,7 +995,11 @@ function Candidates({ kind, note, keys, flights }: { kind: ScheduleOp["kind"]; n
                 <span className="sc-cand-title">
                   {f?.title ?? k}
                 </span>
-                {f && <span className="faint sc-cand-meta">{kind === "CLASSIFY" ? f.cls : `priority ${PRIORITY_NAME[f.priority] ?? "없음"}`}</span>}
+                {metaOf ? (
+                  <span className="faint sc-cand-meta">{[f?.state, metaOf(k)].filter(Boolean).join(" · ")}</span>
+                ) : (
+                  f && <span className="faint sc-cand-meta">{kind === "CLASSIFY" ? f.cls : `priority ${PRIORITY_NAME[f.priority] ?? "없음"}`}</span>
+                )}
               </li>
             );
           })}

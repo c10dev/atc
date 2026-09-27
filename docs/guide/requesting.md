@@ -23,6 +23,8 @@ CHARTER REQUEST ─▶ AD HOC FLIGHT 초안 ─▶ FILED ─▶ ASSIGN ─▶ EN
 
 OCC는 사용자가 요청했을 때만 새 티켓 초안을 쓴다. 스스로 티켓을 지어내지 않는다.
 
+일이 끝난 뒤 Linear 정리도 OCC가 돕는다: PR이 머지됐는데(LOGBOOK에 ARRIVED) 이슈가 열려 있으면 `CLOSE` 초안을 쓴다. 이슈 상태는 사용자가 Linear에서 직접 Done으로 바꾼다([판정하기](reviewing.md)). 팀 PR 본문에 `Fixes VOC-n`을 쓰게 하면(일부만이면 `Part of VOC-n`) CLOSE 후보가 정확해진다.
+
 ## 팀에 직접 맡길 때
 
 - 누구에게 맡길지는 FLEET 탭에서 고른다: 필요한 TYPE RATING을 갖고, 가능하면 ROUTE(담당 프로젝트)가 맞고, PARKED인 팀.

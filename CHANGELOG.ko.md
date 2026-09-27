@@ -16,6 +16,11 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- SCHEDULE `CLOSE`([docs/occ.md](docs/occ.md) 5.5): PR이 LOGBOOK에 ARRIVED로 있는데(되돌림 아님) Linear 이슈가 Done·Canceled가 아니면 OCC가 닫기 초안을 쓴다. President가 하던 Linear 정리이고, 바닥난 SCHEDULE 초안 공급도 다시 생긴다.
+  - 후보: 브리핑의 `candidates.close`(오래 머지된 것부터)와 후보마다 PR·머지 시각·본문 관계(`close`). 본문이 `Part of VOC-n`인 PR은 뺀다(vocado 규칙상 `Fixes`만 이슈를 끝낸다). FLIGHT에 PR이 여럿이면 `Fixes`인 것을 쓴다. 새 LOGBOOK 줄은 본문 관계를 남기고(`link`: `fixes`·`part-of`·`none`), 옛 줄은 읽기 전용 `gh pr view --json body`로 한 번 읽어 캐시한다.
+  - 초안: `atcctl schedule draft CLOSE <FLIGHT> -- <근거>`. atc가 `{pr, mergedAt, fixes?, partOf?}`를 채우고, 열린 상태면 무엇이든 되며, 이슈가 닫혔거나 ARRIVED 줄이 없으면 거절한다. `Part of` 초안은 받되 "Part of — 일부만"으로 보인다. `syncLines`는 Linear가 Done·Canceled가 되면(발부됐으면 APPLIED) 또는 PR이 되돌려지면 초안을 닫는다. 열린 초안 한도(5)를 함께 쓴다.
+  - 발부하지 않는다: CLOSE는 이슈 상태를 바꾸는 일이라 vocado의 OCC 예외가 허용하지 않는다. `callsOf`가 거절하고 `schedule release`는 409 `CLOSE는 SUPERVISOR가 Linear에서 직접 — vocado 규칙상 OCC는 상태를 바꾸지 않음`으로 답한다. SCHEDULE 탭은 승인한 CLOSE(그림자 운용이면 7일 안의 "승인했을 것")를 "LINEAR에서 직접 DONE"으로 보여 준다. 근거 댓글만 발부하는 안은 검토했지만 넣지 않았다(이유와, 규칙이 바뀌면 발부를 켤 자리는 문서에).
+  - OCC 규정·`/tick`(ko/en)에 후보, 읽기 전용 `gh pr view`로 하는 "CLOSE 전에" 확인, 발부하지 않는 규칙을 더했다. CROSSCHECK 규정·`/tick`(ko/en)은 CLOSE에서 "이미 끝났나" 확인을 뒤집고, `Part of`·되돌림·남은 작업이면 disagree한다. 안내(판정하기, 일 맡기기)와 README에 적었다.
 - OCC의 FLIGHT FOLLOWING(운항 추적) ([docs/occ.md](docs/occ.md) 8.1, `server/following.ts`, 순수 계산. `proposals.ts`·`schedule.ts`는 읽기만 한다).
   - **대상**: accepted·departed·recalling인 ASSIGN과 `tail:`이 붙은 In Progress FLIGHT.
   - **단계**: READBACK → DEPARTED → PR 열림 → CLEARED → ARRIVED. 제안 timeline, `departures.jsonl`, `snapshot.pulls`, LOGBOOK에서 가져온다.

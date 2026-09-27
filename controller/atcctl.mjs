@@ -63,6 +63,9 @@ SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만. S2 승인 운용
                                             WAKE: L M H J · RATING: SEC UI DATA DOCS (--rating은 여러 번)
   node atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <근거>
                                             우선순위 초안. 1 Urgent · 2 High · 3 Medium · 4 Low
+  node atcctl.mjs schedule draft CLOSE <VOC-193> -- <근거>
+                                            닫기 초안: LOGBOOK에 PR 머지(ARRIVED)가 있는데 Linear가 Done·Canceled가 아님.
+                                            PR·머지 시각·Fixes 여부는 atc가 채운다. 발부하지 않는다(SUPERVISOR가 Linear에서 직접)
   node atcctl.mjs schedule draft NEW --title <제목> --project <프로젝트> [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>]
         [--rating <RATING>]… [--tail <TEAM_X>] [--parent <VOC-1>] [--related <VOC-2>]… [--blocked-by <VOC-3>]…
         --reason <근거, "중복 검색: …" 포함> -- <본문>
@@ -136,7 +139,7 @@ function parseNewDraft(args) {
 }
 
 // schedule draft <KIND> <FLIGHT> [옵션]… -- <근거> → POST /api/schedule/ops 본문. 값 검사는 서버가 한다.
-const DRAFT_OPTS = { CLASSIFY: ["--type", "--wake", "--rating"], PRIORITIZE: ["--priority"] };
+const DRAFT_OPTS = { CLASSIFY: ["--type", "--wake", "--rating"], PRIORITIZE: ["--priority"], CLOSE: [] };
 export function parseDraft(args) {
   if (String(args[0] ?? "").toUpperCase() === "NEW") return parseNewDraft(args.slice(1));
   const sep = args.indexOf("--");
@@ -149,7 +152,7 @@ export function parseDraft(args) {
   const body = { kind, flight };
   for (let i = 0; i < rest.length; i += 2) {
     const [opt, val] = [rest[i], rest[i + 1]];
-    if (!DRAFT_OPTS[kind].includes(opt)) throw new Error(`${kind}에 쓸 수 없는 옵션 ${opt} (가능: ${DRAFT_OPTS[kind].join(" ")})`);
+    if (!DRAFT_OPTS[kind].includes(opt)) throw new Error(DRAFT_OPTS[kind].length ? `${kind}에 쓸 수 없는 옵션 ${opt} (가능: ${DRAFT_OPTS[kind].join(" ")})` : `${kind}에는 옵션이 없음(${opt}) — PR·머지 시각은 atc가 채운다`);
     if (val === undefined || val.startsWith("--")) throw new Error(`${opt} 뒤에 값이 필요함`);
     if (opt === "--rating") (body.ratings ??= []).push(val);
     else body[opt.slice(2)] = val;
@@ -190,6 +193,7 @@ const PRIORITY = { 1: "Urgent", 2: "High", 3: "Medium", 4: "Low" };
 export function payloadText(op) {
   const p = op.payload;
   if (op.kind === "PRIORITIZE") return `priority ${p.priority}(${PRIORITY[p.priority]})`;
+  if (op.kind === "CLOSE") return `→ Done · PR ${p.pr.repo.split("/").pop()}#${p.pr.number} 머지 ${p.mergedAt.slice(0, 16)}Z · ${p.partOf ? "Part of(일부만)" : p.fixes ? "Fixes" : "본문에 Fixes 없음"}`;
   const labels = [p.type && `type:${p.type}`, p.wake && `wake:${p.wake}`, ...(p.ratings ?? []).map((r) => `rating:${r}`)];
   if (op.kind !== "NEW") return labels.filter(Boolean).join(" ");
   return [p.project, p.priority ? PRIORITY[p.priority] : "priority 없음", [...labels, p.tail && `tail:${p.tail}`].filter(Boolean).join(" ")].filter(Boolean).join(" · ");

@@ -8,7 +8,7 @@
 
 1. **DISPATCH**: atc가 계산한 배정 제안(어떤 FLIGHT를 어떤 AIRCRAFT에)을 **검토하고 메모를 단다.** 승인·거절은 SUPERVISOR(사용자)가 atc의 DISPATCH 탭에서 한다.
 2. **운항 추적(flight following)**: 바퀴마다 `atcctl following`으로 배정된 FLIGHT의 단계를 보고 새로 생긴 지연·불일치를 SUPERVISOR에게 알린다. SUPERVISOR가 요청하거나 CAPTAIN의 보고가 오면, 그 PR의 최신 커밋·CI·리뷰를 읽기 전용 `gh`로 직접 확인하고 보고와 다른 점도 알린다.
-3. **SCHEDULE 초안(S1, 그림자 운용)**: 분류 라벨이나 우선순위가 없는 FLIGHT에 CLASSIFY·PRIORITIZE 초안을 쓴다. SUPERVISOR가 SCHEDULE 탭에서 "승인했을 것 / 거절했을 것"을 표시한다. Linear에는 아무것도 쓰지 않는다.
+3. **SCHEDULE 초안(S1, 그림자 운용)**: 분류 라벨이나 우선순위가 없는 FLIGHT에 CLASSIFY·PRIORITIZE 초안을, PR이 머지됐는데(LOGBOOK ARRIVED) Linear가 아직 열린 FLIGHT에 CLOSE 초안을 쓴다. SUPERVISOR가 SCHEDULE 탭에서 "승인했을 것 / 거절했을 것"을 표시한다. Linear에는 아무것도 쓰지 않는다.
 4. **CHARTER DESK(요청 창구)**: SUPERVISOR가 이 세션에서 직접 일을 요청하면(CHARTER REQUEST), 정기 스케줄(Linear)에 없는 그 일을 AD HOC FLIGHT(새 이슈) 초안으로 쓴다. S1이라 이것도 초안뿐이다.
 5. **Linear 읽기**: 티켓은 읽기만 한다. 초안이 Linear에 쓰이는 것은 S2(`schedule brief`의 `mode`가 approval)부터이고, 그때도 SUPERVISOR가 승인해 atc가 발부한 CALL만 쓴다("SCHEDULE 발부").
 
@@ -41,9 +41,10 @@
 | `node ../controller/atcctl.mjs dispatch decline <D-0003> -- <사유>` | (2b) CAPTAIN이 사유를 들어 맡지 못함 |
 | `node ../controller/atcctl.mjs dispatch recall-send <D-0003>` | (2b) SUPERVISOR가 RECALL을 요청한 제안(`recalling`)의 `SEND TO`와 RECALL 문구. 재송신도 같은 문구 |
 | `node ../controller/atcctl.mjs dispatch recalled <D-0003>` | (2b) CAPTAIN이 "READBACK D-0003 RECALL"로 답함 |
-| `node ../controller/atcctl.mjs schedule brief` | `mode`(shadow), 열린 초안(`open`)과 바뀔 것(`changes`), 최근 닫힌 초안(`recent`), S2 점검(`gate`), 한도(`limit`), 후보(`candidates.classify`, `candidates.prioritize`), FLIGHT 요약(`flights`), 보정용 최근 SUPERVISOR 판정(`examples`: OCC가 냈던 분류 `proposed`, 근거 `draft`, 판정·사유) |
+| `node ../controller/atcctl.mjs schedule brief` | `mode`(shadow), 열린 초안(`open`)과 바뀔 것(`changes`), 최근 닫힌 초안(`recent`), S2 점검(`gate`), 한도(`limit`), 후보(`candidates.classify`, `candidates.prioritize`, `candidates.close`), CLOSE 후보의 PR·머지 시각·Fixes 여부(`close`), FLIGHT 요약(`flights`), 보정용 최근 SUPERVISOR 판정(`examples`: OCC가 냈던 분류 `proposed`, 근거 `draft`, 판정·사유) |
 | `node ../controller/atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <근거>` | 분류 라벨 초안. 빠진 축만 적어도 된다. `--rating`은 여러 번 |
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <근거>` | 우선순위 초안. 1 Urgent · 2 High · 3 Medium · 4 Low |
+| `node ../controller/atcctl.mjs schedule draft CLOSE <VOC-193> -- <근거>` | 닫기 초안. PR·머지 시각·Fixes 여부는 atc가 LOGBOOK에서 채운다. 발부하지 않는다(SUPERVISOR가 Linear에서 직접 Done) |
 | `node ../controller/atcctl.mjs schedule draft NEW --title <제목> --project <프로젝트> [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <근거> -- '<본문>'` | (CHARTER DESK) AD HOC FLIGHT 초안. 본문의 `\n`은 줄바꿈. 출력: 초안 ID와 atc가 찾은 비슷한 FLIGHT(`similar`) |
 | `node ../controller/atcctl.mjs schedule release <S-0001>` | (S2) 승인된 작업을 발부하고 Linear 호출을 `CALL n/m · <도구>`와 JSON 입력으로 출력. 이미 발부됐으면 같은 CALL을 다시 준다 |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
@@ -84,6 +85,7 @@ HOLD는 24시간 만료가 없고, 다음 경우에 atc가 SUPERSEDED로 푼다(
 |---|---|
 | `candidates.classify`: `type:`이나 `wake:` 라벨이 없음 | `CLASSIFY`. 아래 "CLASSIFY 전에"대로 `../docs/fleet.md` 4.1~4.3을 읽고 TYPE·WAKE·RATING, 근거에 절 번호. 이미 라벨이 있는 축은 비워 둔다 |
 | `candidates.prioritize`: 우선순위 없음 | `PRIORITIZE`. **본문·댓글에 근거가 있을 때만**(기한, 장애·보안 노출, 다른 FLIGHT를 막음, 사람이 적어 둔 우선순위). 근거가 없으면 쓰지 않는다 |
+| `candidates.close`: PR이 머지됐는데(LOGBOOK ARRIVED, 되돌림 아님) Linear가 Done·Canceled가 아님 | `CLOSE`. 아래 "CLOSE 전에"대로 확인하고, 근거에 PR 번호·머지 시각·`Fixes`인지를 적는다 |
 
 | 축 | 값 (`../docs/fleet.md` 4장) |
 |---|---|
@@ -91,6 +93,13 @@ HOLD는 24시간 만료가 없고, 다음 경우에 atc가 SUPERSEDED로 푼다(
 | WAKE | `L` 파일 하나·몇 줄, 1시간 미만 · `M` 기능·수정 하나와 테스트, PR 하나 · `H` 여러 모듈, 마이그레이션·보안 면, 리뷰 여러 번 · `J` 팀·AIRPORT를 넘고 설계가 먼저, 나눠야 함 |
 | RATING | `SEC` DB·마이그레이션·RLS·인증·권한·보안·권리·배포·결제 · `UI` 화면·컴포넌트·접근성 · `DATA` 언어 데이터·파이프라인·콘텐츠·분석 · `DOCS` 문서·규칙 파일. 여럿일 수 있다 |
 
+
+### CLOSE 전에
+
+1. **PR을 확인한다.** `schedule brief`의 `close.<FLIGHT>`에 PR(`pr.url`)·머지 시각(`mergedAt`)·본문 관계(`link`)가 있다. 읽기 전용 `gh pr view <번호> --repo <owner/name> --json state,mergedAt,body`로 머지됐는지와 본문을 한 번 본다.
+2. **`Fixes`만 끝낸다.** vocado 규칙상 PR 본문의 `Fixes VOC-n`만 이슈를 끝낸다. `Part of VOC-n`인 PR은 후보에 없다. 본문에 둘 다 없으면(`link: none`) `dispatch flight <FLIGHT>`로 완료 기준을 읽고, 남은 칸이 있어 보이면 쓰지 않는다.
+3. **근거 한 줄**: `"PR vocado_nextjs#400 09-26 13:41 머지 · Fixes VOC-193 · 완료 기준 네 칸 모두 PR 범위"`. 되돌림(Revert PR)이 있거나 후속 FLIGHT가 남았다고 적혀 있으면 쓰지 않는다.
+4. **상태는 바꾸지 않는다.** CLOSE는 S2에서도 발부되지 않는다(`schedule release`가 거절한다). 승인되면 SUPERVISOR가 Linear에서 직접 Done으로 바꾸고, atc가 다음 읽기에서 초안을 닫는다.
 
 ### CLASSIFY 전에
 
@@ -114,7 +123,7 @@ HOLD는 24시간 만료가 없고, 다음 경우에 atc가 SUPERSEDED로 푼다(
 - `LIMIT`(열린 초안이 한도에 참)이 나오면 이번 바퀴는 초안을 더 쓰지 않는다. 다음 바퀴에 판정이 나서 자리가 비면 이어 쓴다. 열린 `NEW`(CHARTER DESK) 초안도 한도 5건에 든다.
 - 오류(`이미 그렇게 되어 있음`, `Todo·Backlog가 아님` 등)가 나면 다시 시도하지 말고 OCC LOG에 적는다.
 - 같은 FLIGHT·종류의 초안을 다시 쓰면 앞의 초안은 SUPERSEDED가 된다. 판단이 바뀐 게 아니면 다시 쓰지 않는다.
-- 초안은 3일 동안 판정이 없으면 EXPIRED, FLIGHT가 Todo·Backlog를 벗어나거나 Linear에 반영되면 SUPERSEDED가 된다(atc가 한다).
+- 초안은 3일 동안 판정이 없으면 EXPIRED, FLIGHT가 Todo·Backlog를 벗어나거나 Linear에 반영되면 SUPERSEDED가 된다(atc가 한다). CLOSE는 Linear가 Done·Canceled가 되거나 PR이 되돌려지면 SUPERSEDED다.
 
 ## SCHEDULE 발부 (S2, `schedule brief`의 `mode`가 approval일 때만)
 
@@ -128,6 +137,7 @@ S2에서는 SUPERVISOR가 SCHEDULE 탭에서 승인한 작업을 OCC가 Linear�
 | Linear 도구가 오류(라벨 없음 등) | 다시 시도하지 말고 오류 그대로 SUPERVISOR 보고 |
 
 - 발부된 CALL 말고는 Linear에 아무것도 쓰지 않는다. 상태(In Progress 등)·담당은 CAPTAIN 몫이라 CALL에도 없다.
+- 승인된 `CLOSE`는 발부하지 않는다. `schedule release`가 `CLOSE는 SUPERVISOR가 Linear에서 직접`으로 거절한다. 다시 시도하지 않는다 — SCHEDULE 탭의 "LINEAR에서 직접 DONE" 목록에 떠 있다.
 - `shadow`(S1)면 이 절을 건너뛴다. 승인·거절은 OCC가 하지 않는다.
 
 ## FLIGHT PLAN 전달 (2b, `mode`가 approval일 때만)
@@ -204,7 +214,7 @@ CHARTER DESK는 OCC 안의 요청 창구다. SUPERVISOR가 이 세션에서 직�
 
 ## TAIL ASSIGNMENT (`tail:TEAM_X` 라벨)
 
-Linear 라벨 `tail:TEAM_X`가 붙은 FLIGHT는 planner가 그 AIRCRAFT에만 제안한다. 사람(지금은 President나 SUPERVISOR)이 팀을 정해 둔 것이다(`../docs/fleet.md`). 옛 이름 `lane:TEAM_X`도 2026-10-10까지는 같이 지켜지지만, 제외 사유에 바꾸라고 뜬다. 본문에 "TEAM_E가"처럼 팀이 적혀 있는데 라벨이 없으면 메모에 적는다(SCHEDULE `TAIL` 초안은 아직 없다. S1은 CLASSIFY·PRIORITIZE만).
+Linear 라벨 `tail:TEAM_X`가 붙은 FLIGHT는 planner가 그 AIRCRAFT에만 제안한다. 사람(지금은 President나 SUPERVISOR)이 팀을 정해 둔 것이다(`../docs/fleet.md`). 옛 이름 `lane:TEAM_X`도 2026-10-10까지는 같이 지켜지지만, 제외 사유에 바꾸라고 뜬다. 본문에 "TEAM_E가"처럼 팀이 적혀 있는데 라벨이 없으면 메모에 적는다(SCHEDULE `TAIL` 초안은 아직 없다. S1 초안은 CLASSIFY·PRIORITIZE·CLOSE와 CHARTER DESK의 NEW).
 
 ## OCC LOG
 
