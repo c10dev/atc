@@ -26,6 +26,7 @@ interface FleetBrief {
   defaultBase: string | null;
   nextRegistration: string | null;
   observedWindowDays?: number; // 관측 CREW를 세는 기간(옛 서버엔 없음)
+  dispatchMode?: "shadow" | "approval"; // CREW CHANGE 승인은 approval(2b)에서만(옛 서버엔 없음)
 }
 
 // RADAR·STRIPS와 같은 말: 작업 중 AIRBORNE, 대기 중 STAND를 쥐었으면 HOLDING, 아니면 PARKED
@@ -161,6 +162,7 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
               onAog={() => toggleAog(a)}
               onRetire={() => retire(a)}
               windowDays={brief.observedWindowDays}
+              dispatchMode={brief.dispatchMode}
               onCrewChanged={load}
             />
           ),
@@ -276,6 +278,7 @@ function Card({
   onAog,
   onRetire,
   windowDays,
+  dispatchMode,
   onCrewChanged,
 }: {
   a: AircraftView;
@@ -284,6 +287,7 @@ function Card({
   onAog: () => void;
   onRetire: () => void;
   windowDays?: number;
+  dispatchMode?: string;
   onCrewChanged: () => void;
 }) {
   return (
@@ -319,7 +323,7 @@ function Card({
           </li>
         ))}
       </ul>
-      <FleetCrew a={a} windowDays={windowDays} onChanged={onCrewChanged} />
+      <FleetCrew a={a} windowDays={windowDays} dispatchMode={dispatchMode} onChanged={onCrewChanged} />
 
       <h3 className="fl-sub">
         TYPE RATING {a.ratingsIsDefault && <em>기본값</em>}
