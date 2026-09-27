@@ -22,8 +22,8 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--phase-approach) 75%, transparent);
   color: inherit;
 }
-/* Codex 한도 때 Muse 리뷰(ATC-7): 통과는 CLEARED 색 테두리, 대기·지적·제외는 옅게 */
-.pr-muse {
+/* Codex 한도 때 착륙 리뷰(ATC-7·27): 통과는 CLEARED 색 테두리, 대기·지적·제외는 옅게 */
+.pr-extreview {
   display: inline-flex;
   align-items: center;
   padding: 0 var(--space-1-5);
@@ -34,11 +34,11 @@
   white-space: nowrap;
   color: var(--muted);
 }
-.pr-muse.is-pass {
+.pr-extreview.is-pass {
   border-style: solid;
   color: var(--phase-cleared);
 }
-.pr-muse.is-findings {
+.pr-extreview.is-findings {
   color: var(--phase-approach);
 }
 .pr-count {

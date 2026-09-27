@@ -1,0 +1,65 @@
+{
+  "model": "claude-ocx-opencode-go--deepseek-v4.1-flash",
+  "permissions": {
+    "allow": [
+      "Bash(node ../controller/atcctl.mjs *)",
+      "Bash(node /home/c10/projects/atc/controller/atcctl.mjs *)",
+      "Bash(jq *)"
+    ],
+    "deny": [
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "SendMessage",
+      "Agent",
+      "Artifact"
+    ],
+    "additionalDirectories": [
+      "../docs"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/guard.mjs\" --review || exit 2",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../occ/mcp-guard.mjs\" --read-only || exit 2",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/read-guard.mjs\" || exit 2",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|SendMessage|Agent|Task|Artifact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '착륙 리뷰 세션(REVIEW)은 파일을 고치거나 메시지를 보내거나 하위 에이전트를 부르지 않습니다 — 리뷰는 atcctl landing review로만.' >&2; exit 2",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

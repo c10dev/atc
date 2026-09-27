@@ -1,6 +1,6 @@
 ---
 name: tick
-description: CROSSCHECK 한 바퀴 — 규정이 바뀌었는지 확인하고, mark가 없는 열린 DISPATCH 제안·SCHEDULE 초안마다 FLIGHT 본문을 읽어 예비 판정(agree/disagree)과 이유 한 줄을 단다. Codex 한도로 멈춘 PR에는 Muse 리뷰(P0·P1·P2)를 남긴다. 승인·거절은 하지 않는다. `/loop 10m /tick`으로 돌린다.
+description: CROSSCHECK 한 바퀴 — 규정이 바뀌었는지 확인하고, mark가 없는 열린 DISPATCH 제안·SCHEDULE 초안마다 FLIGHT 본문을 읽어 예비 판정(agree/disagree)과 이유 한 줄을 단다. 승인·거절은 하지 않는다. `/loop 10m /tick`으로 돌린다.
 ---
 
 # CROSSCHECK 한 바퀴
@@ -8,7 +8,7 @@ description: CROSSCHECK 한 바퀴 — 규정이 바뀌었는지 확인하고, m
 **한국어** · [English](SKILL.en.md)
 
 0. `node ../controller/atcctl.mjs manual check`. `CHANGED`면 `CLAUDE.md`와 이 파일을 다시 읽고 `node ../controller/atcctl.mjs manual ack`한 뒤, 다시 읽은 규정대로 진행한다.
-1. `node ../controller/atcctl.mjs crosscheck brief`를 실행한다. `dispatch.pending`, `schedule.pending`, `landing.pending`이 모두 비었으면 7로 간다.
+1. `node ../controller/atcctl.mjs crosscheck brief`를 실행한다. `dispatch.pending`과 `schedule.pending`이 모두 비었으면 7로 간다.
 2. `examples`를 먼저 읽는다. SUPERVISOR가 최근에 무엇을 어떤 사유로 판정했는지가 이번 바퀴의 기준이다.
 3. `pending`의 건마다(한 바퀴에 모두 합쳐 5건까지, DISPATCH 먼저):
    - `node ../controller/atcctl.mjs dispatch flight <FLIGHT key>`로 본문과 댓글을 읽는다. NEW 초안은 FLIGHT가 없으니 `schedule brief`의 그 초안 `payload`(본문, `similar`)를 본다. TARGET·ROUTE 초안도 FLIGHT가 없다. 그 `payload`의 `from`(지금 값)과 `evidence`(atc가 붙인 숫자)만 보고, 숫자가 OCC 근거를 받쳐 주는지와 `../docs/fleet.md` 7.4의 기준에 맞는지 판정한다.
@@ -20,7 +20,6 @@ description: CROSSCHECK 한 바퀴 — 규정이 바뀌었는지 확인하고, m
 5. SCHEDULE 초안이면 `node ../controller/atcctl.mjs schedule crosscheck <S-xxxx> agree|disagree -- '<이유 한 줄>'`.
    - 409(열린 건이 아님, HOLD 중)가 나오면 그 사이 SUPERVISOR가 판정했거나 상황이 바뀐 것이다. 다시 시도하지 않는다.
    - mark 명령은 파이프 없이 단독으로 쓴다. guard가 이 세션의 실제 모델을 확인하고 막으면("CROSSCHECK mark 차단 — … 실제 모델") 이번 바퀴의 mark를 모두 멈추고 LOG에 적는다.
-5-1. `landing.pending`이 있으면(Codex 한도 PR, 한 바퀴에 2건까지) CLAUDE.md "LANDING 리뷰"대로 `node ../controller/atcctl.mjs landing review <pr>`로 자료를 읽고, 완료 기준·금지 사항·위험을 보고 `landing review <pr> --head <head> --verdict pass|findings -- '<리뷰>'`를 남긴다. 등급은 P0·P1·P2, P0·P1이 없을 때만 pass. `landing.excluded`는 건드리지 않는다. 403·409면 다시 시도하지 않는다.
 6. 근거가 부족해 정할 수 없는 건은 mark를 달지 않는다.
 7. CROSSCHECK LOG를 한두 줄 남긴다. 아무 일 없으면 "특이 사항 없음".
 

@@ -311,24 +311,42 @@ test("crew-change: OCC(--gh-read)는 brief·send·readback 통과, CROSSCHECK는
   assert.notEqual(check("node ../controller/atcctl.mjs crew-change send $(echo CC-0003)", OCC, { ghRead: true }), null);
 });
 
-test("CROSSCHECK landing review(ATC-7): 자료 읽기는 통과, 기록(--verdict)은 실제 모델 확인 뒤 모델을 붙인다. 다른 landing 명령은 막는다", () => {
-  const READ = "node ../controller/atcctl.mjs landing review vocado_nextjs#391";
-  const WRITE = "node ../controller/atcctl.mjs landing review vocado_nextjs#391 --head abc1234 --verdict pass -- '완료 기준 충족, P2 없음'";
+test("착륙 리뷰는 CROSSCHECK에서 빠졌다(ATC-27): --crosscheck는 landing 명령을 모두 막는다", () => {
   const opts = { crosscheck: true };
-  assert.equal(check(READ, CROSSCHECK, opts), null);
-  assert.equal(check(`${READ} | jq '.diffTruncated'`, CROSSCHECK, opts), null);
-  assert.equal(check(WRITE, CROSSCHECK, opts), null);
-  assert.notEqual(check("node ../controller/atcctl.mjs landing reviews", CROSSCHECK, opts), null);
-  assert.notEqual(check("node ../controller/atcctl.mjs landing clear vocado_nextjs#391", CROSSCHECK, opts), null);
+  for (const c of ["node ../controller/atcctl.mjs landing review vocado_nextjs#391", "node ../controller/atcctl.mjs landing review vocado_nextjs#391 --head abc1234 --verdict pass -- 'ok'", "node ../controller/atcctl.mjs landing queue"]) {
+    assert.match(check(c, CROSSCHECK, opts) ?? "", /CROSSCHECK가 쓸 수 없는 atc 명령: landing/, c);
+  }
+});
+
+test("REVIEW(--review, ATC-27): manual·landing queue·landing review만, gh 없음. 기록(--verdict)은 DeepSeek V4.1 Flash만 모델을 붙여 통과", () => {
+  const REVIEW = HERE.replace(/controller$/, "review");
+  const READ = "node ../controller/atcctl.mjs landing review vocado_nextjs#385";
+  const WRITE = "node ../controller/atcctl.mjs landing review vocado_nextjs#385 --head abc1234 --verdict pass -- '완료 기준 충족, P2 없음'";
+  const opts = { review: true };
+  for (const c of ["node ../controller/atcctl.mjs manual check", "node ../controller/atcctl.mjs landing queue", `${READ} | jq '.diffTruncated'`, READ, WRITE]) assert.equal(check(c, REVIEW, opts), null, c);
+  for (const c of [
+    "node ../controller/atcctl.mjs crosscheck brief",
+    "node ../controller/atcctl.mjs dispatch crosscheck D-0001 agree -- 'x'",
+    "node ../controller/atcctl.mjs brief",
+    "node ../controller/atcctl.mjs landing clear vocado_nextjs#385",
+    "gh pr view 385 --repo chaehy5665/vocado_nextjs",
+    "gh pr diff 385",
+    `ATC_REVIEW_MODEL=deepseek-v4.1-flash ${WRITE}`,
+  ]) assert.notEqual(check(c, REVIEW, { review: true, ghRead: true }), null, c);
   // 읽기에는 모델 확인이 없다
-  assert.deepEqual(checkMarkModel(READ, CROSSCHECK, null), { command: READ });
-  // 기록은 mark처럼: Muse면 모델을 붙이고, Claude·기록 없음은 막고, 이어 쓰기·--model도 막는다
-  const ok = checkMarkModel(WRITE, CROSSCHECK, transcript("claude-opus-5-5", "muse-spark-1.3-contributor"));
-  assert.equal(ok.command, `ATC_CROSSCHECK_MODEL='muse-spark-1.3-contributor' ${WRITE}`);
-  assert.match(checkMarkModel(WRITE, CROSSCHECK, transcript("claude-opus-5-5")).reason, /쓸 수 없음/);
-  assert.match(checkMarkModel(WRITE, CROSSCHECK, null).reason, /읽지 못해/);
-  assert.match(checkMarkModel(`${WRITE} && node ../controller/atcctl.mjs crosscheck brief`, CROSSCHECK, transcript("muse-spark-1.3-contributor")).reason, /단독으로/);
-  assert.match(checkMarkModel(WRITE.replace("--verdict pass", "--model x --verdict pass"), CROSSCHECK, transcript("muse-spark-1.3-contributor")).reason, /세션이 적지 않는다/);
-  // -- 뒤 리뷰 글에 --verdict가 있어도 읽기가 기록이 되지는 않는다
-  assert.deepEqual(checkMarkModel(`${READ} -- --verdict`, CROSSCHECK, null), { command: `${READ} -- --verdict` });
+  assert.deepEqual(checkMarkModel(READ, REVIEW, null, "review"), { command: READ });
+  // 기록: DeepSeek V4.1 Flash(두 경로 이름)면 ATC_REVIEW_MODEL을 붙인다
+  for (const m of ["claude-ocx-opencode-go--deepseek-v4.1-flash", "deepseek-v4.1-flash"]) {
+    assert.equal(checkMarkModel(WRITE, REVIEW, transcript("claude-opus-5-5", m), "review").command, `ATC_REVIEW_MODEL='${m}' ${WRITE}`);
+  }
+  // Muse·Claude·다른 DeepSeek·기록 없음은 막는다
+  for (const m of ["muse-spark-1.3-contributor", "claude-opus-5-5", "deepseek-v4-pro", "deepseek-chat"]) {
+    assert.match(checkMarkModel(WRITE, REVIEW, transcript(m), "review").reason, /착륙 리뷰\(REVIEW\)로 쓸 수 없음/, m);
+  }
+  assert.match(checkMarkModel(WRITE, REVIEW, null, "review").reason, /읽지 못해/);
+  assert.match(checkMarkModel(`${WRITE} && node ../controller/atcctl.mjs landing queue`, REVIEW, transcript("deepseek-v4.1-flash"), "review").reason, /단독으로/);
+  assert.match(checkMarkModel(WRITE.replace("--verdict pass", "--model x --verdict pass"), REVIEW, transcript("deepseek-v4.1-flash"), "review").reason, /세션이 적지 않는다/);
+  assert.deepEqual(checkMarkModel(`${READ} -- --verdict`, REVIEW, null, "review"), { command: `${READ} -- --verdict` });
+  // CROSSCHECK 모드의 mark는 여전히 Muse만(DeepSeek은 CROSSCHECK로 쓰지 않는다)
+  assert.match(checkMarkModel(MARK, CROSSCHECK, transcript("deepseek-v4.1-flash")).reason, /CROSSCHECK로 쓸 수 없음/);
 });

@@ -74,8 +74,8 @@ CLEARED TO LAND 조건 — 모두 PR의 **최신 커밋(head)** 기준이다.
 - Codex는 큰 문제가 없으면 리뷰 대신 PR에 👍만 남긴다. 이 👍가 head 커밋 시각 뒤에 달렸으면 head 리뷰로 친다. 새 push 전부터 남아 있던 👍는 세지 않는다.
 - Codex가 문제를 찾으면 COMMENTED 리뷰("💡 Codex Review", P1·P2 줄 댓글)를 단다. 이것은 통과가 아니라 지적이다. head에 이 리뷰가 있으면 `review-findings`로 막히고, 그 리뷰 뒤에 Codex 👍가 달리거나, 사람(Codex·작성자 아닌 리뷰어)이 지적을 보고 head에 APPROVED해야 풀린다. 지적 전 APPROVED나 사람 COMMENTED로는 풀리지 않는다.
 - 사람(Codex·작성자 아닌 리뷰어)의 COMMENTED 리뷰는 APPROVED처럼 통과로 친다.
-- Codex가 한도에 걸리면 "usage limits" 댓글을 단다. 이렇게 head 뒤에 한도 댓글이 있거나 6시간 넘게 Codex가 말이 없으면 CODEX UNAVAILABLE이다. 그때는 CROSSCHECK(Muse)가 diff를 리뷰하고, 현재 head에 P0·P1 없는 pass를 남기면 그것이 리뷰가 된다. 스트립에 "REVIEW: MUSE (Codex 한도)"로 보인다. 기다리는 동안은 "Codex 한도 · MUSE 리뷰 대기"다. 새 push는 새 리뷰가 필요하고, Codex가 돌아와 리뷰하면 Codex가 이긴다.
-- FLIGHT가 없는 PR("Muse 리뷰 제외 — FLIGHT 없음")과 기밀 작업(FLIGHT의 `rating:SEC`, Risk: Security·Rights·Contract 라벨, `.env`·비밀·키 경로를 건드리는 diff)은 Muse에 보내지 않는다. 스트립에 "Muse 리뷰 제외 — rating:SEC"처럼 뜨고, Codex나 SUPERVISOR 리뷰를 기다린다.
+- Codex가 한도에 걸리면 "usage limits" 댓글을 단다. 이렇게 head 뒤에 한도 댓글이 있거나 6시간 넘게 Codex가 말이 없으면 CODEX UNAVAILABLE이다. 그때는 착륙 리뷰 세션(REVIEW, DeepSeek V4.1 Flash, tmux `atc-review`)이 diff를 리뷰하고, 현재 head에 P0·P1 없는 pass를 남기면 그것이 리뷰가 된다. 스트립에 "REVIEW: DEEPSEEK (Codex 한도)"로 보인다. 기다리는 동안은 "Codex 한도 · 착륙 리뷰 대기"다. 새 push는 새 리뷰가 필요하고, Codex가 돌아와 리뷰하면 Codex가 이긴다.
+- 외부 모델에 보내지 않는 PR: FLIGHT가 없는 PR, FLIGHT의 `rating:SEC`·Risk: Security·Rights·Contract 라벨, 그리고 라벨이 없어도 보안 diff(`supabase/migrations`·`functions`, `*.sql`, auth·session·admission, RLS·policy, middleware, `.env`·비밀 경로)나 제목·본문의 보안 키워드(security, privilege, RLS, grant, revoke, EXECUTE, definer, admission, auth, ACL, "use server", exposure). 스트립에 "외부 리뷰 제외 — migrations"처럼 뜨고, Codex나 SUPERVISOR 리뷰를 기다린다. 외부 리뷰의 pass가 이미 있어도 착륙 근거가 되지 않는다.
 - PR 브랜치에 `voc-<번호>`가 없으면 PR 제목 끝의 `(VOC-번호)`로 FLIGHT를 찾는다.
 - 판정 이유는 저장소의 `docs/occ.ko.md` 9.1절.
 
