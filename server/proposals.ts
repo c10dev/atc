@@ -133,6 +133,7 @@ export interface Proposal {
   preflight?: Preflight; // PREFLIGHT HOLD: CROSSCHECK가 FLIGHT 칩으로 disagree해 HELD로 감(ATC-3). 대기열로 돌리면 지운다
   firstHeldAt?: string; // 처음 HOLD(OCC·PREFLIGHT)된 시각. 준비율(readyRate)에 쓴다
   requeuedAt?: string; // SUPERVISOR가 HOLD를 대기열로 돌린 시각. 그 뒤로는 다시 HOLD하지 않고, 24시간 만료도 여기서 센다
+  gateCodes?: string[]; // SUPERVISOR가 뒤늦게 단 사유 칩(recode, ATC-5). 게이트 계산에만 쓴다 — reasonCodes와 달리 FLIGHT 보류를 걸지 않는다
 }
 
 type Create = Omit<Proposal, "status" | "decidedAt" | "statusAt" | "timeline" | "reason" | "note" | "caution" | "hold" | "holdAt" | "message" | "departedStand" | "crosscheck">;
@@ -144,6 +145,7 @@ export type Op =
   | { op: "hold"; id: string; at: string; blockedBy: string[] }
   | { op: "preflight"; id: string; at: string; by: string; model: string; codes: string[]; reason: string } // 서버가 CROSSCHECK mark를 보고 건다
   | { op: "requeue"; id: string; at: string } // SUPERVISOR: HOLD를 풀어 같은 제안을 대기열로
+  | { op: "recode"; id: string; at: string; by: string; codes: string[] } // SUPERVISOR: 지난 거절에 사유 칩(게이트 계산만)
   | ({ op: "crosscheck"; id: string } & CrosscheckLine)
   | { op: "approve"; id: string; at: string; via?: Via }
   | { op: "reject"; id: string; at: string; reason: string | null; via?: Via; reasonCodes?: string[] }
@@ -157,7 +159,7 @@ export type Op =
   | { op: "supersede"; id: string; at: string; reason: string }
   | { op: "expire"; id: string; at: string; reason?: string };
 
-type StatusOp = Exclude<Op["op"], "create" | "note" | "brief" | "hold" | "crosscheck" | "preflight" | "requeue">;
+type StatusOp = Exclude<Op["op"], "create" | "note" | "brief" | "hold" | "crosscheck" | "preflight" | "requeue" | "recode">;
 
 // 상태 전이 규칙. 여기 없는 전이는 무시한다(API도 같은 규칙으로 검사한다).
 const NEXT: Partial<Record<ProposalStatus, Partial<Record<StatusOp, ProposalStatus>>>> = {
@@ -238,6 +240,11 @@ export function fold(ops: Op[]): Proposal[] {
       p.hold = [];
       p.holdAt = o.at;
       p.firstHeldAt ??= o.at;
+      continue;
+    }
+    if (o.op === "recode") {
+      // 그림자 거절에만. 나중 recode가 앞의 것을 대신한다
+      if (p.status === "disagreed") p.gateCodes = o.codes;
       continue;
     }
     if (o.op === "requeue") {
@@ -541,12 +548,24 @@ export function overdueOf(proposals: Proposal[], now: number): string[] {
     .map((p) => p.id);
 }
 
+// 게이트가 보는 거절 사유 칩: SUPERVISOR가 뒤늦게 단 칩(recode)이 있으면 그것, 없으면 판정 때의 칩
+export const gateCodesOf = (p: Pick<Proposal, "gateCodes" | "reasonCodes">): string[] => p.gateCodes ?? p.reasonCodes ?? [];
+// 준비 안 됨 거절(ATC-5): 칩이 모두 FLIGHT 칩인 그림자 거절. 팀 선택이 아니라 티켓 문제라 게이트에서 뺀다.
+// 칩이 없거나 wrong-aircraft·other가 하나라도 섞이면 팀 선택 판정으로 센다
+export function notReadyOf(p: Pick<Proposal, "status" | "gateCodes" | "reasonCodes">): boolean {
+  const codes = gateCodesOf(p);
+  return p.status === "disagreed" && codes.length > 0 && codes.every((c) => (FLIGHT_HOLD_CODES as readonly string[]).includes(c));
+}
+
 export function gateOf(proposals: Proposal[]) {
-  const decided = proposals.filter((p) => (p.status === "agreed" || p.status === "disagreed") && p.via !== "atfm" && p.via !== "preflight");
+  // 게이트는 AIRCRAFT 선택만 잰다(2026-09-27, SUPERVISOR): 사람 판정 중 준비 안 됨 거절은 따로 센다
+  const judged = proposals.filter((p) => (p.status === "agreed" || p.status === "disagreed") && p.via !== "atfm" && p.via !== "preflight");
+  const decided = judged.filter((p) => !notReadyOf(p));
   const agreed = decided.filter((p) => p.status === "agreed").length;
   const agreement = decided.length ? agreed / decided.length : null;
   return {
     decided: decided.length,
+    notReady: judged.length - decided.length, // 준비 안 됨 거절(게이트 제외)
     agreed,
     agreement,
     target: GATE,
@@ -564,13 +583,17 @@ export function gateOf(proposals: Proposal[]) {
 }
 
 // PREFLIGHT 통계(ASSIGN만). held: 한 번이라도 HOLD(OCC·PREFLIGHT)된 제안(대기열로 돌렸거나 확정했어도 센다),
-// passed: HOLD 없이 SUPERVISOR 판정까지 간 제안. readyRate = passed / (passed + held) — 게이트 기준은 아니다
+// notReady: HOLD 없이 판정까지 갔지만 준비 안 됨 거절(칩이 모두 FLIGHT 칩, ATC-5)이 된 제안 — 거름을 빠져나간 것,
+// passed: 그 밖에 HOLD 없이 SUPERVISOR 판정까지 간 제안. readyRate = passed / (passed + held + notReady) — 게이트 기준은 아니다
 export function preflightStatsOf(proposals: Proposal[]) {
   const assign = proposals.filter((p) => p.kind === "ASSIGN");
   const held = assign.filter((p) => p.firstHeldAt).length;
   const holding = assign.filter((p) => p.status === "proposed" && isHeld(p)).length;
-  const passed = assign.filter((p) => !p.firstHeldAt && humanOf(p)).length;
-  return { held, holding, passed, readyRate: passed + held ? passed / (passed + held) : null };
+  const judged = assign.filter((p) => !p.firstHeldAt && humanOf(p));
+  const notReady = judged.filter(notReadyOf).length;
+  const passed = judged.length - notReady;
+  const all = passed + held + notReady;
+  return { held, holding, passed, notReady, readyRate: all ? passed / all : null };
 }
 
 // 거절 사유 칩별 건수, 최근 예시 FLIGHT, 지금 planner가 그 사유를 스스로 거르나(REASON_FILTERS).
@@ -740,7 +763,7 @@ async function cardBriefsOf(cards: Proposal[], s: Snapshot, all: Proposal[], log
 
 // POST /api/dispatch/proposals/:id/<동작>. 2b 점검표(readiness.ts)도 이 목록으로 RECALL·ARRIVED 창구를 확인한다
 export const DISPATCH_ACTIONS = [
-  "verdict", "note", "briefing", "hold", "unhold", "requeue", "confirm-hold", "approve", "reject", "release", "accept", "decline", "recall", "recall-send", "recalled", "arrived",
+  "verdict", "note", "briefing", "hold", "unhold", "requeue", "confirm-hold", "codes", "approve", "reject", "release", "accept", "decline", "recall", "recall-send", "recalled", "arrived",
 ] as const;
 // HELD 제안에 SUPERVISOR 판정을 받지 않는다(PREFLIGHT, ATC-3): 대기열로 돌린 뒤 판정하거나 FLIGHT 보류를 확정한다
 const JUDGE_ACTIONS: readonly DispatchAction[] = ["verdict", "approve", "reject"];
@@ -864,6 +887,19 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
         // PREFLIGHT: HOLD를 풀고 같은 제안을 SUPERVISOR 대기열로 돌린다(24시간은 지금부터)
         if (p.status !== "proposed" || !isHeld(p)) return c.json({ error: "HOLD 중인 제안이 아님" }, 409);
         append([{ op: "requeue", id, at }]);
+      } else if (name === "codes") {
+        // ATC-5: 지난 그림자 거절에 사유 칩을 단다. 게이트 계산만 바꾸고 FLIGHT 보류(#56)는 뒤늦게 걸지 않는다
+        if (p.status !== "disagreed") return c.json({ error: `거절(disagreed)한 제안에만 사유 칩을 단다 — 지금 ${p.status}` }, 409);
+        if (p.via === "atfm" || p.via === "preflight") return c.json({ error: "사람 판정이 아닌 거절(ATFM·PREFLIGHT 확정)에는 달지 않는다" }, 409);
+        let codes: string[];
+        try {
+          codes = parseReasonCodes(body.codes);
+        } catch (e) {
+          if (e instanceof ReasonCodeError) return c.json({ error: e.message.replace("reasonCodes", "codes") }, 400);
+          throw e;
+        }
+        if (!codes.length) return c.json({ error: "codes(사유 칩 하나 이상)가 필요함" }, 400);
+        append([{ op: "recode", id, at, by: "SUPERVISOR", codes }]);
       } else if (name === "confirm-hold") {
         // PREFLIGHT 확정: FLIGHT 칩으로 닫아 #56의 FLIGHT 보류(24시간, 이슈가 바뀌면 풀림)를 건다. 사람 판정(게이트)에는 세지 않는다
         if (p.status !== "proposed" || !isHeld(p)) return c.json({ error: "HOLD 중인 제안이 아님" }, 409);
