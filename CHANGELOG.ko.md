@@ -194,6 +194,10 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - 다른 팀은 보여 주기만 한다(RADAR·STRIPS·FIDS). planner는 제외 줄 없이 건너뛰고, SCHEDULE 브리핑은 후보에서 빼고, 그 팀에 쓴 SCHEDULE 초안은 409로 거절한다. `candidateTeams`에 팀을 넣으면 그 팀 FLIGHT는 그 팀 AIRPORT가 거점인 AIRCRAFT에만 제안한다(ATC → ATCC). 스위치는 꺼 두었다.
 
 ### 변경
+- 스위치로 Codex 한도 때 DeepSeek 착륙 리뷰어가 보안 PR도 맡을 수 있다(ATC-30, [docs/occ.ko.md](docs/occ.ko.md) 9.5). Codex 5시간 한도로 vocado #392와 #395가 리뷰어 없이 멈췄다.
+  - `dispatch.json`의 `externalReview.security`: `"exclude"`(기본, 지금 동작)나 `"deepseek"`. 설정 창 AGENTS 탭의 REVIEW 줄에서 경고 "보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나감"과 함께 고친다(`PUT /api/settings {reviewSecurity}`).
+  - 제외를 hard(FLIGHT 없음, `.env`·비밀·키 경로 — 어느 모드에서든)와 security(rating:SEC·Risk 라벨, 보안 경로, 보안 키워드 — 스위치가 `"deepseek"`이면 보냄)로 나눴다. 보낸 PR은 REVIEW 대기열에 들어가고, 통과하면 "REVIEW: DEEPSEEK (보안, Codex 한도)"로 보이며, 기록에 `security: true`가 남는다. 자료에는 더 엄격한 안내가 붙는다.
+  - REVIEW 규정(한국어·영어)에 보안 PR 리뷰법을 적었다. Muse는 여전히 착륙에 쓰지 않고 guard는 그대로다. 가이드의 경보 표에 ATC-29에서 빠진 STRANDED 줄도 더했다.
 - 쌓인 PR은 CLEARED가 되지 않고, STRANDED 머지에 경보를 낸다(ATC-29, [docs/occ.ko.md](docs/occ.ko.md) 9.4). vocado VOC-189/190 스택(#395 → main ← #396 ← #397 ← #398)이 14:41에 아래에서부터 각자 아래 브랜치로 squash 머지돼, #397·#398이 중간 브랜치에 남고 VOC-190은 main에 닿지 않은 채 Done이 됐다. atc는 #396~#398을 CLEARED로 보였다.
   - base가 기본 브랜치가 아닌 PR에는 `stacked` 막힘이 붙는다: "쌓인 PR — #395가 먼저 main에 들어간 뒤 base를 main으로 바꿈 (#395 → #396 → #397 → #398)". `PullRequest.stack`·`landingQueue[].stack`과 `stacked`에 사슬이 있고, 스트립에 `STACKED #395 → …`가 뜬다. 기본 브랜치는 저장소마다 읽는다(`defaultByRepo`).
   - 새 경보 `stranded`: 최근 14일 안에 기본 브랜치가 아닌 곳으로 머지된, FLIGHT key(브랜치, 제목, `Fixes`)가 있는 PR 중 머지 커밋이나 head가 기본 브랜치나 그리로 가는 열린 PR의 조상이 아닌 것(읽기 전용 `gh api compare`, SHA끼리 캐시). "STRANDED — #398(VOC-190)이 main에 닿지 않음 — …". Linear가 Done이어도 남는다. TOWER는 `open.stranded`로, FLIGHT FOLLOWING은 `stranded` 문제로 본다.

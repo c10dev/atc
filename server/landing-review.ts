@@ -2,8 +2,9 @@ import { appendFileSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Hono } from "hono";
 import { config } from "./config.ts";
+import { loadDispatchConfig } from "./dispatch.ts";
 import { modelFamily } from "./crosscheck.ts";
-import { type LandingReview, externalExclusionOf, severityOf, slugOfUrl } from "./landing.ts";
+import { type LandingReview, externalGateOf, severityOf, slugOfUrl } from "./landing.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { record } from "./recorder.ts";
 import { fetchReviewSource } from "./sources/github.ts";
@@ -78,7 +79,7 @@ export function assertReviewTarget(p: PullRequest) {
 
 // 리뷰 입력 검사: head는 지금 head(짧은 SHA도 됨), verdict pass|findings, text 필수.
 // 지적 등급은 Codex처럼 P0·P1·P2 — pass에는 P0·P1을 적지 않고, findings에는 등급이 하나 이상 있어야 한다
-export function parseReview(body: Record<string, unknown>, p: Pick<PullRequest, "url" | "number" | "head">, at: string): LandingReview {
+export function parseReview(body: Record<string, unknown>, p: Pick<PullRequest, "url" | "number" | "head"> & Partial<Pick<PullRequest, "extReview">>, at: string): LandingReview {
   const head = typeof body.head === "string" ? body.head.trim().toLowerCase() : "";
   if (head.length < 7 || !p.head.startsWith(head)) throw new ReviewError(`head가 지금 head(${p.head.slice(0, 7)})와 다름 — 새 head는 새 리뷰가 필요하다`, 409);
   if (body.verdict !== "pass" && body.verdict !== "findings") throw new ReviewError("verdict는 pass|findings", 400);
@@ -92,7 +93,8 @@ export function parseReview(body: Record<string, unknown>, p: Pick<PullRequest, 
   if (!model) throw new ReviewError("model이 없음 — REVIEW 세션에서만 남긴다(guard가 실제 모델을 붙인다)", 400);
   if (!LANDING_REVIEW_MODELS.test(model)) throw new ReviewError(`착륙 리뷰는 DeepSeek V4.1 Flash만 남긴다 — 지금 ${model}`, 400);
   const by = typeof body.by === "string" && body.by.trim() ? body.by.trim().slice(0, 40) : "REVIEW";
-  return { at, repo: slugOfUrl(p.url)!, number: p.number, head: p.head, verdict: body.verdict, text, by, model, family: modelFamily(model), ...sev };
+  // 보안 규칙에 걸렸지만 스위치로 보낸 PR의 리뷰는 security: true로 남긴다(ATC-30)
+  return { at, repo: slugOfUrl(p.url)!, number: p.number, head: p.head, verdict: body.verdict, text, by, model, family: modelFamily(model), ...sev, ...(p.extReview?.security ? { security: true as const } : {}) };
 }
 
 // 이슈 본문에서 완료 기준과 금지 사항 절을 찾는다(머리글 아래 다음 같은 급 머리글까지). 없으면 null
@@ -171,13 +173,16 @@ export function mountLandingReview(app: Hono, getSnapshot: () => Promise<Snapsho
       // 보내기 직전에 한 번 더: 실제 diff의 파일, 라벨, PR·FLIGHT 제목과 본문으로 제외 사유를 본다
       const ticket = s.tickets.find((t) => t.key === p.ticketKey);
       const diffFiles = [...src.diff.matchAll(/^diff --git a\/(\S+) b\/(\S+)$/gm)].flatMap((m) => [m[1], m[2]]);
-      const exclusion = externalExclusionOf({
+      const gate = externalGateOf({
         flight: p.ticketKey,
         ticketLabels: ticket?.labels ?? [],
         prLabels: src.labels,
         files: [...src.files, ...diffFiles],
         texts: [src.title, src.body, issue.title, desc],
       });
+      // 비밀·키 경로와 FLIGHT 없음은 어느 모드에서든, 보안 규칙은 스위치가 "deepseek"이 아니면 보내지 않는다(ATC-30)
+      const allowSecurity = loadDispatchConfig().externalReview.security === "deepseek";
+      const exclusion = gate.hard ?? (allowSecurity ? null : gate.security);
       if (exclusion) throw new ReviewError(`외부 리뷰 제외 — ${exclusion}`, 403);
       const flight = { key: p.ticketKey, title: issue.title ?? null, url: issue.url ?? null, ...sectionsOf(desc), description: capText(desc, ISSUE_MAX) };
       const diff = capText(src.diff, DIFF_MAX);
@@ -193,7 +198,9 @@ export function mountLandingReview(app: Hono, getSnapshot: () => Promise<Snapsho
         diff: diff.text,
         diffTruncated: diff.truncated,
         diffChars: diff.chars,
-        guide: REVIEW_GUIDE,
+        // 보안 PR(스위치로 보냄): 사유. 리뷰어는 권한·RLS·인증·마이그레이션을 더 엄격히 본다(review/CLAUDE.md)
+        security: gate.security,
+        guide: gate.security ? `${REVIEW_GUIDE} 보안 PR이다(${gate.security}): 권한·RLS·GRANT/REVOKE·인증·세션·마이그레이션 되돌림을 특히 본다. 확신이 없으면 pass하지 않는다.` : REVIEW_GUIDE,
       });
     } catch (e) {
       const f = fail(e);

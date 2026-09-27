@@ -77,6 +77,7 @@ CLEARED TO LAND 조건 — 모두 PR의 **최신 커밋(head)** 기준이다.
 - 지적에는 P0~P3 배지가 붙는다(표시가 없으면 P2로 본다). head의 지적이 **모두 P3**이고 스레드마다 resolve했거나 답글을 달았으면 막지 않는다(ATC-28). 스트립에 "Codex P3 2건(해결됨) — 착륙 막지 않음"이 뜨고, LAND 글에 남은 P3가 적힌다. P0~P2가 하나라도 있으면 전처럼 막는다.
 - 사람(Codex·작성자 아닌 리뷰어)의 COMMENTED 리뷰는 APPROVED처럼 통과로 친다.
 - Codex가 한도에 걸리면 "usage limits" 댓글을 단다. 이렇게 head 뒤에 한도 댓글이 있거나 6시간 넘게 Codex가 말이 없으면 CODEX UNAVAILABLE이다. 그때는 착륙 리뷰 세션(REVIEW, DeepSeek V4.1 Flash, tmux `atc-review`)이 diff를 리뷰하고, 현재 head에 P0·P1 없는 pass를 남기면 그것이 리뷰가 된다. 스트립에 "REVIEW: DEEPSEEK (Codex 한도)"로 보인다. 기다리는 동안은 "Codex 한도 · 착륙 리뷰 대기"다. 새 push는 새 리뷰가 필요하고, Codex가 돌아와 리뷰하면 Codex가 이긴다.
+- 설정 창 AGENTS 탭의 REVIEW 줄을 deepseek으로 바꾸면(기본 exclude) 아래 보안 규칙에만 걸린 PR도 DeepSeek 리뷰어에게 가고, pass면 착륙한다("REVIEW: DEEPSEEK (보안, Codex 한도)"). `.env`·비밀 경로와 FLIGHT 없는 PR은 어느 경우에도 가지 않는다(ATC-30).
 - 외부 모델에 보내지 않는 PR: FLIGHT가 없는 PR, FLIGHT의 `rating:SEC`·Risk: Security·Rights·Contract 라벨, 그리고 라벨이 없어도 보안 diff(`supabase/migrations`·`functions`, `*.sql`, auth·session·admission, RLS·policy, middleware, `.env`·비밀 경로)나 제목·본문의 보안 키워드(security, privilege, RLS, grant, revoke, EXECUTE, definer, admission, auth, ACL, "use server", exposure). 스트립에 "외부 리뷰 제외 — migrations"처럼 뜨고, Codex나 SUPERVISOR 리뷰를 기다린다. 외부 리뷰의 pass가 이미 있어도 착륙 근거가 되지 않는다.
 - PR 브랜치에 `voc-<번호>`가 없으면 PR 제목 끝의 `(VOC-번호)`로 FLIGHT를 찾는다.
 - 판정 이유는 저장소의 `docs/occ.ko.md` 9.1절.

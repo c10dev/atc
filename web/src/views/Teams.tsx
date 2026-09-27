@@ -269,16 +269,18 @@ const reviewerOf = (family: string) => (family.split(/[-.\s]/)[0] || family).toU
 function ExtReviewTag({ pr }: { pr: PullRequest }) {
   const m = pr.extReview;
   if (!m) return null;
-  const codex = pr.codexUnavailable?.why === "silent" ? "Codex 무응답" : "Codex 한도";
+  // 스위치로 보낸 보안 PR(ATC-30)은 "보안, "을 붙여 외부 리뷰에 기댄 착륙임을 보인다
+  const codex = `${m.security ? "보안, " : ""}${pr.codexUnavailable?.why === "silent" ? "Codex 무응답" : "Codex 한도"}`;
   const r = m.review;
   const who = r ? reviewerOf(r.family) : "";
   const text =
     m.status === "pass" ? `REVIEW: ${who} (${codex})` : m.status === "findings" ? `${who} 지적 (${codex})` : m.status === "waiting" ? `${codex} · 착륙 리뷰 대기` : `외부 리뷰 제외 — ${m.reason}`;
+  const sec = m.security ? `보안 PR(${m.security}) — 설정 externalReview.security가 deepseek이라 외부 리뷰로 보냄\n` : "";
   const tip = r
-    ? `착륙 리뷰 ${r.verdict} · ${r.family} (${r.model}) · ${r.at}\nP0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}\n${r.text}`
+    ? `${sec}착륙 리뷰 ${r.verdict} · ${r.family} (${r.model}) · ${r.at}\nP0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}\n${r.text}`
     : m.status === "excluded"
       ? "보안·기밀 작업은 외부 모델에 보내지 않는다 — Codex나 SUPERVISOR 리뷰"
-      : "REVIEW 세션(DeepSeek)이 이 head를 리뷰하면 CLEARED TO LAND 근거가 된다";
+      : `${sec}REVIEW 세션(DeepSeek)이 이 head를 리뷰하면 CLEARED TO LAND 근거가 된다`;
   return (
     <span className={`pr-extreview is-${m.status}`} title={tip}>
       {text}

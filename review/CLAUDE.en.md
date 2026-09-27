@@ -15,7 +15,7 @@ CROSSCHECK (Muse) only marks DISPATCH and SCHEDULE items. Only this session does
 - It never messages anyone. SendMessage, sub-agents (Agent), Artifact, Edit and Write are blocked.
 - It reads files only in this folder and atc's `../docs/` (Read, Glob and Grep; `read-guard.mjs` blocks the rest). It never reads atc's source, `~/.local/state/atc` or other repositories. It sees code only through the review packet (diff) atc gives it.
 - Bash allows only `manual`, `landing queue` and `landing review` of `node ../controller/atcctl.mjs`, and `jq` (`../controller/guard.mjs --review`). Wrap the review text in single quotes. To trim output, use only `| jq …`.
-- **Never touch PRs excluded from external review.** Security and confidential work is never sent to an outside model (vocado's rule: request data is used for training). The server marks them `excluded` and refuses their packet with 403.
+- **Never touch PRs excluded from external review.** Confidential work is never sent to an outside model (vocado's rule: request data is used for training). The server marks them `excluded` and refuses their packet with 403. Security PRs reach this session only when the SUPERVISOR turns on the setting (`externalReview.security: "deepseek"`, ATC-30). `.env`, secret or key paths and PRs without a FLIGHT never do.
 
 ## Tools
 
@@ -31,8 +31,9 @@ The record command runs only after the guard checks this session's **real model*
 
 ## How to review
 
-- **Targets**: only `pending` in `landing queue`. The server picks PRs that cannot get Codex and are not excluded from external review. `excluded` (no FLIGHT, rating:SEC or Risk labels, migrations, SQL, auth, session, admission, RLS, policy, middleware or secret paths, keywords such as security, privilege, RLS, grant, revoke, EXECUTE, definer, admission, auth, ACL, "use server", exposure) waits for Codex or the SUPERVISOR.
-- **What to check**: does the diff meet the acceptance criteria, does it break a forbidden change, does it add a bug, data loss or a change that is hard to undo. Don't flag style preferences. If the diff turns out to be security work (permissions, authentication, secrets), don't review it: leave `findings` (P0 "security change — not for external review, needs Codex or the SUPERVISOR").
+- **Targets**: only `pending` in `landing queue`. The server picks PRs that cannot get Codex and are not excluded from external review. `excluded` waits for Codex or the SUPERVISOR: always no FLIGHT and secret or key paths, and, while the setting is off (the default), the security rules (rating:SEC or Risk labels, migrations, SQL, auth, session, admission, RLS, policy or middleware paths, keywords such as security, privilege, RLS, grant, revoke, EXECUTE, definer, admission, auth, ACL, "use server", exposure).
+- **What to check**: does the diff meet the acceptance criteria, does it break a forbidden change, does it add a bug, data loss or a change that is hard to undo. Don't flag style preferences. If the diff turns out to be security work (permissions, authentication, secrets) and the packet has no `security` field (the server didn't recognize it), don't review it: leave `findings` (P0 "security change — not for external review, needs Codex or the SUPERVISOR").
+- **Security PRs** (the packet has `security`: sent by the setting): review them. Look hard at permissions (GRANT, REVOKE, EXECUTE, SECURITY DEFINER), RLS and policies, authentication, session and admission checks, whether migrations can be rolled back, and whether secrets leak into code or logs. When unsure, don't pass; leave a P1. The server marks the record `security: true`.
 - **Severity**: like Codex, P0 (must not merge), P1 (fix before merging), P2 (can wait). With no P0 or P1 it is `pass`, otherwise `findings`. One line per finding: `P1 file:line — what is wrong and why`. A `pass` also states what was checked and any P2.
 - **Cut diff**: state what you saw. If the cut part may hide a risk, leave `findings` (P1 "diff cut, could not check X").
 - **Record**: `--head` is the packet's `head`. At most 4000 characters. A changed head gives 409 — review the new packet next pass. TOWER passes `findings` to the CAPTAIN.

@@ -350,6 +350,14 @@ vocado VOC-189/190 스택(#395 → main ← #396 ← #397 ← #398, 각자 바�
 - **STACKED**(`stackOf`, `stackedText`, `server/landing.ts`): base가 저장소의 기본 브랜치(저장소마다 한 번 읽는다, `defaultByRepo`)가 아닌 PR에는 `stacked` 막힘이 붙고 CLEARED가 되지 않는다. 글에는 먼저 들어가야 할 것과 사슬이 있다: "쌓인 PR — #395가 먼저 main에 들어간 뒤 base를 main으로 바꿈 (#395 → #396 → #397 → #398)". 사슬은 base 브랜치를 따라 열린 PR을 내려가고, 그 head를 base로 가진 PR을 따라 올라간다(갈래가 있으면 번호가 작은 쪽). `PullRequest.stack`과 `landingQueue[].stack`(`stacked: true`)에 있다. base 브랜치에 열린 PR이 없으면 base를 바꾸라고만 한다. 기본 브랜치를 모르면 쌓인 PR로 가리지 않는다. 스트립에는 `STACKED #395 → #396 → …`가 뜬다. 나머지에게는 APPROACH 그대로라 TOWER는 LAND를 내지 않는다.
 - **STRANDED**(`strandedOf`, `firstReach`, `strandedMessage`, `server/sources/github.ts`): 매 바퀴 atc는 최근 14일 안에 기본 브랜치가 아닌 곳으로 머지된 PR을 읽는다(`gh pr list --state merged`, 모든 base). 그중 FLIGHT key(브랜치, 제목, 본문의 `Fixes`·`Closes`·`Resolves`)가 있는 것마다, 머지 커밋이나 head가 기본 브랜치나 그리로 가는 열린 PR의 head의 조상인지 읽기 전용 `gh api …/compare/<대상>...<커밋>`으로 본다(머지된 PR의 base를 head로 가진 PR을 먼저 본다). 고정된 SHA끼리의 결과는 캐시한다. 어디에도 닿지 않으면 `stranded` 경보가 선다: "STRANDED — #398(VOC-190)이 main에 닿지 않음 — … (Linear는 Done)". Linear가 Done이어도 남고, 커밋이 main이나 그리로 가는 열린 PR에 닿아야 풀린다. 확인이 실패하면 경보를 내지 않는다. TOWER 브리핑의 `open.stranded`에 있고, FLIGHT FOLLOWING은 그 FLIGHT에 `stranded` 문제(warn)를 붙인다(이미 Done이어도).
 
+### 9.5 스위치로 보안 PR도 DeepSeek 리뷰어에게 (2026-09-27, ATC-30)
+
+Codex가 5시간 한도에 걸려 vocado #392(admission 키워드)와 #395(SQL 경로)가 리뷰어 없이 멈췄다. ATC-27이 보안 PR을 모든 외부 리뷰어에서 빼기 때문이다. SUPERVISOR는 비공개 저장소의 vocado 보안 diff가 DeepSeek로 나가는 것을 받아들이고, DeepSeek V4.1 Flash 리뷰어가 이것도 맡게 했다.
+
+- **스위치**: `dispatch.json`의 `externalReview.security`. `"exclude"`(기본, 모르는 값도 exclude)나 `"deepseek"`. 설정 창 AGENTS 탭의 REVIEW 줄에서 경고 "보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나감"과 함께 고친다. `PUT /api/settings {reviewSecurity}`가 원자적으로 쓴다.
+- **제외 두 가지**(`externalGateOf`): **hard**는 어느 모드에서든 뺀다: FLIGHT 없음, `.env*`·비밀·키·자격 증명 경로(먼저 본다). **security**는 rating:SEC·Risk 라벨, 보안 경로, 보안 키워드다. `"deepseek"`이면 보안 규칙에만 걸린 PR이 REVIEW 대기열로 간다. `extReview.security`에 사유가 남고, 대기 글은 "보안 PR: …", 스트립은 "REVIEW: DEEPSEEK (보안, Codex 한도)", 지적은 "DEEPSEEK 지적(보안, …)"이며, 자료에 `security`와 더 엄격한 안내가 붙고 기록에 `security: true`가 남는다. 현재 head의 DeepSeek pass는 다른 PR처럼 착륙 근거가 된다.
+- Muse는 여전히 착륙 리뷰에 쓰지 않고(서버는 DeepSeek V4.1 Flash만 받는다) guard도 그대로다. REVIEW 규정에 보안 PR 리뷰법(권한, RLS, 인증, 마이그레이션 되돌림, 유출, 불확실하면 P1)을 적었다.
+
 ## 10. atc에 더할 것
 
 | 곳 | 내용 |
@@ -527,5 +535,6 @@ env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localh
 | DISPATCH | 별도 세션으로 두지 않고 **OCC에 합침** |
 | Linear 쓰기 | OCC는 S2부터 Linear에 쓸 수 있다. vocado의 "Linear에는 리더만 쓴다" 규칙은 S2에서 **바꿀 수 있다** |
 | 순서 | 설계 문서 먼저 |
+| 보안 PR을 DeepSeek에 (2026-09-27, ATC-30) | Codex를 쓸 수 없을 때 DeepSeek V4.1 Flash 착륙 리뷰어가 보안 PR도 리뷰할 수 있다 — **`externalReview.security`가 `"deepseek"`일 때만**. 그러면 vocado 보안 diff와 Linear 이슈 본문이 DeepSeek로 나간다. `.env`·비밀·키 경로와 FLIGHT 없는 PR은 보내지 않고, Muse는 착륙에 쓰지 않는다(9.5) |
 
 남은 결정: S3 자동 목록의 정확한 범위(S2 데이터 뒤), 그리고 TOWER 세션 이름을 ATC로 바꿀지 그대로 둘지.

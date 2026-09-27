@@ -166,6 +166,25 @@ export function AgentSettings({ snapshot, server, save }: { snapshot: Snapshot |
         </ServerRows>
       </Block>
 
+      <Block code="REVIEW" label="Codex 한도 때 착륙 리뷰">
+        <ServerRows server={server}>
+          {(s) => (
+            <EditRow
+              label="보안 PR"
+              env="externalReview.security"
+              value={s.review.security}
+              note={
+                s.review.security === "deepseek"
+                  ? "⚠ deepseek(dispatch.json): 보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나감. .env·비밀·키 경로와 FLIGHT 없는 PR은 계속 보내지 않음"
+                  : "dispatch.json. exclude(기본): 보안 규칙(라벨·경로·키워드)에 걸린 PR은 외부 리뷰에 보내지 않음. deepseek으로 바꾸면 보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나감"
+              }
+              input={{ kind: "select", options: ["exclude", "deepseek"] }}
+              onSave={(v) => save({ reviewSecurity: v as "exclude" | "deepseek" })}
+            />
+          )}
+        </ServerRows>
+      </Block>
+
       <Block code="CALLSIGNS" label="콜사인">
         {teams.length ? (
           <ul className="callsigns">

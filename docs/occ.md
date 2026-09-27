@@ -321,6 +321,14 @@ The vocado VOC-189/190 stack (#395 → main ← #396 ← #397 ← #398, each bas
 - **STACKED** (`stackOf`, `stackedText`, `server/landing.ts`): a PR whose base is not the repository's default branch (read once per repository, `defaultByRepo`) gets a `stacked` block and is never CLEARED. The text names what must land first and the chain: "쌓인 PR — #395가 먼저 main에 들어간 뒤 base를 main으로 바꿈 (#395 → #396 → #397 → #398)". The chain follows open PRs down through their base branches and up through PRs based on their heads (the lowest-numbered one when it branches), and is on `PullRequest.stack` and `landingQueue[].stack` (`stacked: true`). If the base branch has no open PR, the text asks to change the base. When the default branch is unknown, no PR is marked stacked. The strip shows `STACKED #395 → #396 → …`. The PR stays APPROACH for everyone else, so TOWER never issues LAND for it.
 - **STRANDED** (`strandedOf`, `firstReach`, `strandedMessage`; `server/sources/github.ts`): each poll atc lists PRs merged in the last 14 days into a non-default branch (`gh pr list --state merged`, all bases). For those with a FLIGHT key (branch, title or `Fixes`/`Closes`/`Resolves` in the body) it checks, read-only with `gh api …/compare/<target>...<commit>`, whether the merge commit or the head is an ancestor of the default branch or of the head of an open PR into it (the PR whose head is the merged PR's base is checked first). Results between fixed SHAs are cached. If neither reaches, an alert of kind `stranded` is raised: "STRANDED — #398(VOC-190)이 main에 닿지 않음 — … (Linear는 Done)". It stays while Linear says Done and clears only when the commit reaches main or an open PR into it. A check that fails raises nothing. The TOWER brief lists them in `open.stranded`, and FLIGHT FOLLOWING adds a `stranded` issue (warn) to that FLIGHT even when it is already Done.
 
+### 9.5 Security PRs to the DeepSeek reviewer, behind a switch (2026-09-27, ATC-30)
+
+Codex hit its 5-hour limit and left vocado #392 (admission keyword) and #395 (SQL paths) with no reviewer, because ATC-27 excludes security PRs from every external reviewer. The SUPERVISOR decided the DeepSeek V4.1 Flash reviewer may take them, accepting that vocado security diffs from a private repo go to DeepSeek.
+
+- **Switch**: `dispatch.json` `externalReview.security`, `"exclude"` (default; unknown values count as exclude) or `"deepseek"`. It is edited on the settings window's AGENTS tab (REVIEW row) with the warning "보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나감"; `PUT /api/settings {reviewSecurity}` writes it atomically.
+- **Two kinds of exclusion** (`externalGateOf`): **hard**, in every mode: no FLIGHT, `.env*`, secret, key or credential paths (checked first); **security**: rating:SEC or Risk labels, security paths, security keywords. With `"deepseek"`, a PR excluded only by the security rules goes to the REVIEW queue; its `extReview.security` keeps the reason, the waiting text says "보안 PR: …", the strip shows "REVIEW: DEEPSEEK (보안, Codex 한도)", findings read "DEEPSEEK 지적(보안, …)", the packet carries `security` and a stricter guide, and the record gets `security: true`. A DeepSeek pass on the current head then counts as landing evidence like any other.
+- Muse is still never used for landing reviews (the server accepts only DeepSeek V4.1 Flash), and the guards are unchanged. The REVIEW manual says how to review a security PR (permissions, RLS, authentication, migration rollback, leaks; unsure → P1).
+
 ## 10. What to add to atc
 
 | Where | What |
@@ -472,5 +480,6 @@ named `CROSSCHECK`, and run with `/loop 10m /tick`.
 | DISPATCH | **Merged into OCC**, not kept as a separate session |
 | Linear writes | OCC may write to Linear from S2; the vocado "only leaders write to Linear" rule **may be changed** at S2 |
 | Order | Design document first |
+| Security PRs to DeepSeek (2026-09-27, ATC-30) | When Codex is unavailable, the DeepSeek V4.1 Flash landing reviewer may review security PRs **if `externalReview.security` is `"deepseek"`**; vocado security diffs and Linear issue bodies then go to DeepSeek. `.env`, secret and key paths and PRs without a FLIGHT never do, and Muse is never used for landing (9.5) |
 
 Still open: the exact S3 automatic list (after S2 data), and whether the TOWER session is renamed ATC or keeps its name.

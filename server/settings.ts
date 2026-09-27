@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { Context, Hono } from "hono";
 import { config } from "./config.ts";
+import { EXTERNAL_REVIEW_SECURITY, type ExternalReviewSecurity, loadDispatchConfig, saveExternalReviewSecurity } from "./dispatch.ts";
 import { parseTeamKeys, TEAM_KEY } from "./linear-keys.ts";
 import { resetTicketPattern } from "./sources/git.ts";
 import { resetLinear } from "./sources/linear.ts";
@@ -22,6 +23,8 @@ export interface ServerSettings {
     handoffGraceMin: number;
     projectsDir: string;
   };
+  // 외부 착륙 리뷰(ATC-30): 보안 규칙에만 걸린 PR을 DeepSeek REVIEW에 보낼까(dispatch.json externalReview.security)
+  review: { security: ExternalReviewSecurity };
 }
 
 // 고칠 수 있는 항목. apiKey는 null이면 지운다.
@@ -32,6 +35,7 @@ export interface SettingsPatch {
   claimTtlMin?: number;
   handoffGraceMin?: number;
   projectsDir?: string;
+  reviewSecurity?: ExternalReviewSecurity; // dispatch.json에 쓴다(.env.local이 아님)
 }
 export type SettingsErrors = Partial<Record<keyof SettingsPatch, string>>;
 
@@ -62,6 +66,7 @@ export function readServerSettings(): ServerSettings {
       handoffGraceMin: Math.round(config.handoffGraceMs / 60_000),
       projectsDir: config.projectsDir,
     },
+    review: { security: loadDispatchConfig().externalReview.security },
   };
 }
 
@@ -169,11 +174,18 @@ export function mountSettings(app: Hono) {
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
     const body = await c.req.json().catch(() => null);
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "JSON 객체가 아님" }, 400);
-    const { env, errors } = validatePatch(body as Record<string, unknown>);
+    // reviewSecurity는 .env가 아니라 dispatch.json에 쓴다(ATC-30)
+  const { reviewSecurity, ...rest } = body as Record<string, unknown>;
+  if (reviewSecurity !== undefined && !EXTERNAL_REVIEW_SECURITY.includes(reviewSecurity as ExternalReviewSecurity))
+    return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
+  const { env, errors } = validatePatch(rest);
     if (Object.keys(errors).length) return c.json({ errors }, 400);
-    writeEnvFile(env);
-    applyToConfig(env);
-    console.log(`[atc] settings updated: ${Object.keys(env).join(", ")}`);
+    if (Object.keys(env).length) {
+      writeEnvFile(env);
+      applyToConfig(env);
+    }
+    if (reviewSecurity !== undefined) saveExternalReviewSecurity(reviewSecurity as ExternalReviewSecurity);
+    console.log(`[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : [])].join(", ")}`);
     return c.json(readServerSettings());
   });
 }
