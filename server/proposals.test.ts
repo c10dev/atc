@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { DEFAULT_DISPATCH_CONFIG, type Plan } from "./dispatch.ts";
 import type { Ticket, Workspace } from "./model.ts";
 import { parentKeysOf } from "./model.ts";
-import { canApply, fold, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, reservedOf, syncOps } from "./proposals.ts";
+import { canApply, fold, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, recentPairsOf, reservedOf, syncOps } from "./proposals.ts";
 import { toTicket } from "./sources/linear.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
@@ -476,4 +476,66 @@ test("RECALL 동기화: recalling은 STAND가 생겨도 DEPARTED로 바꾸지 �
   // RECALLED 뒤 25시간이면 다시 제안
   const later = fold([...sentAt(50 * 60), { op: "recall", id: "D-0001", at: iso(49 * 60), reason: "r", message: "R" }, { op: "recalled", id: "D-0001", at: iso(25 * 60) }]);
   assert.deepEqual(syncOps(later, plan, { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1).filter((o) => o.op === "create").length, 1);
+});
+
+// 점수를 정한 ASSIGN 제안·계획
+const scored = (id: string, flight: string, aircraft: string, minAgo: number, score: number): Op => ({ ...create(id, flight, aircraft, minAgo), score } as Op);
+const planned = (flight: string, aircraft: string, score: number) => ({ ...assign(flight, aircraft), score });
+const pairOps = (ops: Op[]) => ops.map((o) => `${o.op}:${o.id}${o.op === "create" ? `:${o.flight}>${o.aircraft}` : ""}${"reason" in o && o.reason ? `:${o.reason}` : ""}`);
+
+test("24시간 짝: 닫힌 짝만(거절·SUPERSEDED·EXPIRED·RECALLED …), 열린 제안과 '더 나은 배정'으로 닫힌 것은 빼고, 24시간 지나면 풀린다", () => {
+  const ps = fold([
+    create("D-0001", "VOC-1", "b", 60), { op: "verdict", id: "D-0001", at: iso(50), verdict: "disagree", reason: "x" },
+    create("D-0002", "VOC-2", "b", 60), { op: "supersede", id: "D-0002", at: iso(50), reason: "FLIGHT 상태가 바뀜(In Progress)" },
+    create("D-0003", "VOC-3", "b", 60), { op: "supersede", id: "D-0003", at: iso(50), reason: "더 나은 배정으로 바뀜" },
+    create("D-0004", "VOC-4", "b", 60), // 열린 제안
+    create("D-0005", "VOC-5", "b", 25 * 60), { op: "expire", id: "D-0005", at: iso(60) }, // 25시간 전: 풀림
+    create("D-0006", "VOC-6", "b", 30 * 60), { op: "approve", id: "D-0006", at: iso(29 * 60) }, { op: "send", id: "D-0006", at: iso(29 * 60), message: "m" },
+    { op: "recall", id: "D-0006", at: iso(70), reason: "r", message: "m" }, { op: "recalled", id: "D-0006", at: iso(60) }, // RECALL READBACK부터 24시간
+  ]);
+  const pairs = recentPairsOf(ps, NOW);
+  assert.deepEqual([...pairs.keys()].sort(), ["VOC-1|b", "VOC-2|b", "VOC-6|b"]);
+  assert.equal(pairs.get("VOC-1|b")!.until, new Date(Date.parse(iso(60)) + 86_400_000).toISOString());
+  assert.equal(pairs.get("VOC-6|b")!.until, new Date(Date.parse(iso(60)) + 86_400_000).toISOString());
+  assert.deepEqual(reservedOf(ps, NOW).recentPairs, pairs);
+});
+
+test("판정 대기 제안: 새 제안이 실제로 만들어지지 않으면 '더 나은 배정'으로 닫지 않는다(D-0017 사례)", () => {
+  // D-0017(VOC-196 → b)이 열려 있고, 계획은 b에 VOC-177을 준다. 그러나 VOC-177 → b는 D-0010에서 거절돼 다시 제안할 수 없다
+  const existing = fold([
+    create("D-0010", "VOC-177", "b", 20 * 60), { op: "verdict", id: "D-0010", at: iso(19 * 60), verdict: "disagree", reason: "x" },
+    scored("D-0017", "VOC-196", "b", 30, 10.3),
+  ]);
+  const tickets = [{ ...t("VOC-177"), priority: 2, project: "Beta Readiness", labels: [] }, { ...t("VOC-196"), priority: 3, project: "Beta Readiness", labels: [] }] as Ticket[];
+  const ops = syncOps(existing, planOf({ assign: [planned("VOC-177", "b", 10.8)] }), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 17);
+  assert.deepEqual(ops, []); // D-0017은 판정을 기다린다
+});
+
+test("판정 대기 제안: 같은 FLIGHT·AIRCRAFT에 20% 이상 높은 새 제안이 만들어질 때만 바꾼다", () => {
+  const existing = fold([scored("D-0001", "VOC-1", "b", 30, 10)]);
+  const tickets = [t("VOC-1"), t("VOC-2")].map((x) => ({ ...x, priority: 3, project: "Beta Readiness", labels: [] })) as Ticket[];
+  const run = (score: number) => syncOps(existing, planOf({ assign: [planned("VOC-2", "b", score)] }), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1);
+  assert.deepEqual(pairOps(run(11.9)), []); // 19% 높음: 그대로
+  assert.deepEqual(pairOps(run(12)), ["supersede:D-0001:더 나은 배정으로 바뀜 — D-0002 (10 → 12)", "create:D-0002:VOC-2>b"]);
+  // 같은 FLIGHT를 다른 AIRCRAFT에 줄 때도 같은 기준
+  const other = syncOps(existing, planOf({ assign: [planned("VOC-1", "c", 13)] }), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1);
+  assert.deepEqual(pairOps(other), ["supersede:D-0001:더 나은 배정으로 바뀜 — D-0002 (10 → 13)", "create:D-0002:VOC-1>c"]);
+});
+
+test("판정 대기 제안: 상태가 바뀐 경우(Todo 아님, AIRCRAFT 불가, 제외 규칙)는 지금처럼 바로 닫는다", () => {
+  const existing = fold([scored("D-0001", "VOC-1", "b", 30, 10), scored("D-0002", "VOC-2", "c", 30, 10), scored("D-0003", "VOC-3", "b", 30, 10)]);
+  const tickets = [t("VOC-1", "started", "In Progress"), { ...t("VOC-2"), priority: 3, project: "Beta Readiness", labels: [] }, { ...t("VOC-3"), priority: 0, project: "Beta Readiness", labels: [] }] as Ticket[];
+  const ops = syncOps(existing, planOf(), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 3);
+  assert.deepEqual(pairOps(ops), [
+    "supersede:D-0001:FLIGHT 상태가 바뀜(In Progress)",
+    "supersede:D-0002:AIRCRAFT 불가: AIRBORNE",
+    "supersede:D-0003:우선순위 없음 — 사람이 정할 때까지 배정하지 않음",
+  ]);
+});
+
+test("'더 나은 배정'으로 닫힌 짝은 판정받지 못한 것이라 24시간 안이라도 다시 제안된다", () => {
+  const existing = fold([create("D-0017", "VOC-196", "b", 60), { op: "supersede", id: "D-0017", at: iso(50), reason: "더 나은 배정으로 바뀜" }]);
+  const tickets = [{ ...t("VOC-196"), priority: 3, project: "Beta Readiness", labels: [] }] as Ticket[];
+  const ops = syncOps(existing, planOf({ assign: [planned("VOC-196", "b", 10.3)] }), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 17);
+  assert.deepEqual(pairOps(ops), ["create:D-0018:VOC-196>b"]);
 });

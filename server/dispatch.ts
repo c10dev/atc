@@ -124,6 +124,9 @@ export interface Reserved {
   // AIRCRAFT → 진행 중인 ASSIGN의 FLIGHT들. aircraft는 한 대에 제안 하나만 담아서,
   // STAND 있는 FLIGHT와 없는 FLIGHT를 함께 쥔 AIRCRAFT를 가르려면 이것이 필요하다.
   aircraftFlights?: Map<string, string[]>;
+  // "FLIGHT|AIRCRAFT id" → 24시간 안에 제안됐다 닫힌 짝(거절·SUPERSEDED·EXPIRED·RECALLED …)과 다시 가능해지는 시각.
+  // syncOps가 이 짝을 다시 제안하지 않으므로 계획에서도 빼야 AIRCRAFT가 다음으로 좋은 FLIGHT를 받는다.
+  recentPairs?: Map<string, { id: string; until: string }>;
 }
 const NO_RESERVED: Reserved = { aircraft: new Map(), flights: new Map(), held: new Map() };
 
@@ -141,6 +144,8 @@ export interface Plan {
   release: ReleasePlan[];
   hold: { flight: string; blockedBy: string[] }[];
   excluded: { flight: string; reason: string }[];
+  // 24시간 규칙으로 후보에서 뺀 짝(FLIGHT·AIRCRAFT·제안 id·다시 가능한 시각)
+  blockedPairs?: { flight: string; aircraft: string; aircraftName: string; proposal: string; until: string }[];
   aircraft: AircraftState[];
   slots: { airport: string; airborne: number; planned: number; limit: number }[];
 }
@@ -155,6 +160,15 @@ export const hasStandWhy = () => "이미 STAND가 있음";
 export const stateChangedWhy = (state: string) => `FLIGHT 상태가 바뀜(${state})`;
 export const noProjectWhy = (project: string | null) => (project ? `배정 제외 프로젝트: ${project}` : "프로젝트 없음");
 export const excludedLabelWhy = (label: string) => `라벨 ${label} (다른 운항사)`;
+// 판정 대기 중인 제안이 다른 배정으로 바뀔 때의 사유 첫머리. 이 사유로 닫힌 짝은 판정받지 못한 것이라 24시간 규칙에서 뺀다
+export const BETTER_WHY = "더 나은 배정으로 바뀜";
+// 로컬 시각 "MM-DD HH:MM"
+const localStamp = (iso: string) => {
+  const d = new Date(iso);
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
+};
+export const pairBlockedWhy = (id: string, until: string) => `24시간 안에 제안된 짝(${id}) — ${localStamp(until)}부터 다시`;
 export const landedWhy = (pr: string) => `이미 완료됨 — PR ${pr} 머지됨(LOGBOOK)`;
 export const openPrWhy = (n: number) => `열린 PR #${n} 있음`;
 
@@ -501,13 +515,23 @@ export function planDispatch(
   const limitOf = (code: string) => cfg.slots.airborne[code] ?? cfg.slots.defaultAirborne;
   type Candidate = (typeof eligible)[number];
   // 짝마다 공통: tail, TYPE RATING·CREW, CHECK 독립성. CHECK에는 독립성 표시(0점)를 붙인다.
+  // 24시간 안에 제안됐다 닫힌 짝은 후보에서 뺀다(syncOps의 seen과 같은 기준). 뺀 짝과 짝이 남은 FLIGHT를 적어 둔다
+  const blockedPairs = new Map<string, NonNullable<Plan["blockedPairs"]>[number]>();
+  const hadPair = new Set<string>();
+  const notBlocked = (ac: AircraftState, t: Candidate) => {
+    const b = reserved.recentPairs?.get(`${t.key}|${ac.id}`);
+    if (!b) return true;
+    blockedPairs.set(`${t.key}|${ac.id}`, { flight: t.key, aircraft: ac.id, aircraftName: ac.name, proposal: b.id, until: b.until });
+    return false;
+  };
   const pairsOf = (flights: Candidate[], ok: (ac: AircraftState, t: Candidate) => boolean, extra: (ac: AircraftState, t: Candidate) => Factor[]) =>
     flights
       .flatMap((t) => {
         const tails = tailsOf(t);
         return aircraft
-          .filter((ac) => ok(ac, t) && (!tails.size || tails.has(ac.name.toUpperCase())) && qualifies(ac, t.cls) && independent(ac, t.ind))
+          .filter((ac) => ok(ac, t) && (!tails.size || tails.has(ac.name.toUpperCase())) && qualifies(ac, t.cls) && independent(ac, t.ind) && notBlocked(ac, t))
           .map((ac) => {
+            hadPair.add(t.key);
             const sc = score(t, ac);
             const ind = t.ind ? [mark("independence", "CHECK 독립성", t.ind.builders.size ? 1 : 0, independenceDetail(t.ind))] : [];
             return { t, ac, score: sc.score, factors: [...sc.factors, ...ind, ...extra(ac, t)] };
@@ -544,6 +568,13 @@ export function planDispatch(
     ),
   );
 
+  // 배정 가능한 짝이 모두 24시간 규칙에 걸린 FLIGHT는 이유를 남긴다(예: tail로 한 팀만 가능한데 그 짝이 막힘)
+  for (const t of eligible) {
+    if (usedFlights.has(t.key) || hadPair.has(t.key)) continue;
+    const mine = [...blockedPairs.values()].filter((b) => b.flight === t.key).sort((a, b) => a.until.localeCompare(b.until));
+    if (mine.length) excluded.push({ flight: t.key, reason: pairBlockedWhy(mine[0].proposal, mine[0].until) });
+  }
+
   // ── RELEASE: STAND 없이 오래 ENROUTE ──
   // 코드 작업(AIRPORT에 매핑된 프로젝트)만 본다. 발표 자료처럼 STAND가 원래 없는 일은 방치가 아니다.
   // 컨테이너(상위 이슈)는 RELEASE 대상이 아니지만, 왜 빠졌는지 화면에서 보이게 남긴다.
@@ -577,7 +608,7 @@ export function planDispatch(
     limit: limitOf(code),
   }));
 
-  return { at: new Date(now).toISOString(), assign, release, hold, excluded, aircraft, slots };
+  return { at: new Date(now).toISOString(), assign, release, hold, excluded, blockedPairs: [...blockedPairs.values()], aircraft, slots };
 }
 
 // 청구 기록(~/.local/state/atc/claims)으로 세션별 과거 FLIGHT를 모은다. TTL과 상관없이 전부 본다.

@@ -88,6 +88,7 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
 | **작업 중**: ticket key가 그 FLIGHT인 열린 PR(Draft 포함) | `열린 PR #N 있음` | 2026-09-27 |
 | 워크트리(STAND)가 이미 있음 | `이미 STAND가 있음` | |
 | 진행 중인 제안·HOLD가 있음 | `진행 중인 제안 D-xxxx`, `HOLD D-xxxx — …` | |
+| 배정 가능한 AIRCRAFT가 모두 최근 24시간 안에 이 FLIGHT와 제안됐다 닫힌 짝(6.1) | `24시간 안에 제안된 짝(D-xxxx) — MM-DD HH:MM부터 다시` | 2026-09-27 |
 | 우선순위 없음 | `우선순위 없음 — 사람이 정할 때까지 배정하지 않음` | |
 | `wake:J` | `wake:J — 너무 커서 배정하지 않음, 나눠야 함(SPLIT)` | |
 | TAIL ASSIGNMENT, TYPE RATING, CREW([fleet.md](fleet.md) 5장) | `tail:TEAM_X — …`, `rating:SEC — …`, `type:BUILD — …` | |
@@ -166,6 +167,17 @@ atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER
 ```
 
 제안 상태: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)`(2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED`(2b), 곁가지 `REJECTED`, `DECLINED`(CAPTAIN 사유), `SUPERSEDED`(사람이 직접 배정했거나 상황이 바뀜), `EXPIRED`(24시간). `HOLD`가 걸린 `PROPOSED` ASSIGN은 주 흐름에서 빠져, 풀릴 때까지 HELD 목록에서 기다린다(24시간 만료 없음).
+
+#### 6.1 최근 짝과 판정 대기 제안 지키기
+
+2026-09-27에 고쳤다. 제안 19건 중 10건이 판정 전에 SUPERSEDED됐고, 그중 7건의 사유가 "더 나은 배정으로 바뀜"이었다. D-0017(VOC-196 → TEAM_E, `tail:TEAM_E`)은 planner가 TEAM_E에게 점수가 조금 높은 VOC-177(10.8 대 10.3)을 줘서 닫혔다. 그런데 VOC-177 → TEAM_E는 D-0010에서 거절된 짝이라 `syncOps`의 24시간 규칙이 다시 제안하지 않았다. 결국 두 FLIGHT 모두 제안이 없어 열린 제안이 0건이 됐다.
+
+- **한 규칙을 두 곳에서.** 최근 24시간 안에 제안됐다가 닫힌 FLIGHT–AIRCRAFT 짝(거절, SUPERSEDED, EXPIRED, DECLINED, RECALLED. RECALL은 READBACK부터 24시간)은 다시 제안하지 않는다. `proposals.ts`의 `recentPairsOf`가 한 번 계산한다. planner는 이것을 `Reserved.recentPairs`로 받아 후보 조합에서 빼므로, AIRCRAFT는 다음으로 좋은 FLIGHT를 받는다. `syncOps`의 `seen`도 같은 기간을 쓴다. 열린(`PROPOSED`) 짝은 막지 않아 계획에 그대로 남는다.
+- **보이게.** 계획은 뺀 짝을 `blockedPairs`(FLIGHT, AIRCRAFT, 제안, 다시 가능한 시각)에 적는다. 배정 가능한 AIRCRAFT가 모두 막힌 FLIGHT는 "제외" 목록에 `24시간 안에 제안된 짝(D-xxxx) — MM-DD HH:MM부터 다시`(로컬 시각)로 뜬다.
+- **오락가락은 막지 않는다.** "더 나은 배정으로 바뀜"으로 닫힌 제안은 판정받지 못한 것이라 24시간 규칙에서 빼고 곧바로 다시 제안될 수 있다. D-0017의 짝이 이것으로 돌아온다.
+- **판정 대기 중인 제안 지키기.** PROPOSED ASSIGN이 계획에서 빠졌는데 이유가 "더 나은 배정"뿐이면(상태 변화 없음) 열어 둔다. 같은 `syncOps`에서 같은 FLIGHT나 같은 AIRCRAFT에 점수가 20% 이상 높은 새 제안이 실제로 만들어질 때만 SUPERSEDED한다(`REPLACE_MARGIN`, 차이를 점수의 절댓값과 비교). 그때 사유에 새 제안과 두 점수를 적는다: `더 나은 배정으로 바뀜 — D-0021 (10.3 → 13)`. 기준에 못 미치면 새 제안을 만들지 않고 기존 제안이 판정을 기다린다.
+- **왜 20%.** 점수는 천천히 움직이고(대기 하루에 0.5), 우선순위 한 단계는 3점(흔한 10점짜리 점수의 약 30%)이다. 20%면 새로 급해진 FLIGHT처럼 확실히 나은 것은 바꾸고, 작은 흔들림 때문에 SUPERVISOR가 판정할 기회를 잃지는 않는다. 처음 제안값이다.
+- **상태가 바뀌면 지금처럼 바로 닫는다:** FLIGHT가 Todo가 아님·완료됨·열린 PR 있음, AIRCRAFT가 더는 받을 수 없음, 제외 규칙에 걸림.
 
 거절에는 **사유 칩**을 쓴다. SUPERVISOR 화면에서 서버의 사유 목록(`server/reasons.ts`, 브리핑의 `reasonCodes`) 중 하나 이상을 고르고 메모를 선택으로 덧붙이며, `"<칩> · <칩> — <메모>"` 형태로 `reason`에, code는 `reasonCodes`에 저장된다. 점검은 칩별로 센다(`reasonCounts`). 가장 중요한 칩은 상위 이슈(5.1.1)로, 이건 planner가 스스로도 걸러 낸다.
 

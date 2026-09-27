@@ -88,6 +88,7 @@ Every FLIGHT left out of `ASSIGN` is listed under "excluded" with one of these r
 | **Being worked**: an open PR (Draft included) whose ticket key is the FLIGHT | `열린 PR #N 있음` | 2026-09-27 |
 | A worktree (STAND) already exists | `이미 STAND가 있음` | |
 | An open proposal or a HOLD already covers it | `진행 중인 제안 D-xxxx`, `HOLD D-xxxx — …` | |
+| Every qualifying AIRCRAFT for it was proposed with it in the last 24 hours and that proposal is closed (6.1) | `24시간 안에 제안된 짝(D-xxxx) — MM-DD HH:MM부터 다시` | 2026-09-27 |
 | No priority | `우선순위 없음 — 사람이 정할 때까지 배정하지 않음` | |
 | `wake:J` | `wake:J — 너무 커서 배정하지 않음, 나눠야 함(SPLIT)` | |
 | TAIL ASSIGNMENT, TYPE RATING, crew ([fleet.md](fleet.md) 5) | `tail:TEAM_X — …`, `rating:SEC — …`, `type:BUILD — …` | |
@@ -166,6 +167,17 @@ atc: DEPARTED once that FLIGHT gets a STAND; if not, rechecks after 30 minutes l
 ```
 
 Proposal states: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)` (2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED` (2b), with side branches `REJECTED`, `DECLINED` (CAPTAIN gave a reason), `SUPERSEDED` (a person assigned it directly or the situation changed) and `EXPIRED` (24 hours). A `PROPOSED` ASSIGN that carries a `HOLD` leaves the main flow: it waits on the HELD list until released (no 24-hour expiry).
+
+#### 6.1 Recent pairs and keeping proposals open
+
+Fixed on 2026-09-27. Of 19 proposals, 10 were SUPERSEDED before anyone judged them, 7 of those as "더 나은 배정으로 바뀜" (better assignment). D-0017 (VOC-196 → TEAM_E, `tail:TEAM_E`) was closed because the planner gave TEAM_E the slightly higher VOC-177 (10.8 against 10.3). But VOC-177 → TEAM_E had been rejected as D-0010, and the 24-hour rule in `syncOps` would not propose it again. Neither FLIGHT got a proposal, so none was open.
+
+- **One rule for both places.** A FLIGHT–AIRCRAFT pair proposed in the last 24 hours and since closed (disagreed, rejected, superseded, expired, declined, recalled; a RECALL counts 24 hours from its READBACK) is not proposed again. `recentPairsOf` in `proposals.ts` computes it once. The planner gets it as `Reserved.recentPairs` and leaves those pairs out of the candidates, so the AIRCRAFT gets its next-best FLIGHT. `syncOps` uses the same window for `seen`. Open (`PROPOSED`) pairs are not blocked, so they stay in the plan.
+- **Visible.** The plan lists the skipped pairs in `blockedPairs` (FLIGHT, AIRCRAFT, proposal, until). A FLIGHT whose every qualifying AIRCRAFT is blocked appears under "excluded" as `24시간 안에 제안된 짝(D-xxxx) — MM-DD HH:MM부터 다시` (local time).
+- **Churn does not block.** A proposal closed as "더 나은 배정으로 바뀜" was never judged, so its pair is exempt from the 24-hour rule and can be proposed again at once. This is what brings D-0017's pair back.
+- **Keeping a PROPOSED ASSIGN.** When a PROPOSED ASSIGN drops out of the plan and the only reason is "더 나은 배정" (no state change), it stays open. It is superseded only when the same sync actually creates a proposal for the same FLIGHT or the same AIRCRAFT that scores at least 20% higher (`REPLACE_MARGIN`; the absolute difference against the absolute score). The reason then names the new proposal and both scores: `더 나은 배정으로 바뀜 — D-0021 (10.3 → 13)`. Below the margin no new proposal is made and the old one waits for its verdict.
+- **Why 20%.** Scores move slowly (0.5 a day of waiting), while one priority step is worth 3 points (about 30% of a typical 10-point score). 20% lets a clearly better FLIGHT, such as a newly urgent one, take over. Small drifts do not cost the SUPERVISOR a verdict. The number is a first proposal.
+- **State changes close right away, as before:** the FLIGHT is no longer Todo, is done or has an open PR, the AIRCRAFT can no longer take it, or an exclusion rule applies.
 
 Rejections carry **reason chips** in the SUPERVISOR's UI: one or more chips from the server's list (`server/reasons.ts`, `reasonCodes` in the brief) plus an optional memo, stored as `"<chip> · <chip> — <memo>"` in `reason` and as codes in `reasonCodes`; the gate counts them per chip (`reasonCounts`). The chip that matters most is the parent issue (5.1.1), which the planner should also catch by itself.
 

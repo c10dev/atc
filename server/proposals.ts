@@ -5,6 +5,7 @@ import { config } from "./config.ts";
 import { callsign, flightNumber } from "./callsign.ts";
 import {
   canTakeNow,
+  BETTER_WHY,
   DONE_STATES,
   type DispatchConfig,
   type Factor,
@@ -204,7 +205,32 @@ export function fold(ops: Op[]): Proposal[] {
 // HOLD 걸린 ASSIGN은 FLIGHT만 잡아 둔다: AIRCRAFT는 아직 아무도 안 쥐었지만,
 // FLIGHT는 DISPATCH가 "선행이 끝날 때까지 착수하지 않는다"고 정한 것이라 다시 제안하면 안 된다.
 // (이게 없으면 HELD 제안을 만든 다음 바퀴에 같은 FLIGHT가 다른 AIRCRAFT로 곧바로 다시 나온다.)
-export function reservedOf(existing: Proposal[]): Reserved {
+// 같은 짝을 다시 제안하지 않는 기간: 만든 때부터 24시간, RECALL된 짝은 RECALL READBACK부터 24시간. 지났으면 null
+function pairUntil(p: Pick<Proposal, "at" | "timeline">, now: number): number | null {
+  const until = Math.max(Date.parse(p.at) + PROPOSAL_TTL_MS, p.timeline.recalled ? Date.parse(p.timeline.recalled) + PROPOSAL_TTL_MS : 0);
+  return until > now ? until : null;
+}
+// "더 나은 배정으로 바뀜"으로 닫힌 제안은 판정받지 못한 것이다. 24시간 규칙에서 빼 다시 후보가 되게 한다
+const churned = (p: Pick<Proposal, "status" | "reason">) => p.status === "superseded" && (p.reason ?? "").startsWith(BETTER_WHY);
+// 판정 대기 중인 제안을 바꾸려면 새 제안 점수가 이만큼(비율) 높아야 한다
+export const REPLACE_MARGIN = 0.2;
+
+// 24시간 안에 제안됐다 닫힌 ASSIGN 짝 → 다시 가능한 시각. planner(Reserved.recentPairs)와 syncOps(seen)가 같은 기준을 쓴다.
+// 열린 제안(proposed)은 빼서 계획에 그대로 남게 한다. 진행 중(approved·sent·…)인 것은 어차피 예약돼 있다.
+export function recentPairsOf(existing: Proposal[], now: number): Map<string, { id: string; until: string }> {
+  const out = new Map<string, { id: string; until: string }>();
+  for (const p of existing) {
+    if (p.kind !== "ASSIGN" || !p.aircraft || p.status === "proposed" || churned(p)) continue;
+    const until = pairUntil(p, now);
+    if (until === null) continue;
+    const key = `${p.flight}|${p.aircraft}`;
+    const prev = out.get(key);
+    if (!prev || Date.parse(prev.until) < until) out.set(key, { id: p.id, until: new Date(until).toISOString() });
+  }
+  return out;
+}
+
+export function reservedOf(existing: Proposal[], now = Date.now()): Reserved {
   const live = existing.filter(isInFlight);
   const held = existing.filter((p) => p.status === "proposed" && isHeld(p));
   return {
@@ -213,6 +239,7 @@ export function reservedOf(existing: Proposal[]): Reserved {
     held: new Map(held.map((p) => [p.flight, `${p.id} — ${p.hold.length ? "선행 FLIGHT 대기" : "사람 결정 대기"}`])),
     // AIRCRAFT가 STAND 있는 FLIGHT와 없는 FLIGHT(SURVEY·CHECK)를 함께 쥘 수 있어 한 대의 제안을 모두 넘긴다
     aircraftFlights: live.reduce((m, p) => m.set(p.aircraft!, [...(m.get(p.aircraft!) ?? []), p.flight]), new Map<string, string[]>()),
+    recentPairs: recentPairsOf(existing, now),
   };
 }
 
@@ -259,7 +286,7 @@ export function syncOps(
     if (!(t.project && cfg.projectAirports[t.project])) return noProjectWhy(t.project);
     const label = t.labels.find((l) => cfg.excludeLabels.includes(l));
     if (label) return excludedLabelWhy(label);
-    return "더 나은 배정으로 바뀜";
+    return BETTER_WHY;
   };
   // 승인됐지만 아직 안 보낸 ASSIGN이 여전히 유효한가(FLIGHT가 Todo이고 AIRCRAFT가 배정 가능)
   const stillValid = (p: Proposal) =>
@@ -270,6 +297,9 @@ export function syncOps(
 
   let open = 0;
   let openRelease = 0;
+  // 다른 사유 없이 "더 나은 배정"으로만 계획에서 빠진 판정 대기 제안. 바로 닫지 않고, 아래에서 같은 FLIGHT나
+  // AIRCRAFT에 점수가 충분히 높은 새 제안이 실제로 만들어질 때만 닫는다(판정할 기회를 잃지 않게).
+  const contested: Proposal[] = [];
   for (const p of existing) {
     if (p.status === "proposed") {
       if (isHeld(p)) {
@@ -285,7 +315,13 @@ export function syncOps(
         continue;
       }
       if (now - Date.parse(p.at) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at });
-      else if (p.kind === "ASSIGN" && !planned.has(`${p.flight}|${p.aircraft}`)) ops.push({ op: "supersede", id: p.id, at, reason: why(p) });
+      else if (p.kind === "ASSIGN" && !planned.has(`${p.flight}|${p.aircraft}`)) {
+        const reason = why(p);
+        if (reason === BETTER_WHY) {
+          contested.push(p);
+          open++;
+        } else ops.push({ op: "supersede", id: p.id, at, reason });
+      }
       else if (p.kind === "RELEASE" && !releasing.has(p.flight)) ops.push({ op: "supersede", id: p.id, at, reason: why(p) });
       else if (p.kind === "ASSIGN") open++;
       else openRelease++;
@@ -307,12 +343,29 @@ export function syncOps(
 
   // 같은 짝(RELEASE는 같은 FLIGHT)을 24시간 안에 다시 제안하지 않는다(거절한 것도 포함).
   // RECALL된 짝은 RECALL READBACK 시각부터 24시간 다시 제안하지 않는다
-  const recent = existing.filter((x) => now - Date.parse(x.at) < PROPOSAL_TTL_MS || (x.timeline.recalled && now - Date.parse(x.timeline.recalled) < PROPOSAL_TTL_MS));
+  // planner와 같은 기준(pairUntil, churned). 열린 제안의 짝도 그대로 두어 중복 제안을 막는다
+  const recent = existing.filter((x) => pairUntil(x, now) !== null && !churned(x));
   const seen = new Set(recent.map((x) => (x.kind === "ASSIGN" ? `${x.flight}|${x.aircraft}` : `R|${x.flight}`)));
   const nextId = () => `D-${String(++seq).padStart(4, "0")}`;
+  const replaced = new Set<string>();
   for (const a of plan.assign) {
-    if (open >= cfg.slots.openProposals) break;
     if (seen.has(`${a.flight}|${a.aircraft}`)) continue;
+    const rivals = contested.filter((p) => !replaced.has(p.id) && (p.flight === a.flight || p.aircraft === a.aircraft));
+    if (rivals.length) {
+      // 판정 대기 중인 제안보다 REPLACE_MARGIN 이상 높을 때만 바꾼다. 아니면 새 제안을 만들지 않고 기존 것을 둔다
+      const best = Math.max(...rivals.map((p) => p.score));
+      if (a.score - best < Math.abs(best) * REPLACE_MARGIN) continue;
+      const id = nextId();
+      for (const p of rivals) {
+        ops.push({ op: "supersede", id: p.id, at, reason: `${BETTER_WHY} — ${id} (${p.score} → ${a.score})` });
+        replaced.add(p.id);
+        open--;
+      }
+      ops.push({ op: "create", id, at, kind: "ASSIGN", flight: a.flight, aircraft: a.aircraft, aircraftName: a.aircraftName, airport: a.airport, score: a.score, factors: a.factors });
+      open++;
+      continue;
+    }
+    if (open >= cfg.slots.openProposals) continue;
     ops.push({ op: "create", id: nextId(), at, kind: "ASSIGN", flight: a.flight, aircraft: a.aircraft, aircraftName: a.aircraftName, airport: a.airport, score: a.score, factors: a.factors });
     open++;
   }
@@ -491,7 +544,7 @@ export function runDispatch(s: Snapshot, now = Date.now()): Plan {
   const logbook = loadLogbook();
   const landed = landedOf(logbook);
   // 켜진 GROUND STOP이 걸린 AIRPORT의 ASSIGN은 계획에서 뺀다(docs/atfm.md 6장). 열린 제안은 그 사유로 SUPERSEDED
-  const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing), loadFleet(), landed, logbook), s.atfm?.groundStops ?? []);
+  const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), loadFleet(), landed, logbook), s.atfm?.groundStops ?? []);
   const seq = ops.filter((o) => o.op === "create").length;
   append(syncOps(existing, plan, s, cfg, now, seq, landed));
   return plan;
@@ -506,7 +559,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const now = Date.now();
     const proposals = allProposals();
     const logbook = loadLogbook();
-    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals), loadFleet(), landedOf(logbook), logbook), s.atfm?.groundStops ?? []);
+    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), loadFleet(), landedOf(logbook), logbook), s.atfm?.groundStops ?? []);
     const open = proposals.filter((p) => p.status === "proposed" && !isHeld(p));
     const held = proposals.filter((p) => p.status === "proposed" && isHeld(p));
     const inFlight = proposals.filter(isInFlight).sort((a, b) => a.statusAt.localeCompare(b.statusAt));
