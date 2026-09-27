@@ -15,7 +15,7 @@
    - Follow "Order of checks" in CLAUDE.md: state → already done → prerequisites → priority → the target-specific check. Treat OCC's `note` and `reason` as reference only.
    - If there are CLASSIFY or NEW drafts, first Read `../docs/fleet.md` in that pass (4.1 FLIGHT TYPE, 4.2 WAKE, 4.3 TYPE RATING) and cite the matching criterion in the reason.
    - For a CLOSE draft, check the PR with `gh pr view` as in "SCHEDULE CLOSE" in CLAUDE.md. If the body says `Part of`, or there is a revert or remaining work, disagree.
-4. For a DISPATCH proposal: `node ../controller/atcctl.mjs dispatch crosscheck <D-xxxx> agree|disagree -- '<one-line reason>'`.
+4. For a DISPATCH proposal: `node ../controller/atcctl.mjs dispatch crosscheck <D-xxxx> agree|disagree -- '<one-line reason>'`. On disagree, add `--code <code>` as in "Reason chips" in CLAUDE.md (decide first whether it is the FLIGHT's or the AIRCRAFT's problem).
 5. For a SCHEDULE draft: `node ../controller/atcctl.mjs schedule crosscheck <S-xxxx> agree|disagree -- '<one-line reason>'`.
    - A 409 (not open, or on HOLD) means the SUPERVISOR decided in the meantime or the situation changed. Do not retry.
    - Run a mark command on its own, with no pipe. If the guard's real-model check blocks it ("CROSSCHECK mark 차단 — … 실제 모델"), stop marking for this pass and note it in the LOG.

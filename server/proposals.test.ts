@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { DEFAULT_DISPATCH_CONFIG, type Plan } from "./dispatch.ts";
 import type { Ticket, Workspace } from "./model.ts";
 import { parentKeysOf } from "./model.ts";
-import { canApply, fold, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, recentPairsOf, reservedOf, syncOps } from "./proposals.ts";
+import { canApply, fold, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, recentFlightsOf, recentPairsOf, reservedOf, syncOps } from "./proposals.ts";
 import { toTicket } from "./sources/linear.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
@@ -407,11 +407,15 @@ test("거절 사유 집계: 칩별 건수와 최근 예시 FLIGHT, planner가 �
     { op: "verdict", id: "D-0004", at: iso(20), verdict: "disagree", reason: "옛 기록 — 칩 없음" },
   ]);
   const stats = Object.fromEntries(reasonStatsOf(ps).map((r) => [r.code, r]));
-  assert.deepEqual(stats["already-done"], { code: "already-done", label: "이미 완료됨", count: 2, examples: ["VOC-2", "VOC-1"], auto: "auto", how: "LOGBOOK ARRIVED·열린 PR 규칙, STAND 없는 FLIGHT의 ARRIVED 보고, Linear Done 상태" });
+  assert.deepEqual(stats["already-done"], {
+    code: "already-done", label: "이미 완료됨", count: 2, examples: ["VOC-2", "VOC-1"], auto: "auto", scope: "flight",
+    how: "LOGBOOK ARRIVED·열린 PR 규칙, STAND 없는 FLIGHT의 ARRIVED 보고, Linear Done 상태 · 거절하면 FLIGHT 전체 보류(24시간, 이슈가 바뀌면 그 전에 풀림)",
+  });
+  assert.equal(stats["wrong-aircraft"].scope, "pair");
   assert.equal(stats["no-priority"].count, 1);
   assert.equal(stats["no-priority"].auto, "auto");
   assert.equal(stats["waiting-on-prior"].auto, "partial");
-  assert.equal(stats["needs-human"].auto, "manual");
+  assert.equal(stats["needs-human"].auto, "partial"); // 본문의 "사용자가 정한다"류는 OCC HOLD
   assert.equal(stats.other.count, 0);
 });
 
@@ -716,4 +720,42 @@ test("2b 점검표 코드 사실(selfCheck2b): 지금 코드는 RECALL·STAND �
   const src = readFileSync(new URL("../controller/atcctl.mjs", import.meta.url), "utf8");
   assert.deepEqual(selfCheck2b(src, NOW), { recallMissing: [], standFreeMissing: [] });
   assert.deepEqual(selfCheck2b(null, NOW), { recallMissing: ["atcctl dispatch recall-send", "atcctl dispatch recalled"], standFreeMissing: ["atcctl dispatch arrived"] });
+});
+
+test("FLIGHT 보류 목록: FLIGHT 자체의 칩으로 거절된 ASSIGN만(24시간), wrong-aircraft·other·칩 없음은 짝 차단만", () => {
+  const ps = fold([
+    create("D-0022", "VOC-177", "d", 60), { op: "verdict", id: "D-0022", at: iso(50), verdict: "disagree", reason: "x", reasonCodes: ["waiting-on-prior"], via: "crosscheck" },
+    create("D-0023", "VOC-125", "a", 60), { op: "verdict", id: "D-0023", at: iso(40), verdict: "disagree", reason: "x", reasonCodes: ["wrong-aircraft", "needs-human"] },
+    create("D-0030", "VOC-30", "b", 60), { op: "verdict", id: "D-0030", at: iso(40), verdict: "disagree", reason: "x", reasonCodes: ["wrong-aircraft"] },
+    create("D-0031", "VOC-31", "b", 60), { op: "verdict", id: "D-0031", at: iso(40), verdict: "disagree", reason: "옛 판정 — 칩 없음" },
+    create("D-0032", "VOC-32", "b", 60), { op: "verdict", id: "D-0032", at: iso(40), verdict: "disagree", reason: "x", reasonCodes: ["other"] },
+    create("D-0033", "VOC-33", "b", 26 * 60), { op: "verdict", id: "D-0033", at: iso(25 * 60), verdict: "disagree", reason: "x", reasonCodes: ["no-priority"] }, // 24시간 지남
+    create("D-0034", "VOC-34", "b", 60), { op: "reject", id: "D-0034", at: iso(30), reason: "x", reasonCodes: ["parent-issue"] }, // approval 거절도
+  ]);
+  const held = recentFlightsOf(ps, NOW);
+  assert.deepEqual(
+    [...held].map(([f, h]) => `${f}:${h.id}:${h.codes.join("+")}`).sort(),
+    ["VOC-125:D-0023:needs-human", "VOC-177:D-0022:waiting-on-prior", "VOC-34:D-0034:parent-issue"],
+  );
+  assert.equal(held.get("VOC-177")!.decidedAt, iso(50));
+  assert.equal(held.get("VOC-177")!.until, new Date(Date.parse(iso(50)) + 86_400_000).toISOString());
+  assert.deepEqual(reservedOf(ps, NOW).recentFlights, held);
+});
+
+test("FLIGHT 보류: 같은 FLIGHT의 다른 AIRCRAFT 열린 제안은 보류 사유로 닫힌다(D-0023 뒤 D-0024 사례)", () => {
+  const ps = fold([
+    create("D-0023", "VOC-125", "b", 60), { op: "verdict", id: "D-0023", at: iso(40), verdict: "disagree", reason: "x", reasonCodes: ["needs-human"] },
+    create("D-0024", "VOC-125", "c", 30),
+  ]);
+  const why = "FLIGHT 보류 — 사람 결정 필요 (D-0023 판정) — 이슈가 바뀌거나 …";
+  const c = { id: "c", name: "TEAM_C", callsign: "CHARLIE", airport: "VCDO", available: true, reason: "PARKED", reserved: null };
+  const ops = syncOps(ps, planOf({ aircraft: [c], excluded: [{ flight: "VOC-125", reason: why }] }), { tickets: [t("VOC-125")], workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 24);
+  assert.deepEqual(ops.map((o) => `${o.op}:${o.id}:${"reason" in o ? o.reason : ""}`), [`supersede:D-0024:${why}`]);
+});
+
+test("한 번 클릭 판정(via crosscheck)도 사유 칩이 남는다", () => {
+  const [p] = fold([create("D-0022", "VOC-177", "d", 60), { op: "verdict", id: "D-0022", at: iso(10), verdict: "disagree", reason: "사람 결정 필요 — 사용자 지시를 기다림", reasonCodes: ["needs-human"], via: "crosscheck" }]);
+  assert.deepEqual(p.reasonCodes, ["needs-human"]);
+  assert.equal(p.via, "crosscheck");
+  assert.deepEqual(gateOf([p]).reasonCounts?.["needs-human"], 1);
 });

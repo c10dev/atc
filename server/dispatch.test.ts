@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DEFAULT_DISPATCH_CONFIG, type DispatchConfig, landedOf, pairBlockedWhy, planDispatch, readFlightHistory, workedWhy } from "./dispatch.ts";
+import { DEFAULT_DISPATCH_CONFIG, type DispatchConfig, flightHeldWhy, landedOf, pairBlockedWhy, planDispatch, readFlightHistory, workedWhy } from "./dispatch.ts";
 import type { Claim, PullRequest, Session, Snapshot, Ticket, Workspace } from "./model.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
@@ -742,4 +742,26 @@ test("배정할 짝이 모두 24시간 규칙에 걸린 FLIGHT는 제외 사유�
   assert.deepEqual(p.assign, []);
   assert.deepEqual(p.excluded, [{ flight: "VOC-196", reason: pairBlockedWhy("D-0017", until) }]);
   assert.match(pairBlockedWhy("D-0017", until), /^24시간 안에 제안된 짝\(D-0017\) — \d{2}-\d{2} \d{2}:\d{2}부터 다시$/);
+});
+
+test("FLIGHT 보류: FLIGHT 자체의 문제로 거절되면 모든 AIRCRAFT에서 빠지고, 이슈가 판정 뒤 바뀌거나 24시간이면 풀린다", () => {
+  const decidedAt = new Date(NOW - 2 * 3_600_000).toISOString();
+  const until = new Date(Date.parse(decidedAt) + 86_400_000).toISOString();
+  const reserved = {
+    aircraft: new Map(), flights: new Map(), held: new Map(),
+    recentFlights: new Map([["VOC-125", { id: "D-0023", decidedAt, until, codes: ["needs-human"] }]]),
+  };
+  const sessions = [session("a", "TEAM_A"), session("d", "TEAM_D"), session("b", "TEAM_B")];
+  // 판정 전에 마지막으로 바뀐 이슈: 어느 팀에도 가지 않는다
+  const s = snap({ sessions, tickets: [ticket("VOC-125", { updatedAt: daysAgo(1) }), ticket("VOC-9")] });
+  const p = planDispatch(s, new Map(), cfg(), NOW, reserved);
+  assert.deepEqual(p.assign.map((a) => a.flight), ["VOC-9"]);
+  assert.deepEqual(p.excluded, [{ flight: "VOC-125", reason: flightHeldWhy("D-0023", ["needs-human"], until) }]);
+  assert.match(flightHeldWhy("D-0023", ["needs-human", "waiting-on-prior"], until), /^FLIGHT 보류 — 사람 결정 필요 · 선행 FLIGHT·PR 대기 \(D-0023 판정\) — 이슈가 바뀌거나 \d{2}-\d{2} \d{2}:\d{2}부터 다시$/);
+  // 판정 뒤에 이슈가 바뀜(사람이 본문을 고침 등): 다시 후보
+  const edited = snap({ sessions, tickets: [ticket("VOC-125", { updatedAt: new Date(NOW - 3_600_000).toISOString() })] });
+  assert.deepEqual(planDispatch(edited, new Map(), cfg(), NOW, reserved).assign.map((a) => a.flight), ["VOC-125"]);
+  // 24시간이 지남: 다시 후보
+  const later = Date.parse(until) + 1;
+  assert.deepEqual(planDispatch(s, new Map(), cfg(), later, reserved).assign.map((a) => a.flight).sort(), ["VOC-125", "VOC-9"]);
 });

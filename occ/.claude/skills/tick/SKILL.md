@@ -12,7 +12,7 @@ description: OCC 한 바퀴 — 규정이 바뀌었는지 확인하고, 메모 �
 2. `node ../controller/atcctl.mjs dispatch brief`를 실행하고 `mode`를 본다.
 3. `open` 중 `note`가 없는 제안마다:
    - `node ../controller/atcctl.mjs dispatch flight <FLIGHT key>`로 본문과 댓글을 읽는다.
-   - CLAUDE.md의 검토 기준에 따라 `node ../controller/atcctl.mjs dispatch note <ID> [--caution] [--hold [<FLIGHT>]] -- <메모>`. 본문에만 적힌 선행 작업이나 사람 결정 대기는 메모로 끝내지 말고 `--hold`를 건다.
+   - CLAUDE.md의 검토 기준에 따라 `node ../controller/atcctl.mjs dispatch note <ID> [--caution] [--hold [<FLIGHT>]] -- <메모>`. 본문에만 적힌 선행 작업이나 사람 결정 대기는 메모로 끝내지 말고 `--hold`를 건다. 본문·댓글에 "사용자가 정한다"·"사용자 지시를 기다린다"·"user decides" 같은 문구가 있으면 AIRCRAFT와 상관없이 선행 없는 `--hold`(CLAUDE.md "사용자가 정한다" 문구).
 4. `mode`가 `approval`이면 CLAUDE.md의 "FLIGHT PLAN 전달"을 따른다: `inFlight`의 approved → `dispatch release` → 출력 문구를 그대로 SendMessage, `inFlight`의 recalling → `dispatch recall-send` → RECALL 문구를 그대로 SendMessage, `overdue` 처리. 이어서 CLAUDE.md의 "CREW CHANGE 발부"를 따른다: `node ../controller/atcctl.mjs crew-change brief`의 `approved` → `crew-change send <CC-xxxx>` → 출력 문구를 그 AIRCRAFT에 그대로 SendMessage, `waiting`은 보내지 않고, `overdue`는 같은 문구를 한 번만 다시 보낸 뒤 그래도 없으면 SUPERVISOR 보고. 승인은 SUPERVISOR만 한다. `shadow`면 이 단계를 건너뛴다.
 5. SCHEDULE 초안(S1, 그림자 운용). CLAUDE.md의 "SCHEDULE 초안"을 따른다:
    - `node ../controller/atcctl.mjs schedule brief`를 실행하고 `candidates`와 `examples`(SUPERVISOR의 최근 판정과 거절 사유)를 본다. 거절 사유와 같은 실수를 되풀이하지 않는다.

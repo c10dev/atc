@@ -163,6 +163,14 @@ test("CLOSE 초안: FLIGHT와 근거만, 옵션은 받지 않는다(PR·머지 �
   assert.equal(draftText(op), "S-0009 CLOSE VOC-193 초안 · → Done · PR vocado_nextjs#400 머지 2026-09-26T13:41Z · Fixes (그림자 운용, Linear에 쓰지 않음)");
 });
 
+test("dispatch crosscheck --code: 쉼표·여러 번, disagree에만", () => {
+  assert.deepEqual(parseCrosscheck(argv("D-0022 disagree --code needs-human,waiting-on-prior --code needs-human -- 사용자 지시를 기다림")).body.reasonCodes, ["needs-human", "waiting-on-prior"]);
+  assert.equal(parseCrosscheck(argv("D-0022 disagree -- x")).body.reasonCodes, undefined);
+  assert.throws(() => parseCrosscheck(argv("D-0022 agree --code needs-human -- x")), /disagree에만/);
+  assert.throws(() => parseCrosscheck(argv("D-0022 disagree --code -- x")), /사유 코드가 필요함/);
+  assert.throws(() => parseCrosscheck(argv("D-0022 disagree --flag x -- y")), /알 수 없는 인자/);
+});
+
 test("crew-change: brief | send <CC-ID> | readback <CC-ID>. 승인(approve)은 없다", () => {
   assert.deepEqual(CREW_CHANGE_CMDS, ["brief", "send", "readback"]);
   assert.deepEqual(parseCrewChange(argv("brief")), { action: "brief" });

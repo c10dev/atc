@@ -30,6 +30,7 @@ interface Crosscheck {
   verdict: "agree" | "disagree";
   reason: string;
   at: string;
+  reasonCodes?: string[]; // disagree의 거절 사유 칩. 옛 mark·옛 서버는 없음
 }
 interface CrosscheckRate {
   marked: number;
@@ -186,8 +187,10 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
     load();
   }, [load, refreshKey]);
 
-  // CROSSCHECK 판정을 그대로 기록한다(한 번 클릭). disagree면 CROSSCHECK 사유를 거절 사유로 쓴다.
-  const acceptCrosscheck = (p: Proposal, m: Crosscheck) => submit(p, m.verdict, { via: "crosscheck", reason: m.verdict === "disagree" ? m.reason : null });
+  // CROSSCHECK 판정을 그대로 기록한다(한 번 클릭). disagree면 CROSSCHECK 사유와 사유 칩(reasonCodes)을 거절 사유로 쓴다.
+  // 칩이 없는 옛 mark는 칩 없이(사유 문장에서 추정하지 않는다)
+  const acceptCrosscheck = (p: Proposal, m: Crosscheck) =>
+    submit(p, m.verdict, { via: "crosscheck", reason: m.verdict === "disagree" ? m.reason : null, ...(m.verdict === "disagree" && m.reasonCodes?.length ? { reasonCodes: m.reasonCodes } : {}) });
 
   // shadow: 그림자 판정(verdict), approval: 실제 승인·거절. 성공하면 true
   const submit = async (p: Proposal, v: "agree" | "disagree", input: VerdictInput) => {
@@ -716,11 +719,13 @@ function CrosscheckMini({ m }: { m: Crosscheck | null }) {
 }
 
 // 열린 제안의 CROSSCHECK 칩: "CROSSCHECK agree · 사유"(길면 두 줄에서 자르고 전체는 title)
-function CrosscheckChip({ m, now }: { m: Crosscheck; now: number }) {
+function CrosscheckChip({ m, now, labelOf }: { m: Crosscheck; now: number; labelOf: (code: string) => string }) {
+  const chips = (m.reasonCodes ?? []).map(labelOf);
   return (
-    <p className={`dp-xc v-${m.verdict}`} title={`CROSSCHECK ${m.verdict} · ${modelText(modelOf(m))} · ${m.by} · ${m.at}\n${m.reason}`}>
+    <p className={`dp-xc v-${m.verdict}`} title={`CROSSCHECK ${m.verdict} · ${modelText(modelOf(m))} · ${m.by} · ${m.at}\n${chips.length ? `[${chips.join(" · ")}] ` : ""}${m.reason}`}>
       <span className="dp-xc-mark">CROSSCHECK</span>
       <b className="dp-xc-verdict">{m.verdict}</b>
+      {chips.length > 0 && <span className="dp-xc-codes">{chips.join(" · ")}</span>}
       <span className="dp-xc-reason">· {m.reason}</span>
       {/* 어느 모델이 표시했는지: 시각 옆에 흐리게 */}
       <span className="dp-xc-meta">
@@ -987,7 +992,7 @@ function Card({
           {p.caution && <span className="dp-caution">CAUTION</span>} {p.note}
         </p>
       )}
-      {xc && <CrosscheckChip m={xc} now={now} />}
+      {xc && <CrosscheckChip m={xc} now={now} labelOf={(c) => codes.find((r) => r.code === c)?.label ?? c} />}
       {rejecting ? (
         <RejectForm p={p} codes={codes} mode={mode} busy={busy} onCancel={closeReject} onSubmit={reject} />
       ) : (
@@ -1002,7 +1007,7 @@ function Card({
             <button
               className={`dp-btn dp-xc-accept v-${xc.verdict}`}
               disabled={busy}
-              title={`CROSSCHECK 판정(${xc.verdict})대로 ${xc.verdict === "agree" ? (mode === "approval" ? "승인" : "승인했을 것") : mode === "approval" ? "거절" : "거절했을 것"} 기록${xc.verdict === "disagree" ? " — 사유는 CROSSCHECK 사유" : ""}`}
+              title={`CROSSCHECK 판정(${xc.verdict})대로 ${xc.verdict === "agree" ? (mode === "approval" ? "승인" : "승인했을 것") : mode === "approval" ? "거절" : "거절했을 것"} 기록${xc.verdict === "disagree" ? ` — 사유는 CROSSCHECK 사유${xc.reasonCodes?.length ? `, 칩 ${xc.reasonCodes.map((c) => codes.find((r) => r.code === c)?.label ?? c).join(" · ")}` : ""}` : ""}`}
               onClick={() => onAccept(p, xc)}
             >
               CROSSCHECK에 동의

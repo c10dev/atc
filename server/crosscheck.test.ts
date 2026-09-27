@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Crosscheck, crosscheckRateOf, type HumanDecision, modelFamily, oneClickOf, viaOf } from "./crosscheck.ts";
+import { type Crosscheck, CrosscheckError, crosscheckRateOf, type HumanDecision, markOf, modelFamily, oneClickOf, parseCrosscheck, viaOf } from "./crosscheck.ts";
+import { REASON_CODES } from "./reasons.ts";
 
 test("via 입력: crosscheck만 그대로, 나머지(없음 포함)는 manual", () => {
   assert.equal(viaOf({ via: "crosscheck" }), "crosscheck");
@@ -55,4 +56,17 @@ test("byModel은 계열로 묶는다: 같은 Muse의 이름 셋이 한 줄, unkn
     unknown: { marked: 1, matched: 1, rate: 1 },
   });
   assert.equal(r.marked, 5); // 전체 합계는 그대로
+});
+
+test("CROSSCHECK 사유 칩: DISPATCH disagree에만, 목록의 코드만, 옛 mark에는 없다", () => {
+  const at = "2026-09-27T06:00:00.000Z";
+  const m = parseCrosscheck({ verdict: "disagree", reason: "사용자 지시를 기다림", reasonCodes: ["needs-human", "needs-human", "waiting-on-prior"] }, at, REASON_CODES);
+  assert.deepEqual(m.reasonCodes, ["waiting-on-prior", "needs-human"]); // 목록 순서, 중복 없이
+  assert.equal(parseCrosscheck({ verdict: "disagree", reason: "x" }, at, REASON_CODES).reasonCodes, undefined);
+  assert.throws(() => parseCrosscheck({ verdict: "agree", reason: "x", reasonCodes: ["needs-human"] }, at, REASON_CODES), (e) => e instanceof CrosscheckError && /disagree에만/.test(e.message));
+  assert.throws(() => parseCrosscheck({ verdict: "disagree", reason: "x", reasonCodes: ["busy"] }, at, REASON_CODES), (e) => e instanceof CrosscheckError && /모르는 사유 code/.test(e.message));
+  assert.throws(() => parseCrosscheck({ verdict: "disagree", reason: "x", reasonCodes: ["needs-human"] }, at), /DISPATCH 제안에만/); // SCHEDULE
+  // 기록 한 줄에서: 칩이 있으면 남고, 옛 줄에는 없다(이유 문장에서 추정하지 않는다)
+  assert.deepEqual(markOf({ by: "CROSSCHECK", model: "m", verdict: "disagree", reason: "x", at, reasonCodes: ["needs-human"] }).reasonCodes, ["needs-human"]);
+  assert.equal("reasonCodes" in markOf({ by: "CROSSCHECK", verdict: "disagree", reason: "사람 결정 필요", at }), false);
 });

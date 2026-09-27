@@ -25,7 +25,7 @@ SUPERVISOR는 DISPATCH·SCHEDULE 탭에서 이 mark를 보고 "CROSSCHECK에 동
 | `node ../controller/atcctl.mjs dispatch flight <VOC-193>` | FLIGHT 본문과 댓글(최대 20개) |
 | Read `../docs/fleet.md` | 분류 기준: 4.1 FLIGHT TYPE, 4.2 WAKE CATEGORY, 4.3 TYPE RATING. `../docs/`의 다른 설계 문서(`occ.md`, `dispatch.md`)도 읽을 수 있다 |
 | `node ../controller/atcctl.mjs dispatch brief` / `schedule brief` | 필요할 때 전체 브리핑(계획, 제외 사유, 후보) |
-| `node ../controller/atcctl.mjs dispatch crosscheck <D-0003> agree\|disagree -- '<이유>'` | 열린 제안에 예비 판정. 다시 달면 대신한다 |
+| `node ../controller/atcctl.mjs dispatch crosscheck <D-0003> agree\|disagree [--code <코드>[,<코드>]] -- '<이유>'` | 열린 제안에 예비 판정. disagree면 `--code`로 거절 사유 칩(아래 "사유 칩"). 다시 달면 대신한다 |
 | `node ../controller/atcctl.mjs schedule crosscheck <S-0001> agree\|disagree -- '<이유>'` | 열린 SCHEDULE 초안에 예비 판정 |
 | `gh pr view <N> --repo <owner/name> --json state,mergedAt,title` | 본문·메모에 나온 PR이 열렸는지·머지됐는지. `gh pr checks <N> --repo …`는 CI, `gh pr list --repo … --search <VOC-190>`은 FLIGHT의 PR 찾기 |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
@@ -83,6 +83,23 @@ OCC 메모나 티켓 본문·댓글에 PR 조건("PR #393 머지 뒤", "PR #390�
 - 한 줄, 사실만. 판정을 가른 근거를 앞에 쓴다: `이미 완료됨 — VOC-190 댓글에 PR #390 머지`.
 - agree도 이유를 쓴다: `본문상 제약 없음, TEAM_B가 SEC 보유`.
 - 항공 용어는 영어 그대로 쓴다(FLIGHT, AIRCRAFT, HOLD …).
+
+### 사유 칩 (DISPATCH disagree)
+
+DISPATCH 제안에 disagree하면 `--code`로 칩을 하나 이상 고른다. SUPERVISOR가 "CROSSCHECK에 동의"를 누르면 칩도 그대로 기록되고, **칩이 차단 범위를 정한다.** FLIGHT 자체의 문제면 그 FLIGHT가 모든 AIRCRAFT에서 24시간(이슈가 바뀌면 그 전까지) 보류되고, AIRCRAFT만의 문제면 그 짝만 막힌다. SCHEDULE 초안에는 칩을 달지 않는다.
+
+| 코드 | 고를 때 | 막는 범위 |
+|---|---|---|
+| `already-done` | 완료 기준이 이미 충족됨 | FLIGHT |
+| `parent-issue` | 상위 이슈, 하위로 나뉨 | FLIGHT |
+| `waiting-on-prior` | 선행 FLIGHT·PR·디자인 확정 대기 | FLIGHT |
+| `needs-human` | 본문이 "사용자가 정한다"·"사용자 지시를 기다린다", 사람 손(모집·관찰 등)이 필요 | FLIGHT |
+| `no-priority` | 우선순위 미정, "나중에" | FLIGHT |
+| `out-of-repo` | 저장소 밖 작업 | FLIGHT |
+| `wrong-aircraft` | 이 AIRCRAFT만 맞지 않음(TYPE RATING, 다른 팀 지정) | 짝 |
+| `other` | 위에 없는 것 | 짝 |
+
+FLIGHT의 문제인지 AIRCRAFT의 문제인지 먼저 가른다. 다른 팀이면 괜찮을 일에 FLIGHT 칩을 달지 않는다.
 
 ## CROSSCHECK LOG
 

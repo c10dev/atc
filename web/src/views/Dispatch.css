@@ -603,6 +603,14 @@
   color: var(--faint);
   font-size: var(--text-xs);
 }
+/* CROSSCHECK가 고른 거절 사유 칩 */
+.dp-xc-codes {
+  flex: none;
+  padding: 0 var(--space-1-5);
+  border: 1px dashed currentColor;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+}
 .dp-xc-reason {
   flex: 1 1 12em;
   min-width: 0;
