@@ -54,3 +54,19 @@ test("--read-only(CROSSCHECK): 발부된 Linear 쓰기도 막고 읽기만 통�
   assert.match(await decide({ tool_name: "mcp__github__merge_pull_request" }, { readOnly: true }), /읽기 전용이 아닌/);
   assert.match(await decide({}, { readOnly: true }), /읽지 못함/);
 });
+
+test("linear-guard: WAYPOINT에 넣는 NEW(ATC-8)는 발부된 호출(milestone id 포함)과 정확히 같을 때만 통과", async () => {
+  const { checkLinear } = await import("./mcp-guard.mjs");
+  const { callsOf } = await import("../server/schedule.ts");
+  const payload = { title: "곡 검색 동작", body: "## 목표\nx", project: "Song Catalog", milestone: { id: "m-7", name: "Beta Ready" }, gap: true, similar: [] };
+  const op = { id: "S-0020", at: "", kind: "NEW", flight: null, payload, reason: "r", status: "released", statusAt: "", verdictReason: null, calls: null, appliedRef: null, decision: null, crosscheck: null };
+  const calls = callsOf(op, undefined, "Vocado");
+  assert.equal(calls[0].input.milestone, "m-7");
+  const released = async () => ({ mode: "approval", calls: calls.map((c) => ({ id: "S-0020", ...c })) });
+  const claimer = async () => ({ id: "S-0020", call: 0 });
+  assert.equal(await checkLinear("mcp__linear__save_issue", { ...calls[0].input }, released, claimer), null);
+  const { milestone: _m, ...without } = calls[0].input;
+  assert.match(await checkLinear("mcp__linear__save_issue", without, released, claimer), /다름/); // milestone을 빼면 막는다
+  assert.match(await checkLinear("mcp__linear__save_issue", { ...calls[0].input, milestone: "Beta Ready" }, released, claimer), /다름/); // id 대신 이름도 막는다
+  assert.match(await checkLinear("mcp__linear__save_issue", { ...calls[0].input, milestone: "m-8" }, released, claimer), /다름/);
+});

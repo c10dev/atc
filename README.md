@@ -341,7 +341,7 @@ Design: [docs/occ.md](docs/occ.md) sections 5–7. The OCC session drafts the Li
 
 | API | What it does |
 |---|---|
-| `GET /api/schedule/brief` | Mode (`shadow`), open drafts with what each would change, drafts closed in the last 7 days (with `via` once decided), the S2 check (`gate.crosscheck.oneClick`), the open-draft limit, candidates (`classify`, `prioritize`, `close`), the CLOSE candidates' PR, merge time and link (`close`), approved CLOSEs to close by hand (`closeManual`), FLIGHT summaries |
+| `GET /api/schedule/brief` | Mode (`shadow`), open drafts with what each would change, drafts closed in the last 7 days (with `via` once decided), the S2 check (`gate.crosscheck.oneClick`), the open-draft limit, candidates (`classify`, `prioritize`, `close`), the CLOSE candidates' PR, merge time and link (`close`), approved CLOSEs to close by hand (`closeManual`), FLIGHT summaries; `waypointGaps` (per ROUTE, the active and next WAYPOINT with exit criteria and issues, ATC-8) |
 | `GET /api/schedule/ops/:id` | One SCHEDULE operation and the mode |
 | `POST /api/schedule/ops` | OCC draft. `CLASSIFY` / `PRIORITIZE`: `{kind, flight, reason, type?, wake?, ratings?, priority?}`. `NEW`: `{kind: "NEW", title, body, project, reason, priority?, type?, wake?, ratings?, tail?, parent?, related?, blockedBy?}`; the op has `flight: null` and atc adds `similar: [{key, title}]`. 400 with the reason on bad input, 409 at the open-draft limit |
 | `POST /api/schedule/ops/:id/verdict` | `{verdict: agree\|disagree, reason?, via?}` SUPERVISOR shadow verdict (`via`: `crosscheck` or `manual`) |
@@ -422,6 +422,7 @@ atc/
 │   ├── atfm-run.ts         # ATFM recording and /api/atfm
 │   ├── reasons.ts          # DISPATCH reject reason chips (reasons.test.ts)
 │   ├── schedule.ts         # OCC SCHEDULE draft log and API (schedule.test.ts)
+│   ├── waypoint-gaps.ts    # WAYPOINT exit criteria and issues for OCC NEW drafts (waypoint-gaps.test.ts)
 │   ├── recorder.ts         # FLIGHT RECORDER log
 │   ├── occupancy.ts        # HANDOFF and conflict verdicts (occupancy.test.ts)
 │   ├── snapshot.ts         # merges sources + computes alerts

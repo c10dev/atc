@@ -16,6 +16,11 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 - The TOWER and OCC Bash guard (`controller/guard.mjs`) let command substitution through inside double quotes: `node atcctl.mjs brief -- "$(touch /tmp/x)"` passed, and so did a backtick. The shell runs these before the command, so a control session could run arbitrary commands. Command substitution and variable expansion (`$(…)`, backticks, `${…}`, `$VAR`) are now blocked anywhere outside single quotes; single-quoted and backslash-escaped text is still allowed. Reported by TEAM_H.
 
 ### Added
+- WAYPOINT gaps: OCC drafts NEW issues for exit criteria no issue covers (ATC-8, [docs/occ.md](docs/occ.md) 5.6).
+  - `schedule brief` adds `waypointGaps` (`server/waypoint-gaps.ts`): per ROUTE, the active and next WAYPOINT with their exit criteria (or the description when there is no numbered list), their issues (key, title, state) and `truncated`. Matching criteria to issues is left to OCC.
+  - `NEW` drafts take `milestone` (name or id), checked against the project's milestones and shown in `changesOf` and the SCHEDULE tab. The S2 released `save_issue` call carries the milestone id; a test checks linear-guard passes only that exact call (`occ/mcp-guard.mjs` unchanged).
+  - `--gap` marks a WAYPOINT gap draft: it needs a milestone, and atc refuses it when a similar FLIGHT exists.
+  - OCC's tick drafts at most 2 per pass with the criterion quoted, and skips criteria a person must decide (`occ/CLAUDE.md` "WAYPOINT gap", `/tick`, ko and en).
 - Fast path on the DISPATCH queue (ATC-6, [docs/dispatch.md](docs/dispatch.md) 5.6).
   - **Agreement group**: open ASSIGN cards that CROSSCHECK marked `agree` sit at the top as one line each (BRIEFING "무슨 일", FLIGHT, AIRCRAFT, **동의**). 동의 records the verdict with the existing one-click flag; expanding a line shows the full card, where rejecting with chips stays. No "confirm all".
   - Cards CROSSCHECK disagrees with stay expanded; cards still waiting for CROSSCHECK are never in the group.

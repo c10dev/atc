@@ -69,6 +69,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `proposals.ts` | DISPATCH 제안 기록(추가만 하는 JSONL), 상태 전이(그림자 판정, approve → sent → accepted → departed, STAND 없는 FLIGHT는 READBACK에 departed → CAPTAIN 보고로 arrived), 예약, FLIGHT PLAN 문구, 브리핑, 2b·3단계 점검, 2b 점검표용 코드 사실(`selfCheck2b`) |
 | `readiness.ts` | "2b 켜기 점검표"(순수 함수 `readiness2bOf`, `vocadoReadbackOf`, `sendGuardOf`. 코드 사실은 `selfCheck2b`와 `selfCheckCrewChange`, `vocado-readback`은 `[DISPATCH D-xxxx]`와 `[OCC CC-xxxx]` 규칙이 다 있어야 ready). `occ/send-guard.mjs`와 vocado `CLAUDE.md`를 읽기만 한다(`ATC_VOCADO_CLAUDE_MD`, 없으면 `<projectsDir>/vocado_nextjs/CLAUDE.md`) |
 | `schedule.ts` | OCC SCHEDULE 초안 기록(추가만 하는 JSONL, S1 그림자 운용): `CLASSIFY`·`PRIORITIZE` 초안과 `NEW`(CHARTER DESK의 AD HOC FLIGHT: 본문 칸, 프로젝트·tail·key 검사, 최근 45일 스냅샷에서 찾은 비슷한 제목 `similar`), 열린 초안 5건 한도, SUPERSEDED·EXPIRED 동기화, 그림자 판정, 후보, S2 점검 |
+| `waypoint-gaps.ts` | OCC용 WAYPOINT gap(ATC-8, [docs/occ.ko.md](../docs/occ.ko.md) 5.6): ROUTE마다 지금·다음 WAYPOINT의 완료 기준(없으면 설명), 이슈, `truncated`(순수 함수 `waypointGapsOf`, `routes.ts`의 `waypointStates`·`criteriaOf` 위). 기준과 이슈 짝짓기는 OCC 몫 |
 | `crosscheck.ts` | DISPATCH·SCHEDULE가 함께 쓰는 CROSSCHECK mark: 입력 검사(agree/disagree, 이유 500자 이내), 사람 판정과의 일치율, 보정용 예시, 판정 방식(`via`, 순수 함수 `viaOf`)과 한 번 클릭 건수(순수 함수 `oneClickOf`) |
 | `reasons.ts` | DISPATCH 거절 사유 칩(`REASON_CODES`), 입력 검사, 기록할 `reason` 글(순수 함수 `composeReason`), 칩별 건수 |
 
@@ -105,7 +106,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `GET /api/dispatch/proposals/:id` | 제안 하나와 지금 모드(send-guard용) |
 | `POST /api/dispatch/mode` | `{mode: "shadow" \| "approval"}` 전환(`dispatch.json`에 저장) |
 | `GET /api/dispatch/flight/:key` | Linear에서 티켓 본문과 댓글(읽기 전용) |
-| `GET /api/schedule/brief` | SCHEDULE 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안(`via`), S2 점검(`crosscheck.oneClick`), 열린 초안 한도, 후보, FLIGHT 요약 |
+| `GET /api/schedule/brief` | SCHEDULE 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안(`via`), S2 점검(`crosscheck.oneClick`), 열린 초안 한도, 후보, FLIGHT 요약. `waypointGaps`(ATC-8) |
 | `GET /api/schedule/ops/:id` | SCHEDULE 작업 하나와 모드 |
 | `POST /api/schedule/ops` | OCC 초안. `CLASSIFY`·`PRIORITIZE`: `{kind, flight, reason, type?, wake?, ratings?, priority?}`. `NEW`: `{kind: "NEW", title, body, project, reason, priority?, type?, wake?, ratings?, tail?, parent?, related?, blockedBy?}` → `flight: null`, `payload.similar: [{key, title}]`인 작업. 입력이 틀리면 400, 열린 초안이 한도면 409 |
 | `POST /api/schedule/ops/:id/verdict` | SUPERVISOR 그림자 판정 `{verdict: "agree" \| "disagree", reason?, via?}` |

@@ -228,3 +228,10 @@ test("dispatch briefing: <D-ID> --what --why --risk 세 줄 모두", () => {
   assert.throws(() => parseBriefingArgs(["D-0012", "--note", "a"]), /알 수 없는 인자/);
   assert.throws(() => parseBriefingArgs(["--what", "a"]), /제안 ID/);
 });
+
+test("NEW --milestone·--gap: WAYPOINT gap 초안(ATC-8)", () => {
+  const got = parseDraft(["NEW", "--gap", "--title", "t", "--project", "Song Experience", "--milestone", "Beta Ready", "--reason", "r", "--", "b"]);
+  assert.deepEqual(got, { kind: "NEW", gap: true, title: "t", project: "Song Experience", milestone: "Beta Ready", reason: "r", body: "b" });
+  assert.equal(parseDraft(["NEW", "--title", "t", "--project", "p", "--reason", "r", "--", "b"]).gap, undefined);
+  assert.throws(() => parseDraft(["NEW", "--title", "t", "--project", "p", "--milestone", "--reason", "r", "--", "b"]), /--milestone 뒤에 값/);
+});

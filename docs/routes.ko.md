@@ -4,7 +4,7 @@
 
 ROUTE MAP은 ROUTE(Linear 프로젝트)마다 WAYPOINT(Linear 프로젝트 마일스톤)를 잇는 경로를 보여 준다. 어느 WAYPOINT를 지났는지, 지금 어느 구간인지, 그 구간을 어떤 FLIGHT가 날고 있는지, 다음 WAYPOINT에 언제쯤 닿을지를 한눈에 본다. NETWORK 탭의 ROUTES 표 위에 있다.
 
-> Status (2026-09-27): "구현 순서"의 1~4단계가 만들어졌다(ATC-2). 읽기 전용 WAYPOINT 데이터, `GET /api/routes`, NETWORK의 ROUTE MAP, ETA다. 5단계부터는 아직 없다.
+> Status (2026-09-27): "구현 순서"의 1~4단계가 만들어졌다(ATC-2). 읽기 전용 WAYPOINT 데이터, `GET /api/routes`, NETWORK의 ROUTE MAP, ETA다. 10단계도 만들어졌다(ATC-8). 덮는 이슈가 없는 완료 기준을 OCC가 NEW 초안으로 올린다. 5~9단계는 아직 없다.
 
 관련: [fleet.ko.md](fleet.ko.md) 7.3(NETWORK), `server/network.ts`(ROUTES 표), `server/sources/linear-projects.ts`(Linear 프로젝트와 마일스톤), `server/routes.ts`(이 설계), `server/following.ts`(FLIGHT를 모는 AIRCRAFT).
 
@@ -111,6 +111,7 @@ ROUTE마다 한 줄: ROUTE 이름, 진행률, 그다음 가로 SVG 경로. WAYPO
 7. OCC 브리핑: 지연된 WAYPOINT를 브리핑 한 줄로. 아직 없음.
 8. DISPATCH: 지금 구간 WAYPOINT의 FLIGHT에 점수를 더 준다. 아직 없음.
 9. SCHEDULE: WAYPOINT가 없는 ROUTE의 FLIGHT에 "마일스톤 지정" 초안. 아직 없음.
+10. SCHEDULE: WAYPOINT gap(만듦, ATC-8). `schedule brief`에 `waypointGaps`가 더해진다(`server/waypoint-gaps.ts`). ROUTE마다 지금 구간과 그다음 WAYPOINT의 완료 기준(번호 목록이 없으면 설명)과 이슈를 함께 보인다. 기준과 이슈를 짝짓는 것은 서버가 아니라 OCC가 판단하고, 덮는 이슈가 없는 기준을 `NEW --gap --milestone <WAYPOINT>`로 바퀴마다 2건까지 올린다(docs/occ.ko.md 5.6). `NEW`는 그 프로젝트의 마일스톤을 가질 수 있고, S2 발부 호출에 그 id가 들어간다.
 
 ## 8. 위험 (Risks)
 

@@ -138,7 +138,7 @@ function stamp(iso: string, clock: Clock): string {
 function payloadText(op: ScheduleOp): string {
   if (op.kind === "NEW") {
     const p = op.payload as NewPayload;
-    return [p.project, p.priority && `priority ${PRIORITY_NAME[p.priority]}`, ...newLabels(p)].filter(Boolean).join(" · ");
+    return [p.project, p.milestone && `WAYPOINT ${p.milestone.name}`, p.priority && `priority ${PRIORITY_NAME[p.priority]}`, ...newLabels(p)].filter(Boolean).join(" · ");
   }
   if (op.kind === "PRIORITIZE") return `priority ${PRIORITY_NAME[(op.payload as PrioritizePayload).priority]}`;
   if (op.kind === "CLOSE") {
@@ -756,6 +756,15 @@ function NewCard({
       <dl className="sc-facts">
         <dt>프로젝트</dt>
         <dd>{p.project}</dd>
+        {p.milestone && (
+          <>
+            <dt>WAYPOINT</dt>
+            <dd>
+              {p.milestone.name}
+              {p.gap && <span className="faint"> · 완료 기준에서 올린 초안(WAYPOINT gap)</span>}
+            </dd>
+          </>
+        )}
         <dt>priority</dt>
         <dd>{p.priority ? PRIORITY_NAME[p.priority] : <span className="faint">없음</span>}</dd>
         <dt>라벨</dt>
@@ -824,6 +833,12 @@ function NewCard({
         </div>
         <span>
           프로젝트 <code>{p.project}</code>
+          {p.milestone && (
+            <>
+              {" "}
+              · 마일스톤 <code>{p.milestone.name}</code>
+            </>
+          )}
           {p.priority ? (
             <>
               {" "}

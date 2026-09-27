@@ -16,6 +16,11 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 추가
+- WAYPOINT gap: 덮는 이슈가 없는 완료 기준을 OCC가 NEW 초안으로 올린다(ATC-8, [docs/occ.ko.md](docs/occ.ko.md) 5.6).
+  - `schedule brief`에 `waypointGaps`가 더해진다(`server/waypoint-gaps.ts`). ROUTE마다 지금 구간과 다음 WAYPOINT의 완료 기준(번호 목록이 없으면 설명), 이슈(key·제목·상태), `truncated`를 보인다. 기준과 이슈를 짝짓는 것은 OCC 몫이다.
+  - `NEW` 초안이 `milestone`(이름이나 id)을 받는다. 그 프로젝트의 마일스톤인지 검사하고, `changesOf`와 SCHEDULE 탭에 보인다. S2 발부 `save_issue` 호출에 마일스톤 id가 들어가고, linear-guard가 그 호출과 똑같을 때만 통과시키는 것을 테스트로 확인한다(`occ/mcp-guard.mjs`는 그대로).
+  - `--gap`은 WAYPOINT gap 초안 표시다. 마일스톤이 있어야 하고, 비슷한 FLIGHT가 있으면 atc가 받지 않는다.
+  - OCC tick은 바퀴마다 2건까지, 기준을 인용해 올리고, 사람이 정할 기준은 건너뛴다(`occ/CLAUDE.md` "WAYPOINT gap", `/tick`, 한국어·영어).
 - DISPATCH 대기열에 빠른 길(ATC-6, [docs/dispatch.ko.md](docs/dispatch.ko.md) 5.6).
   - **동의 묶음**: CROSSCHECK가 `agree`로 표시한 열린 ASSIGN 카드는 맨 위에 한 줄씩 모인다(BRIEFING의 "무슨 일", FLIGHT, AIRCRAFT, **동의**). 동의는 기존 한 번 클릭 표시와 함께 판정을 남긴다. 줄을 펼치면 전체 카드가 보이고, 칩과 함께 하는 거절은 거기서 그대로 한다. "모두 동의"는 없다.
   - CROSSCHECK가 반대한 카드는 펼친 채로 남고, CROSSCHECK를 기다리는 카드는 묶음에 들어가지 않는다.

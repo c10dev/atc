@@ -84,11 +84,12 @@ Built: `NEW` (CHARTER DESK, 5.1), `CLOSE` (5.5), `PRIORITIZE`, `CLASSIFY`. Not b
 
 ### 5.1 Where operations come from
 
-- **The SUPERVISOR's instructions (CHARTER DESK)**: a CHARTER REQUEST made directly in the OCC session ("make a ticket for X") becomes a `NEW` draft, an AD HOC FLIGHT (a FLIGHT added outside the regular schedule). Once approved and in Linear Todo (S2) it is FILED like any other FLIGHT. Small ticketless work handed straight to a team is AD HOC and never becomes a SCHEDULE operation. OCC never drafts `NEW` on its own initiative. Its duplicate search (section 5.3) covers atc's snapshot, which holds issues updated in the last 45 days.
+- **The SUPERVISOR's instructions (CHARTER DESK)**: a CHARTER REQUEST made directly in the OCC session ("make a ticket for X") becomes a `NEW` draft, an AD HOC FLIGHT (a FLIGHT added outside the regular schedule). Once approved and in Linear Todo (S2) it is FILED like any other FLIGHT. Small ticketless work handed straight to a team is AD HOC and never becomes a SCHEDULE operation. OCC never drafts `NEW` on its own initiative, with one exception: a WAYPOINT exit criterion no issue covers (5.6), which carries over a criterion the SUPERVISOR already wrote. Its duplicate search (section 5.3) covers atc's snapshot, which holds issues updated in the last 45 days.
 - **Team findings**: a CAPTAIN reports "found Y outside my scope" → `SPLIT`.
 - **PR reviews**: follow-up items in a review → `SPLIT`.
 - **atc signals**: done but still open (`CLOSE`), no priority (`PRIORITIZE`), a body-only prerequisite (`LINK`), neglected ENROUTE (the DISPATCH `RELEASE` case).
 - **Stage 4 network planning**: a goal broken down into tickets, as drafts only.
+- **WAYPOINT gaps** (5.6): exit criteria of the active or next WAYPOINT that no issue covers → `NEW` with the milestone.
 
 ### 5.2 Ticket bodies
 
@@ -140,6 +141,16 @@ Linear clean-up used to be President's job. Now OCC drafts it, and the SCHEDULE 
 - **No release.** A CLOSE changes the issue's state, and vocado's OCC exception says OCC does not change state or assignee. So `callsOf` refuses it and `schedule release` answers 409 `CLOSE는 SUPERVISOR가 Linear에서 직접 — vocado 규칙상 OCC는 상태를 바꾸지 않음`. linear-guard therefore never sees a CLOSE call. Instead the SCHEDULE tab lists **approved** CLOSEs, and in shadow mode those marked "승인했을 것" in the last 7 days, under "LINEAR에서 직접 DONE" with the issue and PR links. The SUPERVISOR moves them to Done, and the next brief drops them.
 - **Evidence comment: not built, on purpose.** Releasing only a `save_comment` (`[OCC S-xxxx] PR … 머지됨`) would stay inside OCC's plan fields. But the SUPERVISOR closes by hand right after, the PR is already linked through the GitHub integration, and a bot comment per closed issue adds noise. The recommendation is to leave it off unless the SUPERVISOR wants an audit trail on the issue itself; it would be a CALL list of one comment in `callsOf`.
 - **Switch for later.** If vocado's rule changes to let OCC close issues, `callsOf` is the one place to change. It would return `save_issue {id, state: "Done"}` plus the evidence comment, and the refusal constant `CLOSE_RELEASE_WHY` would go. Nothing else (drafts, verdicts, linear-guard) needs to change.
+
+### 5.6 WAYPOINT gaps (built 2026-09-27, ATC-8)
+
+On 2026-09-27 VOC Todo had 6 FLIGHTs and none could be assigned, so the DISPATCH gate got no new proposals. The ROUTE MAP already knows each WAYPOINT's exit criteria and issues ([routes.md](routes.md)), so uncovered criteria become `NEW` drafts. They feed the SCHEDULE gate now, and DISPATCH once S2 creates them.
+
+- **Data.** `schedule brief` has `waypointGaps` (`server/waypoint-gaps.ts`, pure `waypointGapsOf`): per ROUTE that is not completed or canceled, the active WAYPOINT and the next one, each with `criteria` (the numbered list under "Exit criteria"), `description` when there is no list, and the milestone's `issues` (key, title, state; canceled and duplicate left out) and `truncated`. ROUTEs without WAYPOINTs, or with every WAYPOINT passed, are left out. `null` means the milestones couldn't be read.
+- **Judgment stays with OCC.** The server doesn't match criteria to issues. Each pass OCC reads the gaps, decides which criteria no open or finished issue covers, skips criteria a person must decide ("SUPERVISOR decides", recruiting, interviews) and descriptions without a checkable end condition, and drafts at most **2 per pass**, the active WAYPOINT first (`occ/CLAUDE.md` "WAYPOINT gap").
+- **The draft.** `schedule draft NEW --gap --project <ROUTE> --milestone <WAYPOINT> …`, with the four body sections and the criterion quoted in `## 목표`. `milestone` is checked against that project's milestones (name or id) and shown in `changesOf` ("WAYPOINT Beta Ready"). `--gap` requires a milestone, and atc refuses the draft when `similarTickets` finds a similar FLIGHT, so the "no duplicate" rule holds even if OCC misses one. Gap drafts count toward the 5 open drafts.
+- **S2.** The released `save_issue` call carries `milestone: <milestone id>`, so the issue lands on the WAYPOINT. linear-guard (`occ/mcp-guard.mjs`, unchanged) passes only that exact input; `occ/mcp-guard.test.mjs` checks that dropping the milestone, or passing its name or another id, is refused.
+- CROSSCHECK marks these drafts like any SCHEDULE draft.
 
 ## 6. linear-guard
 
