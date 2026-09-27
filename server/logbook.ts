@@ -36,6 +36,7 @@ export interface LogEntry {
   stands: string[];
   departedAt: string;
   departedFrom: "claim" | "departure" | "pr"; // departure: 착수 기록(departures.jsonl)의 첫 시각
+  link?: PrLink; // PR 본문이 이 FLIGHT를 끝내나(Fixes)·일부인가(Part of). 옛 줄에는 없다(SCHEDULE CLOSE가 gh로 읽는다)
   attributedBy?: "departures"; // 나중에 attributed 줄로 AIRCRAFT를 채웠으면
   arrivedAt: string;
   blockMin: number | null; // 팀 소요 시간: departedAt → PR을 연 시각. 점유가 없거나 PR 뒤에 생겼으면 null(모름)
@@ -45,6 +46,15 @@ export interface LogEntry {
   reverted: boolean;
   revertedBy?: { number: number; url: string; at: string } | null;
   los: number;
+}
+
+// PR 본문과 FLIGHT의 관계. vocado 규칙상 `Fixes VOC-n`만 이슈를 끝내고, `Part of VOC-n`은 일부다.
+export type PrLink = "fixes" | "part-of" | "none";
+export function prLinkOf(body: string | null | undefined, flight: string): PrLink {
+  const key = flight.replace(/[-]/g, "[-\\s]?");
+  if (new RegExp(`\\bfix(?:es|ed)?\\s*:?\\s*\\[?${key}\\b`, "i").test(body ?? "")) return "fixes";
+  if (new RegExp(`\\bpart\\s+of\\s*:?\\s*\\[?${key}\\b`, "i").test(body ?? "")) return "part-of";
+  return "none";
 }
 
 export type LogLine =
@@ -180,6 +190,7 @@ export function buildEntry(pr: GhMerged, ctx: EntryContext): LogEntry {
     airport: ctx.airport,
     pr: { repo: ctx.slug, number: pr.number, url: pr.url, title: pr.title },
     branch: pr.headRefName,
+    ...(flight ? { link: prLinkOf(pr.body, flight) } : {}),
     stands,
     departedAt,
     departedFrom,

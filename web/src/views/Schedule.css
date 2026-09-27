@@ -137,6 +137,10 @@
 .sc-card.k-NEW {
   border-left-color: var(--blue);
 }
+/* CLOSE: 끝난 FLIGHT를 닫자는 초안(ARRIVED 색) */
+.sc-card.k-CLOSE {
+  border-left-color: var(--radar);
+}
 .sc-card[aria-busy="true"] {
   opacity: 0.7;
 }
@@ -158,6 +162,33 @@
 .k-NEW .sc-kind,
 .sc-table .k-NEW {
   color: var(--blue);
+}
+.k-CLOSE .sc-kind,
+.sc-table .k-CLOSE {
+  color: var(--radar);
+}
+.sc-partof {
+  color: var(--amber);
+  font-weight: 600;
+}
+/* 승인한 CLOSE: SUPERVISOR가 Linear에서 직접 Done으로 바꿀 목록 */
+.sc-close-manual {
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.sc-close-manual li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1-5) 0;
+  border-top: 1px solid var(--line);
+}
+.sc-close-title {
+  flex: 1 1 12em;
+  min-width: 0;
 }
 .sc-age {
   margin-left: auto;

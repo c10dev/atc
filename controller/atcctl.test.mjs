@@ -140,3 +140,12 @@ test("schedule brief: OCC 보정 예시(examples)가 JSON 출력에 그대로 �
     server.close();
   }
 });
+
+test("CLOSE 초안: FLIGHT와 근거만, 옵션은 받지 않는다(PR·머지 시각은 atc가 채운다)", () => {
+  assert.deepEqual(parseDraft(argv("close VOC-193 -- PR 400 머지, Fixes VOC-193")), { kind: "CLOSE", flight: "VOC-193", reason: "PR 400 머지, Fixes VOC-193" });
+  assert.throws(() => parseDraft(argv("CLOSE VOC-193 --type BUILD -- x")), /CLOSE에는 옵션이 없음/);
+  assert.throws(() => parseDraft(argv("CLOSE VOC-193")), /근거/);
+  const op = { id: "S-0009", kind: "CLOSE", flight: "VOC-193", payload: { pr: { repo: "o/vocado_nextjs", number: 400, url: "" }, mergedAt: "2026-09-26T13:41:00Z", fixes: true } };
+  assert.equal(payloadText(op), "→ Done · PR vocado_nextjs#400 머지 2026-09-26T13:41Z · Fixes");
+  assert.equal(draftText(op), "S-0009 CLOSE VOC-193 초안 · → Done · PR vocado_nextjs#400 머지 2026-09-26T13:41Z · Fixes (그림자 운용, Linear에 쓰지 않음)");
+});

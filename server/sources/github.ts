@@ -195,6 +195,28 @@ export async function listMerged(repo: string, limit = 30): Promise<{ slug: stri
   return { slug, pulls: (JSON.parse(out) as GhMerged[]).filter((p) => p.mergedAt) };
 }
 
+// SCHEDULE CLOSE용: 머지된 PR 본문(읽기 전용). 머지 뒤 본문은 거의 바뀌지 않아 "owner/repo#N"별로 계속 둔다.
+const prBodies = new Map<string, string>();
+const prBodyInflight = new Map<string, Promise<string | null>>();
+export const cachedPrBody = (key: string) => prBodies.get(key);
+export function fetchPrBody(key: string): Promise<string | null> {
+  if (prBodies.has(key)) return Promise.resolve(prBodies.get(key)!);
+  const m = /^([\w.-]+\/[\w.-]+)#(\d+)$/.exec(key);
+  if (!m) return Promise.resolve(null);
+  let p = prBodyInflight.get(key);
+  if (!p) {
+    p = gh(["pr", "view", m[2], "--repo", m[1], "--json", "body", "--jq", ".body"])
+      .then((out) => {
+        prBodies.set(key, out.replace(/\n$/, ""));
+        return prBodies.get(key)!;
+      })
+      .catch(() => null)
+      .finally(() => prBodyInflight.delete(key));
+    prBodyInflight.set(key, p);
+  }
+  return p;
+}
+
 // 90초마다 백그라운드로 갱신하고, 호출 시점에는 마지막 결과를 바로 돌려준다(스냅샷을 막지 않는다).
 export function readGithub(repos: string[]): GithubState {
   if (!state.enabled) return state;

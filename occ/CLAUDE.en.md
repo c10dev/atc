@@ -10,7 +10,7 @@ This is stage S1. OCC does five things:
 
 1. **DISPATCH**: **reviews and annotates** the assignment proposals atc computes (which FLIGHT to which AIRCRAFT). Approving or rejecting is done by the SUPERVISOR (the user) in atc's DISPATCH tab.
 2. **Flight following**: when the SUPERVISOR asks or a CAPTAIN reports, it checks that PR's head commit, CI and review itself with read-only `gh` and tells the SUPERVISOR where the report differs.
-3. **SCHEDULE drafts (S1, shadow operation)**: it drafts CLASSIFY and PRIORITIZE operations for FLIGHTs missing classification labels or a priority. The SUPERVISOR marks each one "would approve / would reject" in the SCHEDULE tab. Nothing is written to Linear.
+3. **SCHEDULE drafts (S1, shadow operation)**: it drafts CLASSIFY and PRIORITIZE operations for FLIGHTs missing classification labels or a priority, and CLOSE for FLIGHTs whose PR was merged (LOGBOOK ARRIVED) while the Linear issue is still open. The SUPERVISOR marks each one "would approve / would reject" in the SCHEDULE tab. Nothing is written to Linear.
 4. **CHARTER DESK (request desk)**: when the SUPERVISOR asks for work directly in this session (a CHARTER REQUEST), it drafts that work, which is not on the regular schedule (Linear), as an AD HOC FLIGHT (new issue). In S1 this too is only a draft.
 5. **Reading Linear**: tickets are read only. Drafts are written to Linear only from S2.
 
@@ -48,9 +48,10 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / that it was reread |
 | `gh pr view <n> -R <repo> --json state,isDraft,headRefOid,mergeStateStatus,reviews` | (Flight following) PR state, head commit and reviews |
 | `gh pr checks <n> -R <repo>` / `gh pr diff <n> -R <repo>` | (Flight following) CI on the head commit, changed files |
-| `node ../controller/atcctl.mjs schedule brief` | `mode` (shadow), open drafts (`open`) with what they would change (`changes`), recently closed drafts (`recent`), the S2 check (`gate`), the limit (`limit`), candidates (`candidates.classify`, `candidates.prioritize`), FLIGHT summaries (`flights`), recent SUPERVISOR decisions for calibration (`examples`: the classification OCC drafted `proposed`, its reason `draft`, the verdict and reason) |
+| `node ../controller/atcctl.mjs schedule brief` | `mode` (shadow), open drafts (`open`) with what they would change (`changes`), recently closed drafts (`recent`), the S2 check (`gate`), the limit (`limit`), candidates (`candidates.classify`, `candidates.prioritize`, `candidates.close`), each CLOSE candidate's PR, merge time and Fixes status (`close`), FLIGHT summaries (`flights`), recent SUPERVISOR decisions for calibration (`examples`: the classification OCC drafted `proposed`, its reason `draft`, the verdict and reason) |
 | `node ../controller/atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <reason>` | Draft classification labels. Only the missing axes are needed. `--rating` can repeat |
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <reason>` | Draft a priority. 1 Urgent · 2 High · 3 Medium · 4 Low |
+| `node ../controller/atcctl.mjs schedule draft CLOSE <VOC-193> -- <reason>` | Draft a close. atc fills in the PR, merge time and Fixes status from the LOGBOOK. Never released (the SUPERVISOR moves it to Done in Linear) |
 
 ## Review rules (2a and 2b)
 
@@ -86,6 +87,7 @@ Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have
 |---|---|
 | `candidates.classify`: no `type:` or `wake:` label | `CLASSIFY`. Read `../docs/fleet.md` 4.1–4.3 as in "Before a CLASSIFY" below, then TYPE, WAKE and RATING, with section numbers in the reason. Leave out any axis that already has a label |
 | `candidates.prioritize`: no priority | `PRIORITIZE`, **only when the body or comments give grounds** (a deadline, an outage or security exposure, it blocks other FLIGHTs, a priority a person wrote down). With no grounds, don't draft |
+| `candidates.close`: the PR was merged (LOGBOOK ARRIVED, not reverted) but Linear is not Done or Canceled | `CLOSE`. Check as in "Before a CLOSE" below; the reason names the PR number, the merge time and whether the body says `Fixes` |
 
 | Axis | Values ([`../docs/fleet.md`](../docs/fleet.md) section 4) |
 |---|---|
@@ -93,6 +95,13 @@ Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have
 | WAKE | `L` one file or a few lines, under an hour · `M` one feature or fix with tests, one PR · `H` several modules, migration or security surface, several review rounds · `J` crosses teams or AIRPORTs and needs a design first; must be split |
 | RATING | `SEC` DB, migration, RLS, auth, permissions, security, rights, deployment, payment · `UI` screens, components, accessibility · `DATA` language data, pipelines, content, analytics · `DOCS` docs, rule files. May be more than one |
 
+
+### Before a CLOSE
+
+1. **Check the PR.** `close.<FLIGHT>` in `schedule brief` has the PR (`pr.url`), the merge time (`mergedAt`) and the body's link (`link`). Look once with read-only `gh pr view <number> --repo <owner/name> --json state,mergedAt,body` that it was merged and what the body says.
+2. **Only `Fixes` ends an issue.** By vocado's rule only `Fixes VOC-n` in the PR body ends the issue. A `Part of VOC-n` PR is not a candidate. If the body has neither (`link: none`), read the done criteria with `dispatch flight <FLIGHT>`; if some look unfinished, don't draft.
+3. **One-line reason**: `"PR vocado_nextjs#400 merged 09-26 13:41 · Fixes VOC-193 · all four done criteria within the PR"`. If there is a revert PR, or the body says follow-up FLIGHTs remain, don't draft.
+4. **Never change state.** A CLOSE is not released even in S2 (`schedule release` refuses it). Once approved, the SUPERVISOR moves it to Done in Linear, and atc closes the draft on its next read.
 
 ### Before a CLASSIFY
 
@@ -116,7 +125,7 @@ Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have
 - On `LIMIT` (open drafts are at the limit), write no more drafts this pass. Carry on in a later pass once verdicts free a slot. Open `NEW` (CHARTER DESK) drafts count toward the limit of 5 too.
 - On an error (`이미 그렇게 되어 있음` "already so", `Todo·Backlog가 아님` "not Todo or Backlog", etc.), don't retry; put it in the OCC LOG.
 - Drafting the same FLIGHT and kind again supersedes the earlier draft. Don't redraft unless the judgment changed.
-- A draft expires after 3 days without a verdict, and is superseded when the FLIGHT leaves Todo or Backlog or the change shows up in Linear (atc does this).
+- A draft expires after 3 days without a verdict, and is superseded when the FLIGHT leaves Todo or Backlog or the change shows up in Linear (atc does this). A CLOSE is superseded when Linear shows Done or Canceled, or the PR is reverted.
 
 ## SCHEDULE release (S2, only when `mode` in `schedule brief` is approval)
 
@@ -130,6 +139,7 @@ In S2, OCC writes to Linear what the SUPERVISOR approved in the SCHEDULE tab. at
 | The Linear tool returned an error (missing label etc.) | Don't retry; report the error as is to the SUPERVISOR |
 
 - Write nothing to Linear except the released CALLs. State (In Progress etc.) and assignee belong to the CAPTAIN, so they are never in a CALL.
+- An approved `CLOSE` is never released: `schedule release` refuses it with `CLOSE는 SUPERVISOR가 Linear에서 직접` (the SUPERVISOR closes it in Linear). Don't retry; it is on the SCHEDULE tab's "LINEAR에서 직접 DONE" list.
 - In `shadow` (S1) skip this section. OCC never approves or rejects.
 
 ## Sending FLIGHT PLANs (2b, only when `mode` is approval)
@@ -184,7 +194,7 @@ It is shadow operation, so nothing is written to Linear. If an issue with the sa
 
 ## TAIL ASSIGNMENT (`tail:TEAM_X` labels)
 
-A FLIGHT with the Linear label `tail:TEAM_X` is proposed only to that AIRCRAFT. A person (President or the SUPERVISOR for now) chose the team ([`../docs/fleet.md`](../docs/fleet.md)). The old name `lane:TEAM_X` is still honored until 2026-10-10, with a note in the exclusion reason to change it. If the body names a team ("TEAM_E가 …") but there is no label, say so in the note (there is no SCHEDULE `TAIL` draft yet; S1 has only CLASSIFY and PRIORITIZE).
+A FLIGHT with the Linear label `tail:TEAM_X` is proposed only to that AIRCRAFT. A person (President or the SUPERVISOR for now) chose the team ([`../docs/fleet.md`](../docs/fleet.md)). The old name `lane:TEAM_X` is still honored until 2026-10-10, with a note in the exclusion reason to change it. If the body names a team ("TEAM_E가 …") but there is no label, say so in the note (there is no SCHEDULE `TAIL` draft yet; S1 drafts are CLASSIFY, PRIORITIZE, CLOSE, and NEW from the CHARTER DESK).
 
 ## OCC LOG
 
