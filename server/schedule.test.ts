@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Ticket } from "./model.ts";
-import { candidatesOf, changesOf, draftOps, fold, gateOf, missingSections, type NewPayload, parseNew, parsePayload, ScheduleError, similarTickets, syncLines, titleTokens } from "./schedule.ts";
+import { candidatesOf, changesOf, standFreeHint, draftOps, fold, gateOf, missingSections, type NewPayload, parseNew, parsePayload, ScheduleError, similarTickets, syncLines, titleTokens } from "./schedule.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
 const iso = (minAgo: number) => new Date(NOW - minAgo * 60_000).toISOString();
@@ -75,6 +75,18 @@ test("판정과 2단계 점검, 후보 목록", () => {
   assert.deepEqual(gateOf(ops), { decided: 1, agreed: 0, agreement: 0, target: { decided: 20, agreement: 0.8 }, ready: false, crosscheck: { marked: 0, matched: 0, rate: null, byModel: {}, oneClick: { count: 0, decided: 0 } } });
   const tickets = [t("VOC-41"), t("VOC-42", { labels: ["type:BUILD", "wake:M"], priority: 0 }), t("VOC-43", { state: "In Progress", stateType: "started" })];
   assert.deepEqual(candidatesOf(tickets, []), { classify: ["VOC-41"], prioritize: ["VOC-42"] });
+});
+
+test("분류 후보: SURVEY·CHECK로 보이는 제목(리서치·검토·비교·계획)을 앞에, 나머지는 원래 순서", () => {
+  const tickets = [
+    t("VOC-50", { title: "Finish the focus-colour sweep" }),
+    t("VOC-51", { title: "Run beta comparison for Expression Lens" }),
+    t("VOC-52", { title: "머리 줄 동작 맞추기" }),
+    t("VOC-53", { title: "랜딩 데이터를 별도 프로젝트로 분리 (계획)" }),
+    t("VOC-54", { title: "PR #400 exact-head review" }),
+  ];
+  assert.deepEqual(candidatesOf(tickets, []).classify, ["VOC-51", "VOC-53", "VOC-54", "VOC-50", "VOC-52"]);
+  assert.equal(standFreeHint("Previewer fix"), false);
 });
 
 // ── NEW(새 이슈 초안) ──

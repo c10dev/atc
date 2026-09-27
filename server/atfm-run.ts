@@ -169,7 +169,7 @@ export function eligibilityView(s: Snapshot, now = Date.now()) {
   const proposals = allProposals();
   const fleet = loadFleet();
   const logbook = loadLogbook();
-  const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals), fleet, landedOf(logbook));
+  const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals), fleet, landedOf(logbook), logbook);
   const aircraftViews = fleetView(s, fleet, cfg.teamPattern, logbook, now);
   const byKey = new Map(s.tickets.map((t) => [t.key, t]));
   const parentKeys = parentKeysOf(s.tickets);

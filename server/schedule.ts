@@ -518,12 +518,22 @@ export function crosscheckBriefOf(ops: ScheduleOp[], changes: Record<string, str
   };
 }
 
-// OCC가 초안을 쓸 후보: 계획 단계(Todo·Backlog)인데 분류 라벨이 없거나 우선순위가 없는 FLIGHT
+// 제목으로 본 SURVEY·CHECK 후보(리서치·검토·비교·계획). 분류 후보 순서만 바꾼다 — 라벨을 대신하지 않는다.
+// SURVEY·CHECK로 분류되면 HOLDING 팀도 받을 수 있어(docs/fleet.md 5장) 먼저 분류할 가치가 크다.
+const STAND_FREE_HINT = /\b(review|audit|research|survey|investigat\w*|inventory|compar\w*|evaluat\w*|verif\w*)\b|리뷰|검토|감사|조사|점검|비교|평가|검증|계획/i;
+export const standFreeHint = (title: string) => STAND_FREE_HINT.test(title);
+
+// OCC가 초안을 쓸 후보: 계획 단계(Todo·Backlog)인데 분류 라벨이 없거나 우선순위가 없는 FLIGHT.
+// classify는 SURVEY·CHECK로 보이는 FLIGHT를 앞에 둔다(나머지 순서는 그대로).
 export function candidatesOf(tickets: Ticket[], ops: ScheduleOp[]) {
   const openFor = new Set(ops.filter((s) => s.status === "draft" || s.status === "approved" || s.status === "released").map((s) => `${s.kind}|${s.flight}`));
   const planning = tickets.filter(isOpenTicket);
   return {
-    classify: planning.filter((t) => { const c = classOf(t.labels); return !c.explicit.type || !c.explicit.wake; }).filter((t) => !openFor.has(`CLASSIFY|${t.key}`)).map((t) => t.key),
+    classify: planning
+      .filter((t) => { const c = classOf(t.labels); return !c.explicit.type || !c.explicit.wake; })
+      .filter((t) => !openFor.has(`CLASSIFY|${t.key}`))
+      .sort((x, y) => Number(standFreeHint(y.title ?? "")) - Number(standFreeHint(x.title ?? "")))
+      .map((t) => t.key),
     prioritize: planning.filter((t) => !t.priority && !openFor.has(`PRIORITIZE|${t.key}`)).map((t) => t.key),
   };
 }
