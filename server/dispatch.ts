@@ -3,7 +3,8 @@ import { basename, dirname, join } from "node:path";
 import { callsign } from "./callsign.ts";
 import { config } from "./config.ts";
 import { type Classification, canFly, classOf, DEFAULT_FLEET, type FleetFile, profileOf, WAKE_SLOTS } from "./crew.ts";
-import { type Snapshot, type Ticket, parentKeysOf } from "./model.ts";
+import type { LogEntry } from "./logbook.ts";
+import { type PullRequest, type Snapshot, type Ticket, parentKeysOf } from "./model.ts";
 
 // 2단계 DISPATCH: 어떤 FLIGHT를 어떤 AIRCRAFT에 보낼지 계산한다(순수 함수 planDispatch).
 // 제안을 기록하고 보이는 것은 proposals.ts, 설계는 docs/dispatch.md.
@@ -139,6 +140,41 @@ export const hasStandWhy = () => "이미 STAND가 있음";
 export const stateChangedWhy = (state: string) => `FLIGHT 상태가 바뀜(${state})`;
 export const noProjectWhy = (project: string | null) => (project ? `배정 제외 프로젝트: ${project}` : "프로젝트 없음");
 export const excludedLabelWhy = (label: string) => `라벨 ${label} (다른 운항사)`;
+export const landedWhy = (pr: string) => `이미 완료됨 — PR ${pr} 머지됨(LOGBOOK)`;
+export const openPrWhy = (n: number) => `열린 PR #${n} 있음`;
+
+// LOGBOOK에서 ARRIVED한 FLIGHT → 머지된 PR("repo#N", 저장소 이름만). 되돌린 PR은 빼서 다시 후보가 된다.
+export type Landed = Map<string, string>;
+export function landedOf(entries: Pick<LogEntry, "flight" | "reverted" | "pr">[]): Landed {
+  const out: Landed = new Map();
+  for (const e of entries) {
+    if (!e.flight || e.reverted || out.has(e.flight)) continue;
+    out.set(e.flight, `${e.pr.repo.split("/").pop()}#${e.pr.number}`);
+  }
+  return out;
+}
+
+// 이미 끝났거나 누가 작업 중인 FLIGHT: LOGBOOK ARRIVED(Linear가 아직 Todo여도), 또는 그 FLIGHT의 열린 PR(Draft 포함).
+// planner와 syncOps가 같은 문구를 쓴다.
+export function workedWhy(flight: string, landed: Landed, pulls: Pick<PullRequest, "ticketKey" | "number">[]): string | null {
+  const pr = landed.get(flight);
+  if (pr) return landedWhy(pr);
+  const open = pulls.find((p) => p.ticketKey === flight);
+  return open ? openPrWhy(open.number) : null;
+}
+
+// 거절 사유 칩(reasons.ts)마다 지금 planner가 그 사유를 스스로 거르나. 거절 사유 집계(reasonStats)에 붙인다.
+// auto: 규칙으로 거름, partial: 일부만 거름, manual: 사람만 안다.
+export const REASON_FILTERS: Record<string, { auto: "auto" | "partial" | "manual"; how: string }> = {
+  "already-done": { auto: "auto", how: "LOGBOOK ARRIVED·열린 PR 규칙, Linear Done 상태" },
+  "parent-issue": { auto: "auto", how: "상위 이슈 규칙(Linear children·parent)" },
+  "waiting-on-prior": { auto: "partial", how: "Linear blockedBy는 HOLD, 다른 PR 머지 대기는 OCC HOLD" },
+  "needs-human": { auto: "manual", how: "사람 판단" },
+  "no-priority": { auto: "auto", how: "우선순위 없음 규칙" },
+  "out-of-repo": { auto: "partial", how: "프로젝트 → AIRPORT 매핑(프로젝트 단위만)" },
+  "wrong-aircraft": { auto: "partial", how: "TYPE RATING·CREW·tail 규칙" },
+  other: { auto: "manual", how: "—" },
+};
 
 // TAIL ASSIGNMENT(`tail:TEAM_X` 라벨, docs/fleet.md): 사람(또는 OCC)이 그 FLIGHT를 맡을 AIRCRAFT를 정해 둔 것.
 // 있으면 그 팀에만 제안한다. 두 배정자(사람의 직접 배정과 DISPATCH)가 같은 FLIGHT를 다른 팀에 주는 일을 막는다.
@@ -162,6 +198,7 @@ export function planDispatch(
   now = Date.now(),
   reserved: Reserved = NO_RESERVED,
   fleet: FleetFile = DEFAULT_FLEET,
+  landed: Landed = new Map(),
 ): Plan {
   const team = new RegExp(cfg.teamPattern, "i");
   const byKey = new Map(s.tickets.map((t) => [t.key, t]));
@@ -229,6 +266,12 @@ export function planDispatch(
     }
     if (!openAirports.has(airport)) {
       excluded.push({ flight: t.key, reason: `${airport} AIRPORT가 운항 중이 아님` });
+      continue;
+    }
+    // 진행 중인 제안보다 먼저 본다: 제안이 이 사유로 SUPERSEDED될 때 화면에 이 이유가 보이게
+    const worked = workedWhy(t.key, landed, s.pulls ?? []);
+    if (worked) {
+      excluded.push({ flight: t.key, reason: worked });
       continue;
     }
     if (flightsWithStand.has(t.key)) {

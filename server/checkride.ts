@@ -1,5 +1,6 @@
 import type { Context, Hono } from "hono";
 import { classOf, canHoldSec, type CrewMember, RATINGS, type Rating } from "./crew.ts";
+import { noteCrewChange } from "./crew-change.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { type AircraftView, applyPatch, FleetError, fleetView, loadFleet, saveAircraft } from "./fleet.ts";
 import { type LogEntry, loadLogbook } from "./logbook.ts";
@@ -180,6 +181,8 @@ export function mountCheckride(app: Hono, getSnapshot: () => Promise<Snapshot>) 
     try {
       const next = applyPatch(current, { ratings: nextRatings(current.ratings ?? fleet.defaults.ratings, rating, action) }, fleet.defaults);
       saveAircraft(key, next);
+      // 대기 중인 CREW CHANGE가 있으면 TYPE RATING 줄을 새 rating으로 다시 쓴다(없으면 아무것도 안 함)
+      noteCrewChange(reg, current, next, fleet.defaults, s.sessions);
     } catch (e) {
       if (e instanceof FleetError) return c.json({ error: e.message }, e.status as 400);
       throw e;

@@ -72,6 +72,26 @@ The first implementation covers only `ASSIGN` and `RELEASE`. `RELEASE` does a lo
   - has no STAND yet and nobody holds it
   - its project maps to an AIRPORT that is operating (OPEN)
   - it has a priority (No priority means nobody has decided when to do it yet, so it is excluded)
+  - it has not already ARRIVED in the LOGBOOK (a merged PR, even while Linear still says Todo) and has no open PR (Draft included)
+
+#### 5.1.2 Exclusion reasons
+
+Every FLIGHT left out of `ASSIGN` is listed under "excluded" with one of these reasons. The same text is used when an open proposal is closed (SUPERSEDED), so the DISPATCH tab shows why. They are checked in this order:
+
+| Rule | Reason shown | Since |
+|---|---|---|
+| Parent issue (5.1.1) | `상위 이슈 — 하위 N건을 묶음` | |
+| Another operator's label | `라벨 symphony-pilot (다른 운항사)` | |
+| Project not mapped / AIRPORT closed | `배정 제외 프로젝트: <project>`, `프로젝트 없음`, `<CODE> AIRPORT가 운항 중이 아님` | |
+| **Already done**: the FLIGHT's PR is in the LOGBOOK as ARRIVED and not reverted ([fleet.md](fleet.md) 7.1) | `이미 완료됨 — PR <repo>#N 머지됨(LOGBOOK)` | 2026-09-27 |
+| **Being worked**: an open PR (Draft included) whose ticket key is the FLIGHT | `열린 PR #N 있음` | 2026-09-27 |
+| A worktree (STAND) already exists | `이미 STAND가 있음` | |
+| An open proposal or a HOLD already covers it | `진행 중인 제안 D-xxxx`, `HOLD D-xxxx — …` | |
+| No priority | `우선순위 없음 — 사람이 정할 때까지 배정하지 않음` | |
+| `wake:J` | `wake:J — 너무 커서 배정하지 않음, 나눠야 함(SPLIT)` | |
+| TAIL ASSIGNMENT, TYPE RATING, crew ([fleet.md](fleet.md) 5) | `tail:TEAM_X — …`, `rating:SEC — …`, `type:BUILD — …` | |
+
+The two new rules come from the shadow verdicts: "이미 완료됨" (already done) was the most common rejection, because a merged PR does not move the Linear issue to Done by itself. They are checked before open proposals, so an open, approved or held proposal on such a FLIGHT is SUPERSEDED with that reason (the FLIGHT reason comes before any AIRCRAFT reason). A reverted PR puts the FLIGHT back among the candidates.
 
 #### 5.1.1 Parent issues
 
@@ -143,6 +163,8 @@ atc: DEPARTED once that FLIGHT gets a STAND; if not, rechecks after 30 minutes l
 Proposal states: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)` (2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED` (2b), with side branches `REJECTED`, `DECLINED` (CAPTAIN gave a reason), `SUPERSEDED` (a person assigned it directly or the situation changed) and `EXPIRED` (24 hours). A `PROPOSED` ASSIGN that carries a `HOLD` leaves the main flow: it waits on the HELD list until released (no 24-hour expiry).
 
 Rejections carry **reason chips** in the SUPERVISOR's UI: one or more chips from the server's list (`server/reasons.ts`, `reasonCodes` in the brief) plus an optional memo, stored as `"<chip> · <chip> — <memo>"` in `reason` and as codes in `reasonCodes`; the gate counts them per chip (`reasonCounts`). The chip that matters most is the parent issue (5.1.1), which the planner should also catch by itself.
+
+The brief's `reasonStats` turns the chips into a to-do list for the planner: per chip, the count, up to 3 recent example FLIGHTs, and whether the planner already filters that reason itself (`auto`, `partial` or `manual`, with how). Today: already done → the LOGBOOK and open-PR rules and the Linear Done state (auto); parent issue → 5.1.1 (auto); no priority → the no-priority rule (auto); waiting on a prior FLIGHT or PR → Linear `blockedBy` becomes a HOLD, other PRs only through OCC's HOLD (partial); outside the repository → project mapping only (partial); wrong AIRCRAFT → TYPE RATING, crew and `tail:` rules (partial); needs a human, other → manual. The DISPATCH gate panel shows it as "거절 사유 → 배정 규칙".
 
 ## 7. What to add to atc
 
