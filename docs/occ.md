@@ -304,6 +304,16 @@ On 2026-09-27, 17 vocado PRs (#366–#399) sat at APPROACH for 26–49 hours wit
 - **Landing rule** (`reviewBlocks`): for a CODEX UNAVAILABLE PR that is **not excluded**, a `pass` on the current head with no P0/P1 counts as the head review, so the PR can be CLEARED TO LAND; the strip shows "REVIEW: DEEPSEEK (Codex 한도)" (or "Codex 무응답"; the name is the record's family). On an excluded PR no external pass counts, whatever the records hold: the PRs that were CLEARED on a Muse pass went back to APPROACH. A `findings` becomes a `review-findings` block with the severities and the review ("DEEPSEEK 지적(Codex 한도, head abc1234, P0 0 · P1 1 · P2 0): …"), which TOWER passes to the CAPTAIN like Codex findings. A new head needs a new review. When Codex comes back and reviews the head (👍 or findings), Codex wins. `changes-requested` still blocks.
 - Guards and settings changed, so these PRs were `user` tier.
 
+### 9.3 Codex finding severity: P3-only heads don't block (2026-09-27, ATC-28)
+
+vocado #394 went through fix → `@codex review` → a new, smaller finding (P2, then P3) → fix → … Codex finds something a little smaller each round, and the landing rule treated any Codex COMMENTED review on the head as `review-findings`. The SUPERVISOR decided that P3-only findings don't block landing.
+
+- **Severity** (`findingSeverityOf`, `codexHeadFindingsOf`, `server/landing.ts`): Codex's inline findings carry a badge (`![P2 Badge](https://img.shields.io/badge/P2-yellow…)`). atc reads it from the first comment of each review thread whose Codex comment was made on the current head (`originalCommit` = head). A finding without a readable badge counts as P2. Findings on earlier commits don't count.
+- **Landing rule** (`reviewBlocks`): when every head finding is P3 and each P3 thread is resolved or answered by someone other than Codex, the Codex head review counts as the review and `review-findings` does not block. Any P0, P1 or P2 blocks as before, with the counts: "Codex 지적 있음(head b1c684c, P2 1 · P3 1) — 반영 후 재리뷰 필요". An open P3 (neither resolved nor answered) blocks with "Codex P3 지적 2건 중 1건이 해결·답글 없음 … — 스레드를 resolve하거나 답글을 달면 P3는 착륙을 막지 않음". A head review with no inline findings, or threads atc couldn't read, blocks as before. A later Codex 👍 or a human APPROVED still clears.
+- **Threads**: atc reads review threads (`gh api graphql`, `reviewThreads`, read-only, every poll, not cached) for non-draft PRs with Codex findings on the head and for BLOCKED PRs.
+- **BLOCKED reason**: vocado's protection rule "review threads must be resolved" still applies on GitHub. A BLOCKED PR with unresolved threads shows "GitHub 보호 규칙이 머지를 막음 — 해결 안 된 리뷰 스레드 N개(스레드 해결 필수: resolve해야 머지된다)". #394 (a P2 and a P3 open on the head) is this case.
+- **Shown**: `PullRequest.codexFindings` and `landingQueue[].codexFindings` (`p0`–`p3`, `unmarked`, `open`, `ok`). The strip shows "Codex P3 2건(해결됨) — 착륙 막지 않음", and the LAND text ends with "Codex P3 지적 2건은 남아 있음(해결·답글됨, 착륙은 막지 않음)."
+
 ## 10. What to add to atc
 
 | Where | What |

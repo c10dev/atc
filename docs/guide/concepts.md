@@ -73,6 +73,7 @@ CLEARED TO LAND 조건 — 모두 PR의 **최신 커밋(head)** 기준이다.
 - 새로 push하면 head가 바뀌어 CI와 리뷰를 다시 본다. 예전 커밋에서 받은 초록불과 리뷰는 세지 않는다.
 - Codex는 큰 문제가 없으면 리뷰 대신 PR에 👍만 남긴다. 이 👍가 head 커밋 시각 뒤에 달렸으면 head 리뷰로 친다. 새 push 전부터 남아 있던 👍는 세지 않는다.
 - Codex가 문제를 찾으면 COMMENTED 리뷰("💡 Codex Review", P1·P2 줄 댓글)를 단다. 이것은 통과가 아니라 지적이다. head에 이 리뷰가 있으면 `review-findings`로 막히고, 그 리뷰 뒤에 Codex 👍가 달리거나, 사람(Codex·작성자 아닌 리뷰어)이 지적을 보고 head에 APPROVED해야 풀린다. 지적 전 APPROVED나 사람 COMMENTED로는 풀리지 않는다.
+- 지적에는 P0~P3 배지가 붙는다(표시가 없으면 P2로 본다). head의 지적이 **모두 P3**이고 스레드마다 resolve했거나 답글을 달았으면 막지 않는다(ATC-28). 스트립에 "Codex P3 2건(해결됨) — 착륙 막지 않음"이 뜨고, LAND 글에 남은 P3가 적힌다. P0~P2가 하나라도 있으면 전처럼 막는다.
 - 사람(Codex·작성자 아닌 리뷰어)의 COMMENTED 리뷰는 APPROVED처럼 통과로 친다.
 - Codex가 한도에 걸리면 "usage limits" 댓글을 단다. 이렇게 head 뒤에 한도 댓글이 있거나 6시간 넘게 Codex가 말이 없으면 CODEX UNAVAILABLE이다. 그때는 착륙 리뷰 세션(REVIEW, DeepSeek V4.1 Flash, tmux `atc-review`)이 diff를 리뷰하고, 현재 head에 P0·P1 없는 pass를 남기면 그것이 리뷰가 된다. 스트립에 "REVIEW: DEEPSEEK (Codex 한도)"로 보인다. 기다리는 동안은 "Codex 한도 · 착륙 리뷰 대기"다. 새 push는 새 리뷰가 필요하고, Codex가 돌아와 리뷰하면 Codex가 이긴다.
 - 외부 모델에 보내지 않는 PR: FLIGHT가 없는 PR, FLIGHT의 `rating:SEC`·Risk: Security·Rights·Contract 라벨, 그리고 라벨이 없어도 보안 diff(`supabase/migrations`·`functions`, `*.sql`, auth·session·admission, RLS·policy, middleware, `.env`·비밀 경로)나 제목·본문의 보안 키워드(security, privilege, RLS, grant, revoke, EXECUTE, definer, admission, auth, ACL, "use server", exposure). 스트립에 "외부 리뷰 제외 — migrations"처럼 뜨고, Codex나 SUPERVISOR 리뷰를 기다린다. 외부 리뷰의 pass가 이미 있어도 착륙 근거가 되지 않는다.

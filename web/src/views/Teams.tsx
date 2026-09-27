@@ -278,6 +278,17 @@ function ExtReviewTag({ pr }: { pr: PullRequest }) {
   );
 }
 
+// Codex P3 지적만 남고 모두 해결·답글이면 착륙을 막지 않는다(ATC-28). 그때 남은 수를 보인다
+function CodexP3Tag({ pr }: { pr: PullRequest }) {
+  const f = pr.codexFindings;
+  if (!f?.ok) return null;
+  return (
+    <span className="pr-extreview is-p3" title="Codex가 현재 head에 P3(사소한) 지적만 남겼고, 스레드가 모두 해결·답글됨 — 착륙은 막지 않는다">
+      Codex P3 {f.p3}건(해결됨) — 착륙 막지 않음
+    </span>
+  );
+}
+
 function PrLink({ pr }: { pr: PullRequest }) {
   return (
     <a
@@ -334,6 +345,7 @@ function PrLanding({ pr, landing }: { pr: PullRequest; landing: LandingIndex }) 
         <LandingBadge pr={pr} />
         <PrLink pr={pr} />
         <ExtReviewTag pr={pr} />
+        <CodexP3Tag pr={pr} />
         {seq && landing.seq.size > 1 && (
           <span className="pr-seq" title={`LANDING SEQUENCE ${landing.seq.size}개 중 ${seq}번째`}>
             SEQ {seq}
@@ -388,7 +400,7 @@ function LandingSequence({
         </div>
         <div className="ls-pr">
           <div className="ls-title">
-            <PrLink pr={pr} /> <ExtReviewTag pr={pr} /> <span title={pr.title}>{pr.title}</span>
+            <PrLink pr={pr} /> <ExtReviewTag pr={pr} /> <CodexP3Tag pr={pr} /> <span title={pr.title}>{pr.title}</span>
           </div>
           {pr.landing !== "CLEARED" && pr.blocks.length > 0 && (
             <ul className="ls-blocks">

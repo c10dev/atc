@@ -24,10 +24,12 @@ function sessionLabel(s: Session | undefined, id: string) {
 // CLEARED PR에 줄 LAND 문구. TOWER는 이 글을 그대로 `atcctl issue … LAND -- <landText>`로 보낸다.
 // 순서(repoSeq)와 앞 PR은 같은 저장소·base의 CLEARED PR 안에서만 센다 — 다른 저장소의 머지는 rebase가 필요 없다.
 // 첫 번째는 지금 LANDING 가능, 그 뒤는 바로 앞 PR 머지 뒤 rebase. AIRPORT·FLIGHT가 없으면 괄호를 뺀다.
-export function landTextOf(repoSeq: number, airport: string | null, pr: number, flight: string | null, prevPr: number | null): string {
+// p3: 해결·답글된 Codex P3 지적이 남은 채 CLEARED인 PR(ATC-28). 막지는 않지만 LAND 글에 남긴다
+export function landTextOf(repoSeq: number, airport: string | null, pr: number, flight: string | null, prevPr: number | null, p3 = 0): string {
   const head = `LANDING 순서 ${repoSeq}번${airport ? ` (${airport})` : ""}: PR #${pr}${flight ? ` (${flight})` : ""}.`;
-  if (prevPr == null) return `${head} 지금 LANDING 가능 — 머지 전에 base가 최신인지 확인.`;
-  return `${head} 앞 PR #${prevPr} 머지 뒤 rebase하고 LANDING.`;
+  const note = p3 ? ` Codex P3 지적 ${p3}건은 남아 있음(해결·답글됨, 착륙은 막지 않음).` : "";
+  if (prevPr == null) return `${head} 지금 LANDING 가능 — 머지 전에 base가 최신인지 확인.${note}`;
+  return `${head} 앞 PR #${prevPr} 머지 뒤 rebase하고 LANDING.${note}`;
 }
 
 export function buildBrief(
@@ -110,7 +112,9 @@ export function buildBrief(
       landClearance: lastLand ? { id: lastLand.id, readBack: Boolean(lastLand.readbackAt) } : null,
       // CLEARED에만. TOWER가 LAND CLEARANCE 본문으로 그대로 쓴다
       repoSeq,
-      landText: repoSeq ? landTextOf(repoSeq, airport, p.number, fl, repoSeq > 1 ? lane[repoSeq - 2].number : null) : null,
+      landText: repoSeq ? landTextOf(repoSeq, airport, p.number, fl, repoSeq > 1 ? lane[repoSeq - 2].number : null, p.codexFindings?.ok ? p.codexFindings.p3 : 0) : null,
+      // 현재 head의 Codex 인라인 지적(등급별 수, ok면 P3만·모두 해결·답글이라 착륙을 막지 않음). 없으면 null(ATC-28)
+      codexFindings: p.codexFindings ?? null,
       // 켜진 GROUND STOP이 이 AIRPORT에 걸려 있으면 LAND를 내지 않는다
       groundStop: airport && stopped.has(airport) ? { trigger: stopped.get(airport)!.trigger, text: stopped.get(airport)!.text, since: stopped.get(airport)!.since } : null,
       // 머지 슬롯. slotHold가 있으면(slots "on"이고 waiting-slot) TOWER는 LAND를 내지 않는다. 그림자면 slot은 참고만

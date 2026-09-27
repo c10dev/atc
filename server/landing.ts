@@ -60,7 +60,58 @@ export interface GhPull {
   codex?: CodexSignal; // atc가 붙인다. 없으면 아직 안 읽었음
   files?: string[]; // atc가 붙인다(Codex 리뷰가 head에 없는 PR만). 외부 리뷰 제외(보안 경로) 판단용
   body?: string | null;
+  threads?: GhThread[]; // atc가 붙인다(head에 Codex 지적이 있거나 BLOCKED인 PR만). 없으면 아직 안 읽었음
 }
+
+// ── Codex 지적의 등급(ATC-28): P3만 남고 스레드가 해결·답글이면 착륙을 막지 않는다 ──
+
+// PR 리뷰 스레드(GraphQL reviewThreads). comments[0]이 지적, 그 뒤는 답글
+export interface GhThread {
+  resolved: boolean;
+  outdated: boolean;
+  path: string | null;
+  comments: { author: string | null; at: string; commit: string | null; body: string }[]; // commit: 댓글을 단 원래 커밋
+}
+// Codex 인라인 지적의 등급 배지(![P2 Badge](…img.shields.io/badge/P2-yellow…)). 읽지 못하면 null
+export function findingSeverityOf(body: string): 0 | 1 | 2 | 3 | null {
+  const m = /!\[P([0-3]) Badge\]/i.exec(body) ?? /img\.shields\.io\/badge\/P([0-3])-/i.exec(body);
+  return m ? (Number(m[1]) as 0 | 1 | 2 | 3) : null;
+}
+export interface CodexHeadFinding {
+  severity: 0 | 1 | 2 | 3; // 표시가 없으면 2로 본다
+  marked: boolean; // 배지를 읽었나
+  resolved: boolean;
+  answered: boolean; // Codex 아닌 사람이 스레드에 답글을 달았나
+  path: string | null;
+}
+// 현재 head의 Codex 인라인 지적(스레드 첫 댓글이 Codex이고 head 커밋에 달린 것). 스레드를 아직 안 읽었으면 null
+export function codexHeadFindingsOf(pr: Pick<GhPull, "headRefOid" | "threads">): CodexHeadFinding[] | null {
+  if (!pr.threads) return null;
+  return pr.threads
+    .filter((t) => t.comments[0] && isCodexBot(t.comments[0].author) && t.comments[0].commit === pr.headRefOid)
+    .map((t) => {
+      const sev = findingSeverityOf(t.comments[0].body);
+      return { severity: sev ?? 2, marked: sev !== null, resolved: t.resolved, answered: t.comments.slice(1).some((c) => c.author && !isCodexBot(c.author)), path: t.path };
+    });
+}
+// 화면·TOWER용 요약. ok: 착륙을 막지 않는다(P3만, 모두 해결·답글)
+export interface CodexFindingSummary {
+  p0: number;
+  p1: number;
+  p2: number;
+  p3: number;
+  unmarked: number; // 등급 표시가 없어 P2로 본 수
+  open: number; // 해결도 답글도 없는 지적 수
+  ok: boolean;
+}
+export function codexFindingSummaryOf(findings: readonly CodexHeadFinding[]): CodexFindingSummary {
+  const n = (k: number) => findings.filter((f) => f.severity === k).length;
+  const open = findings.filter((f) => !f.resolved && !f.answered).length;
+  const ok = findings.length > 0 && findings.every((f) => f.severity === 3) && open === 0;
+  return { p0: n(0), p1: n(1), p2: n(2), p3: n(3), unmarked: findings.filter((f) => !f.marked).length, open, ok };
+}
+const findingCounts = (s: CodexFindingSummary) =>
+  [s.p0 && `P0 ${s.p0}`, s.p1 && `P1 ${s.p1}`, s.p2 && `P2 ${s.p2}`, s.p3 && `P3 ${s.p3}`].filter(Boolean).join(" · ") + (s.unmarked ? ` (등급 표시 없는 ${s.unmarked}건은 P2로 봄)` : "");
 
 // ── Codex 한도 때 외부 모델 착륙 리뷰(ATC-7, ATC-27: DeepSeek V4.1 Flash REVIEW 세션, docs/occ.md 9.2) ──
 
@@ -304,7 +355,17 @@ export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs =
   const c = pr.codex;
   const thumbsOk = codexThumbsPass(pr);
   if (codexFindings(pr) && !thumbsOk && !humanApprovedFindings(pr)) {
-    out.push(block("review-findings", `Codex 지적 있음(head ${short(pr.headRefOid)}) — 반영 후 재리뷰 필요`));
+    // 등급을 읽을 수 있으면(스레드를 읽었으면): P3만 남고 모두 해결·답글이면 Codex의 head 리뷰로 쳐서 막지 않는다(ATC-28).
+    // 인라인 지적이 없거나(본문만) 스레드를 못 읽었으면 예전처럼 막는다
+    const found = codexHeadFindingsOf(pr);
+    const sum = found?.length ? codexFindingSummaryOf(found) : null;
+    if (sum?.ok) return out;
+    const text = !sum
+      ? `Codex 지적 있음(head ${short(pr.headRefOid)}) — 반영 후 재리뷰 필요`
+      : sum.p0 || sum.p1 || sum.p2
+        ? `Codex 지적 있음(head ${short(pr.headRefOid)}, ${findingCounts(sum)}) — 반영 후 재리뷰 필요`
+        : `Codex P3 지적 ${sum.p3}건 중 ${sum.open}건이 해결·답글 없음(head ${short(pr.headRefOid)}) — 스레드를 resolve하거나 답글을 달면 P3는 착륙을 막지 않음`;
+    out.push(block("review-findings", text));
     return out;
   }
   if (hasHeadReview(pr) || thumbsOk) return out;
@@ -336,7 +397,8 @@ export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs =
   return out;
 }
 
-export function mergeBlocks(state: string): Block[] {
+// unresolvedThreads: 해결 안 된 리뷰 스레드 수(읽었을 때만). vocado 보호 규칙 "스레드 해결 필수"가 BLOCKED의 흔한 원인이다
+export function mergeBlocks(state: string, unresolvedThreads?: number): Block[] {
   switch (state) {
     case "CLEAN":
     case "UNSTABLE": // 머지 가능, 통과 안 한 체크는 CI 조건이 잡는다
@@ -348,7 +410,12 @@ export function mergeBlocks(state: string): Block[] {
     case "DIRTY":
       return [block("dirty", "base와 충돌: 충돌 해결 필요")];
     case "BLOCKED":
-      return [block("blocked", "GitHub 보호 규칙이 머지를 막음")];
+      return [
+        block(
+          "blocked",
+          unresolvedThreads ? `GitHub 보호 규칙이 머지를 막음 — 해결 안 된 리뷰 스레드 ${unresolvedThreads}개(스레드 해결 필수: resolve해야 머지된다)` : "GitHub 보호 규칙이 머지를 막음",
+        ),
+      ];
     default:
       return [block("merge-unknown", "GitHub이 아직 계산 중(머지 가능 여부)")];
   }
@@ -358,7 +425,7 @@ export function mergeBlocks(state: string): Block[] {
 export function landingBlocks(pr: GhPull, los: boolean, ext?: ExtReviewContext, silentMs?: number): Block[] {
   const out: Block[] = [];
   if (pr.isDraft) out.push(block("draft", "Draft PR"));
-  out.push(...checkBlocks(pr.statusCheckRollup), ...reviewBlocks(pr, ext, silentMs), ...mergeBlocks(pr.mergeStateStatus));
+  out.push(...checkBlocks(pr.statusCheckRollup), ...reviewBlocks(pr, ext, silentMs), ...mergeBlocks(pr.mergeStateStatus, pr.threads?.filter((t) => !t.resolved).length));
   if (los) out.push(block("los", "STAND에 LOSS OF SEPARATION이 열려 있음"));
   const order: LandingBlockCode[] = ["draft", "checks-failed", "checks-pending", "no-checks", "changes-requested", "review-findings", "no-review", "review-stale", "dirty", "behind", "blocked", "merge-unknown", "los"];
   return out.sort((a, b) => order.indexOf(a.code) - order.indexOf(b.code));
@@ -430,6 +497,11 @@ export function buildPulls(
         readyAt,
         createdAt: gh.createdAt,
         codexUnavailable: unavailable,
+        // 현재 head의 Codex 인라인 지적 요약(등급별 수, 해결·답글). Codex 지적이 없거나 스레드를 못 읽었으면 null
+        codexFindings: codexFindings(gh) ? (() => {
+          const f = codexHeadFindingsOf(gh);
+          return f?.length ? codexFindingSummaryOf(f) : null;
+        })() : null,
         extReview: extReviewStateOf(ctx),
       });
     }
