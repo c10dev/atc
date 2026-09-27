@@ -140,7 +140,7 @@ ATFM(air traffic flow management, 교통 흐름 관리)은 atc의 3단계다. 1�
 - **rebase 비용.** 열린 PR이 `BEHIND`가 되면 기록한다(`behind`). 그래서 머지당 `BEHIND` 수를 셀 수 있다. 슬롯 수는 결정 6대로 둔다. 바꾸는 것은 SUPERVISOR뿐이고, `slotLimits`로 바꾼다. 처음 제안한 자동 조정(하루 평균 머지당 2개 넘게 `BEHIND`가 되면 1로 둠, CI 중앙값이 10분 미만이면 2로 올림)은 아직 만들지 않음. 만들려면 새 결정이 필요하다.
 - **어디서 도나.** atc가 `landingQueue`의 PR마다 `slot`(`in-slot` / `waiting-slot`)을 계산한다. 7번부터 TOWER 규칙은 `in-slot` PR에만 LAND를 준다. 구현됨(ATC-22): `slots: on`이면 `waiting-slot` PR에 `slotHold`(`slotHoldOf`, 한 줄 이유)가 붙고, TOWER는 그 PR에 LAND도 메시지도 보내지 않는다. 그림자면 `slot`만 있고 TOWER는 따르지 않는다. 새 쓰기 경로는 없다.
 
-**켜기.** 1주 동안 그림자로 돌린다(STRIPS에 `waiting-slot`을 보이고, TOWER는 지금처럼 LAND를 준다). 그 뒤 비교한다: 같은 저장소에서 LAND 둘이 동시에 살아 있던 횟수, 머지마다 `BEHIND`가 된 PR 수. 아직 만들지 않음: 이 비교 숫자는 계산하지 않는다. 셀 수 있게 `behind` 기록만 남는다.
+**켜기.** 1주 동안 그림자로 돌린다(STRIPS에 `waiting-slot`을 보이고, TOWER는 지금처럼 LAND를 준다). 그 뒤 비교한다: 같은 저장소에서 LAND 둘이 동시에 살아 있던 횟수, 머지마다 `BEHIND`가 된 PR 수. 구현됨: `GET /api/atfm`의 `data.lands`가 AIRPORT마다 7일 동안 나간 LAND, 같은 AIRPORT의 다른 LAND와 함께 살아 있던 LAND 수(`concurrent`), LAND → 머지 중앙값, 30분 안에 머지되지 않은 LAND를 준다(`landSpansOf`가 LAND를 그 STAND, STAND가 없으면 FLIGHT의 첫 LOGBOOK ARRIVED에 짝짓는다. 짝이 없는 LAND는 취소 시각이나 시간 제한에 끝난다. `landFiguresOf`). `data.behind`(머지당 BEHIND) 옆에 있고, DISPATCH 탭 ATFM 블록의 슬롯 스위치 아래 "켜기 판단 (7일)"에 보인다. 충족·미달 기준은 없다. SUPERVISOR가 비교한다.
 
 **끄기.** `atfm.json` `slots`(`off | shadow | on`, 기본 `shadow`). SUPERVISOR가 DISPATCH 탭 ATFM 블록에서 확인을 거쳐 바꾼다. ATFM OFF는 `on`을 `shadow`로 되돌린다.
 

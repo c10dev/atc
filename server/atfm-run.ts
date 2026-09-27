@@ -10,7 +10,9 @@ import {
   ciMinutesOf,
   enforcedStops,
   type Eligibility,
+  landFiguresOf,
   landOf,
+  landSpansOf,
   loadAtfm,
   median,
   precisionOf,
@@ -24,6 +26,7 @@ import {
   THRESHOLDS,
   undoneOf,
 } from "./atfm.ts";
+import { allClearances } from "./clearances.ts";
 import { config } from "./config.ts";
 import { modelFamily, UNKNOWN_MODEL } from "./crosscheck.ts";
 import { landedOf, loadDispatchConfig, planDispatch, readFlightHistory } from "./dispatch.ts";
@@ -342,6 +345,17 @@ export function atfmView(s: Snapshot, cfg: AtfmConfig = loadAtfm(), now = Date.n
     const n = week.filter((r) => r.op === "behind" && r.airport === code).length;
     return { airport: code, repo, merges, behind: n, perMerge: merges ? Math.round((n / merges) * 100) / 100 : null };
   });
+  // 머지 슬롯 켜기 판단(5장 Turn-on): 7일 동안 AIRPORT별 LAND, 동시에 살아 있던 LAND, LAND → 머지 중앙값, 시간 초과
+  const repoOfStand = new Map(s.workspaces.map((w) => [w.path, w.repo]));
+  const lands = landFiguresOf(
+    landSpansOf(
+      allClearances().filter((c) => now - Date.parse(c.at) < 8 * DAY),
+      logbook,
+      (c) => (c.stand ? codeOf(repoOfStand.get(c.stand) ?? null) : null),
+      now,
+    ),
+    now - 7 * DAY,
+  );
 
   return {
     config: cfg,
@@ -350,7 +364,7 @@ export function atfmView(s: Snapshot, cfg: AtfmConfig = loadAtfm(), now = Date.n
     slots,
     auto: { mode: cfg.autoAssign, open: auto.map(({ id, flight, aircraft, eligible, failed }) => ({ id, flight, aircraft, eligible, failed })), precision: autoPrecision, turnOn: autoTurnOn },
     s3: { mode: cfg.s3, open: s3.map(({ id, flight, eligible, failed }) => ({ id, flight, aircraft: null, eligible, failed })), precision: s3Precision, turnOn: s3TurnOn },
-    data: { ci, behind: behind.map(({ repo: _r, ...x }) => x), undone },
+    data: { ci, behind: behind.map(({ repo: _r, ...x }) => x), undone, lands },
     caps: AUTO_CAP,
     thresholds: THRESHOLDS,
   };
