@@ -45,7 +45,7 @@ Linear 티켓까지 보려면 `.env.local`에 `LINEAR_API_KEY`를 넣는다. 상
 | FIDS (`#board`) | Linear 상태 열에 티켓 카드. 카드에 점유 팀 배지 |
 | 지표 (`#metrics`) | FLIGHT RECORDER 기록으로 본 운용 지표, 2단계 진입 점검, 5분 표본 추이, 일별 표 |
 | AIRPORT (`#airports`) | 저장소 등록부. AIRPORT 개설·코드 변경·폐쇄·재개·삭제. 소속 AIRCRAFT와 OUTSTATION으로 와 있는 AIRCRAFT(TRANSIENT) |
-| FLEET (`#fleet`) | AIRCRAFT마다 상태, 지금 FLIGHT, 팀원 구성, TYPE RATING, ROUTE, TARGETS와 LOGBOOK 실적(이번 주, 정시, 되돌림, LOS, 최근 FLIGHT). 프로필 편집, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
+| FLEET (`#fleet`) | AIRCRAFT마다 상태, 지금 FLIGHT, 팀원 구성, TYPE RATING, ROUTE, TARGETS와 LOGBOOK 실적(이번 주, 정시, 되돌림, LOS, 최근 FLIGHT), CHECKRIDE(TYPE RATING 근거와 부여·재검토 추천). 프로필 편집, ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT, rating 부여·회수 |
 | DISPATCH (`#dispatch`) | 지금 계획, OCC 메모가 달린 제안 카드와 "승인했을 것 / 거절했을 것" 판정(2b에서는 승인·거절), HELD, IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검 |
 | SCHEDULE (`#schedule`) | OCC SCHEDULE 초안(S1 그림자 운용): S2 진입 점검 패널, "승인했을 것 / 거절했을 것" 판정이 있는 열린 초안 카드, 후보 수, 최근 7일 표 |
 | DOCS (`#docs`) | atc 사용 안내: 소개, 빠른 시작, 개념, 일 맡기기(CHARTER DESK / AD HOC), 판정하기, FLEET, 교신 규칙, 화면, 단계, 문제 해결. `docs/guide/*.md`(한국어)를 그대로 보여 준다 |
@@ -89,12 +89,16 @@ FLEET 탭의 **팀 빌딩**: **ENTRY INTO SERVICE**로 **CONFIGURATION** 템플�
 
 **LOGBOOK**([docs/fleet.md](docs/fleet.md) 7.1~7.2, `server/logbook.ts`): atc가 10분마다 AIRPORT마다 기본 브랜치에 머지된 최근 PR 30건(`gh pr list --state merged`)을 읽고, 새 PR마다 `~/.local/state/atc/logbook.jsonl`에 한 줄씩 추가한다(추가만 함. 키가 `owner/repo#번호`라 재시작 뒤 첫 번에 과거분도 채운다). 한 줄에는 AIRCRAFT(그 FLIGHT의 STAND를 점유한 `TEAM_X` 세션, 모르면 `null`), FLIGHT와 분류, 출발(가장 이른 점유, 또는 PR을 연 시각)·도착(머지) 시각, 팀 소요 시간(착수 → PR을 연 시각, PR 전에 점유가 없으면 모름), 착륙 대기(PR → 머지), Codex 지적 회차, 변경 요청 여부, STAND의 LOS가 들어간다. `Revert "…"` PR이 머지되면 되돌린 PR에 `reverted` 줄을 덧붙인다. FLEET 카드는 TARGETS 옆에 실적을 보여 준다: 이번 주(월요일부터, 로컬 시간) ARRIVED 수, 14일 정시율(팀 소요 시간이 WAKE 기대치 L 60분·M 4시간·H 2일 안, 기대치가 없으면 같은 FLIGHT TYPE·WAKE의 중앙값 이하. 착륙 대기는 넣지 않음), 14일 되돌림과 LOS, 착륙 대기 중앙값, 최근 FLIGHT 5건. 보여 주기만 하고 점수나 배정에 쓰지 않는다.
 
+**CHECKRIDE**([docs/fleet.md](docs/fleet.md) 8.2, `server/checkride.ts`): AIRCRAFT × TYPE RATING마다 그 rating이 필요했던 LOGBOOK FLIGHT를 모은다. FLIGHT의 rating은 `rating:`·Risk 라벨에서, 없으면 SUPERVISOR가 받아들인 SCHEDULE CLASSIFY 초안에서 읽고, 근거마다 출처를 보여 준다. **부여 추천**(30일: 그런 FLIGHT 3건 이상, 되돌림 0, Codex 지적 라운드 평균 3 미만)과 이미 가진 rating의 **재검토 추천**(14일: 되돌림, 또는 2건 이상의 지적 라운드 평균 3 이상)을 낸다. `SEC`는 맡을 수 있는 CREW가 없으면(`canHoldSec`) 이유와 함께 추천하지 않는다. FLEET 탭의 카드 아래에 보이고, 부여·회수는 SUPERVISOR만 누른다. 편집 화면과 같은 `applyPatch` 길로 바꾸고 FLIGHT RECORDER에 `checkride` 줄(누가, 추천 여부, 근거)을 남긴다. 자동으로 부여·회수하지 않는다.
+
 | API | 하는 일 |
 |---|---|
 | `GET /api/fleet` | TEAM 세션과 등록된 AIRCRAFT 전부(상태, 지금 FLIGHT, 팀원, 자격, 담당 프로젝트, 목표, LOGBOOK 실적 `actuals`)와 자격 목록·기본값·프로젝트 목록 |
 | `POST /api/fleet` | ENTRY INTO SERVICE: `{registration, configuration?, base?, routes?, note?}`(configuration: `general`, `security`, `ui`, `research`) |
 | `GET /api/fleet/:registration/briefing` | 새 세션에 붙여 넣을 CREW BRIEFING 문구 |
 | `PATCH /api/fleet/:registration` | `{complement?, ratings?, routes?, targets?, base?, note?, aog?, retired?}`. `null`이면 그 항목을 기본값으로. `aog: {reason, until?}`는 잠시 운항 중지, `retired: {reason?}` / `false`는 퇴역·복귀 |
+| `GET /api/fleet/checkride` | CHECKRIDE 행: AIRCRAFT × TYPE RATING마다 상태(`GRANT`, `REVIEW`, `BLOCKED`, `BUILDING`, `HOLDS`), 이유, 건수, 근거와 기준값 |
+| `POST /api/fleet/:registration/checkride` | `{rating, action: "grant" \| "revoke"}`: SUPERVISOR의 rating 부여·회수. FLIGHT RECORDER에 남는다 |
 | `GET /api/logbook?aircraft=TEAM_X&days=14` | LOGBOOK 기록, 도착 최신순(`aircraft`는 선택, `days`는 1~90). 마지막으로 읽은 시각과 오류도 |
 
 | 상태 | 화면 표기 |
@@ -347,6 +351,7 @@ atc/
 │   ├── airports.ts         # AIRPORT 등록부·API (airports.test.ts)
 │   ├── fleet.ts            # FLEET 등록부·API (fleet.test.ts)
 │   ├── logbook.ts          # ARRIVED FLIGHT의 LOGBOOK, TARGETS 실적 (logbook.test.ts)
+│   ├── checkride.ts        # CHECKRIDE: TYPE RATING 근거와 추천 (checkride.test.ts)
 │   ├── away.ts             # OUTSTATION 판정 (화면과 공용)
 │   ├── callsign.ts         # 콜사인·FLIGHT NUMBER (화면과 공용)
 │   ├── clearances.ts       # CLEARANCE·READBACK 기록

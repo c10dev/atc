@@ -1,0 +1,103 @@
+/* CHECKRIDE: FLEET 탭 아래의 TYPE RATING 근거와 추천 */
+.cr {
+  margin-top: var(--space-4);
+}
+.cr-title em {
+  margin-left: var(--space-2);
+  color: var(--faint);
+  font: var(--text-xs) var(--sans);
+  font-style: normal;
+  letter-spacing: 0;
+}
+.cr-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.cr-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--faint);
+  border-radius: var(--radius);
+}
+.cr-row.st-GRANT {
+  border-left-color: var(--radar);
+}
+.cr-row.st-REVIEW {
+  border-left-color: var(--alert);
+}
+.cr-row.st-BLOCKED {
+  border-left-color: var(--amber);
+}
+.cr-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+.cr-callsign {
+  font: 600 var(--text-sm) var(--mono);
+}
+.cr-status {
+  color: var(--muted);
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+}
+.st-GRANT .cr-status {
+  color: var(--radar);
+}
+.st-REVIEW .cr-status {
+  color: var(--alert);
+}
+.st-BLOCKED .cr-status {
+  color: var(--amber);
+}
+.cr-head .fl-btn {
+  margin-left: auto;
+}
+.cr-reason {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.cr-evidence summary {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.cr-evidence ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+  font: var(--text-xs) var(--mono);
+}
+.cr-evidence li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1-5);
+}
+.cr-evidence a {
+  color: var(--text);
+  text-decoration: none;
+}
+.cr-evidence a:hover,
+.cr-evidence a:focus-visible {
+  color: var(--cyan);
+  text-decoration: underline;
+}
+.cr-source {
+  color: var(--cyan);
+}
+.cr-date {
+  margin-left: auto;
+}
