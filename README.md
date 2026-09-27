@@ -333,7 +333,7 @@ CHARTER REQUEST → AD HOC FLIGHT draft (S1: verdict in the SCHEDULE tab) → FI
 | `crosscheck/` | Working folder for the CROSSCHECK session (provisional verdicts from a different model) | [CLAUDE.en.md](crosscheck/CLAUDE.en.md) · [/tick](crosscheck/.claude/skills/tick/SKILL.en.md) |
 | `deploy/` | systemd user service | [deploy/README.md](deploy/README.md) |
 | `docs/guide/` | The user guide shown in the DOCS tab (Korean) | [introduction](docs/guide/introduction.md) |
-| `docs/` | Design and conventions | [DISPATCH design](docs/dispatch.md) · [OCC design](docs/occ.md) · [FLEET design](docs/fleet.md) · [Naming rules](docs/naming.md) |
+| `docs/` | Design and conventions | [DISPATCH design](docs/dispatch.md) · [OCC design](docs/occ.md) · [FLEET design](docs/fleet.md) · [ATFM design (stage 3, draft)](docs/atfm.md) · [Naming rules](docs/naming.md) |
 | — | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 
 Each has a Korean version next to it (`README.ko.md`, `*.ko.md`; for the session folders the Korean `CLAUDE.md` / `SKILL.md` are the originals the sessions load).
