@@ -17,6 +17,7 @@ import {
   s3Eligibility,
   saveAtfm,
   setSwitch,
+  slotHoldOf,
   slotLimitOf,
   slotsOf,
   stopKey,
@@ -51,22 +52,23 @@ interface RunState {
   eligible: string[]; // D-xxxx
   s3: string[]; // S-xxxx
   undone: string[]; // S-xxxx
+  slotHold: string[]; // repo#pr@head — 슬롯이 켜져(on) LAND를 막은 PR
 }
 const STATE_FILE = () => join(config.stateDir, "atfm-state.json");
 
 function loadState(file = STATE_FILE()): RunState {
   try {
     const r = JSON.parse(readFileSync(file, "utf8"));
-    return { stops: r.stops ?? {}, ci: r.ci ?? [], behind: r.behind ?? {}, eligible: r.eligible ?? [], s3: r.s3 ?? [], undone: r.undone ?? [] };
+    return { stops: r.stops ?? {}, ci: r.ci ?? [], behind: r.behind ?? {}, eligible: r.eligible ?? [], s3: r.s3 ?? [], undone: r.undone ?? [], slotHold: r.slotHold ?? [] };
   } catch {
-    return { stops: {}, ci: [], behind: {}, eligible: [], s3: [], undone: [] };
+    return { stops: {}, ci: [], behind: {}, eligible: [], s3: [], undone: [], slotHold: [] };
   }
 }
 function saveState(st: RunState, file = STATE_FILE()) {
   const trim = (xs: string[]) => xs.slice(-KEEP);
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify({ ...st, ci: trim(st.ci), eligible: trim(st.eligible), s3: trim(st.s3), undone: trim(st.undone) }) + "\n");
+  writeFileSync(tmp, JSON.stringify({ ...st, ci: trim(st.ci), eligible: trim(st.eligible), s3: trim(st.s3), undone: trim(st.undone), slotHold: trim(st.slotHold) }) + "\n");
   renameSync(tmp, file);
 }
 
@@ -99,6 +101,16 @@ export function runAtfm(s: Snapshot, now = Date.now()) {
       const [airport, trigger] = k.split("|");
       record(atfmLine("ground-release", { airport, data: { trigger, since: state.stops[k] } }));
       delete state.stops[k];
+      dirty = true;
+    }
+  }
+  // 머지 슬롯이 켜져 있으면(7단계) LAND를 막은 PR을 head마다 한 번 적는다
+  const cfg = loadAtfm();
+  if (cfg.slots === "on" && s.github.fetchedAt) {
+    for (const h of slotHoldsOf(s, cfg, now)) {
+      if (state.slotHold.includes(h.key)) continue;
+      state.slotHold.push(h.key);
+      record(atfmLine("slot-hold", { airport: h.airport, data: { pr: h.pr, head: h.head, lanePos: h.lanePos, limit: h.limit, landTimedOut: h.landTimedOut, text: h.text } }));
       dirty = true;
     }
   }
@@ -235,6 +247,24 @@ const rateRow = (id: string, label: string, r: { marked: number; rate: number | 
   status: !r || r.marked < n ? "insufficient" : (r.rate ?? 0) >= min ? "pass" : "fail",
 });
 
+// 지금 슬롯이 LAND를 막는 PR(slots "on"일 때만 나온다)
+function slotHoldsOf(s: Snapshot, cfg: AtfmConfig, now: number) {
+  const codeOf = (repo: string) => s.airports.find((a) => a.repo === repo)?.code ?? null;
+  const mainOf = new Map(s.atfm.mains.map((m) => [m.repo, m]));
+  const priorityOf = new Map(s.tickets.map((t) => [t.key, t.priority]));
+  const slotMap = slotsOf(s.pulls, {
+    limitOf: (repo) => slotLimitOf(codeOf(repo), mainOf.get(repo), cfg),
+    priorityOf: (k) => (k ? (priorityOf.get(k) ?? 0) : 0),
+    landOf: (p) => landOf(p, s.clearances),
+    now,
+  });
+  return s.pulls.flatMap((p) => {
+    const v = slotMap.get(pullKey(p));
+    const hold = slotHoldOf(v, cfg.slots);
+    return v && hold ? [{ key: `${p.repo}#${p.number}@${p.head}`, airport: codeOf(p.repo), pr: p.number, head: p.head.slice(0, 7), lanePos: v.lanePos, limit: v.limit, landTimedOut: v.landTimedOut, text: hold.text }] : [];
+  });
+}
+
 export function atfmView(s: Snapshot, cfg: AtfmConfig = loadAtfm(), now = Date.now()) {
   const codeOf = (repo: string | null) => (repo ? (s.airports.find((a) => a.repo === repo)?.code ?? null) : null);
   const mainOf = new Map(s.atfm.mains.map((m) => [m.repo, m]));
@@ -342,7 +372,7 @@ export function mountAtfm(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     }
   };
 
-  // 스위치 하나. on으로 켤 수 있는 것은 groundStop.mainBroken과 groundStop.manual뿐(SUPERVISOR 결정 8)
+  // 스위치 하나. on으로 켤 수 있는 것은 groundStop.mainBroken·groundStop.manual(SUPERVISOR 결정 8)과 slots(7단계)뿐
   app.post("/api/atfm/switch", change((cfg, b) => setSwitch(cfg, b.key, b.value), "switch"));
   // ATFM OFF: 켜진 것을 모두 그림자로, 수동 출발 중지 스위치는 끔
   app.post("/api/atfm/off", change((cfg) => allShadow(cfg), "off"));

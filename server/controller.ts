@@ -6,7 +6,7 @@ import { awayOperations } from "./away.ts";
 import { allClearances, CLEARANCE_TYPES, isPending, issueClearance, markClearance } from "./clearances.ts";
 import { config } from "./config.ts";
 import type { EventLog } from "./events.ts";
-import { type AtfmConfig, DEFAULT_ATFM, enforcedStops, landOf, loadAtfm, slotLimitOf, slotsOf } from "./atfm.ts";
+import { type AtfmConfig, DEFAULT_ATFM, enforcedStops, landOf, loadAtfm, slotHoldOf, slotLimitOf, slotsOf } from "./atfm.ts";
 import { inSequence, pullKey } from "./landing.ts";
 import { record } from "./recorder.ts";
 import type { Clearance, ClearanceType, Session, Snapshot, TrafficEvent } from "./model.ts";
@@ -60,7 +60,7 @@ export function buildBrief(
 
   // LANDING SEQUENCE: Draft가 아닌 열린 PR. CLEARED TO LAND가 readyAt 순으로 앞(seq 1, 2, …), 그 뒤 APPROACH.
   const sequence = s.pulls.filter(inSequence);
-  // ATFM: 켜진 출발 중지(그 AIRPORT에는 LAND를 내지 않는다)와 머지 슬롯(그림자, TOWER는 아직 따르지 않는다)
+  // ATFM: 켜진 출발 중지(그 AIRPORT에는 LAND를 내지 않는다)와 머지 슬롯(slots가 on이면 waiting-slot PR에 slotHold)
   const stopped = enforcedStops(s.atfm?.groundStops ?? []);
   const mainOf = new Map((s.atfm?.mains ?? []).map((m) => [m.repo, m]));
   const priorityOf = new Map(s.tickets.map((t) => [t.key, t.priority]));
@@ -113,8 +113,9 @@ export function buildBrief(
       landText: repoSeq ? landTextOf(repoSeq, airport, p.number, fl, repoSeq > 1 ? lane[repoSeq - 2].number : null) : null,
       // 켜진 GROUND STOP이 이 AIRPORT에 걸려 있으면 LAND를 내지 않는다
       groundStop: airport && stopped.has(airport) ? { trigger: stopped.get(airport)!.trigger, text: stopped.get(airport)!.text, since: stopped.get(airport)!.since } : null,
-      // 머지 슬롯(그림자): 참고만. TOWER는 이 값으로 LAND를 거르지 않는다
+      // 머지 슬롯. slotHold가 있으면(slots "on"이고 waiting-slot) TOWER는 LAND를 내지 않는다. 그림자면 slot은 참고만
       slot: slots.get(pullKey(p)) ?? null,
+      slotHold: slotHoldOf(slots.get(pullKey(p)), atfm.slots),
     };
   });
 

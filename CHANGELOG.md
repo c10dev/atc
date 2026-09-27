@@ -16,6 +16,11 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 - The TOWER and OCC Bash guard (`controller/guard.mjs`) let command substitution through inside double quotes: `node atcctl.mjs brief -- "$(touch /tmp/x)"` passed, and so did a backtick. The shell runs these before the command, so a control session could run arbitrary commands. Command substitution and variable expansion (`$(…)`, backticks, `${…}`, `$VAR`) are now blocked anywhere outside single quotes; single-quoted and backslash-escaped text is still allowed. Reported by TEAM_H.
 
 ### Added
+- ATFM step 7: merge slots can be switched on (ATC-22, [docs/atfm.md](docs/atfm.md) 5).
+  - `atfm.json` `slots` now takes `off | shadow | on` (default still `shadow`). The DISPATCH tab's ATFM block has the switch with a confirmation, and ATFM OFF puts `on` back to `shadow`.
+  - With `on`, each `waiting-slot` PR in the TOWER brief gets `slotHold` (`slotHoldOf`: waiting behind the PR that holds the slot, or the slot freed after a LAND timed out). TOWER issues it no LAND and sends no message; when the PR ahead merges or its LAND passes 30 minutes, `slotHold` goes away and TOWER issues the LAND (TOWER rules, Korean and English).
+  - Each held PR head is recorded once as an `atfm` `slot-hold` line in the FLIGHT RECORDER.
+  - Not built: the one-week shadow comparison figures (concurrent LANDs per repository, BEHIND per merge).
 - OCC drafts FLEET TARGET and ROUTE changes in shadow (ATC-25, [docs/fleet.md](docs/fleet.md) 7.4).
   - Two new SCHEDULE kinds about one AIRCRAFT (`flight: null`): `TARGET` (`flightsPerWeek`, `onTime`, or `none` to clear) and `ROUTE` (`add`/`remove` Linear projects). `atcctl schedule draft TARGET|ROUTE <TEAM_X> … -- <reason>`, and `atcctl network` to read the NETWORK overview.
   - atc attaches the evidence when the draft is made, from the NETWORK functions: for `TARGET` the AIRCRAFT's targets and actuals, ARRIVED in 14 days and per week for 4 weeks, and its ROUTE rows; for `ROUTE` the rows of the touched projects and where its last 14 days of ARRIVED FLIGHTs went (`server/network-drafts.ts`).

@@ -7,7 +7,7 @@ ATFM(air traffic flow management, 교통 흐름 관리)은 atc의 3단계다. 1�
 - SUPERVISOR도 같은 결정을 내릴 것이 데이터로 보이는 좁은 경우에는 스스로 처리한다.
 - 시스템이 붐비거나 고장 나면 교통을 늦춘다.
 
-> 상태(2026-09-27): SUPERVISOR가 열린 질문 10개를 결정했다(맨 아래 "결정"). 8장의 1–5번이 구현됐다: 데이터 수집, GROUND STOP, 머지 슬롯, DISPATCH와 S3의 자동 대상 판정. 모두 그림자 운용이다(계산하고 보이고 기록만 한다. 실제로 움직이지 않는다). 6번도 일부 구현됐다: "main 깨짐"과 "수동" GROUND STOP은 `on`으로 켤 수 있고, 켜면 실제로 막는다. `on`으로 켤 수 있는 것은 이 둘뿐이고, 둘 다 기본은 꺼짐이다. 8번 RECALL도 구현됐다([dispatch.ko.md](dispatch.ko.md) "RECALL"). 자동 배정과 자동 S3는 구현되지 않았다. 구현된 것은 10장에 있다.
+> 상태(2026-09-27): SUPERVISOR가 열린 질문 10개를 결정했다(맨 아래 "결정"). 8장의 1–5번이 구현됐다: 데이터 수집, GROUND STOP, 머지 슬롯, DISPATCH와 S3의 자동 대상 판정. 모두 그림자 운용이다(계산하고 보이고 기록만 한다. 실제로 움직이지 않는다). 6번도 일부 구현됐다: "main 깨짐"과 "수동" GROUND STOP은 `on`으로 켤 수 있고, 켜면 실제로 막는다. 7번은 스위치로 구현됐다: 머지 슬롯을 `on`으로 켤 수 있고(기본 `shadow`), 켜면 TOWER가 `in-slot` PR에만 LAND를 준다. 실제로 막을 수 있는 것은 이 셋뿐이다. 8번 RECALL도 구현됐다([dispatch.ko.md](dispatch.ko.md) "RECALL"). 자동 배정과 자동 S3는 구현되지 않았다. 구현된 것은 10장에 있다.
 
 관련: [dispatch.ko.md](dispatch.ko.md) 8장(2b → 3 기준), [occ.ko.md](occ.ko.md) 7장·11장(S3), [fleet.ko.md](fleet.ko.md) 4장(분류), `server/landing.ts`(CLEARED TO LAND), `server/proposals.ts`(`gate3Of`), `server/crosscheck.ts`(일치율, 한 번 클릭 수), `server/logbook.ts`(LOGBOOK).
 
@@ -138,11 +138,11 @@ ATFM(air traffic flow management, 교통 흐름 관리)은 atc의 3단계다. 1�
   - 결정 7: atc의 LANDING 대기 p90이 12분이라 30분이면 여유가 있다. vocado의 더 긴 LOGBOOK 대기는 PR 열림부터 머지까지다. 여기에는 PR이 CLEARED 되기 전의 리뷰 시간이 들어 있어서, LAND 뒤 시간보다 크게 나온다.
   - 제한 시간을 넘긴 LAND는 SUPERVISOR에게 보고하고 슬롯을 비운다.
 - **rebase 비용.** 열린 PR이 `BEHIND`가 되면 기록한다(`behind`). 그래서 머지당 `BEHIND` 수를 셀 수 있다. 슬롯 수는 결정 6대로 둔다. 바꾸는 것은 SUPERVISOR뿐이고, `slotLimits`로 바꾼다. 처음 제안한 자동 조정(하루 평균 머지당 2개 넘게 `BEHIND`가 되면 1로 둠, CI 중앙값이 10분 미만이면 2로 올림)은 아직 만들지 않음. 만들려면 새 결정이 필요하다.
-- **어디서 도나.** atc가 `landingQueue`의 PR마다 `slot`(`in-slot` / `waiting-slot`)을 계산한다. 7번부터 TOWER 규칙은 `in-slot` PR에만 LAND를 준다. 아직 만들지 않음: 지금 TOWER는 `slot`을 읽기만 하고 따르지 않는다. 새 쓰기 경로는 없다.
+- **어디서 도나.** atc가 `landingQueue`의 PR마다 `slot`(`in-slot` / `waiting-slot`)을 계산한다. 7번부터 TOWER 규칙은 `in-slot` PR에만 LAND를 준다. 구현됨(ATC-22): `slots: on`이면 `waiting-slot` PR에 `slotHold`(`slotHoldOf`, 한 줄 이유)가 붙고, TOWER는 그 PR에 LAND도 메시지도 보내지 않는다. 그림자면 `slot`만 있고 TOWER는 따르지 않는다. 새 쓰기 경로는 없다.
 
-**켜기.** 1주 동안 그림자로 돌린다(STRIPS에 `waiting-slot`을 보이고, TOWER는 지금처럼 LAND를 준다). 그 뒤 비교한다: 같은 저장소에서 LAND 둘이 동시에 살아 있던 횟수, 머지마다 `BEHIND`가 된 PR 수.
+**켜기.** 1주 동안 그림자로 돌린다(STRIPS에 `waiting-slot`을 보이고, TOWER는 지금처럼 LAND를 준다). 그 뒤 비교한다: 같은 저장소에서 LAND 둘이 동시에 살아 있던 횟수, 머지마다 `BEHIND`가 된 PR 수. 아직 만들지 않음: 이 비교 숫자는 계산하지 않는다. 셀 수 있게 `behind` 기록만 남는다.
 
-**끄기.** `atfm.json` `slots`(지금 `off | shadow`). TOWER는 아직 슬롯을 따르지 않는다. `on`은 7번과 함께 온다.
+**끄기.** `atfm.json` `slots`(`off | shadow | on`, 기본 `shadow`). SUPERVISOR가 DISPATCH 탭 ATFM 블록에서 확인을 거쳐 바꾼다. ATFM OFF는 `on`을 `shadow`로 되돌린다.
 
 **지표.** 저장소별 LANDING 대기(중앙값, p90), LAND → 머지 시간, 머지당 BEHIND 수, PR당 CI 재실행, LAND 제한 시간 초과.
 
@@ -198,7 +198,7 @@ Codex 사용 한도 알림(`no-review`에서 "Codex 한도"로 멈춘 PR)은 GRO
 | 한도 | 자동 ASSIGN: 전체 하루 3건까지, 그리고 AIRCRAFT당 ARRIVED하지 않은 자동 배정 FLIGHT 1건까지. WAKE 슬롯과 함께 센다(결정 3). S3 자동 작업: 하루 5건까지. 하루는 KST 기준이다. 한도에 닿으면 대상 항목은 보통의 사람 흐름으로 돌아간다 |
 | 자동 trip | 장치마다 trip 조건이 있다(3–4장). 걸리면 스위치를 `shadow`로 돌리고 경보를 띄운다. 다시 켜는 것은 SUPERVISOR가 한다 |
 | 알림 | 모든 자동 동작은 `/api/events`의 이벤트이자, 그 탭 "AUTO" 목록의 한 줄이다. trip과 GROUND STOP은 ALERT다. OCC와 TOWER는 LOG 줄에 자동 동작을 적는다 |
-| 기록 | 종류 `atfm`의 FLIGHT RECORDER 줄: `{op, id?, airport?, data?}`. 구현된 op는 10장에 있다(`ground-stop`, `ground-release`, `ci`, `behind`, `eligible`, `s3-eligible`, `undone`, `switch`, `off`, `manual-stop`, `manual-release`). `eligible`과 `s3-eligible`에는 확인한 조건 코드(A1–A10, S1–S4)가 `checked`로 남는다. 아직 만들지 않음: `auto-approve`, `auto-apply`, `trip`, `slot-hold`, 그리고 함께 올 `rule`·`inputs` 필드. `inputs`는 조건마다 근거가 된 값의 snapshot이 될 것이다. 그래서 어떤 자동 동작이든 나중에 설명할 수 있다 |
+| 기록 | 종류 `atfm`의 FLIGHT RECORDER 줄: `{op, id?, airport?, data?}`. 구현된 op는 10장에 있다(`ground-stop`, `ground-release`, `ci`, `behind`, `eligible`, `s3-eligible`, `undone`, `switch`, `off`, `manual-stop`, `manual-release`, `slot-hold`). `eligible`과 `s3-eligible`에는 확인한 조건 코드(A1–A10, S1–S4)가 `checked`로 남는다. 아직 만들지 않음: `auto-approve`, `auto-apply`, `trip`, 그리고 함께 올 `rule`·`inputs` 필드. `inputs`는 조건마다 근거가 된 값의 snapshot이 될 것이다. 그래서 어떤 자동 동작이든 나중에 설명할 수 있다 |
 | 귀속 | 자동 승인은 `by: "atfm"`, `via: "atfm"`인 `approve` op다. 사람 게이트와 CROSSCHECK 일치율에서 빠진다(원칙 2) |
 | guard | 자동 FLIGHT PLAN은 `dispatch release`와 send-guard를, 자동 Linear 쓰기는 `schedule release`와 linear-guard를 거친다. 어느 guard에도 우회로가 없다 |
 
@@ -212,12 +212,12 @@ Codex 사용 한도 알림(`no-review`에서 "Codex 한도"로 멈춘 PR)은 GRO
 4. **DISPATCH 자동 대상, 그림자**: 열린 ASSIGN마다 `auto` 판정과 못 맞춘 조건, 그림자 정밀도가 있는 "STAGE 3" 패널. 사람 결정과 비교만 하므로 2a 중에도 시작할 수 있다.
 5. **S3 자동 대상, 그림자**: CLASSIFY 초안에 같은 것.
 6. **GROUND STOP 켜기**: planner 제외, `dispatch release` 거부, TOWER HOLD/CONTINUE 규칙. SUPERVISOR가 1주 그림자 결과를 받아들인 뒤.
-7. **머지 슬롯 켜기**: TOWER가 `in-slot` PR에만 LAND를 준다.
+7. ✅ **머지 슬롯 켜기**: TOWER가 `in-slot` PR에만 LAND를 준다. `slots` 스위치 뒤에 구현(ATC-22), 기본 `shadow`.
 8. ✅ **RECALL**(`[DISPATCH D-xxxx] RECALL`, send-guard 확장) — 구현됨([dispatch.ko.md](dispatch.ko.md) "RECALL"). 자동 배정 전에 필요하다.
 9. **자동 배정 켜기**: 스위치, 한도, trip, 귀속. 3장의 켜는 조건을 만족한 뒤에만.
 10. **S3 자동 CLASSIFY 켜기**: 4장의 켜는 조건을 만족한 뒤.
 
-1–5번은 구현됐다(10장). 6번 중 "main 깨짐"과 "수동" GROUND STOP도 기본 꺼짐 스위치 뒤에 구현됐다(결정 8). 나머지 trigger는 그림자로 남는다. 8번(RECALL)도 구현됐다(결정 4). 다음은 9번 자동 배정이고, 3장의 켜는 조건을 만족하면 한다.
+1–5번은 구현됐다(10장). 6번 중 "main 깨짐"과 "수동" GROUND STOP도 기본 꺼짐 스위치 뒤에 구현됐다(결정 8). 나머지 trigger는 그림자로 남는다. 7번(머지 슬롯)은 `slots` 스위치 뒤에 구현됐고 기본은 `shadow`다(ATC-22). 8번(RECALL)도 구현됐다(결정 4). 다음은 9번 자동 배정이고, 3장의 켜는 조건을 만족하면 한다.
 
 ## 9. 위험과 대응
 
@@ -238,12 +238,12 @@ Codex 사용 한도 알림(`no-review`에서 "Codex 한도"로 멈춘 PR)은 GRO
 | 체크 시간 | `server/atfm.ts` `ciMinutesOf` | PR head의 check run이 모두 끝나면, 가장 이른 시작부터 가장 늦은 끝까지 잰다. 이제 PR 목록과 함께 읽는 `completedAt`을 쓴다 |
 | GROUND STOP | `server/atfm.ts` `groundStopsOf`, `server/snapshot.ts` | snapshot마다 계산한다: main 깨짐, CI 실패 몰림(1시간 안에 PR 3개가 같은 체크에서 실패), CI 혼잡(체크가 30분 넘게 도는 PR이 4개 넘음, GROUND DELAY), LOS(AIRPORT에 열린 것 2건 이상), 수동. `enforced`는 켜진 main 깨짐이나 수동 멈춤일 때만 true다. `snapshot.atfm.groundStops`에 보인다 |
 | 적용(켰을 때만) | `server/proposals.ts`, `server/controller.ts`, `server/events.ts`, TOWER·OCC `CLAUDE.md` | planner가 멈춘 AIRPORT의 ASSIGN을 `GROUND STOP — …`로 `excluded`에 옮긴다. 그래서 거기 열린 제안은 그 사유로 SUPERSEDED된다. `dispatch release`는 거부한다. TOWER 브리핑이 `landingQueue` 항목마다 `groundStop`을 붙이고, TOWER는 거기에 LAND를 주지 않는다. `groundstop.started`·`groundstop.ended` 이벤트로 TOWER가 HOLD와 CONTINUE를 보낸다. 그림자 멈춤은 이벤트를 만들지 않는다 |
-| 머지 슬롯(그림자) | `server/atfm.ts` `slotsOf`, TOWER 브리핑 `landingQueue[].slot` | `in-slot`이나 `waiting-slot`, 줄 순서, Urgent, LAND 시각과 30분 제한 시간. TOWER는 아직 따르지 않는다 |
+| 머지 슬롯 | `server/atfm.ts` `slotsOf`, `slotHoldOf`, TOWER 브리핑 `landingQueue[].slot`·`slotHold` | `in-slot`이나 `waiting-slot`, 줄 순서, Urgent, LAND 시각과 30분 제한 시간. `slots: on`(7번, ATC-22)이면 `waiting-slot` PR에 `slotHold`가 붙고 TOWER는 LAND를 내지 않는다. 그런 PR head는 `slot-hold`로 한 번 기록된다(`atfm-state.json`의 `slotHold`) |
 | 자동 대상 판정(그림자) | `server/atfm.ts` `autoEligibility`(A1–A10), `s3Eligibility`(S1–S4) | 열린 ASSIGN과 CLASSIFY 초안마다, 못 맞춘 조건과 함께 계산한다 |
 | 그림자 정밀도와 켜는 조건 줄 | `server/atfm-run.ts` `atfmView` | 정밀도는 한 번이라도 대상으로 기록된 항목을 사람 결정과 비교해 잰다. 막았어야 할 거절(`already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`)도 센다. 3·4장의 켜는 조건마다 통과/실패/데이터 부족 줄이 된다(2주 줄은 "확인 필요"도 될 수 있다. `approvalRunOf`). CROSSCHECK 비율은 `unknown`이 아닌 가장 최근 mark의 계열로 잰다(`currentModelRate`) |
 | 기록 | FLIGHT RECORDER 줄 `kind: "atfm"` | `ground-stop`, `ground-release`, `ci`, `behind`(열린 PR이 BEHIND가 됨), `eligible`과 `s3-eligible`(`checked` 포함), `undone`(S2로 적용한 라벨이 7일 안에 사라짐), `switch`, `off`, `manual-stop`, `manual-release`. `~/.local/state/atc/atfm-state.json`이 무엇을 기록했는지 기억해서, 재시작해도 줄이 겹치지 않는다 |
 | API | `server/atfm-run.ts` | `GET /api/atfm`(스위치, main CI, GROUND STOP, 슬롯, 못 맞춘 조건이 붙은 대상 판정, 정밀도, 켜는 조건 줄, 데이터), `POST /api/atfm/switch {key, value}`, `POST /api/atfm/off`, `POST /api/atfm/stops {airport, reason}`(`groundStop.manual`이 켜져 있을 때만), `POST /api/atfm/stops/:airport/release` |
-| 화면 | DISPATCH 탭 "ATFM" 블록(`web/src/views/Atfm.tsx`) | GROUND STOP(ENFORCED 또는 그림자), 확인을 거쳐 켤 수 있는 스위치 두 개, 수동 멈춤 입력, AIRPORT별 main CI, 슬롯, 대상 판정, S3, 데이터, ATFM OFF. 나중에 NETWORK 탭으로 옮길 수 있다 |
+| 화면 | DISPATCH 탭 "ATFM" 블록(`web/src/views/Atfm.tsx`) | GROUND STOP(ENFORCED 또는 그림자), 확인을 거쳐 켤 수 있는 스위치(main 깨짐, 수동, 머지 슬롯), 수동 멈춤 입력, AIRPORT별 main CI, 슬롯, 대상 판정, S3, 데이터, ATFM OFF. 나중에 NETWORK 탭으로 옮길 수 있다 |
 | 귀속 | `server/crosscheck.ts` `Via`, `humanOf`, 게이트 | `via: "atfm"`은 서버 안에서만 붙일 수 있다. `humanOf`는 여기에 아무것도 돌려주지 않는다. 2a·S1 게이트는 이를 건너뛰고, `gate3`는 사람이 승인한 FLIGHT PLAN만 세고, CROSSCHECK 비율과 한 번 클릭 수에서도 빠진다 |
 
 ## 결정 (2026-09-27, SUPERVISOR)

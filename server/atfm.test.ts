@@ -16,8 +16,10 @@ import {
   precisionOf,
   s3Eligibility,
   setSwitch,
+  slotHoldOf,
   slotLimitOf,
   slotsOf,
+  type SlotView,
   undoneOf,
 } from "./atfm.ts";
 import type { AircraftView } from "./fleet.ts";
@@ -42,15 +44,17 @@ const stopInput = (over: Partial<Parameters<typeof groundStopsOf>[0]> = {}) => (
   airports, mains: new Map<string, MainStatus>(), pulls: new Map<string, GhPull[]>(), losOpen: new Map<string, number>(), cfg: DEFAULT_ATFM, now: NOW, ...over,
 });
 
-test("스위치: 기본값은 켜지지 않은 상태, 모르는 값은 기본값, on은 main 깨짐·수동만", () => {
+test("스위치: 기본값은 켜지지 않은 상태, 모르는 값은 기본값, on은 main 깨짐·수동·머지 슬롯만", () => {
   assert.deepEqual(parseAtfm({}), DEFAULT_ATFM);
   assert.equal(DEFAULT_ATFM.groundStop.mainBroken, "shadow");
   assert.equal(DEFAULT_ATFM.groundStop.manual, "off");
-  const bad = parseAtfm({ groundStop: { mainBroken: "yes", failureWave: "on", manual: "on" }, slots: "on", slotLimits: { vcdo: 1, atcc: null, x: 99 } });
+  const bad = parseAtfm({ groundStop: { mainBroken: "yes", failureWave: "on", manual: "on" }, slots: "yes", autoAssign: "on", slotLimits: { vcdo: 1, atcc: null, x: 99 } });
   assert.equal(bad.groundStop.mainBroken, "shadow"); // 모르는 값
   assert.equal(bad.groundStop.failureWave, "shadow"); // 켤 수 없는 것은 on을 받지 않는다
   assert.equal(bad.groundStop.manual, "on");
-  assert.equal(bad.slots, "shadow");
+  assert.equal(bad.slots, "shadow"); // 모르는 값
+  assert.equal(bad.autoAssign, "shadow"); // 켤 수 없는 것
+  assert.equal(parseAtfm({ slots: "on" }).slots, "on"); // 7단계: 머지 슬롯은 켤 수 있다
   assert.deepEqual(bad.slotLimits, { VCDO: 1, ATCC: null });
   assert.equal(setSwitch(DEFAULT_ATFM, "groundStop.mainBroken", "on").groundStop.mainBroken, "on");
   assert.throws(() => setSwitch(DEFAULT_ATFM, "groundStop.congestion", "on"), /off\|shadow/);
@@ -58,6 +62,9 @@ test("스위치: 기본값은 켜지지 않은 상태, 모르는 값은 기본�
   assert.throws(() => setSwitch(DEFAULT_ATFM, "nope", "off"), /모르는 스위치/);
   const on = setSwitch(setSwitch(DEFAULT_ATFM, "groundStop.mainBroken", "on"), "groundStop.manual", "on");
   assert.deepEqual(allShadow(on).groundStop, { ...DEFAULT_ATFM.groundStop, mainBroken: "shadow", manual: "off" });
+  assert.equal(setSwitch(DEFAULT_ATFM, "slots", "on").slots, "on");
+  assert.equal(allShadow(setSwitch(DEFAULT_ATFM, "slots", "on")).slots, "shadow"); // ATFM OFF는 슬롯도 그림자로
+  assert.equal(allShadow(setSwitch(DEFAULT_ATFM, "slots", "off")).slots, "off");
 });
 
 test("기본 브랜치 상태: 실패 체크·실패 status는 failure, 진행 중은 pending, 없으면 none", () => {
@@ -240,4 +247,14 @@ test("A8: ARRIVED 전 STAND 없는 FLIGHT를 날고 있는 AIRCRAFT는 대상이
   assert.deepEqual(failedCodes(proposal(), autoCtx({ history: [light({ departedStand: "/w/VOC-9", departedVia: "stand" })] })), []);
   // 다른 AIRCRAFT의 것은 상관없다
   assert.deepEqual(failedCodes(proposal(), autoCtx({ history: [light({ aircraftName: "TEAM_B" })] })), []);
+});
+
+test("slotHoldOf: slots가 on이고 waiting-slot일 때만 LAND를 막는 이유, 시간이 지난 LAND는 따로 적는다", () => {
+  const v = (slot: "in-slot" | "waiting-slot", over: Partial<SlotView> = {}): SlotView => ({ slot, lanePos: 2, limit: 1, urgent: false, landAt: null, landTimedOut: false, ...over });
+  assert.equal(slotHoldOf(v("waiting-slot"), "shadow"), null);
+  assert.equal(slotHoldOf(v("waiting-slot"), "off"), null);
+  assert.equal(slotHoldOf(v("in-slot"), "on"), null);
+  assert.equal(slotHoldOf(null, "on"), null);
+  assert.equal(slotHoldOf(v("waiting-slot"), "on")!.text, "머지 슬롯 대기 — 저장소 안 2번째, 동시 LAND 1");
+  assert.match(slotHoldOf(v("waiting-slot", { landTimedOut: true, landAt: "2026-09-27T00:00:00Z" }), "on")!.text, /30분이 지나도 머지되지 않아/);
 });
