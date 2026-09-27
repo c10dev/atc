@@ -8,7 +8,7 @@ description: OCC 한 바퀴 — 규정이 바뀌었는지 확인하고, 메모 �
 **한국어** · [English](SKILL.en.md)
 
 0. `node ../controller/atcctl.mjs manual check`. `CHANGED`면 `CLAUDE.md`와 이 파일을 다시 읽고 `node ../controller/atcctl.mjs manual ack`한 뒤, 다시 읽은 규정대로 진행한다.
-1. 이번 바퀴 전에 CAPTAIN에게서 온 답장이 있으면 먼저 처리한다. PR·리뷰·완료 보고는 CLAUDE.md의 "운항 추적"대로 `gh`로 확인한다. FLIGHT PLAN 답장 중 "READBACK D-xxxx"는 `node ../controller/atcctl.mjs dispatch readback D-xxxx`, 사유를 든 거절은 `dispatch decline D-xxxx -- <사유>`. RECALL 답장 "READBACK D-xxxx RECALL"은 `dispatch recalled D-xxxx`.
+1. 이번 바퀴 전에 CAPTAIN에게서 온 답장이 있으면 먼저 처리한다. PR·리뷰·완료 보고는 CLAUDE.md의 "운항 추적"대로 `gh`로 확인한다. FLIGHT PLAN 답장 중 "READBACK D-xxxx"는 `node ../controller/atcctl.mjs dispatch readback D-xxxx`, 사유를 든 거절은 `dispatch decline D-xxxx -- <사유>`. RECALL 답장 "READBACK D-xxxx RECALL"은 `dispatch recalled D-xxxx`. STAND 없는 FLIGHT(SURVEY·CHECK)를 마쳤다는 보고는 `dispatch arrived D-xxxx -- '<결과 링크나 한 줄>'`.
 2. `node ../controller/atcctl.mjs dispatch brief`를 실행하고 `mode`를 본다.
 3. `open` 중 `note`가 없는 제안마다:
    - `node ../controller/atcctl.mjs dispatch flight <FLIGHT key>`로 본문과 댓글을 읽는다.

@@ -407,7 +407,7 @@ test("거절 사유 집계: 칩별 건수와 최근 예시 FLIGHT, planner가 �
     { op: "verdict", id: "D-0004", at: iso(20), verdict: "disagree", reason: "옛 기록 — 칩 없음" },
   ]);
   const stats = Object.fromEntries(reasonStatsOf(ps).map((r) => [r.code, r]));
-  assert.deepEqual(stats["already-done"], { code: "already-done", label: "이미 완료됨", count: 2, examples: ["VOC-2", "VOC-1"], auto: "auto", how: "LOGBOOK ARRIVED·열린 PR 규칙, Linear Done 상태" });
+  assert.deepEqual(stats["already-done"], { code: "already-done", label: "이미 완료됨", count: 2, examples: ["VOC-2", "VOC-1"], auto: "auto", how: "LOGBOOK ARRIVED·열린 PR 규칙, STAND 없는 FLIGHT의 ARRIVED 보고, Linear Done 상태" });
   assert.equal(stats["no-priority"].count, 1);
   assert.equal(stats["no-priority"].auto, "auto");
   assert.equal(stats["waiting-on-prior"].auto, "partial");
@@ -538,4 +538,182 @@ test("'더 나은 배정'으로 닫힌 짝은 판정받지 못한 것이라 24�
   const tickets = [{ ...t("VOC-196"), priority: 3, project: "Beta Readiness", labels: [] }] as Ticket[];
   const ops = syncOps(existing, planOf({ assign: [planned("VOC-196", "b", 10.3)] }), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 17);
   assert.deepEqual(pairOps(ops), ["create:D-0018:VOC-196>b"]);
+});
+
+// ── STAND 없는 FLIGHT(SURVEY·CHECK): READBACK = DEPARTED, CAPTAIN 보고 = ARRIVED ──
+
+const lt = (key: string, type: string, stateType: Ticket["stateType"] = "unstarted", state = "Todo") =>
+  ({ key, state, stateType, labels: [`type:${type}`] }) as unknown as Ticket;
+const sentOps = (id: string, flight: string, minAgo: number, aircraft = "b"): Op[] => [
+  create(id, flight, aircraft, minAgo + 3),
+  { op: "approve", id, at: iso(minAgo + 2) },
+  { op: "send", id, at: iso(minAgo + 1), message: "m" },
+];
+
+test("READBACK: SURVEY·CHECK는 같은 시각에 DEPARTED(stand null, via readback), STAND가 필요하거나 모르는 FLIGHT는 accept만", async () => {
+  const { readbackOps } = await import("./proposals.ts");
+  const at = iso(0);
+  assert.deepEqual(readbackOps({ id: "D-0001" }, lt("VOC-1", "SURVEY"), at), [
+    { op: "accept", id: "D-0001", at },
+    { op: "depart", id: "D-0001", at, stand: null, via: "readback" },
+  ]);
+  assert.equal(readbackOps({ id: "D-0001" }, lt("VOC-1", "CHECK"), at).length, 2);
+  assert.deepEqual(readbackOps({ id: "D-0001" }, lt("VOC-1", "BUILD"), at), [{ op: "accept", id: "D-0001", at }]);
+  assert.deepEqual(readbackOps({ id: "D-0001" }, { labels: [] }, at), [{ op: "accept", id: "D-0001", at }]); // 기본값 BUILD
+  assert.deepEqual(readbackOps({ id: "D-0001" }, undefined, at), [{ op: "accept", id: "D-0001", at }]); // 모르는 FLIGHT
+});
+
+test("STAND 없는 FLIGHT 전이: accepted → departed(readback) → arrived, 보고와 링크가 남고 ARRIVED에서 예약이 풀린다", async () => {
+  const { readbackOps } = await import("./proposals.ts");
+  const flying = [...sentOps("D-0001", "VOC-1", 60), ...readbackOps({ id: "D-0001" }, lt("VOC-1", "SURVEY"), iso(50))];
+  let [p] = fold(flying);
+  assert.equal(p.status, "departed");
+  assert.equal(p.departedStand, null);
+  assert.equal(p.departedVia, "readback");
+  assert.deepEqual(Object.keys(p.timeline), ["proposed", "approved", "sent", "accepted", "departed"]);
+  assert.equal(isInFlight(p), true);
+  const r = reservedOf([p], NOW);
+  assert.equal(r.aircraft.get("b"), "D-0001");
+  assert.equal(r.flights.get("VOC-1"), "D-0001");
+  assert.deepEqual(r.aircraftFlights?.get("b"), ["VOC-1"]);
+  assert.equal(canApply(p, "arrived"), true);
+  assert.equal(canApply(p, "recall"), true);
+  assert.equal(canApply(p, "expire"), false);
+  assert.equal(canApply(p, "supersede"), false);
+
+  [p] = fold([...flying, { op: "arrived", id: "D-0001", at: iso(10), note: "결과 https://github.com/o/r/issues/5#issuecomment-9 에 정리" }]);
+  assert.equal(p.status, "arrived");
+  assert.equal(p.timeline.arrived, iso(10));
+  assert.equal(p.arrivedNote, "결과 https://github.com/o/r/issues/5#issuecomment-9 에 정리");
+  assert.equal(p.arrivedUrl, "https://github.com/o/r/issues/5#issuecomment-9");
+  assert.equal(isInFlight(p), false);
+  const after = reservedOf([p], NOW);
+  assert.equal(after.aircraft.size, 0);
+  assert.equal(after.flights.size, 0);
+  assert.equal(after.arrived?.get("VOC-1"), "D-0001");
+  // 링크 없는 한 줄
+  const [q] = fold([...flying, { op: "arrived", id: "D-0001", at: iso(10), note: "조사 끝, 결론은 이슈 댓글" }]);
+  assert.equal(q.arrivedUrl, undefined);
+});
+
+test("ARRIVED는 STAND 없이 DEPARTED한 것에만: STAND DEPARTED·accepted·sent에서는 무시, STAND DEPARTED는 RECALL도 안 됨", () => {
+  const arrived: Op = { op: "arrived", id: "D-0001", at: iso(5), note: "n" };
+  const standDeparted = fold([...sentOps("D-0001", "VOC-1", 60), { op: "accept", id: "D-0001", at: iso(50) }, { op: "depart", id: "D-0001", at: iso(40), stand: "/w/VOC-1" }, arrived])[0];
+  assert.equal(standDeparted.status, "departed");
+  assert.equal(standDeparted.departedVia, "stand");
+  assert.equal(isInFlight(standDeparted), false);
+  assert.equal(canApply(standDeparted, "arrived"), false);
+  assert.equal(canApply(standDeparted, "recall"), false);
+  assert.equal(fold([...sentOps("D-0001", "VOC-1", 60), { op: "accept", id: "D-0001", at: iso(50) }, arrived])[0].status, "accepted");
+  assert.equal(fold([...sentOps("D-0001", "VOC-1", 60), arrived])[0].status, "sent");
+});
+
+test("동기화: STAND 없이 DEPARTED한 제안은 만료·SUPERSEDED 없이 ARRIVED까지 둔다(30일, FLIGHT 상태가 바뀌어도, AIRCRAFT가 AIRBORNE이어도)", () => {
+  const ops = [...sentOps("D-0001", "VOC-1", 30 * 24 * 60), { op: "accept" as const, id: "D-0001", at: iso(30 * 24 * 60 - 1) }, { op: "depart" as const, id: "D-0001", at: iso(30 * 24 * 60 - 1), stand: null, via: "readback" as const }];
+  const existing = fold(ops);
+  const plan = planOf({ aircraft: [{ id: "b", name: "TEAM_B", callsign: "BRAVO", airport: "VCDO", available: false, reason: "AIRBORNE", reserved: null }] });
+  for (const tickets of [[lt("VOC-1", "SURVEY")], [lt("VOC-1", "SURVEY", "started", "In Progress")], [lt("VOC-1", "SURVEY", "canceled", "Canceled")], []]) {
+    assert.deepEqual(syncOps(existing, plan, { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1), []);
+  }
+  // STAND가 나중에 생겨도 departed(readback)는 그대로
+  assert.deepEqual(syncOps(existing, plan, { tickets: [lt("VOC-1", "SURVEY")], workspaces: [ws("VOC-1")] }, DEFAULT_DISPATCH_CONFIG, NOW, 1), []);
+});
+
+test("동기화: accepted에 남은 STAND 없는 FLIGHT(옛 기록, READBACK 때 FLIGHT를 몰랐음)는 다음 바퀴에 DEPARTED(readback), STAND 필요한 것은 그대로", () => {
+  const accepted = (id: string, flight: string) => [...sentOps(id, flight, 60), { op: "accept" as const, id, at: iso(50) }];
+  const existing = fold([...accepted("D-0001", "VOC-1"), ...accepted("D-0002", "VOC-2")]);
+  const ops = syncOps(existing, planOf(), { tickets: [lt("VOC-1", "CHECK"), lt("VOC-2", "BUILD")], workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 2);
+  assert.deepEqual(ops, [{ op: "depart", id: "D-0001", at: iso(0), stand: null, via: "readback" }]);
+  // 실제 STAND가 있으면 그 STAND로 DEPARTED
+  const withStand = syncOps(existing, planOf(), { tickets: [lt("VOC-1", "CHECK")], workspaces: [ws("VOC-1")] }, DEFAULT_DISPATCH_CONFIG, NOW, 2);
+  assert.deepEqual(withStand.filter((o) => o.id === "D-0001"), [{ op: "depart", id: "D-0001", at: iso(0), stand: "/w/VOC-1" }]);
+});
+
+test("RECALL: STAND 없이 DEPARTED한 FLIGHT도 RECALL되고, RECALLED면 STAND 경우처럼 예약이 풀리고 짝은 24시간 막힌다", async () => {
+  const { formatRecall } = await import("./proposals.ts");
+  const flying: Op[] = [...sentOps("D-0001", "VOC-1", 120), { op: "accept", id: "D-0001", at: iso(110) }, { op: "depart", id: "D-0001", at: iso(110), stand: null, via: "readback" }];
+  let [p] = fold([...flying, { op: "recall", id: "D-0001", at: iso(60), reason: "r", message: "R" }]);
+  assert.equal(p.status, "recalling");
+  assert.equal(isInFlight(p), true);
+  assert.equal(reservedOf([p], NOW).aircraft.get("b"), "D-0001");
+  // STAND 없는 FLIGHT의 RECALL 문구는 STAND 대신 중간 결과를 남기라고 한다
+  const text = formatRecall(fold(flying)[0], { title: "t" }, "TEAM_B", "r");
+  assert.match(text, /중간 결과가 있으면 링크나 한 줄로/);
+  assert.doesNotMatch(text, /STAND\(워크트리\)/);
+  [p] = fold([...flying, { op: "recall", id: "D-0001", at: iso(60), reason: "r", message: "R" }, { op: "recalled", id: "D-0001", at: iso(30) }]);
+  assert.equal(p.status, "recalled");
+  assert.equal(isInFlight(p), false);
+  const r = reservedOf([p], NOW);
+  assert.equal(r.aircraft.size, 0);
+  assert.equal(r.flights.size, 0);
+  assert.equal(r.arrived?.size, 0);
+  assert.equal(recentPairsOf([p], NOW).get("VOC-1|b")?.until, new Date(Date.parse(iso(30)) + 86_400_000).toISOString());
+  // 같은 짝은 다시 제안하지 않고, 다른 AIRCRAFT에는 제안한다
+  const tickets = [lt("VOC-1", "SURVEY")];
+  assert.deepEqual(syncOps([p], planOf({ assign: [assign("VOC-1", "b")] }), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1), []);
+  assert.equal(syncOps([p], planOf({ assign: [assign("VOC-1", "c")] }), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1)[0]?.op, "create");
+});
+
+test("overdue: STAND 없이 DEPARTED하고 24시간 넘게 ARRIVED 보고가 없으면 올린다(만료는 하지 않는다)", () => {
+  const flying = (id: string, minAgo: number): Op[] => [...sentOps(id, `VOC-${id.slice(-1)}`, minAgo + 5), { op: "accept", id, at: iso(minAgo) }, { op: "depart", id, at: iso(minAgo), stand: null, via: "readback" }];
+  const ps = fold([...flying("D-0001", 25 * 60), ...flying("D-0002", 120)]);
+  assert.deepEqual(overdueOf(ps, NOW), ["D-0001"]);
+});
+
+test("gate3: STAND 없는 FLIGHT는 READBACK 비율에는 넣고 DEPARTED 비율에서는 뺀다(standFree로 따로)", () => {
+  const ops: Op[] = [];
+  // 10건 보냄, 9건 READBACK: 그중 3건 SURVEY(READBACK = DEPARTED, 1건 ARRIVED), 6건 BUILD 중 5건 STAND
+  for (let i = 1; i <= 10; i++) {
+    const id = `D-${String(i).padStart(4, "0")}`;
+    ops.push(...sentOps(id, `VOC-${i}`, 100));
+    if (i > 9) continue;
+    ops.push({ op: "accept", id, at: iso(95) });
+    if (i <= 3) ops.push({ op: "depart", id, at: iso(95), stand: null, via: "readback" });
+    else if (i <= 8) ops.push({ op: "depart", id, at: iso(60), stand: `/w/${i}` });
+  }
+  ops.push({ op: "arrived", id: "D-0001", at: iso(10), note: "n" });
+  const g = gate3Of(fold(ops));
+  assert.equal(g.dispatched, 10);
+  assert.equal(g.readBack, 9);
+  assert.equal(g.readbackRate, 0.9);
+  assert.equal(g.departed, 5);
+  assert.equal(g.departedRate, 5 / 6);
+  assert.deepEqual(g.standFree, { readBack: 3, arrived: 1 });
+  assert.equal(g.ready, true);
+  // STAND 없는 것만 있으면 DEPARTED 비율을 잴 수 없다(저절로 100%가 되지 않는다)
+  const onlyLight = gate3Of(fold(ops.filter((o) => ["D-0001", "D-0002", "D-0003"].includes(o.id))));
+  assert.equal(onlyLight.departedRate, null);
+  assert.equal(onlyLight.ready, false);
+});
+
+test("planner: 날고 있는 STAND 없는 FLIGHT는 '진행 중인 제안', ARRIVED 뒤 7일은 '이미 완료됨', 그 AIRCRAFT는 STAND FLIGHT는 받는다", async () => {
+  const { planDispatch, arrivedWhy } = await import("./dispatch.ts");
+  const VCDO = "/r/vocado";
+  const tk = (key: string, labels: string[]) =>
+    ({ key, title: key, state: "Todo", stateType: "unstarted", priority: 2, project: "Beta Readiness", labels, blocks: [], blockedBy: [], related: [], parent: null, children: [], createdAt: iso(60), updatedAt: iso(60) }) as unknown as Ticket;
+  const s = {
+    at: iso(0), sessions: [{ id: "b", name: "TEAM_B", status: "idle", repo: VCDO }], workspaces: [], claims: [], pulls: [],
+    tickets: [tk("VOC-1", ["type:SURVEY"]), tk("VOC-2", ["type:BUILD"]), tk("VOC-3", ["type:CHECK"])],
+    airports: [{ id: "r", code: "VCDO", name: "vocado", repo: VCDO }], atfm: { mains: [], groundStops: [] },
+  } as unknown as import("./model.ts").Snapshot;
+  const flying = fold([...sentOps("D-0001", "VOC-1", 60), { op: "accept", id: "D-0001", at: iso(50) }, { op: "depart", id: "D-0001", at: iso(50), stand: null, via: "readback" }]);
+  let plan = planDispatch(s, new Map(), DEFAULT_DISPATCH_CONFIG, NOW, reservedOf(flying, NOW));
+  assert.equal(plan.excluded.find((e) => e.flight === "VOC-1")?.reason, "진행 중인 제안 D-0001");
+  assert.deepEqual(plan.assign.map((a) => a.flight), ["VOC-2"]); // STAND 없는 것은 AIRCRAFT당 1건이라 VOC-3은 못 받는다
+  assert.equal(plan.aircraft[0].reservedLight, "D-0001");
+  const arrived = fold([...sentOps("D-0001", "VOC-1", 60), { op: "accept", id: "D-0001", at: iso(50) }, { op: "depart", id: "D-0001", at: iso(50), stand: null, via: "readback" }, { op: "arrived", id: "D-0001", at: iso(40), note: "n" }]);
+  plan = planDispatch(s, new Map(), DEFAULT_DISPATCH_CONFIG, NOW, reservedOf(arrived, NOW));
+  assert.equal(plan.excluded.find((e) => e.flight === "VOC-1")?.reason, arrivedWhy("D-0001"));
+  assert.equal(plan.aircraft[0].reservedLight, null);
+  // 7일 넘게 지난 ARRIVED는 Linear 상태를 믿는다
+  plan = planDispatch(s, new Map(), DEFAULT_DISPATCH_CONFIG, NOW + 8 * 86_400_000, reservedOf(arrived, NOW + 8 * 86_400_000));
+  assert.equal(plan.excluded.find((e) => e.flight === "VOC-1"), undefined);
+});
+
+test("2b 점검표 코드 사실(selfCheck2b): 지금 코드는 RECALL·STAND 없는 FLIGHT 모두 갖춰짐, atcctl에 명령이 없으면 빠진 것으로", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { selfCheck2b } = await import("./proposals.ts");
+  const src = readFileSync(new URL("../controller/atcctl.mjs", import.meta.url), "utf8");
+  assert.deepEqual(selfCheck2b(src, NOW), { recallMissing: [], standFreeMissing: [] });
+  assert.deepEqual(selfCheck2b(null, NOW), { recallMissing: ["atcctl dispatch recall-send", "atcctl dispatch recalled"], standFreeMissing: ["atcctl dispatch arrived"] });
 });

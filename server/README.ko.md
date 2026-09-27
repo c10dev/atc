@@ -62,7 +62,8 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `checkride.ts` | CHECKRIDE: FLIGHT에 필요했던 rating을 라벨이나 받아들인 SCHEDULE CLASSIFY 초안에서 읽고(순수 함수 `flightRating`), AIRCRAFT·rating마다 GRANT·REVIEW·BLOCKED·BUILDING·HOLDS(순수 함수 `judge`, `checkrideRows`). `GET /api/fleet/checkride`, SUPERVISOR의 부여·회수 `POST /api/fleet/:registration/checkride`(`applyPatch`로 바꾸고 `checkride` 줄로 기록) |
 | `network.ts` | NETWORK(4단계, 읽기 전용): ROUTE마다 열린 FLIGHT, 14일 ARRIVED, AIRCRAFT, 착륙 대기(순수 함수 `routeRows`, `openPhase`). AIRCRAFT마다 TARGETS 대 `fleetView` 실적(순수 함수 `aircraftRows`). 28일 LOGBOOK·게이트 추세(순수 함수 `logbookTrend`, `gateTrend` — `proposals.ts`·`schedule.ts` fold와 `crosscheckRateOf` 위에서). `GET /api/network` |
 | `dispatch.ts` | DISPATCH 계획: 후보, 슬롯, 점수(순수 함수 `planDispatch`). 설정은 `dispatch.json` |
-| `proposals.ts` | DISPATCH 제안 기록(추가만 하는 JSONL), 상태 전이(그림자 판정, approve → sent → accepted → departed), 예약, FLIGHT PLAN 문구, 브리핑, 2b·3단계 점검 |
+| `proposals.ts` | DISPATCH 제안 기록(추가만 하는 JSONL), 상태 전이(그림자 판정, approve → sent → accepted → departed, STAND 없는 FLIGHT는 READBACK에 departed → CAPTAIN 보고로 arrived), 예약, FLIGHT PLAN 문구, 브리핑, 2b·3단계 점검, 2b 점검표용 코드 사실(`selfCheck2b`) |
+| `readiness.ts` | "2b 켜기 점검표"(순수 함수 `readiness2bOf`, `vocadoReadbackOf`, `sendGuardOf`). `occ/send-guard.mjs`와 vocado `CLAUDE.md`를 읽기만 한다(`ATC_VOCADO_CLAUDE_MD`, 없으면 `<projectsDir>/vocado_nextjs/CLAUDE.md`) |
 | `schedule.ts` | OCC SCHEDULE 초안 기록(추가만 하는 JSONL, S1 그림자 운용): `CLASSIFY`·`PRIORITIZE` 초안과 `NEW`(CHARTER DESK의 AD HOC FLIGHT: 본문 칸, 프로젝트·tail·key 검사, 최근 45일 스냅샷에서 찾은 비슷한 제목 `similar`), 열린 초안 5건 한도, SUPERSEDED·EXPIRED 동기화, 그림자 판정, 후보, S2 점검 |
 | `crosscheck.ts` | DISPATCH·SCHEDULE가 함께 쓰는 CROSSCHECK mark: 입력 검사(agree/disagree, 이유 500자 이내), 사람 판정과의 일치율, 보정용 예시, 판정 방식(`via`, 순수 함수 `viaOf`)과 한 번 클릭 건수(순수 함수 `oneClickOf`) |
 | `reasons.ts` | DISPATCH 거절 사유 칩(`REASON_CODES`), 입력 검사, 기록할 `reason` 글(순수 함수 `composeReason`), 칩별 건수 |
@@ -86,14 +87,15 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `POST /api/clearances/:id/readback` · `/cancel` | READBACK 확인 · 취소 |
 | `GET /api/metrics?days=1..30` | 운용 지표 |
 | `GET /api/network` | NETWORK 개요: ROUTE, AIRCRAFT TARGETS 대 실적, 28일 추세, 출처 상태(읽기 전용) |
-| `GET /api/dispatch/brief` | DISPATCH 계획, 열린·최근 제안(`via`, `reasonCodes`), 2b 점검(`crosscheck.oneClick`, `reasonCounts`), FLIGHT 요약, 거절 칩 `reasonCodes: [{code, label}]` |
+| `GET /api/dispatch/brief` | DISPATCH 계획, 열린·최근 제안(`via`, `reasonCodes`), 2b 점검(`crosscheck.oneClick`, `reasonCounts`), `gate3.standFree`, 2b 켜기 점검표 `readiness2b`(`readiness.ts`), FLIGHT 요약, 거절 칩 `reasonCodes: [{code, label}]` |
 | `POST /api/dispatch/proposals/:id/verdict` | SUPERVISOR의 그림자 판정 `{verdict: "agree" \| "disagree", reason?, via?, reasonCodes?}`(`reasonCodes`는 `disagree`에만, 모르는 code는 400) |
 | `POST /api/dispatch/proposals/:id/note` | DISPATCH 검토 메모 `{text, caution?}` |
 | `POST /api/dispatch/proposals/:id/hold` | DISPATCH가 선행 FLIGHT로 HOLD `{blockedBy: ["VOC-180"]}`, 제안은 HELD로 간다. `[]`는 선행 없는 HOLD(메모 필요) |
 | `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR가 HOLD를 풂(제안은 SUPERSEDED) |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | approval 모드에서 SUPERVISOR 결정, 둘 다 `{via?}`, `reject`는 `{reason?, reasonCodes?}`도 |
 | `POST /api/dispatch/proposals/:id/release` | 승인 → SENT, `sendTo`와 FLIGHT PLAN 문구 반환 |
-| `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, 또는 `{reason}`과 함께 거절 |
+| `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, 또는 `{reason}`과 함께 거절. STAND 없는 FLIGHT는 READBACK에 DEPARTED(`readbackOps`) |
+| `POST /api/dispatch/proposals/:id/arrived` | STAND 없이 DEPARTED한 FLIGHT의 CAPTAIN 보고 `{note}`를 OCC가 적음 → ARRIVED |
 | `GET /api/dispatch/proposals/:id` | 제안 하나와 지금 모드(send-guard용) |
 | `POST /api/dispatch/mode` | `{mode: "shadow" \| "approval"}` 전환(`dispatch.json`에 저장) |
 | `GET /api/dispatch/flight/:key` | Linear에서 티켓 본문과 댓글(읽기 전용) |

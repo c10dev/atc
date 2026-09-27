@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { crosscheckBrief, draftText, parseCrosscheck, parseDraft, payloadText } from "./atcctl.mjs";
+import { crosscheckBrief, draftText, parseArrived, parseCrosscheck, parseDraft, payloadText } from "./atcctl.mjs";
 import { simpleCommands } from "../hooks/shell.mjs";
 
 const argv = (s) => s.split(" ");
@@ -139,4 +139,17 @@ test("schedule brief: OCC 보정 예시(examples)가 JSON 출력에 그대로 �
   } finally {
     server.close();
   }
+});
+
+test("dispatch arrived: <D-ID> -- <결과 링크나 한 줄>", () => {
+  assert.deepEqual(parseArrived(argv("D-0012 -- https://github.com/o/r/pull/401#pullrequestreview-1 리뷰 남김")), {
+    id: "D-0012",
+    body: { note: "https://github.com/o/r/pull/401#pullrequestreview-1 리뷰 남김" },
+  });
+  assert.deepEqual(parseArrived(argv("D-0012 -- 조사 결과 -- 세 가지")).body.note, "조사 결과 -- 세 가지");
+  assert.throws(() => parseArrived(argv("D-0012")), /CAPTAIN 보고/);
+  assert.throws(() => parseArrived(argv("D-0012 --")), /CAPTAIN 보고/);
+  assert.throws(() => parseArrived([]), /제안 ID/);
+  assert.throws(() => parseArrived(argv("-- x")), /제안 ID/);
+  assert.throws(() => parseArrived(argv("D-0012 extra -- x")), /알 수 없는 인자/);
 });

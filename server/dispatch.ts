@@ -127,6 +127,8 @@ export interface Reserved {
   // "FLIGHT|AIRCRAFT id" → 24시간 안에 제안됐다 닫힌 짝(거절·SUPERSEDED·EXPIRED·RECALLED …)과 다시 가능해지는 시각.
   // syncOps가 이 짝을 다시 제안하지 않으므로 계획에서도 빼야 AIRCRAFT가 다음으로 좋은 FLIGHT를 받는다.
   recentPairs?: Map<string, { id: string; until: string }>;
+  // FLIGHT key → 최근 ARRIVED한 STAND 없는 FLIGHT의 제안 id. LOGBOOK에 남지 않아 여기서 뺀다(Linear가 아직 Todo여도)
+  arrived?: Map<string, string>;
 }
 const NO_RESERVED: Reserved = { aircraft: new Map(), flights: new Map(), held: new Map() };
 
@@ -171,6 +173,7 @@ const localStamp = (iso: string) => {
 export const pairBlockedWhy = (id: string, until: string) => `24시간 안에 제안된 짝(${id}) — ${localStamp(until)}부터 다시`;
 export const landedWhy = (pr: string) => `이미 완료됨 — PR ${pr} 머지됨(LOGBOOK)`;
 export const openPrWhy = (n: number) => `열린 PR #${n} 있음`;
+export const arrivedWhy = (id: string) => `이미 완료됨 — ${id} ARRIVED(CAPTAIN 보고)`;
 
 // LOGBOOK에서 ARRIVED한 FLIGHT → 머지된 PR("repo#N", 저장소 이름만). 되돌린 PR은 빼서 다시 후보가 된다.
 export type Landed = Map<string, string>;
@@ -195,7 +198,7 @@ export function workedWhy(flight: string, landed: Landed, pulls: Pick<PullReques
 // 거절 사유 칩(reasons.ts)마다 지금 planner가 그 사유를 스스로 거르나. 거절 사유 집계(reasonStats)에 붙인다.
 // auto: 규칙으로 거름, partial: 일부만 거름, manual: 사람만 안다.
 export const REASON_FILTERS: Record<string, { auto: "auto" | "partial" | "manual"; how: string }> = {
-  "already-done": { auto: "auto", how: "LOGBOOK ARRIVED·열린 PR 규칙, Linear Done 상태" },
+  "already-done": { auto: "auto", how: "LOGBOOK ARRIVED·열린 PR 규칙, STAND 없는 FLIGHT의 ARRIVED 보고, Linear Done 상태" },
   "parent-issue": { auto: "auto", how: "상위 이슈 규칙(Linear children·parent)" },
   "waiting-on-prior": { auto: "partial", how: "Linear blockedBy는 HOLD, 다른 PR 머지 대기는 OCC HOLD" },
   "needs-human": { auto: "manual", how: "사람 판단" },
@@ -408,6 +411,11 @@ export function planDispatch(
     const worked = workedWhy(t.key, landed, s.pulls ?? []);
     if (worked) {
       excluded.push({ flight: t.key, reason: worked });
+      continue;
+    }
+    const arrived = reserved.arrived?.get(t.key);
+    if (arrived) {
+      excluded.push({ flight: t.key, reason: arrivedWhy(arrived) });
       continue;
     }
     if (flightsWithStand.has(t.key)) {
