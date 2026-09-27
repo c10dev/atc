@@ -17,7 +17,7 @@
 
 ROUTE·AIRCRAFT·추세를 한 화면에서 보는 읽기 전용 개요다. 아무것도 바꾸지 않고, 배정 점수에도 쓰지 않는다. 숫자를 읽는 법:
 
-- **ROUTE MAP**: 맨 위. ROUTE(Linear 프로젝트)마다 WAYPOINT(프로젝트 마일스톤)를 가로 경로로 잇는다. ●는 지난 WAYPOINT(Linear에서 done), ◉는 지금 구간(끝나지 않은 것 중 순서상 첫 번째)과 진행률, ○는 앞으로 갈 WAYPOINT다. 지금 구간 위의 ✈는 그 WAYPOINT의 FLIGHT를 모는 AIRCRAFT다(FOLLOWING과 같은 규칙: ASSIGN 제안, 없으면 `tail:` 라벨). 주황은 지연이다.
+- **ROUTE MAP**: 맨 위. ROUTE(Linear 프로젝트)마다 WAYPOINT(프로젝트 마일스톤)를 가로 경로로 잇는다. ●는 지난 WAYPOINT(Linear에서 done), ◉는 지금 구간(끝나지 않은 것 중 순서상 첫 번째)과 진행률, ○는 앞으로 갈 WAYPOINT다. 지금 구간 위의 ✈는 그 WAYPOINT의 FLIGHT를 모는 AIRCRAFT다(FOLLOWING과 같은 규칙: ASSIGN 제안, 없으면 `tail:` 라벨). 주황은 지연이다. WAYPOINT를 누르면 완료 기준이 보이고, atc가 잴 수 있는 기준(판정 게이트, 2b 점검표, 모드, ATFM 켜기 조건) 아래에는 지금 상태가 ✓ 충족 · ✗ 미달 · ○ 데이터 부족 · △ 확인 필요로 붙는다.
   - WAYPOINT를 누르면(Tab으로 옮겨 Enter·Space도 된다) 진행률, 목표일, ETA, 완료 기준(마일스톤 설명의 "Exit criteria" 번호 목록), FLIGHT 목록(진행·막힘·계획·완료와 AIRCRAFT)이 열린다. 한 번 더 누르거나 ✕로 닫는다.
   - **ETA**: 그 ROUTE에서 최근 28일에 끝난 FLIGHT 수(LOGBOOK ARRIVED와 Linear 완료 시각)로 하루 속도를 내고, 이 WAYPOINT까지 남은 FLIGHT(앞 구간 것 포함)를 나눈다. 28일 완료가 3개 미만이거나, 남은 FLIGHT가 없거나, FLIGHT가 50개를 넘으면 "모름"이다. 목표일이 ETA보다 앞이거나 이미 지났으면 "지연"이다.
   - 마일스톤이 없는 ROUTE는 아래쪽에 "WAYPOINT 없음" 점선으로, 열린 FLIGHT 수(진행·계획·막힘)와 AIRCRAFT만 보인다. WAYPOINT를 만들려면 Linear 프로젝트에 마일스톤을 추가한다(atc는 읽기만 한다).

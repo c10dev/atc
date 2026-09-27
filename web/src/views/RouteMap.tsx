@@ -19,6 +19,14 @@ interface Eta {
   cumulative: number;
   reason: "few-samples" | "no-flights" | "truncated" | null;
 }
+// 완료 기준에 이어진 atc 게이트(server/waypoint-gates.ts GateCheck, docs/routes.md 6단계)
+interface GateCheck {
+  id: string;
+  state: "pass" | "fail" | "insufficient" | "check";
+  value: string;
+  target: string;
+}
+const CHECK_MARK: Record<GateCheck["state"], string> = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족", check: "△ 확인 필요" };
 interface Waypoint {
   id: string;
   name: string;
@@ -27,6 +35,7 @@ interface Waypoint {
   progress: number | null;
   targetDate: string | null;
   criteria: string[];
+  checks?: (GateCheck | null)[]; // 옛 서버면 없음
   flights: Flight[];
   counts: Record<FlightPhase, number>;
   truncated: boolean;
@@ -279,9 +288,19 @@ function Detail({ w, route, windowDays, onClose }: { w: Waypoint; route: Route; 
       <h4 className="rm-h4">완료 기준</h4>
       {w.criteria.length ? (
         <ol className="rm-criteria">
-          {w.criteria.map((c, i) => (
-            <li key={i}>{c}</li>
-          ))}
+          {w.criteria.map((c, i) => {
+            const g = w.checks?.[i];
+            return (
+              <li key={i}>
+                {c}
+                {g && (
+                  <span className={`rm-check c-${g.state}`} title={`atc 게이트 ${g.id} · 기준 ${g.target}`}>
+                    <b>{CHECK_MARK[g.state]}</b> {g.value}
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ol>
       ) : (
         <p className="faint">마일스톤 설명에 번호 목록이 없음</p>
