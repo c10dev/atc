@@ -22,9 +22,10 @@ import {
   tailsOf,
 } from "./dispatch.ts";
 import { classLabel, classOf } from "./crew.ts";
-import { type Crosscheck, CrosscheckError, type CrosscheckLine, crosscheckRateOf, examplesOf, type HumanDecision, markOf, parseCrosscheck } from "./crosscheck.ts";
+import { type Crosscheck, CrosscheckError, type CrosscheckLine, crosscheckRateOf, examplesOf, type HumanDecision, markOf, oneClickOf, parseCrosscheck, type Via, viaOf } from "./crosscheck.ts";
 import { loadFleet } from "./fleet.ts";
 import type { Snapshot, Ticket } from "./model.ts";
+import { composeReason, parseReasonCodes, REASON_CODES, ReasonCodeError, reasonCountsOf } from "./reasons.ts";
 import { record } from "./recorder.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 
@@ -82,17 +83,19 @@ export interface Proposal {
   message: string | null; // 보낸 FLIGHT PLAN 문구
   departedStand: string | null;
   crosscheck: Crosscheck | null; // CROSSCHECK 예비 판정(참고 표시, 상태를 바꾸지 않는다)
+  via?: Via; // SUPERVISOR 판정을 어떻게 내렸나(옛 기록에는 없다)
+  reasonCodes?: string[]; // 거절 사유 칩(disagree·reject, 고른 것이 있을 때만)
 }
 
 type Create = Omit<Proposal, "status" | "decidedAt" | "statusAt" | "timeline" | "reason" | "note" | "caution" | "hold" | "holdAt" | "message" | "departedStand" | "crosscheck">;
 export type Op =
   | ({ op: "create" } & Create)
-  | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null }
+  | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null; via?: Via; reasonCodes?: string[] }
   | { op: "note"; id: string; at: string; text: string; caution: boolean }
   | { op: "hold"; id: string; at: string; blockedBy: string[] }
   | ({ op: "crosscheck"; id: string } & CrosscheckLine)
-  | { op: "approve"; id: string; at: string }
-  | { op: "reject"; id: string; at: string; reason: string | null }
+  | { op: "approve"; id: string; at: string; via?: Via }
+  | { op: "reject"; id: string; at: string; reason: string | null; via?: Via; reasonCodes?: string[] }
   | { op: "send"; id: string; at: string; message: string }
   | { op: "accept"; id: string; at: string }
   | { op: "decline"; id: string; at: string; reason: string }
@@ -126,7 +129,7 @@ export function humanOf(p: Proposal): HumanDecision | null {
   if (!at) return null;
   const verdict = t.agreed || t.approved ? "agree" : "disagree";
   const reason = (p.status === "agreed" || p.status === "disagreed" || p.status === "rejected") && p.reason ? p.reason : null;
-  return { verdict, at, reason };
+  return { verdict, at, reason, ...(p.via ? { via: p.via } : {}) };
 }
 
 export function fold(ops: Op[]): Proposal[] {
@@ -167,6 +170,8 @@ export function fold(ops: Op[]): Proposal[] {
     if ("reason" in o && o.reason) p.reason = o.reason;
     if (o.op === "send") p.message = o.message;
     if (o.op === "depart") p.departedStand = o.stand;
+    if ((o.op === "verdict" || o.op === "approve" || o.op === "reject") && o.via) p.via = o.via;
+    if ((o.op === "verdict" || o.op === "reject") && o.reasonCodes?.length) p.reasonCodes = o.reasonCodes;
   }
   return [...byId.values()];
 }
@@ -319,8 +324,13 @@ export function gateOf(proposals: Proposal[]) {
     agreement,
     target: GATE,
     ready: decided.length >= GATE.decided && agreement !== null && agreement >= GATE.agreement,
-    // 게이트와 따로: CROSSCHECK가 SUPERVISOR 판정과 얼마나 맞았나
-    crosscheck: crosscheckRateOf(proposals.filter((p) => p.crosscheck).map((p) => ({ crosscheck: p.crosscheck, human: humanOf(p) }))),
+    // 게이트와 따로: CROSSCHECK가 SUPERVISOR 판정과 얼마나 맞았나, 그중 "CROSSCHECK에 동의" 한 번 클릭은 몇 건인가
+    crosscheck: {
+      ...crosscheckRateOf(proposals.filter((p) => p.crosscheck).map((p) => ({ crosscheck: p.crosscheck, human: humanOf(p) }))),
+      oneClick: oneClickOf(proposals.map((p) => ({ crosscheck: p.crosscheck, human: humanOf(p) }))),
+    },
+    // 거절 사유 칩별 건수(사람이 disagree·reject한 것 중 칩이 있는 것)
+    reasonCounts: reasonCountsOf(proposals.filter((p) => humanOf(p)?.verdict === "disagree")),
   };
 }
 
@@ -452,6 +462,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       gate: gateOf(proposals),
       gate3: gate3Of(proposals),
       crosscheck: crosscheckBriefOf(proposals),
+      reasonCodes: REASON_CODES,
       config: cfg,
     });
   });
@@ -463,6 +474,16 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
   });
 
   const reasonOf = (body: { reason?: unknown }) => (typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : null);
+  // 거절 사유 칩. disagree·reject에만 받는다(agree·approve에 칩을 보내면 400)
+  const codesOf = (body: { reasonCodes?: unknown }, rejecting: boolean): string[] | { error: string } => {
+    try {
+      const codes = parseReasonCodes(body.reasonCodes);
+      return codes.length && !rejecting ? { error: "reasonCodes는 disagree·reject에만" } : codes;
+    } catch (e) {
+      if (e instanceof ReasonCodeError) return { error: e.message };
+      throw e;
+    }
+  };
 
   // 상태를 바꾸는 동작 하나. 모드·전이 규칙을 검사하고 op를 남긴다.
   const act =
@@ -503,14 +524,24 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       } else if (name === "verdict") {
         if (mode !== "shadow") return c.json({ error: "그림자 판정은 shadow 모드에서만 — approval 모드에서는 approve/reject" }, 409);
         if (body.verdict !== "agree" && body.verdict !== "disagree") return c.json({ error: "verdict는 agree|disagree" }, 400);
+        const codes = codesOf(body, body.verdict === "disagree");
+        if (!Array.isArray(codes)) return c.json(codes, 400);
         const bad = closed("verdict");
         if (bad) return bad;
-        append([{ op: "verdict", id, at, verdict: body.verdict, reason: reasonOf(body) }]);
+        const reason = body.verdict === "disagree" ? composeReason(codes, reasonOf(body)) : reasonOf(body);
+        append([{ op: "verdict", id, at, verdict: body.verdict, reason, via: viaOf(body), ...(codes.length ? { reasonCodes: codes } : {}) }]);
       } else if (name === "approve" || name === "reject") {
         if (mode !== "approval") return c.json({ error: "승인·거절은 approval 모드(2b)에서만" }, 409);
+        const codes = codesOf(body, name === "reject");
+        if (!Array.isArray(codes)) return c.json(codes, 400);
         const bad = closed(name);
         if (bad) return bad;
-        append([name === "approve" ? { op: "approve", id, at } : { op: "reject", id, at, reason: reasonOf(body) }]);
+        const via = viaOf(body);
+        append([
+          name === "approve"
+            ? { op: "approve", id, at, via }
+            : { op: "reject", id, at, reason: composeReason(codes, reasonOf(body)), via, ...(codes.length ? { reasonCodes: codes } : {}) },
+        ]);
       } else if (name === "release") {
         if (mode !== "approval") return c.json({ error: "FLIGHT PLAN은 approval 모드(2b)에서만 보낸다" }, 409);
         if (p.kind !== "ASSIGN") return c.json({ error: "RELEASE 제안은 보내지 않는다" }, 400);

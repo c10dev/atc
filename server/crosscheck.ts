@@ -12,11 +12,18 @@ export interface Crosscheck {
   at: string;
 }
 
+// 판정을 어떻게 내렸나: "CROSSCHECK에 동의" 한 번 클릭(crosscheck) 또는 직접 고름(manual).
+// 옛 기록에는 없다(undefined 그대로 — 채워 넣지 않는다).
+export type Via = "crosscheck" | "manual";
+// API 입력: "crosscheck"만 그대로, 나머지(없음 포함)는 manual
+export const viaOf = (body: { via?: unknown }): Via => (body.via === "crosscheck" ? "crosscheck" : "manual");
+
 // 사람이 내린 판정: shadow의 agreed/disagreed, approval의 approved/rejected
 export interface HumanDecision {
   verdict: CrosscheckVerdict;
   at: string;
   reason: string | null;
+  via?: Via; // 옛 기록에는 없다
 }
 
 export const CROSSCHECK_REASON_MAX = 500;
@@ -58,6 +65,13 @@ export function crosscheckRateOf(items: { crosscheck: Crosscheck | null; human: 
   const models = [...new Set(marked.map((x) => x.crosscheck!.model || UNKNOWN_MODEL))].sort();
   const byModel: Record<string, CrosscheckRate> = Object.fromEntries(models.map((m) => [m, rateOf(marked.filter((x) => (x.crosscheck!.model || UNKNOWN_MODEL) === m))]));
   return { ...rateOf(marked), byModel };
+}
+
+// 한 번 클릭 판정 비율의 재료: 한 번 클릭이 가능했던 사람 판정(decided — 판정 전에 mark가 있었고 via가 기록됨) 중
+// CROSSCHECK에 동의로 내린 것(count). via 없는 옛 판정은 뺀다. CROSSCHECK를 따르는 습관이 게이트를 부풀리는지 본다.
+export function oneClickOf(items: { crosscheck: Crosscheck | null; human: HumanDecision | null }[]) {
+  const recorded = items.filter((x) => x.crosscheck && x.human?.via && Date.parse(x.crosscheck.at) <= Date.parse(x.human.at));
+  return { count: recorded.filter((x) => x.human!.via === "crosscheck").length, decided: recorded.length };
 }
 
 // 보정용 예시: 최근 사람 판정(사유가 있는 것 먼저). CROSSCHECK 세션이 SUPERVISOR의 기준을 보고 맞추게 한다.

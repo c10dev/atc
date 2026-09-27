@@ -206,7 +206,7 @@ journalctl --user -u atc -f           # 로그
 
 | API | 하는 일 |
 |---|---|
-| `GET /api/controller/brief?consumer=controller` | 지난 ack 이후 이벤트 + 현재 상태(열린 경보, LANDING SEQUENCE, GitHub 상태, READBACK 안 된 CLEARANCE, 교통) |
+| `GET /api/controller/brief?consumer=controller` | 지난 ack 이후 이벤트 + 현재 상태(열린 경보, LANDING SEQUENCE와 CLEARED PR의 `landText`, GitHub 상태, READBACK 안 된 CLEARANCE, 교통) |
 | `POST /api/controller/ack` | `{cursor}` 처리 완료 표시 (`~/.local/state/atc/consumers/`) |
 | `POST /api/clearances` | `{to, type, stand?, flight?, text}` CLEARANCE 기록, 보낼 문구 반환 |
 | `POST /api/clearances/:id/readback` · `/cancel` | READBACK 확인 · 취소 |
@@ -225,7 +225,7 @@ LANDING SEQUENCE는 GitHub remote가 있는 모든 AIRPORT의, Draft가 아닌 �
 | base에서 벗어나지 않음: `mergeStateStatus`가 CLEAN·UNSTABLE·HAS_HOOKS | `behind`, `dirty`, `blocked`, `merge-unknown`(GitHub이 아직 계산 중) |
 | PR의 STAND에 LOSS OF SEPARATION이 없음 | `los` |
 
-CLEARED PR이 준비된 순서(`readyAt`: 그 head에서 조건이 처음 모두 맞은 시각, 새 push면 다시 센다)로 앞에 서고, 그 뒤에 APPROACH PR이 연 순서로 선다. TOWER는 CLEARED PR에만 `LAND`를 주고, APPROACH PR에 새로 생긴 막힘은 CAPTAIN에게 `INFO`로 알린다. 이렇게 정한 이유는 [docs/occ.md](docs/occ.md) 9절에 있다. 스냅샷의 `pulls`에는 Draft를 포함한 열린 PR 전부가, `github`(`{enabled, error, fetchedAt}`)에는 GitHub 상태가 들어 있다. `gh`가 실패하면 마지막 결과를 두고 오류를 거기에 적는다. CLEARANCE 기록은 `~/.local/state/atc/clearances.jsonl`(추가만 함).
+CLEARED PR이 준비된 순서(`readyAt`: 그 head에서 조건이 처음 모두 맞은 시각, 새 push면 다시 센다)로 앞에 서고, 그 뒤에 APPROACH PR이 연 순서로 선다. TOWER는 CLEARED PR에만 `LAND`를 준다. 문구는 서버가 CLEARED 항목마다 만든 `landText`(`server/controller.ts`의 `landTextOf`) 그대로다: 순서(`repoSeq`)와 앞 PR은 같은 저장소·base의 CLEARED PR 안에서만 센다(다른 저장소의 머지는 rebase가 필요 없다). 첫 번째는 `LANDING 순서 1번 (VCDO): PR #389 (VOC52). 지금 LANDING 가능 — 머지 전에 base가 최신인지 확인.`, 그 뒤는 `LANDING 순서 2번 (VCDO): PR #393 (VOC191). 앞 PR #389 머지 뒤 rebase하고 LANDING.`(FLIGHT가 없으면 괄호를 빼고, APPROACH 항목은 `repoSeq`·`landText`가 `null`. 전체 `seq`는 처리 순서로 그대로 둔다). 그리고 APPROACH PR에 새로 생긴 막힘은 CAPTAIN에게 `INFO`로 알린다. 이렇게 정한 이유는 [docs/occ.md](docs/occ.md) 9절에 있다. 스냅샷의 `pulls`에는 Draft를 포함한 열린 PR 전부가, `github`(`{enabled, error, fetchedAt}`)에는 GitHub 상태가 들어 있다. `gh`가 실패하면 마지막 결과를 두고 오류를 거기에 적는다. CLEARANCE 기록은 `~/.local/state/atc/clearances.jsonl`(추가만 함).
 
 ## FLIGHT RECORDER와 운용 지표 (1.5단계)
 
@@ -253,23 +253,23 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 - 제안: `ASSIGN`(FLIGHT → AIRCRAFT, 요소별 점수: 우선순위·대기 일수·풀어 주는 FLIGHT·팀 적합도·충돌 위험), `RELEASE`(STAND 없이 3일 넘게 ENROUTE인 코드 작업 FLIGHT). 선행 FLIGHT에 막힌 것은 `HOLD_DEPARTURE`, 제외된 것은 사유와 함께 보인다. 상위 이슈(`children`이 있거나 다른 이슈가 `parent`로 지목한 것)는 작업이 아니라 컨테이너라 ASSIGN·RELEASE에서 빠지고 NO CONTACT 경보도 내지 않는다. 우선순위가 없는 FLIGHT는 누가 정할 때까지 ASSIGN 후보가 아니다.
 - 한도: TEAM당 동시 FLIGHT 1, AIRPORT별 동시 AIRBORNE(VCDO 4, 그 밖 2), 열린 ASSIGN·RELEASE 각 5. 같은 짝은 24시간 안에 다시 제안하지 않고, 상황이 바뀌면 SUPERSEDED, 24시간 지나면 EXPIRED.
 - 설정: `~/.local/state/atc/dispatch.json`(없으면 기본값) — 프로젝트 → AIRPORT 매핑, 슬롯, 가중치, RELEASE 기준.
-- **DISPATCH 탭**: 제안 카드마다 SUPERVISOR가 "승인했을 것 / 거절했을 것"을 표시한다. 거절할 때는 사유 칩(상위 이슈, 본문에만 있는 선행 작업, 사람 결정 대기, 이미 진행 중, 우선순위 낮음, 슬롯 없음, 다른 팀이 더 적합, 이미 완료됨) 중 하나를 고르고 메모를 선택으로 덧붙인다. 20건 이상, 합의율 80% 이상이면 2b(승인 운용) 진입 점검이 충족된다.
+- **DISPATCH 탭**: 제안 카드마다 SUPERVISOR가 "승인했을 것 / 거절했을 것"을 표시한다. 거절할 때는 사유 칩을 하나 이상 고르고 메모를 선택으로 덧붙인다. 칩은 서버의 목록 하나(`server/reasons.ts`, 브리핑의 `reasonCodes`)이고 지난 거절 사유에서 골랐다: `already-done` 이미 완료됨, `parent-issue` 상위 이슈(하위로 나뉨), `waiting-on-prior` 선행 FLIGHT·PR 대기, `needs-human` 사람 결정 필요, `no-priority` 우선순위 미정, `out-of-repo` 저장소 밖 작업, `wrong-aircraft` AIRCRAFT 부적합, `other` 기타. 기록되는 `reason`은 `"<label> · <label> — <메모>"`라 CROSSCHECK와 OCC도 칩을 읽고, `gate.reasonCounts`가 칩별 거절 건수를 센다. 20건 이상, 합의율 80% 이상이면 2b(승인 운용) 진입 점검이 충족된다.
 - **OCC 세션**(운항관제. `occ/` 폴더에서 연 세션, `/loop 10m /tick`. 설계: [docs/occ.md](docs/occ.md), 지금은 영어만). DISPATCH 일을 맡는다: 메모 없는 제안마다 FLIGHT 본문·댓글을 읽고 메모와 CAUTION(DB·보안·권리, 사람 결정 대기)을 단다. 선행 작업이 본문에만 있고 `blocks` 관계로는 없으면 `--hold <FLIGHT>`를 걸어 그 FLIGHT가 끝날 때까지 제안을 HELD 목록으로 보낸다. 사람 결정을 기다리는 경우는 값 없는 `--hold`로 걸고, FLIGHT가 수정되면 풀린다. HELD 제안은 만료되지 않고, SUPERVISOR가 "HOLD 풀기"로 풀 수 있다. 판정하지 않는다. 운항 추적도 한다: CAPTAIN이 보고하거나 SUPERVISOR가 요청하면 PR의 최신 커밋·CI·리뷰를 읽기 전용 `gh`로 확인하고 다른 점을 보고한다. Bash guard는 TOWER 것에 읽기 전용 `gh pr view|checks|diff|list`를 더한 것이고(`guard.mjs --gh-read`), `occ/mcp-guard.mjs`가 읽기 MCP 도구만 통과시켜 Linear·GitHub에 쓸 수 없다. `/tick`은 매번 `atcctl manual check`로 시작해 `CLAUDE.md`가 바뀌었으면 다시 읽는다(TOWER도 같다).
 - **TAIL ASSIGNMENT**(Linear 라벨 `tail:TEAM_X`, [docs/fleet.md](docs/fleet.md), 영어): 이 라벨이 붙은 FLIGHT는 그 팀에만 제안한다. 그 팀이 못 받으면(AIRBORNE, HOLDING, 세션 없음) 다른 팀에 주지 않고 제외한다. 옛 `lane:TEAM_X`도 2026-10-10까지는 지켜진다.
 - **FLIGHT 분류**([docs/fleet.md](docs/fleet.md) 4장, 영어): Linear 라벨 `type:`(`BUILD` `MAINT` `TEST` `SURVEY` `CHECK` `FERRY`), `wake:`(`L` `M` `H` `J`), `rating:`(`SEC` `UI` `DATA` `DOCS`). Risk 그룹 라벨은 모두 `SEC`로 본다. Linear 라벨 그룹 안의 라벨은 `그룹:이름`으로 읽는다. planner는 FLEET 등록부에서 필요한 TYPE RATING을 모두 가졌고 팀원이 그 종류의 일을 할 수 있는 AIRCRAFT에만 제안한다(`flash-helper`만 있는 팀에 `BUILD` 없음). AIRPORT 슬롯은 WAKE로 세고(L 0.5, M 1, H 2), `J`는 나누기 전까지 제외하며, AIRCRAFT의 ROUTE에 든 FLIGHT는 +1. 라벨이 없으면 `BUILD · M`. DISPATCH 카드 제목 아래에 분류가 보인다.
 - **2b 승인 운용**(`mode: approval`, DISPATCH 탭에서 전환): SUPERVISOR가 제안을 승인·거절한다. 승인된 ASSIGN은 OCC 세션이 `dispatch release`로 SENT로 바꾸고 정해진 FLIGHT PLAN(`[DISPATCH D-0003] FLIGHT PLAN · BRAVO (TEAM_B)` …)을 받아 CAPTAIN에게 보낸다. CAPTAIN의 `READBACK D-0003`으로 ACCEPTED, 그 FLIGHT의 STAND가 생기면 atc가 DEPARTED로 바꾼다. 승인·전달·수락된 제안은 AIRCRAFT와 FLIGHT를 예약해 두 번 제안되지 않는다. 승인된 RELEASE는 보내지 않고 SUPERVISOR가 Linear에서 정리한다.
 - **send-guard**(`occ/send-guard.mjs`, SendMessage의 PreToolUse): approval 모드이고, SENT 상태인 제안을, 그 제안의 CAPTAIN에게, atc가 만든 FLIGHT PLAN 문구 그대로 보낼 때만 통과시킨다. TOWER·OCC 폴더의 hook은 모두 fail-closed(`… || exit 2`)라 hook이 없거나 실패하면 도구가 막힌다.
-- **CROSSCHECK**([docs/occ.md](docs/occ.md) "CROSSCHECK"): OCC와 다른 계열의 모델(기본 Muse Spark 1.3, 대체 GPT-5.6 Terra. `ocx claude --strict-mcp-config`로 연다. flash-helper와 같은 DeepSeek은 쓰지 않는다)로 `crosscheck/`에서 연 세션이, 열린 DISPATCH 제안과 SCHEDULE 초안마다 예비 판정(mark: `agree`/`disagree`와 이유 한 줄)을 먼저 단다(`atcctl crosscheck brief`, `atcctl dispatch|schedule crosscheck <ID> agree|disagree -- <이유>`). mark는 상태를 바꾸지 않는다. 탭에는 점선 칩으로 보이고, "CROSSCHECK에 동의"를 누르면 같은 판정이 한 번에 들어간다. 게이트는 사람 판정만 세고, 점검 패널의 "CROSSCHECK 일치 n/m"이 mark가 사람과 맞은 비율이다(전체와 모델별). mark마다 모델 이름이 남는데, 세션이 적지 않고 guard가 세션 기록(transcript)에서 확인한 실제 모델을 붙인다. Muse·Terra가 아니면(예: Desktop 기본 opus) mark 자체를 막는다. 옛 mark는 `unknown`으로 센다. guard는 fail-closed다: `guard.mjs --crosscheck --gh-read`(atcctl 읽기와 crosscheck 명령, PR 사실 확인용 읽기 전용 `gh pr view|checks|list`만), `mcp-guard.mjs --read-only`, `crosscheck/read-guard.mjs`(파일은 `crosscheck/`와 atc `docs/`만 읽음), Edit·Write·SendMessage·Agent·Artifact 금지.
+- **CROSSCHECK**([docs/occ.md](docs/occ.md) "CROSSCHECK"): OCC와 다른 계열의 모델(기본 Muse Spark 1.3, 대체 GPT-5.6 Terra. `ocx claude --strict-mcp-config`로 연다. flash-helper와 같은 DeepSeek은 쓰지 않는다)로 `crosscheck/`에서 연 세션이, 열린 DISPATCH 제안과 SCHEDULE 초안마다 예비 판정(mark: `agree`/`disagree`와 이유 한 줄)을 먼저 단다(`atcctl crosscheck brief`, `atcctl dispatch|schedule crosscheck <ID> agree|disagree -- <이유>`). mark는 상태를 바꾸지 않는다. 탭에는 점선 칩으로 보이고, "CROSSCHECK에 동의"를 누르면 같은 판정이 한 번에 들어간다. 게이트는 사람 판정만 세고, 점검 패널의 "CROSSCHECK 일치 n/m"이 mark가 사람과 맞은 비율이다(전체와 모델별). 사람 판정마다 `via: "crosscheck" | "manual"`(한 번 클릭인지)이 남고, `gate.crosscheck.oneClick: {count, decided}`가 한 번 클릭이 가능했던 판정(판정 전에 mark가 있었고 `via`가 기록됨) 중 한 번 클릭 건수를 보인다. CROSSCHECK를 따르는 습관이 게이트를 부풀리는지 보려는 것이다. 옛 판정은 `via`가 없어 세지 않는다. mark마다 모델 이름이 남는데, 세션이 적지 않고 guard가 세션 기록(transcript)에서 확인한 실제 모델을 붙인다. Muse·Terra가 아니면(예: Desktop 기본 opus) mark 자체를 막는다. 옛 mark는 `unknown`으로 센다. guard는 fail-closed다: `guard.mjs --crosscheck --gh-read`(atcctl 읽기와 crosscheck 명령, PR 사실 확인용 읽기 전용 `gh pr view|checks|list`만), `mcp-guard.mjs --read-only`, `crosscheck/read-guard.mjs`(파일은 `crosscheck/`와 atc `docs/`만 읽음), Edit·Write·SendMessage·Agent·Artifact 금지.
 - 2b를 켜기 전에 팀 CLAUDE.md의 READBACK 규칙을 FLIGHT PLAN(`[DISPATCH D-xxxx]`)까지 넓힌다. 설계 문서의 "2b 켜는 법" 참고.
 
 | API | 하는 일 |
 |---|---|
-| `GET /api/dispatch/brief` | 모드, 지금 계획, 열린·HELD·진행 중·늦은·최근 제안, 2b·3단계 점검, FLIGHT 요약 |
-| `POST /api/dispatch/proposals/:id/verdict` | `{verdict: agree\|disagree, reason?}` 그림자 판정(shadow 모드에서만) |
+| `GET /api/dispatch/brief` | 모드, 지금 계획, 열린·HELD·진행 중·늦은·최근 제안(판정된 것은 `via`·`reasonCodes`), 2b·3단계 점검(`gate.crosscheck.oneClick`, `gate.reasonCounts`), FLIGHT 요약, 거절 칩 `reasonCodes: [{code, label}]` |
+| `POST /api/dispatch/proposals/:id/verdict` | `{verdict: agree\|disagree, reason?, via?, reasonCodes?}` 그림자 판정(shadow 모드에서만). `via`는 `crosscheck`나 `manual`(그 밖은 `manual`), `reasonCodes`는 `disagree`에만(모르는 code는 400) |
 | `POST /api/dispatch/proposals/:id/note` | `{text, caution?}` DISPATCH 검토 메모 |
 | `POST /api/dispatch/proposals/:id/hold` | `{blockedBy: ["VOC-180"]}` DISPATCH 선행 HOLD, 제안은 HELD로 간다. `[]`는 선행 없는 HOLD(메모 필요) |
 | `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR가 HOLD를 풂. 제안은 SUPERSEDED, FLIGHT는 다시 후보 |
-| `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR 결정(approval 모드에서만), `reject`는 `{reason?}` |
+| `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR 결정(approval 모드에서만), 둘 다 `{via?}`, `reject`는 `{reason?, reasonCodes?}`도 |
 | `POST /api/dispatch/proposals/:id/release` | 승인 → SENT, `sendTo`와 FLIGHT PLAN 반환(이미 보냈으면 같은 문구) |
 | `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, 또는 `{reason}`과 함께 거절 |
 | `GET /api/dispatch/proposals/:id` | 제안 하나와 모드(send-guard가 씀) |
@@ -288,11 +288,11 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 
 | API | 하는 일 |
 |---|---|
-| `GET /api/schedule/brief` | 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안, S2 점검, 열린 초안 한도, 후보, FLIGHT 요약 |
+| `GET /api/schedule/brief` | 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안(판정된 것은 `via`), S2 점검(`gate.crosscheck.oneClick`), 열린 초안 한도, 후보, FLIGHT 요약 |
 | `GET /api/schedule/ops/:id` | SCHEDULE 작업 하나와 모드 |
 | `POST /api/schedule/ops` | OCC 초안. `CLASSIFY`·`PRIORITIZE`: `{kind, flight, reason, type?, wake?, ratings?, priority?}`. `NEW`: `{kind: "NEW", title, body, project, reason, priority?, type?, wake?, ratings?, tail?, parent?, related?, blockedBy?}`. 작업의 `flight`는 `null`이고 atc가 `similar: [{key, title}]`을 붙인다. 입력이 틀리면 사유와 함께 400, 열린 초안이 한도면 409 |
-| `POST /api/schedule/ops/:id/verdict` | `{verdict: agree\|disagree, reason?}` SUPERVISOR 그림자 판정 |
-| `POST /api/schedule/ops/:id/approve`, `/reject` | S2에서만: SUPERVISOR 승인, 또는 `{reason?}`와 함께 거절 |
+| `POST /api/schedule/ops/:id/verdict` | `{verdict: agree\|disagree, reason?, via?}` SUPERVISOR 그림자 판정(`via`: `crosscheck`나 `manual`) |
+| `POST /api/schedule/ops/:id/approve`, `/reject` | S2에서만: SUPERVISOR 승인, 또는 `{reason?}`와 함께 거절. 둘 다 `{via?}` |
 | `POST /api/schedule/ops/:id/release` | S2에서만: OCC가 승인된 작업을 발부. 정확한 Linear 호출을 돌려준다(이미 발부됐으면 같은 호출) |
 | `GET /api/schedule/released` | 모드와 발부된 호출 전부(linear-guard가 읽음) |
 | `POST /api/schedule/mode` | `{mode: shadow\|approval}` |
@@ -356,6 +356,7 @@ atc/
 │   ├── landing.ts          # CLEARED TO LAND 조건, LANDING SEQUENCE 순서 (landing.test.ts)
 │   ├── metrics.ts          # 운용 지표·2단계 점검 (metrics.test.ts)
 │   ├── proposals.ts        # DISPATCH 제안 기록·API (proposals.test.ts)
+│   ├── reasons.ts          # DISPATCH 거절 사유 칩 (reasons.test.ts)
 │   ├── schedule.ts         # OCC SCHEDULE 초안 기록·API (schedule.test.ts)
 │   ├── recorder.ts         # FLIGHT RECORDER 기록
 │   ├── occupancy.ts        # HANDOFF·충돌 판정 (occupancy.test.ts)

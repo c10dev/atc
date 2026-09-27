@@ -96,6 +96,26 @@ OCC never writes to Linear freely. It drafts **SCHEDULE operations**. Each one i
 - At most 5 open drafts and 10 applied `NEW` / `SPLIT` per day (settings file). Past that, OCC stops drafting and reports.
 - A `CLOSE` needs evidence OCC checked itself: a merged PR, a config read, a comment. "Looks done" is not enough.
 
+### 5.4 CLASSIFY accuracy
+
+In the first seven SCHEDULE verdicts (2026-09-26), all three drafts the SUPERVISOR rejected were CLASSIFY misreadings:
+- **S-0001 (VOC-195), S-0004 (VOC-196):** FLIGHT TYPE `BUILD` where [fleet.md](fleet.md) 4.1 gives `MAINT`. One was a lock race fix, the other a CI and static gate, and neither changes product behavior.
+- **S-0006 (VOC-181):** WAKE `M` where 4.2 gives `L`: two rules in one file, no new tests.
+
+CROSSCHECK, which cited 4.1, had these right. OCC now works the same way (`occ/CLAUDE.md` "CLASSIFY 전에"):
+
+- **Read the criteria:** before any CLASSIFY in a pass, OCC reads `docs/fleet.md` 4.1–4.3. `occ/.claude/settings.json` adds `permissions.additionalDirectories: ["../docs"]` so a non-interactive session can Read it; without it the read was denied.
+- **FLIGHT TYPE in a fixed order:** CHECK (the output is a verdict) → SURVEY (research or a plan, no code) → TEST (a throwaway spike) → FERRY (a mechanical move) → MAINT (product behavior unchanged: refactor, infra, CI, static gates, tests, invisible race and lock fixes) → BUILD, only when a feature, behavior or screen users see changes. A security surface or tests alone never make a FLIGHT BUILD.
+- **WAKE by the real size of the change:** test files listed in the allowed scope don't mean new tests.
+- **Section numbers in the reason**, per axis, e.g. `4.1 MAINT: … · 4.2 M: … · 4.3 SEC: …`.
+- **Calibration examples:** `GET /api/schedule/brief` (and `atcctl schedule brief`) carries `examples`. These are up to 8 recent SUPERVISOR decisions, those with a reason first, built with the same `examplesOf` as CROSSCHECK: `{id, kind, flight, proposed, draft, verdict, reason}`.
+  - `proposed` is the classification or priority OCC drafted, without a NEW body or similar-title list.
+  - OCC reads them before drafting and does not repeat a mistake a rejection reason names.
+
+Checked on a test server with synthetic data:
+- **With no examples,** an OCC `/tick` drafted VOC-196 `MAINT · M · SEC`, VOC-195 `MAINT · M · SEC` and VOC-181 `BUILD · L · UI`. All three match the SUPERVISOR's verdicts, and each reason cites 4.1–4.3.
+- **With the two synthetic rejections as examples,** it drafted VOC-192 as `BUILD` (its layout changes). So the examples didn't push it into over-correcting.
+
 ## 6. linear-guard
 
 The same pattern as `occ/send-guard.mjs`: a PreToolUse hook on OCC's Linear write tools (`mcp__*__save_issue`, `save_comment`, and the relation and label tools). It is fail-closed (`… || exit 2`).

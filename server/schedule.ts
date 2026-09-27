@@ -4,7 +4,7 @@ import type { Context, Hono } from "hono";
 import { flightNumber } from "./callsign.ts";
 import { config } from "./config.ts";
 import { classLabel, classOf, FLIGHT_TYPES, type FlightType, RATINGS, type Rating, WAKES, type Wake } from "./crew.ts";
-import { type Crosscheck, CrosscheckError, type CrosscheckLine, type CrosscheckVerdict, crosscheckRateOf, examplesOf, type HumanDecision, markOf, parseCrosscheck } from "./crosscheck.ts";
+import { type Crosscheck, CrosscheckError, type CrosscheckLine, type CrosscheckVerdict, crosscheckRateOf, examplesOf, type HumanDecision, markOf, oneClickOf, parseCrosscheck, type Via, viaOf } from "./crosscheck.ts";
 import { DONE_STATES, loadDispatchConfig, PRIORITY_NAME } from "./dispatch.ts";
 import { fleetView, loadFleet } from "./fleet.ts";
 import type { Snapshot, Ticket } from "./model.ts";
@@ -69,15 +69,16 @@ export interface ScheduleOp {
   appliedRef: string | null; // APPLIED: 반영된 FLIGHT key(NEW면 새로 생긴 이슈)
   decision: { verdict: CrosscheckVerdict; at: string } | null; // SUPERVISOR 판정(verdict·approve·reject). 뒤 상태로 넘어가도 남는다
   crosscheck: Crosscheck | null; // CROSSCHECK 예비 판정(참고 표시, 상태를 바꾸지 않는다)
+  via?: Via; // SUPERVISOR 판정을 어떻게 내렸나(옛 기록에는 없다)
 }
 
 type LogLine =
   | { op: "draft"; id: string; at: string; kind: ScheduleKind; flight: string | null; payload: SchedulePayload; reason: string }
-  | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null }
+  | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null; via?: Via }
   | { op: "supersede"; id: string; at: string; reason: string }
   | { op: "expire"; id: string; at: string; reason?: string }
-  | { op: "approve"; id: string; at: string }
-  | { op: "reject"; id: string; at: string; reason: string | null }
+  | { op: "approve"; id: string; at: string; via?: Via }
+  | { op: "reject"; id: string; at: string; reason: string | null; via?: Via }
   | { op: "release"; id: string; at: string; calls: LinearCall[] }
   | { op: "apply"; id: string; at: string; ref: string }
   | ({ op: "crosscheck"; id: string } & CrosscheckLine);
@@ -129,7 +130,7 @@ export const canApplyOp = (s: Pick<ScheduleOp, "status">, op: StatusLine) => Boo
 export function humanOf(s: ScheduleOp): HumanDecision | null {
   if (!s.decision) return null;
   const reason = (s.status === "agreed" || s.status === "disagreed" || s.status === "rejected") && s.verdictReason ? s.verdictReason : null;
-  return { ...s.decision, reason };
+  return { ...s.decision, reason, ...(s.via ? { via: s.via } : {}) };
 }
 
 export function fold(lines: LogLine[]): ScheduleOp[] {
@@ -149,6 +150,7 @@ export function fold(lines: LogLine[]): ScheduleOp[] {
     if (!canApplyOp(s, l.op)) continue; // 닫힌 초안은 바꾸지 않는다
     if (l.op === "verdict") s.decision = { verdict: l.verdict, at: l.at };
     else if (l.op === "approve" || l.op === "reject") s.decision = { verdict: l.op === "approve" ? "agree" : "disagree", at: l.at };
+    if ((l.op === "verdict" || l.op === "approve" || l.op === "reject") && l.via) s.via = l.via;
     s.status = l.op === "verdict" && l.verdict === "disagree" ? "disagreed" : NEXT[s.status]![l.op]!;
     s.statusAt = l.at;
     if (l.op === "verdict" || l.op === "reject" || l.op === "supersede") s.verdictReason = l.reason;
@@ -482,8 +484,17 @@ export function gateOf(ops: ScheduleOp[]) {
     target: GATE,
     ready: decided.length >= GATE.decided && agreement !== null && agreement >= GATE.agreement,
     // 게이트와 따로: CROSSCHECK가 SUPERVISOR 판정(S1 판정과 S2 승인·거절)과 얼마나 맞았나
-    crosscheck: crosscheckRateOf(ops.map((s) => ({ crosscheck: s.crosscheck, human: humanOf(s) }))),
+    crosscheck: { ...crosscheckRateOf(ops.map((s) => ({ crosscheck: s.crosscheck, human: humanOf(s) }))), oneClick: oneClickOf(ops.map((s) => ({ crosscheck: s.crosscheck, human: humanOf(s) }))) },
   };
+}
+
+// OCC 보정용 예시: 최근 SUPERVISOR 판정(사유 있는 것 먼저)과 OCC가 냈던 초안. 같은 실수를 되풀이하지 않게 초안 쓰기 전에 본다.
+// NEW의 본문·비슷한 FLIGHT는 빼고 분류·우선순위만 남긴다.
+export function occExamplesOf(ops: ScheduleOp[]) {
+  return examplesOf(ops.map((s) => ({ s, human: humanOf(s) }))).map(({ s, human }) => {
+    const { body: _b, similar: _s, ...proposed } = s.payload as NewPayload;
+    return { id: s.id, kind: s.kind, flight: s.flight, proposed, draft: s.reason, verdict: human!.verdict, reason: human!.reason };
+  });
 }
 
 // CROSSCHECK 브리핑: mark가 없는 열린 초안과 보정용 최근 SUPERVISOR 판정
@@ -555,7 +566,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       }),
     );
     const changes = Object.fromEntries([...open, ...inProgress].map((x) => [x.id, changesOf(x.kind, x.payload, x.flight ? byKey.get(x.flight) : undefined)]));
-    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, flights, crosscheck: crosscheckBriefOf(ops, changes) });
+    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes) });
   });
 
   app.get("/api/schedule/ops/:id", async (c) => {
@@ -603,7 +614,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     if (!op) return c.json({ error: "그런 SCHEDULE 작업이 없음" }, 404);
     if (op.status !== "draft") return c.json({ error: `지금 상태(${op.status})에서는 판정할 수 없음` }, 409);
     const reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim().slice(0, 500) : null;
-    append([{ op: "verdict", id, at: new Date().toISOString(), verdict: body.verdict, reason }]);
+    append([{ op: "verdict", id, at: new Date().toISOString(), verdict: body.verdict, reason, via: viaOf(body) }]);
     return c.json({ op: fold(readLines()).find((x) => x.id === id) });
   });
 
@@ -634,7 +645,8 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       if (!canApplyOp(op, name)) return c.json({ error: `지금 상태(${op.status})에서는 할 수 없음` }, 409);
       const at = new Date().toISOString();
       const reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim().slice(0, 500) : null;
-      append([name === "approve" ? { op: "approve", id, at } : { op: "reject", id, at, reason }]);
+      const via = viaOf(body);
+      append([name === "approve" ? { op: "approve", id, at, via } : { op: "reject", id, at, reason, via }]);
       return c.json({ op: fold(readLines()).find((x) => x.id === id) });
     });
   }

@@ -20,6 +20,15 @@ function sessionLabel(s: Session | undefined, id: string) {
     : { id, name: id.slice(0, 8), callsign: id.slice(0, 8), status: "dead" as const };
 }
 
+// CLEARED PR에 줄 LAND 문구. TOWER는 이 글을 그대로 `atcctl issue … LAND -- <landText>`로 보낸다.
+// 순서(repoSeq)와 앞 PR은 같은 저장소·base의 CLEARED PR 안에서만 센다 — 다른 저장소의 머지는 rebase가 필요 없다.
+// 첫 번째는 지금 LANDING 가능, 그 뒤는 바로 앞 PR 머지 뒤 rebase. AIRPORT·FLIGHT가 없으면 괄호를 뺀다.
+export function landTextOf(repoSeq: number, airport: string | null, pr: number, flight: string | null, prevPr: number | null): string {
+  const head = `LANDING 순서 ${repoSeq}번${airport ? ` (${airport})` : ""}: PR #${pr}${flight ? ` (${flight})` : ""}.`;
+  if (prevPr == null) return `${head} 지금 LANDING 가능 — 머지 전에 base가 최신인지 확인.`;
+  return `${head} 앞 PR #${prevPr} 머지 뒤 rebase하고 LANDING.`;
+}
+
 export function buildBrief(
   s: Snapshot,
   since: { events: TrafficEvent[]; reset: boolean; cursor: string },
@@ -49,6 +58,7 @@ export function buildBrief(
 
   // LANDING SEQUENCE: Draft가 아닌 열린 PR. CLEARED TO LAND가 readyAt 순으로 앞(seq 1, 2, …), 그 뒤 APPROACH.
   const sequence = s.pulls.filter(inSequence);
+  const cleared = sequence.filter((x) => x.landing === "CLEARED");
   const landingQueue = sequence.map((p) => {
     const stand = p.standPath ? wsByPath.get(p.standPath) : undefined;
     // 이 PR을 연 뒤 같은 STAND(없으면 같은 FLIGHT)로 나간 LAND
@@ -61,10 +71,16 @@ export function buildBrief(
           ((p.standPath && c.stand === p.standPath) || (!c.stand && p.ticketKey && c.flight === p.ticketKey)),
       )
       .at(-1);
+    const seq = p.landing === "CLEARED" ? cleared.indexOf(p) + 1 : null;
+    const fl = flight(p.ticketKey) ?? null;
+    // 같은 저장소·base의 CLEARED 안에서의 순서와 바로 앞 PR
+    const lane = cleared.filter((x) => x.repo === p.repo && x.base === p.base);
+    const repoSeq = seq ? lane.indexOf(p) + 1 : null;
+    const airport = codeOf(p.repo) ?? null;
     return {
-      seq: p.landing === "CLEARED" ? sequence.filter((x) => x.landing === "CLEARED").indexOf(p) + 1 : null,
+      seq,
       landing: p.landing,
-      flight: flight(p.ticketKey) ?? null,
+      flight: fl,
       key: p.ticketKey,
       airport: codeOf(p.repo),
       pr: { number: p.number, url: p.url, title: p.title, branch: p.branch, head: p.head.slice(0, 7) },
@@ -73,6 +89,9 @@ export function buildBrief(
       blocks: p.blocks,
       readyAt: p.readyAt,
       landClearance: lastLand ? { id: lastLand.id, readBack: Boolean(lastLand.readbackAt) } : null,
+      // CLEARED에만. TOWER가 LAND CLEARANCE 본문으로 그대로 쓴다
+      repoSeq,
+      landText: repoSeq ? landTextOf(repoSeq, airport, p.number, fl, repoSeq > 1 ? lane[repoSeq - 2].number : null) : null,
     };
   });
 
