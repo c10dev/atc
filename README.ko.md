@@ -415,6 +415,7 @@ atc/
 │   ├── metrics.ts          # 운용 지표·2단계 점검 (metrics.test.ts)
 │   ├── proposals.ts        # DISPATCH 제안 기록·API (proposals.test.ts)
 │   ├── briefing.ts         # DISPATCH 카드 BRIEFING과 사실 줄 (briefing.test.ts)
+│   ├── blind.ts            # DISPATCH anchoring 점검용 blind 표본 (blind.test.ts)
 │   ├── atfm.ts             # ATFM: 스위치, 출발 중지, 머지 슬롯, 자동 배정 대상 판정 (atfm.test.ts)
 │   ├── atfm-run.ts         # ATFM 기록과 /api/atfm
 │   ├── reasons.ts          # DISPATCH 거절 사유 칩 (reasons.test.ts)

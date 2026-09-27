@@ -155,6 +155,16 @@ The SUPERVISOR often doesn't remember what a ticket is about (VOC-195, VOC-172),
 
 `GET /api/dispatch/brief` adds `briefs: { <ID>: { facts, lead } }` for open and HELD proposals; `lead` is null once a BRIEFING exists. `POST /api/dispatch/proposals/:id/briefing {what, why, risk}` is accepted only while the proposal is `proposed`; each line is required, whitespace is collapsed and 300 characters is the limit. The OCC guard needed no change: `dispatch briefing` is an atc CLI command like `dispatch note`, and CROSSCHECK's allowlist does not include it.
 
+### 5.6 Fast path and blind sample (ATC-6)
+
+After PREFLIGHT and the BRIEFING, most cards that reach the SUPERVISOR only need "yes, this AIRCRAFT". The queue is split so those take one click, while a sample stays blind to keep the gate honest.
+
+- **Agreement group.** Open ASSIGN cards whose CROSSCHECK mark is `agree` (and that are not blind) sit at the top of the ASSIGN list as one line each: the BRIEFING "무슨 일" line (the title while there is no BRIEFING), the FLIGHT, the AIRCRAFT and a **동의** button. The button records the SUPERVISOR's `agree` verdict (shadow) or approval (2b) with `via: "crosscheck"`, the existing one-click flag. Expanding a line (▸, keyboard Enter) shows the full card; rejecting, with chips, is done from there. There is **no "confirm all"**: each verdict is one deliberate click.
+- **Disagreement stays expanded.** Cards where CROSSCHECK disagrees (`wrong-aircraft`, `other`; FLIGHT chips already go to HELD) stay full cards with the CROSSCHECK chip and "CROSSCHECK에 동의".
+- **CROSSCHECK 대기.** Cards CROSSCHECK has not marked yet keep the ATC-3 "CROSSCHECK 대기" state, sorted after marked cards, and are never in the agreement group.
+- **Blind sample.** About 1 in 5 open cards is blind, chosen from the proposal id (FNV-1a hash mod 5, `server/blind.ts`), so a reload never changes it. A blind card shows **BLIND** instead of the CROSSCHECK chip and the one-click button until it is judged, and sits in the expanded list even when CROSSCHECK agrees. The server records `blind: true` on the verdict, approve or reject, and refuses a one-click (`via: "crosscheck"`) verdict on a blind card (409). HELD cards are never blind (the HOLD itself shows what CROSSCHECK said).
+- **Anchoring check.** The gate panel adds "BLIND 합의율": the SUPERVISOR's agreement with DISPATCH on blind cards, among the verdicts the gate counts (`gate.blind` from `gateOf`, which only adds the figure and does not change what the gate includes). If it is much lower than the overall agreement, the one-click path is being followed by default.
+
 ## 6. Flow
 
 ### 2a — Shadow operation
@@ -357,5 +367,6 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 | Slots | Start with the proposed values: 1 per TEAM, 4 concurrent AIRBORNE at VCDO, 2 elsewhere, 5 pending proposals |
 | What the gate measures (2026-09-27, ATC-5) | **The AIRCRAFT choice only.** Readiness is caught by PREFLIGHT (6.2), and a rejection whose chips are all FLIGHT chips is left out of the decided count and the agreement and shown separately (6.3). Old verdicts get chips through `recode`, which changes only the gate |
 | Held proposals and the gate (2026-09-27, ATC-3) | **Outside the gate.** A proposal held by PREFLIGHT or OCC is not a SUPERVISOR verdict, and a confirmed HOLD is recorded with `via: "preflight"` and not counted. The gate measures team choice on tickets that were ready; ticket readiness is shown separately as the ready rate (6.2) |
+| Fast path (2026-09-27, ATC-6) | **Agreement group** for CROSSCHECK-agree cards, one line and one click each; **no bulk confirm**; a **20% blind sample** chosen from the proposal id, whose agreement the gate panel shows separately as the anchoring check (5.6) |
 
 Still open: when entering 2b, whether to widen the READBACK rule in vocado `CLAUDE.md` to cover FLIGHT PLANs (`[DISPATCH D-xxxx]`). Not needed for 2a.

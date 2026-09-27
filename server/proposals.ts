@@ -37,6 +37,7 @@ import { applyGroundStops, enforcedStops, groundStopWhy } from "./atfm.ts";
 import { classLabel, classOf, needsStand } from "./crew.ts";
 import { selfCheckCrewChange } from "./crew-change.ts";
 import { type Crosscheck, CrosscheckError, type CrosscheckLine, crosscheckRateOf, examplesOf, type HumanDecision, markOf, oneClickOf, parseCrosscheck, type Via, viaOf } from "./crosscheck.ts";
+import { blindStatsOf, isBlind } from "./blind.ts";
 import { type Briefing, BriefingError, factsOf, leadOf, parseBriefing, waypointIndex } from "./briefing.ts";
 import { loadFleet } from "./fleet.ts";
 import { loadLogbook } from "./logbook.ts";
@@ -129,6 +130,7 @@ export interface Proposal {
   crosscheck: Crosscheck | null; // CROSSCHECK 예비 판정(참고 표시, 상태를 바꾸지 않는다)
   via?: Via; // SUPERVISOR 판정을 어떻게 내렸나(옛 기록에는 없다)
   reasonCodes?: string[]; // 거절 사유 칩(disagree·reject, 고른 것이 있을 때만)
+  blind?: true; // CROSSCHECK mark를 숨긴 채(blind 표본, ATC-6) SUPERVISOR가 판정함
   briefing?: Briefing; // OCC가 쓴 쉬운 세 줄(ATC-4). 다시 쓰면 덮어쓴다. 옛 기록에는 없다
   preflight?: Preflight; // PREFLIGHT HOLD: CROSSCHECK가 FLIGHT 칩으로 disagree해 HELD로 감(ATC-3). 대기열로 돌리면 지운다
   firstHeldAt?: string; // 처음 HOLD(OCC·PREFLIGHT)된 시각. 준비율(readyRate)에 쓴다
@@ -139,7 +141,7 @@ export interface Proposal {
 type Create = Omit<Proposal, "status" | "decidedAt" | "statusAt" | "timeline" | "reason" | "note" | "caution" | "hold" | "holdAt" | "message" | "departedStand" | "crosscheck">;
 export type Op =
   | ({ op: "create" } & Create)
-  | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null; via?: Via; reasonCodes?: string[] }
+  | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null; via?: Via; reasonCodes?: string[]; blind?: true }
   | { op: "note"; id: string; at: string; text: string; caution: boolean }
   | ({ op: "brief"; id: string } & Briefing)
   | { op: "hold"; id: string; at: string; blockedBy: string[] }
@@ -147,8 +149,8 @@ export type Op =
   | { op: "requeue"; id: string; at: string } // SUPERVISOR: HOLD를 풀어 같은 제안을 대기열로
   | { op: "recode"; id: string; at: string; by: string; codes: string[] } // SUPERVISOR: 지난 거절에 사유 칩(게이트 계산만)
   | ({ op: "crosscheck"; id: string } & CrosscheckLine)
-  | { op: "approve"; id: string; at: string; via?: Via }
-  | { op: "reject"; id: string; at: string; reason: string | null; via?: Via; reasonCodes?: string[] }
+  | { op: "approve"; id: string; at: string; via?: Via; blind?: true }
+  | { op: "reject"; id: string; at: string; reason: string | null; via?: Via; reasonCodes?: string[]; blind?: true }
   | { op: "send"; id: string; at: string; message: string }
   | { op: "accept"; id: string; at: string }
   | { op: "decline"; id: string; at: string; reason: string }
@@ -284,6 +286,7 @@ export function fold(ops: Op[]): Proposal[] {
     }
     if ((o.op === "verdict" || o.op === "approve" || o.op === "reject") && o.via) p.via = o.via;
     if ((o.op === "verdict" || o.op === "reject") && o.reasonCodes?.length) p.reasonCodes = o.reasonCodes;
+    if ((o.op === "verdict" || o.op === "approve" || o.op === "reject") && o.blind) p.blind = true;
   }
   return [...byId.values()];
 }
@@ -579,6 +582,8 @@ export function gateOf(proposals: Proposal[]) {
     reasonCounts: reasonCountsOf(proposals.filter((p) => humanOf(p)?.verdict === "disagree")),
     // 게이트와 따로: PREFLIGHT에 걸린 제안 수와 준비율(공급 품질)
     preflight: preflightStatsOf(proposals),
+    // 게이트와 따로: 게이트가 센 판정 중 blind 표본의 합의율(anchoring 점검, ATC-6)
+    blind: blindStatsOf(decided),
   };
 }
 
@@ -757,7 +762,8 @@ async function cardBriefsOf(cards: Proposal[], s: Snapshot, all: Proposal[], log
   const flying = all.filter((p) => isInFlight(p) || isStandFreeAirborne(p)).map((p) => ({ flight: p.flight, aircraftName: p.aircraftName, at: p.statusAt }));
   const ctx = { now, tickets: s.tickets, routes, entries: logbook, flying };
   return Object.fromEntries(
-    cards.map((p) => [p.id, { facts: factsOf(p, ctx, index), lead: p.briefing ? null : leadOf(p.flight, now) }]),
+    // blind: 판정 전까지 CROSSCHECK mark를 숨길 카드(열린 제안만. HELD는 HOLD 자체가 CROSSCHECK를 드러낸다)
+    cards.map((p) => [p.id, { facts: factsOf(p, ctx, index), lead: p.briefing ? null : leadOf(p.flight, now), blind: !isHeld(p) && isBlind(p.id) }]),
   );
 }
 
@@ -846,6 +852,8 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       const mode = loadDispatchConfig().mode;
       const at = new Date().toISOString();
       const closed = (op: StatusOp) => (canApply(p, op) ? null : c.json({ error: `지금 상태(${p.status})에서는 할 수 없음` }, 409));
+      if (JUDGE_ACTIONS.includes(name) && isBlind(id) && viaOf(body) === "crosscheck")
+        return c.json({ error: "BLIND 카드는 CROSSCHECK 한 번 클릭으로 판정하지 않는다 — 카드를 보고 직접 판정" }, 409);
       if (JUDGE_ACTIONS.includes(name) && p.status === "proposed" && isHeld(p))
         return c.json({ error: "HELD 제안은 판정하지 않는다 — 대기열로 돌리거나(requeue) FLIGHT 보류를 확정(confirm-hold)" }, 409);
 
@@ -919,7 +927,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
         const bad = closed("verdict");
         if (bad) return bad;
         const reason = body.verdict === "disagree" ? composeReason(codes, reasonOf(body)) : reasonOf(body);
-        append([{ op: "verdict", id, at, verdict: body.verdict, reason, via: viaOf(body), ...(codes.length ? { reasonCodes: codes } : {}) }]);
+        append([{ op: "verdict", id, at, verdict: body.verdict, reason, via: viaOf(body), ...(codes.length ? { reasonCodes: codes } : {}), ...(isBlind(id) ? { blind: true as const } : {}) }]);
       } else if (name === "approve" || name === "reject") {
         if (mode !== "approval") return c.json({ error: "승인·거절은 approval 모드(2b)에서만" }, 409);
         const codes = codesOf(body, name === "reject");
@@ -927,10 +935,11 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
         const bad = closed(name);
         if (bad) return bad;
         const via = viaOf(body);
+        const blind = isBlind(id) ? { blind: true as const } : {};
         append([
           name === "approve"
-            ? { op: "approve", id, at, via }
-            : { op: "reject", id, at, reason: composeReason(codes, reasonOf(body)), via, ...(codes.length ? { reasonCodes: codes } : {}) },
+            ? { op: "approve", id, at, via, ...blind }
+            : { op: "reject", id, at, reason: composeReason(codes, reasonOf(body)), via, ...(codes.length ? { reasonCodes: codes } : {}), ...blind },
         ]);
       } else if (name === "release") {
         if (mode !== "approval") return c.json({ error: "FLIGHT PLAN은 approval 모드(2b)에서만 보낸다" }, 409);

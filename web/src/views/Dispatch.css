@@ -1074,3 +1074,104 @@
     grid-column: 1 / -1;
   }
 }
+
+/* 동의 묶음(ATC-6): CROSSCHECK가 agree한 카드를 한 줄씩. 펼치면 전체 카드 */
+.dp-agree {
+  min-width: 0;
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--radar);
+  border-radius: var(--radius);
+}
+.dp-agree-head {
+  margin: 0 0 var(--space-1-5);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.dp-agree-head b {
+  font-family: var(--mono);
+  color: var(--radar);
+}
+.dp-agree-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr); /* 줄이 긴 제목 때문에 넓어지지 않게 */
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dp-agree-row + .dp-agree-row {
+  border-top: 1px solid var(--line);
+}
+.dp-agree-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1-5) 0;
+  min-width: 0;
+}
+.dp-agree-toggle {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  cursor: pointer;
+}
+.dp-agree-toggle:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+.dp-agree-what {
+  flex: 1 1 16em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: var(--text-md);
+}
+.dp-agree-fn {
+  flex: none;
+  font-size: var(--text-sm);
+  color: var(--cyan);
+}
+.dp-agree-ac {
+  flex: none;
+  font-size: var(--text-sm);
+}
+.dp-agree-btn {
+  flex: none;
+  margin-left: auto;
+  min-width: 72px;
+}
+.dp-agree-card {
+  padding: 0 0 var(--space-2);
+}
+
+/* blind 표본: 판정 전까지 CROSSCHECK 판정을 숨긴 카드 */
+.dp-blind {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.dp-blind-mark {
+  flex: none;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--blue);
+  border-radius: var(--radius-sm);
+  color: var(--blue);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
