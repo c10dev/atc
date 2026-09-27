@@ -88,7 +88,7 @@ If the body can't be read or the evidence is not enough to choose, leave no mark
 
 ### Reason chips (DISPATCH disagree)
 
-On a DISPATCH disagree, pick one or more chips with `--code`. When the SUPERVISOR presses "CROSSCHECK에 동의", the chips are recorded too, and **the chips decide what gets blocked**. A problem with the FLIGHT itself holds that FLIGHT from every AIRCRAFT for 24 hours (or until the issue changes); a problem with this AIRCRAFT only blocks the pair. SCHEDULE drafts get no chips.
+On a DISPATCH disagree, pick one or more chips with `--code`. **The chips decide what happens next.** With a FLIGHT chip ("FLIGHT" in the table below) the server sends the proposal straight to HELD as a PREFLIGHT HOLD, so it never reaches the SUPERVISOR's queue. If the SUPERVISOR confirms it, the FLIGHT is held from every AIRCRAFT for 24 hours (or until the issue changes); if they put it back in the queue, it waits for a verdict again. `wrong-aircraft`, `other` and no chips stay in the queue, and "CROSSCHECK에 동의" then blocks only the pair. So use a FLIGHT chip only with evidence. SCHEDULE drafts get no chips.
 
 | Code | Pick when | Blocks |
 |---|---|---|

@@ -86,7 +86,8 @@ SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만. S2 승인 운용
   node atcctl.mjs schedule release <S-0001>  (S2) 승인된 작업을 발부하고 Linear 호출(CALL)을 출력. 각 CALL의 도구에
                                             JSON 입력을 한 글자도 바꾸지 않고 넣는다. 이미 발부됐으면 같은 CALL을 다시 준다
 
-CROSSCHECK (CROSSCHECK 세션이 맡음. SUPERVISOR 판정 전에 다른 모델이 예비 판정을 달아 둔다. 상태는 바꾸지 않음)
+CROSSCHECK (CROSSCHECK 세션이 맡음. SUPERVISOR 판정 전에 다른 모델이 예비 판정을 달아 둔다. 상태는 바꾸지 않음 —
+            DISPATCH disagree에 FLIGHT 칩이 있으면 서버가 그 결과로 PREFLIGHT HOLD를 건다)
   node atcctl.mjs crosscheck brief          mark가 없는 열린 제안·초안(pending)과 최근 SUPERVISOR 판정 예시(examples) (JSON)
   node atcctl.mjs dispatch crosscheck <D-0003> agree|disagree [--code <코드>[,<코드>]] -- <이유>
                                             열린 제안에 예비 판정(이유는 500자 이내). 다시 달면 대신한다.
@@ -376,7 +377,7 @@ if (isMain) {
       const path = cmd === "dispatch" ? `/api/dispatch/proposals/${encodeURIComponent(id)}/crosscheck` : `/api/schedule/ops/${encodeURIComponent(id)}/crosscheck`;
       const r = await call("POST", path, body);
       const x = r.proposal ?? r.op;
-      console.log(`${x.id} CROSSCHECK ${x.crosscheck.verdict} · ${x.crosscheck.reason} (${x.crosscheck.model} · 예비 판정, 상태 그대로 ${x.status})`);
+      console.log(`${x.id} CROSSCHECK ${x.crosscheck.verdict} · ${x.crosscheck.reason} (${x.crosscheck.model} · 예비 판정, ${x.preflight ? "FLIGHT 칩이라 서버가 PREFLIGHT HOLD" : `상태 그대로 ${x.status}`})`);
     } else if (cmd === "manual" && (args[0] === "check" || args[0] === "ack")) {
       const dir = process.cwd();
       const now = manualHash(dir);
