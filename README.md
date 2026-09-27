@@ -303,6 +303,7 @@ Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server com
 
 - **Stages:** READBACK → DEPARTED (STAND or departure record) → PR opened → CLEARED → ARRIVED (LOGBOOK), all taken from existing records.
 - **Delays** (no next stage after 1.5× the WAKE expectation): `no-departure`, `no-pr`, `pr-not-cleared`. `landing-wait` (CLEARED for over an hour) is information only.
+- **STAND-free FLIGHTs** (SURVEY, CHECK): READBACK → DEPARTED → ARRIVED, with ARRIVED taken from the CAPTAIN's report (`dispatch arrived`). They have no PR stage and no PR mismatches; their only delay is `no-arrival`.
 - **Mismatches:** Linear In Review with no PR, Done with no merged PR, and (information only) a merged PR while Linear isn't Done.
 - **API:** `GET /api/following` marks issues OCC hasn't reported yet as `fresh`. `POST /api/following/ack` records them in `following-state.json`; an issue that clears is forgotten and reported again if it comes back.
 - **OCC:** runs `atcctl following` / `following ack` every pass, reports new warn issues to the SUPERVISOR, and never messages teams.

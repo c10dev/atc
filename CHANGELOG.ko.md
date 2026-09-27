@@ -159,6 +159,17 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - "더 나은 배정으로 바뀜"으로 닫힌 짝은 판정받지 못한 것이라 24시간 규칙에서 뺀다.
   - 더 나은 배정 때문에만 계획에서 빠진 PROPOSED ASSIGN은 열어 둔다. 같은 sync에서 같은 FLIGHT나 AIRCRAFT에 점수가 20% 이상 높은 새 제안이 만들어질 때만 SUPERSEDED하고(`REPLACE_MARGIN`), 사유에 새 id와 두 점수를 적는다. 상태가 바뀌면 지금처럼 바로 닫는다.
   - 운영 데이터(읽기 전용 모의 실행, 2026-09-27 04:55Z): main은 VOC-125 → TEAM_F, VOC-177 → TEAM_E를 계획했지만 둘 다 막힌 짝이라 아무것도 만들지 않았다(HOLD 아닌 열린 제안 0건). 이 브랜치는 VOC-125 → TEAM_B, VOC-196 → TEAM_E(D-0017의 짝이 돌아옴), VOC-177 → TEAM_D를 계획하고 만든다(열린 제안 3건).
+- 운항 추적이 PR을 만들지 않는 STAND 없는 FLIGHT(SURVEY, CHECK)에 `no-pr`를 경고했다([docs/occ.ko.md](docs/occ.ko.md) 8.1).
+  - STAND 없는 FLIGHT(`departedVia: "readback"`, 또는 제안 없이 `tail:`이 붙은 SURVEY·CHECK)는 이제 READBACK → DEPARTED → ARRIVED로 따라간다. PR 단계를 건너뛰고 `no-departure`, `no-pr`, `pr-not-cleared`, `landing-wait`와 Linear·PR 불일치 세 가지도 보지 않는다.
+  - ARRIVED는 제안의 `arrived` 상태(`timeline.arrived`)에서 오고, FOLLOWING 항목은 CAPTAIN 보고를 `arrival: {note, url}`로 싣는다. 제안 없는 `tail:` FLIGHT는 DEPARTED가 Linear 시작 시각, ARRIVED가 Linear Done이다.
+  - 새 지연 코드 `no-arrival`(warn): DEPARTED 뒤 WAKE 기대치의 1.5배가 지나도 ARRIVED 보고가 없음. recalling인 FLIGHT는 보지 않는다.
+  - FOLLOWING 탭은 이 FLIGHT에 세 칸짜리 단계 막대를 보이고 결과를 링크한다. OCC 문제 표(`occ/CLAUDE.md`)에 `no-arrival`을 넣었다.
+
+### 문서
+- 한국어 번역(#51)에서 찾은 설계 문서의 오류와 낡은 서술 35건을 `*.md`와 `*.ko.md` 모두에서 고쳤다. 코드를 기준으로 삼았고, 만들지 않은 것은 "아직 만들지 않음"으로 적었다.
+  - `docs/occ.md`(13건): `CLOSE`는 만들었지만 release하지 않음. §1 표는 2026-09-26 기준. 머지는 `Fixes VOC-n`일 때만 이슈를 닫음. S2는 `mode` 뒤에 만들었고 superseded·expired가 있음. linear-guard 절을 `occ/mcp-guard.mjs`에 맞춤(`save_issue`·`save_comment`만, release된 호출과 정확히 일치). 한도는 열린 초안 5건뿐. `TAIL`은 아직 만들지 않음. 운항 추적에 STAND 없는 FLIGHT와 `no-arrival`. §9는 `atfm.md`로. S2 게이트는 나중 중복을 세지 않음. CROSSCHECK·§13 문구.
+  - `docs/fleet.md`(11건): Status 줄. §1 "지금" 열(WAKE 가중 슬롯, TEAM당 STAND 없는 FLIGHT 1건, `tail:`). 예시의 `ui-qa`는 `read-only`. HOLDING·PARKED 팀. LOGBOOK 중앙값은 아직 만들지 않음. OCC S1 `CLASSIFY`는 만듦. LOGBOOK `branch`와 머지된 PR마다 한 줄. 분류는 FIDS가 아니라 DISPATCH 카드에 보임. 보안 reviewer는 `codex`. `tail:` 이름 바꾸기 끝남. 라벨 문구. 8.4절은 그대로.
+  - `docs/atfm.md`(11건): `CLOSE` 초안은 만듦. S1–S4는 OCC 단계가 아니라 조건 코드이고 S5는 켜기 조건 1이 다룸. ground stop 조건은 만든 대로(CI 30분 넘는 PR 4건 초과, 열린 LOS 2건 이상). "main broken"·"manual"은 강제할 수 있음. gate3는 `gate3Of`가 보는 대로. 슬롯은 7번부터. 비율은 모델 계열별. 있는 recorder op. 4–5번은 만듦. 슬롯 한도는 `slotLimits`로만 바뀜.
 
 ## [0.1.0] — 2026-09-26
 

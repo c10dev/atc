@@ -110,3 +110,40 @@ test("반복 보고 막기: 보고한 key는 fresh가 아니고, 풀리면 지�
   assert.deepEqual(freshKeys(items, r), []);
   assert.deepEqual(ackReported([], r, [], ago(0)), { reported: {} }); // 풀리면 지워진다
 });
+
+test("STAND 없는 FLIGHT(SURVEY·CHECK): READBACK → DEPARTED → ARRIVED, PR·CLEARED는 건너뛰고 no-pr 대신 no-arrival", () => {
+  const survey = ticket("VOC-1", { labels: ["type:SURVEY", "wake:M"] });
+  const departed = (min: number) => ({ ...proposal("D-1", "VOC-1", "departed", { accepted: ago(min), departed: ago(min) }), departedVia: "readback" as const });
+  // 5시간: 아직 괜찮음 · 7시간: no-arrival (M 240분 × 1.5 = 360분). no-pr는 나오지 않는다
+  let [f] = followingOf(input({ proposals: [departed(300)], tickets: [survey] }));
+  assert.equal(f.standFree, true);
+  assert.deepEqual(f.stages, { readback: ago(300), departed: ago(300), prOpened: null, cleared: null, arrived: null });
+  assert.equal(f.stage, "departed");
+  assert.deepEqual(f.issues, []);
+  [f] = followingOf(input({ proposals: [departed(420)], tickets: [survey], workspaces: [{ path: "/wt/x", ticketKey: "VOC-1" }] }));
+  assert.deepEqual(f.issues.map((i) => `${i.code}:${i.severity}`), ["no-arrival:warn"]);
+  assert.match(f.issues[0].text, /ARRIVED 보고 없음\(STAND 없는 SURVEY\)/);
+  // CAPTAIN 보고로 ARRIVED: 보고 내용이 붙고, Linear가 In Review·Done이어도 PR 불일치를 보지 않는다
+  const arrived = { ...proposal("D-1", "VOC-1", "arrived", { accepted: ago(500), departed: ago(500), arrived: ago(30) }), departedVia: "readback" as const, arrivedNote: "조사 결과 https://x/doc", arrivedUrl: "https://x/doc" };
+  [f] = followingOf(input({ proposals: [arrived], tickets: [ticket("VOC-1", { labels: ["type:SURVEY"], state: "Done", stateType: "completed" })] }));
+  assert.equal(f.stage, "arrived");
+  assert.equal(f.stages.arrived, ago(30));
+  assert.deepEqual(f.arrival, { note: "조사 결과 https://x/doc", url: "https://x/doc" });
+  assert.deepEqual(f.issues, []);
+  assert.deepEqual(followingOf(input({ proposals: [departed(420)], tickets: [ticket("VOC-1", { labels: ["type:CHECK"], state: "In Review" })] }))[0].issues.map((i) => i.code), ["no-arrival"]);
+  // ARRIVED 보고 뒤 하루가 지나면 Linear 상태와 상관없이 빠진다
+  const old = { ...arrived, timeline: { ...arrived.timeline, arrived: ago(25 * 60) } };
+  assert.equal(followingOf(input({ proposals: [old], tickets: [survey] })).length, 0);
+  // recalling은 지연을 보지 않는다
+  assert.deepEqual(followingOf(input({ proposals: [{ ...departed(900), status: "recalling" as const }], tickets: [survey] }))[0].issues, []);
+});
+
+test("STAND 없는 tail: FLIGHT: DEPARTED는 착수 기록(없으면 Linear 시작 시각), ARRIVED는 Linear 완료", () => {
+  const t = ticket("VOC-2", { labels: ["type:CHECK", "wake:L", "tail:TEAM_E"], startedAt: ago(200) });
+  let [f] = followingOf(input({ tickets: [t] }));
+  assert.equal(f.standFree, true);
+  assert.equal(f.stages.departed, ago(200));
+  assert.deepEqual(f.issues.map((i) => i.code), ["no-arrival"]); // L 60분 × 1.5 = 90분
+  [f] = followingOf(input({ tickets: [{ ...t, state: "Done", stateType: "completed", updatedAt: ago(10) }] }));
+  assert.equal(f, undefined); // Done이면 In Progress가 아니라 대상에서 빠진다
+});

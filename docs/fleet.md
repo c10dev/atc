@@ -7,7 +7,7 @@ atc knows each team session as an AIRCRAFT (`TEAM_B`, callsign BRAVO) and its le
 - **FLEET**: the teams, their crews, what they are rated for, their routes and targets.
 - **FLIGHT classification**: the kind of work, its size and the rating it needs.
 
-> Status: design draft (2026-09-26). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE steps 1 and 2 (sections 8.3 and 8.4; step 2, OCC sending it, only in DISPATCH approval mode), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules, then STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (see section 5 for what is left), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), and CHECKRIDE recommendations for TYPE RATINGS (section 8.2). Decisions are listed at the end.
+> Status: design draft (2026-09-26, updated 2026-09-27). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE steps 1 and 2 (sections 8.3 and 8.4; step 2, OCC sending it, only in DISPATCH approval mode), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules, then STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (see section 5 for what is left), STAND-free departure and arrival (section 5.1.1), OCC S1 `CLASSIFY` drafts (section 6), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), NETWORK (section 7.3), the DEPARTURE LOG (section 7.5), and CHECKRIDE recommendations for TYPE RATINGS (section 8.2). Decisions are listed at the end.
 
 Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHEDULE operations), [dispatch.md](dispatch.md) (the planner that uses them).
 
@@ -19,10 +19,10 @@ Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHE
 | Crew rules | vocado `CLAUDE.md`: teammates default to `claude-opus-5-5`; `ui-builder` (Opus) builds UI; `ui-qa` (Muse Spark 1.3) is read-only visual and accessibility QA; `flash-helper` (DeepSeek V4.1 Flash) does search, summaries, reference collection and exactly specified mechanical edits, and never implementation, review verdicts, security, DB, auth, rights or anything needing images |
 | Risky work | DB, migration, security and rights work uses the `Codex Engineering Task` template; DISPATCH marks it CAUTION |
 | What atc sees of a team | Session name, status (AIRBORNE / HOLDING / PARKED), claimed worktrees, past FLIGHTs (team fit) |
-| Sizing | Linear has 0 estimates. The planner counts slots (1 FLIGHT per TEAM), not effort |
-| Pre-assignment | `lane:TEAM_X` label (PR #7): proposed only to that team |
+| Sizing | Linear has 0 estimates. The planner counts WAKE-weighted AIRPORT slots (L 0.5, M 1, H 2; section 5), 1 FLIGHT per TEAM under the STAND rule, plus at most one STAND-free FLIGHT per TEAM (section 5.1) |
+| Pre-assignment | `tail:TEAM_X` label: proposed only to that team. `lane:TEAM_X` (PR #7) is still read as an alias until 2026-10-10 (section 9) |
 
-What this caused on 2026-09-26:
+What the old state (1 slot per FLIGHT, `lane:` only) caused on 2026-09-26:
 
 - VOC-196 (a security static gate) was proposed to TEAM_D, then TEAM_B, while its body said "TEAM_E, on Opus". Nothing in atc could express that.
 - A security ticket and a one-line docs fix look the same to the planner: one slot each, any team.
@@ -56,7 +56,7 @@ Kept in `~/.local/state/atc/fleet.json`, like the AIRPORT registry (`airports.js
     "complement": [
       { "position": "backend", "agent": "claude-opus-5-5" },
       { "position": "ui-builder", "agent": "ui-builder" },
-      { "position": "ui-qa", "agent": "ui-qa" },
+      { "position": "ui-qa", "agent": "ui-qa", "limits": ["read-only"] },
       { "position": "flash-helper", "agent": "flash-helper", "limits": ["no BUILD", "no CHECK verdicts", "no SEC"] }
     ],
     "ratings": ["UI", "DATA", "DOCS"]
@@ -90,7 +90,7 @@ Three independent axes. Each is a Linear label that OCC owns (a plan field in oc
 
 What it changes:
 
-- `SURVEY` and `CHECK` need no worktree, so they don't count against the 1-FLIGHT-per-TEAM STAND rule. A HOLDING team can take one (section 5.1).
+- `SURVEY` and `CHECK` need no worktree, so they don't count against the 1-FLIGHT-per-TEAM STAND rule. A HOLDING or PARKED team can take one, one per AIRCRAFT (section 5.1).
 - `CHECK` is never assigned to the team that flew the BUILD it reviews (independence, like TOWER not judging its own assignments; section 5.2).
 - `FERRY` FLIGHTs can be batched: one CAPTAIN takes several in one pass.
 
@@ -109,7 +109,7 @@ What it changes:
 
 - **Slots**: AIRPORT capacity is counted in WAKE-weighted slots. VCDO's 4 means, for example, two `H` or four `M`.
 - **Separation**: two `H` FLIGHTs linked by `related` or touching the same area get a larger conflict penalty than two `L`.
-- **On-time**: the expected block time is the baseline for the stage 4 on-time metric until real history replaces it. After about 20 FLIGHTs per category, the medians from the FLIGHT RECORDER take over.
+- **On-time**: the expected block time is the baseline for the stage 4 on-time metric until real history replaces it. After about 20 LOGBOOK entries per category, their median is meant to take over. Not built yet (section 7.2).
 - **`J`** is a signal to plan, not to fly.
 
 ### 4.3 Required TYPE RATING: what it touches
@@ -138,7 +138,7 @@ Labels rather than Linear estimates: estimates are one number per team setting, 
 
 ## 5. Planner rules
 
-Applied in this order. The first four are hard rules: a FLIGHT that fails them is excluded with the reason, never given to another team.
+Applied in this order. The first four are hard rules, and so is the `J` exclusion in rule 5: a FLIGHT that fails them is excluded with the reason, never given to another team.
 
 1. **TAIL ASSIGNMENT**: `tail:TEAM_X` → only that AIRCRAFT (what `lane:` does today).
 2. **TYPE RATING**: the AIRCRAFT holds every required rating.
@@ -222,10 +222,10 @@ Not built yet: WAKE-scaled conflict risk (a same-area approach is sketched in [i
 
 | Stage | Who writes the labels |
 |---|---|
-| Now (before OCC S2) | The SUPERVISOR or President by hand. DISPATCH notes the classification it reads from the body |
-| OCC S1 | OCC drafts a SCHEDULE `CLASSIFY` operation for each new or unclassified Todo: FLIGHT TYPE, WAKE, ratings, with a one-line reason. The SUPERVISOR marks it in shadow |
-| OCC S2 | Approved `CLASSIFY` operations are written through linear-guard |
-| OCC S3 | `CLASSIFY` may become automatic for non-`SEC` FLIGHTs if S2 agreement is high. Adding or removing `rating:SEC` always needs approval |
+| By hand (any stage) | The SUPERVISOR or President. Not built yet: DISPATCH notes that suggest a classification from the body |
+| OCC S1 (built) | OCC drafts a SCHEDULE `CLASSIFY` operation for each Todo or Backlog FLIGHT missing a `type:` or `wake:` label (`candidatesOf` in `server/schedule.ts`, likely `SURVEY` and `CHECK` first): FLIGHT TYPE, WAKE, ratings, with a one-line reason. The SUPERVISOR marks it in shadow |
+| OCC S2 (built, off by default) | Approved `CLASSIFY` operations are written through linear-guard, when the SCHEDULE `mode` is `approval` (occ.md) |
+| OCC S3 (not built yet) | `CLASSIFY` may become automatic for non-`SEC` FLIGHTs if S2 agreement is high. Adding or removing `rating:SEC` always needs approval |
 
 Classification is a bounded choice from fixed options, so it is also the first candidate for a typed-judgment model (the Jev evaluation in the DISPATCH notes), measured against the SUPERVISOR's shadow marks.
 
@@ -244,12 +244,12 @@ Stage 4 (network planning) puts these next to the project goals (section 7.3). O
 
 ### 7.1 LOGBOOK
 
-An aircraft logbook records every flight an airframe has flown. atc's LOGBOOK does the same per AIRCRAFT: one line per FLIGHT that ARRIVED, that is, whose PR was merged into the AIRPORT's default branch.
+An aircraft logbook records every flight an airframe has flown. atc's LOGBOOK does the same per AIRCRAFT: one line per PR merged into the AIRPORT's default branch, which is when its FLIGHT (or AD HOC work) ARRIVED. A FLIGHT flown in several PRs has several lines; a `Revert` PR adds none of its own.
 
 Kept in `~/.local/state/atc/logbook.jsonl`, append-only like the other records. Two operations:
 
 ```json
-{"op":"arrived","t":"…","key":"owner/repo#31","aircraft":"TEAM_J","flight":"VOC-201","class":{"type":"BUILD","wake":"M","ratings":["UI"],"explicit":{"type":true,"wake":true}},"airport":"ATCC","pr":{"repo":"owner/repo","number":31,"url":"…","title":"…"},"stands":["/home/…/worktrees/atc-logbook"],"departedAt":"…","departedFrom":"claim","arrivedAt":"…","blockMin":190,"landingWaitMin":122,"codexFindings":1,"changesRequested":false,"reverted":false,"los":0}
+{"op":"arrived","t":"…","key":"owner/repo#31","aircraft":"TEAM_J","flight":"VOC-201","class":{"type":"BUILD","wake":"M","ratings":["UI"],"explicit":{"type":true,"wake":true}},"airport":"ATCC","pr":{"repo":"owner/repo","number":31,"url":"…","title":"…"},"branch":"claude/logbook","stands":["/home/…/worktrees/atc-logbook"],"departedAt":"…","departedFrom":"claim","arrivedAt":"…","blockMin":190,"landingWaitMin":122,"codexFindings":1,"changesRequested":false,"reverted":false,"los":0}
 {"op":"reverted","t":"…","key":"owner/repo#31","by":{"number":35,"url":"…"}}
 ```
 
@@ -378,7 +378,7 @@ Kept in `~/.local/state/atc/departures.jsonl`, append-only (`server/departures.t
 
 - One card per AIRCRAFT: registration and callsign, base AIRPORT, status, CREW COMPLEMENT declared vs observed, TYPE RATINGS, ROUTES, TARGETS against the LOGBOOK actuals (section 7.2) with the last few FLIGHTs.
 - Edit form for the SUPERVISOR (writes `fleet.json`, same pattern as the AIRPORT registry).
-- A classification column in the DISPATCH tab and on FIDS.
+- The classification on each DISPATCH card, under the title (section 5). Not built yet: the classification on FIDS.
 
 ### 8.1 Team building
 
@@ -451,7 +451,7 @@ Calls are grouped by `agentType` and `model`: `observedCrew: {agentType, positio
 **Drift** (`crewDrift`):
 
 - `undeclared`: observed calls with no POSITION, by agent type, with the model when one was given (`Explore`, `general-purpose (sonnet)`). The card shows "선언에 없음: Explore".
-- `unused`: declared POSITIONs with no call in the window. A POSITION that is never a subagent (the `codex` reviewer of the `security` CONFIGURATION, which works through GitHub reviews) always shows here. Read it as "not seen", not as a fault.
+- `unused`: declared POSITIONs with no call in the window. A POSITION that is never a subagent (the `reviewer` POSITION of the `security` CONFIGURATION, agent `codex (GitHub 리뷰)`, which works through GitHub reviews) always shows here. Read it as "not seen", not as a fault.
 
 **Cost.** The server rescans `~/.claude/projects` for `custom-title.json` at most every 30 seconds. Titles are cached by file mtime and each session's calls by the mtime of its `subagents/` folder, so an unchanged session is not re-read.
 
@@ -497,10 +497,12 @@ When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT throug
 
 ## 9. Moving from `lane:` to `tail:`
 
-1. The planner reads `tail:` and keeps reading `lane:` as an alias for two weeks, marking it "deprecated" in the exclusion reason.
-2. Create Linear labels `tail:TEAM_A` … `tail:TEAM_F` and put `tail:TEAM_E` on VOC-196 (approved by the SUPERVISOR on 2026-09-26).
-3. Tell President: assignments go on Linear as `tail:TEAM_X` from now on; the OCC handover follows occ.md section 8.
-4. Rename in `occ/CLAUDE.md`, README and CHANGELOG.
+All four steps are done:
+
+1. ✅ The planner reads `tail:` and keeps reading `lane:` as an alias until 2026-10-10. An exclusion reason for a `lane:` FLIGHT adds `(옛 lane: 라벨 — tail:로 바꿀 것)`. The code has no cutoff date; the alias is removed by hand.
+2. ✅ Linear labels `tail:TEAM_A` … `tail:TEAM_F` were created and VOC-196 got `tail:TEAM_E` (approved by the SUPERVISOR on 2026-09-26).
+3. ✅ President was told: assignments go on Linear as `tail:TEAM_X`; the OCC handover follows occ.md section 8.
+4. ✅ Renamed in `occ/CLAUDE.md`, README and CHANGELOG.
 
 ## 10. Implementation order
 
@@ -508,7 +510,7 @@ When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT throug
 2. ✅ `fleet.json` registry, API and FLEET tab (read and edit), with defaults from the vocado crew rules. Observed crew next to the declared complement and CREW CHANGE (the text, and OCC sending it in approval mode) are in sections 8.3 and 8.4
 3. ✅ Classification labels read by the planner: TYPE RATING and FLIGHT TYPE hard rules, WAKE slots, ROUTE score (the Risk group counts as SEC; label groups are read as `group:name`), STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (sections 5.1, 5.2)
 4. ◐ The DISPATCH card shows the classification. Still to do: FIDS, and DISPATCH notes that suggest a classification when labels are missing
-5. OCC S1 `CLASSIFY` drafts (with the SCHEDULE work in occ.md)
+5. ✅ OCC S1 `CLASSIFY` drafts (with the SCHEDULE work in occ.md; `server/schedule.ts`, section 6)
 6. ◐ TARGETS actuals from the LOGBOOK on the FLEET cards (sections 7.1, 7.2), and next to the project goals in NETWORK (section 7.3). Still to do: on-time baselines from category medians, OCC target-change drafts (section 7.4, designed only)
 7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE (section 8.2): TYPE RATING evidence from the LOGBOOK, GRANT and REVIEW recommendations, grant and revoke by the SUPERVISOR
@@ -520,7 +522,7 @@ When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT throug
 | Labels drift from reality (a "M" that is really "H") | Shadow `CLASSIFY` first; on-time data shows categories that run long; the CAPTAIN can report a reclassification |
 | Too many hard rules leave nothing assignable | Every exclusion shows its rule; the SUPERVISOR can drop `tail:` or add a rating |
 | Declared crew differs from the real crew | The FLEET tab shows declared vs observed side by side |
-| Label clutter in Linear | Four prefixes only (`tail:`, `type:`, `wake:`, `rating:`), created once |
+| Label clutter in Linear | Four axes only, created once: `tail:` and `rating:` as flat labels, `type` and `wake` as label groups. vocado's existing Risk group is also read as `SEC`, so it needs no new label |
 | `SEC` given away too easily | `rating:SEC` changes and `SEC` ratings on AIRCRAFT always need the SUPERVISOR |
 
 ## Decisions (2026-09-26, SUPERVISOR)

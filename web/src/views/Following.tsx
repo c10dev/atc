@@ -23,6 +23,8 @@ interface FollowItem {
   state: string | null;
   aircraft: string | null;
   source: "dispatch" | "tail";
+  standFree?: boolean; // STAND 없는 FLIGHT(SURVEY·CHECK): READBACK → DEPARTED → ARRIVED
+  arrival?: { note: string; url: string | null } | null; // STAND 없는 FLIGHT의 ARRIVED 보고
   proposal: { id: string; status: string } | null;
   wake: "L" | "M" | "H" | "J";
   expectMin: number;
@@ -153,6 +155,17 @@ function FollowRow({ f, now }: { f: FollowItem; now: number }) {
 
       <div className="ff-track">
         <StageBar f={f} now={now} />
+        {f.arrival && (
+          <span className="ff-pr" title={`ARRIVED 보고: ${f.arrival.note}`}>
+            {f.arrival.url ? (
+              <a href={f.arrival.url} target="_blank" rel="noreferrer">
+                결과
+              </a>
+            ) : (
+              <span className="faint">ARRIVED 보고</span>
+            )}
+          </span>
+        )}
         {f.pr && (
           <span className="ff-pr">
             <a className="mono" href={f.pr.url} target="_blank" rel="noreferrer" title={`${f.pr.repo} #${f.pr.number}`}>
@@ -184,11 +197,13 @@ function FollowRow({ f, now }: { f: FollowItem; now: number }) {
   );
 }
 
-// 5단계 막대: 닿은 단계는 채우고, 지금 단계는 강조. tail:이면 READBACK은 해당 없음
+// 단계 막대: 닿은 단계는 채우고, 지금 단계는 강조. tail:이면 READBACK은 해당 없음.
+// STAND 없는 FLIGHT는 PR·CLEARED가 없어 READBACK → DEPARTED → ARRIVED 3단계
 function StageBar({ f, now }: { f: FollowItem; now: number }) {
+  const steps = f.standFree ? STAGES.filter((s) => s.id !== "prOpened" && s.id !== "cleared") : STAGES;
   return (
-    <ol className="ff-stages" aria-label={`${flightNumber(f.flight)} 단계`}>
-      {STAGES.map((s) => {
+    <ol className={`ff-stages${f.standFree ? " is-short" : ""}`} aria-label={`${flightNumber(f.flight)} 단계${f.standFree ? " (STAND 없는 FLIGHT)" : ""}`}>
+      {steps.map((s) => {
         const at = f.stages[s.id];
         const na = s.id === "readback" && f.source === "tail" && !at;
         const current = f.stage === s.id;

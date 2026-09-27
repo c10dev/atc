@@ -12,23 +12,26 @@ atc는 항공처럼 관제 세션을 둘로 나눈다.
 > 상태:
 >
 > - **S0 구현**(2026-09-26): `atc/occ/` 세션(DISPATCH를 합침), 읽기 전용 `gh`, 읽기 전용 MCP guard, 매뉴얼 다시 읽기, planner의 TAIL ASSIGNMENT(`tail:TEAM_X`, [fleet.ko.md](fleet.ko.md) 참고).
-> - **S1 구현**: `CLASSIFY`, `PRIORITIZE`, `NEW`의 SCHEDULE 초안을 그림자 운용한다(`server/schedule.ts`, `atcctl schedule brief|draft`, SCHEDULE 탭, OCC 규칙).
+> - **S1 구현**: `CLASSIFY`, `PRIORITIZE`, `NEW`, `CLOSE`의 SCHEDULE 초안을 그림자 운용한다(`server/schedule.ts`, `atcctl schedule brief|draft`, SCHEDULE 탭, OCC 규칙).
 > - `NEW`는 CHARTER DESK다. CHARTER REQUEST로 AD HOC FLIGHT 초안을 만든다. 본문 섹션을 점검하고, 스냅숏(최근 45일 안에 바뀐 이슈)에서 제목이 비슷한 중복을 찾는다.
+> - `CLOSE`(5.5, 2026-09-27 구현)는 PR이 머지된 FLIGHT를 닫자는 초안이다. release하지 않고, 이슈는 SUPERVISOR가 Linear에서 닫는다.
 > - 열린 초안은 종류를 합쳐 최대 5건이다. 판정 없이 3일이 지나면 만료된다.
 > - ATC의 CLEARED TO LAND 점검(9장)은 구현됐다. LANDING SEQUENCE는 이제 열린 GitHub PR에서 나온다.
-> - 나머지 작업(`CLOSE`, `TAIL`, `LINK`, `SPLIT`, `COMMENT`)과 S3는 설계만 있다.
+> - 나머지 작업(`TAIL`, `LINK`, `SPLIT`, `COMMENT`)과 S3는 설계만 있다(아직 만들지 않음).
 > - S2(승인 운용: linear-guard, `schedule release`, APPLIED 감지)는 `mode` 뒤에 구현돼 있고 기본은 꺼짐. "S2 켜는 법" 참고.
 > - 결정 사항은 맨 아래 "결정"에 있다.
 
 ## 1. 지금 사실
 
-| 항목 | 현재 |
+2026-09-26, S0 전의 스냅숏이다. 그 뒤에 바뀐 것은 위 상태 줄에 있다.
+
+| 항목 | 현재(2026-09-26) |
 |---|---|
 | 그룹 책임자 | `vocado_nextjs`의 "President" 세션. TEAM_A … TEAM_F 위에 있다. 일을 맡기고, 팀 보고를 GitHub·Linear·DB로 확인하고, PR을 리뷰하고 Codex 지적을 판단하고, Linear를 정리하고, 규칙 파일(`CLAUDE.md`, PR 템플릿)을 관리하고, 머지·닫기·범위 결정은 사용자에게 넘긴다. 제품 코드는 쓰지 않고 머지할 수 없다 |
-| DISPATCH | 별도 세션(`atc/dispatch/`)에서 그림자 운용(2a) 중. 제안을 검토하고 메모·CAUTION·HOLD를 단다. Linear에 쓰지 않는다 |
+| DISPATCH | 별도 세션(`atc/dispatch/`)에서 그림자 운용(2a) 중. 제안을 검토하고 메모·CAUTION·HOLD를 단다. Linear에 쓰지 않는다. S0에서 OCC에 합쳐졌고, 폴더는 이제 `occ/`다 |
 | TOWER | 1단계 관제: LOSS OF SEPARATION, HANDOFF, LANDING SEQUENCE |
 | Linear에 쓰는 사람 | 팀 리더만(vocado `CLAUDE.md`: "Linear에는 리더만 쓴다"). 실제로는 President도 이슈를 만들고, 우선순위를 바꾸고, 닫는다 |
-| 상태 변경 | GitHub 연동이 이슈를 In Progress / In Review로 옮기고, 머지하면 Done이 된다 |
+| 상태 변경 | GitHub 연동이 이슈를 In Progress / In Review로 옮긴다. 머지로 Done이 되는 것은 PR 본문에 `Fixes VOC-n`이 있을 때뿐이다. 다른 머지 뒤에는 이슈가 열린 채 남는다. `CLOSE`(5.5)와 `merged-not-done`(8.1)이 이 경우를 다룬다 |
 
 2026-09-26 하루에 생긴 문제:
 
@@ -87,6 +90,8 @@ OCC는 Linear에 마음대로 쓰지 않는다. **SCHEDULE 작업**(operation)�
 | `SPLIT` | 발견한 것을 하위나 related 티켓으로 | PR #400 리뷰의 P3 항목 |
 | `COMMENT` | 계획 댓글 남기기(실행 댓글이 아님) | "VOC-52가 끝날 때까지 미룸" |
 
+구현: `NEW`(CHARTER DESK, 5.1), `CLOSE`(5.5), `PRIORITIZE`, `CLASSIFY`. 아직 만들지 않음: `TAIL`, `LINK`, `SPLIT`, `COMMENT`.
+
 ### 5.1 작업은 어디서 오나
 
 - **SUPERVISOR의 지시(CHARTER DESK)**: OCC 세션에서 바로 하는 CHARTER REQUEST("X 티켓 만들어 줘")는 `NEW` 초안, 곧 AD HOC FLIGHT(정규 스케줄 밖에서 더한 FLIGHT)가 된다.
@@ -106,7 +111,7 @@ OCC는 Linear에 마음대로 쓰지 않는다. **SCHEDULE 작업**(operation)�
 ### 5.3 중복과 한도
 
 - `NEW`나 `SPLIT` 전에 OCC는 열린 이슈와 최근 닫힌 이슈를 찾아보고, 찾은 결과를 작업에 남긴다("중복 없음: X, Y 검색").
-- 열린 초안은 최대 5건, 적용된 `NEW` / `SPLIT`은 하루 10건까지(설정 파일). 넘으면 OCC는 초안을 멈추고 보고한다.
+- 열린 초안은 종류를 합쳐 최대 5건이다(`server/schedule.ts`의 `SCHEDULE_OPEN_LIMIT`). 넘으면 atc가 새 초안을 거부하고(409), OCC는 초안을 멈추고 보고한다. 적용된 `NEW` / `SPLIT`의 하루 한도(하루 10건, 설정 파일)는 아직 만들지 않았다.
 - `CLOSE`에는 OCC가 직접 확인한 근거가 필요하다: 머지된 PR, 설정 읽기, 댓글. "끝난 것 같다"로는 안 된다.
 
 ### 5.4 CLASSIFY 정확도
@@ -155,19 +160,19 @@ Linear 정리는 원래 President의 일이었다. 이제 OCC가 초안을 쓰�
 
 ## 6. linear-guard
 
-`occ/send-guard.mjs`와 같은 방식이다. OCC의 Linear 쓰기 도구(`mcp__*__save_issue`, `save_comment`, 관계·라벨 도구)에 거는 PreToolUse hook이다. fail-closed(`… || exit 2`)다.
+linear-guard는 `occ/mcp-guard.mjs` 안에 있다. OCC의 MCP 도구 전부에 거는 PreToolUse hook이다(matcher `mcp__.*`, fail-closed `… || exit 2`). 읽기 도구는 S0처럼 통과한다. linear-guard는 Linear 쓰기 도구 둘, `save_issue`와 `save_comment`를 판정한다. 다른 쓰기 도구(관계, 라벨, GitHub)는 S0처럼 모두 막힌다.
 
-쓰기는 아래를 모두 만족할 때만 통과한다.
+Linear 쓰기는 아래를 모두 만족할 때만 통과한다.
 
-1. SCHEDULE 모드가 쓰기를 허용한다(7장). 그림자에서는 Linear 쓰기가 모두 막힌다.
-2. payload에 SCHEDULE id가 있다. 이슈 본문은 `— OCC S-0001`로 끝나고, 댓글은 `[OCC S-0001]`로 시작한다.
-3. 그 작업이 **승인**됐고(또는 7장에 따른 자동이고) 아직 적용되지 않았다.
-4. payload가 atc에서 가져온(`GET /api/schedule/ops/:id`) 작업 payload와 **정확히** 같다.
-5. OCC의 필드(4장)만 건드린다. 이슈를 In Progress나 In Review로 옮기는 것은 늘 막힌다.
+1. SCHEDULE 모드가 `approval`이다(S2, 7장). 그림자에서는 Linear 쓰기가 모두 막힌다.
+2. 도구와 입력이 atc가 release한 호출과 **정확히** 같다(키 순서는 상관없음). `GET /api/schedule/released`가 `released` 상태인 작업의 호출을 준다. 작업이 APPLIED, SUPERSEDED, EXPIRED가 되면 그 호출은 목록에서 빠진다.
+3. atc가 3초 안에 답한다. 연결할 수 없으면 쓰기를 막는다.
 
-그 밖에는 모두 `SCHEDULE 쓰기 차단 — …`으로 막힌다. send-guard처럼 OCC는 막힌 쓰기를 말만 바꿔 다시 시도하지 않는다. SUPERVISOR에게 보고한다.
+guard는 이것 말고는 보지 않는다. 나머지는 release되는 호출을 atc만 만든다는 데서 나온다(`callsOf`, "S2 켜는 법" 참고). 이슈 본문은 `— OCC S-0001 · CHARTER REQUEST …`로 끝나고, 댓글은 `[OCC S-0001]`로 시작한다. 어느 호출도 상태나 담당자를 건드리지 않는다. 그래서 이슈를 In Progress나 In Review로 옮기는 쓰기는 맞을 수가 없다.
 
-다음 Linear 조회에 변경이 보이면(footer가 `S-0001`인 이슈, 새 우선순위, 닫힌 상태) atc가 작업을 APPLIED로 표시한다. DISPATCH가 DEPARTED를 감지하는 것과 같은 방식이다.
+그 밖에는 모두 `OCC MCP 차단 — …`으로 막힌다. send-guard처럼 OCC는 막힌 쓰기를 말만 바꿔 다시 시도하지 않는다. SUPERVISOR에게 보고한다.
+
+다음 Linear 조회에 변경이 보이면 atc가 release된 작업을 APPLIED로 표시한다. `NEW`는 초안 뒤에 만들어진 같은 제목(정규화)의 이슈, `CLASSIFY`와 `PRIORITIZE`는 초안대로 된 라벨이나 우선순위, `CLOSE`는 Done이나 Canceled가 된 이슈다. release 전에 이미 변경이 보이면 APPLIED가 아니라 SUPERSEDED다.
 
 ## 7. 흐름과 단계
 
@@ -179,11 +184,11 @@ S2 승인      SUPERVISOR 승인 → OCC: atcctl schedule release S-0001 → 정
 S3 자동      위험 낮은 작업은 승인을 건너뜀(아래 목록). 나머지는 S2 그대로
 ```
 
-S1의 작업 상태(`server/schedule.ts`에 구현된 대로): `draft → (agreed | disagreed)`. 곁가지로 `superseded`(같은 FLIGHT·종류의 새 초안이 생겼거나 상황이 바뀜: FLIGHT가 Todo나 Backlog를 떠났거나, 누가 손으로 바꿔서 Linear에 이미 변경이 보임)와 `expired`(판정 없이 3일)가 있다. S2는 `approved → released → applied`를 더하고, 곁가지로 `rejected`를 둘 예정이다.
+S1의 작업 상태(`server/schedule.ts`에 구현된 대로): `draft → (agreed | disagreed)`. 곁가지로 `superseded`(같은 FLIGHT·종류의 새 초안이 생겼거나 상황이 바뀜: FLIGHT가 Todo나 Backlog를 떠났거나, 누가 손으로 바꿔서 Linear에 이미 변경이 보임)와 `expired`(판정 없이 3일)가 있다. S2는 `approved → released → applied`를 더하고, 곁가지로 `rejected`를 둔다(`mode` 뒤에 구현). 승인되거나 release된 작업도 `superseded`나 `expired`(release나 적용 없이 3일)가 될 수 있다.
 
 S3 자동 작업 후보. 각각 S2 데이터로 확인한다.
 
-- 이슈의 PR이 머지됐고, 완료 기준을 모두 확인했고, 근거가 연결돼 있으면 `CLOSE`로 Done
+- 이슈의 PR이 머지됐고, 완료 기준을 모두 확인했고, 근거가 연결돼 있으면 `CLOSE`로 Done. vocado 규칙이 바뀌어 OCC가 상태를 바꿀 수 있을 때만이다(5.5). 그전에는 `CLOSE`를 release하지 않으므로 자동도 될 수 없다
 - 본문에서 그대로 인용한 선행 작업에 대한 `LINK`
 - 상위의 우선순위를 물려받는 `SPLIT` 하위에 대한 `PRIORITIZE`
 
@@ -194,17 +199,17 @@ S3 자동 작업 후보. 각각 S2 데이터로 확인한다.
 | 원래 | OCC에서 |
 |---|---|
 | DISPATCH 세션(`atc/dispatch/`) | 같은 일을 `atc/occ/`에서: 제안 검토, HOLD, FLIGHT PLAN, READBACK. DISPATCH 탭, 제안 id(`D-xxxx`), send-guard는 그대로 |
-| President: 일 맡기기 | DISPATCH 제안. 2b 전까지는 사람이 직접 한 배정을 `TAIL`로 기록해서 planner가 볼 수 있게 한다 |
-| President: 팀 보고 확인 | **운항 추적**(flight following). atc가 배정된 FLIGHT를 모두 따라간다(`server/following.ts`, `GET /api/following`): 수락·출발·RECALL 중인 DISPATCH ASSIGN, 그리고 `tail:` 라벨이 붙은 In Progress FLIGHT. READBACK → DEPARTED → PR 열림 → CLEARED → ARRIVED 단계를 따라가고, 지연(WAKE 기대치의 1.5배가 지나도 다음 단계가 없음)과 Linear·PR 불일치를 표시한다. OCC는 바퀴마다 `atcctl following`을 돌려 새 문제만 보고하고 `following ack`로 기록해서, 같은 것을 두 번 보고하지 않는다. 팀에 메시지를 보내지 않는다. 팀 보고나 SUPERVISOR 요청이 오면 OCC는 여전히 읽기 전용 `gh`(`gh pr view`, `gh pr checks`, `gh pr diff`)로 PR head, CI, 리뷰를 확인한다. 기계적인 착륙 점검은 ATC의 CLEARED TO LAND(9장)다 |
+| President: 일 맡기기 | DISPATCH 제안. 2b 전까지는 사람이 직접 한 배정을 `tail:TEAM_X` 라벨로 기록해서 planner가 볼 수 있게 한다. 지금은 손으로 붙인다. SCHEDULE `TAIL` 작업은 아직 만들지 않았다 |
+| President: 팀 보고 확인 | **운항 추적**(flight following). atc가 배정된 FLIGHT를 모두 따라간다(`server/following.ts`, `GET /api/following`): 수락·출발·RECALL 중인 DISPATCH ASSIGN, 그리고 `tail:` 라벨이 붙은 In Progress FLIGHT. READBACK → DEPARTED → PR 열림 → CLEARED → ARRIVED 단계를 따라가고(STAND 없는 FLIGHT는 READBACK → DEPARTED → ARRIVED, 8.1), 지연(WAKE 기대치의 1.5배가 지나도 다음 단계가 없음)과 Linear·PR 불일치를 표시한다. OCC는 바퀴마다 `atcctl following`을 돌려 새 문제만 보고하고 `following ack`로 기록해서, 같은 것을 두 번 보고하지 않는다. 팀에 메시지를 보내지 않는다. 팀 보고나 SUPERVISOR 요청이 오면 OCC는 여전히 읽기 전용 `gh`(`gh pr view`, `gh pr checks`, `gh pr diff`)로 PR head, CI, 리뷰를 확인한다. 기계적인 착륙 점검은 ATC의 CLEARED TO LAND(9장)다 |
 | President: Linear 정리 | SCHEDULE 작업 |
 | President: 규칙 파일 관리 | TEAM이 PR로 구현하는 `NEW` 티켓 |
 | President: PR 리뷰와 범위 판단 | SUPERVISOR에게 남는다. OCC는 요약할 수 있지만 결정하지 않는다 |
 
-OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더한 것이다(`guard.mjs --gh-read`). Edit과 Write는 계속 거부된다. `occ/mcp-guard.mjs`는 읽기 MCP 도구(이름이 get, list, search, read, query, fetch로 시작)만 통과시킨다. 그래서 S0에서는 커넥터가 로드돼 있어도 OCC가 Linear나 GitHub에 쓸 수 없다. S2에서는 linear-guard가 승인된 작업에 한해 Linear 쓰기를 연다.
+OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더한 것이다(`guard.mjs --gh-read`). Edit과 Write는 계속 거부된다. `occ/mcp-guard.mjs`는 읽기 MCP 도구(이름이 get, list, search, read, query, fetch로 시작)만 통과시킨다. 그래서 S0에서는 커넥터가 로드돼 있어도 OCC가 Linear나 GitHub에 쓸 수 없다. S2에서는 linear-guard가 승인된 작업의 release된 호출에 한해 Linear 쓰기를 연다(6장).
 
 세션은 매뉴얼을 다시 읽는다. `/tick`은 `atcctl manual check`로 시작한다. `CLAUDE.md`와 `/tick`의 해시를 마지막 `atcctl manual ack`(`~/.local/state/atc/manuals/`에 저장)와 비교한다. 바뀌었으면 세션은 다른 일보다 먼저 다시 읽는다. TOWER의 `/tick`도 같다. 1장의 옛 매뉴얼 사건은 이것으로 고쳐진다.
 
-**President는 물러난다.** 세 가지가 모두 되면: OCC가 S1을 일주일 운용했고, 운항 추적이 모든 팀 보고를 다루고, `TAIL`을 쓰고 있다. 그때까지 President는 계속 일을 맡기고, 배정마다 `tail:` 라벨로 기록한다(OCC S2 전까지는 손으로).
+**President는 물러난다.** 세 가지가 모두 되면: OCC가 S1을 일주일 운용했고, 운항 추적이 모든 팀 보고를 다루고, `TAIL` 작업을 쓰고 있다(아직 만들지 않음). 그때까지 President는 계속 일을 맡기고, 배정마다 `tail:` 라벨을 손으로 붙인다.
 
 ### 8.1 운항 추적 자세히
 
@@ -216,18 +221,30 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 | CLEARED | CLEARED TO LAND인 동안 열린 PR의 `readyAt` |
 | ARRIVED | 그 FLIGHT의 LOGBOOK 항목(되돌리지 않은 것) |
 
+**STAND 없는 FLIGHT**(SURVEY와 CHECK: 제안이 READBACK으로 DEPARTED함, `departedVia: "readback"`)는 PR을 만들지 않는다. PR 열림과 CLEARED 단계를 건너뛰므로 단계 막대는 READBACK → DEPARTED → ARRIVED다.
+
+| 단계 | 출처 |
+|---|---|
+| READBACK | 제안의 `timeline.accepted` |
+| DEPARTED | 제안의 `timeline.departed`(READBACK 자체) |
+| ARRIVED | 제안의 `arrived` 상태(`timeline.arrived`, `arrivedNote` / `arrivedUrl`). CAPTAIN의 보고이고, OCC가 `atcctl dispatch arrived D-xxxx -- <결과 링크나 한 줄>`로 기록한다 |
+
+제안이 없는 `tail:` FLIGHT는 FLIGHT TYPE이 SURVEY나 CHECK이면 STAND 없는 FLIGHT로 본다. 이때 DEPARTED는 Linear 시작 시각, ARRIVED는 Linear Done이다.
+
 | 문제 | 언제 | 심각도 |
 |---|---|---|
 | `no-departure` | READBACK 뒤 WAKE 기대치의 1.5배(LOGBOOK과 같이 L 60분, M 240분, H 2일)가 지나도 STAND도 출발도 없음 | warn |
 | `no-pr` | STAND나 출발이 있는데 1.5배가 지나도 PR 없음 | warn |
 | `pr-not-cleared` | PR이 있는데 1.5배가 지나도 CLEARED가 아님. 문구에 착륙을 막는 것들을 적는다 | warn |
 | `landing-wait` | CLEARED가 된 뒤 1시간 넘게 착륙하지 않음. 착륙은 SUPERVISOR 몫이다 | info |
+| `no-arrival` | STAND 없는 FLIGHT만: DEPARTED 뒤 WAKE 기대치의 1.5배가 지나도 ARRIVED 없음 | warn |
 | `review-no-pr` | Linear는 In Review인데 PR이 없음 | warn |
 | `done-not-merged` | Linear는 Done인데 머지된 PR이 없음 | warn |
 | `merged-not-done` | PR은 머지됐는데 Linear가 Done이 아님. `CLOSE` 초안이 다루는 경우다 | info |
 
 - RECALL 중인 FLIGHT는 멈추라고 한 것이라 지연을 보지 않는다.
-- ARRIVED했고 Linear에서도 닫힌 FLIGHT는 하루 동안 보이고 빠진다.
+- STAND 없는 FLIGHT에는 `no-departure`, `no-pr`, `pr-not-cleared`, `landing-wait`를 쓰지 않는다. Linear·PR 불일치(`review-no-pr`, `done-not-merged`, `merged-not-done`)도 보지 않는다. 지연은 `no-arrival` 하나다.
+- ARRIVED했고 Linear에서도 닫힌 FLIGHT는 하루 동안 보이고 빠진다. STAND 없는 FLIGHT도 다른 것처럼 ARRIVED 뒤 하루 동안 보인다.
 - `following-state.json`은 OCC가 보고한 키(`FLIGHT|code`)를 가진다. 풀린 문제는 잊으므로, 다시 생기면 다시 보고한다.
 
 ## 9. ATC가 맡는 것
@@ -239,7 +256,7 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
   - LOS가 없다.
 
   지금 President가 손으로 확인하는 것의 기계적인 절반이다. 옛 커밋에서만 초록인 CI, 옛 커밋에 남은 리뷰, main에서 벌어진 것을 잡는다.
-- **흐름 관리(3단계)**: CI가 밀릴 때 merge slot과 ground stop. `docs/dispatch.md`에 있는 대로.
+- **흐름 관리(3단계)**: CI가 밀릴 때 merge slot과 ground stop. [atfm.ko.md](atfm.ko.md)에 설계돼 있고 일부는 구현됐다(그림자 운용, 그 문서의 상태 줄 참고).
 - ATC는 계속 Linear를 읽기만 한다. SCHEDULE 작업 초안을 쓰지 않는다.
 
 ### 9.1 구현된 CLEARED TO LAND (2026-09-26)
@@ -274,8 +291,8 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 
 | 곳 | 내용 |
 |---|---|
-| `server/schedule.ts` (새 파일) | SCHEDULE 기록(`~/.local/state/atc/schedule.jsonl`, 추가만 함), 상태 전이, Linear 조회로 APPLIED 감지, 하루 한도 |
-| `server/sources/linear.ts` | 라벨(`tail:`, `type:`, `wake:`, `rating:`), 최근 닫힌 이슈(중복 검색용), `S-xxxx` footer 읽기 |
+| `server/schedule.ts` (새 파일) | SCHEDULE 기록(`~/.local/state/atc/schedule.jsonl`, 추가만 함), 상태 전이, Linear 조회로 APPLIED 감지, 열린 초안 한도(하루 한도는 아직 만들지 않음) |
+| `server/sources/linear.ts` | 라벨(`tail:`, `type:`, `wake:`, `rating:`), 최근 닫힌 이슈(중복 검색용) 읽기. NEW의 APPLIED는 `S-xxxx` footer가 아니라 제목으로 감지한다(6장) |
 | `server/dispatch.ts` | `tail:TEAM_X`와 [fleet.ko.md](fleet.ko.md) 5장의 분류 규칙 따르기 |
 | API | `GET /api/schedule/brief`, `GET /api/schedule/ops/:id`, `POST /api/schedule/ops`(초안), `POST /api/schedule/ops/:id/{verdict,approve,reject,release}`, `POST /api/schedule/mode` |
 | `atc/occ/` | `atc/dispatch/`에서 옮김: `CLAUDE.md`(운영 매뉴얼), `/tick`, send-guard, **linear-guard**, 읽기 전용 `gh`가 있는 Bash guard |
@@ -287,7 +304,7 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 
 S2는 구현돼 있고 SCHEDULE `mode`(`~/.local/state/atc/schedule.json`, 기본 `shadow`) 뒤에 있다. 켜면 OCC가 승인된 작업을 Linear에 쓰므로 이 순서로 한다.
 
-1. SCHEDULE 탭에서 S2 게이트(그림자 판정 20건 이상, 합의율 80% 이상)를 확인한다.
+1. SCHEDULE 탭에서 S2 게이트(그림자 판정 20건 이상, 합의율 80% 이상)를 확인한다. atc가 보이는 게이트(`gateOf`)는 이 둘만 본다. 11장의 "나중에 발견된 중복 0건"은 atc가 세지 않는다(아직 만들지 않음).
 2. vocado `CLAUDE.md`의 "Linear에는 리더만 쓴다" 규칙을 "OCC와 리더가 Linear에 쓴다. OCC는 계획 필드를(승인된 SCHEDULE 작업으로), 리더는 실행 필드를 쓴다"(4장)로 바꾼다. 그때 SUPERVISOR에게 확인한다.
 3. 평평한 Linear 라벨 `rating:SEC`, `rating:UI`, `rating:DATA`, `rating:DOCS`를 만든다(`type`·`wake` 라벨 그룹과 `tail:TEAM_X`는 이미 있다). 없는 라벨을 쓰는 CLASSIFY나 NEW 호출은 실패하고, OCC가 보고한다.
 4. SCHEDULE 탭의 "S2 승인 운용 켜기"를 누른다(또는 `POST /api/schedule/mode {"mode":"approval"}`). OCC는 다음 바퀴에 읽는다.
@@ -384,7 +401,7 @@ env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localh
 - mark 명령(`atcctl dispatch|schedule crosscheck`)이면 `guard.mjs --crosscheck`가 hook 입력의 `transcript_path`(세션 자신의 JSONL, 마지막 4 MB)를 읽는다. 마지막 assistant 메시지의 `message.model`을 가져오고, `<synthetic>`은 건너뛴다.
 - `/muse-spark|gpt-5\.6-terra/i`에 맞는 모델만 통과한다. 그 밖은 "앱에서 모델을 Muse로 바꾸거나, 터미널에서 ocx claude로 여세요"로 막는다: Claude 모델(`claude-opus-5-5`, `claude-sonnet-5` …), DeepSeek, transcript가 없거나 못 읽음, 거기 모델이 없음(fail-closed).
 - 읽기 명령(`brief`, `flight`, `gh pr view` …)은 확인하지 않는다.
-- 통과하면 guard는 PreToolUse `updatedInput`으로 답한다: 같은 명령 앞에 `ATC_CROSSCHECK_MODEL='<real model>'`을 붙인 것. atcctl은 그것을 mark의 `model`로 보낸다. 요청의 첫째 안이고, 예비안이 아니다.
+- 통과하면 guard는 PreToolUse `updatedInput`으로 답한다: 같은 명령 앞에 `ATC_CROSSCHECK_MODEL='<real model>'`을 붙인 것. atcctl은 그것을 mark의 `model`로 보낸다.
 - 세션이 이름을 직접 넣을 수 없다.
   - 명령 앞의 변수는 이미 막혀 있다.
   - mark 명령의 `--model`은 막힌다.
@@ -406,26 +423,26 @@ env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localh
 |---|---|
 | S0 (OCC 세션, DISPATCH 합침, Linear 읽기 전용) | 바로 시작 가능 |
 | S0 → S1 | SCHEDULE 기록, 탭, `atcctl schedule draft`가 있음 |
-| S1 → S2 | 결정된 초안 20건 이상, 합의율 80% 이상, 나중에 발견된 중복 0건. **vocado `CLAUDE.md`의 "Linear에는 리더만 쓴다"를 "OCC와 리더가 Linear에 쓴다. OCC는 계획 필드, 리더는 실행 필드를 쓴다"로 바꿈** |
+| S1 → S2 | 결정된 초안 20건 이상, 합의율 80% 이상(atc 게이트, `gateOf`), 나중에 발견된 중복 0건(atc가 세지 않음: 아직 만들지 않음). **vocado `CLAUDE.md`의 "Linear에는 리더만 쓴다"를 "OCC와 리더가 Linear에 쓴다. OCC는 계획 필드, 리더는 실행 필드를 쓴다"로 바꿈** |
 | S2 → S3 | S2 2주 이상, 사람이 되돌린 작업이 거의 없음, 잘못된 payload로 생긴 linear-guard 차단 없음 |
 
 ## 12. 위험과 대응
 
 | 위험 | 대응 |
 |---|---|
-| 티켓 스팸이 backlog를 채움 | 하루 한도, 중복 검색 필수, 먼저 그림자로 초안 품질을 잰다 |
+| 티켓 스팸이 backlog를 채움 | 열린 초안 한도(5건. 하루 한도는 아직 만들지 않음), 중복 검색 필수, 먼저 그림자로 초안 품질을 잰다 |
 | 보안 티켓의 범위가 틀림 | vocado 템플릿(허용 파일, 금지 변경, 불변 조건). CAUTION 작업은 절대 자동이 아님 |
-| 끝나지 않은 이슈를 닫음 | `CLOSE`에는 확인한 근거가 필요. 자동 `CLOSE`는 머지된 PR과 완료 기준 확인 뒤에만 |
+| 끝나지 않은 이슈를 닫음 | `CLOSE`에는 확인한 근거(LOGBOOK의 머지된 PR)가 필요. release하지 않고, 이슈는 SUPERVISOR가 Linear에서 닫는다(5.5) |
 | OCC가 일을 만들고 자기에게 DISPATCH함 | SUPERVISOR가 두 단계를 모두 승인. 충돌은 별도 세션인 ATC가 심판 |
 | OCC와 CAPTAIN이 같은 필드에 씀 | 필드 주인(4장), linear-guard가 강제 |
-| Linear API rate limit | 묶어서 조회, API 첨부 없음, 하루 쓰기 한도 |
+| Linear API rate limit | 묶어서 조회, API 첨부 없음, 하루 쓰기 한도(아직 만들지 않음) |
 | 오래된 운영 매뉴얼 | 해시가 바뀌면 `/tick`이 `CLAUDE.md`를 다시 읽음 |
 
 ## 13. 구현 순서
 
-1. ✅ **S0**: `atc/dispatch/`로 `atc/occ/`를 만든다(합침). guard에 읽기 전용 `gh`, 읽기 전용 MCP guard, 바뀌면 매뉴얼 다시 읽기. 남은 일: President에게 인계 알리기
+1. ✅ **S0**: `atc/dispatch/`로 `atc/occ/`를 만든다(합침). guard에 읽기 전용 `gh`, 읽기 전용 MCP guard, 바뀌면 매뉴얼 다시 읽기. 남은 일(2026-09-26 기준, 그 뒤 다시 확인하지 않음): President에게 인계 알리기
 2. ✅ planner의 TAIL ASSIGNMENT `tail:TEAM_X`. 처음에는 `lane:TEAM_X`로 나갔다(VOC-196 이중 DISPATCH를 바로 고침). 라벨은 기존 Linear 조회에서 읽는다
-3. ✅ **S1**: SCHEDULE 기록, API, `atcctl schedule`, SCHEDULE 탭, 그림자 판정. 첫 작업: `CLASSIFY`와 `PRIORITIZE`
+3. ✅ **S1**: SCHEDULE 기록, API, `atcctl schedule`, SCHEDULE 탭, 그림자 판정. 첫 작업: `CLASSIFY`와 `PRIORITIZE`. 그다음 `NEW`(CHARTER DESK, 5.1)와 ✅ `CLOSE`(5.5, 2026-09-27)
 4. ✅ `/tick`의 운항 추적: `atcctl following`(단계, 지연, 불일치, 반복 보고 없음)과 팀 보고용 읽기 전용 `gh`. ✅ TOWER의 CLEARED TO LAND 점검(9.1)
 5. ◐ **S2**: `mode` 뒤에 구현(linear-guard, `schedule release`, APPLIED 감지). 켤 때 남은 일: vocado `CLAUDE.md` 규칙 변경(그때 SUPERVISOR에게 확인)
 6. **S3**: 자동 작업. S2 데이터가 뒷받침하는 것만
