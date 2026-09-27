@@ -1551,8 +1551,8 @@ a.ticket:hover {
   }
 }
 
-/* 탭이 헤더 한 줄에 다 안 들어가는 폭(로고+탭+수치 ≈ 1540px): 탭을 헤더 둘째 줄로 */
-@media (min-width: 861px) and (max-width: 1560px) {
+/* 탭이 헤더 한 줄에 다 안 들어가는 폭(탭 10개, 로고+탭+수치 ≈ 1740px): 탭을 헤더 둘째 줄로 */
+@media (min-width: 861px) and (max-width: 1760px) {
   .console {
     height: auto;
     flex-wrap: wrap;
@@ -1567,6 +1567,15 @@ a.ticket:hover {
   }
   .tab {
     padding: var(--space-2) var(--space-4);
+  }
+}
+
+/* 둘째 줄이 가장 좁을 때: 탭 10개가 한 줄에 들어가게 좌우 여백을 줄인다(cockpit·night 글꼴이 넓다) */
+@media (min-width: 861px) and (max-width: 960px) {
+  .tab,
+  :root[data-theme="night"] .tabs .tab {
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
   }
 }
 
@@ -1602,6 +1611,10 @@ a.ticket:hover {
   }
   .tab:last-child {
     border-right: 0;
+  }
+  /* night 탭도 한 줄에 4개(탭 10개가 4/4/2) */
+  :root[data-theme="night"] .tabs .tab {
+    padding: 0 var(--space-2);
   }
   .readouts {
     width: 100%;
