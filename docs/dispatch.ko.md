@@ -162,7 +162,7 @@ PREFLIGHT와 BRIEFING 뒤로 SUPERVISOR에게 오는 카드는 대부분 "이 AI
 - **동의 묶음.** CROSSCHECK mark가 `agree`인 열린 ASSIGN 카드(blind 제외)는 ASSIGN 목록 맨 위에 한 줄씩 모인다. 줄에는 BRIEFING의 "무슨 일"(BRIEFING이 없으면 제목), FLIGHT, AIRCRAFT, **동의** 버튼이 있다. 버튼은 SUPERVISOR의 `agree` 판정(shadow)이나 승인(2b)을 기존 한 번 클릭 표시(`via: "crosscheck"`)와 함께 남긴다. 줄을 펼치면(▸, 키보드 Enter) 전체 카드가 보이고, 거절은 거기서 칩과 함께 한다. **"모두 동의"는 없다.** 판정마다 한 번씩 누른다.
 - **반대는 펼친 채로.** CROSSCHECK가 disagree한 카드(`wrong-aircraft`, `other`. FLIGHT 칩은 이미 HELD로 간다)는 CROSSCHECK 칩과 "CROSSCHECK에 동의"가 있는 전체 카드로 남는다.
 - **CROSSCHECK 대기.** 아직 mark가 없는 카드는 ATC-3의 "CROSSCHECK 대기" 상태로 mark가 있는 카드 뒤에 오고, 동의 묶음에 들어가지 않는다.
-- **blind 표본.** 열린 카드의 약 5장에 1장이 blind다. 제안 ID로 정하므로(FNV-1a 해시를 5로 나눈 나머지, `server/blind.ts`) 새로고침해도 바뀌지 않는다. blind 카드는 판정할 때까지 CROSSCHECK 칩과 한 번 클릭 버튼 대신 **BLIND**를 보이고, CROSSCHECK가 agree해도 펼친 목록에 있다. 서버는 verdict·approve·reject에 `blind: true`를 남기고, blind 카드의 한 번 클릭(`via: "crosscheck"`) 판정은 409로 거절한다. HELD 카드는 blind가 아니다(HOLD 자체가 CROSSCHECK 판단을 드러낸다).
+- **blind 표본.** 열린 카드의 약 5장에 1장이 blind다. 제안 ID로 정하므로(FNV-1a 해시를 5로 나눈 나머지, `server/blind.ts`) 새로고침해도 바뀌지 않는다. blind 카드는 판정할 때까지 CROSSCHECK 칩과 한 번 클릭 버튼 대신 **BLIND**를 보이고, CROSSCHECK가 agree해도 펼친 목록에 있다. 서버는 verdict·approve·reject에 `blind: true`를 남기고, blind 카드의 한 번 클릭(`via: "crosscheck"`) 판정은 409로 거절한다. 게이트 패널의 한 번 클릭 비율(`gate.crosscheck.oneClick`)에서는 blind 판정을 뺀다. 한 번 클릭이 애초에 막혀 있었기 때문이다. HELD 카드는 blind가 아니다(HOLD 자체가 CROSSCHECK 판단을 드러낸다).
 - **anchoring 점검.** 게이트 패널에 "BLIND 합의율"이 더해진다. 게이트가 세는 판정 가운데 blind 카드에서 SUPERVISOR가 DISPATCH에 동의한 비율이다(`gateOf`의 `gate.blind`. 수치만 더하고 게이트에 넣고 빼는 규칙은 바꾸지 않는다). 전체 합의율보다 크게 낮으면 한 번 클릭을 기본값처럼 따르고 있다는 뜻이다.
 
 ## 6. 흐름

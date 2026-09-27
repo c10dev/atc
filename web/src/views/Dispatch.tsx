@@ -82,7 +82,7 @@ const NOT_READY_NOTE =
 // 한 번 클릭 비율 설명(툴팁·안내 문장)
 const BLIND_NOTE =
   "blind 표본(카드의 약 1/5, 제안 ID로 정함)에서 CROSSCHECK를 보지 않고 낸 판정의 합의율. 전체 합의율보다 크게 낮으면 한 번 클릭을 기본값처럼 따르고 있다는 뜻(anchoring 점검)";
-const ONE_CLICK_NOTE = "사람 판정 가운데 CROSSCHECK에 동의 버튼 한 번으로 낸 비율 — 어떻게 판정했는지 기록된 판정만 셈";
+const ONE_CLICK_NOTE = "사람 판정 가운데 CROSSCHECK에 동의 버튼 한 번으로 낸 비율 — 어떻게 판정했는지 기록된 판정만 셈. blind 카드 판정은 한 번 클릭이 막혀 있어 뺀다";
 
 interface Brief {
   mode: DispatchConfig["mode"];
