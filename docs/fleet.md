@@ -194,7 +194,7 @@ Session names are matched against `teamPattern` and upper-cased, like the LOGBOO
 
 **When the builder is unknown** (no target, or no source names one), the CHECK is not blocked. The card carries a 0-point factor `CHECK 독립성` saying `확인 못 함 — …`, so the SUPERVISOR checks it by hand. When it is known, the factor names the builder that was left out.
 
-Not built yet: WAKE-scaled conflict risk, and DEPARTED for STAND-free FLIGHTs: an accepted SURVEY or CHECK never gets a STAND, so in approval mode it expires after 24 hours instead of departing. ATFM's auto-eligibility (A8) still requires an assignable AIRCRAFT, so a STAND-free proposal to a HOLDING team is never auto-eligible.
+Not built yet: WAKE-scaled conflict risk (a same-area approach is sketched in [issue #41](https://github.com/chaehy5665/atc/issues/41)), and DEPARTED for STAND-free FLIGHTs: an accepted SURVEY or CHECK never gets a STAND, so in approval mode it expires after 24 hours instead of departing. ATFM's auto-eligibility (A8) still requires an assignable AIRCRAFT, so a STAND-free proposal to a HOLDING team is never auto-eligible.
 
 ## 6. Who classifies
 
