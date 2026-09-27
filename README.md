@@ -285,7 +285,7 @@ Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server com
 
 | API | What it does |
 |---|---|
-| `GET /api/dispatch/brief` | Mode, current plan, open / held / in-flight / overdue / recent proposals (with `via` and `reasonCodes` once decided), stage 2b and 3 checks (`gate.crosscheck.oneClick`, `gate.reasonCounts`, `gate.preflight`, `gate3.standFree`), the 2b readiness checklist `readiness2b: {items: [{id, label, status, detail, link?, suggestion?}]}`, FLIGHT summaries, reject chips `reasonCodes: [{code, label}]`; `briefs` (per open and HELD card: server-computed `facts` and, until a BRIEFING exists, the body `lead`) |
+| `GET /api/dispatch/brief` | Mode, current plan, open / held / in-flight / overdue / recent proposals (with `via` and `reasonCodes` once decided), stage 2b and 3 checks (`gate.crosscheck.oneClick`, `gate.reasonCounts`, `gate.preflight`, `gate.notReady`, `gate3.standFree`), the 2b readiness checklist `readiness2b: {items: [{id, label, status, detail, link?, suggestion?}]}`, FLIGHT summaries, reject chips `reasonCodes: [{code, label}]`; `briefs` (per open and HELD card: server-computed `facts` and, until a BRIEFING exists, the body `lead`) |
 | `POST /api/dispatch/proposals/:id/verdict` | `{verdict: agree\|disagree, reason?, via?, reasonCodes?}` shadow verdict (shadow mode only). `via` is `crosscheck` or `manual` (anything else is `manual`); `reasonCodes` only with `disagree` (400 on an unknown code) |
 | `POST /api/dispatch/proposals/:id/note` | `{text, caution?}` DISPATCH review note |
 | `POST /api/dispatch/proposals/:id/briefing` | `{what, why, risk}` BRIEFING: three plain lines at the top of the card, written by OCC (`proposed` only; writing again replaces it) |
@@ -293,6 +293,7 @@ Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server com
 | `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR releases a HOLD; the proposal is superseded and the FLIGHT becomes a candidate again |
 | `POST /api/dispatch/proposals/:id/requeue` | PREFLIGHT: SUPERVISOR returns a HELD proposal to the queue (its 24 hours restart; it is not held again) |
 | `POST /api/dispatch/proposals/:id/confirm-hold` | PREFLIGHT: SUPERVISOR confirms a HOLD without a prerequisite; closes it with `via: "preflight"` and FLIGHT chips (FLIGHT hold, not counted in the gate). `verdict`/`approve`/`reject` on a HELD proposal return 409 |
+| `POST /api/dispatch/proposals/:id/codes` | `{codes: ["needs-human", …]}` SUPERVISOR adds reason chips to an old shadow rejection (`disagreed` only, else 409). Appends a `recode` op that only the gate reads: a rejection whose chips are all FLIGHT chips leaves the gate (`gate.notReady`); no FLIGHT hold is started |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR decision (approval mode only), both take `{via?}`, `reject` also `{reason?, reasonCodes?}` |
 | `POST /api/dispatch/proposals/:id/release` | Approved → SENT, returns `sendTo` and the FLIGHT PLAN (the same text again if already sent) |
 | `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, or decline with `{reason}`. A STAND-free FLIGHT (SURVEY, CHECK) is DEPARTED at the READBACK (`departedStand: null`, `departedVia: "readback"`) |

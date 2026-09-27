@@ -154,6 +154,10 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - 다른 팀은 보여 주기만 한다(RADAR·STRIPS·FIDS). planner는 제외 줄 없이 건너뛰고, SCHEDULE 브리핑은 후보에서 빼고, 그 팀에 쓴 SCHEDULE 초안은 409로 거절한다. `candidateTeams`에 팀을 넣으면 그 팀 FLIGHT는 그 팀 AIRPORT가 거점인 AIRCRAFT에만 제안한다(ATC → ATCC). 스위치는 꺼 두었다.
 
 ### 변경
+- DISPATCH 게이트는 AIRCRAFT 선택만 잰다(ATC-5, [docs/dispatch.ko.md](docs/dispatch.ko.md) 6.3). PREFLIGHT 전의 거절 6건은 모두 티켓 문제였고 게이트를 3/9(33%)에 묶어 두었다.
+  - `gateOf`는 사유 칩이 모두 FLIGHT 칩(`FLIGHT_HOLD_CODES`)인 `disagreed` 제안을 빼고 `gate.notReady`로 센다. 점검 패널에 PREFLIGHT HELD 옆으로 "준비 안 됨 거절 n건 (게이트 제외)"이 보이고, 판정 줄은 "판정한 제안(HELD·준비 안 됨 제외)"이 됐다. 승인했을 것과 `wrong-aircraft`·`other`·칩 없는 거절은 전처럼 센다.
+  - `POST /api/dispatch/proposals/:id/codes {codes}`는 지난 그림자 거절에 `recode` op(`by: "SUPERVISOR"`)로 칩을 단다. 사람이 판정한 `disagreed`가 아니면 409다. fold는 칩을 게이트만 읽는 `gateCodes`로 두어서, recode는 #56의 FLIGHT 보류를 걸지 않고 사유 문장, `reasonCounts`, `reasonStats`, CROSSCHECK 일치와 한 번 클릭 수치도 바꾸지 않는다. 배포 뒤 structure가 D-0001, D-0003, D-0006, D-0010, D-0022, D-0023에 적용한다.
+  - PREFLIGHT 준비율은 준비 안 됨 거절도 준비 안 된 것으로 센다: `gate.preflight.notReady`, `readyRate = passed / (passed + held + notReady)`.
 - DISPATCH 거절 사유 칩이 차단 범위를 정한다([docs/dispatch.ko.md](docs/dispatch.ko.md) 6.1). 24시간 규칙(`recentPairsOf`)은 FLIGHT–AIRCRAFT 짝만 막아서, FLIGHT 자체의 문제로 거절돼도 곧바로 다음 팀에 제안됐다. D-0022(VOC-177 → TEAM_D, "사용자 지시를 기다림")와 D-0023(VOC-125 → TEAM_A, "사용자 모집·관찰 필요") 뒤에 D-0024(VOC-125 → TEAM_D)와 D-0025(VOC-177 → TEAM_B)가 나왔다.
   - `already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`, `no-priority`, `out-of-repo` 중 하나라도 달고 거절(그림자 disagree 포함)된 ASSIGN은 FLIGHT 전체를 모든 AIRCRAFT에서 보류한다(`recentFlightsOf`, `Reserved.recentFlights`). 제외 목록에 `FLIGHT 보류 — <칩> (D-xxxx 판정) — 이슈가 바뀌거나 MM-DD HH:MM부터 다시`로 뜨고, 그 FLIGHT의 다른 AIRCRAFT 열린 제안도 같은 사유로 SUPERSEDED된다. 24시간이 지나거나, Linear 이슈의 `updatedAt`이 판정 뒤로 바뀌면 그 전에 풀린다.
   - `wrong-aircraft`, `other`, 칩 없는 판정(옛 판정 포함)은 지금처럼 짝만 막는다. `reasonStats`에 칩마다 차단 범위(`flight`나 `pair`)가 붙고, `needs-human`은 `partial`이 됐다.

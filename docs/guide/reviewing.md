@@ -31,8 +31,9 @@ atc의 자동화는 **그림자 운용**에서 시작한다. 제안과 초안을
 - **PREFLIGHT — HELD는 판정하지 않는다**: 티켓이 아직 시작할 상태가 아닌 제안은 대기열에 오지 않고 HELD로 간다. CROSSCHECK가 FLIGHT 칩(이미 완료됨 · 상위 이슈 · 선행 FLIGHT·PR 대기 · 사람 결정 필요 · 우선순위 미정 · 저장소 밖 작업)으로 disagree하면 서버가 곧바로 보내고(카드에 `PREFLIGHT`, 모델과 칩), OCC가 HOLD하면 전처럼 간다(`HOLD`와 메모). AIRCRAFT 부적합 · 기타는 팀 선택 문제라 대기열에 남는다. HELD 카드에는 판정 버튼 대신 둘이 있다.
   - **대기열로**: 걸러진 게 틀렸다고 보면. 같은 제안이 대기열로 돌아와 판정을 기다리고(24시간은 지금부터), 다시 HOLD되지 않는다.
   - **FLIGHT 보류 확정**: 맞게 걸렀으면. 제안이 닫히고 그 FLIGHT가 모든 팀에서 24시간(이슈가 바뀌면 그 전까지) 빠진다. 선행 FLIGHT를 기다리는 HOLD에는 이 버튼이 없다(선행이 끝나면 저절로 풀린다).
-  - 둘 다 판정이 아니라 2b 게이트(판정 건수·합의율)에 세지 않는다. 점검 패널의 `PREFLIGHT HELD n건 · 준비율`이 따로 보여 준다: 준비율은 HOLD 없이 판정까지 간 제안의 비율, 즉 들어오는 티켓이 얼마나 준비돼 있었나다.
-- **2b 진입 점검**: 판정 20건 이상, 합의율 80% 이상. 켜면 승인한 제안이 FLIGHT PLAN으로 CAPTAIN에게 간다.
+  - 둘 다 판정이 아니라 2b 게이트(판정 건수·합의율)에 세지 않는다. 점검 패널의 `PREFLIGHT HELD n건 · 준비율`이 따로 보여 준다: 준비율은 HOLD 없이 판정까지 가서 준비 안 됨 거절도 아니었던 제안의 비율, 즉 들어오는 티켓이 얼마나 준비돼 있었나다.
+- **게이트는 팀 선택만 잰다**: 사유 칩이 모두 FLIGHT 칩(이미 완료됨 · 상위 이슈 · 선행 FLIGHT·PR 대기 · 사람 결정 필요 · 우선순위 미정 · 저장소 밖 작업)인 거절은 판정 건수와 합의율에서 빠지고 "준비 안 됨 거절 n건 (게이트 제외)"으로 따로 보인다. AIRCRAFT 부적합이나 기타가 하나라도 있거나 칩이 없으면 게이트에 센다. 그러니 "이 팀이라서" 거절할 때는 AIRCRAFT 부적합을 꼭 고른다. 칩 없이 한 예전 거절에는 나중에 칩을 달 수 있다(`POST /api/dispatch/proposals/<D-xxxx>/codes`, 거절한 제안에만). 이것은 게이트 계산만 바꾸고 FLIGHT 보류는 걸지 않는다.
+- **2b 진입 점검**: 판정 20건 이상, 합의율 80% 이상(준비 안 됨 거절 제외). 켜면 승인한 제안이 FLIGHT PLAN으로 CAPTAIN에게 간다.
 - **2b 켜기 점검표**: 켜기 전에 볼 항목이 준비됨·안 됨·확인 필요로 보인다. 2a 게이트, RECALL, send-guard, vocado READBACK 규칙, STAND 없는 FLIGHT, CREW CHANGE 발부, 알려진 빈틈 순서다. vocado READBACK 규칙은 FLIGHT PLAN(`[DISPATCH D-xxxx]` → `READBACK D-xxxx`)과 CREW CHANGE(`[OCC CC-xxxx]` → `READBACK CC-xxxx`)를 다 다뤄야 "준비됨"이고, "안 됨"이면 `vocado_nextjs/CLAUDE.md`에 더할 문장이 함께 나온다(그 파일은 SUPERVISOR가 고친다). send-guard는 서버가 테스트를 돌리지 않아 늘 "확인 필요"다(`node --test occ/send-guard.test.mjs`). 점검표는 보여 주기만 하고, 켜는 것은 SUPERVISOR다.
 
 ## SCHEDULE 탭: 티켓 초안

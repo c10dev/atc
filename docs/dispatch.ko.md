@@ -217,7 +217,14 @@ CAPTAIN(STAND 없는 FLIGHT만): 마쳤다고 보고 → OCC: atcctl dispatch ar
   - **FLIGHT 보류 확정(confirm-hold)**: 제안을 `via: "preflight"`와 칩으로 disagreed(그림자)나 rejected(승인 운용)로 닫는다. 그러면 6.1의 FLIGHT 보류(모든 AIRCRAFT에서 24시간, 이슈가 바뀌면 그 전에 풀림)가 걸린다. 칩은 PREFLIGHT의 칩, 없으면 HOLD 전에 달린 mark의 FLIGHT 칩, 그것도 없으면 선행 없는 OCC HOLD라 `needs-human`(정의상 사람을 기다리는 HOLD)이다. 이유 문장에서 추정하지 않는다. 선행 FLIGHT가 있는 HOLD는 확정하지 않는다. 선행이 끝나면 atc가 푼다.
 - **HOLD는 지금처럼 저절로도 풀린다**: FLIGHT가 Todo가 아니게 됨, 끝났거나 열린 PR이 있음, (선행 없는 HOLD) HOLD 뒤에 이슈가 바뀜.
 - **CROSSCHECK 대기.** mark가 없는 열린 제안은 `CROSSCHECK 대기`로 표시하고 mark가 있는 것 뒤로 정렬한다. 거름이 돌기 전에 SUPERVISOR가 판정하지 않게.
-- **게이트.** HELD 제안은 게이트 밖이다(결정 표). 확정(`via: "preflight"`)은 사람 판정이 아니어서 판정 건수, 합의율, CROSSCHECK 일치율, `reasonCounts`에서 빠지지만, `reasonStats`는 planner의 할 일로 그 칩을 센다. `gate.preflight`는 `held`(OCC·PREFLIGHT로 한 번이라도 HOLD된 ASSIGN, 뒤에 대기열로 돌렸거나 확정한 것 포함), `holding`(지금 HOLD 중), `passed`(HOLD 없이 SUPERVISOR 판정까지 감), `readyRate = passed / (passed + held)`를 준다. 기준 없는 공급 품질 지표다. 점검 패널에 `PREFLIGHT HELD n건 · 준비율`로 보인다.
+- **게이트.** HELD 제안은 게이트 밖이다(결정 표). 확정(`via: "preflight"`)은 사람 판정이 아니어서 판정 건수, 합의율, CROSSCHECK 일치율, `reasonCounts`에서 빠지지만, `reasonStats`는 planner의 할 일로 그 칩을 센다. `gate.preflight`는 `held`(OCC·PREFLIGHT로 한 번이라도 HOLD된 ASSIGN, 뒤에 대기열로 돌렸거나 확정한 것 포함), `holding`(지금 HOLD 중), `passed`(HOLD 없이 SUPERVISOR 판정까지 갔고 준비 안 됨 거절이 아님), `notReady`(HOLD 없이 판정까지 갔지만 준비 안 됨 거절, 6.3), `readyRate = passed / (passed + held + notReady)`를 준다. 기준 없는 공급 품질 지표다. 점검 패널에 `PREFLIGHT HELD n건 · 준비율`로 보인다.
+
+#### 6.3 게이트는 AIRCRAFT 선택만 잰다
+
+2026-09-27에 만들었다(ATC-5). 이제 PREFLIGHT가 SUPERVISOR 판정 전에 준비 문제를 거르지만, 그 전의 거절 6건(D-0001, D-0003, D-0006, D-0010, D-0022, D-0023, 모두 티켓 문제)이 게이트를 3/9(33%)에 묶어 두었다. 이대로면 80%에 가려면 틀림 없이 30건쯤 더 판정해야 한다.
+
+- **준비 안 됨 거절은 게이트에서 뺀다.** `gateOf`는 사유 칩이 모두 FLIGHT 칩(`FLIGHT_HOLD_CODES`: `already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`, `no-priority`, `out-of-repo`)인 `disagreed` 제안을 빼고 `gate.notReady`로 센다. `agreed`와, `wrong-aircraft`·`other`가 있거나 섞였거나 칩이 없는 거절은 전처럼 센다. 점검 패널에는 PREFLIGHT HELD 옆에 "준비 안 됨 거절 n건"(게이트 제외)이 보이고, 판정 줄은 "판정한 제안(HELD·준비 안 됨 제외)"이 된다.
+- **지난 판정에 칩 달기.** `POST /api/dispatch/proposals/:id/codes {codes}`(`server/reasons.ts`의 칩 하나 이상)는 `{op:"recode", id, at, by:"SUPERVISOR", codes}`를 남긴다. 사람이 판정한 `disagreed` 제안에만 받고(그 밖은 409, ATFM·PREFLIGHT 확정도), 나중 recode가 앞의 것을 대신한다. fold는 이것을 `reasonCodes`와 따로 `gateCodes`로 두고 게이트만 읽는다(`gateCodesOf`: `gateCodes`, 없으면 `reasonCodes`). 그래서 recode는 6.1의 FLIGHT 보류를 뒤늦게 걸지 않고, 사유 문장, `reasonCounts`, `reasonStats`, CROSSCHECK 일치와 한 번 클릭 수치도 그대로다. atcctl 명령은 없다: 배포 뒤 SUPERVISOR 지시로 structure가 위 6건에 API를 한 번 부른다(칩은 ATC-5에 있다). 그러면 게이트는 3/3에서 다시 시작한다.
 
 ## 7. atc에 더할 것
 
@@ -348,6 +355,7 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 | 프로젝트 → AIRPORT | Beta Readiness · Song Experience → **VCDO**. Vocado Pre-seed IR & Pitch Deck · Vocado Visual System (SEED)는 **배정 제외** |
 | `RELEASE` 기준 | STAND 없이 ENROUTE인 채로 **3일** |
 | 슬롯 | 제안값으로 시작: TEAM당 1, VCDO 동시 AIRBORNE 4, 그 밖 2, 대기 중 제안 5 |
+| 게이트가 재는 것 (2026-09-27, ATC-5) | **AIRCRAFT 선택만.** 준비 상태는 PREFLIGHT(6.2)가 거르고, 칩이 모두 FLIGHT 칩인 거절은 판정 건수와 합의율에서 빼 따로 보인다(6.3). 지난 판정에는 `recode`로 칩을 달고, 이것은 게이트만 바꾼다 |
 | HELD 제안과 게이트 (2026-09-27, ATC-3) | **게이트 밖.** PREFLIGHT나 OCC가 잡아 둔 제안은 SUPERVISOR 판정이 아니고, 확정한 HOLD는 `via: "preflight"`로 남아 세지 않는다. 게이트는 준비된 티켓에서의 팀 선택을 재고, 티켓 준비 상태는 준비율(6.2)로 따로 보인다 |
 
 남은 결정: 2b에 들어갈 때 vocado `CLAUDE.md`의 READBACK 규칙을 FLIGHT PLAN(`[DISPATCH D-xxxx]`)까지 넓힐지. 2a에는 필요 없다.
