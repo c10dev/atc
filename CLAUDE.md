@@ -47,6 +47,13 @@ atc 코드를 고치는 세션(팀 세션, 사용자와 직접 작업하는 세�
 - 바뀐 동작은 `CHANGELOG`의 `[Unreleased]`에 적는다.
 - 사용자가 쓰는 방법이 바뀌면(탭, 흐름, 명령, 용어) `docs/guide/`의 사용 안내(DOCS 탭, 한국어)도 같이 고친다. 새 쪽을 만들면 `web/src/views/Docs.tsx`의 `DOC_NAV`에 넣는다.
 
+## 계획과 아이디어
+
+- 아직 하기로 정하지 않은 아이디어는 GitHub Issue에 `idea` 라벨로 둔다. 저장소 문서에 적지 않는다.
+- 하기로 정한 것은 `docs/<주제>.md` 설계 초안으로 쓴다(Status 줄, Current facts, Principles, Implementation order, Risks, Decisions). 새 설계 문서는 영어로 먼저 쓴다. 채택되면 이슈에 문서를 링크한다.
+- 단계로 올라간 것은 `docs/guide/stages.md`에, 남은 일은 그 설계 문서의 "Not built yet"에, 끝난 것은 `CHANGELOG`에 적는다.
+- atc 작업은 Linear에 두지 않는다. atc는 `LINEAR_TEAM_KEY` 팀 하나만 읽고, 그 팀의 Todo는 DISPATCH 후보가 된다.
+
 ## 교신
 
 - 다른 팀 세션에 메시지를 보내지 않는다. 결과와 막힌 점은 일을 맡긴 세션(또는 사용자)에게만 보고한다.

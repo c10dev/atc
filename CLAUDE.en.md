@@ -49,6 +49,13 @@ Rules for sessions that change atc's code (team sessions, and sessions working d
 - Record changed behavior under `[Unreleased]` in the `CHANGELOG`.
 - When how the user works changes (tabs, flows, commands, terms), update the user guide in `docs/guide/` (the DOCS tab, Korean) too. Add a new page to `DOC_NAV` in `web/src/views/Docs.tsx`.
 
+## Plans and ideas
+
+- Ideas not yet decided go in a GitHub Issue labelled `idea`, not in the repository docs.
+- Once decided, write a design draft in `docs/<topic>.md` (Status line, Current facts, Principles, Implementation order, Risks, Decisions). New design docs start in English. Link the doc from the issue when it is adopted.
+- Put a stage in `docs/guide/stages.md`, work left in that design doc's "Not built yet", and finished work in the `CHANGELOG`.
+- atc's own work is not tracked in Linear. atc reads only the `LINEAR_TEAM_KEY` team, and that team's Todo FLIGHTs become DISPATCH candidates.
+
 ## Radio
 
 - Don't message other team sessions. Report results and blockers only to the session (or user) that gave you the task.
