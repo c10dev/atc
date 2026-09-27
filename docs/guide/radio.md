@@ -49,7 +49,7 @@ DISPATCH 메모: CAUTION · …
 — 맡으면 이 메시지에 "READBACK D-0003", 못 맡으면 사유로 답장해 주세요.
 ```
 
-- 지금은 2a(그림자 운용)라 보내지 않는다. 2b를 켜기 전에 vocado `CLAUDE.md`의 READBACK 규칙을 FLIGHT PLAN까지 넓힌다.
+- 지금은 2a(그림자 운용)라 보내지 않는다. 2b를 켜기 전에 vocado `CLAUDE.md`의 READBACK 규칙을 FLIGHT PLAN과 CREW CHANGE까지 넓힌다.
 - OCC의 SendMessage는 send-guard가 지킨다: approval 모드, SENT 상태 제안, 그 CAPTAIN, atc가 만든 문구 그대로일 때만 통과.
 
 ## OCC → CAPTAIN: RECALL (2b부터)
@@ -68,12 +68,34 @@ FLIGHT VOC193 · AIRPORT VCDO — 이 FLIGHT PLAN을 거둬들입니다.
 - CAPTAIN은 작업을 멈추고, 워크트리는 그대로 두고, `READBACK D-0003 RECALL`로 답한다(RECALL을 꼭 붙인다).
 - send-guard는 RECALL 요청된 제안의 CAPTAIN에게 이 문구 그대로 보낼 때만 통과시킨다.
 
+## OCC → CAPTAIN: CREW CHANGE (2b부터)
+
+운항 중인 AIRCRAFT의 CREW COMPLEMENT를 바꾸고 SUPERVISOR가 FLEET 탭에서 승인하면, OCC가 `atcctl crew-change send`로 받은 문구를 그대로 보낸다:
+
+```
+[OCC CC-0001] CREW CHANGE · HOTEL (TEAM_H)
+
+TEAM_H CAPTAIN, SUPERVISOR가 이 AIRCRAFT의 CREW COMPLEMENT를 바꿨습니다. 아래대로 팀원을 바꿔 주세요.
+
+내리는 CREW (멈추고 더 부르지 않습니다)
+- flash-helper: flash-helper (no BUILD, no CHECK verdicts, no SEC)
+…
+적용이 끝나면 "TEAM_H CREW CHANGE CC-0001 COMPLETE" 한 줄만 남기세요.
+
+— 받았으면 이 메시지에 "READBACK CC-0001"로 답장해 주세요.
+```
+
+- CAPTAIN은 받으면 `READBACK CC-0001`로 답하고, 팀원을 바꾼 뒤 `COMPLETE` 한 줄을 남긴다. OCC가 READBACK을 기록한다(`crew-change readback`).
+- 10분 넘게 READBACK이 없으면 OCC가 같은 문구를 한 번 더 보내고, 그래도 없으면 SUPERVISOR에게 보고한다.
+- 2a(shadow)에서는 보내지 않는다. SUPERVISOR가 FLEET 카드에서 복사해 붙여 넣는다. 2b를 켜기 전에 vocado `CLAUDE.md`의 READBACK 규칙을 `[OCC CC-xxxx]`까지 넓힌다(SUPERVISOR가 고친다).
+- send-guard는 approval 모드이고, `crew-change send`로 보냄(sent) 상태가 된 건을 그 AIRCRAFT(REGISTRATION)에게 서버가 저장한 문구 그대로 보낼 때만 통과시킨다.
+
 ## 기계적 안전장치
 
 | guard | 지키는 것 |
 |---|---|
 | `controller/guard.mjs` | TOWER·OCC·CROSSCHECK의 Bash: atc CLI·jq만(OCC는 읽기 전용 `gh pr view·checks·diff·list`도, CROSSCHECK는 `view·checks·list`). 리다이렉션과 작은따옴표 밖의 `$(…)`·백틱·`$변수`는 막는다. jq는 `… | jq '<필터>'`처럼 앞 명령의 출력만 읽는다: 파일 인자, `-f`·`--rawfile`·`--slurpfile`·`-L`·`--args` 같은 옵션(허용 목록 밖은 모두), 필터의 `env`·`$ENV`·`import`·`include`는 막는다. gh의 `--jq`도 같은 필터 검사를 한다 |
-| `occ/send-guard.mjs` | OCC의 SendMessage: 승인된 FLIGHT PLAN이나 RECALL 요청된 제안의 RECALL 문구 그대로만 |
+| `occ/send-guard.mjs` | OCC의 SendMessage: approval 모드에서 승인된 FLIGHT PLAN, RECALL 요청된 제안의 RECALL 문구, 발부된 CREW CHANGE 문구를 그대로 그 CAPTAIN·AIRCRAFT에게만 |
 | `occ/mcp-guard.mjs` | OCC의 MCP 도구: 읽기(get·list·search·read·query·fetch)만 — Linear·GitHub에 쓸 수 없음 |
 
 모든 hook은 fail-closed다: 스크립트가 없거나 실패하면 도구가 막힌다. 막히면 관제 세션은 다시 시도하지 않고 사용자에게 보고한다.

@@ -11,7 +11,7 @@ atc는 팀 세션 하나를 AIRCRAFT(`TEAM_B`, callsign BRAVO)로, 그 리더를
 >
 > - TAIL ASSIGNMENT(`tail:TEAM_X`. `lane:TEAM_X`는 2026-10-10까지 별칭으로 읽음)
 > - FLEET 등록부와 탭(구현 순서 2번)
-> - 관찰한 CREW와 CREW CHANGE 1단계(8.3, 8.4)
+> - 관찰한 CREW와 CREW CHANGE 1·2단계(8.3, 8.4. OCC가 보내는 2단계는 DISPATCH approval 모드에서만)
 > - 구현 순서 3번: planner가 분류 라벨을 읽고 TYPE RATING·CREW·WAKE·ROUTE 규칙을 적용. 이어서 HOLDING·PARKED 팀의 STAND 없는 FLIGHT와 CHECK 독립성(남은 일은 5장)
 > - 팀 꾸리기(8.1)
 > - LOGBOOK과 FLEET 카드의 TARGETS 실적(7.1, 7.2)
@@ -429,7 +429,7 @@ FLEET 탭은 팀을 만들고 내리는 곳이기도 하다. atc는 Claude 세�
 | 팀을 잠시 쉬게 하기 | **AOG** | 사유와 선택적 복귀 날짜. planner가 그 팀에 제안을 멈춘다(`AOG — reason (~date)`) |
 | 팀 없애기 | **RETIREMENT** | AIRCRAFT가 FLEET 목록에서 빠진다(날짜·사유와 함께 RETIRED 아래 남음). 제안을 받지 않는다. 살아 있는 세션을 닫지는 않는다. 되살릴 수 있다 |
 
-나중: OCC S2부터 승인 뒤 OCC를 거쳐 **CREW CHANGE**를 보낸다(1단계인 보내지 않는 문구는 8.4).
+운항 중인 AIRCRAFT의 COMPLEMENT가 바뀌면 대신 **CREW CHANGE**를 받는다(8.4). SUPERVISOR가 붙여 넣거나, DISPATCH approval 모드에서 승인하면 OCC가 보낸다.
 
 ### 8.2 CHECKRIDE
 
@@ -494,17 +494,56 @@ COMPLEMENT는 SUPERVISOR가 선언한 것이다. 관찰한 CREW는 AIRCRAFT의 �
 
 **빈틈: agent team 팀원.** CAPTAIN이 Agent 도구로 띄운 팀원(이름이 있든 없든, 백그라운드든 아니든)은 CAPTAIN의 `subagents/` 아래 기록되므로 관찰된다. Claude Code agent team의 팀원 중 별도 세션으로 도는 것(`~/.claude/teams/<team>/` 아래 등록)은 관찰되지 않는다. atc는 팀 설정을 읽지 않고, 그 세션들은 자기 이름을 갖기 때문이다. 선언돼 있으면 `unused`로 보인다. 이들을 보려면 리더 세션을 알려 주는 메타데이터 출처가 필요한데, 아직 쓰는 것이 없다.
 
-### 8.4 CREW CHANGE (1단계: 문구만, 보내지 않음)
+### 8.4 CREW CHANGE
 
-SUPERVISOR가 운항 중인 AIRCRAFT의 CREW COMPLEMENT를 `PATCH /api/fleet/:registration`으로 바꾸면 atc가 CREW CHANGE를 쓴다. CAPTAIN에게 줄 문구로, CREW BRIEFING과 비슷하지만 이미 돌고 있는 팀용이다. `server/crew-change.ts`에 있고, `fleet.ts`에 걸린 것은 프로필 저장 뒤의 호출 하나뿐이다.
+SUPERVISOR가 운항 중인 AIRCRAFT의 CREW COMPLEMENT를 `PATCH /api/fleet/:registration`으로 바꾸면 atc가 CREW CHANGE를 쓴다. CAPTAIN에게 줄 문구로, CREW BRIEFING과 비슷하지만 이미 돌고 있는 팀용이다. `server/crew-change.ts`에 있고, `fleet.ts`에 걸린 것은 프로필 저장 뒤의 호출 하나뿐이다. 1단계(아래 앞부분)는 문구와 SUPERVISOR의 손 전달이다. 2단계(나머지)는 DISPATCH approval 모드(2b)에서 OCC가 보내게 한다.
 
 - **운항 중**: RETIRED가 아니고 그 이름의 살아 있는 세션이 있음. 아직 운항을 시작하지 않은 AIRCRAFT는 CREW BRIEFING으로 CREW를 받는다. AOG AIRCRAFT도 운항 중으로 센다.
 - **차이**(`diffCrew`): 팀원은 CREW BRIEFING과 같은 한 줄 표기 `position: agent (limits)`로 비교한다. agent나 limits가 바뀐 팀원은 빠지고 다시 들어온 것으로 본다. 문구에서는 한 번 빠지고 다시 들어온 POSITION을 "바뀌는 CREW"로 묶는다.
 - **TYPE RATING 영향**(`ratingImpact`): 4.3과 5장의 planner 규칙에서 나온다. `BUILD`/`MAINT`/`TEST`(`flash-helper`가 아니고 `no BUILD`나 `read-only`가 없는 팀원)를 잃거나 얻음, `CHECK`(`no CHECK verdicts`가 없는 팀원), `SEC`를 가질 수 있는지(`canHoldSec`. `applyPatch`는 여전히 그것 없이 `SEC`를 거부한다), 같은 PATCH에서 더하거나 뺀 rating, `ui-builder`와 `ui-qa`가 둘 다 있지 않은데 유지된 `UI`.
 - **문구**(`crewChangeText`): 머리 `[ATC FLEET] CREW CHANGE · <CALLSIGN> (<REG>) · CC-0001`, 이어서 빠지는·들어오는·바뀌는 CREW, 새 COMPLEMENT 전체, 영향이 붙은 TYPE RATING, 적용 방법(빠지는 팀원은 지금 일을 마친 뒤 멈추고, 들어오는 팀원은 주어진 agent와 모델로 만들고, 바뀌는 팀원에게 새 limits를 알린다). 끝은 `"<REG> CREW CHANGE CC-0001 COMPLETE"`.
-- **기록**: `~/.local/state/atc/crew-changes.jsonl`, 추가만 함. `{"op":"created","id":"CC-0001","registration","at","before":{complement,ratings},"after":{…},"added","removed","ratingImpact","text"}`, 그다음 `{"op":"delivered","id","at"}`나 `{"op":"superseded","id","at","by"}`. 접은 상태: `pending` → `delivered` 또는 `superseded`.
-- **SUPERSEDED**: pending이 있는 동안 새 COMPLEMENT 변경이 오면 그것을 닫고(`by`는 새 id), pending 것의 원래 `before`에서 최신 `after`까지의 차이로 새것을 쓴다. 그 차이가 비면(CREW가 원래대로 돌아감) pending 것을 `by: null`로 닫고 새것은 쓰지 않는다. rating만 바꾸는 PATCH는 pending CREW CHANGE를 다시 쓰지만(TYPE RATING 줄이 맞게 남도록) 새로 시작하지는 않는다.
-- **보내지 않는다.** 보내는 길이 없다. FLEET 카드가 `pendingCrewChange: {id, at, text, added, removed, ratingImpact}`를 복사 버튼과 함께 보인다. SUPERVISOR가 CAPTAIN에게 붙여 넣고 전달함을 누르면 `POST /api/fleet/:registration/crew-change/:id/delivered`가 불린다(모르는 id는 404, 이미 닫힌 것은 409). `GET /api/fleet/crew-changes?registration=&limit=`는 최근 이력을 돌려준다. OCC를 거친 전송은 나중에, 스위치 뒤에 만든다.
+- **기록**: `~/.local/state/atc/crew-changes.jsonl`, 추가만 함. `{"op":"created","id":"CC-0001","registration","at","before":{complement,ratings},"after":{…},"added","removed","ratingImpact","text"}`, 그다음 상태 줄 `{"op":"approved"|"acknowledged"|"delivered","id","at"}`, `{"op":"sent","id","at","message"}`, `{"op":"superseded","id","at","by"}`.
+- **손 전달**(두 모드 모두): FLEET 카드가 열린 CREW CHANGE를 복사 버튼과 함께 보인다. SUPERVISOR가 CAPTAIN에게 붙여 넣고 전달함을 누르면 `POST /api/fleet/:registration/crew-change/:id/delivered`가 불린다. `GET /api/fleet/crew-changes?registration=&limit=`는 모든 상태와 시각이 담긴 최근 이력을 돌려준다.
+
+**상태**(`foldCrewChanges`. 지금 상태에 맞지 않는 op는 무시한다):
+
+| 전 | op | 후 | 누가 |
+|---|---|---|---|
+| `pending` | `approved` | `approved` | SUPERVISOR, FLEET 탭이나 API, approval 모드에서만 |
+| `approved` | `sent` | `sent` | OCC, `atcctl crew-change send CC-xxxx` |
+| `sent` | `acknowledged` | `acknowledged` | OCC, CAPTAIN의 `READBACK CC-xxxx`를 받은 뒤 `atcctl crew-change readback CC-xxxx` |
+| `pending`, `approved` | `delivered` | `delivered` | SUPERVISOR, 전달함(손으로 붙여 넣음) |
+| `pending`, `approved` | `superseded` | `superseded` | atc, 더 새로운 COMPLEMENT 변경이 올 때 |
+
+`acknowledged`, `delivered`, `superseded`는 닫힌 상태다. OCC는 CREW CHANGE를 만들거나, 요청하거나, 승인하지 않는다. `atcctl`에는 승인 명령이 없고, OCC Bash guard는 `atcctl`, `jq`, 읽기 전용 `gh`만 허용한다.
+
+**결정(2026-09-27):**
+
+- **승인은 approval 모드에서만.** `POST /api/fleet/:registration/crew-change/:id/approve`는 `dispatch.json`의 `mode`가 `approval`이 아니면 409를 돌려준다. 승인해 두고 기다리는 경우는 없다. shadow에서는 아무도 보내지 않고, 전달함이 shadow의 길이다.
+- **`approved`인 것도 손으로 전달할 수 있다.** SUPERVISOR가 shadow로 되돌리거나 먼저 붙여 넣으면 전달함이 그것을 닫고, OCC는 보내지 않는다. `sent`인 것은 전달함으로 닫을 수 없다(409). 이미 CAPTAIN에게 가서 READBACK을 기다리기 때문이다.
+- **SUPERSEDED.** `pending`이나 `approved`가 있는 동안 새 COMPLEMENT 변경이 오면 그것을 닫고(`by`는 새 id), 그것의 원래 `before`에서 최신 `after`까지의 차이로 새것을 쓴다. 승인됐던 것은 다시 승인이 필요하다. 그 차이가 비면(CREW가 원래대로 돌아감) 열린 것을 `by: null`로 닫고 새것은 쓰지 않는다. rating만 바꾸는 PATCH는 보내지 않은 CREW CHANGE를 다시 쓰지만(TYPE RATING 줄이 맞게 남도록) 새로 시작하지는 않는다. `sent`인 것은 SUPERSEDED되지 않고 READBACK까지 열려 있다. 그동안 온 새 변경은 지금 선언(`sent` 것의 `after`)과의 차이로 쓰이고, 승인할 수 있지만 기다린다. `crew-change send`는 `sent` 것이 acknowledged될 때까지 그것을 거절한다(409, "READBACK 대기 중인 CC-xxxx").
+- **보내기**(`POST /api/fleet/crew-changes/:id/send`, approval 모드에서만): `approved` → `sent`. 정확한 메시지를 저장하고 `{change, sendTo, message}`를 돌려준다. `sent`인 것에는 같은 메시지를 다시 준다(재송신). 메시지(`crewChangeMessage`)는 머리 `[OCC CC-0001] CREW CHANGE · <CALLSIGN> (<REG>)`, 빈 줄, `[ATC FLEET] …` 머리를 뺀 문구(`[OCC CC-xxxx] …` 머리도 빼서 겹치지 않게 한다), 빈 줄, `— 받았으면 이 메시지에 "READBACK CC-0001"로 답장해 주세요.`다. FLIGHT PLAN, RECALL과 같은 형식이다.
+- **READBACK**(`POST /api/fleet/crew-changes/:id/readback`): `sent` → `acknowledged`, 모드와 상관없이(shadow로 되돌린 뒤에도 보낸 것은 닫을 수 있어야 한다). "CREW CHANGE CC-xxxx COMPLETE" 줄만 와도 CAPTAIN이 받은 것으로 보고, OCC가 READBACK으로 기록한다.
+- **늦음**: READBACK 없이 10분이 지난 `sent`(`CREW_CHANGE_READBACK_OVERDUE_MS`). OCC는 같은 문구를 한 번 다시 보내고(`crew-change send`를 다시), 그다음 SUPERVISOR에게 보고한다.
+
+**send-guard**(`occ/send-guard.mjs`, OCC 세션의 SendMessage hook, fail-closed): `[OCC CC-xxxx]`로 시작하는 메시지는 아래가 모두 맞을 때만 통과한다.
+
+- `GET /api/fleet/crew-changes/:id`가 `{change, mode}`를 돌려주고 `mode`가 `"approval"`
+- `change.status`가 `"sent"`(`crew-change send`를 먼저 돌렸음)
+- 받는 사람의 이름이 `change.registration`과 같음
+- 앞뒤 공백을 뺀 본문이 저장된 `change.message`와 같음
+
+atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 막는다. DISPATCH 검사는 그대로다.
+
+**화면.** `GET /api/fleet`는 `dispatchMode`와, AIRCRAFT마다 `pendingCrewChange: {id, at, text, added, removed, ratingImpact, status: "pending" | "approved" | "sent", message, approvedAt, sentAt, overdue, waitingFor}`(`openCrewChangeOf`)를 돌려준다. 보내지 않은 것이 있으면 그것을, 없으면 `sent` 것을 acknowledged, delivered, superseded될 때까지 보인다. `waitingFor`는 보내지 않은 것이 뒤에서 기다리는 `sent` 것의 id다. `GET /api/fleet/crew-changes/brief`(`atcctl crew-change brief`)는 OCC에게 `{mode, approved, waiting, sent, overdue, pending}`을 돌려준다.
+
+- `approved`: 보낼 준비가 된 것
+- `waiting`: 승인됐지만 `sent` 것 뒤에서 기다리는 것
+- `sent`: READBACK을 기다리는 것
+- `overdue`: 늦은 id
+- `pending`: SUPERVISOR를 기다리는 id
+
+**2b 점검표.** `crew-change` 항목("CREW CHANGE 발부", `selfCheckCrewChange`)은 이 전이, 거절, 메시지, 늦음 규칙, 엔드포인트, `atcctl` 명령을 코드 사실로 확인한다. `vocado-readback` 항목은 vocado `CLAUDE.md`가 `[OCC CC-xxxx]`에도 `READBACK CC-xxxx`로 답할 때만 준비됨이다([dispatch.ko.md](dispatch.ko.md) "2b 켜기 점검표").
 
 ## 9. `lane:`에서 `tail:`로 옮기기
 
@@ -516,7 +555,7 @@ SUPERVISOR가 운항 중인 AIRCRAFT의 CREW COMPLEMENT를 `PATCH /api/fleet/:re
 ## 10. 구현 순서
 
 1. ✅ planner의 `tail:`과 `lane:` 별칭. 이어서 Linear 라벨, VOC-196, President에게 알림
-2. ✅ `fleet.json` 등록부, API, FLEET 탭(읽기와 수정). 기본값은 vocado CREW 규칙에서. 선언한 COMPLEMENT 옆의 관찰한 CREW와 CREW CHANGE 1단계는 8.3, 8.4
+2. ✅ `fleet.json` 등록부, API, FLEET 탭(읽기와 수정). 기본값은 vocado CREW 규칙에서. 선언한 COMPLEMENT 옆의 관찰한 CREW와 CREW CHANGE(문구, 그리고 approval 모드에서 OCC가 보내기)는 8.3, 8.4
 3. ✅ planner가 분류 라벨을 읽음: TYPE RATING·FLIGHT TYPE 강한 규칙, WAKE 슬롯, ROUTE 점수(Risk 그룹은 SEC로 셈. 라벨 그룹은 `group:name`으로 읽음), HOLDING·PARKED 팀의 STAND 없는 FLIGHT와 CHECK 독립성(5.1, 5.2)
 4. ◐ DISPATCH 카드에 분류 표시. 남은 일: FIDS, 라벨이 없을 때 분류를 제안하는 DISPATCH 메모
 5. OCC S1 `CLASSIFY` 초안(occ.ko.md의 SCHEDULE 작업과 함께)

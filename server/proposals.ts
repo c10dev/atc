@@ -30,6 +30,7 @@ import {
 } from "./dispatch.ts";
 import { applyGroundStops, enforcedStops, groundStopWhy } from "./atfm.ts";
 import { classLabel, classOf, needsStand } from "./crew.ts";
+import { selfCheckCrewChange } from "./crew-change.ts";
 import { type Crosscheck, CrosscheckError, type CrosscheckLine, crosscheckRateOf, examplesOf, type HumanDecision, markOf, oneClickOf, parseCrosscheck, type Via, viaOf } from "./crosscheck.ts";
 import { loadFleet } from "./fleet.ts";
 import { loadLogbook } from "./logbook.ts";
@@ -700,7 +701,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       gate3: gate3Of(proposals),
       crosscheck: crosscheckBriefOf(proposals),
       // 2b 켜기 점검표(표시만)
-      readiness2b: readiness2bOf({ gate, ...selfCheck2b(files.atcctl, now), sendGuard: files.sendGuard, vocado: files.vocado }),
+      readiness2b: readiness2bOf({ gate, ...selfCheck2b(files.atcctl, now), crewChangeMissing: selfCheckCrewChange(files.atcctl, now), sendGuard: files.sendGuard, vocado: files.vocado }),
       reasonCodes: REASON_CODES,
       config: cfg,
     });

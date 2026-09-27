@@ -62,11 +62,16 @@ drift 두 줄의 뜻:
 
 - 내리고(−) 타는(+) 팀원과 모델, 그리고 TYPE RATING 영향이 보인다. 예: 유일한 구현 팀원을 내리면 "BUILD·MAINT·TEST를 더는 날 수 없음", 판정할 팀원이 없으면 "CHECK를 더는 날 수 없음".
 - 지시문은 `[ATC FLEET] CREW CHANGE · HOTEL (TEAM_H) · CC-0001`로 시작하고, 팀원을 멈추거나 그 모델로 만드는 법을 적은 뒤 `"TEAM_H CREW CHANGE CC-0001 COMPLETE"` 한 줄로 답하라고 끝난다.
-- **atc는 보내지 않는다.** **복사**를 눌러 그 팀의 CAPTAIN 세션에 붙여 넣고 **전달함**을 누른다. 대기 카드가 사라지고 기록에 전달 시각이 남는다.
-- 전달하기 전에 또 바꾸면 처음 구성 기준으로 합친 새 지시문(`CC-0002`)이 앞의 것을 대신한다. 원래 구성으로 되돌리면 대기 건만 닫힌다.
+- **직접 전달(2a·2b 모두)**: **복사**를 눌러 그 팀의 CAPTAIN 세션에 붙여 넣고 **전달함**을 누른다. 대기 카드가 사라지고 기록에 전달 시각이 남는다.
+- **OCC가 보냄(2b, DISPATCH가 approval 모드일 때만)**: 카드의 **승인**을 누르면 OCC가 다음 바퀴에 `[OCC CC-0001] CREW CHANGE · HOTEL (TEAM_H)`로 시작하는 문구를 CAPTAIN에게 보낸다([교신 규칙](radio.md)). 승인은 SUPERVISOR만 한다. shadow 모드에서는 승인 버튼이 없다(서버도 409로 거절).
+  - 카드 머리: **CREW CHANGE 대기**(pending) → **CREW CHANGE 승인됨 — OCC 발부 대기**(approved) → **CREW CHANGE SENT — READBACK 대기**(sent, 보낸 본문 그대로 보임) → CAPTAIN이 `READBACK CC-0001`로 답하면 카드가 사라진다(acknowledged).
+  - 보낸 뒤 10분 넘게 READBACK이 없으면 카드에 늦음 경고가 뜬다. OCC가 같은 문구를 한 번 더 보내고, 그래도 없으면 SUPERVISOR에게 보고한다.
+  - 승인한 뒤에도 보내기 전이면 **전달함**으로 직접 닫을 수 있다(shadow로 되돌렸을 때도). 보낸(sent) 건은 전달함으로 닫지 않는다 — READBACK을 기다린다.
+- 보내기 전(승인 대기·승인됨)에 또 바꾸면 처음 구성 기준으로 합친 새 지시문(`CC-0002`)이 앞의 것을 대신한다. 승인됐던 것이면 새 지시문을 다시 승인한다. 원래 구성으로 되돌리면 대기 건만 닫힌다.
+- 이미 보낸(sent) 건은 대신하지 않는다. 새 지시문은 그 다음 변경으로 따로 생기고, 승인해 두어도 앞 건의 READBACK이 온 뒤에 나간다(카드에 기다리는 CC 번호가 보인다).
 - 아직 운항 전인 AIRCRAFT는 CREW CHANGE 없이 CREW BRIEFING에 새 구성이 들어간다.
 
-기록은 `~/.local/state/atc/crew-changes.jsonl`에 추가만 한다.
+기록은 `~/.local/state/atc/crew-changes.jsonl`에 추가만 한다. 2b를 켜기 전에 DISPATCH 탭 "2b 켜기 점검표"의 **CREW CHANGE 발부**와 **vocado READBACK 규칙**(`[OCC CC-xxxx]` → `READBACK CC-xxxx`까지)을 확인한다.
 
 ## 새 팀 들이기
 
