@@ -3,6 +3,8 @@ import { dirname, join } from "node:path";
 import type { Context, Hono } from "hono";
 import { callsign } from "./callsign.ts";
 import { config } from "./config.ts";
+import { noteCrewChange, withCrew } from "./crew-change.ts";
+import { OBSERVED_WINDOW_DAYS } from "./crew-observed.ts";
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig } from "./dispatch.ts";
 import { type Actuals, computeActuals, type LogEntry, loadLogbook } from "./logbook.ts";
 import type { Snapshot } from "./model.ts";
@@ -302,13 +304,14 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const s = await getSnapshot();
     const fleet = loadFleet();
     const projects = [...new Set(s.tickets.map((t) => t.project).filter(Boolean) as string[])].sort();
-    const aircraft = fleetView(s, fleet, loadDispatchConfig().teamPattern, loadLogbook());
+    const aircraft = fleetView(s, fleet, loadDispatchConfig().teamPattern, loadLogbook()).map(withCrew(s));
     const configurations = Object.entries(CONFIGURATIONS).map(([id, t]) => ({ id, label: t.label, complement: t.complement, ratings: t.ratings }));
     return c.json({
       ratings: RATINGS,
       defaults: fleet.defaults,
       projects,
       aircraft,
+      observedWindowDays: OBSERVED_WINDOW_DAYS,
       configurations,
       airports: s.airports.map((a) => a.code),
       defaultBase: defaultBase(s, loadDispatchConfig().teamPattern),
@@ -352,9 +355,11 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     try {
       const next = applyPatch(fleet.aircraft[key] ?? {}, body, fleet.defaults);
       saveAircraft(key, next);
+      const s = await getSnapshot();
+      noteCrewChange(reg, fleet.aircraft[key] ?? {}, next, fleet.defaults, s.sessions); // CREW CHANGE 기록(보내지 않음)
       if (Object.keys(next).length) fleet.aircraft[key] = next;
       else delete fleet.aircraft[key];
-      return c.json({ ok: true, aircraft: fleetView(await getSnapshot(), fleet, teamPattern, loadLogbook()).find((a) => a.registration === reg) });
+      return c.json({ ok: true, aircraft: fleetView(s, fleet, teamPattern, loadLogbook()).map(withCrew(s)).find((a) => a.registration === reg) });
     } catch (e) {
       if (e instanceof FleetError) return c.json({ error: e.message }, e.status as 400);
       throw e;

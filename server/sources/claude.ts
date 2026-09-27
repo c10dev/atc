@@ -25,8 +25,13 @@ function isAlive(pid: number, procStart?: string): boolean {
   }
 }
 
+// 세션 폴더(~/.claude/projects/<cwd>/<sessionId>/). 대화 기록은 그 옆 <sessionId>.jsonl, 서브에이전트는 안의 subagents/
+export function sessionDir(cwd: string, sessionId: string): string {
+  return join(config.claudeDir, "projects", cwd.replace(/[^a-zA-Z0-9]/g, "-"), sessionId);
+}
+
 function transcriptPath(s: SessionFile): string {
-  return join(config.claudeDir, "projects", s.cwd.replace(/[^a-zA-Z0-9]/g, "-"), `${s.sessionId}.jsonl`);
+  return `${sessionDir(s.cwd, s.sessionId)}.jsonl`;
 }
 
 function mtime(path: string): Date | null {
