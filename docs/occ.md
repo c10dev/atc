@@ -94,7 +94,7 @@ Built: `NEW` (CHARTER DESK, 5.1), `CLOSE` (5.5), `PRIORITIZE`, `CLASSIFY`, and `
 
 ### 5.2 Ticket bodies
 
-`NEW` and `SPLIT` use vocado's formats: the four boxes from `CLAUDE.md` (goal, allowed scope, forbidden changes, done criteria), or the `Codex Engineering Task` template for DB, migration, security or rights work. Such tickets always carry CAUTION, and CAUTION operations are never automatic (section 7).
+`NEW` and `SPLIT` use the DIRECT form ([dispatch.md](dispatch.md) "DIRECT briefs", since 2026-09-28): a goal and done criteria are required, with only the constraints specific to the task; DB, migration, security or rights work also carries a short Hard constraints line. Standing rules stay in vocado `CLAUDE.md` and `AGENTS.md`. Such tickets always carry CAUTION, and CAUTION operations are never automatic (section 7).
 
 ### 5.3 Duplicates and limits
 
@@ -149,7 +149,7 @@ On 2026-09-27 VOC Todo had 6 FLIGHTs and none could be assigned, so the DISPATCH
 
 - **Data.** `schedule brief` has `waypointGaps` (`server/waypoint-gaps.ts`, pure `waypointGapsOf`): per ROUTE that is not completed or canceled, the active WAYPOINT and the next one, each with `criteria` (the numbered list under "Exit criteria"), `description` when there is no list, and the milestone's `issues` (key, title, state; canceled and duplicate left out) and `truncated`. ROUTEs without WAYPOINTs, or with every WAYPOINT passed, are left out, and so are milestones of teams outside `candidateTeams` (atc reads every team's milestones, but NEW creates its issue in the main team). `null` means the milestones couldn't be read.
 - **Judgment stays with OCC.** The server doesn't match criteria to issues. Each pass OCC reads the gaps, decides which criteria no open or finished issue covers, skips criteria a person must decide ("SUPERVISOR decides", recruiting, interviews) and descriptions without a checkable end condition, and drafts at most **2 per pass**, the active WAYPOINT first (`occ/.claude/skills/tick/schedule.md` "WAYPOINT gap").
-- **The draft.** `schedule draft NEW --gap --project <ROUTE> --milestone <WAYPOINT> …`, with the four body sections and the criterion quoted in `## 목표`. `milestone` is checked against that project's milestones (name or id) and shown in `changesOf` ("WAYPOINT Beta Ready"). `--gap` requires a milestone, and atc refuses the draft when `similarTickets` finds a similar FLIGHT, so the "no duplicate" rule holds even if OCC misses one. Gap drafts count toward the 5 open drafts.
+- **The draft.** `schedule draft NEW --gap --project <ROUTE> --milestone <WAYPOINT> …`, with a DIRECT body and the criterion quoted in `## 목표`. `milestone` is checked against that project's milestones (name or id) and shown in `changesOf` ("WAYPOINT Beta Ready"). `--gap` requires a milestone, and atc refuses the draft when `similarTickets` finds a similar FLIGHT, so the "no duplicate" rule holds even if OCC misses one. Gap drafts count toward the 5 open drafts.
 - **S2.** The released `save_issue` call carries `milestone: <milestone id>`, so the issue lands on the WAYPOINT. linear-guard (`occ/mcp-guard.mjs`, unchanged) passes only that exact input; `occ/mcp-guard.test.mjs` checks that dropping the milestone, or passing its name or another id, is refused.
 - CROSSCHECK marks these drafts like any SCHEDULE draft.
 

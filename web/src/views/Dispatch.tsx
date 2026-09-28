@@ -8,6 +8,7 @@ import { AtfmPanel } from "./Atfm.tsx";
 import { type ReadinessItem, Readiness2b } from "./Readiness2b.tsx";
 import { BriefingLines, CardDetails, type CardBrief, FactsLine } from "./DispatchBriefing.tsx";
 import { FollowingPanel } from "./Following.tsx";
+import { BriefsPanel } from "./Briefs.tsx";
 import "./Dispatch.css";
 
 // 2단계 DISPATCH. shadow(2a): 제안은 화면에만 보이고 아무에게도 보내지 않는다.
@@ -309,6 +310,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {(brief.mode === "approval" || brief.gate3.dispatched > 0) && <Gate3 gate={brief.gate3} />}
       <AtfmPanel refreshKey={refreshKey} now={now} />
       <FollowingPanel refreshKey={refreshKey} now={now} />
+      <BriefsPanel refreshKey={refreshKey} />
 
       {brief.inFlight.length > 0 && (
         <>

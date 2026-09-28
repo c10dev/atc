@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Context, Hono } from "hono";
+import { DONE_RE, GOAL_RE, sectionsOfMd } from "./briefs.ts";
 import { flightNumber } from "./callsign.ts";
 import { config } from "./config.ts";
 import { classLabel, classOf, FLIGHT_TYPES, type FlightType, RATINGS, type Rating, WAKES, type Wake } from "./crew.ts";
@@ -332,39 +333,22 @@ export function parsePayload(kind: unknown, raw: Record<string, unknown>): { kin
   return { kind: "CLASSIFY", payload };
 }
 
-// 본문 칸 검사. 제목 줄은 마크다운 제목(`## 목표`)이거나 굵은 글씨로 시작하는 줄(`**목표**`, `**Goal:** …`)이다.
-// 제목 글은 앞 번호(`1.`)·끝 콜론을 떼고 소문자로 바꿔, 칸 이름으로 시작하는지 본다(한국어·영어 둘 다).
-// vocado 네 칸: 목표(Goal·Outcome), 수정 허용 범위(Allowed changes·files·scope), 금지 사항(Forbidden),
-// 완료 기준(Acceptance·Done criteria). rating:SEC는 Codex Engineering Task 템플릿(Linear)의 칸
-// Allowed files(`### Allowed files / surfaces`도 됨), Forbidden changes, Invariants, Acceptance Criteria,
-// Verification이 더 있어야 한다. 그 템플릿 본문은 Outcome·Allowed files·Forbidden changes·Acceptance
-// Criteria로 네 칸 검사도 통과한다.
+// NEW 본문 칸(ATC-32 DIRECT). 목표(Goal·Outcome)와 완료 기준(Acceptance·Done criteria·Done when)만 필수다.
+// rating:SEC는 이 작업만의 보안 한계를 적은 Hard constraints 줄이 더 있어야 한다(예: "staging에 적용하지 않음").
+// 수정 허용 범위·금지 사항·Invariants·Verification은 써도 되지만 필수가 아니다. 늘 지키는 규칙은
+// vocado CLAUDE.md·AGENTS.md·guard·브랜치 보호에 있고 이슈마다 되풀이하지 않는다.
+// 칸 제목은 마크다운 제목(`## 목표`), 굵은 줄(`**Goal:** …`), 평문 이름표(`완료 기준: …`) 모두 된다(briefs.ts labelOf).
+// 제목만 있고 내용이 비면 없는 칸으로 본다.
 const BODY_SECTIONS: [string, RegExp][] = [
-  ["목표", /^(?:목표|goals?(?![a-z])|outcome)/],
-  ["수정 허용 범위", /^(?:수정\s*허용\s*범위|허용\s*범위|allowed\s+(?:changes|files|scope))/],
-  ["금지 사항", /^(?:금지|forbidden)/],
-  ["완료 기준", /^(?:완료\s*기준|(?:acceptance|done)\s+criteria)/],
+  ["목표", GOAL_RE],
+  ["완료 기준", DONE_RE],
 ];
-const CODEX_SECTIONS: [string, RegExp][] = [
-  ["Allowed files", /^allowed\s+files/],
-  ["Forbidden changes", /^forbidden\s+changes/],
-  ["Invariants", /^invariants/],
-  ["Acceptance Criteria", /^acceptance\s+criteria/],
-  ["Verification", /^verification/],
-];
-export function headingsOf(body: string): string[] {
-  const out: string[] = [];
-  for (const line of body.split("\n")) {
-    const m = line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/) ?? line.match(/^\s*(?:\*\*|__)(.+?)(?:\*\*|__)/);
-    if (!m) continue;
-    out.push(m[1].replace(/^\d+[.)]\s*/, "").replace(/[:：]\s*$/, "").replace(/\s+/g, " ").trim().toLowerCase());
-  }
-  return out;
-}
+export const HARD_CONSTRAINTS_RE = /^(?:hard\s+constraints|필수\s*제약)/;
+const SEC_SECTIONS: [string, RegExp][] = [["Hard constraints", HARD_CONSTRAINTS_RE]];
 export function missingSections(body: string, sec = false): string[] {
-  const hs = headingsOf(body);
-  const need = sec ? [...BODY_SECTIONS, ...CODEX_SECTIONS] : BODY_SECTIONS;
-  return need.filter(([, re]) => !hs.some((h) => re.test(h))).map(([name]) => name);
+  const filled = sectionsOfMd(body).filter((x) => x.text).map((x) => x.title);
+  const need = sec ? [...BODY_SECTIONS, ...SEC_SECTIONS] : BODY_SECTIONS;
+  return need.filter(([, re]) => !filled.some((h) => re.test(h))).map(([name]) => name);
 }
 
 // 제목 비교용: NFKC, 소문자, 글자·숫자 밖은 공백
@@ -417,9 +401,9 @@ export function parseNew(raw: Record<string, unknown>, tickets: Ticket[], tails:
   if (body.length > 20_000) throw new ScheduleError("본문이 20,000자를 넘음");
   const cls = parseClass(raw);
   const missing = missingSections(body);
-  if (missing.length) throw new ScheduleError(`본문에 빠진 칸: ${missing.join(", ")} (목표·수정 허용 범위·금지 사항·완료 기준 네 칸이 필요함)`);
-  const codex = cls.ratings?.includes("SEC") ? missingSections(body, true).filter((m) => CODEX_SECTIONS.some(([n]) => n === m)) : [];
-  if (codex.length) throw new ScheduleError(`rating:SEC 이슈는 Codex Engineering Task 템플릿으로 — 빠진 칸: ${codex.join(", ")}`);
+  if (missing.length) throw new ScheduleError(`본문에 빠진 칸: ${missing.join(", ")} (DIRECT: 목표와 완료 기준이 필요함)`);
+  if (cls.ratings?.includes("SEC") && missingSections(body, true).includes("Hard constraints"))
+    throw new ScheduleError('rating:SEC 이슈에는 Hard constraints 줄이 필요함 — 이 작업만의 보안 한계(예: "staging에 적용하지 않음", "service_role 경로 유지")');
   const projects = [...new Set(tickets.map((t) => t.project).filter(Boolean) as string[])];
   const project = projects.find((p) => p.toLowerCase() === String(raw.project ?? "").trim().toLowerCase());
   if (!project) throw new ScheduleError(`모르는 프로젝트: ${raw.project ?? "(비었음)"} (가능: ${projects.sort().join(", ")})`);

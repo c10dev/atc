@@ -108,15 +108,23 @@ const board = [
 ];
 const newInput = (over: Record<string, unknown> = {}) => ({ kind: "NEW", title: "재생 화면 버튼 정리", body: BODY, project: "web ux", reason: "사용자 요청. 중복 검색: VOC-60 비슷하지 않음", ...over });
 
-test("NEW 본문 칸: 제목 줄·굵은 줄, 한국어·영어, 번호와 콜론은 무시", () => {
+test("NEW 본문 칸(DIRECT): 목표와 완료 기준만 필수 — 제목 줄·굵은 줄·평문 이름표, 한국어·영어, 번호와 콜론은 무시", () => {
   assert.deepEqual(missingSections(BODY), []);
   assert.deepEqual(missingSections(CODEX), []);
-  assert.deepEqual(missingSections(CODEX, true), []);
-  assert.deepEqual(missingSections(CODEX.replace("## Invariants", "## Notes").replace("## Verification", "## Checks"), true), ["Invariants", "Verification"]);
-  assert.deepEqual(missingSections("**Goal:** x\n### 1. Allowed files\n### 2. Forbidden changes:\n### 3. Acceptance Criteria"), []);
-  assert.deepEqual(missingSections("**목표**\nx\n**Allowed changes**\n# Forbidden\n## Done criteria"), []);
-  assert.deepEqual(missingSections("## 목표\n본문에 금지 사항이라고만 씀\n완료 기준: 없음"), ["수정 허용 범위", "금지 사항", "완료 기준"]);
-  assert.deepEqual(missingSections(BODY, true), ["Allowed files", "Forbidden changes", "Invariants", "Acceptance Criteria", "Verification"]);
+  // 목표와 완료 기준만 있는 짧은 본문도 통과
+  assert.deepEqual(missingSections("## 목표\n재생 버튼 정리\n## 완료 기준\n- 테스트 통과"), []);
+  assert.deepEqual(missingSections("목표: 재생 버튼 정리\n완료 기준: 테스트 통과"), []);
+  assert.deepEqual(missingSections("**Goal:** x\n### 1. Done when\n- y"), []);
+  assert.deepEqual(missingSections("## Outcome\nx\n## Exit criteria:\n- y"), []);
+  // 칸 이름이 문장 속에만 있거나 제목만 있고 내용이 비면 없는 칸
+  assert.deepEqual(missingSections("## 목표\n본문에 완료 기준이라고만 씀"), ["완료 기준"]);
+  assert.deepEqual(missingSections("## 목표\n\n## 완료 기준\n- y"), ["목표"]);
+  assert.deepEqual(missingSections("- 목표: 글머리표는 이름표가 아님\n완료 기준: y"), ["목표"]);
+  // rating:SEC는 Hard constraints 줄이 더 필요
+  assert.deepEqual(missingSections(BODY, true), ["Hard constraints"]);
+  assert.deepEqual(missingSections(CODEX, true), ["Hard constraints"]);
+  assert.deepEqual(missingSections(`${BODY}\nHard constraints: staging에 적용하지 않음`, true), []);
+  assert.deepEqual(missingSections(`${CODEX}\n## Hard constraints\n- service_role 경로 유지`, true), []);
 });
 
 test("NEW 입력 검사", () => {
@@ -126,9 +134,11 @@ test("NEW 입력 검사", () => {
   });
   assert.throws(() => parseNew(newInput({ title: "  " }), board, TAILS), /1~120자/);
   assert.throws(() => parseNew(newInput({ title: "x".repeat(121) }), board, TAILS), /1~120자/);
-  assert.throws(() => parseNew(newInput({ body: "## 목표\nx" }), board, TAILS), /빠진 칸: 수정 허용 범위, 금지 사항, 완료 기준/);
-  assert.throws(() => parseNew(newInput({ ratings: ["SEC"] }), board, TAILS), /Codex Engineering Task.*Allowed files/);
-  assert.equal(parseNew(newInput({ body: CODEX, ratings: ["SEC"] }), board, TAILS).ratings?.[0], "SEC");
+  assert.throws(() => parseNew(newInput({ body: "## 목표\nx" }), board, TAILS), /빠진 칸: 완료 기준 \(DIRECT/);
+  assert.equal(parseNew(newInput({ body: "목표: x\n완료 기준: y" }), board, TAILS).body, "목표: x\n완료 기준: y");
+  assert.throws(() => parseNew(newInput({ ratings: ["SEC"] }), board, TAILS), /rating:SEC 이슈에는 Hard constraints 줄이 필요함/);
+  assert.throws(() => parseNew(newInput({ body: CODEX, ratings: ["SEC"] }), board, TAILS), /Hard constraints/);
+  assert.equal(parseNew(newInput({ body: `${BODY}\n**Hard constraints:** staging에 적용하지 않음`, ratings: ["SEC"] }), board, TAILS).ratings?.[0], "SEC");
   assert.throws(() => parseNew(newInput({ project: "Mobile" }), board, TAILS), /모르는 프로젝트: Mobile/);
   assert.throws(() => parseNew(newInput({ tail: "TEAM_Z" }), board, TAILS), /FLEET에 없거나 퇴역/);
   assert.throws(() => parseNew(newInput({ parent: "VOC-99" }), board, TAILS), /parent가 FLIGHT 목록에 없음/);

@@ -42,12 +42,21 @@ DELTA가 끝날 때까지 대기
 
 ```
 [DISPATCH D-0003] FLIGHT PLAN · BRAVO (TEAM_B)
+BRIEF: DIRECT
 FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High
 <제목>
 <URL>
+목표: …
+완료 기준: …
+이 작업만의 제약: …
 DISPATCH 메모: CAUTION · …
+애매한 곳은 PILOT'S DISCRETION으로 합리적인 기본값을 고르고 PR에 적으세요.
 — 맡으면 이 메시지에 "READBACK D-0003", 못 맡으면 사유로 답장해 주세요.
+끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요.
 ```
+
+- FLIGHT PLAN은 DIRECT 지시서다. 목표·완료 기준·이 작업만의 제약은 보낼 때 이슈 본문에서 옮긴다. 늘 지키는 규칙(CLAUDE.md, guard, 브랜치 보호)은 적지 않는다.
+- 다른 세션(structure 등)이 팀에 직접 일을 줄 때도 같은 모양을 쓴다. `GET /api/dispatch/flight/<FLIGHT>/brief?to=TEAM_X`가 붙여 넣을 문구를 준다. 손으로 쓸 때도 `BRIEF: DIRECT` 줄을 넣어야 비교에 DIRECT로 잡힌다.
 
 - 지금은 2a(그림자 운용)라 보내지 않는다. 2b를 켜기 전에 vocado `CLAUDE.md`의 READBACK 규칙을 FLIGHT PLAN과 CREW CHANGE까지 넓힌다.
 - OCC의 SendMessage는 send-guard가 지킨다: approval 모드, SENT 상태 제안, 그 CAPTAIN, atc가 만든 문구 그대로일 때만 통과.

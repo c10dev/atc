@@ -4,14 +4,17 @@ import type { Hono } from "hono";
 import { config } from "./config.ts";
 import { type Classification, classOf, type Wake } from "./crew.ts";
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig } from "./dispatch.ts";
-import { isCodexBot } from "./landing.ts";
+import { type GhThread, isCodexBot, type LandingReview } from "./landing.ts";
 import { keyInName, teamOfKey } from "./linear-keys.ts";
 import type { Claim, Snapshot, TrafficEvent } from "./model.ts";
+import { briefFactsOf, compareBriefs, findingsOf, type Measured, reworkOf, type TalkEvent } from "./briefs.ts";
 import { readRecords } from "./recorder.ts";
 import { type Departure, matchDepartures, readDepartures } from "./departures.ts";
-import { readHookClaims } from "./sources/claude.ts";
+import { readHookClaims, talkEventsFile } from "./sources/claude.ts";
+import { sessionDirsOf } from "./crew-observed.ts";
+import { readLandingReviews } from "./landing-review.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
-import { type GhMerged, listMerged } from "./sources/github.ts";
+import { type GhMerged, listMerged, threadsOf } from "./sources/github.ts";
 
 // LOGBOOK: AIRCRAFT별 완료(ARRIVED) FLIGHT 기록. 기본 브랜치에 머지된 PR 하나가 한 줄이다.
 // ~/.local/state/atc/logbook.jsonl에 추가만 하고, 되돌림(Revert PR)은 reverted 줄로 덧붙인다.
@@ -47,6 +50,7 @@ export interface LogEntry {
   reverted: boolean;
   revertedBy?: { number: number; url: string; at: string } | null;
   los: number;
+  measured?: Measured; // 지시서(VECTORS·DIRECT)와 P0–P2 지적·수정 커밋(ATC-32). measured 줄로 채운다
 }
 
 // PR 본문과 FLIGHT의 관계. vocado 규칙상 `Fixes VOC-n`만 이슈를 끝내고, `Part of VOC-n`은 일부다.
@@ -62,7 +66,9 @@ export type LogLine =
   | ({ op: "arrived"; t: string } & LogEntry)
   | { op: "reverted"; t: string; key: string; by: { number: number; url: string } }
   // AIRCRAFT를 몰랐던 줄을 착수 기록으로 나중에 채운다. 출발 시각을 몰랐으면(departedFrom "pr") 그것도
-  | { op: "attributed"; t: string; key: string; aircraft: string; via: "departures"; departedAt?: string; blockMin?: number };
+  | { op: "attributed"; t: string; key: string; aircraft: string; via: "departures"; departedAt?: string; blockMin?: number }
+  // 지시서·지적·수정 커밋을 나중에 잰다(ATC-32). 이미 채운 칸은 바꾸지 않는다
+  | ({ op: "measured"; t: string; key: string } & Measured);
 
 const logbookFile = () => join(config.stateDir, "logbook.jsonl");
 
@@ -105,6 +111,14 @@ export function foldLogbook(lines: LogLine[]): LogEntry[] {
       if (!e || e.aircraft) continue; // 이미 아는 AIRCRAFT는 바꾸지 않는다
       Object.assign(e, { aircraft: l.aircraft, attributedBy: l.via });
       if (l.departedAt && l.blockMin != null && e.departedFrom === "pr") Object.assign(e, { departedAt: l.departedAt, departedFrom: "departure", blockMin: l.blockMin });
+    } else if (l.op === "measured") {
+      const e = byKey.get(l.key);
+      if (!e) continue;
+      const m: Measured = { ...e.measured };
+      if (l.brief !== undefined && m.brief === undefined) m.brief = l.brief;
+      if (l.findings !== undefined && m.findings === undefined) m.findings = l.findings;
+      if (l.rework !== undefined && m.rework === undefined) m.rework = l.rework;
+      e.measured = m;
     }
   }
   return [...byKey.values()].sort((a, b) => b.arrivedAt.localeCompare(a.arrivedAt));
@@ -252,6 +266,50 @@ export function attribution(e: LogEntry, repo: string, departures: Departure[], 
   return line;
 }
 
+// ---- 지시서 비교 측정(ATC-32) ----
+
+export const MEASURE_DAYS = 30;
+export const THREADS_PER_RUN = 10; // 한 바퀴에 지적을 읽을 머지 PR 수(첫 바퀴의 과거분을 나눠 읽는다)
+
+export interface MeasureInputs {
+  pulls: Map<string, GhMerged>; // LOGBOOK key → 이번에 읽은 머지 PR(commits 포함)
+  eventsOf: (aircraft: string) => TalkEvent[] | null; // 그 AIRCRAFT 세션들의 대화 기록 사건. 이어진 세션이 없으면 null
+  threads: Map<string, GhThread[]>; // LOGBOOK key → 리뷰 스레드(읽은 것만)
+  reviews: LandingReview[];
+}
+
+// 지적을 아직 안 잰, 이번에 읽은 머지 PR
+export function needsFindings(entries: LogEntry[], pulls: Map<string, GhMerged>, now: number): LogEntry[] {
+  const since = now - MEASURE_DAYS * DAY;
+  return entries.filter((e) => Date.parse(e.arrivedAt) >= since && e.measured?.findings === undefined && pulls.has(e.key));
+}
+
+// 재야 할 칸: 지시서(FLIGHT·AIRCRAFT와 대화 기록이 있어야), 수정 커밋(PR을 이번에 읽었을 때), 지적(스레드를 읽었을 때)
+export function measureLines(entries: LogEntry[], inp: MeasureInputs, now: number): LogLine[] {
+  const since = now - MEASURE_DAYS * DAY;
+  const t = new Date(now).toISOString();
+  const out: LogLine[] = [];
+  for (const e of entries) {
+    if (Date.parse(e.arrivedAt) < since) continue;
+    const m = e.measured ?? {};
+    const pr = inp.pulls.get(e.key);
+    const openedAt = pr?.createdAt ?? new Date(Date.parse(e.arrivedAt) - e.landingWaitMin * MIN).toISOString();
+    const line: Measured = {};
+    if (m.brief === undefined) {
+      if (!e.flight) line.brief = null; // AD HOC: 지시서가 없다
+      else if (e.aircraft) {
+        const events = inp.eventsOf(e.aircraft);
+        if (events) line.brief = briefFactsOf(events, e.flight, openedAt, e.departedAt);
+      }
+    }
+    if (m.rework === undefined && pr?.commits) line.rework = reworkOf(pr.commits, openedAt);
+    const threads = inp.threads.get(e.key);
+    if (m.findings === undefined && threads) line.findings = findingsOf(threads, inp.reviews, e.pr.repo, e.pr.number);
+    if (Object.keys(line).length) out.push({ op: "measured", t, key: e.key, ...line });
+  }
+  return out;
+}
+
 // ---- TARGETS 실적 ----
 
 export interface Actuals {
@@ -365,8 +423,37 @@ async function run(s: Snapshot) {
   const lines = planLogbook(merged, readLogbook());
   appendLogbook(lines);
   if (lines.length) console.log(`[atc] LOGBOOK +${lines.length}`);
+  try {
+    await measure(s, merged);
+  } catch (e) {
+    errors.push(`측정: ${String((e as Error).message ?? e).split("\n")[0]}`);
+  }
   logbookState.error = errors.length ? errors.join(" · ") : null;
   logbookState.ranAt = new Date().toISOString();
+}
+
+// 지시서·지적·수정 커밋을 재서 measured 줄로 덧붙인다. 대화 기록은 사건(시각·받는 곳·표시)만 뽑고 본문은 두지 않는다
+async function measure(s: Snapshot, merged: { ctx: EntryContext; pulls: GhMerged[] }[]) {
+  const now = Date.now();
+  const entries = loadLogbook();
+  const pulls = new Map(merged.flatMap(({ ctx, pulls }) => pulls.map((p) => [`${ctx.slug}#${p.number}`, p] as const)));
+  const threads = new Map<string, GhThread[]>();
+  for (const e of needsFindings(entries, pulls, now).slice(0, THREADS_PER_RUN)) {
+    try {
+      threads.set(e.key, await threadsOf(e.pr.repo, e.pr.number));
+    } catch {} // 다음 바퀴에 다시
+  }
+  const byAircraft = new Map<string, TalkEvent[] | null>();
+  const eventsOf = (aircraft: string) => {
+    if (!byAircraft.has(aircraft)) {
+      const dirs = sessionDirsOf(aircraft, s.sessions, now, MEASURE_DAYS + 14);
+      byAircraft.set(aircraft, dirs && dirs.flatMap((d) => talkEventsFile(`${d}.jsonl`)).sort((a, b) => a.t.localeCompare(b.t)));
+    }
+    return byAircraft.get(aircraft)!;
+  };
+  const lines = measureLines(entries, { pulls, eventsOf, threads, reviews: readLandingReviews() }, now);
+  appendLogbook(lines);
+  if (lines.length) console.log(`[atc] LOGBOOK measured +${lines.length}`);
 }
 
 // 10분마다(서버가 뜬 뒤 첫 번에 최근 머지 PR로 과거분도 채운다). 스냅샷을 막지 않는다.
@@ -387,5 +474,10 @@ export function mountLogbook(app: Hono) {
     const since = Date.now() - days * DAY;
     const entries = loadLogbook().filter((e) => Date.parse(e.arrivedAt) >= since && (!aircraft || e.aircraft === aircraft));
     return c.json({ days, aircraft, entries, ...logbookState });
+  });
+  // VECTORS 대 DIRECT(ATC-32): 기간 안 ARRIVED FLIGHT를 지시서 종류별로 나눈 지표와 행
+  app.get("/api/logbook/briefs", (c) => {
+    const days = Math.min(90, Math.max(1, Number(c.req.query("days")) || MEASURE_DAYS));
+    return c.json({ days, ...compareBriefs(loadLogbook(), Date.now(), days), ranAt: logbookState.ranAt, error: logbookState.error });
   });
 }

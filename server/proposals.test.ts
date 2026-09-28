@@ -211,20 +211,33 @@ test("SUPERSEDED 사유: 계획의 제외 목록에 없어도 planner 규칙을 
   }
 });
 
-test("FLIGHT PLAN 문구: 콜사인·FLIGHT·AIRPORT·PRIORITY·제목·URL·메모·READBACK 요청", () => {
+test("FLIGHT PLAN 문구(DIRECT): BRIEF 줄·콜사인·FLIGHT·AIRPORT·PRIORITY·제목·URL·메모·READBACK 요청, 끝은 끝까지 진행", () => {
   const [p] = fold([create("D-0007", "VOC-193", "b", 10), { op: "note", id: "D-0007", at: iso(5), text: "DB 권한 작업", caution: true }]);
   const msg = formatFlightPlan({ ...p, airport: "VCDO" }, { title: "권한 정리", url: "https://linear.app/x/VOC-193", priority: 2 }, "TEAM_B");
   assert.equal(
     msg,
     [
       "[DISPATCH D-0007] FLIGHT PLAN · BRAVO (TEAM_B)",
+      "BRIEF: DIRECT",
       "FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High",
       "권한 정리",
       "https://linear.app/x/VOC-193",
+      "완료 기준: 이슈 본문(링크)의 완료 기준을 따릅니다.",
       "DISPATCH 메모: CAUTION · DB 권한 작업",
+      "애매한 곳은 PILOT'S DISCRETION으로 합리적인 기본값을 고르고 PR에 적으세요.",
       '— 맡으면 이 메시지에 "READBACK D-0007", 못 맡으면 사유로 답장해 주세요.',
+      "끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요.",
     ].join("\n"),
   );
+});
+
+test("FLIGHT PLAN 문구(DIRECT): 이슈 본문에서 목표·완료 기준·이 작업만의 제약만 옮기고, 허용 범위 같은 나머지는 링크에 둔다", () => {
+  const [p] = fold([create("D-0009", "VOC-200", "b", 10)]);
+  const body = ["## 목표", "재생 버튼 정리", "## 수정 허용 범위", "- src/app/song/**", "## 금지 사항", "- DB 변경", "## 완료 기준", "- 테스트 통과", "- 화면 확인"].join("\n");
+  const msg = formatFlightPlan({ ...p, airport: "VCDO" }, { title: "버튼", url: "u", priority: 3 }, "TEAM_F", body);
+  assert.ok(msg.includes("목표: 재생 버튼 정리\n완료 기준:\n- 테스트 통과\n- 화면 확인\n이 작업만의 제약: - DB 변경"), msg);
+  assert.ok(!msg.includes("src/app/song"));
+  assert.ok(msg.split("\n")[1] === "BRIEF: DIRECT");
 });
 
 test("FLIGHT PLAN 문구: HOLD가 있으면 선행 FLIGHT 줄이 들어간다", () => {

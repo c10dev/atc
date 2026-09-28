@@ -17,7 +17,7 @@ CHARTER REQUEST ─▶ AD HOC FLIGHT 초안 ─▶ FILED ─▶ ASSIGN ─▶ EN
 ```
 
 1. OCC 세션에 무엇을 원하는지 말한다. 예: "홈 화면에 추천 곡 카드 컴포넌트 만들어 줘. Song Experience 쪽."
-2. OCC가 SCHEDULE `NEW` 초안을 쓴다. 제목, 프로젝트, vocado 템플릿 본문(목표·수정 허용 범위·금지 사항·완료 기준, 보안 작업이면 Codex Engineering Task), type·wake·rating, 맞는 팀이 분명하면 `tail:`, 그리고 비슷한 티켓 목록.
+2. OCC가 SCHEDULE `NEW` 초안을 쓴다. 제목, 프로젝트, DIRECT 형식 본문(목표·완료 기준과 이 작업만의 제약. 보안 작업이면 Hard constraints 줄. 늘 지키는 규칙은 되풀이하지 않는다), type·wake·rating, 맞는 팀이 분명하면 `tail:`, 그리고 비슷한 티켓 목록.
 3. SCHEDULE 탭에서 판정한다([판정하기](reviewing.md)).
 4. **지금은 S1(그림자 운용)이라 Linear에 실제로 만들지 않는다.** 필요하면 카드의 제목·본문·라벨로 Linear에 직접 만든다. S2부터는 승인한 초안을 OCC가 Linear에 쓴다.
 

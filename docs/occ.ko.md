@@ -108,7 +108,7 @@ OCC는 Linear에 마음대로 쓰지 않는다. **SCHEDULE 작업**(operation)�
 
 ### 5.2 티켓 본문
 
-`NEW`와 `SPLIT`은 vocado 형식을 쓴다. `CLAUDE.md`의 네 칸(목표, 허용 범위, 금지 변경, 완료 기준), 또는 DB·마이그레이션·보안·권리 작업이면 `Codex Engineering Task` 템플릿이다. 이런 티켓에는 늘 CAUTION이 붙고, CAUTION 작업은 절대 자동이 아니다(7장).
+`NEW`와 `SPLIT`은 DIRECT 형식을 쓴다([dispatch.ko.md](dispatch.ko.md) "DIRECT briefs", 2026-09-28부터). 목표와 완료 기준이 필수이고, 제약은 이 작업만의 것만 적는다. DB·마이그레이션·보안·권리 작업은 짧은 Hard constraints 줄이 더 있다. 늘 지키는 규칙은 vocado `CLAUDE.md`·`AGENTS.md`에 둔다. 이런 티켓에는 늘 CAUTION이 붙고, CAUTION 작업은 절대 자동이 아니다(7장).
 
 ### 5.3 중복과 한도
 
@@ -166,7 +166,7 @@ Linear 정리는 원래 President의 일이었다. 이제 OCC가 초안을 쓰�
 
 - **데이터.** `schedule brief`에 `waypointGaps`가 있다(`server/waypoint-gaps.ts`, 순수 함수 `waypointGapsOf`). 끝나지 않은 ROUTE마다 지금 구간 WAYPOINT와 그다음 WAYPOINT가 있고, 각각 `criteria`("Exit criteria" 아래 번호 목록), 목록이 없으면 `description`, 그 마일스톤의 `issues`(key·제목·상태, 취소·중복 제외), `truncated`가 붙는다. WAYPOINT가 없거나 모두 지난 ROUTE는 뺀다. `candidateTeams` 밖 팀의 마일스톤도 뺀다(atc는 모든 팀의 마일스톤을 읽지만 NEW는 주 팀에 이슈를 만든다). `null`이면 마일스톤을 못 읽은 것이다.
 - **판단은 OCC가 한다.** 서버는 기준과 이슈를 짝짓지 않는다. OCC는 바퀴마다 gap을 읽고 열린·끝난 이슈 가운데 어느 것도 덮지 않는 기준을 가린다. 사람이 정할 기준("SUPERVISOR decides", 사용자 모집·인터뷰)과 확인할 끝 조건이 없는 설명은 건너뛰고, **바퀴마다 2건까지** 지금 구간 WAYPOINT부터 올린다(`occ/.claude/skills/tick/schedule.md` "WAYPOINT gap").
-- **초안.** `schedule draft NEW --gap --project <ROUTE> --milestone <WAYPOINT> …`. 본문은 네 칸이고 `## 목표`에 기준을 인용한다. `milestone`은 그 프로젝트의 마일스톤(이름이나 id)인지 검사하고 `changesOf`에 보인다("WAYPOINT Beta Ready"). `--gap`은 마일스톤이 있어야 하고, `similarTickets`가 비슷한 FLIGHT를 찾으면 atc가 받지 않는다. OCC가 놓쳐도 "중복이면 쓰지 않는다"가 지켜진다. gap 초안도 열린 초안 5건 한도에 든다.
+- **초안.** `schedule draft NEW --gap --project <ROUTE> --milestone <WAYPOINT> …`. 본문은 DIRECT 형식이고 `## 목표`에 기준을 인용한다. `milestone`은 그 프로젝트의 마일스톤(이름이나 id)인지 검사하고 `changesOf`에 보인다("WAYPOINT Beta Ready"). `--gap`은 마일스톤이 있어야 하고, `similarTickets`가 비슷한 FLIGHT를 찾으면 atc가 받지 않는다. OCC가 놓쳐도 "중복이면 쓰지 않는다"가 지켜진다. gap 초안도 열린 초안 5건 한도에 든다.
 - **S2.** 발부된 `save_issue` 호출에 `milestone: <마일스톤 id>`가 들어가 새 이슈가 그 WAYPOINT에 붙는다. linear-guard(`occ/mcp-guard.mjs`, 바꾸지 않음)는 그 입력과 똑같을 때만 통과시킨다. 마일스톤을 빼거나 이름·다른 id를 넣으면 막히는 것을 `occ/mcp-guard.test.mjs`가 확인한다.
 - CROSSCHECK는 다른 SCHEDULE 초안처럼 이 초안에도 mark를 단다.
 

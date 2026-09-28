@@ -55,7 +55,8 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `clearances.ts` | CLEARANCE 기록: 추가만 하는 JSONL을 접어 현재 상태를 만든다 |
 | `recorder.ts` | FLIGHT RECORDER: 날짜별 JSONL(`event`, `sample`, `dispatch`, `ack`, `schedule`, `checkride`), 30일 보관 |
 | `metrics.ts` | 운용 지표와 2단계 진입 점검(순수 함수 `computeMetrics`) |
-| `logbook.ts` | LOGBOOK: 10분마다 머지된 PR → ARRIVED FLIGHT마다 `arrived` 줄, 머지된 Revert PR은 `reverted` 줄(순수 함수 `buildEntry`, `planLogbook`, `foldLogbook`). FLEET 카드의 TARGETS 실적(순수 함수 `computeActuals`, `expectationMin`). `GET /api/logbook`. AIRCRAFT와 출발은 착수 기록으로도 찾고, 옛 모름 줄은 `attributed` 줄로 채운다(순수 함수 `attribution`) |
+| `logbook.ts` | LOGBOOK: 10분마다 머지된 PR → ARRIVED FLIGHT마다 `arrived` 줄, 머지된 Revert PR은 `reverted` 줄(순수 함수 `buildEntry`, `planLogbook`, `foldLogbook`). FLEET 카드의 TARGETS 실적(순수 함수 `computeActuals`, `expectationMin`). `GET /api/logbook`. AIRCRAFT와 출발은 착수 기록으로도 찾고, 옛 모름 줄은 `attributed` 줄로 채운다(순수 함수 `attribution`). `measured` 줄로 지시서(VECTORS·DIRECT), PR 뒤 수정 커밋, P0–P2 지적을 더한다(순수 함수 `measureLines`). `GET /api/logbook/briefs` |
+| `briefs.ts` | DIRECT 지시서(ATC-32, 순수 함수): 이슈 본문에서 지시서 칸(`directSectionsOf`), 배정 문구(`formatAssignment`), 대화 기록 사건과 FLIGHT의 지시서 사실(`talkEventsOf`, `briefFactsOf`), P0–P2 지적(`findingsOf`), 수정 커밋(`reworkOf`), VECTORS 대 DIRECT 비교(`compareBriefs`) |
 | `departures.ts` | 착수 기록(DEPARTURE LOG): 따뜻한 tick마다 점유·워크트리를 STAND별 마지막 AIRCRAFT와 비교해 `stand`·`claim`·`handoff` 줄을 추가(순수 함수 `diffDepartures`, `foldDepartures`). `matchDepartures`가 브랜치·FLIGHT·STAND로 AIRCRAFT와 첫 시각을 찾는다 |
 | `crew-observed.ts` | OBSERVED CREW: AIRCRAFT 세션들의 최근 14일 서브에이전트 호출. 세션 메타데이터만 읽는다(`subagents/*.meta.json`의 agentType·model과 파일 시각, 세션 이름은 `custom-title.json`). mtime으로 캐시하고 30초에 한 번까지만 다시 훑는다. 순수 함수 `parseMeta`, `positionOf`(agentType + model → 선언된 POSITION), `observeCrew`(묶기와 drift) |
 | `crew-change.ts` | CREW CHANGE: 운항 중인 AIRCRAFT의 COMPLEMENT가 `PATCH /api/fleet/:registration`으로 바뀌면 CAPTAIN에게 줄 지시문을 만들어 추가만 하는 기록에 남긴다. 상태는 pending → approved(SUPERVISOR, approval 모드만) → sent(OCC `atcctl crew-change send`) → acknowledged(READBACK), 또는 delivered·superseded(순수 함수 `diffCrew`, `ratingImpact`, `crewChangeText`, `crewChangeMessage`, `planCrewChange`, `foldCrewChanges`, `approveRefusal`, `sendRefusal`, `openCrewChangeOf`, `crewChangeBriefOf`, 2b 점검표용 `selfCheckCrewChange`). `withCrew`가 FLEET 화면에 `observedCrew`, `crewDrift`, `pendingCrewChange`를 붙인다. `GET /api/fleet/crew-changes`, `…/crew-changes/brief`, `…/crew-changes/:id`, `POST /api/fleet/:registration/crew-change/:id/{approve,delivered}`, `POST /api/fleet/crew-changes/:id/{send,readback}` |
@@ -66,7 +67,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `network.ts` | NETWORK(4단계, 읽기 전용): ROUTE마다 열린 FLIGHT, 14일 ARRIVED, AIRCRAFT, 착륙 대기(순수 함수 `routeRows`, `openPhase`). AIRCRAFT마다 TARGETS 대 `fleetView` 실적(순수 함수 `aircraftRows`). 28일 LOGBOOK·게이트 추세(순수 함수 `logbookTrend`, `gateTrend` — `proposals.ts`·`schedule.ts` fold와 `crosscheckRateOf` 위에서). `GET /api/network` |
 | `dispatch.ts` | DISPATCH 계획: 후보, 슬롯, 점수(순수 함수 `planDispatch`). 설정은 `dispatch.json`(`teamAirports`, `candidateTeams` 포함. `airportOfTicket`, `candidateTeamsOf`) |
 | `linear-keys.ts` | Linear 팀·이슈 key: `parseTeamKeys`(`LINEAR_TEAM_KEY` + `LINEAR_TEAM_KEYS`), 읽는 모든 팀의 key를 브랜치·워크트리 이름과 PR 제목에서 찾기 |
-| `proposals.ts` | DISPATCH 제안 기록(추가만 하는 JSONL), 상태 전이(그림자 판정, approve → sent → accepted → departed, STAND 없는 FLIGHT는 READBACK에 departed → CAPTAIN 보고로 arrived), 예약, FLIGHT PLAN 문구, 브리핑, 2b·3단계 점검, 2b 점검표용 코드 사실(`selfCheck2b`) |
+| `proposals.ts` | DISPATCH 제안 기록(추가만 하는 JSONL), 상태 전이(그림자 판정, approve → sent → accepted → departed, STAND 없는 FLIGHT는 READBACK에 departed → CAPTAIN 보고로 arrived), 예약, FLIGHT PLAN 문구(DIRECT 지시서, 보낼 때 이슈 본문을 읽음), 브리핑, 2b·3단계 점검, 2b 점검표용 코드 사실(`selfCheck2b`) |
 | `readiness.ts` | "2b 켜기 점검표"(순수 함수 `readiness2bOf`, `vocadoReadbackOf`, `sendGuardOf`. 코드 사실은 `selfCheck2b`와 `selfCheckCrewChange`, `vocado-readback`은 `[DISPATCH D-xxxx]`와 `[OCC CC-xxxx]` 규칙이 다 있어야 ready). `occ/send-guard.mjs`와 vocado `CLAUDE.md`를 읽기만 한다(`ATC_VOCADO_CLAUDE_MD`, 없으면 `<projectsDir>/vocado_nextjs/CLAUDE.md`) |
 | `schedule.ts` | OCC SCHEDULE 초안 기록(추가만 하는 JSONL, S1 그림자 운용): `CLASSIFY`·`PRIORITIZE` 초안과 `NEW`(CHARTER DESK의 AD HOC FLIGHT: 본문 칸, 프로젝트·tail·key 검사, 최근 45일 스냅샷에서 찾은 비슷한 제목 `similar`), 열린 초안 5건 한도, SUPERSEDED·EXPIRED 동기화, 그림자 판정, 후보, S2 점검 |
 | `waypoint-gaps.ts` | OCC용 WAYPOINT gap(ATC-8, [docs/occ.ko.md](../docs/occ.ko.md) 5.6): ROUTE마다 지금·다음 WAYPOINT의 완료 기준(없으면 설명), 이슈, `truncated`(순수 함수 `waypointGapsOf`, `routes.ts`의 `waypointStates`·`criteriaOf` 위). 기준과 이슈 짝짓기는 OCC 몫 |
@@ -109,6 +110,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `GET /api/dispatch/proposals/:id` | 제안 하나와 지금 모드(send-guard용) |
 | `POST /api/dispatch/mode` | `{mode: "shadow" \| "approval"}` 전환(`dispatch.json`에 저장) |
 | `GET /api/dispatch/flight/:key` | Linear에서 티켓 본문과 댓글(읽기 전용) |
+| `GET /api/dispatch/flight/:key/brief?to=TEAM_X` | 그 FLIGHT의 DIRECT 배정 문구 `{key, brief, text}`(Linear 읽기 전용) |
 | `GET /api/schedule/brief` | SCHEDULE 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안(`via`), S2 점검(`crosscheck.oneClick`), 열린 초안 한도, 후보, FLIGHT 요약. `waypointGaps`(ATC-8), `waypointEtas`와 `fresh`가 붙은 `slips`(ATC-24) |
 | `POST /api/schedule/slips/ack` | OCC가 보고한 WAYPOINT 지연 경고를 `waypoint-slips.json`에 적는다(`{keys?}`, 없으면 지금 fresh 전부) |
 | `GET /api/schedule/ops/:id` | SCHEDULE 작업 하나와 모드 |
@@ -132,7 +134,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `crew-changes.jsonl` | `crew-change.ts` | CREW CHANGE 지시문(추가만 함, `created`·`approved`·`sent`(보낸 문구 그대로)·`acknowledged`·`delivered`·`superseded` 줄) |
 | `consumers/<name>.json` | `controller.ts` | 소비자별 브리핑 커서 |
 | `flight-recorder/YYYY-MM-DD.jsonl` | `recorder.ts` | FLIGHT RECORDER(UTC 날짜, 30일 보관) |
-| `logbook.jsonl` | `logbook.ts` | ARRIVED FLIGHT의 LOGBOOK(추가만 함, `arrived`·`reverted`·`attributed` 줄) |
+| `logbook.jsonl` | `logbook.ts` | ARRIVED FLIGHT의 LOGBOOK(추가만 함, `arrived`·`reverted`·`attributed`·`measured` 줄) |
 | `departures.jsonl` | `departures.ts` | 착수 기록(DEPARTURE LOG): FLIGHT의 첫 STAND·claim과 HANDOFF, 바뀔 때만(추가만 함) |
 | `proposals.jsonl` | `proposals.ts` | DISPATCH 제안(추가만 함) |
 | `schedule.jsonl` | `schedule.ts` | OCC SCHEDULE 초안과 SUPERVISOR 판정(추가만 함) |

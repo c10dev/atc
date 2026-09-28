@@ -52,7 +52,7 @@ SCHEDULE `CLOSE`는 닫자는 초안이라 1·2번을 뒤집어 본다: 이슈�
 | DISPATCH RELEASE | 댓글·PR로 보아 정말 멈춘 FLIGHT다. 최근 진행 흔적이 있으면 disagree |
 | SCHEDULE CLASSIFY | 본문의 일 크기·종류와 FLIGHT TYPE·WAKE·TYPE RATING이 맞다. 판정 전에 `../docs/fleet.md` 4.1~4.3을 읽고, 이유에 기준을 인용한다(예: `4.2 H: 여러 모듈·마이그레이션 → wake:H 맞음`). DB·보안·권리·배포·결제면 `rating:SEC`가 있어야 한다 |
 | SCHEDULE PRIORITIZE | 본문·댓글에 그 우선순위의 근거(기한, 막고 있는 FLIGHT, SUPERVISOR 언급)가 있다 |
-| SCHEDULE NEW | 네 칸(목표·수정 허용 범위·금지 사항·완료 기준)이 채워졌고, `similar`에 같은 일이 없다. 분류(type·wake·rating)가 있으면 CLASSIFY처럼 `../docs/fleet.md` 4.1~4.3 기준을 인용한다 |
+| SCHEDULE NEW | DIRECT 형식(`../docs/dispatch.md` "DIRECT briefs"): 목표와 완료 기준이 채워졌고(SEC면 Hard constraints 줄도), 늘 지키는 규칙을 되풀이하거나 번호 붙은 구현 단계를 늘어놓지 않았으며, `similar`에 같은 일이 없다. 분류(type·wake·rating)가 있으면 CLASSIFY처럼 `../docs/fleet.md` 4.1~4.3 기준을 인용한다 |
 | SCHEDULE CLOSE | 초안의 PR(`gh pr view <N> --repo <owner/name> --json state,mergedAt,body`)이 `MERGED`이고 본문에 `Fixes <그 FLIGHT>`가 있으며, 완료 기준이 그 PR 범위로 채워졌다. **본문이 `Part of`면 disagree**(`Part of — 일부만, vocado 규칙상 Fixes만 이슈를 끝냄`). **되돌림(Revert PR)이 있거나 남은 후속 작업이 적혀 있으면 disagree**. 초안이 "본문에 Fixes 없음"이면 완료 기준을 본문과 대조하고, 남은 칸이 있으면 disagree |
 
 ### PR 사실 확인
