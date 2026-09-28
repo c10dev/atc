@@ -10,7 +10,8 @@ import "./Fleet.css";
 
 // FLEET: 팀(AIRCRAFT)마다 CREW COMPLEMENT, TYPE RATING, ROUTE, TARGETS. 설계: docs/fleet.md.
 // 팀 빌딩: ENTRY INTO SERVICE(새 AIRCRAFT), CONFIGURATION(팀 구성 템플릿), CREW BRIEFING(세션 시작 지시문),
-// AOG(잠시 운항 중지), RETIREMENT(퇴역). 세션은 사람이 연다 — atc는 지시문까지만 만든다.
+// AOG(잠시 운항 중지), RETIREMENT(퇴역). LAUNCH·STOP: atc가 `claude --bg`로 세션을 띄우고 멈춘다(docs/fleet.md 8.5).
+// 사람이 직접 연 세션(데스크톱·터미널)은 CREW BRIEFING을 붙여 넣는 길도 그대로다.
 
 interface Configuration {
   id: string;
@@ -30,6 +31,19 @@ interface FleetBrief {
   nextRegistration: string | null;
   observedWindowDays?: number; // 관측 CREW를 세는 기간(옛 서버엔 없음)
   dispatchMode?: "shadow" | "approval"; // CREW CHANGE 승인은 approval(2b)에서만(옛 서버엔 없음)
+}
+
+// GET /api/fleet/sessions: REGISTRATION 이름의 세션(claude agents --json)
+interface SessionRow {
+  id?: string;
+  name?: string;
+  kind: string; // background | interactive
+  status?: string;
+}
+interface SessionBrief {
+  max: number;
+  permissionModes: string[];
+  sessions: SessionRow[];
 }
 
 // RADAR·STRIPS와 같은 말: 작업 중 AIRBORNE, 대기 중 STAND를 쥐었으면 HOLDING, 아니면 PARKED
@@ -71,6 +85,9 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [briefing, setBriefing] = useState<{ registration: string; text: string } | null>(null);
+  const [control, setControl] = useState<SessionBrief | null>(null);
+  const [controlError, setControlError] = useState<string | null>(null);
+  const [launching, setLaunching] = useState<AircraftView | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -78,6 +95,14 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
       setError(null);
     } catch (e) {
       setError((e as Error).message);
+    }
+    // 세션 조종은 따로 읽는다. 못 읽어도 FLEET는 보인다(LAUNCH·STOP만 숨김)
+    try {
+      setControl(await api("GET", "/api/fleet/sessions"));
+      setControlError(null);
+    } catch (e) {
+      setControl(null);
+      setControlError((e as Error).message);
     }
   }, []);
   useEffect(() => {
@@ -125,12 +150,43 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
     return save(a.registration, { aog: { reason, until: until.trim() || null } });
   };
 
-  const retire = (a: AircraftView) => {
+  const sessionOf = (reg: string) => control?.sessions.find((x) => (x.name ?? "").toUpperCase() === reg) ?? null;
+
+  const launch = async (reg: string, input: { permissionMode: string; model: string }) => {
+    try {
+      await api("POST", `/api/fleet/${encodeURIComponent(reg)}/launch`, input);
+      setLaunching(null);
+      await load();
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
+    }
+  };
+
+  const stop = async (a: AircraftView, ask = true) => {
+    const row = sessionOf(a.registration);
+    if (ask && !confirm(`${a.callsign}(${a.registration}) 세션 ${row?.id ?? ""}을 멈출까요?\n대화는 남아서 claude attach나 --resume으로 다시 열 수 있습니다.`)) return;
+    try {
+      await api("POST", `/api/fleet/${encodeURIComponent(a.registration)}/stop`, {});
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const retire = async (a: AircraftView) => {
     if (a.retired) return save(a.registration, { retired: false });
-    const live = a.status !== "absent" ? `\n${a.registration} 세션이 아직 살아 있습니다. 퇴역해도 세션은 닫히지 않고, 배정만 멈춥니다.` : "";
+    const bg = sessionOf(a.registration)?.kind === "background";
+    const live = bg
+      ? `\n${a.registration}는 atc가 띄운 세션입니다. 퇴역하면 세션도 멈출지 다음에 묻습니다.`
+      : a.status !== "absent"
+        ? `\n${a.registration} 세션이 아직 살아 있습니다. 데스크톱·터미널 세션은 atc가 닫지 않고, 배정만 멈춥니다.`
+        : "";
     const reason = prompt(`${a.callsign}(${a.registration})를 퇴역시킬까요? 사유(선택)${live}`);
     if (reason === null) return;
-    return save(a.registration, { retired: { reason: reason.trim() || null } });
+    const ok = await save(a.registration, { retired: { reason: reason.trim() || null } });
+    if (ok && bg && confirm(`${a.registration} 세션도 멈출까요?`)) await stop(a, false);
   };
 
   if (!brief) return <p className="empty">{error ? `불러오지 못함: ${error}` : "불러오는 중…"}</p>;
@@ -152,6 +208,15 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
       )}
       <EntryForm brief={brief} onEnter={enter} />
       {briefing && <BriefingPanel registration={briefing.registration} text={briefing.text} onClose={() => setBriefing(null)} />}
+      {launching && control && (
+        <LaunchPanel
+          a={launching}
+          control={control}
+          onCancel={() => setLaunching(null)}
+          onLaunch={(input) => launch(launching.registration, input)}
+        />
+      )}
+      {controlError && <p className="fl-entry-preview faint">세션 조종을 쓸 수 없음(LAUNCH·STOP 숨김): {controlError}</p>}
       <div className="fl-cards">
         {inService.map((a) =>
           editing === a.registration ? (
@@ -164,6 +229,9 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
               onBriefing={() => showBriefing(a.registration)}
               onAog={() => toggleAog(a)}
               onRetire={() => retire(a)}
+              session={control ? sessionOf(a.registration) : undefined}
+              onLaunch={() => (setError(null), setLaunching(a))}
+              onStop={() => stop(a)}
               windowDays={brief.observedWindowDays}
               dispatchMode={brief.dispatchMode}
               onCrewChanged={load}
@@ -280,6 +348,9 @@ function Card({
   onBriefing,
   onAog,
   onRetire,
+  session,
+  onLaunch,
+  onStop,
   windowDays,
   dispatchMode,
   onCrewChanged,
@@ -289,6 +360,9 @@ function Card({
   onBriefing: () => void;
   onAog: () => void;
   onRetire: () => void;
+  session: SessionRow | null | undefined; // undefined: 세션 조종을 못 읽음
+  onLaunch: () => void;
+  onStop: () => void;
   windowDays?: number;
   dispatchMode?: string;
   onCrewChanged: () => void;
@@ -300,6 +374,11 @@ function Card({
         <span className="mono faint">{a.registration}</span>
         {a.base && <span className="apt">{a.base}</span>}
         <span className="fl-status">{statusOf(a)}</span>
+        {session?.kind === "background" && (
+          <span className="fl-bg mono" title="atc가 띄운 백그라운드 세션 — claude attach로 열 수 있다">
+            BG {session.id}
+          </span>
+        )}
       </header>
       {a.aog && (
         <p className="fl-aog">
@@ -308,7 +387,7 @@ function Card({
         </p>
       )}
       {a.status === "absent" && (
-        <p className="fl-absent faint">세션이 없음 — CREW BRIEFING을 새 세션에 붙여 넣으면 IN SERVICE가 된다</p>
+        <p className="fl-absent faint">세션이 없음 — LAUNCH로 띄우거나, CREW BRIEFING을 새 세션에 붙여 넣으면 IN SERVICE가 된다</p>
       )}
       {a.flying.length > 0 && <p className="fl-flying">FLYING {a.flying.map(flightNumber).join(", ")}</p>}
       <RulesLine r={(a as AircraftView & { rules?: RulesView | null }).rules ?? null} />
@@ -363,6 +442,16 @@ function Card({
       {a.note && <p className="fl-note">{a.note}</p>}
 
       <div className="fl-actions">
+        {session === null && (
+          <button className="fl-btn primary" onClick={onLaunch}>
+            LAUNCH
+          </button>
+        )}
+        {session?.kind === "background" && (
+          <button className="fl-btn" onClick={onStop}>
+            STOP
+          </button>
+        )}
         <button className="fl-btn" onClick={onBriefing}>
           CREW BRIEFING
         </button>
@@ -444,6 +533,62 @@ function EntryForm({ brief, onEnter }: { brief: FleetBrief; onEnter: (input: Rec
         </button>
         <button type="submit" className="fl-btn primary">
           들이기
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function LaunchPanel({
+  a,
+  control,
+  onCancel,
+  onLaunch,
+}: {
+  a: AircraftView;
+  control: SessionBrief;
+  onCancel: () => void;
+  onLaunch: (input: { permissionMode: string; model: string }) => Promise<boolean>;
+}) {
+  const [permissionMode, setPermissionMode] = useState(control.permissionModes[0] ?? "auto");
+  const [model, setModel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const launched = control.sessions.filter((x) => x.kind === "background").length;
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    await onLaunch({ permissionMode, model: model.trim() });
+    setBusy(false);
+  };
+  return (
+    <form className="fl-entry fl-launch" onSubmit={submit} aria-label={`${a.registration} LAUNCH`}>
+      <h2 className="label">
+        LAUNCH <em>{a.callsign} ({a.registration}) · AIRPORT {a.base ?? "—"}</em>
+      </h2>
+      <p className="fl-entry-preview faint">
+        그 AIRPORT 저장소에서 백그라운드 세션을 띄우고 CREW BRIEFING을 첫 지시로 넣는다. 세션은 사용량 한도를 쓴다. 지금 백그라운드 세션 {launched}/
+        {control.max}.
+      </p>
+      <label>
+        permission mode{" "}
+        <select className="fl-input" value={permissionMode} onChange={(e) => setPermissionMode(e.target.value)} aria-label="permission mode">
+          {control.permissionModes.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        모델{" "}
+        <input className="fl-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="기본값" aria-label="모델" />
+      </label>
+      <div className="fl-actions">
+        <button type="button" className="fl-btn" onClick={onCancel}>
+          취소
+        </button>
+        <button type="submit" className="fl-btn primary" disabled={busy}>
+          {busy ? "띄우는 중…" : "LAUNCH"}
         </button>
       </div>
     </form>

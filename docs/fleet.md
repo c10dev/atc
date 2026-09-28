@@ -7,7 +7,7 @@ atc knows each team session as an AIRCRAFT (`TEAM_B`, callsign BRAVO) and its le
 - **FLEET**: the teams, their crews, what they are rated for, their routes and targets.
 - **FLIGHT classification**: the kind of work, its size and the rating it needs.
 
-> Status: design draft (2026-09-26, updated 2026-09-27). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE steps 1 and 2 (sections 8.3 and 8.4; step 2, OCC sending it, only in DISPATCH approval mode), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules, then STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (see section 5 for what is left), STAND-free departure and arrival (section 5.1.1), OCC S1 `CLASSIFY` drafts (section 6), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), NETWORK (section 7.3), the DEPARTURE LOG (section 7.5), and CHECKRIDE recommendations for TYPE RATINGS (section 8.2). Decisions are listed at the end.
+> Status: design draft (2026-09-26, updated 2026-09-27). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE steps 1 and 2 (sections 8.3 and 8.4; step 2, OCC sending it, only in DISPATCH approval mode), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules, then STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (see section 5 for what is left), STAND-free departure and arrival (section 5.1.1), OCC S1 `CLASSIFY` drafts (section 6), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), NETWORK (section 7.3), the DEPARTURE LOG (section 7.5), CHECKRIDE recommendations for TYPE RATINGS (section 8.2), and session control: LAUNCH and STOP (section 8.5). Decisions are listed at the end.
 
 Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHEDULE operations), [dispatch.md](dispatch.md) (the planner that uses them).
 
@@ -425,7 +425,7 @@ Kept in `~/.local/state/atc/departures.jsonl`, append-only (`server/departures.t
 
 ### 8.1 Team building
 
-The FLEET tab is also where teams are formed and stood down. atc never starts a Claude session itself: starting sessions from a server would bypass the user's control over cost and permissions, so atc stops at a ready-to-paste briefing.
+The FLEET tab is also where teams are formed and stood down. Until 2026-09-28 atc never started a Claude session itself and stopped at a ready-to-paste briefing. It now starts and stops background sessions when the SUPERVISOR presses LAUNCH or STOP (section 8.5); the briefing is what the new session receives first.
 
 | Action | Term | What it does |
 |---|---|---|
@@ -538,6 +538,21 @@ When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT throug
 
 **2b checklist.** The `crew-change` item ("CREW CHANGE 발부", `selfCheckCrewChange`) checks these transitions, the refusals, the message, the overdue rule, the endpoints and the `atcctl` commands from code facts. The `vocado-readback` item is ready only when vocado `CLAUDE.md` also answers `[OCC CC-xxxx]` with `READBACK CC-xxxx` ([dispatch.md](dispatch.md) "2b readiness checklist").
 
+### 8.5 Session control: LAUNCH and STOP
+
+Decision changed 2026-09-28 (SUPERVISOR): atc starts and stops AIRCRAFT sessions itself, so the SUPERVISOR runs the fleet from the FLEET tab instead of opening each session by hand. Pasting a CREW BRIEFING into a session you open yourself still works; atc links it by name as before.
+
+- **Mechanism.** Claude Code background sessions. LAUNCH runs `claude --bg -n <REG> --permission-mode <mode> [--model <model>] "<CREW BRIEFING>"` in the base AIRPORT's main checkout. `claude agents --json` lists live sessions (desktop, terminal and background). STOP runs `claude stop <id>`: the conversation is kept, and `claude attach <id>` or `claude --resume` opens it again. The session shows up in `~/.claude/sessions/` with `kind: "bg"`, so RADAR, STRIPS and the planner see it like any other session.
+- **API** (`server/session-control.ts`): `GET /api/fleet/sessions` returns `{max, permissionModes, sessions}` for sessions whose name matches `teamPattern`. `POST /api/fleet/:registration/launch` takes `{permissionMode?, model?}`. `POST /api/fleet/:registration/stop`.
+- **SUPERVISOR only.** LAUNCH and STOP need this screen's Origin (`fromThisApp`, like the AUTOLAND switch). `atcctl` sends none, so TOWER, OCC, CROSSCHECK and REVIEW cannot start or stop sessions.
+- **Refusals** (`launchPlanOf`, `stopTargetOf`, pure): the AIRCRAFT is RETIRED; it has no base AIRPORT; a live session with that name exists (any kind); `ATC_MAX_LAUNCHED` background sessions are already live (default 6, counting every background session on the machine); the permission mode is not `auto`, `acceptEdits` or `default` (`bypassPermissions` is never offered); the model name has characters outside `[\w.:[\]-]`. STOP refuses desktop and terminal sessions: close those where they run.
+- **Environment.** The session gets a clean environment (HOME, USER, locale, XDG runtime, and a PATH with the claude CLI and node), not the atc service's, so `.env.local` secrets (Linear, TypeSafe) never reach it. The CLI is `ATC_CLAUDE_BIN` (default `~/.local/bin/claude`; the service PATH does not include it).
+- **Workspace trust.** Claude Code refuses a background session in a folder whose trust prompt was never accepted. atc reports it and does not touch trust settings: open `claude` in that repository once and accept.
+- **Record.** Every LAUNCH and STOP is a FLIGHT RECORDER line `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}`.
+- **Tab.** A card with no session shows **LAUNCH** (permission mode, optional model, background count against the cap). A background session shows `BG <id>` and **STOP**. RETIREMENT of an AIRCRAFT flying a background session then asks whether to stop it too.
+
+Not built yet: LAUNCH and STOP proposed from demand and utilization (a FLEET PLAN judged in shadow first, like DISPATCH); RESTART as scheduled maintenance for long sessions; CREW CHANGE by relaunching with the new complement; a usage budget per AIRCRAFT (FUEL, GitHub idea #53).
+
 ## 9. Moving from `lane:` to `tail:`
 
 All four steps are done:
@@ -557,6 +572,7 @@ All four steps are done:
 6. ◐ TARGETS actuals from the LOGBOOK on the FLEET cards (sections 7.1, 7.2), and next to the project goals in NETWORK (section 7.3). Still to do: on-time baselines from category medians, OCC target-change drafts in S2 (section 7.4; S1 built)
 7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE (section 8.2): TYPE RATING evidence from the LOGBOOK, GRANT and REVIEW recommendations, grant and revoke by the SUPERVISOR
+9. ✅ Session control (section 8.5): LAUNCH and STOP from the FLEET tab. Left: proposals from demand, RESTART, relaunch CREW CHANGE, usage budget
 
 ## 11. Risks and mitigations
 
@@ -567,6 +583,7 @@ All four steps are done:
 | Declared crew differs from the real crew | The FLEET tab shows declared vs observed side by side |
 | Label clutter in Linear | Four axes only, created once: `tail:` and `rating:` as flat labels, `type` and `wake` as label groups. vocado's existing Risk group is also read as `SEC`, so it needs no new label |
 | `SEC` given away too easily | `rating:SEC` changes and `SEC` ratings on AIRCRAFT always need the SUPERVISOR |
+| Sessions atc starts spend usage and act with permissions | Only a SUPERVISOR click starts one; a cap on live background sessions; no `bypassPermissions`; a clean environment without atc's secrets; every LAUNCH and STOP in the FLIGHT RECORDER (8.5) |
 
 ## Decisions (2026-09-26, SUPERVISOR)
 
@@ -576,7 +593,8 @@ All four steps are done:
 | Pre-assignment | Proceed with the President note, the Linear labels and VOC-196, under the name settled here |
 | Difficulty classification | Needed; included here as FLIGHT TYPE, WAKE CATEGORY and required TYPE RATING |
 | Team naming | Keep `TEAM_X` as the **REGISTRATION**: it is the session name the user gives, and vocado rules, President, `tail:` labels and `teamPattern` all depend on it. In atc's own words a team is an **AIRCRAFT** flown by a **CREW** under a **CAPTAIN**, spoken by its callsign (ECHO). The word "team" is kept only for the registration and when talking to people |
-| Team building | In the FLEET tab: ENTRY INTO SERVICE, CONFIGURATION templates, CREW BRIEFING, AOG, RETIREMENT. atc does not start sessions |
+| Team building | In the FLEET tab: ENTRY INTO SERVICE, CONFIGURATION templates, CREW BRIEFING, AOG, RETIREMENT. atc does not start sessions (changed 2026-09-28, below) |
+| Session control (2026-09-28) | atc starts and stops AIRCRAFT sessions itself (`claude --bg`, `claude stop`), on a SUPERVISOR click in the FLEET tab. Automatic proposals come later and are judged in shadow first (8.5) |
 | Linear labels | `type` (BUILD … FERRY) and `wake` (L … J) created as single-select label groups in the Vocado team; `tail:TEAM_A` … `tail:TEAM_F` stay flat labels for now (President already uses them) |
 | First FLEET profiles | From flight history: TEAM_B, TEAM_D, TEAM_E hold `SEC` (security and DB FLIGHTs) with route Beta Readiness; TEAM_F route Song Experience; TEAM_C routes Vocado Visual System (SEED) and Home & Discovery; TEAM_A on defaults |
 

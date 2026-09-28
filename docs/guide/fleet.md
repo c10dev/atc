@@ -85,11 +85,24 @@ drift 두 줄의 뜻:
    | UI | Opus + ui-builder + ui-qa | UI · DOCS |
    | 리서치·문서 | Opus + flash-helper | DATA · DOCS |
 
-3. **CREW BRIEFING**을 복사한다.
-4. 그 AIRPORT의 저장소에서 새 세션을 열고, 이름을 등록번호로 붙이고, 브리핑을 붙여 넣는다.
-5. 세션이 뜨면 atc가 이름으로 알아보고 NOT IN SERVICE → IN SERVICE가 된다.
+3. 카드의 **LAUNCH**를 누른다. atc가 그 AIRPORT 저장소에서 등록번호 이름의 백그라운드 세션을 띄우고 CREW BRIEFING을 첫 지시로 넣는다(아래 "세션 띄우고 멈추기").
+   - 손으로 열고 싶으면 **CREW BRIEFING**을 복사해, 그 저장소에서 새 세션을 열고 이름을 등록번호로 붙인 뒤 붙여 넣는다.
+4. 세션이 뜨면 atc가 이름으로 알아보고 NOT IN SERVICE → IN SERVICE가 된다.
 
-atc는 세션을 직접 띄우지 않는다. Linear에 `tail:TEAM_G` 라벨이 없으면 먼저 만든다.
+Linear에 `tail:TEAM_G` 라벨이 없으면 먼저 만든다.
+
+## 세션 띄우고 멈추기: LAUNCH · STOP
+
+atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude Code 백그라운드 세션(`claude --bg`)이다.
+
+- **LAUNCH**: 세션이 없는 카드에 보인다. permission mode(`auto` 기본, `acceptEdits`, `default`)와 모델(비우면 기본값)을 고르고 누른다. 세션은 base AIRPORT 저장소에서 뜨고, 이름은 등록번호, 첫 지시는 CREW BRIEFING이다. 곧 카드에 `BG <id>`가 붙는다.
+- **STOP**: atc가 띄운 백그라운드 세션에만 보인다. 멈춰도 대화는 남는다. 터미널에서 `claude attach <id>`로 들여다보거나 `claude --resume`으로 다시 연다.
+- **퇴역**: 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
+- 데스크톱·터미널에서 직접 연 세션은 atc가 멈추지 않는다. 그 창에서 닫는다.
+- 막히는 경우: 이미 같은 이름의 세션이 있음, 백그라운드 세션이 상한(기본 6, `ATC_MAX_LAUNCHED`)에 닿음, RETIRED, base AIRPORT 없음, 그 저장소를 Claude Code가 신뢰하지 않음(그 저장소에서 `claude`를 한 번 열어 trust를 수락한다).
+- 띄운 세션은 사용량 한도를 쓴다. atc의 비밀(`.env.local`)은 세션에 넘기지 않는다. `bypassPermissions`는 고를 수 없다.
+- 관제 세션(TOWER·OCC·CROSSCHECK·REVIEW)은 세션을 띄우거나 멈출 수 없다. 이 화면에서 보낸 요청만 받는다.
+- LAUNCH·STOP은 모두 FLIGHT RECORDER에 남는다.
 
 ## CHECKRIDE: TYPE RATING 근거와 추천
 
