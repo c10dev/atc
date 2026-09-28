@@ -31,7 +31,8 @@ export interface FlightRating {
 export interface Evidence {
   key: string; // LOGBOOK key
   flight: string;
-  pr: LogEntry["pr"];
+  pr: LogEntry["pr"]; // STAND 없는 FLIGHT(ATC-72)는 없고 standFree에 증거가 있다
+  standFree?: LogEntry["standFree"];
   arrivedAt: string;
   source: RatingSource;
   scheduleId?: string;
@@ -133,6 +134,7 @@ export function checkrideRows(
           key: e.key,
           flight: e.flight!,
           pr: e.pr,
+          ...(e.standFree ? { standFree: e.standFree } : {}),
           arrivedAt: e.arrivedAt,
           source: fr.source,
           ...(fr.scheduleId ? { scheduleId: fr.scheduleId } : {}),

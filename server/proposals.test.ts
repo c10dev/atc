@@ -724,7 +724,7 @@ test("gate3: STAND 없는 FLIGHT는 READBACK 비율에는 넣고 DEPARTED 비율
   assert.equal(g.readbackRate, 0.9);
   assert.equal(g.departed, 5);
   assert.equal(g.departedRate, 5 / 6);
-  assert.deepEqual(g.standFree, { readBack: 3, arrived: 1 });
+  assert.deepEqual(g.standFree, { readBack: 3, arrived: 1, timely: null });
   assert.equal(g.ready, true);
   // STAND 없는 것만 있으면 DEPARTED 비율을 잴 수 없다(저절로 100%가 되지 않는다)
   const onlyLight = gate3Of(fold(ops.filter((o) => ["D-0001", "D-0002", "D-0003"].includes(o.id))));

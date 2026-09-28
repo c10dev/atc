@@ -39,23 +39,39 @@ export interface LogEntry {
   flight: string | null; // "VOC-201", AD HOC이면 null
   class: Pick<Classification, "type" | "wake" | "ratings" | "explicit"> | null;
   airport: string | null;
-  pr: { repo: string; number: number; url: string; title: string };
+  // PR로 ARRIVED한 줄. STAND 없는 FLIGHT(ATC-72)의 줄에는 없다(standFree)
+  pr?: { repo: string; number: number; url: string; title: string };
   branch?: string | null; // PR 브랜치(옛 줄에는 없다). 착수 기록과 맞출 때 쓴다
   stands: string[];
   departedAt: string;
-  departedFrom: "claim" | "departure" | "pr"; // departure: 착수 기록(departures.jsonl)의 첫 시각
+  departedFrom: "claim" | "departure" | "pr" | "readback"; // departure: 착수 기록(departures.jsonl)의 첫 시각. readback: STAND 없는 FLIGHT PLAN의 READBACK(ATC-72)
   link?: PrLink; // PR 본문이 이 FLIGHT를 끝내나(Fixes)·일부인가(Part of). 옛 줄에는 없다(SCHEDULE CLOSE가 gh로 읽는다)
   attributedBy?: "departures"; // 나중에 attributed 줄로 AIRCRAFT를 채웠으면
   arrivedAt: string;
   blockMin: number | null; // 팀 소요 시간: departedAt → PR을 연 시각. 점유가 없거나 PR 뒤에 생겼으면 null(모름)
-  landingWaitMin: number; // 착륙 대기: PR을 연 시각 → 머지. 정시율에 넣지 않는다
+  landingWaitMin: number | null; // 착륙 대기: PR을 연 시각 → 머지. 정시율에 넣지 않는다. STAND 없는 FLIGHT는 null(착륙이 없다)
   codexFindings: number; // Codex COMMENTED 리뷰 수(모든 커밋) = Codex가 지적한 리뷰 회차
   changesRequested: boolean;
   reverted: boolean;
   revertedBy?: { number: number; url: string; at: string } | null;
   los: number;
   measured?: Measured; // 지시서(VECTORS·DIRECT)와 P0–P2 지적·수정 커밋(ATC-32). measured 줄로 채운다
+  // STAND 없는 FLIGHT(ATC-72): OCC나 SUPERVISOR가 확인한 ARRIVED. PR·STAND·착륙 대기가 없다
+  standFree?: StandFreeArrival;
   fuel?: FlightFuel; // FUEL F4(ATC-53): 이 FLIGHT 구간의 FUEL BURN. arrived 줄을 쓸 때만 붙이고, 옛 줄과 모르는 FLIGHT에는 없다
+}
+
+// STAND 없는 FLIGHT의 ARRIVED(ATC-72). report: CAPTAIN 보고를 OCC가 적음, confirmed-suggestion: atc의 ARRIVED 후보를 OCC가 확인
+// PR로 ARRIVED한 줄(STAND 없는 FLIGHT 줄이 아닌 것). PR 번호·착륙 대기를 쓰는 곳은 이것만 본다
+export type PrEntry = LogEntry & { pr: NonNullable<LogEntry["pr"]>; landingWaitMin: number };
+export const hasPr = <T extends { pr?: LogEntry["pr"] }>(e: T): e is T & { pr: NonNullable<LogEntry["pr"]> } => Boolean(e.pr);
+export const prEntries = (xs: readonly LogEntry[]): PrEntry[] => xs.filter((e): e is PrEntry => Boolean(e.pr) && e.landingWaitMin !== null);
+
+export interface StandFreeArrival {
+  arrivedVia: "report" | "confirmed-suggestion";
+  evidence: { url: string | null; note: string };
+  workDoneAt: string | null; // 일이 끝난 시각(후보의 증거 시각). 보고만 있으면 null
+  proposal: string | null; // D-xxxx. 직접 배정이면 null
 }
 
 // PR 본문과 FLIGHT의 관계. vocado 규칙상 `Fixes VOC-n`만 이슈를 끝내고, `Part of VOC-n`은 일부다.
@@ -139,7 +155,7 @@ export function revertTarget(pr: Pick<GhMerged, "title" | "body">, slug: string,
     const key = `${ref[1]}#${Number(ref[2])}`;
     return entries.some((e) => e.key === key) ? key : null;
   }
-  return entries.find((e) => e.pr.repo === slug && e.pr.title === m[1])?.key ?? null;
+  return entries.find((e) => e.pr?.repo === slug && e.pr.title === m[1])?.key ?? null;
 }
 
 export interface EntryContext {
@@ -250,6 +266,7 @@ export function planLogbook(merged: { ctx: EntryContext; pulls: GhMerged[] }[], 
   // 이미 있던 AIRCRAFT 모름 줄을 착수 기록으로 채운다(그 저장소를 이번에 읽었을 때만)
   const bySlug = new Map(merged.map(({ ctx }) => [ctx.slug, ctx]));
   for (const e of entries) {
+    if (!e.pr) continue;
     const ctx = bySlug.get(e.pr.repo);
     if (e.aircraft || !ctx) continue;
     const line = attribution(e, ctx.repo, ctx.departures ?? [], now);
@@ -260,6 +277,7 @@ export function planLogbook(merged: { ctx: EntryContext; pulls: GhMerged[] }[], 
 
 // AIRCRAFT를 몰랐던 LOGBOOK 줄 하나에 대한 보정 줄. 착수 기록이 생기기 전 FLIGHT는 대개 채우지 못한다(정상).
 export function attribution(e: LogEntry, repo: string, departures: Departure[], now: string): Extract<LogLine, { op: "attributed" }> | null {
+  if (!e.pr || e.landingWaitMin === null) return null; // STAND 없는 FLIGHT 줄은 확인할 때 AIRCRAFT를 안다
   const m = matchDepartures(departures, { repo, branch: e.branch ?? null, flight: e.flight, stands: e.stands, before: e.arrivedAt });
   if (!m.aircraft) return null;
   const line: Extract<LogLine, { op: "attributed" }> = { op: "attributed", t: now, key: e.key, aircraft: m.aircraft, via: "departures" };
@@ -285,9 +303,9 @@ export interface MeasureInputs {
 }
 
 // 지적을 아직 안 잰, 이번에 읽은 머지 PR
-export function needsFindings(entries: LogEntry[], pulls: Map<string, GhMerged>, now: number): LogEntry[] {
+export function needsFindings(entries: LogEntry[], pulls: Map<string, GhMerged>, now: number): PrEntry[] {
   const since = now - MEASURE_DAYS * DAY;
-  return entries.filter((e) => Date.parse(e.arrivedAt) >= since && e.measured?.findings === undefined && pulls.has(e.key));
+  return prEntries(entries).filter((e) => Date.parse(e.arrivedAt) >= since && e.measured?.findings === undefined && pulls.has(e.key));
 }
 
 // 재야 할 칸: 지시서(FLIGHT·AIRCRAFT와 대화 기록이 있어야), SOLO·CREW(AIRCRAFT와 대화 기록이 있어야),
@@ -296,7 +314,7 @@ export function measureLines(entries: LogEntry[], inp: MeasureInputs, now: numbe
   const since = now - MEASURE_DAYS * DAY;
   const t = new Date(now).toISOString();
   const out: LogLine[] = [];
-  for (const e of entries) {
+  for (const e of prEntries(entries)) {
     if (Date.parse(e.arrivedAt) < since) continue;
     const m = e.measured ?? {};
     const pr = inp.pulls.get(e.key);
@@ -386,7 +404,7 @@ export function computeActuals(entries: LogEntry[], registration: string, now: n
     reverted: window.filter((e) => e.reverted).length,
     los: window.reduce((a, e) => a + e.los, 0),
     total: window.length,
-    landingWait: { medianMin: median(window.map((e) => e.landingWaitMin)), count: window.length },
+    landingWait: { medianMin: median(prEntries(window).map((e) => e.landingWaitMin)), count: prEntries(window).length },
     recent: mine.slice(0, RECENT).map(judged),
   };
 }
@@ -514,6 +532,6 @@ export function mountLogbook(app: Hono) {
   // VECTORS 대 DIRECT(ATC-32): 기간 안 ARRIVED FLIGHT를 지시서 종류별로 나눈 지표와 행
   app.get("/api/logbook/briefs", (c) => {
     const days = Math.min(90, Math.max(1, Number(c.req.query("days")) || MEASURE_DAYS));
-    return c.json({ days, ...compareBriefs(loadLogbook(), Date.now(), days), ranAt: logbookState.ranAt, error: logbookState.error });
+    return c.json({ days, ...compareBriefs(prEntries(loadLogbook()), Date.now(), days), ranAt: logbookState.ranAt, error: logbookState.error });
   });
 }

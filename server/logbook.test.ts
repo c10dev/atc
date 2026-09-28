@@ -22,7 +22,7 @@ import {
   readLogbook,
   revertTarget,
   weekStartOf,
-} from "./logbook.ts";
+ prEntries } from "./logbook.ts";
 import type { GhMerged } from "./sources/github.ts";
 
 const pr = (over: Partial<GhMerged> = {}): GhMerged => ({
@@ -152,7 +152,7 @@ test("fuel 칸(ATC-53): 옛 arrived 줄(없음)과 새 줄(있음)이 섞여도 
   const actuals = computeActuals(entries, "TEAM_J", Date.parse("2026-09-27T00:00:00Z"));
   assert.equal(actuals.total, 2);
   assert.deepEqual(actuals.recent[0].fuel, fuel);
-  assert.equal(compareBriefs(entries, Date.parse("2026-09-27T00:00:00Z"), 30).unmeasured, 2);
+  assert.equal(compareBriefs(prEntries(entries), Date.parse("2026-09-27T00:00:00Z"), 30).unmeasured, 2);
 });
 
 test("fuel.byModel(ATC-59): 옛 줄(fuel 없음), F4 줄(byModel 없음), 새 줄(byModel 있음)이 섞여도 접기·실적이 그대로 돌고, 값은 읽을 때 매긴다", () => {
@@ -271,7 +271,7 @@ test("TARGETS 실적: 이번 주(월요일부터) ARRIVED, 14일 정시율·되�
   assert.deepEqual(a.weekOnTime, { rate: 1 / 2, within: 1, measured: 2 });
   assert.equal(a.reverted, 1);
   assert.equal(a.los, 3);
-  assert.deepEqual(a.recent.map((e) => [e.pr.number, e.onTime]), [[1, true], [6, null], [2, false], [3, true], [4, true]]);
+  assert.deepEqual(a.recent.map((e) => [e.pr?.number, e.onTime]), [[1, true], [6, null], [2, false], [3, true], [4, true]]);
   assert.deepEqual(computeActuals(entries, "TEAM_X", now, weekFrom).onTime, { rate: null, within: 0, measured: 0 });
 });
 

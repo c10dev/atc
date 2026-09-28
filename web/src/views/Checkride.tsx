@@ -103,10 +103,10 @@ export function Checkride({ refreshKey, onChanged }: { refreshKey: string; onCha
                   <ul>
                     {r.evidence.map((e) => (
                       <li key={e.key}>
-                        <a href={e.pr.url} target="_blank" rel="noreferrer" title={e.pr.title}>
+                        <a href={e.pr?.url ?? e.standFree?.evidence.url ?? undefined} target="_blank" rel="noreferrer" title={e.pr?.title ?? e.standFree?.evidence.note}>
                           {flightNumber(e.flight)}
                         </a>
-                        <span className="faint">#{e.pr.number}</span>
+                        <span className="faint">{e.pr ? `#${e.pr.number}` : "STAND 없음"}</span>
                         <span className="cr-source">{e.source === "schedule" ? `${SOURCE.schedule} ${e.scheduleId ?? ""}` : SOURCE.label}</span>
                         <span className="faint">Codex {e.codexFindings}</span>
                         {e.reverted && <span className="fl-bad">REVERTED</span>}

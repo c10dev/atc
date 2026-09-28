@@ -67,6 +67,9 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
                                             (2b) CAPTAIN이 "READBACK D-0003 RECALL"로 답함
   node atcctl.mjs dispatch arrived <D-0003> -- <결과 링크나 한 줄>
                                             (2b) STAND 없는 FLIGHT(SURVEY·CHECK)를 CAPTAIN이 마쳤다고 보고함(ARRIVED)
+  node atcctl.mjs dispatch arrived <VOC-201> --aircraft <TEAM_X> -- <결과 링크나 한 줄>
+                                            D-xxxx 없이 직접 배정된 STAND 없는 FLIGHT의 ARRIVED(착수는 DEPARTURE LOG의 READBACK).
+                                            dispatch brief의 arrivalCandidates(ARRIVED 후보)는 증거를 확인한 뒤 그 command를 친다
 
 CREW CHANGE (OCC 세션이 맡음. approval 모드(2b)만. 승인은 SUPERVISOR가 FLEET 탭에서, OCC는 만들거나 승인하지 않음)
   node atcctl.mjs crew-change brief         보낼 것(approved)·기다리는 것(waiting)·READBACK 대기(sent)·늦은 것(overdue) (JSON)
@@ -271,15 +274,27 @@ export function parseDraft(args) {
 }
 
 // dispatch arrived <D-0003> -- <결과 링크나 한 줄> → { id, body: { note } }. 500자 검사는 서버가 한다
+// dispatch arrived <VOC-201> --aircraft <TEAM_X> -- <…> → { flight, body: { note, aircraft } }: D-xxxx 없이 직접 배정된 STAND 없는 FLIGHT(ATC-72)
 export function parseArrived(args) {
   const sep = args.indexOf("--");
   const head = sep < 0 ? args : args.slice(0, sep);
   const note = sep < 0 ? "" : args.slice(sep + 1).join(" ").trim();
   const [id, ...rest] = head;
-  if (!id || id.startsWith("--")) throw new Error("제안 ID가 필요함 (예: D-0003)");
-  if (rest.length) throw new Error(`알 수 없는 인자 ${rest.join(" ")}`);
+  if (!id || id.startsWith("--")) throw new Error("제안 ID(D-0003)나 FLIGHT(VOC-201 --aircraft TEAM_X)가 필요함");
+  let aircraft = null;
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === "--aircraft" && rest[i + 1]) aircraft = rest[++i];
+    else if (rest[i].startsWith("--aircraft=")) aircraft = rest[i].slice("--aircraft=".length);
+    else throw new Error(`알 수 없는 인자 ${rest.slice(i).join(" ")}`);
+  }
   if (!note) throw new Error("-- 뒤에 CAPTAIN 보고(결과 링크나 한 줄)가 필요함");
-  return { id, body: { note } };
+  if (/^D-\d+$/i.test(id)) {
+    if (aircraft) throw new Error("D-xxxx에는 --aircraft를 쓰지 않는다(제안에 AIRCRAFT가 있음)");
+    return { id, body: { note } };
+  }
+  if (!/^[A-Z][A-Z0-9]*-\d+$/i.test(id)) throw new Error(`제안 ID나 FLIGHT key가 아님: ${id}`);
+  if (!aircraft) throw new Error("직접 배정된 FLIGHT에는 --aircraft <TEAM_X>가 필요함");
+  return { flight: id.toUpperCase(), body: { note, aircraft } };
 }
 
 // dispatch briefing <D-0003> --what … --why … --risk … → { id, body: { what, why, risk } }. 길이 검사는 서버가 한다
@@ -535,9 +550,14 @@ if (isMain) {
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/recalled`);
       console.log(`${r.proposal.id} RECALLED — FLIGHT는 다시 후보(같은 AIRCRAFT에는 24시간 제안하지 않음)`);
     } else if (cmd === "dispatch" && args[0] === "arrived") {
-      const { id, body } = parseArrived(args.slice(1));
-      const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(id)}/arrived`, body);
-      console.log(`${r.proposal.id} ARRIVED · ${r.proposal.arrivedNote}`);
+      const { id, flight, body } = parseArrived(args.slice(1));
+      if (flight) {
+        const r = await call("POST", `/api/dispatch/standfree/${encodeURIComponent(flight)}/arrived`, body);
+        console.log(`${flight} ARRIVED(${body.aircraft}, 직접 배정) · LOGBOOK ${r.entry.standFree.arrivedVia}`);
+      } else {
+        const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(id)}/arrived`, body);
+        console.log(`${r.proposal.id} ARRIVED · ${r.proposal.arrivedNote}`);
+      }
     } else if (cmd === "dispatch" && args[0] === "decline" && args[1]) {
       const sep = args.indexOf("--");
       const reason = sep < 0 ? "" : args.slice(sep + 1).join(" ");

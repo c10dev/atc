@@ -156,6 +156,12 @@ test("dispatch arrived: <D-ID> -- <결과 링크나 한 줄>", () => {
   assert.throws(() => parseArrived([]), /제안 ID/);
   assert.throws(() => parseArrived(argv("-- x")), /제안 ID/);
   assert.throws(() => parseArrived(argv("D-0012 extra -- x")), /알 수 없는 인자/);
+  // 직접 배정된 STAND 없는 FLIGHT(ATC-72): FLIGHT key와 --aircraft
+  assert.deepEqual(parseArrived(argv("voc-211 --aircraft TEAM_G -- https://docs.example/r1")), { flight: "VOC-211", body: { note: "https://docs.example/r1", aircraft: "TEAM_G" } });
+  assert.deepEqual(parseArrived(argv("VOC-211 --aircraft=TEAM_G -- done")).body.aircraft, "TEAM_G");
+  assert.throws(() => parseArrived(argv("VOC-211 -- done")), /--aircraft/);
+  assert.throws(() => parseArrived(argv("D-0012 --aircraft TEAM_G -- done")), /D-xxxx에는 --aircraft/);
+  assert.throws(() => parseArrived(argv("hello --aircraft TEAM_G -- done")), /FLIGHT key가 아님/);
 });
 
 test("CLOSE 초안: FLIGHT와 근거만, 옵션은 받지 않는다(PR·머지 시각은 atc가 채운다)", () => {

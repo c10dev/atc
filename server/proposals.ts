@@ -1,4 +1,5 @@
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
+import type { ArrivalSuggestion } from "./standfree.ts";
 import { dirname, join } from "node:path";
 import type { Context, Hono } from "hono";
 import { config } from "./config.ts";
@@ -666,7 +667,8 @@ const median = (xs: number[]) => {
 // 2b → 3(ATFM) 점검: 보낸 FLIGHT PLAN 중 READBACK 받은 비율, READBACK까지 걸린 시간, READBACK 뒤 DEPARTED 비율.
 // STAND 없는 FLIGHT는 READBACK이 곧 DEPARTED라 DEPARTED 비율에서 뺀다(넣으면 비율이 저절로 오른다).
 // READBACK 비율에는 넣고, ARRIVED 보고 수는 standFree로 따로 보인다
-export function gate3Of(proposals: Proposal[]) {
+// timely: STAND 없는 FLIGHT가 일이 끝난 뒤 24시간 안에 ARRIVED한 비율(ATC-72, standfree.ts timelinessOf)
+export function gate3Of(proposals: Proposal[], timely: { within: number; total: number; rate: number | null } | null = null) {
   const dispatched = proposals.filter((p) => p.timeline.sent && p.via !== "atfm"); // 2b 점검은 사람이 승인한 FLIGHT PLAN만
   const readBack = dispatched.filter((p) => p.timeline.accepted);
   const light = readBack.filter((p) => p.departedVia === "readback");
@@ -683,7 +685,7 @@ export function gate3Of(proposals: Proposal[]) {
     readbackRate,
     readbackMedianMin: mins === null ? null : Math.round(mins * 10) / 10,
     departedRate,
-    standFree: { readBack: light.length, arrived: light.filter((p) => p.timeline.arrived).length },
+    standFree: { readBack: light.length, arrived: light.filter((p) => p.timeline.arrived).length, timely },
     target: GATE3,
     ready:
       dispatched.length >= GATE3.dispatched &&
@@ -797,7 +799,13 @@ const JUDGE_ACTIONS: readonly DispatchAction[] = ["verdict", "approve", "reject"
 type DispatchAction = (typeof DISPATCH_ACTIONS)[number];
 
 // watchFuel: FUEL 경고(fuel-watch.ts). fuel-run.ts가 이 파일을 불러 순환이 되므로 index.ts가 넘긴다
-export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, watchFuel?: (s: Snapshot) => FuelWatch) {
+// standFree(ATC-72): STAND 없는 FLIGHT의 ARRIVED 후보와 지표, D-xxxx ARRIVED 뒤 LOGBOOK 줄. index.ts가 standfree-run.ts를 넘긴다(순환 import를 피해서)
+export interface StandFreeHooks {
+  candidates: () => ArrivalSuggestion[];
+  timeliness: () => { within: number; total: number; rate: number | null };
+  arrived: (p: Proposal, s: Snapshot) => unknown;
+}
+export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, watchFuel?: (s: Snapshot) => FuelWatch, standFree?: StandFreeHooks) {
   app.get("/api/dispatch/brief", async (c) => {
     const s = await getSnapshot();
     const cfg = loadDispatchConfig();
@@ -838,7 +846,9 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       flights,
       gate,
       reasonStats: reasonStatsOf(proposals),
-      gate3: gate3Of(proposals),
+      gate3: gate3Of(proposals, standFree?.timeliness() ?? null),
+      // ARRIVED 후보(ATC-72): OCC가 증거를 확인하고 command를 친다. atc는 ARRIVED를 스스로 적지 않는다
+      arrivalCandidates: standFree?.candidates() ?? [],
       crosscheck: crosscheckBriefOf(proposals),
       // 2b 켜기 점검표(표시만)
       readiness2b: readiness2bNow(gate, now, files),
@@ -1020,6 +1030,12 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
         const bad = closed("arrived");
         if (bad) return bad;
         append([{ op: "arrived", id, at, note }]);
+        // 확인된 STAND 없는 ARRIVED를 LOGBOOK에(TARGETS·CHECKRIDE·FUEL이 센다)
+        try {
+          standFree?.arrived(allProposals().find((x) => x.id === id)!, await getSnapshot());
+        } catch (e) {
+          console.error("[atc] STAND 없는 ARRIVED LOGBOOK:", e);
+        }
       } else {
         const reason = reasonOf(body);
         if (!reason) return c.json({ error: "decline에는 CAPTAIN의 사유(reason)가 필요함" }, 400);

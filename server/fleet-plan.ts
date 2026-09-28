@@ -100,7 +100,7 @@ export function spanText(min: number) {
 // 활주로가 병목인가: 최근 14일 착륙 대기 중앙값이 block time 중앙값보다 길면. 기록이 없으면 병목이 아니다
 export function runwayOf(logbook: FleetInputs["logbook"], airport: string, now: number): { bottleneck: boolean; detail: string } {
   const recent = logbook.filter((e) => e.airport === airport && now - Date.parse(e.arrivedAt) < RUNWAY_DAYS * DAY);
-  const wait = median(recent.map((e) => e.landingWaitMin));
+  const wait = median(recent.flatMap((e) => e.landingWaitMin ?? []));
   const block = median(recent.map((e) => e.blockMin).filter((x): x is number => x !== null));
   if (wait === null || block === null) return { bottleneck: false, detail: `최근 ${RUNWAY_DAYS}일 착륙 기록 부족 — 활주로 확인 못 함` };
   const text = `착륙 대기 중앙값 ${spanText(wait)} · block ${spanText(block)} (${RUNWAY_DAYS}일 ${recent.length}건)`;

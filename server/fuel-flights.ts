@@ -101,7 +101,7 @@ export function arrivedSpan(e: LogEntry, departures: Departure[], repo: string |
     arrived: true,
     from,
     to,
-    stands: [...new Set([...e.stands, ...hits.map((d) => d.stand)])].sort(),
+    stands: [...new Set([...e.stands, ...hits.flatMap((d) => d.stand ?? [])])].sort(),
     segments: segmentsOf(hits, from, to, e.aircraft),
     airport: e.airport,
   };
@@ -109,6 +109,7 @@ export function arrivedSpan(e: LogEntry, departures: Departure[], repo: string |
 
 // 아직 도착하지 않은 FLIGHT(EN ROUTE): 지금 있는 STAND의 착수 기록 중 어느 ARRIVED FLIGHT에도 속하지 않는 줄을
 // 저장소·브랜치(없으면 STAND)로 묶는다. 구간은 첫 줄부터 지금까지. 지워진 STAND는 끝난 때를 모르므로 넣지 않는다
+const hasStand = (d: Departure): d is Departure & { stand: string } => d.stand !== null;
 export function enRouteSpans(
   departures: Departure[],
   entries: LogEntry[],
@@ -116,9 +117,10 @@ export function enRouteSpans(
   now: number,
   airportOf: (repo: string) => string | null = () => null,
 ): FlightSpan[] {
-  const groups = new Map<string, Departure[]>();
+  const groups = new Map<string, (Departure & { stand: string })[]>();
   for (const d of departures) {
-    if (!openStands.has(d.stand) || Date.parse(d.t) > now) continue;
+    // STAND 없는 착수(readback, ATC-72)는 STAND 구간이 아니다
+    if (!hasStand(d) || !openStands.has(d.stand) || Date.parse(d.t) > now) continue;
     const arrived = entries.some((e) => d.t <= e.arrivedAt && (e.stands.includes(d.stand) || (e.branch != null && e.branch === d.branch)));
     if (arrived) continue;
     const k = `enroute:${d.repo}|${d.branch ?? d.stand}`;
