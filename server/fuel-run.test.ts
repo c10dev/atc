@@ -3,7 +3,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { fuelDays, fuelFiles, parseAgentMeta, readFuelFile } from "./fuel-run.ts";
+import { DEFAULT_PRICES_FILE, fuelDays, fuelFiles, parseAgentMeta, readFuelFile, readPrices } from "./fuel-run.ts";
 
 const root = mkdtempSync(join(tmpdir(), "atc-fuel-"));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -88,4 +88,34 @@ test("fuelDays: 기본 7일, 1–30일", () => {
   assert.equal(fuelDays("0"), 7);
   assert.equal(fuelDays("3"), 3);
   assert.equal(fuelDays("400"), 30);
+});
+
+test("readPrices: 저장소 표 위에 상태 폴더 표를 모델 단위로 덮고, 없는 덮개는 넘어가며, 깨진 파일은 errors로", () => {
+  const dir = join(root, "prices");
+  mkdirSync(dir, { recursive: true });
+  const base = join(dir, "base.json");
+  const over = join(dir, "over.json");
+  writeFileSync(base, JSON.stringify({ source: "base", writeMult: { "5m": 1.25, "1h": 2 }, models: { a: { in: 1, out: 2, readMult: 0.1 }, b: { in: 3, out: 4, readMult: 0.1 } } }));
+  let p = readPrices([base, join(dir, "missing.json")]);
+  assert.deepEqual(Object.keys(p.table.models).sort(), ["a", "b"]);
+  assert.deepEqual(p.files, [base]);
+  assert.deepEqual(p.errors, []);
+  writeFileSync(over, JSON.stringify({ source: "local", models: { b: { in: 5, out: 6, readMult: 0.1 } } }));
+  p = readPrices([base, over]);
+  assert.equal(p.table.models.b.in, 5);
+  assert.equal(p.table.models.a.in, 1);
+  assert.equal(p.table.source, "local");
+  writeFileSync(over, "{ broken");
+  p = readPrices([base, over]);
+  assert.equal(p.table.models.b.in, 3);
+  assert.equal(p.errors.length, 1);
+  assert.ok(p.errors[0].startsWith(`${over}: 읽지 못함`));
+  assert.deepEqual(readPrices([join(dir, "none.json")]).errors, [`${join(dir, "none.json")}: 없음`]);
+});
+
+test("저장소 가격표(server/fuel-prices.json)는 오류 없이 읽힌다", () => {
+  const p = readPrices([DEFAULT_PRICES_FILE]);
+  assert.deepEqual(p.errors, []);
+  assert.ok(p.table.source);
+  assert.ok(Object.keys(p.table.models).length > 0);
 });

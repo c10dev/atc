@@ -2,7 +2,7 @@
 
 FUEL is the tokens a FLIGHT uses. atc records how long a FLIGHT took (block time, landing wait) and how well it went (rollbacks, LOS, Codex findings), but not what it burned, why some of that burn was waste, or how close each account is to its plan limit. FUEL adds those three things from records atc can already read.
 
-> Status (2026-09-28): draft for ATC-46 (moved from GitHub idea #53, whose research comment is the source for the pricing and cache facts below). F1 is built (`server/fuel.ts`, `server/fuel-run.ts`, `GET /api/fuel`) and F2 (ACCOUNT label, `LIMIT` held by ACCOUNT) is built (ATC-51); F3 (COLD CACHE and MODEL SWITCH leaks, `server/fuel-leaks.ts`) is built (ATC-52); F4 (FLIGHT attribution, the LOGBOOK `fuel` field, `UNATTRIBUTED`) is built (ATC-53); F6 (FUEL REMAINING per ACCOUNT from the statusline) is built (ATC-55); the rest is not. Sections 8 and 9 hold the split into issues and the SUPERVISOR decisions this needs.
+> Status (2026-09-28): draft for ATC-46 (moved from GitHub idea #53, whose research comment is the source for the pricing and cache facts below). F1 is built (`server/fuel.ts`, `server/fuel-run.ts`, `GET /api/fuel`) and F2 (ACCOUNT label, `LIMIT` held by ACCOUNT) is built (ATC-51); F3 (COLD CACHE and MODEL SWITCH leaks, `server/fuel-leaks.ts`) is built (ATC-52); F4 (FLIGHT attribution, the LOGBOOK `fuel` field, `UNATTRIBUTED`) is built (ATC-53); F6 (FUEL REMAINING per ACCOUNT from the statusline) is built (ATC-55); F5 (price table, FUEL COST, NET FUEL, `server/fuel-cost.ts`) is built (ATC-54); the rest is not. Sections 8 and 9 hold the split into issues and the SUPERVISOR decisions this needs.
 
 Related: [fleet.md](fleet.md) 8.3 (observed crew, never read bodies), 8.6 (FLEET PLAN, "Usage: none per AIRCRAFT"), 8.8 (AIRCRAFT health, `LIMIT` after a limit is hit); `server/logbook.ts` (LOGBOOK), `server/health.ts` (`quotaLimits`), `server/crew-observed.ts`; GitHub #41 (ontology graph projection, K1).
 
@@ -95,7 +95,7 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 - **LOGBOOK / recent FLIGHTs**: FUEL BURN, NET, LEAK per FLIGHT, and whether it stayed inside TRIP FUEL.
 - **DISPATCH card**: TRIP FUEL p50–p90 by TYPE × WAKE, widening to WAKE and then AIRPORT below `MEDIAN_MIN_SAMPLES` (and saying so). Display only.
 - **TOWER/OCC brief**: AIRCRAFT with large leaks, and whether a message to a HOLDING CAPTAIN would hit a cold cache. Warn, never block.
-- **Cost formula**: `input·P_in + cacheWrite5m·1.25·P_in + cacheWrite1h·2·P_in + cacheRead·P_read + output·P_out` (× data-residency or fast-mode multipliers). The cache-read multiplier differs by model (Opus 5.5 0.05, Fable 5.1 0.025); the table lives in a config file.
+- **Cost formula**: `input·P_in + cacheWrite5m·1.25·P_in + cacheWrite1h·2·P_in + cacheRead·readMult·P_in + output·P_out` (× data-residency or fast-mode multipliers). The cache-read multiplier differs by model (Opus 5.5 0.05, Fable 5.1 0.025); the table lives in a config file (`server/fuel-prices.json`, see 8.4).
 
 ## 8. Implementation order (one issue each)
 
@@ -105,7 +105,7 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 | F2 (ATC-51) ✅ | ACCOUNT label on the FLEET card and `fleet.json`; `LIMIT` grouped and held by ACCOUNT (health.ts, DISPATCH, SCHEDULE). **Done**, see [fleet.md](fleet.md) 8.8 | — | `auto`, raised to `user` if the `fleet.json` change is judged a format change | BUILD · M |
 | F3 (ATC-52) ✅ | Leaks with high confidence: COLD CACHE (HOLD and control wake) and MODEL SWITCH. **Done**, see 8.2 | F1 | `auto` | BUILD · M |
 | F4 (ATC-53) ✅ | FLIGHT attribution: optional `fuel` field on LOGBOOK `arrived` lines, `UNATTRIBUTED`. **Done**, see 8.3 | F1 | `user` (LOGBOOK record format) | BUILD · M |
-| F5 (ATC-54) | Cost: config price table, FUEL COST, NET FUEL | F1 | `auto` | BUILD · L |
+| F5 (ATC-54) ✅ | Cost: config price table, FUEL COST, NET FUEL. **Done**, see 8.4 | F1 | `auto` | BUILD · L |
 | F6 (ATC-55) ✅ | FUEL REMAINING source (section 6): verify statusline `rate_limits`, then the statusline script and per-ACCOUNT view. **Done**, see 6.1 | F2, decision D1 | `user` (`hooks/`, settings) | BUILD · M |
 | F7 (ATC-57) | Other leaks and CREW warnings (COMPACTION, SESSION CHANGE after measuring the baseline, the warning list) | F3 | `auto` | BUILD · M |
 | F8 (ATC-56) | Screens and TRIP FUEL: FLEET/LOGBOOK/DISPATCH/brief views, TARGETS items `fuelPerFlight`, `cacheHit` | F4, F5 | `auto` (rating:UI) | BUILD · M |
@@ -128,7 +128,7 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 - **Rule order**: a `compact_boundary` between the two requests → `expectedRebuild`, left for F7 and not counted as a leak; a different `message.model` → `modelSwitch`; a gap over the TTL → `controlWake` when an atc message to that session falls inside the gap, else `coldCache`; anything else → `unexplained`.
 - **TTL**: 1 h after a request that wrote 1 h, 5 m after one that wrote only 5 m. A request that only read keeps the tier before it (a cache read refreshes the entry at its own TTL), so a read-only response between writes does not shorten a 1 h session to 5 m. No write seen yet → 5 m.
 - **Control messages** matched by time, from atc's own records: CLEARANCE `issue` time (`clearances.jsonl`, by session id), FLIGHT PLAN `send` and RECALL request time (`proposals.jsonl`; `recall-send` writes no record), CREW CHANGE `sent` (`crew-changes.jsonl`, by REGISTRATION = session name). Any of them inside the gap counts as the wake. No message body is read.
-- **Units**: `rewritten × (writeMult − readMult)` in input-price units: write 1.25 (5 m) or 2 (1 h) by this request's write tier, read 0.05 for `claude-opus-5-5` and 0.025 for `claude-fable-5-1`. Other models have no read multiplier yet, so their rewritten tokens go to `unpricedTokens` (principle 4; F5 moves the table to config).
+- **Units**: `rewritten × (writeMult − readMult)` in input-price units: write 1.25 (5 m) or 2 (1 h) by this request's write tier, read from the price table. Models not in the table get no units and their rewritten tokens go to `unpricedTokens` (principle 4). Since F5 both multipliers come from the price table (8.4), and each leak also carries `cost` in USD.
 - **First reading** (7 days to 2026-09-28): 325 misses, 68.3 M tokens rewritten, against 87.2 M CAPTAIN cache writes. COLD CACHE 130 (46.8 M), control wake 5 (1.7 M, CLEARANCE), MODEL SWITCH 6 (0.6 M), UNEXPLAINED 184 (19.2 M, of which 17.2 M on proxied DeepSeek/Muse routes whose caching is implicit), expected rebuilds after compaction 19 (0.9 M). The Opus UNEXPLAINED misses seen were cache invalidations seconds after a warm request (the prefix read dropped to about 31 K, the system prompt), which F7 or a later rule may name.
 
 ### 8.3 F4 as built (ATC-53)
@@ -139,6 +139,18 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 - **LOGBOOK `fuel` field**: set when a new `arrived` line is written, from a 14-day scan (`FUEL_LOGBOOK_DAYS`) cut against every ARRIVED and EN ROUTE span, so the overlap rule holds at write time too. It is never added to old lines (append-only), and it is left out, not zeroed, when the departure time is unknown (`departedFrom: "pr"`, the span would be the landing wait only), when the FLIGHT departed before the scan window, or when no request fits (transcripts cleaned up, or a non-Claude FLIGHT). Shape: `{captain, crew, cacheHit, leak, models}`; `captain` and `crew` carry the five kinds, `requests` and `cacheHit`, `crew.outputLowerBound` is `true`, `cacheHit` is CAPTAIN + CREW, `leak` is F3's per-rule totals (8.2) for the misses inside the FLIGHT, split by the same one-FLIGHT-per-request rule (zeros when there were none), and `models` counts requests per model. `cost`, `netCost` (F5) and `crewWarnings` (F7) are left out until those issues add them to new lines; `leak` gains `compaction` and `sessionChange` with F7. A failed scan writes the line without `fuel` and shows `FUEL: …` in the LOGBOOK error.
 - **`GET /api/fuel`**: each `aircraft[]` row gains `attribution: {flights, enRoute, unattributed}`, each `{captain, crew, total}`; `attribution.totals` covers every session, unnamed ones included; `attribution.flights` lists the FLIGHTs with usage in the window (`key`, `flight`, `arrived`, AIRCRAFT in HANDOFF order, sessions, `fuel` with `leak`). The window view uses today's LOGBOOK (with later `attributed` lines), so it can differ from the `fuel` frozen on an older line.
 - **Limits**: a claim's `lastAt` is the last touch, so work after it counts through the AIRCRAFT name only. Hook claims are current files, not a history, so older FLIGHTs lean on the DEPARTURE LOG and the session name. A request is never shared between two FLIGHTs that one session flies at the same moment.
+
+### 8.4 F5 as built (ATC-54)
+
+- **Price table**: `server/fuel-prices.json`, a config file with no prices in code. It holds `source`, `writeMult` (`5m` 1.25, `1h` 2), global `multipliers` (`inferenceGeo:us` 1.1) and per model `in`, `out` (USD per million tokens), `readMult` and optional `multipliers` (`speed:fast` 2 for Opus 5.5). The repository table has the four Claude models seen in transcripts or named in section 7 (Opus 5.5, Sonnet 5, Haiku 4.5, Fable 5.1), with the list prices from Anthropic's pricing page as collected in #53. `~/.local/state/atc/fuel-prices.json`, if present, overrides it model by model (and multiplier by multiplier), so the SUPERVISOR can add or change a price without a deploy.
+- **Matching**: a model is priced only when its name equals a table key or is that key plus a date (`claude-haiku-4-5-20251001`). No family or prefix guessing: `claude-opus-5` would not price `claude-opus-5-5`.
+- **Multipliers** from the request's `usage.speed` and `usage.inference_geo` (new optional record fields `speed`, `geo`). `standard` speed is the base; any other speed needs a multiplier in the table, or the request is unpriced. An `inference_geo` multiplies only when listed.
+- **Cost** per request, summed per CAPTAIN, CREW and total as `cost` (the five parts and `total`, USD) beside the tokens; requests without a price are counted in `unpriced` and listed in `priceWarnings` (model, reason, requests, tokens). CREW output is still a lower bound, so CREW cost is too.
+- **NET FUEL**: `netCost = total.cost.total − leak.total.cost` per session, AIRCRAFT and in total. Unpriced leaks are not subtracted.
+- **`GET /api/fuel`** also returns `prices` (source, files read, parse errors, priced models).
+- **Cross-check**: 2026-09-26 (UTC), Opus 5.5 $596.56 and Sonnet 5 $2.81, the same as ccusage's cost for that day. Seven days to 2026-09-28: $2,903 priced (CAPTAIN $2,197, CREW $706), priced leaks $386, NET $2,517. DeepSeek, Muse and GPT routes (6,096 requests, 1.31 B tokens) have no price and show as warnings.
+- **FLIGHT attribution stays in tokens.** F4's `attribution` parts and the LOGBOOK `arrived` line's `fuel` keep F4's shape: tokens only, and leak buckets without `cost`. Their leak `units` now come from the price table like the API's. Adding `cost` and `netCost` to LOGBOOK lines changes the record format (`user` tier), so it is left for a separate issue.
+- **Codex** is still not read, so it stays out of cost (D6).
 
 F1 and F2 started at once and in parallel, and both are built; they answer the TEAM_K question soonest. The rest wait in Backlog behind their dependencies (Linear `blocked by`).
 
@@ -166,4 +178,4 @@ F1 and F2 started at once and in parallel, and both are built; they answer the T
 
 ## Not built yet
 
-F5, F7 and F8 in section 8, and Codex usage (section 4).
+F7 and F8 in section 8; FUEL COST per FLIGHT and `cost`/`netCost` on LOGBOOK `fuel` (8.4, a LOGBOOK format change); Codex usage and prices (section 4, D6).
