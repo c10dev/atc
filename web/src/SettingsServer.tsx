@@ -185,6 +185,33 @@ export function AgentSettings({ snapshot, server, save }: { snapshot: Snapshot |
         </ServerRows>
       </Block>
 
+      <Block code="AUTOLAND" label="착륙 자동화(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) => (
+            <>
+              <EditRow
+                label="AUTOLAND"
+                env="autoland.mode"
+                value={s.autoland.mode}
+                note={`autoland.json · 맡은 AIRPORT ${s.autoland.airports.join(", ") || "없음"} · 이 화면(또는 SUPERVISOR의 API)에서만 바꾼다 — 관제 세션은 못 바꿈`}
+                input={{ kind: "select", options: ["off", "update", "merge"] }}
+                onSave={(v) => save({ autolandMode: v as "off" | "update" | "merge" })}
+              />
+              <ul className="autoland-modes">
+                {(["off", "update", "merge"] as const).map((m) => (
+                  <li key={m} className={m === s.autoland.mode ? "is-current" : undefined}>
+                    <b>{m}</b> {AUTOLAND_WARN[m]}
+                  </li>
+                ))}
+              </ul>
+              {s.autoland.groundStops.map((g) => (
+                <GroundStopRow key={g.airport} stop={g} check={s.autoland.applicationCheck} refresh={() => save({})} />
+              ))}
+            </>
+          )}
+        </ServerRows>
+      </Block>
+
       <Block code="CALLSIGNS" label="콜사인">
         {teams.length ? (
           <ul className="callsigns">
@@ -389,6 +416,50 @@ function SecretRow({ label, env, isSet, save }: { label: string; env: string; is
       ) : (
         <p className="config-note">저장한 키는 화면에 다시 보이지 않습니다. .env.local은 본인만 읽도록(600) 저장됩니다.</p>
       )}
+    </div>
+  );
+}
+
+// 모드마다 한 줄 경고(ATC-34). merge는 vocado AGENTS.md에 SUPERVISOR가 AUTOLAND 예외를 적은 뒤에만 켠다
+const AUTOLAND_WARN = {
+  off: "꺼짐(기본): atc는 PR 브랜치에 아무것도 쓰지 않는다.",
+  update: "⚠ CLEARED인데 behind인 PR을 LANDING SEQUENCE 순서로 AIRPORT마다 하나씩 update-branch로 갱신(팀 브랜치에 merge 커밋). 머지는 SUPERVISOR.",
+  merge: "⚠ 위임된 PR(보안·Risk·Human Preview·FLIGHT 없음·HOLD 제외)을 정확한 head로 atc가 머지. vocado AGENTS.md에 AUTOLAND 예외를 적은 뒤에만 켤 것.",
+} as const;
+
+// AUTOLAND GROUND STOP: main의 post-merge Application Check가 빨가 두 모드가 멈춤. SUPERVISOR가 확인하고 푼다
+function GroundStopRow({ stop, check, refresh }: { stop: ServerSettings["autoland"]["groundStops"][number]; check: string; refresh: () => Promise<SaveResult> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const clear = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/autoland/groundstop/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ airport: stop.airport }),
+      });
+      if (res.ok) await refresh();
+      else setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`);
+    } catch {
+      setError("서버에 연결할 수 없음");
+    }
+    setBusy(false);
+  };
+  return (
+    <div className="config-row">
+      <dt>
+        GROUND STOP <code className="config-env">{stop.airport}</code>
+      </dt>
+      <dd>
+        <button className="config-btn is-danger" onClick={() => void clear()} disabled={busy}>
+          풀기
+        </button>
+      </dd>
+      <p className="config-note is-error">
+        {error ?? `main ${stop.failing.join(", ") || check} 실패(${stop.sha.slice(0, 7)}) — AUTOLAND 두 모드 모두 멈춤. main을 확인한 뒤 SUPERVISOR가 푼다`}
+      </p>
     </div>
   );
 }

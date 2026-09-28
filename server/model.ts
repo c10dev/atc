@@ -1,5 +1,6 @@
 import type { CarriedReview, CodexFindingSummary, CodexUnavailable, ExtReviewState, Stranded } from "./landing.ts";
 import type { GroundStop, MainStatus } from "./atfm.ts";
+import type { AutolandView } from "./autoland.ts";
 export type Agent = "claude" | "codex";
 
 export interface Session {
@@ -222,4 +223,5 @@ export interface Snapshot {
   pulls: PullRequest[]; // 열린 PR. CLEARED(readyAt 순) 다음 APPROACH(연 순서)
   stranded?: Stranded[]; // 기본 브랜치에 닿지 않은 머지(ATC-29). 경보(kind stranded)와 FLIGHT FOLLOWING이 읽는다
   atfm: { mains: MainStatus[]; groundStops: GroundStop[] }; // 기본 브랜치 CI와 출발 중지(docs/atfm.md)
+  autoland?: AutolandView; // AUTOLAND(ATC-34): AIRPORT마다 다음 할 일, PR마다 표시·제외 사유
 }

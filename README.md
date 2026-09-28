@@ -78,6 +78,14 @@ How work is handed to a team ([docs/dispatch.md](docs/dispatch.md) "DIRECT brief
 
 AUTOPILOT is not used: it would suggest the SUPERVISOR's gates are off, and it stays reserved for real automation later.
 
+### Landing automation
+
+| Term | Meaning |
+|---|---|
+| **AUTOLAND** | atc lands PRs mechanically behind one SUPERVISOR switch `autoland: off \| update \| merge` (default off). `update`: a PR that is CLEARED except for `behind` gets GitHub Update branch (`expected_head_sha`), one per AIRPORT at a time in LANDING SEQUENCE order. `merge`: a delegated PR is also merged at its exact head ([docs/occ.md](docs/occ.md) 9.7) |
+| **HOLD** (landing strip) | The SUPERVISOR's mark on a PR: AUTOLAND never merges it, and a CLEARED PR on HOLD doesn't stop the next update |
+| **GROUND STOP** (AUTOLAND) | A red post-merge `Application Check` on main stops both AUTOLAND modes for that AIRPORT until the SUPERVISOR clears it |
+
 ### AIRPORT registry
 
 The AIRPORT list lives in `~/.local/state/atc/airports.json` (outside git, since the paths differ per machine) and is managed from the AIRPORT tab or the API.
@@ -265,6 +273,8 @@ The LANDING SEQUENCE is the list of open GitHub PRs that aren't Drafts, across e
 
 CLEARED PRs come first, in the order they became ready (`readyAt`, the first time every condition held at that head; a new push starts over), then APPROACH PRs in the order they were opened. The TOWER gives `LAND` only to CLEARED PRs, with the text the server builds in each CLEARED entry's `landText` (`landTextOf` in `server/controller.ts`): the position (`repoSeq`) and the PR ahead count only CLEARED PRs in the same repository and base, since a merge elsewhere needs no rebase: `LANDING 순서 1번 (VCDO): PR #389 (VOC52). 지금 LANDING 가능 — 머지 전에 base가 최신인지 확인.` for the first, and `LANDING 순서 2번 (VCDO): PR #393 (VOC191). 앞 PR #389 머지 뒤 rebase하고 LANDING.` after it (no parenthesis without a FLIGHT; APPROACH entries have `repoSeq` and `landText` `null`; the global `seq` stays the handling order). It also tells the CAPTAIN about new blocks on APPROACH PRs with `INFO`. The reasons behind these rules are in [docs/occ.md](docs/occ.md) section 9. The snapshot carries every open PR, Drafts included, in `pulls`, and the GitHub status in `github` (`{enabled, error, fetchedAt}`). If `gh` fails, the last result stays and the error shows there. CLEARANCEs are recorded in `~/.local/state/atc/clearances.jsonl` (append-only).
 
+**AUTOLAND** (ATC-34, off by default): behind the SUPERVISOR's switch `autoland` (`update` or `merge`), atc updates CLEARED-but-`behind` PRs itself, one per AIRPORT at a time, and in `merge` also merges delegated PRs at their exact head. The only GitHub writes are `update-branch` with `expected_head_sha` and the exact-head merge; no force-push, no auto-merge, no branch-protection change. The LANDING SEQUENCE header shows what AUTOLAND will do next, and each PR shows why it is excluded. Details in [docs/occ.md](docs/occ.md) 9.7.
+
 ## FLIGHT RECORDER and operating metrics (stage 1.5)
 
 The atc server keeps an append-only log in `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl` (UTC dates) and deletes files older than 30 days.
@@ -435,6 +445,7 @@ atc/
 │   ├── dispatch.ts         # DISPATCH plan: candidates, slots, scores (dispatch.test.ts)
 │   ├── events.ts           # snapshot differences → events
 │   ├── landing.ts          # CLEARED TO LAND conditions and LANDING SEQUENCE order (landing.test.ts)
+│   ├── autoland.ts         # AUTOLAND switch, exclusions and plan (autoland.test.ts); autoland-run.ts runs it
 │   ├── metrics.ts          # operating metrics and stage 2 check (metrics.test.ts)
 │   ├── proposals.ts        # DISPATCH proposal log and API (proposals.test.ts)
 │   ├── briefing.ts         # DISPATCH card BRIEFING and facts line (briefing.test.ts)

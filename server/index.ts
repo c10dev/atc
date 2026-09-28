@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { mountAirports } from "./airports.ts";
 import { mountAtfm, runAtfm } from "./atfm-run.ts";
+import { mountAutoland, runAutoland } from "./autoland-run.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { mountLandingReview } from "./landing-review.ts";
@@ -80,6 +81,7 @@ async function tick() {
     if (isWarm(next)) recordDepartures(next); // FLIGHT의 첫 STAND·claim과 HANDOFF를 착수 기록에(바뀔 때만). 첫 번은 기준선
     if (isWarm(next)) runLogbook(next); // 10분마다 머지된 PR을 LOGBOOK에 적는다
     if (isWarm(next)) runAtfm(next); // 출발 중지 시작·끝, 1분마다 ATFM 데이터와 그림자 판정(docs/atfm.md)
+    if (isWarm(next)) runAutoland(next); // AUTOLAND(ATC-34): GitHub을 새로 읽을 때마다 갱신·머지 한 주기(스위치가 off면 GROUND STOP만 본다)
 
     current = next;
     if (sig !== signature) {
@@ -112,6 +114,7 @@ mountRoutes(app, getSnapshot);
 mountSchedule(app, getSnapshot);
 mountFollowing(app, getSnapshot);
 mountAtfm(app, getSnapshot);
+mountAutoland(app, getSnapshot);
 mountSettings(app);
 
 app.get("/api/events", (c) =>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { AutolandView, PullTagKind } from "../../../server/autoland.ts";
 import type { Claim, Clearance, LandingBlockCode, PullRequest, Session, Snapshot } from "../../../server/model.ts";
 import {
   type AircraftStatus,
@@ -32,7 +33,7 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
   // 옛 서버 스냅샷에는 pulls·github가 없다
   const pulls = snapshot.pulls ?? [];
   const github = snapshot.github ?? null;
-  const landing = landingIndex(pulls);
+  const landing = landingIndex(pulls, snapshot.autoland);
 
   return (
     <section>
@@ -212,12 +213,13 @@ function Strip({
 interface LandingIndex {
   byStand: Map<string, PullRequest[]>;
   seq: Map<string, number>; // CLEARED PR의 LANDING SEQUENCE 순번(1부터)
+  autoland: AutolandView | null; // AUTOLAND(ATC-34). 옛 서버 스냅샷에는 없다
 }
 
 const prKey = (p: PullRequest) => `${p.repo}#${p.number}`;
 
 // LANDING SEQUENCE: CLEARED를 readyAt 이른 순으로. readyAt이 없으면 뒤로
-function landingIndex(pulls: PullRequest[]): LandingIndex {
+function landingIndex(pulls: PullRequest[], autoland?: AutolandView): LandingIndex {
   const byStand = new Map<string, PullRequest[]>();
   for (const p of pulls) {
     if (!p.standPath) continue;
@@ -233,7 +235,7 @@ function landingIndex(pulls: PullRequest[]): LandingIndex {
         a.repo.localeCompare(b.repo) ||
         a.number - b.number,
     );
-  return { byStand, seq: new Map(cleared.map((p, i) => [prKey(p), i + 1])) };
+  return { byStand, seq: new Map(cleared.map((p, i) => [prKey(p), i + 1])), autoland: autoland ?? null };
 }
 
 function blocksTip(pr: PullRequest): string {
@@ -315,6 +317,77 @@ function CodexP3Tag({ pr }: { pr: PullRequest }) {
   );
 }
 
+// AUTOLAND(ATC-34): 이 PR에 AUTOLAND가 할 일, 또는 손대지 않는 까닭
+const AUTOLAND_TIP: Record<PullTagKind, string> = {
+  update: "AUTOLAND가 이 PR을 GitHub update-branch(expected_head_sha)로 갱신한다 — CI가 통과하면 CLEARED",
+  inflight: "AUTOLAND가 갱신함 — 새 head의 CI를 기다린다(AIRPORT마다 하나씩)",
+  queued: "CLEARED인데 behind만 남음 — LANDING SEQUENCE 순서로 하나씩 갱신한다",
+  merge: "AUTOLAND merge: 위임된 PR이라 정확한 head로 머지한다",
+  delegated: "AUTOLAND merge 대상(위임된 PR)",
+  supervisor: "AUTOLAND가 머지하지 않는다 — SUPERVISOR가 머지",
+  excluded: "AUTOLAND가 손대지 않는다",
+  waiting: "AUTOLAND 대기",
+};
+function AutolandTag({ pr, landing }: { pr: PullRequest; landing: LandingIndex }) {
+  const t = landing.autoland?.pulls[prKey(pr)];
+  if (!t) return null;
+  return (
+    <span className={`pr-autoland is-${t.kind}`} title={AUTOLAND_TIP[t.kind]}>
+      {t.text}
+    </span>
+  );
+}
+
+// SUPERVISOR의 HOLD: merge 모드에서 AUTOLAND가 이 PR을 머지하지 않는다. CLEARED여도 다음 PR 갱신을 막지 않는다
+function HoldButton({ pr, landing }: { pr: PullRequest; landing: LandingIndex }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const a = landing.autoland;
+  if (!a || a.mode === "off" || pr.draft || !a.airports.some((x) => x.repo === pr.repo)) return null;
+  const held = a.holds.includes(prKey(pr));
+  const toggle = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/autoland/hold", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo: pr.repo, number: pr.number, hold: !held }),
+      });
+      if (!res.ok) setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`);
+    } catch {
+      setError("서버에 연결할 수 없음");
+    }
+    setBusy(false);
+  };
+  return (
+    <button
+      className={`pr-hold${held ? " is-held" : ""}`}
+      onClick={() => void toggle()}
+      disabled={busy}
+      aria-pressed={held}
+      title={error ?? (held ? "HOLD 풀기: AUTOLAND merge가 다시 이 PR을 머지할 수 있다" : "HOLD: AUTOLAND가 이 PR을 머지하지 않는다(SUPERVISOR가 머지)")}
+    >
+      {held ? "HOLD ✓" : "HOLD"}
+    </button>
+  );
+}
+
+// LANDING SEQUENCE 머리: AIRPORT마다 AUTOLAND가 다음에 할 일
+function AutolandStatus({ autoland, idx }: { autoland: AutolandView | null; idx: Index }) {
+  if (!autoland || autoland.mode === "off" || !autoland.airports.length) return null;
+  return (
+    <ul className="ls-autoland" aria-label={`AUTOLAND ${autoland.mode}`}>
+      {autoland.airports.map((a) => (
+        <li key={a.airport} className={`is-${a.status}`}>
+          <span className="ls-autoland-mode">{autoland.mode.toUpperCase()}</span>
+          <AirportCode airport={idx.airportByRepo.get(a.repo)} /> {a.text}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function PrLink({ pr }: { pr: PullRequest }) {
   return (
     <a
@@ -374,6 +447,7 @@ function PrLanding({ pr, landing }: { pr: PullRequest; landing: LandingIndex }) 
         <ExtReviewTag pr={pr} />
         <CarriedTag pr={pr} />
         <CodexP3Tag pr={pr} />
+        <AutolandTag pr={pr} landing={landing} />
         {seq && landing.seq.size > 1 && (
           <span className="pr-seq" title={`LANDING SEQUENCE ${landing.seq.size}개 중 ${seq}번째`}>
             SEQ {seq}
@@ -428,7 +502,8 @@ function LandingSequence({
         </div>
         <div className="ls-pr">
           <div className="ls-title">
-            <PrLink pr={pr} /> <ExtReviewTag pr={pr} /> <CarriedTag pr={pr} /> <CodexP3Tag pr={pr} /> <span title={pr.title}>{pr.title}</span>
+            <PrLink pr={pr} /> <ExtReviewTag pr={pr} /> <CarriedTag pr={pr} /> <CodexP3Tag pr={pr} /> <AutolandTag pr={pr} landing={landing} />{" "}
+            <HoldButton pr={pr} landing={landing} /> <span title={pr.title}>{pr.title}</span>
           </div>
           {pr.landing !== "CLEARED" && pr.blocks.length > 0 && (
             <ul className="ls-blocks">
@@ -450,6 +525,7 @@ function LandingSequence({
       <h2 className="label">
         LANDING SEQUENCE <em>CLEARED TO LAND {cleared.length}</em>
       </h2>
+      <AutolandStatus autoland={landing.autoland} idx={idx} />
       {cleared.length > 0 && <ol className="ls-list">{cleared.map(row)}</ol>}
       {approach.length > 0 && (
         <details className="ls-group">

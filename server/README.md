@@ -45,6 +45,9 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 | `model.ts` | Shared types: `Session`, `Airport`, `Workspace`, `Ticket`, `Claim`, `Handoff`, `Alert`, `Clearance`, `TrafficEvent`, `PullRequest`, `LandingBlockCode`, `Snapshot`. The web UI imports these directly |
 | `snapshot.ts` | Merges sources, keeps fresh claims only, computes alerts and `pulls`. Snapshot fields: `linear` and `github` status (`{enabled, error, fetchedAt}`), `sessions`, `workspaces`, `tickets`, `columns`, `airports`, `claims`, `handoffs`, `alerts`, `clearances`, `pulls` (open PRs, CLEARED first) |
 | `landing.ts` | CLEARED TO LAND conditions per PR (checks, review on the head, merge state, Draft, LOS), `readyAt` per head, LANDING SEQUENCE order (pure `buildPulls`, `landingBlocks`) |
+| `autoland.ts` | AUTOLAND (ATC-34, [docs/occ.md](../docs/occ.md) 9.7): the switch and holds in `autoland.json` (`parseAutoland`, `saveAutoland`), state in `autoland-state.json`, the merge exclusions (pure `mergeExclusionOf`, `humanPreviewOf`), GROUND STOP latching (pure `latchGroundStops`), when an update is done (pure `settleOf`), and one action per AIRPORT with a tag per PR (pure `planAutoland`, shown as `snapshot.autoland`) |
+| `autoland-run.ts` | AUTOLAND cycle on each new GitHub read: latch GROUND STOPs, settle updates, then `update-branch` (`expected_head_sha`) or the exact-head merge (`sha`), re-checking the switch and, for a merge, the PR itself right before writing; `autoland.jsonl` records; `GET /api/autoland`, `POST /api/autoland/hold`, `POST /api/autoland/groundstop/clear` |
+| `origin.ts` | `fromThisApp`: only a JSON request with a localhost `Origin` (this screen) may change settings, HOLDs or GROUND STOPs. `atcctl` sends no `Origin` |
 | `occupancy.ts` | HANDOFF vs conflict vs brief visit from claim intervals `[since, lastAt]` |
 | `airports.ts` | AIRPORT registry: auto-discovery under `~/projects`, identity by first commit hash, codes, open/close/rename/delete |
 | `away.ts` | OUTSTATION: sessions holding a STAND outside their home AIRPORT (shared with the UI) |
@@ -121,6 +124,9 @@ Every `*.test.ts` next to a module is its unit test.
 | `GET /api/schedule/released` | Mode and every released call, each with `used` (read by linear-guard) |
 | `POST /api/schedule/released/claim` | `{tool, input}`: linear-guard claims a matching released call once; a used or unknown call answers 409 |
 | `POST /api/schedule/mode` | `{mode: shadow\|approval}` |
+| `GET /api/autoland` | AUTOLAND config, state, the current plan (`view`) and the last 50 records |
+| `POST /api/autoland/hold` | SUPERVISOR only (this screen): `{repo, number, hold}` marks or clears HOLD on a PR |
+| `POST /api/autoland/groundstop/clear` | SUPERVISOR only (this screen): `{airport}` clears the AUTOLAND GROUND STOP; that main SHA won't stop it again |
 
 ## State on disk
 
@@ -138,4 +144,7 @@ Everything lives under `ATC_STATE_DIR` (default `~/.local/state/atc`), outside g
 | `departures.jsonl` | `departures.ts` | DEPARTURE LOG: first STAND or claim of a FLIGHT and HANDOFFs, written only on change (append-only) |
 | `proposals.jsonl` | `proposals.ts` | DISPATCH proposals (append-only) |
 | `schedule.jsonl` | `schedule.ts` | OCC SCHEDULE drafts and SUPERVISOR verdicts (append-only) |
+| `autoland.json` | `autoland.ts` | AUTOLAND switch (`mode`, default off), `airports`, `mergeMethod`, `applicationCheck`, `holds` (written atomically) |
+| `autoland-state.json` | `autoland-run.ts` | AUTOLAND updates in flight, GROUND STOPs, cleared main SHAs, skipped and merged heads |
+| `autoland.jsonl` | `autoland-run.ts` | AUTOLAND records: every update, merge, result, GROUND STOP, switch and HOLD change (append-only) |
 | `dispatch.json` | you (optional; defaults apply without it) | DISPATCH settings: project → AIRPORT mapping, slots, weights, mode (`shadow` / `approval`) |

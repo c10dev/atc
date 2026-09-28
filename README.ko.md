@@ -78,6 +78,14 @@ Linear 티켓까지 보려면 `.env.local`에 `LINEAR_API_KEY`를 넣는다. 상
 
 AUTOPILOT은 쓰지 않는다. SUPERVISOR의 게이트가 꺼진 것처럼 들리고, 나중의 진짜 자동화를 위해 남겨 둔다.
 
+### 착륙 자동화
+
+| 용어 | 뜻 |
+|---|---|
+| **AUTOLAND** | SUPERVISOR 스위치 하나 `autoland: off \| update \| merge`(기본 off) 뒤에서 atc가 PR 착륙을 기계로 한다. `update`: `behind`만 남은 CLEARED PR을 GitHub Update branch(`expected_head_sha`)로 갱신한다. LANDING SEQUENCE 순서로 AIRPORT마다 하나씩. `merge`: 위임된 PR은 정확한 head로 머지까지 한다([docs/occ.ko.md](docs/occ.ko.md) 9.7) |
+| **HOLD**(착륙 스트립) | SUPERVISOR가 PR에 다는 표시: AUTOLAND가 머지하지 않고, HOLD한 CLEARED PR은 다음 갱신을 막지 않는다 |
+| **GROUND STOP**(AUTOLAND) | main의 post-merge `Application Check`가 빨가면 그 AIRPORT의 AUTOLAND 두 모드가 SUPERVISOR가 풀 때까지 멈춘다 |
+
 ### AIRPORT 등록부
 
 AIRPORT 목록은 `~/.local/state/atc/airports.json`(기계마다 다른 경로가 들어가므로 git 밖)에 있고, AIRPORT 탭이나 API로 관리한다.
@@ -263,6 +271,8 @@ LANDING SEQUENCE는 GitHub remote가 있는 모든 AIRPORT의, Draft가 아닌 �
 
 CLEARED PR이 준비된 순서(`readyAt`: 그 head에서 조건이 처음 모두 맞은 시각, 새 push면 다시 센다)로 앞에 서고, 그 뒤에 APPROACH PR이 연 순서로 선다. TOWER는 CLEARED PR에만 `LAND`를 준다. 문구는 서버가 CLEARED 항목마다 만든 `landText`(`server/controller.ts`의 `landTextOf`) 그대로다: 순서(`repoSeq`)와 앞 PR은 같은 저장소·base의 CLEARED PR 안에서만 센다(다른 저장소의 머지는 rebase가 필요 없다). 첫 번째는 `LANDING 순서 1번 (VCDO): PR #389 (VOC52). 지금 LANDING 가능 — 머지 전에 base가 최신인지 확인.`, 그 뒤는 `LANDING 순서 2번 (VCDO): PR #393 (VOC191). 앞 PR #389 머지 뒤 rebase하고 LANDING.`(FLIGHT가 없으면 괄호를 빼고, APPROACH 항목은 `repoSeq`·`landText`가 `null`. 전체 `seq`는 처리 순서로 그대로 둔다). 그리고 APPROACH PR에 새로 생긴 막힘은 CAPTAIN에게 `INFO`로 알린다. 이렇게 정한 이유는 [docs/occ.ko.md](docs/occ.ko.md) 9절에 있다. 스냅샷의 `pulls`에는 Draft를 포함한 열린 PR 전부가, `github`(`{enabled, error, fetchedAt}`)에는 GitHub 상태가 들어 있다. `gh`가 실패하면 마지막 결과를 두고 오류를 거기에 적는다. CLEARANCE 기록은 `~/.local/state/atc/clearances.jsonl`(추가만 함).
 
+**AUTOLAND**(ATC-34, 기본 꺼짐): SUPERVISOR의 스위치 `autoland`(`update`나 `merge`) 뒤에서 atc가 CLEARED인데 `behind`인 PR을 AIRPORT마다 하나씩 직접 갱신하고, `merge`면 위임된 PR을 정확한 head로 머지까지 한다. GitHub에 쓰는 것은 `expected_head_sha`를 준 `update-branch`와 정확한 head 머지뿐이다. force-push, auto-merge, 브랜치 보호 변경은 없다. LANDING SEQUENCE 머리에 AUTOLAND가 다음에 할 일이, PR마다 빠진 까닭이 보인다. 자세한 것은 [docs/occ.ko.md](docs/occ.ko.md) 9.7절.
+
 ## FLIGHT RECORDER와 운용 지표 (1.5단계)
 
 atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)에 추가만 하는 기록을 남기고 30일이 지나면 지운다.
@@ -433,6 +443,7 @@ atc/
 │   ├── dispatch.ts         # DISPATCH 계획: 후보·슬롯·점수 (dispatch.test.ts)
 │   ├── events.ts           # 스냅샷 차이 → 이벤트
 │   ├── landing.ts          # CLEARED TO LAND 조건, LANDING SEQUENCE 순서 (landing.test.ts)
+│   ├── autoland.ts         # AUTOLAND 스위치, 제외 목록, 계획 (autoland.test.ts). 실행은 autoland-run.ts
 │   ├── metrics.ts          # 운용 지표·2단계 점검 (metrics.test.ts)
 │   ├── proposals.ts        # DISPATCH 제안 기록·API (proposals.test.ts)
 │   ├── briefing.ts         # DISPATCH 카드 BRIEFING과 사실 줄 (briefing.test.ts)

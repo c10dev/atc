@@ -366,6 +366,24 @@ vocado의 `main` 규칙은 최신 main을 요구해서(`strict`) 머지가 있�
 - **무엇을 잇나**(`carriedReviewOf`, 최근 `R`부터): `R`의 사람 `APPROVED`, `R` 커밋 뒤에 달린 Codex 👍, `R`의 DeepSeek 착륙 리뷰 기록(외부 리뷰에서 빠지지 않은 PR만, Muse 기록은 잇지 않음). 지적은 지적으로 잇는다: 뒤 👍로 풀리지 않은 `R`의 Codex COMMENTED 리뷰나 `R`의 DeepSeek `findings`는 head에서 `review-findings`가 된다("Codex 지적이 이전 커밋 18700c1에 남아 있음(그 뒤 main 병합만) — 반영 후 재리뷰 필요").
 - **결과**: 이어받은 pass는 리뷰 조건을 채워 CI와 base가 맞으면 곧바로 CLEARED가 된다. REVIEW 대기열에 넣지 않으므로(`extReview` 없음) DeepSeek이 한 번 더 돌지 않는다. `PullRequest.carried`·`landingQueue[].carried`(`from`, `by`, `findings`), 스트립 "REVIEW: DEEPSEEK (carried from 18700c1, main merge only)", `landing.cleared` 이벤트의 `carriedFrom`.
 
+### 9.7 AUTOLAND: CLEARED인데 behind인 PR 갱신, 위임된 PR 머지 (2026-09-28, ATC-34)
+
+vocado `main`의 `strict` 때문에 머지가 있을 때마다 다른 열린 PR이 `behind`가 되고, SUPERVISOR가 PR마다 Update branch → CI 대기 → 머지를 되풀이했다. ATC-31로 main 병합만 한 갱신은 리뷰를 이어받으니 그 대기는 기계 일이다. AUTOLAND가 스위치 하나 뒤에서 그것을 한다.
+
+- **스위치**: `autoland.json`의 `mode`. `"off"`(기본, 모르는 값도 off), `"update"`, `"merge"`. SUPERVISOR만 바꾼다: 설정 창 AGENTS 탭의 AUTOLAND 줄(모드마다 한 줄 경고)이나 `PUT /api/settings {autolandMode}`. 서버는 이 화면에서 온 요청(localhost `Origin`이 있는 JSON)만 받는다. 관제 세션 CLI(`atcctl`)에는 AUTOLAND 명령이 없고 `Origin`도 보내지 않으며, guard가 `curl`을 막는다. 같은 파일에 `airports`(기본 `["VCDO"]`, atc 저장소 자신의 착륙은 범위 밖), `mergeMethod`(기본 `squash`), `applicationCheck`(기본 `Application Check`), SUPERVISOR의 `holds`가 있다.
+- **GitHub을 새로 읽을 때마다 한 주기**(90초, `server/autoland-run.ts`). 목록의 AIRPORT마다 할 일은 많아야 하나다(순수 `planAutoland`):
+  1. GROUND STOP → 아무것도 안 함.
+  2. 갱신한 PR이 비행 중 → 새 head의 CI가 끝날 때까지 기다린다(CLEARED, 다른 막힘, 닫힘. 10분 동안 head가 안 바뀌거나 CI가 90분을 넘으면 포기하고 다음으로).
+  3. `merge`: LANDING SEQUENCE 순서로 첫 번째 위임된 CLEARED PR → 머지.
+  4. HOLD하지 않은 CLEARED PR이 SUPERVISOR 머지를 기다림 → 대기. 지금 다른 PR을 갱신하면 그 머지 뒤 다시 `behind`가 된다. HOLD하면 runway가 풀린다.
+  5. LANDING SEQUENCE 순서로 막힘이 `behind` 하나뿐인 첫 PR → 갱신.
+- **update**: `PUT /repos/{o}/{r}/pulls/{n}/update-branch`에 `expected_head_sha`(일반 merge 커밋, force-push 아님). ATC-31이 리뷰를 이어 주니 CI가 통과하면 CLEARED로 돌아온다. Draft, 쌓인 PR, `dirty`, LOS PR은 건드리지 않는다. 거절된 갱신(head가 움직임)은 그 head를 건너뛰고 다음 주기에 새 head로 다시 한다. 다른 실패는 head가 바뀔 때까지 그 head를 건너뛴다.
+- **merge**: 위임된 PR은 `mergeExclusionOf`에 걸리지 않는 CLEARED PR 전부다. 제외: SUPERVISOR HOLD(착륙 스트립의 HOLD 버튼), FLIGHT 없음, `rating:SEC`나 `Risk…` 라벨(티켓·PR), 바뀐 파일을 못 읽음(`merge`일 때 atc가 Draft 아닌 PR의 파일을 읽는다), ATC-27 보안 게이트(`.env`·비밀·키 경로, migrations, SQL, auth, session, admission, RLS·policy, middleware, 보안 키워드), PR 본문의 Human Preview 적용이 `required`(또는 채우지 않음)인데 Human Visual Review disposition이 `approved`·`waived`·`passed` 하나로 적혀 있지 않음. 머지 직전에 PR을 다시 읽어(`gh pr view`) head와 제외 목록을 다시 본다. 머지는 `PUT /repos/{o}/{r}/pulls/{n}/merge`에 계획한 head를 `sha`로(`--match-head-commit`의 REST 형태), `merge_method`와 함께. GitHub auto-merge는 켜지 않는다. 제외된 CLEARED PR은 SUPERVISOR에게 남고, HOLD가 아니면 runway를 잡는다.
+- **GROUND STOP**: 목록의 AIRPORT에서 기본 브랜치 head의 `applicationCheck` 체크가 실패하면 그 AIRPORT의 두 모드를 멈춘다. main이 다시 초록이 돼도 SUPERVISOR가 풀 때까지(설정 창, 또는 `POST /api/autoland/groundstop/clear {airport}`) 멈춰 있다. 푼 SHA로는 다시 걸지 않고, 새 SHA가 빨가면 다시 건다. 스위치가 꺼져 있어도 걸어 두므로 켤 때 먼저 보인다.
+- **기록**: `autoland.jsonl`(추가만): `update`, `merge`, `settle`, `skip`, `groundstop`, `groundstop-clear`, `mode`, `hold`, `unhold`. 줄마다 모드, AIRPORT, PR, head, 결과, 설명. 상태(비행 중, GROUND STOP, 푼 SHA, 건너뛴·머지한 head)는 `autoland-state.json`. `GET /api/autoland`가 설정, 상태, 계획, 최근 기록 50줄을 보인다.
+- **화면**: LANDING SEQUENCE 머리에 AIRPORT마다 한 줄("AUTOLAND: updating #383", "AUTOLAND: waiting — #383 CLEARED, …", "AUTOLAND: GROUND STOP — …"). PR마다 AUTOLAND가 할 일이나 안 하는 까닭("AUTOLAND update 대기 2번째", "AUTOLAND 제외 — DIRTY(충돌)", "AUTOLAND 대기 — 리뷰 없음 먼저", "SUPERVISOR 머지 — rating:SEC")과 HOLD 버튼.
+- **켜기**: SUPERVISOR가 2026-09-28에 배포 뒤 `update`를 켜기로 정했다. `merge`는 만들어 두고 끈다. vocado `AGENTS.md`가 "Human merge is the final gate"라서, SUPERVISOR가 먼저 거기에 VOC-141 같은 AUTOLAND 예외를 적어야 한다.
+
 ## 10. atc에 더할 것
 
 | 곳 | 내용 |
@@ -545,5 +563,6 @@ env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localh
 | 순서 | 설계 문서 먼저 |
 | 보안 PR을 DeepSeek에 (2026-09-27, ATC-30) | Codex를 쓸 수 없을 때 DeepSeek V4.1 Flash 착륙 리뷰어가 보안 PR도 리뷰할 수 있다 — **`externalReview.security`가 `"deepseek"`일 때만**. 그러면 vocado 보안 diff와 Linear 이슈 본문이 DeepSeek로 나간다. `.env`·비밀·키 경로와 FLIGHT 없는 PR은 보내지 않고, Muse는 착륙에 쓰지 않는다(9.5) |
 | main 병합만 한 head의 리뷰 (2026-09-27, ATC-31) | vocado의 `strict`(최신 main 필수)는 그대로 둔다. head까지 main 병합뿐이고 PR 자신의 변경(merge-base 대비 파일과 blob)이 같으면 이전 커밋의 리뷰를 잇는다. 지적은 지적으로 잇는다(9.6) |
+| AUTOLAND (2026-09-28, ATC-34) | `autoland: off \| update \| merge`(기본 off, SUPERVISOR만) 뒤에 AUTOLAND를 만든다. 배포 뒤 `update`를 켠다. `merge`는 SUPERVISOR가 vocado `AGENTS.md`에 AUTOLAND 예외를 적을 때까지 끈다. force-push, GitHub auto-merge, 브랜치 보호·`strict` 변경 없음(9.7) |
 
 남은 결정: S3 자동 목록의 정확한 범위(S2 데이터 뒤), 그리고 TOWER 세션 이름을 ATC로 바꿀지 그대로 둘지.

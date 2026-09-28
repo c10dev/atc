@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { type MainStatus, mainStateOf } from "../atfm.ts";
+import { loadAutoland } from "../autoland.ts";
 import { type CarryCandidate, type CodexSignal, codexFindings, codexThumbsPass, firstReach, fixesKeyOf, mergeOnlyChain, sameChange, type GhPull, type GhThread, hasHeadReview, isCodexBot, type MergedElsewhere, needsCodexSignal } from "../landing.ts";
 import type { GhCommit } from "../briefs.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./git.ts";
@@ -171,6 +172,23 @@ async function attachThreads(slug: string, pulls: GhPull[], errors: string[]) {
   }
 }
 
+// Draft·충돌이 아닌 PR 중 아직 파일을 안 읽은 것(head별 캐시)
+async function attachFiles(slug: string, pulls: GhPull[], errors: string[]) {
+  const need = pulls.filter((p) => !p.isDraft && !p.files && p.mergeStateStatus !== "DIRTY");
+  for (let i = 0; i < need.length; i += 4) {
+    await Promise.all(
+      need.slice(i, i + 4).map(async (p) => {
+        try {
+          p.files = await filesOf(slug, p);
+        } catch (e) {
+          const err = e as Error & { stderr?: string };
+          errors.push(`${slug}#${p.number} 바뀐 파일: ${(err.stderr?.trim() || err.message).split("\n")[0]}`);
+        }
+      }),
+    );
+  }
+}
+
 async function fetchAll(repos: string[]) {
   const errors: string[] = [];
   let ok = 0;
@@ -191,6 +209,8 @@ async function fetchAll(repos: string[]) {
         const mainSha = (await gh(["api", `repos/${slug}/commits/${base}`, "--jq", ".sha"]).catch(() => "")).trim() || null;
         await attachCodex(slug, pulls, errors, mainSha);
         await attachThreads(slug, pulls, errors);
+        // AUTOLAND merge 모드(ATC-34): 머지 후보의 바뀐 파일로 보안 게이트를 본다(못 읽으면 머지하지 않는다)
+        if (loadAutoland().mode === "merge") await attachFiles(slug, pulls, errors);
         state.byRepo.set(repo, pulls);
         ok++;
         try {
