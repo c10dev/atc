@@ -29,7 +29,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 
 | 파일 | 읽는 것 | 얻는 것 |
 |---|---|---|
-| `claude.ts` | `~/.claude/sessions/*.json`, hook 점유 파일, 대화 기록(`~/.claude/projects/…`) | Claude 세션, `hook` 점유, `transcript` 점유(ESTIMATED TRACK, `hooks/paths.mjs`와 같은 규칙) |
+| `claude.ts` | `~/.claude/sessions/*.json`, hook 점유 파일, 대화 기록(`~/.claude/projects/…`) | Claude 세션, `hook` 점유, `transcript` 점유(ESTIMATED TRACK, `hooks/paths.mjs`와 같은 규칙), 살아 있는 세션의 대화 기록 끝 64KB에서 AIRCRAFT health(ATC-45) |
 | `codex.ts` | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex 세션(최근 90초 안에 움직였으면 busy), `cwd` 점유 |
 | `git.ts` | AIRPORT마다 `git worktree list --porcelain` | 워크트리, 브랜치, HEAD, dirty 여부, 마지막 커밋(세부는 30초 캐시). 브랜치 이름에서 티켓 키 |
 | `linear.ts` | Linear GraphQL(`LINEAR_API_KEY`), 60초마다, `LINEAR_TEAM_KEYS`의 팀마다 따로 | 티켓, 상태(팀끼리 이름으로 합침), 우선순위, 프로젝트, 관계. DISPATCH용 이슈 본문. 실패한 팀은 마지막 결과를 쓰고, 한 번도 읽지 못한 팀이 있으면 전체가 실패 |
@@ -56,6 +56,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `airports.ts` | AIRPORT 등록부: `~/projects` 아래 자동 개설, 첫 커밋 해시로 식별, 코드, 개설·폐쇄·이름 변경·삭제 |
 | `away.ts` | OUTSTATION: 소속 AIRPORT 밖 STAND를 점유한 세션(화면과 공용) |
 | `fleet-status.ts` | FLEET 운항 상태 목록(ATC-44): AIRCRAFT마다 AIRBORNE·HOLDING·PARKED·AOG·NORDO(순수 함수 `fleetStatusOf`), 상태 다음 AIRPORT 순으로 한 줄씩(순수 함수 `fleetRows`), 경과 시간 글(화면과 같이 씀) |
+| `health.ts` | AIRCRAFT health(ATC-45, docs/fleet.ko.md 8.8): 대화 기록 줄에서 본문 없이 사실만(순수 함수 `factsOf`), 세션 하나의 코드 — `LIMIT`·`THROTTLE`·`NETWORK`·`MODEL`·`CONTEXT`·`PROVIDER`·`PENDING`·`UNANSWERED`·`HUNG`·`DENIED`·`UNKNOWN`(순수 함수 `healthOf`), 기계 단위로 묶은 경보(순수 함수 `healthAlerts`), FLEET 표시 글(화면과 같이 씀) |
 | `callsign.ts` | 콜사인(`TEAM_A` → `ALPHA`)과 FLIGHT NUMBER(화면과 공용) |
 | `version.ts` | 빌드 정체: `index.html`의 진입 스크립트 경로(순수 함수 `entryScript`)와 탭이 새 버전 알림을 띄울지(순수 함수 `showNewVersion`, 화면과 공용) |
 | `events.ts` | 스냅샷 차이 → 이벤트(경보, HANDOFF, LANDING SEQUENCE `landing.requested`·`cleared`·`blocked`·`left`, 세션 종료, OUTSTATION). 커서로 읽는 이벤트 기록 |

@@ -485,6 +485,20 @@
 .fl-r-title {
   color: var(--muted);
 }
+/* AIRCRAFT health(ATC-45): FLYING 칸 앞에 붙는 짧은 표시 */
+.fl-r-health {
+  margin-right: var(--space-1-5);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--cyan);
+}
+.fl-r-health.lv-alert {
+  border-color: var(--amber);
+  color: var(--amber);
+}
 .fl-r-more {
   margin-left: var(--space-1-5);
   padding: 0 var(--space-1);
@@ -547,5 +561,18 @@
   }
   .fl-r-week {
     grid-area: 2 / 4;
+  }
+  /* health 표시가 있는 줄: FLYING을 한 줄 전체로(표시가 잘리지 않게), 경과·마지막 활동·이번 주는 셋째 줄 */
+  .has-health .fl-r-flight {
+    grid-area: 2 / 1 / 3 / -1;
+  }
+  .has-health .fl-r-elapsed {
+    grid-area: 3 / 2;
+  }
+  .has-health .fl-r-last {
+    grid-area: 3 / 3;
+  }
+  .has-health .fl-r-week {
+    grid-area: 3 / 4;
   }
 }

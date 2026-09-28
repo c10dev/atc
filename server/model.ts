@@ -1,6 +1,7 @@
 import type { CarriedReview, CodexFindingSummary, CodexUnavailable, ExtReviewState, Stranded } from "./landing.ts";
 import type { GroundStop, MainStatus } from "./atfm.ts";
 import type { AutolandView } from "./autoland.ts";
+import type { Health } from "./health.ts";
 export type Agent = "claude" | "codex";
 
 export interface Session {
@@ -15,6 +16,8 @@ export interface Session {
   // cwd가 속한 저장소와 워크스페이스. 본 체크아웃이면 workspacePath === repo (TOWER)
   repo: string | null;
   workspacePath: string | null;
+  // AIRCRAFT health(ATC-45): 왜 멈췄는지, 무엇을 기다리는지. 문제가 없으면 없다(null)
+  health?: Health | null;
 }
 
 export interface Airport {
@@ -112,7 +115,7 @@ export interface Handoff {
   at: string;
 }
 
-export type AlertKind = "conflict" | "orphan" | "unattended" | "no-workspace" | "stranded"; // stranded: 기본 브랜치에 닿지 않은 머지(ATC-29)
+export type AlertKind = "conflict" | "orphan" | "unattended" | "no-workspace" | "stranded" | "health"; // stranded: 기본 브랜치에 닿지 않은 머지(ATC-29), health: AIRCRAFT health ALERT(ATC-45)
 
 export interface Alert {
   kind: AlertKind;
@@ -120,6 +123,7 @@ export interface Alert {
   workspacePath?: string;
   sessionIds?: string[];
   ticketKey?: string;
+  key?: string; // 같은 kind·STAND·FLIGHT로 가를 수 없는 경보의 구분 키(health)
 }
 
 // CLEARANCE. TOWER 세션이 atc에 기록하고 팀 세션에 메시지로 보낸다. 팀이 READBACK하면 readbackAt이 찍힌다.

@@ -8,7 +8,7 @@ import { classLabel, classOf, FLIGHT_TYPES, type FlightType, RATINGS, type Ratin
 import { type Crosscheck, CrosscheckError, type CrosscheckLine, type CrosscheckVerdict, crosscheckRateOf, examplesOf, type HumanDecision, markOf, oneClickOf, parseCrosscheck, type Via, viaOf } from "./crosscheck.ts";
 import { candidateTeamsOf, DONE_STATES, isCandidateTicket, loadDispatchConfig, PRIORITY_NAME } from "./dispatch.ts";
 import { teamOfKey } from "./linear-keys.ts";
-import { fleetView, loadFleet } from "./fleet.ts";
+import { type AircraftView, fleetView, loadFleet } from "./fleet.ts";
 import { type LogEntry, loadLogbook, type PrLink, prLinkOf } from "./logbook.ts";
 import type { Snapshot, Ticket } from "./model.ts";
 import { record } from "./recorder.ts";
@@ -392,6 +392,9 @@ export function similarTickets(title: string, tickets: Ticket[], nowMs: number):
 
 const keyList = (v: unknown) => (v == null ? [] : Array.isArray(v) ? v : [v]).map((k) => String(k).trim().toUpperCase()).filter(Boolean);
 
+// NEW의 tail로 쓸 수 있는 AIRCRAFT: 퇴역과 health로 HOLD된 AIRCRAFT(ATC-45)는 뺀다(순수)
+export const newTailsOf = (views: Pick<AircraftView, "registration" | "retired" | "health">[]) => views.filter((a) => !a.retired && !a.health?.holds).map((a) => a.registration);
+
 // NEW 입력 검사(similar는 draftOps가 채운다). tails: 퇴역하지 않은 FLEET 등록번호.
 // milestones: Linear 마일스톤(못 읽었으면 null). milestone은 그 프로젝트의 마일스톤 이름이나 id여야 한다
 export function parseNew(raw: Record<string, unknown>, tickets: Ticket[], tails: string[], milestones: Milestone[] | null = null): Omit<NewPayload, "similar"> {
@@ -420,7 +423,7 @@ export function parseNew(raw: Record<string, unknown>, tickets: Ticket[], tails:
   }
   if (raw.tail != null) {
     const tail = String(raw.tail).trim().toUpperCase().replace(/^TAIL:/, "");
-    if (!tails.some((x) => x.toUpperCase() === tail)) throw new ScheduleError(`FLEET에 없거나 퇴역한 AIRCRAFT: ${tail}`);
+    if (!tails.some((x) => x.toUpperCase() === tail)) throw new ScheduleError(`FLEET에 없거나 퇴역했거나 health로 HOLD된 AIRCRAFT: ${tail}`);
     out.tail = tail;
   }
   const keys = new Set(tickets.map((t) => t.key));
@@ -864,7 +867,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const body = await c.req.json().catch(() => ({}));
     try {
       const ops = current(s);
-      const tails = body.kind === "NEW" ? fleetView(s, loadFleet(), loadDispatchConfig().teamPattern).filter((a) => !a.retired).map((a) => a.registration) : [];
+      const tails = body.kind === "NEW" ? newTailsOf(fleetView(s, loadFleet(), loadDispatchConfig().teamPattern)) : [];
       let closable: Map<string, Closable> | undefined;
       if (body.kind === "CLOSE") {
         // PR 본문을 아직 모르면 여기서 읽고(읽기 전용) 다시 계산한다

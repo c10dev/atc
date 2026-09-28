@@ -92,7 +92,7 @@ export function App({ build }: { build: string }) {
     return session ? callsign(session) : id.slice(0, 8);
   };
   const subjectOf = (a: (typeof alerts)[number]) =>
-    a.ticketKey ? flightNumber(a.ticketKey) : a.workspacePath?.split("/").pop();
+    a.ticketKey ? flightNumber(a.ticketKey) : (a.workspacePath?.split("/").pop() ?? a.sessionIds?.map(nameOf).join(", "));
 
   return (
     <div className="app">

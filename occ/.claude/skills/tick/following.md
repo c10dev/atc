@@ -28,6 +28,7 @@ atc가 배정된 FLIGHT의 진행을 따라간다(읽기 전용). 대상은 둘�
 | `landing-wait` | CLEARED 뒤 1시간 넘게 착륙 안 함(정보, 착륙은 SUPERVISOR 몫) | OCC LOG에만 |
 | `review-no-pr` · `done-not-merged` | 불일치: Linear는 In Review·Done인데 PR이 없거나 머지되지 않음 | SUPERVISOR |
 | `merged-not-done` | 불일치: PR은 머지됐는데 Linear가 Done이 아님(정보, CLOSE 초안 대상) | OCC LOG에만 |
+| `health` | 그 FLIGHT를 쥔 AIRCRAFT가 멈췄거나 무언가를 기다린다(docs/fleet.ko.md 8.8): `LIMIT`, `NETWORK`, `MODEL`, `CONTEXT`, `PROVIDER`, `UNANSWERED`, `HUNG` … `text`에 표시, 오류 한 줄, 다음 할 일이 있다. 코드가 바뀌면 새 문제로 온다. 팀에 다시 보내지 않는다 | `warn`이면 SUPERVISOR, `info`면 OCC LOG에만 |
 | `stranded` | 불일치: PR이 기본 브랜치가 아닌 곳에 머지돼 main에 닿지 않음(쌓인 PR을 아래에서부터 각자 아래 브랜치로 머지한 경우 등, ATC-29). Linear가 Done이어도 뜬다 | SUPERVISOR |
 
 - `fresh: true`인 문제만 새로 생긴 것이다. 하나에 한 줄로 OCC LOG에 적고, `severity: "warn"`이면 SUPERVISOR에게 보고한다. 그다음 `atcctl following ack`로 보고했다고 적는다.

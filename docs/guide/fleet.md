@@ -11,7 +11,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 | AIRCRAFT | callsign과 REGISTRATION(`HOTEL TEAM_H`) |
 | AIRPORT | 기지 AIRPORT |
 | STATUS | AIRBORNE(작업 중) · HOLDING(대기 중인데 STAND를 쥠) · PARKED(대기, 쥔 STAND 없음) · AOG · NORDO(세션이 죽었는데 점유가 남음) · NOT IN SERVICE(세션 없음) |
-| FLYING | 지금 쥔 STAND의 FLIGHT 번호와 제목 한 줄. 여러 개면 `+2`처럼 나머지 수 |
+| FLYING | 지금 쥔 STAND의 FLIGHT 번호와 제목 한 줄. 여러 개면 `+2`처럼 나머지 수. 세션이 멈췄거나 무언가를 기다리면 앞에 health 표시가 붙는다(아래) |
 | 경과 | 지금 쥔 STAND를 처음 잡은 뒤 흐른 시간(`3h05m`) |
 | 마지막 활동 | 세션이 마지막으로 움직인 때(`12분 전`) |
 | 이번 주 | 이번 주(월요일부터) ARRIVED 수와 정시율(기대 block time이 있는 FLIGHT만, 없으면 `—`) |
@@ -19,7 +19,30 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - 순서는 AIRBORNE → HOLDING → PARKED, 그다음 NORDO · AOG · NOT IN SERVICE. 같은 상태 안에서는 AIRPORT 순서다.
 - 줄을 누르면(키보드 Enter·Space도) 그 AIRCRAFT의 카드가 아래에 펼쳐진다. 카드에는 CREW COMPLEMENT, OBSERVED CREW, TYPE RATING, ROUTE, TARGETS와 실적, 최근 FLIGHT, 그리고 LAUNCH · STOP · CREW BRIEFING · AOG · 퇴역 · 고치기 버튼이 그대로 있다. 다시 누르면 접힌다.
 - 오른쪽 위 **목록 / 카드**로 예전처럼 모든 카드를 펼친 보기로 바꿀 수 있다. 고른 보기는 이 브라우저에 기억한다(기억하지 못하면 목록).
-- 좁은 화면에서는 한 줄이 두 줄로 접힌다: 위는 AIRCRAFT · AIRPORT · STATUS, 아래는 FLYING · 경과 · 마지막 활동 · 이번 주.
+- 좁은 화면에서는 한 줄이 두 줄로 접힌다: 위는 AIRCRAFT · AIRPORT · STATUS, 아래는 FLYING · 경과 · 마지막 활동 · 이번 주 health 표시가 있는 줄은 FLYING이 한 줄을 다 쓰고, 경과부터는 셋째 줄로 내려간다.
+
+## 세션이 멈췄을 때: AIRCRAFT health
+
+세션이 사용 한도나 API 오류로 멈추거나, 승인을 기다리거나, 지시에 대답하지 않으면 atc가 대화 기록 끝을 읽고 코드를 붙인다. FLYING 칸 앞에 `HOLD · LIMIT until 07:40Z`, `PENDING approval 12m`, `CONTEXT — RESTART` 같은 표시가 보이고, 마우스를 올리면 오류 한 줄과 다음 할 일이 나온다. 노란 표시는 사람이 볼 일(ALERT), 파란 표시는 참고(INFO)다.
+
+| 코드 | 뜻 | 할 일 |
+|---|---|---|
+| `LIMIT` | 계정 사용 한도. reset 시각까지 HOLD(DISPATCH가 일을 주지 않음) | 기다린다. reset 뒤 `UNANSWERED`로 바뀌면 지시를 다시 보낸다 |
+| `THROTTLE` | 서버가 잠시 붐빔 | 몇 분 뒤 다시 보낸다 |
+| `NETWORK` | 이 컴퓨터에서 API에 연결이 안 됨(모든 세션이 같이 걸림) | 네트워크·프록시·`ANTHROPIC_BASE_URL`/`NO_PROXY`를 보고 다시 보낸다 |
+| `MODEL` | 고른 모델이나 경로가 없음 | 모델을 고쳐 다시 띄운다. 그대로 재시도하지 않는다 |
+| `CONTEXT` | 대화가 너무 길어 이어갈 수 없음 | 새 CREW BRIEFING으로 다시 띄우고, STAND와 PR을 넘겨받게 한다 |
+| `PROVIDER` | ocx·OpenAI 호환 경로의 오류 | 기본 경로로 다시 띄운다 |
+| `PENDING` | 도구 승인을 기다림 | 그 세션에서 승인하거나 거절한다 |
+| `UNANSWERED` | 지시에 10분 넘게 대답이 없음 | 지시를 다시 보낸다. atc는 스스로 보내지 않는다 |
+| `HUNG` | 작업 중인데 30분 넘게 기록이 없음 | 세션을 들여다본다. 계속되면 다시 띄운다 |
+| `DENIED` | 10분 안에 거부·hook 막힘이 3번 넘음 | permission 규칙으로 허용하거나 다시 브리핑한다 |
+| `UNKNOWN` | 그 밖의 오류 | 오류 한 줄을 보고 판단한다 |
+
+- 코드는 세션이 다시 정상으로 대답하면 저절로 풀린다.
+- ALERT는 화면 위 ALERTS에도 올라간다. `NETWORK`는 세션이 여럿이어도 하나, reset 시각이 같은 `LIMIT`도 하나로 묶인다.
+- OCC는 그 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING 문제로, TOWER는 브리핑으로 받아 SUPERVISOR에게 보고한다. 둘 다 팀에 다시 보내지는 않는다.
+- 한도가 **거의 찼는지**는 아직 모른다(FUEL, ATC-46). 급하면 그 AIRCRAFT를 AOG로 둔다.
 
 ## 팀 프로필
 

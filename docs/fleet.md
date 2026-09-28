@@ -552,7 +552,7 @@ Decision changed 2026-09-28 (SUPERVISOR): atc starts and stops AIRCRAFT sessions
 - **Record.** Every LAUNCH and STOP is a FLIGHT RECORDER line `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}`.
 - **Tab.** A card with no session shows **LAUNCH** (permission mode, optional model, background count against the cap). A background session shows `BG <id>` and **STOP**. RETIREMENT of an AIRCRAFT flying a background session then asks whether to stop it too.
 
-Not built yet: automatic STOP of idle sessions (FLEET PLAN step 4; shadow proposals and approval are built in 8.6 and 8.7); RESTART as scheduled maintenance for long sessions; CREW CHANGE by relaunching with the new complement; a usage budget per AIRCRAFT (FUEL, GitHub idea #53).
+Not built yet: automatic STOP of idle sessions (FLEET PLAN step 4; shadow proposals and approval are built in 8.6 and 8.7); RESTART as scheduled maintenance for long sessions; CREW CHANGE by relaunching with the new complement; a usage budget per AIRCRAFT (FUEL, ATC-46).
 
 ### 8.6 FLEET PLAN: proposing LAUNCH, STOP and the rest
 
@@ -727,6 +727,80 @@ Not built yet: step 4 (automatic STOP); the weekly-usage line (FUEL); CROSSCHECK
 4. **RETIRE stops the background session:** yes by default, with a checkbox to keep it.
 5. **Failed execution:** no 24 h cooldown; the proposal comes back after the persistence window.
 
+### 8.8 AIRCRAFT health
+
+Status: steps 1–2 built (ATC-45): the manual and the pull classifier. The push hook (step 3) and FLEET PLAN proposals (step 4) are not built yet.
+
+**Why.** On 2026-09-28 TEAM_H got an ATC-44 BRIEF at 07:37:13Z and hit its account's session limit three seconds later. Until someone typed "Try again" at 07:40:57Z, atc showed TEAM_H as `idle`, so FLEET, DISPATCH and TOWER all saw an AIRCRAFT free for work. atc knew only `dead`, `busy` and `idle`; it never read why a session stopped or what it was waiting for.
+
+**Current facts.**
+
+- A transcript line for a failed turn is an `assistant` entry with `isApiErrorMessage: true`, an `error` code (`rate_limit`, `server_error`, `model_not_found`, `invalid_request`, `unknown` …) and one text line. A usage-limit line also has `quotaLimits` with `resetsAt` (epoch seconds) and `rateLimitType` (`five_hour` …).
+- A `user` line that opens a turn has `turnOrigin`. A message from another session (a BRIEF) is also `isMeta: true` with `origin.kind: "peer"`.
+- Auto-mode denials and hook blocks are `tool_result` entries with `is_error` whose text starts with "Permission for this action was denied …" or "PreToolUse:<Tool> hook error".
+- In 162 transcripts from 2026-09-24 to 09-28: 58 `server_error` (SSL), 58 session limits, 11 `model_not_found`, 12 provider errors, 3 "Prompt is too long", 3 server throttles; 81 auto-mode denials and 75 hook blocks.
+
+**Principles.**
+
+- Detect and propose, never act on a team session. atc does not resend prompts, approve prompts, switch accounts or restart sessions.
+- Cause, not just state: each code carries the error line, when it started, and the one next step from the manual.
+- Host-level versus AIRCRAFT-level: `NETWORK`, and a `LIMIT` shared by sessions with the same reset time (the same account window), are raised once.
+- Store only the code, the time and the error line, never message bodies. atc reads only the last 64 KB of each live transcript, again only when its size or time changes.
+- When unsure, `UNKNOWN` with the raw error line, not a wrong code.
+
+**Codes and the response manual** (`server/health.ts`, pure `healthOf`).
+
+| Code | Detected by | Level | DISPATCH/SCHEDULE | Who responds, and how |
+|---|---|---|---|---|
+| `LIMIT` | `rate_limit` with a usage-limit line; `resetsAt` from `quotaLimits`, else "resets 7:40am (UTC)" | ALERT, once per reset time | skip until `resetsAt` | Wait. After the reset the code turns into `UNANSWERED` if the prompt is still unanswered; structure or the SUPERVISOR resends it |
+| `THROTTLE` | `rate_limit` "not your usage limit", overloaded, other `server_error` | INFO; ALERT at 3 in 30 min | — | Retry after a few minutes. After 10 min without a reply it turns into `UNANSWERED` |
+| `NETWORK` | "Unable to connect", SSL/TLS, connection errors | ALERT, once for the machine | — | SUPERVISOR checks the network, proxy and `ANTHROPIC_BASE_URL`/`NO_PROXY`, then resends |
+| `MODEL` | `model_not_found` | ALERT | skip | SUPERVISOR fixes the model or route and relaunches. Never retry as is |
+| `CONTEXT` | "Prompt is too long", compaction failed | ALERT | skip | RESTART with a new CREW BRIEFING; the STAND and PR are HANDED OFF |
+| `PROVIDER` | `unknown` errors from an OpenAI-compatible route (400 schema, `name` too long, status with no body) | ALERT | skip | Relaunch on the default route, and file a bug for the route |
+| `PENDING` | idle, and the last reply's `tool_use` has no `tool_result` | INFO | — | SUPERVISOR approves or denies in that session |
+| `UNANSWERED` | idle, the last turn-opening prompt has no reply for 10 min (or a `LIMIT`/`THROTTLE` ended with it unanswered) | ALERT | — | structure or the SUPERVISOR resends. atc never resends |
+| `HUNG` | busy, no transcript write for 30 min | INFO; ALERT at 60 min | skip | SUPERVISOR looks at it; RESTART if it stays |
+| `DENIED` | 3 or more denials or hook blocks in 10 min | INFO | — | SUPERVISOR allows it with a permission rule, or re-briefs |
+| `UNKNOWN` | any other API error | ALERT | — | SUPERVISOR reads the error line and decides |
+| `NORDO` | process dead (8.6, unchanged) | — | — | as before (FLEET PLAN AOG / LAUNCH) |
+
+- A code clears on the next reply, or on a new prompt after the error.
+- Thresholds are defaults; the service reads `ATC_HEALTH_UNANSWERED_MIN`, `ATC_HEALTH_HUNG_MIN`, `ATC_HEALTH_HUNG_ALERT_MIN`, `ATC_HEALTH_THROTTLE_ALERT_COUNT`, `ATC_HEALTH_THROTTLE_WINDOW_MIN`, `ATC_HEALTH_DENIED_COUNT` and `ATC_HEALTH_DENIED_WINDOW_MIN`.
+
+**Where it shows.**
+
+- `/api/snapshot`: `sessions[].health` (`code`, `level`, `since`, `resetsAt`, `detail`, `next`, `holds`), and `alerts` of kind `health` for ALERT codes. Raised and cleared alerts become `alert.raised`/`alert.cleared` events and FLIGHT RECORDER lines like other alerts.
+- FLEET status list: a tag in the FLYING cell, for example `HOLD · LIMIT until 07:40Z`, `PENDING approval 12m`, `CONTEXT — RESTART`. The tooltip has the error line and the next step.
+- DISPATCH skips an AIRCRAFT whose code holds (`LIMIT`, `MODEL`, `CONTEXT`, `PROVIDER`, `HUNG`), with the tag as the reason. SCHEDULE NEW does not accept it as a tail.
+- FLIGHT FOLLOWING: a `health` issue on the FLIGHT the AIRCRAFT holds (`warn` for ALERT, `info` otherwise). OCC reports it like the other issues.
+- TOWER brief: `open.health` (every AIRCRAFT with a code) and `open.healthAlerts`.
+
+**Implementation order.**
+
+1. ✅ Design and manual: this section, TOWER rows in `controller/CLAUDE.md`, the OCC FOLLOWING row, `docs/guide/`.
+2. ✅ Pull: pure `factsOf` and `healthOf`, `healthAlerts` for host-level grouping, tests from real transcript line shapes (the TEAM_H replay among them); snapshot, FLEET row, FLIGHT FOLLOWING, TOWER brief, DISPATCH and SCHEDULE filters.
+3. Push: a `hooks/health.mjs` hook on `StopFailure` and `Notification` (`permission_prompt`, `idle_prompt`, `elicitation_dialog`), cleared on `Stop`/`PostToolUse`, appending to `health/<sessionId>.jsonl` in the state folder. `user` tier.
+4. FLEET PLAN proposals (AOG for `MODEL` and a weekly `LIMIT`, RESTART for `CONTEXT` and a lasting `HUNG`).
+
+**Risks.**
+
+| Risk | Mitigation |
+|---|---|
+| Transcript format is not a public API | one pure classifier with tests; unknown errors become `UNKNOWN` with the raw line |
+| Reading transcripts shows prompt content | only the code, the time and the error line are kept |
+| A false `HUNG` during long tests | INFO first; it holds DISPATCH, which a busy AIRCRAFT never gets anyway |
+| A permission prompt while the session file says `busy` is seen as `HUNG` after 30 min | the push hook (step 3) reports `PENDING` directly |
+
+Not built yet: the push hook (step 3); FLEET PLAN proposals from health (step 4); grouping `LIMIT` by account rather than by reset time (needs an account per AIRCRAFT, ATC-46).
+
+**Pilot's discretion (ATC-45).**
+
+- `LIMIT` is an ALERT and is grouped by reset time, because sessions on one account share the same window and atc does not know accounts.
+- `DENIED` counts per session, not per STAND: a session holds one STAND at a time.
+- `NETWORK`, `UNANSWERED` and `UNKNOWN` do not hold DISPATCH (not in the spec's list): the next prompt may well go through.
+- `THROTTLE` and a passed `LIMIT` turn into `UNANSWERED`, so an unanswered BRIEF does not sit behind a stale code.
+
 ## 9. Moving from `lane:` to `tail:`
 
 All four steps are done:
@@ -747,6 +821,7 @@ All four steps are done:
 7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE (section 8.2): TYPE RATING evidence from the LOGBOOK, GRANT and REVIEW recommendations, grant and revoke by the SUPERVISOR
 9. ✅ Session control (section 8.5): LAUNCH and STOP from the FLEET tab. Left: automatic STOP (FLEET PLAN step 4; shadow and approval built, 8.6 and 8.7), RESTART outside FLEET PLAN, relaunch CREW CHANGE, usage budget
+10. ◐ AIRCRAFT health (section 8.8, ATC-45): the manual and the pull classifier in the snapshot, FLEET row, FLIGHT FOLLOWING, TOWER brief and DISPATCH/SCHEDULE filters. Left: the push hook, FLEET PLAN proposals from health
 
 ## 11. Risks and mitigations
 

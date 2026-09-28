@@ -7,6 +7,7 @@ import { allClearances, CLEARANCE_TYPES, isPending, issueClearance, markClearanc
 import { config } from "./config.ts";
 import type { EventLog } from "./events.ts";
 import { type AtfmConfig, DEFAULT_ATFM, enforcedStops, landOf, loadAtfm, slotHoldOf, slotLimitOf, slotsOf } from "./atfm.ts";
+import { healthLabel } from "./health.ts";
 import { inSequence, pullKey, reviewerOf } from "./landing.ts";
 import { record } from "./recorder.ts";
 import type { Clearance, ClearanceType, Session, Snapshot, TrafficEvent } from "./model.ts";
@@ -178,6 +179,11 @@ export function buildBrief(
       orphans: alertsOf("orphan").map((a) => ({ stand: standName(a.workspacePath), sessions: a.sessionIds?.map(label) })),
       unattended: alertsOf("unattended").map((a) => ({ stand: standName(a.workspacePath), message: a.message })),
       noContact: alertsOf("no-workspace").map((a) => flight(a.ticketKey)),
+      // AIRCRAFT health(ATC-45): 멈췄거나 기다리는 AIRCRAFT. TOWER는 ALERT를 structure나 SUPERVISOR에게 INFO로 알린다(다시 보내지는 않는다)
+      health: s.sessions
+        .filter((x) => x.status !== "dead" && x.health)
+        .map((x) => ({ ...label(x.id), code: x.health!.code, level: x.health!.level, text: healthLabel(x.health!, now), since: x.health!.since, resetsAt: x.health!.resetsAt ?? null, detail: x.health!.detail, next: x.health!.next })),
+      healthAlerts: alertsOf("health").map((a) => ({ message: a.message, sessions: a.sessionIds?.map(label) })),
       // STRANDED(ATC-29): 기본 브랜치에 닿지 않은 머지. Linear Done이어도 남는다
       stranded: (s.stranded ?? []).map((x) => ({ flight: flight(x.flight), key: x.flight, pr: x.number, url: x.url, base: x.base, mergedAt: x.mergedAt, message: alertsOf("stranded").find((a) => a.ticketKey === x.flight)?.message ?? null })),
     },
