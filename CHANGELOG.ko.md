@@ -35,6 +35,14 @@ PR은 이 파일을 고치지 않는다. PR마다 자기 `[Unreleased]` 항목�
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- OCC SCHEDULE `TAIL` 작업(ATC-68, [docs/occ.ko.md](docs/occ.ko.md) "TAIL as built", [docs/fleet.ko.md](docs/fleet.ko.md) "TAIL drafts as built"). DISPATCH 밖에서 한 배정이 손으로 붙이는 대신 `tail:TEAM_X` 라벨로 남는다.
+  - `atcctl schedule draft TAIL <FLIGHT> <TEAM_X> -- <근거>`. payload는 REGISTRATION 하나다. REGISTRATION이 `teamPattern`에 맞지 않거나, FLEET에 없거나 RETIRED이면, Linear에 `tail:TEAM_X` 라벨이 없으면(ENGINEERING이나 사용자가 만든다. 읽기 전용 라벨 조회 `server/sources/linear-labels.ts`), FLIGHT에 이미 그 `tail:`이 있으면 atc가 받지 않는다. CLASSIFY·PRIORITIZE와 달리 닫히지 않은 FLIGHT면 된다.
+  - 발부는 `save_issue` 하나에 `addLabels`(새 `tail:`)와 `removeLabels`(다른 `tail:`), 그리고 `[OCC S-xxxx]` 댓글이다. 나머지 라벨은 `lane:`까지 그대로 두고 상태·담당은 건드리지 않는다. 다음 Linear 읽기에 라벨이 보이면 APPLIED.
+  - 다른 팀의 `tail:`을 그 팀이 AIRBORNE이거나 그 FLIGHT의 STAND를 쥔 채 바꾸면 초안에 CAUTION이 붙는다.
+  - `schedule brief`의 `candidates.tail`: `tail:` 없이 팀이 몰고 있는 열린 FLIGHT와 그 근거(STAND, 최근 7일 DEPARTURE LOG, DISPATCH ASSIGN이나 TOWER CLEARANCE의 READBACK). atc는 이것으로 초안을 쓰지 않는다.
+  - SCHEDULE 탭은 TAIL 카드를 PRIORITIZE처럼 보인다(지금 `tail:`, 바뀔 것, CAUTION, 수동 반영 안내). TAIL 후보 목록도 있고, TAIL 판정은 S2 진입 점검에 센다. OCC SCHEDULE 절차에 "TAIL 전에"가 생겼다.
+  - SCHEDULE 탭 후보의 메타 줄이 줄바꿈된다. 긴 CLOSE 줄이 390 px에서 화면을 가로로 밀었다.
+  - 되돌린 옛 atc가 `schedule.jsonl`을 읽으면 `TAIL` 줄을 건너뛰지 않는다: 다음 브리핑에 열린 TAIL 초안을 SUPERSEDED로(발부된 것은 APPLIED로) 닫는다. Linear에는 쓰지 않는다.
 - 설정 창 CONTROL 블록이 모든 관제 세션을 보이고 CROSSCHECK·REVIEW도 띄운다(ATC-66, [docs/fleet.ko.md](docs/fleet.ko.md) 8.5.1). 2026-09-28에 CROSSCHECK가 꺼져 있었는데 화면 어디에도 보이지 않았다.
   - 줄마다(TOWER, OCC, MCC, CROSSCHECK, REVIEW, ENGINEERING) live 배지: `BG <id>`, `tmux <세션>`, `interactive`, `not running`. 이름이 같거나 그 폴더에서 연 세션을 센다. 저장소 뿌리에서 여는 ENGINEERING은 이름으로만.
   - CROSSCHECK·REVIEW에 LAUNCH: 그 폴더에서 tmux 세션 `atc-crosscheck`·`atc-review`로 `env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config -n CROSSCHECK '/loop 10m /tick'`(REVIEW는 `-n REVIEW`). 명령은 `docs/occ.md`와 `review/README.md`에 적힌 고정 문구다. 그 폴더의 세션이나 같은 이름의 tmux 세션이 있으면 거절하고, 서버가 `tmux`나 `ocx`를 못 찾으면 이유와 함께 LAUNCH를 끈다(배지는 그대로). STOP은 TOWER처럼 tmux pane을 닫는다. ENGINEERING은 배지만.

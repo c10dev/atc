@@ -12,12 +12,13 @@ atc는 항공처럼 관제 세션을 둘로 나눈다.
 > 상태:
 >
 > - **S0 구현**(2026-09-26): `atc/occ/` 세션(DISPATCH를 합침), 읽기 전용 `gh`, 읽기 전용 MCP guard, 매뉴얼 다시 읽기, planner의 TAIL ASSIGNMENT(`tail:TEAM_X`, [fleet.ko.md](fleet.ko.md) 참고).
-> - **S1 구현**: `CLASSIFY`, `PRIORITIZE`, `NEW`, `CLOSE`의 SCHEDULE 초안을 그림자 운용한다(`server/schedule.ts`, `atcctl schedule brief|draft`, SCHEDULE 탭, OCC 규칙).
+> - **S1 구현**: `CLASSIFY`, `PRIORITIZE`, `NEW`, `CLOSE`, `TAIL`의 SCHEDULE 초안을 그림자 운용한다(`server/schedule.ts`, `atcctl schedule brief|draft`, SCHEDULE 탭, OCC 규칙).
 > - `NEW`는 CHARTER DESK다. CHARTER REQUEST로 AD HOC FLIGHT 초안을 만든다. 본문 섹션을 점검하고, 스냅숏(최근 45일 안에 바뀐 이슈)에서 제목이 비슷한 중복을 찾는다.
 > - `CLOSE`(5.5, 2026-09-27 구현)는 PR이 머지된 FLIGHT를 닫자는 초안이다. release하지 않고, 이슈는 SUPERVISOR가 Linear에서 닫는다.
 > - 열린 초안은 종류를 합쳐 최대 5건이다. 판정 없이 3일이 지나면 만료된다.
 > - ATC의 CLEARED TO LAND 점검(9장)은 구현됐다. LANDING SEQUENCE는 이제 열린 GitHub PR에서 나온다.
-> - 나머지 작업(`TAIL`, `LINK`, `SPLIT`, `COMMENT`)과 S3는 설계만 있다(아직 만들지 않음).
+> - `TAIL`(아래 "TAIL as built", 2026-09-28 ATC-68 구현)은 DISPATCH 밖에서 정한 배정을 `tail:TEAM_X` 라벨 초안으로 남긴다.
+> - 나머지 작업(`LINK`, `SPLIT`, `COMMENT`)과 S3는 설계만 있다(아직 만들지 않음).
 > - S2(승인 운용: linear-guard, `schedule release`, APPLIED 감지)는 `mode` 뒤에 구현돼 있고 기본은 꺼짐. "S2 켜는 법" 참고.
 > - 결정 사항은 맨 아래 "결정"에 있다.
 
@@ -84,14 +85,14 @@ OCC는 Linear에 마음대로 쓰지 않는다. **SCHEDULE 작업**(operation)�
 | `NEW` | 티켓 만들기 | VOC-193에서 batch-processor race를 떼어 냄(VOC-195가 됨) |
 | `CLOSE` | ✅ 구현(5.5): FLIGHT의 PR이 머지됐는데(LOGBOOK ARRIVED) 이슈가 아직 열려 있음. 승인된 초안은 SUPERVISOR가 Linear에서 닫는다. release하지 않는다 | VOC-56: `protect main` ruleset이 이미 완료 기준을 모두 채움 |
 | `PRIORITIZE` | 우선순위를 정하거나 바꿈 | VOC-177, VOC-179, VOC-195에 우선순위가 없음 |
-| `TAIL` | `tail:TEAM_X`를 더하거나 바꿈(TAIL ASSIGNMENT) | VOC-196 → `tail:TEAM_E`(President가 정한 대로) |
+| `TAIL` | ✅ 구현("TAIL as built", ATC-68): `tail:TEAM_X`를 더하거나 바꿈(TAIL ASSIGNMENT) | VOC-196 → `tail:TEAM_E`(President가 정한 대로) |
 | `CLASSIFY` | FLIGHT TYPE, WAKE CATEGORY, 필요한 TYPE RATING을 정함([fleet.ko.md](fleet.ko.md) 4장) | VOC-195 → `type:MAINT`, `wake:M`, `rating:SEC` |
 | `LINK` | 상위, `blocks`, `related` 관계 더하기 | VOC-196은 VOC-52에 막혀 있음(본문에만 적힘) |
 | `SPLIT` | 발견한 것을 하위나 related 티켓으로 | PR #400 리뷰의 P3 항목 |
 | `COMMENT` | 계획 댓글 남기기(실행 댓글이 아님) | "VOC-52가 끝날 때까지 미룸" |
 | `TARGET`, `ROUTE` | ✅ S1 만듦(ATC-25): Linear가 아니라 AIRCRAFT의 FLEET TARGETS·ROUTE 변경. 두 모드 모두 그림자 판정만, 게이트와 따로 센다([fleet.ko.md](fleet.ko.md) 7.4) | TEAM_C에서 `Home & Discovery` 빼기(completed) |
 
-구현: `NEW`(CHARTER DESK, 5.1), `CLOSE`(5.5), `PRIORITIZE`, `CLASSIFY`, 그림자 운용의 `TARGET`·`ROUTE`([fleet.ko.md](fleet.ko.md) 7.4). 아직 만들지 않음: `TAIL`, `LINK`, `SPLIT`, `COMMENT`.
+구현: `NEW`(CHARTER DESK, 5.1), `CLOSE`(5.5), `PRIORITIZE`, `CLASSIFY`, `TAIL`("TAIL as built"), 그림자 운용의 `TARGET`·`ROUTE`([fleet.ko.md](fleet.ko.md) 7.4). 아직 만들지 않음: `LINK`, `SPLIT`, `COMMENT`.
 
 ### 5.1 작업은 어디서 오나
 
@@ -235,7 +236,7 @@ S3 자동 작업 후보. 각각 S2 데이터로 확인한다.
 | 원래 | OCC에서 |
 |---|---|
 | DISPATCH 세션(`atc/dispatch/`) | 같은 일을 `atc/occ/`에서: 제안 검토, HOLD, FLIGHT PLAN, READBACK. DISPATCH 탭, 제안 id(`D-xxxx`), send-guard는 그대로 |
-| President: 일 맡기기 | DISPATCH 제안. 2b 전까지는 사람이 직접 한 배정을 `tail:TEAM_X` 라벨로 기록해서 planner가 볼 수 있게 한다. 지금은 손으로 붙인다. SCHEDULE `TAIL` 작업은 아직 만들지 않았다 |
+| President: 일 맡기기 | DISPATCH 제안. 2b 전까지는 사람이 직접 한 배정을 `tail:TEAM_X` 라벨로 기록해서 planner가 볼 수 있게 한다. OCC가 SCHEDULE `TAIL` 작업으로 초안을 쓴다("TAIL as built", ATC-68). S2가 초안을 발부하기 전까지는 라벨을 손으로 붙인다 |
 | President: 팀 보고 확인 | **운항 추적**(flight following). atc가 배정된 FLIGHT를 모두 따라간다(`server/following.ts`, `GET /api/following`): 수락·출발·RECALL 중인 DISPATCH ASSIGN, 그리고 `tail:` 라벨이 붙은 In Progress FLIGHT. READBACK → DEPARTED → PR 열림 → CLEARED → ARRIVED 단계를 따라가고(STAND 없는 FLIGHT는 READBACK → DEPARTED → ARRIVED, 8.1), 지연(WAKE 기대치의 1.5배가 지나도 다음 단계가 없음)과 Linear·PR 불일치를 표시한다. OCC는 바퀴마다 `atcctl following`을 돌려 새 문제만 보고하고 `following ack`로 기록해서, 같은 것을 두 번 보고하지 않는다. 팀에 메시지를 보내지 않는다. 팀 보고나 SUPERVISOR 요청이 오면 OCC는 여전히 읽기 전용 `gh`(`gh pr view`, `gh pr checks`, `gh pr diff`)로 PR head, CI, 리뷰를 확인한다. 기계적인 착륙 점검은 ATC의 CLEARED TO LAND(9장)다 |
 | President: Linear 정리 | SCHEDULE 작업 |
 | President: 규칙 파일 관리 | TEAM이 PR로 구현하는 `NEW` 티켓 |
@@ -245,7 +246,7 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 
 세션은 매뉴얼을 다시 읽는다. `/tick`은 `atcctl manual check`로 시작한다. `CLAUDE.md`, `/tick`, 그 절차 파일(`.claude/skills/tick/`의 한국어 `*.md` 모두)의 해시를 마지막 `atcctl manual ack`(`~/.local/state/atc/manuals/`에 저장)와 비교한다. 바뀌었으면 세션은 다른 일보다 먼저 다시 읽는다. TOWER의 `/tick`도 같다. OCC의 `CLAUDE.md`에는 핵심(역할, 하지 않는 것, 늘 쓰는 명령, 검토 기준)만 두고, 절차(BRIEFING, FLIGHT PLAN, CREW CHANGE, SCHEDULE, 운항 추적)는 `/tick` 옆 파일로 두어 할 일이 있는 단계에서만 읽는다. 늘 읽히는 규정이 짧게 유지된다(ATC-9). 1장의 옛 매뉴얼 사건은 이것으로 고쳐진다.
 
-**President는 물러난다.** 세 가지가 모두 되면: OCC가 S1을 일주일 운용했고, 운항 추적이 모든 팀 보고를 다루고, `TAIL` 작업을 쓰고 있다(아직 만들지 않음). 그때까지 President는 계속 일을 맡기고, 배정마다 `tail:` 라벨을 손으로 붙인다.
+**President는 물러난다.** 세 가지가 모두 되면: OCC가 S1을 일주일 운용했고, 운항 추적이 모든 팀 보고를 다루고, `TAIL` 작업을 쓰고 있다(ATC-68로 구현, S2를 켜면 라벨을 쓴다). 그때까지 President는 계속 일을 맡기고, 배정마다 `tail:` 라벨을 손으로 붙인다.
 
 ### 8.1 운항 추적 자세히
 
