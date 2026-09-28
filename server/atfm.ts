@@ -14,7 +14,7 @@ import type { ScheduleOp } from "./schedule.ts";
 
 // ATFM(3단계 흐름 관리). 설계: docs/atfm.md. 이 파일은 8장의 1~5단계다:
 // 데이터(기본 브랜치 CI, 체크 소요 시간, BEHIND 전이, 되돌린 라벨), 출발 중지(GROUND STOP) 계산,
-// 머지 슬롯·자동 배정 대상·S3 대상의 그림자 판정. 켜서 실제로 막는 것은 "main 깨짐"과 "수동" 출발 중지뿐이고
+// 머지 슬롯·자동 배정 대상·S3 대상의 그림자 판정. 출발 중지는 다섯 가지 모두 켤 수 있지만(6단계, ATC-62)
 // 기본값은 켜져 있지 않다. 자동 배정·자동 S3는 없다(판정만 보여 주고 FLIGHT RECORDER에 남긴다).
 
 const MIN = 60_000;
@@ -36,9 +36,9 @@ export interface AtfmConfig {
   groundStop: {
     mainBroken: StopMode; // 켤 수 있음(결정 8)
     manual: "off" | "on"; // 켤 수 있음(결정 8)
-    failureWave: ShadowMode; // 나머지는 그림자까지만
-    congestion: ShadowMode;
-    los: ShadowMode;
+    failureWave: StopMode; // 켤 수 있음(ATC-62). 켜는 것은 SUPERVISOR(ATC-23)
+    congestion: StopMode; // on이면 GROUND DELAY(AIRBORNE 슬롯 −1)
+    los: StopMode; // on이면 새 ASSIGN만 막는다
   };
   slots: StopMode; // on이면 TOWER가 in-slot PR에만 LAND(7단계)
   autoAssign: ShadowMode;
@@ -78,9 +78,9 @@ export function parseAtfm(raw: unknown): AtfmConfig {
     groundStop: {
       mainBroken: pick(g.mainBroken, ["off", "shadow", "on"] as const, d.mainBroken),
       manual: pick(g.manual, ["off", "on"] as const, d.manual),
-      failureWave: pick(g.failureWave, ["off", "shadow"] as const, d.failureWave),
-      congestion: pick(g.congestion, ["off", "shadow"] as const, d.congestion),
-      los: pick(g.los, ["off", "shadow"] as const, d.los),
+      failureWave: pick(g.failureWave, ["off", "shadow", "on"] as const, d.failureWave),
+      congestion: pick(g.congestion, ["off", "shadow", "on"] as const, d.congestion),
+      los: pick(g.los, ["off", "shadow", "on"] as const, d.los),
     },
     slots: pick(r.slots, ["off", "shadow", "on"] as const, DEFAULT_ATFM.slots),
     autoAssign: pick(r.autoAssign, ["off", "shadow"] as const, DEFAULT_ATFM.autoAssign),
@@ -110,9 +110,9 @@ export function saveAtfm(next: AtfmConfig, file = FILE()) {
 const SWITCHES: Record<string, readonly string[]> = {
   "groundStop.mainBroken": ["off", "shadow", "on"],
   "groundStop.manual": ["off", "on"],
-  "groundStop.failureWave": ["off", "shadow"],
-  "groundStop.congestion": ["off", "shadow"],
-  "groundStop.los": ["off", "shadow"],
+  "groundStop.failureWave": ["off", "shadow", "on"],
+  "groundStop.congestion": ["off", "shadow", "on"],
+  "groundStop.los": ["off", "shadow", "on"],
   slots: ["off", "shadow", "on"],
   autoAssign: ["off", "shadow"],
   s3: ["off", "shadow"],
@@ -131,7 +131,12 @@ export function setSwitch(cfg: AtfmConfig, key: unknown, value: unknown): AtfmCo
 // 모든 스위치를 그림자(켤 수 없는 것은 그대로, on은 shadow로, 수동은 off)로 — "ATFM OFF"
 export function allShadow(cfg: AtfmConfig): AtfmConfig {
   const g = cfg.groundStop;
-  return { ...cfg, groundStop: { ...g, mainBroken: g.mainBroken === "on" ? "shadow" : g.mainBroken, manual: "off" }, slots: cfg.slots === "on" ? "shadow" : cfg.slots };
+  const down = (m: StopMode): StopMode => (m === "on" ? "shadow" : m);
+  return {
+    ...cfg,
+    groundStop: { ...g, mainBroken: down(g.mainBroken), failureWave: down(g.failureWave), congestion: down(g.congestion), los: down(g.los), manual: "off" },
+    slots: down(cfg.slots),
+  };
 }
 
 // ── 데이터: 기본 브랜치 head의 CI (sources/github.ts가 채운다) ──
@@ -183,26 +188,68 @@ export interface GroundStop {
   repo: string | null;
   trigger: StopTrigger;
   kind: "stop" | "delay"; // delay(GROUND DELAY)는 AIRBORNE 슬롯만 하나 줄인다
+  land: boolean; // 켜졌을 때 LAND도 막는가(main 깨짐·실패 몰림·수동). LOS는 새 ASSIGN만, 혼잡은 슬롯만(ATC-62)
   enforced: boolean; // 켜진 스위치로 실제로 막는 중인가. false면 그림자
   text: string;
   evidence: string[];
+  check?: string; // failure-wave: 실패가 몰린 체크 이름. key와 해제 판정에 쓴다
   since: string;
+  clearSince?: string | null; // 트리거가 풀린 뒤 해제 규칙을 기다리는 중이면 풀린 시각(ATC-62)
+  releasing?: string | null; // 해제까지 남은 것("기준 아래 12분 / 30분", "통과 PR 1/2")
 }
 
-export const WAVE = { prs: 3, windowMs: HOUR };
-export const CONGESTION = { prs: 4, pendingMs: 30 * MIN };
+export const WAVE = { prs: 3, windowMs: HOUR, releasePrs: 2 };
+// 혼잡: 30분 넘게 도는 체크가 있는 PR이 4개 넘게, 또는 최근 2시간 체크 소요 시간 중앙값이 그 앞 7일 중앙값의 2배를 넘음(표본 3·10개 이상)
+export const CONGESTION = { prs: 4, pendingMs: 30 * MIN, slowFactor: 2, recentMs: 2 * HOUR, baselineMs: 7 * DAY, recentN: 3, baselineN: 10 };
 export const LOS_OPEN = 2;
+export const LOS_DAY = 3; // 24시간 안 LOS 수
+export const RELEASE_MS = 30 * MIN; // 혼잡·LOS는 기준 아래로 30분 이어져야 풀린다
+
+export interface CiTrend {
+  recentMin: number; // 최근 2시간 체크 소요 시간 중앙값(분)
+  baselineMin: number; // 그 앞 7일 중앙값(분)
+  recentN: number;
+  baselineN: number;
+}
 
 export interface StopInput {
   airports: { code: string; repo: string }[];
   mains: Map<string, MainStatus>; // repo → 기본 브랜치 상태
   pulls: Map<string, GhPull[]>; // repo → 열린 PR(원본)
   losOpen: Map<string, number>; // repo → 열린 LOS 수
+  ciTrend?: Map<string, CiTrend>; // repo → 체크 소요 시간 추세(두 번째 혼잡 트리거)
+  losDay?: Map<string, number>; // repo → 24시간 안 LOS 수(두 번째 LOS 트리거)
   cfg: AtfmConfig;
   now: number;
 }
 
-// 지금 걸린 출발 중지(순수). since는 부르는 쪽이 이어 붙인다(처음 본 시각).
+const medianOf = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+// 체크 소요 시간 표본(FLIGHT RECORDER의 atfm ci 줄) → 최근 2시간과 그 앞 7일의 중앙값. 표본이 모자라면 null
+export function ciTrendOf(samples: { t: string; minutes: number }[], now: number): CiTrend | null {
+  const cut = now - CONGESTION.recentMs;
+  const recent = samples.filter((x) => Date.parse(x.t) > cut && Date.parse(x.t) <= now).map((x) => x.minutes);
+  const base = samples.filter((x) => Date.parse(x.t) <= cut && Date.parse(x.t) > cut - CONGESTION.baselineMs).map((x) => x.minutes);
+  if (recent.length < CONGESTION.recentN || base.length < CONGESTION.baselineN) return null;
+  return { recentMin: medianOf(recent), baselineMin: medianOf(base), recentN: recent.length, baselineN: base.length };
+}
+
+// 24시간 안 LOS(alert.raised conflict) 수를 저장소별로. STAND → 저장소는 지금 워크트리나 착수 기록으로 찾는다
+export function losDayOf(events: { at: string; workspacePath?: string | null }[], repoOfStand: (stand: string) => string | null, now: number): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const e of events) {
+    if (!e.workspacePath || now - Date.parse(e.at) > DAY || Date.parse(e.at) > now) continue;
+    const repo = repoOfStand(e.workspacePath);
+    if (repo) out.set(repo, (out.get(repo) ?? 0) + 1);
+  }
+  return out;
+}
+
+// 지금 걸린 출발 중지(순수). since는 부르는 쪽이 이어 붙인다(처음 본 시각). 해제 규칙은 holdStops
 export function groundStopsOf(inp: StopInput): Omit<GroundStop, "since">[] {
   const out: Omit<GroundStop, "since">[] = [];
   const g = inp.cfg.groundStop;
@@ -210,7 +257,7 @@ export function groundStopsOf(inp: StopInput): Omit<GroundStop, "since">[] {
     const main = inp.mains.get(a.repo);
     if (g.mainBroken !== "off" && main?.state === "failure") {
       out.push({
-        airport: a.code, repo: a.repo, trigger: "main-broken", kind: "stop", enforced: g.mainBroken === "on",
+        airport: a.code, repo: a.repo, trigger: "main-broken", kind: "stop", land: true, enforced: g.mainBroken === "on",
         text: `main 깨짐: ${main.branch} ${main.sha?.slice(0, 7) ?? ""} 실패 체크 ${main.failing.join(", ")}`.trim(),
         evidence: main.failing,
       });
@@ -230,8 +277,8 @@ export function groundStopsOf(inp: StopInput): Omit<GroundStop, "since">[] {
       for (const [name, prs] of failedBy) {
         if (prs.size < WAVE.prs) continue;
         out.push({
-          airport: a.code, repo: a.repo, trigger: "failure-wave", kind: "stop", enforced: false,
-          text: `CI 실패가 몰림: ${name} — 1시간 안에 PR ${prs.size}개`, evidence: [...prs].sort((x, y) => x - y).map((n) => `#${n}`),
+          airport: a.code, repo: a.repo, trigger: "failure-wave", kind: "stop", land: true, enforced: g.failureWave === "on",
+          text: `CI 실패가 몰림: ${name} — 1시간 안에 PR ${prs.size}개`, evidence: [...prs].sort((x, y) => x - y).map((n) => `#${n}`), check: name,
         });
       }
     }
@@ -239,34 +286,146 @@ export function groundStopsOf(inp: StopInput): Omit<GroundStop, "since">[] {
       const stuck = pulls.filter((p) =>
         (p.statusCheckRollup ?? []).some((c) => c.status && c.status !== "COMPLETED" && c.startedAt && inp.now - Date.parse(c.startedAt) > CONGESTION.pendingMs),
       );
+      const trend = inp.ciTrend?.get(a.repo);
+      const slow = trend && trend.recentMin > CONGESTION.slowFactor * trend.baselineMin ? trend : null;
+      const base = { airport: a.code, repo: a.repo, trigger: "congestion" as const, kind: "delay" as const, land: false, enforced: g.congestion === "on" };
       if (stuck.length > CONGESTION.prs) {
+        out.push({ ...base, text: `CI 혼잡: 30분 넘게 끝나지 않은 체크가 있는 PR ${stuck.length}개`, evidence: stuck.map((p) => `#${p.number}`) });
+      } else if (slow) {
         out.push({
-          airport: a.code, repo: a.repo, trigger: "congestion", kind: "delay", enforced: false,
-          text: `CI 혼잡: 30분 넘게 끝나지 않은 체크가 있는 PR ${stuck.length}개`, evidence: stuck.map((p) => `#${p.number}`),
+          ...base,
+          text: `CI 혼잡: 최근 2시간 체크 중앙값 ${Math.round(slow.recentMin)}분, 7일 기준 ${Math.round(slow.baselineMin)}분의 2배 넘음`,
+          evidence: [`최근 ${slow.recentN}건`, `7일 ${slow.baselineN}건`],
         });
       }
     }
     const los = inp.losOpen.get(a.repo) ?? 0;
-    if (g.los !== "off" && los >= LOS_OPEN) {
-      out.push({ airport: a.code, repo: a.repo, trigger: "los", kind: "stop", enforced: false, text: `LOS 증가: 열린 LOS ${los}건`, evidence: [] });
+    const losDay = inp.losDay?.get(a.repo) ?? 0;
+    if (g.los !== "off" && (los >= LOS_OPEN || losDay >= LOS_DAY)) {
+      const text = los >= LOS_OPEN ? `LOS 증가: 열린 LOS ${los}건` : `LOS 증가: 24시간 안 LOS ${losDay}건`;
+      out.push({ airport: a.code, repo: a.repo, trigger: "los", kind: "stop", land: false, enforced: g.los === "on", text, evidence: [] });
     }
   }
   if (g.manual === "on") {
     for (const m of inp.cfg.manualStops) {
       const a = inp.airports.find((x) => x.code === m.airport);
-      out.push({ airport: m.airport, repo: a?.repo ?? null, trigger: "manual", kind: "stop", enforced: true, text: `수동 출발 중지: ${m.reason}`, evidence: [] });
+      out.push({ airport: m.airport, repo: a?.repo ?? null, trigger: "manual", kind: "stop", land: true, enforced: true, text: `수동 출발 중지: ${m.reason}`, evidence: [] });
     }
   }
   return out;
 }
 
-export const stopKey = (s: Pick<GroundStop, "airport" | "trigger" | "text">) => `${s.airport}|${s.trigger}|${s.trigger === "failure-wave" ? s.text : ""}`;
+// 실패 몰림은 체크 이름으로 잇는다(PR 수가 바뀌어도 같은 출발 중지). 예전 key(문구)는 한 번 풀리고 새 key로 다시 잡힌다
+export const stopKey = (s: Pick<GroundStop, "airport" | "trigger" | "text" | "check">) =>
+  `${s.airport}|${s.trigger}|${s.trigger === "failure-wave" ? (s.check ?? s.text) : ""}`;
 
-// 실제로 막는(enforced) 출발 중지를 AIRPORT별로
-export function enforcedStops(stops: GroundStop[]): Map<string, GroundStop> {
-  const out = new Map<string, GroundStop>();
-  for (const s of stops) if (s.enforced && s.kind === "stop" && !out.has(s.airport)) out.set(s.airport, s);
+// 트리거마다 지금 스위치. main 깨짐·수동은 트리거가 풀리면 바로 해제라 붙들지 않는다(null)
+const holdModeOf = (cfg: AtfmConfig, t: StopTrigger): StopMode | null =>
+  t === "failure-wave" ? cfg.groundStop.failureWave : t === "congestion" ? cfg.groundStop.congestion : t === "los" ? cfg.groundStop.los : null;
+
+// 그 체크가 t 뒤에 끝난 실행에서 통과한 PR 번호(지금 head 기준)
+export function passedSince(pulls: GhPull[], check: string, t: number): number[] {
+  const out: number[] = [];
+  for (const p of pulls) {
+    const ok = (p.statusCheckRollup ?? []).some((c) => {
+      const name = c.name ?? c.context ?? "";
+      const pass = String(c.conclusion ?? c.state ?? "").toLowerCase() === "success";
+      const when = c.completedAt ?? c.startedAt;
+      return name === check && pass && when && Date.parse(when) > t;
+    });
+    if (ok) out.push(p.number);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+// 트리거가 풀린 출발 중지를 해제 규칙까지 붙든다(순수, ATC-62, docs/atfm.md 6장).
+// - main 깨짐·수동: 트리거가 풀리면 바로 해제(지금과 같다)
+// - 혼잡·LOS: 트리거가 30분 이어서 풀려 있어야 해제. 그 사이 다시 걸리면(깜빡임) 같은 출발 중지로 이어지고 30분을 다시 센다
+// - 실패 몰림: 그 체크가 출발 중지가 시작된 뒤 끝난 실행에서 PR 2개가 통과해야 해제
+// 스위치가 off면 붙들지 않는다. enforced는 지금 스위치로 다시 정한다
+export function holdStops(prev: GroundStop[], found: Omit<GroundStop, "since">[], inp: { pulls: Map<string, GhPull[]>; cfg: AtfmConfig; now: number }): GroundStop[] {
+  const at = new Date(inp.now).toISOString();
+  const before = new Map(prev.map((p) => [stopKey(p), p]));
+  const seen = new Set<string>();
+  const out: GroundStop[] = [];
+  for (const f of found) {
+    const k = stopKey(f);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ ...f, since: before.get(k)?.since ?? at, clearSince: null, releasing: null });
+  }
+  for (const p of prev) {
+    const k = stopKey(p);
+    if (seen.has(k)) continue;
+    const mode = holdModeOf(inp.cfg, p.trigger);
+    if (mode === null || mode === "off") continue;
+    const clearSince = p.clearSince ?? at;
+    const base = { ...p, enforced: mode === "on", clearSince };
+    if (p.trigger === "failure-wave") {
+      const passed = passedSince(inp.pulls.get(p.repo ?? "") ?? [], p.check ?? "", Date.parse(p.since));
+      if (passed.length >= WAVE.releasePrs) continue;
+      out.push({ ...base, releasing: `${p.check} 통과 PR ${passed.length}/${WAVE.releasePrs}${passed.length ? ` (${passed.map((n) => `#${n}`).join(", ")})` : ""}` });
+    } else {
+      const below = inp.now - Date.parse(clearSince);
+      if (below >= RELEASE_MS) continue;
+      out.push({ ...base, releasing: `기준 아래 ${Math.floor(below / MIN)}분 / ${RELEASE_MS / MIN}분` });
+    }
+    seen.add(k);
+  }
   return out;
+}
+
+// 재시작 뒤: atfm-state.json의 stops(key → since, FLIGHT RECORDER에 적은 출발 중지)로 붙들던 출발 중지를 되살린다.
+// 트리거가 여전하면 groundStopsOf가 다시 찾고, 아니면 해제 규칙을 처음부터(풀린 시각 = 지금) 센다. main 깨짐·수동은 되살리지 않는다
+export function reviveStops(recorded: Record<string, string>, airports: { code: string; repo: string }[]): GroundStop[] {
+  const out: GroundStop[] = [];
+  for (const [key, since] of Object.entries(recorded)) {
+    const [airport, trigger, rest = ""] = key.split("|") as [string, StopTrigger, string?];
+    if (trigger !== "failure-wave" && trigger !== "congestion" && trigger !== "los") continue;
+    const repo = airports.find((a) => a.code === airport)?.repo ?? null;
+    const check = trigger === "failure-wave" ? (/^CI 실패가 몰림: (.+) — /.exec(rest)?.[1] ?? rest) : undefined;
+    out.push({
+      airport, repo, trigger, since,
+      kind: trigger === "congestion" ? "delay" : "stop",
+      land: trigger === "failure-wave",
+      enforced: false,
+      text: trigger === "failure-wave" ? `CI 실패가 몰림: ${check}` : trigger === "congestion" ? "CI 혼잡" : "LOS 증가",
+      evidence: [],
+      ...(check !== undefined ? { check } : {}),
+    });
+  }
+  return out;
+}
+
+// atfm-state.json의 stops만 읽는다(atfm-run.ts가 쓴다). 없거나 깨졌으면 빈 것
+export function readRecordedStops(file = join(config.stateDir, "atfm-state.json")): Record<string, string> {
+  try {
+    const r = JSON.parse(readFileSync(file, "utf8"));
+    return r?.stops && typeof r.stops === "object" ? r.stops : {};
+  } catch {
+    return {};
+  }
+}
+
+// 두 번째 트리거의 입력(체크 소요 시간 추세, 24시간 LOS). atfm-run.ts가 1분마다 FLIGHT RECORDER로 채우고 스냅샷이 읽는다.
+// 아직 채우지 않았으면 비어 있다(두 번째 트리거가 걸리지 않을 뿐)
+let figures: { ciTrend: Map<string, CiTrend>; losDay: Map<string, number> } = { ciTrend: new Map(), losDay: new Map() };
+export const stopFigures = () => figures;
+export function setStopFigures(next: typeof figures) {
+  figures = next;
+}
+
+// 실제로 막는(enforced) 출발 중지를 AIRPORT별로. scope "assign"은 새 ASSIGN을 막는 것(kind stop 모두),
+// "land"는 LAND도 막는 것(main 깨짐·실패 몰림·수동). LOS는 ASSIGN만, 혼잡(delay)은 어느 쪽도 아니다
+export function enforcedStops(stops: GroundStop[], scope: "assign" | "land" = "assign"): Map<string, GroundStop> {
+  const out = new Map<string, GroundStop>();
+  for (const s of stops) if (s.enforced && s.kind === "stop" && (scope === "assign" || s.land) && !out.has(s.airport)) out.set(s.airport, s);
+  return out;
+}
+
+// 켜진 GROUND DELAY(혼잡)가 걸린 AIRPORT. DISPATCH가 그 AIRPORT의 AIRBORNE 슬롯을 하나 줄인다
+export function delayedAirports(stops: GroundStop[] | undefined): Set<string> {
+  return new Set((stops ?? []).filter((s) => s.enforced && s.kind === "delay").map((s) => s.airport));
 }
 
 export const groundStopWhy = (s: Pick<GroundStop, "text">) => `GROUND STOP — ${s.text}`;

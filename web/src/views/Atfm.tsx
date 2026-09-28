@@ -12,7 +12,7 @@ type Trigger = "main-broken" | "failure-wave" | "congestion" | "los" | "manual";
 type TurnState = "pass" | "fail" | "insufficient" | "check";
 
 interface AtfmConfig {
-  groundStop: { mainBroken: StopMode; manual: "off" | "on"; failureWave: ShadowMode; congestion: ShadowMode; los: ShadowMode };
+  groundStop: { mainBroken: StopMode; manual: "off" | "on"; failureWave: StopMode; congestion: StopMode; los: StopMode };
   slots: StopMode;
   autoAssign: ShadowMode;
   s3: ShadowMode;
@@ -35,10 +35,12 @@ interface GroundStopView {
   repo: string | null;
   trigger: Trigger;
   kind: "stop" | "delay";
+  land?: boolean; // 켜졌을 때 LAND도 막는가. LOS는 새 ASSIGN만(ATC-62)
   enforced: boolean;
   text: string;
   evidence: string[];
   since: string;
+  releasing?: string | null; // 트리거가 풀려 해제 규칙을 기다리는 중(ATC-62)
 }
 interface SlotRow {
   airport: string | null;
@@ -109,6 +111,9 @@ const MODE_TEXT: Record<StopMode, string> = { off: "꺼짐", shadow: "그림자"
 const TURN_MARK: Record<TurnState, string> = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족", check: "△ 확인 필요" };
 // 켜면 멈추는 것(확인 문구에 씀)
 const ON_EFFECT = "켜면 해당 AIRPORT에 새 ASSIGN과 LAND가 멈춘다.";
+const WAVE_ON_EFFECT = "켜면 해당 AIRPORT에 새 ASSIGN과 LAND가 멈춘다. 실패가 몰린 체크가 그 뒤 PR 2개에서 통과해야 풀린다.";
+const CONGESTION_ON_EFFECT = "켜면 해당 AIRPORT의 AIRBORNE 슬롯이 하나 준다(GROUND DELAY). LAND는 계속 나간다. 기준 아래로 30분 이어져야 풀린다.";
+const LOS_ON_EFFECT = "켜면 해당 AIRPORT에 새 ASSIGN이 멈춘다. LAND는 계속 나간다. 기준 아래로 30분 이어져야 풀린다.";
 const SLOTS_ON_EFFECT = "켜면 TOWER가 저장소마다 in-slot PR에만 LAND를 낸다(vocado_nextjs는 한 번에 1개). waiting-slot PR은 앞 PR이 머지되거나 LAND 뒤 30분이 지날 때까지 LAND를 기다린다.";
 
 const pct = (x: number | null | undefined) => (x === null || x === undefined ? "—" : `${Math.round(x * 100)}%`);
@@ -180,8 +185,8 @@ export function AtfmPanel({ refreshKey, now }: { refreshKey: string; now: number
     if (!confirm("ATFM OFF\n\n모든 스위치를 그림자 운용으로 되돌리고 수동 GROUND STOP을 끕니다.\n멈춰 있던 ASSIGN과 LAND가 다시 나갑니다. 계속할까요?")) return;
     act("/api/atfm/off", {});
   };
-  const setSwitch = (key: string, name: string, value: string) => {
-    if (value === "on" && !confirm(`${name} GROUND STOP을 켤까요?\n\n${ON_EFFECT}`)) return;
+  const setSwitch = (key: string, name: string, value: string, effect = ON_EFFECT) => {
+    if (value === "on" && !confirm(`${name} GROUND STOP을 켤까요?\n\n${effect}`)) return;
     act("/api/atfm/switch", { key, value });
   };
 
@@ -212,12 +217,16 @@ export function AtfmPanel({ refreshKey, now }: { refreshKey: string; now: number
           <ul className="atfm-list">
             {groundStops.map((s) => {
               const on = s.enforced && s.kind === "stop";
+              const tag = on ? (s.land === false ? "ENFORCED · ASSIGN" : "ENFORCED") : s.enforced ? "GROUND DELAY" : "그림자";
               return (
                 <li key={`${s.airport}|${s.trigger}|${s.text}`} className={on ? "is-enforced" : "is-shadow"} title={s.evidence.join("\n") || undefined}>
-                  <span className={`atfm-tag${on ? " t-on" : s.enforced ? " t-warn" : ""}`}>{on ? "ENFORCED" : s.enforced ? "GROUND DELAY" : "그림자"}</span>
+                  <span className={`atfm-tag${on ? " t-on" : s.enforced ? " t-warn" : ""}`}>{tag}</span>
                   <span className="apt">{s.airport}</span>
                   <span className="atfm-trigger">{TRIGGER_TEXT[s.trigger] ?? s.trigger}</span>
-                  <span className="atfm-text">{s.text}</span>
+                  <span className="atfm-text">
+                    {s.text}
+                    {s.releasing && <span className="faint atfm-release"> · 해제 대기: {s.releasing}</span>}
+                  </span>
                   <time className="faint atfm-at" dateTime={s.since}>
                     {timeAgo(s.since, now)}
                   </time>
@@ -240,14 +249,12 @@ export function AtfmPanel({ refreshKey, now }: { refreshKey: string; now: number
           <Segmented label="수동" value={config.groundStop.manual} options={["off", "on"]} disabled={busy} onPick={(v) => setSwitch("groundStop.manual", "수동", v)} />
           {(
             [
-              ["CI 실패 몰림", config.groundStop.failureWave],
-              ["CI 혼잡", config.groundStop.congestion],
-              ["LOS 증가", config.groundStop.los],
+              ["groundStop.failureWave", "CI 실패 몰림", config.groundStop.failureWave, WAVE_ON_EFFECT],
+              ["groundStop.congestion", "CI 혼잡", config.groundStop.congestion, CONGESTION_ON_EFFECT],
+              ["groundStop.los", "LOS 증가", config.groundStop.los, LOS_ON_EFFECT],
             ] as const
-          ).map(([name, v]) => (
-            <span key={name} className="atfm-ro" title="그림자까지만 — 켤 수 없음">
-              {name} <b className={`atfm-mode m-${v}`}>{MODE_TEXT[v]}</b>
-            </span>
+          ).map(([key, name, v, effect]) => (
+            <Segmented key={key} label={name} value={v} options={["off", "shadow", "on"]} disabled={busy} onPick={(x) => setSwitch(key, name, x, effect)} />
           ))}
         </div>
 

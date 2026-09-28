@@ -264,7 +264,7 @@ test("브리핑 LANDING SEQUENCE: CLEARED 순번, Draft 제외, LAND CLEARANCE�
 });
 
 test("ATFM: 켜진 GROUND STOP은 그 AIRPORT의 landingQueue에 groundStop을 붙이고 이벤트를 낸다(그림자는 이벤트 없음), 머지 슬롯은 그림자로 붙는다", () => {
-  const gs = (enforced: boolean) => ({ airport: "VCDO", repo: VCDO, trigger: "main-broken" as const, kind: "stop" as const, enforced, text: "main 깨짐: main abc 실패 체크 build", evidence: [], since: iso(-1) });
+  const gs = (enforced: boolean) => ({ airport: "VCDO", repo: VCDO, trigger: "main-broken" as const, kind: "stop" as const, land: true, enforced, text: "main 깨짐: main abc 실패 체크 build", evidence: [], since: iso(-1) });
   const mains = [{ repo: VCDO, slug: "o/v", branch: "main", sha: "abc", state: "failure" as const, failing: ["build"], checks: 1, at: iso(0) }];
   const airports = [{ id: "1", repo: VCDO, name: "vocado_nextjs", code: "VCDO" }] as Snapshot["airports"];
   const s = snapshot({ airports, pulls: [pr(21, "VOC-52", { readyAt: iso(-9) }), pr(23, "VOC-191", { readyAt: iso(-5) })], atfm: { mains, groundStops: [gs(true)] } });
@@ -281,6 +281,16 @@ test("ATFM: 켜진 GROUND STOP은 그 AIRPORT의 landingQueue에 groundStop을 �
   assert.deepEqual(kinds(off, s), ["groundstop.started:main 깨짐: main abc 실패 체크 build"]);
   assert.deepEqual(kinds(s, off), ["groundstop.ended:main 깨짐: main abc 실패 체크 build"]);
   assert.deepEqual(kinds(off, shadow), []);
+});
+
+test("ATFM(ATC-62): 켜진 LOS 출발 중지는 새 ASSIGN만 막는다 — landingQueue에 groundStop을 붙이지 않고 HOLD·CONTINUE 이벤트도 없다", () => {
+  const los = { airport: "VCDO", repo: VCDO, trigger: "los" as const, kind: "stop" as const, land: false, enforced: true, text: "LOS 증가: 열린 LOS 2건", evidence: [], since: iso(-1) };
+  const airports = [{ id: "1", repo: VCDO, name: "vocado_nextjs", code: "VCDO" }] as Snapshot["airports"];
+  const s = snapshot({ airports, pulls: [pr(21, "VOC-52", { readyAt: iso(-9) })], atfm: { mains: [], groundStops: [los] } });
+  assert.deepEqual(buildBrief(s, { events: [], reset: false, cursor: "e:0" }, [], T0).landingQueue.map((x) => x.groundStop), [null]);
+  const off = snapshot({ airports, pulls: s.pulls, atfm: { mains: [], groundStops: [] } });
+  assert.deepEqual(diffSnapshots(off, s).filter((e) => e.kind.startsWith("groundstop")), []);
+  assert.equal(buildBrief(s, { events: [], reset: false, cursor: "e:0" }, [], T0).groundStops[0].trigger, "los"); // 목록에는 보인다
 });
 
 test("브리핑: FUEL 경고(FUEL F8)는 open.fuelLeaks·open.coldCache로 그대로, 없으면 빈 목록", () => {

@@ -8,16 +8,20 @@ import {
   allShadow,
   autoEligibility,
   ciMinutesOf,
+  ciTrendOf,
   enforcedStops,
+  type GroundStop,
   type Eligibility,
   landFiguresOf,
   landOf,
   landSpansOf,
   loadAtfm,
+  losDayOf,
   median,
   precisionOf,
   s3Eligibility,
   saveAtfm,
+  setStopFigures,
   setSwitch,
   slotHoldOf,
   slotLimitOf,
@@ -28,6 +32,7 @@ import {
 } from "./atfm.ts";
 import { allClearances } from "./clearances.ts";
 import { config } from "./config.ts";
+import { readDepartures } from "./departures.ts";
 import { modelFamily, UNKNOWN_MODEL } from "./crosscheck.ts";
 import { landedOf, loadDispatchConfig, planDispatch, readFlightHistory } from "./dispatch.ts";
 import { fleetView, loadFleet } from "./fleet.ts";
@@ -88,6 +93,34 @@ const atfmLine = (op: string, fields: { id?: string; airport?: string | null; da
 
 let state: RunState | null = null;
 let lastHeavy = 0;
+let lastFigures = 0;
+const lastSeen = new Map<string, GroundStop>(); // stopKey → 지난 tick의 출발 중지(해제 사유를 적으려고)
+
+// 두 번째 트리거 입력(순수): FLIGHT RECORDER의 atfm ci 줄 → AIRPORT 저장소별 체크 소요 시간 추세,
+// event 줄의 LOS(alert.raised conflict) → 24시간 안 LOS 수
+export function stopFiguresOf(lines: RecordLine[], airports: { code: string; repo: string }[], repoOfStand: (stand: string) => string | null, now: number) {
+  const ciTrend = new Map<string, NonNullable<ReturnType<typeof ciTrendOf>>>();
+  for (const a of airports) {
+    const samples = lines.flatMap((r) =>
+      r.kind === "atfm" && r.op === "ci" && r.airport === a.code && Number.isFinite(Number(r.data?.minutes)) ? [{ t: r.t, minutes: Number(r.data!.minutes) }] : [],
+    );
+    const trend = ciTrendOf(samples, now);
+    if (trend) ciTrend.set(a.repo, trend);
+  }
+  const los = lines.flatMap((r) =>
+    r.kind === "event" && r.event.kind === "alert.raised" && r.event.alertKind === "conflict" ? [{ at: r.event.at ?? r.t, workspacePath: r.event.workspacePath ?? null }] : [],
+  );
+  return { ciTrend, losDay: losDayOf(los, repoOfStand, now) };
+}
+
+// 풀린 출발 중지의 해제 사유(ATC-62). 스위치를 끔, 해제 규칙(30분, 통과 PR 2개), 트리거가 풀림, 재시작 전 것
+export function releasedBy(last: GroundStop | undefined, cfg: AtfmConfig): string {
+  if (!last) return "restart";
+  const mode = last.trigger === "failure-wave" ? cfg.groundStop.failureWave : last.trigger === "congestion" ? cfg.groundStop.congestion : last.trigger === "los" ? cfg.groundStop.los : null;
+  if (mode === "off") return "switched-off";
+  if (last.clearSince) return last.trigger === "failure-wave" ? "passed-in-2-prs" : "30-min-below";
+  return "cleared";
+}
 
 // 서버 tick마다 부른다. GitHub을 아직 못 읽었으면 출발 중지 비교를 하지 않는다(스냅샷도 비어 있다).
 export function runAtfm(s: Snapshot, now = Date.now()) {
@@ -95,19 +128,27 @@ export function runAtfm(s: Snapshot, now = Date.now()) {
   let dirty = false;
   if (s.github.fetchedAt) {
     const current = new Map(s.atfm.groundStops.map((g) => [stopKey(g), g]));
+    const cfgNow = loadAtfm();
     for (const [k, g] of current) {
       if (k in state.stops) continue;
       state.stops[k] = g.since;
-      record(atfmLine("ground-stop", { airport: g.airport, data: { trigger: g.trigger, kind: g.kind, enforced: g.enforced, text: g.text, evidence: g.evidence } }));
+      record(
+        atfmLine("ground-stop", {
+          airport: g.airport,
+          data: { trigger: g.trigger, kind: g.kind, land: g.land, enforced: g.enforced, text: g.text, evidence: g.evidence, ...(g.check ? { check: g.check } : {}) },
+        }),
+      );
       dirty = true;
     }
     for (const k of Object.keys(state.stops)) {
       if (current.has(k)) continue;
       const [airport, trigger] = k.split("|");
-      record(atfmLine("ground-release", { airport, data: { trigger, since: state.stops[k] } }));
+      record(atfmLine("ground-release", { airport, data: { trigger, since: state.stops[k], releasedBy: releasedBy(lastSeen.get(k), cfgNow) } }));
       delete state.stops[k];
       dirty = true;
     }
+    lastSeen.clear();
+    for (const [k, g] of current) lastSeen.set(k, g);
   }
   // 머지 슬롯이 켜져 있으면(7단계) LAND를 막은 PR을 head마다 한 번 적는다
   const cfg = loadAtfm();
@@ -118,6 +159,14 @@ export function runAtfm(s: Snapshot, now = Date.now()) {
       record(atfmLine("slot-hold", { airport: h.airport, data: { pr: h.pr, head: h.head, lanePos: h.lanePos, limit: h.limit, landTimedOut: h.landTimedOut, text: h.text } }));
       dirty = true;
     }
+  }
+  // 두 번째 트리거 입력(7일 CI 추세, 24시간 LOS)을 1분마다 다시 센다. STAND → 저장소는 지금 워크트리, 없으면 착수 기록
+  if (now - lastFigures >= HEAVY_MS) {
+    lastFigures = now;
+    const repoOf = new Map(s.workspaces.map((w) => [w.path, w.repo]));
+    for (const d of readDepartures()) if (!repoOf.has(d.stand)) repoOf.set(d.stand, d.repo);
+    const lines = readRecords(now - 7 * DAY - 2 * 3_600_000);
+    setStopFigures(stopFiguresOf(lines, s.airports.map((a) => ({ code: a.code, repo: a.repo })), (stand) => repoOf.get(stand) ?? null, now));
   }
   if (now - lastHeavy >= HEAVY_MS && s.github.fetchedAt && s.linear.fetchedAt) {
     lastHeavy = now;
@@ -388,7 +437,7 @@ export function mountAtfm(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     }
   };
 
-  // 스위치 하나. on으로 켤 수 있는 것은 groundStop.mainBroken·groundStop.manual(SUPERVISOR 결정 8)과 slots(7단계)뿐
+  // 스위치 하나. 출발 중지 다섯 가지(결정 8, ATC-62)와 slots(7단계)는 on까지. 켜는 것은 SUPERVISOR(ATC-23)
   app.post("/api/atfm/switch", change((cfg, b) => setSwitch(cfg, b.key, b.value), "switch"));
   // ATFM OFF: 켜진 것을 모두 그림자로, 수동 출발 중지 스위치는 끔
   app.post("/api/atfm/off", change((cfg) => allShadow(cfg), "off"));
