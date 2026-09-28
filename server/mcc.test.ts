@@ -13,6 +13,7 @@ import {
   landBlocksOf,
   loadMcc,
   MccError,
+  mccModelOf,
   type MccRecord,
   parseInspect,
   parseMcc,
@@ -48,12 +49,18 @@ test("INSPECTION 입력: 지금 head만(짧은 SHA 가능), pass에 P0·P1 없�
   bad({ text: " " }, /text/);
   bad({ text: "P1 테스트 없음" }, /findings/);
   bad({ verdict: "findings", text: "고칠 것 있음" }, /등급/);
-  bad({ model: "" }, /model/);
-  bad({ model: "deepseek-v4.1-flash" }, /Claude/);
+  bad({ model: "" }, /MCC 세션에서만/);
+  bad({ model: "deepseek-v4.1-flash" }, /Claude 모델만/);
   bad({ model: "gpt-5.6-luna" }, /Claude/);
   const f = parseInspect({ head: HEAD, verdict: "findings", text: "P1 새 동작에 테스트 없음", model: "claude-fable-5-1" }, 106, HEAD, iso(0));
   assert.deepEqual([f.verdict, f.p1], ["findings", 1]);
   assert.match(inspectionComment(f), /MCC INSPECTION — findings.*aaaaaaa.*P1 1[\s\S]*새 동작에 테스트 없음/);
+});
+
+test("MCC 쓰기의 모델: guard가 붙인 Claude 모델만. 없으면(TOWER·OCC의 atcctl) 거절", () => {
+  assert.equal(mccModelOf({ model: " claude-sonnet-5 " }), "claude-sonnet-5");
+  assert.throws(() => mccModelOf({}), /MCC 세션에서만/);
+  assert.throws(() => mccModelOf({ model: "muse-spark-1.3-contributor" }), /Claude 모델만/);
 });
 
 test("기록: INSPECTION은 그 head의 마지막 것, ESCALATE는 PR에 붙어 head가 바뀌어도 남는다", () => {

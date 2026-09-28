@@ -70,9 +70,9 @@ export interface Inspection {
 }
 export type MccRecord =
   | Inspection
-  | { op: "escalate"; at: string; pr: number; head: string; reason: string }
-  | { op: "land" | "would-land"; at: string; pr: number; head: string; tier: string; result: "ok" | "rejected" | "failed"; detail?: string }
-  | { op: "rts" | "would-rts"; at: string; from: string | null; to: string; result: "started" | "failed"; detail?: string }
+  | { op: "escalate"; at: string; pr: number; head: string; reason: string; model?: string }
+  | { op: "land" | "would-land"; at: string; pr: number; head: string; tier: string; result: "ok" | "rejected" | "failed"; detail?: string; model?: string }
+  | { op: "rts" | "would-rts"; at: string; from: string | null; to: string; result: "started" | "failed"; detail?: string; model?: string }
   | { op: "mode"; at: string; mode: MccMode; detail: string }
   | { op: "hold" | "unhold"; at: string; pr: number };
 
@@ -134,6 +134,15 @@ export class MccError extends Error {
   }
 }
 
+// MCC 쓰기(inspect·escalate·land·rts)는 MCC guard가 붙인 실제 모델(ATC_MCC_MODEL)이 있어야 한다.
+// TOWER·OCC guard는 atcctl을 모두 통과시키지만 이 값을 붙이지 않으므로, 그 세션의 atcctl mcc 쓰기는 여기서 막힌다
+export function mccModelOf(body: Record<string, unknown>): string {
+  const model = typeof body.model === "string" ? body.model.trim().slice(0, 120) : "";
+  if (!model) throw new MccError("model이 없음 — MCC 세션에서만 쓴다(guard가 실제 모델을 붙인다)", 400);
+  if (!MCC_MODELS.test(model)) throw new MccError(`MCC는 Claude 모델만 — 지금 ${model}`, 400);
+  return model;
+}
+
 // INSPECTION 입력 검사: head는 지금 head(짧은 SHA도 됨), verdict pass|findings, text 필수.
 // 지적 등급은 P0·P1·P2 — pass에는 P0·P1을 적지 않고, findings에는 등급이 하나 이상 있어야 한다
 export function parseInspect(body: Record<string, unknown>, pr: number, head: string, at: string): Inspection {
@@ -146,9 +155,7 @@ export function parseInspect(body: Record<string, unknown>, pr: number, head: st
   const sev = severityOf(text);
   if (body.verdict === "pass" && (sev.p0 || sev.p1)) throw new MccError("pass에는 P0·P1 지적을 적지 않는다 — 있으면 findings", 400);
   if (body.verdict === "findings" && !sev.p0 && !sev.p1 && !sev.p2) throw new MccError("findings에는 P0·P1·P2 등급을 하나 이상 적는다", 400);
-  const model = typeof body.model === "string" ? body.model.trim().slice(0, 120) : "";
-  if (!model) throw new MccError("model이 없음 — MCC 세션에서만 남긴다(guard가 실제 모델을 붙인다)", 400);
-  if (!MCC_MODELS.test(model)) throw new MccError(`INSPECTION은 Claude 모델만 남긴다 — 지금 ${model}`, 400);
+  const model = mccModelOf(body);
   return { op: "inspect", at, pr, head, verdict: body.verdict, text, model, p0: sev.p0, p1: sev.p1, p2: sev.p2 };
 }
 

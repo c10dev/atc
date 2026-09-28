@@ -14,6 +14,7 @@ import {
   loadMcc,
   MCC_MODES,
   MccError,
+  mccModelOf,
   type MccMode,
   type MccRecord,
   parseInspect,
@@ -276,14 +277,15 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
   // ESCALATE: 사용자 등급으로 올린다(내릴 수는 없다)
   app.post("/api/mcc/escalate/:pr", async (c) => {
     try {
-      const body = (await c.req.json().catch(() => ({}))) as { reason?: unknown };
+      const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+      const model = mccModelOf(body);
       const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 500) : "";
       if (!reason) throw new MccError("reason(사유)이 필요함", 400);
       const s = await getSnapshot();
       const n = prNumber(c.req.param("pr"));
       const ap = airportOf(s);
       const pr = await fetchPull(ap.slug, n);
-      const r: MccRecord = { op: "escalate", at: new Date().toISOString(), pr: n, head: pr.head.sha, reason };
+      const r: MccRecord = { op: "escalate", at: new Date().toISOString(), pr: n, head: pr.head.sha, reason, model };
       appendMccRecord(r);
       return c.json({ escalate: r });
     } catch (e) {
@@ -295,7 +297,8 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
   // 착륙. 조건(L2–L8)을 지금 GitHub 자료로 다시 보고, shadow면 would-land만 남긴다
   app.post("/api/mcc/land/:pr", async (c) => {
     try {
-      const body = (await c.req.json().catch(() => ({}))) as { head?: unknown };
+      const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+      const model = mccModelOf(body);
       const head = typeof body.head === "string" ? body.head.trim().toLowerCase() : "";
       if (head.length < 7) throw new MccError("head(7자 이상)가 필요함", 400);
       const s = await getSnapshot();
@@ -303,7 +306,7 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
       const j = await judge(s, n, head);
       if (j.blocks.length) return c.json({ landed: false, blocks: j.blocks }, 409);
       const at = new Date().toISOString();
-      const base = { at, pr: n, head: j.pr.head.sha, tier: j.tier };
+      const base = { at, pr: n, head: j.pr.head.sha, tier: j.tier, model };
       if (j.ap.cfg.mode === "shadow") {
         appendMccRecord({ op: "would-land", ...base, result: "ok", detail: "shadow" });
         return c.json({ landed: false, would: true, tier: j.tier });
@@ -327,6 +330,7 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
   // RETURN TO SERVICE. land+rts가 아니면 would-rts만. 실제 일은 서비스 밖의 systemd 유닛(deploy/rts.mjs)이 한다
   app.post("/api/mcc/rts", async (c) => {
     try {
+      const model = mccModelOf((await c.req.json().catch(() => ({}))) as Record<string, unknown>);
       const s = await getSnapshot();
       const ap = airportOf(s);
       const records = readMccRecords();
@@ -334,7 +338,7 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
       const deployed = deployedHead();
       const due = rtsDueOf({ deployed, main: ap.main, mainCi: ap.mainCi, last: rts.last, lastStartAt: rts.lastStartAt, now: Date.now() }, rts.stop);
       if (!due.due) return c.json({ started: false, why: due.why }, 409);
-      const base = { at: new Date().toISOString(), from: deployed, to: ap.main! };
+      const base = { at: new Date().toISOString(), from: deployed, to: ap.main!, model };
       if (ap.cfg.mode !== "land+rts") {
         appendMccRecord({ op: "would-rts", ...base, result: "started", detail: ap.cfg.mode });
         return c.json({ started: false, would: true, why: due.why });

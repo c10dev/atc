@@ -123,16 +123,29 @@ REVIEW (착륙 리뷰 세션, review/ 폴더, DeepSeek V4.1 Flash. Codex 한도 
                                             크기를 제한한 diff. 외부 리뷰 제외(보안 경로·키워드·라벨, FLIGHT 없음)면 403
   node atcctl.mjs landing review <repo>#<PR> --head <sha> --verdict pass|findings -- <리뷰>
                                             그 head에 착륙 리뷰를 남긴다(4000자 이내). 지적은 P0·P1·P2,
-                                            P0·P1이 없으면 pass. head가 바뀌었으면 409. 모델은 guard가 붙인다`;
+                                            P0·P1이 없으면 pass. head가 바뀌었으면 409. 모델은 guard가 붙인다
+
+MCC (atc 자신의 PR 착륙·RETURN TO SERVICE, mcc/ 폴더, Claude — docs/mcc.md)
+  node atcctl.mjs mcc queue                 열린 atc PR마다 등급·CI·머지 상태·INSPECTION·막힌 조건(L2–L8),
+                                            서비스 커밋과 기본 브랜치, RTS 할 때인지 (JSON)
+  node atcctl.mjs mcc packet <PR>           INSPECTION 자료(JSON): PR 본문, 바뀐 파일과 등급 사유, diff, ATC 이슈 완료 기준
+  node atcctl.mjs mcc inspect <PR> --head <sha> --verdict pass|findings -- <INSPECTION>
+                                            그 head에 INSPECTION을 남긴다(4000자 이내, P0·P1·P2). findings는
+                                            서버가 PR 댓글로도 남긴다. 모델은 guard가 붙인다
+  node atcctl.mjs mcc escalate <PR> -- <사유>  user 등급으로 올린다(사용자가 머지). 내릴 수는 없다
+  node atcctl.mjs mcc land <PR> --head <sha>  L2–L8이 모두 맞으면 착륙(shadow면 would-land만). 막히면 조건 목록
+  node atcctl.mjs mcc rts                   서비스가 기본 브랜치보다 뒤면 RETURN TO SERVICE(land+rts가 아니면 would-rts)`;
 
 // limit: 409(한도 참)일 때 오류 대신 보여 줄 안내. 호출한 세션이 곧바로 멈추게 LIMIT으로 시작한다.
-async function call(method, path, body, { limit } = {}) {
+// soft: 409를 오류로 끝내지 않고 응답을 돌려준다(MCC land·rts의 "막힘"은 정상 답이다)
+async function call(method, path, body, { limit, soft } = {}) {
   const res = await fetch(BASE + path, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  if (soft && res.status === 409) return data;
   if (limit && res.status === 409) {
     console.error(`LIMIT: ${data.error ?? res.status}\n${limit}`);
     process.exit(1);
@@ -337,6 +350,79 @@ export function parseLandingReview(args) {
   return { path, write: body };
 }
 
+// mcc <sub> …. 쓰기(inspect·escalate·land·rts)에는 MCC guard가 붙인 모델(ATC_MCC_MODEL)을 싣는다. 없으면 서버가 거절한다
+const withModel = (body) => (process.env.ATC_MCC_MODEL ? { ...body, model: process.env.ATC_MCC_MODEL } : body);
+const MCC_SUBS = ["queue", "packet", "inspect", "escalate", "land", "rts"];
+export function parseMccArgs(args) {
+  const [sub, ...rest] = args;
+  if (!MCC_SUBS.includes(sub)) throw new Error(`mcc 뒤에 ${MCC_SUBS.join("|")}`);
+  const sep = rest.indexOf("--");
+  const head = sep < 0 ? rest : rest.slice(0, sep);
+  const text = sep < 0 ? "" : rest.slice(sep + 1).join(" ").trim();
+  if (sub === "queue" || sub === "rts") {
+    if (rest.length) throw new Error(`알 수 없는 인자 ${rest.join(" ")}`);
+    return sub === "queue" ? { method: "GET", path: "/api/mcc/queue" } : { method: "POST", path: "/api/mcc/rts", body: withModel({}) };
+  }
+  const [target, ...opts] = head;
+  const m = /^#?(\d+)$/.exec(target ?? "");
+  if (!m) throw new Error("대상은 PR 번호 (예: 110 또는 #110)");
+  const n = m[1];
+  const o = {};
+  for (let i = 0; i < opts.length; i++) {
+    const k = opts[i];
+    if (k !== "--head" && k !== "--verdict") throw new Error(`알 수 없는 인자 ${opts.slice(i).join(" ")}`);
+    const v = opts[++i];
+    if (v === undefined || v.startsWith("--")) throw new Error(`${k} 뒤에 값이 필요함`);
+    o[k.slice(2)] = v;
+  }
+  const only = (...keys) => {
+    const extra = Object.keys(o).filter((k) => !keys.includes(k));
+    if (extra.length) throw new Error(`mcc ${sub}에는 --${extra.join(", --")}를 쓰지 않는다`);
+  };
+  if (sub === "packet") {
+    only();
+    if (sep >= 0) throw new Error("mcc packet에는 -- 글이 없다");
+    return { method: "GET", path: `/api/mcc/packet/${n}` };
+  }
+  if (sub === "escalate") {
+    only();
+    if (!text) throw new Error("-- 뒤에 사유가 필요함");
+    return { method: "POST", path: `/api/mcc/escalate/${n}`, body: withModel({ reason: text }) };
+  }
+  if (sub === "land") {
+    only("head");
+    if (!o.head) throw new Error("--head <sha>가 필요함(queue의 head)");
+    if (sep >= 0) throw new Error("mcc land에는 -- 글이 없다");
+    return { method: "POST", path: `/api/mcc/land/${n}`, body: withModel({ head: o.head }) };
+  }
+  only("head", "verdict");
+  if (!o.head) throw new Error("--head <sha>가 필요함(자료의 head)");
+  if (o.verdict !== "pass" && o.verdict !== "findings") throw new Error("--verdict는 pass|findings");
+  if (!text) throw new Error("-- 뒤에 INSPECTION 내용이 필요함");
+  return { method: "POST", path: `/api/mcc/inspect/${n}`, body: withModel({ head: o.head, verdict: o.verdict, text }) };
+}
+
+// mcc 응답 한 줄(queue·packet은 JSON 그대로)
+export function mccText(sub, r) {
+  if (sub === "inspect") {
+    const i = r.inspection;
+    return `#${i.pr} INSPECTION ${i.verdict} · head ${i.head.slice(0, 7)} · P0 ${i.p0} · P1 ${i.p1} · P2 ${i.p2} (${i.model})${i.comment ? ` · PR 댓글 ${i.comment === "posted" ? "남김" : "실패"}` : ""}`;
+  }
+  if (sub === "escalate") return `#${r.escalate.pr} ESCALATE → user 등급 · ${r.escalate.reason}`;
+  if (sub === "land") {
+    if (r.blocks) return `LAND 안 함 — ${r.blocks.map((b) => `${b.code} ${b.text}`).join(" · ")}`;
+    if (r.would) return `WOULD LAND (shadow) · ${r.tier}`;
+    if (r.landed) return `LANDED · ${r.tier}${r.flagged?.length ? ` · 바뀐 관제 규칙: ${r.flagged.join(", ")}` : ""}`;
+    return `LAND 실패 — ${r.result ?? ""} ${r.detail ?? ""}`.trim();
+  }
+  if (sub === "rts") {
+    if (r.started) return `RTS 시작 · ${r.why}`;
+    if (r.would) return `WOULD RTS · ${r.why}`;
+    return `RTS 안 함 — ${r.why ?? r.error ?? ""}`;
+  }
+  return JSON.stringify(r, null, 1);
+}
+
 export function crosscheckBrief(dispatch, schedule) {
   const pick = (flights, keys) => Object.fromEntries(keys.filter((k) => k && flights?.[k]).map((k) => [k, flights[k]]));
   const part = (b) => {
@@ -486,6 +572,10 @@ if (isMain) {
         const { review: r } = await call("POST", path, write);
         console.log(`${r.repo}#${r.number} LANDING REVIEW ${r.verdict} · head ${r.head.slice(0, 7)} · P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2} (${r.model})`);
       }
+    } else if (cmd === "mcc") {
+      const { method, path, body } = parseMccArgs(args);
+      const r = await call(method, path, body, { soft: args[0] === "land" || args[0] === "rts" });
+      console.log(args[0] === "queue" || args[0] === "packet" ? JSON.stringify(r, null, 1) : mccText(args[0], r));
     } else if ((cmd === "dispatch" || cmd === "schedule") && args[0] === "crosscheck") {
       const { id, body } = parseCrosscheck(args.slice(1));
       const path = cmd === "dispatch" ? `/api/dispatch/proposals/${encodeURIComponent(id)}/crosscheck` : `/api/schedule/ops/${encodeURIComponent(id)}/crosscheck`;
