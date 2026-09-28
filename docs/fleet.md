@@ -419,6 +419,7 @@ Kept in `~/.local/state/atc/departures.jsonl`, append-only (`server/departures.t
 ## 8. FLEET tab
 
 - One card per AIRCRAFT: registration and callsign, base AIRPORT, status, CREW COMPLEMENT declared vs observed, TYPE RATINGS, ROUTES, TARGETS against the LOGBOOK actuals (section 7.2) with the last few FLIGHTs.
+- A RULES line when the [rules-drift hook](../hooks/README.md#rules-drift-hook) runs in the AIRCRAFT's sessions (ATC-42): "RULES current", or "RULES 미확인 since <time>" with the rules files a live session hasn't acknowledged yet. That session gets the diff on its next turn.
 - Edit form for the SUPERVISOR (writes `fleet.json`, same pattern as the AIRPORT registry).
 - The classification on each DISPATCH card, under the title (section 5). Not built yet: the classification on FIDS.
 

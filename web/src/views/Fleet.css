@@ -56,6 +56,19 @@
   color: var(--radar);
   font: var(--text-sm) var(--mono);
 }
+/* RULES(ATC-42): 규칙 파일 확인 상태. 뒤처지면 경고색 */
+.fl-rules {
+  margin: 0;
+  font: var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
+}
+.fl-rules.is-current {
+  color: var(--faint);
+}
+.fl-rules.is-behind {
+  color: var(--amber);
+}
 
 .fl-sub {
   display: flex;

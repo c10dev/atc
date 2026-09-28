@@ -1,4 +1,4 @@
-# hooks — claim hook
+# hooks — claim and rules-drift hooks
 
 **English** · [한국어](README.ko.md)
 
@@ -66,6 +66,70 @@ Keep the matcher in sync with `WORK_TOOLS` in `paths.mjs`. Read-only tools (Read
 
 To turn it off, remove the entry. The `claims/` folder can be deleted at any time.
 
+## rules-drift hook
+
+`rules-drift.mjs` (ATC-42) tells running sessions when a rules file changed after they started, so nobody has to broadcast "reread CLAUDE.md". On the session's next turn it injects the unified diff through `hookSpecificOutput.additionalContext`.
+
+| Mode | Hook event | What it does |
+|---|---|---|
+| `start` | `SessionStart` | Records the session's baseline: a hash per watched file, plus the content so a later diff can be made. `startup`, `clear` and `compact` start from the current files. `resume` keeps the existing baseline, so changes made while the session was closed still show on its next turn |
+| `check` | `UserPromptSubmit`, `PostToolUse` | Compares hashes. If a file changed, it outputs the changed files, the unified diff and one line saying the rules changed since this session started, then records the new hash as acknowledged. On `PostToolUse` it looks at most every 30 seconds |
+
+- **Watched files** come from the command line: `--root <repo>` (default `$CLAUDE_PROJECT_DIR`, then the hook's `cwd`), `--files` (default `CLAUDE.md,AGENTS.md`; paths inside the repo only), and optionally `--ref <git ref>`. With `--ref`, a file the ref has is read from the ref; a file it doesn't have is read from the working tree.
+  - With `--ref origin/main`, rules files tracked in git follow `origin/main`, which moves whenever any session fetches, even when the checkout at `--root` lags behind. A rules file that isn't in the ref (not tracked in git) is read from the checkout at `--root`.
+- **Diff cap**: at most 150 lines across files. Past that, or when the previous content is unknown, it says to Read the file again, with its path.
+- **What it reads**: only the watched files. It never reads the transcript (`transcript_path`) and makes no network call. One call takes about 30 ms.
+- **Fail open**: on any error (bad stdin, missing or unwritable state, a broken state file) it prints nothing and exits 0. A broken state file restarts that session's baseline at the current files. A missing watched file counts as a state of its own; when the file appears, the diff shows it.
+- **State**: `~/.local/state/atc/rules-ack/<sessionId>.json` (`root`, `ref`, `files`, `acked` hashes, `startedAt`, `checkedAt`, `changedAt`) and `rules-ack/blobs/<sha256>` (content for diffs). Each `start` removes session records with no check for 7 days, and content no record points to.
+- **FLEET**: each AIRCRAFT card shows its live sessions' state. It reads "RULES current", or "RULES 미확인 since <time>" with the files (the time of the last change: the ref's last commit, or the file's mtime). atc compares the records with the current files itself, so an idle session shows as behind too. An AIRCRAFT with no record shows nothing.
+
+### Install (vocado)
+
+The SUPERVISOR merges these entries into vocado `.claude/settings.json` (or `.claude/settings.local.json` to keep the machine paths out of the repo). The hook is synchronous so the context reaches the turn, and `timeout` bounds it:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"/home/c10/projects/atc/hooks/rules-drift.mjs\" start --root /home/c10/projects/vocado_nextjs --ref origin/main",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"/home/c10/projects/atc/hooks/rules-drift.mjs\" check --root /home/c10/projects/vocado_nextjs --ref origin/main",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"/home/c10/projects/atc/hooks/rules-drift.mjs\" check --root /home/c10/projects/vocado_nextjs --ref origin/main",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+To turn it off, remove the entries. The `rules-ack/` folder can be deleted at any time; sessions then restart from the current files.
+
 ## Files
 
 | File | Role |
@@ -75,5 +139,8 @@ To turn it off, remove the entry. The `claims/` folder can be deleted at any tim
 | `paths.d.mts` | Type declaration for `paths.mjs`, for the TypeScript server |
 | `shell.mjs` | `workTargets(command)` — a small shell tokenizer (not a full parser) that returns `cd` / `git -C` targets in command position. Handles quotes, `;` `&` `\|` `(` `)` `` ` `` `$(`, heredocs, `VAR=…` and `if`/`then`/`time`… prefixes, and looks up to two levels into `bash -c "…"`. Only global `git` options count, so `git commit -C <commit>` is not a path |
 | `shell.test.mjs` | Cases that must and must not be caught (`npm test`) |
+| `rules-drift.mjs` | The rules-drift hook (`start`, `check`) and the pure functions the server reuses for FLEET (`statusOf`, `readRecords`, `readSource`) |
+| `rules-drift.d.mts` | Type declaration for `rules-drift.mjs` |
+| `rules-drift.test.mjs` | No change, one diff then acknowledged, new and resumed sessions, fail open, diff cap, `--ref`, cleanup (`npm test`) |
 
 How atc turns claims into handoffs and conflicts is described in the main [README](../README.md#handoffs-and-conflicts).

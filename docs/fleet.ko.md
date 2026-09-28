@@ -460,6 +460,7 @@ S1(그림자)은 만들었고 S2(승인하면 적용)는 아직 없다. 이 절 
 ## 8. FLEET 탭
 
 - AIRCRAFT마다 카드 하나: REGISTRATION과 callsign, 기지 AIRPORT, 상태, 선언한 CREW COMPLEMENT 대 관찰한 CREW, TYPE RATING, ROUTES, LOGBOOK 실적 대 TARGETS(7.2)와 최근 FLIGHT 몇 개.
+- AIRCRAFT의 세션에서 [rules-drift hook](../hooks/README.ko.md#rules-drift-hook)이 돌면 RULES 줄(ATC-42): "RULES current", 또는 살아 있는 세션이 아직 확인하지 않은 규칙 파일과 "RULES 미확인 since <시각>". 그 세션은 다음 턴에 diff를 받는다.
 - SUPERVISOR용 수정 양식(`fleet.json`을 씀, AIRPORT 등록부와 같은 방식).
 - DISPATCH 카드마다 제목 아래 분류(5장). 아직 만들지 않음: FIDS의 분류 표시.
 

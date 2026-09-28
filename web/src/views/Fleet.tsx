@@ -1,6 +1,9 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type { AircraftView, CrewMember, FleetFile, Rating } from "../../../server/fleet.ts";
+import type { RulesView } from "../../../server/rules-state.ts";
 import { flightNumber } from "../aviation.ts";
+import { timeAgo } from "../derive.ts";
+import { formatClock, useSettings } from "../settings.ts";
 import { FleetCrew } from "./FleetCrew.tsx";
 import { Checkride } from "./Checkride.tsx";
 import "./Fleet.css";
@@ -308,6 +311,7 @@ function Card({
         <p className="fl-absent faint">세션이 없음 — CREW BRIEFING을 새 세션에 붙여 넣으면 IN SERVICE가 된다</p>
       )}
       {a.flying.length > 0 && <p className="fl-flying">FLYING {a.flying.map(flightNumber).join(", ")}</p>}
+      <RulesLine r={(a as AircraftView & { rules?: RulesView | null }).rules ?? null} />
 
       <h3 className="fl-sub">
         CREW COMPLEMENT {a.complementIsDefault && <em>기본값</em>}
@@ -605,5 +609,24 @@ function Editor({
         </button>
       </div>
     </article>
+  );
+}
+
+// 규칙 파일 확인 상태(ATC-42, hooks/rules-drift.mjs). hook 기록이 없는 AIRCRAFT에는 보이지 않는다
+function RulesLine({ r }: { r: RulesView | null }) {
+  const { clock } = useSettings();
+  if (!r) return null;
+  if (r.current) {
+    return (
+      <p className="fl-rules is-current" title={`세션 ${r.sessions}개가 규칙 파일의 지금 내용을 확인함`}>
+        RULES current
+      </p>
+    );
+  }
+  const title = `이 AIRCRAFT의 세션이 아직 받지 않은 규칙 변경${r.since ? ` · ${r.since}` : ""}. 다음 턴에 rules-drift hook이 diff를 준다`;
+  return (
+    <p className="fl-rules is-behind" title={title}>
+      RULES 미확인{r.since && <> since {formatClock(r.since, clock)} <span className="faint">({timeAgo(r.since, Date.now())})</span></>} <span className="mono">{r.behind.join(", ")}</span>
+    </p>
   );
 }
