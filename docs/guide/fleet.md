@@ -104,6 +104,25 @@ atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude C
 - 관제 세션(TOWER·OCC·CROSSCHECK·REVIEW)은 세션을 띄우거나 멈출 수 없다. 이 화면에서 보낸 요청만 받는다.
 - LAUNCH·STOP은 모두 FLIGHT RECORDER에 남는다.
 
+## FLEET PLAN: atc의 제안
+
+카드 위의 FLEET PLAN 블록은 atc가 팀을 언제 띄우고, 멈추고, 쉬게 하고, 퇴역시키자고 하는지 보여 준다. 지금은 **그림자**다. atc는 제안만 하고, SUPERVISOR는 **동의**·**반대**로 판정만 한다. 실제로 띄우거나 멈추는 것은 여전히 카드의 버튼으로 한다.
+
+| 제안 | 언제 | 하려는 일 |
+|---|---|---|
+| LAUNCH | 받을 AIRCRAFT가 없는 FLIGHT가 120분 이어짐 | 그 FLIGHT를 날 수 있는, 세션이 없는 등록 AIRCRAFT를 띄운다 |
+| ENTRY | LAUNCH와 같은데 맞는 등록 AIRCRAFT가 없음 | 새 등록번호와 CONFIGURATION으로 들이고 띄운다 |
+| STOP | 백그라운드 세션이 12시간 STAND·FLIGHT·활동 없이 쉼 | 멈춘다(대화는 남는다). 수요가 있는 AIRPORT에는 PARKED 1대를 남긴다 |
+| RESTART | 백그라운드 세션이 3일 넘었고 PARKED | 새 CREW BRIEFING으로 다시 띄운다 |
+| AOG | NORDO이거나 최근 24시간 LOS | 24시간 기한으로 배정을 멈춘다 |
+| RETIRE | 30일 동안 ARRIVED 없음 | 퇴역(자동으로는 하지 않는다) |
+
+- **수요**는 DISPATCH와 같은 제외 규칙을 통과한 FLIGHT다. ATC 팀 FLIGHT도 센다. AIRPORT마다 "배정 · 받을 곳 없음 · PARKED" 한 줄이 보인다. LAUNCH를 막는 것(GROUND STOP, 착륙 대기가 block time보다 긴 활주로, 백그라운드 세션 상한)이 있으면 그 줄에 적힌다.
+- 조건이 두 주기(10분) 이어져야 제안이 되고, LAUNCH·ENTRY는 120분 이어져야 된다. 그 전에는 "지켜보는 중"에 보인다. 조건이 풀리면 제안은 저절로 닫힌다(조건 풀림).
+- **반대**를 누르면 이유를 적을 수 있다(선택). 판정한 제안은 24시간 다시 나오지 않는다. 띄우거나 멈춘 지 2시간 안에는 반대 제안(LAUNCH ↔ STOP)을 내지 않는다.
+- 판정이 20건이 넘고 동의가 80% 이상이면 게이트를 통과한다. 그다음 단계(승인하면 atc가 실행)는 아직 없다.
+- 판정은 이 화면에서만 된다. 관제 세션은 판정할 수 없다.
+
 ## CHECKRIDE: TYPE RATING 근거와 추천
 
 FLEET 탭 카드 아래의 CHECKRIDE는 팀마다, TYPE RATING(SEC · UI · DATA · DOCS)마다 LOGBOOK에서 근거를 모아 보여 준다. 추천만 하고, rating은 SUPERVISOR가 버튼을 누를 때만 바뀐다.

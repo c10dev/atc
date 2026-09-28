@@ -606,11 +606,11 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **기록.** LAUNCH·STOP마다 FLIGHT RECORDER에 `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}` 한 줄.
 - **화면.** 세션이 없는 카드에 **LAUNCH**(permission mode, 선택 모델, 상한 대비 백그라운드 수). 백그라운드 세션이면 `BG <id>`와 **STOP**. 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
 
-아직 만들지 않음: 수요·가동률로 LAUNCH·STOP 제안(FLEET PLAN, 8.6), 오래 도는 세션의 정기 정비로서 RESTART, 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, GitHub idea #53).
+아직 만들지 않음: 수요·가동률로 제안한 LAUNCH·STOP의 실행(FLEET PLAN, 8.6: 그림자 제안은 만들었고 승인 운용은 아직), 오래 도는 세션의 정기 정비로서 RESTART, 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, GitHub idea #53).
 
-### 8.6 FLEET PLAN: LAUNCH·STOP 등을 제안하기 (설계 초안)
+### 8.6 FLEET PLAN: LAUNCH·STOP 등을 제안하기
 
-상태: 설계 초안(2026-09-28), SUPERVISOR 결정은 아래에 적었다. 아직 만든 것 없음. 8.5가 SUPERVISOR에게 조종 버튼을 줬다면, 이 절은 atc가 언제 그 버튼을 쓰자고 제안할지 정한다. 팀을 꾸리고, 세우고, 정비하고, 퇴역시키는 일을 손으로 챙기지 않게 하려는 것이다.
+상태: 1·2단계 만듦(그림자, 2026-09-28). SUPERVISOR 결정은 아래에 적었다. 8.5가 SUPERVISOR에게 조종 버튼을 줬다면, 이 절은 atc가 언제 그 버튼을 쓰자고 제안할지 정한다. 팀을 꾸리고, 세우고, 정비하고, 퇴역시키는 일을 손으로 챙기지 않게 하려는 것이다.
 
 **지금 사실(2026-09-28 06:30 UTC).**
 
@@ -647,10 +647,29 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 **기록과 화면.** `fleet-plan.jsonl`, 추가만 함: `{op: "create", id: "F-0001", kind, aircraft, airport, reasons: [{code, detail, value}], at}`, 이어서 `{op: "verdict", id, verdict: "agree" | "disagree", by, at}`, `{op: "expire" | "supersede", id, at}`, 승인 운용에서는 `{op: "approve" | "executed", id, at, jobId?}`. `GET /api/fleet/plan`이 열린 제안, 최근 제안, 게이트를 돌려준다. FLEET 탭 카드 위에 FLEET PLAN 블록이 생기고, 제안마다 사유와 agree·disagree가 붙는다. 승인 운용은 approve를 더하며, 8.5의 버튼과 같은 코드를 돌리고 FLIGHT RECORDER에 `by: "FLEET PLAN F-0001"`로 남긴다. 계획은 DISPATCH 주기(5분)에 돌고 읽기만 한다.
 
+**만든 것(1·2단계, 그림자, 2026-09-28).**
+
+- **순수 함수**(`server/fleet-plan.ts`): `fleetPlanOf(inputs)`가 후보와 AIRPORT별 수요 줄을 돌려준다. `persistOf`는 후보를 두 주기, LAUNCH·ENTRY는 `waitMin` 동안 지켜본다. `syncFleetPlan`은 기록 줄을 만든다: `create`, 조건이 풀리면 `expire`, 같은 열쇠가 다른 종류나 AIRCRAFT를 가리키면 `supersede`. 판정한 제안은 24시간 다시 내지 않고, `minDwell` 안에는 반대 제안(LAUNCH ↔ STOP·RESTART)을 내지 않는다. 게이트는 `fleetPlanGateOf`다.
+- **수요.** planner를 `candidateTeams`를 `LINEAR_TEAM_KEYS`의 모든 팀으로 바꿔 한 번 더 돌린다. 새 `unserved` 목록에는 제외 규칙을 모두 통과했는데 AIRCRAFT를 받지 못한 FLIGHT가 들어간다(`no-aircraft`, `unqualified`, `no-tail`). AIRPORT의 AIRBORNE 슬롯이 차서 남은 FLIGHT는 세지 않는다.
+- **위 규칙을 이렇게 읽었다.**
+  - LAUNCH의 "예비가 모자람"은 받을 곳 없는 수요에서 따라 나온다. 자격 있는 PARKED AIRCRAFT가 있었다면 배정됐을 것이기 때문이다. 예비 규칙은 STOP과 RETIRE에서 작동한다.
+  - 활주로 병목은 그 AIRPORT의 14일 착륙 대기 중앙값이 block time 중앙값보다 길 때다. 기록이 없으면 병목이 아니다.
+  - LAUNCH를 막는 GROUND STOP은 `kind: stop`만이다. 그림자든 실제로 막는 중이든 같다.
+  - STOP·RESTART는 atc가 띄운 것만이 아니라 모든 백그라운드 세션(`claude agents --json`의 `kind: background`)을 본다.
+  - ENTRY는 `tail:` FLIGHT를 받지 않는다.
+  - LOS는 최근 24시간 FLIGHT RECORDER의 `alert.raised` conflict다. NORDO는 죽은 세션이 있고 같은 이름의 살아 있는 세션이 없는 것이다.
+  - RETIRE는 들인 지 `retireDays`가 안 된 AIRCRAFT를 건너뛴다.
+- **실행부**(`server/fleet-plan-run.ts`): DISPATCH 주기에 돈다. Linear·GitHub을 아직 못 읽었거나 `claude agents`가 실패하면 그 주기를 건너뛰고, 열린 제안은 그대로 둔다. 지속 조건의 시각은 메모리에 두므로 서버를 다시 띄우면 처음부터 센다.
+- **API.** `GET /api/fleet/plan`은 `{mode, config, ranAt, error, demand, open, waiting, recent, gate}`를 돌려준다. `open[].now`는 지금 계산한 사유다. `waiting`에는 지속 조건을 기다리는 후보가 들어가고, 판정 뒤 쉬는 후보는 빠진다. `POST /api/fleet/plan/:id/verdict`는 `{verdict: "agree" | "disagree", reason?}`를 받는다. 이 화면의 Origin이 있어야 하고(아니면 403), 닫힌 제안에는 409를 돌려준다.
+- **탭.** 카드 위에 FLEET PLAN 블록이 있다. 게이트, AIRPORT별 수요 한 줄과 LAUNCH를 막는 이유, 사유가 붙은 열린 제안과 반대·동의 버튼, 지켜보는 후보, 최근 닫힌 제안이 보인다.
+- **운영 데이터로 처음 본 결과(2026-09-28 07:15 UTC):** 제안 없음. ATC-35는 TEAM_I가 받을 수 있고, 나머지 열린 ATC FLIGHT는 우선순위가 없다. 팀 세션은 모두 데스크톱 세션이다. NORDO·LOS가 없고, 모든 AIRCRAFT가 30일 안에 ARRIVED했다.
+
+아직 안 만든 것: 3단계(승인 운용)와 4단계(자동 STOP), 기한이 지난 AOG 뒤의 제안(RETIRE나 복귀), 활주로 규칙의 머지 슬롯 점유, 주간 사용량 줄(FUEL), FLEET PLAN 제안의 CROSSCHECK mark.
+
 **구현 순서.**
 
-1. 순수 함수 `fleetPlanOf(snapshot, fleet, dispatchPlan, logbook, sessions, atfm, config, now)`와 종류마다, 그리고 왔다 갔다 방지 규칙의 테스트.
-2. 그림자: 기록, API, FLEET PLAN 블록, agree·disagree, 게이트.
+1. ✅ 순수 함수 `fleetPlanOf(snapshot, fleet, dispatchPlan, logbook, sessions, atfm, config, now)`와 종류마다, 그리고 왔다 갔다 방지 규칙의 테스트.
+2. ✅ 그림자: 기록, API, FLEET PLAN 블록, agree·disagree, 게이트.
 3. 승인 운용(`dispatch.json`이나 별도 파일의 스위치): approve가 8.5와 프로필 수정으로 실행.
 4. atc가 띄운 쉬는 세션의 자동 STOP만: 스위치, 하루 상한, 7일에 SUPERVISOR가 두 번 되돌리면 꺼짐.
 
@@ -691,7 +710,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 6. ◐ FLEET 카드의 LOGBOOK 기반 TARGETS 실적(7.1, 7.2)과 NETWORK의 프로젝트 목표 옆 표시(7.3). 남은 일: 분류별 중앙값으로 정시 기준 잡기, OCC 목표 변경 초안의 S2(7.4, S1은 만듦)
 7. ✅ FLEET 탭의 팀 꾸리기(8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE(8.2): LOGBOOK의 TYPE RATING 근거, GRANT·REVIEW 추천, SUPERVISOR의 부여·회수
-9. ✅ 세션 조종(8.5): FLEET 탭의 LAUNCH·STOP. 남은 일: 수요 기반 제안(FLEET PLAN, 8.6), RESTART, 다시 띄우는 CREW CHANGE, 사용량 예산
+9. ✅ 세션 조종(8.5): FLEET 탭의 LAUNCH·STOP. 남은 일: 수요 기반 제안의 승인(FLEET PLAN, 8.6, 그림자는 만듦), RESTART, 다시 띄우는 CREW CHANGE, 사용량 예산
 
 ## 11. 위험과 대응
 

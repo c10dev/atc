@@ -13,6 +13,7 @@ import { mountLandingReview } from "./landing-review.ts";
 import { mountCrewChange } from "./crew-change.ts";
 import { mountCheckride } from "./checkride.ts";
 import { mountFleet } from "./fleet.ts";
+import { mountFleetPlan, runFleetPlan } from "./fleet-plan-run.ts";
 import { mountSessionControl } from "./session-control.ts";
 import { mountFollowing } from "./following.ts";
 import { recordDepartures } from "./departures.ts";
@@ -79,6 +80,7 @@ async function tick() {
     if (isWarm(next) && Date.now() - lastDispatchAt >= DISPATCH_MS) {
       lastDispatchAt = Date.now();
       runDispatch(next);
+      runFleetPlan(next); // FLEET PLAN(docs/fleet.md 8.6): 같은 주기에 그림자 제안. claude agents를 읽어 기다리지 않는다
     }
     if (isWarm(next)) recordDepartures(next); // FLIGHT의 첫 STAND·claim과 HANDOFF를 착수 기록에(바뀔 때만). 첫 번은 기준선
     if (isWarm(next)) runLogbook(next); // 10분마다 머지된 PR을 LOGBOOK에 적는다
@@ -111,6 +113,7 @@ mountDispatch(app, getSnapshot);
 mountCrewChange(app);
 mountFleet(app, getSnapshot);
 mountSessionControl(app, getSnapshot);
+mountFleetPlan(app);
 mountCheckride(app, getSnapshot);
 mountLogbook(app);
 mountNetwork(app, getSnapshot);

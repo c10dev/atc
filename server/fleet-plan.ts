@@ -1,0 +1,386 @@
+import { CONFIGURATIONS, type ConfigurationId, canFly, type CrewMember, type FleetFile, type Rating } from "./crew.ts";
+import type { Plan, Unserved } from "./dispatch.ts";
+import type { AircraftView } from "./fleet.ts";
+import type { LogEntry } from "./logbook.ts";
+import { GATE } from "./proposals.ts";
+
+// FLEET PLAN(docs/fleet.md 8.6): 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·AOG·RETIRE를 제안한다.
+// 여기는 계산만(순수). 기록·API·주기 실행은 fleet-plan-run.ts. 1·2단계는 그림자: 제안하고 SUPERVISOR가 동의·반대만 한다.
+
+export interface FleetPlanConfig {
+  reserve: number; // 수요가 있는 AIRPORT마다 남겨 둘 PARKED AIRCRAFT
+  waitMin: number; // LAUNCH·ENTRY: 받을 곳 없는 FLIGHT가 이만큼 이어져야 제안
+  idleHours: number; // STOP: 백그라운드 세션이 이만큼 쉬었으면
+  restartDays: number; // RESTART: 백그라운드 세션이 이보다 오래됐으면
+  retireDays: number; // RETIRE: 이 기간 ARRIVED가 없으면
+  minDwellMin: number; // LAUNCH·STOP 뒤 이만큼은 반대 제안을 하지 않는다
+}
+// SUPERVISOR 결정(2026-09-28): 제안한 기본값 그대로
+export const FLEET_PLAN_DEFAULTS: FleetPlanConfig = { reserve: 1, waitMin: 120, idleHours: 12, restartDays: 3, retireDays: 30, minDwellMin: 120 };
+
+export const FLEET_PLAN_KINDS = ["LAUNCH", "ENTRY", "STOP", "RESTART", "AOG", "RETIRE"] as const;
+export type FleetPlanKind = (typeof FLEET_PLAN_KINDS)[number];
+
+export interface PlanReason {
+  code: string;
+  detail: string;
+  value?: number | string | null;
+}
+
+export interface FleetCandidate {
+  key: string; // 지속 조건을 세는 열쇠. LAUNCH·ENTRY는 AIRPORT마다 하나(DEMAND|VCDO), 나머지는 종류|REGISTRATION
+  kind: FleetPlanKind;
+  aircraft: string | null; // REGISTRATION. ENTRY는 새로 들일 등록번호
+  airport: string | null;
+  configuration?: ConfigurationId; // ENTRY
+  reasons: PlanReason[];
+}
+
+// AIRCRAFT 이름의 세션(claude agents --json)
+export interface SessionFact {
+  registration: string;
+  kind: string; // background | interactive
+  id?: string;
+  startedAt: number | null;
+}
+
+// AIRPORT마다 수요와 막힌 이유(화면용)
+export interface DemandRow {
+  airport: string;
+  served: number; // 이번 계획에서 AIRCRAFT를 받은 FLIGHT
+  unserved: string[]; // 받을 곳이 없는 FLIGHT
+  parked: number; // 계획 뒤에도 남는 PARKED AIRCRAFT
+  blocked: string | null; // LAUNCH를 막는 이유(GROUND STOP, 활주로, 상한)
+}
+
+export interface FleetInputs {
+  aircraft: AircraftView[]; // fleetView
+  plan: Pick<Plan, "assign" | "unserved">; // 모든 Linear 팀으로 돌린 planner
+  sessions: SessionFact[];
+  lastActive: Map<string, string>; // REGISTRATION → 마지막 활동(없으면 세션 시작)
+  nordo: Set<string>; // 세션이 죽었고 살아 있는 같은 이름 세션이 없는 REGISTRATION
+  los: Map<string, string>; // REGISTRATION → 최근 24시간 LOS 시각
+  logbook: Pick<LogEntry, "aircraft" | "airport" | "arrivedAt" | "blockMin" | "landingWaitMin">[];
+  openPrs: Set<string>; // 열린 PR의 STAND를 쥔 REGISTRATION
+  groundStops: Set<string>; // GROUND STOP(kind stop) 중인 AIRPORT
+  dwell: Map<string, { op: "launch" | "stop"; at: string }>; // 마지막 LAUNCH·STOP(FLIGHT RECORDER)
+  maxLaunched: number;
+  nextRegistration: string | null;
+  defaults: FleetFile["defaults"];
+  config: FleetPlanConfig;
+  now: number;
+}
+
+const MIN = 60_000;
+const HOUR = 60 * MIN;
+const DAY = 24 * HOUR;
+const RUNWAY_DAYS = 14;
+
+const median = (xs: number[]) => {
+  if (!xs.length) return null;
+  const v = [...xs].sort((a, b) => a - b);
+  const m = v.length >> 1;
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+};
+// 45m, 3h30m, 2d4h
+export function spanText(min: number) {
+  const m = Math.round(min);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h${m % 60 ? `${String(m % 60).padStart(2, "0")}m` : ""}`;
+  return `${Math.floor(h / 24)}d${h % 24 ? `${h % 24}h` : ""}`;
+}
+
+// 활주로가 병목인가: 최근 14일 착륙 대기 중앙값이 block time 중앙값보다 길면. 기록이 없으면 병목이 아니다
+export function runwayOf(logbook: FleetInputs["logbook"], airport: string, now: number): { bottleneck: boolean; detail: string } {
+  const recent = logbook.filter((e) => e.airport === airport && now - Date.parse(e.arrivedAt) < RUNWAY_DAYS * DAY);
+  const wait = median(recent.map((e) => e.landingWaitMin));
+  const block = median(recent.map((e) => e.blockMin).filter((x): x is number => x !== null));
+  if (wait === null || block === null) return { bottleneck: false, detail: `최근 ${RUNWAY_DAYS}일 착륙 기록 부족 — 활주로 확인 못 함` };
+  const text = `착륙 대기 중앙값 ${spanText(wait)} · block ${spanText(block)} (${RUNWAY_DAYS}일 ${recent.length}건)`;
+  return { bottleneck: wait > block, detail: text };
+}
+
+// 이 AIRCRAFT(또는 구성)가 그 FLIGHT를 날 수 있나: tail, TYPE RATING, CREW. 분류 라벨이 없으면 rating은 비어 있어 통과한다
+const canServe = (reg: string | null, ratings: Rating[], complement: CrewMember[], u: Unserved) =>
+  (!u.tails.length || (reg !== null && u.tails.includes(reg))) && u.ratings.every((r) => ratings.includes(r)) && canFly(complement, u.type);
+
+const isParked = (a: AircraftView) => !a.retired && !a.aog && a.status === "idle" && !a.flying.length;
+
+export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; demand: DemandRow[] } {
+  const cfg = i.config;
+  const out: FleetCandidate[] = [];
+  const byReg = new Map(i.aircraft.map((a) => [a.registration, a]));
+  const assigned = new Set(i.plan.assign.map((p) => p.aircraftName.toUpperCase()));
+  const unserved = i.plan.unserved ?? [];
+  const background = i.sessions.filter((x) => x.kind === "background");
+  // 최근 LAUNCH·STOP이 minDwell 안이면 반대 제안을 하지 않는다
+  const dwelling = (reg: string, op: "launch" | "stop") => {
+    const d = i.dwell.get(reg);
+    return d?.op === op && i.now - Date.parse(d.at) < cfg.minDwellMin * MIN ? d : null;
+  };
+  const airports = [...new Set([...i.plan.assign.map((p) => p.airport), ...unserved.map((u) => u.airport), ...i.aircraft.map((a) => a.base).filter(Boolean)])].sort() as string[];
+  const demandAt = (code: string) => i.plan.assign.filter((p) => p.airport === code).length + unserved.filter((u) => u.airport === code).length;
+  // 계획이 FLIGHT를 주지 않은 PARKED AIRCRAFT(AIRPORT의 예비)
+  const parkedAt = new Map(airports.map((code) => [code, i.aircraft.filter((a) => a.base === code && isParked(a) && !assigned.has(a.registration)).length]));
+  const launchPicks = new Set<string>();
+  const demand: DemandRow[] = [];
+
+  // ── LAUNCH·ENTRY: 받을 곳 없는 FLIGHT ──
+  for (const code of airports) {
+    const mine = unserved.filter((u) => u.airport === code);
+    const row: DemandRow = { airport: code, served: i.plan.assign.filter((p) => p.airport === code).length, unserved: mine.map((u) => u.flight), parked: parkedAt.get(code) ?? 0, blocked: null };
+    demand.push(row);
+    if (!mine.length) continue;
+    const runway = runwayOf(i.logbook, code, i.now);
+    if (i.groundStops.has(code)) row.blocked = "GROUND STOP 중";
+    else if (runway.bottleneck) row.blocked = `활주로가 병목 — ${runway.detail}`;
+    else if (background.length >= i.maxLaunched) row.blocked = `백그라운드 세션 ${background.length}/${i.maxLaunched} — 상한`;
+    if (row.blocked) continue;
+    const common = (served: Unserved[]): PlanReason[] => [
+      { code: "waiting", detail: `받을 AIRCRAFT가 없는 FLIGHT ${served.length}건: ${served.map((u) => u.flight).join(", ")}`, value: served.length },
+      ...(served.some((u) => !u.labeled) ? [{ code: "unlabeled", detail: `분류 라벨 없음 — rating 확인 없이 셈: ${served.filter((u) => !u.labeled).map((u) => u.flight).join(", ")}` }] : []),
+      { code: "reserve", detail: `${code} PARKED ${row.parked} · 예비 ${cfg.reserve}`, value: row.parked },
+      { code: "runway", detail: runway.detail },
+      { code: "cap", detail: `백그라운드 세션 ${background.length}/${i.maxLaunched}`, value: background.length },
+    ];
+    // 운항하지 않는 등록 AIRCRAFT 중 가장 많은 FLIGHT를 받을 수 있는 것. 같으면 최근 ARRIVED가 많은 쪽
+    const idle = i.aircraft.filter((a) => a.status === "absent" && !a.retired && !a.aog && a.base === code && !i.nordo.has(a.registration) && !dwelling(a.registration, "stop"));
+    const fits = idle
+      .map((a) => ({ a, served: mine.filter((u) => canServe(a.registration, a.ratings, a.complement, u)) }))
+      .filter((x) => x.served.length)
+      .sort((x, y) => y.served.length - x.served.length || y.a.actuals.total - x.a.actuals.total || x.a.registration.localeCompare(y.a.registration));
+    if (fits.length) {
+      const { a, served } = fits[0];
+      launchPicks.add(a.registration);
+      const types = [...new Set(served.map((u) => u.type))].join("·");
+      out.push({
+        key: `DEMAND|${code}`, kind: "LAUNCH", aircraft: a.registration, airport: code,
+        reasons: [...common(served), { code: "fits", detail: `${a.registration}: TYPE RATING ${a.ratings.join("·") || "없음"}, CREW가 ${types}를 날 수 있음` }],
+      });
+      continue;
+    }
+    // 맞는 등록 AIRCRAFT가 없으면 새로 들이기. tail로 정한 FLIGHT는 그 팀만 받으므로 새 AIRCRAFT로 풀리지 않는다
+    if (!i.nextRegistration) {
+      row.blocked = "맞는 AIRCRAFT가 없고 남은 등록번호도 없음";
+      continue;
+    }
+    const open = mine.filter((u) => !u.tails.length);
+    const configs = (Object.keys(CONFIGURATIONS) as ConfigurationId[])
+      .map((id) => {
+        const c = id === "general" ? i.defaults : CONFIGURATIONS[id];
+        return { id, served: open.filter((u) => canServe(null, c.ratings, c.complement, u)) };
+      })
+      .filter((x) => x.served.length)
+      .sort((x, y) => y.served.length - x.served.length);
+    if (!configs.length) {
+      row.blocked = open.length ? "맞는 등록 AIRCRAFT도 CONFIGURATION도 없음" : `tail로 정한 팀이 운항할 수 없음: ${mine.map((u) => `${u.flight}(tail:${u.tails.join(",")})`).join(", ")}`;
+      continue;
+    }
+    const pick = configs[0];
+    const c = pick.id === "general" ? i.defaults : CONFIGURATIONS[pick.id];
+    out.push({
+      key: `DEMAND|${code}`, kind: "ENTRY", aircraft: i.nextRegistration, airport: code, configuration: pick.id,
+      reasons: [
+        ...common(pick.served),
+        { code: "no-fit", detail: `${code}에 운항하지 않는 등록 AIRCRAFT 중 맞는 것이 없음` },
+        { code: "fits", detail: `${pick.id} CONFIGURATION: TYPE RATING ${c.ratings.join("·")}, CREW ${c.complement.map((m) => m.position).join("·")}` },
+      ],
+    });
+  }
+
+  // ── STOP·RESTART: 백그라운드 세션 ──
+  const idleFor = (reg: string) => {
+    const at = i.lastActive.get(reg);
+    return at ? i.now - Date.parse(at) : null;
+  };
+  const stopOrder = background
+    .map((x) => ({ x, a: byReg.get(x.registration.toUpperCase()), idle: idleFor(x.registration.toUpperCase()) }))
+    .sort((p, q) => (q.idle ?? 0) - (p.idle ?? 0));
+  for (const { x, a, idle } of stopOrder) {
+    const reg = x.registration.toUpperCase();
+    if (!a) continue;
+    const bg = `BG ${x.id ?? "?"} — 멈춰도 대화는 남아 다시 이어짐`;
+    if (a.retired) {
+      out.push({ key: `STOP|${reg}`, kind: "STOP", aircraft: reg, airport: a.base, reasons: [{ code: "retired", detail: "RETIRED인데 세션이 떠 있음" }, { code: "session", detail: bg }] });
+      continue;
+    }
+    if (a.status !== "idle" || a.flying.length || assigned.has(reg) || dwelling(reg, "launch")) continue;
+    const code = a.base;
+    const parked = code ? (parkedAt.get(code) ?? 0) : 0;
+    const after = isParked(a) ? parked - 1 : parked; // AOG인 AIRCRAFT는 예비에 들지 않는다
+    const needReserve = code && demandAt(code) > 0 ? cfg.reserve : 0;
+    const restartAge = x.startedAt !== null ? i.now - x.startedAt : null;
+    if (idle !== null && idle >= cfg.idleHours * HOUR && after >= needReserve) {
+      if (code) parkedAt.set(code, after);
+      out.push({
+        key: `STOP|${reg}`, kind: "STOP", aircraft: reg, airport: code,
+        reasons: [
+          { code: "idle", detail: `STAND·FLIGHT·활동 없이 ${spanText(idle / MIN)} (기준 ${cfg.idleHours}h)`, value: Math.round(idle / HOUR) },
+          { code: "reserve", detail: needReserve ? `${code} PARKED ${parked} → ${after} · 예비 ${needReserve}` : `${code ?? "AIRPORT 없음"}에 수요 없음 — 예비 불필요` },
+          { code: "session", detail: bg },
+        ],
+      });
+      continue;
+    }
+    if (restartAge !== null && restartAge >= cfg.restartDays * DAY) {
+      out.push({
+        key: `RESTART|${reg}`, kind: "RESTART", aircraft: reg, airport: code,
+        reasons: [
+          { code: "age", detail: `세션이 ${spanText(restartAge / MIN)} 됨 (기준 ${cfg.restartDays}일) — PARKED일 때 새 CREW BRIEFING으로`, value: Math.round(restartAge / DAY) },
+          { code: "session", detail: bg },
+        ],
+      });
+    }
+  }
+
+  // ── AOG: NORDO 또는 최근 LOS ──
+  for (const a of i.aircraft) {
+    if (a.retired || a.aog) continue;
+    const reasons: PlanReason[] = [];
+    if (i.nordo.has(a.registration)) reasons.push({ code: "nordo", detail: "NORDO — 세션이 응답하지 않음" });
+    const los = i.los.get(a.registration);
+    if (los) reasons.push({ code: "los", detail: `최근 24시간 LOS(${los.slice(0, 16).replace("T", " ")}Z)` });
+    if (!reasons.length) continue;
+    const until = new Date(i.now + DAY).toISOString().slice(0, 10);
+    out.push({ key: `AOG|${a.registration}`, kind: "AOG", aircraft: a.registration, airport: a.base, reasons: [...reasons, { code: "until", detail: `해제 기한 ${until}(24시간)`, value: until }] });
+  }
+
+  // ── RETIRE: 오래 ARRIVED 없음 ──
+  for (const a of i.aircraft) {
+    if (a.retired || a.status === "busy" || a.flying.length || i.openPrs.has(a.registration) || launchPicks.has(a.registration)) continue;
+    if (a.enteredAt && i.now - Date.parse(a.enteredAt) < cfg.retireDays * DAY) continue;
+    const arrived = i.logbook.filter((e) => e.aircraft === a.registration && i.now - Date.parse(e.arrivedAt) < cfg.retireDays * DAY).length;
+    if (arrived) continue;
+    const code = a.base;
+    if (code && isParked(a) && demandAt(code) > 0 && (parkedAt.get(code) ?? 0) - 1 < cfg.reserve) continue;
+    const last = i.logbook.filter((e) => e.aircraft === a.registration).map((e) => e.arrivedAt).sort().at(-1);
+    out.push({
+      key: `RETIRE|${a.registration}`, kind: "RETIRE", aircraft: a.registration, airport: code,
+      reasons: [
+        { code: "no-arrival", detail: `${cfg.retireDays}일 동안 ARRIVED 없음${last ? ` (마지막 ${last.slice(0, 10)})` : " (LOGBOOK에 없음)"}`, value: 0 },
+        { code: "no-pr", detail: "열린 PR·STAND 없음" },
+      ],
+    });
+  }
+  return { candidates: out, demand };
+}
+
+// ── 지속 조건: 두 주기, LAUNCH·ENTRY는 waitMin ──
+
+// pending: 열쇠 → 처음 본 시각. 이번 주기에 없는 열쇠는 지운다(조건이 끊기면 처음부터)
+export function persistOf(pending: Record<string, string>, candidates: FleetCandidate[], now: number, cfg: FleetPlanConfig) {
+  const next: Record<string, string> = {};
+  const ready: FleetCandidate[] = [];
+  for (const c of candidates) {
+    const first = pending[c.key] ?? new Date(now).toISOString();
+    next[c.key] = first;
+    const held = now - Date.parse(first);
+    const demandKind = c.kind === "LAUNCH" || c.kind === "ENTRY";
+    if (demandKind ? held >= cfg.waitMin * MIN : c.key in pending) ready.push(c);
+  }
+  return { pending: next, ready };
+}
+
+// ── 기록(fleet-plan.jsonl, 추가만) ──
+
+export type FleetPlanOp =
+  | { op: "create"; id: string; key: string; kind: FleetPlanKind; aircraft: string | null; airport: string | null; configuration?: ConfigurationId; reasons: PlanReason[]; at: string }
+  | { op: "verdict"; id: string; verdict: "agree" | "disagree"; by: string; reason?: string; at: string }
+  | { op: "expire"; id: string; reason?: string; at: string }
+  | { op: "supersede"; id: string; by: string; at: string };
+
+export type FleetProposalStatus = "open" | "agreed" | "disagreed" | "expired" | "superseded";
+export interface FleetProposal {
+  id: string;
+  key: string;
+  kind: FleetPlanKind;
+  aircraft: string | null;
+  airport: string | null;
+  configuration?: ConfigurationId;
+  reasons: PlanReason[];
+  at: string;
+  status: FleetProposalStatus;
+  closedAt: string | null;
+  verdict: { verdict: "agree" | "disagree"; by: string; reason?: string; at: string } | null;
+  closeReason: string | null; // expire 사유, supersede면 이어 쓴 id
+}
+
+export function foldFleetPlan(ops: FleetPlanOp[]): FleetProposal[] {
+  const byId = new Map<string, FleetProposal>();
+  for (const o of ops) {
+    if (o.op === "create") {
+      if (byId.has(o.id)) continue;
+      const { op: _op, ...rest } = o;
+      byId.set(o.id, { ...rest, status: "open", closedAt: null, verdict: null, closeReason: null });
+      continue;
+    }
+    const p = byId.get(o.id);
+    if (!p || p.status !== "open") continue; // 닫힌 제안은 다시 바뀌지 않는다
+    p.closedAt = o.at;
+    if (o.op === "verdict") {
+      p.status = o.verdict === "agree" ? "agreed" : "disagreed";
+      p.verdict = { verdict: o.verdict, by: o.by, ...(o.reason ? { reason: o.reason } : {}), at: o.at };
+    } else if (o.op === "expire") {
+      p.status = "expired";
+      p.closeReason = o.reason ?? null;
+    } else {
+      p.status = "superseded";
+      p.closeReason = o.by;
+    }
+  }
+  return [...byId.values()];
+}
+
+export const nextFleetPlanId = (all: Pick<FleetProposal, "id">[]) =>
+  `F-${String(all.reduce((n, p) => Math.max(n, Number(p.id.slice(2)) || 0), 0) + 1).padStart(4, "0")}`;
+
+// 판정한 제안과 같은 짝(열쇠·종류·AIRCRAFT)은 24시간 다시 내지 않는다
+export const COOLDOWN_MS = DAY;
+const OPPOSITE: Partial<Record<FleetPlanKind, FleetPlanKind[]>> = { LAUNCH: ["STOP"], STOP: ["LAUNCH"], RESTART: ["LAUNCH"] };
+
+// 한 주기의 기록 줄: 조건이 풀린 열린 제안은 expire, 같은 열쇠의 다른 제안이 되면 supersede하고 새로,
+// 지속 조건을 채운 후보는 create. 판정 뒤 24시간과 minDwell 안의 반대 제안은 내지 않는다
+export function syncFleetPlan(all: FleetProposal[], candidates: FleetCandidate[], ready: FleetCandidate[], now: number, cfg: FleetPlanConfig): FleetPlanOp[] {
+  const at = new Date(now).toISOString();
+  const ops: FleetPlanOp[] = [];
+  const current = new Map(candidates.map((c) => [c.key, c]));
+  const open = all.filter((p) => p.status === "open");
+  const openByKey = new Map(open.map((p) => [p.key, p]));
+  const created: FleetProposal[] = [];
+  const same = (p: Pick<FleetProposal, "kind" | "aircraft">, c: FleetCandidate) => p.kind === c.kind && p.aircraft === c.aircraft;
+  for (const p of open) {
+    const c = current.get(p.key);
+    if (!c) ops.push({ op: "expire", id: p.id, reason: "조건이 풀림", at });
+  }
+  for (const c of ready) {
+    const o = openByKey.get(c.key);
+    if (o && same(o, c)) continue;
+    const recentDecided = all.some((p) => p.verdict && p.key === c.key && same(p, c) && now - Date.parse(p.verdict.at) < COOLDOWN_MS);
+    if (recentDecided) continue;
+    const opposite = (OPPOSITE[c.kind] ?? []).some((k) =>
+      [...all, ...created].some((p) => p.kind === k && p.aircraft === c.aircraft && now - Date.parse(p.at) < cfg.minDwellMin * MIN),
+    );
+    if (opposite) continue;
+    const id = nextFleetPlanId([...all, ...created]);
+    if (o) ops.push({ op: "supersede", id: o.id, by: id, at });
+    const line: FleetPlanOp = { op: "create", id, key: c.key, kind: c.kind, aircraft: c.aircraft, airport: c.airport, ...(c.configuration ? { configuration: c.configuration } : {}), reasons: c.reasons, at };
+    ops.push(line);
+    created.push({ ...c, id, at, status: "open", closedAt: null, verdict: null, closeReason: null });
+  }
+  return ops;
+}
+
+// 그림자 게이트: DISPATCH·SCHEDULE과 같은 기준(20건, 합의율 80%). 종류마다 건수도 보인다
+export function fleetPlanGateOf(all: FleetProposal[]) {
+  const decided = all.filter((p) => p.status === "agreed" || p.status === "disagreed");
+  const agreed = decided.filter((p) => p.status === "agreed").length;
+  const agreement = decided.length ? agreed / decided.length : null;
+  const byKind = Object.fromEntries(
+    FLEET_PLAN_KINDS.map((k) => {
+      const mine = decided.filter((p) => p.kind === k);
+      return [k, { decided: mine.length, agreed: mine.filter((p) => p.status === "agreed").length }];
+    }),
+  ) as Record<FleetPlanKind, { decided: number; agreed: number }>;
+  return { decided: decided.length, agreed, agreement, target: GATE, ready: decided.length >= GATE.decided && agreement !== null && agreement >= GATE.agreement, byKind };
+}

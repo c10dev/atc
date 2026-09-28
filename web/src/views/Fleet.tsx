@@ -6,12 +6,14 @@ import { timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { FleetCrew } from "./FleetCrew.tsx";
 import { Checkride } from "./Checkride.tsx";
+import { FleetPlan } from "./FleetPlan.tsx";
 import "./Fleet.css";
 
 // FLEET: 팀(AIRCRAFT)마다 CREW COMPLEMENT, TYPE RATING, ROUTE, TARGETS. 설계: docs/fleet.md.
 // 팀 빌딩: ENTRY INTO SERVICE(새 AIRCRAFT), CONFIGURATION(팀 구성 템플릿), CREW BRIEFING(세션 시작 지시문),
 // AOG(잠시 운항 중지), RETIREMENT(퇴역). LAUNCH·STOP: atc가 `claude --bg`로 세션을 띄우고 멈춘다(docs/fleet.md 8.5).
 // 사람이 직접 연 세션(데스크톱·터미널)은 CREW BRIEFING을 붙여 넣는 길도 그대로다.
+// FLEET PLAN: atc가 그 버튼들을 언제 쓰자고 제안하는지(docs/fleet.md 8.6, 그림자).
 
 interface Configuration {
   id: string;
@@ -217,6 +219,7 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
         />
       )}
       {controlError && <p className="fl-entry-preview faint">세션 조종을 쓸 수 없음(LAUNCH·STOP 숨김): {controlError}</p>}
+      <FleetPlan refreshKey={refreshKey} />
       <div className="fl-cards">
         {inService.map((a) =>
           editing === a.registration ? (

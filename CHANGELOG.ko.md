@@ -24,6 +24,10 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- FLEET PLAN 그림자 운용([docs/fleet.ko.md](docs/fleet.ko.md) 8.6 1·2단계). atc가 DISPATCH 주기(5분)마다 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·AOG·RETIRE를 사유와 함께 제안하고, FLEET 탭 카드 위의 FLEET PLAN 블록에서 SUPERVISOR가 동의·반대로 판정한다. 세션을 띄우거나 멈추지는 않는다.
+  - 기본값은 SUPERVISOR 결정대로다: 예비 1, 대기 120분, 유휴 12시간, RESTART 3일, 퇴역 30일, 반대 제안 금지 2시간. ATC FLIGHT도 수요로 센다(planner를 모든 Linear 팀으로 한 번 더 돌림). DISPATCH 배정 대상은 그대로 `candidateTeams`다.
+  - planner가 받을 AIRCRAFT가 없어 남은 FLIGHT를 `unserved`로 내놓는다. AIRPORT 슬롯이 차서 남은 것은 넣지 않는다.
+  - 기록은 추가만 하는 `~/.local/state/atc/fleet-plan.jsonl`(create·verdict·expire·supersede)이다. API는 `GET /api/fleet/plan`과 `POST /api/fleet/plan/:id/verdict`(이 화면에서만)다. 게이트는 DISPATCH·SCHEDULE과 같은 20건·80%다.
 - rules-drift hook: 돌고 있는 팀 세션이 규칙 파일(vocado `CLAUDE.md`, `AGENTS.md`) 변경을 다음 턴에 안다. 메시지로 퍼뜨리지 않아도 된다(ATC-42, [hooks/README.ko.md](hooks/README.ko.md#rules-drift-hook)).
   - `hooks/rules-drift.mjs start`(SessionStart)는 세션마다 기준 해시와 내용을 적는다. `check`(UserPromptSubmit·PostToolUse, PostToolUse는 30초에 한 번까지)는 파일이 바뀌었으면 unified diff를 `hookSpecificOutput.additionalContext`로 넣고 새 해시를 확인한 것으로 적는다. 네트워크를 쓰지 않고, 대화 기록을 읽지 않고, 오류가 나면 아무것도 출력하지 않고 exit 0이다(fail open).
   - 설정은 명령줄로 한다: `--root`, `--files`(기본 `CLAUDE.md,AGENTS.md`), `--ref`. `--ref`를 주면 ref에 있는 파일은 ref에서, 없는 파일(git이 추적하지 않는 파일)은 작업 트리에서 읽는다.
