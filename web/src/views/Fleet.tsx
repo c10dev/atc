@@ -4,6 +4,7 @@ import type { AircraftView, CrewMember, FleetFile, Rating } from "../../../serve
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel } from "../../../server/health.ts";
 import { type FuelRemaining, fuelLabel, fuelTitle } from "../../../server/fuel-remaining.ts";
 import { elapsedText, type FleetRow, fleetRows, fleetStatusOf } from "../../../server/fleet-status.ts";
+import { CREW_WARNING_LABEL, LEAK_LABEL, tokensText, usd } from "../../../server/fuel-view.ts";
 import type { RulesView } from "../../../server/rules-state.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
@@ -314,6 +315,16 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
+// TARGETS 한 줄: 주 5 FLIGHT · 정시성 80% · FLIGHT당 NET $8 이하 · CACHE HIT 95%
+function targetParts(t: AircraftView["targets"]): string[] {
+  return [
+    t.flightsPerWeek != null ? `주 ${t.flightsPerWeek} FLIGHT` : null,
+    t.onTime != null ? `정시성 ${pct(t.onTime)}` : null,
+    t.fuelPerFlight != null ? `FLIGHT당 NET ${usd(t.fuelPerFlight)} 이하` : null,
+    t.cacheHit != null ? `CACHE HIT ${pct(t.cacheHit)}` : null,
+  ].filter((x): x is string => x !== null);
+}
+
 // FUEL · ACCOUNT(ATC-60): ACCOUNT마다 쓴 몫과 구성원. 관제 세션은 AIRCRAFT와 따로 적는다 — 누가 그 ACCOUNT를 쓰는지 보이게
 function FuelAccounts({ accounts }: { accounts: FuelRemaining[] }) {
   if (!accounts.length) return null;
@@ -362,6 +373,7 @@ function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[]; open: 
         <span>경과</span>
         <span>마지막 활동</span>
         <span>이번 주</span>
+        <span>FUEL 14일</span>
         <span />
       </div>
       <ul className="fl-rows">
@@ -414,6 +426,9 @@ function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[]; open: 
                 <span className="fl-r-week" title="이번 주(월요일부터) ARRIVED와 정시율(기대 block time이 있는 FLIGHT만)">
                   {r.week}건 · 정시 {r.weekOnTime == null ? "—" : pct(r.weekOnTime)}
                 </span>
+                <span className="fl-r-burn mono" title={r.fuelBurn?.title ?? "최근 14일 fuel이 있는 ARRIVED FLIGHT 없음(옛 LOGBOOK 줄에는 fuel이 없다)"}>
+                  {r.fuelBurn ? r.fuelBurn.label.replace(/^FUEL /, "") : <span className="faint">FUEL —</span>}
+                </span>
                 <span className="fl-r-chev" aria-hidden="true">
                   {isOpen ? "▾" : "▸"}
                 </span>
@@ -442,6 +457,7 @@ function blockTime(min: number) {
 // TARGETS 옆 실적(LOGBOOK, docs/fleet.md 7.2). 보여 주기만 한다.
 function Actuals({ a }: { a: AircraftView }) {
   const x = a.actuals;
+  const fuelOf = new Map((a.fuelRecent ?? []).map((f) => [f.key, f]));
   const t = a.targets;
   const weekShort = t.flightsPerWeek != null && x.week < t.flightsPerWeek;
   const lateShort = t.onTime != null && x.onTime.rate != null && x.onTime.rate < t.onTime;
@@ -495,11 +511,100 @@ function Actuals({ a }: { a: AircraftView }) {
               {e.reverted && <span className="fl-bad">REVERTED</span>}
               {e.los > 0 && <span className="fl-bad">LOS {e.los}</span>}
               <span className="faint fl-log-date">{e.arrivedAt.slice(5, 10)}</span>
+              <RecentFuel f={fuelOf.get(e.key)} />
             </li>
           ))}
         </ul>
       ) : (
         <p className="fl-line faint">LOGBOOK에 ARRIVED 기록 없음</p>
+      )}
+    </>
+  );
+}
+
+// 최근 FLIGHT 한 줄의 FUEL(ATC-56): FUEL COST(없으면 토큰)·NET·LEAK, TRIP FUEL 안이었나. fuel 없는 옛 줄은 "FUEL —"
+type FuelRecentView = NonNullable<AircraftView["fuelRecent"]>[number];
+function RecentFuel({ f }: { f: FuelRecentView | undefined }) {
+  if (!f || f.tokens === null) return <span className="fl-log-fuel faint" title="이 FLIGHT의 LOGBOOK 줄에 fuel이 없다(FUEL F4 전이거나 대화 기록을 찾지 못함)">FUEL —</span>;
+  const trip = f.trip.p50 !== null && f.trip.p90 !== null ? `TRIP FUEL ${usd(f.trip.p50)}–${usd(f.trip.p90)} (${f.trip.level} ${f.trip.group}, ${f.trip.samples}건)` : "TRIP FUEL 없음(비교할 FLIGHT가 모자람)";
+  const title = [
+    `FUEL BURN ${tokensText(f.tokens)} 토큰`,
+    f.cost === null ? "FUEL COST 없음(값 없는 모델이거나 옛 줄)" : `FUEL COST ${usd(f.cost)}`,
+    f.net !== null && `NET ${usd(f.net)}`,
+    f.leakTokens !== null && `LEAK ${tokensText(f.leakTokens)} 토큰${f.leakCost !== null ? ` ${usd(f.leakCost)}` : ""}`,
+    f.unpriced.length ? `값 없음: ${f.unpriced.join(", ")}` : null,
+    trip,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <span className="fl-log-fuel" title={title}>
+      {f.net !== null ? `NET ${usd(f.net)}` : `${tokensText(f.tokens)} tok`}
+      {f.leakCost ? <span className="fl-short"> LEAK {usd(f.leakCost)}</span> : null}
+      {f.verdict === "unexpected" ? <span className="fl-late"> UNEXPECTED</span> : f.verdict === "inside" ? <span className="fl-ontime"> TRIP ✓</span> : null}
+    </span>
+  );
+}
+
+// FLEET 카드의 FUEL(ATC-56): 최근 14일 ARRIVED FLIGHT. 값이 없는 칸은 "—"(0이 아니다)
+function FuelBlock({ a }: { a: AircraftView }) {
+  const f = a.fuelBurn;
+  if (!f) return null;
+  const t = a.targets;
+  const costShort = t.fuelPerFlight != null && f.netPerFlight !== null && f.netPerFlight > t.fuelPerFlight;
+  const cacheShort = t.cacheHit != null && f.cacheHit?.total != null && f.cacheHit.total < t.cacheHit;
+  const hitText = (v: number | null | undefined) => (v == null ? "—" : pct(v));
+  return (
+    <>
+      <h3 className="fl-sub">
+        FUEL <span className="faint">최근 {f.days}일</span>
+      </h3>
+      {f.withFuel === 0 ? (
+        <p className="fl-line faint">ARRIVED {f.arrived}건 중 fuel이 있는 FLIGHT 없음 — 옛 LOGBOOK 줄에는 fuel이 없다</p>
+      ) : (
+        <>
+          <p className="fl-actuals">
+            <span className={costShort ? "fl-short" : undefined} title="값을 매긴 FLIGHT의 평균. NET은 LEAK을 뺀 것">
+              FUEL COST {f.costPerFlight === null ? "—" : `${usd(f.costPerFlight)}/FLT`}
+              {f.netPerFlight !== null && ` · NET ${usd(f.netPerFlight)}`}
+              {t.fuelPerFlight != null && <span className="faint"> (목표 NET {usd(t.fuelPerFlight)} 이하)</span>}
+            </span>
+          </p>
+          <p className="fl-actuals">
+            <span className={cacheShort ? "fl-short" : undefined}>
+              CACHE HIT CAPTAIN {hitText(f.cacheHit?.captain)} · CREW {hitText(f.cacheHit?.crew)}
+              {t.cacheHit != null && <span className="faint"> (목표 {pct(t.cacheHit)})</span>}
+            </span>
+            {" · "}
+            <span title="값을 매긴 FLIGHT의 FUEL COST 가운데 CREW(서브에이전트) 몫. CREW 출력은 하한">CREW 몫 {f.crewShare === null ? "—" : pct(f.crewShare)}</span>
+          </p>
+          <p className="fl-actuals faint">
+            ARRIVED {f.arrived} · fuel {f.withFuel} · 값 {f.priced}
+            {f.checked > 0 && (
+              <>
+                {" · "}TRIP FUEL 넘음 <span className={f.unexpected ? "fl-bad" : undefined}>{f.unexpected}</span>/{f.checked}
+              </>
+            )}
+          </p>
+          <p className="fl-actuals faint">
+            LEAK{" "}
+            {f.leaks.length
+              ? f.leaks.map((l) => `${LEAK_LABEL[l.rule]} ${tokensText(l.tokens)}`).join(" · ")
+              : "없음"}
+            {f.leakCost ? ` (${usd(f.leakCost)})` : ""}
+          </p>
+          <p className="fl-actuals faint" title="CREW(서브에이전트) 사용의 낭비 신호(FUEL F7). LEAK에는 넣지 않는다. F7 전 LOGBOOK 줄은 재지 않았다">
+            CREW 경고{" "}
+            {f.crewWarnings === null ? (
+              "— (잰 FLIGHT 없음)"
+            ) : f.crewWarnings.length ? (
+              <span className="fl-short">{f.crewWarnings.map((w) => `${CREW_WARNING_LABEL[w.kind]} ${w.count}`).join(" · ")}</span>
+            ) : (
+              "없음"
+            )}
+          </p>
+          {f.unpriced.length > 0 && <p className="fl-actuals faint">값 없는 모델: {f.unpriced.join(", ")}</p>}
+        </>
       )}
     </>
   );
@@ -604,17 +709,11 @@ function Card({
         </p>
       )}
 
+      <FuelBlock a={a} />
+
       <h3 className="fl-sub">TARGETS</h3>
       <p className="fl-line">
-        {a.targets.flightsPerWeek == null && a.targets.onTime == null ? (
-          <span className="faint">지정 없음</span>
-        ) : (
-          <>
-            {a.targets.flightsPerWeek != null && <>주 {a.targets.flightsPerWeek} FLIGHT</>}
-            {a.targets.flightsPerWeek != null && a.targets.onTime != null && " · "}
-            {a.targets.onTime != null && <>정시성 {pct(a.targets.onTime)}</>}
-          </>
-        )}
+        {targetParts(a.targets).length ? targetParts(a.targets).join(" · ") : <span className="faint">지정 없음</span>}
       </p>
       <Actuals a={a} />
       {a.note && <p className="fl-note">{a.note}</p>}
@@ -818,6 +917,8 @@ function Editor({
   const [routes, setRoutes] = useState<string[]>(a.routes);
   const [perWeek, setPerWeek] = useState(a.targets.flightsPerWeek?.toString() ?? "");
   const [onTime, setOnTime] = useState(a.targets.onTime != null ? String(Math.round(a.targets.onTime * 100)) : "");
+  const [fuelPerFlight, setFuelPerFlight] = useState(a.targets.fuelPerFlight?.toString() ?? "");
+  const [cacheHit, setCacheHit] = useState(a.targets.cacheHit != null ? String(Math.round(a.targets.cacheHit * 100)) : "");
   const [crewDefault, setCrewDefault] = useState(a.complementIsDefault);
   const [crew, setCrew] = useState<CrewMember[]>(a.complement);
   const [note, setNote] = useState(a.note ?? "");
@@ -827,12 +928,17 @@ function Editor({
   const projects = [...new Set([...brief.projects, ...routes])];
 
   const submit = () => {
-    const targets = { flightsPerWeek: perWeek === "" ? null : Number(perWeek), onTime: onTime === "" ? null : Number(onTime) / 100 };
+    const targets = {
+      flightsPerWeek: perWeek === "" ? null : Number(perWeek),
+      onTime: onTime === "" ? null : Number(onTime) / 100,
+      fuelPerFlight: fuelPerFlight === "" ? null : Number(fuelPerFlight),
+      cacheHit: cacheHit === "" ? null : Number(cacheHit) / 100,
+    };
     onSave({
       ratings: ratingsDefault ? null : ratings,
       complement: crewDefault ? null : crew.filter((m) => m.position.trim() && m.agent.trim()),
       routes: routes.length ? routes : null,
-      targets: targets.flightsPerWeek == null && targets.onTime == null ? null : targets,
+      targets: Object.values(targets).every((v) => v == null) ? null : targets,
       note: note.trim() || null,
       account: account.trim().toLowerCase() || null,
     });
@@ -917,6 +1023,13 @@ function Editor({
         </label>
         <label>
           정시성 <input className="fl-input fl-num" type="number" min={0} max={100} value={onTime} onChange={(e) => setOnTime(e.target.value)} /> %
+        </label>
+        <label title="최근 14일 FLIGHT당 NET FUEL COST가 이 값 이하면 목표 안(보여 주기만 한다)">
+          FLIGHT당 NET ${" "}
+          <input className="fl-input fl-num" type="number" min={0} step="0.5" value={fuelPerFlight} onChange={(e) => setFuelPerFlight(e.target.value)} /> 이하
+        </label>
+        <label title="최근 14일 CACHE HIT(CAPTAIN + CREW)이 이 값 이상이면 목표 안(보여 주기만 한다)">
+          CACHE HIT <input className="fl-input fl-num" type="number" min={0} max={100} value={cacheHit} onChange={(e) => setCacheHit(e.target.value)} /> %
         </label>
       </fieldset>
 

@@ -2,7 +2,7 @@
 
 FUEL is the tokens a FLIGHT uses. atc records how long a FLIGHT took (block time, landing wait) and how well it went (rollbacks, LOS, Codex findings), but not what it burned, why some of that burn was waste, or how close each account is to its plan limit. FUEL adds those three things from records atc can already read.
 
-> Status (2026-09-28): draft for ATC-46 (moved from GitHub idea #53, whose research comment is the source for the pricing and cache facts below). F1 is built (`server/fuel.ts`, `server/fuel-run.ts`, `GET /api/fuel`) and F2 (ACCOUNT label, `LIMIT` held by ACCOUNT) is built (ATC-51); F3 (COLD CACHE and MODEL SWITCH leaks, `server/fuel-leaks.ts`) is built (ATC-52); F4 (FLIGHT attribution, the LOGBOOK `fuel` field, `UNATTRIBUTED`) is built (ATC-53); F6 (FUEL REMAINING per ACCOUNT from the statusline) is built (ATC-55), with control sessions counted in their ACCOUNT (ATC-60); F5 (price table, FUEL COST, NET FUEL, `server/fuel-cost.ts`) is built (ATC-54), with per-FLIGHT cost from LOGBOOK `byModel` (ATC-59); F7 (COMPACTION, SESSION CHANGE, UPGRADE / EFFORT CHANGE, the `proxied` bucket, CREW misses and CREW warnings, `server/fuel-crew.ts`) is built (ATC-57); the rest is not. Sections 8 and 9 hold the split into issues and the SUPERVISOR decisions this needs.
+> Status (2026-09-28): draft for ATC-46 (moved from GitHub idea #53, whose research comment is the source for the pricing and cache facts below). F1 is built (`server/fuel.ts`, `server/fuel-run.ts`, `GET /api/fuel`) and F2 (ACCOUNT label, `LIMIT` held by ACCOUNT) is built (ATC-51); F3 (COLD CACHE and MODEL SWITCH leaks, `server/fuel-leaks.ts`) is built (ATC-52); F4 (FLIGHT attribution, the LOGBOOK `fuel` field, `UNATTRIBUTED`) is built (ATC-53); F6 (FUEL REMAINING per ACCOUNT from the statusline) is built (ATC-55), with control sessions counted in their ACCOUNT (ATC-60); F5 (price table, FUEL COST, NET FUEL, `server/fuel-cost.ts`) is built (ATC-54), with per-FLIGHT cost from LOGBOOK `byModel` (ATC-59); F7 (COMPACTION, SESSION CHANGE, UPGRADE / EFFORT CHANGE, the `proxied` bucket, CREW misses and CREW warnings, `server/fuel-crew.ts`) is built (ATC-57); F8 (screens, TRIP FUEL, brief warnings, FUEL TARGETS, `server/fuel-view.ts`) is built (ATC-56). All eight issues are built; what is left is under "Not built yet". Sections 8 and 9 hold the split into issues and the SUPERVISOR decisions this needs.
 
 Related: [fleet.md](fleet.md) 8.3 (observed crew, never read bodies), 8.6 (FLEET PLAN, "Usage: none per AIRCRAFT"), 8.8 (AIRCRAFT health, `LIMIT` after a limit is hit); `server/logbook.ts` (LOGBOOK), `server/health.ts` (`quotaLimits`), `server/crew-observed.ts`; GitHub #41 (ontology graph projection, K1).
 
@@ -131,6 +131,8 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 
 ## 7. Screens and estimates
 
+Built in F8 (ATC-56); section 8.6 has the rules as built.
+
 - **FLEET card / row**: last 14 days FUEL COST per ARRIVED FLIGHT, CACHE HIT (CAPTAIN, CREW), CREW share, top leaks and warnings; FUEL REMAINING per ACCOUNT.
 - **LOGBOOK / recent FLIGHTs**: FUEL BURN, NET, LEAK per FLIGHT, and whether it stayed inside TRIP FUEL.
 - **DISPATCH card**: TRIP FUEL p50–p90 by TYPE × WAKE, widening to WAKE and then AIRPORT below `MEDIAN_MIN_SAMPLES` (and saying so). Display only.
@@ -149,7 +151,7 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 | F6 (ATC-55) ✅ | FUEL REMAINING source (section 6): verify statusline `rate_limits`, then the statusline script and per-ACCOUNT view. **Done**, see 6.1 | F2, decision D1 | `user` (`hooks/`, settings) | BUILD · M |
 | F6b (ATC-60) ✅ | Control sessions (TOWER, OCC, CROSSCHECK, MCC, ENGINEERING) counted in their ACCOUNT: label in `fleet.json` `control`, set in the settings window; FLEET FUEL block by ACCOUNT. **Done**, see 6.1 | F6 | `user` (new top-level `fleet.json` field) | BUILD · S |
 | F7 (ATC-57) ✅ | Other leaks and CREW warnings (COMPACTION, SESSION CHANGE after measuring the baseline, the warning list). **Done**, see 5 and 8.5 | F3 | `auto` | BUILD · M |
-| F8 (ATC-56) | Screens and TRIP FUEL: FLEET/LOGBOOK/DISPATCH/brief views, TARGETS items `fuelPerFlight`, `cacheHit` | F4, F5 | `auto` (rating:UI) | BUILD · M |
+| F8 (ATC-56) ✅ | Screens and TRIP FUEL: FLEET/LOGBOOK/DISPATCH/brief views, TARGETS items `fuelPerFlight`, `cacheHit`. **Done**, see 8.6 | F4, F5 | `flagged` (TOWER and OCC manual lines) | BUILD · M |
 
 ### 8.1 F1 as built (ATC-50)
 
@@ -204,6 +206,17 @@ F1 and F2 started at once and in parallel, and both are built; they answer the T
 - **`byModel[].leak` (ATC-59)** now also takes CREW misses and, like `expectedRebuild`, leaves out `proxied`, so the leak priced at read time matches `leak.total`.
 - **Kept as they were**: F3's rules and order for CAPTAIN misses, except that proxied misses left `unexplained`/`coldCache`/`modelSwitch` for `proxied`, and cold compaction left `expectedRebuild` for `compaction`.
 
+### 8.6 F8 as built (ATC-56)
+
+- **Where**: `server/fuel-view.ts` (pure; the web imports it too), `server/fuel-watch.ts` (the brief warnings, a 24-hour FUEL scan kept for 60 s), `server/fuel-prices.ts` (`readPrices` moved out of `fuel-run.ts` so the FLEET and DISPATCH code can price LOGBOOK lines without an import cycle; `fuel-run.ts` re-exports it). `loadPricedLogbook` (`logbook.ts`) is the LOGBOOK with `fuelCost` priced at read time.
+- **Missing is not zero.** A line without `fuel` (before F4), a `fuel` without `byModel` (before ATC-59), a FLIGHT whose models are all unpriced, and CREW warnings on lines from before F7 each show `—` or `null`. Tokens are shown when there is no price.
+- **TRIP FUEL** (`tripFuelOf`): p50–p90 of past NET FUEL COST, linear-interpolated quantiles, from priced LOGBOOK FLIGHTs of the last 60 days (`TRIP_FUEL_DAYS`), the FLIGHT itself left out. Levels in order: TYPE × WAKE, then WAKE, then AIRPORT, the first with at least `MEDIAN_MIN_SAMPLES` (3) FLIGHTs; the card says which (`TRIP FUEL $5.28–$15.6 · TYPE×WAKE BUILD·M (6)`). AD HOC work (no class) starts at AIRPORT. With too few everywhere the range is missing and the card says how many priced FLIGHTs there are. `generations` splits the same samples by model generation (the model with the most requests in the FLIGHT, date suffix dropped), with a range only where a generation has 3 or more. A FLIGHT whose NET is above p90 is `unexpected`, else `inside` (`tripCheckOf`).
+- **FLEET** (`fleetFuelOf`, `fleetView` `fuelBurn` and `fuelRecent`): section 7 items over the last 14 days, and per recent FLIGHT the FUEL BURN tokens, cost, NET, LEAK and TRIP FUEL verdict. CACHE HIT is summed over the lines that have `fuel`; CREW share is the CREW part of FUEL COST on priced lines. The FLEET row gets a FUEL column (`$6.10/FLT · CACHE 93%`, NET and details in the tooltip) beside F6's FUEL REMAINING, which is unchanged. On narrow screens the column takes its own line.
+- **LOGBOOK**: `GET /api/logbook` entries carry `trip` (`net`, the TRIP FUEL range, `verdict`).
+- **DISPATCH card**: the facts line gains TRIP FUEL for the proposal's FLIGHT (its labels' TYPE × WAKE and the proposal's AIRPORT) and, when the proposal's AIRCRAFT is a HOLDING CAPTAIN with a cold cache, the COLD CACHE warning. Neither is read by `planDispatch`: scores and assignments are unchanged.
+- **Brief warnings** (`fuelWatch`): `largeLeaksOf` sums the priced F3/F7 leaks of the last 24 hours per team AIRCRAFT and lists those at `LARGE_LEAK_USD` ($10) or more, keyed per AIRCRAFT and UTC day (`leak|TEAM_F|2026-09-28`); unpriced and `proxied` misses are not guessed. On 2026-09-28 team AIRCRAFT leaked $2–12 a day, so $10 picks out the top few. `coldCachesOf` takes each HOLDING CAPTAIN (idle team session holding a STAND) and its last CAPTAIN request: past the TTL of section 8.2, a message now would re-write the prefix (the last request's read + write + input), priced like a COLD CACHE leak. A session with no request in the scan counts as cold only when its last activity is over an hour old (the longest TTL), with the size unknown. TOWER gets `open.fuelLeaks`, `open.coldCache` and `open.fuelError` in `GET /api/controller/brief`; OCC gets `fuel` (`coldCache`, `largeLeaks`, `error`) in `GET /api/dispatch/brief`. Both warn and never block: the manuals say to note them and to still send what was due.
+- **TARGETS**: `fuelPerFlight` (USD, NET per FLIGHT, at or below) and `cacheHit` (0–1, at or above), set on the FLEET card, shown next to the FUEL actuals in amber when missed. Display only, like the other TARGETS.
+
 ## 9. Decisions for the SUPERVISOR
 
 | # | Question | Proposal |
@@ -228,4 +241,4 @@ F1 and F2 started at once and in parallel, and both are built; they answer the T
 
 ## Not built yet
 
-F8 in section 8; Codex usage and prices (section 4, D6); tuning the CREW warning thresholds (HEAVY PREFIX fires on half of all subagents, section 5). FLIGHTs that arrived before ATC-59 have no `byModel` and stay unpriced.
+Codex usage and prices (section 4, D6); tuning the CREW warning thresholds (HEAVY PREFIX fires on half of all subagents, section 5). FLIGHTs that arrived before ATC-59 have no `byModel` and stay unpriced, so TRIP FUEL has few samples at first and often widens to WAKE or AIRPORT. The large-leak threshold ($10 a day) and TRIP FUEL's 60-day window are first guesses to tune once there is more data.

@@ -86,3 +86,25 @@ test("factsOf: 모르는 FLIGHT는 null, 날고 있는 같은 ROUTE FLIGHT는 EN
   assert.deepEqual(known.recent.map((r) => [r.key, r.how]), [["VOC-51", "ENROUTE"]]);
   assert.equal(waypointIndex(routes).get("VOC-50")?.route, "Beta Readiness");
 });
+
+test("factsOf: TRIP FUEL은 값을 매긴 LOGBOOK에서(모자라면 level null), COLD CACHE는 그 AIRCRAFT 것만(FUEL F8)", () => {
+  const priced = (flight: string, net: number) => ({
+    ...entry(flight, "TEAM_C", 1),
+    class: { type: "BUILD", wake: "M", ratings: [], explicit: { type: true, wake: true } } as LogEntry["class"],
+    fuel: { captain: { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0, output: 0, requests: 1, cacheHit: null }, crew: { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0, output: 0, requests: 0, cacheHit: null, outputLowerBound: true as const }, cacheHit: null, models: { "claude-opus-5-5": 1 } },
+    fuelCost: { captain: null, crew: null, total: null, leakCost: 0, netCost: net, unpriced: [] },
+  });
+  const tickets = [ticket("VOC-10", { labels: ["type:BUILD", "wake:M"] })];
+  const cold = { key: "cold|s|t", aircraft: "TEAM_B", session: "s", lastAt: null, idleMin: 70, ttlMin: 60, prefix: 1000, cost: 0.01, text: "COLD CACHE — TEAM_B" };
+  const ctx = { now: NOW, tickets, routes: [], flying: [], coldCache: [cold, { ...cold, aircraft: "TEAM_X" }] };
+  const p = { id: "D-0001", flight: "VOC-10", airport: "VCDO", aircraftName: "Team_B", hold: [], crosscheck: null };
+  const facts = factsOf(p, { ...ctx, entries: [priced("VOC-1", 2), priced("VOC-2", 4), priced("VOC-3", 6)] });
+  assert.equal(facts.tripFuel?.level, "TYPE×WAKE");
+  assert.equal(facts.tripFuel?.p50, 4);
+  assert.equal(facts.coldCache?.aircraft, "TEAM_B");
+  // 값을 매기지 않은 옛 LOGBOOK: 범위 없음(0이 아님)
+  const bare = factsOf({ ...p, aircraftName: "TEAM_C" }, { ...ctx, entries: [entry("VOC-1", "TEAM_C", 1)] });
+  assert.equal(bare.tripFuel?.level, null);
+  assert.equal(bare.tripFuel?.p50, null);
+  assert.equal(bare.coldCache, null);
+});

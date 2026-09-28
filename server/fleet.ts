@@ -6,7 +6,8 @@ import { config } from "./config.ts";
 import { noteCrewChange, withCrew } from "./crew-change.ts";
 import { OBSERVED_WINDOW_DAYS } from "./crew-observed.ts";
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig } from "./dispatch.ts";
-import { type Actuals, computeActuals, type LogEntry, loadLogbook } from "./logbook.ts";
+import { type Actuals, computeActuals, loadPricedLogbook } from "./logbook.ts";
+import { type FleetFuel, fleetFuelOf, type PricedEntry, type TripFuel, tripCheckOf, type TripVerdict } from "./fuel-view.ts";
 import { type AccountHold, accountHoldOf, accountHolds, type Health } from "./health.ts";
 import type { FuelRemaining } from "./fuel-remaining.ts";
 import type { Snapshot } from "./model.ts";
@@ -152,6 +153,17 @@ export function applyPatch(
         if (!Number.isFinite(n) || n < 0 || n > 1) throw new FleetError("onTime은 0~1");
         out.onTime = n;
       }
+      // FUEL F8(ATC-56): FLIGHT당 NET FUEL COST 상한(USD)과 CACHE HIT 하한. 보여 주기만 한다
+      if (t.fuelPerFlight != null) {
+        const n = Number(t.fuelPerFlight);
+        if (!Number.isFinite(n) || n <= 0 || n > 10_000) throw new FleetError("fuelPerFlight는 0보다 크고 10000 이하(USD)");
+        out.fuelPerFlight = n;
+      }
+      if (t.cacheHit != null) {
+        const n = Number(t.cacheHit);
+        if (!Number.isFinite(n) || n < 0 || n > 1) throw new FleetError("cacheHit은 0~1");
+        out.cacheHit = n;
+      }
       if (Object.keys(out).length) next.targets = out;
       else drop("targets");
     }
@@ -228,6 +240,41 @@ export interface AircraftView {
   aog: AircraftProfile["aog"] | null;
   retired: AircraftProfile["retired"] | null;
   actuals: Actuals; // LOGBOOK에서 센 TARGETS 실적(보여 주기만 함, docs/fleet.md 7.2)
+  // FUEL F8(ATC-56): 최근 14일 ARRIVED FLIGHT의 FUEL COST·CACHE HIT·CREW 몫·LEAK. 보여 주기만 한다. 값이 없으면 null(0이 아님)
+  fuelBurn?: FleetFuel;
+  // 최근 FLIGHT(actuals.recent와 같은 순서)의 FUEL BURN·NET·LEAK과 TRIP FUEL 안이었나
+  fuelRecent?: FuelRecent[];
+}
+
+export interface FuelRecent {
+  key: string;
+  tokens: number | null; // FUEL BURN(CAPTAIN + CREW 토큰). fuel 없는 옛 줄은 null
+  cost: number | null; // FUEL COST. 값이 없으면 null
+  net: number | null;
+  leakCost: number | null;
+  leakTokens: number | null; // 다시 쓴 토큰(LEAK). fuel 없는 줄은 null
+  unpriced: string[];
+  trip: { p50: number | null; p90: number | null; level: TripFuel["level"]; group: string | null; samples: number };
+  verdict: TripVerdict | null;
+}
+
+const burnTokens = (k: { input: number; cacheWrite5m: number; cacheWrite1h: number; cacheRead: number; output: number }) =>
+  k.input + k.cacheWrite5m + k.cacheWrite1h + k.cacheRead + k.output;
+
+export function fuelRecentOf(e: PricedEntry, all: readonly PricedEntry[], now: number): FuelRecent {
+  const c = tripCheckOf(e, all, now);
+  const f = e.fuel;
+  return {
+    key: e.key,
+    tokens: f ? burnTokens(f.captain) + burnTokens(f.crew) : null,
+    cost: e.fuelCost?.total?.total ?? null,
+    net: c.net,
+    leakCost: e.fuelCost?.leakCost ?? null,
+    leakTokens: f ? (f.leak?.total.tokens ?? null) : null,
+    unpriced: e.fuelCost?.unpriced.map((u) => u.model) ?? [],
+    trip: { p50: c.trip.p50, p90: c.trip.p90, level: c.trip.level, group: c.trip.group, samples: c.trip.samples },
+    verdict: c.verdict,
+  };
 }
 
 // 스냅샷의 TEAM 세션과 등록부를 합친다. 세션이 없는 등록 항목도 "absent"로 보인다.
@@ -235,7 +282,7 @@ export function fleetView(
   s: Pick<Snapshot, "sessions" | "claims" | "workspaces" | "airports"> & Partial<Pick<Snapshot, "tickets" | "fuel">>,
   fleet: FleetFile,
   teamPattern = DEFAULT_DISPATCH_CONFIG.teamPattern,
-  logbook: LogEntry[] = [],
+  logbook: PricedEntry[] = [], // loadPricedLogbook()이면 FUEL COST까지, loadPricedLogbook()이면 토큰까지
   now = Date.now(),
 ): AircraftView[] {
   const team = new RegExp(teamPattern, "i");
@@ -249,6 +296,7 @@ export function fleetView(
     const profile = Object.entries(fleet.aircraft).find(([k]) => k.toUpperCase() === reg)?.[1] ?? {};
     const held = session ? s.claims.filter((c) => c.sessionId === session.id && c.state === "active") : [];
     const flying = [...new Set(held.map((c) => wsTicket.get(c.workspacePath)).filter(Boolean) as string[])];
+    const actuals = computeActuals(logbook, reg, now);
     return {
       registration: reg,
       callsign: callsign({ name: reg }),
@@ -274,7 +322,9 @@ export function fleetView(
       enteredAt: profile.enteredAt ?? null,
       aog: profile.aog ?? null,
       retired: profile.retired ?? null,
-      actuals: computeActuals(logbook, reg, now),
+      actuals,
+      fuelBurn: fleetFuelOf(reg, logbook, now),
+      fuelRecent: actuals.recent.map((e) => fuelRecentOf(e, logbook, now)),
     };
   });
 }
@@ -359,7 +409,7 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     // RULES(ATC-42): 그 AIRCRAFT의 살아 있는 세션이 규칙 파일 변경을 확인했나. rules-drift hook 기록이 없으면 null
     const rulesRecords = loadRulesRecords();
     const rulesOf = (reg: string): RulesView | null => rulesOfAircraft(s.sessions.filter((x) => x.status !== "dead" && x.name.toUpperCase() === reg), rulesRecords);
-    const aircraft = fleetView(s, fleet, cfg.teamPattern, loadLogbook()).map(withCrew(s)).map((a) => ({ ...a, rules: rulesOf(a.registration) }));
+    const aircraft = fleetView(s, fleet, cfg.teamPattern, loadPricedLogbook()).map(withCrew(s)).map((a) => ({ ...a, rules: rulesOf(a.registration) }));
     const configurations = Object.entries(CONFIGURATIONS).map(([id, t]) => ({ id, label: t.label, complement: t.complement, ratings: t.ratings }));
     return c.json({
       ratings: RATINGS,
@@ -387,7 +437,7 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       const { registration, profile } = entryIntoService(fleet, { ...body, base }, live, teamPattern);
       saveAircraft(registration, profile);
       fleet.aircraft[registration] = profile;
-      return c.json({ ok: true, aircraft: fleetView(s, fleet, teamPattern, loadLogbook()).find((a) => a.registration === registration) });
+      return c.json({ ok: true, aircraft: fleetView(s, fleet, teamPattern, loadPricedLogbook()).find((a) => a.registration === registration) });
     } catch (e) {
       if (e instanceof FleetError) return c.json({ error: e.message }, e.status as 400);
       throw e;
@@ -416,7 +466,7 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       noteCrewChange(reg, fleet.aircraft[key] ?? {}, next, fleet.defaults, s.sessions); // CREW CHANGE 기록(2b에서는 승인 뒤 OCC가 보냄)
       if (Object.keys(next).length) fleet.aircraft[key] = next;
       else delete fleet.aircraft[key];
-      return c.json({ ok: true, aircraft: fleetView(s, fleet, teamPattern, loadLogbook()).map(withCrew(s)).find((a) => a.registration === reg) });
+      return c.json({ ok: true, aircraft: fleetView(s, fleet, teamPattern, loadPricedLogbook()).map(withCrew(s)).find((a) => a.registration === reg) });
     } catch (e) {
       if (e instanceof FleetError) return c.json({ error: e.message }, e.status as 400);
       throw e;

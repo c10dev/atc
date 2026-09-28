@@ -268,6 +268,8 @@ Per AIRCRAFT, set by the SUPERVISOR in the FLEET tab. They are shown, not scored
 | On-time rate | LOGBOOK entries of the last 14 days: the team's block time (start to PR opened) within the expectation of section 7.2. The wait for review and merge is shown apart as the landing wait |
 | Reverted work | LOGBOOK entries of the last 14 days marked `reverted` (a `Revert "…"` PR was merged). Reopened FLIGHTs are not counted yet |
 | Conflicts | LOS on the FLIGHT's STANDs while it was flown, summed over LOGBOOK entries of the last 14 days |
+| FUEL per FLIGHT (`fuelPerFlight`, USD, optional) | Average NET FUEL COST of the priced LOGBOOK entries of the last 14 days, at or below the target ([fuel.md](fuel.md) 8.6, ATC-56) |
+| CACHE HIT (`cacheHit`, 0–1, optional) | CACHE HIT over the LOGBOOK entries of the last 14 days that carry `fuel` (CAPTAIN + CREW), at or above the target |
 
 Stage 4 (network planning) puts these next to the project goals (section 7.3). OCC drafts target and ROUTE changes in shadow (section 7.4, S1 built); the SUPERVISOR decides.
 
@@ -332,7 +334,8 @@ Each LOGBOOK run looks up every `aircraft: null` line of the repositories it rea
 | Landing wait | Median `landingWaitMin` of the entries of the last 14 days (all of them, since the PR times are always known): "착륙 대기 중앙값 5h" |
 | Reverted | Entries of the last 14 days marked `reverted` |
 | LOS | Sum of `los` over entries of the last 14 days |
-| Recent | The last 5 entries: team block time (or `—`), `+` landing wait, ON TIME / DELAYED |
+| Recent | The last 5 entries: team block time (or `—`), `+` landing wait, ON TIME / DELAYED; under each, its FUEL: NET (tokens when unpriced), LEAK, and `TRIP ✓` or `UNEXPECTED` against TRIP FUEL, or `FUEL —` for a line without `fuel` |
+| FUEL (ATC-56) | `fuelBurn` over the entries of the last 14 days: FUEL COST and NET per priced FLIGHT, CACHE HIT (CAPTAIN, CREW), CREW share of FUEL COST, the top three leak rules, CREW warning counts (F7), unpriced models, and how many FLIGHTs went past TRIP FUEL p90. A value with nothing behind it is `—`, never 0. The FLEET row shows `$6.10/FLT · CACHE 93%` in its own FUEL column, beside F6's FUEL REMAINING |
 
 **Expectation.** A FLIGHT whose WAKE comes from a label uses the section 4.2 block time, read as an upper bound: `L` 60 min, `M` 240 min ("a few hours" taken as 4 hours), `H` 2880 min (2 days). `J`, an unlabeled WAKE and AD HOC work have no fixed expectation; they are compared with the median `blockMin` of other LOGBOOK entries of the same FLIGHT TYPE and WAKE (AD HOC is its own group), once there are at least 3. Only entries with a known AIRCRAFT and a known `blockMin` feed the median. Otherwise the entry is not counted in the on-time rate. When a category reaches about 20 entries its median may replace the fixed number (section 4.2); that switch is not built yet.
 

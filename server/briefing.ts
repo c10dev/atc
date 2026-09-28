@@ -1,5 +1,6 @@
+import { classOf } from "./crew.ts";
 import { DONE_STATES } from "./dispatch.ts";
-import type { LogEntry } from "./logbook.ts";
+import { type ColdCache, type PricedEntry, type TripFuel, tripFuelOf } from "./fuel-view.ts";
 import type { Ticket } from "./model.ts";
 import type { Route } from "./routes.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
@@ -61,11 +62,16 @@ export interface Facts {
   blockers: { key: string; state: string | null; done: boolean }[]; // Linear blockedBy ∪ DISPATCH HOLD 선행
   recent: { key: string; title: string | null; at: string; how: "ARRIVED" | "ENROUTE" }[]; // 이 AIRCRAFT가 같은 ROUTE에서 최근 맡은 FLIGHT
   crosscheck: { verdict: "agree" | "disagree"; reason: string } | null;
+  // FUEL F8(ATC-56): 지난 NET FUEL COST p50–p90(TYPE × WAKE, 모자라면 WAKE·AIRPORT). 보여 주기만 한다 — 점수·배정에 쓰지 않는다
+  tripFuel?: TripFuel;
+  // 이 AIRCRAFT가 HOLDING인데 캐시가 식었으면 FLIGHT PLAN이 접두부를 다시 쓴다. 경고만(막지 않는다)
+  coldCache?: ColdCache | null;
 }
 
 export interface FactsProposal {
   id: string;
   flight: string;
+  airport?: string | null;
   aircraftName: string | null;
   hold: string[];
   crosscheck: { verdict: "agree" | "disagree"; reason: string } | null;
@@ -75,7 +81,8 @@ export interface FactsContext {
   now: number;
   tickets: Ticket[];
   routes: Route[];
-  entries: LogEntry[];
+  entries: PricedEntry[]; // fuelCost가 있으면 TRIP FUEL을 계산한다
+  coldCache?: ColdCache[]; // HOLDING CAPTAIN의 COLD CACHE(fuel-watch.ts)
   // 이 AIRCRAFT가 맡아 날고 있는 ASSIGN(ENROUTE 쪽 최근 FLIGHT)
   flying: { flight: string; aircraftName: string | null; at: string }[];
 }
@@ -125,6 +132,8 @@ export function factsOf(p: FactsProposal, ctx: FactsContext, index = waypointInd
     blockers,
     recent: recent.slice(0, RECENT_MAX),
     crosscheck: p.crosscheck ? { verdict: p.crosscheck.verdict, reason: p.crosscheck.reason } : null,
+    tripFuel: tripFuelOf({ key: null, class: t ? (({ type, wake }) => ({ type, wake }))(classOf(t.labels)) : null, airport: p.airport ?? null }, ctx.entries, ctx.now),
+    coldCache: (reg && ctx.coldCache?.find((c) => c.aircraft === reg)) || null,
   };
 }
 

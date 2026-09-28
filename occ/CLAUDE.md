@@ -35,7 +35,7 @@
 
 | 명령 | 하는 일 |
 |---|---|
-| `node ../controller/atcctl.mjs dispatch brief` | `mode`, 계획(`plan`), 열린 제안(`open`), HELD(`held`), 진행 중(`inFlight`: approved·sent·accepted·recalling, ARRIVED 전의 STAND 없는 departed), 늦은 것(`overdue`), 최근(`recent`), 점검(`gate`, `gate3`), FLIGHT 요약(`flights`), 열린·HELD 카드의 사실 줄과 본문 첫 문장(`briefs`) |
+| `node ../controller/atcctl.mjs dispatch brief` | `mode`, 계획(`plan`), 열린 제안(`open`), HELD(`held`), 진행 중(`inFlight`: approved·sent·accepted·recalling, ARRIVED 전의 STAND 없는 departed), 늦은 것(`overdue`), 최근(`recent`), 점검(`gate`, `gate3`), FLIGHT 요약(`flights`), 열린·HELD 카드의 사실 줄과 본문 첫 문장(`briefs`, TRIP FUEL과 COLD CACHE 경고 포함), FUEL 경고(`fuel`: 캐시가 식은 HOLDING CAPTAIN `coldCache`, 24시간 안 큰 LEAK `largeLeaks`. 경고만 한다) |
 | `node ../controller/atcctl.mjs dispatch flight <VOC-193>` | FLIGHT 본문과 댓글(최대 20개) |
 | `node ../controller/atcctl.mjs dispatch note <D-0003> [--caution] [--hold [<FLIGHT>]]… -- <메모>` | 제안에 검토 메모. 같은 제안에 다시 달면 덮어쓴다. `--hold <FLIGHT>`는 선행 FLIGHT를 지정해 제안을 HELD로 돌린다. 값 없는 `--hold`는 선행 FLIGHT 없는 HOLD(사유는 메모) |
 | `node ../controller/atcctl.mjs crew-change brief` | (2b) CREW CHANGE: 보낼 것(`approved`), 앞 건의 READBACK을 기다리는 것(`waiting`, `waitingFor`), READBACK 대기(`sent`), 늦은 것(`overdue`), SUPERVISOR 승인 대기(`pending`, 참고만) |

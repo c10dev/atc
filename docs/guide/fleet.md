@@ -68,6 +68,16 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - **DISPATCH HOLD 스위치**: 설정 창 AGENTS 탭의 FUEL 블록. 기본은 off라 FUEL은 보여 주기만 한다. on으로 바꾸면 95 % 넘게 쓴 ACCOUNT의 AIRCRAFT를 DISPATCH가 reset까지 `HOLD · FUEL 96% (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다.
 - 값은 상태 줄이 다시 그려질 때만 갱신된다. CREW 서브에이전트와 다른 컴퓨터의 세션은 보고하지 않는다. ACCOUNT마다 살아 있는 CAPTAIN 세션 하나면 된다.
 
+### FUEL: FLIGHT마다 얼마나 태웠나
+
+위 FUEL REMAINING이 "한도를 얼마나 썼나"라면, 이것은 "끝낸 FLIGHT가 얼마나 들었나"다. LOGBOOK 줄에 적힌 토큰에 지금 가격표로 값을 매긴다. 보여 주기만 하고 DISPATCH 점수·배정에는 쓰지 않는다.
+
+- **FLEET 줄의 FUEL 14일 칸**: `$6.10/FLT · CACHE 93%`. 최근 14일 ARRIVED FLIGHT의 FLIGHT당 FUEL COST(달러, 목록가 기준)와 CACHE HIT. 마우스를 올리면 NET, CREW 몫, 큰 LEAK, 값 없는 모델이 나온다. FUEL REMAINING(`FUEL 82% · resets …`)은 FLYING 칸에 그대로 있다. 좁은 화면에서는 줄 맨 아래 한 줄이 된다.
+- **카드의 FUEL 블록**(최근 14일): FUEL COST와 NET(LEAK을 뺀 값), CACHE HIT(CAPTAIN · CREW), CREW 몫, 몇 건에 값이 있나, TRIP FUEL을 넘은 FLIGHT 수, 가장 큰 LEAK 셋, CREW 경고(HEAVY PREFIX, COLD CREW …).
+- **최근 FLIGHT**: 각 FLIGHT 아래 줄에 `NET $2.76 LEAK $0.39 TRIP ✓`. `TRIP ✓`은 비슷한 FLIGHT들의 범위(TRIP FUEL p90) 안, `UNEXPECTED`는 넘었다는 뜻이다. 값이 없는 모델뿐이면 토큰(`4.6M tok`)만 보인다.
+- **없는 값은 0이 아니라 `—`**: FUEL 기록이 생기기 전 FLIGHT(`FUEL —`), 가격표에 없는 모델(DeepSeek 등), 비교할 FLIGHT가 모자란 TRIP FUEL은 비워 둔다.
+- **TARGETS**: 고치기에서 `FLIGHT당 NET $ … 이하`와 `CACHE HIT … %`를 정할 수 있다. 못 미치면 FUEL 블록의 그 값이 노란색이 된다. 다른 TARGETS처럼 표시만 한다.
+
 ## 팀 프로필
 
 | 항목 | 뜻 | planner가 쓰는 법 |
@@ -75,7 +85,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 | CREW COMPLEMENT | 기본 팀원 구성과 모델 | 그 구성이 할 수 없는 종류의 일은 주지 않음(예: flash-helper만 있으면 BUILD 없음) |
 | TYPE RATING | 맡을 수 있는 일: SEC · UI · DATA · DOCS | 필요한 자격을 모두 가진 팀에만 제안 |
 | ROUTE | 주 담당 Linear 프로젝트 | 담당이면 점수 +1 |
-| TARGETS | 주간 FLIGHT 수, 정시성 | 표시만(점수에 안 씀). 실적은 LOGBOOK으로 센다(아래) |
+| TARGETS | 주간 FLIGHT 수, 정시성, FLIGHT당 NET FUEL, CACHE HIT | 표시만(점수에 안 씀). 실적은 LOGBOOK으로 센다(아래) |
 | ACCOUNT | 사용 한도를 같이 쓰는 계정의 라벨(`main`, `pro-2` …). 비우면 `default` | 같은 ACCOUNT의 한 AIRCRAFT가 `LIMIT`에 걸리면 reset까지 나머지도 제안하지 않음(위) |
 
 정하지 않은 항목은 vocado 팀원 규칙에서 온 기본값을 따른다. SEC는 보안 작업을 맡을 팀원이 있어야 줄 수 있다.
