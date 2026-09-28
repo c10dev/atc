@@ -31,6 +31,11 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - 줄마다(TOWER, OCC, MCC, CROSSCHECK, REVIEW, ENGINEERING) live 배지: `BG <id>`, `tmux <세션>`, `interactive`, `not running`. 이름이 같거나 그 폴더에서 연 세션을 센다. 저장소 뿌리에서 여는 ENGINEERING은 이름으로만.
   - CROSSCHECK·REVIEW에 LAUNCH: 그 폴더에서 tmux 세션 `atc-crosscheck`·`atc-review`로 `env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config -n CROSSCHECK '/loop 10m /tick'`(REVIEW는 `-n REVIEW`). 명령은 `docs/occ.md`와 `review/README.md`에 적힌 고정 문구다. 그 폴더의 세션이나 같은 이름의 tmux 세션이 있으면 거절하고, 서버가 `tmux`나 `ocx`를 못 찾으면 이유와 함께 LAUNCH를 끈다(배지는 그대로). STOP은 TOWER처럼 tmux pane을 닫는다. ENGINEERING은 배지만.
   - SUPERVISOR만(같은 Origin 규칙), 깨끗한 환경(`.env.local` 없음), atc 서비스 밖(systemd scope). FLIGHT RECORDER `control` launch 줄에 `tmux`. `GET /api/control/sessions` 줄에 `launch`·`tmux`·`command`·`blocked`가 생기고 `manual`은 없어졌다.
+- FLEET PLAN이 FUEL REMAINING을 본다(ATC-63, [docs/fleet.ko.md](docs/fleet.ko.md) 8.6, [docs/fuel.md](docs/fuel.md) 6.1).
+  - ACCOUNT가 hold 수준(`holdPct`, 95 %)인 AIRCRAFT는 LAUNCH를 제안하지 않고 다음으로 맞는 AIRCRAFT를 고른다. 맞는 AIRCRAFT가 모두 hold면 ENTRY도 내지 않고 아무것도 제안하지 않는다(새 세션은 이 기기에 로그인된 계정으로 열리는데 atc는 그 계정을 모른다). AIRPORT 수요 줄이 이유를 말한다(`FUEL 100% (account acct-1) until 21:48Z — TEAM_Q — ENTRY도 제안 안 함(새 세션이 열릴 계정을 모름)`). 맞는 등록 AIRCRAFT가 아예 없어 내는 ENTRY는 `default` ACCOUNT로 세고, `default`가 hold면 내지 않는다.
+  - info 수준(`infoPct`, 80 %)이면 제안에 `fuel` 사유 줄이 붙는다. 열린 LAUNCH·ENTRY의 ACCOUNT가 hold가 되면 FUEL 글을 사유로 expire한다.
+  - DISPATCH FUEL HOLD 스위치(D3)와 상관없이 hold 수준을 쓴다(ENGINEERING 결정). DISPATCH는 그대로다. FUEL은 ACCOUNT 라벨로 찾으므로 세션이 없는 AIRCRAFT와 관제 세션만 적은 ACCOUNT도 잡힌다.
+  - FLEET PLAN 블록에 ACCOUNT마다 FUEL 한 줄("주간 사용량 줄"): 가장 많이 쓴 창과 reset, 제안에 주는 영향, AIRCRAFT와 관제 세션. `GET /api/fleet/plan`의 `fuel`로 오고, 볼 때의 스냅샷에서 읽는다.
 - ATFM 6b단계: 실패 몰림·혼잡·LOS GROUND STOP의 해제 규칙과 `on` 스위치(ATC-62, [docs/atfm.ko.md](docs/atfm.ko.md) 6·8·10장). 켜진 스위치는 없다. 기본은 그대로 `shadow`이고, 켜는 것은 SUPERVISOR 몫이다(ATC-23).
   - `atfm.json`의 `groundStop.failureWave`·`congestion`·`los`가 `on`을 받는다. DISPATCH 탭 ATFM 블록에 확인을 거치는 off/shadow/on 스위치가 생겼다. ATFM OFF(`POST /api/atfm/off`)는 다른 것과 함께 이것도 `shadow`로 되돌린다.
   - 켜면 실패 몰림은 "main 깨짐"처럼 새 ASSIGN과 LAND를 멈춘다. LOS는 새 ASSIGN만 멈춘다: TOWER의 착륙 대기열에 `groundStop`이 붙지 않고 HOLD/CONTINUE 이벤트도 없다. 혼잡은 DISPATCH 계획에서 그 AIRPORT의 AIRBORNE 슬롯을 하나 빼는 GROUND DELAY다.
@@ -361,6 +366,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - ATFM의 `eligible`·`s3-eligible` 기록 줄에 확인한 조건 코드(A1–A10, S1–S4)가 `checked`로 남는다. 대상 판정을 나중에 설명할 수 있게.
 
 ### 수정
+- FLEET: 목록 보기에서 LAUNCH·CREW BRIEFING이 반응하지 않는 것처럼 보였다(ATC-61). 패널이 탭 맨 위, FLEET PLAN 위의 고정 자리에 열려서 목록 아래쪽 줄에서 누르면 화면 한참 위에 떴다. 이제 카드에서 연 패널은 그 카드 바로 아래에 열린다. 목록에선 펼친 줄 안, 카드 보기에선 그 카드 밑의 한 줄 전체다. 열리면 상단 콘솔 아래로 스크롤되고 첫 칸(permission mode, CREW BRIEFING 본문)에 초점이 가며, 취소·닫기·Esc는 연 버튼으로 초점을 돌린다. LAUNCH 거절 사유는 탭 맨 위가 아니라 패널 안에 보인다. ENTRY INTO SERVICE 뒤에 보이는 CREW BRIEFING은 그 양식 옆, 맨 위 그대로다. `POST /api/fleet/:registration/launch`는 바뀌지 않았다.
 - atc를 재시작하면(배포나 MCC RTS) 이 기계의 모든 백그라운드 Claude 세션이 죽었다. atc가 처음 부른 `claude --bg`가 Claude의 공용 백그라운드 daemon을 `atc.service` cgroup 안에 띄웠고, `KillMode=control-group`이 서비스와 함께 내렸다(2026-09-28: CONTROL로 띄운 OCC가 배포 때 `failed`로 끝남). 이제 LAUNCH(FLEET·CONTROL)는 `claude`를 따로 임시 systemd scope(`systemd-run --user --scope`)에서 부르므로 daemon이 서비스 밖에 있다. `ATC_BG_SCOPE=off`면 끈다. 예전 방식으로 뜬 daemon이 아직 서비스 안에 있으면 CONTROL 블록이 경고한다([docs/fleet.ko.md](docs/fleet.ko.md) 8.5).
 - LANDING CLEARANCE 등급이 REVIEW 관제 폴더(`review/`, ATC-27)를 몰라, REVIEW 규정만 바꾼 PR이 `auto`로 나왔다. 이제 `review/`도 다른 관제 폴더처럼 `flagged`이고, 그 guard 파일은 그대로 `user`다.
 - LANDING CLEARANCE 등급이 루트 `.claude/skills/`의 skill을 `auto`로 봤다. 루트 skill은 루트 `CLAUDE.md`처럼 팀 세션 지침이라, 이제 루트 `.claude/` 아래는 모두 `user`다. 관제 세션 폴더의 skill은 그대로 `flagged`.

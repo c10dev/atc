@@ -1,5 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type { DemandRow, FleetPlanKind, FleetProposal, PlanReason, StepResult } from "../../../server/fleet-plan.ts";
+import { type FuelRemaining, fuelLabel, fuelTitle } from "../../../server/fuel-remaining.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import "./FleetPlan.css";
@@ -17,6 +18,7 @@ interface PlanBrief {
   ranAt: string | null;
   error: string | null;
   demand: DemandRow[];
+  fuel?: FuelRemaining[]; // ACCOUNT마다 FUEL REMAINING(ATC-63, 옛 서버면 없음)
   open: Open[];
   waiting: { key: string; kind: FleetPlanKind; aircraft: string | null; airport: string | null; since: string | null }[];
   recent: FleetProposal[];
@@ -183,6 +185,7 @@ export function FleetPlan({ refreshKey, onChanged }: { refreshKey: string; onCha
           ))}
         </ul>
       )}
+      <FuelLines accounts={brief.fuel ?? []} />
       {brief.open.length ? (
         <ul className="fp-rows">
           {brief.open.map((p) => (
@@ -345,5 +348,27 @@ function ApproveForm({
         </button>
       </div>
     </form>
+  );
+}
+
+// FUEL(ATC-63, "weekly-usage line"): ACCOUNT마다 가장 많이 쓴 창과 reset, 구성원. hold 수준이면 그 ACCOUNT로는 LAUNCH·ENTRY를 내지 않는다
+const FUEL_EFFECT: Record<FuelRemaining["level"], string | null> = { ok: null, info: "제안에 FUEL 사유 줄", hold: "LAUNCH·ENTRY 제안 안 함" };
+function FuelLines({ accounts }: { accounts: FuelRemaining[] }) {
+  if (!accounts.length) return null;
+  const now = Date.now();
+  return (
+    <ul className="fp-fuel" aria-label="ACCOUNT별 FUEL">
+      {accounts.map((f) => (
+        <li key={f.group} title={fuelTitle(f, now)}>
+          <span className="mono">{f.account ?? `${f.control.length ? "control" : "AIRCRAFT"} ${f.control[0] ?? f.aircraft[0] ?? ""}`}</span>{" "}
+          <span className={`fp-fuel-pct lv-${f.level}`}>{fuelLabel(f, now)}</span>
+          {FUEL_EFFECT[f.level] && <span className={`fp-fuel-effect lv-${f.level}`}> · {FUEL_EFFECT[f.level]}</span>}
+          <span className="faint">
+            {f.aircraft.length > 0 && <> · AIRCRAFT {f.aircraft.join(", ")}</>}
+            {f.control.length > 0 && <> · control {f.control.join(", ")}</>}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }

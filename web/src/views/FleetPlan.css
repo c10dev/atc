@@ -51,6 +51,29 @@
 .fp-short {
   color: var(--amber);
 }
+/* FUEL(ATC-63): ACCOUNT마다 한 줄. INFO 노랑, HOLD 빨강 */
+.fp-fuel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.fp-fuel-pct {
+  font-family: var(--mono);
+  color: var(--muted);
+}
+.fp-fuel-pct.lv-info,
+.fp-fuel-effect.lv-info {
+  color: var(--amber);
+}
+.fp-fuel-pct.lv-hold,
+.fp-fuel-effect.lv-hold {
+  color: var(--alert);
+}
 .fp-blocked {
   color: var(--muted);
 }
