@@ -608,7 +608,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **기록.** LAUNCH·STOP마다 FLIGHT RECORDER에 `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}` 한 줄.
 - **화면.** 세션이 없는 카드에 **LAUNCH**(permission mode, 선택 모델, 상한 대비 백그라운드 수). 백그라운드 세션이면 `BG <id>`와 **STOP**. 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
 
-아직 만들지 않음: 쉬는 세션의 자동 STOP(FLEET PLAN 4단계. 그림자 제안과 승인 운용은 8.6·8.7에서 만듦), 오래 도는 세션의 정기 정비로서 RESTART, 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, ATC-46).
+아직 만들지 않음: 쉬는 세션의 자동 STOP(FLEET PLAN 4단계. 그림자 제안과 승인 운용은 8.6·8.7에서 만듦), 오래 도는 세션의 정기 정비로서 RESTART, 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, ATC-46, [fuel.md](fuel.md)).
 
 #### 8.5.1 관제 세션(2026-09-28 만듦)
 
