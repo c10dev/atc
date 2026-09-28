@@ -1,7 +1,7 @@
 import { type Departure, departureHits } from "./departures.ts";
 import { addKinds, burn, type FuelRecord, type Kinds, type TokenBurn, zero } from "./fuel.ts";
 import { countWarnings, type CrewWarning, type CrewWarningCounts, crewShareOf, emptyWarnings } from "./fuel-crew.ts";
-import { addLeak, emptyLeaks, type LeakCounts, leakCountsOf, type LeakEvent, type LeakTotals } from "./fuel-leaks.ts";
+import { addLeak, emptyLeaks, type LeakCounts, leakCountsOf, type LeakEvent, type LeakTotals, OUTSIDE_LEAK } from "./fuel-leaks.ts";
 import type { LogEntry } from "./logbook.ts";
 import type { Claim } from "./model.ts";
 
@@ -46,7 +46,32 @@ export interface FlightFuel {
   leak?: LeakCounts; // FUEL LEAK(F3, fuel-leaks.ts). LEAK을 재고 넘긴 때만(miss가 없으면 0). 비용(F5)은 넣지 않는다. F7 규칙 포함
   crewWarnings?: CrewWarningCounts; // CREW 경고 수(F7, fuel-crew.ts). 경고를 재고 넘긴 때만. highCrewShare는 이 FLIGHT가 넘었으면 1
   models: Record<string, number>; // 모델 → 요청 수
+  byModel?: ModelBurn[]; // ATC-59: 모델(과 값이 달라지는 speed·geo)마다의 토큰. 읽을 때 가격표로 값을 매긴다. 옛 줄에는 없다
 }
+
+// 모델 하나의 몫. 달러는 두지 않는다(가격은 바뀌고 표는 고칠 수 있으므로 토큰만 적고 읽을 때 값을 매긴다, ATC-59)
+export interface ModelTokens extends Kinds {
+  requests: number;
+}
+export interface ModelBurn {
+  model: string;
+  speed?: string; // standard가 아닐 때만
+  geo?: string; // usage.inference_geo가 not_available이 아닐 때만
+  captain?: ModelTokens;
+  crew?: ModelTokens;
+  leak?: { count: number; rewritten5m: number; rewritten1h: number }; // CAPTAIN LEAK(expectedRebuild 제외)의 다시 쓴 토큰, 쓰기 층별
+}
+
+// 값이 달라지는 속성만 남긴 모델 열쇠
+function variantOf(r: { model: string; speed: string | null; geo: string | null }): Pick<ModelBurn, "model" | "speed" | "geo"> {
+  return {
+    model: r.model,
+    ...(r.speed && r.speed !== "standard" ? { speed: r.speed } : {}),
+    ...(r.geo && r.geo !== "not_available" ? { geo: r.geo } : {}),
+  };
+}
+const variantKey = (v: Pick<ModelBurn, "model" | "speed" | "geo">) => `${v.model}|${v.speed ?? ""}|${v.geo ?? ""}`;
+const tokens = (): ModelTokens => ({ ...zero(), requests: 0 });
 
 // 착수 기록 AIRCRAFT 줄 → 구간 안 Segment. 첫 줄은 출발 시각까지 당긴다(STAND를 먼저 만들고 곧 점유하므로).
 // AIRCRAFT 줄이 없으면 fallback(LOGBOOK의 AIRCRAFT)이 구간 전체를 몬 것으로 본다
@@ -144,7 +169,28 @@ class Tank {
   sessions = new Set<string>();
   leak: LeakTotals | null = null;
   warn: CrewWarningCounts | null = null;
+  byModel = new Map<string, ModelBurn>();
+  private modelOf(r: { model: string; speed: string | null; geo: string | null }): ModelBurn {
+    const v = variantOf(r);
+    const key = variantKey(v);
+    let m = this.byModel.get(key);
+    if (!m) this.byModel.set(key, (m = { ...v }));
+    return m;
+  }
+  addLeak(e: LeakEvent) {
+    addLeak(this.leak!, e);
+    if (OUTSIDE_LEAK.includes(e.rule)) return;
+    const m = this.modelOf(e);
+    m.leak ??= { count: 0, rewritten5m: 0, rewritten1h: 0 };
+    m.leak.count++;
+    if (e.writeTier === "1h") m.leak.rewritten1h += e.rewritten;
+    else m.leak.rewritten5m += e.rewritten;
+  }
   add(r: FuelRecord) {
+    const m = this.modelOf(r);
+    const part = r.sidechain ? (m.crew ??= tokens()) : (m.captain ??= tokens());
+    addKinds(part, r);
+    part.requests++;
     if (r.sidechain) {
       addKinds(this.crew, r);
       this.crewN++;
@@ -167,6 +213,7 @@ class Tank {
   }
   fuel(): FlightFuel {
     const p = this.part();
+    const byModel = [...this.byModel.values()].sort((a, b) => variantKey(a).localeCompare(variantKey(b)));
     const warn = this.warn && { ...this.warn, highCrewShare: crewShareOf(this.captain, this.crew) === null ? 0 : 1 };
     return {
       captain: p.captain,
@@ -175,6 +222,7 @@ class Tank {
       ...(this.leak ? { leak: leakCountsOf(this.leak) } : {}),
       ...(warn ? { crewWarnings: warn } : {}),
       models: this.models,
+      byModel,
     };
   }
 }
@@ -233,7 +281,7 @@ export function attributeFuel(input: AttributionInput): Attribution {
     for (const e of input.leaks) {
       const span = flightOf(e, input.spans, input.aircraftOf, claimsOf);
       const t = span && bySpan.get(span.key);
-      if (t) addLeak(t.leak!, e);
+      if (t) t.addLeak(e);
     }
   }
   if (input.warnings) {

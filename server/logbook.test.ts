@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { compareBriefs } from "./briefs.ts";
 import type { Departure } from "./departures.ts";
+import { parsePriceTable, priceFlightFuel } from "./fuel-cost.ts";
 import {
   appendLogbook,
   attribution,
@@ -152,6 +153,36 @@ test("fuel 칸(ATC-53): 옛 arrived 줄(없음)과 새 줄(있음)이 섞여도 
   assert.equal(actuals.total, 2);
   assert.deepEqual(actuals.recent[0].fuel, fuel);
   assert.equal(compareBriefs(entries, Date.parse("2026-09-27T00:00:00Z"), 30).unmeasured, 2);
+});
+
+test("fuel.byModel(ATC-59): 옛 줄(fuel 없음), F4 줄(byModel 없음), 새 줄(byModel 있음)이 섞여도 접기·실적이 그대로 돌고, 값은 읽을 때 매긴다", () => {
+  const dir = mkdtempSync(join(tmpdir(), "atc-logbook-"));
+  const file = join(dir, "logbook.jsonl");
+  const stands = new Set(["/w/atc-logbook"]);
+  const c = ctx({ landingStands: new Map([["/r/atc#31", stands], ["/r/atc#32", stands], ["/r/atc#33", stands]]) });
+  appendLogbook(planLogbook([{ ctx: c, pulls: [pr()] }], [], "2026-09-26T14:05:00Z"), file);
+  const burn = { input: 1, cacheWrite5m: 0, cacheWrite1h: 2, cacheRead: 7, output: 3, requests: 1, cacheHit: 0.7 };
+  const f4 = { captain: burn, crew: { ...burn, outputLowerBound: true as const }, cacheHit: 0.7, models: { "claude-opus-5-5": 2 } };
+  const tokens = { input: 1_000_000, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0, output: 0, requests: 1 };
+  const f5b = { ...f4, byModel: [{ model: "claude-opus-5-5", captain: tokens, leak: { count: 1, rewritten5m: 0, rewritten1h: 0 } }] };
+  for (const [n, fuel, at] of [[32, f4, "2026-09-26T16:00:00Z"], [33, f5b, "2026-09-26T17:00:00Z"]] as const) {
+    const next = planLogbook([{ ctx: c, pulls: [pr({ number: n, title: `N${n} (VOC-2${n})`, url: `https://github.com/o/atc/pull/${n}`, mergedAt: at })] }], readLogbook(file), at);
+    if (next[0].op === "arrived") next[0].fuel = fuel;
+    appendLogbook(next, file);
+  }
+  const entries = foldLogbook(readLogbook(file));
+  assert.deepEqual(entries.map((e) => [e.key, Boolean(e.fuel), Boolean(e.fuel?.byModel)]), [
+    ["o/atc#33", true, true],
+    ["o/atc#32", true, false],
+    ["o/atc#31", false, false],
+  ]);
+  assert.ok(!readFileSync(file, "utf8").includes("cost")); // 달러는 기록에 없다
+  assert.equal(computeActuals(entries, "TEAM_J", Date.parse("2026-09-27T00:00:00Z")).total, 3);
+  const table = parsePriceTable({ writeMult: { "5m": 1.25, "1h": 2 }, models: { "claude-opus-5-5": { in: 4, out: 20, readMult: 0.05 } } });
+  assert.deepEqual(
+    entries.map((e) => priceFlightFuel(e.fuel, table)?.total?.total ?? null),
+    [4, null, null],
+  );
 });
 
 test("LOGBOOK 되돌림 대상: body의 Reverts 참조, 없으면 같은 저장소의 같은 제목, 모르는 PR은 무시", () => {

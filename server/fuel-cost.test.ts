@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { costOf, leakPriceOf, mergePriceTables, modelPriceOf, parsePriceTable, type PriceTable, rateOf } from "./fuel-cost.ts";
+import { costOf, leakPriceOf, mergePriceTables, modelPriceOf, parsePriceTable, type PriceTable, priceFlightFuel, rateOf } from "./fuel-cost.ts";
+import type { FlightFuel } from "./fuel-flights.ts";
 import { findLeaks } from "./fuel-leaks.ts";
 import { type FuelRecord, summarizeFuel } from "./fuel.ts";
 
@@ -136,4 +137,68 @@ test("NET FUEL = 비용 − 값이 매겨진 LEAK(F3). 값 없는 LEAK는 빼지
   assert.equal(u.totals.leak.total.count, 1);
   assert.equal(u.totals.leak.total.unpricedTokens, 103_000);
   assert.equal(u.totals.netCost, 0);
+});
+
+// ATC-59: LOGBOOK fuel의 모델별 토큰에 읽을 때 값을 매긴다
+const tok = (o: Partial<FuelRecord> = {}) => ({ ...k(o), requests: 1 });
+
+test("priceFlightFuel: 모델 하나 — CAPTAIN 비용, LEAK가 없으면 NET = 비용", () => {
+  const c = priceFlightFuel({ byModel: [{ model: "m-opus", captain: tok({ cacheWrite1h: M, output: M }) }] }, TABLE)!;
+  assert.equal(c.captain!.total, 28);
+  assert.equal(c.crew!.total, 0);
+  assert.equal(c.total!.total, 28);
+  assert.equal(c.leakCost, 0);
+  assert.equal(c.netCost, 28);
+  assert.deepEqual(c.unpriced, []);
+});
+
+test("priceFlightFuel: 모델 둘, CREW는 따로 — 각자 자기 단가", () => {
+  const c = priceFlightFuel(
+    {
+      byModel: [
+        { model: "m-opus", captain: tok({ input: M }), crew: tok({ output: M }) },
+        { model: "m-haiku", crew: tok({ input: M, cacheRead: M }) },
+      ],
+    },
+    TABLE,
+  )!;
+  assert.equal(c.captain!.total, 4);
+  assert.equal(c.crew!.output, 20);
+  assert.equal(c.crew!.total, 20 + 1 + 0.1);
+  assert.equal(c.total!.total, 25.1);
+});
+
+test("priceFlightFuel: 값 없는 모델은 빼고 목록에. 모두 값이 없으면 0이 아니라 null", () => {
+  const c = priceFlightFuel({ byModel: [{ model: "m-opus", captain: tok({ input: M }) }, { model: "deepseek-v4.1-flash", crew: tok({ input: 300, output: 20 }) }] }, TABLE)!;
+  assert.equal(c.total!.total, 4);
+  assert.deepEqual(c.unpriced, [{ model: "deepseek-v4.1-flash", reason: "no price for model", requests: 1, tokens: 320 }]);
+  const none = priceFlightFuel({ byModel: [{ model: "other", captain: tok({ input: M }) }] }, TABLE)!;
+  assert.deepEqual({ ...none, unpriced: none.unpriced.length }, { captain: null, crew: null, total: null, leakCost: null, netCost: null, unpriced: 1 });
+  assert.equal(priceFlightFuel({ byModel: [{ model: "m-opus", captain: tok({ input: M }) }] }, null)!.total, null);
+  // fast 배수가 표에 없는 모델의 fast 몫도 값 없음
+  assert.equal(priceFlightFuel({ byModel: [{ model: "m-haiku", speed: "fast", captain: tok({ input: M }) }] }, TABLE)!.unpriced[0].reason, "no price for speed:fast");
+  near(priceFlightFuel({ byModel: [{ model: "m-opus", speed: "fast", geo: "us", captain: tok({ input: M }) }] }, TABLE)!.total!.total, 8.8);
+});
+
+test("priceFlightFuel: byModel이 없는 옛 줄은 값 없음(null)", () => {
+  assert.equal(priceFlightFuel({}, TABLE), null);
+  assert.equal(priceFlightFuel(undefined, TABLE), null);
+  const old: FlightFuel = { captain: { ...k({ input: M }), requests: 1, cacheHit: null }, crew: { ...k(), requests: 0, cacheHit: null, outputLowerBound: true }, cacheHit: null, models: { "m-opus": 1 } };
+  assert.equal(priceFlightFuel(old, TABLE), null);
+});
+
+test("priceFlightFuel: NET = 비용 − 값이 매겨진 LEAK(쓰기 층별 배수), 값 없는 모델의 LEAK는 빼지 않는다", () => {
+  const c = priceFlightFuel(
+    {
+      byModel: [
+        { model: "m-opus", captain: tok({ cacheWrite1h: M }), leak: { count: 2, rewritten5m: 100_000, rewritten1h: 200_000 } },
+        { model: "other", captain: tok({ input: 5 }), leak: { count: 1, rewritten5m: 999_999, rewritten1h: 0 } },
+      ],
+    },
+    TABLE,
+  )!;
+  const leak = (100_000 * (1.25 - 0.05) + 200_000 * (2 - 0.05)) * 4 / M;
+  near(c.leakCost!, Math.round(leak * 10_000) / 10_000);
+  near(c.netCost!, Math.round((8 - leak) * 10_000) / 10_000);
+  assert.equal(c.unpriced.length, 1);
 });

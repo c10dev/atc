@@ -9,7 +9,7 @@ import { rememberAgentModels } from "./agent-models.ts";
 import type { CrewMember } from "./crew.ts";
 import { loadFleet } from "./fleet.ts";
 import { agentModels, type CrewWarning, crewWarnings } from "./fuel-crew.ts";
-import { mergePriceTables, parsePriceTable, type PriceTable } from "./fuel-cost.ts";
+import { mergePriceTables, parsePriceTable, type PriceTable, priceFlightFuel } from "./fuel-cost.ts";
 import { type Baseline, controlSendsOf, findLeaks, type LeakEvent, sessionChangeLeaks } from "./fuel-leaks.ts";
 import { type AgentMeta, type Compaction, dedupeFuel, type FuelRecord, parseFuelLines, summarizeFuel } from "./fuel.ts";
 import { arrivedSpan, type Attribution, attributeFuel, type ClaimSpan, enRouteSpans, flightOf, fuelForEntry } from "./fuel-flights.ts";
@@ -284,7 +284,8 @@ export function readFuel(days: number, s: FlightContext & Pick<Snapshot, "sessio
     at: new Date(now).toISOString(),
     ...summary,
     aircraft: summary.aircraft.map((a) => ({ ...a, attribution: att.aircraft.get(a.aircraft) ?? null })),
-    attribution: { totals: att.totals, flights: att.flights },
+    // FLIGHT마다 모델별 토큰에 지금 가격표로 값을 매긴다(ATC-59)
+    attribution: { totals: att.totals, flights: att.flights.map((f) => ({ ...f, fuelCost: priceFlightFuel(f.fuel, prices.table) })) },
     sessionBaselines: baselines,
     prices: { source: prices.table.source, files: prices.files, errors: prices.errors, models: Object.keys(prices.table.models).sort() },
     scan: { files: scan.files, bytesRead: scan.bytes, ms: Math.round(performance.now() - t0) },

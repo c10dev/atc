@@ -179,7 +179,7 @@ test("fuelForEntry: 출발 시각을 모르거나 읽은 기간 앞에 출발했
   const e = entry();
   const a = run([rec("h1", "10:30")], [arrivedSpan(e, [], null)]);
   const fuel = fuelForEntry(e, a, ms("00:00"))!;
-  assert.deepEqual(Object.keys(fuel).sort(), ["cacheHit", "captain", "crew", "models"]);
+  assert.deepEqual(Object.keys(fuel).sort(), ["byModel", "cacheHit", "captain", "crew", "models"]);
   assert.equal(fuel.captain.requests, 1);
   assert.equal(fuelForEntry({ ...e, departedFrom: "pr" }, a, ms("00:00")), null);
   assert.equal(fuelForEntry(e, a, ms("10:30")), null);
@@ -200,6 +200,9 @@ test("LEAK(F3): miss도 요청과 같은 규칙으로 FLIGHT에 나누고, LEAK�
     gapMs: 0,
     model: "claude-opus-5-5",
     prevModel: "claude-opus-5-5",
+    speed: null,
+    geo: null,
+    writeTier: "1h",
     wake: null,
   });
   const records = [rec("h1", "10:30"), rec("h1", "11:00"), rec("h1", "12:30"), rec("h1", "14:00")];
@@ -211,7 +214,7 @@ test("LEAK(F3): miss도 요청과 같은 규칙으로 FLIGHT에 나누고, LEAK�
   const l2 = a.flights.find((f) => f.key === "o/atc#2")!.fuel.leak!;
   assert.equal(l2.total.count, 0); // miss가 없던 FLIGHT는 0(12:30 miss는 어느 FLIGHT에도 없다)
   const fuel = fuelForEntry(e1, a, ms("00:00"))!;
-  assert.deepEqual(Object.keys(fuel), ["captain", "crew", "cacheHit", "leak", "models"]);
+  assert.deepEqual(Object.keys(fuel), ["captain", "crew", "cacheHit", "leak", "models", "byModel"]);
   assert.equal(run(records, spans).flights[0].fuel.leak, undefined);
 });
 
@@ -228,7 +231,7 @@ test("CREW 경고(F7): FLIGHT마다 같은 규칙으로 세고, CREW 몫이 50 %
   assert.deepEqual([w1.heavyPrefix, w1.expensiveReadOnly, w1.coldCrew, w1.highCrewShare], [1, 1, 0, 1]);
   const w2 = a.flights.find((f) => f.key === "o/atc#2")!.fuel.crewWarnings!;
   assert.deepEqual(Object.values(w2), [0, 0, 0, 0, 0, 0, 0]); // 12:30 경고는 어느 FLIGHT에도 없다
-  assert.deepEqual(Object.keys(fuelForEntry(e1, a, ms("00:00"))!), ["captain", "crew", "cacheHit", "crewWarnings", "models"]);
+  assert.deepEqual(Object.keys(fuelForEntry(e1, a, ms("00:00"))!), ["captain", "crew", "cacheHit", "crewWarnings", "models", "byModel"]);
   assert.equal(run(records, spans).flights[0].fuel.crewWarnings, undefined);
 });
 
@@ -236,4 +239,84 @@ test("EN ROUTE 구간도 AIRPORT를 안다(SESSION CHANGE 기준선, F7)", () =>
   const spans = enRouteSpans([dep("11:00", { stand: "/w/x", branch: "b" })], [], new Set(["/w/x"]), ms("16:00"), (repo) => (repo === "/r/atc" ? "ATCC" : null));
   assert.equal(spans[0].airport, "ATCC");
   assert.equal(arrivedSpan(entry(), [], null).airport, "ATCC");
+});
+
+test("모델별 토큰(ATC-59): 모델마다, CAPTAIN·CREW 따로, 값이 달라지는 speed·geo는 따로, 달러는 없다", () => {
+  const e1 = entry();
+  const spans = [arrivedSpan(e1, [], null)];
+  const records = [
+    rec("h1", "10:30"),
+    rec("h1", "10:40", { cacheWrite1h: 100 }),
+    rec("h1", "10:50", { sidechain: true, agent: "a", model: "deepseek-v4.1-flash", cacheRead: 0 }),
+    rec("h1", "11:00", { sidechain: true, agent: "a", cacheWrite5m: 50 }),
+    rec("h1", "11:10", { speed: "fast", geo: "not_available" }),
+    rec("h1", "11:20", { speed: "standard", geo: "us" }),
+  ];
+  const f = run(records, spans).flights[0].fuel;
+  assert.deepEqual(f.byModel, [
+    {
+      model: "claude-opus-5-5",
+      captain: { input: 20, cacheWrite5m: 0, cacheWrite1h: 100, cacheRead: 180, output: 10, requests: 2 },
+      crew: { input: 10, cacheWrite5m: 50, cacheWrite1h: 0, cacheRead: 90, output: 5, requests: 1 },
+    },
+    { model: "claude-opus-5-5", geo: "us", captain: { input: 10, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 90, output: 5, requests: 1 } },
+    { model: "claude-opus-5-5", speed: "fast", captain: { input: 10, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 90, output: 5, requests: 1 } },
+    { model: "deepseek-v4.1-flash", crew: { input: 10, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0, output: 5, requests: 1 } },
+  ]);
+  assert.ok(!JSON.stringify(f).includes("cost"));
+});
+
+test("모델별 LEAK(ATC-59): 다시 쓴 토큰을 모델·쓰기 층별로, expectedRebuild는 넣지 않는다", () => {
+  const e1 = entry();
+  const spans = [arrivedSpan(e1, [], null)];
+  const leak = (hm: string, rule: LeakEvent["rule"], rewritten: number, writeTier: "5m" | "1h", model = "claude-opus-5-5"): LeakEvent => ({
+    session: "h1",
+    t: T(hm),
+    rule,
+    rewritten,
+    units: null,
+    cost: null,
+    gapMs: 0,
+    model,
+    prevModel: model,
+    speed: null,
+    geo: null,
+    writeTier,
+    wake: null,
+  });
+  const records = [rec("h1", "10:30"), rec("h1", "11:00"), rec("h1", "11:30", { model: "claude-sonnet-5" })];
+  const leaks = [
+    leak("10:30", "coldCache", 4000, "1h"),
+    leak("11:00", "unexplained", 3000, "5m"),
+    leak("11:00", "expectedRebuild", 900, "1h"),
+    leak("11:30", "modelSwitch", 2500, "1h", "claude-sonnet-5"),
+  ];
+  const f = attributeFuel({ records, spans, aircraftOf, claims: [], leaks }).flights[0].fuel;
+  assert.deepEqual(
+    f.byModel!.map((m) => [m.model, m.leak ?? null]),
+    [
+      ["claude-opus-5-5", { count: 2, rewritten5m: 3000, rewritten1h: 4000 }],
+      ["claude-sonnet-5", { count: 1, rewritten5m: 0, rewritten1h: 2500 }],
+    ],
+  );
+  assert.equal(f.leak!.expectedRebuild.tokens, 900);
+});
+
+test("모델별 LEAK(F7): CREW miss는 넣고, proxied는 expectedRebuild처럼 넣지 않는다", () => {
+  const spans = [arrivedSpan(entry(), [], null)];
+  const base = { session: "h1", units: null, cost: null, gapMs: 0, prevModel: "x", speed: null, geo: null, wake: null } as const;
+  const leaks: LeakEvent[] = [
+    { ...base, t: T("10:30"), rule: "coldCache", rewritten: 4000, model: "claude-opus-5-5", writeTier: "5m", crew: true, agent: "a" },
+    { ...base, t: T("10:40"), rule: "proxied", rewritten: 9000, model: "deepseek-v4.1-flash", writeTier: "5m" },
+  ];
+  const f = attributeFuel({ records: [rec("h1", "10:30"), rec("h1", "10:40", { model: "deepseek-v4.1-flash" })], spans, aircraftOf, claims: [], leaks }).flights[0].fuel;
+  assert.deepEqual(
+    f.byModel!.map((m) => [m.model, m.leak ?? null]),
+    [
+      ["claude-opus-5-5", { count: 1, rewritten5m: 4000, rewritten1h: 0 }],
+      ["deepseek-v4.1-flash", null],
+    ],
+  );
+  assert.equal(f.leak!.proxied.tokens, 9000);
+  assert.equal(f.leak!.total.tokens, 4000);
 });

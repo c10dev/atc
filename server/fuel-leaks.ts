@@ -45,6 +45,9 @@ export interface LeakEvent {
   gapMs: number;
   model: string;
   prevModel: string;
+  speed: string | null; // 이번 요청의 usage.speed·inference_geo·쓰기 층: 나중에 가격표로 다시 값을 매길 때(ATC-59)
+  geo: string | null;
+  writeTier: "5m" | "1h";
   wake: ControlKind | null; // controlWake일 때 깨운 atc 발신
   crew?: boolean; // CREW(서브에이전트) 요청의 miss(F7)
   agent?: string | null; // CREW면 agent id
@@ -120,6 +123,9 @@ export function sessionLeaks(
           gapMs,
           model: cur.model,
           prevModel: prev.model,
+          speed: cur.speed,
+          geo: cur.geo,
+          writeTier: cur.cacheWrite1h > 0 ? "1h" : "5m",
           wake,
           crew: crew !== null,
           agent: crew?.agent ?? null,
@@ -249,6 +255,9 @@ export function sessionChangeLeaks(
       gapMs: t - prevAt,
       model: r.model,
       prevModel: r.model,
+      speed: r.speed,
+      geo: r.geo,
+      writeTier: r.cacheWrite1h > 0 ? "1h" : "5m",
       wake: null,
       crew: false,
       agent: null,
