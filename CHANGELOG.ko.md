@@ -29,6 +29,10 @@ PR은 이 파일을 고치지 않는다. PR마다 자기 `[Unreleased]` 항목�
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- 설정 창 CONTROL 블록이 모든 관제 세션을 보이고 CROSSCHECK·REVIEW도 띄운다(ATC-66, [docs/fleet.ko.md](docs/fleet.ko.md) 8.5.1). 2026-09-28에 CROSSCHECK가 꺼져 있었는데 화면 어디에도 보이지 않았다.
+  - 줄마다(TOWER, OCC, MCC, CROSSCHECK, REVIEW, ENGINEERING) live 배지: `BG <id>`, `tmux <세션>`, `interactive`, `not running`. 이름이 같거나 그 폴더에서 연 세션을 센다. 저장소 뿌리에서 여는 ENGINEERING은 이름으로만.
+  - CROSSCHECK·REVIEW에 LAUNCH: 그 폴더에서 tmux 세션 `atc-crosscheck`·`atc-review`로 `env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config -n CROSSCHECK '/loop 10m /tick'`(REVIEW는 `-n REVIEW`). 명령은 `docs/occ.md`와 `review/README.md`에 적힌 고정 문구다. 그 폴더의 세션이나 같은 이름의 tmux 세션이 있으면 거절하고, 서버가 `tmux`나 `ocx`를 못 찾으면 이유와 함께 LAUNCH를 끈다(배지는 그대로). STOP은 TOWER처럼 tmux pane을 닫는다. ENGINEERING은 배지만.
+  - SUPERVISOR만(같은 Origin 규칙), 깨끗한 환경(`.env.local` 없음), atc 서비스 밖(systemd scope). FLIGHT RECORDER `control` launch 줄에 `tmux`. `GET /api/control/sessions` 줄에 `launch`·`tmux`·`command`·`blocked`가 생기고 `manual`은 없어졌다.
 - FLEET PLAN이 FUEL REMAINING을 본다(ATC-63, [docs/fleet.ko.md](docs/fleet.ko.md) 8.6, [docs/fuel.md](docs/fuel.md) 6.1).
   - ACCOUNT가 hold 수준(`holdPct`, 95 %)인 AIRCRAFT는 LAUNCH를 제안하지 않고 다음으로 맞는 AIRCRAFT를 고른다. 맞는 AIRCRAFT가 모두 hold면 ENTRY도 내지 않고 아무것도 제안하지 않는다(새 세션은 이 기기에 로그인된 계정으로 열리는데 atc는 그 계정을 모른다). AIRPORT 수요 줄이 이유를 말한다(`FUEL 100% (account acct-1) until 21:48Z — TEAM_Q — ENTRY도 제안 안 함(새 세션이 열릴 계정을 모름)`). 맞는 등록 AIRCRAFT가 아예 없어 내는 ENTRY는 `default` ACCOUNT로 세고, `default`가 hold면 내지 않는다.
   - info 수준(`infoPct`, 80 %)이면 제안에 `fuel` 사유 줄이 붙는다. 열린 LAUNCH·ENTRY의 ACCOUNT가 hold가 되면 FUEL 글을 사유로 expire한다.

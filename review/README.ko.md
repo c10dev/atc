@@ -13,12 +13,13 @@ Codex를 쓸 수 없을 때 vocado PR을 리뷰하는 관제 세션이다(ATC-7,
 
 ## 여는 법
 
-tmux의 `atc-review` 세션으로:
+설정 창 CONTROL 블록의 REVIEW 줄에서 **LAUNCH**를 누르거나(ATC-66, [docs/fleet.ko.md](../docs/fleet.ko.md) 8.5.1), 같은 것을 손으로 연다. tmux의 `atc-review` 세션이다:
 
 ```bash
-tmux new-session -d -s atc-review -c /home/c10/projects/atc/review 'env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config'
-tmux send-keys -t atc-review '/loop 10m /tick' Enter
+tmux new-session -d -s atc-review -c /home/c10/projects/atc/review "env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config -n REVIEW '/loop 10m /tick'"
 ```
+
+- `-n REVIEW`가 세션 이름을 정하고 마지막 인자가 첫 메시지다.
 
 - `ocx claude`가 settings의 모델을 opencodex 프록시로 보낸다. 평범한 `claude`로 열면 "selected model" 오류로 멈추므로 Claude로 몰래 돌지 않는다. `env -u ANTHROPIC_BASE_URL`과 `NO_PROXY`는 CROSSCHECK와 같은 이유다([docs/occ.ko.md](../docs/occ.ko.md) "CROSSCHECK").
 - `--strict-mcp-config`는 MCP 서버를 싣지 않는다. 자료는 `atcctl landing review`로 받으니 MCP가 필요 없다.

@@ -495,7 +495,13 @@ S2는 구현돼 있고 SCHEDULE `mode`(`~/.local/state/atc/schedule.json`, 기�
 env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config
 ```
 
-이름은 `CROSSCHECK`, `/loop 10m /tick`으로 돌린다.
+이름은 `CROSSCHECK`, `/loop 10m /tick`으로 돌린다. 설정 창 CONTROL 블록의 CROSSCHECK 줄 **LAUNCH**가 이것을 한 번에 한다(ATC-66, [fleet.ko.md](fleet.ko.md) 8.5.1): `crosscheck/`에서 tmux 세션 `atc-crosscheck`로
+
+```bash
+env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config -n CROSSCHECK '/loop 10m /tick'
+```
+
+`-n`이 세션 이름을 정하고 마지막 인자가 첫 메시지다. 손으로 열 때는 같은 명령을 `tmux new-session -d -s atc-crosscheck -c /home/c10/projects/atc/crosscheck "…"` 안에 넣는다.
 
 **Claude Desktop에서.** Desktop은 설정의 `model`을 따르지 않는다. 앱에서 고른 모델을 쓰고, 그 모델은 ClaudeRipple 프록시(`HTTPS_PROXY` 127.0.0.1:8790)를 거친다. 이 프록시는 Claude 모델도 그대로 통과시킨다. `crosscheck/` 폴더에서 세션을 열고, 이름을 `CROSSCHECK`로 하고, **앱의 모델 메뉴에서 `muse-spark-1.3-contributor`를 고른** 뒤 `/loop 10m /tick`. 2026-09-26에 Desktop 세션 둘이 기본 `claude-opus-5-5`로 돌았는데, mark는 Muse 이름으로 기록됐다(S-0006과 S-0007이 그랬을 가능성이 크다). 이제 아래의 실제 모델 확인이 이것을 막는다.
 

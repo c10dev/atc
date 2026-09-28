@@ -2042,7 +2042,8 @@ a.ticket:hover {
   border-color: color-mix(in srgb, var(--alert) 60%, transparent);
   color: var(--alert);
 }
-.config-note.is-error {
+.config-note.is-error,
+.config-note .is-error {
   color: var(--alert);
 }
 /* AUTOLAND 모드마다 한 줄 경고(ATC-34). 지금 모드를 진하게 */
