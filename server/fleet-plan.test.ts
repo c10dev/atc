@@ -437,3 +437,53 @@ test("executionOf AOG·RETURN·RETIRE: 사유 머리는 FLEET PLAN id, RETIRE는
   assert.deepEqual(executionOf(t.p, { stopSession: false }, ctx({ latest: t.latest })).steps.map((x) => x.action), ["retire"]);
   assert.deepEqual(executionOf(t.p, {}, ctx({ latest: t.latest, sessions: [] })).steps.map((x) => x.action), ["retire"]);
 });
+
+// AIRCRAFT health에서 나오는 제안(ATC-48)
+const health = (code: "MODEL" | "LIMIT" | "CONTEXT" | "HUNG" | "PENDING" | "THROTTLE" | "NETWORK" | "UNANSWERED" | "DENIED" | "UNKNOWN" | "PROVIDER", over: Partial<NonNullable<AircraftView["health"]>> = {}) =>
+  ({ code, level: "alert", since: ago(2 * HOUR), detail: `${code} 원문`, next: `${code} 다음`, holds: true, ...over }) as NonNullable<AircraftView["health"]>;
+
+test("health: MODEL·주간 LIMIT은 AOG, CONTEXT·ALERT HUNG은 RESTART, 나머지 코드는 제안 없음", () => {
+  const reset = "2026-10-02T09:00:00.000Z";
+  const out = fleetPlanOf(
+    inputs({
+      aircraft: [
+        view("TEAM_A", { health: health("MODEL") }),
+        view("TEAM_B", { health: health("LIMIT", { weekly: true, resetsAt: reset }) }),
+        view("TEAM_C", { health: health("LIMIT", { resetsAt: "2026-09-28T14:00:00.000Z" }) }), // 5시간 한도
+        view("TEAM_D", { health: health("CONTEXT"), flying: ["ATC-9"] }),
+        view("TEAM_E", { status: "busy", health: health("HUNG") }),
+        view("TEAM_F", { status: "busy", health: health("HUNG", { level: "info" }) }),
+        ...(["PENDING", "THROTTLE", "NETWORK", "UNANSWERED", "DENIED", "UNKNOWN", "PROVIDER"] as const).map((c, n) => view(`TEAM_${"GHIJKLM"[n]}`, { health: health(c) })),
+      ],
+      sessions: [{ registration: "TEAM_D", kind: "background", id: "d", startedAt: NOW - HOUR }, { registration: "TEAM_E", kind: "interactive", startedAt: NOW - HOUR }],
+      lastActive: new Map([["TEAM_D", ago(MIN)], ["TEAM_E", ago(2 * HOUR)]]),
+      logbook: [..."ABCDEFGHIJKLM"].map((c) => arrived(`TEAM_${c}`)),
+    }),
+  );
+  assert.deepEqual(kinds(out.candidates), ["AOG TEAM_A", "AOG TEAM_B", "RESTART TEAM_D", "RESTART TEAM_E"]);
+  const by = (reg: string) => out.candidates.find((c) => c.aircraft === reg)!;
+  assert.deepEqual(by("TEAM_A").reasons.map((r) => r.code), ["model", "until"]);
+  assert.equal(by("TEAM_A").reasons.at(-1)!.value, "2026-09-29");
+  // 주간 LIMIT만이면 해제 기한은 reset 날
+  assert.deepEqual(by("TEAM_B").reasons.at(-1), { code: "until", detail: "해제 기한 2026-10-02(주간 LIMIT reset 날)", value: "2026-10-02" });
+  assert.deepEqual(by("TEAM_D").reasons.map((r) => r.code), ["context", "handoff", "session"]);
+  assert.match(by("TEAM_D").reasons[1]!.detail, /ATC-9.*HANDOFF/);
+  assert.match(by("TEAM_E").reasons[2]!.detail, /데스크톱·터미널 세션/);
+});
+
+test("health: NORDO와 MODEL이 겹치면 AOG 하나에 사유 둘, 승인하면 사유 머리에 두 코드", () => {
+  const out = fleetPlanOf(inputs({ aircraft: [view("TEAM_H", { health: health("MODEL") })], nordo: new Set(["TEAM_H"]) }));
+  assert.deepEqual(out.candidates.map((c) => c.reasons.map((r) => r.code)), [["nordo", "model", "until"]]);
+  const { p, latest } = openOf("F-0001", "AOG", "TEAM_H", { reasons: out.candidates[0]!.reasons } as Partial<FleetPlanOp>);
+  const plan = executionOf(p, {}, ctx({ latest }));
+  assert.deepEqual(plan.steps, [{ action: "aog", registration: "TEAM_H", reason: "FLEET PLAN F-0001: NORDO·MODEL", until: "2026-09-29" }]);
+});
+
+test("health: 코드가 풀리면 열린 제안은 expire된다", () => {
+  const cfg = FLEET_PLAN_DEFAULTS;
+  const first = fleetPlanOf(inputs({ aircraft: [view("TEAM_D", { health: health("CONTEXT") })] })).candidates;
+  const all = foldFleetPlan(syncFleetPlan([], first, first, NOW, cfg));
+  assert.deepEqual(all.map((p) => `${p.kind} ${p.aircraft} ${p.status}`), ["RESTART TEAM_D open"]);
+  const cleared = fleetPlanOf(inputs({ aircraft: [view("TEAM_D")] })).candidates;
+  assert.deepEqual(syncFleetPlan(all, cleared, [], NOW + 10 * MIN, cfg).map((o) => o.op), ["expire"]);
+});

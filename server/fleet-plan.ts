@@ -239,16 +239,44 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
     }
   }
 
-  // ── AOG: NORDO 또는 최근 LOS ──
+  // ── RESTART: AIRCRAFT health(ATC-48). CONTEXT(맥락이 넘쳐 이어갈 수 없음), 오래가는 HUNG(ALERT) ──
+  for (const a of i.aircraft) {
+    const h = a.health;
+    if (a.retired || a.aog || !h || !(h.code === "CONTEXT" || (h.code === "HUNG" && h.level === "alert"))) continue;
+    const session = i.sessions.find((x) => x.registration.toUpperCase() === a.registration);
+    const reasons: PlanReason[] = [
+      { code: h.code.toLowerCase(), detail: `${h.code} — ${h.detail} (since ${h.since.slice(0, 16).replace("T", " ")}Z)`, value: h.since },
+      { code: "handoff", detail: a.flying.length ? `STAND·PR(${a.flying.join(", ")})은 새 세션에 HANDOFF — ${h.next}` : h.next },
+      {
+        code: "session",
+        detail: session?.kind === "background" ? `BG ${session.id ?? "?"} — 멈추고 새 CREW BRIEFING으로 다시 띄움` : "데스크톱·터미널 세션 — 승인 실행은 안 됨, 그 창을 닫고 새 CREW BRIEFING으로 연다",
+      },
+    ];
+    const key = `RESTART|${a.registration}`;
+    const same = out.find((c) => c.key === key);
+    if (same) same.reasons.unshift(...reasons.slice(0, 2));
+    else out.push({ key, kind: "RESTART", aircraft: a.registration, airport: a.base, reasons });
+  }
+
+  // ── AOG: NORDO, 최근 LOS, AIRCRAFT health의 MODEL·주간 LIMIT(ATC-48) ──
   for (const a of i.aircraft) {
     if (a.retired || a.aog) continue;
     const reasons: PlanReason[] = [];
     if (i.nordo.has(a.registration)) reasons.push({ code: "nordo", detail: "NORDO — 세션이 응답하지 않음" });
     const los = i.los.get(a.registration);
     if (los) reasons.push({ code: "los", detail: `최근 24시간 LOS(${los.slice(0, 16).replace("T", " ")}Z)` });
+    const h = a.health;
+    if (h?.code === "MODEL") reasons.push({ code: "model", detail: `MODEL — ${h.detail}. ${h.next}` });
+    const weekly = h?.code === "LIMIT" && h.weekly ? h : null;
+    if (weekly) reasons.push({ code: "limit", detail: `주간 LIMIT — ${weekly.resetsAt ? `reset ${weekly.resetsAt.slice(0, 16).replace("T", " ")}Z까지` : "reset 시각 모름"}`, value: weekly.resetsAt ?? null });
     if (!reasons.length) continue;
-    const until = new Date(i.now + DAY).toISOString().slice(0, 10);
-    out.push({ key: `AOG|${a.registration}`, kind: "AOG", aircraft: a.registration, airport: a.base, reasons: [...reasons, { code: "until", detail: `해제 기한 ${until}(24시간)`, value: until }] });
+    // 주간 LIMIT만이면 reset 날까지, 다른 사유가 있으면 24시간(reset이 더 늦으면 그날)
+    const day = new Date(i.now + DAY).toISOString().slice(0, 10);
+    const resetDay = weekly?.resetsAt?.slice(0, 10) ?? null;
+    const onlyLimit = reasons.every((r) => r.code === "limit");
+    const until = resetDay && (onlyLimit || resetDay > day) ? resetDay : day;
+    const why = until === resetDay ? "주간 LIMIT reset 날" : "24시간";
+    out.push({ key: `AOG|${a.registration}`, kind: "AOG", aircraft: a.registration, airport: a.base, reasons: [...reasons, { code: "until", detail: `해제 기한 ${until}(${why})`, value: until }] });
   }
 
   // ── RETURN: FLEET PLAN이 건 AOG의 해제 기한(그날 끝)이 지남(8.7) ──
@@ -560,7 +588,7 @@ export function executionOf(p: FleetProposal, input: Record<string, unknown>, ct
       if (x.aog) throw new PlanError(`${reg}는 이미 AOG`);
       const until = input.until === undefined ? (p.reasons.find((r) => r.code === "until")?.value ?? null) : input.until;
       if (until !== null && (typeof until !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(until))) throw new PlanError("until은 YYYY-MM-DD", 400);
-      const codes = p.reasons.filter((r) => r.code === "nordo" || r.code === "los").map((r) => r.code.toUpperCase());
+      const codes = p.reasons.filter((r) => ["nordo", "los", "model", "limit"].includes(r.code)).map((r) => r.code.toUpperCase());
       return { steps: [{ action: "aog", registration: reg, reason: `FLEET PLAN ${p.id}: ${codes.join("·") || "AOG"}`, until: until as string | null }], options: { until: until as string | null } };
     }
     case "RETURN": {
