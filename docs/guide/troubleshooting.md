@@ -10,6 +10,14 @@
 
 `/tick`이 매 바퀴 `manual check`로 `CLAUDE.md`·`/tick` 변경을 확인한다. `~/.local/state/atc/manuals/`에 그 폴더의 기록이 없으면 아직 한 바퀴도 안 돈 것이다. 세션이 `/loop`로 돌고 있는지 확인한다.
 
+## 팀 세션이 바뀐 규칙(CLAUDE.md·AGENTS.md)을 모른다
+
+rules-drift hook(`hooks/README.ko.md`)을 넣은 저장소면, 규칙 파일이 바뀐 뒤 팀 세션의 다음 턴(프롬프트나 도구 호출)에 diff가 자동으로 들어간다. 메시지로 "다시 읽어 주세요"를 퍼뜨릴 필요가 없다.
+
+- FLEET 카드의 `RULES 미확인 since <시각>` → 그 세션이 아직 턴을 돌지 않았다. 세션에 아무 말이든 하면 다음 턴에 diff를 받는다.
+- RULES 줄이 없다 → 그 저장소 설정에 hook이 없거나, 세션이 hook을 넣기 전에 시작했다(다음 턴부터 기준이 생긴다).
+- vocado `CLAUDE.md`는 본 체크아웃의 파일을, `AGENTS.md`는 `origin/main`을 본다. `AGENTS.md` 변경은 누군가 fetch한 뒤에 보인다.
+
 ## 관제 세션이 "막혔다"고 보고한다
 
 guard가 막은 것이다(fail-closed). 관제 세션은 다시 시도하지 않는다. 메시지의 사유를 보고:

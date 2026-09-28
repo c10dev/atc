@@ -1,4 +1,4 @@
-# hooks — 점유 hook
+# hooks — 점유 hook과 rules-drift hook
 
 [English](README.md) · **한국어**
 
@@ -66,6 +66,70 @@ matcher는 `paths.mjs`의 `WORK_TOOLS`와 같게 둔다. 읽기 도구(Read, Gre
 
 끄려면 이 항목을 지우면 된다. `claims/` 폴더는 언제 지워도 된다.
 
+## rules-drift hook
+
+`rules-drift.mjs`(ATC-42)는 세션이 시작된 뒤 규칙 파일이 바뀌면 돌고 있는 세션에 알린다. "CLAUDE.md 다시 읽어 주세요"를 누가 퍼뜨리지 않아도 된다. 세션의 다음 턴에 `hookSpecificOutput.additionalContext`로 unified diff를 넣는다.
+
+| 모드 | hook 이벤트 | 하는 일 |
+|---|---|---|
+| `start` | `SessionStart` | 세션의 기준을 적는다: 감시 파일마다 해시와, 나중에 diff를 만들 내용. `startup`·`clear`·`compact`는 지금 파일에서 시작한다. `resume`은 기준을 그대로 둬서, 세션이 닫혀 있던 동안 바뀐 것도 다음 턴에 알린다 |
+| `check` | `UserPromptSubmit`, `PostToolUse` | 해시를 비교한다. 파일이 바뀌었으면 바뀐 파일, unified diff, "이 세션이 시작된 뒤 규칙 파일이 바뀌었다" 한 줄을 출력하고, 새 해시를 확인한 것으로 적는다. `PostToolUse`에서는 30초에 한 번까지만 본다 |
+
+- **감시 파일**은 명령줄로 정한다: `--root <저장소>`(기본 `$CLAUDE_PROJECT_DIR`, 없으면 hook의 `cwd`), `--files`(기본 `CLAUDE.md,AGENTS.md`, 저장소 안 경로만), 필요하면 `--ref <git ref>`. `--ref`를 주면 그 ref에 있는 파일은 ref에서, 없는 파일은 작업 트리에서 읽는다.
+  - vocado의 `CLAUDE.md`는 git에서 빠져 있고(`.git/info/exclude`) 본 체크아웃에만 있다. 본 체크아웃은 `origin/main`보다 뒤진 detached HEAD다. `AGENTS.md`는 git이 추적한다. 그래서 `--root /home/c10/projects/vocado_nextjs --ref origin/main`은 `CLAUDE.md`를 본 체크아웃에서, `AGENTS.md`를 `origin/main`에서 읽는다. `origin/main`은 어느 세션이든 fetch하면 움직인다.
+- **diff 상한**: 파일을 합쳐 150줄. 넘거나 이전 내용을 모르면, 그 파일을 Read로 다시 읽으라고 경로와 함께 적는다.
+- **읽는 것**: 감시 파일뿐이다. 대화 기록(`transcript_path`)은 읽지 않고 네트워크도 쓰지 않는다. 한 번에 약 30ms.
+- **fail open**: 오류(잘못된 stdin, 상태 폴더가 없거나 쓸 수 없음, 깨진 상태 파일)가 나면 아무것도 출력하지 않고 exit 0이다. 상태 파일이 깨지면 그 세션은 지금 파일에서 다시 시작한다. 감시 파일이 없는 것도 한 상태로 보고, 파일이 생기면 diff로 알린다.
+- **상태**: `~/.local/state/atc/rules-ack/<sessionId>.json`(`root`, `ref`, `files`, 확인한 해시 `acked`, `startedAt`, `checkedAt`, `changedAt`)과 `rules-ack/blobs/<sha256>`(diff용 내용). `start`마다 7일 동안 확인이 없던 세션 기록과, 어느 기록도 가리키지 않는 내용을 지운다.
+- **FLEET**: AIRCRAFT 카드마다 살아 있는 세션들의 상태가 보인다. "RULES current", 또는 "RULES 미확인 since <시각>"과 파일(시각은 마지막 변경: ref의 마지막 커밋이나 파일 mtime)이다. atc가 기록과 지금 파일을 직접 비교하므로, 쉬고 있는 세션도 뒤처졌으면 그렇게 보인다. 기록이 없는 AIRCRAFT에는 아무것도 보이지 않는다.
+
+### 설치(vocado)
+
+SUPERVISOR가 아래 항목을 vocado `.claude/settings.json`에 합친다(기계 경로를 저장소에 넣고 싶지 않으면 `.claude/settings.local.json`). context가 그 턴에 들어가도록 동기 hook으로 두고, `timeout`으로 시간을 묶는다.
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"/home/c10/projects/atc/hooks/rules-drift.mjs\" start --root /home/c10/projects/vocado_nextjs --ref origin/main",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"/home/c10/projects/atc/hooks/rules-drift.mjs\" check --root /home/c10/projects/vocado_nextjs --ref origin/main",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"/home/c10/projects/atc/hooks/rules-drift.mjs\" check --root /home/c10/projects/vocado_nextjs --ref origin/main",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+끄려면 항목을 지운다. `rules-ack/` 폴더는 언제 지워도 된다. 그러면 세션들이 지금 파일에서 다시 시작한다.
+
 ## 파일
 
 | 파일 | 역할 |
@@ -75,5 +139,8 @@ matcher는 `paths.mjs`의 `WORK_TOOLS`와 같게 둔다. 읽기 도구(Read, Gre
 | `paths.d.mts` | TypeScript 서버용 `paths.mjs` 타입 선언 |
 | `shell.mjs` | `workTargets(command)` — 명령 위치의 `cd`·`git -C` 대상을 돌려주는 작은 셸 토크나이저(완전한 파서가 아님). 따옴표, `;` `&` `\|` `(` `)` `` ` `` `$(`, heredoc, `VAR=…`와 `if`·`then`·`time` 같은 앞 단어를 처리하고 `bash -c "…"` 안을 두 단계까지 본다. `git` 전역 옵션만 보므로 `git commit -C <commit>`은 경로가 아니다 |
 | `shell.test.mjs` | 잡아야 하는 것과 건너뛰어야 하는 것 사례(`npm test`) |
+| `rules-drift.mjs` | rules-drift hook(`start`, `check`)과 서버가 FLEET에 다시 쓰는 순수 함수(`statusOf`, `readRecords`, `readSource`) |
+| `rules-drift.d.mts` | `rules-drift.mjs`의 타입 선언 |
+| `rules-drift.test.mjs` | 변경 없음, diff 한 번 뒤 확인됨, 새 세션과 resume, fail open, diff 상한, `--ref`, 정리(`npm test`) |
 
 atc가 점유로 HANDOFF와 충돌을 판정하는 방법은 저장소 [README](../README.ko.md#handoff와-충돌)에 있다.

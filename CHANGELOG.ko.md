@@ -24,6 +24,12 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- rules-drift hook: 돌고 있는 팀 세션이 규칙 파일(vocado `CLAUDE.md`, `AGENTS.md`) 변경을 다음 턴에 안다. 메시지로 퍼뜨리지 않아도 된다(ATC-42, [hooks/README.ko.md](hooks/README.ko.md#rules-drift-hook)).
+  - `hooks/rules-drift.mjs start`(SessionStart)는 세션마다 기준 해시와 내용을 적는다. `check`(UserPromptSubmit·PostToolUse, PostToolUse는 30초에 한 번까지)는 파일이 바뀌었으면 unified diff를 `hookSpecificOutput.additionalContext`로 넣고 새 해시를 확인한 것으로 적는다. 네트워크를 쓰지 않고, 대화 기록을 읽지 않고, 오류가 나면 아무것도 출력하지 않고 exit 0이다(fail open).
+  - 설정은 명령줄로 한다: `--root`, `--files`(기본 `CLAUDE.md,AGENTS.md`), `--ref`. `--ref`를 주면 ref에 있는 파일은 ref에서, 없는 파일은 작업 트리에서 읽는다(vocado `CLAUDE.md`는 git에서 빠져 있다).
+  - diff는 150줄까지이고, 넘으면 파일을 Read로 다시 읽으라고 한다. 상태는 `~/.local/state/atc/rules-ack/`에 세션 id별로 두고, diff용 내용도 둔다. 7일 동안 확인이 없던 기록과 가리키는 곳 없는 내용은 `start` 때 지운다.
+  - FLEET 카드에 "RULES current" 또는 파일과 함께 "RULES 미확인 since <시각>"이 보인다. atc가 기록으로 직접 계산하므로 쉬고 있는 세션도 보인다(`server/rules-state.ts`).
+  - hooks README(en/ko)에 vocado `.claude/settings.json`에 넣을 설정을 그대로 적었다. 머지 뒤 SUPERVISOR가 넣는다.
 - 리서치 요약: Human Preview 다시 보기(ATC-39, [docs/research/human-preview.ko.md](docs/research/human-preview.ko.md)). 위험 기반 증거 묶음(사람은 CHOICE·ACCOUNT·DEVICE에서만)과 단계별 도입, ATC-37 수정을 추천한다. 전체 보고서는 비공개 Linear 문서에 있다.
 - AUTOLAND 재리뷰(ATC-38, [docs/occ.ko.md](docs/occ.ko.md) 9.7). AUTOLAND 갱신이 끝났는데 새 head에 리뷰가 이어지지 않았으면(`no-review`·`review-stale`) atc가 그 head에 한 번 요청한다. Codex를 쓸 수 있으면 PR 댓글 `@codex review` 하나(유일한 새 GitHub 쓰기)를 단다. Codex가 한도이거나 30분 동안 답이 없으면 6시간을 기다리지 않고 REVIEW(DeepSeek) 대기열로 넘긴다. ATC-27·30 제외와 보안 스위치는 그대로라, 제외 PR은 "AUTOLAND: SUPERVISOR 리뷰 필요"로 보인다. `autoland.jsonl`에 `op: "review-request"`로 남고, 스트립에 "AUTOLAND: review requested (codex|deepseek)"가 보인다. `update`·`merge` 모드이고 GROUND STOP이 아닐 때만 한다.
 - 판정 계열: Jev(TypeSafe System One)를 CLASSIFY 판정 계열로 더했다. **기본은 꺼짐**이다(ATC-36, [docs/fleet.ko.md](docs/fleet.ko.md) 6.1).

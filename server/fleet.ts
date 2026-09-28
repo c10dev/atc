@@ -8,6 +8,7 @@ import { OBSERVED_WINDOW_DAYS } from "./crew-observed.ts";
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig } from "./dispatch.ts";
 import { type Actuals, computeActuals, type LogEntry, loadLogbook } from "./logbook.ts";
 import type { Snapshot } from "./model.ts";
+import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state.ts";
 
 // FLEET 등록부(~/.local/state/atc/fleet.json). 팀(AIRCRAFT)마다 CREW COMPLEMENT, TYPE RATING, ROUTE, TARGETS를 적는다.
 // 설계: docs/fleet.md. 타입·기본값·판정은 crew.ts에 있고, planner도 그것을 쓴다.
@@ -305,7 +306,10 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const fleet = loadFleet();
     const projects = [...new Set(s.tickets.map((t) => t.project).filter(Boolean) as string[])].sort();
     const cfg = loadDispatchConfig();
-    const aircraft = fleetView(s, fleet, cfg.teamPattern, loadLogbook()).map(withCrew(s));
+    // RULES(ATC-42): 그 AIRCRAFT의 살아 있는 세션이 규칙 파일 변경을 확인했나. rules-drift hook 기록이 없으면 null
+    const rulesRecords = loadRulesRecords();
+    const rulesOf = (reg: string): RulesView | null => rulesOfAircraft(s.sessions.filter((x) => x.status !== "dead" && x.name.toUpperCase() === reg), rulesRecords);
+    const aircraft = fleetView(s, fleet, cfg.teamPattern, loadLogbook()).map(withCrew(s)).map((a) => ({ ...a, rules: rulesOf(a.registration) }));
     const configurations = Object.entries(CONFIGURATIONS).map(([id, t]) => ({ id, label: t.label, complement: t.complement, ratings: t.ratings }));
     return c.json({
       ratings: RATINGS,
