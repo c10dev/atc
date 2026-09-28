@@ -10,7 +10,7 @@
 | NETWORK | `#network` | 4단계 운항 개요(읽기 전용): ROUTE MAP(ROUTE마다 WAYPOINT 경로·지금 구간·ETA), ROUTE(Linear 프로젝트)별 열린 FLIGHT·14일 ARRIVED·도는 AIRCRAFT·착륙 대기·프로젝트 목표, AIRCRAFT별 TARGETS 대 실적, 28일 추세(ARRIVED·착륙 대기·되돌림, 게이트 판정·합의율·CROSSCHECK 일치율) | — |
 | METRICS | `#metrics` | FLIGHT RECORDER로 본 운용 지표와 추이 | — |
 | DISPATCH | `#dispatch` | 배정 계획과 제안(CROSSCHECK 동의 묶음, BRIEFING 세 줄, 사실 줄, CROSSCHECK 칩, `CROSSCHECK 대기`, BLIND 표본, 접힌 점수 요소·본문·메모), HELD(PREFLIGHT), IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검과 CROSSCHECK 일치, BLIND 합의율, PREFLIGHT HELD·준비율, ATFM 블록(출발 중지, main CI, 머지 슬롯, 자동 배정·S3 대상 그림자 판정), FLIGHT FOLLOWING 블록(배정된 FLIGHT의 단계 막대, 지연·불일치, OCC가 보고했는지), VECTORS · DIRECT 블록(지시서별·SOLO·CREW별·2×2로 묶어 FLIGHT당 중간 질문, 질문 없이 PR, READBACK → PR 중앙값, P0–P2 지적, PR 뒤 수정 커밋, 14·30·90일, FLIGHT별 행) | 판정, CROSSCHECK에 동의, HELD 대기열로·FLIGHT 보류 확정, 모드 전환, ATFM 스위치(main 깨짐·수동)와 수동 출발 중지, ATFM OFF |
-| SCHEDULE | `#schedule` | OCC 초안(CLASSIFY·PRIORITIZE·NEW, CROSSCHECK 칩), S2 점검과 CROSSCHECK 일치, LATE WAYPOINTS(지연 경고), 후보 수 | 판정, CROSSCHECK에 동의 |
+| SCHEDULE | `#schedule` | OCC 초안(CLASSIFY·PRIORITIZE·NEW, CROSSCHECK 칩), S2 점검과 CROSSCHECK 일치, 판정 계열 일치(`JEV 일치`, 켜져 있을 때), RECENT의 판정 계열 칩(`JEV agree`, 판정한 초안에만), LATE WAYPOINTS(지연 경고), 후보 수 | 판정, CROSSCHECK에 동의 |
 | DOCS | `#docs` | 이 안내 | — |
 
 ## NETWORK
@@ -55,7 +55,7 @@ STAND 줄의 REMARKS 칸에도 그 STAND 브랜치의 PR 배지가 붙는다.
 - **숫자판**: AIRBORNE(작업 중 세션), STANDS(점유), ENROUTE(진행 FLIGHT), HANDOFF, ALERTS.
 - **새 버전 알림**: 이 탭을 연 뒤에 atc가 새로 배포되면 콘솔 바로 아래에 "새 버전이 배포됨"과 새로고침·닫기 버튼이 뜬다. 저절로 새로고침하지 않는다(입력 중인 내용을 지키려고). 닫으면 다음 배포 때까지 안 뜬다.
 - **ALERT 줄**: 경보가 흘러간다. 누르면 목록이 열린다.
-- **ATC 로고**: 설정(테마, 움직임, 시계, LINEAR, AGENTS). AGENTS 탭의 **REVIEW** 줄(`externalReview.security`)은 Codex 한도 때 보안 PR도 DeepSeek 착륙 리뷰어에게 보낼지 정한다. 기본 exclude, deepseek으로 바꾸면 보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나간다(`.env`·비밀 경로와 FLIGHT 없는 PR은 계속 빠짐). 스트립에는 "REVIEW: DEEPSEEK (보안, Codex 한도)"로 보인다. 같은 탭의 **AUTOLAND** 줄(`autoland.mode`)은 착륙 자동화 스위치다: `off`(기본), `update`(behind인 CLEARED PR을 하나씩 갱신, 머지는 SUPERVISOR), `merge`(위임된 PR은 머지까지. vocado AGENTS.md에 예외를 적은 뒤에만). 모드마다 경고가 한 줄씩 보이고, GROUND STOP이 걸려 있으면 그 아래 **풀기** 버튼이 있다. 이 스위치는 이 화면에서만 바뀐다(관제 세션은 못 바꿈).
+- **ATC 로고**: 설정(테마, 움직임, 시계, LINEAR, AGENTS). AGENTS 탭의 **REVIEW** 줄(`externalReview.security`)은 Codex 한도 때 보안 PR도 DeepSeek 착륙 리뷰어에게 보낼지 정한다. 기본 exclude, deepseek으로 바꾸면 보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나간다(`.env`·비밀 경로와 FLIGHT 없는 PR은 계속 빠짐). 스트립에는 "REVIEW: DEEPSEEK (보안, Codex 한도)"로 보인다. 같은 탭의 **AUTOLAND** 줄(`autoland.mode`)은 착륙 자동화 스위치다: `off`(기본), `update`(behind인 CLEARED PR을 하나씩 갱신, 머지는 SUPERVISOR), `merge`(위임된 PR은 머지까지. vocado AGENTS.md에 예외를 적은 뒤에만). 모드마다 경고가 한 줄씩 보이고, GROUND STOP이 걸려 있으면 그 아래 **풀기** 버튼이 있다. 이 스위치는 이 화면에서만 바뀐다(관제 세션은 못 바꿈). 같은 탭의 **JUDGES** 줄(`judges.jev`)은 판정 계열 Jev 스위치다: `off`(기본), `replay`(판정한 지난 CLASSIFY 초안을 다시 판정), `shadow`(새 CLASSIFY 초안을 판정해 두고 판정 뒤에만 보임). 켜면 티켓 제목과 목표·수정 허용 범위·완료 기준이 TypeSafe로 나간다(`rating:SEC`·Risk 티켓은 제목만). 이것도 이 화면에서만 바뀐다.
 
 ## 경보 종류
 

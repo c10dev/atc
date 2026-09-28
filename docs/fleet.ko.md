@@ -255,6 +255,35 @@ ATFM의 자동 대상 판정(A8)은 여전히 배정 가능한 AIRCRAFT를 요�
 
 분류는 정해진 선택지 중에서 고르는 일이다. 그래서 typed-judgment 모델(DISPATCH 노트의 Jev 평가)의 첫 후보이기도 하다. SUPERVISOR의 그림자 판정과 비교해 잰다.
 
+### 6.1 판정 계열(Jev)
+
+상태: 만들었고 **기본은 꺼짐**(ATC-36). 판정 계열은 SCHEDULE `CLASSIFY` 초안에 표시만 남긴다. 판정하지 않는다.
+
+**판정 방법**(`server/judges/`). CLASSIFY 인터페이스 하나로 묻는다: FLIGHT TYPE Choice(4.1의 여섯 가지, CHECK → SURVEY → TEST → FERRY → MAINT → BUILD 순서), WAKE Choice(4.2), TYPE RATING마다 Noul(4.3, yes 확률 0.5 이상이면 붙임). atc는 그 분류를 OCC 초안이 적은 축과 비교한다. 같으면 `agree`, 다르면 `disagree`이고, `TYPE MAINT(80%) ≠ 초안 BUILD` 같은 이유가 붙는다. RATING은 rating마다 "초안이 붙이거나 FLIGHT에 이미 라벨이 있음"과 비교한다. 엔진은 둘이다.
+
+| 엔진 | 무엇 |
+|---|---|
+| `stub` | 녹화한 응답, 네트워크 없음. 테스트와 `ATC_JUDGE_ENGINE=stub`으로 띄운 시험 서버가 쓴다 |
+| `jev` | TypeSafe System One: `POST https://api.typesafe.ai/v1/systemone`, 모델 `jev-latest`, `Authorization: Bearer $TYPESAFE_API_KEY`(`.env.local`. 로그·출력·기록에 쓰지 않는다) |
+
+**스위치**는 `~/.local/state/atc/judges.json`의 `judges.jev`다: `off`(기본), `replay`, `shadow`. SUPERVISOR만 바꾼다. 설정 창 → AGENTS → JUDGES에서 바꾸거나, 이 화면 Origin으로 `PUT /api/settings {judgesJev}`를 보낸다(AUTOLAND와 같다). atcctl에는 명령이 없어 관제 세션은 바꿀 수 없다. 값이 없거나 모르는 값이면 `off`로 읽는다.
+
+| 모드 | 판정하는 것 |
+|---|---|
+| `off` | 아무것도 읽거나 보내지 않는다 |
+| `replay` | SUPERVISOR가 판정한 CLASSIFY 초안 가운데 이 계열의 mark가 없는 것, 오래된 것부터. 본문은 지금 읽은 것이라 초안을 쓸 때와 다를 수 있다 |
+| `shadow` | mark가 없는 열린 CLASSIFY 초안 |
+
+서버는 1분에 3건까지만 돌린다. 오류가 난 초안은 한 시간 뒤에 다시 하고, 401·429가 나면 그 바퀴를 멈춘다. 마지막 실행과 오류는 설정 창에 보인다.
+
+**반출 규칙.** 스위치를 `replay`나 `shadow`로 켜는 것이 SUPERVISOR의 데이터 반출 결정이다. 나가는 것은 허용 목록뿐이다: 제목과 본문의 세 칸(목표, 수정 허용 범위, 완료 기준), 칸마다 600자까지. FLIGHT key, 라벨, 댓글, 담당, 프로젝트, 다른 칸은 보내지 않는다. `rating:SEC`·`Risk:*` 라벨이 있는 FLIGHT, 라벨을 모르는 FLIGHT, `rating:SEC`를 붙이는 초안은 **제목만** 보내고 본문은 읽지도 않는다. mark마다 보낸 칸(`sent`)과 본문을 뺀 까닭(`withheld`)이 남는다.
+
+**기록.** `~/.local/state/atc/judges.jsonl`에 추가만 한다. 초안·계열마다 `judge` 줄(분류, 확률, 판정, 엔진, 모델, run)이 쌓이고, 스위치를 바꿀 때마다 `mode` 줄이 붙는다. `schedule.jsonl`과 CROSSCHECK 한 칸은 건드리지 않는다.
+
+**쏠림 없이 재기.** mark는 SUPERVISOR가 판정한 초안에만 보인다. RECENT에 `JEV agree` 같은 칩으로 보이고, 툴팁에 분류와 보낸 범위가 있다. 열린 초안의 mark는 세기만 하고 숨긴다. 점검 패널의 `JEV 일치 m/n` 줄은 계열마다 사람 판정에 대해 `crosscheckRateOf`로 잰 값이고, `replay` mark도 센다(판정 계열의 입력에는 판정이 들어가지 않는다). ATFM 자동 판정은 뺀다. mark는 초안 상태를 바꾸지 않고, 20건·80% 게이트에도 들지 않는다.
+
+아직 만들지 않음: DISPATCH 판정 계열, 다른 계열, 판정 계열 일치율을 S3에 쓰는 것.
+
 ## 7. TARGETS
 
 AIRCRAFT마다 SUPERVISOR가 FLEET 탭에서 정한다. 보여 주기만 하고 점수에 넣지 않는다. atc는 이것으로 AIRCRAFT 순위를 매기지 않고, planner도 읽지 않는다.

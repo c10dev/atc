@@ -88,6 +88,7 @@ CROSSCHECK 세션이 켜져 있으면, 열린 제안과 초안마다 OCC와 다�
 - **뒤집기**: 칩과 생각이 다르면 평소 버튼(승인했을 것, 거절했을 것 …)을 누르고 사유를 적는다. 그 판정과 사유가 다음 바퀴부터 CROSSCHECK의 기준 예시가 된다.
 - **mark는 참고일 뿐이다.** 제안·초안 상태를 바꾸지 않고, 게이트(20건·80%)에도 들어가지 않는다. 게이트는 사람 판정만 센다.
 - **CROSSCHECK 일치** 줄(점검 패널): 사람이 판정한 건 중 판정 전에 mark가 있던 건에서, mark가 사람 판정과 맞은 비율. 게이트 기준은 아니고, 나중에 위험이 낮은 일(SEC가 아닌 CLASSIFY 등)을 자동으로 넘길지 정할 근거다.
+- **JEV 일치** 줄(SCHEDULE 점검 패널, 판정 계열이 켜져 있거나 mark가 있을 때): 판정 계열 Jev가 CLASSIFY 초안에 낸 분류가 사람 판정과 맞은 비율. 지난 판정을 다시 돌린 `replay` mark도 센다. Jev의 mark는 판정한 초안에만 RECENT의 칩(`JEV agree`)으로 보인다. 판정 전에는 보이지 않아서 판단이 쏠리지 않는다. 켜고 끄는 것은 설정 창 AGENTS 탭의 JUDGES다(설계: `docs/fleet.ko.md` 6.1).
 - 모델별로도 보인다: 일치 줄 아래 `└ muse-spark-1.3-contributor 3/4 75%`처럼 모델마다 한 줄. 칩에도 mark를 단 모델의 짧은 이름이 시각 옆에 있고, 전체 id는 칩과 RECENT에 마우스를 올리면 보인다. 모델 이름이 생기기 전의 mark는 `unknown`으로 센다.
 - 본문이나 OCC 메모에 PR 조건("PR #393 머지 뒤")이 있으면, CROSSCHECK가 `gh pr view`로 그 PR의 상태를 확인하고 이유에 적는다(예: `PR #393 머지 전이면 HOLD — gh: OPEN`).
 - HOLD 중인 제안에는 mark가 달리지 않는다. FLIGHT 칩 disagree mark가 달리면 그 제안은 곧바로 HELD로 간다(PREFLIGHT). "CROSSCHECK에 동의"는 대기열에 남은 제안(팀 선택 문제, agree)에만 쓴다.

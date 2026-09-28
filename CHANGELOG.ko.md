@@ -25,6 +25,12 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 
 ### 추가
 - AUTOLAND 재리뷰(ATC-38, [docs/occ.ko.md](docs/occ.ko.md) 9.7). AUTOLAND 갱신이 끝났는데 새 head에 리뷰가 이어지지 않았으면(`no-review`·`review-stale`) atc가 그 head에 한 번 요청한다. Codex를 쓸 수 있으면 PR 댓글 `@codex review` 하나(유일한 새 GitHub 쓰기)를 단다. Codex가 한도이거나 30분 동안 답이 없으면 6시간을 기다리지 않고 REVIEW(DeepSeek) 대기열로 넘긴다. ATC-27·30 제외와 보안 스위치는 그대로라, 제외 PR은 "AUTOLAND: SUPERVISOR 리뷰 필요"로 보인다. `autoland.jsonl`에 `op: "review-request"`로 남고, 스트립에 "AUTOLAND: review requested (codex|deepseek)"가 보인다. `update`·`merge` 모드이고 GROUND STOP이 아닐 때만 한다.
+- 판정 계열: Jev(TypeSafe System One)를 CLASSIFY 판정 계열로 더했다. **기본은 꺼짐**이다(ATC-36, [docs/fleet.ko.md](docs/fleet.ko.md) 6.1).
+  - `server/judges/`: CLASSIFY 인터페이스 하나(FLIGHT TYPE Choice, WAKE Choice, TYPE RATING마다 Noul)와 엔진 둘. `stub`은 녹화 응답이라 네트워크를 쓰지 않는다. `jev`는 `POST https://api.typesafe.ai/v1/systemone`, `jev-latest`, `.env.local`의 `TYPESAFE_API_KEY`를 Bearer로 쓰고, 키를 로그에 남기지 않는다.
+  - mark는 `judges.jsonl`에 초안·계열마다 추가만 하는 `judge` 줄로 남는다. 판정 계열의 분류를 초안이 적은 축과 비교한 결과(`agree`/`disagree`)다. `schedule.jsonl`, CROSSCHECK 칸, 초안 상태, 20건·80% 게이트는 건드리지 않는다. 계열별 일치율은 `crosscheckRateOf`로 잰다.
+  - 스위치는 `judges.json`의 `judges.jev: off | replay | shadow`다. SUPERVISOR만 바꾼다: 설정 창 → AGENTS → JUDGES, 또는 이 화면 Origin의 `PUT /api/settings {judgesJev}`. atcctl에는 명령이 없다. `replay`는 판정한 CLASSIFY 초안을 다시 돌리고, `shadow`는 열린 초안에 표시한다. 1분에 3건까지.
+  - 반출 허용 목록: 제목과 목표·수정 허용 범위·완료 기준 칸, 칸마다 600자까지. `rating:SEC`·`Risk:*` FLIGHT, 라벨을 모르는 FLIGHT, SEC를 붙이는 초안은 제목만 보낸다.
+  - 쏠림 방지: mark는 SUPERVISOR가 판정한 초안에만 보인다(RECENT의 `JEV agree` 칩). SCHEDULE 점검 패널에는 게이트와 따로 `JEV 일치 m/n`이 보인다.
 - AUTOLAND(ATC-34, [docs/occ.ko.md](docs/occ.ko.md) 9.7): vocado 착륙을 PR당 사람 클릭 한 번 이하로. 스위치 `autoland.json`의 `mode`: `off`(기본) | `update` | `merge`. SUPERVISOR만 설정 창(AGENTS 탭, 모드마다 한 줄 경고)이나 `PUT /api/settings {autolandMode}`로 바꾼다. 요청에 이 화면의 `Origin`이 있어야 해서 관제 세션은 못 바꾼다.
   - `update`: `behind`만 남은 CLEARED PR에 `PUT …/pulls/{n}/update-branch`(`expected_head_sha`, force-push가 아닌 merge 커밋). LANDING SEQUENCE 순서로 AIRPORT마다 하나씩. HOLD 아닌 CLEARED PR이 있으면 그것이 머지될 때까지 runway를 잡는다. head가 움직여 거절되면 다음 주기에 다시 한다. Draft, 쌓인 PR, `dirty`, LOS PR은 건드리지 않는다. 기본 AIRPORT는 `VCDO`(atc 저장소 자신의 착륙은 범위 밖).
   - `merge`: 위임된 CLEARED PR은 PR을 다시 읽은 뒤 정확한 head로 머지한다(`PUT …/pulls/{n}/merge`에 `sha`, 기본 `squash`). SUPERVISOR에게 남기는 제외: HOLD, FLIGHT 없음, `rating:SEC`·`Risk…` 라벨, ATC-27 보안 게이트(migrations, SQL, auth, admission, RLS, 비밀 경로, 보안 키워드), 파일 못 읽음, Human Preview `required`인데 `approved`·`waived`·`passed`가 아님. 만들어 두고, vocado `AGENTS.md`에 AUTOLAND 예외가 생길 때까지 끈다.
