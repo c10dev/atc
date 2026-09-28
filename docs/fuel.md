@@ -93,16 +93,16 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 
 | # | Issue | Depends on | Tier | Size |
 |---|---|---|---|---|
-| F1 | Parser, global dedupe, offset reader, read-only `GET /api/fuel` (per session: kinds, CACHE HIT, CREW lower bound), cross-checked against ccusage on the same days | — | `auto` | BUILD · M |
-| F2 | ACCOUNT label on the FLEET card and `fleet.json`; `LIMIT` grouped and held by ACCOUNT (health.ts, DISPATCH, SCHEDULE) | — | `auto`, raised to `user` if the `fleet.json` change is judged a format change | BUILD · M |
-| F3 | Leaks with high confidence: COLD CACHE (HOLD and control wake) and MODEL SWITCH | F1 | `auto` | BUILD · M |
-| F4 | FLIGHT attribution: optional `fuel` field on LOGBOOK `arrived` lines, `UNATTRIBUTED` | F1 | `user` (LOGBOOK record format) | BUILD · M |
-| F5 | Cost: config price table, FUEL COST, NET FUEL | F1 | `auto` | BUILD · L |
-| F6 | FUEL REMAINING source (section 6): verify statusline `rate_limits`, then the statusline script and per-ACCOUNT view | F2, decision D1 | `user` (`hooks/`, settings) | BUILD · M |
-| F7 | Other leaks and CREW warnings (COMPACTION, SESSION CHANGE after measuring the baseline, the warning list) | F3 | `auto` | BUILD · M |
-| F8 | Screens and TRIP FUEL: FLEET/LOGBOOK/DISPATCH/brief views, TARGETS items `fuelPerFlight`, `cacheHit` | F4, F5 | `auto` (rating:UI) | BUILD · M |
+| F1 (ATC-50) | Parser, global dedupe, offset reader, read-only `GET /api/fuel` (per session: kinds, CACHE HIT, CREW lower bound), cross-checked against ccusage on the same days | — | `auto` | BUILD · M |
+| F2 (ATC-51) | ACCOUNT label on the FLEET card and `fleet.json`; `LIMIT` grouped and held by ACCOUNT (health.ts, DISPATCH, SCHEDULE) | — | `auto`, raised to `user` if the `fleet.json` change is judged a format change | BUILD · M |
+| F3 (ATC-52) | Leaks with high confidence: COLD CACHE (HOLD and control wake) and MODEL SWITCH | F1 | `auto` | BUILD · M |
+| F4 (ATC-53) | FLIGHT attribution: optional `fuel` field on LOGBOOK `arrived` lines, `UNATTRIBUTED` | F1 | `user` (LOGBOOK record format) | BUILD · M |
+| F5 (ATC-54) | Cost: config price table, FUEL COST, NET FUEL | F1 | `auto` | BUILD · L |
+| F6 (ATC-55) | FUEL REMAINING source (section 6): verify statusline `rate_limits`, then the statusline script and per-ACCOUNT view | F2, decision D1 | `user` (`hooks/`, settings) | BUILD · M |
+| F7 (ATC-57) | Other leaks and CREW warnings (COMPACTION, SESSION CHANGE after measuring the baseline, the warning list) | F3 | `auto` | BUILD · M |
+| F8 (ATC-56) | Screens and TRIP FUEL: FLEET/LOGBOOK/DISPATCH/brief views, TARGETS items `fuelPerFlight`, `cacheHit` | F4, F5 | `auto` (rating:UI) | BUILD · M |
 
-F1 and F2 can start at once and in parallel; they are the ones that answer the TEAM_K question soonest.
+F1 and F2 can start at once and in parallel; they are the ones that answer the TEAM_K question soonest. Both are in Todo for DISPATCH; the rest wait in Backlog behind their dependencies (Linear `blocked by`).
 
 ## 9. Decisions for the SUPERVISOR
 
