@@ -90,7 +90,7 @@ export function directLines(s: DirectSections): string[] {
   return [goal, ...rest].filter((x) => x !== null);
 }
 
-// structure 같은 세션이 팀에 붙여 넣을 DIRECT 배정 문구(GET /api/dispatch/flight/:key/brief). FLIGHT PLAN과 같은 모양
+// 사용자나 다른 세션이 팀에 붙여 넣을 DIRECT 배정 문구(GET /api/dispatch/flight/:key/brief). FLIGHT PLAN과 같은 모양
 export function formatAssignment(t: { key: string; title: string | null; url: string | null }, description: string | null, to: string | null): string {
   return [
     to ? `[→ ${to}] ${t.key}` : t.key,
@@ -120,7 +120,7 @@ export interface TalkEvent {
   t: string;
   dir: "in" | "out" | "ask" | "write";
   from?: string | null; // in: cross-session from(주소). 사용자가 친 메시지면 null
-  fromName?: string | null; // in: from-name(structure, OCC …)
+  fromName?: string | null; // in: from-name(ENGINEERING, OCC …)
   to?: string; // out
   keys: string[]; // "ATC-32" 꼴
   ids: string[]; // DISPATCH 제안 id(D-0007)
@@ -211,7 +211,7 @@ export function talkEventsOf(text: string, source: "leader" | "crew" = "leader")
 export interface BriefFacts {
   kind: BriefKind;
   at: string; // 지시서를 받은 시각
-  by: string | null; // 보낸 세션 이름(structure, OCC …). 사용자가 쳤으면 null
+  by: string | null; // 보낸 세션 이름(ENGINEERING, OCC …). 사용자가 쳤으면 null
   readbackAt: string | null;
   questions: number; // READBACK(없으면 지시서) 뒤 PR을 열기 전까지, 지시한 쪽에 보낸 메시지와 AskUserQuestion
 }

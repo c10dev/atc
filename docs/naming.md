@@ -40,9 +40,20 @@ codex/voc-<n>-<slug>      # Codex sessions
 | `TOWER` | `controller/` | Traffic control: CLEARANCE, READBACK |
 | `OCC` | `occ/` | Operations control: DISPATCH review, SCHEDULE drafts, flight following |
 | `CROSSCHECK` | `crosscheck/` | A model from a different family than OCC leaves a provisional verdict before the SUPERVISOR decides |
+| `MCC` | `mcc/` | Maintenance Control: INSPECTION of atc's own PRs, landing and RETURN TO SERVICE ([mcc.md](mcc.md)) |
 
 - **CROSSCHECK** is borrowed from the cockpit cross-check, where the second pilot independently checks the first one's setting. Here it is the provisional verdict (`agree`/`disagree` plus a one-line reason) on an open DISPATCH proposal (`D-xxxx`) or SCHEDULE draft (`S-xxxx`). It is also called a **mark**. It never changes a proposal's or draft's state and is never counted in a gate.
 - **CROSSCHECK match** (`CROSSCHECK 일치`): among human decisions that had a mark before the decision, the share where the mark agreed (agree ↔ agreed/approved, disagree ↔ disagreed/rejected). It is shown overall and per model: each mark records the model id of the CROSSCHECK session (`unknown` for marks made before the field existed), shown in the screens by its short name (`muse-spark-1.3-contributor`, `gpt-5.6-terra`).
+
+## Working sessions
+
+| Session name | Where | Role |
+|---|---|---|
+| `TEAM_X` | a worktree per task | AIRCRAFT: builds FLIGHTs and opens PRs |
+| `ENGINEERING` | this repository, opened when needed | Design and work orders: design docs (`docs/<topic>.md`), Linear issues (EO), splitting large issues, taking reports. Doesn't merge, deploy or message teams (root `CLAUDE.md` "ENGINEERING") |
+
+- **ENGINEERING** is an airline's Technical Services, which designs modifications and issues Engineering Orders (EO). It replaces the ad hoc name `structure` for this role (GitHub #121, 2026-09-28). `structure`'s other role, landing and deploying atc PRs, goes to the user until MCC is in `land` mode, then to MCC.
+- Old records keep the name they were written with, e.g. `by: "structure"` in LOGBOOK `measured` lines.
 
 ## Claim records
 

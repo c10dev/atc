@@ -2,9 +2,9 @@
 
 **한국어** · [English](CLAUDE.en.md)
 
-atc 코드를 고치는 세션(팀 세션, 사용자와 직접 작업하는 세션)이 지키는 규칙이다. 설계와 용어는 `README.ko.md`와 `docs/`에 있다.
+atc 코드를 고치는 세션(팀 세션, ENGINEERING 세션, 사용자와 직접 작업하는 세션)이 지키는 규칙이다. 설계와 용어는 `README.ko.md`와 `docs/`에 있다.
 
-**관제 세션은 제외.** `controller/`(TOWER), `occ/`(OCC), `crosscheck/`(CROSSCHECK) 폴더에서 연 세션은 그 폴더의 `CLAUDE.md`를 따른다. 이 파일도 함께 읽히지만, 관제 세션은 코드를 고치지 않으므로 아래 작업 규칙은 적용되지 않는다. 둘이 다르면 폴더의 `CLAUDE.md`가 우선이다.
+**관제 세션은 제외.** `controller/`(TOWER), `occ/`(OCC), `crosscheck/`(CROSSCHECK), `mcc/`(MCC) 폴더에서 연 세션은 그 폴더의 `CLAUDE.md`를 따른다. 이 파일도 함께 읽히지만, 관제 세션은 코드를 고치지 않으므로 아래 작업 규칙은 적용되지 않는다. 둘이 다르면 폴더의 `CLAUDE.md`가 우선이다.
 
 ## 작업 위치
 
@@ -23,16 +23,16 @@ atc 코드를 고치는 세션(팀 세션, 사용자와 직접 작업하는 세�
 
 ## 운영
 
-- 운영 서비스(7700)를 재시작하지 않는다. 배포(main fast-forward와 재시작)는 머지한 쪽, 곧 structure 세션이나 사용자가 한다.
+- 운영 서비스(7700)를 재시작하지 않는다. 배포(main fast-forward와 재시작)는 머지한 쪽이 한다. 지금은 사용자이고, MCC가 `land` 모드가 되면 MCC다(`docs/mcc.md`).
 - 관제 세션의 guard(`controller/guard.mjs`, `occ/send-guard.mjs`, `occ/mcp-guard.mjs`)는 fail-closed(`… || exit 2`)를 유지한다. 막는 조건을 약하게 바꾸려면 사용자에게 먼저 묻는다.
 
 ## git과 PR
 
 - 커밋·푸시·PR은 작업 지시가 요구할 때 한다. 커밋 메시지와 PR 제목·본문은 영어로 쓴다.
 - 커밋 메시지에 attribution 줄(Co-Authored-By 등)을 넣지 않는다. PR 본문 끝은 `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
-- 팀 세션은 머지하지 않는다. 머지는 LANDING CLEARANCE 등급(`deploy/landing-tier.mjs`, 바뀐 파일 경로로 정함)을 따른다.
-  - `auto`(서버·화면·문서·테스트)와 `flagged`(관제 세션 매뉴얼·CLI): CI(`check`)가 통과하고 structure 세션이 검토(테스트·타입·빌드·충돌)한 뒤 structure가 머지하고 배포한 다음 사용자에게 알린다. `flagged`는 보고에 바뀐 관제 규칙을 따로 적는다. GitHub auto-merge는 쓰지 않는다.
-  - `user`(guard, `.claude/` 설정, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`)는 사용자가 머지한다. 운영 상태 형식을 바꾸거나 되돌리기 어려운 PR, 검토에서 의심이 남는 PR도 structure가 `user`로 올린다.
+- 팀 세션과 ENGINEERING 세션은 머지하지 않는다. 머지는 LANDING CLEARANCE 등급(`deploy/landing-tier.mjs`, 바뀐 파일 경로로 정함)을 따른다.
+  - `auto`(서버·화면·문서·테스트)와 `flagged`(관제 세션 매뉴얼·CLI): CI(`check`)가 통과하면 사용자가 머지하고 배포한다. MCC가 `land` 모드가 되면 MCC가 INSPECTION 뒤 착륙하고 RETURN TO SERVICE한다(`docs/mcc.md`). `flagged`는 PR 본문과 보고에 바뀐 관제 규칙을 따로 적는다. GitHub auto-merge는 쓰지 않는다.
+  - `user`(guard, `.claude/` 설정, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`)는 사용자가 머지한다. 운영 상태 형식을 바꾸거나 되돌리기 어려운 PR, 검토에서 의심이 남는 PR도 `user`로 올린다(PR을 올린 세션이 본문의 등급에 적고, MCC INSPECTION은 ESCALATE한다).
 
 ## 코드
 
@@ -57,6 +57,14 @@ atc 코드를 고치는 세션(팀 세션, 사용자와 직접 작업하는 세�
 - 단계로 올라간 것은 `docs/guide/stages.md`에, 남은 일은 그 설계 문서의 "Not built yet"에, 끝난 것은 `CHANGELOG`에 적는다.
 - atc 작업은 Linear `atc` 팀(ATC)에 둔다. atc는 `LINEAR_TEAM_KEYS`의 팀을 모두 읽지만, DISPATCH와 SCHEDULE 후보는 설정한 팀(`dispatch.json`의 `candidateTeams`, 비면 주 팀)만 된다. 분류 라벨(`type`·`wake`·`rating:*`·`Risk`·`tail:*`)은 워크스페이스 라벨이라 두 팀이 같이 쓴다. 아이디어는 계속 GitHub `idea` 이슈에 둔다.
 
+## ENGINEERING
+
+- ENGINEERING은 atc의 설계와 작업 지시를 맡는 작업 세션이다(항공사의 Technical Services). 세션 이름은 `ENGINEERING`이다.
+- 하는 일: 설계 문서(`docs/<주제>.md`)와 Linear 이슈(작업 지시서, EO)를 쓰고, 큰 이슈(wake `J`)를 하위 이슈로 나누고, 팀 세션과 MCC의 보고를 받아 다음 이슈를 낸다.
+- 상설 관제 세션이 아니다. 필요할 때 이 저장소에서 열고, 이 파일의 작업 규칙을 따른다.
+- 머지·배포와 팀 세션 교신은 하지 않는다. 팀에 일을 보내는 것은 DISPATCH·OCC와 사용자 몫이다. 직접 배정할 문구는 `GET /api/dispatch/flight/<FLIGHT>/brief?to=TEAM_X`가 준다.
+- Linear 이슈를 만들고 상태를 바꾸는 것은 ENGINEERING과 사용자다. 팀 세션은 Linear에 쓰지 않는다(`Fixes ATC-n`이 머지 때 이슈를 닫는다).
+
 ## 교신
 
-- 다른 팀 세션에 메시지를 보내지 않는다. 결과와 막힌 점은 일을 맡긴 세션(또는 사용자)에게만 보고한다.
+- 다른 팀 세션에 메시지를 보내지 않는다. 결과와 막힌 점은 일을 맡긴 세션(보통 ENGINEERING, 또는 사용자)에게만 보고한다.

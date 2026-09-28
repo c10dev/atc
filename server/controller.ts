@@ -179,7 +179,7 @@ export function buildBrief(
       orphans: alertsOf("orphan").map((a) => ({ stand: standName(a.workspacePath), sessions: a.sessionIds?.map(label) })),
       unattended: alertsOf("unattended").map((a) => ({ stand: standName(a.workspacePath), message: a.message })),
       noContact: alertsOf("no-workspace").map((a) => flight(a.ticketKey)),
-      // AIRCRAFT health(ATC-45): 멈췄거나 기다리는 AIRCRAFT. TOWER는 ALERT를 structure나 SUPERVISOR에게 INFO로 알린다(다시 보내지는 않는다)
+      // AIRCRAFT health(ATC-45): 멈췄거나 기다리는 AIRCRAFT. TOWER는 ALERT를 SUPERVISOR에게 보고한다(다시 보내지는 않는다)
       health: s.sessions
         .filter((x) => x.status !== "dead" && x.health)
         .map((x) => ({ ...label(x.id), code: x.health!.code, level: x.health!.level, text: healthLabel(x.health!, now), since: x.health!.since, resetsAt: x.health!.resetsAt ?? null, detail: x.health!.detail, next: x.health!.next })),

@@ -137,14 +137,14 @@ export function classifyError(e: { error: string; text: string; resetsAt?: numbe
 }
 
 export const NEXT: Record<HealthCode, string> = {
-  LIMIT: "reset까지 기다린다. reset 뒤에도 지시가 UNANSWERED면 structure나 SUPERVISOR가 다시 보낸다",
+  LIMIT: "reset까지 기다린다. reset 뒤에도 지시가 UNANSWERED면 지시를 보낸 쪽(OCC·사용자)이나 SUPERVISOR가 다시 보낸다",
   THROTTLE: "서버가 잠시 붐빈다. 몇 분 뒤 다시 보낸다",
   NETWORK: "SUPERVISOR가 네트워크·프록시·ANTHROPIC_BASE_URL/NO_PROXY를 확인하고 다시 보낸다",
   MODEL: "SUPERVISOR가 모델이나 경로를 고쳐 다시 띄운다. 그대로 재시도하지 않는다",
   CONTEXT: "새 CREW BRIEFING으로 RESTART. STAND와 PR은 새 세션에 HANDOFF",
   PROVIDER: "기본 경로로 다시 띄우고, 그 경로의 버그를 올린다",
   PENDING: "SUPERVISOR가 그 세션에서 승인하거나 거절한다",
-  UNANSWERED: "structure나 SUPERVISOR가 다시 보낸다. atc는 스스로 보내지 않는다",
+  UNANSWERED: "지시를 보낸 쪽(OCC·사용자)이나 SUPERVISOR가 다시 보낸다. atc는 스스로 보내지 않는다",
   HUNG: "SUPERVISOR가 들여다본다. 계속되면 RESTART",
   DENIED: "SUPERVISOR가 permission 규칙으로 허용하거나 다시 브리핑한다",
   UNKNOWN: "SUPERVISOR가 오류 원문을 보고 판단한다",

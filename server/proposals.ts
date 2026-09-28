@@ -1057,7 +1057,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     return c.json({ mode: loadDispatchConfig().mode });
   });
 
-  // structure 같은 세션이 팀에 붙여 넣을 DIRECT 배정 문구(ATC-32). ?to=TEAM_X면 머리에 받는 팀을 적는다
+  // 사용자나 다른 세션이 팀에 붙여 넣을 DIRECT 배정 문구(ATC-32). ?to=TEAM_X면 머리에 받는 팀을 적는다
   app.get("/api/dispatch/flight/:key/brief", async (c) => {
     const key = c.req.param("key").toUpperCase();
     try {

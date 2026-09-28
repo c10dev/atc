@@ -4,9 +4,9 @@
 
 > English translation for readers. Sessions load the Korean [`CLAUDE.md`](CLAUDE.md), which is the source of truth; this file is not loaded.
 
-Rules for sessions that change atc's code (team sessions, and sessions working directly with the user). Design and terms are in `README.md` and `docs/`.
+Rules for sessions that change atc's code (team sessions, the ENGINEERING session, and sessions working directly with the user). Design and terms are in `README.md` and `docs/`.
 
-**Control sessions are excluded.** Sessions opened in `controller/` (TOWER), `occ/` (OCC) and `crosscheck/` (CROSSCHECK) follow the `CLAUDE.md` in their own folder. They load this file too, but control sessions never change code, so the working rules below don't apply to them. Where the two differ, the folder's `CLAUDE.md` wins.
+**Control sessions are excluded.** Sessions opened in `controller/` (TOWER), `occ/` (OCC), `crosscheck/` (CROSSCHECK) and `mcc/` (MCC) follow the `CLAUDE.md` in their own folder. They load this file too, but control sessions never change code, so the working rules below don't apply to them. Where the two differ, the folder's `CLAUDE.md` wins.
 
 ## Where to work
 
@@ -25,16 +25,16 @@ Rules for sessions that change atc's code (team sessions, and sessions working d
 
 ## Operations
 
-- Don't restart the production service (7700). Whoever merges deploys (main fast-forward and restart): the structure session or the user.
+- Don't restart the production service (7700). Whoever merges deploys (main fast-forward and restart): today the user, and MCC once it is in `land` mode (`docs/mcc.md`).
 - Keep the control sessions' guards (`controller/guard.mjs`, `occ/send-guard.mjs`, `occ/mcp-guard.mjs`) fail-closed (`… || exit 2`). Ask the user before loosening what they block.
 
 ## git and PRs
 
 - Commit, push and open PRs when the task asks for it. Commit messages and PR titles and bodies are in English.
 - No attribution lines (Co-Authored-By etc.) in commit messages. PR bodies end with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
-- Team sessions don't merge. Merging follows the LANDING CLEARANCE tier (`deploy/landing-tier.mjs`, decided by the changed paths).
-  - `auto` (server, UI, docs, tests) and `flagged` (control-session manuals and CLI): once CI (`check`) passes and the structure session has reviewed the PR (tests, types, build, conflicts), structure merges, deploys and then tells the user. For `flagged`, the report lists the changed control rules separately. GitHub auto-merge is not used.
-  - `user` (guards, `.claude/` settings, the root `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`): the user merges. Structure also raises a PR to `user` when it changes the production state format, is hard to undo, or leaves doubts after review.
+- Team sessions and the ENGINEERING session don't merge. Merging follows the LANDING CLEARANCE tier (`deploy/landing-tier.mjs`, decided by the changed paths).
+  - `auto` (server, UI, docs, tests) and `flagged` (control-session manuals and CLI): once CI (`check`) passes, the user merges and deploys. Once MCC is in `land` mode, MCC lands after its INSPECTION and returns the service to operation (`docs/mcc.md`). For `flagged`, the PR body and the report list the changed control rules separately. GitHub auto-merge is not used.
+  - `user` (guards, `.claude/` settings, the root `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`): the user merges. A PR that changes the production state format, is hard to undo, or leaves doubts after review is raised to `user` too (the session that opened it says so in the tier section; an MCC INSPECTION escalates it).
 
 ## Code
 
@@ -59,6 +59,14 @@ Rules for sessions that change atc's code (team sessions, and sessions working d
 - Put a stage in `docs/guide/stages.md`, work left in that design doc's "Not built yet", and finished work in the `CHANGELOG`.
 - atc's own work lives in the Linear `atc` team (ATC). atc reads every team in `LINEAR_TEAM_KEYS`, but only the configured teams (`candidateTeams` in `dispatch.json`; empty means the main team) produce DISPATCH and SCHEDULE candidates. The classification labels (`type`, `wake`, `rating:*`, `Risk`, `tail:*`) are workspace labels shared by both teams. Ideas stay in GitHub `idea` issues.
 
+## ENGINEERING
+
+- ENGINEERING is the working session for atc's design and work orders (an airline's Technical Services). Its session name is `ENGINEERING`.
+- What it does: writes design docs (`docs/<topic>.md`) and Linear issues (work orders, EO), splits large issues (wake `J`) into sub-issues, and takes reports from team sessions and MCC to issue the next ones.
+- It is not a standing control session. Open it in this repository when needed; it follows the working rules in this file.
+- It doesn't merge, deploy or message team sessions. Sending work to teams is for DISPATCH, OCC and the user; `GET /api/dispatch/flight/<FLIGHT>/brief?to=TEAM_X` gives the text for a direct assignment.
+- ENGINEERING and the user create Linear issues and change their state. Team sessions don't write to Linear (`Fixes ATC-n` closes the issue on merge).
+
 ## Radio
 
-- Don't message other team sessions. Report results and blockers only to the session (or user) that gave you the task.
+- Don't message other team sessions. Report results and blockers only to the session (usually ENGINEERING) or user that gave you the task.

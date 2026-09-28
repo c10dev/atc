@@ -39,7 +39,7 @@ CLEARANCE 종류: `TRAFFIC`(교통 정보) `HOLD`(대기) `CONTINUE`(계속) `LA
 | GitHub 오류 (`github.error`) | LANDING SEQUENCE가 낡았을 수 있다. 새로 생겼을 때 SUPERVISOR에게 보고 |
 | HANDOFF (`events`의 `handoff`) | ATC LOG에 적기만 한다. 메시지 보내지 않는다 |
 | OUTSTATION (`events`의 `away.started`·`away.ended`, `traffic[].away`) | ATC LOG에 적기만 한다. 어느 팀을 어느 AIRPORT에 둘지(재배치)는 DISPATCH(2단계) 몫이다. OUTSTATION AIRPORT에서 충돌이 나면 위 LOSS OF SEPARATION대로 처리한다 |
-| AIRCRAFT HEALTH (`open.health`, `open.healthAlerts`, `events`의 `alert.raised`·`alertKind: "health"`) | 팀 세션이 멈췄거나 무언가를 기다린다(docs/fleet.ko.md 8.8). `level: "alert"`인 경보가 새로 뜨면 SUPERVISOR에게 한 번 보고한다(`message`와, `open.health`의 그 AIRCRAFT `next` 그대로). `NETWORK`와 같은 reset의 `LIMIT`은 경보 하나로 온다. `level: "info"`(`PENDING`, `DENIED`, 짧은 `THROTTLE`·`HUNG`)는 ATC LOG에만 적는다. 그 팀에는 메시지를 보내지 않는다 — 다시 보내기는 structure나 SUPERVISOR 몫이다. 코드가 있는 AIRCRAFT에는 새 CLEARANCE를 내지 않고, READBACK이 늦어도 재송신하지 않는다(코드가 풀리면 위 규칙대로) |
+| AIRCRAFT HEALTH (`open.health`, `open.healthAlerts`, `events`의 `alert.raised`·`alertKind: "health"`) | 팀 세션이 멈췄거나 무언가를 기다린다(docs/fleet.ko.md 8.8). `level: "alert"`인 경보가 새로 뜨면 SUPERVISOR에게 한 번 보고한다(`message`와, `open.health`의 그 AIRCRAFT `next` 그대로). `NETWORK`와 같은 reset의 `LIMIT`은 경보 하나로 온다. `level: "info"`(`PENDING`, `DENIED`, 짧은 `THROTTLE`·`HUNG`)는 ATC LOG에만 적는다. 그 팀에는 메시지를 보내지 않는다 — 다시 보내기는 지시를 보낸 쪽(OCC·사용자)이나 SUPERVISOR 몫이다. 코드가 있는 AIRCRAFT에는 새 CLEARANCE를 내지 않고, READBACK이 늦어도 재송신하지 않는다(코드가 풀리면 위 규칙대로) |
 | NORDO STAND (`open.orphans`), `session.lost` | 받을 세션이 없다. SUPERVISOR에게 보고 |
 | UNIDENTIFIED (`open.unattended`), NO CONTACT (`open.noContact`) | SUPERVISOR에게 보고. `events`에 새로 뜬 것만 보고하고 이미 보고한 것은 반복하지 않는다 |
 | NO READBACK (`clearances.overdue`, 10분) | 같은 CLEARANCE를 한 번 더 보낸다(문구 맨 앞에 "재송신"). 그래도 답이 없으면 SUPERVISOR 보고 |
