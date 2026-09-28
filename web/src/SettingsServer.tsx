@@ -212,6 +212,30 @@ export function AgentSettings({ snapshot, server, save }: { snapshot: Snapshot |
         </ServerRows>
       </Block>
 
+      <Block code="MCC" label="atc 착륙·RETURN TO SERVICE(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) => (
+            <>
+              <EditRow
+                label="MCC"
+                env="mcc.mode"
+                value={s.mcc.mode}
+                note={`mcc.json · 맡은 AIRPORT ${s.mcc.airport} · 이 화면에서만 바꾼다 — MCC 세션은 못 바꿈. ROLLBACK 뒤 멈춘 RTS는 모드를 다시 고르면 풀린다`}
+                input={{ kind: "select", options: ["shadow", "land", "land+rts"] }}
+                onSave={(v) => save({ mccMode: v as "shadow" | "land" | "land+rts" })}
+              />
+              <ul className="autoland-modes">
+                {(["shadow", "land", "land+rts"] as const).map((m) => (
+                  <li key={m} className={m === s.mcc.mode ? "is-current" : undefined}>
+                    <b>{m}</b> {MCC_WARN[m]}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </ServerRows>
+      </Block>
+
       <Block code="JUDGES" label="판정 계열(SUPERVISOR 전용)">
         <ServerRows server={server}>
           {(s) =>
@@ -457,6 +481,13 @@ const AUTOLAND_WARN = {
   off: "꺼짐(기본): atc는 PR 브랜치에 아무것도 쓰지 않는다.",
   update: "⚠ CLEARED인데 behind인 PR을 LANDING SEQUENCE 순서로 AIRPORT마다 하나씩 update-branch로 갱신(팀 브랜치에 merge 커밋). 머지는 SUPERVISOR.",
   merge: "⚠ 위임된 PR(보안·Risk·Human Preview·FLIGHT 없음·HOLD 제외)을 정확한 head로 atc가 머지. vocado AGENTS.md에 AUTOLAND 예외를 적은 뒤에만 켤 것.",
+} as const;
+
+// MCC 모드마다 한 줄(docs/mcc.md). findings 댓글은 모든 모드에서 남긴다
+const MCC_WARN = {
+  shadow: "기본: MCC는 INSPECTION하고 착륙·RTS는 would로만 남긴다. 머지·배포는 structure나 사용자.",
+  land: "⚠ auto·flagged 등급 PR을 CI·INSPECTION pass·정확한 head로 atc가 머지. user 등급과 ESCALATE는 사용자. 배포는 사람.",
+  "land+rts": "⚠ land에 더해 머지된 main을 atc-rts 유닛으로 7700에 RETURN TO SERVICE(상태 확인 실패면 ROLLBACK 후 멈춤).",
 } as const;
 
 // 판정 계열 모드마다 한 줄(ATC-36). replay·shadow는 티켓 제목과 허용한 칸이 TypeSafe로 나간다(데이터 반출)

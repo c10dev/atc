@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -10,6 +11,7 @@ import { runJudges } from "./judges/run.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { mountLandingReview } from "./landing-review.ts";
+import { mountMcc } from "./mcc-run.ts";
 import { mountCrewChange } from "./crew-change.ts";
 import { mountCheckride } from "./checkride.ts";
 import { mountFleet } from "./fleet.ts";
@@ -63,7 +65,15 @@ function checkBuild() {
   console.log(`[atc] build: ${build ?? "none"}`);
   for (const l of versionListeners) l();
 }
-const version = () => ({ build, startedAt });
+// 서비스가 시작한 커밋(MCC RETURN TO SERVICE가 비교한다, docs/mcc.md). git이 없으면 null
+const head = (() => {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: new URL("..", import.meta.url).pathname, encoding: "utf8", timeout: 5000 }).trim() || null;
+  } catch {
+    return null;
+  }
+})();
+const version = () => ({ build, startedAt, head });
 
 async function tick() {
   checkBuild();
@@ -122,6 +132,7 @@ mountSchedule(app, getSnapshot);
 mountFollowing(app, getSnapshot);
 mountAtfm(app, getSnapshot);
 mountAutoland(app, getSnapshot);
+mountMcc(app, getSnapshot, () => head);
 mountSettings(app);
 
 app.get("/api/events", (c) =>

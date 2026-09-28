@@ -25,6 +25,12 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- MCC 서버 쪽, shadow로([docs/mcc.md](docs/mcc.md) 2단계). MCC는 atc 자신의 PR을 INSPECTION하고 `auto`·`flagged` PR을 착륙시켜 7700을 RETURN TO SERVICE할 관제 세션이다. 세션, guard, `atcctl mcc`, RTS 유닛은 다음 단계다.
+  - `server/mcc.ts` / `mcc-run.ts`: `mcc.json`(`shadow` 기본 · `land` · `land+rts`, 설정 창 AGENTS 탭에서만 바꾼다)과 추가만 하는 `mcc.jsonl`.
+  - `/api/mcc/queue|packet|inspect|escalate|land|rts`, GitHub은 모두 REST. `land`는 정확한 head에서 L2–L8이 모두 맞을 때만 머지한다: 같은 저장소 브랜치(fork 아님), `auto`·`flagged` 등급이고 ESCALATE 안 됨, CI `check`, 깨끗한 머지 상태, INSPECTION `pass`, HOLD·GROUND STOP 없음, RTS 진행 중 아님. `shadow`면 `would-land`만 남긴다.
+  - INSPECTION은 Claude 모델에게서만, 지금 head에만 받는다. `findings`는 PR 댓글로도 남긴다.
+  - ATCC PR은 CLEARED TO LAND가 head의 INSPECTION `pass`를 리뷰로 친다(`no-review`는 이제 `MCC INSPECTION 대기`), `findings`는 `review-findings`.
+  - `/api/version`이 서비스가 시작한 커밋 `head`를 준다.
 - AIRCRAFT health(ATC-45, [docs/fleet.ko.md](docs/fleet.ko.md) 8.8). atc가 팀 세션이 왜 멈췄는지, 무엇을 기다리는지를 대화 기록 끝 64KB에서 읽는다. 2026-09-28에 TEAM_H가 BRIEF 3초 뒤 계정 session limit에 걸렸는데 4분 동안 `idle`로 보여서 FLEET·DISPATCH·TOWER가 일을 받을 수 있는 AIRCRAFT로 봤다.
   - 코드: `LIMIT`(사용 한도. `quotaLimits`의 reset 시각까지 HOLD), `THROTTLE`, `NETWORK`, `MODEL`, `CONTEXT`, `PROVIDER`, `PENDING`(도구 호출이 승인을 기다림), `UNANSWERED`(지시에 10분 대답 없음, 또는 `LIMIT`이 풀린 뒤), `HUNG`(busy인데 30분 기록 없음), `DENIED`(10분에 거부·hook 막힘 3번), 그리고 오류 원문과 함께 `UNKNOWN`. 코드마다 오류 한 줄, 시작 시각, 대응 매뉴얼의 다음 한 걸음이 붙는다. 다음 대답이 오면 풀린다.
   - FLEET 운항 상태 목록(`HOLD · LIMIT until 07:40Z`, `PENDING approval 12m`, `CONTEXT — RESTART`), snapshot의 `sessions[].health`, FLIGHT FOLLOWING의 `health` 문제, TOWER 브리핑의 `open.health`에 보인다. ALERT 코드는 `health` 경보가 된다. `NETWORK`는 기계에 한 번, `LIMIT`은 reset 시각마다 한 번.

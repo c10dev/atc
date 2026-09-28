@@ -9,6 +9,8 @@ import { EXTERNAL_REVIEW_SECURITY, type ExternalReviewSecurity, loadDispatchConf
 import { engineName, judgeStatus } from "./judges/run.ts";
 import { JUDGE_MODES, type JudgeMode, loadJudges, setJudgeMode } from "./judges/store.ts";
 import { parseTeamKeys, TEAM_KEY } from "./linear-keys.ts";
+import { loadMcc, MCC_MODES, type MccMode } from "./mcc.ts";
+import { setMccMode } from "./mcc-run.ts";
 import { fromThisApp } from "./origin.ts";
 import { resetTicketPattern } from "./sources/git.ts";
 import { resetLinear } from "./sources/linear.ts";
@@ -32,6 +34,8 @@ export interface ServerSettings {
   review: { security: ExternalReviewSecurity };
   // AUTOLAND(ATC-34): autoland.json의 스위치와 맡은 AIRPORT, 걸린 GROUND STOP
   autoland: { mode: AutolandMode; airports: string[]; applicationCheck: string; groundStops: { airport: string; sha: string; failing: string[]; at: string }[] };
+  // MCC(docs/mcc.md): mcc.json의 스위치와 맡은 AIRPORT
+  mcc: { mode: MccMode; airport: string };
   // 판정 계열(ATC-36): judges.json의 스위치, 엔진, 키가 있는지(값은 내보내지 않음), 마지막 실행
   judges: { jev: { mode: JudgeMode; engine: "stub" | "jev"; apiKeySet: boolean; lastRunAt: string | null; lastError: string | null; judged: number } };
 }
@@ -46,6 +50,7 @@ export interface SettingsPatch {
   projectsDir?: string;
   reviewSecurity?: ExternalReviewSecurity; // dispatch.json에 쓴다(.env.local이 아님)
   autolandMode?: AutolandMode; // autoland.json에 쓴다(ATC-34). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
+  mccMode?: MccMode; // mcc.json에 쓴다(docs/mcc.md). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   judgesJev?: JudgeMode; // judges.json에 쓴다(ATC-36). SUPERVISOR만: 이 화면 Origin이 있어야 받는다. 데이터 반출을 켜는 스위치
 }
 export type SettingsErrors = Partial<Record<keyof SettingsPatch, string>>;
@@ -81,6 +86,10 @@ export function readServerSettings(): ServerSettings {
     autoland: (() => {
       const a = loadAutoland();
       return { mode: a.mode, airports: a.airports, applicationCheck: a.applicationCheck, groundStops: loadAutolandState().groundStops.map(({ airport, sha, failing, at }) => ({ airport, sha, failing, at })) };
+    })(),
+    mcc: (() => {
+      const m = loadMcc();
+      return { mode: m.mode, airport: m.airport };
     })(),
     judges: { jev: { mode: loadJudges().jev, engine: engineName(), apiKeySet: Boolean(config.typesafeApiKey), ...judgeStatus.jev } },
   };
@@ -181,11 +190,13 @@ export function mountSettings(app: Hono) {
     // reviewSecurity는 .env가 아니라 dispatch.json에 쓴다(ATC-30)
     // autolandMode는 autoland.json에 쓴다(ATC-34)
     // judgesJev는 judges.json에 쓴다(ATC-36)
-    const { reviewSecurity, autolandMode, judgesJev, ...rest } = body as Record<string, unknown>;
+    // mccMode는 mcc.json에 쓴다(docs/mcc.md)
+    const { reviewSecurity, autolandMode, judgesJev, mccMode, ...rest } = body as Record<string, unknown>;
     if (reviewSecurity !== undefined && !EXTERNAL_REVIEW_SECURITY.includes(reviewSecurity as ExternalReviewSecurity))
       return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
     if (autolandMode !== undefined && !AUTOLAND_MODES.includes(autolandMode as AutolandMode)) return c.json({ errors: { autolandMode: `off, update, merge 중 하나` } }, 400);
     if (judgesJev !== undefined && !JUDGE_MODES.includes(judgesJev as JudgeMode)) return c.json({ errors: { judgesJev: `off, replay, shadow 중 하나` } }, 400);
+    if (mccMode !== undefined && !MCC_MODES.includes(mccMode as MccMode)) return c.json({ errors: { mccMode: `shadow, land, land+rts 중 하나` } }, 400);
     const { env, errors } = validatePatch(rest);
     if (Object.keys(errors).length) return c.json({ errors }, 400);
     if (Object.keys(env).length) {
@@ -195,8 +206,9 @@ export function mountSettings(app: Hono) {
     if (reviewSecurity !== undefined) saveExternalReviewSecurity(reviewSecurity as ExternalReviewSecurity);
     if (autolandMode !== undefined) setAutolandMode(autolandMode as AutolandMode);
     if (judgesJev !== undefined) setJudgeMode("jev", judgesJev as JudgeMode);
+    if (mccMode !== undefined) setMccMode(mccMode as MccMode);
     console.log(
-      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : [])].join(", ")}`,
+      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : [])].join(", ")}`,
     );
     return c.json(readServerSettings());
   });
