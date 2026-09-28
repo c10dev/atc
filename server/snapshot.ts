@@ -199,7 +199,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     groundStops = heldStops = holdStops(heldStops, found, { pulls: github.byRepo, cfg, now });
   }
 
-  // AUTOLAND(ATC-34): AIRPORT마다 다음 할 일과 PR마다 표시. merge 모드면 CLEARED PR의 제외 사유(HOLD, FLIGHT, 라벨, 보안 게이트, Human Preview)
+  // AUTOLAND(ATC-34): AIRPORT마다 다음 할 일과 PR마다 표시. merge 모드면 CLEARED PR의 제외 사유(HOLD, FLIGHT, 라벨, 보안 게이트, HUMAN CHECK)
   const autoland = planAutoland({
     cfg: alCfg,
     airports: airports.open.map((a) => ({ code: a.code, repo: a.repo })),
@@ -217,6 +217,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
         title: p.title,
         body: raw?.body,
         flightTitle: ticket?.title ?? null,
+        head: p.head,
+        carryFrom: raw?.humanCarryFrom ?? (raw?.carryFrom ?? []).map((c) => c.sha),
       });
     },
   });

@@ -48,3 +48,10 @@ UI report ─▶ 판정 ─▶ Linear ATC ─▶ 팀 작업 ─▶ 써 보고 �
 ## 특정 팀에 묶어 두기: TAIL ASSIGNMENT
 
 티켓에 Linear 라벨 `tail:TEAM_X`를 붙이면 DISPATCH가 그 팀에만 제안한다. 그 팀이 바쁘면 다른 팀에 주지 않고 기다린다. 새 팀이면 라벨을 먼저 만들어야 한다.
+
+라벨은 손으로 붙여도 되고, OCC에 맡겨도 된다.
+
+- OCC 세션에 "VOC-196은 TEAM_E가 맡는다"처럼 말하면 OCC가 SCHEDULE `TAIL` 초안을 쓴다. SCHEDULE 탭에서 판정한다.
+- DISPATCH 밖에서 팀에 직접 맡긴 FLIGHT(STAND를 잡았거나, DEPARTURE LOG에 있거나, READBACK을 받음)에 `tail:`이 없으면 OCC가 SCHEDULE 후보(TAIL)에서 보고 초안을 쓸 수 있다.
+- 승인하면(S2) OCC가 `tail:`을 그 팀으로 바꾼다. 다른 `tail:`은 떼고 나머지 라벨은 그대로 둔다. 상태·담당은 바꾸지 않는다.
+- `tail:TEAM_X` 라벨이 Linear에 없으면 초안이 거절된다. ENGINEERING이나 사용자가 라벨을 만든다.

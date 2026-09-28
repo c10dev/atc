@@ -87,6 +87,9 @@ SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만. S2 승인 운용
                                             WAKE: L M H J · RATING: SEC UI DATA DOCS (--rating은 여러 번)
   node atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <근거>
                                             우선순위 초안. 1 Urgent · 2 High · 3 Medium · 4 Low
+  node atcctl.mjs schedule draft TAIL <VOC-193> <TEAM_X> -- <근거>
+                                            (ATC-68) TAIL ASSIGNMENT 초안: FLIGHT의 tail:을 이 AIRCRAFT로(다른 tail:은 떼고 나머지 라벨은 그대로).
+                                            FLEET에 있고 RETIRED가 아니며 Linear에 tail:TEAM_X 라벨이 있어야 한다. 닫히지 않은 FLIGHT면 된다
   node atcctl.mjs schedule draft CLOSE <VOC-193> -- <근거>
                                             닫기 초안: LOGBOOK에 PR 머지(ARRIVED)가 있는데 Linear가 Done·Canceled가 아님.
                                             PR·머지 시각·Fixes 여부는 atc가 채운다. 발부하지 않는다(SUPERVISOR가 Linear에서 직접)
@@ -228,17 +231,31 @@ function parseNetworkDraft(args) {
   return { ...body, reason };
 }
 
+// schedule draft TAIL <FLIGHT> <TEAM_X> -- <근거> → POST 본문(ATC-68). REGISTRATION·라벨 검사는 서버가 한다
+function parseTailDraft(args) {
+  const sep = args.indexOf("--");
+  const head = sep < 0 ? args : args.slice(0, sep);
+  const reason = sep < 0 ? "" : args.slice(sep + 1).join(" ").trim();
+  const [, flight, registration, ...rest] = head;
+  if (!flight || flight.startsWith("--")) throw new Error("FLIGHT key가 필요함 (예: VOC-193)");
+  if (!registration || registration.startsWith("--")) throw new Error("AIRCRAFT(REGISTRATION)가 필요함 (예: TEAM_J)");
+  if (rest.length) throw new Error(`TAIL에는 옵션이 없음(${rest.join(" ")}) — FLIGHT와 REGISTRATION 하나`);
+  if (!reason) throw new Error("-- 뒤에 근거 한 줄이 필요함");
+  return { kind: "TAIL", flight, registration: registration.toUpperCase(), reason };
+}
+
 // schedule draft <KIND> <FLIGHT> [옵션]… -- <근거> → POST /api/schedule/ops 본문. 값 검사는 서버가 한다.
 const DRAFT_OPTS = { CLASSIFY: ["--type", "--wake", "--rating"], PRIORITIZE: ["--priority"], CLOSE: [] };
 export function parseDraft(args) {
   if (String(args[0] ?? "").toUpperCase() === "NEW") return parseNewDraft(args.slice(1));
   if (NETWORK_OPTS[String(args[0] ?? "").toUpperCase()]) return parseNetworkDraft(args);
+  if (String(args[0] ?? "").toUpperCase() === "TAIL") return parseTailDraft(args);
   const sep = args.indexOf("--");
   const head = sep < 0 ? args : args.slice(0, sep);
   const reason = sep < 0 ? "" : args.slice(sep + 1).join(" ").trim();
   const [kindRaw, flight, ...rest] = head;
   const kind = String(kindRaw ?? "").toUpperCase();
-  if (!DRAFT_OPTS[kind]) throw new Error(`모르는 SCHEDULE 작업: ${kindRaw ?? "(없음)"} (가능: ${[...Object.keys(DRAFT_OPTS), "NEW", ...Object.keys(NETWORK_OPTS)].join(", ")})`);
+  if (!DRAFT_OPTS[kind]) throw new Error(`모르는 SCHEDULE 작업: ${kindRaw ?? "(없음)"} (가능: ${[...Object.keys(DRAFT_OPTS), "TAIL", "NEW", ...Object.keys(NETWORK_OPTS)].join(", ")})`);
   if (!flight || flight.startsWith("--")) throw new Error("FLIGHT key가 필요함 (예: VOC-193)");
   const body = { kind, flight };
   for (let i = 0; i < rest.length; i += 2) {
@@ -436,6 +453,7 @@ const PRIORITY = { 1: "Urgent", 2: "High", 3: "Medium", 4: "Low" };
 export function payloadText(op) {
   const p = op.payload;
   if (op.kind === "PRIORITIZE") return `priority ${p.priority}(${PRIORITY[p.priority]})`;
+  if (op.kind === "TAIL") return `tail:${p.registration}${p.caution ? ` · CAUTION ${p.caution}` : ""}`;
   if (op.kind === "TARGET") {
     const v = (n) => (n == null ? "없음" : n);
     return [

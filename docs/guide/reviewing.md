@@ -46,6 +46,7 @@ OCC가 Linear에 쓸 변경을 초안으로 남긴다. 지금은 S1이라 Linear
 |---|---|
 | CLASSIFY | 분류 라벨 제안: type · wake · rating. 후보 목록은 제목이 리서치·검토·비교·계획처럼 보이는 FLIGHT가 앞에 온다(SURVEY·CHECK로 분류되면 HOLDING 팀도 받을 수 있어서) |
 | PRIORITIZE | 우선순위 제안(본문·댓글에 근거가 있을 때만) |
+| TAIL | FLIGHT의 `tail:TEAM_X`를 그 팀으로 정하자는 제안. 사용자가 OCC에 말한 배정이나, `tail:` 없이 팀이 이미 몰고 있는 FLIGHT에서 나온다. 카드에 지금 `tail:`, 바뀔 것(`+ tail:TEAM_J`, `− tail:TEAM_A`), 근거가 있다. 다른 팀이 몰고 있는 `tail:`을 바꾸면 빨간 **CAUTION** 줄이 붙는다. 판정은 CLASSIFY·PRIORITIZE처럼 S2 진입 점검에 센다. 후보 목록의 TAIL은 그 팀이 몰고 있다는 기록(STAND, DEPARTURE LOG, READBACK)을 함께 보인다 |
 | NEW (AD HOC FLIGHT) | 사용자가 OCC에 요청한 새 티켓. `WAYPOINT` 줄이 있으면 그 마일스톤에 붙을 이슈다. "완료 기준에서 올린 초안(WAYPOINT gap)"이면 OCC가 Linear 마일스톤의 완료 기준 가운데 아직 이슈가 없는 것을 옮긴 것이다. 본문 `## 목표`에 인용된 기준을 보고, 그 기준을 이 이슈가 맡는 게 맞는지 판정한다. 비슷한 FLIGHT가 있으면 atc가 받지 않으니, gap 초안에는 비슷한 FLIGHT가 없다 |
 | TARGET · ROUTE | AIRCRAFT 하나의 FLEET 목표(`flightsPerWeek`, `onTime`)나 ROUTE(맡는 프로젝트)를 바꾸자는 초안. 카드에 지금 값, 바뀔 것, OCC 근거, atc가 붙인 숫자(14일 ARRIVED, 주별 ARRIVED, ROUTE 대기)가 있다. S2에서도 "승인했을 것 / 거절했을 것"만 받고 FLEET에 쓰지 않는다 — 바꾸려면 FLEET 탭에서 직접. 이 판정은 S2 진입 점검에 세지 않는다 |
 | CLOSE | PR이 머지됐는데(LOGBOOK ARRIVED) Linear에서 아직 열린 FLIGHT를 Done으로. 카드에 PR 링크, 머지 시각, 본문이 `Fixes`인지가 있다. `Part of`(일부만)면 노란색으로 표시된다 |

@@ -536,9 +536,11 @@
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+/* 좁은 폭에서 가로로 넘치지 않게 줄바꿈(CLOSE의 PR 줄, TAIL의 근거 줄) */
 .sc-cand-meta {
+  min-width: 0;
   font: var(--text-xs) var(--mono);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 /* 최근 7일 */
@@ -905,4 +907,21 @@
 .sc-manual {
   margin: var(--space-2) 0 0;
   font-size: var(--text-xs);
+}
+/* TAIL(ATC-68): FLIGHT의 tail:TEAM_X */
+.sc-card.k-TAIL {
+  border-left-color: var(--phase-enroute);
+}
+.k-TAIL .sc-kind,
+.sc-table .k-TAIL {
+  color: var(--phase-enroute);
+}
+/* 다른 팀이 몰고 있는 tail:을 바꾸는 초안 */
+.sc-caution {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--alert);
+  border-radius: var(--radius-sm);
+  color: var(--alert);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
 }

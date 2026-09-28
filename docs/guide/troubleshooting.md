@@ -80,7 +80,7 @@ LANDING SEQUENCE 머리의 AUTOLAND 줄과 PR의 AUTOLAND 표시를 본다([개�
 - `AUTOLAND: 갱신 실패한 PR만 남음` → 갱신이 실패한 head는 다시 하지 않는다(충돌 등). 새 push로 head가 바뀌면 다시 후보가 된다. head가 움직여 거절된 것은 다음 주기(90초)에 새 head로 다시 한다. 결과는 `GET /api/autoland`의 `records`에 있다.
 - `AUTOLAND: review requested (codex)` → 갱신한 head에 리뷰가 이어지지 않아(main에서 PR 파일이 바뀜) atc가 `@codex review`를 달았다. 30분 안에 Codex가 답하지 않으면 `(deepseek)`로 바뀌고 REVIEW 대기열에 들어간다. head마다 한 번만 요청한다.
 - `AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(…)` → 보안 경로·키워드 등으로 DeepSeek에 보낼 수 없는 PR이다. Codex나 SUPERVISOR가 리뷰한다.
-- `SUPERVISOR 머지 — …` → merge 모드에서 빠진 PR이다(HOLD, FLIGHT 없음, `rating:SEC`·Risk 라벨, 보안 게이트, Human Preview 미통과). SUPERVISOR가 직접 머지한다.
+- `SUPERVISOR 머지 — …` → merge 모드에서 빠진 PR이다(HOLD, FLIGHT 없음, `rating:SEC`·Risk 라벨, 보안 게이트, HUMAN CHECK 대기, `## UI change` 블록 없음). SUPERVISOR가 직접 머지한다.
 
 ## 새 기능이 안 보인다 · 코드를 고친 뒤 화면이 그대로다
 

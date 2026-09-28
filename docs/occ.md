@@ -9,7 +9,7 @@ atc splits into two control sessions, the way aviation does:
 
 In real aviation the flight dispatcher belongs to the airline's OCC, not to ATC. So DISPATCH (stage 2) moves into OCC, and OCC takes over the work the "President" session does by hand today.
 
-> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 built: SCHEDULE drafts in shadow operation for `CLASSIFY`, `PRIORITIZE`, `NEW` and `CLOSE` (`server/schedule.ts`, `atcctl schedule brief|draft`, the SCHEDULE tab, OCC rules). `NEW` is the CHARTER DESK: an AD HOC FLIGHT drafted from a CHARTER REQUEST, with body-section checks and a title-similarity duplicate search over the snapshot (issues updated in the last 45 days). `CLOSE` (section 5.5, built 2026-09-27) drafts closing a FLIGHT whose PR is merged; it is never released, and the SUPERVISOR closes the issue in Linear. At most 5 open drafts of any kind, and drafts expire after 3 days without a verdict. ATC's CLEARED TO LAND check (section 9) is built: the LANDING SEQUENCE now comes from open GitHub PRs. Other operations (`TAIL`, `LINK`, `SPLIT`, `COMMENT`) and S3 are design only (Not built yet). S2 (approval operation: linear-guard, `schedule release`, APPLIED detection) is built behind `mode` and off by default — see "Turning on S2". Decisions are listed under "Decisions" at the end.
+> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 built: SCHEDULE drafts in shadow operation for `CLASSIFY`, `PRIORITIZE`, `NEW`, `CLOSE` and `TAIL` (`server/schedule.ts`, `atcctl schedule brief|draft`, the SCHEDULE tab, OCC rules). `NEW` is the CHARTER DESK: an AD HOC FLIGHT drafted from a CHARTER REQUEST, with body-section checks and a title-similarity duplicate search over the snapshot (issues updated in the last 45 days). `CLOSE` (section 5.5, built 2026-09-27) drafts closing a FLIGHT whose PR is merged; it is never released, and the SUPERVISOR closes the issue in Linear. At most 5 open drafts of any kind, and drafts expire after 3 days without a verdict. ATC's CLEARED TO LAND check (section 9) is built: the LANDING SEQUENCE now comes from open GitHub PRs. `TAIL` ("TAIL as built", built 2026-09-28 with ATC-68) drafts a `tail:TEAM_X` label for an assignment made outside DISPATCH. Other operations (`LINK`, `SPLIT`, `COMMENT`) and S3 are design only (Not built yet). S2 (approval operation: linear-guard, `schedule release`, APPLIED detection) is built behind `mode` and off by default — see "Turning on S2". Decisions are listed under "Decisions" at the end.
 
 ## 1. Current facts
 
@@ -74,21 +74,21 @@ OCC never writes to Linear freely. It drafts **SCHEDULE operations**. Each one i
 | `NEW` | Create a ticket | Split the batch-processor race out of VOC-193 (became VOC-195) |
 | `CLOSE` | ✅ Built (5.5): the FLIGHT's PR is merged (LOGBOOK ARRIVED) but the issue is still open. Approved drafts are closed by the SUPERVISOR in Linear, never released | VOC-56: the `protect main` ruleset already meets every done criterion |
 | `PRIORITIZE` | Set or change priority | VOC-177, VOC-179, VOC-195 have no priority |
-| `TAIL` | Add or change `tail:TEAM_X` (TAIL ASSIGNMENT) | VOC-196 → `tail:TEAM_E` (what President decided) |
+| `TAIL` | ✅ Built ("TAIL as built", ATC-68): add or change `tail:TEAM_X` (TAIL ASSIGNMENT) | VOC-196 → `tail:TEAM_E` (what President decided) |
 | `CLASSIFY` | Set FLIGHT TYPE, WAKE CATEGORY and required TYPE RATING ([fleet.md](fleet.md) section 4) | VOC-195 → `type:MAINT`, `wake:M`, `rating:SEC` |
 | `LINK` | Add a parent, `blocks` or `related` relation | VOC-196 blocked by VOC-52 (written only in the body) |
 | `SPLIT` | Turn a finding into a child or related ticket | P3 items from the PR #400 review |
 | `COMMENT` | Leave a plan comment (not execution) | "Deferred until VOC-52 lands" |
 | `TARGET`, `ROUTE` | ✅ S1 built (ATC-25): change an AIRCRAFT's FLEET TARGETS or ROUTE, not Linear. Shadow verdicts only in both modes, counted apart from the gate ([fleet.md](fleet.md) 7.4) | TEAM_C remove `Home & Discovery` (completed) |
 
-Built: `NEW` (CHARTER DESK, 5.1), `CLOSE` (5.5), `PRIORITIZE`, `CLASSIFY`, and `TARGET`/`ROUTE` in shadow ([fleet.md](fleet.md) 7.4). Not built yet: `TAIL`, `LINK`, `SPLIT`, `COMMENT`.
+Built: `NEW` (CHARTER DESK, 5.1), `CLOSE` (5.5), `PRIORITIZE`, `CLASSIFY`, `TAIL` ("TAIL as built"), and `TARGET`/`ROUTE` in shadow ([fleet.md](fleet.md) 7.4). Not built yet: `LINK`, `SPLIT`, `COMMENT`.
 
 ### 5.1 Where operations come from
 
-- **The SUPERVISOR's instructions (CHARTER DESK)**: a CHARTER REQUEST made directly in the OCC session ("make a ticket for X") becomes a `NEW` draft, an AD HOC FLIGHT (a FLIGHT added outside the regular schedule). Once approved and in Linear Todo (S2) it is FILED like any other FLIGHT. Small ticketless work handed straight to a team is AD HOC and never becomes a SCHEDULE operation. OCC never drafts `NEW` on its own initiative, with one exception: a WAYPOINT exit criterion no issue covers (5.6), which carries over a criterion the SUPERVISOR already wrote. Its duplicate search (section 5.3) covers atc's snapshot, which holds issues updated in the last 45 days.
+- **The SUPERVISOR's instructions (CHARTER DESK)**: an assignment the SUPERVISOR states ("TEAM_E takes VOC-196") becomes a `TAIL` draft ("TAIL as built" below). A CHARTER REQUEST made directly in the OCC session ("make a ticket for X") becomes a `NEW` draft, an AD HOC FLIGHT (a FLIGHT added outside the regular schedule). Once approved and in Linear Todo (S2) it is FILED like any other FLIGHT. Small ticketless work handed straight to a team is AD HOC and never becomes a SCHEDULE operation. OCC never drafts `NEW` on its own initiative, with one exception: a WAYPOINT exit criterion no issue covers (5.6), which carries over a criterion the SUPERVISOR already wrote. Its duplicate search (section 5.3) covers atc's snapshot, which holds issues updated in the last 45 days.
 - **Team findings**: a CAPTAIN reports "found Y outside my scope" → `SPLIT`.
 - **PR reviews**: follow-up items in a review → `SPLIT`.
-- **atc signals**: done but still open (`CLOSE`), no priority (`PRIORITIZE`), a body-only prerequisite (`LINK`), neglected ENROUTE (the DISPATCH `RELEASE` case).
+- **atc signals**: done but still open (`CLOSE`), no priority (`PRIORITIZE`), flown by a team without a `tail:` (`TAIL`, "TAIL as built" below), a body-only prerequisite (`LINK`), neglected ENROUTE (the DISPATCH `RELEASE` case).
 - **Stage 4 network planning**: a goal broken down into tickets, as drafts only.
 - **WAYPOINT gaps** (5.6): exit criteria of the active or next WAYPOINT that no issue covers → `NEW` with the milestone.
 
@@ -162,6 +162,17 @@ The ROUTE MAP already knows each WAYPOINT's ETA and whether it is late ([routes.
 - **Report once.** Like FLIGHT FOLLOWING, each warning has a `key` (`<milestone id>:<code>`) and `fresh` (not reported yet). In `/tick` step 5, OCC writes each fresh warning as one line in the OCC LOG, reports it to the SUPERVISOR and runs `atcctl schedule slip-ack` (`POST /api/schedule/slips/ack`). Reported keys live in `waypoint-slips.json`; a warning that clears is forgotten, so it is fresh again if it comes back. When `eta-after-target` becomes `target-passed`, the key changes and OCC reports it once more. OCC doesn't message teams or draft anything because of a slip.
 - **Screen.** The SCHEDULE tab lists the warnings under **LATE WAYPOINTS** (code, ROUTE · WAYPOINT, target, ETA, days, and when OCC reported it), with a link to the ROUTE MAP.
 
+### TAIL as built (ATC-68)
+
+A `TAIL` operation sets a FLIGHT's `tail:TEAM_X` (TAIL ASSIGNMENT, [fleet.md](fleet.md)) to one AIRCRAFT, so an assignment made outside DISPATCH ends up as a label the planner respects.
+
+- **Payload.** One REGISTRATION (`atcctl schedule draft TAIL <FLIGHT> <TEAM_X> -- <reason>`, pure `parseTail` in `server/schedule-tail.ts`). atc refuses the draft when the REGISTRATION doesn't match `teamPattern`, isn't in FLEET (`fleet.json`) or is RETIRED, when Linear has no `tail:TEAM_X` label (read-only label lookup, 10-minute cache, refetched once on a miss; the reason says ENGINEERING or the user creates it, OCC never does), or when the FLIGHT already has that `tail:`. Any FLIGHT that isn't closed qualifies, In Progress included, unlike `CLASSIFY` and `PRIORITIZE`.
+- **Release.** One `save_issue` with `addLabels: ["tail:TEAM_X"]` and, when there is one, `removeLabels` with the other `tail:` labels, plus the usual `[OCC S-xxxx]` comment. The resulting label set is the current labels minus other `tail:` plus the new one (`tailLabelsOf`); every other label stays, the old `lane:` alias included. It never touches state or assignee. The call uses `addLabels`/`removeLabels` rather than `labels` (full replacement): atc's snapshot keeps at most 20 labels per issue and shows group labels as `type:BUILD` where Linear's name is `BUILD`, so rebuilding the full set could drop labels. APPLIED when the next fetch shows `tail:TEAM_X`; SUPERSEDED when the FLIGHT closes.
+- **CAUTION.** Changing another team's `tail:` while that team is AIRBORNE, or while it holds the FLIGHT's STAND, puts `caution` in the payload (shown on the SCHEDULE card and printed by `atcctl`). Such an operation is never automatic (section 7).
+- **Sources.** A SUPERVISOR instruction at the CHARTER DESK, and an atc signal: `schedule brief` lists `candidates.tail`, FLIGHTs not closed and without `tail:` that a team is flying, each with its `evidence`: `STAND` (the team holds the FLIGHT's STAND), `DEPARTURE LOG` (the last AIRCRAFT on a `departures.jsonl` line in the last 7 days) or `READBACK` (a DISPATCH ASSIGN accepted or departed, or a TOWER CLEARANCE read back). Only REGISTRATIONs that could be drafted appear, and FLIGHTs with an open `TAIL` operation are left out. atc never drafts from the signal; OCC reads it and decides (`occ/.claude/skills/tick/schedule.md`, "TAIL 전에").
+- **Gate.** Verdicts on `TAIL` count toward the S2 gate like `CLASSIFY` and `PRIORITIZE`. ATFM's S3 candidates stay `CLASSIFY` only.
+- **Section 8.** This is the `TAIL` operation that President's "assign work" row and "President retires" refer to. Their status wording is left for ENGINEERING to update after merge.
+
 ## 6. linear-guard
 
 linear-guard is part of `occ/mcp-guard.mjs`, the PreToolUse hook on all of OCC's MCP tools (matcher `mcp__.*`, fail-closed `… || exit 2`). Read tools pass as in S0. linear-guard judges the two Linear write tools, `save_issue` and `save_comment`. Every other write tool (relations, labels, GitHub) is blocked as in S0.
@@ -179,7 +190,7 @@ Everything else is blocked with `OCC MCP 차단 — …`. As with send-guard, OC
 
 A used call stays used: releasing the operation again returns the same calls with the same `used` marks, and nothing un-marks one. If the Linear write failed after the guard let it through, OCC reports it, and the SUPERVISOR makes the change in Linear by hand; atc still marks the operation APPLIED when the next fetch shows it (or it expires after 3 days).
 
-atc marks a released operation APPLIED when the next Linear fetch shows the change: for `NEW`, an issue with the same title (normalized) created after the draft; for `CLASSIFY` and `PRIORITIZE`, the labels or priority as drafted; for `CLOSE`, a Done or Canceled issue. If the change shows before the operation is released, it is SUPERSEDED instead.
+atc marks a released operation APPLIED when the next Linear fetch shows the change: for `NEW`, an issue with the same title (normalized) created after the draft; for `CLASSIFY` and `PRIORITIZE`, the labels or priority as drafted; for `TAIL`, the drafted `tail:` label; for `CLOSE`, a Done or Canceled issue. If the change shows before the operation is released, it is SUPERSEDED instead.
 
 ## 7. Flow and stages
 
@@ -206,7 +217,7 @@ Never automatic: anything with CAUTION, `Canceled`, deleting anything, adding or
 | From | Moves to OCC as |
 |---|---|
 | DISPATCH session (`atc/dispatch/`) | The same work under `atc/occ/`: proposal review, HOLD, FLIGHT PLAN, READBACK. The DISPATCH tab, proposal ids (`D-xxxx`) and send-guard stay as they are |
-| President: assign work | DISPATCH proposals. Until 2b, a person's direct assignment is recorded as a `tail:TEAM_X` label so the planner can see it. For now that is done by hand: the SCHEDULE `TAIL` operation is Not built yet |
+| President: assign work | DISPATCH proposals. Until 2b, a person's direct assignment is recorded as a `tail:TEAM_X` label so the planner can see it. OCC drafts it as a SCHEDULE `TAIL` operation ("TAIL as built", ATC-68). Until S2 releases drafts, the label is still added by hand |
 | President: verify team reports | **Flight following**. atc follows every assigned FLIGHT (`server/following.ts`, `GET /api/following`): DISPATCH ASSIGNs that are accepted, departed or recalling, plus In Progress FLIGHTs with a `tail:` label. It tracks the stages READBACK → DEPARTED → PR opened → CLEARED → ARRIVED (STAND-free FLIGHTs: READBACK → DEPARTED → ARRIVED, section 8.1), and flags delays (no next stage after 1.5× the WAKE expectation) and mismatches between Linear and the PR. Each pass, OCC runs `atcctl following`, reports only new issues and records them with `following ack`, so nothing is reported twice. It never messages teams. For a team report or a SUPERVISOR request, OCC still checks the PR head, CI and review with read-only `gh` (`gh pr view`, `gh pr checks`, `gh pr diff`). The mechanical landing check is ATC's CLEARED TO LAND (section 9) |
 | President: keep Linear tidy | SCHEDULE operations |
 | President: maintain rule files | A `NEW` ticket that a TEAM implements through a PR |
@@ -216,7 +227,7 @@ OCC's guard is TOWER's Bash guard plus read-only `gh` subcommands (`guard.mjs --
 
 The session reloads its manual: `/tick` starts with `atcctl manual check`, which compares the hash of `CLAUDE.md`, `/tick` and its procedure files (every Korean `*.md` in `.claude/skills/tick/`) with the last `atcctl manual ack` (stored under `~/.local/state/atc/manuals/`). If they changed, the session rereads them before doing anything else. TOWER's `/tick` does the same. OCC's `CLAUDE.md` holds only the core (role, prohibitions, always-used commands, review rules); each procedure (BRIEFING, FLIGHT PLAN, CREW CHANGE, SCHEDULE, flight following) is a file next to `/tick`, read only at the step that has work, so the always-loaded manual stays short (ATC-9). That fixes the stale-manual incident from section 1.
 
-**President retires** once all three hold: OCC has run S1 for a week, flight following covers every team report, and the `TAIL` operation is in use (Not built yet). Until then President keeps assigning and records each assignment as a `tail:` label by hand.
+**President retires** once all three hold: OCC has run S1 for a week, flight following covers every team report, and the `TAIL` operation is in use (built with ATC-68; it writes labels once S2 is on). Until then President keeps assigning and records each assignment as a `tail:` label by hand.
 
 ### 8.1 Flight following in detail
 
@@ -349,7 +360,7 @@ With `strict` on vocado's `main`, every merge puts the other open PRs `behind`, 
   4. A CLEARED PR that is not on HOLD is waiting for the SUPERVISOR's merge → wait. Updating another PR now would put it `behind` again after that merge. HOLD frees the runway.
   5. The first PR in LANDING SEQUENCE order whose only block is `behind` → update it.
 - **update**: `PUT /repos/{o}/{r}/pulls/{n}/update-branch` with `expected_head_sha` (a normal merge commit, not a force-push). The PR returns to CLEARED once CI passes, because ATC-31 carries the review. Draft, stacked, `dirty` and LOS PRs are never touched. A rejected update (the head moved) is skipped for that head and retried on the next cycle with the new head; other failures skip that head until it changes.
-- **merge**: the delegated class is every CLEARED PR not excluded by `mergeExclusionOf`: SUPERVISOR HOLD (the HOLD button on the landing strip); no FLIGHT; `rating:SEC` or any `Risk…` label (ticket or PR); changed files not read (atc reads them for all non-draft PRs while in `merge`); the ATC-27 security gate (`.env`/secret/key paths, migrations, SQL, auth, session, admission, RLS/policy, middleware, security keywords); a PR body whose Human Preview applicability is `required` (or unfilled) without a single `approved`/`waived`/`passed` Human Visual Review disposition. Right before merging, atc re-reads the PR (`gh pr view`) and checks the head and every exclusion again. The merge is `PUT /repos/{o}/{r}/pulls/{n}/merge` with `sha` = the planned head (the REST form of `--match-head-commit`) and `merge_method`. GitHub auto-merge is never set. An excluded CLEARED PR stays with the SUPERVISOR and, unless on HOLD, holds the runway.
+- **merge**: the delegated class is every CLEARED PR not excluded by `mergeExclusionOf`: SUPERVISOR HOLD (the HOLD button on the landing strip); no FLIGHT; `rating:SEC` or any `Risk…` label (ticket or PR); changed files not read (atc reads them for all non-draft PRs while in `merge`); the ATC-27 security gate (`.env`/secret/key paths, migrations, SQL, auth, session, admission, RLS/policy, middleware, security keywords); a PR that waits on a HUMAN CHECK, or whose `## UI change` block is missing or its class unfilled (9.8, ATC-37; this replaced the old Human Preview gate check). Right before merging, atc re-reads the PR (`gh pr view`) and checks the head and every exclusion again. The merge is `PUT /repos/{o}/{r}/pulls/{n}/merge` with `sha` = the planned head (the REST form of `--match-head-commit`) and `merge_method`. GitHub auto-merge is never set. An excluded CLEARED PR stays with the SUPERVISOR and, unless on HOLD, holds the runway.
 - **GROUND STOP**: when the check named `applicationCheck` fails on the default branch's head of an AIRPORT in the list, AUTOLAND stops both modes there and stays stopped, even after main turns green, until the SUPERVISOR clears it (settings window, or `POST /api/autoland/groundstop/clear {airport}`). A cleared SHA doesn't stop it again; a new red SHA does. It is latched even while the switch is off, so turning AUTOLAND on shows it first.
 - **Records**: `autoland.jsonl` (append-only): `update`, `merge`, `settle`, `skip`, `groundstop`, `groundstop-clear`, `mode`, `hold`, `unhold`, each with the mode, AIRPORT, PR, head, result and detail. State (in flight, GROUND STOPs, cleared SHAs, skipped and merged heads) is `autoland-state.json`. `GET /api/autoland` shows config, state, the plan and the last 50 records.
 - **Screen**: the LANDING SEQUENCE header shows one line per AIRPORT ("AUTOLAND: updating #383", "AUTOLAND: waiting — #383 CLEARED, …", "AUTOLAND: GROUND STOP — …"); each PR shows what AUTOLAND will do or why not ("AUTOLAND update 대기 2번째", "AUTOLAND 제외 — DIRTY(충돌)", "AUTOLAND 대기 — 리뷰 없음 먼저", "SUPERVISOR 머지 — rating:SEC") and a HOLD button.
@@ -359,6 +370,37 @@ With `strict` on vocado's `main`, every merge puts the other open PRs `behind`, 
   - **Codex limited, or no Codex answer within 30 min** (`escalateOf`): the head goes to the REVIEW (DeepSeek) queue right away (`buildPulls` `fastTrack`, `codexUnavailable.why = "autoland"`, "AUTOLAND 재리뷰 — Codex 30분 무응답"), unless Codex has already answered after the head.
   - ATC-27/30 still decide: `buildPulls` re-checks the external-review exclusion with the current switch. An excluded PR is not queued, and the strip says "AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(migrations)".
   - One request per head (`autoland-state.json` `reviewRequests`), recorded as `op: "review-request"` with `via` (`codex`, `deepseek` or `supervisor`). The strip shows "AUTOLAND: review requested (codex|deepseek)" until a review lands. Only while AUTOLAND is `update` or `merge` and the AIRPORT is not in GROUND STOP.
+
+### 9.8 HUMAN CHECK: only CHOICE, ACCOUNT and DEVICE PRs wait on a person (2026-09-28, ATC-37)
+
+After the ATC-39 research ([research/human-preview.md](research/human-preview.md)), a person is required only for three classes of UI PR. The application repository's PR body carries a short `## UI change` block, and atc reads only these fields from it:
+
+| Field | What atc takes |
+|---|---|
+| `UI impact` | `none`, or a rendered UI change |
+| `Human check class` | any of `CHOICE`, `ACCOUNT`, `DEVICE`, or `none`. The template text left as is counts as unfilled |
+| `Evidence pack` | a link to a comment on the same PR (`…/pull/<n>#issuecomment-<id>`) |
+| `Preview` | ACCOUNT/DEVICE: the Preview URL for the current head |
+| `Human steps` | ACCOUNT/DEVICE: the 1–3 steps (following indented lines included) |
+| `Human check` | `not needed`, `pending`, or `done <date> <sha> <note>` / `failed <date> <sha> <note>` |
+
+atc doesn't read the old Human Preview gate section at all.
+
+- **Queue** (`waitsOnHuman`): open, non-draft PRs whose block has a class and whose `Human check` isn't `done` for the current head. A result is bound to a head. It counts for the head it names (`sha` is a prefix of the head). It also counts for an earlier commit that the head reaches by main-only merges with the same change: the ATC-31 rule, from `carryFrom`, or for a PR whose review is already on its head, from a separate `humanCarryFrom` read so the review decision isn't touched. Any other SHA shows as "recorded on an old head". `failed` on the current head stays in the queue. Class `none` or `UI impact: none` never enters.
+- **Row** (STRIPS, above LANDING SEQUENCE, `HUMAN CHECK n`): PR, AIRPORT and FLIGHT, the team holding the STAND, the class chips, and the state.
+  - The evidence pack: thumbnails of the images in the linked PR comment. They are read as GitHub's `body_html`, whose signed image URLs work for private repositories and expire within minutes, so atc keeps them in memory for 3 min and never stores them. A link to a comment on another PR is refused.
+  - The RUN-UP report (ATC-41), when one exists for this exact head: `.runup/<base7>-<head7>/report.json` in the AIRPORT checkout or one of its STANDs, with `head.sha` equal to the head. The row shows changed screens and cuts, UNEXPECTED warnings and changed-cut thumbnails, and links the report.
+  - For ACCOUNT and DEVICE: the Preview link and the steps.
+- **PASS / FAIL** (`POST /api/human-check/:owner/:name/:number {result, head, note}`): SUPERVISOR only, with the same Origin rule as the AUTOLAND switch. atc re-reads the PR first. The `head` the screen showed must still be the head, the block must have a class and exactly one `Human check` line, and FAIL needs a note (one line, no backticks, 200 characters max).
+  - Then exactly two GitHub writes. First the PR body with only that line changed to `` `done <YYYY-MM-DD> <sha7> <note>` `` (or `failed`), sent as JSON on stdin. Then one PR comment "HUMAN CHECK: PASS|FAIL · head · classes · date" with the note.
+  - If the body write fails, no comment is posted. Each attempt is a line in `human-checks.jsonl` (append-only): time, repo, PR, head, result, classes, note, `by`, `ok`, `line`, the comment URL and any error.
+  - No Vercel share tokens are created or kept.
+- **Landing** (replaces the Human Preview exclusion of 9.7): AUTOLAND `merge` doesn't merge a classed PR until its `Human check` is `done` for the head (checked again right before the merge). It also doesn't merge a PR whose block is missing or whose class is unfilled while `UI impact` isn't `none`: atc can't tell whether a person is needed. A PR with class `none` isn't held back. LANDING SEQUENCE rows show `HUMAN CHECK <classes>: <state>` for classed PRs. The CLEARED TO LAND conditions are unchanged.
+- **API**:
+  - `GET /api/human-check`: the queue and the last 50 records.
+  - `GET /api/human-check/:owner/:name/:number/evidence`: comment images and the RUN-UP summary.
+  - `GET /api/human-check/:owner/:name/:number/runup/:run/<file>`: RUN-UP report files. Only files inside that report folder are served, and only `.html`/`.json`/images/`.css`/`.js`, after resolving symlinks. They are sent with `Content-Security-Policy: sandbox allow-scripts`, so the report's scripts run on an opaque origin and can't call atc's SUPERVISOR-only endpoints.
+- Pure parts: `server/human-check.ts` (`uiChangeOf`, `humanCheckStatusOf`, `humanCheckExclusionOf`, `setHumanCheckLine`, `checkRequestOf`, `imagesOf`, `pickRunup`). I/O: `server/human-check-run.ts`.
 
 ## 10. What to add to atc
 

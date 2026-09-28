@@ -1,4 +1,5 @@
 import type { Alert, LandingBlockCode, PullRequest, Workspace } from "./model.ts";
+import { humanCheckStatusOf, uiChangeOf } from "./human-check.ts";
 
 // CLEARED TO LAND 판정. GitHub에 열린 PR 하나마다 머지 전에 기계로 볼 수 있는 조건을 모두 따진다.
 // 결정 사항(docs/occ.md 9절):
@@ -64,6 +65,9 @@ export interface GhPull {
   // atc가 붙인다(ATC-31): head에 리뷰가 없을 때, 리뷰를 이어받을 수 있는 이전 커밋 R(최근 것 먼저).
   // R..head가 main 병합뿐이고 PR 자신의 변경(merge-base 대비 바뀐 파일과 blob)이 R과 head에서 같은 것만
   carryFrom?: CarryCandidate[];
+  // atc가 붙인다(ATC-37): HUMAN CHECK가 옛 SHA에 기록된 class PR의 main 병합만 한 이전 커밋. 리뷰 잇기(carryFrom)와 따로 둔다
+  // (리뷰가 head에 있는 PR에 carryFrom을 붙이면 리뷰 판정이 바뀐다)
+  humanCarryFrom?: string[];
 }
 
 // ── main 병합만 한 head에 이전 리뷰 이어받기(ATC-31) ──
@@ -594,6 +598,7 @@ export function buildPulls(
       if (defaultBranch && gh.baseRefName !== defaultBranch) blocks.unshift(block("stacked", stackedText(gh, stack, defaultBranch)));
       const key = readyKey({ repo, number: gh.number, head: gh.headRefOid });
       seen.add(key);
+      const ui = uiChangeOf(gh.body);
       let readyAt: string | null = null;
       if (!blocks.length) {
         if (!ready.has(key)) ready.set(key, now);
@@ -626,6 +631,9 @@ export function buildPulls(
         // 이어받은 리뷰(ATC-31): 스트립 "REVIEW: … (carried from R, main merge only)", landing.cleared 기록의 carriedFrom
         carried: carried ?? null,
         stack,
+        // HUMAN CHECK(ATC-37): class PR의 사람 확인. 기록한 SHA가 main 병합만 한 이전 커밋이면 잇는다(ATC-31)
+        uiChange: ui,
+        humanCheck: humanCheckStatusOf(ui, gh.headRefOid, gh.humanCarryFrom ?? (gh.carryFrom ?? []).map((c) => c.sha)),
       });
     }
   }

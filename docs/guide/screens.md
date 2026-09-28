@@ -3,14 +3,14 @@
 | 탭 | 주소 | 보는 것 | 할 수 있는 것 |
 |---|---|---|---|
 | RADAR | `#radar` | 세션 ─ STAND ─ FLIGHT 3열을 선으로 연결. 주인 없는 STAND, STAND 없는 진행 FLIGHT 강조 | 전체 보기 전환 |
-| STRIPS | `#strips` | 맨 위 LANDING SEQUENCE(열린 PR), 세션마다 FLIGHT STRIP: 상태, 쥔 STAND, FLIGHT(없으면 AD HOC), STAND의 PR 착륙 배지, 마지막 교신 | PR 링크 열기, 막는 조건 펼치기 |
+| STRIPS | `#strips` | 맨 위 HUMAN CHECK(사람 확인을 기다리는 PR, 있을 때만)와 LANDING SEQUENCE(열린 PR), 세션마다 FLIGHT STRIP: 상태, 쥔 STAND, FLIGHT(없으면 AD HOC), STAND의 PR 착륙 배지, 마지막 교신 | PR 링크 열기, 막는 조건 펼치기 |
 | FIDS | `#board` | Linear 상태 열별 FLIGHT 카드와 점유 팀 배지 | — |
 | AIRPORTS | `#airports` | 저장소 등록부, 소속 AIRCRAFT, OUTSTATION으로 와 있는 AIRCRAFT | AIRPORT 개설·코드 변경·폐쇄 |
 | FLEET | `#fleet` | 팀별 상태, 지금 FLIGHT, RULES(규칙 파일을 확인했나: `RULES current` 또는 `RULES 미확인 since <시각>`과 파일, rules-drift hook이 있을 때), 팀원, 자격, ROUTE, TARGETS와 LOGBOOK 실적(이번 주, 정시, 되돌림, LOS, 최근 FLIGHT), CHECKRIDE(TYPE RATING 근거와 추천), FLEET PLAN(atc의 제안과 AIRPORT별 수요, 그림자·승인 운용) | 프로필 편집, ENTRY INTO SERVICE, LAUNCH·STOP(세션 띄우기·멈추기), CREW BRIEFING, AOG, 퇴역, rating 부여·회수, FLEET PLAN 동의·반대, 승인 운용 켜기·끄기, 승인(실행) |
 | NETWORK | `#network` | 4단계 운항 개요(읽기 전용): ROUTE MAP(ROUTE마다 WAYPOINT 경로·지금 구간·ETA), ROUTE(Linear 프로젝트)별 열린 FLIGHT·14일 ARRIVED·도는 AIRCRAFT·착륙 대기·프로젝트 목표, AIRCRAFT별 TARGETS 대 실적, 28일 추세(ARRIVED·착륙 대기·되돌림, 게이트 판정·합의율·CROSSCHECK 일치율) | — |
 | METRICS | `#metrics` | FLIGHT RECORDER로 본 운용 지표와 추이 | — |
 | DISPATCH | `#dispatch` | 배정 계획과 제안(CROSSCHECK 동의 묶음, BRIEFING 세 줄, 사실 줄, CROSSCHECK 칩, `CROSSCHECK 대기`, BLIND 표본, 접힌 점수 요소·본문·메모), HELD(PREFLIGHT), IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검과 CROSSCHECK 일치, BLIND 합의율, PREFLIGHT HELD·준비율, ATFM 블록(출발 중지, main CI, 머지 슬롯, 자동 배정·S3 대상 그림자 판정), FLIGHT FOLLOWING 블록(배정된 FLIGHT의 단계 막대, 지연·불일치, OCC가 보고했는지), VECTORS · DIRECT 블록(지시서별·SOLO·CREW별·2×2로 묶어 FLIGHT당 중간 질문, 질문 없이 PR, READBACK → PR 중앙값, P0–P2 지적, PR 뒤 수정 커밋, 14·30·90일, FLIGHT별 행) | 판정, CROSSCHECK에 동의, HELD 대기열로·FLIGHT 보류 확정, 모드 전환, ATFM 스위치(main 깨짐·수동)와 수동 출발 중지, ATFM OFF |
-| SCHEDULE | `#schedule` | OCC 초안(CLASSIFY·PRIORITIZE·NEW, CROSSCHECK 칩), S2 점검과 CROSSCHECK 일치, 판정 계열 일치(`JEV 일치`, 켜져 있을 때), RECENT의 판정 계열 칩(`JEV agree`, 판정한 초안에만), LATE WAYPOINTS(지연 경고), 후보 수 | 판정, CROSSCHECK에 동의 |
+| SCHEDULE | `#schedule` | OCC 초안(CLASSIFY·PRIORITIZE·TAIL·NEW, CROSSCHECK 칩), S2 점검과 CROSSCHECK 일치, 판정 계열 일치(`JEV 일치`, 켜져 있을 때), RECENT의 판정 계열 칩(`JEV agree`, 판정한 초안에만), LATE WAYPOINTS(지연 경고), 후보 수 | 판정, CROSSCHECK에 동의 |
 | DOCS | `#docs` | 이 안내와 변경 기록(`CHANGELOG.ko.md`에 아직 접지 않은 `changelog.d/` 조각까지 `[Unreleased]` 아래에) | — |
 
 ## NETWORK
@@ -28,6 +28,17 @@ ROUTE·AIRCRAFT·추세를 한 화면에서 보는 읽기 전용 개요다. 아�
 - Linear·GitHub·LOGBOOK 중 못 읽은 것이 있으면 그 표시가 뜬다. 그 출처에서 온 숫자는 비거나 0일 수 있다.
 
 TARGETS·ROUTE를 바꾸는 것은 지금처럼 FLEET 탭에서 SUPERVISOR가 한다. OCC가 변경 초안을 내는 흐름은 설계만 있다(`docs/fleet.ko.md` 7.4).
+
+## STRIPS의 HUMAN CHECK
+
+PR 본문 `## UI change` 블록의 class가 CHOICE·ACCOUNT·DEVICE인데 이 head에 `Human check: done`이 없는 PR만 LANDING SEQUENCE 위 `HUMAN CHECK n`에 모인다. 없으면 이 칸이 보이지 않는다.
+
+- 줄마다 `#번호`, AIRPORT·FLIGHT, STAND를 쥔 팀, class 칩, 상태(`pending`, `FAILED`, `옛 head에 기록됨 (sha)`, `채우지 않음`), 제목.
+- 증거: Evidence pack 링크가 가리키는 PR 댓글의 스크린샷 썸네일, 이 head의 RUN-UP 보고서가 있으면 바뀐 화면·컷 수, UNEXPECTED 경고, 바뀐 컷 썸네일과 보고서 링크. 증거가 없으면 "증거 없음".
+- ACCOUNT·DEVICE면 **Preview ↗**(현재 head의 Preview)와 사람이 할 1~3 단계.
+- **PASS**·**FAIL**: 메모 칸에 본 것을 적고 누른다(FAIL은 메모 필수). atc가 PR 본문의 `Human check:` 줄 하나를 `done <날짜> <sha> <메모>`(또는 `failed`)로 바꾸고 PR 댓글 하나를 단다. 결과는 이 head에 묶인다. 그 뒤 main 병합만 한 head는 결과를 잇고, PR 변경이 바뀐 head는 다시 확인해야 한다. 화면이 본 head가 그새 바뀌었으면 거절된다.
+- 누르면 "PASS 기록됨 · sha · 댓글"이 뜨고, GitHub을 다시 읽으면(90초 안) 줄이 대기열에서 빠진다.
+- AUTOLAND `merge`는 이 대기열의 PR과 `## UI change` 블록이 없는 PR을 머지하지 않는다. LANDING SEQUENCE 줄에는 `HUMAN CHECK ACCOUNT: pending`처럼 보인다.
 
 ## STRIPS의 LANDING SEQUENCE
 

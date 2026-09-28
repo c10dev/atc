@@ -13,6 +13,7 @@ import {
 import { activeFirst, hasActiveClaim, type Index, sortSessions, timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { AirportCode, AwayTag, SessionPlace } from "../ui.tsx";
+import { HumanCheckQueue, HumanCheckTag } from "./HumanCheck.tsx";
 import "./Teams.css";
 
 const BAYS: AircraftStatus[] = ["airborne", "holding", "nordo", "parked"];
@@ -51,6 +52,7 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
           GitHub 조회 실패 · PR 상태가 오래됐을 수 있음
         </p>
       )}
+      <HumanCheckQueue pulls={pulls} idx={idx} nameOf={nameOf} />
       <LandingSequence pulls={pulls} landing={landing} idx={idx} nameOf={nameOf} />
       {BAYS.map((bay) => {
         const sessions = bays.get(bay)!;
@@ -448,6 +450,7 @@ function PrLanding({ pr, landing }: { pr: PullRequest; landing: LandingIndex }) 
         <ExtReviewTag pr={pr} />
         <CarriedTag pr={pr} />
         <CodexP3Tag pr={pr} />
+        <HumanCheckTag pr={pr} />
         <AutolandTag pr={pr} landing={landing} />
         {seq && landing.seq.size > 1 && (
           <span className="pr-seq" title={`LANDING SEQUENCE ${landing.seq.size}개 중 ${seq}번째`}>
@@ -503,7 +506,7 @@ function LandingSequence({
         </div>
         <div className="ls-pr">
           <div className="ls-title">
-            <PrLink pr={pr} /> <ExtReviewTag pr={pr} /> <CarriedTag pr={pr} /> <CodexP3Tag pr={pr} /> <AutolandTag pr={pr} landing={landing} />{" "}
+            <PrLink pr={pr} /> <ExtReviewTag pr={pr} /> <CarriedTag pr={pr} /> <CodexP3Tag pr={pr} /> <HumanCheckTag pr={pr} /> <AutolandTag pr={pr} landing={landing} />{" "}
             <HoldButton pr={pr} landing={landing} /> <span title={pr.title}>{pr.title}</span>
           </div>
           {pr.landing !== "CLEARED" && pr.blocks.length > 0 && (

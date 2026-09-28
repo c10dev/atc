@@ -4,6 +4,7 @@ import { type MainStatus, mainStateOf } from "../atfm.ts";
 import { loadAutoland } from "../autoland.ts";
 import { type CarryCandidate, type CodexSignal, codexFindings, codexThumbsPass, firstReach, fixesKeyOf, mergeOnlyChain, sameChange, type GhPull, type GhThread, hasHeadReview, isCodexBot, type MergedElsewhere, needsCodexSignal } from "../landing.ts";
 import type { GhCommit } from "../briefs.ts";
+import { humanCheckStatusOf, uiChangeOf } from "../human-check.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./git.ts";
 
 const run = promisify(execFile);
@@ -155,6 +156,20 @@ async function attachCodex(slug: string, pulls: GhPull[], errors: string[], main
   }
 }
 
+// HUMAN CHECK(ATC-37): class PR인데 기록한 SHA가 head가 아니면, main 병합만 한 이전 커밋을 읽어 그 기록을 이을 수 있나 본다
+async function attachHumanCarry(slug: string, pulls: GhPull[], errors: string[], mainSha: string | null) {
+  if (!mainSha) return;
+  const need = pulls.filter((p) => !p.isDraft && humanCheckStatusOf(uiChangeOf(p.body), p.headRefOid)?.state === "stale");
+  for (const p of need) {
+    try {
+      p.humanCarryFrom = (p.carryFrom ?? (await carryCandidates(slug, p, mainSha))).map((c) => c.sha);
+    } catch (e) {
+      const err = e as Error & { stderr?: string };
+      errors.push(`${slug}#${p.number} HUMAN CHECK 잇기: ${(err.stderr?.trim() || err.message).split("\n")[0]}`);
+    }
+  }
+}
+
 // BLOCKED인 PR(Draft 아님) 중 아직 스레드를 안 읽은 것: 해결 안 된 스레드 수로 막힌 까닭을 보인다
 async function attachThreads(slug: string, pulls: GhPull[], errors: string[]) {
   const need = pulls.filter((p) => !p.isDraft && !p.threads && p.mergeStateStatus === "BLOCKED");
@@ -209,6 +224,7 @@ async function fetchAll(repos: string[]) {
         const mainSha = (await gh(["api", `repos/${slug}/commits/${base}`, "--jq", ".sha"]).catch(() => "")).trim() || null;
         await attachCodex(slug, pulls, errors, mainSha);
         await attachThreads(slug, pulls, errors);
+        await attachHumanCarry(slug, pulls, errors, mainSha);
         // AUTOLAND merge 모드(ATC-34): 머지 후보의 바뀐 파일로 보안 게이트를 본다(못 읽으면 머지하지 않는다)
         if (loadAutoland().mode === "merge") await attachFiles(slug, pulls, errors);
         state.byRepo.set(repo, pulls);

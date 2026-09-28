@@ -12,12 +12,13 @@ atc는 항공처럼 관제 세션을 둘로 나눈다.
 > 상태:
 >
 > - **S0 구현**(2026-09-26): `atc/occ/` 세션(DISPATCH를 합침), 읽기 전용 `gh`, 읽기 전용 MCP guard, 매뉴얼 다시 읽기, planner의 TAIL ASSIGNMENT(`tail:TEAM_X`, [fleet.ko.md](fleet.ko.md) 참고).
-> - **S1 구현**: `CLASSIFY`, `PRIORITIZE`, `NEW`, `CLOSE`의 SCHEDULE 초안을 그림자 운용한다(`server/schedule.ts`, `atcctl schedule brief|draft`, SCHEDULE 탭, OCC 규칙).
+> - **S1 구현**: `CLASSIFY`, `PRIORITIZE`, `NEW`, `CLOSE`, `TAIL`의 SCHEDULE 초안을 그림자 운용한다(`server/schedule.ts`, `atcctl schedule brief|draft`, SCHEDULE 탭, OCC 규칙).
 > - `NEW`는 CHARTER DESK다. CHARTER REQUEST로 AD HOC FLIGHT 초안을 만든다. 본문 섹션을 점검하고, 스냅숏(최근 45일 안에 바뀐 이슈)에서 제목이 비슷한 중복을 찾는다.
 > - `CLOSE`(5.5, 2026-09-27 구현)는 PR이 머지된 FLIGHT를 닫자는 초안이다. release하지 않고, 이슈는 SUPERVISOR가 Linear에서 닫는다.
 > - 열린 초안은 종류를 합쳐 최대 5건이다. 판정 없이 3일이 지나면 만료된다.
 > - ATC의 CLEARED TO LAND 점검(9장)은 구현됐다. LANDING SEQUENCE는 이제 열린 GitHub PR에서 나온다.
-> - 나머지 작업(`TAIL`, `LINK`, `SPLIT`, `COMMENT`)과 S3는 설계만 있다(아직 만들지 않음).
+> - `TAIL`(아래 "TAIL as built", 2026-09-28 ATC-68 구현)은 DISPATCH 밖에서 정한 배정을 `tail:TEAM_X` 라벨 초안으로 남긴다.
+> - 나머지 작업(`LINK`, `SPLIT`, `COMMENT`)과 S3는 설계만 있다(아직 만들지 않음).
 > - S2(승인 운용: linear-guard, `schedule release`, APPLIED 감지)는 `mode` 뒤에 구현돼 있고 기본은 꺼짐. "S2 켜는 법" 참고.
 > - 결정 사항은 맨 아래 "결정"에 있다.
 
@@ -84,14 +85,14 @@ OCC는 Linear에 마음대로 쓰지 않는다. **SCHEDULE 작업**(operation)�
 | `NEW` | 티켓 만들기 | VOC-193에서 batch-processor race를 떼어 냄(VOC-195가 됨) |
 | `CLOSE` | ✅ 구현(5.5): FLIGHT의 PR이 머지됐는데(LOGBOOK ARRIVED) 이슈가 아직 열려 있음. 승인된 초안은 SUPERVISOR가 Linear에서 닫는다. release하지 않는다 | VOC-56: `protect main` ruleset이 이미 완료 기준을 모두 채움 |
 | `PRIORITIZE` | 우선순위를 정하거나 바꿈 | VOC-177, VOC-179, VOC-195에 우선순위가 없음 |
-| `TAIL` | `tail:TEAM_X`를 더하거나 바꿈(TAIL ASSIGNMENT) | VOC-196 → `tail:TEAM_E`(President가 정한 대로) |
+| `TAIL` | ✅ 구현("TAIL as built", ATC-68): `tail:TEAM_X`를 더하거나 바꿈(TAIL ASSIGNMENT) | VOC-196 → `tail:TEAM_E`(President가 정한 대로) |
 | `CLASSIFY` | FLIGHT TYPE, WAKE CATEGORY, 필요한 TYPE RATING을 정함([fleet.ko.md](fleet.ko.md) 4장) | VOC-195 → `type:MAINT`, `wake:M`, `rating:SEC` |
 | `LINK` | 상위, `blocks`, `related` 관계 더하기 | VOC-196은 VOC-52에 막혀 있음(본문에만 적힘) |
 | `SPLIT` | 발견한 것을 하위나 related 티켓으로 | PR #400 리뷰의 P3 항목 |
 | `COMMENT` | 계획 댓글 남기기(실행 댓글이 아님) | "VOC-52가 끝날 때까지 미룸" |
 | `TARGET`, `ROUTE` | ✅ S1 만듦(ATC-25): Linear가 아니라 AIRCRAFT의 FLEET TARGETS·ROUTE 변경. 두 모드 모두 그림자 판정만, 게이트와 따로 센다([fleet.ko.md](fleet.ko.md) 7.4) | TEAM_C에서 `Home & Discovery` 빼기(completed) |
 
-구현: `NEW`(CHARTER DESK, 5.1), `CLOSE`(5.5), `PRIORITIZE`, `CLASSIFY`, 그림자 운용의 `TARGET`·`ROUTE`([fleet.ko.md](fleet.ko.md) 7.4). 아직 만들지 않음: `TAIL`, `LINK`, `SPLIT`, `COMMENT`.
+구현: `NEW`(CHARTER DESK, 5.1), `CLOSE`(5.5), `PRIORITIZE`, `CLASSIFY`, `TAIL`("TAIL as built"), 그림자 운용의 `TARGET`·`ROUTE`([fleet.ko.md](fleet.ko.md) 7.4). 아직 만들지 않음: `LINK`, `SPLIT`, `COMMENT`.
 
 ### 5.1 작업은 어디서 오나
 
@@ -100,9 +101,10 @@ OCC는 Linear에 마음대로 쓰지 않는다. **SCHEDULE 작업**(operation)�
   - 팀에 바로 맡긴 작은 티켓 없는 일은 AD HOC이고, SCHEDULE 작업이 되지 않는다.
   - OCC는 스스로 `NEW`를 쓰지 않는다. 예외는 하나, 덮는 이슈가 없는 WAYPOINT 완료 기준이다(5.6). SUPERVISOR가 이미 적어 둔 기준을 옮기는 것이다.
   - 중복 검색(5.3)은 atc의 스냅숏을 본다. 스냅숏에는 최근 45일 안에 바뀐 이슈가 있다.
+  - SUPERVISOR가 말한 배정("VOC-196은 TEAM_E가 맡는다")은 `TAIL` 초안이 된다(아래 "TAIL as built").
 - **팀의 발견**: CAPTAIN이 "범위 밖에서 Y를 찾았다"고 보고 → `SPLIT`.
 - **PR 리뷰**: 리뷰의 후속 항목 → `SPLIT`.
-- **atc 신호**: 끝났는데 열려 있음(`CLOSE`), 우선순위 없음(`PRIORITIZE`), 본문에만 적힌 선행 작업(`LINK`), 방치된 ENROUTE(DISPATCH의 `RELEASE` 경우).
+- **atc 신호**: 끝났는데 열려 있음(`CLOSE`), 우선순위 없음(`PRIORITIZE`), `tail:` 없이 팀이 몰고 있음(`TAIL`, 아래 "TAIL as built"), 본문에만 적힌 선행 작업(`LINK`), 방치된 ENROUTE(DISPATCH의 `RELEASE` 경우).
 - **4단계 네트워크 계획**: 목표를 티켓으로 나눈 것. 초안으로만.
 - **WAYPOINT gap**(5.6): 지금 구간이나 다음 WAYPOINT의 완료 기준 가운데 덮는 이슈가 없는 것 → 마일스톤을 단 `NEW`.
 
@@ -179,6 +181,17 @@ ROUTE MAP은 이미 WAYPOINT마다 ETA와 지연 여부를 안다([routes.ko.md]
 - **한 번만 보고.** FLIGHT FOLLOWING처럼 경고마다 `key`(`<마일스톤 id>:<code>`)와 `fresh`(아직 보고 안 함)가 있다. `/tick` 5단계에서 OCC는 fresh 경고를 하나에 한 줄로 OCC LOG에 적고 SUPERVISOR에게 보고한 뒤 `atcctl schedule slip-ack`(`POST /api/schedule/slips/ack`)를 실행한다. 보고한 key는 `waypoint-slips.json`에 둔다. 풀린 경고는 잊으니 다시 생기면 다시 fresh다. `eta-after-target`이 `target-passed`가 되면 key가 바뀌어 한 번 더 보고한다. 지연 때문에 팀에 메시지를 보내거나 초안을 쓰지 않는다.
 - **화면.** SCHEDULE 탭의 **LATE WAYPOINTS**에 경고가 보인다(코드, ROUTE · WAYPOINT, 목표일, ETA, 날수, OCC가 보고한 때). ROUTE MAP으로 가는 링크가 있다.
 
+### TAIL as built (ATC-68)
+
+`TAIL`은 FLIGHT의 `tail:TEAM_X`(TAIL ASSIGNMENT, [fleet.ko.md](fleet.ko.md))를 AIRCRAFT 하나로 정한다. DISPATCH 밖에서 한 배정이 planner가 지키는 라벨로 남는다.
+
+- **payload.** REGISTRATION 하나(`atcctl schedule draft TAIL <FLIGHT> <TEAM_X> -- <근거>`, 순수 함수 `server/schedule-tail.ts`의 `parseTail`). REGISTRATION이 `teamPattern`에 맞지 않거나, FLEET(`fleet.json`)에 없거나 RETIRED이면, Linear에 `tail:TEAM_X` 라벨이 없으면(읽기 전용 라벨 조회, 10분 캐시, 없으면 한 번 다시 읽음. 사유에 ENGINEERING이나 사용자가 만든다고 적는다. OCC는 만들지 않는다), FLIGHT에 이미 그 `tail:`이 있으면 atc가 초안을 받지 않는다. `CLASSIFY`·`PRIORITIZE`와 달리 닫히지 않은 FLIGHT면 In Progress여도 된다.
+- **release.** `save_issue` 하나에 `addLabels: ["tail:TEAM_X"]`, 다른 `tail:`이 있으면 `removeLabels`로 그것들, 그리고 여느 `[OCC S-xxxx]` 댓글. 결과 라벨은 지금 라벨에서 다른 `tail:`을 빼고 새 것을 더한 것이다(`tailLabelsOf`). 나머지 라벨은 옛 `lane:` 별칭까지 그대로 둔다. 상태·담당은 건드리지 않는다. `labels`(전체 교체)가 아니라 `addLabels`·`removeLabels`를 쓰는 까닭: atc 스냅숏은 이슈마다 라벨을 20개까지만 읽고 그룹 라벨을 `type:BUILD`로 보이는데 Linear 이름은 `BUILD`라, 전체 목록을 다시 만들면 라벨을 잃을 수 있다. 다음 조회에 `tail:TEAM_X`가 보이면 APPLIED, FLIGHT가 닫히면 SUPERSEDED.
+- **CAUTION.** 다른 팀의 `tail:`을 그 팀이 AIRBORNE이거나 그 FLIGHT의 STAND를 쥔 채 바꾸면 payload에 `caution`이 붙는다(SCHEDULE 카드와 `atcctl` 출력에 보인다). 이런 작업은 자동으로 하지 않는다(7장).
+- **출처.** CHARTER DESK의 SUPERVISOR 지시, 그리고 atc 신호. `schedule brief`의 `candidates.tail`은 닫히지 않았고 `tail:`이 없는데 팀이 몰고 있는 FLIGHT이고, 항목마다 `evidence`가 붙는다: `STAND`(그 팀이 FLIGHT의 STAND를 쥠), `DEPARTURE LOG`(최근 7일 `departures.jsonl`에서 마지막으로 적힌 AIRCRAFT), `READBACK`(수락·DEPARTED된 DISPATCH ASSIGN, READBACK된 TOWER CLEARANCE). 초안을 쓸 수 있는 REGISTRATION만 나오고, 열린 `TAIL` 작업이 있는 FLIGHT는 뺀다. atc는 신호로 초안을 쓰지 않는다. OCC가 읽고 판단한다(`occ/.claude/skills/tick/schedule.md` "TAIL 전에").
+- **게이트.** `TAIL` 판정은 `CLASSIFY`·`PRIORITIZE`처럼 S2 게이트에 센다. ATFM의 S3 후보는 그대로 `CLASSIFY`뿐이다.
+- **8장.** President의 "일 맡기기" 줄과 "President는 물러난다"가 말하는 `TAIL` 작업이 이것이다. 그 줄들의 상태 표시는 머지 뒤 ENGINEERING이 고친다.
+
 ## 6. linear-guard
 
 linear-guard는 `occ/mcp-guard.mjs` 안에 있다. OCC의 MCP 도구 전부에 거는 PreToolUse hook이다(matcher `mcp__.*`, fail-closed `… || exit 2`). 읽기 도구는 S0처럼 통과한다. linear-guard는 Linear 쓰기 도구 둘, `save_issue`와 `save_comment`를 판정한다. 다른 쓰기 도구(관계, 라벨, GitHub)는 S0처럼 모두 막힌다.
@@ -196,7 +209,7 @@ guard는 이것 말고는 보지 않는다. 나머지는 release되는 호출을
 
 쓴 호출은 계속 쓴 것으로 남는다. 작업을 다시 release해도 같은 호출과 같은 `used` 표시가 돌아오고, 표시를 지우는 길은 없다. guard를 통과한 뒤 Linear 쓰기가 실패했으면 OCC가 보고하고 SUPERVISOR가 Linear에서 직접 바꾼다. 다음 조회에서 바뀐 것이 보이면 atc가 여전히 APPLIED로 표시한다(아니면 3일 뒤 만료).
 
-다음 Linear 조회에 변경이 보이면 atc가 release된 작업을 APPLIED로 표시한다. `NEW`는 초안 뒤에 만들어진 같은 제목(정규화)의 이슈, `CLASSIFY`와 `PRIORITIZE`는 초안대로 된 라벨이나 우선순위, `CLOSE`는 Done이나 Canceled가 된 이슈다. release 전에 이미 변경이 보이면 APPLIED가 아니라 SUPERSEDED다.
+다음 Linear 조회에 변경이 보이면 atc가 release된 작업을 APPLIED로 표시한다. `NEW`는 초안 뒤에 만들어진 같은 제목(정규화)의 이슈, `CLASSIFY`와 `PRIORITIZE`는 초안대로 된 라벨이나 우선순위, `TAIL`은 초안의 `tail:` 라벨, `CLOSE`는 Done이나 Canceled가 된 이슈다. release 전에 이미 변경이 보이면 APPLIED가 아니라 SUPERSEDED다.
 
 ## 7. 흐름과 단계
 
@@ -223,7 +236,7 @@ S3 자동 작업 후보. 각각 S2 데이터로 확인한다.
 | 원래 | OCC에서 |
 |---|---|
 | DISPATCH 세션(`atc/dispatch/`) | 같은 일을 `atc/occ/`에서: 제안 검토, HOLD, FLIGHT PLAN, READBACK. DISPATCH 탭, 제안 id(`D-xxxx`), send-guard는 그대로 |
-| President: 일 맡기기 | DISPATCH 제안. 2b 전까지는 사람이 직접 한 배정을 `tail:TEAM_X` 라벨로 기록해서 planner가 볼 수 있게 한다. 지금은 손으로 붙인다. SCHEDULE `TAIL` 작업은 아직 만들지 않았다 |
+| President: 일 맡기기 | DISPATCH 제안. 2b 전까지는 사람이 직접 한 배정을 `tail:TEAM_X` 라벨로 기록해서 planner가 볼 수 있게 한다. OCC가 SCHEDULE `TAIL` 작업으로 초안을 쓴다("TAIL as built", ATC-68). S2가 초안을 발부하기 전까지는 라벨을 손으로 붙인다 |
 | President: 팀 보고 확인 | **운항 추적**(flight following). atc가 배정된 FLIGHT를 모두 따라간다(`server/following.ts`, `GET /api/following`): 수락·출발·RECALL 중인 DISPATCH ASSIGN, 그리고 `tail:` 라벨이 붙은 In Progress FLIGHT. READBACK → DEPARTED → PR 열림 → CLEARED → ARRIVED 단계를 따라가고(STAND 없는 FLIGHT는 READBACK → DEPARTED → ARRIVED, 8.1), 지연(WAKE 기대치의 1.5배가 지나도 다음 단계가 없음)과 Linear·PR 불일치를 표시한다. OCC는 바퀴마다 `atcctl following`을 돌려 새 문제만 보고하고 `following ack`로 기록해서, 같은 것을 두 번 보고하지 않는다. 팀에 메시지를 보내지 않는다. 팀 보고나 SUPERVISOR 요청이 오면 OCC는 여전히 읽기 전용 `gh`(`gh pr view`, `gh pr checks`, `gh pr diff`)로 PR head, CI, 리뷰를 확인한다. 기계적인 착륙 점검은 ATC의 CLEARED TO LAND(9장)다 |
 | President: Linear 정리 | SCHEDULE 작업 |
 | President: 규칙 파일 관리 | TEAM이 PR로 구현하는 `NEW` 티켓 |
@@ -233,7 +246,7 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 
 세션은 매뉴얼을 다시 읽는다. `/tick`은 `atcctl manual check`로 시작한다. `CLAUDE.md`, `/tick`, 그 절차 파일(`.claude/skills/tick/`의 한국어 `*.md` 모두)의 해시를 마지막 `atcctl manual ack`(`~/.local/state/atc/manuals/`에 저장)와 비교한다. 바뀌었으면 세션은 다른 일보다 먼저 다시 읽는다. TOWER의 `/tick`도 같다. OCC의 `CLAUDE.md`에는 핵심(역할, 하지 않는 것, 늘 쓰는 명령, 검토 기준)만 두고, 절차(BRIEFING, FLIGHT PLAN, CREW CHANGE, SCHEDULE, 운항 추적)는 `/tick` 옆 파일로 두어 할 일이 있는 단계에서만 읽는다. 늘 읽히는 규정이 짧게 유지된다(ATC-9). 1장의 옛 매뉴얼 사건은 이것으로 고쳐진다.
 
-**President는 물러난다.** 세 가지가 모두 되면: OCC가 S1을 일주일 운용했고, 운항 추적이 모든 팀 보고를 다루고, `TAIL` 작업을 쓰고 있다(아직 만들지 않음). 그때까지 President는 계속 일을 맡기고, 배정마다 `tail:` 라벨을 손으로 붙인다.
+**President는 물러난다.** 세 가지가 모두 되면: OCC가 S1을 일주일 운용했고, 운항 추적이 모든 팀 보고를 다루고, `TAIL` 작업을 쓰고 있다(ATC-68로 구현, S2를 켜면 라벨을 쓴다). 그때까지 President는 계속 일을 맡기고, 배정마다 `tail:` 라벨을 손으로 붙인다.
 
 ### 8.1 운항 추적 자세히
 
@@ -378,7 +391,7 @@ vocado `main`의 `strict` 때문에 머지가 있을 때마다 다른 열린 PR�
   4. HOLD하지 않은 CLEARED PR이 SUPERVISOR 머지를 기다림 → 대기. 지금 다른 PR을 갱신하면 그 머지 뒤 다시 `behind`가 된다. HOLD하면 runway가 풀린다.
   5. LANDING SEQUENCE 순서로 막힘이 `behind` 하나뿐인 첫 PR → 갱신.
 - **update**: `PUT /repos/{o}/{r}/pulls/{n}/update-branch`에 `expected_head_sha`(일반 merge 커밋, force-push 아님). ATC-31이 리뷰를 이어 주니 CI가 통과하면 CLEARED로 돌아온다. Draft, 쌓인 PR, `dirty`, LOS PR은 건드리지 않는다. 거절된 갱신(head가 움직임)은 그 head를 건너뛰고 다음 주기에 새 head로 다시 한다. 다른 실패는 head가 바뀔 때까지 그 head를 건너뛴다.
-- **merge**: 위임된 PR은 `mergeExclusionOf`에 걸리지 않는 CLEARED PR 전부다. 제외: SUPERVISOR HOLD(착륙 스트립의 HOLD 버튼), FLIGHT 없음, `rating:SEC`나 `Risk…` 라벨(티켓·PR), 바뀐 파일을 못 읽음(`merge`일 때 atc가 Draft 아닌 PR의 파일을 읽는다), ATC-27 보안 게이트(`.env`·비밀·키 경로, migrations, SQL, auth, session, admission, RLS·policy, middleware, 보안 키워드), PR 본문의 Human Preview 적용이 `required`(또는 채우지 않음)인데 Human Visual Review disposition이 `approved`·`waived`·`passed` 하나로 적혀 있지 않음. 머지 직전에 PR을 다시 읽어(`gh pr view`) head와 제외 목록을 다시 본다. 머지는 `PUT /repos/{o}/{r}/pulls/{n}/merge`에 계획한 head를 `sha`로(`--match-head-commit`의 REST 형태), `merge_method`와 함께. GitHub auto-merge는 켜지 않는다. 제외된 CLEARED PR은 SUPERVISOR에게 남고, HOLD가 아니면 runway를 잡는다.
+- **merge**: 위임된 PR은 `mergeExclusionOf`에 걸리지 않는 CLEARED PR 전부다. 제외: SUPERVISOR HOLD(착륙 스트립의 HOLD 버튼), FLIGHT 없음, `rating:SEC`나 `Risk…` 라벨(티켓·PR), 바뀐 파일을 못 읽음(`merge`일 때 atc가 Draft 아닌 PR의 파일을 읽는다), ATC-27 보안 게이트(`.env`·비밀·키 경로, migrations, SQL, auth, session, admission, RLS·policy, middleware, 보안 키워드), HUMAN CHECK를 기다리는 PR, `## UI change` 블록이 없거나 class를 채우지 않은 PR(9.8, ATC-37. 옛 Human Preview 게이트 확인을 바꿨다). 머지 직전에 PR을 다시 읽어(`gh pr view`) head와 제외 목록을 다시 본다. 머지는 `PUT /repos/{o}/{r}/pulls/{n}/merge`에 계획한 head를 `sha`로(`--match-head-commit`의 REST 형태), `merge_method`와 함께. GitHub auto-merge는 켜지 않는다. 제외된 CLEARED PR은 SUPERVISOR에게 남고, HOLD가 아니면 runway를 잡는다.
 - **GROUND STOP**: 목록의 AIRPORT에서 기본 브랜치 head의 `applicationCheck` 체크가 실패하면 그 AIRPORT의 두 모드를 멈춘다. main이 다시 초록이 돼도 SUPERVISOR가 풀 때까지(설정 창, 또는 `POST /api/autoland/groundstop/clear {airport}`) 멈춰 있다. 푼 SHA로는 다시 걸지 않고, 새 SHA가 빨가면 다시 건다. 스위치가 꺼져 있어도 걸어 두므로 켤 때 먼저 보인다.
 - **기록**: `autoland.jsonl`(추가만): `update`, `merge`, `settle`, `skip`, `groundstop`, `groundstop-clear`, `mode`, `hold`, `unhold`. 줄마다 모드, AIRPORT, PR, head, 결과, 설명. 상태(비행 중, GROUND STOP, 푼 SHA, 건너뛴·머지한 head)는 `autoland-state.json`. `GET /api/autoland`가 설정, 상태, 계획, 최근 기록 50줄을 보인다.
 - **화면**: LANDING SEQUENCE 머리에 AIRPORT마다 한 줄("AUTOLAND: updating #383", "AUTOLAND: waiting — #383 CLEARED, …", "AUTOLAND: GROUND STOP — …"). PR마다 AUTOLAND가 할 일이나 안 하는 까닭("AUTOLAND update 대기 2번째", "AUTOLAND 제외 — DIRTY(충돌)", "AUTOLAND 대기 — 리뷰 없음 먼저", "SUPERVISOR 머지 — rating:SEC")과 HOLD 버튼.
@@ -388,6 +401,37 @@ vocado `main`의 `strict` 때문에 머지가 있을 때마다 다른 열린 PR�
   - **Codex가 한도이거나 30분 안에 답이 없으면**(`escalateOf`): 그 head를 곧바로 REVIEW(DeepSeek) 대기열로 넘긴다(`buildPulls`의 `fastTrack`, `codexUnavailable.why = "autoland"`, "AUTOLAND 재리뷰 — Codex 30분 무응답"). head 뒤에 Codex가 이미 답했으면 넘기지 않는다.
   - ATC-27·30은 그대로다: `buildPulls`가 지금 스위치로 외부 리뷰 제외를 다시 본다. 제외 PR은 대기열에 넣지 않고, 스트립에 "AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(migrations)"로 보인다.
   - head마다 한 번(`autoland-state.json`의 `reviewRequests`). 기록은 `op: "review-request"`에 `via`(`codex`, `deepseek`, `supervisor`). 리뷰가 붙을 때까지 스트립에 "AUTOLAND: review requested (codex|deepseek)"가 보인다. AUTOLAND가 `update`나 `merge`이고 그 AIRPORT가 GROUND STOP이 아닐 때만 한다.
+
+### 9.8 HUMAN CHECK: CHOICE·ACCOUNT·DEVICE PR만 사람을 기다린다 (2026-09-28, ATC-37)
+
+ATC-39 리서치([research/human-preview.ko.md](research/human-preview.ko.md)) 뒤로, 사람이 꼭 봐야 하는 UI PR은 세 class뿐이다. 애플리케이션 저장소의 PR 본문에 짧은 `## UI change` 블록이 있고, atc는 거기서 아래 칸만 읽는다.
+
+| 칸 | atc가 읽는 것 |
+|---|---|
+| `UI impact` | `none` 또는 렌더되는 UI 변경 |
+| `Human check class` | `CHOICE`·`ACCOUNT`·`DEVICE` 중 해당하는 것, 또는 `none`. 템플릿 문구를 그대로 두면 채우지 않은 것 |
+| `Evidence pack` | 같은 PR의 댓글 링크(`…/pull/<n>#issuecomment-<id>`) |
+| `Preview` | ACCOUNT·DEVICE: 현재 head의 Preview URL |
+| `Human steps` | ACCOUNT·DEVICE: 1~3 단계(들여쓴 다음 줄까지) |
+| `Human check` | `not needed`, `pending`, `done <date> <sha> <note>`·`failed <date> <sha> <note>` |
+
+옛 Human Preview 게이트 절은 전혀 읽지 않는다.
+
+- **대기열**(`waitsOnHuman`): Draft가 아닌 열린 PR 중 블록에 class가 있고 `Human check`가 현재 head에 `done`이 아닌 것. 결과는 head에 묶인다. 적힌 SHA의 head(`sha`가 head의 앞부분)에서 유효하다. 현재 head가 main 병합만으로 닿고 변경이 같은 이전 커밋이어도 유효하다: ATC-31 규칙, `carryFrom`에서 읽고, 리뷰가 이미 head에 있는 PR은 리뷰 판정을 건드리지 않도록 따로 읽은 `humanCarryFrom`에서 읽는다. 그 밖의 SHA면 "옛 head에 기록됨"이다. 현재 head에 `failed`면 대기열에 남는다. class `none`이나 `UI impact: none`은 들지 않는다.
+- **줄**(STRIPS, LANDING SEQUENCE 위 `HUMAN CHECK n`): PR, AIRPORT·FLIGHT, STAND를 쥔 팀, class 칩, 상태.
+  - 증거: Evidence pack이 가리키는 PR 댓글의 이미지를 썸네일로 보인다. GitHub `body_html`로 읽는데, 거기 서명된 이미지 주소는 private 저장소에서도 열리지만 몇 분이면 만료된다. 그래서 메모리에 3분만 두고 저장하지 않는다. 다른 PR의 댓글 링크는 받지 않는다.
+  - 이 head의 RUN-UP 보고서(ATC-41)가 있으면 그것도 보인다: AIRPORT 체크아웃이나 그 STAND의 `.runup/<base7>-<head7>/report.json` 중 `head.sha`가 head인 것. 줄에 바뀐 화면·컷 수, UNEXPECTED 경고, 바뀐 컷 썸네일, 보고서 링크가 붙는다.
+  - ACCOUNT·DEVICE면 Preview 링크와 단계.
+- **PASS·FAIL**(`POST /api/human-check/:owner/:name/:number {result, head, note}`): SUPERVISOR만, AUTOLAND 스위치와 같은 Origin 규칙. atc가 먼저 PR을 다시 읽는다. 화면이 본 `head`가 지금 head여야 하고, 블록에 class와 `Human check` 줄이 딱 하나 있어야 하고, FAIL은 메모가 있어야 한다(한 줄, 백틱 없이, 200자까지).
+  - 그다음 GitHub에 딱 두 번 쓴다. 먼저 PR 본문에서 그 줄만 `` `done <YYYY-MM-DD> <sha7> <note>` ``(또는 `failed`)로 바꾸고(stdin JSON), 그다음 PR 댓글 하나 "HUMAN CHECK: PASS|FAIL · head · class · 날짜"와 메모를 단다.
+  - 본문 쓰기가 실패하면 댓글은 달지 않는다. 시도마다 `human-checks.jsonl`(추가만)에 한 줄: 시각, 저장소, PR, head, 결과, class, 메모, `by`, `ok`, `line`, 댓글 URL, 오류.
+  - Vercel 공유 토큰은 만들지도 두지도 않는다.
+- **착륙**(9.7의 Human Preview 제외를 바꾼다): AUTOLAND `merge`는 class PR을 `Human check`가 이 head에 `done`일 때까지 머지하지 않는다(머지 직전에 다시 본다). 블록이 없거나 `UI impact`가 `none`이 아닌데 class를 채우지 않은 PR도 머지하지 않는다: 사람이 필요한지 알 수 없다. class `none` PR은 막지 않는다. LANDING SEQUENCE 줄에는 class PR마다 `HUMAN CHECK <class>: <상태>`가 붙는다. CLEARED TO LAND 조건은 그대로다.
+- **API**:
+  - `GET /api/human-check`: 대기열과 최근 기록 50줄.
+  - `GET /api/human-check/:owner/:name/:number/evidence`: 댓글 이미지와 RUN-UP 요약.
+  - `GET /api/human-check/:owner/:name/:number/runup/:run/<파일>`: RUN-UP 보고서 파일. symlink를 풀어 본 뒤 그 보고서 폴더 안의 파일만, `.html`·`.json`·이미지·`.css`·`.js`만 보낸다. `Content-Security-Policy: sandbox allow-scripts`로 보내므로 보고서의 스크립트는 불투명한 출처에서 돌아 atc의 SUPERVISOR 전용 API를 부를 수 없다.
+- 순수 함수는 `server/human-check.ts`(`uiChangeOf`, `humanCheckStatusOf`, `humanCheckExclusionOf`, `setHumanCheckLine`, `checkRequestOf`, `imagesOf`, `pickRunup`), 입출력은 `server/human-check-run.ts`.
 
 ## 10. atc에 더할 것
 

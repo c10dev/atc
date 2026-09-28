@@ -9,7 +9,6 @@ import {
   type AutolandState,
   DEFAULT_AUTOLAND,
   EMPTY_STATE,
-  humanPreviewOf,
   type InFlight,
   latchGroundStops,
   loadAutoland,
@@ -175,8 +174,9 @@ const DELEGATED: MergeExclusionInput = {
   prLabels: [],
   files: ["src/components/player.tsx", "tests/player.test.ts"],
   title: "Pause the video when the dialog opens",
-  body: "## Human Preview Gate\n\n- Human Preview applicability: `not required`\n- Human Visual Review disposition when required: `N/A — not required`",
+  body: "## UI change\n\n- UI impact: `changes rendered UI`\n- Human check class (any that apply): `none`\n- Human check: `not needed`",
   flightTitle: "Pause the video",
+  head: "abc1234def5678900000000000000000000000ab",
 };
 
 test("merge: a delegated PR has no exclusion", () => {
@@ -197,21 +197,20 @@ test("merge exclusions: each one keeps the PR with the SUPERVISOR", () => {
     [{ files: ["src/server/beta-admission.ts"] }, /admission/],
     [{ files: ["supabase/rls/songs.ts"] }, /RLS/],
     [{ files: [".env.production"] }, /비밀·키/],
-    [{ body: "## Human Preview Gate\n- Human Preview applicability: `required`\n- Human Visual Review disposition when required: `pending`" }, /Human Preview/],
+    [{ body: "## UI change\n- UI impact: `changes rendered UI`\n- Human check class (any that apply): `DEVICE`\n- Human check: `pending`" }, /HUMAN CHECK DEVICE/],
+    // 옛 게이트는 읽지 않는다: 새 블록이 없으면 사람 확인이 필요한지 모른다
+    [{ body: "## Human Preview Gate\n- Human Preview applicability: `not required`" }, /UI change 블록 없음/],
   ];
   for (const [over, re] of cases) assert.match(mergeExclusionOf({ ...DELEGATED, ...over }) ?? "", re, JSON.stringify(over));
 });
 
-test("Human Preview: required and not passed / passed / not required / unfilled template", () => {
-  const body = (a: string, d: string) => `- Human Preview applicability: ${a}\n- Human Visual Review disposition when required: ${d}`;
-  assert.deepEqual(humanPreviewOf(body("`required`", "`pending`")), { required: true, passed: false });
-  assert.deepEqual(humanPreviewOf(body("`required`", "`approved`")), { required: true, passed: true });
-  assert.deepEqual(humanPreviewOf(body("`required`", "`waived`")), { required: true, passed: true });
-  assert.deepEqual(humanPreviewOf(body("`not required`", "`N/A — not required`")), { required: false, passed: false });
-  // 채우지 않은 템플릿: 애매하면 required, 선택지 목록은 통과가 아님
-  assert.deepEqual(humanPreviewOf(body("`required` / `not required`", "`pending` / `approved` / `changes requested` / `waived`")), { required: true, passed: false });
-  assert.equal(humanPreviewOf("no gate here"), null);
-  assert.equal(mergeExclusionOf({ ...DELEGATED, body: body("`required`", "`approved`") }), null);
+test("HUMAN CHECK(ATC-37): class PR은 이 head에 done이거나 main 병합만 한 이전 커밋에서 이어받아야 머지한다", () => {
+  const withCheck = (check: string) => `## UI change\n- UI impact: \`changes rendered UI\`\n- Human check class (any that apply): \`CHOICE\`\n- Human check: ${check}`;
+  const old = "0123456789abcdef0123456789abcdef01234567";
+  assert.equal(mergeExclusionOf({ ...DELEGATED, body: withCheck("`done 2026-09-28 abc1234 ok`") }), null);
+  assert.match(mergeExclusionOf({ ...DELEGATED, body: withCheck("`done 2026-09-28 0123456 ok`") }) ?? "", /옛 head/);
+  assert.equal(mergeExclusionOf({ ...DELEGATED, body: withCheck("`done 2026-09-28 0123456 ok`"), carryFrom: [old] }), null);
+  assert.match(mergeExclusionOf({ ...DELEGATED, body: withCheck("`failed 2026-09-28 abc1234 no`") }) ?? "", /HUMAN CHECK CHOICE — failed/);
 });
 
 test("merge: merges the first delegated CLEARED PR; an excluded one stays with the SUPERVISOR and holds the runway", () => {
@@ -223,7 +222,7 @@ test("merge: merges the first delegated CLEARED PR; an excluded one stays with t
   assert.equal(v.pulls[`${VCDO}#2`].text, "SUPERVISOR 머지 — rating:SEC");
   assert.equal(v.exclusions[`${VCDO}#2`], "rating:SEC");
   // 위임된 것이 없으면: 제외된 CLEARED가 머지를 기다리며 runway를 잡는다(update는 멈춤)
-  const w = plan(m, [pr(2), pr(5, ["behind"])], st(), () => "Human Preview required — 아직 passed 아님");
+  const w = plan(m, [pr(2), pr(5, ["behind"])], st(), () => "HUMAN CHECK CHOICE — pending");
   assert.equal(vcdo(w).status, "waiting");
   // 그 PR을 HOLD하면 머지도 하지 않고 다음 PR을 갱신한다
   const h = plan({ ...m, holds: [{ repo: VCDO, number: 2, at: "x" }] }, [pr(2), pr(5, ["behind"])], st(), () => "SUPERVISOR HOLD");

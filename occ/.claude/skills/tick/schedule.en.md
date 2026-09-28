@@ -4,7 +4,7 @@
 
 > English translation for readers. The OCC session reads the Korean [`schedule.md`](schedule.md), which is the source of truth; this file is not loaded.
 
-Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it in `/tick` steps 5 and 6, when `schedule brief` has candidates, `waypointGaps` or S2 releases, when TARGET and ROUTE drafts are due, and when a CHARTER REQUEST comes in. `CLAUDE.md` sets the role and what OCC doesn't do.
+Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it in `/tick` steps 5 and 6, when `schedule brief` has candidates (including `candidates.tail`), `waypointGaps` or S2 releases, when TARGET and ROUTE drafts are due, and when a CHARTER REQUEST comes in. `CLAUDE.md` sets the role and what OCC doesn't do.
 
 ## Commands
 
@@ -12,6 +12,7 @@ Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it in `/tick` st
 |---|---|
 | `node ../controller/atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <reason>` | Draft classification labels. Only the missing axes are needed. `--rating` can repeat |
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <reason>` | Draft a priority. 1 Urgent · 2 High · 3 Medium · 4 Low |
+| `node ../controller/atcctl.mjs schedule draft TAIL <VOC-193> <TEAM_X> -- <reason>` | Draft a TAIL ASSIGNMENT: set the FLIGHT's `tail:` to this AIRCRAFT. Any other `tail:` is removed; every other label (`lane:` included) stays. Any FLIGHT that isn't closed, In Progress included. See "Before a TAIL" |
 | `node ../controller/atcctl.mjs schedule draft CLOSE <VOC-193> -- <reason>` | Draft a close. atc fills in the PR, merge time and Fixes status from the LOGBOOK. Never released (the SUPERVISOR moves it to Done in Linear) |
 | `node ../controller/atcctl.mjs schedule draft NEW --title <title> --project <project> [--milestone <milestone>] [--gap] [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <reason> -- '<body>'` | (CHARTER DESK) Draft an AD HOC FLIGHT. `\n` in the body becomes a newline. Prints the draft id and the similar FLIGHTs atc found (`similar`). `--milestone` is a milestone (WAYPOINT) name of that project. `--gap` marks a WAYPOINT gap draft: it needs `--milestone`, and atc refuses it if a similar FLIGHT exists |
 | `node ../controller/atcctl.mjs network` | NETWORK overview (JSON): ROUTE rows (`routes`: open FLIGHTs, ARRIVED in 14 days, AIRCRAFT, the project's `goal.state`), AIRCRAFT TARGETS against actuals (`aircraft`), 28-day trends |
@@ -29,6 +30,7 @@ Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have
 | `candidates.classify`: no `type:` or `wake:` label | `CLASSIFY`. Read `../docs/fleet.md` 4.1–4.3 as in "Before a CLASSIFY" below, then TYPE, WAKE and RATING, with section numbers in the reason. Leave out any axis that already has a label |
 | `candidates.prioritize`: no priority | `PRIORITIZE`, **only when the body or comments give grounds** (a deadline, an outage or security exposure, it blocks other FLIGHTs, a priority a person wrote down). With no grounds, don't draft |
 | `candidates.close`: the PR was merged (LOGBOOK ARRIVED, not reverted) but Linear is not Done or Canceled | `CLOSE`. Check as in "Before a CLOSE" below; the reason names the PR number, the merge time and whether the body says `Fixes` |
+| `candidates.tail`: an open FLIGHT a team is flying with no `tail:` label. Each entry has the `registration` and its `evidence` (`STAND`, `DEPARTURE LOG` or `READBACK`, with the record) | `TAIL`, as in "Before a TAIL" below. atc never drafts from this list; OCC decides |
 
 | Axis | Values ([`../docs/fleet.md`](../../../../docs/fleet.md) section 4) |
 |---|---|
@@ -43,6 +45,19 @@ Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have
 2. **Only `Fixes` ends an issue.** By vocado's rule only `Fixes VOC-n` in the PR body ends the issue. A `Part of VOC-n` PR is not a candidate. If the body has neither (`link: none`), read the done criteria with `dispatch flight <FLIGHT>`; if some look unfinished, don't draft.
 3. **One-line reason**: `"PR vocado_nextjs#400 merged 09-26 13:41 · Fixes VOC-193 · all four done criteria within the PR"`. If there is a revert PR, or the body says follow-up FLIGHTs remain, don't draft.
 4. **Never change state.** A CLOSE is not released even in S2 (`schedule release` refuses it). Once approved, the SUPERVISOR moves it to Done in Linear, and atc closes the draft on its next read.
+
+### Before a TAIL
+
+`tail:TEAM_X` (TAIL ASSIGNMENT, `../docs/fleet.md`) names the AIRCRAFT that should fly the FLIGHT. It records an assignment made outside DISPATCH, so the planner doesn't give the FLIGHT to another team. Draft it in two cases only.
+
+1. **CHARTER DESK**: the SUPERVISOR says in this session who takes a FLIGHT ("TEAM_E takes VOC-196"). The reason quotes the instruction in one line (`"SUPERVISOR 지시: VOC-196을 TEAM_E에 직접 배정"`).
+2. **atc signal** (`candidates.tail`): exactly one team is flying it and the records point to that team. Copy what `evidence` shows into the reason (`"STAND: TEAM_J가 VOC-201 STAND를 쥠 · READBACK CLEARANCE C-0412"`). If several teams show up for one FLIGHT (a HANDOFF in progress, say), don't draft; ask the SUPERVISOR which one.
+
+- **At most 2 per pass**. They count toward the limit of 5 open drafts with every other kind.
+- If atc refuses, don't retry. By reason: doesn't match `teamPattern`, `FLEET에 없음` (not in FLEET) or `RETIRED` → don't give it to that team. `tail:TEAM_X 라벨이 없음` (no such label) → tell the SUPERVISOR so ENGINEERING or the user creates the label (**OCC never creates Linear labels**). `이미 tail:TEAM_X가 있음` (already there) → nothing to do.
+- If the draft comes back with `CAUTION` (it changes another team's `tail:` while that team is AIRBORNE or holds the FLIGHT's STAND), pass that line on to the SUPERVISOR. It is never automatic.
+- Labels only. Never state or assignee, and never a message to a team.
+- atc closes the draft when the FLIGHT closes (Done or Canceled: SUPERSEDED) or the `tail:` shows in Linear (APPLIED after release, SUPERSEDED before). Leaving Todo or Backlog does not close it.
 
 ### Before a CLASSIFY
 
@@ -66,7 +81,7 @@ Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have
 - On `LIMIT` (open drafts are at the limit), write no more drafts this pass. Carry on in a later pass once verdicts free a slot. Open `NEW` (CHARTER DESK) drafts count toward the limit of 5 too.
 - On an error (`이미 그렇게 되어 있음` "already so", `Todo·Backlog가 아님` "not Todo or Backlog", etc.), don't retry; put it in the OCC LOG.
 - Drafting the same FLIGHT and kind again supersedes the earlier draft. Don't redraft unless the judgment changed.
-- A draft expires after 3 days without a verdict, and is superseded when the FLIGHT leaves Todo or Backlog or the change shows up in Linear (atc does this). A CLOSE is superseded when Linear shows Done or Canceled, or the PR is reverted.
+- A draft expires after 3 days without a verdict, and is superseded when the FLIGHT leaves Todo or Backlog or the change shows up in Linear (atc does this). A CLOSE is superseded when Linear shows Done or Canceled, or the PR is reverted. A TAIL follows the last line of "Before a TAIL".
 
 ## SCHEDULE release (S2, only when `mode` in `schedule brief` is approval)
 
@@ -77,7 +92,7 @@ In S2, OCC writes to Linear what the SUPERVISOR approved in the SCHEDULE tab. at
 | `approved` in `inProgress` | `node ../controller/atcctl.mjs schedule release <S-xxxx>` → pass the JSON under each `CALL n/m · <tool>` **unchanged** as the input of that Linear MCP tool (`save_issue`, `save_comment`). Make every CALL, in order |
 | `released` in `inProgress` (still there on the next pass) | atc checks on its next Linear read whether it landed. Run `schedule release` once more to get the same CALLs and redo only the missing one. A call that already passed is blocked by linear-guard with `이미 한 번 통과함` (so a repeat never writes twice) — don't redo it. If it is still there, report to the SUPERVISOR |
 | linear-guard blocked it (`OCC MCP 차단`) | Don't change the input and retry; report to the SUPERVISOR |
-| The Linear tool returned an error (missing label etc.) | Don't retry; report the error as is to the SUPERVISOR |
+| The Linear tool returned an error (missing label etc.) | Don't retry; report the error as is to the SUPERVISOR. For a missing `tail:` label, add that ENGINEERING or the user has to create it |
 
 - Write nothing to Linear except the released CALLs. State (In Progress etc.) and assignee belong to the CAPTAIN, so they are never in a CALL.
 - An approved `CLOSE` is never released: `schedule release` refuses it with `CLOSE는 SUPERVISOR가 Linear에서 직접` (the SUPERVISOR closes it in Linear). Don't retry; it is on the SCHEDULE tab's "LINEAR에서 직접 DONE" list.
