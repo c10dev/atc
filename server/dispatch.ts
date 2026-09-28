@@ -4,6 +4,7 @@ import { callsign } from "./callsign.ts";
 import { config } from "./config.ts";
 import { accountOf, type Classification, canFly, classOf, DEFAULT_FLEET, type FleetFile, type FlightType, needsStand, profileOf, type Rating, WAKE_SLOTS } from "./crew.ts";
 import { accountHoldDetail, accountHoldLabel, accountHoldOf, accountHolds, healthLabel } from "./health.ts";
+import { DEFAULT_FUEL, type FuelConfig, fuelConfigOf, fuelHoldReason, fuelHolds } from "./fuel-remaining.ts";
 import { keyInName, keyPatternOf, teamOfKey } from "./linear-keys.ts";
 import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
@@ -35,6 +36,8 @@ export interface DispatchConfig {
   // 외부 착륙 리뷰(ATC-30). security: 보안 규칙(라벨·경로·키워드)에만 걸린 PR을 DeepSeek REVIEW에 보낼까.
   // "exclude"(기본): 보내지 않음. "deepseek": 보냄(SUPERVISOR 결정 2026-09-27). 비밀·키 경로와 FLIGHT 없는 PR은 어느 쪽이든 보내지 않는다
   externalReview: { security: ExternalReviewSecurity };
+  // FUEL REMAINING(ATC-55): INFO·HOLD 임계값(쓴 몫 %)과 DISPATCH HOLD 스위치(D3, 기본 꺼짐). SUPERVISOR만 설정 창에서 켠다
+  fuel: FuelConfig;
 }
 export type ExternalReviewSecurity = "exclude" | "deepseek";
 export const EXTERNAL_REVIEW_SECURITY: readonly ExternalReviewSecurity[] = ["exclude", "deepseek"];
@@ -56,6 +59,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   excludeLabels: ["symphony-pilot"],
   teamPattern: "^TEAM[\\s_-]?[A-Z]$",
   externalReview: { security: "exclude" },
+  fuel: DEFAULT_FUEL,
 };
 
 const CONFIG_FILE = join(config.stateDir, "dispatch.json");
@@ -70,6 +74,19 @@ export function saveExternalReviewSecurity(security: ExternalReviewSecurity, fil
   const tmp = `${file}.${process.pid}.tmp`;
   const prev = (user.externalReview ?? {}) as Record<string, unknown>;
   writeFileSync(tmp, JSON.stringify({ ...user, externalReview: { ...prev, security } }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
+// fuel.hold만 바꿔 저장한다(설정 창, ATC-55). 임계값과 다른 설정은 그대로 둔다
+export function saveFuelHold(hold: boolean, file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  const prev = (user.fuel ?? {}) as Record<string, unknown>;
+  writeFileSync(tmp, JSON.stringify({ ...user, fuel: { ...prev, hold } }, null, 2) + "\n");
   renameSync(tmp, file);
 }
 
@@ -99,6 +116,8 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       weights: { ...d.weights, ...user.weights },
       // 모르는 값은 기본("exclude")으로 — 보안 PR을 잘못 내보내지 않게
       externalReview: { security: user.externalReview?.security === "deepseek" ? "deepseek" : "exclude" },
+      // 모르는 값은 기본으로 — HOLD는 true일 때만 켠다
+      fuel: fuelConfigOf(user.fuel),
     };
   } catch {
     return DEFAULT_DISPATCH_CONFIG;
@@ -440,6 +459,9 @@ export function planDispatch(
       if (x.health?.holds) return { ...base, available: false, reason: `${healthLabel(x.health, now)} — ${x.health.detail}` };
       const acct = accountHoldOf(holds, accountOf(fleet, x.name), x.name);
       if (acct) return { ...base, available: false, reason: `${accountHoldLabel(acct, now)} — ${accountHoldDetail(acct)}` };
+      // FUEL HOLD(ATC-55, D3): SUPERVISOR 스위치가 켜져 있고 그 ACCOUNT가 holdPct 이상 썼으면 reset까지 배정하지 않는다
+      const fuel = s.fuel?.[x.name.toUpperCase()];
+      if (fuel && fuelHolds(fuel, cfg.fuel ?? DEFAULT_FUEL)) return { ...base, available: false, reason: fuelHoldReason(fuel, now) };
       if (x.status === "busy") return { ...base, available: false, reason: "AIRBORNE" };
       const held = active.filter((c) => c.sessionId === x.id).map((c) => wsTicket.get(c.workspacePath));
       const open = held.filter((k) => !k || !isDone(k));
