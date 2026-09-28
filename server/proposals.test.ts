@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { DEFAULT_DISPATCH_CONFIG, type Plan } from "./dispatch.ts";
 import type { Ticket, Workspace } from "./model.ts";
@@ -813,4 +814,14 @@ test("gateOf: 한 번 클릭 비율에서 blind 판정은 뺀다(한 번 클릭�
     { op: "verdict", id: "D-0003", at: iso(10), verdict: "agree", reason: null, via: "manual", blind: true },
   ]);
   assert.deepEqual(gateOf(ps).crosscheck.oneClick, { count: 1, decided: 2 });
+});
+
+test("FLIGHT PLAN 문구(DIRECT): 긴 이슈(ATC-34)도 완료 기준·제약을 끝까지 싣는다(ATC-35)", () => {
+  const [p] = fold([create("D-0035", "ATC-34", "h", 10)]);
+  const body = readFileSync(new URL("./fixtures/atc-34-body.md", import.meta.url), "utf8");
+  const msg = formatFlightPlan({ ...p, airport: "ATCC" }, { title: "AUTOLAND", url: "u", priority: 2 }, "TEAM_H", body);
+  assert.ok(msg.includes("any PR the SUPERVISOR marks \"hold\""));
+  assert.ok(msg.includes("puts AUTOLAND in GROUND STOP"));
+  assert.ok(msg.includes("The atc repo's own landing (structure merges auto/flagged) is out of scope."));
+  assert.ok(msg.endsWith("끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요."));
 });

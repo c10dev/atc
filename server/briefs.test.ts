@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import { briefFactsOf, briefLineOf, compareBriefs, crewModeOf, directSectionsOf, findingsOf, formatAssignment, labelOf, reworkOf, type TalkEvent, talkEventsOf } from "./briefs.ts";
+import { BRIEF_BODY_MAX, briefFactsOf, briefLineOf, compareBriefs, crewModeOf, directLines, directSectionsOf, FULL_TEXT_LINE, findingsOf, formatAssignment, labelOf, reworkOf, type TalkEvent, talkEventsOf } from "./briefs.ts";
 import type { LandingReview } from "./landing.ts";
 
 test("BRIEF 줄: DIRECT·VECTORS를 읽고, 없으면 null", () => {
@@ -20,12 +21,12 @@ test("칸 제목 줄: 마크다운 제목·굵은 줄은 늘, 평문 이름표�
 test("이슈 본문에서 목표·완료 기준·이 작업만의 제약", () => {
   const md = ["## Why", "배경", "## Outcome", "짧은 지시서", "### 세부", "- a", "## Not in scope", "- vocado 템플릿", "## Done when", "* 초안 통과", "* 비교 화면"].join("\n");
   assert.deepEqual(directSectionsOf(md), { goal: "짧은 지시서\n### 세부\n- a", done: "* 초안 통과\n* 비교 화면", constraints: "- vocado 템플릿" });
-  // 금지 사항과 Hard constraints는 합친다. 긴 칸은 줄 경계에서 자른다
-  const long = ["**목표**", "x".repeat(10), "**Hard constraints:** staging 금지", "## 금지 사항", ...Array.from({ length: 80 }, (_, i) => `- 줄 ${i} ${"y".repeat(10)}`)].join("\n");
+  // 금지 사항과 Hard constraints는 합친다. 완료 기준·제약은 자르지 않고, 목표만 600자에서 줄 경계로 자른다(ATC-35)
+  const items = Array.from({ length: 80 }, (_, i) => `- 줄 ${i} ${"y".repeat(10)}`);
+  const long = ["**목표**", ...Array.from({ length: 60 }, (_, i) => `목표 줄 ${i} ${"x".repeat(10)}`), "**Hard constraints:** staging 금지", "## 금지 사항", ...items].join("\n");
   const s = directSectionsOf(long);
-  assert.equal(s.goal, "xxxxxxxxxx");
-  assert.ok(s.constraints!.startsWith("staging 금지\n- 줄 0"));
-  assert.ok(s.constraints!.endsWith(" …") && s.constraints!.length <= 603);
+  assert.ok(s.goal!.endsWith(" …") && s.goal!.length <= 603);
+  assert.equal(s.constraints, ["staging 금지", ...items].join("\n"));
   assert.equal(s.done, null);
   assert.deepEqual(directSectionsOf(null), { goal: null, done: null, constraints: null });
 });
@@ -198,4 +199,38 @@ test("2×2 비교: 지시서 × SOLO·CREW, crew를 모르는 행은 crewUnknown
   assert.deepEqual(Object.fromEntries(Object.entries(out.grid).map(([k, v]) => [k, v.flights])), { "VECTORS·SOLO": 0, "VECTORS·CREW": 1, "DIRECT·SOLO": 2, "DIRECT·CREW": 0 });
   assert.deepEqual([out.crewStats.SOLO.flights, out.crewStats.CREW.flights, out.crewUnknown], [2, 1, 1]);
   assert.equal(out.rows.find((r) => r.key === "A-4")?.crew, null);
+});
+
+// ATC-34 본문: 2026-09-28 지시서가 `merge` 제외 목록을 첫 항목 뒤에서 잘라 보안 경로·Human Preview·FLIGHT 없음·hold·GROUND STOP이 빠졌다(ATC-35)
+const ATC34 = readFileSync(new URL("./fixtures/atc-34-body.md", import.meta.url), "utf8");
+
+test("DIRECT 지시서: ATC-34 본문의 완료 기준·제약을 자르지 않고 모두 싣는다", () => {
+  const s = directSectionsOf(ATC34);
+  const text = formatAssignment({ key: "ATC-34", title: "AUTOLAND", url: "u" }, ATC34, "TEAM_H");
+  for (const item of [
+    "`rating:SEC` or `Risk:*`;",
+    "migration, SQL, auth, admission or RLS paths",
+    "Human Preview is `required` and not `passed`;",
+    "a PR with no FLIGHT;",
+    "any PR the SUPERVISOR marks \"hold\"",
+    "puts AUTOLAND in GROUND STOP",
+    "The en and ko docs and the glossary include AUTOLAND.",
+    "No force-push, no auto-merge setting on GitHub",
+    "The atc repo's own landing (structure merges auto/flagged) is out of scope.",
+  ]) {
+    assert.ok(s.done!.includes(item) || s.constraints!.includes(item), item);
+    assert.ok(text.includes(item), item);
+  }
+  assert.ok(!s.done!.includes("…") && !s.constraints!.includes("…"));
+  assert.ok(!text.includes(FULL_TEXT_LINE));
+});
+
+test("DIRECT 지시서: 상한을 넘으면 완료 기준·제약을 일부만 싣지 않고, 이슈 본문을 읽으라고 한 줄로 적는다", () => {
+  const big = { goal: "짧은 목표", done: Array.from({ length: 400 }, (_, i) => `* 기준 ${i} ${"z".repeat(10)}`).join("\n"), constraints: "* 금지" };
+  assert.ok(big.done.length > BRIEF_BODY_MAX);
+  assert.deepEqual(directLines(big), ["목표: 짧은 목표", FULL_TEXT_LINE]);
+  // 목표가 없어도 한 줄은 남는다
+  assert.deepEqual(directLines({ ...big, goal: null }), [FULL_TEXT_LINE]);
+  // 상한 안이면 그대로
+  assert.deepEqual(directLines({ goal: null, done: "* 하나", constraints: null }), ["완료 기준: * 하나"]);
 });

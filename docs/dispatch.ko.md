@@ -333,7 +333,7 @@ AUTOPILOT이라는 말은 쓰지 않는다. 기계가 날고 조종사는 지켜
 
 늘 지키는 규칙은 제자리(vocado `CLAUDE.md`·`AGENTS.md`, atc `CLAUDE.md`, guard, 브랜치 보호, 승인 게이트)에 두고 지시서에 되풀이하지 않는다. 그것들이 그대로라서 짧은 지시서가 안전하다.
 
-**지시서.** 모든 지시서의 둘째 줄은 `BRIEF: DIRECT`다. 그다음 FLIGHT, 제목과 링크, 이슈 본문에서 옮긴 세 칸(`server/briefs.ts` `directSectionsOf`): `목표`(Goal·Outcome), `완료 기준`(Acceptance·Done criteria·Done when·Exit criteria), `이 작업만의 제약`(Constraints·Hard constraints·금지·Forbidden·Invariants·Not in scope). 칸마다 600자에서 줄 경계로 자른다. 허용 범위, 배경, 확인 방법은 링크의 이슈에 둔다. 완료 기준 칸이 없으면 이슈의 완료 기준을 따르라고 적는다. 끝은 PILOT'S DISCRETION 줄, READBACK 요청, `끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요.`
+**지시서.** 모든 지시서의 둘째 줄은 `BRIEF: DIRECT`다. 그다음 FLIGHT, 제목과 링크, 이슈 본문에서 옮긴 세 칸(`server/briefs.ts` `directSectionsOf`): `목표`(Goal·Outcome), `완료 기준`(Acceptance·Done criteria·Done when·Exit criteria), `이 작업만의 제약`(Constraints·Hard constraints·금지·Forbidden·Invariants·Not in scope). 완료 기준과 제약은 자르지 않고 모두 싣는다. 목표만 600자에서 줄 경계로 자른다(ATC-35). 세 칸을 합쳐 4,000자를 넘으면 일부만 싣지 않고, 목표만 두고 `완료 기준·제약 전문은 이슈 본문에서 읽으세요.`라고 적는다. 첫 항목 뒤에서 잘린 목록은 뒤따르는 규칙을 가리기 때문이다. 보통 이슈는 들어간다: ATC-34 본문(약 3,200자)이 시험 fixture다. 허용 범위, 배경, 확인 방법은 링크의 이슈에 둔다. 완료 기준 칸이 없으면 이슈의 완료 기준을 따르라고 적는다. 끝은 PILOT'S DISCRETION 줄, READBACK 요청, `끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요.`
 
 - **FLIGHT PLAN**(`formatFlightPlan`): `dispatch release`가 Linear에서 이슈 본문을 읽고(읽기 전용) 지시서를 제안의 `message`로 저장한다. Linear를 못 읽어도 세 칸 없이 보낸다. send-guard는 전처럼 저장된 문구와 비교한다.
 - **다른 세션의 배정**(structure, 사람): `GET /api/dispatch/flight/:key/brief?to=TEAM_X`가 같은 모양의 문구를 `{key, brief: "DIRECT", text}`로 준다. 손으로 쓴 지시서도 `BRIEF: DIRECT` 줄만 있으면 된다.

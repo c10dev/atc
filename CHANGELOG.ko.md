@@ -16,6 +16,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 바뀜
+- DIRECT 지시서가 완료 기준과 제약을 더는 자르지 않는다(ATC-35, [docs/dispatch.ko.md](docs/dispatch.ko.md) "DIRECT briefs"). 목표만 600자에서 자른다. 2026-09-28 ATC-34 지시서는 `merge` 제외 목록이 첫 항목 뒤에서 잘렸다. 목표·완료 기준·제약을 합쳐 4,000자를 넘으면 FLIGHT PLAN과 배정 문구는 일부만 싣지 않고, 목표만 두고 "완료 기준·제약 전문은 이슈 본문에서 읽으세요."라고 적는다. ATC-34 본문을 시험 fixture로 쓴다.
 - DIRECT 지시서(ATC-32, [docs/dispatch.ko.md](docs/dispatch.ko.md) "DIRECT briefs"). atc는 이제 목표, 완료 기준, 이 작업만의 제약, "끝까지 한 번에"만 담아 팀에 일을 넘긴다. 늘 지키는 규칙은 CLAUDE.md·AGENTS.md·guard·브랜치 보호에 그대로 있고, 그중 바뀐 것은 없다.
   - FLIGHT PLAN: `BRIEF: DIRECT` 줄, 이슈 본문에서 옮긴 목표·완료 기준·이 작업만의 제약(`dispatch release` 때 Linear에서 읽음), PILOT'S DISCRETION 줄, READBACK 요청, "끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요." Linear를 못 읽으면 세 칸 없이 보낸다.
   - `GET /api/dispatch/flight/:key/brief?to=TEAM_X`가 structure나 사람이 배정할 때 쓸 같은 문구를 준다.

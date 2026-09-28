@@ -42,8 +42,9 @@ export function labelOf(line: string, i = 0): Label | null {
   return null;
 }
 
-// 긴 칸은 줄 경계에서 자른다(나머지는 링크의 이슈 본문)
-export function clip(text: string, max = 600): string {
+// 긴 칸은 줄 경계에서 자른다(나머지는 링크의 이슈 본문). 목표에만 쓴다 — 완료 기준·제약은 자르지 않는다(ATC-35)
+export const GOAL_MAX = 600;
+export function clip(text: string, max = GOAL_MAX): string {
   if (text.length <= max) return text;
   const cut = text.lastIndexOf("\n", max);
   return `${text.slice(0, cut > max / 2 ? cut : max).trimEnd()} …`;
@@ -68,19 +69,25 @@ export function directSectionsOf(md: string | null | undefined): DirectSections 
   const sections = sectionsOfMd(md);
   const take = (re: RegExp) => {
     const got = sections.filter((x) => re.test(x.title) && x.text).map((x) => x.text);
-    return got.length ? clip(got.join("\n")) : null;
+    return got.length ? got.join("\n") : null;
   };
-  return { goal: take(GOAL_RE), done: take(DONE_RE), constraints: take(CONSTRAINT_RE) };
+  const goal = take(GOAL_RE);
+  return { goal: goal && clip(goal), done: take(DONE_RE), constraints: take(CONSTRAINT_RE) };
 }
+
+// 지시서 본문(목표·완료 기준·제약)의 상한. 보통 이슈(ATC-34 본문 약 3,200자)는 자르지 않고 들어간다.
+// 넘으면 완료 기준·제약을 일부만 싣지 않는다 — 앞부분만 보이면 빠진 금지 항목을 놓친다(ATC-35).
+// 대신 목표만 두고 FULL_TEXT_LINE 한 줄로 이슈 본문을 읽으라고 적는다
+export const BRIEF_BODY_MAX = 4000;
+export const FULL_TEXT_LINE = "완료 기준·제약 전문은 이슈 본문에서 읽으세요.";
 
 // DIRECT 지시서의 본문 줄(머리 줄과 끝 줄 사이). 여러 줄이면 이름표 다음 줄부터
 export function directLines(s: DirectSections): string[] {
   const field = (name: string, v: string) => (v.includes("\n") ? `${name}:\n${v}` : `${name}: ${v}`);
-  return [
-    s.goal ? field("목표", s.goal) : null,
-    field("완료 기준", s.done ?? "이슈 본문(링크)의 완료 기준을 따릅니다."),
-    s.constraints ? field("이 작업만의 제약", s.constraints) : null,
-  ].filter((x) => x !== null);
+  const goal = s.goal ? field("목표", s.goal) : null;
+  const rest = [field("완료 기준", s.done ?? "이슈 본문(링크)의 완료 기준을 따릅니다."), s.constraints ? field("이 작업만의 제약", s.constraints) : null].filter((x) => x !== null);
+  if ((goal?.length ?? 0) + rest.reduce((n, x) => n + x.length + 1, 0) > BRIEF_BODY_MAX) return [goal, FULL_TEXT_LINE].filter((x) => x !== null);
+  return [goal, ...rest].filter((x) => x !== null);
 }
 
 // structure 같은 세션이 팀에 붙여 넣을 DIRECT 배정 문구(GET /api/dispatch/flight/:key/brief). FLIGHT PLAN과 같은 모양
