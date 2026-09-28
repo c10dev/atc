@@ -587,8 +587,8 @@ Two things follow. VCDO throughput is bounded by landing, not by the number of t
 | `LAUNCH` | reserve call-out | countable FLIGHTs (see Decisions) at an AIRPORT have waited `waitMin` (default 120 min) with no available AIRCRAFT holding the needed ratings, the reserve is short, the runway is not the bottleneck, and the background cap has room; a registered AIRCRAFT not in service fits | 8.5 LAUNCH |
 | `ENTRY` | wet lease | as `LAUNCH`, but no registered AIRCRAFT fits; proposes REGISTRATION, AIRPORT and CONFIGURATION | ENTRY INTO SERVICE, then LAUNCH |
 | `STOP` | parking | an atc-launched background session has had no STAND, no FLIGHT and no activity for `idleHours` (default 12) and the AIRPORT keeps its reserve without it | 8.5 STOP (resumable) |
-| `RESTART` | scheduled check | a background session is PARKED and older than `restartDays` (default 3) | STOP, then LAUNCH with a fresh CREW BRIEFING |
-| `AOG` | MEL deferral with an expiry | the session is NORDO or had a LOS in the last 24 h | AOG with `until` = now + 24 h; when it expires unresolved, a `RETIRE` or return proposal follows |
+| `RESTART` | scheduled check | a background session is PARKED and older than `restartDays` (default 3); or AIRCRAFT health (8.8) says `CONTEXT`, or `HUNG` at ALERT level (ATC-48) | STOP, then LAUNCH with a fresh CREW BRIEFING (a desktop or terminal session is closed and reopened by hand) |
+| `AOG` | MEL deferral with an expiry | the session is NORDO or had a LOS in the last 24 h; or AIRCRAFT health (8.8) says `MODEL`, or a weekly `LIMIT` (ATC-48) | AOG with `until` = now + 24 h (a weekly `LIMIT` alone: the reset day); when it expires unresolved, a `RETIRE` or return proposal follows |
 | `RETIRE` | phase-out | no ARRIVED in `retireDays` (default 30), not needed for the reserve, no open PR | SUPERVISOR only, never automatic |
 
 **Records and screens.** `fleet-plan.jsonl`, append only: `{op: "create", id: "F-0001", kind, aircraft, airport, reasons: [{code, detail, value}], at}`, then `{op: "verdict", id, verdict: "agree" | "disagree", by, at}`, `{op: "expire" | "supersede", id, at}`, and in approval mode `{op: "approve" | "executed", id, at, jobId?}`. `GET /api/fleet/plan` returns open proposals, recent ones and the gate. The FLEET tab gets a FLEET PLAN block above the cards with each proposal's reasons and agree / disagree; approval mode adds approve, which runs the same code as the buttons in 8.5 and writes the FLIGHT RECORDER line with `by: "FLEET PLAN F-0001"`. The plan runs on the DISPATCH cycle (5 min) and only reads.
@@ -729,7 +729,7 @@ Not built yet: step 4 (automatic STOP); the weekly-usage line (FUEL); CROSSCHECK
 
 ### 8.8 AIRCRAFT health
 
-Status: steps 1–2 built (ATC-45): the manual and the pull classifier. The push hook (step 3) and FLEET PLAN proposals (step 4) are not built yet.
+Status: steps 1–2 built (ATC-45): the manual and the pull classifier. Step 4 built (ATC-48): FLEET PLAN proposals from health. The push hook (step 3) is not built yet.
 
 **Why.** On 2026-09-28 TEAM_H got an ATC-44 BRIEF at 07:37:13Z and hit its account's session limit three seconds later. Until someone typed "Try again" at 07:40:57Z, atc showed TEAM_H as `idle`, so FLEET, DISPATCH and TOWER all saw an AIRCRAFT free for work. atc knew only `dead`, `busy` and `idle`; it never read why a session stopped or what it was waiting for.
 
@@ -781,7 +781,7 @@ Status: steps 1–2 built (ATC-45): the manual and the pull classifier. The push
 1. ✅ Design and manual: this section, TOWER rows in `controller/CLAUDE.md`, the OCC FOLLOWING row, `docs/guide/`.
 2. ✅ Pull: pure `factsOf` and `healthOf`, `healthAlerts` for host-level grouping, tests from real transcript line shapes (the TEAM_H replay among them); snapshot, FLEET row, FLIGHT FOLLOWING, TOWER brief, DISPATCH and SCHEDULE filters.
 3. Push: a `hooks/health.mjs` hook on `StopFailure` and `Notification` (`permission_prompt`, `idle_prompt`, `elicitation_dialog`), cleared on `Stop`/`PostToolUse`, appending to `health/<sessionId>.jsonl` in the state folder. `user` tier.
-4. FLEET PLAN proposals (AOG for `MODEL` and a weekly `LIMIT`, RESTART for `CONTEXT` and a lasting `HUNG`).
+4. ✅ FLEET PLAN proposals (ATC-48): AOG for `MODEL` and a weekly `LIMIT` (until the reset day), RESTART for `CONTEXT` and `HUNG` at ALERT level. Reasons carry the health line and the next step; the proposal expires when the code clears. Health alerts already reach the FLIGHT RECORDER as `alert.raised`/`alert.cleared`, so there are no separate `health.*` lines.
 
 **Risks.**
 
@@ -792,7 +792,7 @@ Status: steps 1–2 built (ATC-45): the manual and the pull classifier. The push
 | A false `HUNG` during long tests | INFO first; it holds DISPATCH, which a busy AIRCRAFT never gets anyway |
 | A permission prompt while the session file says `busy` is seen as `HUNG` after 30 min | the push hook (step 3) reports `PENDING` directly |
 
-Not built yet: the push hook (step 3); FLEET PLAN proposals from health (step 4); grouping `LIMIT` by account rather than by reset time (needs an account per AIRCRAFT, ATC-46).
+Not built yet: the push hook (step 3); grouping `LIMIT` by account rather than by reset time (needs an account per AIRCRAFT, ATC-46).
 
 **Pilot's discretion (ATC-45).**
 

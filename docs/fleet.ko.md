@@ -642,8 +642,8 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 | `LAUNCH` | 예비 승무원 호출 | 한 AIRPORT에서 셀 수 있는 FLIGHT(결정 참고)가 `waitMin`(기본 120분) 기다렸는데 필요한 rating을 가진 가용 AIRCRAFT가 없고, 예비가 모자라고, 활주로가 병목이 아니고, 백그라운드 상한에 여유가 있음. 운항하지 않는 등록 AIRCRAFT가 맞음 | 8.5 LAUNCH |
 | `ENTRY` | wet lease | `LAUNCH`와 같은데 맞는 등록 AIRCRAFT가 없음. REGISTRATION·AIRPORT·CONFIGURATION을 제안 | ENTRY INTO SERVICE 뒤 LAUNCH |
 | `STOP` | 주기(parking) | atc가 띄운 백그라운드 세션이 `idleHours`(기본 12) 동안 STAND·FLIGHT·활동이 없고, 그것 없이도 AIRPORT의 예비가 유지됨 | 8.5 STOP(다시 이어짐) |
-| `RESTART` | 정기 점검 | 백그라운드 세션이 PARKED이고 `restartDays`(기본 3)보다 오래됨 | STOP 뒤 새 CREW BRIEFING으로 LAUNCH |
-| `AOG` | 기한이 있는 MEL 유예 | 세션이 NORDO이거나 최근 24시간에 LOS | `until` = 지금 + 24시간으로 AOG. 풀리지 않고 기한이 지나면 `RETIRE`나 복귀 제안이 뒤따름 |
+| `RESTART` | 정기 점검 | 백그라운드 세션이 PARKED이고 `restartDays`(기본 3)보다 오래됨. 또는 AIRCRAFT health(8.8)가 `CONTEXT`이거나 ALERT 수준의 `HUNG`(ATC-48) | STOP 뒤 새 CREW BRIEFING으로 LAUNCH(데스크톱·터미널 세션은 손으로 닫고 다시 연다) |
+| `AOG` | 기한이 있는 MEL 유예 | 세션이 NORDO이거나 최근 24시간에 LOS. 또는 AIRCRAFT health(8.8)가 `MODEL`이거나 주간 `LIMIT`(ATC-48) | `until` = 지금 + 24시간으로 AOG(주간 `LIMIT`만이면 reset 날). 풀리지 않고 기한이 지나면 `RETIRE`나 복귀 제안이 뒤따름 |
 | `RETIRE` | 퇴역 | `retireDays`(기본 30) 동안 ARRIVED 없음, 예비에 필요 없음, 열린 PR 없음 | SUPERVISOR만, 자동 없음 |
 
 **기록과 화면.** `fleet-plan.jsonl`, 추가만 함: `{op: "create", id: "F-0001", kind, aircraft, airport, reasons: [{code, detail, value}], at}`, 이어서 `{op: "verdict", id, verdict: "agree" | "disagree", by, at}`, `{op: "expire" | "supersede", id, at}`, 승인 운용에서는 `{op: "approve" | "executed", id, at, jobId?}`. `GET /api/fleet/plan`이 열린 제안, 최근 제안, 게이트를 돌려준다. FLEET 탭 카드 위에 FLEET PLAN 블록이 생기고, 제안마다 사유와 agree·disagree가 붙는다. 승인 운용은 approve를 더하며, 8.5의 버튼과 같은 코드를 돌리고 FLIGHT RECORDER에 `by: "FLEET PLAN F-0001"`로 남긴다. 계획은 DISPATCH 주기(5분)에 돌고 읽기만 한다.
@@ -784,7 +784,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 ### 8.8 AIRCRAFT health
 
-상태: 1–2단계를 만들었다(ATC-45). 대응 매뉴얼과, 대화 기록을 읽어 판정하는 pull 분류기다. push hook(3단계)과 FLEET PLAN 제안(4단계)은 아직 없다.
+상태: 1–2단계를 만들었다(ATC-45). 대응 매뉴얼과, 대화 기록을 읽어 판정하는 pull 분류기다. 4단계 FLEET PLAN 제안도 만들었다(ATC-48). push hook(3단계)은 아직 없다.
 
 **왜.** 2026-09-28 07:37:13Z에 TEAM_H가 ATC-44 BRIEF를 받고 3초 뒤 계정의 session limit에 걸렸다. 07:40:57Z에 누가 "Try again"을 칠 때까지 atc는 TEAM_H를 `idle`로 보여서, FLEET·DISPATCH·TOWER 모두 일을 받을 수 있는 AIRCRAFT로 봤다. atc는 `dead`·`busy`·`idle`만 알았고, 세션이 왜 멈췄는지, 무엇을 기다리는지는 읽지 않았다.
 
@@ -836,7 +836,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 1. ✅ 설계와 매뉴얼: 이 절, `controller/CLAUDE.md`의 TOWER 줄, OCC FOLLOWING 줄, `docs/guide/`.
 2. ✅ Pull: 순수 함수 `factsOf`·`healthOf`, 기계 단위로 묶는 `healthAlerts`, 실제 대화 기록 줄 모양으로 만든 테스트(TEAM_H 재생 포함). snapshot, FLEET 줄, FLIGHT FOLLOWING, TOWER 브리핑, DISPATCH·SCHEDULE 거르기.
 3. Push: `StopFailure`와 `Notification`(`permission_prompt`, `idle_prompt`, `elicitation_dialog`)에 거는 `hooks/health.mjs`. `Stop`·`PostToolUse`에 풀고, 상태 폴더의 `health/<sessionId>.jsonl`에 덧붙인다. `user` 등급.
-4. FLEET PLAN 제안(`MODEL`과 주간 `LIMIT`에 AOG, `CONTEXT`와 오래가는 `HUNG`에 RESTART).
+4. ✅ FLEET PLAN 제안(ATC-48): `MODEL`과 주간 `LIMIT`에 AOG(reset 날까지), `CONTEXT`와 ALERT 수준의 `HUNG`에 RESTART. 사유에 health 한 줄과 다음 할 일이 붙고, 코드가 풀리면 제안은 expire된다. health 경보는 이미 `alert.raised`·`alert.cleared`로 FLIGHT RECORDER에 남아서 `health.*` 줄은 따로 두지 않는다.
 
 **위험.**
 
@@ -847,7 +847,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 | 긴 테스트 중의 잘못된 `HUNG` | 먼저 INFO. DISPATCH는 막지만 busy AIRCRAFT는 원래 배정받지 않는다 |
 | 세션 파일이 `busy`인 채 승인을 기다리면 30분 뒤 `HUNG`으로 보인다 | push hook(3단계)이 `PENDING`을 바로 알린다 |
 
-아직 만들지 않음: push hook(3단계), health에서 나오는 FLEET PLAN 제안(4단계), reset 시각이 아니라 계정으로 `LIMIT` 묶기(AIRCRAFT별 계정이 필요, ATC-46).
+아직 만들지 않음: push hook(3단계), reset 시각이 아니라 계정으로 `LIMIT` 묶기(AIRCRAFT별 계정이 필요, ATC-46).
 
 **PILOT'S DISCRETION(ATC-45).**
 

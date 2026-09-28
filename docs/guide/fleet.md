@@ -42,6 +42,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - 코드는 세션이 다시 정상으로 대답하면 저절로 풀린다.
 - ALERT는 화면 위 ALERTS에도 올라간다. `NETWORK`는 세션이 여럿이어도 하나, reset 시각이 같은 `LIMIT`도 하나로 묶인다.
 - OCC는 그 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING 문제로, TOWER는 브리핑으로 받아 SUPERVISOR에게 보고한다. 둘 다 팀에 다시 보내지는 않는다.
+- 사람이 결정할 코드는 FLEET PLAN이 제안으로 올린다: `MODEL`과 주간 `LIMIT`은 AOG, `CONTEXT`와 60분 넘은 `HUNG`은 RESTART(아래 "FLEET PLAN"). 코드가 풀리면 제안도 닫힌다.
 - 한도가 **거의 찼는지**는 아직 모른다(FUEL, ATC-46). 급하면 그 AIRCRAFT를 AOG로 둔다.
 
 ## 팀 프로필
@@ -155,8 +156,8 @@ atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude C
 | LAUNCH | 받을 AIRCRAFT가 없는 FLIGHT가 120분 이어짐 | 그 FLIGHT를 날 수 있는, 세션이 없는 등록 AIRCRAFT를 띄운다 |
 | ENTRY | LAUNCH와 같은데 맞는 등록 AIRCRAFT가 없음 | 새 등록번호와 CONFIGURATION으로 들이고 띄운다 |
 | STOP | 백그라운드 세션이 12시간 STAND·FLIGHT·활동 없이 쉼 | 멈춘다(대화는 남는다). 수요가 있는 AIRPORT에는 PARKED 1대를 남긴다 |
-| RESTART | 백그라운드 세션이 3일 넘었고 PARKED | 새 CREW BRIEFING으로 다시 띄운다 |
-| AOG | NORDO이거나 최근 24시간 LOS | 24시간 기한으로 배정을 멈춘다 |
+| RESTART | 백그라운드 세션이 3일 넘었고 PARKED. 또는 health가 `CONTEXT`(대화가 넘침)이거나 60분 넘은 `HUNG` | 새 CREW BRIEFING으로 다시 띄운다. 쥐고 있던 STAND·PR은 새 세션이 넘겨받는다. 데스크톱·터미널 세션은 승인으로 실행되지 않으니 손으로 닫고 다시 연다 |
+| AOG | NORDO이거나 최근 24시간 LOS. 또는 health가 `MODEL`(모델·경로 문제)이거나 주간 `LIMIT` | 24시간 기한으로 배정을 멈춘다. 주간 `LIMIT`만이면 reset 날까지 |
 | RETIRE | 30일 동안 ARRIVED 없음 | 퇴역(자동으로는 하지 않는다) |
 | RETURN | FLEET PLAN이 건 AOG의 해제 예정일이 지남 | AOG를 푼다 |
 
