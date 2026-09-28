@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { briefFactsOf, briefLineOf, compareBriefs, directSectionsOf, findingsOf, formatAssignment, labelOf, reworkOf, type TalkEvent, talkEventsOf } from "./briefs.ts";
+import { briefFactsOf, briefLineOf, compareBriefs, crewModeOf, directSectionsOf, findingsOf, formatAssignment, labelOf, reworkOf, type TalkEvent, talkEventsOf } from "./briefs.ts";
 import type { LandingReview } from "./landing.ts";
 
 test("BRIEF 줄: DIRECT·VECTORS를 읽고, 없으면 null", () => {
@@ -157,4 +157,45 @@ test("VECTORS 대 DIRECT 비교: 기간 안 ARRIVED만, 지시서를 못 찾은 
   assert.deepEqual(out.stats.DIRECT, { flights: 2, questionsPerFlight: 0.5, oneShot: 0.5, readbackToPrMedianMin: 75, findingsPerFlight: 2, findingsMeasured: 1, reworkPerFlight: 1, reworkMeasured: 1 });
   assert.equal(out.stats.VECTORS.flights, 1);
   assert.deepEqual(compareBriefs([], NOW, 30).stats.DIRECT, { flights: 0, questionsPerFlight: null, oneShot: null, readbackToPrMedianMin: null, findingsPerFlight: null, findingsMeasured: 0, reworkPerFlight: null, reworkMeasured: 0 });
+});
+
+test("대화 기록 사건: 파일 쓰기(Edit·Write·MultiEdit·NotebookEdit)는 leader, 서브에이전트 기록은 crew로 쓰기만", () => {
+  const main = [
+    A("2026-09-28T02:00:00Z", { name: "Edit", input: { file_path: "/w/s/a.ts", old_string: "x", new_string: "y" } }, { name: "Read", input: { file_path: "/w/s/b.ts" } }),
+    A("2026-09-28T02:01:00Z", { name: "NotebookEdit", input: { notebook_path: "/w/s/n.ipynb" } }),
+    JSON.stringify({ type: "assistant", isSidechain: true, timestamp: "2026-09-28T02:02:00Z", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: "/w/s/c.ts" } }] } }),
+  ].join("\n");
+  assert.deepEqual(talkEventsOf(main).map((e) => [e.dir, e.by, e.path]), [["write", "leader", "/w/s/a.ts"], ["write", "leader", "/w/s/n.ipynb"]]);
+  // CAPTAIN의 Bash: 명령에 적힌 /home/… 경로를 CAPTAIN 작업으로
+  const bash = A("2026-09-28T02:05:00Z", { name: "Bash", input: { command: "cd /home/c10/w/atc-33 && python3 - <<'EOF'\nopen('/home/c10/w/atc-33/server/a.ts')\nEOF" } });
+  assert.deepEqual(talkEventsOf(bash).map((e) => [e.dir, e.by, e.path]), [["write", "leader", "/home/c10/w/atc-33"], ["write", "leader", "/home/c10/w/atc-33/server/a.ts"]]);
+  const sub = [
+    JSON.stringify({ type: "user", isSidechain: true, timestamp: "2026-09-28T02:03:00Z", message: { content: "ATC-32 구현해 줘" } }),
+    JSON.stringify({ type: "assistant", isSidechain: true, timestamp: "2026-09-28T02:04:00Z", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: "/w/s/c.ts" } }, { type: "tool_use", name: "SendMessage", input: { to: "main", message: "끝" } }] } }),
+  ].join("\n");
+  assert.deepEqual(talkEventsOf(sub, "crew").map((e) => [e.dir, e.by, e.path]), [["write", "crew", "/w/s/c.ts"]]);
+  // 서브에이전트의 Bash는 세지 않는다
+  assert.deepEqual(talkEventsOf(JSON.stringify({ type: "assistant", isSidechain: true, timestamp: "2026-09-28T02:06:00Z", message: { content: [{ type: "tool_use", name: "Bash", input: { command: "cd /home/c10/w/atc-33 && npm test" } }] } }), "crew"), []);
+});
+
+test("SOLO·CREW: STAND 안 문서 밖 파일을 서브에이전트가 썼으면 CREW, CAPTAIN만 썼으면 SOLO, 쓰기가 없으면 null", () => {
+  const w = (t: string, by: "leader" | "crew", path: string): TalkEvent => ({ t: `2026-09-28T${t}:00.000Z`, dir: "write", by, path, keys: [], ids: [] });
+  const from = "2026-09-28T01:00:00Z";
+  const to = "2026-09-28T05:00:00Z";
+  const stands = ["/w/atc-33"];
+  assert.equal(crewModeOf([w("02:00", "leader", "/w/atc-33/server/a.ts"), w("02:10", "crew", "/w/atc-33/docs/x.md")], stands, from, to), "SOLO");
+  assert.equal(crewModeOf([w("02:00", "leader", "/w/atc-33/server/a.ts"), w("02:10", "crew", "/w/atc-33/web/b.tsx")], stands, from, to), "CREW");
+  // STAND 밖(비슷한 이름 포함)·기간 밖·문서만은 세지 않는다
+  assert.equal(crewModeOf([w("02:00", "crew", "/w/atc-33-old/a.ts"), w("06:00", "crew", "/w/atc-33/a.ts"), w("02:00", "leader", "/w/atc-33/CHANGELOG.md")], stands, from, to), null);
+  assert.equal(crewModeOf([w("02:00", "leader", "/w/atc-33/a.ts")], [], from, to), null);
+});
+
+test("2×2 비교: 지시서 × SOLO·CREW, crew를 모르는 행은 crewUnknown", () => {
+  const NOW = Date.parse("2026-09-28T12:00:00Z");
+  const b = (kind: "DIRECT" | "VECTORS") => ({ kind, at: "2026-09-28T01:00:00Z", by: null, readbackAt: null, questions: 0 });
+  const e = (key: string, kind: "DIRECT" | "VECTORS", crew: "SOLO" | "CREW" | null) => ({ key, flight: key, aircraft: "TEAM_J", arrivedAt: "2026-09-28T10:00:00Z", landingWaitMin: 0, measured: { brief: b(kind), crew } });
+  const out = compareBriefs([e("A-1", "DIRECT", "SOLO"), e("A-2", "DIRECT", "SOLO"), e("A-3", "VECTORS", "CREW"), e("A-4", "VECTORS", null)], NOW, 30);
+  assert.deepEqual(Object.fromEntries(Object.entries(out.grid).map(([k, v]) => [k, v.flights])), { "VECTORS·SOLO": 0, "VECTORS·CREW": 1, "DIRECT·SOLO": 2, "DIRECT·CREW": 0 });
+  assert.deepEqual([out.crewStats.SOLO.flights, out.crewStats.CREW.flights, out.crewUnknown], [2, 1, 1]);
+  assert.equal(out.rows.find((r) => r.key === "A-4")?.crew, null);
 });

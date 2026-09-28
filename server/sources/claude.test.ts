@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import type { Workspace } from "../model.ts";
-import { touchesFromTranscript } from "./claude.ts";
+import { sessionEventsOf, talkEventsFile, touchesFromTranscript } from "./claude.ts";
 
 const MAIN = "/home/c10/projects/vocado_nextjs";
 const WT = "/home/c10/projects/worktrees";
@@ -41,4 +44,20 @@ test("도구 호출만 세고 출력·본문·인자 문자열은 무시한다",
 test("워크트리 안의 cwd에서 한 작업은 그 워크트리 접촉", () => {
   const touches = touchesFromTranscript(toolUse(1, "Bash", { command: "npm test" }, `${WT}/c/src`), workspaces);
   assert.deepEqual(touches.map((t) => t.workspacePath), [`${WT}/c`]);
+});
+
+test("sessionEventsOf: 같은 세션 폴더를 여러 번 불러도 사건 수가 같고, leader 캐시에 crew 사건이 섞이지 않는다", () => {
+  const dir = join(mkdtempSync(join(tmpdir(), "atc-talk-")), "sess");
+  mkdirSync(join(dir, "subagents"), { recursive: true });
+  const use = (t: string, name: string, input: unknown, extra: object = {}) =>
+    JSON.stringify({ type: "assistant", timestamp: t, message: { content: [{ type: "tool_use", name, input }] }, ...extra }) + "\n";
+  writeFileSync(`${dir}.jsonl`, use("2026-09-28T01:00:00Z", "Edit", { file_path: "/w/s/a.ts" }));
+  writeFileSync(join(dir, "subagents", "agent-1.jsonl"), use("2026-09-28T01:05:00Z", "Write", { file_path: "/w/s/b.ts" }, { isSidechain: true }));
+  const first = sessionEventsOf(dir).map((e) => `${e.by}:${e.path}`);
+  assert.deepEqual(first, ["leader:/w/s/a.ts", "crew:/w/s/b.ts"]);
+  assert.deepEqual(sessionEventsOf(dir).map((e) => `${e.by}:${e.path}`), first);
+  assert.deepEqual(talkEventsFile(`${dir}.jsonl`).map((e) => e.by), ["leader"]);
+  // 파일이 자라면 새 줄만 더한다
+  appendFileSync(`${dir}.jsonl`, use("2026-09-28T01:10:00Z", "Write", { file_path: "/w/s/c.ts" }));
+  assert.deepEqual(sessionEventsOf(dir).map((e) => e.path), ["/w/s/a.ts", "/w/s/c.ts", "/w/s/b.ts"]);
 });

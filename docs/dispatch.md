@@ -325,6 +325,8 @@ Status: built 2026-09-28. The SUPERVISOR observed that current agents do better 
 |---|---|
 | **VECTORS** | The old brief. The controller gives headings step by step: numbered build steps, full templates, "ask before implementing" |
 | **DIRECT** | The new brief, "cleared direct to" the goal: the goal, the exit criteria, only the constraints specific to this task, and "finish it in one pass". The team flies its own route |
+| **SOLO** | The CAPTAIN implemented the FLIGHT; subagents only supported (research, review, docs). Since 2026-09-28 vocado `CLAUDE.md` has leaders implement directly and split only WAKE H or multi-area work |
+| **CREW** | Implementation was split: at least one teammate (subagent) wrote code in the FLIGHT's STAND |
 | **PILOT'S DISCRETION** | Inside a DIRECT flight the team settles ordinary ambiguity itself: it picks a reasonable default, notes it in the PR and keeps going. It stops to ask only for a decision that is truly the SUPERVISOR's (a guard, a record format, approval gates, anything the SUPERVISOR owns) |
 
 AUTOPILOT is not used for this. It means a machine flies while the pilot watches, which suggests the SUPERVISOR's gates are off; the word stays reserved for real automation later (such as AUTOLAND).
@@ -341,7 +343,7 @@ Standing rules stay where they are (vocado `CLAUDE.md` and `AGENTS.md`, atc `CLA
 **Measuring it.** A brief is DIRECT when the message that started the FLIGHT has the `BRIEF: DIRECT` line and VECTORS otherwise, so every FLIGHT before this change counts as VECTORS. The LOGBOOK run (every 10 minutes) adds a `measured` line per ARRIVED FLIGHT from the last 30 days (`server/logbook.ts` `measureLines`); it fills only empty fields and never changes one already written:
 
 ```json
-{"op":"measured","t":"…","key":"owner/repo#85","brief":{"kind":"DIRECT","at":"…","by":"structure","readbackAt":"…","questions":0},"rework":1,"findings":{"p0":0,"p1":1,"p2":0}}
+{"op":"measured","t":"…","key":"owner/repo#85","brief":{"kind":"DIRECT","at":"…","by":"structure","readbackAt":"…","questions":0},"crew":"SOLO","rework":1,"findings":{"p0":0,"p1":1,"p2":0}}
 ```
 
 | Field | Source |
@@ -349,12 +351,13 @@ Standing rules stay where they are (vocado `CLAUDE.md` and `AGENTS.md`, atc `CLA
 | `brief` | The AIRCRAFT's session transcripts (the same sessions OBSERVED CREW links: live session name or `custom-title.json`). The brief is the last received message naming the FLIGHT before the team's READBACK, or with no READBACK the first one from 12 hours before departure. `by` is the sender's session name. `null` for AD HOC or when no brief was found; missing while the AIRCRAFT or its transcripts are unknown |
 | `readbackAt` | The team's first SendMessage containing READBACK with that FLIGHT key or the FLIGHT PLAN's `D-xxxx` |
 | `questions` | Mid-task questions: after READBACK (or the brief) and before the PR opened, SendMessage calls to the session that briefed (not READBACK, not a PR report, not to crew members) plus AskUserQuestion calls |
+| `crew` | **SOLO** or **CREW** (ATC-33): how the team flew it. Signal: writes inside the FLIGHT's STAND from one day before departure (or the PR) to the merge. CREW when a subagent of the AIRCRAFT (`subagents/agent-*.jsonl`) wrote a non-doc file there with Edit, Write, MultiEdit or NotebookEdit; SOLO when no subagent did and the CAPTAIN worked there (those tools, or a Bash command naming a path in the STAND, since leaders often edit with python or sed). Files ending in `.md`, `.mdx` or `.txt` count as support, and subagent Bash (mostly test runs) is not counted. `null` when nothing in the STAND shows up (another session did it, the STAND is unknown, or no transcript). Agent-team teammates that run as separate sessions are not seen, as in OBSERVED CREW. Lines written before ATC-33 get `crew` from a later `measured` line |
 | `rework` | Commits in the PR authored after it opened, merge commits excluded (a rebase keeps the author date, so it isn't counted again) |
 | `findings` | P0–P2: Codex inline threads (badge; unmarked counts as P2; P3 left out) plus the external LANDING REVIEW, last review per head. Read with the same review-thread query as LANDING, 10 PRs per run |
 
-atc reads only the transcript lines it needs (received messages, SendMessage and AskUserQuestion calls, not subagent lines or tool results), keeps only times, recipients, FLIGHT keys and flags in memory, and writes only the counts above. Transcripts are read incrementally from where the last read stopped.
+atc reads only the transcript lines it needs (received messages, SendMessage and AskUserQuestion calls, file-writing tool calls and the CAPTAIN's Bash commands; from subagent transcripts only file-writing calls; never tool results), keeps only times, recipients, FLIGHT keys, flags and written paths in memory, and writes only the counts and labels above. Transcripts are read incrementally from where the last read stopped.
 
-**The comparison.** The DISPATCH tab shows **VECTORS · DIRECT** under FLIGHT FOLLOWING: for 14, 30 or 90 days, FLIGHTs, mid-task questions per FLIGHT, share with no questions, median READBACK → PR, P0–P2 findings per FLIGHT and rework commits per FLIGHT, side by side, with the per-FLIGHT rows folded below. `GET /api/logbook/briefs?days=30` returns `{days, rows, stats: {VECTORS, DIRECT}, unmeasured}`. It is shown only; nothing is scored or used for assignment. With fewer than 5 FLIGHTs on a side it says the sample is thin.
+**The comparison.** The DISPATCH tab shows **VECTORS · DIRECT** under FLIGHT FOLLOWING, grouped by brief, by SOLO/CREW, or as a 2×2 of both: for 14, 30 or 90 days, FLIGHTs, mid-task questions per FLIGHT, share with no questions, median READBACK → PR, P0–P2 findings per FLIGHT and rework commits per FLIGHT, side by side, with the per-FLIGHT rows folded below. `GET /api/logbook/briefs?days=30` returns `{days, rows, stats: {VECTORS, DIRECT}, crewStats: {SOLO, CREW}, grid: {"VECTORS·SOLO", …}, unmeasured, crewUnknown}`; rows carry `crew`, and rows with `crew: null` drop out of the SOLO/CREW groupings. It is shown only; nothing is scored or used for assignment. With fewer than 5 FLIGHTs on a side it says the sample is thin.
 
 Not built yet: vocado's own templates (the four-section rule in vocado `CLAUDE.md`, the Linear `Codex Engineering Task` template) are the SUPERVISOR's to change; the matching wording is proposed in the ATC-32 PR.
 

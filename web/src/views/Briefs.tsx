@@ -1,20 +1,37 @@
 import { useEffect, useState } from "react";
-import type { BriefKind, BriefRow, BriefStats } from "../../../server/briefs.ts";
+import type { BriefKind, BriefRow, BriefStats, CrewMode, GridKey } from "../../../server/briefs.ts";
 import { flightNumber } from "../aviation.ts";
 import "./Briefs.css";
 
-// VECTORS 대 DIRECT(ATC-32, docs/dispatch.md "DIRECT briefs"). LOGBOOK의 measured 줄로
-// 지시서 종류별 중간 질문·READBACK → PR·P0–P2 지적·PR 뒤 수정 커밋을 나란히 보여 주기만 한다.
+// VECTORS 대 DIRECT(ATC-32, docs/dispatch.md "DIRECT briefs"), SOLO 대 CREW(ATC-33). LOGBOOK의 measured 줄로
+// 지시서 종류별·SOLO·CREW별·둘을 겹친 2×2로 중간 질문·READBACK → PR·P0–P2 지적·PR 뒤 수정 커밋을 나란히 보여 주기만 한다.
 
 interface BriefsData {
   days: number;
   rows: BriefRow[];
   stats: Record<BriefKind, BriefStats>;
+  crewStats?: Record<CrewMode, BriefStats>; // ATC-33 전 서버에는 없다
+  grid?: Record<GridKey, BriefStats>;
   unmeasured: number;
+  crewUnknown?: number;
+}
+type Group = "brief" | "crew" | "both";
+const GROUPS: { id: Group; label: string }[] = [
+  { id: "brief", label: "지시서" },
+  { id: "crew", label: "SOLO·CREW" },
+  { id: "both", label: "2×2" },
+];
+// 묶음마다 열: 머리글(넓을 때·좁을 때)과 그 열의 지표
+function columnsOf(d: BriefsData, g: Group): { key: string; head: string; short: string; tone: string; stats: BriefStats }[] {
+  if (g === "crew" && d.crewStats) return CREWS.map((c) => ({ key: c, head: c, short: c, tone: c.toLowerCase(), stats: d.crewStats![c] }));
+  if (g === "both" && d.grid)
+    return KINDS.flatMap((k) => CREWS.map((c) => ({ key: `${k}·${c}`, head: `${k} · ${c}`, short: `${k[0]}·${c}`, tone: k.toLowerCase(), stats: d.grid![`${k}·${c}`] })));
+  return KINDS.map((k) => ({ key: k, head: k, short: k, tone: k.toLowerCase(), stats: d.stats[k] }));
 }
 const RANGES = [14, 30, 90] as const;
 const KINDS: BriefKind[] = ["VECTORS", "DIRECT"];
-const MIN_SAMPLE = 5; // 둘 중 하나라도 이보다 적으면 표본 부족으로 적는다
+const CREWS: CrewMode[] = ["SOLO", "CREW"];
+const MIN_SAMPLE = 5; // 칸 중 하나라도 이보다 적으면 표본 부족으로 적는다
 
 const num = (x: number | null) => (x === null ? "—" : String(x));
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
@@ -37,6 +54,7 @@ const METRICS: { label: string; hint: string; show: (s: BriefStats) => string }[
 export function BriefsPanel({ refreshKey }: { refreshKey: string }) {
   const [days, setDays] = useState<number>(30);
   const [data, setData] = useState<BriefsData | null>(null);
+  const [group, setGroup] = useState<Group>("brief");
 
   // 서버에 비교가 없거나(404) 실패하면 아무것도 그리지 않는다
   useEffect(() => {
@@ -51,32 +69,47 @@ export function BriefsPanel({ refreshKey }: { refreshKey: string }) {
   }, [days, refreshKey]);
 
   if (!data) return null;
-  const thin = KINDS.some((k) => data.stats[k].flights < MIN_SAMPLE);
+  const hasCrew = Boolean(data.crewStats && data.grid);
+  const g = hasCrew ? group : "brief";
+  const cols = columnsOf(data, g);
+  const thin = cols.some((c) => c.stats.flights < MIN_SAMPLE);
 
   return (
     <section className="bf" aria-labelledby="bf-title">
       <header className="bf-head">
         <h2 className="label" id="bf-title">
-          VECTORS · DIRECT <em>지시서 비교</em>
+          VECTORS · DIRECT <em>지시서 비교{hasCrew ? " · SOLO·CREW" : ""}</em>
         </h2>
-        <div className="bf-range" role="radiogroup" aria-label="기간">
-          {RANGES.map((d) => (
-            <button key={d} role="radio" aria-checked={days === d} onClick={() => setDays(d)}>
-              {d}일
-            </button>
-          ))}
+        <div className="bf-tools">
+          {hasCrew && (
+            <div className="bf-range" role="radiogroup" aria-label="묶기">
+              {GROUPS.map((x) => (
+                <button key={x.id} role="radio" aria-checked={g === x.id} onClick={() => setGroup(x.id)}>
+                  {x.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="bf-range" role="radiogroup" aria-label="기간">
+            {RANGES.map((d) => (
+              <button key={d} role="radio" aria-checked={days === d} onClick={() => setDays(d)}>
+                {d}일
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
-      <table className="bf-table">
+      <table className={`bf-table${cols.length > 2 ? " is-grid" : ""}`}>
         <thead>
           <tr>
             <th scope="col">
               <span className="bf-sr">지표</span>
             </th>
-            {KINDS.map((k) => (
-              <th key={k} scope="col" className={`bf-kind is-${k.toLowerCase()}`}>
-                {k}
+            {cols.map((c) => (
+              <th key={c.key} scope="col" className={`bf-kind is-${c.tone}`} title={c.head}>
+                <span className="bf-wide">{c.head}</span>
+                <span className="bf-narrow">{c.short}</span>
               </th>
             ))}
           </tr>
@@ -87,9 +120,9 @@ export function BriefsPanel({ refreshKey }: { refreshKey: string }) {
               <th scope="row" title={m.hint}>
                 {m.label}
               </th>
-              {KINDS.map((k) => (
-                <td key={k} className="mono">
-                  {m.show(data.stats[k])}
+              {cols.map((c) => (
+                <td key={c.key} className="mono">
+                  {m.show(c.stats)}
                 </td>
               ))}
             </tr>
@@ -98,8 +131,9 @@ export function BriefsPanel({ refreshKey }: { refreshKey: string }) {
       </table>
 
       <p className="faint bf-note">
-        {thin ? `표본 부족(종류마다 ${MIN_SAMPLE}건 미만) — 경향만 보세요. ` : ""}
-        지시서를 찾지 못했거나 아직 재지 않은 FLIGHT {data.unmeasured}건은 뺐다. 보여 주기만 하고 점수나 배정에 쓰지 않는다.
+        {thin ? `표본 부족(칸마다 ${MIN_SAMPLE}건 미만) — 경향만 보세요. ` : ""}
+        지시서를 찾지 못했거나 아직 재지 않은 FLIGHT {data.unmeasured}건은 뺐다.
+        {g !== "brief" && data.crewUnknown ? ` SOLO·CREW를 모르는 ${data.crewUnknown}건도 이 묶음에서 빠졌다.` : ""} 보여 주기만 하고 점수나 배정에 쓰지 않는다.
       </p>
 
       {data.rows.length > 0 && (
@@ -109,6 +143,7 @@ export function BriefsPanel({ refreshKey }: { refreshKey: string }) {
             {data.rows.map((r) => (
               <li key={r.key}>
                 <span className={`bf-tag is-${r.kind.toLowerCase()}`}>{r.kind}</span>
+                {r.crew && <span className={`bf-tag is-${r.crew.toLowerCase()}`}>{r.crew}</span>}
                 <b className="mono">{r.flight ? flightNumber(r.flight) : r.key}</b>
                 <span className="mono faint">{r.aircraft ?? "—"}</span>
                 <span>질문 {r.questions}</span>

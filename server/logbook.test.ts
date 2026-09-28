@@ -291,13 +291,15 @@ test("measureLines: AD HOC은 지시서 null, AIRCRAFT를 모르거나 대화 �
   const events = [
     { t: "2026-09-24T07:00:00.000Z", dir: "in" as const, from: "uds:s", fromName: "structure", keys: ["VOC-1"], ids: [], brief: "DIRECT" as const },
     { t: "2026-09-24T07:01:00.000Z", dir: "out" as const, to: "uds:s", keys: ["VOC-1"], ids: [], readback: true },
+    { t: "2026-09-24T08:00:00.000Z", dir: "write" as const, by: "leader" as const, path: "/w/voc-1/src/a.ts", keys: [], ids: [] },
+    { t: "2026-09-24T08:10:00.000Z", dir: "write" as const, by: "crew" as const, path: "/w/voc-1/README.md", keys: [], ids: [] }, // 문서만: 도움
   ];
   const entries = [
-    entry(1, { departedAt: "2026-09-24T07:05:00Z" }),
+    entry(1, { departedAt: "2026-09-24T07:05:00Z", stands: ["/w/voc-1"] }),
     entry(2, { flight: null }),
     entry(3, { aircraft: null }),
     entry(4, { aircraft: "TEAM_X" }), // 이어진 세션 없음
-    entry(5, { measured: { brief: null, rework: 0, findings: { p0: 0, p1: 0, p2: 0 } } }), // 다 잼
+    entry(5, { measured: { brief: null, rework: 0, findings: { p0: 0, p1: 0, p2: 0 }, crew: null } }), // 다 잼
     entry(6, { arrivedAt: "2026-08-01T00:00:00Z" }), // 30일 밖
   ];
   const pulls = new Map([["o/atc#1", pr({ number: 1, createdAt: "2026-09-24T09:00:00Z", commits: [{ authoredDate: "2026-09-24T09:30:00Z", messageHeadline: "fix" }] })]]);
@@ -310,9 +312,14 @@ test("measureLines: AD HOC은 지시서 null, AIRCRAFT를 모르거나 대화 �
       t: "2026-09-28T00:00:00.000Z",
       key: "o/atc#1",
       brief: { kind: "DIRECT", at: "2026-09-24T07:00:00.000Z", by: "structure", readbackAt: "2026-09-24T07:01:00.000Z", questions: 0 },
+      crew: "SOLO",
       rework: 1,
       findings: { p0: 0, p1: 1, p2: 0 },
     },
-    { op: "measured", t: "2026-09-28T00:00:00.000Z", key: "o/atc#2", brief: null },
+    { op: "measured", t: "2026-09-28T00:00:00.000Z", key: "o/atc#2", brief: null, crew: null }, // STAND 모름
   ]);
+  // 이미 SOLO·CREW를 잰 줄은 다시 재지 않는다. 옛 measured 줄(crew 없음)에는 새 줄이 crew만 더한다
+  const old = entry(9, { departedAt: "2026-09-24T07:05:00Z", stands: ["/w/voc-1"], measured: { brief: null, rework: 0, findings: { p0: 0, p1: 0, p2: 0 } } });
+  assert.deepEqual(measureLines([old], { pulls: new Map(), eventsOf: () => events, threads: new Map(), reviews: [] }, NOW), [{ op: "measured", t: "2026-09-28T00:00:00.000Z", key: "o/atc#9", crew: "SOLO" }]);
+  assert.deepEqual(measureLines([{ ...old, measured: { ...old.measured, crew: null } }], { pulls: new Map(), eventsOf: () => events, threads: new Map(), reviews: [] }, NOW), []);
 });

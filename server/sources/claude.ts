@@ -206,10 +206,10 @@ export function inferTranscriptClaim(s: SessionFile, workspaces: Workspace[]): C
 }
 
 // 대화 기록의 지시서·READBACK·질문 사건(ATC-32 LOGBOOK 측정). 파일은 추가만 되므로 지난번 크기 뒤만 읽는다.
-// 사건에는 본문을 두지 않는다(briefs.ts talkEventsOf)
+// 사건에는 본문을 두지 않는다(briefs.ts talkEventsOf). 돌려주는 배열은 캐시 자체라 고치지 말고 복사해서 쓴다
 const talkCache = new Map<string, { size: number; events: TalkEvent[] }>();
 const TALK_CHUNK = 4 * 1024 * 1024;
-export function talkEventsFile(path: string): TalkEvent[] {
+export function talkEventsFile(path: string, source: "leader" | "crew" = "leader"): TalkEvent[] {
   let size: number;
   try {
     size = statSync(path).size;
@@ -233,7 +233,7 @@ export function talkEventsFile(path: string): TalkEvent[] {
         if (n === TALK_CHUNK) pos += n; // 4MB를 넘는 한 줄은 건너뛴다
         break;
       }
-      events.push(...talkEventsOf(buf.toString("utf8", 0, cut)));
+      events.push(...talkEventsOf(buf.toString("utf8", 0, cut), source));
       pos += cut + 1;
     }
     hit = { size: pos, events };
@@ -242,4 +242,16 @@ export function talkEventsFile(path: string): TalkEvent[] {
   } finally {
     closeSync(fd);
   }
+}
+
+// 세션 폴더 하나의 사건: 본 대화 기록(leader)과 서브에이전트 기록의 파일 쓰기(crew, ATC-33).
+// talkEventsFile은 캐시 배열을 돌려주므로 복사해서 합친다(그대로 push하면 leader 캐시에 crew 사건이 쌓인다)
+export function sessionEventsOf(dir: string): TalkEvent[] {
+  const out = [...talkEventsFile(`${dir}.jsonl`, "leader")];
+  let subs: string[] = [];
+  try {
+    subs = readdirSync(join(dir, "subagents")).filter((f) => f.endsWith(".jsonl"));
+  } catch {}
+  for (const f of subs) out.push(...talkEventsFile(join(dir, "subagents", f), "crew"));
+  return out;
 }
