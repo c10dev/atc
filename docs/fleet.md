@@ -555,7 +555,7 @@ Not built yet: LAUNCH and STOP proposed from demand and utilization (FLEET PLAN,
 
 ### 8.6 FLEET PLAN: proposing LAUNCH, STOP and the rest (design draft)
 
-Status: design draft (2026-09-28). Nothing built yet. Section 8.5 gave the SUPERVISOR the controls; this section decides when atc suggests using them, so that forming, parking, servicing and retiring teams stops being manual bookkeeping.
+Status: design draft (2026-09-28), SUPERVISOR decisions recorded below. Nothing built yet. Section 8.5 gave the SUPERVISOR the controls; this section decides when atc suggests using them, so that forming, parking, servicing and retiring teams stops being manual bookkeeping.
 
 **Current facts (2026-09-28 06:30 UTC).**
 
@@ -583,7 +583,7 @@ Two things follow. VCDO throughput is bounded by landing, not by the number of t
 
 | Kind | Airline analogue | Proposed when | Executes (approval mode) |
 |---|---|---|---|
-| `LAUNCH` | reserve call-out | dispatchable FLIGHTs at an AIRPORT have waited `waitMin` (default 120 min) with no available AIRCRAFT holding the needed ratings, the reserve is short, the runway is not the bottleneck, and the background cap has room; a registered AIRCRAFT not in service fits | 8.5 LAUNCH |
+| `LAUNCH` | reserve call-out | countable FLIGHTs (see Decisions) at an AIRPORT have waited `waitMin` (default 120 min) with no available AIRCRAFT holding the needed ratings, the reserve is short, the runway is not the bottleneck, and the background cap has room; a registered AIRCRAFT not in service fits | 8.5 LAUNCH |
 | `ENTRY` | wet lease | as `LAUNCH`, but no registered AIRCRAFT fits; proposes REGISTRATION, AIRPORT and CONFIGURATION | ENTRY INTO SERVICE, then LAUNCH |
 | `STOP` | parking | an atc-launched background session has had no STAND, no FLIGHT and no activity for `idleHours` (default 12) and the AIRPORT keeps its reserve without it | 8.5 STOP (resumable) |
 | `RESTART` | scheduled check | a background session is PARKED and older than `restartDays` (default 3) | STOP, then LAUNCH with a fresh CREW BRIEFING |
@@ -605,15 +605,15 @@ Two things follow. VCDO throughput is bounded by landing, not by the number of t
 |---|---|
 | Launch and stop oscillate | two-cycle persistence, `minDwell`, reserve as hysteresis |
 | Usage runs out | background cap (8.5), LAUNCH never automatic, weekly-usage line on the block once FUEL exists |
-| Wrong demand signal (parent issues, missing labels) | count only FLIGHTs the planner could dispatch; excluded FLIGHTs are shown, not counted |
+| Wrong demand signal (parent issues, missing labels) | count only FLIGHTs that pass the planner's exclusions; excluded FLIGHTs are shown, not counted |
 | More teams, same landing queue | the runway rule (principle 3) |
 | A RESTART loses useful context | only PARKED sessions; the old conversation is kept and resumable |
 
-**Decisions needed (SUPERVISOR).**
+**Decisions (2026-09-28, SUPERVISOR).**
 
-- Defaults: `reserve` 1, `waitMin` 120, `idleHours` 12, `restartDays` 3, `retireDays` 30, `minDwell` 2 h.
-- Whether ATC FLIGHTs count as demand. Today `candidateTeams` is empty, so only VOC FLIGHTs are dispatchable and ATCC would never see a LAUNCH proposal.
-- Whether step 4 (automatic STOP) is wanted at all.
+- Defaults as proposed: `reserve` 1, `waitMin` 120, `idleHours` 12, `restartDays` 3, `retireDays` 30, `minDwell` 2 h. Shadow data and the gate decide later changes.
+- ATC FLIGHTs count as demand. FLEET PLAN counts the open FLIGHTs of every team in `LINEAR_TEAM_KEYS`, not only `candidateTeams`, with the same exclusions as the planner (parent issues, closed states, `tail:` to another AIRCRAFT). DISPATCH still assigns only `candidateTeams`, so a LAUNCH for ATC demand serves direct assignment (structure or a person) until ATC is added there. ATC FLIGHTs carry the workspace classification labels; where one has none, the rating check is skipped and the reason says so.
+- Step 4 (automatic STOP) stays in the plan but is built last, with its switch off by default. Turning it on is a separate SUPERVISOR decision after the shadow gate passes.
 
 Sources: [Jeppesen crew pairing](https://ww2.jeppesen.com/airline-crew-optimization-solutions/airline-crew-pairing/), [Lufthansa Systems NetLine/Crew](https://www.lhsystems.com/solutions/operations-control-center/netline-crew), [airline disruption recovery survey (arXiv 2510.26831)](https://arxiv.org/html/2510.26831), [OAG on wet leasing](https://www.oag.com/blog/what-is-wet-leasing), [SKYbrary: MEL](https://skybrary.aero/articles/minimum-equipment-list-mel), [EASA AI levels (Halldale)](https://www.halldale.com/civil-aviation/easa-ai-framework-aviation-safety-regulations), [ICAO on aircraft parking](https://www.icao.int/operational-safety/Aircraft-Parking).
 

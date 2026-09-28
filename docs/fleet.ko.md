@@ -610,7 +610,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 ### 8.6 FLEET PLAN: LAUNCH·STOP 등을 제안하기 (설계 초안)
 
-상태: 설계 초안(2026-09-28). 아직 만든 것 없음. 8.5가 SUPERVISOR에게 조종 버튼을 줬다면, 이 절은 atc가 언제 그 버튼을 쓰자고 제안할지 정한다. 팀을 꾸리고, 세우고, 정비하고, 퇴역시키는 일을 손으로 챙기지 않게 하려는 것이다.
+상태: 설계 초안(2026-09-28), SUPERVISOR 결정은 아래에 적었다. 아직 만든 것 없음. 8.5가 SUPERVISOR에게 조종 버튼을 줬다면, 이 절은 atc가 언제 그 버튼을 쓰자고 제안할지 정한다. 팀을 꾸리고, 세우고, 정비하고, 퇴역시키는 일을 손으로 챙기지 않게 하려는 것이다.
 
 **지금 사실(2026-09-28 06:30 UTC).**
 
@@ -638,7 +638,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 | 종류 | 항공사에서 | 언제 제안하나 | 실행(승인 운용) |
 |---|---|---|---|
-| `LAUNCH` | 예비 승무원 호출 | 한 AIRPORT에서 배정할 수 있는 FLIGHT가 `waitMin`(기본 120분) 기다렸는데 필요한 rating을 가진 가용 AIRCRAFT가 없고, 예비가 모자라고, 활주로가 병목이 아니고, 백그라운드 상한에 여유가 있음. 운항하지 않는 등록 AIRCRAFT가 맞음 | 8.5 LAUNCH |
+| `LAUNCH` | 예비 승무원 호출 | 한 AIRPORT에서 셀 수 있는 FLIGHT(결정 참고)가 `waitMin`(기본 120분) 기다렸는데 필요한 rating을 가진 가용 AIRCRAFT가 없고, 예비가 모자라고, 활주로가 병목이 아니고, 백그라운드 상한에 여유가 있음. 운항하지 않는 등록 AIRCRAFT가 맞음 | 8.5 LAUNCH |
 | `ENTRY` | wet lease | `LAUNCH`와 같은데 맞는 등록 AIRCRAFT가 없음. REGISTRATION·AIRPORT·CONFIGURATION을 제안 | ENTRY INTO SERVICE 뒤 LAUNCH |
 | `STOP` | 주기(parking) | atc가 띄운 백그라운드 세션이 `idleHours`(기본 12) 동안 STAND·FLIGHT·활동이 없고, 그것 없이도 AIRPORT의 예비가 유지됨 | 8.5 STOP(다시 이어짐) |
 | `RESTART` | 정기 점검 | 백그라운드 세션이 PARKED이고 `restartDays`(기본 3)보다 오래됨 | STOP 뒤 새 CREW BRIEFING으로 LAUNCH |
@@ -660,15 +660,15 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 |---|---|
 | LAUNCH·STOP이 왔다 갔다 함 | 두 주기 지속, `minDwell`, 예비를 이력(hysteresis)으로 |
 | 사용량이 바닥남 | 백그라운드 상한(8.5), LAUNCH는 자동 없음, FUEL이 생기면 블록에 주간 사용량 줄 |
-| 수요 신호가 틀림(상위 이슈, 라벨 없음) | planner가 배정할 수 있는 FLIGHT만 센다. 제외된 FLIGHT는 보이기만 하고 세지 않는다 |
+| 수요 신호가 틀림(상위 이슈, 라벨 없음) | planner의 제외 규칙을 통과한 FLIGHT만 센다. 제외된 FLIGHT는 보이기만 하고 세지 않는다 |
 | 팀은 늘었는데 착륙 대기열은 그대로 | 활주로 규칙(원칙 3) |
 | RESTART가 쓸모 있는 맥락을 잃음 | PARKED 세션만. 옛 대화는 남아서 다시 이어진다 |
 
-**정할 것(SUPERVISOR).**
+**결정 (2026-09-28, SUPERVISOR).**
 
-- 기본값: `reserve` 1, `waitMin` 120, `idleHours` 12, `restartDays` 3, `retireDays` 30, `minDwell` 2시간.
-- ATC FLIGHT를 수요로 셀지. 지금 `candidateTeams`가 비어 있어 VOC FLIGHT만 배정 대상이고, ATCC에는 LAUNCH 제안이 나오지 않는다.
-- 4단계(자동 STOP)를 원하는지.
+- 기본값은 제안대로: `reserve` 1, `waitMin` 120, `idleHours` 12, `restartDays` 3, `retireDays` 30, `minDwell` 2시간. 이후 조정은 그림자 기록과 게이트로 정한다.
+- ATC FLIGHT도 수요로 센다. FLEET PLAN은 `candidateTeams`만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 열린 FLIGHT를 세고, 제외 규칙은 planner와 같다(상위 이슈, 닫힌 상태, 다른 AIRCRAFT로 가는 `tail:`). DISPATCH는 여전히 `candidateTeams`만 배정하므로, ATC 수요로 나온 LAUNCH는 ATC를 거기 넣기 전까지 직접 배정(structure나 사람)에 쓰인다. ATC FLIGHT도 워크스페이스 분류 라벨을 쓴다. 라벨이 없는 FLIGHT는 rating 확인을 건너뛰고 사유에 그렇게 적는다.
+- 4단계(자동 STOP)는 계획에 두되 마지막에 만들고, 스위치는 기본으로 꺼 둔다. 켜는 것은 그림자 게이트를 통과한 뒤 SUPERVISOR가 따로 정한다.
 
 출처: [Jeppesen crew pairing](https://ww2.jeppesen.com/airline-crew-optimization-solutions/airline-crew-pairing/), [Lufthansa Systems NetLine/Crew](https://www.lhsystems.com/solutions/operations-control-center/netline-crew), [항공 disruption recovery 조사(arXiv 2510.26831)](https://arxiv.org/html/2510.26831), [OAG: wet leasing](https://www.oag.com/blog/what-is-wet-leasing), [SKYbrary: MEL](https://skybrary.aero/articles/minimum-equipment-list-mel), [EASA AI 등급(Halldale)](https://www.halldale.com/civil-aviation/easa-ai-framework-aviation-safety-regulations), [ICAO: 항공기 주기](https://www.icao.int/operational-safety/Aircraft-Parking).
 
