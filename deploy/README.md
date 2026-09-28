@@ -85,3 +85,23 @@ ssh -L 7700:localhost:7700 <host>
 ```
 
 Then open `http://localhost:7700`.
+
+## SELF-LANDING lander (`atc-lander`)
+
+`atc-lander.service` and `atc-lander.timer` run `deploy/lander.mjs` every 5 minutes, outside the atc server ([docs/self-landing.md](../docs/self-landing.md)). Steps 1 and 2 are **shadow**: for each open atc PR head it records `would-merge` or `would-skip` with reasons, then how the PR actually ended, in `~/.local/state/atc/self-landing.jsonl`. It never merges, deploys or restarts anything. The STRIPS tab shows its line in the LANDING SEQUENCE header.
+
+| Check | Rule |
+|---|---|
+| Delegated | base `main`, a branch in this repository (no fork), opened by the owner account, not draft, no `hold` label, tier `auto`, CI `check` passed, not conflicting |
+| Excluded | landing, AUTOLAND, switch, FLEET PLAN and session-control code; operational state format (state file paths, `…Op` / `RecordLine` types in `server/`); `SELF-LANDING: no` in the body; more than 1,500 changed lines |
+| Review | the last landing review (`landing-reviews.jsonl`) on the exact head is a pass with no P0 or P1 |
+| Local checks | only when nothing but the review is missing: a detached worktree of `origin/main` merged with the head, then `npm test`, tsc and vite build |
+
+`~/.local/state/atc/self-landing.json` holds `mode` (`off`, `shadow`; missing means `shadow`; `merge` is not built yet and runs as shadow), a `groundStop` and the heads already judged.
+
+```bash
+cp deploy/atc-lander.service deploy/atc-lander.timer ~/.config/systemd/user/ && systemctl --user daemon-reload
+systemctl --user enable --now atc-lander.timer
+journalctl --user -u atc-lander -f       # what it judged
+ATC_STATE_DIR=/tmp/x node deploy/lander.mjs   # one dry run with a separate state folder
+```

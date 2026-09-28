@@ -14,6 +14,7 @@ import { mountCrewChange } from "./crew-change.ts";
 import { mountCheckride } from "./checkride.ts";
 import { mountFleet } from "./fleet.ts";
 import { mountFleetPlan, runFleetPlan } from "./fleet-plan-run.ts";
+import { mountSelfLanding } from "./self-landing.ts";
 import { mountSessionControl } from "./session-control.ts";
 import { mountFollowing } from "./following.ts";
 import { recordDepartures } from "./departures.ts";
@@ -122,6 +123,7 @@ mountSchedule(app, getSnapshot);
 mountFollowing(app, getSnapshot);
 mountAtfm(app, getSnapshot);
 mountAutoland(app, getSnapshot);
+mountSelfLanding(app, getSnapshot);
 mountSettings(app);
 
 app.get("/api/events", (c) =>

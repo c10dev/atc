@@ -4,7 +4,7 @@
 
 atc가 자기 PR을 머지하고 배포한다. AUTOLAND([occ.ko.md](occ.ko.md) 9.7)는 다른 저장소(vocado, AIRPORT `VCDO`)의 PR을 착륙시키고, 머지한 뒤에는 아무것도 하지 않는다. SELF-LANDING은 atc 저장소(AIRPORT `ATCC`)의 PR을 착륙시킨다. 이 머지는 관제 코드 자체를 바꾼다. 그래서 머지 뒤에 배포(서비스 체크아웃 fast-forward, 서비스 재시작), 상태 확인, 새 빌드가 깨졌을 때 되돌아갈 길이 함께 있어야 한다.
 
-> 상태: 설계 초안(2026-09-28). SUPERVISOR가 다섯 제안을 모두 받아들였다(끝의 "결정"). 아직 만든 것 없음.
+> 상태: 1·2단계 만듦(그림자, 2026-09-28). SUPERVISOR가 다섯 제안을 모두 받아들였다(끝의 "결정"). 3~5단계는 아직.
 
 관련: [occ.ko.md](occ.ko.md) 9(CLEARED TO LAND, AUTOLAND, 외부 리뷰), `deploy/landing-tier.mjs`(LANDING CLEARANCE 등급), 루트 `CLAUDE.md` "git과 PR"(누가 무엇을 머지하나), [fleet.ko.md](fleet.ko.md) 8.6–8.7(이 설계가 가져다 쓰는 그림자 → 승인 운용 방식).
 
@@ -89,8 +89,19 @@ atc가 자기 PR을 머지하고 배포한다. AUTOLAND([occ.ko.md](occ.ko.md) 9
 
 ## 6. 구현 순서
 
-1. `deploy/lander.mjs`: 순수 판단(맡는 범위, 제외, 다음 동작)과 테스트. 그림자 기록만.
-2. `deploy/lander.sh`와 `atc-lander` systemd 타이머, 상태 파일과 기록, LANDING SEQUENCE 머리의 ATCC 줄.
+**만든 것(1·2단계, 그림자, 2026-09-28).** `deploy/lander.mjs`(순수 판단과 입출력, 테스트는 `deploy/lander.test.mjs`), `deploy/atc-lander.service`·`.timer`, `server/self-landing.ts`(`GET /api/self-landing`), STRIPS 탭 LANDING SEQUENCE 머리의 SELF-LANDING 줄. 만들면서 이렇게 정했다.
+
+- **모드.** 상태 파일이 없으면 `shadow`다. `merge`는 아직 없어서 그림자로 돈다.
+- **head마다 한 번.** head는 한 번만 판정한다. PR이 끝나면 `outcome` 줄에 `merged-as-is`(판정한 head 그대로 머지), `merged-changed`, `closed`를 적는다.
+- **로컬 확인**은 리뷰 말고는 걸린 것이 없을 때만 한다. `readyExceptReview`는 사유가 리뷰 없음 하나뿐인 `would-skip`이라, 3단계 전에도 그림자 데이터가 쓸모 있다.
+- **게이트 셈.**
+  - 맞음: `would-merge`인데 그대로 머지됐거나, `would-skip`인데 닫혔거나 바뀐 뒤 머지됐거나 `auto` 등급이 아닌 것.
+  - 거절: 닫혔거나 바뀐 PR에 `would-merge`.
+- **리뷰.** 지금 lander는 착륙 리뷰 기록(`landing-reviews.jsonl`)만 센다. atc PR은 3단계 전까지 이 기록이 없어서, 그때까지는 모든 판정이 `would-skip`이다.
+- **2026-09-28 첫 실행:** #105(문서)는 리뷰 없음 하나로 `would-skip`이었다. 머지 결과의 로컬 확인은 10초 만에 통과했고 남긴 것이 없었다.
+
+1. ✅ `deploy/lander.mjs`: 순수 판단(맡는 범위, 제외, 다음 동작)과 테스트. 그림자 기록만.
+2. ✅ `atc-lander` systemd 서비스와 타이머(`deploy/lander.mjs`를 바로 돌린다. `lander.sh`는 두지 않음), 상태 파일과 기록, LANDING SEQUENCE 머리의 ATCC 줄.
 3. atc PR의 리뷰 출처(결정 2).
 4. 상태 확인과 되돌리기. 먼저 7702 시험 인스턴스에 일부러 깨뜨린 빌드로 시험한다.
 5. 그림자 게이트(결정 5)를 넘은 뒤 스위치 뒤의 `merge` 모드.

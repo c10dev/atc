@@ -25,6 +25,11 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- SELF-LANDING lander 그림자 운용([docs/self-landing.ko.md](docs/self-landing.ko.md) 1·2단계). atc 서버 밖의 systemd 타이머(`atc-lander`, `deploy/lander.mjs`)가 5분마다 열린 atc PR의 head를 판정한다. 아직 머지, 배포, 재시작은 하지 않는다.
+  - `would-merge`가 되려면 모두 필요하다: `auto` 등급, 이 저장소의 브랜치이고 소유자 계정이 연 PR, CI 통과, 제외 경로와 상태 형식 변경 없음, head에 깨끗한 착륙 리뷰, `origin/main`에 head를 합친 결과에서 테스트·tsc·빌드 통과.
+  - PR이 실제로 어떻게 끝났는지도 적어 그림자 게이트(20건, 90%, 바뀌거나 닫힌 PR에 `would-merge` 0건)를 잰다.
+  - 기록은 `~/.local/state/atc/self-landing.jsonl`과 `self-landing.json`이다. `GET /api/self-landing`이 STRIPS 탭 LANDING SEQUENCE 머리의 SELF-LANDING 줄을 채운다.
+  - 설치는 `deploy/README.ko.md`에 있다.
 - FLEET PLAN 승인 운용([docs/fleet.ko.md](docs/fleet.ko.md) 8.7, 3단계). 승인 운용을 켜면 SUPERVISOR가 제안을 **승인(실행)**할 때 FLEET 탭 버튼과 같은 코드로 곧바로 실행한다. LAUNCH·ENTRY(들이고 띄움)·STOP·RESTART(멈추고 다시 띄움)·AOG·RETIRE, 그리고 새 종류 RETURN(FLEET PLAN이 건 AOG의 기한이 지나면 해제)이다.
   - 켜는 조건은 SUPERVISOR 결정대로다. 그림자 게이트(20건·80%)를 넘어야 하고, 이 화면에서만 켤 수 있다. 그림자로 돌리는 것은 언제나 된다. 모드는 `~/.local/state/atc/fleet-plan.json`에 두고, 바꿀 때마다 FLIGHT RECORDER에 `fleet-plan` `mode:` 줄을 남긴다.
   - 승인할 때 다시 확인한다. 최근 주기(10분 안)가 같은 제안을 여전히 내고, 8.5의 거절 조건을 통과해야 한다. 아니면 409 "조건이 바뀜"이다. id별 잠금으로 두 번 실행하지 않는다.

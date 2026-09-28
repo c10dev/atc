@@ -47,6 +47,11 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 - Linear projects and milestones are read for every team in `LINEAR_TEAM_KEYS`, not only the main team ([docs/routes.md](docs/routes.md) step 5). atc's own ROUTE (M15–M20) now shows on the NETWORK tab's ROUTE MAP and in the WAYPOINT ETAs and slip warnings. Shared projects and milestones are merged, and each carries the team keys it was read from (`teams`). WAYPOINT gaps and NEW's `--milestone` still take only milestones of the candidate teams (`candidateTeams`), because NEW creates its issue in the main team.
 
 ### Added
+- SELF-LANDING lander in shadow ([docs/self-landing.md](docs/self-landing.md), steps 1 and 2). A systemd timer outside the atc server (`atc-lander`, `deploy/lander.mjs`) judges each open atc PR head every 5 minutes. It does not merge, deploy or restart anything yet.
+  - `would-merge` needs all of these: tier `auto`, this repository's own branch by the owner account, CI passed, no excluded paths or state-format change, a clean landing review on the head, and tests, tsc and build passing on `origin/main` merged with the head.
+  - It later records how the PR actually ended, for the shadow gate: 20 PRs, 90%, and no `would-merge` on a PR that was changed or closed.
+  - Records: `~/.local/state/atc/self-landing.jsonl` and `self-landing.json`. `GET /api/self-landing` feeds a SELF-LANDING line in the STRIPS LANDING SEQUENCE header.
+  - Install: `deploy/README.md`.
 - FLEET PLAN approval mode ([docs/fleet.md](docs/fleet.md) 8.7, step 3). With approval mode on, the SUPERVISOR's **승인(실행)** on a proposal runs it right away, through the same code as the FLEET tab buttons. That covers LAUNCH, ENTRY (enter then launch), STOP, RESTART (stop then launch), AOG, RETIRE, and a new kind, RETURN (clears a FLEET PLAN AOG once its date has passed).
   - Turning it on follows the SUPERVISOR's decisions: it needs the shadow gate (20 verdicts, 80%) and this screen. Going back to shadow always works. The mode lives in `~/.local/state/atc/fleet-plan.json`, and each switch writes a `fleet-plan` `mode:` line to the FLIGHT RECORDER.
   - Approval re-checks first: the latest cycle (at most 10 min old) must still produce the same proposal, and the 8.5 refusals must pass. Otherwise it answers 409 "조건이 바뀜". A per-id lock prevents a double run.

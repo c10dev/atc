@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AutolandView, PullTagKind } from "../../../server/autoland.ts";
+import type { SelfLandingView } from "../../../server/self-landing.ts";
 import type { Claim, Clearance, LandingBlockCode, PullRequest, Session, Snapshot } from "../../../server/model.ts";
 import {
   type AircraftStatus,
@@ -389,6 +390,43 @@ function AutolandStatus({ autoland, idx }: { autoland: AutolandView | null; idx:
   );
 }
 
+// SELF-LANDING(docs/self-landing.md): 서버 밖 lander가 atc PR을 어떻게 판정했나. 그림자 동안은 머지하지 않는다
+function SelfLandingStatus({ pulls }: { pulls: PullRequest[] }) {
+  const [view, setView] = useState<SelfLandingView | null>(null);
+  const heads = pulls.map((p) => `${p.number}@${p.head}`).join(",");
+  useEffect(() => {
+    let live = true;
+    fetch("/api/self-landing")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((v) => live && setView(v))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [heads]);
+  if (!view?.running || view.mode === "off") return null;
+  const g = view.gate;
+  const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
+  const prText = view.prs
+    .map((p) => {
+      if (!p.evaluated) return `#${p.number} 판정 전`;
+      const why = p.evaluated.reasons[0]?.text;
+      return `#${p.number} ${p.current ? "" : "(옛 head) "}${p.evaluated.verdict}${why ? ` — ${why}` : ""}`;
+    })
+    .join(" · ");
+  return (
+    <ul className="ls-autoland" aria-label="SELF-LANDING">
+      <li className={view.groundStop ? "is-groundstop" : "is-waiting"} title={`SELF-LANDING 그림자 게이트: 끝난 PR ${g.decided}/${g.target.decided}, 합의 ${pct(g.agreement)}(목표 ${pct(g.target.agreement)}), structure가 거절한 PR에 would-merge ${g.refused}건, 리뷰만 빠진 would-skip ${g.reviewOnly}건`}>
+        <span className="ls-autoland-mode">SELF-LANDING {String(view.mode).toUpperCase()}</span>
+        ATCC{" "}
+        {view.groundStop
+          ? `GROUND STOP — ${view.groundStop.reason ?? ""}`
+          : `${prText || "열린 atc PR 없음"} · 게이트 ${g.decided}/${g.target.decided} 합의 ${pct(g.agreement)}`}
+      </li>
+    </ul>
+  );
+}
+
 function PrLink({ pr }: { pr: PullRequest }) {
   return (
     <a
@@ -527,6 +565,7 @@ function LandingSequence({
         LANDING SEQUENCE <em>CLEARED TO LAND {cleared.length}</em>
       </h2>
       <AutolandStatus autoland={landing.autoland} idx={idx} />
+      <SelfLandingStatus pulls={pulls} />
       {cleared.length > 0 && <ol className="ls-list">{cleared.map(row)}</ol>}
       {approach.length > 0 && (
         <details className="ls-group">

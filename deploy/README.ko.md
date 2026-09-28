@@ -85,3 +85,23 @@ ssh -L 7700:localhost:7700 <host>
 ```
 
 그다음 `http://localhost:7700`을 연다.
+
+## SELF-LANDING lander(`atc-lander`)
+
+`atc-lander.service`와 `atc-lander.timer`는 atc 서버 밖에서 5분마다 `deploy/lander.mjs`를 돌린다([docs/self-landing.ko.md](../docs/self-landing.ko.md)). 1·2단계는 **그림자**다. 열린 atc PR의 head마다 `would-merge`·`would-skip`과 사유를 적고, 그 PR이 실제로 어떻게 끝났는지도 `~/.local/state/atc/self-landing.jsonl`에 적는다. 머지, 배포, 재시작은 하지 않는다. STRIPS 탭의 LANDING SEQUENCE 머리에 한 줄로 보인다.
+
+| 확인 | 규칙 |
+|---|---|
+| 맡는 범위 | base `main`, 이 저장소 안의 브랜치(fork 아님), 소유자 계정이 연 PR, draft 아님, `hold` 라벨 없음, 등급 `auto`, CI `check` 통과, 충돌 없음 |
+| 제외 | 착륙·AUTOLAND·스위치·FLEET PLAN·세션 조종 코드, 운영 상태 형식(`server/`의 상태 파일 경로, `…Op`·`RecordLine` 타입), 본문의 `SELF-LANDING: no`, 바뀐 줄 1,500 초과 |
+| 리뷰 | 정확한 head의 마지막 착륙 리뷰(`landing-reviews.jsonl`)가 P0·P1 없는 pass |
+| 로컬 확인 | 리뷰 말고는 걸린 것이 없을 때만: `origin/main`에 head를 합친 분리 worktree에서 `npm test`, tsc, vite build |
+
+`~/.local/state/atc/self-landing.json`에는 `mode`(`off`, `shadow`. 없으면 `shadow`. `merge`는 아직 없어 그림자로 돈다), `groundStop`, 이미 판정한 head가 있다.
+
+```bash
+cp deploy/atc-lander.service deploy/atc-lander.timer ~/.config/systemd/user/ && systemctl --user daemon-reload
+systemctl --user enable --now atc-lander.timer
+journalctl --user -u atc-lander -f       # 판정 내용
+ATC_STATE_DIR=/tmp/x node deploy/lander.mjs   # 따로 둔 상태 폴더로 한 번 시험
+```

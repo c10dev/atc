@@ -4,7 +4,7 @@
 
 atc merges and deploys its own PRs. AUTOLAND ([occ.md](occ.md) 9.7) lands PRs in other repositories (vocado, AIRPORT `VCDO`) and does nothing after the merge. SELF-LANDING lands PRs in the atc repository (AIRPORT `ATCC`). The merge changes the code of the controller itself, so it must be followed by a deploy (fast-forward the service checkout, restart the service), a health check, and a way back when the new build is broken.
 
-> Status: design draft (2026-09-28). The SUPERVISOR accepted all five proposals (see "Decisions" at the end). Nothing built yet.
+> Status: steps 1 and 2 built (shadow, 2026-09-28). The SUPERVISOR accepted all five proposals (see "Decisions" at the end). Steps 3–5 are not built yet.
 
 Related: [occ.md](occ.md) 9 (CLEARED TO LAND, AUTOLAND, external review), `deploy/landing-tier.mjs` (LANDING CLEARANCE tiers), root `CLAUDE.md` "git과 PR" (who merges what), [fleet.md](fleet.md) 8.6–8.7 (the shadow → approval pattern this design reuses).
 
@@ -89,8 +89,19 @@ The `atc-lander` timer runs every 5 minutes (`deploy/lander.sh`, pure decision p
 
 ## 6. Implementation order
 
-1. `deploy/lander.mjs`: pure decision (delegated class, exclusions, next action), with tests. Shadow records only.
-2. `deploy/lander.sh` and the `atc-lander` systemd timer; state file and records; ATCC line in the LANDING SEQUENCE header.
+**Built (steps 1 and 2, shadow, 2026-09-28).** `deploy/lander.mjs` (pure decision and I/O, tests in `deploy/lander.test.mjs`), `deploy/atc-lander.service` and `.timer`, `server/self-landing.ts` (`GET /api/self-landing`) and the SELF-LANDING line in the STRIPS LANDING SEQUENCE header. Details settled while building:
+
+- **Mode.** No state file means `shadow`. `merge` is not built yet, so it runs as shadow.
+- **Once per head.** Each head is judged once. When the PR ends, an `outcome` line records `merged-as-is` (merged at the judged head), `merged-changed` or `closed`.
+- **Local checks** run only when nothing but the review is missing. `readyExceptReview` marks a `would-skip` whose only reason is the missing review, so the shadow data is useful before step 3.
+- **Gate counting.**
+  - Agree: `would-merge` and merged as-is; or `would-skip` and closed, changed, or not tier `auto`.
+  - Refused: `would-merge` on a PR that was closed or changed.
+- **Review.** For now the lander counts only the landing-review records (`landing-reviews.jsonl`). atc PRs have none until step 3, so every judgment is `would-skip` until then.
+- **First run on 2026-09-28:** #105 (docs) was `would-skip` for the missing review only. The local checks on the merge result passed in 10 s, and nothing was left behind.
+
+1. ✅ `deploy/lander.mjs`: pure decision (delegated class, exclusions, next action), with tests. Shadow records only.
+2. ✅ The `atc-lander` systemd service and timer (they run `deploy/lander.mjs` directly, no `lander.sh`); state file and records; ATCC line in the LANDING SEQUENCE header.
 3. Review source for atc PRs (Decision 2).
 4. Health check and rollback, tried first against a test instance on 7702 with a deliberately broken build.
 5. `merge` mode behind the switch, after the shadow gate (Decision 5).

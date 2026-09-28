@@ -52,5 +52,6 @@ CROSSCHECK 일치율은 S3에서 SEC가 아닌 CLASSIFY 같은 저위험 작업�
 | — | 세션 조종: atc가 세션을 띄우고 멈춤(LAUNCH·STOP, SUPERVISOR가 누를 때) | 완료. 수요 기반 자동 제안은 다음 |
 | — | CREW CHANGE, CHECKRIDE, 실제 관측 팀원, TARGETS 실적 | 완료 |
 | — | FLEET PLAN: 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·AOG·RETIRE·RETURN을 제안 | 그림자 운용 중. 승인 운용(3단계)은 만들었고 게이트를 넘으면 켤 수 있다. 자동 STOP(4단계)은 다음 |
+| — | SELF-LANDING: atc가 자기 PR을 머지·배포하고 실패하면 되돌림 | 그림자(1·2단계): `atc-lander` 타이머가 판정만 기록. 리뷰 출처(3단계)와 배포·되돌리기(4단계)는 다음 |
 
 설계 문서: 저장소의 `docs/dispatch.ko.md`, `docs/occ.ko.md`, `docs/fleet.ko.md`, `docs/atfm.ko.md`.
