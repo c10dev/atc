@@ -813,3 +813,28 @@ test("지금 WAYPOINT(routes 8단계): 지금 구간 WAYPOINT에 붙은 FLIGHT�
   const off = planDispatch(s, new Map(), cfg({ weights: { ...DEFAULT_DISPATCH_CONFIG.weights, waypoint: 0 } }), NOW, undefined, undefined, undefined, [], active);
   assert.equal(off.assign[0].flight, "VOC-40"); // 가중치 0이면 순서가 그대로
 });
+
+test("unserved: 받을 AIRCRAFT가 없는 FLIGHT만 — 자격 없음, tail 세션 없음, 모두 바쁨. 슬롯이 찬 것은 넣지 않는다", () => {
+  const s = snap({
+    sessions: [session("a", "TEAM_A", "busy"), session("b", "TEAM_B")],
+    tickets: [
+      ticket("VOC-1", { labels: ["rating:SEC"] }), // TEAM_B는 SEC가 없다(기본 rating)
+      ticket("VOC-2", { labels: ["tail:TEAM_Z"] }),
+      ticket("VOC-3", { priority: 1 }),
+      ticket("VOC-4", { priority: 4 }),
+    ],
+  });
+  const p = planDispatch(s, new Map(), cfg(), NOW);
+  assert.deepEqual(p.assign.map((x) => x.flight), ["VOC-3"]);
+  const by = Object.fromEntries((p.unserved ?? []).map((u) => [u.flight, u]));
+  assert.equal(by["VOC-1"].why, "unqualified");
+  assert.deepEqual(by["VOC-1"].ratings, ["SEC"]);
+  assert.equal(by["VOC-1"].labeled, true);
+  assert.equal(by["VOC-2"].why, "no-tail");
+  assert.deepEqual(by["VOC-2"].tails, ["TEAM_Z"]);
+  assert.equal(by["VOC-4"].why, "no-aircraft");
+  assert.equal(by["VOC-4"].labeled, false);
+  // AIRPORT 슬롯이 차 있으면 AIRCRAFT를 더 띄워도 못 날린다 — 수요로 세지 않는다
+  const full = planDispatch(s, new Map(), cfg({ slots: { ...DEFAULT_DISPATCH_CONFIG.slots, airborne: { VCDO: 2 } } }), NOW);
+  assert.deepEqual((full.unserved ?? []).map((u) => u.flight).sort(), ["VOC-1", "VOC-2"]);
+});

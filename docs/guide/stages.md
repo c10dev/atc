@@ -51,6 +51,6 @@ CROSSCHECK 일치율은 S3에서 SEC가 아닌 CLASSIFY 같은 저위험 작업�
 | — | 팀 빌딩(ENTRY INTO SERVICE, CREW BRIEFING, AOG, 퇴역) | 완료 |
 | — | 세션 조종: atc가 세션을 띄우고 멈춤(LAUNCH·STOP, SUPERVISOR가 누를 때) | 완료. 수요 기반 자동 제안은 다음 |
 | — | CREW CHANGE, CHECKRIDE, 실제 관측 팀원, TARGETS 실적 | 완료 |
-| 다음 | FLEET PLAN: 수요·활주로·예비를 보고 LAUNCH·STOP·RESTART·AOG·RETIRE를 제안. 그림자 판정부터 | 설계 초안(저장소의 `docs/fleet.ko.md` 8.6) |
+| — | FLEET PLAN: 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·AOG·RETIRE를 제안 | 그림자 운용 중(1·2단계). 20건·80%를 넘으면 승인 운용(3단계) |
 
 설계 문서: 저장소의 `docs/dispatch.ko.md`, `docs/occ.ko.md`, `docs/fleet.ko.md`, `docs/atfm.ko.md`.

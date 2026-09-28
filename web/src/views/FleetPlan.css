@@ -1,0 +1,161 @@
+/* FLEET PLAN: FLEET 탭 카드 위의 그림자 제안(docs/fleet.md 8.6) */
+.fp {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.fp-title em {
+  margin-left: var(--space-2);
+  color: var(--faint);
+  font: var(--text-xs) var(--sans);
+  font-style: normal;
+  letter-spacing: 0;
+}
+.fp-mode {
+  margin-left: var(--space-1-5);
+  padding: 0 var(--space-1-5);
+  color: var(--cyan);
+  border: 1px solid var(--cyan);
+  border-radius: var(--radius-sm);
+  font: 600 var(--text-2xs) var(--mono);
+}
+.fp-meta {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+}
+.fp-ready {
+  color: var(--radar);
+}
+.fp-demand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.fp-short {
+  color: var(--amber);
+}
+.fp-blocked {
+  color: var(--muted);
+}
+.fp-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.fp-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--faint);
+  border-radius: var(--radius);
+}
+.fp-row.k-LAUNCH,
+.fp-row.k-ENTRY {
+  border-left-color: var(--radar);
+}
+.fp-row.k-STOP,
+.fp-row.k-RESTART {
+  border-left-color: var(--cyan);
+}
+.fp-row.k-AOG {
+  border-left-color: var(--amber);
+}
+.fp-row.k-RETIRE {
+  border-left-color: var(--alert);
+}
+.fp-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--text-sm);
+}
+.fp-kind {
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.k-LAUNCH .fp-kind,
+.k-ENTRY .fp-kind {
+  color: var(--radar);
+}
+.k-STOP .fp-kind,
+.k-RESTART .fp-kind {
+  color: var(--cyan);
+}
+.k-AOG .fp-kind {
+  color: var(--amber);
+}
+.k-RETIRE .fp-kind {
+  color: var(--alert);
+}
+.fp-age {
+  margin-left: auto;
+  font-size: var(--text-xs);
+}
+.fp-reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.fp-code {
+  color: var(--faint);
+  font-family: var(--mono);
+}
+.fp-row .fl-actions {
+  justify-content: flex-end;
+}
+.fp-empty,
+.fp-waiting {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+}
+.fp-recent {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+}
+.fp-recent summary {
+  color: var(--muted);
+  cursor: pointer;
+}
+.fp-recent ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.fp-recent li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1-5);
+}
+.fp-status.st-agreed {
+  color: var(--radar);
+}
+.fp-status.st-disagreed {
+  color: var(--alert);
+}
+.fp-status.st-expired,
+.fp-status.st-superseded {
+  color: var(--faint);
+}

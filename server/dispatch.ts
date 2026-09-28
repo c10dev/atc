@@ -2,7 +2,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 
 import { basename, dirname, join } from "node:path";
 import { callsign } from "./callsign.ts";
 import { config } from "./config.ts";
-import { type Classification, canFly, classOf, DEFAULT_FLEET, type FleetFile, needsStand, profileOf, WAKE_SLOTS } from "./crew.ts";
+import { type Classification, canFly, classOf, DEFAULT_FLEET, type FleetFile, type FlightType, needsStand, profileOf, type Rating, WAKE_SLOTS } from "./crew.ts";
 import { keyInName, keyPatternOf, teamOfKey } from "./linear-keys.ts";
 import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
@@ -196,6 +196,20 @@ export interface Plan {
   blockedPairs?: { flight: string; aircraft: string; aircraftName: string; proposal: string; until: string }[];
   aircraft: AircraftState[];
   slots: { airport: string; airborne: number; planned: number; limit: number }[];
+  // 받을 AIRCRAFT가 없어 남은 FLIGHT(FLEET PLAN 수요, docs/fleet.md 8.6). AIRPORT 슬롯이 차서 남은 것은 넣지 않는다
+  unserved?: Unserved[];
+}
+
+// no-aircraft: 자격 있는 AIRCRAFT가 모두 바쁘거나 다른 FLIGHT를 받음, unqualified: 살아 있는 AIRCRAFT 중 자격을 가진 것이 없음,
+// no-tail: tail로 정한 팀의 세션이 없음. labeled: 분류 라벨이 있어 ratings·type이 라벨에서 왔나
+export interface Unserved {
+  flight: string;
+  airport: string;
+  type: FlightType;
+  ratings: Rating[];
+  labeled: boolean;
+  why: "no-aircraft" | "unqualified" | "no-tail";
+  tails: string[];
 }
 
 const DAY = 86_400_000;
@@ -430,6 +444,10 @@ export function planDispatch(
   // ── FLIGHT ──
   const excluded: Plan["excluded"] = [];
   const hold: Plan["hold"] = [];
+  const unserved: Unserved[] = [];
+  const unservedOf = (t: Ticket, airport: string, cls: Classification, why: Unserved["why"], tails: Set<string> = new Set()): Unserved => ({
+    flight: t.key, airport, type: cls.type, ratings: cls.ratings, labeled: cls.sources.length > 0, why, tails: [...tails],
+  });
   const eligible: (Ticket & { airport: string; cls: Classification; ind: Independence | null })[] = [];
   // FLEET 규칙(docs/fleet.md 5장): 필요한 TYPE RATING을 모두 가졌고, CREW가 그 FLIGHT TYPE을 날 수 있어야 한다.
   const qualifies = (ac: AircraftState, cls: Classification) => {
@@ -529,10 +547,12 @@ export function planDispatch(
       const mine = aircraft.filter((ac) => tails.has(ac.name.toUpperCase()));
       if (!mine.length) {
         excluded.push({ flight: t.key, reason: `${tailTag} — 그 TEAM 세션이 없음` });
+        unserved.push(unservedOf(t, airport, cls, "no-tail", tails));
         continue;
       }
       if (!mine.some((ac) => qualifies(ac, cls))) {
         excluded.push({ flight: t.key, reason: `${tailTag} — ${unqualifiedWhy(mine, cls)}` });
+        unserved.push(unservedOf(t, airport, cls, "unqualified", tails));
         continue;
       }
       if (ind && !mine.some((ac) => qualifies(ac, cls) && independent(ac, ind))) {
@@ -551,6 +571,7 @@ export function planDispatch(
       }
     } else if (aircraft.length && !aircraft.some((ac) => qualifies(ac, cls))) {
       excluded.push({ flight: t.key, reason: unqualifiedWhy(aircraft, cls) });
+      unserved.push(unservedOf(t, airport, cls, "unqualified"));
       continue;
     } else if (ind && aircraft.length && !aircraft.some((ac) => qualifies(ac, cls) && independent(ac, ind))) {
       excluded.push({ flight: t.key, reason: notIndependentWhy(ind) });
@@ -662,6 +683,13 @@ export function planDispatch(
     const mine = [...blockedPairs.values()].filter((b) => b.flight === t.key).sort((a, b) => a.until.localeCompare(b.until));
     if (mine.length) excluded.push({ flight: t.key, reason: pairBlockedWhy(mine[0].proposal, mine[0].until) });
   }
+  // 남은 FLIGHT 중 AIRPORT 슬롯에 자리가 있는데도 받을 AIRCRAFT가 없던 것. 24시간 규칙에 걸린 짝만 있던 FLIGHT는 뺀다
+  for (const t of eligible) {
+    if (usedFlights.has(t.key) || (!hadPair.has(t.key) && [...blockedPairs.values()].some((b) => b.flight === t.key))) continue;
+    const load = (airborneAt.get(t.airport) ?? 0) + (planned.get(t.airport) ?? 0);
+    if (load + WAKE_SLOTS[t.cls.wake] > limitOf(t.airport) + 1e-9) continue;
+    unserved.push(unservedOf(t, t.airport, t.cls, "no-aircraft", tailsOf(t, now)));
+  }
 
   // ── RELEASE: STAND 없이 오래 ENROUTE ──
   // 코드 작업(AIRPORT에 매핑된 프로젝트)만 본다. 발표 자료처럼 STAND가 원래 없는 일은 방치가 아니다.
@@ -697,7 +725,7 @@ export function planDispatch(
     limit: limitOf(code),
   }));
 
-  return { at: new Date(now).toISOString(), assign, release, hold, excluded, blockedPairs: [...blockedPairs.values()], aircraft, slots };
+  return { at: new Date(now).toISOString(), assign, release, hold, excluded, blockedPairs: [...blockedPairs.values()], aircraft, slots, unserved };
 }
 
 // 청구 기록(~/.local/state/atc/claims)으로 세션별 과거 FLIGHT를 모은다. TTL과 상관없이 전부 본다.

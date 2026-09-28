@@ -27,6 +27,7 @@ export interface AgentRow {
   kind: string; // "background" | "interactive"
   status?: string;
   cwd: string;
+  startedAt?: number; // ms
 }
 
 export class ControlError extends Error {
