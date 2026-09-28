@@ -131,6 +131,10 @@ export function AgentSettings({ snapshot, server, save }: { snapshot: Snapshot |
         </ServerRows>
       </Block>
 
+      <Block code="CONTROL" label="관제 세션 띄우기·멈추기(SUPERVISOR 전용)">
+        <ControlSessions />
+      </Block>
+
       <Block code="STANDS" label="점유 규칙">
         <ServerRows server={server}>
           {(s) => (
@@ -531,6 +535,77 @@ function GroundStopRow({ stop, check, refresh }: { stop: ServerSettings["autolan
         {error ?? `main ${stop.failing.join(", ") || check} 실패(${stop.sha.slice(0, 7)}) — AUTOLAND 두 모드 모두 멈춤. main을 확인한 뒤 SUPERVISOR가 푼다`}
       </p>
     </div>
+  );
+}
+
+// 관제 세션(docs/fleet.md 8.5.1). TOWER·OCC·MCC는 atc가 그 폴더에서 `claude --bg`로 띄우고 멈춘다.
+// 데스크톱·tmux로 연 세션은 떠 있다고만 보이고, 그 창에서 닫는다. REVIEW·CROSSCHECK는 ocx라 tmux로 띄운다
+type ControlLive = { id?: string; name?: string; kind: string; status?: string };
+type ControlList = { manual: string[]; sessions: { name: string; dir: string; prompt: string; live: ControlLive[] }[] };
+function ControlSessions() {
+  const [list, setList] = useState<ControlList | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = async () => {
+    try {
+      const res = await fetch("/api/control/sessions");
+      const body = await res.json();
+      if (res.ok) {
+        setList(body as ControlList);
+        setError(null);
+      } else setError(body.error ?? `HTTP ${res.status}`);
+    } catch {
+      setError("서버에 연결할 수 없음");
+    }
+  };
+  useEffect(() => {
+    void load();
+  }, []);
+  const act = async (name: string, op: "launch" | "stop") => {
+    setBusy(name);
+    setError(null);
+    try {
+      const res = await fetch(`/api/control/${encodeURIComponent(name)}/${op}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      if (!res.ok) setError(`${name}: ${((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`}`);
+    } catch {
+      setError("서버에 연결할 수 없음");
+    }
+    await load();
+    setBusy(null);
+  };
+  if (!list) return error ? <p className="conn-error">{error}</p> : <p className="settings-hint">불러오는 중…</p>;
+  return (
+    <dl className="config-rows">
+      {list.sessions.map((c) => {
+        const bg = c.live.find((l) => l.kind === "background" && l.id);
+        const other = c.live.find((l) => l !== bg);
+        const state = bg ? `BG ${bg.id}${bg.status ? ` · ${bg.status}` : ""}` : other ? `열려 있음 · ${other.name ?? other.kind}` : "꺼짐";
+        return (
+          <div className="config-row" key={c.name}>
+            <dt>
+              {c.name} <code className="config-env">{c.dir}/</code>
+            </dt>
+            <dd>
+              {bg ? (
+                <button className="config-btn is-danger" onClick={() => void act(c.name, "stop")} disabled={busy !== null}>
+                  STOP
+                </button>
+              ) : (
+                <button className="config-btn is-primary" onClick={() => void act(c.name, "launch")} disabled={busy !== null || Boolean(other)}>
+                  LAUNCH
+                </button>
+              )}
+            </dd>
+            <p className="config-note">
+              {state} · 첫 메시지 <code>{c.prompt}</code>
+              {other && !bg ? " · 데스크톱·tmux 세션은 그 창에서 닫는다" : ""}
+            </p>
+          </div>
+        );
+      })}
+      <p className="config-note">{list.manual.join(" · ")}: ocx로 다른 계열 모델에 돌리므로 tmux로 띄운다(review/README.md, docs/occ.md CROSSCHECK)</p>
+      {error && <p className="config-note is-error">{error}</p>}
+    </dl>
   );
 }
 

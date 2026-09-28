@@ -22,6 +22,7 @@ tmux send-keys -t atc-mcc '/loop 5m /tick' Enter
 
 - `--strict-mcp-config` loads no MCP servers. The session needs none: everything comes from `atcctl mcc`.
 - The guard checks the real model in the transcript on every write (`mcc inspect|escalate|land|rts`). Only Claude names pass (`claude-opus-…`, `claude-sonnet-…`, `claude-fable-…`, `claude-haiku-…`); the server refuses writes without that model. A session routed to another model through `ocx` is refused.
+- Or press LAUNCH on the MCC row of the settings window's AGENTS tab (CONTROL block): atc starts it in the background with the same folder, flags and first message ([docs/fleet.md](../docs/fleet.md) 8.5.1).
 - In Claude Desktop: open the `mcc` folder, name the session MCC, keep a Claude model, then `/loop 5m /tick`.
 
 ## What it may do
