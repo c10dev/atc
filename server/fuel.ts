@@ -1,5 +1,6 @@
 import { addCost, type Cost, costOf, type PriceTable, type PriceWarning, rateOf, roundCost, zeroCost } from "./fuel-cost.ts";
-import { addLeak, emptyLeaks, type LeakEvent, type LeakTotals } from "./fuel-leaks.ts";
+import { countWarnings, type CrewWarning, type CrewWarningCounts, emptyWarnings } from "./fuel-crew.ts";
+import { addLeak, emptyLeaks, type LeakEvent, type LeakTotals, OUTSIDE_LEAK } from "./fuel-leaks.ts";
 
 // FUEL(ATC-50, docs/fuel.md 1·2·4): 대화 기록의 message.usage로 요청마다 토큰을 센다. 순수 함수만 둔다(읽기는 fuel-run.ts).
 // 본문은 읽지도 남기지도 않는다 — "usage"·"compact_boundary"·"agent-name"이 없는 줄은 JSON.parse 전에 버리고,
@@ -25,6 +26,7 @@ export interface FuelRecord extends Kinds {
   effort: string | null;
   speed: string | null; // usage.speed(standard·fast). FUEL COST 배수
   geo: string | null; // usage.inference_geo. FUEL COST 배수
+  proxied?: true; // requestId가 없는 줄(프록시 경로: DeepSeek·Muse, 일부 Opus). 캐시가 Anthropic 방식이 아니다(F7)
 }
 
 export interface Compaction {
@@ -161,6 +163,7 @@ export function parseFuelLines(text: string, opts: ParseOpts = {}): ParsedFuel {
       effort: str(d.effort),
       speed: str(msg.usage.speed),
       geo: str(msg.usage.inference_geo),
+      ...(str(d.requestId) ? {} : { proxied: true as const }),
     });
   }
   return out;
@@ -214,7 +217,8 @@ export interface SessionFuel {
   versions: string[];
   compactions: number;
   unknownLines: number;
-  leak: LeakTotals; // FUEL LEAK(ATC-52): CAPTAIN 요청의 miss를 규칙별로
+  leak: LeakTotals; // FUEL LEAK(ATC-52·57): CAPTAIN·CREW 요청의 miss를 규칙별로
+  crewWarnings: CrewWarningCounts; // CREW 경고 수(ATC-57). highCrewShare는 FLIGHT 단위라 여기서는 0
   netCost: number; // NET FUEL(ATC-54): total.cost.total − 값이 매겨진 LEAK, USD
 }
 export interface AircraftFuel {
@@ -225,22 +229,25 @@ export interface AircraftFuel {
   total: Burn;
   models: Record<string, number>;
   leak: LeakTotals;
+  crewWarnings: CrewWarningCounts;
   netCost: number;
 }
 export interface FuelSummary {
   days: number;
   since: string;
-  totals: { captain: Burn; crew: CrewBurn; total: Burn; leak: LeakTotals; netCost: number };
+  totals: { captain: Burn; crew: CrewBurn; total: Burn; leak: LeakTotals; netCost: number; crewWarnings: CrewWarningCounts };
   models: Record<string, number>;
   requests: number;
   unknownLines: number;
   priceWarnings: PriceWarning[]; // 가격표에 없어 비용에서 뺀 모델(요청이 많은 순서)
   sessions: SessionFuel[];
   aircraft: AircraftFuel[];
-  leakEvents: (LeakEvent & { name: string | null })[]; // 기간 안에서 큰 순서로 LEAK_EVENTS_MAX개(expectedRebuild 제외)
+  leakEvents: (LeakEvent & { name: string | null })[]; // 기간 안에서 큰 순서로 LEAK_EVENTS_MAX개(LEAK 밖인 expectedRebuild·proxied 제외)
+  crewWarningEvents: (CrewWarning & { name: string | null })[]; // 기간 안에서 최근 순서로 CREW_WARNING_EVENTS_MAX개
 }
 
 export const LEAK_EVENTS_MAX = 20;
+export const CREW_WARNING_EVENTS_MAX = 50;
 
 export interface AgentMeta {
   agentType: string | null;
@@ -253,7 +260,8 @@ export interface SummaryInput {
   names?: Map<string, string>; // session → 이름
   live?: Set<string>;
   agents?: Map<string, AgentMeta>; // agent id → meta
-  leaks?: LeakEvent[]; // findLeaks(기간 앞 요청과도 비교하도록 전체 기록으로 구한 것)
+  leaks?: LeakEvent[]; // findLeaks(기간 앞 요청과도 비교하도록 전체 기록으로 구한 것)와 sessionChangeLeaks
+  warnings?: CrewWarning[]; // crewWarnings(fuel-crew.ts)
   prices?: PriceTable | null; // 없으면 모든 요청이 값 없음
   now: number;
   days: number;
@@ -389,8 +397,19 @@ export function summarizeFuel(input: SummaryInput): FuelSummary {
     if (!l) leakOf.set(e.session, (l = emptyLeaks()));
     addLeak(l, e);
     addLeak(allLeak, e);
-    if (e.rule !== "expectedRebuild") leakEvents.push({ ...e, name: input.names?.get(e.session) ?? null });
+    if (!OUTSIDE_LEAK.includes(e.rule)) leakEvents.push({ ...e, name: input.names?.get(e.session) ?? null });
   }
+  const warnOf = new Map<string, CrewWarningCounts>();
+  const allWarn = emptyWarnings();
+  const crewWarningEvents: FuelSummary["crewWarningEvents"] = [];
+  for (const w of input.warnings ?? []) {
+    if (Date.parse(w.t) < since) continue;
+    if (!warnOf.has(w.session)) warnOf.set(w.session, emptyWarnings());
+    countWarnings([w], warnOf.get(w.session));
+    countWarnings([w], allWarn);
+    crewWarningEvents.push({ ...w, name: input.names?.get(w.session) ?? null });
+  }
+  crewWarningEvents.sort((a, b) => b.t.localeCompare(a.t));
   leakEvents.sort((a, b) => b.rewritten - a.rewritten || a.t.localeCompare(b.t));
   const compactions = new Map<string, number>();
   for (const c of input.compactions ?? []) {
@@ -414,17 +433,19 @@ export function summarizeFuel(input: SummaryInput): FuelSummary {
       unknownLines: input.unknownBySession?.get(session) ?? 0,
       leak: roundLeaks(leak),
       netCost: netOf(total, leak),
+      crewWarnings: warnOf.get(session) ?? emptyWarnings(),
     };
   });
   sessions.sort((x, y) => tokenSum(y.total) - tokenSum(x.total) || x.session.localeCompare(y.session));
 
-  const byName = new Map<string, Acc & { sessions: string[]; leak: LeakTotals }>();
+  const byName = new Map<string, Acc & { sessions: string[]; leak: LeakTotals; crewWarnings: CrewWarningCounts }>();
   for (const s of sessions) {
     if (!s.name) continue;
     const key = s.name.toUpperCase();
     let g = byName.get(key);
-    if (!g) byName.set(key, (g = { ...acc(), sessions: [], leak: emptyLeaks() }));
+    if (!g) byName.set(key, (g = { ...acc(), sessions: [], leak: emptyLeaks(), crewWarnings: emptyWarnings() }));
     mergeLeaks(g.leak, leakOf.get(s.session) ?? emptyLeaks());
+    for (const k of Object.keys(g.crewWarnings) as (keyof CrewWarningCounts)[]) g.crewWarnings[k] += s.crewWarnings[k];
     const a = bySession.get(s.session)!;
     addTally(g.captain, a.captain);
     g.crew.merge(a.crew);
@@ -442,6 +463,7 @@ export function summarizeFuel(input: SummaryInput): FuelSummary {
       models: g.models,
       leak: roundLeaks(g.leak),
       netCost: netOf(total, g.leak),
+      crewWarnings: g.crewWarnings,
     };
   });
   aircraft.sort((x, y) => tokenSum(y.total) - tokenSum(x.total) || x.aircraft.localeCompare(y.aircraft));
@@ -452,7 +474,7 @@ export function summarizeFuel(input: SummaryInput): FuelSummary {
   return {
     days: input.days,
     since: new Date(since).toISOString(),
-    totals: { captain: costBurn(all.captain), crew: all.crew.view(), total, leak: roundLeaks(allLeak), netCost: netOf(total, allLeak) },
+    totals: { captain: costBurn(all.captain), crew: all.crew.view(), total, leak: roundLeaks(allLeak), netCost: netOf(total, allLeak), crewWarnings: allWarn },
     models: all.models,
     requests: all.captain.n + all.crew.t.n,
     unknownLines: unknown,
@@ -460,6 +482,7 @@ export function summarizeFuel(input: SummaryInput): FuelSummary {
     sessions,
     aircraft,
     leakEvents: leakEvents.slice(0, LEAK_EVENTS_MAX).map((e) => ({ ...e, cost: e.cost === null ? null : Math.round(e.cost * 10_000) / 10_000 })),
+    crewWarningEvents: crewWarningEvents.slice(0, CREW_WARNING_EVENTS_MAX),
   };
 }
 

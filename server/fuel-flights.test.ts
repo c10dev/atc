@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Departure } from "./departures.ts";
 import type { FuelRecord } from "./fuel.ts";
+import type { CrewWarning } from "./fuel-crew.ts";
 import type { LeakEvent } from "./fuel-leaks.ts";
 import { arrivedSpan, attributeFuel, type ClaimSpan, enRouteSpans, type FlightSpan, fuelForEntry, segmentsOf } from "./fuel-flights.ts";
 import type { LogEntry } from "./logbook.ts";
@@ -217,6 +218,29 @@ test("LEAK(F3): miss도 요청과 같은 규칙으로 FLIGHT에 나누고, LEAK�
   assert.equal(run(records, spans).flights[0].fuel.leak, undefined);
 });
 
+test("CREW 경고(F7): FLIGHT마다 같은 규칙으로 세고, CREW 몫이 50 %를 넘은 FLIGHT는 highCrewShare 1. 넘기지 않으면 칸이 없다", () => {
+  const e1 = entry();
+  const e2 = entry({ key: "o/atc#2", flight: "ATC-2", branch: "claude/atc-2", stands: ["/w/atc-2"], departedAt: T("13:00"), arrivedAt: T("15:00") });
+  const spans = [arrivedSpan(e1, [], null), arrivedSpan(e2, [], null)];
+  const crewRec = (hm: string) => rec("h1", hm, { sidechain: true, agent: "a1", cacheRead: 900 });
+  const records = [rec("h1", "10:30"), crewRec("10:40"), crewRec("10:50"), rec("h1", "13:30"), rec("h1", "14:00")];
+  const warn = (hm: string, kind: CrewWarning["kind"]): CrewWarning => ({ kind, session: "h1", agent: "a1", agentType: "Explore", t: T(hm), value: 1, detail: null });
+  const warnings = [warn("10:40", "heavyPrefix"), warn("10:40", "expensiveReadOnly"), warn("12:30", "coldCrew")];
+  const a = attributeFuel({ records, spans, aircraftOf, claims: [], warnings });
+  const w1 = a.flights.find((f) => f.key === "o/atc#1")!.fuel.crewWarnings!;
+  assert.deepEqual([w1.heavyPrefix, w1.expensiveReadOnly, w1.coldCrew, w1.highCrewShare], [1, 1, 0, 1]);
+  const w2 = a.flights.find((f) => f.key === "o/atc#2")!.fuel.crewWarnings!;
+  assert.deepEqual(Object.values(w2), [0, 0, 0, 0, 0, 0, 0]); // 12:30 경고는 어느 FLIGHT에도 없다
+  assert.deepEqual(Object.keys(fuelForEntry(e1, a, ms("00:00"))!), ["captain", "crew", "cacheHit", "crewWarnings", "models", "byModel"]);
+  assert.equal(run(records, spans).flights[0].fuel.crewWarnings, undefined);
+});
+
+test("EN ROUTE 구간도 AIRPORT를 안다(SESSION CHANGE 기준선, F7)", () => {
+  const spans = enRouteSpans([dep("11:00", { stand: "/w/x", branch: "b" })], [], new Set(["/w/x"]), ms("16:00"), (repo) => (repo === "/r/atc" ? "ATCC" : null));
+  assert.equal(spans[0].airport, "ATCC");
+  assert.equal(arrivedSpan(entry(), [], null).airport, "ATCC");
+});
+
 test("모델별 토큰(ATC-59): 모델마다, CAPTAIN·CREW 따로, 값이 달라지는 speed·geo는 따로, 달러는 없다", () => {
   const e1 = entry();
   const spans = [arrivedSpan(e1, [], null)];
@@ -276,4 +300,23 @@ test("모델별 LEAK(ATC-59): 다시 쓴 토큰을 모델·쓰기 층별로, exp
     ],
   );
   assert.equal(f.leak!.expectedRebuild.tokens, 900);
+});
+
+test("모델별 LEAK(F7): CREW miss는 넣고, proxied는 expectedRebuild처럼 넣지 않는다", () => {
+  const spans = [arrivedSpan(entry(), [], null)];
+  const base = { session: "h1", units: null, cost: null, gapMs: 0, prevModel: "x", speed: null, geo: null, wake: null } as const;
+  const leaks: LeakEvent[] = [
+    { ...base, t: T("10:30"), rule: "coldCache", rewritten: 4000, model: "claude-opus-5-5", writeTier: "5m", crew: true, agent: "a" },
+    { ...base, t: T("10:40"), rule: "proxied", rewritten: 9000, model: "deepseek-v4.1-flash", writeTier: "5m" },
+  ];
+  const f = attributeFuel({ records: [rec("h1", "10:30"), rec("h1", "10:40", { model: "deepseek-v4.1-flash" })], spans, aircraftOf, claims: [], leaks }).flights[0].fuel;
+  assert.deepEqual(
+    f.byModel!.map((m) => [m.model, m.leak ?? null]),
+    [
+      ["claude-opus-5-5", { count: 1, rewritten5m: 4000, rewritten1h: 0 }],
+      ["deepseek-v4.1-flash", null],
+    ],
+  );
+  assert.equal(f.leak!.proxied.tokens, 9000);
+  assert.equal(f.leak!.total.tokens, 4000);
 });

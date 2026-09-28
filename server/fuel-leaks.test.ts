@@ -2,7 +2,18 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type FuelRecord, summarizeFuel } from "./fuel.ts";
 import { parsePriceTable } from "./fuel-cost.ts";
-import { controlSendsOf, findLeaks, rewrittenOf, sessionLeaks, ttlAfter, TTL_1H_MS, TTL_5M_MS, unitsOf } from "./fuel-leaks.ts";
+import {
+  BASELINE_MIN_SAMPLES,
+  controlSendsOf,
+  findLeaks,
+  rewrittenOf,
+  sessionChangeLeaks,
+  sessionLeaks,
+  ttlAfter,
+  TTL_1H_MS,
+  TTL_5M_MS,
+  unitsOf,
+} from "./fuel-leaks.ts";
 
 // F3 시험용 가격표(값은 시험 데이터). Sonnet은 일부러 빼서 값 없는 모델을 본다
 const TABLE = parsePriceTable({
@@ -131,23 +142,87 @@ test("MODEL SWITCH: 이어진 CAPTAIN 요청의 모델이 바뀌고 miss면 mode
   assert.deepEqual(sessionLeaks([req(0), req(1, { ...sonnet, cacheWrite1h: 1_500, cacheRead: 0 }), req(2, { cacheRead: 103_000 })], [], []), []);
 });
 
-test("compaction 뒤 다시 짓기는 F7로 넘긴다(expectedRebuild, LEAK에 넣지 않음)", () => {
-  const events = sessionLeaks([req(0), cold(70, { cacheWrite1h: 20_000, cacheRead: 0 })], [at(69)], []);
-  assert.equal(events[0].rule, "expectedRebuild");
-  const s = summarizeFuel({ records: [req(0), cold(70)], leaks: events, now: T0 + 2 * 3_600_000, days: 1 });
-  assert.equal(s.totals.leak.total.count, 0);
-  assert.equal(s.totals.leak.unexplained.count, 0);
+test("COMPACTION(F7): compaction 뒤 다시 짓기는 캐시가 식었을 때만 LEAK, 따뜻하면 expectedRebuild(LEAK 밖)", () => {
+  const warm = sessionLeaks([req(0), req(2, { cacheWrite1h: 20_000, cacheRead: 0 })], [at(1)], []);
+  assert.equal(warm[0].rule, "expectedRebuild");
+  const cool = sessionLeaks([req(0), cold(70, { cacheWrite1h: 20_000, cacheRead: 0 })], [at(69)], []);
+  assert.equal(cool[0].rule, "compaction");
+  const s = summarizeFuel({ records: [req(0), cold(70)], leaks: [...warm, ...cool], now: T0 + 2 * 3_600_000, days: 1 });
   assert.equal(s.totals.leak.expectedRebuild.count, 1);
   assert.equal(s.totals.leak.expectedRebuild.tokens, 20_002); // 입력 2토큰까지(맥락 전체보다 작다)
+  assert.equal(s.totals.leak.compaction.count, 1);
+  assert.equal(s.totals.leak.total.count, 1);
+  assert.deepEqual(s.leakEvents.map((e) => e.rule), ["compaction"]);
+});
+
+test("첫 요청은 sessionLeaks가 보지 않는다(SESSION CHANGE는 sessionChangeLeaks)", () => {
+  assert.deepEqual(findLeaks([cold(0)], [], []), []);
+});
+
+test("CREW(F7): 서브에이전트마다 따로 잇고 같은 규칙으로 판단한다. CAPTAIN 비교는 CREW가 끼어도 그대로", () => {
+  const crew = (min: number, agent: string, o: Partial<FuelRecord> = {}) => ({ ...req(min, { cacheWrite1h: 0, cacheWrite5m: 3_000, ...o }), sidechain: true, agent, key: `c${agent}${min}` });
+  const records = [
+    crew(0, "a1"),
+    crew(1, "a2"),
+    crew(7, "a1", { cacheWrite5m: 104_000, cacheRead: 0 }), // 5m 층이 식은 뒤
+    crew(2, "a2", { cacheWrite5m: 104_000, cacheRead: 0 }), // 따뜻한데 miss
+  ];
+  const leaks = findLeaks(records, [], []);
+  assert.deepEqual(
+    leaks.map((e) => [e.agent, e.rule, e.crew]),
+    [
+      ["a2", "unexplained", true],
+      ["a1", "coldCache", true],
+    ],
+  );
+  const s = summarizeFuel({ records, leaks, now: T0 + 3_600_000, days: 1 });
+  assert.equal(s.totals.leak.crew.count, 2);
+  assert.equal(s.totals.leak.total.count, 2);
+  assert.deepEqual(findLeaks([req(0), crew(1, "a1", { cacheRead: 0, cacheWrite5m: 50_000 }), req(2, { cacheRead: 103_000 })], [], []), []);
+});
+
+test("UPGRADE / EFFORT CHANGE(F7): 따뜻한 miss 바로 앞에 version이나 effort가 바뀌었으면 upgrade. 모르는 값이나 식은 캐시는 아니다", () => {
+  const up = sessionLeaks([req(0), cold(2, { version: "2.1.283" })], [], []);
+  assert.deepEqual([up[0].rule, up[0].change], ["upgrade", "version"]);
+  const eff = sessionLeaks([req(0), cold(2, { effort: "xhigh" })], [], []);
+  assert.deepEqual([eff[0].rule, eff[0].change], ["upgrade", "effort"]);
+  assert.equal(sessionLeaks([req(0, { version: null }), cold(2, { version: "2.1.283" })], [], [])[0].rule, "unexplained");
+  assert.equal(sessionLeaks([req(0), cold(70, { version: "2.1.283" })], [], [])[0].rule, "coldCache"); // 식은 캐시가 먼저
+});
+
+test("PROXIED(F7): 프록시 경로(requestId 없음)의 miss는 규칙과 상관없이 proxied, LEAK 밖이고 큰 사건 목록에도 없다", () => {
+  const p = { proxied: true as const, model: "deepseek-v4.1-flash" };
+  const leaks = sessionLeaks([req(0, p), cold(70, p), cold(71, { ...p, cacheRead: 0 })], [], []);
+  assert.deepEqual(leaks.map((e) => e.rule), ["proxied", "proxied"]);
+  const s = summarizeFuel({ records: [req(0, p), cold(70, p)], leaks, now: T0 + 2 * 3_600_000, days: 1 });
+  assert.equal(s.totals.leak.proxied.count, 2);
+  assert.equal(s.totals.leak.total.count, 0);
   assert.deepEqual(s.leakEvents, []);
 });
 
-test("첫 요청과 CREW 요청은 판단하지 않는다(SESSION CHANGE·CREW 경고는 F7)", () => {
-  assert.deepEqual(findLeaks([cold(0)], [], []), []);
-  const crew = (min: number, o: Partial<FuelRecord> = {}) => ({ ...req(min, o), sidechain: true, agent: "a1", key: `c${min}` });
-  assert.deepEqual(findLeaks([crew(0), crew(70, { cacheWrite1h: 104_000, cacheRead: 0 })], [], []), []);
-  // CREW 요청이 사이에 끼어도 CAPTAIN끼리 비교한다
-  assert.deepEqual(findLeaks([req(0), crew(1, { cacheRead: 0, cacheWrite5m: 50_000 }), req(2, { cacheRead: 103_000 })], [], []), []);
+test("SESSION CHANGE(F7): 같은 FLIGHT의 새 세션 첫 요청이 AIRPORT 기준선을 넘은 몫. 첫 세션·FLIGHT 밖·작은 차이·프록시는 아니다", () => {
+  const first = (session: string, min: number, write: number, o: Partial<FuelRecord> = {}) =>
+    req(min, { session, key: `${session}${min}`, cacheWrite1h: write, cacheRead: 0, input: 0, ...o });
+  const records = [
+    first("s1", 0, 40_000), // FLIGHT F의 첫 세션
+    req(5, { session: "s1", key: "s1-5" }),
+    first("s2", 10, 140_000), // 같은 FLIGHT, 옛 대화까지 다시 씀(이어 받기)
+    first("s3", 20, 41_000), // 같은 FLIGHT, 기준선과 비슷
+    first("s4", 30, 38_000), // FLIGHT 밖: 기준선에만
+    first("s5", 40, 300_000, { proxied: true }), // 프록시: 보지 않는다
+  ];
+  const flightOf = (r: FuelRecord) => (r.session === "s4" ? null : { key: "o/atc#1", airport: "ATCC" });
+  const { events, baselines } = sessionChangeLeaks(records, flightOf);
+  assert.deepEqual(baselines, { "*": { median: 40_500, n: 4 }, ATCC: { median: 41_000, n: 3 } });
+  assert.deepEqual(
+    events.map((e) => [e.session, e.rule, e.rewritten, e.gapMs]),
+    [["s2", "sessionChange", 99_000, 5 * 60_000]],
+  );
+  // AIRPORT 표본이 BASELINE_MIN_SAMPLES보다 적으면 전체 기준선
+  const few = sessionChangeLeaks(records.slice(0, 3), flightOf);
+  assert.equal(few.baselines.ATCC.n, 2);
+  assert.equal(few.events[0].rewritten, 140_000 - 90_000);
+  assert.equal(BASELINE_MIN_SAMPLES, 3);
 });
 
 test("단위: rewritten × (writeMult − readMult) — Opus 5.5 1h 쓰기는 2 − 0.05", () => {
