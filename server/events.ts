@@ -5,7 +5,7 @@ import type { LandingBlockCode, PullRequest, Snapshot, TrafficEvent } from "./mo
 
 type Draft = Omit<TrafficEvent, "id" | "at">;
 
-const alertKey = (a: Snapshot["alerts"][number]) => `${a.kind}|${a.workspacePath ?? ""}|${a.ticketKey ?? ""}`;
+const alertKey = (a: Snapshot["alerts"][number]) => a.key ?? `${a.kind}|${a.workspacePath ?? ""}|${a.ticketKey ?? ""}`;
 const handoffKey = (h: Snapshot["handoffs"][number]) => `${h.workspacePath}|${h.from}|${h.to}`;
 
 // LANDING SEQUENCE에 든 PR(Draft 제외), 키는 "저장소#번호"

@@ -92,6 +92,7 @@ export const alertCode: Record<AlertKind, string> = {
   unattended: "UNID",
   "no-workspace": "NO CONTACT",
   stranded: "STRANDED",
+  health: "HEALTH",
 };
 
 export const alertLabel: Record<AlertKind, string> = {
@@ -100,6 +101,7 @@ export const alertLabel: Record<AlertKind, string> = {
   unattended: "UNIDENTIFIED",
   "no-workspace": "NO CONTACT",
   stranded: "STRANDED",
+  health: "AIRCRAFT HEALTH",
 };
 
 export function alertMessage(a: Alert, sessionName: (id: string) => string): string {
@@ -114,5 +116,7 @@ export function alertMessage(a: Alert, sessionName: (id: string) => string): str
       return `ENROUTE인데 STAND(워크트리)가 없음`;
     case "stranded":
       return a.message; // 서버가 만든 문구: 어느 PR이 어느 브랜치에 머지돼 main에 닿지 않았나
+    case "health":
+      return a.message; // 서버가 만든 문구: 코드, AIRCRAFT, 오류 한 줄(ATC-45)
   }
 }

@@ -3,7 +3,8 @@ import { type Alert, type Claim, parentKeysOf, type Session, type Snapshot, type
 import { resolveAirports } from "./airports.ts";
 import { recentClearances } from "./clearances.ts";
 import { type Occupancy, resolveOccupancy } from "./occupancy.ts";
-import { inferTranscriptClaim, readClaudeSessions, readHookClaims } from "./sources/claude.ts";
+import { healthOfSession, inferTranscriptClaim, readClaudeSessions, readHookClaims } from "./sources/claude.ts";
+import { healthAlerts } from "./health.ts";
 import { readCodex } from "./sources/codex.ts";
 import { readWorkspaces, ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
 import { readGithub } from "./sources/github.ts";
@@ -30,6 +31,13 @@ export async function buildSnapshot(): Promise<Snapshot> {
   const codex = readCodex(workspaces);
   const sessions: Session[] = [...claude.sessions, ...codex.sessions];
   const sessionById = new Map(sessions.map((s) => [s.id, s]));
+
+  // AIRCRAFT health(ATC-45): 살아 있는 Claude 세션의 대화 기록 끝에서 멈춘 까닭을 읽는다
+  const healthAt = Date.now();
+  for (const f of claude.files) {
+    const x = sessionById.get(f.sessionId);
+    if (x) x.health = healthOfSession(f, x.status, healthAt, config.health);
+  }
 
   const claims = readHookClaims().filter((c) => wsByPath.has(c.workspacePath) && fresh(c));
   const hooked = new Set(claims.map((c) => c.sessionId));
@@ -103,6 +111,10 @@ export async function buildSnapshot(): Promise<Snapshot> {
   }
 
   const alerts = buildAlerts(sessions, workspaces, tickets, claims, occupancy);
+  // health ALERT: NETWORK는 기계에 한 번, LIMIT은 같은 reset끼리 한 번(docs/fleet.md 8.8)
+  for (const a of healthAlerts(sessions.map((x) => ({ sessionId: x.id, name: x.name, health: x.health })), healthAt)) {
+    alerts.push({ kind: "health", key: a.key, message: a.message, sessionIds: a.sessionIds });
+  }
   const repos = airports.open.map((a) => a.repo);
   const github = readGithub(repos);
   // AUTOLAND(ATC-34·38). 재리뷰로 Codex 대신 넘긴 head는 6시간을 기다리지 않고 REVIEW 대기열로 — update·merge이고 GROUND STOP이 아닌 AIRPORT만

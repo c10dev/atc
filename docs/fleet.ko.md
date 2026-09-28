@@ -607,7 +607,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **기록.** LAUNCH·STOP마다 FLIGHT RECORDER에 `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}` 한 줄.
 - **화면.** 세션이 없는 카드에 **LAUNCH**(permission mode, 선택 모델, 상한 대비 백그라운드 수). 백그라운드 세션이면 `BG <id>`와 **STOP**. 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
 
-아직 만들지 않음: 쉬는 세션의 자동 STOP(FLEET PLAN 4단계. 그림자 제안과 승인 운용은 8.6·8.7에서 만듦), 오래 도는 세션의 정기 정비로서 RESTART, 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, GitHub idea #53).
+아직 만들지 않음: 쉬는 세션의 자동 STOP(FLEET PLAN 4단계. 그림자 제안과 승인 운용은 8.6·8.7에서 만듦), 오래 도는 세션의 정기 정비로서 RESTART, 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, ATC-46).
 
 ### 8.6 FLEET PLAN: LAUNCH·STOP 등을 제안하기
 
@@ -782,6 +782,80 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 4. **RETIRE가 백그라운드 세션을 멈추나:** 기본으로 멈추고, 체크를 풀면 남긴다.
 5. **실패한 실행:** 24시간 쉬지 않는다. 지속 조건을 채우면 제안이 다시 나온다.
 
+### 8.8 AIRCRAFT health
+
+상태: 1–2단계를 만들었다(ATC-45). 대응 매뉴얼과, 대화 기록을 읽어 판정하는 pull 분류기다. push hook(3단계)과 FLEET PLAN 제안(4단계)은 아직 없다.
+
+**왜.** 2026-09-28 07:37:13Z에 TEAM_H가 ATC-44 BRIEF를 받고 3초 뒤 계정의 session limit에 걸렸다. 07:40:57Z에 누가 "Try again"을 칠 때까지 atc는 TEAM_H를 `idle`로 보여서, FLEET·DISPATCH·TOWER 모두 일을 받을 수 있는 AIRCRAFT로 봤다. atc는 `dead`·`busy`·`idle`만 알았고, 세션이 왜 멈췄는지, 무엇을 기다리는지는 읽지 않았다.
+
+**지금 사실.**
+
+- 실패한 턴은 대화 기록에 `isApiErrorMessage: true`인 `assistant` 줄로 남는다. `error` 코드(`rate_limit`, `server_error`, `model_not_found`, `invalid_request`, `unknown` …)와 글 한 줄이 있다. 사용 한도 줄에는 `quotaLimits`도 있어서 `resetsAt`(epoch 초)과 `rateLimitType`(`five_hour` …)을 읽을 수 있다.
+- 턴을 여는 `user` 줄에는 `turnOrigin`이 있다. 다른 세션이 보낸 메시지(BRIEF)는 `isMeta: true`이고 `origin.kind: "peer"`다.
+- 자동 모드 거부와 hook 막힘은 `is_error`인 `tool_result`이고, 글이 "Permission for this action was denied …"나 "PreToolUse:<도구> hook error"로 시작한다.
+- 2026-09-24~28의 대화 기록 162개: `server_error`(SSL) 58, session limit 58, `model_not_found` 11, provider 오류 12, "Prompt is too long" 3, 서버 쪽 제한 3. 자동 모드 거부 81, hook 막힘 75.
+
+**원칙.**
+
+- 알리고 제안만 한다. atc는 팀 세션에 다시 보내기, 승인, 계정 바꾸기, 재시작을 하지 않는다.
+- 상태가 아니라 원인을 보인다. 코드마다 오류 한 줄, 시작 시각, 매뉴얼의 다음 한 걸음이 붙는다.
+- 기계 단위와 AIRCRAFT 단위를 가른다. `NETWORK`, 그리고 reset 시각이 같은(같은 계정 창을 쓰는) 세션들의 `LIMIT`은 한 번만 올린다.
+- 코드, 시각, 오류 한 줄만 둔다. 본문은 두지 않는다. 살아 있는 세션의 대화 기록 끝 64KB만 읽고, 크기나 시각이 바뀔 때만 다시 읽는다.
+- 모르면 틀린 코드 대신 `UNKNOWN`과 오류 원문 한 줄.
+
+**코드와 대응 매뉴얼** (`server/health.ts`, 순수 함수 `healthOf`)
+
+| 코드 | 무엇으로 아나 | 수준 | DISPATCH·SCHEDULE | 누가, 어떻게 |
+|---|---|---|---|---|
+| `LIMIT` | 사용 한도 문구의 `rate_limit`. `resetsAt`은 `quotaLimits`에서, 없으면 "resets 7:40am (UTC)"에서 | ALERT, reset 시각마다 한 번 | `resetsAt`까지 뺀다 | 기다린다. reset 뒤에도 지시가 대답을 못 받았으면 `UNANSWERED`로 바뀐다. structure나 SUPERVISOR가 다시 보낸다 |
+| `THROTTLE` | `rate_limit` "not your usage limit", overloaded, 그 밖의 `server_error` | INFO, 30분에 3번이면 ALERT | — | 몇 분 뒤 다시 보낸다. 10분 넘게 대답이 없으면 `UNANSWERED`로 바뀐다 |
+| `NETWORK` | "Unable to connect", SSL·TLS, 연결 오류 | ALERT, 기계에 한 번 | — | SUPERVISOR가 네트워크·프록시·`ANTHROPIC_BASE_URL`/`NO_PROXY`를 보고 다시 보낸다 |
+| `MODEL` | `model_not_found` | ALERT | 뺀다 | SUPERVISOR가 모델이나 경로를 고쳐 다시 띄운다. 그대로 재시도하지 않는다 |
+| `CONTEXT` | "Prompt is too long", compaction 실패 | ALERT | 뺀다 | 새 CREW BRIEFING으로 RESTART. STAND와 PR은 HANDOFF |
+| `PROVIDER` | OpenAI 호환 경로의 `unknown` 오류(400 schema, `name` 길이, 본문 없는 상태 코드) | ALERT | 뺀다 | 기본 경로로 다시 띄우고, 그 경로의 버그를 올린다 |
+| `PENDING` | idle인데 마지막 대답의 `tool_use`에 `tool_result`가 없음 | INFO | — | SUPERVISOR가 그 세션에서 승인하거나 거절한다 |
+| `UNANSWERED` | idle이고, 턴을 연 마지막 지시에 10분 동안 대답이 없음(`LIMIT`·`THROTTLE`이 대답 없이 끝난 경우도) | ALERT | — | structure나 SUPERVISOR가 다시 보낸다. atc는 보내지 않는다 |
+| `HUNG` | busy인데 30분 동안 기록이 없음 | INFO, 60분이면 ALERT | 뺀다 | SUPERVISOR가 들여다본다. 계속되면 RESTART |
+| `DENIED` | 10분 안에 거부·hook 막힘 3번 이상 | INFO | — | SUPERVISOR가 permission 규칙으로 허용하거나 다시 브리핑한다 |
+| `UNKNOWN` | 그 밖의 API 오류 | ALERT | — | SUPERVISOR가 오류 한 줄을 보고 판단한다 |
+| `NORDO` | 프로세스 없음(8.6, 그대로) | — | — | 전과 같다(FLEET PLAN AOG·LAUNCH) |
+
+- 코드는 다음 대답이 오거나, 오류 뒤 새 지시가 오면 풀린다.
+- 임계값은 기본값이다. 서비스는 `ATC_HEALTH_UNANSWERED_MIN`, `ATC_HEALTH_HUNG_MIN`, `ATC_HEALTH_HUNG_ALERT_MIN`, `ATC_HEALTH_THROTTLE_ALERT_COUNT`, `ATC_HEALTH_THROTTLE_WINDOW_MIN`, `ATC_HEALTH_DENIED_COUNT`, `ATC_HEALTH_DENIED_WINDOW_MIN`을 읽는다.
+
+**어디에 보이나.**
+
+- `/api/snapshot`: `sessions[].health`(`code`, `level`, `since`, `resetsAt`, `detail`, `next`, `holds`)와, ALERT 코드마다 kind `health`인 `alerts`. 올라가고 풀린 경보는 다른 경보처럼 `alert.raised`·`alert.cleared` 이벤트와 FLIGHT RECORDER 줄이 된다.
+- FLEET 운항 상태 목록: FLYING 칸 앞의 표시. 예: `HOLD · LIMIT until 07:40Z`, `PENDING approval 12m`, `CONTEXT — RESTART`. 툴팁에 오류 한 줄과 다음 한 걸음이 있다.
+- DISPATCH는 막는 코드(`LIMIT`, `MODEL`, `CONTEXT`, `PROVIDER`, `HUNG`)의 AIRCRAFT를 그 표시를 사유로 건너뛴다. SCHEDULE NEW는 그 AIRCRAFT를 tail로 받지 않는다.
+- FLIGHT FOLLOWING: 그 AIRCRAFT가 쥔 FLIGHT에 `health` 문제(ALERT면 `warn`, 아니면 `info`). OCC가 다른 문제처럼 보고한다.
+- TOWER 브리핑: `open.health`(코드가 있는 AIRCRAFT 전부)와 `open.healthAlerts`.
+
+**구현 순서.**
+
+1. ✅ 설계와 매뉴얼: 이 절, `controller/CLAUDE.md`의 TOWER 줄, OCC FOLLOWING 줄, `docs/guide/`.
+2. ✅ Pull: 순수 함수 `factsOf`·`healthOf`, 기계 단위로 묶는 `healthAlerts`, 실제 대화 기록 줄 모양으로 만든 테스트(TEAM_H 재생 포함). snapshot, FLEET 줄, FLIGHT FOLLOWING, TOWER 브리핑, DISPATCH·SCHEDULE 거르기.
+3. Push: `StopFailure`와 `Notification`(`permission_prompt`, `idle_prompt`, `elicitation_dialog`)에 거는 `hooks/health.mjs`. `Stop`·`PostToolUse`에 풀고, 상태 폴더의 `health/<sessionId>.jsonl`에 덧붙인다. `user` 등급.
+4. FLEET PLAN 제안(`MODEL`과 주간 `LIMIT`에 AOG, `CONTEXT`와 오래가는 `HUNG`에 RESTART).
+
+**위험.**
+
+| 위험 | 대응 |
+|---|---|
+| 대화 기록 형식은 공개 API가 아니다 | 순수 분류기 하나와 테스트. 모르는 오류는 원문과 함께 `UNKNOWN` |
+| 대화 기록을 읽으면 지시 본문이 보인다 | 코드, 시각, 오류 한 줄만 남긴다 |
+| 긴 테스트 중의 잘못된 `HUNG` | 먼저 INFO. DISPATCH는 막지만 busy AIRCRAFT는 원래 배정받지 않는다 |
+| 세션 파일이 `busy`인 채 승인을 기다리면 30분 뒤 `HUNG`으로 보인다 | push hook(3단계)이 `PENDING`을 바로 알린다 |
+
+아직 만들지 않음: push hook(3단계), health에서 나오는 FLEET PLAN 제안(4단계), reset 시각이 아니라 계정으로 `LIMIT` 묶기(AIRCRAFT별 계정이 필요, ATC-46).
+
+**PILOT'S DISCRETION(ATC-45).**
+
+- `LIMIT`은 ALERT로 두고 reset 시각끼리 묶는다. 같은 계정의 세션은 창이 같고, atc는 계정을 모른다.
+- `DENIED`는 STAND가 아니라 세션마다 센다. 세션은 한 번에 STAND 하나를 쥔다.
+- `NETWORK`, `UNANSWERED`, `UNKNOWN`은 DISPATCH를 막지 않는다(명세 목록에 없음). 다음 지시는 통할 수 있다.
+- `THROTTLE`과 reset이 지난 `LIMIT`은 `UNANSWERED`로 바뀐다. 대답 못 받은 BRIEF가 지난 코드 뒤에 숨지 않게.
+
 ## 9. `lane:`에서 `tail:`로 옮기기
 
 네 단계 모두 끝났다.
@@ -802,6 +876,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 7. ✅ FLEET 탭의 팀 꾸리기(8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE(8.2): LOGBOOK의 TYPE RATING 근거, GRANT·REVIEW 추천, SUPERVISOR의 부여·회수
 9. ✅ 세션 조종(8.5): FLEET 탭의 LAUNCH·STOP. 남은 일: 자동 STOP(FLEET PLAN 4단계. 그림자·승인 운용은 8.6·8.7에서 만듦), FLEET PLAN 밖의 RESTART, 다시 띄우는 CREW CHANGE, 사용량 예산
+10. ◐ AIRCRAFT health(8.8, ATC-45): 대응 매뉴얼과 pull 분류기. snapshot, FLEET 줄, FLIGHT FOLLOWING, TOWER 브리핑, DISPATCH·SCHEDULE 거르기. 남은 일: push hook, health에서 나오는 FLEET PLAN 제안
 
 ## 11. 위험과 대응
 

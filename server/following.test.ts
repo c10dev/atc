@@ -147,3 +147,15 @@ test("STAND 없는 tail: FLIGHT: DEPARTED는 착수 기록(없으면 Linear 시�
   [f] = followingOf(input({ tickets: [{ ...t, state: "Done", stateType: "completed", updatedAt: ago(10) }] }));
   assert.equal(f, undefined); // Done이면 In Progress가 아니라 대상에서 빠진다
 });
+
+test("AIRCRAFT health(ATC-45): 그 FLIGHT를 쥔 AIRCRAFT의 코드가 health 문제로, ALERT면 warn", () => {
+  const health = new Map([["TEAM_B", { code: "LIMIT" as const, level: "alert" as const, since: ago(3), resetsAt: new Date(NOW + 30 * 60_000).toISOString(), detail: "You've hit your session limit", next: "reset까지 기다린다", holds: true }]]);
+  const [f] = followingOf(input({ proposals: [proposal("D-1", "VOC-1", "accepted", { accepted: ago(5) })], tickets: [ticket("VOC-1")], health }));
+  const issue = f!.issues.find((i) => i.code === "health")!;
+  assert.deepEqual([issue.severity, issue.since, issue.key], ["warn", ago(3), "VOC-1|health|LIMIT"]);
+  assert.match(issue.text, /^TEAM_B HOLD · LIMIT until 12:30Z — You've hit your session limit\. reset까지 기다린다$/);
+  // INFO면 info, 코드 없는 AIRCRAFT는 문제 없음
+  const info = new Map([["TEAM_B", { ...health.get("TEAM_B")!, code: "PENDING" as const, level: "info" as const }]]);
+  assert.equal(followingOf(input({ proposals: [proposal("D-1", "VOC-1", "accepted", { accepted: ago(5) })], tickets: [ticket("VOC-1")], health: info }))[0]!.issues[0]!.severity, "info");
+  assert.deepEqual(followingOf(input({ proposals: [proposal("D-1", "VOC-1", "accepted", { accepted: ago(5) })], tickets: [ticket("VOC-1")] }))[0]!.issues, []);
+});

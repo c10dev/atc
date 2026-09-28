@@ -25,6 +25,11 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- AIRCRAFT health(ATC-45, [docs/fleet.ko.md](docs/fleet.ko.md) 8.8). atc가 팀 세션이 왜 멈췄는지, 무엇을 기다리는지를 대화 기록 끝 64KB에서 읽는다. 2026-09-28에 TEAM_H가 BRIEF 3초 뒤 계정 session limit에 걸렸는데 4분 동안 `idle`로 보여서 FLEET·DISPATCH·TOWER가 일을 받을 수 있는 AIRCRAFT로 봤다.
+  - 코드: `LIMIT`(사용 한도. `quotaLimits`의 reset 시각까지 HOLD), `THROTTLE`, `NETWORK`, `MODEL`, `CONTEXT`, `PROVIDER`, `PENDING`(도구 호출이 승인을 기다림), `UNANSWERED`(지시에 10분 대답 없음, 또는 `LIMIT`이 풀린 뒤), `HUNG`(busy인데 30분 기록 없음), `DENIED`(10분에 거부·hook 막힘 3번), 그리고 오류 원문과 함께 `UNKNOWN`. 코드마다 오류 한 줄, 시작 시각, 대응 매뉴얼의 다음 한 걸음이 붙는다. 다음 대답이 오면 풀린다.
+  - FLEET 운항 상태 목록(`HOLD · LIMIT until 07:40Z`, `PENDING approval 12m`, `CONTEXT — RESTART`), snapshot의 `sessions[].health`, FLIGHT FOLLOWING의 `health` 문제, TOWER 브리핑의 `open.health`에 보인다. ALERT 코드는 `health` 경보가 된다. `NETWORK`는 기계에 한 번, `LIMIT`은 reset 시각마다 한 번.
+  - DISPATCH는 `LIMIT`·`MODEL`·`CONTEXT`·`PROVIDER`·`HUNG`인 AIRCRAFT를 건너뛰고, SCHEDULE NEW는 그 AIRCRAFT를 tail로 받지 않는다. atc는 스스로 다시 보내거나 승인하거나 재시작하지 않는다.
+  - TOWER 매뉴얼과 OCC FLIGHT FOLLOWING 표에 대응 줄을 넣었다. 임계값은 `ATC_HEALTH_*` 환경 변수. 코드, 시각, 오류 한 줄만 두고 본문은 두지 않는다.
 - DISPATCH가 Linear에서 atc 밖의 누군가가 맡은 FLIGHT를 뺀다([docs/dispatch.ko.md](docs/dispatch.ko.md) 5.1.2). 이슈의 `delegate`(Linear agent 위임, 예: Codex)와 담당자 id를 읽어 API 키 주인(`viewer`)과 비교한다. 위임 대상이, 없으면 담당자가 다른 사람이나 agent면 `tail:` 라벨이 있어도 `Linear 담당 <이름> — atc 밖에서 맡음`으로 제외하고, 그 FLIGHT의 열린·승인된 ASSIGN은 같은 사유로 SUPERSEDED한다. 이름은 `Ticket.takenBy`에 담기고, TICKETS 카드는 위임 대상을 `→ <이름>`으로 보인다. 읽기만 한다: atc는 여전히 담당자를 쓰지 않는다. 2026-09-28 기준 담당자가 있는 Todo FLIGHT는 없어 지금 계획은 바뀌지 않는다.
 - FLEET 탭: AIRCRAFT 한 대가 한 줄인 운항 상태 목록, 세부는 접음(ATC-44, UI report #99). FLEET PLAN 아래 기본 보기가 AIRCRAFT마다 한 줄이다:
   - 열: callsign과 REGISTRATION, AIRPORT, AIRBORNE·HOLDING·PARKED·AOG·NORDO, 제목이 붙은 FLYING FLIGHT(더 있으면 `+N`), STAND를 잡은 뒤 흐른 시간, 마지막 활동, 이번 주 ARRIVED와 정시율

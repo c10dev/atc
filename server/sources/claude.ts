@@ -4,6 +4,7 @@ import { config } from "../config.ts";
 import { toolPaths } from "../../hooks/paths.mjs";
 import type { Claim, Session, Workspace } from "../model.ts";
 import { type TalkEvent, talkEventsOf } from "../briefs.ts";
+import { type Fact, factsOf, type Health, type HealthConfig, healthOf } from "../health.ts";
 
 interface SessionFile {
   pid: number;
@@ -254,4 +255,34 @@ export function sessionEventsOf(dir: string): TalkEvent[] {
   } catch {}
   for (const f of subs) out.push(...talkEventsFile(join(dir, "subagents", f), "crew"));
   return out;
+}
+
+// AIRCRAFT health(ATC-45): 살아 있는 세션의 대화 기록 끝(64KB)만 읽는다. 사실은 파일 크기·시각이 같으면 다시 읽지 않는다
+const HEALTH_TAIL = 64 * 1024;
+const factsCache = new Map<string, { key: string; facts: Fact[] }>();
+export function healthOfSession(s: SessionFile, status: Session["status"], now: number, cfg?: HealthConfig): Health | null {
+  if (status === "dead") return null;
+  const path = transcriptPath(s);
+  let st;
+  try {
+    st = statSync(path);
+  } catch {
+    return null;
+  }
+  const key = `${st.size}:${st.mtimeMs}`;
+  let hit = factsCache.get(s.sessionId);
+  if (hit?.key !== key) {
+    const fd = openSync(path, "r");
+    try {
+      const len = Math.min(st.size, HEALTH_TAIL);
+      const buf = Buffer.alloc(len);
+      readSync(fd, buf, 0, len, st.size - len);
+      const text = buf.toString("utf8");
+      hit = { key, facts: factsOf(len < st.size ? text.slice(text.indexOf("\n") + 1) : text) };
+    } finally {
+      closeSync(fd);
+    }
+    factsCache.set(s.sessionId, hit);
+  }
+  return healthOf(hit.facts, { status, lastWriteAt: st.mtimeMs }, now, cfg);
 }

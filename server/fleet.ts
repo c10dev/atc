@@ -7,6 +7,7 @@ import { noteCrewChange, withCrew } from "./crew-change.ts";
 import { OBSERVED_WINDOW_DAYS } from "./crew-observed.ts";
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig } from "./dispatch.ts";
 import { type Actuals, computeActuals, type LogEntry, loadLogbook } from "./logbook.ts";
+import type { Health } from "./health.ts";
 import type { Snapshot } from "./model.ts";
 import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state.ts";
 
@@ -184,6 +185,7 @@ export interface AircraftView {
   flights: { key: string; title: string | null }[]; // flying과 같은 순서, Linear 제목(모르면 null). FLEET 운항 상태 목록(ATC-44)
   flyingSince: string | null; // 지금 쥔 STAND를 처음 잡은 시각(점유 since 중 가장 이른 것). 없으면 null
   lastActiveAt: string | null; // 세션의 마지막 활동 시각
+  health?: Health | null; // AIRCRAFT health(ATC-45). 세션이 없거나 문제가 없으면 null
   configuration: ConfigurationId | null;
   enteredAt: string | null;
   aog: AircraftProfile["aog"] | null;
@@ -225,6 +227,7 @@ export function fleetView(
       flights: flying.map((key) => ({ key, title: s.tickets?.find((t) => t.key === key)?.title ?? null })),
       flyingSince: held.map((c) => c.since).sort()[0] ?? null,
       lastActiveAt: session?.lastActiveAt ?? null,
+      health: session?.health ?? null,
       configuration: profile.configuration ?? null,
       enteredAt: profile.enteredAt ?? null,
       aog: profile.aog ?? null,
