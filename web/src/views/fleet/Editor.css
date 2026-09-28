@@ -1,0 +1,44 @@
+/* FLEET 편집기(Editor.tsx). 색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다). */
+.fl-card.is-editing {
+  border-left-color: var(--amber);
+}
+.fl-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-2) 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.fl-field legend {
+  padding: 0;
+  color: var(--faint);
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+.fl-crew-row {
+  display: flex;
+  gap: var(--space-1-5);
+}
+.fl-targets {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.fl-targets label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+.fl-num {
+  width: 64px;
+  flex: none;
+}
+.fl-wide {
+  width: 100%;
+}
+.fl-hint {
+  font-size: var(--text-xs);
+}

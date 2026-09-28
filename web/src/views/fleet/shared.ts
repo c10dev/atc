@@ -1,0 +1,58 @@
+import type { AircraftView, CrewMember, FleetFile, Rating } from "../../../../server/fleet.ts";
+import type { FuelRemaining } from "../../../../server/fuel-remaining.ts";
+
+// FLEET 탭 여러 파일이 같이 쓰는 타입과 도우미(GET /api/fleet, /api/fleet/sessions)
+
+export interface Configuration {
+  id: string;
+  label: string;
+  complement: CrewMember[];
+  ratings: Rating[];
+}
+
+export interface FleetBrief {
+  ratings: Rating[];
+  defaults: FleetFile["defaults"];
+  projects: string[];
+  aircraft: AircraftView[];
+  configurations: Configuration[];
+  airports: string[];
+  defaultBase: string | null;
+  nextRegistration: string | null;
+  observedWindowDays?: number; // 관측 CREW를 세는 기간(옛 서버엔 없음)
+  dispatchMode?: "shadow" | "approval"; // CREW CHANGE 승인은 approval(2b)에서만(옛 서버엔 없음)
+  fuelAccounts?: FuelRemaining[]; // ACCOUNT마다 FUEL과 구성원(ATC-60, 옛 서버엔 없음)
+}
+
+// GET /api/fleet/sessions: REGISTRATION 이름의 세션(claude agents --json)
+export interface SessionRow {
+  id?: string;
+  name?: string;
+  kind: string; // background | interactive
+  status?: string;
+}
+export interface SessionBrief {
+  max: number;
+  permissionModes: string[];
+  sessions: SessionRow[];
+}
+
+export const ratingHelp: Record<Rating, string> = {
+  SEC: "DB·마이그레이션·RLS·인증·권한·보안·권리·배포·결제 (Codex Engineering Task)",
+  UI: "화면·컴포넌트·시각 디자인·접근성",
+  DATA: "언어 데이터·파이프라인·콘텐츠·분석",
+  DOCS: "문서·규칙 파일·handoff",
+};
+
+export async function api(method: string, path: string, body?: unknown) {
+  const res = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
+  return data;
+}
+
+export const pct = (x: number) => `${Math.round(x * 100)}%`;

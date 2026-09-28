@@ -1,0 +1,10 @@
+/* ENTRY INTO SERVICE(EntryForm.tsx). 색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다). */
+.fl-entry-toggle {
+  margin-bottom: var(--space-3);
+}
+.fl-reg {
+  width: 96px;
+  flex: none;
+  font-family: var(--mono);
+  letter-spacing: 0.08em;
+}

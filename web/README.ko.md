@@ -42,7 +42,7 @@ npm run typecheck
 | AIRPORTS | `#airports` | `views/Airports.tsx` | 저장소 등록부: 개설·이름 변경·폐쇄·재개·삭제, 소속 AIRCRAFT와 TRANSIENT |
 | METRICS | `#metrics` | `views/Metrics.tsx` | FLIGHT RECORDER 운용 지표와 2단계 진입 점검 |
 | NETWORK | `#network` | `views/Network.tsx` | 4단계 읽기 전용 현황(`GET /api/network`): ROUTE별 열린 FLIGHT(단계별)·14일 ARRIVED·AIRCRAFT·착륙 대기·Linear 프로젝트 목표, AIRCRAFT별 TARGETS 대 실적, 28일 추이(ARRIVED, 착륙 대기, 되돌림, DISPATCH·SCHEDULE 판정 수와 합의율, CROSSCHECK 일치). 차트는 키보드 커서와 일별 표를 갖는다 |
-| FLEET | `#fleet` | `views/Fleet.tsx` | AIRCRAFT마다 상태, 지금 FLIGHT, 프로필(CREW, TYPE RATING, ROUTE, TARGET). ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
+| FLEET | `#fleet` | `views/fleet/Fleet.tsx`(부분마다 `views/fleet/`의 파일 하나) | AIRCRAFT마다 상태, 지금 FLIGHT, 프로필(CREW, TYPE RATING, ROUTE, TARGET). ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
 | DISPATCH | `#dispatch` | `views/Dispatch.tsx` | 2단계 제안: 2a에서는 그림자 판정, 2b에서는 승인·거절, IN FLIGHT(SENT, READBACK, 늦음)와 3단계 점검. 확인 창을 거치는 모드 전환 |
 | SCHEDULE | `#schedule` | `views/Schedule.tsx` | OCC S1 초안(그림자 운용): S2 진입 점검 패널, 열린 초안 카드(FLIGHT, 지금 분류, 바뀔 것, OCC 근거)와 "승인했을 것 / 거절했을 것"(거절은 사유 칩과 메모), Linear에서 손으로 바꿀 것 안내, 후보, RECENT(최근 7일 닫힌 초안) |
 
@@ -89,4 +89,4 @@ ATC 로고를 누르면 설정 창이 열린다(`SettingsPanel.tsx`, Esc나 바�
 | `src/Starfield.tsx` | Night Sky 배경(30fps 제한, 탭이 가려지면 멈춤)과 오늘의 달 모양 아이콘 |
 | `src/ui.tsx` | 작은 공용 조각: AIRPORT 코드, OUTSTATION 표시, 세션 위치, 상태 점, 우선순위 표시 |
 | `src/styles.css`, `src/ui.css`, `src/views/*.css` | 테마 토큰과 스타일 |
-| `src/views/*.tsx` | 탭마다 파일 하나 |
+| `src/views/*.tsx` | 탭마다 파일 하나. FLEET는 폴더 `src/views/fleet/`이고, 부분(쪽 틀, 운항 상태 목록, 카드, FUEL, ENTRY INTO SERVICE, LAUNCH·CREW BRIEFING 패널, 편집기)마다 파일 하나에 CSS가 옆에 있다 |

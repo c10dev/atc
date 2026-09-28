@@ -1,0 +1,155 @@
+/* FLEET 카드(Card.tsx, 편집기 제외). 색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다). */
+.fl-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  padding: var(--space-3) var(--space-4);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--faint);
+  border-radius: var(--radius);
+}
+.fl-card.s-busy {
+  border-left-color: var(--radar);
+}
+.fl-card.s-idle {
+  border-left-color: var(--cyan);
+}
+.fl-card.s-dead {
+  border-left-color: var(--alert);
+}
+
+.fl-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.fl-callsign {
+  font: 700 var(--text-md) var(--mono);
+  letter-spacing: 0.08em;
+}
+.fl-status {
+  margin-left: auto;
+  color: var(--muted);
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+.fl-flying {
+  margin: 0;
+  color: var(--radar);
+  font: var(--text-sm) var(--mono);
+}
+/* RULES(ATC-42): 규칙 파일 확인 상태. 뒤처지면 경고색 */
+.fl-rules {
+  margin: 0;
+  font: var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
+}
+.fl-rules.is-current {
+  color: var(--faint);
+}
+.fl-rules.is-behind {
+  color: var(--amber);
+}
+
+.fl-crew {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.fl-limits {
+  margin-left: var(--space-2);
+  color: var(--faint);
+  font-size: var(--text-xs);
+}
+
+.fl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+.fl-note {
+  color: var(--muted);
+}
+
+/* TARGETS 실적(LOGBOOK) */
+.fl-actuals {
+  margin: 0;
+  font: var(--text-sm) var(--mono);
+}
+.fl-actuals.faint {
+  font-size: var(--text-xs);
+}
+.fl-short {
+  color: var(--amber);
+}
+.fl-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+  font: var(--text-xs) var(--mono);
+}
+.fl-log li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1-5);
+}
+.fl-log-flight {
+  color: var(--text);
+  text-decoration: none;
+}
+.fl-log-flight:hover,
+.fl-log-flight:focus-visible {
+  color: var(--cyan);
+  text-decoration: underline;
+}
+.fl-log-date {
+  margin-left: auto;
+}
+.fl-ontime {
+  color: var(--radar);
+}
+.fl-late {
+  color: var(--amber);
+}
+.fl-card.is-aog {
+  border-left-color: var(--amber);
+}
+.fl-aog {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.fl-aog-mark {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-sm);
+  color: var(--amber);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+/* ACCOUNT HOLD(ATC-51): 같은 ACCOUNT의 LIMIT으로 붙들림 */
+.fl-acct-hold {
+  margin: 0;
+  font: 600 var(--text-xs) var(--mono);
+  color: var(--amber);
+}
+.fl-absent {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+.fl-bg {
+  padding: 0 var(--space-1-5);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+}
