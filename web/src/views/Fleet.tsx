@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
+import { type FormEvent, Fragment, type KeyboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_ACCOUNT } from "../../../server/crew.ts";
 import type { AircraftView, CrewMember, FleetFile, Rating } from "../../../server/fleet.ts";
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel } from "../../../server/health.ts";
@@ -20,6 +20,7 @@ import "./Fleet.css";
 // 사람이 직접 연 세션(데스크톱·터미널)은 CREW BRIEFING을 붙여 넣는 길도 그대로다.
 // FLEET PLAN: atc가 그 버튼들을 언제 쓰자고 제안하는지(docs/fleet.md 8.6, 그림자).
 // 운항 상태 목록(ATC-44): 기본은 AIRCRAFT 한 대가 한 줄인 목록. 줄을 누르면 그 AIRCRAFT의 카드가 펼쳐진다. 목록/카드 선택은 localStorage.
+// 카드 버튼이 여는 패널(LAUNCH, CREW BRIEFING)은 그 카드 바로 아래에 열린다(ATC-61). ENTRY INTO SERVICE 뒤의 CREW BRIEFING만 맨 위.
 
 interface Configuration {
   id: string;
@@ -95,10 +96,11 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
   const [brief, setBrief] = useState<FleetBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [briefing, setBriefing] = useState<{ registration: string; text: string } | null>(null);
+  // opener: 패널을 연 버튼(닫으면 초점을 돌려준다). from: card면 그 카드 아래, entry면 맨 위(ENTRY INTO SERVICE 옆)
+  const [briefing, setBriefing] = useState<{ registration: string; text: string; opener: HTMLElement | null; from: "card" | "entry" } | null>(null);
   const [control, setControl] = useState<SessionBrief | null>(null);
   const [controlError, setControlError] = useState<string | null>(null);
-  const [launching, setLaunching] = useState<AircraftView | null>(null);
+  const [launching, setLaunching] = useState<{ a: AircraftView; opener: HTMLElement | null } | null>(null);
   const [layout, setLayout] = useState<Layout>(loadLayout);
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const chooseLayout = (l: Layout) => {
@@ -144,10 +146,10 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
     }
   };
 
-  const showBriefing = async (reg: string) => {
+  const showBriefing = async (reg: string, opener: HTMLElement | null, from: "card" | "entry") => {
     try {
       const r = await api("GET", `/api/fleet/${encodeURIComponent(reg)}/briefing`);
-      setBriefing({ registration: reg, text: r.briefing });
+      setBriefing({ registration: reg, text: r.briefing, opener, from });
     } catch (e) {
       setError((e as Error).message);
     }
@@ -157,7 +159,7 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
     try {
       const r = await api("POST", "/api/fleet", input);
       await load();
-      await showBriefing(r.aircraft.registration);
+      await showBriefing(r.aircraft.registration, null, "entry");
       return true;
     } catch (e) {
       setError((e as Error).message);
@@ -175,15 +177,15 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
 
   const sessionOf = (reg: string) => control?.sessions.find((x) => (x.name ?? "").toUpperCase() === reg) ?? null;
 
-  const launch = async (reg: string, input: { permissionMode: string; model: string }) => {
+  // 실패하면 사유를 돌려준다. 패널 안에 보인다(맨 위 오류 줄은 목록 아래쪽에서 안 보인다)
+  const launch = async (reg: string, input: { permissionMode: string; model: string }): Promise<string | null> => {
     try {
       await api("POST", `/api/fleet/${encodeURIComponent(reg)}/launch`, input);
       setLaunching(null);
       await load();
-      return true;
+      return null;
     } catch (e) {
-      setError((e as Error).message);
-      return false;
+      return (e as Error).message;
     }
   };
 
@@ -215,26 +217,42 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
   if (!brief) return <p className="empty">{error ? `불러오지 못함: ${error}` : "불러오는 중…"}</p>;
   const inService = brief.aircraft.filter((a) => !a.retired);
   const retired = brief.aircraft.filter((a) => a.retired);
-  // AIRCRAFT 한 대의 지금 카드(고치는 중이면 편집기). 목록에서 펼칠 때와 카드 보기에서 같이 쓴다
-  const cardOf = (a: AircraftView) =>
-    editing === a.registration ? (
-      <Editor key={a.registration} a={a} brief={brief} onCancel={() => setEditing(null)} onSave={(p) => save(a.registration, p)} />
-    ) : (
-      <Card
-        key={a.registration}
-        a={a}
-        onEdit={() => (setError(null), setEditing(a.registration))}
-        onBriefing={() => showBriefing(a.registration)}
-        onAog={() => toggleAog(a)}
-        onRetire={() => retire(a)}
-        session={control ? sessionOf(a.registration) : undefined}
-        onLaunch={() => (setError(null), setLaunching(a))}
-        onStop={() => stop(a)}
-        windowDays={brief.observedWindowDays}
-        dispatchMode={brief.dispatchMode}
-        onCrewChanged={load}
-      />
-    );
+  // AIRCRAFT 한 대의 지금 카드(고치는 중이면 편집기). 목록에서 펼칠 때와 카드 보기에서 같이 쓴다.
+  // 그 카드가 연 패널(LAUNCH, CREW BRIEFING)은 카드 바로 아래에 붙는다(ATC-61)
+  const cardOf = (a: AircraftView) => (
+    <Fragment key={a.registration}>
+      {editing === a.registration ? (
+        <Editor a={a} brief={brief} onCancel={() => setEditing(null)} onSave={(p) => save(a.registration, p)} />
+      ) : (
+        <Card
+          a={a}
+          onEdit={() => (setError(null), setEditing(a.registration))}
+          onBriefing={(opener) => showBriefing(a.registration, opener, "card")}
+          onAog={() => toggleAog(a)}
+          onRetire={() => retire(a)}
+          session={control ? sessionOf(a.registration) : undefined}
+          onLaunch={(opener) => (setError(null), setLaunching({ a, opener }))}
+          onStop={() => stop(a)}
+          windowDays={brief.observedWindowDays}
+          dispatchMode={brief.dispatchMode}
+          onCrewChanged={load}
+        />
+      )}
+      {launching?.a.registration === a.registration && control && (
+        <LaunchPanel
+          key={`launch-${a.registration}`}
+          a={a}
+          control={control}
+          opener={launching.opener}
+          onCancel={() => setLaunching(null)}
+          onLaunch={(input) => launch(a.registration, input)}
+        />
+      )}
+      {briefing?.from === "card" && briefing.registration === a.registration && (
+        <BriefingPanel registration={briefing.registration} text={briefing.text} opener={briefing.opener} onClose={() => setBriefing(null)} />
+      )}
+    </Fragment>
+  );
 
   return (
     <section className="fleet">
@@ -250,14 +268,8 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
         </p>
       )}
       <EntryForm brief={brief} onEnter={enter} />
-      {briefing && <BriefingPanel registration={briefing.registration} text={briefing.text} onClose={() => setBriefing(null)} />}
-      {launching && control && (
-        <LaunchPanel
-          a={launching}
-          control={control}
-          onCancel={() => setLaunching(null)}
-          onLaunch={(input) => launch(launching.registration, input)}
-        />
+      {briefing?.from === "entry" && (
+        <BriefingPanel registration={briefing.registration} text={briefing.text} opener={briefing.opener} onClose={() => setBriefing(null)} />
       )}
       {controlError && <p className="fl-entry-preview faint">세션 조종을 쓸 수 없음(LAUNCH·STOP 숨김): {controlError}</p>}
       <FleetPlan refreshKey={refreshKey} onChanged={load} />
@@ -625,11 +637,11 @@ function Card({
 }: {
   a: AircraftView;
   onEdit: () => void;
-  onBriefing: () => void;
+  onBriefing: (opener: HTMLElement) => void;
   onAog: () => void;
   onRetire: () => void;
   session: SessionRow | null | undefined; // undefined: 세션 조종을 못 읽음
-  onLaunch: () => void;
+  onLaunch: (opener: HTMLElement) => void;
   onStop: () => void;
   windowDays?: number;
   dispatchMode?: string;
@@ -720,7 +732,7 @@ function Card({
 
       <div className="fl-actions">
         {session === null && (
-          <button className="fl-btn primary" onClick={onLaunch}>
+          <button className="fl-btn primary" onClick={(e) => onLaunch(e.currentTarget)}>
             LAUNCH
           </button>
         )}
@@ -729,7 +741,7 @@ function Card({
             STOP
           </button>
         )}
-        <button className="fl-btn" onClick={onBriefing}>
+        <button className="fl-btn" onClick={(e) => onBriefing(e.currentTarget)}>
           CREW BRIEFING
         </button>
         <button className="fl-btn" onClick={onAog}>
@@ -816,29 +828,70 @@ function EntryForm({ brief, onEnter }: { brief: FleetBrief; onEnter: (input: Rec
   );
 }
 
+// 카드 버튼이 연 패널(ATC-61): 열리면 화면 안으로 스크롤하고 첫 칸에 초점을 둔다.
+// 닫으면(취소·닫기·Esc) 연 버튼으로 초점을 돌린다
+function usePanelFocus<T extends HTMLElement>(opener: HTMLElement | null, onClose: () => void) {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // 위에 붙은 콘솔(좁은 화면에선 여러 줄) 아래로 오게. 남은 높이보다 크면 머리부터, 아니면 모자란 만큼만 움직인다
+    const top = document.querySelector(".console")?.getBoundingClientRect().bottom ?? 0;
+    el.style.scrollMarginTop = `${Math.round(top) + 12}px`;
+    el.scrollIntoView({ block: el.offsetHeight > window.innerHeight - top ? "start" : "nearest" });
+    el.querySelector<HTMLElement>("input, select, textarea, button")?.focus({ preventScroll: true });
+  }, []);
+  const close = () => {
+    onClose();
+    if (opener?.isConnected) opener.focus();
+  };
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    close();
+  };
+  return { ref, close, onKeyDown };
+}
+
 function LaunchPanel({
   a,
   control,
+  opener,
   onCancel,
   onLaunch,
 }: {
   a: AircraftView;
   control: SessionBrief;
+  opener: HTMLElement | null;
   onCancel: () => void;
-  onLaunch: (input: { permissionMode: string; model: string }) => Promise<boolean>;
+  onLaunch: (input: { permissionMode: string; model: string }) => Promise<string | null>;
 }) {
   const [permissionMode, setPermissionMode] = useState(control.permissionModes[0] ?? "auto");
   const [model, setModel] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { ref, close, onKeyDown } = usePanelFocus<HTMLFormElement>(opener, onCancel);
+  const submitRef = useRef<HTMLButtonElement>(null);
+  // 실패 사유가 붙으면 패널이 길어진다. 다시 보이게 하고, 누르는 동안 막혔던 LAUNCH로 초점을 되돌린다
+  useEffect(() => {
+    if (!error) return;
+    ref.current?.scrollIntoView({ block: "nearest" });
+    submitRef.current?.focus({ preventScroll: true });
+  }, [error, ref]);
   const launched = control.sessions.filter((x) => x.kind === "background").length;
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    await onLaunch({ permissionMode, model: model.trim() });
-    setBusy(false);
+    setError(null);
+    const err = await onLaunch({ permissionMode, model: model.trim() });
+    // 성공하면 패널이 닫힌다(언마운트). 실패일 때만 사유를 보인다
+    if (err) {
+      setError(err);
+      setBusy(false);
+    }
   };
   return (
-    <form className="fl-entry fl-launch" onSubmit={submit} aria-label={`${a.registration} LAUNCH`}>
+    <form ref={ref} className="fl-entry fl-launch fl-panel" onSubmit={submit} onKeyDown={onKeyDown} aria-label={`${a.registration} LAUNCH`}>
       <h2 className="label">
         LAUNCH <em>{a.callsign} ({a.registration}) · AIRPORT {a.base ?? "—"}</em>
       </h2>
@@ -860,11 +913,16 @@ function LaunchPanel({
         모델{" "}
         <input className="fl-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="기본값" aria-label="모델" />
       </label>
+      {error && (
+        <p className="fl-error fl-panel-error" role="alert">
+          LAUNCH 못 함: {error}
+        </p>
+      )}
       <div className="fl-actions">
-        <button type="button" className="fl-btn" onClick={onCancel}>
+        <button type="button" className="fl-btn" onClick={close}>
           취소
         </button>
-        <button type="submit" className="fl-btn primary" disabled={busy}>
+        <button ref={submitRef} type="submit" className="fl-btn primary" disabled={busy}>
           {busy ? "띄우는 중…" : "LAUNCH"}
         </button>
       </div>
@@ -872,8 +930,9 @@ function LaunchPanel({
   );
 }
 
-function BriefingPanel({ registration, text, onClose }: { registration: string; text: string; onClose: () => void }) {
+function BriefingPanel({ registration, text, opener, onClose }: { registration: string; text: string; opener: HTMLElement | null; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  const { ref, close, onKeyDown } = usePanelFocus<HTMLElement>(opener, onClose);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
@@ -883,14 +942,20 @@ function BriefingPanel({ registration, text, onClose }: { registration: string; 
     }
   };
   return (
-    <section className="fl-briefing" aria-label={`${registration} CREW BRIEFING`}>
+    <section ref={ref} className="fl-briefing fl-panel" onKeyDown={onKeyDown} aria-label={`${registration} CREW BRIEFING`}>
       <h2 className="label">
         CREW BRIEFING <em>{registration} — 새 세션을 그 저장소에서 열고, 세션 이름을 {registration}로 둔 뒤 아래를 붙여 넣는다</em>
       </h2>
       <p className="fl-entry-preview faint">Linear에 tail:{registration} 라벨이 없으면 먼저 만들어야 이 팀에 배정 라벨을 붙일 수 있다.</p>
-      <textarea className="fl-briefing-text" readOnly value={text} rows={Math.min(24, text.split("\n").length + 1)} />
+      <textarea
+        className="fl-briefing-text"
+        readOnly
+        value={text}
+        rows={Math.min(24, text.split("\n").length + 1)}
+        aria-label={`${registration} CREW BRIEFING 본문`}
+      />
       <div className="fl-actions">
-        <button className="fl-btn" onClick={onClose}>
+        <button className="fl-btn" onClick={close}>
           닫기
         </button>
         <button className="fl-btn primary" onClick={copy}>

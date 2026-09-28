@@ -172,7 +172,8 @@ Linear에 `tail:TEAM_G` 라벨이 없으면 먼저 만든다.
 
 atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude Code 백그라운드 세션(`claude --bg`)이다.
 
-- **LAUNCH**: 세션이 없는 카드에 보인다. permission mode(`auto` 기본, `acceptEdits`, `default`)와 모델(비우면 기본값)을 고르고 누른다. 세션은 base AIRPORT 저장소에서 뜨고, 이름은 등록번호, 첫 지시는 CREW BRIEFING이다. 곧 카드에 `BG <id>`가 붙는다.
+- **LAUNCH**: 세션이 없는 카드에 보인다. 누르면 그 카드 바로 아래에 LAUNCH 패널이 열리고(목록에선 펼친 줄 안), 초점이 permission mode에 간다. permission mode(`auto` 기본, `acceptEdits`, `default`)와 모델(비우면 기본값)을 고르고 패널의 LAUNCH를 누른다. 세션은 base AIRPORT 저장소에서 뜨고, 이름은 등록번호, 첫 지시는 CREW BRIEFING이다. 곧 카드에 `BG <id>`가 붙는다. 막히면 사유가 패널 안에 보인다. 취소나 Esc는 패널을 닫고 카드의 LAUNCH로 초점을 돌린다.
+- **CREW BRIEFING**도 그 카드 바로 아래에 열린다. ENTRY INTO SERVICE로 들인 직후의 CREW BRIEFING만 맨 위, 그 양식 자리에 보인다.
 - **STOP**: atc가 띄운 백그라운드 세션에만 보인다. 멈춰도 대화는 남는다. 터미널에서 `claude attach <id>`로 들여다보거나 `claude --resume`으로 다시 연다.
 - **퇴역**: 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
 - 데스크톱·터미널에서 직접 연 세션은 atc가 멈추지 않는다. 그 창에서 닫는다.
