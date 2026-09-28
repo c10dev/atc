@@ -370,7 +370,7 @@ vocado의 `main` 규칙은 최신 main을 요구해서(`strict`) 머지가 있�
 
 vocado `main`의 `strict` 때문에 머지가 있을 때마다 다른 열린 PR이 `behind`가 되고, SUPERVISOR가 PR마다 Update branch → CI 대기 → 머지를 되풀이했다. ATC-31로 main 병합만 한 갱신은 리뷰를 이어받으니 그 대기는 기계 일이다. AUTOLAND가 스위치 하나 뒤에서 그것을 한다.
 
-- **스위치**: `autoland.json`의 `mode`. `"off"`(기본, 모르는 값도 off), `"update"`, `"merge"`. SUPERVISOR만 바꾼다: 설정 창 AGENTS 탭의 AUTOLAND 줄(모드마다 한 줄 경고)이나 `PUT /api/settings {autolandMode}`. 서버는 이 화면에서 온 요청(localhost `Origin`이 있는 JSON)만 받는다. 관제 세션 CLI(`atcctl`)에는 AUTOLAND 명령이 없고 `Origin`도 보내지 않으며, guard가 `curl`을 막는다. 같은 파일에 `airports`(기본 `["VCDO"]`, atc 저장소 자신의 착륙은 범위 밖), `mergeMethod`(기본 `squash`), `applicationCheck`(기본 `Application Check`), SUPERVISOR의 `holds`가 있다.
+- **스위치**: `autoland.json`의 `mode`. `"off"`(기본, 모르는 값도 off), `"update"`, `"merge"`. SUPERVISOR만 바꾼다: 설정 창 AGENTS 탭의 AUTOLAND 줄(모드마다 한 줄 경고)이나 `PUT /api/settings {autolandMode}`. 서버는 이 화면에서 온 요청(localhost `Origin`이 있는 JSON)만 받는다. 관제 세션 CLI(`atcctl`)에는 AUTOLAND 명령이 없고 `Origin`도 보내지 않으며, guard가 `curl`을 막는다. 같은 파일에 `airports`(기본 `["VCDO"]`, atc 저장소 자신의 착륙은 범위 밖이고 SELF-LANDING 설계 초안 [self-landing.ko.md](self-landing.ko.md)에서 다룬다), `mergeMethod`(기본 `squash`), `applicationCheck`(기본 `Application Check`), SUPERVISOR의 `holds`가 있다.
 - **GitHub을 새로 읽을 때마다 한 주기**(90초, `server/autoland-run.ts`). 목록의 AIRPORT마다 할 일은 많아야 하나다(순수 `planAutoland`):
   1. GROUND STOP → 아무것도 안 함.
   2. 갱신한 PR이 비행 중 → 새 head의 CI가 끝날 때까지 기다린다(CLEARED, 다른 막힘, 닫힘. 10분 동안 head가 안 바뀌거나 CI가 90분을 넘으면 포기하고 다음으로).
