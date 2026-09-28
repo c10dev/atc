@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 export type ReadinessStatus = "ready" | "not-ready" | "check";
 export interface ReadinessItem {
-  id: string; // gate, recall, send-guard, vocado-readback, stand-free, crew-change, known-gaps
+  id: string; // gate, recall, send-guard, vocado-readback, readback-<code>(AIRPORT마다), stand-free, crew-change, known-gaps
   label: string;
   status: ReadinessStatus;
   detail: string;

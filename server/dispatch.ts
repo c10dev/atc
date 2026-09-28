@@ -130,6 +130,17 @@ export function candidateTeamsOf(cfg: Pick<DispatchConfig, "candidateTeams">, pr
 }
 export const isCandidateTicket = (t: Pick<Ticket, "key">, teams: Set<string>) => teams.has(teamOfKey(t.key));
 
+// 후보 팀이 배정할 수 있는 AIRPORT 코드(projectAirports·teamAirports 값, null 제외).
+// 2b 켜기 점검표(readiness.ts)가 이걸로 AIRPORT마다 READBACK 규칙 한 줄을 만든다.
+export function assignableAirportCodes(
+  cfg: Pick<DispatchConfig, "candidateTeams" | "teamAirports" | "projectAirports">,
+  primary = config.linearTeamKey,
+): Set<string> {
+  const candidates = candidateTeamsOf(cfg, primary);
+  const codes = [...Object.values(cfg.projectAirports), ...[...candidates].map((k) => cfg.teamAirports[k])];
+  return new Set(codes.filter((c): c is string => Boolean(c)));
+}
+
 // FLIGHT의 AIRPORT: 프로젝트 매핑이 먼저(null이면 제외), 매핑에 없는 프로젝트·프로젝트 없음은 팀의 기본 AIRPORT
 export function airportOfTicket(t: Pick<Ticket, "key" | "project">, cfg: Pick<DispatchConfig, "projectAirports" | "teamAirports">): string | null {
   if (t.project && t.project in cfg.projectAirports) return cfg.projectAirports[t.project];
