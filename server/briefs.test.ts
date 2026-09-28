@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { BRIEF_BODY_MAX, briefFactsOf, briefLineOf, compareBriefs, crewModeOf, directLines, directSectionsOf, FULL_TEXT_LINE, findingsOf, formatAssignment, labelOf, reworkOf, type TalkEvent, talkEventsOf } from "./briefs.ts";
+import { BRIEF_BODY_MAX, briefFactsOf, briefTextOf, GOAL_MAX, briefLineOf, compareBriefs, crewModeOf, directLines, directSectionsOf, FULL_TEXT_LINE, findingsOf, formatAssignment, labelOf, reworkOf, type TalkEvent, talkEventsOf } from "./briefs.ts";
 import type { LandingReview } from "./landing.ts";
 
 test("BRIEF 줄: DIRECT·VECTORS를 읽고, 없으면 null", () => {
@@ -232,5 +232,55 @@ test("DIRECT 지시서: 상한을 넘으면 완료 기준·제약을 일부만 �
   // 목표가 없어도 한 줄은 남는다
   assert.deepEqual(directLines({ ...big, goal: null }), [FULL_TEXT_LINE]);
   // 상한 안이면 그대로
-  assert.deepEqual(directLines({ goal: null, done: "* 하나", constraints: null }), ["완료 기준: * 하나"]);
+  assert.deepEqual(directLines({ goal: null, done: "* 하나", constraints: null }), ["완료 기준:\n* 하나"]);
+});
+
+// ── 쓴 그대로(ATC-58): Linear의 이스케이프와 긴 이슈 링크 ──
+const ISSUE = (key: string, slug = "fuel-per-flight-token-burn-estimates-fuel-efficiency-cache-hit-and") => `https://linear.app/vocado/issue/${key}/${slug}`;
+
+test("briefTextOf: 역슬래시 이스케이프를 푼다(\\~ \\* \\_ \\[ …)", () => {
+  assert.equal(briefTextOf("cache writes \\~31 K, \\*not bold\\*, snake\\_case, \\[x\\] \\# \\\\ end"), "cache writes ~31 K, *not bold*, snake_case, [x] # \\ end");
+  // 구두점이 아닌 글자 앞의 역슬래시는 이스케이프가 아니다
+  assert.equal(briefTextOf("C:\\path \\n"), "C:\\path \\n");
+});
+
+test("briefTextOf: 코드 스팬과 펜스 블록 안은 그대로", () => {
+  assert.equal(briefTextOf("`a\\~b` and ``x ` \\* y`` but \\~z"), "`a\\~b` and ``x ` \\* y`` but ~z");
+  assert.equal(briefTextOf("```ts\nconst re = /\\~/; // ATC-46 " + ISSUE("ATC-46") + "\n```\n\\~after"), "```ts\nconst re = /\\~/; // ATC-46 " + ISSUE("ATC-46") + "\n```\n~after");
+  assert.equal(briefTextOf("~~~\n\\*kept\n~~~"), "~~~\n\\*kept\n~~~");
+  // 이스케이프된 백틱은 코드를 열지 않는다
+  assert.equal(briefTextOf("\\`not code\\` \\~"), "`not code` ~");
+  // 닫히지 않은 백틱은 코드가 아니다
+  assert.equal(briefTextOf("a ` b \\~"), "a ` b ~");
+});
+
+test("briefTextOf: Linear 이슈 링크는 key만. 다른 링크는 그대로", () => {
+  assert.equal(briefTextOf(`Part of FUEL ([ATC-46](${ISSUE("ATC-46")})).`), "Part of FUEL (ATC-46).");
+  assert.equal(briefTextOf(`[${ISSUE("ATC-45")}](${ISSUE("ATC-45")})`), "ATC-45");
+  assert.equal(briefTextOf(`see [the design issue](${ISSUE("ATC-46")})`), "see the design issue (ATC-46)");
+  assert.equal(briefTextOf(`<${ISSUE("ATC-47")}> and ${ISSUE("ATC-48")}.`), "ATC-47 and ATC-48.");
+  assert.equal(briefTextOf("https://linear.app/vocado/issue/VOC-12"), "VOC-12");
+  const other = "PR [chaehy5665/atc#119](https://linear.app/vocado/review/design-draft-9a767e0297d7), [docs](https://example.com/docs/fuel), https://github.com/chaehy5665/atc/pull/119";
+  assert.equal(briefTextOf(other), other);
+});
+
+test("briefTextOf: 아무것도 없는 본문은 그대로", () => {
+  const plain = "* 한 줄\n* 두 줄 — `code` 와 [link](https://example.com)\n\n1. 번호";
+  assert.equal(briefTextOf(plain), plain);
+});
+
+test("directSectionsOf: 목표·완료 기준·제약 모두 푼 글로 싣고, 목표 600자는 푼 글로 잰다", () => {
+  const link = `[ATC-46](${ISSUE("ATC-46")})`;
+  const md = `## 목표\n${Array.from({ length: 6 }, () => `${link} \\~31 K`).join(" ")}\n\n## 완료 기준\n* ${link} 참고\n\n## 이 작업만의 제약\n* Display only\\.`;
+  const s = directSectionsOf(md);
+  // 원문 목표는 600자를 넘지만 푼 글은 넘지 않아 자르지 않는다
+  assert.ok(md.split("\n")[1]!.length > GOAL_MAX);
+  assert.equal(s.goal, Array.from({ length: 6 }, () => "ATC-46 ~31 K").join(" "));
+  assert.equal(s.done, "* ATC-46 참고");
+  assert.equal(s.constraints, "* Display only.");
+  // 한 줄짜리 목록 항목은 이름표 다음 줄에
+  assert.deepEqual(directLines(s), [`목표: ${s.goal}`, "완료 기준:\n* ATC-46 참고", "이 작업만의 제약:\n* Display only."]);
+  // 푼 글이 600자를 넘을 때만 자른다
+  const long = directSectionsOf(`## 목표\n${"긴 목표 ".repeat(150)}\\~`);
+  assert.ok(long.goal!.endsWith(" …") && long.goal!.length <= GOAL_MAX + 2);
 });
