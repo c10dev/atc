@@ -1,6 +1,8 @@
-import { CONFIGURATIONS, type ConfigurationId, canFly, type CrewMember, type FleetFile, type Rating } from "./crew.ts";
+import { CONFIGURATIONS, type ConfigurationId, canFly, type CrewMember, DEFAULT_ACCOUNT, type FleetFile, type Rating } from "./crew.ts";
 import type { Plan, Unserved } from "./dispatch.ts";
 import type { AircraftView } from "./fleet.ts";
+import { type FuelRemaining, fuelLabel, membersText } from "./fuel-remaining.ts";
+import { hhmm } from "./health.ts";
 import type { LogEntry } from "./logbook.ts";
 import { GATE } from "./proposals.ts";
 import { MAX_LAUNCHED, PERMISSION_MODES, type PermissionMode } from "./session-control.ts";
@@ -71,6 +73,8 @@ export interface FleetInputs {
   defaults: FleetFile["defaults"];
   config: FleetPlanConfig;
   now: number;
+  // FUEL REMAINING(ATC-55·60)의 ACCOUNT마다 한 줄(snapshot.fuelAccounts). 없으면 FUEL을 보지 않는다(전과 같다)
+  fuelAccounts?: FuelRemaining[];
 }
 
 const MIN = 60_000;
@@ -112,6 +116,36 @@ export const FLEET_PLAN_AOG = /^FLEET PLAN F-\d+/;
 
 const isParked = (a: AircraftView) => !a.retired && !a.aog && a.status === "idle" && !a.flying.length;
 
+// ── FUEL(ATC-63, docs/fuel.md 6·fleet.md 8.6): ACCOUNT가 hold 수준이면 LAUNCH·ENTRY를 내지 않고, info면 사유 줄을 단다 ──
+// DISPATCH HOLD 스위치(D3)와 상관없이 hold 수준(holdPct 이상)을 쓴다: 제안은 조언이고, 빈 ACCOUNT에 세션을 띄우자는 제안은 쓸모가 없다.
+// LAUNCH할 AIRCRAFT는 세션이 없어 AircraftView.fuel이 비므로 ACCOUNT로 찾는다(관제 세션만 적은 ACCOUNT도 잡힌다).
+// ENTRY로 들일 새 AIRCRAFT는 라벨이 없으니 default ACCOUNT로 센다. ACCOUNT를 모르면(라벨 없음) 그 AIRCRAFT 자신의 값만
+export function fuelOfPlan(i: Pick<FleetInputs, "aircraft" | "fuelAccounts">, kind: FleetPlanKind, registration: string | null): FuelRemaining | null {
+  const accounts = i.fuelAccounts ?? [];
+  if (kind === "ENTRY") return accounts.find((f) => f.account === DEFAULT_ACCOUNT) ?? null;
+  const a = registration ? i.aircraft.find((x) => x.registration === registration.toUpperCase()) : undefined;
+  if (!a) return null;
+  if (a.account) return accounts.find((f) => f.account === a.account) ?? null;
+  return accounts.find((f) => f.group === `aircraft:${a.registration}`) ?? null;
+}
+
+// FUEL 100% (account acct-1) until 21:00Z
+export const fuelHoldText = (f: FuelRemaining, now: number) =>
+  `FUEL ${Math.round(f.top.pct)}%${f.account ? ` (account ${f.account})` : ""} until ${hhmm(Date.parse(f.top.resetsAt), now)}`;
+
+const fuelInfoReason = (f: FuelRemaining, now: number): PlanReason => ({
+  code: "fuel",
+  detail: `${fuelLabel(f, now)}${f.account ? ` (account ${f.account})` : ""} — 한도에 가까움(INFO) · ${membersText(f) || "구성원 없음"}`,
+  value: f.top.pct,
+});
+
+// 열린 LAUNCH·ENTRY 제안의 ACCOUNT가 hold 수준이 됐으면 그 사유(syncFleetPlan이 expire한다)
+export function fuelExpiryOf(i: Pick<FleetInputs, "aircraft" | "fuelAccounts" | "now">, p: Pick<FleetProposal, "kind" | "aircraft">): string | null {
+  if (p.kind !== "LAUNCH" && p.kind !== "ENTRY") return null;
+  const f = fuelOfPlan(i, p.kind, p.aircraft);
+  return f?.level === "hold" ? `${fuelHoldText(f, i.now)} — ACCOUNT가 FUEL hold 수준` : null;
+}
+
 export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; demand: DemandRow[] } {
   const cfg = i.config;
   const out: FleetCandidate[] = [];
@@ -151,23 +185,36 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
     ];
     // 운항하지 않는 등록 AIRCRAFT 중 가장 많은 FLIGHT를 받을 수 있는 것. 같으면 최근 ARRIVED가 많은 쪽
     const idle = i.aircraft.filter((a) => a.status === "absent" && !a.retired && !a.aog && a.base === code && !i.nordo.has(a.registration) && !dwelling(a.registration, "stop"));
-    const fits = idle
-      .map((a) => ({ a, served: mine.filter((u) => canServe(a.registration, a.ratings, a.complement, u)) }))
+    const fitting = idle
+      .map((a) => ({ a, served: mine.filter((u) => canServe(a.registration, a.ratings, a.complement, u)), fuel: fuelOfPlan(i, "LAUNCH", a.registration) }))
       .filter((x) => x.served.length)
       .sort((x, y) => y.served.length - x.served.length || y.a.actuals.total - x.a.actuals.total || x.a.registration.localeCompare(y.a.registration));
+    // ACCOUNT가 FUEL hold 수준인 AIRCRAFT는 고르지 않는다
+    const fits = fitting.filter((x) => x.fuel?.level !== "hold");
+    const heldFits = fitting.filter((x) => x.fuel?.level === "hold");
+    const heldText = [...new Map(heldFits.map((x) => [x.fuel!.group, x.fuel!])).values()]
+      .map((f) => `${fuelHoldText(f, i.now)} — ${heldFits.filter((x) => x.fuel!.group === f.group).map((x) => x.a.registration).join(", ")}`)
+      .join(" · ");
     if (fits.length) {
-      const { a, served } = fits[0];
+      const { a, served, fuel } = fits[0];
       launchPicks.add(a.registration);
       const types = [...new Set(served.map((u) => u.type))].join("·");
       out.push({
         key: `DEMAND|${code}`, kind: "LAUNCH", aircraft: a.registration, airport: code,
-        reasons: [...common(served), { code: "fits", detail: `${a.registration}: TYPE RATING ${a.ratings.join("·") || "없음"}, CREW가 ${types}를 날 수 있음` }],
+        reasons: [
+          ...common(served),
+          { code: "fits", detail: `${a.registration}: TYPE RATING ${a.ratings.join("·") || "없음"}, CREW가 ${types}를 날 수 있음` },
+          ...(fuel?.level === "info" ? [fuelInfoReason(fuel, i.now)] : []),
+          ...(heldFits.length ? [{ code: "fuel-held", detail: `맞지만 FUEL hold라 건너뜀: ${heldText}` }] : []),
+        ],
       });
       continue;
     }
+    // 맞는 AIRCRAFT가 모두 FUEL hold면, 다른 이유로 막혀도 FUEL을 먼저 말한다
+    const blockedBy = (why: string) => (heldText ? `${heldText} · ${why}` : why);
     // 맞는 등록 AIRCRAFT가 없으면 새로 들이기. tail로 정한 FLIGHT는 그 팀만 받으므로 새 AIRCRAFT로 풀리지 않는다
     if (!i.nextRegistration) {
-      row.blocked = "맞는 AIRCRAFT가 없고 남은 등록번호도 없음";
+      row.blocked = blockedBy("맞는 AIRCRAFT가 없고 남은 등록번호도 없음");
       continue;
     }
     const open = mine.filter((u) => !u.tails.length);
@@ -179,7 +226,13 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
       .filter((x) => x.served.length)
       .sort((x, y) => y.served.length - x.served.length);
     if (!configs.length) {
-      row.blocked = open.length ? "맞는 등록 AIRCRAFT도 CONFIGURATION도 없음" : `tail로 정한 팀이 운항할 수 없음: ${mine.map((u) => `${u.flight}(tail:${u.tails.join(",")})`).join(", ")}`;
+      row.blocked = blockedBy(open.length ? "맞는 등록 AIRCRAFT도 CONFIGURATION도 없음" : `tail로 정한 팀이 운항할 수 없음: ${mine.map((u) => `${u.flight}(tail:${u.tails.join(",")})`).join(", ")}`);
+      continue;
+    }
+    // 새 AIRCRAFT는 default ACCOUNT로 센다
+    const entryFuel = fuelOfPlan(i, "ENTRY", i.nextRegistration);
+    if (entryFuel?.level === "hold") {
+      row.blocked = [heldText, `${fuelHoldText(entryFuel, i.now)} — 새 AIRCRAFT(ENTRY)가 들 ACCOUNT`].filter(Boolean).join(" · ");
       continue;
     }
     const pick = configs[0];
@@ -188,8 +241,11 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
       key: `DEMAND|${code}`, kind: "ENTRY", aircraft: i.nextRegistration, airport: code, configuration: pick.id,
       reasons: [
         ...common(pick.served),
-        { code: "no-fit", detail: `${code}에 운항하지 않는 등록 AIRCRAFT 중 맞는 것이 없음` },
+        heldFits.length
+          ? { code: "fuel-held", detail: `${code}의 맞는 등록 AIRCRAFT는 FUEL hold: ${heldText}` }
+          : { code: "no-fit", detail: `${code}에 운항하지 않는 등록 AIRCRAFT 중 맞는 것이 없음` },
         { code: "fits", detail: `${pick.id} CONFIGURATION: TYPE RATING ${c.ratings.join("·")}, CREW ${c.complement.map((m) => m.position).join("·")}` },
+        ...(entryFuel?.level === "info" ? [fuelInfoReason(entryFuel, i.now)] : []),
       ],
     });
   }
@@ -433,17 +489,27 @@ const OPPOSITE: Partial<Record<FleetPlanKind, FleetPlanKind[]>> = { LAUNCH: ["ST
 
 // 한 주기의 기록 줄: 조건이 풀린 열린 제안은 expire, 같은 열쇠의 다른 제안이 되면 supersede하고 새로,
 // 지속 조건을 채운 후보는 create. 판정 뒤 24시간과 minDwell 안의 반대 제안은 내지 않는다
-export function syncFleetPlan(all: FleetProposal[], candidates: FleetCandidate[], ready: FleetCandidate[], now: number, cfg: FleetPlanConfig): FleetPlanOp[] {
+// fuelExpiry(ATC-63): 열린 LAUNCH·ENTRY의 ACCOUNT가 FUEL hold 수준이 되면 같은 후보가 남아 있어도 그 사유로 expire한다
+export function syncFleetPlan(
+  all: FleetProposal[],
+  candidates: FleetCandidate[],
+  ready: FleetCandidate[],
+  now: number,
+  cfg: FleetPlanConfig,
+  fuelExpiry: (p: FleetProposal) => string | null = () => null,
+): FleetPlanOp[] {
   const at = new Date(now).toISOString();
   const ops: FleetPlanOp[] = [];
   const current = new Map(candidates.map((c) => [c.key, c]));
+  const fuelHeld = new Map(all.filter((p) => p.status === "open").map((p) => [p.id, fuelExpiry(p)] as const).filter(([, why]) => why !== null));
   const open = all.filter((p) => p.status === "open");
-  const openByKey = new Map(open.map((p) => [p.key, p]));
+  const openByKey = new Map(open.filter((p) => !fuelHeld.has(p.id)).map((p) => [p.key, p]));
   const created: FleetProposal[] = [];
   const same = (p: Pick<FleetProposal, "kind" | "aircraft">, c: FleetCandidate) => p.kind === c.kind && p.aircraft === c.aircraft;
   for (const p of open) {
     const c = current.get(p.key);
-    if (!c) ops.push({ op: "expire", id: p.id, reason: "조건이 풀림", at });
+    if (fuelHeld.has(p.id)) ops.push({ op: "expire", id: p.id, reason: fuelHeld.get(p.id)!, at });
+    else if (!c) ops.push({ op: "expire", id: p.id, reason: "조건이 풀림", at });
   }
   const busy = new Set(all.filter((p) => p.status === "executing").map((p) => p.key));
   for (const c of ready) {

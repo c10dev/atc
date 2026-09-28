@@ -27,6 +27,11 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- FLEET PLAN이 FUEL REMAINING을 본다(ATC-63, [docs/fleet.ko.md](docs/fleet.ko.md) 8.6, [docs/fuel.md](docs/fuel.md) 6.1).
+  - ACCOUNT가 hold 수준(`holdPct`, 95 %)인 AIRCRAFT는 LAUNCH를 제안하지 않는다. 다음으로 맞는 AIRCRAFT를 고르고, 없으면 ENTRY를 제안한다. ENTRY는 `default` ACCOUNT로 세므로 `default`도 hold면 ENTRY도 없고, AIRPORT 수요 줄이 이유를 말한다(`FUEL 100% (account acct-1) until 21:48Z — TEAM_Q`).
+  - info 수준(`infoPct`, 80 %)이면 제안에 `fuel` 사유 줄이 붙는다. 열린 LAUNCH·ENTRY의 ACCOUNT가 hold가 되면 FUEL 글을 사유로 expire한다.
+  - DISPATCH FUEL HOLD 스위치(D3)와 상관없이 hold 수준을 쓴다(ENGINEERING 결정). DISPATCH는 그대로다. FUEL은 ACCOUNT 라벨로 찾으므로 세션이 없는 AIRCRAFT와 관제 세션만 적은 ACCOUNT도 잡힌다.
+  - FLEET PLAN 블록에 ACCOUNT마다 FUEL 한 줄("주간 사용량 줄"): 가장 많이 쓴 창과 reset, 제안에 주는 영향, AIRCRAFT와 관제 세션. `GET /api/fleet/plan`의 `fuel`로 오고, 볼 때의 스냅샷에서 읽는다.
 - FUEL F8: 화면, TRIP FUEL, 브리핑 경고(ATC-56, [docs/fuel.md](docs/fuel.md) 7·8.6, [docs/fleet.ko.md](docs/fleet.ko.md) 7·7.2). 보여 주기만 한다: DISPATCH 점수·배정은 이것을 읽지 않고, 경고는 아무것도 막지 않는다. 근거가 없는 값(`fuel` 없는 LOGBOOK 줄, `byModel` 전 줄, 가격표에 없는 모델, F7 전 CREW 경고)은 0이 아니라 `—`로 보인다.
   - FLEET 줄: 최근 14일 ARRIVED FLIGHT당 FUEL COST와 CACHE HIT을 보이는 FUEL 칸(`$6.10/FLT · CACHE 93%`). F6 FUEL REMAINING은 그대로 옆에 있다. FLEET 카드: FLIGHT당 FUEL COST와 NET, CAPTAIN·CREW CACHE HIT, CREW 몫, 가장 큰 LEAK 규칙 셋, CREW 경고 수, 값 없는 모델, TRIP FUEL을 넘은 FLIGHT 수를 보이는 FUEL 블록. 최근 FLIGHT마다 NET(값이 없으면 토큰), LEAK, `TRIP ✓`·`UNEXPECTED` 한 줄.
   - TRIP FUEL(`tripFuelOf`, 순수 함수): 지난 NET FUEL COST의 p50–p90. TYPE × WAKE로 묶고 `MEDIAN_MIN_SAMPLES`(3)보다 적으면 WAKE, 그다음 AIRPORT로 넓힌다. 60일, 모델 세대별로도 나눈다. DISPATCH 카드 사실 줄에 단계와 함께 보인다(`TRIP FUEL $5.28–$15.6 · TYPE×WAKE BUILD·M (6)`). p90을 넘은 FLIGHT는 `unexpected`. `GET /api/logbook` 항목에 `trip`이 붙는다.

@@ -682,11 +682,19 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
   - LOS는 최근 24시간 FLIGHT RECORDER의 `alert.raised` conflict다. NORDO는 죽은 세션이 있고 같은 이름의 살아 있는 세션이 없는 것이다.
   - RETIRE는 들인 지 `retireDays`가 안 된 AIRCRAFT를 건너뛴다.
 - **실행부**(`server/fleet-plan-run.ts`): DISPATCH 주기에 돈다. Linear·GitHub을 아직 못 읽었거나 `claude agents`가 실패하면 그 주기를 건너뛰고, 열린 제안은 그대로 둔다. 지속 조건의 시각은 메모리에 두므로 서버를 다시 띄우면 처음부터 센다.
-- **API.** `GET /api/fleet/plan`은 `{mode, config, ranAt, error, demand, open, waiting, recent, gate}`를 돌려준다. `open[].now`는 지금 계산한 사유다. `waiting`에는 지속 조건을 기다리는 후보가 들어가고, 판정 뒤 쉬는 후보는 빠진다. `POST /api/fleet/plan/:id/verdict`는 `{verdict: "agree" | "disagree", reason?}`를 받는다. 이 화면의 Origin이 있어야 하고(아니면 403), 닫힌 제안에는 409를 돌려준다.
-- **탭.** 카드 위에 FLEET PLAN 블록이 있다. 게이트, AIRPORT별 수요 한 줄과 LAUNCH를 막는 이유, 사유가 붙은 열린 제안과 반대·동의 버튼, 지켜보는 후보, 최근 닫힌 제안이 보인다.
+- **API.** `GET /api/fleet/plan`은 `{mode, config, ranAt, error, demand, fuel, open, waiting, recent, gate}`를 돌려준다. `open[].now`는 지금 계산한 사유다. `waiting`에는 지속 조건을 기다리는 후보가 들어가고, 판정 뒤 쉬는 후보는 빠진다. `POST /api/fleet/plan/:id/verdict`는 `{verdict: "agree" | "disagree", reason?}`를 받는다. 이 화면의 Origin이 있어야 하고(아니면 403), 닫힌 제안에는 409를 돌려준다.
+- **탭.** 카드 위에 FLEET PLAN 블록이 있다. 게이트, AIRPORT별 수요 한 줄과 LAUNCH를 막는 이유, ACCOUNT별 FUEL 한 줄(아래), 사유가 붙은 열린 제안과 반대·동의 버튼, 지켜보는 후보, 최근 닫힌 제안이 보인다.
+- **FUEL(ATC-63, [fuel.md](fuel.md) 6).** FLEET PLAN이 ACCOUNT별 FUEL REMAINING(`snapshot.fuelAccounts`, 관제 세션 포함)을 읽는다.
+  - **hold 수준**(`holdPct`, 기본 95 %): 그 ACCOUNT의 AIRCRAFT는 LAUNCH하지 않는다. 다음으로 맞는 AIRCRAFT를 고르고, 남은 것이 없으면 ENTRY를 제안한다. ENTRY로 들일 새 AIRCRAFT는 `default` ACCOUNT로 세므로, `default`가 hold면 ENTRY도 내지 않는다. 그러면 AIRPORT 수요 줄이 이유를 말한다: `FUEL 100% (account acct-1) until 21:48Z — TEAM_Q · FUEL 97% (account default) until 21:49Z — 새 AIRCRAFT(ENTRY)가 들 ACCOUNT`. hold인 AIRCRAFT를 건너뛴 LAUNCH·ENTRY에는 `fuel-held` 사유가 붙는다.
+  - DISPATCH FUEL HOLD 스위치(D3)와 상관없이 hold 수준을 쓴다(ENGINEERING 결정). 제안은 조언이고, 빈 ACCOUNT에 세션을 띄우자는 제안은 쓸모가 없다. DISPATCH 동작은 그대로다.
+  - **info 수준**(`infoPct`, 기본 80 %): 제안은 하고 `fuel` 사유 줄을 단다(`FUEL 85% · resets 21:00Z (account acct-1) — 한도에 가까움(INFO) · TEAM_I · control OCC`).
+  - **찾는 법**: AIRCRAFT의 ACCOUNT 라벨로 찾는다. 운항하지 않는 AIRCRAFT는 세션이 없어 자기 값이 없기 때문이다. 관제 세션만 적은 ACCOUNT도 잡힌다. 라벨이 하나도 없으면 AIRCRAFT는 자기 세션의 값만 보고, ENTRY는 볼 ACCOUNT가 없다. FUEL 기록이 없으면 아무것도 바뀌지 않는다.
+  - **expire**: 열린 LAUNCH·ENTRY의 ACCOUNT가 hold가 되면 다음 주기에 FUEL 글을 사유로 expire한다. 같은 후보가 여전히 나와도 그렇다. 같은 AIRPORT의 새 후보는 supersede가 아니라 새로 낸다.
+  - **블록**: ACCOUNT마다 한 줄. 가장 많이 쓴 창과 reset, hold면 `LAUNCH·ENTRY 제안 안 함`, info면 `제안에 FUEL 사유 줄`, 그 AIRCRAFT와 관제 세션. `GET /api/fleet/plan`의 `fuel`로 오고, 계획 주기가 아니라 볼 때의 스냅샷에서 읽는다.
+  - STOP·RESTART·AOG·RETIRE·RETURN 규칙, 승인 운용 실행, 기록 형식은 그대로다.
 - **운영 데이터로 처음 본 결과(2026-09-28 07:15 UTC):** 제안 없음. ATC-35는 TEAM_I가 받을 수 있고, 나머지 열린 ATC FLIGHT는 우선순위가 없다. 팀 세션은 모두 데스크톱 세션이다. NORDO·LOS가 없고, 모든 AIRCRAFT가 30일 안에 ARRIVED했다.
 
-아직 안 만든 것: 4단계(자동 STOP). 3단계(승인 운용)와 기한이 지난 AOG 뒤의 제안(RETURN)은 8.7에서 만들었다. 활주로 규칙의 머지 슬롯 점유, 주간 사용량 줄(FUEL), FLEET PLAN 제안의 CROSSCHECK mark.
+아직 안 만든 것: 4단계(자동 STOP). 3단계(승인 운용)와 기한이 지난 AOG 뒤의 제안(RETURN)은 8.7에서 만들었다. 활주로 규칙의 머지 슬롯 점유, FLEET PLAN 제안의 CROSSCHECK mark. 주간 사용량 줄(FUEL)은 만들었다(ATC-63, 위).
 
 **구현 순서.**
 
@@ -700,7 +708,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 | 위험 | 대응 |
 |---|---|
 | LAUNCH·STOP이 왔다 갔다 함 | 두 주기 지속, `minDwell`, 예비를 이력(hysteresis)으로 |
-| 사용량이 바닥남 | 백그라운드 상한(8.5), LAUNCH는 자동 없음, FUEL이 생기면 블록에 주간 사용량 줄 |
+| 사용량이 바닥남 | 백그라운드 상한(8.5), LAUNCH는 자동 없음. FUEL hold 수준인 ACCOUNT로는 LAUNCH·ENTRY를 제안하지 않고, 블록에 ACCOUNT별 FUEL 줄(ATC-63) |
 | 수요 신호가 틀림(상위 이슈, 라벨 없음) | planner의 제외 규칙을 통과한 FLIGHT만 센다. 제외된 FLIGHT는 보이기만 하고 세지 않는다 |
 | 팀은 늘었는데 착륙 대기열은 그대로 | 활주로 규칙(원칙 3) |
 | RESTART가 쓸모 있는 맥락을 잃음 | PARKED 세션만. 옛 대화는 남아서 다시 이어진다 |
@@ -773,7 +781,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
   - RETIRE TEAM_C를 승인하자 `approve`·`executed`가 적히고, 임시 FLEET에서 TEAM_C가 퇴역했고, FLIGHT RECORDER에 `by: "FLEET PLAN F-0022"`인 `retire` 줄이 남았다.
   - 두 번째 승인과 승인 운용 중의 `agree`는 409였다. 떼어 낸 LAUNCH·STOP도 데스크톱 세션을 여전히 거절한다.
 
-아직 안 만든 것: 4단계(자동 STOP), 주간 사용량 줄(FUEL), FLEET PLAN 제안의 CROSSCHECK mark.
+아직 안 만든 것: 4단계(자동 STOP), FLEET PLAN 제안의 CROSSCHECK mark.
 
 **구현 순서.**
 
@@ -790,7 +798,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 |---|---|
 | 바뀐 사실 위에서 오래된 제안을 승인 | 최근 주기(10분 이내)와 8.5 거절 조건으로 다시 확인 |
 | 두 번 실행(두 번 클릭, 탭 두 개) | id별 잠금, `open` → `executing` 전이는 한 번만 |
-| 사용량 | 백그라운드 상한(8.5), LAUNCH마다 승인 하나. FUEL은 나중에 |
+| 사용량 | 백그라운드 상한(8.5), LAUNCH마다 승인 하나. FUEL hold 수준인 ACCOUNT로는 LAUNCH·ENTRY를 제안하지 않는다(8.6, ATC-63) |
 | ENTRY·RESTART가 반만 됨 | 단계마다 기록, 24시간 쉬지 않음, 카드 버튼으로 손으로 마무리 |
 | 다른 세션이 승인 | 승인과 승인 운용 켜기에 Origin 검사, `atcctl` 명령 없음 |
 | 승인 운용을 너무 일찍 켬 | 게이트가 준비될 때까지 스위치가 거절 |
@@ -888,7 +896,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 | 긴 테스트 중의 잘못된 `HUNG` | 먼저 INFO. DISPATCH는 막지만 busy AIRCRAFT는 원래 배정받지 않는다 |
 | 세션 파일이 `busy`인 채 승인을 기다리면 hook이 없을 때 30분 뒤 `HUNG`으로 보인다 | push hook(3단계)이 `PENDING`을 바로 알린다. hook이 없어도 세션이 `idle`이 되면 pull이 멈춘 도구 호출을 잡는다 |
 
-아직 만들지 않음: FLEET PLAN 블록의 FUEL(8.6의 "주간 사용량 줄").
+FLEET PLAN 블록의 FUEL(8.6의 "주간 사용량 줄")은 만들었다(ATC-63).
 
 **PILOT'S DISCRETION(ATC-45).**
 

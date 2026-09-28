@@ -196,6 +196,7 @@ atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude C
 | RETURN | FLEET PLAN이 건 AOG의 해제 예정일이 지남 | AOG를 푼다 |
 
 - **수요**는 DISPATCH와 같은 제외 규칙을 통과한 FLIGHT다. ATC 팀 FLIGHT도 센다. AIRPORT마다 "배정 · 받을 곳 없음 · PARKED" 한 줄이 보인다. LAUNCH를 막는 것(GROUND STOP, 착륙 대기가 block time보다 긴 활주로, 백그라운드 세션 상한)이 있으면 그 줄에 적힌다.
+- **FUEL**: 수요 줄 아래에 ACCOUNT마다 한 줄이 보인다. 가장 많이 쓴 창과 reset, 그 ACCOUNT의 AIRCRAFT와 관제 세션이다. 95 %(hold 수준)를 넘은 ACCOUNT의 AIRCRAFT는 LAUNCH하지 않고(`LAUNCH·ENTRY 제안 안 함`), 수요 줄에 `FUEL 100% (account acct-1) until 21:48Z — TEAM_Q`처럼 이유가 적힌다. 맞는 다른 AIRCRAFT가 있으면 그것을, 없으면 ENTRY를 제안한다. 새 AIRCRAFT는 `default` ACCOUNT로 세므로 `default`도 hold면 ENTRY도 없다. 80 %(info)부터는 제안은 하되 사유에 FUEL 줄(`fuel`)이 붙는다. 열린 LAUNCH·ENTRY의 ACCOUNT가 hold가 되면 그 제안은 FUEL 사유로 닫힌다. 이것은 DISPATCH HOLD 스위치와 상관없다. 스위치는 DISPATCH만 정한다.
 - 조건이 두 주기(10분) 이어져야 제안이 되고, LAUNCH·ENTRY는 120분 이어져야 된다. 그 전에는 "지켜보는 중"에 보인다. 조건이 풀리면 제안은 저절로 닫힌다(조건 풀림).
 - **반대**를 누르면 이유를 적을 수 있다(선택). 판정한 제안은 24시간 다시 나오지 않는다. 띄우거나 멈춘 지 2시간 안에는 반대 제안(LAUNCH ↔ STOP)을 내지 않는다.
 - 판정이 20건이 넘고 동의가 80% 이상이면 게이트를 통과한다. 그러면 블록 오른쪽의 **승인 운용 켜기**가 눌린다.
