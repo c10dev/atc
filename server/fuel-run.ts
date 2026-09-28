@@ -1,9 +1,17 @@
 import { closeSync, type Dirent, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
+import { allClearances } from "./clearances.ts";
 import { config } from "./config.ts";
+import { allCrewChanges } from "./crew-change.ts";
+import { readDepartures } from "./departures.ts";
+import { controlSendsOf, findLeaks, type LeakEvent } from "./fuel-leaks.ts";
 import { type AgentMeta, type Compaction, dedupeFuel, type FuelRecord, parseFuelLines, summarizeFuel } from "./fuel.ts";
+import { arrivedSpan, type Attribution, attributeFuel, enRouteSpans, fuelForEntry } from "./fuel-flights.ts";
+import type { LogEntry, LogLine } from "./logbook.ts";
 import type { Snapshot } from "./model.ts";
+import { allProposals } from "./proposals.ts";
+import { readHookClaims } from "./sources/claude.ts";
 import { type FuelStatusRecord, lastRecord, readTail } from "../hooks/fuel-statusline.mjs";
 
 // FUEL 읽기(ATC-50, docs/fuel.md 4): ~/.claude/projects의 대화 기록을 파일마다 지난번 바이트 뒤부터만 읽는다(talkEventsFile과 같은 방식).
@@ -154,10 +162,19 @@ function take(s: FileState, f: FuelFile, text: string) {
   if (p.name) s.name = p.name;
 }
 
-// GET /api/fuel의 본문. names·live는 스냅샷의 Claude 세션(이름이 없으면 기록의 agent-name 줄)
-export function readFuel(days: number, sessions: Snapshot["sessions"], now = Date.now()) {
-  const t0 = performance.now();
-  const since = now - days * DAY_MS;
+export interface FuelScan {
+  records: Map<string, FuelRecord>; // 전역 중복 제거를 마친 기록(기간 앞 기록이 섞여 있을 수 있다)
+  compactions: Compaction[];
+  unknownBySession: Map<string, number>;
+  names: Map<string, string>; // session → 이름. 스냅샷의 Claude 세션, 없으면 기록의 agent-name 줄
+  live: Set<string>;
+  agents: Map<string, AgentMeta>;
+  files: number;
+  bytes: number;
+}
+
+// since 뒤에 바뀐 기록 파일을 읽는다(파일마다 지난번 바이트 뒤부터). GET /api/fuel과 LOGBOOK(FUEL F4)이 같이 쓴다
+export function scanFuel(since: number, sessions: Snapshot["sessions"]): FuelScan {
   const files = fuelFiles(since);
   const seen = new Set(files.map((f) => f.path));
   // 더 긴 기간으로 한 번 읽은 파일은 캐시에 남기고, 없어진 파일만 지운다
@@ -183,8 +200,77 @@ export function readFuel(days: number, sessions: Snapshot["sessions"], now = Dat
     if (s.status !== "dead") live.add(s.id);
     if (s.name && s.name !== s.id.slice(0, 8)) names.set(s.id, s.name);
   }
-  const summary = summarizeFuel({ records: all.values(), compactions, unknownBySession, names, live, agents, now, days });
-  return { at: new Date(now).toISOString(), ...summary, scan: { files: files.length, bytesRead: bytes, ms: Math.round(performance.now() - t0) } };
+  return { records: all, compactions, unknownBySession, names, live, agents, files: files.length, bytes };
+}
+
+// FUEL LEAK(F3): 전체 기록으로 구한다(기간 앞 요청과도 비교하도록)
+export const leaksOf = (scan: FuelScan): LeakEvent[] => findLeaks(scan.records.values(), scan.compactions, controlSends(), scan.names);
+
+export type FlightContext = Pick<Snapshot, "workspaces" | "airports" | "claims">;
+
+// 기간 안 기록을 FLIGHT 구간으로 자른다(FUEL F4). 구간은 기간 안에 도착한 LOGBOOK FLIGHT와 지금 있는 STAND의 EN ROUTE FLIGHT.
+// leaks를 주면 FLIGHT마다 LEAK도 같은 규칙으로 나눈다
+export function attributeWindow(scan: FuelScan, s: FlightContext, entries: LogEntry[], since: number, now: number, leaks?: LeakEvent[]): Attribution {
+  const departures = readDepartures();
+  const repoOf = new Map(s.airports.map((a) => [a.code, a.repo]));
+  const open = new Set(s.workspaces.filter((w) => !w.isMain).map((w) => w.path));
+  const spans = [
+    ...entries.filter((e) => Date.parse(e.arrivedAt) >= since).map((e) => arrivedSpan(e, departures, (e.airport && repoOf.get(e.airport)) || null)),
+    ...enRouteSpans(departures, entries, open, now),
+  ];
+  const inWindow = (t: string) => Date.parse(t) >= since && Date.parse(t) <= now;
+  return attributeFuel({
+    records: [...scan.records.values()].filter((r) => inWindow(r.t)),
+    spans,
+    aircraftOf: (id) => scan.names.get(id)?.toUpperCase() ?? null,
+    claims: [...readHookClaims(), ...s.claims],
+    leaks: leaks?.filter((e) => inWindow(e.t)),
+  });
+}
+
+// GET /api/fuel의 본문. AIRCRAFT마다 ARRIVED FLIGHT·EN ROUTE·UNATTRIBUTED 몫을 붙인다
+export function readFuel(days: number, s: FlightContext & Pick<Snapshot, "sessions">, entries: LogEntry[], now = Date.now()) {
+  const t0 = performance.now();
+  const since = now - days * DAY_MS;
+  const scan = scanFuel(since, s.sessions);
+  const leaks = leaksOf(scan);
+  const summary = summarizeFuel({ ...scan, records: scan.records.values(), leaks, now, days });
+  const att = attributeWindow(scan, s, entries, since, now, leaks);
+  return {
+    at: new Date(now).toISOString(),
+    ...summary,
+    aircraft: summary.aircraft.map((a) => ({ ...a, attribution: att.aircraft.get(a.aircraft) ?? null })),
+    attribution: { totals: att.totals, flights: att.flights },
+    scan: { files: scan.files, bytesRead: scan.bytes, ms: Math.round(performance.now() - t0) },
+  };
+}
+
+// atc가 보낸 CLEARANCE·FLIGHT PLAN·RECALL·CREW CHANGE의 시각과 받는 세션. 기록이 없거나 깨졌으면 그 종류만 빈다
+function controlSends() {
+  const safe = <T>(read: () => T[]): T[] => {
+    try {
+      return read();
+    } catch {
+      return [];
+    }
+  };
+  return controlSendsOf({ clearances: safe(allClearances), proposals: safe(allProposals), crewChanges: safe(allCrewChanges) });
+}
+
+// FUEL F4: 새 arrived 줄에 그 FLIGHT 구간의 FUEL BURN과 LEAK을 붙인다(logbook.ts run이 부른다). 이미 쓴 줄은 고치지 않는다(추가만).
+// 대화 기록은 FUEL_LOGBOOK_DAYS만 읽고, 그보다 먼저 출발한 FLIGHT에는 붙이지 않는다(fuelForEntry). entries는 이번 줄까지 접은 LOGBOOK
+export const FUEL_LOGBOOK_DAYS = 14;
+export function addLogbookFuel(lines: LogLine[], entries: LogEntry[], s: Snapshot, now = Date.now()) {
+  const since = now - FUEL_LOGBOOK_DAYS * DAY_MS;
+  const arrivals = lines.flatMap((l) => (l.op === "arrived" && l.departedFrom !== "pr" && Date.parse(l.departedAt) >= since ? [l] : []));
+  if (!arrivals.length) return;
+  // 도착한 FLIGHT 모두(이번 줄 포함)와 EN ROUTE FLIGHT로 자른다. 앞 FLIGHT의 착륙 대기와 겹친 다음 FLIGHT 몫을 가려내려고
+  const scan = scanFuel(since, s.sessions);
+  const att = attributeWindow(scan, s, entries, since, now, leaksOf(scan));
+  for (const l of arrivals) {
+    const fuel = fuelForEntry(l, att, since);
+    if (fuel) l.fuel = fuel;
+  }
 }
 
 export function fuelDays(q: string | undefined): number {
@@ -192,11 +278,12 @@ export function fuelDays(q: string | undefined): number {
   return Number.isInteger(n) && n >= 1 ? Math.min(n, FUEL_MAX_DAYS) : FUEL_DEFAULT_DAYS;
 }
 
-export function mountFuel(app: Hono, getSnapshot: () => Promise<Snapshot>) {
-  // 읽기 전용. 세션·AIRCRAFT별 FUEL BURN(다섯 가지, CAPTAIN·CREW, CACHE HIT). 비용은 F5, 화면은 F8
+// loadEntries는 접은 LOGBOOK(logbook.ts가 이 파일을 부르므로 index.ts가 넘긴다)
+export function mountFuel(app: Hono, getSnapshot: () => Promise<Snapshot>, loadEntries: () => LogEntry[]) {
+  // 읽기 전용. 세션·AIRCRAFT별 FUEL BURN(다섯 가지, CAPTAIN·CREW, CACHE HIT)과 FLIGHT 몫·UNATTRIBUTED. 비용은 F5, 화면은 F8
   app.get("/api/fuel", async (c) => {
     const s = await getSnapshot();
-    return c.json(readFuel(fuelDays(c.req.query("days")), s.sessions));
+    return c.json(readFuel(fuelDays(c.req.query("days")), s, loadEntries()));
   });
 }
 

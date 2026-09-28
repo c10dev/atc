@@ -11,6 +11,7 @@ import { briefFactsOf, compareBriefs, crewModeOf, findingsOf, type Measured, rew
 import { readRecords } from "./recorder.ts";
 import { type Departure, matchDepartures, readDepartures } from "./departures.ts";
 import { readHookClaims, sessionEventsOf } from "./sources/claude.ts";
+import type { FlightFuel } from "./fuel-flights.ts";
 import { sessionDirsOf } from "./crew-observed.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
@@ -51,6 +52,7 @@ export interface LogEntry {
   revertedBy?: { number: number; url: string; at: string } | null;
   los: number;
   measured?: Measured; // 지시서(VECTORS·DIRECT)와 P0–P2 지적·수정 커밋(ATC-32). measured 줄로 채운다
+  fuel?: FlightFuel; // FUEL F4(ATC-53): 이 FLIGHT 구간의 FUEL BURN. arrived 줄을 쓸 때만 붙이고, 옛 줄과 모르는 FLIGHT에는 없다
 }
 
 // PR 본문과 FLIGHT의 관계. vocado 규칙상 `Fixes VOC-n`만 이슈를 끝내고, `Part of VOC-n`은 일부다.
@@ -420,7 +422,10 @@ function contextFor(s: Snapshot, repo: string, slug: string, records: ReturnType
   };
 }
 
-async function run(s: Snapshot) {
+// 새 arrived 줄에 fuel을 붙이는 단계(FUEL F4). fuel-run.ts가 proposals.ts를 거쳐 이 파일을 불러 순환이 되므로 index.ts가 넘긴다
+export type LogbookFuel = (lines: LogLine[], entries: LogEntry[], s: Snapshot) => void;
+
+async function run(s: Snapshot, addFuel: LogbookFuel | null) {
   const records = readRecords(Date.now() - 30 * DAY);
   const errors: string[] = [];
   const merged: { ctx: EntryContext; pulls: GhMerged[] }[] = [];
@@ -433,7 +438,13 @@ async function run(s: Snapshot) {
       errors.push(`${a.code}: ${(err.stderr?.trim() || err.message).split("\n")[0]}`);
     }
   }
-  const lines = planLogbook(merged, readLogbook());
+  const old = readLogbook();
+  const lines = planLogbook(merged, old);
+  try {
+    addFuel?.(lines, foldLogbook([...old, ...lines]), s);
+  } catch (e) {
+    errors.push(`FUEL: ${String((e as Error).message ?? e).split("\n")[0]}`); // fuel 없이 쓴다(옛 줄과 같다)
+  }
   appendLogbook(lines);
   if (lines.length) console.log(`[atc] LOGBOOK +${lines.length}`);
   try {
@@ -470,10 +481,10 @@ async function measure(s: Snapshot, merged: { ctx: EntryContext; pulls: GhMerged
 }
 
 // 10분마다(서버가 뜬 뒤 첫 번에 최근 머지 PR로 과거분도 채운다). 스냅샷을 막지 않는다.
-export function runLogbook(s: Snapshot) {
+export function runLogbook(s: Snapshot, addFuel: LogbookFuel | null = null) {
   if (!s.github.enabled || inflight || Date.now() - lastRunAt < LOGBOOK_MS) return;
   lastRunAt = Date.now();
-  inflight = run(s)
+  inflight = run(s, addFuel)
     .catch((e) => void (logbookState.error = String((e as Error).message ?? e)))
     .finally(() => (inflight = null));
 }
