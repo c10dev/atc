@@ -408,7 +408,7 @@ CHARTER REQUEST → AD HOC FLIGHT 초안(S1: SCHEDULE 탭에서 판정) → FILE
 | `deploy/` | systemd 사용자 서비스 | [deploy/README.ko.md](deploy/README.ko.md) |
 | `docs/guide/` | DOCS 탭에 보이는 사용 안내(한국어) | [소개](docs/guide/introduction.md) |
 | `docs/` | 설계와 규칙 | [DISPATCH 설계](docs/dispatch.ko.md) · [OCC 설계](docs/occ.ko.md) · [FLEET 설계](docs/fleet.ko.md) · [ATFM 설계(3단계)](docs/atfm.ko.md) · [MCC 설계(영어)](docs/mcc.md) · [FUEL 설계 초안(영어)](docs/fuel.md) · [이름 규칙](docs/naming.ko.md) |
-| — | 변경 기록 | [CHANGELOG.ko.md](CHANGELOG.ko.md) |
+| — | 변경 기록과 아직 접지 않은 조각(PR마다 한 쌍) | [CHANGELOG.ko.md](CHANGELOG.ko.md) · [changelog.d](changelog.d/README.ko.md) |
 
 폴더마다 영어판이 옆에 있다(`README.md`, `*.md`, 세션 폴더는 `*.en.md`).
 

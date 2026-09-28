@@ -49,14 +49,15 @@ Rules for sessions that change atc's code (team sessions, the ENGINEERING sessio
 - Aviation terms stay in English everywhere: UI, docs and messages (AIRCRAFT, STAND, FLIGHT, READBACK, HOLD, CLEARANCE, HANDOFF …). Don't translate them into Korean words such as "복창". Explanatory sentences are Korean.
 - A team session name `TEAM_X` is a REGISTRATION. In atc's words a team is an AIRCRAFT flown by a CREW under a CAPTAIN (`docs/fleet.md`).
 - Update the English (`*.md`) and Korean (`*.ko.md`) versions together for `README`, `CHANGELOG`, `docs/dispatch`, `docs/naming`, `docs/occ`, `docs/fleet`, `docs/atfm` and each folder README. In the control session folders the Korean `CLAUDE.md` / `SKILL.md` are the originals and `*.en.md` are translations.
-- Record changed behavior under `[Unreleased]` in the `CHANGELOG`.
+- Changed behavior goes under `[Unreleased]` in the `CHANGELOG`. A PR doesn't edit `CHANGELOG.md` / `CHANGELOG.ko.md`; it adds a pair of fragments (`changelog.d/ATC-n.md` and `ATC-n.ko.md`, entries under a section heading such as `### Added`). ENGINEERING or the user folds them with `node server/changelog-fold.ts` (`changelog.d/README.md`).
 - When how the user works changes (tabs, flows, commands, terms), update the user guide in `docs/guide/` (the DOCS tab, Korean) too. Add a new page to `DOC_NAV` in `web/src/views/Docs.tsx`.
 
 ## Plans and ideas
 
 - Ideas not yet decided go in a GitHub Issue labelled `idea`, not in the repository docs.
 - Once decided, write a design draft in `docs/<topic>.md` (Status line, Current facts, Principles, Implementation order, Risks, Decisions). New design docs start in English. Link the doc from the issue when it is adopted.
-- Put a stage in `docs/guide/stages.md`, work left in that design doc's "Not built yet", and finished work in the `CHANGELOG`.
+- Put a stage in `docs/guide/stages.md`, work left in that design doc's "Not built yet", and finished work in the `CHANGELOG` (as fragments).
+- Status markers in design docs are ENGINEERING's, updated after merge from Linear: the ✅ rows of "Implementation order" tables, `Status:` lines, moves out of "Not built yet", and stages in `docs/guide/stages.md`. Team PRs leave them alone and describe what they built only in their own section right after the section that describes the feature, without a number (`### F7 as built (ATC-57)`).
 - atc's own work lives in the Linear `atc` team (ATC). atc reads every team in `LINEAR_TEAM_KEYS`, but only the configured teams (`candidateTeams` in `dispatch.json`; empty means the main team) produce DISPATCH and SCHEDULE candidates. The classification labels (`type`, `wake`, `rating:*`, `Risk`, `tail:*`) are workspace labels shared by both teams. Ideas stay in GitHub `idea` issues.
 
 ## ENGINEERING

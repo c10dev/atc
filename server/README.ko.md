@@ -59,6 +59,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `health.ts` | AIRCRAFT health(ATC-45·47, docs/fleet.ko.md 8.8): 대화 기록 줄에서 본문 없이 사실만(순수 함수 `factsOf`), 세션 하나의 코드 — `LIMIT`·`THROTTLE`·`NETWORK`·`MODEL`·`CONTEXT`·`PROVIDER`·`PENDING`·`UNANSWERED`·`HUNG`·`DENIED`·`UNKNOWN`(순수 함수 `healthOf`), hook의 마지막 기록과 pull의 우선순위(순수 함수 `mergeHealth`), 기계 단위로 묶은 경보(순수 함수 `healthAlerts`), FLEET 표시 글(화면과 같이 씀) |
 | `callsign.ts` | 콜사인(`TEAM_A` → `ALPHA`)과 FLIGHT NUMBER(화면과 공용) |
 | `version.ts` | 빌드 정체: `index.html`의 진입 스크립트 경로(순수 함수 `entryScript`)와 탭이 새 버전 알림을 띄울지(순수 함수 `showNewVersion`, 화면과 공용) |
+| `changelog.ts` · `changelog-fold.ts` | CHANGELOG 조각(ATC-64, [changelog.d](../changelog.d/README.ko.md)): `changelog.d/*.md`와 `*.ko.md` 짝 짓기(`pairFragments`), 조각 형식 확인(`parseFragment`), 조각을 `[Unreleased]`에 넣기(순수 함수 `foldChangelog`, DOCS 변경 기록 쪽과 함께 씀). `node server/changelog-fold.ts [--check]`는 모든 짝을 두 CHANGELOG에 넣고 지운다. 짝이 없거나 형식이 틀리면 아무것도 바꾸지 않는다 |
 | `events.ts` | 스냅샷 차이 → 이벤트(경보, HANDOFF, LANDING SEQUENCE `landing.requested`·`cleared`·`blocked`·`left`, 세션 종료, OUTSTATION). 커서로 읽는 이벤트 기록 |
 | `controller.ts` | CONTROLLER(TOWER) API: 브리핑, ack, CLEARANCE 발행·READBACK·취소, 정해진 문구, CLEARED PR의 LAND 문구(순수 함수 `landTextOf`) |
 | `clearances.ts` | CLEARANCE 기록: 추가만 하는 JSONL을 접어 현재 상태를 만든다 |

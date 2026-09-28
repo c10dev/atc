@@ -42,9 +42,9 @@ cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-
 
 - [ ] 영어판과 한국어판을 함께 고쳤다: `README`, `docs/<주제>`, `server/README`, 폴더 README.
 - [ ] 관제 세션 폴더(`occ/`, `crosscheck/`, `controller/`)의 `CLAUDE.md`와 `SKILL.md`는 한국어판이 원본이다. 한국어판을 먼저 고치고 `*.en.md`를 번역했다.
-- [ ] `CHANGELOG.md`와 `CHANGELOG.ko.md`의 `[Unreleased]`에 적었다.
+- [ ] `CHANGELOG.md`·`CHANGELOG.ko.md`는 고치지 않고 조각 한 쌍 `changelog.d/ATC-<n>.md`·`ATC-<n>.ko.md`를 더했다(`### Added`처럼 절 제목 아래 항목, `changelog.d/README.ko.md`). `node server/changelog-fold.ts --check`가 통과한다.
 - [ ] 사용자가 쓰는 방법이 바뀌었으면 `docs/guide/`를 고쳤다. 새 쪽이면 `web/src/views/Docs.tsx`의 `DOC_NAV`에 넣었다.
-- [ ] 설계 문서의 "Not built yet"에서 끝난 항목을 옮겼다.
+- [ ] 설계 문서의 상태 표시(Implementation order 표의 ✅, `Status:` 줄, "Not built yet"에서 옮기기, `docs/guide/stages.md`의 단계)는 고치지 않았다. ENGINEERING이 머지 뒤 고친다. 만든 것은 그 기능을 설명하는 절 바로 뒤에 번호 없는 자기 절(`### F7 as built (ATC-57)`)로 적었다.
 - [ ] 항공 용어는 영어로 썼다(FLIGHT, HOLD, READBACK …).
 
 ## 5. 검증

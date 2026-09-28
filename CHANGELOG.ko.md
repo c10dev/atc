@@ -4,6 +4,8 @@
 
 atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를, 버전은 [유의적 버전](https://semver.org/lang/ko/)을 따른다.
 
+PR은 이 파일을 고치지 않는다. PR마다 자기 `[Unreleased]` 항목을 [`changelog.d/`](changelog.d/README.ko.md)에 조각으로 두고, 조각은 때때로 여기에 접힌다. 그때까지는 DOCS 탭의 변경 기록 쪽이 조각을 `[Unreleased]` 아래에 함께 보인다.
+
 ## [Unreleased]
 
 ### 보안

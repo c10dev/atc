@@ -38,7 +38,8 @@ CI (`check`) already runs the tests, types and build. MCC looks at what CI can't
 - Calculation in pure functions, separate from I/O; `node:test` tests for the new behaviour (not only the old).
 - `erasableSyntaxOnly` (no enum, parameter properties or namespace). Screen colours and fonts only from `web/src/styles.css` tokens.
 - Aviation terms in English; code comments short and Korean like the surrounding code.
-- Changed behaviour in `CHANGELOG` `[Unreleased]`; paired docs (README, CHANGELOG, docs/dispatch·naming·occ·fleet·atfm, folder READMEs) in both languages; `docs/guide/` when how the user works changed.
+- Changed behaviour in a pair of CHANGELOG fragments (`changelog.d/*.md` and `*.ko.md`). A PR that edits `CHANGELOG.md` / `CHANGELOG.ko.md` directly is a P2 (except a fold PR). Paired docs (README, changelog.d fragments, docs/dispatch·naming·occ·fleet·atfm, folder READMEs) in both languages; `docs/guide/` when how the user works changed.
+- Team PRs don't edit status markers in design docs (✅ rows of Implementation order tables, `Status:` lines, moves out of "Not built yet"); ENGINEERING does after merge. If one does, P2.
 - Public repository: no vocado internals, secrets or screenshots.
 - Records are append-only JSONL; settings and registries are atomically rewritten JSON. **A change to an operating-state format, or one that is hard to revert, is ESCALATEd.** So is anything that leaves a doubt.
 - The PR does what its body and the ATC issue say, and nothing else.

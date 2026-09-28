@@ -4,6 +4,8 @@
 
 All notable changes to atc are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+PRs don't edit this file. Each adds its `[Unreleased]` entry as a fragment in [`changelog.d/`](changelog.d/README.md), and the fragments are folded in here from time to time. Until then the DOCS tab's 변경 기록 page shows them under `[Unreleased]`.
+
 ## [Unreleased]
 
 ### Security
