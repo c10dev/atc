@@ -42,7 +42,7 @@ Tabs are addressed by URL hash; old bookmarks (`#map`, `#teams`, `#tickets`) sti
 | AIRPORTS | `#airports` | `views/Airports.tsx` | Repository registry: open, rename, close, reopen, delete; home and TRANSIENT aircraft |
 | METRICS | `#metrics` | `views/Metrics.tsx` | FLIGHT RECORDER metrics and the stage 2 readiness check |
 | NETWORK | `#network` | `views/Network.tsx` | Stage 4 read-only overview from `GET /api/network`: ROUTES (open FLIGHTs by state, ARRIVED 14 days, AIRCRAFT, landing wait, Linear project goal), AIRCRAFT TARGETS vs actuals, and 28-day trends (ARRIVED, landing wait, reverts, DISPATCH/SCHEDULE decisions and agreement, CROSSCHECK match) with keyboard chart cursors and day tables |
-| FLEET | `#fleet` | `views/Fleet.tsx` | Every AIRCRAFT with status, current FLIGHTs and profile (crew, TYPE RATINGS, ROUTES, TARGETS); ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
+| FLEET | `#fleet` | `views/fleet/Fleet.tsx` (one file per part in `views/fleet/`) | Every AIRCRAFT with status, current FLIGHTs and profile (crew, TYPE RATINGS, ROUTES, TARGETS); ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
 | DISPATCH | `#dispatch` | `views/Dispatch.tsx` | Stage 2 proposals: shadow verdicts in 2a; approve / reject, IN FLIGHT (sent, READBACK, overdue) and the stage 3 check in 2b; mode switch with confirmation |
 | SCHEDULE | `#schedule` | `views/Schedule.tsx` | OCC S1 drafts (shadow): the S2 gate panel; open draft cards (FLIGHT, current class, changes, OCC reason) with "승인했을 것 / 거절했을 것" (would approve / would reject; reject with reason chips and a memo) and a hint of what to change in Linear by hand; candidates; RECENT (drafts closed in the last 7 days) |
 
@@ -89,4 +89,4 @@ Themes are sets of CSS tokens under `:root[data-theme="…"]` in `styles.css`; `
 | `src/Starfield.tsx` | Night Sky background (30 fps cap, pauses when hidden) and today's moon phase icon |
 | `src/ui.tsx` | Small shared pieces: AIRPORT code, OUTSTATION tag, session place, status dot, priority mark |
 | `src/styles.css`, `src/ui.css`, `src/views/*.css` | Theme tokens and styles |
-| `src/views/*.tsx` | One file per tab |
+| `src/views/*.tsx` | One file per tab. FLEET is a folder, `src/views/fleet/`, one file per part (page shell, status list, card, FUEL, ENTRY INTO SERVICE, LAUNCH and CREW BRIEFING panels, editor) with its CSS next to it |

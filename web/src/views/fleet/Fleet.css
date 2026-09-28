@@ -1,0 +1,210 @@
+/* FLEET 탭 공통: 여러 부분이 같이 쓰는 규칙(버튼·입력·패널·오류)과 쪽 틀(목록/카드 선택, RETIRED). 부분별 규칙은 Card·StatusList·Fuel·Editor·EntryForm.css. 색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다). */
+.fleet .toolbar {
+  margin-bottom: var(--space-4);
+}
+.fl-error {
+  margin: 0 0 var(--space-3);
+  color: var(--alert);
+}
+
+.fl-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-3);
+}
+.fl-sub {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  color: var(--faint);
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+.fl-sub em {
+  color: var(--faint);
+  font: var(--text-2xs) var(--sans);
+  font-style: normal;
+  letter-spacing: 0;
+}
+.fl-pos {
+  display: inline-block;
+  min-width: 96px;
+  color: var(--muted);
+}
+.fl-chip {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text);
+  font: 600 var(--text-xs) var(--mono);
+  letter-spacing: 0.08em;
+}
+.fl-chip.r-SEC {
+  border-color: var(--alert);
+  color: var(--alert);
+}
+
+.fl-line,
+.fl-note {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.fl-bad {
+  color: var(--alert);
+}
+
+.fl-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: auto;
+  padding-top: var(--space-2);
+}
+.fl-btn {
+  height: 28px;
+  padding: 0 var(--space-3);
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font: 600 var(--text-sm) var(--sans);
+  cursor: pointer;
+}
+.fl-btn:hover {
+  background: var(--panel-3);
+}
+.fl-btn.primary {
+  border-color: var(--radar);
+  color: var(--radar);
+}
+.fl-check {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1-5);
+  font-size: var(--text-sm);
+}
+.fl-check .faint {
+  font-size: var(--text-xs);
+}
+.fl-input {
+  height: 28px;
+  min-width: 0;
+  flex: 1;
+  padding: 0 var(--space-2);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font: var(--text-sm) var(--sans);
+}
+.fl-input:focus {
+  outline: 2px solid var(--cyan);
+  outline-offset: 1px;
+}
+
+/* 팀 빌딩: ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT */
+.fl-entry,
+.fl-briefing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius);
+}
+.fl-entry .label,
+.fl-briefing .label,
+.fl-entry-preview {
+  width: 100%;
+  margin: 0;
+}
+.fl-entry label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--text-sm);
+}
+.fl-entry .fl-actions,
+.fl-briefing .fl-actions {
+  width: 100%;
+}
+/* 카드 버튼이 연 패널(ATC-61): 그 카드 바로 아래. 위 여백은 열 때 콘솔 높이로 정한다(usePanelFocus) */
+.fl-panel {
+  scroll-margin-bottom: var(--space-3);
+}
+.fl-cards > .fl-panel {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+}
+.fl-detail .fl-panel {
+  max-width: 720px;
+  margin: var(--space-2) 0 0;
+}
+.fl-panel-error {
+  width: 100%;
+  margin: 0;
+}
+.fl-briefing-text {
+  width: 100%;
+  padding: var(--space-2);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font: var(--text-sm) / 1.5 var(--mono);
+  resize: vertical;
+}
+.fl-btn.danger {
+  color: var(--alert);
+}
+.fl-actions {
+  flex-wrap: wrap;
+}
+.fl-retired-label {
+  margin-top: var(--space-4);
+}
+.fl-retired {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.fl-retired li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ── 운항 상태 목록(ATC-44): AIRCRAFT 한 대가 한 줄, 누르면 카드가 펼쳐진다 ── */
+.fl-layout {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: var(--space-4) 0 var(--space-2);
+}
+.fl-layout .label {
+  margin: 0 auto 0 0;
+}
+.fl-layout-btn {
+  height: 26px;
+  padding: 0 var(--space-2-5, var(--space-3));
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  font: 600 var(--text-xs) var(--sans);
+  cursor: pointer;
+}
+.fl-layout-btn.is-on {
+  border-color: var(--line-strong);
+  background: var(--panel-2);
+  color: var(--text);
+}
