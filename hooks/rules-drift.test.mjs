@@ -141,7 +141,7 @@ test("--ref: git ref의 파일을 본다(작업 트리가 아니라)", () => {
     assert.equal(run(args("check", s.root, ["--ref", "main"]), input("UserPromptSubmit"), { dir: s.dir }), null);
     git("commit", "-qam", "two");
     assert.match(run(args("check", s.root, ["--ref", "main"]), input("UserPromptSubmit"), { dir: s.dir }), /작업 트리만 바뀜/);
-    // ref에 없는 파일(git에서 뺀 파일)은 작업 트리에서 읽는다 — vocado CLAUDE.md
+    // ref에 없는 파일(git이 추적하지 않는 파일)은 작업 트리에서 읽는다
     writeFileSync(join(s.root, "LOCAL.md"), "local v1\n");
     const extra = ["--ref", "main", "--files", "CLAUDE.md,LOCAL.md"];
     assert.equal(run(args("check", s.root, extra), input("UserPromptSubmit"), { dir: s.dir }), null); // 목록에 새로 든 파일은 지금부터

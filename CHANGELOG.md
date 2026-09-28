@@ -48,7 +48,7 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 ### Added
 - rules-drift hook: running team sessions learn about rules-file changes (vocado `CLAUDE.md`, `AGENTS.md`) on their next turn, without a broadcast (ATC-42, [hooks/README.md](hooks/README.md#rules-drift-hook)).
   - `hooks/rules-drift.mjs start` (SessionStart) records each session's baseline hashes and content. `check` (UserPromptSubmit, PostToolUse; PostToolUse at most every 30 s) injects the unified diff as `hookSpecificOutput.additionalContext` when a file changed, then acknowledges the new hash. It has no network access, never reads the transcript, and fails open (on any error it prints nothing and exits 0).
-  - Config on the command line: `--root`, `--files` (default `CLAUDE.md,AGENTS.md`), `--ref`. With `--ref`, files the ref has are read from the ref and the others from the working tree (vocado `CLAUDE.md` is excluded from git).
+  - Config on the command line: `--root`, `--files` (default `CLAUDE.md,AGENTS.md`), `--ref`. With `--ref`, files the ref has are read from the ref and the others (not tracked in git) from the working tree.
   - Diffs are capped at 150 lines; past that the hook says to Read the file. State lives in `~/.local/state/atc/rules-ack/` per session id, plus content blobs. Records with no check for 7 days, and unreferenced blobs, are cleaned on `start`.
   - FLEET cards show "RULES current" or "RULES 미확인 since <time>" with the files, computed by atc from the records, so idle sessions show too (`server/rules-state.ts`).
   - The hooks README (en/ko) has the exact snippet for vocado `.claude/settings.json`. The SUPERVISOR adds it after merge.

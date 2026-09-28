@@ -16,7 +16,7 @@ rules-drift hook(`hooks/README.ko.md`)을 넣은 저장소면, 규칙 파일이 
 
 - FLEET 카드의 `RULES 미확인 since <시각>` → 그 세션이 아직 턴을 돌지 않았다. 세션에 아무 말이든 하면 다음 턴에 diff를 받는다.
 - RULES 줄이 없다 → 그 저장소 설정에 hook이 없거나, 세션이 hook을 넣기 전에 시작했다(다음 턴부터 기준이 생긴다).
-- vocado `CLAUDE.md`는 본 체크아웃의 파일을, `AGENTS.md`는 `origin/main`을 본다. `AGENTS.md` 변경은 누군가 fetch한 뒤에 보인다.
+- `--ref origin/main`으로 설정했으면 git이 추적하는 규칙 파일의 변경은 누군가 fetch한 뒤에 보인다.
 
 ## 관제 세션이 "막혔다"고 보고한다
 

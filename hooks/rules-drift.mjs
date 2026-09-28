@@ -3,7 +3,7 @@
 //   start (SessionStart)                  세션의 기준 해시를 적는다. resume이면 기록을 그대로 둔다
 //   check (UserPromptSubmit·PostToolUse)  바뀌었으면 hookSpecificOutput.additionalContext로 diff를 주고 확인 해시를 갱신한다
 // 옵션: --root <저장소>(기본 $CLAUDE_PROJECT_DIR, 없으면 cwd) --ref <git ref>(주면 그 ref의 파일을 본다, 예: origin/main.
-//       ref에 없는 파일은 작업 트리에서 읽는다 — vocado CLAUDE.md는 git에서 빠져 있다)
+//       ref에 없는 파일(git이 추적하지 않는 파일)은 작업 트리에서 읽는다)
 //       --files CLAUDE.md,AGENTS.md
 // 감시 파일 말고는 읽지 않는다(대화 기록 transcript_path도 읽지 않는다). 네트워크 없음.
 // 오류가 나면 아무것도 출력하지 않고 exit 0 — 도구 호출·프롬프트를 막지 않는다.

@@ -26,7 +26,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 ### 추가
 - rules-drift hook: 돌고 있는 팀 세션이 규칙 파일(vocado `CLAUDE.md`, `AGENTS.md`) 변경을 다음 턴에 안다. 메시지로 퍼뜨리지 않아도 된다(ATC-42, [hooks/README.ko.md](hooks/README.ko.md#rules-drift-hook)).
   - `hooks/rules-drift.mjs start`(SessionStart)는 세션마다 기준 해시와 내용을 적는다. `check`(UserPromptSubmit·PostToolUse, PostToolUse는 30초에 한 번까지)는 파일이 바뀌었으면 unified diff를 `hookSpecificOutput.additionalContext`로 넣고 새 해시를 확인한 것으로 적는다. 네트워크를 쓰지 않고, 대화 기록을 읽지 않고, 오류가 나면 아무것도 출력하지 않고 exit 0이다(fail open).
-  - 설정은 명령줄로 한다: `--root`, `--files`(기본 `CLAUDE.md,AGENTS.md`), `--ref`. `--ref`를 주면 ref에 있는 파일은 ref에서, 없는 파일은 작업 트리에서 읽는다(vocado `CLAUDE.md`는 git에서 빠져 있다).
+  - 설정은 명령줄로 한다: `--root`, `--files`(기본 `CLAUDE.md,AGENTS.md`), `--ref`. `--ref`를 주면 ref에 있는 파일은 ref에서, 없는 파일(git이 추적하지 않는 파일)은 작업 트리에서 읽는다.
   - diff는 150줄까지이고, 넘으면 파일을 Read로 다시 읽으라고 한다. 상태는 `~/.local/state/atc/rules-ack/`에 세션 id별로 두고, diff용 내용도 둔다. 7일 동안 확인이 없던 기록과 가리키는 곳 없는 내용은 `start` 때 지운다.
   - FLEET 카드에 "RULES current" 또는 파일과 함께 "RULES 미확인 since <시각>"이 보인다. atc가 기록으로 직접 계산하므로 쉬고 있는 세션도 보인다(`server/rules-state.ts`).
   - hooks README(en/ko)에 vocado `.claude/settings.json`에 넣을 설정을 그대로 적었다. 머지 뒤 SUPERVISOR가 넣는다.

@@ -76,7 +76,7 @@ matcher는 `paths.mjs`의 `WORK_TOOLS`와 같게 둔다. 읽기 도구(Read, Gre
 | `check` | `UserPromptSubmit`, `PostToolUse` | 해시를 비교한다. 파일이 바뀌었으면 바뀐 파일, unified diff, "이 세션이 시작된 뒤 규칙 파일이 바뀌었다" 한 줄을 출력하고, 새 해시를 확인한 것으로 적는다. `PostToolUse`에서는 30초에 한 번까지만 본다 |
 
 - **감시 파일**은 명령줄로 정한다: `--root <저장소>`(기본 `$CLAUDE_PROJECT_DIR`, 없으면 hook의 `cwd`), `--files`(기본 `CLAUDE.md,AGENTS.md`, 저장소 안 경로만), 필요하면 `--ref <git ref>`. `--ref`를 주면 그 ref에 있는 파일은 ref에서, 없는 파일은 작업 트리에서 읽는다.
-  - vocado의 `CLAUDE.md`는 git에서 빠져 있고(`.git/info/exclude`) 본 체크아웃에만 있다. 본 체크아웃은 `origin/main`보다 뒤진 detached HEAD다. `AGENTS.md`는 git이 추적한다. 그래서 `--root /home/c10/projects/vocado_nextjs --ref origin/main`은 `CLAUDE.md`를 본 체크아웃에서, `AGENTS.md`를 `origin/main`에서 읽는다. `origin/main`은 어느 세션이든 fetch하면 움직인다.
+  - `--ref origin/main`을 주면 git이 추적하는 규칙 파일은 `origin/main`을 따른다. `origin/main`은 어느 세션이든 fetch하면 움직이므로, `--root`의 체크아웃이 뒤처져 있어도 된다. ref에 없는 규칙 파일(git이 추적하지 않는 파일)은 `--root`의 체크아웃에서 읽는다.
 - **diff 상한**: 파일을 합쳐 150줄. 넘거나 이전 내용을 모르면, 그 파일을 Read로 다시 읽으라고 경로와 함께 적는다.
 - **읽는 것**: 감시 파일뿐이다. 대화 기록(`transcript_path`)은 읽지 않고 네트워크도 쓰지 않는다. 한 번에 약 30ms.
 - **fail open**: 오류(잘못된 stdin, 상태 폴더가 없거나 쓸 수 없음, 깨진 상태 파일)가 나면 아무것도 출력하지 않고 exit 0이다. 상태 파일이 깨지면 그 세션은 지금 파일에서 다시 시작한다. 감시 파일이 없는 것도 한 상태로 보고, 파일이 생기면 diff로 알린다.
