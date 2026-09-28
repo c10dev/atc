@@ -10,7 +10,9 @@ import {
   type AutolandMode,
   type AutolandRecord,
   type AutolandState,
+  escalateOf,
   headKey,
+  type InFlight,
   isHeld,
   latchGroundStops,
   loadAutoland,
@@ -18,6 +20,8 @@ import {
   mergeExclusionOf,
   planAutoland,
   RECORD_FILE,
+  type ReviewRequest,
+  reviewRequestOf,
   saveAutoland,
   saveAutolandState,
   settleOf,
@@ -28,7 +32,8 @@ import type { PullRequest, Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 
 // AUTOLAND 실행부(ATC-34). GitHub을 새로 읽을 때마다(90초) 한 주기: GROUND STOP 걸기 → 갱신한 PR 정리 → AIRPORT마다 할 일 하나.
-// GitHub에 쓰는 호출은 둘뿐이다: update 모드의 update-branch(expected_head_sha), merge 모드의 위임 PR 정확한 head 머지(sha).
+// GitHub에 쓰는 호출은 셋뿐이다: update 모드의 update-branch(expected_head_sha), merge 모드의 위임 PR 정확한 head 머지(sha),
+// 갱신한 head에 리뷰가 이어지지 않았을 때 head마다 한 번 다는 PR 댓글 `@codex review`(ATC-38).
 // force-push, GitHub auto-merge, 브랜치 보호·strict는 건드리지 않는다.
 
 const run = promisify(execFile);
@@ -39,7 +44,7 @@ export function appendRecord(r: Omit<AutolandRecord, "at"> & { at?: string }) {
   const file = RECORD_FILE();
   mkdirSync(dirname(file), { recursive: true });
   appendFileSync(file, JSON.stringify(line) + "\n");
-  if (["update", "merge", "groundstop", "groundstop-clear", "mode"].includes(line.op)) console.log(`[atc] autoland ${line.op}${line.number ? ` #${line.number}` : ""}${line.result ? ` ${line.result}` : ""}${line.detail ? ` — ${line.detail}` : ""}`);
+  if (["update", "merge", "groundstop", "groundstop-clear", "mode", "review-request"].includes(line.op)) console.log(`[atc] autoland ${line.op}${line.number ? ` #${line.number}` : ""}${line.result ? ` ${line.result}` : ""}${line.detail ? ` — ${line.detail}` : ""}`);
 }
 
 export function readRecords(limit = 50): AutolandRecord[] {
@@ -97,13 +102,33 @@ async function cycle(s: Snapshot) {
   st.groundStops = stops;
 
   // 갱신한 PR 정리: 닫힘·CI 끝남(CLEARED나 다른 막힘)·시간 초과
+  const settled: { f: InFlight; p: PullRequest }[] = [];
   st.inflight = st.inflight.filter((f) => {
     const p = s.pulls.find((x) => x.repo === f.repo && x.number === f.number);
     const done = settleOf(f, p, Date.now());
     if (!done) return true;
     appendRecord({ op: "settle", mode: cfg.mode, airport: f.airport, slug: f.slug, number: f.number, head: done.head ?? f.fromHead, result: done.result, detail: done.detail });
     if (done.result === "timeout" && !done.head) st.skip.push(`${f.repo}#${f.number}@${f.fromHead}`);
+    if (p && done.head) settled.push({ f, p });
     return false;
+  });
+
+  // 재리뷰(ATC-38): update·merge이고 GROUND STOP이 아닌 AIRPORT만. 갱신이 끝난 head에 리뷰가 이어지지 않았으면 head마다 한 번 요청하고,
+  // codex로 요청한 것은 한도·30분 무응답이면 DeepSeek(외부 리뷰 제외 PR은 SUPERVISOR)로 넘긴다
+  const active = (airport: string) => cfg.mode !== "off" && cfg.airports.includes(airport) && !st.groundStops.some((g) => g.airport === airport);
+  const airportOfRepo = (repo: string) => s.airports.find((a) => a.repo === repo)?.code ?? "";
+  for (const { f, p } of settled) {
+    if (!active(f.airport)) continue;
+    const r = reviewRequestOf(p, f.slug, st.reviewRequests, new Date().toISOString());
+    if (!r) continue;
+    st.reviewRequests.push(r);
+    await requestReview(r, cfg.mode, f.airport);
+  }
+  st.reviewRequests = st.reviewRequests.map((r) => {
+    if (!active(airportOfRepo(r.repo))) return r;
+    const next = escalateOf(r, s.pulls.find((x) => x.repo === r.repo && x.number === r.number), Date.now());
+    if (next) appendRecord({ op: "review-request", mode: cfg.mode, airport: airportOfRepo(r.repo), slug: r.slug, number: r.number, head: r.head, via: next.via, result: "ok", detail: next.reason });
+    return next ?? r;
   });
   // 맡지 않게 된 AIRPORT의 비행 기록은 지운다
   st.inflight = st.inflight.filter((f) => cfg.airports.includes(f.airport));
@@ -122,6 +147,21 @@ async function cycle(s: Snapshot) {
   st.clearedShas = [...new Set([...st.clearedShas, ...loadAutolandState().clearedShas])];
   st.groundStops = st.groundStops.filter((g) => !st.clearedShas.includes(g.sha));
   saveAutolandState(st);
+}
+
+// 재리뷰 요청 하나. codex면 PR 댓글 `@codex review`(이 작업의 유일한 새 GitHub 쓰기), deepseek·supervisor는 기록만(buildPulls가 대기열을 정한다)
+async function requestReview(r: ReviewRequest, mode: AutolandMode, airport: string) {
+  const base = { op: "review-request" as const, mode, airport, slug: r.slug, number: r.number, head: r.head, via: r.via };
+  if (r.via !== "codex") return appendRecord({ ...base, result: "ok", detail: r.reason });
+  const cfg = loadAutoland();
+  if (cfg.mode === "off" || loadAutolandState().groundStops.some((g) => g.airport === airport)) return appendRecord({ ...base, result: "skipped", detail: "스위치가 꺼졌거나 GROUND STOP" });
+  try {
+    await gh(["api", "-X", "POST", `repos/${r.slug}/issues/${r.number}/comments`, "-f", "body=@codex review"]);
+    appendRecord({ ...base, result: "ok", detail: "PR 댓글 @codex review" });
+  } catch (e) {
+    // 댓글이 실패해도 요청은 남는다: 30분 뒤 DeepSeek로 넘어간다
+    appendRecord({ ...base, result: "failed", detail: writeResultOf(errText(e)).detail });
+  }
 }
 
 // 쓰기 직전에 스위치와 GROUND STOP을 다시 본다(주기 사이에 SUPERVISOR가 끄거나 main이 빨개졌으면 쓰지 않는다)

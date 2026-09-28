@@ -24,6 +24,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- AUTOLAND 재리뷰(ATC-38, [docs/occ.ko.md](docs/occ.ko.md) 9.7). AUTOLAND 갱신이 끝났는데 새 head에 리뷰가 이어지지 않았으면(`no-review`·`review-stale`) atc가 그 head에 한 번 요청한다. Codex를 쓸 수 있으면 PR 댓글 `@codex review` 하나(유일한 새 GitHub 쓰기)를 단다. Codex가 한도이거나 30분 동안 답이 없으면 6시간을 기다리지 않고 REVIEW(DeepSeek) 대기열로 넘긴다. ATC-27·30 제외와 보안 스위치는 그대로라, 제외 PR은 "AUTOLAND: SUPERVISOR 리뷰 필요"로 보인다. `autoland.jsonl`에 `op: "review-request"`로 남고, 스트립에 "AUTOLAND: review requested (codex|deepseek)"가 보인다. `update`·`merge` 모드이고 GROUND STOP이 아닐 때만 한다.
 - 판정 계열: Jev(TypeSafe System One)를 CLASSIFY 판정 계열로 더했다. **기본은 꺼짐**이다(ATC-36, [docs/fleet.ko.md](docs/fleet.ko.md) 6.1).
   - `server/judges/`: CLASSIFY 인터페이스 하나(FLIGHT TYPE Choice, WAKE Choice, TYPE RATING마다 Noul)와 엔진 둘. `stub`은 녹화 응답이라 네트워크를 쓰지 않는다. `jev`는 `POST https://api.typesafe.ai/v1/systemone`, `jev-latest`, `.env.local`의 `TYPESAFE_API_KEY`를 Bearer로 쓰고, 키를 로그에 남기지 않는다.
   - mark는 `judges.jsonl`에 초안·계열마다 추가만 하는 `judge` 줄로 남는다. 판정 계열의 분류를 초안이 적은 축과 비교한 결과(`agree`/`disagree`)다. `schedule.jsonl`, CROSSCHECK 칸, 초안 상태, 20건·80% 게이트는 건드리지 않는다. 계열별 일치율은 `crosscheckRateOf`로 잰다.
