@@ -4,7 +4,7 @@
 
 atc가 자기 PR을 머지하고 배포한다. AUTOLAND([occ.ko.md](occ.ko.md) 9.7)는 다른 저장소(vocado, AIRPORT `VCDO`)의 PR을 착륙시키고, 머지한 뒤에는 아무것도 하지 않는다. SELF-LANDING은 atc 저장소(AIRPORT `ATCC`)의 PR을 착륙시킨다. 이 머지는 관제 코드 자체를 바꾼다. 그래서 머지 뒤에 배포(서비스 체크아웃 fast-forward, 서비스 재시작), 상태 확인, 새 빌드가 깨졌을 때 되돌아갈 길이 함께 있어야 한다.
 
-> 상태: 설계 초안(2026-09-28). 아직 만든 것 없음. SUPERVISOR가 정할 것은 끝의 "정할 것"에 있다.
+> 상태: 설계 초안(2026-09-28). SUPERVISOR가 다섯 제안을 모두 받아들였다(끝의 "결정"). 아직 만든 것 없음.
 
 관련: [occ.ko.md](occ.ko.md) 9(CLEARED TO LAND, AUTOLAND, 외부 리뷰), `deploy/landing-tier.mjs`(LANDING CLEARANCE 등급), 루트 `CLAUDE.md` "git과 PR"(누가 무엇을 머지하나), [fleet.ko.md](fleet.ko.md) 8.6–8.7(이 설계가 가져다 쓰는 그림자 → 승인 운용 방식).
 
@@ -111,10 +111,10 @@ atc가 자기 PR을 머지하고 배포한다. AUTOLAND([occ.ko.md](occ.ko.md) 9
 | 사람이라면 잡았을 것을 모델 리뷰가 놓침 | `auto` 등급만, 크기 제한, `merge` 전에 structure 판단과 그림자 비교 |
 | 바뀌는 속도 | 최근 머지 60건 중 29건이 `auto`였다. 하루 열 건 안팎이 structure 없이 착륙하게 된다 |
 
-## 8. 정할 것(SUPERVISOR)
+## 8. 결정(2026-09-28, SUPERVISOR: 모두 제안대로)
 
-1. **lander를 어디서 돌리나.** 제안: `deploy/`의 별도 systemd 타이머와 스크립트, atc 서버 밖. 대안: 서버 안, AUTOLAND 옆(더 단순하지만 깨진 빌드가 자기를 되돌리지 못한다).
-2. **atc PR의 리뷰 출처.** 제안: DeepSeek REVIEW 세션이 FLIGHT 없는 atc PR도 리뷰하고(공개 저장소라 기밀 때문에 뺄 이유가 없다), 정확한 head에 P0·P1 없는 통과가 있으면 인정한다. 대안: structure 세션이 자기 확인 뒤 GitHub 승인 리뷰를 남기고 lander는 머지와 배포만 자동화한다. 또는 리뷰 없이 CI와 로컬 확인만(제안하지 않음).
-3. **범위.** 제안: `auto` 등급만. `flagged`는 그림자 데이터를 보고 나중에 정한다.
-4. **배포가 실패하면.** 제안: 서비스를 이전 head로 되돌리고, GROUND STOP을 걸고, 사용자에게 revert PR을 연다. 대안: revert PR까지 스스로 머지한다.
-5. **그림자 게이트.** 제안: lander의 `would-merge`·`would-skip`이 structure와 사용자가 실제로 한 일(그대로 머지 대 수정 요청·사람에게 남김)과 맞는 PR 20건, 합의 90% 이상, structure가 거절한 PR에 `would-merge`가 한 건도 없음.
+1. **lander를 어디서 돌리나.** 결정: `deploy/`의 별도 systemd 타이머와 스크립트, atc 서버 밖. 대안: 서버 안, AUTOLAND 옆(더 단순하지만 깨진 빌드가 자기를 되돌리지 못한다).
+2. **atc PR의 리뷰 출처.** 결정: DeepSeek REVIEW 세션이 FLIGHT 없는 atc PR도 리뷰하고(공개 저장소라 기밀 때문에 뺄 이유가 없다), 정확한 head에 P0·P1 없는 통과가 있으면 인정한다. 대안: structure 세션이 자기 확인 뒤 GitHub 승인 리뷰를 남기고 lander는 머지와 배포만 자동화한다. 또는 리뷰 없이 CI와 로컬 확인만(제안하지 않음).
+3. **범위.** 결정: `auto` 등급만. `flagged`는 그림자 데이터를 보고 나중에 정한다.
+4. **배포가 실패하면.** 결정: 서비스를 이전 head로 되돌리고, GROUND STOP을 걸고, 사용자에게 revert PR을 연다. 대안: revert PR까지 스스로 머지한다.
+5. **그림자 게이트.** 결정: lander의 `would-merge`·`would-skip`이 structure와 사용자가 실제로 한 일(그대로 머지 대 수정 요청·사람에게 남김)과 맞는 PR 20건, 합의 90% 이상, structure가 거절한 PR에 `would-merge`가 한 건도 없음.

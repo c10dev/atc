@@ -4,7 +4,7 @@
 
 atc merges and deploys its own PRs. AUTOLAND ([occ.md](occ.md) 9.7) lands PRs in other repositories (vocado, AIRPORT `VCDO`) and does nothing after the merge. SELF-LANDING lands PRs in the atc repository (AIRPORT `ATCC`). The merge changes the code of the controller itself, so it must be followed by a deploy (fast-forward the service checkout, restart the service), a health check, and a way back when the new build is broken.
 
-> Status: design draft (2026-09-28). Nothing built yet. See "Decisions" at the end for what the SUPERVISOR still has to decide.
+> Status: design draft (2026-09-28). The SUPERVISOR accepted all five proposals (see "Decisions" at the end). Nothing built yet.
 
 Related: [occ.md](occ.md) 9 (CLEARED TO LAND, AUTOLAND, external review), `deploy/landing-tier.mjs` (LANDING CLEARANCE tiers), root `CLAUDE.md` "git과 PR" (who merges what), [fleet.md](fleet.md) 8.6–8.7 (the shadow → approval pattern this design reuses).
 
@@ -111,10 +111,10 @@ Steps 1, 2, 4 and 5 change `deploy/`, so their PRs are `user` tier.
 | A model review misses what a person would catch | tier `auto` only, size limit, shadow comparison with structure's decisions before `merge` |
 | Rate of change | 29 of 60 recent merges were `auto`; about ten a day would land without structure |
 
-## 8. Decisions (SUPERVISOR)
+## 8. Decisions (2026-09-28, SUPERVISOR: all as proposed)
 
-1. **Where the lander runs.** Proposed: a separate systemd timer and script in `deploy/`, outside the atc server. Alternative: inside the server, next to AUTOLAND (simpler, but a broken build cannot roll itself back).
-2. **Review source for atc PRs.** Proposed: the DeepSeek REVIEW session also reviews atc PRs without a FLIGHT (the repository is public, so there is no confidentiality reason to exclude them), and a pass with no P0 or P1 on the exact head counts. Alternatives: the structure session posts a GitHub approval after its own check, so the lander only automates merge and deploy; or no review, CI and local checks only (not proposed).
-3. **Scope.** Proposed: tier `auto` only; `flagged` decided later from shadow data.
-4. **On a failed deploy.** Proposed: roll the service back to the previous head, latch a GROUND STOP, open a revert PR for the user. Alternative: also merge the revert PR itself.
-5. **Shadow gate.** Proposed: 20 PRs where the lander's `would-merge` / `would-skip` matches what structure and the user did (merged as-is vs changes asked or kept for a human), at least 90% agreement, and no `would-merge` on a PR structure refused.
+1. **Where the lander runs.** Decided: a separate systemd timer and script in `deploy/`, outside the atc server. Alternative: inside the server, next to AUTOLAND (simpler, but a broken build cannot roll itself back).
+2. **Review source for atc PRs.** Decided: the DeepSeek REVIEW session also reviews atc PRs without a FLIGHT (the repository is public, so there is no confidentiality reason to exclude them), and a pass with no P0 or P1 on the exact head counts. Alternatives: the structure session posts a GitHub approval after its own check, so the lander only automates merge and deploy; or no review, CI and local checks only (not proposed).
+3. **Scope.** Decided: tier `auto` only; `flagged` decided later from shadow data.
+4. **On a failed deploy.** Decided: roll the service back to the previous head, latch a GROUND STOP, open a revert PR for the user. Alternative: also merge the revert PR itself.
+5. **Shadow gate.** Decided: 20 PRs where the lander's `would-merge` / `would-skip` matches what structure and the user did (merged as-is vs changes asked or kept for a human), at least 90% agreement, and no `would-merge` on a PR structure refused.
