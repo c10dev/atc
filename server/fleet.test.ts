@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { applyPatch, canHoldSec, DEFAULT_FLEET, FleetError, fleetView, loadFleet } from "./fleet.ts";
 import { computeActuals } from "./logbook.ts";
-import type { Session } from "./model.ts";
+import type { Session, Ticket } from "./model.ts";
 
 const D = DEFAULT_FLEET.defaults;
 
@@ -60,6 +60,28 @@ test("FLEET 화면: 살아 있는 TEAM 세션과 등록 항목을 합치고, 없
   assert.equal(view[1].ratingsIsDefault, false);
 });
 
+test("FLEET 화면: FLYING FLIGHT의 제목, 가장 이른 점유 시각, 세션 마지막 활동(ATC-44)", () => {
+  const session = { id: "b", name: "TEAM_B", status: "busy", repo: "/r/vocado", cwd: "/r/vocado", agent: "claude", pid: 1, startedAt: "", lastActiveAt: "2026-09-28T05:40:00Z", workspacePath: null } as Session;
+  const claim = (path: string, since: string) => ({ sessionId: "b", workspacePath: path, since, lastAt: since, source: "hook" as const, tool: null, state: "active" as const, handedOffTo: null });
+  const ws = (path: string, ticketKey: string) => ({ path, name: path, repo: "/r/vocado", isMain: false, branch: null, head: "", dirty: 0, lastCommitAt: null, ticketKey });
+  const [b] = fleetView(
+    {
+      sessions: [session],
+      claims: [claim("/w/voc-193", "2026-09-28T05:10:00Z"), claim("/w/voc-194", "2026-09-28T04:50:00Z")],
+      workspaces: [ws("/w/voc-193", "VOC-193"), ws("/w/voc-194", "VOC-194")],
+      airports: [{ id: "r", code: "VCDO", name: "vocado", repo: "/r/vocado" }],
+      tickets: [{ key: "VOC-193", title: "Practice player two columns" } as Ticket],
+    },
+    { defaults: D, aircraft: {} },
+  );
+  assert.deepEqual(b.flights, [
+    { key: "VOC-193", title: "Practice player two columns" },
+    { key: "VOC-194", title: null },
+  ]);
+  assert.equal(b.flyingSince, "2026-09-28T04:50:00Z");
+  assert.equal(b.lastActiveAt, "2026-09-28T05:40:00Z");
+});
+
 test("ENTRY INTO SERVICE: 템플릿으로 새 AIRCRAFT를 들이고, 있는 이름·퇴역한 이름·형식 오류는 거절", async () => {
   const { entryIntoService, nextRegistration } = await import("./fleet.ts");
   const P = "^TEAM[\\s_-]?[A-Z]$";
@@ -97,7 +119,7 @@ test("CREW BRIEFING: 등록번호·폴더·팀원·자격·교신 규칙을 담�
   const { crewBriefing } = await import("./fleet.ts");
   const a = {
     registration: "TEAM_G", callsign: "GOLF", status: "absent" as const, base: "VCDO", complement: D.complement, complementIsDefault: true,
-    ratings: ["SEC", "DATA"] as ("SEC" | "DATA")[], ratingsIsDefault: false, routes: ["Beta Readiness"], targets: {}, note: null, flying: [],
+    ratings: ["SEC", "DATA"] as ("SEC" | "DATA")[], ratingsIsDefault: false, routes: ["Beta Readiness"], targets: {}, note: null, flying: [], flights: [], flyingSince: null, lastActiveAt: null,
     configuration: "security" as const, enteredAt: null, aog: null, retired: null, actuals: computeActuals([], "TEAM_G", 0),
   };
   const text = crewBriefing(a, "/home/c10/projects/vocado_nextjs", "shadow");

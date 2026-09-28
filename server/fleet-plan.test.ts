@@ -26,7 +26,7 @@ const ago = (ms: number) => new Date(NOW - ms).toISOString();
 const view = (registration: string, over: Partial<AircraftView> = {}): AircraftView => ({
   registration, callsign: registration, status: "idle", base: "ATCC",
   complement: DEFAULT_FLEET.defaults.complement, complementIsDefault: true, ratings: ["UI", "DATA", "DOCS"], ratingsIsDefault: true,
-  routes: [], targets: {}, note: null, flying: [], configuration: null, enteredAt: ago(60 * DAY), aog: null, retired: null,
+  routes: [], targets: {}, note: null, flying: [], flights: [], flyingSince: null, lastActiveAt: null, configuration: null, enteredAt: ago(60 * DAY), aog: null, retired: null,
   actuals: computeActuals([], registration, NOW), ...over,
 });
 const need = (flight: string, over: Partial<Unserved> = {}): Unserved => ({

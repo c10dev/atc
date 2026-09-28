@@ -46,6 +46,14 @@ All notable changes to atc are recorded here. The format follows [Keep a Changel
 - Linear projects and milestones are read for every team in `LINEAR_TEAM_KEYS`, not only the main team ([docs/routes.md](docs/routes.md) step 5). atc's own ROUTE (M15–M20) now shows on the NETWORK tab's ROUTE MAP and in the WAYPOINT ETAs and slip warnings. Shared projects and milestones are merged, and each carries the team keys it was read from (`teams`). WAYPOINT gaps and NEW's `--milestone` still take only milestones of the candidate teams (`candidateTeams`), because NEW creates its issue in the main team.
 
 ### Added
+- FLEET tab: a one-line-per-AIRCRAFT status list, details folded (ATC-44, UI report #99). Below FLEET PLAN, the default view is one row per AIRCRAFT:
+  - columns: callsign and registration, AIRPORT, AIRBORNE / HOLDING / PARKED / AOG / NORDO, the FLYING FLIGHT with its title (`+N` for more), time since the STAND was taken, last activity, and ARRIVED with the on-time rate this week;
+  - order: AIRBORNE → HOLDING → PARKED, then by AIRPORT;
+  - details: a row opens that AIRCRAFT's current card with all its information and buttons;
+  - switching: a 목록 / 카드 switch is remembered in `localStorage`;
+  - narrow screens: rows fold into two lines, with no horizontal scroll;
+  - 10 AIRCRAFT fit in 1440×900.
+  - `GET /api/fleet` aircraft gain `flights` (key and title), `flyingSince` and `lastActiveAt`, and `actuals.weekOnTime`.
 - FLEET PLAN in shadow ([docs/fleet.md](docs/fleet.md) 8.6, steps 1 and 2). On the DISPATCH cycle (5 min) atc looks at demand, the runway and the reserve and proposes LAUNCH, ENTRY, STOP, RESTART, AOG and RETIRE with reasons. The SUPERVISOR agrees or disagrees in the FLEET PLAN block above the FLEET cards. Nothing is started or stopped.
   - Defaults are the SUPERVISOR's decisions: reserve 1, wait 120 min, idle 12 h, RESTART 3 days, retire 30 days, no opposite proposal for 2 h. ATC FLIGHTs count as demand (the planner runs once more over every Linear team). DISPATCH still assigns only `candidateTeams`.
   - The planner now returns `unserved`: FLIGHTs left without an AIRCRAFT. FLIGHTs left over because the AIRPORT's slots are full are not included.

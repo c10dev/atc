@@ -55,6 +55,7 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 | `occupancy.ts` | HANDOFF vs conflict vs brief visit from claim intervals `[since, lastAt]` |
 | `airports.ts` | AIRPORT registry: auto-discovery under `~/projects`, identity by first commit hash, codes, open/close/rename/delete |
 | `away.ts` | OUTSTATION: sessions holding a STAND outside their home AIRPORT (shared with the UI) |
+| `fleet-status.ts` | FLEET status list (ATC-44): AIRBORNE / HOLDING / PARKED / AOG / NORDO per AIRCRAFT (pure `fleetStatusOf`), one row each sorted by status then AIRPORT (pure `fleetRows`), elapsed text (shared with the UI) |
 | `callsign.ts` | Callsigns (`TEAM_A` → `ALPHA`) and FLIGHT NUMBERs (shared with the UI) |
 | `version.ts` | Build id: the entry script path in `index.html` (pure `entryScript`), and whether a tab should show the new-version notice (pure `showNewVersion`, shared with the UI) |
 | `events.ts` | Snapshot differences → events (alerts, handoffs, LANDING SEQUENCE `landing.requested` / `cleared` / `blocked` / `left`, lost sessions, OUTSTATION), with a cursor-based event log |

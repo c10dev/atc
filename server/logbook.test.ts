@@ -212,6 +212,8 @@ test("TARGETS 실적: 이번 주(월요일부터) ARRIVED, 14일 정시율·되�
   assert.equal(a.week, 3);
   assert.equal(a.total, 4);
   assert.deepEqual(a.onTime, { rate: 2 / 3, within: 2, measured: 3 });
+  // 이번 주 정시율(ATC-44): 이번 주 1(정시)·2(지연)만 잰다. 6은 기대치 없음
+  assert.deepEqual(a.weekOnTime, { rate: 1 / 2, within: 1, measured: 2 });
   assert.equal(a.reverted, 1);
   assert.equal(a.los, 3);
   assert.deepEqual(a.recent.map((e) => [e.pr.number, e.onTime]), [[1, true], [6, null], [2, false], [3, true], [4, true]]);

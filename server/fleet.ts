@@ -181,6 +181,9 @@ export interface AircraftView {
   targets: Targets;
   note: string | null;
   flying: string[]; // 지금 STAND를 쥔 FLIGHT
+  flights: { key: string; title: string | null }[]; // flying과 같은 순서, Linear 제목(모르면 null). FLEET 운항 상태 목록(ATC-44)
+  flyingSince: string | null; // 지금 쥔 STAND를 처음 잡은 시각(점유 since 중 가장 이른 것). 없으면 null
+  lastActiveAt: string | null; // 세션의 마지막 활동 시각
   configuration: ConfigurationId | null;
   enteredAt: string | null;
   aog: AircraftProfile["aog"] | null;
@@ -190,7 +193,7 @@ export interface AircraftView {
 
 // 스냅샷의 TEAM 세션과 등록부를 합친다. 세션이 없는 등록 항목도 "absent"로 보인다.
 export function fleetView(
-  s: Pick<Snapshot, "sessions" | "claims" | "workspaces" | "airports">,
+  s: Pick<Snapshot, "sessions" | "claims" | "workspaces" | "airports"> & Partial<Pick<Snapshot, "tickets">>,
   fleet: FleetFile,
   teamPattern = DEFAULT_DISPATCH_CONFIG.teamPattern,
   logbook: LogEntry[] = [],
@@ -204,9 +207,8 @@ export function fleetView(
   return names.map((reg) => {
     const session = live.find((x) => x.name.toUpperCase() === reg);
     const profile = Object.entries(fleet.aircraft).find(([k]) => k.toUpperCase() === reg)?.[1] ?? {};
-    const flying = session
-      ? [...new Set(s.claims.filter((c) => c.sessionId === session.id && c.state === "active").map((c) => wsTicket.get(c.workspacePath)).filter(Boolean) as string[])]
-      : [];
+    const held = session ? s.claims.filter((c) => c.sessionId === session.id && c.state === "active") : [];
+    const flying = [...new Set(held.map((c) => wsTicket.get(c.workspacePath)).filter(Boolean) as string[])];
     return {
       registration: reg,
       callsign: callsign({ name: reg }),
@@ -220,6 +222,9 @@ export function fleetView(
       targets: profile.targets ?? {},
       note: profile.note ?? null,
       flying,
+      flights: flying.map((key) => ({ key, title: s.tickets?.find((t) => t.key === key)?.title ?? null })),
+      flyingSince: held.map((c) => c.since).sort()[0] ?? null,
+      lastActiveAt: session?.lastActiveAt ?? null,
       configuration: profile.configuration ?? null,
       enteredAt: profile.enteredAt ?? null,
       aog: profile.aog ?? null,

@@ -24,6 +24,14 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- FLEET 탭: AIRCRAFT 한 대가 한 줄인 운항 상태 목록, 세부는 접음(ATC-44, UI report #99). FLEET PLAN 아래 기본 보기가 AIRCRAFT마다 한 줄이다:
+  - 열: callsign과 REGISTRATION, AIRPORT, AIRBORNE·HOLDING·PARKED·AOG·NORDO, 제목이 붙은 FLYING FLIGHT(더 있으면 `+N`), STAND를 잡은 뒤 흐른 시간, 마지막 활동, 이번 주 ARRIVED와 정시율
+  - 순서: AIRBORNE → HOLDING → PARKED, 그다음 AIRPORT 순
+  - 세부: 줄을 누르면 그 AIRCRAFT의 지금 카드(정보와 버튼 전부)가 펼쳐진다
+  - 보기 전환: 목록·카드 스위치는 `localStorage`에 기억한다
+  - 좁은 화면: 가로 스크롤 없이 두 줄로 접힌다
+  - 10대가 1440×900 한 화면에 들어온다
+  - `GET /api/fleet`의 aircraft에 `flights`(키와 제목), `flyingSince`, `lastActiveAt`, `actuals.weekOnTime`이 더해졌다.
 - FLEET PLAN 그림자 운용([docs/fleet.ko.md](docs/fleet.ko.md) 8.6 1·2단계). atc가 DISPATCH 주기(5분)마다 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·AOG·RETIRE를 사유와 함께 제안하고, FLEET 탭 카드 위의 FLEET PLAN 블록에서 SUPERVISOR가 동의·반대로 판정한다. 세션을 띄우거나 멈추지는 않는다.
   - 기본값은 SUPERVISOR 결정대로다: 예비 1, 대기 120분, 유휴 12시간, RESTART 3일, 퇴역 30일, 반대 제안 금지 2시간. ATC FLIGHT도 수요로 센다(planner를 모든 Linear 팀으로 한 번 더 돌림). DISPATCH 배정 대상은 그대로 `candidateTeams`다.
   - planner가 받을 AIRCRAFT가 없어 남은 FLIGHT를 `unserved`로 내놓는다. AIRPORT 슬롯이 차서 남은 것은 넣지 않는다.
