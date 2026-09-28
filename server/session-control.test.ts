@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type AgentRow, CONTROL_SESSIONS, ControlError, controlDirOf, controlLaunchPlanOf, controlRowsOf, controlSpecOf, controlStopTargetOf, inServiceCgroup, isControlRow, launchCommandOf, parentPidOf, tmuxPaneOf, jobIdOf, launchPlanOf, MANUAL_CONTROL, stopTargetOf } from "./session-control.ts";
+import { type AgentRow, CONTROL_SESSIONS, ControlError, controlDirOf, controlLaunchPlanOf, controlRowsOf, controlSpecOf, controlStopTargetOf, inServiceCgroup, isControlRow, launchCommandOf, parentPidOf, tmuxPaneOf, jobIdOf, launchPlanOf, launchBlockOf, findBin, ocxCommandOf, stopTargetOf, tmuxLaunchPlanOf } from "./session-control.ts";
 
 const base = { registration: "team_k", retired: false, repo: "/home/u/projects/app", briefing: "[ATC FLEET] CREW BRIEFING · KILO (TEAM_K)" };
 const bg = (name: string, id = "abc12345"): AgentRow => ({ id, sessionId: `${id}-x`, name, kind: "background", status: "idle", cwd: "/w" });
@@ -57,15 +57,19 @@ const MCC = controlSpecOf("mcc")!;
 const DIR = "/home/u/projects/atc/mcc";
 const row = (over: Partial<AgentRow>): AgentRow => ({ sessionId: "s", kind: "interactive", status: "idle", cwd: "/elsewhere", ...over });
 
-test("관제 세션 목록: TOWER·OCC·MCC만 atc가 띄운다. REVIEW·CROSSCHECK는 ocx라 tmux로", () => {
-  assert.deepEqual(CONTROL_SESSIONS.map((c) => `${c.name} ${c.dir} ${c.prompt} ${c.flags.join(" ")}`.trim()), [
-    "TOWER controller /loop 3m /tick",
-    "OCC occ /loop 10m /tick",
-    "MCC mcc /loop 5m /tick --strict-mcp-config",
+test("관제 세션 목록: TOWER·OCC·MCC는 claude --bg, CROSSCHECK·REVIEW는 tmux(ocx), ENGINEERING은 배지만", () => {
+  assert.deepEqual(CONTROL_SESSIONS.map((c) => `${c.name} ${c.launch} ${c.tmux ?? "-"} ${c.dir} ${c.prompt} ${c.flags.join(" ")}`.trim()), [
+    "TOWER bg - controller /loop 3m /tick",
+    "OCC bg - occ /loop 10m /tick",
+    "MCC bg - mcc /loop 5m /tick --strict-mcp-config",
+    "CROSSCHECK tmux atc-crosscheck crosscheck /loop 10m /tick --strict-mcp-config",
+    "REVIEW tmux atc-review review /loop 10m /tick --strict-mcp-config",
+    "ENGINEERING null - null null",
   ]);
-  assert.deepEqual([...MANUAL_CONTROL], ["REVIEW", "CROSSCHECK"]);
-  assert.equal(controlSpecOf("review"), null);
-  assert.match(controlDirOf(MCC), /\/mcc$/);
+  assert.equal(controlSpecOf("review")?.name, "REVIEW");
+  assert.equal(controlSpecOf("nope"), null);
+  assert.match(controlDirOf(MCC)!, /\/mcc$/);
+  assert.equal(controlDirOf(controlSpecOf("engineering")!), null);
 });
 
 test("관제 LAUNCH: 권한 모드 auto, 폴더에서, 첫 메시지는 주기 명령. 같은 이름이나 같은 폴더의 세션이 있으면 거절", () => {
@@ -124,4 +128,63 @@ test("daemon이 atc 서비스 cgroup 안에 있나", () => {
   assert.equal(inServiceCgroup(["0::/user.slice/user-1000.slice/user@1000.service/app.slice/atc-claude-1.scope"]), false);
   assert.equal(inServiceCgroup(["0::/user.slice/user-1000.slice/user@1000.service/app.slice/atc-rts.service"]), false);
   assert.equal(inServiceCgroup([]), false);
+});
+
+// ── REVIEW·CROSSCHECK(tmux, ocx)와 ENGINEERING(배지만), ATC-66 ──
+const CROSSCHECK = controlSpecOf("CROSSCHECK")!;
+const REVIEW = controlSpecOf("REVIEW")!;
+const ENGINEERING = controlSpecOf("ENGINEERING")!;
+const XDIR = "/home/u/projects/atc/crosscheck";
+
+test("live 줄: 이름이 같거나 그 폴더에서 연 세션. ENGINEERING은 이름으로만(저장소 뿌리의 다른 세션은 아님)", () => {
+  const rows = [
+    row({ name: "crosscheck", cwd: "/w" }),
+    row({ name: "x-b4", cwd: XDIR }),
+    row({ name: "REVIEW", kind: "background", id: "r1" }),
+    row({ name: "TEAM_G", cwd: "/home/u/projects/atc" }),
+    row({ name: "ENGINEERING", cwd: "/home/u/projects/atc" }),
+  ];
+  assert.deepEqual(controlRowsOf(CROSSCHECK, rows, XDIR).map((r) => r.name), ["crosscheck", "x-b4"]);
+  assert.deepEqual(controlRowsOf(REVIEW, rows, "/home/u/projects/atc/review").map((r) => r.name), ["REVIEW"]);
+  assert.deepEqual(controlRowsOf(ENGINEERING, rows, null).map((r) => r.name), ["ENGINEERING"]);
+  assert.deepEqual(controlRowsOf(ENGINEERING, [row({ name: "TEAM_G", cwd: "/home/u/projects/atc" })], null), []);
+});
+
+test("CROSSCHECK·REVIEW LAUNCH 명령: 문서의 ocx claude 그대로, 이름과 첫 메시지를 붙인다", () => {
+  assert.equal(ocxCommandOf(CROSSCHECK), "env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config -n CROSSCHECK '/loop 10m /tick'");
+  assert.equal(ocxCommandOf(REVIEW), "env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config -n REVIEW '/loop 10m /tick'");
+  assert.deepEqual(tmuxLaunchPlanOf(CROSSCHECK, [row({ name: "TEAM_B", cwd: "/w" })], XDIR, ["atc-tower"], "/opt/bin:/usr/bin"), {
+    cwd: XDIR,
+    session: "atc-crosscheck",
+    command: ocxCommandOf(CROSSCHECK),
+    args: ["new-session", "-d", "-s", "atc-crosscheck", "-c", XDIR, "-e", "PATH=/opt/bin:/usr/bin", ocxCommandOf(CROSSCHECK)],
+  });
+  assert.equal(tmuxLaunchPlanOf(REVIEW, [], "/r", [], "/usr/bin").session, "atc-review");
+  // bg 세션은 이 길로 띄우지 않는다
+  refused(() => tmuxLaunchPlanOf(MCC, [], DIR, [], "/usr/bin"), 409, /tmux로 띄우지 않음/);
+});
+
+test("CROSSCHECK LAUNCH 거절: 그 폴더의 세션(이름 없어도)이나 이름이 같은 세션, 같은 이름의 tmux 세션이 이미 있으면", () => {
+  refused(() => tmuxLaunchPlanOf(CROSSCHECK, [row({ name: "cc-1", cwd: XDIR })], XDIR, [], "/usr/bin"), 409, /interactive cc-1/);
+  refused(() => tmuxLaunchPlanOf(CROSSCHECK, [row({ name: "CROSSCHECK", cwd: "/elsewhere" })], XDIR, [], "/usr/bin"), 409, /이미 떠 있음/);
+  refused(() => tmuxLaunchPlanOf(REVIEW, [], "/r", ["atc-review"], "/usr/bin"), 409, /tmux 세션 atc-review가 이미 있음/);
+});
+
+test("LAUNCH를 끄는 이유: tmux·ocx를 못 찾으면(배지는 그대로), ENGINEERING은 배지만", () => {
+  const both = { tmux: "/usr/bin/tmux", ocx: "/n/bin/ocx" };
+  assert.equal(launchBlockOf(CROSSCHECK, both), null);
+  assert.match(launchBlockOf(CROSSCHECK, { ...both, ocx: null })!, /^ocx를 찾지 못함/);
+  assert.match(launchBlockOf(REVIEW, { tmux: null, ocx: null })!, /^tmux·ocx를 찾지 못함/);
+  assert.equal(launchBlockOf(MCC, { tmux: null, ocx: null }), null); // claude --bg는 tmux·ocx가 필요 없다
+  assert.match(launchBlockOf(ENGINEERING, both)!, /배지만/);
+  // STOP할 대상은 TOWER와 같은 규칙(tmux pane)
+  const tmuxRow = row({ name: "CROSSCHECK", cwd: XDIR, pid: 42 });
+  const pane = { session: "atc-crosscheck", pane: "%9", pid: 42 };
+  assert.deepEqual(controlStopTargetOf(CROSSCHECK, [tmuxRow], XDIR, () => pane), { how: "tmux", row: tmuxRow, pane });
+});
+
+test("findBin: PATH 순서대로 첫 실행 파일", () => {
+  const have = new Set(["/b/tmux", "/c/tmux"]);
+  assert.equal(findBin("tmux", ["/a", "/b", "/c"], (p) => have.has(p)), "/b/tmux");
+  assert.equal(findBin("ocx", ["", "/a"], (p) => have.has(p)), null);
 });

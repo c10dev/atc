@@ -635,11 +635,13 @@ function MccGatePanel() {
   );
 }
 
-// 관제 세션(docs/fleet.md 8.5.1). TOWER·OCC·MCC는 atc가 그 폴더에서 `claude --bg`로 띄우고 멈춘다.
-// tmux로 연 세션도 STOP한다(그 pane만 닫음, 묻고 나서). 데스크톱 세션은 그 창에서 닫는다. REVIEW·CROSSCHECK는 ocx라 tmux로 띄운다
+// 관제 세션(docs/fleet.md 8.5.1). 줄마다 live 배지. TOWER·OCC·MCC는 atc가 그 폴더에서 `claude --bg`로, REVIEW·CROSSCHECK는
+// tmux 세션에서 `ocx claude`로 띄운다(ATC-66). ENGINEERING은 배지만. tmux로 연 세션도 STOP한다(그 pane만 닫음, 묻고 나서).
+// 데스크톱 세션은 그 창에서 닫는다
 type ControlLive = { id?: string; name?: string; kind: string; status?: string; tmux?: string };
 type ControlAccounts = { labeled: boolean; rows: { name: string; label: string | null; account: string | null }[] };
-type ControlList = { manual: string[]; daemonInService?: boolean; sessions: { name: string; dir: string; prompt: string; live: ControlLive[] }[] };
+type ControlSession = { name: string; dir: string | null; prompt: string | null; launch: "bg" | "tmux" | null; tmux?: string; command?: string; blocked: string | null; live: ControlLive[] };
+type ControlList = { daemonInService?: boolean; sessions: ControlSession[] };
 function ControlSessions() {
   const [list, setList] = useState<ControlList | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -720,40 +722,45 @@ function ControlSessions() {
     ) : (
       <p className="settings-hint">불러오는 중…</p>
     );
-  const launchable = new Set(list.sessions.map((c) => c.name));
+  const shown = new Set(list.sessions.map((c) => c.name));
   return (
     <dl className="config-rows">
       {list.sessions.map((c) => {
         const bg = c.live.find((l) => l.kind === "background" && l.id);
         const tmux = bg ? undefined : c.live.find((l) => l.tmux);
         const other = c.live.find((l) => l !== bg);
-        const state = bg
-          ? `BG ${bg.id}${bg.status ? ` · ${bg.status}` : ""}`
-          : tmux
-            ? `tmux ${tmux.tmux} · ${tmux.name ?? tmux.kind}${tmux.status ? ` · ${tmux.status}` : ""}`
-            : other
-              ? `열려 있음(데스크톱) · ${other.name ?? other.kind}`
-              : "꺼짐";
+        // live 배지: BG <id>, tmux <세션>, interactive(데스크톱 등), not running
+        const badge = bg ? `BG ${bg.id}` : tmux ? `tmux ${tmux.tmux}` : other ? "interactive" : "not running";
+        const detail = bg ? bg.status : tmux ? [tmux.name ?? tmux.kind, tmux.status].filter(Boolean).join(" · ") : other ? `${other.name ?? other.kind} · 데스크톱 세션은 그 창에서 닫는다` : undefined;
+        const how = c.launch === "bg" ? "claude --bg" : c.launch === "tmux" ? (tmux ? "ocx claude" : `ocx claude → tmux ${c.tmux}`) : null;
         return (
           <Fragment key={c.name}>
           <div className="config-row">
             <dt>
-              {c.name} <code className="config-env">{c.dir}/</code>
+              {c.name} <code className="config-env">{c.dir ? `${c.dir}/` : "저장소 뿌리"}</code>
             </dt>
             <dd>
-              {bg || tmux ? (
+              {c.launch === null ? null : bg || tmux ? (
                 <button className="config-btn is-danger" onClick={() => void act(c.name, "stop", tmux?.tmux)} disabled={busy !== null}>
                   STOP
                 </button>
               ) : (
-                <button className="config-btn is-primary" onClick={() => void act(c.name, "launch")} disabled={busy !== null || Boolean(other)}>
+                <button className="config-btn is-primary" onClick={() => void act(c.name, "launch")} disabled={busy !== null || Boolean(other) || Boolean(c.blocked)} title={c.blocked ?? c.command ?? undefined}>
                   LAUNCH
                 </button>
               )}
             </dd>
             <p className="config-note">
-              {state} · 첫 메시지 <code>{c.prompt}</code>
-              {other && !bg && !tmux ? " · 데스크톱 세션은 그 창에서 닫는다" : ""}
+              <span className={`session-badge ${bg || tmux ? "is-busy" : other ? "" : "is-dead"}`}>{badge}</span>
+              {detail ? ` · ${detail}` : ""}
+              {how ? (
+                <>
+                  {" "}· {how} · 첫 메시지 <code>{c.prompt}</code>
+                </>
+              ) : (
+                " · 이름으로 알아본다"
+              )}
+              {c.blocked && c.launch !== null ? <span className="is-error"> · LAUNCH 꺼짐: {c.blocked}</span> : null}
             </p>
           </div>
           {accountRow(c.name)}
@@ -765,8 +772,8 @@ function ControlSessions() {
           백그라운드 세션 daemon이 atc 서비스 안에서 돌고 있음 — atc를 재시작하면(배포·RTS) 모든 백그라운드 세션이 함께 멈춘다. 재시작한 뒤 LAUNCH하면 daemon이 서비스 밖(systemd scope)에서 뜬다
         </p>
       )}
-      <p className="config-note">{list.manual.join(" · ")}: ocx로 다른 계열 모델에 돌리므로 tmux로 띄운다(review/README.md, docs/occ.md CROSSCHECK)</p>
-      {accounts?.rows.filter((r) => !launchable.has(r.name)).map((r) => accountRow(r.name))}
+      <p className="config-note">CROSSCHECK·REVIEW는 ocx로 다른 계열 모델에 돌리므로 tmux 세션에서 띄운다(docs/occ.md CROSSCHECK, review/README.md)</p>
+      {accounts?.rows.filter((r) => !shown.has(r.name)).map((r) => accountRow(r.name))}
       {error && <p className="config-note is-error">{error}</p>}
     </dl>
   );

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { accessSync, constants, existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Context, Hono } from "hono";
@@ -79,21 +79,26 @@ export function launchPlanOf(input: LaunchInput, rows: AgentRow[], max = MAX_LAU
 }
 
 // ── 관제 세션(docs/fleet.md 8.5.1) ──
-// atc 저장소의 관제 폴더에서 `claude --bg`로 띄운다. 폴더의 .claude/settings.json(모델·허용 목록·fail-closed guard)이 그대로 걸린다.
+// TOWER·OCC·MCC는 atc 저장소의 관제 폴더에서 `claude --bg`로 띄운다. 폴더의 .claude/settings.json(모델·허용 목록·fail-closed guard)이 그대로 걸린다.
 // 첫 메시지는 그 폴더의 주기 명령. 권한 모드는 auto로 고정한다(백그라운드 세션은 권한 창에 답할 수 없고, 막는 일은 guard가 한다).
-// REVIEW·CROSSCHECK는 ocx로 다른 계열 모델에 돌려서 `claude --bg`로 띄울 수 없다 — 지금처럼 tmux로 띄운다.
+// REVIEW·CROSSCHECK는 ocx로 다른 계열 모델에 돌려서 `claude --bg`로 띄울 수 없다 — tmux 세션에서 `ocx claude`로 띄운다(ATC-66).
+// ENGINEERING은 저장소 뿌리에서 여는 작업 세션이라 이름으로만 알아보고 띄우지 않는다(배지만)
 export interface ControlSpec {
   name: string;
-  dir: string; // atc 저장소 안의 폴더
-  prompt: string; // 첫 메시지
+  dir: string | null; // atc 저장소 안의 폴더. null이면 이름으로만 안다
+  prompt: string | null; // 첫 메시지
   flags: string[];
+  launch: "bg" | "tmux" | null;
+  tmux?: string; // launch가 tmux면 tmux 세션 이름
 }
 export const CONTROL_SESSIONS: readonly ControlSpec[] = [
-  { name: "TOWER", dir: "controller", prompt: "/loop 3m /tick", flags: [] },
-  { name: "OCC", dir: "occ", prompt: "/loop 10m /tick", flags: [] },
-  { name: "MCC", dir: "mcc", prompt: "/loop 5m /tick", flags: ["--strict-mcp-config"] },
+  { name: "TOWER", dir: "controller", prompt: "/loop 3m /tick", flags: [], launch: "bg" },
+  { name: "OCC", dir: "occ", prompt: "/loop 10m /tick", flags: [], launch: "bg" },
+  { name: "MCC", dir: "mcc", prompt: "/loop 5m /tick", flags: ["--strict-mcp-config"], launch: "bg" },
+  { name: "CROSSCHECK", dir: "crosscheck", prompt: "/loop 10m /tick", flags: ["--strict-mcp-config"], launch: "tmux", tmux: "atc-crosscheck" },
+  { name: "REVIEW", dir: "review", prompt: "/loop 10m /tick", flags: ["--strict-mcp-config"], launch: "tmux", tmux: "atc-review" },
+  { name: "ENGINEERING", dir: null, prompt: null, flags: [], launch: null },
 ];
-export const MANUAL_CONTROL = ["REVIEW", "CROSSCHECK"] as const;
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 const realDir = (p: string) => {
   try {
@@ -102,21 +107,62 @@ const realDir = (p: string) => {
     return p;
   }
 };
-export const controlDirOf = (spec: ControlSpec, root = REPO_ROOT) => realDir(join(root, spec.dir));
+export const controlDirOf = (spec: ControlSpec, root = REPO_ROOT) => (spec.dir ? realDir(join(root, spec.dir)) : null);
 export const controlSpecOf = (name: string) => CONTROL_SESSIONS.find((s) => s.name === name.toUpperCase()) ?? null;
 
-// 이 관제 세션으로 보는 세션: 이름이 같거나(대소문자 무시), 그 폴더에서 연 세션(tmux로 이름 없이 띄운 것도)
-export function controlRowsOf(spec: ControlSpec, rows: AgentRow[], dir: string): AgentRow[] {
-  return rows.filter((r) => sameName(r, spec.name) || realDir(r.cwd) === dir);
+// 이 관제 세션으로 보는 세션: 이름이 같거나(대소문자 무시), 그 폴더에서 연 세션(tmux로 이름 없이 띄운 것도). 폴더가 없으면 이름으로만
+export function controlRowsOf(spec: ControlSpec, rows: AgentRow[], dir: string | null): AgentRow[] {
+  return rows.filter((r) => sameName(r, spec.name) || (dir !== null && realDir(r.cwd) === dir));
 }
 // 관제 폴더에서 연 세션인가(팀 세션 상한에서 뺀다)
 export const isControlRow = (row: AgentRow, dirs: readonly string[]) => CONTROL_SESSIONS.some((s) => sameName(row, s.name)) || dirs.includes(realDir(row.cwd));
 
-// LAUNCH할 수 있는지 보고 claude 인자를 만든다(순수). 같은 관제 세션이 어떤 종류로든 떠 있으면 거절(두 벌이 같은 일을 하지 않게)
-export function controlLaunchPlanOf(spec: ControlSpec, rows: AgentRow[], dir: string): { cwd: string; args: string[] } {
+// 같은 관제 세션이 어떤 종류로든 떠 있으면 거절(두 벌이 같은 일을 하지 않게)
+function refuseLive(spec: ControlSpec, rows: AgentRow[], dir: string | null) {
   const live = controlRowsOf(spec, rows, dir)[0];
   if (live) throw new ControlError(`${spec.name} 세션이 이미 떠 있음(${live.kind === "background" ? `bg ${live.id}` : `interactive ${live.name ?? ""}`.trim()})`, 409);
-  return { cwd: dir, args: ["--bg", "-n", spec.name, "--permission-mode", "auto", ...spec.flags, spec.prompt] };
+}
+
+// LAUNCH할 수 있는지 보고 claude 인자를 만든다(순수)
+export function controlLaunchPlanOf(spec: ControlSpec, rows: AgentRow[], dir: string): { cwd: string; args: string[] } {
+  refuseLive(spec, rows, dir);
+  return { cwd: dir, args: ["--bg", "-n", spec.name, "--permission-mode", "auto", ...spec.flags, spec.prompt ?? ""] };
+}
+
+// REVIEW·CROSSCHECK의 명령(review/README.md, docs/occ.md CROSSCHECK). 고정 문구이고 요청에서 오는 것은 없다.
+// env -u ANTHROPIC_BASE_URL: export한 값이 ocx가 정하는 프록시 URL을 덮는다. NO_PROXY: ClaudeRipple HTTPS_PROXY가 로컬 프록시 요청을 가로챈다
+export const OCX_ENV = "env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost";
+export const ocxCommandOf = (spec: ControlSpec) => `${OCX_ENV} ocx claude ${[...spec.flags, "-n", spec.name].join(" ")} '${spec.prompt}'`;
+
+// tmux LAUNCH를 막는 이유(순수). tmux나 ocx를 서버가 못 찾으면 LAUNCH만 끄고 배지는 그대로 본다
+export function launchBlockOf(spec: ControlSpec, bins: { tmux: string | null; ocx: string | null }): string | null {
+  if (spec.launch === null) return "배지만 — 저장소 뿌리에서 연다";
+  if (spec.launch !== "tmux") return null;
+  const missing = (["tmux", "ocx"] as const).filter((b) => !bins[b]);
+  return missing.length ? `${missing.join("·")}를 찾지 못함 — atc 서버의 PATH에 없다` : null;
+}
+
+// tmux LAUNCH(순수): `tmux new-session -d -s <세션> -c <폴더> -e PATH=… '<명령>'`. 그 폴더의 세션이나 같은 이름의 tmux 세션이 있으면 거절
+export function tmuxLaunchPlanOf(spec: ControlSpec, rows: AgentRow[], dir: string, tmuxSessions: readonly string[], path: string): { cwd: string; session: string; command: string; args: string[] } {
+  if (spec.launch !== "tmux" || !spec.tmux || !spec.prompt) throw new ControlError(`${spec.name}는 tmux로 띄우지 않음`, 409);
+  refuseLive(spec, rows, dir);
+  if (tmuxSessions.includes(spec.tmux)) throw new ControlError(`tmux 세션 ${spec.tmux}가 이미 있음 — 그 안의 세션을 확인하거나 tmux kill-session -t ${spec.tmux}`, 409);
+  const command = ocxCommandOf(spec);
+  return { cwd: dir, session: spec.tmux, command, args: ["new-session", "-d", "-s", spec.tmux, "-c", dir, "-e", `PATH=${path}`, command] };
+}
+
+// PATH에서 실행 파일을 찾는다(없으면 null)
+export function findBin(name: string, dirs: readonly string[], exists: (p: string) => boolean = isExecutable): string | null {
+  for (const d of dirs) if (d && exists(join(d, name))) return join(d, name);
+  return null;
+}
+function isExecutable(p: string) {
+  try {
+    accessSync(p, constants.X_OK);
+    return statSync(p).isFile();
+  } catch {
+    return false;
+  }
 }
 // tmux pane 하나(`tmux list-panes -a`)
 export interface TmuxPane {
@@ -136,7 +182,7 @@ export function tmuxPaneOf(pid: number | undefined, panes: readonly TmuxPane[], 
 // STOP할 대상(순수): 백그라운드 세션이면 `claude stop`, tmux pane에서 도는 세션이면 그 pane만 닫는다.
 // 데스크톱(Claude 앱) 세션은 atc가 닫지 않는다 — 그 창에서 닫는다
 export type StopTarget = { how: "background"; row: AgentRow } | { how: "tmux"; row: AgentRow; pane: TmuxPane };
-export function controlStopTargetOf(spec: ControlSpec, rows: AgentRow[], dir: string, paneOf: (row: AgentRow) => TmuxPane | null = () => null): StopTarget {
+export function controlStopTargetOf(spec: ControlSpec, rows: AgentRow[], dir: string | null, paneOf: (row: AgentRow) => TmuxPane | null = () => null): StopTarget {
   const mine = controlRowsOf(spec, rows, dir);
   if (!mine.length) throw new ControlError(`${spec.name} 세션이 떠 있지 않음`, 404);
   const bg = mine.find((r) => r.kind === "background" && r.id);
@@ -160,9 +206,9 @@ export function parentPidOf(pid: number): number | null {
 }
 
 // tmux pane 목록. tmux가 없거나 서버가 없으면 빈 목록
-export function tmuxPanes(): Promise<TmuxPane[]> {
+export function tmuxPanes(bin = controlBins().tmux ?? "tmux"): Promise<TmuxPane[]> {
   return new Promise((resolve) => {
-    execFile("tmux", ["list-panes", "-a", "-F", "#{session_name}\t#{pane_id}\t#{pane_pid}"], { timeout: 5000 }, (err, stdout) => {
+    execFile(bin, ["list-panes", "-a", "-F", "#{session_name}\t#{pane_id}\t#{pane_pid}"], { timeout: 5000 }, (err, stdout) => {
       if (err) return resolve([]);
       resolve(
         stdout
@@ -191,12 +237,18 @@ export function jobIdOf(out: string): string | null {
 }
 
 // 세션에 atc의 비밀(.env.local)을 물려주지 않는다
+const cleanPath = () => [dirname(config.claudeBin), dirname(process.execPath), "/usr/local/bin", "/usr/bin", "/bin"];
 function cleanEnv(): NodeJS.ProcessEnv {
   const keep = ["HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "SHELL", "TERM", "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "DBUS_SESSION_BUS_ADDRESS"];
   const env: NodeJS.ProcessEnv = {};
   for (const k of keep) if (process.env[k]) env[k] = process.env[k];
-  env.PATH = [dirname(config.claudeBin), dirname(process.execPath), "/usr/local/bin", "/usr/bin", "/bin"].join(":");
+  env.PATH = cleanPath().join(":");
   return env;
+}
+// REVIEW·CROSSCHECK LAUNCH에 쓰는 tmux·ocx. 서버의 PATH와 깨끗한 PATH에서 찾는다
+export function controlBins(): { tmux: string | null; ocx: string | null } {
+  const dirs = [...(process.env.PATH ?? "").split(":"), ...cleanPath()];
+  return { tmux: findBin("tmux", dirs), ocx: findBin("ocx", dirs) };
 }
 
 // LAUNCH는 atc 서비스 밖의 systemd scope에서 claude를 부른다. `claude --bg`는 처음 부를 때 이 기계의 백그라운드 세션을 모두 맡는
@@ -269,7 +321,7 @@ export async function launchAircraft(s: Snapshot, registration: string, options:
   const t = new Date().toISOString();
   try {
     // 관제 세션은 팀 세션 상한(ATC_MAX_LAUNCHED)에 세지 않는다
-    const dirs = CONTROL_SESSIONS.map((c) => controlDirOf(c));
+    const dirs = CONTROL_SESSIONS.map((c) => controlDirOf(c)).filter((d): d is string => d !== null);
     const rows = (await agentRows()).filter((r) => !isControlRow(r, dirs));
     const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: crewBriefing(a, repo, cfg.mode), permissionMode: options.permissionMode, model: options.model }, rows);
     const r = await claude(plan.args, plan.cwd, { scope: true });
@@ -302,10 +354,13 @@ export async function stopAircraft(registration: string, by: string): Promise<Co
 
 export async function launchControl(name: string, by: string): Promise<ControlResult> {
   const spec = controlSpecOf(name);
-  if (!spec) return { ok: false, status: 404, error: `atc가 띄우는 관제 세션이 아님: ${name} (${CONTROL_SESSIONS.map((c) => c.name).join(", ")}; ${MANUAL_CONTROL.join("·")}는 tmux로)` };
+  if (!spec) return { ok: false, status: 404, error: `관제 세션이 아님: ${name} (${CONTROL_SESSIONS.map((c) => c.name).join(", ")})` };
+  const dir = controlDirOf(spec);
+  if (spec.launch === null || dir === null) return { ok: false, status: 409, error: `${spec.name}: ${launchBlockOf(spec, controlBins())}` };
+  if (spec.launch === "tmux") return launchTmuxControl(spec, dir, by);
   const t = new Date().toISOString();
   try {
-    const plan = controlLaunchPlanOf(spec, await agentRows(), controlDirOf(spec));
+    const plan = controlLaunchPlanOf(spec, await agentRows(), dir);
     const r = await claude(plan.args, plan.cwd, { scope: true });
     const jobId = jobIdOf(r.out);
     const ok = r.ok && !!jobId;
@@ -318,17 +373,42 @@ export async function launchControl(name: string, by: string): Promise<ControlRe
   }
 }
 
-export async function stopControl(name: string, by: string): Promise<ControlResult> {
-  const spec = controlSpecOf(name);
-  if (!spec) return { ok: false, status: 404, error: `atc가 띄우는 관제 세션이 아님: ${name}` };
+// REVIEW·CROSSCHECK: tmux 세션에서 `ocx claude`로(ATC-66). tmux 서버가 없으면 이 호출이 띄우므로 systemd scope에서, 깨끗한 환경으로 부른다
+async function launchTmuxControl(spec: ControlSpec, dir: string, by: string): Promise<ControlResult> {
+  const bins = controlBins();
+  const blocked = launchBlockOf(spec, bins);
+  if (blocked) return { ok: false, status: 409, error: `${spec.name}: ${blocked}` };
   const t = new Date().toISOString();
   try {
-    const panes = await tmuxPanes();
+    const [rows, panes] = await Promise.all([agentRows(), tmuxPanes(bins.tmux!)]);
+    const path = [...new Set([dirname(bins.ocx!), ...cleanPath()])].join(":");
+    const plan = tmuxLaunchPlanOf(spec, rows, dir, [...new Set(panes.map((p) => p.session))], path);
+    const { cmd, args } = launchCommandOf(bins.tmux!, plan.args, scopeBin(), `atc-tmux-${Date.now()}`);
+    const r = await new Promise<{ ok: boolean; out: string }>((resolve) =>
+      execFile(cmd, args, { cwd: dir, env: cleanEnv(), timeout: 15_000 }, (err, stdout, stderr) => resolve({ ok: !err, out: `${stdout}${stderr}`.trim() })),
+    );
+    const error = r.ok ? undefined : r.out.slice(0, 300) || "tmux new-session 실패";
+    record({ t, kind: "control", op: "launch", session: spec.name, by, ok: r.ok, tmux: plan.session, cwd: plan.cwd, error });
+    return r.ok ? { ok: true, status: 200, tmux: plan.session, cwd: plan.cwd } : { ok: false, status: 502, error };
+  } catch (e) {
+    if (e instanceof ControlError) return { ok: false, status: e.status, error: e.message };
+    throw e;
+  }
+}
+
+export async function stopControl(name: string, by: string): Promise<ControlResult> {
+  const spec = controlSpecOf(name);
+  if (!spec) return { ok: false, status: 404, error: `관제 세션이 아님: ${name}` };
+  if (spec.launch === null) return { ok: false, status: 409, error: `${spec.name}: 배지만 — 그 창에서 닫는다` };
+  const t = new Date().toISOString();
+  try {
+    const tmuxBin = controlBins().tmux ?? "tmux";
+    const panes = await tmuxPanes(tmuxBin);
     const target = controlStopTargetOf(spec, await agentRows(), controlDirOf(spec), (row) => tmuxPaneOf(row.pid, panes, parentPidOf));
     if (target.how === "tmux") {
       // 그 pane만 닫는다(tmux 세션의 다른 창은 그대로). 대화 기록은 남아 claude --resume으로 다시 연다
       const r = await new Promise<{ ok: boolean; out: string }>((resolve) =>
-        execFile("tmux", ["kill-pane", "-t", target.pane.pane], { timeout: 5000 }, (err, stdout, stderr) => resolve({ ok: !err, out: `${stdout}${stderr}`.trim() })),
+        execFile(tmuxBin, ["kill-pane", "-t", target.pane.pane], { timeout: 5000 }, (err, stdout, stderr) => resolve({ ok: !err, out: `${stdout}${stderr}`.trim() })),
       );
       const error = r.ok ? undefined : r.out.slice(0, 300) || "tmux kill-pane 실패";
       record({ t, kind: "control", op: "stop", session: spec.name, by, ok: r.ok, tmux: `${target.pane.session} ${target.pane.pane}`, cwd: target.row.cwd, error });
@@ -349,15 +429,20 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
   // 관제 세션(8.5.1): 설정 창 AGENTS 탭의 CONTROL 블록이 쓴다
   app.get("/api/control/sessions", async (c) => {
     try {
-      const [rows, panes] = await Promise.all([agentRows(), tmuxPanes()]);
+      const bins = controlBins();
+      const [rows, panes] = await Promise.all([agentRows(), tmuxPanes(bins.tmux ?? "tmux")]);
       return c.json({
-        manual: MANUAL_CONTROL,
         // 백그라운드 세션 daemon이 atc 서비스 안에 있으면 atc 재시작(배포·RTS) 때 모든 백그라운드 세션이 죽는다
         daemonInService: inServiceCgroup(daemonCgroups()),
         sessions: CONTROL_SESSIONS.map((spec) => ({
           name: spec.name,
           dir: spec.dir,
           prompt: spec.prompt,
+          // bg: claude --bg, tmux: tmux 세션에서 ocx claude, null: 배지만. blocked는 LAUNCH를 끈 이유
+          launch: spec.launch,
+          tmux: spec.tmux,
+          command: spec.launch === "tmux" ? ocxCommandOf(spec) : undefined,
+          blocked: launchBlockOf(spec, bins),
           live: controlRowsOf(spec, rows, controlDirOf(spec)).map(({ id, name, kind, status, pid }) => ({ id, name, kind, status, tmux: kind === "background" ? undefined : tmuxPaneOf(pid, panes, parentPidOf)?.session })),
         })),
         // ACCOUNT(ATC-60): 관제 세션마다 SUPERVISOR가 단 라벨(없으면 null). FUEL이 이 ACCOUNT에 센다
@@ -387,7 +472,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
     const r = await launchControl(c.req.param("name") ?? "", "SUPERVISOR");
     if (!r.ok) return c.json({ error: r.error }, r.status as 400);
-    return c.json({ ok: true, jobId: r.jobId, cwd: r.cwd });
+    return c.json({ ok: true, jobId: r.jobId, tmux: r.tmux, cwd: r.cwd });
   });
   app.post("/api/control/:name/stop", async (c: Context) => {
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);

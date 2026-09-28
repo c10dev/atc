@@ -450,7 +450,13 @@ So the session is opened in `crosscheck/` with
 env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config
 ```
 
-named `CROSSCHECK`, and run with `/loop 10m /tick`.
+named `CROSSCHECK`, and run with `/loop 10m /tick`. The **LAUNCH** button on the CROSSCHECK row of the settings window's CONTROL block does this in one step (ATC-66, [fleet.md](fleet.md) 8.5.1): a tmux session `atc-crosscheck` in `crosscheck/` running
+
+```bash
+env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config -n CROSSCHECK '/loop 10m /tick'
+```
+
+`-n` names the session and the last argument is its first message. By hand, the same command goes inside `tmux new-session -d -s atc-crosscheck -c /home/c10/projects/atc/crosscheck "…"`.
 
 **From Claude Desktop.** Desktop does not follow the settings `model`; it uses the model picked in the app, and that model goes through the ClaudeRipple proxy (`HTTPS_PROXY` 127.0.0.1:8790), which passes Claude models through as well. Open a session in the `crosscheck/` folder, name it `CROSSCHECK`, **pick `muse-spark-1.3-contributor` in the app's model menu**, then `/loop 10m /tick`. On 2026-09-26 two Desktop sessions ran on the default `claude-opus-5-5` and their marks were recorded under the Muse name (S-0006 and S-0007 are the likely cases); the real-model check below now blocks that.
 

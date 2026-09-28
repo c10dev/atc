@@ -27,6 +27,10 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- 설정 창 CONTROL 블록이 모든 관제 세션을 보이고 CROSSCHECK·REVIEW도 띄운다(ATC-66, [docs/fleet.ko.md](docs/fleet.ko.md) 8.5.1). 2026-09-28에 CROSSCHECK가 꺼져 있었는데 화면 어디에도 보이지 않았다.
+  - 줄마다(TOWER, OCC, MCC, CROSSCHECK, REVIEW, ENGINEERING) live 배지: `BG <id>`, `tmux <세션>`, `interactive`, `not running`. 이름이 같거나 그 폴더에서 연 세션을 센다. 저장소 뿌리에서 여는 ENGINEERING은 이름으로만.
+  - CROSSCHECK·REVIEW에 LAUNCH: 그 폴더에서 tmux 세션 `atc-crosscheck`·`atc-review`로 `env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config -n CROSSCHECK '/loop 10m /tick'`(REVIEW는 `-n REVIEW`). 명령은 `docs/occ.md`와 `review/README.md`에 적힌 고정 문구다. 그 폴더의 세션이나 같은 이름의 tmux 세션이 있으면 거절하고, 서버가 `tmux`나 `ocx`를 못 찾으면 이유와 함께 LAUNCH를 끈다(배지는 그대로). STOP은 TOWER처럼 tmux pane을 닫는다. ENGINEERING은 배지만.
+  - SUPERVISOR만(같은 Origin 규칙), 깨끗한 환경(`.env.local` 없음), atc 서비스 밖(systemd scope). FLIGHT RECORDER `control` launch 줄에 `tmux`. `GET /api/control/sessions` 줄에 `launch`·`tmux`·`command`·`blocked`가 생기고 `manual`은 없어졌다.
 - ATFM 6b단계: 실패 몰림·혼잡·LOS GROUND STOP의 해제 규칙과 `on` 스위치(ATC-62, [docs/atfm.ko.md](docs/atfm.ko.md) 6·8·10장). 켜진 스위치는 없다. 기본은 그대로 `shadow`이고, 켜는 것은 SUPERVISOR 몫이다(ATC-23).
   - `atfm.json`의 `groundStop.failureWave`·`congestion`·`los`가 `on`을 받는다. DISPATCH 탭 ATFM 블록에 확인을 거치는 off/shadow/on 스위치가 생겼다. ATFM OFF(`POST /api/atfm/off`)는 다른 것과 함께 이것도 `shadow`로 되돌린다.
   - 켜면 실패 몰림은 "main 깨짐"처럼 새 ASSIGN과 LAND를 멈춘다. LOS는 새 ASSIGN만 멈춘다: TOWER의 착륙 대기열에 `groundStop`이 붙지 않고 HOLD/CONTINUE 이벤트도 없다. 혼잡은 DISPATCH 계획에서 그 AIRPORT의 AIRBORNE 슬롯을 하나 빼는 GROUND DELAY다.
