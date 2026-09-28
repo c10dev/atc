@@ -12,6 +12,8 @@ import { readLinear } from "./sources/linear.ts";
 import { buildPulls, strandedMessage, strandedOf } from "./landing.ts";
 import { inspectionOf, loadMcc, readMccRecords } from "./mcc.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
+import { accountOf } from "./crew.ts";
+import { loadFleet } from "./fleet.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, loadAtfm, stopKey } from "./atfm.ts";
 import { fastTrackOf, isHeld, loadAutoland, loadAutolandState, mergeExclusionOf, planAutoland } from "./autoland.ts";
@@ -112,8 +114,11 @@ export async function buildSnapshot(): Promise<Snapshot> {
   }
 
   const alerts = buildAlerts(sessions, workspaces, tickets, claims, occupancy);
-  // health ALERT: NETWORK는 기계에 한 번, LIMIT은 같은 reset끼리 한 번(docs/fleet.md 8.8)
-  for (const a of healthAlerts(sessions.map((x) => ({ sessionId: x.id, name: x.name, health: x.health })), healthAt)) {
+  // health ALERT: NETWORK는 기계에 한 번, LIMIT은 같은 ACCOUNT끼리(ATC-51), ACCOUNT를 모르면 같은 reset끼리 한 번(docs/fleet.md 8.8)
+  const fleet = loadFleet();
+  const team = new RegExp(loadDispatchConfig().teamPattern, "i");
+  const accountOfSession = (x: Session) => (x.status !== "dead" && team.test(x.name) ? accountOf(fleet, x.name) : null);
+  for (const a of healthAlerts(sessions.map((x) => ({ sessionId: x.id, name: x.name, health: x.health, account: accountOfSession(x) })), healthAt)) {
     alerts.push({ kind: "health", key: a.key, message: a.message, sessionIds: a.sessionIds });
   }
   const repos = airports.open.map((a) => a.repo);

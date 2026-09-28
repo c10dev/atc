@@ -1,5 +1,7 @@
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
+import { DEFAULT_ACCOUNT } from "../../../server/crew.ts";
 import type { AircraftView, CrewMember, FleetFile, Rating } from "../../../server/fleet.ts";
+import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel } from "../../../server/health.ts";
 import { elapsedText, type FleetRow, fleetRows, fleetStatusOf } from "../../../server/fleet-status.ts";
 import type { RulesView } from "../../../server/rules-state.ts";
 import { flightNumber } from "../aviation.ts";
@@ -330,10 +332,15 @@ function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[]; open: 
         {rows.map((r) => {
           const isOpen = open.has(r.registration);
           return (
-            <li key={r.registration} className={`fl-li st-${r.status.replace(/ /g, "-")}${r.health ? " has-health" : ""}${isOpen ? " is-open" : ""}`}>
+            <li key={r.registration} className={`fl-li st-${r.status.replace(/ /g, "-")}${r.health || r.accountHold ? " has-health" : ""}${isOpen ? " is-open" : ""}`}>
               <button className="fl-row" aria-expanded={isOpen} aria-controls={`fl-detail-${r.registration}`} onClick={() => onToggle(r.registration)}>
                 <span className="fl-r-id">
                   <b>{r.callsign}</b> <span className="mono faint">{r.registration}</span>
+                  {r.account && !r.accountIsDefault && (
+                    <span className="fl-r-acct mono" title={`ACCOUNT ${r.account} — 사용 한도를 같이 쓰는 AIRCRAFT 묶음`}>
+                      {r.account}
+                    </span>
+                  )}
                 </span>
                 <span className="fl-r-apt">{r.airport ? <span className="apt">{r.airport}</span> : <span className="faint">—</span>}</span>
                 <span className="fl-r-status">{r.status}</span>
@@ -343,12 +350,17 @@ function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[]; open: 
                       {r.health.label}
                     </span>
                   )}
+                  {r.accountHold && (
+                    <span className="fl-r-health lv-hold" title={`${r.accountHold.detail} — ${r.accountHold.next}`}>
+                      {r.accountHold.label}
+                    </span>
+                  )}
                   {r.flight ? (
                     <>
                       <b className="mono">{flightNumber(r.flight.key)}</b> {r.flight.title && <span className="fl-r-title">{r.flight.title}</span>}
                       {r.more > 0 && <span className="fl-r-more">+{r.more}</span>}
                     </>
-                  ) : r.health ? null : (
+                  ) : r.health || r.accountHold ? null : (
                     <span className="faint">—</span>
                   )}
                 </span>
@@ -496,6 +508,11 @@ function Card({
           {a.aog.until ? <span className="faint"> · ~{a.aog.until}</span> : null}
         </p>
       )}
+      {a.accountHold && (
+        <p className="fl-acct-hold" title={ACCOUNT_HOLD_NEXT}>
+          {accountHoldLabel(a.accountHold, Date.now())} <span className="faint">· {accountHoldDetail(a.accountHold)}</span>
+        </p>
+      )}
       {a.status === "absent" && (
         <p className="fl-absent faint">세션이 없음 — LAUNCH로 띄우거나, CREW BRIEFING을 새 세션에 붙여 넣으면 IN SERVICE가 된다</p>
       )}
@@ -535,6 +552,11 @@ function Card({
 
       <h3 className="fl-sub">ROUTE</h3>
       <p className="fl-line">{a.routes.length ? a.routes.join(", ") : <span className="faint">지정 없음</span>}</p>
+
+      <h3 className="fl-sub">
+        ACCOUNT {a.accountIsDefault && <em>기본값</em>}
+      </h3>
+      <p className="fl-line">{a.account ? <span className="mono">{a.account}</span> : <span className="faint">지정 없음 — 한도는 reset 시각으로 묶는다</span>}</p>
 
       <h3 className="fl-sub">TARGETS</h3>
       <p className="fl-line">
@@ -753,6 +775,7 @@ function Editor({
   const [crewDefault, setCrewDefault] = useState(a.complementIsDefault);
   const [crew, setCrew] = useState<CrewMember[]>(a.complement);
   const [note, setNote] = useState(a.note ?? "");
+  const [account, setAccount] = useState(a.accountIsDefault ? "" : (a.account ?? ""));
 
   const toggle = <T,>(list: T[], x: T) => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x]);
   const projects = [...new Set([...brief.projects, ...routes])];
@@ -765,6 +788,7 @@ function Editor({
       routes: routes.length ? routes : null,
       targets: targets.flightsPerWeek == null && targets.onTime == null ? null : targets,
       note: note.trim() || null,
+      account: account.trim().toLowerCase() || null,
     });
   };
 
@@ -848,6 +872,19 @@ function Editor({
         <label>
           정시성 <input className="fl-input fl-num" type="number" min={0} max={100} value={onTime} onChange={(e) => setOnTime(e.target.value)} /> %
         </label>
+      </fieldset>
+
+      <fieldset className="fl-field">
+        <legend>ACCOUNT</legend>
+        <input
+          className="fl-input mono"
+          value={account}
+          maxLength={24}
+          placeholder={DEFAULT_ACCOUNT}
+          onChange={(e) => setAccount(e.target.value)}
+          aria-label="ACCOUNT"
+        />
+        <span className="faint fl-hint">사용 한도를 같이 쓰는 AIRCRAFT에 같은 라벨(main, pro-2 …). email은 쓰지 않는다. 비우면 {DEFAULT_ACCOUNT}</span>
       </fieldset>
 
       <fieldset className="fl-field">

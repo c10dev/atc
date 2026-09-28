@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { DEFAULT_FLEET } from "./crew.ts";
 import type { AircraftView } from "./fleet.ts";
 import { elapsedText, fleetRows, fleetStatusOf } from "./fleet-status.ts";
+import { ACCOUNT_HOLD_NEXT } from "./health.ts";
 import { computeActuals } from "./logbook.ts";
 
 // FLEET 운항 상태 목록(ATC-44, UI report #99)
@@ -98,4 +99,14 @@ test("운항 상태 줄에 AIRCRAFT health 표시(ATC-45)", () => {
   const [r] = fleetRows([view("TEAM_H", { health })], NOW);
   assert.deepEqual(r!.health, { code: "LIMIT", level: "alert", label: "HOLD · LIMIT until 06:40Z", detail: "You've hit your session limit", next: "reset까지 기다린다" });
   assert.equal(fleetRows([view("TEAM_A")], NOW)[0]!.health, null);
+});
+
+test("운항 상태 줄에 ACCOUNT와 같은 ACCOUNT의 LIMIT HOLD 표시(ATC-51)", () => {
+  const accountHold = { account: "pro-2", resetsAt: "2026-09-28T06:40:00.000Z", by: ["TEAM_K"] };
+  const [r] = fleetRows([view("TEAM_L", { account: "pro-2", accountIsDefault: false, accountHold })], NOW);
+  assert.equal(r!.health, null);
+  assert.equal(r!.account, "pro-2");
+  assert.deepEqual(r!.accountHold, { label: "HOLD · LIMIT (account pro-2) until 06:40Z", detail: "같은 ACCOUNT의 TEAM_K가 사용 한도에 걸림", next: ACCOUNT_HOLD_NEXT });
+  const [bare] = fleetRows([view("TEAM_A")], NOW);
+  assert.deepEqual([bare!.account, bare!.accountIsDefault, bare!.accountHold], [null, false, null]);
 });

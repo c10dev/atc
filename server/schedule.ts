@@ -392,8 +392,9 @@ export function similarTickets(title: string, tickets: Ticket[], nowMs: number):
 
 const keyList = (v: unknown) => (v == null ? [] : Array.isArray(v) ? v : [v]).map((k) => String(k).trim().toUpperCase()).filter(Boolean);
 
-// NEW의 tail로 쓸 수 있는 AIRCRAFT: 퇴역과 health로 HOLD된 AIRCRAFT(ATC-45)는 뺀다(순수)
-export const newTailsOf = (views: Pick<AircraftView, "registration" | "retired" | "health">[]) => views.filter((a) => !a.retired && !a.health?.holds).map((a) => a.registration);
+// NEW의 tail로 쓸 수 있는 AIRCRAFT: 퇴역, health로 HOLD된 AIRCRAFT(ATC-45), 같은 ACCOUNT의 LIMIT으로 붙들린 AIRCRAFT(ATC-51)는 뺀다(순수)
+export const newTailsOf = (views: Pick<AircraftView, "registration" | "retired" | "health" | "accountHold">[]) =>
+  views.filter((a) => !a.retired && !a.health?.holds && !a.accountHold).map((a) => a.registration);
 
 // NEW 입력 검사(similar는 draftOps가 채운다). tails: 퇴역하지 않은 FLEET 등록번호.
 // milestones: Linear 마일스톤(못 읽었으면 null). milestone은 그 프로젝트의 마일스톤 이름이나 id여야 한다
@@ -423,7 +424,7 @@ export function parseNew(raw: Record<string, unknown>, tickets: Ticket[], tails:
   }
   if (raw.tail != null) {
     const tail = String(raw.tail).trim().toUpperCase().replace(/^TAIL:/, "");
-    if (!tails.some((x) => x.toUpperCase() === tail)) throw new ScheduleError(`FLEET에 없거나 퇴역했거나 health로 HOLD된 AIRCRAFT: ${tail}`);
+    if (!tails.some((x) => x.toUpperCase() === tail)) throw new ScheduleError(`FLEET에 없거나 퇴역했거나 health·ACCOUNT LIMIT으로 HOLD된 AIRCRAFT: ${tail}`);
     out.tail = tail;
   }
   const keys = new Set(tickets.map((t) => t.key));

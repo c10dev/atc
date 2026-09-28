@@ -478,6 +478,15 @@ test("NEW milestone(ATC-8): 그 프로젝트의 마일스톤 이름·id만, chan
   assert.equal((line as { payload: NewPayload }).payload.gap, true);
 });
 
+test("SCHEDULE NEW의 tail 후보: 같은 ACCOUNT의 LIMIT으로 붙들린 AIRCRAFT도 빠진다(ATC-51)", () => {
+  const tails = newTailsOf([
+    { registration: "TEAM_K", retired: null, health: null, accountHold: { account: "pro-2", resetsAt: "2026-09-28T07:40:00.000Z", by: ["TEAM_L"] } },
+    { registration: "TEAM_M", retired: null, health: null, accountHold: null },
+  ]);
+  assert.deepEqual(tails, ["TEAM_M"]);
+  assert.throws(() => parseNew(newInput({ tail: "TEAM_K" }), board, tails), /HOLD된/);
+});
+
 test("SCHEDULE NEW의 tail 후보: 퇴역과 health로 HOLD된 AIRCRAFT는 빠진다(ATC-45)", () => {
   const h = (holds: boolean) => ({ code: holds ? ("LIMIT" as const) : ("PENDING" as const), level: "alert" as const, since: "t", detail: "", next: "", holds });
   const tails = newTailsOf([
@@ -487,6 +496,6 @@ test("SCHEDULE NEW의 tail 후보: 퇴역과 health로 HOLD된 AIRCRAFT는 빠�
     { registration: "TEAM_K", retired: null, health: h(false) },
   ]);
   assert.deepEqual(tails, ["TEAM_A", "TEAM_K"]);
-  assert.throws(() => parseNew(newInput({ tail: "TEAM_H" }), board, tails), /health로 HOLD/);
+  assert.throws(() => parseNew(newInput({ tail: "TEAM_H" }), board, tails), /HOLD된/);
   assert.equal(parseNew(newInput({ tail: "TEAM_K" }), board, tails).tail, "TEAM_K");
 });

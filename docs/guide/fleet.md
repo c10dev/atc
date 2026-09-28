@@ -27,7 +27,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 
 | 코드 | 뜻 | 할 일 |
 |---|---|---|
-| `LIMIT` | 계정 사용 한도. reset 시각까지 HOLD(DISPATCH가 일을 주지 않음) | 기다린다. reset 뒤 `UNANSWERED`로 바뀌면 지시를 다시 보낸다 |
+| `LIMIT` | 계정 사용 한도. reset 시각까지 HOLD(DISPATCH가 일을 주지 않음). ACCOUNT 라벨이 있으면 같은 ACCOUNT의 다른 AIRCRAFT도 HOLD(아래) | 기다린다. reset 뒤 `UNANSWERED`로 바뀌면 지시를 다시 보낸다 |
 | `THROTTLE` | 서버가 잠시 붐빔 | 몇 분 뒤 다시 보낸다 |
 | `NETWORK` | 이 컴퓨터에서 API에 연결이 안 됨(모든 세션이 같이 걸림) | 네트워크·프록시·`ANTHROPIC_BASE_URL`/`NO_PROXY`를 보고 다시 보낸다 |
 | `MODEL` | 고른 모델이나 경로가 없음 | 모델을 고쳐 다시 띄운다. 그대로 재시도하지 않는다 |
@@ -40,10 +40,20 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 | `UNKNOWN` | 그 밖의 오류 | 오류 한 줄을 보고 판단한다 |
 
 - 코드는 세션이 다시 정상으로 대답하면 저절로 풀린다.
-- ALERT는 화면 위 ALERTS에도 올라간다. `NETWORK`는 세션이 여럿이어도 하나, reset 시각이 같은 `LIMIT`도 하나로 묶인다.
+- ALERT는 화면 위 ALERTS에도 올라간다. `NETWORK`는 세션이 여럿이어도 하나, `LIMIT`은 같은 ACCOUNT끼리(라벨이 없으면 reset 시각이 같은 것끼리) 하나로 묶인다.
 - OCC는 그 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING 문제로, TOWER는 브리핑으로 받아 SUPERVISOR에게 보고한다. 둘 다 팀에 다시 보내지는 않는다.
 - 사람이 결정할 코드는 FLEET PLAN이 제안으로 올린다: `MODEL`과 주간 `LIMIT`은 AOG, `CONTEXT`와 60분 넘은 `HUNG`은 RESTART(아래 "FLEET PLAN"). 코드가 풀리면 제안도 닫힌다.
 - 한도가 **거의 찼는지**는 아직 모른다(FUEL, ATC-46). 급하면 그 AIRCRAFT를 AOG로 둔다.
+
+### ACCOUNT: 사용 한도를 같이 쓰는 AIRCRAFT
+
+사용 한도는 세션이 아니라 계정에 걸린다. 여러 팀 세션이 한 계정으로 돌면, 한 팀이 한도에 걸릴 때 나머지도 곧 같은 벽에 부딪힌다. 카드의 **고치기**에서 AIRCRAFT마다 **ACCOUNT** 라벨을 적어 두면 atc가 그 묶음을 안다.
+
+- 라벨은 직접 정한 짧은 이름이다: 소문자·숫자·`-`, 24자까지(예: `main`, `pro-2`). email이나 계정 정보는 적지 않는다. atc는 계정을 알아내려고 로그인 정보나 계정 설정을 읽지 않는다.
+- 비워 둔 AIRCRAFT는 기본 계정 `default`로 센다. 어느 AIRCRAFT에도 라벨이 없으면 atc는 계정을 모르는 것으로 보고 전처럼 동작한다.
+- 한 AIRCRAFT가 `LIMIT`에 걸리면, 같은 ACCOUNT의 다른 AIRCRAFT도 reset까지 DISPATCH·SCHEDULE NEW에서 빠진다. FLEET 줄에는 점선 표시 `HOLD · LIMIT (account pro-2) until 07:40Z`가 붙고, DISPATCH 탭 AIRCRAFT 목록의 사유에도 같은 글이 나온다. 이 AIRCRAFT들은 멈춘 것이 아니므로 health 코드나 경보가 따로 생기지 않는다. 그 ACCOUNT의 `LIMIT` 경보 하나에 함께 적힌다.
+- reset이 지나면 저절로 풀린다. 할 일은 없다. 한도에 걸린 AIRCRAFT가 대답하지 못한 지시가 있으면 `UNANSWERED`로 바뀌니 그때 다시 보낸다.
+- 라벨을 직접 단 AIRCRAFT는 FLEET 줄의 REGISTRATION 옆에 작은 칩으로 보이고, 카드에는 ACCOUNT 줄이 있다.
 
 ## 팀 프로필
 
@@ -53,6 +63,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 | TYPE RATING | 맡을 수 있는 일: SEC · UI · DATA · DOCS | 필요한 자격을 모두 가진 팀에만 제안 |
 | ROUTE | 주 담당 Linear 프로젝트 | 담당이면 점수 +1 |
 | TARGETS | 주간 FLIGHT 수, 정시성 | 표시만(점수에 안 씀). 실적은 LOGBOOK으로 센다(아래) |
+| ACCOUNT | 사용 한도를 같이 쓰는 계정의 라벨(`main`, `pro-2` …). 비우면 `default` | 같은 ACCOUNT의 한 AIRCRAFT가 `LIMIT`에 걸리면 reset까지 나머지도 제안하지 않음(위) |
 
 정하지 않은 항목은 vocado 팀원 규칙에서 온 기본값을 따른다. SEC는 보안 작업을 맡을 팀원이 있어야 줄 수 있다.
 

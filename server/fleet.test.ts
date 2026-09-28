@@ -60,6 +60,30 @@ test("FLEET 화면: 살아 있는 TEAM 세션과 등록 항목을 합치고, 없
   assert.equal(view[1].ratingsIsDefault, false);
 });
 
+test("ACCOUNT 라벨(ATC-51): 소문자로 받고, 비우면 지우고, email·형식 오류는 거절", () => {
+  assert.equal(applyPatch({}, { account: " Pro-2 " }, D).account, "pro-2");
+  assert.equal("account" in applyPatch({ account: "main" }, { account: "" }, D), false);
+  assert.equal("account" in applyPatch({ account: "main" }, { account: null }, D), false);
+  assert.throws(() => applyPatch({}, { account: "someone@example.com" }, D), /email은 쓰지 않는다/);
+  assert.throws(() => applyPatch({}, { account: "a b" }, D), FleetError);
+  assert.throws(() => applyPatch({}, { account: "x".repeat(25) }, D), FleetError);
+});
+
+test("FLEET 화면: ACCOUNT와 같은 ACCOUNT의 LIMIT HOLD(ATC-51). 라벨이 하나도 없으면 null", () => {
+  const now = Date.parse("2026-09-28T07:38:00Z");
+  const limit = { code: "LIMIT" as const, level: "alert" as const, since: "2026-09-28T07:37:00Z", resetsAt: "2026-09-28T07:40:00.000Z", detail: "limit", next: "", holds: true };
+  const session = (id: string, name: string, health: Session["health"] = null) =>
+    ({ id, name, status: "idle", repo: "/r/vocado", cwd: "/r/vocado", agent: "claude", pid: 1, startedAt: "", lastActiveAt: "", workspacePath: null, health }) as Session;
+  const s = { sessions: [session("k", "TEAM_K", limit), session("l", "TEAM_L"), session("m", "TEAM_M")], claims: [], workspaces: [], airports: [] };
+  const view = fleetView(s, { defaults: D, aircraft: { TEAM_K: { account: "pro-2" }, TEAM_L: { account: "pro-2" }, TEAM_N: { account: "pro-2" } } }, undefined, [], now);
+  assert.deepEqual(
+    view.map((a) => `${a.registration}:${a.account}:${a.accountIsDefault}:${a.accountHold?.by.join(",") ?? "-"}`),
+    ["TEAM_K:pro-2:false:-", "TEAM_L:pro-2:false:TEAM_K", "TEAM_M:default:true:-", "TEAM_N:pro-2:false:-"], // 세션 없는 TEAM_N은 붙들 것이 없다
+  );
+  const bare = fleetView(s, { defaults: D, aircraft: {} }, undefined, [], now);
+  assert.deepEqual(bare.map((a) => `${a.account}:${a.accountIsDefault}:${a.accountHold}`), ["null:false:null", "null:false:null", "null:false:null"]);
+});
+
 test("FLEET 화면: FLYING FLIGHT의 제목, 가장 이른 점유 시각, 세션 마지막 활동(ATC-44)", () => {
   const session = { id: "b", name: "TEAM_B", status: "busy", repo: "/r/vocado", cwd: "/r/vocado", agent: "claude", pid: 1, startedAt: "", lastActiveAt: "2026-09-28T05:40:00Z", workspacePath: null } as Session;
   const claim = (path: string, since: string) => ({ sessionId: "b", workspacePath: path, since, lastAt: since, source: "hook" as const, tool: null, state: "active" as const, handedOffTo: null });
