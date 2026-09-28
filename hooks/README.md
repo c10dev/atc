@@ -130,6 +130,47 @@ The SUPERVISOR merges these entries into vocado `.claude/settings.json` (or `.cl
 
 To turn it off, remove the entries. The `rules-ack/` folder can be deleted at any time; sessions then restart from the current files.
 
+## health hook
+
+`health.mjs` (ATC-47) records the moment a session stops or waits, so atc shows the reason on FLEET right away (ATC-45's pull classifier only sees what the transcript still shows). It appends one line per event to `health/<sessionId>.jsonl`.
+
+| Hook event | What it writes |
+|---|---|
+| `StopFailure` | `{t, event, code, error}` plus `line` (the first line of the error, ≤200 chars), with `code` from the server's `classifyError` |
+| `Notification` `permission_prompt` / `elicitation_dialog` | `{t, event, code: "PENDING"}` — a session waiting on an approval, even while its session file says `busy` |
+| `Notification` `idle_prompt` | `{t, event}`; raises no code on its own |
+| `Stop`, `PostToolUse` | `{t, event}` — clears the push code |
+
+- Only the code, the time and the first error line are stored, never message bodies. Everything else in the hook input is ignored.
+- The server reads the last line of each file and prefers it over the transcript when it is newer than the transcript's last fact, so `PENDING` shows without waiting for the 30-minute `HUNG`. It clears again on `Stop` or the next `PostToolUse`.
+- The hook prints nothing and always exits 0; write errors are swallowed, so it never blocks the session. It reads stdin, writes one line and exits — no network.
+- Options: `ATC_STATE_DIR` (default `~/.local/state/atc`). The `health/` folder can be deleted at any time; atc then falls back to the transcript.
+
+### Install (SUPERVISOR)
+
+The SUPERVISOR adds these entries to `~/.claude/settings.json` (absolute paths; `async` keeps them off the critical path). The `PostToolUse` entry needs its own `matcher: "*"` — clearing matters for every tool, not only the claim tools:
+
+```json
+{
+  "hooks": {
+    "StopFailure": [
+      { "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
+    ],
+    "Notification": [
+      { "matcher": "permission_prompt|idle_prompt|elicitation_dialog", "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
+    ]
+  }
+}
+```
+
+To turn it off, remove the entries.
+
 ## Files
 
 | File | Role |
@@ -142,5 +183,8 @@ To turn it off, remove the entries. The `rules-ack/` folder can be deleted at an
 | `rules-drift.mjs` | The rules-drift hook (`start`, `check`) and the pure functions the server reuses for FLEET (`statusOf`, `readRecords`, `readSource`) |
 | `rules-drift.d.mts` | Type declaration for `rules-drift.mjs` |
 | `rules-drift.test.mjs` | No change, one diff then acknowledged, new and resumed sessions, fail open, diff cap, `--ref`, cleanup (`npm test`) |
+| `health.mjs` | The health hook: reads the event from stdin, appends one line to `health/<sessionId>.jsonl` |
+| `health.d.mts` | Type declaration for `health.mjs` |
+| `health.test.mjs` | Line format per event, no bodies, clear events, fail open (`npm test`) |
 
 How atc turns claims into handoffs and conflicts is described in the main [README](../README.md#handoffs-and-conflicts).

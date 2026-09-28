@@ -747,7 +747,7 @@ Not built yet: step 4 (automatic STOP); the weekly-usage line (FUEL); CROSSCHECK
 
 ### 8.8 AIRCRAFT health
 
-Status: steps 1–2 built (ATC-45): the manual and the pull classifier. Step 4 built (ATC-48): FLEET PLAN proposals from health. The push hook (step 3) is not built yet.
+Status: steps 1–4 built (ATC-45, ATC-47, ATC-48): the manual, the pull classifier, the push hook and FLEET PLAN proposals from health.
 
 **Why.** On 2026-09-28 TEAM_H got an ATC-44 BRIEF at 07:37:13Z and hit its account's session limit three seconds later. Until someone typed "Try again" at 07:40:57Z, atc showed TEAM_H as `idle`, so FLEET, DISPATCH and TOWER all saw an AIRCRAFT free for work. atc knew only `dead`, `busy` and `idle`; it never read why a session stopped or what it was waiting for.
 
@@ -764,6 +764,7 @@ Status: steps 1–2 built (ATC-45): the manual and the pull classifier. Step 4 b
 - Cause, not just state: each code carries the error line, when it started, and the one next step from the manual.
 - Host-level versus AIRCRAFT-level: `NETWORK`, and a `LIMIT` shared by sessions with the same reset time (the same account window), are raised once.
 - Store only the code, the time and the error line, never message bodies. atc reads only the last 64 KB of each live transcript, again only when its size or time changes.
+- Push and pull agree: the server uses a push record only when it is newer than the transcript's last fact, and the hook maps `StopFailure.error` through the same `classifyError`.
 - When unsure, `UNKNOWN` with the raw error line, not a wrong code.
 
 **Codes and the response manual** (`server/health.ts`, pure `healthOf`).
@@ -776,15 +777,17 @@ Status: steps 1–2 built (ATC-45): the manual and the pull classifier. Step 4 b
 | `MODEL` | `model_not_found` | ALERT | skip | SUPERVISOR fixes the model or route and relaunches. Never retry as is |
 | `CONTEXT` | "Prompt is too long", compaction failed | ALERT | skip | RESTART with a new CREW BRIEFING; the STAND and PR are HANDED OFF |
 | `PROVIDER` | `unknown` errors from an OpenAI-compatible route (400 schema, `name` too long, status with no body) | ALERT | skip | Relaunch on the default route, and file a bug for the route |
-| `PENDING` | idle, and the last reply's `tool_use` has no `tool_result` | INFO | — | SUPERVISOR approves or denies in that session |
+| `PENDING` | idle, and the last reply's `tool_use` has no `tool_result`; push: a `permission_prompt` or `elicitation_dialog` notification, even while the session file says `busy` | INFO | — | SUPERVISOR approves or denies in that session |
 | `UNANSWERED` | idle, the last turn-opening prompt has no reply for 10 min (or a `LIMIT`/`THROTTLE` ended with it unanswered) | ALERT | — | structure or the SUPERVISOR resends. atc never resends |
 | `HUNG` | busy, no transcript write for 30 min | INFO; ALERT at 60 min | skip | SUPERVISOR looks at it; RESTART if it stays |
 | `DENIED` | 3 or more denials or hook blocks in 10 min | INFO | — | SUPERVISOR allows it with a permission rule, or re-briefs |
 | `UNKNOWN` | any other API error | ALERT | — | SUPERVISOR reads the error line and decides |
 | `NORDO` | process dead (8.6, unchanged) | — | — | as before (FLEET PLAN AOG / LAUNCH) |
 
-- A code clears on the next reply, or on a new prompt after the error.
+- A code clears on the next reply, or on a new prompt after the error. The push hook also writes a code-less line on `Stop` and `PostToolUse`, which clears a pushed code.
 - Thresholds are defaults; the service reads `ATC_HEALTH_UNANSWERED_MIN`, `ATC_HEALTH_HUNG_MIN`, `ATC_HEALTH_HUNG_ALERT_MIN`, `ATC_HEALTH_THROTTLE_ALERT_COUNT`, `ATC_HEALTH_THROTTLE_WINDOW_MIN`, `ATC_HEALTH_DENIED_COUNT` and `ATC_HEALTH_DENIED_WINDOW_MIN`.
+
+**Push (`hooks/health.mjs`, ATC-47).** A Claude Code hook reports a stop the moment it happens, so a session waiting on a permission prompt shows `PENDING` right away instead of `HUNG` after 30 minutes. It appends one line per event to `health/<sessionId>.jsonl` in the state folder: `{t, event, code?, error?, line?}` (`StopFailure`, `Notification`, `Stop`, `PostToolUse`; only the code, the time and the first error line, never bodies). The server reads the last line of each file, and a push record newer than the transcript's last fact wins (`mergeHealth`); otherwise the pull result stands. Install for the SUPERVISOR is in [hooks/README.md](hooks/README.md).
 
 **Where it shows.**
 
@@ -798,7 +801,7 @@ Status: steps 1–2 built (ATC-45): the manual and the pull classifier. Step 4 b
 
 1. ✅ Design and manual: this section, TOWER rows in `controller/CLAUDE.md`, the OCC FOLLOWING row, `docs/guide/`.
 2. ✅ Pull: pure `factsOf` and `healthOf`, `healthAlerts` for host-level grouping, tests from real transcript line shapes (the TEAM_H replay among them); snapshot, FLEET row, FLIGHT FOLLOWING, TOWER brief, DISPATCH and SCHEDULE filters.
-3. Push: a `hooks/health.mjs` hook on `StopFailure` and `Notification` (`permission_prompt`, `idle_prompt`, `elicitation_dialog`), cleared on `Stop`/`PostToolUse`, appending to `health/<sessionId>.jsonl` in the state folder. `user` tier.
+3. ✅ Push: a `hooks/health.mjs` hook on `StopFailure` and `Notification` (`permission_prompt`, `idle_prompt`, `elicitation_dialog`), cleared on `Stop`/`PostToolUse`, appending to `health/<sessionId>.jsonl` in the state folder. `user` tier.
 4. ✅ FLEET PLAN proposals (ATC-48): AOG for `MODEL` and a weekly `LIMIT` (until the reset day), RESTART for `CONTEXT` and `HUNG` at ALERT level. Reasons carry the health line and the next step; the proposal expires when the code clears. Health alerts already reach the FLIGHT RECORDER as `alert.raised`/`alert.cleared`, so there are no separate `health.*` lines.
 
 **Risks.**
@@ -808,9 +811,9 @@ Status: steps 1–2 built (ATC-45): the manual and the pull classifier. Step 4 b
 | Transcript format is not a public API | one pure classifier with tests; unknown errors become `UNKNOWN` with the raw line |
 | Reading transcripts shows prompt content | only the code, the time and the error line are kept |
 | A false `HUNG` during long tests | INFO first; it holds DISPATCH, which a busy AIRCRAFT never gets anyway |
-| A permission prompt while the session file says `busy` is seen as `HUNG` after 30 min | the push hook (step 3) reports `PENDING` directly |
+| A permission prompt while the session file says `busy` is seen as `HUNG` after 30 min if the hook is not installed | the push hook (step 3) reports `PENDING` directly; without it the pull path still catches a stalled tool call once the session reads `idle` |
 
-Not built yet: the push hook (step 3); grouping `LIMIT` by account rather than by reset time (needs an account per AIRCRAFT, ATC-46).
+Not built yet: grouping `LIMIT` by account rather than by reset time (needs an account per AIRCRAFT, ATC-46).
 
 **Pilot's discretion (ATC-45).**
 
@@ -839,7 +842,7 @@ All four steps are done:
 7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE (section 8.2): TYPE RATING evidence from the LOGBOOK, GRANT and REVIEW recommendations, grant and revoke by the SUPERVISOR
 9. ✅ Session control (section 8.5): LAUNCH and STOP from the FLEET tab. Left: automatic STOP (FLEET PLAN step 4; shadow and approval built, 8.6 and 8.7), RESTART outside FLEET PLAN, relaunch CREW CHANGE, usage budget
-10. ◐ AIRCRAFT health (section 8.8, ATC-45): the manual and the pull classifier in the snapshot, FLEET row, FLIGHT FOLLOWING, TOWER brief and DISPATCH/SCHEDULE filters. Left: the push hook, FLEET PLAN proposals from health
+10. ◐ AIRCRAFT health (section 8.8, ATC-45·47·48): the manual, the pull classifier in the snapshot and the push hook, FLEET row, FLIGHT FOLLOWING, TOWER brief, DISPATCH/SCHEDULE filters and FLEET PLAN proposals from health. Left: grouping `LIMIT` by account rather than by reset time (ATC-46)
 
 ## 11. Risks and mitigations
 

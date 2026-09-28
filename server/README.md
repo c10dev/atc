@@ -29,7 +29,7 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 
 | File | Reads | Gives |
 |---|---|---|
-| `claude.ts` | `~/.claude/sessions/*.json`, hook claim files, transcripts (`~/.claude/projects/…`) | Claude sessions, `hook` claims, `transcript` claims (ESTIMATED TRACK, same rules as `hooks/paths.mjs`), AIRCRAFT health from the last 64 KB of a live transcript (ATC-45) |
+| `claude.ts` | `~/.claude/sessions/*.json`, hook claim files, transcripts (`~/.claude/projects/…`) | Claude sessions, `hook` claims, `transcript` claims (ESTIMATED TRACK, same rules as `hooks/paths.mjs`), AIRCRAFT health from the last 64 KB of a live transcript and the health hook's last record (ATC-45·47) |
 | `codex.ts` | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex sessions (busy if active in the last 90 s), `cwd` claims |
 | `git.ts` | `git worktree list --porcelain` per AIRPORT | Worktrees, branch, HEAD, dirty state, last commit (details cached 30 s); ticket key from the branch name |
 | `linear.ts` | Linear GraphQL (`LINEAR_API_KEY`), polled every 60 s, one read per team in `LINEAR_TEAM_KEYS` | Tickets, states (merged by name across teams), priorities, projects, relations; issue details for DISPATCH. A team that fails keeps its last result; a team never read fails the whole read |
@@ -56,7 +56,7 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 | `airports.ts` | AIRPORT registry: auto-discovery under `~/projects`, identity by first commit hash, codes, open/close/rename/delete |
 | `away.ts` | OUTSTATION: sessions holding a STAND outside their home AIRPORT (shared with the UI) |
 | `fleet-status.ts` | FLEET status list (ATC-44): AIRBORNE / HOLDING / PARKED / AOG / NORDO per AIRCRAFT (pure `fleetStatusOf`), one row each sorted by status then AIRPORT (pure `fleetRows`), elapsed text (shared with the UI) |
-| `health.ts` | AIRCRAFT health (ATC-45, docs/fleet.md 8.8): transcript lines to facts without bodies (pure `factsOf`), the code for one session — `LIMIT`, `THROTTLE`, `NETWORK`, `MODEL`, `CONTEXT`, `PROVIDER`, `PENDING`, `UNANSWERED`, `HUNG`, `DENIED`, `UNKNOWN` (pure `healthOf`), host-level grouping into alerts (pure `healthAlerts`), the FLEET tag (shared with the UI) |
+| `health.ts` | AIRCRAFT health (ATC-45·47, docs/fleet.md 8.8): transcript lines to facts without bodies (pure `factsOf`), the code for one session — `LIMIT`, `THROTTLE`, `NETWORK`, `MODEL`, `CONTEXT`, `PROVIDER`, `PENDING`, `UNANSWERED`, `HUNG`, `DENIED`, `UNKNOWN` (pure `healthOf`), push-over-pull precedence for the hook's last record (pure `mergeHealth`), host-level grouping into alerts (pure `healthAlerts`), the FLEET tag (shared with the UI) |
 | `callsign.ts` | Callsigns (`TEAM_A` → `ALPHA`) and FLIGHT NUMBERs (shared with the UI) |
 | `version.ts` | Build id: the entry script path in `index.html` (pure `entryScript`), and whether a tab should show the new-version notice (pure `showNewVersion`, shared with the UI) |
 | `events.ts` | Snapshot differences → events (alerts, handoffs, LANDING SEQUENCE `landing.requested` / `cleared` / `blocked` / `left`, lost sessions, OUTSTATION), with a cursor-based event log |

@@ -48,7 +48,8 @@ const DENIED_RE = /^(Permission for this action was denied|The server-side auto 
 // 사람이 보낸 지시가 아닌 user 줄: 중단 표시, 로컬 명령
 const NOT_PROMPT_RE = /^(\[Request interrupted|<local-command|<command-name>|<command-message>)/;
 
-const firstLine = (s: string) => s.split("\n").find((l) => l.trim())?.trim().slice(0, 200) ?? "";
+// 오류 메시지의 첫 줄만(≤200자). hook(hooks/health.mjs)도 같은 규칙으로 자른다
+export const firstLine = (s: string) => s.split("\n").find((l) => l.trim())?.trim().slice(0, 200) ?? "";
 
 function textOf(content: unknown): string {
   if (typeof content === "string") return content;
@@ -232,6 +233,51 @@ export function hhmm(ms: number, now?: number): string {
   const s = new Date(ms).toISOString();
   const t = `${s.slice(11, 16)}Z`;
   return now != null && Math.abs(ms - now) >= 86_400_000 ? `${s.slice(5, 10)} ${t}` : t;
+}
+
+// hook(hooks/health.mjs)이 남긴 한 줄. 시각은 t, 코드가 있으면 code
+export interface PushRecord {
+  t: string;
+  event: string;
+  code?: HealthCode;
+  error?: string;
+  line?: string;
+}
+
+const PUSH_NEXT: Partial<Record<HealthCode, string>> = { PENDING: NEXT.PENDING, THROTTLE: NEXT.THROTTLE };
+const pushSince = (p: PushRecord) => Date.parse(p.t);
+
+// pull 분류기가 대화 기록 끝에서 아는 "마지막 사실" 시각. 이보다 새로운 push만 채택한다
+export function lastFactAt(facts: Fact[]): number | null {
+  return facts.reduce<number | null>((a, f) => (a == null || f.t > a ? f.t : a), null);
+}
+
+// 최신 push 기록 하나를 Health로. 코드가 없으면(clear·idle_prompt) null.
+// StopFailure의 error는 pull과 같은 classifyError를 거쳤고, 여기서는 reset 문구만 문장에서 다시 읽는다
+function pushHealth(p: PushRecord): Health | null {
+  if (!p.code) return null;
+  const at = pushSince(p);
+  if (!Number.isFinite(at)) return null;
+  // PENDING은 대화 기록의 pull과 같은 문구로, 나머지는 hook이 남긴 오류 한 줄(또는 error 코드)
+  const detail = p.code === "PENDING" ? "도구 호출이 승인을 기다림" : p.line || p.error || p.event;
+  if (p.code === "LIMIT") {
+    const resetsAt = resetFromText(detail, at);
+    return make("LIMIT", "alert", at, detail, { ...(resetsAt ? { resetsAt: iso(resetsAt) } : {}) });
+  }
+  return make(p.code, p.code === "PENDING" || p.code === "THROTTLE" ? "info" : "alert", at, detail, {
+    next: PUSH_NEXT[p.code] ?? NEXT[p.code],
+  });
+}
+
+// ATC-47 push/pull: 대화 기록의 마지막 사실보다 새 push 기록이 이기고, 아니면(pull이 나중이거나 같으면) pull이 남는다.
+// push는 permission_prompt 같은 대기(대화 기록에 없는 사실)를 바로 알려 주는 용도다
+export function mergeHealth(push: PushRecord | null | undefined, pull: Health | null, facts: Fact[]): Health | null {
+  if (!push) return pull;
+  const at = pushSince(push);
+  if (!Number.isFinite(at)) return pull;
+  const pullAt = lastFactAt(facts);
+  if (pullAt != null && pullAt >= at) return pull; // 그 뒤 대화 기록이 움직였다 → pull이 최신
+  return pushHealth(push) ?? pull; // 코드 없는 clear·idle_prompt는 pull을 그대로 둔다
 }
 
 const ago = (since: string, now: number) => {
