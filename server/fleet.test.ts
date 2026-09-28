@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -155,4 +155,35 @@ test("CREW BRIEFING: 등록번호·폴더·팀원·자격·교신 규칙을 담�
   assert.ok(text.includes("READBACK C-xxxx"));
   assert.ok(!text.includes("READBACK D-xxxx"));
   assert.ok(crewBriefing(a, null, "approval").includes("READBACK D-xxxx"));
+});
+
+test("관제 세션 ACCOUNT(ATC-60): 이름이나 관제 폴더로 알아보고, 라벨이 없으면 default, 라벨이 하나도 없으면 null", async () => {
+  const { accountOf, accountsLabeled, controlAccountOf, controlNameOf } = await import("./crew.ts");
+  const dirs = { TOWER: "/r/atc/controller", OCC: "/r/atc/occ", CROSSCHECK: "/r/atc/crosscheck", MCC: "/r/atc/mcc" };
+  assert.equal(controlNameOf({ name: "mcc", cwd: "/elsewhere" }, dirs), "MCC");
+  assert.equal(controlNameOf({ name: "ENGINEERING", cwd: "/r/atc" }, dirs), "ENGINEERING");
+  assert.equal(controlNameOf({ name: "3f2a91c0", cwd: "/r/atc/crosscheck/" }, dirs), "CROSSCHECK"); // tmux로 이름 없이 띄운 CROSSCHECK
+  assert.equal(controlNameOf({ name: "President", cwd: "/r/atc" }, dirs), null);
+  const none = { aircraft: {} };
+  assert.equal(controlAccountOf(none, "MCC"), null);
+  const onlyControl = { aircraft: { TEAM_A: {} }, control: { MCC: { account: "pro-2" } } };
+  assert.equal(accountsLabeled(onlyControl), true);
+  assert.equal(controlAccountOf(onlyControl, "MCC"), "pro-2");
+  assert.equal(controlAccountOf(onlyControl, "TOWER"), "default");
+  assert.equal(accountOf(onlyControl, "TEAM_A"), "default"); // 관제 세션 라벨만 있어도 atc는 계정을 안다
+});
+
+test("관제 세션 ACCOUNT 저장: 소문자로, 다른 항목은 그대로, 비우면 지우고, email·모르는 이름은 거절. 옛 파일은 그대로 읽힌다", async () => {
+  const { saveControlAccount } = await import("./fleet.ts");
+  const dir = mkdtempSync(join(tmpdir(), "atc-fleet-"));
+  const file = join(dir, "fleet.json");
+  writeFileSync(file, JSON.stringify({ aircraft: { TEAM_A: { account: "main" } } }));
+  assert.equal("control" in loadFleet(file), false);
+  assert.equal(saveControlAccount("mcc", " Pro-2 ", file), "pro-2");
+  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { aircraft: { TEAM_A: { account: "main" } }, control: { MCC: { account: "pro-2" } } });
+  assert.deepEqual(loadFleet(file).control, { MCC: { account: "pro-2" } });
+  assert.throws(() => saveControlAccount("OCC", "someone@example.com", file), /email은 쓰지 않는다/);
+  assert.throws(() => saveControlAccount("REVIEW", "main", file), /관제 세션이 아님/);
+  assert.equal(saveControlAccount("MCC", "", file), null);
+  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { aircraft: { TEAM_A: { account: "main" } } });
 });

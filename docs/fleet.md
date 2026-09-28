@@ -792,11 +792,12 @@ Status: steps 1–6 built (ATC-45, ATC-47, ATC-48, ATC-51, ATC-55): the manual, 
 - AIRCRAFT without a label count as the default account (`default`). If no AIRCRAFT has a label, atc does not know accounts: `LIMIT` is grouped by reset time as before and nothing else is held.
 - A `LIMIT` on one AIRCRAFT holds every other live AIRCRAFT on the same ACCOUNT until that reset (the latest one if several AIRCRAFT on the account are limited; until the `LIMIT` clears if the reset is unknown). DISPATCH skips them, STAND-free FLIGHTs included, and SCHEDULE NEW does not accept them as a tail. The reason reads `HOLD · LIMIT (account pro-2) until 07:40Z — 같은 ACCOUNT의 TEAM_K가 사용 한도에 걸림`.
 - The held siblings get no health code of their own (they have not stopped), so they raise no alert and no FLEET PLAN proposal. The one `LIMIT` alert for the ACCOUNT names them: `LIMIT (account pro-2) — TEAM_K 사용 한도, reset 07:40Z까지 HOLD · 같은 ACCOUNT도 HOLD: TEAM_L`.
-- Only team sessions (the DISPATCH `teamPattern`) have an ACCOUNT. A `LIMIT` on another session, such as ENGINEERING, is still grouped by reset time and holds no AIRCRAFT.
+- A `LIMIT` on a session that is not an AIRCRAFT (a control session such as ENGINEERING, or any other) is still grouped by reset time and holds no AIRCRAFT. Control sessions can carry an ACCOUNT label for FUEL (ATC-60, below), but that label does not change the `LIMIT` rule.
 
 **FUEL REMAINING (ATC-55, [fuel.md](fuel.md) section 6).** `LIMIT` says an account ran out; FUEL says how close it is. The `hooks/fuel-statusline.mjs` statusline command (installed by the SUPERVISOR, [hooks/README.md](../hooks/README.md#fuel-statusline)) appends the numbers-only `rate_limits` Claude Code passes to the status line (`five_hour`, `seven_day`, `spend_limit`: share used and reset) to `fuel/<sessionId>.jsonl`.
 
 - The server maps session → AIRCRAFT → ACCOUNT and keeps the newest value per ACCOUNT, so an AIRCRAFT whose own session hasn't reported shows its ACCOUNT's value. Without an ACCOUNT an AIRCRAFT shows only its own sessions' value. Windows past their reset are dropped.
+- Control sessions (TOWER, OCC, CROSSCHECK, MCC, ENGINEERING; ATC-60) are members of an ACCOUNT too. The SUPERVISOR labels them in the settings window (AGENTS tab, CONTROL block; `fleet.json` `control`, optional). Unlabelled, they count under `default` when any label exists, else under their own name. Their records feed the ACCOUNT's value, the TOWER INFO and the DISPATCH HOLD of that ACCOUNT's AIRCRAFT; they are never held themselves. The FLEET tab's FUEL block lists each ACCOUNT with its AIRCRAFT and, separately, its control sessions.
 - The FLEET row shows `FUEL 82% · resets 21:00Z`: the share **used** of the window that is most used, and that window's reset. Grey below 80 %, amber from 80 % (INFO), red from 95 % (HOLD threshold). The tooltip lists every window and which session reported it when.
 - From 80 % (`dispatch.json` `fuel.infoPct`), TOWER gets an INFO item in `open.fuel` (once per ACCOUNT, window and reset), and FLIGHT FOLLOWING gets a `fuel` issue (`info`) on the FLIGHTs that ACCOUNT's AIRCRAFT hold.
 - From 95 % (`fuel.holdPct`), DISPATCH skips every AIRCRAFT on that ACCOUNT until the reset, with `HOLD · FUEL 96% (account pro-2) until 21:00Z`, **only if** the SUPERVISOR has turned on the DISPATCH HOLD switch (settings window, AGENTS tab, FUEL block; `fuel.hold`, off by default, decision D3). SCHEDULE NEW is not affected. Nothing is ever switched between accounts.
@@ -818,7 +819,7 @@ Status: steps 1–6 built (ATC-45, ATC-47, ATC-48, ATC-51, ATC-55): the manual, 
 3. ✅ Push: a `hooks/health.mjs` hook on `StopFailure` and `Notification` (`permission_prompt`, `idle_prompt`, `elicitation_dialog`), cleared on `Stop`/`PostToolUse`, appending to `health/<sessionId>.jsonl` in the state folder. `user` tier.
 4. ✅ FLEET PLAN proposals (ATC-48): AOG for `MODEL` and a weekly `LIMIT` (until the reset day), RESTART for `CONTEXT` and `HUNG` at ALERT level. Reasons carry the health line and the next step; the proposal expires when the code clears. Health alerts already reach the FLIGHT RECORDER as `alert.raised`/`alert.cleared`, so there are no separate `health.*` lines.
 5. ✅ ACCOUNT (ATC-51): the `account` profile field and FLEET card field, `LIMIT` alerts grouped by ACCOUNT, and the sibling hold in DISPATCH, SCHEDULE NEW and the FLEET row (pure `accountHolds`).
-6. ✅ FUEL REMAINING (ATC-55): the statusline command, the per-ACCOUNT value on the FLEET row, TOWER `open.fuel`, the FOLLOWING `fuel` issue and the DISPATCH HOLD switch (pure `fuelRemainingOf`, `fuelHolds`). `user` tier (`hooks/`, settings).
+6. ✅ FUEL REMAINING (ATC-55): the statusline command, the per-ACCOUNT value on the FLEET row, TOWER `open.fuel`, the FOLLOWING `fuel` issue and the DISPATCH HOLD switch (pure `fuelRemainingOf`, `fuelHolds`). `user` tier (`hooks/`, settings). ATC-60 adds control sessions as ACCOUNT members (`fuelAccountsOf`, `fleet.json` `control`) and the FLEET FUEL block.
 
 **Risks.**
 
@@ -837,7 +838,7 @@ Not built yet: FUEL on the FLEET PLAN block (8.6, "weekly-usage line").
 
 **Pilot's discretion (ATC-51).**
 
-- "Labels exist" means at least one AIRCRAFT in `fleet.json` has `account`. Until then nothing changes, so a fleet that never uses labels keeps the ATC-45 behaviour.
+- "Labels exist" means at least one AIRCRAFT in `fleet.json` has `account` (since ATC-60, a control session's `control` label counts too). Until then nothing changes, so a fleet that never uses labels keeps the ATC-45 behaviour.
 - The default account is named `default`. The FLEET row shows the chip only for an explicit label; the card shows `default` with a 기본값 mark.
 - Labels are 1–24 characters of lowercase letters, digits and `-`, stored lowercase. The rule rejects `@`, so an email cannot be saved.
 - Several limited AIRCRAFT on one ACCOUNT: the siblings are held until the latest known reset, and the alert shows that reset.

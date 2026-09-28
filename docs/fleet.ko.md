@@ -847,11 +847,12 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - 라벨이 없는 AIRCRAFT는 기본 계정(`default`)으로 센다. 라벨이 달린 AIRCRAFT가 하나도 없으면 atc는 계정을 모른다: `LIMIT`은 전처럼 reset 시각으로 묶고, 다른 AIRCRAFT는 붙들지 않는다.
 - 한 AIRCRAFT의 `LIMIT`은 같은 ACCOUNT의 살아 있는 다른 AIRCRAFT 모두를 그 reset까지 붙든다(그 계정에서 여럿이 걸렸으면 가장 늦은 reset까지, reset을 모르면 `LIMIT`이 풀릴 때까지). DISPATCH는 STAND 없는 FLIGHT까지 그들을 건너뛰고, SCHEDULE NEW는 tail로 받지 않는다. 사유는 `HOLD · LIMIT (account pro-2) until 07:40Z — 같은 ACCOUNT의 TEAM_K가 사용 한도에 걸림`.
 - 붙들린 형제는 자기 health 코드를 받지 않는다(멈춘 것이 아니다). 그래서 따로 경보나 FLEET PLAN 제안이 나오지 않는다. 그 ACCOUNT의 `LIMIT` 경보 하나가 그들을 적는다: `LIMIT (account pro-2) — TEAM_K 사용 한도, reset 07:40Z까지 HOLD · 같은 ACCOUNT도 HOLD: TEAM_L`.
-- ACCOUNT는 팀 세션(DISPATCH `teamPattern`)에만 있다. ENGINEERING 같은 다른 세션의 `LIMIT`은 전처럼 reset 시각으로 묶고, AIRCRAFT를 붙들지 않는다.
+- AIRCRAFT가 아닌 세션(ENGINEERING 같은 관제 세션이나 그 밖의 세션)의 `LIMIT`은 전처럼 reset 시각으로 묶고, AIRCRAFT를 붙들지 않는다. 관제 세션도 FUEL을 위해 ACCOUNT 라벨을 가질 수 있지만(ATC-60, 아래) 이 `LIMIT` 규칙은 그대로다.
 
 **FUEL REMAINING(ATC-55, [fuel.md](fuel.md) 6절).** `LIMIT`은 계정이 바닥났다는 것이고, FUEL은 얼마나 가까운지다. SUPERVISOR가 설치하는 statusline 명령 `hooks/fuel-statusline.mjs`([hooks/README.ko.md](../hooks/README.ko.md#fuel-statusline))가 Claude Code가 상태 줄에 넘기는 `rate_limits`(`five_hour`, `seven_day`, `spend_limit`: 쓴 몫과 reset)를 숫자만 `fuel/<sessionId>.jsonl`에 덧붙인다.
 
 - 서버는 session → AIRCRAFT → ACCOUNT로 잇고 ACCOUNT마다 가장 새 값을 쓴다. 그래서 자기 세션이 보고하지 않은 AIRCRAFT도 그 ACCOUNT의 값을 보인다. ACCOUNT가 없으면 그 AIRCRAFT 자신의 세션 값만 쓴다. reset이 지난 창은 뺀다.
+- 관제 세션(TOWER, OCC, CROSSCHECK, MCC, ENGINEERING, ATC-60)도 ACCOUNT의 구성원이다. SUPERVISOR가 설정 창(AGENTS 탭 CONTROL 블록, `fleet.json` `control`, 선택 항목)에서 라벨을 단다. 라벨이 없으면 라벨이 하나라도 있을 때 `default`로, 하나도 없으면 자기 이름으로 따로 센다. 그 기록은 ACCOUNT의 값, TOWER INFO, 그 ACCOUNT의 AIRCRAFT에 대한 DISPATCH HOLD에 들어간다. 관제 세션 자신은 붙들지 않는다. FLEET 탭의 FUEL 블록이 ACCOUNT마다 AIRCRAFT와, 따로 관제 세션을 적는다.
 - FLEET 줄: `FUEL 82% · resets 21:00Z` — 가장 많이 쓴 창에서 **쓴 몫**과 그 창의 reset. 80 % 아래는 회색, 80 %부터 노랑(INFO), 95 %부터 빨강(HOLD 임계값). 툴팁에 창마다의 값과 어느 세션이 언제 적었는지가 있다.
 - 80 %(`dispatch.json` `fuel.infoPct`)부터 TOWER 브리핑 `open.fuel`에 INFO 항목(ACCOUNT·창·reset마다 한 번), 그 ACCOUNT의 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING에 `fuel` 문제(`info`)가 생긴다.
 - 95 %(`fuel.holdPct`)부터는 SUPERVISOR가 DISPATCH HOLD 스위치를 켰을 **때만**(설정 창 AGENTS 탭 FUEL 블록, `fuel.hold`, 기본 꺼짐, 결정 D3) DISPATCH가 그 ACCOUNT의 AIRCRAFT를 reset까지 `HOLD · FUEL 96% (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다. 계정을 저절로 바꾸는 일은 없다.
@@ -873,7 +874,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 3. ✅ Push: `StopFailure`와 `Notification`(`permission_prompt`, `idle_prompt`, `elicitation_dialog`)에 거는 `hooks/health.mjs`. `Stop`·`PostToolUse`에 풀고, 상태 폴더의 `health/<sessionId>.jsonl`에 덧붙인다. `user` 등급.
 4. ✅ FLEET PLAN 제안(ATC-48): `MODEL`과 주간 `LIMIT`에 AOG(reset 날까지), `CONTEXT`와 ALERT 수준의 `HUNG`에 RESTART. 사유에 health 한 줄과 다음 할 일이 붙고, 코드가 풀리면 제안은 expire된다. health 경보는 이미 `alert.raised`·`alert.cleared`로 FLIGHT RECORDER에 남아서 `health.*` 줄은 따로 두지 않는다.
 5. ✅ ACCOUNT(ATC-51): 프로필 항목 `account`와 FLEET 카드 입력, ACCOUNT로 묶는 `LIMIT` 경보, DISPATCH·SCHEDULE NEW·FLEET 줄의 형제 HOLD(순수 함수 `accountHolds`).
-6. ✅ FUEL REMAINING(ATC-55): statusline 명령, FLEET 줄의 ACCOUNT별 값, TOWER `open.fuel`, FOLLOWING `fuel` 문제, DISPATCH HOLD 스위치(순수 함수 `fuelRemainingOf`, `fuelHolds`). `user` 등급(`hooks/`, 설정).
+6. ✅ FUEL REMAINING(ATC-55): statusline 명령, FLEET 줄의 ACCOUNT별 값, TOWER `open.fuel`, FOLLOWING `fuel` 문제, DISPATCH HOLD 스위치(순수 함수 `fuelRemainingOf`, `fuelHolds`). `user` 등급(`hooks/`, 설정). ATC-60이 관제 세션을 ACCOUNT 구성원으로 더하고(`fuelAccountsOf`, `fleet.json` `control`) FLEET FUEL 블록을 만들었다.
 
 **위험.**
 
@@ -892,7 +893,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 **PILOT'S DISCRETION(ATC-51).**
 
-- "라벨이 있다"는 `fleet.json`에서 AIRCRAFT 하나라도 `account`를 가졌다는 뜻이다. 그 전에는 아무것도 바뀌지 않아서, 라벨을 쓰지 않는 FLEET은 ATC-45 동작 그대로다.
+- "라벨이 있다"는 `fleet.json`에서 AIRCRAFT 하나라도 `account`를 가졌다는 뜻이다(ATC-60부터는 관제 세션의 `control` 라벨도 센다). 그 전에는 아무것도 바뀌지 않아서, 라벨을 쓰지 않는 FLEET은 ATC-45 동작 그대로다.
 - 기본 계정 이름은 `default`. FLEET 줄의 칩은 라벨을 직접 단 AIRCRAFT에만 보이고, 카드는 `default`에 기본값 표시를 붙인다.
 - 라벨은 소문자·숫자·`-` 1–24자이고 소문자로 저장한다. `@`가 들어가지 않으므로 email은 저장되지 않는다.
 - 한 ACCOUNT에서 여럿이 걸리면 형제는 알려진 가장 늦은 reset까지 붙들리고, 경보도 그 reset을 보인다.

@@ -12,9 +12,12 @@ import { readLinear } from "./sources/linear.ts";
 import { buildPulls, strandedMessage, strandedOf } from "./landing.ts";
 import { inspectionOf, loadMcc, readMccRecords } from "./mcc.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
-import { accountOf } from "./crew.ts";
+import { accountOf, CONTROL_DIRS, type ControlName, controlAccountOf, controlNameOf } from "./crew.ts";
+import { realpathSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadFleet } from "./fleet.ts";
-import { fuelConfigOf, fuelRemainingOf } from "./fuel-remaining.ts";
+import { fuelAccountsOf, fuelByAircraft, fuelConfigOf, type FuelMember } from "./fuel-remaining.ts";
 import { readFuelRecords } from "./fuel-run.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, loadAtfm, stopKey } from "./atfm.ts";
@@ -124,14 +127,17 @@ export async function buildSnapshot(): Promise<Snapshot> {
   for (const a of healthAlerts(sessions.map((x) => ({ sessionId: x.id, name: x.name, health: x.health, account: accountOfSession(x) })), healthAt)) {
     alerts.push({ kind: "health", key: a.key, message: a.message, sessionIds: a.sessionIds });
   }
-  // FUEL REMAINING(ATC-55): statusline이 적은 rate_limits를 session → AIRCRAFT → ACCOUNT로. 이름이 TEAM인 세션만(죽은 세션의 마지막 값도 reset까지 쓴다)
+  // FUEL REMAINING(ATC-55): statusline이 적은 rate_limits를 session → AIRCRAFT → ACCOUNT로(죽은 세션의 마지막 값도 reset까지 쓴다).
+  // 관제 세션(TOWER·OCC·CROSSCHECK·MCC·ENGINEERING, ATC-60)도 같은 ACCOUNT의 구성원으로 센다 — 붙들지는 않는다
   const regs = [...new Set(sessions.filter((x) => team.test(x.name)).map((x) => x.name.toUpperCase()))];
-  const fuel = fuelRemainingOf(
-    regs.map((reg) => ({ registration: reg, account: accountOf(fleet, reg), sessionIds: sessions.filter((x) => x.name.toUpperCase() === reg).map((x) => x.id) })),
-    readFuelRecords(),
-    fuelConfigOf(dispatchCfg.fuel),
-    healthAt,
-  );
+  const controlOf = new Map(sessions.map((x) => [x.id, team.test(x.name) ? null : controlNameOf({ name: x.name, cwd: realDir(x.cwd) }, CONTROL_ABS)]));
+  const controls = [...new Set([...controlOf.values()].filter((n): n is ControlName => Boolean(n)))];
+  const members: FuelMember[] = [
+    ...regs.map((reg): FuelMember => ({ name: reg, kind: "aircraft", account: accountOf(fleet, reg), sessionIds: sessions.filter((x) => x.name.toUpperCase() === reg).map((x) => x.id) })),
+    ...controls.map((n): FuelMember => ({ name: n, kind: "control", account: controlAccountOf(fleet, n), sessionIds: sessions.filter((x) => controlOf.get(x.id) === n).map((x) => x.id) })),
+  ];
+  const fuelAccounts = fuelAccountsOf(members, readFuelRecords(), fuelConfigOf(dispatchCfg.fuel), healthAt);
+  const fuel = fuelByAircraft(fuelAccounts);
   const repos = airports.open.map((a) => a.repo);
   const github = readGithub(repos);
   // AUTOLAND(ATC-34·38). 재리뷰로 Codex 대신 넘긴 head는 6시간을 기다리지 않고 REVIEW 대기열로 — update·merge이고 GROUND STOP이 아닌 AIRPORT만
@@ -237,8 +243,21 @@ export async function buildSnapshot(): Promise<Snapshot> {
     atfm: { mains: [...github.mainByRepo.values()].filter((m) => repos.includes(m.repo)), groundStops },
     autoland,
     fuel,
+    fuelAccounts,
   };
 }
+
+// 관제 폴더의 절대 경로(ATC-60). 세션 cwd와 realpath로 맞춘다
+const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
+function realDir(p: string | null | undefined): string | null {
+  if (!p) return null;
+  try {
+    return realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+const CONTROL_ABS = Object.fromEntries(Object.entries(CONTROL_DIRS).map(([n, d]) => [n, realDir(join(REPO_ROOT, d))])) as Partial<Record<ControlName, string>>;
 
 function buildAlerts(
   sessions: Session[],

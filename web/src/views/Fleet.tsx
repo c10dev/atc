@@ -2,7 +2,7 @@ import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from
 import { DEFAULT_ACCOUNT } from "../../../server/crew.ts";
 import type { AircraftView, CrewMember, FleetFile, Rating } from "../../../server/fleet.ts";
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel } from "../../../server/health.ts";
-import { fuelLabel, fuelTitle } from "../../../server/fuel-remaining.ts";
+import { type FuelRemaining, fuelLabel, fuelTitle } from "../../../server/fuel-remaining.ts";
 import { elapsedText, type FleetRow, fleetRows, fleetStatusOf } from "../../../server/fleet-status.ts";
 import type { RulesView } from "../../../server/rules-state.ts";
 import { flightNumber } from "../aviation.ts";
@@ -38,6 +38,7 @@ interface FleetBrief {
   nextRegistration: string | null;
   observedWindowDays?: number; // 관측 CREW를 세는 기간(옛 서버엔 없음)
   dispatchMode?: "shadow" | "approval"; // CREW CHANGE 승인은 approval(2b)에서만(옛 서버엔 없음)
+  fuelAccounts?: FuelRemaining[]; // ACCOUNT마다 FUEL과 구성원(ATC-60, 옛 서버엔 없음)
 }
 
 // GET /api/fleet/sessions: REGISTRATION 이름의 세션(claude agents --json)
@@ -283,6 +284,7 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
       ) : (
         <div className="fl-cards">{inService.map(cardOf)}</div>
       )}
+      <FuelAccounts accounts={brief.fuelAccounts ?? []} />
       <Checkride refreshKey={refreshKey} onChanged={load} />
       {retired.length > 0 && (
         <>
@@ -311,6 +313,39 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
 }
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
+
+// FUEL · ACCOUNT(ATC-60): ACCOUNT마다 쓴 몫과 구성원. 관제 세션은 AIRCRAFT와 따로 적는다 — 누가 그 ACCOUNT를 쓰는지 보이게
+function FuelAccounts({ accounts }: { accounts: FuelRemaining[] }) {
+  if (!accounts.length) return null;
+  const now = Date.now();
+  return (
+    <section className="fl-fuel-accounts" aria-label="ACCOUNT별 FUEL">
+      <h2 className="label">
+        FUEL <em>ACCOUNT {accounts.length}</em>
+      </h2>
+      <ul>
+        {accounts.map((f) => (
+          <li key={f.group} title={fuelTitle(f, now)}>
+            <span className="fl-fa-name mono">{f.account ?? `${f.control.length ? "control" : "AIRCRAFT"} ${f.control[0] ?? f.aircraft[0]}`}</span>
+            <span className={`fl-fuel lv-${f.level}`}>{fuelLabel(f, now)}</span>
+            <span className="fl-fa-members">
+              {f.aircraft.length > 0 && (
+                <span>
+                  <span className="faint">AIRCRAFT</span> <span className="mono">{f.aircraft.join(", ")}</span>
+                </span>
+              )}
+              {f.control.length > 0 && (
+                <span>
+                  <span className="faint">control</span> <span className="mono">{f.control.join(", ")}</span>
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 // 운항 상태 목록(ATC-44). 한 줄: REGISTRATION·callsign, AIRPORT, 상태, FLYING FLIGHT, 경과, 마지막 활동, 이번 주.
 // 줄(버튼)을 누르면 아래에 그 AIRCRAFT의 카드가 펼쳐진다(키보드로도)
@@ -565,7 +600,7 @@ function Card({
       <p className="fl-line">{a.account ? <span className="mono">{a.account}</span> : <span className="faint">지정 없음 — 한도는 reset 시각으로 묶는다</span>}</p>
       {a.fuel && (
         <p className={`fl-fuel lv-${a.fuel.level}`} title={fuelTitle(a.fuel, Date.now())}>
-          {fuelLabel(a.fuel, Date.now())} <span className="faint">· 쓴 몫, {a.fuel.from} statusline</span>
+          {fuelLabel(a.fuel, Date.now())} <span className="faint">· 쓴 몫, {a.fuel.fromKind === "control" ? "control " : ""}{a.fuel.from} statusline</span>
         </p>
       )}
 
