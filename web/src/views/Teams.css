@@ -234,7 +234,8 @@
 }
 .pr-autoland.is-update,
 .pr-autoland.is-inflight,
-.pr-autoland.is-merge {
+.pr-autoland.is-merge,
+.pr-autoland.is-review {
   border-style: solid;
   color: var(--phase-approach);
 }
@@ -302,6 +303,11 @@
     grid-column: 1 / -1;
   }
   .ls-title {
+    white-space: normal;
+  }
+  /* 긴 AUTOLAND 표시(SUPERVISOR 리뷰 필요 — …)는 좁은 폭에서 줄을 바꾼다 */
+  .pr-autoland {
+    max-width: 100%;
     white-space: normal;
   }
   .ls-stand {

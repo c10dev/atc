@@ -272,7 +272,7 @@ function ExtReviewTag({ pr }: { pr: PullRequest }) {
   const m = pr.extReview;
   if (!m) return null;
   // 스위치로 보낸 보안 PR(ATC-30)은 "보안, "을 붙여 외부 리뷰에 기댄 착륙임을 보인다
-  const codex = `${m.security ? "보안, " : ""}${pr.codexUnavailable?.why === "silent" ? "Codex 무응답" : "Codex 한도"}`;
+  const codex = `${m.security ? "보안, " : ""}${pr.codexUnavailable?.why === "silent" ? "Codex 무응답" : pr.codexUnavailable?.why === "autoland" ? "AUTOLAND 재리뷰" : "Codex 한도"}`;
   const r = m.review;
   const who = r ? reviewerOf(r.family) : "";
   const text =
@@ -327,6 +327,7 @@ const AUTOLAND_TIP: Record<PullTagKind, string> = {
   supervisor: "AUTOLAND가 머지하지 않는다 — SUPERVISOR가 머지",
   excluded: "AUTOLAND가 손대지 않는다",
   waiting: "AUTOLAND 대기",
+  review: "AUTOLAND가 갱신한 head에 리뷰가 이어지지 않아 재리뷰를 요청함: codex는 PR 댓글 @codex review, 30분 무응답·한도면 deepseek(REVIEW 대기열)",
 };
 function AutolandTag({ pr, landing }: { pr: PullRequest; landing: LandingIndex }) {
   const t = landing.autoland?.pulls[prKey(pr)];

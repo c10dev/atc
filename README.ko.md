@@ -82,7 +82,7 @@ AUTOPILOT은 쓰지 않는다. SUPERVISOR의 게이트가 꺼진 것처럼 들�
 
 | 용어 | 뜻 |
 |---|---|
-| **AUTOLAND** | SUPERVISOR 스위치 하나 `autoland: off \| update \| merge`(기본 off) 뒤에서 atc가 PR 착륙을 기계로 한다. `update`: `behind`만 남은 CLEARED PR을 GitHub Update branch(`expected_head_sha`)로 갱신한다. LANDING SEQUENCE 순서로 AIRPORT마다 하나씩. `merge`: 위임된 PR은 정확한 head로 머지까지 한다([docs/occ.ko.md](docs/occ.ko.md) 9.7) |
+| **AUTOLAND** | SUPERVISOR 스위치 하나 `autoland: off \| update \| merge`(기본 off) 뒤에서 atc가 PR 착륙을 기계로 한다. `update`: `behind`만 남은 CLEARED PR을 GitHub Update branch(`expected_head_sha`)로 갱신한다. LANDING SEQUENCE 순서로 AIRPORT마다 하나씩. `merge`: 위임된 PR은 정확한 head로 머지까지 한다. 갱신한 head에 리뷰가 이어지지 않으면 재리뷰를 한 번 요청한다(`@codex review`, 30분 뒤 DeepSeek)([docs/occ.ko.md](docs/occ.ko.md) 9.7) |
 | **HOLD**(착륙 스트립) | SUPERVISOR가 PR에 다는 표시: AUTOLAND가 머지하지 않고, HOLD한 CLEARED PR은 다음 갱신을 막지 않는다 |
 | **GROUND STOP**(AUTOLAND) | main의 post-merge `Application Check`가 빨가면 그 AIRPORT의 AUTOLAND 두 모드가 SUPERVISOR가 풀 때까지 멈춘다 |
 

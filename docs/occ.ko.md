@@ -383,6 +383,11 @@ vocado `main`의 `strict` 때문에 머지가 있을 때마다 다른 열린 PR�
 - **기록**: `autoland.jsonl`(추가만): `update`, `merge`, `settle`, `skip`, `groundstop`, `groundstop-clear`, `mode`, `hold`, `unhold`. 줄마다 모드, AIRPORT, PR, head, 결과, 설명. 상태(비행 중, GROUND STOP, 푼 SHA, 건너뛴·머지한 head)는 `autoland-state.json`. `GET /api/autoland`가 설정, 상태, 계획, 최근 기록 50줄을 보인다.
 - **화면**: LANDING SEQUENCE 머리에 AIRPORT마다 한 줄("AUTOLAND: updating #383", "AUTOLAND: waiting — #383 CLEARED, …", "AUTOLAND: GROUND STOP — …"). PR마다 AUTOLAND가 할 일이나 안 하는 까닭("AUTOLAND update 대기 2번째", "AUTOLAND 제외 — DIRTY(충돌)", "AUTOLAND 대기 — 리뷰 없음 먼저", "SUPERVISOR 머지 — rating:SEC")과 HOLD 버튼.
 - **켜기**: SUPERVISOR가 2026-09-28에 배포 뒤 `update`를 켜기로 정했다. `merge`는 만들어 두고 끈다. vocado `AGENTS.md`가 "Human merge is the final gate"라서, SUPERVISOR가 먼저 거기에 VOC-141 같은 AUTOLAND 예외를 적어야 한다.
+- **갱신 뒤 재리뷰(ATC-38)**: 2026-09-28에 AUTOLAND가 #401을 36f36a0으로 갱신했다. #403이 main에서 #401의 파일 둘을 바꿨으니 리뷰가 이어지지 않은 것은 맞다. 하지만 Codex는 그 merge 커밋을 리뷰하지 않았고, REVIEW 인계는 Codex가 6시간 조용해야 해서 TEAM_D가 손으로 `@codex review`를 달았다. 이제 갱신이 끝났는데 새 head가 `no-review`나 `review-stale`이면 atc가 그 head에 한 번 요청한다(`reviewRequestOf`):
+  - **Codex를 쓸 수 있으면**(head 뒤에 한도 댓글이 없음): PR 댓글 `@codex review` 하나. AUTOLAND의 GitHub 쓰기는 이것만 더해졌다.
+  - **Codex가 한도이거나 30분 안에 답이 없으면**(`escalateOf`): 그 head를 곧바로 REVIEW(DeepSeek) 대기열로 넘긴다(`buildPulls`의 `fastTrack`, `codexUnavailable.why = "autoland"`, "AUTOLAND 재리뷰 — Codex 30분 무응답"). head 뒤에 Codex가 이미 답했으면 넘기지 않는다.
+  - ATC-27·30은 그대로다: `buildPulls`가 지금 스위치로 외부 리뷰 제외를 다시 본다. 제외 PR은 대기열에 넣지 않고, 스트립에 "AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(migrations)"로 보인다.
+  - head마다 한 번(`autoland-state.json`의 `reviewRequests`). 기록은 `op: "review-request"`에 `via`(`codex`, `deepseek`, `supervisor`). 리뷰가 붙을 때까지 스트립에 "AUTOLAND: review requested (codex|deepseek)"가 보인다. AUTOLAND가 `update`나 `merge`이고 그 AIRPORT가 GROUND STOP이 아닐 때만 한다.
 
 ## 10. atc에 더할 것
 
