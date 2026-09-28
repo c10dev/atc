@@ -41,6 +41,7 @@
 /* 지표 × 종류 표. 좁은 폭에서도 세 칸이 들어가게 지표 이름은 줄바꿈한다 */
 .bf-table {
   width: 100%;
+  max-width: 720px;
   margin-top: var(--space-2);
   border-collapse: collapse;
   table-layout: fixed;
