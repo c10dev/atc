@@ -34,4 +34,14 @@ export const config = {
   // 판정 계열 Jev(ATC-36): TypeSafe API 키. 로그·출력·기록에 쓰지 않는다. ATC_JUDGE_ENGINE=stub이면 녹화 응답(네트워크 없음)
   typesafeApiKey: env.TYPESAFE_API_KEY || "",
   judgeEngine: env.ATC_JUDGE_ENGINE === "stub" ? "stub" : "jev",
+  // AIRCRAFT health 임계값(ATC-45, 분). 기본은 server/health.ts DEFAULT_HEALTH
+  health: {
+    unansweredMin: Number(env.ATC_HEALTH_UNANSWERED_MIN || 10),
+    hungMin: Number(env.ATC_HEALTH_HUNG_MIN || 30),
+    hungAlertMin: Number(env.ATC_HEALTH_HUNG_ALERT_MIN || 60),
+    throttleAlertCount: Number(env.ATC_HEALTH_THROTTLE_ALERT_COUNT || 3),
+    throttleWindowMin: Number(env.ATC_HEALTH_THROTTLE_WINDOW_MIN || 30),
+    deniedCount: Number(env.ATC_HEALTH_DENIED_COUNT || 3),
+    deniedWindowMin: Number(env.ATC_HEALTH_DENIED_WINDOW_MIN || 10),
+  },
 };

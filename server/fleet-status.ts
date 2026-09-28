@@ -1,4 +1,5 @@
 import type { AircraftView } from "./fleet.ts";
+import { type HealthCode, healthLabel } from "./health.ts";
 
 // FLEET 운항 상태 목록(ATC-44, UI report #99): AIRCRAFT 한 대가 한 줄. 화면과 같이 쓰는 순수 함수.
 
@@ -34,6 +35,8 @@ export interface FleetRow {
   lastActiveAt: string | null;
   week: number; // 이번 주 ARRIVED
   weekOnTime: number | null; // 이번 주 정시율(0–1). 잴 FLIGHT가 없으면 null
+  // AIRCRAFT health(ATC-45): "HOLD · LIMIT until 07:40Z" 같은 짧은 글과 원인·다음 한 걸음
+  health: { code: HealthCode; level: "info" | "alert"; label: string; detail: string; next: string } | null;
 }
 
 // 목록 줄: 상태 순서, 같은 상태 안에서는 AIRPORT(없으면 뒤), 그다음 REGISTRATION
@@ -52,6 +55,7 @@ export function fleetRows(aircraft: readonly AircraftView[], now: number): Fleet
       lastActiveAt: a.lastActiveAt ?? null,
       week: a.actuals.week,
       weekOnTime: a.actuals.weekOnTime?.rate ?? null,
+      health: a.health ? { code: a.health.code, level: a.health.level, label: healthLabel(a.health, now), detail: a.health.detail, next: a.health.next } : null,
     };
   });
   return rows.sort(

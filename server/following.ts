@@ -7,6 +7,7 @@ import { type Departure, readDepartures } from "./departures.ts";
 import { tailsOf } from "./dispatch.ts";
 import { type LogEntry, loadLogbook, WAKE_EXPECT_MIN } from "./logbook.ts";
 import type { Stranded } from "./landing.ts";
+import { type Health, healthLabel } from "./health.ts";
 import type { PullRequest, Snapshot, Ticket, Workspace } from "./model.ts";
 import { allProposals, type Proposal, standFreeTicket } from "./proposals.ts";
 
@@ -27,7 +28,7 @@ export const STAGES = ["readback", "departed", "prOpened", "cleared", "arrived"]
 export type Stage = (typeof STAGES)[number];
 
 export interface FollowIssue {
-  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded";
+  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health";
   kind: "delay" | "mismatch";
   severity: "warn" | "info"; // info: 보여 주기만(착륙 대기는 SUPERVISOR 몫, 머지 뒤 Done 아님은 CLOSE 초안 몫)
   text: string;
@@ -63,6 +64,7 @@ export interface FollowInput {
   departures: Departure[];
   now: number;
   stranded?: Stranded[]; // 기본 브랜치에 닿지 않은 머지(ATC-29)
+  health?: Map<string, Health>; // REGISTRATION(대문자) → 그 AIRCRAFT의 health(ATC-45)
 }
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -176,6 +178,18 @@ export function followingOf(inp: FollowInput): FollowItem[] {
   return targets
     .map((t) => {
       const f = followOne(t, inp);
+      // AIRCRAFT health(ATC-45): 그 FLIGHT를 쥔 AIRCRAFT가 멈췄거나 기다리고 있다. key에 코드를 넣어 코드가 바뀌면 새로 보고한다
+      const h = f.aircraft ? inp.health?.get(f.aircraft.toUpperCase()) : undefined;
+      if (h && !f.stages.arrived) {
+        f.issues.push({
+          code: "health",
+          kind: "delay",
+          severity: h.level === "alert" ? "warn" : "info",
+          text: `${f.aircraft} ${healthLabel(h, inp.now)} — ${h.detail}. ${h.next}`,
+          since: h.since,
+          key: `${t.flight}|health|${h.code}`,
+        });
+      }
       for (const x of (inp.stranded ?? []).filter((y) => y.flight === t.flight)) {
         const done = isDone(inp.tickets.find((y) => y.key === t.flight));
         f.issues.push({
@@ -232,7 +246,8 @@ export function ackReported(items: FollowItem[], r: Reported, keys: string[], no
 // ── API ──
 
 export function followingNow(s: Snapshot, now = Date.now()): FollowItem[] {
-  return followingOf({ proposals: allProposals(), tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [] });
+  const health = new Map(s.sessions.filter((x) => x.status !== "dead" && x.health).map((x) => [x.name.toUpperCase(), x.health!]));
+  return followingOf({ proposals: allProposals(), tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health });
 }
 
 export function mountFollowing(app: Hono, getSnapshot: () => Promise<Snapshot>) {

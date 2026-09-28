@@ -317,6 +317,26 @@ test("AOG·RETIRED AIRCRAFT는 배정하지 않는다", async () => {
   );
 });
 
+test("AIRCRAFT health(ATC-45): LIMIT·MODEL·CONTEXT·PROVIDER·HUNG이면 배정하지 않고, PENDING·UNANSWERED는 그대로", () => {
+  const h = (code: string, holds: boolean, extra = {}) => ({ code, level: "alert", since: daysAgo(0), detail: `${code} 원문`, next: "", holds, ...extra }) as Session["health"];
+  const s = snap({
+    sessions: [
+      { ...session("b", "TEAM_B"), health: h("LIMIT", true, { resetsAt: new Date(NOW + 30 * 60_000).toISOString() }) },
+      { ...session("c", "TEAM_C"), health: h("CONTEXT", true) },
+      { ...session("d", "TEAM_D"), health: h("UNANSWERED", false) },
+      session("e", "TEAM_E"),
+    ],
+    tickets: [ticket("VOC-150"), ticket("VOC-151"), ticket("VOC-152", { labels: ["type:SURVEY"] })],
+  });
+  const p = planDispatch(s, new Map(), cfg(), NOW);
+  assert.deepEqual(
+    p.aircraft.map((a) => `${a.name}:${a.available}:${a.reason}`),
+    ["TEAM_B:false:HOLD · LIMIT until 12:30Z — LIMIT 원문", "TEAM_C:false:CONTEXT — RESTART — CONTEXT 원문", "TEAM_D:true:PARKED", "TEAM_E:true:PARKED"],
+  );
+  // STAND 없는 FLIGHT도 HOLD된 AIRCRAFT에는 가지 않는다
+  assert.ok(p.assign.every((a) => a.aircraftName === "TEAM_D" || a.aircraftName === "TEAM_E"), pairsOf(p).join(" "));
+});
+
 const logged = (flight: string | null, number: number, reverted = false) => ({ flight, reverted, pr: { repo: "chaehy5665/vocado_nextjs", number, url: "", title: "" } });
 const pull = (number: number, ticketKey: string | null, draft = false) =>
   ({ repo: VCDO, number, title: "", url: "", branch: "", head: "", base: "main", ticketKey, standPath: null, draft, landing: "APPROACH", blocks: [], readyAt: null, createdAt: daysAgo(0) }) as PullRequest;

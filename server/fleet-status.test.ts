@@ -92,3 +92,10 @@ test("elapsed text", () => {
   assert.equal(elapsedText(185), "3h05m");
   assert.equal(elapsedText(52 * 60), "2d4h");
 });
+
+test("운항 상태 줄에 AIRCRAFT health 표시(ATC-45)", () => {
+  const health = { code: "LIMIT" as const, level: "alert" as const, since: "2026-09-28T05:50:00Z", resetsAt: "2026-09-28T06:40:00.000Z", detail: "You've hit your session limit", next: "reset까지 기다린다", holds: true };
+  const [r] = fleetRows([view("TEAM_H", { health })], NOW);
+  assert.deepEqual(r!.health, { code: "LIMIT", level: "alert", label: "HOLD · LIMIT until 06:40Z", detail: "You've hit your session limit", next: "reset까지 기다린다" });
+  assert.equal(fleetRows([view("TEAM_A")], NOW)[0]!.health, null);
+});

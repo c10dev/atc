@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Ticket } from "./model.ts";
-import { callsOf, candidatesOf, changesOf, CLOSE_RELEASE_WHY, closableOf, standFreeHint, draftOps, fold, gateOf, missingSections, type NewPayload, parseNew, parsePayload, ScheduleError, similarTickets, syncLines, titleTokens } from "./schedule.ts";
+import { callsOf, candidatesOf, changesOf, CLOSE_RELEASE_WHY, closableOf, standFreeHint, draftOps, fold, gateOf, missingSections, type NewPayload, newTailsOf, parseNew, parsePayload, ScheduleError, similarTickets, syncLines, titleTokens } from "./schedule.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
 const iso = (minAgo: number) => new Date(NOW - minAgo * 60_000).toISOString();
@@ -476,4 +476,17 @@ test("NEW milestone(ATC-8): 그 프로젝트의 마일스톤 이름·id만, chan
   const [line] = gapOf({ milestone: "Beta Ready", title: "재생 화면 버튼 정리" });
   assert.equal(line.op, "draft");
   assert.equal((line as { payload: NewPayload }).payload.gap, true);
+});
+
+test("SCHEDULE NEW의 tail 후보: 퇴역과 health로 HOLD된 AIRCRAFT는 빠진다(ATC-45)", () => {
+  const h = (holds: boolean) => ({ code: holds ? ("LIMIT" as const) : ("PENDING" as const), level: "alert" as const, since: "t", detail: "", next: "", holds });
+  const tails = newTailsOf([
+    { registration: "TEAM_A", retired: null, health: null },
+    { registration: "TEAM_B", retired: { at: "t" }, health: null },
+    { registration: "TEAM_H", retired: null, health: h(true) },
+    { registration: "TEAM_K", retired: null, health: h(false) },
+  ]);
+  assert.deepEqual(tails, ["TEAM_A", "TEAM_K"]);
+  assert.throws(() => parseNew(newInput({ tail: "TEAM_H" }), board, tails), /health로 HOLD/);
+  assert.equal(parseNew(newInput({ tail: "TEAM_K" }), board, tails).tail, "TEAM_K");
 });

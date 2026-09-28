@@ -330,7 +330,7 @@ function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[]; open: 
         {rows.map((r) => {
           const isOpen = open.has(r.registration);
           return (
-            <li key={r.registration} className={`fl-li st-${r.status.replace(/ /g, "-")}${isOpen ? " is-open" : ""}`}>
+            <li key={r.registration} className={`fl-li st-${r.status.replace(/ /g, "-")}${r.health ? " has-health" : ""}${isOpen ? " is-open" : ""}`}>
               <button className="fl-row" aria-expanded={isOpen} aria-controls={`fl-detail-${r.registration}`} onClick={() => onToggle(r.registration)}>
                 <span className="fl-r-id">
                   <b>{r.callsign}</b> <span className="mono faint">{r.registration}</span>
@@ -338,12 +338,17 @@ function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[]; open: 
                 <span className="fl-r-apt">{r.airport ? <span className="apt">{r.airport}</span> : <span className="faint">—</span>}</span>
                 <span className="fl-r-status">{r.status}</span>
                 <span className="fl-r-flight" title={r.flight ? `${r.flight.key}${r.flight.title ? ` ${r.flight.title}` : ""}${r.more ? ` 외 ${r.more}건` : ""}` : undefined}>
+                  {r.health && (
+                    <span className={`fl-r-health lv-${r.health.level}`} title={`${r.health.detail} — ${r.health.next}`}>
+                      {r.health.label}
+                    </span>
+                  )}
                   {r.flight ? (
                     <>
                       <b className="mono">{flightNumber(r.flight.key)}</b> {r.flight.title && <span className="fl-r-title">{r.flight.title}</span>}
                       {r.more > 0 && <span className="fl-r-more">+{r.more}</span>}
                     </>
-                  ) : (
+                  ) : r.health ? null : (
                     <span className="faint">—</span>
                   )}
                 </span>
