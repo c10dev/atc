@@ -41,6 +41,22 @@ interface CrosscheckRate {
   matched: number;
   rate: number | null;
 }
+// 판정 계열(ATC-36, server/judges/store.ts judgesViewOf와 같은 모양). mark는 SUPERVISOR가 판정한 초안에만 온다(쏠림 방지)
+interface JudgeMark {
+  family: string;
+  verdict: "agree" | "disagree";
+  reason: string;
+  model: string;
+  run: "replay" | "shadow";
+  at: string;
+  withheld: string | null;
+}
+interface Judges {
+  modes: Record<string, "off" | "replay" | "shadow">;
+  rate: Record<string, CrosscheckRate>;
+  marks: Record<string, JudgeMark[]>;
+  hidden: number; // 아직 판정하지 않은 초안의 mark 수(보이지 않음)
+}
 // 서버 타입에 아직 없을 수 있어 따로 읽는다(옛 서버면 null)
 const markOf = (op: ScheduleOp): Crosscheck | null => (op as unknown as { crosscheck?: Crosscheck | null }).crosscheck ?? null;
 const modelOf = (m: Crosscheck) => m.model || "unknown";
@@ -89,6 +105,7 @@ interface Brief {
   closeManual?: ScheduleOp[]; // SUPERVISOR가 Linear에서 직접 Done으로 바꿀 CLOSE
   flights: Record<string, FlightInfo>;
   slips?: Slip[] | null; // WAYPOINT 지연 경고(ATC-24). 옛 서버면 없고, 마일스톤을 못 읽었으면 null
+  judges?: Judges; // 판정 계열(ATC-36). 옛 서버면 없음
 }
 
 // server/waypoint-slips.ts Slip과 같은 모양(fresh·reportedAt은 brief가 더함)
@@ -296,7 +313,7 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
         {notice?.text}
       </p>
 
-      <Gate gate={gate} />
+      <Gate gate={gate} judges={brief.judges} />
 
       {(brief.slips?.length ?? 0) > 0 && (
         <>
@@ -498,6 +515,7 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
                   )}
                   {op.verdictReason ?? <span className="faint">—</span>}
                   <CrosscheckMini m={markOf(op)} />
+                  {brief.judges?.marks[op.id]?.map((m) => <JudgeMini key={m.family} m={m} />)}
                 </td>
               </tr>
             ))}
@@ -511,7 +529,7 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
   );
 }
 
-function Gate({ gate }: { gate: Brief["gate"] }) {
+function Gate({ gate, judges }: { gate: Brief["gate"]; judges?: Judges }) {
   const enough = gate.decided >= gate.target.decided;
   const rateOk = gate.agreement !== null && gate.agreement >= gate.target.agreement;
   const rows = [
@@ -533,6 +551,8 @@ function Gate({ gate }: { gate: Brief["gate"] }) {
   const mark = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족" } as const;
   const xc = gate.crosscheck; // 옛 서버면 없음
   const one = xc?.oneClick;
+  // 켜져 있거나 mark가 있는 판정 계열만(기본 off라 보통은 없음)
+  const judgeRows = Object.entries(judges?.rate ?? {}).filter(([f, r]) => judges!.modes[f] !== "off" || r.marked > 0);
   return (
     <div className="sc-gate">
       <h2 className="label">
@@ -585,6 +605,16 @@ function Gate({ gate }: { gate: Brief["gate"] }) {
                 <span className="sc-gate-state">참고</span>
               </li>
             ))}
+        {judgeRows.map(([f, r]) => (
+          <li key={f} className="s-info sc-gate-judge" title={`판정 계열 ${f}의 CLASSIFY 분류가 SUPERVISOR 판정과 맞은 비율(replay 포함) — 게이트에 세지 않음. mark는 판정한 초안에만 보임`}>
+            <span className="sc-gate-label">
+              {f.toUpperCase()} 일치 {r.marked > 0 ? `${r.matched}/${r.marked}` : "— (아직 없음)"}
+            </span>
+            <span className="sc-gate-value">{pct(r.rate)}</span>
+            <span className="sc-gate-target">게이트와 따로</span>
+            <span className="sc-gate-state">{judges!.modes[f]}</span>
+          </li>
+        ))}
         {one && (
           <li className="s-info sc-gate-one" title={ONE_CLICK_NOTE}>
             <span className="sc-gate-label">한 번 클릭 {one.decided > 0 ? `${one.count}/${one.decided}` : "— (아직 없음)"}</span>
@@ -598,6 +628,7 @@ function Gate({ gate }: { gate: Brief["gate"] }) {
         S1 그림자 운용: 판정은 합의율 측정용이다. S2(승인 운용)부터 승인한 초안만 linear-guard를 거쳐 Linear에 쓴다. 판정 없이 3일이 지나면 EXPIRED.
         {xc && " CROSSCHECK 일치는 참고용이다 — 게이트에는 사람 판정만 셈."}
         {one && ` 한 번 클릭: ${ONE_CLICK_NOTE}.`}
+        {judgeRows.length > 0 && ` 판정 계열(${judgeRows.map(([f]) => f.toUpperCase()).join(", ")})은 CLASSIFY만 잰다. mark는 판정한 초안에만 보이고, 게이트와 초안 상태에는 영향이 없다${judges!.hidden ? ` (판정 전이라 숨긴 mark ${judges!.hidden}건)` : ""}.`}
       </p>
     </div>
   );
@@ -818,6 +849,16 @@ function CrosscheckMini({ m }: { m: Crosscheck | null }) {
   return (
     <span className={`sc-xc-mini v-${m.verdict}`} title={xcTitle(m)} aria-label={xcTitle(m)}>
       CROSSCHECK {m.verdict}
+    </span>
+  );
+}
+
+// 판정 계열 mark(판정한 초안에만): "JEV agree", 툴팁에 분류와 반출 범위
+function JudgeMini({ m }: { m: JudgeMark }) {
+  const title = `${m.family.toUpperCase()} ${m.verdict} · ${m.model} · ${m.run} — ${m.reason}${m.withheld ? ` · 본문 안 보냄(${m.withheld})` : ""}`;
+  return (
+    <span className={`sc-xc-mini sc-judge-mini v-${m.verdict}`} title={title} aria-label={title}>
+      {m.family.toUpperCase()} {m.verdict}
     </span>
   );
 }

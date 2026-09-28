@@ -6,6 +6,8 @@ import { AUTOLAND_MODES, type AutolandMode, loadAutoland, loadAutolandState } fr
 import { setAutolandMode } from "./autoland-run.ts";
 import { config } from "./config.ts";
 import { EXTERNAL_REVIEW_SECURITY, type ExternalReviewSecurity, loadDispatchConfig, saveExternalReviewSecurity } from "./dispatch.ts";
+import { engineName, judgeStatus } from "./judges/run.ts";
+import { JUDGE_MODES, type JudgeMode, loadJudges, setJudgeMode } from "./judges/store.ts";
 import { parseTeamKeys, TEAM_KEY } from "./linear-keys.ts";
 import { fromThisApp } from "./origin.ts";
 import { resetTicketPattern } from "./sources/git.ts";
@@ -30,6 +32,8 @@ export interface ServerSettings {
   review: { security: ExternalReviewSecurity };
   // AUTOLAND(ATC-34): autoland.json의 스위치와 맡은 AIRPORT, 걸린 GROUND STOP
   autoland: { mode: AutolandMode; airports: string[]; applicationCheck: string; groundStops: { airport: string; sha: string; failing: string[]; at: string }[] };
+  // 판정 계열(ATC-36): judges.json의 스위치, 엔진, 키가 있는지(값은 내보내지 않음), 마지막 실행
+  judges: { jev: { mode: JudgeMode; engine: "stub" | "jev"; apiKeySet: boolean; lastRunAt: string | null; lastError: string | null; judged: number } };
 }
 
 // 고칠 수 있는 항목. apiKey는 null이면 지운다.
@@ -42,6 +46,7 @@ export interface SettingsPatch {
   projectsDir?: string;
   reviewSecurity?: ExternalReviewSecurity; // dispatch.json에 쓴다(.env.local이 아님)
   autolandMode?: AutolandMode; // autoland.json에 쓴다(ATC-34). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
+  judgesJev?: JudgeMode; // judges.json에 쓴다(ATC-36). SUPERVISOR만: 이 화면 Origin이 있어야 받는다. 데이터 반출을 켜는 스위치
 }
 export type SettingsErrors = Partial<Record<keyof SettingsPatch, string>>;
 
@@ -77,6 +82,7 @@ export function readServerSettings(): ServerSettings {
       const a = loadAutoland();
       return { mode: a.mode, airports: a.airports, applicationCheck: a.applicationCheck, groundStops: loadAutolandState().groundStops.map(({ airport, sha, failing, at }) => ({ airport, sha, failing, at })) };
     })(),
+    judges: { jev: { mode: loadJudges().jev, engine: engineName(), apiKeySet: Boolean(config.typesafeApiKey), ...judgeStatus.jev } },
   };
 }
 
@@ -174,10 +180,12 @@ export function mountSettings(app: Hono) {
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "JSON 객체가 아님" }, 400);
     // reviewSecurity는 .env가 아니라 dispatch.json에 쓴다(ATC-30)
     // autolandMode는 autoland.json에 쓴다(ATC-34)
-    const { reviewSecurity, autolandMode, ...rest } = body as Record<string, unknown>;
+    // judgesJev는 judges.json에 쓴다(ATC-36)
+    const { reviewSecurity, autolandMode, judgesJev, ...rest } = body as Record<string, unknown>;
     if (reviewSecurity !== undefined && !EXTERNAL_REVIEW_SECURITY.includes(reviewSecurity as ExternalReviewSecurity))
       return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
     if (autolandMode !== undefined && !AUTOLAND_MODES.includes(autolandMode as AutolandMode)) return c.json({ errors: { autolandMode: `off, update, merge 중 하나` } }, 400);
+    if (judgesJev !== undefined && !JUDGE_MODES.includes(judgesJev as JudgeMode)) return c.json({ errors: { judgesJev: `off, replay, shadow 중 하나` } }, 400);
     const { env, errors } = validatePatch(rest);
     if (Object.keys(errors).length) return c.json({ errors }, 400);
     if (Object.keys(env).length) {
@@ -186,8 +194,9 @@ export function mountSettings(app: Hono) {
     }
     if (reviewSecurity !== undefined) saveExternalReviewSecurity(reviewSecurity as ExternalReviewSecurity);
     if (autolandMode !== undefined) setAutolandMode(autolandMode as AutolandMode);
+    if (judgesJev !== undefined) setJudgeMode("jev", judgesJev as JudgeMode);
     console.log(
-      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : [])].join(", ")}`,
+      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : [])].join(", ")}`,
     );
     return c.json(readServerSettings());
   });

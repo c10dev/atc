@@ -229,6 +229,35 @@ Not built yet: WAKE-scaled conflict risk (a same-area approach is sketched in [i
 
 Classification is a bounded choice from fixed options, so it is also the first candidate for a typed-judgment model (the Jev evaluation in the DISPATCH notes), measured against the SUPERVISOR's shadow marks.
 
+### 6.1 Typed judges (Jev)
+
+Status: built, **off by default** (ATC-36). A judge family marks SCHEDULE `CLASSIFY` drafts. It never decides them.
+
+**How it judges** (`server/judges/`). One CLASSIFY interface: a Choice for FLIGHT TYPE (the six types of 4.1, in the order CHECK → SURVEY → TEST → FERRY → MAINT → BUILD), a Choice for WAKE (4.2), and a Noul for each TYPE RATING (4.3; yes when the probability is ≥ 0.5). atc compares that classification with the axes the OCC draft wrote. If they match, the mark is `agree`, otherwise `disagree`, with a reason such as `TYPE MAINT(80%) ≠ 초안 BUILD`. For RATING, "the draft adds it or the FLIGHT already has the label" is compared per rating. Two engines:
+
+| Engine | What it is |
+|---|---|
+| `stub` | Recorded responses, no network. Used by the tests, and by a test server with `ATC_JUDGE_ENGINE=stub` |
+| `jev` | TypeSafe System One: `POST https://api.typesafe.ai/v1/systemone`, model `jev-latest`, `Authorization: Bearer $TYPESAFE_API_KEY` (from `.env.local`; never logged, printed or recorded) |
+
+**The switch** `judges.jev` in `~/.local/state/atc/judges.json`: `off` (default), `replay` or `shadow`. Only the SUPERVISOR changes it: in Settings → AGENTS → JUDGES, or `PUT /api/settings {judgesJev}` from this screen's Origin, like AUTOLAND. atcctl has no command for it, so control sessions can't change it. A missing or unknown value reads as `off`.
+
+| Mode | What it judges |
+|---|---|
+| `off` | Nothing is read or sent |
+| `replay` | CLASSIFY drafts the SUPERVISOR has already judged and that have no mark from this family, oldest first. The body read today is used, which may differ from when the draft was written |
+| `shadow` | Open CLASSIFY drafts without a mark |
+
+The server runs at most 3 drafts a minute. It backs off an hour after an error and stops the pass on 401 or 429. Settings shows the last run and error.
+
+**Egress rule.** Turning the switch to `replay` or `shadow` is the SUPERVISOR's data-egress decision. What leaves is an allowlist: the title and three body sections (goal, allowed scope, done criteria), each clipped to 600 characters. The FLIGHT key, labels, comments, assignee, project and every other section stay home. A FLIGHT with a `rating:SEC` or `Risk:*` label, one whose labels atc doesn't know, or a draft that adds `rating:SEC` sends **the title only**, and its body isn't even read. Each mark records what was sent (`sent`) and why a body was withheld (`withheld`).
+
+**Records.** `~/.local/state/atc/judges.jsonl`, append-only: one `judge` line per draft and family (the classification, probabilities, verdict, engine, model, run), and a `mode` line per switch change. `schedule.jsonl` and the single CROSSCHECK slot are untouched.
+
+**Measuring without anchoring.** A mark is shown only on drafts the SUPERVISOR has judged: a chip in RECENT, like `JEV agree`, with the classification and what was sent in its tooltip. Marks on open drafts are counted but hidden. The gate panel's `JEV 일치 m/n` line is `crosscheckRateOf` per family over human verdicts, `replay` marks included (the judge's input never contains the verdict). ATFM auto-verdicts are left out. Marks never change a draft's status and never count toward the 20 / 80% gate.
+
+Not built yet: DISPATCH judges, other families, and using a judge's agreement for S3.
+
 ## 7. TARGETS
 
 Per AIRCRAFT, set by the SUPERVISOR in the FLEET tab. They are shown, not scored: atc never ranks AIRCRAFT by them and the planner does not read them.

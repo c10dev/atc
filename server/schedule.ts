@@ -18,6 +18,7 @@ import { isNetworkKind, type NetworkCtx, NetworkDraftError, type NetworkKind, ty
 import { routeRows } from "./network.ts";
 import { loadRoutes } from "./routes.ts";
 import { ofTeams, waypointGapsOf } from "./waypoint-gaps.ts";
+import { judgesViewOf, loadJudges, marksOf, readJudgeLines } from "./judges/store.ts";
 import { ackSlips, freshSlipKeys, loadSlipsReported, saveSlipsReported, slipsOf, waypointEtasOf } from "./waypoint-slips.ts";
 
 // OCC SCHEDULE — OCC가 Linear에 쓸 변경을 초안으로 남긴다. 설계: docs/occ.md 5~7장.
@@ -807,7 +808,11 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const slipList = waypointEtas ? slipsOf(waypointEtas, now) : [];
     const freshSlips = new Set(freshSlipKeys(slipList, reported));
     const slips = waypointEtas ? slipList.map((x) => ({ ...x, fresh: freshSlips.has(x.key), reportedAt: reported.reported[x.key] ?? null })) : null;
-    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, close: closeInfoOut, closeManual, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes), waypointGaps, waypointEtas, slips });
+    // 판정 계열(ATC-36): 일치율과, SUPERVISOR가 판정한 초안의 mark만(열린 초안의 mark는 숨긴다). 게이트와 따로
+    // mark는 화면에 보이는 판정된 초안(recent·inProgress)만 싣는다(브리핑이 replay 기록만큼 커지지 않게)
+    const shown = new Set([...recent, ...inProgress].map((x) => x.id));
+    const judges = judgesViewOf(ops.map((x) => ({ id: x.id, kind: x.kind, human: humanOf(x) })), marksOf(readJudgeLines()), loadJudges(), shown);
+    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, close: closeInfoOut, closeManual, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes), waypointGaps, waypointEtas, slips, judges });
   });
 
   // OCC가 SUPERVISOR에게 보고한 WAYPOINT 지연 경고를 적는다. keys가 없으면 지금 fresh 전부

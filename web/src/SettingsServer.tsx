@@ -212,6 +212,38 @@ export function AgentSettings({ snapshot, server, save }: { snapshot: Snapshot |
         </ServerRows>
       </Block>
 
+      <Block code="JUDGES" label="판정 계열(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) =>
+            s.judges ? (
+              <>
+                <EditRow
+                  label="JEV"
+                  env="judges.jev"
+                  value={s.judges.jev.mode}
+                  note={`judges.json · 엔진 ${s.judges.jev.engine}${s.judges.jev.engine === "jev" ? ` · TYPESAFE_API_KEY ${s.judges.jev.apiKeySet ? "있음" : "없음"}` : " (녹화 응답, 네트워크 없음)"} · 이 화면(또는 SUPERVISOR의 API)에서만 바꾼다 — 관제 세션은 못 바꿈`}
+                  input={{ kind: "select", options: ["off", "replay", "shadow"] }}
+                  onSave={(v) => save({ judgesJev: v as "off" | "replay" | "shadow" })}
+                />
+                <ul className="autoland-modes">
+                  {(["off", "replay", "shadow"] as const).map((m) => (
+                    <li key={m} className={m === s.judges.jev.mode ? "is-current" : undefined}>
+                      <b>{m}</b> {JUDGE_WARN[m]}
+                    </li>
+                  ))}
+                </ul>
+                {(s.judges.jev.lastRunAt || s.judges.jev.lastError) && (
+                  <p className="settings-hint">
+                    마지막 실행 {s.judges.jev.lastRunAt ? timeAgo(s.judges.jev.lastRunAt, Date.now()) : "—"} · 이번 실행 뒤 mark {s.judges.jev.judged}건
+                    {s.judges.jev.lastError && ` · 오류: ${s.judges.jev.lastError}`}
+                  </p>
+                )}
+              </>
+            ) : null
+          }
+        </ServerRows>
+      </Block>
+
       <Block code="CALLSIGNS" label="콜사인">
         {teams.length ? (
           <ul className="callsigns">
@@ -425,6 +457,13 @@ const AUTOLAND_WARN = {
   off: "꺼짐(기본): atc는 PR 브랜치에 아무것도 쓰지 않는다.",
   update: "⚠ CLEARED인데 behind인 PR을 LANDING SEQUENCE 순서로 AIRPORT마다 하나씩 update-branch로 갱신(팀 브랜치에 merge 커밋). 머지는 SUPERVISOR.",
   merge: "⚠ 위임된 PR(보안·Risk·Human Preview·FLIGHT 없음·HOLD 제외)을 정확한 head로 atc가 머지. vocado AGENTS.md에 AUTOLAND 예외를 적은 뒤에만 켤 것.",
+} as const;
+
+// 판정 계열 모드마다 한 줄(ATC-36). replay·shadow는 티켓 제목과 허용한 칸이 TypeSafe로 나간다(데이터 반출)
+const JUDGE_WARN = {
+  off: "꺼짐(기본): 아무것도 읽거나 보내지 않는다.",
+  replay: "⚠ SUPERVISOR가 판정한 지난 CLASSIFY 초안을 1분에 3건씩 다시 판정한다. 제목과 목표·수정 허용 범위·완료 기준이 TypeSafe로 나간다(rating:SEC·Risk:* 티켓은 제목만).",
+  shadow: "⚠ 새 CLASSIFY 초안마다 판정해 둔다(결과는 SUPERVISOR 판정 뒤에만 보임). 반출 범위는 replay와 같다.",
 } as const;
 
 // AUTOLAND GROUND STOP: main의 post-merge Application Check가 빨가 두 모드가 멈춤. SUPERVISOR가 확인하고 푼다
