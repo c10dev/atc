@@ -257,13 +257,17 @@ function TicketCard({ ticket: t, idx }: { ticket: Ticket; idx: Index }) {
         <PriorityMark priority={t.priority} />
       </div>
       <div className="ticket-title">{t.title}</div>
-      {(occupants.length > 0 || workspaces.length > 0 || t.assignee) && (
+      {(occupants.length > 0 || workspaces.length > 0 || t.assignee || t.takenBy) && (
         <div className="ticket-foot">
           {occupants.map((s) => (
             <SessionBadge key={s.id} session={s} />
           ))}
           {occupants.length === 0 && workspaces.length > 0 && <span className="tag">STAND {workspaces.length}</span>}
           {t.assignee && <span className="faint ticket-assignee">{t.assignee}</span>}
+          {/* 위임 대상(Codex 등)은 담당자와 다를 때만 따로 보인다. DISPATCH가 배정하지 않는 FLIGHT다 */}
+          {t.takenBy && t.takenBy !== t.assignee && (
+            <span className="faint ticket-assignee" title="Linear 위임 — atc 밖에서 맡음, DISPATCH가 배정하지 않음">→ {t.takenBy}</span>
+          )}
         </div>
       )}
       {alerts.map((a) => (

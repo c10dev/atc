@@ -16,7 +16,7 @@ const session = (id: string, name: string, status: Session["status"] = "idle", r
   repo, workspacePath: repo,
 });
 const ticket = (key: string, over: Partial<Ticket> = {}): Ticket => ({
-  key, title: key, state: "Todo", stateType: "unstarted", stateColor: null, assignee: null, priority: 3,
+  key, title: key, state: "Todo", stateType: "unstarted", stateColor: null, assignee: null, takenBy: null, priority: 3,
   url: null, updatedAt: daysAgo(1), project: "Beta Readiness", labels: [], createdAt: daysAgo(2), startedAt: null,
   blocks: [], blockedBy: [], related: [], parent: null, children: [], ...over,
 });
@@ -65,6 +65,23 @@ test("후보 FLIGHT: 다른 운항사 라벨, 제외·매핑 없는 프로젝트
   });
   assert.deepEqual(p.hold, [{ flight: "VOC-6", blockedBy: ["VOC-7"] }]);
   assert.deepEqual(p.assign.map((a) => a.flight), ["VOC-8"]);
+});
+
+test("후보 FLIGHT: Linear에서 다른 사람·agent가 맡은 것(takenBy)은 제외, tail:이 있어도", () => {
+  const s = snap({
+    sessions: [session("a", "TEAM_A")],
+    tickets: [
+      ticket("VOC-1", { assignee: "me", takenBy: "codex" }),
+      ticket("VOC-2", { assignee: "kim", takenBy: "kim", labels: ["tail:TEAM_A"] }),
+      ticket("VOC-3", { assignee: "me" }),
+    ],
+  });
+  const p = planDispatch(s, new Map(), cfg(), NOW);
+  assert.deepEqual(Object.fromEntries(p.excluded.map((e) => [e.flight, e.reason])), {
+    "VOC-1": "Linear 담당 codex — atc 밖에서 맡음",
+    "VOC-2": "Linear 담당 kim — atc 밖에서 맡음",
+  });
+  assert.deepEqual(p.assign.map((a) => a.flight), ["VOC-3"]);
 });
 
 test("AIRCRAFT: AIRBORNE·진행 중 STAND·소속 없음은 불가, PARKED와 끝난 STAND만 쥔 HOLDING은 가능, TEAM 아닌 세션은 무시", () => {

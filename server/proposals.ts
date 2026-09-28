@@ -14,6 +14,7 @@ import {
   candidateTeamsOf,
   type Factor,
   excludedLabelWhy,
+  takenWhy,
   hasStandWhy,
   isCandidateTicket,
   type Landed,
@@ -410,12 +411,14 @@ export function syncOps(
     if (!airportOfTicket(t, cfg)) return noProjectWhy(t.project);
     const label = t.labels.find((l) => cfg.excludeLabels.includes(l));
     if (label) return excludedLabelWhy(label);
+    if (t.takenBy) return takenWhy(t.takenBy);
     return BETTER_WHY;
   };
   // 승인됐지만 아직 안 보낸 ASSIGN이 여전히 유효한가(FLIGHT가 Todo이고 AIRCRAFT가 배정 가능)
   const stillValid = (p: Proposal) =>
     !isHeld(p) &&
     stateOf.get(p.flight)?.stateType === "unstarted" &&
+    !stateOf.get(p.flight)?.takenBy &&
     !worked(p.flight) &&
     Boolean(p.aircraft && aircraftOf.get(p.aircraft) && canTakeNow(aircraftOf.get(p.aircraft)!, stateOf.get(p.flight)));
 

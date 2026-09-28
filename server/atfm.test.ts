@@ -152,7 +152,7 @@ test("머지 슬롯: CI 있는 저장소는 1, 없으면 무제한, 이미 LAND�
 
 const ticket = (over: Partial<Ticket> = {}): Ticket => ({
   key: "VOC-10", title: "t", state: "Todo", stateType: "unstarted", stateColor: null, priority: 2, url: null, updatedAt: ago(10), project: "Song Experience",
-  labels: ["type:BUILD", "wake:M", "rating:UI"], createdAt: ago(100), startedAt: null, blocks: [], blockedBy: [], related: [], parent: null, children: [], assignee: null, ...over,
+  labels: ["type:BUILD", "wake:M", "rating:UI"], createdAt: ago(100), startedAt: null, blocks: [], blockedBy: [], related: [], parent: null, children: [], assignee: null, takenBy: null, ...over,
 } as Ticket);
 const proposal = (over: Partial<Proposal> = {}): Proposal => ({
   id: "D-0001", at: ago(30), kind: "ASSIGN", flight: "VOC-10", aircraft: "f", aircraftName: "TEAM_F", airport: "VCDO", score: 9, factors: [],

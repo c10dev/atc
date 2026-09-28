@@ -11,7 +11,7 @@ const NOW = new Date(2026, 8, 27, 12, 0).getTime(); // 2026-09-27 12:00 로컬
 const ago = (d: number) => new Date(NOW - d * DAY).toISOString();
 
 const ticket = (key: string, over: Partial<Ticket> = {}): Ticket => ({
-  key, title: key, state: "Todo", stateType: "unstarted", stateColor: null, assignee: null, priority: 2, url: null, updatedAt: null,
+  key, title: key, state: "Todo", stateType: "unstarted", stateColor: null, assignee: null, takenBy: null, priority: 2, url: null, updatedAt: null,
   project: "Song Experience", labels: [], createdAt: null, startedAt: null, blocks: [], blockedBy: [], related: [], parent: null, children: [],
   ...over,
 });

@@ -22,7 +22,7 @@ DISPATCH proposes **which FLIGHT (Linear ticket) to send to which AIRCRAFT (team
 Constraints that follow from these facts:
 
 - With no estimates, **capacity is measured in counts (slots), not points**.
-- Assignees can't tell teams apart, so **team fit is estimated from past flight history** (which team flew related FLIGHTs).
+- Assignees can't tell teams apart, so **team fit is estimated from past flight history** (which team flew related FLIGHTs). An assignee or delegate *other than* the API key's owner still means something: someone outside atc has the FLIGHT (5.1.2).
 - With no labels, risky work (DB, security, rights) has to be read from the **ticket body**. That is the DISPATCH session's (LLM's) job, not a rule calculation.
 - Backlog is empty, so Todo effectively means "waiting to depart".
 
@@ -69,6 +69,7 @@ The first implementation covers only `ASSIGN` and `RELEASE`. `RELEASE` does a lo
 - **FLIGHT**: in the Todo state, and
   - not a **parent issue** (a container for child issues — see 5.1.1)
   - not labelled `symphony-pilot`
+  - not assigned or delegated in Linear to someone other than the API key's owner (a person, or an agent such as Codex)
   - not blocked by a FLIGHT that hasn't ARRIVED (if blocked: `HOLD_DEPARTURE`)
   - has no STAND yet and nobody holds it
   - its project maps to an AIRPORT that is operating (OPEN)
@@ -83,6 +84,7 @@ Every FLIGHT left out of `ASSIGN` is listed under "excluded" with one of these r
 |---|---|---|
 | Parent issue (5.1.1) | `상위 이슈 — 하위 N건을 묶음` | |
 | Another operator's label | `라벨 symphony-pilot (다른 운항사)` | |
+| **Taken outside atc**: the Linear delegate, or else the assignee, is not the API key's owner (the `viewer`). This is read-only; atc never changes the assignee | `Linear 담당 <name> — atc 밖에서 맡음` | 2026-09-28 |
 | Project not mapped / AIRPORT closed | `배정 제외 프로젝트: <project>`, `프로젝트 없음`, `<CODE> AIRPORT가 운항 중이 아님` | |
 | **Already done**: the FLIGHT's PR is in the LOGBOOK as ARRIVED and not reverted ([fleet.md](fleet.md) 7.1) | `이미 완료됨 — PR <repo>#N 머지됨(LOGBOOK)` | 2026-09-27 |
 | **Being worked**: an open PR (Draft included) whose ticket key is the FLIGHT | `열린 PR #N 있음` | 2026-09-27 |

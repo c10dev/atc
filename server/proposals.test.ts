@@ -5,7 +5,7 @@ import { DEFAULT_DISPATCH_CONFIG, type Plan } from "./dispatch.ts";
 import type { Ticket, Workspace } from "./model.ts";
 import { parentKeysOf } from "./model.ts";
 import { canApply, fold, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, recentFlightsOf, recentPairsOf, reservedOf, syncOps } from "./proposals.ts";
-import { toTicket } from "./sources/linear.ts";
+import { takenByOf, toTicket } from "./sources/linear.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
 const iso = (minAgo: number) => new Date(NOW - minAgo * 60_000).toISOString();
@@ -102,6 +102,25 @@ test("Linear 관계: relations의 blocks는 내가 막음, inverseRelations의 b
   );
 });
 
+test("Linear 담당·위임: API 키 주인(viewer)이 아닌 담당자나 위임 대상이면 takenBy, viewer를 모르면 없음", () => {
+  const me = { id: "u-me", displayName: "me" };
+  const kim = { id: "u-kim", displayName: "kim" };
+  const codex = { id: "u-codex", displayName: "codex" };
+  assert.equal(takenByOf({ assignee: null }, "u-me"), null);
+  assert.equal(takenByOf({ assignee: me }, "u-me"), null);
+  assert.equal(takenByOf({ assignee: kim }, "u-me"), "kim");
+  assert.equal(takenByOf({ assignee: me, delegate: codex }, "u-me"), "codex");
+  assert.equal(takenByOf({ assignee: null, delegate: codex }, "u-me"), "codex");
+  assert.equal(takenByOf({ assignee: kim, delegate: codex }, null), null);
+  // 이름만 있고 id가 없으면(옛 응답) 판단하지 않는다
+  assert.equal(takenByOf({ assignee: { displayName: "kim" } }, "u-me"), null);
+  const ticket = toTicket({
+    identifier: "VOC-11", title: "x", url: "u", priority: 2, updatedAt: iso(0),
+    state: { name: "Todo", type: "unstarted", color: "#fff" }, assignee: me, delegate: codex,
+  }, "u-me");
+  assert.deepEqual({ assignee: ticket.assignee, takenBy: ticket.takenBy }, { assignee: "me", takenBy: "codex" });
+});
+
 test("Linear parent/children: 상위·하위 이슈 관계를 Ticket에 담는다", () => {
   const parent = toTicket({
     identifier: "VOC-34", title: "상위", url: "u", priority: 0, updatedAt: iso(0),
@@ -177,6 +196,13 @@ test("동기화(2b): 승인 후 무효면 SUPERSEDED, 보낸 것은 그대로, S
   );
 });
 
+test("동기화(2b): 승인 뒤 Linear에서 다른 사람·agent가 맡으면 SUPERSEDED", () => {
+  const existing = fold([create("D-0001", "VOC-1", "b", 90), { op: "approve", id: "D-0001", at: iso(80) }]);
+  const tickets = [{ ...t("VOC-1"), priority: 3, project: "Beta Readiness", labels: [], takenBy: "codex" } as Ticket];
+  const ops = syncOps(existing, planOf(), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1);
+  assert.deepEqual(ops.map((o) => `${o.op}:${o.id}:${"reason" in o ? o.reason : ""}`), ["supersede:D-0001:Linear 담당 codex — atc 밖에서 맡음"]);
+});
+
 test("SUPERSEDED 사유: 계획이 그 FLIGHT를 뺀 이유가 있으면 그대로 쓴다(더 나은 배정으로 바뀜 대신)", () => {
   const existing = fold([create("D-0001", "VOC-1", "b", 30)]);
   const plan = planOf({
@@ -203,6 +229,8 @@ test("SUPERSEDED 사유: 계획의 제외 목록에 없어도 planner 규칙을 
     ["VOC-32", [mk("VOC-32", { project: "Somewhere Else" })], "배정 제외 프로젝트: Somewhere Else"],
     // 다른 운항사 라벨
     ["VOC-33", [mk("VOC-33", { labels: ["symphony-pilot"] })], "라벨 symphony-pilot (다른 운항사)"],
+    // Linear에서 다른 사람·agent가 맡음
+    ["VOC-34", [mk("VOC-34", { takenBy: "codex" })], "Linear 담당 codex — atc 밖에서 맡음"],
   ];
   for (const [flight, tickets, want] of cases) {
     const p = fold([create("D-0009", flight, "b", 30)]);

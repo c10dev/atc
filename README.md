@@ -155,7 +155,7 @@ Session ──claim──▶ Workspace ──branch──▶ Ticket
 | Claude transcripts | `~/.claude/projects/<cwd-slug>/<sessionId>.jsonl`, `…/<sessionId>/subagents/*.jsonl` | Worktrees entered through tool calls (for inference) |
 | Codex sessions | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex sessions and their cwd |
 | git | `git worktree list --porcelain` in each repository | Worktree path, branch, HEAD, dirty or not |
-| Linear | GraphQL API (`LINEAR_API_KEY`) | Ticket title, state, assignee, URL |
+| Linear | GraphQL API (`LINEAR_API_KEY`) | Ticket title, state, assignee and delegate, URL |
 | GitHub | `gh pr list --repo <owner/name> --state open` for each AIRPORT with a GitHub remote, every 90 seconds (`server/sources/github.ts`) | Open PRs: head commit, checks, reviews, merge state, Draft; Codex's 👍 and comments via `gh api` for PRs without a passing head review or with Codex findings on the head. Every 10 minutes also the last 30 merged PRs for the LOGBOOK |
 | Claim | `~/.local/state/atc/claims/<sessionId>/*.json` | Claims recorded by the hook |
 

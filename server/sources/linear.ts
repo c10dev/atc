@@ -7,7 +7,8 @@ const ENDPOINT = "https://api.linear.app/graphql";
 
 const ISSUE_FIELDS = `identifier title url priority updatedAt createdAt startedAt
   state { name type color }
-  assignee { displayName }
+  assignee { id displayName }
+  delegate { id displayName }
   project { name }
   labels(first: 20) { nodes { name parent { name } } }
   parent { identifier }
@@ -16,6 +17,7 @@ const ISSUE_FIELDS = `identifier title url priority updatedAt createdAt startedA
   inverseRelations(first: 20) { nodes { type issue { identifier } } }`;
 
 const BOARD_QUERY = `query Board($team: String!) {
+  viewer { id }
   issues(first: 200, orderBy: updatedAt,
          filter: { team: { key: { eq: $team } }, updatedAt: { gt: "-P45D" } }) {
     nodes { ${ISSUE_FIELDS} }
@@ -40,7 +42,8 @@ export interface IssueNode {
   createdAt?: string;
   startedAt?: string | null;
   state: { name: string; type: string; color: string };
-  assignee: { displayName: string } | null;
+  assignee: { id?: string; displayName: string } | null;
+  delegate?: { id: string; displayName: string } | null; // Linear agent 위임(Codex 등)
   project?: { name: string } | null;
   labels?: { nodes: { name: string; parent?: { name: string } | null }[] };
   parent?: { identifier: string } | null;
@@ -81,8 +84,17 @@ async function gql<T>(query: string, variables: Record<string, unknown>): Promis
   return body.data;
 }
 
+// atc 밖에서 이 이슈를 맡은 사람·agent: 위임 대상, 없으면 담당자가 API 키 주인(viewer)이 아닐 때 그 이름.
+// viewer를 모르면(null) 아무도 밖으로 보지 않는다
+export function takenByOf(n: Pick<IssueNode, "assignee" | "delegate">, viewer: string | null): string | null {
+  if (!viewer) return null;
+  if (n.delegate && n.delegate.id !== viewer) return n.delegate.displayName;
+  if (n.assignee?.id && n.assignee.id !== viewer) return n.assignee.displayName;
+  return null;
+}
+
 // relations: 이 이슈 → 상대(blocks면 "내가 상대를 막음"), inverseRelations: 상대 → 이 이슈(blocks면 "상대가 나를 막음")
-export function toTicket(n: IssueNode): Ticket {
+export function toTicket(n: IssueNode, viewer: string | null = null): Ticket {
   const out = (n.relations?.nodes ?? []).filter((r) => r.relatedIssue);
   const inn = (n.inverseRelations?.nodes ?? []).filter((r) => r.issue);
   const uniq = (xs: string[]) => [...new Set(xs)].sort();
@@ -93,6 +105,7 @@ export function toTicket(n: IssueNode): Ticket {
     stateType: n.state.type as TicketStateType,
     stateColor: n.state.color,
     assignee: n.assignee?.displayName ?? null,
+    takenBy: takenByOf(n, viewer),
     priority: n.priority,
     url: n.url,
     updatedAt: n.updatedAt,
@@ -116,12 +129,13 @@ type WorkflowState = { name: string; type: string; color: string; position: numb
 
 // 팀 하나: 45일 안에 바뀐 이슈와 상태 목록, 브랜치가 가리키는데 창 밖에 있는 이슈(번호로 따로)
 async function fetchTeam(team: string, wanted: string[]): Promise<{ tickets: Ticket[]; states: WorkflowState[] }> {
-  const board = await gql<{ issues: { nodes: IssueNode[] }; workflowStates: { nodes: WorkflowState[] } }>(BOARD_QUERY, { team });
-  const byKey = new Map(board.issues.nodes.map((n) => [n.identifier, toTicket(n)]));
+  const board = await gql<{ viewer: { id: string }; issues: { nodes: IssueNode[] }; workflowStates: { nodes: WorkflowState[] } }>(BOARD_QUERY, { team });
+  const viewer = board.viewer?.id ?? null;
+  const byKey = new Map(board.issues.nodes.map((n) => [n.identifier, toTicket(n, viewer)]));
   const missing = wanted.filter((k) => !byKey.has(k)).map((k) => Number(k.split("-")[1]));
   if (missing.length) {
     const extra = await gql<{ issues: { nodes: IssueNode[] } }>(BY_NUMBER_QUERY, { team, numbers: missing });
-    for (const n of extra.issues.nodes) byKey.set(n.identifier, toTicket(n));
+    for (const n of extra.issues.nodes) byKey.set(n.identifier, toTicket(n, viewer));
   }
   return { tickets: [...byKey.values()], states: board.workflowStates.nodes };
 }
