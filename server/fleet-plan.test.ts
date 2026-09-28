@@ -4,13 +4,17 @@ import { DEFAULT_FLEET } from "./crew.ts";
 import type { Unserved } from "./dispatch.ts";
 import type { AircraftView } from "./fleet.ts";
 import {
+  type ExecContext,
+  executionOf,
   type FleetCandidate,
+  type FleetProposal,
   type FleetInputs,
   type FleetPlanOp,
   FLEET_PLAN_DEFAULTS,
   fleetPlanGateOf,
   fleetPlanOf,
   foldFleetPlan,
+  PlanError,
   persistOf,
   runwayOf,
   syncFleetPlan,
@@ -303,4 +307,133 @@ test("fleetPlanGateOf: 20건·80%, 종류마다 건수", () => {
   assert.equal(g.ready, true);
   assert.deepEqual(g.byKind.RETIRE, { decided: 10, agreed: 6 });
   assert.equal(fleetPlanGateOf(foldFleetPlan(ops.slice(0, 38))).ready, false);
+});
+
+// ── 3단계: 승인 운용(8.7) ──
+
+test("RETURN: FLEET PLAN이 건 AOG의 해제 기한이 그날 끝까지 지나면. 사람이 건 AOG는 아님", () => {
+  const aog = (reason: string, until: string) => ({ reason, until, at: ago(2 * DAY) });
+  const out = fleetPlanOf(
+    inputs({
+      aircraft: [
+        view("TEAM_H", { status: "absent", aog: aog("FLEET PLAN F-0003: NORDO", "2026-09-27") }),
+        view("TEAM_I", { aog: aog("FLEET PLAN F-0004: LOS", "2026-09-28") }), // 오늘 끝까지는 아님
+        view("TEAM_J", { aog: aog("디자인 리뷰 대기", "2026-09-20") }),
+      ],
+      nordo: new Set(["TEAM_H"]),
+    }),
+  );
+  assert.deepEqual(kinds(out.candidates), ["RETURN TEAM_H"]);
+  assert.match(out.candidates[0].reasons[1].detail, /아직 NORDO/);
+});
+
+const at = (ms = 0) => new Date(NOW + ms).toISOString();
+const created = (id: string, kind: FleetProposal["kind"], aircraft: string, over: Partial<FleetPlanOp> = {}): FleetPlanOp =>
+  ({ op: "create", id, key: kind === "LAUNCH" || kind === "ENTRY" ? "DEMAND|ATCC" : `${kind}|${aircraft}`, kind, aircraft, airport: "ATCC", reasons: [], at: at(), ...over }) as FleetPlanOp;
+
+test("foldFleetPlan: approve → executing → executed·failed. 실행 중인 제안은 expire·verdict로 바뀌지 않는다", () => {
+  const ops: FleetPlanOp[] = [
+    created("F-0001", "STOP", "TEAM_H"),
+    { op: "approve", id: "F-0001", by: "SUPERVISOR", options: {}, at: at(MIN) },
+    { op: "expire", id: "F-0001", at: at(2 * MIN) },
+    { op: "verdict", id: "F-0001", verdict: "disagree", by: "SUPERVISOR", at: at(2 * MIN) },
+  ];
+  assert.equal(foldFleetPlan(ops)[0].status, "executing");
+  const done = foldFleetPlan([...ops, { op: "executed", id: "F-0001", ok: false, steps: [{ action: "stop", registration: "TEAM_H", ok: false, error: "x" }], at: at(3 * MIN) }]);
+  assert.equal(done[0].status, "failed");
+  assert.equal(done[0].execution!.steps[0].error, "x");
+  // 열린 제안에 온 executed는 무시(승인 없이 실행된 것으로 보지 않는다)
+  assert.equal(foldFleetPlan([created("F-0002", "STOP", "TEAM_I"), { op: "executed", id: "F-0002", ok: true, steps: [], at: at() }])[0].status, "open");
+});
+
+test("승인은 게이트에서 동의로 센다. 실행을 끝낸 승인은 24시간 쉬고, 실패한 실행은 쉬지 않는다", () => {
+  const cfg = FLEET_PLAN_DEFAULTS;
+  const stop: FleetCandidate = { key: "STOP|TEAM_H", kind: "STOP", aircraft: "TEAM_H", airport: "ATCC", reasons: [] };
+  const base: FleetPlanOp[] = [created("F-0001", "STOP", "TEAM_H"), { op: "approve", id: "F-0001", by: "SUPERVISOR", options: {}, at: at(MIN) }];
+  const executed = foldFleetPlan([...base, { op: "executed", id: "F-0001", ok: true, steps: [], at: at(2 * MIN) }]);
+  const failed = foldFleetPlan([...base, { op: "executed", id: "F-0001", ok: false, steps: [], at: at(2 * MIN) }]);
+  assert.deepEqual([fleetPlanGateOf(executed).decided, fleetPlanGateOf(executed).agreed], [1, 1]);
+  assert.deepEqual([fleetPlanGateOf(failed).decided, fleetPlanGateOf(failed).agreed], [1, 1]);
+  assert.deepEqual(syncFleetPlan(executed, [stop], [stop], NOW + HOUR, cfg), []);
+  assert.deepEqual(syncFleetPlan(failed, [stop], [stop], NOW + HOUR, cfg).map((o) => `${o.op} ${o.id}`), ["create F-0002"]);
+  // 실행 중이면 같은 열쇠로 새로 내지 않고, 조건이 풀려도 expire하지 않는다
+  const running = foldFleetPlan(base);
+  assert.deepEqual(syncFleetPlan(running, [stop], [stop], NOW + HOUR, cfg), []);
+  assert.deepEqual(syncFleetPlan(running, [], [], NOW + HOUR, cfg), []);
+});
+
+const bgRow = (reg: string, kind = "background") => ({ registration: reg, kind, id: reg.slice(-1).toLowerCase(), startedAt: NOW - DAY });
+const ctx = (over: Partial<ExecContext> = {}): ExecContext => ({
+  mode: "approval",
+  latest: [],
+  ranAt: at(-MIN),
+  aircraft: [view("TEAM_H"), view("TEAM_I", { status: "absent" })],
+  sessions: [bgRow("TEAM_H")],
+  taken: ["TEAM_H", "TEAM_I"],
+  lastLaunch: new Map(),
+  maxLaunched: 6,
+  now: NOW,
+  ...over,
+});
+// 열린 제안 하나와, 최근 주기가 같은 제안을 여전히 낸다는 문맥
+const openOf = (id: string, kind: FleetProposal["kind"], aircraft: string, over: Partial<FleetPlanOp> = {}) => {
+  const p = foldFleetPlan([created(id, kind, aircraft, over)])[0];
+  const latest: FleetCandidate[] = [{ key: p.key, kind: p.kind, aircraft: p.aircraft, airport: p.airport, reasons: [] }];
+  return { p, latest };
+};
+const refused = (fn: () => unknown) => {
+  try {
+    fn();
+  } catch (e) {
+    assert.ok(e instanceof PlanError);
+    return `${e.status} ${e.message}`;
+  }
+  assert.fail("거절되지 않음");
+};
+
+test("executionOf: 그림자 운용, 닫힌 제안, 조건이 바뀐 제안(최근 주기가 안 냄·주기가 10분 넘게 멈춤)은 거절", () => {
+  const { p, latest } = openOf("F-0001", "STOP", "TEAM_H");
+  assert.match(refused(() => executionOf(p, {}, ctx({ mode: "shadow", latest }))), /^409 그림자 운용 중/);
+  assert.match(refused(() => executionOf({ ...p, status: "disagreed" }, {}, ctx({ latest }))), /^409 F-0001는 이미 닫힘/);
+  assert.match(refused(() => executionOf(p, {}, ctx())), /^409 조건이 바뀜/);
+  assert.match(refused(() => executionOf(p, {}, ctx({ latest, ranAt: at(-11 * MIN) }))), /^409 조건이 바뀜/);
+  assert.deepEqual(executionOf(p, {}, ctx({ latest })).steps, [{ action: "stop", registration: "TEAM_H" }]);
+});
+
+test("executionOf LAUNCH·ENTRY: 기본 permission mode auto, 상한·이미 떠 있음·등록번호가 쓰임은 거절", () => {
+  const l = openOf("F-0001", "LAUNCH", "TEAM_I");
+  assert.deepEqual(executionOf(l.p, {}, ctx({ latest: l.latest })).steps, [{ action: "launch", registration: "TEAM_I", permissionMode: "auto", model: null }]);
+  assert.deepEqual(executionOf(l.p, { permissionMode: "acceptEdits", model: "haiku" }, ctx({ latest: l.latest })).options, { permissionMode: "acceptEdits", model: "haiku" });
+  assert.match(refused(() => executionOf(l.p, { permissionMode: "bypassPermissions" }, ctx({ latest: l.latest }))), /^400 permission mode/);
+  const six = Array.from({ length: 6 }, (_, n) => bgRow(`TEAM_${"ABCDEF"[n]}`));
+  assert.match(refused(() => executionOf(l.p, {}, ctx({ latest: l.latest, sessions: six }))), /^409 백그라운드 세션 6개/);
+  assert.match(refused(() => executionOf(l.p, {}, ctx({ latest: l.latest, sessions: [bgRow("TEAM_I", "interactive")] }))), /이미 떠 있음/);
+  const e = openOf("F-0002", "ENTRY", "TEAM_L", { configuration: "security" } as Partial<FleetPlanOp>);
+  assert.deepEqual(executionOf(e.p, {}, ctx({ latest: e.latest })).steps.map((x) => x.action), ["entry", "launch"]);
+  assert.match(refused(() => executionOf(e.p, {}, ctx({ latest: e.latest, taken: ["TEAM_L"] }))), /이미 쓰는 등록번호/);
+});
+
+test("executionOf STOP·RESTART: 백그라운드 세션만. RESTART는 마지막 LAUNCH의 permission mode·모델로 다시 띄운다", () => {
+  const s = openOf("F-0001", "STOP", "TEAM_H");
+  assert.match(refused(() => executionOf(s.p, {}, ctx({ latest: s.latest, sessions: [bgRow("TEAM_H", "interactive")] }))), /데스크톱·터미널 세션/);
+  const r = openOf("F-0002", "RESTART", "TEAM_H");
+  const plan = executionOf(r.p, {}, ctx({ latest: r.latest, lastLaunch: new Map([["TEAM_H", { permissionMode: "acceptEdits", model: "sonnet" }]]) }));
+  assert.deepEqual(plan.steps, [
+    { action: "stop", registration: "TEAM_H" },
+    { action: "launch", registration: "TEAM_H", permissionMode: "acceptEdits", model: "sonnet" },
+  ]);
+});
+
+test("executionOf AOG·RETURN·RETIRE: 사유 머리는 FLEET PLAN id, RETIRE는 기본으로 백그라운드 세션도 멈춤", () => {
+  const a = openOf("F-0001", "AOG", "TEAM_H", { reasons: [{ code: "nordo", detail: "" }, { code: "until", detail: "", value: "2026-09-29" }] } as Partial<FleetPlanOp>);
+  assert.deepEqual(executionOf(a.p, {}, ctx({ latest: a.latest })).steps, [{ action: "aog", registration: "TEAM_H", reason: "FLEET PLAN F-0001: NORDO", until: "2026-09-29" }]);
+  assert.match(refused(() => executionOf(a.p, { until: "9/29" }, ctx({ latest: a.latest }))), /^400 until/);
+  const ret = openOf("F-0002", "RETURN", "TEAM_H");
+  assert.match(refused(() => executionOf(ret.p, {}, ctx({ latest: ret.latest }))), /AOG가 아님/);
+  const aogd = [view("TEAM_H", { aog: { reason: "FLEET PLAN F-0001: NORDO", until: "2026-09-27", at: ago(DAY) } })];
+  assert.deepEqual(executionOf(ret.p, {}, ctx({ latest: ret.latest, aircraft: aogd })).steps, [{ action: "return", registration: "TEAM_H" }]);
+  const t = openOf("F-0003", "RETIRE", "TEAM_H");
+  assert.deepEqual(executionOf(t.p, {}, ctx({ latest: t.latest })).steps.map((x) => x.action), ["retire", "stop"]);
+  assert.deepEqual(executionOf(t.p, { stopSession: false }, ctx({ latest: t.latest })).steps.map((x) => x.action), ["retire"]);
+  assert.deepEqual(executionOf(t.p, {}, ctx({ latest: t.latest, sessions: [] })).steps.map((x) => x.action), ["retire"]);
 });

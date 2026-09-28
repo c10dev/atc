@@ -255,7 +255,7 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
         />
       )}
       {controlError && <p className="fl-entry-preview faint">세션 조종을 쓸 수 없음(LAUNCH·STOP 숨김): {controlError}</p>}
-      <FleetPlan refreshKey={refreshKey} />
+      <FleetPlan refreshKey={refreshKey} onChanged={load} />
       <div className="fl-layout" role="group" aria-label="FLEET 보기">
         <h2 className="label">
           AIRCRAFT <em>{inService.length}</em>

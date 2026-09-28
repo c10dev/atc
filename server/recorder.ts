@@ -32,8 +32,10 @@ export type RecordLine =
   // CHECKRIDE 부여·회수: 누가, 추천이었나, 근거(LOGBOOK key·FLIGHT·출처)
   | { t: string; kind: "checkride"; op: "grant" | "revoke"; aircraft: string; rating: string; by: string; recommended: boolean; status: string; reason: string; evidence: string[] }
   // ATFM(docs/atfm.md): 출발 중지 시작·끝, CI 소요 시간, BEHIND 전이, 그림자 판정(eligible, s3-eligible), 되돌린 라벨, 스위치
-  // 세션 조종: LAUNCH·STOP 결과(docs/fleet.md 8.5)
-  | { t: string; kind: "fleet"; op: "launch" | "stop"; aircraft: string; by: string; ok: boolean; jobId?: string; cwd: string; permissionMode?: string; model?: string; error?: string }
+  // 세션 조종: LAUNCH·STOP 결과(docs/fleet.md 8.5). FLEET PLAN 승인(8.7)은 entry·aog·return·retire도, by는 "FLEET PLAN F-0001"
+  | { t: string; kind: "fleet"; op: "launch" | "stop" | "entry" | "aog" | "return" | "retire"; aircraft: string; by: string; ok: boolean; jobId?: string; cwd?: string; permissionMode?: string; model?: string; error?: string }
+  // FLEET PLAN 모드 전환(8.7). 4단계가 승인 운용 기간을 잰다
+  | { t: string; kind: "fleet-plan"; op: "mode:shadow" | "mode:approval"; by: string }
   | { t: string; kind: "atfm"; op: string; id?: string; airport?: string; data?: Record<string, unknown> };
 
 const DIR = join(config.stateDir, "flight-recorder");

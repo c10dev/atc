@@ -113,7 +113,7 @@ mountDispatch(app, getSnapshot);
 mountCrewChange(app);
 mountFleet(app, getSnapshot);
 mountSessionControl(app, getSnapshot);
-mountFleetPlan(app);
+mountFleetPlan(app, getSnapshot);
 mountCheckride(app, getSnapshot);
 mountLogbook(app);
 mountNetwork(app, getSnapshot);

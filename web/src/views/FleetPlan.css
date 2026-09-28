@@ -21,9 +21,20 @@
   border-radius: var(--radius-sm);
   font: 600 var(--text-2xs) var(--mono);
 }
+.fp-mode.is-approval {
+  color: var(--amber);
+  border-color: var(--amber);
+}
 .fp-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-1);
   margin: var(--space-1) 0 0;
   font-size: var(--text-xs);
+}
+.fp-switch {
+  margin-left: auto;
 }
 .fp-ready {
   color: var(--radar);
@@ -158,4 +169,25 @@
 .fp-status.st-expired,
 .fp-status.st-superseded {
   color: var(--faint);
+}
+.fp-note {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+.fp-approve {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  padding-top: var(--space-1-5);
+  border-top: 1px solid var(--line);
+  font-size: var(--text-sm);
+}
+.fp-status.st-executed {
+  color: var(--radar);
+}
+.fp-status.st-failed {
+  color: var(--alert);
+}
+.fp-status.st-executing {
+  color: var(--amber);
 }

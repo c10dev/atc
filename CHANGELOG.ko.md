@@ -32,6 +32,11 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - 좁은 화면: 가로 스크롤 없이 두 줄로 접힌다
   - 10대가 1440×900 한 화면에 들어온다
   - `GET /api/fleet`의 aircraft에 `flights`(키와 제목), `flyingSince`, `lastActiveAt`, `actuals.weekOnTime`이 더해졌다.
+- FLEET PLAN 승인 운용([docs/fleet.ko.md](docs/fleet.ko.md) 8.7, 3단계). 승인 운용을 켜면 SUPERVISOR가 제안을 **승인(실행)**할 때 FLEET 탭 버튼과 같은 코드로 곧바로 실행한다. LAUNCH·ENTRY(들이고 띄움)·STOP·RESTART(멈추고 다시 띄움)·AOG·RETIRE, 그리고 새 종류 RETURN(FLEET PLAN이 건 AOG의 기한이 지나면 해제)이다.
+  - 켜는 조건은 SUPERVISOR 결정대로다. 그림자 게이트(20건·80%)를 넘어야 하고, 이 화면에서만 켤 수 있다. 그림자로 돌리는 것은 언제나 된다. 모드는 `~/.local/state/atc/fleet-plan.json`에 두고, 바꿀 때마다 FLIGHT RECORDER에 `fleet-plan` `mode:` 줄을 남긴다.
+  - 승인할 때 다시 확인한다. 최근 주기(10분 안)가 같은 제안을 여전히 내고, 8.5의 거절 조건을 통과해야 한다. 아니면 409 "조건이 바뀜"이다. id별 잠금으로 두 번 실행하지 않는다.
+  - 기록: `fleet-plan.jsonl`에 `approve`·`executed`(단계별 결과), FLIGHT RECORDER `fleet` 줄에 `entry`·`aog`·`return`·`retire` op와 `by: "FLEET PLAN F-xxxx"`. 실행을 끝낸 승인은 24시간 쉬고, 실패한 실행은 쉬지 않는다. 승인 운용 중에는 실행 없는 동의를 받지 않는다.
+  - LAUNCH·STOP 버튼 코드를 `launchAircraft`·`stopAircraft`로 떼어 내 버튼과 승인이 같이 쓴다. 버튼의 동작은 같다.
 - FLEET PLAN 그림자 운용([docs/fleet.ko.md](docs/fleet.ko.md) 8.6 1·2단계). atc가 DISPATCH 주기(5분)마다 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·AOG·RETIRE를 사유와 함께 제안하고, FLEET 탭 카드 위의 FLEET PLAN 블록에서 SUPERVISOR가 동의·반대로 판정한다. 세션을 띄우거나 멈추지는 않는다.
   - 기본값은 SUPERVISOR 결정대로다: 예비 1, 대기 120분, 유휴 12시간, RESTART 3일, 퇴역 30일, 반대 제안 금지 2시간. ATC FLIGHT도 수요로 센다(planner를 모든 Linear 팀으로 한 번 더 돌림). DISPATCH 배정 대상은 그대로 `candidateTeams`다.
   - planner가 받을 AIRCRAFT가 없어 남은 FLIGHT를 `unserved`로 내놓는다. AIRPORT 슬롯이 차서 남은 것은 넣지 않는다.
