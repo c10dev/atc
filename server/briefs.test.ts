@@ -260,8 +260,45 @@ test("briefTextOf: Linear 이슈 링크는 key만. 다른 링크는 그대로", 
   assert.equal(briefTextOf(`see [the design issue](${ISSUE("ATC-46")})`), "see the design issue (ATC-46)");
   assert.equal(briefTextOf(`<${ISSUE("ATC-47")}> and ${ISSUE("ATC-48")}.`), "ATC-47 and ATC-48.");
   assert.equal(briefTextOf("https://linear.app/vocado/issue/VOC-12"), "VOC-12");
-  const other = "PR [chaehy5665/atc#119](https://linear.app/vocado/review/design-draft-9a767e0297d7), [docs](https://example.com/docs/fuel), https://github.com/chaehy5665/atc/pull/119";
+  const other = "[docs](https://example.com/docs/fuel), https://github.com/chaehy5665/atc/pull/119, [PR](https://github.com/chaehy5665/atc/pull/119), [project](https://linear.app/vocado/project/atc-1234)";
   assert.equal(briefTextOf(other), other);
+});
+
+// ── PR 언급(ATC-70): Linear가 PR을 자기 리뷰 쪽 링크로 둔다 ──
+const REVIEW = (slug = "fuel-f8-screens-trip-fuel-and-brief-warnings-atc-56-94c1a5b3438e") => `https://linear.app/vocado/review/${slug}`;
+
+test("briefTextOf: Linear PR 리뷰 링크는 링크 글만", () => {
+  assert.equal(briefTextOf(`Built in [chaehy5665/atc#134](${REVIEW()}).`), "Built in chaehy5665/atc#134.");
+  // 한 줄에 둘, 이슈 링크와 함께
+  assert.equal(
+    briefTextOf(`[chaehy5665/atc#122](${REVIEW("a-1")}) and [chaehy5665/atc#123](${REVIEW("b-2")}) conflicted (${"[ATC-53](" + ISSUE("ATC-53") + ")"})`),
+    "chaehy5665/atc#122 and chaehy5665/atc#123 conflicted (ATC-53)",
+  );
+  // owner/repo#N이 아닌 글은 쓴 그대로(이스케이프만 푼다)
+  assert.equal(briefTextOf(`see [the F8 PR \\#134](${REVIEW()})`), "see the F8 PR #134");
+  assert.equal(briefTextOf(`[${REVIEW()}](${REVIEW()})`), REVIEW());
+  // 글이 없는 링크, 맨 URL, <URL>은 그대로
+  for (const kept of [`[](${REVIEW()})`, REVIEW(), `<${REVIEW()}>`]) assert.equal(briefTextOf(kept), kept);
+  // 이스케이프된 [는 링크가 아니다
+  assert.equal(briefTextOf(`\\[x](${REVIEW()})`), `[x](${REVIEW()})`);
+});
+
+test("briefTextOf: 코드 스팬·펜스 안의 PR 리뷰 링크는 그대로", () => {
+  const link = `[chaehy5665/atc#134](${REVIEW()})`;
+  assert.equal(briefTextOf(`\`${link}\` but ${link}`), `\`${link}\` but chaehy5665/atc#134`);
+  assert.equal(briefTextOf(`\`\`\`\n${link}\n\`\`\`\n${link}`), `\`\`\`\n${link}\n\`\`\`\nchaehy5665/atc#134`);
+});
+
+test("directSectionsOf: PR 리뷰 링크를 세 칸 모두에서 풀고, 목표 600자는 푼 글로 잰다", () => {
+  const link = (n: number) => `[chaehy5665/atc#${n}](${REVIEW(`pr-${n}-${"x".repeat(80)}`)})`;
+  const goal = Array.from({ length: 6 }, (_, i) => `${link(120 + i)} 참고`).join(", ");
+  const md = `## 목표\n${goal}\n\n## 완료 기준\n* ${link(134)} 뒤에\n\n## 이 작업만의 제약\n* ${link(135)}은 건드리지 않는다`;
+  assert.ok(goal.length > GOAL_MAX);
+  const s = directSectionsOf(md);
+  assert.equal(s.goal, Array.from({ length: 6 }, (_, i) => `chaehy5665/atc#${120 + i} 참고`).join(", "));
+  assert.equal(s.done, "* chaehy5665/atc#134 뒤에");
+  assert.equal(s.constraints, "* chaehy5665/atc#135은 건드리지 않는다");
+  assert.ok(!directLines(s).join("\n").includes("linear.app"));
 });
 
 test("briefTextOf: 아무것도 없는 본문은 그대로", () => {

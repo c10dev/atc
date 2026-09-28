@@ -52,16 +52,19 @@ export function clip(text: string, max = GOAL_MAX): string {
 
 // ── 이슈 본문의 글을 쓴 그대로(ATC-58) ──
 // Linear는 본문을 저장할 때 마크다운 문자를 역슬래시로 이스케이프하고(`~31 K` → `\~31 K`), 이슈 언급을 긴 URL 링크로 둔다.
-// 지시서에는 쓴 그대로 싣는다: 이스케이프를 풀고, Linear 이슈 링크는 key만 남긴다. 코드(`…`, ``` 블록) 안은 건드리지 않는다.
+// 지시서에는 쓴 그대로 싣는다: 이스케이프를 풀고, Linear 이슈 링크는 key만, PR 리뷰 링크는 링크 글만 남긴다(ATC-70). 코드(`…`, ``` 블록) 안은 건드리지 않는다.
 const ISSUE_URL = String.raw`https?://linear\.app/[^/\s)>\]]+/issue/([A-Za-z][A-Za-z0-9]*-\d+)(?:[/?#][^\s)>\]]*)?`;
 const ISSUE_LINK_RE = new RegExp(String.raw`(?<!\\)\[([^\]\n]*)\]\((${ISSUE_URL})\)`, "g"); // [텍스트](이슈 URL)
 const ISSUE_AUTOLINK_RE = new RegExp(`<${ISSUE_URL}>`, "g"); // <이슈 URL>
 const ISSUE_BARE_RE = new RegExp(`(?<![\\w/(<\\[])${ISSUE_URL}`, "g"); // 맨 URL
+// Linear가 PR 언급을 자기 리뷰 쪽 링크로 둔 것(ATC-70): [chaehy5665/atc#134](https://linear.app/<워크스페이스>/review/<slug>)
+const REVIEW_LINK_RE = /(?<!\\)\[([^\]\n]*)\]\(https?:\/\/linear\.app\/[^/\s)>\]]+\/review\/[^\s)>\]]+\)/g;
 const ESCAPE_RE = /\\([!-/:-@[-`{-~])/g; // CommonMark 역슬래시 이스케이프(ASCII 구두점)
 
-// 코드가 아닌 조각 하나: 이슈 링크 → key, 그다음 이스케이프 풀기
+// 코드가 아닌 조각 하나: PR 리뷰 링크 → 링크 글, 이슈 링크 → key, 그다음 이스케이프 풀기
 function plainPart(t: string): string {
   return t
+    .replace(REVIEW_LINK_RE, (all, text: string) => (text.trim() ? text.trim() : all)) // 글이 없으면 링크를 그대로 둔다
     .replace(ISSUE_LINK_RE, (_all, text: string, _url: string, key: string) => {
       const label = text.replace(ESCAPE_RE, "$1").trim();
       // 언급(텍스트가 key나 URL)이면 key만, 따로 쓴 글이면 글 뒤에 key
