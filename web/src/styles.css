@@ -2045,6 +2045,23 @@ a.ticket:hover {
 .config-note.is-error {
   color: var(--alert);
 }
+/* AUTOLAND 모드마다 한 줄 경고(ATC-34). 지금 모드를 진하게 */
+.autoland-modes {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0 var(--space-3);
+  list-style: none;
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+.autoland-modes b {
+  font-family: var(--mono);
+  margin-right: var(--space-1);
+}
+.autoland-modes .is-current {
+  color: var(--text);
+}
 .config-note {
   grid-column: 1 / -1;
   margin: var(--space-1) 0 0;

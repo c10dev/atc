@@ -12,6 +12,7 @@ import { buildPulls, strandedMessage, strandedOf } from "./landing.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, loadAtfm, stopKey } from "./atfm.ts";
+import { isHeld, loadAutoland, loadAutolandState, mergeExclusionOf, planAutoland } from "./autoland.ts";
 
 // PR head별로 CLEARED TO LAND가 처음 된 시각 (메모리, 서버를 재시작하면 다시 센다)
 const readySince = new Map<string, string>();
@@ -150,6 +151,29 @@ export async function buildSnapshot(): Promise<Snapshot> {
     });
   }
 
+  // AUTOLAND(ATC-34): AIRPORT마다 다음 할 일과 PR마다 표시. merge 모드면 CLEARED PR의 제외 사유(HOLD, FLIGHT, 라벨, 보안 게이트, Human Preview)
+  const alCfg = loadAutoland();
+  const autoland = planAutoland({
+    cfg: alCfg,
+    airports: airports.open.map((a) => ({ code: a.code, repo: a.repo })),
+    pulls,
+    st: loadAutolandState(),
+    exclusionOf: (p) => {
+      const raw = github.byRepo.get(p.repo)?.find((g) => g.number === p.number);
+      const ticket = p.ticketKey ? tickets.find((t) => t.key === p.ticketKey) : undefined;
+      return mergeExclusionOf({
+        held: isHeld(alCfg, p),
+        flight: p.ticketKey,
+        ticketLabels: ticket?.labels ?? [],
+        prLabels: (raw?.labels ?? []).map((l) => l.name),
+        files: raw?.files ?? null,
+        title: p.title,
+        body: raw?.body,
+        flightTitle: ticket?.title ?? null,
+      });
+    },
+  });
+
   return {
     at: new Date().toISOString(),
     linear: { enabled: linear.enabled, error: linear.error, fetchedAt: linear.fetchedAt },
@@ -166,6 +190,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     pulls,
     stranded,
     atfm: { mains: [...github.mainByRepo.values()].filter((m) => repos.includes(m.repo)), groundStops },
+    autoland,
   };
 }
 

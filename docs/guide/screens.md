@@ -38,6 +38,9 @@ STRIPS 맨 위에 GitHub에 열린 PR을 LANDING 순서대로 보여 준다([개
 - **DRAFT**: 흐리게, 접어 둔다. LANDING SEQUENCE에는 들지 않는다.
 - 줄마다 AIRPORT·FLIGHT(없으면 AD HOC), `#번호`(GitHub PR로 열림)와 제목, 그 STAND를 쥔 팀(없으면 STAND 이름이나 "STAND 없음").
 - GitHub 조회가 실패하면 위에 "GitHub 조회 실패 · PR 상태가 오래됐을 수 있음"이 뜬다(마우스를 올리면 오류).
+- **AUTOLAND**가 켜져 있으면 제목 아래에 AIRPORT마다 한 줄: `UPDATE VCDO AUTOLAND: updating #383`(갱신함, CI 대기), `AUTOLAND: waiting — #383 CLEARED, SUPERVISOR 머지 대기`(먼저 머지하거나 HOLD), `AUTOLAND: GROUND STOP — main Application Check 실패`(빨강, 설정 창에서 푼다), `AUTOLAND: 갱신할 PR 없음`.
+- PR 줄마다 AUTOLAND 표시: `AUTOLAND update 대기 2번째`, `AUTOLAND 대기 — 리뷰 없음 먼저`(behind 말고도 막힘이 있음), `AUTOLAND 제외 — DIRTY(충돌)`(Draft, STACKED, 충돌, LOS는 건드리지 않음), merge 모드면 `AUTOLAND merge 대상` 또는 `SUPERVISOR 머지 — rating:SEC`(머지하지 않는 까닭).
+- **HOLD** 버튼(AUTOLAND가 켜졌을 때, 맡은 AIRPORT의 PR): 누르면 `HOLD ✓`. AUTOLAND가 그 PR을 머지하지 않고, CLEARED여도 다음 PR 갱신을 막지 않는다. 다시 누르면 풀린다.
 
 STAND 줄의 REMARKS 칸에도 그 STAND 브랜치의 PR 배지가 붙는다.
 
@@ -52,7 +55,7 @@ STAND 줄의 REMARKS 칸에도 그 STAND 브랜치의 PR 배지가 붙는다.
 - **숫자판**: AIRBORNE(작업 중 세션), STANDS(점유), ENROUTE(진행 FLIGHT), HANDOFF, ALERTS.
 - **새 버전 알림**: 이 탭을 연 뒤에 atc가 새로 배포되면 콘솔 바로 아래에 "새 버전이 배포됨"과 새로고침·닫기 버튼이 뜬다. 저절로 새로고침하지 않는다(입력 중인 내용을 지키려고). 닫으면 다음 배포 때까지 안 뜬다.
 - **ALERT 줄**: 경보가 흘러간다. 누르면 목록이 열린다.
-- **ATC 로고**: 설정(테마, 움직임, 시계, LINEAR, AGENTS). AGENTS 탭의 **REVIEW** 줄(`externalReview.security`)은 Codex 한도 때 보안 PR도 DeepSeek 착륙 리뷰어에게 보낼지 정한다. 기본 exclude, deepseek으로 바꾸면 보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나간다(`.env`·비밀 경로와 FLIGHT 없는 PR은 계속 빠짐). 스트립에는 "REVIEW: DEEPSEEK (보안, Codex 한도)"로 보인다.
+- **ATC 로고**: 설정(테마, 움직임, 시계, LINEAR, AGENTS). AGENTS 탭의 **REVIEW** 줄(`externalReview.security`)은 Codex 한도 때 보안 PR도 DeepSeek 착륙 리뷰어에게 보낼지 정한다. 기본 exclude, deepseek으로 바꾸면 보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나간다(`.env`·비밀 경로와 FLIGHT 없는 PR은 계속 빠짐). 스트립에는 "REVIEW: DEEPSEEK (보안, Codex 한도)"로 보인다. 같은 탭의 **AUTOLAND** 줄(`autoland.mode`)은 착륙 자동화 스위치다: `off`(기본), `update`(behind인 CLEARED PR을 하나씩 갱신, 머지는 SUPERVISOR), `merge`(위임된 PR은 머지까지. vocado AGENTS.md에 예외를 적은 뒤에만). 모드마다 경고가 한 줄씩 보이고, GROUND STOP이 걸려 있으면 그 아래 **풀기** 버튼이 있다. 이 스위치는 이 화면에서만 바뀐다(관제 세션은 못 바꿈).
 
 ## 경보 종류
 

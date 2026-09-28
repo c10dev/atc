@@ -61,6 +61,17 @@ PR에 붙은 막힌 조건을 본다([개념](concepts.md)의 LANDING SEQUENCE).
 - `merge-unknown` → GitHub이 머지 가능 여부를 계산 중이다. 잠시 뒤 풀린다.
 - PR이 아예 안 보인다 → Draft인지(Draft는 LANDING SEQUENCE에 없다), AIRPORT의 git remote가 GitHub인지, 서버 사용자로 `gh auth status`가 되는지 본다. `gh`가 실패하면 스냅샷의 `github.error`에 이유가 뜬다.
 
+## AUTOLAND가 PR을 갱신·머지하지 않는다
+
+LANDING SEQUENCE 머리의 AUTOLAND 줄과 PR의 AUTOLAND 표시를 본다([개념](concepts.md)의 LANDING SEQUENCE).
+
+- 줄이 없다 → 스위치가 `off`이거나 그 AIRPORT가 AUTOLAND 목록(`autoland.json`의 `airports`, 기본 VCDO)에 없다. atc 저장소 자신은 맡지 않는다.
+- `AUTOLAND: waiting — #n CLEARED` → HOLD하지 않은 CLEARED PR이 머지를 기다린다. 그것을 머지하거나, 지금 머지하지 않을 거면 HOLD를 누른다. 그래야 다음 PR을 갱신한다(먼저 갱신하면 그 머지 뒤 다시 behind가 된다).
+- `AUTOLAND: updating #n — CI 대기` → 갱신한 PR의 CI를 기다린다. AIRPORT마다 하나씩이다. CI가 끝나면(또는 90분이 지나면) 다음으로 간다.
+- `AUTOLAND: GROUND STOP` → main의 `Application Check`가 빨갛다. main을 고친 뒤 설정 창 AGENTS 탭 AUTOLAND 아래 **풀기**를 누른다. main이 다시 초록이 돼도 저절로 풀리지 않는다.
+- `AUTOLAND: 갱신 실패한 PR만 남음` → 갱신이 실패한 head는 다시 하지 않는다(충돌 등). 새 push로 head가 바뀌면 다시 후보가 된다. head가 움직여 거절된 것은 다음 주기(90초)에 새 head로 다시 한다. 결과는 `GET /api/autoland`의 `records`에 있다.
+- `SUPERVISOR 머지 — …` → merge 모드에서 빠진 PR이다(HOLD, FLIGHT 없음, `rating:SEC`·Risk 라벨, 보안 게이트, Human Preview 미통과). SUPERVISOR가 직접 머지한다.
+
 ## 새 기능이 안 보인다 · 코드를 고친 뒤 화면이 그대로다
 
 운영 서비스는 main 체크아웃에서 빌드한다. 머지 뒤 `systemctl --user restart atc`. 새 의존성이 생겼으면 먼저 `npm install`.

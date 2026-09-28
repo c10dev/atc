@@ -1,10 +1,13 @@
 import { chmodSync, existsSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import type { Context, Hono } from "hono";
+import type { Hono } from "hono";
+import { AUTOLAND_MODES, type AutolandMode, loadAutoland, loadAutolandState } from "./autoland.ts";
+import { setAutolandMode } from "./autoland-run.ts";
 import { config } from "./config.ts";
 import { EXTERNAL_REVIEW_SECURITY, type ExternalReviewSecurity, loadDispatchConfig, saveExternalReviewSecurity } from "./dispatch.ts";
 import { parseTeamKeys, TEAM_KEY } from "./linear-keys.ts";
+import { fromThisApp } from "./origin.ts";
 import { resetTicketPattern } from "./sources/git.ts";
 import { resetLinear } from "./sources/linear.ts";
 
@@ -25,6 +28,8 @@ export interface ServerSettings {
   };
   // 외부 착륙 리뷰(ATC-30): 보안 규칙에만 걸린 PR을 DeepSeek REVIEW에 보낼까(dispatch.json externalReview.security)
   review: { security: ExternalReviewSecurity };
+  // AUTOLAND(ATC-34): autoland.json의 스위치와 맡은 AIRPORT, 걸린 GROUND STOP
+  autoland: { mode: AutolandMode; airports: string[]; applicationCheck: string; groundStops: { airport: string; sha: string; failing: string[]; at: string }[] };
 }
 
 // 고칠 수 있는 항목. apiKey는 null이면 지운다.
@@ -36,6 +41,7 @@ export interface SettingsPatch {
   handoffGraceMin?: number;
   projectsDir?: string;
   reviewSecurity?: ExternalReviewSecurity; // dispatch.json에 쓴다(.env.local이 아님)
+  autolandMode?: AutolandMode; // autoland.json에 쓴다(ATC-34). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
 }
 export type SettingsErrors = Partial<Record<keyof SettingsPatch, string>>;
 
@@ -67,6 +73,10 @@ export function readServerSettings(): ServerSettings {
       projectsDir: config.projectsDir,
     },
     review: { security: loadDispatchConfig().externalReview.security },
+    autoland: (() => {
+      const a = loadAutoland();
+      return { mode: a.mode, airports: a.airports, applicationCheck: a.applicationCheck, groundStops: loadAutolandState().groundStops.map(({ airport, sha, failing, at }) => ({ airport, sha, failing, at })) };
+    })(),
   };
 }
 
@@ -156,18 +166,6 @@ function applyToConfig(env: Record<string, string | null>) {
   if ("LINEAR_API_KEY" in env || keysChanged) resetLinear();
 }
 
-// 이 화면(localhost)에서 온 JSON 요청만 받는다. 다른 사이트가 브라우저를 통해 설정을 바꾸지 못하게.
-function fromThisApp(c: Context): boolean {
-  if (!c.req.header("content-type")?.startsWith("application/json")) return false;
-  const origin = c.req.header("origin");
-  if (!origin) return false;
-  try {
-    return ["localhost", "127.0.0.1", "[::1]"].includes(new URL(origin).hostname);
-  } catch {
-    return false;
-  }
-}
-
 export function mountSettings(app: Hono) {
   app.get("/api/settings", (c) => c.json(readServerSettings()));
   app.put("/api/settings", async (c) => {
@@ -175,17 +173,22 @@ export function mountSettings(app: Hono) {
     const body = await c.req.json().catch(() => null);
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "JSON 객체가 아님" }, 400);
     // reviewSecurity는 .env가 아니라 dispatch.json에 쓴다(ATC-30)
-  const { reviewSecurity, ...rest } = body as Record<string, unknown>;
-  if (reviewSecurity !== undefined && !EXTERNAL_REVIEW_SECURITY.includes(reviewSecurity as ExternalReviewSecurity))
-    return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
-  const { env, errors } = validatePatch(rest);
+    // autolandMode는 autoland.json에 쓴다(ATC-34)
+    const { reviewSecurity, autolandMode, ...rest } = body as Record<string, unknown>;
+    if (reviewSecurity !== undefined && !EXTERNAL_REVIEW_SECURITY.includes(reviewSecurity as ExternalReviewSecurity))
+      return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
+    if (autolandMode !== undefined && !AUTOLAND_MODES.includes(autolandMode as AutolandMode)) return c.json({ errors: { autolandMode: `off, update, merge 중 하나` } }, 400);
+    const { env, errors } = validatePatch(rest);
     if (Object.keys(errors).length) return c.json({ errors }, 400);
     if (Object.keys(env).length) {
       writeEnvFile(env);
       applyToConfig(env);
     }
     if (reviewSecurity !== undefined) saveExternalReviewSecurity(reviewSecurity as ExternalReviewSecurity);
-    console.log(`[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : [])].join(", ")}`);
+    if (autolandMode !== undefined) setAutolandMode(autolandMode as AutolandMode);
+    console.log(
+      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : [])].join(", ")}`,
+    );
     return c.json(readServerSettings());
   });
 }

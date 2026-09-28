@@ -24,6 +24,12 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- AUTOLAND(ATC-34, [docs/occ.ko.md](docs/occ.ko.md) 9.7): vocado 착륙을 PR당 사람 클릭 한 번 이하로. 스위치 `autoland.json`의 `mode`: `off`(기본) | `update` | `merge`. SUPERVISOR만 설정 창(AGENTS 탭, 모드마다 한 줄 경고)이나 `PUT /api/settings {autolandMode}`로 바꾼다. 요청에 이 화면의 `Origin`이 있어야 해서 관제 세션은 못 바꾼다.
+  - `update`: `behind`만 남은 CLEARED PR에 `PUT …/pulls/{n}/update-branch`(`expected_head_sha`, force-push가 아닌 merge 커밋). LANDING SEQUENCE 순서로 AIRPORT마다 하나씩. HOLD 아닌 CLEARED PR이 있으면 그것이 머지될 때까지 runway를 잡는다. head가 움직여 거절되면 다음 주기에 다시 한다. Draft, 쌓인 PR, `dirty`, LOS PR은 건드리지 않는다. 기본 AIRPORT는 `VCDO`(atc 저장소 자신의 착륙은 범위 밖).
+  - `merge`: 위임된 CLEARED PR은 PR을 다시 읽은 뒤 정확한 head로 머지한다(`PUT …/pulls/{n}/merge`에 `sha`, 기본 `squash`). SUPERVISOR에게 남기는 제외: HOLD, FLIGHT 없음, `rating:SEC`·`Risk…` 라벨, ATC-27 보안 게이트(migrations, SQL, auth, admission, RLS, 비밀 경로, 보안 키워드), 파일 못 읽음, Human Preview `required`인데 `approved`·`waived`·`passed`가 아님. 만들어 두고, vocado `AGENTS.md`에 AUTOLAND 예외가 생길 때까지 끈다.
+  - GROUND STOP: main의 `Application Check`가 빨가면 그 AIRPORT의 두 모드를 SUPERVISOR가 풀 때까지 멈춘다.
+  - 기록은 `autoland.jsonl`(갱신, 머지, 결과, 정리, GROUND STOP, 스위치, HOLD). `GET /api/autoland`, `POST /api/autoland/hold`, `POST /api/autoland/groundstop/clear`.
+  - 착륙 스트립에 AIRPORT마다 "AUTOLAND: updating #383"(또는 대기, GROUND STOP), PR마다 AUTOLAND가 할 일이나 안 하는 까닭, HOLD 버튼. 용어: AUTOLAND, HOLD, GROUND STOP(README, DOCS 개념과 용어).
 - VECTORS 대 DIRECT 옆에 SOLO 대 CREW(ATC-33, [docs/dispatch.ko.md](docs/dispatch.ko.md) "DIRECT briefs"). `measured` 줄에 `crew: "SOLO" | "CREW" | null`이 붙는다: 서브에이전트가 FLIGHT의 STAND에 문서 밖 파일을 썼으면 CREW, CAPTAIN만 일했으면 SOLO, 모르면 `null`. 지난 FLIGHT도 대화 기록에 드러나면 채운다. DISPATCH 비교판은 지시서별, SOLO·CREW별, 2×2로 묶는다. 용어: SOLO, CREW.
 - VECTORS 대 DIRECT 비교(ATC-32). LOGBOOK이 최근 30일 FLIGHT마다 `measured` 줄을 더한다: 지시서 종류(FLIGHT를 시작한 메시지의 `BRIEF: DIRECT` 줄, AIRCRAFT 세션 대화 기록에서 읽음. 그 전 것은 모두 VECTORS), READBACK 시각, 중간 질문, PR 뒤 수정 커밋, P0–P2 지적(Codex 스레드와 착륙 리뷰). DISPATCH 탭이 14·30·90일로 나란히 보여 준다(`GET /api/logbook/briefs`). 대화 기록에서는 시각, 받는 곳, FLIGHT key, 표시만 둔다.
 - 용어: DIRECT, VECTORS, PILOT'S DISCRETION(README, DOCS 개념과 용어).

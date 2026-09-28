@@ -189,6 +189,81 @@
   text-align: right;
 }
 
+/* AUTOLAND(ATC-34): AIRPORT마다 다음 할 일, PR마다 표시와 HOLD */
+.ls-autoland {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+  font: 600 var(--text-xs) var(--mono);
+  color: var(--muted);
+}
+.ls-autoland li {
+  overflow-wrap: anywhere;
+}
+.ls-autoland li.is-update,
+.ls-autoland li.is-inflight,
+.ls-autoland li.is-merge {
+  color: var(--phase-approach);
+}
+.ls-autoland li.is-waiting {
+  color: var(--phase-cleared);
+}
+.ls-autoland li.is-groundstop {
+  color: var(--alert);
+}
+.ls-autoland-mode {
+  margin-right: var(--space-1-5);
+  padding: 0 var(--space-1);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+}
+.pr-autoland {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-1-5);
+  border: 1px dashed currentColor;
+  border-radius: var(--radius-sm);
+  font: 700 var(--text-2xs)/16px var(--mono);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.pr-autoland.is-update,
+.pr-autoland.is-inflight,
+.pr-autoland.is-merge {
+  border-style: solid;
+  color: var(--phase-approach);
+}
+.pr-autoland.is-delegated {
+  color: var(--phase-cleared);
+}
+.pr-hold {
+  padding: 0 var(--space-1-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: 700 var(--text-2xs)/16px var(--mono);
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pr-hold:hover:not(:disabled) {
+  color: var(--text);
+  border-color: currentColor;
+}
+.pr-hold.is-held {
+  border-color: var(--phase-cleared);
+  color: var(--phase-cleared);
+}
+.pr-hold:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 /* APPROACH·Draft 묶음: 접어 둔다. Draft는 흐리게 */
 .ls-list + .ls-group,
 .ls-group + .ls-group {

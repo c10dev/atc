@@ -49,6 +49,9 @@ LOGBOOK의 ARRIVED는 Linear Done이 아니라 PR 머지로 센다. 머지된 PR
 | FLIGHT FOLLOWING(운항 추적) | 배정된 FLIGHT가 READBACK → DEPARTED → PR → CLEARED → ARRIVED 중 어디까지 왔는지 따라가고, WAKE 기대치의 1.5배를 넘도록 다음 단계가 없거나(지연) Linear 상태와 PR이 어긋나면(불일치) OCC가 SUPERVISOR에게 알린다 |
 | REVERTED | 머지 뒤 `Revert "…"` PR로 되돌려진 FLIGHT |
 | CHECKRIDE | LOGBOOK 근거로 팀의 TYPE RATING 부여·재검토를 추천하는 것. 부여·회수는 SUPERVISOR가 누른다 |
+| AUTOLAND | SUPERVISOR 스위치(`off`·`update`·`merge`) 뒤에서 atc가 CLEARED인데 behind인 PR을 갱신하고, `merge`면 위임된 PR을 머지까지 하는 것(아래 LANDING SEQUENCE) |
+| HOLD(착륙 스트립) | SUPERVISOR가 PR에 다는 표시. AUTOLAND가 그 PR을 머지하지 않고, 그 PR이 CLEARED여도 다음 갱신을 막지 않는다 |
+| GROUND STOP(AUTOLAND) | main의 post-merge `Application Check`가 빨가 AUTOLAND가 멈춘 상태. SUPERVISOR가 설정 창에서 푼다 |
 
 ## LANDING SEQUENCE
 
@@ -81,6 +84,7 @@ CLEARED TO LAND 조건 — 모두 PR의 **최신 커밋(head)** 기준이다.
 - 설정 창 AGENTS 탭의 REVIEW 줄을 deepseek으로 바꾸면(기본 exclude) 아래 보안 규칙에만 걸린 PR도 DeepSeek 리뷰어에게 가고, pass면 착륙한다("REVIEW: DEEPSEEK (보안, Codex 한도)"). `.env`·비밀 경로와 FLIGHT 없는 PR은 어느 경우에도 가지 않는다(ATC-30).
 - 외부 모델에 보내지 않는 PR: FLIGHT가 없는 PR, FLIGHT의 `rating:SEC`·Risk: Security·Rights·Contract 라벨, 그리고 라벨이 없어도 보안 diff(`supabase/migrations`·`functions`, `*.sql`, auth·session·admission, RLS·policy, middleware, `.env`·비밀 경로)나 제목·본문의 보안 키워드(security, privilege, RLS, grant, revoke, EXECUTE, definer, admission, auth, ACL, "use server", exposure). 스트립에 "외부 리뷰 제외 — migrations"처럼 뜨고, Codex나 SUPERVISOR 리뷰를 기다린다. 외부 리뷰의 pass가 이미 있어도 착륙 근거가 되지 않는다.
 - PR 브랜치에 `voc-<번호>`가 없으면 PR 제목 끝의 `(VOC-번호)`로 FLIGHT를 찾는다.
+- **AUTOLAND**(ATC-34, 기본 꺼짐): SUPERVISOR가 설정 창에서 켜면 atc가 착륙의 기계 일을 한다. `update`는 `behind`만 남은 CLEARED PR을 GitHub Update branch로 갱신한다(LANDING SEQUENCE 순서로 AIRPORT마다 하나씩, CI가 통과하면 ATC-31 덕에 다시 CLEARED). HOLD하지 않은 CLEARED PR이 있으면 그것이 머지될 때까지 다음 갱신을 기다린다. `merge`는 위임된 PR(HOLD, FLIGHT 없음, `rating:SEC`·Risk 라벨, 보안 경로·키워드, Human Preview 미통과가 아닌 PR)을 정확한 head로 머지까지 한다. main의 post-merge `Application Check`가 빨가면 GROUND STOP으로 두 모드가 멈추고, SUPERVISOR가 풀어야 다시 돈다.
 - 판정 이유는 저장소의 `docs/occ.ko.md` 9.1절.
 
 ## 충돌과 인계
