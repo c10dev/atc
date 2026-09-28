@@ -25,6 +25,12 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- MCC 서버 쪽, shadow로([docs/mcc.md](docs/mcc.md) 2단계). MCC는 atc 자신의 PR을 INSPECTION하고 `auto`·`flagged` PR을 착륙시켜 7700을 RETURN TO SERVICE할 관제 세션이다. 세션, guard, `atcctl mcc`, RTS 유닛은 다음 단계다.
+  - `server/mcc.ts` / `mcc-run.ts`: `mcc.json`(`shadow` 기본 · `land` · `land+rts`, 설정 창 AGENTS 탭에서만 바꾼다)과 추가만 하는 `mcc.jsonl`.
+  - `/api/mcc/queue|packet|inspect|escalate|land|rts`, GitHub은 모두 REST. `land`는 정확한 head에서 L2–L8이 모두 맞을 때만 머지한다: 같은 저장소 브랜치(fork 아님), `auto`·`flagged` 등급이고 ESCALATE 안 됨, CI `check`, 깨끗한 머지 상태, INSPECTION `pass`, HOLD·GROUND STOP 없음, RTS 진행 중 아님. `shadow`면 `would-land`만 남긴다.
+  - INSPECTION은 Claude 모델에게서만, 지금 head에만 받는다. `findings`는 PR 댓글로도 남긴다.
+  - ATCC PR은 CLEARED TO LAND가 head의 INSPECTION `pass`를 리뷰로 친다(`no-review`는 이제 `MCC INSPECTION 대기`), `findings`는 `review-findings`.
+  - `/api/version`이 서비스가 시작한 커밋 `head`를 준다.
 - DISPATCH가 Linear에서 atc 밖의 누군가가 맡은 FLIGHT를 뺀다([docs/dispatch.ko.md](docs/dispatch.ko.md) 5.1.2). 이슈의 `delegate`(Linear agent 위임, 예: Codex)와 담당자 id를 읽어 API 키 주인(`viewer`)과 비교한다. 위임 대상이, 없으면 담당자가 다른 사람이나 agent면 `tail:` 라벨이 있어도 `Linear 담당 <이름> — atc 밖에서 맡음`으로 제외하고, 그 FLIGHT의 열린·승인된 ASSIGN은 같은 사유로 SUPERSEDED한다. 이름은 `Ticket.takenBy`에 담기고, TICKETS 카드는 위임 대상을 `→ <이름>`으로 보인다. 읽기만 한다: atc는 여전히 담당자를 쓰지 않는다. 2026-09-28 기준 담당자가 있는 Todo FLIGHT는 없어 지금 계획은 바뀌지 않는다.
 - FLEET 탭: AIRCRAFT 한 대가 한 줄인 운항 상태 목록, 세부는 접음(ATC-44, UI report #99). FLEET PLAN 아래 기본 보기가 AIRCRAFT마다 한 줄이다:
   - 열: callsign과 REGISTRATION, AIRPORT, AIRBORNE·HOLDING·PARKED·AOG·NORDO, 제목이 붙은 FLYING FLIGHT(더 있으면 `+N`), STAND를 잡은 뒤 흐른 시간, 마지막 활동, 이번 주 ARRIVED와 정시율

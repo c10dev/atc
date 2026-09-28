@@ -2,7 +2,7 @@
 
 MCC (Maintenance Control) is a control session that lands atc's own PRs and puts the merged code back into service on the machine. An airline's maintenance control centre decides when an aircraft that has been worked on may fly again. MCC does the same for atc: it inspects an atc PR, lands it when the rules allow, and returns the service on port 7700 to operation with the new code. Today a temporary `structure` session does this work, opened in a conversation and gone after it.
 
-> Status (2026-09-28): design draft. The SUPERVISOR decided to give atc's landing a dedicated MCC session rather than leave it to `structure` (see "Decisions"). Nothing is built. The open questions at the end need answers before step 2.
+> Status (2026-09-28): the SUPERVISOR answered the open questions and chose MCC over the parallel SELF-LANDING draft (#105, #107); see "Decisions". Step 2 is built: the server side in shadow (section 11). The session folder, its guard, `atcctl mcc` and the RTS unit are not built yet.
 
 Related: root `CLAUDE.md` "git과 PR" (LANDING CLEARANCE tiers), `deploy/landing-tier.mjs`, `deploy/atc.service`, [occ.md](occ.md) section 9 (CLEARED TO LAND, REVIEW, AUTOLAND), [atfm.md](atfm.md) (shadow before action), `review/` (the DeepSeek REVIEW session).
 
@@ -66,7 +66,9 @@ CI already runs tests, types and the build. The INSPECTION is what CI can't see,
 - Records stay append-only JSONL and settings stay atomically written JSON. A change to an operating-state format → ESCALATE.
 - The change does what the PR body and the ATC issue say, and nothing else.
 
-`findings` blocks the landing until a new head passes. Findings are written for the author, but MCC doesn't send them; the PR's author sees them on the atc screen (and TOWER relays them as it does today).
+`findings` blocks the landing until a new head passes. The server also posts them as a PR comment (`**MCC INSPECTION — findings** …`), in every mode including shadow, so the author sees them on the PR as well as on the atc screen. A comment is information; it merges and deploys nothing. MCC doesn't message team sessions.
+
+If the packet's diff was cut (`diffTruncated`), MCC writes what it read and does not pass.
 
 ## 5. What the server checks before a landing
 
@@ -75,7 +77,7 @@ CI already runs tests, types and the build. The INSPECTION is what CI can't see,
 | # | Condition |
 |---|---|
 | L1 | MCC mode is `land` or `land+rts` (in `shadow` the server records `would-land` instead) |
-| L2 | The PR is open, not a Draft, based on `main`, and its head is `head` |
+| L2 | The PR is open, not a Draft, based on `main`, its head is `head`, and it comes from a branch of this repository, not a fork (atc is public) |
 | L3 | Tier from the changed files (`deploy/landing-tier.mjs` `tierOf`) is `auto` or `flagged`, and MCC has not ESCALATEd it |
 | L4 | CI `check` on `head` succeeded |
 | L5 | GitHub merge state is clean (no conflict, not behind a required check) |
@@ -153,15 +155,33 @@ The user can still deploy by hand. RTS only needs the checkout to be clean and b
 | MCC's model inspects its own session's rules | `mcc/` and its guard are `flagged` / `user`, so MCC never lands a change to itself |
 | GitHub rate limits | REST for merges and checks; a refusal is retried on the next pass |
 
-## 11. Not built yet
+## 11. What is built (step 2, 2026-09-28)
 
-Everything above.
+- `server/mcc.ts` (pure, `mcc.test.ts`): `mcc.json` (`mode`, `airport` `ATCC`, `ciCheck` `check`, `holds`), `mcc.jsonl` records, `parseInspect` (current head, P0–P2 rules as REVIEW, Claude models only: `MCC_MODELS`), `landBlocksOf` (L2–L8), `rtsStopOf` / `rtsDueOf`, the findings comment, and the tier from `deploy/landing-tier.mjs` (loaded at run time, so `deploy/` is untouched).
+- `server/mcc-run.ts`: `GET /api/mcc/queue`, `GET /api/mcc/packet/:pr`, `POST /api/mcc/inspect/:pr`, `POST /api/mcc/escalate/:pr`, `POST /api/mcc/land/:pr`, `POST /api/mcc/rts`, `GET /api/mcc`, `POST /api/mcc/hold` (SUPERVISOR only). GitHub is read and written through REST only. In `shadow`, `land` and `rts` record `would-land` / `would-rts`; `rts` in `land+rts` starts `atc-rts.service`, which does not exist until step 5.
+- CLEARED TO LAND: for the MCC AIRPORT, an INSPECTION `pass` on the head counts as the review, `findings` is `review-findings`, and a PR without one shows `MCC INSPECTION 대기`.
+- `/api/version` has `head`, the commit the service started from.
+- The settings window's AGENTS tab has an MCC row (`shadow` · `land` · `land+rts`), changed only from the screen.
+
+### Not built yet
+
+- Step 3: `atcctl mcc queue|packet|inspect|escalate|land|rts`.
+- Step 4: the `mcc/` folder, guard mode `--mcc` (with the transcript model as `ATC_MCC_MODEL`), the read-guard.
+- Step 5: `deploy/rts.mjs` and `deploy/atc-rts.service`, which write `rts.jsonl`.
+- Steps 6–7: shadow operation, the gate, and the rule changes in root `CLAUDE.md`, the TOWER manual and `landing-tier.mjs`.
 
 ## Decisions
 
 - 2026-09-28, SUPERVISOR: atc's landing gets a dedicated control session, MCC, instead of the temporary `structure` session. The mechanical route alone (AUTOLAND for ATCC plus a deploy script) was offered and not chosen, because atc PRs need an inspection that CI can't do.
 
-## Questions for the SUPERVISOR
+- 2026-09-28, SUPERVISOR, the open questions:
+  1. **Model**: Claude. The server takes an INSPECTION only from `claude-opus|sonnet|fable|haiku…`.
+  2. **The user's merges**: RTS deploys them too, except the cases in section 6 step 4.
+  3. **Shadow gate**: as in section 9 (20 PRs, 5 days, nothing reverted).
+  4. **Findings**: posted as a PR comment as well as recorded.
+- 2026-09-28, SUPERVISOR: a second session had drafted the same goal as SELF-LANDING ([#105](https://github.com/chaehy5665/atc/pull/105), [#107](https://github.com/chaehy5665/atc/pull/107): a lander outside the server, DeepSeek review, `auto` tier only). The SUPERVISOR chose MCC as the one design, with `auto` and `flagged` landed. From SELF-LANDING, MCC takes the fork exclusion (L2).
+
+## Questions for the SUPERVISOR (answered above)
 
 1. **Model.** Proposed: a Claude model (not DeepSeek), so MCC's INSPECTION is independent of REVIEW and can read the whole repository. Which one?
 2. **Deploying the user's merges.** Proposed: RTS also deploys `user` PRs the user merged, except the cases in section 6 step 4. Or should RTS only follow MCC's own landings?

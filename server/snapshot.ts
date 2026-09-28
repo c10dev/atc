@@ -9,6 +9,7 @@ import { readWorkspaces, ticketKeyFromBranch, ticketKeyFromTitle } from "./sourc
 import { readGithub } from "./sources/github.ts";
 import { readLinear } from "./sources/linear.ts";
 import { buildPulls, strandedMessage, strandedOf } from "./landing.ts";
+import { inspectionOf, loadMcc, readMccRecords } from "./mcc.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, loadAtfm, stopKey } from "./atfm.ts";
@@ -129,6 +130,13 @@ export async function buildSnapshot(): Promise<Snapshot> {
       // 보안 규칙에만 걸린 PR도 DeepSeek에 보낼까(ATC-30, 설정 창). 기본 "exclude"
       security: loadDispatchConfig().externalReview.security,
       fastTrack: (repo, number, head) => (alActive(repo) ? fastTrack(repo, number, head) : null),
+      // MCC(docs/mcc.md): 맡은 AIRPORT(atc) PR은 이 head의 INSPECTION이 리뷰를 대신한다
+      mcc: (() => {
+        const repo = airports.open.find((a) => a.code === loadMcc().airport)?.repo;
+        if (!repo) return undefined;
+        const records = readMccRecords();
+        return { repo, reviewOf: (number: number, head: string) => inspectionOf(records, number, head) };
+      })(),
     },
   );
 

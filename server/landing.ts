@@ -411,7 +411,11 @@ export function codexThumbsPass(pr: ReviewInput, c: CodexSignal | undefined = pr
   return !findings || after(c!.thumbsAt, findings.submittedAt);
 }
 
-export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs = 6 * 3_600_000, carried?: CarriedReview | null): Block[] {
+// MCC가 맡은 저장소(atc)의 PR: 이 head의 INSPECTION이 리뷰를 대신한다(docs/mcc.md 5장)
+export interface MccReviewContext {
+  review: { verdict: "pass" | "findings"; text: string; p0: number; p1: number; p2: number } | null;
+}
+export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs = 6 * 3_600_000, carried?: CarriedReview | null, mcc?: MccReviewContext): Block[] {
   const author = pr.author?.login ?? null;
   const reviews = (pr.reviews ?? []).filter((r) => r.author?.login !== author || author === null);
   const out: Block[] = [];
@@ -449,6 +453,12 @@ export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs =
     out.push(block("review-findings", `${carriedWho(carried)} 지적이 이전 커밋 ${short(carried.from)}에 남아 있음(그 뒤 main 병합만) — 반영 후 재리뷰 필요`));
     return out;
   }
+  if (mcc?.review?.verdict === "pass") return out;
+  if (mcc?.review) {
+    const r = mcc.review;
+    out.push(block("review-findings", `MCC INSPECTION 지적(head ${short(pr.headRefOid)}, P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}): ${clip(r.text, 400)} — 반영 후 새 head에서 다시`));
+    return out;
+  }
   // Codex를 쓸 수 없으면 착륙 리뷰(현재 head, P0·P1 없음)가 리뷰를 대신한다. 새 head는 새 리뷰가 필요하다.
   // 외부 리뷰에서 뺀 PR(보안 경로·키워드 등)은 기록에 pass가 있어도 근거가 아니다(excluded)
   const ms = extReviewStateOf(ext);
@@ -466,7 +476,9 @@ export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs =
         ? `${codexWhy(ext!.unavailable!, silentMs)} — 착륙 리뷰 대기(REVIEW 세션${ms.security ? `, 보안 PR: ${ms.security}` : ""})`
         : limited
           ? "Codex 한도 — 사람 리뷰 필요"
-          : `head ${short(pr.headRefOid)}에 리뷰 필요${c?.thumbsAt ? " (Codex 👍는 이전 커밋 것)" : ""}`;
+          : mcc
+            ? `head ${short(pr.headRefOid)}의 MCC INSPECTION 대기`
+            : `head ${short(pr.headRefOid)}에 리뷰 필요${c?.thumbsAt ? " (Codex 👍는 이전 커밋 것)" : ""}`;
   const counted = countedReviews(pr);
   if (!counted.length) {
     out.push(block("no-review", `리뷰 없음: ${note}`));
@@ -502,10 +514,10 @@ export function mergeBlocks(state: string, unresolvedThreads?: number): Block[] 
 }
 
 // 막힌 조건 목록. 비어 있으면 CLEARED TO LAND.
-export function landingBlocks(pr: GhPull, los: boolean, ext?: ExtReviewContext, silentMs?: number, carried?: CarriedReview | null): Block[] {
+export function landingBlocks(pr: GhPull, los: boolean, ext?: ExtReviewContext, silentMs?: number, carried?: CarriedReview | null, mcc?: MccReviewContext): Block[] {
   const out: Block[] = [];
   if (pr.isDraft) out.push(block("draft", "Draft PR"));
-  out.push(...checkBlocks(pr.statusCheckRollup), ...reviewBlocks(pr, ext, silentMs, carried), ...mergeBlocks(pr.mergeStateStatus, pr.threads?.filter((t) => !t.resolved).length));
+  out.push(...checkBlocks(pr.statusCheckRollup), ...reviewBlocks(pr, ext, silentMs, carried, mcc), ...mergeBlocks(pr.mergeStateStatus, pr.threads?.filter((t) => !t.resolved).length));
   if (los) out.push(block("los", "STAND에 LOSS OF SEPARATION이 열려 있음"));
   const order: LandingBlockCode[] = ["stacked", "draft", "checks-failed", "checks-pending", "no-checks", "changes-requested", "review-findings", "no-review", "review-stale", "dirty", "behind", "blocked", "merge-unknown", "los"];
   return out.sort((a, b) => order.indexOf(a.code) - order.indexOf(b.code));
@@ -544,6 +556,8 @@ export function buildPulls(
     security?: "exclude" | "deepseek"; // dispatch.json externalReview.security(ATC-30). 없으면 "exclude"
     // AUTOLAND가 이 head를 DeepSeek로 넘긴 시각(ATC-38). 있으면 6시간을 기다리지 않는다. Codex가 head 뒤에 이미 답했으면 넘기지 않는다
     fastTrack?: (repo: string, number: number, head: string) => string | null;
+    // MCC가 맡은 저장소(docs/mcc.md): 그 저장소 PR은 이 head의 INSPECTION이 리뷰를 대신한다
+    mcc?: { repo: string; reviewOf: (number: number, head: string) => MccReviewContext["review"] };
   },
 ): PullRequest[] {
   const losStands = new Set(alerts.filter((a) => a.kind === "conflict" && a.workspacePath).map((a) => a.workspacePath!));
@@ -573,7 +587,8 @@ export function buildPulls(
             review: landingReviewOf(ext!.reviews, slug!, gh.number, gh.headRefOid),
           }
         : undefined;
-      const blocks = landingBlocks(gh, Boolean(stand && losStands.has(stand.path)), ctx, ext?.silentMs, carried);
+      const mcc = ext?.mcc && ext.mcc.repo === repo ? { review: ext.mcc.reviewOf(gh.number, gh.headRefOid) } : undefined;
+      const blocks = landingBlocks(gh, Boolean(stand && losStands.has(stand.path)), ctx, ext?.silentMs, carried, mcc);
       // 쌓인 PR: base가 기본 브랜치가 아니면 CLEARED가 되지 않는다(아래 PR이 먼저 기본 브랜치에 들어간 뒤 base를 바꾼다)
       const stack = defaultBranch ? stackOf(gh, pulls, defaultBranch) : null;
       if (defaultBranch && gh.baseRefName !== defaultBranch) blocks.unshift(block("stacked", stackedText(gh, stack, defaultBranch)));
