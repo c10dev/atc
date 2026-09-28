@@ -19,7 +19,7 @@ const view = (registration: string, over: Partial<View> = {}): View => ({
   status: "idle",
   routes: ["Song Experience"],
   targets: { flightsPerWeek: 3, onTime: 0.8 },
-  actuals: { weekFrom: iso(3), week: 2, onTime: { rate: 0.75, within: 3, measured: 4 }, reverted: 0, los: 0, total: 5, landingWait: { medianMin: 20, count: 5 }, recent: [] },
+  actuals: { weekFrom: iso(3), week: 2, onTime: { rate: 0.75, within: 3, measured: 4 }, weekOnTime: { rate: 1, within: 2, measured: 2 }, reverted: 0, los: 0, total: 5, landingWait: { medianMin: 20, count: 5 }, recent: [] },
   retired: null,
   aog: null,
   ...over,

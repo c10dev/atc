@@ -324,6 +324,7 @@ export interface Actuals {
   weekFrom: string;
   week: number; // 이번 주 ARRIVED
   onTime: { rate: number | null; within: number; measured: number }; // 최근 14일, 기대치가 있는 것만
+  weekOnTime: { rate: number | null; within: number; measured: number }; // 이번 주(월요일부터), 기대치가 있는 것만(FLEET 운항 상태 목록, ATC-44)
   reverted: number; // 최근 14일
   los: number; // 최근 14일 LOS 합
   total: number; // 최근 14일 ARRIVED
@@ -369,10 +370,14 @@ export function computeActuals(entries: LogEntry[], registration: string, now: n
   };
   const measured = window.map(judged).filter((e) => e.onTime !== null);
   const within = measured.filter((e) => e.onTime).length;
+  const weekMine = mine.filter((e) => Date.parse(e.arrivedAt) >= weekFrom && Date.parse(e.arrivedAt) <= now);
+  const weekMeasured = weekMine.map(judged).filter((e) => e.onTime !== null);
+  const weekWithin = weekMeasured.filter((e) => e.onTime).length;
   return {
     weekFrom: new Date(weekFrom).toISOString(),
-    week: mine.filter((e) => Date.parse(e.arrivedAt) >= weekFrom && Date.parse(e.arrivedAt) <= now).length,
+    week: weekMine.length,
     onTime: { rate: measured.length ? within / measured.length : null, within, measured: measured.length },
+    weekOnTime: { rate: weekMeasured.length ? weekWithin / weekMeasured.length : null, within: weekWithin, measured: weekMeasured.length },
     reverted: window.filter((e) => e.reverted).length,
     los: window.reduce((a, e) => a + e.los, 0),
     total: window.length,

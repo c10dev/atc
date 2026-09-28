@@ -460,6 +460,7 @@ S1(그림자)은 만들었고 S2(승인하면 적용)는 아직 없다. 이 절 
 
 ## 8. FLEET 탭
 
+- 기본은 운항 상태 목록(ATC-44, UI report #99). AIRCRAFT 한 대가 한 줄이다. 열은 callsign과 REGISTRATION, AIRPORT, 상태(AIRBORNE·HOLDING·PARKED·AOG·NORDO·NOT IN SERVICE), 첫 FLYING FLIGHT와 제목(더 있으면 `+N`), STAND를 잡은 뒤 흐른 시간, 세션 마지막 활동, 이번 주 ARRIVED와 정시율. 순서는 AIRBORNE → HOLDING → PARKED, 그다음 AIRPORT 순(순수 함수 `fleetRows`, `server/fleet-status.ts`). 줄을 누르면 그 아래에 AIRCRAFT의 카드가 펼쳐진다. 목록·카드 스위치로 모든 카드를 펼친 보기로 돌아갈 수 있고, 고른 보기는 `localStorage`(`atc.fleet.layout`, 못 쓰면 목록)에 기억한다. 좁은 화면에서는 한 줄이 두 줄로 접힌다.
 - AIRCRAFT마다 카드 하나: REGISTRATION과 callsign, 기지 AIRPORT, 상태, 선언한 CREW COMPLEMENT 대 관찰한 CREW, TYPE RATING, ROUTES, LOGBOOK 실적 대 TARGETS(7.2)와 최근 FLIGHT 몇 개.
 - AIRCRAFT의 세션에서 [rules-drift hook](../hooks/README.ko.md#rules-drift-hook)이 돌면 RULES 줄(ATC-42): "RULES current", 또는 살아 있는 세션이 아직 확인하지 않은 규칙 파일과 "RULES 미확인 since <시각>". 그 세션은 다음 턴에 diff를 받는다.
 - SUPERVISOR용 수정 양식(`fleet.json`을 씀, AIRPORT 등록부와 같은 방식).

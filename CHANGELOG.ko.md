@@ -25,6 +25,14 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- FLEET 탭: AIRCRAFT 한 대가 한 줄인 운항 상태 목록, 세부는 접음(ATC-44, UI report #99). FLEET PLAN 아래 기본 보기가 AIRCRAFT마다 한 줄이다:
+  - 열: callsign과 REGISTRATION, AIRPORT, AIRBORNE·HOLDING·PARKED·AOG·NORDO, 제목이 붙은 FLYING FLIGHT(더 있으면 `+N`), STAND를 잡은 뒤 흐른 시간, 마지막 활동, 이번 주 ARRIVED와 정시율
+  - 순서: AIRBORNE → HOLDING → PARKED, 그다음 AIRPORT 순
+  - 세부: 줄을 누르면 그 AIRCRAFT의 지금 카드(정보와 버튼 전부)가 펼쳐진다
+  - 보기 전환: 목록·카드 스위치는 `localStorage`에 기억한다
+  - 좁은 화면: 가로 스크롤 없이 두 줄로 접힌다
+  - 10대가 1440×900 한 화면에 들어온다
+  - `GET /api/fleet`의 aircraft에 `flights`(키와 제목), `flyingSince`, `lastActiveAt`, `actuals.weekOnTime`이 더해졌다.
 - FLEET PLAN 승인 운용([docs/fleet.ko.md](docs/fleet.ko.md) 8.7, 3단계). 승인 운용을 켜면 SUPERVISOR가 제안을 **승인(실행)**할 때 FLEET 탭 버튼과 같은 코드로 곧바로 실행한다. LAUNCH·ENTRY(들이고 띄움)·STOP·RESTART(멈추고 다시 띄움)·AOG·RETIRE, 그리고 새 종류 RETURN(FLEET PLAN이 건 AOG의 기한이 지나면 해제)이다.
   - 켜는 조건은 SUPERVISOR 결정대로다. 그림자 게이트(20건·80%)를 넘어야 하고, 이 화면에서만 켤 수 있다. 그림자로 돌리는 것은 언제나 된다. 모드는 `~/.local/state/atc/fleet-plan.json`에 두고, 바꿀 때마다 FLIGHT RECORDER에 `fleet-plan` `mode:` 줄을 남긴다.
   - 승인할 때 다시 확인한다. 최근 주기(10분 안)가 같은 제안을 여전히 내고, 8.5의 거절 조건을 통과해야 한다. 아니면 409 "조건이 바뀜"이다. id별 잠금으로 두 번 실행하지 않는다.

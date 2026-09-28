@@ -2,6 +2,25 @@
 
 FLEET 탭에서 팀(AIRCRAFT)을 꾸리고, 쉬게 하고, 퇴역시킨다. 팀 정보는 `~/.local/state/atc/fleet.json`에 저장되고 DISPATCH planner가 쓴다.
 
+## 운항 상태 목록
+
+FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 대가 한 줄이라, 지금 누가 무엇을 운항 중인지 한 화면에 보인다(10대면 1440×900 한 화면).
+
+| 열 | 뜻 |
+|---|---|
+| AIRCRAFT | callsign과 REGISTRATION(`HOTEL TEAM_H`) |
+| AIRPORT | 기지 AIRPORT |
+| STATUS | AIRBORNE(작업 중) · HOLDING(대기 중인데 STAND를 쥠) · PARKED(대기, 쥔 STAND 없음) · AOG · NORDO(세션이 죽었는데 점유가 남음) · NOT IN SERVICE(세션 없음) |
+| FLYING | 지금 쥔 STAND의 FLIGHT 번호와 제목 한 줄. 여러 개면 `+2`처럼 나머지 수 |
+| 경과 | 지금 쥔 STAND를 처음 잡은 뒤 흐른 시간(`3h05m`) |
+| 마지막 활동 | 세션이 마지막으로 움직인 때(`12분 전`) |
+| 이번 주 | 이번 주(월요일부터) ARRIVED 수와 정시율(기대 block time이 있는 FLIGHT만, 없으면 `—`) |
+
+- 순서는 AIRBORNE → HOLDING → PARKED, 그다음 NORDO · AOG · NOT IN SERVICE. 같은 상태 안에서는 AIRPORT 순서다.
+- 줄을 누르면(키보드 Enter·Space도) 그 AIRCRAFT의 카드가 아래에 펼쳐진다. 카드에는 CREW COMPLEMENT, OBSERVED CREW, TYPE RATING, ROUTE, TARGETS와 실적, 최근 FLIGHT, 그리고 LAUNCH · STOP · CREW BRIEFING · AOG · 퇴역 · 고치기 버튼이 그대로 있다. 다시 누르면 접힌다.
+- 오른쪽 위 **목록 / 카드**로 예전처럼 모든 카드를 펼친 보기로 바꿀 수 있다. 고른 보기는 이 브라우저에 기억한다(기억하지 못하면 목록).
+- 좁은 화면에서는 한 줄이 두 줄로 접힌다: 위는 AIRCRAFT · AIRPORT · STATUS, 아래는 FLYING · 경과 · 마지막 활동 · 이번 주.
+
 ## 팀 프로필
 
 | 항목 | 뜻 | planner가 쓰는 법 |

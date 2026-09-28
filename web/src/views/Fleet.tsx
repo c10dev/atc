@@ -1,5 +1,6 @@
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import type { AircraftView, CrewMember, FleetFile, Rating } from "../../../server/fleet.ts";
+import { elapsedText, type FleetRow, fleetRows, fleetStatusOf } from "../../../server/fleet-status.ts";
 import type { RulesView } from "../../../server/rules-state.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
@@ -14,6 +15,7 @@ import "./Fleet.css";
 // AOG(잠시 운항 중지), RETIREMENT(퇴역). LAUNCH·STOP: atc가 `claude --bg`로 세션을 띄우고 멈춘다(docs/fleet.md 8.5).
 // 사람이 직접 연 세션(데스크톱·터미널)은 CREW BRIEFING을 붙여 넣는 길도 그대로다.
 // FLEET PLAN: atc가 그 버튼들을 언제 쓰자고 제안하는지(docs/fleet.md 8.6, 그림자).
+// 운항 상태 목록(ATC-44): 기본은 AIRCRAFT 한 대가 한 줄인 목록. 줄을 누르면 그 AIRCRAFT의 카드가 펼쳐진다. 목록/카드 선택은 localStorage.
 
 interface Configuration {
   id: string;
@@ -48,21 +50,23 @@ interface SessionBrief {
   sessions: SessionRow[];
 }
 
-// RADAR·STRIPS와 같은 말: 작업 중 AIRBORNE, 대기 중 STAND를 쥐었으면 HOLDING, 아니면 PARKED
-const statusOf = (a: AircraftView) =>
-  a.retired
-    ? "RETIRED"
-    : a.aog
-      ? "AOG"
-      : a.status === "busy"
-        ? "AIRBORNE"
-        : a.status === "idle"
-          ? a.flying.length
-            ? "HOLDING"
-            : "PARKED"
-          : a.status === "dead"
-            ? "NORDO"
-            : "NOT IN SERVICE";
+const statusOf = fleetStatusOf;
+
+// 목록/카드 선택(ATC-44). 저장소를 못 쓰면 목록이 기본
+type Layout = "list" | "cards";
+const LAYOUT_KEY = "atc.fleet.layout";
+function loadLayout(): Layout {
+  try {
+    return localStorage.getItem(LAYOUT_KEY) === "cards" ? "cards" : "list";
+  } catch {
+    return "list";
+  }
+}
+function saveLayout(l: Layout) {
+  try {
+    localStorage.setItem(LAYOUT_KEY, l);
+  } catch {}
+}
 
 const ratingHelp: Record<Rating, string> = {
   SEC: "DB·마이그레이션·RLS·인증·권한·보안·권리·배포·결제 (Codex Engineering Task)",
@@ -90,6 +94,18 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
   const [control, setControl] = useState<SessionBrief | null>(null);
   const [controlError, setControlError] = useState<string | null>(null);
   const [launching, setLaunching] = useState<AircraftView | null>(null);
+  const [layout, setLayout] = useState<Layout>(loadLayout);
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const chooseLayout = (l: Layout) => {
+    setLayout(l);
+    saveLayout(l);
+  };
+  const toggleOpen = (reg: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(reg)) next.add(reg);
+      return next;
+    });
 
   const load = useCallback(async () => {
     try {
@@ -194,6 +210,26 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
   if (!brief) return <p className="empty">{error ? `불러오지 못함: ${error}` : "불러오는 중…"}</p>;
   const inService = brief.aircraft.filter((a) => !a.retired);
   const retired = brief.aircraft.filter((a) => a.retired);
+  // AIRCRAFT 한 대의 지금 카드(고치는 중이면 편집기). 목록에서 펼칠 때와 카드 보기에서 같이 쓴다
+  const cardOf = (a: AircraftView) =>
+    editing === a.registration ? (
+      <Editor key={a.registration} a={a} brief={brief} onCancel={() => setEditing(null)} onSave={(p) => save(a.registration, p)} />
+    ) : (
+      <Card
+        key={a.registration}
+        a={a}
+        onEdit={() => (setError(null), setEditing(a.registration))}
+        onBriefing={() => showBriefing(a.registration)}
+        onAog={() => toggleAog(a)}
+        onRetire={() => retire(a)}
+        session={control ? sessionOf(a.registration) : undefined}
+        onLaunch={() => (setError(null), setLaunching(a))}
+        onStop={() => stop(a)}
+        windowDays={brief.observedWindowDays}
+        dispatchMode={brief.dispatchMode}
+        onCrewChanged={load}
+      />
+    );
 
   return (
     <section className="fleet">
@@ -220,28 +256,30 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
       )}
       {controlError && <p className="fl-entry-preview faint">세션 조종을 쓸 수 없음(LAUNCH·STOP 숨김): {controlError}</p>}
       <FleetPlan refreshKey={refreshKey} onChanged={load} />
-      <div className="fl-cards">
-        {inService.map((a) =>
-          editing === a.registration ? (
-            <Editor key={a.registration} a={a} brief={brief} onCancel={() => setEditing(null)} onSave={(p) => save(a.registration, p)} />
-          ) : (
-            <Card
-              key={a.registration}
-              a={a}
-              onEdit={() => (setError(null), setEditing(a.registration))}
-              onBriefing={() => showBriefing(a.registration)}
-              onAog={() => toggleAog(a)}
-              onRetire={() => retire(a)}
-              session={control ? sessionOf(a.registration) : undefined}
-              onLaunch={() => (setError(null), setLaunching(a))}
-              onStop={() => stop(a)}
-              windowDays={brief.observedWindowDays}
-              dispatchMode={brief.dispatchMode}
-              onCrewChanged={load}
-            />
-          ),
-        )}
+      <div className="fl-layout" role="group" aria-label="FLEET 보기">
+        <h2 className="label">
+          AIRCRAFT <em>{inService.length}</em>
+        </h2>
+        <button className={`fl-layout-btn${layout === "list" ? " is-on" : ""}`} aria-pressed={layout === "list"} onClick={() => chooseLayout("list")}>
+          목록
+        </button>
+        <button className={`fl-layout-btn${layout === "cards" ? " is-on" : ""}`} aria-pressed={layout === "cards"} onClick={() => chooseLayout("cards")}>
+          카드
+        </button>
       </div>
+      {layout === "list" ? (
+        <StatusList
+          rows={fleetRows(inService, Date.now())}
+          open={open}
+          onToggle={toggleOpen}
+          detail={(reg) => {
+            const a = inService.find((x) => x.registration === reg);
+            return a ? cardOf(a) : null;
+          }}
+        />
+      ) : (
+        <div className="fl-cards">{inService.map(cardOf)}</div>
+      )}
       <Checkride refreshKey={refreshKey} onChanged={load} />
       {retired.length > 0 && (
         <>
@@ -270,6 +308,70 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
 }
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
+
+// 운항 상태 목록(ATC-44). 한 줄: REGISTRATION·callsign, AIRPORT, 상태, FLYING FLIGHT, 경과, 마지막 활동, 이번 주.
+// 줄(버튼)을 누르면 아래에 그 AIRCRAFT의 카드가 펼쳐진다(키보드로도)
+function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[]; open: ReadonlySet<string>; onToggle: (reg: string) => void; detail: (reg: string) => ReactNode }) {
+  const now = Date.now();
+  if (!rows.length) return <p className="fl-line faint">운항 중인 AIRCRAFT 없음</p>;
+  return (
+    <div className="fl-list">
+      <div className="fl-list-head" aria-hidden="true">
+        <span>AIRCRAFT</span>
+        <span>AIRPORT</span>
+        <span>STATUS</span>
+        <span>FLYING</span>
+        <span>경과</span>
+        <span>마지막 활동</span>
+        <span>이번 주</span>
+        <span />
+      </div>
+      <ul className="fl-rows">
+        {rows.map((r) => {
+          const isOpen = open.has(r.registration);
+          return (
+            <li key={r.registration} className={`fl-li st-${r.status.replace(/ /g, "-")}${isOpen ? " is-open" : ""}`}>
+              <button className="fl-row" aria-expanded={isOpen} aria-controls={`fl-detail-${r.registration}`} onClick={() => onToggle(r.registration)}>
+                <span className="fl-r-id">
+                  <b>{r.callsign}</b> <span className="mono faint">{r.registration}</span>
+                </span>
+                <span className="fl-r-apt">{r.airport ? <span className="apt">{r.airport}</span> : <span className="faint">—</span>}</span>
+                <span className="fl-r-status">{r.status}</span>
+                <span className="fl-r-flight" title={r.flight ? `${r.flight.key}${r.flight.title ? ` ${r.flight.title}` : ""}${r.more ? ` 외 ${r.more}건` : ""}` : undefined}>
+                  {r.flight ? (
+                    <>
+                      <b className="mono">{flightNumber(r.flight.key)}</b> {r.flight.title && <span className="fl-r-title">{r.flight.title}</span>}
+                      {r.more > 0 && <span className="fl-r-more">+{r.more}</span>}
+                    </>
+                  ) : (
+                    <span className="faint">—</span>
+                  )}
+                </span>
+                <span className="fl-r-elapsed mono" title="지금 쥔 STAND를 잡은 뒤 흐른 시간">
+                  {r.elapsedMin == null ? <span className="faint">—</span> : elapsedText(r.elapsedMin)}
+                </span>
+                <span className="fl-r-last" title={r.lastActiveAt ?? undefined}>
+                  {r.lastActiveAt ? timeAgo(r.lastActiveAt, now) : <span className="faint">—</span>}
+                </span>
+                <span className="fl-r-week" title="이번 주(월요일부터) ARRIVED와 정시율(기대 block time이 있는 FLIGHT만)">
+                  {r.week}건 · 정시 {r.weekOnTime == null ? "—" : pct(r.weekOnTime)}
+                </span>
+                <span className="fl-r-chev" aria-hidden="true">
+                  {isOpen ? "▾" : "▸"}
+                </span>
+              </button>
+              {isOpen && (
+                <div className="fl-detail" id={`fl-detail-${r.registration}`}>
+                  {detail(r.registration)}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 // block time: 45m, 3h30m, 2d4h
 function blockTime(min: number) {
