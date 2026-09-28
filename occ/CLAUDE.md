@@ -8,7 +8,7 @@
 
 1. **DISPATCH**: atc가 계산한 배정 제안(어떤 FLIGHT를 어떤 AIRCRAFT에)을 **검토하고 메모를 단다.** 승인·거절은 SUPERVISOR(사용자)가 atc의 DISPATCH 탭에서 한다.
 2. **운항 추적(flight following)**: 바퀴마다 `atcctl following`으로 배정된 FLIGHT의 단계를 보고 새로 생긴 지연·불일치를 SUPERVISOR에게 알린다. SUPERVISOR가 요청하거나 CAPTAIN의 보고가 오면, 그 PR의 최신 커밋·CI·리뷰를 읽기 전용 `gh`로 직접 확인하고 보고와 다른 점도 알린다.
-3. **SCHEDULE 초안(S1, 그림자 운용)**: 분류 라벨이나 우선순위가 없는 FLIGHT에 CLASSIFY·PRIORITIZE 초안을, PR이 머지됐는데(LOGBOOK ARRIVED) Linear가 아직 열린 FLIGHT에 CLOSE 초안을 쓴다. SUPERVISOR가 SCHEDULE 탭에서 "승인했을 것 / 거절했을 것"을 표시한다. Linear에는 아무것도 쓰지 않는다.
+3. **SCHEDULE 초안(S1, 그림자 운용)**: 분류 라벨이나 우선순위가 없는 FLIGHT에 CLASSIFY·PRIORITIZE 초안을, PR이 머지됐는데(LOGBOOK ARRIVED) Linear가 아직 열린 FLIGHT에 CLOSE 초안을, DISPATCH 밖에서 정한 배정(SUPERVISOR 지시, `tail:` 없이 팀이 몰고 있는 FLIGHT)에 TAIL 초안을 쓴다. SUPERVISOR가 SCHEDULE 탭에서 "승인했을 것 / 거절했을 것"을 표시한다. Linear에는 아무것도 쓰지 않는다.
 4. **CHARTER DESK(요청 창구)**: SUPERVISOR가 이 세션에서 직접 일을 요청하면(CHARTER REQUEST), 정기 스케줄(Linear)에 없는 그 일을 AD HOC FLIGHT(새 이슈) 초안으로 쓴다. S1이라 이것도 초안뿐이다.
 5. **Linear 읽기**: 티켓은 읽기만 한다. 초안이 Linear에 쓰이는 것은 S2(`schedule brief`의 `mode`가 approval)부터이고, 그때도 SUPERVISOR가 승인해 atc가 발부한 CALL만 쓴다("SCHEDULE 발부").
 
@@ -51,7 +51,7 @@
 | [`briefing.md`](.claude/skills/tick/briefing.md) | BRIEFING | `open`·`held`에 `briefing` 없는 제안 |
 | [`flight-plan.md`](.claude/skills/tick/flight-plan.md) | FLIGHT PLAN 전달 | (2b) `inFlight`의 approved·recalling, `overdue`, FLIGHT PLAN·RECALL 답장 |
 | [`crew-change.md`](.claude/skills/tick/crew-change.md) | CREW CHANGE 발부 | (2b) `crew-change brief`의 `approved`·`overdue`, CREW CHANGE 답장 |
-| [`schedule.md`](.claude/skills/tick/schedule.md) | SCHEDULE 초안(CLOSE 전에, CLASSIFY 전에), SCHEDULE 발부, TARGET·ROUTE 초안, WAYPOINT gap, CHARTER DESK | `schedule brief`의 후보·`waypointGaps`, S2 발부, 24시간 안에 쓴 TARGET·ROUTE 초안이 없을 때, CHARTER REQUEST |
+| [`schedule.md`](.claude/skills/tick/schedule.md) | SCHEDULE 초안(CLOSE 전에, TAIL 전에, CLASSIFY 전에), SCHEDULE 발부, TARGET·ROUTE 초안, WAYPOINT gap, CHARTER DESK | `schedule brief`의 후보·`waypointGaps`, S2 발부, 24시간 안에 쓴 TARGET·ROUTE 초안이 없을 때, CHARTER REQUEST |
 | [`following.md`](.claude/skills/tick/following.md) | 운항 추적 | `following`의 `fresh: true`, CAPTAIN 보고, SUPERVISOR 확인 요청 |
 
 ## 검토 기준 (2a·2b 공통)
@@ -87,7 +87,7 @@ HELD 제안은 SUPERVISOR가 판정하지 않고 "대기열로"(같은 제안을
 
 ## TAIL ASSIGNMENT (`tail:TEAM_X` 라벨)
 
-Linear 라벨 `tail:TEAM_X`가 붙은 FLIGHT는 planner가 그 AIRCRAFT에만 제안한다. 사람(지금은 President나 SUPERVISOR)이 팀을 정해 둔 것이다(`../docs/fleet.md`). 옛 이름 `lane:TEAM_X`도 2026-10-10까지는 같이 지켜지지만, 제외 사유에 바꾸라고 뜬다. 본문에 "TEAM_E가"처럼 팀이 적혀 있는데 라벨이 없으면 메모에 적는다(SCHEDULE `TAIL` 초안은 아직 없다. S1 초안은 CLASSIFY·PRIORITIZE·CLOSE와 CHARTER DESK의 NEW).
+Linear 라벨 `tail:TEAM_X`가 붙은 FLIGHT는 planner가 그 AIRCRAFT에만 제안한다. 사람(지금은 President나 SUPERVISOR)이 팀을 정해 둔 것이다(`../docs/fleet.md`). 옛 이름 `lane:TEAM_X`도 2026-10-10까지는 같이 지켜지지만, 제외 사유에 바꾸라고 뜬다. `tail:`을 붙이거나 바꾸는 것은 SCHEDULE `TAIL` 초안이다(`schedule.md` "TAIL 전에"). 본문에 "TEAM_E가"처럼 팀이 적혀 있는데 라벨이 없으면 메모에 적고, SUPERVISOR가 그 배정을 확인하면 TAIL 초안을 쓴다.
 
 ## OCC LOG
 

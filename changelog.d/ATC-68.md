@@ -1,0 +1,9 @@
+### Added
+- OCC SCHEDULE `TAIL` operation (ATC-68, [docs/occ.md](docs/occ.md) "TAIL as built", [docs/fleet.md](docs/fleet.md) "TAIL drafts as built"). Assignments made outside DISPATCH now end up as `tail:TEAM_X` labels instead of being added by hand.
+  - `atcctl schedule draft TAIL <FLIGHT> <TEAM_X> -- <reason>`. The payload is one REGISTRATION. atc refuses it when the REGISTRATION doesn't match `teamPattern`, isn't in FLEET or is RETIRED, when Linear has no `tail:TEAM_X` label (ENGINEERING or the user creates it; read-only label lookup in `server/sources/linear-labels.ts`), or when the FLIGHT already has that `tail:`. Unlike CLASSIFY and PRIORITIZE, any FLIGHT that isn't closed qualifies.
+  - Release is one `save_issue` with `addLabels` (the new `tail:`) and `removeLabels` (any other `tail:`), plus the `[OCC S-xxxx]` comment. Every other label stays, `lane:` included; state and assignee are never touched. APPLIED when the next Linear read shows the label.
+  - Changing another team's `tail:` while that team is AIRBORNE or holds the FLIGHT's STAND carries CAUTION on the draft.
+  - `schedule brief` lists `candidates.tail`: open FLIGHTs without `tail:` that a team is flying, with the evidence (STAND, DEPARTURE LOG in the last 7 days, or READBACK of a DISPATCH ASSIGN or TOWER CLEARANCE). atc never drafts from it.
+  - The SCHEDULE tab shows TAIL cards like PRIORITIZE (current `tail:`, changes, CAUTION, manual hint) and a TAIL candidate list; TAIL verdicts count toward the S2 gate. The OCC SCHEDULE procedure has a "TAIL 전에" section.
+  - Candidate meta lines on the SCHEDULE tab now wrap; a long CLOSE line pushed the page sideways at 390 px.
+  - An older atc reading `schedule.jsonl` after a rollback does not skip `TAIL` lines: it would close open TAIL drafts as SUPERSEDED on its next brief (and mark released ones APPLIED), without writing to Linear.

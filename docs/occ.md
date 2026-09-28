@@ -85,10 +85,10 @@ Built: `NEW` (CHARTER DESK, 5.1), `CLOSE` (5.5), `PRIORITIZE`, `CLASSIFY`, and `
 
 ### 5.1 Where operations come from
 
-- **The SUPERVISOR's instructions (CHARTER DESK)**: a CHARTER REQUEST made directly in the OCC session ("make a ticket for X") becomes a `NEW` draft, an AD HOC FLIGHT (a FLIGHT added outside the regular schedule). Once approved and in Linear Todo (S2) it is FILED like any other FLIGHT. Small ticketless work handed straight to a team is AD HOC and never becomes a SCHEDULE operation. OCC never drafts `NEW` on its own initiative, with one exception: a WAYPOINT exit criterion no issue covers (5.6), which carries over a criterion the SUPERVISOR already wrote. Its duplicate search (section 5.3) covers atc's snapshot, which holds issues updated in the last 45 days.
+- **The SUPERVISOR's instructions (CHARTER DESK)**: an assignment the SUPERVISOR states ("TEAM_E takes VOC-196") becomes a `TAIL` draft ("TAIL as built" below). A CHARTER REQUEST made directly in the OCC session ("make a ticket for X") becomes a `NEW` draft, an AD HOC FLIGHT (a FLIGHT added outside the regular schedule). Once approved and in Linear Todo (S2) it is FILED like any other FLIGHT. Small ticketless work handed straight to a team is AD HOC and never becomes a SCHEDULE operation. OCC never drafts `NEW` on its own initiative, with one exception: a WAYPOINT exit criterion no issue covers (5.6), which carries over a criterion the SUPERVISOR already wrote. Its duplicate search (section 5.3) covers atc's snapshot, which holds issues updated in the last 45 days.
 - **Team findings**: a CAPTAIN reports "found Y outside my scope" → `SPLIT`.
 - **PR reviews**: follow-up items in a review → `SPLIT`.
-- **atc signals**: done but still open (`CLOSE`), no priority (`PRIORITIZE`), a body-only prerequisite (`LINK`), neglected ENROUTE (the DISPATCH `RELEASE` case).
+- **atc signals**: done but still open (`CLOSE`), no priority (`PRIORITIZE`), flown by a team without a `tail:` (`TAIL`, "TAIL as built" below), a body-only prerequisite (`LINK`), neglected ENROUTE (the DISPATCH `RELEASE` case).
 - **Stage 4 network planning**: a goal broken down into tickets, as drafts only.
 - **WAYPOINT gaps** (5.6): exit criteria of the active or next WAYPOINT that no issue covers → `NEW` with the milestone.
 
@@ -162,6 +162,17 @@ The ROUTE MAP already knows each WAYPOINT's ETA and whether it is late ([routes.
 - **Report once.** Like FLIGHT FOLLOWING, each warning has a `key` (`<milestone id>:<code>`) and `fresh` (not reported yet). In `/tick` step 5, OCC writes each fresh warning as one line in the OCC LOG, reports it to the SUPERVISOR and runs `atcctl schedule slip-ack` (`POST /api/schedule/slips/ack`). Reported keys live in `waypoint-slips.json`; a warning that clears is forgotten, so it is fresh again if it comes back. When `eta-after-target` becomes `target-passed`, the key changes and OCC reports it once more. OCC doesn't message teams or draft anything because of a slip.
 - **Screen.** The SCHEDULE tab lists the warnings under **LATE WAYPOINTS** (code, ROUTE · WAYPOINT, target, ETA, days, and when OCC reported it), with a link to the ROUTE MAP.
 
+### TAIL as built (ATC-68)
+
+A `TAIL` operation sets a FLIGHT's `tail:TEAM_X` (TAIL ASSIGNMENT, [fleet.md](fleet.md)) to one AIRCRAFT, so an assignment made outside DISPATCH ends up as a label the planner respects.
+
+- **Payload.** One REGISTRATION (`atcctl schedule draft TAIL <FLIGHT> <TEAM_X> -- <reason>`, pure `parseTail` in `server/schedule-tail.ts`). atc refuses the draft when the REGISTRATION doesn't match `teamPattern`, isn't in FLEET (`fleet.json`) or is RETIRED, when Linear has no `tail:TEAM_X` label (read-only label lookup, 10-minute cache, refetched once on a miss; the reason says ENGINEERING or the user creates it, OCC never does), or when the FLIGHT already has that `tail:`. Any FLIGHT that isn't closed qualifies, In Progress included, unlike `CLASSIFY` and `PRIORITIZE`.
+- **Release.** One `save_issue` with `addLabels: ["tail:TEAM_X"]` and, when there is one, `removeLabels` with the other `tail:` labels, plus the usual `[OCC S-xxxx]` comment. The resulting label set is the current labels minus other `tail:` plus the new one (`tailLabelsOf`); every other label stays, the old `lane:` alias included. It never touches state or assignee. The call uses `addLabels`/`removeLabels` rather than `labels` (full replacement): atc's snapshot keeps at most 20 labels per issue and shows group labels as `type:BUILD` where Linear's name is `BUILD`, so rebuilding the full set could drop labels. APPLIED when the next fetch shows `tail:TEAM_X`; SUPERSEDED when the FLIGHT closes.
+- **CAUTION.** Changing another team's `tail:` while that team is AIRBORNE, or while it holds the FLIGHT's STAND, puts `caution` in the payload (shown on the SCHEDULE card and printed by `atcctl`). Such an operation is never automatic (section 7).
+- **Sources.** A SUPERVISOR instruction at the CHARTER DESK, and an atc signal: `schedule brief` lists `candidates.tail`, FLIGHTs not closed and without `tail:` that a team is flying, each with its `evidence`: `STAND` (the team holds the FLIGHT's STAND), `DEPARTURE LOG` (the last AIRCRAFT on a `departures.jsonl` line in the last 7 days) or `READBACK` (a DISPATCH ASSIGN accepted or departed, or a TOWER CLEARANCE read back). Only REGISTRATIONs that could be drafted appear, and FLIGHTs with an open `TAIL` operation are left out. atc never drafts from the signal; OCC reads it and decides (`occ/.claude/skills/tick/schedule.md`, "TAIL 전에").
+- **Gate.** Verdicts on `TAIL` count toward the S2 gate like `CLASSIFY` and `PRIORITIZE`. ATFM's S3 candidates stay `CLASSIFY` only.
+- **Section 8.** This is the `TAIL` operation that President's "assign work" row and "President retires" refer to. Their status wording is left for ENGINEERING to update after merge.
+
 ## 6. linear-guard
 
 linear-guard is part of `occ/mcp-guard.mjs`, the PreToolUse hook on all of OCC's MCP tools (matcher `mcp__.*`, fail-closed `… || exit 2`). Read tools pass as in S0. linear-guard judges the two Linear write tools, `save_issue` and `save_comment`. Every other write tool (relations, labels, GitHub) is blocked as in S0.
@@ -179,7 +190,7 @@ Everything else is blocked with `OCC MCP 차단 — …`. As with send-guard, OC
 
 A used call stays used: releasing the operation again returns the same calls with the same `used` marks, and nothing un-marks one. If the Linear write failed after the guard let it through, OCC reports it, and the SUPERVISOR makes the change in Linear by hand; atc still marks the operation APPLIED when the next fetch shows it (or it expires after 3 days).
 
-atc marks a released operation APPLIED when the next Linear fetch shows the change: for `NEW`, an issue with the same title (normalized) created after the draft; for `CLASSIFY` and `PRIORITIZE`, the labels or priority as drafted; for `CLOSE`, a Done or Canceled issue. If the change shows before the operation is released, it is SUPERSEDED instead.
+atc marks a released operation APPLIED when the next Linear fetch shows the change: for `NEW`, an issue with the same title (normalized) created after the draft; for `CLASSIFY` and `PRIORITIZE`, the labels or priority as drafted; for `TAIL`, the drafted `tail:` label; for `CLOSE`, a Done or Canceled issue. If the change shows before the operation is released, it is SUPERSEDED instead.
 
 ## 7. Flow and stages
 

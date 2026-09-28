@@ -136,6 +136,10 @@ Labels rather than Linear estimates: estimates are one number per team setting, 
 
 **Label groups.** atc reads a label inside a Linear label group as `group:name`: the Risk group's "Security" arrives as `Risk:Security`. So each axis works either as flat labels (`type:BUILD`) or as a Linear label group named `type` with children `BUILD` … `FERRY`. Groups are preferred for `type`, `wake` and `tail` because Linear's single-select groups allow only one value per issue. The old standalone labels `Risk: Security` etc. are read the same way. vocado's `Area` group (Database, Backend, Web, RN) is not used for ratings yet.
 
+### TAIL drafts as built (ATC-68)
+
+Who puts `tail:` on a FLIGHT (TAIL ASSIGNMENT). OCC drafts a SCHEDULE `TAIL` operation ([occ.md](occ.md) "TAIL as built"), from the SUPERVISOR's instruction at the CHARTER DESK or from the atc signal for a FLIGHT a team is already flying (STAND, DEPARTURE LOG or READBACK) with no `tail:`. Once approved and released, it sets the FLIGHT's `tail:` to that one REGISTRATION: other `tail:` labels come off, every other label stays (`lane:` too). The AIRCRAFT must be in FLEET and not RETIRED, and the flat Linear label `tail:TEAM_X` must already exist; ENGINEERING or the user creates it, OCC never does. The workspace uses flat `tail:TEAM_X` labels, not a `tail` group; a group child would not be found, so the draft is refused. Changing another team's `tail:` while it is AIRBORNE or holds the FLIGHT's STAND carries CAUTION. ENGINEERING and the user may still add a `tail:` by hand.
+
 ## 5. Planner rules
 
 Applied in this order. The first four are hard rules, and so is the `J` exclusion in rule 5: a FLIGHT that fails them is excluded with the reason, never given to another team.

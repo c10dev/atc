@@ -10,7 +10,7 @@ This is stage S1. OCC does five things:
 
 1. **DISPATCH**: **reviews and annotates** the assignment proposals atc computes (which FLIGHT to which AIRCRAFT). Approving or rejecting is done by the SUPERVISOR (the user) in atc's DISPATCH tab.
 2. **Flight following**: every pass, `atcctl following` shows the stages of assigned FLIGHTs, and new delays and mismatches go to the SUPERVISOR. When the SUPERVISOR asks or a CAPTAIN reports, it also checks that PR's head commit, CI and review itself with read-only `gh` and tells the SUPERVISOR where the report differs.
-3. **SCHEDULE drafts (S1, shadow operation)**: it drafts CLASSIFY and PRIORITIZE operations for FLIGHTs missing classification labels or a priority, and CLOSE for FLIGHTs whose PR was merged (LOGBOOK ARRIVED) while the Linear issue is still open. The SUPERVISOR marks each one "would approve / would reject" in the SCHEDULE tab. Nothing is written to Linear.
+3. **SCHEDULE drafts (S1, shadow operation)**: it drafts CLASSIFY and PRIORITIZE operations for FLIGHTs missing classification labels or a priority, CLOSE for FLIGHTs whose PR was merged (LOGBOOK ARRIVED) while the Linear issue is still open, and TAIL for assignments made outside DISPATCH (a SUPERVISOR instruction, or a FLIGHT a team is flying with no `tail:`). The SUPERVISOR marks each one "would approve / would reject" in the SCHEDULE tab. Nothing is written to Linear.
 4. **CHARTER DESK (request desk)**: when the SUPERVISOR asks for work directly in this session (a CHARTER REQUEST), it drafts that work, which is not on the regular schedule (Linear), as an AD HOC FLIGHT (new issue). In S1 this too is only a draft.
 5. **Reading Linear**: tickets are read only. Drafts are written to Linear only from S2.
 
@@ -53,7 +53,7 @@ These procedures are in `.claude/skills/tick/`. Read one only when its step has 
 | [`briefing.md`](.claude/skills/tick/briefing.en.md) | BRIEFING | a proposal in `open` or `held` has no `briefing` |
 | [`flight-plan.md`](.claude/skills/tick/flight-plan.en.md) | Sending FLIGHT PLANs | (2b) approved or recalling in `inFlight`, `overdue`, a FLIGHT PLAN or RECALL reply |
 | [`crew-change.md`](.claude/skills/tick/crew-change.en.md) | Sending CREW CHANGEs | (2b) `approved` or `overdue` in `crew-change brief`, a CREW CHANGE reply |
-| [`schedule.md`](.claude/skills/tick/schedule.en.md) | SCHEDULE drafts (Before a CLOSE, Before a CLASSIFY), SCHEDULE release, TARGET and ROUTE drafts, WAYPOINT gap, CHARTER DESK | candidates or `waypointGaps` in `schedule brief`, an S2 release, no TARGET or ROUTE draft in the last 24 hours, a CHARTER REQUEST |
+| [`schedule.md`](.claude/skills/tick/schedule.en.md) | SCHEDULE drafts (Before a CLOSE, Before a TAIL, Before a CLASSIFY), SCHEDULE release, TARGET and ROUTE drafts, WAYPOINT gap, CHARTER DESK | candidates or `waypointGaps` in `schedule brief`, an S2 release, no TARGET or ROUTE draft in the last 24 hours, a CHARTER REQUEST |
 | [`following.md`](.claude/skills/tick/following.en.md) | Flight following | `fresh: true` in `following`, a CAPTAIN's report, a check the SUPERVISOR asks for |
 
 ## Review rules (2a and 2b)
@@ -89,7 +89,7 @@ If the body or comments leave the start to a person, put a HOLD without a prereq
 
 ## TAIL ASSIGNMENT (`tail:TEAM_X` labels)
 
-A FLIGHT with the Linear label `tail:TEAM_X` is proposed only to that AIRCRAFT. A person (President or the SUPERVISOR for now) chose the team ([`../docs/fleet.md`](../docs/fleet.md)). The old name `lane:TEAM_X` is still honored until 2026-10-10, with a note in the exclusion reason to change it. If the body names a team ("TEAM_E가 …") but there is no label, say so in the note (there is no SCHEDULE `TAIL` draft yet; S1 drafts are CLASSIFY, PRIORITIZE, CLOSE, and NEW from the CHARTER DESK).
+A FLIGHT with the Linear label `tail:TEAM_X` is proposed only to that AIRCRAFT. A person (President or the SUPERVISOR for now) chose the team ([`../docs/fleet.md`](../docs/fleet.md)). The old name `lane:TEAM_X` is still honored until 2026-10-10, with a note in the exclusion reason to change it. Adding or changing a `tail:` is a SCHEDULE `TAIL` draft (`schedule.md` "Before a TAIL"). If the body names a team ("TEAM_E가 …") but there is no label, say so in the note, and draft a TAIL once the SUPERVISOR confirms the assignment.
 
 ## OCC LOG
 
