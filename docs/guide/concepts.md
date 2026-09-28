@@ -110,6 +110,8 @@ CLEARED TO LAND 조건 — 모두 PR의 **최신 커밋(head)** 기준이다.
 | FLIGHT PLAN | OCC가 승인된 배정을 CAPTAIN에게 보내는 문구(`[DISPATCH D-0003]`, 2b부터). DIRECT 지시서다 |
 | DIRECT | 목표, 완료 기준, 이 작업만의 제약, "끝까지 한 번에"만 담은 지시서. `BRIEF: DIRECT` 줄이 있다 |
 | VECTORS | 지금까지의 지시서: 번호 붙은 구현 단계, 전체 템플릿, 방향마다 묻기. `BRIEF: DIRECT`가 없으면 VECTORS로 센다 |
+| SOLO | CAPTAIN이 직접 구현한 FLIGHT. 서브에이전트는 조사·리뷰·문서만 도왔다 |
+| CREW | 구현을 팀원에게 나눈 FLIGHT. 서브에이전트가 STAND에 코드를 썼다 |
 | PILOT'S DISCRETION | DIRECT FLIGHT 안에서 흔한 애매함은 팀이 기본값을 골라 PR에 적고 계속 간다. SUPERVISOR 결정(guard, 기록 형식, 승인 게이트)만 묻는다 |
 | READBACK | 받았다는 확인(`READBACK C-0007`) |
 | HOLD | 선행 작업이나 사람 결정을 기다리게 잡아 둔 제안 |

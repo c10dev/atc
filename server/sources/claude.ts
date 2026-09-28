@@ -209,7 +209,7 @@ export function inferTranscriptClaim(s: SessionFile, workspaces: Workspace[]): C
 // 사건에는 본문을 두지 않는다(briefs.ts talkEventsOf)
 const talkCache = new Map<string, { size: number; events: TalkEvent[] }>();
 const TALK_CHUNK = 4 * 1024 * 1024;
-export function talkEventsFile(path: string): TalkEvent[] {
+export function talkEventsFile(path: string, source: "leader" | "crew" = "leader"): TalkEvent[] {
   let size: number;
   try {
     size = statSync(path).size;
@@ -233,7 +233,7 @@ export function talkEventsFile(path: string): TalkEvent[] {
         if (n === TALK_CHUNK) pos += n; // 4MB를 넘는 한 줄은 건너뛴다
         break;
       }
-      events.push(...talkEventsOf(buf.toString("utf8", 0, cut)));
+      events.push(...talkEventsOf(buf.toString("utf8", 0, cut), source));
       pos += cut + 1;
     }
     hit = { size: pos, events };
@@ -242,4 +242,15 @@ export function talkEventsFile(path: string): TalkEvent[] {
   } finally {
     closeSync(fd);
   }
+}
+
+// 세션 폴더 하나의 사건: 본 대화 기록(leader)과 서브에이전트 기록의 파일 쓰기(crew, ATC-33)
+export function sessionEventsOf(dir: string): TalkEvent[] {
+  const out = talkEventsFile(`${dir}.jsonl`, "leader");
+  let subs: string[] = [];
+  try {
+    subs = readdirSync(join(dir, "subagents")).filter((f) => f.endsWith(".jsonl"));
+  } catch {}
+  for (const f of subs) out.push(...talkEventsFile(join(dir, "subagents", f), "crew"));
+  return out;
 }

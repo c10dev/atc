@@ -104,10 +104,14 @@ export function formatAssignment(t: { key: string; title: string | null; url: st
 //   in:  받은 메시지(다른 세션의 cross-session 메시지, 사용자가 친 메시지) — 시각, 보낸 세션, FLIGHT key, D-xxxx, BRIEF 줄
 //   out: 보낸 SendMessage — 시각, 받는 곳, FLIGHT key, D-xxxx, READBACK인지, PR 보고인지
 //   ask: AskUserQuestion 호출 시각
+//   write: 파일을 쓴 도구 호출(Edit·Write·MultiEdit·NotebookEdit) — 시각, 누가(leader·crew), 대상 경로(ATC-33)
+
+export type CrewMode = "SOLO" | "CREW";
+export const CREW_MODES: CrewMode[] = ["SOLO", "CREW"];
 
 export interface TalkEvent {
   t: string;
-  dir: "in" | "out" | "ask";
+  dir: "in" | "out" | "ask" | "write";
   from?: string | null; // in: cross-session from(주소). 사용자가 친 메시지면 null
   fromName?: string | null; // in: from-name(structure, OCC …)
   to?: string; // out
@@ -116,7 +120,11 @@ export interface TalkEvent {
   brief?: BriefKind | null; // in: BRIEF 줄
   readback?: boolean; // out
   report?: boolean; // out: PR 번호를 알림
+  by?: "leader" | "crew"; // write: 본 대화 기록(CAPTAIN)이면 leader, 서브에이전트 기록이면 crew
+  path?: string; // write: 쓴 파일(메모리에만 둔다)
 }
+
+const WRITE_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 
 const keysIn = (text: string) => {
   const out = new Set<string>();
@@ -134,20 +142,23 @@ function textOf(content: unknown): string | null {
   return texts.length ? texts.join("\n") : null;
 }
 
-// 대화 기록 조각(여러 줄) → 사건. 서브에이전트 줄(isSidechain)과 도구 결과는 뺀다
-export function talkEventsOf(text: string): TalkEvent[] {
+// 대화 기록 조각(여러 줄) → 사건. 도구 결과는 뺀다.
+// leader: CAPTAIN의 본 대화 기록 — 서브에이전트 줄(isSidechain)은 빼고 모든 사건.
+// crew: 서브에이전트 기록(subagents/agent-*.jsonl) — 파일 쓰기(write)만
+export function talkEventsOf(text: string, source: "leader" | "crew" = "leader"): TalkEvent[] {
   const out: TalkEvent[] = [];
+  const crew = source === "crew";
   for (const line of text.split("\n")) {
-    if (!line || !(line.includes('"type":"user"') || line.includes('"SendMessage"') || line.includes('"AskUserQuestion"'))) continue;
+    if (!line || !(line.includes('"tool_use"') || (!crew && line.includes('"type":"user"')))) continue;
     let d: { type?: string; timestamp?: string; isSidechain?: boolean; isMeta?: boolean; message?: { content?: unknown } };
     try {
       d = JSON.parse(line);
     } catch {
       continue;
     }
-    if (d.isSidechain || typeof d.timestamp !== "string") continue;
+    if ((d.isSidechain && !crew) || typeof d.timestamp !== "string") continue;
     const t = d.timestamp;
-    if (d.type === "user") {
+    if (d.type === "user" && !crew) {
       const body = textOf(d.message?.content);
       if (!body) continue;
       const cross = /<cross-session-message\b([^>]*)>/.exec(body);
@@ -158,8 +169,20 @@ export function talkEventsOf(text: string): TalkEvent[] {
       if (!keys.length && !ids.length) continue;
       out.push({ t, dir: "in", from: cross ? attr(cross[1], "from") : null, fromName: cross ? attr(cross[1], "from-name") : null, keys, ids, brief: briefLineOf(body) });
     } else if (d.type === "assistant" && Array.isArray(d.message?.content)) {
-      for (const b of d.message.content as { type?: string; name?: string; input?: { to?: unknown; message?: unknown } }[]) {
+      for (const b of d.message.content as { type?: string; name?: string; input?: { to?: unknown; message?: unknown; file_path?: unknown; notebook_path?: unknown } }[]) {
         if (b?.type !== "tool_use") continue;
+        if (WRITE_TOOLS.has(b.name ?? "")) {
+          const path = b.input?.file_path ?? b.input?.notebook_path;
+          if (typeof path === "string" && path.startsWith("/")) out.push({ t, dir: "write", by: source, path, keys: [], ids: [] });
+          continue;
+        }
+        if (crew) continue;
+        // CAPTAIN이 Bash(python·sed 등)로 고친 것도 잡으려고, 명령에 적힌 /home/… 경로를 CAPTAIN 작업으로 센다. 명령 본문은 두지 않는다
+        if (b.name === "Bash" && typeof (b.input as { command?: unknown })?.command === "string") {
+          const paths = new Set(((b.input as { command: string }).command.match(/\/home\/[^\s'"`;|&()<>]+/g) ?? []).map((x) => x.replace(/[,.:]+$/, "")));
+          for (const path of paths) out.push({ t, dir: "write", by: "leader", path, keys: [], ids: [] });
+          continue;
+        }
         if (b.name === "AskUserQuestion") out.push({ t, dir: "ask", keys: [], ids: [] });
         if (b.name !== "SendMessage") continue;
         const msg = typeof b.input?.message === "string" ? b.input.message : JSON.stringify(b.input?.message ?? "");
@@ -207,6 +230,22 @@ export function briefFactsOf(events: TalkEvent[], flight: string, openedAt: stri
   return { kind: brief.brief === "DIRECT" ? "DIRECT" : "VECTORS", at: brief.t, by: brief.fromName ?? null, readbackAt: rb?.t ?? null, questions };
 }
 
+// ── SOLO·CREW(ATC-33): FLIGHT를 CAPTAIN 혼자 구현했나, 팀원에게 나눴나 ──
+// 신호: FLIGHT의 STAND 안 파일을 쓴 도구 호출. 서브에이전트(crew)가 Edit·Write 등으로 문서 밖 파일을 하나라도 썼으면
+// CREW, 아니고 CAPTAIN(leader)이 STAND 안에서 일했으면(쓰기, 또는 STAND 경로를 적은 Bash) SOLO.
+// 문서(.md·.mdx·.txt)만 쓴 서브에이전트는 도움으로 본다. 서브에이전트의 Bash는 세지 않는다(대개 시험 실행).
+// STAND 안 흔적이 하나도 없으면(다른 세션이 했거나 기록이 없음) null — 모름.
+const DOC_FILE = /\.(?:md|mdx|txt)$/i;
+export function crewModeOf(events: TalkEvent[], stands: string[], from: string, to: string): CrewMode | null {
+  if (!stands.length) return null;
+  const inStand = (p: string) => stands.some((s) => p === s || p.startsWith(`${s}/`));
+  const [lo, hi] = [Date.parse(from), Date.parse(to)];
+  const writes = events.filter((e) => e.dir === "write" && e.path && Date.parse(e.t) >= lo && Date.parse(e.t) <= hi && inStand(e.path) && !DOC_FILE.test(e.path));
+  if (writes.some((e) => e.by === "crew")) return "CREW";
+  if (writes.some((e) => e.by === "leader")) return "SOLO";
+  return null;
+}
+
 // ── GitHub 쪽: P0–P2 지적, PR 뒤 수정 커밋 ──
 
 export interface Findings {
@@ -249,6 +288,7 @@ export interface Measured {
   brief?: BriefFacts | null; // null: 지시서를 찾지 못함(AD HOC 포함). 없으면 아직 안 잼
   findings?: Findings;
   rework?: number;
+  crew?: CrewMode | null; // SOLO·CREW(ATC-33). null: 모름. 없으면 아직 안 잼
 }
 export interface BriefRow {
   key: string;
@@ -256,6 +296,7 @@ export interface BriefRow {
   aircraft: string | null;
   arrivedAt: string;
   kind: BriefKind;
+  crew: CrewMode | null;
   by: string | null;
   questions: number;
   readbackToPrMin: number;
@@ -291,6 +332,7 @@ export function briefRowOf(e: { key: string; flight: string | null; aircraft: st
     aircraft: e.aircraft,
     arrivedAt: e.arrivedAt,
     kind: b.kind,
+    crew: e.measured?.crew ?? null,
     by: b.by,
     questions: b.questions,
     readbackToPrMin: Math.max(0, Math.round((opened - Date.parse(b.readbackAt ?? b.at)) / 60_000)),
@@ -314,18 +356,25 @@ export function briefStatsOf(rows: BriefRow[]): BriefStats {
   };
 }
 
-// 기간 안에 도착한 FLIGHT를 지시서 종류별로 나눈다. unmeasured: 아직 재지 않았거나 지시서를 못 찾은 수
+// 기간 안에 도착한 FLIGHT를 지시서 종류별로, SOLO·CREW별로, 둘을 겹쳐(2×2) 나눈다.
+// unmeasured: 아직 재지 않았거나 지시서를 못 찾은 수. crewUnknown: 행 중 SOLO·CREW를 모르는 수
+export type GridKey = `${BriefKind}·${CrewMode}`;
 export function compareBriefs(
   entries: Parameters<typeof briefRowOf>[0][],
   now: number,
   days: number,
-): { rows: BriefRow[]; stats: Record<BriefKind, BriefStats>; unmeasured: number } {
+): { rows: BriefRow[]; stats: Record<BriefKind, BriefStats>; crewStats: Record<CrewMode, BriefStats>; grid: Record<GridKey, BriefStats>; unmeasured: number; crewUnknown: number } {
   const since = now - days * 86_400_000;
   const inWindow = entries.filter((e) => Date.parse(e.arrivedAt) >= since && Date.parse(e.arrivedAt) <= now);
   const rows = inWindow.map(briefRowOf).filter((r) => r !== null).sort((a, b) => b.arrivedAt.localeCompare(a.arrivedAt));
+  const grid = {} as Record<GridKey, BriefStats>;
+  for (const k of BRIEF_KINDS) for (const c of CREW_MODES) grid[`${k}·${c}`] = briefStatsOf(rows.filter((r) => r.kind === k && r.crew === c));
   return {
     rows,
     stats: { VECTORS: briefStatsOf(rows.filter((r) => r.kind === "VECTORS")), DIRECT: briefStatsOf(rows.filter((r) => r.kind === "DIRECT")) },
+    crewStats: { SOLO: briefStatsOf(rows.filter((r) => r.crew === "SOLO")), CREW: briefStatsOf(rows.filter((r) => r.crew === "CREW")) },
+    grid,
     unmeasured: inWindow.length - rows.length,
+    crewUnknown: rows.filter((r) => r.crew === null).length,
   };
 }

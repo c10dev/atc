@@ -325,6 +325,8 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 |---|---|
 | **VECTORS** | 지금까지의 지시서. 관제가 방향을 하나씩 준다: 번호 붙은 구현 단계, 전체 템플릿, "구현 전에 묻기" |
 | **DIRECT** | 새 지시서. 목표로 "cleared direct". 목표, 완료 기준, 이 작업만의 제약, "끝까지 한 번에"만 담는다. 경로는 팀이 정한다 |
+| **SOLO** | CAPTAIN이 FLIGHT를 구현했고 서브에이전트는 도움(조사, 리뷰, 문서)만 했다. 2026-09-28부터 vocado `CLAUDE.md`는 리더가 직접 구현하고 WAKE H나 여러 영역에 걸친 일만 나눈다 |
+| **CREW** | 구현을 나눴다: 팀원(서브에이전트)이 하나 이상 FLIGHT의 STAND에 코드를 썼다 |
 | **PILOT'S DISCRETION** | DIRECT FLIGHT 안에서 흔한 애매함은 팀이 스스로 푼다. 합리적인 기본값을 고르고 PR에 적고 계속 간다. 정말 SUPERVISOR가 정할 일(guard, 기록 형식, 승인 게이트, SUPERVISOR 몫인 것)만 멈춰서 묻는다 |
 
 AUTOPILOT이라는 말은 쓰지 않는다. 기계가 날고 조종사는 지켜본다는 뜻이라 SUPERVISOR의 게이트가 꺼진 것처럼 들리고, 나중의 진짜 자동화(AUTOLAND 같은)를 위해 남겨 둔다.
@@ -341,7 +343,7 @@ AUTOPILOT이라는 말은 쓰지 않는다. 기계가 날고 조종사는 지켜
 **재기.** FLIGHT를 시작한 메시지에 `BRIEF: DIRECT` 줄이 있으면 DIRECT, 아니면 VECTORS다. 그래서 이 변경 전 FLIGHT는 모두 VECTORS로 센다. LOGBOOK 바퀴(10분마다)가 최근 30일 ARRIVED FLIGHT마다 `measured` 줄을 더한다(`server/logbook.ts` `measureLines`). 빈 칸만 채우고 이미 쓴 값은 바꾸지 않는다.
 
 ```json
-{"op":"measured","t":"…","key":"owner/repo#85","brief":{"kind":"DIRECT","at":"…","by":"structure","readbackAt":"…","questions":0},"rework":1,"findings":{"p0":0,"p1":1,"p2":0}}
+{"op":"measured","t":"…","key":"owner/repo#85","brief":{"kind":"DIRECT","at":"…","by":"structure","readbackAt":"…","questions":0},"crew":"SOLO","rework":1,"findings":{"p0":0,"p1":1,"p2":0}}
 ```
 
 | 칸 | 출처 |
@@ -349,12 +351,13 @@ AUTOPILOT이라는 말은 쓰지 않는다. 기계가 날고 조종사는 지켜
 | `brief` | 그 AIRCRAFT 세션들의 대화 기록(OBSERVED CREW가 잇는 세션과 같다: 살아 있는 세션 이름이나 `custom-title.json`). 지시서는 팀의 READBACK 직전에 받은, 그 FLIGHT를 언급한 마지막 메시지다. READBACK이 없으면 착수 12시간 전 이후의 첫 메시지. `by`는 보낸 세션 이름. AD HOC이거나 지시서를 못 찾으면 `null`, AIRCRAFT나 대화 기록을 아직 모르면 비워 둔다 |
 | `readbackAt` | 팀이 보낸 SendMessage 중 READBACK과 그 FLIGHT key(또는 FLIGHT PLAN의 `D-xxxx`)가 든 첫 것 |
 | `questions` | 중간 질문: READBACK(없으면 지시서) 뒤 PR을 열기 전까지, 지시한 세션에 보낸 SendMessage(READBACK·PR 보고·팀원에게 보낸 것은 뺌)와 AskUserQuestion 호출 |
+| `crew` | **SOLO**·**CREW**(ATC-33): 팀이 어떻게 날았나. 신호는 착수(또는 PR) 하루 전부터 머지까지 FLIGHT의 STAND 안 쓰기다. AIRCRAFT의 서브에이전트(`subagents/agent-*.jsonl`)가 Edit·Write·MultiEdit·NotebookEdit로 문서 밖 파일을 하나라도 썼으면 CREW, 서브에이전트는 안 썼고 CAPTAIN이 그 안에서 일했으면(그 도구들, 또는 STAND 경로를 적은 Bash. CAPTAIN이 python·sed로 고치는 일이 많아서) SOLO. `.md`·`.mdx`·`.txt`는 도움으로 보고, 서브에이전트의 Bash(대개 시험 실행)는 세지 않는다. STAND 안에 흔적이 없으면(다른 세션이 했거나, STAND를 모르거나, 대화 기록이 없음) `null`. 따로 세션으로 도는 agent team 팀원은 OBSERVED CREW처럼 보이지 않는다. ATC-33 전에 쓴 줄은 나중 `measured` 줄이 `crew`만 채운다 |
 | `rework` | PR을 연 뒤 작성된 PR 커밋 수, 병합 커밋 제외(rebase해도 작성 시각은 그대로라 다시 세지 않는다) |
 | `findings` | P0–P2: Codex 인라인 스레드(배지, 없으면 P2, P3는 뺌) + 외부 착륙 리뷰(head마다 마지막 리뷰). LANDING과 같은 리뷰 스레드 질의로, 한 바퀴에 PR 10건씩 읽는다 |
 
-atc는 대화 기록에서 필요한 줄만 읽고(받은 메시지, SendMessage·AskUserQuestion 호출. 서브에이전트 줄과 도구 결과는 뺌) 시각, 받는 곳, FLIGHT key, 표시만 메모리에 두며, 위의 수만 적는다. 대화 기록은 지난번에 읽은 곳부터 이어 읽는다.
+atc는 대화 기록에서 필요한 줄만 읽고(받은 메시지, SendMessage·AskUserQuestion 호출, 파일 쓰기 도구 호출과 CAPTAIN의 Bash 명령. 서브에이전트 기록에서는 파일 쓰기 호출만. 도구 결과는 읽지 않음) 시각, 받는 곳, FLIGHT key, 표시, 쓴 경로만 메모리에 두며, 위의 수와 구분만 적는다. 대화 기록은 지난번에 읽은 곳부터 이어 읽는다.
 
-**비교.** DISPATCH 탭의 FLIGHT FOLLOWING 아래 **VECTORS · DIRECT** 판이 14·30·90일 동안의 FLIGHT 수, FLIGHT당 중간 질문, 질문 없이 끝낸 비율, READBACK → PR 중앙값, FLIGHT당 P0–P2 지적, FLIGHT당 PR 뒤 수정 커밋을 나란히 보여 주고, FLIGHT별 행을 아래에 접어 둔다. `GET /api/logbook/briefs?days=30`은 `{days, rows, stats: {VECTORS, DIRECT}, unmeasured}`를 돌려준다. 보여 주기만 하고 점수나 배정에 쓰지 않는다. 한쪽이라도 5건 미만이면 표본 부족이라고 적는다.
+**비교.** DISPATCH 탭의 FLIGHT FOLLOWING 아래 **VECTORS · DIRECT** 판이 지시서별, SOLO·CREW별, 둘을 겹친 2×2로 묶어 14·30·90일 동안의 FLIGHT 수, FLIGHT당 중간 질문, 질문 없이 끝낸 비율, READBACK → PR 중앙값, FLIGHT당 P0–P2 지적, FLIGHT당 PR 뒤 수정 커밋을 나란히 보여 주고, FLIGHT별 행을 아래에 접어 둔다. `GET /api/logbook/briefs?days=30`은 `{days, rows, stats: {VECTORS, DIRECT}, crewStats: {SOLO, CREW}, grid: {"VECTORS·SOLO", …}, unmeasured, crewUnknown}`를 돌려준다. 행에는 `crew`가 있고, `crew: null`인 행은 SOLO·CREW 묶음에서 빠진다. 보여 주기만 하고 점수나 배정에 쓰지 않는다. 한쪽이라도 5건 미만이면 표본 부족이라고 적는다.
 
 Not built yet: vocado 쪽 템플릿(vocado `CLAUDE.md`의 네 칸 규칙, Linear `Codex Engineering Task` 템플릿)은 SUPERVISOR가 고친다. 맞춰 고칠 문구는 ATC-32 PR에 제안했다.
 

@@ -24,6 +24,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- VECTORS 대 DIRECT 옆에 SOLO 대 CREW(ATC-33, [docs/dispatch.ko.md](docs/dispatch.ko.md) "DIRECT briefs"). `measured` 줄에 `crew: "SOLO" | "CREW" | null`이 붙는다: 서브에이전트가 FLIGHT의 STAND에 문서 밖 파일을 썼으면 CREW, CAPTAIN만 일했으면 SOLO, 모르면 `null`. 지난 FLIGHT도 대화 기록에 드러나면 채운다. DISPATCH 비교판은 지시서별, SOLO·CREW별, 2×2로 묶는다. 용어: SOLO, CREW.
 - VECTORS 대 DIRECT 비교(ATC-32). LOGBOOK이 최근 30일 FLIGHT마다 `measured` 줄을 더한다: 지시서 종류(FLIGHT를 시작한 메시지의 `BRIEF: DIRECT` 줄, AIRCRAFT 세션 대화 기록에서 읽음. 그 전 것은 모두 VECTORS), READBACK 시각, 중간 질문, PR 뒤 수정 커밋, P0–P2 지적(Codex 스레드와 착륙 리뷰). DISPATCH 탭이 14·30·90일로 나란히 보여 준다(`GET /api/logbook/briefs`). 대화 기록에서는 시각, 받는 곳, FLIGHT key, 표시만 둔다.
 - 용어: DIRECT, VECTORS, PILOT'S DISCRETION(README, DOCS 개념과 용어).
 - ATFM 머지 슬롯 켜기 판단 숫자(ATC-22, [docs/atfm.ko.md](docs/atfm.ko.md) 5장). AIRPORT마다 7일 동안 나간 LAND, 같은 AIRPORT의 다른 LAND와 동시에 살아 있던 LAND 수, LAND → 머지 중앙값, 30분 안에 머지되지 않은 LAND(`GET /api/atfm`의 `data.lands`). 슬롯 스위치 아래 "켜기 판단 (7일)"에 머지당 BEHIND와 함께 보인다. SUPERVISOR가 슬롯을 켜기 전에 비교하는 숫자다.

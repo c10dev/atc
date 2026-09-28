@@ -7,10 +7,10 @@ import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig } from "./dispatch.ts";
 import { type GhThread, isCodexBot, type LandingReview } from "./landing.ts";
 import { keyInName, teamOfKey } from "./linear-keys.ts";
 import type { Claim, Snapshot, TrafficEvent } from "./model.ts";
-import { briefFactsOf, compareBriefs, findingsOf, type Measured, reworkOf, type TalkEvent } from "./briefs.ts";
+import { briefFactsOf, compareBriefs, crewModeOf, findingsOf, type Measured, reworkOf, type TalkEvent } from "./briefs.ts";
 import { readRecords } from "./recorder.ts";
 import { type Departure, matchDepartures, readDepartures } from "./departures.ts";
-import { readHookClaims, talkEventsFile } from "./sources/claude.ts";
+import { readHookClaims, sessionEventsOf } from "./sources/claude.ts";
 import { sessionDirsOf } from "./crew-observed.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
@@ -118,6 +118,7 @@ export function foldLogbook(lines: LogLine[]): LogEntry[] {
       if (l.brief !== undefined && m.brief === undefined) m.brief = l.brief;
       if (l.findings !== undefined && m.findings === undefined) m.findings = l.findings;
       if (l.rework !== undefined && m.rework === undefined) m.rework = l.rework;
+      if (l.crew !== undefined && m.crew === undefined) m.crew = l.crew;
       e.measured = m;
     }
   }
@@ -273,7 +274,7 @@ export const THREADS_PER_RUN = 10; // 한 바퀴에 지적을 읽을 머지 PR �
 
 export interface MeasureInputs {
   pulls: Map<string, GhMerged>; // LOGBOOK key → 이번에 읽은 머지 PR(commits 포함)
-  eventsOf: (aircraft: string) => TalkEvent[] | null; // 그 AIRCRAFT 세션들의 대화 기록 사건. 이어진 세션이 없으면 null
+  eventsOf: (aircraft: string) => TalkEvent[] | null; // 그 AIRCRAFT 세션들의 대화 기록 사건(서브에이전트 쓰기 포함). 이어진 세션이 없으면 null
   threads: Map<string, GhThread[]>; // LOGBOOK key → 리뷰 스레드(읽은 것만)
   reviews: LandingReview[];
 }
@@ -284,7 +285,8 @@ export function needsFindings(entries: LogEntry[], pulls: Map<string, GhMerged>,
   return entries.filter((e) => Date.parse(e.arrivedAt) >= since && e.measured?.findings === undefined && pulls.has(e.key));
 }
 
-// 재야 할 칸: 지시서(FLIGHT·AIRCRAFT와 대화 기록이 있어야), 수정 커밋(PR을 이번에 읽었을 때), 지적(스레드를 읽었을 때)
+// 재야 할 칸: 지시서(FLIGHT·AIRCRAFT와 대화 기록이 있어야), SOLO·CREW(AIRCRAFT와 대화 기록이 있어야),
+// 수정 커밋(PR을 이번에 읽었을 때), 지적(스레드를 읽었을 때)
 export function measureLines(entries: LogEntry[], inp: MeasureInputs, now: number): LogLine[] {
   const since = now - MEASURE_DAYS * DAY;
   const t = new Date(now).toISOString();
@@ -301,6 +303,12 @@ export function measureLines(entries: LogEntry[], inp: MeasureInputs, now: numbe
         const events = inp.eventsOf(e.aircraft);
         if (events) line.brief = briefFactsOf(events, e.flight, openedAt, e.departedAt);
       }
+    }
+    // SOLO·CREW: 착수(또는 PR) 하루 전부터 머지까지 STAND 안 쓰기. 기록에 없으면 null로 굳힌다
+    if (m.crew === undefined && e.aircraft) {
+      const events = inp.eventsOf(e.aircraft);
+      const from = new Date(Math.min(Date.parse(e.departedAt) || Infinity, Date.parse(openedAt)) - DAY).toISOString();
+      if (events) line.crew = crewModeOf(events, e.stands, from, e.arrivedAt);
     }
     if (m.rework === undefined && pr?.commits) line.rework = reworkOf(pr.commits, openedAt);
     const threads = inp.threads.get(e.key);
@@ -447,7 +455,7 @@ async function measure(s: Snapshot, merged: { ctx: EntryContext; pulls: GhMerged
   const eventsOf = (aircraft: string) => {
     if (!byAircraft.has(aircraft)) {
       const dirs = sessionDirsOf(aircraft, s.sessions, now, MEASURE_DAYS + 14);
-      byAircraft.set(aircraft, dirs && dirs.flatMap((d) => talkEventsFile(`${d}.jsonl`)).sort((a, b) => a.t.localeCompare(b.t)));
+      byAircraft.set(aircraft, dirs && dirs.flatMap(sessionEventsOf).sort((a, b) => a.t.localeCompare(b.t)));
     }
     return byAircraft.get(aircraft)!;
   };
