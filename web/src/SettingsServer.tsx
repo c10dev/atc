@@ -539,8 +539,8 @@ function GroundStopRow({ stop, check, refresh }: { stop: ServerSettings["autolan
 }
 
 // 관제 세션(docs/fleet.md 8.5.1). TOWER·OCC·MCC는 atc가 그 폴더에서 `claude --bg`로 띄우고 멈춘다.
-// 데스크톱·tmux로 연 세션은 떠 있다고만 보이고, 그 창에서 닫는다. REVIEW·CROSSCHECK는 ocx라 tmux로 띄운다
-type ControlLive = { id?: string; name?: string; kind: string; status?: string };
+// tmux로 연 세션도 STOP한다(그 pane만 닫음, 묻고 나서). 데스크톱 세션은 그 창에서 닫는다. REVIEW·CROSSCHECK는 ocx라 tmux로 띄운다
+type ControlLive = { id?: string; name?: string; kind: string; status?: string; tmux?: string };
 type ControlList = { manual: string[]; sessions: { name: string; dir: string; prompt: string; live: ControlLive[] }[] };
 function ControlSessions() {
   const [list, setList] = useState<ControlList | null>(null);
@@ -561,7 +561,8 @@ function ControlSessions() {
   useEffect(() => {
     void load();
   }, []);
-  const act = async (name: string, op: "launch" | "stop") => {
+  const act = async (name: string, op: "launch" | "stop", tmux?: string) => {
+    if (tmux && !window.confirm(`${name}: tmux ${tmux}의 pane을 닫습니다. 대화 기록은 남고 claude --resume으로 다시 열 수 있습니다.`)) return;
     setBusy(name);
     setError(null);
     try {
@@ -578,16 +579,23 @@ function ControlSessions() {
     <dl className="config-rows">
       {list.sessions.map((c) => {
         const bg = c.live.find((l) => l.kind === "background" && l.id);
+        const tmux = bg ? undefined : c.live.find((l) => l.tmux);
         const other = c.live.find((l) => l !== bg);
-        const state = bg ? `BG ${bg.id}${bg.status ? ` · ${bg.status}` : ""}` : other ? `열려 있음 · ${other.name ?? other.kind}` : "꺼짐";
+        const state = bg
+          ? `BG ${bg.id}${bg.status ? ` · ${bg.status}` : ""}`
+          : tmux
+            ? `tmux ${tmux.tmux} · ${tmux.name ?? tmux.kind}${tmux.status ? ` · ${tmux.status}` : ""}`
+            : other
+              ? `열려 있음(데스크톱) · ${other.name ?? other.kind}`
+              : "꺼짐";
         return (
           <div className="config-row" key={c.name}>
             <dt>
               {c.name} <code className="config-env">{c.dir}/</code>
             </dt>
             <dd>
-              {bg ? (
-                <button className="config-btn is-danger" onClick={() => void act(c.name, "stop")} disabled={busy !== null}>
+              {bg || tmux ? (
+                <button className="config-btn is-danger" onClick={() => void act(c.name, "stop", tmux?.tmux)} disabled={busy !== null}>
                   STOP
                 </button>
               ) : (
@@ -598,7 +606,7 @@ function ControlSessions() {
             </dd>
             <p className="config-note">
               {state} · 첫 메시지 <code>{c.prompt}</code>
-              {other && !bg ? " · 데스크톱·tmux 세션은 그 창에서 닫는다" : ""}
+              {other && !bg && !tmux ? " · 데스크톱 세션은 그 창에서 닫는다" : ""}
             </p>
           </div>
         );

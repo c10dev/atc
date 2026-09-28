@@ -620,7 +620,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 | MCC | `mcc/` | `/loop 5m /tick` | `--strict-mcp-config` |
 
 - **방식.** atc 저장소의 그 폴더에서 `claude --bg -n <이름> --permission-mode auto [옵션] "<첫 메시지>"`, 환경은 8.5와 같이 깨끗하게. 폴더의 `.claude/settings.json`(모델, 허용 목록, fail-closed guard)이 그대로 걸린다. 백그라운드 세션은 권한 창에 답할 수 없으므로 `auto`로 고정하고, 막는 일은 guard가 한다. 2026-09-28에 백그라운드 MCC로 확인했다: `/loop`이 `/tick`을 걸었고, guard hook이 돌았고, `atcctl manual check`와 `mcc queue`가 권한 창 없이 돌았다.
-- **이미 떠 있음.** 이름이 같거나 그 폴더에서 연 세션을 그 관제 세션으로 본다(이름 없이 tmux로 연 `mcc-b4` 같은 세션도 폴더로 알아본다). 하나라도 떠 있으면 LAUNCH를 거절해, 두 벌이 같은 일을 하지 않게 한다. STOP은 백그라운드 세션만 멈춘다. 데스크톱·tmux 세션은 그 창에서 닫는다.
+- **이미 떠 있음.** 이름이 같거나 그 폴더에서 연 세션을 그 관제 세션으로 본다(이름 없이 tmux로 연 `mcc-b4` 같은 세션도 폴더로 알아본다). 하나라도 떠 있으면 LAUNCH를 거절해, 두 벌이 같은 일을 하지 않게 한다. STOP은 백그라운드 세션이면 `claude stop`으로, tmux pane에서 도는 세션이면(그 pid나 조상이 pane의 첫 프로세스, `tmux list-panes -a`와 `/proc/<pid>/stat`로 찾는다) 그 pane만 `tmux kill-pane`으로 닫는다. tmux 세션의 다른 창은 그대로다. tmux pane을 닫기 전에 화면이 묻는다. 어느 쪽이든 대화는 남는다(`claude --resume`). 데스크톱(Claude 앱) 세션은 그 창에서 닫는다.
 - **제외.** REVIEW·CROSSCHECK는 `ocx claude`로 다른 계열 모델에 돌리는데 `claude --bg`로는 그렇게 할 수 없다. 지금처럼 tmux로 띄운다.
 - **상한.** 관제 세션은 팀 세션 상한 `ATC_MAX_LAUNCHED`에 세지 않는다.
 - **API**(`server/session-control.ts`): `GET /api/control/sessions`(`{manual, sessions: [{name, dir, prompt, live}]}`), `POST /api/control/:name/launch`, `POST /api/control/:name/stop`. 둘 다 SUPERVISOR만(이 화면 Origin). 순수 함수: `controlLaunchPlanOf`, `controlStopTargetOf`, `controlRowsOf`, `isControlRow`.
