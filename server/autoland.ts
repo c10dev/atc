@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { MainStatus } from "./atfm.ts";
 import { config } from "./config.ts";
+import { humanCheckExclusionOf, humanCheckStatusOf, uiChangeOf } from "./human-check.ts";
 import { externalGateOf, pullKey } from "./landing.ts";
 import type { LandingBlockCode, PullRequest } from "./model.ts";
 
@@ -206,27 +207,6 @@ export const neverTouched = (p: Pick<PullRequest, "draft" | "blocks">): LandingB
 // CLEARED인데 behind만 남은 PR
 export const behindOnly = (p: Pick<PullRequest, "draft" | "blocks">) => !p.draft && p.blocks.length === 1 && p.blocks[0].code === "behind";
 
-// PR 본문의 Human Preview Gate(vocado PR 템플릿). 적용이 `required`(또는 채우지 않은 `required` / `not required`)면 required,
-// Human Visual Review disposition이 approved·waived·passed 하나로 적혀 있으면 passed. 줄이 없으면 null
-export function humanPreviewOf(body: string | null | undefined): { required: boolean; passed: boolean } | null {
-  const lines = (body ?? "").split("\n");
-  const valueOf = (re: RegExp) => {
-    const line = lines.find((l) => re.test(l));
-    if (line === undefined) return null;
-    const i = line.indexOf(":");
-    return (i < 0 ? "" : line.slice(i + 1)).trim();
-  };
-  const applicability = valueOf(/^\s*[-*]?\s*Human Preview applicability\b/i);
-  if (applicability === null) return null;
-  const a = applicability.toLowerCase();
-  // "not required"만 적혀 있어야 required가 아니다(애매하면 required — vocado 규칙 "Mixed or uncertain UI impact is required")
-  const required = /required/.test(a.replace(/not required/g, "")) || !/not required/.test(a);
-  const disposition = (valueOf(/^\s*[-*]?\s*Human (Visual Review|Preview) (disposition|status)\b/i) ?? "").toLowerCase();
-  // 채우지 않은 선택지 목록("`pending` / `approved` / …")은 통과가 아니다
-  const passed = !disposition.includes("/") && /\b(approved|waived|passed)\b/.test(disposition);
-  return { required, passed };
-}
-
 export interface MergeExclusionInput {
   held: boolean;
   flight: string | null;
@@ -236,6 +216,8 @@ export interface MergeExclusionInput {
   title: string;
   body: string | null | undefined;
   flightTitle?: string | null;
+  head: string; // HUMAN CHECK는 이 head에 묶인다(ATC-37)
+  carryFrom?: readonly string[]; // main 병합만 한 head의 이전 커밋(ATC-31). 거기 기록한 HUMAN CHECK를 잇는다
 }
 const RISK_ANY = /^risk\b/i;
 // merge 모드에서 AUTOLAND가 머지하지 않고 SUPERVISOR에게 남기는 까닭. null이면 위임된 PR
@@ -250,9 +232,9 @@ export function mergeExclusionOf(x: MergeExclusionInput): string | null {
   const gate = externalGateOf({ flight: x.flight, ticketLabels: x.ticketLabels, prLabels: x.prLabels, files: x.files, texts: [x.title, x.body, x.flightTitle] });
   if (gate.hard) return gate.hard;
   if (gate.security) return `보안 게이트: ${gate.security}`;
-  const hp = humanPreviewOf(x.body);
-  if (hp?.required && !hp.passed) return "Human Preview required — 아직 passed 아님";
-  return null;
+  // HUMAN CHECK(ATC-37): `## UI change` class가 CHOICE·ACCOUNT·DEVICE면 이 head에 done일 때까지. 블록이 없으면 모름 → 머지하지 않는다
+  const ui = uiChangeOf(x.body);
+  return humanCheckExclusionOf(ui, humanCheckStatusOf(ui, x.head, x.carryFrom));
 }
 
 // GROUND STOP 걸기: 맡은 AIRPORT의 main head에서 applicationCheck가 실패했고, SUPERVISOR가 그 SHA로 푼 적이 없으면.

@@ -390,7 +390,7 @@ vocado `main`의 `strict` 때문에 머지가 있을 때마다 다른 열린 PR�
   4. HOLD하지 않은 CLEARED PR이 SUPERVISOR 머지를 기다림 → 대기. 지금 다른 PR을 갱신하면 그 머지 뒤 다시 `behind`가 된다. HOLD하면 runway가 풀린다.
   5. LANDING SEQUENCE 순서로 막힘이 `behind` 하나뿐인 첫 PR → 갱신.
 - **update**: `PUT /repos/{o}/{r}/pulls/{n}/update-branch`에 `expected_head_sha`(일반 merge 커밋, force-push 아님). ATC-31이 리뷰를 이어 주니 CI가 통과하면 CLEARED로 돌아온다. Draft, 쌓인 PR, `dirty`, LOS PR은 건드리지 않는다. 거절된 갱신(head가 움직임)은 그 head를 건너뛰고 다음 주기에 새 head로 다시 한다. 다른 실패는 head가 바뀔 때까지 그 head를 건너뛴다.
-- **merge**: 위임된 PR은 `mergeExclusionOf`에 걸리지 않는 CLEARED PR 전부다. 제외: SUPERVISOR HOLD(착륙 스트립의 HOLD 버튼), FLIGHT 없음, `rating:SEC`나 `Risk…` 라벨(티켓·PR), 바뀐 파일을 못 읽음(`merge`일 때 atc가 Draft 아닌 PR의 파일을 읽는다), ATC-27 보안 게이트(`.env`·비밀·키 경로, migrations, SQL, auth, session, admission, RLS·policy, middleware, 보안 키워드), PR 본문의 Human Preview 적용이 `required`(또는 채우지 않음)인데 Human Visual Review disposition이 `approved`·`waived`·`passed` 하나로 적혀 있지 않음. 머지 직전에 PR을 다시 읽어(`gh pr view`) head와 제외 목록을 다시 본다. 머지는 `PUT /repos/{o}/{r}/pulls/{n}/merge`에 계획한 head를 `sha`로(`--match-head-commit`의 REST 형태), `merge_method`와 함께. GitHub auto-merge는 켜지 않는다. 제외된 CLEARED PR은 SUPERVISOR에게 남고, HOLD가 아니면 runway를 잡는다.
+- **merge**: 위임된 PR은 `mergeExclusionOf`에 걸리지 않는 CLEARED PR 전부다. 제외: SUPERVISOR HOLD(착륙 스트립의 HOLD 버튼), FLIGHT 없음, `rating:SEC`나 `Risk…` 라벨(티켓·PR), 바뀐 파일을 못 읽음(`merge`일 때 atc가 Draft 아닌 PR의 파일을 읽는다), ATC-27 보안 게이트(`.env`·비밀·키 경로, migrations, SQL, auth, session, admission, RLS·policy, middleware, 보안 키워드), HUMAN CHECK를 기다리는 PR, `## UI change` 블록이 없거나 class를 채우지 않은 PR(9.8, ATC-37. 옛 Human Preview 게이트 확인을 바꿨다). 머지 직전에 PR을 다시 읽어(`gh pr view`) head와 제외 목록을 다시 본다. 머지는 `PUT /repos/{o}/{r}/pulls/{n}/merge`에 계획한 head를 `sha`로(`--match-head-commit`의 REST 형태), `merge_method`와 함께. GitHub auto-merge는 켜지 않는다. 제외된 CLEARED PR은 SUPERVISOR에게 남고, HOLD가 아니면 runway를 잡는다.
 - **GROUND STOP**: 목록의 AIRPORT에서 기본 브랜치 head의 `applicationCheck` 체크가 실패하면 그 AIRPORT의 두 모드를 멈춘다. main이 다시 초록이 돼도 SUPERVISOR가 풀 때까지(설정 창, 또는 `POST /api/autoland/groundstop/clear {airport}`) 멈춰 있다. 푼 SHA로는 다시 걸지 않고, 새 SHA가 빨가면 다시 건다. 스위치가 꺼져 있어도 걸어 두므로 켤 때 먼저 보인다.
 - **기록**: `autoland.jsonl`(추가만): `update`, `merge`, `settle`, `skip`, `groundstop`, `groundstop-clear`, `mode`, `hold`, `unhold`. 줄마다 모드, AIRPORT, PR, head, 결과, 설명. 상태(비행 중, GROUND STOP, 푼 SHA, 건너뛴·머지한 head)는 `autoland-state.json`. `GET /api/autoland`가 설정, 상태, 계획, 최근 기록 50줄을 보인다.
 - **화면**: LANDING SEQUENCE 머리에 AIRPORT마다 한 줄("AUTOLAND: updating #383", "AUTOLAND: waiting — #383 CLEARED, …", "AUTOLAND: GROUND STOP — …"). PR마다 AUTOLAND가 할 일이나 안 하는 까닭("AUTOLAND update 대기 2번째", "AUTOLAND 제외 — DIRTY(충돌)", "AUTOLAND 대기 — 리뷰 없음 먼저", "SUPERVISOR 머지 — rating:SEC")과 HOLD 버튼.
@@ -400,6 +400,37 @@ vocado `main`의 `strict` 때문에 머지가 있을 때마다 다른 열린 PR�
   - **Codex가 한도이거나 30분 안에 답이 없으면**(`escalateOf`): 그 head를 곧바로 REVIEW(DeepSeek) 대기열로 넘긴다(`buildPulls`의 `fastTrack`, `codexUnavailable.why = "autoland"`, "AUTOLAND 재리뷰 — Codex 30분 무응답"). head 뒤에 Codex가 이미 답했으면 넘기지 않는다.
   - ATC-27·30은 그대로다: `buildPulls`가 지금 스위치로 외부 리뷰 제외를 다시 본다. 제외 PR은 대기열에 넣지 않고, 스트립에 "AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(migrations)"로 보인다.
   - head마다 한 번(`autoland-state.json`의 `reviewRequests`). 기록은 `op: "review-request"`에 `via`(`codex`, `deepseek`, `supervisor`). 리뷰가 붙을 때까지 스트립에 "AUTOLAND: review requested (codex|deepseek)"가 보인다. AUTOLAND가 `update`나 `merge`이고 그 AIRPORT가 GROUND STOP이 아닐 때만 한다.
+
+### 9.8 HUMAN CHECK: CHOICE·ACCOUNT·DEVICE PR만 사람을 기다린다 (2026-09-28, ATC-37)
+
+ATC-39 리서치([research/human-preview.ko.md](research/human-preview.ko.md)) 뒤로, 사람이 꼭 봐야 하는 UI PR은 세 class뿐이다. 애플리케이션 저장소의 PR 본문에 짧은 `## UI change` 블록이 있고, atc는 거기서 아래 칸만 읽는다.
+
+| 칸 | atc가 읽는 것 |
+|---|---|
+| `UI impact` | `none` 또는 렌더되는 UI 변경 |
+| `Human check class` | `CHOICE`·`ACCOUNT`·`DEVICE` 중 해당하는 것, 또는 `none`. 템플릿 문구를 그대로 두면 채우지 않은 것 |
+| `Evidence pack` | 같은 PR의 댓글 링크(`…/pull/<n>#issuecomment-<id>`) |
+| `Preview` | ACCOUNT·DEVICE: 현재 head의 Preview URL |
+| `Human steps` | ACCOUNT·DEVICE: 1~3 단계(들여쓴 다음 줄까지) |
+| `Human check` | `not needed`, `pending`, `done <date> <sha> <note>`·`failed <date> <sha> <note>` |
+
+옛 Human Preview 게이트 절은 전혀 읽지 않는다.
+
+- **대기열**(`waitsOnHuman`): Draft가 아닌 열린 PR 중 블록에 class가 있고 `Human check`가 현재 head에 `done`이 아닌 것. 결과는 head에 묶인다. 적힌 SHA의 head(`sha`가 head의 앞부분)에서 유효하다. 현재 head가 main 병합만으로 닿고 변경이 같은 이전 커밋이어도 유효하다: ATC-31 규칙, `carryFrom`에서 읽고, 리뷰가 이미 head에 있는 PR은 리뷰 판정을 건드리지 않도록 따로 읽은 `humanCarryFrom`에서 읽는다. 그 밖의 SHA면 "옛 head에 기록됨"이다. 현재 head에 `failed`면 대기열에 남는다. class `none`이나 `UI impact: none`은 들지 않는다.
+- **줄**(STRIPS, LANDING SEQUENCE 위 `HUMAN CHECK n`): PR, AIRPORT·FLIGHT, STAND를 쥔 팀, class 칩, 상태.
+  - 증거: Evidence pack이 가리키는 PR 댓글의 이미지를 썸네일로 보인다. GitHub `body_html`로 읽는데, 거기 서명된 이미지 주소는 private 저장소에서도 열리지만 몇 분이면 만료된다. 그래서 메모리에 3분만 두고 저장하지 않는다. 다른 PR의 댓글 링크는 받지 않는다.
+  - 이 head의 RUN-UP 보고서(ATC-41)가 있으면 그것도 보인다: AIRPORT 체크아웃이나 그 STAND의 `.runup/<base7>-<head7>/report.json` 중 `head.sha`가 head인 것. 줄에 바뀐 화면·컷 수, UNEXPECTED 경고, 바뀐 컷 썸네일, 보고서 링크가 붙는다.
+  - ACCOUNT·DEVICE면 Preview 링크와 단계.
+- **PASS·FAIL**(`POST /api/human-check/:owner/:name/:number {result, head, note}`): SUPERVISOR만, AUTOLAND 스위치와 같은 Origin 규칙. atc가 먼저 PR을 다시 읽는다. 화면이 본 `head`가 지금 head여야 하고, 블록에 class와 `Human check` 줄이 딱 하나 있어야 하고, FAIL은 메모가 있어야 한다(한 줄, 백틱 없이, 200자까지).
+  - 그다음 GitHub에 딱 두 번 쓴다. 먼저 PR 본문에서 그 줄만 `` `done <YYYY-MM-DD> <sha7> <note>` ``(또는 `failed`)로 바꾸고(stdin JSON), 그다음 PR 댓글 하나 "HUMAN CHECK: PASS|FAIL · head · class · 날짜"와 메모를 단다.
+  - 본문 쓰기가 실패하면 댓글은 달지 않는다. 시도마다 `human-checks.jsonl`(추가만)에 한 줄: 시각, 저장소, PR, head, 결과, class, 메모, `by`, `ok`, `line`, 댓글 URL, 오류.
+  - Vercel 공유 토큰은 만들지도 두지도 않는다.
+- **착륙**(9.7의 Human Preview 제외를 바꾼다): AUTOLAND `merge`는 class PR을 `Human check`가 이 head에 `done`일 때까지 머지하지 않는다(머지 직전에 다시 본다). 블록이 없거나 `UI impact`가 `none`이 아닌데 class를 채우지 않은 PR도 머지하지 않는다: 사람이 필요한지 알 수 없다. class `none` PR은 막지 않는다. LANDING SEQUENCE 줄에는 class PR마다 `HUMAN CHECK <class>: <상태>`가 붙는다. CLEARED TO LAND 조건은 그대로다.
+- **API**:
+  - `GET /api/human-check`: 대기열과 최근 기록 50줄.
+  - `GET /api/human-check/:owner/:name/:number/evidence`: 댓글 이미지와 RUN-UP 요약.
+  - `GET /api/human-check/:owner/:name/:number/runup/:run/<파일>`: RUN-UP 보고서 파일. symlink를 풀어 본 뒤 그 보고서 폴더 안의 파일만, `.html`·`.json`·이미지·`.css`·`.js`만 보낸다. `Content-Security-Policy: sandbox allow-scripts`로 보내므로 보고서의 스크립트는 불투명한 출처에서 돌아 atc의 SUPERVISOR 전용 API를 부를 수 없다.
+- 순수 함수는 `server/human-check.ts`(`uiChangeOf`, `humanCheckStatusOf`, `humanCheckExclusionOf`, `setHumanCheckLine`, `checkRequestOf`, `imagesOf`, `pickRunup`), 입출력은 `server/human-check-run.ts`.
 
 ## 10. atc에 더할 것
 

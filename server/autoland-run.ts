@@ -229,6 +229,9 @@ async function doMerge(plan: AirportPlan, p: PullRequest, st: AutolandState, s: 
           title: fresh.title,
           body: fresh.body,
           flightTitle: ticket?.title ?? null,
+          head: fresh.headRefOid,
+          // 스냅숏에서 이 head(위에서 같음을 확인)가 잇는 HUMAN CHECK 커밋만(ATC-31·37)
+          carryFrom: p.humanCheck?.carriedFrom ? [p.humanCheck.carriedFrom] : [],
         });
     if (why) {
       st.skip.push(headKey(p));

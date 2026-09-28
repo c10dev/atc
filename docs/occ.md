@@ -360,7 +360,7 @@ With `strict` on vocado's `main`, every merge puts the other open PRs `behind`, 
   4. A CLEARED PR that is not on HOLD is waiting for the SUPERVISOR's merge → wait. Updating another PR now would put it `behind` again after that merge. HOLD frees the runway.
   5. The first PR in LANDING SEQUENCE order whose only block is `behind` → update it.
 - **update**: `PUT /repos/{o}/{r}/pulls/{n}/update-branch` with `expected_head_sha` (a normal merge commit, not a force-push). The PR returns to CLEARED once CI passes, because ATC-31 carries the review. Draft, stacked, `dirty` and LOS PRs are never touched. A rejected update (the head moved) is skipped for that head and retried on the next cycle with the new head; other failures skip that head until it changes.
-- **merge**: the delegated class is every CLEARED PR not excluded by `mergeExclusionOf`: SUPERVISOR HOLD (the HOLD button on the landing strip); no FLIGHT; `rating:SEC` or any `Risk…` label (ticket or PR); changed files not read (atc reads them for all non-draft PRs while in `merge`); the ATC-27 security gate (`.env`/secret/key paths, migrations, SQL, auth, session, admission, RLS/policy, middleware, security keywords); a PR body whose Human Preview applicability is `required` (or unfilled) without a single `approved`/`waived`/`passed` Human Visual Review disposition. Right before merging, atc re-reads the PR (`gh pr view`) and checks the head and every exclusion again. The merge is `PUT /repos/{o}/{r}/pulls/{n}/merge` with `sha` = the planned head (the REST form of `--match-head-commit`) and `merge_method`. GitHub auto-merge is never set. An excluded CLEARED PR stays with the SUPERVISOR and, unless on HOLD, holds the runway.
+- **merge**: the delegated class is every CLEARED PR not excluded by `mergeExclusionOf`: SUPERVISOR HOLD (the HOLD button on the landing strip); no FLIGHT; `rating:SEC` or any `Risk…` label (ticket or PR); changed files not read (atc reads them for all non-draft PRs while in `merge`); the ATC-27 security gate (`.env`/secret/key paths, migrations, SQL, auth, session, admission, RLS/policy, middleware, security keywords); a PR that waits on a HUMAN CHECK, or whose `## UI change` block is missing or its class unfilled (9.8, ATC-37; this replaced the old Human Preview gate check). Right before merging, atc re-reads the PR (`gh pr view`) and checks the head and every exclusion again. The merge is `PUT /repos/{o}/{r}/pulls/{n}/merge` with `sha` = the planned head (the REST form of `--match-head-commit`) and `merge_method`. GitHub auto-merge is never set. An excluded CLEARED PR stays with the SUPERVISOR and, unless on HOLD, holds the runway.
 - **GROUND STOP**: when the check named `applicationCheck` fails on the default branch's head of an AIRPORT in the list, AUTOLAND stops both modes there and stays stopped, even after main turns green, until the SUPERVISOR clears it (settings window, or `POST /api/autoland/groundstop/clear {airport}`). A cleared SHA doesn't stop it again; a new red SHA does. It is latched even while the switch is off, so turning AUTOLAND on shows it first.
 - **Records**: `autoland.jsonl` (append-only): `update`, `merge`, `settle`, `skip`, `groundstop`, `groundstop-clear`, `mode`, `hold`, `unhold`, each with the mode, AIRPORT, PR, head, result and detail. State (in flight, GROUND STOPs, cleared SHAs, skipped and merged heads) is `autoland-state.json`. `GET /api/autoland` shows config, state, the plan and the last 50 records.
 - **Screen**: the LANDING SEQUENCE header shows one line per AIRPORT ("AUTOLAND: updating #383", "AUTOLAND: waiting — #383 CLEARED, …", "AUTOLAND: GROUND STOP — …"); each PR shows what AUTOLAND will do or why not ("AUTOLAND update 대기 2번째", "AUTOLAND 제외 — DIRTY(충돌)", "AUTOLAND 대기 — 리뷰 없음 먼저", "SUPERVISOR 머지 — rating:SEC") and a HOLD button.
@@ -370,6 +370,37 @@ With `strict` on vocado's `main`, every merge puts the other open PRs `behind`, 
   - **Codex limited, or no Codex answer within 30 min** (`escalateOf`): the head goes to the REVIEW (DeepSeek) queue right away (`buildPulls` `fastTrack`, `codexUnavailable.why = "autoland"`, "AUTOLAND 재리뷰 — Codex 30분 무응답"), unless Codex has already answered after the head.
   - ATC-27/30 still decide: `buildPulls` re-checks the external-review exclusion with the current switch. An excluded PR is not queued, and the strip says "AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(migrations)".
   - One request per head (`autoland-state.json` `reviewRequests`), recorded as `op: "review-request"` with `via` (`codex`, `deepseek` or `supervisor`). The strip shows "AUTOLAND: review requested (codex|deepseek)" until a review lands. Only while AUTOLAND is `update` or `merge` and the AIRPORT is not in GROUND STOP.
+
+### 9.8 HUMAN CHECK: only CHOICE, ACCOUNT and DEVICE PRs wait on a person (2026-09-28, ATC-37)
+
+After the ATC-39 research ([research/human-preview.md](research/human-preview.md)), a person is required only for three classes of UI PR. The application repository's PR body carries a short `## UI change` block, and atc reads only these fields from it:
+
+| Field | What atc takes |
+|---|---|
+| `UI impact` | `none`, or a rendered UI change |
+| `Human check class` | any of `CHOICE`, `ACCOUNT`, `DEVICE`, or `none`. The template text left as is counts as unfilled |
+| `Evidence pack` | a link to a comment on the same PR (`…/pull/<n>#issuecomment-<id>`) |
+| `Preview` | ACCOUNT/DEVICE: the Preview URL for the current head |
+| `Human steps` | ACCOUNT/DEVICE: the 1–3 steps (following indented lines included) |
+| `Human check` | `not needed`, `pending`, or `done <date> <sha> <note>` / `failed <date> <sha> <note>` |
+
+atc doesn't read the old Human Preview gate section at all.
+
+- **Queue** (`waitsOnHuman`): open, non-draft PRs whose block has a class and whose `Human check` isn't `done` for the current head. A result is bound to a head. It counts for the head it names (`sha` is a prefix of the head). It also counts for an earlier commit that the head reaches by main-only merges with the same change: the ATC-31 rule, from `carryFrom`, or for a PR whose review is already on its head, from a separate `humanCarryFrom` read so the review decision isn't touched. Any other SHA shows as "recorded on an old head". `failed` on the current head stays in the queue. Class `none` or `UI impact: none` never enters.
+- **Row** (STRIPS, above LANDING SEQUENCE, `HUMAN CHECK n`): PR, AIRPORT and FLIGHT, the team holding the STAND, the class chips, and the state.
+  - The evidence pack: thumbnails of the images in the linked PR comment. They are read as GitHub's `body_html`, whose signed image URLs work for private repositories and expire within minutes, so atc keeps them in memory for 3 min and never stores them. A link to a comment on another PR is refused.
+  - The RUN-UP report (ATC-41), when one exists for this exact head: `.runup/<base7>-<head7>/report.json` in the AIRPORT checkout or one of its STANDs, with `head.sha` equal to the head. The row shows changed screens and cuts, UNEXPECTED warnings and changed-cut thumbnails, and links the report.
+  - For ACCOUNT and DEVICE: the Preview link and the steps.
+- **PASS / FAIL** (`POST /api/human-check/:owner/:name/:number {result, head, note}`): SUPERVISOR only, with the same Origin rule as the AUTOLAND switch. atc re-reads the PR first. The `head` the screen showed must still be the head, the block must have a class and exactly one `Human check` line, and FAIL needs a note (one line, no backticks, 200 characters max).
+  - Then exactly two GitHub writes. First the PR body with only that line changed to `` `done <YYYY-MM-DD> <sha7> <note>` `` (or `failed`), sent as JSON on stdin. Then one PR comment "HUMAN CHECK: PASS|FAIL · head · classes · date" with the note.
+  - If the body write fails, no comment is posted. Each attempt is a line in `human-checks.jsonl` (append-only): time, repo, PR, head, result, classes, note, `by`, `ok`, `line`, the comment URL and any error.
+  - No Vercel share tokens are created or kept.
+- **Landing** (replaces the Human Preview exclusion of 9.7): AUTOLAND `merge` doesn't merge a classed PR until its `Human check` is `done` for the head (checked again right before the merge). It also doesn't merge a PR whose block is missing or whose class is unfilled while `UI impact` isn't `none`: atc can't tell whether a person is needed. A PR with class `none` isn't held back. LANDING SEQUENCE rows show `HUMAN CHECK <classes>: <state>` for classed PRs. The CLEARED TO LAND conditions are unchanged.
+- **API**:
+  - `GET /api/human-check`: the queue and the last 50 records.
+  - `GET /api/human-check/:owner/:name/:number/evidence`: comment images and the RUN-UP summary.
+  - `GET /api/human-check/:owner/:name/:number/runup/:run/<file>`: RUN-UP report files. Only files inside that report folder are served, and only `.html`/`.json`/images/`.css`/`.js`, after resolving symlinks. They are sent with `Content-Security-Policy: sandbox allow-scripts`, so the report's scripts run on an opaque origin and can't call atc's SUPERVISOR-only endpoints.
+- Pure parts: `server/human-check.ts` (`uiChangeOf`, `humanCheckStatusOf`, `humanCheckExclusionOf`, `setHumanCheckLine`, `checkRequestOf`, `imagesOf`, `pickRunup`). I/O: `server/human-check-run.ts`.
 
 ## 10. What to add to atc
 
