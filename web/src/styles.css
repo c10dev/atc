@@ -2062,6 +2062,88 @@ a.ticket:hover {
 .autoland-modes .is-current {
   color: var(--text);
 }
+/* MCC SHADOW GATE(ATC-49): DISPATCH 진입 점검(.dp-gate)과 같은 판. 설정 창 폭(400px)에 맞춰 기준을 값 옆에 좁게 */
+.mcc-gate {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+}
+.mcc-gate .label {
+  margin: 0 0 var(--space-1);
+}
+.mcc-gate ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mcc-gate > ul > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto 64px;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--line);
+}
+.mcc-gate > ul > li:first-child {
+  border-top: 0;
+}
+.mcc-gate-value {
+  font: 700 var(--text-md) var(--mono);
+  text-align: right;
+}
+.mcc-gate-target {
+  font: var(--text-xs) var(--mono);
+  color: var(--faint);
+}
+.mcc-gate-state {
+  font: 700 var(--text-xs) var(--mono);
+  white-space: nowrap;
+}
+.mcc-gate .s-pass .mcc-gate-state {
+  color: var(--radar);
+}
+.mcc-gate .s-fail .mcc-gate-state {
+  color: var(--alert);
+}
+.mcc-gate .s-insufficient .mcc-gate-state {
+  color: var(--faint);
+}
+.mcc-gate-note {
+  margin: 0;
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--line);
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+.mcc-gate .mcc-gate-misses li {
+  display: flex;
+  gap: var(--space-1-5);
+  align-items: baseline;
+  min-width: 0;
+  padding: var(--space-0-5) 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.mcc-gate-misses a {
+  font-family: var(--mono);
+  color: var(--cyan);
+}
+.mcc-gate-misses b {
+  flex: none;
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--amber);
+}
+.mcc-gate-misses .k-reverted-would-land b {
+  color: var(--alert);
+}
+.mcc-gate-misses span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .config-note {
   grid-column: 1 / -1;
   margin: var(--space-1) 0 0;

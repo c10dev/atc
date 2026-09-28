@@ -263,3 +263,114 @@ export async function tierOfFiles(files: string[]): Promise<ReturnType<TierOf>> 
   if (!tierFn) tierFn = ((await import(new URL("../deploy/landing-tier.mjs", import.meta.url).href)) as { tierOf: TierOf }).tierOf;
   return tierFn(files);
 }
+
+// ── SHADOW GATE(docs/mcc.md 9장): 머지된 atc PR과 MCC 기록을 맞춰 land로 올릴 근거를 잰다 ──
+// 읽기만 한다: LOGBOOK(머지·되돌림)과 mcc.jsonl. 모드는 바꾸지 않는다 — ready여도 SUPERVISOR가 설정 창에서 올린다
+export const MCC_GATE = { prs: 20, days: 5, reverted: 0 } as const;
+const GATE_OPS = new Set<MccRecord["op"]>(["inspect", "escalate", "would-land", "land"]);
+
+// LOGBOOK에서 쓰는 것만(logbook.ts LogEntry)
+export interface GateEntry {
+  airport: string | null;
+  pr: { number: number; url: string; title: string };
+  arrivedAt: string;
+  reverted: boolean;
+  revertedBy?: { number: number; url: string; at: string } | null;
+}
+export interface GatePr {
+  pr: number;
+  title: string;
+  url: string;
+  arrivedAt: string;
+  head: string | null; // 머지된 head. 모르면 null(머지 전 마지막 INSPECTION으로 대신 맞춘다)
+  inspection: InspectVerdict | null; // 머지된 head의 마지막 INSPECTION
+  staleInspection: boolean; // INSPECTION이 머지된 head가 아닌 옛 head에만 있었다
+  wouldLand: boolean; // 머지된 head에 would-land(또는 MCC가 LANDED)
+  escalated: boolean;
+  landedBy: "mcc" | "other"; // MCC가 LANDED면 mcc, 아니면 사람·structure
+  reverted: boolean;
+  revertedBy: { number: number; url: string; at: string } | null;
+}
+export type GateMissKind = "findings" | "no-inspection" | "reverted-would-land";
+export interface GateMiss {
+  pr: number;
+  title: string;
+  url: string;
+  kind: GateMissKind;
+  text: string;
+}
+export interface MccGate {
+  airport: string;
+  since: string | null; // 첫 MCC 기록(inspect·escalate·would-land·land)
+  days: number; // since부터 지금까지(일, 소수 첫째 자리)
+  merged: number; // since 뒤 머지된 PR
+  prs: number; // 그중 MCC가 판단한 PR: 머지된 head에 INSPECTION이 있거나 ESCALATE
+  wouldLand: number;
+  reverted: number; // would-land였는데 되돌린 PR
+  target: typeof MCC_GATE;
+  ready: boolean;
+  rows: GatePr[]; // 도착 최신순
+  misses: GateMiss[];
+}
+
+export function mccGateOf(x: { records: readonly MccRecord[]; entries: readonly GateEntry[]; airport: string; heads: ReadonlyMap<number, string>; now: number }): MccGate {
+  const first = x.records.find((r) => GATE_OPS.has(r.op));
+  const since = first?.at ?? null;
+  const sinceMs = since ? Date.parse(since) : Infinity;
+  const days = since ? Math.max(0, Math.floor(((x.now - sinceMs) / 86_400_000) * 10) / 10) : 0;
+  const entries = x.entries.filter((e) => e.airport === x.airport && Date.parse(e.arrivedAt) >= sinceMs).sort((a, b) => b.arrivedAt.localeCompare(a.arrivedAt));
+  const rows: GatePr[] = [];
+  const misses: GateMiss[] = [];
+  for (const e of entries) {
+    const n = e.pr.number;
+    const mergedMs = Date.parse(e.arrivedAt);
+    const mine = x.records.filter((r): r is Extract<MccRecord, { pr: number }> => "pr" in r && r.pr === n && Date.parse(r.at) <= mergedMs);
+    const known = x.heads.get(n) ?? null;
+    const inspections = mine.filter((r): r is Inspection => r.op === "inspect");
+    // head를 모르면 머지 전 마지막 INSPECTION의 head를 머지된 head로 본다
+    const head = known ?? inspections.at(-1)?.head ?? null;
+    const onHead = (r: { head: string }) => head !== null && r.head === head;
+    const inspection = inspections.filter(onHead).at(-1) ?? null;
+    const landed = mine.some((r) => r.op === "land" && r.result === "ok" && onHead(r));
+    const wouldLand = landed || mine.some((r) => r.op === "would-land" && r.result === "ok" && onHead(r));
+    const row: GatePr = {
+      pr: n,
+      title: e.pr.title,
+      url: e.pr.url,
+      arrivedAt: e.arrivedAt,
+      head: known,
+      inspection: inspection?.verdict ?? null,
+      staleInspection: !inspection && inspections.length > 0,
+      wouldLand,
+      escalated: mine.some((r) => r.op === "escalate"),
+      landedBy: landed ? "mcc" : "other",
+      reverted: e.reverted,
+      revertedBy: e.revertedBy ?? null,
+    };
+    rows.push(row);
+    const miss = (kind: GateMissKind, text: string) => misses.push({ pr: n, title: e.pr.title, url: e.pr.url, kind, text });
+    if (row.landedBy === "other" && row.inspection === "findings") miss("findings", "사람·structure가 머지 — MCC INSPECTION은 findings");
+    else if (row.landedBy === "other" && !row.inspection && !row.escalated)
+      miss("no-inspection", row.staleInspection ? "사람·structure가 머지 — MCC는 옛 head만 INSPECTION" : "사람·structure가 머지 — MCC INSPECTION 없음");
+    if (row.wouldLand && row.reverted) miss("reverted-would-land", `MCC ${row.landedBy === "mcc" ? "LANDED" : "would-land"} — 뒤에 되돌림${row.revertedBy ? `(#${row.revertedBy.number})` : ""}`);
+  }
+  const prs = rows.filter((r) => r.inspection || r.escalated).length;
+  const reverted = rows.filter((r) => r.wouldLand && r.reverted).length;
+  return {
+    airport: x.airport,
+    since,
+    days,
+    merged: rows.length,
+    prs,
+    wouldLand: rows.filter((r) => r.wouldLand).length,
+    reverted,
+    target: MCC_GATE,
+    ready: prs >= MCC_GATE.prs && days >= MCC_GATE.days && reverted <= MCC_GATE.reverted,
+    rows,
+    misses,
+  };
+}
+
+// atcctl mcc queue에 싣는 한 줄
+export const mccGateLine = (g: MccGate) =>
+  `SHADOW GATE ${g.ready ? "충족 — land는 SUPERVISOR가 설정 창에서" : "아직"} · 판단한 PR ${g.prs}/${g.target.prs}건 · ${g.days}/${g.target.days}일 · would-land 되돌림 ${g.reverted}건 · 불일치 ${g.misses.length}건`;

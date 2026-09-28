@@ -10,8 +10,12 @@ import {
   inspectionComment,
   inspectionOf,
   type LandInput,
+  type GateEntry,
   landBlocksOf,
   loadMcc,
+  MCC_GATE,
+  mccGateLine,
+  mccGateOf,
   MccError,
   mccModelOf,
   type MccRecord,
@@ -162,4 +166,86 @@ test("CLEARED TO LAND: MCC가 맡은 저장소는 이 head의 INSPECTION pass가
   // 사람의 head 리뷰는 그대로 센다
   const approved = gh({ reviews: [{ author: { login: "boss" }, state: "APPROVED", submittedAt: "2026-09-28T08:10:00Z", commit: { oid: HEAD } }] });
   assert.deepEqual(reviewBlocks(approved, undefined, undefined, undefined, { review: null }), []);
+});
+
+// ── SHADOW GATE ──
+const H = (c: string) => c.repeat(40);
+const at = (day: number, h = 0) => new Date(Date.parse("2026-09-20T00:00:00Z") + day * 86_400_000 + h * 3_600_000).toISOString();
+const entry = (n: number, arrived: string, extra: Partial<GateEntry> = {}): GateEntry => ({
+  airport: "ATCC",
+  pr: { number: n, url: `https://github.com/o/atc/pull/${n}`, title: `PR ${n}` },
+  arrivedAt: arrived,
+  reverted: false,
+  ...extra,
+});
+const insp = (pr: number, head: string, verdict: "pass" | "findings", when: string): MccRecord => ({ op: "inspect", at: when, pr, head, verdict, text: "x", model: "claude-opus-5-5", p0: 0, p1: verdict === "findings" ? 1 : 0, p2: 0 });
+const would = (pr: number, head: string, when: string): MccRecord => ({ op: "would-land", at: when, pr, head, tier: "auto", result: "ok", detail: "shadow" });
+
+test("SHADOW GATE: 머지된 head의 INSPECTION·would-land·ESCALATE·되돌림을 맞추고, 불일치를 모은다", () => {
+  const records: MccRecord[] = [
+    { op: "mode", at: at(0), mode: "shadow", detail: "x" }, // 모드 기록은 시작점이 아니다
+    insp(1, H("1"), "pass", at(1)),
+    would(1, H("1"), at(1, 1)),
+    insp(2, H("2"), "findings", at(1, 2)),
+    insp(3, H("a"), "pass", at(1, 3)), // 옛 head만
+    { op: "escalate", at: at(1, 4), pr: 4, head: H("4"), reason: "운영 상태 형식", model: "claude-opus-5-5" },
+    insp(6, H("6"), "pass", at(1, 5)),
+    { op: "land", at: at(1, 6), pr: 6, head: H("6"), tier: "auto", result: "ok", model: "claude-opus-5-5" },
+    insp(7, H("7"), "pass", at(9)), // 머지 뒤 기록은 보지 않는다(다시 연 PR 등)
+  ];
+  const entries = [
+    entry(1, at(2), { reverted: true, revertedBy: { number: 9, url: "u", at: at(3) } }),
+    entry(2, at(2, 1)),
+    entry(3, at(2, 2)),
+    entry(4, at(2, 3)),
+    entry(5, at(2, 4)),
+    entry(6, at(2, 5)),
+    entry(7, at(2, 6)),
+    entry(8, at(0, 12), { airport: "VCDO" }), // 다른 AIRPORT
+    entry(10, at(0, 12)), // 첫 MCC 기록 전
+  ];
+  const heads = new Map([[1, H("1")], [2, H("2")], [3, H("3")], [4, H("4")], [5, H("5")], [6, H("6")], [7, H("7")]]);
+  const g = mccGateOf({ records, entries, airport: "ATCC", heads, now: Date.parse(at(4, 12)) });
+  assert.equal(g.since, at(1));
+  assert.equal(g.days, 3.5);
+  assert.equal(g.merged, 7);
+  assert.deepEqual(g.rows.map((r) => r.pr), [7, 6, 5, 4, 3, 2, 1]); // 도착 최신순
+  const row = (n: number) => g.rows.find((r) => r.pr === n)!;
+  assert.deepEqual({ ...row(1), revertedBy: null }, { pr: 1, title: "PR 1", url: "https://github.com/o/atc/pull/1", arrivedAt: at(2), head: H("1"), inspection: "pass", staleInspection: false, wouldLand: true, escalated: false, landedBy: "other", reverted: true, revertedBy: null });
+  assert.equal(row(3).inspection, null);
+  assert.equal(row(3).staleInspection, true);
+  assert.equal(row(6).landedBy, "mcc");
+  assert.equal(row(6).wouldLand, true);
+  assert.equal(row(7).inspection, null);
+  assert.equal(g.prs, 4); // 1, 2(findings도 판단), 4(ESCALATE), 6
+  assert.equal(g.wouldLand, 2);
+  assert.equal(g.reverted, 1);
+  assert.equal(g.ready, false);
+  assert.deepEqual(
+    g.misses.map((m) => [m.pr, m.kind]),
+    [[7, "no-inspection"], [5, "no-inspection"], [3, "no-inspection"], [2, "findings"], [1, "reverted-would-land"]],
+  );
+  assert.match(g.misses.find((m) => m.pr === 3)!.text, /옛 head/);
+  assert.match(g.misses.find((m) => m.pr === 1)!.text, /#9/);
+});
+
+test("SHADOW GATE: head를 모르면 머지 전 마지막 INSPECTION으로 맞추고, 기록이 없으면 시작 전", () => {
+  const g = mccGateOf({ records: [insp(1, H("a"), "findings", at(0)), insp(1, H("b"), "pass", at(0, 1)), would(1, H("b"), at(0, 2))], entries: [entry(1, at(0, 3))], airport: "ATCC", heads: new Map(), now: Date.parse(at(1)) });
+  assert.deepEqual([g.rows[0].head, g.rows[0].inspection, g.rows[0].wouldLand, g.misses.length], [null, "pass", true, 0]);
+  const empty = mccGateOf({ records: [], entries: [entry(1, at(0))], airport: "ATCC", heads: new Map(), now: Date.parse(at(1)) });
+  assert.deepEqual([empty.since, empty.days, empty.merged, empty.ready], [null, 0, 0, false]);
+  assert.match(mccGateLine(empty), /^SHADOW GATE 아직 · 판단한 PR 0\/20건 · 0\/5일 · would-land 되돌림 0건 · 불일치 0건$/);
+});
+
+test("SHADOW GATE: 20건·5일·되돌림 0이면 ready — 하나라도 모자라면 아니다", () => {
+  const records = Array.from({ length: MCC_GATE.prs }, (_, i) => insp(i + 1, H("c"), "pass", at(0, i)));
+  const entries = records.map((r, i) => entry((r as { pr: number }).pr, at(0, i + 1)));
+  const heads = new Map(entries.map((e) => [e.pr.number, H("c")]));
+  const g = mccGateOf({ records, entries, airport: "ATCC", heads, now: Date.parse(at(5)) });
+  assert.deepEqual([g.prs, g.days, g.ready], [20, 5, true]);
+  assert.match(mccGateLine(g), /^SHADOW GATE 충족/);
+  assert.equal(mccGateOf({ records, entries, airport: "ATCC", heads, now: Date.parse(at(4, 23)) }).ready, false);
+  assert.equal(mccGateOf({ records, entries: entries.slice(1), airport: "ATCC", heads, now: Date.parse(at(5)) }).ready, false);
+  const back = [...records, would(1, H("c"), at(0, 0.5))];
+  assert.equal(mccGateOf({ records: back, entries: [{ ...entries[0], reverted: true }, ...entries.slice(1)], airport: "ATCC", heads, now: Date.parse(at(5)) }).ready, false);
 });
