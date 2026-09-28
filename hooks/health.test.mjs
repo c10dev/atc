@@ -94,14 +94,15 @@ test("fail open: 잘못된 stdin, 쓸 수 없는 상태 폴더에도 출력 없�
   try {
     const notDir = join(s.base, "a-file");
     writeFileSync(notDir, "x"); // 상태 폴더 자리에 파일 → 쓸 수 없음(ENOTDIR)
-    for (const [stdin, env] of [["{broken", {}], [JSON.stringify(input({ error: "unknown" })), { ATC_STATE_DIR: notDir }], [JSON.stringify(input({ error: "rate_limit", last_assistant_message: "limit" })), {}]]) {
+    // 운영 상태 폴더(~/.local/state/atc)에 쓰지 않도록 늘 시험 폴더를 준다
+    for (const [stdin, env] of [["{broken", { ATC_STATE_DIR: s.dir }], [JSON.stringify(input({ error: "unknown" })), { ATC_STATE_DIR: notDir }], [JSON.stringify(input({ error: "rate_limit", last_assistant_message: "limit" })), { ATC_STATE_DIR: s.dir }]]) {
       const r = spawnSync(process.execPath, [SCRIPT], { input: stdin, env: { ...process.env, ...env }, encoding: "utf8", timeout: 5000 });
       assert.equal(r.status, 0);
       assert.equal(r.stdout, "");
     }
     // ATC_STATE_DIR를 주면 그 아래 health/에 쓴다
     spawnSync(process.execPath, [SCRIPT], { input: JSON.stringify(input({ error: "rate_limit", last_assistant_message: "You've hit your session limit" })), env: { ...process.env, ATC_STATE_DIR: s.dir }, encoding: "utf8", timeout: 5000 });
-    assert.equal(JSON.parse(readFileSync(sessionFile(s.dir, "sess-1"), "utf8")).code, "LIMIT");
+    assert.equal(lines(s).at(-1).code, "LIMIT");
   } finally {
     s.done();
   }
