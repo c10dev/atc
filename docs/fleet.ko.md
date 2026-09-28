@@ -802,7 +802,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 ### 8.8 AIRCRAFT health
 
-상태: 1–5단계를 만들었다(ATC-45, ATC-47, ATC-48, ATC-51). 대응 매뉴얼과 pull 분류기, push hook, health에서 나오는 FLEET PLAN 제안, ACCOUNT로 붙드는 `LIMIT`이다.
+상태: 1–6단계를 만들었다(ATC-45, ATC-47, ATC-48, ATC-51, ATC-55). 대응 매뉴얼과 pull 분류기, push hook, health에서 나오는 FLEET PLAN 제안, ACCOUNT로 붙드는 `LIMIT`, ACCOUNT별 FUEL REMAINING이다.
 
 **왜.** 2026-09-28 07:37:13Z에 TEAM_H가 ATC-44 BRIEF를 받고 3초 뒤 계정의 session limit에 걸렸다. 07:40:57Z에 누가 "Try again"을 칠 때까지 atc는 TEAM_H를 `idle`로 보여서, FLEET·DISPATCH·TOWER 모두 일을 받을 수 있는 AIRCRAFT로 봤다. atc는 `dead`·`busy`·`idle`만 알았고, 세션이 왜 멈췄는지, 무엇을 기다리는지는 읽지 않았다.
 
@@ -849,13 +849,20 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - 붙들린 형제는 자기 health 코드를 받지 않는다(멈춘 것이 아니다). 그래서 따로 경보나 FLEET PLAN 제안이 나오지 않는다. 그 ACCOUNT의 `LIMIT` 경보 하나가 그들을 적는다: `LIMIT (account pro-2) — TEAM_K 사용 한도, reset 07:40Z까지 HOLD · 같은 ACCOUNT도 HOLD: TEAM_L`.
 - ACCOUNT는 팀 세션(DISPATCH `teamPattern`)에만 있다. ENGINEERING 같은 다른 세션의 `LIMIT`은 전처럼 reset 시각으로 묶고, AIRCRAFT를 붙들지 않는다.
 
+**FUEL REMAINING(ATC-55, [fuel.md](fuel.md) 6절).** `LIMIT`은 계정이 바닥났다는 것이고, FUEL은 얼마나 가까운지다. SUPERVISOR가 설치하는 statusline 명령 `hooks/fuel-statusline.mjs`([hooks/README.ko.md](../hooks/README.ko.md#fuel-statusline))가 Claude Code가 상태 줄에 넘기는 `rate_limits`(`five_hour`, `seven_day`, `spend_limit`: 쓴 몫과 reset)를 숫자만 `fuel/<sessionId>.jsonl`에 덧붙인다.
+
+- 서버는 session → AIRCRAFT → ACCOUNT로 잇고 ACCOUNT마다 가장 새 값을 쓴다. 그래서 자기 세션이 보고하지 않은 AIRCRAFT도 그 ACCOUNT의 값을 보인다. ACCOUNT가 없으면 그 AIRCRAFT 자신의 세션 값만 쓴다. reset이 지난 창은 뺀다.
+- FLEET 줄: `FUEL 82% · resets 21:00Z` — 가장 많이 쓴 창에서 **쓴 몫**과 그 창의 reset. 80 % 아래는 회색, 80 %부터 노랑(INFO), 95 %부터 빨강(HOLD 임계값). 툴팁에 창마다의 값과 어느 세션이 언제 적었는지가 있다.
+- 80 %(`dispatch.json` `fuel.infoPct`)부터 TOWER 브리핑 `open.fuel`에 INFO 항목(ACCOUNT·창·reset마다 한 번), 그 ACCOUNT의 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING에 `fuel` 문제(`info`)가 생긴다.
+- 95 %(`fuel.holdPct`)부터는 SUPERVISOR가 DISPATCH HOLD 스위치를 켰을 **때만**(설정 창 AGENTS 탭 FUEL 블록, `fuel.hold`, 기본 꺼짐, 결정 D3) DISPATCH가 그 ACCOUNT의 AIRCRAFT를 reset까지 `HOLD · FUEL 96% (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다. 계정을 저절로 바꾸는 일은 없다.
+
 **Push(`hooks/health.mjs`, ATC-47).** Claude Code hook이 멈춘 순간을 바로 알려서, 승인을 기다리는 세션이 30분 뒤 `HUNG`이 아니라 곧바로 `PENDING`으로 보인다. 이벤트마다 상태 폴더의 `health/<sessionId>.jsonl`에 한 줄을 덧붙인다: `{t, event, code?, error?, line?}`(`StopFailure`, `Notification`, `Stop`, `PostToolUse`. 코드·시각·오류 첫 줄만, 본문 없음). 서버는 세션마다 마지막 줄을 읽고, 대화 기록의 마지막 사실보다 새 push 기록이 이긴다(`mergeHealth`). 아니면 pull 결과가 그대로 선다. SUPERVISOR의 설치 방법은 [hooks/README.ko.md](hooks/README.ko.md)에 있다.
 
 **어디에 보이나.**
 
 - `/api/snapshot`: `sessions[].health`(`code`, `level`, `since`, `resetsAt`, `detail`, `next`, `holds`)와, ALERT 코드마다 kind `health`인 `alerts`. 올라가고 풀린 경보는 다른 경보처럼 `alert.raised`·`alert.cleared` 이벤트와 FLIGHT RECORDER 줄이 된다.
 - FLEET 운항 상태 목록: FLYING 칸 앞의 표시. 예: `HOLD · LIMIT until 07:40Z`, `PENDING approval 12m`, `CONTEXT — RESTART`. 툴팁에 오류 한 줄과 다음 한 걸음이 있다. ACCOUNT로 붙들린 AIRCRAFT는 점선 표시 `HOLD · LIMIT (account pro-2) until 07:40Z`, 라벨을 단 ACCOUNT는 REGISTRATION 옆 작은 칩으로 보인다. 카드에는 ACCOUNT 줄과 같은 HOLD 줄이 있다.
-- DISPATCH는 막는 코드(`LIMIT`, `MODEL`, `CONTEXT`, `PROVIDER`, `HUNG`)의 AIRCRAFT와 ACCOUNT로 붙들린 AIRCRAFT를 그 표시를 사유로 건너뛴다. SCHEDULE NEW는 그 AIRCRAFT를 tail로 받지 않는다.
+- DISPATCH는 막는 코드(`LIMIT`, `MODEL`, `CONTEXT`, `PROVIDER`, `HUNG`)의 AIRCRAFT와 ACCOUNT로 붙들린 AIRCRAFT를 그 표시를 사유로 건너뛴다. SCHEDULE NEW는 그 AIRCRAFT를 tail로 받지 않는다. FUEL 스위치가 켜져 있으면 95 % 이상인 ACCOUNT도 건너뛴다(위).
 - FLIGHT FOLLOWING: 그 AIRCRAFT가 쥔 FLIGHT에 `health` 문제(ALERT면 `warn`, 아니면 `info`). OCC가 다른 문제처럼 보고한다.
 - TOWER 브리핑: `open.health`(코드가 있는 AIRCRAFT 전부)와 `open.healthAlerts`.
 
@@ -866,6 +873,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 3. ✅ Push: `StopFailure`와 `Notification`(`permission_prompt`, `idle_prompt`, `elicitation_dialog`)에 거는 `hooks/health.mjs`. `Stop`·`PostToolUse`에 풀고, 상태 폴더의 `health/<sessionId>.jsonl`에 덧붙인다. `user` 등급.
 4. ✅ FLEET PLAN 제안(ATC-48): `MODEL`과 주간 `LIMIT`에 AOG(reset 날까지), `CONTEXT`와 ALERT 수준의 `HUNG`에 RESTART. 사유에 health 한 줄과 다음 할 일이 붙고, 코드가 풀리면 제안은 expire된다. health 경보는 이미 `alert.raised`·`alert.cleared`로 FLIGHT RECORDER에 남아서 `health.*` 줄은 따로 두지 않는다.
 5. ✅ ACCOUNT(ATC-51): 프로필 항목 `account`와 FLEET 카드 입력, ACCOUNT로 묶는 `LIMIT` 경보, DISPATCH·SCHEDULE NEW·FLEET 줄의 형제 HOLD(순수 함수 `accountHolds`).
+6. ✅ FUEL REMAINING(ATC-55): statusline 명령, FLEET 줄의 ACCOUNT별 값, TOWER `open.fuel`, FOLLOWING `fuel` 문제, DISPATCH HOLD 스위치(순수 함수 `fuelRemainingOf`, `fuelHolds`). `user` 등급(`hooks/`, 설정).
 
 **위험.**
 
@@ -876,7 +884,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 | 긴 테스트 중의 잘못된 `HUNG` | 먼저 INFO. DISPATCH는 막지만 busy AIRCRAFT는 원래 배정받지 않는다 |
 | 세션 파일이 `busy`인 채 승인을 기다리면 hook이 없을 때 30분 뒤 `HUNG`으로 보인다 | push hook(3단계)이 `PENDING`을 바로 알린다. hook이 없어도 세션이 `idle`이 되면 pull이 멈춘 도구 호출을 잡는다 |
 
-아직 만들지 않음: 한도에 걸리기 전의 ACCOUNT별 FUEL REMAINING([fuel.md](fuel.md) F6, ATC-55).
+아직 만들지 않음: FLEET PLAN 블록의 FUEL(8.6의 "주간 사용량 줄").
 
 **PILOT'S DISCRETION(ATC-45).**
 
@@ -913,7 +921,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 7. ✅ FLEET 탭의 팀 꾸리기(8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE(8.2): LOGBOOK의 TYPE RATING 근거, GRANT·REVIEW 추천, SUPERVISOR의 부여·회수
 9. ✅ 세션 조종(8.5): FLEET 탭의 LAUNCH·STOP. 남은 일: 자동 STOP(FLEET PLAN 4단계. 그림자·승인 운용은 8.6·8.7에서 만듦), FLEET PLAN 밖의 RESTART, 다시 띄우는 CREW CHANGE, 사용량 예산
-10. ✅ AIRCRAFT health(8.8, ATC-45·47·48·51): 대응 매뉴얼과 pull 분류기, push hook. snapshot, FLEET 줄, FLIGHT FOLLOWING, TOWER 브리핑, DISPATCH·SCHEDULE 거르기, health에서 나오는 FLEET PLAN 제안, ACCOUNT로 묶고 붙드는 `LIMIT`
+10. ✅ AIRCRAFT health(8.8, ATC-45·47·48·51·55): 대응 매뉴얼과 pull 분류기, push hook. snapshot, FLEET 줄, FLIGHT FOLLOWING, TOWER 브리핑, DISPATCH·SCHEDULE 거르기, health에서 나오는 FLEET PLAN 제안, ACCOUNT로 묶고 붙드는 `LIMIT`, ACCOUNT별 FUEL REMAINING
 
 ## 11. 위험과 대응
 

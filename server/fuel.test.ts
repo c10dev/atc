@@ -35,6 +35,8 @@ function assistant(o: Opt = {}): string {
         output_tokens: 50,
         cache_creation: { ephemeral_1h_input_tokens: 100, ephemeral_5m_input_tokens: 0 },
         service_tier: "standard",
+        inference_geo: "not_available",
+        speed: "standard",
       },
     },
     wireToolInputs: { toolu_1: { command: SECRET, description: SECRET } },
@@ -69,6 +71,8 @@ test("parseFuelLines: 다섯 가지와 모델·stop_reason·version·effort를 �
     stopReason: "tool_use",
     version: "2.1.281",
     effort: "high",
+    speed: "standard",
+    geo: "not_available",
   });
   assert.equal(p.unknown, 0);
 });
@@ -202,6 +206,8 @@ function rec(o: Partial<FuelRecord>): FuelRecord {
     stopReason: "end_turn",
     version: "2.1.281",
     effort: "high",
+    speed: "standard",
+    geo: null,
     ...o,
   };
 }
@@ -232,7 +238,9 @@ test("summarizeFuel: CAPTAIN·CREW를 나누고, CREW 출력은 하한(stop_reas
   const x = s.sessions[0];
   assert.equal(x.name, "team_j");
   assert.equal(x.live, true);
-  assert.deepEqual({ ...x.captain }, { input: 10, cacheWrite5m: 0, cacheWrite1h: 90, cacheRead: 900, output: 100, requests: 1, cacheHit: 0.9 });
+  const { cost: _cost, unpriced, ...tokens } = x.captain;
+  assert.deepEqual(tokens, { input: 10, cacheWrite5m: 0, cacheWrite1h: 90, cacheRead: 900, output: 100, requests: 1, cacheHit: 0.9 });
+  assert.deepEqual(unpriced, { requests: 1, tokens: 1100 }); // 가격표 없이 부르면 모두 값 없음
   assert.equal(x.crew.requests, 3);
   assert.equal(x.crew.output, 50);
   assert.equal(x.crew.outputLowerBound, true);

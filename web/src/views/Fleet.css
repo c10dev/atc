@@ -508,6 +508,25 @@
   border-color: var(--amber);
   color: var(--amber);
 }
+/* FUEL REMAINING(ATC-55): ACCOUNT가 쓴 몫. INFO 임계값부터 노랑, HOLD 임계값부터 빨강 */
+.fl-r-fuel {
+  margin-right: var(--space-1-5);
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.fl-r-fuel.lv-info,
+.fl-fuel.lv-info {
+  color: var(--amber);
+}
+.fl-r-fuel.lv-hold,
+.fl-fuel.lv-hold {
+  color: var(--alert);
+}
+.fl-fuel {
+  margin: 0;
+  font: 600 var(--text-xs) var(--mono);
+}
 /* ACCOUNT HOLD(ATC-51): 자기 고장이 아니라 같은 ACCOUNT의 LIMIT — 점선 */
 .fl-r-health.lv-hold {
   border-style: dashed;

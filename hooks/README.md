@@ -1,4 +1,4 @@
-# hooks — claim and rules-drift hooks
+# hooks — claim, rules-drift and health hooks, FUEL statusline
 
 **English** · [한국어](README.ko.md)
 
@@ -171,6 +171,38 @@ The SUPERVISOR adds these entries to `~/.claude/settings.json` (absolute paths; 
 
 To turn it off, remove the entries.
 
+## FUEL statusline
+
+`fuel-statusline.mjs` (ATC-55, [docs/fuel.md](../docs/fuel.md) section 6) is a Claude Code **statusLine** command, not a hook. Claude Code runs it whenever it redraws the status line and passes JSON on stdin. From Claude Code 2.1.283 that JSON carries `session_id` and, for plan (claude.ai) logins, `rate_limits`:
+
+| Field | Meaning |
+|---|---|
+| `rate_limits.five_hour` / `seven_day` | `{used_percentage, resets_at}`: share of that window used (0–100) and its reset (epoch seconds). A window is present only while its reset is in the future |
+| `rate_limits.spend_limit` | Same shape, gateway logins only |
+| (no `rate_limits`) | API key, Bedrock or Vertex: plan limits don't apply, nothing is written |
+
+- It appends `{t, sessionId, rate_limits}` to `fuel/<sessionId>.jsonl`, **numbers only**, and only when a number changed since the last line. The rest of the input (model, cost, paths, workspace) is ignored.
+- It prints a short line for the status line, `FUEL 5h 82% · 7d 40%`; with `--quiet` it prints nothing. It always exits 0 and swallows errors. No network.
+- The server reads the last line of each file, maps session → AIRCRAFT → ACCOUNT ([docs/fleet.md](../docs/fleet.md) 8.8), and keeps the newest value per ACCOUNT.
+- Options: `ATC_STATE_DIR` (default `~/.local/state/atc`). The `fuel/` folder can be deleted at any time.
+
+### Install (SUPERVISOR)
+
+The SUPERVISOR adds this to `~/.claude/settings.json` (absolute paths). `statusLine` holds one command, so this replaces any status line you already have:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "\"/path/to/node\" \"/path/to/atc/hooks/fuel-statusline.mjs\""
+  }
+}
+```
+
+To keep your own status line, run both from one small script and print yours: `input=$(cat); printf '%s' "$input" | node /path/to/atc/hooks/fuel-statusline.mjs --quiet; printf '%s' "$input" | your-statusline`.
+
+If a running session doesn't show the line, restart it. Sessions on other machines and CREW subagents don't report; one live CAPTAIN session per ACCOUNT is enough. To turn it off, remove `statusLine`.
+
 ## Files
 
 | File | Role |
@@ -186,5 +218,8 @@ To turn it off, remove the entries.
 | `health.mjs` | The health hook: reads the event from stdin, appends one line to `health/<sessionId>.jsonl` |
 | `health.d.mts` | Type declaration for `health.mjs` |
 | `health.test.mjs` | Line format per event, no bodies, clear events, fail open (`npm test`) |
+| `fuel-statusline.mjs` | The FUEL statusline command: numbers-only `rate_limits` to `fuel/<sessionId>.jsonl`, plus `parseRecord`/`lastRecord` that the server reuses |
+| `fuel-statusline.d.mts` | Type declaration for `fuel-statusline.mjs` |
+| `fuel-statusline.test.mjs` | Record format, numbers only, write on change, output line, fail open (`npm test`) |
 
 How atc turns claims into handoffs and conflicts is described in the main [README](../README.md#handoffs-and-conflicts).

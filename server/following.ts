@@ -8,6 +8,7 @@ import { tailsOf } from "./dispatch.ts";
 import { type LogEntry, loadLogbook, WAKE_EXPECT_MIN } from "./logbook.ts";
 import type { Stranded } from "./landing.ts";
 import { type Health, healthLabel } from "./health.ts";
+import { type FuelRemaining, fuelLabel } from "./fuel-remaining.ts";
 import type { PullRequest, Snapshot, Ticket, Workspace } from "./model.ts";
 import { allProposals, type Proposal, standFreeTicket } from "./proposals.ts";
 
@@ -28,7 +29,7 @@ export const STAGES = ["readback", "departed", "prOpened", "cleared", "arrived"]
 export type Stage = (typeof STAGES)[number];
 
 export interface FollowIssue {
-  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health";
+  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health" | "fuel";
   kind: "delay" | "mismatch";
   severity: "warn" | "info"; // info: 보여 주기만(착륙 대기는 SUPERVISOR 몫, 머지 뒤 Done 아님은 CLOSE 초안 몫)
   text: string;
@@ -65,6 +66,7 @@ export interface FollowInput {
   now: number;
   stranded?: Stranded[]; // 기본 브랜치에 닿지 않은 머지(ATC-29)
   health?: Map<string, Health>; // REGISTRATION(대문자) → 그 AIRCRAFT의 health(ATC-45)
+  fuel?: Record<string, FuelRemaining>; // REGISTRATION(대문자) → 그 ACCOUNT의 FUEL REMAINING(ATC-55)
 }
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -190,6 +192,18 @@ export function followingOf(inp: FollowInput): FollowItem[] {
           key: `${t.flight}|health|${h.code}`,
         });
       }
+      // FUEL REMAINING(ATC-55): 그 FLIGHT를 쥔 AIRCRAFT의 ACCOUNT가 INFO 임계값을 넘었다. key에 ACCOUNT·창·reset을 넣어 창마다 한 번 보고한다
+      const fuel = f.aircraft ? inp.fuel?.[f.aircraft.toUpperCase()] : undefined;
+      if (fuel && fuel.level !== "ok" && !f.stages.arrived) {
+        f.issues.push({
+          code: "fuel",
+          kind: "delay",
+          severity: "info",
+          text: `${f.aircraft} ${fuelLabel(fuel, inp.now)}${fuel.account ? ` (account ${fuel.account})` : ""} — 한도에 가까움. 같은 ACCOUNT: ${fuel.aircraft.join(", ")}`,
+          since: fuel.at,
+          key: `${t.flight}|fuel|${fuel.group}|${fuel.top.name}|${fuel.top.resetsAt}`,
+        });
+      }
       for (const x of (inp.stranded ?? []).filter((y) => y.flight === t.flight)) {
         const done = isDone(inp.tickets.find((y) => y.key === t.flight));
         f.issues.push({
@@ -247,7 +261,7 @@ export function ackReported(items: FollowItem[], r: Reported, keys: string[], no
 
 export function followingNow(s: Snapshot, now = Date.now()): FollowItem[] {
   const health = new Map(s.sessions.filter((x) => x.status !== "dead" && x.health).map((x) => [x.name.toUpperCase(), x.health!]));
-  return followingOf({ proposals: allProposals(), tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health });
+  return followingOf({ proposals: allProposals(), tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {} });
 }
 
 export function mountFollowing(app: Hono, getSnapshot: () => Promise<Snapshot>) {

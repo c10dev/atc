@@ -2,6 +2,7 @@ import type { CarriedReview, CodexFindingSummary, CodexUnavailable, ExtReviewSta
 import type { GroundStop, MainStatus } from "./atfm.ts";
 import type { AutolandView } from "./autoland.ts";
 import type { Health } from "./health.ts";
+import type { FuelRemaining } from "./fuel-remaining.ts";
 export type Agent = "claude" | "codex";
 
 export interface Session {
@@ -230,4 +231,5 @@ export interface Snapshot {
   stranded?: Stranded[]; // 기본 브랜치에 닿지 않은 머지(ATC-29). 경보(kind stranded)와 FLIGHT FOLLOWING이 읽는다
   atfm: { mains: MainStatus[]; groundStops: GroundStop[] }; // 기본 브랜치 CI와 출발 중지(docs/atfm.md)
   autoland?: AutolandView; // AUTOLAND(ATC-34): AIRPORT마다 다음 할 일, PR마다 표시·제외 사유
+  fuel?: Record<string, FuelRemaining>; // FUEL REMAINING(ATC-55): REGISTRATION(대문자) → 그 ACCOUNT의 가장 새 statusline 값
 }

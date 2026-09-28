@@ -190,6 +190,25 @@ export function AgentSettings({ snapshot, server, save }: { snapshot: Snapshot |
         </ServerRows>
       </Block>
 
+      <Block code="FUEL" label="사용 한도 HOLD(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) => (
+            <EditRow
+              label="DISPATCH HOLD"
+              env="fuel.hold"
+              value={s.fuel?.hold ? "on" : "off"}
+              note={
+                s.fuel?.hold
+                  ? `on(dispatch.json): ACCOUNT가 한도의 ${s.fuel.holdPct}% 이상을 쓰면 reset까지 DISPATCH가 그 ACCOUNT의 AIRCRAFT를 건너뜀. ${s.fuel.infoPct}%부터 TOWER·OCC에 INFO`
+                  : `off(기본, dispatch.json): FUEL은 FLEET 줄과 TOWER·OCC INFO(${s.fuel?.infoPct ?? 80}%)에만 보임. on이면 ${s.fuel?.holdPct ?? 95}% 이상인 ACCOUNT의 AIRCRAFT를 DISPATCH가 건너뜀. statusline hook이 있어야 값이 들어옴`
+              }
+              input={{ kind: "select", options: ["off", "on"] }}
+              onSave={(v) => save({ fuelHold: v as "off" | "on" })}
+            />
+          )}
+        </ServerRows>
+      </Block>
+
       <Block code="AUTOLAND" label="착륙 자동화(SUPERVISOR 전용)">
         <ServerRows server={server}>
           {(s) => (

@@ -159,3 +159,13 @@ test("AIRCRAFT health(ATC-45): 그 FLIGHT를 쥔 AIRCRAFT의 코드가 health �
   assert.equal(followingOf(input({ proposals: [proposal("D-1", "VOC-1", "accepted", { accepted: ago(5) })], tickets: [ticket("VOC-1")], health: info }))[0]!.issues[0]!.severity, "info");
   assert.deepEqual(followingOf(input({ proposals: [proposal("D-1", "VOC-1", "accepted", { accepted: ago(5) })], tickets: [ticket("VOC-1")] }))[0]!.issues, []);
 });
+
+test("FUEL REMAINING(ATC-55): 그 FLIGHT를 쥔 AIRCRAFT의 ACCOUNT가 INFO 임계값을 넘으면 info 문제, 창마다 한 번", () => {
+  const f82 = { group: "pro-2", account: "pro-2", at: ago(3), from: "TEAM_K", windows: [], top: { name: "five_hour" as const, pct: 82, resetsAt: "2026-09-27T13:00:00.000Z" }, level: "info" as const, aircraft: ["TEAM_B", "TEAM_K"] };
+  const run = (fuel: Record<string, typeof f82>) => followingOf(input({ proposals: [proposal("D-1", "VOC-1", "accepted", { accepted: ago(5) })], tickets: [ticket("VOC-1")], fuel }))[0]!.issues;
+  const [issue] = run({ TEAM_B: f82 });
+  assert.deepEqual([issue!.code, issue!.severity, issue!.since, issue!.key], ["fuel", "info", ago(3), "VOC-1|fuel|pro-2|five_hour|2026-09-27T13:00:00.000Z"]);
+  assert.equal(issue!.text, "TEAM_B FUEL 82% · resets 13:00Z (account pro-2) — 한도에 가까움. 같은 ACCOUNT: TEAM_B, TEAM_K");
+  // 임계값 아래면 문제 없음
+  assert.deepEqual(run({ TEAM_B: { ...f82, level: "ok" as never } }), []);
+});

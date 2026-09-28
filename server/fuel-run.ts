@@ -9,6 +9,7 @@ import { rememberAgentModels } from "./agent-models.ts";
 import type { CrewMember } from "./crew.ts";
 import { loadFleet } from "./fleet.ts";
 import { agentModels, type CrewWarning, crewWarnings } from "./fuel-crew.ts";
+import { mergePriceTables, parsePriceTable, type PriceTable } from "./fuel-cost.ts";
 import { type Baseline, controlSendsOf, findLeaks, type LeakEvent, sessionChangeLeaks } from "./fuel-leaks.ts";
 import { type AgentMeta, type Compaction, dedupeFuel, type FuelRecord, parseFuelLines, summarizeFuel } from "./fuel.ts";
 import { arrivedSpan, type Attribution, attributeFuel, type ClaimSpan, enRouteSpans, flightOf, fuelForEntry } from "./fuel-flights.ts";
@@ -16,6 +17,7 @@ import type { LogEntry, LogLine } from "./logbook.ts";
 import type { Snapshot } from "./model.ts";
 import { allProposals } from "./proposals.ts";
 import { readHookClaims } from "./sources/claude.ts";
+import { type FuelStatusRecord, lastRecord, readTail } from "../hooks/fuel-statusline.mjs";
 
 // FUEL 읽기(ATC-50, docs/fuel.md 4): ~/.claude/projects의 대화 기록을 파일마다 지난번 바이트 뒤부터만 읽는다(talkEventsFile과 같은 방식).
 // 본 대화 기록 <sessionId>.jsonl은 CAPTAIN, <sessionId>/subagents/**/agent-*.jsonl은 CREW. 읽기만 하고 아무것도 쓰지 않는다.
@@ -231,7 +233,15 @@ function complements(names: Map<string, string>): (session: string) => CrewMembe
 
 // 기간 안 기록을 FLIGHT 구간으로 자르고(FUEL F4), LEAK(F3·F7)과 CREW 경고(F7)를 같은 구간으로 나눈다.
 // 구간은 기간 안에 도착한 LOGBOOK FLIGHT와 지금 있는 STAND의 EN ROUTE FLIGHT
-export function analyzeWindow(scan: FuelScan, s: FlightContext, entries: LogEntry[], since: number, now: number): WindowAnalysis {
+// 값(units·cost)은 FUEL COST 가격표에서(F5). LOGBOOK과 GET /api/fuel이 같은 표를 쓴다
+export function analyzeWindow(
+  scan: FuelScan,
+  s: FlightContext,
+  entries: LogEntry[],
+  since: number,
+  now: number,
+  prices: PriceTable | null = readPrices().table,
+): WindowAnalysis {
   const departures = readDepartures();
   const repoOf = new Map(s.airports.map((a) => [a.code, a.repo]));
   const codeOf = new Map(s.airports.map((a) => [a.repo, a.code]));
@@ -247,8 +257,8 @@ export function analyzeWindow(scan: FuelScan, s: FlightContext, entries: LogEntr
   const change = sessionChangeLeaks(scan.records.values(), (r) => {
     const f = flightOf(r, spans, aircraftOf, (id) => byClaimant.get(id) ?? []);
     return f && { key: f.key, airport: f.airport ?? null };
-  });
-  const leaks = [...findLeaks(scan.records.values(), scan.compactions, controlSends(), scan.names), ...change.events];
+  }, prices);
+  const leaks = [...findLeaks(scan.records.values(), scan.compactions, controlSends(), scan.names, prices), ...change.events];
   const warnings = crewWarnings({ records: scan.records.values(), agents: scan.agents, complementOf: complements(scan.names) });
   const inWindow = (t: string) => Date.parse(t) >= since && Date.parse(t) <= now;
   const att = attributeFuel({
@@ -267,16 +277,54 @@ export function readFuel(days: number, s: FlightContext & Pick<Snapshot, "sessio
   const t0 = performance.now();
   const since = now - days * DAY_MS;
   const scan = scanFuel(since, s.sessions);
-  const { att, leaks, warnings, baselines } = analyzeWindow(scan, s, entries, since, now);
-  const summary = summarizeFuel({ ...scan, records: scan.records.values(), leaks, warnings, now, days });
+  const prices = readPrices();
+  const { att, leaks, warnings, baselines } = analyzeWindow(scan, s, entries, since, now, prices.table);
+  const summary = summarizeFuel({ ...scan, records: scan.records.values(), leaks, warnings, prices: prices.table, now, days });
   return {
     at: new Date(now).toISOString(),
     ...summary,
     aircraft: summary.aircraft.map((a) => ({ ...a, attribution: att.aircraft.get(a.aircraft) ?? null })),
     attribution: { totals: att.totals, flights: att.flights },
     sessionBaselines: baselines,
+    prices: { source: prices.table.source, files: prices.files, errors: prices.errors, models: Object.keys(prices.table.models).sort() },
     scan: { files: scan.files, bytesRead: scan.bytes, ms: Math.round(performance.now() - t0) },
   };
+}
+
+// FUEL COST 가격표(ATC-54): 저장소의 server/fuel-prices.json 위에 운영 상태 폴더의 fuel-prices.json(있으면)을 모델 단위로 덮는다.
+// 파일 크기·시각이 같으면 다시 읽지 않는다. 읽지 못한 파일과 잘못된 항목은 errors로 돌려준다(그 모델은 값 없음)
+export const DEFAULT_PRICES_FILE = new URL("./fuel-prices.json", import.meta.url).pathname;
+const priceCache = new Map<string, { key: string; table: PriceTable | null; errors: string[] }>();
+export function readPrices(files = [DEFAULT_PRICES_FILE, join(config.stateDir, "fuel-prices.json")]) {
+  const tables: (PriceTable | null)[] = [];
+  const used: string[] = [];
+  const errors: string[] = [];
+  for (const [i, file] of files.entries()) {
+    let st: { size: number; mtimeMs: number };
+    try {
+      st = statSync(file);
+    } catch {
+      if (i === 0) errors.push(`${file}: 없음`);
+      continue; // 덮어쓰는 파일은 없어도 된다
+    }
+    const key = `${st.size}:${st.mtimeMs}`;
+    let hit = priceCache.get(file);
+    if (hit?.key !== key) {
+      const errs: string[] = [];
+      let table: PriceTable | null = null;
+      try {
+        table = parsePriceTable(JSON.parse(readFileSync(file, "utf8")), errs);
+      } catch (e) {
+        errs.push(`읽지 못함: ${(e as Error).message}`);
+      }
+      hit = { key, table, errors: errs.map((x) => `${file}: ${x}`) };
+      priceCache.set(file, hit);
+    }
+    tables.push(hit.table);
+    if (hit.table) used.push(file);
+    errors.push(...hit.errors);
+  }
+  return { table: mergePriceTables(...tables), files: used, errors };
 }
 
 // atc가 보낸 CLEARANCE·FLIGHT PLAN·RECALL·CREW CHANGE의 시각과 받는 세션. 기록이 없거나 깨졌으면 그 종류만 빈다
@@ -318,5 +366,19 @@ export function mountFuel(app: Hono, getSnapshot: () => Promise<Snapshot>, loadE
   app.get("/api/fuel", async (c) => {
     const s = await getSnapshot();
     return c.json(readFuel(fuelDays(c.req.query("days")), s, loadEntries()));
+  });
+}
+
+// FUEL REMAINING(ATC-55): 상태 폴더의 fuel/<sessionId>.jsonl마다 끝의 마지막 기록(statusline hook이 적음). 파일 이름과 sessionId가 다르면 버린다
+export function readFuelRecords(dir = join(config.stateDir, "fuel")): FuelStatusRecord[] {
+  let files: string[] = [];
+  try {
+    files = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
+  } catch {
+    return [];
+  }
+  return files.flatMap((f) => {
+    const r = lastRecord(readTail(join(dir, f)));
+    return r && `${r.sessionId}.jsonl` === f ? [r] : [];
   });
 }

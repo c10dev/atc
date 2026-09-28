@@ -33,6 +33,8 @@ const crew = (min: number, o: Partial<FuelRecord> = {}): FuelRecord => ({
   stopReason: "tool_use",
   version: null,
   effort: null,
+  speed: null,
+  geo: null,
   ...o,
 });
 const kinds = (ws: { kind: string }[]) => ws.map((w) => w.kind);

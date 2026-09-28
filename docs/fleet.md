@@ -747,7 +747,7 @@ Not built yet: step 4 (automatic STOP); the weekly-usage line (FUEL); CROSSCHECK
 
 ### 8.8 AIRCRAFT health
 
-Status: steps 1–5 built (ATC-45, ATC-47, ATC-48, ATC-51): the manual, the pull classifier, the push hook, FLEET PLAN proposals from health, and `LIMIT` held by ACCOUNT.
+Status: steps 1–6 built (ATC-45, ATC-47, ATC-48, ATC-51, ATC-55): the manual, the pull classifier, the push hook, FLEET PLAN proposals from health, `LIMIT` held by ACCOUNT, and FUEL REMAINING per ACCOUNT.
 
 **Why.** On 2026-09-28 TEAM_H got an ATC-44 BRIEF at 07:37:13Z and hit its account's session limit three seconds later. Until someone typed "Try again" at 07:40:57Z, atc showed TEAM_H as `idle`, so FLEET, DISPATCH and TOWER all saw an AIRCRAFT free for work. atc knew only `dead`, `busy` and `idle`; it never read why a session stopped or what it was waiting for.
 
@@ -794,13 +794,20 @@ Status: steps 1–5 built (ATC-45, ATC-47, ATC-48, ATC-51): the manual, the pull
 - The held siblings get no health code of their own (they have not stopped), so they raise no alert and no FLEET PLAN proposal. The one `LIMIT` alert for the ACCOUNT names them: `LIMIT (account pro-2) — TEAM_K 사용 한도, reset 07:40Z까지 HOLD · 같은 ACCOUNT도 HOLD: TEAM_L`.
 - Only team sessions (the DISPATCH `teamPattern`) have an ACCOUNT. A `LIMIT` on another session, such as ENGINEERING, is still grouped by reset time and holds no AIRCRAFT.
 
+**FUEL REMAINING (ATC-55, [fuel.md](fuel.md) section 6).** `LIMIT` says an account ran out; FUEL says how close it is. The `hooks/fuel-statusline.mjs` statusline command (installed by the SUPERVISOR, [hooks/README.md](../hooks/README.md#fuel-statusline)) appends the numbers-only `rate_limits` Claude Code passes to the status line (`five_hour`, `seven_day`, `spend_limit`: share used and reset) to `fuel/<sessionId>.jsonl`.
+
+- The server maps session → AIRCRAFT → ACCOUNT and keeps the newest value per ACCOUNT, so an AIRCRAFT whose own session hasn't reported shows its ACCOUNT's value. Without an ACCOUNT an AIRCRAFT shows only its own sessions' value. Windows past their reset are dropped.
+- The FLEET row shows `FUEL 82% · resets 21:00Z`: the share **used** of the window that is most used, and that window's reset. Grey below 80 %, amber from 80 % (INFO), red from 95 % (HOLD threshold). The tooltip lists every window and which session reported it when.
+- From 80 % (`dispatch.json` `fuel.infoPct`), TOWER gets an INFO item in `open.fuel` (once per ACCOUNT, window and reset), and FLIGHT FOLLOWING gets a `fuel` issue (`info`) on the FLIGHTs that ACCOUNT's AIRCRAFT hold.
+- From 95 % (`fuel.holdPct`), DISPATCH skips every AIRCRAFT on that ACCOUNT until the reset, with `HOLD · FUEL 96% (account pro-2) until 21:00Z`, **only if** the SUPERVISOR has turned on the DISPATCH HOLD switch (settings window, AGENTS tab, FUEL block; `fuel.hold`, off by default, decision D3). SCHEDULE NEW is not affected. Nothing is ever switched between accounts.
+
 **Push (`hooks/health.mjs`, ATC-47).** A Claude Code hook reports a stop the moment it happens, so a session waiting on a permission prompt shows `PENDING` right away instead of `HUNG` after 30 minutes. It appends one line per event to `health/<sessionId>.jsonl` in the state folder: `{t, event, code?, error?, line?}` (`StopFailure`, `Notification`, `Stop`, `PostToolUse`; only the code, the time and the first error line, never bodies). The server reads the last line of each file, and a push record newer than the transcript's last fact wins (`mergeHealth`); otherwise the pull result stands. Install for the SUPERVISOR is in [hooks/README.md](hooks/README.md).
 
 **Where it shows.**
 
 - `/api/snapshot`: `sessions[].health` (`code`, `level`, `since`, `resetsAt`, `detail`, `next`, `holds`), and `alerts` of kind `health` for ALERT codes. Raised and cleared alerts become `alert.raised`/`alert.cleared` events and FLIGHT RECORDER lines like other alerts.
 - FLEET status list: a tag in the FLYING cell, for example `HOLD · LIMIT until 07:40Z`, `PENDING approval 12m`, `CONTEXT — RESTART`. The tooltip has the error line and the next step. An AIRCRAFT held by its ACCOUNT shows a dashed tag `HOLD · LIMIT (account pro-2) until 07:40Z`, and a labelled ACCOUNT shows as a small chip next to the REGISTRATION. The card has an ACCOUNT line and the same hold line.
-- DISPATCH skips an AIRCRAFT whose code holds (`LIMIT`, `MODEL`, `CONTEXT`, `PROVIDER`, `HUNG`), or whose ACCOUNT is held, with the tag as the reason. SCHEDULE NEW does not accept it as a tail.
+- DISPATCH skips an AIRCRAFT whose code holds (`LIMIT`, `MODEL`, `CONTEXT`, `PROVIDER`, `HUNG`), or whose ACCOUNT is held, with the tag as the reason. SCHEDULE NEW does not accept it as a tail. With the FUEL switch on, DISPATCH also skips an ACCOUNT at or above 95 % (above).
 - FLIGHT FOLLOWING: a `health` issue on the FLIGHT the AIRCRAFT holds (`warn` for ALERT, `info` otherwise). OCC reports it like the other issues.
 - TOWER brief: `open.health` (every AIRCRAFT with a code) and `open.healthAlerts`.
 
@@ -811,6 +818,7 @@ Status: steps 1–5 built (ATC-45, ATC-47, ATC-48, ATC-51): the manual, the pull
 3. ✅ Push: a `hooks/health.mjs` hook on `StopFailure` and `Notification` (`permission_prompt`, `idle_prompt`, `elicitation_dialog`), cleared on `Stop`/`PostToolUse`, appending to `health/<sessionId>.jsonl` in the state folder. `user` tier.
 4. ✅ FLEET PLAN proposals (ATC-48): AOG for `MODEL` and a weekly `LIMIT` (until the reset day), RESTART for `CONTEXT` and `HUNG` at ALERT level. Reasons carry the health line and the next step; the proposal expires when the code clears. Health alerts already reach the FLIGHT RECORDER as `alert.raised`/`alert.cleared`, so there are no separate `health.*` lines.
 5. ✅ ACCOUNT (ATC-51): the `account` profile field and FLEET card field, `LIMIT` alerts grouped by ACCOUNT, and the sibling hold in DISPATCH, SCHEDULE NEW and the FLEET row (pure `accountHolds`).
+6. ✅ FUEL REMAINING (ATC-55): the statusline command, the per-ACCOUNT value on the FLEET row, TOWER `open.fuel`, the FOLLOWING `fuel` issue and the DISPATCH HOLD switch (pure `fuelRemainingOf`, `fuelHolds`). `user` tier (`hooks/`, settings).
 
 **Risks.**
 
@@ -821,7 +829,7 @@ Status: steps 1–5 built (ATC-45, ATC-47, ATC-48, ATC-51): the manual, the pull
 | A false `HUNG` during long tests | INFO first; it holds DISPATCH, which a busy AIRCRAFT never gets anyway |
 | A permission prompt while the session file says `busy` is seen as `HUNG` after 30 min if the hook is not installed | the push hook (step 3) reports `PENDING` directly; without it the pull path still catches a stalled tool call once the session reads `idle` |
 
-Not built yet: FUEL REMAINING per ACCOUNT before a limit is hit ([fuel.md](fuel.md) F6, ATC-55).
+Not built yet: FUEL on the FLEET PLAN block (8.6, "weekly-usage line").
 
 **Pilot's discretion (ATC-45).**
 
@@ -858,7 +866,7 @@ All four steps are done:
 7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE (section 8.2): TYPE RATING evidence from the LOGBOOK, GRANT and REVIEW recommendations, grant and revoke by the SUPERVISOR
 9. ✅ Session control (section 8.5): LAUNCH and STOP from the FLEET tab. Left: automatic STOP (FLEET PLAN step 4; shadow and approval built, 8.6 and 8.7), RESTART outside FLEET PLAN, relaunch CREW CHANGE, usage budget
-10. ✅ AIRCRAFT health (section 8.8, ATC-45·47·48·51): the manual, the pull classifier in the snapshot and the push hook, FLEET row, FLIGHT FOLLOWING, TOWER brief, DISPATCH/SCHEDULE filters, FLEET PLAN proposals from health, and `LIMIT` grouped and held by ACCOUNT
+10. ✅ AIRCRAFT health (section 8.8, ATC-45·47·48·51·55): the manual, the pull classifier in the snapshot and the push hook, FLEET row, FLIGHT FOLLOWING, TOWER brief, DISPATCH/SCHEDULE filters, FLEET PLAN proposals from health, `LIMIT` grouped and held by ACCOUNT, and FUEL REMAINING per ACCOUNT
 
 ## 11. Risks and mitigations
 

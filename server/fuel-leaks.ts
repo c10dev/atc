@@ -1,3 +1,4 @@
+import { leakPriceOf, type PriceTable } from "./fuel-cost.ts";
 import type { Compaction, FuelRecord } from "./fuel.ts";
 
 // FUEL LEAK(ATC-52·ATC-57, docs/fuel.md 5): 이미 캐시에 있던 맥락을 다시 쓴 몫. 규칙이 설명하는 miss만 이름을 붙인다 —
@@ -10,9 +11,7 @@ export const MISS_MIN_TOKENS = 2_000; // 그리고 2,000 토큰 이상 다시 �
 export const TTL_5M_MS = 5 * 60_000;
 export const TTL_1H_MS = 60 * 60_000;
 
-// 쓰기 배수(입력 단가 대비). 5m 1.25×, 1h 2×. 읽기 배수는 모델마다 다르고, 표에 없는 모델은 값을 매기지 않는다(F5가 설정 파일로 옮긴다)
-export const WRITE_MULT = { "5m": 1.25, "1h": 2 } as const;
-export const READ_MULT: Record<string, number> = { "claude-opus-5-5": 0.05, "claude-fable-5-1": 0.025 };
+// 쓰기·읽기 배수와 단가는 FUEL COST의 가격표(ATC-54, fuel-cost.ts)에서 온다. 표에 없는 모델은 값을 매기지 않는다
 
 export type LeakRule =
   | "coldCache"
@@ -41,7 +40,8 @@ export interface LeakEvent {
   t: string;
   rule: LeakRule;
   rewritten: number; // 캐시에서 읽을 수 있었는데 다시 처리한 토큰
-  units: number | null; // rewritten × (writeMult − readMult), 입력 단가 단위. 값 없는 모델은 null
+  units: number | null; // rewritten × (writeMult − readMult), 입력 단가 단위. 가격표에 없는 모델은 null
+  cost: number | null; // units × P_in(배수 포함), USD
   gapMs: number;
   model: string;
   prevModel: string;
@@ -68,18 +68,21 @@ export function ttlAfter(r: FuelRecord, before: number | null): number | null {
   return before;
 }
 
-export function unitsOf(rewritten: number, cur: FuelRecord): number | null {
-  const read = READ_MULT[cur.model];
-  if (read === undefined) return null;
-  const write = cur.cacheWrite1h > 0 ? WRITE_MULT["1h"] : WRITE_MULT["5m"];
-  return Math.round(rewritten * (write - read));
+export function unitsOf(rewritten: number, cur: FuelRecord, prices: PriceTable | null): number | null {
+  return leakPriceOf(rewritten, cur, prices)?.units ?? null;
 }
 
 // 한 세션의 CAPTAIN 요청(또는 CREW 하나의 요청, 시각 순)을 앞뒤로 비교한다. 첫 요청은 여기서 보지 않는다(SESSION CHANGE는 sessionChangeLeaks).
 // 규칙 순서: 프록시 경로 → proxied(LEAK 밖), 사이에 compaction → 간격 > TTL이면 compaction(cold, LEAK) 아니면 expectedRebuild(LEAK 밖),
 // 모델이 바뀜 → modelSwitch, 간격 > TTL → 사이에 atc 발신이 있으면 controlWake 없으면 coldCache,
 // 둘 다 아는 version이나 effort가 바뀜 → upgrade, 나머지 → unexplained
-export function sessionLeaks(captain: FuelRecord[], compactions: string[], sends: ControlSend[], crew: { agent: string | null } | null = null): LeakEvent[] {
+export function sessionLeaks(
+  captain: FuelRecord[],
+  compactions: string[],
+  sends: ControlSend[],
+  prices: PriceTable | null = null,
+  crew: { agent: string | null } | null = null,
+): LeakEvent[] {
   const out: LeakEvent[] = [];
   const cuts = compactions.map(Date.parse).sort((a, b) => a - b);
   const sendAt = sends.map((s) => ({ at: Date.parse(s.at), kind: s.kind })).sort((a, b) => a.at - b.at);
@@ -106,12 +109,14 @@ export function sessionLeaks(captain: FuelRecord[], compactions: string[], sends
           rule = wake ? "controlWake" : "coldCache";
         } else if (prev.version && cur.version && prev.version !== cur.version) [rule, change] = ["upgrade", "version"];
         else if (prev.effort && cur.effort && prev.effort !== cur.effort) [rule, change] = ["upgrade", "effort"];
+        const price = leakPriceOf(rewritten, cur, prices);
         out.push({
           session: cur.session,
           t: cur.t,
           rule,
           rewritten,
-          units: unitsOf(rewritten, cur),
+          units: price?.units ?? null,
+          cost: price?.cost ?? null,
           gapMs,
           model: cur.model,
           prevModel: prev.model,
@@ -129,7 +134,13 @@ export function sessionLeaks(captain: FuelRecord[], compactions: string[], sends
 
 // 모든 세션. records는 전역 중복 제거를 마친 것. 발신은 세션 id가 같거나, 받는 이름이 세션 이름과 같으면(대소문자 무시) 그 세션 몫.
 // CREW는 서브에이전트 하나(agent id)씩 따로 잇는다. atc는 서브에이전트에게 보내지 않고 compaction은 본 대화 기록 것이라 둘 다 없이
-export function findLeaks(records: Iterable<FuelRecord>, compactions: Compaction[], sends: ControlSend[], names: Map<string, string> = new Map()): LeakEvent[] {
+export function findLeaks(
+  records: Iterable<FuelRecord>,
+  compactions: Compaction[],
+  sends: ControlSend[],
+  names: Map<string, string> = new Map(),
+  prices: PriceTable | null = null,
+): LeakEvent[] {
   const bySession = new Map<string, FuelRecord[]>();
   const byAgent = new Map<string, FuelRecord[]>();
   for (const r of records) {
@@ -149,11 +160,11 @@ export function findLeaks(records: Iterable<FuelRecord>, compactions: Compaction
     list.sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
     const name = names.get(session)?.toUpperCase() ?? null;
     const mine = sends.filter((s) => s.session === session || (name !== null && s.name?.toUpperCase() === name));
-    out.push(...sessionLeaks(list, cutsOf.get(session) ?? [], mine));
+    out.push(...sessionLeaks(list, cutsOf.get(session) ?? [], mine, prices));
   }
   for (const list of byAgent.values()) {
     list.sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
-    out.push(...sessionLeaks(list, [], [], { agent: list[0].agent }));
+    out.push(...sessionLeaks(list, [], [], prices, { agent: list[0].agent }));
   }
   return out.sort((a, b) => a.t.localeCompare(b.t));
 }
@@ -185,6 +196,7 @@ const medianOf = (xs: number[]) => {
 export function sessionChangeLeaks(
   records: Iterable<FuelRecord>,
   flightOf: (r: FuelRecord) => { key: string; airport: string | null } | null,
+  prices: PriceTable | null = null,
 ): SessionChangeResult {
   const bySession = new Map<string, FuelRecord[]>();
   for (const r of records) {
@@ -226,12 +238,14 @@ export function sessionChangeLeaks(
     const rewritten = firstWrite(r) - (base?.median ?? 0);
     if (rewritten < MISS_MIN_TOKENS) continue;
     const prevAt = Math.max(...before.map((x) => x.t));
+    const price = leakPriceOf(rewritten, r, prices);
     events.push({
       session: r.session,
       t: r.t,
       rule: "sessionChange",
       rewritten,
-      units: unitsOf(rewritten, r),
+      units: price?.units ?? null,
+      cost: price?.cost ?? null,
       gapMs: t - prevAt,
       model: r.model,
       prevModel: r.model,
@@ -265,7 +279,8 @@ export interface LeakBucket {
   count: number;
   tokens: number;
   units: number; // 값이 매겨진 몫만
-  unpricedTokens: number; // READ_MULT 표에 없는 모델의 rewritten
+  cost: number; // USD, 값이 매겨진 몫만
+  unpricedTokens: number; // 가격표에 없는 모델의 rewritten
 }
 export interface LeakTotals {
   coldCache: LeakBucket;
@@ -281,7 +296,7 @@ export interface LeakTotals {
   proxied: LeakBucket; // 프록시 경로(DeepSeek·Muse 등)의 miss. 캐시가 암묵적이고 값이 다르다. LEAK에 넣지 않는다
 }
 
-const bucket = (): LeakBucket => ({ count: 0, tokens: 0, units: 0, unpricedTokens: 0 });
+const bucket = (): LeakBucket => ({ count: 0, tokens: 0, units: 0, cost: 0, unpricedTokens: 0 });
 export const emptyLeaks = (): LeakTotals => ({
   coldCache: bucket(),
   controlWake: bucket(),
@@ -296,12 +311,23 @@ export const emptyLeaks = (): LeakTotals => ({
   proxied: bucket(),
 });
 
+// LOGBOOK arrived 줄의 fuel.leak(F4)은 F4가 정한 모양 그대로 둔다: 비용(cost)은 넣지 않는다(기록 형식을 바꾸지 않으려고)
+export type LeakCounts = Record<keyof LeakTotals, Omit<LeakBucket, "cost">>;
+export function leakCountsOf(l: LeakTotals): LeakCounts {
+  const out = {} as LeakCounts;
+  for (const [k, { cost: _cost, ...rest }] of Object.entries(l) as [keyof LeakTotals, LeakBucket][]) out[k] = rest;
+  return out;
+}
+
 export function addLeak(to: LeakTotals, e: LeakEvent) {
   const outside = OUTSIDE_LEAK.includes(e.rule);
   for (const b of outside ? [to[e.rule]] : [to[e.rule], to.total, ...(e.crew ? [to.crew] : [])]) {
     b.count++;
     b.tokens += e.rewritten;
     if (e.units === null) b.unpricedTokens += e.rewritten;
-    else b.units += e.units;
+    else {
+      b.units += e.units;
+      b.cost += e.cost ?? 0;
+    }
   }
 }

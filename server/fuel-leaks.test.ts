@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type FuelRecord, summarizeFuel } from "./fuel.ts";
+import { parsePriceTable } from "./fuel-cost.ts";
 import {
   BASELINE_MIN_SAMPLES,
   controlSendsOf,
@@ -13,6 +14,12 @@ import {
   TTL_5M_MS,
   unitsOf,
 } from "./fuel-leaks.ts";
+
+// F3 시험용 가격표(값은 시험 데이터). Sonnet은 일부러 빼서 값 없는 모델을 본다
+const TABLE = parsePriceTable({
+  writeMult: { "5m": 1.25, "1h": 2 },
+  models: { "claude-opus-5-5": { in: 4, out: 20, readMult: 0.05 }, "claude-fable-5-1": { in: 10, out: 50, readMult: 0.025 } },
+});
 
 const S = "11111111-1111-4111-8111-111111111111";
 const T0 = Date.parse("2026-09-28T08:00:00Z");
@@ -35,6 +42,8 @@ function req(min: number, o: Partial<FuelRecord> = {}): FuelRecord {
     stopReason: "tool_use",
     version: "2.1.281",
     effort: "high",
+    speed: "standard",
+    geo: null,
     ...o,
   };
 }
@@ -123,7 +132,7 @@ test("controlSendsOf: CLEARANCE는 기록 시각, FLIGHT PLAN은 send, RECALL은
 
 test("MODEL SWITCH: 이어진 CAPTAIN 요청의 모델이 바뀌고 miss면 modelSwitch(쉰 시간과 상관없이)", () => {
   const sonnet = { model: "claude-sonnet-5" };
-  const [e] = sessionLeaks([req(0), cold(2, sonnet)], [], []);
+  const [e] = sessionLeaks([req(0), cold(2, sonnet)], [], [], TABLE);
   assert.equal(e.rule, "modelSwitch");
   assert.equal(e.prevModel, "claude-opus-5-5");
   assert.equal(e.model, "claude-sonnet-5");
@@ -217,17 +226,18 @@ test("SESSION CHANGE(F7): 같은 FLIGHT의 새 세션 첫 요청이 AIRPORT 기�
 });
 
 test("단위: rewritten × (writeMult − readMult) — Opus 5.5 1h 쓰기는 2 − 0.05", () => {
-  assert.equal(unitsOf(100_000, req(0)), 195_000);
-  assert.equal(unitsOf(100_000, req(0, { cacheWrite1h: 0, cacheWrite5m: 1 })), 120_000);
-  assert.equal(unitsOf(100_000, req(0, { model: "claude-fable-5-1" })), 197_500);
-  assert.equal(unitsOf(100_000, req(0, { model: "deepseek-v4.1-flash" })), null);
+  assert.equal(unitsOf(100_000, req(0), TABLE), 195_000);
+  assert.equal(unitsOf(100_000, req(0, { cacheWrite1h: 0, cacheWrite5m: 1 }), TABLE), 120_000);
+  assert.equal(unitsOf(100_000, req(0, { model: "claude-fable-5-1" }), TABLE), 197_500);
+  assert.equal(unitsOf(100_000, req(0, { model: "deepseek-v4.1-flash" }), TABLE), null);
+  assert.equal(unitsOf(100_000, req(0), null), null); // 가격표가 없으면 값 없음
 });
 
 test("summarizeFuel: 세션·AIRCRAFT·전체로 규칙별 LEAK를 모으고, 큰 사건 순서로 준다", () => {
   const S2 = "22222222-2222-4222-8222-222222222222";
   const other = (min: number, o: Partial<FuelRecord> = {}) => ({ ...req(min, o), session: S2, key: `o${min}` });
   const records = [req(0), cold(70), req(71, { cacheRead: 107_000 }), cold(80, { model: "claude-sonnet-5" }), other(0), other(10, { cacheWrite1h: 53_000, cacheRead: 50_000 })];
-  const leaks = findLeaks(records, [], controlSendsOf({ clearances: [{ at: at(60), to: S, toName: "TEAM_J" }] }));
+  const leaks = findLeaks(records, [], controlSendsOf({ clearances: [{ at: at(60), to: S, toName: "TEAM_J" }] }), new Map(), TABLE);
   assert.deepEqual(
     leaks.map((e) => [e.session === S ? "S" : "S2", e.rule]),
     [

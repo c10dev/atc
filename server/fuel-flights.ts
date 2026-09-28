@@ -1,7 +1,7 @@
 import { type Departure, departureHits } from "./departures.ts";
-import { addKinds, type Burn, burn, type FuelRecord, type Kinds, zero } from "./fuel.ts";
+import { addKinds, burn, type FuelRecord, type Kinds, type TokenBurn, zero } from "./fuel.ts";
 import { countWarnings, type CrewWarning, type CrewWarningCounts, crewShareOf, emptyWarnings } from "./fuel-crew.ts";
-import { addLeak, emptyLeaks, type LeakEvent, type LeakTotals } from "./fuel-leaks.ts";
+import { addLeak, emptyLeaks, type LeakCounts, leakCountsOf, type LeakEvent, type LeakTotals } from "./fuel-leaks.ts";
 import type { LogEntry } from "./logbook.ts";
 import type { Claim } from "./model.ts";
 
@@ -29,21 +29,21 @@ export interface FlightSpan {
 
 export type ClaimSpan = Pick<Claim, "sessionId" | "workspacePath" | "since" | "lastAt">;
 
-export interface CrewPart extends Burn {
+export interface CrewPart extends TokenBurn {
   outputLowerBound: true; // fuel.ts CrewBurn과 같은 까닭
 }
 export interface Part {
-  captain: Burn;
+  captain: TokenBurn;
   crew: CrewPart;
-  total: Burn;
+  total: TokenBurn;
 }
 
 // LOGBOOK arrived 줄의 fuel. 아직 만들지 않은 칸(cost·netCost는 F5)은 0이 아니라 넣지 않는다
 export interface FlightFuel {
-  captain: Burn;
+  captain: TokenBurn;
   crew: CrewPart;
   cacheHit: number | null; // CAPTAIN + CREW
-  leak?: LeakTotals; // FUEL LEAK(F3·F7, fuel-leaks.ts). LEAK을 재고 넘긴 때만(miss가 없으면 0)
+  leak?: LeakCounts; // FUEL LEAK(F3, fuel-leaks.ts). LEAK을 재고 넘긴 때만(miss가 없으면 0). 비용(F5)은 넣지 않는다. F7 규칙 포함
   crewWarnings?: CrewWarningCounts; // CREW 경고 수(F7, fuel-crew.ts). 경고를 재고 넘긴 때만. highCrewShare는 이 FLIGHT가 넘었으면 1
   models: Record<string, number>; // 모델 → 요청 수
 }
@@ -172,7 +172,7 @@ class Tank {
       captain: p.captain,
       crew: p.crew,
       cacheHit: p.total.cacheHit,
-      ...(this.leak ? { leak: this.leak } : {}),
+      ...(this.leak ? { leak: leakCountsOf(this.leak) } : {}),
       ...(warn ? { crewWarnings: warn } : {}),
       models: this.models,
     };
