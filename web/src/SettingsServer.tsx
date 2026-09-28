@@ -505,7 +505,7 @@ function SecretRow({ label, env, isSet, save }: { label: string; env: string; is
 const AUTOLAND_WARN = {
   off: "꺼짐(기본): atc는 PR 브랜치에 아무것도 쓰지 않는다.",
   update: "⚠ CLEARED인데 behind인 PR을 LANDING SEQUENCE 순서로 AIRPORT마다 하나씩 update-branch로 갱신(팀 브랜치에 merge 커밋). 머지는 SUPERVISOR.",
-  merge: "⚠ 위임된 PR(보안·Risk·Human Preview·FLIGHT 없음·HOLD 제외)을 정확한 head로 atc가 머지. vocado AGENTS.md에 AUTOLAND 예외를 적은 뒤에만 켤 것.",
+  merge: "⚠ 위임된 PR(보안·Risk·HUMAN CHECK·UI change 블록 없음·FLIGHT 없음·HOLD 제외)을 정확한 head로 atc가 머지. vocado AGENTS.md에 AUTOLAND 예외를 적은 뒤에만 켤 것.",
 } as const;
 
 // MCC 모드마다 한 줄(docs/mcc.md). findings 댓글은 모든 모드에서 남긴다

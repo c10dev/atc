@@ -3,6 +3,7 @@ import type { GroundStop, MainStatus } from "./atfm.ts";
 import type { AutolandView } from "./autoland.ts";
 import type { Health } from "./health.ts";
 import type { FuelRemaining } from "./fuel-remaining.ts";
+import type { HumanCheckStatus, UiChange } from "./human-check.ts";
 export type Agent = "claude" | "codex";
 
 export interface Session {
@@ -211,6 +212,9 @@ export interface PullRequest {
   codexFindings?: CodexFindingSummary | null; // 현재 head의 Codex 인라인 지적 등급별 수(ATC-28). ok면 P3만·모두 해결·답글이라 착륙을 막지 않음
   codexUnavailable?: CodexUnavailable | null; // CODEX UNAVAILABLE(ATC-7): Codex 한도·무응답
   extReview?: ExtReviewState | null;
+  // HUMAN CHECK(ATC-37): PR 본문 `## UI change` 블록(없으면 null)과 이 head에서 사람 확인 상태(main 병합만 한 head는 이어받음)
+  uiChange?: UiChange | null;
+  humanCheck?: HumanCheckStatus | null;
   externalExclusion?: string | null; // 외부 리뷰에서 빼는 사유(ATC-27·30). null이면 DeepSeek에 보낼 수 있음. 모르면 없음 // Codex를 쓸 수 없을 때 Muse 리뷰 상태(제외·대기·통과·지적). Codex를 쓸 수 있으면 null
 }
 
