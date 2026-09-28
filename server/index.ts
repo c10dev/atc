@@ -6,6 +6,7 @@ import { streamSSE } from "hono/streaming";
 import { mountAirports } from "./airports.ts";
 import { mountAtfm, runAtfm } from "./atfm-run.ts";
 import { mountAutoland, runAutoland } from "./autoland-run.ts";
+import { runJudges } from "./judges/run.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { mountLandingReview } from "./landing-review.ts";
@@ -82,6 +83,7 @@ async function tick() {
     if (isWarm(next)) runLogbook(next); // 10분마다 머지된 PR을 LOGBOOK에 적는다
     if (isWarm(next)) runAtfm(next); // 출발 중지 시작·끝, 1분마다 ATFM 데이터와 그림자 판정(docs/atfm.md)
     if (isWarm(next)) runAutoland(next); // AUTOLAND(ATC-34): GitHub을 새로 읽을 때마다 갱신·머지 한 주기(스위치가 off면 GROUND STOP만 본다)
+    if (isWarm(next)) runJudges(next); // 판정 계열(ATC-36): 스위치가 off가 아닐 때만 1분에 한 번, CLASSIFY 초안 몇 건
 
     current = next;
     if (sig !== signature) {

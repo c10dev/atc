@@ -47,6 +47,10 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `landing.ts` | PR마다 CLEARED TO LAND 조건(체크, head 리뷰, 머지 상태, Draft, LOS), head별 `readyAt`, LANDING SEQUENCE 순서(순수 함수 `buildPulls`, `landingBlocks`) |
 | `autoland.ts` | AUTOLAND(ATC-34, [docs/occ.ko.md](../docs/occ.ko.md) 9.7): `autoland.json`의 스위치와 HOLD(`parseAutoland`, `saveAutoland`), `autoland-state.json` 상태, merge 제외 목록(순수 함수 `mergeExclusionOf`, `humanPreviewOf`), GROUND STOP 걸기(순수 함수 `latchGroundStops`), 갱신이 끝났나(순수 함수 `settleOf`), AIRPORT마다 할 일 하나와 PR마다 표시(순수 함수 `planAutoland`, `snapshot.autoland`) |
 | `autoland-run.ts` | GitHub을 새로 읽을 때마다 AUTOLAND 한 주기: GROUND STOP 걸기, 갱신 정리, `update-branch`(`expected_head_sha`)나 정확한 head 머지(`sha`). 쓰기 직전에 스위치를, 머지면 PR 자체를 다시 본다. `autoland.jsonl` 기록. `GET /api/autoland`, `POST /api/autoland/hold`, `POST /api/autoland/groundstop/clear` |
+| `judges/classify.ts` | SCHEDULE CLASSIFY 판정 계열(ATC-36, [docs/fleet.ko.md](../docs/fleet.ko.md) 6.1): 입력 허용 목록(순수 함수 `classifyInputOf`, `bodyWithheld`), 질문(FLIGHT TYPE·WAKE Choice, TYPE RATING마다 Noul), 답 검사(`judgmentOf`), 초안과 비교한 mark(`verdictOf`) |
+| `judges/engines.ts` | 판정 엔진: `stub`(녹화 응답, 네트워크 없음)과 `jev`(`POST https://api.typesafe.ai/v1/systemone`, `jev-latest`, Bearer `TYPESAFE_API_KEY`. 오류 문구에 키가 들어가지 않는다) |
+| `judges/store.ts` | `judges.json` 스위치(`off`·`replay`·`shadow`, 기본 off), `judges.jsonl` 기록, `crosscheckRateOf`로 잰 계열별 일치율(`judgeRateOf`), SUPERVISOR 판정 뒤에만 mark를 보이는 브리핑 보기(`judgesViewOf`) |
+| `judges/run.ts` | 스위치가 켜져 있으면 스냅숏마다 판정 한 주기: 1분에 3건까지, `replay`(판정된 초안)나 `shadow`(열린 초안). 대상은 순수 함수 `targetsOf`가 고른다 |
 | `origin.ts` | `fromThisApp`: localhost `Origin`이 있는 JSON 요청(이 화면)만 설정, HOLD, GROUND STOP을 바꾼다. `atcctl`은 `Origin`을 보내지 않는다 |
 | `occupancy.ts` | 점유 구간 `[since, lastAt]`으로 HANDOFF·충돌·잠깐 들름 판정 |
 | `airports.ts` | AIRPORT 등록부: `~/projects` 아래 자동 개설, 첫 커밋 해시로 식별, 코드, 개설·폐쇄·이름 변경·삭제 |
@@ -114,7 +118,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `POST /api/dispatch/mode` | `{mode: "shadow" \| "approval"}` 전환(`dispatch.json`에 저장) |
 | `GET /api/dispatch/flight/:key` | Linear에서 티켓 본문과 댓글(읽기 전용) |
 | `GET /api/dispatch/flight/:key/brief?to=TEAM_X` | 그 FLIGHT의 DIRECT 배정 문구 `{key, brief, text}`(Linear 읽기 전용) |
-| `GET /api/schedule/brief` | SCHEDULE 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안(`via`), S2 점검(`crosscheck.oneClick`), 열린 초안 한도, 후보, FLIGHT 요약. `waypointGaps`(ATC-8), `waypointEtas`와 `fresh`가 붙은 `slips`(ATC-24) |
+| `GET /api/schedule/brief` | SCHEDULE 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안(`via`), S2 점검(`crosscheck.oneClick`), 열린 초안 한도, 후보, FLIGHT 요약. `waypointGaps`(ATC-8), `waypointEtas`와 `fresh`가 붙은 `slips`(ATC-24). `judges`(ATC-36: 스위치, 계열별 일치율, 판정한 초안의 mark만) |
 | `POST /api/schedule/slips/ack` | OCC가 보고한 WAYPOINT 지연 경고를 `waypoint-slips.json`에 적는다(`{keys?}`, 없으면 지금 fresh 전부) |
 | `GET /api/schedule/ops/:id` | SCHEDULE 작업 하나와 모드 |
 | `POST /api/schedule/ops` | OCC 초안. `CLASSIFY`·`PRIORITIZE`: `{kind, flight, reason, type?, wake?, ratings?, priority?}`. `NEW`: `{kind: "NEW", title, body, project, reason, priority?, type?, wake?, ratings?, tail?, parent?, related?, blockedBy?}` → `flight: null`, `payload.similar: [{key, title}]`인 작업. 입력이 틀리면 400, 열린 초안이 한도면 409 |
@@ -147,4 +151,6 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `autoland.json` | `autoland.ts` | AUTOLAND 스위치(`mode`, 기본 off), `airports`, `mergeMethod`, `applicationCheck`, `holds`(원자적으로 바꿔 씀) |
 | `autoland-state.json` | `autoland-run.ts` | AUTOLAND 비행 중인 갱신, GROUND STOP, 푼 main SHA, 건너뛴·머지한 head |
 | `autoland.jsonl` | `autoland-run.ts` | AUTOLAND 기록: 갱신, 머지, 결과, GROUND STOP, 스위치·HOLD 변경(추가만 함) |
+| `judges.json` | `judges/store.ts` | 판정 계열 스위치(`jev`: `off`·`replay`·`shadow`, 기본 off). SUPERVISOR만, 설정 창에서(원자적으로 바꿔 씀) |
+| `judges.jsonl` | `judges/run.ts` | 판정 계열 mark(`judge`: 계열, 초안, 분류, 판정, 엔진, 모델, 보낸 칸)와 스위치 변경(`mode`), 추가만 함 |
 | `dispatch.json` | 사용자(선택, 없으면 기본값) | DISPATCH 설정: 프로젝트 → AIRPORT 매핑, 슬롯, 가중치, 모드(`shadow` / `approval`) |

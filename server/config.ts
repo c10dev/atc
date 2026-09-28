@@ -29,4 +29,7 @@ export const config = {
   // Codex 신호 없이 이 시간이 지나면 CODEX UNAVAILABLE로 보고 Muse 리뷰로 넘긴다(ATC-7)
   codexSilentMs: Number(env.ATC_CODEX_SILENT_HOURS || 6) * 3_600_000,
   linearTeamName: env.LINEAR_TEAM_NAME || "Vocado", // S2에서 새 이슈를 만들 Linear 팀 이름(MCP save_issue의 team)
+  // 판정 계열 Jev(ATC-36): TypeSafe API 키. 로그·출력·기록에 쓰지 않는다. ATC_JUDGE_ENGINE=stub이면 녹화 응답(네트워크 없음)
+  typesafeApiKey: env.TYPESAFE_API_KEY || "",
+  judgeEngine: env.ATC_JUDGE_ENGINE === "stub" ? "stub" : "jev",
 };
