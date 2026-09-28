@@ -11,6 +11,7 @@ import { briefFactsOf, compareBriefs, crewModeOf, findingsOf, type Measured, rew
 import { readRecords } from "./recorder.ts";
 import { type Departure, matchDepartures, readDepartures } from "./departures.ts";
 import { readHookClaims, sessionEventsOf } from "./sources/claude.ts";
+import type { FlightCost } from "./fuel-cost.ts";
 import type { FlightFuel } from "./fuel-flights.ts";
 import { sessionDirsOf } from "./crew-observed.ts";
 import { readLandingReviews } from "./landing-review.ts";
@@ -491,12 +492,15 @@ export function runLogbook(s: Snapshot, addFuel: LogbookFuel | null = null) {
 
 export const loadLogbook = () => foldLogbook(readLogbook());
 
-export function mountLogbook(app: Hono) {
+// priceFuel: LOGBOOK fuel의 모델별 토큰에 읽을 때 값을 매긴다(ATC-59). fuel-run.ts를 부르면 순환이 되어 index.ts가 넘긴다
+export function mountLogbook(app: Hono, priceFuel?: (fuel: FlightFuel) => FlightCost | null) {
   app.get("/api/logbook", (c) => {
     const days = Math.min(90, Math.max(1, Number(c.req.query("days")) || ACTUALS_DAYS));
     const aircraft = c.req.query("aircraft")?.toUpperCase() ?? null;
     const since = Date.now() - days * DAY;
-    const entries = loadLogbook().filter((e) => Date.parse(e.arrivedAt) >= since && (!aircraft || e.aircraft === aircraft));
+    const entries = loadLogbook()
+      .filter((e) => Date.parse(e.arrivedAt) >= since && (!aircraft || e.aircraft === aircraft))
+      .map((e) => (e.fuel && priceFuel ? { ...e, fuelCost: priceFuel(e.fuel) } : e)); // byModel이 없는 옛 fuel은 fuelCost null
     return c.json({ days, aircraft, entries, ...logbookState });
   });
   // VECTORS 대 DIRECT(ATC-32): 기간 안 ARRIVED FLIGHT를 지시서 종류별로 나눈 지표와 행
