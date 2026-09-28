@@ -2,7 +2,7 @@
 
 MCC (Maintenance Control) is a control session that lands atc's own PRs and puts the merged code back into service on the machine. An airline's maintenance control centre decides when an aircraft that has been worked on may fly again. MCC does the same for atc: it inspects an atc PR, lands it when the rules allow, and returns the service on port 7700 to operation with the new code. Today a temporary `structure` session does this work, opened in a conversation and gone after it.
 
-> Status (2026-09-28): the SUPERVISOR answered the open questions and chose MCC over the parallel SELF-LANDING draft (#105, #107); see "Decisions". Step 2 is built: the server side in shadow (section 11). The session folder, its guard, `atcctl mcc` and the RTS unit are not built yet.
+> Status (2026-09-28): the SUPERVISOR answered the open questions and chose MCC over the parallel SELF-LANDING draft (#105, #107); see "Decisions". Steps 2–5 are built: the server side in shadow, `atcctl mcc`, the `mcc/` session with guard mode `--mcc`, and the `atc-rts` unit (section 11). What is left is operation: install the unit, launch the session, run the shadow gate.
 
 Related: root `CLAUDE.md` "git과 PR" (LANDING CLEARANCE tiers), `deploy/landing-tier.mjs`, `deploy/atc.service`, [occ.md](occ.md) section 9 (CLEARED TO LAND, REVIEW, AUTOLAND), [atfm.md](atfm.md) (shadow before action), `review/` (the DeepSeek REVIEW session).
 
@@ -111,7 +111,7 @@ The user can still deploy by hand. RTS only needs the checkout to be clean and b
 - `~/.local/state/atc/mcc.json` (atomic): `mode` `shadow` (default) | `land` | `land+rts`, `holds` (PR numbers). It is changed only from the settings window (AGENTS tab, MCC row), like AUTOLAND. `atcctl` has no command for it.
 - `~/.local/state/atc/mcc.jsonl` (append-only): `inspect` (PR, head, verdict, text, model), `escalate`, `land` / `would-land` (PR, head, tier, result), `mode`.
 - `~/.local/state/atc/rts.jsonl` (append-only), written by `deploy/rts.mjs`.
-- The server accepts an INSPECTION only from a model named in `MCC_MODELS`. As with CROSSCHECK, the guard reads the model from the session transcript and passes it as `ATC_MCC_MODEL`.
+- Every MCC write (`inspect`, `escalate`, `land`, `rts`) must carry a model named in `MCC_MODELS`. As with CROSSCHECK, the MCC guard reads the model from the session transcript and passes it as `ATC_MCC_MODEL`; `atcctl mcc` sends it. The TOWER and OCC guards let any `atcctl` command through but never set it, so an `atcctl mcc` write from those sessions is refused by the server.
 
 ## 8. The session
 
@@ -163,11 +163,14 @@ The user can still deploy by hand. RTS only needs the checkout to be clean and b
 - `/api/version` has `head`, the commit the service started from.
 - The settings window's AGENTS tab has an MCC row (`shadow` · `land` · `land+rts`), changed only from the screen.
 
+Step 3 (2026-09-28): `atcctl mcc queue|packet|inspect|escalate|land|rts` (`parseMccArgs`, `mccText`, tests in `controller/atcctl.test.mjs`). The writes send `ATC_MCC_MODEL` when the guard set it; the server now requires it on all four writes (`mccModelOf`) and records the model on `land`, `escalate` and `rts` lines.
+
+Step 4 (2026-09-28): the `mcc/` folder (`CLAUDE.md` and `/tick` in Korean with English translations, `README`, `.claude/settings.json` with model `opus`, `read-guard.mjs`, `settings.test.mjs`). `controller/guard.mjs --mcc` allows `manual` and `mcc …` (with `--gh-read`, read-only `gh pr view|diff|checks|list`), checks the transcript model on the four writes (`MCC_MODELS`, the same rule as the server's) and attaches it as `ATC_MCC_MODEL`. The other modes (TOWER, OCC, CROSSCHECK, REVIEW) now block `mcc inspect|escalate|land|rts`. `mcc/` is a `flagged` path in `landing-tier.mjs`.
+
+Step 5 (2026-09-28): `deploy/rts.mjs` (pure `planRts`, `healthyVersion`, `ciOf` with `rts.test.mjs`) and `deploy/atc-rts.service`, as in section 6. One addition: if the checkout is already at the target but the service reports another commit (a restart that failed last time), RTS only restarts.
+
 ### Not built yet
 
-- Step 3: `atcctl mcc queue|packet|inspect|escalate|land|rts`.
-- Step 4: the `mcc/` folder, guard mode `--mcc` (with the transcript model as `ATC_MCC_MODEL`), the read-guard.
-- Step 5: `deploy/rts.mjs` and `deploy/atc-rts.service`, which write `rts.jsonl`.
 - Steps 6–7: shadow operation, the gate, and the rule changes in root `CLAUDE.md`, the TOWER manual and `landing-tier.mjs`.
 
 ## Decisions

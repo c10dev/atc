@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CREW_CHANGE_CMDS, crosscheckBrief, draftText, manualFiles, manualHash, parseArrived, parseBriefingArgs, parseCrewChange, parseCrosscheck, parseDraft, parseLandingReview, payloadText } from "./atcctl.mjs";
+import { CREW_CHANGE_CMDS, crosscheckBrief, draftText, manualFiles, manualHash, parseArrived, parseBriefingArgs, parseCrewChange, parseCrosscheck, parseDraft, parseLandingReview, parseMccArgs, mccText, payloadText } from "./atcctl.mjs";
 import { simpleCommands } from "../hooks/shell.mjs";
 
 const argv = (s) => s.split(" ");
@@ -254,6 +254,49 @@ test("landing review(ATC-7·27): 읽기는 대상만, 기록은 --head·--verdic
   assert.throws(() => parseLandingReview(argv("v#1 --head abc1234 --verdict maybe -- ok")), /pass\|findings/);
   assert.throws(() => parseLandingReview(argv("v#1 --head abc1234 --verdict pass")), /리뷰 내용/);
   assert.throws(() => parseLandingReview(argv("v#1 --head abc1234 --verdict pass --model x -- ok")), /알 수 없는 인자/);
+});
+
+test("mcc(docs/mcc.md): queue·packet은 읽기, inspect는 --head·--verdict·글, land는 --head만, 모델은 MCC guard가 붙인 환경에서", () => {
+  assert.deepEqual(parseMccArgs(argv("queue")), { method: "GET", path: "/api/mcc/queue" });
+  const saved = process.env.ATC_MCC_MODEL;
+  delete process.env.ATC_MCC_MODEL; // TOWER·OCC처럼 guard가 모델을 붙이지 않은 세션: 서버가 거절한다
+  assert.deepEqual(parseMccArgs(argv("rts")), { method: "POST", path: "/api/mcc/rts", body: {} });
+  process.env.ATC_MCC_MODEL = "claude-opus-5-5"; // MCC guard가 붙이는 실제 모델
+  const rts = parseMccArgs(argv("rts"));
+  const pk = parseMccArgs(argv("packet #110"));
+  const ld = parseMccArgs(argv("land 110 --head abc1234"));
+  const es = parseMccArgs(argv("escalate 110 -- 운영 상태 형식이 바뀜"));
+  const w = parseMccArgs(argv("inspect 110 --head abc1234 --verdict findings -- P1 새 동작에 테스트 없음"));
+  if (saved === undefined) delete process.env.ATC_MCC_MODEL;
+  else process.env.ATC_MCC_MODEL = saved;
+  assert.deepEqual(rts.body, { model: "claude-opus-5-5" });
+  assert.deepEqual(pk, { method: "GET", path: "/api/mcc/packet/110" });
+  assert.deepEqual(ld, { method: "POST", path: "/api/mcc/land/110", body: { head: "abc1234", model: "claude-opus-5-5" } });
+  assert.deepEqual(es, { method: "POST", path: "/api/mcc/escalate/110", body: { reason: "운영 상태 형식이 바뀜", model: "claude-opus-5-5" } });
+  assert.deepEqual(w, { method: "POST", path: "/api/mcc/inspect/110", body: { head: "abc1234", verdict: "findings", text: "P1 새 동작에 테스트 없음", model: "claude-opus-5-5" } });
+  assert.throws(() => parseMccArgs(argv("merge 110")), /queue\|packet/);
+  assert.throws(() => parseMccArgs(argv("queue extra")), /알 수 없는 인자/);
+  assert.throws(() => parseMccArgs(argv("packet atc#110")), /PR 번호/);
+  assert.throws(() => parseMccArgs(argv("land 110")), /--head/);
+  assert.throws(() => parseMccArgs(argv("land 110 --head abc1234 --verdict pass")), /--verdict를 쓰지 않는다/);
+  assert.throws(() => parseMccArgs(argv("land 110 --head abc1234 -- 지금")), /-- 글이 없다/);
+  assert.throws(() => parseMccArgs(argv("escalate 110")), /사유/);
+  assert.throws(() => parseMccArgs(argv("inspect 110 --verdict pass -- ok")), /--head/);
+  assert.throws(() => parseMccArgs(argv("inspect 110 --head abc1234 --verdict maybe -- ok")), /pass\|findings/);
+  assert.throws(() => parseMccArgs(argv("inspect 110 --head abc1234 --verdict pass")), /INSPECTION 내용/);
+  assert.throws(() => parseMccArgs(argv("inspect 110 --head abc1234 --model x -- ok")), /알 수 없는 인자/);
+});
+
+test("mcc 응답 한 줄: LAND는 막힌 조건·would·LANDED(flagged면 바뀐 관제 규칙), RTS는 시작·would·안 함", () => {
+  assert.equal(mccText("land", { landed: false, blocks: [{ code: "L6", text: "INSPECTION 없음" }, { code: "L4", text: "CI 진행 중" }] }), "LAND 안 함 — L6 INSPECTION 없음 · L4 CI 진행 중");
+  assert.equal(mccText("land", { landed: false, would: true, tier: "auto" }), "WOULD LAND (shadow) · auto");
+  assert.equal(mccText("land", { landed: true, tier: "flagged", flagged: ["controller/CLAUDE.md"] }), "LANDED · flagged · 바뀐 관제 규칙: controller/CLAUDE.md");
+  assert.equal(mccText("rts", { started: false, why: "서비스가 최신" }), "RTS 안 함 — 서비스가 최신");
+  assert.equal(mccText("rts", { started: false, would: true, why: "a → b" }), "WOULD RTS · a → b");
+  assert.equal(
+    mccText("inspect", { inspection: { pr: 110, verdict: "findings", head: "abcdef1234", p0: 0, p1: 1, p2: 0, model: "claude-opus-5-5", comment: "posted" } }),
+    "#110 INSPECTION findings · head abcdef1 · P0 0 · P1 1 · P2 0 (claude-opus-5-5) · PR 댓글 남김",
+  );
 });
 
 test("manual check: OCC 절차 파일까지 해시한다, 번역(*.en.md)은 뺀다(ATC-9)", () => {

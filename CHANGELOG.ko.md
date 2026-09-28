@@ -32,6 +32,12 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - INSPECTION은 Claude 모델에게서만, 지금 head에만 받는다. `findings`는 PR 댓글로도 남긴다.
   - ATCC PR은 CLEARED TO LAND가 head의 INSPECTION `pass`를 리뷰로 친다(`no-review`는 이제 `MCC INSPECTION 대기`), `findings`는 `review-findings`.
   - `/api/version`이 서비스가 시작한 커밋 `head`를 준다.
+- MCC 세션과 RETURN TO SERVICE([docs/mcc.md](docs/mcc.md) 4·5단계, [mcc/README.ko.md](mcc/README.ko.md)).
+  - `mcc/`: 한국어 규정과 `/tick`(영어 번역), 설정(Claude `opus`, fail-closed hook), `.env*`를 뺀 atc 저장소 읽기 guard, 테스트.
+  - `controller/guard.mjs --mcc`: `manual`과 `mcc …`만(`--gh-read`면 읽기 전용 `gh pr`도). 쓰기 넷은 기록의 모델이 Claude여야 하고 `ATC_MCC_MODEL`로 붙는다. TOWER·OCC·CROSSCHECK·REVIEW는 이제 `mcc inspect|escalate|land|rts`를 못 한다.
+  - `deploy/rts.mjs`와 `deploy/atc-rts.service`: 잠금, main에서 fast-forward만·CI 통과, 의존성·유닛 변경은 거절, 재시작, `/api/version` `head`로 90초 상태 확인, 자동 ROLLBACK, 시도마다 `rts.jsonl` 한 줄. 설치: `cp deploy/atc-rts.service ~/.config/systemd/user/ && systemctl --user daemon-reload`.
+  - `mcc/`는 `flagged` 경로, `npm test`가 `mcc/**/*.test.mjs`도 돌린다.
+- `atcctl mcc queue|packet|inspect|escalate|land|rts`([docs/mcc.md](docs/mcc.md) 3단계). `land`·`rts`는 실패로 끝내지 않고 하지 않은 이유를 찍는다(`LAND 안 함 — L6 …`, `WOULD LAND (shadow)`). 이제 MCC 쓰기는 모두 MCC guard가 붙이는 모델(`ATC_MCC_MODEL`)이 있어야 한다. atcctl을 모두 통과시키는 TOWER·OCC guard로는 착륙·INSPECTION을 할 수 없다.
 - AIRCRAFT health(ATC-45, [docs/fleet.ko.md](docs/fleet.ko.md) 8.8). atc가 팀 세션이 왜 멈췄는지, 무엇을 기다리는지를 대화 기록 끝 64KB에서 읽는다. 2026-09-28에 TEAM_H가 BRIEF 3초 뒤 계정 session limit에 걸렸는데 4분 동안 `idle`로 보여서 FLEET·DISPATCH·TOWER가 일을 받을 수 있는 AIRCRAFT로 봤다.
   - 코드: `LIMIT`(사용 한도. `quotaLimits`의 reset 시각까지 HOLD), `THROTTLE`, `NETWORK`, `MODEL`, `CONTEXT`, `PROVIDER`, `PENDING`(도구 호출이 승인을 기다림), `UNANSWERED`(지시에 10분 대답 없음, 또는 `LIMIT`이 풀린 뒤), `HUNG`(busy인데 30분 기록 없음), `DENIED`(10분에 거부·hook 막힘 3번), 그리고 오류 원문과 함께 `UNKNOWN`. 코드마다 오류 한 줄, 시작 시각, 대응 매뉴얼의 다음 한 걸음이 붙는다. 다음 대답이 오면 풀린다.
   - FLEET 운항 상태 목록(`HOLD · LIMIT until 07:40Z`, `PENDING approval 12m`, `CONTEXT — RESTART`), snapshot의 `sessions[].health`, FLIGHT FOLLOWING의 `health` 문제, TOWER 브리핑의 `open.health`에 보인다. ALERT 코드는 `health` 경보가 된다. `NETWORK`는 기계에 한 번, `LIMIT`은 reset 시각마다 한 번.
