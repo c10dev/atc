@@ -1,3 +1,4 @@
+import { addCost, type Cost, costOf, type PriceTable, type PriceWarning, rateOf, roundCost, zeroCost } from "./fuel-cost.ts";
 import { addLeak, emptyLeaks, type LeakEvent, type LeakTotals } from "./fuel-leaks.ts";
 
 // FUEL(ATC-50, docs/fuel.md 1·2·4): 대화 기록의 message.usage로 요청마다 토큰을 센다. 순수 함수만 둔다(읽기는 fuel-run.ts).
@@ -22,6 +23,8 @@ export interface FuelRecord extends Kinds {
   stopReason: string | null;
   version: string | null;
   effort: string | null;
+  speed: string | null; // usage.speed(standard·fast). FUEL COST 배수
+  geo: string | null; // usage.inference_geo. FUEL COST 배수
 }
 
 export interface Compaction {
@@ -156,6 +159,8 @@ export function parseFuelLines(text: string, opts: ParseOpts = {}): ParsedFuel {
       stopReason: str(msg.stop_reason),
       version: str(d.version),
       effort: str(d.effort),
+      speed: str(msg.usage.speed),
+      geo: str(msg.usage.inference_geo),
     });
   }
   return out;
@@ -181,9 +186,13 @@ export function cacheHit(k: Kinds): number | null {
   return denom > 0 ? Math.round((k.cacheRead / denom) * 1000) / 1000 : null;
 }
 
-export interface Burn extends Kinds {
+export interface TokenBurn extends Kinds {
   requests: number;
   cacheHit: number | null;
+}
+export interface Burn extends TokenBurn {
+  cost: Cost; // FUEL COST(ATC-54), USD. 가격표에 있는 요청만
+  unpriced: { requests: number; tokens: number }; // 가격표에 없어 cost에서 뺀 요청
 }
 export interface CrewBurn extends Burn {
   outputLowerBound: true; // 서브에이전트 줄은 응답 첫 조각(stop_reason null)만 남는 일이 많다
@@ -206,6 +215,7 @@ export interface SessionFuel {
   compactions: number;
   unknownLines: number;
   leak: LeakTotals; // FUEL LEAK(ATC-52): CAPTAIN 요청의 miss를 규칙별로
+  netCost: number; // NET FUEL(ATC-54): total.cost.total − 값이 매겨진 LEAK, USD
 }
 export interface AircraftFuel {
   aircraft: string; // 세션 이름(대문자). REGISTRATION이면 FLEET의 AIRCRAFT
@@ -215,14 +225,16 @@ export interface AircraftFuel {
   total: Burn;
   models: Record<string, number>;
   leak: LeakTotals;
+  netCost: number;
 }
 export interface FuelSummary {
   days: number;
   since: string;
-  totals: { captain: Burn; crew: CrewBurn; total: Burn; leak: LeakTotals };
+  totals: { captain: Burn; crew: CrewBurn; total: Burn; leak: LeakTotals; netCost: number };
   models: Record<string, number>;
   requests: number;
   unknownLines: number;
+  priceWarnings: PriceWarning[]; // 가격표에 없어 비용에서 뺀 모델(요청이 많은 순서)
   sessions: SessionFuel[];
   aircraft: AircraftFuel[];
   leakEvents: (LeakEvent & { name: string | null })[]; // 기간 안에서 큰 순서로 LEAK_EVENTS_MAX개(expectedRebuild 제외)
@@ -242,6 +254,7 @@ export interface SummaryInput {
   live?: Set<string>;
   agents?: Map<string, AgentMeta>; // agent id → meta
   leaks?: LeakEvent[]; // findLeaks(기간 앞 요청과도 비교하도록 전체 기록으로 구한 것)
+  prices?: PriceTable | null; // 없으면 모든 요청이 값 없음
   now: number;
   days: number;
 }
@@ -250,16 +263,47 @@ export const addKinds = (to: Kinds, r: Kinds) => {
   for (const k of KIND_KEYS) to[k] += r[k];
 };
 
+// 요청들의 합: 토큰, 요청 수, 값이 매겨진 비용, 값 없는 요청
+interface Tally {
+  k: Kinds;
+  n: number;
+  cost: Cost;
+  unpricedN: number;
+  unpricedTokens: number;
+}
+const tally = (): Tally => ({ k: zero(), n: 0, cost: zeroCost(), unpricedN: 0, unpricedTokens: 0 });
+function addRecord(t: Tally, r: FuelRecord, cost: Cost | null) {
+  addKinds(t.k, r);
+  t.n++;
+  if (cost) addCost(t.cost, cost);
+  else {
+    t.unpricedN++;
+    t.unpricedTokens += tokenSum(r);
+  }
+}
+function addTally(to: Tally, from: Tally) {
+  addKinds(to.k, from.k);
+  to.n += from.n;
+  addCost(to.cost, from.cost);
+  to.unpricedN += from.unpricedN;
+  to.unpricedTokens += from.unpricedTokens;
+}
+const costBurn = (t: Tally): Burn => ({
+  ...t.k,
+  requests: t.n,
+  cacheHit: cacheHit(t.k),
+  cost: roundCost(t.cost),
+  unpriced: { requests: t.unpricedN, tokens: t.unpricedTokens },
+});
+
 class CrewAcc {
-  k = zero();
-  requests = 0;
+  t = tally();
   nullStop = 0;
   agents = new Set<string>();
   byType: Record<string, number> = {};
   depth: number | null = null;
-  add(r: FuelRecord, meta: Map<string, AgentMeta> | undefined) {
-    addKinds(this.k, r);
-    this.requests++;
+  add(r: FuelRecord, cost: Cost | null, meta: Map<string, AgentMeta> | undefined) {
+    addRecord(this.t, r, cost);
     if (r.stopReason === null) this.nullStop++;
     if (!r.agent) return;
     this.agents.add(r.agent);
@@ -269,8 +313,7 @@ class CrewAcc {
     if (m?.spawnDepth != null) this.depth = Math.max(this.depth ?? 0, m.spawnDepth);
   }
   merge(o: CrewAcc) {
-    addKinds(this.k, o.k);
-    this.requests += o.requests;
+    addTally(this.t, o.t);
     this.nullStop += o.nullStop;
     for (const a of o.agents) this.agents.add(a);
     for (const [t, n] of Object.entries(o.byType)) this.byType[t] = (this.byType[t] ?? 0) + n;
@@ -278,9 +321,9 @@ class CrewAcc {
   }
   view(): CrewBurn {
     return {
-      ...burn(this.k, this.requests),
+      ...costBurn(this.t),
       outputLowerBound: true,
-      nullStopShare: this.requests ? Math.round((this.nullStop / this.requests) * 1000) / 1000 : null,
+      nullStopShare: this.t.n ? Math.round((this.nullStop / this.t.n) * 1000) / 1000 : null,
       agents: this.agents.size,
       byType: this.byType,
       maxSpawnDepth: this.depth,
@@ -288,40 +331,49 @@ class CrewAcc {
   }
 }
 
-export const burn = (k: Kinds, requests: number): Burn => ({ ...k, requests, cacheHit: cacheHit(k) });
+// 토큰만의 합(FLIGHT 몫·LOGBOOK fuel, F4). 비용은 붙이지 않는다 — LOGBOOK 줄 형식을 바꾸지 않으려고
+export const burn = (k: Kinds, requests: number): TokenBurn => ({ ...k, requests, cacheHit: cacheHit(k) });
 
 interface Acc {
-  captain: Kinds;
-  captainN: number;
+  captain: Tally;
   crew: CrewAcc;
   models: Record<string, number>;
 }
-const acc = (): Acc => ({ captain: zero(), captainN: 0, crew: new CrewAcc(), models: {} });
+const acc = (): Acc => ({ captain: tally(), crew: new CrewAcc(), models: {} });
 const totalOf = (a: Acc): Burn => {
-  const k = zero();
-  addKinds(k, a.captain);
-  addKinds(k, a.crew.k);
-  return burn(k, a.captainN + a.crew.requests);
+  const t = tally();
+  addTally(t, a.captain);
+  addTally(t, a.crew.t);
+  return costBurn(t);
 };
 const addModels = (to: Record<string, number>, from: Record<string, number>) => {
   for (const [m, n] of Object.entries(from)) to[m] = (to[m] ?? 0) + n;
 };
+// NET FUEL: 전체 비용에서 값이 매겨진 LEAK를 뺀다(LEAK는 CAPTAIN 요청에서만 나온다)
+const netOf = (total: Burn, leak: LeakTotals) => Math.round((total.cost.total - leak.total.cost) * 10_000) / 10_000;
 
 // 기간(now − days) 안의 기록을 세션·AIRCRAFT(세션 이름)별로 모은다. 많이 쓴 순서
 export function summarizeFuel(input: SummaryInput): FuelSummary {
   const since = input.now - input.days * 86_400_000;
   const bySession = new Map<string, Acc & { first: string; last: string; versions: Set<string> }>();
   const all = acc();
+  const warnings = new Map<string, PriceWarning>();
   for (const r of input.records) {
     if (Date.parse(r.t) < since) continue;
     let s = bySession.get(r.session);
     if (!s) bySession.set(r.session, (s = { ...acc(), first: r.t, last: r.t, versions: new Set() }));
+    const rate = input.prices ? rateOf(input.prices, r) : { unpriced: "no price table" };
+    const cost = "rate" in rate ? costOf(r, rate.rate) : null;
+    if (!("rate" in rate)) {
+      const key = `${r.model}\n${rate.unpriced}`;
+      const w = warnings.get(key) ?? { model: r.model, reason: rate.unpriced, requests: 0, tokens: 0 };
+      w.requests++;
+      w.tokens += tokenSum(r);
+      warnings.set(key, w);
+    }
     for (const a of [s, all]) {
-      if (r.sidechain) a.crew.add(r, input.agents);
-      else {
-        addKinds(a.captain, r);
-        a.captainN++;
-      }
+      if (r.sidechain) a.crew.add(r, cost, input.agents);
+      else addRecord(a.captain, r, cost);
       a.models[r.model] = (a.models[r.model] ?? 0) + 1;
     }
     if (r.t < s.first) s.first = r.t;
@@ -344,21 +396,26 @@ export function summarizeFuel(input: SummaryInput): FuelSummary {
   for (const c of input.compactions ?? []) {
     if (Date.parse(c.t) >= since) compactions.set(c.session, (compactions.get(c.session) ?? 0) + 1);
   }
-  const sessions: SessionFuel[] = [...bySession].map(([session, a]) => ({
-    session,
-    name: input.names?.get(session) ?? null,
-    live: input.live?.has(session) ?? false,
-    first: a.first,
-    last: a.last,
-    captain: burn(a.captain, a.captainN),
-    crew: a.crew.view(),
-    total: totalOf(a),
-    models: a.models,
-    versions: [...a.versions].sort(),
-    compactions: compactions.get(session) ?? 0,
-    unknownLines: input.unknownBySession?.get(session) ?? 0,
-    leak: leakOf.get(session) ?? emptyLeaks(),
-  }));
+  const sessions: SessionFuel[] = [...bySession].map(([session, a]) => {
+    const total = totalOf(a);
+    const leak = leakOf.get(session) ?? emptyLeaks();
+    return {
+      session,
+      name: input.names?.get(session) ?? null,
+      live: input.live?.has(session) ?? false,
+      first: a.first,
+      last: a.last,
+      captain: costBurn(a.captain),
+      crew: a.crew.view(),
+      total,
+      models: a.models,
+      versions: [...a.versions].sort(),
+      compactions: compactions.get(session) ?? 0,
+      unknownLines: input.unknownBySession?.get(session) ?? 0,
+      leak: roundLeaks(leak),
+      netCost: netOf(total, leak),
+    };
+  });
   sessions.sort((x, y) => tokenSum(y.total) - tokenSum(x.total) || x.session.localeCompare(y.session));
 
   const byName = new Map<string, Acc & { sessions: string[]; leak: LeakTotals }>();
@@ -367,37 +424,42 @@ export function summarizeFuel(input: SummaryInput): FuelSummary {
     const key = s.name.toUpperCase();
     let g = byName.get(key);
     if (!g) byName.set(key, (g = { ...acc(), sessions: [], leak: emptyLeaks() }));
-    mergeLeaks(g.leak, s.leak);
+    mergeLeaks(g.leak, leakOf.get(s.session) ?? emptyLeaks());
     const a = bySession.get(s.session)!;
-    addKinds(g.captain, a.captain);
-    g.captainN += a.captainN;
+    addTally(g.captain, a.captain);
     g.crew.merge(a.crew);
     addModels(g.models, a.models);
     g.sessions.push(s.session);
   }
-  const aircraft: AircraftFuel[] = [...byName].map(([name, g]) => ({
-    aircraft: name,
-    sessions: g.sessions,
-    captain: burn(g.captain, g.captainN),
-    crew: g.crew.view(),
-    total: totalOf(g),
-    models: g.models,
-    leak: g.leak,
-  }));
+  const aircraft: AircraftFuel[] = [...byName].map(([name, g]) => {
+    const total = totalOf(g);
+    return {
+      aircraft: name,
+      sessions: g.sessions,
+      captain: costBurn(g.captain),
+      crew: g.crew.view(),
+      total,
+      models: g.models,
+      leak: roundLeaks(g.leak),
+      netCost: netOf(total, g.leak),
+    };
+  });
   aircraft.sort((x, y) => tokenSum(y.total) - tokenSum(x.total) || x.aircraft.localeCompare(y.aircraft));
 
   let unknown = 0;
   for (const n of input.unknownBySession?.values() ?? []) unknown += n;
+  const total = totalOf(all);
   return {
     days: input.days,
     since: new Date(since).toISOString(),
-    totals: { captain: burn(all.captain, all.captainN), crew: all.crew.view(), total: totalOf(all), leak: allLeak },
+    totals: { captain: costBurn(all.captain), crew: all.crew.view(), total, leak: roundLeaks(allLeak), netCost: netOf(total, allLeak) },
     models: all.models,
-    requests: all.captainN + all.crew.requests,
+    requests: all.captain.n + all.crew.t.n,
     unknownLines: unknown,
+    priceWarnings: [...warnings.values()].sort((a, b) => b.requests - a.requests || a.model.localeCompare(b.model)),
     sessions,
     aircraft,
-    leakEvents: leakEvents.slice(0, LEAK_EVENTS_MAX),
+    leakEvents: leakEvents.slice(0, LEAK_EVENTS_MAX).map((e) => ({ ...e, cost: e.cost === null ? null : Math.round(e.cost * 10_000) / 10_000 })),
   };
 }
 
@@ -406,6 +468,14 @@ function mergeLeaks(to: LeakTotals, from: LeakTotals) {
     to[k].count += from[k].count;
     to[k].tokens += from[k].tokens;
     to[k].units += from[k].units;
+    to[k].cost += from[k].cost;
     to[k].unpricedTokens += from[k].unpricedTokens;
   }
+}
+
+function roundLeaks(l: LeakTotals): LeakTotals {
+  const out = emptyLeaks();
+  mergeLeaks(out, l);
+  for (const b of Object.values(out)) b.cost = Math.round(b.cost * 10_000) / 10_000;
+  return out;
 }

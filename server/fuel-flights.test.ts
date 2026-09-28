@@ -25,6 +25,8 @@ const rec = (session: string, hm: string, over: Partial<FuelRecord> = {}): FuelR
   stopReason: "end_turn",
   version: null,
   effort: null,
+  speed: null,
+  geo: null,
   ...over,
 });
 
@@ -193,6 +195,7 @@ test("LEAK(F3): miss도 요청과 같은 규칙으로 FLIGHT에 나누고, LEAK�
     rule,
     rewritten,
     units: rewritten,
+    cost: rewritten / 1_000_000,
     gapMs: 0,
     model: "claude-opus-5-5",
     prevModel: "claude-opus-5-5",
@@ -202,6 +205,7 @@ test("LEAK(F3): miss도 요청과 같은 규칙으로 FLIGHT에 나누고, LEAK�
   const leaks = [leak("11:00", "coldCache", 5000), leak("11:00", "expectedRebuild", 100), leak("12:30", "modelSwitch", 3000)];
   const a = attributeFuel({ records, spans, aircraftOf, claims: [], leaks });
   const l1 = a.flights.find((f) => f.key === "o/atc#1")!.fuel.leak!;
+  assert.deepEqual(Object.keys(l1.total), ["count", "tokens", "units", "unpricedTokens"]); // LOGBOOK fuel.leak은 F4 모양 그대로(비용 없음)
   assert.deepEqual([l1.coldCache.tokens, l1.total.count, l1.total.tokens, l1.expectedRebuild.tokens], [5000, 1, 5000, 100]);
   const l2 = a.flights.find((f) => f.key === "o/atc#2")!.fuel.leak!;
   assert.equal(l2.total.count, 0); // miss가 없던 FLIGHT는 0(12:30 miss는 어느 FLIGHT에도 없다)
