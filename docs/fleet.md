@@ -551,7 +551,71 @@ Decision changed 2026-09-28 (SUPERVISOR): atc starts and stops AIRCRAFT sessions
 - **Record.** Every LAUNCH and STOP is a FLIGHT RECORDER line `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}`.
 - **Tab.** A card with no session shows **LAUNCH** (permission mode, optional model, background count against the cap). A background session shows `BG <id>` and **STOP**. RETIREMENT of an AIRCRAFT flying a background session then asks whether to stop it too.
 
-Not built yet: LAUNCH and STOP proposed from demand and utilization (a FLEET PLAN judged in shadow first, like DISPATCH); RESTART as scheduled maintenance for long sessions; CREW CHANGE by relaunching with the new complement; a usage budget per AIRCRAFT (FUEL, GitHub idea #53).
+Not built yet: LAUNCH and STOP proposed from demand and utilization (FLEET PLAN, section 8.6); RESTART as scheduled maintenance for long sessions; CREW CHANGE by relaunching with the new complement; a usage budget per AIRCRAFT (FUEL, GitHub idea #53).
+
+### 8.6 FLEET PLAN: proposing LAUNCH, STOP and the rest (design draft)
+
+Status: design draft (2026-09-28), SUPERVISOR decisions recorded below. Nothing built yet. Section 8.5 gave the SUPERVISOR the controls; this section decides when atc suggests using them, so that forming, parking, servicing and retiring teams stops being manual bookkeeping.
+
+**Current facts (2026-09-28 06:30 UTC).**
+
+| Signal | Where atc already has it | Value now |
+|---|---|---|
+| Demand | DISPATCH plan (`assign`, `excluded` with reason codes, per-AIRPORT slots) | 0 dispatchable FLIGHTs; 2 excluded (parent issues) |
+| Supply | FLEET view and `claude agents --json` | 10 AIRCRAFT: VCDO 6 (TEAM_A–F), ATCC 3 (TEAM_H–J), RNPU 1 (TEAM_K); all VCDO teams HOLDING or PARKED |
+| Output | LOGBOOK actuals | 14-day ARRIVED: VCDO teams 1–5 each, ATCC teams 15–19 each |
+| Runway | LOGBOOK landing wait, ATFM (ground stop, merge slots) | Landing-wait median: VCDO 12–48 h, ATCC 2–3 min |
+| Health | Session status (NORDO), LOS, AOG, crew drift | no AOG, no LOS |
+| Usage | none per AIRCRAFT (FUEL, idea #53) | Claude Code showed 87% of the weekly limit on 2026-09-28 |
+
+Two things follow. VCDO throughput is bounded by landing, not by the number of teams: another VCDO team today would add PRs to the queue, not ARRIVED FLIGHTs. And with no dispatchable demand, the first useful proposals are parking ones, not launches.
+
+**Principles** (from how airlines run fleet planning, crew control and maintenance; sources at the end of this section):
+
+1. **Propose with reasons, the SUPERVISOR decides.** Airline optimizers (crew pairing and rostering, disruption recovery) produce ranked options with explicit trade-offs, and ops control approves. FLEET PLAN proposals carry reason codes with numbers, and start in shadow: agree or disagree only, the same gate as DISPATCH and SCHEDULE (20 verdicts, 80% agreement) before approval mode.
+2. **Automate only what is reversible.** Of all fleet actions only STOP of an idle, atc-launched background session can undo itself (the conversation is kept and resumes). It is the only candidate for automation, after approval mode has run, behind a switch with a daily cap and an automatic off condition. LAUNCH spends usage; RETIREMENT, TYPE RATING and CREW CHANGE are never automatic.
+3. **Capacity follows demand and the runway.** No LAUNCH is proposed for an AIRPORT under GROUND STOP, or where landing is the bottleneck (landing-wait median above the median block time, or open PRs already filling the merge slots).
+4. **Keep a reserve.** Like airline standby crews, each AIRPORT with demand keeps `reserve` AIRCRAFT PARKED (default 1). Demand beyond the reserve suggests LAUNCH; idle capacity beyond it suggests STOP.
+5. **Qualifications are hard constraints.** A LAUNCH or ENTRY proposal names the TYPE RATING or CONFIGURATION that the waiting FLIGHTs need (FLIGHTs excluded for lack of an `SEC` AIRCRAFT suggest a `security` CONFIGURATION), exactly as the planner's rules do.
+6. **No thrash.** A proposal needs its condition to hold for two plan cycles, and an AIRCRAFT launched or stopped in the last `minDwell` (default 2 h) gets no opposite proposal.
+
+**Proposal kinds.**
+
+| Kind | Airline analogue | Proposed when | Executes (approval mode) |
+|---|---|---|---|
+| `LAUNCH` | reserve call-out | countable FLIGHTs (see Decisions) at an AIRPORT have waited `waitMin` (default 120 min) with no available AIRCRAFT holding the needed ratings, the reserve is short, the runway is not the bottleneck, and the background cap has room; a registered AIRCRAFT not in service fits | 8.5 LAUNCH |
+| `ENTRY` | wet lease | as `LAUNCH`, but no registered AIRCRAFT fits; proposes REGISTRATION, AIRPORT and CONFIGURATION | ENTRY INTO SERVICE, then LAUNCH |
+| `STOP` | parking | an atc-launched background session has had no STAND, no FLIGHT and no activity for `idleHours` (default 12) and the AIRPORT keeps its reserve without it | 8.5 STOP (resumable) |
+| `RESTART` | scheduled check | a background session is PARKED and older than `restartDays` (default 3) | STOP, then LAUNCH with a fresh CREW BRIEFING |
+| `AOG` | MEL deferral with an expiry | the session is NORDO or had a LOS in the last 24 h | AOG with `until` = now + 24 h; when it expires unresolved, a `RETIRE` or return proposal follows |
+| `RETIRE` | phase-out | no ARRIVED in `retireDays` (default 30), not needed for the reserve, no open PR | SUPERVISOR only, never automatic |
+
+**Records and screens.** `fleet-plan.jsonl`, append only: `{op: "create", id: "F-0001", kind, aircraft, airport, reasons: [{code, detail, value}], at}`, then `{op: "verdict", id, verdict: "agree" | "disagree", by, at}`, `{op: "expire" | "supersede", id, at}`, and in approval mode `{op: "approve" | "executed", id, at, jobId?}`. `GET /api/fleet/plan` returns open proposals, recent ones and the gate. The FLEET tab gets a FLEET PLAN block above the cards with each proposal's reasons and agree / disagree; approval mode adds approve, which runs the same code as the buttons in 8.5 and writes the FLIGHT RECORDER line with `by: "FLEET PLAN F-0001"`. The plan runs on the DISPATCH cycle (5 min) and only reads.
+
+**Implementation order.**
+
+1. Pure `fleetPlanOf(snapshot, fleet, dispatchPlan, logbook, sessions, atfm, config, now)` with tests for every kind and for the anti-thrash rule.
+2. Shadow: records, API, FLEET PLAN block, agree / disagree, gate.
+3. Approval mode (switch in `dispatch.json` or its own file): approve executes through 8.5 and profile patches.
+4. Automatic STOP of idle atc-launched sessions only: switch, daily cap, off after two SUPERVISOR reversals in 7 days.
+
+**Risks.**
+
+| Risk | Mitigation |
+|---|---|
+| Launch and stop oscillate | two-cycle persistence, `minDwell`, reserve as hysteresis |
+| Usage runs out | background cap (8.5), LAUNCH never automatic, weekly-usage line on the block once FUEL exists |
+| Wrong demand signal (parent issues, missing labels) | count only FLIGHTs that pass the planner's exclusions; excluded FLIGHTs are shown, not counted |
+| More teams, same landing queue | the runway rule (principle 3) |
+| A RESTART loses useful context | only PARKED sessions; the old conversation is kept and resumable |
+
+**Decisions (2026-09-28, SUPERVISOR).**
+
+- Defaults as proposed: `reserve` 1, `waitMin` 120, `idleHours` 12, `restartDays` 3, `retireDays` 30, `minDwell` 2 h. Shadow data and the gate decide later changes.
+- ATC FLIGHTs count as demand. FLEET PLAN counts the open FLIGHTs of every team in `LINEAR_TEAM_KEYS`, not only `candidateTeams`, with the same exclusions as the planner (parent issues, closed states, `tail:` to another AIRCRAFT). DISPATCH still assigns only `candidateTeams`, so a LAUNCH for ATC demand serves direct assignment (structure or a person) until ATC is added there. ATC FLIGHTs carry the workspace classification labels; where one has none, the rating check is skipped and the reason says so.
+- Step 4 (automatic STOP) stays in the plan but is built last, with its switch off by default. Turning it on is a separate SUPERVISOR decision after the shadow gate passes.
+
+Sources: [Jeppesen crew pairing](https://ww2.jeppesen.com/airline-crew-optimization-solutions/airline-crew-pairing/), [Lufthansa Systems NetLine/Crew](https://www.lhsystems.com/solutions/operations-control-center/netline-crew), [airline disruption recovery survey (arXiv 2510.26831)](https://arxiv.org/html/2510.26831), [OAG on wet leasing](https://www.oag.com/blog/what-is-wet-leasing), [SKYbrary: MEL](https://skybrary.aero/articles/minimum-equipment-list-mel), [EASA AI levels (Halldale)](https://www.halldale.com/civil-aviation/easa-ai-framework-aviation-safety-regulations), [ICAO on aircraft parking](https://www.icao.int/operational-safety/Aircraft-Parking).
 
 ## 9. Moving from `lane:` to `tail:`
 
@@ -572,7 +636,7 @@ All four steps are done:
 6. ◐ TARGETS actuals from the LOGBOOK on the FLEET cards (sections 7.1, 7.2), and next to the project goals in NETWORK (section 7.3). Still to do: on-time baselines from category medians, OCC target-change drafts in S2 (section 7.4; S1 built)
 7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE (section 8.2): TYPE RATING evidence from the LOGBOOK, GRANT and REVIEW recommendations, grant and revoke by the SUPERVISOR
-9. ✅ Session control (section 8.5): LAUNCH and STOP from the FLEET tab. Left: proposals from demand, RESTART, relaunch CREW CHANGE, usage budget
+9. ✅ Session control (section 8.5): LAUNCH and STOP from the FLEET tab. Left: proposals from demand (FLEET PLAN, section 8.6), RESTART, relaunch CREW CHANGE, usage budget
 
 ## 11. Risks and mitigations
 

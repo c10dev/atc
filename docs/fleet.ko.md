@@ -606,7 +606,71 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **기록.** LAUNCH·STOP마다 FLIGHT RECORDER에 `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}` 한 줄.
 - **화면.** 세션이 없는 카드에 **LAUNCH**(permission mode, 선택 모델, 상한 대비 백그라운드 수). 백그라운드 세션이면 `BG <id>`와 **STOP**. 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
 
-아직 만들지 않음: 수요·가동률로 LAUNCH·STOP 제안(DISPATCH처럼 먼저 그림자 판정하는 FLEET PLAN), 오래 도는 세션의 정기 정비로서 RESTART, 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, GitHub idea #53).
+아직 만들지 않음: 수요·가동률로 LAUNCH·STOP 제안(FLEET PLAN, 8.6), 오래 도는 세션의 정기 정비로서 RESTART, 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, GitHub idea #53).
+
+### 8.6 FLEET PLAN: LAUNCH·STOP 등을 제안하기 (설계 초안)
+
+상태: 설계 초안(2026-09-28), SUPERVISOR 결정은 아래에 적었다. 아직 만든 것 없음. 8.5가 SUPERVISOR에게 조종 버튼을 줬다면, 이 절은 atc가 언제 그 버튼을 쓰자고 제안할지 정한다. 팀을 꾸리고, 세우고, 정비하고, 퇴역시키는 일을 손으로 챙기지 않게 하려는 것이다.
+
+**지금 사실(2026-09-28 06:30 UTC).**
+
+| 신호 | atc가 이미 가진 곳 | 지금 값 |
+|---|---|---|
+| 수요 | DISPATCH 계획(`assign`, 사유 코드가 붙은 `excluded`, AIRPORT별 슬롯) | 배정할 수 있는 FLIGHT 0건, 제외 2건(상위 이슈) |
+| 공급 | FLEET 화면과 `claude agents --json` | AIRCRAFT 10대: VCDO 6(TEAM_A–F), ATCC 3(TEAM_H–J), RNPU 1(TEAM_K). VCDO 팀은 모두 HOLDING이나 PARKED |
+| 실적 | LOGBOOK 실적 | 14일 ARRIVED: VCDO 팀 1–5건, ATCC 팀 15–19건 |
+| 활주로 | LOGBOOK 착륙 대기, ATFM(출발 중지, 머지 슬롯) | 착륙 대기 중앙값: VCDO 12–48시간, ATCC 2–3분 |
+| 상태 | 세션 상태(NORDO), LOS, AOG, CREW drift | AOG 없음, LOS 없음 |
+| 사용량 | AIRCRAFT별로는 없음(FUEL, idea #53) | 2026-09-28에 Claude Code가 주간 한도 87% 사용을 보였다 |
+
+여기서 두 가지가 나온다. VCDO의 처리량을 막는 것은 팀 수가 아니라 착륙이다. 오늘 VCDO 팀을 하나 더 띄우면 ARRIVED가 아니라 착륙 대기열의 PR만 늘어난다. 그리고 배정할 수요가 없으니, 처음 쓸모 있는 제안은 LAUNCH가 아니라 세우는(STOP) 쪽이다.
+
+**원칙**(항공사의 fleet planning, crew control, 정비 방식에서. 출처는 이 절 끝):
+
+1. **근거와 함께 제안하고, SUPERVISOR가 정한다.** 항공사의 최적화 도구(crew pairing·rostering, disruption recovery)는 장단점을 밝힌 선택지를 순위대로 내고, 운항 통제가 승인한다. FLEET PLAN 제안에는 숫자가 붙은 사유 코드가 달리고, 그림자 운용으로 시작한다. agree·disagree만 하고, DISPATCH·SCHEDULE과 같은 게이트(판정 20건, 합의율 80%)를 넘어야 승인 운용으로 간다.
+2. **되돌릴 수 있는 것만 자동으로.** FLEET 동작 중 스스로 되돌릴 수 있는 것은 atc가 띄운 쉬는 백그라운드 세션의 STOP뿐이다(대화가 남고 다시 이어진다). 자동화 후보는 이것 하나이고, 승인 운용을 거친 뒤 스위치·하루 상한·스스로 꺼지는 조건 뒤에 둔다. LAUNCH는 사용량을 쓰고, RETIREMENT·TYPE RATING·CREW CHANGE는 자동으로 하지 않는다.
+3. **용량은 수요와 활주로를 따른다.** GROUND STOP인 AIRPORT, 또는 착륙이 병목인 AIRPORT(착륙 대기 중앙값이 block time 중앙값보다 길거나, 열린 PR이 이미 머지 슬롯을 채움)에는 LAUNCH를 제안하지 않는다.
+4. **예비를 둔다.** 항공사의 대기 승무원처럼, 수요가 있는 AIRPORT마다 `reserve`대(기본 1)를 PARKED로 둔다. 예비를 넘는 수요는 LAUNCH를, 예비를 넘는 유휴는 STOP을 부른다.
+5. **자격은 강한 조건이다.** LAUNCH·ENTRY 제안은 기다리는 FLIGHT에 필요한 TYPE RATING이나 CONFIGURATION을 적는다(`SEC` AIRCRAFT가 없어 제외된 FLIGHT는 `security` CONFIGURATION을 부른다). planner 규칙과 똑같다.
+6. **왔다 갔다 하지 않는다.** 조건이 계획 주기 두 번 이어져야 제안하고, 최근 `minDwell`(기본 2시간) 안에 띄우거나 멈춘 AIRCRAFT에는 반대 제안을 내지 않는다.
+
+**제안 종류.**
+
+| 종류 | 항공사에서 | 언제 제안하나 | 실행(승인 운용) |
+|---|---|---|---|
+| `LAUNCH` | 예비 승무원 호출 | 한 AIRPORT에서 셀 수 있는 FLIGHT(결정 참고)가 `waitMin`(기본 120분) 기다렸는데 필요한 rating을 가진 가용 AIRCRAFT가 없고, 예비가 모자라고, 활주로가 병목이 아니고, 백그라운드 상한에 여유가 있음. 운항하지 않는 등록 AIRCRAFT가 맞음 | 8.5 LAUNCH |
+| `ENTRY` | wet lease | `LAUNCH`와 같은데 맞는 등록 AIRCRAFT가 없음. REGISTRATION·AIRPORT·CONFIGURATION을 제안 | ENTRY INTO SERVICE 뒤 LAUNCH |
+| `STOP` | 주기(parking) | atc가 띄운 백그라운드 세션이 `idleHours`(기본 12) 동안 STAND·FLIGHT·활동이 없고, 그것 없이도 AIRPORT의 예비가 유지됨 | 8.5 STOP(다시 이어짐) |
+| `RESTART` | 정기 점검 | 백그라운드 세션이 PARKED이고 `restartDays`(기본 3)보다 오래됨 | STOP 뒤 새 CREW BRIEFING으로 LAUNCH |
+| `AOG` | 기한이 있는 MEL 유예 | 세션이 NORDO이거나 최근 24시간에 LOS | `until` = 지금 + 24시간으로 AOG. 풀리지 않고 기한이 지나면 `RETIRE`나 복귀 제안이 뒤따름 |
+| `RETIRE` | 퇴역 | `retireDays`(기본 30) 동안 ARRIVED 없음, 예비에 필요 없음, 열린 PR 없음 | SUPERVISOR만, 자동 없음 |
+
+**기록과 화면.** `fleet-plan.jsonl`, 추가만 함: `{op: "create", id: "F-0001", kind, aircraft, airport, reasons: [{code, detail, value}], at}`, 이어서 `{op: "verdict", id, verdict: "agree" | "disagree", by, at}`, `{op: "expire" | "supersede", id, at}`, 승인 운용에서는 `{op: "approve" | "executed", id, at, jobId?}`. `GET /api/fleet/plan`이 열린 제안, 최근 제안, 게이트를 돌려준다. FLEET 탭 카드 위에 FLEET PLAN 블록이 생기고, 제안마다 사유와 agree·disagree가 붙는다. 승인 운용은 approve를 더하며, 8.5의 버튼과 같은 코드를 돌리고 FLIGHT RECORDER에 `by: "FLEET PLAN F-0001"`로 남긴다. 계획은 DISPATCH 주기(5분)에 돌고 읽기만 한다.
+
+**구현 순서.**
+
+1. 순수 함수 `fleetPlanOf(snapshot, fleet, dispatchPlan, logbook, sessions, atfm, config, now)`와 종류마다, 그리고 왔다 갔다 방지 규칙의 테스트.
+2. 그림자: 기록, API, FLEET PLAN 블록, agree·disagree, 게이트.
+3. 승인 운용(`dispatch.json`이나 별도 파일의 스위치): approve가 8.5와 프로필 수정으로 실행.
+4. atc가 띄운 쉬는 세션의 자동 STOP만: 스위치, 하루 상한, 7일에 SUPERVISOR가 두 번 되돌리면 꺼짐.
+
+**위험.**
+
+| 위험 | 대응 |
+|---|---|
+| LAUNCH·STOP이 왔다 갔다 함 | 두 주기 지속, `minDwell`, 예비를 이력(hysteresis)으로 |
+| 사용량이 바닥남 | 백그라운드 상한(8.5), LAUNCH는 자동 없음, FUEL이 생기면 블록에 주간 사용량 줄 |
+| 수요 신호가 틀림(상위 이슈, 라벨 없음) | planner의 제외 규칙을 통과한 FLIGHT만 센다. 제외된 FLIGHT는 보이기만 하고 세지 않는다 |
+| 팀은 늘었는데 착륙 대기열은 그대로 | 활주로 규칙(원칙 3) |
+| RESTART가 쓸모 있는 맥락을 잃음 | PARKED 세션만. 옛 대화는 남아서 다시 이어진다 |
+
+**결정 (2026-09-28, SUPERVISOR).**
+
+- 기본값은 제안대로: `reserve` 1, `waitMin` 120, `idleHours` 12, `restartDays` 3, `retireDays` 30, `minDwell` 2시간. 이후 조정은 그림자 기록과 게이트로 정한다.
+- ATC FLIGHT도 수요로 센다. FLEET PLAN은 `candidateTeams`만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 열린 FLIGHT를 세고, 제외 규칙은 planner와 같다(상위 이슈, 닫힌 상태, 다른 AIRCRAFT로 가는 `tail:`). DISPATCH는 여전히 `candidateTeams`만 배정하므로, ATC 수요로 나온 LAUNCH는 ATC를 거기 넣기 전까지 직접 배정(structure나 사람)에 쓰인다. ATC FLIGHT도 워크스페이스 분류 라벨을 쓴다. 라벨이 없는 FLIGHT는 rating 확인을 건너뛰고 사유에 그렇게 적는다.
+- 4단계(자동 STOP)는 계획에 두되 마지막에 만들고, 스위치는 기본으로 꺼 둔다. 켜는 것은 그림자 게이트를 통과한 뒤 SUPERVISOR가 따로 정한다.
+
+출처: [Jeppesen crew pairing](https://ww2.jeppesen.com/airline-crew-optimization-solutions/airline-crew-pairing/), [Lufthansa Systems NetLine/Crew](https://www.lhsystems.com/solutions/operations-control-center/netline-crew), [항공 disruption recovery 조사(arXiv 2510.26831)](https://arxiv.org/html/2510.26831), [OAG: wet leasing](https://www.oag.com/blog/what-is-wet-leasing), [SKYbrary: MEL](https://skybrary.aero/articles/minimum-equipment-list-mel), [EASA AI 등급(Halldale)](https://www.halldale.com/civil-aviation/easa-ai-framework-aviation-safety-regulations), [ICAO: 항공기 주기](https://www.icao.int/operational-safety/Aircraft-Parking).
 
 ## 9. `lane:`에서 `tail:`로 옮기기
 
@@ -627,7 +691,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 6. ◐ FLEET 카드의 LOGBOOK 기반 TARGETS 실적(7.1, 7.2)과 NETWORK의 프로젝트 목표 옆 표시(7.3). 남은 일: 분류별 중앙값으로 정시 기준 잡기, OCC 목표 변경 초안의 S2(7.4, S1은 만듦)
 7. ✅ FLEET 탭의 팀 꾸리기(8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE(8.2): LOGBOOK의 TYPE RATING 근거, GRANT·REVIEW 추천, SUPERVISOR의 부여·회수
-9. ✅ 세션 조종(8.5): FLEET 탭의 LAUNCH·STOP. 남은 일: 수요 기반 제안, RESTART, 다시 띄우는 CREW CHANGE, 사용량 예산
+9. ✅ 세션 조종(8.5): FLEET 탭의 LAUNCH·STOP. 남은 일: 수요 기반 제안(FLEET PLAN, 8.6), RESTART, 다시 띄우는 CREW CHANGE, 사용량 예산
 
 ## 11. 위험과 대응
 
