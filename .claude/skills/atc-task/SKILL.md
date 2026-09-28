@@ -82,7 +82,7 @@ git diff --name-only origin/main...HEAD | node deploy/landing-tier.mjs
 - 한 일을 요약한다(항목 3~5개).
 - 명세와 다르게 한 점, PILOT'S DISCRETION으로 고른 것과 그 이유를 적는다.
 - 등급을 적고, `flagged`면 바뀐 관제 규칙을 적는다.
-- 검증 결과를 적는다: 테스트 수, tsc, build, 시험 서버와 Playwright에서 확인한 것.
+- 검증 결과를 적는다: 테스트 수, tsc, build, 시험 서버와 Playwright에서 확인한 것. 스크린샷은 올리지 않고 글로 적는다(공개 저장소, 루트 CLAUDE.md).
 - 막힌 점이나 SUPERVISOR가 결정할 일을 적는다.
 
 같은 파일을 고치는 다른 ATC 작업이 먼저 머지되면, `origin/main` 위로 rebase하고 force-with-lease로 다시 올린 뒤 알린다.

@@ -19,6 +19,7 @@ atc 코드를 고치는 세션(팀 세션, 사용자와 직접 작업하는 세�
 - 순수 함수는 `node:test`로 테스트한다(`server/*.test.ts`, `controller/*.test.mjs`, `occ/*.test.mjs`, `hooks/*.test.mjs`).
 - 끝까지 확인할 때는 시험 서버를 7702에 띄운다: `(set -a; . /home/c10/projects/atc/.env.local; set +a; ATC_STATE_DIR=<임시 폴더> ATC_PORT=7702 node server/index.ts)`. 임시 폴더에는 필요한 등록부(`airports.json`, `fleet.json`)만 복사한다. `.env.local`(Linear API 키)은 복사하거나 출력하지 않는다. 끝나면 서버를 끄고 임시 폴더를 지운다.
 - 화면은 Playwright로 연다. 시험 중에 실제 팀 세션에 메시지를 보내지 않는다.
+- atc는 공개 저장소다. PR, 이슈, 브랜치에 스크린샷을 올리지 않는다(흐림 처리를 해도, 이미지만 담은 브랜치로도). 확인한 화면은 PR 본문에 글로 적는다.
 
 ## 운영
 

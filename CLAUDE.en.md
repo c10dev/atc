@@ -21,6 +21,7 @@ Rules for sessions that change atc's code (team sessions, and sessions working d
 - Pure functions are tested with `node:test` (`server/*.test.ts`, `controller/*.test.mjs`, `occ/*.test.mjs`, `hooks/*.test.mjs`).
 - For an end-to-end check, run a test server on 7702: `(set -a; . /home/c10/projects/atc/.env.local; set +a; ATC_STATE_DIR=<temp folder> ATC_PORT=7702 node server/index.ts)`. Copy only the registries you need (`airports.json`, `fleet.json`) into the temp folder. Never copy or print `.env.local` (the Linear API key). Stop the server and delete the temp folder afterwards.
 - Open the UI with Playwright. Don't message real team sessions during tests.
+- atc is a public repo. Don't post screenshots to PRs, issues or branches (not even blurred, not on an image-only branch). Describe what you checked on screen in the PR body.
 
 ## Operations
 
