@@ -21,10 +21,12 @@ import {
   type FleetPlanOp,
   fleetPlanGateOf,
   fleetPlanOf,
+  fuelExpiryOf,
   foldFleetPlan,
   persistOf,
   syncFleetPlan,
 } from "./fleet-plan.ts";
+import type { FuelRemaining } from "./fuel-remaining.ts";
 import { loadLogbook } from "./logbook.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
@@ -141,6 +143,7 @@ export function inputsOf(s: Snapshot, rows: AgentRow[], now: number): FleetInput
     defaults: fleet.defaults,
     config: FLEET_PLAN_DEFAULTS,
     now,
+    fuelAccounts: s.fuelAccounts ?? [], // FUEL REMAINING per ACCOUNT(ATC-63). 관제 세션만 있는 ACCOUNT도
   };
 }
 
@@ -154,10 +157,11 @@ export async function runFleetPlan(s: Snapshot, now = Date.now()) {
   inflight = true;
   try {
     const rows = await agentRows();
-    const { candidates, demand } = fleetPlanOf(inputsOf(s, rows, now));
+    const inputs = inputsOf(s, rows, now);
+    const { candidates, demand } = fleetPlanOf(inputs);
     const p = persistOf(pending, candidates, now, FLEET_PLAN_DEFAULTS);
     pending = p.pending;
-    append(syncFleetPlan(allFleetPlan(), candidates, p.ready, now, FLEET_PLAN_DEFAULTS));
+    append(syncFleetPlan(allFleetPlan(), candidates, p.ready, now, FLEET_PLAN_DEFAULTS, (x) => fuelExpiryOf(inputs, x)));
     last = { at: new Date(now).toISOString(), candidates, demand, background: rows.filter((r) => r.kind === "background").length, error: null };
   } catch (e) {
     last = { at: new Date(now).toISOString(), candidates: last?.candidates ?? [], demand: last?.demand ?? [], background: last?.background ?? 0, error: (e as Error).message };
@@ -167,7 +171,8 @@ export async function runFleetPlan(s: Snapshot, now = Date.now()) {
   }
 }
 
-export function fleetPlanView(now = Date.now()) {
+// fuel: 지금 스냅샷의 FUEL REMAINING per ACCOUNT(ATC-63). 계획 주기(5분)를 기다리지 않고 보인다
+export function fleetPlanView(now = Date.now(), fuel: FuelRemaining[] = []) {
   const all = allFleetPlan();
   const current = new Map((last?.candidates ?? []).map((c) => [c.key, c]));
   const open = all
@@ -203,6 +208,7 @@ export function fleetPlanView(now = Date.now()) {
     ranAt: last?.at ?? null,
     error: last?.error ?? null,
     demand: last?.demand ?? [],
+    fuel, // FUEL REMAINING per ACCOUNT(ATC-63): 블록의 "weekly-usage line"
     open,
     waiting,
     recent,
@@ -277,7 +283,7 @@ async function goneFromAgents(reg: string, tries = 10) {
 }
 
 export function mountFleetPlan(app: Hono, getSnapshot: () => Promise<Snapshot>) {
-  app.get("/api/fleet/plan", (c) => c.json(fleetPlanView()));
+  app.get("/api/fleet/plan", async (c) => c.json(fleetPlanView(Date.now(), (await getSnapshot()).fuelAccounts ?? [])));
 
   // 모드 전환. 승인 운용으로 켜는 것은 이 화면에서, 게이트가 준비됐을 때만. 그림자로 돌리는 것은 언제나 된다
   app.post("/api/fleet/plan/mode", async (c: Context) => {

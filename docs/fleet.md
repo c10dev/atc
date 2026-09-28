@@ -627,11 +627,20 @@ Two things follow. VCDO throughput is bounded by landing, not by the number of t
   - LOS is an `alert.raised` conflict in the FLIGHT RECORDER in the last 24 h. NORDO is a dead session with no live one of that name.
   - RETIRE skips an AIRCRAFT entered less than `retireDays` ago.
 - **Runner** (`server/fleet-plan-run.ts`): runs on the DISPATCH cycle. It skips a cycle when Linear or GitHub has not been read yet or `claude agents` fails, and leaves open proposals as they are. The persistence counter is in memory, so a restart counts again from zero.
-- **API.** `GET /api/fleet/plan` returns `{mode, config, ranAt, error, demand, open, waiting, recent, gate}`. `open[].now` holds the reasons as computed now. `waiting` lists candidates still inside the persistence window, without the ones resting after a verdict. `POST /api/fleet/plan/:id/verdict` takes `{verdict: "agree" | "disagree", reason?}`. It needs this screen's Origin (403 otherwise) and returns 409 on a closed proposal.
-- **Tab.** The FLEET PLAN block sits above the cards: gate, one demand line per AIRPORT with what blocks a LAUNCH, open proposals with reasons and 반대 / 동의, candidates still waiting, and recent closed ones.
+- **API.** `GET /api/fleet/plan` returns `{mode, config, ranAt, error, demand, fuel, open, waiting, recent, gate}`. `open[].now` holds the reasons as computed now. `waiting` lists candidates still inside the persistence window, without the ones resting after a verdict. `POST /api/fleet/plan/:id/verdict` takes `{verdict: "agree" | "disagree", reason?}`. It needs this screen's Origin (403 otherwise) and returns 409 on a closed proposal.
+- **Tab.** The FLEET PLAN block sits above the cards: gate, one demand line per AIRPORT with what blocks a LAUNCH, one FUEL line per ACCOUNT (below), open proposals with reasons and 반대 / 동의, candidates still waiting, and recent closed ones.
+- **FUEL (ATC-63, [fuel.md](fuel.md) 6).** FLEET PLAN reads FUEL REMAINING per ACCOUNT (`snapshot.fuelAccounts`, control sessions included).
+  - **Hold level** (`holdPct`, default 95 %): no LAUNCH for an AIRCRAFT whose ACCOUNT is there; the next fitting AIRCRAFT is picked, and a LAUNCH that skipped a held one carries a `fuel-held` reason. When every fitting AIRCRAFT is held, nothing is proposed, not even ENTRY, and the AIRPORT's demand line says why: `FUEL 100% (account acct-1) until 21:48Z — TEAM_Q — ENTRY도 제안 안 함(새 세션이 열릴 계정을 모름)`. A new session opens on whatever account this machine is logged in to, which atc doesn't know (ENGINEERING decision: with all AIRCRAFT on one ACCOUNT, an ENTRY would put a new session on the same empty account).
+  - The ordinary ENTRY (no registered AIRCRAFT fits at all) counts the new AIRCRAFT against the `default` ACCOUNT and is not proposed when `default` is at hold: `FUEL 97% (account default) until 21:49Z — 새 AIRCRAFT(ENTRY)가 들 ACCOUNT`.
+  - This uses the hold level whatever the DISPATCH FUEL HOLD switch (D3) says (ENGINEERING decision): a proposal is advice, and a session on an empty ACCOUNT is never useful. DISPATCH is unchanged.
+  - **Info level** (`infoPct`, default 80 %): the proposal is made and carries a `fuel` reason line (`FUEL 85% · resets 21:00Z (account acct-1) — 한도에 가까움(INFO) · TEAM_I · control OCC`).
+  - **Lookup**: by the AIRCRAFT's ACCOUNT label, since an AIRCRAFT that isn't flying has no session and no value of its own; an ACCOUNT that only control sessions report is found too. Without any labels an AIRCRAFT uses only its own sessions' value, and ENTRY has no ACCOUNT to check. With no FUEL record, nothing changes.
+  - **Expiry**: an open LAUNCH or ENTRY whose ACCOUNT reaches hold is expired on the next cycle with the FUEL text as its reason, even when the same candidate would still be produced. A new candidate for the same AIRPORT is then created, not superseded.
+  - **Block**: one line per ACCOUNT with the most-used window and its reset, `LAUNCH·ENTRY 제안 안 함` at hold or `제안에 FUEL 사유 줄` at info, and its AIRCRAFT and control members. `GET /api/fleet/plan` returns them as `fuel`, read from the snapshot when the view is served, not from the last plan cycle.
+  - STOP, RESTART, AOG, RETIRE and RETURN, approval-mode execution and the record formats are unchanged.
 - **First look at live data (2026-09-28 07:15 UTC):** no proposals. ATC-35 would go to TEAM_I, and the other open ATC FLIGHTs have no priority. All team sessions are desktop sessions. There is no NORDO or LOS, and every AIRCRAFT ARRIVED within 30 days.
 
-Not built yet: step 4 (automatic STOP). Step 3 (approval) and the follow-up of an expired AOG (`RETURN`) are built in 8.7; merge-slot fill in the runway rule; the weekly-usage line (FUEL); CROSSCHECK marks on FLEET PLAN proposals.
+Not built yet: step 4 (automatic STOP). Step 3 (approval) and the follow-up of an expired AOG (`RETURN`) are built in 8.7; merge-slot fill in the runway rule; CROSSCHECK marks on FLEET PLAN proposals. The weekly-usage line (FUEL) is built (ATC-63, above).
 
 **Implementation order.**
 
@@ -645,7 +654,7 @@ Not built yet: step 4 (automatic STOP). Step 3 (approval) and the follow-up of a
 | Risk | Mitigation |
 |---|---|
 | Launch and stop oscillate | two-cycle persistence, `minDwell`, reserve as hysteresis |
-| Usage runs out | background cap (8.5), LAUNCH never automatic, weekly-usage line on the block once FUEL exists |
+| Usage runs out | background cap (8.5), LAUNCH never automatic; no LAUNCH or ENTRY into an ACCOUNT at the FUEL hold level, and the FUEL line per ACCOUNT on the block (ATC-63) |
 | Wrong demand signal (parent issues, missing labels) | count only FLIGHTs that pass the planner's exclusions; excluded FLIGHTs are shown, not counted |
 | More teams, same landing queue | the runway rule (principle 3) |
 | A RESTART loses useful context | only PARKED sessions; the old conversation is kept and resumable |
@@ -718,7 +727,7 @@ Status: built (2026-09-28), SUPERVISOR decisions recorded below. Section 8.6 bui
   - Approving RETIRE TEAM_C wrote `approve` and `executed`, retired TEAM_C in the temp FLEET, and wrote a FLIGHT RECORDER `retire` line with `by: "FLEET PLAN F-0022"`.
   - A second approval, and `agree` in approval mode, got 409. The refactored LAUNCH and STOP still refuse a desktop session.
 
-Not built yet: step 4 (automatic STOP); the weekly-usage line (FUEL); CROSSCHECK marks on FLEET PLAN proposals.
+Not built yet: step 4 (automatic STOP); CROSSCHECK marks on FLEET PLAN proposals.
 
 **Implementation order.**
 
@@ -735,7 +744,7 @@ Not built yet: step 4 (automatic STOP); the weekly-usage line (FUEL); CROSSCHECK
 |---|---|
 | Approving an old proposal on changed facts | re-check against the latest cycle (at most 10 min) and every 8.5 refusal |
 | Double execution (two clicks, two tabs) | per-id lock, and a single `open` → `executing` transition |
-| Usage | background cap (8.5), one approval per LAUNCH; FUEL later |
+| Usage | background cap (8.5), one approval per LAUNCH; no LAUNCH or ENTRY proposed into an ACCOUNT at the FUEL hold level (8.6, ATC-63) |
 | Half-done ENTRY or RESTART | steps recorded one by one, no cooldown, card buttons to finish by hand |
 | Another session approving | Origin check on approve and on the switch into approval; no `atcctl` command |
 | Approval mode on too early | switch refuses until the gate is ready |
@@ -833,7 +842,7 @@ Status: steps 1–6 built (ATC-45, ATC-47, ATC-48, ATC-51, ATC-55): the manual, 
 | A false `HUNG` during long tests | INFO first; it holds DISPATCH, which a busy AIRCRAFT never gets anyway |
 | A permission prompt while the session file says `busy` is seen as `HUNG` after 30 min if the hook is not installed | the push hook (step 3) reports `PENDING` directly; without it the pull path still catches a stalled tool call once the session reads `idle` |
 
-Not built yet: FUEL on the FLEET PLAN block (8.6, "weekly-usage line").
+FUEL on the FLEET PLAN block (8.6, "weekly-usage line") is built (ATC-63).
 
 **Pilot's discretion (ATC-45).**
 

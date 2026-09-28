@@ -27,6 +27,11 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- FLEET PLAN이 FUEL REMAINING을 본다(ATC-63, [docs/fleet.ko.md](docs/fleet.ko.md) 8.6, [docs/fuel.md](docs/fuel.md) 6.1).
+  - ACCOUNT가 hold 수준(`holdPct`, 95 %)인 AIRCRAFT는 LAUNCH를 제안하지 않고 다음으로 맞는 AIRCRAFT를 고른다. 맞는 AIRCRAFT가 모두 hold면 ENTRY도 내지 않고 아무것도 제안하지 않는다(새 세션은 이 기기에 로그인된 계정으로 열리는데 atc는 그 계정을 모른다). AIRPORT 수요 줄이 이유를 말한다(`FUEL 100% (account acct-1) until 21:48Z — TEAM_Q — ENTRY도 제안 안 함(새 세션이 열릴 계정을 모름)`). 맞는 등록 AIRCRAFT가 아예 없어 내는 ENTRY는 `default` ACCOUNT로 세고, `default`가 hold면 내지 않는다.
+  - info 수준(`infoPct`, 80 %)이면 제안에 `fuel` 사유 줄이 붙는다. 열린 LAUNCH·ENTRY의 ACCOUNT가 hold가 되면 FUEL 글을 사유로 expire한다.
+  - DISPATCH FUEL HOLD 스위치(D3)와 상관없이 hold 수준을 쓴다(ENGINEERING 결정). DISPATCH는 그대로다. FUEL은 ACCOUNT 라벨로 찾으므로 세션이 없는 AIRCRAFT와 관제 세션만 적은 ACCOUNT도 잡힌다.
+  - FLEET PLAN 블록에 ACCOUNT마다 FUEL 한 줄("주간 사용량 줄"): 가장 많이 쓴 창과 reset, 제안에 주는 영향, AIRCRAFT와 관제 세션. `GET /api/fleet/plan`의 `fuel`로 오고, 볼 때의 스냅샷에서 읽는다.
 - ATFM 6b단계: 실패 몰림·혼잡·LOS GROUND STOP의 해제 규칙과 `on` 스위치(ATC-62, [docs/atfm.ko.md](docs/atfm.ko.md) 6·8·10장). 켜진 스위치는 없다. 기본은 그대로 `shadow`이고, 켜는 것은 SUPERVISOR 몫이다(ATC-23).
   - `atfm.json`의 `groundStop.failureWave`·`congestion`·`los`가 `on`을 받는다. DISPATCH 탭 ATFM 블록에 확인을 거치는 off/shadow/on 스위치가 생겼다. ATFM OFF(`POST /api/atfm/off`)는 다른 것과 함께 이것도 `shadow`로 되돌린다.
   - 켜면 실패 몰림은 "main 깨짐"처럼 새 ASSIGN과 LAND를 멈춘다. LOS는 새 ASSIGN만 멈춘다: TOWER의 착륙 대기열에 `groundStop`이 붙지 않고 HOLD/CONTINUE 이벤트도 없다. 혼잡은 DISPATCH 계획에서 그 AIRPORT의 AIRBORNE 슬롯을 하나 빼는 GROUND DELAY다.
