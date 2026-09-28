@@ -1,5 +1,6 @@
 import { marked, type Tokens } from "marked";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { foldChangelog } from "../../../server/changelog.ts";
 import "./Docs.css";
 
 // DOCS 탭: atc 사용 안내. 원본은 저장소의 docs/guide/*.md(한국어)이고 빌드 때 함께 묶인다.
@@ -8,11 +9,28 @@ import "./Docs.css";
 const FILES = import.meta.glob("../../../docs/guide/*.md", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 const SOURCE = new Map(Object.entries(FILES).map(([path, text]) => [path.split("/").pop()!.replace(/\.md$/, ""), text]));
 
+// 변경 기록 쪽: CHANGELOG.ko.md에 아직 접지 않은 changelog.d/*.ko.md 조각을 [Unreleased]에 넣어 보인다(ATC-64)
+const CHANGELOG = Object.values(import.meta.glob("../../../CHANGELOG.ko.md", { query: "?raw", import: "default", eager: true }) as Record<string, string>)[0] ?? "";
+const PENDING = import.meta.glob("../../../changelog.d/*.ko.md", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+export function changelogPage(changelog: string, pending: Record<string, string>): string {
+  const fragments = Object.entries(pending).map(([path, text]) => ({ name: path.split("/").pop()!.replace(/\.ko\.md$/, ""), text }));
+  if (!fragments.length) return changelog;
+  try {
+    const { text, folded } = foldChangelog(changelog, "ko", fragments);
+    if (!folded.length) return text;
+    return text.replace(/^## \[Unreleased\].*$/m, (h) => `${h}\n\n> 아직 CHANGELOG에 접지 않은 조각 ${folded.length}개(\`changelog.d/\`)를 함께 보인다: ${folded.join(", ")}.`);
+  } catch {
+    return changelog;
+  }
+}
+SOURCE.set("changelog", changelogPage(CHANGELOG, PENDING));
+const SOURCE_PATH: Record<string, string> = { changelog: "CHANGELOG.ko.md" };
+
 export const DOC_NAV = [
   { group: "시작하기", pages: [["introduction", "소개"], ["quickstart", "빠른 시작"]] },
   { group: "개념", pages: [["concepts", "개념과 용어"]] },
   { group: "가이드", pages: [["requesting", "일 맡기기"], ["reviewing", "판정하기"], ["fleet", "팀 운영"], ["radio", "교신 규칙"]] },
-  { group: "참고", pages: [["screens", "화면 안내"], ["stages", "단계와 로드맵"], ["troubleshooting", "문제 해결"]] },
+  { group: "참고", pages: [["screens", "화면 안내"], ["stages", "단계와 로드맵"], ["troubleshooting", "문제 해결"], ["changelog", "변경 기록"]] },
 ] as const;
 const ORDER = DOC_NAV.flatMap((g) => g.pages.map(([slug, title]) => ({ slug, title, group: g.group })));
 const REPO = "https://github.com/chaehy5665/atc/blob/main/";
@@ -78,7 +96,7 @@ export function Docs() {
   const source = SOURCE.get(slug) ?? "";
   const html = useMemo(() => marked.parse(source, { renderer, async: false }) as string, [source]);
   const toc = useMemo(
-    () => marked.lexer(source).filter((t): t is Tokens.Heading => t.type === "heading" && t.depth === 2).map((t) => ({ id: anchorOf(t.text), text: t.text })),
+    () => marked.lexer(source).filter((t): t is Tokens.Heading => t.type === "heading" && t.depth === 2).map((t) => ({ id: anchorOf(t.text), text: t.text.replace(/\[([^\]]*)\]/g, "$1") })), // 변경 기록의 [Unreleased]는 괄호 없이
     [source],
   );
   const i = ORDER.findIndex((p) => p.slug === slug);
@@ -104,7 +122,7 @@ export function Docs() {
             </ul>
           </div>
         ))}
-        <a className="docs-source" href={`${REPO}docs/guide/${slug}.md`} target="_blank" rel="noreferrer">
+        <a className="docs-source" href={REPO + (SOURCE_PATH[slug] ?? `docs/guide/${slug}.md`)} target="_blank" rel="noreferrer">
           이 쪽 원본 보기
         </a>
       </nav>

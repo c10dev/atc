@@ -52,7 +52,7 @@ const QUEUE_MAX = 10; // 한 번에 보는 PR 수(오래된 순)
 
 const INSPECT_GUIDE =
   "CI(테스트·타입·빌드)는 이미 돈다. CI가 못 보는 것을 본다: 순수 함수와 입출력 분리, 새 동작의 테스트, erasableSyntaxOnly, 화면 색·글꼴은 styles.css 토큰만, 항공 용어는 영어, " +
-  "바뀐 동작은 CHANGELOG [Unreleased], 짝 문서는 두 언어, 사용법이 바뀌면 docs/guide, 공개 저장소라 vocado 내부 사항·비밀·스크린샷 없음, 기록은 추가만 하는 JSONL·설정은 원자적 JSON. " +
+  "바뀐 동작은 CHANGELOG 조각 한 쌍(changelog.d/*.md·*.ko.md, CHANGELOG.md를 직접 고치면 P2), 설계 문서의 상태 표시(✅·Status 줄·Not built yet)는 ENGINEERING 몫(팀 PR이 고치면 P2), 짝 문서는 두 언어, 사용법이 바뀌면 docs/guide, 공개 저장소라 vocado 내부 사항·비밀·스크린샷 없음, 기록은 추가만 하는 JSONL·설정은 원자적 JSON. " +
   "diff가 잘렸으면(diffTruncated) 본 범위를 적고 pass하지 않는다. 운영 상태 형식을 바꾸거나 되돌리기 어려우면 ESCALATE. 지적은 P0(머지하면 안 됨)·P1(머지 전에 고칠 것)·P2(나중에). P0·P1이 없으면 pass.";
 
 interface RestPull {

@@ -410,7 +410,7 @@ CHARTER REQUEST → AD HOC FLIGHT draft (S1: verdict in the SCHEDULE tab) → FI
 | `deploy/` | systemd user service | [deploy/README.md](deploy/README.md) |
 | `docs/guide/` | The user guide shown in the DOCS tab (Korean) | [introduction](docs/guide/introduction.md) |
 | `docs/` | Design and conventions | [DISPATCH design](docs/dispatch.md) · [OCC design](docs/occ.md) · [FLEET design](docs/fleet.md) · [ATFM design (stage 3)](docs/atfm.md) · [MCC design](docs/mcc.md) · [FUEL design (draft)](docs/fuel.md) · [Naming rules](docs/naming.md) |
-| — | Changelog | [CHANGELOG.md](CHANGELOG.md) |
+| — | Changelog, and fragments not folded in yet (one pair per PR) | [CHANGELOG.md](CHANGELOG.md) · [changelog.d](changelog.d/README.md) |
 
 Each has a Korean version next to it (`README.ko.md`, `*.ko.md`; for the session folders the Korean `CLAUDE.md` / `SKILL.md` are the originals the sessions load).
 

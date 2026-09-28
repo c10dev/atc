@@ -61,7 +61,8 @@ CI already runs tests, types and the build. The INSPECTION is what CI can't see,
 - Pure logic is split from I/O and has `node:test` tests; the tests cover the new behaviour, not only the old.
 - `erasableSyntaxOnly` (no enum, parameter properties, namespace); colours and fonts only from `web/src/styles.css` tokens.
 - Aviation terms in English; comments short and Korean like the surrounding code.
-- Changed behaviour is in `CHANGELOG` `[Unreleased]`; paired docs changed in both languages; `docs/guide/` updated when how the user works changed.
+- Changed behaviour is in a pair of CHANGELOG fragments (`changelog.d/*.md` and `*.ko.md`), not in `CHANGELOG.md` / `CHANGELOG.ko.md` directly (ATC-64); paired docs changed in both languages; `docs/guide/` updated when how the user works changed.
+- Team PRs leave design-doc status markers (✅ rows, `Status:` lines, "Not built yet" moves) to ENGINEERING.
 - Nothing from vocado's internals, no secrets, no screenshots (public repository).
 - Records stay append-only JSONL and settings stay atomically written JSON. A change to an operating-state format → ESCALATE.
 - The change does what the PR body and the ATC issue say, and nothing else.

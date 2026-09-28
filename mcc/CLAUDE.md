@@ -38,7 +38,8 @@ CI(`check`)가 테스트·타입·빌드를 이미 돈다. MCC는 CI가 못 보�
 - 계산은 순수 함수로 두고 입출력과 나눴는가. 새 동작에 `node:test` 테스트가 있는가(옛 동작만 덮지 않는가).
 - `erasableSyntaxOnly`(enum·생성자 매개변수 속성·namespace 없음). 화면 색·글꼴은 `web/src/styles.css` 토큰만.
 - 항공 용어는 영어, 코드 주석은 주변처럼 한국어로 짧게.
-- 바뀐 동작은 `CHANGELOG`의 `[Unreleased]`에. 짝 문서(README, CHANGELOG, docs/dispatch·naming·occ·fleet·atfm, 폴더 README)는 두 언어를 함께. 사용법이 바뀌면 `docs/guide/`.
+- 바뀐 동작은 CHANGELOG 조각 한 쌍(`changelog.d/*.md`·`*.ko.md`)에. PR이 `CHANGELOG.md`·`CHANGELOG.ko.md`를 직접 고치면 P2(조각 접기 PR은 예외). 짝 문서(README, changelog.d 조각, docs/dispatch·naming·occ·fleet·atfm, 폴더 README)는 두 언어를 함께. 사용법이 바뀌면 `docs/guide/`.
+- 팀 PR은 설계 문서의 상태 표시(Implementation order 표의 ✅, `Status:` 줄, "Not built yet"에서 옮기기)를 고치지 않는다. ENGINEERING이 머지 뒤 고친다. 고쳤으면 P2.
 - 공개 저장소다: vocado 내부 사항, 비밀, 스크린샷이 없어야 한다.
 - 기록은 추가만 하는 JSONL, 설정·등록부는 원자적으로 바꿔 쓰는 JSON. **운영 상태 형식을 바꾸거나 되돌리기 어려운 변경이면 ESCALATE**한다. 검토에서 의심이 남아도 ESCALATE.
 - PR 본문과 ATC 이슈가 말한 일을 하고, 그 밖의 일은 하지 않는가.
