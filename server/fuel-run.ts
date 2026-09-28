@@ -5,9 +5,13 @@ import { allClearances } from "./clearances.ts";
 import { config } from "./config.ts";
 import { allCrewChanges } from "./crew-change.ts";
 import { readDepartures } from "./departures.ts";
-import { controlSendsOf, findLeaks, type LeakEvent } from "./fuel-leaks.ts";
+import { rememberAgentModels } from "./agent-models.ts";
+import type { CrewMember } from "./crew.ts";
+import { loadFleet } from "./fleet.ts";
+import { agentModels, type CrewWarning, crewWarnings } from "./fuel-crew.ts";
+import { type Baseline, controlSendsOf, findLeaks, type LeakEvent, sessionChangeLeaks } from "./fuel-leaks.ts";
 import { type AgentMeta, type Compaction, dedupeFuel, type FuelRecord, parseFuelLines, summarizeFuel } from "./fuel.ts";
-import { arrivedSpan, type Attribution, attributeFuel, enRouteSpans, fuelForEntry } from "./fuel-flights.ts";
+import { arrivedSpan, type Attribution, attributeFuel, type ClaimSpan, enRouteSpans, flightOf, fuelForEntry } from "./fuel-flights.ts";
 import type { LogEntry, LogLine } from "./logbook.ts";
 import type { Snapshot } from "./model.ts";
 import { allProposals } from "./proposals.ts";
@@ -199,32 +203,63 @@ export function scanFuel(since: number, sessions: Snapshot["sessions"]): FuelSca
     if (s.status !== "dead") live.add(s.id);
     if (s.name && s.name !== s.id.slice(0, 8)) names.set(s.id, s.name);
   }
+  rememberAgentModels(agentModels(all.values())); // OBSERVED CREW의 COMPLEMENT DRIFT(ATC-57)
   return { records: all, compactions, unknownBySession, names, live, agents, files: files.length, bytes };
 }
 
-// FUEL LEAK(F3): 전체 기록으로 구한다(기간 앞 요청과도 비교하도록)
-export const leaksOf = (scan: FuelScan): LeakEvent[] => findLeaks(scan.records.values(), scan.compactions, controlSends(), scan.names);
-
 export type FlightContext = Pick<Snapshot, "workspaces" | "airports" | "claims">;
 
-// 기간 안 기록을 FLIGHT 구간으로 자른다(FUEL F4). 구간은 기간 안에 도착한 LOGBOOK FLIGHT와 지금 있는 STAND의 EN ROUTE FLIGHT.
-// leaks를 주면 FLIGHT마다 LEAK도 같은 규칙으로 나눈다
-export function attributeWindow(scan: FuelScan, s: FlightContext, entries: LogEntry[], since: number, now: number, leaks?: LeakEvent[]): Attribution {
+export interface WindowAnalysis {
+  att: Attribution;
+  leaks: LeakEvent[]; // F3·F7 규칙과 SESSION CHANGE(기간 앞 요청과 비교한 것까지)
+  warnings: CrewWarning[];
+  baselines: Record<string, Baseline>; // SESSION CHANGE의 AIRPORT별 새 세션 기준선
+}
+
+// AIRCRAFT(세션 이름) → FLEET의 COMPLEMENT. FLEET에 없는 이름이면 null(COMPLEMENT DRIFT를 판단하지 않는다)
+function complements(names: Map<string, string>): (session: string) => CrewMember[] | null {
+  let fleet: ReturnType<typeof loadFleet> | null = null;
+  try {
+    fleet = loadFleet();
+  } catch {}
+  return (session) => {
+    const reg = names.get(session)?.toUpperCase();
+    const profile = reg && fleet?.aircraft[reg];
+    return profile ? (profile.complement ?? fleet!.defaults.complement) : null;
+  };
+}
+
+// 기간 안 기록을 FLIGHT 구간으로 자르고(FUEL F4), LEAK(F3·F7)과 CREW 경고(F7)를 같은 구간으로 나눈다.
+// 구간은 기간 안에 도착한 LOGBOOK FLIGHT와 지금 있는 STAND의 EN ROUTE FLIGHT
+export function analyzeWindow(scan: FuelScan, s: FlightContext, entries: LogEntry[], since: number, now: number): WindowAnalysis {
   const departures = readDepartures();
   const repoOf = new Map(s.airports.map((a) => [a.code, a.repo]));
+  const codeOf = new Map(s.airports.map((a) => [a.repo, a.code]));
   const open = new Set(s.workspaces.filter((w) => !w.isMain).map((w) => w.path));
   const spans = [
     ...entries.filter((e) => Date.parse(e.arrivedAt) >= since).map((e) => arrivedSpan(e, departures, (e.airport && repoOf.get(e.airport)) || null)),
-    ...enRouteSpans(departures, entries, open, now),
+    ...enRouteSpans(departures, entries, open, now, (repo) => codeOf.get(repo) ?? null),
   ];
+  const claims = [...readHookClaims(), ...s.claims];
+  const byClaimant = new Map<string, ClaimSpan[]>();
+  for (const c of claims) byClaimant.set(c.sessionId, [...(byClaimant.get(c.sessionId) ?? []), c]);
+  const aircraftOf = (id: string) => scan.names.get(id)?.toUpperCase() ?? null;
+  const change = sessionChangeLeaks(scan.records.values(), (r) => {
+    const f = flightOf(r, spans, aircraftOf, (id) => byClaimant.get(id) ?? []);
+    return f && { key: f.key, airport: f.airport ?? null };
+  });
+  const leaks = [...findLeaks(scan.records.values(), scan.compactions, controlSends(), scan.names), ...change.events];
+  const warnings = crewWarnings({ records: scan.records.values(), agents: scan.agents, complementOf: complements(scan.names) });
   const inWindow = (t: string) => Date.parse(t) >= since && Date.parse(t) <= now;
-  return attributeFuel({
+  const att = attributeFuel({
     records: [...scan.records.values()].filter((r) => inWindow(r.t)),
     spans,
-    aircraftOf: (id) => scan.names.get(id)?.toUpperCase() ?? null,
-    claims: [...readHookClaims(), ...s.claims],
-    leaks: leaks?.filter((e) => inWindow(e.t)),
+    aircraftOf,
+    claims,
+    leaks: leaks.filter((e) => inWindow(e.t)),
+    warnings: warnings.filter((w) => inWindow(w.t)),
   });
+  return { att, leaks, warnings, baselines: change.baselines };
 }
 
 // GET /api/fuel의 본문. AIRCRAFT마다 ARRIVED FLIGHT·EN ROUTE·UNATTRIBUTED 몫을 붙인다
@@ -232,14 +267,14 @@ export function readFuel(days: number, s: FlightContext & Pick<Snapshot, "sessio
   const t0 = performance.now();
   const since = now - days * DAY_MS;
   const scan = scanFuel(since, s.sessions);
-  const leaks = leaksOf(scan);
-  const summary = summarizeFuel({ ...scan, records: scan.records.values(), leaks, now, days });
-  const att = attributeWindow(scan, s, entries, since, now, leaks);
+  const { att, leaks, warnings, baselines } = analyzeWindow(scan, s, entries, since, now);
+  const summary = summarizeFuel({ ...scan, records: scan.records.values(), leaks, warnings, now, days });
   return {
     at: new Date(now).toISOString(),
     ...summary,
     aircraft: summary.aircraft.map((a) => ({ ...a, attribution: att.aircraft.get(a.aircraft) ?? null })),
     attribution: { totals: att.totals, flights: att.flights },
+    sessionBaselines: baselines,
     scan: { files: scan.files, bytesRead: scan.bytes, ms: Math.round(performance.now() - t0) },
   };
 }
@@ -256,7 +291,7 @@ function controlSends() {
   return controlSendsOf({ clearances: safe(allClearances), proposals: safe(allProposals), crewChanges: safe(allCrewChanges) });
 }
 
-// FUEL F4: 새 arrived 줄에 그 FLIGHT 구간의 FUEL BURN과 LEAK을 붙인다(logbook.ts run이 부른다). 이미 쓴 줄은 고치지 않는다(추가만).
+// FUEL F4: 새 arrived 줄에 그 FLIGHT 구간의 FUEL BURN과 LEAK·CREW 경고를 붙인다(logbook.ts run이 부른다). 이미 쓴 줄은 고치지 않는다(추가만).
 // 대화 기록은 FUEL_LOGBOOK_DAYS만 읽고, 그보다 먼저 출발한 FLIGHT에는 붙이지 않는다(fuelForEntry). entries는 이번 줄까지 접은 LOGBOOK
 export const FUEL_LOGBOOK_DAYS = 14;
 export function addLogbookFuel(lines: LogLine[], entries: LogEntry[], s: Snapshot, now = Date.now()) {
@@ -265,7 +300,7 @@ export function addLogbookFuel(lines: LogLine[], entries: LogEntry[], s: Snapsho
   if (!arrivals.length) return;
   // 도착한 FLIGHT 모두(이번 줄 포함)와 EN ROUTE FLIGHT로 자른다. 앞 FLIGHT의 착륙 대기와 겹친 다음 FLIGHT 몫을 가려내려고
   const scan = scanFuel(since, s.sessions);
-  const att = attributeWindow(scan, s, entries, since, now, leaksOf(scan));
+  const { att } = analyzeWindow(scan, s, entries, since, now);
   for (const l of arrivals) {
     const fuel = fuelForEntry(l, att, since);
     if (fuel) l.fuel = fuel;

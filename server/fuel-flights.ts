@@ -1,5 +1,6 @@
 import { type Departure, departureHits } from "./departures.ts";
 import { addKinds, type Burn, burn, type FuelRecord, type Kinds, zero } from "./fuel.ts";
+import { countWarnings, type CrewWarning, type CrewWarningCounts, crewShareOf, emptyWarnings } from "./fuel-crew.ts";
 import { addLeak, emptyLeaks, type LeakEvent, type LeakTotals } from "./fuel-leaks.ts";
 import type { LogEntry } from "./logbook.ts";
 import type { Claim } from "./model.ts";
@@ -23,6 +24,7 @@ export interface FlightSpan {
   to: number;
   stands: string[];
   segments: Segment[];
+  airport?: string | null; // AIRPORT code(SESSION CHANGE 기준선, F7). 모르면 null
 }
 
 export type ClaimSpan = Pick<Claim, "sessionId" | "workspacePath" | "since" | "lastAt">;
@@ -36,12 +38,13 @@ export interface Part {
   total: Burn;
 }
 
-// LOGBOOK arrived 줄의 fuel. 아직 만들지 않은 칸(cost·netCost는 F5, crewWarnings는 F7)은 0이 아니라 넣지 않는다
+// LOGBOOK arrived 줄의 fuel. 아직 만들지 않은 칸(cost·netCost는 F5)은 0이 아니라 넣지 않는다
 export interface FlightFuel {
   captain: Burn;
   crew: CrewPart;
   cacheHit: number | null; // CAPTAIN + CREW
-  leak?: LeakTotals; // FUEL LEAK(F3, fuel-leaks.ts). LEAK을 재고 넘긴 때만(miss가 없으면 0)
+  leak?: LeakTotals; // FUEL LEAK(F3·F7, fuel-leaks.ts). LEAK을 재고 넘긴 때만(miss가 없으면 0)
+  crewWarnings?: CrewWarningCounts; // CREW 경고 수(F7, fuel-crew.ts). 경고를 재고 넘긴 때만. highCrewShare는 이 FLIGHT가 넘었으면 1
   models: Record<string, number>; // 모델 → 요청 수
 }
 
@@ -75,12 +78,19 @@ export function arrivedSpan(e: LogEntry, departures: Departure[], repo: string |
     to,
     stands: [...new Set([...e.stands, ...hits.map((d) => d.stand)])].sort(),
     segments: segmentsOf(hits, from, to, e.aircraft),
+    airport: e.airport,
   };
 }
 
 // 아직 도착하지 않은 FLIGHT(EN ROUTE): 지금 있는 STAND의 착수 기록 중 어느 ARRIVED FLIGHT에도 속하지 않는 줄을
 // 저장소·브랜치(없으면 STAND)로 묶는다. 구간은 첫 줄부터 지금까지. 지워진 STAND는 끝난 때를 모르므로 넣지 않는다
-export function enRouteSpans(departures: Departure[], entries: LogEntry[], openStands: Set<string>, now: number): FlightSpan[] {
+export function enRouteSpans(
+  departures: Departure[],
+  entries: LogEntry[],
+  openStands: Set<string>,
+  now: number,
+  airportOf: (repo: string) => string | null = () => null,
+): FlightSpan[] {
   const groups = new Map<string, Departure[]>();
   for (const d of departures) {
     if (!openStands.has(d.stand) || Date.parse(d.t) > now) continue;
@@ -99,6 +109,7 @@ export function enRouteSpans(departures: Departure[], entries: LogEntry[], openS
       to: now,
       stands: [...new Set(lines.map((d) => d.stand))].sort(),
       segments: segmentsOf(lines, from, now, null),
+      airport: airportOf(lines[0].repo),
     };
   });
 }
@@ -132,6 +143,7 @@ class Tank {
   models: Record<string, number> = {};
   sessions = new Set<string>();
   leak: LeakTotals | null = null;
+  warn: CrewWarningCounts | null = null;
   add(r: FuelRecord) {
     if (r.sidechain) {
       addKinds(this.crew, r);
@@ -155,7 +167,15 @@ class Tank {
   }
   fuel(): FlightFuel {
     const p = this.part();
-    return { captain: p.captain, crew: p.crew, cacheHit: p.total.cacheHit, ...(this.leak ? { leak: this.leak } : {}), models: this.models };
+    const warn = this.warn && { ...this.warn, highCrewShare: crewShareOf(this.captain, this.crew) === null ? 0 : 1 };
+    return {
+      captain: p.captain,
+      crew: p.crew,
+      cacheHit: p.total.cacheHit,
+      ...(this.leak ? { leak: this.leak } : {}),
+      ...(warn ? { crewWarnings: warn } : {}),
+      models: this.models,
+    };
   }
 }
 
@@ -184,6 +204,7 @@ export interface AttributionInput {
   aircraftOf: (session: string) => string | null;
   claims: ClaimSpan[];
   leaks?: LeakEvent[]; // 주면 FLIGHT마다 같은 규칙(flightOf)으로 LEAK을 나눈다
+  warnings?: CrewWarning[]; // 주면 FLIGHT마다 같은 규칙으로 CREW 경고를 센다(F7)
 }
 
 // 요청마다 FLIGHT 하나에만 넣는다(나눠 넣지 않는다). CAPTAIN·CREW는 따로 센다
@@ -213,6 +234,14 @@ export function attributeFuel(input: AttributionInput): Attribution {
       const span = flightOf(e, input.spans, input.aircraftOf, claimsOf);
       const t = span && bySpan.get(span.key);
       if (t) addLeak(t.leak!, e);
+    }
+  }
+  if (input.warnings) {
+    for (const t of bySpan.values()) t.warn = emptyWarnings();
+    for (const w of input.warnings) {
+      const span = flightOf(w, input.spans, input.aircraftOf, claimsOf);
+      const t = span && bySpan.get(span.key);
+      if (t) countWarnings([w], t.warn!);
     }
   }
   const spanByKey = new Map(input.spans.map((s) => [s.key, s]));

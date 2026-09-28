@@ -529,14 +529,14 @@ COMPLEMENT는 SUPERVISOR가 선언한 것이다. 관찰한 CREW는 AIRCRAFT의 �
 |---|---|
 | 팀원의 `position`이나 `agent`와 같은 `agentType`(`ui-builder`, `ui-qa`, `flash-helper`, 또는 SUPERVISOR가 agent type으로 선언한 무엇이든) | 그 팀원의 POSITION |
 | `model`이 있는 `general-purpose`나 `claude` | `agent`에 그 모델 계열이 든 팀원(`opus` → `claude-opus-5-5` → `backend`). 그런 팀원이 없으면 없음 |
-| `model`이 없는 `general-purpose`나 `claude` | Opus로 본다. 호출은 CAPTAIN의 모델을 물려받고, CAPTAIN은 Opus로 돈다. atc는 실제 모델을 볼 수 없으므로 `model`은 `null`로 남는다 |
+| `model`이 없는 `general-purpose`나 `claude` | FUEL이 그 서브에이전트의 usage 줄을 읽었으면 실제로 답한 모델(ATC-57, [fuel.md](fuel.md) 5장). 그 전에는 Opus로 본다. 호출은 CAPTAIN의 모델을 물려받고, CAPTAIN은 Opus로 돌기 때문이고, `model`은 `null`로 남는다 |
 | 내장 에이전트(`Explore`, `Plan`, `claude-code-guide`, `statusline-setup`)와 그 밖의 agent type | 이름으로 선언하지 않았다면 없음 |
 
 호출은 `agentType`과 `model`로 묶는다: `observedCrew: {agentType, position, model, count, lastAt}[]`, 최근 것부터.
 
 **어긋남**(`crewDrift`):
 
-- `undeclared`: POSITION이 없는 관찰된 호출. agent type별이고, 모델이 주어졌으면 함께 적는다(`Explore`, `general-purpose (sonnet)`). 카드에는 "선언에 없음: Explore"로 보인다.
+- `undeclared`: POSITION이 없는 관찰된 호출. agent type별이고, 모델이 주어졌거나 보였으면 함께 적는다(`Explore`, `general-purpose (sonnet)`). 카드에는 "선언에 없음: Explore"로 보인다. ATC-57부터는 실제 모델이 그 POSITION이 선언한 모델과 다른 호출(COMPLEMENT DRIFT, [fuel.md](fuel.md) 5장)도 `타입 (실제 모델)`로 여기에 든다.
 - `unused`: 창 안에 호출이 없는 선언된 POSITION. 서브에이전트가 아닌 POSITION(`security` CONFIGURATION의 `reviewer` POSITION, agent `codex (GitHub 리뷰)`. GitHub 리뷰로 일한다)은 늘 여기 보인다. 잘못이 아니라 "보지 못함"으로 읽는다.
 
 **비용.** 서버는 `~/.claude/projects`에서 `custom-title.json`을 많아야 30초에 한 번 다시 훑는다. 제목은 파일 mtime으로, 세션별 호출은 `subagents/` 폴더의 mtime으로 캐시한다. 그래서 바뀌지 않은 세션은 다시 읽지 않는다.

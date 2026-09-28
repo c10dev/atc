@@ -2,6 +2,7 @@ import { type Dirent, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config.ts";
 import type { CrewMember } from "./crew.ts";
+import { driftOf } from "./fuel-crew.ts";
 import type { Session } from "./model.ts";
 import { sessionDir } from "./sources/claude.ts";
 
@@ -17,6 +18,7 @@ export interface Spawn {
   agentType: string;
   model: string | null;
   at: number; // meta 파일 mtime(ms) = 부른 시각
+  agent?: string; // agent id(agent-<id>.meta.json). FUEL이 본 실제 모델을 찾을 때(ATC-57)
 }
 export interface ObservedMember {
   agentType: string;
@@ -61,32 +63,37 @@ export function positionOf(agentType: string, model: string | null, complement: 
   return complement.find((m) => m.agent.toLowerCase().includes(family))?.position ?? null;
 }
 
-// 기간 안의 호출을 agentType·model별로 묶고, 선언과의 차이(drift)를 낸다
+// 기간 안의 호출을 agentType·model별로 묶고, 선언과의 차이(drift)를 낸다.
+// actualModelOf(ATC-57)가 FUEL 기록에서 본 실제 message.model을 주면 부를 때 준 model보다 그것을 쓰고,
+// 선언한 모델과 어긋나면(COMPLEMENT DRIFT, fuel-crew.ts driftOf) 선언에 없음으로 올린다
 export function observeCrew(
   spawns: Spawn[],
   complement: CrewMember[],
   now = Date.now(),
   windowDays = OBSERVED_WINDOW_DAYS,
+  actualModelOf: (agent: string) => string | null = () => null,
 ): { observedCrew: ObservedMember[]; crewDrift: CrewDrift } {
   const since = now - windowDays * DAY_MS;
-  const groups = new Map<string, { agentType: string; model: string | null; count: number; last: number }>();
+  const groups = new Map<string, { agentType: string; model: string | null; count: number; last: number; drift: boolean }>();
   for (const s of spawns) {
     if (s.at < since || s.at > now + 60_000) continue;
-    const key = `${s.agentType}\u0000${s.model ?? ""}`;
-    const g = groups.get(key) ?? { agentType: s.agentType, model: s.model, count: 0, last: 0 };
+    const actual = s.agent ? actualModelOf(s.agent) : null;
+    const model = actual ?? s.model;
+    const key = `${s.agentType}\u0000${model ?? ""}`;
+    const g = groups.get(key) ?? { agentType: s.agentType, model, count: 0, last: 0, drift: false };
     g.count++;
     g.last = Math.max(g.last, s.at);
+    if (actual && driftOf(s.agentType, actual, complement)) g.drift = true;
     groups.set(key, g);
   }
-  const observedCrew = [...groups.values()]
-    .sort((a, b) => b.last - a.last)
-    .map((g) => ({
-      agentType: g.agentType,
-      position: positionOf(g.agentType, g.model, complement),
-      model: g.model,
-      count: g.count,
-      lastAt: new Date(g.last).toISOString(),
-    }));
+  const sorted = [...groups.values()].sort((a, b) => b.last - a.last);
+  const observedCrew = sorted.map((g) => ({
+    agentType: g.agentType,
+    position: g.drift ? null : positionOf(g.agentType, g.model, complement),
+    model: g.model,
+    count: g.count,
+    lastAt: new Date(g.last).toISOString(),
+  }));
   const seen = new Set(observedCrew.map((o) => o.position).filter(Boolean));
   const undeclared = [...new Set(observedCrew.filter((o) => !o.position).map((o) => (o.model ? `${o.agentType} (${o.model})` : o.agentType)))];
   const unused = [...new Set(complement.map((m) => m.position))].filter((p) => !seen.has(p));
@@ -138,7 +145,7 @@ function spawnsIn(dir: string): Spawn[] {
     const file = join(sub, f);
     try {
       const meta = parseMeta(readFileSync(file, "utf8"));
-      if (meta) spawns.push({ ...meta, at: statSync(file).mtimeMs });
+      if (meta) spawns.push({ ...meta, at: statSync(file).mtimeMs, agent: f.slice(6, -".meta.json".length) });
     } catch {}
   }
   spawnCache.set(dir, { mtime: m, spawns });
