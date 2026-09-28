@@ -30,6 +30,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - FLEET 운항 상태 목록(`HOLD · LIMIT until 07:40Z`, `PENDING approval 12m`, `CONTEXT — RESTART`), snapshot의 `sessions[].health`, FLIGHT FOLLOWING의 `health` 문제, TOWER 브리핑의 `open.health`에 보인다. ALERT 코드는 `health` 경보가 된다. `NETWORK`는 기계에 한 번, `LIMIT`은 reset 시각마다 한 번.
   - DISPATCH는 `LIMIT`·`MODEL`·`CONTEXT`·`PROVIDER`·`HUNG`인 AIRCRAFT를 건너뛰고, SCHEDULE NEW는 그 AIRCRAFT를 tail로 받지 않는다. atc는 스스로 다시 보내거나 승인하거나 재시작하지 않는다.
   - TOWER 매뉴얼과 OCC FLIGHT FOLLOWING 표에 대응 줄을 넣었다. 임계값은 `ATC_HEALTH_*` 환경 변수. 코드, 시각, 오류 한 줄만 두고 본문은 두지 않는다.
+- DISPATCH가 Linear에서 atc 밖의 누군가가 맡은 FLIGHT를 뺀다([docs/dispatch.ko.md](docs/dispatch.ko.md) 5.1.2). 이슈의 `delegate`(Linear agent 위임, 예: Codex)와 담당자 id를 읽어 API 키 주인(`viewer`)과 비교한다. 위임 대상이, 없으면 담당자가 다른 사람이나 agent면 `tail:` 라벨이 있어도 `Linear 담당 <이름> — atc 밖에서 맡음`으로 제외하고, 그 FLIGHT의 열린·승인된 ASSIGN은 같은 사유로 SUPERSEDED한다. 이름은 `Ticket.takenBy`에 담기고, TICKETS 카드는 위임 대상을 `→ <이름>`으로 보인다. 읽기만 한다: atc는 여전히 담당자를 쓰지 않는다. 2026-09-28 기준 담당자가 있는 Todo FLIGHT는 없어 지금 계획은 바뀌지 않는다.
 - FLEET 탭: AIRCRAFT 한 대가 한 줄인 운항 상태 목록, 세부는 접음(ATC-44, UI report #99). FLEET PLAN 아래 기본 보기가 AIRCRAFT마다 한 줄이다:
   - 열: callsign과 REGISTRATION, AIRPORT, AIRBORNE·HOLDING·PARKED·AOG·NORDO, 제목이 붙은 FLYING FLIGHT(더 있으면 `+N`), STAND를 잡은 뒤 흐른 시간, 마지막 활동, 이번 주 ARRIVED와 정시율
   - 순서: AIRBORNE → HOLDING → PARKED, 그다음 AIRPORT 순

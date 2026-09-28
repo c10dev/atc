@@ -11,7 +11,7 @@ const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
 const ticket = (key: string, over: Partial<Ticket> = {}): Ticket =>
   ({
     key, title: `${key} title`, state: "In Progress", stateType: "started", stateColor: null, priority: 2, url: `https://linear/${key}`, updatedAt: ago(30),
-    project: "Song Experience", labels: ["type:BUILD", "wake:M"], createdAt: ago(1000), startedAt: null, blocks: [], blockedBy: [], related: [], parent: null, children: [], assignee: null, ...over,
+    project: "Song Experience", labels: ["type:BUILD", "wake:M"], createdAt: ago(1000), startedAt: null, blocks: [], blockedBy: [], related: [], parent: null, children: [], assignee: null, takenBy: null, ...over,
   }) as Ticket;
 const proposal = (id: string, flight: string, status: Proposal["status"], timeline: Proposal["timeline"]): Proposal =>
   ({

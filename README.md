@@ -155,7 +155,7 @@ Session ──claim──▶ Workspace ──branch──▶ Ticket
 | Claude transcripts | `~/.claude/projects/<cwd-slug>/<sessionId>.jsonl`, `…/<sessionId>/subagents/*.jsonl` | Worktrees entered through tool calls (for inference) |
 | Codex sessions | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex sessions and their cwd |
 | git | `git worktree list --porcelain` in each repository | Worktree path, branch, HEAD, dirty or not |
-| Linear | GraphQL API (`LINEAR_API_KEY`) | Ticket title, state, assignee, URL |
+| Linear | GraphQL API (`LINEAR_API_KEY`) | Ticket title, state, assignee and delegate, URL |
 | GitHub | `gh pr list --repo <owner/name> --state open` for each AIRPORT with a GitHub remote, every 90 seconds (`server/sources/github.ts`) | Open PRs: head commit, checks, reviews, merge state, Draft; Codex's 👍 and comments via `gh api` for PRs without a passing head review or with Codex findings on the head. Every 10 minutes also the last 30 merged PRs for the LOGBOOK |
 | Claim | `~/.local/state/atc/claims/<sessionId>/*.json` | Claims recorded by the hook |
 
@@ -408,7 +408,7 @@ CHARTER REQUEST → AD HOC FLIGHT draft (S1: verdict in the SCHEDULE tab) → FI
 | `crosscheck/` | Working folder for the CROSSCHECK session (provisional verdicts from a different model) | [CLAUDE.en.md](crosscheck/CLAUDE.en.md) · [/tick](crosscheck/.claude/skills/tick/SKILL.en.md) |
 | `deploy/` | systemd user service | [deploy/README.md](deploy/README.md) |
 | `docs/guide/` | The user guide shown in the DOCS tab (Korean) | [introduction](docs/guide/introduction.md) |
-| `docs/` | Design and conventions | [DISPATCH design](docs/dispatch.md) · [OCC design](docs/occ.md) · [FLEET design](docs/fleet.md) · [ATFM design (stage 3)](docs/atfm.md) · [Naming rules](docs/naming.md) |
+| `docs/` | Design and conventions | [DISPATCH design](docs/dispatch.md) · [OCC design](docs/occ.md) · [FLEET design](docs/fleet.md) · [ATFM design (stage 3)](docs/atfm.md) · [MCC design](docs/mcc.md) · [Naming rules](docs/naming.md) |
 | — | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 
 Each has a Korean version next to it (`README.ko.md`, `*.ko.md`; for the session folders the Korean `CLAUDE.md` / `SKILL.md` are the originals the sessions load).

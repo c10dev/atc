@@ -64,6 +64,7 @@ export interface Ticket {
   stateType: TicketStateType;
   stateColor: string | null;
   assignee: string | null;
+  takenBy: string | null; // atc 밖에서 맡은 사람·agent(Linear 위임 대상이나 API 키 주인이 아닌 담당자). DISPATCH가 배정하지 않는다
   priority: number; // 0 없음, 1 긴급 … 4 낮음
   url: string | null;
   updatedAt: string | null;

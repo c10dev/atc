@@ -223,6 +223,8 @@ export const hasStandWhy = () => "이미 STAND가 있음";
 export const stateChangedWhy = (state: string) => `FLIGHT 상태가 바뀜(${state})`;
 export const noProjectWhy = (project: string | null) => (project ? `배정 제외 프로젝트: ${project}` : "프로젝트 없음");
 export const excludedLabelWhy = (label: string) => `라벨 ${label} (다른 운항사)`;
+// Linear에서 다른 사람이나 agent(Codex 등)가 맡은 FLIGHT. 같은 일을 TEAM에 또 주지 않는다
+export const takenWhy = (by: string) => `Linear 담당 ${by} — atc 밖에서 맡음`;
 // 판정 대기 중인 제안이 다른 배정으로 바뀔 때의 사유 첫머리. 이 사유로 닫힌 짝은 판정받지 못한 것이라 24시간 규칙에서 뺀다
 export const BETTER_WHY = "더 나은 배정으로 바뀜";
 // 로컬 시각 "MM-DD HH:MM"
@@ -484,6 +486,10 @@ export function planDispatch(
     const label = t.labels.find((l) => cfg.excludeLabels.includes(l));
     if (label) {
       excluded.push({ flight: t.key, reason: excludedLabelWhy(label) });
+      continue;
+    }
+    if (t.takenBy) {
+      excluded.push({ flight: t.key, reason: takenWhy(t.takenBy) });
       continue;
     }
     const airport = airportOfTicket(t, cfg);
