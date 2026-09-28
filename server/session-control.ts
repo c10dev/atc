@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Context, Hono } from "hono";
@@ -30,6 +30,7 @@ export interface AgentRow {
   status?: string;
   cwd: string;
   startedAt?: number; // ms
+  pid?: number;
 }
 
 export class ControlError extends Error {
@@ -116,13 +117,62 @@ export function controlLaunchPlanOf(spec: ControlSpec, rows: AgentRow[], dir: st
   if (live) throw new ControlError(`${spec.name} 세션이 이미 떠 있음(${live.kind === "background" ? `bg ${live.id}` : `interactive ${live.name ?? ""}`.trim()})`, 409);
   return { cwd: dir, args: ["--bg", "-n", spec.name, "--permission-mode", "auto", ...spec.flags, spec.prompt] };
 }
-// STOP할 백그라운드 세션(순수). 데스크톱·터미널·tmux 세션은 그 창에서 닫는다
-export function controlStopTargetOf(spec: ControlSpec, rows: AgentRow[], dir: string): AgentRow {
+// tmux pane 하나(`tmux list-panes -a`)
+export interface TmuxPane {
+  session: string;
+  pane: string; // "%4"
+  pid: number; // pane의 첫 프로세스
+}
+// 이 pid가 도는 tmux pane(순수): pid 자신이나 조상이 pane의 첫 프로세스면 그 pane. parentOf는 부모 pid(모르면 null)
+export function tmuxPaneOf(pid: number | undefined, panes: readonly TmuxPane[], parentOf: (pid: number) => number | null): TmuxPane | null {
+  for (let cur: number | null | undefined = pid, i = 0; cur && cur > 1 && i < 20; cur = parentOf(cur), i++) {
+    const hit = panes.find((p) => p.pid === cur);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// STOP할 대상(순수): 백그라운드 세션이면 `claude stop`, tmux pane에서 도는 세션이면 그 pane만 닫는다.
+// 데스크톱(Claude 앱) 세션은 atc가 닫지 않는다 — 그 창에서 닫는다
+export type StopTarget = { how: "background"; row: AgentRow } | { how: "tmux"; row: AgentRow; pane: TmuxPane };
+export function controlStopTargetOf(spec: ControlSpec, rows: AgentRow[], dir: string, paneOf: (row: AgentRow) => TmuxPane | null = () => null): StopTarget {
   const mine = controlRowsOf(spec, rows, dir);
   if (!mine.length) throw new ControlError(`${spec.name} 세션이 떠 있지 않음`, 404);
   const bg = mine.find((r) => r.kind === "background" && r.id);
-  if (!bg) throw new ControlError(`${spec.name}는 데스크톱·터미널 세션 — 그 창에서 닫는다`, 409);
-  return bg;
+  if (bg) return { how: "background", row: bg };
+  for (const row of mine) {
+    const pane = paneOf(row);
+    if (pane) return { how: "tmux", row, pane };
+  }
+  throw new ControlError(`${spec.name}는 데스크톱 세션 — 그 창에서 닫는다`, 409);
+}
+
+// /proc/<pid>/stat의 부모 pid. 이름에 공백·괄호가 있어도 마지막 ')' 뒤로 읽는다
+export function parentPidOf(pid: number): number | null {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const ppid = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]);
+    return Number.isInteger(ppid) && ppid > 0 ? ppid : null;
+  } catch {
+    return null;
+  }
+}
+
+// tmux pane 목록. tmux가 없거나 서버가 없으면 빈 목록
+export function tmuxPanes(): Promise<TmuxPane[]> {
+  return new Promise((resolve) => {
+    execFile("tmux", ["list-panes", "-a", "-F", "#{session_name}\t#{pane_id}\t#{pane_pid}"], { timeout: 5000 }, (err, stdout) => {
+      if (err) return resolve([]);
+      resolve(
+        stdout
+          .split("\n")
+          .filter(Boolean)
+          .map((l) => l.split("\t"))
+          .map(([session, pane, pid]) => ({ session, pane, pid: Number(pid) }))
+          .filter((p) => /^%\d+$/.test(p.pane) && Number.isInteger(p.pid)),
+      );
+    });
+  });
 }
 
 // 멈출 백그라운드 세션(순수). 데스크톱·터미널 세션은 atc가 멈추지 않는다
@@ -170,6 +220,7 @@ export interface ControlResult {
   ok: boolean;
   status: number; // 실패면 HTTP 상태
   jobId?: string;
+  tmux?: string; // tmux에서 멈춘 관제 세션의 tmux 세션 이름
   cwd?: string;
   permissionMode?: PermissionMode;
   model?: string | null;
@@ -240,7 +291,18 @@ export async function stopControl(name: string, by: string): Promise<ControlResu
   if (!spec) return { ok: false, status: 404, error: `atc가 띄우는 관제 세션이 아님: ${name}` };
   const t = new Date().toISOString();
   try {
-    const row = controlStopTargetOf(spec, await agentRows(), controlDirOf(spec));
+    const panes = await tmuxPanes();
+    const target = controlStopTargetOf(spec, await agentRows(), controlDirOf(spec), (row) => tmuxPaneOf(row.pid, panes, parentPidOf));
+    if (target.how === "tmux") {
+      // 그 pane만 닫는다(tmux 세션의 다른 창은 그대로). 대화 기록은 남아 claude --resume으로 다시 연다
+      const r = await new Promise<{ ok: boolean; out: string }>((resolve) =>
+        execFile("tmux", ["kill-pane", "-t", target.pane.pane], { timeout: 5000 }, (err, stdout, stderr) => resolve({ ok: !err, out: `${stdout}${stderr}`.trim() })),
+      );
+      const error = r.ok ? undefined : r.out.slice(0, 300) || "tmux kill-pane 실패";
+      record({ t, kind: "control", op: "stop", session: spec.name, by, ok: r.ok, tmux: `${target.pane.session} ${target.pane.pane}`, cwd: target.row.cwd, error });
+      return r.ok ? { ok: true, status: 200, tmux: target.pane.session } : { ok: false, status: 502, error };
+    }
+    const row = target.row;
     const r = await claude(["stop", row.id as string]);
     const error = r.ok ? undefined : r.out.slice(0, 300) || "claude stop 실패";
     record({ t, kind: "control", op: "stop", session: spec.name, by, ok: r.ok, jobId: row.id, cwd: row.cwd, error });
@@ -255,14 +317,14 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
   // 관제 세션(8.5.1): 설정 창 AGENTS 탭의 CONTROL 블록이 쓴다
   app.get("/api/control/sessions", async (c) => {
     try {
-      const rows = await agentRows();
+      const [rows, panes] = await Promise.all([agentRows(), tmuxPanes()]);
       return c.json({
         manual: MANUAL_CONTROL,
         sessions: CONTROL_SESSIONS.map((spec) => ({
           name: spec.name,
           dir: spec.dir,
           prompt: spec.prompt,
-          live: controlRowsOf(spec, rows, controlDirOf(spec)).map(({ id, name, kind, status }) => ({ id, name, kind, status })),
+          live: controlRowsOf(spec, rows, controlDirOf(spec)).map(({ id, name, kind, status, pid }) => ({ id, name, kind, status, tmux: kind === "background" ? undefined : tmuxPaneOf(pid, panes, parentPidOf)?.session })),
         })),
       });
     } catch (e) {
@@ -280,7 +342,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
     const r = await stopControl(c.req.param("name") ?? "", "SUPERVISOR");
     if (!r.ok) return c.json({ error: r.error }, r.status as 400);
-    return c.json({ ok: true, jobId: r.jobId });
+    return c.json({ ok: true, jobId: r.jobId, tmux: r.tmux });
   });
 
   // AIRCRAFT 이름과 같은 세션(데스크톱·터미널·백그라운드). FLEET 카드의 LAUNCH·STOP 버튼이 쓴다
