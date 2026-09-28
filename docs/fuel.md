@@ -2,7 +2,7 @@
 
 FUEL is the tokens a FLIGHT uses. atc records how long a FLIGHT took (block time, landing wait) and how well it went (rollbacks, LOS, Codex findings), but not what it burned, why some of that burn was waste, or how close each account is to its plan limit. FUEL adds those three things from records atc can already read.
 
-> Status (2026-09-28): draft for ATC-46 (moved from GitHub idea #53, whose research comment is the source for the pricing and cache facts below). F2 (ACCOUNT label, `LIMIT` held by ACCOUNT) is built (ATC-51); the rest is not. Sections 8 and 9 hold the split into issues and the SUPERVISOR decisions this needs.
+> Status (2026-09-28): draft for ATC-46 (moved from GitHub idea #53, whose research comment is the source for the pricing and cache facts below). F1 is built (`server/fuel.ts`, `server/fuel-run.ts`, `GET /api/fuel`) and F2 (ACCOUNT label, `LIMIT` held by ACCOUNT) is built (ATC-51); the rest is not. Sections 8 and 9 hold the split into issues and the SUPERVISOR decisions this needs.
 
 Related: [fleet.md](fleet.md) 8.3 (observed crew, never read bodies), 8.6 (FLEET PLAN, "Usage: none per AIRCRAFT"), 8.8 (AIRCRAFT health, `LIMIT` after a limit is hit); `server/logbook.ts` (LOGBOOK), `server/health.ts` (`quotaLimits`), `server/crew-observed.ts`; GitHub #41 (ontology graph projection, K1).
 
@@ -93,8 +93,8 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 
 | # | Issue | Depends on | Tier | Size |
 |---|---|---|---|---|
-| F1 (ATC-50) | Parser, global dedupe, offset reader, read-only `GET /api/fuel` (per session: kinds, CACHE HIT, CREW lower bound), cross-checked against ccusage on the same days | — | `auto` | BUILD · M |
-| ✅ F2 (ATC-51) | ACCOUNT label on the FLEET card and `fleet.json`; `LIMIT` grouped and held by ACCOUNT (health.ts, DISPATCH, SCHEDULE) | — | `auto`, raised to `user` if the `fleet.json` change is judged a format change | BUILD · M |
+| F1 (ATC-50) ✅ | Parser, global dedupe, offset reader, read-only `GET /api/fuel` (per session: kinds, CACHE HIT, CREW lower bound), cross-checked against ccusage on the same days. **Done**, see 8.1 | — | `auto` | BUILD · M |
+| F2 (ATC-51) ✅ | ACCOUNT label on the FLEET card and `fleet.json`; `LIMIT` grouped and held by ACCOUNT (health.ts, DISPATCH, SCHEDULE). **Done**, see [fleet.md](fleet.md) 8.8 | — | `auto`, raised to `user` if the `fleet.json` change is judged a format change | BUILD · M |
 | F3 (ATC-52) | Leaks with high confidence: COLD CACHE (HOLD and control wake) and MODEL SWITCH | F1 | `auto` | BUILD · M |
 | F4 (ATC-53) | FLIGHT attribution: optional `fuel` field on LOGBOOK `arrived` lines, `UNATTRIBUTED` | F1 | `user` (LOGBOOK record format) | BUILD · M |
 | F5 (ATC-54) | Cost: config price table, FUEL COST, NET FUEL | F1 | `auto` | BUILD · L |
@@ -102,7 +102,18 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 | F7 (ATC-57) | Other leaks and CREW warnings (COMPACTION, SESSION CHANGE after measuring the baseline, the warning list) | F3 | `auto` | BUILD · M |
 | F8 (ATC-56) | Screens and TRIP FUEL: FLEET/LOGBOOK/DISPATCH/brief views, TARGETS items `fuelPerFlight`, `cacheHit` | F4, F5 | `auto` (rating:UI) | BUILD · M |
 
-F1 and F2 can start at once and in parallel (F2 is built); they are the ones that answer the TEAM_K question soonest. Both are in Todo for DISPATCH; the rest wait in Backlog behind their dependencies (Linear `blocked by`).
+### 8.1 F1 as built (ATC-50)
+
+- **Dedupe fallback**: without `requestId` the key is `(message.id, sessionId)`, not `(message.id, sessionId, timestamp)`. The content-block lines of one response carry different timestamps (3,032 of 6,385 such keys in 7 days), so the timestamp would count one request several times. No id without `requestId` appeared in two sessions.
+- **Kinds**: the write total is `cache_creation_input_tokens`; the 1 h part comes from `cache_creation.ephemeral_1h_input_tokens`, the rest is 5 m (all of it when `cache_creation` is missing). `<synthetic>` lines (no API call) are skipped.
+- **CREW writes the 5 m tier.** Over 7 days (2026-09-28) CAPTAIN wrote 86.6 M at 1 h and 0 at 5 m, CREW 54.0 M at 5 m and 0 at 1 h. Section 1's "every request wrote 1 h" held for main transcripts only; F3's COLD CACHE TTL must follow each response, as section 5 says.
+- **Names**: the live session name from `~/.claude/sessions`, else the last `agent-name` line of the transcript. AIRCRAFT groups sessions by upper-cased name; unnamed sessions stay per session only.
+- **CREW files** include `subagents/workflows/wf_*/agent-*.jsonl`.
+- **ccusage cross-check** (UTC days, `ccusage claude daily`, 2026-09-26/27): requests with a `requestId` (Opus, Sonnet) match ccusage exactly on 09-26. On 09-27 Opus is lower (cache writes 24,216,148 vs 25,086,025; reads 1,794,265,874 vs 1,906,561,851; output 3,894,909 vs 4,201,713) because ccusage does not dedupe lines without a `requestId`; counting those lines raw reproduces ccusage's Opus numbers exactly. Proxied routes (DeepSeek, Muse; no `requestId`) are higher or equal in ccusage for the same reason, and no simple rule reproduces them exactly; FUEL counts them once per `(message.id, session)`, largest copy.
+- **Speed**: 7 days, 500 files: first scan 953 MB in 2.6 s, next call 36 ms (only new bytes).
+- **Not in F1**: Codex `token_count` (section 4) is not read yet.
+
+F1 and F2 started at once and in parallel, and both are built; they answer the TEAM_K question soonest. The rest wait in Backlog behind their dependencies (Linear `blocked by`).
 
 ## 9. Decisions for the SUPERVISOR
 
@@ -128,4 +139,4 @@ F1 and F2 can start at once and in parallel (F2 is built); they are the ones tha
 
 ## Not built yet
 
-Everything in section 8 except F2.
+F3–F8 in section 8, and Codex usage (section 4).
