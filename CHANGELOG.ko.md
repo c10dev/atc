@@ -32,6 +32,12 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
   - info 수준(`infoPct`, 80 %)이면 제안에 `fuel` 사유 줄이 붙는다. 열린 LAUNCH·ENTRY의 ACCOUNT가 hold가 되면 FUEL 글을 사유로 expire한다.
   - DISPATCH FUEL HOLD 스위치(D3)와 상관없이 hold 수준을 쓴다(ENGINEERING 결정). DISPATCH는 그대로다. FUEL은 ACCOUNT 라벨로 찾으므로 세션이 없는 AIRCRAFT와 관제 세션만 적은 ACCOUNT도 잡힌다.
   - FLEET PLAN 블록에 ACCOUNT마다 FUEL 한 줄("주간 사용량 줄"): 가장 많이 쓴 창과 reset, 제안에 주는 영향, AIRCRAFT와 관제 세션. `GET /api/fleet/plan`의 `fuel`로 오고, 볼 때의 스냅샷에서 읽는다.
+- ATFM 6b단계: 실패 몰림·혼잡·LOS GROUND STOP의 해제 규칙과 `on` 스위치(ATC-62, [docs/atfm.ko.md](docs/atfm.ko.md) 6·8·10장). 켜진 스위치는 없다. 기본은 그대로 `shadow`이고, 켜는 것은 SUPERVISOR 몫이다(ATC-23).
+  - `atfm.json`의 `groundStop.failureWave`·`congestion`·`los`가 `on`을 받는다. DISPATCH 탭 ATFM 블록에 확인을 거치는 off/shadow/on 스위치가 생겼다. ATFM OFF(`POST /api/atfm/off`)는 다른 것과 함께 이것도 `shadow`로 되돌린다.
+  - 켜면 실패 몰림은 "main 깨짐"처럼 새 ASSIGN과 LAND를 멈춘다. LOS는 새 ASSIGN만 멈춘다: TOWER의 착륙 대기열에 `groundStop`이 붙지 않고 HOLD/CONTINUE 이벤트도 없다. 혼잡은 DISPATCH 계획에서 그 AIRPORT의 AIRBORNE 슬롯을 하나 빼는 GROUND DELAY다.
+  - 해제 규칙: 혼잡과 LOS는 기준 아래로 30분 이어져야 풀린다. 그 30분 안에 다시 걸리면 같은 멈춤으로 이어진다. 실패 몰림은 실패한 체크가 멈춘 뒤 PR 2개에서 통과해야 풀린다. 해제를 기다리는 멈춤은 남은 것을 보인다("해제 대기: 기준 아래 12분 / 30분"). 재시작하면 `atfm-state.json`에 적힌 멈춤을 되살리고 해제 규칙을 재시작 때부터 센다. 새 상태는 없다.
+  - 두 번째 trigger: 혼잡은 최근 2시간 체크 시간 중앙값이 그 앞 7일의 2배를 넘을 때(FLIGHT RECORDER `ci` 줄), LOS는 24시간 안에 그 AIRPORT에서 LOS 3건 이상일 때.
+  - FLIGHT RECORDER: `ground-stop` 줄에 `land`(실패 몰림이면 `check`)가, `ground-release` 줄에 `releasedBy`(`cleared`, `30-min-below`, `passed-in-2-prs`, `switched-off`, `restart`)가 붙는다. 실패 몰림은 이제 체크 이름으로 이어서, 예전 key로 적힌 멈춤은 올린 뒤 한 번 풀린다.
 - FUEL F8: 화면, TRIP FUEL, 브리핑 경고(ATC-56, [docs/fuel.md](docs/fuel.md) 7·8.6, [docs/fleet.ko.md](docs/fleet.ko.md) 7·7.2). 보여 주기만 한다: DISPATCH 점수·배정은 이것을 읽지 않고, 경고는 아무것도 막지 않는다. 근거가 없는 값(`fuel` 없는 LOGBOOK 줄, `byModel` 전 줄, 가격표에 없는 모델, F7 전 CREW 경고)은 0이 아니라 `—`로 보인다.
   - FLEET 줄: 최근 14일 ARRIVED FLIGHT당 FUEL COST와 CACHE HIT을 보이는 FUEL 칸(`$6.10/FLT · CACHE 93%`). F6 FUEL REMAINING은 그대로 옆에 있다. FLEET 카드: FLIGHT당 FUEL COST와 NET, CAPTAIN·CREW CACHE HIT, CREW 몫, 가장 큰 LEAK 규칙 셋, CREW 경고 수, 값 없는 모델, TRIP FUEL을 넘은 FLIGHT 수를 보이는 FUEL 블록. 최근 FLIGHT마다 NET(값이 없으면 토큰), LEAK, `TRIP ✓`·`UNEXPECTED` 한 줄.
   - TRIP FUEL(`tripFuelOf`, 순수 함수): 지난 NET FUEL COST의 p50–p90. TYPE × WAKE로 묶고 `MEDIAN_MIN_SAMPLES`(3)보다 적으면 WAKE, 그다음 AIRPORT로 넓힌다. 60일, 모델 세대별로도 나눈다. DISPATCH 카드 사실 줄에 단계와 함께 보인다(`TRIP FUEL $5.28–$15.6 · TYPE×WAKE BUILD·M (6)`). p90을 넘은 FLIGHT는 `unexpected`. `GET /api/logbook` 항목에 `trip`이 붙는다.

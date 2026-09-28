@@ -164,19 +164,6 @@
   opacity: 0.45;
   cursor: default;
 }
-.atfm-ro {
-  color: var(--faint);
-}
-.atfm-mode {
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.08em;
-}
-.atfm-mode.m-shadow {
-  color: var(--cyan);
-}
-.atfm-mode.m-off {
-  color: var(--faint);
-}
 
 /* 수동 GROUND STOP 선언 */
 .atfm-form {

@@ -46,24 +46,30 @@ const stopInput = (over: Partial<Parameters<typeof groundStopsOf>[0]> = {}) => (
   airports, mains: new Map<string, MainStatus>(), pulls: new Map<string, GhPull[]>(), losOpen: new Map<string, number>(), cfg: DEFAULT_ATFM, now: NOW, ...over,
 });
 
-test("스위치: 기본값은 켜지지 않은 상태, 모르는 값은 기본값, on은 main 깨짐·수동·머지 슬롯만", () => {
+test("스위치: 기본값은 켜지지 않은 상태, 모르는 값은 기본값, on은 출발 중지 다섯 가지(ATC-62)와 머지 슬롯", () => {
   assert.deepEqual(parseAtfm({}), DEFAULT_ATFM);
   assert.equal(DEFAULT_ATFM.groundStop.mainBroken, "shadow");
   assert.equal(DEFAULT_ATFM.groundStop.manual, "off");
   const bad = parseAtfm({ groundStop: { mainBroken: "yes", failureWave: "on", manual: "on" }, slots: "yes", autoAssign: "on", slotLimits: { vcdo: 1, atcc: null, x: 99 } });
   assert.equal(bad.groundStop.mainBroken, "shadow"); // 모르는 값
-  assert.equal(bad.groundStop.failureWave, "shadow"); // 켤 수 없는 것은 on을 받지 않는다
+  assert.equal(bad.groundStop.failureWave, "on"); // ATC-62: 실패 몰림·혼잡·LOS도 켤 수 있다
+  assert.deepEqual(
+    [DEFAULT_ATFM.groundStop.failureWave, DEFAULT_ATFM.groundStop.congestion, DEFAULT_ATFM.groundStop.los],
+    ["shadow", "shadow", "shadow"],
+  ); // 기본값은 그대로 그림자
   assert.equal(bad.groundStop.manual, "on");
   assert.equal(bad.slots, "shadow"); // 모르는 값
   assert.equal(bad.autoAssign, "shadow"); // 켤 수 없는 것
   assert.equal(parseAtfm({ slots: "on" }).slots, "on"); // 7단계: 머지 슬롯은 켤 수 있다
   assert.deepEqual(bad.slotLimits, { VCDO: 1, ATCC: null });
   assert.equal(setSwitch(DEFAULT_ATFM, "groundStop.mainBroken", "on").groundStop.mainBroken, "on");
-  assert.throws(() => setSwitch(DEFAULT_ATFM, "groundStop.congestion", "on"), /off\|shadow/);
+  for (const k of ["failureWave", "congestion", "los"] as const) assert.equal(setSwitch(DEFAULT_ATFM, `groundStop.${k}`, "on").groundStop[k], "on");
   assert.throws(() => setSwitch(DEFAULT_ATFM, "autoAssign", "on"), /off\|shadow/);
   assert.throws(() => setSwitch(DEFAULT_ATFM, "nope", "off"), /모르는 스위치/);
-  const on = setSwitch(setSwitch(DEFAULT_ATFM, "groundStop.mainBroken", "on"), "groundStop.manual", "on");
-  assert.deepEqual(allShadow(on).groundStop, { ...DEFAULT_ATFM.groundStop, mainBroken: "shadow", manual: "off" });
+  let on = setSwitch(setSwitch(DEFAULT_ATFM, "groundStop.mainBroken", "on"), "groundStop.manual", "on");
+  for (const k of ["failureWave", "congestion", "los"]) on = setSwitch(on, `groundStop.${k}`, "on");
+  assert.deepEqual(allShadow(on).groundStop, { ...DEFAULT_ATFM.groundStop, mainBroken: "shadow", manual: "off" }); // ATFM OFF: 다섯 모두 그림자·꺼짐
+  assert.equal(allShadow(setSwitch(DEFAULT_ATFM, "groundStop.los", "off")).groundStop.los, "off"); // 꺼진 것은 그대로
   assert.equal(setSwitch(DEFAULT_ATFM, "slots", "on").slots, "on");
   assert.equal(allShadow(setSwitch(DEFAULT_ATFM, "slots", "on")).slots, "shadow"); // ATFM OFF는 슬롯도 그림자로
   assert.equal(allShadow(setSwitch(DEFAULT_ATFM, "slots", "off")).slots, "off");
@@ -113,7 +119,7 @@ test("출발 중지: main 깨짐은 shadow면 그림자·on이면 실제로 막�
   assert.deepEqual(m.map((s) => [s.airport, s.trigger, s.enforced, s.text]), [["ATCC", "manual", true, "수동 출발 중지: 배포 점검"]]);
 });
 
-const stop = (over: Partial<GroundStop>): GroundStop => ({ airport: "VCDO", repo: VCDO, trigger: "main-broken", kind: "stop", enforced: true, text: "main 깨짐", evidence: [], since: ago(1), ...over });
+const stop = (over: Partial<GroundStop>): GroundStop => ({ airport: "VCDO", repo: VCDO, trigger: "main-broken", kind: "stop", land: true, enforced: true, text: "main 깨짐", evidence: [], since: ago(1), ...over });
 
 test("켜진 출발 중지만 계획에서 ASSIGN을 뺀다(그림자·GROUND DELAY는 그대로)", () => {
   const plan = { assign: [{ flight: "VOC-1", airport: "VCDO" }, { flight: "VOC-2", airport: "ATCC" }], excluded: [] as { flight: string; reason: string }[] };
