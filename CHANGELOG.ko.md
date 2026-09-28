@@ -24,6 +24,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- 리서치: vocado Human Preview 다시 보기(ATC-39, [docs/research/human-preview.ko.md](docs/research/human-preview.ko.md)). vocado PR 30일치를 보면 게이트 절이 PR 템플릿의 77%이고, 머지된 `required` PR 8건 중 6건이 `pending`인 채 착륙했으며, 사람 확인이 잡은 기록은 없다. 위험 기반 증거 묶음(사람은 CHOICE·ACCOUNT·DEVICE에서만)과 단계별 도입, ATC-37 수정을 추천한다. `docs/research/human-preview-stats.mjs`로 숫자를 다시 셀 수 있다(읽기 전용 `gh`).
 - 판정 계열: Jev(TypeSafe System One)를 CLASSIFY 판정 계열로 더했다. **기본은 꺼짐**이다(ATC-36, [docs/fleet.ko.md](docs/fleet.ko.md) 6.1).
   - `server/judges/`: CLASSIFY 인터페이스 하나(FLIGHT TYPE Choice, WAKE Choice, TYPE RATING마다 Noul)와 엔진 둘. `stub`은 녹화 응답이라 네트워크를 쓰지 않는다. `jev`는 `POST https://api.typesafe.ai/v1/systemone`, `jev-latest`, `.env.local`의 `TYPESAFE_API_KEY`를 Bearer로 쓰고, 키를 로그에 남기지 않는다.
   - mark는 `judges.jsonl`에 초안·계열마다 추가만 하는 `judge` 줄로 남는다. 판정 계열의 분류를 초안이 적은 축과 비교한 결과(`agree`/`disagree`)다. `schedule.jsonl`, CROSSCHECK 칸, 초안 상태, 20건·80% 게이트는 건드리지 않는다. 계열별 일치율은 `crosscheckRateOf`로 잰다.
