@@ -553,7 +553,7 @@ Decision changed 2026-09-28 (SUPERVISOR): atc starts and stops AIRCRAFT sessions
 - **Record.** Every LAUNCH and STOP is a FLIGHT RECORDER line `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}`.
 - **Tab.** A card with no session shows **LAUNCH** (permission mode, optional model, background count against the cap). A background session shows `BG <id>` and **STOP**. RETIREMENT of an AIRCRAFT flying a background session then asks whether to stop it too.
 
-Not built yet: automatic STOP of idle sessions (FLEET PLAN step 4; shadow proposals and approval are built in 8.6 and 8.7); RESTART as scheduled maintenance for long sessions; CREW CHANGE by relaunching with the new complement; a usage budget per AIRCRAFT (FUEL, ATC-46).
+Not built yet: automatic STOP of idle sessions (FLEET PLAN step 4; shadow proposals and approval are built in 8.6 and 8.7); RESTART as scheduled maintenance for long sessions; CREW CHANGE by relaunching with the new complement; a usage budget per AIRCRAFT (FUEL, ATC-46, [fuel.md](fuel.md)).
 
 #### 8.5.1 Control sessions (built 2026-09-28)
 
