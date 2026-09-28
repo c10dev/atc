@@ -14,7 +14,7 @@ const NOW = new Date(2026, 8, 27, 12, 0).getTime(); // 2026-09-27(일) 12:00 로
 const ago = (d: number, h = 0) => new Date(NOW - d * DAY - h * 3_600_000).toISOString();
 
 const ticket = (key: string, over: Partial<Ticket> = {}): Ticket => ({
-  key, title: key, state: "Todo", stateType: "unstarted", stateColor: null, assignee: null, priority: 2, url: null, updatedAt: null,
+  key, title: key, state: "Todo", stateType: "unstarted", stateColor: null, assignee: null, takenBy: null, priority: 2, url: null, updatedAt: null,
   project: "Beta Readiness", labels: [], createdAt: null, startedAt: null, blocks: [], blockedBy: [], related: [], parent: null, children: [],
   ...over,
 });

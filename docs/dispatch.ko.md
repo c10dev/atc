@@ -22,7 +22,7 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
 이 사실에서 나오는 제약:
 
 - 추정치가 없으므로 **용량은 포인트가 아니라 건수(슬롯)** 로 잰다.
-- 담당자로는 팀을 구분할 수 없으므로 **팀 적합도는 과거 운항 이력**(어느 팀이 관련 FLIGHT를 날았나)으로 추정한다.
+- 담당자로는 팀을 구분할 수 없으므로 **팀 적합도는 과거 운항 이력**(어느 팀이 관련 FLIGHT를 날았나)으로 추정한다. 다만 API 키 주인이 *아닌* 담당자나 위임 대상은 뜻이 있다: atc 밖의 누군가가 그 FLIGHT를 맡았다(5.1.2).
 - 라벨이 없으므로 위험 작업(DB·보안·권리)은 **티켓 본문**에서 읽어야 한다. 규칙 계산이 아니라 DISPATCH 세션(LLM)의 몫이다.
 - Backlog는 비어 있고 Todo가 곧 "출발 대기"다.
 
@@ -69,6 +69,7 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
 - **FLIGHT**: Todo 상태이고
   - **상위 이슈**(하위 이슈를 묶는 컨테이너)가 아님 — 5.1.1
   - `symphony-pilot` 라벨 아님
+  - Linear에서 API 키 주인이 아닌 사람이나 agent(Codex 등)에게 담당·위임되지 않음
   - 아직 ARRIVED 되지 않은 FLIGHT에 blocks 당하지 않음(당하면 `HOLD_DEPARTURE`)
   - 이미 STAND가 있거나 누가 점유 중이 아님
   - 프로젝트가 매핑된 AIRPORT가 운항 중(OPEN)
@@ -83,6 +84,7 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
 |---|---|---|
 | 상위 이슈(5.1.1) | `상위 이슈 — 하위 N건을 묶음` | |
 | 다른 운항사 라벨 | `라벨 symphony-pilot (다른 운항사)` | |
+| **atc 밖에서 맡음**: Linear 위임 대상(delegate), 없으면 담당자가 API 키 주인(`viewer`)이 아님. 읽기만 하고 atc는 담당자를 바꾸지 않는다 | `Linear 담당 <이름> — atc 밖에서 맡음` | 2026-09-28 |
 | 매핑 없는 프로젝트, 닫힌 AIRPORT | `배정 제외 프로젝트: <프로젝트>`, `프로젝트 없음`, `<CODE> AIRPORT가 운항 중이 아님` | |
 | **이미 완료됨**: 그 FLIGHT의 PR이 LOGBOOK에 ARRIVED로 있고 되돌리지 않음([fleet.ko.md](fleet.ko.md) 7.1) | `이미 완료됨 — PR <repo>#N 머지됨(LOGBOOK)` | 2026-09-27 |
 | **작업 중**: ticket key가 그 FLIGHT인 열린 PR(Draft 포함) | `열린 PR #N 있음` | 2026-09-27 |

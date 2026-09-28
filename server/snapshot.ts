@@ -91,6 +91,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
       parent: null,
       children: [],
       assignee: null,
+      takenBy: null,
       priority: 0,
       url: null,
       updatedAt: null,

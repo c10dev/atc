@@ -10,7 +10,7 @@ const NOW = Date.parse("2026-09-27T12:00:00.000Z");
 const ago = (d: number) => new Date(NOW - d * DAY).toISOString();
 
 const ticket = (key: string, over: Partial<Ticket> = {}): Ticket => ({
-  key, title: key, state: "Todo", stateType: "unstarted", stateColor: null, assignee: null, priority: 2, url: null, updatedAt: null,
+  key, title: key, state: "Todo", stateType: "unstarted", stateColor: null, assignee: null, takenBy: null, priority: 2, url: null, updatedAt: null,
   project: "Beta Readiness", labels: [], createdAt: ago(5), startedAt: null, blocks: [], blockedBy: [], related: [], parent: null, children: [],
   ...over,
 });

@@ -155,7 +155,7 @@ Session ──claim──▶ Workspace ──branch──▶ Ticket
 | Claude 기록 | `~/.claude/projects/<cwd-slug>/<sessionId>.jsonl`, `…/<sessionId>/subagents/*.jsonl` | 도구 호출로 들어간 워크트리 (추정용) |
 | Codex 세션 | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex 세션과 cwd |
 | git | 각 저장소 `git worktree list --porcelain` | 워크트리 경로, 브랜치, HEAD, dirty 여부 |
-| Linear | GraphQL API (`LINEAR_API_KEY`) | 티켓 제목, 상태, 담당, URL |
+| Linear | GraphQL API (`LINEAR_API_KEY`) | 티켓 제목, 상태, 담당·위임, URL |
 | GitHub | GitHub remote가 있는 AIRPORT마다 90초에 한 번 `gh pr list --repo <owner/name> --state open` (`server/sources/github.ts`) | 열린 PR: head 커밋, 체크, 리뷰, 머지 상태, Draft. head에 통과 리뷰가 없거나 Codex 지적이 있는 PR은 `gh api`로 Codex의 👍와 댓글. LOGBOOK용으로 10분마다 머지된 최근 PR 30건도 |
 | Claim | `~/.local/state/atc/claims/<sessionId>/*.json` | hook이 남긴 점유 기록 |
 
