@@ -148,3 +148,59 @@ export interface PriceWarning {
   requests: number;
   tokens: number;
 }
+
+// FLIGHT 하나의 값(ATC-59): LOGBOOK fuel의 모델별 토큰(byModel)에 지금 가격표로 값을 매긴다. 달러는 기록에 없다.
+// byModel이 없는 옛 줄은 null(값 없음). 값을 매긴 모델이 하나도 없으면 cost·leakCost·netCost가 null — 0으로 보이지 않게
+export interface FlightCost {
+  captain: Cost | null;
+  crew: Cost | null; // CREW 출력이 하한이라 이것도 하한
+  total: Cost | null;
+  leakCost: number | null; // 값이 매겨진 모델의 LEAK: rewritten × (writeMult − readMult) × P_in
+  netCost: number | null; // total − leakCost
+  unpriced: PriceWarning[]; // 가격표에 없어 뺀 모델
+}
+
+type ModelTokensLike = Kinds & { requests: number };
+export interface ModelBurnLike {
+  model: string;
+  speed?: string;
+  geo?: string;
+  captain?: ModelTokensLike;
+  crew?: ModelTokensLike;
+  leak?: { count: number; rewritten5m: number; rewritten1h: number };
+}
+
+const kindsSum = (k: Kinds) => k.input + k.cacheWrite5m + k.cacheWrite1h + k.cacheRead + k.output;
+
+export function priceFlightFuel(fuel: { byModel?: ModelBurnLike[] } | null | undefined, table: PriceTable | null): FlightCost | null {
+  if (!fuel?.byModel) return null;
+  const captain = zeroCost();
+  const crew = zeroCost();
+  let leak = 0;
+  let priced = 0;
+  const unpriced: PriceWarning[] = [];
+  for (const m of fuel.byModel) {
+    const got: RateOrWhy = table ? rateOf(table, { model: m.model, speed: m.speed ?? null, geo: m.geo ?? null }) : { unpriced: "no price table" };
+    if (!("rate" in got)) {
+      const parts = [m.captain, m.crew].filter((p): p is ModelTokensLike => Boolean(p));
+      unpriced.push({
+        model: m.model,
+        reason: got.unpriced,
+        requests: parts.reduce((n, p) => n + p.requests, 0),
+        tokens: parts.reduce((n, p) => n + kindsSum(p), 0),
+      });
+      continue;
+    }
+    priced++;
+    const r = got.rate;
+    if (m.captain) addCost(captain, costOf(m.captain, r));
+    if (m.crew) addCost(crew, costOf(m.crew, r));
+    if (m.leak) leak += (m.leak.rewritten5m * (r.write5m - r.readMult) + m.leak.rewritten1h * (r.write1h - r.readMult)) * r.pIn;
+  }
+  if (!priced) return { captain: null, crew: null, total: null, leakCost: null, netCost: null, unpriced };
+  const total = zeroCost();
+  addCost(total, captain);
+  addCost(total, crew);
+  const r4 = (v: number) => Math.round(v * 10_000) / 10_000;
+  return { captain: roundCost(captain), crew: roundCost(crew), total: roundCost(total), leakCost: r4(leak), netCost: r4(total.total - leak), unpriced };
+}

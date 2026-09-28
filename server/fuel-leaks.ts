@@ -33,6 +33,9 @@ export interface LeakEvent {
   gapMs: number;
   model: string;
   prevModel: string;
+  speed: string | null; // 이번 요청의 usage.speed·inference_geo·쓰기 층: 나중에 가격표로 다시 값을 매길 때(ATC-59)
+  geo: string | null;
+  writeTier: "5m" | "1h";
   wake: ControlKind | null; // controlWake일 때 깨운 atc 발신
 }
 
@@ -83,7 +86,21 @@ export function sessionLeaks(captain: FuelRecord[], compactions: string[], sends
           rule = wake ? "controlWake" : "coldCache";
         }
         const price = leakPriceOf(rewritten, cur, prices);
-        out.push({ session: cur.session, t: cur.t, rule, rewritten, units: price?.units ?? null, cost: price?.cost ?? null, gapMs, model: cur.model, prevModel: prev.model, wake });
+        out.push({
+          session: cur.session,
+          t: cur.t,
+          rule,
+          rewritten,
+          units: price?.units ?? null,
+          cost: price?.cost ?? null,
+          gapMs,
+          model: cur.model,
+          prevModel: prev.model,
+          speed: cur.speed,
+          geo: cur.geo,
+          writeTier: cur.cacheWrite1h > 0 ? "1h" : "5m",
+          wake,
+        });
       }
     }
     ttl = ttlAfter(cur, ttl);
