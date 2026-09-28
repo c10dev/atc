@@ -680,6 +680,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 | `ENTRY` | wet lease | `LAUNCH`와 같은데 맞는 등록 AIRCRAFT가 없음. REGISTRATION·AIRPORT·CONFIGURATION을 제안 | ENTRY INTO SERVICE 뒤 LAUNCH |
 | `STOP` | 주기(parking) | atc가 띄운 백그라운드 세션이 `idleHours`(기본 12) 동안 STAND·FLIGHT·활동이 없고, 그것 없이도 AIRPORT의 예비가 유지됨 | 8.5 STOP(다시 이어짐) |
 | `RESTART` | 정기 점검 | 백그라운드 세션이 PARKED이고 `restartDays`(기본 3)보다 오래됨. 또는 AIRCRAFT health(8.8)가 `CONTEXT`이거나 ALERT 수준의 `HUNG`(ATC-48) | STOP 뒤 새 CREW BRIEFING으로 LAUNCH(데스크톱·터미널 세션은 손으로 닫고 다시 연다) |
+| `REFRESH` | 객실 정비(turnaround) | AIRCRAFT가 PARKED이거나 ARRIVED한 FLIGHT의 STAND만 쥔 HOLDING이고, 열린 PR과 이번 계획의 FLIGHT가 없고, 최근 `minDwell` 안에 띄우지 않았고, 대화가 `refreshTokens`(기본 300k)나 창의 `refreshPct`(기본 40 %)를 넘음(ATC-69) | 백그라운드 세션: `RESTART`와 같다. 데스크톱·터미널 세션: 실행하지 않는다. SUPERVISOR가 그 세션에서 `/clear`하고 CREW BRIEFING을 붙여 넣는다 |
 | `AOG` | 기한이 있는 MEL 유예 | 세션이 NORDO이거나 최근 24시간에 LOS. 또는 AIRCRAFT health(8.8)가 `MODEL`이거나 주간 `LIMIT`(ATC-48) | `until` = 지금 + 24시간으로 AOG(주간 `LIMIT`만이면 reset 날). 풀리지 않고 기한이 지나면 `RETIRE`나 복귀 제안이 뒤따름 |
 | `RETIRE` | 퇴역 | `retireDays`(기본 30) 동안 ARRIVED 없음, 예비에 필요 없음, 열린 PR 없음 | SUPERVISOR만, 자동 없음 |
 
@@ -735,8 +736,22 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - 기본값은 제안대로: `reserve` 1, `waitMin` 120, `idleHours` 12, `restartDays` 3, `retireDays` 30, `minDwell` 2시간. 이후 조정은 그림자 기록과 게이트로 정한다.
 - ATC FLIGHT도 수요로 센다. FLEET PLAN은 `candidateTeams`만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 열린 FLIGHT를 세고, 제외 규칙은 planner와 같다(상위 이슈, 닫힌 상태, 다른 AIRCRAFT로 가는 `tail:`). DISPATCH는 `candidateTeams`만 배정한다. 2026-09-28에 ATC를 거기 넣어 ATC FLIGHT도 DISPATCH가 배정한다. ATC FLIGHT도 워크스페이스 분류 라벨을 쓴다. 라벨이 없는 FLIGHT는 rating 확인을 건너뛰고 사유에 그렇게 적는다.
 - 4단계(자동 STOP)는 계획에 두되 마지막에 만들고, 스위치는 기본으로 꺼 둔다. 켜는 것은 그림자 게이트를 통과한 뒤 SUPERVISOR가 따로 정한다.
+- REFRESH(ATC-69, 작업 지시의 PILOT'S DISCRETION, SUPERVISOR 검토 대상): RESTART의 셋째 조건이 아니라 따로 둔 종류다. 그래야 게이트가 판정을 따로 세고, 데스크톱 세션에는 거절 대신 손으로 할 단계를 보인다. 기준은 `refreshTokens` 300k와 `refreshPct` 40 % 중 먼저 닿는 것. 데스크톱·터미널 세션은 자동으로 다시 띄우지 않고, 자동 STOP은 여전히 4단계가 정한다.
 
 출처: [Jeppesen crew pairing](https://ww2.jeppesen.com/airline-crew-optimization-solutions/airline-crew-pairing/), [Lufthansa Systems NetLine/Crew](https://www.lhsystems.com/solutions/operations-control-center/netline-crew), [항공 disruption recovery 조사(arXiv 2510.26831)](https://arxiv.org/html/2510.26831), [OAG: wet leasing](https://www.oag.com/blog/what-is-wet-leasing), [SKYbrary: MEL](https://skybrary.aero/articles/minimum-equipment-list-mel), [EASA AI 등급(Halldale)](https://www.halldale.com/civil-aviation/easa-ai-framework-aviation-safety-regulations), [ICAO: 항공기 주기](https://www.icao.int/operational-safety/Aircraft-Parking).
+
+### REFRESH 만든 것 (ATC-69)
+
+FLIGHT를 마친 팀은 그 대화를 통째로 들고 있다. 2026-09-28에 TEAM_J는 ATC-63이 머지된 뒤 1M 창 중 504k를 들고 PARKED로 쉬었다. 턴마다 그 접두부를 캐시에서 다시 읽고, 캐시가 식은 뒤 처음 깨어날 때는 전부 다시 쓴다(F3의 COLD CACHE, [fuel.md](fuel.md) 5). 새로 시작하기에 가장 싼 때는 FLIGHT 직후, 팀이 쉬는 동안이다. REFRESH가 그것을 제안한다.
+
+- **CONTEXT SIZE**(`server/fuel-context.ts`, 순수). 세션마다 마지막 CAPTAIN(non-sidechain) 요청의 `input + cacheRead + cacheWrite`와 그 시각·모델. FUEL F1이 이미 읽은 기록으로 센다. CREW 요청은 세지 않는다. 그 요청 뒤에 `compact_boundary`가 있으면 compaction의 `postTokens`로 바꾼다(줄에 없으면 모름). `base`는 세션의 첫 CAPTAIN 요청(시스템 프롬프트·규칙·CREW BRIEFING, 2026-09-28에 약 50k)이다. 새 세션도 어차피 다시 쓰는 몫이다.
+- **창.** 대화 기록에는 `claude-opus-5-5`만 적히고 `[1m]` 접미어가 없다. 그래서 이 순서로 정한다: `fleet-plan.json`의 `contextWindows`(`{"claude-opus-5-5": 1000000}`, 모델 이름, `-YYYYMMDD` 접미어는 뗀다), 모델 이름의 `[1m]`, 그 세션에서 200k를 넘는 요청을 이미 봤으면 1M, 아니면 200k. 근거(`config`, `model`, `observed`, `default`)가 크기와 함께 간다. `refreshPct` 기준은 창이 200k 짐작이 아닐 때만 쓰고, 짐작이면 `refreshTokens`만 본다.
+- **아낌.** `(context − base)`를 F5 가격표로 매긴다. 다음 cold wake에 쓰지 않아도 되는 캐시 쓰기(세션의 지금 층, CAPTAIN은 1h)와 턴마다 읽지 않아도 되는 캐시 읽기. 2026-09-28 TEAM_J의 504k 세션은 Opus 5.5로 cold wake마다 약 $3.64, 턴마다 $0.09. 값이 없는 모델은 토큰만 보인다.
+- **사유.** `context`(`502k / 1M (50%) — claude-opus-5-5, 2026-09-28 17:07Z (기준 300k 또는 40%, 창은 본 크기로 짐작)`), `saving`, `arrived`(마지막 ARRIVED FLIGHT와, 그런 FLIGHT의 STAND를 아직 쥐었으면 그것), `session`(값이 `background`나 `interactive`).
+- **RESTART와 함께.** 같은 AIRCRAFT에 RESTART 후보(오래됨·health)가 이미 있으면 REFRESH를 따로 내지 않고 그 RESTART에 `context`·`saving` 줄을 붙인다. `minDwell`은 LAUNCH·RESTART 제안을 REFRESH의 반대 제안으로 본다.
+- **승인.** 백그라운드 세션은 RESTART 단계로 실행한다(8.5 STOP, 그다음 마지막 LAUNCH의 permission mode·모델로 LAUNCH). 데스크톱·터미널 세션은 승인이 거절된다(409). 카드에 그 세션에서 `/clear`하고 CREW BRIEFING을 붙여 넣으라는 글과 **CREW BRIEFING 복사** 버튼이 있고, 승인 운용에서는 **했음**이 동의로 닫는다. 승인 운용에서 받는 유일한 동의다.
+- **API.** `GET /api/fleet`은 AIRCRAFT마다 살아 있는 세션(여럿이면 가장 최근)의 `context: {contextTokens, window, at, pct, model, windowSource, compacted}`를 준다. `GET /api/fuel`은 세션마다, AIRCRAFT마다(기간 안 가장 최근 세션) 같은 것을 준다. 크기는 최근 7일에 바뀐 대화 기록으로 세고 60초 동안 같은 값을 쓴다.
+- **화면.** FLEET 목록에 CONTEXT 열(`502k / 1M`, 40 %부터 색), 카드에 `context 502k / 1M (50%)` 줄과 시각·창의 근거가 보인다.
 
 ### 8.7 FLEET PLAN 3단계: 승인 운용
 

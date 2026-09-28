@@ -14,8 +14,10 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 | FLYING | 지금 쥔 STAND의 FLIGHT 번호와 제목 한 줄. 여러 개면 `+2`처럼 나머지 수. 세션이 멈췄거나 무언가를 기다리면 앞에 health 표시가 붙는다(아래) |
 | 경과 | 지금 쥔 STAND를 처음 잡은 뒤 흐른 시간(`3h05m`) |
 | 마지막 활동 | 세션이 마지막으로 움직인 때(`12분 전`) |
+| CONTEXT | 살아 있는 세션의 대화 크기와 창(`502k / 1M`). 창의 40 %부터 노랗게, 70 %부터 빨갛게 보인다. 세션이 없거나 최근 7일 기록이 없으면 `—` |
 | 이번 주 | 이번 주(월요일부터) ARRIVED 수와 정시율(기대 block time이 있는 FLIGHT만, 없으면 `—`) |
 
+- **CONTEXT**는 마지막 CAPTAIN 요청이 읽고 쓴 토큰이다(CREW는 세지 않음). 대화 기록에는 `[1m]`이 적히지 않아서, 200k를 넘는 요청을 한 번 보면 창을 1M으로 짐작한다. 카드에는 `context 502k / 1M (50%)`와 그 시각이 보이고, 마우스를 올리면 창을 어떻게 정했는지 나온다. 창이 틀리면 `~/.local/state/atc/fleet-plan.json`에 `"contextWindows": {"claude-opus-5-5": 1000000}`처럼 적는다.
 - 순서는 AIRBORNE → HOLDING → PARKED, 그다음 NORDO · AOG · NOT IN SERVICE. 같은 상태 안에서는 AIRPORT 순서다.
 - 줄을 누르면(키보드 Enter·Space도) 그 AIRCRAFT의 카드가 아래에 펼쳐진다. 카드에는 CREW COMPLEMENT, OBSERVED CREW, TYPE RATING, ROUTE, TARGETS와 실적, 최근 FLIGHT, 그리고 LAUNCH · STOP · CREW BRIEFING · AOG · 퇴역 · 고치기 버튼이 그대로 있다. 다시 누르면 접힌다.
 - 오른쪽 위 **목록 / 카드**로 예전처럼 모든 카드를 펼친 보기로 바꿀 수 있다. 고른 보기는 이 브라우저에 기억한다(기억하지 못하면 목록).
@@ -192,6 +194,7 @@ atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude C
 | ENTRY | LAUNCH와 같은데 맞는 등록 AIRCRAFT가 없음 | 새 등록번호와 CONFIGURATION으로 들이고 띄운다 |
 | STOP | 백그라운드 세션이 12시간 STAND·FLIGHT·활동 없이 쉼 | 멈춘다(대화는 남는다). 수요가 있는 AIRPORT에는 PARKED 1대를 남긴다 |
 | RESTART | 백그라운드 세션이 3일 넘었고 PARKED. 또는 health가 `CONTEXT`(대화가 넘침)이거나 60분 넘은 `HUNG` | 새 CREW BRIEFING으로 다시 띄운다. 쥐고 있던 STAND·PR은 새 세션이 넘겨받는다. 데스크톱·터미널 세션은 승인으로 실행되지 않으니 손으로 닫고 다시 연다 |
+| REFRESH | FLIGHT를 마치고 쉬는 AIRCRAFT(PARKED, 또는 ARRIVED한 FLIGHT의 STAND만 쥠)의 대화가 300k 토큰이나 창의 40 %를 넘음. 열린 PR이나 이번 계획의 FLIGHT가 있거나, 2시간 안에 띄웠으면 내지 않는다 | 대화를 새로 시작한다. 사유에 크기와 아낌(다음 cold wake에 다시 쓰지 않아도 되는 캐시 비용, 턴마다의 읽기 비용)이 보인다. 백그라운드 세션은 RESTART처럼 다시 띄운다. 데스크톱·터미널 세션은 atc가 건드리지 않는다: 그 세션에서 `/clear`하고 **CREW BRIEFING 복사**로 받은 글을 붙여 넣는다 |
 | AOG | NORDO이거나 최근 24시간 LOS. 또는 health가 `MODEL`(모델·경로 문제)이거나 주간 `LIMIT` | 24시간 기한으로 배정을 멈춘다. 주간 `LIMIT`만이면 reset 날까지 |
 | RETIRE | 30일 동안 ARRIVED 없음 | 퇴역(자동으로는 하지 않는다) |
 | RETURN | FLEET PLAN이 건 AOG의 해제 예정일이 지남 | AOG를 푼다 |
@@ -212,6 +215,7 @@ atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude C
 | ENTRY | 새 AIRCRAFT를 들이고 띄운다 | permission mode, 모델 |
 | STOP | 백그라운드 세션을 멈춘다 | — |
 | RESTART | 멈추고 새 CREW BRIEFING으로 다시 띄운다 | permission mode·모델(비우면 마지막 LAUNCH와 같게) |
+| REFRESH | 백그라운드 세션: RESTART와 같다. 데스크톱·터미널 세션: 실행하지 않는다. `/clear`하고 CREW BRIEFING을 붙여 넣은 뒤 **했음**을 누른다 | RESTART와 같다 |
 | AOG | AOG로 둔다(사유 `FLEET PLAN F-xxxx`) | 해제 예정일 |
 | RETIRE | 퇴역시킨다 | 백그라운드 세션도 멈출지(기본 멈춤) |
 | RETURN | AOG를 푼다 | — |

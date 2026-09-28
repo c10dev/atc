@@ -1,13 +1,15 @@
 import { CONFIGURATIONS, type ConfigurationId, canFly, type CrewMember, DEFAULT_ACCOUNT, type FleetFile, type Rating } from "./crew.ts";
 import type { Plan, Unserved } from "./dispatch.ts";
 import type { AircraftView } from "./fleet.ts";
+import { type ContextSize, contextLabel, type RefreshSaving, refreshSavingOf, tokensShort } from "./fuel-context.ts";
+import type { PriceTable } from "./fuel-cost.ts";
 import { type FuelRemaining, fuelLabel, membersText } from "./fuel-remaining.ts";
 import { hhmm } from "./health.ts";
 import type { LogEntry } from "./logbook.ts";
 import { GATE } from "./proposals.ts";
 import { MAX_LAUNCHED, PERMISSION_MODES, type PermissionMode } from "./session-control.ts";
 
-// FLEET PLAN(docs/fleet.md 8.6): 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·AOG·RETIRE를 제안한다.
+// FLEET PLAN(docs/fleet.md 8.6): 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·REFRESH·AOG·RETIRE를 제안한다.
 // 여기는 계산만(순수). 기록·API·주기 실행은 fleet-plan-run.ts. 1·2단계는 그림자: 제안하고 SUPERVISOR가 동의·반대만 한다.
 // 3단계(8.7)는 승인 운용: SUPERVISOR가 승인하면 FLEET 탭 버튼과 같은 코드로 바로 실행한다(executionOf가 단계를 정한다).
 
@@ -18,11 +20,13 @@ export interface FleetPlanConfig {
   restartDays: number; // RESTART: 백그라운드 세션이 이보다 오래됐으면
   retireDays: number; // RETIRE: 이 기간 ARRIVED가 없으면
   minDwellMin: number; // LAUNCH·STOP 뒤 이만큼은 반대 제안을 하지 않는다
+  refreshTokens: number; // REFRESH(ATC-69): 쉬는 AIRCRAFT의 대화가 이 토큰을 넘거나
+  refreshPct: number; // 창의 이 몫(0–1)을 넘으면. 창을 짐작만 했으면(200k 기본) 토큰 기준만 본다
 }
-// SUPERVISOR 결정(2026-09-28): 제안한 기본값 그대로
-export const FLEET_PLAN_DEFAULTS: FleetPlanConfig = { reserve: 1, waitMin: 120, idleHours: 12, restartDays: 3, retireDays: 30, minDwellMin: 120 };
+// SUPERVISOR 결정(2026-09-28): 제안한 기본값 그대로. REFRESH는 ATC-69 명세의 기본값(300k 또는 창의 40%)
+export const FLEET_PLAN_DEFAULTS: FleetPlanConfig = { reserve: 1, waitMin: 120, idleHours: 12, restartDays: 3, retireDays: 30, minDwellMin: 120, refreshTokens: 300_000, refreshPct: 0.4 };
 
-export const FLEET_PLAN_KINDS = ["LAUNCH", "ENTRY", "STOP", "RESTART", "AOG", "RETIRE", "RETURN"] as const;
+export const FLEET_PLAN_KINDS = ["LAUNCH", "ENTRY", "STOP", "RESTART", "REFRESH", "AOG", "RETIRE", "RETURN"] as const;
 export type FleetPlanKind = (typeof FLEET_PLAN_KINDS)[number];
 
 export interface PlanReason {
@@ -64,7 +68,7 @@ export interface FleetInputs {
   lastActive: Map<string, string>; // REGISTRATION → 마지막 활동(없으면 세션 시작)
   nordo: Set<string>; // 세션이 죽었고 살아 있는 같은 이름 세션이 없는 REGISTRATION
   los: Map<string, string>; // REGISTRATION → 최근 24시간 LOS 시각
-  logbook: Pick<LogEntry, "aircraft" | "airport" | "arrivedAt" | "blockMin" | "landingWaitMin">[];
+  logbook: (Pick<LogEntry, "aircraft" | "airport" | "arrivedAt" | "blockMin" | "landingWaitMin"> & Partial<Pick<LogEntry, "flight">>)[];
   openPrs: Set<string>; // 열린 PR의 STAND를 쥔 REGISTRATION
   groundStops: Set<string>; // GROUND STOP(kind stop) 중인 AIRPORT
   dwell: Map<string, { op: "launch" | "stop"; at: string }>; // 마지막 LAUNCH·STOP(FLIGHT RECORDER)
@@ -75,6 +79,9 @@ export interface FleetInputs {
   now: number;
   // FUEL REMAINING(ATC-55·60)의 ACCOUNT마다 한 줄(snapshot.fuelAccounts). 없으면 FUEL을 보지 않는다(전과 같다)
   fuelAccounts?: FuelRemaining[];
+  // CONTEXT SIZE(ATC-69): REGISTRATION → 살아 있는 세션의 대화 크기와 F5 가격표. 없으면 REFRESH를 내지 않는다
+  context?: Map<string, ContextSize>;
+  prices?: PriceTable | null;
 }
 
 const MIN = 60_000;
@@ -316,6 +323,20 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
     else out.push({ key, kind: "RESTART", aircraft: a.registration, airport: a.base, reasons });
   }
 
+  // ── REFRESH(ATC-69): FLIGHT를 마치고 쉬는 AIRCRAFT의 대화가 크면 새로 시작 ──
+  for (const a of i.aircraft) {
+    const c = i.context?.get(a.registration);
+    if (!c) continue;
+    const session = i.sessions.find((x) => x.registration.toUpperCase() === a.registration);
+    const why = refreshOf(a, c, session ?? null, i, assigned.has(a.registration), dwelling(a.registration, "launch") !== null);
+    if (!why) continue;
+    const key = `RESTART|${a.registration}`;
+    const same = out.find((x) => x.key === key);
+    // 같은 AIRCRAFT에 RESTART가 이미 있으면 같은 실행이다 — 사유만 붙인다
+    if (same) same.reasons.push(...why.filter((r) => r.code === "context" || r.code === "saving"));
+    else out.push({ key: `REFRESH|${a.registration}`, kind: "REFRESH", aircraft: a.registration, airport: a.base, reasons: why });
+  }
+
   // ── AOG: NORDO, 최근 LOS, AIRCRAFT health의 MODEL·주간 LIMIT(ATC-48) ──
   for (const a of i.aircraft) {
     if (a.retired || a.aog) continue;
@@ -373,6 +394,59 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
   }
   return { candidates: out, demand };
 }
+
+// REFRESH를 낼 때의 사유. 조건이 맞지 않으면 null(순수).
+// PARKED나 HOLDING(쉬는 세션)이고, 쥔 STAND가 모두 ARRIVED한 FLIGHT 것이고, 열린 PR이 없고, 이번 계획에서 FLIGHT를 받지 않고,
+// 최근 LAUNCH가 minDwell 안이 아니고, 대화가 refreshTokens나 창의 refreshPct를 넘으면
+export function refreshOf(
+  a: AircraftView,
+  c: ContextSize,
+  session: SessionFact | null,
+  i: Pick<FleetInputs, "config" | "logbook" | "openPrs" | "prices" | "now">,
+  assigned = false,
+  launchedRecently = false,
+): PlanReason[] | null {
+  const cfg = i.config;
+  if (a.retired || a.aog || a.status !== "idle" || assigned || launchedRecently || i.openPrs.has(a.registration)) return null;
+  if (c.contextTokens === null) return null;
+  const arrived = new Set(i.logbook.filter((e) => e.aircraft === a.registration && e.flight).map((e) => e.flight));
+  const open = a.flying.filter((k) => !arrived.has(k));
+  if (open.length) return null;
+  // 창을 짐작만 했으면(200k 기본) 몫은 사실이 아니다 — 토큰 기준만
+  const overTokens = c.contextTokens >= cfg.refreshTokens;
+  const overPct = c.windowSource !== "default" && c.pct !== null && c.pct >= cfg.refreshPct;
+  if (!overTokens && !overPct) return null;
+  const saving = refreshSavingOf(c, i.prices ?? null);
+  const last = i.logbook.filter((e) => e.aircraft === a.registration).sort((x, y) => x.arrivedAt.localeCompare(y.arrivedAt)).at(-1);
+  const threshold = `기준 ${tokensShort(cfg.refreshTokens)}${c.windowSource === "default" ? "" : ` 또는 ${Math.round(cfg.refreshPct * 100)}%`}`;
+  const windowNote = c.windowSource === "observed" ? ", 창은 본 크기로 짐작" : c.windowSource === "default" ? ", 창은 기본값" : "";
+  const manual = session?.kind !== "background";
+  return [
+    { code: "context", detail: `${contextLabel(c).replace(/^context /, "")} — ${c.model}, ${c.at.slice(0, 16).replace("T", " ")}Z (${threshold}${windowNote})`, value: c.contextTokens },
+    { code: "saving", detail: savingText(saving, c.tier), value: saving?.coldWake ?? null },
+    {
+      code: "arrived",
+      detail: last ? `마지막 FLIGHT ${last.flight ?? "AD HOC"} ARRIVED ${last.arrivedAt.slice(0, 16).replace("T", " ")}Z${a.flying.length ? ` · 남은 STAND ${a.flying.join(", ")}은 ARRIVED` : ""}` : "열린 FLIGHT 없음",
+    },
+    {
+      code: "session",
+      detail: manual
+        ? "데스크톱·터미널 세션 — atc가 다시 띄우지 않는다. SUPERVISOR: 그 세션에서 /clear, 그다음 FLEET 카드의 CREW BRIEFING을 붙여 넣는다"
+        : `BG ${session?.id ?? "?"} — 멈추고 새 CREW BRIEFING으로 다시 띄움`,
+      value: manual ? "interactive" : "background",
+    },
+  ];
+}
+
+function savingText(s: RefreshSaving | null, tier: "5m" | "1h") {
+  if (!s) return "아낌 — 크기를 모름";
+  const usd = (v: number) => `$${v.toFixed(2)}`;
+  const money = s.coldWake === null ? " (가격표에 없는 모델 — 값 없음)" : ` ≈ ${usd(s.coldWake)} 캐시 쓰기(${tier})를 다음 cold wake에 아낌 · 한 턴마다 읽기 ${usd(s.perTurn ?? 0)}`;
+  return `새로 시작하면 ${tokensShort(s.tokens)}${money}`;
+}
+
+// 승인 운용에서 사람이 하는 제안(실행할 단계가 없다): 데스크톱·터미널 세션의 REFRESH
+export const isManual = (p: Pick<FleetProposal, "kind" | "reasons">) => p.kind === "REFRESH" && p.reasons.some((r) => r.code === "session" && r.value === "interactive");
 
 // ── 지속 조건: 두 주기, LAUNCH·ENTRY는 waitMin ──
 
@@ -487,7 +561,7 @@ export const COOLDOWN_MS = DAY;
 // 판정한 시각: 동의·반대, 또는 실행을 끝낸 승인. 실패한 실행은 쉬지 않는다(SUPERVISOR 결정 2026-09-28)
 export const judgedAtOf = (p: Pick<FleetProposal, "verdict" | "status" | "execution">) =>
   p.verdict?.at ?? (p.status === "executed" ? (p.execution?.at ?? null) : null);
-const OPPOSITE: Partial<Record<FleetPlanKind, FleetPlanKind[]>> = { LAUNCH: ["STOP"], STOP: ["LAUNCH"], RESTART: ["LAUNCH"] };
+const OPPOSITE: Partial<Record<FleetPlanKind, FleetPlanKind[]>> = { LAUNCH: ["STOP"], STOP: ["LAUNCH"], RESTART: ["LAUNCH"], REFRESH: ["LAUNCH", "RESTART"] };
 
 // 한 주기의 기록 줄: 조건이 풀린 열린 제안은 expire, 같은 열쇠의 다른 제안이 되면 supersede하고 새로,
 // 지속 조건을 채운 후보는 create. 판정 뒤 24시간과 minDwell 안의 반대 제안은 내지 않는다
@@ -643,6 +717,10 @@ export function executionOf(p: FleetProposal, input: Record<string, unknown>, ct
     case "STOP":
       needBackground();
       return { steps: [{ action: "stop", registration: reg }], options: {} };
+    case "REFRESH":
+      // 데스크톱·터미널 세션은 atc가 다시 띄우지 않는다: SUPERVISOR가 /clear하고 CREW BRIEFING을 붙여 넣은 뒤 "했음"(동의)
+      if (isManual(p)) throw new PlanError(`${reg}는 데스크톱·터미널 세션 — 그 세션에서 /clear 후 CREW BRIEFING을 붙여 넣고 "했음"을 누른다`);
+    // falls through: 백그라운드 세션은 RESTART와 같은 단계(8.5 STOP → LAUNCH)
     case "RESTART": {
       const x = needAircraft();
       if (x.retired) throw new PlanError(`${reg}는 RETIRED`);

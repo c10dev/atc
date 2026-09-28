@@ -4,11 +4,13 @@ import type { AircraftView, CrewMember, FleetFile, Rating } from "../../../serve
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel } from "../../../server/health.ts";
 import { type FuelRemaining, fuelLabel, fuelTitle } from "../../../server/fuel-remaining.ts";
 import { elapsedText, type FleetRow, fleetRows, fleetStatusOf } from "../../../server/fleet-status.ts";
+import { contextBadgeOf } from "../../../server/fuel-context.ts";
 import { CREW_WARNING_LABEL, LEAK_LABEL, tokensText, usd } from "../../../server/fuel-view.ts";
 import type { RulesView } from "../../../server/rules-state.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
+import { ContextCell, ContextLine } from "./FleetContext.tsx";
 import { FleetCrew } from "./FleetCrew.tsx";
 import { Checkride } from "./Checkride.tsx";
 import { FleetPlan } from "./FleetPlan.tsx";
@@ -385,6 +387,7 @@ function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[]; open: 
         <span>경과</span>
         <span>마지막 활동</span>
         <span>이번 주</span>
+        <span>CONTEXT</span>
         <span>FUEL 14일</span>
         <span />
       </div>
@@ -438,6 +441,7 @@ function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[]; open: 
                 <span className="fl-r-week" title="이번 주(월요일부터) ARRIVED와 정시율(기대 block time이 있는 FLIGHT만)">
                   {r.week}건 · 정시 {r.weekOnTime == null ? "—" : pct(r.weekOnTime)}
                 </span>
+                <ContextCell c={r.context} />
                 <span className="fl-r-burn mono" title={r.fuelBurn?.title ?? "최근 14일 fuel이 있는 ARRIVED FLIGHT 없음(옛 LOGBOOK 줄에는 fuel이 없다)"}>
                   {r.fuelBurn ? r.fuelBurn.label.replace(/^FUEL /, "") : <span className="faint">FUEL —</span>}
                 </span>
@@ -675,6 +679,7 @@ function Card({
         <p className="fl-absent faint">세션이 없음 — LAUNCH로 띄우거나, CREW BRIEFING을 새 세션에 붙여 넣으면 IN SERVICE가 된다</p>
       )}
       {a.flying.length > 0 && <p className="fl-flying">FLYING {a.flying.map(flightNumber).join(", ")}</p>}
+      <ContextLine c={contextBadgeOf(a.context)} />
       <RulesLine r={(a as AircraftView & { rules?: RulesView | null }).rules ?? null} />
 
       <h3 className="fl-sub">

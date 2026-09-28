@@ -13,6 +13,7 @@ import { type PriceTable, priceFlightFuel } from "./fuel-cost.ts";
 import { readPrices } from "./fuel-prices.ts";
 import { type Baseline, controlSendsOf, findLeaks, type LeakEvent, sessionChangeLeaks } from "./fuel-leaks.ts";
 import { type AgentMeta, type Compaction, dedupeFuel, type FuelRecord, parseFuelLines, summarizeFuel } from "./fuel.ts";
+import { type ContextSize, contextSizeOf, contextView, sessionContexts } from "./fuel-context.ts";
 import { arrivedSpan, type Attribution, attributeFuel, type ClaimSpan, enRouteSpans, flightOf, fuelForEntry } from "./fuel-flights.ts";
 import type { LogEntry, LogLine } from "./logbook.ts";
 import type { Snapshot } from "./model.ts";
@@ -281,10 +282,14 @@ export function readFuel(days: number, s: FlightContext & Pick<Snapshot, "sessio
   const prices = readPrices();
   const { att, leaks, warnings, baselines } = analyzeWindow(scan, s, entries, since, now, prices.table);
   const summary = summarizeFuel({ ...scan, records: scan.records.values(), leaks, warnings, prices: prices.table, now, days });
+  // CONTEXT SIZE(ATC-69): 세션마다, AIRCRAFT는 그 이름의 세션 중 가장 최근 것
+  const context = contextSizesOf(scan, loadContextWindows());
+  const latest = (ids: string[]) => ids.map((id) => context.get(id)).filter((c): c is ContextSize => Boolean(c)).sort((x, y) => y.at.localeCompare(x.at))[0] ?? null;
   return {
     at: new Date(now).toISOString(),
     ...summary,
-    aircraft: summary.aircraft.map((a) => ({ ...a, attribution: att.aircraft.get(a.aircraft) ?? null })),
+    sessions: summary.sessions.map((x) => ({ ...x, context: contextView(context.get(x.session) ?? null) })),
+    aircraft: summary.aircraft.map((a) => ({ ...a, attribution: att.aircraft.get(a.aircraft) ?? null, context: contextView(latest(a.sessions)) })),
     // FLIGHT마다 모델별 토큰에 지금 가격표로 값을 매긴다(ATC-59)
     attribution: { totals: att.totals, flights: att.flights.map((f) => ({ ...f, fuelCost: priceFlightFuel(f.fuel, prices.table) })) },
     sessionBaselines: baselines,
@@ -350,4 +355,53 @@ export function readFuelRecords(dir = join(config.stateDir, "fuel")): FuelStatus
     const r = lastRecord(readTail(join(dir, f)));
     return r && `${r.sessionId}.jsonl` === f ? [r] : [];
   });
+}
+
+// ── CONTEXT SIZE(ATC-69, docs/fuel.md 5): 세션마다 지금 대화 크기. 같은 scanFuel 기록으로 센다(대화 기록을 따로 읽지 않는다) ──
+
+// 창 크기 덮어쓰기: fleet-plan.json의 contextWindows({모델: 토큰}). 없거나 틀리면 빈 표
+export function loadContextWindows(file = join(config.stateDir, "fleet-plan.json")): Record<string, number> {
+  try {
+    const raw = JSON.parse(readFileSync(file, "utf8"))?.contextWindows;
+    if (!raw || typeof raw !== "object") return {};
+    return Object.fromEntries(Object.entries(raw).filter(([, v]) => typeof v === "number" && Number.isFinite(v) && v > 0)) as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+
+export function contextSizesOf(scan: Pick<FuelScan, "records" | "compactions">, windows: Record<string, number>): Map<string, ContextSize> {
+  const out = new Map<string, ContextSize>();
+  for (const [id, c] of sessionContexts(scan.records.values(), scan.compactions)) out.set(id, contextSizeOf(c, windows));
+  return out;
+}
+
+
+// FLEET(/api/fleet)과 FLEET PLAN 주기가 쓴다. 최근 FUEL_DEFAULT_DAYS에 바뀐 기록 파일만, CONTEXT_MS 동안 같은 값
+const CONTEXT_MS = 60_000;
+let lastContext: { at: number; value: Map<string, ContextSize> } | null = null;
+export function contextSizes(sessions: Snapshot["sessions"], now = Date.now()): Map<string, ContextSize> {
+  if (lastContext && now - lastContext.at < CONTEXT_MS) return lastContext.value;
+  let value = new Map<string, ContextSize>();
+  try {
+    value = contextSizesOf(scanFuel(now - FUEL_DEFAULT_DAYS * DAY_MS, sessions), loadContextWindows());
+  } catch (e) {
+    console.error("[atc] context size failed:", e);
+  }
+  lastContext = { at: now, value };
+  return value;
+}
+
+// REGISTRATION → 그 이름의 살아 있는 세션의 CONTEXT SIZE. 세션이 여럿이면 가장 최근 것
+export function aircraftContexts(sessions: Snapshot["sessions"], teamPattern: string, now = Date.now()): Map<string, ContextSize> {
+  const team = new RegExp(teamPattern, "i");
+  const sizes = contextSizes(sessions, now);
+  const out = new Map<string, ContextSize>();
+  for (const x of sessions) {
+    if (x.agent !== "claude" || x.status === "dead" || !team.test(x.name)) continue;
+    const c = sizes.get(x.id);
+    const reg = x.name.toUpperCase();
+    if (c && (!out.has(reg) || c.at > out.get(reg)!.at)) out.set(reg, c);
+  }
+  return out;
 }
