@@ -510,8 +510,8 @@ function Actuals({ a }: { a: AircraftView }) {
               {e.onTime != null && <span className={e.onTime ? "fl-ontime" : "fl-late"}>{e.onTime ? "ON TIME" : "DELAYED"}</span>}
               {e.reverted && <span className="fl-bad">REVERTED</span>}
               {e.los > 0 && <span className="fl-bad">LOS {e.los}</span>}
-              <RecentFuel f={fuelOf.get(e.key)} />
               <span className="faint fl-log-date">{e.arrivedAt.slice(5, 10)}</span>
+              <RecentFuel f={fuelOf.get(e.key)} />
             </li>
           ))}
         </ul>
@@ -525,7 +525,7 @@ function Actuals({ a }: { a: AircraftView }) {
 // 최근 FLIGHT 한 줄의 FUEL(ATC-56): FUEL COST(없으면 토큰)·NET·LEAK, TRIP FUEL 안이었나. fuel 없는 옛 줄은 "FUEL —"
 type FuelRecentView = NonNullable<AircraftView["fuelRecent"]>[number];
 function RecentFuel({ f }: { f: FuelRecentView | undefined }) {
-  if (!f || f.tokens === null) return <span className="faint" title="이 FLIGHT의 LOGBOOK 줄에 fuel이 없다(FUEL F4 전이거나 대화 기록을 찾지 못함)">FUEL —</span>;
+  if (!f || f.tokens === null) return <span className="fl-log-fuel faint" title="이 FLIGHT의 LOGBOOK 줄에 fuel이 없다(FUEL F4 전이거나 대화 기록을 찾지 못함)">FUEL —</span>;
   const trip = f.trip.p50 !== null && f.trip.p90 !== null ? `TRIP FUEL ${usd(f.trip.p50)}–${usd(f.trip.p90)} (${f.trip.level} ${f.trip.group}, ${f.trip.samples}건)` : "TRIP FUEL 없음(비교할 FLIGHT가 모자람)";
   const title = [
     `FUEL BURN ${tokensText(f.tokens)} 토큰`,

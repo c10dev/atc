@@ -295,6 +295,8 @@ AIRCRAFT마다 SUPERVISOR가 FLEET 탭에서 정한다. 보여 주기만 하고 
 | 정시율 | 최근 14일 LOGBOOK 항목에서 팀 block time(시작부터 PR 열기까지)이 7.2의 예상 안에 든 비율. 리뷰·머지 대기는 착륙 대기(landing wait)로 따로 보인다 |
 | 되돌린 작업 | 최근 14일 LOGBOOK 항목 중 `reverted`로 표시된 것(`Revert "…"` PR이 머지됨). 다시 열린 FLIGHT는 아직 세지 않는다 |
 | 충돌 | FLIGHT를 나는 동안 그 STAND에서 난 LOS. 최근 14일 LOGBOOK 항목을 합한다 |
+| FLIGHT당 FUEL(`fuelPerFlight`, USD, 선택) | 최근 14일 값이 매겨진 LOGBOOK 항목의 NET FUEL COST 평균이 목표 이하([fuel.md](fuel.md) 8.6, ATC-56) |
+| CACHE HIT(`cacheHit`, 0–1, 선택) | 최근 14일 `fuel`이 있는 LOGBOOK 항목의 CACHE HIT(CAPTAIN + CREW)이 목표 이상 |
 
 4단계(네트워크 계획)는 이것을 프로젝트 목표 옆에 둔다(7.3). OCC가 목표·ROUTE 변경 초안을 그림자 운용으로 쓰고(7.4, S1 만듦), 결정은 SUPERVISOR가 한다.
 
@@ -368,7 +370,8 @@ LOGBOOK은 돌 때마다 읽은 저장소의 `aircraft: null` 줄을 모두 DEPA
 | 착륙 대기 | 최근 14일 항목의 `landingWaitMin` 중앙값(PR 시각은 늘 알므로 전부): "착륙 대기 중앙값 5h" |
 | 되돌림 | 최근 14일 항목 중 `reverted`로 표시된 것 |
 | LOS | 최근 14일 항목의 `los` 합 |
-| 최근 | 마지막 5개 항목: 팀 block time(또는 `—`), `+` 착륙 대기, ON TIME / DELAYED |
+| 최근 | 마지막 5개 항목: 팀 block time(또는 `—`), `+` 착륙 대기, ON TIME / DELAYED. 그 아래 줄에 FUEL: NET(값이 없으면 토큰), LEAK, TRIP FUEL과 비교한 `TRIP ✓`·`UNEXPECTED`. `fuel`이 없는 줄은 `FUEL —` |
+| FUEL(ATC-56) | 최근 14일 항목으로 센 `fuelBurn`: 값을 매긴 FLIGHT당 FUEL COST와 NET, CACHE HIT(CAPTAIN, CREW), FUEL COST 중 CREW 몫, 가장 큰 LEAK 규칙 셋, CREW 경고 수(F7), 값 없는 모델, TRIP FUEL p90을 넘은 FLIGHT 수. 근거가 없는 값은 0이 아니라 `—`. FLEET 줄에는 F6 FUEL REMAINING 옆 FUEL 칸에 `$6.10/FLT · CACHE 93%` |
 
 **예상.**
 

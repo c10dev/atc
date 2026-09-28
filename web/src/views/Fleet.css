@@ -174,7 +174,10 @@
 .fl-log-date {
   margin-left: auto;
 }
+/* FUEL(ATC-56): 그 FLIGHT 줄 바로 아래 한 줄로(좁은 카드에서 다음 FLIGHT 것처럼 보이지 않게) */
 .fl-log-fuel {
+  flex-basis: 100%;
+  padding-left: var(--space-3);
   color: var(--muted);
 }
 .fl-ontime {
@@ -414,7 +417,7 @@
 .fl-list-head,
 .fl-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1.1fr) 70px 104px minmax(0, 3fr) 64px 84px 124px 150px 16px;
+  grid-template-columns: minmax(150px, 1.1fr) 70px 104px minmax(0, 3fr) 64px 84px 124px 184px 16px;
   align-items: center;
   column-gap: var(--space-3);
   padding: 0 var(--space-3);
