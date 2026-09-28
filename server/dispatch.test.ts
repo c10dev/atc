@@ -384,7 +384,7 @@ test("ACCOUNT HOLD(ATC-51): 한 AIRCRAFT의 LIMIT이 같은 ACCOUNT의 AIRCRAFT�
 });
 
 test("FUEL HOLD(ATC-55, D3): 스위치가 켜져 있고 holdPct 이상이면 배정하지 않고, 꺼져 있으면 FUEL은 보여 주기만", () => {
-  const fuel = (pct: number) => ({ group: "pro-2", account: "pro-2", at: daysAgo(0), from: "TEAM_K", windows: [], top: { name: "five_hour" as const, pct, resetsAt: new Date(NOW + 60 * 60_000).toISOString() }, level: "hold" as const, aircraft: ["TEAM_K", "TEAM_L"] });
+  const fuel = (pct: number) => ({ group: "pro-2", account: "pro-2", at: daysAgo(0), from: "TEAM_K", fromKind: "aircraft" as const, windows: [], top: { name: "five_hour" as const, pct, resetsAt: new Date(NOW + 60 * 60_000).toISOString() }, level: "hold" as const, aircraft: ["TEAM_K", "TEAM_L"], control: [] });
   const s = { ...snap({ sessions: [session("k", "TEAM_K"), session("l", "TEAM_L"), session("m", "TEAM_M")], tickets: [ticket("VOC-170"), ticket("VOC-171", { labels: ["type:SURVEY"] })] }), fuel: { TEAM_K: fuel(96), TEAM_L: fuel(96), TEAM_M: { ...fuel(90), group: "main", account: "main", aircraft: ["TEAM_M"] } } };
   const reasons = (p: ReturnType<typeof planDispatch>) => p.aircraft.map((a) => `${a.name}:${a.available}:${a.reason}`);
   assert.deepEqual(reasons(planDispatch(s, new Map(), cfg(), NOW)), ["TEAM_K:true:PARKED", "TEAM_L:true:PARKED", "TEAM_M:true:PARKED"]);
@@ -396,6 +396,24 @@ test("FUEL HOLD(ATC-55, D3): 스위치가 켜져 있고 holdPct 이상이면 배
     "TEAM_M:true:PARKED",
   ]);
   assert.ok(p.assign.every((a) => a.aircraftName === "TEAM_M"), pairsOf(p).join(" "));
+});
+
+test("FUEL HOLD(ATC-60): 관제 세션이 holdPct를 넘긴 ACCOUNT의 AIRCRAFT를 붙든다. 관제 세션 자신은 DISPATCH 대상이 아니다", async () => {
+  const { fuelAccountsOf, fuelByAircraft, DEFAULT_FUEL } = await import("./fuel-remaining.ts");
+  const reset = Math.round((NOW + 60 * 60_000) / 1000);
+  const records = [{ t: daysAgo(0), sessionId: "mcc-1", rate_limits: { seven_day: { used_percentage: 99, resets_at: reset } } }];
+  const members = [
+    { name: "TEAM_K", kind: "aircraft" as const, account: "main", sessionIds: ["k"] },
+    { name: "TEAM_M", kind: "aircraft" as const, account: "pro-2", sessionIds: ["m"] },
+    { name: "MCC", kind: "control" as const, account: "main", sessionIds: ["mcc-1"] },
+  ];
+  const fuel = fuelByAircraft(fuelAccountsOf(members, records, DEFAULT_FUEL, NOW));
+  const s = { ...snap({ sessions: [session("k", "TEAM_K"), session("m", "TEAM_M"), session("mcc-1", "MCC")], tickets: [ticket("VOC-180")] }), fuel };
+  const p = planDispatch(s, new Map(), { ...cfg(), fuel: { infoPct: 80, holdPct: 95, hold: true } }, NOW);
+  assert.deepEqual(
+    p.aircraft.map((a) => `${a.name}:${a.available}:${a.reason}`),
+    ["TEAM_K:false:HOLD · FUEL 99% (account main) until 13:00Z — 7d 한도의 99%를 씀", "TEAM_M:true:PARKED"],
+  );
 });
 
 const logged = (flight: string | null, number: number, reverted = false) => ({ flight, reverted, pr: { repo: "chaehy5665/vocado_nextjs", number, url: "", title: "" } });

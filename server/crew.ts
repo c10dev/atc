@@ -37,6 +37,8 @@ export interface AircraftProfile {
 export interface FleetFile {
   defaults: { complement: CrewMember[]; ratings: Rating[] };
   aircraft: Record<string, AircraftProfile>;
+  // 관제 세션의 ACCOUNT(ATC-60). 선택 항목 — 없으면 옛 파일 그대로. 이름(TOWER …) → {account}
+  control?: Partial<Record<ControlName, { account?: string }>>;
 }
 
 // vocado CLAUDE.md의 팀원 규칙을 옮긴 기본 CREW COMPLEMENT.
@@ -70,11 +72,36 @@ export function profileOf(fleet: FleetFile, registration: string) {
 // ACCOUNT(ATC-51): 라벨이 없는 AIRCRAFT는 기본 ACCOUNT다. 등록부에 라벨이 하나도 없으면 atc는 계정을 모른다(null)
 export const DEFAULT_ACCOUNT = "default";
 export const ACCOUNT_RE = /^[a-z0-9][a-z0-9-]{0,23}$/;
-export const accountsLabeled = (fleet: Pick<FleetFile, "aircraft">) => Object.values(fleet.aircraft).some((p) => typeof p?.account === "string" && p.account);
-export function accountOf(fleet: Pick<FleetFile, "aircraft">, registration: string): string | null {
+// 라벨이 하나라도 있으면(AIRCRAFT든 관제 세션이든) atc는 계정을 안다
+export const accountsLabeled = (fleet: Pick<FleetFile, "aircraft" | "control">) =>
+  Object.values(fleet.aircraft).some((p) => typeof p?.account === "string" && p.account) ||
+  Object.values(fleet.control ?? {}).some((p) => typeof p?.account === "string" && p.account);
+export function accountOf(fleet: Pick<FleetFile, "aircraft" | "control">, registration: string): string | null {
   if (!accountsLabeled(fleet)) return null;
   const p = Object.entries(fleet.aircraft).find(([k]) => k.toUpperCase() === registration.toUpperCase())?.[1];
   return p?.account || DEFAULT_ACCOUNT;
+}
+
+// ── 관제 세션의 ACCOUNT(ATC-60, docs/fuel.md 6) ──
+// 사용 한도는 ACCOUNT의 것이라, 같은 계정으로 도는 관제 세션도 FUEL에 센다. 붙들거나 멈추지는 않는다.
+export const CONTROL_NAMES = ["TOWER", "OCC", "CROSSCHECK", "MCC", "ENGINEERING"] as const;
+export type ControlName = (typeof CONTROL_NAMES)[number];
+// 관제 폴더(atc 저장소 안). ENGINEERING은 저장소 뿌리에서 열어 이름으로만 안다
+export const CONTROL_DIRS: Partial<Record<ControlName, string>> = { TOWER: "controller", OCC: "occ", CROSSCHECK: "crosscheck", MCC: "mcc" };
+export const isControlName = (name: string): name is ControlName => (CONTROL_NAMES as readonly string[]).includes(name.toUpperCase());
+
+// 이 세션이 어느 관제 세션인가(순수): 이름이 같거나(대소문자 무시), 그 관제 폴더에서 열었다. dirs는 관제 이름 → 절대 경로
+export function controlNameOf(session: { name: string; cwd?: string | null }, dirs: Partial<Record<ControlName, string>>): ControlName | null {
+  const byName = CONTROL_NAMES.find((n) => n === session.name.toUpperCase());
+  if (byName) return byName;
+  const cwd = session.cwd?.replace(/\/$/, "");
+  return cwd ? (CONTROL_NAMES.find((n) => dirs[n] && dirs[n]!.replace(/\/$/, "") === cwd) ?? null) : null;
+}
+
+// 관제 세션의 ACCOUNT: 라벨, 없으면 기본 ACCOUNT. 등록부에 라벨이 하나도 없으면 null
+export function controlAccountOf(fleet: Pick<FleetFile, "aircraft" | "control">, name: ControlName): string | null {
+  if (!accountsLabeled(fleet)) return null;
+  return fleet.control?.[name]?.account || DEFAULT_ACCOUNT;
 }
 
 // CONFIGURATION: 새 AIRCRAFT를 들일 때 고르는 팀 구성 템플릿. vocado 팀원 규칙 안에서 조합한다.

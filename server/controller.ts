@@ -186,7 +186,7 @@ export function buildBrief(
         .map((x) => ({ ...label(x.id), code: x.health!.code, level: x.health!.level, text: healthLabel(x.health!, now), since: x.health!.since, resetsAt: x.health!.resetsAt ?? null, detail: x.health!.detail, next: x.health!.next })),
       healthAlerts: alertsOf("health").map((a) => ({ message: a.message, sessions: a.sessionIds?.map(label) })),
       // FUEL REMAINING(ATC-55): INFO 임계값을 넘은 ACCOUNT(모르면 AIRCRAFT)마다 하나. key가 같으면 이미 알린 것
-      fuel: fuelInfos(s.fuel ?? {}, now),
+      fuel: fuelInfos(s.fuelAccounts ?? s.fuel ?? {}, now),
       // STRANDED(ATC-29): 기본 브랜치에 닿지 않은 머지. Linear Done이어도 남는다
       stranded: (s.stranded ?? []).map((x) => ({ flight: flight(x.flight), key: x.flight, pr: x.number, url: x.url, base: x.base, mergedAt: x.mergedAt, message: alertsOf("stranded").find((a) => a.ticketKey === x.flight)?.message ?? null })),
     },

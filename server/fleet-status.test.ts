@@ -112,7 +112,7 @@ test("운항 상태 줄에 ACCOUNT와 같은 ACCOUNT의 LIMIT HOLD 표시(ATC-51
 });
 
 test("운항 상태 줄에 FUEL REMAINING(ATC-55): 쓴 몫과 가장 이른 막힘 창의 reset", () => {
-  const fuel = { group: "pro-2", account: "pro-2", at: "2026-09-28T05:30:00Z", from: "TEAM_K", windows: [{ name: "five_hour" as const, pct: 82.4, resetsAt: "2026-09-28T09:00:00.000Z" }], top: { name: "five_hour" as const, pct: 82.4, resetsAt: "2026-09-28T09:00:00.000Z" }, level: "info" as const, aircraft: ["TEAM_K", "TEAM_L"] };
+  const fuel = { group: "pro-2", account: "pro-2", at: "2026-09-28T05:30:00Z", from: "TEAM_K", fromKind: "aircraft" as const, windows: [{ name: "five_hour" as const, pct: 82.4, resetsAt: "2026-09-28T09:00:00.000Z" }], top: { name: "five_hour" as const, pct: 82.4, resetsAt: "2026-09-28T09:00:00.000Z" }, level: "info" as const, aircraft: ["TEAM_K", "TEAM_L"], control: [] };
   const [r] = fleetRows([view("TEAM_L", { fuel })], NOW);
   assert.deepEqual(r!.fuel, { label: "FUEL 82% · resets 09:00Z", level: "info", title: "ACCOUNT pro-2 · 쓴 몫 5h 82% (reset 09:00Z) · TEAM_K statusline 05:30Z" });
   assert.equal(fleetRows([view("TEAM_A")], NOW)[0]!.fuel, null);
