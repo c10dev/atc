@@ -2,7 +2,7 @@
 
 FUEL is the tokens a FLIGHT uses. atc records how long a FLIGHT took (block time, landing wait) and how well it went (rollbacks, LOS, Codex findings), but not what it burned, why some of that burn was waste, or how close each account is to its plan limit. FUEL adds those three things from records atc can already read.
 
-> Status (2026-09-28): draft for ATC-46 (moved from GitHub idea #53, whose research comment is the source for the pricing and cache facts below). Nothing is built. Sections 8 and 9 hold the split into issues and the SUPERVISOR decisions this needs.
+> Status (2026-09-28): draft for ATC-46 (moved from GitHub idea #53, whose research comment is the source for the pricing and cache facts below). F2 (ACCOUNT label, `LIMIT` held by ACCOUNT) is built (ATC-51); the rest is not. Sections 8 and 9 hold the split into issues and the SUPERVISOR decisions this needs.
 
 Related: [fleet.md](fleet.md) 8.3 (observed crew, never read bodies), 8.6 (FLEET PLAN, "Usage: none per AIRCRAFT"), 8.8 (AIRCRAFT health, `LIMIT` after a limit is hit); `server/logbook.ts` (LOGBOOK), `server/health.ts` (`quotaLimits`), `server/crew-observed.ts`; GitHub #41 (ontology graph projection, K1).
 
@@ -73,8 +73,8 @@ CREW warnings are shown, not added to leaks: HEAVY PREFIX (first CREW request wr
 
 This is the part the 2026-09-28 TEAM_K case asks for.
 
-- **ACCOUNT label**: a new optional AIRCRAFT profile field `account` in `fleet.json`, set on the FLEET card. AIRCRAFT without it count as the default account.
-- **LIMIT by account**: ATC-45's `healthAlerts` groups `LIMIT` by reset time. With labels it groups by ACCOUNT, and a `LIMIT` on one AIRCRAFT marks every AIRCRAFT on that ACCOUNT as held until the reset. This also stops DISPATCH from sending the next FLIGHT to a sibling session that is about to hit the same wall.
+- **ACCOUNT label** (built, ATC-51): a new optional AIRCRAFT profile field `account` in `fleet.json`, set on the FLEET card. AIRCRAFT without it count as the default account (`default`). If no AIRCRAFT has a label, atc does not know accounts and keeps grouping by reset time.
+- **LIMIT by account** (built, ATC-51; [fleet.md](fleet.md) 8.8): ATC-45's `healthAlerts` groups `LIMIT` by reset time. With labels it groups by ACCOUNT, and a `LIMIT` on one AIRCRAFT marks every AIRCRAFT on that ACCOUNT as held until the reset. This also stops DISPATCH from sending the next FLIGHT to a sibling session that is about to hit the same wall.
 - **FUEL REMAINING**: needs a live source per account. Candidates, in order of preference, to verify before building:
   1. The statusline input's `rate_limits` (what #53 cited). A statusline command would append `{t, sessionId, rate_limits}` to the atc state folder; atc maps session → AIRCRAFT → ACCOUNT. This changes user settings (`statusLine`) and adds a `hooks/` script: `user` tier.
   2. `quotaLimits` on refused requests (already read by ATC-45): exact but only after the limit is hit.
@@ -94,7 +94,7 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 | # | Issue | Depends on | Tier | Size |
 |---|---|---|---|---|
 | F1 (ATC-50) | Parser, global dedupe, offset reader, read-only `GET /api/fuel` (per session: kinds, CACHE HIT, CREW lower bound), cross-checked against ccusage on the same days | — | `auto` | BUILD · M |
-| F2 (ATC-51) | ACCOUNT label on the FLEET card and `fleet.json`; `LIMIT` grouped and held by ACCOUNT (health.ts, DISPATCH, SCHEDULE) | — | `auto`, raised to `user` if the `fleet.json` change is judged a format change | BUILD · M |
+| ✅ F2 (ATC-51) | ACCOUNT label on the FLEET card and `fleet.json`; `LIMIT` grouped and held by ACCOUNT (health.ts, DISPATCH, SCHEDULE) | — | `auto`, raised to `user` if the `fleet.json` change is judged a format change | BUILD · M |
 | F3 (ATC-52) | Leaks with high confidence: COLD CACHE (HOLD and control wake) and MODEL SWITCH | F1 | `auto` | BUILD · M |
 | F4 (ATC-53) | FLIGHT attribution: optional `fuel` field on LOGBOOK `arrived` lines, `UNATTRIBUTED` | F1 | `user` (LOGBOOK record format) | BUILD · M |
 | F5 (ATC-54) | Cost: config price table, FUEL COST, NET FUEL | F1 | `auto` | BUILD · L |
@@ -102,7 +102,7 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 | F7 (ATC-57) | Other leaks and CREW warnings (COMPACTION, SESSION CHANGE after measuring the baseline, the warning list) | F3 | `auto` | BUILD · M |
 | F8 (ATC-56) | Screens and TRIP FUEL: FLEET/LOGBOOK/DISPATCH/brief views, TARGETS items `fuelPerFlight`, `cacheHit` | F4, F5 | `auto` (rating:UI) | BUILD · M |
 
-F1 and F2 can start at once and in parallel; they are the ones that answer the TEAM_K question soonest. Both are in Todo for DISPATCH; the rest wait in Backlog behind their dependencies (Linear `blocked by`).
+F1 and F2 can start at once and in parallel (F2 is built); they are the ones that answer the TEAM_K question soonest. Both are in Todo for DISPATCH; the rest wait in Backlog behind their dependencies (Linear `blocked by`).
 
 ## 9. Decisions for the SUPERVISOR
 
@@ -128,4 +128,4 @@ F1 and F2 can start at once and in parallel; they are the ones that answer the T
 
 ## Not built yet
 
-Everything in section 8.
+Everything in section 8 except F2.

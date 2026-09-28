@@ -354,6 +354,35 @@ test("AIRCRAFT health(ATC-45): LIMIT·MODEL·CONTEXT·PROVIDER·HUNG이면 배�
   assert.ok(p.assign.every((a) => a.aircraftName === "TEAM_D" || a.aircraftName === "TEAM_E"), pairsOf(p).join(" "));
 });
 
+test("ACCOUNT HOLD(ATC-51): 한 AIRCRAFT의 LIMIT이 같은 ACCOUNT의 AIRCRAFT를 reset까지 붙들고, 라벨이 없으면 붙들지 않는다", async () => {
+  const { DEFAULT_FLEET } = await import("./crew.ts");
+  const resetsAt = new Date(NOW + 30 * 60_000).toISOString();
+  const limit = { code: "LIMIT", level: "alert", since: daysAgo(0), resetsAt, detail: "LIMIT 원문", next: "", holds: true } as Session["health"];
+  const sessions = [{ ...session("k", "TEAM_K"), health: limit }, session("l", "TEAM_L"), session("m", "TEAM_M"), session("a", "TEAM_A")];
+  const s = snap({ sessions, tickets: [ticket("VOC-160"), ticket("VOC-161", { labels: ["type:SURVEY"] })] });
+  const fleet = { defaults: DEFAULT_FLEET.defaults, aircraft: { TEAM_K: { account: "pro-2" }, TEAM_L: { account: "pro-2" }, TEAM_A: { account: "main" } } };
+  const reasons = (p: ReturnType<typeof planDispatch>) => p.aircraft.map((a) => `${a.name}:${a.available}:${a.reason}`);
+  const p = planDispatch(s, new Map(), cfg(), NOW, undefined, fleet);
+  assert.deepEqual(reasons(p), [
+    "TEAM_K:false:HOLD · LIMIT until 12:30Z — LIMIT 원문",
+    "TEAM_L:false:HOLD · LIMIT (account pro-2) until 12:30Z — 같은 ACCOUNT의 TEAM_K가 사용 한도에 걸림",
+    "TEAM_M:true:PARKED", // 라벨 없음 → default ACCOUNT
+    "TEAM_A:true:PARKED",
+  ]);
+  // STAND 없는 FLIGHT도 붙들린 형제에게는 가지 않는다
+  assert.ok(p.assign.every((a) => a.aircraftName === "TEAM_M" || a.aircraftName === "TEAM_A"), pairsOf(p).join(" "));
+  // reset이 지나면 형제는 다시 배정된다
+  assert.equal(planDispatch(s, new Map(), cfg(), NOW + 30 * 60_000, undefined, fleet).aircraft.find((a) => a.name === "TEAM_L")!.available, true);
+  // 등록부에 ACCOUNT 라벨이 하나도 없으면 계정을 모른다 → 형제를 붙들지 않는다
+  assert.deepEqual(reasons(planDispatch(s, new Map(), cfg(), NOW)).slice(1), ["TEAM_L:true:PARKED", "TEAM_M:true:PARKED", "TEAM_A:true:PARKED"]);
+  // 라벨 없는 AIRCRAFT끼리는 default ACCOUNT를 같이 쓴다
+  const fleet2 = { defaults: DEFAULT_FLEET.defaults, aircraft: { TEAM_A: { account: "main" } } };
+  assert.deepEqual(reasons(planDispatch(s, new Map(), cfg(), NOW, undefined, fleet2)).slice(1, 3), [
+    "TEAM_L:false:HOLD · LIMIT (account default) until 12:30Z — 같은 ACCOUNT의 TEAM_K가 사용 한도에 걸림",
+    "TEAM_M:false:HOLD · LIMIT (account default) until 12:30Z — 같은 ACCOUNT의 TEAM_K가 사용 한도에 걸림",
+  ]);
+});
+
 const logged = (flight: string | null, number: number, reverted = false) => ({ flight, reverted, pr: { repo: "chaehy5665/vocado_nextjs", number, url: "", title: "" } });
 const pull = (number: number, ticketKey: string | null, draft = false) =>
   ({ repo: VCDO, number, title: "", url: "", branch: "", head: "", base: "main", ticketKey, standPath: null, draft, landing: "APPROACH", blocks: [], readyAt: null, createdAt: daysAgo(0) }) as PullRequest;

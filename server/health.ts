@@ -306,6 +306,50 @@ export function healthLabel(h: Health, now: number): string {
   }
 }
 
+// ── ACCOUNT HOLD(ATC-51, docs/fuel.md 6): 사용 한도는 AIRCRAFT가 아니라 ACCOUNT의 것이다 ──
+// 한 AIRCRAFT가 LIMIT에 걸리면 같은 ACCOUNT의 AIRCRAFT 모두를 그 reset까지 붙든다.
+// 붙들린 형제는 health 코드를 받지 않는다(멈춘 것이 아니다). ACCOUNT를 모르면(라벨 없음) 붙들지 않는다.
+
+export interface AccountHold {
+  account: string;
+  resetsAt?: string; // 가장 늦은 reset. 모르면 없다(LIMIT이 풀릴 때까지)
+  weekly?: boolean;
+  by: string[]; // LIMIT에 걸린 AIRCRAFT
+}
+
+// account가 없는(null) 항목은 계정을 모르는 것이라 붙들지 않는다. reset이 지난 LIMIT은 넣지 않는다
+export function accountHolds(xs: { name: string; account?: string | null; health?: Health | null }[], now: number): Map<string, AccountHold> {
+  const out = new Map<string, AccountHold>();
+  for (const x of xs) {
+    const h = x.health;
+    if (!x.account || h?.code !== "LIMIT") continue;
+    const reset = h.resetsAt ? Date.parse(h.resetsAt) : NaN;
+    if (Number.isFinite(reset) && reset <= now) continue;
+    const cur = out.get(x.account) ?? { account: x.account, by: [] };
+    const later = h.resetsAt && (!cur.resetsAt || Date.parse(h.resetsAt) > Date.parse(cur.resetsAt));
+    out.set(x.account, {
+      ...cur,
+      ...(later ? { resetsAt: h.resetsAt } : {}),
+      ...(h.weekly || cur.weekly ? { weekly: true } : {}),
+      by: [...cur.by, x.name],
+    });
+  }
+  return out;
+}
+
+// 이 AIRCRAFT를 붙드는 ACCOUNT HOLD. 스스로 LIMIT에 걸린 AIRCRAFT는 자기 health로 보이므로 없다
+export function accountHoldOf(holds: Map<string, AccountHold>, account: string | null | undefined, name: string): AccountHold | null {
+  const h = account ? holds.get(account) : undefined;
+  return h && !h.by.some((b) => b.toUpperCase() === name.toUpperCase()) ? h : null;
+}
+
+// FLEET 줄·DISPATCH 사유: HOLD · LIMIT (account pro-2) until 07:40Z
+export function accountHoldLabel(h: AccountHold, now: number): string {
+  return `HOLD · LIMIT (account ${h.account}${h.weekly ? ", weekly" : ""})${h.resetsAt ? ` until ${hhmm(Date.parse(h.resetsAt), now)}` : ""}`;
+}
+export const accountHoldDetail = (h: AccountHold) => `같은 ACCOUNT의 ${h.by.join(", ")}가 사용 한도에 걸림`;
+export const ACCOUNT_HOLD_NEXT = "reset까지 기다린다. 이 AIRCRAFT는 멈추지 않았다 — 같은 ACCOUNT의 한도가 풀리면 다시 배정된다";
+
 export interface HealthAlert {
   key: string;
   code: HealthCode;
@@ -313,25 +357,33 @@ export interface HealthAlert {
   message: string;
 }
 
-// ALERT 수준의 health를 경보로 묶는다. NETWORK는 기계 전체라 한 번, LIMIT은 같은 reset 시각(같은 계정의 창)끼리 한 번
-export function healthAlerts(xs: { sessionId: string; name: string; health: Health | null | undefined }[], now: number): HealthAlert[] {
+// ALERT 수준의 health를 경보로 묶는다. NETWORK는 기계 전체라 한 번.
+// LIMIT은 ACCOUNT를 알면(ATC-51) 같은 ACCOUNT끼리 한 번(붙들린 형제도 적는다), 모르면 같은 reset 시각(같은 계정의 창)끼리 한 번
+export function healthAlerts(xs: { sessionId: string; name: string; health: Health | null | undefined; account?: string | null }[], now: number): HealthAlert[] {
   const out: HealthAlert[] = [];
   const hot = xs.filter((x): x is typeof x & { health: Health } => x.health?.level === "alert");
-  const group = (code: HealthCode, keyOf: (h: Health) => string) => {
+  const group = (code: HealthCode, keyOf: (x: (typeof hot)[number]) => string) => {
     const by = new Map<string, typeof hot>();
-    for (const x of hot.filter((y) => y.health.code === code)) by.set(keyOf(x.health), [...(by.get(keyOf(x.health)) ?? []), x]);
+    for (const x of hot.filter((y) => y.health.code === code)) by.set(keyOf(x), [...(by.get(keyOf(x)) ?? []), x]);
     return [...by.entries()];
   };
   for (const [, g] of group("NETWORK", () => "host")) {
     out.push({ key: "health|NETWORK", code: "NETWORK", sessionIds: g.map((x) => x.sessionId), message: `NETWORK — ${g.map((x) => x.name).join(", ")}가 API에 연결하지 못함: ${g[0]!.health.detail}` });
   }
-  for (const [k, g] of group("LIMIT", (h) => h.resetsAt ?? "?")) {
-    const h = g[0]!.health;
+  for (const [k, g] of group("LIMIT", (x) => (x.account ? `account:${x.account}` : (x.health.resetsAt ?? "?")))) {
+    const account = g[0]!.account;
+    const resets = g.map((x) => x.health.resetsAt).filter((r): r is string => Boolean(r)).sort();
+    const reset = resets.at(-1);
+    const weekly = g.some((x) => x.health.weekly);
+    const limited = new Set(g.map((x) => x.sessionId));
+    const siblings = account ? xs.filter((x) => x.account === account && !limited.has(x.sessionId)).map((x) => x.name) : [];
     out.push({
       key: `health|LIMIT|${k}`,
       code: "LIMIT",
       sessionIds: g.map((x) => x.sessionId),
-      message: `LIMIT — ${g.map((x) => x.name).join(", ")} 사용 한도${h.weekly ? "(주간)" : ""}${h.resetsAt ? `, reset ${hhmm(Date.parse(h.resetsAt), now)}` : ""}까지 HOLD`,
+      message:
+        `LIMIT${account ? ` (account ${account})` : ""} — ${g.map((x) => x.name).join(", ")} 사용 한도${weekly ? "(주간)" : ""}${reset ? `, reset ${hhmm(Date.parse(reset), now)}` : ""}까지 HOLD` +
+        (siblings.length ? ` · 같은 ACCOUNT도 HOLD: ${siblings.join(", ")}` : ""),
     });
   }
   for (const x of hot.filter((y) => y.health.code !== "NETWORK" && y.health.code !== "LIMIT")) {

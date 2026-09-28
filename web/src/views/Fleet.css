@@ -332,6 +332,15 @@
   font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.1em;
 }
+/* ACCOUNT HOLD(ATC-51): 같은 ACCOUNT의 LIMIT으로 붙들림 */
+.fl-acct-hold {
+  margin: 0;
+  font: 600 var(--text-xs) var(--mono);
+  color: var(--amber);
+}
+.fl-hint {
+  font-size: var(--text-xs);
+}
 .fl-absent {
   margin: 0;
   font-size: var(--text-xs);
@@ -498,6 +507,20 @@
 .fl-r-health.lv-alert {
   border-color: var(--amber);
   color: var(--amber);
+}
+/* ACCOUNT HOLD(ATC-51): 자기 고장이 아니라 같은 ACCOUNT의 LIMIT — 점선 */
+.fl-r-health.lv-hold {
+  border-style: dashed;
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.fl-r-acct {
+  margin-left: var(--space-1-5);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+  color: var(--muted);
 }
 .fl-r-more {
   margin-left: var(--space-1-5);

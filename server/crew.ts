@@ -32,6 +32,7 @@ export interface AircraftProfile {
   enteredAt?: string; // ENTRY INTO SERVICE 시각
   aog?: { reason: string; until?: string | null; at: string }; // 잠시 운항 중지: planner가 배정하지 않는다
   retired?: { at: string; reason?: string | null }; // 퇴역: FLEET에서 빠지고 배정하지 않는다
+  account?: string; // ACCOUNT(ATC-51, docs/fuel.md 6): SUPERVISOR가 정한 요금제 라벨(main, pro-2 …). email은 쓰지 않는다
 }
 export interface FleetFile {
   defaults: { complement: CrewMember[]; ratings: Rating[] };
@@ -62,7 +63,18 @@ export function profileOf(fleet: FleetFile, registration: string) {
     routes: p.routes ?? [],
     aog: p.aog ?? null,
     retired: p.retired ?? null,
+    account: accountOf(fleet, registration),
   };
+}
+
+// ACCOUNT(ATC-51): 라벨이 없는 AIRCRAFT는 기본 ACCOUNT다. 등록부에 라벨이 하나도 없으면 atc는 계정을 모른다(null)
+export const DEFAULT_ACCOUNT = "default";
+export const ACCOUNT_RE = /^[a-z0-9][a-z0-9-]{0,23}$/;
+export const accountsLabeled = (fleet: Pick<FleetFile, "aircraft">) => Object.values(fleet.aircraft).some((p) => typeof p?.account === "string" && p.account);
+export function accountOf(fleet: Pick<FleetFile, "aircraft">, registration: string): string | null {
+  if (!accountsLabeled(fleet)) return null;
+  const p = Object.entries(fleet.aircraft).find(([k]) => k.toUpperCase() === registration.toUpperCase())?.[1];
+  return p?.account || DEFAULT_ACCOUNT;
 }
 
 // CONFIGURATION: 새 AIRCRAFT를 들일 때 고르는 팀 구성 템플릿. vocado 팀원 규칙 안에서 조합한다.

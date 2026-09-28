@@ -2,8 +2,8 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 
 import { basename, dirname, join } from "node:path";
 import { callsign } from "./callsign.ts";
 import { config } from "./config.ts";
-import { type Classification, canFly, classOf, DEFAULT_FLEET, type FleetFile, type FlightType, needsStand, profileOf, type Rating, WAKE_SLOTS } from "./crew.ts";
-import { healthLabel } from "./health.ts";
+import { accountOf, type Classification, canFly, classOf, DEFAULT_FLEET, type FleetFile, type FlightType, needsStand, profileOf, type Rating, WAKE_SLOTS } from "./crew.ts";
+import { accountHoldDetail, accountHoldLabel, accountHoldOf, accountHolds, healthLabel } from "./health.ts";
 import { keyInName, keyPatternOf, teamOfKey } from "./linear-keys.ts";
 import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
@@ -426,8 +426,10 @@ export function planDispatch(
   };
   // 배정 가능: TEAM 세션, 대기(idle), 끝나지 않은 FLIGHT의 STAND를 쥐고 있지 않음(TEAM당 1)
   // resting: STAND 없는 FLIGHT는 받을 수 있는 상태(HOLDING이나 PARKED). AIRBORNE·AOG·RETIRED는 아니다.
-  const aircraft: AircraftState[] = s.sessions
-    .filter((x) => team.test(x.name) && x.status !== "dead")
+  // ACCOUNT HOLD(ATC-51): 한 AIRCRAFT의 LIMIT이 같은 ACCOUNT의 AIRCRAFT 모두를 reset까지 붙든다
+  const teamSessions = s.sessions.filter((x) => team.test(x.name) && x.status !== "dead");
+  const holds = accountHolds(teamSessions.map((x) => ({ name: x.name, account: accountOf(fleet, x.name), health: x.health })), now);
+  const aircraft: AircraftState[] = teamSessions
     .map((x) => {
       const base = { id: x.id, name: x.name, callsign: callsign(x), airport: codeOf(x.repo), ...reservationsOf(x.id), resting: false };
       // FLEET에서 퇴역시키거나 AOG(잠시 운항 중지)로 둔 AIRCRAFT는 배정하지 않는다
@@ -436,6 +438,8 @@ export function planDispatch(
       if (status.aog) return { ...base, available: false, reason: `AOG — ${status.aog.reason}${status.aog.until ? ` (~${status.aog.until})` : ""}` };
       // AIRCRAFT health(ATC-45): 사용 한도·모델·맥락·경로 문제나 HUNG이면 풀릴 때까지 배정하지 않는다
       if (x.health?.holds) return { ...base, available: false, reason: `${healthLabel(x.health, now)} — ${x.health.detail}` };
+      const acct = accountHoldOf(holds, accountOf(fleet, x.name), x.name);
+      if (acct) return { ...base, available: false, reason: `${accountHoldLabel(acct, now)} — ${accountHoldDetail(acct)}` };
       if (x.status === "busy") return { ...base, available: false, reason: "AIRBORNE" };
       const held = active.filter((c) => c.sessionId === x.id).map((c) => wsTicket.get(c.workspacePath));
       const open = held.filter((k) => !k || !isDone(k));

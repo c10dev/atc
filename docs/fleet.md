@@ -747,7 +747,7 @@ Not built yet: step 4 (automatic STOP); the weekly-usage line (FUEL); CROSSCHECK
 
 ### 8.8 AIRCRAFT health
 
-Status: steps 1–4 built (ATC-45, ATC-47, ATC-48): the manual, the pull classifier, the push hook and FLEET PLAN proposals from health.
+Status: steps 1–5 built (ATC-45, ATC-47, ATC-48, ATC-51): the manual, the pull classifier, the push hook, FLEET PLAN proposals from health, and `LIMIT` held by ACCOUNT.
 
 **Why.** On 2026-09-28 TEAM_H got an ATC-44 BRIEF at 07:37:13Z and hit its account's session limit three seconds later. Until someone typed "Try again" at 07:40:57Z, atc showed TEAM_H as `idle`, so FLEET, DISPATCH and TOWER all saw an AIRCRAFT free for work. atc knew only `dead`, `busy` and `idle`; it never read why a session stopped or what it was waiting for.
 
@@ -762,7 +762,7 @@ Status: steps 1–4 built (ATC-45, ATC-47, ATC-48): the manual, the pull classif
 
 - Detect and propose, never act on a team session. atc does not resend prompts, approve prompts, switch accounts or restart sessions.
 - Cause, not just state: each code carries the error line, when it started, and the one next step from the manual.
-- Host-level versus AIRCRAFT-level: `NETWORK`, and a `LIMIT` shared by sessions with the same reset time (the same account window), are raised once.
+- Host-level versus AIRCRAFT-level: `NETWORK` is raised once for the machine. A `LIMIT` is raised once per ACCOUNT when the SUPERVISOR has labelled accounts (ATC-51), and otherwise once per reset time (the same account window).
 - Store only the code, the time and the error line, never message bodies. atc reads only the last 64 KB of each live transcript, again only when its size or time changes.
 - Push and pull agree: the server uses a push record only when it is newer than the transcript's last fact, and the hook maps `StopFailure.error` through the same `classifyError`.
 - When unsure, `UNKNOWN` with the raw error line, not a wrong code.
@@ -771,7 +771,7 @@ Status: steps 1–4 built (ATC-45, ATC-47, ATC-48): the manual, the pull classif
 
 | Code | Detected by | Level | DISPATCH/SCHEDULE | Who responds, and how |
 |---|---|---|---|---|
-| `LIMIT` | `rate_limit` with a usage-limit line; `resetsAt` from `quotaLimits`, else "resets 7:40am (UTC)" | ALERT, once per reset time | skip until `resetsAt` | Wait. After the reset the code turns into `UNANSWERED` if the prompt is still unanswered; structure or the SUPERVISOR resends it |
+| `LIMIT` | `rate_limit` with a usage-limit line; `resetsAt` from `quotaLimits`, else "resets 7:40am (UTC)" | ALERT, once per ACCOUNT (once per reset time without labels) | skip until `resetsAt`, and the other AIRCRAFT on the same ACCOUNT too | Wait. After the reset the code turns into `UNANSWERED` if the prompt is still unanswered; structure or the SUPERVISOR resends it |
 | `THROTTLE` | `rate_limit` "not your usage limit", overloaded, other `server_error` | INFO; ALERT at 3 in 30 min | — | Retry after a few minutes. After 10 min without a reply it turns into `UNANSWERED` |
 | `NETWORK` | "Unable to connect", SSL/TLS, connection errors | ALERT, once for the machine | — | SUPERVISOR checks the network, proxy and `ANTHROPIC_BASE_URL`/`NO_PROXY`, then resends |
 | `MODEL` | `model_not_found` | ALERT | skip | SUPERVISOR fixes the model or route and relaunches. Never retry as is |
@@ -787,13 +787,20 @@ Status: steps 1–4 built (ATC-45, ATC-47, ATC-48): the manual, the pull classif
 - A code clears on the next reply, or on a new prompt after the error. The push hook also writes a code-less line on `Stop` and `PostToolUse`, which clears a pushed code.
 - Thresholds are defaults; the service reads `ATC_HEALTH_UNANSWERED_MIN`, `ATC_HEALTH_HUNG_MIN`, `ATC_HEALTH_HUNG_ALERT_MIN`, `ATC_HEALTH_THROTTLE_ALERT_COUNT`, `ATC_HEALTH_THROTTLE_WINDOW_MIN`, `ATC_HEALTH_DENIED_COUNT` and `ATC_HEALTH_DENIED_WINDOW_MIN`.
 
+**ACCOUNT (ATC-51, [fuel.md](fuel.md) section 6).** A plan limit belongs to an account, not to one AIRCRAFT. The SUPERVISOR labels which account each AIRCRAFT flies on with the optional profile field `account` in `fleet.json` (edited on the FLEET card; lowercase letters, digits and `-`, like `main` or `pro-2`; never an email). atc never reads credentials or account settings to find it.
+
+- AIRCRAFT without a label count as the default account (`default`). If no AIRCRAFT has a label, atc does not know accounts: `LIMIT` is grouped by reset time as before and nothing else is held.
+- A `LIMIT` on one AIRCRAFT holds every other live AIRCRAFT on the same ACCOUNT until that reset (the latest one if several AIRCRAFT on the account are limited; until the `LIMIT` clears if the reset is unknown). DISPATCH skips them, STAND-free FLIGHTs included, and SCHEDULE NEW does not accept them as a tail. The reason reads `HOLD · LIMIT (account pro-2) until 07:40Z — 같은 ACCOUNT의 TEAM_K가 사용 한도에 걸림`.
+- The held siblings get no health code of their own (they have not stopped), so they raise no alert and no FLEET PLAN proposal. The one `LIMIT` alert for the ACCOUNT names them: `LIMIT (account pro-2) — TEAM_K 사용 한도, reset 07:40Z까지 HOLD · 같은 ACCOUNT도 HOLD: TEAM_L`.
+- Only team sessions (the DISPATCH `teamPattern`) have an ACCOUNT. A `LIMIT` on another session, such as structure, is still grouped by reset time and holds no AIRCRAFT.
+
 **Push (`hooks/health.mjs`, ATC-47).** A Claude Code hook reports a stop the moment it happens, so a session waiting on a permission prompt shows `PENDING` right away instead of `HUNG` after 30 minutes. It appends one line per event to `health/<sessionId>.jsonl` in the state folder: `{t, event, code?, error?, line?}` (`StopFailure`, `Notification`, `Stop`, `PostToolUse`; only the code, the time and the first error line, never bodies). The server reads the last line of each file, and a push record newer than the transcript's last fact wins (`mergeHealth`); otherwise the pull result stands. Install for the SUPERVISOR is in [hooks/README.md](hooks/README.md).
 
 **Where it shows.**
 
 - `/api/snapshot`: `sessions[].health` (`code`, `level`, `since`, `resetsAt`, `detail`, `next`, `holds`), and `alerts` of kind `health` for ALERT codes. Raised and cleared alerts become `alert.raised`/`alert.cleared` events and FLIGHT RECORDER lines like other alerts.
-- FLEET status list: a tag in the FLYING cell, for example `HOLD · LIMIT until 07:40Z`, `PENDING approval 12m`, `CONTEXT — RESTART`. The tooltip has the error line and the next step.
-- DISPATCH skips an AIRCRAFT whose code holds (`LIMIT`, `MODEL`, `CONTEXT`, `PROVIDER`, `HUNG`), with the tag as the reason. SCHEDULE NEW does not accept it as a tail.
+- FLEET status list: a tag in the FLYING cell, for example `HOLD · LIMIT until 07:40Z`, `PENDING approval 12m`, `CONTEXT — RESTART`. The tooltip has the error line and the next step. An AIRCRAFT held by its ACCOUNT shows a dashed tag `HOLD · LIMIT (account pro-2) until 07:40Z`, and a labelled ACCOUNT shows as a small chip next to the REGISTRATION. The card has an ACCOUNT line and the same hold line.
+- DISPATCH skips an AIRCRAFT whose code holds (`LIMIT`, `MODEL`, `CONTEXT`, `PROVIDER`, `HUNG`), or whose ACCOUNT is held, with the tag as the reason. SCHEDULE NEW does not accept it as a tail.
 - FLIGHT FOLLOWING: a `health` issue on the FLIGHT the AIRCRAFT holds (`warn` for ALERT, `info` otherwise). OCC reports it like the other issues.
 - TOWER brief: `open.health` (every AIRCRAFT with a code) and `open.healthAlerts`.
 
@@ -803,6 +810,7 @@ Status: steps 1–4 built (ATC-45, ATC-47, ATC-48): the manual, the pull classif
 2. ✅ Pull: pure `factsOf` and `healthOf`, `healthAlerts` for host-level grouping, tests from real transcript line shapes (the TEAM_H replay among them); snapshot, FLEET row, FLIGHT FOLLOWING, TOWER brief, DISPATCH and SCHEDULE filters.
 3. ✅ Push: a `hooks/health.mjs` hook on `StopFailure` and `Notification` (`permission_prompt`, `idle_prompt`, `elicitation_dialog`), cleared on `Stop`/`PostToolUse`, appending to `health/<sessionId>.jsonl` in the state folder. `user` tier.
 4. ✅ FLEET PLAN proposals (ATC-48): AOG for `MODEL` and a weekly `LIMIT` (until the reset day), RESTART for `CONTEXT` and `HUNG` at ALERT level. Reasons carry the health line and the next step; the proposal expires when the code clears. Health alerts already reach the FLIGHT RECORDER as `alert.raised`/`alert.cleared`, so there are no separate `health.*` lines.
+5. ✅ ACCOUNT (ATC-51): the `account` profile field and FLEET card field, `LIMIT` alerts grouped by ACCOUNT, and the sibling hold in DISPATCH, SCHEDULE NEW and the FLEET row (pure `accountHolds`).
 
 **Risks.**
 
@@ -813,11 +821,19 @@ Status: steps 1–4 built (ATC-45, ATC-47, ATC-48): the manual, the pull classif
 | A false `HUNG` during long tests | INFO first; it holds DISPATCH, which a busy AIRCRAFT never gets anyway |
 | A permission prompt while the session file says `busy` is seen as `HUNG` after 30 min if the hook is not installed | the push hook (step 3) reports `PENDING` directly; without it the pull path still catches a stalled tool call once the session reads `idle` |
 
-Not built yet: grouping `LIMIT` by account rather than by reset time (needs an account per AIRCRAFT, ATC-46).
+Not built yet: FUEL REMAINING per ACCOUNT before a limit is hit ([fuel.md](fuel.md) F6, ATC-55).
 
 **Pilot's discretion (ATC-45).**
 
 - `LIMIT` is an ALERT and is grouped by reset time, because sessions on one account share the same window and atc does not know accounts.
+
+**Pilot's discretion (ATC-51).**
+
+- "Labels exist" means at least one AIRCRAFT in `fleet.json` has `account`. Until then nothing changes, so a fleet that never uses labels keeps the ATC-45 behaviour.
+- The default account is named `default`. The FLEET row shows the chip only for an explicit label; the card shows `default` with a 기본값 mark.
+- Labels are 1–24 characters of lowercase letters, digits and `-`, stored lowercase. The rule rejects `@`, so an email cannot be saved.
+- Several limited AIRCRAFT on one ACCOUNT: the siblings are held until the latest known reset, and the alert shows that reset.
+- The alert key for an ACCOUNT is `health|LIMIT|account:<label>`, so a second AIRCRAFT hitting the limit does not raise a new alert.
 - `DENIED` counts per session, not per STAND: a session holds one STAND at a time.
 - `NETWORK`, `UNANSWERED` and `UNKNOWN` do not hold DISPATCH (not in the spec's list): the next prompt may well go through.
 - `THROTTLE` and a passed `LIMIT` turn into `UNANSWERED`, so an unanswered BRIEF does not sit behind a stale code.
@@ -842,7 +858,7 @@ All four steps are done:
 7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE (section 8.2): TYPE RATING evidence from the LOGBOOK, GRANT and REVIEW recommendations, grant and revoke by the SUPERVISOR
 9. ✅ Session control (section 8.5): LAUNCH and STOP from the FLEET tab. Left: automatic STOP (FLEET PLAN step 4; shadow and approval built, 8.6 and 8.7), RESTART outside FLEET PLAN, relaunch CREW CHANGE, usage budget
-10. ◐ AIRCRAFT health (section 8.8, ATC-45·47·48): the manual, the pull classifier in the snapshot and the push hook, FLEET row, FLIGHT FOLLOWING, TOWER brief, DISPATCH/SCHEDULE filters and FLEET PLAN proposals from health. Left: grouping `LIMIT` by account rather than by reset time (ATC-46)
+10. ✅ AIRCRAFT health (section 8.8, ATC-45·47·48·51): the manual, the pull classifier in the snapshot and the push hook, FLEET row, FLIGHT FOLLOWING, TOWER brief, DISPATCH/SCHEDULE filters, FLEET PLAN proposals from health, and `LIMIT` grouped and held by ACCOUNT
 
 ## 11. Risks and mitigations
 

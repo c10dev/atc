@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classifyError, DEFAULT_HEALTH, factsOf, healthAlerts, healthLabel, healthOf, lastFactAt, mergeHealth, type PushRecord, resetFromText, type SessionState } from "./health.ts";
+import { accountHoldLabel, accountHoldOf, accountHolds, classifyError, DEFAULT_HEALTH, factsOf, healthAlerts, healthLabel, healthOf, lastFactAt, mergeHealth, type PushRecord, resetFromText, type SessionState } from "./health.ts";
 
 // AIRCRAFT health(ATC-45). 줄 모양은 실제 대화 기록(2026-09-24~28)에서 따왔고, 본문·경로·id는 지웠다.
 const T = (hms: string) => `2026-09-28T${hms}Z`;
@@ -187,6 +187,67 @@ test("healthAlerts: NETWORK는 기계에 한 번, LIMIT은 같은 reset끼리 �
     ],
   );
   assert.match(alerts[1]!.message, /TEAM_H, TEAM_K .*reset 07:40Z/);
+});
+
+// ── ACCOUNT(ATC-51): 사용 한도는 ACCOUNT의 것 ──
+const limitAt = (resetsAt?: string, weekly = false) => ({ code: "LIMIT" as const, level: "alert" as const, since: T("07:37:00"), ...(resetsAt ? { resetsAt } : {}), ...(weekly ? { weekly } : {}), detail: "limit", next: "", holds: true });
+
+test("healthAlerts: ACCOUNT를 알면 LIMIT을 ACCOUNT끼리 한 번 묶고 붙들린 형제를 적는다. 모르는 세션은 reset 시각으로", () => {
+  const now = at("07:38:00");
+  const alerts = healthAlerts(
+    [
+      { sessionId: "k", name: "TEAM_K", account: "pro-2", health: limitAt(T("07:40:00")) },
+      { sessionId: "l", name: "TEAM_L", account: "pro-2", health: limitAt(T("09:00:00")) },
+      { sessionId: "m", name: "TEAM_M", account: "pro-2", health: null },
+      { sessionId: "a", name: "TEAM_A", account: "default", health: limitAt(T("07:40:00")) },
+      { sessionId: "b", name: "TEAM_B", account: "default", health: { ...limitAt(), code: "PENDING", level: "info", holds: false } },
+      { sessionId: "s", name: "structure", account: null, health: limitAt(T("07:40:00")) },
+    ],
+    now,
+  );
+  assert.deepEqual(
+    alerts.map((a) => [a.key, a.sessionIds.join(",")]),
+    [
+      ["health|LIMIT|account:pro-2", "k,l"],
+      ["health|LIMIT|account:default", "a"],
+      [`health|LIMIT|${T("07:40:00")}`, "s"],
+    ],
+  );
+  // 같은 ACCOUNT 안에서 reset이 다르면 가장 늦은 reset
+  assert.equal(alerts[0]!.message, "LIMIT (account pro-2) — TEAM_K, TEAM_L 사용 한도, reset 09:00Z까지 HOLD · 같은 ACCOUNT도 HOLD: TEAM_M");
+  assert.equal(alerts[1]!.message, "LIMIT (account default) — TEAM_A 사용 한도, reset 07:40Z까지 HOLD · 같은 ACCOUNT도 HOLD: TEAM_B");
+  assert.equal(alerts[2]!.message, "LIMIT — structure 사용 한도, reset 07:40Z까지 HOLD");
+});
+
+test("accountHolds: LIMIT 하나가 같은 ACCOUNT의 형제를 reset까지 붙든다. 걸린 AIRCRAFT 자신은 제 health로 보인다", () => {
+  const xs = [
+    { name: "TEAM_K", account: "pro-2", health: limitAt(T("07:40:00")) },
+    { name: "TEAM_L", account: "pro-2", health: null },
+    { name: "TEAM_A", account: "default", health: null },
+  ];
+  const holds = accountHolds(xs, at("07:38:00"));
+  assert.deepEqual([...holds.keys()], ["pro-2"]);
+  assert.equal(accountHoldOf(holds, "pro-2", "TEAM_K"), null);
+  assert.deepEqual(accountHoldOf(holds, "pro-2", "team_l"), { account: "pro-2", resetsAt: T("07:40:00"), by: ["TEAM_K"] });
+  assert.equal(accountHoldOf(holds, "default", "TEAM_A"), null);
+  assert.equal(accountHoldLabel(holds.get("pro-2")!, at("07:38:00")), "HOLD · LIMIT (account pro-2) until 07:40Z");
+  // reset이 지나면 붙들지 않는다
+  assert.equal(accountHolds(xs, at("07:40:00")).size, 0);
+});
+
+test("accountHolds: ACCOUNT를 모르면(라벨 없음) 붙들지 않고, reset을 모르는 LIMIT은 풀릴 때까지, 주간이면 표시", () => {
+  assert.equal(accountHolds([{ name: "TEAM_K", account: null, health: limitAt(T("07:40:00")) }], at("07:38:00")).size, 0);
+  const holds = accountHolds(
+    [
+      { name: "TEAM_K", account: "main", health: limitAt() },
+      { name: "TEAM_L", account: "main", health: limitAt("2026-10-03T07:40:00.000Z", true) },
+    ],
+    at("07:38:00"),
+  );
+  const h = holds.get("main")!;
+  assert.deepEqual(h.by, ["TEAM_K", "TEAM_L"]);
+  assert.equal(accountHoldLabel(h, at("07:38:00")), "HOLD · LIMIT (account main, weekly) until 10-03 07:40Z");
+  assert.equal(accountHolds([{ name: "TEAM_K", account: "main", health: limitAt() }], at("23:59:00")).size, 1);
 });
 
 test("임계값은 설정으로 바꾼다", () => {

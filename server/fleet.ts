@@ -7,7 +7,7 @@ import { noteCrewChange, withCrew } from "./crew-change.ts";
 import { OBSERVED_WINDOW_DAYS } from "./crew-observed.ts";
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig } from "./dispatch.ts";
 import { type Actuals, computeActuals, type LogEntry, loadLogbook } from "./logbook.ts";
-import type { Health } from "./health.ts";
+import { type AccountHold, accountHoldOf, accountHolds, type Health } from "./health.ts";
 import type { Snapshot } from "./model.ts";
 import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state.ts";
 
@@ -15,6 +15,8 @@ import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state
 // 설계: docs/fleet.md. 타입·기본값·판정은 crew.ts에 있고, planner도 그것을 쓴다.
 
 import {
+  ACCOUNT_RE,
+  accountOf,
   type AircraftProfile,
   CONFIGURATIONS,
   type ConfigurationId,
@@ -139,6 +141,13 @@ export function applyPatch(
     if (patch.note === null || patch.note === "") drop("note");
     else next.note = String(patch.note).slice(0, 500);
   }
+  // ACCOUNT(ATC-51): SUPERVISOR가 정한 라벨. 소문자·숫자·-만(email 같은 계정 정보는 받지 않는다)
+  if ("account" in patch) {
+    const v = typeof patch.account === "string" ? patch.account.trim().toLowerCase() : patch.account;
+    if (v === null || v === "") drop("account");
+    else if (typeof v !== "string" || !ACCOUNT_RE.test(v)) throw new FleetError("account는 SUPERVISOR가 정한 라벨(소문자·숫자·-, 24자까지. 예: main, pro-2) — email은 쓰지 않는다");
+    else next.account = v;
+  }
   // AOG: 잠시 운항 중지. 사유가 있어야 하고, 해제 예정일(YYYY-MM-DD)은 선택
   if ("aog" in patch) {
     if (patch.aog === null || patch.aog === false) drop("aog");
@@ -186,6 +195,9 @@ export interface AircraftView {
   flyingSince: string | null; // 지금 쥔 STAND를 처음 잡은 시각(점유 since 중 가장 이른 것). 없으면 null
   lastActiveAt: string | null; // 세션의 마지막 활동 시각
   health?: Health | null; // AIRCRAFT health(ATC-45). 세션이 없거나 문제가 없으면 null
+  account?: string | null; // ACCOUNT(ATC-51). 라벨이 없으면 기본 ACCOUNT, 등록부에 라벨이 하나도 없으면 null
+  accountIsDefault?: boolean; // 라벨 없이 기본 ACCOUNT로 센다
+  accountHold?: AccountHold | null; // 같은 ACCOUNT의 다른 AIRCRAFT가 LIMIT에 걸려 붙들림(ATC-51)
   configuration: ConfigurationId | null;
   enteredAt: string | null;
   aog: AircraftProfile["aog"] | null;
@@ -206,6 +218,7 @@ export function fleetView(
   const wsTicket = new Map(s.workspaces.map((w) => [w.path, w.ticketKey]));
   const live = s.sessions.filter((x) => team.test(x.name) && x.status !== "dead");
   const names = [...new Set([...live.map((x) => x.name.toUpperCase()), ...Object.keys(fleet.aircraft).map((k) => k.toUpperCase())])].sort();
+  const holds = accountHolds(live.map((x) => ({ name: x.name, account: accountOf(fleet, x.name), health: x.health })), now);
   return names.map((reg) => {
     const session = live.find((x) => x.name.toUpperCase() === reg);
     const profile = Object.entries(fleet.aircraft).find(([k]) => k.toUpperCase() === reg)?.[1] ?? {};
@@ -228,6 +241,9 @@ export function fleetView(
       flyingSince: held.map((c) => c.since).sort()[0] ?? null,
       lastActiveAt: session?.lastActiveAt ?? null,
       health: session?.health ?? null,
+      account: accountOf(fleet, reg),
+      accountIsDefault: accountOf(fleet, reg) != null && !profile.account,
+      accountHold: session ? accountHoldOf(holds, accountOf(fleet, reg), reg) : null,
       configuration: profile.configuration ?? null,
       enteredAt: profile.enteredAt ?? null,
       aog: profile.aog ?? null,
