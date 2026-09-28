@@ -50,6 +50,95 @@ export function clip(text: string, max = GOAL_MAX): string {
   return `${text.slice(0, cut > max / 2 ? cut : max).trimEnd()} …`;
 }
 
+// ── 이슈 본문의 글을 쓴 그대로(ATC-58) ──
+// Linear는 본문을 저장할 때 마크다운 문자를 역슬래시로 이스케이프하고(`~31 K` → `\~31 K`), 이슈 언급을 긴 URL 링크로 둔다.
+// 지시서에는 쓴 그대로 싣는다: 이스케이프를 풀고, Linear 이슈 링크는 key만 남긴다. 코드(`…`, ``` 블록) 안은 건드리지 않는다.
+const ISSUE_URL = String.raw`https?://linear\.app/[^/\s)>\]]+/issue/([A-Za-z][A-Za-z0-9]*-\d+)(?:[/?#][^\s)>\]]*)?`;
+const ISSUE_LINK_RE = new RegExp(String.raw`(?<!\\)\[([^\]\n]*)\]\((${ISSUE_URL})\)`, "g"); // [텍스트](이슈 URL)
+const ISSUE_AUTOLINK_RE = new RegExp(`<${ISSUE_URL}>`, "g"); // <이슈 URL>
+const ISSUE_BARE_RE = new RegExp(`(?<![\\w/(<\\[])${ISSUE_URL}`, "g"); // 맨 URL
+const ESCAPE_RE = /\\([!-/:-@[-`{-~])/g; // CommonMark 역슬래시 이스케이프(ASCII 구두점)
+
+// 코드가 아닌 조각 하나: 이슈 링크 → key, 그다음 이스케이프 풀기
+function plainPart(t: string): string {
+  return t
+    .replace(ISSUE_LINK_RE, (_all, text: string, _url: string, key: string) => {
+      const label = text.replace(ESCAPE_RE, "$1").trim();
+      // 언급(텍스트가 key나 URL)이면 key만, 따로 쓴 글이면 글 뒤에 key
+      return !label || label.toUpperCase() === key.toUpperCase() || /^https?:\/\//.test(label) ? key : `${label} (${key})`;
+    })
+    .replace(ISSUE_AUTOLINK_RE, (_all, key: string) => key)
+    .replace(ISSUE_BARE_RE, (all: string, key: string) => key + (/[.,;:!?]+$/.exec(all)?.[0] ?? "")) // 문장 끝 구두점은 남긴다
+    .replace(ESCAPE_RE, "$1");
+}
+
+// from부터 백틱이 정확히 n개인 다음 묶음의 시작. 없으면 -1
+function closingRun(line: string, from: number, n: number): number {
+  for (let j = from; j < line.length; ) {
+    if (line[j] !== "`") {
+      j++;
+      continue;
+    }
+    let k = j;
+    while (line[k] === "`") k++;
+    if (k - j === n) return j;
+    j = k;
+  }
+  return -1;
+}
+
+// 한 줄(펜스 밖): 코드 스팬(같은 수의 백틱으로 닫힌 것)은 그대로, 나머지만 plainPart. `\``처럼 이스케이프된 백틱은 코드를 열지 않는다
+function plainLine(line: string): string {
+  let out = "";
+  let text = "";
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === "\\" && i + 1 < line.length) {
+      text += line.slice(i, i + 2);
+      i += 2;
+      continue;
+    }
+    if (line[i] === "`") {
+      let n = 1;
+      while (line[i + n] === "`") n++;
+      const fence = "`".repeat(n);
+      const j = closingRun(line, i + n, n);
+      if (j !== -1) {
+        out += plainPart(text) + line.slice(i, j + n);
+        text = "";
+        i = j + n;
+        continue;
+      }
+      text += fence;
+      i += n;
+      continue;
+    }
+    text += line[i];
+    i++;
+  }
+  return out + plainPart(text);
+}
+
+// 이슈 본문에서 뗀 글 → 지시서에 실을 글. 펜스 블록(``` · ~~~) 안의 줄은 그대로(순수)
+export function briefTextOf(md: string): string {
+  const lines = md.split("\n");
+  let fence: { ch: string; n: number } | null = null;
+  return lines
+    .map((line) => {
+      const m = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
+      if (fence) {
+        if (m && m[1][0] === fence.ch && m[1].length >= fence.n && !/\S/.test(line.slice(line.indexOf(m[1]) + m[1].length))) fence = null;
+        return line;
+      }
+      if (m) {
+        fence = { ch: m[1][0]!, n: m[1].length };
+        return line;
+      }
+      return plainLine(line);
+    })
+    .join("\n");
+}
+
 export interface DirectSections {
   goal: string | null;
   done: string | null;
@@ -67,8 +156,9 @@ export function sectionsOfMd(md: string | null | undefined): { title: string; te
 
 export function directSectionsOf(md: string | null | undefined): DirectSections {
   const sections = sectionsOfMd(md);
+  // 쓴 그대로(ATC-58) 풀어서 싣는다. 목표 600자는 푼 글로 잰다
   const take = (re: RegExp) => {
-    const got = sections.filter((x) => re.test(x.title) && x.text).map((x) => x.text);
+    const got = sections.filter((x) => re.test(x.title) && x.text).map((x) => briefTextOf(x.text));
     return got.length ? got.join("\n") : null;
   };
   const goal = take(GOAL_RE);
@@ -83,7 +173,8 @@ export const FULL_TEXT_LINE = "완료 기준·제약 전문은 이슈 본문에�
 
 // DIRECT 지시서의 본문 줄(머리 줄과 끝 줄 사이). 여러 줄이면 이름표 다음 줄부터
 export function directLines(s: DirectSections): string[] {
-  const field = (name: string, v: string) => (v.includes("\n") ? `${name}:\n${v}` : `${name}: ${v}`);
+  // 여러 줄이거나 한 줄이라도 목록 항목(`* x`, `- x`, `1. x`)이면 이름표 다음 줄부터(ATC-58)
+  const field = (name: string, v: string) => (v.includes("\n") || /^\s*(?:[*+-]|\d+[.)])\s/.test(v) ? `${name}:\n${v}` : `${name}: ${v}`);
   const goal = s.goal ? field("목표", s.goal) : null;
   const rest = [field("완료 기준", s.done ?? "이슈 본문(링크)의 완료 기준을 따릅니다."), s.constraints ? field("이 작업만의 제약", s.constraints) : null].filter((x) => x !== null);
   if ((goal?.length ?? 0) + rest.reduce((n, x) => n + x.length + 1, 0) > BRIEF_BODY_MAX) return [goal, FULL_TEXT_LINE].filter((x) => x !== null);
