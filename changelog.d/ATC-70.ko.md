@@ -1,0 +1,2 @@
+### 변경
+- DIRECT 지시서는 PR 언급을 링크 글만 싣는다(ATC-70, [docs/dispatch.ko.md](docs/dispatch.ko.md) "DIRECT briefs"). Linear는 본문에서 언급한 GitHub PR을 자기 리뷰 쪽 링크로 두고, 지시서는 이것을 통째로 실었다: `[chaehy5665/atc#134](https://linear.app/vocado/review/fuel-f8-screens-…)`. 하나에 목표 600자 중 약 110자를 쓰고, 팀에게는 쓸모없는 URL이다. 이제 `briefTextOf`는 `linear.app/<워크스페이스>/review/<slug>`로 가는 마크다운 링크를 링크 글(`chaehy5665/atc#134`)로 바꾼다. `owner/repo#N`이 아닌 글도 쓴 그대로 남긴다. 글이 없는 링크, 맨 리뷰 URL, 코드 스팬과 펜스 블록, 다른 링크, 지시서 줄, 칸 규칙, 상한은 그대로다. 목표 600자는 푼 글로 잰다.
