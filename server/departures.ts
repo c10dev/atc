@@ -79,18 +79,27 @@ export interface DepartureMatch {
   stands: string[];
 }
 
+export interface DepartureQuery {
+  repo: string | null;
+  branch?: string | null;
+  flight?: string | null;
+  stands?: string[];
+  before: string;
+}
+
 // LOGBOOK이 쓸 조회. 같은 저장소의 같은 브랜치 기록을 먼저 믿고, 없으면 FLIGHT나 STAND가 같은 기록.
-// before(머지 시각) 뒤의 기록은 다음 작업이라 보지 않는다.
-export function matchDepartures(
-  lines: Departure[],
-  q: { repo: string | null; branch?: string | null; flight?: string | null; stands?: string[]; before: string },
-): DepartureMatch {
+// before(머지 시각) 뒤의 기록은 다음 작업이라 보지 않는다. 맞는 줄을 시각순으로(FUEL의 FLIGHT 구간도 쓴다)
+export function departureHits(lines: Departure[], q: DepartureQuery): Departure[] {
   const upTo = lines.filter((d) => d.t <= q.before);
   const byBranch = q.repo && q.branch ? upTo.filter((d) => d.repo === q.repo && d.branch === q.branch) : [];
   const hits = byBranch.length
     ? byBranch
     : upTo.filter((d) => (q.flight && d.flight === q.flight) || (q.stands ?? []).includes(d.stand));
-  const sorted = [...hits].sort((a, b) => a.t.localeCompare(b.t));
+  return [...hits].sort((a, b) => a.t.localeCompare(b.t));
+}
+
+export function matchDepartures(lines: Departure[], q: DepartureQuery): DepartureMatch {
+  const sorted = departureHits(lines, q);
   return {
     aircraft: sorted.filter((d) => d.aircraft).at(-1)?.aircraft ?? null,
     firstAt: sorted[0]?.t ?? null,

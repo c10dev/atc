@@ -15,12 +15,12 @@ import { mountMcc } from "./mcc-run.ts";
 import { mountCrewChange } from "./crew-change.ts";
 import { mountCheckride } from "./checkride.ts";
 import { mountFleet } from "./fleet.ts";
-import { mountFuel } from "./fuel-run.ts";
+import { addLogbookFuel, mountFuel } from "./fuel-run.ts";
 import { mountFleetPlan, runFleetPlan } from "./fleet-plan-run.ts";
 import { mountSessionControl } from "./session-control.ts";
 import { mountFollowing } from "./following.ts";
 import { recordDepartures } from "./departures.ts";
-import { mountLogbook, runLogbook } from "./logbook.ts";
+import { loadLogbook, mountLogbook, runLogbook } from "./logbook.ts";
 import { diffSnapshots, EventLog, isWarm } from "./events.ts";
 import { mountMetrics } from "./metrics.ts";
 import { mountNetwork } from "./network.ts";
@@ -94,7 +94,7 @@ async function tick() {
       runFleetPlan(next); // FLEET PLAN(docs/fleet.md 8.6): 같은 주기에 그림자 제안. claude agents를 읽어 기다리지 않는다
     }
     if (isWarm(next)) recordDepartures(next); // FLIGHT의 첫 STAND·claim과 HANDOFF를 착수 기록에(바뀔 때만). 첫 번은 기준선
-    if (isWarm(next)) runLogbook(next); // 10분마다 머지된 PR을 LOGBOOK에 적는다
+    if (isWarm(next)) runLogbook(next, addLogbookFuel); // 10분마다 머지된 PR을 LOGBOOK에 적는다
     if (isWarm(next)) runAtfm(next); // 출발 중지 시작·끝, 1분마다 ATFM 데이터와 그림자 판정(docs/atfm.md)
     if (isWarm(next)) runAutoland(next); // AUTOLAND(ATC-34): GitHub을 새로 읽을 때마다 갱신·머지 한 주기(스위치가 off면 GROUND STOP만 본다)
     if (isWarm(next)) runJudges(next); // 판정 계열(ATC-36): 스위치가 off가 아닐 때만 1분에 한 번, CLASSIFY 초안 몇 건
@@ -123,7 +123,7 @@ mountMetrics(app);
 mountDispatch(app, getSnapshot);
 mountCrewChange(app);
 mountFleet(app, getSnapshot);
-mountFuel(app, getSnapshot);
+mountFuel(app, getSnapshot, loadLogbook);
 mountSessionControl(app, getSnapshot);
 mountFleetPlan(app, getSnapshot);
 mountCheckride(app, getSnapshot);
