@@ -5,6 +5,8 @@
 // `--crosscheck`로 부르면(CROSSCHECK) atc CLI 중 읽기와 crosscheck 명령만 허용한다(쓰는 dispatch·schedule 명령은 막음).
 // `--crosscheck --gh-read`면 gh는 PR 사실 확인용 `gh pr view|checks|list`만(코드를 읽지 않으므로 diff는 뺀다).
 // `--review`로 부르면(REVIEW, 착륙 리뷰 세션 — ATC-27) atc CLI 중 manual과 landing queue·landing review만 허용한다(gh 없음).
+// `--mcc`로 부르면(MCC, atc 자신의 PR 착륙 — docs/mcc.md) atc CLI 중 manual과 mcc 명령만 허용한다. `--mcc --gh-read`면 읽기 전용 gh pr view|checks|diff|list도.
+// MCC 쓰기(mcc inspect·escalate·land·rts)는 MCC 세션에서만 된다: 다른 모드에서는 막고, MCC에서는 실제 모델(Claude)을 확인해 ATC_MCC_MODEL로 붙인다.
 // `--crosscheck`에서 mark를 다는 명령(dispatch|schedule crosscheck)과 `--review`에서 착륙 리뷰를 남기는 명령
 // (landing review … --verdict)은 그 세션의 실제 모델을 확인한다:
 // hook 입력의 transcript_path(세션 자신의 기록)에서 마지막 assistant 메시지의 model을 읽어 그 모드의 허용 목록에 맞을 때만
@@ -68,6 +70,9 @@ const CROSSCHECK_CMDS = new Set([
 ]);
 // REVIEW 세션(착륙 리뷰, DeepSeek V4.1 Flash)이 쓸 수 있는 atcctl 하위 명령. 착륙 리뷰는 CROSSCHECK에서 옮겨 왔다(ATC-27)
 const REVIEW_CMDS = new Set(["manual check", "manual ack", "landing queue", "landing review"]);
+// MCC 세션이 쓸 수 있는 atcctl 하위 명령(docs/mcc.md). 쓰기 넷은 MCC 세션에서만
+const MCC_WRITES = new Set(["inspect", "escalate", "land", "rts"]);
+const MCC_CMDS = new Set(["manual check", "manual ack", "mcc queue", "mcc packet", ...[...MCC_WRITES].map((w) => `mcc ${w}`)]);
 
 // CROSSCHECK로 쓸 수 있는 모델: Muse Spark 1.3(기본), GPT-5.6 Terra(대체). 두 경로에서 기록되는 이름:
 // ocx claude → claude-ocx-opencode-go--muse-spark-1.3-contributor, ClaudeRipple(Desktop) → muse-spark-1.3-contributor
@@ -75,6 +80,8 @@ export const CROSSCHECK_MODELS = /muse-spark|gpt-5\.6-terra/i;
 // REVIEW로 쓸 수 있는 모델: DeepSeek V4.1 Flash(SUPERVISOR 결정, ATC-27). ocx claude → claude-ocx-opencode-go--deepseek-v4.1-flash,
 // ClaudeRipple(Desktop) → deepseek-v4.1-flash
 export const REVIEW_MODELS = /deepseek-v4\.1-flash/i;
+// MCC로 쓸 수 있는 모델: Claude(SUPERVISOR 결정 2026-09-28). 서버 server/mcc.ts MCC_MODELS와 같다. ocx로 돌린 다른 모델(claude-ocx-…)은 아니다
+export const MCC_MODELS = /^claude-(opus|sonnet|fable|haiku)\b/i;
 const MODEL_NAME = /^[A-Za-z0-9._:@\/\[\]-]{1,120}$/; // 명령에 붙여도 안전한 글자만
 const TAIL_BYTES = 4 * 1024 * 1024;
 
@@ -122,11 +129,14 @@ const isMarkCommand = (words, cwd, mode = "crosscheck") =>
   resolve(cwd, words[1]) === ATCCTL &&
   (mode === "review"
     ? words[2] === "landing" && words[3] === "review" && writesReview(words)
-    : (words[2] === "dispatch" || words[2] === "schedule") && words[3] === "crosscheck");
+    : mode === "mcc"
+      ? words[2] === "mcc" && MCC_WRITES.has(words[3])
+      : (words[2] === "dispatch" || words[2] === "schedule") && words[3] === "crosscheck");
 
 const MODES = {
   crosscheck: { models: CROSSCHECK_MODELS, env: "ATC_CROSSCHECK_MODEL", who: "CROSSCHECK", what: "crosscheck 명령", switchTo: "앱에서 모델을 Muse(muse-spark-1.3-contributor)로 바꾸거나, 터미널에서 ocx claude로 여세요" },
   review: { models: REVIEW_MODELS, env: "ATC_REVIEW_MODEL", who: "착륙 리뷰(REVIEW)", what: "landing review 기록", switchTo: "review/ 폴더에서 DeepSeek V4.1 Flash로 여세요(review/README.md의 명령)" },
+  mcc: { models: MCC_MODELS, env: "ATC_MCC_MODEL", who: "MCC", what: "mcc 쓰기", switchTo: "mcc/ 폴더에서 Claude 모델로 여세요(mcc/README.md의 명령)" },
 };
 
 // 기록 명령의 실제 모델 확인. 통과면 { command: 모델을 붙인 명령 }, 막으면 { reason }. 기록 명령이 아니면 { command } 그대로.
@@ -197,7 +207,7 @@ export function checkGhJq(words) {
   return null;
 }
 
-export function check(command, cwd = HERE, { ghRead = false, crosscheck = false, review = false } = {}) {
+export function check(command, cwd = HERE, { ghRead = false, crosscheck = false, review = false, mcc = false } = {}) {
   if (typeof command !== "string" || !command.trim()) return "빈 명령";
   if (hasRedirect(command)) return "리다이렉션(>, <, heredoc)은 쓸 수 없음";
   if (hasExpansion(command)) return "명령 치환·변수 확장($(…), `…`, ${…}, $VAR)은 쓸 수 없음 — 문구는 작은따옴표로 감싼다";
@@ -218,6 +228,8 @@ export function check(command, cwd = HERE, { ghRead = false, crosscheck = false,
     }
     if (cmd === "node" && script && resolve(cwd, script) === ATCCTL) {
       if (review && !REVIEW_CMDS.has(words.slice(2, 4).join(" "))) return `착륙 리뷰 세션(REVIEW)이 쓸 수 없는 atc 명령: ${words.slice(2, 4).join(" ") || "(없음)"}`;
+      if (mcc && !MCC_CMDS.has(words.slice(2, 4).join(" "))) return `MCC가 쓸 수 없는 atc 명령: ${words.slice(2, 4).join(" ") || "(없음)"}`;
+      if (!mcc && words[2] === "mcc" && MCC_WRITES.has(words[3])) return `mcc ${words[3]}는 MCC 세션(mcc/ 폴더)만 쓴다`;
       if (crosscheck && !CROSSCHECK_CMDS.has(words.slice(2, 4).join(" "))) return `CROSSCHECK가 쓸 수 없는 atc 명령: ${words.slice(2, 4).join(" ") || "(없음)"}`;
       continue;
     }
@@ -234,16 +246,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const ghRead = process.argv.includes("--gh-read");
   const crosscheck = process.argv.includes("--crosscheck");
   const review = process.argv.includes("--review");
+  const mcc = process.argv.includes("--mcc");
   const cwd = input.cwd || HERE;
-  let reason = check(input.tool_input?.command, cwd, { ghRead, crosscheck, review });
+  let reason = check(input.tool_input?.command, cwd, { ghRead, crosscheck, review, mcc });
   let marked = null;
-  const mode = review ? "review" : crosscheck ? "crosscheck" : null;
+  const mode = review ? "review" : crosscheck ? "crosscheck" : mcc ? "mcc" : null;
   if (!reason && mode) {
     const cmds = simpleCommands(input.tool_input.command);
     if (cmds.some((w) => isMarkCommand(w, cwd, mode))) {
       marked = checkMarkModel(input.tool_input.command, cwd, readTranscriptTail(input.transcript_path), mode);
       if (marked.reason) {
-        console.error(`${review ? "착륙 리뷰 기록" : "CROSSCHECK mark"} 차단 — ${marked.reason}.`);
+        console.error(`${review ? "착륙 리뷰 기록" : mcc ? "MCC 쓰기" : "CROSSCHECK mark"} 차단 — ${marked.reason}.`);
         process.exit(2);
       }
     }
@@ -254,12 +267,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(0);
   }
   if (reason) {
-    const allowed = review
+    const allowed = mcc
+      ? `atc CLI의 manual·mcc 명령과 jq${ghRead ? ", 읽기 전용 gh pr view·checks·diff·list" : ""}`
+      : review
       ? "atc CLI의 manual·landing queue·landing review와 jq"
       : crosscheck
       ? `atc CLI의 읽기(manual·brief·flight)와 crosscheck 명령, jq${ghRead ? ", 읽기 전용 gh pr view·checks·list" : ""}`
       : ghRead ? "atc CLI(node atcctl.mjs …), jq, 읽기 전용 gh pr view·checks·diff·list" : "atc CLI(node atcctl.mjs …)와 jq";
-    console.error(`관제 세션(TOWER·OCC·CROSSCHECK·REVIEW)은 조종하지 않습니다 — ${reason}. ${allowed}만 쓸 수 있습니다.`);
+    console.error(`관제 세션(TOWER·OCC·CROSSCHECK·REVIEW·MCC)은 조종하지 않습니다 — ${reason}. ${allowed}만 쓸 수 있습니다.`);
     process.exit(2);
   }
 }

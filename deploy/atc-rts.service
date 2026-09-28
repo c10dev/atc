@@ -1,0 +1,10 @@
+[Unit]
+Description=atc RETURN TO SERVICE (MCC, docs/mcc.md)
+# atc 서버가 `systemctl --user start --no-block atc-rts`로 시작한다. atc 서비스 밖에서 돌아야 재시작을 끝까지 본다.
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/c10/projects/atc
+Environment="PATH=/home/c10/.nvm/versions/node/v24.19.0/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/c10/.nvm/versions/node/v24.19.0/bin/node deploy/rts.mjs
+TimeoutStartSec=400

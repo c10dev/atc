@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // atc PR의 LANDING CLEARANCE 등급. 바뀐 파일 경로로만 정한다(CLAUDE.md "git과 PR").
-//   auto    — structure가 CI·검토 뒤 머지하고 배포, 사용자에게는 나중에 보고
+//   auto    — structure(MCC가 land 모드가 되면 MCC, docs/mcc.md)가 CI·검토 뒤 머지하고 배포, 사용자에게는 나중에 보고
 //   flagged — auto와 같지만 보고에 바뀐 관제 규칙을 따로 적는다
 //   user    — 사용자가 머지
 // 사용: gh pr diff <N> --name-only | node deploy/landing-tier.mjs   (또는 경로를 인자로)
@@ -19,7 +19,7 @@ const USER = [
   [/^deploy\/(?!README)/, "배포·등급 규칙"],
 ];
 // 강조 등급: 관제 세션의 매뉴얼과 CLI(guard 제외)
-const FLAGGED = [[/^(controller|occ|crosscheck|review|dispatch)\//, "관제 세션"]];
+const FLAGGED = [[/^(controller|occ|crosscheck|review|mcc|dispatch)\//, "관제 세션"]];
 
 const RANK = { auto: 0, flagged: 1, user: 2 };
 
