@@ -100,9 +100,10 @@ OCC는 Linear에 마음대로 쓰지 않는다. **SCHEDULE 작업**(operation)�
   - 팀에 바로 맡긴 작은 티켓 없는 일은 AD HOC이고, SCHEDULE 작업이 되지 않는다.
   - OCC는 스스로 `NEW`를 쓰지 않는다. 예외는 하나, 덮는 이슈가 없는 WAYPOINT 완료 기준이다(5.6). SUPERVISOR가 이미 적어 둔 기준을 옮기는 것이다.
   - 중복 검색(5.3)은 atc의 스냅숏을 본다. 스냅숏에는 최근 45일 안에 바뀐 이슈가 있다.
+  - SUPERVISOR가 말한 배정("VOC-196은 TEAM_E가 맡는다")은 `TAIL` 초안이 된다(아래 "TAIL as built").
 - **팀의 발견**: CAPTAIN이 "범위 밖에서 Y를 찾았다"고 보고 → `SPLIT`.
 - **PR 리뷰**: 리뷰의 후속 항목 → `SPLIT`.
-- **atc 신호**: 끝났는데 열려 있음(`CLOSE`), 우선순위 없음(`PRIORITIZE`), 본문에만 적힌 선행 작업(`LINK`), 방치된 ENROUTE(DISPATCH의 `RELEASE` 경우).
+- **atc 신호**: 끝났는데 열려 있음(`CLOSE`), 우선순위 없음(`PRIORITIZE`), `tail:` 없이 팀이 몰고 있음(`TAIL`, 아래 "TAIL as built"), 본문에만 적힌 선행 작업(`LINK`), 방치된 ENROUTE(DISPATCH의 `RELEASE` 경우).
 - **4단계 네트워크 계획**: 목표를 티켓으로 나눈 것. 초안으로만.
 - **WAYPOINT gap**(5.6): 지금 구간이나 다음 WAYPOINT의 완료 기준 가운데 덮는 이슈가 없는 것 → 마일스톤을 단 `NEW`.
 
@@ -179,6 +180,17 @@ ROUTE MAP은 이미 WAYPOINT마다 ETA와 지연 여부를 안다([routes.ko.md]
 - **한 번만 보고.** FLIGHT FOLLOWING처럼 경고마다 `key`(`<마일스톤 id>:<code>`)와 `fresh`(아직 보고 안 함)가 있다. `/tick` 5단계에서 OCC는 fresh 경고를 하나에 한 줄로 OCC LOG에 적고 SUPERVISOR에게 보고한 뒤 `atcctl schedule slip-ack`(`POST /api/schedule/slips/ack`)를 실행한다. 보고한 key는 `waypoint-slips.json`에 둔다. 풀린 경고는 잊으니 다시 생기면 다시 fresh다. `eta-after-target`이 `target-passed`가 되면 key가 바뀌어 한 번 더 보고한다. 지연 때문에 팀에 메시지를 보내거나 초안을 쓰지 않는다.
 - **화면.** SCHEDULE 탭의 **LATE WAYPOINTS**에 경고가 보인다(코드, ROUTE · WAYPOINT, 목표일, ETA, 날수, OCC가 보고한 때). ROUTE MAP으로 가는 링크가 있다.
 
+### TAIL as built (ATC-68)
+
+`TAIL`은 FLIGHT의 `tail:TEAM_X`(TAIL ASSIGNMENT, [fleet.ko.md](fleet.ko.md))를 AIRCRAFT 하나로 정한다. DISPATCH 밖에서 한 배정이 planner가 지키는 라벨로 남는다.
+
+- **payload.** REGISTRATION 하나(`atcctl schedule draft TAIL <FLIGHT> <TEAM_X> -- <근거>`, 순수 함수 `server/schedule-tail.ts`의 `parseTail`). REGISTRATION이 `teamPattern`에 맞지 않거나, FLEET(`fleet.json`)에 없거나 RETIRED이면, Linear에 `tail:TEAM_X` 라벨이 없으면(읽기 전용 라벨 조회, 10분 캐시, 없으면 한 번 다시 읽음. 사유에 ENGINEERING이나 사용자가 만든다고 적는다. OCC는 만들지 않는다), FLIGHT에 이미 그 `tail:`이 있으면 atc가 초안을 받지 않는다. `CLASSIFY`·`PRIORITIZE`와 달리 닫히지 않은 FLIGHT면 In Progress여도 된다.
+- **release.** `save_issue` 하나에 `addLabels: ["tail:TEAM_X"]`, 다른 `tail:`이 있으면 `removeLabels`로 그것들, 그리고 여느 `[OCC S-xxxx]` 댓글. 결과 라벨은 지금 라벨에서 다른 `tail:`을 빼고 새 것을 더한 것이다(`tailLabelsOf`). 나머지 라벨은 옛 `lane:` 별칭까지 그대로 둔다. 상태·담당은 건드리지 않는다. `labels`(전체 교체)가 아니라 `addLabels`·`removeLabels`를 쓰는 까닭: atc 스냅숏은 이슈마다 라벨을 20개까지만 읽고 그룹 라벨을 `type:BUILD`로 보이는데 Linear 이름은 `BUILD`라, 전체 목록을 다시 만들면 라벨을 잃을 수 있다. 다음 조회에 `tail:TEAM_X`가 보이면 APPLIED, FLIGHT가 닫히면 SUPERSEDED.
+- **CAUTION.** 다른 팀의 `tail:`을 그 팀이 AIRBORNE이거나 그 FLIGHT의 STAND를 쥔 채 바꾸면 payload에 `caution`이 붙는다(SCHEDULE 카드와 `atcctl` 출력에 보인다). 이런 작업은 자동으로 하지 않는다(7장).
+- **출처.** CHARTER DESK의 SUPERVISOR 지시, 그리고 atc 신호. `schedule brief`의 `candidates.tail`은 닫히지 않았고 `tail:`이 없는데 팀이 몰고 있는 FLIGHT이고, 항목마다 `evidence`가 붙는다: `STAND`(그 팀이 FLIGHT의 STAND를 쥠), `DEPARTURE LOG`(최근 7일 `departures.jsonl`에서 마지막으로 적힌 AIRCRAFT), `READBACK`(수락·DEPARTED된 DISPATCH ASSIGN, READBACK된 TOWER CLEARANCE). 초안을 쓸 수 있는 REGISTRATION만 나오고, 열린 `TAIL` 작업이 있는 FLIGHT는 뺀다. atc는 신호로 초안을 쓰지 않는다. OCC가 읽고 판단한다(`occ/.claude/skills/tick/schedule.md` "TAIL 전에").
+- **게이트.** `TAIL` 판정은 `CLASSIFY`·`PRIORITIZE`처럼 S2 게이트에 센다. ATFM의 S3 후보는 그대로 `CLASSIFY`뿐이다.
+- **8장.** President의 "일 맡기기" 줄과 "President는 물러난다"가 말하는 `TAIL` 작업이 이것이다. 그 줄들의 상태 표시는 머지 뒤 ENGINEERING이 고친다.
+
 ## 6. linear-guard
 
 linear-guard는 `occ/mcp-guard.mjs` 안에 있다. OCC의 MCP 도구 전부에 거는 PreToolUse hook이다(matcher `mcp__.*`, fail-closed `… || exit 2`). 읽기 도구는 S0처럼 통과한다. linear-guard는 Linear 쓰기 도구 둘, `save_issue`와 `save_comment`를 판정한다. 다른 쓰기 도구(관계, 라벨, GitHub)는 S0처럼 모두 막힌다.
@@ -196,7 +208,7 @@ guard는 이것 말고는 보지 않는다. 나머지는 release되는 호출을
 
 쓴 호출은 계속 쓴 것으로 남는다. 작업을 다시 release해도 같은 호출과 같은 `used` 표시가 돌아오고, 표시를 지우는 길은 없다. guard를 통과한 뒤 Linear 쓰기가 실패했으면 OCC가 보고하고 SUPERVISOR가 Linear에서 직접 바꾼다. 다음 조회에서 바뀐 것이 보이면 atc가 여전히 APPLIED로 표시한다(아니면 3일 뒤 만료).
 
-다음 Linear 조회에 변경이 보이면 atc가 release된 작업을 APPLIED로 표시한다. `NEW`는 초안 뒤에 만들어진 같은 제목(정규화)의 이슈, `CLASSIFY`와 `PRIORITIZE`는 초안대로 된 라벨이나 우선순위, `CLOSE`는 Done이나 Canceled가 된 이슈다. release 전에 이미 변경이 보이면 APPLIED가 아니라 SUPERSEDED다.
+다음 Linear 조회에 변경이 보이면 atc가 release된 작업을 APPLIED로 표시한다. `NEW`는 초안 뒤에 만들어진 같은 제목(정규화)의 이슈, `CLASSIFY`와 `PRIORITIZE`는 초안대로 된 라벨이나 우선순위, `TAIL`은 초안의 `tail:` 라벨, `CLOSE`는 Done이나 Canceled가 된 이슈다. release 전에 이미 변경이 보이면 APPLIED가 아니라 SUPERSEDED다.
 
 ## 7. 흐름과 단계
 

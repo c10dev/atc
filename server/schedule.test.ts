@@ -11,7 +11,8 @@ const t = (key: string, over: Partial<Ticket> = {}) =>
 test("CLASSIFY·PRIORITIZE 입력 검사", () => {
   assert.deepEqual(parsePayload("CLASSIFY", { type: "maint", wake: "h", ratings: ["sec", "SEC"] }), { kind: "CLASSIFY", payload: { type: "MAINT", wake: "H", ratings: ["SEC"] } });
   assert.deepEqual(parsePayload("PRIORITIZE", { priority: "2" }), { kind: "PRIORITIZE", payload: { priority: 2 } });
-  assert.throws(() => parsePayload("TAIL", {}), /모르는 SCHEDULE 작업/);
+  assert.throws(() => parsePayload("TAIL", {}), /parseTail/);
+  assert.throws(() => parsePayload("LINK", {}), /모르는 SCHEDULE 작업/);
   assert.throws(() => parsePayload("CLOSE", {}), /LOGBOOK에서 채운다/);
   assert.throws(() => parsePayload("CLASSIFY", {}), /하나 이상/);
   assert.throws(() => parsePayload("CLASSIFY", { type: "PILOT" }), /FLIGHT TYPE/);
@@ -75,7 +76,7 @@ test("판정과 2단계 점검, 후보 목록", () => {
   assert.equal(ops[0].verdictReason, "BUILD임");
   assert.deepEqual(gateOf(ops), { decided: 1, agreed: 0, agreement: 0, target: { decided: 20, agreement: 0.8 }, ready: false, crosscheck: { marked: 0, matched: 0, rate: null, byModel: {}, oneClick: { count: 0, decided: 0 } }, network: { TARGET: { decided: 0, agreed: 0, agreement: null }, ROUTE: { decided: 0, agreed: 0, agreement: null } } });
   const tickets = [t("VOC-41"), t("VOC-42", { labels: ["type:BUILD", "wake:M"], priority: 0 }), t("VOC-43", { state: "In Progress", stateType: "started" })];
-  assert.deepEqual(candidatesOf(tickets, []), { classify: ["VOC-41"], prioritize: ["VOC-42"], close: [] });
+  assert.deepEqual(candidatesOf(tickets, []), { classify: ["VOC-41"], prioritize: ["VOC-42"], close: [], tail: [] });
 });
 
 test("분류 후보: SURVEY·CHECK로 보이는 제목(리서치·검토·비교·계획)을 앞에, 나머지는 원래 순서", () => {

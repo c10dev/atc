@@ -157,6 +157,16 @@ Linear 추정치가 아니라 라벨을 쓴다. 추정치는 팀 설정당 숫�
 - 예전의 단독 라벨 `Risk: Security` 등도 같은 방식으로 읽는다.
 - vocado의 `Area` 그룹(Database, Backend, Web, RN)은 아직 rating에 쓰지 않는다.
 
+### TAIL drafts as built (ATC-68)
+
+FLIGHT에 `tail:`을 붙이는 쪽(TAIL ASSIGNMENT). OCC가 SCHEDULE `TAIL` 작업([occ.ko.md](occ.ko.md) "TAIL as built") 초안을 쓴다. CHARTER DESK의 SUPERVISOR 지시에서, 또는 `tail:` 없이 팀이 이미 몰고 있는 FLIGHT(STAND, DEPARTURE LOG, READBACK)의 atc 신호에서 나온다.
+
+- 승인되고 발부되면 FLIGHT의 `tail:`을 그 REGISTRATION 하나로 정한다. 다른 `tail:` 라벨은 떼고, 나머지 라벨(`lane:` 포함)은 그대로 둔다.
+- AIRCRAFT는 FLEET에 있고 RETIRED가 아니어야 하고, 평면 Linear 라벨 `tail:TEAM_X`가 이미 있어야 한다. 라벨은 ENGINEERING이나 사용자가 만든다. OCC는 만들지 않는다.
+- 워크스페이스는 `tail` 그룹이 아니라 평면 `tail:TEAM_X` 라벨을 쓴다. 그룹의 자식 라벨은 찾지 못해 초안이 거절된다.
+- 다른 팀의 `tail:`을 그 팀이 AIRBORNE이거나 그 FLIGHT의 STAND를 쥔 채 바꾸면 CAUTION이 붙는다.
+- ENGINEERING과 사용자는 지금처럼 손으로 `tail:`을 붙여도 된다.
+
 ## 5. Planner 규칙
 
 이 순서로 적용한다. 처음 넷은 강한 규칙(hard rule)이다. 5번의 `J` 제외도 그렇다. 이를 통과하지 못한 FLIGHT는 사유와 함께 제외되고, 다른 팀에 주지 않는다.

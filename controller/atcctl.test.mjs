@@ -29,7 +29,7 @@ test("PRIORITIZE: --priority", () => {
 });
 
 const bad = [
-  ["모르는 작업", "TAIL VOC-1 -- x", /모르는 SCHEDULE 작업/],
+  ["모르는 작업", "LINK VOC-1 -- x", /모르는 SCHEDULE 작업/],
   ["작업 없음", "", /모르는 SCHEDULE 작업/],
   ["FLIGHT 없음", "CLASSIFY -- x", /FLIGHT key/],
   ["FLIGHT 자리에 옵션", "CLASSIFY --type BUILD -- x", /FLIGHT key/],
@@ -165,6 +165,17 @@ test("CLOSE 초안: FLIGHT와 근거만, 옵션은 받지 않는다(PR·머지 �
   const op = { id: "S-0009", kind: "CLOSE", flight: "VOC-193", payload: { pr: { repo: "o/vocado_nextjs", number: 400, url: "" }, mergedAt: "2026-09-26T13:41:00Z", fixes: true } };
   assert.equal(payloadText(op), "→ Done · PR vocado_nextjs#400 머지 2026-09-26T13:41Z · Fixes");
   assert.equal(draftText(op), "S-0009 CLOSE VOC-193 초안 · → Done · PR vocado_nextjs#400 머지 2026-09-26T13:41Z · Fixes (그림자 운용, Linear에 쓰지 않음)");
+});
+
+test("TAIL 초안: FLIGHT와 REGISTRATION 하나, 근거(ATC-68)", () => {
+  assert.deepEqual(parseDraft(argv("tail VOC-196 team_e -- President가 TEAM_E에 직접 배정")), { kind: "TAIL", flight: "VOC-196", registration: "TEAM_E", reason: "President가 TEAM_E에 직접 배정" });
+  assert.throws(() => parseDraft(argv("TAIL VOC-196 -- x")), /REGISTRATION/);
+  assert.throws(() => parseDraft(argv("TAIL -- x")), /FLIGHT key/);
+  assert.throws(() => parseDraft(argv("TAIL VOC-196 TEAM_E")), /근거/);
+  assert.throws(() => parseDraft(argv("TAIL VOC-196 TEAM_E --wake M -- x")), /TAIL에는 옵션이 없음/);
+  const op = { id: "S-0012", kind: "TAIL", flight: "VOC-196", payload: { registration: "TEAM_E" } };
+  assert.equal(draftText(op), "S-0012 TAIL VOC-196 초안 · tail:TEAM_E (그림자 운용, Linear에 쓰지 않음)");
+  assert.equal(payloadText({ ...op, payload: { registration: "TEAM_E", caution: "다른 팀의 tail:을 바꿈 — TEAM_A가 AIRBORNE" } }), "tail:TEAM_E · CAUTION 다른 팀의 tail:을 바꿈 — TEAM_A가 AIRBORNE");
 });
 
 test("dispatch crosscheck --code: 쉼표·여러 번, disagree에만", () => {
