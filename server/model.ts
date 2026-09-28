@@ -204,7 +204,8 @@ export interface PullRequest {
   stack?: { base: number | null; chain: number[] } | null; // 쌓인 PR의 사슬(아래부터, ATC-29). base: 바로 아래 열린 PR
   codexFindings?: CodexFindingSummary | null; // 현재 head의 Codex 인라인 지적 등급별 수(ATC-28). ok면 P3만·모두 해결·답글이라 착륙을 막지 않음
   codexUnavailable?: CodexUnavailable | null; // CODEX UNAVAILABLE(ATC-7): Codex 한도·무응답
-  extReview?: ExtReviewState | null; // Codex를 쓸 수 없을 때 Muse 리뷰 상태(제외·대기·통과·지적). Codex를 쓸 수 있으면 null
+  extReview?: ExtReviewState | null;
+  externalExclusion?: string | null; // 외부 리뷰에서 빼는 사유(ATC-27·30). null이면 DeepSeek에 보낼 수 있음. 모르면 없음 // Codex를 쓸 수 없을 때 Muse 리뷰 상태(제외·대기·통과·지적). Codex를 쓸 수 있으면 null
 }
 
 export interface Snapshot {

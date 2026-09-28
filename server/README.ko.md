@@ -45,8 +45,8 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `model.ts` | 공용 타입: `Session`, `Airport`, `Workspace`, `Ticket`, `Claim`, `Handoff`, `Alert`, `Clearance`, `TrafficEvent`, `PullRequest`, `LandingBlockCode`, `Snapshot`. 웹 화면이 그대로 가져다 쓴다 |
 | `snapshot.ts` | 소스 병합, TTL 안의 점유만 남기기, 경보와 `pulls` 계산. 스냅샷 필드: `linear`·`github` 상태(`{enabled, error, fetchedAt}`), `sessions`, `workspaces`, `tickets`, `columns`, `airports`, `claims`, `handoffs`, `alerts`, `clearances`, `pulls`(열린 PR, CLEARED 먼저) |
 | `landing.ts` | PR마다 CLEARED TO LAND 조건(체크, head 리뷰, 머지 상태, Draft, LOS), head별 `readyAt`, LANDING SEQUENCE 순서(순수 함수 `buildPulls`, `landingBlocks`) |
-| `autoland.ts` | AUTOLAND(ATC-34, [docs/occ.ko.md](../docs/occ.ko.md) 9.7): `autoland.json`의 스위치와 HOLD(`parseAutoland`, `saveAutoland`), `autoland-state.json` 상태, merge 제외 목록(순수 함수 `mergeExclusionOf`, `humanPreviewOf`), GROUND STOP 걸기(순수 함수 `latchGroundStops`), 갱신이 끝났나(순수 함수 `settleOf`), AIRPORT마다 할 일 하나와 PR마다 표시(순수 함수 `planAutoland`, `snapshot.autoland`) |
-| `autoland-run.ts` | GitHub을 새로 읽을 때마다 AUTOLAND 한 주기: GROUND STOP 걸기, 갱신 정리, `update-branch`(`expected_head_sha`)나 정확한 head 머지(`sha`). 쓰기 직전에 스위치를, 머지면 PR 자체를 다시 본다. `autoland.jsonl` 기록. `GET /api/autoland`, `POST /api/autoland/hold`, `POST /api/autoland/groundstop/clear` |
+| `autoland.ts` | AUTOLAND(ATC-34, [docs/occ.ko.md](../docs/occ.ko.md) 9.7): `autoland.json`의 스위치와 HOLD(`parseAutoland`, `saveAutoland`), `autoland-state.json` 상태, merge 제외 목록(순수 함수 `mergeExclusionOf`, `humanPreviewOf`), GROUND STOP 걸기(순수 함수 `latchGroundStops`), 갱신이 끝났나(순수 함수 `settleOf`), 리뷰가 이어지지 않은 갱신의 재리뷰(ATC-38, 순수 함수 `reviewRequestOf`, `escalateOf`, `fastTrackOf`), AIRPORT마다 할 일 하나와 PR마다 표시(순수 함수 `planAutoland`, `snapshot.autoland`) |
+| `autoland-run.ts` | GitHub을 새로 읽을 때마다 AUTOLAND 한 주기: GROUND STOP 걸기, 갱신 정리, `update-branch`(`expected_head_sha`)나 정확한 head 머지(`sha`), 리뷰가 이어지지 않은 갱신 뒤 head마다 PR 댓글 `@codex review` 하나(ATC-38). 쓰기 직전에 스위치를, 머지면 PR 자체를 다시 본다. `autoland.jsonl` 기록. `GET /api/autoland`, `POST /api/autoland/hold`, `POST /api/autoland/groundstop/clear` |
 | `judges/classify.ts` | SCHEDULE CLASSIFY 판정 계열(ATC-36, [docs/fleet.ko.md](../docs/fleet.ko.md) 6.1): 입력 허용 목록(순수 함수 `classifyInputOf`, `bodyWithheld`), 질문(FLIGHT TYPE·WAKE Choice, TYPE RATING마다 Noul), 답 검사(`judgmentOf`), 초안과 비교한 mark(`verdictOf`) |
 | `judges/engines.ts` | 판정 엔진: `stub`(녹화 응답, 네트워크 없음)과 `jev`(`POST https://api.typesafe.ai/v1/systemone`, `jev-latest`, Bearer `TYPESAFE_API_KEY`. 오류 문구에 키가 들어가지 않는다) |
 | `judges/store.ts` | `judges.json` 스위치(`off`·`replay`·`shadow`, 기본 off), `judges.jsonl` 기록, `crosscheckRateOf`로 잰 계열별 일치율(`judgeRateOf`), SUPERVISOR 판정 뒤에만 mark를 보이는 브리핑 보기(`judgesViewOf`) |
@@ -149,7 +149,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `proposals.jsonl` | `proposals.ts` | DISPATCH 제안(추가만 함) |
 | `schedule.jsonl` | `schedule.ts` | OCC SCHEDULE 초안과 SUPERVISOR 판정(추가만 함) |
 | `autoland.json` | `autoland.ts` | AUTOLAND 스위치(`mode`, 기본 off), `airports`, `mergeMethod`, `applicationCheck`, `holds`(원자적으로 바꿔 씀) |
-| `autoland-state.json` | `autoland-run.ts` | AUTOLAND 비행 중인 갱신, GROUND STOP, 푼 main SHA, 건너뛴·머지한 head |
+| `autoland-state.json` | `autoland-run.ts` | AUTOLAND 비행 중인 갱신, GROUND STOP, 푼 main SHA, 건너뛴·머지한 head, head별 재리뷰 요청 |
 | `autoland.jsonl` | `autoland-run.ts` | AUTOLAND 기록: 갱신, 머지, 결과, GROUND STOP, 스위치·HOLD 변경(추가만 함) |
 | `judges.json` | `judges/store.ts` | 판정 계열 스위치(`jev`: `off`·`replay`·`shadow`, 기본 off). SUPERVISOR만, 설정 창에서(원자적으로 바꿔 씀) |
 | `judges.jsonl` | `judges/run.ts` | 판정 계열 mark(`judge`: 계열, 초안, 분류, 판정, 엔진, 모델, 보낸 칸)와 스위치 변경(`mode`), 추가만 함 |

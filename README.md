@@ -82,7 +82,7 @@ AUTOPILOT is not used: it would suggest the SUPERVISOR's gates are off, and it s
 
 | Term | Meaning |
 |---|---|
-| **AUTOLAND** | atc lands PRs mechanically behind one SUPERVISOR switch `autoland: off \| update \| merge` (default off). `update`: a PR that is CLEARED except for `behind` gets GitHub Update branch (`expected_head_sha`), one per AIRPORT at a time in LANDING SEQUENCE order. `merge`: a delegated PR is also merged at its exact head ([docs/occ.md](docs/occ.md) 9.7) |
+| **AUTOLAND** | atc lands PRs mechanically behind one SUPERVISOR switch `autoland: off \| update \| merge` (default off). `update`: a PR that is CLEARED except for `behind` gets GitHub Update branch (`expected_head_sha`), one per AIRPORT at a time in LANDING SEQUENCE order. `merge`: a delegated PR is also merged at its exact head. When an update's review doesn't carry, atc asks for one re-review (`@codex review`, then DeepSeek after 30 min) ([docs/occ.md](docs/occ.md) 9.7) |
 | **HOLD** (landing strip) | The SUPERVISOR's mark on a PR: AUTOLAND never merges it, and a CLEARED PR on HOLD doesn't stop the next update |
 | **GROUND STOP** (AUTOLAND) | A red post-merge `Application Check` on main stops both AUTOLAND modes for that AIRPORT until the SUPERVISOR clears it |
 

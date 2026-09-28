@@ -12,7 +12,7 @@ import { buildPulls, strandedMessage, strandedOf } from "./landing.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, loadAtfm, stopKey } from "./atfm.ts";
-import { isHeld, loadAutoland, loadAutolandState, mergeExclusionOf, planAutoland } from "./autoland.ts";
+import { fastTrackOf, isHeld, loadAutoland, loadAutolandState, mergeExclusionOf, planAutoland } from "./autoland.ts";
 
 // PR head별로 CLEARED TO LAND가 처음 된 시각 (메모리, 서버를 재시작하면 다시 센다)
 const readySince = new Map<string, string>();
@@ -104,6 +104,14 @@ export async function buildSnapshot(): Promise<Snapshot> {
   const alerts = buildAlerts(sessions, workspaces, tickets, claims, occupancy);
   const repos = airports.open.map((a) => a.repo);
   const github = readGithub(repos);
+  // AUTOLAND(ATC-34·38). 재리뷰로 Codex 대신 넘긴 head는 6시간을 기다리지 않고 REVIEW 대기열로 — update·merge이고 GROUND STOP이 아닌 AIRPORT만
+  const alCfg = loadAutoland();
+  const alSt = loadAutolandState();
+  const alActive = (repo: string) => {
+    const code = airports.open.find((a) => a.repo === repo)?.code;
+    return alCfg.mode !== "off" && Boolean(code) && alCfg.airports.includes(code!) && !alSt.groundStops.some((g) => g.airport === code);
+  };
+  const fastTrack = fastTrackOf(alSt.reviewRequests);
   const pulls = buildPulls(
     repos.filter((r) => github.byRepo.has(r)).map((repo) => ({ repo, pulls: github.byRepo.get(repo)!, defaultBranch: github.defaultByRepo.get(repo) ?? null })),
     workspaces,
@@ -119,6 +127,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
       ticketTitleOf: (key) => tickets.find((t) => t.key === key)?.title ?? null,
       // 보안 규칙에만 걸린 PR도 DeepSeek에 보낼까(ATC-30, 설정 창). 기본 "exclude"
       security: loadDispatchConfig().externalReview.security,
+      fastTrack: (repo, number, head) => (alActive(repo) ? fastTrack(repo, number, head) : null),
     },
   );
 
@@ -152,12 +161,11 @@ export async function buildSnapshot(): Promise<Snapshot> {
   }
 
   // AUTOLAND(ATC-34): AIRPORT마다 다음 할 일과 PR마다 표시. merge 모드면 CLEARED PR의 제외 사유(HOLD, FLIGHT, 라벨, 보안 게이트, Human Preview)
-  const alCfg = loadAutoland();
   const autoland = planAutoland({
     cfg: alCfg,
     airports: airports.open.map((a) => ({ code: a.code, repo: a.repo })),
     pulls,
-    st: loadAutolandState(),
+    st: alSt,
     exclusionOf: (p) => {
       const raw = github.byRepo.get(p.repo)?.find((g) => g.number === p.number);
       const ticket = p.ticketKey ? tickets.find((t) => t.key === p.ticketKey) : undefined;

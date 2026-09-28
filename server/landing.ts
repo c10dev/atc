@@ -177,8 +177,8 @@ const findingCounts = (s: CodexFindingSummary) =>
 // CODEX UNAVAILABLE: head에 Codex 리뷰(지적·👍)도 사람 통과 리뷰도 없고, head 뒤에 Codex가 한도 댓글을 남겼거나
 // head(또는 PR을 연 때) 뒤로 silentMs 동안 Codex 신호가 없음. Codex 신호를 아직 안 읽은 PR(Draft 포함)은 null.
 export interface CodexUnavailable {
-  why: "limit" | "silent";
-  since: string; // 한도 댓글 시각 | 조용해진 지 silentMs가 지난 시각
+  why: "limit" | "silent" | "autoland"; // autoland: AUTOLAND가 재리뷰를 요청했는데 Codex가 30분 동안 답하지 않음(ATC-38)
+  since: string; // 한도 댓글 시각 | 조용해진 지 silentMs가 지난 시각 | AUTOLAND가 DeepSeek로 넘긴 시각
 }
 export function codexUnavailableOf(pr: ReviewInput & Pick<GhPull, "createdAt">, now: number, silentMs: number): CodexUnavailable | null {
   const c = pr.codex;
@@ -321,7 +321,8 @@ export function extReviewStateOf(ctx: ExtReviewContext | undefined): ExtReviewSt
   return { status: reviewPasses(r) ? "pass" : "findings", reason: null, review, security };
 }
 const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n)}…` : t);
-const codexWhy = (u: CodexUnavailable, silentMs: number) => (u.why === "limit" ? "Codex 한도" : `Codex ${Math.round(silentMs / 3_600_000)}시간 응답 없음`);
+const codexWhy = (u: CodexUnavailable, silentMs: number) =>
+  u.why === "limit" ? "Codex 한도" : u.why === "autoland" ? "AUTOLAND 재리뷰 — Codex 30분 무응답" : `Codex ${Math.round(silentMs / 3_600_000)}시간 응답 없음`;
 
 type Block = PullRequest["blocks"][number];
 const block = (code: LandingBlockCode, text: string): Block => ({ code, text });
@@ -541,6 +542,8 @@ export function buildPulls(
     ticketLabelsOf: (key: string | null) => string[];
     ticketTitleOf?: (key: string | null) => string | null;
     security?: "exclude" | "deepseek"; // dispatch.json externalReview.security(ATC-30). 없으면 "exclude"
+    // AUTOLAND가 이 head를 DeepSeek로 넘긴 시각(ATC-38). 있으면 6시간을 기다리지 않는다. Codex가 head 뒤에 이미 답했으면 넘기지 않는다
+    fastTrack?: (repo: string, number: number, head: string) => string | null;
   },
 ): PullRequest[] {
   const losStands = new Set(alerts.filter((a) => a.kind === "conflict" && a.workspacePath).map((a) => a.workspacePath!));
@@ -557,7 +560,11 @@ export function buildPulls(
       const exclusion = gate ? (gate.hard ?? (allowSec ? null : gate.security)) : null;
       // main 병합만 한 head: 이전 커밋의 리뷰를 잇는다(ATC-31). 이으면 REVIEW 대기열에 넣지 않는다
       const carried = ext && slug ? carriedReviewOf(gh, ext.reviews.filter((r) => r.repo === slug && r.number === gh.number), Boolean(gate) && !exclusion) : null;
-      const unavailable = ext && slug && !carried ? codexUnavailableOf(gh, Date.parse(now), ext.silentMs) : null;
+      let unavailable = ext && slug && !carried ? codexUnavailableOf(gh, Date.parse(now), ext.silentMs) : null;
+      if (ext && slug && !carried && !unavailable) {
+        const since = ext.fastTrack?.(repo, gh.number, gh.headRefOid);
+        if (since && codexUnavailableOf(gh, Date.parse(now), 0)) unavailable = { why: "autoland", since };
+      }
       const ctx: ExtReviewContext | undefined = unavailable
         ? {
             unavailable,
@@ -599,6 +606,8 @@ export function buildPulls(
           return f?.length ? codexFindingSummaryOf(f) : null;
         })() : null,
         extReview: extReviewStateOf(ctx),
+        // 외부 리뷰(DeepSeek)에서 빼는 사유(ATC-27·30, 스위치 반영). AUTOLAND 재리뷰가 DeepSeek로 넘길지 볼 때 쓴다(ATC-38)
+        externalExclusion: ext && slug ? exclusion : undefined,
         // 이어받은 리뷰(ATC-31): 스트립 "REVIEW: … (carried from R, main merge only)", landing.cleared 기록의 carriedFrom
         carried: carried ?? null,
         stack,
