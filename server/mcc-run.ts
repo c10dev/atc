@@ -12,6 +12,8 @@ import {
   inspectionOf,
   landBlocksOf,
   loadMcc,
+  mccGateLine,
+  mccGateOf,
   MCC_MODES,
   MccError,
   mccModelOf,
@@ -27,6 +29,7 @@ import {
   saveMcc,
   tierOfFiles,
 } from "./mcc.ts";
+import { loadLogbook } from "./logbook.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
@@ -141,6 +144,51 @@ async function judge(s: Snapshot, number: number, head?: string) {
   return { ap, pr, files, tier, reasons, ci, inspection, escalated, blocks };
 }
 
+// ── SHADOW GATE(docs/mcc.md 9장) ──
+// LOGBOOK에는 머지된 head가 없다(형식은 그대로 둔다). 닫힌 PR 목록(REST)에서 읽어 PR 번호별로 계속 둔다 — 머지된 head는 바뀌지 않는다
+const mergedHeads = new Map<string, Map<number, string>>();
+const headsReadAt = new Map<string, number>();
+const HEADS_SPACING_MS = 5 * 60_000;
+const HEADS_PAGES = 5;
+
+async function readMergedHeads(slug: string, want: number[], since: number): Promise<Map<number, string>> {
+  const heads = mergedHeads.get(slug) ?? new Map<number, string>();
+  mergedHeads.set(slug, heads);
+  const missing = () => want.some((n) => !heads.has(n));
+  if (!missing() || Date.now() - (headsReadAt.get(slug) ?? 0) < HEADS_SPACING_MS) return heads;
+  headsReadAt.set(slug, Date.now());
+  // 최근에 바뀐 순. 머지는 updated_at을 올리므로 since보다 오래된 쪽에 닿으면 그친다
+  for (let page = 1; page <= HEADS_PAGES && missing(); page++) {
+    const rows = (await gh(["api", `repos/${slug}/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=${page}`, "--jq", '.[] | [.number, (.merged_at // ""), .head.sha, .updated_at] | @tsv']))
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => l.split("\t"));
+    for (const [n, mergedAt, sha] of rows) if (mergedAt && sha) heads.set(Number(n), sha);
+    if (rows.length < 100 || Date.parse(rows.at(-1)![3]) < since) break;
+  }
+  return heads;
+}
+
+// MCC 기록과 LOGBOOK으로 gate를 잰다. GitHub을 못 읽으면 head 없이(머지 전 마지막 INSPECTION으로) 재고 error를 붙인다
+async function gateOf(s: Snapshot) {
+  const cfg = loadMcc();
+  const records = readMccRecords();
+  const entries = loadLogbook();
+  const now = Date.now();
+  const draft = mccGateOf({ records, entries, airport: cfg.airport, heads: new Map(), now });
+  let heads: ReadonlyMap<number, string> = new Map();
+  let error: string | null = null;
+  if (draft.merged) {
+    try {
+      heads = await readMergedHeads(airportOf(s).slug, draft.rows.map((r) => r.pr), Date.parse(draft.since!));
+    } catch (e) {
+      error = `머지된 head를 읽지 못함 — ${errText(e)}`;
+    }
+  }
+  const gate = mccGateOf({ records, entries, airport: cfg.airport, heads, now });
+  return { ...gate, line: mccGateLine(gate), error };
+}
+
 // 열린 PR 중 MCC가 맡은 저장소의 것(Draft 제외, 오래된 순)
 const minePulls = (s: Snapshot, repo: string): PullRequest[] =>
   s.pulls.filter((p) => p.repo === repo && !p.draft).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, QUEUE_MAX);
@@ -188,9 +236,12 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
       }
       const rts = rtsState(records);
       const deployed = deployedHead();
+      // SHADOW GATE 한 줄(atcctl mcc queue 위쪽에 보이게)
+      const gate = await gateOf(s).then((g) => g.line + (g.error ? ` (${g.error})` : "")).catch((e) => `SHADOW GATE 계산 실패 — ${errText(e)}`);
       return c.json({
         mode: ap.cfg.mode,
         airport: ap.cfg.airport,
+        gate,
         repo: ap.slug,
         service: { head: deployed?.slice(0, 7) ?? null },
         main: { branch: ap.defaultBranch, head: ap.main?.slice(0, 7) ?? null, ci: ap.mainCi },
@@ -351,6 +402,16 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
         appendMccRecord({ op: "rts", ...base, result: "failed", detail: errText(e) });
         return c.json({ started: false, error: errText(e) }, 502);
       }
+    } catch (e) {
+      const f = fail(e);
+      return c.json(f.body, f.status);
+    }
+  });
+
+  // SHADOW GATE: land로 올릴 근거(읽기만). 설정 창 MCC 줄 아래 패널
+  app.get("/api/mcc/gate", async (c) => {
+    try {
+      return c.json(await gateOf(await getSnapshot()));
     } catch (e) {
       const f = fail(e);
       return c.json(f.body, f.status);

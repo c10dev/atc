@@ -1,5 +1,6 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
 import type { Snapshot } from "../../server/model.ts";
+import type { MccGate } from "../../server/mcc.ts";
 import type { ServerSettings, SettingsErrors, SettingsPatch } from "../../server/settings.ts";
 import { callsign } from "./aviation.ts";
 import { timeAgo } from "./derive.ts";
@@ -238,6 +239,7 @@ export function AgentSettings({ snapshot, server, save }: { snapshot: Snapshot |
             </>
           )}
         </ServerRows>
+        <MccGatePanel />
       </Block>
 
       <Block code="JUDGES" label="판정 계열(SUPERVISOR 전용)">
@@ -534,6 +536,82 @@ function GroundStopRow({ stop, check, refresh }: { stop: ServerSettings["autolan
       <p className="config-note is-error">
         {error ?? `main ${stop.failing.join(", ") || check} 실패(${stop.sha.slice(0, 7)}) — AUTOLAND 두 모드 모두 멈춤. main을 확인한 뒤 SUPERVISOR가 푼다`}
       </p>
+    </div>
+  );
+}
+
+// MCC SHADOW GATE(docs/mcc.md 9장): land로 올릴 근거. 읽기만 — 모드는 위 MCC 줄에서 SUPERVISOR가 바꾼다
+type GateLoaded = { state: "loading" } | { state: "error"; error: string } | { state: "ready"; gate: MccGate & { error: string | null } };
+const GATE_MISS: Record<MccGate["misses"][number]["kind"], string> = { findings: "findings", "no-inspection": "no-inspection", "reverted-would-land": "reverted" };
+const MISS_SHOWN = 8;
+function MccGatePanel() {
+  const [g, setG] = useState<GateLoaded>({ state: "loading" });
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/mcc/gate")
+      .then(async (r) => (r.ok ? r.json() : Promise.reject(((await r.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${r.status}`)))
+      .then((gate: MccGate & { error: string | null }) => alive && setG({ state: "ready", gate }))
+      .catch((e) => alive && setG({ state: "error", error: typeof e === "string" ? e : "서버에 연결할 수 없음" }));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  if (g.state === "loading") return <p className="settings-hint">SHADOW GATE 계산 중…</p>;
+  if (g.state === "error") return <p className="conn-error">SHADOW GATE를 읽지 못함(/api/mcc/gate) — {g.error}</p>;
+  const x = g.gate;
+  const started = x.since !== null;
+  const rows = [
+    { label: "판단한 atc PR", note: "머지된 head에 INSPECTION·ESCALATE", value: `${x.prs}건`, target: `≥ ${x.target.prs}건`, state: x.prs >= x.target.prs ? "pass" : "fail" },
+    { label: "shadow 기간", note: "첫 MCC 기록부터", value: `${x.days}일`, target: `≥ ${x.target.days}일`, state: x.days >= x.target.days ? "pass" : "fail" },
+    { label: "would-land 되돌림", note: "would-land·LANDED였는데 되돌린 PR", value: `${x.reverted}건`, target: `${x.target.reverted}건`, state: !x.wouldLand ? "insufficient" : x.reverted <= x.target.reverted ? "pass" : "fail" },
+  ] as const;
+  const mark = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족" } as const;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const clock = (iso: string) => {
+    const d = new Date(iso);
+    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  return (
+    <div className="mcc-gate">
+      <h4 className="label">
+        SHADOW GATE <em>land로 올리기 전 점검 · {x.ready ? "준비됨" : "아직"}</em>
+      </h4>
+      {!started ? (
+        <p className="mcc-gate-note">아직 MCC 기록이 없음 — MCC가 INSPECTION을 남기면 그때부터 잰다</p>
+      ) : (
+        <>
+          <ul>
+            {rows.map((r) => (
+              <li key={r.label} className={`s-${r.state}`}>
+                <span className="mcc-gate-label" title={r.note}>
+                  {r.label}
+                </span>
+                <span className="mcc-gate-value">{r.value}</span>
+                <span className="mcc-gate-target">{r.target}</span>
+                <span className="mcc-gate-state">{mark[r.state]}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mcc-gate-note">
+            {x.airport} · {clock(x.since!)}부터 머지 {x.merged}건 · would-land {x.wouldLand}건 · 불일치 {x.misses.length}건. 불일치는 SUPERVISOR가 사유를 보고 판단한다. 충족돼도 모드는 위 MCC 줄에서 직접 올린다
+          </p>
+          {x.misses.length > 0 && (
+            <ul className="mcc-gate-misses">
+              {x.misses.slice(0, MISS_SHOWN).map((m) => (
+                <li key={`${m.pr}-${m.kind}`} className={`k-${m.kind}`}>
+                  <a href={m.url} target="_blank" rel="noreferrer">
+                    #{m.pr}
+                  </a>
+                  <b>{GATE_MISS[m.kind]}</b>
+                  <span title={m.title}>{m.text}</span>
+                </li>
+              ))}
+              {x.misses.length > MISS_SHOWN && <li className="mcc-gate-more">외 {x.misses.length - MISS_SHOWN}건 — /api/mcc/gate</li>}
+            </ul>
+          )}
+        </>
+      )}
+      {x.error && <p className="conn-error">{x.error} — head 없이 머지 전 마지막 INSPECTION으로 맞춤</p>}
     </div>
   );
 }

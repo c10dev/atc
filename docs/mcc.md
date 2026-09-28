@@ -2,7 +2,7 @@
 
 MCC (Maintenance Control) is a control session that lands atc's own PRs and puts the merged code back into service on the machine. An airline's maintenance control centre decides when an aircraft that has been worked on may fly again. MCC does the same for atc: it inspects an atc PR, lands it when the rules allow, and returns the service on port 7700 to operation with the new code. Today a temporary `structure` session does this work, opened in a conversation and gone after it.
 
-> Status (2026-09-28): the SUPERVISOR answered the open questions and chose MCC over the parallel SELF-LANDING draft (#105, #107); see "Decisions". Steps 2–5 are built: the server side in shadow, `atcctl mcc`, the `mcc/` session with guard mode `--mcc`, and the `atc-rts` unit (section 11). What is left is operation: install the unit, launch the session, run the shadow gate.
+> Status (2026-09-28): the SUPERVISOR answered the open questions and chose MCC over the parallel SELF-LANDING draft (#105, #107); see "Decisions". Steps 2–5 are built: the server side in shadow, `atcctl mcc`, the `mcc/` session with guard mode `--mcc`, and the `atc-rts` unit (section 11). The shadow gate is measured on the settings window (ATC-49). What is left is operation: install the unit, launch the session, run shadow until the gate is met.
 
 Related: root `CLAUDE.md` "git과 PR" (LANDING CLEARANCE tiers), `deploy/landing-tier.mjs`, `deploy/atc.service`, [occ.md](occ.md) section 9 (CLEARED TO LAND, REVIEW, AUTOLAND), [atfm.md](atfm.md) (shadow before action), `review/` (the DeepSeek REVIEW session).
 
@@ -140,7 +140,7 @@ The user can still deploy by hand. RTS only needs the checkout to be clean and b
 | 6 | Shadow: MCC inspects and records `would-land` / would-RTS while `structure` and the user keep landing | — |
 | 7 | Gate met → SUPERVISOR sets `land`; later `land+rts`. Update root `CLAUDE.md`, the TOWER manual and `landing-tier.mjs` | user, flagged |
 
-**Shadow gate** (proposed): at least 20 atc PRs over at least 5 days; every PR `structure` or the user merged was either `would-land` or held by MCC for a reason the SUPERVISOR agrees with; no `would-land` PR was reverted afterwards.
+**Shadow gate** (measured by atc since ATC-49, section 11): at least 20 atc PRs over at least 5 days; every PR `structure` or the user merged was either `would-land` or held by MCC for a reason the SUPERVISOR agrees with; no `would-land` PR was reverted afterwards.
 
 ## 10. Risks
 
@@ -169,9 +169,19 @@ Step 4 (2026-09-28): the `mcc/` folder (`CLAUDE.md` and `/tick` in Korean with E
 
 Step 5 (2026-09-28): `deploy/rts.mjs` (pure `planRts`, `healthyVersion`, `ciOf` with `rts.test.mjs`) and `deploy/atc-rts.service`, as in section 6. One addition: if the checkout is already at the target but the service reports another commit (a restart that failed last time), RTS only restarts.
 
+Shadow gate (ATC-49, 2026-09-28): atc now measures the gate in section 9 itself. It only reads `mcc.jsonl` and the LOGBOOK, and changes neither format nor the MCC mode.
+
+- `mccGateOf` (pure, `server/mcc.ts`, tests in `mcc.test.ts`) takes the LOGBOOK's merged PRs for the MCC AIRPORT (`ATCC`) from the first MCC record (`inspect`, `escalate`, `would-land` or `land`). For each merged PR it records the last INSPECTION on the merged head (or `staleInspection` when only an older head was inspected), whether that head was `would-land` or LANDED by MCC, whether MCC ESCALATEd it, and whether the LOGBOOK later marked it reverted. Records after the merge are ignored.
+- Progress: PRs MCC judged (an INSPECTION on the merged head, or an ESCALATE), days since the first MCC record, and `would-land` / LANDED PRs that were reverted. `ready` holds at 20 PRs, 5 days and 0 reverted (`MCC_GATE`).
+- Mismatches, left for the SUPERVISOR to judge: a PR a person or `structure` merged while the INSPECTION on its head was `findings` (`findings`); one merged with no INSPECTION on its head and no ESCALATE (`no-inspection`, noting when only an older head was inspected); a `would-land` or LANDED PR that was reverted (`reverted-would-land`). `ready` counts only the three numbers. Whether each mismatch was "held by MCC for a reason the SUPERVISOR agrees with" (section 9) stays the SUPERVISOR's call.
+- The LOGBOOK has no merged head. The server reads it from GitHub's closed-PR list (REST, read-only, at most 5 pages of 100, at most once every 5 minutes while a head is missing) and keeps it per PR, since a merged head never changes. If GitHub can't be read, the gate matches on the last INSPECTION before the merge and reports the error.
+- `GET /api/mcc/gate` returns the gate, its rows and mismatches, and a one-line summary. `/api/mcc/queue` carries that line as `gate`, so `atcctl mcc queue` shows it without a CLI change.
+- The settings window's AGENTS tab shows a SHADOW GATE panel under the MCC row, shaped like the DISPATCH gate panel: the three criteria with target and state, the window, and up to eight mismatches linked to their PRs. Nothing on it changes the mode; the SUPERVISOR still raises it in the MCC row.
+
 ### Not built yet
 
-- Steps 6–7: shadow operation, the gate, and the rule changes in root `CLAUDE.md`, the TOWER manual and `landing-tier.mjs`.
+- Step 6 in operation: MCC runs in shadow until the SHADOW GATE panel reads `ready`.
+- Step 7: `land` / `land+rts`, and the rule changes in root `CLAUDE.md`, the TOWER manual and `landing-tier.mjs`.
 
 ## Decisions
 
