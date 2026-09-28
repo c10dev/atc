@@ -307,6 +307,22 @@
 .fl-briefing .fl-actions {
   width: 100%;
 }
+/* 카드 버튼이 연 패널(ATC-61): 그 카드 바로 아래. 위 여백은 열 때 콘솔 높이로 정한다(usePanelFocus) */
+.fl-panel {
+  scroll-margin-bottom: var(--space-3);
+}
+.fl-cards > .fl-panel {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+}
+.fl-detail .fl-panel {
+  max-width: 720px;
+  margin: var(--space-2) 0 0;
+}
+.fl-panel-error {
+  width: 100%;
+  margin: 0;
+}
 .fl-reg {
   width: 96px;
   flex: none;

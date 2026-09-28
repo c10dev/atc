@@ -357,6 +357,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - ATFM의 `eligible`·`s3-eligible` 기록 줄에 확인한 조건 코드(A1–A10, S1–S4)가 `checked`로 남는다. 대상 판정을 나중에 설명할 수 있게.
 
 ### 수정
+- FLEET: 목록 보기에서 LAUNCH·CREW BRIEFING이 반응하지 않는 것처럼 보였다(ATC-61). 패널이 탭 맨 위, FLEET PLAN 위의 고정 자리에 열려서 목록 아래쪽 줄에서 누르면 화면 한참 위에 떴다. 이제 카드에서 연 패널은 그 카드 바로 아래에 열린다. 목록에선 펼친 줄 안, 카드 보기에선 그 카드 밑의 한 줄 전체다. 열리면 상단 콘솔 아래로 스크롤되고 첫 칸(permission mode, CREW BRIEFING 본문)에 초점이 가며, 취소·닫기·Esc는 연 버튼으로 초점을 돌린다. LAUNCH 거절 사유는 탭 맨 위가 아니라 패널 안에 보인다. ENTRY INTO SERVICE 뒤에 보이는 CREW BRIEFING은 그 양식 옆, 맨 위 그대로다. `POST /api/fleet/:registration/launch`는 바뀌지 않았다.
 - atc를 재시작하면(배포나 MCC RTS) 이 기계의 모든 백그라운드 Claude 세션이 죽었다. atc가 처음 부른 `claude --bg`가 Claude의 공용 백그라운드 daemon을 `atc.service` cgroup 안에 띄웠고, `KillMode=control-group`이 서비스와 함께 내렸다(2026-09-28: CONTROL로 띄운 OCC가 배포 때 `failed`로 끝남). 이제 LAUNCH(FLEET·CONTROL)는 `claude`를 따로 임시 systemd scope(`systemd-run --user --scope`)에서 부르므로 daemon이 서비스 밖에 있다. `ATC_BG_SCOPE=off`면 끈다. 예전 방식으로 뜬 daemon이 아직 서비스 안에 있으면 CONTROL 블록이 경고한다([docs/fleet.ko.md](docs/fleet.ko.md) 8.5).
 - LANDING CLEARANCE 등급이 REVIEW 관제 폴더(`review/`, ATC-27)를 몰라, REVIEW 규정만 바꾼 PR이 `auto`로 나왔다. 이제 `review/`도 다른 관제 폴더처럼 `flagged`이고, 그 guard 파일은 그대로 `user`다.
 - LANDING CLEARANCE 등급이 루트 `.claude/skills/`의 skill을 `auto`로 봤다. 루트 skill은 루트 `CLAUDE.md`처럼 팀 세션 지침이라, 이제 루트 `.claude/` 아래는 모두 `user`다. 관제 세션 폴더의 skill은 그대로 `flagged`.
