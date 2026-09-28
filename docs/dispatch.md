@@ -338,14 +338,14 @@ Standing rules stay where they are (vocado `CLAUDE.md` and `AGENTS.md`, atc `CLA
 **The brief.** Line 2 of every brief is `BRIEF: DIRECT`. Then the FLIGHT, its title and link, and three fields taken from the issue body (`server/briefs.ts` `directSectionsOf`): `목표` (Goal / Outcome), `완료 기준` (Acceptance / Done criteria / Done when / Exit criteria) and `이 작업만의 제약` (Constraints / Hard constraints / 금지 / Forbidden / Invariants / Not in scope). Exit criteria and constraints are carried in full; only the goal is cut at 600 characters on a line break (ATC-35). If the three fields together pass 4,000 characters, the brief keeps the goal and says `완료 기준·제약 전문은 이슈 본문에서 읽으세요.` instead of carrying a partial list, since a list cut after its first item hides the rules that follow. A normal issue fits: the ATC-34 body (about 3,200 characters) is the test fixture. Allowed scope, context and verification stay in the linked issue. Without an exit-criteria field the brief says to follow the issue's exit criteria. It ends with the PILOT'S DISCRETION line, the READBACK request, and `끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요.`
 
 - **FLIGHT PLAN** (`formatFlightPlan`): `dispatch release` reads the issue body from Linear (read-only) and stores the brief as the proposal's `message`. If Linear can't be read, the FLIGHT PLAN still goes out without the fields. send-guard compares the stored text as before.
-- **Assignment by another session** (structure, a person): `GET /api/dispatch/flight/:key/brief?to=TEAM_X` returns the same shape as `{key, brief: "DIRECT", text}` to paste. A hand-written brief works too as long as it has the `BRIEF: DIRECT` line.
+- **Assignment by another session** (ENGINEERING, a person): `GET /api/dispatch/flight/:key/brief?to=TEAM_X` returns the same shape as `{key, brief: "DIRECT", text}` to paste. A hand-written brief works too as long as it has the `BRIEF: DIRECT` line.
 - **OCC NEW drafts** (`missingSections` in `server/schedule.ts`): only 목표 (Goal / Outcome) and 완료 기준 (Acceptance / Done criteria / Done when / Exit criteria) are required, each with content. A heading, a bold line or a plain `목표: …` label all count. `rating:SEC` also needs a `Hard constraints` line (or `필수 제약`) with the task-specific security limits, such as "no staging apply" or "keep the service_role path". Allowed scope, forbidden changes, invariants and verification are optional.
 - **atc's own issues**: the `atc-task` skill follows PILOT'S DISCRETION instead of asking before implementing.
 
 **Measuring it.** A brief is DIRECT when the message that started the FLIGHT has the `BRIEF: DIRECT` line and VECTORS otherwise, so every FLIGHT before this change counts as VECTORS. The LOGBOOK run (every 10 minutes) adds a `measured` line per ARRIVED FLIGHT from the last 30 days (`server/logbook.ts` `measureLines`); it fills only empty fields and never changes one already written:
 
 ```json
-{"op":"measured","t":"…","key":"owner/repo#85","brief":{"kind":"DIRECT","at":"…","by":"structure","readbackAt":"…","questions":0},"crew":"SOLO","rework":1,"findings":{"p0":0,"p1":1,"p2":0}}
+{"op":"measured","t":"…","key":"owner/repo#85","brief":{"kind":"DIRECT","at":"…","by":"ENGINEERING","readbackAt":"…","questions":0},"crew":"SOLO","rework":1,"findings":{"p0":0,"p1":1,"p2":0}}
 ```
 
 | Field | Source |

@@ -124,7 +124,7 @@ The user can still deploy by hand. RTS only needs the checkout to be clean and b
 ### 8.1 Changes elsewhere
 
 - **TOWER**: for ATCC PRs, `no-review` means "MCC hasn't inspected it yet", not something the team must fix. While MCC runs, TOWER doesn't send `LANDING 불가` INFO for it. `review-findings` from an INSPECTION is still relayed.
-- **Root `CLAUDE.md` and `deploy/landing-tier.mjs`**: "structure" becomes "MCC" in the landing and deploy rules once MCC is in `land` mode.
+- **Root `CLAUDE.md` and `deploy/landing-tier.mjs`**: the landing and deploy rules name MCC once MCC is in `land` mode. Until then they name the user (since GitHub #121, 2026-09-28, `structure` is no longer used; its design and work-order role is ENGINEERING).
 - **`/api/version`**: adds `head`, the commit the service started from.
 - **`landing-tier.mjs`**: `mcc/` joins the `flagged` paths (its guard is already `user`).
 

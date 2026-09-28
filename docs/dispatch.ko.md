@@ -338,14 +338,14 @@ AUTOPILOT이라는 말은 쓰지 않는다. 기계가 날고 조종사는 지켜
 **지시서.** 모든 지시서의 둘째 줄은 `BRIEF: DIRECT`다. 그다음 FLIGHT, 제목과 링크, 이슈 본문에서 옮긴 세 칸(`server/briefs.ts` `directSectionsOf`): `목표`(Goal·Outcome), `완료 기준`(Acceptance·Done criteria·Done when·Exit criteria), `이 작업만의 제약`(Constraints·Hard constraints·금지·Forbidden·Invariants·Not in scope). 완료 기준과 제약은 자르지 않고 모두 싣는다. 목표만 600자에서 줄 경계로 자른다(ATC-35). 세 칸을 합쳐 4,000자를 넘으면 일부만 싣지 않고, 목표만 두고 `완료 기준·제약 전문은 이슈 본문에서 읽으세요.`라고 적는다. 첫 항목 뒤에서 잘린 목록은 뒤따르는 규칙을 가리기 때문이다. 보통 이슈는 들어간다: ATC-34 본문(약 3,200자)이 시험 fixture다. 허용 범위, 배경, 확인 방법은 링크의 이슈에 둔다. 완료 기준 칸이 없으면 이슈의 완료 기준을 따르라고 적는다. 끝은 PILOT'S DISCRETION 줄, READBACK 요청, `끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요.`
 
 - **FLIGHT PLAN**(`formatFlightPlan`): `dispatch release`가 Linear에서 이슈 본문을 읽고(읽기 전용) 지시서를 제안의 `message`로 저장한다. Linear를 못 읽어도 세 칸 없이 보낸다. send-guard는 전처럼 저장된 문구와 비교한다.
-- **다른 세션의 배정**(structure, 사람): `GET /api/dispatch/flight/:key/brief?to=TEAM_X`가 같은 모양의 문구를 `{key, brief: "DIRECT", text}`로 준다. 손으로 쓴 지시서도 `BRIEF: DIRECT` 줄만 있으면 된다.
+- **다른 세션의 배정**(ENGINEERING, 사람): `GET /api/dispatch/flight/:key/brief?to=TEAM_X`가 같은 모양의 문구를 `{key, brief: "DIRECT", text}`로 준다. 손으로 쓴 지시서도 `BRIEF: DIRECT` 줄만 있으면 된다.
 - **OCC NEW 초안**(`server/schedule.ts` `missingSections`): 목표(Goal·Outcome)와 완료 기준(Acceptance·Done criteria·Done when·Exit criteria)만 필수이고, 둘 다 내용이 있어야 한다. 마크다운 제목, 굵은 줄, 평문 `목표: …` 이름표 모두 된다. `rating:SEC`는 이 작업만의 보안 한계를 적은 `Hard constraints` 줄(또는 `필수 제약`)이 더 있어야 한다. 예: "staging에 적용하지 않음", "service_role 경로 유지". 허용 범위, 금지 사항, Invariants, Verification은 쓰지 않아도 된다.
 - **atc 자체 이슈**: `atc-task` skill은 구현 전에 묻는 대신 PILOT'S DISCRETION을 따른다.
 
 **재기.** FLIGHT를 시작한 메시지에 `BRIEF: DIRECT` 줄이 있으면 DIRECT, 아니면 VECTORS다. 그래서 이 변경 전 FLIGHT는 모두 VECTORS로 센다. LOGBOOK 바퀴(10분마다)가 최근 30일 ARRIVED FLIGHT마다 `measured` 줄을 더한다(`server/logbook.ts` `measureLines`). 빈 칸만 채우고 이미 쓴 값은 바꾸지 않는다.
 
 ```json
-{"op":"measured","t":"…","key":"owner/repo#85","brief":{"kind":"DIRECT","at":"…","by":"structure","readbackAt":"…","questions":0},"crew":"SOLO","rework":1,"findings":{"p0":0,"p1":1,"p2":0}}
+{"op":"measured","t":"…","key":"owner/repo#85","brief":{"kind":"DIRECT","at":"…","by":"ENGINEERING","readbackAt":"…","questions":0},"crew":"SOLO","rework":1,"findings":{"p0":0,"p1":1,"p2":0}}
 ```
 
 | 칸 | 출처 |

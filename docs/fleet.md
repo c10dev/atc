@@ -771,14 +771,14 @@ Status: steps 1–5 built (ATC-45, ATC-47, ATC-48, ATC-51): the manual, the pull
 
 | Code | Detected by | Level | DISPATCH/SCHEDULE | Who responds, and how |
 |---|---|---|---|---|
-| `LIMIT` | `rate_limit` with a usage-limit line; `resetsAt` from `quotaLimits`, else "resets 7:40am (UTC)" | ALERT, once per ACCOUNT (once per reset time without labels) | skip until `resetsAt`, and the other AIRCRAFT on the same ACCOUNT too | Wait. After the reset the code turns into `UNANSWERED` if the prompt is still unanswered; structure or the SUPERVISOR resends it |
+| `LIMIT` | `rate_limit` with a usage-limit line; `resetsAt` from `quotaLimits`, else "resets 7:40am (UTC)" | ALERT, once per ACCOUNT (once per reset time without labels) | skip until `resetsAt`, and the other AIRCRAFT on the same ACCOUNT too | Wait. After the reset the code turns into `UNANSWERED` if the prompt is still unanswered; whoever sent the prompt (OCC, the user) or the SUPERVISOR resends it |
 | `THROTTLE` | `rate_limit` "not your usage limit", overloaded, other `server_error` | INFO; ALERT at 3 in 30 min | — | Retry after a few minutes. After 10 min without a reply it turns into `UNANSWERED` |
 | `NETWORK` | "Unable to connect", SSL/TLS, connection errors | ALERT, once for the machine | — | SUPERVISOR checks the network, proxy and `ANTHROPIC_BASE_URL`/`NO_PROXY`, then resends |
 | `MODEL` | `model_not_found` | ALERT | skip | SUPERVISOR fixes the model or route and relaunches. Never retry as is |
 | `CONTEXT` | "Prompt is too long", compaction failed | ALERT | skip | RESTART with a new CREW BRIEFING; the STAND and PR are HANDED OFF |
 | `PROVIDER` | `unknown` errors from an OpenAI-compatible route (400 schema, `name` too long, status with no body) | ALERT | skip | Relaunch on the default route, and file a bug for the route |
 | `PENDING` | idle, and the last reply's `tool_use` has no `tool_result`; push: a `permission_prompt` or `elicitation_dialog` notification, even while the session file says `busy` | INFO | — | SUPERVISOR approves or denies in that session |
-| `UNANSWERED` | idle, the last turn-opening prompt has no reply for 10 min (or a `LIMIT`/`THROTTLE` ended with it unanswered) | ALERT | — | structure or the SUPERVISOR resends. atc never resends |
+| `UNANSWERED` | idle, the last turn-opening prompt has no reply for 10 min (or a `LIMIT`/`THROTTLE` ended with it unanswered) | ALERT | — | whoever sent the prompt (OCC, the user) or the SUPERVISOR resends. atc never resends |
 | `HUNG` | busy, no transcript write for 30 min | INFO; ALERT at 60 min | skip | SUPERVISOR looks at it; RESTART if it stays |
 | `DENIED` | 3 or more denials or hook blocks in 10 min | INFO | — | SUPERVISOR allows it with a permission rule, or re-briefs |
 | `UNKNOWN` | any other API error | ALERT | — | SUPERVISOR reads the error line and decides |
@@ -792,7 +792,7 @@ Status: steps 1–5 built (ATC-45, ATC-47, ATC-48, ATC-51): the manual, the pull
 - AIRCRAFT without a label count as the default account (`default`). If no AIRCRAFT has a label, atc does not know accounts: `LIMIT` is grouped by reset time as before and nothing else is held.
 - A `LIMIT` on one AIRCRAFT holds every other live AIRCRAFT on the same ACCOUNT until that reset (the latest one if several AIRCRAFT on the account are limited; until the `LIMIT` clears if the reset is unknown). DISPATCH skips them, STAND-free FLIGHTs included, and SCHEDULE NEW does not accept them as a tail. The reason reads `HOLD · LIMIT (account pro-2) until 07:40Z — 같은 ACCOUNT의 TEAM_K가 사용 한도에 걸림`.
 - The held siblings get no health code of their own (they have not stopped), so they raise no alert and no FLEET PLAN proposal. The one `LIMIT` alert for the ACCOUNT names them: `LIMIT (account pro-2) — TEAM_K 사용 한도, reset 07:40Z까지 HOLD · 같은 ACCOUNT도 HOLD: TEAM_L`.
-- Only team sessions (the DISPATCH `teamPattern`) have an ACCOUNT. A `LIMIT` on another session, such as structure, is still grouped by reset time and holds no AIRCRAFT.
+- Only team sessions (the DISPATCH `teamPattern`) have an ACCOUNT. A `LIMIT` on another session, such as ENGINEERING, is still grouped by reset time and holds no AIRCRAFT.
 
 **Push (`hooks/health.mjs`, ATC-47).** A Claude Code hook reports a stop the moment it happens, so a session waiting on a permission prompt shows `PENDING` right away instead of `HUNG` after 30 minutes. It appends one line per event to `health/<sessionId>.jsonl` in the state folder: `{t, event, code?, error?, line?}` (`StopFailure`, `Notification`, `Stop`, `PostToolUse`; only the code, the time and the first error line, never bodies). The server reads the last line of each file, and a push record newer than the transcript's last fact wins (`mergeHealth`); otherwise the pull result stands. Install for the SUPERVISOR is in [hooks/README.md](hooks/README.md).
 

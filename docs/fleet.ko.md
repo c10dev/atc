@@ -826,14 +826,14 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 | 코드 | 무엇으로 아나 | 수준 | DISPATCH·SCHEDULE | 누가, 어떻게 |
 |---|---|---|---|---|
-| `LIMIT` | 사용 한도 문구의 `rate_limit`. `resetsAt`은 `quotaLimits`에서, 없으면 "resets 7:40am (UTC)"에서 | ALERT, ACCOUNT마다 한 번(라벨이 없으면 reset 시각마다) | `resetsAt`까지 뺀다. 같은 ACCOUNT의 다른 AIRCRAFT도 | 기다린다. reset 뒤에도 지시가 대답을 못 받았으면 `UNANSWERED`로 바뀐다. structure나 SUPERVISOR가 다시 보낸다 |
+| `LIMIT` | 사용 한도 문구의 `rate_limit`. `resetsAt`은 `quotaLimits`에서, 없으면 "resets 7:40am (UTC)"에서 | ALERT, ACCOUNT마다 한 번(라벨이 없으면 reset 시각마다) | `resetsAt`까지 뺀다. 같은 ACCOUNT의 다른 AIRCRAFT도 | 기다린다. reset 뒤에도 지시가 대답을 못 받았으면 `UNANSWERED`로 바뀐다. 지시를 보낸 쪽(OCC·사용자)이나 SUPERVISOR가 다시 보낸다 |
 | `THROTTLE` | `rate_limit` "not your usage limit", overloaded, 그 밖의 `server_error` | INFO, 30분에 3번이면 ALERT | — | 몇 분 뒤 다시 보낸다. 10분 넘게 대답이 없으면 `UNANSWERED`로 바뀐다 |
 | `NETWORK` | "Unable to connect", SSL·TLS, 연결 오류 | ALERT, 기계에 한 번 | — | SUPERVISOR가 네트워크·프록시·`ANTHROPIC_BASE_URL`/`NO_PROXY`를 보고 다시 보낸다 |
 | `MODEL` | `model_not_found` | ALERT | 뺀다 | SUPERVISOR가 모델이나 경로를 고쳐 다시 띄운다. 그대로 재시도하지 않는다 |
 | `CONTEXT` | "Prompt is too long", compaction 실패 | ALERT | 뺀다 | 새 CREW BRIEFING으로 RESTART. STAND와 PR은 HANDOFF |
 | `PROVIDER` | OpenAI 호환 경로의 `unknown` 오류(400 schema, `name` 길이, 본문 없는 상태 코드) | ALERT | 뺀다 | 기본 경로로 다시 띄우고, 그 경로의 버그를 올린다 |
 | `PENDING` | idle인데 마지막 대답의 `tool_use`에 `tool_result`가 없음. push: `permission_prompt`·`elicitation_dialog` 알림(세션 파일이 `busy`여도) | INFO | — | SUPERVISOR가 그 세션에서 승인하거나 거절한다 |
-| `UNANSWERED` | idle이고, 턴을 연 마지막 지시에 10분 동안 대답이 없음(`LIMIT`·`THROTTLE`이 대답 없이 끝난 경우도) | ALERT | — | structure나 SUPERVISOR가 다시 보낸다. atc는 보내지 않는다 |
+| `UNANSWERED` | idle이고, 턴을 연 마지막 지시에 10분 동안 대답이 없음(`LIMIT`·`THROTTLE`이 대답 없이 끝난 경우도) | ALERT | — | 지시를 보낸 쪽(OCC·사용자)이나 SUPERVISOR가 다시 보낸다. atc는 보내지 않는다 |
 | `HUNG` | busy인데 30분 동안 기록이 없음 | INFO, 60분이면 ALERT | 뺀다 | SUPERVISOR가 들여다본다. 계속되면 RESTART |
 | `DENIED` | 10분 안에 거부·hook 막힘 3번 이상 | INFO | — | SUPERVISOR가 permission 규칙으로 허용하거나 다시 브리핑한다 |
 | `UNKNOWN` | 그 밖의 API 오류 | ALERT | — | SUPERVISOR가 오류 한 줄을 보고 판단한다 |
@@ -847,7 +847,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - 라벨이 없는 AIRCRAFT는 기본 계정(`default`)으로 센다. 라벨이 달린 AIRCRAFT가 하나도 없으면 atc는 계정을 모른다: `LIMIT`은 전처럼 reset 시각으로 묶고, 다른 AIRCRAFT는 붙들지 않는다.
 - 한 AIRCRAFT의 `LIMIT`은 같은 ACCOUNT의 살아 있는 다른 AIRCRAFT 모두를 그 reset까지 붙든다(그 계정에서 여럿이 걸렸으면 가장 늦은 reset까지, reset을 모르면 `LIMIT`이 풀릴 때까지). DISPATCH는 STAND 없는 FLIGHT까지 그들을 건너뛰고, SCHEDULE NEW는 tail로 받지 않는다. 사유는 `HOLD · LIMIT (account pro-2) until 07:40Z — 같은 ACCOUNT의 TEAM_K가 사용 한도에 걸림`.
 - 붙들린 형제는 자기 health 코드를 받지 않는다(멈춘 것이 아니다). 그래서 따로 경보나 FLEET PLAN 제안이 나오지 않는다. 그 ACCOUNT의 `LIMIT` 경보 하나가 그들을 적는다: `LIMIT (account pro-2) — TEAM_K 사용 한도, reset 07:40Z까지 HOLD · 같은 ACCOUNT도 HOLD: TEAM_L`.
-- ACCOUNT는 팀 세션(DISPATCH `teamPattern`)에만 있다. structure 같은 다른 세션의 `LIMIT`은 전처럼 reset 시각으로 묶고, AIRCRAFT를 붙들지 않는다.
+- ACCOUNT는 팀 세션(DISPATCH `teamPattern`)에만 있다. ENGINEERING 같은 다른 세션의 `LIMIT`은 전처럼 reset 시각으로 묶고, AIRCRAFT를 붙들지 않는다.
 
 **Push(`hooks/health.mjs`, ATC-47).** Claude Code hook이 멈춘 순간을 바로 알려서, 승인을 기다리는 세션이 30분 뒤 `HUNG`이 아니라 곧바로 `PENDING`으로 보인다. 이벤트마다 상태 폴더의 `health/<sessionId>.jsonl`에 한 줄을 덧붙인다: `{t, event, code?, error?, line?}`(`StopFailure`, `Notification`, `Stop`, `PostToolUse`. 코드·시각·오류 첫 줄만, 본문 없음). 서버는 세션마다 마지막 줄을 읽고, 대화 기록의 마지막 사실보다 새 push 기록이 이긴다(`mergeHealth`). 아니면 pull 결과가 그대로 선다. SUPERVISOR의 설치 방법은 [hooks/README.ko.md](hooks/README.ko.md)에 있다.
 

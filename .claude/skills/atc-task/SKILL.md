@@ -64,7 +64,7 @@ cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-
 git diff --name-only origin/main...HEAD | node deploy/landing-tier.mjs
 ```
 
-- `auto`나 `flagged`: CI가 통과하고 structure가 검토하면 structure가 머지한다.
+- `auto`나 `flagged`: CI가 통과하면 사용자가 머지한다(MCC가 `land` 모드가 되면 MCC가 INSPECTION 뒤 착륙).
 - `user`: 사용자가 머지한다. guard, 루트 `.claude/`, 루트 `CLAUDE.md`, `.github/`, 의존성, `hooks/`, `deploy/`를 바꾸면 이 등급이다.
 
 ## 7. PR
@@ -76,9 +76,9 @@ git diff --name-only origin/main...HEAD | node deploy/landing-tier.mjs
 
 ## 8. 보고
 
-일을 맡긴 세션(보통 structure)에만 `SendMessage`로 보고한다. 다른 팀 세션에는 보내지 않는다.
+일을 맡긴 세션(보통 ENGINEERING)에만 `SendMessage`로 보고한다. 다른 팀 세션에는 보내지 않는다.
 
-- 첫 줄: `[TEAM_X → structure] ATC-<n>: PR #<번호> <링크>`
+- 첫 줄: `[TEAM_X → ENGINEERING] ATC-<n>: PR #<번호> <링크>`
 - 한 일을 요약한다(항목 3~5개).
 - 명세와 다르게 한 점, PILOT'S DISCRETION으로 고른 것과 그 이유를 적는다.
 - 등급을 적고, `flagged`면 바뀐 관제 규칙을 적는다.
