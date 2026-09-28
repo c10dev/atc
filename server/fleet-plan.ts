@@ -210,11 +210,15 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
       });
       continue;
     }
-    // 맞는 AIRCRAFT가 모두 FUEL hold면, 다른 이유로 막혀도 FUEL을 먼저 말한다
-    const blockedBy = (why: string) => (heldText ? `${heldText} · ${why}` : why);
+    // 맞는 AIRCRAFT가 모두 FUEL hold면 아무것도 제안하지 않는다(ENTRY로 넘기지 않는다, ENGINEERING 결정).
+    // 새 세션은 이 기기에 로그인된 계정으로 열리는데 atc는 그 계정을 모른다 — 바닥난 계정에 새 세션을 띄우자는 제안이 될 수 있다
+    if (heldFits.length) {
+      row.blocked = `${heldText} — ENTRY도 제안 안 함(새 세션이 열릴 계정을 모름)`;
+      continue;
+    }
     // 맞는 등록 AIRCRAFT가 없으면 새로 들이기. tail로 정한 FLIGHT는 그 팀만 받으므로 새 AIRCRAFT로 풀리지 않는다
     if (!i.nextRegistration) {
-      row.blocked = blockedBy("맞는 AIRCRAFT가 없고 남은 등록번호도 없음");
+      row.blocked = "맞는 AIRCRAFT가 없고 남은 등록번호도 없음";
       continue;
     }
     const open = mine.filter((u) => !u.tails.length);
@@ -226,13 +230,13 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
       .filter((x) => x.served.length)
       .sort((x, y) => y.served.length - x.served.length);
     if (!configs.length) {
-      row.blocked = blockedBy(open.length ? "맞는 등록 AIRCRAFT도 CONFIGURATION도 없음" : `tail로 정한 팀이 운항할 수 없음: ${mine.map((u) => `${u.flight}(tail:${u.tails.join(",")})`).join(", ")}`);
+      row.blocked = open.length ? "맞는 등록 AIRCRAFT도 CONFIGURATION도 없음" : `tail로 정한 팀이 운항할 수 없음: ${mine.map((u) => `${u.flight}(tail:${u.tails.join(",")})`).join(", ")}`;
       continue;
     }
-    // 새 AIRCRAFT는 default ACCOUNT로 센다
+    // 평소의 ENTRY(맞는 등록 AIRCRAFT가 없음)는 새 AIRCRAFT를 default ACCOUNT로 센다
     const entryFuel = fuelOfPlan(i, "ENTRY", i.nextRegistration);
     if (entryFuel?.level === "hold") {
-      row.blocked = [heldText, `${fuelHoldText(entryFuel, i.now)} — 새 AIRCRAFT(ENTRY)가 들 ACCOUNT`].filter(Boolean).join(" · ");
+      row.blocked = `${fuelHoldText(entryFuel, i.now)} — 새 AIRCRAFT(ENTRY)가 들 ACCOUNT`;
       continue;
     }
     const pick = configs[0];
@@ -241,9 +245,7 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
       key: `DEMAND|${code}`, kind: "ENTRY", aircraft: i.nextRegistration, airport: code, configuration: pick.id,
       reasons: [
         ...common(pick.served),
-        heldFits.length
-          ? { code: "fuel-held", detail: `${code}의 맞는 등록 AIRCRAFT는 FUEL hold: ${heldText}` }
-          : { code: "no-fit", detail: `${code}에 운항하지 않는 등록 AIRCRAFT 중 맞는 것이 없음` },
+        { code: "no-fit", detail: `${code}에 운항하지 않는 등록 AIRCRAFT 중 맞는 것이 없음` },
         { code: "fits", detail: `${pick.id} CONFIGURATION: TYPE RATING ${c.ratings.join("·")}, CREW ${c.complement.map((m) => m.position).join("·")}` },
         ...(entryFuel?.level === "info" ? [fuelInfoReason(entryFuel, i.now)] : []),
       ],

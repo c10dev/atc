@@ -28,7 +28,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 
 ### 추가
 - FLEET PLAN이 FUEL REMAINING을 본다(ATC-63, [docs/fleet.ko.md](docs/fleet.ko.md) 8.6, [docs/fuel.md](docs/fuel.md) 6.1).
-  - ACCOUNT가 hold 수준(`holdPct`, 95 %)인 AIRCRAFT는 LAUNCH를 제안하지 않는다. 다음으로 맞는 AIRCRAFT를 고르고, 없으면 ENTRY를 제안한다. ENTRY는 `default` ACCOUNT로 세므로 `default`도 hold면 ENTRY도 없고, AIRPORT 수요 줄이 이유를 말한다(`FUEL 100% (account acct-1) until 21:48Z — TEAM_Q`).
+  - ACCOUNT가 hold 수준(`holdPct`, 95 %)인 AIRCRAFT는 LAUNCH를 제안하지 않고 다음으로 맞는 AIRCRAFT를 고른다. 맞는 AIRCRAFT가 모두 hold면 ENTRY도 내지 않고 아무것도 제안하지 않는다(새 세션은 이 기기에 로그인된 계정으로 열리는데 atc는 그 계정을 모른다). AIRPORT 수요 줄이 이유를 말한다(`FUEL 100% (account acct-1) until 21:48Z — TEAM_Q — ENTRY도 제안 안 함(새 세션이 열릴 계정을 모름)`). 맞는 등록 AIRCRAFT가 아예 없어 내는 ENTRY는 `default` ACCOUNT로 세고, `default`가 hold면 내지 않는다.
   - info 수준(`infoPct`, 80 %)이면 제안에 `fuel` 사유 줄이 붙는다. 열린 LAUNCH·ENTRY의 ACCOUNT가 hold가 되면 FUEL 글을 사유로 expire한다.
   - DISPATCH FUEL HOLD 스위치(D3)와 상관없이 hold 수준을 쓴다(ENGINEERING 결정). DISPATCH는 그대로다. FUEL은 ACCOUNT 라벨로 찾으므로 세션이 없는 AIRCRAFT와 관제 세션만 적은 ACCOUNT도 잡힌다.
   - FLEET PLAN 블록에 ACCOUNT마다 FUEL 한 줄("주간 사용량 줄"): 가장 많이 쓴 창과 reset, 제안에 주는 영향, AIRCRAFT와 관제 세션. `GET /api/fleet/plan`의 `fuel`로 오고, 볼 때의 스냅샷에서 읽는다.

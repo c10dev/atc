@@ -500,23 +500,21 @@ const fuelOf = (account: string | null, pct: number, over: Partial<FuelRemaining
 const fuelBase = (fuelAccounts: FuelRemaining[], aircraft = [view("TEAM_I", { status: "absent", account: "acct-1" })]) =>
   inputs({ aircraft, plan: { assign: [], unserved: [need("ATC-2")] }, fuelAccounts });
 
-test("FUEL: ACCOUNT가 hold면 LAUNCH 없음 — ENTRY의 default ACCOUNT도 hold면 AIRPORT 수요 줄이 FUEL을 말한다(D3 스위치와 상관없이)", () => {
-  const out = fleetPlanOf(fuelBase([fuelOf("acct-1", 100, { aircraft: ["TEAM_I"] }), fuelOf("default", 97)]));
+test("FUEL: 맞는 AIRCRAFT의 ACCOUNT가 hold면 LAUNCH 없음 — AIRPORT 수요 줄이 FUEL을 말한다(D3 스위치와 상관없이)", () => {
+  const out = fleetPlanOf(fuelBase([fuelOf("acct-1", 100, { aircraft: ["TEAM_I"] })]));
   assert.deepEqual(out.candidates, []);
-  const why = out.demand.find((d) => d.airport === "ATCC")!.blocked!;
-  assert.match(why, /^FUEL 100% \(account acct-1\) until 21:00Z — TEAM_I/);
-  assert.match(why, /FUEL 97% \(account default\) until 21:00Z — 새 AIRCRAFT\(ENTRY\)/);
+  assert.equal(out.demand.find((d) => d.airport === "ATCC")!.blocked, "FUEL 100% (account acct-1) until 21:00Z — TEAM_I — ENTRY도 제안 안 함(새 세션이 열릴 계정을 모름)");
 });
 
-test("FUEL: 맞는 AIRCRAFT의 ACCOUNT가 hold면 건너뛰고 다음 AIRCRAFT, 없으면 default ACCOUNT로 ENTRY(사유에 FUEL hold)", () => {
+test("FUEL: 맞는 AIRCRAFT의 ACCOUNT가 hold면 건너뛰고 다음 AIRCRAFT. 모두 hold면 ENTRY로 넘기지 않는다(default가 비어 있어도)", () => {
   const two = [view("TEAM_I", { status: "absent", account: "acct-1" }), view("TEAM_J", { status: "absent", account: "acct-2" })];
   const next = fleetPlanOf(fuelBase([fuelOf("acct-1", 100)], two));
   assert.deepEqual(kinds(next.candidates), ["LAUNCH TEAM_J"]);
   assert.match(next.candidates[0].reasons.find((r) => r.code === "fuel-held")!.detail, /FUEL 100% \(account acct-1\).*TEAM_I/);
-  const entry = fleetPlanOf(fuelBase([fuelOf("acct-1", 100)]));
-  assert.deepEqual(kinds(entry.candidates), ["ENTRY TEAM_L"]);
-  assert.ok(entry.candidates[0].reasons.some((r) => r.code === "fuel-held"));
-  assert.ok(!entry.candidates[0].reasons.some((r) => r.code === "no-fit"));
+  // default ACCOUNT에 기록이 없어도(ok로 보이지 않아도) ENTRY를 내지 않는다 — 새 세션이 열릴 계정을 atc는 모른다
+  const none = fleetPlanOf(fuelBase([fuelOf("acct-1", 100)]));
+  assert.deepEqual(none.candidates, []);
+  assert.match(none.demand[0].blocked!, /^FUEL 100% \(account acct-1\) until 21:00Z — TEAM_I — ENTRY도 제안 안 함/);
 });
 
 test("FUEL: info면 제안하고 FUEL 사유 줄을 단다. ENTRY는 default ACCOUNT의 값으로", () => {
@@ -547,8 +545,10 @@ test("FUEL: 기록이 없거나 ok면 전과 같다. ACCOUNT를 모르면(라벨
   // 라벨 없음: group aircraft:TEAM_I만 본다. 남의 AIRCRAFT 값은 보지 않는다
   const bare = [view("TEAM_I", { status: "absent", account: null })];
   assert.deepEqual(fleetPlanOf(fuelBase([fuelOf(null, 100, { group: "aircraft:TEAM_H" })], bare)).candidates.length, 1);
-  // 자기 값이 hold면 건너뛴다. 라벨이 없으면 새 AIRCRAFT의 ACCOUNT도 모르니 ENTRY는 막지 않는다
-  assert.deepEqual(kinds(fleetPlanOf(fuelBase([fuelOf(null, 100, { group: "aircraft:TEAM_I" })], bare)).candidates), ["ENTRY TEAM_L"]);
+  // 자기 값이 hold면 건너뛰고, ENTRY로도 넘기지 않는다
+  const own = fleetPlanOf(fuelBase([fuelOf(null, 100, { group: "aircraft:TEAM_I" })], bare));
+  assert.deepEqual(own.candidates, []);
+  assert.match(own.demand[0].blocked!, /^FUEL 100% until 21:00Z — TEAM_I — ENTRY도 제안 안 함/);
 });
 
 test("FUEL: 관제 세션만 적은 ACCOUNT도 hold면 그 ACCOUNT의 AIRCRAFT를 LAUNCH하지 않는다", () => {
