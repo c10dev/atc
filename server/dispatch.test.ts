@@ -937,3 +937,11 @@ test("unserved: 받을 AIRCRAFT가 없는 FLIGHT만 — 자격 없음, tail 세�
   const full = planDispatch(s, new Map(), cfg({ slots: { ...DEFAULT_DISPATCH_CONFIG.slots, airborne: { VCDO: 2 } } }), NOW);
   assert.deepEqual((full.unserved ?? []).map((u) => u.flight).sort(), ["VOC-1", "VOC-2"]);
 });
+
+test("GROUND DELAY(ATC-62): 켜진 CI 혼잡은 그 AIRPORT의 AIRBORNE 한도를 하나 줄이고, 그림자면 그대로", () => {
+  const delay = (enforced: boolean) => ({ airport: "VCDO", repo: VCDO, trigger: "congestion" as const, kind: "delay" as const, land: false, enforced, text: "CI 혼잡", evidence: [], since: new Date(NOW).toISOString() });
+  const base = { sessions: [session("a", "TEAM_A"), session("b", "TEAM_B")], tickets: [ticket("VOC-130", { priority: 1 }), ticket("VOC-131", { priority: 2 })] };
+  const plan = (enforced: boolean) => planDispatch(snap({ ...base, atfm: { mains: [], groundStops: [delay(enforced)] } }), new Map(), cfg({ slots: { ...DEFAULT_DISPATCH_CONFIG.slots, airborne: { VCDO: 2 } } }), NOW);
+  assert.deepEqual([plan(true).assign.length, plan(true).slots[0].limit], [1, 1]);
+  assert.deepEqual([plan(false).assign.length, plan(false).slots[0].limit], [2, 2]);
+});

@@ -121,10 +121,10 @@ export class EventLog {
   }
 }
 
-// 켜진 스위치로 실제로 막는 출발 중지(GROUND STOP)의 시작·끝. TOWER가 HOLD·CONTINUE CLEARANCE를 낸다.
-// 그림자 출발 중지는 이벤트를 내지 않는다(FLIGHT RECORDER의 atfm 줄에만 남는다).
+// 켜진 스위치로 LAND까지 막는 출발 중지(GROUND STOP)의 시작·끝. TOWER가 HOLD·CONTINUE CLEARANCE를 낸다.
+// 그림자 출발 중지, ASSIGN만 막는 LOS, GROUND DELAY는 이벤트를 내지 않는다(FLIGHT RECORDER의 atfm 줄에만 남는다).
 export function diffGroundStops(prev: Snapshot, next: Snapshot): Draft[] {
-  const on = (s: Snapshot) => new Map((s.atfm?.groundStops ?? []).filter((g) => g.enforced && g.kind === "stop").map((g) => [stopKey(g), g]));
+  const on = (s: Snapshot) => new Map((s.atfm?.groundStops ?? []).filter((g) => g.enforced && g.kind === "stop" && g.land !== false).map((g) => [stopKey(g), g]));
   const was = on(prev);
   const is = on(next);
   const out: Draft[] = [];

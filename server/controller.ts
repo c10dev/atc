@@ -65,7 +65,7 @@ export function buildBrief(
   // LANDING SEQUENCE: Draft가 아닌 열린 PR. CLEARED TO LAND가 readyAt 순으로 앞(seq 1, 2, …), 그 뒤 APPROACH.
   const sequence = s.pulls.filter(inSequence);
   // ATFM: 켜진 출발 중지(그 AIRPORT에는 LAND를 내지 않는다)와 머지 슬롯(slots가 on이면 waiting-slot PR에 slotHold)
-  const stopped = enforcedStops(s.atfm?.groundStops ?? []);
+  const stopped = enforcedStops(s.atfm?.groundStops ?? [], "land"); // LAND를 막는 것만(LOS는 ASSIGN만 막는다, ATC-62)
   const mainOf = new Map((s.atfm?.mains ?? []).map((m) => [m.repo, m]));
   const priorityOf = new Map(s.tickets.map((t) => [t.key, t.priority]));
   const slots =

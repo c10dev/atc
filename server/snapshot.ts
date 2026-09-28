@@ -20,13 +20,13 @@ import { loadFleet } from "./fleet.ts";
 import { fuelAccountsOf, fuelByAircraft, fuelConfigOf, type FuelMember } from "./fuel-remaining.ts";
 import { readFuelRecords } from "./fuel-run.ts";
 import { readLandingReviews } from "./landing-review.ts";
-import { type GroundStop, groundStopsOf, loadAtfm, stopKey } from "./atfm.ts";
+import { type GroundStop, groundStopsOf, holdStops, loadAtfm, readRecordedStops, reviveStops, stopFigures } from "./atfm.ts";
 import { fastTrackOf, isHeld, loadAutoland, loadAutolandState, mergeExclusionOf, planAutoland } from "./autoland.ts";
 
 // PR head별로 CLEARED TO LAND가 처음 된 시각 (메모리, 서버를 재시작하면 다시 센다)
 const readySince = new Map<string, string>();
-// 출발 중지를 처음 본 시각 (메모리, 재시작하면 다시 센다)
-const stopSince = new Map<string, string>();
+// 지난 스냅샷의 출발 중지(해제 규칙까지 붙든 것 포함, ATC-62). 처음에는 atfm-state.json에 적힌 것으로 되살린다
+let heldStops: GroundStop[] | null = null;
 
 const fresh = (c: Claim) => Date.now() - Date.parse(c.lastAt) < config.claimTtlMs;
 
@@ -192,15 +192,11 @@ export async function buildSnapshot(): Promise<Snapshot> {
       const repo = a.kind === "conflict" && a.workspacePath ? repoOf.get(a.workspacePath) : undefined;
       if (repo) losOpen.set(repo, (losOpen.get(repo) ?? 0) + 1);
     }
-    const found = groundStopsOf({ airports: airports.open, mains: github.mainByRepo, pulls: github.byRepo, losOpen, cfg: loadAtfm(), now });
-    const at = new Date(now).toISOString();
-    const keys = new Set(found.map(stopKey));
-    for (const k of stopSince.keys()) if (!keys.has(k)) stopSince.delete(k);
-    groundStops = found.map((s) => {
-      const k = stopKey(s);
-      if (!stopSince.has(k)) stopSince.set(k, at);
-      return { ...s, since: stopSince.get(k)! };
-    });
+    const cfg = loadAtfm();
+    const figures = stopFigures();
+    const found = groundStopsOf({ airports: airports.open, mains: github.mainByRepo, pulls: github.byRepo, losOpen, ciTrend: figures.ciTrend, losDay: figures.losDay, cfg, now });
+    heldStops ??= reviveStops(readRecordedStops(), airports.open);
+    groundStops = heldStops = holdStops(heldStops, found, { pulls: github.byRepo, cfg, now });
   }
 
   // AUTOLAND(ATC-34): AIRPORT마다 다음 할 일과 PR마다 표시. merge 모드면 CLEARED PR의 제외 사유(HOLD, FLIGHT, 라벨, 보안 게이트, Human Preview)

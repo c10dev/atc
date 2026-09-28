@@ -656,7 +656,9 @@ export function planDispatch(
     const load = keys.length ? Math.max(...keys.map(wakeOfKey)) : 1;
     airborneAt.set(code, (airborneAt.get(code) ?? 0) + (Number.isFinite(load) ? load : 1));
   }
-  const limitOf = (code: string) => cfg.slots.airborne[code] ?? cfg.slots.defaultAirborne;
+  // 켜진 GROUND DELAY(CI 혼잡, ATC-62)는 그 AIRPORT의 AIRBORNE 슬롯을 하나 줄인다
+  const delayed = new Set((s.atfm?.groundStops ?? []).filter((g) => g.enforced && g.kind === "delay").map((g) => g.airport)); // atfm.ts delayedAirports와 같다
+  const limitOf = (code: string) => Math.max(0, (cfg.slots.airborne[code] ?? cfg.slots.defaultAirborne) - (delayed.has(code) ? 1 : 0));
   type Candidate = (typeof eligible)[number];
   // 짝마다 공통: tail, TYPE RATING·CREW, CHECK 독립성. CHECK에는 독립성 표시(0점)를 붙인다.
   // 24시간 안에 제안됐다 닫힌 짝은 후보에서 뺀다(syncOps의 seen과 같은 기준). 뺀 짝과 짝이 남은 FLIGHT를 적어 둔다

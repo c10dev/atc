@@ -84,7 +84,7 @@ function airportOf(s: Snapshot) {
   const slug = main?.slug ?? slugOfUrl(s.pulls.find((p) => p.repo === a.repo)?.url ?? "");
   if (!slug) throw new MccError(`${cfg.airport}의 GitHub 저장소를 아직 모름 — atc가 GitHub을 읽은 뒤(90초 안) 다시`, 409);
   const mainCi: CiState = !main?.sha ? "none" : main.state === "success" ? "ok" : main.state === "pending" ? "pending" : main.state === "none" ? "none" : "failed";
-  const stop = s.atfm.groundStops.find((g) => g.airport === cfg.airport && g.kind === "stop" && g.enforced);
+  const stop = s.atfm.groundStops.find((g) => g.airport === cfg.airport && g.kind === "stop" && g.enforced && g.land !== false);
   return { cfg, repo: a.repo, slug, defaultBranch: main?.branch ?? "main", main: main?.sha ?? null, mainCi, groundStop: stop ? stop.text : null };
 }
 
