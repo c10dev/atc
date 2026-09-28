@@ -220,3 +220,19 @@ test("관제 세션 ACCOUNT 저장: 소문자로, 다른 항목은 그대로, �
   assert.equal(saveControlAccount("MCC", "", file), null);
   assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { aircraft: { TEAM_A: { account: "main" } } });
 });
+
+test("FLEET 화면(ATC-67): `Team G` 세션은 TEAM_G 항목과 한 AIRCRAFT, 이름 힌트. 같은 REGISTRATION의 세션 둘은 충돌", () => {
+  const session = (id: string, name: string) =>
+    ({ id, name, status: "idle", repo: "/r/vocado", cwd: "/r/vocado", agent: "claude", pid: 1, startedAt: "", lastActiveAt: "", workspacePath: null }) as Session;
+  const fleet = { defaults: D, aircraft: { TEAM_G: { ratings: ["SEC" as const], account: "pro-2" }, Team_H: { note: "옛 키 표기" } } };
+  const view = fleetView({ sessions: [session("g", "Team G"), session("h1", "TEAM_H"), session("h2", "team-h"), session("t", "TOWER")], claims: [], workspaces: [], airports: [] }, fleet);
+  assert.deepEqual(
+    view.map((a) => `${a.registration}:${a.status}:${a.ratings.join("+")}:${a.account}:${a.note}:${a.sessionName}:${a.sessionConflict?.join(",") ?? "-"}`),
+    ["TEAM_G:idle:SEC:pro-2:null:Team G:-", "TEAM_H:idle:UI+DATA+DOCS:default:옛 키 표기:team-h:TEAM_H,team-h"],
+  );
+  // 정식 이름이면 힌트 없음
+  const plain = fleetView({ sessions: [session("g", "TEAM_G")], claims: [], workspaces: [], airports: [] }, fleet);
+  assert.equal(plain[0].sessionName, null);
+  assert.equal(plain[0].sessionConflict, null);
+});
+

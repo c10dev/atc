@@ -19,6 +19,7 @@ import { sessionDirsOf } from "./crew-observed.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
 import { type GhMerged, listMerged, threadsOf } from "./sources/github.ts";
+import { regKey } from "./registration.ts";
 
 // LOGBOOK: AIRCRAFT별 완료(ARRIVED) FLIGHT 기록. 기본 브랜치에 머지된 PR 하나가 한 줄이다.
 // ~/.local/state/atc/logbook.jsonl에 추가만 하고, 되돌림(Revert PR)은 reverted 줄로 덧붙인다.
@@ -202,7 +203,7 @@ export function buildEntry(pr: GhMerged, ctx: EntryContext): LogEntry {
   const reviews = pr.reviews ?? [];
   return {
     key: `${ctx.slug}#${pr.number}`,
-    aircraft: flown[0]?.name?.toUpperCase() ?? dep.aircraft,
+    aircraft: flown[0]?.name ? regKey(flown[0].name, ctx.teamPattern) : dep.aircraft && regKey(dep.aircraft, ctx.teamPattern), // 새 줄은 정식 REGISTRATION(ATC-67)
     flight,
     class: c && { type: c.type, wake: c.wake, ratings: c.ratings, explicit: c.explicit },
     airport: ctx.airport,
@@ -364,8 +365,9 @@ export function expectationMin(e: LogEntry, all: LogEntry[]): number | null {
 }
 
 export function computeActuals(entries: LogEntry[], registration: string, now: number, weekFrom = weekStartOf(now)): Actuals {
-  const reg = registration.toUpperCase();
-  const mine = entries.filter((e) => e.aircraft === reg).sort((a, b) => b.arrivedAt.localeCompare(a.arrivedAt));
+  const reg = regKey(registration);
+  // 옛 줄의 표기도(ATC-67)
+  const mine = entries.filter((e) => regKey(e.aircraft) === reg).sort((a, b) => b.arrivedAt.localeCompare(a.arrivedAt));
   const since = now - ACTUALS_DAYS * DAY;
   const window = mine.filter((e) => Date.parse(e.arrivedAt) >= since && Date.parse(e.arrivedAt) <= now);
   const judged = (e: LogEntry) => {
@@ -503,12 +505,12 @@ export function loadPricedLogbook(): PricedEntry[] {
 export function mountLogbook(app: Hono) {
   app.get("/api/logbook", (c) => {
     const days = Math.min(90, Math.max(1, Number(c.req.query("days")) || ACTUALS_DAYS));
-    const aircraft = c.req.query("aircraft")?.toUpperCase() ?? null;
+    const aircraft = c.req.query("aircraft") ? regKey(c.req.query("aircraft")) : null;
     const now = Date.now();
     const since = now - days * DAY;
     const all = loadPricedLogbook();
     // trip(FUEL F8, ATC-56): 그 FLIGHT의 NET이 같은 TYPE × WAKE(모자라면 WAKE, AIRPORT) TRIP FUEL p90 안이었나. 값이 없으면 verdict null
-    const entries = all.filter((e) => Date.parse(e.arrivedAt) >= since && (!aircraft || e.aircraft === aircraft)).map((e) => ({ ...e, trip: tripCheckOf(e, all, now) }));
+    const entries = all.filter((e) => Date.parse(e.arrivedAt) >= since && (!aircraft || regKey(e.aircraft) === aircraft)).map((e) => ({ ...e, trip: tripCheckOf(e, all, now) }));
     return c.json({ days, aircraft, entries, ...logbookState });
   });
   // VECTORS 대 DIRECT(ATC-32): 기간 안 ARRIVED FLIGHT를 지시서 종류별로 나눈 지표와 행

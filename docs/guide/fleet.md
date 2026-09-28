@@ -258,3 +258,7 @@ FLEET 탭 카드 아래의 CHECKRIDE는 팀마다, TYPE RATING(SEC · UI · DATA
 ## 이름
 
 `TEAM_X`는 REGISTRATION으로 그대로 둔다. vocado 규칙, `tail:` 라벨, planner가 모두 이 이름에 걸려 있다. atc의 말로 팀은 CAPTAIN이 이끄는 CREW가 모는 AIRCRAFT다.
+
+세션 이름은 `TEAM_G`로 짓는다. `Team G`, `TEAM-G`, `team_g`처럼 적어도 atc는 같은 AIRCRAFT(`TEAM_G`)로 읽고 FLEET 항목, `tail:` 라벨, ACCOUNT에 이어 준다. 대신 FLEET 카드에 "세션 이름 Team G → TEAM_G로 바꾸면 좋다"가 보이고, 목록의 REGISTRATION 옆에 `이름` 표시가 붙는다. DISPATCH의 FLIGHT PLAN은 실제 세션 이름(`Team G`)으로 보내므로 그대로 받지만, 이름을 바꿔 두면 헷갈릴 일이 없다.
+
+같은 REGISTRATION으로 읽히는 세션이 둘 이상 떠 있으면(예: `TEAM_H`와 `team-h`, 또는 계정을 바꿔 같은 이름을 다시 띄움) FLEET는 둘을 합치지 않고 "세션 2개가 TEAM_H로 읽힘"으로 알린다. 하나만 남기거나 이름을 바꾼다.

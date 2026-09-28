@@ -4,6 +4,7 @@ import { countWarnings, type CrewWarning, type CrewWarningCounts, crewShareOf, e
 import { addLeak, emptyLeaks, type LeakCounts, leakCountsOf, type LeakEvent, type LeakTotals, OUTSIDE_LEAK } from "./fuel-leaks.ts";
 import type { LogEntry } from "./logbook.ts";
 import type { Claim } from "./model.ts";
+import { regKey } from "./registration.ts";
 
 // FUEL F4(ATC-53, docs/fuel.md 4·8.2): F1의 요청 기록을 FLIGHT 구간으로 자른다. 순수 함수만 둔다(읽기는 fuel-run.ts·logbook.ts).
 // FLIGHT 구간은 LOGBOOK departedAt–arrivedAt, 그 안에서 누가 몰았는지는 착수 기록(departures.jsonl)의 AIRCRAFT 줄,
@@ -76,8 +77,9 @@ const tokens = (): ModelTokens => ({ ...zero(), requests: 0 });
 // 착수 기록 AIRCRAFT 줄 → 구간 안 Segment. 첫 줄은 출발 시각까지 당긴다(STAND를 먼저 만들고 곧 점유하므로).
 // AIRCRAFT 줄이 없으면 fallback(LOGBOOK의 AIRCRAFT)이 구간 전체를 몬 것으로 본다
 export function segmentsOf(lines: Departure[], from: number, to: number, fallback: string | null): Segment[] {
-  const flown = lines.filter((d) => d.aircraft).sort((a, b) => a.t.localeCompare(b.t));
-  if (!flown.length) return fallback ? [{ aircraft: fallback, from, to }] : [];
+  // 옛 줄의 표기(`TEAM G`)도 한 REGISTRATION으로(ATC-67)
+  const flown = lines.filter((d) => d.aircraft).map((d) => ({ ...d, aircraft: regKey(d.aircraft) })).sort((a, b) => a.t.localeCompare(b.t));
+  if (!flown.length) return fallback ? [{ aircraft: regKey(fallback), from, to }] : [];
   const out: Segment[] = [];
   flown.forEach((d, i) => {
     const start = i === 0 ? from : Math.max(from, Date.parse(d.t));

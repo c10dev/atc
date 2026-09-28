@@ -9,6 +9,7 @@ import { keyInName, keyPatternOf, teamOfKey } from "./linear-keys.ts";
 import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
 import { REASON_CODES } from "./reasons.ts";
+import { DEFAULT_TEAM_PATTERN, regKey } from "./registration.ts";
 
 // 2단계 DISPATCH: 어떤 FLIGHT를 어떤 AIRCRAFT에 보낼지 계산한다(순수 함수 planDispatch).
 // 제안을 기록하고 보이는 것은 proposals.ts, 설계는 docs/dispatch.md.
@@ -57,7 +58,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   releaseDays: 3,
   releaseStates: ["In Progress"],
   excludeLabels: ["symphony-pilot"],
-  teamPattern: "^TEAM[\\s_-]?[A-Z]$",
+  teamPattern: DEFAULT_TEAM_PATTERN,
   externalReview: { security: "exclude" },
   fuel: DEFAULT_FUEL,
 };
@@ -307,7 +308,8 @@ const TAIL_LABEL = /^(tail|lane):\s*(\S+)$/i;
 const TAIL_ONLY = /^(tail):\s*(\S+)$/i;
 export function tailsOf(t: Pick<Ticket, "labels">, now = Date.now()): Set<string> {
   const re = now < LANE_CUTOFF ? TAIL_LABEL : TAIL_ONLY;
-  return new Set(t.labels.map((l) => re.exec(l.trim())?.[2]?.toUpperCase()).filter(Boolean) as string[]);
+  const regs = t.labels.map((l) => re.exec(l.trim())?.[2]).filter(Boolean) as string[];
+  return new Set(regs.map((r) => regKey(r))); // `tail:team-g`도 TEAM_G(ATC-67)
 }
 const usesOldLane = (t: Pick<Ticket, "labels">) => t.labels.some((l) => /^lane:/i.test(l.trim()));
 // 끊긴 뒤 남은 `lane:` 라벨(tail:이 없을 때만): 제외 사유 문구, 없으면 null
@@ -358,7 +360,7 @@ export function checkBuildersOf(target: CheckTarget, airport: { code: string; re
   const out = new Map<string, string[]>();
   const add = (name: string | null | undefined, why: string) => {
     if (!name || !src.team.test(name)) return;
-    const reg = name.toUpperCase();
+    const reg = regKey(name, src.team.source);
     const list = out.get(reg) ?? [];
     if (!list.includes(why)) list.push(why);
     out.set(reg, list);
@@ -412,6 +414,7 @@ export function planDispatch(
   activeWaypoint: Map<string, string> = new Map(), // FLIGHT key → 지금 구간 WAYPOINT(routes.ts activeWaypointsOf, 8단계)
 ): Plan {
   const team = new RegExp(cfg.teamPattern, "i");
+  const regOf = (name: string) => regKey(name, cfg.teamPattern); // 세션 이름 → REGISTRATION(ATC-67)
   const byKey = new Map(s.tickets.map((t) => [t.key, t]));
   const codeOf = (repo: string | null) => (repo ? (s.airports.find((a) => a.repo === repo)?.code ?? null) : null);
   const openAirports = new Set(s.airports.map((a) => a.code));
@@ -460,7 +463,7 @@ export function planDispatch(
       const acct = accountHoldOf(holds, accountOf(fleet, x.name), x.name);
       if (acct) return { ...base, available: false, reason: `${accountHoldLabel(acct, now)} — ${accountHoldDetail(acct)}` };
       // FUEL HOLD(ATC-55, D3): SUPERVISOR 스위치가 켜져 있고 그 ACCOUNT가 holdPct 이상 썼으면 reset까지 배정하지 않는다
-      const fuel = s.fuel?.[x.name.toUpperCase()];
+      const fuel = s.fuel?.[regOf(x.name)];
       if (fuel && fuelHolds(fuel, cfg.fuel ?? DEFAULT_FUEL)) return { ...base, available: false, reason: fuelHoldReason(fuel, now) };
       if (x.status === "busy") return { ...base, available: false, reason: "AIRBORNE" };
       const held = active.filter((c) => c.sessionId === x.id).map((c) => wsTicket.get(c.workspacePath));
@@ -499,7 +502,7 @@ export function planDispatch(
     const target = checkTargetOf(t);
     return { target, builders: checkBuildersOf(target, { code: airport, repo: s.airports.find((a) => a.code === airport)?.repo ?? null }, builderSrc) };
   };
-  const independent = (ac: AircraftState, ind: Independence | null) => !ind || !ind.builders.has(ac.name.toUpperCase());
+  const independent = (ac: AircraftState, ind: Independence | null) => !ind || !ind.builders.has(regOf(ac.name));
   const notIndependentWhy = (ind: Independence) =>
     `CHECK 독립성 — 검토 대상을 만든 ${[...ind.builders.keys()].join(", ")} 말고 이 CHECK를 날 AIRCRAFT 없음 (${independenceDetail(ind)})`;
   for (const t of s.tickets) {
@@ -579,7 +582,7 @@ export function planDispatch(
     const tails = tailsOf(t, now);
     if (tails.size) {
       const tailTag = [...tails].map((n) => `tail:${n}`).join(", ") + (usesOldLane(t) ? " (옛 lane: 라벨 — tail:로 바꿀 것)" : "");
-      const mine = aircraft.filter((ac) => tails.has(ac.name.toUpperCase()));
+      const mine = aircraft.filter((ac) => tails.has(regOf(ac.name)));
       if (!mine.length) {
         excluded.push({ flight: t.key, reason: `${tailTag} — 그 TEAM 세션이 없음` });
         unserved.push(unservedOf(t, airport, cls, "no-tail", tails));
@@ -675,7 +678,7 @@ export function planDispatch(
       .flatMap((t) => {
         const tails = tailsOf(t, now);
         return aircraft
-          .filter((ac) => ok(ac, t) && (!tails.size || tails.has(ac.name.toUpperCase())) && qualifies(ac, t.cls) && independent(ac, t.ind) && notBlocked(ac, t))
+          .filter((ac) => ok(ac, t) && (!tails.size || tails.has(regOf(ac.name))) && qualifies(ac, t.cls) && independent(ac, t.ind) && notBlocked(ac, t))
           .map((ac) => {
             hadPair.add(t.key);
             const sc = score(t, ac);

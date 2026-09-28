@@ -8,6 +8,7 @@ import { agentModelOf } from "./agent-models.ts";
 import { type CrewDrift, OBSERVED_WINDOW_DAYS, type ObservedMember, observeCrew, spawnsFor } from "./crew-observed.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import type { Snapshot } from "./model.ts";
+import { regKey } from "./registration.ts";
 
 // CREW CHANGE: 운항 중인 AIRCRAFT의 CREW COMPLEMENT가 바뀌면 CAPTAIN에게 줄 지시문을 만든다. 설계: docs/fleet.md 8.4.
 // 1단계: SUPERVISOR가 복사해 붙여 넣고 "전달함"(pending·approved → delivered).
@@ -275,12 +276,13 @@ export function noteCrewChange(
   sessions: Pick<Snapshot["sessions"][number], "name" | "status">[],
   at = new Date().toISOString(),
 ): CrewChange | null {
-  const reg = registration.toUpperCase();
-  const inService = !next.retired && sessions.some((x) => x.status !== "dead" && x.name.toUpperCase() === reg);
-  if (!inService) return null;
+  const reg = regKey(registration);
+  // `Team G` 세션도 TEAM_G로 읽는다(ATC-67). 기록의 registration은 OCC가 보낼 실제 세션 이름이다(send-guard가 정확히 맞춰 본다)
+  const live = sessions.find((x) => x.status !== "dead" && regKey(x.name) === reg);
+  if (next.retired || !live) return null;
   const changes = allCrewChanges();
-  const pending = changes.find((c) => c.registration === reg && isUnsent(c)) ?? null;
-  const ops = planCrewChange(pending, stateOf(prev, defaults), stateOf(next, defaults), { registration: reg, id: nextCrewChangeId(changes), at });
+  const pending = changes.find((c) => regKey(c.registration) === reg && isUnsent(c)) ?? null;
+  const ops = planCrewChange(pending, stateOf(prev, defaults), stateOf(next, defaults), { registration: live.name, id: nextCrewChangeId(changes), at });
   append(ops);
   const created = ops.find((o) => o.op === "created");
   return created ? foldCrewChanges([...readOps()]).find((c) => c.id === created.id) ?? null : null;
@@ -309,8 +311,8 @@ export interface CrewFields {
 
 // AIRCRAFT 하나의 열린 CREW CHANGE 중 카드에 보일 것: 보내지 않은 건이 있으면 그것(승인·전달할 일), 없으면 READBACK 대기 건
 export function openCrewChangeOf(changes: CrewChange[], registration: string, now: number): PendingCrewChange | null {
-  const reg = registration.toUpperCase();
-  const mine = changes.filter((c) => c.registration === reg);
+  const reg = regKey(registration);
+  const mine = changes.filter((c) => regKey(c.registration) === reg);
   const sent = mine.find((c) => c.status === "sent") ?? null;
   const p = mine.find(isUnsent) ?? sent;
   if (!p) return null;
@@ -425,10 +427,10 @@ export function selfCheckCrewChange(atcctlSource: string | null, now = Date.now(
 export function mountCrewChange(app: Hono) {
   // 최근 CREW CHANGE 기록(새것 먼저). registration으로 거르고 limit(기본 20, 최대 100)만큼
   app.get("/api/fleet/crew-changes", (c) => {
-    const reg = (c.req.query("registration") ?? "").toUpperCase();
+    const reg = c.req.query("registration") ? regKey(c.req.query("registration")) : "";
     const limit = Math.min(100, Math.max(1, Number(c.req.query("limit")) || 20));
     const changes = allCrewChanges()
-      .filter((x) => !reg || x.registration === reg)
+      .filter((x) => !reg || regKey(x.registration) === reg)
       .sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id))
       .slice(0, limit);
     return c.json({ changes });
@@ -440,7 +442,7 @@ export function mountCrewChange(app: Hono) {
     const change = allCrewChanges().find((x) => x.id === (c.req.param("id") ?? "").toUpperCase());
     return change ? c.json({ change, mode: loadDispatchConfig().mode }) : c.json({ error: "그런 CREW CHANGE가 없음" }, 404);
   });
-  const find = (id: string, reg?: string) => allCrewChanges().find((x) => x.id === id.toUpperCase() && (!reg || x.registration === reg.toUpperCase()));
+  const find = (id: string, reg?: string) => allCrewChanges().find((x) => x.id === id.toUpperCase() && (!reg || regKey(x.registration) === regKey(reg)));
   const CLOSED_WHY: Record<string, string> = { delivered: "전달됨", superseded: "다른 CREW CHANGE로 대체됨", acknowledged: "READBACK 받음", sent: "OCC가 보냄(READBACK 대기)" };
   const closedWhy = (x: CrewChange) => CLOSED_WHY[x.status] ?? x.status;
 

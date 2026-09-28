@@ -1,5 +1,6 @@
 // FLEET와 FLIGHT 분류의 순수한 부분(타입, 기본값, 판정). 설계: docs/fleet.md.
-// fleet.ts(등록부·API)와 dispatch.ts(planner)가 함께 쓴다. 다른 서버 모듈을 import하지 않는다(순환 방지).
+// fleet.ts(등록부·API)와 dispatch.ts(planner)가 함께 쓴다. 다른 서버 모듈을 import하지 않는다(순환 방지). registration.ts는 아무것도 import하지 않아 예외.
+import { fleetKeyOf } from "./registration.ts";
 
 export const RATINGS = ["SEC", "UI", "DATA", "DOCS"] as const;
 export type Rating = (typeof RATINGS)[number];
@@ -60,7 +61,8 @@ export const DEFAULT_FLEET: FleetFile = {
 
 // 한 팀의 실제 프로필(정하지 않은 항목은 기본값)
 export function profileOf(fleet: FleetFile, registration: string) {
-  const p = Object.entries(fleet.aircraft).find(([k]) => k.toUpperCase() === registration.toUpperCase())?.[1] ?? {};
+  const key = fleetKeyOf(Object.keys(fleet.aircraft), registration); // `Team G` 세션도 TEAM_G 항목(ATC-67)
+  const p = (key ? fleet.aircraft[key] : undefined) ?? {};
   return {
     complement: p.complement ?? fleet.defaults.complement,
     ratings: p.ratings ?? fleet.defaults.ratings,
@@ -80,8 +82,8 @@ export const accountsLabeled = (fleet: Pick<FleetFile, "aircraft" | "control">) 
   Object.values(fleet.control ?? {}).some((p) => typeof p?.account === "string" && p.account);
 export function accountOf(fleet: Pick<FleetFile, "aircraft" | "control">, registration: string): string | null {
   if (!accountsLabeled(fleet)) return null;
-  const p = Object.entries(fleet.aircraft).find(([k]) => k.toUpperCase() === registration.toUpperCase())?.[1];
-  return p?.account || DEFAULT_ACCOUNT;
+  const key = fleetKeyOf(Object.keys(fleet.aircraft), registration);
+  return (key ? fleet.aircraft[key]?.account : undefined) || DEFAULT_ACCOUNT;
 }
 
 // ── 관제 세션의 ACCOUNT(ATC-60, docs/fuel.md 6) ──

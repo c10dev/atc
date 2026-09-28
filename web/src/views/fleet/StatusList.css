@@ -119,6 +119,20 @@
   font-size: var(--text-2xs);
   color: var(--muted);
 }
+/* 세션 이름(ATC-67): 정식 REGISTRATION이 아님(점선), 같은 REGISTRATION의 세션 여럿(실선) */
+.fl-r-name {
+  margin-left: var(--space-1-5);
+  padding: 0 var(--space-1);
+  border: 1px dashed var(--amber);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+  color: var(--amber);
+}
+.fl-r-name.is-conflict {
+  border-style: solid;
+  border-color: var(--alert);
+  color: var(--alert);
+}
 .fl-r-more {
   margin-left: var(--space-1-5);
   padding: 0 var(--space-1);

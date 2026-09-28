@@ -35,6 +35,7 @@ import type { Snapshot, TrafficEvent } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { allProposals, reservedOf } from "./proposals.ts";
 import { readRecords, record } from "./recorder.ts";
+import { fleetKeyOf, regKey } from "./registration.ts";
 import { activeWaypointsOf } from "./routes.ts";
 import { type AgentRow, agentRows, launchAircraft, MAX_LAUNCHED, PERMISSION_MODES, stopAircraft } from "./session-control.ts";
 import { readLinearProjects } from "./sources/linear-projects.ts";
@@ -116,8 +117,9 @@ export function inputsOf(s: Snapshot, rows: AgentRow[], now: number): FleetInput
   );
   const aircraft = fleetView(s, fleet, cfg.teamPattern, logbook, now);
   const live = s.sessions.filter((x) => team.test(x.name) && x.status !== "dead");
-  const liveNames = new Set(live.map((x) => x.name.toUpperCase()));
-  const nameOf = new Map(s.sessions.map((x) => [x.id, x.name.toUpperCase()]));
+  const regOf = (name: string | null | undefined) => regKey(name, cfg.teamPattern); // `Team G`도 TEAM_G(ATC-67)
+  const liveNames = new Set(live.map((x) => regOf(x.name)));
+  const nameOf = new Map(s.sessions.map((x) => [x.id, regOf(x.name)]));
   const records = readRecords(now - DAY);
   const los = new Map<string, string>();
   const conflicts = records
@@ -126,16 +128,16 @@ export function inputsOf(s: Snapshot, rows: AgentRow[], now: number): FleetInput
     .filter((e) => e.kind === "alert.raised" && e.alertKind === "conflict" && now - Date.parse(e.at) < DAY);
   for (const e of conflicts) for (const id of e.sessionIds ?? []) if (nameOf.get(id)) los.set(nameOf.get(id)!, e.at);
   const dwell = new Map<string, { op: "launch" | "stop"; at: string }>();
-  for (const r of records) if (r.kind === "fleet" && r.ok && (r.op === "launch" || r.op === "stop")) dwell.set(r.aircraft.toUpperCase(), { op: r.op, at: r.t });
+  for (const r of records) if (r.kind === "fleet" && r.ok && (r.op === "launch" || r.op === "stop")) dwell.set(regOf(r.aircraft), { op: r.op, at: r.t });
   const holders = new Map(s.claims.filter((c) => c.state === "active").map((c) => [c.workspacePath, nameOf.get(c.sessionId)]));
   return {
     aircraft,
     plan,
     sessions: rows
       .filter((r) => team.test(r.name ?? ""))
-      .map((r) => ({ registration: (r.name ?? "").toUpperCase(), kind: r.kind, id: r.id, startedAt: typeof r.startedAt === "number" ? r.startedAt : null })),
-    lastActive: new Map(live.map((x) => [x.name.toUpperCase(), x.lastActiveAt ?? x.startedAt])),
-    nordo: new Set(s.sessions.filter((x) => team.test(x.name) && x.status === "dead" && !liveNames.has(x.name.toUpperCase())).map((x) => x.name.toUpperCase())),
+      .map((r) => ({ registration: regOf(r.name), kind: r.kind, id: r.id, startedAt: typeof r.startedAt === "number" ? r.startedAt : null })),
+    lastActive: new Map(live.map((x) => [regOf(x.name), x.lastActiveAt ?? x.startedAt])),
+    nordo: new Set(s.sessions.filter((x) => team.test(x.name) && x.status === "dead" && !liveNames.has(regOf(x.name))).map((x) => regOf(x.name))),
     los,
     logbook,
     openPrs: new Set(s.pulls.map((p) => (p.standPath ? holders.get(p.standPath) : undefined)).filter(Boolean) as string[]),
@@ -232,7 +234,7 @@ async function runStep(step: ExecStep, by: string, getSnapshot: () => Promise<Sn
   const patch = (op: "aog" | "return" | "retire", body: Record<string, unknown>): StepResult => {
     try {
       const fleet = loadFleet();
-      const key = Object.keys(fleet.aircraft).find((k) => k.toUpperCase() === reg) ?? reg;
+      const key = fleetKeyOf(Object.keys(fleet.aircraft), reg) ?? reg;
       saveAircraft(key, applyPatch(fleet.aircraft[key] ?? {}, body, fleet.defaults));
       record({ t: t(), kind: "fleet", op, aircraft: reg, by, ok: true });
       return { action: step.action, registration: reg, ok: true };
@@ -282,7 +284,7 @@ async function runStep(step: ExecStep, by: string, getSnapshot: () => Promise<Sn
 async function goneFromAgents(reg: string, tries = 10) {
   for (let n = 0; n < tries; n++) {
     const rows = await agentRows().catch(() => []);
-    if (!rows.some((r) => (r.name ?? "").toUpperCase() === reg)) return;
+    if (!rows.some((r) => regKey(r.name) === regKey(reg))) return;
     await new Promise((r) => setTimeout(r, 500));
   }
 }
@@ -343,9 +345,9 @@ export function mountFleetPlan(app: Hono, getSnapshot: () => Promise<Snapshot>) 
       const rows = await agentRows();
       const sessions: SessionFact[] = rows
         .filter((r) => team.test(r.name ?? ""))
-        .map((r) => ({ registration: (r.name ?? "").toUpperCase(), kind: r.kind, id: r.id, startedAt: typeof r.startedAt === "number" ? r.startedAt : null }));
+        .map((r) => ({ registration: regKey(r.name, cfg.teamPattern), kind: r.kind, id: r.id, startedAt: typeof r.startedAt === "number" ? r.startedAt : null }));
       const lastLaunch = new Map<string, { permissionMode?: string; model?: string }>();
-      for (const r of readRecords(now - 30 * DAY)) if (r.kind === "fleet" && r.op === "launch" && r.ok) lastLaunch.set(r.aircraft.toUpperCase(), { permissionMode: r.permissionMode, model: r.model });
+      for (const r of readRecords(now - 30 * DAY)) if (r.kind === "fleet" && r.op === "launch" && r.ok) lastLaunch.set(regKey(r.aircraft, cfg.teamPattern), { permissionMode: r.permissionMode, model: r.model });
       let plan: { steps: ExecStep[]; options: ApproveOptions };
       try {
         plan = executionOf(p, body, {

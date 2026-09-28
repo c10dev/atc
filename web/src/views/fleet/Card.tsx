@@ -4,6 +4,7 @@ import { contextBadgeOf } from "../../../../server/fuel-context.ts";
 import { fuelLabel, fuelTitle } from "../../../../server/fuel-remaining.ts";
 import { usd } from "../../../../server/fuel-view.ts";
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel } from "../../../../server/health.ts";
+import { conflictHintOf, IDEA_SUPERSEDED, renameHintOf } from "../../../../server/registration.ts";
 import type { RulesView } from "../../../../server/rules-state.ts";
 import { flightNumber } from "../../aviation.ts";
 import { timeAgo } from "../../derive.ts";
@@ -151,6 +152,26 @@ export function Card({
       {a.accountHold && (
         <p className="fl-acct-hold" title={ACCOUNT_HOLD_NEXT}>
           {accountHoldLabel(a.accountHold, Date.now())} <span className="faint">· {accountHoldDetail(a.accountHold)}</span>
+        </p>
+      )}
+      {a.sessionConflict?.length ? (
+        <p className="fl-name-conflict" title={conflictHintOf(a.sessionConflict, a.registration)}>
+          세션 {a.sessionConflict.length}개가 {a.registration}로 읽힘:{" "}
+          {a.sessionConflict.map((n, i) => (
+            <span key={i}>
+              {i ? ", " : ""}
+              <code>{n}</code>
+            </span>
+          ))}{" "}
+          — 합치지 않는다. 하나만 남기거나 이름을 바꾼다
+          <a href={IDEA_SUPERSEDED} target="_blank" rel="noreferrer">
+            idea #96
+          </a>
+        </p>
+      ) : null}
+      {a.sessionName && (
+        <p className="fl-rename" title={renameHintOf(a.sessionName, a.registration)}>
+          세션 이름 <code>{a.sessionName}</code> → <code>{a.registration}</code>로 바꾸면 좋다
         </p>
       )}
       {a.status === "absent" && (
