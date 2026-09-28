@@ -609,7 +609,7 @@ Two things follow. VCDO throughput is bounded by landing, not by the number of t
 - **Tab.** The FLEET PLAN block sits above the cards: gate, one demand line per AIRPORT with what blocks a LAUNCH, open proposals with reasons and 반대 / 동의, candidates still waiting, and recent closed ones.
 - **First look at live data (2026-09-28 07:15 UTC):** no proposals. ATC-35 would go to TEAM_I, and the other open ATC FLIGHTs have no priority. All team sessions are desktop sessions. There is no NORDO or LOS, and every AIRCRAFT ARRIVED within 30 days.
 
-Not built yet: step 3 (approval) and step 4 (automatic STOP); what follows an expired AOG (a RETIRE or return proposal); merge-slot fill in the runway rule; the weekly-usage line (FUEL); CROSSCHECK marks on FLEET PLAN proposals.
+Not built yet: step 3 (approval, designed in 8.7) and step 4 (automatic STOP); what follows an expired AOG (`RETURN` in 8.7); merge-slot fill in the runway rule; the weekly-usage line (FUEL); CROSSCHECK marks on FLEET PLAN proposals.
 
 **Implementation order.**
 
@@ -635,6 +635,82 @@ Not built yet: step 3 (approval) and step 4 (automatic STOP); what follows an ex
 - Step 4 (automatic STOP) stays in the plan but is built last, with its switch off by default. Turning it on is a separate SUPERVISOR decision after the shadow gate passes.
 
 Sources: [Jeppesen crew pairing](https://ww2.jeppesen.com/airline-crew-optimization-solutions/airline-crew-pairing/), [Lufthansa Systems NetLine/Crew](https://www.lhsystems.com/solutions/operations-control-center/netline-crew), [airline disruption recovery survey (arXiv 2510.26831)](https://arxiv.org/html/2510.26831), [OAG on wet leasing](https://www.oag.com/blog/what-is-wet-leasing), [SKYbrary: MEL](https://skybrary.aero/articles/minimum-equipment-list-mel), [EASA AI levels (Halldale)](https://www.halldale.com/civil-aviation/easa-ai-framework-aviation-safety-regulations), [ICAO on aircraft parking](https://www.icao.int/operational-safety/Aircraft-Parking).
+
+### 8.7 FLEET PLAN step 3: approval (design draft)
+
+Status: design draft (2026-09-28). Nothing built yet. Section 8.6 built the shadow: atc proposes and the SUPERVISOR agrees or disagrees, and nothing moves. Step 3 lets the SUPERVISOR's approval run the proposal. Each proposal is still approved by a person, one at a time. Automatic STOP stays step 4, off by default.
+
+**Current facts (2026-09-28 07:30 UTC).**
+
+| Fact | Value |
+|---|---|
+| FLEET PLAN | shadow since 07:25 UTC, 0/20 verdicts, no open proposal |
+| Executors that exist | 8.5 LAUNCH and STOP (`launchPlanOf`, `stopTargetOf`, `claude --bg`, `claude stop`), `entryIntoService` (ENTRY INTO SERVICE), `applyPatch` with `aog` and `retired` (AOG, RETIREMENT) |
+| How other switches work | DISPATCH `mode` (`POST /api/dispatch/mode`) and SCHEDULE `mode`: no gate check and no Origin check, a `mode:` line in the FLIGHT RECORDER. AUTOLAND and the settings window: Origin check (`fromThisApp`). ATFM OFF: anyone may turn things off |
+| Sessions | 10 team sessions, all desktop; 0 of 6 background |
+
+**Principles.**
+
+1. **Approve is execute.** In approval mode the SUPERVISOR's approval runs the proposal right away, through the same code as the FLEET tab buttons. There is no approved-then-waiting state and no OCC in between. Nothing here sends a message to a team: a LAUNCH delivers the CREW BRIEFING as the session's first prompt, the same as the 8.5 button.
+2. **Check again at approval.** A proposal can be up to 24 h old. Approval runs only if the latest plan cycle (at most 10 min old) still produces the same kind for the same AIRCRAFT, and every 8.5 refusal still passes. Otherwise it answers 409 and the proposal stays open.
+3. **SUPERVISOR only, on this screen.** The switch into approval mode and every approval need this screen's Origin, like LAUNCH, STOP and AUTOLAND. `atcctl` has no FLEET PLAN commands, so TOWER, OCC, CROSSCHECK and REVIEW can neither approve nor turn it on. Going back to shadow is allowed from anywhere: turning something off must never be blocked.
+4. **The gate opens the switch.** Approval mode can be turned on only when the shadow gate is ready (see Decisions for the count). The block keeps showing the gate. In approval mode, approve counts as agree and reject as disagree.
+5. **Every step leaves a line.** A proposal gets an `approve` line and then one `executed` line with each step's result. The FLIGHT RECORDER gets a `fleet` line per step with `by: "FLEET PLAN F-0001"`.
+
+**Execution per kind.**
+
+| Kind | Steps on approval | Options on the approval form |
+|---|---|---|
+| `LAUNCH` | 8.5 LAUNCH of the proposed AIRCRAFT | permission mode (default `auto`), model (optional) |
+| `ENTRY` | ENTRY INTO SERVICE (proposed REGISTRATION, AIRPORT, CONFIGURATION), then LAUNCH | as LAUNCH. The REGISTRATION is checked again and refused if taken |
+| `STOP` | 8.5 STOP | none |
+| `RESTART` | STOP, then LAUNCH with a fresh CREW BRIEFING | permission mode and model, pre-filled from the AIRCRAFT's last LAUNCH line in the FLIGHT RECORDER |
+| `AOG` | profile `aog: {reason: "FLEET PLAN F-0001: <reason codes>", until}` | the `until` date (default from the proposal) |
+| `RETIRE` | profile `retired: {reason: "FLEET PLAN F-0001"}`, then STOP when the AIRCRAFT flies a background session | "stop the background session too" (default on) |
+| `RETURN` (new) | profile `aog: null` | none |
+
+`RETURN` is the follow-up the 8.6 AOG row promised. An AIRCRAFT whose AOG was set by FLEET PLAN gets a RETURN proposal when its `until` date has passed. The reasons say whether the cause is gone (a live session, no LOS in 24 h) or still there. A still-NORDO AIRCRAFT then shows up as a normal LAUNCH candidate. RETIRE keeps coming only from the 30-day rule.
+
+**Partial failure.** ENTRY and RESTART have two steps. When the second step fails, the first stays done and the `executed` line says which step failed: the AIRCRAFT is in the FLEET but not flying, or a session was stopped but not relaunched. The card buttons fix either by hand. A failed execution closes the proposal as `failed` without the 24 h cooldown, so the next cycles can propose it again.
+
+**Records and screens.**
+
+- `fleet-plan.jsonl` adds `{op: "approve", id, by, at, options}` and `{op: "executed", id, at, ok, steps: [{action, ok, jobId?, error?}]}`. The statuses become `open → executing → executed | failed`, and `open → disagreed` when rejected. `executing` is set only during the request, and a per-id lock keeps a double click from running twice.
+- The mode lives in its own file, `~/.local/state/atc/fleet-plan.json` (`{mode: "shadow" | "approval"}`), written atomically. Each switch writes a FLIGHT RECORDER line `{kind: "fleet-plan", op: "mode:approval" | "mode:shadow", by}`, so step 4 can measure how long approval mode has run (the same `approvalRunOf` as ATFM).
+- The FLIGHT RECORDER `fleet` line gains the ops `entry`, `aog`, `return` and `retire`, next to `launch` and `stop`.
+- API:
+  - `POST /api/fleet/plan/mode {mode}`: approval needs Origin and a ready gate (409 otherwise). Shadow is always accepted.
+  - `POST /api/fleet/plan/:id/approve {permissionMode?, model?, until?, stopSession?}` (Origin): returns the `executed` result. It refuses in shadow mode (409), on a closed proposal (409) and on a stale one (409, "조건이 바뀜").
+  - `GET /api/fleet/plan` adds `mode`, `approvalSince` and, per open proposal, `stale` (the latest cycle no longer produces it).
+- The block gets a switch next to the gate. In approval mode, 동의 becomes **승인(실행)**. It opens a small form with what will run and the options above; for LAUNCH, ENTRY and RESTART it also shows the background count against the cap. Recent proposals show the executed steps.
+
+**Implementation order.**
+
+1. Mode file, switch API with Origin and gate checks, `mode:` lines, and the switch in the block.
+2. Pure `executionOf(proposal, latestCandidates, context)`: the steps and refusals (stale, mode, 8.5 refusals, REGISTRATION taken). Tests for every kind and for partial failure.
+3. Split the 8.5 handlers into `launchAircraft(reg, options, by)` and `stopAircraft(reg, by)`, used by both the buttons and approval. Add the approve endpoint with the per-id lock and the records.
+4. Approval form in the block, with executed steps in recent proposals.
+5. `RETURN` for expired FLEET PLAN AOGs.
+6. DOCS guide and CHANGELOG.
+
+**Risks.**
+
+| Risk | Mitigation |
+|---|---|
+| Approving an old proposal on changed facts | re-check against the latest cycle (at most 10 min) and every 8.5 refusal |
+| Double execution (two clicks, two tabs) | per-id lock, and a single `open` → `executing` transition |
+| Usage | background cap (8.5), one approval per LAUNCH; FUEL later |
+| Half-done ENTRY or RESTART | steps recorded one by one, no cooldown, card buttons to finish by hand |
+| Another session approving | Origin check on approve and on the switch into approval; no `atcctl` command |
+| Approval mode on too early | switch refuses until the gate is ready |
+
+**Decisions needed (SUPERVISOR).**
+
+1. **Turn-on condition.** Proposed: the shadow gate as it is (20 verdicts, 80%). Proposals are rare with today's demand (none in the first hours), so the alternative is a smaller count for FLEET PLAN (for example 10 at 80%).
+2. **Switch location.** Proposed: its own file `fleet-plan.json`, so DISPATCH (still shadow) and FLEET PLAN switch independently. The alternative is a second key in `dispatch.json`.
+3. **LAUNCH default permission mode on approval.** Proposed: `auto`, the same as the LAUNCH button.
+4. **RETIRE stops the background session.** Proposed: yes by default, with a checkbox to keep it.
+5. **Failed execution.** Proposed: no 24 h cooldown, so the proposal comes back after the persistence window.
 
 ## 9. Moving from `lane:` to `tail:`
 
