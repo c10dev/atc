@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type AgentRow, CONTROL_SESSIONS, ControlError, controlDirOf, controlLaunchPlanOf, controlRowsOf, controlSpecOf, controlStopTargetOf, isControlRow, parentPidOf, tmuxPaneOf, jobIdOf, launchPlanOf, MANUAL_CONTROL, stopTargetOf } from "./session-control.ts";
+import { type AgentRow, CONTROL_SESSIONS, ControlError, controlDirOf, controlLaunchPlanOf, controlRowsOf, controlSpecOf, controlStopTargetOf, inServiceCgroup, isControlRow, launchCommandOf, parentPidOf, tmuxPaneOf, jobIdOf, launchPlanOf, MANUAL_CONTROL, stopTargetOf } from "./session-control.ts";
 
 const base = { registration: "team_k", retired: false, repo: "/home/u/projects/app", briefing: "[ATC FLEET] CREW BRIEFING · KILO (TEAM_K)" };
 const bg = (name: string, id = "abc12345"): AgentRow => ({ id, sessionId: `${id}-x`, name, kind: "background", status: "idle", cwd: "/w" });
@@ -109,4 +109,19 @@ test("팀 세션 상한은 관제 세션을 세지 않는다", () => {
   assert.equal(isControlRow(row({ name: "TOWER", kind: "background", id: "1" }), dirs), true);
   assert.equal(isControlRow(row({ name: "mcc-b4", cwd: DIR }), dirs), true);
   assert.equal(isControlRow(row({ name: "TEAM_K", kind: "background", id: "2", cwd: "/w" }), dirs), false);
+});
+
+test("LAUNCH는 systemd scope에서: claude --bg가 띄우는 daemon이 atc.service 밖에 있게. scope가 없으면 바로", () => {
+  assert.deepEqual(launchCommandOf("/b/claude", ["--bg", "-n", "MCC"], "/usr/bin/systemd-run", "atc-claude-1"), {
+    cmd: "/usr/bin/systemd-run",
+    args: ["--user", "--scope", "--collect", "--quiet", "--unit=atc-claude-1", "--", "/b/claude", "--bg", "-n", "MCC"],
+  });
+  assert.deepEqual(launchCommandOf("/b/claude", ["agents"], null, "x"), { cmd: "/b/claude", args: ["agents"] });
+});
+
+test("daemon이 atc 서비스 cgroup 안에 있나", () => {
+  assert.equal(inServiceCgroup(["0::/user.slice/user-1000.slice/user@1000.service/app.slice/atc.service"]), true);
+  assert.equal(inServiceCgroup(["0::/user.slice/user-1000.slice/user@1000.service/app.slice/atc-claude-1.scope"]), false);
+  assert.equal(inServiceCgroup(["0::/user.slice/user-1000.slice/user@1000.service/app.slice/atc-rts.service"]), false);
+  assert.equal(inServiceCgroup([]), false);
 });

@@ -541,7 +541,7 @@ function GroundStopRow({ stop, check, refresh }: { stop: ServerSettings["autolan
 // 관제 세션(docs/fleet.md 8.5.1). TOWER·OCC·MCC는 atc가 그 폴더에서 `claude --bg`로 띄우고 멈춘다.
 // tmux로 연 세션도 STOP한다(그 pane만 닫음, 묻고 나서). 데스크톱 세션은 그 창에서 닫는다. REVIEW·CROSSCHECK는 ocx라 tmux로 띄운다
 type ControlLive = { id?: string; name?: string; kind: string; status?: string; tmux?: string };
-type ControlList = { manual: string[]; sessions: { name: string; dir: string; prompt: string; live: ControlLive[] }[] };
+type ControlList = { manual: string[]; daemonInService?: boolean; sessions: { name: string; dir: string; prompt: string; live: ControlLive[] }[] };
 function ControlSessions() {
   const [list, setList] = useState<ControlList | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -611,6 +611,11 @@ function ControlSessions() {
           </div>
         );
       })}
+      {list.daemonInService && (
+        <p className="config-note is-error">
+          백그라운드 세션 daemon이 atc 서비스 안에서 돌고 있음 — atc를 재시작하면(배포·RTS) 모든 백그라운드 세션이 함께 멈춘다. 재시작한 뒤 LAUNCH하면 daemon이 서비스 밖(systemd scope)에서 뜬다
+        </p>
+      )}
       <p className="config-note">{list.manual.join(" · ")}: ocx로 다른 계열 모델에 돌리므로 tmux로 띄운다(review/README.md, docs/occ.md CROSSCHECK)</p>
       {error && <p className="config-note is-error">{error}</p>}
     </dl>

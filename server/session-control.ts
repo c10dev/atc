@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Context, Hono } from "hono";
@@ -198,12 +198,43 @@ function cleanEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-function claude(args: string[], cwd?: string): Promise<{ ok: boolean; out: string }> {
+// LAUNCH는 atc 서비스 밖의 systemd scope에서 claude를 부른다. `claude --bg`는 처음 부를 때 이 기계의 백그라운드 세션을 모두 맡는
+// daemon(`claude daemon run`)을 띄우는데, atc 안에서 띄우면 daemon이 atc.service cgroup에 들어가 atc를 재시작할 때마다(배포·RTS)
+// 모든 백그라운드 세션이 함께 죽는다(2026-09-28 OCC a578bf15). ATC_BG_SCOPE=off면 예전처럼 바로 부른다
+const SYSTEMD_RUN = "/usr/bin/systemd-run";
+export function launchCommandOf(bin: string, args: string[], scope: string | null, unit: string): { cmd: string; args: string[] } {
+  return scope ? { cmd: scope, args: ["--user", "--scope", "--collect", "--quiet", `--unit=${unit}`, "--", bin, ...args] } : { cmd: bin, args };
+}
+const scopeBin = () => (process.env.ATC_BG_SCOPE !== "off" && existsSync(SYSTEMD_RUN) ? SYSTEMD_RUN : null);
+
+function claude(args: string[], cwd?: string, { scope = false } = {}): Promise<{ ok: boolean; out: string }> {
+  const { cmd, args: argv } = launchCommandOf(config.claudeBin, args, scope ? scopeBin() : null, `atc-claude-${Date.now()}`);
   return new Promise((resolve) => {
-    execFile(config.claudeBin, args, { cwd, env: cleanEnv(), timeout: 60_000, maxBuffer: 4 << 20 }, (err, stdout, stderr) =>
+    execFile(cmd, argv, { cwd, env: cleanEnv(), timeout: 60_000, maxBuffer: 4 << 20 }, (err, stdout, stderr) =>
       resolve({ ok: !err, out: `${stdout}${stderr}`.trim() }),
     );
   });
+}
+
+// 백그라운드 세션 daemon이 atc 서비스 cgroup 안에 있나(순수: cgroup 줄들). 있으면 atc를 재시작할 때 모든 백그라운드 세션이 죽는다
+export const inServiceCgroup = (cgroups: readonly string[], unit = "atc.service") => cgroups.some((c) => c.split("/").includes(unit));
+// 도는 `claude daemon run`들의 cgroup
+export function daemonCgroups(): string[] {
+  const out: string[] = [];
+  let pids: string[] = [];
+  try {
+    pids = readdirSync("/proc").filter((p) => /^\d+$/.test(p));
+  } catch {
+    return out;
+  }
+  for (const pid of pids) {
+    try {
+      const argv = readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0");
+      if (!argv.some((a) => /(^|\/)claude$/.test(a)) || argv[1] !== "daemon" || argv[2] !== "run") continue;
+      out.push(readFileSync(`/proc/${pid}/cgroup`, "utf8").trim());
+    } catch {}
+  }
+  return out;
 }
 
 export async function agentRows(): Promise<AgentRow[]> {
@@ -240,7 +271,7 @@ export async function launchAircraft(s: Snapshot, registration: string, options:
     const dirs = CONTROL_SESSIONS.map((c) => controlDirOf(c));
     const rows = (await agentRows()).filter((r) => !isControlRow(r, dirs));
     const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: crewBriefing(a, repo, cfg.mode), permissionMode: options.permissionMode, model: options.model }, rows);
-    const r = await claude(plan.args, plan.cwd);
+    const r = await claude(plan.args, plan.cwd, { scope: true });
     const jobId = jobIdOf(r.out);
     const ok = r.ok && !!jobId;
     const error = ok ? undefined : /not trusted/i.test(r.out) ? `${plan.cwd}를 신뢰하지 않음 — 그 폴더에서 claude를 한 번 열어 trust를 수락한다` : r.out.slice(0, 300) || "claude --bg 실패";
@@ -274,7 +305,7 @@ export async function launchControl(name: string, by: string): Promise<ControlRe
   const t = new Date().toISOString();
   try {
     const plan = controlLaunchPlanOf(spec, await agentRows(), controlDirOf(spec));
-    const r = await claude(plan.args, plan.cwd);
+    const r = await claude(plan.args, plan.cwd, { scope: true });
     const jobId = jobIdOf(r.out);
     const ok = r.ok && !!jobId;
     const error = ok ? undefined : /not trusted/i.test(r.out) ? `${plan.cwd}를 신뢰하지 않음 — 그 폴더에서 claude를 한 번 열어 trust를 수락한다` : r.out.slice(0, 300) || "claude --bg 실패";
@@ -320,6 +351,8 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
       const [rows, panes] = await Promise.all([agentRows(), tmuxPanes()]);
       return c.json({
         manual: MANUAL_CONTROL,
+        // 백그라운드 세션 daemon이 atc 서비스 안에 있으면 atc 재시작(배포·RTS) 때 모든 백그라운드 세션이 죽는다
+        daemonInService: inServiceCgroup(daemonCgroups()),
         sessions: CONTROL_SESSIONS.map((spec) => ({
           name: spec.name,
           dir: spec.dir,
