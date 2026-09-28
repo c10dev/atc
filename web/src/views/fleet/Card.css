@@ -153,3 +153,15 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
 }
+/* CONTEXT SIZE(ATC-69): 창의 40 %부터 amber, 70 %부터 alert */
+.fl-ctx {
+  margin: var(--space-1) 0 0;
+  font: var(--text-xs) var(--mono);
+  color: var(--muted);
+}
+.fl-ctx.lv-info {
+  color: var(--amber);
+}
+.fl-ctx.lv-alert {
+  color: var(--alert);
+}

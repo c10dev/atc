@@ -10,6 +10,7 @@ import { type Actuals, computeActuals, loadPricedLogbook } from "./logbook.ts";
 import { type FleetFuel, fleetFuelOf, type PricedEntry, type TripFuel, tripCheckOf, type TripVerdict } from "./fuel-view.ts";
 import { type AccountHold, accountHoldOf, accountHolds, type Health } from "./health.ts";
 import type { FuelRemaining } from "./fuel-remaining.ts";
+import { type ContextSize, type ContextView, contextView } from "./fuel-context.ts";
 import type { Snapshot } from "./model.ts";
 import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state.ts";
 
@@ -244,6 +245,7 @@ export interface AircraftView {
   fuelBurn?: FleetFuel;
   // 최근 FLIGHT(actuals.recent와 같은 순서)의 FUEL BURN·NET·LEAK과 TRIP FUEL 안이었나
   fuelRecent?: FuelRecent[];
+  context?: ContextView | null; // CONTEXT SIZE(ATC-69). GET /api/fleet만 붙인다
 }
 
 export interface FuelRecent {
@@ -400,7 +402,9 @@ export function crewBriefing(a: AircraftView, repo: string | null, mode: "shadow
   return lines.join("\n");
 }
 
-export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>) {
+// contextOf: REGISTRATION → CONTEXT SIZE(ATC-69). fuel-run.ts가 이 파일을 부르므로 index.ts가 넘긴다
+export type AircraftContexts = (sessions: Snapshot["sessions"], teamPattern: string) => Map<string, ContextSize>;
+export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>, contextOf: AircraftContexts = () => new Map()) {
   app.get("/api/fleet", async (c) => {
     const s = await getSnapshot();
     const fleet = loadFleet();
@@ -409,7 +413,10 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     // RULES(ATC-42): 그 AIRCRAFT의 살아 있는 세션이 규칙 파일 변경을 확인했나. rules-drift hook 기록이 없으면 null
     const rulesRecords = loadRulesRecords();
     const rulesOf = (reg: string): RulesView | null => rulesOfAircraft(s.sessions.filter((x) => x.status !== "dead" && x.name.toUpperCase() === reg), rulesRecords);
-    const aircraft = fleetView(s, fleet, cfg.teamPattern, loadPricedLogbook()).map(withCrew(s)).map((a) => ({ ...a, rules: rulesOf(a.registration) }));
+    const context = contextOf(s.sessions, cfg.teamPattern);
+    const aircraft = fleetView(s, fleet, cfg.teamPattern, loadPricedLogbook())
+      .map(withCrew(s))
+      .map((a) => ({ ...a, rules: rulesOf(a.registration), context: contextView(context.get(a.registration) ?? null) }));
     const configurations = Object.entries(CONFIGURATIONS).map(([id, t]) => ({ id, label: t.label, complement: t.complement, ratings: t.ratings }));
     return c.json({
       ratings: RATINGS,

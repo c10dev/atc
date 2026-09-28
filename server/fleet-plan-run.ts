@@ -23,10 +23,13 @@ import {
   fleetPlanOf,
   fuelExpiryOf,
   foldFleetPlan,
+  isManual,
   persistOf,
   syncFleetPlan,
 } from "./fleet-plan.ts";
+import { readPrices } from "./fuel-prices.ts";
 import type { FuelRemaining } from "./fuel-remaining.ts";
+import { aircraftContexts } from "./fuel-run.ts";
 import { loadLogbook } from "./logbook.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
@@ -144,6 +147,8 @@ export function inputsOf(s: Snapshot, rows: AgentRow[], now: number): FleetInput
     config: FLEET_PLAN_DEFAULTS,
     now,
     fuelAccounts: s.fuelAccounts ?? [], // FUEL REMAINING per ACCOUNT(ATC-63). 관제 세션만 있는 ACCOUNT도
+    context: aircraftContexts(s.sessions, cfg.teamPattern, now), // CONTEXT SIZE(ATC-69): REFRESH
+    prices: readPrices().table,
   };
 }
 
@@ -304,17 +309,17 @@ export function mountFleetPlan(app: Hono, getSnapshot: () => Promise<Snapshot>) 
   });
 
   // 그림자 판정: 동의·반대. SUPERVISOR가 FLEET 화면에서 누를 때만(관제 세션의 atcctl은 Origin이 없다).
-  // 승인 운용에서 동의는 승인(실행)으로 한다 — 실행 없는 동의는 받지 않는다
+  // 승인 운용에서 동의는 승인(실행)으로 한다 — 실행 없는 동의는 받지 않는다. 사람이 하는 제안(데스크톱·터미널 세션의 REFRESH)만 "했음"으로 동의한다
   app.post("/api/fleet/plan/:id/verdict", async (c: Context) => {
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
     const id = c.req.param("id") ?? "";
     const body = await c.req.json().catch(() => ({}));
     const verdict = body.verdict;
     if (verdict !== "agree" && verdict !== "disagree") return c.json({ error: "verdict는 agree | disagree" }, 400);
-    if (verdict === "agree" && loadFleetPlanMode() === "approval") return c.json({ error: "승인 운용 중 — 승인(실행)을 쓴다" }, 409);
     const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 500) : "";
     const p = allFleetPlan().find((x) => x.id === id);
     if (!p) return c.json({ error: `FLEET PLAN에 없음: ${id}` }, 404);
+    if (verdict === "agree" && loadFleetPlanMode() === "approval" && !isManual(p)) return c.json({ error: "승인 운용 중 — 승인(실행)을 쓴다" }, 409);
     if (p.status !== "open" || executing.has(id)) return c.json({ error: `${id}는 이미 닫힘(${p.status})` }, 409);
     append([{ op: "verdict", id, verdict, by: "SUPERVISOR", ...(reason ? { reason } : {}), at: new Date().toISOString() }]);
     return c.json({ ok: true, proposal: allFleetPlan().find((x) => x.id === id) });

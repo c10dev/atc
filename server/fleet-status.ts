@@ -1,6 +1,7 @@
 import type { AircraftView } from "./fleet.ts";
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel, type HealthCode, healthLabel } from "./health.ts";
 import { type FuelRemaining, fuelLabel, fuelTitle } from "./fuel-remaining.ts";
+import { type ContextBadge, contextBadgeOf } from "./fuel-context.ts";
 import { fleetFuelLabel, fleetFuelTitle } from "./fuel-view.ts";
 
 // FLEET 운항 상태 목록(ATC-44, UI report #99): AIRCRAFT 한 대가 한 줄. 화면과 같이 쓰는 순수 함수.
@@ -47,6 +48,8 @@ export interface FleetRow {
   fuel: { label: string; level: FuelRemaining["level"]; title: string } | null;
   // FUEL F8(ATC-56): 최근 14일 "FUEL $6.20/FLT · CACHE 97%". FUEL REMAINING 옆에 둔다. fuel 있는 FLIGHT가 없으면 null
   fuelBurn: { label: string; title: string } | null;
+  // CONTEXT SIZE(ATC-69): "502k / 1M". 살아 있는 세션의 기록이 없으면 null
+  context: ContextBadge | null;
 }
 
 // 목록 줄: 상태 순서, 같은 상태 안에서는 AIRPORT(없으면 뒤), 그다음 REGISTRATION
@@ -71,6 +74,7 @@ export function fleetRows(aircraft: readonly AircraftView[], now: number): Fleet
       accountHold: a.accountHold ? { label: accountHoldLabel(a.accountHold, now), detail: accountHoldDetail(a.accountHold), next: ACCOUNT_HOLD_NEXT } : null,
       fuel: a.fuel ? { label: fuelLabel(a.fuel, now), level: a.fuel.level, title: fuelTitle(a.fuel, now) } : null,
       fuelBurn: a.fuelBurn && fleetFuelLabel(a.fuelBurn) ? { label: fleetFuelLabel(a.fuelBurn)!, title: fleetFuelTitle(a.fuelBurn) } : null,
+      context: contextBadgeOf(a.context),
     };
   });
   return rows.sort(

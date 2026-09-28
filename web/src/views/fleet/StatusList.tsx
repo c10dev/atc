@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { elapsedText, type FleetRow } from "../../../../server/fleet-status.ts";
 import { flightNumber } from "../../aviation.ts";
 import { timeAgo } from "../../derive.ts";
+import { ContextCell } from "./Context.tsx";
 import { pct } from "./shared.ts";
 import "./StatusList.css";
 
@@ -20,6 +21,7 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
         <span>경과</span>
         <span>마지막 활동</span>
         <span>이번 주</span>
+        <span>CONTEXT</span>
         <span>FUEL 14일</span>
         <span />
       </div>
@@ -73,6 +75,7 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                 <span className="fl-r-week" title="이번 주(월요일부터) ARRIVED와 정시율(기대 block time이 있는 FLIGHT만)">
                   {r.week}건 · 정시 {r.weekOnTime == null ? "—" : pct(r.weekOnTime)}
                 </span>
+                <ContextCell c={r.context} />
                 <span className="fl-r-burn mono" title={r.fuelBurn?.title ?? "최근 14일 fuel이 있는 ARRIVED FLIGHT 없음(옛 LOGBOOK 줄에는 fuel이 없다)"}>
                   {r.fuelBurn ? r.fuelBurn.label.replace(/^FUEL /, "") : <span className="faint">FUEL —</span>}
                 </span>

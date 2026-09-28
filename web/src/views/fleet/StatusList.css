@@ -8,7 +8,7 @@
 .fl-list-head,
 .fl-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1.1fr) 70px 104px minmax(0, 3fr) 64px 84px 124px 184px 16px;
+  grid-template-columns: minmax(150px, 1.1fr) 70px 104px minmax(0, 3fr) 64px 84px 124px 84px 184px 16px;
   align-items: center;
   column-gap: var(--space-3);
   padding: 0 var(--space-3);
@@ -130,9 +130,17 @@
 .fl-r-elapsed,
 .fl-r-last,
 .fl-r-week,
+.fl-r-ctx,
 .fl-r-burn {
   font-size: var(--text-xs);
   color: var(--muted);
+}
+/* CONTEXT SIZE(ATC-69): 창의 40 %부터 amber, 70 %부터 alert */
+.fl-r-ctx.lv-info {
+  color: var(--amber);
+}
+.fl-r-ctx.lv-alert {
+  color: var(--alert);
 }
 .fl-r-chev {
   color: var(--faint);
@@ -196,8 +204,13 @@
   .has-health .fl-r-week {
     grid-area: 3 / 4;
   }
-  /* FUEL 14일(ATC-56): 좁은 화면에서는 맨 아래 한 줄 전체 */
+  /* FUEL 14일(ATC-56): 좁은 화면에서는 맨 아래 한 줄. CONTEXT(ATC-69)는 그 줄 오른쪽 */
   .fl-r-burn {
-    grid-column: 1 / -1;
+    grid-column: 1 / 4;
+  }
+  .fl-r-ctx {
+    grid-column: 4;
+    order: 1; /* FUEL 14일 뒤에 놓아 같은 줄 오른쪽으로 */
+    text-align: right;
   }
 }

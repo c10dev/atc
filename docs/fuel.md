@@ -67,6 +67,8 @@ A **miss** follows Claude Code: re-processing more than 5 % of what could have b
 | UPGRADE / EFFORT CHANGE | A miss right after `version` or `effort` changes | Medium |
 | UNEXPLAINED | Any other miss | — |
 
+How large the rewrite would be is the session's CONTEXT SIZE: the last CAPTAIN request's `input + cacheRead + cacheWrite`. FLEET shows it per AIRCRAFT, and FLEET PLAN proposes a fresh start (REFRESH) when a team rests after its FLIGHTs with a large context, before the next cold wake re-writes it all ([fleet.md](fleet.md) 8.6, "REFRESH as built (ATC-69)").
+
 CREW warnings are shown, not added to leaks: HEAVY PREFIX (first CREW request writes > 30 K), TRIVIAL DELEGATION (prefix > 50 % of the subagent's input and ≤ 3 turns), HIGH CREW SHARE (> 50 % of the FLIGHT), DEEP NESTING (`spawnDepth` ≥ 2), EXPENSIVE READ-ONLY (Explore/Plan on Opus), COLD CREW (a subagent reused after 5 min idle), COMPLEMENT DRIFT (declared POSITION model ≠ actual `message.model`, feeding `crew-observed.ts`). Thresholds are proposals to tune after measuring.
 
 **As built (F3 ATC-52, F7 ATC-57).** Each rule is tested in this order, first match wins:

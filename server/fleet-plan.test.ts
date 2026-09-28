@@ -15,11 +15,14 @@ import {
   fleetPlanOf,
   foldFleetPlan,
   fuelExpiryOf,
+  isManual,
   PlanError,
   persistOf,
   runwayOf,
   syncFleetPlan,
 } from "./fleet-plan.ts";
+import { parsePriceTable } from "./fuel-cost.ts";
+import { type ContextSize, contextSizeOf } from "./fuel-context.ts";
 import type { FuelRemaining } from "./fuel-remaining.ts";
 import { computeActuals } from "./logbook.ts";
 
@@ -575,4 +578,96 @@ test("FUEL: 열린 LAUNCH·ENTRY의 ACCOUNT가 hold가 되면 expire(사유는 F
   assert.match(fuelExpiryOf({ ...fuelBase([fuelOf("default", 99)]), now: later }, { kind: "ENTRY", aircraft: "TEAM_L" })!, /account default/);
   assert.equal(fuelExpiryOf({ ...fuelBase([fuelOf("acct-1", 85)]), now: later }, { kind: "LAUNCH", aircraft: "TEAM_I" }), null);
   assert.equal(fuelExpiryOf({ ...i, now: later }, { kind: "STOP", aircraft: "TEAM_I" }), null);
+});
+
+// ── REFRESH(ATC-69) ──
+
+const PRICES = parsePriceTable({ writeMult: { "5m": 1.25, "1h": 2 }, models: { "claude-opus-5-5": { in: 4, out: 20, readMult: 0.05 } } });
+const ctxSize = (contextTokens: number | null, over: Partial<ContextSize> = {}): ContextSize =>
+  contextSizeOf({ session: "s", contextTokens, at: ago(30 * MIN), model: "claude-opus-5-5", compacted: false, base: 25_000, maxSeen: contextTokens ?? 0, tier: "1h", speed: null, geo: null, ...over });
+const flown = (aircraft: string, flight: string, at = ago(HOUR)) => ({ ...arrived(aircraft, "ATCC", at), flight });
+const refreshInputs = (over: Partial<FleetInputs> = {}) =>
+  inputs({
+    aircraft: [view("TEAM_J")],
+    sessions: [{ registration: "TEAM_J", kind: "interactive", id: "j", startedAt: NOW - HOUR * 5 }],
+    lastActive: new Map([["TEAM_J", ago(30 * MIN)]]),
+    logbook: [flown("TEAM_J", "ATC-63")],
+    context: new Map([["TEAM_J", ctxSize(501_700)]]),
+    prices: PRICES,
+    ...over,
+  });
+
+test("REFRESH: FLIGHT를 마치고 쉬는 AIRCRAFT의 대화가 300k를 넘으면. 사유에 크기와 cold wake에 아낄 캐시 쓰기", () => {
+  const out = fleetPlanOf(refreshInputs());
+  assert.deepEqual(kinds(out.candidates), ["REFRESH TEAM_J"]);
+  const c = out.candidates[0];
+  assert.equal(c.key, "REFRESH|TEAM_J");
+  const r = Object.fromEntries(c.reasons.map((x) => [x.code, x]));
+  assert.match(r.context.detail, /^502k \/ 1M \(50%\) — claude-opus-5-5/);
+  assert.match(r.context.detail, /창은 본 크기로 짐작/);
+  // (501.7k − 25k) × 2 × $4/M = $3.81
+  assert.equal(r.saving.value, 3.81);
+  assert.match(r.saving.detail, /477k ≈ \$3\.81 캐시 쓰기\(1h\)/);
+  assert.match(r.arrived.detail, /마지막 FLIGHT ATC-63 ARRIVED/);
+  assert.equal(r.session.value, "interactive");
+  assert.match(r.session.detail, /\/clear/);
+  assert.ok(isManual({ kind: c.kind, reasons: c.reasons }));
+  // 백그라운드 세션은 atc가 다시 띄운다
+  const bg = fleetPlanOf(refreshInputs({ sessions: [{ registration: "TEAM_J", kind: "background", id: "j1", startedAt: NOW - HOUR }] })).candidates[0];
+  assert.equal(bg.reasons.find((x) => x.code === "session")!.value, "background");
+  assert.ok(!isManual({ kind: bg.kind, reasons: bg.reasons }));
+});
+
+test("REFRESH 기준: 300k 또는 창의 40%. 창을 짐작만 했으면(200k 기본) 토큰 기준만", () => {
+  const at = (c: ContextSize) => kinds(fleetPlanOf(refreshInputs({ context: new Map([["TEAM_J", c]]) })).candidates);
+  assert.deepEqual(at(ctxSize(250_000)), []); // 1M 창(본 크기로) 25%
+  assert.deepEqual(at(ctxSize(120_000, { model: "claude-sonnet-5[1m]", maxSeen: 120_000 })), []); // 1M 12%
+  assert.deepEqual(at(ctxSize(90_000, { maxSeen: 90_000 })), []); // 200k 기본 창: 45%지만 사실이 아니다
+  assert.deepEqual(at(contextSizeOf({ ...ctxSize(90_000), maxSeen: 90_000 }, { "claude-opus-5-5": 200_000 })), ["REFRESH TEAM_J"]); // 설정한 200k 창의 45%
+  assert.deepEqual(at(ctxSize(300_000)), ["REFRESH TEAM_J"]);
+  assert.deepEqual(at(ctxSize(null, { maxSeen: 600_000, compacted: true })), []); // compaction 뒤 크기를 모름
+});
+
+test("REFRESH 제외: 아직 끝나지 않은 FLIGHT의 STAND, 열린 PR, 이번 계획의 배정, 최근 LAUNCH, busy·AOG·RETIRED", () => {
+  const none = (over: Partial<FleetInputs>) => assert.deepEqual(kinds(fleetPlanOf(refreshInputs(over)).candidates), []);
+  none({ aircraft: [view("TEAM_J", { flying: ["ATC-69"] })] }); // HOLDING, ATC-69는 ARRIVED 아님
+  none({ openPrs: new Set(["TEAM_J"]) });
+  none({ plan: { assign: [{ kind: "ASSIGN", flight: "ATC-70", aircraft: "j", aircraftName: "TEAM_J", airport: "ATCC", score: 1, factors: [] }], unserved: [] } });
+  none({ dwell: new Map([["TEAM_J", { op: "launch" as const, at: ago(30 * MIN) }]]) });
+  none({ aircraft: [view("TEAM_J", { status: "busy" })] });
+  none({ aircraft: [view("TEAM_J", { aog: { reason: "x", until: null, at: ago(HOUR) } })] });
+  none({ context: new Map() });
+  // ARRIVED한 FLIGHT의 STAND만 남았으면(HOLDING, 정리 전) 낸다. 오래전 LAUNCH도 괜찮다
+  const ok = fleetPlanOf(refreshInputs({ aircraft: [view("TEAM_J", { flying: ["ATC-63"] })], dwell: new Map([["TEAM_J", { op: "launch" as const, at: ago(3 * HOUR) }]]) }));
+  assert.deepEqual(kinds(ok.candidates), ["REFRESH TEAM_J"]);
+  assert.match(ok.candidates[0].reasons.find((r) => r.code === "arrived")!.detail, /남은 STAND ATC-63은 ARRIVED/);
+});
+
+test("REFRESH: 같은 AIRCRAFT에 RESTART(오래된 세션)가 있으면 따로 내지 않고 RESTART에 사유를 붙인다", () => {
+  const out = fleetPlanOf(refreshInputs({ sessions: [{ registration: "TEAM_J", kind: "background", id: "j", startedAt: NOW - 4 * DAY }] }));
+  assert.deepEqual(kinds(out.candidates), ["RESTART TEAM_J"]);
+  assert.deepEqual(out.candidates[0].reasons.map((r) => r.code), ["age", "session", "context", "saving"]);
+});
+
+test("REFRESH 지속·반대 규칙: 두 주기 뒤 제안, minDwell 안의 LAUNCH 제안 뒤에는 내지 않는다", () => {
+  const cfg = FLEET_PLAN_DEFAULTS;
+  const c = fleetPlanOf(refreshInputs()).candidates;
+  const first = persistOf({}, c, NOW, cfg);
+  assert.deepEqual(first.ready, []);
+  const second = persistOf(first.pending, c, NOW + 5 * MIN, cfg);
+  assert.deepEqual(kinds(second.ready), ["REFRESH TEAM_J"]);
+  const launched = foldFleetPlan([created("F-0001", "LAUNCH", "TEAM_J", { at: at(-30 * MIN) } as Partial<FleetPlanOp>)]);
+  assert.deepEqual(syncFleetPlan(launched, c, c, NOW, cfg).filter((o) => o.op === "create"), []);
+  assert.deepEqual(syncFleetPlan([], c, c, NOW, cfg).map((o) => o.op === "create" && `${o.kind} ${o.aircraft}`), ["REFRESH TEAM_J"]);
+});
+
+test("executionOf REFRESH: 백그라운드는 RESTART처럼 STOP → LAUNCH, 데스크톱·터미널은 실행하지 않는다(사람이 /clear)", () => {
+  const bg = openOf("F-0001", "REFRESH", "TEAM_H", { reasons: [{ code: "session", detail: "", value: "background" }] } as Partial<FleetPlanOp>);
+  const plan = executionOf(bg.p, {}, ctx({ latest: bg.latest, lastLaunch: new Map([["TEAM_H", { permissionMode: "acceptEdits" }]]) }));
+  assert.deepEqual(plan.steps, [
+    { action: "stop", registration: "TEAM_H" },
+    { action: "launch", registration: "TEAM_H", permissionMode: "acceptEdits", model: null },
+  ]);
+  const hand = openOf("F-0002", "REFRESH", "TEAM_H", { reasons: [{ code: "session", detail: "", value: "interactive" }] } as Partial<FleetPlanOp>);
+  assert.match(refused(() => executionOf(hand.p, {}, ctx({ latest: hand.latest }))), /^409 TEAM_H는 데스크톱·터미널 세션 — 그 세션에서 \/clear/);
 });

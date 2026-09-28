@@ -1,5 +1,6 @@
 import type { AircraftView } from "../../../../server/fleet.ts";
 import { fleetStatusOf } from "../../../../server/fleet-status.ts";
+import { contextBadgeOf } from "../../../../server/fuel-context.ts";
 import { fuelLabel, fuelTitle } from "../../../../server/fuel-remaining.ts";
 import { usd } from "../../../../server/fuel-view.ts";
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel } from "../../../../server/health.ts";
@@ -8,6 +9,7 @@ import { flightNumber } from "../../aviation.ts";
 import { timeAgo } from "../../derive.ts";
 import { formatClock, useSettings } from "../../settings.ts";
 import { FleetCrew } from "../FleetCrew.tsx";
+import { ContextLine } from "./Context.tsx";
 import { FuelBlock, RecentFuel } from "./Fuel.tsx";
 import { type SessionRow, pct, ratingHelp } from "./shared.ts";
 import "./Card.css";
@@ -155,6 +157,7 @@ export function Card({
         <p className="fl-absent faint">세션이 없음 — LAUNCH로 띄우거나, CREW BRIEFING을 새 세션에 붙여 넣으면 IN SERVICE가 된다</p>
       )}
       {a.flying.length > 0 && <p className="fl-flying">FLYING {a.flying.map(flightNumber).join(", ")}</p>}
+      <ContextLine c={contextBadgeOf(a.context)} />
       <RulesLine r={(a as AircraftView & { rules?: RulesView | null }).rules ?? null} />
 
       <h3 className="fl-sub">
