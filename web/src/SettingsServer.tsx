@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
+import { Fragment, type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
 import type { Snapshot } from "../../server/model.ts";
 import type { MccGate } from "../../server/mcc.ts";
 import type { ServerSettings, SettingsErrors, SettingsPatch } from "../../server/settings.ts";
@@ -638,12 +638,18 @@ function MccGatePanel() {
 // 관제 세션(docs/fleet.md 8.5.1). TOWER·OCC·MCC는 atc가 그 폴더에서 `claude --bg`로 띄우고 멈춘다.
 // tmux로 연 세션도 STOP한다(그 pane만 닫음, 묻고 나서). 데스크톱 세션은 그 창에서 닫는다. REVIEW·CROSSCHECK는 ocx라 tmux로 띄운다
 type ControlLive = { id?: string; name?: string; kind: string; status?: string; tmux?: string };
+type ControlAccounts = { labeled: boolean; rows: { name: string; label: string | null; account: string | null }[] };
 type ControlList = { manual: string[]; daemonInService?: boolean; sessions: { name: string; dir: string; prompt: string; live: ControlLive[] }[] };
 function ControlSessions() {
   const [list, setList] = useState<ControlList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<ControlAccounts | null>(null);
   const load = async () => {
+    fetch("/api/control/accounts")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((a: ControlAccounts | null) => a && setAccounts(a))
+      .catch(() => {});
     try {
       const res = await fetch("/api/control/sessions");
       const body = await res.json();
@@ -671,7 +677,50 @@ function ControlSessions() {
     await load();
     setBusy(null);
   };
-  if (!list) return error ? <p className="conn-error">{error}</p> : <p className="settings-hint">불러오는 중…</p>;
+  // ACCOUNT(ATC-60): 관제 세션도 FUEL에서 그 ACCOUNT에 센다. 라벨만 둔다(fleet.json control)
+  const saveAccount = async (name: string, v: string): Promise<SaveResult> => {
+    try {
+      const res = await fetch(`/api/control/${encodeURIComponent(name)}/account`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account: v || null }) });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; accounts?: ControlAccounts };
+      if (!res.ok) return { ok: false, error: body.error ?? `HTTP ${res.status}` };
+      if (body.accounts) setAccounts(body.accounts);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "서버에 연결할 수 없음" };
+    }
+  };
+  const accountRow = (name: string) => {
+    const a = accounts?.rows.find((r) => r.name === name);
+    if (!a) return null;
+    return (
+      <EditRow
+        key={`${name}-account`}
+        label={`${name} ACCOUNT`}
+        env={`fleet.json control.${name}`}
+        value={a.label ?? ""}
+        note={
+          a.label
+            ? `FUEL에서 ACCOUNT ${a.label}에 센다. 비우면 ${accounts?.labeled ? "default" : "자기 이름으로 따로"}`
+            : a.account
+              ? `라벨 없음 — ACCOUNT ${a.account}로 센다. 사용 한도를 같이 쓰는 AIRCRAFT와 같은 라벨(main, pro-2 …). email은 쓰지 않는다`
+              : "라벨 없음 — 어느 AIRCRAFT에도 ACCOUNT가 없어 이 세션 이름으로 따로 센다"
+        }
+        input={{ kind: "text", mono: true, maxLength: 24 }}
+        onSave={(v) => saveAccount(name, v.toLowerCase())}
+      />
+    );
+  };
+  // 세션 목록을 못 읽어도 ACCOUNT 라벨은 보이고 고칠 수 있다
+  if (!list)
+    return error ? (
+      <dl className="config-rows">
+        <p className="conn-error">{error}</p>
+        {accounts?.rows.map((r) => accountRow(r.name))}
+      </dl>
+    ) : (
+      <p className="settings-hint">불러오는 중…</p>
+    );
+  const launchable = new Set(list.sessions.map((c) => c.name));
   return (
     <dl className="config-rows">
       {list.sessions.map((c) => {
@@ -686,7 +735,8 @@ function ControlSessions() {
               ? `열려 있음(데스크톱) · ${other.name ?? other.kind}`
               : "꺼짐";
         return (
-          <div className="config-row" key={c.name}>
+          <Fragment key={c.name}>
+          <div className="config-row">
             <dt>
               {c.name} <code className="config-env">{c.dir}/</code>
             </dt>
@@ -706,6 +756,8 @@ function ControlSessions() {
               {other && !bg && !tmux ? " · 데스크톱 세션은 그 창에서 닫는다" : ""}
             </p>
           </div>
+          {accountRow(c.name)}
+          </Fragment>
         );
       })}
       {list.daemonInService && (
@@ -714,6 +766,7 @@ function ControlSessions() {
         </p>
       )}
       <p className="config-note">{list.manual.join(" · ")}: ocx로 다른 계열 모델에 돌리므로 tmux로 띄운다(review/README.md, docs/occ.md CROSSCHECK)</p>
+      {accounts?.rows.filter((r) => !launchable.has(r.name)).map((r) => accountRow(r.name))}
       {error && <p className="config-note is-error">{error}</p>}
     </dl>
   );

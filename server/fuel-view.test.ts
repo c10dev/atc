@@ -155,9 +155,13 @@ test("tripCheckOf: p90 이하 inside, 넘으면 unexpected, NET이나 범위가 
 });
 
 test("fleetFuelOf: 값 매긴 FLIGHT의 평균, CACHE HIT은 fuel 있는 줄의 토큰으로, CREW 몫, TOP LEAK", () => {
-  const leak = { coldCache: bucket(2, 5000), controlWake: bucket(1, 9000), modelSwitch: bucket(), unexplained: bucket(1, 100), total: bucket(4, 14100), expectedRebuild: bucket() };
+  const leak = {
+    coldCache: bucket(2, 5000), controlWake: bucket(1, 9000), modelSwitch: bucket(), compaction: bucket(), sessionChange: bucket(), upgrade: bucket(), unexplained: bucket(1, 100),
+    total: bucket(4, 14100), crew: bucket(), expectedRebuild: bucket(), proxied: bucket(1, 99_000),
+  };
+  const warnings = { heavyPrefix: 2, trivialDelegation: 0, highCrewShare: 1, deepNesting: 0, expensiveReadOnly: 0, coldCrew: 0, complementDrift: 0 };
   const es = [
-    { ...entry({ net: 4 }), fuelCost: cost(6, 4, 3), fuel: fuel({ leak }) },
+    { ...entry({ net: 4 }), fuelCost: cost(6, 4, 3), fuel: fuel({ leak, crewWarnings: warnings }) },
     { ...entry({ net: 8 }), fuelCost: cost(10, 8, 2) },
     entry(), // fuel 없는 옛 줄: ARRIVED에는 세고 값·CACHE에는 넣지 않는다
     entry({ net: 1, aircraft: "TEAM_H" }),
@@ -176,7 +180,11 @@ test("fleetFuelOf: 값 매긴 FLIGHT의 평균, CACHE HIT은 fuel 있는 줄의 
     f.leaks.map((l) => l.rule),
     ["controlWake", "coldCache", "unexplained"],
   );
-  assert.equal(f.crewWarnings, null);
+  // proxied(LEAK 밖)는 TOP LEAK에 없다. CREW 경고는 F7 뒤 줄의 수를 더한다
+  assert.deepEqual(f.crewWarnings, [
+    { kind: "heavyPrefix", count: 2 },
+    { kind: "highCrewShare", count: 1 },
+  ]);
   assert.equal(fleetFuelLabel(f), "FUEL $8.00/FLT · CACHE 86%");
 });
 
@@ -189,6 +197,7 @@ test("fleetFuelOf: fuel 없는 AIRCRAFT는 값이 모두 null(0이 아니다)", 
   assert.equal(f.cacheHit, null);
   assert.equal(f.crewShare, null);
   assert.deepEqual(f.leaks, []);
+  assert.equal(f.crewWarnings, null); // F7 전 줄: 재지 않음(없음 []과 다르다)
   assert.equal(fleetFuelLabel(f), null);
   // fuel은 있지만 값이 없는 모델뿐: CACHE는 보이고 비용은 없다
   const onlyDeep = { ...entry(), fuel: fuel(), fuelCost: { captain: null, crew: null, total: null, leakCost: null, netCost: null, unpriced: [{ model: "deepseek", reason: "x", requests: 1, tokens: 1 }] } };
@@ -227,6 +236,7 @@ test("largeLeaksOf: 24시간 안 값이 매겨진 LEAK을 팀 AIRCRAFT마다 더
       ev({ name: "OCC", cost: 50 }), // 팀이 아님
       ev({ name: "TEAM_B", cost: null, units: null, rewritten: 9e6 }), // 값 없음은 짐작하지 않는다
       ev({ name: "TEAM_C", rule: "expectedRebuild", cost: 40 }),
+      ev({ name: "TEAM_E", rule: "proxied", cost: 40 }), // LEAK 밖
     ],
     isTeam,
     NOW,

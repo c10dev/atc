@@ -1,12 +1,13 @@
 import { type FlightCost, leakPriceOf, type PriceTable } from "./fuel-cost.ts";
 import type { FuelRecord } from "./fuel.ts";
 import type { FlightFuel } from "./fuel-flights.ts";
-import { type LeakEvent, type LeakRule, TTL_1H_MS, TTL_5M_MS, ttlAfter } from "./fuel-leaks.ts";
+import { CREW_WARNING_KINDS, type CrewWarningKind } from "./fuel-crew.ts";
+import { type LeakEvent, LEAK_RULES, type LeakRule, TTL_1H_MS, TTL_5M_MS, ttlAfter } from "./fuel-leaks.ts";
 import type { LogEntry } from "./logbook.ts";
 
 // FUEL F8(ATC-56, docs/fuel.md 7): 화면과 브리핑에 보일 FUEL 값. 순수 함수만 두고, 화면(web)도 이 파일을 부른다(서버 입출력 import 없음).
 // 보여 주기만 한다: DISPATCH 점수·배정에 쓰지 않고, COLD CACHE 경고는 막지 않는다.
-// 없는 값(fuel 없는 옛 줄, 가격표에 없는 모델, F7이 아직 없는 CREW 경고)은 null이다. 0으로 채우지 않는다.
+// 없는 값(fuel 없는 옛 줄, 가격표에 없는 모델, F7 전 줄의 CREW 경고)은 null이다. 0으로 채우지 않는다.
 
 const DAY = 86_400_000;
 export const TRIP_FUEL_DAYS = 60; // TRIP FUEL이 배우는 기간
@@ -112,7 +113,8 @@ export function tripCheckOf(e: PricedEntry, entries: readonly PricedEntry[], now
 
 // ---- FLEET 카드·줄: 최근 14일 ----
 
-export type LeakName = Exclude<LeakRule, "expectedRebuild">;
+// FUEL LEAK에 드는 규칙(F3·F7). expectedRebuild와 proxied는 LEAK 밖
+export type LeakName = Exclude<LeakRule, "expectedRebuild" | "proxied">;
 export interface FleetFuel {
   days: number;
   arrived: number; // 기간 안 ARRIVED
@@ -124,7 +126,7 @@ export interface FleetFuel {
   cacheHit: { captain: number | null; crew: number | null; total: number | null } | null; // fuel 있는 줄의 토큰 합으로. 없으면 null
   crewShare: number | null; // 값 매긴 FLIGHT의 CREW FUEL COST ÷ FUEL COST
   leaks: { rule: LeakName; count: number; tokens: number }[]; // 다시 쓴 토큰이 많은 규칙 TOP_LEAKS개(0은 뺀다)
-  crewWarnings: string[] | null; // F7(ATC-57)이 만들기 전에는 null — 경고 없음(0)과 다르다
+  crewWarnings: { kind: CrewWarningKind; count: number }[] | null; // F7(ATC-57) 뒤 줄의 경고 수(0은 뺀다). 잰 줄이 없으면 null — 경고 없음([])과 다르다
   unpriced: string[]; // 가격표에 없어 뺀 모델
   unexpected: number; // TRIP FUEL p90을 넘은 FLIGHT
   checked: number; // TRIP FUEL과 비교한 FLIGHT
@@ -145,13 +147,16 @@ export function fleetFuelOf(registration: string, entries: readonly PricedEntry[
   const read = { captain: 0, crew: 0 };
   const all = { captain: 0, crew: 0 };
   const leaks = new Map<LeakName, { count: number; tokens: number }>();
+  const warned = mine.filter((e) => e.fuel?.crewWarnings);
+  const warnings = new Map<CrewWarningKind, number>();
   for (const e of fueled) {
     const f = e.fuel!;
     read.captain += f.captain.cacheRead;
     all.captain += promptOf(f.captain);
     read.crew += f.crew.cacheRead;
     all.crew += promptOf(f.crew);
-    for (const rule of ["coldCache", "controlWake", "modelSwitch", "unexplained"] as const) {
+    for (const kind of CREW_WARNING_KINDS) if (f.crewWarnings?.[kind]) warnings.set(kind, (warnings.get(kind) ?? 0) + f.crewWarnings[kind]);
+    for (const rule of LEAK_RULES as LeakName[]) {
       const b = f.leak?.[rule];
       if (!b?.count) continue;
       const got = leaks.get(rule) ?? { count: 0, tokens: 0 };
@@ -175,7 +180,9 @@ export function fleetFuelOf(registration: string, entries: readonly PricedEntry[
       .map(([rule, b]) => ({ rule, ...b }))
       .sort((a, b) => b.tokens - a.tokens || a.rule.localeCompare(b.rule))
       .slice(0, TOP_LEAKS),
-    crewWarnings: null,
+    crewWarnings: warned.length
+      ? [...warnings].map(([kind, count]) => ({ kind, count })).sort((a, b) => b.count - a.count || CREW_WARNING_KINDS.indexOf(a.kind) - CREW_WARNING_KINDS.indexOf(b.kind))
+      : null,
     unpriced: [...new Set(mine.flatMap((e) => e.fuelCost?.unpriced.map((u) => u.model) ?? []))].sort(),
     unexpected: checks.filter((c) => c.verdict === "unexpected").length,
     checked: checks.length,
@@ -200,14 +207,14 @@ export function largeLeaksOf(events: readonly (LeakEvent & { name?: string | nul
   const by = new Map<string, { count: number; tokens: number; cost: number; rules: Map<LeakName, number> }>();
   for (const e of events) {
     const name = e.name?.toUpperCase();
-    if (!name || e.rule === "expectedRebuild" || e.cost === null || !isTeam(name)) continue;
+    if (!name || e.rule === "expectedRebuild" || e.rule === "proxied" || e.cost === null || !isTeam(name)) continue;
     const t = Date.parse(e.t);
     if (t < since || t > now) continue;
     const b = by.get(name) ?? { count: 0, tokens: 0, cost: 0, rules: new Map() };
     b.count++;
     b.tokens += e.rewritten;
     b.cost += e.cost;
-    b.rules.set(e.rule, (b.rules.get(e.rule) ?? 0) + e.cost);
+    b.rules.set(e.rule as LeakName, (b.rules.get(e.rule as LeakName) ?? 0) + e.cost);
     by.set(name, b);
   }
   const day = new Date(now).toISOString().slice(0, 10);
@@ -289,7 +296,25 @@ function coldText(aircraft: string, idleMin: number, ttlMin: number, prefix: num
 
 // ---- 글 ----
 
-export const LEAK_LABEL: Record<LeakName, string> = { coldCache: "COLD CACHE", controlWake: "CONTROL WAKE", modelSwitch: "MODEL SWITCH", unexplained: "UNEXPLAINED" };
+export const LEAK_LABEL: Record<LeakName, string> = {
+  coldCache: "COLD CACHE",
+  controlWake: "CONTROL WAKE",
+  modelSwitch: "MODEL SWITCH",
+  compaction: "COMPACTION",
+  sessionChange: "SESSION CHANGE",
+  upgrade: "UPGRADE",
+  unexplained: "UNEXPLAINED",
+};
+// CREW 경고(F7, docs/fuel.md 5)
+export const CREW_WARNING_LABEL: Record<CrewWarningKind, string> = {
+  heavyPrefix: "HEAVY PREFIX",
+  trivialDelegation: "TRIVIAL DELEGATION",
+  highCrewShare: "HIGH CREW SHARE",
+  deepNesting: "DEEP NESTING",
+  expensiveReadOnly: "EXPENSIVE READ-ONLY",
+  coldCrew: "COLD CREW",
+  complementDrift: "COMPLEMENT DRIFT",
+};
 
 export function usd(v: number): string {
   if (v >= 100) return `$${Math.round(v)}`;

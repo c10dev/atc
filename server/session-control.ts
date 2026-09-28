@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 import type { Context, Hono } from "hono";
 import { config } from "./config.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
-import { crewBriefing, fleetView, loadFleet } from "./fleet.ts";
+import { crewBriefing, FleetError, fleetView, loadFleet, saveControlAccount } from "./fleet.ts";
+import { accountsLabeled, CONTROL_NAMES, controlAccountOf, type FleetFile } from "./crew.ts";
 import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { record } from "./recorder.ts";
@@ -359,9 +360,26 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
           prompt: spec.prompt,
           live: controlRowsOf(spec, rows, controlDirOf(spec)).map(({ id, name, kind, status, pid }) => ({ id, name, kind, status, tmux: kind === "background" ? undefined : tmuxPaneOf(pid, panes, parentPidOf)?.session })),
         })),
+        // ACCOUNT(ATC-60): 관제 세션마다 SUPERVISOR가 단 라벨(없으면 null). FUEL이 이 ACCOUNT에 센다
+        accounts: controlAccountsView(loadFleet()),
       });
     } catch (e) {
       if (e instanceof ControlError) return c.json({ error: e.message }, e.status as 502);
+      throw e;
+    }
+  });
+  // 관제 세션의 ACCOUNT 라벨(ATC-60). 세션 목록(claude agents)을 못 읽어도 라벨은 보이고 고칠 수 있게 따로 둔다
+  app.get("/api/control/accounts", (c) => c.json(controlAccountsView(loadFleet())));
+  // SUPERVISOR만: 이 화면 Origin이 있어야 받는다. null이나 ""면 지운다
+  app.put("/api/control/:name/account", async (c: Context) => {
+    if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
+    const body = (await c.req.json().catch(() => ({}))) as { account?: unknown };
+    try {
+      const account = saveControlAccount(c.req.param("name") ?? "", body.account ?? null);
+      console.log(`[atc] control account: ${(c.req.param("name") ?? "").toUpperCase()}=${account ?? "(none)"}`);
+      return c.json({ ok: true, accounts: controlAccountsView(loadFleet()) });
+    } catch (e) {
+      if (e instanceof FleetError) return c.json({ error: e.message }, e.status as 400);
       throw e;
     }
   });
@@ -406,4 +424,12 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
     if (!r.ok) return c.json({ error: r.error }, r.status as 400);
     return c.json({ ok: true, registration: reg, jobId: r.jobId });
   });
+}
+
+// 관제 세션마다 라벨(없으면 null)과 실제로 셀 ACCOUNT(라벨이 하나도 없으면 null, 라벨이 없으면 default)
+export function controlAccountsView(fleet: Pick<FleetFile, "aircraft" | "control">) {
+  return {
+    labeled: accountsLabeled(fleet),
+    rows: CONTROL_NAMES.map((name) => ({ name, label: fleet.control?.[name]?.account ?? null, account: controlAccountOf(fleet, name) })),
+  };
 }

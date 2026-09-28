@@ -63,3 +63,30 @@ test("observeCrew: 14일 안의 호출을 묶고, 선언에 없음·안 쓰임�
 test("observeCrew: 호출이 없으면 빈 목록이고 선언 전부가 안 쓰임", () => {
   assert.deepEqual(observeCrew([], D, NOW), { observedCrew: [], crewDrift: { undeclared: [], unused: ["backend", "ui-builder", "ui-qa", "flash-helper"] } });
 });
+
+test("observeCrew(ATC-57): FUEL이 본 실제 모델을 쓰고, 선언과 어긋나면(COMPLEMENT DRIFT) 선언에 없음으로 올린다", () => {
+  const now = Date.parse("2026-09-28T12:00:00Z");
+  const complement = DEFAULT_FLEET.defaults.complement;
+  const spawns = [
+    { agentType: "general-purpose", model: null, at: now - 60_000, agent: "g1" }, // 실제 Sonnet
+    { agentType: "general-purpose", model: null, at: now - 50_000, agent: "g2" }, // 실제 Opus
+    { agentType: "ui-builder", model: null, at: now - 40_000, agent: "u1" },
+  ];
+  const actual = new Map([
+    ["g1", "claude-sonnet-5"],
+    ["g2", "claude-opus-5-5"],
+    ["u1", "claude-sonnet-5"],
+  ]);
+  const { observedCrew, crewDrift } = observeCrew(spawns, complement, now, 14, (a) => actual.get(a) ?? null);
+  assert.deepEqual(
+    observedCrew.map((o) => [o.agentType, o.model, o.position]),
+    [
+      ["ui-builder", "claude-sonnet-5", "ui-builder"], // agent 타입 선언은 모델을 말하지 않는다
+      ["general-purpose", "claude-opus-5-5", "backend"],
+      ["general-purpose", "claude-sonnet-5", null],
+    ],
+  );
+  assert.deepEqual(crewDrift.undeclared, ["general-purpose (claude-sonnet-5)"]);
+  // 실제 모델을 모르면 예전처럼 부를 때 준 model(없으면 CAPTAIN 모델 Opus로 본다)
+  assert.deepEqual(observeCrew(spawns, complement, now).crewDrift.undeclared, []);
+});

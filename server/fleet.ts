@@ -19,6 +19,8 @@ import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state
 import {
   ACCOUNT_RE,
   accountOf,
+  CONTROL_NAMES,
+  isControlName,
   type AircraftProfile,
   CONFIGURATIONS,
   type ConfigurationId,
@@ -60,7 +62,28 @@ export function loadFleet(file = fleetFile()): FleetFile {
   return {
     defaults: { ...structuredClone(DEFAULT_FLEET.defaults), ...(raw.defaults ?? {}) },
     aircraft: raw.aircraft && typeof raw.aircraft === "object" ? raw.aircraft : {},
+    ...(raw.control && typeof raw.control === "object" ? { control: raw.control } : {}), // 관제 세션 ACCOUNT(ATC-60). 옛 파일엔 없다
   };
+}
+
+// 관제 세션의 ACCOUNT 라벨을 바꿔 쓴다(ATC-60). 다른 항목은 그대로. null이나 ""이면 지운다
+export function saveControlAccount(name: string, account: unknown, file = fleetFile()): string | null {
+  const key = name.toUpperCase();
+  if (!isControlName(key)) throw new FleetError(`관제 세션이 아님: ${name} (${CONTROL_NAMES.join(", ")})`, 404);
+  const v = typeof account === "string" ? account.trim().toLowerCase() : account;
+  if (v !== null && v !== "" && (typeof v !== "string" || !ACCOUNT_RE.test(v)))
+    throw new FleetError("account는 SUPERVISOR가 정한 라벨(소문자·숫자·-, 24자까지. 예: main, pro-2) — email은 쓰지 않는다");
+  const raw = readRaw(file);
+  const control = { ...((raw.control as FleetFile["control"]) ?? {}) };
+  if (v) control[key] = { ...(control[key] ?? {}), account: v as string };
+  else delete control[key];
+  const next: Partial<FleetFile> = { ...raw, control };
+  if (!Object.keys(control).length) delete next.control;
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n");
+  renameSync(tmp, file);
+  return (v as string) || null;
 }
 
 export function saveAircraft(key: string, profile: AircraftProfile | null, file = fleetFile()) {
@@ -390,6 +413,7 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const configurations = Object.entries(CONFIGURATIONS).map(([id, t]) => ({ id, label: t.label, complement: t.complement, ratings: t.ratings }));
     return c.json({
       ratings: RATINGS,
+      fuelAccounts: s.fuelAccounts ?? [], // ACCOUNT마다 FUEL과 구성원(AIRCRAFT·관제 세션, ATC-60)
       defaults: fleet.defaults,
       projects,
       aircraft,

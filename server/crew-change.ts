@@ -4,7 +4,8 @@ import type { Hono } from "hono";
 import { callsign } from "./callsign.ts";
 import { config } from "./config.ts";
 import { type AircraftProfile, canFly, canHoldSec, type CrewMember, type FleetFile, RATINGS, type Rating } from "./crew.ts";
-import { type CrewDrift, type ObservedMember, observeCrew, spawnsFor } from "./crew-observed.ts";
+import { agentModelOf } from "./agent-models.ts";
+import { type CrewDrift, OBSERVED_WINDOW_DAYS, type ObservedMember, observeCrew, spawnsFor } from "./crew-observed.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import type { Snapshot } from "./model.ts";
 
@@ -334,7 +335,7 @@ export function withCrew(s: Pick<Snapshot, "sessions">, now = Date.now()) {
   const changes = allCrewChanges();
   return <A extends { registration: string; complement: CrewMember[] }>(a: A): A & CrewFields => {
     const spawns = spawnsFor(a.registration, s.sessions, now);
-    const seen = spawns && observeCrew(spawns, a.complement, now);
+    const seen = spawns && observeCrew(spawns, a.complement, now, OBSERVED_WINDOW_DAYS, agentModelOf);
     return {
       ...a,
       observedCrew: seen?.observedCrew ?? null,

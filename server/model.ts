@@ -232,4 +232,5 @@ export interface Snapshot {
   atfm: { mains: MainStatus[]; groundStops: GroundStop[] }; // 기본 브랜치 CI와 출발 중지(docs/atfm.md)
   autoland?: AutolandView; // AUTOLAND(ATC-34): AIRPORT마다 다음 할 일, PR마다 표시·제외 사유
   fuel?: Record<string, FuelRemaining>; // FUEL REMAINING(ATC-55): REGISTRATION(대문자) → 그 ACCOUNT의 가장 새 statusline 값
+  fuelAccounts?: FuelRemaining[]; // ACCOUNT마다 하나(ATC-60): 관제 세션만 있는 ACCOUNT도 들어간다
 }
