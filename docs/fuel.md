@@ -2,7 +2,7 @@
 
 FUEL is the tokens a FLIGHT uses. atc records how long a FLIGHT took (block time, landing wait) and how well it went (rollbacks, LOS, Codex findings), but not what it burned, why some of that burn was waste, or how close each account is to its plan limit. FUEL adds those three things from records atc can already read.
 
-> Status (2026-09-28): draft for ATC-46 (moved from GitHub idea #53, whose research comment is the source for the pricing and cache facts below). F1 is built (`server/fuel.ts`, `server/fuel-run.ts`, `GET /api/fuel`) and F2 (ACCOUNT label, `LIMIT` held by ACCOUNT) is built (ATC-51); F3 (COLD CACHE and MODEL SWITCH leaks, `server/fuel-leaks.ts`) is built (ATC-52); F4 (FLIGHT attribution, the LOGBOOK `fuel` field, `UNATTRIBUTED`) is built (ATC-53); F6 (FUEL REMAINING per ACCOUNT from the statusline) is built (ATC-55), with control sessions counted in their ACCOUNT (ATC-60); F5 (price table, FUEL COST, NET FUEL, `server/fuel-cost.ts`) is built (ATC-54), with per-FLIGHT cost from LOGBOOK `byModel` (ATC-59); the rest is not. Sections 8 and 9 hold the split into issues and the SUPERVISOR decisions this needs.
+> Status (2026-09-28): draft for ATC-46 (moved from GitHub idea #53, whose research comment is the source for the pricing and cache facts below). F1 is built (`server/fuel.ts`, `server/fuel-run.ts`, `GET /api/fuel`) and F2 (ACCOUNT label, `LIMIT` held by ACCOUNT) is built (ATC-51); F3 (COLD CACHE and MODEL SWITCH leaks, `server/fuel-leaks.ts`) is built (ATC-52); F4 (FLIGHT attribution, the LOGBOOK `fuel` field, `UNATTRIBUTED`) is built (ATC-53); F6 (FUEL REMAINING per ACCOUNT from the statusline) is built (ATC-55), with control sessions counted in their ACCOUNT (ATC-60); F5 (price table, FUEL COST, NET FUEL, `server/fuel-cost.ts`) is built (ATC-54), with per-FLIGHT cost from LOGBOOK `byModel` (ATC-59); F7 (COMPACTION, SESSION CHANGE, UPGRADE / EFFORT CHANGE, the `proxied` bucket, CREW misses and CREW warnings, `server/fuel-crew.ts`) is built (ATC-57); the rest is not. Sections 8 and 9 hold the split into issues and the SUPERVISOR decisions this needs.
 
 Related: [fleet.md](fleet.md) 8.3 (observed crew, never read bodies), 8.6 (FLEET PLAN, "Usage: none per AIRCRAFT"), 8.8 (AIRCRAFT health, `LIMIT` after a limit is hit); `server/logbook.ts` (LOGBOOK), `server/health.ts` (`quotaLimits`), `server/crew-observed.ts`; GitHub #41 (ontology graph projection, K1).
 
@@ -69,6 +69,40 @@ A **miss** follows Claude Code: re-processing more than 5 % of what could have b
 
 CREW warnings are shown, not added to leaks: HEAVY PREFIX (first CREW request writes > 30 K), TRIVIAL DELEGATION (prefix > 50 % of the subagent's input and ≤ 3 turns), HIGH CREW SHARE (> 50 % of the FLIGHT), DEEP NESTING (`spawnDepth` ≥ 2), EXPENSIVE READ-ONLY (Explore/Plan on Opus), COLD CREW (a subagent reused after 5 min idle), COMPLEMENT DRIFT (declared POSITION model ≠ actual `message.model`, feeding `crew-observed.ts`). Thresholds are proposals to tune after measuring.
 
+**As built (F3 ATC-52, F7 ATC-57).** Each rule is tested in this order, first match wins:
+
+| # | Bucket | Test as built | In LEAK |
+|---|---|---|---|
+| 1 | `proxied` | The request has no `requestId` (proxied DeepSeek, Muse and some Opus routes). Their caching is implicit and not priced like Anthropic's | No |
+| 2 | `compaction` / `expectedRebuild` | A `compact_boundary` falls between the two requests: `compaction` when the gap also exceeds the TTL (the cache was cold), else `expectedRebuild` | `compaction` only |
+| 3 | `modelSwitch` | `message.model` differs from the previous request's | Yes |
+| 4 | `controlWake` / `coldCache` | Gap over the TTL; `controlWake` when an atc message to that session falls inside the gap | Yes |
+| 5 | `upgrade` | Both requests carry a `version` (or an `effort`) and it changed; the event says which (`change`) | Yes |
+| 6 | `unexplained` | Any other miss | Yes |
+| — | `sessionChange` | Not a pairwise rule: a session's first CAPTAIN request, on a FLIGHT another session already flew (F4 attribution), minus the AIRPORT's new-session baseline, when the rest is ≥ 2,000 | Yes |
+
+CAPTAIN requests are compared within a session and CREW requests within one subagent (agent id). CREW misses count in their rule and also in `leak.crew`. The new-session baseline is the median first-request write (`input + cache writes`) of every non-proxied session in the scan, per AIRPORT of the FLIGHT the request falls in, or over all sessions when an AIRPORT has fewer than 3. `GET /api/fuel` reports it as `sessionBaselines`.
+
+| Warning | Threshold as built | Value |
+|---|---|---|
+| HEAVY PREFIX | First CREW request writes > 30,000 (`HEAVY_PREFIX_TOKENS`) | Tokens written |
+| TRIVIAL DELEGATION | ≤ 3 requests and the first prompt is > 50 % of all the subagent's prompt tokens | That share |
+| HIGH CREW SHARE | CREW > 50 % of the FLIGHT's tokens (all five kinds), per FLIGHT only | 1 on the FLIGHT |
+| DEEP NESTING | `spawnDepth` ≥ 2 (`agent-*.meta.json`) | Depth |
+| EXPENSIVE READ-ONLY | `agentType` Explore or Plan answered by an Opus model | Opus requests |
+| COLD CREW | Gap between two requests of one subagent > 5 min (CREW writes the 5 m tier) | Gap, ms |
+| COMPLEMENT DRIFT | The AIRCRAFT's declared POSITION names a model (`claude-opus-5-5`, not an agent type like `ui-builder`) and the subagent's most frequent `message.model` differs; or a `general-purpose`/`claude` subagent answered by a model no POSITION declares. Model names are compared without proxy prefixes and punctuation | 1 |
+
+**Measured** (7 days to 2026-09-28, the real LOGBOOK and DEPARTURE LOG, read-only):
+
+- LEAK 254 misses, 68.7 M tokens: COLD CACHE 217 (62.2 M; CAPTAIN 116 / 45.6 M, CREW 101 / 16.6 M), control wake 5 (1.7 M), MODEL SWITCH 2 (0.4 M), COMPACTION 2 (0.2 M), SESSION CHANGE 2 (11 K and 13 K over the baseline), UPGRADE 0, UNEXPLAINED 26 (4.2 M; CAPTAIN 6 / 1.7 M, CREW 20 / 2.4 M). CREW share of LEAK: 121 misses, 19.0 M.
+- Outside LEAK: `proxied` 534 (50.7 M; CAPTAIN 205 / 19.2 M, CREW 329 / 31.5 M), `expectedRebuild` 11 (0.6 M).
+- New-session baseline: 40.8 K median over 106 sessions (VCDO 52.4 K from 2, RNPU 15.5 K from 1, so both fall back to the overall median). The first CAPTAIN request writes about 36–50 K per AIRPORT (p10 17–29 K, p90 42–66 K).
+- Compactions: 40 in the window; gap before the next request p10 60 s, p50 4 min, p90 42 min.
+- `version` changed 3 times and `effort` 7 times between consecutive CAPTAIN requests; none of them came with a warm miss.
+- CREW (316 subagents): first-request write p10 0, p50 34 K, p90 63 K, so HEAVY PREFIX fires on 160 (half: the 30 K proposal sits at the median and should be raised or tied to the agent type); TRIVIAL DELEGATION 5; DEEP NESTING 0 (no `spawnDepth` ≥ 2); EXPENSIVE READ-ONLY 5; COLD CREW 106 reuses on 44 subagents; COMPLEMENT DRIFT 0 (Opus `general-purpose` matches `backend`); HIGH CREW SHARE on 12 of 116 FLIGHTs with usage (per session, 8 of 84 sessions over 1 M tokens).
+- **The Opus UNEXPLAINED misses a few seconds after a warm request** (8 with a `requestId` in the window before this change; the cache read fell to about 31 K, p50 31,005): 2–10 s after the previous request, which had stopped on `tool_use` in 7 of 8. `version`, `effort` and `model` were the same (one pair had no `version` on the earlier line). Line tags between the two requests (line type, system subtype, attachment type, content block types; no bodies) showed nothing that the warm pairs lacked: `mcp_instructions_delta` 1 of 8 vs 7 % of warm pairs, `deferred_tools_delta` and `skill_listing` none. No field explains them, so they stay `unexplained`.
+
 ## 6. Accounts and FUEL REMAINING
 
 This is the part the 2026-09-28 TEAM_K case asks for.
@@ -114,7 +148,7 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 | F5 (ATC-54) ✅ | Cost: config price table, FUEL COST, NET FUEL. **Done**, see 8.4 | F1 | `auto` | BUILD · L |
 | F6 (ATC-55) ✅ | FUEL REMAINING source (section 6): verify statusline `rate_limits`, then the statusline script and per-ACCOUNT view. **Done**, see 6.1 | F2, decision D1 | `user` (`hooks/`, settings) | BUILD · M |
 | F6b (ATC-60) ✅ | Control sessions (TOWER, OCC, CROSSCHECK, MCC, ENGINEERING) counted in their ACCOUNT: label in `fleet.json` `control`, set in the settings window; FLEET FUEL block by ACCOUNT. **Done**, see 6.1 | F6 | `user` (new top-level `fleet.json` field) | BUILD · S |
-| F7 (ATC-57) | Other leaks and CREW warnings (COMPACTION, SESSION CHANGE after measuring the baseline, the warning list) | F3 | `auto` | BUILD · M |
+| F7 (ATC-57) ✅ | Other leaks and CREW warnings (COMPACTION, SESSION CHANGE after measuring the baseline, the warning list). **Done**, see 5 and 8.5 | F3 | `auto` | BUILD · M |
 | F8 (ATC-56) | Screens and TRIP FUEL: FLEET/LOGBOOK/DISPATCH/brief views, TARGETS items `fuelPerFlight`, `cacheHit` | F4, F5 | `auto` (rating:UI) | BUILD · M |
 
 ### 8.1 F1 as built (ATC-50)
@@ -143,7 +177,7 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 - **FLIGHT span** (`server/fuel-flights.ts`, pure): an ARRIVED FLIGHT runs from LOGBOOK `departedAt` to `arrivedAt`. Who flew it comes from the DEPARTURE LOG lines the LOGBOOK itself would match (same branch in the same AIRPORT first, else the FLIGHT key or a STAND, up to `arrivedAt`). Each AIRCRAFT line starts a segment, so a HANDOFF splits the span; the first segment is stretched back to `departedAt`. With no AIRCRAFT line the LOGBOOK `aircraft` flies the whole span.
 - **EN ROUTE**: DEPARTURE LOG lines on STANDs that still exist and belong to no ARRIVED FLIGHT (not on one of its STANDs or branch before its arrival) are grouped by AIRPORT and branch (or STAND) into a span from the first line to now. Their usage is `enRoute`, not `UNATTRIBUTED`. A STAND deleted without an arrival gets no span, since its end is unknown.
 - **One FLIGHT per request, never split.** A request goes to a FLIGHT covering its time where the session occupied one of the FLIGHT's STANDs (claim `since`–`lastAt`) at that time; failing that, where the session's AIRCRAFT (session name) flew a segment at that time. If several fit, the one that departed last wins (the next FLIGHT started during the previous one's landing wait), then the key. CAPTAIN and CREW are kept apart by `isSidechain`. AD HOC FLIGHTs (no ticket key) go through the same rules; occupancy lets an unnamed session count while it holds the STAND.
-- **LOGBOOK `fuel` field**: set when a new `arrived` line is written, from a 14-day scan (`FUEL_LOGBOOK_DAYS`) cut against every ARRIVED and EN ROUTE span, so the overlap rule holds at write time too. It is never added to old lines (append-only), and it is left out, not zeroed, when the departure time is unknown (`departedFrom: "pr"`, the span would be the landing wait only), when the FLIGHT departed before the scan window, or when no request fits (transcripts cleaned up, or a non-Claude FLIGHT). Shape: `{captain, crew, cacheHit, leak, models}`; `captain` and `crew` carry the five kinds, `requests` and `cacheHit`, `crew.outputLowerBound` is `true`, `cacheHit` is CAPTAIN + CREW, `leak` is F3's per-rule totals (8.2) for the misses inside the FLIGHT, split by the same one-FLIGHT-per-request rule (zeros when there were none), and `models` counts requests per model. `cost`, `netCost` (F5) and `crewWarnings` (F7) are left out until those issues add them to new lines; `leak` gains `compaction` and `sessionChange` with F7. A failed scan writes the line without `fuel` and shows `FUEL: …` in the LOGBOOK error.
+- **LOGBOOK `fuel` field**: set when a new `arrived` line is written, from a 14-day scan (`FUEL_LOGBOOK_DAYS`) cut against every ARRIVED and EN ROUTE span, so the overlap rule holds at write time too. It is never added to old lines (append-only), and it is left out, not zeroed, when the departure time is unknown (`departedFrom: "pr"`, the span would be the landing wait only), when the FLIGHT departed before the scan window, or when no request fits (transcripts cleaned up, or a non-Claude FLIGHT). Shape: `{captain, crew, cacheHit, leak, models}`; `captain` and `crew` carry the five kinds, `requests` and `cacheHit`, `crew.outputLowerBound` is `true`, `cacheHit` is CAPTAIN + CREW, `leak` is F3's per-rule totals (8.2) for the misses inside the FLIGHT, split by the same one-FLIGHT-per-request rule (zeros when there were none), and `models` counts requests per model. `cost` and `netCost` are not stored: FUEL COST is priced at read time from `byModel` (8.4, ATC-59). Since F7 (8.5) new lines also carry `crewWarnings`, and `leak` has the F7 buckets (counts and tokens, no cost). A failed scan writes the line without `fuel` and shows `FUEL: …` in the LOGBOOK error.
 - **`GET /api/fuel`**: each `aircraft[]` row gains `attribution: {flights, enRoute, unattributed}`, each `{captain, crew, total}`; `attribution.totals` covers every session, unnamed ones included; `attribution.flights` lists the FLIGHTs with usage in the window (`key`, `flight`, `arrived`, AIRCRAFT in HANDOFF order, sessions, `fuel` with `leak`). The window view uses today's LOGBOOK (with later `attributed` lines), so it can differ from the `fuel` frozen on an older line.
 - **Limits**: a claim's `lastAt` is the last touch, so work after it counts through the AIRCRAFT name only. Hook claims are current files, not a history, so older FLIGHTs lean on the DEPARTURE LOG and the session name. A request is never shared between two FLIGHTs that one session flies at the same moment.
 
@@ -161,6 +195,14 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 - **Codex** is still not read, so it stays out of cost (D6).
 
 F1 and F2 started at once and in parallel, and both are built; they answer the TEAM_K question soonest. The rest wait in Backlog behind their dependencies (Linear `blocked by`).
+### 8.5 F7 as built (ATC-57)
+
+- **Where**: `server/fuel-leaks.ts` (the rules in order, `sessionChangeLeaks`), `server/fuel-crew.ts` (CREW warnings, pure), `server/agent-models.ts` (subagent id → the model that answered, filled by each FUEL scan), `analyzeWindow` in `server/fuel-run.ts`. Rules, thresholds and the first measurement are in section 5.
+- **`GET /api/fuel`**: `leak` on each session, AIRCRAFT and the totals gains `compaction`, `sessionChange`, `upgrade`, `crew` (the CREW part of `total`) and `proxied` (outside `total`, like `expectedRebuild`); `leakEvents` leaves out both outside buckets. `crewWarnings` (counts per warning) on each session, AIRCRAFT and the totals; `crewWarningEvents` (the 50 latest: kind, session, name, agent, `agentType`, time, value, `detail`); `sessionBaselines`. Each `attribution.flights[].fuel` gains `crewWarnings`, with `highCrewShare` set to 1 when that FLIGHT went over.
+- **LOGBOOK**: new `arrived` lines carry `fuel.crewWarnings` and the F7 `leak` buckets. Old lines are not changed.
+- **OBSERVED CREW** ([fleet.md](fleet.md) 8.3): with the actual model per subagent from the last FUEL scan, `observeCrew` groups by that model instead of assuming Opus, and a call whose model differs from its POSITION's declared model goes to `crewDrift.undeclared` as `type (model)`. Before any FUEL scan it behaves as before.
+- **`byModel[].leak` (ATC-59)** now also takes CREW misses and, like `expectedRebuild`, leaves out `proxied`, so the leak priced at read time matches `leak.total`.
+- **Kept as they were**: F3's rules and order for CAPTAIN misses, except that proxied misses left `unexplained`/`coldCache`/`modelSwitch` for `proxied`, and cold compaction left `expectedRebuild` for `compaction`.
 
 ## 9. Decisions for the SUPERVISOR
 
@@ -186,4 +228,4 @@ F1 and F2 started at once and in parallel, and both are built; they answer the T
 
 ## Not built yet
 
-F7 and F8 in section 8; Codex usage and prices (section 4, D6). FLIGHTs that arrived before ATC-59 have no `byModel` and stay unpriced.
+F8 in section 8; Codex usage and prices (section 4, D6); tuning the CREW warning thresholds (HEAVY PREFIX fires on half of all subagents, section 5). FLIGHTs that arrived before ATC-59 have no `byModel` and stay unpriced.

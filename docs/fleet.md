@@ -487,14 +487,14 @@ Transcripts (`*.jsonl` bodies), prompts and the meta `description` are never rea
 |---|---|
 | An `agentType` equal to a member's `position` or `agent` (`ui-builder`, `ui-qa`, `flash-helper`, or anything the SUPERVISOR declared by agent type) | That member's POSITION |
 | `general-purpose` or `claude` with a `model` | The member whose `agent` contains the model family (`opus` → `claude-opus-5-5` → `backend`). No such member: none |
-| `general-purpose` or `claude` without a `model` | Treated as Opus: the call inherits the CAPTAIN's model, and CAPTAINs run on Opus. atc cannot see the real model, so `model` stays `null` |
+| `general-purpose` or `claude` without a `model` | The model that actually answered, once FUEL has read the subagent's usage lines (ATC-57, [fuel.md](fuel.md) 5). Before that, treated as Opus: the call inherits the CAPTAIN's model, and CAPTAINs run on Opus, so `model` stays `null` |
 | Built-ins (`Explore`, `Plan`, `claude-code-guide`, `statusline-setup`) and other agent types | None, unless declared by name |
 
 Calls are grouped by `agentType` and `model`: `observedCrew: {agentType, position, model, count, lastAt}[]`, newest first.
 
 **Drift** (`crewDrift`):
 
-- `undeclared`: observed calls with no POSITION, by agent type, with the model when one was given (`Explore`, `general-purpose (sonnet)`). The card shows "선언에 없음: Explore".
+- `undeclared`: observed calls with no POSITION, by agent type, with the model when one was given or seen (`Explore`, `general-purpose (sonnet)`). The card shows "선언에 없음: Explore". Since ATC-57 a call whose actual model differs from the model its POSITION declares (COMPLEMENT DRIFT, [fuel.md](fuel.md) 5) is listed here too, as `type (actual model)`.
 - `unused`: declared POSITIONs with no call in the window. A POSITION that is never a subagent (the `reviewer` POSITION of the `security` CONFIGURATION, agent `codex (GitHub 리뷰)`, which works through GitHub reviews) always shows here. Read it as "not seen", not as a fault.
 
 **Cost.** The server rescans `~/.claude/projects` for `custom-title.json` at most every 30 seconds. Titles are cached by file mtime and each session's calls by the mtime of its `subagents/` folder, so an unchanged session is not re-read.
