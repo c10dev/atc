@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
-import { dirname } from "node:path";
+import { realpathSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Context, Hono } from "hono";
 import { config } from "./config.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
@@ -74,6 +76,55 @@ export function launchPlanOf(input: LaunchInput, rows: AgentRow[], max = MAX_LAU
   return { registration: reg, cwd: input.repo, permissionMode: mode as PermissionMode, model, args };
 }
 
+// ── 관제 세션(docs/fleet.md 8.5.1) ──
+// atc 저장소의 관제 폴더에서 `claude --bg`로 띄운다. 폴더의 .claude/settings.json(모델·허용 목록·fail-closed guard)이 그대로 걸린다.
+// 첫 메시지는 그 폴더의 주기 명령. 권한 모드는 auto로 고정한다(백그라운드 세션은 권한 창에 답할 수 없고, 막는 일은 guard가 한다).
+// REVIEW·CROSSCHECK는 ocx로 다른 계열 모델에 돌려서 `claude --bg`로 띄울 수 없다 — 지금처럼 tmux로 띄운다.
+export interface ControlSpec {
+  name: string;
+  dir: string; // atc 저장소 안의 폴더
+  prompt: string; // 첫 메시지
+  flags: string[];
+}
+export const CONTROL_SESSIONS: readonly ControlSpec[] = [
+  { name: "TOWER", dir: "controller", prompt: "/loop 3m /tick", flags: [] },
+  { name: "OCC", dir: "occ", prompt: "/loop 10m /tick", flags: [] },
+  { name: "MCC", dir: "mcc", prompt: "/loop 5m /tick", flags: ["--strict-mcp-config"] },
+];
+export const MANUAL_CONTROL = ["REVIEW", "CROSSCHECK"] as const;
+const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
+const realDir = (p: string) => {
+  try {
+    return realpathSync(p);
+  } catch {
+    return p;
+  }
+};
+export const controlDirOf = (spec: ControlSpec, root = REPO_ROOT) => realDir(join(root, spec.dir));
+export const controlSpecOf = (name: string) => CONTROL_SESSIONS.find((s) => s.name === name.toUpperCase()) ?? null;
+
+// 이 관제 세션으로 보는 세션: 이름이 같거나(대소문자 무시), 그 폴더에서 연 세션(tmux로 이름 없이 띄운 것도)
+export function controlRowsOf(spec: ControlSpec, rows: AgentRow[], dir: string): AgentRow[] {
+  return rows.filter((r) => sameName(r, spec.name) || realDir(r.cwd) === dir);
+}
+// 관제 폴더에서 연 세션인가(팀 세션 상한에서 뺀다)
+export const isControlRow = (row: AgentRow, dirs: readonly string[]) => CONTROL_SESSIONS.some((s) => sameName(row, s.name)) || dirs.includes(realDir(row.cwd));
+
+// LAUNCH할 수 있는지 보고 claude 인자를 만든다(순수). 같은 관제 세션이 어떤 종류로든 떠 있으면 거절(두 벌이 같은 일을 하지 않게)
+export function controlLaunchPlanOf(spec: ControlSpec, rows: AgentRow[], dir: string): { cwd: string; args: string[] } {
+  const live = controlRowsOf(spec, rows, dir)[0];
+  if (live) throw new ControlError(`${spec.name} 세션이 이미 떠 있음(${live.kind === "background" ? `bg ${live.id}` : `interactive ${live.name ?? ""}`.trim()})`, 409);
+  return { cwd: dir, args: ["--bg", "-n", spec.name, "--permission-mode", "auto", ...spec.flags, spec.prompt] };
+}
+// STOP할 백그라운드 세션(순수). 데스크톱·터미널·tmux 세션은 그 창에서 닫는다
+export function controlStopTargetOf(spec: ControlSpec, rows: AgentRow[], dir: string): AgentRow {
+  const mine = controlRowsOf(spec, rows, dir);
+  if (!mine.length) throw new ControlError(`${spec.name} 세션이 떠 있지 않음`, 404);
+  const bg = mine.find((r) => r.kind === "background" && r.id);
+  if (!bg) throw new ControlError(`${spec.name}는 데스크톱·터미널 세션 — 그 창에서 닫는다`, 409);
+  return bg;
+}
+
 // 멈출 백그라운드 세션(순수). 데스크톱·터미널 세션은 atc가 멈추지 않는다
 export function stopTargetOf(registration: string, rows: AgentRow[]): AgentRow {
   const reg = registration.toUpperCase();
@@ -134,7 +185,10 @@ export async function launchAircraft(s: Snapshot, registration: string, options:
   const repo = s.airports.find((x) => x.code === a.base)?.repo ?? null;
   const t = new Date().toISOString();
   try {
-    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: crewBriefing(a, repo, cfg.mode), permissionMode: options.permissionMode, model: options.model }, await agentRows());
+    // 관제 세션은 팀 세션 상한(ATC_MAX_LAUNCHED)에 세지 않는다
+    const dirs = CONTROL_SESSIONS.map((c) => controlDirOf(c));
+    const rows = (await agentRows()).filter((r) => !isControlRow(r, dirs));
+    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: crewBriefing(a, repo, cfg.mode), permissionMode: options.permissionMode, model: options.model }, rows);
     const r = await claude(plan.args, plan.cwd);
     const jobId = jobIdOf(r.out);
     const ok = r.ok && !!jobId;
@@ -163,7 +217,72 @@ export async function stopAircraft(registration: string, by: string): Promise<Co
   }
 }
 
+export async function launchControl(name: string, by: string): Promise<ControlResult> {
+  const spec = controlSpecOf(name);
+  if (!spec) return { ok: false, status: 404, error: `atc가 띄우는 관제 세션이 아님: ${name} (${CONTROL_SESSIONS.map((c) => c.name).join(", ")}; ${MANUAL_CONTROL.join("·")}는 tmux로)` };
+  const t = new Date().toISOString();
+  try {
+    const plan = controlLaunchPlanOf(spec, await agentRows(), controlDirOf(spec));
+    const r = await claude(plan.args, plan.cwd);
+    const jobId = jobIdOf(r.out);
+    const ok = r.ok && !!jobId;
+    const error = ok ? undefined : /not trusted/i.test(r.out) ? `${plan.cwd}를 신뢰하지 않음 — 그 폴더에서 claude를 한 번 열어 trust를 수락한다` : r.out.slice(0, 300) || "claude --bg 실패";
+    record({ t, kind: "control", op: "launch", session: spec.name, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, error });
+    return ok ? { ok, status: 200, jobId: jobId!, cwd: plan.cwd, permissionMode: "auto" } : { ok, status: 502, error };
+  } catch (e) {
+    if (e instanceof ControlError) return { ok: false, status: e.status, error: e.message };
+    throw e;
+  }
+}
+
+export async function stopControl(name: string, by: string): Promise<ControlResult> {
+  const spec = controlSpecOf(name);
+  if (!spec) return { ok: false, status: 404, error: `atc가 띄우는 관제 세션이 아님: ${name}` };
+  const t = new Date().toISOString();
+  try {
+    const row = controlStopTargetOf(spec, await agentRows(), controlDirOf(spec));
+    const r = await claude(["stop", row.id as string]);
+    const error = r.ok ? undefined : r.out.slice(0, 300) || "claude stop 실패";
+    record({ t, kind: "control", op: "stop", session: spec.name, by, ok: r.ok, jobId: row.id, cwd: row.cwd, error });
+    return r.ok ? { ok: true, status: 200, jobId: row.id } : { ok: false, status: 502, error };
+  } catch (e) {
+    if (e instanceof ControlError) return { ok: false, status: e.status, error: e.message };
+    throw e;
+  }
+}
+
 export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapshot>) {
+  // 관제 세션(8.5.1): 설정 창 AGENTS 탭의 CONTROL 블록이 쓴다
+  app.get("/api/control/sessions", async (c) => {
+    try {
+      const rows = await agentRows();
+      return c.json({
+        manual: MANUAL_CONTROL,
+        sessions: CONTROL_SESSIONS.map((spec) => ({
+          name: spec.name,
+          dir: spec.dir,
+          prompt: spec.prompt,
+          live: controlRowsOf(spec, rows, controlDirOf(spec)).map(({ id, name, kind, status }) => ({ id, name, kind, status })),
+        })),
+      });
+    } catch (e) {
+      if (e instanceof ControlError) return c.json({ error: e.message }, e.status as 502);
+      throw e;
+    }
+  });
+  app.post("/api/control/:name/launch", async (c: Context) => {
+    if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
+    const r = await launchControl(c.req.param("name") ?? "", "SUPERVISOR");
+    if (!r.ok) return c.json({ error: r.error }, r.status as 400);
+    return c.json({ ok: true, jobId: r.jobId, cwd: r.cwd });
+  });
+  app.post("/api/control/:name/stop", async (c: Context) => {
+    if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
+    const r = await stopControl(c.req.param("name") ?? "", "SUPERVISOR");
+    if (!r.ok) return c.json({ error: r.error }, r.status as 400);
+    return c.json({ ok: true, jobId: r.jobId });
+  });
+
   // AIRCRAFT 이름과 같은 세션(데스크톱·터미널·백그라운드). FLEET 카드의 LAUNCH·STOP 버튼이 쓴다
   app.get("/api/fleet/sessions", async (c) => {
     try {

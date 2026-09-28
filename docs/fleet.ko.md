@@ -609,6 +609,23 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 아직 만들지 않음: 쉬는 세션의 자동 STOP(FLEET PLAN 4단계. 그림자 제안과 승인 운용은 8.6·8.7에서 만듦), 오래 도는 세션의 정기 정비로서 RESTART, 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, ATC-46).
 
+#### 8.5.1 관제 세션(2026-09-28 만듦)
+
+같은 LAUNCH·STOP이 atc 자신의 관제 세션에도 된다. 설정 창 AGENTS 탭의 CONTROL 블록에서 누르므로, SUPERVISOR가 세션마다 tmux 창을 열지 않는다.
+
+| 세션 | 폴더 | 첫 메시지 | 추가 옵션 |
+|---|---|---|---|
+| TOWER | `controller/` | `/loop 3m /tick` | |
+| OCC | `occ/` | `/loop 10m /tick` | |
+| MCC | `mcc/` | `/loop 5m /tick` | `--strict-mcp-config` |
+
+- **방식.** atc 저장소의 그 폴더에서 `claude --bg -n <이름> --permission-mode auto [옵션] "<첫 메시지>"`, 환경은 8.5와 같이 깨끗하게. 폴더의 `.claude/settings.json`(모델, 허용 목록, fail-closed guard)이 그대로 걸린다. 백그라운드 세션은 권한 창에 답할 수 없으므로 `auto`로 고정하고, 막는 일은 guard가 한다. 2026-09-28에 백그라운드 MCC로 확인했다: `/loop`이 `/tick`을 걸었고, guard hook이 돌았고, `atcctl manual check`와 `mcc queue`가 권한 창 없이 돌았다.
+- **이미 떠 있음.** 이름이 같거나 그 폴더에서 연 세션을 그 관제 세션으로 본다(이름 없이 tmux로 연 `mcc-b4` 같은 세션도 폴더로 알아본다). 하나라도 떠 있으면 LAUNCH를 거절해, 두 벌이 같은 일을 하지 않게 한다. STOP은 백그라운드 세션만 멈춘다. 데스크톱·tmux 세션은 그 창에서 닫는다.
+- **제외.** REVIEW·CROSSCHECK는 `ocx claude`로 다른 계열 모델에 돌리는데 `claude --bg`로는 그렇게 할 수 없다. 지금처럼 tmux로 띄운다.
+- **상한.** 관제 세션은 팀 세션 상한 `ATC_MAX_LAUNCHED`에 세지 않는다.
+- **API**(`server/session-control.ts`): `GET /api/control/sessions`(`{manual, sessions: [{name, dir, prompt, live}]}`), `POST /api/control/:name/launch`, `POST /api/control/:name/stop`. 둘 다 SUPERVISOR만(이 화면 Origin). 순수 함수: `controlLaunchPlanOf`, `controlStopTargetOf`, `controlRowsOf`, `isControlRow`.
+- **기록.** FLIGHT RECORDER `{kind: "control", op: "launch" | "stop", session, by: "SUPERVISOR", ok, jobId, cwd, error}`.
+
 ### 8.6 FLEET PLAN: LAUNCH·STOP 등을 제안하기
 
 상태: 1·2단계 만듦(그림자, 2026-09-28). SUPERVISOR 결정은 아래에 적었다. 8.5가 SUPERVISOR에게 조종 버튼을 줬다면, 이 절은 atc가 언제 그 버튼을 쓰자고 제안할지 정한다. 팀을 꾸리고, 세우고, 정비하고, 퇴역시키는 일을 손으로 챙기지 않게 하려는 것이다.

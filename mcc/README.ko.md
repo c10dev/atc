@@ -22,6 +22,7 @@ tmux send-keys -t atc-mcc '/loop 5m /tick' Enter
 
 - `--strict-mcp-config`는 MCP 서버를 싣지 않는다. 필요한 것은 모두 `atcctl mcc`에서 온다.
 - 쓰기(`mcc inspect|escalate|land|rts`)마다 guard가 기록의 실제 모델을 확인한다. Claude 이름만 통과한다(`claude-opus-…`, `claude-sonnet-…`, `claude-fable-…`, `claude-haiku-…`). 서버도 그 모델이 없는 쓰기를 거절한다. `ocx`로 다른 모델에 돌린 세션은 막힌다.
+- 또는 설정 창 AGENTS 탭 CONTROL 블록의 MCC 줄에서 LAUNCH: atc가 같은 폴더·옵션·첫 메시지로 백그라운드에 띄운다([docs/fleet.ko.md](../docs/fleet.ko.md) 8.5.1).
 - Claude Desktop에서는 `mcc` 폴더를 열고 세션 이름을 MCC로, 모델은 Claude로 두고 `/loop 5m /tick`.
 
 ## 할 수 있는 것

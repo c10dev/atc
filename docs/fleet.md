@@ -554,6 +554,23 @@ Decision changed 2026-09-28 (SUPERVISOR): atc starts and stops AIRCRAFT sessions
 
 Not built yet: automatic STOP of idle sessions (FLEET PLAN step 4; shadow proposals and approval are built in 8.6 and 8.7); RESTART as scheduled maintenance for long sessions; CREW CHANGE by relaunching with the new complement; a usage budget per AIRCRAFT (FUEL, ATC-46).
 
+#### 8.5.1 Control sessions (built 2026-09-28)
+
+The same LAUNCH and STOP work for atc's own control sessions, from the settings window's AGENTS tab (block CONTROL), so the SUPERVISOR doesn't open a tmux window per session.
+
+| Session | Folder | First message | Extra flags |
+|---|---|---|---|
+| TOWER | `controller/` | `/loop 3m /tick` | |
+| OCC | `occ/` | `/loop 10m /tick` | |
+| MCC | `mcc/` | `/loop 5m /tick` | `--strict-mcp-config` |
+
+- **Mechanism.** `claude --bg -n <NAME> --permission-mode auto [flags] "<first message>"` in the atc repository's folder, with the same clean environment as 8.5. The folder's `.claude/settings.json` applies: model, allow list and the fail-closed guards. `auto` is fixed because a background session can't answer a permission prompt; the guards do the blocking. Checked on 2026-09-28 with a background MCC: `/loop` scheduled `/tick`, the guard hook ran, and `atcctl manual check` and `mcc queue` ran with no prompt.
+- **Already running.** A session counts as that control session if its name matches or it was opened in that folder (a tmux session opened without a name, such as `mcc-b4`, is recognised by its folder). LAUNCH is refused while one is live, so two copies never do the same work. STOP only stops background sessions; desktop and tmux sessions are closed where they run.
+- **Not these.** REVIEW and CROSSCHECK run on other model families through `ocx claude`, which `claude --bg` can't do; they stay on tmux.
+- **Cap.** Control sessions don't count toward `ATC_MAX_LAUNCHED` for teams.
+- **API** (`server/session-control.ts`): `GET /api/control/sessions` (`{manual, sessions: [{name, dir, prompt, live}]}`), `POST /api/control/:name/launch`, `POST /api/control/:name/stop`, both SUPERVISOR-only (this screen's Origin). Pure parts: `controlLaunchPlanOf`, `controlStopTargetOf`, `controlRowsOf`, `isControlRow`.
+- **Record.** FLIGHT RECORDER `{kind: "control", op: "launch" | "stop", session, by: "SUPERVISOR", ok, jobId, cwd, error}`.
+
 ### 8.6 FLEET PLAN: proposing LAUNCH, STOP and the rest
 
 Status: steps 1 and 2 built (shadow, 2026-09-28); SUPERVISOR decisions recorded below. Section 8.5 gave the SUPERVISOR the controls; this section decides when atc suggests using them, so that forming, parking, servicing and retiring teams stops being manual bookkeeping.
