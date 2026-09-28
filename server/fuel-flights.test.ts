@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Departure } from "./departures.ts";
 import type { FuelRecord } from "./fuel.ts";
+import type { LeakEvent } from "./fuel-leaks.ts";
 import { arrivedSpan, attributeFuel, type ClaimSpan, enRouteSpans, type FlightSpan, fuelForEntry, segmentsOf } from "./fuel-flights.ts";
 import type { LogEntry } from "./logbook.ts";
 
@@ -180,4 +181,31 @@ test("fuelForEntry: 출발 시각을 모르거나 읽은 기간 앞에 출발했
   assert.equal(fuelForEntry({ ...e, departedFrom: "pr" }, a, ms("00:00")), null);
   assert.equal(fuelForEntry(e, a, ms("10:30")), null);
   assert.equal(fuelForEntry({ ...e, key: "o/atc#404" }, a, ms("00:00")), null);
+});
+
+test("LEAK(F3): miss도 요청과 같은 규칙으로 FLIGHT에 나누고, LEAK을 넘기지 않으면 칸이 없다", () => {
+  const e1 = entry();
+  const e2 = entry({ key: "o/atc#2", flight: "ATC-2", branch: "claude/atc-2", stands: ["/w/atc-2"], departedAt: T("13:00"), arrivedAt: T("15:00") });
+  const spans = [arrivedSpan(e1, [], null), arrivedSpan(e2, [], null)];
+  const leak = (hm: string, rule: LeakEvent["rule"], rewritten: number): LeakEvent => ({
+    session: "h1",
+    t: T(hm),
+    rule,
+    rewritten,
+    units: rewritten,
+    gapMs: 0,
+    model: "claude-opus-5-5",
+    prevModel: "claude-opus-5-5",
+    wake: null,
+  });
+  const records = [rec("h1", "10:30"), rec("h1", "11:00"), rec("h1", "12:30"), rec("h1", "14:00")];
+  const leaks = [leak("11:00", "coldCache", 5000), leak("11:00", "expectedRebuild", 100), leak("12:30", "modelSwitch", 3000)];
+  const a = attributeFuel({ records, spans, aircraftOf, claims: [], leaks });
+  const l1 = a.flights.find((f) => f.key === "o/atc#1")!.fuel.leak!;
+  assert.deepEqual([l1.coldCache.tokens, l1.total.count, l1.total.tokens, l1.expectedRebuild.tokens], [5000, 1, 5000, 100]);
+  const l2 = a.flights.find((f) => f.key === "o/atc#2")!.fuel.leak!;
+  assert.equal(l2.total.count, 0); // miss가 없던 FLIGHT는 0(12:30 miss는 어느 FLIGHT에도 없다)
+  const fuel = fuelForEntry(e1, a, ms("00:00"))!;
+  assert.deepEqual(Object.keys(fuel), ["captain", "crew", "cacheHit", "leak", "models"]);
+  assert.equal(run(records, spans).flights[0].fuel.leak, undefined);
 });

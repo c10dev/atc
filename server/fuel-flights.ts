@@ -1,5 +1,6 @@
 import { type Departure, departureHits } from "./departures.ts";
 import { addKinds, type Burn, burn, type FuelRecord, type Kinds, zero } from "./fuel.ts";
+import { addLeak, emptyLeaks, type LeakEvent, type LeakTotals } from "./fuel-leaks.ts";
 import type { LogEntry } from "./logbook.ts";
 import type { Claim } from "./model.ts";
 
@@ -35,11 +36,12 @@ export interface Part {
   total: Burn;
 }
 
-// LOGBOOK arrived 줄의 fuel. 아직 만들지 않은 칸(cost·netCost는 F5, leak은 F3, crewWarnings는 F7)은 0이 아니라 넣지 않는다
+// LOGBOOK arrived 줄의 fuel. 아직 만들지 않은 칸(cost·netCost는 F5, crewWarnings는 F7)은 0이 아니라 넣지 않는다
 export interface FlightFuel {
   captain: Burn;
   crew: CrewPart;
   cacheHit: number | null; // CAPTAIN + CREW
+  leak?: LeakTotals; // FUEL LEAK(F3, fuel-leaks.ts). LEAK을 재고 넘긴 때만(miss가 없으면 0)
   models: Record<string, number>; // 모델 → 요청 수
 }
 
@@ -129,6 +131,7 @@ class Tank {
   crewN = 0;
   models: Record<string, number> = {};
   sessions = new Set<string>();
+  leak: LeakTotals | null = null;
   add(r: FuelRecord) {
     if (r.sidechain) {
       addKinds(this.crew, r);
@@ -152,7 +155,7 @@ class Tank {
   }
   fuel(): FlightFuel {
     const p = this.part();
-    return { captain: p.captain, crew: p.crew, cacheHit: p.total.cacheHit, models: this.models };
+    return { captain: p.captain, crew: p.crew, cacheHit: p.total.cacheHit, ...(this.leak ? { leak: this.leak } : {}), models: this.models };
   }
 }
 
@@ -180,6 +183,7 @@ export interface AttributionInput {
   spans: FlightSpan[];
   aircraftOf: (session: string) => string | null;
   claims: ClaimSpan[];
+  leaks?: LeakEvent[]; // 주면 FLIGHT마다 같은 규칙(flightOf)으로 LEAK을 나눈다
 }
 
 // 요청마다 FLIGHT 하나에만 넣는다(나눠 넣지 않는다). CAPTAIN·CREW는 따로 센다
@@ -202,6 +206,14 @@ export function attributeFuel(input: AttributionInput): Attribution {
     if (!ac) continue;
     if (!byAircraft.has(ac)) byAircraft.set(ac, { flights: new Tank(), enRoute: new Tank(), unattributed: new Tank() });
     byAircraft.get(ac)![bucket].add(r);
+  }
+  if (input.leaks) {
+    for (const t of bySpan.values()) t.leak = emptyLeaks();
+    for (const e of input.leaks) {
+      const span = flightOf(e, input.spans, input.aircraftOf, claimsOf);
+      const t = span && bySpan.get(span.key);
+      if (t) addLeak(t.leak!, e);
+    }
   }
   const spanByKey = new Map(input.spans.map((s) => [s.key, s]));
   const flights: FlightRow[] = [...bySpan].map(([key, tank]) => {
