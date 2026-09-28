@@ -174,6 +174,9 @@
 .fl-log-date {
   margin-left: auto;
 }
+.fl-log-fuel {
+  color: var(--muted);
+}
 .fl-ontime {
   color: var(--radar);
 }
@@ -411,7 +414,7 @@
 .fl-list-head,
 .fl-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1.1fr) 70px 104px minmax(0, 3fr) 64px 84px 124px 16px;
+  grid-template-columns: minmax(150px, 1.1fr) 70px 104px minmax(0, 3fr) 64px 84px 124px 150px 16px;
   align-items: center;
   column-gap: var(--space-3);
   padding: 0 var(--space-3);
@@ -551,7 +554,8 @@
 }
 .fl-r-elapsed,
 .fl-r-last,
-.fl-r-week {
+.fl-r-week,
+.fl-r-burn {
   font-size: var(--text-xs);
   color: var(--muted);
 }
@@ -616,5 +620,9 @@
   }
   .has-health .fl-r-week {
     grid-area: 3 / 4;
+  }
+  /* FUEL 14일(ATC-56): 좁은 화면에서는 맨 아래 한 줄 전체 */
+  .fl-r-burn {
+    grid-column: 1 / -1;
   }
 }

@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from "react";
 import type { Proposal } from "../../../server/proposals.ts";
+import { type ColdCache, type TripFuel, tripLabel, usd } from "../../../server/fuel-view.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import "./DispatchBriefing.css";
@@ -15,6 +16,8 @@ export interface Facts {
   blockers: { key: string; state: string | null; done: boolean }[];
   recent: { key: string; title: string | null; at: string; how: "ARRIVED" | "ENROUTE" }[];
   crosscheck: { verdict: "agree" | "disagree"; reason: string } | null;
+  tripFuel?: TripFuel; // FUEL F8(ATC-56). 보여 주기만(옛 서버면 없음)
+  coldCache?: ColdCache | null;
 }
 export interface CardBrief {
   facts: Facts;
@@ -85,6 +88,29 @@ export function FactsLine({ info, now, aircraft, showCrosscheck }: { info: CardB
           {aircraft} 같은 ROUTE 최근 FLIGHT 없음
         </span>
       ),
+    );
+  // TRIP FUEL(ATC-56): 지난 NET FUEL COST p50–p90과 넓힌 단계. 점수·배정과 상관없다
+  if (f.tripFuel) {
+    const t = f.tripFuel;
+    const label = tripLabel(t);
+    const gens = t.generations.length > 1 ? t.generations.map((g) => `${g.model} ${g.samples}건${g.p50 !== null && g.p90 !== null ? ` ${usd(g.p50)}–${usd(g.p90)}` : ""}`).join(", ") : null;
+    items.push(
+      label ? (
+        <span key="tf" title={`지난 ${t.samples}건의 NET FUEL COST(LEAK을 뺀 FUEL COST). p90을 넘으면 UNEXPECTED. 보여 주기만 하고 DISPATCH 점수에는 쓰지 않는다${gens ? ` · 모델 세대별: ${gens}` : ""}`}>
+          {label}
+        </span>
+      ) : (
+        <span key="tf" className="faint" title="TYPE × WAKE, WAKE, AIRPORT 어디에도 값을 매긴 FLIGHT가 3건이 안 된다">
+          TRIP FUEL — (값을 매긴 FLIGHT {t.pool}건)
+        </span>
+      ),
+    );
+  }
+  if (f.coldCache)
+    items.push(
+      <span key="cc" className="dp-fact-warn" title="경고만 한다 — FLIGHT PLAN을 막지 않는다">
+        {f.coldCache.text}
+      </span>,
     );
   if (showCrosscheck && f.crosscheck)
     items.push(

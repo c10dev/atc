@@ -20,6 +20,8 @@ export interface CrewMember {
 export interface Targets {
   flightsPerWeek?: number;
   onTime?: number; // 0~1
+  fuelPerFlight?: number; // FUEL F8(ATC-56): 최근 14일 FLIGHT당 NET FUEL COST 목표(USD, 이하면 됨)
+  cacheHit?: number; // 0~1, 최근 14일 CACHE HIT 목표(이상이면 됨)
 }
 export interface AircraftProfile {
   base?: string | null;

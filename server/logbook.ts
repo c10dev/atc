@@ -11,8 +11,10 @@ import { briefFactsOf, compareBriefs, crewModeOf, findingsOf, type Measured, rew
 import { readRecords } from "./recorder.ts";
 import { type Departure, matchDepartures, readDepartures } from "./departures.ts";
 import { readHookClaims, sessionEventsOf } from "./sources/claude.ts";
-import type { FlightCost } from "./fuel-cost.ts";
+import { priceFlightFuel } from "./fuel-cost.ts";
 import type { FlightFuel } from "./fuel-flights.ts";
+import { readPrices } from "./fuel-prices.ts";
+import { type PricedEntry, tripCheckOf } from "./fuel-view.ts";
 import { sessionDirsOf } from "./crew-observed.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
@@ -492,15 +494,21 @@ export function runLogbook(s: Snapshot, addFuel: LogbookFuel | null = null) {
 
 export const loadLogbook = () => foldLogbook(readLogbook());
 
-// priceFuel: LOGBOOK fuel의 모델별 토큰에 읽을 때 값을 매긴다(ATC-59). fuel-run.ts를 부르면 순환이 되어 index.ts가 넘긴다
-export function mountLogbook(app: Hono, priceFuel?: (fuel: FlightFuel) => FlightCost | null) {
+// fuel의 모델별 토큰에 읽을 때 지금 가격표로 값을 매긴 LOGBOOK(ATC-59). byModel이 없는 옛 fuel은 fuelCost null, fuel 없는 줄은 fuelCost 없음
+export function loadPricedLogbook(): PricedEntry[] {
+  const table = readPrices().table;
+  return loadLogbook().map((e) => (e.fuel ? { ...e, fuelCost: priceFlightFuel(e.fuel, table) } : e));
+}
+
+export function mountLogbook(app: Hono) {
   app.get("/api/logbook", (c) => {
     const days = Math.min(90, Math.max(1, Number(c.req.query("days")) || ACTUALS_DAYS));
     const aircraft = c.req.query("aircraft")?.toUpperCase() ?? null;
-    const since = Date.now() - days * DAY;
-    const entries = loadLogbook()
-      .filter((e) => Date.parse(e.arrivedAt) >= since && (!aircraft || e.aircraft === aircraft))
-      .map((e) => (e.fuel && priceFuel ? { ...e, fuelCost: priceFuel(e.fuel) } : e)); // byModel이 없는 옛 fuel은 fuelCost null
+    const now = Date.now();
+    const since = now - days * DAY;
+    const all = loadPricedLogbook();
+    // trip(FUEL F8, ATC-56): 그 FLIGHT의 NET이 같은 TYPE × WAKE(모자라면 WAKE, AIRPORT) TRIP FUEL p90 안이었나. 값이 없으면 verdict null
+    const entries = all.filter((e) => Date.parse(e.arrivedAt) >= since && (!aircraft || e.aircraft === aircraft)).map((e) => ({ ...e, trip: tripCheckOf(e, all, now) }));
     return c.json({ days, aircraft, entries, ...logbookState });
   });
   // VECTORS 대 DIRECT(ATC-32): 기간 안 ARRIVED FLIGHT를 지시서 종류별로 나눈 지표와 행

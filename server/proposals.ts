@@ -41,7 +41,8 @@ import { type Crosscheck, CrosscheckError, type CrosscheckLine, crosscheckRateOf
 import { blindStatsOf, isBlind } from "./blind.ts";
 import { type Briefing, BriefingError, factsOf, leadOf, parseBriefing, waypointIndex } from "./briefing.ts";
 import { loadFleet } from "./fleet.ts";
-import { loadLogbook } from "./logbook.ts";
+import { loadLogbook, loadPricedLogbook } from "./logbook.ts";
+import type { FuelWatch } from "./fuel-watch.ts";
 import { confirmCodesOf, confirmReasonOf, type Preflight, preflightOf, preflightOps } from "./preflight.ts";
 import type { Snapshot, Ticket } from "./model.ts";
 import { composeReason, parseReasonCodes, REASON_CODES, ReasonCodeError, reasonCountsOf } from "./reasons.ts";
@@ -776,11 +777,11 @@ export function runDispatch(s: Snapshot, now = Date.now()): Plan {
 // ── API ──
 
 // 열린·HELD 카드의 사실 줄(서버 계산)과, BRIEFING이 없으면 본문 첫 문장(ATC-4)
-async function cardBriefsOf(cards: Proposal[], s: Snapshot, all: Proposal[], logbook: ReturnType<typeof loadLogbook>, now: number) {
+async function cardBriefsOf(cards: Proposal[], s: Snapshot, all: Proposal[], logbook: ReturnType<typeof loadPricedLogbook>, now: number, fuel: FuelWatch | null) {
   const routes = await loadRoutes(s, logbook, now);
   const index = waypointIndex(routes);
   const flying = all.filter((p) => isInFlight(p) || isStandFreeAirborne(p)).map((p) => ({ flight: p.flight, aircraftName: p.aircraftName, at: p.statusAt }));
-  const ctx = { now, tickets: s.tickets, routes, entries: logbook, flying };
+  const ctx = { now, tickets: s.tickets, routes, entries: logbook, flying, coldCache: fuel?.coldCache ?? [] };
   return Object.fromEntries(
     // blind: 판정 전까지 CROSSCHECK mark를 숨길 카드(열린 제안만. HELD는 HOLD 자체가 CROSSCHECK를 드러낸다)
     cards.map((p) => [p.id, { facts: factsOf(p, ctx, index), lead: p.briefing ? null : leadOf(p.flight, now), blind: !isHeld(p) && isBlind(p.id) }]),
@@ -795,13 +796,16 @@ export const DISPATCH_ACTIONS = [
 const JUDGE_ACTIONS: readonly DispatchAction[] = ["verdict", "approve", "reject"];
 type DispatchAction = (typeof DISPATCH_ACTIONS)[number];
 
-export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
+// watchFuel: FUEL 경고(fuel-watch.ts). fuel-run.ts가 이 파일을 불러 순환이 되므로 index.ts가 넘긴다
+export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, watchFuel?: (s: Snapshot) => FuelWatch) {
   app.get("/api/dispatch/brief", async (c) => {
     const s = await getSnapshot();
     const cfg = loadDispatchConfig();
     const now = Date.now();
     const proposals = allProposals();
-    const logbook = loadLogbook();
+    // 값을 매긴 LOGBOOK: planner에는 fuelCost를 쓰지 않는다(TRIP FUEL은 카드의 사실 줄에만)
+    const logbook = loadPricedLogbook();
+    const fuel = watchFuel?.(s) ?? null;
     const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), loadFleet(), landedOf(logbook), logbook, activeWaypointsOf(readLinearProjects().milestones)), s.atfm?.groundStops ?? []);
     const open = proposals.filter((p) => p.status === "proposed" && !isHeld(p));
     const held = proposals.filter((p) => p.status === "proposed" && isHeld(p));
@@ -827,7 +831,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       plan,
       open,
       held,
-      briefs: await cardBriefsOf([...open, ...held], s, proposals, logbook, now),
+      briefs: await cardBriefsOf([...open, ...held], s, proposals, logbook, now, fuel),
       inFlight,
       overdue: overdueOf(proposals, now),
       recent,
@@ -840,6 +844,8 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       readiness2b: readiness2bNow(gate, now, files),
       reasonCodes: REASON_CODES,
       config: cfg,
+      // FUEL F8(ATC-56): OCC가 FLIGHT PLAN을 보내기 전에 보는 경고. HOLDING CAPTAIN의 COLD CACHE와 24시간 안 큰 LEAK. 막지 않는다
+      fuel: fuel && { coldCache: fuel.coldCache, largeLeaks: fuel.largeLeaks, error: fuel.error },
     });
   });
 

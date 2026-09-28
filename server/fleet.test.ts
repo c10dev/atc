@@ -156,3 +156,36 @@ test("CREW BRIEFING: 등록번호·폴더·팀원·자격·교신 규칙을 담�
   assert.ok(!text.includes("READBACK D-xxxx"));
   assert.ok(crewBriefing(a, null, "approval").includes("READBACK D-xxxx"));
 });
+
+test("TARGETS: FUEL 목표(fuelPerFlight USD, cacheHit 0~1)를 받고 범위 밖은 거절(FUEL F8)", () => {
+  assert.deepEqual(applyPatch({}, { targets: { fuelPerFlight: 8, cacheHit: 0.95 } }, D), { targets: { fuelPerFlight: 8, cacheHit: 0.95 } });
+  assert.deepEqual(applyPatch({ targets: { fuelPerFlight: 8 } }, { targets: { fuelPerFlight: null, cacheHit: null } }, D), {});
+  assert.throws(() => applyPatch({}, { targets: { fuelPerFlight: 0 } }, D), /fuelPerFlight/);
+  assert.throws(() => applyPatch({}, { targets: { cacheHit: 1.5 } }, D), /cacheHit/);
+});
+
+test("FLEET 화면: fuelBurn은 최근 14일 값, fuelRecent는 최근 FLIGHT 순서로. fuel 없는 옛 줄은 null(FUEL F8)", () => {
+  const now = Date.parse("2026-09-28T12:00:00Z");
+  const line = (n: number, fuel: boolean) => ({
+    key: `o/atc#${n}`, aircraft: "TEAM_J", flight: `ATC-${n}`, class: null, airport: "ATCC", pr: { repo: "o/atc", number: n, url: "", title: "" }, stands: [],
+    departedAt: new Date(now - 2 * 86_400_000).toISOString(), departedFrom: "departure" as const, arrivedAt: new Date(now - n * 3_600_000).toISOString(),
+    blockMin: 30, landingWaitMin: 5, codexFindings: 0, changesRequested: false, reverted: false, los: 0,
+    ...(fuel
+      ? {
+          fuel: { captain: { input: 0, cacheWrite5m: 0, cacheWrite1h: 100, cacheRead: 900, output: 10, requests: 3, cacheHit: 0.9 }, crew: { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0, output: 0, requests: 0, cacheHit: null, outputLowerBound: true as const }, cacheHit: 0.9, models: { "claude-opus-5-5": 3 } },
+          fuelCost: { captain: null, crew: null, total: { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0, output: 3, total: 3 }, leakCost: 1, netCost: 2, unpriced: [] },
+        }
+      : {}),
+  });
+  const [a] = fleetView({ sessions: [], claims: [], workspaces: [], airports: [] }, { defaults: D, aircraft: { TEAM_J: {} } }, undefined, [line(1, true), line(2, false)], now);
+  assert.equal(a.fuelBurn?.arrived, 2);
+  assert.equal(a.fuelBurn?.costPerFlight, 3);
+  assert.equal(a.fuelBurn?.cacheHit?.captain, 0.9);
+  assert.deepEqual(
+    a.fuelRecent?.map((f) => [f.key, f.tokens, f.cost, f.net, f.verdict]),
+    [
+      ["o/atc#1", 1010, 3, 2, null],
+      ["o/atc#2", null, null, null, null],
+    ],
+  );
+});
