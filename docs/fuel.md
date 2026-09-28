@@ -2,7 +2,7 @@
 
 FUEL is the tokens a FLIGHT uses. atc records how long a FLIGHT took (block time, landing wait) and how well it went (rollbacks, LOS, Codex findings), but not what it burned, why some of that burn was waste, or how close each account is to its plan limit. FUEL adds those three things from records atc can already read.
 
-> Status (2026-09-28): draft for ATC-46 (moved from GitHub idea #53, whose research comment is the source for the pricing and cache facts below). F1 is built (`server/fuel.ts`, `server/fuel-run.ts`, `GET /api/fuel`) and F2 (ACCOUNT label, `LIMIT` held by ACCOUNT) is built (ATC-51); the rest is not. Sections 8 and 9 hold the split into issues and the SUPERVISOR decisions this needs.
+> Status (2026-09-28): draft for ATC-46 (moved from GitHub idea #53, whose research comment is the source for the pricing and cache facts below). F1 is built (`server/fuel.ts`, `server/fuel-run.ts`, `GET /api/fuel`) and F2 (ACCOUNT label, `LIMIT` held by ACCOUNT) is built (ATC-51); F3 (COLD CACHE and MODEL SWITCH leaks, `server/fuel-leaks.ts`) is built (ATC-52); the rest is not. Sections 8 and 9 hold the split into issues and the SUPERVISOR decisions this needs.
 
 Related: [fleet.md](fleet.md) 8.3 (observed crew, never read bodies), 8.6 (FLEET PLAN, "Usage: none per AIRCRAFT"), 8.8 (AIRCRAFT health, `LIMIT` after a limit is hit); `server/logbook.ts` (LOGBOOK), `server/health.ts` (`quotaLimits`), `server/crew-observed.ts`; GitHub #41 (ontology graph projection, K1).
 
@@ -95,7 +95,7 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 |---|---|---|---|---|
 | F1 (ATC-50) ✅ | Parser, global dedupe, offset reader, read-only `GET /api/fuel` (per session: kinds, CACHE HIT, CREW lower bound), cross-checked against ccusage on the same days. **Done**, see 8.1 | — | `auto` | BUILD · M |
 | F2 (ATC-51) ✅ | ACCOUNT label on the FLEET card and `fleet.json`; `LIMIT` grouped and held by ACCOUNT (health.ts, DISPATCH, SCHEDULE). **Done**, see [fleet.md](fleet.md) 8.8 | — | `auto`, raised to `user` if the `fleet.json` change is judged a format change | BUILD · M |
-| F3 (ATC-52) | Leaks with high confidence: COLD CACHE (HOLD and control wake) and MODEL SWITCH | F1 | `auto` | BUILD · M |
+| F3 (ATC-52) ✅ | Leaks with high confidence: COLD CACHE (HOLD and control wake) and MODEL SWITCH. **Done**, see 8.2 | F1 | `auto` | BUILD · M |
 | F4 (ATC-53) | FLIGHT attribution: optional `fuel` field on LOGBOOK `arrived` lines, `UNATTRIBUTED` | F1 | `user` (LOGBOOK record format) | BUILD · M |
 | F5 (ATC-54) | Cost: config price table, FUEL COST, NET FUEL | F1 | `auto` | BUILD · L |
 | F6 (ATC-55) | FUEL REMAINING source (section 6): verify statusline `rate_limits`, then the statusline script and per-ACCOUNT view | F2, decision D1 | `user` (`hooks/`, settings) | BUILD · M |
@@ -112,6 +112,16 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 - **ccusage cross-check** (UTC days, `ccusage claude daily`, 2026-09-26/27): requests with a `requestId` (Opus, Sonnet) match ccusage exactly on 09-26. On 09-27 Opus is lower (cache writes 24,216,148 vs 25,086,025; reads 1,794,265,874 vs 1,906,561,851; output 3,894,909 vs 4,201,713) because ccusage does not dedupe lines without a `requestId`; counting those lines raw reproduces ccusage's Opus numbers exactly. Proxied routes (DeepSeek, Muse; no `requestId`) are higher or equal in ccusage for the same reason, and no simple rule reproduces them exactly; FUEL counts them once per `(message.id, session)`, largest copy.
 - **Speed**: 7 days, 500 files: first scan 953 MB in 2.6 s, next call 36 ms (only new bytes).
 - **Not in F1**: Codex `token_count` (section 4) is not read yet.
+
+### 8.2 F3 as built (ATC-52)
+
+- **Where**: `server/fuel-leaks.ts` (pure). `GET /api/fuel` gains `leak` on each session, AIRCRAFT and the totals, and `leakEvents` (the 20 largest in the window). Each bucket gives `count`, `tokens` (rewritten), `units` and `unpricedTokens`.
+- **Miss**: CAPTAIN requests of one session, in time order, each compared with the previous one. What could have been read is the previous request's cached prefix (its cache reads + writes). `rewritten = min(that, this prompt) − this cacheRead`; a miss is `rewritten > 5 %` of it and `≥ 2,000`. The first request of a session (SESSION CHANGE) and CREW requests are not judged here (F7).
+- **Rule order**: a `compact_boundary` between the two requests → `expectedRebuild`, left for F7 and not counted as a leak; a different `message.model` → `modelSwitch`; a gap over the TTL → `controlWake` when an atc message to that session falls inside the gap, else `coldCache`; anything else → `unexplained`.
+- **TTL**: 1 h after a request that wrote 1 h, 5 m after one that wrote only 5 m. A request that only read keeps the tier before it (a cache read refreshes the entry at its own TTL), so a read-only response between writes does not shorten a 1 h session to 5 m. No write seen yet → 5 m.
+- **Control messages** matched by time, from atc's own records: CLEARANCE `issue` time (`clearances.jsonl`, by session id), FLIGHT PLAN `send` and RECALL request time (`proposals.jsonl`; `recall-send` writes no record), CREW CHANGE `sent` (`crew-changes.jsonl`, by REGISTRATION = session name). Any of them inside the gap counts as the wake. No message body is read.
+- **Units**: `rewritten × (writeMult − readMult)` in input-price units: write 1.25 (5 m) or 2 (1 h) by this request's write tier, read 0.05 for `claude-opus-5-5` and 0.025 for `claude-fable-5-1`. Other models have no read multiplier yet, so their rewritten tokens go to `unpricedTokens` (principle 4; F5 moves the table to config).
+- **First reading** (7 days to 2026-09-28): 325 misses, 68.3 M tokens rewritten, against 87.2 M CAPTAIN cache writes. COLD CACHE 130 (46.8 M), control wake 5 (1.7 M, CLEARANCE), MODEL SWITCH 6 (0.6 M), UNEXPLAINED 184 (19.2 M, of which 17.2 M on proxied DeepSeek/Muse routes whose caching is implicit), expected rebuilds after compaction 19 (0.9 M). The Opus UNEXPLAINED misses seen were cache invalidations seconds after a warm request (the prefix read dropped to about 31 K, the system prompt), which F7 or a later rule may name.
 
 F1 and F2 started at once and in parallel, and both are built; they answer the TEAM_K question soonest. The rest wait in Backlog behind their dependencies (Linear `blocked by`).
 
@@ -139,4 +149,4 @@ F1 and F2 started at once and in parallel, and both are built; they answer the T
 
 ## Not built yet
 
-F3–F8 in section 8, and Codex usage (section 4).
+F4–F8 in section 8, and Codex usage (section 4).
