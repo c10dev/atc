@@ -49,6 +49,7 @@ CROSSCHECK 일치율은 S3에서 SEC가 아닌 CLASSIFY 같은 저위험 작업�
 | 2 | FLEET 등록부와 탭 | 완료 |
 | 3 | 분류 라벨과 planner 규칙(TYPE RATING·CREW·WAKE·ROUTE) | 완료 |
 | — | 팀 빌딩(ENTRY INTO SERVICE, CREW BRIEFING, AOG, 퇴역) | 완료 |
+| — | 세션 조종: atc가 세션을 띄우고 멈춤(LAUNCH·STOP, SUPERVISOR가 누를 때) | 완료. 수요 기반 자동 제안은 다음 |
 | 다음 | CREW CHANGE, CHECKRIDE, 실제 관측 팀원, TARGETS 실적 | 예정 |
 
 설계 문서: 저장소의 `docs/dispatch.ko.md`, `docs/occ.ko.md`, `docs/fleet.ko.md`, `docs/atfm.ko.md`.

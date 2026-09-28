@@ -15,6 +15,8 @@ export const config = {
   // 이 폴더 아래 git 저장소(본 체크아웃)를 찾는다. 워크트리는 git worktree list로 따라간다.
   projectsDir: env.ATC_PROJECTS_DIR || join(HOME, "projects"),
   claudeDir: join(HOME, ".claude"),
+  // AIRCRAFT 세션을 띄우고 멈출 때 쓰는 claude CLI(docs/fleet.md 8.5). 서비스 PATH에 없어서 경로로 둔다
+  claudeBin: env.ATC_CLAUDE_BIN || join(HOME, ".local/bin/claude"),
   codexDir: join(HOME, ".codex"),
   stateDir: env.ATC_STATE_DIR || join(HOME, ".local/state/atc"),
   airportsFile: env.ATC_AIRPORTS_FILE || join(env.ATC_STATE_DIR || join(HOME, ".local/state/atc"), "airports.json"),

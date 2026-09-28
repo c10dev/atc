@@ -20,6 +20,7 @@ atc는 팀 세션 하나를 AIRCRAFT(`TEAM_B`, callsign BRAVO)로, 그 리더를
 > - NETWORK(7.3)
 > - DEPARTURE LOG(7.5)
 > - TYPE RATING의 CHECKRIDE 추천(8.2)
+> - 세션 조종: LAUNCH·STOP(8.5)
 >
 > 결정 사항은 맨 아래에 있다.
 
@@ -466,7 +467,7 @@ S1(그림자)은 만들었고 S2(승인하면 적용)는 아직 없다. 이 절 
 
 ### 8.1 팀 꾸리기
 
-FLEET 탭은 팀을 만들고 내리는 곳이기도 하다. atc는 Claude 세션을 스스로 띄우지 않는다. 서버가 세션을 띄우면 비용과 권한에 대한 사용자의 통제를 건너뛰게 되므로, atc는 붙여 넣을 수 있는 브리핑까지만 만든다.
+FLEET 탭은 팀을 만들고 내리는 곳이기도 하다. 2026-09-28 전까지 atc는 Claude 세션을 스스로 띄우지 않고 붙여 넣을 브리핑까지만 만들었다. 이제 SUPERVISOR가 LAUNCH·STOP을 누르면 백그라운드 세션을 띄우고 멈춘다(8.5). 브리핑은 새 세션이 처음 받는 지시가 된다.
 
 | 동작 | 용어 | 하는 일 |
 |---|---|---|
@@ -592,6 +593,21 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 **2b 점검표.** `crew-change` 항목("CREW CHANGE 발부", `selfCheckCrewChange`)은 이 전이, 거절, 메시지, 늦음 규칙, 엔드포인트, `atcctl` 명령을 코드 사실로 확인한다. `vocado-readback` 항목은 vocado `CLAUDE.md`가 `[OCC CC-xxxx]`에도 `READBACK CC-xxxx`로 답할 때만 준비됨이다([dispatch.ko.md](dispatch.ko.md) "2b 켜기 점검표").
 
+### 8.5 세션 조종: LAUNCH와 STOP
+
+2026-09-28에 결정을 바꿨다(SUPERVISOR). atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다. SUPERVISOR는 세션을 하나씩 손으로 열지 않고 FLEET 탭에서 FLEET를 굴린다. 직접 연 세션에 CREW BRIEFING을 붙여 넣는 길도 그대로이고, atc는 전처럼 이름으로 잇는다.
+
+- **방식.** Claude Code 백그라운드 세션. LAUNCH는 base AIRPORT의 본 체크아웃에서 `claude --bg -n <REG> --permission-mode <mode> [--model <model>] "<CREW BRIEFING>"`을 돌린다. `claude agents --json`이 살아 있는 세션(데스크톱·터미널·백그라운드)을 보여 준다. STOP은 `claude stop <id>`다. 대화는 남고 `claude attach <id>`나 `claude --resume`으로 다시 연다. 세션은 `~/.claude/sessions/`에 `kind: "bg"`로 나타나서 RADAR·STRIPS·planner가 다른 세션처럼 본다.
+- **API**(`server/session-control.ts`): `GET /api/fleet/sessions`는 이름이 `teamPattern`에 맞는 세션으로 `{max, permissionModes, sessions}`를 돌려준다. `POST /api/fleet/:registration/launch`는 `{permissionMode?, model?}`를 받는다. `POST /api/fleet/:registration/stop`.
+- **SUPERVISOR만.** LAUNCH와 STOP은 이 화면의 Origin이 있어야 받는다(`fromThisApp`, AUTOLAND 스위치와 같음). `atcctl`은 Origin을 보내지 않으므로 TOWER·OCC·CROSSCHECK·REVIEW는 세션을 띄우거나 멈출 수 없다.
+- **거절**(`launchPlanOf`, `stopTargetOf`, 순수 함수): RETIRED, base AIRPORT 없음, 그 이름의 세션이 이미 떠 있음(종류 상관없음), 백그라운드 세션이 이미 `ATC_MAX_LAUNCHED`개(기본 6, 이 머신의 백그라운드 세션 전부를 셈), permission mode가 `auto`·`acceptEdits`·`default`가 아님(`bypassPermissions`는 주지 않는다), 모델 이름에 `[\w.:[\]-]` 밖의 글자. STOP은 데스크톱·터미널 세션을 거절한다. 그 창에서 닫는다.
+- **환경.** 세션은 atc 서비스의 환경이 아니라 깨끗한 환경(HOME, USER, 로캘, XDG runtime, claude CLI와 node가 든 PATH)을 받는다. `.env.local`의 비밀(Linear, TypeSafe)이 세션에 가지 않는다. CLI 경로는 `ATC_CLAUDE_BIN`(기본 `~/.local/bin/claude`. 서비스 PATH에 없다).
+- **폴더 신뢰.** Claude Code는 trust 질문을 수락하지 않은 폴더에서 백그라운드 세션을 거절한다. atc는 그 사실을 알리고 trust 설정은 건드리지 않는다. 그 저장소에서 `claude`를 한 번 열어 수락한다.
+- **기록.** LAUNCH·STOP마다 FLIGHT RECORDER에 `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}` 한 줄.
+- **화면.** 세션이 없는 카드에 **LAUNCH**(permission mode, 선택 모델, 상한 대비 백그라운드 수). 백그라운드 세션이면 `BG <id>`와 **STOP**. 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
+
+아직 만들지 않음: 수요·가동률로 LAUNCH·STOP 제안(DISPATCH처럼 먼저 그림자 판정하는 FLEET PLAN), 오래 도는 세션의 정기 정비로서 RESTART, 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, GitHub idea #53).
+
 ## 9. `lane:`에서 `tail:`로 옮기기
 
 네 단계 모두 끝났다.
@@ -611,6 +627,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 6. ◐ FLEET 카드의 LOGBOOK 기반 TARGETS 실적(7.1, 7.2)과 NETWORK의 프로젝트 목표 옆 표시(7.3). 남은 일: 분류별 중앙값으로 정시 기준 잡기, OCC 목표 변경 초안의 S2(7.4, S1은 만듦)
 7. ✅ FLEET 탭의 팀 꾸리기(8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE(8.2): LOGBOOK의 TYPE RATING 근거, GRANT·REVIEW 추천, SUPERVISOR의 부여·회수
+9. ✅ 세션 조종(8.5): FLEET 탭의 LAUNCH·STOP. 남은 일: 수요 기반 제안, RESTART, 다시 띄우는 CREW CHANGE, 사용량 예산
 
 ## 11. 위험과 대응
 
@@ -621,6 +638,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 | 선언한 CREW와 실제 CREW가 다름 | FLEET 탭이 선언과 관찰을 나란히 보여 준다 |
 | Linear 라벨이 어지러워짐 | 축 넷만, 한 번만 만든다: `tail:`과 `rating:`은 평면 라벨, `type`과 `wake`는 라벨 그룹. vocado의 기존 Risk 그룹도 `SEC`로 읽으므로 새 라벨이 필요 없다 |
 | `SEC`를 너무 쉽게 줌 | `rating:SEC` 변경과 AIRCRAFT의 `SEC` rating에는 늘 SUPERVISOR가 필요하다 |
+| atc가 띄운 세션이 사용량을 쓰고 권한으로 움직임 | SUPERVISOR가 눌러야만 띄움, 살아 있는 백그라운드 세션 상한, `bypassPermissions` 없음, atc 비밀이 없는 깨끗한 환경, LAUNCH·STOP 모두 FLIGHT RECORDER에(8.5) |
 
 ## 결정 (2026-09-26, SUPERVISOR)
 
@@ -630,7 +648,8 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 | 미리 배정 | President 알림, Linear 라벨, VOC-196을 여기서 정한 이름으로 진행 |
 | 난이도 분류 | 필요. FLIGHT TYPE, WAKE CATEGORY, 필요한 TYPE RATING으로 여기에 넣음 |
 | 팀 이름 | `TEAM_X`를 **REGISTRATION**으로 유지한다. 사용자가 붙이는 세션 이름이고, vocado 규칙, President, `tail:` 라벨, `teamPattern`이 모두 여기에 기댄다. atc의 말로 팀은 **CAPTAIN** 아래 **CREW**가 모는 **AIRCRAFT**이고, callsign(ECHO)으로 부른다. "팀"이라는 말은 REGISTRATION에서, 그리고 사람과 이야기할 때만 쓴다 |
-| 팀 꾸리기 | FLEET 탭에서: ENTRY INTO SERVICE, CONFIGURATION 템플릿, CREW BRIEFING, AOG, RETIREMENT. atc는 세션을 띄우지 않는다 |
+| 팀 꾸리기 | FLEET 탭에서: ENTRY INTO SERVICE, CONFIGURATION 템플릿, CREW BRIEFING, AOG, RETIREMENT. atc는 세션을 띄우지 않는다(2026-09-28에 바꿈, 아래) |
+| 세션 조종 (2026-09-28) | atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(`claude --bg`, `claude stop`). FLEET 탭에서 SUPERVISOR가 누를 때. 자동 제안은 나중에, 먼저 그림자 판정으로(8.5) |
 | Linear 라벨 | `type`(BUILD … FERRY)과 `wake`(L … J)는 Vocado 팀에 단일 선택 라벨 그룹으로 만들었다. `tail:TEAM_A` … `tail:TEAM_F`는 당분간 평면 라벨로 둔다(President가 이미 쓴다) |
 | 첫 FLEET 프로필 | 운항 이력에서: TEAM_B, TEAM_D, TEAM_E는 `SEC`(보안·DB FLIGHT)를 갖고 route는 Beta Readiness. TEAM_F는 route Song Experience. TEAM_C는 routes Vocado Visual System (SEED)와 Home & Discovery. TEAM_A는 기본값 |
 
