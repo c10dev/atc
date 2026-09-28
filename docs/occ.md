@@ -9,7 +9,7 @@ atc splits into two control sessions, the way aviation does:
 
 In real aviation the flight dispatcher belongs to the airline's OCC, not to ATC. So DISPATCH (stage 2) moves into OCC, and OCC takes over the work the "President" session does by hand today.
 
-> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 built: SCHEDULE drafts in shadow operation for `CLASSIFY`, `PRIORITIZE`, `NEW` and `CLOSE` (`server/schedule.ts`, `atcctl schedule brief|draft`, the SCHEDULE tab, OCC rules). `NEW` is the CHARTER DESK: an AD HOC FLIGHT drafted from a CHARTER REQUEST, with body-section checks and a title-similarity duplicate search over the snapshot (issues updated in the last 45 days). `CLOSE` (section 5.5, built 2026-09-27) drafts closing a FLIGHT whose PR is merged; it is never released, and the SUPERVISOR closes the issue in Linear. At most 5 open drafts of any kind, and drafts expire after 3 days without a verdict. ATC's CLEARED TO LAND check (section 9) is built: the LANDING SEQUENCE now comes from open GitHub PRs. Other operations (`TAIL`, `LINK`, `SPLIT`, `COMMENT`) and S3 are design only (Not built yet). S2 (approval operation: linear-guard, `schedule release`, APPLIED detection) is built behind `mode` and off by default — see "Turning on S2". Decisions are listed under "Decisions" at the end.
+> Status: S0 built (2026-09-26): the `atc/occ/` session (DISPATCH merged in), read-only `gh`, a read-only MCP guard, manual reload, and TAIL ASSIGNMENT (`tail:TEAM_X`, see [fleet.md](fleet.md)) in the planner. S1 built: SCHEDULE drafts in shadow operation for `CLASSIFY`, `PRIORITIZE`, `NEW`, `CLOSE` and `TAIL` (`server/schedule.ts`, `atcctl schedule brief|draft`, the SCHEDULE tab, OCC rules). `NEW` is the CHARTER DESK: an AD HOC FLIGHT drafted from a CHARTER REQUEST, with body-section checks and a title-similarity duplicate search over the snapshot (issues updated in the last 45 days). `CLOSE` (section 5.5, built 2026-09-27) drafts closing a FLIGHT whose PR is merged; it is never released, and the SUPERVISOR closes the issue in Linear. At most 5 open drafts of any kind, and drafts expire after 3 days without a verdict. ATC's CLEARED TO LAND check (section 9) is built: the LANDING SEQUENCE now comes from open GitHub PRs. `TAIL` ("TAIL as built", built 2026-09-28 with ATC-68) drafts a `tail:TEAM_X` label for an assignment made outside DISPATCH. Other operations (`LINK`, `SPLIT`, `COMMENT`) and S3 are design only (Not built yet). S2 (approval operation: linear-guard, `schedule release`, APPLIED detection) is built behind `mode` and off by default — see "Turning on S2". Decisions are listed under "Decisions" at the end.
 
 ## 1. Current facts
 
@@ -74,14 +74,14 @@ OCC never writes to Linear freely. It drafts **SCHEDULE operations**. Each one i
 | `NEW` | Create a ticket | Split the batch-processor race out of VOC-193 (became VOC-195) |
 | `CLOSE` | ✅ Built (5.5): the FLIGHT's PR is merged (LOGBOOK ARRIVED) but the issue is still open. Approved drafts are closed by the SUPERVISOR in Linear, never released | VOC-56: the `protect main` ruleset already meets every done criterion |
 | `PRIORITIZE` | Set or change priority | VOC-177, VOC-179, VOC-195 have no priority |
-| `TAIL` | Add or change `tail:TEAM_X` (TAIL ASSIGNMENT) | VOC-196 → `tail:TEAM_E` (what President decided) |
+| `TAIL` | ✅ Built ("TAIL as built", ATC-68): add or change `tail:TEAM_X` (TAIL ASSIGNMENT) | VOC-196 → `tail:TEAM_E` (what President decided) |
 | `CLASSIFY` | Set FLIGHT TYPE, WAKE CATEGORY and required TYPE RATING ([fleet.md](fleet.md) section 4) | VOC-195 → `type:MAINT`, `wake:M`, `rating:SEC` |
 | `LINK` | Add a parent, `blocks` or `related` relation | VOC-196 blocked by VOC-52 (written only in the body) |
 | `SPLIT` | Turn a finding into a child or related ticket | P3 items from the PR #400 review |
 | `COMMENT` | Leave a plan comment (not execution) | "Deferred until VOC-52 lands" |
 | `TARGET`, `ROUTE` | ✅ S1 built (ATC-25): change an AIRCRAFT's FLEET TARGETS or ROUTE, not Linear. Shadow verdicts only in both modes, counted apart from the gate ([fleet.md](fleet.md) 7.4) | TEAM_C remove `Home & Discovery` (completed) |
 
-Built: `NEW` (CHARTER DESK, 5.1), `CLOSE` (5.5), `PRIORITIZE`, `CLASSIFY`, and `TARGET`/`ROUTE` in shadow ([fleet.md](fleet.md) 7.4). Not built yet: `TAIL`, `LINK`, `SPLIT`, `COMMENT`.
+Built: `NEW` (CHARTER DESK, 5.1), `CLOSE` (5.5), `PRIORITIZE`, `CLASSIFY`, `TAIL` ("TAIL as built"), and `TARGET`/`ROUTE` in shadow ([fleet.md](fleet.md) 7.4). Not built yet: `LINK`, `SPLIT`, `COMMENT`.
 
 ### 5.1 Where operations come from
 
@@ -217,7 +217,7 @@ Never automatic: anything with CAUTION, `Canceled`, deleting anything, adding or
 | From | Moves to OCC as |
 |---|---|
 | DISPATCH session (`atc/dispatch/`) | The same work under `atc/occ/`: proposal review, HOLD, FLIGHT PLAN, READBACK. The DISPATCH tab, proposal ids (`D-xxxx`) and send-guard stay as they are |
-| President: assign work | DISPATCH proposals. Until 2b, a person's direct assignment is recorded as a `tail:TEAM_X` label so the planner can see it. For now that is done by hand: the SCHEDULE `TAIL` operation is Not built yet |
+| President: assign work | DISPATCH proposals. Until 2b, a person's direct assignment is recorded as a `tail:TEAM_X` label so the planner can see it. OCC drafts it as a SCHEDULE `TAIL` operation ("TAIL as built", ATC-68). Until S2 releases drafts, the label is still added by hand |
 | President: verify team reports | **Flight following**. atc follows every assigned FLIGHT (`server/following.ts`, `GET /api/following`): DISPATCH ASSIGNs that are accepted, departed or recalling, plus In Progress FLIGHTs with a `tail:` label. It tracks the stages READBACK → DEPARTED → PR opened → CLEARED → ARRIVED (STAND-free FLIGHTs: READBACK → DEPARTED → ARRIVED, section 8.1), and flags delays (no next stage after 1.5× the WAKE expectation) and mismatches between Linear and the PR. Each pass, OCC runs `atcctl following`, reports only new issues and records them with `following ack`, so nothing is reported twice. It never messages teams. For a team report or a SUPERVISOR request, OCC still checks the PR head, CI and review with read-only `gh` (`gh pr view`, `gh pr checks`, `gh pr diff`). The mechanical landing check is ATC's CLEARED TO LAND (section 9) |
 | President: keep Linear tidy | SCHEDULE operations |
 | President: maintain rule files | A `NEW` ticket that a TEAM implements through a PR |
@@ -227,7 +227,7 @@ OCC's guard is TOWER's Bash guard plus read-only `gh` subcommands (`guard.mjs --
 
 The session reloads its manual: `/tick` starts with `atcctl manual check`, which compares the hash of `CLAUDE.md`, `/tick` and its procedure files (every Korean `*.md` in `.claude/skills/tick/`) with the last `atcctl manual ack` (stored under `~/.local/state/atc/manuals/`). If they changed, the session rereads them before doing anything else. TOWER's `/tick` does the same. OCC's `CLAUDE.md` holds only the core (role, prohibitions, always-used commands, review rules); each procedure (BRIEFING, FLIGHT PLAN, CREW CHANGE, SCHEDULE, flight following) is a file next to `/tick`, read only at the step that has work, so the always-loaded manual stays short (ATC-9). That fixes the stale-manual incident from section 1.
 
-**President retires** once all three hold: OCC has run S1 for a week, flight following covers every team report, and the `TAIL` operation is in use (Not built yet). Until then President keeps assigning and records each assignment as a `tail:` label by hand.
+**President retires** once all three hold: OCC has run S1 for a week, flight following covers every team report, and the `TAIL` operation is in use (built with ATC-68; it writes labels once S2 is on). Until then President keeps assigning and records each assignment as a `tail:` label by hand.
 
 ### 8.1 Flight following in detail
 
