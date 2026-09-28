@@ -2,7 +2,7 @@
 
 FUEL is the tokens a FLIGHT uses. atc records how long a FLIGHT took (block time, landing wait) and how well it went (rollbacks, LOS, Codex findings), but not what it burned, why some of that burn was waste, or how close each account is to its plan limit. FUEL adds those three things from records atc can already read.
 
-> Status (2026-09-28): draft for ATC-46 (moved from GitHub idea #53, whose research comment is the source for the pricing and cache facts below). F1 is built (`server/fuel.ts`, `server/fuel-run.ts`, `GET /api/fuel`) and F2 (ACCOUNT label, `LIMIT` held by ACCOUNT) is built (ATC-51); the rest is not. Sections 8 and 9 hold the split into issues and the SUPERVISOR decisions this needs.
+> Status (2026-09-28): draft for ATC-46 (moved from GitHub idea #53, whose research comment is the source for the pricing and cache facts below). F1 is built (`server/fuel.ts`, `server/fuel-run.ts`, `GET /api/fuel`) F2 (ACCOUNT label, `LIMIT` held by ACCOUNT) is built (ATC-51), and F6 (FUEL REMAINING per ACCOUNT from the statusline) is built (ATC-55); the rest is not. Sections 8 and 9 hold the split into issues and the SUPERVISOR decisions this needs.
 
 Related: [fleet.md](fleet.md) 8.3 (observed crew, never read bodies), 8.6 (FLEET PLAN, "Usage: none per AIRCRAFT"), 8.8 (AIRCRAFT health, `LIMIT` after a limit is hit); `server/logbook.ts` (LOGBOOK), `server/health.ts` (`quotaLimits`), `server/crew-observed.ts`; GitHub #41 (ontology graph projection, K1).
 
@@ -20,7 +20,7 @@ Read on 2026-09-28 from local transcripts (field names and numbers only, no bodi
 | Cache | Every request that wrote cache wrote the 1 h tier (15,809 requests, 0 at 5 m). Totals: 40.0 M uncached input, 83.6 M cache writes, 6,596 M cache reads, 14.1 M output. CACHE HIT (Σ read / Σ(input + write + read)) = 0.982 | Reads dominate the token count; writes and output dominate the cost. Show both |
 | Models seen | `claude-opus-5-5` 15,431 requests, then DeepSeek and Muse routes (~3,800) and `claude-sonnet-5` 375 | The price table must know non-Anthropic routes or leave them out of cost |
 | Transcript reading in atc | `readTail` reads the last 1 MB; ATC-45 reads the last 64 KB; `talkEventsFile` reads on from a byte offset | FUEL needs the offset reader, not the tail |
-| Statusline | No `statusLine` is configured in `~/.claude/settings.json` | The plan-limit source #53 proposed (statusline `rate_limits`) is not wired and must be verified first |
+| Statusline | No `statusLine` is configured in `~/.claude/settings.json` | The plan-limit source #53 proposed (statusline `rate_limits`) is not wired and must be verified first. Verified in ATC-55: present (section 6.1) |
 
 ## 2. Principles
 
@@ -75,11 +75,19 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 
 - **ACCOUNT label** (built, ATC-51): a new optional AIRCRAFT profile field `account` in `fleet.json`, set on the FLEET card. AIRCRAFT without it count as the default account (`default`). If no AIRCRAFT has a label, atc does not know accounts and keeps grouping by reset time.
 - **LIMIT by account** (built, ATC-51; [fleet.md](fleet.md) 8.8): ATC-45's `healthAlerts` groups `LIMIT` by reset time. With labels it groups by ACCOUNT, and a `LIMIT` on one AIRCRAFT marks every AIRCRAFT on that ACCOUNT as held until the reset. This also stops DISPATCH from sending the next FLIGHT to a sibling session that is about to hit the same wall.
-- **FUEL REMAINING**: needs a live source per account. Candidates, in order of preference, to verify before building:
+- **FUEL REMAINING** (built, ATC-55, source 1; see 6.1): needs a live source per account. Candidates, in order of preference, to verify before building:
   1. The statusline input's `rate_limits` (what #53 cited). A statusline command would append `{t, sessionId, rate_limits}` to the atc state folder; atc maps session → AIRCRAFT → ACCOUNT. This changes user settings (`statusLine`) and adds a `hooks/` script: `user` tier.
   2. `quotaLimits` on refused requests (already read by ATC-45): exact but only after the limit is hit.
   3. FUEL BURN per ACCOUNT in the current window against a SUPERVISOR-entered budget: an estimate, labelled as such.
-- **Use**: a FLEET row line `FUEL 82% · resets 21:00Z` per ACCOUNT; an INFO to TOWER/OCC at a threshold (default 80 %); optionally (SUPERVISOR switch, off by default) DISPATCH skips an AIRCRAFT whose ACCOUNT is above a second threshold (default 95 %). Nothing is switched automatically between accounts.
+- **Use** (built, ATC-55): a FLEET row line `FUEL 82% · resets 21:00Z` per ACCOUNT; an INFO to TOWER/OCC at a threshold (default 80 %); optionally (SUPERVISOR switch, off by default) DISPATCH skips an AIRCRAFT whose ACCOUNT is above a second threshold (default 95 %). Nothing is switched automatically between accounts.
+
+### 6.1 FUEL REMAINING as built (ATC-55)
+
+- **Step 0, the source.** Read from the statusline input builder in Claude Code 2.1.283 (the binary; no settings were changed). The input has `session_id` and, when known, `rate_limits` with `five_hour`, `seven_day` and (gateway logins only) `spend_limit`. Each is `{used_percentage, resets_at}`: `used_percentage` is the share used, 0–100 with one decimal (`utilization × 100`), and `resets_at` is epoch seconds. A window is included only while its reset is in the future (and under a year away); with none, `rate_limits` is left out. API key, Bedrock and Vertex sessions have no plan limits, so they report nothing. The fallback (FUEL BURN against a declared budget) was not needed.
+- **Record.** `hooks/fuel-statusline.mjs` appends `{t, sessionId, rate_limits}` with numbers only to `fuel/<sessionId>.jsonl`, and only when a number changed. It prints `FUEL 5h 82% · 7d 40%` for the status line (`--quiet`: nothing). Install: [hooks/README.md](../hooks/README.md#fuel-statusline).
+- **Per ACCOUNT.** `fuelRemainingOf` (pure, `server/fuel-remaining.ts`) takes the last record of each session, drops windows past their reset, and keeps the newest record per ACCOUNT. Without ACCOUNT labels each AIRCRAFT uses only its own sessions. The shown value is the most-used window.
+- **Thresholds** (`dispatch.json` `fuel`): `infoPct` 80, `holdPct` 95, `hold` false. From `infoPct`: TOWER `open.fuel` (key per ACCOUNT, window and reset) and a FOLLOWING `fuel` issue (`info`). From `holdPct`, with `hold` on: DISPATCH skips the ACCOUNT's AIRCRAFT with `HOLD · FUEL 96% (account pro-2) until 21:00Z`. The switch is in the settings window (AGENTS tab, FUEL block), SUPERVISOR only.
+- **Limits.** Only sessions that draw a status line report: CREW subagents and sessions on other machines don't. A value is only as fresh as the last redraw; the tooltip shows when and from which AIRCRAFT it came.
 
 ## 7. Screens and estimates
 
@@ -98,7 +106,7 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 | F3 (ATC-52) | Leaks with high confidence: COLD CACHE (HOLD and control wake) and MODEL SWITCH | F1 | `auto` | BUILD · M |
 | F4 (ATC-53) | FLIGHT attribution: optional `fuel` field on LOGBOOK `arrived` lines, `UNATTRIBUTED` | F1 | `user` (LOGBOOK record format) | BUILD · M |
 | F5 (ATC-54) | Cost: config price table, FUEL COST, NET FUEL | F1 | `auto` | BUILD · L |
-| F6 (ATC-55) | FUEL REMAINING source (section 6): verify statusline `rate_limits`, then the statusline script and per-ACCOUNT view | F2, decision D1 | `user` (`hooks/`, settings) | BUILD · M |
+| F6 (ATC-55) ✅ | FUEL REMAINING source (section 6): verify statusline `rate_limits`, then the statusline script and per-ACCOUNT view. **Done**, see 6.1 | F2, decision D1 | `user` (`hooks/`, settings) | BUILD · M |
 | F7 (ATC-57) | Other leaks and CREW warnings (COMPACTION, SESSION CHANGE after measuring the baseline, the warning list) | F3 | `auto` | BUILD · M |
 | F8 (ATC-56) | Screens and TRIP FUEL: FLEET/LOGBOOK/DISPATCH/brief views, TARGETS items `fuelPerFlight`, `cacheHit` | F4, F5 | `auto` (rating:UI) | BUILD · M |
 
@@ -119,9 +127,9 @@ F1 and F2 started at once and in parallel, and both are built; they answer the T
 
 | # | Question | Proposal |
 |---|---|---|
-| D1 | FUEL REMAINING source | Verify statusline `rate_limits` first; if present, install a statusline command (user tier). If not, fall back to FUEL BURN against a declared budget |
+| D1 | FUEL REMAINING source | Verify statusline `rate_limits` first; if present, install a statusline command (user tier). If not, fall back to FUEL BURN against a declared budget. **Decided 2026-09-28 as proposed** (SUPERVISOR, ATC-55); verified present, so the statusline command was built (6.1) |
 | D2 | Where the ACCOUNT label lives | AIRCRAFT profile field `account` in `fleet.json`, edited on the FLEET card |
-| D3 | May a plan-limit threshold hold DISPATCH? | Yes, behind a switch that is off by default (95 %) |
+| D3 | May a plan-limit threshold hold DISPATCH? | Yes, behind a switch that is off by default (95 %). Built as proposed in ATC-55 (`dispatch.json` `fuel.hold`, settings window); the SUPERVISOR turns it on |
 | D4 | Exact CREW output via OTel (`CLAUDE_CODE_ENABLE_TELEMETRY=1`, file exporter)? | Not now; keep the lower-bound flag |
 | D5 | Scan cadence | Offsets on the LOGBOOK cycle (10 min); FUEL REMAINING on every snapshot |
 | D6 | Codex prices | Leave Codex out of cost until a price is set |
@@ -139,4 +147,4 @@ F1 and F2 started at once and in parallel, and both are built; they answer the T
 
 ## Not built yet
 
-F3–F8 in section 8, and Codex usage (section 4).
+F3–F5, F7 and F8 in section 8, and Codex usage (section 4).

@@ -2,6 +2,7 @@ import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from
 import { DEFAULT_ACCOUNT } from "../../../server/crew.ts";
 import type { AircraftView, CrewMember, FleetFile, Rating } from "../../../server/fleet.ts";
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel } from "../../../server/health.ts";
+import { fuelLabel, fuelTitle } from "../../../server/fuel-remaining.ts";
 import { elapsedText, type FleetRow, fleetRows, fleetStatusOf } from "../../../server/fleet-status.ts";
 import type { RulesView } from "../../../server/rules-state.ts";
 import { flightNumber } from "../aviation.ts";
@@ -332,7 +333,7 @@ function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[]; open: 
         {rows.map((r) => {
           const isOpen = open.has(r.registration);
           return (
-            <li key={r.registration} className={`fl-li st-${r.status.replace(/ /g, "-")}${r.health || r.accountHold ? " has-health" : ""}${isOpen ? " is-open" : ""}`}>
+            <li key={r.registration} className={`fl-li st-${r.status.replace(/ /g, "-")}${r.health || r.accountHold || r.fuel ? " has-health" : ""}${isOpen ? " is-open" : ""}`}>
               <button className="fl-row" aria-expanded={isOpen} aria-controls={`fl-detail-${r.registration}`} onClick={() => onToggle(r.registration)}>
                 <span className="fl-r-id">
                   <b>{r.callsign}</b> <span className="mono faint">{r.registration}</span>
@@ -355,12 +356,17 @@ function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[]; open: 
                       {r.accountHold.label}
                     </span>
                   )}
+                  {r.fuel && (
+                    <span className={`fl-r-fuel lv-${r.fuel.level}`} title={r.fuel.title}>
+                      {r.fuel.label}
+                    </span>
+                  )}
                   {r.flight ? (
                     <>
                       <b className="mono">{flightNumber(r.flight.key)}</b> {r.flight.title && <span className="fl-r-title">{r.flight.title}</span>}
                       {r.more > 0 && <span className="fl-r-more">+{r.more}</span>}
                     </>
-                  ) : r.health || r.accountHold ? null : (
+                  ) : r.health || r.accountHold || r.fuel ? null : (
                     <span className="faint">—</span>
                   )}
                 </span>
@@ -557,6 +563,11 @@ function Card({
         ACCOUNT {a.accountIsDefault && <em>기본값</em>}
       </h3>
       <p className="fl-line">{a.account ? <span className="mono">{a.account}</span> : <span className="faint">지정 없음 — 한도는 reset 시각으로 묶는다</span>}</p>
+      {a.fuel && (
+        <p className={`fl-fuel lv-${a.fuel.level}`} title={fuelTitle(a.fuel, Date.now())}>
+          {fuelLabel(a.fuel, Date.now())} <span className="faint">· 쓴 몫, {a.fuel.from} statusline</span>
+        </p>
+      )}
 
       <h3 className="fl-sub">TARGETS</h3>
       <p className="fl-line">

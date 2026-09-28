@@ -43,7 +43,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - ALERT는 화면 위 ALERTS에도 올라간다. `NETWORK`는 세션이 여럿이어도 하나, `LIMIT`은 같은 ACCOUNT끼리(라벨이 없으면 reset 시각이 같은 것끼리) 하나로 묶인다.
 - OCC는 그 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING 문제로, TOWER는 브리핑으로 받아 SUPERVISOR에게 보고한다. 둘 다 팀에 다시 보내지는 않는다.
 - 사람이 결정할 코드는 FLEET PLAN이 제안으로 올린다: `MODEL`과 주간 `LIMIT`은 AOG, `CONTEXT`와 60분 넘은 `HUNG`은 RESTART(아래 "FLEET PLAN"). 코드가 풀리면 제안도 닫힌다.
-- 한도가 **거의 찼는지**는 아직 모른다(FUEL, ATC-46). 급하면 그 AIRCRAFT를 AOG로 둔다.
+- 한도가 **거의 찼는지**는 FUEL로 본다(아래 "FUEL: 한도를 얼마나 썼나"). 급하면 그 AIRCRAFT를 AOG로 둔다.
 
 ### ACCOUNT: 사용 한도를 같이 쓰는 AIRCRAFT
 
@@ -54,6 +54,17 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - 한 AIRCRAFT가 `LIMIT`에 걸리면, 같은 ACCOUNT의 다른 AIRCRAFT도 reset까지 DISPATCH·SCHEDULE NEW에서 빠진다. FLEET 줄에는 점선 표시 `HOLD · LIMIT (account pro-2) until 07:40Z`가 붙고, DISPATCH 탭 AIRCRAFT 목록의 사유에도 같은 글이 나온다. 이 AIRCRAFT들은 멈춘 것이 아니므로 health 코드나 경보가 따로 생기지 않는다. 그 ACCOUNT의 `LIMIT` 경보 하나에 함께 적힌다.
 - reset이 지나면 저절로 풀린다. 할 일은 없다. 한도에 걸린 AIRCRAFT가 대답하지 못한 지시가 있으면 `UNANSWERED`로 바뀌니 그때 다시 보낸다.
 - 라벨을 직접 단 AIRCRAFT는 FLEET 줄의 REGISTRATION 옆에 작은 칩으로 보이고, 카드에는 ACCOUNT 줄이 있다.
+
+### FUEL: 한도를 얼마나 썼나
+
+`LIMIT`은 이미 막힌 뒤에 뜬다. FUEL은 막히기 전에 ACCOUNT가 한도를 얼마나 썼는지 보여 준다.
+
+- **켜기(한 번, SUPERVISOR)**: `~/.claude/settings.json`에 atc의 statusline 명령을 넣는다([hooks/README.ko.md](../../hooks/README.ko.md#fuel-statusline)). 그러면 Claude Code 아래 상태 줄에 `FUEL 5h 82% · 7d 40%`가 보이고, 같은 숫자가 atc에 남는다. 계정 정보는 남기지 않고 숫자만 남긴다.
+- **FLEET 줄**: FLYING 칸에 `FUEL 82% · resets 21:00Z`. 가장 많이 쓴 창(5시간·주간)의 **쓴 몫**과 그 창이 풀리는 시각이다. 80 % 아래는 회색, 80 %부터 노랑, 95 %부터 빨강. 마우스를 올리면 창마다의 값과, 어느 AIRCRAFT가 언제 적은 값인지 나온다.
+- 같은 ACCOUNT의 AIRCRAFT는 같은 값을 보인다(가장 새로 적힌 값). ACCOUNT 라벨이 없으면 AIRCRAFT마다 자기 세션의 값만 보인다.
+- 80 %를 넘으면 TOWER가 SUPERVISOR에게 한 번 알리고(창마다 한 번), OCC는 그 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING에 적는다. 팀에는 보내지 않는다.
+- **DISPATCH HOLD 스위치**: 설정 창 AGENTS 탭의 FUEL 블록. 기본은 off라 FUEL은 보여 주기만 한다. on으로 바꾸면 95 % 넘게 쓴 ACCOUNT의 AIRCRAFT를 DISPATCH가 reset까지 `HOLD · FUEL 96% (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다.
+- 값은 상태 줄이 다시 그려질 때만 갱신된다. CREW 서브에이전트와 다른 컴퓨터의 세션은 보고하지 않는다. ACCOUNT마다 살아 있는 CAPTAIN 세션 하나면 된다.
 
 ## 팀 프로필
 

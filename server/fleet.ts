@@ -8,6 +8,7 @@ import { OBSERVED_WINDOW_DAYS } from "./crew-observed.ts";
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig } from "./dispatch.ts";
 import { type Actuals, computeActuals, type LogEntry, loadLogbook } from "./logbook.ts";
 import { type AccountHold, accountHoldOf, accountHolds, type Health } from "./health.ts";
+import type { FuelRemaining } from "./fuel-remaining.ts";
 import type { Snapshot } from "./model.ts";
 import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state.ts";
 
@@ -198,6 +199,7 @@ export interface AircraftView {
   account?: string | null; // ACCOUNT(ATC-51). 라벨이 없으면 기본 ACCOUNT, 등록부에 라벨이 하나도 없으면 null
   accountIsDefault?: boolean; // 라벨 없이 기본 ACCOUNT로 센다
   accountHold?: AccountHold | null; // 같은 ACCOUNT의 다른 AIRCRAFT가 LIMIT에 걸려 붙들림(ATC-51)
+  fuel?: FuelRemaining | null; // 그 ACCOUNT의 FUEL REMAINING(ATC-55). statusline 값이 없으면 null
   configuration: ConfigurationId | null;
   enteredAt: string | null;
   aog: AircraftProfile["aog"] | null;
@@ -207,7 +209,7 @@ export interface AircraftView {
 
 // 스냅샷의 TEAM 세션과 등록부를 합친다. 세션이 없는 등록 항목도 "absent"로 보인다.
 export function fleetView(
-  s: Pick<Snapshot, "sessions" | "claims" | "workspaces" | "airports"> & Partial<Pick<Snapshot, "tickets">>,
+  s: Pick<Snapshot, "sessions" | "claims" | "workspaces" | "airports"> & Partial<Pick<Snapshot, "tickets" | "fuel">>,
   fleet: FleetFile,
   teamPattern = DEFAULT_DISPATCH_CONFIG.teamPattern,
   logbook: LogEntry[] = [],
@@ -244,6 +246,7 @@ export function fleetView(
       account: accountOf(fleet, reg),
       accountIsDefault: accountOf(fleet, reg) != null && !profile.account,
       accountHold: session ? accountHoldOf(holds, accountOf(fleet, reg), reg) : null,
+      fuel: s.fuel?.[reg] ?? null,
       configuration: profile.configuration ?? null,
       enteredAt: profile.enteredAt ?? null,
       aog: profile.aog ?? null,

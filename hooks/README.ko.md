@@ -1,4 +1,4 @@
-# hooks — 점유 hook과 rules-drift hook
+# hooks — 점유·rules-drift·health hook, FUEL statusline
 
 [English](README.md) · **한국어**
 
@@ -171,6 +171,38 @@ SUPERVISOR가 `~/.claude/settings.json`에 아래 항목을 넣는다(절대 경
 
 끄려면 항목을 지운다.
 
+## FUEL statusline
+
+`fuel-statusline.mjs`(ATC-55, [docs/fuel.md](../docs/fuel.md) 6절)는 hook이 아니라 Claude Code **statusLine** 명령이다. Claude Code가 상태 줄을 다시 그릴 때마다 실행하고 stdin으로 JSON을 준다. Claude Code 2.1.283부터 그 JSON에 `session_id`와, 요금제(claude.ai) 로그인이면 `rate_limits`가 있다.
+
+| 필드 | 뜻 |
+|---|---|
+| `rate_limits.five_hour` / `seven_day` | `{used_percentage, resets_at}`: 그 창에서 쓴 몫(0–100)과 reset(epoch 초). reset이 아직 오지 않은 창만 들어 있다 |
+| `rate_limits.spend_limit` | 같은 모양, gateway 로그인만 |
+| (`rate_limits` 없음) | API 키, Bedrock, Vertex: 요금제 한도가 없으므로 아무것도 쓰지 않는다 |
+
+- `fuel/<sessionId>.jsonl`에 `{t, sessionId, rate_limits}`를 덧붙인다. **숫자만** 두고, 앞 줄과 숫자가 달라졌을 때만 쓴다. 입력의 나머지(모델, 비용, 경로, workspace)는 보지 않는다.
+- 상태 줄에 짧은 글 `FUEL 5h 82% · 7d 40%`를 출력한다. `--quiet`면 출력하지 않는다. 항상 exit 0이고 오류는 삼킨다. 네트워크를 쓰지 않는다.
+- 서버는 파일마다 마지막 줄을 읽어 session → AIRCRAFT → ACCOUNT로 잇고([docs/fleet.ko.md](../docs/fleet.ko.md) 8.8), ACCOUNT마다 가장 새 값을 쓴다.
+- 옵션: `ATC_STATE_DIR`(기본 `~/.local/state/atc`). `fuel/` 폴더는 언제 지워도 된다.
+
+### 설치(SUPERVISOR)
+
+SUPERVISOR가 `~/.claude/settings.json`에 아래를 넣는다(절대 경로). `statusLine`은 명령 하나라서, 이미 쓰는 상태 줄이 있으면 이것으로 바뀐다.
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "\"/path/to/node\" \"/path/to/atc/hooks/fuel-statusline.mjs\""
+  }
+}
+```
+
+쓰던 상태 줄을 지키려면 작은 스크립트에서 둘을 같이 돌리고 내 것을 출력한다: `input=$(cat); printf '%s' "$input" | node /path/to/atc/hooks/fuel-statusline.mjs --quiet; printf '%s' "$input" | your-statusline`.
+
+열려 있는 세션에 줄이 보이지 않으면 그 세션을 다시 시작한다. 다른 컴퓨터의 세션과 CREW 서브에이전트는 보고하지 않는다. ACCOUNT마다 살아 있는 CAPTAIN 세션 하나면 충분하다. 끄려면 `statusLine`을 지운다.
+
 ## 파일
 
 | 파일 | 역할 |
@@ -186,5 +218,8 @@ SUPERVISOR가 `~/.claude/settings.json`에 아래 항목을 넣는다(절대 경
 | `health.mjs` | health hook. stdin으로 이벤트를 받아 `health/<sessionId>.jsonl`에 한 줄을 덧붙인다 |
 | `health.d.mts` | `health.mjs`의 타입 선언 |
 | `health.test.mjs` | 이벤트마다 줄 모양, 본문 없음, 지우기, fail open(`npm test`) |
+| `fuel-statusline.mjs` | FUEL statusline 명령. 숫자만 남긴 `rate_limits`를 `fuel/<sessionId>.jsonl`에 덧붙이고, 서버가 다시 쓰는 `parseRecord`·`lastRecord`를 둔다 |
+| `fuel-statusline.d.mts` | `fuel-statusline.mjs`의 타입 선언 |
+| `fuel-statusline.test.mjs` | 기록 모양, 숫자만, 바뀔 때만 쓰기, 출력 줄, fail open(`npm test`) |
 
 atc가 점유로 HANDOFF와 충돌을 판정하는 방법은 저장소 [README](../README.ko.md#handoff와-충돌)에 있다.

@@ -14,6 +14,8 @@ import { inspectionOf, loadMcc, readMccRecords } from "./mcc.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { accountOf } from "./crew.ts";
 import { loadFleet } from "./fleet.ts";
+import { fuelConfigOf, fuelRemainingOf } from "./fuel-remaining.ts";
+import { readFuelRecords } from "./fuel-run.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, loadAtfm, stopKey } from "./atfm.ts";
 import { fastTrackOf, isHeld, loadAutoland, loadAutolandState, mergeExclusionOf, planAutoland } from "./autoland.ts";
@@ -116,11 +118,20 @@ export async function buildSnapshot(): Promise<Snapshot> {
   const alerts = buildAlerts(sessions, workspaces, tickets, claims, occupancy);
   // health ALERT: NETWORK는 기계에 한 번, LIMIT은 같은 ACCOUNT끼리(ATC-51), ACCOUNT를 모르면 같은 reset끼리 한 번(docs/fleet.md 8.8)
   const fleet = loadFleet();
-  const team = new RegExp(loadDispatchConfig().teamPattern, "i");
+  const dispatchCfg = loadDispatchConfig();
+  const team = new RegExp(dispatchCfg.teamPattern, "i");
   const accountOfSession = (x: Session) => (x.status !== "dead" && team.test(x.name) ? accountOf(fleet, x.name) : null);
   for (const a of healthAlerts(sessions.map((x) => ({ sessionId: x.id, name: x.name, health: x.health, account: accountOfSession(x) })), healthAt)) {
     alerts.push({ kind: "health", key: a.key, message: a.message, sessionIds: a.sessionIds });
   }
+  // FUEL REMAINING(ATC-55): statusline이 적은 rate_limits를 session → AIRCRAFT → ACCOUNT로. 이름이 TEAM인 세션만(죽은 세션의 마지막 값도 reset까지 쓴다)
+  const regs = [...new Set(sessions.filter((x) => team.test(x.name)).map((x) => x.name.toUpperCase()))];
+  const fuel = fuelRemainingOf(
+    regs.map((reg) => ({ registration: reg, account: accountOf(fleet, reg), sessionIds: sessions.filter((x) => x.name.toUpperCase() === reg).map((x) => x.id) })),
+    readFuelRecords(),
+    fuelConfigOf(dispatchCfg.fuel),
+    healthAt,
+  );
   const repos = airports.open.map((a) => a.repo);
   const github = readGithub(repos);
   // AUTOLAND(ATC-34·38). 재리뷰로 Codex 대신 넘긴 head는 6시간을 기다리지 않고 REVIEW 대기열로 — update·merge이고 GROUND STOP이 아닌 AIRPORT만
@@ -225,6 +236,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     stranded,
     atfm: { mains: [...github.mainByRepo.values()].filter((m) => repos.includes(m.repo)), groundStops },
     autoland,
+    fuel,
   };
 }
 

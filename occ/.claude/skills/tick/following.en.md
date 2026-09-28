@@ -31,6 +31,7 @@ The stages are READBACK → DEPARTED (a STAND or a departure record) → PR open
 | `review-no-pr` · `done-not-merged` | Mismatch: Linear says In Review or Done but there's no PR, or it isn't merged | SUPERVISOR |
 | `merged-not-done` | Mismatch: the PR merged but Linear isn't Done (information; a CLOSE draft candidate) | OCC LOG only |
 | `health` | The AIRCRAFT holding the FLIGHT has stopped or is waiting for something (docs/fleet.md 8.8): `LIMIT`, `NETWORK`, `MODEL`, `CONTEXT`, `PROVIDER`, `UNANSWERED`, `HUNG` … `text` has the tag, the error line and the next step. A new code comes as a new issue. Don't resend to the team | SUPERVISOR if `warn`, OCC LOG only if `info` |
+| `fuel` | The ACCOUNT of the AIRCRAFT holding the FLIGHT has used at least the INFO threshold of its plan limit (default 80 %; docs/fuel.md 6, ATC-55). `text` has the share used, the reset and the AIRCRAFT on that ACCOUNT. It comes once per ACCOUNT, window and reset. Don't send it to the team (TOWER tells the SUPERVISOR) | OCC LOG only |
 | `stranded` | Mismatch: the PR was merged into a non-default branch and doesn't reach main (e.g. a stack merged bottom-up, each into the branch below; ATC-29). Shown even when Linear says Done | SUPERVISOR |
 
 - Only issues with `fresh: true` are new. Put each in one OCC LOG line; report the ones with `severity: "warn"` to the SUPERVISOR. Then run `atcctl following ack` to record that they were reported.

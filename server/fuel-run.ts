@@ -4,6 +4,7 @@ import type { Hono } from "hono";
 import { config } from "./config.ts";
 import { type AgentMeta, type Compaction, dedupeFuel, type FuelRecord, parseFuelLines, summarizeFuel } from "./fuel.ts";
 import type { Snapshot } from "./model.ts";
+import { type FuelStatusRecord, lastRecord, readTail } from "../hooks/fuel-statusline.mjs";
 
 // FUEL 읽기(ATC-50, docs/fuel.md 4): ~/.claude/projects의 대화 기록을 파일마다 지난번 바이트 뒤부터만 읽는다(talkEventsFile과 같은 방식).
 // 본 대화 기록 <sessionId>.jsonl은 CAPTAIN, <sessionId>/subagents/**/agent-*.jsonl은 CREW. 읽기만 하고 아무것도 쓰지 않는다.
@@ -196,5 +197,19 @@ export function mountFuel(app: Hono, getSnapshot: () => Promise<Snapshot>) {
   app.get("/api/fuel", async (c) => {
     const s = await getSnapshot();
     return c.json(readFuel(fuelDays(c.req.query("days")), s.sessions));
+  });
+}
+
+// FUEL REMAINING(ATC-55): 상태 폴더의 fuel/<sessionId>.jsonl마다 끝의 마지막 기록(statusline hook이 적음). 파일 이름과 sessionId가 다르면 버린다
+export function readFuelRecords(dir = join(config.stateDir, "fuel")): FuelStatusRecord[] {
+  let files: string[] = [];
+  try {
+    files = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
+  } catch {
+    return [];
+  }
+  return files.flatMap((f) => {
+    const r = lastRecord(readTail(join(dir, f)));
+    return r && `${r.sessionId}.jsonl` === f ? [r] : [];
   });
 }

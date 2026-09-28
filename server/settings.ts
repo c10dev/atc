@@ -5,7 +5,7 @@ import type { Hono } from "hono";
 import { AUTOLAND_MODES, type AutolandMode, loadAutoland, loadAutolandState } from "./autoland.ts";
 import { setAutolandMode } from "./autoland-run.ts";
 import { config } from "./config.ts";
-import { EXTERNAL_REVIEW_SECURITY, type ExternalReviewSecurity, loadDispatchConfig, saveExternalReviewSecurity } from "./dispatch.ts";
+import { EXTERNAL_REVIEW_SECURITY, type ExternalReviewSecurity, loadDispatchConfig, saveExternalReviewSecurity, saveFuelHold } from "./dispatch.ts";
 import { engineName, judgeStatus } from "./judges/run.ts";
 import { JUDGE_MODES, type JudgeMode, loadJudges, setJudgeMode } from "./judges/store.ts";
 import { parseTeamKeys, TEAM_KEY } from "./linear-keys.ts";
@@ -32,6 +32,8 @@ export interface ServerSettings {
   };
   // 외부 착륙 리뷰(ATC-30): 보안 규칙에만 걸린 PR을 DeepSeek REVIEW에 보낼까(dispatch.json externalReview.security)
   review: { security: ExternalReviewSecurity };
+  // FUEL REMAINING(ATC-55): dispatch.json fuel. hold는 DISPATCH HOLD 스위치(D3, 기본 꺼짐), 임계값은 쓴 몫 %
+  fuel: { hold: boolean; infoPct: number; holdPct: number };
   // AUTOLAND(ATC-34): autoland.json의 스위치와 맡은 AIRPORT, 걸린 GROUND STOP
   autoland: { mode: AutolandMode; airports: string[]; applicationCheck: string; groundStops: { airport: string; sha: string; failing: string[]; at: string }[] };
   // MCC(docs/mcc.md): mcc.json의 스위치와 맡은 AIRPORT
@@ -49,6 +51,7 @@ export interface SettingsPatch {
   handoffGraceMin?: number;
   projectsDir?: string;
   reviewSecurity?: ExternalReviewSecurity; // dispatch.json에 쓴다(.env.local이 아님)
+  fuelHold?: "off" | "on"; // dispatch.json fuel.hold에 쓴다(ATC-55). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   autolandMode?: AutolandMode; // autoland.json에 쓴다(ATC-34). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   mccMode?: MccMode; // mcc.json에 쓴다(docs/mcc.md). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   judgesJev?: JudgeMode; // judges.json에 쓴다(ATC-36). SUPERVISOR만: 이 화면 Origin이 있어야 받는다. 데이터 반출을 켜는 스위치
@@ -83,6 +86,7 @@ export function readServerSettings(): ServerSettings {
       projectsDir: config.projectsDir,
     },
     review: { security: loadDispatchConfig().externalReview.security },
+    fuel: loadDispatchConfig().fuel,
     autoland: (() => {
       const a = loadAutoland();
       return { mode: a.mode, airports: a.airports, applicationCheck: a.applicationCheck, groundStops: loadAutolandState().groundStops.map(({ airport, sha, failing, at }) => ({ airport, sha, failing, at })) };
@@ -191,7 +195,9 @@ export function mountSettings(app: Hono) {
     // autolandMode는 autoland.json에 쓴다(ATC-34)
     // judgesJev는 judges.json에 쓴다(ATC-36)
     // mccMode는 mcc.json에 쓴다(docs/mcc.md)
-    const { reviewSecurity, autolandMode, judgesJev, mccMode, ...rest } = body as Record<string, unknown>;
+    // fuelHold는 dispatch.json fuel.hold에 쓴다(ATC-55)
+    const { reviewSecurity, autolandMode, judgesJev, mccMode, fuelHold, ...rest } = body as Record<string, unknown>;
+    if (fuelHold !== undefined && fuelHold !== "off" && fuelHold !== "on") return c.json({ errors: { fuelHold: `off 또는 on` } }, 400);
     if (reviewSecurity !== undefined && !EXTERNAL_REVIEW_SECURITY.includes(reviewSecurity as ExternalReviewSecurity))
       return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
     if (autolandMode !== undefined && !AUTOLAND_MODES.includes(autolandMode as AutolandMode)) return c.json({ errors: { autolandMode: `off, update, merge 중 하나` } }, 400);
@@ -204,11 +210,12 @@ export function mountSettings(app: Hono) {
       applyToConfig(env);
     }
     if (reviewSecurity !== undefined) saveExternalReviewSecurity(reviewSecurity as ExternalReviewSecurity);
+    if (fuelHold !== undefined) saveFuelHold(fuelHold === "on");
     if (autolandMode !== undefined) setAutolandMode(autolandMode as AutolandMode);
     if (judgesJev !== undefined) setJudgeMode("jev", judgesJev as JudgeMode);
     if (mccMode !== undefined) setMccMode(mccMode as MccMode);
     console.log(
-      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : [])].join(", ")}`,
+      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(fuelHold !== undefined ? [`fuel.hold=${fuelHold}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : [])].join(", ")}`,
     );
     return c.json(readServerSettings());
   });
