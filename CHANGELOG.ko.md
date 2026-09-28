@@ -16,9 +16,16 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - TOWER·OCC의 Bash guard(`controller/guard.mjs`)가 큰따옴표 안의 명령 치환을 통과시켰다: `node atcctl.mjs brief -- "$(touch /tmp/x)"`와 백틱이 막히지 않았다. 쉘은 명령보다 먼저 이것을 실행하므로 관제 세션이 아무 명령이나 돌릴 수 있었다. 이제 작은따옴표 밖의 명령 치환·변수 확장(`$(…)`, 백틱, `${…}`, `$VAR`)을 모두 막는다. 작은따옴표 안과 역슬래시로 이스케이프한 글은 그대로 된다. TEAM_H가 보고했다.
 
 ### 바뀜
+- DIRECT 지시서(ATC-32, [docs/dispatch.ko.md](docs/dispatch.ko.md) "DIRECT briefs"). atc는 이제 목표, 완료 기준, 이 작업만의 제약, "끝까지 한 번에"만 담아 팀에 일을 넘긴다. 늘 지키는 규칙은 CLAUDE.md·AGENTS.md·guard·브랜치 보호에 그대로 있고, 그중 바뀐 것은 없다.
+  - FLIGHT PLAN: `BRIEF: DIRECT` 줄, 이슈 본문에서 옮긴 목표·완료 기준·이 작업만의 제약(`dispatch release` 때 Linear에서 읽음), PILOT'S DISCRETION 줄, READBACK 요청, "끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요." Linear를 못 읽으면 세 칸 없이 보낸다.
+  - `GET /api/dispatch/flight/:key/brief?to=TEAM_X`가 structure나 사람이 배정할 때 쓸 같은 문구를 준다.
+  - OCC NEW 초안은 목표와 완료 기준(Goal·Outcome, Acceptance·Done criteria·Done when·Exit criteria)만 필수이고 둘 다 내용이 있어야 한다. 평문 `목표: …` 이름표도 된다. `rating:SEC`는 Codex Engineering Task 칸 전체 대신 `Hard constraints` 줄이 있어야 한다. OCC·CROSSCHECK 매뉴얼도 맞췄다.
+  - `atc-task` skill은 PILOT'S DISCRETION을 따른다: 흔한 애매함은 합리적인 기본값을 골라 PR에 적고 계속 간다. guard, 기록 형식 같은 SUPERVISOR 결정만 먼저 묻는다.
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- VECTORS 대 DIRECT 비교(ATC-32). LOGBOOK이 최근 30일 FLIGHT마다 `measured` 줄을 더한다: 지시서 종류(FLIGHT를 시작한 메시지의 `BRIEF: DIRECT` 줄, AIRCRAFT 세션 대화 기록에서 읽음. 그 전 것은 모두 VECTORS), READBACK 시각, 중간 질문, PR 뒤 수정 커밋, P0–P2 지적(Codex 스레드와 착륙 리뷰). DISPATCH 탭이 14·30·90일로 나란히 보여 준다(`GET /api/logbook/briefs`). 대화 기록에서는 시각, 받는 곳, FLIGHT key, 표시만 둔다.
+- 용어: DIRECT, VECTORS, PILOT'S DISCRETION(README, DOCS 개념과 용어).
 - ATFM 머지 슬롯 켜기 판단 숫자(ATC-22, [docs/atfm.ko.md](docs/atfm.ko.md) 5장). AIRPORT마다 7일 동안 나간 LAND, 같은 AIRPORT의 다른 LAND와 동시에 살아 있던 LAND 수, LAND → 머지 중앙값, 30분 안에 머지되지 않은 LAND(`GET /api/atfm`의 `data.lands`). 슬롯 스위치 아래 "켜기 판단 (7일)"에 머지당 BEHIND와 함께 보인다. SUPERVISOR가 슬롯을 켜기 전에 비교하는 숫자다.
 - DISPATCH: ROUTE의 지금 구간 WAYPOINT에 붙은 FLIGHT가 점수를 더 받는다([docs/routes.ko.md](docs/routes.ko.md) 8단계). 새 점수 요소 `waypoint`는 FLIGHT가 그 프로젝트의 지나지 않은 첫 Linear 마일스톤 이슈면 1이고, 가중치는 `dispatch.json`의 `weights.waypoint`(기본 1, `route`와 같음)다. 카드에 "지금 WAYPOINT"로 ROUTE와 WAYPOINT가 보인다.
 - ROUTE MAP: WAYPOINT 완료 기준에 atc 게이트([docs/routes.ko.md](docs/routes.ko.md) 6단계). WAYPOINT 상세에서 atc가 잴 수 있는 완료 기준 아래에 지금 점검이 보인다: DISPATCH·SCHEDULE 그림자 게이트, 2b 점검표, DISPATCH·SCHEDULE 모드, ATFM 켜기 조건(2b 2주와 gate3, 그림자 정확도와 CROSSCHECK), RECALL 사용. ✓ 충족, ✗ 미달, ○ 데이터 부족, △ 확인 필요로 보인다. `GET /api/routes`의 `criteria` 옆 `checks`에 있다(`server/waypoint-gates.ts`). atc는 여전히 마일스톤을 끝냈다고 표시하지 않는다.

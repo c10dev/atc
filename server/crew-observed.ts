@@ -186,6 +186,16 @@ export function spawnsFor(
   now = Date.now(),
   windowDays = OBSERVED_WINDOW_DAYS,
 ): Spawn[] | null {
+  return sessionDirsOf(registration, sessions, now, windowDays)?.flatMap(spawnsIn) ?? null;
+}
+
+// 이 REGISTRATION에 이어진 세션 폴더(기간 안에 움직인 것). 없으면 null. LOGBOOK 지시서 측정(ATC-32)도 쓴다
+export function sessionDirsOf(
+  registration: string,
+  sessions: Pick<Session, "id" | "name" | "cwd" | "agent" | "status">[],
+  now = Date.now(),
+  windowDays = OBSERVED_WINDOW_DAYS,
+): string[] | null {
   const reg = registration.toUpperCase();
   const since = now - windowDays * DAY_MS;
   const dirs = new Set<string>();
@@ -195,6 +205,5 @@ export function spawnsFor(
   const live = new Set(dirs);
   for (const d of titledDirs(now).get(reg) ?? []) if (activeWithin(d, since)) dirs.add(d);
   const linked = [...dirs].filter((d) => live.has(d) || activeWithin(d, since));
-  if (!linked.length) return null;
-  return linked.flatMap(spawnsIn);
+  return linked.length ? linked : null;
 }

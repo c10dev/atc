@@ -49,6 +49,7 @@ import { record } from "./recorder.ts";
 import { activeWaypointsOf, loadRoutes } from "./routes.ts";
 import { readLinearProjects } from "./sources/linear-projects.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
+import { DIRECT_LINE, directLines, directSectionsOf, DISCRETION_LINE, FINISH_LINE, formatAssignment } from "./briefs.ts";
 
 // DISPATCH 제안 기록. 추가만 하는 JSONL을 접어 현재 상태를 만든다(clearances.ts와 같은 방식).
 // - 2a(mode "shadow"): SUPERVISOR가 "나라면 승인/거절"만 표시하고 아무에게도 보내지 않는다.
@@ -505,20 +506,29 @@ export function syncOps(
   return ops;
 }
 
+// Linear 이슈 상세의 본문(문자열이 아니면 null)
+export const descriptionOf = (d: Record<string, unknown>): string | null => (typeof d.description === "string" ? d.description : null);
+
 // CAPTAIN에게 보낼 FLIGHT PLAN. send-guard는 DISPATCH가 이 문구를 그대로 보내는지 확인한다.
-export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "url" | "priority"> | undefined, sessionName: string): string {
+// DIRECT 지시서(ATC-32): 이슈 본문(description)에서 목표·완료 기준·이 작업만의 제약만 옮기고, 끝까지 한 번에 날게 한다.
+// 본문을 못 읽었으면(null) 완료 기준은 링크의 이슈 본문을 따르라고 적는다.
+export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "url" | "priority"> | undefined, sessionName: string, description: string | null = null): string {
   const sign = callsign({ name: sessionName });
   const who = sign === sessionName ? sessionName : `${sign} (${sessionName})`;
   const note = p.note ? `DISPATCH 메모: ${p.caution ? "CAUTION · " : ""}${p.note}` : p.caution ? "DISPATCH 메모: CAUTION" : null;
   const hold = p.hold.length ? `HOLD — 선행 FLIGHT ${p.hold.map(flightNumber).join(", ")}가 끝난 뒤 착수` : null;
   return [
     `[DISPATCH ${p.id}] FLIGHT PLAN · ${who}`,
+    DIRECT_LINE,
     `FLIGHT ${flightNumber(p.flight)} · AIRPORT ${p.airport ?? "—"} · PRIORITY ${PRIORITY_NAME[ticket?.priority ?? 0] ?? "없음"}`,
     ticket?.title ?? p.flight,
     ticket?.url ?? null,
+    ...directLines(directSectionsOf(description)),
     note,
     hold,
+    DISCRETION_LINE,
     `— 맡으면 이 메시지에 "READBACK ${p.id}", 못 맡으면 사유로 답장해 주세요.`,
+    FINISH_LINE,
   ]
     .filter(Boolean)
     .join("\n");
@@ -959,7 +969,9 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
         const bad = closed("send");
         if (bad) return bad;
         const s = await getSnapshot();
-        const message = formatFlightPlan(p, s.tickets.find((t) => t.key === p.flight), p.aircraftName ?? "");
+        // DIRECT 지시서에 옮길 이슈 본문(Linear 읽기 전용). 못 읽어도 보낸다 — 완료 기준은 링크를 따르라고 적힌다
+        const description = await fetchIssueDetail(p.flight).then((d) => descriptionOf(d)).catch(() => null);
+        const message = formatFlightPlan(p, s.tickets.find((t) => t.key === p.flight), p.aircraftName ?? "", description);
         append([{ op: "send", id, at, message }]);
         const sent = allProposals().find((x) => x.id === id)!;
         return c.json({ proposal: sent, sendTo: sent.aircraftName, message: sent.message });
@@ -1040,6 +1052,19 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     saveDispatchMode(body.mode);
     record({ t: new Date().toISOString(), kind: "dispatch", op: `mode:${body.mode}`, id: "-" });
     return c.json({ mode: loadDispatchConfig().mode });
+  });
+
+  // structure 같은 세션이 팀에 붙여 넣을 DIRECT 배정 문구(ATC-32). ?to=TEAM_X면 머리에 받는 팀을 적는다
+  app.get("/api/dispatch/flight/:key/brief", async (c) => {
+    const key = c.req.param("key").toUpperCase();
+    try {
+      const d = (await fetchIssueDetail(key)) as Record<string, unknown>;
+      const to = c.req.query("to")?.trim().toUpperCase() || null;
+      const text = formatAssignment({ key, title: typeof d.title === "string" ? d.title : null, url: typeof d.url === "string" ? d.url : null }, descriptionOf(d), to);
+      return c.json({ key, brief: "DIRECT", text });
+    } catch (e) {
+      return c.json({ error: String((e as Error).message ?? e) }, 502);
+    }
   });
 
   // DISPATCH 세션이 티켓 본문을 읽는 창구(Linear 읽기 전용)

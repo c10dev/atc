@@ -10,8 +10,15 @@ description: Linear ATC 이슈 하나(ATC-n)를 atc 저장소에서 구현해 PR
 ## 1. 명세 읽기
 
 - `curl -s localhost:7700/api/dispatch/flight/ATC-<n>`으로 이슈 본문과 댓글을 읽는다. Linear에는 쓰지 않는다.
-- Why, What to build, Constraints, Exit criteria를 확인한다. 명세가 모호하거나 사용자가 결정할 일이면, 구현 전에 일을 맡긴 세션에 묻는다.
+- 목표, 완료 기준(Done when·Exit criteria), 이 작업만의 제약을 확인한다. 지시가 `BRIEF: DIRECT`면 목표로 곧장 간다(`docs/dispatch.md` "DIRECT briefs"). 번호 붙은 단계가 있어도 목표와 완료 기준이 우선이다.
+- 받았으면 일을 맡긴 세션에 `READBACK ATC-<n>`으로 답하고, 끝까지 한 번에 진행한다.
 - 명세에 없는 변경을 하게 되면 PR 본문에 따로 적는다.
+
+## PILOT'S DISCRETION
+
+- 흔한 애매함(이름, 화면 위치, 기본값, 문구, 명세의 작은 틀림)은 스스로 합리적인 기본값을 고르고 계속 간다. 고른 것과 이유는 PR 본문의 "Pilot's discretion" 절과 보고에 적는다.
+- 멈춰서 먼저 묻는 것은 SUPERVISOR가 정할 일뿐이다: guard의 막는 조건, 운영 상태·기록 형식(`~/.local/state/atc/`)을 되돌리기 어렵게 바꾸는 것, 승인 게이트·브랜치 보호, 비용이나 외부에 쓰는 동작, 명세의 목표 자체가 맞지 않아 보일 때.
+- 물을 때는 한 번에 모아 묻고, 답을 기다리는 동안 그 결정에 걸리지 않는 부분은 계속 만든다.
 
 ## 2. 작업 위치
 
@@ -29,7 +36,7 @@ cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-
 - 계산은 순수 함수로 두고 `node:test`로 테스트한다.
 - 기록은 추가만 하는 JSONL, 설정은 원자적으로 바꿔 쓰는 JSON이다.
 - 화면 색과 글꼴은 `web/src/styles.css`의 `:root` 토큰만 쓴다.
-- guard(`*guard*.mjs`)의 막는 조건을 약하게 만들어야 하면 먼저 일을 맡긴 세션에 묻는다.
+- guard(`*guard*.mjs`)의 막는 조건을 약하게 만들어야 하면 먼저 일을 맡긴 세션에 묻는다(SUPERVISOR 결정).
 
 ## 4. 문서 점검표
 
@@ -64,7 +71,7 @@ git diff --name-only origin/main...HEAD | node deploy/landing-tier.mjs
 
 - 커밋 메시지와 PR 제목, 본문은 영어로 쓴다. attribution 줄은 넣지 않는다.
 - PR 제목 끝은 `(ATC-<n>)`, 본문 첫 줄은 `Fixes ATC-<n>`이다. 후속 PR은 `Refs ATC-<n>`.
-- 본문에 요약, 명세와 다르게 한 점, 등급, 시험 계획(`[x]` 체크)을 적는다. 끝은 `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- 본문에 요약, 명세와 다르게 한 점, PILOT'S DISCRETION으로 고른 기본값, 등급, 시험 계획(`[x]` 체크)을 적는다. 끝은 `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 - 머지하지 않는다.
 
 ## 8. 보고
@@ -73,9 +80,9 @@ git diff --name-only origin/main...HEAD | node deploy/landing-tier.mjs
 
 - 첫 줄: `[TEAM_X → structure] ATC-<n>: PR #<번호> <링크>`
 - 한 일을 요약한다(항목 3~5개).
-- 명세와 다르게 한 점과 그 이유를 적는다.
+- 명세와 다르게 한 점, PILOT'S DISCRETION으로 고른 것과 그 이유를 적는다.
 - 등급을 적고, `flagged`면 바뀐 관제 규칙을 적는다.
 - 검증 결과를 적는다: 테스트 수, tsc, build, 시험 서버와 Playwright에서 확인한 것.
-- 막힌 점이나 사용자가 결정할 일을 적는다.
+- 막힌 점이나 SUPERVISOR가 결정할 일을 적는다.
 
 같은 파일을 고치는 다른 ATC 작업이 먼저 머지되면, `origin/main` 위로 rebase하고 force-with-lease로 다시 올린 뒤 알린다.

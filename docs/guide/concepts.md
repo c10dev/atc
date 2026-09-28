@@ -107,7 +107,10 @@ CLEARED TO LAND 조건 — 모두 PR의 **최신 커밋(head)** 기준이다.
 | 용어 | 뜻 |
 |---|---|
 | CLEARANCE | TOWER가 팀에 보내는 지시(`[ATC C-0007]`) |
-| FLIGHT PLAN | OCC가 승인된 배정을 CAPTAIN에게 보내는 문구(`[DISPATCH D-0003]`, 2b부터) |
+| FLIGHT PLAN | OCC가 승인된 배정을 CAPTAIN에게 보내는 문구(`[DISPATCH D-0003]`, 2b부터). DIRECT 지시서다 |
+| DIRECT | 목표, 완료 기준, 이 작업만의 제약, "끝까지 한 번에"만 담은 지시서. `BRIEF: DIRECT` 줄이 있다 |
+| VECTORS | 지금까지의 지시서: 번호 붙은 구현 단계, 전체 템플릿, 방향마다 묻기. `BRIEF: DIRECT`가 없으면 VECTORS로 센다 |
+| PILOT'S DISCRETION | DIRECT FLIGHT 안에서 흔한 애매함은 팀이 기본값을 골라 PR에 적고 계속 간다. SUPERVISOR 결정(guard, 기록 형식, 승인 게이트)만 묻는다 |
 | READBACK | 받았다는 확인(`READBACK C-0007`) |
 | HOLD | 선행 작업이나 사람 결정을 기다리게 잡아 둔 제안 |
 | CROSSCHECK | 사용자가 판정하기 전에 OCC와 다른 계열 모델이 달아 두는 예비 판정(agree/disagree + 이유). 참고 표시라 상태를 바꾸지 않는다 |

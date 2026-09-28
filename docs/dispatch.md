@@ -183,9 +183,12 @@ SUPERVISOR: marks "I would approve / reject (reason)" in the DISPATCH tab
 SUPERVISOR approves → atc: APPROVED
 DISPATCH session: SendMessage the FLIGHT PLAN to the CAPTAIN
   [DISPATCH D-0003] FLIGHT PLAN · BRAVO (TEAM_B)
+  BRIEF: DIRECT
   FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High
-  <ticket title and URL, DISPATCH note>
+  <ticket title and URL, 목표 · 완료 기준 · 이 작업만의 제약 from the issue, DISPATCH note>
+  <PILOT'S DISCRETION line>
   — If you take it, reply "READBACK D-0003"; if not, reply with the reason.
+  끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요. (see "DIRECT briefs")
 CAPTAIN: READBACK → Linear In Progress, prepares the STAND (same rules as today)
 atc: DEPARTED once that FLIGHT gets a STAND; if not, rechecks after 30 minutes like TOWER does
      STAND-free FLIGHT (SURVEY, CHECK): DEPARTED at the READBACK itself (no STAND to wait for)
@@ -313,6 +316,47 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
   - `POST /api/dispatch/proposals/:id/recall {reason}` (SUPERVISOR);
   - `POST …/recall-send` returns `{sendTo, message}` and changes nothing (OCC, approval mode only);
   - `POST …/recalled` (OCC, after the CAPTAIN's READBACK).
+
+## DIRECT briefs (ATC-32)
+
+Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.
+
+| Term | Meaning |
+|---|---|
+| **VECTORS** | The old brief. The controller gives headings step by step: numbered build steps, full templates, "ask before implementing" |
+| **DIRECT** | The new brief, "cleared direct to" the goal: the goal, the exit criteria, only the constraints specific to this task, and "finish it in one pass". The team flies its own route |
+| **PILOT'S DISCRETION** | Inside a DIRECT flight the team settles ordinary ambiguity itself: it picks a reasonable default, notes it in the PR and keeps going. It stops to ask only for a decision that is truly the SUPERVISOR's (a guard, a record format, approval gates, anything the SUPERVISOR owns) |
+
+AUTOPILOT is not used for this. It means a machine flies while the pilot watches, which suggests the SUPERVISOR's gates are off; the word stays reserved for real automation later (such as AUTOLAND).
+
+Standing rules stay where they are (vocado `CLAUDE.md` and `AGENTS.md`, atc `CLAUDE.md`, guards, branch protection, approval gates) and briefs don't repeat them. Short briefs are safe because those don't change.
+
+**The brief.** Line 2 of every brief is `BRIEF: DIRECT`. Then the FLIGHT, its title and link, and three fields taken from the issue body (`server/briefs.ts` `directSectionsOf`): `목표` (Goal / Outcome), `완료 기준` (Acceptance / Done criteria / Done when / Exit criteria) and `이 작업만의 제약` (Constraints / Hard constraints / 금지 / Forbidden / Invariants / Not in scope). A field is cut at 600 characters on a line break; allowed scope, context and verification stay in the linked issue. Without an exit-criteria field the brief says to follow the issue's exit criteria. It ends with the PILOT'S DISCRETION line, the READBACK request, and `끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요.`
+
+- **FLIGHT PLAN** (`formatFlightPlan`): `dispatch release` reads the issue body from Linear (read-only) and stores the brief as the proposal's `message`. If Linear can't be read, the FLIGHT PLAN still goes out without the fields. send-guard compares the stored text as before.
+- **Assignment by another session** (structure, a person): `GET /api/dispatch/flight/:key/brief?to=TEAM_X` returns the same shape as `{key, brief: "DIRECT", text}` to paste. A hand-written brief works too as long as it has the `BRIEF: DIRECT` line.
+- **OCC NEW drafts** (`missingSections` in `server/schedule.ts`): only 목표 (Goal / Outcome) and 완료 기준 (Acceptance / Done criteria / Done when / Exit criteria) are required, each with content. A heading, a bold line or a plain `목표: …` label all count. `rating:SEC` also needs a `Hard constraints` line (or `필수 제약`) with the task-specific security limits, such as "no staging apply" or "keep the service_role path". Allowed scope, forbidden changes, invariants and verification are optional.
+- **atc's own issues**: the `atc-task` skill follows PILOT'S DISCRETION instead of asking before implementing.
+
+**Measuring it.** A brief is DIRECT when the message that started the FLIGHT has the `BRIEF: DIRECT` line and VECTORS otherwise, so every FLIGHT before this change counts as VECTORS. The LOGBOOK run (every 10 minutes) adds a `measured` line per ARRIVED FLIGHT from the last 30 days (`server/logbook.ts` `measureLines`); it fills only empty fields and never changes one already written:
+
+```json
+{"op":"measured","t":"…","key":"owner/repo#85","brief":{"kind":"DIRECT","at":"…","by":"structure","readbackAt":"…","questions":0},"rework":1,"findings":{"p0":0,"p1":1,"p2":0}}
+```
+
+| Field | Source |
+|---|---|
+| `brief` | The AIRCRAFT's session transcripts (the same sessions OBSERVED CREW links: live session name or `custom-title.json`). The brief is the last received message naming the FLIGHT before the team's READBACK, or with no READBACK the first one from 12 hours before departure. `by` is the sender's session name. `null` for AD HOC or when no brief was found; missing while the AIRCRAFT or its transcripts are unknown |
+| `readbackAt` | The team's first SendMessage containing READBACK with that FLIGHT key or the FLIGHT PLAN's `D-xxxx` |
+| `questions` | Mid-task questions: after READBACK (or the brief) and before the PR opened, SendMessage calls to the session that briefed (not READBACK, not a PR report, not to crew members) plus AskUserQuestion calls |
+| `rework` | Commits in the PR authored after it opened, merge commits excluded (a rebase keeps the author date, so it isn't counted again) |
+| `findings` | P0–P2: Codex inline threads (badge; unmarked counts as P2; P3 left out) plus the external LANDING REVIEW, last review per head. Read with the same review-thread query as LANDING, 10 PRs per run |
+
+atc reads only the transcript lines it needs (received messages, SendMessage and AskUserQuestion calls, not subagent lines or tool results), keeps only times, recipients, FLIGHT keys and flags in memory, and writes only the counts above. Transcripts are read incrementally from where the last read stopped.
+
+**The comparison.** The DISPATCH tab shows **VECTORS · DIRECT** under FLIGHT FOLLOWING: for 14, 30 or 90 days, FLIGHTs, mid-task questions per FLIGHT, share with no questions, median READBACK → PR, P0–P2 findings per FLIGHT and rework commits per FLIGHT, side by side, with the per-FLIGHT rows folded below. `GET /api/logbook/briefs?days=30` returns `{days, rows, stats: {VECTORS, DIRECT}, unmeasured}`. It is shown only; nothing is scored or used for assignment. With fewer than 5 FLIGHTs on a side it says the sample is thin.
+
+Not built yet: vocado's own templates (the four-section rule in vocado `CLAUDE.md`, the Linear `Codex Engineering Task` template) are the SUPERVISOR's to change; the matching wording is proposed in the ATC-32 PR.
 
 ## Turning on 2b
 

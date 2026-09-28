@@ -1,0 +1,124 @@
+/* VECTORS · DIRECT 지시서 비교(DISPATCH 탭 안, ATC-32). 색·글꼴·간격은 styles.css의 :root 토큰만 쓴다. 판은 .ff와 같은 모양. */
+.bf {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+}
+.bf-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+.dispatch .bf .label {
+  margin: 0;
+}
+.bf-range {
+  display: inline-flex;
+  margin-left: auto;
+  padding: var(--space-0-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+.bf-range button {
+  padding: var(--space-0-5) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font: 600 var(--text-xs) var(--sans);
+  cursor: pointer;
+}
+.bf-range button[aria-checked="true"] {
+  background: var(--panel-3);
+  color: var(--text);
+}
+
+/* 지표 × 종류 표. 좁은 폭에서도 세 칸이 들어가게 지표 이름은 줄바꿈한다 */
+.bf-table {
+  width: 100%;
+  margin-top: var(--space-2);
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.bf-table th,
+.bf-table td {
+  padding: var(--space-1) var(--space-2);
+  border-top: 1px solid var(--line);
+  text-align: right;
+  vertical-align: baseline;
+}
+.bf-table thead th {
+  border-top: 0;
+}
+.bf-table th[scope="row"] {
+  width: 46%;
+  color: var(--muted);
+  font-weight: 400;
+  text-align: left;
+  cursor: help;
+}
+.bf-table td {
+  color: var(--text);
+}
+.bf-kind {
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+}
+.bf-kind.is-vectors,
+.bf-tag.is-vectors {
+  color: var(--muted);
+}
+.bf-kind.is-direct,
+.bf-tag.is-direct {
+  color: var(--cyan);
+}
+.bf-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.bf-note {
+  margin: var(--space-2) 0 var(--space-1);
+  font-size: var(--text-xs);
+}
+
+/* FLIGHT별 행 */
+.bf-rows summary {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.bf-rows ul {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.bf-rows li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--line);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.bf-rows li b {
+  color: var(--text);
+}
+.bf-tag {
+  flex: none;
+  padding: 0 var(--space-1);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+}

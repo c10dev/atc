@@ -13,6 +13,9 @@ import {
   expectationMin,
   foldLogbook,
   type LogEntry,
+  type LogLine,
+  measureLines,
+  needsFindings,
   planLogbook,
   readLogbook,
   revertTarget,
@@ -268,4 +271,48 @@ test("attributed 보정: AIRCRAFT를 몰랐던 줄을 착수 기록으로 한 �
   assert.equal(known[0].aircraft, "TEAM_J");
   // 착수 기록이 없는 과거 줄은 그대로 모름(정상)
   assert.equal(attribution({ ...e, aircraft: null, branch: undefined, flight: null, stands: [] }, "/r/atc", [], "now"), null);
+});
+
+// ── 지시서 비교 측정(ATC-32) ──
+
+test("measured 줄: 비어 있는 칸만 채우고, 먼저 쓴 값은 바꾸지 않는다", () => {
+  const { op: _op, t: _t, ...base } = { op: "arrived", t: "", ...entry(7) };
+  const lines: LogLine[] = [
+    { op: "arrived", t: "x", ...base },
+    { op: "measured", t: "a", key: "o/atc#7", brief: null, rework: 2 },
+    { op: "measured", t: "b", key: "o/atc#7", brief: { kind: "DIRECT", at: "z", by: null, readbackAt: null, questions: 0 }, rework: 9, findings: { p0: 0, p1: 1, p2: 0 } },
+    { op: "measured", t: "c", key: "o/atc#8", rework: 1 }, // 없는 FLIGHT
+  ];
+  assert.deepEqual(foldLogbook(lines)[0].measured, { brief: null, rework: 2, findings: { p0: 0, p1: 1, p2: 0 } });
+});
+
+test("measureLines: AD HOC은 지시서 null, AIRCRAFT를 모르거나 대화 기록이 없으면 다음에, 수정 커밋·지적은 읽은 PR만", () => {
+  const NOW = Date.parse("2026-09-28T00:00:00Z");
+  const events = [
+    { t: "2026-09-24T07:00:00.000Z", dir: "in" as const, from: "uds:s", fromName: "structure", keys: ["VOC-1"], ids: [], brief: "DIRECT" as const },
+    { t: "2026-09-24T07:01:00.000Z", dir: "out" as const, to: "uds:s", keys: ["VOC-1"], ids: [], readback: true },
+  ];
+  const entries = [
+    entry(1, { departedAt: "2026-09-24T07:05:00Z" }),
+    entry(2, { flight: null }),
+    entry(3, { aircraft: null }),
+    entry(4, { aircraft: "TEAM_X" }), // 이어진 세션 없음
+    entry(5, { measured: { brief: null, rework: 0, findings: { p0: 0, p1: 0, p2: 0 } } }), // 다 잼
+    entry(6, { arrivedAt: "2026-08-01T00:00:00Z" }), // 30일 밖
+  ];
+  const pulls = new Map([["o/atc#1", pr({ number: 1, createdAt: "2026-09-24T09:00:00Z", commits: [{ authoredDate: "2026-09-24T09:30:00Z", messageHeadline: "fix" }] })]]);
+  assert.deepEqual(needsFindings(entries, pulls, NOW).map((e) => e.key), ["o/atc#1"]);
+  const threads = new Map([["o/atc#1", [{ resolved: true, outdated: false, path: null, comments: [{ author: "chatgpt-codex-connector", at: "", commit: null, body: "![P1 Badge](x)" }] }]]]);
+  const out = measureLines(entries, { pulls, eventsOf: (a) => (a === "TEAM_J" ? events : null), threads, reviews: [] }, NOW);
+  assert.deepEqual(out, [
+    {
+      op: "measured",
+      t: "2026-09-28T00:00:00.000Z",
+      key: "o/atc#1",
+      brief: { kind: "DIRECT", at: "2026-09-24T07:00:00.000Z", by: "structure", readbackAt: "2026-09-24T07:01:00.000Z", questions: 0 },
+      rework: 1,
+      findings: { p0: 0, p1: 1, p2: 0 },
+    },
+    { op: "measured", t: "2026-09-28T00:00:00.000Z", key: "o/atc#2", brief: null },
+  ]);
 });

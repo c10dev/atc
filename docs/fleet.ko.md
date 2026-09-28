@@ -323,6 +323,8 @@ LOGBOOK은 돌 때마다 읽은 저장소의 `aircraft: null` 줄을 모두 DEPA
 - 접을 때(fold)는 아직 `null`인 줄에만 적용한다(항목에 `attributedBy: "departures"`가 보인다). 그래서 이미 아는 AIRCRAFT를 덮어쓰지 않고, 두 번 쓰지도 않는다.
 - DEPARTURE LOG가 생기기 전의 줄은 대부분 `null`로 남는다. 예상한 일이다.
 
+**지시서 재기**(ATC-32). 네 번째 작업 `measured`는 최근 30일 ARRIVED FLIGHT마다 DIRECT·VECTORS 중 어느 지시서로 받았는지, 중간 질문과 READBACK 시각, PR 뒤 수정 커밋, P0–P2 지적을 적는다. 빈 칸만 채운다. 칸, 출처, VECTORS · DIRECT 비교는 [dispatch.ko.md](dispatch.ko.md) "DIRECT briefs"에 있다. `GET /api/logbook/briefs?days=30`이 비교를 돌려준다.
+
 **API.** `GET /api/logbook?aircraft=TEAM_X&days=14`는 접은 항목을 최근 도착 순으로 돌려준다. `aircraft`는 선택(대소문자 무시), `days`는 기본 14, 최대 90.
 
 ### 7.2 FLEET 카드의 실적

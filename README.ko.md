@@ -64,6 +64,18 @@ Linear 티켓까지 보려면 `.env.local`에 `LINEAR_API_KEY`를 넣는다. 상
 
 | 저장소 / 본 체크아웃 | — | 본 체크아웃 경로 | AIRPORT 코드(대문자 4자) / TOWER `VCDO TWR` |
 
+### 지시서
+
+팀에 일을 넘기는 방식([docs/dispatch.ko.md](docs/dispatch.ko.md) "DIRECT briefs").
+
+| 용어 | 뜻 |
+|---|---|
+| **DIRECT** | 목표, 완료 기준, 이 작업만의 제약, "끝까지 한 번에"만 담은 지시서. `BRIEF: DIRECT` 줄이 있다. FLIGHT PLAN과 atc의 배정 문구가 이 모양이다 |
+| **VECTORS** | 지금까지의 지시서: 번호 붙은 구현 단계, 전체 템플릿, 방향마다 묻기. `BRIEF: DIRECT`가 없는 지시서는 VECTORS로 센다 |
+| **PILOT'S DISCRETION** | DIRECT FLIGHT 안에서 흔한 애매함은 팀이 스스로 풀고, 합리적인 기본값을 골라 PR에 적는다. SUPERVISOR 결정(guard, 기록 형식, 승인 게이트)만 멈춰서 묻는다 |
+
+AUTOPILOT은 쓰지 않는다. SUPERVISOR의 게이트가 꺼진 것처럼 들리고, 나중의 진짜 자동화를 위해 남겨 둔다.
+
 ### AIRPORT 등록부
 
 AIRPORT 목록은 `~/.local/state/atc/airports.json`(기계마다 다른 경로가 들어가므로 git 밖)에 있고, AIRPORT 탭이나 API로 관리한다.
@@ -90,7 +102,7 @@ FLEET 탭의 **팀 빌딩**: **ENTRY INTO SERVICE**로 **CONFIGURATION** 템플�
 
 **관측 CREW와 CREW CHANGE**([docs/fleet.ko.md](docs/fleet.ko.md) 8.3~8.4). 카드마다 선언한 COMPLEMENT 옆에 최근 14일 동안 실제로 본 팀원이 나온다: AIRCRAFT 세션들이 부른 서브에이전트를 agent type·모델별로 묶은 횟수와 마지막 시각. POSITION에 맞추고(`ui-builder`·`ui-qa`·`flash-helper`는 이름으로, Opus이거나 모델 지정이 없는 `general-purpose`·`claude`는 `backend`로), 선언에 없는 타입(`Explore` 등)과 선언했지만 안 쓴 POSITION을 drift로 보여 준다. atc는 세션 메타데이터만 읽는다(`subagents/*.meta.json`의 agent type·모델, 파일 시각, `custom-title.json`). 대화 기록과 작업 설명은 읽지 않는다. agent team처럼 따로 세션으로 도는 팀원은 보이지 않는다. SUPERVISOR가 운항 중인 AIRCRAFT(퇴역 아님, 세션 살아 있음)의 COMPLEMENT를 바꾸면 atc가 CAPTAIN에게 줄 **CREW CHANGE** 지시문(내리고 타는 POSITION과 모델, TYPE RATING 영향)을 `~/.local/state/atc/crew-changes.jsonl`에 `CC-0001`로 남긴다. 카드에서 복사해 붙여 넣고 전달함을 누른다. DISPATCH approval 모드(2b)에서는 카드에서 승인할 수도 있다: 그러면 OCC가 `atcctl crew-change send`로 `[OCC CC-0001] CREW CHANGE · …`를 보내고 CAPTAIN의 `READBACK CC-0001`을 기록한다(10분 넘게 없으면 한 번 다시 보내고 보고). 보내기 전(대기·승인됨)에 또 바꾸면 처음 구성 기준으로 합친 새 지시문이 앞의 것을 대신하고, 이미 보낸 것은 READBACK까지 두며 새 지시문은 그 뒤를 기다린다.
 
-**LOGBOOK**([docs/fleet.ko.md](docs/fleet.ko.md) 7.1~7.2, `server/logbook.ts`): atc가 10분마다 AIRPORT마다 기본 브랜치에 머지된 최근 PR 30건(`gh pr list --state merged`)을 읽고, 새 PR마다 `~/.local/state/atc/logbook.jsonl`에 한 줄씩 추가한다(추가만 함. 키가 `owner/repo#번호`라 재시작 뒤 첫 번에 과거분도 채운다). 한 줄에는 AIRCRAFT(그 FLIGHT의 STAND를 점유한 `TEAM_X` 세션, 모르면 `null`), FLIGHT와 분류, 출발(가장 이른 점유, 또는 PR을 연 시각)·도착(머지) 시각, 팀 소요 시간(착수 → PR을 연 시각, PR 전에 점유가 없으면 모름), 착륙 대기(PR → 머지), Codex 지적 회차, 변경 요청 여부, STAND의 LOS가 들어간다. `Revert "…"` PR이 머지되면 되돌린 PR에 `reverted` 줄을 덧붙인다. FLEET 카드는 TARGETS 옆에 실적을 보여 준다: 이번 주(월요일부터, 로컬 시간) ARRIVED 수, 14일 정시율(팀 소요 시간이 WAKE 기대치 L 60분·M 4시간·H 2일 안, 기대치가 없으면 같은 FLIGHT TYPE·WAKE의 중앙값 이하. 착륙 대기는 넣지 않음), 14일 되돌림과 LOS, 착륙 대기 중앙값, 최근 FLIGHT 5건. 보여 주기만 하고 점수나 배정에 쓰지 않는다.
+**LOGBOOK**([docs/fleet.ko.md](docs/fleet.ko.md) 7.1~7.2, `server/logbook.ts`): atc가 10분마다 AIRPORT마다 기본 브랜치에 머지된 최근 PR 30건(`gh pr list --state merged`)을 읽고, 새 PR마다 `~/.local/state/atc/logbook.jsonl`에 한 줄씩 추가한다(추가만 함. 키가 `owner/repo#번호`라 재시작 뒤 첫 번에 과거분도 채운다). 한 줄에는 AIRCRAFT(그 FLIGHT의 STAND를 점유한 `TEAM_X` 세션, 모르면 `null`), FLIGHT와 분류, 출발(가장 이른 점유, 또는 PR을 연 시각)·도착(머지) 시각, 팀 소요 시간(착수 → PR을 연 시각, PR 전에 점유가 없으면 모름), 착륙 대기(PR → 머지), Codex 지적 회차, 변경 요청 여부, STAND의 LOS가 들어간다. `Revert "…"` PR이 머지되면 되돌린 PR에 `reverted` 줄을 덧붙인다. FLEET 카드는 TARGETS 옆에 실적을 보여 준다: 이번 주(월요일부터, 로컬 시간) ARRIVED 수, 14일 정시율(팀 소요 시간이 WAKE 기대치 L 60분·M 4시간·H 2일 안, 기대치가 없으면 같은 FLIGHT TYPE·WAKE의 중앙값 이하. 착륙 대기는 넣지 않음), 14일 되돌림과 LOS, 착륙 대기 중앙값, 최근 FLIGHT 5건. 보여 주기만 하고 점수나 배정에 쓰지 않는다. `measured` 줄은 최근 30일 FLIGHT마다 지시서가 VECTORS였는지 DIRECT였는지, 중간 질문, READBACK 시각, PR 뒤 수정 커밋, P0–P2 지적을 더한다. 지시서와 질문은 AIRCRAFT 세션의 대화 기록에서 읽되 시각, 받는 곳, FLIGHT key, 표시만 둔다([docs/dispatch.ko.md](docs/dispatch.ko.md) "DIRECT briefs"). DISPATCH 탭이 둘을 비교한다.
 
 **CHECKRIDE**([docs/fleet.ko.md](docs/fleet.ko.md) 8.2, `server/checkride.ts`): AIRCRAFT × TYPE RATING마다 그 rating이 필요했던 LOGBOOK FLIGHT를 모은다. FLIGHT의 rating은 `rating:`·Risk 라벨에서, 없으면 SUPERVISOR가 받아들인 SCHEDULE CLASSIFY 초안에서 읽고, 근거마다 출처를 보여 준다. **부여 추천**(30일: 그런 FLIGHT 3건 이상, 되돌림 0, Codex 지적 라운드 평균 3 미만)과 이미 가진 rating의 **재검토 추천**(14일: 되돌림, 또는 2건 이상의 지적 라운드 평균 3 이상)을 낸다. `SEC`는 맡을 수 있는 CREW가 없으면(`canHoldSec`) 이유와 함께 추천하지 않는다. FLEET 탭의 카드 아래에 보이고, 부여·회수는 SUPERVISOR만 누른다. 편집 화면과 같은 `applyPatch` 길로 바꾸고 FLIGHT RECORDER에 `checkride` 줄(누가, 추천 여부, 근거)을 남긴다. 자동으로 부여·회수하지 않는다.
 
@@ -110,6 +122,7 @@ FLEET 탭의 **팀 빌딩**: **ENTRY INTO SERVICE**로 **CONFIGURATION** 템플�
 | `GET /api/fleet/checkride` | CHECKRIDE 행: AIRCRAFT × TYPE RATING마다 상태(`GRANT`, `REVIEW`, `BLOCKED`, `BUILDING`, `HOLDS`), 이유, 건수, 근거와 기준값 |
 | `POST /api/fleet/:registration/checkride` | `{rating, action: "grant" \| "revoke"}`: SUPERVISOR의 rating 부여·회수. FLIGHT RECORDER에 남는다 |
 | `GET /api/logbook?aircraft=TEAM_X&days=14` | LOGBOOK 기록, 도착 최신순(`aircraft`는 선택, `days`는 1~90). 마지막으로 읽은 시각과 오류도 |
+| `GET /api/logbook/briefs?days=30` | VECTORS 대 DIRECT: `measured` 줄로 만든 `{days, rows, stats: {VECTORS, DIRECT}, unmeasured}`([docs/dispatch.ko.md](docs/dispatch.ko.md) "DIRECT briefs") |
 | `GET /api/routes` | ROUTE MAP(읽기 전용): `routes`마다 단계별 열린 FLIGHT, `aircraft`, 28일 완료 `rate`, `waypoints`(상태, Linear status, 진행률, 목표일, 완료 기준 `criteria`, `flights`, `counts`, `late`, `eta`). 마일스톤이 없는 ROUTE는 `waypoints: []`. `ok`·`milestones`·`error`가 무엇을 읽었는지 말한다 |
 | `GET /api/network` | NETWORK 개요(읽기 전용): `routes`(상태별 열린 FLIGHT, `arrived14`, `aircraft`, `landingWaitMedianMin`, Linear 프로젝트 `goal` 또는 `null`), `aircraft`(`targets` 대 `computeActuals`의 `actuals`), 28일 `trend.days`·`trend.gates`, `sources`(Linear·GitHub·LOGBOOK을 읽었나) |
 
@@ -305,6 +318,7 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 | `GET /api/dispatch/proposals/:id` | 제안 하나와 모드(send-guard가 씀) |
 | `POST /api/dispatch/mode` | `{mode: shadow\|approval}` |
 | `GET /api/dispatch/flight/:key` | FLIGHT 본문·댓글(Linear 읽기 전용) |
+| `GET /api/dispatch/flight/:key/brief?to=TEAM_X` | 팀에 붙여 넣을 DIRECT 배정 문구 `{key, brief: "DIRECT", text}`(Linear 읽기 전용) |
 
 ## FLIGHT FOLLOWING (운항 추적, OCC)
 
@@ -363,7 +377,7 @@ CHARTER REQUEST → AD HOC FLIGHT 초안(S1: SCHEDULE 탭에서 판정) → FILE
 ```
 
 - 작은 수정은 티켓 없이 팀에 바로 주는 **AD HOC**이다. 티켓이 필요한 일은 OCC 세션으로 간다. Linear 이슈가 실제로 만들어지는 것은 S2부터이고, S1에서는 SUPERVISOR가 초안을 판정하고 원하면 손으로 이슈를 만든다.
-- 본문은 vocado 네 칸(목표, 수정 허용 범위, 금지 사항, 완료 기준. 영어 Goal·Outcome, Allowed changes·files, Forbidden, Acceptance·Done criteria도 된다)을 따른다. `rating:SEC` 이슈는 Codex Engineering Task 칸 Allowed files(`### Allowed files / surfaces`), Forbidden changes, Invariants, Acceptance Criteria, Verification이 더 있어야 한다. 제목은 1~120자, 프로젝트는 지금 티켓에 있는 이름, `tail`은 퇴역하지 않은 FLEET 등록번호, `parent`·`related`·`blockedBy`는 FLIGHT 목록에 있는 key여야 한다.
+- 본문은 DIRECT 지시서다([docs/dispatch.ko.md](docs/dispatch.ko.md) "DIRECT briefs"). 목표(Goal·Outcome)와 완료 기준(Acceptance·Done criteria·Done when·Exit criteria)만 필수이고 둘 다 내용이 있어야 한다. 마크다운 제목, 굵은 줄, 평문 `목표: …` 이름표 모두 된다. `rating:SEC` 이슈는 이 작업만의 보안 한계를 적은 `Hard constraints` 줄이 더 있어야 한다. 허용 범위·금지 사항·Invariants·Verification은 쓰지 않아도 된다. 늘 지키는 규칙은 vocado `CLAUDE.md`·`AGENTS.md`에 있다. 제목은 1~120자, 프로젝트는 지금 티켓에 있는 이름, `tail`은 퇴역하지 않은 FLEET 등록번호, `parent`·`related`·`blockedBy`는 FLIGHT 목록에 있는 key여야 한다.
 - 중복 검색: OCC의 근거에는 무엇을 찾아봤는지와 함께 "중복 검색:"이 있어야 한다. atc도 제목이 비슷한 티켓을 5개까지 `similar`로 붙인다(정규화한 제목이 같거나, 겹치는 단어가 2개 이상이고 짧은 쪽 제목의 절반 이상). 찾는 범위는 스냅샷뿐이고, 스냅샷에는 최근 45일 안에 바뀐 이슈(와 그와 이어진 이슈)만 있다. 45일 넘게 손대지 않은 열린 이슈는 찾지 못한다.
 - CLI: `atcctl schedule draft NEW --title <t> --project <p> [--priority n] [--type X] [--wake Y] [--rating Z]… [--tail TEAM_X] [--parent K] [--related K]… [--blocked-by K]… --reason <근거> -- '<본문>'`. OCC guard가 heredoc·리다이렉션을 막아 본문은 `--` 뒤에 받고, 본문의 `\n`은 줄바꿈이 된다.
 

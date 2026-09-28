@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { type MainStatus, mainStateOf } from "../atfm.ts";
 import { type CarryCandidate, type CodexSignal, codexFindings, codexThumbsPass, firstReach, fixesKeyOf, mergeOnlyChain, sameChange, type GhPull, type GhThread, hasHeadReview, isCodexBot, type MergedElsewhere, needsCodexSignal } from "../landing.ts";
+import type { GhCommit } from "../briefs.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./git.ts";
 
 const run = promisify(execFile);
@@ -114,7 +115,7 @@ const THREADS_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
     comments(first: 20) { nodes { author { login } createdAt originalCommit { oid } body } }
   } } } }
 }`;
-async function threadsOf(slug: string, number: number): Promise<GhThread[]> {
+export async function threadsOf(slug: string, number: number): Promise<GhThread[]> {
   const [owner, name] = slug.split("/");
   const out = await gh(["api", "graphql", "-f", `query=${THREADS_QUERY}`, "-F", `owner=${owner}`, "-F", `name=${name}`, "-F", `number=${number}`]);
   type Node = { isResolved: boolean; isOutdated: boolean; path: string | null; comments: { nodes: { author: { login: string } | null; createdAt: string; originalCommit: { oid: string } | null; body: string }[] } };
@@ -320,9 +321,10 @@ export interface GhMerged {
   mergedAt: string;
   body: string;
   reviews: GhPull["reviews"];
+  commits?: GhCommit[]; // PR 뒤 수정 커밋을 셀 때(ATC-32)
 }
 
-const MERGED_FIELDS = "number,title,url,headRefName,baseRefName,createdAt,mergedAt,body,reviews";
+const MERGED_FIELDS = "number,title,url,headRefName,baseRefName,createdAt,mergedAt,body,reviews,commits";
 const defaultBranches = new Map<string, string>();
 
 async function defaultBranchOf(slug: string): Promise<string> {

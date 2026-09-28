@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { config } from "../config.ts";
 import { toolPaths } from "../../hooks/paths.mjs";
 import type { Claim, Session, Workspace } from "../model.ts";
+import { type TalkEvent, talkEventsOf } from "../briefs.ts";
 
 interface SessionFile {
   pid: number;
@@ -202,4 +203,43 @@ export function inferTranscriptClaim(s: SessionFile, workspaces: Workspace[]): C
   };
   inferCache.set(s.sessionId, { key, claim });
   return claim;
+}
+
+// 대화 기록의 지시서·READBACK·질문 사건(ATC-32 LOGBOOK 측정). 파일은 추가만 되므로 지난번 크기 뒤만 읽는다.
+// 사건에는 본문을 두지 않는다(briefs.ts talkEventsOf)
+const talkCache = new Map<string, { size: number; events: TalkEvent[] }>();
+const TALK_CHUNK = 4 * 1024 * 1024;
+export function talkEventsFile(path: string): TalkEvent[] {
+  let size: number;
+  try {
+    size = statSync(path).size;
+  } catch {
+    return [];
+  }
+  let hit = talkCache.get(path);
+  if (!hit || size < hit.size) hit = { size: 0, events: [] }; // 줄었으면 처음부터
+  if (size === hit.size) return hit.events;
+  const fd = openSync(path, "r");
+  try {
+    // size는 마지막 줄바꿈 뒤까지(쓰다 만 줄은 다음에). 바이트로 잘라 여러 바이트 글자가 쪼개지지 않게
+    let pos = hit.size;
+    const events = [...hit.events];
+    const buf = Buffer.alloc(TALK_CHUNK);
+    while (pos < size) {
+      const n = readSync(fd, buf, 0, Math.min(TALK_CHUNK, size - pos), pos);
+      if (n <= 0) break;
+      const cut = buf.lastIndexOf(0x0a, n - 1);
+      if (cut < 0) {
+        if (n === TALK_CHUNK) pos += n; // 4MB를 넘는 한 줄은 건너뛴다
+        break;
+      }
+      events.push(...talkEventsOf(buf.toString("utf8", 0, cut)));
+      pos += cut + 1;
+    }
+    hit = { size: pos, events };
+    talkCache.set(path, hit);
+    return events;
+  } finally {
+    closeSync(fd);
+  }
 }

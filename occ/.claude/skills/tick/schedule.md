@@ -39,7 +39,7 @@
 
 1. **PR을 확인한다.** `schedule brief`의 `close.<FLIGHT>`에 PR(`pr.url`)·머지 시각(`mergedAt`)·본문 관계(`link`)가 있다. 읽기 전용 `gh pr view <번호> --repo <owner/name> --json state,mergedAt,body`로 머지됐는지와 본문을 한 번 본다.
 2. **`Fixes`만 끝낸다.** vocado 규칙상 PR 본문의 `Fixes VOC-n`만 이슈를 끝낸다. `Part of VOC-n`인 PR은 후보에 없다. 본문에 둘 다 없으면(`link: none`) `dispatch flight <FLIGHT>`로 완료 기준을 읽고, 남은 칸이 있어 보이면 쓰지 않는다.
-3. **근거 한 줄**: `"PR vocado_nextjs#400 09-26 13:41 머지 · Fixes VOC-193 · 완료 기준 네 칸 모두 PR 범위"`. 되돌림(Revert PR)이 있거나 후속 FLIGHT가 남았다고 적혀 있으면 쓰지 않는다.
+3. **근거 한 줄**: `"PR vocado_nextjs#400 09-26 13:41 머지 · Fixes VOC-193 · 완료 기준 모두 PR 범위"`. 되돌림(Revert PR)이 있거나 후속 FLIGHT가 남았다고 적혀 있으면 쓰지 않는다.
 4. **상태는 바꾸지 않는다.** CLOSE는 S2에서도 발부되지 않는다(`schedule release`가 거절한다). 승인되면 SUPERVISOR가 Linear에서 직접 Done으로 바꾸고, atc가 다음 읽기에서 초안을 닫는다.
 
 ### CLASSIFY 전에
@@ -92,7 +92,7 @@ S2에서는 SUPERVISOR가 SCHEDULE 탭에서 승인한 작업을 OCC가 Linear�
    - 번호 목록 없이 설명만 있고 확인할 수 있는 결과가 분명하지 않은 것. 설명에 "Exit when …"처럼 구체적인 끝 조건이 있으면 그 문장을 기준으로 삼아도 된다.
 4. 덮는 이슈가 없는 기준마다 CHARTER DESK와 같은 방법으로 쓰되, 다음을 지킨다.
    - `--project`에 그 ROUTE, `--milestone`에 그 WAYPOINT 이름, `--gap`을 붙인다.
-   - 본문은 네 칸(SEC면 Codex 템플릿)이고, `## 목표`에 그 기준을 `> ` 인용으로 그대로 옮긴다.
+   - 본문은 DIRECT 형식(아래 CHARTER DESK 2번)이고, `## 목표`에 그 기준을 `> ` 인용으로 그대로 옮긴다.
    - 근거는 `--reason "WAYPOINT gap: <WAYPOINT> 기준 <번호>. 중복 검색: <waypointGaps 이슈와 보드에서 찾아본 결과>"`.
 5. **한 바퀴에 2건까지.** 지금 구간 WAYPOINT의 기준부터 올린다.
 6. atc가 `비슷한 FLIGHT가 있어 … 쓰지 않음`으로 거절하면 다시 쓰지 않고 OCC LOG에 그 FLIGHT를 적는다. `LIMIT`이면 이번 바퀴는 멈춘다.
@@ -120,7 +120,7 @@ CHARTER DESK는 OCC 안의 요청 창구다. SUPERVISOR가 이 세션에서 직�
 | 순서 | 할 일 |
 |---|---|
 | 1. 중복 검색 | `schedule brief`(열린 초안의 `payload.title`, `flights`)와 `dispatch brief`의 FLIGHT에서 비슷한 것을 찾고, 비슷해 보이면 `dispatch flight <FLIGHT>`로 읽는다. 같은 일이 이미 있으면 초안을 쓰지 않고 그 FLIGHT를 알린다. atc의 FLIGHT 목록은 **최근 45일 안에 바뀐 이슈**(와 그와 이어진 이슈)뿐이라, 그보다 오래 손대지 않은 열린 이슈는 여기서 찾을 수 없다 |
-| 2. 본문 | vocado 네 칸: `## 목표`, `## 수정 허용 범위`, `## 금지 사항`, `## 완료 기준`. SEC 작업(DB·마이그레이션·RLS·인증·권한·보안·권리·배포·결제)은 Codex Engineering Task 제목 그대로: `## Outcome`, `## Context`, `## Scope`(`### In scope`, `### Allowed files / surfaces`, `### Out of scope`), `## Forbidden changes`, `## Invariants`, `## Acceptance Criteria`, `## Verification`, `## Risks / Rollback`, `## Review Readiness`. 요청에 없는 범위는 지어내지 않고 "SUPERVISOR 확인 필요"라고 적는다 |
+| 2. 본문 | DIRECT 형식(`../docs/dispatch.md` "DIRECT briefs"): `## 목표`와 `## 완료 기준`은 필수, 이 작업만의 제약이 있으면 `## 이 작업만의 제약`. SEC 작업(DB·마이그레이션·RLS·인증·권한·보안·권리·배포·결제)은 `## Hard constraints`에 이 작업만의 보안 한계를 짧게 적는다(예: "staging에 적용하지 않음", "service_role 경로 유지"). 늘 지키는 규칙(DB 쓰기 금지, 인증 약화 금지, 관계없는 변경 금지 등)은 vocado `CLAUDE.md`·`AGENTS.md`에 있으니 되풀이하지 않는다. 번호 붙은 구현 단계는 쓰지 않는다. 허용 범위·Invariants·Verification은 요청에 있을 때만. 요청에 없는 범위는 지어내지 않고 "SUPERVISOR 확인 필요"라고 적는다 |
 | 3. 분류 | `--type`·`--wake`·`--rating`은 위 분류 기준대로. `--priority`는 요청에 근거가 있을 때만. 맞는 팀이 분명하면(범위가 그 팀의 ROUTE·과거 FLIGHT와 이어지고, SEC면 SEC 자격이 있음) `--tail TEAM_X`를 제안한다. 분명하지 않으면 비운다 |
 | 4. 관계 | 선행 작업은 `--blocked-by`, 상위 이슈는 `--parent`, 이어진 일은 `--related`. 모두 FLIGHT 목록에 있는 key |
 | 5. 근거 | `--reason "<요청 한 줄 요약>. 중복 검색: <찾아본 것과 결과>"`. "중복 검색:"이 없으면 atc가 받지 않는다 |
