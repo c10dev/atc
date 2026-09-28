@@ -1,0 +1,47 @@
+name: UI report
+description: 화면에서 막히거나 불편했던 점 하나를 보고한다. 해결책이 없어도 된다.
+title: "UI report: "
+labels: ["idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        보고 하나에 불편 하나. 본 것을 사실대로 적는다. 해결책은 알면 적고, 없어도 보고한다.
+        판정 때 영역 라벨(`fleet` …)을 붙이고, 할 것은 Linear ATC 티켓으로 올린다. 이 이슈는 고친 화면을 써 보고 닫는다(DOCS 탭 "일 맡기기").
+  - type: dropdown
+    id: tab
+    attributes:
+      label: Tab
+      options:
+        - RADAR
+        - STRIPS
+        - FIDS
+        - AIRPORTS
+        - FLEET
+        - METRICS
+        - NETWORK
+        - DISPATCH
+        - SCHEDULE
+        - DOCS
+        - 그 밖
+    validations:
+      required: true
+  - type: textarea
+    id: task
+    attributes:
+      label: 하려던 일
+      description: 그 화면에서 무엇을 알거나 하려고 했나. 예) PARKED인 UI 팀을 골라 일을 맡기려 했다.
+    validations:
+      required: true
+  - type: textarea
+    id: condition
+    attributes:
+      label: 막힌 점
+      description: 무엇을 봤고 어디서 막혔나. 스크린샷을 붙이면 좋다.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 제안 (선택)
+      description: 알면 적는다. 없으면 비워 둔다.

@@ -24,6 +24,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - Linear 프로젝트와 마일스톤을 주 팀만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 읽는다([docs/routes.ko.md](docs/routes.ko.md) 5단계). atc 자체의 ROUTE(M15–M20)가 NETWORK 탭 ROUTE MAP과 WAYPOINT ETA·지연 경고에 보인다. 여러 팀이 함께 쓰는 프로젝트·마일스톤은 합치고, 읽은 팀 키를 `teams`에 남긴다. WAYPOINT gap과 NEW의 `--milestone`은 그대로 후보 팀(`candidateTeams`)의 마일스톤만 받는다. NEW는 주 팀에 이슈를 만들기 때문이다.
 
 ### 추가
+- GitHub 이슈 양식 **UI report**(`.github/ISSUE_TEMPLATE/ui-report.yml`)와 `fleet` 라벨. atc 화면의 불편을 보고 하나에 하나씩 남기고(탭, 하려던 일, 막힌 점, 선택 제안), 판정해서 할 것만 Linear ATC 티켓으로 올리고, 고친 화면을 써 본 뒤 닫는다. DOCS 탭 "일 맡기기"에 흐름을 적었다.
 - 리서치 요약: Human Preview 다시 보기(ATC-39, [docs/research/human-preview.ko.md](docs/research/human-preview.ko.md)). 위험 기반 증거 묶음(사람은 CHOICE·ACCOUNT·DEVICE에서만)과 단계별 도입, ATC-37 수정을 추천한다. 전체 보고서는 비공개 Linear 문서에 있다.
 - AUTOLAND 재리뷰(ATC-38, [docs/occ.ko.md](docs/occ.ko.md) 9.7). AUTOLAND 갱신이 끝났는데 새 head에 리뷰가 이어지지 않았으면(`no-review`·`review-stale`) atc가 그 head에 한 번 요청한다. Codex를 쓸 수 있으면 PR 댓글 `@codex review` 하나(유일한 새 GitHub 쓰기)를 단다. Codex가 한도이거나 30분 동안 답이 없으면 6시간을 기다리지 않고 REVIEW(DeepSeek) 대기열로 넘긴다. ATC-27·30 제외와 보안 스위치는 그대로라, 제외 PR은 "AUTOLAND: SUPERVISOR 리뷰 필요"로 보인다. `autoland.jsonl`에 `op: "review-request"`로 남고, 스트립에 "AUTOLAND: review requested (codex|deepseek)"가 보인다. `update`·`merge` 모드이고 GROUND STOP이 아닐 때만 한다.
 - 판정 계열: Jev(TypeSafe System One)를 CLASSIFY 판정 계열로 더했다. **기본은 꺼짐**이다(ATC-36, [docs/fleet.ko.md](docs/fleet.ko.md) 6.1).
