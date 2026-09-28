@@ -115,6 +115,54 @@ export async function agentRows(): Promise<AgentRow[]> {
   }
 }
 
+export interface ControlResult {
+  ok: boolean;
+  status: number; // 실패면 HTTP 상태
+  jobId?: string;
+  cwd?: string;
+  permissionMode?: PermissionMode;
+  model?: string | null;
+  error?: string;
+}
+
+// LAUNCH: FLEET 카드 버튼과 FLEET PLAN 승인(8.7)이 같이 쓴다. 결과는 FLIGHT RECORDER에 by와 함께 남는다
+export async function launchAircraft(s: Snapshot, registration: string, options: { permissionMode?: unknown; model?: unknown }, by: string): Promise<ControlResult> {
+  const reg = registration.toUpperCase();
+  const cfg = loadDispatchConfig();
+  const a = fleetView(s, loadFleet(), cfg.teamPattern).find((x) => x.registration === reg);
+  if (!a) return { ok: false, status: 404, error: `FLEET에 없음: ${reg}` };
+  const repo = s.airports.find((x) => x.code === a.base)?.repo ?? null;
+  const t = new Date().toISOString();
+  try {
+    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: crewBriefing(a, repo, cfg.mode), permissionMode: options.permissionMode, model: options.model }, await agentRows());
+    const r = await claude(plan.args, plan.cwd);
+    const jobId = jobIdOf(r.out);
+    const ok = r.ok && !!jobId;
+    const error = ok ? undefined : /not trusted/i.test(r.out) ? `${plan.cwd}를 신뢰하지 않음 — 그 폴더에서 claude를 한 번 열어 trust를 수락한다` : r.out.slice(0, 300) || "claude --bg 실패";
+    record({ t, kind: "fleet", op: "launch", aircraft: reg, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model ?? undefined, error });
+    return ok ? { ok, status: 200, jobId: jobId!, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model } : { ok, status: 502, error };
+  } catch (e) {
+    if (e instanceof ControlError) return { ok: false, status: e.status, error: e.message };
+    throw e;
+  }
+}
+
+// STOP: 백그라운드 세션만 멈춘다
+export async function stopAircraft(registration: string, by: string): Promise<ControlResult> {
+  const reg = registration.toUpperCase();
+  const t = new Date().toISOString();
+  try {
+    const row = stopTargetOf(reg, await agentRows());
+    const r = await claude(["stop", row.id as string]);
+    const error = r.ok ? undefined : r.out.slice(0, 300) || "claude stop 실패";
+    record({ t, kind: "fleet", op: "stop", aircraft: reg, by, ok: r.ok, jobId: row.id, cwd: row.cwd, error });
+    return r.ok ? { ok: true, status: 200, jobId: row.id } : { ok: false, status: 502, error };
+  } catch (e) {
+    if (e instanceof ControlError) return { ok: false, status: e.status, error: e.message };
+    throw e;
+  }
+}
+
 export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapshot>) {
   // AIRCRAFT 이름과 같은 세션(데스크톱·터미널·백그라운드). FLEET 카드의 LAUNCH·STOP 버튼이 쓴다
   app.get("/api/fleet/sessions", async (c) => {
@@ -132,41 +180,16 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
     const reg = (c.req.param("registration") ?? "").toUpperCase();
     const body = await c.req.json().catch(() => ({}));
-    const s = await getSnapshot();
-    const cfg = loadDispatchConfig();
-    const a = fleetView(s, loadFleet(), cfg.teamPattern).find((x) => x.registration === reg);
-    if (!a) return c.json({ error: `FLEET에 없음: ${reg}` }, 404);
-    const repo = s.airports.find((x) => x.code === a.base)?.repo ?? null;
-    const t = new Date().toISOString();
-    try {
-      const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: crewBriefing(a, repo, cfg.mode), permissionMode: body.permissionMode, model: body.model }, await agentRows());
-      const r = await claude(plan.args, plan.cwd);
-      const jobId = jobIdOf(r.out);
-      const ok = r.ok && !!jobId;
-      const error = ok ? undefined : /not trusted/i.test(r.out) ? `${plan.cwd}를 신뢰하지 않음 — 그 폴더에서 claude를 한 번 열어 trust를 수락한다` : r.out.slice(0, 300) || "claude --bg 실패";
-      record({ t, kind: "fleet", op: "launch", aircraft: reg, by: "SUPERVISOR", ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model ?? undefined, error });
-      if (!ok) return c.json({ error }, 502);
-      return c.json({ ok: true, registration: reg, jobId, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model });
-    } catch (e) {
-      if (e instanceof ControlError) return c.json({ error: e.message }, e.status as 400);
-      throw e;
-    }
+    const r = await launchAircraft(await getSnapshot(), reg, body, "SUPERVISOR");
+    if (!r.ok) return c.json({ error: r.error }, r.status as 400);
+    return c.json({ ok: true, registration: reg, jobId: r.jobId, cwd: r.cwd, permissionMode: r.permissionMode, model: r.model });
   });
 
   app.post("/api/fleet/:registration/stop", async (c: Context) => {
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
     const reg = (c.req.param("registration") ?? "").toUpperCase();
-    const t = new Date().toISOString();
-    try {
-      const row = stopTargetOf(reg, await agentRows());
-      const r = await claude(["stop", row.id as string]);
-      const error = r.ok ? undefined : r.out.slice(0, 300) || "claude stop 실패";
-      record({ t, kind: "fleet", op: "stop", aircraft: reg, by: "SUPERVISOR", ok: r.ok, jobId: row.id, cwd: row.cwd, error });
-      if (!r.ok) return c.json({ error }, 502);
-      return c.json({ ok: true, registration: reg, jobId: row.id });
-    } catch (e) {
-      if (e instanceof ControlError) return c.json({ error: e.message }, e.status as 400);
-      throw e;
-    }
+    const r = await stopAircraft(reg, "SUPERVISOR");
+    if (!r.ok) return c.json({ error: r.error }, r.status as 400);
+    return c.json({ ok: true, registration: reg, jobId: r.jobId });
   });
 }

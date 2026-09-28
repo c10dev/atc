@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
-import type { DemandRow, FleetPlanKind, FleetProposal, PlanReason } from "../../../server/fleet-plan.ts";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
+import type { DemandRow, FleetPlanKind, FleetProposal, PlanReason, StepResult } from "../../../server/fleet-plan.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import "./FleetPlan.css";
 
-// FLEET PLAN(docs/fleet.md 8.6): atc가 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·AOG·RETIRE를 제안한다.
-// 그림자: SUPERVISOR는 동의·반대만 하고, 세션을 띄우거나 멈추는 것은 카드의 버튼으로 따로 한다.
+// FLEET PLAN(docs/fleet.md 8.6·8.7): atc가 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·AOG·RETIRE·RETURN을 제안한다.
+// 그림자: SUPERVISOR는 동의·반대만 한다. 승인 운용: 승인(실행)하면 카드의 버튼과 같은 코드로 바로 실행한다.
 
-type Open = FleetProposal & { now: PlanReason[] | null };
+type Open = FleetProposal & { now: PlanReason[] | null; stale: boolean };
 interface PlanBrief {
-  mode: "shadow";
+  mode: "shadow" | "approval";
+  approvalSince: string | null;
+  background: { count: number | null; max: number };
+  permissionModes: string[];
   config: { reserve: number; waitMin: number; idleHours: number; restartDays: number; retireDays: number; minDwellMin: number };
   ranAt: string | null;
   error: string | null;
@@ -27,18 +30,50 @@ const KIND_HELP: Record<FleetPlanKind, string> = {
   RESTART: "오래된 백그라운드 세션을 새 CREW BRIEFING으로 다시 띄운다(정기 점검)",
   AOG: "기한을 두고 배정을 멈춘다(MEL)",
   RETIRE: "퇴역(SUPERVISOR만, 자동 없음)",
+  RETURN: "FLEET PLAN이 건 AOG를 푼다(기한이 지남)",
 };
-const STATUS: Record<FleetProposal["status"], string> = { open: "열림", agreed: "동의", disagreed: "반대", expired: "조건 풀림", superseded: "바뀜" };
+// 승인하면 하는 일(양식에 보인다)
+const WILL_DO: Record<FleetPlanKind, (p: FleetProposal) => string> = {
+  LAUNCH: (p) => `${p.aircraft}를 ${p.airport ?? "base"} 저장소에서 백그라운드 세션으로 띄우고 CREW BRIEFING을 넣는다`,
+  ENTRY: (p) => `${p.aircraft}를 ${p.configuration ?? ""} CONFIGURATION으로 ${p.airport ?? ""}에 들인 뒤 띄운다`,
+  STOP: (p) => `${p.aircraft}의 백그라운드 세션을 멈춘다(대화는 남는다)`,
+  RESTART: (p) => `${p.aircraft}의 백그라운드 세션을 멈추고 새 CREW BRIEFING으로 다시 띄운다`,
+  AOG: (p) => `${p.aircraft}를 AOG로 둔다(사유 FLEET PLAN ${p.id})`,
+  RETIRE: (p) => `${p.aircraft}를 퇴역시킨다`,
+  RETURN: (p) => `${p.aircraft}의 AOG를 푼다`,
+};
+const STATUS: Record<FleetProposal["status"], string> = {
+  open: "열림",
+  agreed: "동의",
+  disagreed: "반대",
+  expired: "조건 풀림",
+  superseded: "바뀜",
+  executing: "실행 중",
+  executed: "실행함",
+  failed: "실행 실패",
+};
 
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 const minutesSince = (iso: string) => Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
 // 사유 안의 FLIGHT key를 FLIGHT NUMBER로
 const withFlights = (text: string) => text.replace(/\b([A-Z]{2,5}-\d+)\b/g, (k) => flightNumber(k));
+const stepText = (x: StepResult) => `${x.action} ${x.registration}${x.jobId ? ` (${x.jobId})` : ""}${x.ok ? "" : ` 실패: ${x.error ?? ""}`}`;
 
-export function FleetPlan({ refreshKey }: { refreshKey: string }) {
+async function post(path: string, body: unknown) {
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  if (!res.ok || data.error) {
+    const failed = (data.steps as StepResult[] | undefined)?.find((x) => !x.ok);
+    throw new Error(data.error ?? (failed ? stepText(failed) : `HTTP ${res.status}`));
+  }
+  return data;
+}
+
+export function FleetPlan({ refreshKey, onChanged }: { refreshKey: string; onChanged?: () => void }) {
   const [brief, setBrief] = useState<PlanBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [approving, setApproving] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -55,47 +90,82 @@ export function FleetPlan({ refreshKey }: { refreshKey: string }) {
     load();
   }, [load, refreshKey]);
 
-  const judge = async (p: Open, verdict: "agree" | "disagree") => {
-    let reason = "";
-    if (verdict === "disagree") {
-      const r = prompt(`${p.id} ${p.kind} ${p.aircraft ?? ""}에 반대합니다. 이유(선택)는?`);
-      if (r === null) return;
-      reason = r;
-    }
-    setBusy(p.id);
+  const run = async (id: string, fn: () => Promise<unknown>) => {
+    setBusy(id);
     try {
-      const res = await fetch(`/api/fleet/plan/${encodeURIComponent(p.id)}/verdict`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ verdict, reason }),
-      });
-      const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-      if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
-      await load();
+      await fn();
+      setError(null);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(null);
+      await load();
     }
+  };
+
+  const judge = (p: Open, verdict: "agree" | "disagree") => {
+    let reason = "";
+    if (verdict === "disagree") {
+      const r = prompt(`${p.id} ${p.kind} ${p.aircraft ?? ""}에 ${brief?.mode === "approval" ? "거절" : "반대"}합니다. 이유(선택)는?`);
+      if (r === null) return;
+      reason = r;
+    }
+    return run(p.id, () => post(`/api/fleet/plan/${encodeURIComponent(p.id)}/verdict`, { verdict, reason }));
+  };
+
+  const approve = (p: Open, input: Record<string, unknown>) =>
+    run(p.id, async () => {
+      await post(`/api/fleet/plan/${encodeURIComponent(p.id)}/approve`, input);
+      setApproving(null);
+      onChanged?.();
+    });
+
+  const switchMode = (mode: "shadow" | "approval") => {
+    const ask =
+      mode === "approval"
+        ? "승인 운용을 켤까요?\n\n승인(실행)을 누르면 FLEET 탭 버튼과 같은 코드로 곧바로 세션을 띄우고 멈추거나 프로필을 바꿉니다. 제안마다 SUPERVISOR가 하나씩 승인합니다."
+        : "그림자로 돌릴까요? 제안은 계속 나오고, 동의·반대만 합니다.";
+    if (!confirm(ask)) return;
+    return run("mode", () => post("/api/fleet/plan/mode", { mode }));
   };
 
   if (!brief) return error ? <p className="fl-error">FLEET PLAN을 불러오지 못함: {error}</p> : null;
   const g = brief.gate;
+  const approval = brief.mode === "approval";
   const demand = brief.demand.filter((d) => d.served || d.unserved.length || d.blocked);
 
   return (
     <section className="fp" aria-labelledby="fp-title">
       <h2 className="label fp-title" id="fp-title">
-        FLEET PLAN <span className="fp-mode">SHADOW</span>
-        <em>atc가 제안하고 SUPERVISOR는 동의·반대만 한다. 세션을 띄우거나 멈추는 것은 카드의 버튼으로</em>
+        FLEET PLAN <span className={`fp-mode${approval ? " is-approval" : ""}`}>{approval ? "APPROVAL" : "SHADOW"}</span>
+        <em>
+          {approval
+            ? "승인(실행)하면 카드의 버튼과 같은 코드로 바로 실행한다. 제안마다 하나씩"
+            : "atc가 제안하고 SUPERVISOR는 동의·반대만 한다. 세션을 띄우거나 멈추는 것은 카드의 버튼으로"}
+        </em>
       </h2>
       <p className="fp-meta faint">
-        <span className={g.ready ? "fp-ready" : undefined} title="DISPATCH·SCHEDULE과 같은 그림자 게이트. 넘으면 승인 운용(3단계)을 켤 수 있다">
+        <span className={g.ready ? "fp-ready" : undefined} title="DISPATCH·SCHEDULE과 같은 그림자 게이트. 넘어야 승인 운용을 켤 수 있다">
           판정 {g.decided}/{g.target.decided} · 합의 {pct(g.agreement)} (목표 {pct(g.target.agreement)}){g.ready ? " · 게이트 통과" : ""}
         </span>
+        {approval && brief.approvalSince && <> · 승인 운용 {timeAgo(brief.approvalSince, Date.now())}부터</>}
         {" · "}
         {brief.ranAt ? <>계산 {timeAgo(brief.ranAt, Date.now())}</> : "아직 계산 전(DISPATCH 주기 5분)"}
         {" · "}예비 {brief.config.reserve} · 대기 {brief.config.waitMin}분 · 유휴 {brief.config.idleHours}h · RESTART {brief.config.restartDays}일 · 퇴역 {brief.config.retireDays}일
+        {approval ? (
+          <button className="fl-btn fp-switch" disabled={busy === "mode"} onClick={() => switchMode("shadow")}>
+            그림자로 돌리기
+          </button>
+        ) : (
+          <button
+            className="fl-btn fp-switch"
+            disabled={!g.ready || busy === "mode"}
+            title={g.ready ? "승인 운용을 켠다" : `그림자 게이트를 넘어야 켤 수 있다(판정 ${g.target.decided}건, 합의 ${pct(g.target.agreement)})`}
+            onClick={() => switchMode("approval")}
+          >
+            승인 운용 켜기
+          </button>
+        )}
       </p>
       {(error || brief.error) && (
         <p className="fl-error" role="alert">
@@ -134,14 +204,29 @@ export function FleetPlan({ refreshKey }: { refreshKey: string }) {
                   </li>
                 ))}
               </ul>
-              <div className="fl-actions">
-                <button className="fl-btn" disabled={busy === p.id} onClick={() => judge(p, "disagree")}>
-                  반대
-                </button>
-                <button className="fl-btn primary" disabled={busy === p.id} onClick={() => judge(p, "agree")}>
-                  동의
-                </button>
-              </div>
+              {p.status === "executing" ? (
+                <p className="fp-note">실행 중…</p>
+              ) : approving === p.id ? (
+                <ApproveForm p={p} brief={brief} busy={busy === p.id} onCancel={() => setApproving(null)} onApprove={(input) => approve(p, input)} />
+              ) : (
+                <>
+                  {approval && p.stale && <p className="fp-note faint">조건이 바뀜 — 최근 주기가 이 제안을 더는 내지 않는다. 다음 주기를 기다린다</p>}
+                  <div className="fl-actions">
+                    <button className="fl-btn" disabled={busy === p.id} onClick={() => judge(p, "disagree")}>
+                      {approval ? "거절" : "반대"}
+                    </button>
+                    {approval ? (
+                      <button className="fl-btn primary" disabled={busy === p.id || p.stale} onClick={() => (setError(null), setApproving(p.id))}>
+                        승인(실행)
+                      </button>
+                    ) : (
+                      <button className="fl-btn primary" disabled={busy === p.id} onClick={() => judge(p, "agree")}>
+                        동의
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
             </li>
           ))}
         </ul>
@@ -172,6 +257,7 @@ export function FleetPlan({ refreshKey }: { refreshKey: string }) {
                 <span className="faint mono">{p.id}</span> <span className="fp-kind">{p.kind}</span> <span className="mono">{p.aircraft ?? "—"}</span>{" "}
                 <span className={`fp-status st-${p.status}`}>{STATUS[p.status]}</span>
                 {p.verdict?.reason && <span className="faint"> — {p.verdict.reason}</span>}
+                {p.execution && p.execution.steps.length > 0 && <span className="faint"> — {p.execution.steps.map(stepText).join(" → ")}</span>}
                 {p.status === "superseded" && p.closeReason && <span className="faint"> → {p.closeReason}</span>}
                 <span className="faint fp-age">{p.closedAt ? timeAgo(p.closedAt, Date.now()) : ""}</span>
               </li>
@@ -180,5 +266,84 @@ export function FleetPlan({ refreshKey }: { refreshKey: string }) {
         </details>
       )}
     </section>
+  );
+}
+
+// 승인 양식: 무엇을 실행하는지와 종류별 선택지(8.7)
+function ApproveForm({
+  p,
+  brief,
+  busy,
+  onCancel,
+  onApprove,
+}: {
+  p: Open;
+  brief: PlanBrief;
+  busy: boolean;
+  onCancel: () => void;
+  onApprove: (input: Record<string, unknown>) => void;
+}) {
+  const launches = p.kind === "LAUNCH" || p.kind === "ENTRY" || p.kind === "RESTART";
+  // RESTART는 비워 두면 서버가 마지막 LAUNCH의 값을 쓴다. 나머지는 auto(SUPERVISOR 결정)
+  const [permissionMode, setPermissionMode] = useState(p.kind === "RESTART" ? "" : (brief.permissionModes[0] ?? "auto"));
+  const [model, setModel] = useState("");
+  const [until, setUntil] = useState(String(p.reasons.find((r) => r.code === "until")?.value ?? ""));
+  const [stopSession, setStopSession] = useState(true);
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const input: Record<string, unknown> = {};
+    if (launches && permissionMode) input.permissionMode = permissionMode;
+    if (launches && model.trim()) input.model = model.trim();
+    if (p.kind === "AOG") input.until = until.trim() || null;
+    if (p.kind === "RETIRE") input.stopSession = stopSession;
+    onApprove(input);
+  };
+  return (
+    <form className="fp-approve" onSubmit={submit} aria-label={`${p.id} 승인`}>
+      <p className="fp-note">{WILL_DO[p.kind](p)}</p>
+      {launches && (
+        <>
+          <label>
+            permission mode{" "}
+            <select className="fl-input" value={permissionMode} onChange={(e) => setPermissionMode(e.target.value)} aria-label="permission mode">
+              {p.kind === "RESTART" && <option value="">마지막 LAUNCH와 같게</option>}
+              {brief.permissionModes.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            모델{" "}
+            <input className="fl-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder={p.kind === "RESTART" ? "마지막 LAUNCH와 같게" : "기본값"} aria-label="모델" />
+          </label>
+          {brief.background.count !== null && (
+            <p className="fp-note faint">
+              백그라운드 세션 {brief.background.count}/{brief.background.max}. 세션은 사용량 한도를 쓴다.
+            </p>
+          )}
+        </>
+      )}
+      {p.kind === "AOG" && (
+        <label>
+          해제 예정일{" "}
+          <input className="fl-input" value={until} onChange={(e) => setUntil(e.target.value)} placeholder="YYYY-MM-DD" aria-label="해제 예정일" />
+        </label>
+      )}
+      {p.kind === "RETIRE" && (
+        <label className="fl-check">
+          <input type="checkbox" checked={stopSession} onChange={(e) => setStopSession(e.target.checked)} /> 백그라운드 세션도 멈춤
+        </label>
+      )}
+      <div className="fl-actions">
+        <button type="button" className="fl-btn" onClick={onCancel}>
+          취소
+        </button>
+        <button type="submit" className="fl-btn primary" disabled={busy}>
+          {busy ? "실행하는 중…" : "승인(실행)"}
+        </button>
+      </div>
+    </form>
   );
 }

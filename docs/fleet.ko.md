@@ -606,7 +606,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **기록.** LAUNCH·STOP마다 FLIGHT RECORDER에 `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}` 한 줄.
 - **화면.** 세션이 없는 카드에 **LAUNCH**(permission mode, 선택 모델, 상한 대비 백그라운드 수). 백그라운드 세션이면 `BG <id>`와 **STOP**. 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
 
-아직 만들지 않음: 수요·가동률로 제안한 LAUNCH·STOP의 실행(FLEET PLAN, 8.6: 그림자 제안은 만들었고 승인 운용은 아직), 오래 도는 세션의 정기 정비로서 RESTART, 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, GitHub idea #53).
+아직 만들지 않음: 쉬는 세션의 자동 STOP(FLEET PLAN 4단계. 그림자 제안과 승인 운용은 8.6·8.7에서 만듦), 오래 도는 세션의 정기 정비로서 RESTART, 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, GitHub idea #53).
 
 ### 8.6 FLEET PLAN: LAUNCH·STOP 등을 제안하기
 
@@ -664,7 +664,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **탭.** 카드 위에 FLEET PLAN 블록이 있다. 게이트, AIRPORT별 수요 한 줄과 LAUNCH를 막는 이유, 사유가 붙은 열린 제안과 반대·동의 버튼, 지켜보는 후보, 최근 닫힌 제안이 보인다.
 - **운영 데이터로 처음 본 결과(2026-09-28 07:15 UTC):** 제안 없음. ATC-35는 TEAM_I가 받을 수 있고, 나머지 열린 ATC FLIGHT는 우선순위가 없다. 팀 세션은 모두 데스크톱 세션이다. NORDO·LOS가 없고, 모든 AIRCRAFT가 30일 안에 ARRIVED했다.
 
-아직 안 만든 것: 3단계(승인 운용)와 4단계(자동 STOP), 기한이 지난 AOG 뒤의 제안(RETIRE나 복귀), 활주로 규칙의 머지 슬롯 점유, 주간 사용량 줄(FUEL), FLEET PLAN 제안의 CROSSCHECK mark.
+아직 안 만든 것: 4단계(자동 STOP). 3단계(승인 운용)와 기한이 지난 AOG 뒤의 제안(RETURN)은 8.7에서 만들었다. 활주로 규칙의 머지 슬롯 점유, 주간 사용량 줄(FUEL), FLEET PLAN 제안의 CROSSCHECK mark.
 
 **구현 순서.**
 
@@ -691,6 +691,96 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 출처: [Jeppesen crew pairing](https://ww2.jeppesen.com/airline-crew-optimization-solutions/airline-crew-pairing/), [Lufthansa Systems NetLine/Crew](https://www.lhsystems.com/solutions/operations-control-center/netline-crew), [항공 disruption recovery 조사(arXiv 2510.26831)](https://arxiv.org/html/2510.26831), [OAG: wet leasing](https://www.oag.com/blog/what-is-wet-leasing), [SKYbrary: MEL](https://skybrary.aero/articles/minimum-equipment-list-mel), [EASA AI 등급(Halldale)](https://www.halldale.com/civil-aviation/easa-ai-framework-aviation-safety-regulations), [ICAO: 항공기 주기](https://www.icao.int/operational-safety/Aircraft-Parking).
 
+### 8.7 FLEET PLAN 3단계: 승인 운용
+
+상태: 만듦(2026-09-28). SUPERVISOR 결정은 아래에 적었다. 8.6에서 그림자를 만들었다. atc가 제안하고 SUPERVISOR는 동의·반대만 하며, 아무것도 움직이지 않는다. 3단계에서는 SUPERVISOR가 승인하면 그 제안이 실행된다. 제안마다 여전히 사람이 하나씩 승인한다. 자동 STOP은 그대로 4단계이고 기본으로 꺼져 있다.
+
+**지금 사실(2026-09-28 07:30 UTC).**
+
+| 사실 | 값 |
+|---|---|
+| FLEET PLAN | 07:25 UTC부터 그림자, 판정 0/20, 열린 제안 없음 |
+| 이미 있는 실행 코드 | 8.5 LAUNCH·STOP(`launchPlanOf`, `stopTargetOf`, `claude --bg`, `claude stop`), `entryIntoService`(ENTRY INTO SERVICE), `aog`·`retired`를 쓰는 `applyPatch`(AOG, RETIREMENT) |
+| 다른 스위치 | DISPATCH `mode`(`POST /api/dispatch/mode`)와 SCHEDULE `mode`: 게이트 검사도 Origin 검사도 없고, FLIGHT RECORDER에 `mode:` 줄을 남긴다. AUTOLAND와 설정 창: Origin 검사(`fromThisApp`). ATFM OFF: 끄는 것은 누구나 |
+| 세션 | 팀 세션 10개가 모두 데스크톱 세션, 백그라운드 0/6 |
+
+**원칙.**
+
+1. **승인이 곧 실행이다.** 승인 운용에서는 SUPERVISOR가 승인하면 FLEET 탭 버튼과 같은 코드로 바로 실행한다. 승인한 뒤 기다리는 상태도 없고, 중간에 OCC도 없다. 여기서 팀에 메시지를 보내는 일은 없다. LAUNCH는 8.5 버튼처럼 CREW BRIEFING을 세션의 첫 지시로 넣는다.
+2. **승인할 때 다시 확인한다.** 제안은 최대 24시간 묵었을 수 있다. 최근 계획 주기(10분 이내)가 같은 AIRCRAFT에 같은 종류를 여전히 내고, 8.5의 거절 조건을 모두 통과할 때만 실행한다. 아니면 409를 돌려주고 제안은 열린 채로 둔다.
+3. **SUPERVISOR만, 이 화면에서만.** 승인 운용으로 켜는 스위치와 모든 승인에는 이 화면의 Origin이 필요하다. LAUNCH·STOP·AUTOLAND와 같다. `atcctl`에는 FLEET PLAN 명령이 없어서 TOWER·OCC·CROSSCHECK·REVIEW는 승인도, 켜기도 못 한다. 그림자로 돌리는 것은 어디서든 된다. 끄는 것은 막지 않는다.
+4. **게이트를 넘어야 켤 수 있다.** 그림자 게이트가 준비됐을 때만 승인 운용을 켤 수 있다(건수는 결정 참고). 블록은 계속 게이트를 보여 준다. 승인 운용에서는 승인이 동의, 거절이 반대로 센다.
+5. **모든 단계가 기록에 남는다.** 제안마다 `approve` 줄 하나와, 단계별 결과를 담은 `executed` 줄 하나가 남는다. FLIGHT RECORDER에는 단계마다 `by: "FLEET PLAN F-0001"`인 `fleet` 줄이 남는다.
+
+**종류별 실행.**
+
+| 종류 | 승인하면 하는 일 | 승인 양식의 선택지 |
+|---|---|---|
+| `LAUNCH` | 제안한 AIRCRAFT를 8.5 LAUNCH | permission mode(기본 `auto`), 모델(선택) |
+| `ENTRY` | ENTRY INTO SERVICE(제안한 REGISTRATION·AIRPORT·CONFIGURATION) 뒤 LAUNCH | LAUNCH와 같다. REGISTRATION을 다시 확인해 이미 쓰였으면 거절 |
+| `STOP` | 8.5 STOP | 없음 |
+| `RESTART` | STOP 뒤 새 CREW BRIEFING으로 LAUNCH | permission mode·모델. 그 AIRCRAFT의 마지막 LAUNCH 기록(FLIGHT RECORDER)으로 미리 채움 |
+| `AOG` | 프로필 `aog: {reason: "FLEET PLAN F-0001: <사유 코드>", until}` | `until` 날짜(기본은 제안의 값) |
+| `RETIRE` | 프로필 `retired: {reason: "FLEET PLAN F-0001"}`. 백그라운드 세션을 모는 AIRCRAFT면 이어서 STOP | "백그라운드 세션도 멈춤"(기본 켜짐) |
+| `RETURN`(새 종류) | 프로필 `aog: null` | 없음 |
+
+`RETURN`은 8.6의 AOG 줄에서 약속한 후속 제안이다. FLEET PLAN이 AOG로 둔 AIRCRAFT의 `until` 날짜가 지나면 RETURN을 제안한다. 사유에는 원인이 풀렸는지(살아 있는 세션, 24시간 LOS 없음) 아직 남았는지를 적는다. 여전히 NORDO인 AIRCRAFT는 AOG가 풀린 뒤 보통의 LAUNCH 후보로 다시 나온다. RETIRE는 계속 30일 규칙에서만 나온다.
+
+**일부만 된 실행.** ENTRY와 RESTART는 두 단계다. 둘째 단계가 실패하면 첫째 단계는 된 채로 남고, `executed` 줄이 어느 단계에서 실패했는지 적는다. 그러면 AIRCRAFT가 FLEET에 들어왔지만 운항하지 않거나, 세션이 멈췄지만 다시 뜨지 않은 상태가 된다. 둘 다 카드 버튼으로 손으로 마무리한다. 실패한 실행은 제안을 `failed`로 닫되 24시간 쉬지 않는다. 그래서 다음 주기들이 다시 제안할 수 있다.
+
+**기록과 화면.**
+
+- `fleet-plan.jsonl`에 `{op: "approve", id, by, at, options}`와 `{op: "executed", id, at, ok, steps: [{action, ok, jobId?, error?}]}`가 더해진다. 상태는 `open → executing → executed | failed`가 되고, 거절하면 `open → disagreed`다. `executing`은 요청하는 동안만이고, id마다 잠금을 둬서 두 번 눌러도 한 번만 실행한다.
+- 모드는 별도 파일 `~/.local/state/atc/fleet-plan.json`(`{mode: "shadow" | "approval"}`)에 두고 원자적으로 바꿔 쓴다. 바꿀 때마다 FLIGHT RECORDER에 `{kind: "fleet-plan", op: "mode:approval" | "mode:shadow", by}`를 남긴다. 4단계가 승인 운용 기간을 이것으로 잰다(ATFM과 같은 `approvalRunOf`).
+- FLIGHT RECORDER의 `fleet` 줄에 `launch`·`stop` 말고 `entry`·`aog`·`return`·`retire` op가 더해진다.
+- API:
+  - `POST /api/fleet/plan/mode {mode}`: approval은 Origin과 준비된 게이트가 있어야 한다(아니면 409). shadow는 언제나 받는다.
+  - `POST /api/fleet/plan/:id/approve {permissionMode?, model?, until?, stopSession?}`(Origin): `executed` 결과를 돌려준다. 그림자 모드(409), 닫힌 제안(409), 조건이 바뀐 제안(409, "조건이 바뀜")은 거절한다.
+  - `GET /api/fleet/plan`에 `mode`, `approvalSince`, 열린 제안마다 `stale`(최근 주기가 더는 내지 않음)이 더해진다.
+- 블록의 게이트 옆에 스위치가 생긴다. 승인 운용에서는 동의 대신 **승인(실행)** 버튼이 나온다. 누르면 무엇이 실행되는지와 위 선택지를 담은 작은 양식이 열린다. LAUNCH·ENTRY·RESTART에는 백그라운드 세션 수와 상한도 같이 보인다. 최근 제안에는 실행한 단계가 보인다.
+
+**만든 것(2026-09-28).** 아래 1~6번. 초안이 열어 둔 것은 이렇게 정했다.
+
+- **승인 운용의 동의.** 승인 운용에서는 동의 자리에 승인(실행)이 온다. 실행 없는 `agree` 판정은 받지 않는다(409). 거절은 그림자처럼 `disagree` 판정이다.
+- **실패와 다시 시도.** 실패한 실행은 조건이 이어지는 한 다음 주기에 다시 나온다. 지속 조건 시각은 그대로 이어진다. 실행 중 서버에 예상 못 한 오류가 나면 단계 없이 `failed`로 닫아서, `executing`으로 남는 제안이 없다.
+- **RESTART 시점.** RESTART는 멈춘 세션이 `claude agents`에서 빠질 때까지 5초까지 기다린 뒤 다시 띄운다.
+- **끄기.** 화면 밖에서 그림자로 돌리면 기록에 `by: "API"`로 남는다.
+- **보이는 곳.** 열린 목록에 `executing` 제안도 보인다. `approvalSince`는 FLIGHT RECORDER의 마지막 `mode:` 줄에서 읽는다(보존 30일).
+- **7702 시험(임시 상태, 게이트를 채운 기록).**
+  - Origin 없이 승인 운용을 켜려 하면 거절됐다(403). 화면에서는 켜졌고, 승인 양식에 RETIRE 체크박스가 보였다.
+  - RETIRE TEAM_C를 승인하자 `approve`·`executed`가 적히고, 임시 FLEET에서 TEAM_C가 퇴역했고, FLIGHT RECORDER에 `by: "FLEET PLAN F-0022"`인 `retire` 줄이 남았다.
+  - 두 번째 승인과 승인 운용 중의 `agree`는 409였다. 떼어 낸 LAUNCH·STOP도 데스크톱 세션을 여전히 거절한다.
+
+아직 안 만든 것: 4단계(자동 STOP), 주간 사용량 줄(FUEL), FLEET PLAN 제안의 CROSSCHECK mark.
+
+**구현 순서.**
+
+1. ✅ 모드 파일, Origin과 게이트를 보는 스위치 API, `mode:` 줄, 블록의 스위치.
+2. ✅ 순수 함수 `executionOf(proposal, latestCandidates, context)`: 실행 단계와 거절(조건이 바뀜, 모드, 8.5 거절 조건, REGISTRATION이 이미 쓰임). 종류마다, 그리고 일부만 된 실행의 테스트.
+3. ✅ 8.5 핸들러를 `launchAircraft(reg, options, by)`와 `stopAircraft(reg, by)`로 떼어 내 버튼과 승인이 같이 쓴다. id별 잠금과 기록을 갖춘 승인 API.
+4. ✅ 블록의 승인 양식, 최근 제안에 실행한 단계 표시.
+5. ✅ 기한이 지난 FLEET PLAN AOG의 `RETURN`.
+6. ✅ DOCS 안내와 CHANGELOG.
+
+**위험.**
+
+| 위험 | 막는 법 |
+|---|---|
+| 바뀐 사실 위에서 오래된 제안을 승인 | 최근 주기(10분 이내)와 8.5 거절 조건으로 다시 확인 |
+| 두 번 실행(두 번 클릭, 탭 두 개) | id별 잠금, `open` → `executing` 전이는 한 번만 |
+| 사용량 | 백그라운드 상한(8.5), LAUNCH마다 승인 하나. FUEL은 나중에 |
+| ENTRY·RESTART가 반만 됨 | 단계마다 기록, 24시간 쉬지 않음, 카드 버튼으로 손으로 마무리 |
+| 다른 세션이 승인 | 승인과 승인 운용 켜기에 Origin 검사, `atcctl` 명령 없음 |
+| 승인 운용을 너무 일찍 켬 | 게이트가 준비될 때까지 스위치가 거절 |
+
+**결정(2026-09-28, SUPERVISOR): 모두 제안대로.**
+
+1. **켜는 조건:** 그림자 게이트 그대로(판정 20건, 80%).
+2. **스위치 위치:** 별도 파일 `fleet-plan.json`. DISPATCH와 FLEET PLAN을 따로 켠다.
+3. **승인할 때 LAUNCH의 기본 permission mode:** `auto`. LAUNCH 버튼과 같다.
+4. **RETIRE가 백그라운드 세션을 멈추나:** 기본으로 멈추고, 체크를 풀면 남긴다.
+5. **실패한 실행:** 24시간 쉬지 않는다. 지속 조건을 채우면 제안이 다시 나온다.
+
 ## 9. `lane:`에서 `tail:`로 옮기기
 
 네 단계 모두 끝났다.
@@ -710,7 +800,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 6. ◐ FLEET 카드의 LOGBOOK 기반 TARGETS 실적(7.1, 7.2)과 NETWORK의 프로젝트 목표 옆 표시(7.3). 남은 일: 분류별 중앙값으로 정시 기준 잡기, OCC 목표 변경 초안의 S2(7.4, S1은 만듦)
 7. ✅ FLEET 탭의 팀 꾸리기(8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE(8.2): LOGBOOK의 TYPE RATING 근거, GRANT·REVIEW 추천, SUPERVISOR의 부여·회수
-9. ✅ 세션 조종(8.5): FLEET 탭의 LAUNCH·STOP. 남은 일: 수요 기반 제안의 승인(FLEET PLAN, 8.6, 그림자는 만듦), RESTART, 다시 띄우는 CREW CHANGE, 사용량 예산
+9. ✅ 세션 조종(8.5): FLEET 탭의 LAUNCH·STOP. 남은 일: 자동 STOP(FLEET PLAN 4단계. 그림자·승인 운용은 8.6·8.7에서 만듦), FLEET PLAN 밖의 RESTART, 다시 띄우는 CREW CHANGE, 사용량 예산
 
 ## 11. 위험과 대응
 
