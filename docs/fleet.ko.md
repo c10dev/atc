@@ -686,7 +686,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 **결정 (2026-09-28, SUPERVISOR).**
 
 - 기본값은 제안대로: `reserve` 1, `waitMin` 120, `idleHours` 12, `restartDays` 3, `retireDays` 30, `minDwell` 2시간. 이후 조정은 그림자 기록과 게이트로 정한다.
-- ATC FLIGHT도 수요로 센다. FLEET PLAN은 `candidateTeams`만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 열린 FLIGHT를 세고, 제외 규칙은 planner와 같다(상위 이슈, 닫힌 상태, 다른 AIRCRAFT로 가는 `tail:`). DISPATCH는 여전히 `candidateTeams`만 배정하므로, ATC 수요로 나온 LAUNCH는 ATC를 거기 넣기 전까지 직접 배정(structure나 사람)에 쓰인다. ATC FLIGHT도 워크스페이스 분류 라벨을 쓴다. 라벨이 없는 FLIGHT는 rating 확인을 건너뛰고 사유에 그렇게 적는다.
+- ATC FLIGHT도 수요로 센다. FLEET PLAN은 `candidateTeams`만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 열린 FLIGHT를 세고, 제외 규칙은 planner와 같다(상위 이슈, 닫힌 상태, 다른 AIRCRAFT로 가는 `tail:`). DISPATCH는 `candidateTeams`만 배정한다. 2026-09-28에 ATC를 거기 넣어 ATC FLIGHT도 DISPATCH가 배정한다. ATC FLIGHT도 워크스페이스 분류 라벨을 쓴다. 라벨이 없는 FLIGHT는 rating 확인을 건너뛰고 사유에 그렇게 적는다.
 - 4단계(자동 STOP)는 계획에 두되 마지막에 만들고, 스위치는 기본으로 꺼 둔다. 켜는 것은 그림자 게이트를 통과한 뒤 SUPERVISOR가 따로 정한다.
 
 출처: [Jeppesen crew pairing](https://ww2.jeppesen.com/airline-crew-optimization-solutions/airline-crew-pairing/), [Lufthansa Systems NetLine/Crew](https://www.lhsystems.com/solutions/operations-control-center/netline-crew), [항공 disruption recovery 조사(arXiv 2510.26831)](https://arxiv.org/html/2510.26831), [OAG: wet leasing](https://www.oag.com/blog/what-is-wet-leasing), [SKYbrary: MEL](https://skybrary.aero/articles/minimum-equipment-list-mel), [EASA AI 등급(Halldale)](https://www.halldale.com/civil-aviation/easa-ai-framework-aviation-safety-regulations), [ICAO: 항공기 주기](https://www.icao.int/operational-safety/Aircraft-Parking).
