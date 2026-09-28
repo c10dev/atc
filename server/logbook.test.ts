@@ -3,6 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { compareBriefs } from "./briefs.ts";
 import type { Departure } from "./departures.ts";
 import {
   appendLogbook,
@@ -128,6 +129,29 @@ test("LOGBOOK 쓰기: repo#number로 한 번만 쓰고, Revert PR은 원래 줄�
   assert.equal(entries.length, 1); // Revert PR은 FLIGHT가 아니다
   assert.equal(entries[0].reverted, true);
   assert.deepEqual(entries[0].revertedBy, { number: 35, url: "https://github.com/o/atc/pull/35", at: "2026-09-27T09:00:00Z" });
+});
+
+test("fuel 칸(ATC-53): 옛 arrived 줄(없음)과 새 줄(있음)이 섞여도 접기·쓰기·실적·지시서 비교가 그대로 돈다", () => {
+  const dir = mkdtempSync(join(tmpdir(), "atc-logbook-"));
+  const file = join(dir, "logbook.jsonl");
+  const c = ctx({ landingStands: new Map([["/r/atc#31", new Set(["/w/atc-logbook"])], ["/r/atc#32", new Set(["/w/atc-logbook"])]]) });
+  const old = planLogbook([{ ctx: c, pulls: [pr()] }], [], "2026-09-26T14:05:00Z");
+  appendLogbook(old, file);
+  const burn = { input: 1, cacheWrite5m: 0, cacheWrite1h: 2, cacheRead: 7, output: 3, requests: 1, cacheHit: 0.7 };
+  const fuel = { captain: burn, crew: { ...burn, outputLowerBound: true as const }, cacheHit: 0.7, models: { "claude-opus-5-5": 2 } };
+  const next = planLogbook([{ ctx: c, pulls: [pr({ number: 32, title: "Next (VOC-202)", url: "https://github.com/o/atc/pull/32", mergedAt: "2026-09-26T16:00:00Z" })] }], readLogbook(file), "2026-09-26T16:05:00Z");
+  assert.equal(next.length, 1);
+  if (next[0].op === "arrived") next[0].fuel = fuel;
+  appendLogbook([...next, { op: "measured", t: "2026-09-26T16:10:00Z", key: "o/atc#32", rework: 0 }], file);
+  assert.equal(planLogbook([{ ctx: c, pulls: [pr()] }], readLogbook(file)).length, 0); // 중복 판정은 그대로
+
+  const entries = foldLogbook(readLogbook(file));
+  assert.deepEqual(entries.map((e) => [e.key, e.fuel ?? null]), [["o/atc#32", fuel], ["o/atc#31", null]]);
+  assert.equal(entries[0].measured?.rework, 0);
+  const actuals = computeActuals(entries, "TEAM_J", Date.parse("2026-09-27T00:00:00Z"));
+  assert.equal(actuals.total, 2);
+  assert.deepEqual(actuals.recent[0].fuel, fuel);
+  assert.equal(compareBriefs(entries, Date.parse("2026-09-27T00:00:00Z"), 30).unmeasured, 2);
 });
 
 test("LOGBOOK 되돌림 대상: body의 Reverts 참조, 없으면 같은 저장소의 같은 제목, 모르는 PR은 무시", () => {

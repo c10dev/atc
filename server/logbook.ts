@@ -11,6 +11,8 @@ import { briefFactsOf, compareBriefs, crewModeOf, findingsOf, type Measured, rew
 import { readRecords } from "./recorder.ts";
 import { type Departure, matchDepartures, readDepartures } from "./departures.ts";
 import { readHookClaims, sessionEventsOf } from "./sources/claude.ts";
+import { type FlightFuel, fuelForEntry } from "./fuel-flights.ts";
+import { attributeWindow, scanFuel } from "./fuel-run.ts";
 import { sessionDirsOf } from "./crew-observed.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
@@ -51,6 +53,7 @@ export interface LogEntry {
   revertedBy?: { number: number; url: string; at: string } | null;
   los: number;
   measured?: Measured; // 지시서(VECTORS·DIRECT)와 P0–P2 지적·수정 커밋(ATC-32). measured 줄로 채운다
+  fuel?: FlightFuel; // FUEL F4(ATC-53): 이 FLIGHT 구간의 FUEL BURN. arrived 줄을 쓸 때만 붙이고, 옛 줄과 모르는 FLIGHT에는 없다
 }
 
 // PR 본문과 FLIGHT의 관계. vocado 규칙상 `Fixes VOC-n`만 이슈를 끝내고, `Part of VOC-n`은 일부다.
@@ -433,7 +436,13 @@ async function run(s: Snapshot) {
       errors.push(`${a.code}: ${(err.stderr?.trim() || err.message).split("\n")[0]}`);
     }
   }
-  const lines = planLogbook(merged, readLogbook());
+  const old = readLogbook();
+  const lines = planLogbook(merged, old);
+  try {
+    addFuel(lines, old, s);
+  } catch (e) {
+    errors.push(`FUEL: ${String((e as Error).message ?? e).split("\n")[0]}`); // fuel 없이 쓴다(옛 줄과 같다)
+  }
   appendLogbook(lines);
   if (lines.length) console.log(`[atc] LOGBOOK +${lines.length}`);
   try {
@@ -443,6 +452,21 @@ async function run(s: Snapshot) {
   }
   logbookState.error = errors.length ? errors.join(" · ") : null;
   logbookState.ranAt = new Date().toISOString();
+}
+
+// FUEL F4: 새 arrived 줄에 그 FLIGHT 구간의 FUEL BURN을 붙인다. 이미 쓴 줄은 고치지 않는다(추가만).
+// 대화 기록은 FUEL_LOGBOOK_DAYS만 읽고, 그보다 먼저 출발한 FLIGHT에는 붙이지 않는다(fuelForEntry)
+export const FUEL_LOGBOOK_DAYS = 14;
+function addFuel(lines: LogLine[], old: LogLine[], s: Snapshot, now = Date.now()) {
+  const since = now - FUEL_LOGBOOK_DAYS * DAY;
+  const arrivals = lines.flatMap((l) => (l.op === "arrived" && l.departedFrom !== "pr" && Date.parse(l.departedAt) >= since ? [l] : []));
+  if (!arrivals.length) return;
+  // 도착한 FLIGHT 모두(이번 줄 포함)와 EN ROUTE FLIGHT로 자른다. 앞 FLIGHT의 착륙 대기와 겹친 다음 FLIGHT 몫을 가려내려고
+  const att = attributeWindow(scanFuel(since, s.sessions), s, foldLogbook([...old, ...lines]), since, now);
+  for (const l of arrivals) {
+    const fuel = fuelForEntry(l, att, since);
+    if (fuel) l.fuel = fuel;
+  }
 }
 
 // 지시서·지적·수정 커밋을 재서 measured 줄로 덧붙인다. 대화 기록은 사건(시각·받는 곳·표시)만 뽑고 본문은 두지 않는다

@@ -40,7 +40,7 @@ export interface ParsedFuel {
 
 export const KIND_KEYS = ["input", "cacheWrite5m", "cacheWrite1h", "cacheRead", "output"] as const;
 
-const zero = (): Kinds => ({ input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0, output: 0 });
+export const zero = (): Kinds => ({ input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0, output: 0 });
 const count = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : v == null ? 0 : null);
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 export const tokenSum = (k: Kinds): number => k.input + k.cacheWrite5m + k.cacheWrite1h + k.cacheRead + k.output;
@@ -238,7 +238,7 @@ export interface SummaryInput {
   days: number;
 }
 
-const addKinds = (to: Kinds, r: Kinds) => {
+export const addKinds = (to: Kinds, r: Kinds) => {
   for (const k of KIND_KEYS) to[k] += r[k];
 };
 
@@ -280,7 +280,7 @@ class CrewAcc {
   }
 }
 
-const burn = (k: Kinds, requests: number): Burn => ({ ...k, requests, cacheHit: cacheHit(k) });
+export const burn = (k: Kinds, requests: number): Burn => ({ ...k, requests, cacheHit: cacheHit(k) });
 
 interface Acc {
   captain: Kinds;
