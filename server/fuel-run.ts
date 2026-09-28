@@ -1,9 +1,13 @@
 import { closeSync, type Dirent, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
+import { allClearances } from "./clearances.ts";
 import { config } from "./config.ts";
+import { allCrewChanges } from "./crew-change.ts";
+import { controlSendsOf, findLeaks } from "./fuel-leaks.ts";
 import { type AgentMeta, type Compaction, dedupeFuel, type FuelRecord, parseFuelLines, summarizeFuel } from "./fuel.ts";
 import type { Snapshot } from "./model.ts";
+import { allProposals } from "./proposals.ts";
 
 // FUEL 읽기(ATC-50, docs/fuel.md 4): ~/.claude/projects의 대화 기록을 파일마다 지난번 바이트 뒤부터만 읽는다(talkEventsFile과 같은 방식).
 // 본 대화 기록 <sessionId>.jsonl은 CAPTAIN, <sessionId>/subagents/**/agent-*.jsonl은 CREW. 읽기만 하고 아무것도 쓰지 않는다.
@@ -182,8 +186,21 @@ export function readFuel(days: number, sessions: Snapshot["sessions"], now = Dat
     if (s.status !== "dead") live.add(s.id);
     if (s.name && s.name !== s.id.slice(0, 8)) names.set(s.id, s.name);
   }
-  const summary = summarizeFuel({ records: all.values(), compactions, unknownBySession, names, live, agents, now, days });
+  const leaks = findLeaks(all.values(), compactions, controlSends(), names);
+  const summary = summarizeFuel({ records: all.values(), compactions, unknownBySession, names, live, agents, leaks, now, days });
   return { at: new Date(now).toISOString(), ...summary, scan: { files: files.length, bytesRead: bytes, ms: Math.round(performance.now() - t0) } };
+}
+
+// atc가 보낸 CLEARANCE·FLIGHT PLAN·RECALL·CREW CHANGE의 시각과 받는 세션. 기록이 없거나 깨졌으면 그 종류만 빈다
+function controlSends() {
+  const safe = <T>(read: () => T[]): T[] => {
+    try {
+      return read();
+    } catch {
+      return [];
+    }
+  };
+  return controlSendsOf({ clearances: safe(allClearances), proposals: safe(allProposals), crewChanges: safe(allCrewChanges) });
 }
 
 export function fuelDays(q: string | undefined): number {
