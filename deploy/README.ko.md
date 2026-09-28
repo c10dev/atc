@@ -41,6 +41,25 @@ systemctl --user disable --now atc    # 멈추고 자동 시작에서 빼기
 
 `atc.service` 자체를 고쳤으면 다시 복사하고 `systemctl --user daemon-reload`한 뒤 재시작한다.
 
+## RETURN TO SERVICE(MCC)
+
+`atc-rts.service`는 머지된 `origin/main`을 도는 서비스에 올리는 oneshot 유닛이다([docs/mcc.md](../docs/mcc.md) 6장). MCC 스위치가 `land+rts`일 때 atc 서버가 `systemctl --user start --no-block atc-rts`로 시작한다. 서비스 밖에서 돌아야 재시작을 끝까지 본다. 한 번 설치한다(`enable`하지 않는다: 부를 때만 돈다):
+
+```bash
+cp deploy/atc-rts.service ~/.config/systemd/user/ && systemctl --user daemon-reload
+```
+
+`deploy/rts.mjs`가 하는 순서:
+
+1. `~/.local/state/atc/rts.lock`을 잡는다(한 번에 하나, 10분 넘은 잠금은 죽은 것으로 본다).
+2. 본 체크아웃이 `main`이고 커밋하지 않은 변경이 없고 `origin/main`으로 fast-forward할 수 있고, `origin/main`의 CI `check`가 통과했을 때만 한다.
+3. 범위가 `package.json`, `package-lock.json`(`npm ci` 필요)이나 `deploy/*.service`·`*.timer`(`daemon-reload` 필요)를 바꾸면 거절한다: 사용자가 배포한다.
+4. `git merge --ff-only`, `systemctl --user restart atc`(유닛의 `ExecStartPre`가 화면을 다시 빌드한다). 체크아웃은 이미 대상인데 서비스가 다른 커밋을 알리면 재시작만 한다.
+5. 90초까지 상태 확인: `/api/version`이 대상 `head`와 더 늦은 `startedAt`을 알리고 `/api/snapshot`이 답한다.
+6. 실패하면 ROLLBACK: 직전 커밋으로 `git reset --hard`하고 재시작한다. 그 뒤 RTS는 SUPERVISOR가 설정 창에서 MCC 모드를 다시 고를 때까지 멈춘다.
+
+시도마다 `~/.local/state/atc/rts.jsonl`에 한 줄을 붙인다(`running` 다음 `ok`·`refused`·`rollback`·`failed`).
+
 ## CI와 LANDING CLEARANCE 등급
 
 `.github/workflows/ci.yml`은 모든 PR과 main 푸시에서 `check` 작업을 돌린다: `npm ci`, `npm test`, `npx tsc --noEmit -p .`, `npx vite build`. PR에서는 그 PR의 LANDING CLEARANCE 등급도 실행 요약에 적는다.
@@ -50,7 +69,7 @@ systemctl --user disable --now atc    # 멈추고 자동 시작에서 빼기
 | 등급 | 경로 | 뜻 |
 |---|---|---|
 | `user` | guard(`*guard*.mjs`), `.claude/` 설정(관제 세션 폴더의 `skills/` 제외), 루트 `.claude/` 전부(팀 세션 skill), 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`(README 제외) | 사용자가 정해야 함 |
-| `flagged` | `controller/`, `occ/`, `crosscheck/`, `review/`, `dispatch/`(매뉴얼, skill, atc CLI, guard 테스트) | 관제 세션이 하는 일이 바뀜. 바뀐 규칙을 따로 알린다 |
+| `flagged` | `controller/`, `occ/`, `crosscheck/`, `review/`, `mcc/`, `dispatch/`(매뉴얼, skill, atc CLI, guard 테스트) | 관제 세션이 하는 일이 바뀜. 바뀐 규칙을 따로 알린다 |
 | `auto` | 나머지(서버, 화면, 문서, 테스트) | 안전장치·권한과 무관 |
 
 바뀐 파일 중 가장 높은 등급을 쓴다. 등급마다 누가 머지하는지는 루트 `CLAUDE.md`가 정한다.

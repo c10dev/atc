@@ -41,6 +41,25 @@ systemctl --user disable --now atc    # stop and remove from startup
 
 After editing `atc.service` itself, copy it again and run `systemctl --user daemon-reload` before restarting.
 
+## RETURN TO SERVICE (MCC)
+
+`atc-rts.service` is a oneshot unit that puts the merged `origin/main` into the running service ([docs/mcc.md](../docs/mcc.md) section 6). The atc server starts it with `systemctl --user start --no-block atc-rts` when the MCC switch is `land+rts`; it runs outside the service so it can watch the restart to the end. Install it once (no `enable`: it only runs on demand):
+
+```bash
+cp deploy/atc-rts.service ~/.config/systemd/user/ && systemctl --user daemon-reload
+```
+
+`deploy/rts.mjs`, in order:
+
+1. Takes `~/.local/state/atc/rts.lock` (one RTS at a time; a lock older than 10 minutes is stale).
+2. Refuses unless the main checkout is on `main`, has no uncommitted changes, and can fast-forward to `origin/main`, and CI `check` on `origin/main` passed.
+3. Refuses when the range changes `package.json`, `package-lock.json` (needs `npm ci`) or a `deploy/*.service` / `*.timer` (needs `daemon-reload`): the user deploys those.
+4. `git merge --ff-only`, `systemctl --user restart atc` (the unit's `ExecStartPre` rebuilds the screen). If the checkout is already there but the service reports another commit, it only restarts.
+5. Health check for up to 90 s: `/api/version` reports the target `head` with a later `startedAt`, and `/api/snapshot` answers.
+6. On failure: ROLLBACK. `git reset --hard` to the previous commit and restart. RTS then stays stopped until the SUPERVISOR picks the MCC mode again in the settings window.
+
+Every attempt appends a line to `~/.local/state/atc/rts.jsonl` (`running`, then `ok`, `refused`, `rollback` or `failed`).
+
 ## CI and LANDING CLEARANCE tier
 
 `.github/workflows/ci.yml` runs the job `check` on every pull request and on pushes to main: `npm ci`, `npm test`, `npx tsc --noEmit -p .` and `npx vite build`. On a pull request it also writes the PR's LANDING CLEARANCE tier to the run summary.
@@ -50,7 +69,7 @@ After editing `atc.service` itself, copy it again and run `systemctl --user daem
 | Tier | Paths | Meaning |
 |---|---|---|
 | `user` | guards (`*guard*.mjs`), `.claude/` settings (not `skills/` in a control-session folder), everything under the root `.claude/` (team-session skills), the root `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/` (not the README) | Needs the user's decision |
-| `flagged` | `controller/`, `occ/`, `crosscheck/`, `review/`, `dispatch/` (manuals, skills, the atc CLI, guard tests) | Changes what a control session does; call out the changed rules |
+| `flagged` | `controller/`, `occ/`, `crosscheck/`, `review/`, `mcc/`, `dispatch/` (manuals, skills, the atc CLI, guard tests) | Changes what a control session does; call out the changed rules |
 | `auto` | everything else (server, UI, docs, tests) | No safety or permission surface |
 
 The highest tier among the changed files wins. Who may merge each tier is set in the root `CLAUDE.md`.
