@@ -264,7 +264,7 @@ test("FLIGHT PLAN 문구(DIRECT): 이슈 본문에서 목표·완료 기준·이
   const [p] = fold([create("D-0009", "VOC-200", "b", 10)]);
   const body = ["## 목표", "재생 버튼 정리", "## 수정 허용 범위", "- src/app/song/**", "## 금지 사항", "- DB 변경", "## 완료 기준", "- 테스트 통과", "- 화면 확인"].join("\n");
   const msg = formatFlightPlan({ ...p, airport: "VCDO" }, { title: "버튼", url: "u", priority: 3 }, "TEAM_F", body);
-  assert.ok(msg.includes("목표: 재생 버튼 정리\n완료 기준:\n- 테스트 통과\n- 화면 확인\n이 작업만의 제약: - DB 변경"), msg);
+  assert.ok(msg.includes("목표: 재생 버튼 정리\n완료 기준:\n- 테스트 통과\n- 화면 확인\n이 작업만의 제약:\n- DB 변경"), msg);
   assert.ok(!msg.includes("src/app/song"));
   assert.ok(msg.split("\n")[1] === "BRIEF: DIRECT");
 });
