@@ -9,6 +9,7 @@ import type { EventLog } from "./events.ts";
 import { type AtfmConfig, DEFAULT_ATFM, enforcedStops, landOf, loadAtfm, slotHoldOf, slotLimitOf, slotsOf } from "./atfm.ts";
 import { healthLabel } from "./health.ts";
 import { fuelInfos } from "./fuel-remaining.ts";
+import type { FuelWatch } from "./fuel-watch.ts";
 import { inSequence, pullKey, reviewerOf } from "./landing.ts";
 import { record } from "./recorder.ts";
 import type { Clearance, ClearanceType, Session, Snapshot, TrafficEvent } from "./model.ts";
@@ -40,6 +41,7 @@ export function buildBrief(
   clearances: Clearance[],
   now = Date.now(),
   atfm: AtfmConfig = DEFAULT_ATFM,
+  fuel: FuelWatch | null = null,
 ) {
   const sessionById = new Map(s.sessions.map((x) => [x.id, x]));
   const label = (id: string) => sessionLabel(sessionById.get(id), id);
@@ -187,6 +189,11 @@ export function buildBrief(
       healthAlerts: alertsOf("health").map((a) => ({ message: a.message, sessions: a.sessionIds?.map(label) })),
       // FUEL REMAINING(ATC-55): INFO 임계값을 넘은 ACCOUNT(모르면 AIRCRAFT)마다 하나. key가 같으면 이미 알린 것
       fuel: fuelInfos(s.fuelAccounts ?? s.fuel ?? {}, now),
+      // FUEL F8(ATC-56): 24시간 안 큰 LEAK(팀 AIRCRAFT마다, key는 AIRCRAFT·날짜)과, 지금 보내면 캐시가 식어 있는 HOLDING CAPTAIN.
+      // 경고만 한다 — CLEARANCE를 막지 않는다. 대화 기록을 읽지 못했으면 fuelError
+      fuelLeaks: fuel?.largeLeaks ?? [],
+      coldCache: fuel?.coldCache ?? [],
+      fuelError: fuel?.error ?? null,
       // STRANDED(ATC-29): 기본 브랜치에 닿지 않은 머지. Linear Done이어도 남는다
       stranded: (s.stranded ?? []).map((x) => ({ flight: flight(x.flight), key: x.flight, pr: x.number, url: x.url, base: x.base, mergedAt: x.mergedAt, message: alertsOf("stranded").find((a) => a.ticketKey === x.flight)?.message ?? null })),
     },
@@ -253,13 +260,15 @@ function writeCursor(name: string, cursor: string) {
   writeFileSync(consumerFile(name), JSON.stringify({ cursor, at: new Date().toISOString() }) + "\n");
 }
 
-export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>, log: EventLog) {
+// watchFuel: FUEL 경고(fuel-watch.ts). fuel-run.ts를 거쳐 순환이 되므로 index.ts가 넘긴다
+export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>, log: EventLog, watchFuel?: (s: Snapshot) => FuelWatch) {
   const consumerOf = (v: string | undefined) => (v && /^[\w-]+$/.test(v) ? v : "controller");
 
   app.get("/api/controller/brief", async (c) => {
     const consumer = consumerOf(c.req.query("consumer"));
     const since = log.since(c.req.query("cursor") ?? readCursor(consumer));
-    return c.json(buildBrief(await getSnapshot(), since, allClearances(), Date.now(), loadAtfm()));
+    const s = await getSnapshot();
+    return c.json(buildBrief(s, since, allClearances(), Date.now(), loadAtfm(), watchFuel?.(s) ?? null));
   });
 
   app.post("/api/controller/ack", async (c) => {

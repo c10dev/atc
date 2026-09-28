@@ -9,7 +9,8 @@ import { rememberAgentModels } from "./agent-models.ts";
 import type { CrewMember } from "./crew.ts";
 import { loadFleet } from "./fleet.ts";
 import { agentModels, type CrewWarning, crewWarnings } from "./fuel-crew.ts";
-import { mergePriceTables, parsePriceTable, type PriceTable, priceFlightFuel } from "./fuel-cost.ts";
+import { type PriceTable, priceFlightFuel } from "./fuel-cost.ts";
+import { readPrices } from "./fuel-prices.ts";
 import { type Baseline, controlSendsOf, findLeaks, type LeakEvent, sessionChangeLeaks } from "./fuel-leaks.ts";
 import { type AgentMeta, type Compaction, dedupeFuel, type FuelRecord, parseFuelLines, summarizeFuel } from "./fuel.ts";
 import { arrivedSpan, type Attribution, attributeFuel, type ClaimSpan, enRouteSpans, flightOf, fuelForEntry } from "./fuel-flights.ts";
@@ -292,41 +293,8 @@ export function readFuel(days: number, s: FlightContext & Pick<Snapshot, "sessio
   };
 }
 
-// FUEL COST 가격표(ATC-54): 저장소의 server/fuel-prices.json 위에 운영 상태 폴더의 fuel-prices.json(있으면)을 모델 단위로 덮는다.
-// 파일 크기·시각이 같으면 다시 읽지 않는다. 읽지 못한 파일과 잘못된 항목은 errors로 돌려준다(그 모델은 값 없음)
-export const DEFAULT_PRICES_FILE = new URL("./fuel-prices.json", import.meta.url).pathname;
-const priceCache = new Map<string, { key: string; table: PriceTable | null; errors: string[] }>();
-export function readPrices(files = [DEFAULT_PRICES_FILE, join(config.stateDir, "fuel-prices.json")]) {
-  const tables: (PriceTable | null)[] = [];
-  const used: string[] = [];
-  const errors: string[] = [];
-  for (const [i, file] of files.entries()) {
-    let st: { size: number; mtimeMs: number };
-    try {
-      st = statSync(file);
-    } catch {
-      if (i === 0) errors.push(`${file}: 없음`);
-      continue; // 덮어쓰는 파일은 없어도 된다
-    }
-    const key = `${st.size}:${st.mtimeMs}`;
-    let hit = priceCache.get(file);
-    if (hit?.key !== key) {
-      const errs: string[] = [];
-      let table: PriceTable | null = null;
-      try {
-        table = parsePriceTable(JSON.parse(readFileSync(file, "utf8")), errs);
-      } catch (e) {
-        errs.push(`읽지 못함: ${(e as Error).message}`);
-      }
-      hit = { key, table, errors: errs.map((x) => `${file}: ${x}`) };
-      priceCache.set(file, hit);
-    }
-    tables.push(hit.table);
-    if (hit.table) used.push(file);
-    errors.push(...hit.errors);
-  }
-  return { table: mergePriceTables(...tables), files: used, errors };
-}
+// 가격표 읽기는 fuel-prices.ts로 옮겼다(fleet·DISPATCH가 순환 없이 쓰도록). 옛 import를 위해 다시 내보낸다
+export { DEFAULT_PRICES_FILE, readPrices } from "./fuel-prices.ts";
 
 // atc가 보낸 CLEARANCE·FLIGHT PLAN·RECALL·CREW CHANGE의 시각과 받는 세션. 기록이 없거나 깨졌으면 그 종류만 빈다
 function controlSends() {

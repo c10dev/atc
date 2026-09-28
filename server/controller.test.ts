@@ -292,3 +292,14 @@ test("ATFM(ATC-62): 켜진 LOS 출발 중지는 새 ASSIGN만 막는다 — land
   assert.deepEqual(diffSnapshots(off, s).filter((e) => e.kind.startsWith("groundstop")), []);
   assert.equal(buildBrief(s, { events: [], reset: false, cursor: "e:0" }, [], T0).groundStops[0].trigger, "los"); // 목록에는 보인다
 });
+
+test("브리핑: FUEL 경고(FUEL F8)는 open.fuelLeaks·open.coldCache로 그대로, 없으면 빈 목록", () => {
+  const s = snapshot();
+  const bare = buildBrief(s, { events: [], reset: false, cursor: "e:0" }, [], T0);
+  assert.deepEqual([bare.open.fuelLeaks, bare.open.coldCache, bare.open.fuelError], [[], [], null]);
+  const cold = { key: "cold|s-b|t", aircraft: "TEAM_B", session: "s-b", lastAt: null, idleMin: 70, ttlMin: 60, prefix: null, cost: null, text: "COLD CACHE — TEAM_B" };
+  const leak = { key: "leak|TEAM_D|2026-09-28", aircraft: "TEAM_D", count: 3, tokens: 2e6, cost: 14, top: "coldCache" as const, text: "FUEL LEAK" };
+  const brief = buildBrief(s, { events: [], reset: false, cursor: "e:0" }, [], T0, undefined, { at: "", largeLeaks: [leak], coldCache: [cold], error: null });
+  assert.deepEqual(brief.open.coldCache.map((c) => c.key), ["cold|s-b|t"]);
+  assert.deepEqual(brief.open.fuelLeaks.map((l) => l.key), ["leak|TEAM_D|2026-09-28"]);
+});

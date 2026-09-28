@@ -22,6 +22,7 @@ Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it (2b) in `/tic
 | Situation (brief field) | What to do |
 |---|---|
 | An `approved` ASSIGN in `inFlight` | `dispatch release <ID>` → SendMessage the text below `---` **unchanged** to the `SEND TO` session. One per CAPTAIN per pass |
+| That ASSIGN's AIRCRAFT is in `fuel.coldCache` of `dispatch brief` (a HOLDING CAPTAIN whose cache has gone cold, ATC-56) | Send it as above anyway: it only warns and never blocks. Put its `text` in the OCC LOG. Don't send a separate message to warm the cache |
 | The CAPTAIN replies "READBACK D-xxxx" | `dispatch readback D-xxxx` |
 | The CAPTAIN reports a STAND-free FLIGHT (SURVEY, CHECK; DEPARTED at READBACK) done | `dispatch arrived D-xxxx -- '<result link or one line>'` |
 | `recalling` in `inFlight` (the SUPERVISOR requested a RECALL in the tab or API) | `dispatch recall-send <ID>` → SendMessage the RECALL text below `---` to the printed `SEND TO` session **unchanged**. Only the SUPERVISOR requests a RECALL; OCC never creates one. Send it even during an enforced ground stop (recalling is the safe direction) |
