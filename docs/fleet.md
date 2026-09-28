@@ -638,7 +638,7 @@ Sources: [Jeppesen crew pairing](https://ww2.jeppesen.com/airline-crew-optimizat
 
 ### 8.7 FLEET PLAN step 3: approval (design draft)
 
-Status: design draft (2026-09-28). Nothing built yet. Section 8.6 built the shadow: atc proposes and the SUPERVISOR agrees or disagrees, and nothing moves. Step 3 lets the SUPERVISOR's approval run the proposal. Each proposal is still approved by a person, one at a time. Automatic STOP stays step 4, off by default.
+Status: design draft (2026-09-28), SUPERVISOR decisions recorded below. Nothing built yet. Section 8.6 built the shadow: atc proposes and the SUPERVISOR agrees or disagrees, and nothing moves. Step 3 lets the SUPERVISOR's approval run the proposal. Each proposal is still approved by a person, one at a time. Automatic STOP stays step 4, off by default.
 
 **Current facts (2026-09-28 07:30 UTC).**
 
@@ -704,13 +704,13 @@ Status: design draft (2026-09-28). Nothing built yet. Section 8.6 built the shad
 | Another session approving | Origin check on approve and on the switch into approval; no `atcctl` command |
 | Approval mode on too early | switch refuses until the gate is ready |
 
-**Decisions needed (SUPERVISOR).**
+**Decisions (2026-09-28, SUPERVISOR): all as proposed.**
 
-1. **Turn-on condition.** Proposed: the shadow gate as it is (20 verdicts, 80%). Proposals are rare with today's demand (none in the first hours), so the alternative is a smaller count for FLEET PLAN (for example 10 at 80%).
-2. **Switch location.** Proposed: its own file `fleet-plan.json`, so DISPATCH (still shadow) and FLEET PLAN switch independently. The alternative is a second key in `dispatch.json`.
-3. **LAUNCH default permission mode on approval.** Proposed: `auto`, the same as the LAUNCH button.
-4. **RETIRE stops the background session.** Proposed: yes by default, with a checkbox to keep it.
-5. **Failed execution.** Proposed: no 24 h cooldown, so the proposal comes back after the persistence window.
+1. **Turn-on condition:** the shadow gate as it is (20 verdicts, 80%).
+2. **Switch location:** its own file `fleet-plan.json`, so DISPATCH and FLEET PLAN switch independently.
+3. **LAUNCH default permission mode on approval:** `auto`, the same as the LAUNCH button.
+4. **RETIRE stops the background session:** yes by default, with a checkbox to keep it.
+5. **Failed execution:** no 24 h cooldown; the proposal comes back after the persistence window.
 
 ## 9. Moving from `lane:` to `tail:`
 
