@@ -323,6 +323,7 @@ atc의 주요 변경 사항을 여기에 적는다. 형식은 [Keep a Changelog]
 - ATFM의 `eligible`·`s3-eligible` 기록 줄에 확인한 조건 코드(A1–A10, S1–S4)가 `checked`로 남는다. 대상 판정을 나중에 설명할 수 있게.
 
 ### 수정
+- atc를 재시작하면(배포나 MCC RTS) 이 기계의 모든 백그라운드 Claude 세션이 죽었다. atc가 처음 부른 `claude --bg`가 Claude의 공용 백그라운드 daemon을 `atc.service` cgroup 안에 띄웠고, `KillMode=control-group`이 서비스와 함께 내렸다(2026-09-28: CONTROL로 띄운 OCC가 배포 때 `failed`로 끝남). 이제 LAUNCH(FLEET·CONTROL)는 `claude`를 따로 임시 systemd scope(`systemd-run --user --scope`)에서 부르므로 daemon이 서비스 밖에 있다. `ATC_BG_SCOPE=off`면 끈다. 예전 방식으로 뜬 daemon이 아직 서비스 안에 있으면 CONTROL 블록이 경고한다([docs/fleet.ko.md](docs/fleet.ko.md) 8.5).
 - LANDING CLEARANCE 등급이 REVIEW 관제 폴더(`review/`, ATC-27)를 몰라, REVIEW 규정만 바꾼 PR이 `auto`로 나왔다. 이제 `review/`도 다른 관제 폴더처럼 `flagged`이고, 그 guard 파일은 그대로 `user`다.
 - LANDING CLEARANCE 등급이 루트 `.claude/skills/`의 skill을 `auto`로 봤다. 루트 skill은 루트 `CLAUDE.md`처럼 팀 세션 지침이라, 이제 루트 `.claude/` 아래는 모두 `user`다. 관제 세션 폴더의 skill은 그대로 `flagged`.
 - DISPATCH가 판정받기 전에 제안을 잃었다([docs/dispatch.md](docs/dispatch.md) 6.1). 제안 19건 중 10건이 판정 전에 SUPERSEDED됐고, 그중 7건이 "더 나은 배정으로 바뀜"이었다. D-0017(VOC-196 → TEAM_E, `tail:TEAM_E`)은 planner가 TEAM_E에게 VOC-177을 줘서 닫혔는데, 그 짝은 D-0010에서 거절돼 `syncOps`가 제안할 수 없었다. 결국 두 FLIGHT 모두 제안이 없었다.
