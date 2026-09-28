@@ -2,9 +2,10 @@ import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } fr
 import { join } from "node:path";
 import { config } from "../config.ts";
 import { toolPaths } from "../../hooks/paths.mjs";
+import { lastPushRecord, type PushRecord } from "../../hooks/health.mjs";
 import type { Claim, Session, Workspace } from "../model.ts";
 import { type TalkEvent, talkEventsOf } from "../briefs.ts";
-import { type Fact, factsOf, type Health, type HealthConfig, healthOf } from "../health.ts";
+import { type Fact, factsOf, type Health, type HealthConfig, healthOf, mergeHealth } from "../health.ts";
 
 interface SessionFile {
   pid: number;
@@ -260,6 +261,37 @@ export function sessionEventsOf(dir: string): TalkEvent[] {
 // AIRCRAFT health(ATC-45): 살아 있는 세션의 대화 기록 끝(64KB)만 읽는다. 사실은 파일 크기·시각이 같으면 다시 읽지 않는다
 const HEALTH_TAIL = 64 * 1024;
 const factsCache = new Map<string, { key: string; facts: Fact[] }>();
+
+// push hook(ATC-47, hooks/health.mjs)이 남긴 health/<sessionId>.jsonl의 마지막 줄. 파일 끝 4KB만 본다.
+// hook이 없거나 파일이 없으면 null — pull만으로 판정한다. 파일 크기·시각이 같으면 다시 읽지 않는다
+const PUSH_TAIL = 4 * 1024;
+const pushCache = new Map<string, { key: string; rec: PushRecord | null }>();
+export function readPushRecord(sessionId: string): PushRecord | null {
+  const path = join(config.stateDir, "health", `${sessionId}.jsonl`);
+  let st;
+  try {
+    st = statSync(path);
+  } catch {
+    return null;
+  }
+  const key = `${st.size}:${st.mtimeMs}`;
+  const hit = pushCache.get(sessionId);
+  if (hit?.key === key) return hit.rec;
+  const fd = openSync(path, "r");
+  let rec: PushRecord | null = null;
+  try {
+    const len = Math.min(st.size, PUSH_TAIL);
+    const buf = Buffer.alloc(len);
+    readSync(fd, buf, 0, len, st.size - len);
+    const text = buf.toString("utf8");
+    rec = lastPushRecord(len < st.size ? text.slice(text.indexOf("\n") + 1) : text);
+  } finally {
+    closeSync(fd);
+  }
+  pushCache.set(sessionId, { key, rec });
+  return rec;
+}
+
 export function healthOfSession(s: SessionFile, status: Session["status"], now: number, cfg?: HealthConfig): Health | null {
   if (status === "dead") return null;
   const path = transcriptPath(s);
@@ -284,5 +316,7 @@ export function healthOfSession(s: SessionFile, status: Session["status"], now: 
     }
     factsCache.set(s.sessionId, hit);
   }
-  return healthOf(hit.facts, { status, lastWriteAt: st.mtimeMs }, now, cfg);
+  const pull = healthOf(hit.facts, { status, lastWriteAt: st.mtimeMs }, now, cfg);
+  // push가 대화 기록의 마지막 사실보다 새로우면 push가 이긴다(ATC-47)
+  return mergeHealth(readPushRecord(s.sessionId), pull, hit.facts);
 }

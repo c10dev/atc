@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classifyError, DEFAULT_HEALTH, factsOf, healthAlerts, healthLabel, healthOf, resetFromText, type SessionState } from "./health.ts";
+import { classifyError, DEFAULT_HEALTH, factsOf, healthAlerts, healthLabel, healthOf, lastFactAt, mergeHealth, type PushRecord, resetFromText, type SessionState } from "./health.ts";
 
 // AIRCRAFT health(ATC-45). 줄 모양은 실제 대화 기록(2026-09-24~28)에서 따왔고, 본문·경로·id는 지웠다.
 const T = (hms: string) => `2026-09-28T${hms}Z`;
@@ -193,3 +193,55 @@ test("임계값은 설정으로 바꾼다", () => {
   const lines = [reply("06:00:00"), prompt("07:00:00")];
   assert.equal(healthOf(factsOf(lines.join("\n")), idle(), at("07:06:00"), { ...DEFAULT_HEALTH, unansweredMin: 5 })?.code, "UNANSWERED");
 });
+
+// ATC-47 push: hooks/health.mjs가 남긴 한 줄과 대화 기록(pull)을 합친다
+const push = (t: string, extra: Partial<PushRecord> = {}): PushRecord => ({ t: T(t), event: "StopFailure", ...extra });
+const facts = (ls: string[]) => factsOf(ls.join("\n"));
+// 세션 파일이 busy이고 기록이 멈춰 있어 pull이 HUNG을 내는 상태(승인 대기 중 흔하다)
+const hungFacts = () => facts([prompt("06:00:00"), reply("06:00:05", ["toolu_1"])]);
+const hungState: SessionState = { status: "busy", lastWriteAt: at("06:00:05") };
+
+test("push가 pull보다 새로우면 push가 이긴다: 승인 대기(PENDING)가 30분 HUNG보다 먼저", () => {
+  const pull = healthOf(hungFacts(), hungState, at("07:00:00"))!;
+  assert.equal(pull.code, "HUNG"); // push가 없으면 30분 뒤 HUNG
+  const merged = mergeHealth(push("07:30:00", { event: "permission_prompt", code: "PENDING" }), pull, hungFacts());
+  assert.deepEqual([merged!.code, merged!.level, merged!.since, merged!.holds], ["PENDING", "info", T("07:30:00.000"), false]);
+  assert.equal(healthLabel(merged!, at("07:30:00")), "PENDING approval 0m");
+  // 대화 기록에 아직 사실이 없어도(transcript를 못 찾는 세션) push만으로 코드가 선다
+  assert.equal(mergeHealth(push("07:30:00", { event: "permission_prompt", code: "PENDING" }), null, [])!.code, "PENDING");
+});
+
+test("pull이 더 새로우면 pull이 이긴다: 그 뒤 파일이 움직였으면 push는 지난 것", () => {
+  const lines = hungFacts().concat(); // 마지막 사실 06:00:05
+  const pull = healthOf(lines, hungState, at("07:00:00"))!;
+  // push(06:00:05)와 같은 시각 → pull이 남는다(같으면 pull 우선)
+  assert.equal(mergeHealth(push("06:00:05", { event: "permission_prompt", code: "PENDING" }), pull, lines)!.code, "HUNG");
+  // push가 더 이르면 pull
+  assert.equal(mergeHealth(push("06:00:04", { event: "permission_prompt", code: "PENDING" }), pull, lines)!.code, "HUNG");
+  // push가 더 나중이면 push
+  assert.equal(mergeHealth(push("07:30:00", { event: "permission_prompt", code: "PENDING" }), pull, lines)!.code, "PENDING");
+  assert.equal(lastFactAt(lines), at("06:00:05"));
+});
+
+test("StopFailure push: error를 같은 classifyError로 옮기고, LIMIT은 문구에서 reset을 읽는다", () => {
+  const h = mergeHealth(push("07:37:16", { code: "LIMIT", error: "rate_limit", line: "You've hit your session limit · resets 7:40am (UTC)" }), null, [])!;
+  assert.deepEqual([h.code, h.level, h.holds, h.resetsAt], ["LIMIT", "alert", true, T("07:40:00.000")]);
+  assert.equal(healthLabel(h, at("07:38:00")), "HOLD · LIMIT until 07:40Z");
+  // push 기록의 코드는 hook이 classifyError로 정한다(여기 분류기는 그대로 신뢰). 모르면 원문
+  const net = mergeHealth(push("07:00:00", { code: "NETWORK", error: "server_error", line: "Unable to connect to API" }), null, [])!;
+  assert.deepEqual([net.code, net.level, net.holds], ["NETWORK", "alert", false]);
+  // 시각이 깨진 줄, push 없음은 pull 그대로
+  assert.equal(mergeHealth({ t: "nope", event: "Stop" }, null, []), null);
+  assert.equal(mergeHealth(null, null, []), null);
+});
+
+test("clear(코드 없는 줄)는 pull을 낮추지 않는다", () => {
+  const lines = hungFacts();
+  const pull = healthOf(lines, hungState, at("07:00:00"))!;
+  // Stop·idle_prompt는 코드가 없다 → pull(HUNG)이 그대로 선다
+  assert.equal(mergeHealth(push("07:30:00", { event: "Stop" }), pull, lines), pull);
+  assert.equal(mergeHealth(push("07:30:00", { event: "idle_prompt" }), pull, lines)!.code, "HUNG");
+  // 새 StopFailure가 pull보다 새로우면 새 코드로 바뀐다
+  assert.equal(mergeHealth(push("07:31:00", { code: "MODEL", error: "model_not_found", line: "issue with the selected model" }), pull, lines)!.code, "MODEL");
+});
+

@@ -23,7 +23,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 
 ## 세션이 멈췄을 때: AIRCRAFT health
 
-세션이 사용 한도나 API 오류로 멈추거나, 승인을 기다리거나, 지시에 대답하지 않으면 atc가 대화 기록 끝을 읽고 코드를 붙인다. FLYING 칸 앞에 `HOLD · LIMIT until 07:40Z`, `PENDING approval 12m`, `CONTEXT — RESTART` 같은 표시가 보이고, 마우스를 올리면 오류 한 줄과 다음 할 일이 나온다. 노란 표시는 사람이 볼 일(ALERT), 파란 표시는 참고(INFO)다.
+세션이 사용 한도나 API 오류로 멈추거나, 승인을 기다리거나, 지시에 대답하지 않으면 atc가 까닭을 읽고 코드를 붙인다. 멈춘 순간을 세션이 직접 알려 주므로(hook), 승인 대기 같은 것은 30분을 기다리지 않고 바로 보인다. FLYING 칸 앞에 `HOLD · LIMIT until 07:40Z`, `PENDING approval 12m`, `CONTEXT — RESTART` 같은 표시가 보이고, 마우스를 올리면 오류 한 줄과 다음 할 일이 나온다. 노란 표시는 사람이 볼 일(ALERT), 파란 표시는 참고(INFO)다.
 
 | 코드 | 뜻 | 할 일 |
 |---|---|---|
@@ -33,7 +33,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 | `MODEL` | 고른 모델이나 경로가 없음 | 모델을 고쳐 다시 띄운다. 그대로 재시도하지 않는다 |
 | `CONTEXT` | 대화가 너무 길어 이어갈 수 없음 | 새 CREW BRIEFING으로 다시 띄우고, STAND와 PR을 넘겨받게 한다 |
 | `PROVIDER` | ocx·OpenAI 호환 경로의 오류 | 기본 경로로 다시 띄운다 |
-| `PENDING` | 도구 승인을 기다림 | 그 세션에서 승인하거나 거절한다 |
+| `PENDING` | 도구 승인을 기다림(멈춘 순간 세션이 알려 줌) | 그 세션에서 승인하거나 거절한다 |
 | `UNANSWERED` | 지시에 10분 넘게 대답이 없음 | 지시를 다시 보낸다. atc는 스스로 보내지 않는다 |
 | `HUNG` | 작업 중인데 30분 넘게 기록이 없음 | 세션을 들여다본다. 계속되면 다시 띄운다 |
 | `DENIED` | 10분 안에 거부·hook 막힘이 3번 넘음 | permission 규칙으로 허용하거나 다시 브리핑한다 |

@@ -130,6 +130,47 @@ SUPERVISOR가 아래 항목을 vocado `.claude/settings.json`에 합친다(기�
 
 끄려면 항목을 지운다. `rules-ack/` 폴더는 언제 지워도 된다. 그러면 세션들이 지금 파일에서 다시 시작한다.
 
+## health hook
+
+`health.mjs`(ATC-47)는 세션이 멈추거나 무언가를 기다리는 순간을 남겨, atc가 FLEET에 그 까닭을 바로 보이게 한다(ATC-45의 pull 분류기는 대화 기록에 남은 것만 본다). 이벤트마다 한 줄을 `health/<sessionId>.jsonl`에 덧붙인다.
+
+| hook 이벤트 | 남기는 것 |
+|---|---|
+| `StopFailure` | `{t, event, code, error}`와 `line`(오류 첫 줄, ≤200자). `code`는 서버의 `classifyError`로 뽑는다 |
+| `Notification` `permission_prompt` / `elicitation_dialog` | `{t, event, code: "PENDING"}` — 세션 파일이 `busy`여도 승인을 기다리는 중임을 알린다 |
+| `Notification` `idle_prompt` | `{t, event}`. 혼자서는 코드가 아니다 |
+| `Stop`, `PostToolUse` | `{t, event}` — push 코드를 지운다 |
+
+- 코드, 시각, 오류 첫 줄만 둔다. 메시지 본문은 남기지 않는다. hook 입력의 나머지 필드는 보지 않는다.
+- 서버는 세션마다 파일의 마지막 줄을 읽어, 대화 기록의 마지막 사실보다 새로우면 그것을 쓴다. 그래서 승인 대기는 30분 `HUNG`을 기다리지 않고 `PENDING`으로 바로 보인다. `Stop`이나 다음 `PostToolUse`가 오면 다시 풀린다.
+- hook은 아무것도 출력하지 않고 항상 exit 0이다. 쓰기 오류는 삼킨다. stdin을 읽어 한 줄 쓰고 끝나며 네트워크를 쓰지 않는다.
+- 옵션: `ATC_STATE_DIR`(기본 `~/.local/state/atc`). `health/` 폴더는 언제 지워도 되고, 그러면 대화 기록만으로 판정한다.
+
+### 설치(SUPERVISOR)
+
+SUPERVISOR가 `~/.claude/settings.json`에 아래 항목을 넣는다(절대 경로, `async`라 세션을 기다리게 하지 않는다). `PostToolUse` 항목은 `matcher: "*"`를 따로 둬야 한다 — 지우기는 점유 도구뿐 아니라 모든 도구 호출에서 필요하다.
+
+```json
+{
+  "hooks": {
+    "StopFailure": [
+      { "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
+    ],
+    "Notification": [
+      { "matcher": "permission_prompt|idle_prompt|elicitation_dialog", "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
+    ]
+  }
+}
+```
+
+끄려면 항목을 지운다.
+
 ## 파일
 
 | 파일 | 역할 |
@@ -142,5 +183,8 @@ SUPERVISOR가 아래 항목을 vocado `.claude/settings.json`에 합친다(기�
 | `rules-drift.mjs` | rules-drift hook(`start`, `check`)과 서버가 FLEET에 다시 쓰는 순수 함수(`statusOf`, `readRecords`, `readSource`) |
 | `rules-drift.d.mts` | `rules-drift.mjs`의 타입 선언 |
 | `rules-drift.test.mjs` | 변경 없음, diff 한 번 뒤 확인됨, 새 세션과 resume, fail open, diff 상한, `--ref`, 정리(`npm test`) |
+| `health.mjs` | health hook. stdin으로 이벤트를 받아 `health/<sessionId>.jsonl`에 한 줄을 덧붙인다 |
+| `health.d.mts` | `health.mjs`의 타입 선언 |
+| `health.test.mjs` | 이벤트마다 줄 모양, 본문 없음, 지우기, fail open(`npm test`) |
 
 atc가 점유로 HANDOFF와 충돌을 판정하는 방법은 저장소 [README](../README.ko.md#handoff와-충돌)에 있다.
