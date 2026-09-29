@@ -113,6 +113,15 @@ One row per ROUTE: the ROUTE name, its progress, then a horizontal SVG line. A R
 9. SCHEDULE: a "set milestone" draft for FLIGHTs of a ROUTE with no WAYPOINT. Not built yet.
 10. SCHEDULE: WAYPOINT gaps (built, ATC-8). `schedule brief` adds `waypointGaps` (`server/waypoint-gaps.ts`): per ROUTE, the active WAYPOINT and the next one with their exit criteria (or the description when there is no numbered list) and their issues. The server doesn't match criteria to issues; OCC judges and drafts `NEW --gap --milestone <WAYPOINT>` for uncovered criteria, at most 2 per pass (docs/occ.md 5.6). A `NEW` can carry a milestone of its project, and the S2 released call carries its id.
 
+### Step 9 and the ROUTE notice as built (ATC-77)
+
+Step 9 reads "a set milestone draft for FLIGHTs of a ROUTE with no WAYPOINT". As built (per ATC-77), it covers the FLIGHTs that have no WAYPOINT in a ROUTE that has WAYPOINTs, and a separate notice covers ROUTEs with no WAYPOINTs at all, since those have no milestone to set.
+
+- **SCHEDULE `WAYPOINT`** ([occ.md](occ.md) "WAYPOINT as built"): `atcctl schedule draft WAYPOINT <FLIGHT> <milestone name or id> -- <reason>`. Release is one `save_issue {id, milestone: <id>}` and a comment; milestones themselves are never created or edited (principle 1). The draft is refused when the FLIGHT is closed or already on a milestone, when the milestone is not of the FLIGHT's project or is passed, and when the ROUTE has a truncated milestone.
+- **Membership from the milestone side** (principle 5): a FLIGHT is on a WAYPOINT when a milestone's `issues` lists it; `server/sources/linear.ts` is unchanged. A ROUTE with any `truncated` milestone gives no candidates, because a missing FLIGHT might be on the part that wasn't read.
+- **Candidates** (`candidates.waypoint` in `schedule brief`, pure `waypointCandidatesOf` in `server/schedule-waypoint.ts`): per ROUTE with WAYPOINTs not yet passed, those WAYPOINTs with their exit criteria (as in section 4) and the open FLIGHTs of candidate teams on none of the ROUTE's milestones. OCC picks the WAYPOINT; atc never drafts on its own.
+- **ROUTEs without WAYPOINTs** (`routesWithoutWaypoints`, pure `routesWithoutWaypointsOf`): the ROUTE MAP rows with `waypoints: []` and open FLIGHTs (section 4's `open`), with the count. OCC reports each one to the SUPERVISOR once and acks it like slips (`atcctl schedule route-ack`, `routes-without-waypoints.json`). This is the notice Decision 5 left for later. A ROUTE whose WAYPOINTs are all passed is not in it.
+
 ## 8. Risks
 
 | Risk | Mitigation |

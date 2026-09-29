@@ -4,7 +4,7 @@
 
 > English translation for readers. The OCC session reads the Korean [`schedule.md`](schedule.md), which is the source of truth; this file is not loaded.
 
-Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it in `/tick` steps 5 and 6, when `schedule brief` has candidates (including `candidates.tail`), `waypointGaps` or S2 releases, when TARGET and ROUTE drafts are due, and when a CHARTER REQUEST comes in. `CLAUDE.md` sets the role and what OCC doesn't do.
+Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it in `/tick` steps 5 and 6, when `schedule brief` has candidates (including `candidates.tail` and `candidates.waypoint`), `waypointGaps`, a fresh `routesWithoutWaypoints` notice or S2 releases, when TARGET and ROUTE drafts are due, and when a CHARTER REQUEST comes in. `CLAUDE.md` sets the role and what OCC doesn't do.
 
 ## Commands
 
@@ -13,12 +13,14 @@ Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it in `/tick` st
 | `node ../controller/atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <reason>` | Draft classification labels. Only the missing axes are needed. `--rating` can repeat |
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <reason>` | Draft a priority. 1 Urgent · 2 High · 3 Medium · 4 Low |
 | `node ../controller/atcctl.mjs schedule draft TAIL <VOC-193> <TEAM_X> -- <reason>` | Draft a TAIL ASSIGNMENT: set the FLIGHT's `tail:` to this AIRCRAFT. Any other `tail:` is removed; every other label (`lane:` included) stays. Any FLIGHT that isn't closed, In Progress included. See "Before a TAIL" |
+| `node ../controller/atcctl.mjs schedule draft WAYPOINT <VOC-193> "<WAYPOINT name>" -- <reason>` | Draft a WAYPOINT: put a FLIGHT that has no milestone on a WAYPOINT (milestone) of its project that isn't passed. The id works instead of the name. Any FLIGHT that isn't closed, In Progress included. See "Before a WAYPOINT" |
 | `node ../controller/atcctl.mjs schedule draft CLOSE <VOC-193> -- <reason>` | Draft a close. atc fills in the PR, merge time and Fixes status from the LOGBOOK. Never released (the SUPERVISOR moves it to Done in Linear) |
 | `node ../controller/atcctl.mjs schedule draft NEW --title <title> --project <project> [--milestone <milestone>] [--gap] [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <reason> -- '<body>'` | (CHARTER DESK) Draft an AD HOC FLIGHT. `\n` in the body becomes a newline. Prints the draft id and the similar FLIGHTs atc found (`similar`). `--milestone` is a milestone (WAYPOINT) name of that project. `--gap` marks a WAYPOINT gap draft: it needs `--milestone`, and atc refuses it if a similar FLIGHT exists |
 | `node ../controller/atcctl.mjs network` | NETWORK overview (JSON): ROUTE rows (`routes`: open FLIGHTs, ARRIVED in 14 days, AIRCRAFT, the project's `goal.state`), AIRCRAFT TARGETS against actuals (`aircraft`), 28-day trends |
 | `node ../controller/atcctl.mjs schedule draft TARGET <TEAM_X> [--flights-per-week <n\|none>] [--on-time <0-1\|none>] -- <reason>` | Draft a change to an AIRCRAFT's FLEET TARGETS. `none` clears a target. atc attaches the evidence numbers |
 | `node ../controller/atcctl.mjs schedule draft ROUTE <TEAM_X> [--add <project>]… [--remove <project>]… -- <reason>` | Draft a change to an AIRCRAFT's ROUTE. Add only Linear projects that are not finished; remove only projects on its ROUTE now |
 | `node ../controller/atcctl.mjs schedule slip-ack [<key>]…` | Record the WAYPOINT slip warnings (`slips` in `schedule brief`) as reported. Without a key, every warning that is fresh now. A reported warning doesn't become fresh again, unless it clears and comes back |
+| `node ../controller/atcctl.mjs schedule route-ack ["<ROUTE>"]…` | Record the "ROUTE without WAYPOINTs" notices (`routesWithoutWaypoints` in `schedule brief`) as reported. Without a ROUTE, every notice that is fresh now. See "ROUTEs without WAYPOINTs" |
 | `node ../controller/atcctl.mjs schedule release <S-0001>` | (S2) Release an approved operation and print its Linear calls as `CALL n/m · <tool>` with the JSON input. If already released, print the same CALLs again |
 
 ## SCHEDULE drafts (S1, shadow operation)
@@ -31,6 +33,7 @@ Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have
 | `candidates.prioritize`: no priority | `PRIORITIZE`, **only when the body or comments give grounds** (a deadline, an outage or security exposure, it blocks other FLIGHTs, a priority a person wrote down). With no grounds, don't draft |
 | `candidates.close`: the PR was merged (LOGBOOK ARRIVED, not reverted) but Linear is not Done or Canceled | `CLOSE`. Check as in "Before a CLOSE" below; the reason names the PR number, the merge time and whether the body says `Fixes` |
 | `candidates.tail`: an open FLIGHT a team is flying with no `tail:` label. Each entry has the `registration` and its `evidence` (`STAND`, `DEPARTURE LOG` or `READBACK`, with the record) | `TAIL`, as in "Before a TAIL" below. atc never drafts from this list; OCC decides |
+| `candidates.waypoint`: per ROUTE, the WAYPOINTs not yet passed (`waypoints`, with exit criteria) and the open FLIGHTs on none of them (`flights`) | `WAYPOINT`, as in "Before a WAYPOINT" below, only when an exit criterion clearly covers the FLIGHT. atc never drafts from this list |
 
 | Axis | Values ([`../docs/fleet.md`](../../../../docs/fleet.md) section 4) |
 |---|---|
@@ -59,6 +62,27 @@ Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have
 - Labels only. Never state or assignee, and never a message to a team.
 - atc closes the draft when the FLIGHT closes (Done or Canceled: SUPERSEDED) or the `tail:` shows in Linear (APPLIED after release, SUPERSEDED before). Leaving Todo or Backlog does not close it.
 
+### Before a WAYPOINT
+
+A WAYPOINT is a milestone of a ROUTE (a Linear project, `../docs/routes.md`). A FLIGHT without a milestone is missing from the ROUTE MAP's WAYPOINT counts and ETAs and gets no DISPATCH `waypoint` bonus. A `WAYPOINT` draft puts such a FLIGHT on one WAYPOINT of its ROUTE that isn't passed.
+
+1. Read `candidates.waypoint` in `schedule brief`. Per ROUTE it has the WAYPOINTs not yet passed (`waypoints`: name, `state` active or planned, exit criteria `criteria`, or `description` when there is no numbered list) and the open FLIGHTs on none of them (`flights`). `null` means atc couldn't read the milestones; skip. atc leaves out ROUTEs with a milestone whose issue list was truncated.
+2. For each FLIGHT, read the body with `dispatch flight <FLIGHT>` and draft **only when one WAYPOINT's exit criteria clearly cover the FLIGHT**. Put the WAYPOINT and the criterion number in the reason: `"Beta Ready 기준 2(검색 API)가 이 FLIGHT의 목표와 같음"`. If it looks like it spans several WAYPOINTs, the match is unclear, or there are no criteria and no description, don't draft; write the skipped FLIGHT and why in the OCC LOG.
+3. Command: `schedule draft WAYPOINT <FLIGHT> "<WAYPOINT name>" -- "<reason>"`. `waypoints[].id` works instead of the name.
+
+- **At most 2 per pass.** They count toward the 5 open drafts with the others.
+- If atc refuses, don't retry: the FLIGHT is closed, it already has a milestone, the milestone isn't of its project, the WAYPOINT is passed (`done`), or the ROUTE has a milestone with a truncated issue list.
+- Only the issue's milestone field changes. **OCC never creates, renames or reorders milestones**, and never writes state or assignee. Don't draft moving a FLIGHT that already has a WAYPOINT to another one either.
+- atc closes the draft when the FLIGHT shows on that WAYPOINT (APPLIED after release, SUPERSEDED before), and SUPERSEDED when the FLIGHT closes or lands on another WAYPOINT. It is also SUPERSEDED when the WAYPOINT is passed before release or the milestone disappears. Leaving Todo or Backlog does not close it.
+
+#### ROUTEs without WAYPOINTs
+
+`routesWithoutWaypoints` lists the ROUTEs that have open FLIGHTs but no WAYPOINT (milestone) at all, with their open FLIGHT count (`open`). Such a ROUTE has no ETA and nowhere to put a `WAYPOINT` draft. Creating WAYPOINTs is the SUPERVISOR's, in Linear.
+
+- Only for ROUTEs with `fresh: true`: one line each in the OCC LOG and to the SUPERVISOR, e.g. `"Beta Readiness: 열린 FLIGHT 13, WAYPOINT 없음 — ETA를 셀 수 없음"`. Then run `node ../controller/atcctl.mjs schedule route-ack`.
+- Don't report again what was already reported (`fresh: false`). When the ROUTE gets a WAYPOINT or has no open FLIGHTs, atc forgets it, and it is fresh again if it comes back. `null` means atc couldn't read the milestones; skip.
+- Don't draft anything asking for a milestone, and don't message teams.
+
 ### Before a CLASSIFY
 
 1. **Read the criteria.** Before writing any CLASSIFY in a pass, open `../docs/fleet.md` with Read and read 4.1 FLIGHT TYPE, 4.2 WAKE CATEGORY and 4.3 TYPE RATING. The table above is only a summary.
@@ -81,7 +105,7 @@ Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have
 - On `LIMIT` (open drafts are at the limit), write no more drafts this pass. Carry on in a later pass once verdicts free a slot. Open `NEW` (CHARTER DESK) drafts count toward the limit of 5 too.
 - On an error (`이미 그렇게 되어 있음` "already so", `Todo·Backlog가 아님` "not Todo or Backlog", etc.), don't retry; put it in the OCC LOG.
 - Drafting the same FLIGHT and kind again supersedes the earlier draft. Don't redraft unless the judgment changed.
-- A draft expires after 3 days without a verdict, and is superseded when the FLIGHT leaves Todo or Backlog or the change shows up in Linear (atc does this). A CLOSE is superseded when Linear shows Done or Canceled, or the PR is reverted. A TAIL follows the last line of "Before a TAIL".
+- A draft expires after 3 days without a verdict, and is superseded when the FLIGHT leaves Todo or Backlog or the change shows up in Linear (atc does this). A CLOSE is superseded when Linear shows Done or Canceled, or the PR is reverted. A TAIL follows the last line of "Before a TAIL", a WAYPOINT the last line of "Before a WAYPOINT".
 
 ## SCHEDULE release (S2, only when `mode` in `schedule brief` is approval)
 

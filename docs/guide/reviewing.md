@@ -47,6 +47,7 @@ OCC가 Linear에 쓸 변경을 초안으로 남긴다. 지금은 S1이라 Linear
 | CLASSIFY | 분류 라벨 제안: type · wake · rating. 후보 목록은 제목이 리서치·검토·비교·계획처럼 보이는 FLIGHT가 앞에 온다(SURVEY·CHECK로 분류되면 HOLDING 팀도 받을 수 있어서) |
 | PRIORITIZE | 우선순위 제안(본문·댓글에 근거가 있을 때만) |
 | TAIL | FLIGHT의 `tail:TEAM_X`를 그 팀으로 정하자는 제안. 사용자가 OCC에 말한 배정이나, `tail:` 없이 팀이 이미 몰고 있는 FLIGHT에서 나온다. 카드에 지금 `tail:`, 바뀔 것(`+ tail:TEAM_J`, `− tail:TEAM_A`), 근거가 있다. 다른 팀이 몰고 있는 `tail:`을 바꾸면 빨간 **CAUTION** 줄이 붙는다. 판정은 CLASSIFY·PRIORITIZE처럼 S2 진입 점검에 센다. 후보 목록의 TAIL은 그 팀이 몰고 있다는 기록(STAND, DEPARTURE LOG, READBACK)을 함께 보인다 |
+| WAYPOINT | 마일스톤이 없는 FLIGHT를 그 ROUTE의 WAYPOINT(Linear 마일스톤)에 붙이자는 제안. 카드에 "WAYPOINT 없음 · ROUTE", 바뀔 것(`WAYPOINT 없음 → ROUTE · WAYPOINT`), OCC 근거(그 WAYPOINT의 완료 기준 번호)가 있다. 그 기준이 정말 이 FLIGHT를 덮는지 보고 판정한다. 후보 목록에는 WAYPOINT가 있는 ROUTE에서 어느 WAYPOINT에도 없는 열린 FLIGHT와 붙일 수 있는 WAYPOINT가 보인다. 판정은 S2 진입 점검에 센다. 마일스톤은 만들거나 바꾸지 않고 이슈의 milestone 칸만 바꾼다 |
 | NEW (AD HOC FLIGHT) | 사용자가 OCC에 요청한 새 티켓. `WAYPOINT` 줄이 있으면 그 마일스톤에 붙을 이슈다. "완료 기준에서 올린 초안(WAYPOINT gap)"이면 OCC가 Linear 마일스톤의 완료 기준 가운데 아직 이슈가 없는 것을 옮긴 것이다. 본문 `## 목표`에 인용된 기준을 보고, 그 기준을 이 이슈가 맡는 게 맞는지 판정한다. 비슷한 FLIGHT가 있으면 atc가 받지 않으니, gap 초안에는 비슷한 FLIGHT가 없다 |
 | TARGET · ROUTE | AIRCRAFT 하나의 FLEET 목표(`flightsPerWeek`, `onTime`)나 ROUTE(맡는 프로젝트)를 바꾸자는 초안. 카드에 지금 값, 바뀔 것, OCC 근거, atc가 붙인 숫자(14일 ARRIVED, 주별 ARRIVED, ROUTE 대기)가 있다. S2에서도 "승인했을 것 / 거절했을 것"만 받고 FLEET에 쓰지 않는다 — 바꾸려면 FLEET 탭에서 직접. 이 판정은 S2 진입 점검에 세지 않는다 |
 | CLOSE | PR이 머지됐는데(LOGBOOK ARRIVED) Linear에서 아직 열린 FLIGHT를 Done으로. 카드에 PR 링크, 머지 시각, 본문이 `Fixes`인지가 있다. `Part of`(일부만)면 노란색으로 표시된다 |
@@ -57,6 +58,7 @@ OCC가 Linear에 쓸 변경을 초안으로 남긴다. 지금은 S1이라 Linear
 - **CLOSE는 Linear에서 직접 닫는다.** vocado 규칙상 OCC는 이슈 상태를 바꾸지 않으므로 S2에서도 CLOSE는 발부되지 않는다. 승인한 CLOSE(그림자 운용이면 "승인했을 것")는 SCHEDULE 탭의 **LINEAR에서 직접 DONE** 목록에 이슈·PR 링크와 함께 뜬다. Linear에서 Done으로 바꾸면 다음 새로 고침에 목록과 초안이 함께 닫힌다. PR이 되돌려지면 초안은 스스로 SUPERSEDED된다.
 - CLOSE 판정 기준: PR 본문이 `Fixes VOC-n`이고 완료 기준이 그 PR로 채워졌으면 승인, `Part of`이거나 남은 일·되돌림이 있으면 거절(사유 칩 "Part of — 일부만 끝남", "남은 작업이 있음" …).
 - **LATE WAYPOINTS**: ETA가 WAYPOINT(Linear 마일스톤)의 목표일을 넘거나 목표일이 지났으면 S2 점검 아래에 뜬다. 판정할 것은 아니다. OCC는 새 경고를 세션에서 한 번 보고하고, 목록에는 풀릴 때까지 남는다("OCC 보고 …"). 목표일을 옮길지, 일을 줄일지, FLIGHT를 더 배정할지는 SUPERVISOR가 정한다. ETA 계산은 NETWORK 탭 ROUTE MAP과 같다.
+- **ROUTES WITHOUT WAYPOINTS**: 열린 FLIGHT가 있는데 WAYPOINT(마일스톤)가 하나도 없는 ROUTE와 그 열린 FLIGHT 수가 LATE WAYPOINTS 아래에 뜬다. 판정할 것은 아니다. 그 ROUTE는 ETA를 셀 수 없고 WAYPOINT 초안도 쓸 곳이 없다. OCC는 새 ROUTE를 세션에서 한 번 알린다. WAYPOINT가 필요하면 Linear에서 그 프로젝트에 마일스톤을 만든다(OCC는 만들지 않는다). 만들면 다음 새로 고침에 목록에서 빠진다.
 - **S2 진입 점검**: 판정 20건 이상, 합의율 80% 이상. 그때 Linear 쓰기가 열린다(승인한 초안만, linear-guard로).
 - **S2(승인 운용)**: SCHEDULE 탭의 "S2 승인 운용 켜기"로 켠다(만들어 두었고 기본은 꺼짐). 켜면 버튼이 "승인 / 거절"이 되고, 승인한 작업은 IN PROGRESS에 APPROVED → RELEASED(OCC가 Linear에 씀) → APPLIED(Linear에 보임)로 보인다. OCC가 쓰는 내용은 atc가 만들고, linear-guard가 그 입력과 다른 쓰기는 모두 막는다. 같은 호출은 한 번만 통과하므로 되풀이해도 댓글이 두 번 달리지 않는다. RELEASED인데 Linear에 반영되지 않았으면 OCC가 보고하고, Linear에서 직접 바꾸면 APPLIED로 닫힌다. 켜기 전 준비는 저장소의 `docs/occ.ko.md` "S2 켜는 법".
 

@@ -542,6 +542,14 @@
   font: var(--text-xs) var(--mono);
   overflow-wrap: anywhere;
 }
+/* 긴 메타 줄(TAIL 근거, WAYPOINT 붙일 곳, CLOSE PR)은 모든 폭에서 제목 아래 제 줄에(ATC-77).
+   한 줄 셋째 칸(auto)에 두면 긴 메타가 제 너비를 다 차지해 제목 칸이 한 글자씩 줄바꿈되며 줄이 수천 px로 길어졌다 */
+.has-meta-line .sc-cand-list li {
+  grid-template-columns: auto 1fr;
+}
+.has-meta-line .sc-cand-meta {
+  grid-column: 2;
+}
 
 /* 최근 7일 */
 .sc-table {
@@ -924,4 +932,19 @@
   color: var(--alert);
   font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.1em;
+}
+/* WAYPOINT(ATC-77): 마일스톤 없는 FLIGHT를 WAYPOINT에. 색은 ROUTE MAP의 active WAYPOINT와 같게 */
+.sc-card.k-WAYPOINT {
+  border-left-color: var(--cyan);
+}
+.k-WAYPOINT .sc-kind,
+.sc-table .k-WAYPOINT {
+  color: var(--cyan);
+}
+/* ROUTES WITHOUT WAYPOINTS(ATC-77): LATE WAYPOINTS와 같은 줄 모양 */
+.sc-noway {
+  margin-bottom: var(--space-4);
+}
+.sc-slip-code.c-no-waypoints {
+  color: var(--muted);
 }

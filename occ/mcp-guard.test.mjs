@@ -70,3 +70,19 @@ test("linear-guard: WAYPOINT에 넣는 NEW(ATC-8)는 발부된 호출(milestone 
   assert.match(await checkLinear("mcp__linear__save_issue", { ...calls[0].input, milestone: "Beta Ready" }, released, claimer), /다름/); // id 대신 이름도 막는다
   assert.match(await checkLinear("mcp__linear__save_issue", { ...calls[0].input, milestone: "m-8" }, released, claimer), /다름/);
 });
+
+test("linear-guard: SCHEDULE WAYPOINT(ATC-77)는 발부된 {id, milestone} 그대로일 때만 통과 — 상태·담당·다른 FLIGHT를 얹으면 막는다", async () => {
+  const { checkLinear } = await import("./mcp-guard.mjs");
+  const { callsOf } = await import("../server/schedule.ts");
+  const payload = { route: "Song Catalog", milestone: { id: "m-7", name: "Beta Ready" } };
+  const op = { id: "S-0031", at: "", kind: "WAYPOINT", flight: "VOC-201", payload, reason: "r", status: "released", statusAt: "", verdictReason: null, calls: null, appliedRef: null, decision: null, crosscheck: null };
+  const calls = callsOf(op, undefined, "Vocado");
+  assert.deepEqual(calls[0].input, { id: "VOC-201", milestone: "m-7" });
+  const released = async () => ({ mode: "approval", calls: calls.map((c) => ({ id: "S-0031", ...c })) });
+  const claimer = async () => ({ id: "S-0031", call: 0 });
+  assert.equal(await checkLinear("mcp__linear__save_issue", { milestone: "m-7", id: "VOC-201" }, released, claimer), null);
+  assert.match(await checkLinear("mcp__linear__save_issue", { id: "VOC-201", milestone: "Beta Ready" }, released, claimer), /다름/);
+  assert.match(await checkLinear("mcp__linear__save_issue", { id: "VOC-202", milestone: "m-7" }, released, claimer), /다름/);
+  assert.match(await checkLinear("mcp__linear__save_issue", { id: "VOC-201", milestone: "m-7", state: "Done" }, released, claimer), /다름/);
+  assert.match(await checkLinear("mcp__linear__save_issue", { id: "VOC-201", milestone: "m-7", assignee: "me" }, released, claimer), /다름/);
+});

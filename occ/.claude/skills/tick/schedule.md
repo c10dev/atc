@@ -2,7 +2,7 @@
 
 **한국어** · [English](schedule.en.md)
 
-[`CLAUDE.md`](../../../CLAUDE.md)에서 옮긴 절차다. `/tick` 5·6단계에서 `schedule brief`에 후보(`candidates.tail` 포함)·`waypointGaps`나 S2 발부할 것이 있을 때, TARGET·ROUTE 초안을 볼 차례일 때, 그리고 CHARTER REQUEST가 왔을 때 Read한다. 역할과 하지 않는 것은 `CLAUDE.md`가 정한다.
+[`CLAUDE.md`](../../../CLAUDE.md)에서 옮긴 절차다. `/tick` 5·6단계에서 `schedule brief`에 후보(`candidates.tail`·`candidates.waypoint` 포함)·`waypointGaps`·`routesWithoutWaypoints`의 새 알림이나 S2 발부할 것이 있을 때, TARGET·ROUTE 초안을 볼 차례일 때, 그리고 CHARTER REQUEST가 왔을 때 Read한다. 역할과 하지 않는 것은 `CLAUDE.md`가 정한다.
 
 ## 명령
 
@@ -11,12 +11,14 @@
 | `node ../controller/atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <근거>` | 분류 라벨 초안. 빠진 축만 적어도 된다. `--rating`은 여러 번 |
 | `node ../controller/atcctl.mjs schedule draft PRIORITIZE <VOC-193> --priority <1-4> -- <근거>` | 우선순위 초안. 1 Urgent · 2 High · 3 Medium · 4 Low |
 | `node ../controller/atcctl.mjs schedule draft TAIL <VOC-193> <TEAM_X> -- <근거>` | TAIL ASSIGNMENT 초안: FLIGHT의 `tail:`을 이 AIRCRAFT로. 다른 `tail:`은 떼고 나머지 라벨(`lane:` 포함)은 그대로. 닫히지 않은 FLIGHT면 In Progress여도 된다. 아래 "TAIL 전에" |
+| `node ../controller/atcctl.mjs schedule draft WAYPOINT <VOC-193> "<WAYPOINT 이름>" -- <근거>` | WAYPOINT 초안: 마일스톤이 없는 FLIGHT를 그 프로젝트의 지나지 않은 WAYPOINT(마일스톤)에 붙인다. 이름 대신 id도 된다. 닫히지 않은 FLIGHT면 In Progress여도 된다. 아래 "WAYPOINT 전에" |
 | `node ../controller/atcctl.mjs schedule draft CLOSE <VOC-193> -- <근거>` | 닫기 초안. PR·머지 시각·Fixes 여부는 atc가 LOGBOOK에서 채운다. 발부하지 않는다(SUPERVISOR가 Linear에서 직접 Done) |
 | `node ../controller/atcctl.mjs schedule draft NEW --title <제목> --project <프로젝트> [--milestone <마일스톤>] [--gap] [--priority <1-4>] [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… [--tail <TEAM_X>] [--parent <FLIGHT>] [--related <FLIGHT>]… [--blocked-by <FLIGHT>]… --reason <근거> -- '<본문>'` | (CHARTER DESK) AD HOC FLIGHT 초안. 본문의 `\n`은 줄바꿈. 출력: 초안 ID와 atc가 찾은 비슷한 FLIGHT(`similar`). `--milestone`은 그 프로젝트의 마일스톤(WAYPOINT) 이름. `--gap`은 WAYPOINT gap 초안 표시로, `--milestone`이 필요하고 비슷한 FLIGHT가 있으면 atc가 받지 않는다 |
 | `node ../controller/atcctl.mjs network` | NETWORK 개요(JSON): ROUTE 행(`routes`: 열린 FLIGHT, 14일 ARRIVED, AIRCRAFT, 프로젝트 `goal.state`), AIRCRAFT TARGETS 대 실적(`aircraft`), 28일 추세 |
 | `node ../controller/atcctl.mjs schedule draft TARGET <TEAM_X> [--flights-per-week <n\|none>] [--on-time <0~1\|none>] -- <근거>` | AIRCRAFT의 FLEET TARGETS 변경 초안. `none`은 목표를 지운다. 근거 숫자는 atc가 붙인다 |
 | `node ../controller/atcctl.mjs schedule draft ROUTE <TEAM_X> [--add <프로젝트>]… [--remove <프로젝트>]… -- <근거>` | AIRCRAFT의 ROUTE 변경 초안. 더하는 것은 끝나지 않은 Linear 프로젝트, 빼는 것은 지금 ROUTE에 있는 것 |
 | `node ../controller/atcctl.mjs schedule slip-ack [<key>]…` | 보고한 WAYPOINT 지연 경고(`schedule brief`의 `slips`)를 적는다. key가 없으면 지금 fresh 전부. 같은 경고는 다시 fresh가 되지 않고, 풀렸다가 다시 생기면 다시 fresh다 |
+| `node ../controller/atcctl.mjs schedule route-ack ["<ROUTE>"]…` | 보고한 "WAYPOINT 없는 ROUTE"(`schedule brief`의 `routesWithoutWaypoints`)를 적는다. ROUTE가 없으면 지금 fresh 전부. 아래 "WAYPOINT 없는 ROUTE" |
 | `node ../controller/atcctl.mjs schedule release <S-0001>` | (S2) 승인된 작업을 발부하고 Linear 호출을 `CALL n/m · <도구>`와 JSON 입력으로 출력. 이미 발부됐으면 같은 CALL을 다시 준다 |
 
 ## SCHEDULE 초안 (S1, 그림자 운용)
@@ -29,6 +31,7 @@
 | `candidates.prioritize`: 우선순위 없음 | `PRIORITIZE`. **본문·댓글에 근거가 있을 때만**(기한, 장애·보안 노출, 다른 FLIGHT를 막음, 사람이 적어 둔 우선순위). 근거가 없으면 쓰지 않는다 |
 | `candidates.close`: PR이 머지됐는데(LOGBOOK ARRIVED, 되돌림 아님) Linear가 Done·Canceled가 아님 | `CLOSE`. 아래 "CLOSE 전에"대로 확인하고, 근거에 PR 번호·머지 시각·`Fixes`인지를 적는다 |
 | `candidates.tail`: `tail:` 라벨 없이 팀이 몰고 있는 열린 FLIGHT. 항목마다 `registration`과 `evidence`(`STAND`, `DEPARTURE LOG`, `READBACK`과 그 기록) | `TAIL`. 아래 "TAIL 전에"대로. atc는 이 후보로 초안을 쓰지 않는다 — OCC가 판단해 쓴다 |
+| `candidates.waypoint`: ROUTE마다 지나지 않은 WAYPOINT(`waypoints`, 완료 기준 포함)와 어느 WAYPOINT에도 없는 열린 FLIGHT(`flights`) | `WAYPOINT`. 아래 "WAYPOINT 전에"대로, 완료 기준이 그 FLIGHT를 분명히 덮을 때만. atc는 이 후보로 초안을 쓰지 않는다 |
 
 | 축 | 값 (`../docs/fleet.md` 4장) |
 |---|---|
@@ -57,6 +60,27 @@
 - 라벨만 바꾼다. 상태·담당은 쓰지 않고, 팀에 메시지를 보내지 않는다.
 - FLIGHT가 닫히면(Done·Canceled) SUPERSEDED, 그 `tail:`이 Linear에 보이면(발부 뒤 APPLIED, 발부 전 SUPERSEDED) atc가 닫는다. Todo·Backlog를 벗어나도 닫지 않는다.
 
+### WAYPOINT 전에
+
+WAYPOINT는 ROUTE(Linear 프로젝트)의 마일스톤이다(`../docs/routes.md`). 마일스톤이 없는 FLIGHT는 ROUTE MAP의 WAYPOINT 개수·ETA에 잡히지 않고 DISPATCH의 `waypoint` 가점도 받지 못한다. `WAYPOINT` 초안은 그런 FLIGHT를 그 ROUTE의 지나지 않은 WAYPOINT 하나에 붙이자는 것이다.
+
+1. `schedule brief`의 `candidates.waypoint`를 읽는다. ROUTE마다 지나지 않은 WAYPOINT(`waypoints`: 이름, `state` active·planned, 완료 기준 `criteria`, 번호 목록이 없으면 `description`)와 어느 WAYPOINT에도 없는 열린 FLIGHT(`flights`)가 있다. `null`이면 atc가 마일스톤을 못 읽은 것이니 건너뛴다. 이슈 목록이 잘린 마일스톤이 있는 ROUTE는 atc가 후보에서 뺀다.
+2. FLIGHT마다 `dispatch flight <FLIGHT>`로 본문을 읽고, **한 WAYPOINT의 완료 기준이 그 FLIGHT를 분명히 덮을 때만** 쓴다. 근거에 WAYPOINT와 기준 번호를 적는다: `"Beta Ready 기준 2(검색 API)가 이 FLIGHT의 목표와 같음"`. 여러 WAYPOINT에 걸쳐 보이거나, 기준과 맞는지 애매하거나, 기준도 설명도 없으면 쓰지 않고 OCC LOG에 건너뛴 FLIGHT와 이유를 적는다.
+3. 명령: `schedule draft WAYPOINT <FLIGHT> "<WAYPOINT 이름>" -- "<근거>"`. 이름 대신 `waypoints[].id`를 써도 된다.
+
+- **한 바퀴에 2건까지**. 다른 초안과 함께 열린 초안 5건 한도에 든다.
+- atc가 거절하면 다시 시도하지 않는다: FLIGHT가 닫힘, 이미 마일스톤이 있음, 그 프로젝트의 마일스톤이 아님, 지난(done) WAYPOINT, 이슈 목록이 잘린 마일스톤이 있는 ROUTE.
+- 이슈의 milestone 칸만 바꾼다. **OCC는 마일스톤을 만들거나, 이름을 바꾸거나, 순서를 바꾸지 않는다.** 상태·담당도 쓰지 않는다. 이미 WAYPOINT가 있는 FLIGHT를 다른 WAYPOINT로 옮기는 초안도 쓰지 않는다.
+- 그 WAYPOINT에 FLIGHT가 보이면(발부 뒤 APPLIED, 발부 전 SUPERSEDED), FLIGHT가 닫히거나 다른 WAYPOINT에 붙으면 SUPERSEDED로 atc가 닫는다. 발부 전에 그 WAYPOINT를 지나거나 마일스톤이 없어져도 SUPERSEDED다. Todo·Backlog를 벗어나도 닫지 않는다.
+
+#### WAYPOINT 없는 ROUTE
+
+`routesWithoutWaypoints`는 열린 FLIGHT가 있는데 WAYPOINT(마일스톤)가 하나도 없는 ROUTE와 그 열린 FLIGHT 수(`open`)다. 이런 ROUTE는 ETA를 셀 수 없고 `WAYPOINT` 초안을 쓸 곳도 없다. WAYPOINT를 만드는 것은 SUPERVISOR가 Linear에서 한다.
+
+- `fresh: true`인 ROUTE만 하나에 한 줄로 OCC LOG에 적고 SUPERVISOR에게 알린다: `"Beta Readiness: 열린 FLIGHT 13, WAYPOINT 없음 — ETA를 셀 수 없음"`. 그다음 `node ../controller/atcctl.mjs schedule route-ack`.
+- 이미 알린 것(`fresh: false`)은 다시 알리지 않는다. WAYPOINT가 생기거나 열린 FLIGHT가 없어지면 atc가 잊고, 다시 그렇게 되면 다시 `fresh`다. `null`이면 마일스톤을 못 읽은 것이니 건너뛴다.
+- 마일스톤을 만들자는 초안을 쓰지 않고, 팀에 메시지를 보내지 않는다.
+
 ### CLASSIFY 전에
 
 1. **기준을 읽는다.** 그 바퀴에 CLASSIFY를 쓰기 전에 `../docs/fleet.md`를 Read로 열어 4.1 FLIGHT TYPE, 4.2 WAKE CATEGORY, 4.3 TYPE RATING을 읽는다. 위 표는 요약일 뿐이다.
@@ -79,7 +103,7 @@
 - `LIMIT`(열린 초안이 한도에 참)이 나오면 이번 바퀴는 초안을 더 쓰지 않는다. 다음 바퀴에 판정이 나서 자리가 비면 이어 쓴다. 열린 `NEW`(CHARTER DESK) 초안도 한도 5건에 든다.
 - 오류(`이미 그렇게 되어 있음`, `Todo·Backlog가 아님` 등)가 나면 다시 시도하지 말고 OCC LOG에 적는다.
 - 같은 FLIGHT·종류의 초안을 다시 쓰면 앞의 초안은 SUPERSEDED가 된다. 판단이 바뀐 게 아니면 다시 쓰지 않는다.
-- 초안은 3일 동안 판정이 없으면 EXPIRED, FLIGHT가 Todo·Backlog를 벗어나거나 Linear에 반영되면 SUPERSEDED가 된다(atc가 한다). CLOSE는 Linear가 Done·Canceled가 되거나 PR이 되돌려지면 SUPERSEDED다. TAIL은 위 "TAIL 전에" 끝 줄대로다.
+- 초안은 3일 동안 판정이 없으면 EXPIRED, FLIGHT가 Todo·Backlog를 벗어나거나 Linear에 반영되면 SUPERSEDED가 된다(atc가 한다). CLOSE는 Linear가 Done·Canceled가 되거나 PR이 되돌려지면 SUPERSEDED다. TAIL은 위 "TAIL 전에" 끝 줄대로다. WAYPOINT는 "WAYPOINT 전에" 끝 줄대로다.
 
 ## SCHEDULE 발부 (S2, `schedule brief`의 `mode`가 approval일 때만)
 

@@ -25,17 +25,30 @@ import { loadTailLabels } from "./sources/linear-labels.ts";
 import { judgesViewOf, loadJudges, marksOf, readJudgeLines } from "./judges/store.ts";
 import { ackSlips, freshSlipKeys, loadSlipsReported, saveSlipsReported, slipsOf, waypointEtasOf } from "./waypoint-slips.ts";
 import { regKey } from "./registration.ts";
+import {
+  ackRoutes,
+  freshRouteKeys,
+  loadRoutesReported,
+  parseWaypoint,
+  routesWithoutWaypointsOf,
+  saveRoutesReported,
+  WaypointError,
+  type WaypointPayload,
+  waypointCandidatesOf,
+  waypointChangesOf,
+  waypointSyncOf,
+} from "./schedule-waypoint.ts";
 
 // OCC SCHEDULE — OCC가 Linear에 쓸 변경을 초안으로 남긴다. 설계: docs/occ.md 5~7장.
 // 작업 종류는 CLASSIFY(분류 라벨), PRIORITIZE(우선순위), NEW(새 이슈), CLOSE(PR이 머지된 FLIGHT를 Done으로),
 // TARGET·ROUTE(AIRCRAFT의 FLEET TARGETS·ROUTE 변경, ATC-25 — network-drafts.ts. 지금은 모드와 상관없이 그림자 판정만),
-// TAIL(FLIGHT의 tail:TEAM_X, ATC-68 — schedule-tail.ts).
+// TAIL(FLIGHT의 tail:TEAM_X, ATC-68 — schedule-tail.ts), WAYPOINT(마일스톤 없는 FLIGHT를 WAYPOINT에, ATC-77 — schedule-waypoint.ts).
 // - S1(mode "shadow"): SUPERVISOR가 "승인했을 것 / 거절했을 것"만 표시한다. 아무것도 Linear에 쓰지 않는다.
 // - S2(mode "approval"): SUPERVISOR가 승인하면 atc가 Linear 도구 호출 입력(calls)을 정확히 만들고(release),
 //   OCC가 그대로 호출한다. occ/mcp-guard.mjs(linear-guard)가 발부된 입력과 한 글자도 다르지 않은 쓰기만 통과시킨다.
 //   다음 Linear 읽기에서 반영이 보이면 APPLIED.
 
-export const SCHEDULE_KINDS = ["CLASSIFY", "PRIORITIZE", "TAIL", "NEW", "CLOSE", "TARGET", "ROUTE"] as const;
+export const SCHEDULE_KINDS = ["CLASSIFY", "PRIORITIZE", "TAIL", "WAYPOINT", "NEW", "CLOSE", "TARGET", "ROUTE"] as const;
 export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];
 
 export interface ClassifyPayload {
@@ -72,8 +85,9 @@ export interface ClosePayload {
   fixes?: boolean; // PR 본문에 `Fixes VOC-n` — vocado 규칙상 이것만 이슈를 끝낸다
   partOf?: boolean; // PR 본문에 `Part of VOC-n` — 일부만. 후보에서는 빠지고, 초안이면 "일부만"으로 보인다
 }
-export type SchedulePayload = ClassifyPayload | PrioritizePayload | TailPayload | NewPayload | ClosePayload | NetworkPayload;
+export type SchedulePayload = ClassifyPayload | PrioritizePayload | TailPayload | WaypointPayload | NewPayload | ClosePayload | NetworkPayload;
 export type { TailPayload } from "./schedule-tail.ts";
+export type { WaypointPayload } from "./schedule-waypoint.ts";
 
 // TARGET·ROUTE는 Linear 쓰기 게이트(판정 20건·합의율 80%)와 CROSSCHECK 일치율에 넣지 않고 따로 센다(docs/fleet.md 7.4)
 export const countsForGate = (s: Pick<ScheduleOp, "kind">) => !isNetworkKind(s.kind);
@@ -293,6 +307,7 @@ export function changesOf(
     return t.priority === p ? [] : [`priority ${PRIORITY_NAME[t.priority] ?? "없음"} → ${PRIORITY_NAME[p]}`];
   }
   if (kind === "TAIL") return tailChangesOf(t.labels, (payload as TailPayload).registration);
+  if (kind === "WAYPOINT") return waypointChangesOf(payload as WaypointPayload);
   const c = classOf(t.labels);
   const want = payload as ClassifyPayload;
   const out: string[] = [];
@@ -335,6 +350,7 @@ export function parsePayload(kind: unknown, raw: Record<string, unknown>): { kin
   if (kind === "NEW") throw new ScheduleError("NEW는 parseNew로 검사한다");
   if (kind === "CLOSE") throw new ScheduleError("CLOSE의 payload는 atc가 LOGBOOK에서 채운다(draftOps)");
   if (kind === "TAIL") throw new ScheduleError("TAIL은 parseTail로 검사한다");
+  if (kind === "WAYPOINT") throw new ScheduleError("WAYPOINT는 parseWaypoint로 검사한다");
   if (isNetworkKind(kind)) throw new ScheduleError(`${kind}는 parseNetwork로 검사한다`);
   if (!SCHEDULE_KINDS.includes(kind as ScheduleKind)) throw new ScheduleError(`모르는 SCHEDULE 작업: ${kind} (가능: ${SCHEDULE_KINDS.join(", ")})`);
   if (kind === "PRIORITIZE") return { kind, payload: { priority: parsePriority(raw.priority) } };
@@ -495,7 +511,15 @@ export function draftOps(
   tickets: Ticket[],
   now: string,
   seq: number,
-  ctx: { tails?: string[]; closable?: Map<string, Closable>; teams?: Set<string>; milestones?: Milestone[] | null; network?: NetworkCtx; tail?: TailCtx & { views: Parameters<typeof tailCautionOf>[2] } } = {},
+  ctx: {
+    tails?: string[];
+    closable?: Map<string, Closable>;
+    teams?: Set<string>;
+    milestones?: Milestone[] | null;
+    network?: NetworkCtx;
+    tail?: TailCtx & { views: Parameters<typeof tailCautionOf>[2] };
+    waypoint?: { milestones: Milestone[] | null }; // WAYPOINT: 읽은 마일스톤 전부(소속을 보려면 모든 팀 것)
+  } = {},
 ): LogLine[] {
   const reason = typeof input.reason === "string" ? input.reason.trim() : "";
   // 후보 팀(dispatch.json candidateTeams)이 아닌 FLIGHT에는 초안을 쓰지 않는다. 보여 주기만 하는 팀이고, 분류 라벨도 없다
@@ -559,6 +583,21 @@ export function draftOps(
     kind = "TAIL";
     const caution = tailCautionOf(t, registration, ctx.tail.views);
     payload = { registration, ...(caution ? { caution } : {}) };
+  } else if (input.kind === "WAYPOINT") {
+    // WAYPOINT: 계획 단계가 아니어도 된다(In Progress FLIGHT도 WAYPOINT에 없으면 ETA에 안 잡힌다). 닫히지 않았어야 한다
+    flight = String(input.flight ?? "").toUpperCase();
+    const t = tickets.find((x) => x.key === flight);
+    if (!t) throw new ScheduleError(`FLIGHT 목록에 없음: ${flight || "(비었음)"}`);
+    if (DONE_STATES.has(t.stateType)) throw new ScheduleError(`${flight}는 이미 닫힘(${t.state})`);
+    if (!ctx.waypoint) throw new ScheduleError("Linear 마일스톤 자료가 없음", 503);
+    try {
+      payload = parseWaypoint(input, t, ctx.waypoint.milestones);
+    } catch (e) {
+      if (e instanceof WaypointError) throw new ScheduleError(e.message, e.status);
+      throw e;
+    }
+    if (!reason) throw new ScheduleError("근거(reason) 한 줄이 필요함");
+    kind = "WAYPOINT";
   } else {
     flight = String(input.flight ?? "").toUpperCase();
     const t = tickets.find((x) => x.key === flight);
@@ -622,6 +661,11 @@ export function callsOf(op: ScheduleOp, t: Pick<Ticket, "labels" | "priority"> |
     if (remove.length) input.removeLabels = remove;
     return [{ tool: "save_issue", input }, note(`TAIL ASSIGNMENT tail:${reg}${remove.length ? ` (${remove.join(", ")} 대신)` : ""}`)];
   }
+  if (op.kind === "WAYPOINT") {
+    // 이슈의 milestone 칸만(id로). 마일스톤을 만들거나 바꾸지 않고, 상태·담당·라벨은 건드리지 않는다
+    const w = op.payload as WaypointPayload;
+    return [{ tool: "save_issue", input: { id: flight, milestone: w.milestone.id } }, note(`WAYPOINT ${w.route} · ${w.milestone.name}`)];
+  }
   const want = op.payload as ClassifyPayload;
   const c = classOf(t?.labels ?? []);
   const add: string[] = [];
@@ -644,7 +688,13 @@ export function callsOf(op: ScheduleOp, t: Pick<Ticket, "labels" | "priority"> |
 // NEW는 초안 뒤에 같은 제목(정규화)의 이슈가 Linear에 생기면 SUPERSEDED.
 // CLOSE는 Linear가 Done·Canceled가 되면 닫고(발부된 것이면 APPLIED), PR이 되돌려지면 SUPERSEDED.
 // TARGET·ROUTE는 AIRCRAFT가 없거나 퇴역했거나 FLEET 탭에서 이미 그렇게 바뀌면 SUPERSEDED(ctx.views가 있을 때).
-export function syncLines(existing: ScheduleOp[], tickets: Ticket[], nowMs: number, ctx: { reverted?: Set<string>; views?: NetworkCtx["views"] } = {}): LogLine[] {
+// WAYPOINT는 마일스톤 쪽 소속으로 본다(ctx.milestones, 못 읽었으면 닫힘·기한만): 그 WAYPOINT에 보이면 APPLIED, 다른 WAYPOINT에 붙거나 닫히면 SUPERSEDED.
+export function syncLines(
+  existing: ScheduleOp[],
+  tickets: Ticket[],
+  nowMs: number,
+  ctx: { reverted?: Set<string>; views?: NetworkCtx["views"]; milestones?: Milestone[] | null } = {},
+): LogLine[] {
   const at = new Date(nowMs).toISOString();
   const byKey = new Map(tickets.map((t) => [t.key, t]));
   const out: LogLine[] = [];
@@ -675,6 +725,13 @@ export function syncLines(existing: ScheduleOp[], tickets: Ticket[], nowMs: numb
       else if (DONE_STATES.has(t.stateType)) out.push(done(s.flight, `Linear에서 닫힘(${t.state})`));
       else if (ctx.reverted?.has(s.flight)) out.push({ op: "supersede", id: s.id, at, reason: "PR이 되돌려짐(LOGBOOK)" });
       else if (stale) out.push({ op: "expire", id: s.id, at, ...(closeStale ? { reason: closeStale } : {}) });
+      continue;
+    }
+    if (s.kind === "WAYPOINT") {
+      const r = waypointSyncOf({ flight: s.flight, payload: s.payload as WaypointPayload, status: s.status }, t, ctx.milestones ?? null);
+      if (r && "applied" in r) out.push(done(s.flight, "Linear에 이미 반영됨"));
+      else if (r) out.push({ op: "supersede", id: s.id, at, reason: r.supersede });
+      else if (stale) out.push({ op: "expire", id: s.id, at, ...(staleWhy ? { reason: staleWhy } : {}) });
       continue;
     }
     if (s.kind === "TAIL") {
@@ -757,7 +814,8 @@ export const standFreeHint = (title: string) => STAND_FREE_HINT.test(title);
 // close: 닫을 FLIGHT(Closable). Part of인 PR과 본문을 아직 모르는 것은 뺀다. 오래 머지된 것부터.
 // 최근 7일 안에 판정된 CLOSE가 있는 FLIGHT도 뺀다: 승인했을 것이면 "직접 Done" 목록에 있고, 거절이면 다시 쓰지 않는다.
 // tail: TAIL 신호(tail: 없이 팀이 몰고 있는 FLIGHT, schedule-tail.ts). 열린 TAIL 작업이 있는 FLIGHT는 뺀다. 초안은 OCC가 판단해 쓴다.
-export function candidatesOf(tickets: Ticket[], ops: ScheduleOp[], closable: Map<string, Closable> = new Map(), nowMs = Date.now(), tailSignals: TailSignal[] = []) {
+// waypoint: WAYPOINT가 있는 ROUTE의 열린 FLIGHT인데 어느 WAYPOINT에도 없는 것(schedule-waypoint.ts). 마일스톤을 못 읽었으면 null
+export function candidatesOf(tickets: Ticket[], ops: ScheduleOp[], closable: Map<string, Closable> = new Map(), nowMs = Date.now(), tailSignals: TailSignal[] = [], milestones: Milestone[] | null = null) {
   const openFor = new Set(ops.filter((s) => s.status === "draft" || s.status === "approved" || s.status === "released").map((s) => `${s.kind}|${s.flight}`));
   const decidedClose = new Set(
     ops.filter((s) => s.kind === "CLOSE" && (s.status === "agreed" || s.status === "disagreed" || s.status === "rejected") && nowMs - Date.parse(s.statusAt) < 7 * 86_400_000).map((s) => s.flight),
@@ -775,6 +833,7 @@ export function candidatesOf(tickets: Ticket[], ops: ScheduleOp[], closable: Map
       .sort((a, b) => a.mergedAt.localeCompare(b.mergedAt))
       .map((c) => c.flight),
     tail: tailSignals.filter((x) => !openFor.has(`TAIL|${x.flight}`)),
+    waypoint: milestones ? waypointCandidatesOf(tickets, milestones, new Set(tickets.map((t) => t.key).filter((k) => openFor.has(`WAYPOINT|${k}`)))) : null,
   };
 }
 
@@ -811,11 +870,14 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
     if (tailLabels && !tailLabels.has(want)) tailLabels = await loadTailLabels(true);
     return { teamPattern, fleet: fleetRegsOf(fleet), tailLabels, views: fleetView(s, fleet, teamPattern) };
   };
-  const current = (s: Snapshot) => {
+  const current = async (s: Snapshot) => {
     const lines = readLines();
     const ops = fold(lines);
     const openNetwork = ops.some((x) => x.status === "draft" && isNetworkKind(x.kind));
-    const closing = s.linear.enabled && s.linear.fetchedAt ? syncLines(ops, s.tickets, Date.now(), { reverted: closeInfo(s).reverted, views: openNetwork ? viewsOf(s) : undefined }) : [];
+    // 열린 WAYPOINT 작업이 있을 때만 마일스톤을 본다(10분 캐시)
+    const openWaypoint = ops.some((x) => x.kind === "WAYPOINT" && (x.status === "draft" || x.status === "approved" || x.status === "released"));
+    const milestones = openWaypoint ? (await loadLinearProjects()).milestones : null;
+    const closing = s.linear.enabled && s.linear.fetchedAt ? syncLines(ops, s.tickets, Date.now(), { reverted: closeInfo(s).reverted, views: openNetwork ? viewsOf(s) : undefined, milestones }) : [];
     if (closing.length) {
       append(closing);
       return fold([...lines, ...closing]);
@@ -825,7 +887,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
 
   app.get("/api/schedule/brief", async (c) => {
     const s = await getSnapshot();
-    const ops = current(s);
+    const ops = await current(s);
     const now = Date.now();
     const mode = loadScheduleMode();
     const open = ops.filter((x) => x.status === "draft").sort((a, b) => a.at.localeCompare(b.at));
@@ -852,7 +914,9 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
       teamPattern: dcfg.teamPattern,
       now,
     });
-    const candidates = candidatesOf(mineTickets, ops, mine, now, tailSignals);
+    const lp = await loadLinearProjects();
+    // WAYPOINT 후보(ATC-77): 소속은 모든 팀의 마일스톤에서 본다. FLIGHT는 후보 팀 것만
+    const candidates = candidatesOf(mineTickets, ops, mine, now, tailSignals, lp.milestones);
     // SUPERVISOR가 Linear에서 직접 Done으로 바꿀 것: 승인된 CLOSE, 그림자 운용이면 "승인했을 것"(7일 안) 중 아직 열린 이슈
     const byKeyAll = new Map(s.tickets.map((t) => [t.key, t]));
     const closeManual = ops
@@ -864,7 +928,15 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
       const p = x.payload as NewPayload;
       return [p.parent, ...(p.related ?? []), ...(p.blockedBy ?? []), ...(p.similar ?? []).map((m) => m.key)].filter(Boolean) as string[];
     });
-    const keys = new Set([...(ops.map((x) => x.flight).filter(Boolean) as string[]), ...candidates.classify, ...candidates.prioritize, ...candidates.close, ...candidates.tail.map((x) => x.flight), ...newKeys]);
+    const keys = new Set([
+      ...(ops.map((x) => x.flight).filter(Boolean) as string[]),
+      ...candidates.classify,
+      ...candidates.prioritize,
+      ...candidates.close,
+      ...candidates.tail.map((x) => x.flight),
+      ...(candidates.waypoint ?? []).flatMap((x) => x.flights),
+      ...newKeys,
+    ]);
     const byKey = new Map(s.tickets.map((t) => [t.key, t]));
     const flights = Object.fromEntries(
       [...keys].filter((k) => byKey.has(k)).map((k) => {
@@ -878,20 +950,25 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
     // CLOSE 후보의 PR·머지 시각·Fixes 여부(초안 근거와 화면용)
     const closeInfoOut = Object.fromEntries(candidates.close.map((k) => { const c = closable.get(k)!; return [k, { pr: c.pr, mergedAt: c.mergedAt, link: c.link }]; }));
     // ROUTE마다 지금·다음 WAYPOINT의 완료 기준과 이슈(ATC-8). 마일스톤을 못 읽었으면 null
-    const lp = await loadLinearProjects();
     // 후보 팀 마일스톤만(NEW는 주 팀에 이슈를 만든다). ETA·지연 경고는 읽는 팀 전부
     const waypointGaps = lp.milestones ? waypointGapsOf(lp.milestones, lp.ok ? lp.projects : null, teams) : null;
     // 지나지 않은 WAYPOINT의 ETA와 지연 경고(ATC-24). fresh는 OCC가 아직 SUPERVISOR에게 보고하지 않은 경고
-    const waypointEtas = lp.milestones ? waypointEtasOf(await loadRoutes(s, loadLogbook(), now)) : null;
+    const routes = lp.milestones ? await loadRoutes(s, loadLogbook(), now) : null;
+    const waypointEtas = routes ? waypointEtasOf(routes) : null;
     const reported = loadSlipsReported();
     const slipList = waypointEtas ? slipsOf(waypointEtas, now) : [];
     const freshSlips = new Set(freshSlipKeys(slipList, reported));
     const slips = waypointEtas ? slipList.map((x) => ({ ...x, fresh: freshSlips.has(x.key), reportedAt: reported.reported[x.key] ?? null })) : null;
+    // WAYPOINT가 없는 ROUTE 알림(ATC-77). 읽는 팀 전부(지연 경고처럼). fresh는 OCC가 아직 보고하지 않은 것
+    const routesReported = loadRoutesReported();
+    const noWaypoints = routes ? routesWithoutWaypointsOf(routes) : null;
+    const freshRoutes = new Set(noWaypoints ? freshRouteKeys(noWaypoints, routesReported) : []);
+    const routesWithoutWaypoints = noWaypoints ? noWaypoints.map((x) => ({ ...x, fresh: freshRoutes.has(x.route), reportedAt: routesReported.reported[x.route] ?? null })) : null;
     // 판정 계열(ATC-36): 일치율과, SUPERVISOR가 판정한 초안의 mark만(열린 초안의 mark는 숨긴다). 게이트와 따로
     // mark는 화면에 보이는 판정된 초안(recent·inProgress)만 싣는다(브리핑이 replay 기록만큼 커지지 않게)
     const shown = new Set([...recent, ...inProgress].map((x) => x.id));
     const judges = judgesViewOf(ops.map((x) => ({ id: x.id, kind: x.kind, human: humanOf(x) })), marksOf(readJudgeLines()), loadJudges(), shown);
-    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, close: closeInfoOut, closeManual, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes), waypointGaps, waypointEtas, slips, judges });
+    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, close: closeInfoOut, closeManual, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes), waypointGaps, waypointEtas, slips, routesWithoutWaypoints, judges });
   });
 
   // OCC가 SUPERVISOR에게 보고한 WAYPOINT 지연 경고를 적는다. keys가 없으면 지금 fresh 전부
@@ -905,6 +982,20 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
     const keys: string[] = Array.isArray(body.keys) ? body.keys.map(String) : freshSlipKeys(slipList, r);
     const next = ackSlips(slipList, r, keys, new Date(now).toISOString());
     saveSlipsReported(next);
+    return c.json({ acked: keys.filter((k) => k in next.reported), reported: Object.keys(next.reported).length });
+  });
+
+  // OCC가 SUPERVISOR에게 보고한 "WAYPOINT가 없는 ROUTE" 알림을 적는다(ATC-77). keys(ROUTE 이름)가 없으면 지금 fresh 전부
+  app.post("/api/schedule/routes/ack", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const lp = await loadLinearProjects();
+    if (!lp.milestones) return c.json({ error: "마일스톤을 읽지 못해 WAYPOINT가 없는 ROUTE를 모름" }, 503);
+    const now = Date.now();
+    const list = routesWithoutWaypointsOf(await loadRoutes(await getSnapshot(), loadLogbook(), now));
+    const r = loadRoutesReported();
+    const keys: string[] = Array.isArray(body.keys) ? body.keys.map(String) : freshRouteKeys(list, r);
+    const next = ackRoutes(list, r, keys, new Date(now).toISOString());
+    saveRoutesReported(next);
     return c.json({ acked: keys.filter((k) => k in next.reported), reported: Object.keys(next.reported).length });
   });
 
@@ -942,7 +1033,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
     const s = await getSnapshot();
     const body = await c.req.json().catch(() => ({}));
     try {
-      const ops = current(s);
+      const ops = await current(s);
       const tails = body.kind === "NEW" ? newTailsOf(fleetView(s, loadFleet(), loadDispatchConfig().teamPattern)) : [];
       let closable: Map<string, Closable> | undefined;
       if (body.kind === "CLOSE") {
@@ -959,7 +1050,9 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
       const milestones = allMs ? ofTeams(allMs, candidateTeamsOf(loadDispatchConfig())) : null;
       const network = isNetworkKind(body.kind) ? await networkCtxOf(s) : undefined;
       const tail = body.kind === "TAIL" ? await tailCtxOf(s, String(body.registration ?? "")) : undefined;
-      const lines = draftOps(ops, body, s.tickets, new Date().toISOString(), ops.length, { tails, closable, teams: candidateTeamsOf(loadDispatchConfig()), milestones, network, tail });
+      // WAYPOINT: 소속은 모든 팀의 마일스톤에서(이슈의 마일스톤은 그 프로젝트 것이다)
+      const waypoint = body.kind === "WAYPOINT" ? { milestones: (await loadLinearProjects()).milestones } : undefined;
+      const lines = draftOps(ops, body, s.tickets, new Date().toISOString(), ops.length, { tails, closable, teams: candidateTeamsOf(loadDispatchConfig()), milestones, network, tail, waypoint });
       append(lines);
       const op = fold(readLines()).find((x) => x.id === lines[lines.length - 1].id);
       return c.json({ op, label: op?.flight ? flightNumber(op.flight) : null });
@@ -1022,7 +1115,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
     const id = (c.req.param("id") ?? "").toUpperCase();
     if (loadScheduleMode() !== "approval") return c.json({ error: "발부는 approval 모드(S2)에서만" }, 409);
     const s = await getSnapshot();
-    const op = current(s).find((x) => x.id === id);
+    const op = (await current(s)).find((x) => x.id === id);
     if (!op) return c.json({ error: "그런 SCHEDULE 작업이 없음" }, 404);
     if (op.status === "released" && op.calls) return c.json({ op, calls: op.calls });
     if (op.status !== "approved") return c.json({ error: `승인된 작업만 발부한다(지금 ${op.status})` }, 409);
