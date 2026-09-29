@@ -29,7 +29,7 @@ Read on 2026-09-28 from local transcripts (field names and numbers only, no bodi
 3. **Show, don't steer.** FUEL numbers are displayed next to TARGETS and in briefs. They never feed DISPATCH scores or assignments, except a plan-limit HOLD that the SUPERVISOR switches on (section 6).
 4. **Tokens and cost side by side.** Cost uses a config price table; a model with no price is left out of cost with a warning, never guessed.
 5. **Name the cause.** A leak is only counted with a rule that says why (cold cache, control wake, model switch …). Anything else is `UNEXPLAINED`, not blamed on a team.
-6. **Accounts are declared, not discovered.** atc does not read credentials or account settings. The SUPERVISOR labels which account an AIRCRAFT flies on.
+6. **Accounts are declared, not discovered.** atc does not read credentials or account settings. The SUPERVISOR labels which account an AIRCRAFT flies on. Running AIRCRAFT on more than one Claude account: see [accounts.md](accounts.md) (draft).
 
 ## 3. Terms
 
