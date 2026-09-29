@@ -428,6 +428,8 @@ export function crewBriefing(a: AircraftView, repo: string | null, mode: "shadow
     `TYPE RATING: ${a.ratings.join(", ") || "none"} — FLIGHTs in this range are assigned to you.${a.ratings.includes("SEC") ? " Use the Codex Engineering Task template for SEC work, not flash-helper (DeepSeek)." : " You do not take SEC (DB, security, rights) work."}`,
     `ROUTE: ${a.routes.join(", ") || "unassigned"}`,
     "",
+    "Write what the SUPERVISOR reads (your turn text in this session, questions, summaries) in Korean. Never Japanese or Chinese. Messages to other sessions stay English (ATC-126).",
+    "",
     "Assignments and messages",
     `- Issues labeled tail:${a.registration} in Linear are this team's. Only the CAPTAIN writes to Linear.`,
     "- When atc TOWER sends a CLEARANCE starting with [ATC C-xxxx], answer that message with READBACK C-xxxx.",
@@ -436,6 +438,12 @@ export function crewBriefing(a: AircraftView, repo: string | null, mode: "shadow
     `When ready, leave only the line \"${a.registration} IN SERVICE\" and wait for assignments.`,
   ];
   return lines.join("\n");
+}
+
+// LANGUAGE(ATC-150): 그 AIRCRAFT의 살아 있는 세션 중 CAPTAIN이 가나를 쓴 것의 처음 시각. 없으면 null(표시 전용)
+function languageOf(sessions: Snapshot["sessions"], reg: string, teamPattern: string): { at: string } | null {
+  const at = sessions.filter((x) => x.status !== "dead" && x.languageAt && regKey(x.name, teamPattern) === reg).map((x) => x.languageAt!).sort()[0];
+  return at ? { at } : null;
 }
 
 // contextOf: REGISTRATION → CONTEXT SIZE(ATC-69). fuel-run.ts가 이 파일을 부르므로 index.ts가 넘긴다
@@ -452,7 +460,7 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>, cont
     const context = contextOf(s.sessions, cfg.teamPattern);
     const aircraft = fleetView(s, fleet, cfg.teamPattern, loadPricedLogbook())
       .map(withCrew(s))
-      .map((a) => ({ ...a, rules: rulesOf(a.registration), context: contextView(context.get(a.registration) ?? null) }));
+      .map((a) => ({ ...a, rules: rulesOf(a.registration), language: languageOf(s.sessions, a.registration, cfg.teamPattern), context: contextView(context.get(a.registration) ?? null) }));
     const configurations = Object.entries(CONFIGURATIONS).map(([id, t]) => ({ id, label: t.label, complement: t.complement, ratings: t.ratings }));
     return c.json({
       ratings: RATINGS,

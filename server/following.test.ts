@@ -159,6 +159,15 @@ test("STAND 없는 tail: FLIGHT: DEPARTED는 착수 기록(없으면 Linear 시�
   assert.equal(f, undefined); // Done이면 In Progress가 아니라 대상에서 빠진다
 });
 
+test("LANGUAGE(ATC-150): 그 FLIGHT를 쥔 AIRCRAFT가 가나를 썼으면 info 항목, key에 시각을 넣어 한 번만", () => {
+  const language = new Map([["TEAM_B", ago(4)]]);
+  const [f] = followingOf(input({ proposals: [proposal("D-1", "VOC-1", "accepted", { accepted: ago(5) })], tickets: [ticket("VOC-1")], language }));
+  const issue = f!.issues.find((i) => i.code === "language")!;
+  assert.deepEqual([issue.severity, issue.since, issue.key, issue.text], ["info", ago(4), `VOC-1|language|${ago(4)}`, "TEAM_B가 일본어로 씀 — CREW BRIEFING 다시 보내기"]);
+  const [g] = followingOf(input({ proposals: [proposal("D-1", "VOC-1", "accepted", { accepted: ago(5) })], tickets: [ticket("VOC-1")] }));
+  assert.ok(!g!.issues.some((i) => i.code === "language"));
+});
+
 test("AIRCRAFT health(ATC-45): 그 FLIGHT를 쥔 AIRCRAFT의 코드가 health 문제로, ALERT면 warn", () => {
   const health = new Map([["TEAM_B", { code: "LIMIT" as const, level: "alert" as const, since: ago(3), resetsAt: new Date(NOW + 30 * 60_000).toISOString(), detail: "You've hit your session limit", next: "reset까지 기다린다", holds: true }]]);
   const [f] = followingOf(input({ proposals: [proposal("D-1", "VOC-1", "accepted", { accepted: ago(5) })], tickets: [ticket("VOC-1")], health }));

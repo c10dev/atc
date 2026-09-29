@@ -80,6 +80,45 @@ export function lastMessageOf(text: string): { text: string; at: number; cut?: t
   return last && last.text && !last.tool ? { text: last.text, at: last.at, ...(cut ? { cut: true as const } : {}) } : null;
 }
 
+// ---- LANGUAGE(ATC-150): CAPTAIN이 SUPERVISOR가 읽는 글에 가나(U+3040–U+30FF)를 썼다 ----
+// 대화 기록 끝(여러 줄)의 본 대화(isSidechain 아님) assistant 글만 본다. 코드 펜스·인라인 코드·인용(>) 안의 일본어는 세지 않는다(산문만).
+// 표시 전용이다 — 세션에는 아무것도 보내지 않는다. 돌려주는 값은 처음 걸린 줄의 시각(ms), 없으면 null
+const KANA_RE = /[\u3040-\u30ff]/;
+export function proseOf(text: string): string {
+  const out: string[] = [];
+  let fence: string | null = null;
+  for (const line of text.split("\n")) {
+    const m = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      if (m && m[1]!.startsWith(fence[0]!) && m[1]!.length >= fence.length) fence = null;
+      continue;
+    }
+    if (m) {
+      fence = m[1]!;
+      continue;
+    }
+    if (/^\s*>/.test(line)) continue;
+    out.push(line.replace(/`[^`\n]*`/g, ""));
+  }
+  return out.join("\n");
+}
+export function kanaAtOf(tail: string): number | null {
+  for (const line of tail.split("\n")) {
+    if (!line.includes('"type":"assistant"')) continue;
+    let d;
+    try {
+      d = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (d.type !== "assistant" || d.isSidechain || d.isCompactSummary || d.isApiErrorMessage) continue;
+    const at = Date.parse(d.timestamp);
+    if (Number.isNaN(at)) continue;
+    if (KANA_RE.test(proseOf(textOf(d.message?.content)))) return at;
+  }
+  return null;
+}
+
 // ---- 마스킹: 경로·URL(그리고 토큰·이메일)은 나가지 않는다. 남은 글이 MESSAGE_MAX를 넘으면 앞 500자 + " … " + 뒤 1,000자(글이 어떻게 시작하고 어떻게 끝나는지 둘 다 본다, ATC-141) ----
 const URL_RE = /\b(?:https?|ftp|file):\/\/[^\s<>"')\]]+/gi;
 const EMAIL_RE = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;

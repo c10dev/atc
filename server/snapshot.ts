@@ -55,8 +55,9 @@ export async function buildSnapshot(): Promise<Snapshot> {
   for (const f of claude.files) {
     const x = sessionById.get(f.sessionId);
     if (!x) continue;
-    const { health, activity } = healthOfSession(f, x.status, healthAt, config.health);
+    const { health, activity, languageAt } = healthOfSession(f, x.status, healthAt, config.health);
     x.health = health;
+    if (languageAt !== undefined) x.languageAt = new Date(languageAt).toISOString();
     if (activity) x.activity = activity;
   }
 

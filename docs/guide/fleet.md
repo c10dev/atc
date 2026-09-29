@@ -169,6 +169,7 @@ drift 두 줄의 뜻:
 - 보내기 전(승인 대기·승인됨)에 또 바꾸면 처음 구성 기준으로 합친 새 지시문(`CC-0002`)이 앞의 것을 대신한다. 승인됐던 것이면 새 지시문을 다시 승인한다. 원래 구성으로 되돌리면 대기 건만 닫힌다.
 - 이미 보낸(sent) 건은 대신하지 않는다. 새 지시문은 그 다음 변경으로 따로 생기고, 승인해 두어도 앞 건의 READBACK이 온 뒤에 나간다(카드에 기다리는 CC 번호가 보인다).
 - 아직 운항 전인 AIRCRAFT는 CREW CHANGE 없이 CREW BRIEFING에 새 구성이 들어간다.
+- CAPTAIN이 SUPERVISOR가 읽는 글에 일본어를 쓰면 카드에 `LANGUAGE`가 뜨고 FLIGHT FOLLOWING에도 참고로 나온다(ATC-150). 새 CREW BRIEFING에는 "SUPERVISOR가 읽는 글은 한국어" 줄이 들어 있으니 그 세션에 다시 보내면 된다. atc가 대신 보내지는 않는다.
 
 기록은 `~/.local/state/atc/crew-changes.jsonl`에 추가만 한다. 2b를 켜기 전에 DISPATCH 탭 "2b 켜기 점검표"의 **CREW CHANGE 발부**와 배정 대상 AIRPORT마다 있는 **READBACK 규칙**(`[OCC CC-xxxx]` → `READBACK CC-xxxx`까지)을 확인한다.
 

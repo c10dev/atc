@@ -154,6 +154,7 @@ test("CREW BRIEFING: 등록번호·폴더·팀원·자격·교신 규칙을 담�
   assert.ok(text.includes("Use the Codex Engineering Task template for SEC work"));
   assert.ok(text.includes("tail:TEAM_G"));
   assert.ok(text.includes("READBACK C-xxxx"));
+  assert.ok(text.includes("in Korean. Never Japanese or Chinese. Messages to other sessions stay English (ATC-126)."));
   assert.ok(!text.includes("READBACK D-xxxx"));
   assert.ok(crewBriefing(a, null, "approval").includes("READBACK D-xxxx"));
 });
