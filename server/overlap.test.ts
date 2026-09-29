@@ -1,9 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEFAULT_OVERLAP, type Holder, isHeavy, matches, overlapConfigOf, overlapDetail, overlapsOf, overlapValueOf, pathsOfBody, predictedOf } from "./overlap.ts";
+import { DEFAULT_OVERLAP, type Holder, isHeavy, matches, overlapConfigOf, overlapDetail, overlapHoldWhy, overlapsOf, overlapValueOf, pathsOfBody, predictedOf, sameTeamOnlyNote, soleTeamOf } from "./overlap.ts";
 
 const holder = (flight: string, paths: string[], over: Partial<Holder> = {}, where = "STAND"): Holder => ({
   flight, team: "TEAM_A", airport: "ATCC", wake: "M", files: new Map(paths.map((p) => [p, where])), ...over,
+});
+
+test("같은 팀 예외(ATC-136): 겹치는 FLIGHT를 쥔 팀이 하나뿐이고 정해져 있을 때만 그 팀, HOLD 사유에 팀이 붙는다", () => {
+  const ov = (team: string | null) => ({ holder: holder("VOC-1", ["a.ts"], { team }), hits: [], weight: 1 }) as never;
+  assert.equal(soleTeamOf([ov("TEAM_A"), ov("TEAM_A")]), "TEAM_A");
+  assert.equal(soleTeamOf([ov("TEAM_A"), ov("TEAM_B")]), null);
+  assert.equal(soleTeamOf([ov(null)]), null);
+  assert.equal(soleTeamOf([]), null);
+  assert.equal(overlapHoldWhy(["VOC-1", "VOC-2"]), "파일 겹침 — VOC-1, VOC-2가 머지될 때까지");
+  assert.equal(overlapHoldWhy(["VOC-1"], { name: "TEAM_A", why: "AIRBORNE" }), "파일 겹침 — VOC-1가 머지될 때까지 (겹침은 TEAM_A뿐인데 TEAM_A가 지금 못 받음: AIRBORNE)");
+  assert.equal(sameTeamOnlyNote("TEAM_A"), "겹침은 TEAM_A뿐 — TEAM_A에만 제안");
 });
 
 test("본문에서 백틱 경로와 glob을 읽고, 펜스 코드·명령·URL·낱말은 건너뛴다", () => {

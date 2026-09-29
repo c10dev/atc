@@ -149,6 +149,7 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 - **점수.** 겹침은 예측 ∩ 날고 있는 파일이고 날고 있는 FLIGHT마다 센다. 값은 `min(파일 수, 3) × WAKE(이 FLIGHT) × WAKE(잡은 FLIGHT)`(L 0.5 · M 1 · H 2)라 양쪽 어느 쪽이든 큰 FLIGHT가 낄수록 무겁다. 설명에 파일, 잡은 FLIGHT와 그 팀, 출처(`본문 → STAND`, `본문 → PR #12`)가 보인다.
 - **같은 팀.** 이 AIRCRAFT의 팀이 날고 있는 FLIGHT와의 겹침은 충돌이 아니다. 겹치는 파일을 만지는 팀이 그 팀뿐이면 그 짝에 `이어서 하면 충돌 없음`(×1)을 준다. 그 팀이 달리 배정 가능할 때만 짝이 있다.
 - **HOLD 스위치**(`dispatch.json`의 `overlap.hold`, 기본 `false`. `overlap.holdFiles`, 기본 2). `holdFiles`개 이상 겹치고 WAKE 곱이 1 이상(L끼리만은 아님)이면 무거운 겹침이다. 스위치가 켜져 있으면 그 FLIGHT는 `파일 겹침 — <FLIGHT>가 머지될 때까지`로 HOLD_DEPARTURE 된다. 잡은 FLIGHT의 STAND와 PR이 없어지면 다시 후보다. 그 파일을 만지는 팀이 그 팀뿐이고 그 팀이 날 수 있으면 HOLD하지 않는다. 꺼져 있으면 계획이 HOLD할 것을 목록(`overlapHolds`, DISPATCH 탭에 `shadow —`)으로만 보이고 요소 설명에도 적는다.
+- **같은 팀 예외, 지은 대로(ATC-136).** 예외는 그 FLIGHT가 실제로 그 팀에 갈 때만 통한다. 겹치는 파일을 만지는 팀이 그 팀뿐이고 그 팀이 지금 받을 수 있으면(자격 있음, CHECK면 독립, 비어 있음, 자리 있음) 그 FLIGHT의 후보를 `tail:` 라벨처럼 그 팀 AIRCRAFT로 좁히고, 요소 설명에 `겹침은 TEAM_X뿐 — TEAM_X에만 제안`이 뜬다. 그 팀이 못 받으면(바쁨·HOLD·세션 없음·RATING 안 맞음) 다른 겹침과 똑같이 HOLD하고(스위치가 꺼져 있으면 `overlapHolds` shadow에만 남기고), 사유에 팀이 나온다: `파일 겹침 — <FLIGHT>가 머지될 때까지 (겹침은 TEAM_X뿐인데 TEAM_X가 지금 못 받음: <이유>)`. 겹치는 팀이 둘 이상이면 예전처럼 HOLD한다. 스위치 기본값, 무거운 겹침 기준, 점수 가중치는 그대로다.
 - **지표.** 열린 PR이 `DIRTY`가 되면 ATFM이 `behind`처럼 `dirty` 기록을 남기고, 그때 파일이 겹치던 다른 열린 PR을 함께 적는다. ATFM 데이터 줄 `DIRTY(겹침 예측 가능)`은 7일 동안 `seen/dirty`: `DIRTY`가 된 PR 중 파일을 나누는 PR이 열려 있던 수/전체.
 
 ### 5.4 DISPATCH 세션의 검토
