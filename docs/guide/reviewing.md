@@ -86,6 +86,16 @@ OCC가 Linear에 쓸 변경을 초안으로 남긴다. 지금은 S1이라 Linear
 - 보고 없이 24시간이 지나면 늦은 것(overdue)에 뜬다. OCC는 CAPTAIN에게 직접 물을 수 없으니 SUPERVISOR가 챙긴다.
 - 2b → 3 점검의 DEPARTED 비율에는 STAND가 필요한 FLIGHT만 센다. STAND 없는 FLIGHT는 READBACK 비율에만 들어가고, READBACK·ARRIVED 수가 따로 보인다. 그 아래 "일이 끝난 뒤 24시간 안 ARRIVED"는 최근 30일 STAND 없는 ARRIVED가 제때 확인된 비율이다(24시간 넘게 확인 안 된 후보는 놓친 것).
 
+## LAUNCH 카드와 RESUME 카드: 세션이 없는 AIRCRAFT
+
+atc가 띄운 백그라운드 AIRCRAFT는 마지막 턴 뒤 60분쯤 쉬면 Claude Code가 세션을 거둔다(FLEET에는 NOT IN SERVICE). 그래도 DISPATCH 후보로 남는다.
+
+- **LAUNCH 카드**: 그런 AIRCRAFT로 가는 카드에는 `LAUNCH on approve`가 붙는다. 2b에서 승인하면 atc가 FLEET의 LAUNCH와 같은 길로 그 세션을 띄우고(마지막 LAUNCH의 permission mode·모델), 새 세션이 뜨면 OCC가 FLIGHT PLAN을 보낸다. 그 사이 카드는 승인된 채 `LAUNCHING — 새 세션을 기다림`이다. 승인 한 번이 전부이고, 승인하지 않으면 아무것도 뜨지 않는다.
+- **상한**: 살아 있는 백그라운드 세션과, 승인했지만 아직 세션이 안 뜬 LAUNCH 카드를 합쳐 상한(기본 6, `ATC_MAX_LAUNCHED`)까지다. 차면 카드에 `LAUNCH 대기 — 백그라운드 … / 상한 6 …`이 보이고 승인이 막힌다. 자리가 나면 승인한다.
+- **LAUNCH 실패**: 띄우지 못했거나 30분 안에 새 세션이 안 뜨면 카드가 `LAUNCH 실패 — 사유`로 닫히고 FLIGHT PLAN은 나가지 않는다. FLIGHT FOLLOWING에 하루 뜬다. 다음 계획에 같은 카드가 다시 나오니 원인(예: 그 저장소 trust)을 고친 뒤 다시 승인하면 된다.
+- **RESUME 카드**: 사용 한도로 턴이 잘린 채 세션이 사라진 AIRCRAFT는 한도가 풀린 뒤 같은 FLIGHT·같은 AIRCRAFT의 RESUME 카드로 돌아온다(LAUNCH 카드이기도 하다). 카드에는 STAND(워크트리)와 브랜치, 마지막 커밋, CAPTAIN의 마지막 보고 한 줄이 실린다. 보내는 FLIGHT PLAN은 "resume, don't restart" — 처음부터 다시 하지 말고 거기서 이어서 하라고 적는다. 같은 끊김에는 한 번만 나온다(거절하면 다시 나오지 않는다). 세션이 살아 있는 AIRCRAFT의 `RESUME 필요`는 전처럼 그 세션에서 "계속"을 보낸다.
+- 데스크톱·터미널에서 연 AIRCRAFT는 atc가 띄우지 않으니 세션이 없으면 후보가 아니다.
+
 ## CROSSCHECK: 예비 판정 먼저 보기
 
 CROSSCHECK 세션이 켜져 있으면, 열린 제안과 초안마다 OCC와 다른 계열의 모델이 예비 판정을 먼저 달아 둔다. 카드의 점선 칩이 그것이다: `CROSSCHECK agree · 본문상 제약 없음`, `CROSSCHECK disagree · 이미 완료됨`.

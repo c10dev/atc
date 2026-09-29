@@ -11,7 +11,8 @@ import { keyInName, keyPatternOf, teamOfKey } from "./linear-keys.ts";
 import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
 import { REASON_CODES } from "./reasons.ts";
-import { DEFAULT_TEAM_PATTERN, regKey } from "./registration.ts";
+import { ABSENT_REASON, cutHoldWhy, type ResumeInfo } from "./dispatch-launch.ts";
+import { DEFAULT_TEAM_PATTERN, fleetKeyOf, regKey } from "./registration.ts";
 import { supervisorConfirmOf } from "./supervisor-confirm.ts";
 
 // 2단계 DISPATCH: 어떤 FLIGHT를 어떤 AIRCRAFT에 보낼지 계산한다(순수 함수 planDispatch).
@@ -163,7 +164,7 @@ export function airportOfTicket(t: Pick<Ticket, "key" | "project">, cfg: Pick<Di
 
 export interface Factor {
   // standFree·independence는 0점짜리 표시(점수를 바꾸지 않고 왜 이 짝인지 보여 준다)
-  id: "priority" | "wait" | "unblock" | "affinity" | "conflict" | "route" | "waypoint" | "overlap" | "overlapSame" | "standFree" | "independence";
+  id: "priority" | "wait" | "unblock" | "affinity" | "conflict" | "route" | "waypoint" | "overlap" | "overlapSame" | "standFree" | "independence" | "resume";
   label: string;
   value: number;
   weight: number;
@@ -180,6 +181,8 @@ export interface AssignPlan {
   airport: string;
   score: number;
   factors: Factor[];
+  launch?: true; // 세션이 없는 백그라운드 AIRCRAFT(ATC-129): 승인하면 LAUNCH 뒤 FLIGHT PLAN
+  resume?: ResumeInfo; // RESUME 카드(ATC-129): 사용 한도로 끊긴 FLIGHT를 이어서
   supervisorConfirm?: string[]; // 예측 경로 중 사용자 등급 파일(ATC-120). 있을 때만
 }
 
@@ -207,6 +210,7 @@ export interface AircraftState {
   stopped?: true; // 멈춘 팀(ATC-90): health RESUME·STALLED, 또는 끝나지 않은 In Progress FLIGHT를 쥠. 열린 제안은 "AIRCRAFT 멈춤 — …"으로 닫고 짝 규칙은 시작하지 않는다
   room?: number; // 끝나지 않은 FLIGHT를 쥐고도 슬롯(perTeam)이 남은 양(WAKE로 셈). STAND가 필요한 새 FLIGHT는 WAKE가 이 안에 들어야 한다
   restarting?: true; // /clear 뒤 첫 메시지를 기다리는 자리(ATC-91). 세션은 없고 배정은 받지 않지만 승인된 제안은 닫지 않는다
+  launch?: true; // 세션이 없는 백그라운드 AIRCRAFT(ATC-129, 스냅샷 absent). 이 AIRCRAFT의 카드는 승인하면 LAUNCH한다
 }
 
 // 진행 중인 제안이 잡고 있는 AIRCRAFT·FLIGHT → 제안 id. 새 계획에서 뺀다.
@@ -262,6 +266,8 @@ export interface Plan {
   slots: { airport: string; airborne: number; planned: number; limit: number }[];
   // 받을 AIRCRAFT가 없어 남은 FLIGHT(FLEET PLAN 수요, docs/fleet.md 8.6). AIRPORT 슬롯이 차서 남은 것은 넣지 않는다
   unserved?: Unserved[];
+  // RESUME 카드(ATC-129): 한도로 끊긴 FLIGHT를 같은 REGISTRATION에(launch). 슬롯·열린 제안 수에 세지 않는다
+  resume?: AssignPlan[];
 }
 
 // no-aircraft: 자격 있는 AIRCRAFT가 모두 바쁘거나 다른 FLIGHT를 받음, unqualified: 살아 있는 AIRCRAFT 중 자격을 가진 것이 없음,
@@ -465,6 +471,7 @@ export function planDispatch(
   logbook: BuilderSources["logbook"] = [], // CHECK 독립성: 검토 대상을 만든 AIRCRAFT
   activeWaypoint: Map<string, string> = new Map(), // FLIGHT key → 지금 구간 WAYPOINT(routes.ts activeWaypointsOf, 8단계)
   files: FilesInFlight = NO_FILES, // 파일 겹침(ATC-71): 날고 있는 FLIGHT의 파일과 이슈 본문
+  resumes: AssignPlan[] = [], // RESUME 카드(ATC-129, dispatch-launch.ts resumePlansOf). 그 AIRCRAFT는 새 FLIGHT를 받지 않는다
 ): Plan {
   const team = new RegExp(cfg.teamPattern, "i");
   const regOf = (name: string) => regKey(name, cfg.teamPattern); // 세션 이름 → REGISTRATION(ATC-67)
@@ -549,6 +556,51 @@ export function planDispatch(
   for (const r of s.restarting ?? []) {
     if (aircraft.some((a) => regOfAircraft(a, cfg.teamPattern) === r.registration)) continue;
     aircraft.push({ id: `restarting:${r.registration}`, registration: r.registration, name: r.name, callsign: callsign({ name: r.registration }), airport: null, ...reservationsOf(r.registration), resting: false, available: false, reason: restartingReason(r), restarting: true });
+  }
+  // ABSENT(ATC-129): 세션이 없는 백그라운드 AIRCRAFT(atc가 띄운 적이 있는 것). 후보로 남고 그 카드는 승인하면 LAUNCH한다.
+  // RETIRED는 스냅샷이 이미 뺐다. AOG, LIMIT(cut 뒤 reset 전, ACCOUNT HOLD, FUEL HOLD), RESUME 대기, 끝나지 않은 FLIGHT는 새 FLIGHT를 받지 않는다
+  for (const a of s.absent ?? []) {
+    const reg = a.registration;
+    if (aircraft.some((x) => regOfAircraft(x, cfg.teamPattern) === reg)) continue;
+    const key = fleetKeyOf(Object.keys(fleet.aircraft), reg, cfg.teamPattern);
+    const home = (key ? fleet.aircraft[key]?.base : null) ?? null;
+    const base = { id: `absent:${reg}`, registration: reg, name: reg, callsign: callsign({ name: reg }), airport: home && openAirports.has(home) ? home : null, ...reservationsOf(reg), resting: false, launch: true as const };
+    const status = profileOf(fleet, reg);
+    if (status.aog) {
+      aircraft.push({ ...base, available: false, reason: `AOG — ${status.aog.reason}${status.aog.until ? ` (~${status.aog.until})` : ""}` });
+      continue;
+    }
+    const cut = cutHoldWhy(a.cut, now);
+    if (cut) {
+      aircraft.push({ ...base, available: false, reason: cut });
+      continue;
+    }
+    const resume = resumes.find((r) => r.registration === reg);
+    if (resume) {
+      aircraft.push({ ...base, available: false, stopped: true, reason: `RESUME — ${resume.flight}을 이어서(RESUME 카드)` });
+      continue;
+    }
+    const acct = accountHoldOf(holds, accountOf(fleet, reg), reg);
+    if (acct) {
+      aircraft.push({ ...base, available: false, reason: `${accountHoldLabel(acct, now)} — ${accountHoldDetail(acct)}` });
+      continue;
+    }
+    const fuel = s.fuel?.[reg];
+    if (fuel && fuelHolds(fuel, cfg.fuel ?? DEFAULT_FUEL)) {
+      aircraft.push({ ...base, available: false, reason: fuelHoldReason(fuel, now) });
+      continue;
+    }
+    // 끝나지 않은 In Progress FLIGHT(tail: 라벨, ATC-90). 세션이 없어 점유는 없다
+    const holding = s.tickets.filter((t) => t.stateType === "started" && tailsOf(t, now).has(reg) && !landed.has(t.key) && needsStand(classOf(t.labels).type)).map((t) => t.key);
+    if (holding.length) {
+      aircraft.push({ ...base, available: false, stopped: true, reason: holding.map((k) => unfinishedWhy(k, (s.pulls ?? []).some((p) => p.ticketKey === k))).join(", ") });
+      continue;
+    }
+    if (!base.airport) {
+      aircraft.push({ ...base, available: false, reason: "소속 AIRPORT 없음" });
+      continue;
+    }
+    aircraft.push({ ...base, resting: true, available: true, reason: ABSENT_REASON });
   }
 
   // ── FLIGHT ──
@@ -809,7 +861,7 @@ export function planDispatch(
       // SUPERVISOR CONFIRM AT AIRCRAFT(ATC-120): 예측 경로 중 사용자 등급 파일. 예측이 비면 표시 없음
       const confirm = supervisorConfirmOf(predictedFor(p.t).map((x) => x.pattern));
       planned.set(p.t.airport, (planned.get(p.t.airport) ?? 0) + size);
-      assign.push({ kind: "ASSIGN", flight: p.t.key, aircraft: p.ac.id, aircraftName: p.ac.name, registration: regOfAircraft(p.ac, cfg.teamPattern), airport: p.t.airport, score: p.score, factors: p.factors, ...(confirm.length ? { supervisorConfirm: confirm } : {}) });
+      assign.push({ kind: "ASSIGN", flight: p.t.key, aircraft: p.ac.id, aircraftName: p.ac.name, registration: regOfAircraft(p.ac, cfg.teamPattern), airport: p.t.airport, score: p.score, factors: p.factors, ...(p.ac.launch ? { launch: true as const } : {}), ...(confirm.length ? { supervisorConfirm: confirm } : {}) });
     }
   };
   // 1) STAND 규칙: 배정 가능(available)하고 예약 없는 AIRCRAFT에 TEAM당 1건. STAND 없는 FLIGHT도 여기서 먼저 받을 수 있다
@@ -874,7 +926,7 @@ export function planDispatch(
     limit: limitOf(code),
   }));
 
-  return { at: new Date(now).toISOString(), assign, release, hold, overlapHolds, excluded, blockedPairs: [...blockedPairs.values()], aircraft, slots, unserved };
+  return { at: new Date(now).toISOString(), assign, release, hold, overlapHolds, excluded, blockedPairs: [...blockedPairs.values()], aircraft, slots, unserved, resume: resumes };
 }
 
 // 청구 기록(~/.local/state/atc/claims)으로 세션별 과거 FLIGHT를 모은다. TTL과 상관없이 전부 본다.

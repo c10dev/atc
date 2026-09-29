@@ -176,6 +176,13 @@
   margin: 0;
   font-size: var(--text-xs);
 }
+/* 세션 없는 백그라운드 AIRCRAFT(ATC-129) */
+.fl-absent.is-launch {
+  color: var(--cyan);
+}
+.fl-absent.is-resume {
+  color: var(--amber);
+}
 /* 백그라운드가 아닌 세션의 손 절차(ATC-76) */
 .fl-origin-note {
   margin: 0;

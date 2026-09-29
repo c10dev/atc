@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { AircraftView } from "../../../../server/fleet.ts";
+import type { AbsentAircraft } from "../../../../server/dispatch-launch.ts";
 import { mergeLive } from "../../../../server/fleet-live.ts";
 import { fleetRows } from "../../../../server/fleet-status.ts";
 import type { Snapshot } from "../../../../server/model.ts";
@@ -11,6 +12,7 @@ import "../FleetCrew.css";
 import { Checkride } from "../Checkride.tsx";
 import { FleetPlan } from "../FleetPlan.tsx";
 import "./Fleet.css";
+import { absentMarkOf } from "./Absent.tsx";
 import { BriefingPanel } from "./BriefingPanel.tsx";
 import { ControlSessions } from "./ControlSessions.tsx";
 import { Card } from "./Card.tsx";
@@ -182,6 +184,8 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
   if (!brief) return <p className="empty">{error ? `불러오지 못함: ${error}` : "불러오는 중…"}</p>;
   const inService = aircraft.filter((a) => !a.retired);
   const retired = aircraft.filter((a) => a.retired);
+  // 세션이 없을 때만: LAUNCH on approve 또는 RESUME after LIMIT(ATC-129)
+  const absentMark = (a: AircraftView) => (a.status === "absent" && !a.restarting ? absentMarkOf(snapshot.absent?.find((x) => x.registration === a.registration), Boolean(a.aog), Date.now()) : null);
   // AIRCRAFT 한 대의 지금 카드(고치는 중이면 편집기). 목록에서 펼칠 때와 카드 보기에서 같이 쓴다.
   // 그 카드가 연 패널(LAUNCH, CREW BRIEFING)은 카드 바로 아래에 붙는다(ATC-61)
   const cardOf = (a: AircraftView) => (
@@ -197,6 +201,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
           onRetire={() => retire(a)}
           session={control ? sessionOf(a.registration) : undefined}
           stale={staleOf(a.registration)}
+          absent={absentMark(a)}
           onLaunch={(opener) => (setError(null), setLaunching({ a, opener }))}
           onStop={() => stop(a)}
           windowDays={brief.observedWindowDays}
@@ -255,6 +260,10 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
           rows={fleetRows(inService, Date.now())}
           open={open}
           onToggle={toggleOpen}
+          absent={(reg) => {
+            const a = inService.find((x) => x.registration === reg);
+            return a ? absentMark(a) : null;
+          }}
           detail={(reg) => {
             const a = inService.find((x) => x.registration === reg);
             return a ? cardOf(a) : null;
