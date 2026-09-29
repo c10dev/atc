@@ -244,13 +244,14 @@ export function rtsUnitGuard(x: { stateDir: string; port: number; realStateDir: 
   if (resolve(x.stateDir) !== resolve(x.realStateDir)) return "임시 상태 폴더의 서버는 atc-rts를 시작하지 않음 — 운영 7700을 배포하는 유닛이라서";
   return null;
 }
-export function rtsDueOf(x: RtsInput, stop: string | null): { due: boolean; why: string } {
+// spacingMs: MCC가 여는 RTS는 머지 여러 개를 한 번에 묶으려고 5분 간격을 둔다. SUPERVISOR 클릭(UPDATE 바)은 0
+export function rtsDueOf(x: RtsInput, stop: string | null, spacingMs = RTS_SPACING_MS): { due: boolean; why: string } {
   if (stop) return { due: false, why: stop };
   if (!x.deployed) return { due: false, why: "서비스의 커밋을 모름(/api/version head)" };
   if (!x.main) return { due: false, why: "기본 브랜치 head를 모름" };
   if (x.main.startsWith(x.deployed) || x.deployed.startsWith(x.main)) return { due: false, why: "서비스가 최신" };
   if (x.mainCi !== "ok") return { due: false, why: `기본 브랜치 CI ${x.mainCi === "none" ? "없음" : x.mainCi === "pending" ? "진행 중" : "실패"}` };
-  if (x.lastStartAt && x.now - Date.parse(x.lastStartAt) < RTS_SPACING_MS) return { due: false, why: "지난 RTS에서 5분이 안 지남" };
+  if (spacingMs > 0 && x.lastStartAt && x.now - Date.parse(x.lastStartAt) < spacingMs) return { due: false, why: "지난 RTS에서 5분이 안 지남" };
   return { due: true, why: `${x.deployed.slice(0, 7)} → ${x.main.slice(0, 7)}` };
 }
 

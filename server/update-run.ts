@@ -56,7 +56,7 @@ export function mountUpdate(app: Hono, getSnapshot: () => Promise<Snapshot>, hea
     const state = rtsState(readMccRecords());
     const deployed = head();
     const now = deps.now();
-    const due = rtsDueOf({ deployed, main: ap.main, mainCi: ap.mainCi, last: state.last, lastStartAt: state.lastStartAt, now }, state.stop);
+    const due = rtsDueOf({ deployed, main: ap.main, mainCi: ap.mainCi, last: state.last, lastStartAt: state.lastStartAt, now }, state.stop, 0);
     return { ap, state, deployed, now, due };
   }
 
@@ -90,7 +90,8 @@ export function mountUpdate(app: Hono, getSnapshot: () => Promise<Snapshot>, hea
     }
   });
 
-  // SUPERVISOR만(이 화면 Origin). /api/mcc/rts와 같은 점검(rtsDueOf: ROLLBACK 멈춤·CI·5분 간격)에 범위 거절을 더한다.
+  // SUPERVISOR만(이 화면 Origin). /api/mcc/rts와 같은 점검(rtsDueOf: RTS 진행 중·ROLLBACK 멈춤·CI)에 범위 거절을 더한다.
+  // 5분 간격은 두지 않는다(사람이 누른 때가 배포 시점). 대신 방금 시작해 아직 결과가 없으면(starting·running) 거절한다
   // 시험 서버는 유닛을 시작하지 못한다(운영 7700을 배포하므로)
   app.post("/api/update/start", async (c) => {
     if (!fromThisApp(c)) return c.json({ started: false, why: "이 화면에서 보낸 요청만 받습니다(SUPERVISOR 전용)" }, 403);
@@ -100,6 +101,7 @@ export function mountUpdate(app: Hono, getSnapshot: () => Promise<Snapshot>, hea
       const s = await getSnapshot();
       const st = await statusOf(s);
       const f = facts(s);
+      if (st.kind === "starting" || st.kind === "running") return c.json({ started: false, why: st.why }, 409);
       if (!f.due.due) return c.json({ started: false, why: f.due.why }, 409);
       if (st.refusal) return c.json({ started: false, why: st.refusal }, 409);
       const base = { at: new Date(f.now).toISOString(), from: f.deployed, to: f.ap.main!, by: "supervisor" as const };

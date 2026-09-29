@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { Hono } from "hono";
 import { config } from "./config.ts";
 import { mountMcc, rtsGuard } from "./mcc-run.ts";
-import { rtsUnitGuard, saveMcc } from "./mcc.ts";
+import { RTS_FILE, rtsUnitGuard, saveMcc } from "./mcc.ts";
 import type { Snapshot } from "./model.ts";
 import { loadPlanRts, mountUpdate, type UpdateDeps } from "./update-run.ts";
 
@@ -89,7 +89,7 @@ test("시작: 이 화면 Origin이 아니면 403", async () => {
   assert.equal(calls.start, 0);
 });
 
-test("시작: 조건이 맞으면 유닛(스텁)을 시작하고 by supervisor로 기록, 5분 안 두 번째는 거절", async () => {
+test("시작: 조건이 맞으면 유닛(스텁)을 시작하고 by supervisor로 기록, 결과 전 두 번째는 거절, 끝난 뒤엔 5분 안이어도 다시 됨", async () => {
   const { app, calls } = setup();
   const r = await post(app);
   assert.equal(r.status, 200);
@@ -102,13 +102,18 @@ test("시작: 조건이 맞으면 유닛(스텁)을 시작하고 by supervisor�
   assert.equal(rec.model, undefined);
   const again = await post(app);
   assert.equal(again.status, 409);
-  assert.match((await again.json()).why, /5분/);
+  assert.match((await again.json()).why, /시작함/);
   assert.equal(calls.start, 1);
   assert.equal((await (await app.request("/api/update")).json()).kind, "starting");
+  // 유닛이 결과를 남기면(여기서는 다른 main을 향한 ok) 5분이 안 지났어도 SUPERVISOR는 다시 시작할 수 있다
+  appendFileSync(RTS_FILE(), JSON.stringify({ at: new Date(Date.now() + 1000).toISOString(), from: A, to: "c".repeat(40), result: "ok", detail: "1초" }) + "\n");
+  const third = await post(app);
+  assert.equal(third.status, 200);
+  assert.equal(calls.start, 2);
 });
 
 test("/api/mcc/rts도 같은 규칙: land+rts여도 임시 상태 폴더의 서버는 유닛을 시작하지 않는다", async () => {
-  config.stateDir = mkdtempSync(join(tmpdir(), "update-mcc-")); // 앞 시험의 시작 기록(5분 간격)이 섞이지 않게
+  config.stateDir = mkdtempSync(join(tmpdir(), "update-mcc-")); // 앞 시험의 시작·RTS 기록이 섞이지 않게
   after(() => rmSync(config.stateDir, { recursive: true, force: true }));
   saveMcc({ mode: "land+rts", airport: "ATCC", ciCheck: "check", holds: [] });
   const app = new Hono();
