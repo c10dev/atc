@@ -18,6 +18,9 @@ import { supervisorConfirmOf } from "./supervisor-confirm.ts";
 // 2단계 DISPATCH: 어떤 FLIGHT를 어떤 AIRCRAFT에 보낼지 계산한다(순수 함수 planDispatch).
 // 제안을 기록하고 보이는 것은 proposals.ts, 설계는 docs/dispatch.md.
 
+// SETTLED(ATC-117)의 기본 분. proposals.ts가 다시 내보낸다(proposals가 dispatch를 부르므로 값은 여기 둔다)
+export const DEFAULT_SETTLE_MIN = 10;
+
 export interface DispatchConfig {
   mode: "shadow" | "approval";
   // Linear 프로젝트 이름 → AIRPORT 코드. null이면 배정 제외. 목록에 없는 프로젝트는 팀의 기본 AIRPORT로, 그것도 없으면 제외.
@@ -48,6 +51,8 @@ export interface DispatchConfig {
   fuel: FuelConfig;
   // /clear 뒤 첫 메시지를 기다려 주는 분(ATC-91, docs/fleet.md 8.5). 그 안에는 AIRCRAFT가 RESTARTING이고 승인된 제안이 기다린다
   restartGraceMin: number;
+  // SETTLED(ATC-117): 열린 제안이 이만큼(분) 지내야 OCC 메모·BRIEFING과 CROSSCHECK mark를 받는다. 승인된 제안은 곧장. 0이면 예전처럼 곧장
+  settleMin: number;
 }
 export type ExternalReviewSecurity = "exclude" | "deepseek";
 export const EXTERNAL_REVIEW_SECURITY: readonly ExternalReviewSecurity[] = ["exclude", "deepseek"];
@@ -72,6 +77,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   externalReview: { security: "exclude" },
   fuel: DEFAULT_FUEL,
   restartGraceMin: DEFAULT_RESTART_GRACE_MIN,
+  settleMin: DEFAULT_SETTLE_MIN,
 };
 
 const CONFIG_FILE = join(config.stateDir, "dispatch.json");
@@ -133,6 +139,8 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       fuel: fuelConfigOf(user.fuel),
       // 양수가 아니면 기본으로 — 0이나 음수는 기다림을 없애는 것이 아니라 잘못된 값이다
       restartGraceMin: typeof user.restartGraceMin === "number" && Number.isFinite(user.restartGraceMin) && user.restartGraceMin > 0 ? user.restartGraceMin : d.restartGraceMin,
+      // 0은 켜지 않는다는 뜻이라 받는다. 음수·숫자가 아닌 값은 기본으로
+      settleMin: typeof user.settleMin === "number" && Number.isFinite(user.settleMin) && user.settleMin >= 0 ? user.settleMin : d.settleMin,
     };
   } catch {
     return DEFAULT_DISPATCH_CONFIG;

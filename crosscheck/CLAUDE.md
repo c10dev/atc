@@ -21,7 +21,7 @@ SUPERVISOR는 DISPATCH·SCHEDULE 탭에서 이 mark를 보고 "CROSSCHECK에 동
 
 | 명령 | 하는 일 |
 |---|---|
-| `node ../controller/atcctl.mjs crosscheck brief` | mark가 없는 열린 제안·초안(`dispatch.pending`, `schedule.pending`), 보정용 최근 SUPERVISOR 판정(`examples`), 지금 일치율(`rate`) |
+| `node ../controller/atcctl.mjs crosscheck brief` | mark가 없는 열린 제안·초안(`dispatch.pending`은 SETTLED 제안만, 아직 아닌 수는 `dispatch.unsettledMarks`. `schedule.pending`), 보정용 최근 SUPERVISOR 판정(`examples`), 지금 일치율(`rate`) |
 | `node ../controller/atcctl.mjs dispatch flight <VOC-193>` | FLIGHT 본문과 댓글(최대 20개) |
 | Read `../docs/fleet.md` | 분류 기준: 4.1 FLIGHT TYPE, 4.2 WAKE CATEGORY, 4.3 TYPE RATING. `../docs/`의 다른 설계 문서(`occ.md`, `dispatch.md`)도 읽을 수 있다 |
 | `node ../controller/atcctl.mjs dispatch brief` / `schedule brief` | 필요할 때 전체 브리핑(계획, 제외 사유, 후보) |

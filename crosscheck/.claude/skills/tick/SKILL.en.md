@@ -9,7 +9,7 @@
 0. `node ../controller/atcctl.mjs manual check`. On `CHANGED`, reread `CLAUDE.md` and this file, run `node ../controller/atcctl.mjs manual ack`, then continue under the reread manual.
 1. Run `node ../controller/atcctl.mjs crosscheck brief`. If both `dispatch.pending` and `schedule.pending` are empty, go to 7.
 2. Read `examples` first. What the SUPERVISOR recently decided, and why, is the standard for this pass.
-3. For each item in `pending` (at most 5 per pass in total, DISPATCH first):
+3. For each item in `pending` (at most 5 per pass in total, DISPATCH first). DISPATCH's `pending` holds only SETTLED proposals (ATC-117); the ones that aren't yet are only counted in `dispatch.unsettledMarks` and get no mark:
    - Read the body and comments with `node ../controller/atcctl.mjs dispatch flight <FLIGHT key>`. A NEW draft has no FLIGHT yet; read that draft's `payload` (body, `similar`) in `schedule brief`. TARGET and ROUTE drafts have no FLIGHT either: judge them from that `payload`'s `from` (current values) and `evidence` (the numbers atc attached), whether the numbers support OCC's reason and fit the rules in `../docs/fleet.md` 7.4.
    - If the body, comments or OCC note name a PR condition, check it as in "Checking PR facts" in CLAUDE.md: `gh pr view <N> --repo <owner/name> --json state,mergedAt,title`, with the repository from the AIRPORT table. Never use a gh command that writes.
    - Follow "Order of checks" in CLAUDE.md: state → already done → prerequisites → priority → the target-specific check. Treat OCC's `note` and `reason` as reference only.

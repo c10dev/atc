@@ -208,3 +208,18 @@ test("decide shadow: 늘 열고, 이유에 on이었다면의 결과를 적는다
 test("naturalReason: 깨진 openedAt은 하트비트로 본다", () => {
   assert.equal(naturalReason({ fp: "A", last: { fp: "A", openedAt: "nope" }, now: T0, heartbeatMin: 50, manualChanged: false }), "heartbeat");
 });
+
+test("project occ(ATC-117): 아직 SETTLED가 아닌 제안은 지문에 들지 않고, SETTLED가 되면 지문이 저절로 바뀌며, settled가 없는 옛 서버는 전부 SETTLED로 본다", () => {
+  const young = { id: "D-0070", note: null, briefing: null, settled: false, settlesInMin: 6 };
+  const base = fp("occ", occ());
+  // 어린 제안이 열려도 OCC의 tick은 열리지 않는다
+  assert.equal(fp("occ", occ({ dispatch: { open: [{ id: "D-0060", note: "ok", briefing: { what: "w" } }, young] } })), base);
+  // 남은 분이 줄어도 같다
+  assert.equal(fp("occ", occ({ dispatch: { open: [{ id: "D-0060", note: "ok", briefing: { what: "w" } }, { ...young, settlesInMin: 2 }] } })), base);
+  // SETTLED가 되면(같은 제안, 메모 없음) 지문이 바뀐다
+  assert.notEqual(fp("occ", occ({ dispatch: { open: [{ id: "D-0060", note: "ok", briefing: { what: "w" } }, { ...young, settled: true, settlesInMin: 0 }] } })), base);
+  // 옛 서버: settled 필드가 없으면 예전처럼 센다
+  assert.notEqual(fp("occ", occ({ dispatch: { open: [{ id: "D-0071", note: null, briefing: null }] } })), base);
+  // HELD도 같다
+  assert.equal(fp("occ", occ({ dispatch: { held: [young] } })), base);
+});
