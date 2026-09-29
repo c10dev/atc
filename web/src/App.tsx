@@ -3,6 +3,7 @@ import { showNewVersion } from "../../server/version.ts";
 import { alertCode, alertLabel, alertMessage, callsign, flightNumber, HANDOFF_LABEL } from "./aviation.ts";
 import { buildIndex, timeAgo } from "./derive.ts";
 import { NewVersionBar } from "./NewVersion.tsx";
+import { UpdateBar, useUpdate } from "./UpdateBar.tsx";
 import { MoonIcon, Starfield } from "./Starfield.tsx";
 import { Ticker } from "./Ticker.tsx";
 import { formatClock, useSettings } from "./settings.ts";
@@ -54,6 +55,7 @@ function initialTab(): Tab {
 export function App({ build }: { build: string }) {
   const { snapshot, connection, serverBuild } = useSnapshot();
   const now = useNow();
+  const update = useUpdate(connection);
   const [tab, setTab] = useState<Tab>(initialTab);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -141,14 +143,15 @@ export function App({ build }: { build: string }) {
           </button>
           <div className="readout clock">
             <Clock clock={settings.clock} />
-            <span className={`link link-${connection}`}>
+            <span className={`link link-${update.kind === "restarting" ? "restarting" : connection}`}>
               <i />
-              LINK <em>{connectionLabel[connection]}</em>
+              LINK <em>{update.kind === "restarting" ? "재시작" : connectionLabel[connection]}</em>
             </span>
           </div>
         </div>
       </header>
 
+      <UpdateBar update={update} />
       <NewVersionBar own={build} server={serverBuild} />
 
       {alerts.length > 0 && !alertsOpen && (

@@ -12,6 +12,7 @@ import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { mountLandingReview } from "./landing-review.ts";
 import { mountMcc } from "./mcc-run.ts";
+import { mountUpdate } from "./update-run.ts";
 import { mountCrewChange } from "./crew-change.ts";
 import { mountCheckride } from "./checkride.ts";
 import { mountFleet } from "./fleet.ts";
@@ -145,6 +146,7 @@ mountFollowing(app, getSnapshot);
 mountAtfm(app, getSnapshot);
 mountAutoland(app, getSnapshot);
 mountMcc(app, getSnapshot, () => head);
+mountUpdate(app, getSnapshot, () => head); // UPDATE bar(ATC-82)
 mountSettings(app);
 
 app.get("/api/events", (c) =>

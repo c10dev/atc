@@ -107,6 +107,17 @@ A restart takes the screen and API away for a few seconds. MCC runs RTS after a 
 
 The user can still deploy by hand. RTS only needs the checkout to be clean and behind `origin/main`.
 
+### UPDATE bar as built (ATC-82)
+
+The top bar of the screen shows when the running service is behind `origin/main`, and lets the SUPERVISOR start RETURN TO SERVICE from the screen, like a desktop app update: `업데이트 있음 · c0ca22e → 4678e03 · PR 2 · CI ✓ [업데이트]`. It starts the same `atc-rts` unit MCC starts (section 6), in any MCC mode, including `shadow`. Nothing in `deploy/` changed.
+
+- `GET /api/update` (read only, polled by the screen): `kind`, `why`, `deployed` (the service's `head`), `main` and its CI, `prs` (number and title of the PRs merged between the two, read from GitHub `compare` and cached per range), `refusal`, and the last `rts.jsonl` record. `refusal` is what is known before starting: the range changes `package*.json` or `deploy/*.service`/`*.timer`. It comes from `planRts` itself, loaded at run time like `tierOfFiles` loads `landing-tier.mjs`, so the rule lives in one place. `prs` is `null` when GitHub could not be read; the bar then omits the PR count and RTS still checks the range itself.
+- `POST /api/update/start` (SUPERVISOR only: the screen's own JSON request, like the switches in the settings window). It runs the checks of `/api/mcc/rts` (`rtsDueOf`: RTS running, stop after ROLLBACK, main CI, 5 minutes since the last start) plus `refusal`, then `systemctl --user start --no-block atc-rts.service`, and appends `{op: "rts", by: "supervisor", from, to, result}` to `mcc.jsonl`. The MCC session's records keep their `model`; the two are told apart by `by`. The 5-minute spacing counts both.
+- Test servers never start the unit. A server with a state directory other than the account's real `~/.local/state/atc` (compared against the passwd home, not `$HOME`) or a port other than 7700 answers `409` and starts nothing, on both endpoints. Tests stub the unit start.
+- Bar `kind`: `available` (button), `waiting` (main CI running, or 5 minutes not yet passed), `manual` (a person must deploy; the bar shows the reason instead of the button), `starting` (clicked, `rts.jsonl` not yet `running`), `running`, `refused`/`failed` (the reason from `rts.jsonl`, with "다시 시도"), `rollback` (RTS stopped; the reason says to pick the MCC mode again in the settings window). The screen adds `restarting` (the SSE dropped while RTS was running: "재시작 중", LINK shows "재시작", not "끊김") and `done` (the service came back on the target and no new bundle bar follows, for a server-only change). When the restart brings a new bundle, `NewVersionBar` takes over as before.
+- Pure functions in `server/update.ts` (`prsOfMessages`, `rangeRefusalOf`, `updateStateOf`, `barKindOf`); tests in `server/update.test.ts` and `server/update-run.test.ts`.
+- PILOT'S DISCRETION: the bar sits for the MCC AIRPORT only (`mcc.json` `airport`). `refused`/`failed` keep showing until the next start or the next `main` head. A clicked-but-not-yet-recorded start shows `starting` for at most 2 minutes.
+
 ## 7. Records and switches
 
 - `~/.local/state/atc/mcc.json` (atomic): `mode` `shadow` (default) | `land` | `land+rts`, `holds` (PR numbers). It is changed only from the settings window (AGENTS tab, MCC row), like AUTOLAND. `atcctl` has no command for it.
