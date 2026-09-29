@@ -67,7 +67,7 @@ export function SettingsPanel({
         ) : tab === "linear" ? (
           <LinearSettings snapshot={snapshot} server={server} save={save} />
         ) : (
-          <AgentSettings snapshot={snapshot} server={server} save={save} />
+          <AgentSettings snapshot={snapshot} server={server} save={save} onNavigate={onClose} />
         )}
       </div>
     </div>

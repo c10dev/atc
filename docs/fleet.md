@@ -617,7 +617,7 @@ Not built yet: automatic STOP of idle sessions (FLEET PLAN step 4; shadow propos
 
 #### 8.5.1 Control sessions (built 2026-09-28)
 
-The same LAUNCH and STOP work for atc's own control sessions, from the settings window's AGENTS tab (block CONTROL), so the SUPERVISOR doesn't open a tmux window per session. Every row has a live badge (ATC-66).
+The same LAUNCH and STOP work for atc's own control sessions, from the FLEET tab (section CONTROL SESSIONS, ATC-130), so the SUPERVISOR doesn't open a tmux window per session. Every row has a live badge (ATC-66).
 
 | Session | Folder | How | First message | Extra flags |
 |---|---|---|---|---|
@@ -649,6 +649,14 @@ The same LAUNCH and STOP work for atc's own control sessions, from the settings 
   - **Display**: `GET /api/control/sessions` returns `stale: [{id, name}]` per control session, and `GET /api/fleet/sessions` marks rows `stale: true`. The CONTROL block and the FLEET card show `STALE <id>` with "Claude Code가 멈춘 job을 아직 목록에 둠 — 무시해도 된다", and LAUNCH stays available.
 - **API** (`server/session-control.ts`): `GET /api/control/sessions` (`{daemonInService, sessions: [{name, dir, prompt, launch: "bg" | null, blocked, live}], accounts}`), `POST /api/control/:name/launch`, `POST /api/control/:name/stop`, both SUPERVISOR-only (this screen's Origin). Pure parts: `controlLaunchPlanOf`, `launchBlockOf`, `controlStopTargetOf`, `controlRowsOf`, `isControlRow`.
 - **Record.** FLIGHT RECORDER `{kind: "control", op: "launch" | "stop", session, by: "SUPERVISOR", ok, jobId, tmux, cwd, permissionMode, error}` (`permissionMode` since ATC-76): `jobId` for background sessions, `tmux` for tmux ones (the session on launch, `<session> <pane>` on stop).
+
+##### CONTROL SESSIONS on the FLEET tab, as built (ATC-130)
+
+- **Moved, not changed.** The block moved from the settings window's AGENTS tab to a FLEET section, `CONTROL SESSIONS`, under the AIRCRAFT list. It shows the same things: LAUNCH and STOP (same tmux confirm), badges, job state and NEEDS YOU, STALE rows, ACCOUNT labels, the daemon warning and the model note. The API and `session-control.ts` are unchanged, and LAUNCH and STOP stay SUPERVISOR-only.
+- **Order.** The daemon-in-service warning is the first line of the section, above the rows.
+- **Refresh.** While FLEET is shown the section re-reads `GET /api/control/sessions` at most once a minute (skipped while the browser tab is hidden), and right after each LAUNCH or STOP. Opening the tab again within a minute shows the last reading instead of calling the API. The screen never polls faster than 60 s, with or without a server-side cache of `claude agents`.
+- **Pointer.** The settings AGENTS tab keeps one line that links to `#fleet/control`. That address opens the FLEET tab and scrolls to the section, and the header CONTROL strip (ATC-127) uses the same target.
+- **Code.** `web/src/views/fleet/ControlSessions.tsx` draws it. The row logic (badge, tone, which button, NEEDS YOU, STALE) and the 60 s rule are pure functions in `server/control-view.ts`, tested in `server/control-view.test.ts`.
 
 #### 8.5.2 Session origin as built (ATC-76)
 

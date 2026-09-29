@@ -12,6 +12,7 @@ import { Checkride } from "../Checkride.tsx";
 import { FleetPlan } from "../FleetPlan.tsx";
 import "./Fleet.css";
 import { BriefingPanel } from "./BriefingPanel.tsx";
+import { ControlSessions } from "./ControlSessions.tsx";
 import { Card } from "./Card.tsx";
 import { Editor } from "./Editor.tsx";
 import { EntryForm } from "./EntryForm.tsx";
@@ -27,6 +28,7 @@ import { StatusList } from "./StatusList.tsx";
 // FLEET PLAN: atc가 그 버튼들을 언제 쓰자고 제안하는지(docs/fleet.md 8.6, 그림자).
 // 운항 상태 목록(ATC-44): 기본은 AIRCRAFT 한 대가 한 줄인 목록. 줄을 누르면 그 AIRCRAFT의 카드가 펼쳐진다. 목록/카드 선택은 localStorage.
 // 카드 버튼이 여는 패널(LAUNCH, CREW BRIEFING)은 그 카드 바로 아래에 열린다(ATC-61). ENTRY INTO SERVICE 뒤의 CREW BRIEFING만 맨 위.
+// CONTROL SESSIONS(ATC-130): 관제 세션 LAUNCH·STOP·ACCOUNT는 ControlSessions.tsx. 주소 #fleet/control이 그 구역을 연다.
 // 파일: Fleet.tsx(이 쪽 틀·불러오기·목록/카드 선택), StatusList, Card(실적·RULES 포함), Fuel, EntryForm, LaunchPanel, BriefingPanel, Editor, shared(타입·api).
 
 // 목록/카드 선택(ATC-44). 저장소를 못 쓰면 목록이 기본
@@ -261,6 +263,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
       ) : (
         <div className="fl-cards">{inService.map(cardOf)}</div>
       )}
+      <ControlSessions />
       <FuelAccounts accounts={brief.fuelAccounts ?? []} />
       <Checkride refreshKey={refreshKey} onChanged={load} />
       {retired.length > 0 && (
