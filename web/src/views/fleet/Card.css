@@ -193,3 +193,12 @@
 .fl-ctx.lv-alert {
   color: var(--alert);
 }
+
+/* STALE(ATC-93): 멈췄는데 Claude Code가 아직 목록에 둔 job */
+.fl-stale-mark {
+  padding: 0 var(--space-1);
+  border: 1px dashed currentColor;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}

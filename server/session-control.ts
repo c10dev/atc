@@ -35,7 +35,23 @@ export interface AgentRow {
   cwd: string;
   startedAt?: number; // ms
   pid?: number;
+  // atc가 붙인다(ATC-93): Claude Code가 멈춘 job을 아직 목록에 둔 줄(STALE). 살아 있는 세션으로 세지 않는다
+  stale?: boolean;
 }
+
+// ── STALE(ATC-93) ──
+// 2026-09-29: done 상태에서 STOP한 TOWER job(3bf04645)이 claude agents에 pid·status 없이 "working"으로 계속 남아 LAUNCH를 막고
+// 상한에 셌다(Claude Code 2.1.284). 막 띄운 job도 0.4초쯤 pid·status 없이 보이므로, job 파일의 state가 끝난 값이고
+// 시작한 지 2분이 넘었을 때만 STALE이다. 살아 있는 job도 한 턴을 마치면 state가 done이라 state만으로는 가르지 않는다
+export const STALE_JOB_STATES: ReadonlySet<string> = new Set(["done", "stopped", "failed"]);
+export const STALE_MIN_AGE_MS = 2 * 60_000;
+export function isStaleRow(row: Pick<AgentRow, "kind" | "pid" | "status" | "startedAt">, jobState: string | null, now: number): boolean {
+  if (row.kind !== "background" || row.pid != null || row.status != null) return false;
+  if (!jobState || !STALE_JOB_STATES.has(jobState)) return false;
+  return typeof row.startedAt === "number" && now - row.startedAt >= STALE_MIN_AGE_MS;
+}
+export const liveRowsOf = <T extends Pick<AgentRow, "stale">>(rows: readonly T[]): T[] => rows.filter((r) => !r.stale);
+export const STALE_NOTE = "Claude Code가 멈춘 job을 아직 목록에 둠 — 무시해도 된다";
 
 export class ControlError extends Error {
   status: number;
@@ -67,6 +83,7 @@ const sameName = (row: AgentRow, reg: string) => sameReg(row.name, reg); // `Tea
 // 띄울 수 있는지 보고 claude 인자를 만든다(순수)
 export function launchPlanOf(input: LaunchInput, rows: AgentRow[], max = MAX_LAUNCHED): LaunchPlan {
   const reg = regKey(input.registration); // 새 세션은 정식 REGISTRATION으로 띄운다(ATC-67)
+  rows = liveRowsOf(rows); // STALE 줄은 이미 떠 있는 세션도, 상한도 아니다(ATC-93)
   if (input.retired) throw new ControlError(`${reg}는 RETIRED — 먼저 복귀시킨다`, 409);
   if (!input.repo) throw new ControlError(`${reg}의 base AIRPORT 저장소를 모름 — 프로필에서 base를 정한다`, 409);
   const live = rows.find((r) => sameName(r, reg));
@@ -114,9 +131,15 @@ export const controlDirOf = (spec: ControlSpec, root = REPO_ROOT) => (spec.dir ?
 export const controlSpecOf = (name: string) => CONTROL_SESSIONS.find((s) => s.name === name.toUpperCase()) ?? null;
 
 // 이 관제 세션으로 보는 세션: 이름이 같거나(대소문자 무시), 그 폴더에서 연 세션(tmux로 이름 없이 띄운 것도). 폴더가 없으면 이름으로만
+// STALE 줄은 빼고(ATC-93) 따로 controlStaleOf로 보인다
+const ofControl = (spec: ControlSpec, r: AgentRow, dir: string | null) => sameName(r, spec.name) || (dir !== null && realDir(r.cwd) === dir);
 export function controlRowsOf(spec: ControlSpec, rows: AgentRow[], dir: string | null): AgentRow[] {
-  return rows.filter((r) => sameName(r, spec.name) || (dir !== null && realDir(r.cwd) === dir));
+  return rows.filter((r) => !r.stale && ofControl(spec, r, dir));
 }
+export function controlStaleOf(spec: ControlSpec, rows: AgentRow[], dir: string | null): AgentRow[] {
+  return rows.filter((r) => r.stale && ofControl(spec, r, dir));
+}
+const staleOnly = (who: string, stale: AgentRow[]) => new ControlError(`${who}는 STALE ${stale.map((r) => r.id).join(", ")}만 있음 — ${STALE_NOTE}. 다시 멈출 것이 없다`, 409);
 // 관제 폴더에서 연 세션인가(팀 세션 상한에서 뺀다)
 export const isControlRow = (row: AgentRow, dirs: readonly string[]) => CONTROL_SESSIONS.some((s) => sameName(row, s.name)) || dirs.includes(realDir(row.cwd));
 
@@ -170,7 +193,11 @@ export function tmuxPaneOf(pid: number | undefined, panes: readonly TmuxPane[], 
 export type StopTarget = { how: "background"; row: AgentRow } | { how: "tmux"; row: AgentRow; pane: TmuxPane };
 export function controlStopTargetOf(spec: ControlSpec, rows: AgentRow[], dir: string | null, paneOf: (row: AgentRow) => TmuxPane | null = () => null): StopTarget {
   const mine = controlRowsOf(spec, rows, dir);
-  if (!mine.length) throw new ControlError(`${spec.name} 세션이 떠 있지 않음`, 404);
+  if (!mine.length) {
+    const stale = controlStaleOf(spec, rows, dir);
+    if (stale.length) throw staleOnly(spec.name, stale);
+    throw new ControlError(`${spec.name} 세션이 떠 있지 않음`, 404);
+  }
   const bg = mine.find((r) => r.kind === "background" && r.id);
   if (bg) return { how: "background", row: bg };
   for (const row of mine) {
@@ -214,8 +241,12 @@ export const rowOriginOf = (row: Pick<AgentRow, "kind" | "pid">): SessionOrigin 
 // 멈출 백그라운드 세션(순수, originOf는 주입). 출처가 background가 아니면 atc가 멈추지 않고, 그 출처의 손 절차를 사유로 돌려준다
 export function stopTargetOf(registration: string, rows: AgentRow[], originOf: (row: AgentRow) => SessionOrigin = (r) => (r.kind === "background" ? "background" : "unknown")): AgentRow {
   const reg = regKey(registration);
-  const row = rows.find((r) => sameName(r, reg));
-  if (!row) throw new ControlError(`${reg} 세션이 떠 있지 않음`, 404);
+  const row = rows.find((r) => !r.stale && sameName(r, reg));
+  if (!row) {
+    const stale = rows.filter((r) => r.stale && sameName(r, reg));
+    if (stale.length) throw staleOnly(reg, stale);
+    throw new ControlError(`${reg} 세션이 떠 있지 않음`, 404);
+  }
   const origin = originOf(row);
   if (!isBackground(origin) || !row.id) throw new ControlError(manualStepsOf(origin, reg, "stop"), 409);
   return row;
@@ -282,10 +313,26 @@ export function daemonCgroups(): string[] {
 export async function agentRows(): Promise<AgentRow[]> {
   const r = await claude(["agents", "--json"]);
   if (!r.ok) throw new ControlError(`claude agents 실패: ${r.out.slice(0, 300)}`, 502);
+  let rows: AgentRow[];
   try {
-    return JSON.parse(r.out) as AgentRow[];
+    rows = JSON.parse(r.out) as AgentRow[];
   } catch {
     throw new ControlError("claude agents 출력을 읽지 못함", 502);
+  }
+  // STALE 표시(ATC-93): pid·status 없는 background 줄만 그 job 파일의 state 한 칸을 읽는다(쓰지 않는다)
+  const now = Date.now();
+  for (const row of rows) if (row.kind === "background" && row.pid == null && row.status == null && row.id) row.stale = isStaleRow(row, jobStateOf(row.id), now);
+  return rows;
+}
+
+// ~/.claude/jobs/<id>/state.json의 state. 없거나 못 읽으면 null(STALE로 보지 않는다)
+export function jobStateOf(id: string, dir = join(config.claudeDir, "jobs")): string | null {
+  if (!/^[0-9a-f]{6,}$/.test(id)) return null;
+  try {
+    const state = (JSON.parse(readFileSync(join(dir, id, "state.json"), "utf8")) as { state?: unknown }).state;
+    return typeof state === "string" ? state : null;
+  } catch {
+    return null;
   }
 }
 
@@ -406,6 +453,8 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
           launch: spec.launch,
           blocked: launchBlockOf(spec),
           live: controlRowsOf(spec, rows, controlDirOf(spec)).map(({ id, name, kind, status, pid }) => ({ id, name, kind, status, tmux: kind === "background" ? undefined : tmuxPaneOf(pid, panes, parentPidOf)?.session })),
+          // STALE(ATC-93): 멈췄는데 Claude Code가 아직 목록에 둔 job. live에 들지 않고 LAUNCH를 막지 않는다
+          stale: controlStaleOf(spec, rows, controlDirOf(spec)).map(({ id, name }) => ({ id, name })),
         })),
         // ACCOUNT(ATC-60): 관제 세션마다 SUPERVISOR가 단 라벨(없으면 null). FUEL이 이 ACCOUNT에 센다
         accounts: controlAccountsView(loadFleet()),
@@ -448,7 +497,8 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
     try {
       const team = new RegExp(loadDispatchConfig().teamPattern, "i");
       const rows = (await agentRows()).filter((r) => team.test(r.name ?? ""));
-      return c.json({ max: MAX_LAUNCHED, permissionModes: PERMISSION_MODES, sessions: rows.map(({ id, sessionId, name, kind, status, cwd }) => ({ id, sessionId, name, kind, status, cwd })) });
+      // stale: 멈췄는데 Claude Code가 아직 목록에 둔 job(ATC-93). 화면은 BG 대신 STALE로 보이고 LAUNCH를 막지 않는다
+      return c.json({ max: MAX_LAUNCHED, permissionModes: PERMISSION_MODES, sessions: rows.map(({ id, sessionId, name, kind, status, cwd, stale }) => ({ id, sessionId, name, kind, status, cwd, ...(stale ? { stale } : {}) })) });
     } catch (e) {
       if (e instanceof ControlError) return c.json({ error: e.message }, e.status as 502);
       throw e;

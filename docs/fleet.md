@@ -609,6 +609,18 @@ The same LAUNCH and STOP work for atc's own control sessions, from the settings 
 - **CROSSCHECK and REVIEW** (ATC-66, changed 2026-09-29). Until 2026-09-29 they ran on other model families through `ocx claude`, which `claude --bg` can't do, so LAUNCH opened a tmux session (`atc-crosscheck`, `atc-review`). Since then CROSSCHECK runs on Claude Opus and REVIEW on Claude Sonnet, both launched with `claude --bg` like TOWER, OCC and MCC ([occ.md](occ.md) 9.9 and "CROSSCHECK on Claude Opus"). The tmux and `ocx` launch code is gone. STOP still recognises a control session running in a tmux pane and closes only that pane.
 - **ENGINEERING** is a working session opened at the repository root, where team sessions also run, so it is recognised by name only and has no LAUNCH or STOP.
 - **Cap.** Control sessions don't count toward `ATC_MAX_LAUNCHED` for teams.
+- **STALE rows, as built (2026-09-29, ATC-93).** Claude Code 2.1.284 can keep listing a job that was stopped while it was `done`. On 2026-09-29 the TOWER job `3bf04645` stayed in `claude agents --json` as `"state": "working"` with no `pid` and no `status` for over an hour. It blocked TOWER's LAUNCH and counted as a live session.
+  - **Rule** (`isStaleRow`): a row is STALE when it is `background`, has no `pid` and no `status`, its job file `~/.claude/jobs/<id>/state.json` says `state` `done`, `stopped` or `failed`, and its `startedAt` is at least 2 minutes old.
+    - `agentRows()` reads only that one field, and only for rows without `pid` and `status`. It never writes under `~/.claude/jobs/`.
+    - Healthy background rows always carry a `pid`, idle or busy.
+    - A just-spawned job shows for about 0.4 s with no `pid` or `status`, but its state isn't terminal (checked 2026-09-29).
+    - A live job's state is `done` after each turn, so the state alone doesn't decide.
+    - An unreadable job file counts as not stale.
+  - **Effect**: a STALE row is not a live session anywhere.
+    - `controlRowsOf` / `refuseLive`, team `launchPlanOf` and the `ATC_MAX_LAUNCHED` count skip it.
+    - So do FLEET PLAN inputs and the RESTART wait (`liveRowsOf`).
+    - STOP on a session with only STALE rows returns 409 with the reason and doesn't run `claude stop` again.
+  - **Display**: `GET /api/control/sessions` returns `stale: [{id, name}]` per control session, and `GET /api/fleet/sessions` marks rows `stale: true`. The CONTROL block and the FLEET card show `STALE <id>` with "Claude Code가 멈춘 job을 아직 목록에 둠 — 무시해도 된다", and LAUNCH stays available.
 - **API** (`server/session-control.ts`): `GET /api/control/sessions` (`{daemonInService, sessions: [{name, dir, prompt, launch: "bg" | null, blocked, live}], accounts}`), `POST /api/control/:name/launch`, `POST /api/control/:name/stop`, both SUPERVISOR-only (this screen's Origin). Pure parts: `controlLaunchPlanOf`, `launchBlockOf`, `controlStopTargetOf`, `controlRowsOf`, `isControlRow`.
 - **Record.** FLIGHT RECORDER `{kind: "control", op: "launch" | "stop", session, by: "SUPERVISOR", ok, jobId, tmux, cwd, permissionMode, error}` (`permissionMode` since ATC-76): `jobId` for background sessions, `tmux` for tmux ones (the session on launch, `<session> <pane>` on stop).
 

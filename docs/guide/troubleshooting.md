@@ -82,6 +82,16 @@ LANDING SEQUENCE 머리의 AUTOLAND 줄과 PR의 AUTOLAND 표시를 본다([개�
 - `AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(…)` → 비밀·키 경로, FLIGHT 없음, 또는 스위치가 exclude일 때 보안 경로·키워드로 REVIEW에 보낼 수 없는 PR이다. Codex나 SUPERVISOR가 리뷰한다.
 - `SUPERVISOR 머지 — …` → merge 모드에서 빠진 PR이다(HOLD, FLIGHT 없음, `rating:SEC`·Risk 라벨, 보안 게이트, HUMAN CHECK 대기, `## UI change` 블록 없음). SUPERVISOR가 직접 머지한다.
 
+## STALE <id>가 보인다
+
+설정 창 CONTROL 블록이나 FLEET 카드에 `STALE 3bf04645`처럼 보이면, 멈춘 background 세션을 Claude Code가 아직 목록(`claude agents`)에 두고 있는 것이다. `pid`와 상태 없이 남은 줄이고 실제로 돌지 않는다. 무시해도 된다:
+
+- LAUNCH를 막지 않는다. 그 세션을 다시 띄우려면 LAUNCH를 누르면 된다.
+- 팀 세션 상한과 FLEET PLAN에 세지 않는다.
+- STOP을 눌러도 다시 멈추지 않고 "STALE만 있음"이라고만 한다.
+
+`~/.claude/jobs/` 아래를 지우거나 Claude Code daemon을 다시 시작하지 않는다(daemon을 다시 시작하면 모든 background 세션이 멈춘다).
+
 ## 새 기능이 안 보인다 · 코드를 고친 뒤 화면이 그대로다
 
 운영 서비스는 main 체크아웃에서 빌드한다. 머지 뒤 화면 상단 **UPDATE 막대**의 [업데이트]를 누른다. 막대가 "사람이 배포"라고 하면 `systemctl --user restart atc` 전에 `npm ci` 등을 손으로 한다([배포하기](deploy.md)).

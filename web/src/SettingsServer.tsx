@@ -640,7 +640,7 @@ function MccGatePanel() {
 // 데스크톱 세션은 그 창에서 닫는다
 type ControlLive = { id?: string; name?: string; kind: string; status?: string; tmux?: string };
 type ControlAccounts = { labeled: boolean; rows: { name: string; label: string | null; account: string | null }[] };
-type ControlSession = { name: string; dir: string | null; prompt: string | null; launch: "bg" | null; blocked: string | null; live: ControlLive[] };
+type ControlSession = { name: string; dir: string | null; prompt: string | null; launch: "bg" | null; blocked: string | null; live: ControlLive[]; stale?: { id?: string; name?: string }[] };
 type ControlList = { daemonInService?: boolean; sessions: ControlSession[] };
 function ControlSessions() {
   const [list, setList] = useState<ControlList | null>(null);
@@ -761,6 +761,12 @@ function ControlSessions() {
                 " · 이름으로 알아본다"
               )}
               {c.blocked && c.launch !== null ? <span className="is-error"> · LAUNCH 꺼짐: {c.blocked}</span> : null}
+              {/* STALE(ATC-93): 멈췄는데 Claude Code가 아직 목록에 둔 job. live가 아니고 LAUNCH를 막지 않는다 */}
+              {(c.stale ?? []).length > 0 && (
+                <span className="config-stale" title="claude agents --json에 pid·status 없이 남은 멈춘 background job">
+                  {" "}· <span className="session-badge">STALE {(c.stale ?? []).map((x) => x.id).join(", ")}</span> Claude Code가 멈춘 job을 아직 목록에 둠 — 무시해도 된다
+                </span>
+              )}
             </p>
           </div>
           {accountRow(c.name)}

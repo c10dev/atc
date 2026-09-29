@@ -30,6 +30,7 @@ export interface SessionRow {
   name?: string;
   kind: string; // background | interactive
   status?: string;
+  stale?: boolean; // 멈췄는데 Claude Code가 아직 목록에 둔 job(ATC-93). 살아 있는 세션이 아니다
 }
 export interface SessionBrief {
   max: number;

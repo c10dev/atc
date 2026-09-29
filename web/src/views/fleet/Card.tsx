@@ -116,6 +116,7 @@ export function Card({
   onAog,
   onRetire,
   session,
+  stale = [],
   onLaunch,
   onStop,
   windowDays,
@@ -128,6 +129,7 @@ export function Card({
   onAog: () => void;
   onRetire: () => void;
   session: SessionRow | null | undefined; // undefined: 세션 조종을 못 읽음
+  stale?: SessionRow[]; // 멈췄는데 Claude Code가 아직 목록에 둔 job(ATC-93)
   onLaunch: (opener: HTMLElement) => void;
   onStop: () => void;
   windowDays?: number;
@@ -152,6 +154,11 @@ export function Card({
       </header>
       {/* 백그라운드가 아닌 세션(ATC-76): atc가 멈추거나 다시 띄우지 않는다 — 손 절차 */}
       {a.origin && !isBackground(a.origin) && <p className="fl-origin-note faint">{manualStepsOf(a.origin, a.registration, "stop")}</p>}
+      {stale.length > 0 && (
+        <p className="fl-origin-note fl-stale faint" title="claude agents --json에 pid·status 없이 남은 멈춘 background job. LAUNCH를 막지 않고 상한에 세지 않는다">
+          <span className="fl-stale-mark mono">STALE {stale.map((x) => x.id).join(", ")}</span> Claude Code가 멈춘 job을 아직 목록에 둠 — 무시해도 된다
+        </p>
+      )}
       {a.aog && (
         <p className="fl-aog">
           <span className="fl-aog-mark">AOG</span> {a.aog.reason}

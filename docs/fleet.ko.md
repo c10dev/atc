@@ -672,6 +672,18 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **CROSSCHECK·REVIEW**(ATC-66, 2026-09-29에 바뀜). 2026-09-29까지는 `ocx claude`로 다른 계열 모델에 돌렸고, `claude --bg`로는 그렇게 할 수 없어서 LAUNCH가 tmux 세션(`atc-crosscheck`, `atc-review`)을 열었다. 그 뒤로 CROSSCHECK는 Claude Opus, REVIEW는 Claude Sonnet으로 돌고, TOWER·OCC·MCC처럼 `claude --bg`로 연다([occ.ko.md](occ.ko.md) 9.9와 "CROSSCHECK를 Claude Opus로"). tmux와 `ocx`로 띄우는 코드는 없앴다. tmux pane에서 도는 관제 세션은 STOP이 여전히 알아보고 그 pane만 닫는다.
 - **ENGINEERING**은 저장소 뿌리에서 여는 작업 세션인데 팀 세션도 거기서 돌므로, 이름으로만 알아보고 LAUNCH·STOP이 없다.
 - **상한.** 관제 세션은 팀 세션 상한 `ATC_MAX_LAUNCHED`에 세지 않는다.
+- **STALE 줄, 만든 대로(2026-09-29, ATC-93).** Claude Code 2.1.284는 `done`일 때 멈춘 job을 목록에 계속 둘 수 있다. 2026-09-29에 TOWER job `3bf04645`가 `pid`·`status` 없이 `"state": "working"`으로 한 시간 넘게 `claude agents --json`에 남았다. 그 줄이 TOWER LAUNCH를 막고, 살아 있는 세션으로 셌다.
+  - **규칙**(`isStaleRow`): `background`이고, `pid`·`status`가 없고, job 파일 `~/.claude/jobs/<id>/state.json`의 `state`가 `done`·`stopped`·`failed`이고, `startedAt`이 2분 넘게 지났으면 STALE이다.
+    - `agentRows()`는 `pid`·`status`가 없는 줄에서만 그 한 칸을 읽는다. `~/.claude/jobs/` 아래에는 쓰지 않는다.
+    - 살아 있는 background 줄은 쉬든 일하든 늘 `pid`가 있다.
+    - 막 띄운 job은 0.4초쯤 `pid`·`status` 없이 보이지만 그때 state는 끝난 값이 아니다(2026-09-29 확인).
+    - 살아 있는 job도 턴을 마칠 때마다 state가 `done`이라 state만으로는 가르지 않는다.
+    - job 파일을 못 읽으면 STALE이 아니다.
+  - **효과**: STALE 줄은 어디서도 살아 있는 세션이 아니다.
+    - `controlRowsOf`·`refuseLive`, 팀 `launchPlanOf`, `ATC_MAX_LAUNCHED` 계산이 뺀다.
+    - FLEET PLAN 입력과 RESTART 대기도 뺀다(`liveRowsOf`).
+    - STALE만 있는 세션에 STOP하면 이유와 함께 409이고, `claude stop`을 다시 하지 않는다.
+  - **화면**: `GET /api/control/sessions`는 관제 세션마다 `stale: [{id, name}]`를, `GET /api/fleet/sessions`는 줄에 `stale: true`를 준다. CONTROL 블록과 FLEET 카드는 `STALE <id>`와 "Claude Code가 멈춘 job을 아직 목록에 둠 — 무시해도 된다"를 보이고, LAUNCH는 그대로 쓸 수 있다.
 - **API**(`server/session-control.ts`): `GET /api/control/sessions`(`{daemonInService, sessions: [{name, dir, prompt, launch: "bg" | null, blocked, live}], accounts}`), `POST /api/control/:name/launch`, `POST /api/control/:name/stop`. 둘 다 SUPERVISOR만(이 화면 Origin). 순수 함수: `controlLaunchPlanOf`, `launchBlockOf`, `controlStopTargetOf`, `controlRowsOf`, `isControlRow`.
 - **기록.** FLIGHT RECORDER `{kind: "control", op: "launch" | "stop", session, by: "SUPERVISOR", ok, jobId, tmux, cwd, permissionMode, error}`(`permissionMode`는 ATC-76부터). 백그라운드 세션이면 `jobId`, tmux 세션이면 `tmux`(launch는 세션, stop은 `<세션> <pane>`).
 
