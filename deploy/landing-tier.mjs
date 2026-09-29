@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // atc PR의 LANDING CLEARANCE 등급. 바뀐 파일 경로로만 정한다(CLAUDE.md "git과 PR").
-//   auto    — CI 뒤 사용자가 머지하고 배포(MCC가 land 모드가 되면 MCC가 INSPECTION 뒤 착륙, docs/mcc.md)
+//   auto    — CI와 MCC INSPECTION pass 뒤 MCC가 착륙(land 모드). 배포는 UPDATE 바 또는 land+rts의 MCC(docs/mcc.md 5.1, 6)
 //   flagged — auto와 같지만 보고에 바뀐 관제 규칙을 따로 적는다
 //   user    — 사용자가 머지
 // 사용: gh pr diff <N> --name-only | node deploy/landing-tier.mjs   (또는 경로를 인자로)

@@ -23,7 +23,7 @@ atc 코드를 고치는 세션(팀 세션, ENGINEERING 세션, 사용자와 직�
 
 ## 운영
 
-- 운영 서비스(7700)를 재시작하지 않는다. 배포(main fast-forward와 재시작)는 머지한 쪽이 한다. 지금은 사용자이고, MCC가 `land` 모드가 되면 MCC다(`docs/mcc.md`).
+- 운영 서비스(7700)를 재시작하지 않는다. 배포(main fast-forward와 재시작)는 RETURN TO SERVICE(`atc-rts` 유닛)로 한다. MCC가 `land` 모드인 지금은 사용자가 화면의 UPDATE 바에서 시작하고, `land+rts` 모드가 되면 MCC가 한다(`docs/mcc.md` 5.1, 6).
 - 관제 세션의 guard(`controller/guard.mjs`, `occ/send-guard.mjs`, `occ/mcp-guard.mjs`)는 fail-closed(`… || exit 2`)를 유지한다. 막는 조건을 약하게 바꾸려면 사용자에게 먼저 묻는다.
 
 ## git과 PR
@@ -31,7 +31,7 @@ atc 코드를 고치는 세션(팀 세션, ENGINEERING 세션, 사용자와 직�
 - 커밋·푸시·PR은 작업 지시가 요구할 때 한다. 커밋 메시지와 PR 제목·본문은 영어로 쓴다.
 - 커밋 메시지에 attribution 줄(Co-Authored-By 등)을 넣지 않는다. PR 본문 끝은 `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 - 팀 세션과 ENGINEERING 세션은 머지하지 않는다. 머지는 LANDING CLEARANCE 등급(`deploy/landing-tier.mjs`, 바뀐 파일 경로로 정함)을 따른다.
-  - `auto`(서버·화면·문서·테스트)와 `flagged`(관제 세션 매뉴얼·CLI): CI(`check`)가 통과하면 사용자가 머지하고 배포한다. MCC가 `land` 모드가 되면 MCC가 INSPECTION 뒤 착륙하고 RETURN TO SERVICE한다(`docs/mcc.md`). `flagged`는 PR 본문과 보고에 바뀐 관제 규칙을 따로 적는다. GitHub auto-merge는 쓰지 않는다.
+  - `auto`(서버·화면·문서·테스트)와 `flagged`(관제 세션 매뉴얼·CLI): CI(`check`)가 통과하고 MCC INSPECTION이 `pass`면 MCC가 착륙시킨다(`land` 모드, 2026-09-29부터, `docs/mcc.md` 5.1). 사용자가 먼저 머지해도 된다. `flagged`는 PR 본문과 보고에 바뀐 관제 규칙을 따로 적는다. GitHub auto-merge는 쓰지 않는다.
   - `user`(guard, `.claude/` 설정, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`)는 사용자가 머지한다. 운영 상태 형식을 바꾸거나 되돌리기 어려운 PR, 검토에서 의심이 남는 PR도 `user`로 올린다(PR을 올린 세션이 본문의 등급에 적고, MCC INSPECTION은 ESCALATE한다).
 
 ## 코드
