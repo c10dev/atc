@@ -81,6 +81,9 @@
 .st-HOLDING .fl-r-status {
   color: var(--cyan);
 }
+.st-RESTARTING .fl-r-status {
+  color: var(--cyan);
+}
 .st-NORDO .fl-r-status,
 .st-AOG .fl-r-status {
   color: var(--alert);

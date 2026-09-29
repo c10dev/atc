@@ -196,7 +196,7 @@ test("운항 이력: 청구 기록 파일 이름에서 FLIGHT key를 뽑는다",
 
 test("예약: 진행 중인 제안이 잡은 AIRCRAFT·FLIGHT는 새 짝에서 빠진다", () => {
   const s = snap({ sessions: [session("b", "TEAM_B"), session("d", "TEAM_D")], tickets: [ticket("VOC-70", { priority: 1 }), ticket("VOC-71")] });
-  const reserved = { aircraft: new Map([["b", "D-0009"]]), flights: new Map([["VOC-70", "D-0009"]]) };
+  const reserved = { aircraft: new Map([["TEAM_B", "D-0009"]]), flights: new Map([["VOC-70", "D-0009"]]) };
   const p = planDispatch(s, new Map(), cfg(), NOW, reserved);
   assert.deepEqual(p.assign.map((a) => `${a.flight}→${a.aircraftName}`), ["VOC-71→TEAM_D"]);
   assert.equal(p.aircraft.find((a) => a.id === "b")?.reserved, "D-0009");
@@ -478,7 +478,7 @@ test("STAND 없는 FLIGHT: STAND 있는 제안이 진행 중인 PARKED 팀이 CH
     tickets: [ticket("VOC-70"), ticket("VOC-210", { title: "VOC-205 결과 검토", labels: ["type:CHECK", "wake:L"] })],
   });
   // TEAM_B는 BUILD(VOC-70) 제안이 진행 중이라 STAND 규칙으로는 못 받는다. TEAM_D는 비어 있지만 VOC-205를 만들었다.
-  const reserved = { aircraft: new Map([["b", "D-0009"]]), flights: new Map([["VOC-70", "D-0009"]]), held: new Map(), aircraftFlights: new Map([["b", ["VOC-70"]]]) };
+  const reserved = { aircraft: new Map([["TEAM_B", "D-0009"]]), flights: new Map([["VOC-70", "D-0009"]]), held: new Map(), aircraftFlights: new Map([["TEAM_B", ["VOC-70"]]]) };
   const p = planDispatch(s, new Map(), cfg(), NOW, reserved, undefined, undefined, [arrived("VOC-205", "TEAM_D", 400)]);
   assert.deepEqual(pairsOf(p), ["VOC-210→TEAM_B"]);
   const f = p.assign[0].factors;
@@ -605,10 +605,10 @@ test("중복 제안 없음: STAND 없는 제안이 진행 중인 AIRCRAFT, 이�
   assert.deepEqual(p.assign.map((a) => a.aircraftName).sort(), ["TEAM_B", "TEAM_C"]);
   // TEAM_C가 SURVEY(D-0011)를 진행 중이면 또 받지 않는다. TEAM_B는 BUILD 제안(D-0010)이 진행 중이어도 SURVEY 하나는 받는다
   const reserved = {
-    aircraft: new Map([["b", "D-0010"], ["c", "D-0011"]]),
+    aircraft: new Map([["TEAM_B", "D-0010"], ["TEAM_C", "D-0011"]]),
     flights: new Map([["VOC-240", "D-0010"], ["VOC-241", "D-0011"]]),
     held: new Map(),
-    aircraftFlights: new Map([["b", ["VOC-240"]], ["c", ["VOC-241"]]]),
+    aircraftFlights: new Map([["TEAM_B", ["VOC-240"]], ["TEAM_C", ["VOC-241"]]]),
   };
   const q = planDispatch(s, new Map(), cfg(), NOW, reserved);
   assert.deepEqual(pairsOf(q), ["VOC-242→TEAM_B"]);
@@ -665,7 +665,7 @@ test("canTakeNow: STAND 없는 FLIGHT는 HOLDING(resting) AIRCRAFT도 받을 수
     { op: "create", id: "D-0002", at, kind: "ASSIGN", flight: "VOC-271", aircraft: "c", aircraftName: "TEAM_C", airport: "VCDO", score: 1, factors: [] },
     { op: "approve", id: "D-0002", at },
   ]);
-  assert.deepEqual([...reservedOf(existing).aircraftFlights!], [["c", ["VOC-270", "VOC-271"]]]);
+  assert.deepEqual([...reservedOf(existing).aircraftFlights!], [["TEAM_C", ["VOC-270", "VOC-271"]]]);
   const plan = {
     at, assign: [], release: [], hold: [], excluded: [], slots: [],
     aircraft: [{ id: "c", name: "TEAM_C", callsign: "CHARLIE", airport: "VCDO", available: false, resting: true, reason: "HOLDING — VOC-10 진행 중", reserved: null }],
@@ -721,7 +721,7 @@ test("RECALL: recalling인 STAND 없는 제안은 두 번째 STAND 없는 FLIGHT
   const at = new Date(NOW - 60 * 60_000).toISOString();
   const flow = (id: string, flight: string, aircraft: string, until: "accepted" | "recalling") =>
     [
-      { op: "create" as const, id, at, kind: "ASSIGN" as const, flight, aircraft, aircraftName: aircraft, airport: "VCDO", score: 1, factors: [] },
+      { op: "create" as const, id, at, kind: "ASSIGN" as const, flight, aircraft, aircraftName: `TEAM_${aircraft.toUpperCase()}`, airport: "VCDO", score: 1, factors: [] },
       { op: "approve" as const, id, at },
       { op: "send" as const, id, at, message: "m" },
       { op: "accept" as const, id, at },
@@ -741,7 +741,7 @@ test("RECALL: recalling인 STAND 없는 제안은 두 번째 STAND 없는 FLIGHT
     const ps = fold(flow("D-0001", "VOC-300", "b", until));
     assert.equal(ps[0].status, until);
     const r = reservedOf(ps);
-    assert.deepEqual([...r.aircraftFlights!], [["b", ["VOC-300"]]]);
+    assert.deepEqual([...r.aircraftFlights!], [["TEAM_B", ["VOC-300"]]]);
     const p = planDispatch(s, new Map(), cfg(), NOW, r);
     assert.deepEqual(pairsOf(p), ["VOC-302→TEAM_B"], until);
     assert.deepEqual(p.aircraft.map((a) => `${a.reserved}:${a.reservedLight}`), ["null:D-0001"], until);
@@ -821,10 +821,10 @@ test("24시간 안에 제안됐다 닫힌 짝은 계획에서 빼고, AIRCRAFT�
   const before = planDispatch(s, new Map(), cfg(), NOW);
   assert.deepEqual(before.assign.map((a) => `${a.flight}>${a.aircraftName}`), ["VOC-177>TEAM_E"]); // 예전: syncOps가 못 만드는 짝, VOC-196은 갈 곳 없음
   const until = new Date(NOW + 3 * 3_600_000).toISOString();
-  const reserved = { aircraft: new Map(), flights: new Map(), held: new Map(), recentPairs: new Map([["VOC-177|e", { id: "D-0010", until }]]) };
+  const reserved = { aircraft: new Map(), flights: new Map(), held: new Map(), recentPairs: new Map([["VOC-177|TEAM_E", { id: "D-0010", until }]]) };
   const p = planDispatch(s, new Map(), cfg(), NOW, reserved);
   assert.deepEqual(p.assign.map((a) => `${a.flight}>${a.aircraftName}`), ["VOC-196>TEAM_E"]);
-  assert.deepEqual(p.blockedPairs, [{ flight: "VOC-177", aircraft: "e", aircraftName: "TEAM_E", proposal: "D-0010", until }]);
+  assert.deepEqual(p.blockedPairs, [{ flight: "VOC-177", aircraft: "TEAM_E", aircraftName: "TEAM_E", proposal: "D-0010", until }]);
   assert.deepEqual(p.excluded, [{ flight: "VOC-177", reason: pairBlockedWhy("D-0010", until) }]);
 
   // 다른 AIRCRAFT가 있으면 막힌 FLIGHT는 그쪽으로 가고, 제외가 아니다
@@ -836,7 +836,7 @@ test("24시간 안에 제안됐다 닫힌 짝은 계획에서 빼고, AIRCRAFT�
 test("배정할 짝이 모두 24시간 규칙에 걸린 FLIGHT는 제외 사유로 남는다", () => {
   const s = snap({ sessions: [session("e", "TEAM_E")], tickets: [ticket("VOC-196", { labels: ["tail:TEAM_E"] })] });
   const until = new Date(NOW + 5 * 3_600_000).toISOString();
-  const reserved = { aircraft: new Map(), flights: new Map(), held: new Map(), recentPairs: new Map([["VOC-196|e", { id: "D-0017", until }]]) };
+  const reserved = { aircraft: new Map(), flights: new Map(), held: new Map(), recentPairs: new Map([["VOC-196|TEAM_E", { id: "D-0017", until }]]) };
   const p = planDispatch(s, new Map(), cfg(), NOW, reserved);
   assert.deepEqual(p.assign, []);
   assert.deepEqual(p.excluded, [{ flight: "VOC-196", reason: pairBlockedWhy("D-0017", until) }]);

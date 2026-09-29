@@ -4,15 +4,17 @@ import { fuelHoldTag, fuelTitle } from "./fuel-remaining.ts";
 import { type ContextBadge, contextBadgeOf } from "./fuel-context.ts";
 import { fleetFuelLabel, fleetFuelTitle } from "./fuel-view.ts";
 import { conflictHintOf, renameHintOf } from "./registration.ts";
+import { RESTARTING_TEXT } from "./restarting.ts";
 import { originBadgeOf } from "./session-origin.ts";
 
 // FLEET 운항 상태 목록(ATC-44, UI report #99): AIRCRAFT 한 대가 한 줄. 화면과 같이 쓰는 순수 함수.
 
-export type FleetStatus = "AIRBORNE" | "HOLDING" | "PARKED" | "AOG" | "NORDO" | "NOT IN SERVICE" | "RETIRED";
+export type FleetStatus = "AIRBORNE" | "HOLDING" | "PARKED" | "RESTARTING" | "AOG" | "NORDO" | "NOT IN SERVICE" | "RETIRED";
 
 // RADAR·STRIPS와 같은 말: 작업 중 AIRBORNE, 대기 중 STAND를 쥐었으면 HOLDING, 아니면 PARKED
 // 점유는 놓쳤어도 멈춘 채 FLIGHT를 쥔 AIRCRAFT(ATC-86, flights의 kept)도 HOLDING이다
-export const fleetStatusOf = (a: Pick<AircraftView, "retired" | "aog" | "status" | "flying"> & Partial<Pick<AircraftView, "flights">>): FleetStatus =>
+// /clear 뒤 첫 메시지를 기다리는 AIRCRAFT(ATC-91, restartGraceMin 안)는 세션이 없어도 RESTARTING이다
+export const fleetStatusOf = (a: Pick<AircraftView, "retired" | "aog" | "status" | "flying"> & Partial<Pick<AircraftView, "flights" | "restarting">>): FleetStatus =>
   a.retired
     ? "RETIRED"
     : a.aog
@@ -25,10 +27,12 @@ export const fleetStatusOf = (a: Pick<AircraftView, "retired" | "aog" | "status"
             : "PARKED"
           : a.status === "dead"
             ? "NORDO"
-            : "NOT IN SERVICE";
+            : a.restarting
+              ? "RESTARTING"
+              : "NOT IN SERVICE";
 
 // AIRBORNE → HOLDING → PARKED, 그다음 손볼 것(NORDO, AOG), 세션 없음, 퇴역
-const RANK: FleetStatus[] = ["AIRBORNE", "HOLDING", "PARKED", "NORDO", "AOG", "NOT IN SERVICE", "RETIRED"];
+const RANK: FleetStatus[] = ["AIRBORNE", "HOLDING", "PARKED", "RESTARTING", "NORDO", "AOG", "NOT IN SERVICE", "RETIRED"];
 
 export interface FleetRow {
   registration: string;
@@ -41,6 +45,8 @@ export interface FleetRow {
   lastActiveAt: string | null;
   week: number; // 이번 주 ARRIVED
   weekOnTime: number | null; // 이번 주 정시율(0–1). 잴 FLIGHT가 없으면 null
+  // RESTARTING(ATC-91): "세션 없음 — /clear 뒤 첫 메시지 대기". until까지 기다린다
+  restarting: { label: string; until: string } | null;
   // AIRCRAFT health(ATC-45): "HOLD · LIMIT until 07:40Z" 같은 짧은 글과 원인·다음 한 걸음
   health: { code: HealthCode; level: "info" | "alert"; label: string; detail: string; next: string } | null;
   account: string | null; // ACCOUNT 라벨(ATC-51). 등록부에 라벨이 하나도 없으면 null
@@ -76,6 +82,7 @@ export function fleetRows(aircraft: readonly AircraftView[], now: number): Fleet
       lastActiveAt: a.lastActiveAt ?? null,
       week: a.actuals.week,
       weekOnTime: a.actuals.weekOnTime?.rate ?? null,
+      restarting: a.restarting ? { label: RESTARTING_TEXT, until: a.restarting.until } : null,
       health: a.health ? { code: a.health.code, level: a.health.level, label: healthLabel(a.health, now), detail: a.health.detail, next: a.health.next } : null,
       account: a.account ?? null,
       accountIsDefault: Boolean(a.accountIsDefault),

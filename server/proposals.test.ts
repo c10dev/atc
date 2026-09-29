@@ -23,8 +23,10 @@ const planOf = (over: Partial<Plan> = {}): Plan => ({
 const assign = (flight: string, aircraft: string) => ({
   kind: "ASSIGN" as const, flight, aircraft, aircraftName: aircraft === "b" ? "TEAM_B" : "TEAM_C", airport: "VCDO", score: 9, factors: [],
 });
+// 세션 id → 세션 이름. 짝·예약은 REGISTRATION(이름)으로 짝짓는다(ATC-91)
+const NAME_OF: Record<string, string> = { a: "TEAM_A", b: "TEAM_B", c: "TEAM_C", d: "TEAM_D" };
 const create = (id: string, flight: string, aircraft: string | null, minAgo: number, kind: "ASSIGN" | "RELEASE" = "ASSIGN"): Op => ({
-  op: "create", id, at: iso(minAgo), kind, flight, aircraft, aircraftName: aircraft, airport: "VCDO", score: 1, factors: [],
+  op: "create", id, at: iso(minAgo), kind, flight, aircraft, aircraftName: aircraft ? (NAME_OF[aircraft] ?? aircraft) : null, airport: "VCDO", score: 1, factors: [],
 });
 
 test("접기: verdict·supersede·expire는 열린 제안에만, note는 언제나", () => {
@@ -177,7 +179,7 @@ test("예약: 진행 중인 ASSIGN의 AIRCRAFT·FLIGHT는 reservedOf에 잡힌�
     create("D-0003", "VOC-3", null, 60, "RELEASE"), { op: "approve", id: "D-0003", at: iso(50) },
   ]);
   const r = reservedOf(ps);
-  assert.deepEqual([...r.aircraft], [["b", "D-0001"]]);
+  assert.deepEqual([...r.aircraft], [["TEAM_B", "D-0001"]]); // 세션 id가 아니라 REGISTRATION(ATC-91)
   assert.deepEqual([...r.flights], [["VOC-1", "D-0001"]]);
 });
 
@@ -485,7 +487,7 @@ test("RECALL: sent·accepted → recalling → recalled, departed·approved에�
   assert.equal(p.recallReason, "우선순위 바뀜");
   assert.equal(p.recallMessage, "R");
   assert.equal(isInFlight(p), true);
-  assert.equal(reservedOf([p]).aircraft.get("b"), "D-0001");
+  assert.equal(reservedOf([p]).aircraft.get("TEAM_B"), "D-0001");
   assert.deepEqual(overdueOf([p], NOW), ["D-0001"]); // 30분 전 RECALL, READBACK 없음
   [p] = fold([...base, recall(30), { op: "recalled", id: "D-0001", at: iso(20) }]);
   assert.equal(p.status, "recalled");
@@ -540,9 +542,9 @@ test("24시간 짝: 닫힌 짝만(거절·SUPERSEDED·EXPIRED·RECALLED …), �
     { op: "recall", id: "D-0006", at: iso(70), reason: "r", message: "m" }, { op: "recalled", id: "D-0006", at: iso(60) }, // RECALL READBACK부터 24시간
   ]);
   const pairs = recentPairsOf(ps, NOW);
-  assert.deepEqual([...pairs.keys()].sort(), ["VOC-1|b", "VOC-2|b", "VOC-6|b"]);
-  assert.equal(pairs.get("VOC-1|b")!.until, new Date(Date.parse(iso(60)) + 86_400_000).toISOString());
-  assert.equal(pairs.get("VOC-6|b")!.until, new Date(Date.parse(iso(60)) + 86_400_000).toISOString());
+  assert.deepEqual([...pairs.keys()].sort(), ["VOC-1|TEAM_B", "VOC-2|TEAM_B", "VOC-6|TEAM_B"]);
+  assert.equal(pairs.get("VOC-1|TEAM_B")!.until, new Date(Date.parse(iso(60)) + 86_400_000).toISOString());
+  assert.equal(pairs.get("VOC-6|TEAM_B")!.until, new Date(Date.parse(iso(60)) + 86_400_000).toISOString());
   assert.deepEqual(reservedOf(ps, NOW).recentPairs, pairs);
 });
 
@@ -619,9 +621,9 @@ test("STAND 없는 FLIGHT 전이: accepted → departed(readback) → arrived, �
   assert.deepEqual(Object.keys(p.timeline), ["proposed", "approved", "sent", "accepted", "departed"]);
   assert.equal(isInFlight(p), true);
   const r = reservedOf([p], NOW);
-  assert.equal(r.aircraft.get("b"), "D-0001");
+  assert.equal(r.aircraft.get("TEAM_B"), "D-0001");
   assert.equal(r.flights.get("VOC-1"), "D-0001");
-  assert.deepEqual(r.aircraftFlights?.get("b"), ["VOC-1"]);
+  assert.deepEqual(r.aircraftFlights?.get("TEAM_B"), ["VOC-1"]);
   assert.equal(canApply(p, "arrived"), true);
   assert.equal(canApply(p, "recall"), true);
   assert.equal(canApply(p, "expire"), false);
@@ -681,7 +683,7 @@ test("RECALL: STAND 없이 DEPARTED한 FLIGHT도 RECALL되고, RECALLED면 STAND
   let [p] = fold([...flying, { op: "recall", id: "D-0001", at: iso(60), reason: "r", message: "R" }]);
   assert.equal(p.status, "recalling");
   assert.equal(isInFlight(p), true);
-  assert.equal(reservedOf([p], NOW).aircraft.get("b"), "D-0001");
+  assert.equal(reservedOf([p], NOW).aircraft.get("TEAM_B"), "D-0001");
   // STAND 없는 FLIGHT의 RECALL 문구는 STAND 대신 중간 결과를 남기라고 한다
   const text = formatRecall(fold(flying)[0], { title: "t" }, "TEAM_B", "r");
   assert.match(text, /중간 결과가 있으면 링크나 한 줄로/);
@@ -693,7 +695,7 @@ test("RECALL: STAND 없이 DEPARTED한 FLIGHT도 RECALL되고, RECALLED면 STAND
   assert.equal(r.aircraft.size, 0);
   assert.equal(r.flights.size, 0);
   assert.equal(r.arrived?.size, 0);
-  assert.equal(recentPairsOf([p], NOW).get("VOC-1|b")?.until, new Date(Date.parse(iso(30)) + 86_400_000).toISOString());
+  assert.equal(recentPairsOf([p], NOW).get("VOC-1|TEAM_B")?.until, new Date(Date.parse(iso(30)) + 86_400_000).toISOString());
   // 같은 짝은 다시 제안하지 않고, 다른 AIRCRAFT에는 제안한다
   const tickets = [lt("VOC-1", "SURVEY")];
   assert.deepEqual(syncOps([p], planOf({ assign: [assign("VOC-1", "b")] }), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1), []);

@@ -8,7 +8,7 @@ import { fold, gateOf, humanOf, isHeld, type Op, preflightStatsOf, reasonStatsOf
 const NOW = Date.parse("2026-09-27T12:00:00.000Z");
 const iso = (minAgo: number) => new Date(NOW - minAgo * 60_000).toISOString();
 const create = (id: string, flight: string, aircraft: string, minAgo: number): Op => ({
-  op: "create", id, at: iso(minAgo), kind: "ASSIGN", flight, aircraft, aircraftName: aircraft, airport: "VCDO", score: 1, factors: [],
+  op: "create", id, at: iso(minAgo), kind: "ASSIGN", flight, aircraft, aircraftName: `TEAM_${aircraft.toUpperCase()}`, airport: "VCDO", score: 1, factors: [],
 });
 const mark = (id: string, minAgo: number, verdict: "agree" | "disagree", reasonCodes?: string[]): Op => ({
   op: "crosscheck", id, by: "CROSSCHECK", model: "claude-ocx-opencode-go--muse-spark-1.3-contributor", verdict, reason: "사용자 지시를 기다림", at: iso(minAgo),

@@ -1,5 +1,6 @@
 import type { AircraftView } from "../../../../server/fleet.ts";
 import { fleetStatusOf, flightDetailText } from "../../../../server/fleet-status.ts";
+import { RESTARTING_TEXT } from "../../../../server/restarting.ts";
 import { contextBadgeOf } from "../../../../server/fuel-context.ts";
 import { fuelLabel, fuelTitle } from "../../../../server/fuel-remaining.ts";
 import { usd } from "../../../../server/fuel-view.ts";
@@ -191,7 +192,13 @@ export function Card({
         </p>
       )}
       {a.status === "absent" && (
-        <p className="fl-absent faint">세션이 없음 — LAUNCH로 띄우거나, CREW BRIEFING을 새 세션에 붙여 넣으면 IN SERVICE가 된다</p>
+        a.restarting ? (
+          <p className="fl-absent faint" title="데스크톱의 /clear는 세션을 끝낸다. 새 세션은 같은 이름으로 다음 지시와 함께 뜬다">
+            {RESTARTING_TEXT} — {a.restarting.until.slice(11, 16)}Z까지. 승인된 제안은 그동안 닫히지 않는다
+          </p>
+        ) : (
+          <p className="fl-absent faint">세션이 없음 — LAUNCH로 띄우거나, CREW BRIEFING을 새 세션에 붙여 넣으면 IN SERVICE가 된다</p>
+        )
       )}
       {a.flying.length > 0 && <p className="fl-flying">FLYING {a.flying.map(flightNumber).join(", ")}</p>}
       {(a.flights ?? []).some((f) => f.kept) && (

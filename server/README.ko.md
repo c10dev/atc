@@ -60,6 +60,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `airports.ts` | AIRPORT 등록부: `~/projects` 아래 자동 개설, 첫 커밋 해시로 식별, 코드, 개설·폐쇄·이름 변경·삭제 |
 | `away.ts` | OUTSTATION: 소속 AIRPORT 밖 STAND를 점유한 세션(화면과 공용) |
 | `fleet-status.ts` | FLEET 운항 상태 목록(ATC-44): AIRCRAFT마다 AIRBORNE·HOLDING·PARKED·AOG·NORDO(순수 함수 `fleetStatusOf`), 상태 다음 AIRPORT 순으로 한 줄씩(순수 함수 `fleetRows`), 경과 시간 글(화면과 같이 씀) |
+| `restarting.ts` | RESTARTING(ATC-91, docs/fleet.ko.md 8.5 "RESTARTING as built"), 순수 함수: `restartingOf`(정상으로 끝나 세션 파일이 없고 같은 REGISTRATION의 살아 있는 세션이 없는 것, `restartGraceMin` 안), `normalEndOf`, 화면과 같이 쓰는 글. 읽기는 `sources/claude.ts`의 `readEndedSessions` |
 | `health-flights.ts` | FLIGHT를 쥔 AIRCRAFT의 health(ATC-86, docs/fleet.ko.md 8.8 "AIRCRAFT health from events as built"), 순수 함수 `applyFlightHealth`: 세션에 `STALLED`(STAND 점유나 `tail:` 라벨의 In Progress FLIGHT, `stalledMin` 넘게 idle, 열린 PR 없음)와 `keptFlights`(멈춘 AIRCRAFT가 점유가 `claimTtl`을 넘은 뒤에도 쥔 FLIGHT)를 붙인다 |
 | `health.ts` | AIRCRAFT health(ATC-45·47, docs/fleet.ko.md 8.8): 대화 기록 줄에서 본문 없이 사실만(순수 함수 `factsOf`. ATC-86: `usageLimitNote` `wrap_up`·`release` 줄도 시각·종류만), 세션 하나의 코드 — `LIMIT`(`cut`: 오류 없이 끝남)·`RESUME`·`STALLED`·`THROTTLE`·`NETWORK`·`MODEL`·`CONTEXT`·`PROVIDER`·`PENDING`·`UNANSWERED`·`HUNG`·`DENIED`·`UNKNOWN`(순수 함수 `healthOf`), hook의 마지막 기록과 pull의 우선순위(순수 함수 `mergeHealth`), 기계 단위로 묶은 경보(순수 함수 `healthAlerts`), cut `LIMIT`의 reset을 ACCOUNT의 FUEL 기록에서 찾기(순수 함수 `cutResetOf`·`settleCut`), FLEET 표시 글(화면과 같이 씀) |
 | `callsign.ts` | 콜사인(`TEAM_A` → `ALPHA`)과 FLIGHT NUMBER(화면과 공용) |

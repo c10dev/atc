@@ -29,7 +29,7 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
         {rows.map((r) => {
           const isOpen = open.has(r.registration);
           return (
-            <li key={r.registration} className={`fl-li st-${r.status.replace(/ /g, "-")}${r.health || r.accountHold || r.fuelHold ? " has-health" : ""}${isOpen ? " is-open" : ""}`}>
+            <li key={r.registration} className={`fl-li st-${r.status.replace(/ /g, "-")}${r.health || r.accountHold || r.fuelHold || r.restarting ? " has-health" : ""}${isOpen ? " is-open" : ""}`}>
               <button className="fl-row" aria-expanded={isOpen} aria-controls={`fl-detail-${r.registration}`} onClick={() => onToggle(r.registration)}>
                 <span className="fl-r-id">
                   <b>{r.callsign}</b> <span className="mono faint">{r.registration}</span>
@@ -52,10 +52,15 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                 </span>
                 <span className="fl-r-apt">{r.airport ? <span className="apt">{r.airport}</span> : <span className="faint">—</span>}</span>
                 <span className="fl-r-status">{r.status}</span>
-                <span className={`fl-r-flight${r.flight?.detail && (r.flight.kept || r.health) ? " has-detail" : ""}`} title={r.flight ? `${r.flight.key}${r.flight.title ? ` ${r.flight.title}` : ""}${r.more ? ` 외 ${r.more}건` : ""}${r.flight.detail && (r.flight.kept || r.health) ? ` — ${flightDetailText(r.flight.detail, now).text}` : ""}` : undefined}>
+                <span className={`fl-r-flight${(r.flight?.detail && (r.flight.kept || r.health)) || r.restarting ? " has-detail" : ""}`} title={r.flight ? `${r.flight.key}${r.flight.title ? ` ${r.flight.title}` : ""}${r.more ? ` 외 ${r.more}건` : ""}${r.flight.detail && (r.flight.kept || r.health) ? ` — ${flightDetailText(r.flight.detail, now).text}` : ""}` : undefined}>
                   {r.health && (
                     <span className={`fl-r-health lv-${r.health.level}`} title={`${r.health.detail} — ${r.health.next}`}>
                       {r.health.label}
+                    </span>
+                  )}
+                  {r.restarting && (
+                    <span className="fl-r-health" title={`세션이 /clear로 끝났다. ${r.restarting.until.slice(11, 16)}Z까지 새 세션의 첫 메시지를 기다린다`}>
+                      {r.restarting.label}
                     </span>
                   )}
                   {r.accountHold && (
@@ -77,7 +82,7 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                       {r.flight.title && <span className="fl-r-title">{r.flight.title}</span>}
                       {r.more > 0 && <span className="fl-r-more">+{r.more}</span>}
                     </>
-                  ) : r.health || r.accountHold || r.fuelHold ? null : (
+                  ) : r.health || r.accountHold || r.fuelHold || r.restarting ? null : (
                     <span className="faint">—</span>
                   )}
                 </span>

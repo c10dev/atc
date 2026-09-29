@@ -1,3 +1,4 @@
+import type { Restarting } from "./restarting.ts";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Context, Hono } from "hono";
@@ -244,6 +245,7 @@ export interface AircraftView {
   note: string | null;
   flying: string[]; // 지금 STAND를 쥔 FLIGHT
   flights: AircraftFlight[]; // flying 다음에 keptFlights. Linear 제목(모르면 null). FLEET 운항 상태 목록(ATC-44)
+  restarting?: Restarting | null; // /clear 뒤 첫 메시지를 기다린다(ATC-91). 세션은 없다(status absent)
   flyingSince: string | null; // 지금 쥔 STAND를 처음 잡은 시각(점유 since 중 가장 이른 것). 없으면 null
   lastActiveAt: string | null; // 세션의 마지막 활동 시각
   health?: Health | null; // AIRCRAFT health(ATC-45). 세션이 없거나 문제가 없으면 null
@@ -313,7 +315,7 @@ export function flightDetailOf(s: Pick<Snapshot, "workspaces"> & Partial<Pick<Sn
 
 // 스냅샷의 TEAM 세션과 등록부를 합친다. 세션이 없는 등록 항목도 "absent"로 보인다.
 export function fleetView(
-  s: Pick<Snapshot, "sessions" | "claims" | "workspaces" | "airports"> & Partial<Pick<Snapshot, "tickets" | "fuel" | "pulls">>,
+  s: Pick<Snapshot, "sessions" | "claims" | "workspaces" | "airports"> & Partial<Pick<Snapshot, "tickets" | "fuel" | "pulls" | "restarting">>,
   fleet: FleetFile,
   teamPattern = DEFAULT_DISPATCH_CONFIG.teamPattern,
   logbook: PricedEntry[] = [], // loadPricedLogbook()이면 FUEL COST까지, loadPricedLogbook()이면 토큰까지
@@ -357,6 +359,7 @@ export function fleetView(
       lastActiveAt: session?.lastActiveAt ?? null,
       origin: session ? (session.origin ?? "unknown") : null,
       permissionMode: session?.permissionMode ?? null,
+      restarting: session ? null : (s.restarting?.find((r) => r.registration === reg) ?? null),
       health: session?.health ?? null,
       account: accountOf(fleet, reg),
       accountIsDefault: accountOf(fleet, reg) != null && !profile.account,
