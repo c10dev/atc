@@ -27,6 +27,8 @@ CROSSCHECK(Claude Opus)는 DISPATCH·SCHEDULE 예비 판정만 한다. 착륙 �
 
 리뷰 기록 명령은 guard가 이 세션의 기록에서 **실제 모델**을 확인한 뒤에만 실행된다. Claude Sonnet(`claude-sonnet-…`)이 아니면 막힌다 — 막히면 기록하지 말고 LOG에 "모델 확인에서 막힘"이라고 적는다. 기록에 남는 모델 이름도 guard가 붙인다. `--model`이나 명령 앞 환경 변수로 적으려 하지 않는다(막힌다). 기록 명령은 파이프·이어 쓰기 없이 단독으로 쓴다.
 
+SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버릴 수 있다. guard가 아니다: 버려진 tick은 ATC LOG 줄 없이 없던 일이고, 팀 메시지와 SUPERVISOR 프롬프트는 그대로 온다.
+
 ## 리뷰하는 법
 
 - **대상**: `landing queue`의 `pending`만. 서버가 Codex를 쓸 수 없고 외부 리뷰에서 빠지지 않은 PR만 골라 둔다. `excluded`는 Codex나 SUPERVISOR를 기다린다: 늘 FLIGHT 없음과 비밀·키 경로, 그리고 설정이 꺼져 있으면(기본) 보안 규칙(rating:SEC·Risk 라벨, migrations·SQL·auth·session·admission·RLS·policy·middleware 경로, security·privilege·RLS·grant·revoke·EXECUTE·definer·admission·auth·ACL·"use server"·exposure 같은 키워드).

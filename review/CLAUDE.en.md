@@ -29,6 +29,8 @@ CROSSCHECK (Claude Opus) only marks DISPATCH and SCHEDULE items. Only this sessi
 
 The record command runs only after the guard checks this session's **real model** in its transcript. Anything other than Claude Sonnet (`claude-sonnet-…`) is blocked — then don't record; write "blocked by the model check" in the LOG. The guard also attaches the model name to the record. Don't try to set it with `--model` or an environment variable in front of the command (blocked). Run the record command on its own, with no pipe or chaining.
 
+SQUELCH (a `UserPromptSubmit` hook, `docs/squelch.md`) may drop a plain `/tick`; it is not a guard. A dropped tick leaves no ATC LOG line, and team messages and SUPERVISOR prompts still arrive.
+
 ## How to review
 
 - **Targets**: only `pending` in `landing queue`. The server picks PRs that cannot get Codex and are not excluded from external review. `excluded` waits for Codex or the SUPERVISOR: always no FLIGHT and secret or key paths, and, while the setting is off (the default), the security rules (rating:SEC or Risk labels, migrations, SQL, auth, session, admission, RLS, policy or middleware paths, keywords such as security, privilege, RLS, grant, revoke, EXECUTE, definer, admission, auth, ACL, "use server", exposure).

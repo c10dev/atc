@@ -31,6 +31,8 @@ This session judges; the atc server acts (merge, RTS start, PR comment). The ser
 
 The four writes (inspect, escalate, land, rts) run only after the guard checks the **real model** in this session's transcript, and the guard attaches its name (`ATC_MCC_MODEL`). Anything but Claude is blocked. Don't write it as an environment prefix or `--model`. Run a write alone, without pipes or chains. Quote text in single quotes.
 
+SQUELCH (a `UserPromptSubmit` hook, `docs/squelch.md`) may drop a plain `/tick`; it is not a guard. A dropped tick leaves no ATC LOG line, and team messages and SUPERVISOR prompts still arrive.
+
 ## How to inspect
 
 CI (`check`) already runs the tests, types and build. MCC looks at what CI can't, against `../CLAUDE.md`:

@@ -45,6 +45,8 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 | `node ../controller/atcctl.mjs schedule brief` | `mode` (shadow), open drafts (`open`) with what they would change (`changes`), recently closed drafts (`recent`), the S2 check (`gate`), the limit (`limit`), candidates (`candidates.classify`, `candidates.prioritize`, `candidates.close`, `candidates.tail`, `candidates.waypoint`), each CLOSE candidate's PR, merge time and Fixes status (`close`), FLIGHT summaries (`flights`), recent SUPERVISOR decisions for calibration (`examples`: the classification OCC drafted `proposed`, its reason `draft`, the verdict and reason), WAYPOINT gaps (`waypointGaps`), ETAs of WAYPOINTs not yet passed (`waypointEtas`), slip warnings (`slips`; `fresh` means not reported yet), ROUTEs without WAYPOINTs (`routesWithoutWaypoints`; `fresh` means not reported yet) |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick and its procedure files) changed / that it was reread |
 
+SQUELCH (a `UserPromptSubmit` hook, `docs/squelch.md`) may drop a plain `/tick`; it is not a guard. A dropped tick leaves no ATC LOG line, and team messages and SUPERVISOR prompts still arrive.
+
 ## Procedure files
 
 These procedures are in `.claude/skills/tick/`. Read one only when its step has work (`/tick` says when). Commands used only by a procedure are in that file's table.
