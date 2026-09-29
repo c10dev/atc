@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { Snapshot } from "../../server/model.ts";
 import { formatClock, type Settings, THEMES, updateSettings } from "./settings.ts";
 import { settingsTabOf } from "../../server/settings-policy.ts";
+import { AlertsSettings } from "./SettingsAlerts.tsx";
 import { AutomationSettings } from "./SettingsAutomation.tsx";
 import { AgentSettings, LinearSettings, useServerSettings } from "./SettingsServer.tsx";
 
@@ -9,6 +10,7 @@ const TABS = [
   { id: "display", label: "화면" },
   { id: "linear", label: "LINEAR" },
   { id: "agents", label: "AGENTS" },
+  { id: "alerts", label: "알림" },
   { id: "automation", label: "AUTOMATION" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
@@ -90,6 +92,8 @@ export function SettingsPanel({
           <LinearSettings snapshot={snapshot} server={server} save={save} />
         ) : tab === "agents" ? (
           <AgentSettings snapshot={snapshot} server={server} save={save} onNavigate={onClose} />
+        ) : tab === "alerts" ? (
+          <AlertsSettings />
         ) : (
           <AutomationSettings server={server} save={save} />
         )}

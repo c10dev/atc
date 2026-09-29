@@ -38,6 +38,8 @@ import { mountSchedule } from "./schedule.ts";
 import { mountSettings } from "./settings.ts";
 import { mountSquelch } from "./squelch-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
+import { currentAlerts, runSupervisorAlerts } from "./supervisor-alerts-run.ts";
+import type { AlertEvent } from "./supervisor-alerts.ts";
 import { entryScript } from "./version.ts";
 
 const TICK_MS = 2_000;
@@ -45,6 +47,7 @@ const TICK_MS = 2_000;
 let current: Snapshot | null = null;
 let signature = "";
 const listeners = new Set<(s: Snapshot) => void>();
+const alertListeners = new Set<(e: AlertEvent) => void>(); // SUPERVISOR alerts(ATC-87)
 const eventLog = new EventLog();
 let lastSampleAt = 0;
 let lastDispatchAt = 0;
@@ -109,6 +112,10 @@ async function tick() {
     if (isWarm(next)) runAutoland(next); // AUTOLAND(ATC-34): GitHub을 새로 읽을 때마다 갱신·머지 한 주기(스위치가 off면 GROUND STOP만 본다)
     if (isWarm(next)) runJudges(next); // 판정 계열(ATC-36): 스위치가 off가 아닐 때만 1분에 한 번, CLASSIFY 초안 몇 건
 
+    // SUPERVISOR alerts(ATC-87): 새로 생기거나 사라진 key를 `alert` 이벤트로. 스냅샷이 안 바뀌어도(RTS 결과 같은 파일 기록) 센다
+    const alertEvent = isWarm(next) ? runSupervisorAlerts(next) : null;
+    if (alertEvent) for (const l of alertListeners) l(alertEvent);
+
     current = next;
     if (sig !== signature) {
       signature = sig;
@@ -171,18 +178,25 @@ mountSettings(app);
 mountJudges(app);
 mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다
 
+app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); // 지금 있는 알림 key 전체(읽기만)
+
 app.get("/api/events", (c) =>
   streamSSE(c, async (stream) => {
     const send = (s: Snapshot) => stream.writeSSE({ event: "snapshot", data: JSON.stringify(s) });
     // 연결(재연결 포함)마다 먼저 번들을 알려 주고, 바뀌면 다시 보낸다
     const sendVersion = () => stream.writeSSE({ event: "version", data: JSON.stringify(version()) });
     const onVersion = () => void sendVersion();
+    const sendAlert = (e: AlertEvent) => stream.writeSSE({ event: "alert", data: JSON.stringify(e) });
     await sendVersion();
     if (current) await send(current);
+    const items = currentAlerts();
+    await sendAlert({ raised: items, cleared: [], initial: true, items });
     listeners.add(send);
+    alertListeners.add(sendAlert);
     versionListeners.add(onVersion);
     stream.onAbort(() => {
       listeners.delete(send);
+      alertListeners.delete(sendAlert);
       versionListeners.delete(onVersion);
     });
     while (!stream.aborted) {

@@ -1,3 +1,4 @@
+import { AlertBell } from "./AlertBell.tsx";
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showNewVersion } from "../../server/version.ts";
 import { alertCode, alertLabel, alertLevel, alertLevelLabel, alertMessage, callsign, flightNumber, groupAlerts, HANDOFF_LABEL } from "./aviation.ts";
@@ -148,6 +149,7 @@ export function App({ build }: { build: string }) {
               ALERTS{advisories > 0 && <em className="adv-count"> +{advisories} ADV</em>}
             </span>
           </button>
+          <AlertBell />
           <div className="readout clock">
             <Clock clock={settings.clock} />
             <span className={`link link-${update.kind === "restarting" ? "restarting" : connection}`}>
