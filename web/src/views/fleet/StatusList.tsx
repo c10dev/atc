@@ -52,7 +52,7 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                 </span>
                 <span className="fl-r-apt">{r.airport ? <span className="apt">{r.airport}</span> : <span className="faint">—</span>}</span>
                 <span className="fl-r-status">{r.status}</span>
-                <span className={`fl-r-flight${r.flight?.detail && (r.flight.kept || r.health) ? " has-detail" : ""}`} title={r.flight ? `${r.flight.key}${r.flight.title ? ` ${r.flight.title}` : ""}${r.more ? ` 외 ${r.more}건` : ""}${r.flight.detail && (r.flight.kept || r.health) ? ` — ${flightDetailText(r.flight.detail, now).text}` : ""}` : undefined}>
+                <span className={`fl-r-flight${(r.flight?.detail && (r.flight.kept || r.health)) || r.restarting ? " has-detail" : ""}`} title={r.flight ? `${r.flight.key}${r.flight.title ? ` ${r.flight.title}` : ""}${r.more ? ` 외 ${r.more}건` : ""}${r.flight.detail && (r.flight.kept || r.health) ? ` — ${flightDetailText(r.flight.detail, now).text}` : ""}` : undefined}>
                   {r.health && (
                     <span className={`fl-r-health lv-${r.health.level}`} title={`${r.health.detail} — ${r.health.next}`}>
                       {r.health.label}
