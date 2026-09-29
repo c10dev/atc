@@ -173,17 +173,19 @@ To turn it off, remove the entries.
 
 ## FUEL statusline
 
-`fuel-statusline.mjs` (ATC-55, [docs/fuel.md](../docs/fuel.md) section 6) is a Claude Code **statusLine** command, not a hook. Claude Code runs it whenever it redraws the status line and passes JSON on stdin. From Claude Code 2.1.283 that JSON carries `session_id` and, for plan (claude.ai) logins, `rate_limits`:
+`fuel-statusline.mjs` (ATC-55, [docs/fuel.md](../docs/fuel.md) section 6) is a Claude Code **statusLine** command, not a hook. Claude Code runs it whenever it redraws the status line and passes JSON on stdin. From Claude Code 2.1.283 that JSON carries `session_id` and, for plan (claude.ai) logins, `rate_limits`; `context_window.context_window_size` and `model.id` are read as well (ATC-85):
 
 | Field | Meaning |
 |---|---|
 | `rate_limits.five_hour` / `seven_day` | `{used_percentage, resets_at}`: share of that window used (0–100) and its reset (epoch seconds). A window is present only while its reset is in the future |
 | `rate_limits.spend_limit` | Same shape, gateway logins only |
-| (no `rate_limits`) | API key, Bedrock or Vertex: plan limits don't apply, nothing is written |
+| `context_window.context_window_size` | The context window of the session's current model in tokens (200000 or 1000000) |
+| `model.id` | The model id, `[1m]` included (`claude-sonnet-5-5[1m]`) |
+| (no `rate_limits`) | API key, Bedrock or Vertex: plan limits don't apply; the window and model are still recorded |
 
-- It appends `{t, sessionId, rate_limits}` to `fuel/<sessionId>.jsonl`, **numbers only**, and only when a number changed since the last line. The rest of the input (model, cost, paths, workspace) is ignored.
+- It appends `{t, sessionId, rate_limits?, context_window_size?, model?}` to `fuel/<sessionId>.jsonl`, **numbers and the model id only**, and only when a value it carries changed since the last line (a line without `rate_limits` is kept). Old lines (`rate_limits` alone) are read as before. The rest of the input (display name, cost, paths, workspace) is ignored.
 - It prints a short line for the status line, `FUEL 5h 82% · 7d 40%`; with `--quiet` it prints nothing. It always exits 0 and swallows errors. No network.
-- The server reads the last line of each file, maps session → AIRCRAFT → ACCOUNT ([docs/fleet.md](../docs/fleet.md) 8.8), and keeps the newest value per ACCOUNT.
+- The server reads the last line of each file that has `rate_limits` (and the last that has `context_window_size`, for the CONTEXT window), maps session → AIRCRAFT → ACCOUNT ([docs/fleet.md](../docs/fleet.md) 8.8), and keeps the newest value per ACCOUNT.
 - Options: `ATC_STATE_DIR` (default `~/.local/state/atc`). The `fuel/` folder can be deleted at any time.
 
 ### Install (SUPERVISOR)
@@ -218,8 +220,8 @@ If a running session doesn't show the line, restart it. Sessions on other machin
 | `health.mjs` | The health hook: reads the event from stdin, appends one line to `health/<sessionId>.jsonl` |
 | `health.d.mts` | Type declaration for `health.mjs` |
 | `health.test.mjs` | Line format per event, no bodies, clear events, fail open (`npm test`) |
-| `fuel-statusline.mjs` | The FUEL statusline command: numbers-only `rate_limits` to `fuel/<sessionId>.jsonl`, plus `parseRecord`/`lastRecord` that the server reuses |
+| `fuel-statusline.mjs` | The FUEL statusline command: numbers-only `rate_limits`, window size and model id to `fuel/<sessionId>.jsonl`, plus `parseRecord`/`lastRecord`/`lastRecordWith` that the server reuses |
 | `fuel-statusline.d.mts` | Type declaration for `fuel-statusline.mjs` |
-| `fuel-statusline.test.mjs` | Record format, numbers only, write on change, output line, fail open (`npm test`) |
+| `fuel-statusline.test.mjs` | Record format, numbers and model id only, write on change (also without `rate_limits`), output line, fail open (`npm test`) |
 
 How atc turns claims into handoffs and conflicts is described in the main [README](../README.md#handoffs-and-conflicts).

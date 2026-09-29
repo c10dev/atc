@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parsePriceTable } from "./fuel-cost.ts";
-import { contextBadgeOf, contextLabel, contextSizeOf, contextView, refreshSavingOf, sessionContexts, tokensShort, windowOf } from "./fuel-context.ts";
+import { commandWindowOf, contextBadgeOf, contextLabel, contextSizeOf, contextView, refreshSavingOf, type StatusWindow, sessionContexts, tokensShort, windowOf } from "./fuel-context.ts";
+import type { ModelCommand } from "./fuel.ts";
 import type { FuelRecord } from "./fuel.ts";
 
 const rec = (t: string, over: Partial<FuelRecord> = {}): FuelRecord => ({
@@ -113,4 +114,86 @@ test("contextBadgeOf: 창을 200k로 짐작만 했으면 토큰 300k·500k로 �
   assert.equal(unknown.short, "FOB — · —/200k (compacted)");
   assert.equal(unknown.fobPct, null);
   assert.equal(unknown.level, "ok");
+});
+
+// ── 세션이 스스로 말한 창(ATC-85) ──
+const cmd = (t: string, model: string | null, session = "s1"): ModelCommand => ({ session, t, model });
+const status = (t: string, window: number, model: string | null = "claude-opus-5-5"): Map<string, StatusWindow> => new Map([["s1", { t, window, model }]]);
+const sizeOfSession = (records: FuelRecord[], signals = {}, windows = {}) => contextSizeOf(sessionContexts(records, [], signals).get("s1")!, windows);
+
+test("commandWindowOf: [1m]이면 1M, claude-* id에 [1m]이 없으면 200k. 다른 공급자 id와 표시 이름은 모른다", () => {
+  assert.equal(commandWindowOf("claude-sonnet-5-5[1m]"), 1_000_000);
+  assert.equal(commandWindowOf("claude-sonnet-5-5"), 200_000);
+  assert.equal(commandWindowOf("claude-haiku-4-5-20251001"), 200_000);
+  assert.equal(commandWindowOf("deepseek-v4.1-flash[1m]"), 1_000_000);
+  assert.equal(commandWindowOf("deepseek-v4.1-flash"), null);
+  assert.equal(commandWindowOf("muse-spark-1.3-contributor"), null);
+  assert.equal(commandWindowOf(null), null);
+});
+
+test("창의 출처: statusline → /model 출력 → 설정 → 모델 이름 [1m] → 본 크기 → 기본값", () => {
+  const records = [rec("2026-09-28T11:00:00Z", { cacheRead: 120_000 })];
+  // 아무 말이 없으면 ATC-69의 짐작
+  assert.deepEqual([sizeOfSession(records).window, sizeOfSession(records).windowSource], [200_000, "default"]);
+  assert.equal(sizeOfSession([rec("2026-09-28T11:00:00Z", { cacheRead: 300_000 })]).windowSource, "observed");
+  assert.equal(sizeOfSession(records, {}, { "claude-opus-5-5": 500_000 }).windowSource, "config");
+  assert.equal(sizeOfSession([rec("2026-09-28T11:00:00Z", { model: "claude-opus-5-5[1m]" })]).windowSource, "model");
+  // /model 출력이 말하면 그것: [1m]은 1M(120k만 봤어도)
+  const one = sizeOfSession(records, { commands: [cmd("2026-09-28T10:00:00Z", "claude-opus-5-5[1m]")] });
+  assert.deepEqual([one.window, one.windowSource], [1_000_000, "model-command"]);
+  // 설정 덮어쓰기보다 세션이 한 말이 앞선다
+  assert.equal(sizeOfSession(records, { commands: [cmd("2026-09-28T10:00:00Z", "claude-opus-5-5[1m]")] }, { "claude-opus-5-5": 500_000 }).window, 1_000_000);
+  // statusline이 말하면 그것. /model 출력보다 나중 기록이면 statusline이 이긴다
+  const sl = sizeOfSession(records, { commands: [cmd("2026-09-28T10:00:00Z", "claude-opus-5-5")], statusline: status("2026-09-28T10:30:00Z", 1_000_000) });
+  assert.deepEqual([sl.window, sl.windowSource], [1_000_000, "statusline"]);
+  // 더 나중의 /model이 statusline 기록을 낡게 만든다
+  const later = sizeOfSession(records, { commands: [cmd("2026-09-28T10:45:00Z", "claude-sonnet-5-5")], statusline: status("2026-09-28T10:30:00Z", 1_000_000) });
+  assert.deepEqual([later.window, later.windowSource], [200_000, "model-command"]);
+});
+
+test("TEAM_J: 200k 모델로 바꿨는데 대화는 324k. 바꾸기 전 요청 크기로 창을 짐작하지 않는다", () => {
+  const records = [rec("2026-09-29T00:50:00Z", { cacheRead: 320_000, input: 4_404 })]; // Opus 1M 창에서 324k
+  // 이 기록만으로는 200k를 넘게 봤으니 1M(ATC-69)
+  assert.deepEqual([sizeOfSession(records).window, sizeOfSession(records).windowSource], [1_000_000, "observed"]);
+  // 01:05Z에 /model claude-sonnet-5-5 (200k 모델): 324k는 그대로지만 창은 200k, FOB는 0 %로 alert
+  const c = sizeOfSession(records, { commands: [cmd("2026-09-29T01:05:48Z", "claude-sonnet-5-5")] });
+  assert.equal(c.contextTokens, 324_404);
+  assert.deepEqual([c.window, c.windowSource], [200_000, "model-command"]);
+  const b = contextBadgeOf(contextView(c))!;
+  assert.equal(b.short, "FOB 0% · 324k/200k");
+  assert.equal(b.level, "alert");
+  assert.match(b.title, /창: 세션의 마지막 \/model 출력/);
+  // 그 뒤 compaction이 14k로 줄이면 FOB 93 %
+  const after = contextSizeOf(sessionContexts(records, [{ session: "s1", t: "2026-09-29T01:07:00Z", trigger: "auto", preTokens: 324_404, postTokens: 13_926 }], { commands: [cmd("2026-09-29T01:05:48Z", "claude-sonnet-5-5")] }).get("s1")!);
+  assert.equal(contextBadgeOf(contextView(after))!.short, "FOB 93% · 14k/200k");
+  // 다시 [1m]으로 돌리면 1M
+  const back = sizeOfSession(records, { commands: [cmd("2026-09-29T01:05:48Z", "claude-sonnet-5-5"), cmd("2026-09-29T01:22:43Z", "claude-sonnet-5-5[1m]")] });
+  assert.deepEqual([back.window, back.windowSource], [1_000_000, "model-command"]);
+});
+
+test("/model 뒤 요청이 그 창을 넘으면 /model 출력이 틀린 것: 본 크기로 돌아간다. 모르는 id는 짐작에 맡긴다", () => {
+  const records = [rec("2026-09-29T01:10:00Z", { cacheRead: 300_000 })];
+  const c = sizeOfSession(records, { commands: [cmd("2026-09-29T01:00:00Z", "claude-opus-5-5")] });
+  assert.deepEqual([c.window, c.windowSource], [1_000_000, "observed"]);
+  // 프록시 모델: /model이 창을 말하지 않는다 → 짐작. 하지만 바꾸기 전 요청은 세지 않는다
+  const proxied = sizeOfSession([rec("2026-09-29T00:10:00Z", { cacheRead: 300_000 })], { commands: [cmd("2026-09-29T01:00:00Z", "deepseek-v4.1-flash")] });
+  assert.deepEqual([proxied.window, proxied.windowSource], [200_000, "default"]);
+  // 표시 이름(id가 아님)은 바꿨다는 사실만
+  assert.equal(sizeOfSession([rec("2026-09-29T00:10:00Z", { cacheRead: 300_000 })], { commands: [cmd("2026-09-29T01:00:00Z", null)] }).windowSource, "default");
+  // 다른 세션의 /model과 statusline은 상관없다
+  assert.equal(sizeOfSession(records, { commands: [cmd("2026-09-29T01:00:00Z", "claude-sonnet-5-5", "other")], statusline: new Map([["other", { t: "2026-09-29T01:00:00Z", window: 200_000, model: null }]]) }).windowSource, "observed");
+});
+
+test("statusline: 다른 모델의 요청이 기록 뒤에 있으면 낡은 것. 모델 id가 없으면 시각만 본다", () => {
+  const records = [rec("2026-09-29T01:10:00Z", { cacheRead: 50_000, model: "claude-sonnet-5-5" })];
+  // 기록(모델 opus, 1M) 뒤에 sonnet 요청 → 낡음 → 짐작
+  assert.equal(sizeOfSession(records, { statusline: status("2026-09-29T01:00:00Z", 1_000_000, "claude-opus-5-5[1m]") }).windowSource, "default");
+  // 같은 모델([1m]·날짜 접미어는 무시)이면 statusline
+  assert.equal(sizeOfSession(records, { statusline: status("2026-09-29T01:00:00Z", 200_000, "claude-sonnet-5-5") }).windowSource, "statusline");
+  assert.equal(sizeOfSession(records, { statusline: status("2026-09-29T01:00:00Z", 1_000_000, "claude-sonnet-5-5[1m]") }).window, 1_000_000);
+  assert.equal(sizeOfSession(records, { statusline: status("2026-09-29T01:00:00Z", 200_000, null) }).windowSource, "statusline");
+  // statusline이 말한 창은 대화가 넘어도 그대로(정확한 값)
+  const big = sizeOfSession([rec("2026-09-29T01:10:00Z", { cacheRead: 324_000, model: "claude-sonnet-5-5" })], { statusline: status("2026-09-29T01:00:00Z", 200_000, "claude-sonnet-5-5") });
+  assert.deepEqual([big.window, big.windowSource, big.pct], [200_000, "statusline", 1.62]);
+  assert.match(contextBadgeOf(contextView(big))!.title, /창: 세션이 알림\(statusline context_window_size\)/);
 });

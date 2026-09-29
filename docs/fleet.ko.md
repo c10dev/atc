@@ -756,7 +756,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 FLIGHT를 마친 팀은 그 대화를 통째로 들고 있다. 2026-09-28에 TEAM_J는 ATC-63이 머지된 뒤 1M 창 중 504k를 들고 PARKED로 쉬었다. 턴마다 그 접두부를 캐시에서 다시 읽고, 캐시가 식은 뒤 처음 깨어날 때는 전부 다시 쓴다(F3의 COLD CACHE, [fuel.md](fuel.md) 5). 새로 시작하기에 가장 싼 때는 FLIGHT 직후, 팀이 쉬는 동안이다. REFRESH가 그것을 제안한다.
 
 - **CONTEXT SIZE**(`server/fuel-context.ts`, 순수). 세션마다 마지막 CAPTAIN(non-sidechain) 요청의 `input + cacheRead + cacheWrite`와 그 시각·모델. FUEL F1이 이미 읽은 기록으로 센다. CREW 요청은 세지 않는다. 그 요청 뒤에 `compact_boundary`가 있으면 compaction의 `postTokens`로 바꾼다(줄에 없으면 모름). `base`는 세션의 첫 CAPTAIN 요청(시스템 프롬프트·규칙·CREW BRIEFING, 2026-09-28에 약 50k)이다. 새 세션도 어차피 다시 쓰는 몫이다.
-- **창.** 대화 기록에는 `claude-opus-5-5`만 적히고 `[1m]` 접미어가 없다. 그래서 이 순서로 정한다: `fleet-plan.json`의 `contextWindows`(`{"claude-opus-5-5": 1000000}`, 모델 이름, `-YYYYMMDD` 접미어는 뗀다), 모델 이름의 `[1m]`, 그 세션에서 200k를 넘는 요청을 이미 봤으면 1M, 아니면 200k. 근거(`config`, `model`, `observed`, `default`)가 크기와 함께 간다. `refreshPct` 기준은 창이 200k 짐작이 아닐 때만 쓰고, 짐작이면 `refreshTokens`만 본다.
+- **창.** 대화 기록에는 `claude-opus-5-5`만 적히고 `[1m]` 접미어가 없다. 그래서 이 순서로 정한다: `fleet-plan.json`의 `contextWindows`(`{"claude-opus-5-5": 1000000}`, 모델 이름, `-YYYYMMDD` 접미어는 뗀다), 모델 이름의 `[1m]`, 그 세션에서 200k를 넘는 요청을 이미 봤으면 1M, 아니면 200k. 근거(`config`, `model`, `observed`, `default`. ATC-85가 `statusline`과 `model-command`를 더했다. 아래)가 크기와 함께 간다. `refreshPct` 기준은 창이 200k 짐작이 아닐 때만 쓰고, 짐작이면 `refreshTokens`만 본다.
 - **아낌.** `(context − base)`를 F5 가격표로 매긴다. 다음 cold wake에 쓰지 않아도 되는 캐시 쓰기(세션의 지금 층, CAPTAIN은 1h)와 턴마다 읽지 않아도 되는 캐시 읽기. 2026-09-28 TEAM_J의 504k 세션은 Opus 5.5로 cold wake마다 약 $3.64, 턴마다 $0.09. 값이 없는 모델은 토큰만 보인다.
 - **사유.** `context`(`502k / 1M (50%) — claude-opus-5-5, 2026-09-28 17:07Z (기준 300k 또는 40%, 창은 본 크기로 짐작)`), `saving`, `arrived`(마지막 ARRIVED FLIGHT와, 그런 FLIGHT의 STAND를 아직 쥐었으면 그것), `session`(값이 `background`나 `interactive`).
 - **RESTART와 함께.** 같은 AIRCRAFT에 RESTART 후보(오래됨·health)가 이미 있으면 REFRESH를 따로 내지 않고 그 RESTART에 `context`·`saving` 줄을 붙인다. `minDwell`은 LAUNCH·RESTART 제안을 REFRESH의 반대 제안으로 본다.
@@ -771,6 +771,17 @@ FLEET 줄에서 둘이 모두 연료라 불리며 비슷하게 읽혔다: ACCOUN
 - **FOB(FUEL ON BOARD)**는 AIRCRAFT 자기 연료, 곧 창에 남은 몫이다. 목록 열은 `FOB 50% · 504k/1M`, 카드 줄은 `FOB 50% · 504k / 1M`. 색은 뜻을 따른다: 남은 몫 60 % 이하 노랑, 30 % 이하 빨강(ATC-69의 쓴 몫 40 %/70 %와 같은 지점). 화면에 적힌 정수 %로 가른다. 창이 200k 짐작일 뿐이면 토큰 기준(300k, 500k)이 그대로 가른다. `GET /api/fleet`은 필드 이름 `context`를 그대로 두고 `fobPct`(0–100, compaction 뒤 크기를 모르면 `null`)를 더한다. FLEET PLAN의 REFRESH `context` 사유 줄은 그대로다(쓴 몫을 말한다).
 - **ACCOUNT 사용 한도**는 줄에서 빠진다. FLEET FUEL 블록, 카드, FLEET PLAN의 FUEL 줄에는 남고, 줄에는 하나만 둔다: ACCOUNT가 hold 수준(`holdPct`, DISPATCH 스위치와 상관없이, 전에 줄 색이 그랬듯)일 때 꼬리표 `HOLD · FUEL (account pro-2) until 21:00Z`. 붙들린 ACCOUNT는 배정을 막기 때문이다. 꼬리표에는 백분율이 없고 툴팁에 있다.
 - **문구.** 사용 한도 글은 모두 쓴 몫이라고 말한다: 화면은 `사용 87% · resets 21:00Z`, TOWER `open.fuel`·FOLLOWING `fuel` 글과 FLEET PLAN FUEL 줄은 `FUEL 사용 87% · resets 21:00Z (account pro-2) — TEAM_K`, DISPATCH 사유는 `HOLD · FUEL (account pro-2) until 21:00Z — 5h 한도 사용 96%`. 값·임계값·규칙은 바뀌지 않았다.
+
+### CONTEXT window from the session as built (ATC-85)
+
+ATC-69는 대화 기록에 `[1m]`이 남지 않아 창을 짐작했다. ATC-85는 세션이 스스로 창을 말하게 하고, 짐작은 그대로 뒤에 둔다. 표시와 근거만 바뀐다: 임계값, FOB 글, REFRESH 규칙은 그대로다.
+
+- **순서.** 세션마다 먼저 맞는 것: `statusline`(CLI 세션의 statusline 명령이 적은 `context_window_size`), `model-command`(대화 기록에 남은 그 세션의 마지막 `/model` 출력), `config`(`contextWindows`), `model`(모델 이름의 `[1m]`), `observed`(200k를 넘는 요청을 봄), `default`(200k). `GET /api/fleet`·`GET /api/fuel`의 `windowSource`가 어느 것인지 말하고, FLEET의 CONTEXT/FOB 툴팁에도 나온다(`창: 세션이 알림(statusline context_window_size)`, `창: 세션의 마지막 /model 출력`).
+- **`statusline`**(CLI 세션: TOWER, OCC, MCC). hook이 `rate_limits` 옆에 `context_window_size`와 모델 id를 적는다([fuel.md](fuel.md) 6.1). 정확한 값이라 대화가 넘어도 그대로 보인다(FOB 0 %). 기록 뒤에 `/model`이 있었거나 세션의 마지막 요청이 기록과 다른 모델이면 낡은 기록으로 보고 건너뛴다.
+- **`model-command`**(데스크톱 세션. statusline 기록이 없다). 대화 기록에는 `/model` 결과가 사용자 줄 `<local-command-stdout>Set model to \`claude-sonnet-5-5[1m]\`</local-command-stdout>`로 남는다. `[1m]`이면 1M, `[1m]`이 없는 `claude-*` id면 200k. Claude가 아닌 id(프록시로 도는 DeepSeek·Muse)나 표시 이름(`Sonnet 5`)은 창에 대해 말하지 않지만, 앞의 것을 끝낸다. 명령 뒤 요청이 그 창보다 크면 그 모델에 대해 명령이 틀린 것이니 `observed`로 돌아간다.
+- **초기화.** 세션의 마지막 `/model` 앞 요청은 다른 모델의 것이라 `observed`로 세지 않는다. 새 세션은 빈 채로 시작한다. 2026-09-29 TEAM_J는 Opus(1M)에서 324k 대화로 `claude-sonnet-5-5`로 바꿨다: 창은 200k, FOB는 자동 compaction(324k → 14k)이 오기 전까지 0 %다. 전에는 1M 창에 68 % 남음으로 보였다.
+- **Step 0, 데스크톱 대화 기록이 창에 대해 말하는 다른 것.** 이 기계의 대화 기록 207개로 확인했다(2026-09-29). `compactMetadata`에는 `trigger`, `preTokens`, `postTokens`, `durationMs`뿐이고 창은 없다. 200k 세션의 자동 compaction은 167k–178k, 1M 세션은 968k–974k에서 일어나 창의 신호처럼 보이지만 정확하지 않아 **쓰지 않는다**. TEAM_J가 바꾼 직후의 compaction은 324,404에서 일어났고(앞 모델의 대화), 프록시 모델은 다른 곳에서 일어난다(394k, 796k). `usage`에도 창 필드가 없다(`context_management`는 비어 있고 `iterations`는 `[]`). CLI의 모델 선택창은 `Opus 5.5 (1M context)` 같은 표시 이름(`Kept model as …`)을 적는데, id가 아니라 손대지 않는다. statusline 입력에는 `context_window.context_window_size`와 `model.id`가 있다(Claude Code 2.1.284 바이너리에서 읽음).
+- **등급.** hook과 상태 폴더의 기록 형식(`fuel/<sessionId>.jsonl`, 여전히 숫자와 모델 id뿐)은 `user` 등급이다. 옛 줄(`rate_limits`만)은 전처럼 읽는다.
 
 ### 8.7 FLEET PLAN 3단계: 승인 운용
 

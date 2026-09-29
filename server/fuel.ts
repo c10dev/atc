@@ -38,13 +38,29 @@ export interface Compaction {
   postTokens: number | null;
 }
 
+// `/model` 출력 줄(ATC-85): 데스크톱 대화 기록에는 `<local-command-stdout>Set model to `claude-sonnet-5-5[1m]`</local-command-stdout>`가 남는다.
+// model은 id 글자일 때만(`Sonnet 5`처럼 표시 이름이면 null: 바꿨다는 사실만 있다)
+export interface ModelCommand {
+  session: string;
+  t: string;
+  model: string | null;
+}
+
 export interface ParsedFuel {
   records: FuelRecord[];
   compactions: Compaction[];
+  modelCommands: ModelCommand[];
   name: string | null; // 마지막 agent-name 줄(세션 이름)
   unknown: number; // 걸러 읽었지만 모양을 모르는 줄
   synthetic: number; // model "<synthetic>"(API 호출이 없던 줄). 세지 않는다
 }
+
+const MODEL_COMMAND_RE = /^<local-command-stdout>Set model to `([^`]{1,120})`/;
+const MODEL_ID_RE = /^[A-Za-z0-9][\w.:/-]*(\[[0-9]{1,4}[km]\])?$/i;
+export const modelCommandOf = (content: string): { model: string | null } | null => {
+  const m = MODEL_COMMAND_RE.exec(content);
+  return m ? { model: MODEL_ID_RE.test(m[1].trim()) ? m[1].trim() : null } : null;
+};
 
 export const KIND_KEYS = ["input", "cacheWrite5m", "cacheWrite1h", "cacheRead", "output"] as const;
 
@@ -81,7 +97,7 @@ export interface ParseOpts {
 
 // 대화 기록 텍스트(줄바꿈으로 끝나는 온전한 줄들) → 요청 기록. 같은 파일 안 중복은 그대로 두고 dedupeFuel이 없앤다
 export function parseFuelLines(text: string, opts: ParseOpts = {}): ParsedFuel {
-  const out: ParsedFuel = { records: [], compactions: [], name: null, unknown: 0, synthetic: 0 };
+  const out: ParsedFuel = { records: [], compactions: [], modelCommands: [], name: null, unknown: 0, synthetic: 0 };
   let from = 0;
   while (from < text.length) {
     let end = text.indexOf("\n", from);
@@ -91,7 +107,8 @@ export function parseFuelLines(text: string, opts: ParseOpts = {}): ParsedFuel {
     const usage = line.includes('"usage"');
     const compact = !usage && line.includes('"compact_boundary"');
     const named = !usage && !compact && line.includes('"agent-name"');
-    if (!usage && !compact && !named) continue;
+    const modelCmd = line.includes("local-command-stdout>Set model to");
+    if (!usage && !compact && !named && !modelCmd) continue;
     let d: Record<string, any>;
     try {
       d = JSON.parse(line);
@@ -102,6 +119,17 @@ export function parseFuelLines(text: string, opts: ParseOpts = {}): ParsedFuel {
     if (!d || typeof d !== "object") {
       out.unknown++;
       continue;
+    }
+    // `/model` 출력은 본문 글이지만 사용자 줄(문자열 content) 첫머리의 정해진 글만 본다. id만 옮기고 본문은 버린다
+    if (modelCmd && d.type === "user" && typeof d.message?.content === "string" && d.isSidechain !== true && opts.crew !== true) {
+      const cmd = modelCommandOf(d.message.content);
+      if (cmd) {
+        const session = str(d.sessionId) ?? opts.session ?? null;
+        const t = str(d.timestamp);
+        if (session && t && Number.isFinite(Date.parse(t))) out.modelCommands.push({ session, t, model: cmd.model });
+        else out.unknown++;
+        continue;
+      }
     }
     if (d.message && typeof d.message === "object") delete d.message.content; // 본문은 곧바로 버린다
     delete d.content;

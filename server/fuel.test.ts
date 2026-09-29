@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cacheHit, dedupeFuel, type FuelRecord, kindsOf, parseFuelLines, summarizeFuel } from "./fuel.ts";
+import { cacheHit, dedupeFuel, type FuelRecord, kindsOf, modelCommandOf, parseFuelLines, summarizeFuel } from "./fuel.ts";
 
 // 실제 줄 모양(2026-09-28 대화 기록의 키 구조)을 본떠 만든 줄. 본문 자리에는 표시 문자열만 둔다
 const SECRET = "BODY-TEXT-must-not-survive";
@@ -90,7 +90,7 @@ test("본문·도구 입력·도구 결과·요약 글은 기록에 남지 않�
 
 test("usage·compact_boundary·agent-name이 없는 줄은 파싱하지 않는다(깨진 줄도 모르는 줄로 세지 않는다)", () => {
   const p = parseFuelLines(lines(`{"type":"user","message":{"content":"${SECRET}"`, "not json at all", JSON.stringify({ type: "user", message: { content: SECRET } })));
-  assert.deepEqual(p, { records: [], compactions: [], name: null, unknown: 0, synthetic: 0 });
+  assert.deepEqual(p, { records: [], compactions: [], modelCommands: [], name: null, unknown: 0, synthetic: 0 });
 });
 
 test("모르는 모양은 건너뛰고 센다", () => {
@@ -289,4 +289,42 @@ test("summarizeFuel: 기간 밖 기록은 빼고, 이름 없는 세션은 AIRCRA
   assert.deepEqual(s.aircraft[0].sessions.sort(), [S1, S2].sort());
   assert.equal(s.aircraft[0].total.output, 32);
   assert.equal(s.since, "2026-09-21T12:00:00.000Z");
+});
+
+// 실제 줄 모양(2026-09-29 데스크톱 대화 기록): /model 출력은 문자열 content의 local-command-stdout
+const modelLine = (content: string, over: Record<string, unknown> = {}) =>
+  JSON.stringify({ parentUuid: "p", isSidechain: false, type: "user", message: { role: "user", content }, timestamp: "2026-09-29T01:05:48.421Z", sessionId: S1, entrypoint: "claude-desktop", ...over });
+
+test("parseFuelLines: /model 출력(Set model to `id`)을 세션·시각·id로 꺼낸다. 표시 이름이면 id는 null", () => {
+  const p = parseFuelLines(
+    [
+      modelLine("<local-command-stdout>Set model to `claude-sonnet-5-5`</local-command-stdout>"),
+      modelLine("<local-command-stdout>Set model to `claude-sonnet-5-5[1m]`</local-command-stdout>", { timestamp: "2026-09-29T01:22:43.358Z" }),
+      modelLine("<local-command-stdout>Set model to `Sonnet 5` and saved as your default for new sessions</local-command-stdout>", { timestamp: "2026-09-29T02:00:00.000Z" }),
+    ].join("\n") + "\n",
+  );
+  assert.deepEqual(
+    p.modelCommands.map((c) => [c.session === S1, c.t.slice(11, 19), c.model]),
+    [
+      [true, "01:05:48", "claude-sonnet-5-5"],
+      [true, "01:22:43", "claude-sonnet-5-5[1m]"],
+      [true, "02:00:00", null],
+    ],
+  );
+  assert.equal(p.unknown, 0);
+});
+
+test("parseFuelLines: /model 출력 모양이 아닌 줄은 세지 않는다(도구 결과 안의 글, 본문 중간의 글, CREW 줄)", () => {
+  const q = "Set model to `claude-sonnet-5-5`";
+  const lines = [
+    modelLine([{ type: "tool_result", content: `<local-command-stdout>${q}</local-command-stdout>` }] as unknown as string), // 도구 결과(배열 content)
+    modelLine(`나중에 <local-command-stdout>${q}</local-command-stdout> 라고 씀`), // 첫머리가 아니다
+    modelLine(`<local-command-stdout>${q}</local-command-stdout>`, { isSidechain: true }), // CREW
+    modelLine(`<local-command-stdout>${q}</local-command-stdout>`, { type: "assistant" }),
+  ];
+  const p = parseFuelLines(lines.join("\n") + "\n");
+  assert.deepEqual(p.modelCommands, []);
+  assert.equal(p.records.length, 0);
+  assert.deepEqual(modelCommandOf("<local-command-stdout>Set model to `x y`</local-command-stdout>"), { model: null });
+  assert.equal(modelCommandOf("Set model to `claude-sonnet-5-5`"), null);
 });

@@ -1,4 +1,4 @@
-import type { FuelStatusRecord, FuelWindowName } from "../hooks/fuel-statusline.mjs";
+import type { FuelLimitsRecord, FuelWindowName } from "../hooks/fuel-statusline.mjs";
 import { hhmm } from "./health.ts";
 
 // FUEL REMAINING(ATC-55, docs/fuel.md 6): statusline hook(hooks/fuel-statusline.mjs)이 남긴 rate_limits를
@@ -51,7 +51,7 @@ export function fuelConfigOf(raw: unknown): FuelConfig {
 }
 
 // 기록 하나의 창들. reset이 지난 창은 뺀다(그 창의 몫은 이미 0으로 돌아갔다)
-export function windowsOf(rec: FuelStatusRecord, now: number): FuelWindow[] {
+export function windowsOf(rec: FuelLimitsRecord, now: number): FuelWindow[] {
   return WINDOWS.flatMap((name) => {
     const w = rec.rate_limits[name];
     return w && w.resets_at * 1000 > now ? [{ name, pct: w.used_percentage, resetsAt: new Date(w.resets_at * 1000).toISOString() }] : [];
@@ -62,7 +62,7 @@ const levelOf = (pct: number, cfg: FuelConfig): FuelRemaining["level"] => (pct >
 
 // ACCOUNT마다 구성원(AIRCRAFT·관제 세션) 누구의 것이든 가장 새 기록 하나. ACCOUNT를 모르면(null) 구성원마다 따로 묶는다.
 // 기록이 없는(또는 모든 창의 reset이 지난) ACCOUNT는 빠진다
-export function fuelAccountsOf(members: FuelMember[], records: FuelStatusRecord[], cfg: FuelConfig, now: number): FuelRemaining[] {
+export function fuelAccountsOf(members: FuelMember[], records: FuelLimitsRecord[], cfg: FuelConfig, now: number): FuelRemaining[] {
   const bySession = new Map(records.map((r) => [r.sessionId, r]));
   const groups = new Map<string, { account: string | null; members: FuelMember[] }>();
   for (const m of members) {
@@ -73,7 +73,7 @@ export function fuelAccountsOf(members: FuelMember[], records: FuelStatusRecord[
   }
   const out: FuelRemaining[] = [];
   for (const [group, g] of groups) {
-    let best: { rec: FuelStatusRecord; windows: FuelWindow[]; from: FuelMember } | null = null;
+    let best: { rec: FuelLimitsRecord; windows: FuelWindow[]; from: FuelMember } | null = null;
     for (const m of g.members) {
       for (const id of m.sessionIds) {
         const rec = bySession.get(id);
@@ -111,7 +111,7 @@ export function fuelByAircraft(accounts: FuelRemaining[]): Record<string, FuelRe
 // AIRCRAFT만 있을 때의 짧은 길(F6). 관제 세션은 fuelAccountsOf에 control 구성원으로 넣는다
 export function fuelRemainingOf(
   aircraft: { registration: string; account: string | null; sessionIds: string[] }[],
-  records: FuelStatusRecord[],
+  records: FuelLimitsRecord[],
   cfg: FuelConfig,
   now: number,
 ): Record<string, FuelRemaining> {

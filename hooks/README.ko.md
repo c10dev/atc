@@ -179,9 +179,11 @@ SUPERVISOR가 `~/.claude/settings.json`에 아래 항목을 넣는다(절대 경
 |---|---|
 | `rate_limits.five_hour` / `seven_day` | `{used_percentage, resets_at}`: 그 창에서 쓴 몫(0–100)과 reset(epoch 초). reset이 아직 오지 않은 창만 들어 있다 |
 | `rate_limits.spend_limit` | 같은 모양, gateway 로그인만 |
-| (`rate_limits` 없음) | API 키, Bedrock, Vertex: 요금제 한도가 없으므로 아무것도 쓰지 않는다 |
+| `context_window.context_window_size` | 세션의 지금 모델의 맥락 창 크기, 토큰(200000이나 1000000) |
+| `model.id` | 모델 id, `[1m]` 포함(`claude-sonnet-5-5[1m]`) |
+| (`rate_limits` 없음) | API 키, Bedrock, Vertex: 요금제 한도가 없다. 창 크기와 모델은 그래도 적는다 |
 
-- `fuel/<sessionId>.jsonl`에 `{t, sessionId, rate_limits}`를 덧붙인다. **숫자만** 두고, 앞 줄과 숫자가 달라졌을 때만 쓴다. 입력의 나머지(모델, 비용, 경로, workspace)는 보지 않는다.
+- `fuel/<sessionId>.jsonl`에 `{t, sessionId, rate_limits?, context_window_size?, model?}`를 덧붙인다(ATC-85). **숫자와 모델 id만** 두고, 줄에 담는 값이 앞 줄과 달라졌을 때만 쓴다(`rate_limits`가 없는 줄도 남긴다). 옛 줄(`rate_limits`만)은 전처럼 읽는다. 입력의 나머지(모델, 비용, 경로, workspace)는 보지 않는다.
 - 상태 줄에 짧은 글 `FUEL 5h 82% · 7d 40%`를 출력한다. `--quiet`면 출력하지 않는다. 항상 exit 0이고 오류는 삼킨다. 네트워크를 쓰지 않는다.
 - 서버는 파일마다 마지막 줄을 읽어 session → AIRCRAFT → ACCOUNT로 잇고([docs/fleet.ko.md](../docs/fleet.ko.md) 8.8), ACCOUNT마다 가장 새 값을 쓴다.
 - 옵션: `ATC_STATE_DIR`(기본 `~/.local/state/atc`). `fuel/` 폴더는 언제 지워도 된다.
@@ -218,8 +220,8 @@ SUPERVISOR가 `~/.claude/settings.json`에 아래를 넣는다(절대 경로). `
 | `health.mjs` | health hook. stdin으로 이벤트를 받아 `health/<sessionId>.jsonl`에 한 줄을 덧붙인다 |
 | `health.d.mts` | `health.mjs`의 타입 선언 |
 | `health.test.mjs` | 이벤트마다 줄 모양, 본문 없음, 지우기, fail open(`npm test`) |
-| `fuel-statusline.mjs` | FUEL statusline 명령. 숫자만 남긴 `rate_limits`를 `fuel/<sessionId>.jsonl`에 덧붙이고, 서버가 다시 쓰는 `parseRecord`·`lastRecord`를 둔다 |
+| `fuel-statusline.mjs` | FUEL statusline 명령. 숫자만 남긴 `rate_limits`와 창 크기, 모델 id를 `fuel/<sessionId>.jsonl`에 덧붙이고, 서버가 다시 쓰는 `parseRecord`·`lastRecord`·`lastRecordWith`를 둔다 |
 | `fuel-statusline.d.mts` | `fuel-statusline.mjs`의 타입 선언 |
-| `fuel-statusline.test.mjs` | 기록 모양, 숫자만, 바뀔 때만 쓰기, 출력 줄, fail open(`npm test`) |
+| `fuel-statusline.test.mjs` | 기록 모양, 숫자와 모델 id만, 바뀔 때만 쓰기(`rate_limits` 없이도), 출력 줄, fail open(`npm test`) |
 
 atc가 점유로 HANDOFF와 충돌을 판정하는 방법은 저장소 [README](../README.ko.md#handoff와-충돌)에 있다.

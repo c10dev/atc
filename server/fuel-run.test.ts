@@ -3,7 +3,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { DEFAULT_PRICES_FILE, fuelDays, fuelFiles, parseAgentMeta, readFuelFile, readPrices } from "./fuel-run.ts";
+import { contextSizesOf, DEFAULT_PRICES_FILE, fuelDays, fuelFiles, parseAgentMeta, readFuelFile, readFuelRecords, readPrices, readStatusWindows } from "./fuel-run.ts";
 
 const root = mkdtempSync(join(tmpdir(), "atc-fuel-"));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -120,4 +120,42 @@ test("저장소 가격표(server/fuel-prices.json)는 오류 없이 읽힌다", 
   assert.ok(Object.keys(p.table.models).length > 0);
   // Sonnet 5.5는 Sonnet 5와 정가가 같다
   assert.deepEqual(p.table.models["claude-sonnet-5-5"], p.table.models["claude-sonnet-5"]);
+});
+
+test("readFuelFile: /model 출력 줄을 세션의 modelCommands로 쌓는다(끝줄이 늦게 와도)", () => {
+  const path = join(root, "modelcmd.jsonl");
+  const f = { path, session: SID, crew: false, agent: null, mtime: 0 };
+  const cmd = (t: string, model: string) => `${JSON.stringify({ type: "user", isSidechain: false, message: { role: "user", content: `<local-command-stdout>Set model to \`${model}\`</local-command-stdout>` }, timestamp: t, sessionId: SID })}\n`;
+  writeFileSync(path, line("a") + cmd("2026-09-28T10:30:00Z", "claude-sonnet-5-5"));
+  let r = readFuelFile(f);
+  assert.deepEqual(r.state.modelCommands.map((c) => c.model), ["claude-sonnet-5-5"]);
+  const c2 = cmd("2026-09-28T10:40:00Z", "claude-sonnet-5-5[1m]");
+  appendFileSync(path, c2.slice(0, 30));
+  assert.equal(readFuelFile(f).state.modelCommands.length, 1);
+  appendFileSync(path, c2.slice(30));
+  r = readFuelFile(f);
+  assert.deepEqual(r.state.modelCommands.map((c) => c.model), ["claude-sonnet-5-5", "claude-sonnet-5-5[1m]"]);
+  // contextSizesOf까지: 마지막 /model이 [1m]이라 120k라도 창은 1M
+  const size = contextSizesOf({ records: r.state.records, compactions: [], modelCommands: r.state.modelCommands }, {}).get(SID)!;
+  assert.deepEqual([size.window, size.windowSource], [1_000_000, "model-command"]);
+});
+
+test("readFuelRecords·readStatusWindows: 옛 줄과 새 줄이 섞인 fuel/ 폴더. FUEL REMAINING은 rate_limits, 창은 context_window_size가 있는 마지막 줄", () => {
+  const dir = join(root, "fuel");
+  mkdirSync(dir, { recursive: true });
+  const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const RL = { five_hour: { used_percentage: 50, resets_at: 1790000000 } };
+  const j = (o: object) => `${JSON.stringify(o)}\n`;
+  // A: 옛 줄만(rate_limits만)
+  writeFileSync(join(dir, `${A}.jsonl`), j({ t: "2026-09-28T10:00:00.000Z", sessionId: A, rate_limits: RL }));
+  // B: 새 줄. 마지막 줄에는 rate_limits가 없다(API 키 경로로 바뀜)
+  writeFileSync(join(dir, `${B}.jsonl`), j({ t: "2026-09-28T10:00:00.000Z", sessionId: B, rate_limits: RL, context_window_size: 1000000, model: "claude-opus-5-5" }) + j({ t: "2026-09-28T11:00:00.000Z", sessionId: B, context_window_size: 200000, model: "claude-sonnet-5-5" }));
+  // C: 파일 이름과 sessionId가 다르다
+  writeFileSync(join(dir, `${C}.jsonl`), j({ t: "2026-09-28T10:00:00.000Z", sessionId: A, rate_limits: RL, context_window_size: 200000 }));
+  assert.deepEqual(readFuelRecords(dir).map((r) => [r.sessionId === A ? "A" : "B", r.t.slice(11, 13)]).sort(), [["A", "10"], ["B", "10"]]);
+  const w = readStatusWindows(dir);
+  assert.deepEqual([...w.keys()], [B]);
+  assert.deepEqual(w.get(B), { t: "2026-09-28T11:00:00.000Z", window: 200000, model: "claude-sonnet-5-5" });
 });
