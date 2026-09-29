@@ -34,6 +34,7 @@ import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
 import { mountSchedule } from "./schedule.ts";
 import { mountSettings } from "./settings.ts";
+import { mountSquelch } from "./squelch-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { entryScript } from "./version.ts";
 
@@ -148,6 +149,7 @@ mountAutoland(app, getSnapshot);
 mountMcc(app, getSnapshot, () => head);
 mountUpdate(app, getSnapshot, () => head); // UPDATE bar(ATC-82)
 mountSettings(app);
+mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다
 
 app.get("/api/events", (c) =>
   streamSSE(c, async (stream) => {
