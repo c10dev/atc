@@ -5,7 +5,7 @@ import { config } from "./config.ts";
 import { classOf, type Wake } from "./crew.ts";
 import { type Departure, readDepartures } from "./departures.ts";
 import { tailsOf } from "./dispatch.ts";
-import { type LogEntry, loadLogbook, WAKE_EXPECT_MIN } from "./logbook.ts";
+import { hasPr, type LogEntry, type PrEntry, loadLogbook, WAKE_EXPECT_MIN } from "./logbook.ts";
 import type { Stranded } from "./landing.ts";
 import { type Health, healthLabel } from "./health.ts";
 import { type FuelRemaining, fuelUsedText, membersText } from "./fuel-remaining.ts";
@@ -107,6 +107,7 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
   const stand = inp.workspaces.find((w) => w.ticketKey === flight)?.path ?? null;
   const open = inp.pulls.filter((p) => p.ticketKey === flight).sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
   const merged = inp.logbook
+    .filter((e): e is PrEntry => hasPr(e) && e.landingWaitMin !== null)
     .filter((e) => e.flight === flight && !e.reverted)
     .sort((a, b) => b.arrivedAt.localeCompare(a.arrivedAt))[0];
   const mergedOpenedAt = merged ? iso(Date.parse(merged.arrivedAt) - merged.landingWaitMin * MIN) : null;

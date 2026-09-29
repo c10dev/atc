@@ -41,7 +41,7 @@ export function githubSlug(url: string): string | null {
 }
 
 // origin을 먼저, 없으면 GitHub를 가리키는 첫 remote
-async function slugOf(repo: string): Promise<string | null> {
+export async function slugOf(repo: string): Promise<string | null> {
   const { stdout } = await run("git", ["-C", repo, "remote", "-v"], { timeout: 10_000 });
   const lines = stdout.split("\n").filter((l) => l.endsWith("(fetch)"));
   const sorted = [...lines.filter((l) => l.startsWith("origin\t")), ...lines];

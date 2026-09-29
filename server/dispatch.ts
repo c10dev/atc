@@ -271,7 +271,8 @@ export const FLIGHT_HOLD_CODES = ["already-done", "parent-issue", "waiting-on-pr
 const chipLabel = (code: string) => REASON_CODES.find((r) => r.code === code)?.label ?? code;
 export const flightHeldWhy = (id: string, codes: string[], until: string) =>
   `FLIGHT 보류 — ${codes.map(chipLabel).join(" · ")} (${id} 판정) — 이슈가 바뀌거나 ${localStamp(until)}부터 다시`;
-export const landedWhy = (pr: string) => `이미 완료됨 — PR ${pr} 머지됨(LOGBOOK)`;
+export const STAND_FREE_LANDED = "(STAND 없음)";
+export const landedWhy = (pr: string) => (pr === STAND_FREE_LANDED ? "이미 완료됨 — STAND 없이 ARRIVED(LOGBOOK)" : `이미 완료됨 — PR ${pr} 머지됨(LOGBOOK)`);
 export const openPrWhy = (n: number) => `열린 PR #${n} 있음`;
 export const arrivedWhy = (id: string) => `이미 완료됨 — ${id} ARRIVED(CAPTAIN 보고)`;
 
@@ -281,7 +282,8 @@ export function landedOf(entries: Pick<LogEntry, "flight" | "reverted" | "pr">[]
   const out: Landed = new Map();
   for (const e of entries) {
     if (!e.flight || e.reverted || out.has(e.flight)) continue;
-    out.set(e.flight, `${e.pr.repo.split("/").pop()}#${e.pr.number}`);
+    // STAND 없는 FLIGHT의 확인된 ARRIVED(ATC-72)도 끝난 FLIGHT다
+    out.set(e.flight, e.pr ? `${e.pr.repo.split("/").pop()}#${e.pr.number}` : STAND_FREE_LANDED);
   }
   return out;
 }
@@ -383,7 +385,7 @@ export function checkBuildersOf(target: CheckTarget, airport: { code: string; re
   };
   const flights = new Set(target.flights);
   for (const n of target.prs) {
-    for (const e of src.logbook) if (e.pr.number === n && e.airport === airport.code) add(e.aircraft, `PR #${n} LOGBOOK`);
+    for (const e of src.logbook) if (e.pr?.number === n && e.airport === airport.code) add(e.aircraft, `PR #${n} LOGBOOK`);
     for (const p of src.pulls) {
       if (p.number !== n || p.repo !== airport.repo) continue;
       standHolders(p.standPath, `PR #${n} STAND`);

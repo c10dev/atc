@@ -146,7 +146,7 @@ export function tailSignalsOf(inp: TailSignalInput): TailSignal[] {
     const prev = lastDep.get(d.flight);
     if (!prev || d.t >= prev.t) lastDep.set(d.flight, d);
   }
-  for (const d of lastDep.values()) add(d.flight, d.aircraft, { source: "DEPARTURE LOG", at: d.t, detail: `${d.via} ${d.stand}` });
+  for (const d of lastDep.values()) add(d.flight, d.aircraft, { source: "DEPARTURE LOG", at: d.t, detail: d.stand ? `${d.via} ${d.stand}` : `${d.via}(STAND 없음)` });
   for (const p of inp.proposals) {
     if (p.kind !== "ASSIGN" || !READBACK_LIVE.has(p.status)) continue;
     add(p.flight, p.aircraftName, { source: "READBACK", at: p.timeline.accepted ?? p.statusAt, detail: `DISPATCH ${p.id} (${p.status})` });

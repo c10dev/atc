@@ -29,7 +29,7 @@ import {
   saveMcc,
   tierOfFiles,
 } from "./mcc.ts";
-import { loadLogbook } from "./logbook.ts";
+import { loadLogbook, prEntries } from "./logbook.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
@@ -173,7 +173,7 @@ async function readMergedHeads(slug: string, want: number[], since: number): Pro
 async function gateOf(s: Snapshot) {
   const cfg = loadMcc();
   const records = readMccRecords();
-  const entries = loadLogbook();
+  const entries = prEntries(loadLogbook());
   const now = Date.now();
   const draft = mccGateOf({ records, entries, airport: cfg.airport, heads: new Map(), now });
   let heads: ReadonlyMap<number, string> = new Map();

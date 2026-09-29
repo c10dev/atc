@@ -212,7 +212,7 @@ export const CREW_MODES: CrewMode[] = ["SOLO", "CREW"];
 
 export interface TalkEvent {
   t: string;
-  dir: "in" | "out" | "ask" | "write";
+  dir: "in" | "out" | "ask" | "write" | "post";
   from?: string | null; // in: cross-session from(주소). 사용자가 친 메시지면 null
   fromName?: string | null; // in: from-name(ENGINEERING, OCC …)
   to?: string; // out
@@ -223,9 +223,40 @@ export interface TalkEvent {
   report?: boolean; // out: PR 번호를 알림
   by?: "leader" | "crew"; // write: 본 대화 기록(CAPTAIN)이면 leader, 서브에이전트 기록이면 crew
   path?: string; // write: 쓴 파일(메모리에만 둔다)
+  post?: PostTarget; // post: 세션이 GitHub·Linear에 남긴 리뷰·댓글(ATC-72 STAND 없는 FLIGHT의 ARRIVED 후보). 본문은 두지 않는다
 }
 
+// 세션이 밖에 남긴 글 하나(ATC-72). 계정이 하나라 GitHub·Linear 작성자로는 팀을 알 수 없어, 그 팀 세션의 도구 호출로 안다
+export interface PostTarget {
+  kind: "review" | "pr-comment" | "issue-comment" | "linear-comment";
+  repo: string | null; // "owner/name"(명령에 적혔을 때만)
+  number: number | null; // PR·이슈 번호(GitHub)
+  issue: string | null; // Linear 이슈 key
+  url: string | null; // 본문의 첫 링크(결과 링크)
+}
+
+// Bash 명령 하나 → 밖에 남긴 글. gh pr review|comment, gh issue comment, gh api …/pulls/N/reviews, …/issues/N/comments
+export function ghPostOf(command: string): PostTarget | null {
+  const repo = /(?:--repo|-R)[\s=]+['"]?([\w.-]+\/[\w.-]+)/.exec(command)?.[1] ?? null;
+  const url = firstUrl(command.replace(/https:\/\/api\.github\.com\S*/g, ""));
+  const cli = /\bgh\s+(pr|issue)\s+(review|comment)\s+(?:[^\s]*?\/pull\/|#)?(\d+)\b/.exec(command);
+  if (cli) {
+    const kind = cli[1] === "issue" ? "issue-comment" : cli[2] === "review" ? "review" : "pr-comment";
+    return { kind, repo, number: Number(cli[3]), issue: null, url };
+  }
+  const api = /\bgh\s+api\b[^|;&]*?\brepos\/([\w.-]+\/[\w.-]+)\/(pulls|issues)\/(\d+)\/(reviews|comments)\b/.exec(command);
+  // 읽기(GET)는 뺀다: -f/-F/--input/-X POST 중 하나가 있어야 쓰기
+  if (api && /\s(-f|-F|--field|--raw-field|--input)\s|-X\s*POST|--method\s+POST/.test(command)) {
+    const kind = api[4] === "reviews" ? "review" : api[2] === "pulls" ? "review" : "pr-comment";
+    return { kind, repo: api[1], number: Number(api[3]), issue: null, url };
+  }
+  return null;
+}
+const firstUrl = (text: string) => /https?:\/\/[^\s'"`)<>\]]+/.exec(text)?.[0]?.replace(/[.,;:]+$/, "") ?? null;
+
 const WRITE_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+// Linear MCP의 댓글 쓰기 도구(이름 끝)
+const LINEAR_COMMENT = /(^|__)(save_comment|create_comment)$/;
 
 const keysIn = (text: string) => {
   const out = new Set<string>();
@@ -250,7 +281,7 @@ export function talkEventsOf(text: string, source: "leader" | "crew" = "leader")
   const out: TalkEvent[] = [];
   const crew = source === "crew";
   for (const line of text.split("\n")) {
-    if (!line || !(line.includes('"tool_use"') || (!crew && line.includes('"type":"user"')))) continue;
+    if (!line || !(line.includes('"tool_use"') || (!crew && (line.includes('"type":"user"') || line.includes("READBACK"))))) continue;
     let d: { type?: string; timestamp?: string; isSidechain?: boolean; isMeta?: boolean; message?: { content?: unknown } };
     try {
       d = JSON.parse(line);
@@ -271,7 +302,25 @@ export function talkEventsOf(text: string, source: "leader" | "crew" = "leader")
       out.push({ t, dir: "in", from: cross ? attr(cross[1], "from") : null, fromName: cross ? attr(cross[1], "from-name") : null, keys, ids, brief: briefLineOf(body) });
     } else if (d.type === "assistant" && Array.isArray(d.message?.content)) {
       for (const b of d.message.content as { type?: string; name?: string; input?: { to?: unknown; message?: unknown; file_path?: unknown; notebook_path?: unknown } }[]) {
+        // 지시서가 사용자 붙여넣기로 오면 READBACK도 SendMessage가 아닌 답 글로 나간다(ATC-72: 직접 배정의 착수)
+        if (b?.type === "text" && !crew) {
+          const text = (b as { text?: unknown }).text;
+          const rb = typeof text === "string" ? /^\s*READBACK\s+((?:[A-Z][A-Z0-9]{1,9}-\d{1,6}|D-\d{4,})(?:[,\s]+(?:[A-Z][A-Z0-9]{1,9}-\d{1,6}|D-\d{4,}))*)/m.exec(text) : null;
+          if (rb) out.push({ t, dir: "out", to: "", keys: keysIn(rb[1]), ids: idsIn(rb[1]), readback: true, report: false });
+          continue;
+        }
         if (b?.type !== "tool_use") continue;
+        // 밖에 남긴 리뷰·댓글(ATC-72). CREW(서브에이전트)가 단 것도 그 팀의 것이다
+        const input = b.input as Record<string, unknown> | undefined;
+        if (b.name === "Bash" && typeof input?.command === "string") {
+          const post = ghPostOf(input.command);
+          if (post) out.push({ t, dir: "post", by: source, post, keys: keysIn(input.command), ids: [] });
+        }
+        if (LINEAR_COMMENT.test(b.name ?? "") && input) {
+          const body = typeof input.body === "string" ? input.body : "";
+          const issue = [input.issueId, input.issue, input.id].find((v): v is string => typeof v === "string" && /^[A-Z][A-Z0-9]*-\d+$/.test(v)) ?? null;
+          if (issue) out.push({ t, dir: "post", by: source, post: { kind: "linear-comment", repo: null, number: null, issue, url: firstUrl(body) }, keys: keysIn(`${issue} ${body}`), ids: [] });
+        }
         if (WRITE_TOOLS.has(b.name ?? "")) {
           const path = b.input?.file_path ?? b.input?.notebook_path;
           if (typeof path === "string" && path.startsWith("/")) out.push({ t, dir: "write", by: source, path, keys: [], ids: [] });

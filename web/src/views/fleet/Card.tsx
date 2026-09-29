@@ -72,11 +72,12 @@ function Actuals({ a }: { a: AircraftView }) {
       {x.recent.length ? (
         <ul className="fl-log" aria-label={`${a.registration} 최근 FLIGHT`}>
           {x.recent.map((e) => (
-            <li key={e.key} title={e.pr.title}>
-              <a className="fl-log-flight" href={e.pr.url} target="_blank" rel="noreferrer">
+            <li key={e.key} title={e.pr?.title ?? e.standFree?.evidence.note}>
+              <a className="fl-log-flight" href={e.pr?.url ?? e.standFree?.evidence.url ?? undefined} target="_blank" rel="noreferrer">
                 {e.flight ? flightNumber(e.flight) : "AD HOC"}
               </a>
-              <span className="faint">#{e.pr.number}</span>
+              {/* STAND 없는 FLIGHT(ATC-72): PR 대신 확인한 증거 */}
+              <span className="faint">{e.pr ? `#${e.pr.number}` : e.standFree?.arrivedVia === "confirmed-suggestion" ? "STAND 없음 · 후보 확인" : "STAND 없음 · 보고"}</span>
               <span
                 className="fl-log-block"
                 title={
@@ -87,9 +88,11 @@ function Actuals({ a }: { a: AircraftView }) {
               >
                 {e.blockMin == null ? "—" : blockTime(e.blockMin)}
               </span>
-              <span className="faint" title="착륙 대기(PR → 머지)">
-                +{blockTime(e.landingWaitMin)}
-              </span>
+              {e.landingWaitMin != null && (
+                <span className="faint" title="착륙 대기(PR → 머지)">
+                  +{blockTime(e.landingWaitMin)}
+                </span>
+              )}
               {e.onTime != null && <span className={e.onTime ? "fl-ontime" : "fl-late"}>{e.onTime ? "ON TIME" : "DELAYED"}</span>}
               {e.reverted && <span className="fl-bad">REVERTED</span>}
               {e.los > 0 && <span className="fl-bad">LOS {e.los}</span>}

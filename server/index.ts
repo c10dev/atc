@@ -20,6 +20,7 @@ import { fuelWatch } from "./fuel-watch.ts";
 import { mountFleetPlan, runFleetPlan } from "./fleet-plan-run.ts";
 import { mountSessionControl } from "./session-control.ts";
 import { mountHumanCheck } from "./human-check-run.ts";
+import { mountStandFree, proposalArrived, runStandFree, standFreeCandidates, standFreeTimeliness } from "./standfree-run.ts";
 import { mountFollowing } from "./following.ts";
 import { recordDepartures } from "./departures.ts";
 import { loadLogbook, mountLogbook, runLogbook } from "./logbook.ts";
@@ -97,6 +98,7 @@ async function tick() {
     }
     if (isWarm(next)) recordDepartures(next); // FLIGHT의 첫 STAND·claim과 HANDOFF를 착수 기록에(바뀔 때만). 첫 번은 기준선
     if (isWarm(next)) runLogbook(next, addLogbookFuel); // 10분마다 머지된 PR을 LOGBOOK에 적는다
+    if (isWarm(next)) runStandFree(next); // 5분마다 STAND 없는 FLIGHT의 ARRIVED 후보(ATC-72). ARRIVED는 OCC가 확인해 적는다
     if (isWarm(next)) runAtfm(next); // 출발 중지 시작·끝, 1분마다 ATFM 데이터와 그림자 판정(docs/atfm.md)
     if (isWarm(next)) runAutoland(next); // AUTOLAND(ATC-34): GitHub을 새로 읽을 때마다 갱신·머지 한 주기(스위치가 off면 GROUND STOP만 본다)
     if (isWarm(next)) runJudges(next); // 판정 계열(ATC-36): 스위치가 off가 아닐 때만 1분에 한 번, CLASSIFY 초안 몇 건
@@ -123,7 +125,12 @@ mountLandingReview(app, getSnapshot);
 mountHumanCheck(app, getSnapshot);
 mountAirports(app);
 mountMetrics(app);
-mountDispatch(app, getSnapshot, (s) => fuelWatch(s));
+mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
+  candidates: standFreeCandidates,
+  timeliness: () => standFreeTimeliness(),
+  arrived: (p, s) => proposalArrived(p, s, addLogbookFuel),
+});
+mountStandFree(app, getSnapshot, addLogbookFuel);
 mountCrewChange(app);
 mountFleet(app, getSnapshot, (sessions, teamPattern) => aircraftContexts(sessions, teamPattern));
 mountFuel(app, getSnapshot, loadLogbook);

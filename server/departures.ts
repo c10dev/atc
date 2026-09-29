@@ -10,12 +10,13 @@ import { regKey } from "./registration.ts";
 // LOGBOOK이 AIRCRAFT와 출발 시각을 찾을 때 이 기록을 본다(docs/fleet.md 7.1).
 // ~/.local/state/atc/departures.jsonl에 추가만 한다. 스냅샷마다 비교하지만 바뀔 때만 쓴다.
 
-export type DepartureVia = "stand" | "claim" | "handoff";
+// readback: STAND 없는 FLIGHT를 직접 배정으로 받은 팀의 READBACK(ATC-72). STAND가 없다(stand null)
+export type DepartureVia = "stand" | "claim" | "handoff" | "readback";
 export interface Departure {
   t: string;
   flight: string | null; // 브랜치의 ticket key, 없으면 AD HOC
   aircraft: string | null; // REGISTRATION(대문자). "stand"는 아직 점유가 없으면 null
-  stand: string; // 워크트리 경로
+  stand: string | null; // 워크트리 경로. STAND 없는 FLIGHT(via readback)면 null
   branch: string | null;
   repo: string; // AIRPORT 본 체크아웃 경로
   via: DepartureVia;
@@ -26,6 +27,7 @@ export type DepartureState = Map<string, string | null>;
 export function foldDepartures(lines: Departure[]): DepartureState {
   const state: DepartureState = new Map();
   for (const d of lines) {
+    if (d.stand === null) continue; // STAND 없는 착수는 STAND별 상태가 아니다
     if (d.aircraft || !state.has(d.stand)) state.set(d.stand, d.aircraft);
   }
   return state;
@@ -91,7 +93,8 @@ export interface DepartureQuery {
 // LOGBOOK이 쓸 조회. 같은 저장소의 같은 브랜치 기록을 먼저 믿고, 없으면 FLIGHT나 STAND가 같은 기록.
 // before(머지 시각) 뒤의 기록은 다음 작업이라 보지 않는다. 맞는 줄을 시각순으로(FUEL의 FLIGHT 구간도 쓴다)
 export function departureHits(lines: Departure[], q: DepartureQuery): Departure[] {
-  const upTo = lines.filter((d) => d.t <= q.before);
+  // PR의 착수(LOGBOOK·FUEL)는 STAND가 있는 기록만 본다. STAND 없는 착수(readback)는 standFreeDeparture가 따로 본다
+  const upTo = lines.filter((d): d is Departure & { stand: string } => d.t <= q.before && d.stand !== null);
   const byBranch = q.repo && q.branch ? upTo.filter((d) => d.repo === q.repo && d.branch === q.branch) : [];
   const hits = byBranch.length
     ? byBranch
@@ -104,7 +107,7 @@ export function matchDepartures(lines: Departure[], q: DepartureQuery): Departur
   return {
     aircraft: sorted.filter((d) => d.aircraft).at(-1)?.aircraft ?? null,
     firstAt: sorted[0]?.t ?? null,
-    stands: [...new Set(sorted.map((d) => d.stand))].sort(),
+    stands: [...new Set(sorted.flatMap((d) => d.stand ?? []))].sort(),
   };
 }
 
@@ -129,7 +132,8 @@ export function readDepartures(path = file()): Departure[] {
   return out;
 }
 
-function append(lines: Departure[], path = file()) {
+// STAND 없는 착수(readback)도 같은 파일에 쓴다(ATC-72, standfree-run.ts)
+export function appendDepartures(lines: Departure[], path = file()) {
   if (!lines.length) return;
   mkdirSync(dirname(path), { recursive: true });
   appendFileSync(path, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
@@ -141,5 +145,5 @@ let state: DepartureState | null = null;
 export function recordDepartures(s: Input, now = new Date().toISOString()) {
   const baseline = state === null;
   state ??= foldDepartures(readDepartures());
-  append(diffDepartures(s, state, { teamPattern: loadDispatchConfig().teamPattern, now, baseline }));
+  appendDepartures(diffDepartures(s, state, { teamPattern: loadDispatchConfig().teamPattern, now, baseline }));
 }

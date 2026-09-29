@@ -1175,3 +1175,40 @@
   font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.1em;
 }
+
+/* ARRIVED 후보(ATC-72): STAND 없는 FLIGHT가 끝난 흔적. OCC가 확인한다 */
+.dp-candidate {
+  margin-top: var(--space-0-5);
+}
+.dp-candidate-mark {
+  padding: 0 var(--space-1);
+  border: 1px dashed currentColor;
+  border-radius: var(--radius-sm);
+  font: 700 var(--text-2xs)/16px var(--mono);
+  letter-spacing: 0.04em;
+  color: var(--amber);
+}
+.dp-candidates {
+  display: grid;
+  gap: var(--space-1-5);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  font-size: var(--text-sm);
+}
+.dp-candidates li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+.dp-candidate-reason {
+  flex-basis: 100%;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}

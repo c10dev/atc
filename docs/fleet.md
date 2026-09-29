@@ -209,6 +209,24 @@ CAPTAIN: "done: <link>"     → OCC: atcctl dispatch arrived D-0012 -- '<result 
 
 **Why a report, not detection.** Automatic ARRIVED was considered: a review on the target PR for a CHECK, a docs PR or an issue comment for a SURVEY. It needs per-type heuristics (which review, whose comment) and a wrong match would release an AIRCRAFT early. The CAPTAIN already reports back to OCC, so the report is the first step; detection can later be added as a suggestion OCC confirms.
 
+**ARRIVED candidates, as built (2026-09-28, ATC-72).** Detection now exists, but only as a suggestion that OCC confirms. atc never marks ARRIVED on its own.
+
+- **Who did it.** GitHub and Linear writes all come from one shared account, so the author login can't name a team. atc reads the flying AIRCRAFT's own session transcripts instead. The `post` events (`briefs.ts` `ghPostOf`) are its `gh pr review|comment <N>`, `gh issue comment <N>`, `gh api …/pulls/<N>/reviews` or `…/issues/<N>/comments` with a body, and Linear MCP `save_comment` calls. A GitHub review or comment counts only when it exists on GitHub within 1 min before to 10 min after that call (read-only `gh`). With no AIRCRAFT there is no suggestion.
+- **CHECK** (`checkSuggestionOf`): a review in any state, or a PR comment (a different `kind`), by the checking team on a target PR after departure. Targets come from `checkTargetOf` (5.2): PR numbers in the title, in the FLIGHT's AIRPORT repository; open PRs whose ticket is a target; LOGBOOK PRs of a target FLIGHT.
+- **SURVEY** (`surveySuggestionOf`), by the flying team after departure, in this order:
+  1. a merged PR that changed only docs (`docs/`, `.md`, `.txt`, …) and names the FLIGHT key, attributed by the LOGBOOK's AIRCRAFT;
+  2. a GitHub PR or issue comment whose command names the FLIGHT key;
+  3. a Linear comment on the FLIGHT with a result link. This one is from the session record only; the reason tells OCC to check it in Linear.
+- **Candidate.** FLIGHT, AIRCRAFT, D-xxxx (or none), `kind`, evidence (`url`, `author`, `at` = when the work was done), a `reason` line, and the `command` OCC runs after checking. It is refreshed every 5 minutes (`standfree-run.ts`) and shown in `dispatch brief` as `arrivalCandidates`, on the DISPATCH card's IN FLIGHT row as "ARRIVED 후보", and for direct assignments in an "ARRIVED 후보" list below it. `GET /api/standfree` has the list and the metric.
+- **Direct assignment (shadow, no D-xxxx).** A team's READBACK of a STAND-free FLIGHT is its departure. It can be a SendMessage or a plain `READBACK <KEY>` answer line. It is written to the DEPARTURE LOG as `{via: "readback", stand: null}` (7.5), once per FLIGHT and AIRCRAFT, again only after that pair has ARRIVED. A pair already sent as a FLIGHT PLAN is left to DISPATCH. OCC confirms with `atcctl dispatch arrived <FLIGHT> --aircraft <TEAM_X> -- '<link>'` (`POST /api/dispatch/standfree/:flight/arrived`). It is refused for a STAND-needing or unknown FLIGHT, while a D-xxxx for it is in flight, without a readback departure, or when that departure has already ARRIVED.
+- **LOGBOOK.** A confirmed STAND-free ARRIVED, by D-xxxx or direct, writes an `arrived` line with no `pr`. It has `key: "standfree:<FLIGHT>@<departedAt>"`, `departedFrom: "readback" | "departure"`, `stands: []`, `landingWaitMin: null` and `blockMin` = departure → work done (the candidate's evidence time, else the confirm time). It also carries `standFree: {arrivedVia: "report" | "confirmed-suggestion", evidence: {url, note}, workDoneAt, proposal}`.
+  - TARGETS, CHECKRIDE and FUEL F4 (the FLIGHT window of that AIRCRAFT) count it.
+  - Anything that needs a PR or a landing wait skips it: MCC gate, SCHEDULE CLOSE, landing-wait medians, brief measurement. So does anything that needs a STAND: DEPARTURE LOG matching for PRs, EN ROUTE FUEL spans.
+  - The planner treats the FLIGHT as done ("이미 완료됨 — STAND 없이 ARRIVED(LOGBOOK)").
+  - If the same FLIGHT and AIRCRAFT already reached the LOGBOOK through a PR after departure, no second line is written.
+  - Old lines read unchanged.
+- **Metric** (`timelinessOf`, next to `gate3.standFree` as `timely`): over 30 days, the share of STAND-free ARRIVED lines confirmed within 24 h of the work being done. A report-only line counts as on time, because the report is the signal. Candidates left unconfirmed for more than 24 h count as misses.
+
 ### 5.2 CHECK independence
 
 Pure functions in `server/dispatch.ts`, applied to every `CHECK` in both passes.
@@ -303,7 +321,7 @@ Kept in `~/.local/state/atc/logbook.jsonl`, append-only like the other records. 
 | `flight` | Ticket key from the PR branch (`voc-<n>`) or the title's trailing `(VOC-n)`. `null` for AD HOC work |
 | `class` | `classOf(labels)` of that FLIGHT's Linear labels at arrival (FLIGHT TYPE, WAKE, ratings, and whether type and wake came from labels). `null` for AD HOC or when Linear does not know the ticket |
 | `airport` | AIRPORT code of the repository |
-| `pr` | `{repo, number, url, title}` |
+| `pr` | `{repo, number, url, title}`. Missing on a STAND-free line, which has `standFree` instead (5.1.1, ATC-72) |
 | `stands` | The STANDs (worktree paths) the FLIGHT was flown from |
 | `departedAt` | The earliest of the claim `since` on those STANDs (`departedFrom: "claim"`) and the first matching DEPARTURE LOG line (`"departure"`, section 7.5); anything after the merge is ignored. When neither exists, or the PR was opened earlier, the PR's `createdAt` (`departedFrom: "pr"`): a claim restarts its `since` after 3 idle hours, so the PR can be the earlier sign |
 | `branch` | The PR's head branch, used to match the DEPARTURE LOG. Missing on lines written before 2026-09-27 |
@@ -426,6 +444,7 @@ Kept in `~/.local/state/atc/departures.jsonl`, append-only (`server/departures.t
 | `stand` | A worktree appears while the server runs | Now | `null` (no claim yet) |
 | `claim` | The first `TEAM_X` session with an active claim on a STAND that had none | That claim's `since` | That AIRCRAFT |
 | `handoff` | Another `TEAM_X` session takes the STAND after the recorded one no longer holds an active claim | The new claim's `since` | The new AIRCRAFT |
+| `readback` | A team READBACKs a STAND-free FLIGHT assigned directly, with no D-xxxx (5.1.1, ATC-72). `stand` and `branch` are `null`; STAND and PR matching ignore these lines | The READBACK | That AIRCRAFT |
 
 - The main checkout and non-`TEAM_X` sessions are ignored. `flight` is the branch's ticket key, `null` for AD HOC.
 - During a LOSS OF SEPARATION both sessions are active, so the recorded AIRCRAFT stays; a HANDOFF is written once the first one lets go.

@@ -121,7 +121,7 @@ export function factsOf(p: FactsProposal, ctx: FactsContext, index = waypointInd
       const at = Date.parse(e.arrivedAt);
       if (!e.flight || e.flight === p.flight || (e.aircraft ? regKey(e.aircraft) : null) !== reg || at < since || at > ctx.now) continue;
       if (projectOf(e.flight) === route && !recent.some((r) => r.key === e.flight))
-        recent.push({ key: e.flight, title: byKey.get(e.flight)?.title ?? e.pr.title ?? null, at: e.arrivedAt, how: "ARRIVED" });
+        recent.push({ key: e.flight, title: byKey.get(e.flight)?.title ?? e.pr?.title ?? null, at: e.arrivedAt, how: "ARRIVED" });
     }
   }
   recent.sort((a, b) => b.at.localeCompare(a.at));

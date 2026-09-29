@@ -239,6 +239,24 @@ CAPTAIN: "done: <link>"     → OCC: atcctl dispatch arrived D-0012 -- '<result 
 
 **감지가 아니라 보고인 이유.** 자동 ARRIVED도 검토했다. CHECK라면 대상 PR의 리뷰, SURVEY라면 문서 PR이나 이슈 댓글로 판단하는 방식이다. 하지만 종류별 추정 규칙(어느 리뷰인지, 누구의 댓글인지)이 필요하고, 잘못 맞추면 AIRCRAFT를 일찍 풀어 버린다. CAPTAIN은 이미 OCC에 결과를 보고하므로 첫 단계는 보고다. 감지는 나중에 OCC가 확인하는 제안으로 더할 수 있다.
 
+**ARRIVED 후보, 만든 대로(2026-09-28, ATC-72).** 이제 감지가 있다. 다만 OCC가 확인하는 제안일 뿐이고, atc는 ARRIVED를 스스로 적지 않는다.
+
+- **누가 했나.** GitHub·Linear는 계정 하나로 쓰여서 작성자로 팀을 알 수 없다. 그래서 그 FLIGHT를 모는 AIRCRAFT의 세션 기록을 읽는다. `post` 사건(`briefs.ts` `ghPostOf`)은 그 세션의 `gh pr review|comment <N>`, `gh issue comment <N>`, 본문을 준 `gh api …/pulls/<N>/reviews`·`…/issues/<N>/comments`, Linear MCP `save_comment` 호출이다. GitHub 리뷰·댓글은 그 호출 1분 전 ~ 10분 뒤에 GitHub에 실제로 있을 때만 센다(읽기 전용 `gh`). AIRCRAFT를 모르면 후보가 없다.
+- **CHECK**(`checkSuggestionOf`): 검토하는 팀이 출발 뒤 대상 PR에 남긴 리뷰(상태 무관), 또는 PR 댓글(다른 `kind`). 대상은 `checkTargetOf`(5.2)에서 온다: 제목의 PR 번호(FLIGHT의 AIRPORT 저장소), 티켓이 대상인 열린 PR, 대상 FLIGHT의 LOGBOOK PR.
+- **SURVEY**(`surveySuggestionOf`): 모는 팀이 출발 뒤 남긴 것 중 이 순서로.
+  1. FLIGHT key를 담고 문서만(`docs/`, `.md`, `.txt` …) 바꾼 머지 PR. 팀은 LOGBOOK의 AIRCRAFT로 안다.
+  2. 명령에 FLIGHT key가 적힌 GitHub PR·이슈 댓글.
+  3. 결과 링크를 단 그 FLIGHT의 Linear 댓글. 세션 기록만으로 찾으므로, 이유에 Linear에서 확인하라고 적힌다.
+- **후보.** FLIGHT, AIRCRAFT, D-xxxx(없으면 null), `kind`, 증거(`url`, `author`, `at` = 일이 끝난 시각), 이유 한 줄(`reason`), 확인 뒤 칠 `command`. 5분마다 다시 찾는다(`standfree-run.ts`). `dispatch brief`의 `arrivalCandidates`, DISPATCH 카드 IN FLIGHT 줄의 "ARRIVED 후보", 직접 배정이면 그 아래 "ARRIVED 후보" 목록에 보인다. `GET /api/standfree`가 목록과 지표를 준다.
+- **직접 배정(shadow, D-xxxx 없음).** 팀이 STAND 없는 FLIGHT를 READBACK한 때가 착수다. SendMessage든 `READBACK <KEY>` 답 글이든 된다. DEPARTURE LOG에 `{via: "readback", stand: null}`로 적는다(7.5). FLIGHT·AIRCRAFT마다 한 줄이고, 그 짝이 ARRIVED한 뒤에만 다시 적는다. FLIGHT PLAN으로 보낸 짝은 DISPATCH에 맡긴다. OCC가 `atcctl dispatch arrived <FLIGHT> --aircraft <TEAM_X> -- '<링크>'`로 확인한다(`POST /api/dispatch/standfree/:flight/arrived`). STAND가 필요하거나 모르는 FLIGHT, 그 FLIGHT의 D-xxxx가 떠 있을 때, readback 착수가 없을 때, 그 착수가 이미 ARRIVED했을 때는 거절한다.
+- **LOGBOOK.** 확인된 STAND 없는 ARRIVED(D-xxxx든 직접이든)는 `pr` 없는 `arrived` 줄을 쓴다. `key: "standfree:<FLIGHT>@<departedAt>"`, `departedFrom: "readback" | "departure"`, `stands: []`, `landingWaitMin: null`, `blockMin` = 착수 → 일이 끝난 시각(후보의 증거 시각, 없으면 확인 시각)이다. `standFree: {arrivedVia: "report" | "confirmed-suggestion", evidence: {url, note}, workDoneAt, proposal}`도 붙는다.
+  - TARGETS·CHECKRIDE·FUEL F4(그 AIRCRAFT의 FLIGHT 구간)가 센다.
+  - PR이나 착륙 대기가 필요한 곳은 뺀다: MCC gate, SCHEDULE CLOSE, 착륙 대기 중앙값, 지시서 측정. STAND가 필요한 곳도 뺀다: PR의 DEPARTURE LOG 맞추기, EN ROUTE FUEL 구간.
+  - planner는 끝난 FLIGHT로 본다("이미 완료됨 — STAND 없이 ARRIVED(LOGBOOK)").
+  - 같은 FLIGHT·AIRCRAFT가 착수 뒤 이미 PR로 LOGBOOK에 있으면 두 번째 줄을 쓰지 않는다.
+  - 옛 줄은 그대로 읽힌다.
+- **지표**(`timelinessOf`, `gate3.standFree` 옆 `timely`): 최근 30일 STAND 없는 ARRIVED 줄 중 일이 끝난 뒤 24시간 안에 확인된 비율. 보고만 있는 줄은 보고가 곧 신호라 제때로 센다. 24시간 넘게 확인되지 않은 후보는 놓친 것으로 센다.
+
 ### 5.2 CHECK 독립성
 
 `server/dispatch.ts`의 순수 함수로, 두 번 훑기 모두에서 모든 `CHECK`에 적용한다.
@@ -339,7 +357,7 @@ AIRCRAFT마다 SUPERVISOR가 FLEET 탭에서 정한다. 보여 주기만 하고 
 | `flight` | PR 브랜치(`voc-<n>`)나 제목 끝 `(VOC-n)`에서 얻은 ticket key. AD HOC 작업은 `null` |
 | `class` | 도착 시점 그 FLIGHT의 Linear 라벨로 본 `classOf(labels)`(FLIGHT TYPE, WAKE, rating, 그리고 type·wake가 라벨에서 왔는지). AD HOC이거나 Linear가 티켓을 모르면 `null` |
 | `airport` | 저장소의 AIRPORT code |
-| `pr` | `{repo, number, url, title}` |
+| `pr` | `{repo, number, url, title}`. STAND 없는 FLIGHT 줄에는 없고 `standFree`가 있다(5.1.1, ATC-72) |
 | `stands` | FLIGHT를 날았던 STAND(워크트리 경로) |
 | `departedAt` | 그 STAND들의 점유 `since`(`departedFrom: "claim"`)와 처음 맞는 DEPARTURE LOG 줄(`"departure"`, 7.5) 중 이른 것. 머지 뒤의 것은 무시한다. 둘 다 없거나 PR이 더 일찍 열렸으면 PR의 `createdAt`(`departedFrom: "pr"`). 점유는 3시간 쉬면 `since`를 다시 시작하므로 PR이 더 이른 신호일 수 있다 |
 | `branch` | PR의 head 브랜치. DEPARTURE LOG와 맞출 때 쓴다. 2026-09-27 전에 쓴 줄에는 없다 |
@@ -477,6 +495,7 @@ S1(그림자)은 만들었고 S2(승인하면 적용)는 아직 없다. 이 절 
 | `stand` | 서버가 도는 중에 워크트리가 생김 | 지금 | `null`(아직 점유 없음) |
 | `claim` | 점유가 없던 STAND를 처음 활성 점유한 `TEAM_X` 세션 | 그 점유의 `since` | 그 AIRCRAFT |
 | `handoff` | 기록된 세션이 더는 활성 점유를 갖지 않은 뒤, 다른 `TEAM_X` 세션이 STAND를 가져감 | 새 점유의 `since` | 새 AIRCRAFT |
+| `readback` | D-xxxx 없이 직접 배정된 STAND 없는 FLIGHT를 팀이 READBACK함(5.1.1, ATC-72). `stand`·`branch`는 `null`이고, STAND·PR 맞추기는 이 줄을 보지 않는다 | READBACK | 그 AIRCRAFT |
 
 - main 체크아웃과 `TEAM_X`가 아닌 세션은 무시한다. `flight`는 브랜치의 ticket key이고, AD HOC은 `null`.
 - LOSS OF SEPARATION 동안에는 두 세션 모두 활성이므로 기록된 AIRCRAFT가 그대로 남는다. 먼저 있던 쪽이 놓으면 HANDOFF를 쓴다.

@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { standFreeTimeliness } from "./standfree-run.ts";
 import { dirname, join } from "node:path";
 import type { Context, Hono } from "hono";
 import {
@@ -165,7 +166,7 @@ export function runAtfm(s: Snapshot, now = Date.now()) {
   if (now - lastFigures >= HEAVY_MS) {
     lastFigures = now;
     const repoOf = new Map(s.workspaces.map((w) => [w.path, w.repo]));
-    for (const d of readDepartures()) if (!repoOf.has(d.stand)) repoOf.set(d.stand, d.repo);
+    for (const d of readDepartures()) if (d.stand && !repoOf.has(d.stand)) repoOf.set(d.stand, d.repo);
     const lines = readRecords(now - 7 * DAY - 2 * 3_600_000);
     setStopFigures(stopFiguresOf(lines, s.airports.map((a) => ({ code: a.code, repo: a.repo })), (stand) => repoOf.get(stand) ?? null, now));
   }
@@ -343,14 +344,14 @@ export function atfmView(s: Snapshot, cfg: AtfmConfig = loadAtfm(), now = Date.n
   const dispatchItems = proposals.map((p) => ({ id: p.id, human: proposalHuman(p), reasonCodes: p.reasonCodes, crosscheck: p.crosscheck }));
   const autoPrecision = precisionOf(new Set([...ids("eligible"), ...auto.filter((e) => e.eligible).map((e) => e.id)]), dispatchItems);
   const dGate = dispatchGateOf(proposals);
-  const g3 = gate3Of(proposals);
+  const g3 = gate3Of(proposals, standFreeTimeliness());
   const dRate = currentModelRate(proposals, dGate.crosscheck.byModel);
   const logbook = loadLogbook();
   const losRecent = logbook.filter((e) => now - Date.parse(e.arrivedAt) < 14 * DAY && e.los > 0).length;
   const dispatchMode = loadDispatchConfig().mode;
   const autoTurnOn: Row[] = [
     runRow("2b", "2b 승인 운용 2주 이상", dispatchMode, approvalRunOf(all as { t: string; kind: string; op?: string }[], "dispatch", dispatchMode, now)),
-    { id: "gate3", label: "2b 점검(gate3): READBACK·DEPARTED", value: `${g3.dispatched}건 · READBACK ${pct(g3.readbackRate)} · DEPARTED ${pct(g3.departedRate)}${g3.standFree.readBack ? ` · STAND 없음 ${g3.standFree.readBack}건(ARRIVED ${g3.standFree.arrived})` : ""}`, target: "≥ 10건 · 90% · 80%", status: g3.ready ? "pass" : g3.dispatched < 3 ? "insufficient" : "fail" },
+    { id: "gate3", label: "2b 점검(gate3): READBACK·DEPARTED", value: `${g3.dispatched}건 · READBACK ${pct(g3.readbackRate)} · DEPARTED ${pct(g3.departedRate)}${g3.standFree.readBack ? ` · STAND 없음 ${g3.standFree.readBack}건(ARRIVED ${g3.standFree.arrived}${g3.standFree.timely?.total ? `, 24시간 안 ${g3.standFree.timely.within}/${g3.standFree.timely.total}` : ""})` : ""}`, target: "≥ 10건 · 90% · 80%", status: g3.ready ? "pass" : g3.dispatched < 3 ? "insufficient" : "fail" },
     {
       id: "precision", label: "그림자 정확도(대상 중 사람 승인)",
       value: `${pct(autoPrecision.rate)} (${autoPrecision.decided}건${autoPrecision.bad ? ` · 막아야 했던 거절 ${autoPrecision.bad}` : ""})`,

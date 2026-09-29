@@ -136,7 +136,7 @@ export function routeRows(input: { tickets: Ticket[]; entries: LogEntry[]; views
       open: open.get(project) ?? { todo: 0, inProgress: 0, inReview: 0 },
       arrived14: got.length,
       aircraft: views.filter((v) => v.routes.includes(project)).map((v) => v.registration).sort(),
-      landingWaitMedianMin: median(got.map((e) => e.landingWaitMin)),
+      landingWaitMedianMin: median(got.flatMap((e) => e.landingWaitMin ?? [])),
     };
   });
   const load = (r: RouteRow) => r.open.todo + r.open.inProgress + r.open.inReview + r.arrived14;
@@ -174,7 +174,7 @@ export function logbookTrend(entries: LogEntry[], now: number, days = NETWORK_DA
     return {
       date,
       arrived: got.length,
-      landingWaitMedianMin: median(got.map((e) => e.landingWaitMin)),
+      landingWaitMedianMin: median(got.flatMap((e) => e.landingWaitMin ?? [])),
       reverts: entries.filter((e) => e.reverted && inDay(e.revertedBy?.at)).length,
     };
   });

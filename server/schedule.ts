@@ -9,7 +9,7 @@ import { type Crosscheck, CrosscheckError, type CrosscheckLine, type CrosscheckV
 import { candidateTeamsOf, DONE_STATES, isCandidateTicket, loadDispatchConfig, PRIORITY_NAME } from "./dispatch.ts";
 import { teamOfKey } from "./linear-keys.ts";
 import { type AircraftView, fleetView, loadFleet } from "./fleet.ts";
-import { type LogEntry, loadLogbook, type PrLink, prLinkOf } from "./logbook.ts";
+import { hasPr, type LogEntry, loadLogbook, type PrLink, prLinkOf } from "./logbook.ts";
 import type { Snapshot, Ticket } from "./model.ts";
 import { record } from "./recorder.ts";
 import { cachedPrBody, fetchPrBody } from "./sources/github.ts";
@@ -469,7 +469,7 @@ export function closableOf(entries: Pick<LogEntry, "key" | "flight" | "pr" | "ar
   const closable = new Map<string, Closable>();
   const reverted = new Set<string>();
   for (const [flight, list] of byFlight) {
-    const live = list.filter((e) => !e.reverted).sort((a, b) => b.arrivedAt.localeCompare(a.arrivedAt));
+    const live = list.filter((e) => !e.reverted).filter(hasPr).sort((a, b) => b.arrivedAt.localeCompare(a.arrivedAt));
     if (!live.length) {
       reverted.add(flight);
       continue;

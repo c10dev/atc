@@ -76,8 +76,11 @@ OCC가 Linear에 쓸 변경을 초안으로 남긴다. 지금은 S1이라 Linear
 
 - CAPTAIN이 READBACK하면 바로 DEPARTED가 된다(`departedVia: "readback"`, STAND 없음). 진행 중 목록에 ARRIVED까지 남고, 그 팀의 STAND 없는 칸 하나를 잡는다. 24시간이 지나도 만료되지 않는다.
 - CAPTAIN이 마쳤다고 알리면 OCC가 `dispatch arrived D-xxxx -- '<결과 링크나 한 줄>'`로 적는다. 그러면 ARRIVED가 되고 보고 한 줄(링크)이 카드에 남는다. ARRIVED한 FLIGHT는 Linear가 아직 Todo여도 7일 동안 다시 제안하지 않는다.
+- **ARRIVED 후보**(ATC-72): 보고가 없어도 atc가 일이 끝난 흔적을 찾아 카드의 진행 중 줄에 "ARRIVED 후보 · 대상 PR 리뷰 · 증거 ↗"처럼 보인다. CHECK는 그 팀이 검토 대상 PR에 남긴 리뷰, SURVEY는 문서만의 머지 PR·FLIGHT key를 단 댓글·결과 링크를 단 Linear 댓글이다. 팀은 그 팀 세션 기록의 `gh`·Linear 호출로 안다(계정이 하나라 작성자로는 모른다). 후보는 제안일 뿐이다: OCC가 증거를 열어 보고 맞으면 적힌 명령을 친다. atc는 스스로 ARRIVED를 적지 않는다.
+- D-xxxx 없이 직접 배정된 STAND 없는 FLIGHT도 된다. 팀의 READBACK이 착수(DEPARTURE LOG)가 되고, 후보는 진행 중 표 아래 "ARRIVED 후보" 목록에 보인다. OCC는 `dispatch arrived <FLIGHT> --aircraft <TEAM_X> -- '<링크>'`로 적는다.
+- 확인된 ARRIVED는 LOGBOOK에 PR 없는 줄로 남아 TARGETS(이번 주·정시), CHECKRIDE, FUEL에 센다. FLEET 카드 최근 FLIGHT에는 PR 번호 대신 "STAND 없음 · 후보 확인"이나 "STAND 없음 · 보고"가 붙는다.
 - 보고 없이 24시간이 지나면 늦은 것(overdue)에 뜬다. OCC는 CAPTAIN에게 직접 물을 수 없으니 SUPERVISOR가 챙긴다.
-- 2b → 3 점검의 DEPARTED 비율에는 STAND가 필요한 FLIGHT만 센다. STAND 없는 FLIGHT는 READBACK 비율에만 들어가고, READBACK·ARRIVED 수가 따로 보인다.
+- 2b → 3 점검의 DEPARTED 비율에는 STAND가 필요한 FLIGHT만 센다. STAND 없는 FLIGHT는 READBACK 비율에만 들어가고, READBACK·ARRIVED 수가 따로 보인다. 그 아래 "일이 끝난 뒤 24시간 안 ARRIVED"는 최근 30일 STAND 없는 ARRIVED가 제때 확인된 비율이다(24시간 넘게 확인 안 된 후보는 놓친 것).
 
 ## CROSSCHECK: 예비 판정 먼저 보기
 

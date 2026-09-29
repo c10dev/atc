@@ -1,4 +1,5 @@
 import { Fragment, type KeyboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import type { ArrivalSuggestion } from "../../../server/standfree.ts";
 import type { DispatchConfig, Plan } from "../../../server/dispatch.ts";
 import type { Proposal } from "../../../server/proposals.ts";
 import { flightNumber } from "../aviation.ts";
@@ -93,6 +94,7 @@ interface Brief {
   held: Proposal[];
   briefs?: Record<string, CardBrief>; // 열린·HELD 카드의 사실 줄과 본문 첫 문장(옛 서버면 없음)
   inFlight: Proposal[];
+  arrivalCandidates?: ArrivalSuggestion[]; // STAND 없는 FLIGHT의 ARRIVED 후보(ATC-72). 옛 서버면 없음
   overdue: string[];
   recent: Proposal[];
   flights: Record<string, FlightInfo>;
@@ -120,7 +122,7 @@ interface Brief {
     departedRate: number | null;
     target: { dispatched: number; readback: number; departed: number };
     ready: boolean;
-    standFree?: { readBack: number; arrived: number }; // STAND 없는 FLIGHT: 표시만(옛 서버면 없음)
+    standFree?: { readBack: number; arrived: number; timely?: { within: number; total: number; rate: number | null } | null }; // STAND 없는 FLIGHT: 표시만(옛 서버면 없음)
   };
   config: DispatchConfig;
   readiness2b?: { items: ReadinessItem[] }; // 2b 켜기 점검표(옛 서버면 없음)
@@ -332,12 +334,13 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
             </thead>
             <tbody>
               {brief.inFlight.map((p) => (
-                <InFlightRow key={p.id} p={p} flight={flights[p.flight]} now={now} overdue={brief.overdue.includes(p.id)} mode={brief.mode} busy={busy === p.id} onRecall={recall} />
+                <InFlightRow key={p.id} p={p} flight={flights[p.flight]} now={now} overdue={brief.overdue.includes(p.id)} mode={brief.mode} busy={busy === p.id} onRecall={recall} candidate={(brief.arrivalCandidates ?? []).find((c) => c.proposal === p.id)} />
               ))}
             </tbody>
           </table>
         </>
       )}
+      <DirectCandidates candidates={(brief.arrivalCandidates ?? []).filter((c) => !c.proposal)} now={now} />
 
       <div className="dp-slots" aria-label="슬롯">
         {plan.slots.map((s) => (
@@ -488,6 +491,7 @@ function InFlightRow({
   mode,
   busy,
   onRecall,
+  candidate,
 }: {
   p: Proposal;
   flight: FlightInfo | undefined;
@@ -496,6 +500,7 @@ function InFlightRow({
   mode: DispatchConfig["mode"];
   busy: boolean;
   onRecall: (p: Proposal, reason: string) => Promise<boolean>;
+  candidate?: ArrivalSuggestion;
 }) {
   const [open, setOpen] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
@@ -524,6 +529,7 @@ function InFlightRow({
           ) : (
             <StatusLabel p={p} />
           )}
+          {candidate && <CandidateLine c={candidate} now={now} />}
           {overdue && <span className="dp-overdue">{overdueText(p)}</span>}
         </td>
         <td className="dp-c-at faint">{timeAgo(p.statusAt, now)}</td>
@@ -620,6 +626,47 @@ function RecallForm({
         </button>
       </div>
     </form>
+  );
+}
+
+// ARRIVED 후보(ATC-72): atc가 찾은 흔적. OCC가 증거를 열어 확인하고 command로 ARRIVED를 적는다(atc는 스스로 적지 않는다)
+const KIND_TEXT: Record<ArrivalSuggestion["kind"], string> = {
+  "check-review": "대상 PR 리뷰",
+  "check-comment": "대상 PR 댓글",
+  "survey-docs-pr": "문서 PR 머지",
+  "survey-comment": "GitHub 댓글",
+  "survey-linear-comment": "Linear 댓글",
+};
+function CandidateLine({ c, now }: { c: ArrivalSuggestion; now: number }) {
+  return (
+    <span className="dp-life dp-candidate" title={`${c.reason}\nOCC 확인 뒤: ${c.command}`}>
+      <span className="dp-candidate-mark">ARRIVED 후보</span>
+      <span className="dp-life-note">
+        {KIND_TEXT[c.kind]} · <time dateTime={c.evidence.at}>{timeAgo(c.evidence.at, now)}</time>
+      </span>
+      <a className="dp-life-link" href={c.evidence.url} target="_blank" rel="noreferrer" aria-label={`${c.flight} ARRIVED 후보 증거 열기 (새 탭)`}>
+        증거 ↗
+      </a>
+    </span>
+  );
+}
+// 직접 배정(D-xxxx 없음)의 ARRIVED 후보: IN FLIGHT 표에 없으니 따로 보인다
+function DirectCandidates({ candidates, now }: { candidates: ArrivalSuggestion[]; now: number }) {
+  if (!candidates.length) return null;
+  return (
+    <>
+      <h2 className="label">
+        ARRIVED 후보 <em>직접 배정 · STAND 없음 · OCC가 확인</em>
+      </h2>
+      <ul className="dp-candidates">
+        {candidates.map((c) => (
+          <li key={`${c.flight}|${c.aircraft}`}>
+            <span className="mono">{flightNumber(c.flight)}</span> <span>{c.aircraft}</span> <span className="faint">{c.type}</span> <CandidateLine c={c} now={now} />
+            <span className="dp-candidate-reason">{c.reason}</span>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -955,6 +1002,16 @@ function Gate3({ gate }: { gate: Brief["gate3"] }) {
             </span>
             <span className="dp-gate-value">
               {gate.standFree.arrived}/{gate.standFree.readBack}
+            </span>
+            <span className="dp-gate-target">기준 없음</span>
+            <span className="dp-gate-state">참고</span>
+          </li>
+        )}
+        {gate.standFree?.timely && gate.standFree.timely.total > 0 && (
+          <li className="s-info dp-gate-sub" title="일이 끝난 시각(ARRIVED 후보의 증거, 보고만이면 ARRIVED 시각)에서 24시간 안에 ARRIVED한 비율. 24시간 넘게 확인 안 된 후보는 놓친 것(최근 30일)">
+            <span className="dp-gate-label">└ STAND 없는 FLIGHT · 일이 끝난 뒤 24시간 안 ARRIVED</span>
+            <span className="dp-gate-value">
+              {gate.standFree.timely.within}/{gate.standFree.timely.total}
             </span>
             <span className="dp-gate-target">기준 없음</span>
             <span className="dp-gate-state">참고</span>
