@@ -49,10 +49,10 @@ CI(`check`)가 테스트·타입·빌드를 이미 돈다. MCC는 CI가 못 보�
 ## 착륙과 RTS
 
 - `mcc queue`에서 `blocks`가 빈 PR만 `mcc land <PR> --head <queue의 head>`. 서버가 조건을 다시 보고 막으면 그 조건을 LOG에 적고 넘어간다. 같은 바퀴에 다시 시도하지 않는다.
-- `flagged` PR을 착륙시키면 LOG에 바뀐 관제 규칙(파일)을 따로 적는다(`LANDED · flagged · 바뀐 관제 규칙: …`).
+- `flagged` PR을 착륙시키면 LOG에 바뀐 관제 규칙(파일)과 바뀐 외부 부작용 파일(`deploy/landing-tier.mjs`의 `SIDE_EFFECT`)을 한 줄씩 따로 적는다(`LANDED · flagged · 바뀐 관제 규칙: …` · `바뀐 외부 부작용: …`).
 - 착륙 뒤, 또는 `rts.due`가 true면 `mcc rts`. 한 바퀴에 한 번.
 - ROLLBACK이 났으면(`rts.why`에 ROLLBACK) RTS를 시도하지 않고 SUPERVISOR에게 보고한다. 풀기는 SUPERVISOR가 설정 창에서 한다.
 
 ## MCC LOG
 
-매 바퀴 끝에 SUPERVISOR에게 한두 줄: INSPECTION한 PR과 판정(P0·P1·P2 수), 착륙(`LANDED`·`WOULD LAND`)과 등급, flagged면 바뀐 관제 규칙, RTS(`from → to`, `WOULD RTS`), ROLLBACK, ESCALATE와 사유, 막혀서 건너뛴 것. 아무 일 없으면 "특이 사항 없음".
+매 바퀴 끝에 SUPERVISOR에게 한두 줄: INSPECTION한 PR과 판정(P0·P1·P2 수), 착륙(`LANDED`·`WOULD LAND`)과 등급, flagged면 바뀐 관제 규칙과 외부 부작용 파일, RTS(`from → to`, `WOULD RTS`), ROLLBACK, ESCALATE와 사유, 막혀서 건너뛴 것. 아무 일 없으면 "특이 사항 없음".

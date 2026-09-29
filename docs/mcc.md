@@ -115,6 +115,13 @@ So the bar is set by blast radius and reversibility, and the safety net sits aft
 | SHOW | `flagged` | Control manuals and CLI, and server code with outside side effects: merges, PR comments, Linear/GitHub writes, starting/stopping sessions or units, sending messages (ATC-101) | As SHIP; MCC's report names the changed rules and side-effect files |
 | ASK | `user` | Guards, hooks, `.claude/`, root `CLAUDE.md`, CI, dependencies, `deploy/`, operating-state formats, anything hard to reverse | The SUPERVISOR merges |
 
+**SHOW as built (ATC-101):** `tierOf` stays pure and path-based. `deploy/landing-tier.mjs` keeps two exported lists beside it, each entry a path and a one-line reason:
+* `SIDE_EFFECT` (`flagged`, reason `외부 부작용`): `server/autoland-run.ts` (merges, branch updates, comments), `server/mcc-run.ts` (merges, INSPECTION comments, starts `atc-rts`), `server/human-check-run.ts` (edits PR bodies, comments), `server/session-control.ts` (starts and stops `claude --bg` sessions, closes tmux panes).
+* `READ_ONLY` (`auto`): the other server files that run commands or call an outside API but only read (`server/index.ts`, `airports.ts`, `rules-state.ts`, `sources/git.ts`, `sources/github.ts`, `standfree-run.ts`, `sources/linear*.ts`, `judges/engines.ts`).
+* The USER and control-session rules are unchanged, and a path in both a USER rule and `SIDE_EFFECT` stays `user`.
+* `deploy/landing-tier.test.mjs` scans `server/**/*.ts` (not tests). A file that imports `node:child_process` or calls `fetch` with `POST`/`PUT`/`PATCH`/`DELETE` must be in one of the two lists, or the test fails and says where to list it. A new command-running file therefore can't land as `auto` unclassified. The scan is a floor: code that reaches outside some other way (a socket, for instance) still needs a person to list it.
+* For a landed `flagged` PR, MCC's report names the changed control rules and the changed side-effect files, one line each (`mcc/CLAUDE.md`).
+
 **After the deploy:** RTS is healthy only when three things hold (ATC-102). Otherwise it runs ROLLBACK and stops RTS.
 * atc answers on the target head.
 * The background sessions that were live before the restart are still live.

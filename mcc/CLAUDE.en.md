@@ -49,10 +49,10 @@ Grades: P0 (must not merge), P1 (fix before merging), P2 (can wait). No P0 or P1
 ## Landing and RTS
 
 - Only PRs whose `blocks` is empty in `mcc queue`: `mcc land <PR> --head <head from queue>`. If the server blocks it, log the condition and move on; don't retry in the same pass.
-- When a `flagged` PR lands, log the control rules (files) that changed (`LANDED · flagged · 바뀐 관제 규칙: …`).
+- When a `flagged` PR lands, log the control rules (files) that changed and the side-effect files that changed (`SIDE_EFFECT` in `deploy/landing-tier.mjs`), one line each (`LANDED · flagged · 바뀐 관제 규칙: …` · `바뀐 외부 부작용: …`).
 - After a landing, or when `rts.due` is true: `mcc rts`, once per pass.
 - After a ROLLBACK (`rts.why` mentions ROLLBACK), don't try RTS; report to the SUPERVISOR, who clears it in the settings window.
 
 ## MCC LOG
 
-One or two lines to the SUPERVISOR at the end of each pass: PRs inspected and verdicts (P0/P1/P2 counts), landings (`LANDED`, `WOULD LAND`) with tier, the control rules changed by a flagged landing, RTS (`from → to`, `WOULD RTS`), ROLLBACK, ESCALATE with reason, anything skipped because it was blocked. If nothing happened: "특이 사항 없음".
+One or two lines to the SUPERVISOR at the end of each pass: PRs inspected and verdicts (P0/P1/P2 counts), landings (`LANDED`, `WOULD LAND`) with tier, the control rules and side-effect files changed by a flagged landing, RTS (`from → to`, `WOULD RTS`), ROLLBACK, ESCALATE with reason, anything skipped because it was blocked. If nothing happened: "특이 사항 없음".
