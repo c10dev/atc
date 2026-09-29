@@ -5,8 +5,9 @@ import { mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } fro
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { atcBase, ROLES as SQUELCH_ROLES, squelchLine } from "./squelch.mjs";
 
-const BASE = process.env.ATC_URL || "http://127.0.0.1:7700";
+const BASE = atcBase();
 const STATE = process.env.ATC_STATE_DIR || join(homedir(), ".local/state/atc");
 
 // 관제 세션의 운영 규정(CLAUDE.md, /tick과 그 절차 파일). 오래 도는 세션이 바뀐 규정을 모른 채 돌지 않게 해시로 비교한다.
@@ -46,6 +47,7 @@ const USAGE = `사용법:
   node atcctl.mjs cancel <C-0007>           CLEARANCE 취소
   node atcctl.mjs manual check              이 폴더의 CLAUDE.md·/tick(절차 파일 포함)이 마지막 ack 뒤 바뀌었는지 (UNCHANGED | CHANGED)
   node atcctl.mjs manual ack                지금 규정을 다시 읽었다고 기록
+  node atcctl.mjs squelch <역할>            SQUELCH 판정(tower|mcc|occ|crosscheck|review)을 hook과 같이 받아 출력: OPEN <reason> | QUIET since HH:MM (n). 디버깅용
 
 DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은 SUPERVISOR)
   node atcctl.mjs dispatch brief            계획·열린 제안·2b 점검 (JSON)
@@ -665,6 +667,9 @@ if (isMain) {
             : `CHANGED ${now.slice(0, 8)} — CLAUDE.md와 .claude/skills/tick/SKILL.md를 다시 읽은 뒤 \`manual ack\`${manualFiles(dir).length > MANUAL.length ? ". 절차 파일은 그 단계에서 다시 Read" : ""}`,
         );
       }
+    } else if (cmd === "squelch") {
+      if (args.length !== 1 || !SQUELCH_ROLES.includes(args[0])) throw new Error(`역할은 ${SQUELCH_ROLES.join("|")} 중 하나`);
+      console.log(await squelchLine(args[0]));
     } else if ((cmd === "readback" || cmd === "cancel") && args[0]) {
       const r = await call("POST", `/api/clearances/${encodeURIComponent(args[0])}/${cmd}`);
       console.log(`${r.clearance.id} ${cmd === "readback" ? "READBACK 확인" : "취소"}`);
