@@ -1,5 +1,5 @@
 import { appendFileSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { config } from "./config.ts";
 import { severityOf } from "./landing.ts";
 
@@ -72,7 +72,7 @@ export type MccRecord =
   | Inspection
   | { op: "escalate"; at: string; pr: number; head: string; reason: string; model?: string }
   | { op: "land" | "would-land"; at: string; pr: number; head: string; tier: string; result: "ok" | "rejected" | "failed"; detail?: string; model?: string }
-  | { op: "rts" | "would-rts"; at: string; from: string | null; to: string; result: "started" | "failed"; detail?: string; model?: string }
+  | { op: "rts" | "would-rts"; at: string; from: string | null; to: string; result: "started" | "failed"; detail?: string; model?: string; by?: "supervisor" }
   | { op: "mode"; at: string; mode: MccMode; detail: string }
   | { op: "hold" | "unhold"; at: string; pr: number };
 
@@ -234,6 +234,14 @@ export function rtsStopOf(last: RtsRecord | null, lastModeAt: string | null): st
   if (last.result === "running") return `RTS 진행 중(${last.to.slice(0, 7)})`;
   if (last.result === "rollback" && !(lastModeAt && Date.parse(lastModeAt) > Date.parse(last.at)))
     return `ROLLBACK 뒤 멈춤(${last.at}) — SUPERVISOR가 설정 창에서 MCC 모드를 다시 고르면 풀림`;
+  return null;
+}
+// 실제 atc-rts 유닛은 7700을 배포한다. 임시 상태 폴더나 7700이 아닌 포트로 도는 서버(시험)는 시작하지 않는다.
+// 진짜 상태 폴더는 HOME 환경 변수가 아니라 계정(passwd)의 홈에서 잡는다(임시 HOME으로 띄운 시험 서버를 못 속이게)
+export const REAL_PORT = 7700;
+export function rtsUnitGuard(x: { stateDir: string; port: number; realStateDir: string }): string | null {
+  if (x.port !== REAL_PORT) return `시험 서버(포트 ${x.port})는 atc-rts를 시작하지 않음 — 운영 7700을 배포하는 유닛이라서`;
+  if (resolve(x.stateDir) !== resolve(x.realStateDir)) return "임시 상태 폴더의 서버는 atc-rts를 시작하지 않음 — 운영 7700을 배포하는 유닛이라서";
   return null;
 }
 export function rtsDueOf(x: RtsInput, stop: string | null): { due: boolean; why: string } {

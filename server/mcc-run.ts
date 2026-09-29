@@ -1,7 +1,10 @@
 import { execFile } from "node:child_process";
+import { userInfo } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Hono } from "hono";
 import { writeResultOf } from "./autoland.ts";
+import { config } from "./config.ts";
 import { slugOfUrl } from "./landing.ts";
 import { capText, sectionsOf } from "./landing-review.ts";
 import {
@@ -26,6 +29,7 @@ import {
   RTS_FILE,
   rtsDueOf,
   rtsStopOf,
+  rtsUnitGuard,
   saveMcc,
   tierOfFiles,
 } from "./mcc.ts";
@@ -39,8 +43,8 @@ import { fetchIssueDetail } from "./sources/linear.ts";
 // GraphQL 한도(2026-09-28)에 막히지 않게 GitHub은 모두 REST(gh api)로 읽고 쓴다.
 
 const run = promisify(execFile);
-const gh = async (args: string[]) => (await run("gh", args, { timeout: 60_000, maxBuffer: 32 << 20 })).stdout;
-const errText = (e: unknown) => {
+export const gh = async (args: string[]) => (await run("gh", args, { timeout: 60_000, maxBuffer: 32 << 20 })).stdout;
+export const errText = (e: unknown) => {
   const err = e as { stderr?: string; message?: string };
   return (err.stderr?.trim() || err.message || String(e)).split("\n")[0];
 };
@@ -76,7 +80,7 @@ export function setMccMode(mode: MccMode) {
 }
 
 // MCC가 맡은 AIRPORT: 저장소 경로, GitHub slug, 기본 브랜치와 그 CI
-function airportOf(s: Snapshot) {
+export function airportOf(s: Snapshot) {
   const cfg = loadMcc();
   const a = s.airports.find((x) => x.code === cfg.airport);
   if (!a?.repo) throw new MccError(`${cfg.airport} AIRPORT가 운항 중이 아님`, 404);
@@ -104,10 +108,16 @@ async function fetchCi(slug: string, sha: string, name: string): Promise<CiState
   return ["success", "neutral", "skipped"].includes(conclusion) ? "ok" : "failed";
 }
 
+// 이 서버가 atc-rts 유닛을 시작해도 되나(시험 서버는 안 된다). 사유 또는 null
+export const rtsGuard = () => rtsUnitGuard({ stateDir: config.stateDir, port: config.port, realStateDir: join(userInfo().homedir, ".local/state/atc") });
+export const startRtsUnit = async () => {
+  await run("systemctl", ["--user", "start", "--no-block", "atc-rts.service"], { timeout: 15_000 });
+};
+
 // 서비스가 시작한 커밋. index.ts가 넘긴다
 let deployedHead: () => string | null = () => null;
 
-function rtsState(records: readonly MccRecord[]) {
+export function rtsState(records: readonly MccRecord[]) {
   const rts = readJsonl<RtsRecord>(RTS_FILE());
   const last = rts.at(-1) ?? null;
   const lastMode = [...records].reverse().find((r) => r.op === "mode");
@@ -394,8 +404,10 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
         appendMccRecord({ op: "would-rts", ...base, result: "started", detail: ap.cfg.mode });
         return c.json({ started: false, would: true, why: due.why });
       }
+      const blocked = rtsGuard();
+      if (blocked) return c.json({ started: false, why: blocked }, 409);
       try {
-        await run("systemctl", ["--user", "start", "--no-block", "atc-rts.service"], { timeout: 15_000 });
+        await startRtsUnit();
         appendMccRecord({ op: "rts", ...base, result: "started" });
         return c.json({ started: true, why: due.why });
       } catch (e) {
