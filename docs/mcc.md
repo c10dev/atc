@@ -98,7 +98,7 @@ TOWER sends no `LAND` to team holders on the MCC AIRPORT: MCC or the SUPERVISOR 
 |---|---|---|
 | `mcc` | ATCC PR, mode `land` or `land+rts`, tier `auto` or `flagged`, no MCC ESCALATE, no SUPERVISOR hold | nothing to send |
 | `supervisor` | ATCC PR with tier `user`, an ESCALATE or hold, mode `shadow` or `rts` (MCC records `would-land` there), or a tier the server has not read yet | nothing to the team; at most one ATC LOG line |
-| `holder` | every other AIRPORT (today's flow) | `LAND` with `landText` |
+| `holder` | every other AIRPORT (today's flow), unless it is marked `teamsMerge: false` in `airports.json`: then `supervisor` (ATC-154) | `LAND` with `landText` |
 
 `landText` is `null` unless `landBy` is `holder`. `repoSeq` and `seq` are unchanged, because ordering still matters to MCC. The tier is the one MCC already computes (`tierOfFiles` over the PR's files, cached per PR and head, shared with `/api/mcc/queue` and the packet); an unknown or stale tier counts as `supervisor`. GO AROUND, APPROACH INFO, GROUND STOP and slots are unchanged, and GO AROUND still goes to the holders on ATCC. TOWER picks up the manual at its next restart (STOP, LAUNCH TOWER).
 

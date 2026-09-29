@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type AirportEntry, type Candidate, cloneId, deriveCode, reconcile } from "./airports.ts";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Hono } from "hono";
+import { type AirportEntry, type Candidate, cloneId, deriveCode, loadRegistry, mountAirports, reconcile, updateAirport } from "./airports.ts";
+import { config } from "./config.ts";
 
 const NOW = "2026-09-26T07:30:00.000Z";
 const P = "/home/c10/projects";
@@ -68,4 +73,51 @@ test("같은 첫 커밋 저장소가 여럿일 때 옮겨진 AIRPORT는 폴더 �
   assert.equal(r.entries.find((e) => e.code === "ALPH")?.path, "/home/c10/elsewhere/alpha");
   assert.equal(r.entries.find((e) => e.code === "BETA")?.path, `${P}/beta`);
   assert.equal(r.entries.length, 3);
+});
+
+// teamsMerge(ATC-154): 있으면 false만 적고, 옛 파일은 그대로 읽히고, SUPERVISOR(이 화면)만 바꾼다
+test("teamsMerge: false를 적고 true면 필드를 지운다, 옛 항목은 그대로, 불리언이 아니면 거절", () => {
+  const dir = mkdtempSync(join(tmpdir(), "atc-apt-"));
+  const file = join(dir, "airports.json");
+  const prev = config.airportsFile;
+  (config as { airportsFile: string }).airportsFile = file;
+  try {
+    const old = entry("a1", "ATAP", `${P}/atc-app`);
+    writeFileSync(file, JSON.stringify({ airports: [old, entry("b1", "VCDO", `${P}/vocado`)] }));
+    assert.equal("teamsMerge" in loadRegistry().entries[0], false); // 옛 파일: 필드 없음 = true
+    assert.equal(updateAirport("a1", { teamsMerge: false }).teamsMerge, false);
+    assert.equal(JSON.parse(readFileSync(file, "utf8")).airports[0].teamsMerge, false);
+    assert.equal("teamsMerge" in JSON.parse(readFileSync(file, "utf8")).airports[1], false); // 다른 AIRPORT는 그대로
+    updateAirport("a1", { teamsMerge: true });
+    assert.deepEqual(JSON.parse(readFileSync(file, "utf8")).airports[0], old); // 기본값은 파일에 안 남는다
+    for (const bad of ["false", 0, null]) assert.throws(() => updateAirport("a1", { teamsMerge: bad as never }), /true 또는 false/);
+    assert.throws(() => updateAirport("nope", { teamsMerge: false }), /없음/);
+  } finally {
+    (config as { airportsFile: string }).airportsFile = prev;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("teamsMerge: PATCH는 이 화면(localhost Origin의 JSON)에서만, 다른 필드는 예전처럼", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "atc-apt-"));
+  const file = join(dir, "airports.json");
+  const prev = config.airportsFile;
+  (config as { airportsFile: string }).airportsFile = file;
+  try {
+    writeFileSync(file, JSON.stringify({ airports: [entry("a1", "ATAP", `${P}/atc-app`)] }));
+    const app = new Hono();
+    mountAirports(app);
+    const patch = (body: unknown, headers: Record<string, string> = {}) =>
+      app.request("/api/airports/a1", { method: "PATCH", body: JSON.stringify(body), headers: { "content-type": "application/json", ...headers } });
+    assert.equal((await patch({ teamsMerge: false })).status, 403); // Origin 없음: 세션·CLI
+    assert.equal((await patch({ teamsMerge: false }, { origin: "https://evil.example" })).status, 403);
+    assert.equal(loadRegistry().entries[0].teamsMerge, undefined);
+    assert.equal((await patch({ teamsMerge: false }, { origin: "http://localhost:7700" })).status, 200);
+    assert.equal(loadRegistry().entries[0].teamsMerge, false);
+    assert.equal((await patch({ teamsMerge: "no" }, { origin: "http://localhost:7700" })).status, 400);
+    assert.equal((await patch({ name: "atc-app 2" })).status, 200); // 이름·코드·폐쇄는 예전과 같다
+  } finally {
+    (config as { airportsFile: string }).airportsFile = prev;
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

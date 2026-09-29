@@ -119,6 +119,7 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
             <th>이름</th>
             <th>경로</th>
             <th>상태</th>
+            <th title="끄면 팀에게 LAND를 내지 않는다(SUPERVISOR가 머지)">팀 머지</th>
             <th className="num">STAND</th>
             <th>AIRCRAFT</th>
             <th aria-label="동작" />
@@ -171,6 +172,16 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
                 </td>
                 <td>
                   <span className={`apt-status s-${a.status}`}>{statusLabel[a.status]}</span>
+                </td>
+                <td>
+                  <button
+                    className="apt-btn"
+                    aria-pressed={a.teamsMerge !== false}
+                    title={a.teamsMerge !== false ? "팀이 머지한다(TOWER가 LAND를 낸다). 누르면 SUPERVISOR만 머지" : "SUPERVISOR만 머지한다(LAND 없음). 누르면 팀 머지로"}
+                    onClick={() => act(() => api("PATCH", `/api/airports/${encodeURIComponent(a.id)}`, { teamsMerge: a.teamsMerge === false }))}
+                  >
+                    {a.teamsMerge !== false ? "ON" : "OFF"}
+                  </button>
                 </td>
                 <td className="num mono">{a.status === "open" ? stands(a.repo) : "—"}</td>
                 <td className="apt-ac" title={ac.map((s) => label(s.id, callsign(s))).join(", ")}>

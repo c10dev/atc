@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { config } from "./config.ts";
 import type { Context, Hono } from "hono";
 import type { Airport, AirportStatus } from "./model.ts";
+import { fromThisApp } from "./origin.ts";
 
 // 저장소 = AIRPORT. 등록부(~/.local/state/atc/airports.json)가 AIRPORT 목록의 기준이다.
 // - projectsDir 아래 git 저장소는 자동으로 개설되고, 그 밖의 저장소는 API로 개설한다.
@@ -23,6 +24,7 @@ export interface AirportEntry {
   path: string;
   closed: boolean;
   addedAt: string;
+  teamsMerge?: boolean; // ATC-154: false만 적는다(없으면 true). 옛 파일은 그대로 읽힌다
 }
 
 export interface Candidate {
@@ -169,6 +171,7 @@ function statusesOf(entries: AirportEntry[], matched: Map<string, Candidate>): A
         status: e.closed ? ("closed" as const) : m ? ("open" as const) : ("missing" as const),
         discovered: m?.discovered ?? false,
         addedAt: e.addedAt,
+        teamsMerge: e.teamsMerge !== false,
       };
     })
     .sort((a, b) => a.code.localeCompare(b.code));
@@ -189,7 +192,7 @@ export async function resolveAirports(): Promise<{ open: Airport[]; all: Airport
   if (result.changed || !exists) saveRegistry(result.entries);
 
   const all = statusesOf(result.entries, result.matched);
-  const open = all.filter((a) => a.status === "open").map(({ id, code, name, repo }) => ({ id, code, name, repo }));
+  const open = all.filter((a) => a.status === "open").map(({ id, code, name, repo, teamsMerge }) => ({ id, code, name, repo, ...(teamsMerge ? {} : { teamsMerge })}));
   return { open, all };
 }
 
@@ -252,7 +255,7 @@ export async function openAirport(input: { path: string; code?: string; name?: s
   return entry;
 }
 
-export function updateAirport(id: string, patch: { code?: string; name?: string; closed?: boolean }): AirportEntry {
+export function updateAirport(id: string, patch: { code?: string; name?: string; closed?: boolean; teamsMerge?: boolean }): AirportEntry {
   const { entries } = loadRegistry();
   const entry = entries.find((e) => e.id === id);
   if (!entry) throw new AirportError("그런 AIRPORT가 없음", 404);
@@ -266,6 +269,11 @@ export function updateAirport(id: string, patch: { code?: string; name?: string;
     entry.name = String(patch.name).trim();
   }
   if (patch.closed !== undefined) entry.closed = Boolean(patch.closed);
+  if (patch.teamsMerge !== undefined) {
+    if (typeof patch.teamsMerge !== "boolean") throw new AirportError("teamsMerge는 true 또는 false");
+    if (patch.teamsMerge) delete entry.teamsMerge; // 기본값은 파일에 적지 않는다
+    else entry.teamsMerge = false;
+  }
   saveRegistry(entries);
   return entry;
 }
@@ -291,7 +299,12 @@ export function mountAirports(app: Hono) {
   app.get("/api/airports", async (c) => c.json({ airports: (await resolveAirports()).all }));
   app.post("/api/airports", async (c) => handle(c, async () => openAirport(await c.req.json().catch(() => ({})))));
   app.patch("/api/airports/:id", async (c) =>
-    handle(c, async () => updateAirport(c.req.param("id"), await c.req.json().catch(() => ({})))),
+    handle(c, async () => {
+      const patch = await c.req.json().catch(() => ({}));
+      // teamsMerge(ATC-154)는 SUPERVISOR 전용: 이 화면에서 보낸 JSON 요청만. 세션과 CLI는 airports.json을 못 쓴다
+      if (patch && typeof patch === "object" && "teamsMerge" in patch && !fromThisApp(c)) throw new AirportError("이 화면에서 보낸 요청만 받습니다(SUPERVISOR 전용)", 403);
+      return updateAirport(c.req.param("id"), patch);
+    }),
   );
   app.delete("/api/airports/:id", async (c) => handle(c, () => removeAirport(c.req.param("id"))));
 }
