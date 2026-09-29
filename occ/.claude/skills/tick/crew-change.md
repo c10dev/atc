@@ -10,6 +10,8 @@
 |---|---|
 | `node ../controller/atcctl.mjs crew-change send <CC-0001>` | (2b) 승인된 CREW CHANGE를 sent로 바꾸고 `SEND TO`(REGISTRATION)와 문구를 출력. 이미 sent면 같은 문구(재송신용) |
 | `node ../controller/atcctl.mjs crew-change readback <CC-0001>` | CAPTAIN이 "READBACK CC-0001"로 답함 |
+| `node ../controller/atcctl.mjs crew-change unable <CC-0001> -- <사유>` | CAPTAIN이 "UNABLE CC-0001 — 사유"로 답함(닫힌다) |
+| `node ../controller/atcctl.mjs crew-change standby <CC-0001>` | CAPTAIN이 "STANDBY CC-0001"로 답함(sent 그대로, overdue를 첫 STANDBY부터 한 번 다시 센다) |
 
 ## CREW CHANGE 발부 (2b, `crew-change brief`의 `mode`가 approval일 때만)
 
@@ -20,7 +22,9 @@ SUPERVISOR가 운항 중인 AIRCRAFT의 CREW COMPLEMENT를 바꾸면 atc가 CREW
 | `approved` | `crew-change send <CC-xxxx>` → 출력의 `SEND TO` 세션(그 AIRCRAFT)에 `SEND:` 줄(머리 `[OCC CC-xxxx]`만)을 SendMessage. send-guard가 저장된 문구로 바꿔 넣는다(`---` 아래 전체 문구는 로그용). 한 바퀴에 AIRCRAFT마다 하나 |
 | `waiting`(승인됐지만 같은 AIRCRAFT의 앞 건 `waitingFor`가 READBACK 전) | 보내지 않는다. `crew-change send`도 409로 거절한다. 앞 건의 READBACK 뒤 다음 바퀴에 `approved`로 온다 |
 | CAPTAIN 답장 "READBACK CC-xxxx" | `crew-change readback CC-xxxx`. READBACK 없이 "… CREW CHANGE CC-xxxx COMPLETE"만 와도 받은 것이 분명하니 `crew-change readback CC-xxxx`하고 OCC LOG에 COMPLETE를 적는다 |
-| `overdue`에 든 sent(보낸 뒤 10분 넘게 READBACK 없음) | `crew-change send <CC-xxxx>`로 같은 문구를 받아 **한 번만** 더 보낸다. 그래도 없으면 SUPERVISOR 보고 |
+| CAPTAIN 답장 "UNABLE CC-xxxx — 사유" | `crew-change unable CC-xxxx -- <사유 그대로>`. 다시 보내지 않고 SUPERVISOR 보고(`crew-change brief`의 `unable`에 하루 남는다). COMPLEMENT를 되돌릴지 정하는 것은 SUPERVISOR다 |
+| CAPTAIN 답장 "STANDBY CC-xxxx" | `crew-change standby CC-xxxx`. 다시 보내지 않고 기다린다 |
+| `overdue`에 든 sent(보낸 뒤 10분 넘게 READBACK 없음. 첫 STANDBY가 있으면 그때부터 10분) | `crew-change send <CC-xxxx>`로 같은 문구를 받아 **한 번만** 더 보낸다. 그래도 없으면 SUPERVISOR 보고 |
 | `pending` | 할 일 없음(SUPERVISOR 승인 대기). OCC는 승인하거나 재촉하지 않는다 |
 | send-guard가 막음, 또는 `crew-change send`가 거절 | 문구나 받는 사람을 고쳐 다시 시도하지 말고 SUPERVISOR 보고 |
 

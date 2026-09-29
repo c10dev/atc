@@ -56,6 +56,7 @@ import type { Snapshot, Ticket } from "./model.ts";
 import { composeReason, parseReasonCodes, REASON_CODES, ReasonCodeError, reasonCountsOf } from "./reasons.ts";
 import { readiness2bOf, readinessFiles } from "./readiness.ts";
 import { record } from "./recorder.ts";
+import { closingLine, overdueBase, responseOf } from "./response.ts";
 import { activeWaypointsOf, loadRoutes } from "./routes.ts";
 import { readLinearProjects } from "./sources/linear-projects.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
@@ -158,6 +159,8 @@ export interface Proposal {
   firstHeldAt?: string; // 처음 HOLD(OCC·PREFLIGHT)된 시각. 준비율(readyRate)에 쓴다
   requeuedAt?: string; // SUPERVISOR가 HOLD를 대기열로 돌린 시각. 그 뒤로는 다시 HOLD하지 않고, 24시간 만료도 여기서 센다
   gateCodes?: string[]; // SUPERVISOR가 뒤늦게 단 사유 칩(recode, ATC-5). 게이트 계산에만 쓴다 — reasonCodes와 달리 FLIGHT 보류를 걸지 않는다
+  standbyAt?: string; // CAPTAIN의 첫 STANDBY(ATC-122). READBACK overdue를 여기서 한 번 다시 센다
+  standbys?: number; // STANDBY 수(두 번째부터는 기록만)
 }
 
 type Create = Omit<Proposal, "status" | "decidedAt" | "statusAt" | "timeline" | "reason" | "note" | "caution" | "hold" | "holdAt" | "message" | "departedStand" | "crosscheck">;
@@ -175,7 +178,8 @@ export type Op =
   | { op: "reject"; id: string; at: string; reason: string | null; via?: Via; reasonCodes?: string[]; blind?: true }
   | { op: "send"; id: string; at: string; message: string }
   | { op: "accept"; id: string; at: string }
-  | { op: "decline"; id: string; at: string; reason: string }
+  | { op: "decline"; id: string; at: string; reason: string } // CAPTAIN의 UNABLE D-xxxx(ATC-122)도 이것
+  | { op: "standby"; id: string; at: string } // CAPTAIN의 STANDBY D-xxxx(ATC-122). 상태는 sent 그대로
   | { op: "depart"; id: string; at: string; stand: string | null; via?: "readback" } // stand null: STAND 없는 FLIGHT의 READBACK
   | { op: "arrived"; id: string; at: string; note: string } // STAND 없는 FLIGHT: CAPTAIN 보고
   | { op: "recall"; id: string; at: string; reason: string; message: string } // SUPERVISOR 요청
@@ -183,7 +187,7 @@ export type Op =
   | { op: "supersede"; id: string; at: string; reason: string }
   | { op: "expire"; id: string; at: string; reason?: string };
 
-type StatusOp = Exclude<Op["op"], "create" | "note" | "brief" | "hold" | "crosscheck" | "preflight" | "requeue" | "recode">;
+type StatusOp = Exclude<Op["op"], "create" | "note" | "brief" | "hold" | "crosscheck" | "preflight" | "requeue" | "recode" | "standby">;
 
 // 상태 전이 규칙. 여기 없는 전이는 무시한다(API도 같은 규칙으로 검사한다).
 const NEXT: Partial<Record<ProposalStatus, Partial<Record<StatusOp, ProposalStatus>>>> = {
@@ -277,6 +281,13 @@ export function fold(ops: Op[]): Proposal[] {
       p.holdAt = null;
       delete p.preflight;
       p.requeuedAt = o.at;
+      continue;
+    }
+    if (o.op === "standby") {
+      // READBACK을 기다리는 FLIGHT PLAN(sent)에만. 첫 STANDBY만 overdue 기준을 옮긴다
+      if (p.status !== "sent") continue;
+      p.standbyAt ??= o.at;
+      p.standbys = (p.standbys ?? 0) + 1;
       continue;
     }
     if (o.op === "crosscheck") {
@@ -579,7 +590,7 @@ export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "ur
     note,
     hold,
     DISCRETION_LINE,
-    `— 맡으면 이 메시지에 "READBACK ${p.id}", 못 맡으면 사유로 답장해 주세요.`,
+    closingLine("flight-plan", responseOf("flight-plan"), p.id),
     FINISH_LINE,
   ]
     .filter(Boolean)
@@ -599,7 +610,7 @@ export function formatRecall(p: Pick<Proposal, "id" | "flight" | "airport" | "st
     isStandFreeAirborne(p)
       ? "작업을 멈추세요. 중간 결과가 있으면 링크나 한 줄로 남겨 두세요 — 다른 AIRCRAFT가 이어받을 수 있게."
       : "작업을 멈추세요. STAND(워크트리)는 정리하지 말고 그대로 두세요 — 다른 AIRCRAFT가 이어받을 수 있게.",
-    `— 받았으면 이 메시지에 "READBACK ${p.id} RECALL"로 답장해 주세요.`,
+    closingLine("recall", responseOf("recall"), p.id),
   ].join("\n");
 }
 
@@ -607,7 +618,8 @@ export function overdueOf(proposals: Proposal[], now: number): string[] {
   return proposals
     .filter(
       (p) =>
-        ((p.status === "sent" || p.status === "recalling") && now - Date.parse(p.statusAt) > READBACK_OVERDUE_MS) ||
+        (p.status === "sent" && now - overdueBase(p.statusAt, p.standbyAt) > READBACK_OVERDUE_MS) || // 첫 STANDBY부터 다시 센다(ATC-122)
+        (p.status === "recalling" && now - Date.parse(p.statusAt) > READBACK_OVERDUE_MS) ||
         (p.status === "accepted" && now - Date.parse(p.statusAt) > DEPARTURE_OVERDUE_MS) ||
         (isStandFreeAirborne(p) && now - Date.parse(p.statusAt) > ARRIVAL_OVERDUE_MS),
     )
@@ -861,7 +873,7 @@ async function cardBriefsOf(cards: Proposal[], s: Snapshot, all: Proposal[], log
 
 // POST /api/dispatch/proposals/:id/<동작>. 2b 점검표(readiness.ts)도 이 목록으로 RECALL·ARRIVED 창구를 확인한다
 export const DISPATCH_ACTIONS = [
-  "verdict", "note", "briefing", "hold", "unhold", "requeue", "confirm-hold", "codes", "approve", "reject", "release", "accept", "decline", "recall", "recall-send", "recalled", "arrived",
+  "verdict", "note", "briefing", "hold", "unhold", "requeue", "confirm-hold", "codes", "approve", "reject", "release", "accept", "decline", "standby", "recall", "recall-send", "recalled", "arrived",
 ] as const;
 // HELD 제안에 SUPERVISOR 판정을 받지 않는다(PREFLIGHT, ATC-3): 대기열로 돌린 뒤 판정하거나 FLIGHT 보류를 확정한다
 const JUDGE_ACTIONS: readonly DispatchAction[] = ["verdict", "approve", "reject"];
@@ -1109,6 +1121,10 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
         if (bad) return bad;
         // STAND 없는 FLIGHT(SURVEY·CHECK)는 READBACK과 함께 DEPARTED
         append(readbackOps(p, (await getSnapshot()).tickets.find((t) => t.key === p.flight), at));
+      } else if (name === "standby") {
+        // CAPTAIN의 STANDBY D-xxxx(ATC-122): 받았지만 시간이 필요함. 상태는 그대로, overdue를 한 번 다시 센다
+        if (p.status !== "sent") return c.json({ error: `STANDBY는 READBACK을 기다리는 FLIGHT PLAN(sent)에만 — 지금 ${p.status}` }, 409);
+        append([{ op: "standby", id, at }]);
       } else if (name === "arrived") {
         // STAND 없이 DEPARTED한 FLIGHT의 CAPTAIN 보고(OCC가 기록). STAND가 있는 FLIGHT는 LOGBOOK(머지)이 ARRIVED다
         const note = typeof body.note === "string" ? body.note.trim() : "";

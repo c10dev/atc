@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Departure } from "./departures.ts";
-import { ackReported, followingOf, freshKeys, targetsOf, type FollowInput } from "./following.ts";
+import { ackReported, followingOf, freshKeys, targetsOf, type FollowInput, unablesOf } from "./following.ts";
 import type { LogEntry } from "./logbook.ts";
 import type { PullRequest, Ticket } from "./model.ts";
 import type { Proposal } from "./proposals.ts";
@@ -182,4 +182,30 @@ test("AIRCRAFT health(ATC-86): cut LIMIT·RESUME·STALLED가 그 FLIGHT의 healt
   const stalled = one(mk("STALLED", "info"));
   assert.deepEqual([stalled.severity, stalled.key], ["info", "VOC-1|health|STALLED"]);
   assert.match(stalled.text, /^TEAM_B STALLED 3m — STALLED 원문/);
+});
+
+test("UNABLE(ATC-122): FLIGHT가 있는 CLEARANCE와 declined FLIGHT PLAN을 하루 동안 문제로 올린다", () => {
+  const clearances = [
+    { id: "C-0009", flight: "VOC-7", toName: "TEAM_B", unableAt: ago(20), unableReason: "PR이 아직 CI 중" },
+    { id: "C-0010", flight: null, toName: "TEAM_B", unableAt: ago(20), unableReason: "FLIGHT 없음" }, // FLIGHT 없는 것은 빠진다
+    { id: "C-0011", flight: "VOC-8", toName: "TEAM_C", unableAt: ago(25 * 60), unableReason: "하루 넘음" }, // 하루 지난 것은 빠진다
+    { id: "C-0012", flight: "VOC-9", toName: "TEAM_C", unableAt: null, unableReason: null },
+  ];
+  const declined = { ...proposal("D-0004", "VOC-5", "declined", { declined: ago(10) }), reason: "다른 FLIGHT가 먼저" };
+  const unables = unablesOf(clearances, [declined, proposal("D-0005", "VOC-6", "sent", { sent: ago(10) })], NOW);
+  assert.deepEqual(
+    unables.map((u) => [u.id, u.flight, u.aircraft, u.reason]),
+    [
+      ["C-0009", "VOC-7", "TEAM_B", "PR이 아직 CI 중"],
+      ["D-0004", "VOC-5", "TEAM_B", "다른 FLIGHT가 먼저"],
+    ],
+  );
+  // 따라가던 FLIGHT가 아니어도 항목이 생기고, key는 FLIGHT|unable|ID
+  const items = followingOf(input({ tickets: [ticket("VOC-7"), ticket("VOC-5", { state: "Todo", stateType: "unstarted" })], unables }));
+  const issue = (flight: string) => items.find((f) => f.flight === flight)?.issues.find((i) => i.code === "unable");
+  assert.deepEqual(
+    { key: issue("VOC-7")?.key, text: issue("VOC-7")?.text, severity: issue("VOC-7")?.severity },
+    { key: "VOC-7|unable|C-0009", text: "TEAM_B UNABLE C-0009 — PR이 아직 CI 중", severity: "warn" },
+  );
+  assert.equal(issue("VOC-5")?.key, "VOC-5|unable|D-0004");
 });

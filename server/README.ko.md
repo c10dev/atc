@@ -70,6 +70,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `events.ts` | 스냅샷 차이 → 이벤트(경보, HANDOFF, LANDING SEQUENCE `landing.requested`·`cleared`·`blocked`·`left`, 세션 종료, OUTSTATION). 커서로 읽는 이벤트 기록 |
 | `controller.ts` | CONTROLLER(TOWER) API: 브리핑, ack, CLEARANCE 발행·READBACK·취소, 정해진 문구, CLEARED PR의 LAND 문구(순수 함수 `landTextOf`) |
 | `clearances.ts` | CLEARANCE 기록: 추가만 하는 JSONL을 접어 현재 상태를 만든다 |
+| `response.ts` | 응답 속성(ATC-122, 순수): 어떤 답이 메시지를 닫나(W/U는 READBACK·UNABLE, STANDBY는 열어 둠. R은 ROGER), atc가 쓰는 끝줄, 첫 STANDBY 뒤 overdue 기준 |
 | `recorder.ts` | FLIGHT RECORDER: 날짜별 JSONL(`event`, `sample`, `dispatch`, `ack`, `schedule`, `checkride`), 30일 보관 |
 | `metrics.ts` | 운용 지표와 2단계 진입 점검(순수 함수 `computeMetrics`) |
 | `logbook.ts` | LOGBOOK: 10분마다 머지된 PR → ARRIVED FLIGHT마다 `arrived` 줄, 머지된 Revert PR은 `reverted` 줄(순수 함수 `buildEntry`, `planLogbook`, `foldLogbook`). FLEET 카드의 TARGETS 실적(순수 함수 `computeActuals`, `expectationMin`). `GET /api/logbook`. AIRCRAFT와 출발은 착수 기록으로도 찾고, 옛 모름 줄은 `attributed` 줄로 채운다(순수 함수 `attribution`). `measured` 줄로 지시서(VECTORS·DIRECT), SOLO·CREW, PR 뒤 수정 커밋, P0–P2 지적을 더한다(순수 함수 `measureLines`). `GET /api/logbook/briefs`. 새 `arrived` 줄에는 14일 FUEL 읽기로 선택 필드 `fuel`을 붙인다(FUEL F4, ATC-53). 옛 줄은 그대로. `GET /api/logbook`의 `fuel`이 있는 항목에 `fuelCost`(ATC-59)를 붙인다. 읽을 때 지금 가격표로 값을 매긴다(`loadPricedLogbook`). `trip`(ATC-56: NET을 TRIP FUEL과 비교, `verdict`는 `inside`·`unexpected`·`null`)도 붙는다 |
@@ -125,7 +126,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `GET /api/controller/brief?consumer=controller` | 지난 ack 이후 이벤트 + 현재 상태(CLEARED `landingQueue` 항목에 `repoSeq`·`landText`. FUEL 경고 `open.fuelLeaks`·`open.coldCache`·`open.fuelError`, ATC-56) |
 | `POST /api/controller/ack` | 브리핑 처리 완료 `{cursor}` |
 | `POST /api/clearances` | CLEARANCE 기록 `{to, type, stand?, flight?, text}`, 보낼 문구 반환 |
-| `POST /api/clearances/:id/readback` · `/cancel` | READBACK 확인 · 취소 |
+| `POST /api/clearances/:id/readback` · `/roger` · `/unable` · `/standby` · `/cancel` | 팀의 답(ATC-122, `response.ts`): READBACK·ROGER(R만)·UNABLE `{reason}`은 닫고, STANDBY(W/U만)는 overdue를 한 번 다시 센다 · 취소 |
 | `GET /api/metrics?days=1..30` | 운용 지표 |
 | `GET /api/fuel?days=1..30` | FUEL BURN(읽기 전용, 기본 7일): 세션·AIRCRAFT(세션 이름)별 다섯 가지, CAPTAIN 대 CREW(`outputLowerBound`, `nullStopShare`, agent 종류), CACHE HIT, 모델, compaction과 모르는 줄 수. 규칙별 FUEL LEAK(`leak`: `coldCache`, `controlWake`, `modelSwitch`, `compaction`, `sessionChange`, `upgrade`, `unexplained`, `total`과 그중 CREW 몫 `crew`. `expectedRebuild`·`proxied`는 밖에 따로)와 큰 순서 20개 `leakEvents`. CREW 경고(`crewWarnings` 수, 최근 50개 `crewWarningEvents`), `sessionBaselines`(AIRPORT별 새 세션 기준선). `scan`에 읽은 파일·바이트·시간. FLIGHT별 귀속(F4): `aircraft[].attribution`이 AIRCRAFT마다 `flights`(ARRIVED)·`enRoute`·`unattributed`(UNATTRIBUTED)로 나누고 각각 CAPTAIN·CREW·합. `attribution.totals`(모든 세션), `attribution.flights`(기간 안 FLIGHT별, `leak`·`crewWarnings`와 ATC-59부터 `byModel`로 매긴 `fuelCost` 포함). 토큰 옆에 USD FUEL COST(F5, CAPTAIN·CREW·total마다 `cost`, 값 없는 `unpriced` 요청), NET FUEL(`netCost`), 값 없는 모델의 `priceWarnings`, `prices`(가격표 출처·파일·오류) |
 | `GET /api/routes` | ROUTE MAP: ROUTE마다 열린 FLIGHT, AIRCRAFT, 완료 속도, WAYPOINT(FLIGHT·완료 기준·ETA)(읽기 전용) |
@@ -140,7 +141,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR가 HOLD를 풂(제안은 SUPERSEDED) |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | approval 모드에서 SUPERVISOR 결정, 둘 다 `{via?}`, `reject`는 `{reason?, reasonCodes?}`도 |
 | `POST /api/dispatch/proposals/:id/release` | 승인 → SENT, `sendTo`와 FLIGHT PLAN 문구 반환 |
-| `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, 또는 `{reason}`과 함께 거절. STAND 없는 FLIGHT는 READBACK에 DEPARTED(`readbackOps`) |
+| `POST /api/dispatch/proposals/:id/{accept,decline,standby}` | CAPTAIN READBACK, `{reason}`과 함께 거절(`UNABLE D-xxxx`), 또는 STANDBY(ATC-122). STAND 없는 FLIGHT는 READBACK에 DEPARTED(`readbackOps`) |
 | `POST /api/dispatch/proposals/:id/arrived` | STAND 없이 DEPARTED한 FLIGHT의 CAPTAIN 보고 `{note}`를 OCC가 적음 → ARRIVED |
 | `GET /api/dispatch/proposals/:id` | 제안 하나와 지금 모드(send-guard용) |
 | `POST /api/dispatch/mode` | `{mode: "shadow" \| "approval"}` 전환(`dispatch.json`에 저장) |

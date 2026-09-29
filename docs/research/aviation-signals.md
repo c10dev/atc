@@ -305,6 +305,26 @@ atc already has the same shape:
   - Keep `READBACK` valid everywhere.
 - **Tier:** `user` (root `CLAUDE.md`), plus `flagged` manuals.
 
+### EO 1 as built (ATC-122)
+
+- `server/response.ts` (pure):
+  - `responseOf` gives W/U for LAND, HOLD, CONTINUE, FLIGHT PLAN, RECALL and CREW CHANGE, and R for INFO, TRAFFIC and REPORT.
+  - `answerError` accepts READBACK always, ROGER only on R, STANDBY only on W/U, and nothing but READBACK on a RECALL.
+  - `closingLine` writes the closing line; `overdueBase` moves the overdue start to the first STANDBY.
+- **Records:**
+  - CLEARANCE gains `roger`, `unable {reason}` and `standby` ops; the first closing answer wins, and cancel still works after a READBACK.
+  - FLIGHT PLAN gains a `standby` op; UNABLE is the existing `decline`.
+  - CREW CHANGE gains an `unable` status and a `standby` op.
+  - Old servers skip the new ops.
+- **Where it shows:**
+  - STRIPS stamps show ROGER, STANDBY and UNABLE with the reason.
+  - DISPATCH IN FLIGHT rows show STANDBY.
+  - FLIGHT FOLLOWING has an `unable` issue for a day, for UNABLEs with a FLIGHT.
+  - `crew-change brief` has `unable`.
+- **Recording:** atcctl records the answers: `roger`, `unable -- <reason>`, `standby`, and the `dispatch` and `crew-change` forms. Replies are still read and recorded by the control session; nothing parses team messages.
+- **Rules:** root `CLAUDE.md` (both languages), the `atc-task` skill, and the TOWER and OCC manuals list the answers. `VOCADO_READBACK_SUGGESTION` is the same sentence as root `CLAUDE.md`, and a test now checks that.
+- **Not done:** the application repositories' own rule lines are the SUPERVISOR's to change. Until then their CAPTAINs still see the answers in each closing line.
+
 ### EO 2. OOOI milestones per FLIGHT
 
 - **Goal:** one fixed timeline per FLIGHT: OUT (DEPARTED), OFF (PR opened), ON (merged, ARRIVED), IN (in service after RTS).

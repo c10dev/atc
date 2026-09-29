@@ -179,7 +179,7 @@ const statusText: Record<Proposal["status"] | "arrived", string> = {
   rejected: "REJECTED",
   sent: "SENT · READBACK 대기",
   accepted: "READBACK",
-  declined: "DECLINED",
+  declined: "DECLINED · UNABLE",
   departed: "DEPARTED",
   arrived: "ARRIVED",
   superseded: "SUPERSEDED",
@@ -602,6 +602,11 @@ function InFlightRow({
             </span>
           ) : (
             <StatusLabel p={p} />
+          )}
+          {p.status === "sent" && p.standbyAt && (
+            <span className="dp-wait" title="CAPTAIN이 STANDBY로 답함: 받았지만 시간이 필요함. READBACK overdue는 첫 STANDBY부터 10분(한 번만)">
+              STANDBY <time dateTime={p.standbyAt}>{timeAgo(p.standbyAt, now)}</time>
+            </span>
           )}
           {candidate && <CandidateLine c={candidate} now={now} />}
           {overdue && <span className="dp-overdue">{overdueText(p)}</span>}

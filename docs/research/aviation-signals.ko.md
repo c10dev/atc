@@ -305,6 +305,26 @@ atc는 이미 같은 모양이다:
   - `READBACK`은 어디서나 계속 유효하다.
 - **등급:** `user`(루트 `CLAUDE.md`), 매뉴얼은 `flagged`.
 
+### EO 1 as built (ATC-122)
+
+- `server/response.ts`(순수):
+  - `responseOf`는 LAND·HOLD·CONTINUE·FLIGHT PLAN·RECALL·CREW CHANGE에 W/U, INFO·TRAFFIC·REPORT에 R을 준다.
+  - `answerError`는 READBACK은 늘, ROGER는 R에만, STANDBY는 W/U에만 받고, RECALL에는 READBACK만 받는다.
+  - `closingLine`이 끝줄을 쓰고, `overdueBase`가 overdue 시작을 첫 STANDBY로 옮긴다.
+- **기록:**
+  - CLEARANCE에 `roger`·`unable {reason}`·`standby` op가 생겼다. 먼저 온 닫는 답이 남고, 취소는 READBACK 뒤에도 된다.
+  - FLIGHT PLAN에는 `standby` op가 생겼고, UNABLE은 있던 `decline`이다.
+  - CREW CHANGE에는 `unable` 상태와 `standby` op가 생겼다.
+  - 옛 서버는 새 op를 건너뛴다.
+- **보이는 곳:**
+  - STRIPS 도장에 ROGER·STANDBY·UNABLE(사유)이 보인다.
+  - DISPATCH IN FLIGHT 줄에 STANDBY가 보인다.
+  - FLIGHT가 있는 UNABLE은 FLIGHT FOLLOWING에 `unable` 문제로 하루 뜬다.
+  - `crew-change brief`에 `unable`이 있다.
+- **기록 방법:** atcctl이 답을 기록한다: `roger`, `unable -- <사유>`, `standby`와 그 `dispatch`·`crew-change` 형태. 답장은 여전히 관제 세션이 읽고 기록하고, 팀 메시지를 파싱하는 것은 없다.
+- **규칙:** 루트 `CLAUDE.md`(두 언어), `atc-task` skill, TOWER·OCC 매뉴얼이 답을 적는다. `VOCADO_READBACK_SUGGESTION`은 루트 `CLAUDE.md`와 같은 문장이고, 이제 테스트가 이를 확인한다.
+- **하지 않은 것:** 애플리케이션 저장소 자체의 규칙 줄은 SUPERVISOR가 바꾼다. 그때까지 그쪽 CAPTAIN도 끝줄에서 답을 본다.
+
 ### EO 2. FLIGHT별 OOOI 마일스톤
 
 - **목표:** FLIGHT마다 고정 타임라인 하나: OUT(DEPARTED), OFF(PR 열림), ON(머지, ARRIVED), IN(RTS 뒤 운영 반영).
