@@ -11,7 +11,7 @@ import type { RulesView } from "../../../../server/rules-state.ts";
 import { isBackground, manualStepsOf, originBadgeOf } from "../../../../server/session-origin.ts";
 import { flightNumber } from "../../aviation.ts";
 import { timeAgo } from "../../derive.ts";
-import { JobDetail, NeedsYou, SuggestedReply } from "../../ui.tsx";
+import { ActivityLine, JobDetail, NeedsYou, SuggestedReply } from "../../ui.tsx";
 import { formatClock, useSettings } from "../../settings.ts";
 import { FleetCrew } from "../FleetCrew.tsx";
 import type { AbsentMark } from "./Absent.tsx";
@@ -213,6 +213,7 @@ export function Card({
         )
       )}
       {a.flying.length > 0 && <p className="fl-flying">FLYING {a.flying.map(flightNumber).join(", ")}</p>}
+      {a.status !== "absent" && <ActivityLine activity={a.activity} now={Date.now()} className="fl-activity" />}
       {(a.flights ?? []).some((f) => f.kept) && (
         <ul className="fl-kept">
           {a.flights

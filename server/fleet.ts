@@ -19,6 +19,7 @@ import { fleetKeyOf, registrationOf, regKey } from "./registration.ts";
 import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state.ts";
 import type { SessionOrigin } from "./session-origin.ts";
 import type { Job } from "./job-state.ts";
+import type { Activity } from "./activity.ts";
 import { flightDetailOf, liveViewOf } from "./fleet-live.ts";
 
 export { flightDetailOf };
@@ -256,6 +257,7 @@ export interface AircraftView {
   lastActiveAt: string | null; // 세션의 마지막 활동 시각
   health?: Health | null; // AIRCRAFT health(ATC-45). 세션이 없거나 문제가 없으면 null
   job?: Job | null; // 백그라운드 job 상태(ATC-99). NEEDS YOU는 state가 blocked일 때. bg 세션이 아니면 null
+  activity?: Activity | null; // ACTIVITY(ATC-97): 마지막 도구·라벨·phase. 살아 있는 Claude 세션만
   account?: string | null; // ACCOUNT(ATC-51). 라벨이 없으면 기본 ACCOUNT, 등록부에 라벨이 하나도 없으면 null
   accountIsDefault?: boolean; // 라벨 없이 기본 ACCOUNT로 센다
   report?: (ReportView & { decision: boolean }) | null; // 마지막 턴의 REPORT 판정(ATC-89, 그림자 전용). decision: "결정이 필요함" 확률이 문턱 이상

@@ -4,6 +4,7 @@ import type { CarriedReview, CodexFindingSummary, CodexUnavailable, ExtReviewSta
 import type { GroundStop, MainStatus } from "./atfm.ts";
 import type { AutolandView } from "./autoland.ts";
 import type { Health } from "./health.ts";
+import type { Activity } from "./activity.ts";
 import type { FuelRemaining } from "./fuel-remaining.ts";
 import type { HumanCheckStatus, UiChange } from "./human-check.ts";
 import type { SessionOrigin } from "./session-origin.ts";
@@ -25,6 +26,8 @@ export interface Session {
   workspacePath: string | null;
   // AIRCRAFT health(ATC-45): 왜 멈췄는지, 무엇을 기다리는지. 문제가 없으면 없다(null)
   health?: Health | null;
+  // ACTIVITY(ATC-97): 마지막 도구·짧은 라벨·phase(tool·model·idle)·시각. 살아 있는 Claude 세션만, 본문은 없다
+  activity?: Activity | null;
   // 세션 출처(ATC-76): background·desktop·terminal·unknown. 살아 있는 claude 세션만(죽었거나 codex면 없다)
   origin?: SessionOrigin;
   // 세션 파일의 kind(ATC-98): bg → background, interactive → interactive. 옛 스냅샷·Codex 세션·모르는 값이면 없다

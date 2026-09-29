@@ -1,5 +1,6 @@
 import type { Airport, Session } from "../../server/model.ts";
 import type { Job } from "../../server/job-state.ts";
+import { type Activity, activityParts } from "../../server/activity.ts";
 import { callsign } from "./aviation.ts";
 import { type Index, sessionLocation } from "./derive.ts";
 import "./ui.css";
@@ -78,6 +79,20 @@ export function NeedsYou({ job, className = "" }: { job: Job | null | undefined;
   return (
     <span className={`needs-you mono ${className}`.trim()} title={[job.detail, job.since ? `since ${job.since.slice(11, 16)}Z` : "", "SUPERVISOR가 `claude attach <id>`로 붙어 답하거나 메시지를 보낸다"].filter(Boolean).join(" — ")}>
       NEEDS YOU{job.needs ? <span className="needs-you-text"> · {job.needs}</span> : null}
+    </span>
+  );
+}
+
+// ACTIVITY(ATC-97): "Bash · Run the test suite · 12s". 도구가 돌면 tool, 모델 대기는 model, idle은 흐리게. 본문은 없다
+const PHASE_TIP = { tool: "도구 실행 중", model: "도구 결과 뒤 모델 응답 대기", idle: "턴이 끝나 쉬는 중" } as const;
+export function ActivityLine({ activity, now, className = "" }: { activity: Activity | null | undefined; now: number; className?: string }) {
+  if (!activity) return null;
+  const { what, ago } = activityParts(activity, now);
+  return (
+    <span className={`activity is-${activity.phase} ${className}`.trim()} title={`ACTIVITY — ${PHASE_TIP[activity.phase]}\n${what ? `${what} · ` : ""}${ago}`}>
+      <span className="activity-dot" aria-hidden="true" />
+      {what && <span className="activity-what">{what}</span>}
+      <span className="activity-ago">{what ? " · " : ""}{ago}</span>
     </span>
   );
 }

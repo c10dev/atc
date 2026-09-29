@@ -1,5 +1,6 @@
 import type { AircraftView, FlightDetail } from "./fleet.ts";
 import type { Job } from "./job-state.ts";
+import type { Activity } from "./activity.ts";
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel, type HealthCode, healthLabel } from "./health.ts";
 import { fuelHoldTag, fuelTitle } from "./fuel-remaining.ts";
 import { type ContextBadge, contextBadgeOf } from "./fuel-context.ts";
@@ -51,6 +52,7 @@ export interface FleetRow {
   // AIRCRAFT health(ATC-45): "HOLD · LIMIT until 07:40Z" 같은 짧은 글과 원인·다음 한 걸음
   health: { code: HealthCode; level: "info" | "alert"; label: string; detail: string; next: string } | null;
   job?: Job | null; // 백그라운드 job 상태(ATC-99): blocked면 NEEDS YOU
+  activity: Activity | null; // ACTIVITY(ATC-97): 지금 하는 일 한 줄
   report: AircraftView["report"] | null; // 마지막 턴의 REPORT 판정(ATC-89, 그림자). 칩과 툴팁
   account: string | null; // ACCOUNT 라벨(ATC-51). 등록부에 라벨이 하나도 없으면 null
   accountIsDefault: boolean;
@@ -89,6 +91,7 @@ export function fleetRows(aircraft: readonly AircraftView[], now: number): Fleet
       weekOnTime: a.actuals.weekOnTime?.rate ?? null,
       restarting: a.restarting ? { label: RESTARTING_TEXT, until: a.restarting.until } : null,
       job: a.job ?? null,
+      activity: a.activity ?? null,
       report: a.report ?? null,
       health: a.health ? { code: a.health.code, level: a.health.level, label: healthLabel(a.health, now), detail: a.health.detail, next: a.health.next } : null,
       account: a.account ?? null,

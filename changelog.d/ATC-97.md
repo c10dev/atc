@@ -1,0 +1,5 @@
+### Added
+- STRIPS and FLEET show what each live Claude AIRCRAFT is doing now: one ACTIVITY line like `Bash · Run the test suite · 12s` (ATC-97, [docs/fleet.md](docs/fleet.md) "ACTIVITY as built").
+  - `server/activity.ts` (pure) reads the last `tool_use` and whether its `tool_result` followed, and gives `{tool, label, at, phase}` with `phase` `tool`, `model` or `idle`. The label is the Bash `description`, a file basename, `<server> <tool>` for MCP tools, the Agent/Task `description`, the skill name or the SendMessage recipient, with control characters removed and cut to 60 characters. Commands, file contents, prompts, tool results and assistant text are never included.
+  - It is computed from the same 64 KB transcript tail and cache as AIRCRAFT health (`healthOfSession` now returns `{ health, activity }`), so there is no second read. The snapshot's `Session` gains `activity` for live Claude sessions, and FLEET rows carry it from the snapshot. FLIGHT RECORDER lines don't change.
+  - The line sits under the callsign on the STRIPS strip, as a second line in the FLEET list's FLYING column and under FLYING on the FLEET card; `idle` is dimmed.

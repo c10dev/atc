@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { elapsedText, type FleetRow, flightDetailText } from "../../../../server/fleet-status.ts";
 import { flightNumber } from "../../aviation.ts";
 import { timeAgo } from "../../derive.ts";
-import { JobDetail, NeedsYou } from "../../ui.tsx";
+import { ActivityLine, JobDetail, NeedsYou } from "../../ui.tsx";
 import { type AbsentMark, AbsentChip } from "./Absent.tsx";
 import { ContextCell } from "./Context.tsx";
 import { pct } from "./shared.ts";
@@ -106,6 +106,7 @@ export function StatusList({
                   ) : (
                     <span className="faint">—</span>
                   )}
+                  <ActivityLine activity={r.activity} now={now} className="fl-r-activity" />
                 </span>
                 <span className="fl-r-elapsed mono" title="지금 쥔 STAND를 잡은 뒤 흐른 시간">
                   {r.elapsedMin == null ? <span className="faint">—</span> : elapsedText(r.elapsedMin)}

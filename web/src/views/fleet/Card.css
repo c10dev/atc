@@ -39,6 +39,11 @@
   color: var(--radar);
   font: var(--text-sm) var(--mono);
 }
+/* ACTIVITY(ATC-97): FLYING 아래 한 줄 */
+.fl-activity {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
 /* 멈춘 AIRCRAFT가 점유(claimTtl) 뒤에도 쥐고 있는 FLIGHT(ATC-86) */
 .fl-kept {
   margin: 0;

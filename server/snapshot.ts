@@ -50,11 +50,14 @@ export async function buildSnapshot(): Promise<Snapshot> {
   const sessions: Session[] = [...claude.sessions, ...codex.sessions];
   const sessionById = new Map(sessions.map((s) => [s.id, s]));
 
-  // AIRCRAFT health(ATC-45): 살아 있는 Claude 세션의 대화 기록 끝에서 멈춘 까닭을 읽는다
+  // AIRCRAFT health(ATC-45): 살아 있는 Claude 세션의 대화 기록 끝에서 멈춘 까닭을 읽는다. ACTIVITY(ATC-97)도 같은 끝에서
   const healthAt = Date.now();
   for (const f of claude.files) {
     const x = sessionById.get(f.sessionId);
-    if (x) x.health = healthOfSession(f, x.status, healthAt, config.health);
+    if (!x) continue;
+    const { health, activity } = healthOfSession(f, x.status, healthAt, config.health);
+    x.health = health;
+    if (activity) x.activity = activity;
   }
 
   // 백그라운드 세션의 permission mode(ATC-76): 명령줄에 없으니 그 세션을 띄운 LAUNCH 기록에서. 관제 세션 LAUNCH는 늘 auto

@@ -10,6 +10,7 @@ import { type Fact, factsOf, type Health, type HealthConfig, healthOf, mergeHeal
 import { sessionProcOf } from "../session-proc.ts";
 import { readJob, settleJob } from "../job-state.ts";
 import { lastMessageOf } from "../judges/report.ts";
+import { type Activity, type ActivityTrack, activityFromTrack, activityTrackOf } from "../activity.ts";
 
 interface SessionFile {
   pid: number;
@@ -281,7 +282,8 @@ export function sessionEventsOf(dir: string): TalkEvent[] {
 
 // AIRCRAFT health(ATC-45): 살아 있는 세션의 대화 기록 끝(64KB)만 읽는다. 사실은 파일 크기·시각이 같으면 다시 읽지 않는다
 const HEALTH_TAIL = 64 * 1024;
-const factsCache = new Map<string, { key: string; facts: Fact[] }>();
+// ACTIVITY(ATC-97)도 같은 끝·같은 캐시에서 읽는다(두 번 읽지 않는다)
+const factsCache = new Map<string, { key: string; facts: Fact[]; track: ActivityTrack | null }>();
 
 // push hook(ATC-47, hooks/health.mjs)이 남긴 health/<sessionId>.jsonl의 마지막 줄. 파일 끝 4KB만 본다.
 // hook이 없거나 파일이 없으면 null — pull만으로 판정한다. 파일 크기·시각이 같으면 다시 읽지 않는다
@@ -313,14 +315,19 @@ export function readPushRecord(sessionId: string): PushRecord | null {
   return rec;
 }
 
-export function healthOfSession(s: SessionFile, status: Session["status"], now: number, cfg?: HealthConfig): Health | null {
-  if (status === "dead") return null;
+export function healthOfSession(
+  s: SessionFile,
+  status: Session["status"],
+  now: number,
+  cfg?: HealthConfig,
+): { health: Health | null; activity: Activity | null } {
+  if (status === "dead") return { health: null, activity: null };
   const path = transcriptPath(s);
   let st;
   try {
     st = statSync(path);
   } catch {
-    return null;
+    return { health: null, activity: null };
   }
   const key = `${st.size}:${st.mtimeMs}`;
   let hit = factsCache.get(s.sessionId);
@@ -331,7 +338,8 @@ export function healthOfSession(s: SessionFile, status: Session["status"], now: 
       const buf = Buffer.alloc(len);
       readSync(fd, buf, 0, len, st.size - len);
       const text = buf.toString("utf8");
-      hit = { key, facts: factsOf(len < st.size ? text.slice(text.indexOf("\n") + 1) : text) };
+      const tail = len < st.size ? text.slice(text.indexOf("\n") + 1) : text;
+      hit = { key, facts: factsOf(tail), track: activityTrackOf(tail) };
     } finally {
       closeSync(fd);
     }
@@ -339,7 +347,7 @@ export function healthOfSession(s: SessionFile, status: Session["status"], now: 
   }
   const pull = healthOf(hit.facts, { status, lastWriteAt: st.mtimeMs }, now, cfg);
   // push가 대화 기록의 마지막 사실보다 새로우면 push가 이긴다(ATC-47)
-  return mergeHealth(readPushRecord(s.sessionId), pull, hit.facts);
+  return { health: mergeHealth(readPushRecord(s.sessionId), pull, hit.facts), activity: activityFromTrack(hit.track, status) };
 }
 
 // 턴이 끝난 세션의 마지막 CAPTAIN 메시지(ATC-89 REPORT 판정). 대화 기록 끝만 읽고 저장하지 않는다 — 부르는 쪽이 ATCC 확인을 먼저 한다.

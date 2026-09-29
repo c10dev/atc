@@ -1156,6 +1156,15 @@ FLEET PLAN 블록의 FUEL(8.6의 "주간 사용량 줄")은 만들었다(ATC-63)
 - **다시 blocked가 된 job(ATC-138).** `since`는 `timeline.jsonl`에서 `blocked`가 이어진 줄들의 첫 줄이라, 답하고 일하다가 `working` 줄 없이 다시 blocked가 된 job은 옛 `since`를 그대로 갖고, ATC-133의 규칙은 그 뒤 턴을 답으로 읽었다. `settleJob`은 이제 마지막 턴을 `state.json`을 마지막으로 쓴 때(`writtenAt`: `updatedAt`, 없으면 파일 mtime, 그것도 없으면 `since`)와 견준다. 지금 `needs`·`detail`이 적힌 때다. `blocked`가 끝난 것은 `tempo`가 `active`일 때, 또는 마지막 턴이 `writtenAt`+30초 GRACE보다 나중이고 `tempo`가 `blocked`가 아닐 때뿐이다. `tempo: blocked`이고 `needs`가 있으면 뒤에 턴이 이어져도 끝난 것으로 보지 않는다. 경보의 "N분째"는 계속 `since`부터 센다(PILOT'S DISCRETION: `updatedAt`은 새 기다림이 아닌 이유로도 움직여서, 그것으로 세면 진짜 긴 기다림을 가릴 수 있다).
 - **확인한 버전** Claude Code 2.1.284(2026-09-29). Claude Code 내부 파일이라 파일이 없거나 다른 버전이거나 모르는 state면 아무것도 보이지 않고 오류도 내지 않는다.
 
+### ACTIVITY as built (ATC-97)
+
+살아 있는 Claude AIRCRAFT마다 ACTIVITY 한 줄이 붙는다: 마지막으로 부른 도구, 짧은 라벨, 그 도구가 아직 도는지·모델 응답을 기다리는지·쉬는지, 그리고 그게 언제 시작됐는지. 메시지 본문은 담지 않는다.
+
+- **읽기.** `server/activity.ts`(순수 함수). `activityTrackOf(tail)`은 본 대화의 `assistant` `tool_use` 블록과 `user` 줄만 읽는다(서브에이전트·메타·깨진 줄은 건너뛰어, 줄 중간에서 잘린 끝도 괜찮다). `tool_use`는 그 `tool_result`가 올 때까지 도는 중이고, 새 지시(또는 중단)가 오면 앞 턴의 도구는 끝난 것으로 본다. `activityFromTrack(track, status)`가 phase를 얹는다: 세션이 idle이면 `idle`, 결과 없는 호출이 있으면 `tool`(가장 늦은 것을 보여서 병렬 호출도 맞다), 아니면 `model`. `at`은 `tool`이면 도구 호출, `model`이면 마지막 결과·지시, `idle`이면 마지막 기록 시각이다.
+- **라벨.** `Bash`·`Agent`·`Task`는 `description`, `Read`·`Edit`·`Write`는 파일 이름, `mcp__<server>__<tool>`은 `<server> <tool>`, `Skill`은 skill 이름, `SendMessage`는 받는 쪽. 그 밖의 도구는 라벨이 없다. 제어 문자와 방향 문자를 빼고 60자로 자른다. Bash `command`, 파일 내용, 프롬프트, 도구 결과, thinking, assistant 글은 결과에 들어가지 않는다(`server/activity.test.ts`가 확인한다).
+- **두 번 읽지 않는다.** `healthOfSession`이 같은 64KB 끝에서 추적 값을 셈해 같은 캐시(크기·mtime 키)에 두고, 이제 `{ health, activity }`를 돌려준다. 스냅샷은 살아 있는 Claude 세션에만 `Session.activity`를 싣고, `fleet-live.ts`가 이를 `AircraftView`와 FLEET 목록 줄로 옮겨 FLEET와 STRIPS가 스냅샷 속도로 바뀐다. FLIGHT RECORDER의 `sample`·`event` 줄에는 들어가지 않는다.
+- **화면.** `Bash · Run the test suite · 12s` 같은 흐린 한 줄(`idle · …`은 더 흐리게, 모델을 기다리면 `model · …`·`thinking · …`, phase 색 점)이 STRIPS 스트립의 callsign 아래, FLEET 목록 FLYING 칸의 둘째 줄, FLEET 카드의 FLYING 아래에 붙는다. phase 표시가 앞에 오고 경과 시간은 늘 보이며, 칸이 좁으면 라벨이 잘린다.
+
 ## 9. `lane:`에서 `tail:`로 옮기기
 
 네 단계 모두 끝났다.
