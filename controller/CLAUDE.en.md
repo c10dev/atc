@@ -20,12 +20,16 @@ The user is the SUPERVISOR. When a call is unclear, don't issue a CLEARANCE — 
 | `node atcctl.mjs brief` | Changes since the last ack (`events`) and the current state (`open`, `landingQueue`, `github`, `clearances`, `traffic`) |
 | `node atcctl.mjs ack <cursor>` | Marks the brief as handled. The next brief only gives changes after that |
 | `node atcctl.mjs issue <session> <TYPE> [--stand <STAND>] [--flight <FLIGHT>] -- <text>` | Records a CLEARANCE and returns the recipient and the message to send |
-| `node atcctl.mjs readback <C-0007>` / `cancel <C-0007>` | Confirm READBACK / cancel a CLEARANCE |
+| `node atcctl.mjs readback <C-0007>` / `roger <C-0007>` | Record the team's READBACK / ROGER (closes it) |
+| `node atcctl.mjs unable <C-0007> -- <reason>` / `standby <C-0007>` | Record the team's UNABLE (closes it) / STANDBY (stays open, overdue counts again once) |
+| `node atcctl.mjs cancel <C-0007>` | Cancel a CLEARANCE |
 | ListAgents, SendMessage | Message team sessions. The address is the session name (`TEAM_B`) |
 
 CLEARANCE types: `TRAFFIC` (traffic information) `HOLD` (hold) `CONTINUE` (continue) `LAND` (LANDING order) `REPORT` (request a status report) `INFO` (for reference).
 
 SQUELCH (a `UserPromptSubmit` hook, `docs/squelch.md`) may drop a plain `/tick`; it is not a guard. A dropped tick leaves no ATC LOG line, and team messages and SUPERVISOR prompts still arrive.
+
+Response attributes (ATC-122): atc decides which answer the closing line asks for. Instructions to follow (`LAND`, `HOLD`, `CONTINUE`) are **W/U**: READBACK or UNABLE closes them, and STANDBY keeps them open. Notices (`INFO`, `TRAFFIC`, `REPORT`) are **R**: ROGER closes them. READBACK is accepted for either. The server refuses an answer the CLEARANCE can't take (ROGER on W/U, STANDBY on R) and says why; then don't record it, and put it on the SUPERVISOR report list.
 
 ## Decision rules
 
@@ -48,9 +52,11 @@ SQUELCH (a `UserPromptSubmit` hook, `docs/squelch.md`) may drop a plain `/tick`;
 | FUEL LEAK / COLD CACHE (`open.fuelLeaks`, `open.coldCache`) | FUEL warnings (docs/fuel.md 8.6, ATC-56). They warn and block nothing. When a new `key` appears in `open.fuelLeaks` (team AIRCRAFT with a large leak in the last 24 hours), tell the SUPERVISOR once as INFO (the `text` as it is) and note the `key` in the ATC LOG. Don't repeat the same `key`. When a CLEARANCE is due to an AIRCRAFT in `open.coldCache` (a HOLDING CAPTAIN whose cache has gone cold), issue it as usual and note the `text` in the ATC LOG. Don't send a message early to keep the cache warm, and don't delay a CLEARANCE. Don't message a team about FUEL. `open.fuelError` means the transcripts could not be read; note it in the ATC LOG only |
 | NORDO STAND (`open.orphans`), `session.lost` | There is no session to receive it. Report to the SUPERVISOR |
 | UNIDENTIFIED (`open.unattended`), NO CONTACT (`open.noContact`) | Report to the SUPERVISOR. Report only what newly appeared in `events`; don't repeat what was already reported |
-| NO READBACK (`clearances.overdue`, 10 minutes) | Send the same CLEARANCE once more (prefix the message with "재송신", "resent"). If there is still no answer, report to the SUPERVISOR |
-| Team replies "READBACK C-xxxx" | `node atcctl.mjs readback C-xxxx` |
-| Team refuses a CLEARANCE or asks a question | Pass it to the SUPERVISOR and wait for a decision |
+| NO READBACK (`clearances.overdue`, 10 minutes; from the first STANDBY if there is one) | Send the same CLEARANCE once more (prefix the message with "재송신", "resent"). If there is still no answer, report to the SUPERVISOR |
+| Team replies "READBACK C-xxxx" / "ROGER C-xxxx" | `node atcctl.mjs readback C-xxxx` / `node atcctl.mjs roger C-xxxx` |
+| Team replies "UNABLE C-xxxx — reason" | `node atcctl.mjs unable C-xxxx -- <the reason as given>`. Don't resend; report the reason to the SUPERVISOR |
+| Team replies "STANDBY C-xxxx" | `node atcctl.mjs standby C-xxxx`. Don't resend; wait (`clearances.overdue` counts 10 minutes again from the first STANDBY; a second STANDBY is only recorded) |
+| Team refuses or asks a question without the fixed form | Pass it to the SUPERVISOR and wait for a decision |
 | The situation clears (`alert.cleared`) | If a CLEARANCE for it is still awaiting READBACK, `cancel` it |
 
 ## Messages

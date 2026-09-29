@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { Hono } from "hono";
 import { callsign, flightNumber } from "./callsign.ts";
 import { awayOperations } from "./away.ts";
-import { allClearances, CLEARANCE_TYPES, isPending, issueClearance, markClearance } from "./clearances.ts";
+import { allClearances, CLEARANCE_TYPES, isClearanceOverdue, isPending, issueClearance, markClearance } from "./clearances.ts";
 import { config } from "./config.ts";
 import type { EventLog } from "./events.ts";
 import { type AtfmConfig, DEFAULT_ATFM, enforcedStops, landOf, loadAtfm, slotHoldOf, slotLimitOf, slotsOf } from "./atfm.ts";
@@ -12,6 +12,7 @@ import { fuelInfos } from "./fuel-remaining.ts";
 import type { FuelWatch } from "./fuel-watch.ts";
 import { inSequence, pullKey, reviewerOf } from "./landing.ts";
 import { record } from "./recorder.ts";
+import { closingLine, responseOf } from "./response.ts";
 import type { Clearance, ClearanceType, Session, Snapshot, TrafficEvent } from "./model.ts";
 
 // CONTROLLER(1단계, 조언 모드)가 쓰는 API. atc는 판단하지 않고, 브리핑을 주고 CLEARANCE·READBACK을 기록만 한다.
@@ -61,6 +62,8 @@ export function buildBrief(
     stand: standName(c.stand),
     flight: flight(c.flight),
     text: c.text,
+    response: responseOf("clearance", c.type), // 닫는 답(ATC-122): W/U는 READBACK·UNABLE, R은 ROGER
+    standbyAt: c.standbyAt ?? null,
     ageMin: Math.round((now - Date.parse(c.at)) / 60_000),
   });
 
@@ -203,7 +206,7 @@ export function buildBrief(
     github: s.github,
     clearances: {
       pending: pending.map(clearanceView),
-      overdue: pending.filter((c) => now - Date.parse(c.at) > OVERDUE_MS).map((c) => c.id),
+      overdue: pending.filter((c) => isClearanceOverdue(c, now, OVERDUE_MS)).map((c) => c.id), // 첫 STANDBY가 있으면 그때부터 다시 센다
     },
     traffic,
   };
@@ -218,7 +221,7 @@ export function formatClearance(c: Clearance, s: Snapshot): string {
     `[ATC ${c.id}] ${who} · ${c.type}`,
     where,
     c.text,
-    `— 받았으면 이 메시지에 "READBACK ${c.id}"로 답장해 주세요.`,
+    closingLine("clearance", responseOf("clearance", c.type), c.id),
   ]
     .filter(Boolean)
     .join("\n");
@@ -299,10 +302,13 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
     return c.json({ clearance, sendTo: target.name, message: formatClearance(clearance, s) });
   });
 
-  for (const op of ["readback", "cancel"] as const) {
-    app.post(`/api/clearances/:id/${op}`, (c) => {
-      const cleared = markClearance(c.req.param("id").toUpperCase(), op);
-      return cleared ? c.json({ clearance: cleared }) : c.json({ error: "그런 CLEARANCE가 없음" }, 404);
+  // CAPTAIN의 답을 TOWER가 기록한다(ATC-122). unable은 본문에 reason. 이 메시지에 받을 수 없는 답이면 409
+  for (const op of ["readback", "roger", "unable", "standby", "cancel"] as const) {
+    app.post(`/api/clearances/:id/${op}`, async (c) => {
+      const body = op === "unable" ? await c.req.json().catch(() => ({})) : {};
+      const r = markClearance(c.req.param("id").toUpperCase(), op, typeof body.reason === "string" ? body.reason : undefined);
+      if (!r) return c.json({ error: "그런 CLEARANCE가 없음" }, 404);
+      return "error" in r ? c.json(r, 409) : c.json({ clearance: r });
     });
   }
 }

@@ -129,6 +129,7 @@ Teams (AIRCRAFT) are described in `~/.local/state/atc/fleet.json` and edited in 
 | `GET /api/fleet/crew-changes/:id` | One CREW CHANGE and the mode, `{change, mode}` (used by send-guard) |
 | `POST /api/fleet/crew-changes/:id/send` | OCC: approved → sent (approval mode), stores and returns the exact `message` and `sendTo`; on a sent one, the same text again. 409 when not approved or another one for that AIRCRAFT waits for READBACK |
 | `POST /api/fleet/crew-changes/:id/readback` | OCC: CAPTAIN's `READBACK CC-xxxx` → acknowledged (any mode). 409 unless sent |
+| `POST /api/fleet/crew-changes/:id/{unable,standby}` | OCC: CAPTAIN's `UNABLE CC-xxxx` `{reason}` → unable (closed, in `crew-changes/brief` `unable` for a day) / `STANDBY CC-xxxx` (stays sent, overdue restarts once). ATC-122 |
 | `GET /api/fleet/checkride` | CHECKRIDE rows: AIRCRAFT × TYPE RATING with status (`GRANT`, `REVIEW`, `BLOCKED`, `BUILDING`, `HOLDS`), reason, counts and evidence, plus the criteria |
 | `POST /api/fleet/:registration/checkride` | `{rating, action: "grant" \| "revoke"}`: the SUPERVISOR grants or revokes a rating; recorded in the FLIGHT RECORDER |
 | `GET /api/logbook?aircraft=TEAM_X&days=14` | LOGBOOK entries, newest arrival first (`aircraft` optional, `days` 1–90), with the reader's last run and error |
@@ -240,10 +241,10 @@ A Claude session opened in the `controller/` folder becomes the TOWER session (C
   [ATC C-0007] BRAVO (TEAM_B) · HOLD
   STAND vocado-voc-175 · FLIGHT VOC175
   앞 팀이 끝나 HANDOFF할 때까지 이 STAND를 건드리지 말 것
-  — 받았으면 이 메시지에 "READBACK C-0007"로 답장해 주세요.
+  — 받았으면 이 메시지에 "READBACK C-0007", 못 하면 "UNABLE C-0007 — 사유", 시간이 필요하면 "STANDBY C-0007"로 답장해 주세요.
   ```
 
-  (Roughly: "Don't touch this STAND until the team ahead finishes and hands it off. Reply to this message with "READBACK C-0007" once received.")
+  (Roughly: "Don't touch this STAND until the team ahead finishes and hands it off. Reply "READBACK C-0007" once received, "UNABLE C-0007 — reason" if you can't, or "STANDBY C-0007" if you need time." Notices such as INFO ask for "ROGER C-0007" instead; see [docs/guide/radio.md](docs/guide/radio.md), ATC-122.)
 
 - If the team session and the TOWER session use different permission modes (auto-approve or not), messages may wait for user approval.
 
@@ -255,7 +256,7 @@ A Claude session opened in the `controller/` folder becomes the TOWER session (C
 | `GET /api/landing/review/:repo/:pr` | Review packet: PR title and body, the FLIGHT's acceptance criteria and forbidden changes, head, changed files, diff (capped, `diffTruncated`). 403 for excluded PRs (no FLIGHT, rating:SEC or Risk labels, security paths such as migrations, SQL, auth, session, admission, RLS, middleware or secrets, security keywords in the PR or FLIGHT), 409 for drafts, PRs Codex can review, a changed head or an unreadable FLIGHT |
 | `POST /api/landing/review/:repo/:pr` | `{head, verdict: pass\|findings, text, model}` landing review of the current head from the REVIEW session (Claude Sonnet only), appended to `landing-reviews.jsonl`. P0/P1/P2 severities; `pass` has no P0/P1. A pass on a PR that is not excluded counts as the head review for CLEARED TO LAND while Codex is unavailable (`ATC_CODEX_SILENT_HOURS`, default 6) |
 | `POST /api/clearances` | `{to, type, stand?, flight?, text}` record a CLEARANCE, returns the message to send |
-| `POST /api/clearances/:id/readback` · `/cancel` | Confirm READBACK · cancel |
+| `POST /api/clearances/:id/readback` · `/roger` · `/unable` · `/standby` · `/cancel` | The team's answer (ATC-122): READBACK, ROGER (R only) or UNABLE `{reason}` close it; STANDBY (W/U only) restarts the 10-minute overdue once · cancel. 409 for an answer the CLEARANCE can't take |
 
 Events (`server/events.ts`) are differences between snapshots: alerts raised and cleared, HANDOFF, the LANDING SEQUENCE (`landing.requested` when a PR enters, `landing.cleared` when it becomes CLEARED TO LAND, `landing.blocked` when a block the CAPTAIN has to fix appears, `landing.left` when it is merged, closed or turned back into a Draft), a session ending while holding a claim, OUTSTATION start and end. Snapshots taken right after the server starts, before Linear, git and GitHub are first read, are not compared; LANDING events are only compared once both snapshots have PRs from GitHub.
 
@@ -326,7 +327,7 @@ Design: [docs/dispatch.md](docs/dispatch.md). Every 5 minutes the atc server com
 | `POST /api/dispatch/proposals/:id/codes` | `{codes: ["needs-human", …]}` SUPERVISOR adds reason chips to an old shadow rejection (`disagreed` only, else 409). Appends a `recode` op that only the gate reads: a rejection whose chips are all FLIGHT chips leaves the gate (`gate.notReady`); no FLIGHT hold is started |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR decision (approval mode only), both take `{via?}`, `reject` also `{reason?, reasonCodes?}` |
 | `POST /api/dispatch/proposals/:id/release` | Approved → SENT, returns `sendTo` and the FLIGHT PLAN (the same text again if already sent) |
-| `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, or decline with `{reason}`. A STAND-free FLIGHT (SURVEY, CHECK) is DEPARTED at the READBACK (`departedStand: null`, `departedVia: "readback"`) |
+| `POST /api/dispatch/proposals/:id/{accept,decline,standby}` | CAPTAIN READBACK, decline (`UNABLE D-xxxx`) with `{reason}`, or STANDBY (stays sent; READBACK overdue restarts once, ATC-122). A STAND-free FLIGHT (SURVEY, CHECK) is DEPARTED at the READBACK (`departedStand: null`, `departedVia: "readback"`) |
 | `POST /api/dispatch/proposals/:id/arrived` | OCC: `{note}` (result link or one line, 500 characters), the CAPTAIN's report that a STAND-free DEPARTED FLIGHT is done → ARRIVED (`arrivedNote`, `arrivedUrl`) |
 | `POST /api/dispatch/proposals/:id/recall` | SUPERVISOR: `{reason}`, SENT, ACCEPTED or STAND-free DEPARTED → RECALLING (not after a DEPARTED with a STAND; allowed during ground stops) |
 | `POST /api/dispatch/proposals/:id/{recall-send,recalled}` | OCC: the RECALL text and `sendTo` (approval mode, no state change) / CAPTAIN's `READBACK D-xxxx RECALL` → RECALLED |

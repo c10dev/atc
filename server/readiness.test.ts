@@ -126,3 +126,9 @@ test("점검표: 항목 순서·상태(AIRPORT마다 한 줄), 게이트는 gate
   assert.deepEqual([ready.items[1].status, ready.items[1].detail], ["not-ready", "코드에서 확인 안 됨: POST …/recall"]);
   assert.deepEqual([ready.items[6].status, ready.items[6].detail], ["not-ready", "코드에서 확인 안 됨: atcctl crew-change send"]);
 });
+
+test("루트 CLAUDE.md 교신 절은 VOCADO_READBACK_SUGGESTION과 같은 문장을 쓴다(ATC-122: UNABLE·STANDBY·ROGER까지)", () => {
+  const md = readFileSync(new URL("../CLAUDE.md", import.meta.url), "utf8");
+  assert.ok(md.split("\n").includes(VOCADO_READBACK_SUGGESTION));
+  for (const w of ["UNABLE D-xxxx", "STANDBY D-xxxx", "UNABLE CC-xxxx", "ROGER C-xxxx"]) assert.ok(VOCADO_READBACK_SUGGESTION.includes(w), w);
+});

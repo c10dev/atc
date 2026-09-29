@@ -202,7 +202,7 @@ DISPATCH session: SendMessage the FLIGHT PLAN to the CAPTAIN
   FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High
   <ticket title and URL, 목표 · 완료 기준 · 이 작업만의 제약 from the issue, DISPATCH note>
   <PILOT'S DISCRETION line>
-  — If you take it, reply "READBACK D-0003"; if not, reply with the reason.
+  — If you take it, reply "READBACK D-0003"; if you can't, "UNABLE D-0003 — reason"; if you need time, "STANDBY D-0003" (ATC-122).
   끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요. (see "DIRECT briefs")
 CAPTAIN: READBACK → Linear In Progress, prepares the STAND (same rules as today)
 atc: DEPARTED once that FLIGHT gets a STAND; if not, rechecks after 30 minutes like TOWER does

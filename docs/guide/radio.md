@@ -1,6 +1,21 @@
 # 교신 규칙
 
-관제 세션과 팀 세션은 Claude Code의 세션 간 메시지로 교신한다. 문구는 atc가 만들고, 받는 쪽은 READBACK으로 확인한다.
+관제 세션과 팀 세션은 Claude Code의 세션 간 메시지로 교신한다. 문구는 atc가 만들고, 받는 쪽은 문구 끝줄이 청하는 답으로 확인한다.
+
+## 답하는 말 (ATC-122)
+
+메시지마다 어떤 답이 그 메시지를 닫는지 atc가 정해 끝줄에 적는다(CPDLC의 응답 속성과 같다, [조사](../research/aviation-signals.ko.md) 1–2절).
+
+| 답 | 뜻 | 받는 메시지 |
+|---|---|---|
+| `READBACK <id>` | 받았고, 하겠다 | 모든 메시지. 닫힌다 |
+| `ROGER <id>` | 받았다(알림) | INFO·TRAFFIC·REPORT CLEARANCE(R). 닫힌다 |
+| `UNABLE <id> — 사유` | 못 한다 | LAND·HOLD·CONTINUE CLEARANCE, FLIGHT PLAN, CREW CHANGE(W/U). 닫힌다. 관제 세션은 다시 보내지 않고 SUPERVISOR에게 보고한다 |
+| `STANDBY <id>` | 받았지만 시간이 필요하다 | W/U 메시지. 열린 채 남고, READBACK 10분 overdue를 첫 STANDBY부터 한 번 다시 센다. 두 번째 STANDBY는 기록만 된다 |
+
+- RECALL은 `READBACK D-xxxx RECALL`로만 닫힌다(멈추라는 지시라 UNABLE·STANDBY가 없다).
+- 받을 수 없는 답(지시에 ROGER, 알림에 STANDBY)은 관제 세션이 기록하려 할 때 atc가 거절한다. 그때는 SUPERVISOR에게 올라간다.
+- 답은 관제 세션(TOWER·OCC)이 읽고 `atcctl`로 기록한다. STRIPS 도장에 `ROGER`·`STANDBY`·`UNABLE — 사유`가, DISPATCH IN FLIGHT 줄에 `STANDBY`가 보인다. FLIGHT가 있는 UNABLE은 FLIGHT FOLLOWING에 하루 뜨고, CREW CHANGE의 UNABLE은 `crew-change brief`의 `unable`에 하루 남는다.
 
 ## TOWER → 팀: CLEARANCE
 
@@ -8,11 +23,11 @@
 [ATC C-0007] BRAVO (TEAM_B) · HOLD
 STAND vocado-voc-175 · FLIGHT VOC175
 DELTA가 끝날 때까지 대기
-— 받았으면 이 메시지에 "READBACK C-0007"로 답장해 주세요.
+— 받았으면 이 메시지에 "READBACK C-0007", 못 하면 "UNABLE C-0007 — 사유", 시간이 필요하면 "STANDBY C-0007"로 답장해 주세요.
 ```
 
-- 팀 리더는 그 메시지에 `READBACK C-0007`로 답한다. 따를 수 없거나 판단이 필요하면 READBACK 대신 이유를 답한다(vocado `CLAUDE.md` 규칙).
-- 종류: TRAFFIC · HOLD · CONTINUE · LAND · REPORT · INFO.
+- 팀 리더는 끝줄이 청하는 답으로 답한다(위 "답하는 말"). 형식 없이 거부하거나 질문하면 TOWER가 SUPERVISOR에게 전한다.
+- 종류: TRAFFIC · HOLD · CONTINUE · LAND · REPORT · INFO. LAND·HOLD·CONTINUE는 W/U, INFO·TRAFFIC·REPORT는 R(끝줄이 `ROGER C-xxxx`를 청한다).
 
 ## LAND와 LANDING 막힘 알림
 
@@ -31,11 +46,11 @@ DELTA가 끝날 때까지 대기
   [ATC C-0012] ECHO (TEAM_E) · INFO
   STAND vocado-voc-52-persistent-exec · FLIGHT VOC52
   PR #389 LANDING 불가: 리뷰가 이전 커밋 3510a91에만 있음: head 4cbacd8에 리뷰 필요
-  — 받았으면 이 메시지에 "READBACK C-0012"로 답장해 주세요.
+  — 받았으면 이 메시지에 "ROGER C-0012"로 답장해 주세요.
   ```
 
 - 같은 막힘으로는 다시 보내지 않는다. CI 진행 중이나 GitHub 계산 중처럼 기다리면 풀리는 것은 알리지 않는다.
-- 팀은 READBACK만 하고, 고치는 방법은 CAPTAIN이 정한다. 막힘이 풀리면 PR은 저절로 CLEARED TO LAND가 되고 그때 `LAND`가 온다.
+- 팀은 ROGER만 하고, 고치는 방법은 CAPTAIN이 정한다. 막힘이 풀리면 PR은 저절로 CLEARED TO LAND가 되고 그때 `LAND`가 온다.
 - **GROUND STOP**(3단계 출발 중지, 스위치로 켰을 때만): 그 AIRPORT에는 `LAND`가 나가지 않는다. 시작할 때 CLEARED PR의 팀에 `HOLD`("GROUND STOP: <사유> — LAND 보류")가, 풀릴 때 `CONTINUE`("GROUND STOP 풀림 — LANDING SEQUENCE대로 진행")가 간다. 그 AIRPORT에는 새 배정도 나가지 않는다.
 
 ## OCC → CAPTAIN: FLIGHT PLAN (2b부터)
@@ -51,7 +66,7 @@ FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High
 이 작업만의 제약: …
 DISPATCH 메모: CAUTION · …
 애매한 곳은 PILOT'S DISCRETION으로 합리적인 기본값을 고르고 PR에 적으세요.
-— 맡으면 이 메시지에 "READBACK D-0003", 못 맡으면 사유로 답장해 주세요.
+— 받았으면 이 메시지에 "READBACK D-0003", 못 하면 "UNABLE D-0003 — 사유", 시간이 필요하면 "STANDBY D-0003"로 답장해 주세요.
 끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요.
 ```
 
@@ -91,11 +106,11 @@ TEAM_H CAPTAIN, SUPERVISOR가 이 AIRCRAFT의 CREW COMPLEMENT를 바꿨습니다
 …
 적용이 끝나면 "TEAM_H CREW CHANGE CC-0001 COMPLETE" 한 줄만 남기세요.
 
-— 받았으면 이 메시지에 "READBACK CC-0001"로 답장해 주세요.
+— 받았으면 이 메시지에 "READBACK CC-0001", 못 하면 "UNABLE CC-0001 — 사유", 시간이 필요하면 "STANDBY CC-0001"로 답장해 주세요.
 ```
 
 - CAPTAIN은 받으면 `READBACK CC-0001`로 답하고, 팀원을 바꾼 뒤 `COMPLETE` 한 줄을 남긴다. OCC가 READBACK을 기록한다(`crew-change readback`).
-- 10분 넘게 READBACK이 없으면 OCC가 같은 문구를 한 번 더 보내고, 그래도 없으면 SUPERVISOR에게 보고한다.
+- 10분 넘게 READBACK이 없으면(첫 STANDBY가 있으면 그때부터 10분) OCC가 같은 문구를 한 번 더 보내고, 그래도 없으면 SUPERVISOR에게 보고한다. `UNABLE CC-0001 — 사유`면 다시 보내지 않고 SUPERVISOR에게 보고한다.
 - 2a(shadow)에서는 보내지 않는다. SUPERVISOR가 FLEET 카드에서 복사해 붙여 넣는다. 2b를 켜기 전에 vocado `CLAUDE.md`의 READBACK 규칙을 `[OCC CC-xxxx]`까지 넓힌다(SUPERVISOR가 고친다).
 - send-guard는 approval 모드이고, `crew-change send`로 보냄(sent) 상태가 된 건을 그 AIRCRAFT(REGISTRATION)에게 서버가 저장한 문구 그대로 보낼 때만 통과시킨다.
 

@@ -131,11 +131,14 @@ export function computeMetrics(records: RecordLine[], clearances: Clearance[], n
   const issued = clearances.filter((c) => inRange(c.at));
   const readBack = issued.filter((c) => c.readbackAt);
   const readbackMs = readBack.map((c) => Date.parse(c.readbackAt!) - Date.parse(c.at));
-  const overdue = issued.filter(
-    (c) => !c.cancelledAt && (c.readbackAt ? Date.parse(c.readbackAt) - Date.parse(c.at) > OVERDUE_MS : now - Date.parse(c.at) > OVERDUE_MS),
-  );
+  // 답(READBACK·ROGER·UNABLE, ATC-122)이 온 시각. UNABLE도 답이라 늦음·비율에서 답한 것으로 센다
+  const answeredAt = (c: Clearance) => c.readbackAt ?? c.unableAt ?? null;
+  const overdue = issued.filter((c) => {
+    const at = answeredAt(c);
+    return !c.cancelledAt && (at ? Date.parse(at) - Date.parse(c.at) > OVERDUE_MS : now - Date.parse(c.at) > OVERDUE_MS);
+  });
   const answerable = issued.filter((c) => !c.cancelledAt);
-  const readbackRate = answerable.length ? answerable.filter((c) => c.readbackAt).length / answerable.length : null;
+  const readbackRate = answerable.length ? answerable.filter((c) => answeredAt(c)).length / answerable.length : null;
   const byType: Record<string, number> = {};
   for (const c of issued) byType[c.type] = (byType[c.type] ?? 0) + 1;
 

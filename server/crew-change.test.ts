@@ -172,14 +172,14 @@ test("crewChangeMessage: [OCC CC-xxxx] 머리 + 지시문 본문(옛 머리 뗌)
   assert.equal(lines[1], "");
   assert.equal(lines[2], "TEAM_H CAPTAIN, SUPERVISOR가 이 AIRCRAFT의 CREW COMPLEMENT를 바꿨습니다. 아래대로 팀원을 바꿔 주세요.");
   assert.ok(!m.includes("[ATC FLEET]"));
-  assert.ok(m.includes('"TEAM_H CREW CHANGE CC-0001 COMPLETE" 한 줄만 남기세요.\n\n— 받았으면 이 메시지에 "READBACK CC-0001"로 답장해 주세요.'));
-  assert.ok(m.endsWith('— 받았으면 이 메시지에 "READBACK CC-0001"로 답장해 주세요.'));
+  assert.ok(m.includes('"TEAM_H CREW CHANGE CC-0001 COMPLETE" 한 줄만 남기세요.\n\n— 받았으면 이 메시지에 "READBACK CC-0001", 못 하면 "UNABLE CC-0001 — 사유", 시간이 필요하면 "STANDBY CC-0001"로 답장해 주세요.'));
+  assert.ok(m.endsWith('— 받았으면 이 메시지에 "READBACK CC-0001", 못 하면 "UNABLE CC-0001 — 사유", 시간이 필요하면 "STANDBY CC-0001"로 답장해 주세요.'));
   // 본문은 지시문 그대로(머리 두 줄만 다름)
   assert.equal(lines.slice(2, -2).join("\n"), c.text.split("\n").slice(2).join("\n"));
   // 이미 [OCC …] 머리가 붙은 본문도 머리를 한 번만 둔다
   assert.equal(crewChangeMessage({ ...c, text: m.split("\n").slice(0, -2).join("\n") }), m);
   // 머리가 없는 본문은 그대로 감싼다. callsign이 없는 이름은 REGISTRATION만
-  assert.equal(crewChangeMessage({ id: "CC-0009", registration: "OPS", text: "본문" }), '[OCC CC-0009] CREW CHANGE · OPS\n\n본문\n\n— 받았으면 이 메시지에 "READBACK CC-0009"로 답장해 주세요.');
+  assert.equal(crewChangeMessage({ id: "CC-0009", registration: "OPS", text: "본문" }), '[OCC CC-0009] CREW CHANGE · OPS\n\n본문\n\n— 받았으면 이 메시지에 "READBACK CC-0009", 못 하면 "UNABLE CC-0009 — 사유", 시간이 필요하면 "STANDBY CC-0009"로 답장해 주세요.');
 });
 
 test("planCrewChange: approved는 새 변경이 대신하고(다시 승인), sent는 그대로 두고 새 건은 지금 선언에서 시작한다", () => {
@@ -274,4 +274,35 @@ test("selfCheckCrewChange: 지금 코드와 atcctl에서 빠진 것이 없고, a
 test("CrewChange 기록 형: 새 필드는 만든 때 null", () => {
   const c: CrewChange = one(created());
   assert.deepEqual([c.status, c.approvedAt, c.sentAt, c.message, c.acknowledgedAt], ["pending", null, null, null, null]);
+});
+
+test("CREW CHANGE UNABLE·STANDBY(ATC-122): UNABLE은 sent를 닫고 브리핑에 사유를, STANDBY는 overdue를 한 번 다시 센다", () => {
+  const next = { complement: D.complement.filter((m) => m.position !== "flash-helper"), ratings: D.ratings };
+  const at = "2026-09-27T01:00:00.000Z";
+  const base = planCrewChange(null, DEFAULT, next, ctx("CC-0001", at));
+  const created = foldCrewChanges(base)[0];
+  const sentAt = "2026-09-27T01:10:00.000Z";
+  const sent: CrewChangeOp[] = [...base, { op: "approved", id: "CC-0001", at }, { op: "sent", id: "CC-0001", at: sentAt, message: crewChangeMessage(created) }];
+  const min = (m: number) => Date.parse(sentAt) + m * 60_000;
+  assert.equal(isCrewChangeOverdue(foldCrewChanges(sent)[0], min(11)), true);
+  const standby = foldCrewChanges([...sent, { op: "standby", id: "CC-0001", at: new Date(min(8)).toISOString() }])[0];
+  assert.equal(standby.status, "sent");
+  assert.equal(standby.standbys, 1);
+  assert.equal(isCrewChangeOverdue(standby, min(11)), false);
+  assert.equal(isCrewChangeOverdue(standby, min(19)), true);
+  const unableAt = new Date(min(3)).toISOString();
+  const unable = foldCrewChanges([...sent, { op: "unable", id: "CC-0001", at: unableAt, reason: "flash-helper가 지금 FLIGHT 중" }]);
+  assert.equal(unable[0].status, "unable");
+  assert.equal(unable[0].unableReason, "flash-helper가 지금 FLIGHT 중");
+  assert.equal(isCrewChangeOverdue(unable[0], min(30)), false);
+  // 닫힌 뒤에는 READBACK·STANDBY를 받지 않는다
+  const after = foldCrewChanges([...sent, { op: "unable", id: "CC-0001", at: unableAt, reason: "r" }, { op: "acknowledged", id: "CC-0001", at: unableAt }])[0];
+  assert.equal(after.status, "unable");
+  const brief = crewChangeBriefOf(unable, "approval", min(5));
+  assert.deepEqual(brief.unable, [{ id: "CC-0001", registration: "TEAM_H", at: unableAt, reason: "flash-helper가 지금 FLIGHT 중" }]);
+  assert.deepEqual(brief.sent, []);
+  // 하루가 지나면 브리핑에서 빠진다
+  assert.deepEqual(crewChangeBriefOf(unable, "approval", min(25 * 60)).unable, []);
+  // 2b 점검은 새 끝줄에서도 그대로 갖춰짐
+  assert.ok(!selfCheckCrewChange(readFileSync(new URL("../controller/atcctl.mjs", import.meta.url), "utf8")).includes("[OCC CC-xxxx] 문구"));
 });

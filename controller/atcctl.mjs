@@ -44,13 +44,26 @@ export function manualHash(dir) {
 }
 const manualFile = (dir) => join(STATE, "manuals", `${dir.replace(/[^A-Za-z0-9._-]+/g, "_")}.sha`);
 
+// CLEARANCE에 기록하는 답(ATC-122)과 출력
+export const CLEARANCE_ANSWERS = ["readback", "roger", "unable", "standby", "cancel"];
+const CLEARANCE_ANSWER_TEXT = {
+  readback: "READBACK 확인",
+  roger: "ROGER 확인",
+  unable: "UNABLE — 다시 보내지 않고 SUPERVISOR에게 보고",
+  standby: "STANDBY",
+  cancel: "취소",
+};
+
 const USAGE = `사용법:
   node atcctl.mjs brief                     지난 확인 이후 변화 + 현재 상태 (JSON)
   node atcctl.mjs ack <cursor>              브리핑을 처리했다고 표시 (다음 brief는 이후 변화만)
   node atcctl.mjs issue <세션> <TYPE> [--stand <STAND>] [--flight <FLIGHT>] -- <CLEARANCE 내용>
                                             TYPE: TRAFFIC HOLD CONTINUE LAND REPORT INFO
                                             보낼 대상(SEND TO)과 보낼 문구를 출력한다
-  node atcctl.mjs readback <C-0007>         팀이 READBACK함
+  node atcctl.mjs readback <C-0007>         팀이 READBACK함(W/U·R 모두 닫는다)
+  node atcctl.mjs roger <C-0007>            팀이 ROGER함(R: INFO·TRAFFIC·REPORT만 닫는다)
+  node atcctl.mjs unable <C-0007> -- <사유>  팀이 UNABLE함(닫힌다. 다시 보내지 않고 SUPERVISOR에게 보고)
+  node atcctl.mjs standby <C-0007>          팀이 STANDBY함(W/U만. 열린 채 overdue 10분을 한 번 다시 센다)
   node atcctl.mjs cancel <C-0007>           CLEARANCE 취소
   node atcctl.mjs manual check              이 폴더의 CLAUDE.md·/tick(절차 파일 포함)이 마지막 ack 뒤 바뀌었는지 (UNCHANGED | CHANGED)
   node atcctl.mjs manual ack                지금 규정을 다시 읽었다고 기록
@@ -69,7 +82,10 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
   node atcctl.mjs dispatch readback <D-0003>
                                             (2b) CAPTAIN이 READBACK함
   node atcctl.mjs dispatch decline <D-0003> -- <사유>
-                                            (2b) CAPTAIN이 맡지 못함
+  node atcctl.mjs dispatch unable <D-0003> -- <사유>
+                                            (2b) CAPTAIN이 맡지 못함("UNABLE D-0003 — 사유". 두 명령은 같다)
+  node atcctl.mjs dispatch standby <D-0003>
+                                            (2b) CAPTAIN이 "STANDBY D-0003"로 답함(sent 그대로, READBACK overdue를 한 번 다시 센다)
   node atcctl.mjs dispatch recall-send <D-0003>
                                             (2b) SUPERVISOR가 RECALL을 요청한 제안의 SEND TO·SEND(머리 한 줄)와 RECALL 문구 출력(재송신도 같은 문구)
   node atcctl.mjs dispatch recalled <D-0003>
@@ -86,6 +102,10 @@ CREW CHANGE (OCC 세션이 맡음. approval 모드(2b)만. 승인은 SUPERVISOR�
                                             승인된 CREW CHANGE를 sent로 바꾸고 SEND TO·SEND(머리 한 줄)와 문구 출력(이미 sent면 같은 문구)
   node atcctl.mjs crew-change readback <CC-0001>
                                             CAPTAIN이 "READBACK CC-0001"로 답함
+  node atcctl.mjs crew-change unable <CC-0001> -- <사유>
+                                            CAPTAIN이 "UNABLE CC-0001 — 사유"로 답함(닫힌다. 다시 보내지 않고 SUPERVISOR에게 보고)
+  node atcctl.mjs crew-change standby <CC-0001>
+                                            CAPTAIN이 "STANDBY CC-0001"로 답함(sent 그대로, overdue를 한 번 다시 센다)
 
 FLIGHT FOLLOWING (OCC 세션이 맡음. 읽기 전용: 배정된 FLIGHT의 단계와 지연·불일치)
   node atcctl.mjs following                 FLIGHT마다 단계(READBACK·DEPARTED·PR·CLEARED·ARRIVED)와 문제(issues). fresh는 아직 보고 안 한 문제 (JSON)
@@ -346,8 +366,20 @@ export function parseBriefingArgs(args) {
   return { id, body };
 }
 
-// crew-change <brief|send|readback> [<CC-0001>] → { action, id }. 승인(approve)은 SUPERVISOR 몫이라 없다
-export const CREW_CHANGE_CMDS = ["brief", "send", "readback"];
+// CAPTAIN의 답(ATC-122) 인자: <ID> [-- <사유>]. unable만 사유가 필요하고, 나머지는 ID 뒤에 아무것도 받지 않는다
+export function parseAnswerArgs(verb, args) {
+  const [id, ...rest] = args;
+  if (!id || id === "--") throw new Error(`${verb}에는 ID가 필요함`);
+  if (verb !== "unable") {
+    if (rest.length) throw new Error(`알 수 없는 인자 ${rest.join(" ")}`);
+    return { id: id.toUpperCase() };
+  }
+  if (rest[0] !== "--" || !rest.slice(1).join(" ").trim()) throw new Error("unable에는 -- 뒤에 CAPTAIN의 사유가 필요함");
+  return { id: id.toUpperCase(), reason: rest.slice(1).join(" ").trim() };
+}
+
+// crew-change <brief|send|readback|unable|standby> [<CC-0001>] [-- <사유>] → { action, id, reason? }. 승인(approve)은 SUPERVISOR 몫이라 없다
+export const CREW_CHANGE_CMDS = ["brief", "send", "readback", "unable", "standby"];
 export function parseCrewChange(args) {
   const [action, id, ...rest] = args;
   if (!CREW_CHANGE_CMDS.includes(action)) throw new Error(`crew-change 명령은 ${CREW_CHANGE_CMDS.join("|")} (승인은 SUPERVISOR가 FLEET 탭에서)`);
@@ -356,6 +388,7 @@ export function parseCrewChange(args) {
     return { action };
   }
   if (!id || !/^CC-\d{4,}$/i.test(id)) throw new Error("CREW CHANGE ID가 필요함 (예: CC-0001)");
+  if (action === "unable") return { action, ...parseAnswerArgs("unable", [id, ...rest]) };
   if (rest.length) throw new Error(`알 수 없는 인자 ${rest.join(" ")}`);
   return { action, id: id.toUpperCase() };
 }
@@ -590,19 +623,30 @@ if (isMain) {
         const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(id)}/arrived`, body);
         console.log(`${r.proposal.id} ARRIVED · ${r.proposal.arrivedNote}`);
       }
-    } else if (cmd === "dispatch" && args[0] === "decline" && args[1]) {
+    } else if (cmd === "dispatch" && (args[0] === "decline" || args[0] === "unable") && args[1]) {
+      // UNABLE D-xxxx(ATC-122)는 decline과 같다
       const sep = args.indexOf("--");
       const reason = sep < 0 ? "" : args.slice(sep + 1).join(" ");
       if (!reason) throw new Error("-- 뒤에 CAPTAIN의 사유가 필요함");
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/decline`, { reason });
-      console.log(`${r.proposal.id} DECLINED`);
+      console.log(`${r.proposal.id} DECLINED (UNABLE) — 다시 보내지 않고 SUPERVISOR에게 보고`);
+    } else if (cmd === "dispatch" && args[0] === "standby") {
+      const { id } = parseAnswerArgs("standby", args.slice(1));
+      const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(id)}/standby`);
+      console.log(`${r.proposal.id} STANDBY ${r.proposal.standbys}번째 — READBACK overdue는 첫 STANDBY(${r.proposal.standbyAt})부터 10분`);
     } else if (cmd === "crew-change") {
-      const { action, id } = parseCrewChange(args);
+      const { action, id, reason } = parseCrewChange(args);
       if (action === "brief") {
         console.log(JSON.stringify(await call("GET", "/api/fleet/crew-changes/brief"), null, 1));
       } else if (action === "send") {
         const r = await call("POST", `/api/fleet/crew-changes/${encodeURIComponent(id)}/send`);
         console.log(sendOutput(r.sendTo, r.message));
+      } else if (action === "unable") {
+        const r = await call("POST", `/api/fleet/crew-changes/${encodeURIComponent(id)}/unable`, { reason });
+        console.log(`${r.change.id} UNABLE (${r.change.registration}) — 다시 보내지 않고 SUPERVISOR에게 보고`);
+      } else if (action === "standby") {
+        const r = await call("POST", `/api/fleet/crew-changes/${encodeURIComponent(id)}/standby`);
+        console.log(`${r.change.id} STANDBY ${r.change.standbys}번째 (${r.change.registration})`);
       } else {
         const r = await call("POST", `/api/fleet/crew-changes/${encodeURIComponent(id)}/readback`);
         console.log(`${r.change.id} READBACK 확인 (${r.change.registration})`);
@@ -677,9 +721,14 @@ if (isMain) {
     } else if (cmd === "squelch") {
       if (args.length !== 1 || !SQUELCH_ROLES.includes(args[0])) throw new Error(`역할은 ${SQUELCH_ROLES.join("|")} 중 하나`);
       console.log(await squelchLine(args[0]));
-    } else if ((cmd === "readback" || cmd === "cancel") && args[0]) {
-      const r = await call("POST", `/api/clearances/${encodeURIComponent(args[0])}/${cmd}`);
-      console.log(`${r.clearance.id} ${cmd === "readback" ? "READBACK 확인" : "취소"}`);
+    } else if (CLEARANCE_ANSWERS.includes(cmd) && args[0]) {
+      // CLEARANCE의 답(ATC-122). 이 CLEARANCE가 받지 않는 답이면 서버가 사유와 함께 거절한다(ROGER는 R만, STANDBY는 W/U만)
+      const { id, reason } = cmd === "cancel" ? { id: args[0].toUpperCase() } : parseAnswerArgs(cmd, args);
+      const r = await call("POST", `/api/clearances/${encodeURIComponent(id)}/${cmd}`, reason ? { reason } : undefined);
+      const c = r.clearance;
+      // STANDBY: 첫 번째만 overdue 기준을 옮긴다(ATC-122)
+      const extra = cmd !== "standby" ? "" : c.standbys > 1 ? ` ${c.standbys}번째 — 기록만, overdue 기준은 첫 STANDBY(${c.standbyAt}) 그대로` : " — READBACK overdue를 지금부터 10분 다시 센다(한 번만)";
+      console.log(`${c.id} ${CLEARANCE_ANSWER_TEXT[cmd]}${extra}`);
     } else {
       console.log(USAGE);
       process.exit(cmd ? 1 : 0);

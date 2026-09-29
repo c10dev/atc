@@ -18,12 +18,16 @@
 | `node atcctl.mjs brief` | 지난 ack 이후 변화(`events`)와 현재 상태(`open`, `landingQueue`, `github`, `clearances`, `traffic`) |
 | `node atcctl.mjs ack <cursor>` | 브리핑 처리 완료. 다음 brief는 그 뒤 변화만 준다 |
 | `node atcctl.mjs issue <세션> <TYPE> [--stand <STAND>] [--flight <FLIGHT>] -- <내용>` | CLEARANCE를 기록하고 보낼 대상과 문구를 돌려준다 |
-| `node atcctl.mjs readback <C-0007>` / `cancel <C-0007>` | READBACK 확인 / CLEARANCE 취소 |
+| `node atcctl.mjs readback <C-0007>` / `roger <C-0007>` | 팀의 READBACK / ROGER 기록(닫힌다) |
+| `node atcctl.mjs unable <C-0007> -- <사유>` / `standby <C-0007>` | 팀의 UNABLE 기록(닫힌다) / STANDBY 기록(열린 채 overdue를 한 번 다시 센다) |
+| `node atcctl.mjs cancel <C-0007>` | CLEARANCE 취소 |
 | ListAgents, SendMessage | 팀 세션에 메시지. 주소는 세션 이름(`TEAM_B`) |
 
 CLEARANCE 종류: `TRAFFIC`(교통 정보) `HOLD`(대기) `CONTINUE`(계속) `LAND`(LANDING 순서) `REPORT`(상황 보고 요청) `INFO`(참고).
 
 SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버릴 수 있다. guard가 아니다: 버려진 tick은 ATC LOG 줄 없이 없던 일이고, 팀 메시지와 SUPERVISOR 프롬프트는 그대로 온다.
+
+응답 속성(ATC-122): 문구 끝줄이 어떤 답을 청하는지 atc가 정한다. 따를 지시(`LAND`·`HOLD`·`CONTINUE`)는 **W/U**: READBACK이나 UNABLE이 닫고, STANDBY는 열어 둔다. 알림(`INFO`·`TRAFFIC`·`REPORT`)은 **R**: ROGER가 닫는다. READBACK은 어느 쪽이든 받는다. 받을 수 없는 답(W/U에 ROGER, R에 STANDBY)은 서버가 사유와 함께 거절한다 — 그러면 기록하지 않고 SUPERVISOR 보고 목록에 올린다.
 
 ## 판단 기준
 
@@ -46,9 +50,11 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 | FUEL LEAK·COLD CACHE (`open.fuelLeaks`, `open.coldCache`) | FUEL 경고(docs/fuel.md 8.6, ATC-56). 경고만 하고 아무것도 막지 않는다. `open.fuelLeaks`(24시간 안 LEAK이 큰 팀 AIRCRAFT)에 새 `key`가 보이면 SUPERVISOR에게 INFO로 한 번 알리고(`text` 그대로) `key`를 ATC LOG에 적는다. 같은 `key`는 다시 알리지 않는다. `open.coldCache`(캐시가 식은 HOLDING CAPTAIN)의 AIRCRAFT에 낼 CLEARANCE가 있으면 그대로 내고 `text`를 ATC LOG에 적는다. 캐시를 데우려고 미리 메시지를 보내거나 CLEARANCE를 미루지 않는다. FUEL 때문에 팀에 메시지를 보내지 않는다. `open.fuelError`가 있으면 대화 기록을 읽지 못한 것이니 ATC LOG에만 적는다 |
 | NORDO STAND (`open.orphans`), `session.lost` | 받을 세션이 없다. SUPERVISOR에게 보고 |
 | UNIDENTIFIED (`open.unattended`), NO CONTACT (`open.noContact`) | SUPERVISOR에게 보고. `events`에 새로 뜬 것만 보고하고 이미 보고한 것은 반복하지 않는다 |
-| NO READBACK (`clearances.overdue`, 10분) | 같은 CLEARANCE를 한 번 더 보낸다(문구 맨 앞에 "재송신"). 그래도 답이 없으면 SUPERVISOR 보고 |
-| 팀 답장 "READBACK C-xxxx" | `node atcctl.mjs readback C-xxxx` |
-| 팀이 CLEARANCE를 거부하거나 질문 | SUPERVISOR에게 전하고 판단을 기다린다 |
+| NO READBACK (`clearances.overdue`, 10분. 첫 STANDBY가 있으면 그때부터 10분) | 같은 CLEARANCE를 한 번 더 보낸다(문구 맨 앞에 "재송신"). 그래도 답이 없으면 SUPERVISOR 보고 |
+| 팀 답장 "READBACK C-xxxx" / "ROGER C-xxxx" | `node atcctl.mjs readback C-xxxx` / `node atcctl.mjs roger C-xxxx` |
+| 팀 답장 "UNABLE C-xxxx — 사유" | `node atcctl.mjs unable C-xxxx -- <사유 그대로>`. 다시 보내지 않고, 사유를 SUPERVISOR에게 보고한다 |
+| 팀 답장 "STANDBY C-xxxx" | `node atcctl.mjs standby C-xxxx`. 다시 보내지 않고 기다린다(`clearances.overdue`가 첫 STANDBY부터 10분을 다시 센다. 두 번째 STANDBY는 기록만 된다) |
+| 팀이 정한 형식 없이 거부하거나 질문 | SUPERVISOR에게 전하고 판단을 기다린다 |
 | 상황이 풀림 (`alert.cleared`) | 그 건의 READBACK 대기 CLEARANCE가 남아 있으면 `cancel` |
 
 ## 메시지

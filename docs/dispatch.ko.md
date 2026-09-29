@@ -202,7 +202,7 @@ DISPATCH 세션: FLIGHT PLAN을 CAPTAIN에게 SendMessage
   FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High
   <티켓 제목과 URL, 이슈에서 옮긴 목표·완료 기준·이 작업만의 제약, DISPATCH 메모>
   <PILOT'S DISCRETION 줄>
-  — 맡으면 이 메시지에 "READBACK D-0003", 못 맡으면 사유로 답장해 주세요.
+  — 받았으면 이 메시지에 "READBACK D-0003", 못 하면 "UNABLE D-0003 — 사유", 시간이 필요하면 "STANDBY D-0003"로 답장해 주세요.(ATC-122)
   끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요. ("DIRECT briefs" 참고)
 CAPTAIN: READBACK → Linear In Progress, STAND 준비(지금 규칙 그대로)
 atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER처럼 재확인

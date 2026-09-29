@@ -9,6 +9,7 @@ import { type CrewDrift, OBSERVED_WINDOW_DAYS, type ObservedMember, observeCrew,
 import { loadDispatchConfig } from "./dispatch.ts";
 import type { Snapshot } from "./model.ts";
 import { regKey } from "./registration.ts";
+import { closingLine, overdueBase, responseOf } from "./response.ts";
 
 // CREW CHANGE: 운항 중인 AIRCRAFT의 CREW COMPLEMENT가 바뀌면 CAPTAIN에게 줄 지시문을 만든다. 설계: docs/fleet.md 8.4.
 // 1단계: SUPERVISOR가 복사해 붙여 넣고 "전달함"(pending·approved → delivered).
@@ -39,14 +40,21 @@ export interface CrewChange {
   deliveredAt: string | null;
   supersededAt: string | null;
   supersededBy: string | null; // 이어 쓴 새 CREW CHANGE. null이면 원래대로 돌아와 바꿀 것이 없어짐
+  // CAPTAIN의 UNABLE·STANDBY(ATC-122). 옛 기록에는 없다
+  unableAt?: string;
+  unableReason?: string;
+  standbyAt?: string; // 첫 STANDBY. READBACK overdue를 여기서 한 번 다시 센다
+  standbys?: number;
 }
-export type CrewChangeStatus = "pending" | "approved" | "sent" | "acknowledged" | "delivered" | "superseded";
-type Created = Omit<CrewChange, "status" | "approvedAt" | "sentAt" | "message" | "acknowledgedAt" | "deliveredAt" | "supersededAt" | "supersededBy">;
+export type CrewChangeStatus = "pending" | "approved" | "sent" | "acknowledged" | "unable" | "delivered" | "superseded";
+type Created = Omit<CrewChange, "status" | "approvedAt" | "sentAt" | "message" | "acknowledgedAt" | "deliveredAt" | "supersededAt" | "supersededBy" | "unableAt" | "unableReason" | "standbyAt" | "standbys">;
 export type CrewChangeOp =
   | ({ op: "created" } & Created)
   | { op: "approved"; id: string; at: string } // SUPERVISOR(화면·API), approval 모드만
   | { op: "sent"; id: string; at: string; message: string } // OCC가 atcctl crew-change send로 발부
   | { op: "acknowledged"; id: string; at: string } // CAPTAIN의 READBACK CC-xxxx(OCC가 기록)
+  | { op: "unable"; id: string; at: string; reason: string } // CAPTAIN의 UNABLE CC-xxxx(ATC-122, OCC가 기록). 닫힌다
+  | { op: "standby"; id: string; at: string } // CAPTAIN의 STANDBY CC-xxxx(ATC-122). 상태는 sent 그대로
   | { op: "delivered"; id: string; at: string } // SUPERVISOR가 직접 붙여 넣음
   | { op: "superseded"; id: string; at: string; by: string | null };
 
@@ -54,15 +62,16 @@ export type CrewChangeOp =
 const NEXT: Partial<Record<CrewChangeStatus, Partial<Record<CrewChangeOp["op"], CrewChangeStatus>>>> = {
   pending: { approved: "approved", delivered: "delivered", superseded: "superseded" },
   approved: { sent: "sent", delivered: "delivered", superseded: "superseded" },
-  sent: { acknowledged: "acknowledged" },
+  sent: { acknowledged: "acknowledged", unable: "unable" },
 };
 export const canApplyCrewChange = (c: Pick<CrewChange, "status">, op: CrewChangeOp["op"]) => Boolean(NEXT[c.status]?.[op]);
 // 아직 보내지 않은 건(새 변경이 대신한다)과 READBACK 대기 건
 export const isUnsent = (c: Pick<CrewChange, "status">) => c.status === "pending" || c.status === "approved";
 export const isOpenCrewChange = (c: Pick<CrewChange, "status">) => isUnsent(c) || c.status === "sent";
 export const CREW_CHANGE_READBACK_OVERDUE_MS = 10 * 60_000;
-export const isCrewChangeOverdue = (c: Pick<CrewChange, "status" | "sentAt">, now: number) =>
-  c.status === "sent" && c.sentAt !== null && now - Date.parse(c.sentAt) > CREW_CHANGE_READBACK_OVERDUE_MS;
+// 첫 STANDBY가 있으면 그때부터 다시 센다(ATC-122)
+export const isCrewChangeOverdue = (c: Pick<CrewChange, "status" | "sentAt" | "standbyAt">, now: number) =>
+  c.status === "sent" && c.sentAt !== null && now - overdueBase(c.sentAt, c.standbyAt) > CREW_CHANGE_READBACK_OVERDUE_MS;
 
 // CREW BRIEFING과 같은 한 줄 표기: "flash-helper: flash-helper (no BUILD, no SEC)"
 export const memberLabel = (m: CrewMember) => `${m.position}: ${m.agent}${m.limits?.length ? ` (${m.limits.join(", ")})` : ""}`;
@@ -161,14 +170,14 @@ export function crewChangeText(c: Pick<Created, "id" | "registration" | "after" 
   return lines.join("\n");
 }
 
-// OCC가 CAPTAIN에게 보낼 문구. FLIGHT PLAN·RECALL과 같은 꼴: [OCC CC-xxxx] 머리, 지시문 본문, READBACK 요청 줄.
+// OCC가 CAPTAIN에게 보낼 문구. FLIGHT PLAN·RECALL과 같은 꼴: [OCC CC-xxxx] 머리, 지시문 본문, 답을 청하는 끝줄(W/U, ATC-122).
 // 본문에 옛 머리([ATC FLEET] …, 또는 이미 붙은 [OCC CC-xxxx] …)가 있으면 떼어 낸다. send-guard가 이 문구를 그대로 비교한다.
 export function crewChangeMessage(c: Pick<CrewChange, "id" | "registration" | "text">): string {
   const reg = c.registration;
   const sign = callsign({ name: reg });
   const who = sign === reg ? reg : `${sign} (${reg})`;
   const body = c.text.replace(/^\[(?:ATC FLEET|OCC CC-\d+)\][^\n]*\n(?:[ \t]*\n)*/, "").trim();
-  return [`[OCC ${c.id}] CREW CHANGE · ${who}`, "", body, "", `— 받았으면 이 메시지에 "READBACK ${c.id}"로 답장해 주세요.`].join("\n");
+  return [`[OCC ${c.id}] CREW CHANGE · ${who}`, "", body, "", closingLine("crew-change", responseOf("crew-change"), c.id)].join("\n");
 }
 
 export function foldCrewChanges(ops: CrewChangeOp[]): CrewChange[] {
@@ -190,12 +199,20 @@ export function foldCrewChanges(ops: CrewChangeOp[]): CrewChange[] {
       continue;
     }
     const c = byId.get(o.id);
+    if (c && o.op === "standby") {
+      // READBACK 대기(sent)에만. 첫 STANDBY만 overdue 기준을 옮긴다
+      if (c.status !== "sent") continue;
+      c.standbyAt ??= o.at;
+      c.standbys = (c.standbys ?? 0) + 1;
+      continue;
+    }
     const next = c && NEXT[c.status]?.[o.op];
     if (!c || !next) continue;
     c.status = next;
     if (o.op === "approved") c.approvedAt = o.at;
     if (o.op === "sent") Object.assign(c, { sentAt: o.at, message: o.message });
     if (o.op === "acknowledged") c.acknowledgedAt = o.at;
+    if (o.op === "unable") Object.assign(c, { unableAt: o.at, unableReason: o.reason });
     if (o.op === "delivered") c.deliveredAt = o.at;
     if (o.op === "superseded") Object.assign(c, { supersededAt: o.at, supersededBy: o.by });
   }
@@ -369,6 +386,10 @@ export function crewChangeBriefOf(changes: CrewChange[], mode: "shadow" | "appro
     overdue: changes.filter((c) => isCrewChangeOverdue(c, now)).map((c) => c.id),
     // SUPERVISOR 승인을 기다리는 건(OCC는 승인하지 않는다. 참고로만)
     pending: changes.filter((c) => c.status === "pending").map((c) => c.id),
+    // 최근 24시간 CAPTAIN이 UNABLE로 닫은 건(ATC-122). OCC는 다시 보내지 않고 SUPERVISOR에게 보고한다
+    unable: changes
+      .filter((c) => c.status === "unable" && c.unableAt && now - Date.parse(c.unableAt) < 86_400_000)
+      .map((c) => ({ id: c.id, registration: c.registration, at: c.unableAt!, reason: c.unableReason ?? "" })),
   };
 }
 
@@ -391,7 +412,7 @@ export function sendRefusal(c: CrewChange | undefined, all: CrewChange[], mode: 
 
 // POST /api/fleet/crew-changes/:id/<동작>(OCC). 2b 점검표도 이 목록으로 창구를 확인한다.
 // 승인(approve)·전달함(delivered)은 SUPERVISOR 창구 /api/fleet/:registration/crew-change/:id/<동작>
-export const CREW_CHANGE_OCC_ACTIONS = ["send", "readback"] as const;
+export const CREW_CHANGE_OCC_ACTIONS = ["send", "readback", "unable", "standby"] as const;
 export const CREW_CHANGE_SUPERVISOR_ACTIONS = ["approve", "delivered"] as const;
 
 // 2b 점검표용 코드 사실: 합성 기록으로 전이·대신하기·문구·늦음·API·CLI를 확인한다. 빠진 것 목록(비면 갖춰짐)
@@ -410,7 +431,7 @@ export function selfCheckCrewChange(atcctlSource: string | null, now = Date.now(
   if (foldCrewChanges([...base, { op: "approved", id: "CC-0001", at }, { op: "sent", id: "CC-0001", at, message }, { op: "acknowledged", id: "CC-0001", at }])[0].status !== "acknowledged")
     missing.push("sent → acknowledged 전이");
   if (approveRefusal(created, "shadow")?.[0] !== 409) missing.push("shadow 모드 승인 거절");
-  if (!message.startsWith("[OCC CC-0001] CREW CHANGE") || !message.endsWith('"READBACK CC-0001"로 답장해 주세요.')) missing.push("[OCC CC-xxxx] 문구");
+  if (!message.startsWith("[OCC CC-0001] CREW CHANGE") || !message.includes('"READBACK CC-0001"')) missing.push("[OCC CC-xxxx] 문구");
   const approved = foldCrewChanges([...base, { op: "approved", id: "CC-0001", at }])[0];
   const again = planCrewChange(approved, next, { ...next, complement: [{ position: "reviewer", agent: "sonnet" }] }, { registration: "TEAM_A", id: "CC-0002", at });
   if (again[0]?.op !== "superseded") missing.push("approved는 새 변경이 대신함");
@@ -443,7 +464,7 @@ export function mountCrewChange(app: Hono) {
     return change ? c.json({ change, mode: loadDispatchConfig().mode }) : c.json({ error: "그런 CREW CHANGE가 없음" }, 404);
   });
   const find = (id: string, reg?: string) => allCrewChanges().find((x) => x.id === id.toUpperCase() && (!reg || regKey(x.registration) === regKey(reg)));
-  const CLOSED_WHY: Record<string, string> = { delivered: "전달됨", superseded: "다른 CREW CHANGE로 대체됨", acknowledged: "READBACK 받음", sent: "OCC가 보냄(READBACK 대기)" };
+  const CLOSED_WHY: Record<string, string> = { delivered: "전달됨", superseded: "다른 CREW CHANGE로 대체됨", acknowledged: "READBACK 받음", unable: "UNABLE로 닫힘", sent: "OCC가 보냄(READBACK 대기)" };
   const closedWhy = (x: CrewChange) => CLOSED_WHY[x.status] ?? x.status;
 
   // SUPERVISOR만(화면·API): 2b에서 OCC가 보내도록 승인. OCC의 atcctl에는 이 명령이 없다
@@ -481,6 +502,25 @@ export function mountCrewChange(app: Hono) {
     if (!change) return c.json({ error: "그런 CREW CHANGE가 없음" }, 404);
     if (!canApplyCrewChange(change, "acknowledged")) return c.json({ error: `${change.id}는 READBACK 대기가 아님(${change.status})` }, 409);
     append([{ op: "acknowledged", id: change.id, at: new Date().toISOString() }]);
+    return c.json({ ok: true, change: find(change.id) });
+  });
+  // OCC: CAPTAIN이 "UNABLE CC-xxxx — 사유"로 답함(ATC-122). 닫힌다. OCC는 다시 보내지 않고 SUPERVISOR에게 보고한다
+  app.post("/api/fleet/crew-changes/:id/unable", async (c) => {
+    const change = find(c.req.param("id") ?? "");
+    if (!change) return c.json({ error: "그런 CREW CHANGE가 없음" }, 404);
+    const body = await c.req.json().catch(() => ({}));
+    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    if (!reason) return c.json({ error: "UNABLE에는 CAPTAIN의 사유(reason)가 필요함" }, 400);
+    if (!canApplyCrewChange(change, "unable")) return c.json({ error: `${change.id}는 READBACK 대기가 아님(${change.status})` }, 409);
+    append([{ op: "unable", id: change.id, at: new Date().toISOString(), reason }]);
+    return c.json({ ok: true, change: find(change.id) });
+  });
+  // OCC: CAPTAIN이 "STANDBY CC-xxxx"로 답함(ATC-122). 열어 둔 채 READBACK overdue를 한 번 다시 센다
+  app.post("/api/fleet/crew-changes/:id/standby", (c) => {
+    const change = find(c.req.param("id") ?? "");
+    if (!change) return c.json({ error: "그런 CREW CHANGE가 없음" }, 404);
+    if (change.status !== "sent") return c.json({ error: `${change.id}는 READBACK 대기가 아님(${change.status})` }, 409);
+    append([{ op: "standby", id: change.id, at: new Date().toISOString() }]);
     return c.json({ ok: true, change: find(change.id) });
   });
 }

@@ -256,7 +256,7 @@ test("FLIGHT PLAN 문구(DIRECT): BRIEF 줄·콜사인·FLIGHT·AIRPORT·PRIORIT
       "완료 기준: 이슈 본문(링크)의 완료 기준을 따릅니다.",
       "DISPATCH 메모: CAUTION · DB 권한 작업",
       "애매한 곳은 PILOT'S DISCRETION으로 합리적인 기본값을 고르고 PR에 적으세요.",
-      '— 맡으면 이 메시지에 "READBACK D-0007", 못 맡으면 사유로 답장해 주세요.',
+      '— 받았으면 이 메시지에 "READBACK D-0007", 못 하면 "UNABLE D-0007 — 사유", 시간이 필요하면 "STANDBY D-0007"로 답장해 주세요.',
       "끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요.",
     ].join("\n"),
   );
@@ -854,4 +854,29 @@ test("FLIGHT PLAN 문구(DIRECT): 긴 이슈(ATC-34)도 완료 기준·제약을
   assert.ok(msg.includes("puts AUTOLAND in GROUND STOP"));
   assert.ok(msg.includes("The atc repo's own landing (structure merges auto/flagged) is out of scope."));
   assert.ok(msg.endsWith("끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요."));
+});
+
+test("STANDBY D-xxxx(ATC-122): sent에서만 받고, 첫 STANDBY부터 READBACK overdue 10분을 한 번 다시 센다", () => {
+  const sent: Op[] = [create("D-0001", "VOC-1", "b", 60), { op: "approve", id: "D-0001", at: iso(40) }, { op: "send", id: "D-0001", at: iso(12), message: "m" }];
+  // 보낸 지 12분: overdue
+  assert.deepEqual(overdueOf(fold(sent), NOW), ["D-0001"]);
+  // 4분 전 STANDBY: 아직 아님. 상태는 sent 그대로
+  const standby = fold([...sent, { op: "standby", id: "D-0001", at: iso(4) }]);
+  assert.equal(standby[0].status, "sent");
+  assert.equal(standby[0].standbyAt, iso(4));
+  assert.equal(standby[0].standbys, 1);
+  assert.deepEqual(overdueOf(standby, NOW), []);
+  // 두 번째 STANDBY는 세기만 하고 기준을 옮기지 않는다
+  const twice = fold([...sent, { op: "standby", id: "D-0001", at: iso(11) }, { op: "standby", id: "D-0001", at: iso(1) }]);
+  assert.equal(twice[0].standbyAt, iso(11));
+  assert.equal(twice[0].standbys, 2);
+  assert.deepEqual(overdueOf(twice, NOW), ["D-0001"]);
+  // sent가 아닌 제안(approved, accepted)의 STANDBY는 무시한다
+  const approved = fold([create("D-0002", "VOC-2", "c", 60), { op: "approve", id: "D-0002", at: iso(40) }, { op: "standby", id: "D-0002", at: iso(4) }]);
+  assert.equal(approved[0].standbyAt, undefined);
+  // UNABLE D-xxxx는 decline이다: 사유와 함께 declined로 닫힌다
+  const unable = fold([...sent, { op: "decline", id: "D-0001", at: iso(2), reason: "다른 FLIGHT가 먼저" }]);
+  assert.equal(unable[0].status, "declined");
+  assert.equal(unable[0].reason, "다른 FLIGHT가 먼저");
+  assert.deepEqual(overdueOf(unable, NOW), []);
 });
