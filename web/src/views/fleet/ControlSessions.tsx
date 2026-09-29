@@ -2,14 +2,15 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { type ControlList, controlPollDue, CONTROL_POLL_MS, controlRowOf } from "../../../../server/control-view.ts";
 import { EditRow, type SaveResult } from "../../SettingsServer.tsx";
 import { JobDetail, NeedsYou } from "../../ui.tsx";
+import { type ControlAccounts, controlMemo } from "../../controlData.ts";
 
 // FLEET 탭의 CONTROL SESSIONS(ATC-130, docs/fleet.md 8.5.1). 설정 창 AGENTS에 있던 것을 옮겼다. 동작은 그대로.
 // 줄마다 live 배지. TOWER·OCC·MCC·CROSSCHECK·REVIEW는 atc가 그 폴더에서 `claude --bg`로 띄운다(ocx·tmux LAUNCH는 2026-09-29에 끊음).
 // ENGINEERING은 배지만. tmux pane에서 손으로 연 세션도 STOP한다(그 pane만 닫음, 묻고 나서). 데스크톱 세션은 그 창에서 닫는다.
 // 새로 읽기: FLEET가 보이는 동안 60초에 한 번(탭을 막 열어도 마지막 읽은 지 60초 전이면 그 값을 보인다), LAUNCH·STOP 뒤에는 곧장.
-import { type ControlAccounts, controlMemo } from "../../controlData.ts";
 
-// 탭을 오가도 60초 안에는 다시 읽지 않도록 모듈에 둔다
+// 탭을 오가도 60초 안에는 다시 읽지 않도록 모듈에 둔다. 값(list·accounts)은 헤더 띠와 나누지만 "마지막으로 읽은 시각"은 나누지 않는다(띠가 읽어도 이 구역은 자기 60초로 새로 읽고 ACCOUNT도 읽는다)
+let sectionAt: number | null = null;
 const memo = controlMemo;
 
 export function ControlSessions() {
@@ -20,9 +21,9 @@ export function ControlSessions() {
   const inflight = useRef(false);
 
   const load = useCallback(async (force = false) => {
-    if (inflight.current || !controlPollDue(memo.at, Date.now(), force)) return;
+    if (inflight.current || !controlPollDue(sectionAt, Date.now(), force)) return;
     inflight.current = true;
-    memo.at = Date.now();
+    sectionAt = Date.now();
     fetch("/api/control/accounts")
       .then((r) => (r.ok ? r.json() : null))
       .then((a: ControlAccounts | null) => {
