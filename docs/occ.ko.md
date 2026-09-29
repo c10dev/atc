@@ -287,7 +287,7 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 | `pr-not-cleared` | PR이 있는데 1.5배가 지나도 CLEARED가 아님. 문구에 착륙을 막는 것들을 적는다 | warn |
 | `landing-wait` | CLEARED가 된 뒤 1시간 넘게 착륙하지 않음. 착륙은 SUPERVISOR 몫이다 | info |
 | `no-arrival` | STAND 없는 FLIGHT만: DEPARTED 뒤 WAKE 기대치의 1.5배가 지나도 ARRIVED 없음 | warn |
-| `no-report` | PR이 머지(ON)된 지 30분이 지났는데 기록된 도착 보고가 없음(ATC-124, `dispatch report`) | warn |
+| `no-report` | DISPATCH가 보낸 FLIGHT의 PR이 보고 기록이 시작된 뒤(2026-09-29T08:34Z) 머지(ON)된 지 30분이 지났는데 기록된 도착 보고가 없음. ON 뒤 24시간이면 사라짐(ATC-124·152, `dispatch report`) | info |
 | `blocked-report` | 기록된 도착 보고의 `BLOCKED`가 `none`이 아님. 하루 보임 | warn |
 | `review-no-pr` | Linear는 In Review인데 PR이 없음 | warn |
 | `done-not-merged` | Linear는 Done인데 머지된 PR이 없음 | warn |

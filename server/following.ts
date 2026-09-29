@@ -93,6 +93,10 @@ export interface Unable {
 export const UNABLE_KEEP_MS = DAY; // 하루 보이고 빠진다
 export const REPORT_GRACE_MS = 30 * MIN; // PR이 머지(ON)된 뒤 도착 보고가 기록되기를 기다리는 시간(ATC-124)
 export const BLOCKED_KEEP_MS = DAY; // BLOCKED 보고는 하루 보이고 빠진다
+// no-report는 DISPATCH가 보낸 FLIGHT 가운데 도착 보고 기록이 시작된 뒤(ATC-124) 머지된 것에만, 정보(ADVISORY)로, 머지(ON) 뒤 하루만(ATC-152).
+// 기준 시각은 arrival-reports.jsonl의 첫 줄(ATC-124 보고, 2026-09-29T08:34:09Z). 그 전에 끝난 FLIGHT는 보고 규칙이 없었다
+export const REPORT_START = "2026-09-29T08:34:09.520Z";
+export const NO_REPORT_KEEP_MS = DAY;
 
 // 스냅샷의 CLEARANCE와 제안에서 최근 UNABLE(순수)
 export function unablesOf(clearances: Pick<Clearance, "id" | "flight" | "toName" | "unableAt" | "unableReason">[], proposals: Pick<Proposal, "id" | "flight" | "kind" | "status" | "statusAt" | "reason" | "aircraftName">[], now: number): Unable[] {
@@ -300,11 +304,14 @@ export function followingOf(inp: FollowInput): FollowItem[] {
       }
       // 도착 보고(ATC-124): PR이 머지(ON)된 지 30분이 지났는데 기록된 보고가 없다 / 보고의 BLOCKED가 none이 아니다. 팀에 묻지 않는다(OCC가 SUPERVISOR에게 보고)
       const arrivalReport = inp.arrivalReports?.get(t.flight);
-      if (!f.standFree && f.stages.arrived && f.pr?.merged && !arrivalReport && inp.now - Date.parse(f.stages.arrived) > REPORT_GRACE_MS) {
+      // DISPATCH가 보낸 FLIGHT(제안에 send)만: ENGINEERING PR과 FLIGHT PLAN 없는 직접 작업은 받지 않는다(ATC-152)
+      const dispatched = Boolean(t.proposal?.timeline.sent);
+      const onAge = f.stages.arrived ? inp.now - Date.parse(f.stages.arrived) : 0;
+      if (!f.standFree && dispatched && f.stages.arrived && f.stages.arrived >= REPORT_START && f.pr?.merged && !arrivalReport && onAge > REPORT_GRACE_MS && onAge <= NO_REPORT_KEEP_MS) {
         f.issues.push({
           code: "no-report",
           kind: "delay",
-          severity: "warn",
+          severity: "info",
           text: `PR #${f.pr.number}이 머지된 지(ON) ${hours(inp.now - Date.parse(f.stages.arrived))} 지났는데 도착 보고(ARRIVED report)가 기록되지 않음 — CAPTAIN이 아직 보고하지 않았거나 받은 세션이 기록을 빠뜨렸다`,
           since: iso(Date.parse(f.stages.arrived) + REPORT_GRACE_MS),
           key: `${t.flight}|no-report`,

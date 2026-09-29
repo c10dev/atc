@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig, type Plan } from "./dispatch.ts";
 import type { Ticket, Workspace } from "./model.ts";
 import { parentKeysOf } from "./model.ts";
-import { canApply, crosscheckBriefOf, DEFAULT_SETTLE_MIN, fold, settledItemsOf, settledOf, settlesInMin, withSettled, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, recentFlightsOf, recentPairsOf, reservedOf, syncOps } from "./proposals.ts";
+import { canApply, crosscheckBriefOf, NO_VERDICT_WHY, DEFAULT_SETTLE_MIN, fold, settledItemsOf, settledOf, settlesInMin, withSettled, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, recentFlightsOf, recentPairsOf, reservedOf, syncOps } from "./proposals.ts";
 import { takenByOf, toTicket } from "./sources/linear.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
@@ -59,7 +59,7 @@ test("동기화: 새 짝은 만들고, 빠진 짝은 사유와 함께 SUPERSEDED
     [
       "supersede:D-0002:AIRCRAFT 불가: AIRBORNE",
       "supersede:D-0003:FLIGHT 상태가 바뀜(In Progress)",
-      "expire:D-0004",
+      "expire:D-0004:24시간 판정 없음",
       "create:D-0005:VOC-5",
     ],
   );
@@ -1003,4 +1003,34 @@ test("settledItemsOf(ATC-117): dispatch brief의 open·held에 settled·settlesI
 
 test("DEFAULT_SETTLE_MIN(ATC-117): 설정 기본값과 같은 상수를 쓴다", () => {
   assert.equal(DEFAULT_DISPATCH_CONFIG.settleMin, DEFAULT_SETTLE_MIN);
+});
+
+test("만료(ATC-152): 24시간 넘게 proposed·agreed·disagreed면 '24시간 판정 없음'으로 EXPIRED, HOLD·승인된 제안은 아니다", () => {
+  const verdict = (id: string, v: "agree" | "disagree", minAgo: number): Op => ({ op: "verdict", id, at: iso(minAgo), verdict: v, reason: "shadow" });
+  const existing = fold([
+    create("D-0001", "VOC-1", "b", 30 * 60), verdict("D-0001", "disagree", 25 * 60), // 표시한 지 25시간 → expire
+    create("D-0002", "VOC-2", "b", 30 * 60), verdict("D-0002", "disagree", 23 * 60), // 23시간 → 그대로
+    create("D-0003", "VOC-3", "b", 30 * 60), verdict("D-0003", "agree", 25 * 60), // 나라면 승인도
+    create("D-0004", "VOC-4", null, 30 * 60, "RELEASE"), verdict("D-0004", "disagree", 26 * 60), // RELEASE도
+    create("D-0005", "VOC-5", "b", 25 * 60), // proposed 25시간
+    create("D-0006", "VOC-6", "b", 30 * 60), { op: "hold", id: "D-0006", at: iso(29 * 60), blockedBy: ["VOC-1"] }, // HOLD는 만료 없음
+    create("D-0007", "VOC-7", "b", 30 * 60), { op: "approve", id: "D-0007", at: iso(5 * 60) }, // 승인된 제안(전달 전 5시간)
+    create("D-0008", "VOC-8", "b", 30 * 60), verdict("D-0008", "disagree", 24 * 60 + 1), // 경계: 24시간 1분
+    create("D-0009", "VOC-9", "b", 30 * 60), verdict("D-0009", "disagree", 24 * 60), // 경계: 정확히 24시간은 아직
+    create("D-0010", "VOC-10", "b", 30 * 60), { op: "hold", id: "D-0010", at: iso(29 * 60), blockedBy: [] }, verdict("D-0010", "disagree", 26 * 60), // HOLD가 걸린 채 표시된 것도 만료 없음
+  ]);
+  assert.equal(existing.find((p) => p.id === "D-0001")!.status, "disagreed");
+  const tickets = ["VOC-1", "VOC-2", "VOC-3", "VOC-4", "VOC-5", "VOC-6", "VOC-7", "VOC-8", "VOC-9", "VOC-10"].map((k) => t(k));
+  const plan = planOf({ assign: tickets.filter((x) => x.key !== "VOC-4").map((x) => assign(x.key, "b")), release: [{ kind: "RELEASE", flight: "VOC-4", airport: "VCDO", score: 1, factors: [] } as never] });
+  const ops = syncOps(existing, plan, { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 10).filter((o) => o.op === "expire");
+  assert.deepEqual(ops.map((o) => `${o.id}:${"reason" in o ? o.reason : ""}`), ["D-0001", "D-0003", "D-0004", "D-0005", "D-0008"].map((id) => `${id}:${NO_VERDICT_WHY}`));
+  // 접으면 EXPIRED와 사유가 남고, 닫힌 것은 다시 만료되지 않는다
+  const closed = fold([create("D-0001", "VOC-1", "b", 30 * 60), verdict("D-0001", "disagree", 25 * 60), { op: "expire", id: "D-0001", at: iso(0), reason: NO_VERDICT_WHY }]);
+  assert.equal(closed[0].status, "expired");
+  assert.equal(closed[0].reason, NO_VERDICT_WHY);
+  assert.equal(closed[0].timeline.disagreed, iso(25 * 60));
+  assert.deepEqual(syncOps(closed, planOf(), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1).filter((o) => o.op === "expire"), []);
+  // 승인된 제안과 HOLD는 canApply 밖: 승인된 제안의 전달 만료는 따로 있는 규칙이다
+  assert.equal(canApply(existing.find((p) => p.id === "D-0007")!, "expire"), true);
+  assert.equal(existing.find((p) => p.id === "D-0006")!.holdAt !== null, true);
 });

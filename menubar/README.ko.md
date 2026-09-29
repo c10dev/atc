@@ -16,7 +16,7 @@
 |---|---|
 | `GET /api/supervisor-alerts` | 항목(level, cue, text, next, link). 꼭 필요하다: 실패하면 제목이 `✈ —` |
 | `GET /api/fleet` | `fuelAccounts`(가장 많이 쓴 ACCOUNT: `5h 33% · 7d 53%`)와 `busy`인 AIRCRAFT 수 |
-| `GET /api/update` | 마지막 RTS(`RTS ok 15:21 · …`) |
+| `GET /api/update` | 마지막 RTS(`RTS ok 15:21Z · …`, 시각은 atc 화면처럼 UTC) |
 | `GET /api/control/sessions` | 일하는 관제 세션 수 |
 
 꼭 필요하지 않은 엔드포인트가 안 되면 그 줄만 빠진다. 주소는 `ATC_URL`(기본 `http://localhost:7700`)이다.

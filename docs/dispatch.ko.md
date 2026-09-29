@@ -212,7 +212,7 @@ atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER
 CAPTAIN(STAND 없는 FLIGHT만): 마쳤다고 보고 → OCC: atcctl dispatch arrived D-0003 -- '<결과 링크나 한 줄>' → atc: ARRIVED
 ```
 
-제안 상태: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)`(2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED`(2b), STAND 없는 FLIGHT는 `… → ACCEPTED → DEPARTED → ARRIVED`, 곁가지 `REJECTED`, `DECLINED`(CAPTAIN 사유), `SUPERSEDED`(사람이 직접 배정했거나 상황이 바뀜), `EXPIRED`(24시간). `HOLD`가 걸린 `PROPOSED` ASSIGN은 주 흐름에서 빠져, 풀릴 때까지 HELD 목록에서 기다린다(24시간 만료 없음). SUPERVISOR는 이것을 판정하지 않는다(6.2).
+제안 상태: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)`(2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED`(2b), STAND 없는 FLIGHT는 `… → ACCEPTED → DEPARTED → ARRIVED`, 곁가지 `REJECTED`, `DECLINED`(CAPTAIN 사유), `SUPERSEDED`(사람이 직접 배정했거나 상황이 바뀜), `EXPIRED`(24시간). SUPERVISOR 판정 없이 24시간 넘게 `PROPOSED`·`SHADOW_AGREE`·`SHADOW_DISAGREE`로 남은 제안은 ASSIGN·RELEASE 모두 "24시간 판정 없음" 사유로 만료된다(ATC-152. HOLD 걸린 제안은 만료가 없고, `APPROVED`는 전달 만료 규칙이 따로 있다). `HOLD`가 걸린 `PROPOSED` ASSIGN은 주 흐름에서 빠져, 풀릴 때까지 HELD 목록에서 기다린다(24시간 만료 없음). SUPERVISOR는 이것을 판정하지 않는다(6.2).
 
 **STAND 없는 FLIGHT**(2026-09-27 구현, 규칙은 [fleet.ko.md](fleet.ko.md) 5.1.1). STAND가 필요한 FLIGHT는 PR이 머지돼 LOGBOOK에 오르면 끝이라 atc가 더 따라가지 않는다. SURVEY·CHECK는 STAND도, 대개 PR도 없어서 이렇게 한다.
 
@@ -450,7 +450,7 @@ PR이 없는 SURVEY·CHECK FLIGHT는 `PR #n` 대신 `RESULT <링크>`를 쓴다.
 
 - **기록.** `atcctl dispatch report <D-xxxx|ATC-n> --pr <n> --tier <t> --tests <p/t> --discretion <수> --blocked <none|글>`(PR이 없는 FLIGHT는 `--pr` 대신 `--result <링크>`, 그때 `--tests`는 없어도 된다)이 `POST /api/dispatch/report`를 부른다. `D-xxxx`는 그 FLIGHT로 풀리고, `ATC-n` key는 직접 배정을 덮는다. `report` op를 `arrival-reports.jsonl`(`server/arrival-report.ts`, 추가만 함)에 FLIGHT별로 더하고, FLIGHT의 마지막 보고가 유효하다. 고정 칸만 저장한다: `flight`, `at`, `proposal`, `pr` 또는 `result`, `tier`, `tests`, `discretion`(수), `blocked`. 자유 요약은 atc로 보내지 않는다. `GET /api/dispatch/reports`가 목록을 준다.
 - **FOLLOWING**(`server/following.ts`, key `FLIGHT|code`):
-  - `no-report`: PR이 머지(ON)된 지 30분이 넘도록 기록된 보고가 없는 FLIGHT. CAPTAIN이 PR을 올릴 때 보고하므로 머지 전에 기록된 보고도 센다. STAND 없는 FLIGHT에는 없다(ARRIVED는 `dispatch arrived`로 온다).
+  - `no-report`: PR이 머지(ON)된 지 30분이 넘도록 기록된 보고가 없는 FLIGHT에 뜨는 정보(ADVISORY, 알림 제목 숫자에 세지 않는다). CAPTAIN이 PR을 올릴 때 보고하므로 머지 전에 기록된 보고도 센다. STAND 없는 FLIGHT에는 없다(ARRIVED는 `dispatch arrived`로 온다). DISPATCH가 보낸 FLIGHT(제안에 `send`가 있다)이고 PR이 첫 보고가 기록된 때(`REPORT_START`, 2026-09-29T08:34Z, ATC-124) 이후에 머지된 것에만 뜬다. ENGINEERING PR과 FLIGHT PLAN 없는 직접 작업에는 뜨지 않는다. 머지(ON) 뒤 24시간이 지나면 저절로 닫힌다(ATC-152).
   - `blocked-report`: 기록된 보고의 `BLOCKED`가 `none`이 아님. 하루 보이고 보고마다 한 번(`FLIGHT|blocked-report|<at>`). FOLLOWING이 더는 따라가지 않는 FLIGHT도 이 때문에 다시 들어온다.
   - 둘 다 OCC가 SUPERVISOR에게 보고할 것이고, 팀에 묻지 않는다.
 - **매뉴얼.** OCC 매뉴얼(`CLAUDE.md`, `flight-plan.md`, `following.md`, 한국어가 원본)이 보고가 오면 기록하라고 하고 두 코드를 적는다. ENGINEERING도 받은 보고를 같은 명령으로 기록할 수 있다.

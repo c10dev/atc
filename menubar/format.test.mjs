@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { esc, fuelOf, menuLines, newAlerts, nextSeen, notifyUrl, rtsLine, SEEN_TTL_MS, unreachableLines, workingOf } from "./format.mjs";
+import { esc, fuelOf, menuLines, newAlerts, nextSeen, notifyUrl, rtsLine, SEEN_TTL_MS, unreachableLines, workingOf, zTime } from "./format.mjs";
 
 const item = (key, level, over = {}) => ({ key, group: "alert", level, cue: null, aircraft: null, flight: null, text: `${key} 문구`, next: "", link: "#strips", since: null, ...over });
 const fleet = {
@@ -12,7 +12,7 @@ const fleet = {
 };
 const control = { sessions: [{ name: "TOWER", live: [{ status: "idle", job: { state: "working" } }] }, { name: "OCC", live: [{ status: "idle", job: null }] }, { name: "MCC", live: [] }] };
 const update = { last: { at: "2026-09-29T15:21:11.692Z", result: "ok", detail: "4초 · 세션 9개 그대로" } };
-const opts = { fleet, update, control, tz: "UTC" };
+const opts = { fleet, update, control };
 const menu = (items) => menuLines({ alerts: { items }, ...opts });
 const BASE = "http://localhost:7700";
 
@@ -22,7 +22,7 @@ test("빈 알림: 제목 ✈ 0과 FUEL, 색 없음, 항목 자리에 안내", ()
   assert.equal(m[1], "---");
   assert.equal(m[2], "지금 알릴 것 없음");
   assert.ok(m.includes(`DISPATCH 승인 대기 0 | href=${BASE}/#dispatch`));
-  assert.ok(m.includes(`RTS ok 15:21 · 4초 · 세션 9개 그대로 | href=${BASE}/#radar`));
+  assert.ok(m.includes(`RTS ok 15:21Z · 4초 · 세션 9개 그대로 | href=${BASE}/#radar`));
   assert.ok(m.includes(`일하는 중: AIRCRAFT 2 · 관제 세션 1 | href=${BASE}/#fleet`));
   assert.deepEqual(m.slice(-2), [`Open atc | href=${BASE}/`, "Refresh | refresh=true"]);
 });
@@ -91,7 +91,11 @@ test("FUEL은 가장 많이 쓴 ACCOUNT, 모르면 빠진다", () => {
 test("일하는 수·RTS는 자료가 없으면 줄이 빠진다", () => {
   assert.deepEqual(workingOf(fleet, control), { aircraft: 2, control: 1 });
   assert.deepEqual(workingOf(null, null), { aircraft: null, control: null });
-  assert.equal(rtsLine({ last: null }, "UTC"), null);
+  assert.equal(rtsLine({ last: null }), null);
+  // UTC `HH:MMZ`: Mac의 시간대와 무관하다(ATC-152)
+  assert.equal(rtsLine({ last: { at: "2026-09-29T00:05:00Z", result: "ok" } }), "RTS ok 00:05Z");
+  assert.equal(zTime("2026-09-29T23:59:59+09:00"), "14:59Z");
+  assert.equal(zTime("nope"), "—");
   const m = menuLines({ alerts: { items: [] }, fleet: null, update: null, control: null });
   assert.ok(m.every((l) => !l.startsWith("RTS") && !l.startsWith("일하는")));
 });

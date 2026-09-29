@@ -16,7 +16,7 @@ A [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin (ATC-149). It reads at
 |---|---|
 | `GET /api/supervisor-alerts` | Items (level, cue, text, next, link). Required: if it fails the title is `✈ —` |
 | `GET /api/fleet` | `fuelAccounts` (most-used ACCOUNT: `5h 33% · 7d 53%`) and how many AIRCRAFT are `busy` |
-| `GET /api/update` | The last RTS (`RTS ok 15:21 · …`) |
+| `GET /api/update` | The last RTS (`RTS ok 15:21Z · …`, times in UTC like the atc screens) |
 | `GET /api/control/sessions` | How many control sessions are working |
 
 A missing optional endpoint only drops its line. The base URL is `ATC_URL` (default `http://localhost:7700`).

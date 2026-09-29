@@ -102,6 +102,8 @@ import {
 const FILE = join(config.stateDir, "proposals.jsonl");
 const DAY = 86_400_000;
 export const PROPOSAL_TTL_MS = DAY;
+// SUPERVISOR 판정 없이 24시간이 지나 닫는 사유(ATC-152). DISPATCH 탭의 닫힌 목록이 그대로 보인다
+export const NO_VERDICT_WHY = "24시간 판정 없음";
 export const DISPATCH_MS = 5 * 60_000;
 export const GATE = { decided: 20, agreement: 0.8 };
 // 2b → 3(ATFM) 제안 기준
@@ -248,6 +250,9 @@ type StatusOp = Exclude<Op["op"], "create" | "note" | "brief" | "hold" | "crossc
 // 상태 전이 규칙. 여기 없는 전이는 무시한다(API도 같은 규칙으로 검사한다).
 const NEXT: Partial<Record<ProposalStatus, Partial<Record<StatusOp, ProposalStatus>>>> = {
   proposed: { verdict: "agreed", approve: "approved", reject: "rejected", supersede: "superseded", expire: "expired" },
+  // 그림자(나라면 승인·거절) 표시만 받고 SUPERVISOR 판정 없이 24시간이 지나면 닫는다(ATC-152)
+  agreed: { expire: "expired" },
+  disagreed: { expire: "expired" },
   approved: { send: "sent", supersede: "superseded", expire: "expired" },
   sent: { accept: "accepted", decline: "declined", recall: "recalling", expire: "expired" },
   accepted: { depart: "departed", recall: "recalling", expire: "expired" },
@@ -585,7 +590,7 @@ export function syncOps(
         continue;
       }
       // 대기열로 돌린 제안은 돌린 때부터 24시간
-      if (now - Date.parse(p.requeuedAt ?? p.at) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at });
+      if (now - Date.parse(p.requeuedAt ?? p.at) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at, reason: NO_VERDICT_WHY });
       else if (p.resume) {
         // 열린 제안 수(openProposals)에 세지 않는다. 세션이 다시 떴으면 그 세션에서 ATC-86대로("계속")
         const ac = acOf(p);
@@ -604,6 +609,9 @@ export function syncOps(
       else if (p.kind === "RELEASE" && !releasing.has(p.flight)) ops.push({ op: "supersede", id: p.id, at, reason: why(p) });
       else if (p.kind === "ASSIGN") open++;
       else openRelease++;
+    } else if (p.status === "agreed" || p.status === "disagreed") {
+      // ASSIGN·RELEASE 모두. "나라면" 표시만 있고 승인·거절이 없어 SUPERVISOR 알림(pending)에 계속 남던 것(ATC-152). 표시한 때부터 24시간. HOLD가 걸린 것은 만료가 없다
+      if (!isHeld(p) && age(p) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at, reason: NO_VERDICT_WHY });
     } else if (p.kind === "ASSIGN" && p.status === "approved") {
       if (age(p) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at, reason: "승인 뒤 24시간 동안 전달되지 않음" });
       // LAUNCH했는데 유예가 지나도 세션이 없다(계획에 아직 absent)

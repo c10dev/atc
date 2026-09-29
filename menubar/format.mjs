@@ -48,12 +48,19 @@ export function workingOf(fleet, control) {
   return { aircraft, control: ctl };
 }
 
-// 마지막 RTS: `RTS ok 15:21 · 4초 · 세션 9개 그대로`. tz는 시험용(기본은 Mac의 시간대)
-export function rtsLine(update, tz) {
+// 시각은 화면(atc)과 같이 UTC `HH:MMZ`로 보인다(ATC-152). Mac의 시간대에 따라 다르게 읽히지 않게
+export function zTime(iso) {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return "—";
+  const d = new Date(ms);
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}Z`;
+}
+
+// 마지막 RTS: `RTS ok 15:21Z · 4초 · 세션 9개 그대로`
+export function rtsLine(update) {
   const last = update?.last;
   if (!last?.at) return null;
-  const time = new Date(last.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false, ...(tz ? { timeZone: tz } : {}) });
-  return `RTS ${last.result ?? "?"} ${time}${last.detail ? ` · ${last.detail}` : ""}`;
+  return `RTS ${last.result ?? "?"} ${zTime(last.at)}${last.detail ? ` · ${last.detail}` : ""}`;
 }
 
 // 제목 줄. 조치가 필요한 WARNING·CAUTION 수(화면 상단 숫자와 같다), advisory가 있으면 `+n`, 그리고 FUEL
@@ -67,8 +74,8 @@ export function titleOf({ items, fleet }) {
   return line(text, LEVEL_COLOR[top] ? { color: LEVEL_COLOR[top] } : {});
 }
 
-// 메뉴 전체(SwiftBar 출력 줄). now는 시험용
-export function menuLines({ alerts, fleet, update, control, base = DEFAULT_BASE, tz }) {
+// 메뉴 전체(SwiftBar 출력 줄)
+export function menuLines({ alerts, fleet, update, control, base = DEFAULT_BASE }) {
   const items = itemsOf(alerts);
   const out = [titleOf({ items, fleet }), "---"];
   if (!items.length) out.push(line("지금 알릴 것 없음"));
@@ -90,7 +97,7 @@ export function menuLines({ alerts, fleet, update, control, base = DEFAULT_BASE,
   out.push("---");
   const approvals = items.filter((i) => i.key.startsWith("pending|proposal|")).length;
   out.push(line(`DISPATCH 승인 대기 ${approvals}`, { href: hrefOf(base, "#dispatch") }));
-  const rts = rtsLine(update, tz);
+  const rts = rtsLine(update);
   if (rts) out.push(line(rts, { href: hrefOf(base, "#radar") })); // UPDATE 바가 있는 탭(RTS 알림 항목의 link와 같다)
   const w = workingOf(fleet, control);
   const parts = [w.aircraft != null && `AIRCRAFT ${w.aircraft}`, w.control != null && `관제 세션 ${w.control}`].filter(Boolean);
