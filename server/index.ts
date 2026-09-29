@@ -149,7 +149,14 @@ mountFollowing(app, getSnapshot);
 mountAtfm(app, getSnapshot);
 mountAutoland(app, getSnapshot);
 mountMcc(app, getSnapshot, () => head);
-mountUpdate(app, getSnapshot, () => head); // UPDATE bar(ATC-82)
+const update = mountUpdate(app, getSnapshot, () => head); // UPDATE bar(ATC-82)
+// 자동 RTS(ATC-84): mcc 모드가 rts·land+rts일 때만 일한다. 그 밖의 모드나 시험 서버는 아무것도 하지 않는다
+setInterval(() => {
+  update
+    .pass()
+    .then((r) => r.started && console.log(`[atc] auto RTS started: ${r.why}`))
+    .catch(() => {});
+}, 30_000).unref();
 mountSettings(app);
 mountJudges(app);
 mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다

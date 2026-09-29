@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import { appendMccRecord, readMccRecords, rtsDueOf } from "./mcc.ts";
+import { appendMccRecord, autoRtsInfoOf, autoRtsOf, lastRtsFailureOf, mccDeploys, readMccRecords, rtsDueOf } from "./mcc.ts";
 import { airportOf, errText, gh, rtsGuard, rtsState, startRtsUnit } from "./mcc-run.ts";
 import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
@@ -78,7 +78,45 @@ export function mountUpdate(app: Hono, getSnapshot: () => Promise<Snapshot>, hea
       guard: deps.guard(),
       now: f.now,
     });
-    return { kind, why, deployed: f.deployed, main: f.ap.main, mainCi: f.ap.mainCi, prs: range?.prs ?? null, refusal: rangeRefusal, last: f.state.last, at: new Date(f.now).toISOString() };
+    const auto = autoRtsInfoOf(f.ap.cfg.mode, f.state.spacingAt, Boolean(behind), f.now);
+    return { kind, why, deployed: f.deployed, main: f.ap.main, mainCi: f.ap.mainCi, prs: range?.prs ?? null, refusal: rangeRefusal, last: f.state.last, auto, at: new Date(f.now).toISOString() };
+  }
+
+  // 서버의 자동 RTS(ATC-84): mcc 모드가 rts·land+rts일 때 RETURN TO SERVICE가 할 때면 MCC 세션의 /tick을 기다리지 않고 유닛을 시작한다.
+  // 판정은 순수 함수(autoRtsOf)가 하고 시작 조건(rtsDueOf, 5분 간격)은 `mcc rts`와 같다. 시작하면 mcc.jsonl에 by "server"로 남긴다
+  let passing = false;
+  async function pass(s: Snapshot): Promise<{ started: boolean; why: string }> {
+    if (passing) return { started: false, why: "이전 점검이 아직 돎" };
+    passing = true;
+    try {
+      const ap = airportOf(s);
+      if (!mccDeploys(ap.cfg.mode)) return { started: false, why: `모드 ${ap.cfg.mode}: 자동 배포 꺼짐` };
+      const records = readMccRecords();
+      const state = rtsState(records);
+      const deployed = head();
+      const now = deps.now();
+      const due = rtsDueOf({ deployed, main: ap.main, mainCi: ap.mainCi, last: state.last, lastStartAt: state.spacingAt, mainReadAt: ap.mainReadAt, lastLandAt: state.lastLandAt, now }, state.stop);
+      // 범위 거절은 시작하기 전에 안다(UPDATE 바와 같은 planRts). 할 때가 아니면 GitHub을 읽지 않는다
+      let rangeRefusal: string | null = null;
+      if (due.due && deployed && ap.main) {
+        const range = await rangeOf(ap.slug, deployed, ap.main);
+        if (range) rangeRefusal = rangeRefusalOf(await deps.planRts(), deployed, ap.main, range.files);
+        else return { started: false, why: "범위를 읽지 못함 — 다음 점검에서 다시" };
+      }
+      const decision = autoRtsOf({ mode: ap.cfg.mode, due, main: ap.main, rangeRefusal, guard: deps.guard(), last: state.last, lastFailedAt: lastRtsFailureOf(records, ap.main), now });
+      if (!decision.start) return { started: false, why: decision.why };
+      const base = { at: new Date(now).toISOString(), from: deployed, to: ap.main!, by: "server" as const };
+      try {
+        await deps.startUnit();
+        appendMccRecord({ op: "rts", ...base, result: "started" });
+        return { started: true, why: decision.why };
+      } catch (e) {
+        appendMccRecord({ op: "rts", ...base, result: "failed", detail: errText(e) });
+        return { started: false, why: errText(e) };
+      }
+    } finally {
+      passing = false;
+    }
   }
 
   // 화면이 읽는다(읽기만). 저장소를 모르는 동안(GitHub을 아직 안 읽음)은 막대 없음
@@ -117,4 +155,5 @@ export function mountUpdate(app: Hono, getSnapshot: () => Promise<Snapshot>, hea
       return c.json({ started: false, why: errText(e) }, 502);
     }
   });
+  return { pass: async () => pass(await getSnapshot()) };
 }

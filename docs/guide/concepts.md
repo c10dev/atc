@@ -51,7 +51,7 @@ LOGBOOK의 ARRIVED는 Linear Done이 아니라 PR 머지로 센다. 머지된 PR
 | CHECKRIDE | LOGBOOK 근거로 팀의 TYPE RATING 부여·재검토를 추천하는 것. 부여·회수는 SUPERVISOR가 누른다 |
 | AUTOLAND | SUPERVISOR 스위치(`off`·`update`·`merge`) 뒤에서 atc가 CLEARED인데 behind인 PR을 갱신하고, `merge`면 위임된 PR을 머지까지 하는 것(아래 LANDING SEQUENCE) |
 | HOLD(착륙 스트립) | SUPERVISOR가 PR에 다는 표시. AUTOLAND가 그 PR을 머지하지 않고, 그 PR이 CLEARED여도 다음 갱신을 막지 않는다 |
-| MCC | atc 저장소 자신의 PR을 맡는 관제 세션(docs/mcc.md). INSPECTION(리뷰)하고, 스위치가 켜지면 `auto`·`flagged` PR을 머지하고 7700을 새 코드로 RETURN TO SERVICE한다. 설정 창 AGENTS 탭의 MCC 줄(`shadow` 기본 · `land` · `land+rts`). `mcc/` 폴더에서 Claude로 연다(mcc/README.ko.md) |
+| MCC | atc 저장소 자신의 PR을 맡는 관제 세션(docs/mcc.md). INSPECTION(리뷰)하고, 스위치가 켜지면 `auto`·`flagged` PR을 머지하고 7700을 새 코드로 RETURN TO SERVICE한다. 설정 창 AGENTS 탭의 MCC 줄(`shadow` 기본 · `land` · `land+rts` · `rts`). `mcc/` 폴더에서 Claude로 연다(mcc/README.ko.md) |
 | GROUND STOP(AUTOLAND) | main의 post-merge `Application Check`가 빨가 AUTOLAND가 멈춘 상태. SUPERVISOR가 설정 창에서 푼다 |
 
 ## LANDING SEQUENCE

@@ -202,7 +202,7 @@ export function mountSettings(app: Hono) {
       return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
     if (autolandMode !== undefined && !AUTOLAND_MODES.includes(autolandMode as AutolandMode)) return c.json({ errors: { autolandMode: `off, update, merge 중 하나` } }, 400);
     if (judgesJev !== undefined && !JUDGE_MODES.includes(judgesJev as JudgeMode)) return c.json({ errors: { judgesJev: `off, replay, shadow 중 하나` } }, 400);
-    if (mccMode !== undefined && !MCC_MODES.includes(mccMode as MccMode)) return c.json({ errors: { mccMode: `shadow, land, land+rts 중 하나` } }, 400);
+    if (mccMode !== undefined && !MCC_MODES.includes(mccMode as MccMode)) return c.json({ errors: { mccMode: `shadow, land, land+rts, rts 중 하나` } }, 400);
     const { env, errors } = validatePatch(rest);
     if (Object.keys(errors).length) return c.json({ errors }, 400);
     if (Object.keys(env).length) {

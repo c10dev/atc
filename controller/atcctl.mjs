@@ -176,7 +176,7 @@ MCC (atc 자신의 PR 착륙·RETURN TO SERVICE, mcc/ 폴더, Claude — docs/mc
                                             서버가 PR 댓글로도 남긴다. 모델은 guard가 붙인다
   node atcctl.mjs mcc escalate <PR> -- <사유>  user 등급으로 올린다(사용자가 머지). 내릴 수는 없다
   node atcctl.mjs mcc land <PR> --head <sha>  L2–L8이 모두 맞으면 착륙(shadow면 would-land만). 막히면 조건 목록
-  node atcctl.mjs mcc rts                   서비스가 기본 브랜치보다 뒤면 RETURN TO SERVICE(land+rts가 아니면 would-rts)`;
+  node atcctl.mjs mcc rts                   서비스가 기본 브랜치보다 뒤면 RETURN TO SERVICE(land+rts·rts가 아니면 would-rts. 서버가 이미 시작했으면 그렇다고 답함)`;
 
 // limit: 409(한도 참)일 때 오류 대신 보여 줄 안내. 호출한 세션이 곧바로 멈추게 LIMIT으로 시작한다.
 // soft: 409를 오류로 끝내지 않고 응답을 돌려준다(MCC land·rts의 "막힘"은 정상 답이다)

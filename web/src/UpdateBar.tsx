@@ -116,6 +116,9 @@ export function UpdateBar({ update }: { update: ReturnType<typeof useUpdate> }) 
   const showMeta = kind === "available" || kind === "waiting" || kind === "manual" || kind === "refused" || kind === "failed";
   const reason = kind === "waiting" || kind === "manual" || kind === "refused" || kind === "failed" || kind === "rollback" ? status?.why : null;
 
+  // 자동 배포(ATC-84, mcc 모드 rts·land+rts): 켜져 있으면 한 줄로 알리고, 5분 간격을 기다리는 중이면 다음 시각
+  const auto = status?.auto?.on && (kind === "available" || kind === "waiting" || kind === "starting" || kind === "running") ? `자동 배포 켜짐${status.auto.nextAt ? ` · 다음 ${new Date(status.auto.nextAt).toTimeString().slice(0, 5)}` : ""}` : null;
+
   // 알림 영역은 늘 두고 안만 바꾼다(화면 읽기 프로그램이 새로 뜬 것을 읽는다)
   return (
     <div className="update-wrap" role="status">
@@ -143,6 +146,7 @@ export function UpdateBar({ update }: { update: ReturnType<typeof useUpdate> }) 
               </button>
             )}
           </div>
+          {auto && <p className="update-why">{auto}</p>}
           {reason && <p className="update-why">{reason}</p>}
           {error && <p className="update-why is-error">{error}</p>}
           {listOpen && showMeta && prs && (

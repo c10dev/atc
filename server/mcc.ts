@@ -7,8 +7,12 @@ import { severityOf } from "./landing.ts";
 // 이 파일은 설정·기록 읽기와 순수 계산, 실행(GitHub 쓰기·RTS 시작)은 mcc-run.ts.
 // 스위치는 SUPERVISOR만 바꾼다(설정 창, 이 화면 Origin만). 관제 세션 CLI(atcctl)에는 명령이 없다.
 
-export type MccMode = "shadow" | "land" | "land+rts";
-export const MCC_MODES: readonly MccMode[] = ["shadow", "land", "land+rts"];
+export type MccMode = "shadow" | "land" | "land+rts" | "rts";
+export const MCC_MODES: readonly MccMode[] = ["shadow", "land", "land+rts", "rts"];
+// MCC가 착륙시키는 모드(land, land+rts). rts에서는 SUPERVISOR가 손으로 머지하므로 MCC는 would-land만 남긴다
+export const mccLands = (m: MccMode) => m === "land" || m === "land+rts";
+// 서버가 스스로 RETURN TO SERVICE를 시작하는 모드(ATC-84): rts(SUPERVISOR 머지), land+rts(MCC 착륙)
+export const mccDeploys = (m: MccMode) => m === "rts" || m === "land+rts";
 
 // ~/.local/state/atc/mcc.json (원자적으로 바꿔 쓴다)
 export interface MccConfig {
@@ -72,7 +76,7 @@ export type MccRecord =
   | Inspection
   | { op: "escalate"; at: string; pr: number; head: string; reason: string; model?: string }
   | { op: "land" | "would-land"; at: string; pr: number; head: string; tier: string; result: "ok" | "rejected" | "failed"; detail?: string; model?: string }
-  | { op: "rts" | "would-rts"; at: string; from: string | null; to: string; result: "started" | "failed"; detail?: string; model?: string; by?: "supervisor" }
+  | { op: "rts" | "would-rts"; at: string; from: string | null; to: string; result: "started" | "failed"; detail?: string; model?: string; by?: "supervisor" | "server" }
   | { op: "mode"; at: string; mode: MccMode; detail: string }
   | { op: "hold" | "unhold"; at: string; pr: number };
 
@@ -246,6 +250,44 @@ export function spacingStartOf(records: readonly MccRecord[], rts: readonly RtsR
     return r.at;
   }
   return null;
+}
+// 서버의 자동 RTS 판정(순수, ATC-84). rts·land+rts에서 서버가 스스로 유닛을 시작해도 되나.
+// 시작 조건은 rtsDueOf(5분 간격 포함)와 같고, 거절이 이미 예상되거나 같은 main으로 거절·실패한 뒤에는 사람에게 넘긴다
+export interface AutoRtsInput {
+  mode: MccMode;
+  due: { due: boolean; why: string }; // rtsDueOf(5분 간격)
+  main: string | null;
+  rangeRefusal: string | null; // 범위가 package*.json·유닛 파일을 바꾸면 사람이 배포(deploy/rts.mjs planRts)
+  guard: string | null; // 이 서버가 유닛을 시작할 수 없는 사유(시험 서버)
+  last: RtsRecord | null; // rts.jsonl 마지막 줄
+  lastFailedAt: string | null; // mcc.jsonl의 마지막 rts failed(같은 main, 유닛 시작 오류)
+  now: number;
+}
+export function autoRtsOf(x: AutoRtsInput): { start: boolean; why: string } {
+  if (!mccDeploys(x.mode)) return { start: false, why: `모드 ${x.mode}: 자동 배포 꺼짐` };
+  if (x.guard) return { start: false, why: x.guard };
+  if (!x.due.due) return { start: false, why: x.due.why };
+  if (x.rangeRefusal) return { start: false, why: `사람이 배포: ${x.rangeRefusal}` };
+  const same = (a: string, b: string) => a.startsWith(b) || b.startsWith(a);
+  if (x.last && x.main && (x.last.result === "refused" || x.last.result === "failed") && same(x.last.to, x.main))
+    return { start: false, why: `자동 배포 멈춤 — 같은 main(${x.main.slice(0, 7)})에 RTS가 ${x.last.result === "refused" ? "거절" : "실패"}함. UPDATE 바에서 사람이` };
+  if (x.lastFailedAt && x.now - Date.parse(x.lastFailedAt) < RTS_SPACING_MS) return { start: false, why: "유닛 시작이 방금 실패함 — 5분 뒤 다시" };
+  return { start: true, why: x.due.why };
+}
+// mcc.jsonl의 마지막 rts failed(유닛 시작 오류) 가운데 이 main을 향한 것의 시각
+export function lastRtsFailureOf(records: readonly MccRecord[], main: string | null): string | null {
+  if (!main) return null;
+  for (let i = records.length - 1; i >= 0; i--) {
+    const r = records[i];
+    if (r.op === "rts" && r.result === "failed" && (r.to.startsWith(main) || main.startsWith(r.to))) return r.at;
+  }
+  return null;
+}
+// UPDATE 바에 보이는 자동 배포 상태: 켜짐이고, 5분 간격 때문에 기다리는 중이면 다음 시각
+export function autoRtsInfoOf(mode: MccMode, spacingStartAt: string | null, behind: boolean, now: number): { on: boolean; nextAt: string | null } {
+  if (!mccDeploys(mode)) return { on: false, nextAt: null };
+  const t = spacingStartAt ? Date.parse(spacingStartAt) + RTS_SPACING_MS : NaN;
+  return { on: true, nextAt: behind && Number.isFinite(t) && t > now ? new Date(t).toISOString() : null };
 }
 // ROLLBACK 뒤에는 SUPERVISOR가 모드를 다시 고를 때까지 멈춘다(모드 기록이 ROLLBACK보다 늦으면 풀림)
 export function rtsStopOf(last: RtsRecord | null, lastModeAt: string | null): string | null {

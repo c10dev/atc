@@ -36,8 +36,8 @@ function setup(over: Partial<UpdateDeps> = {}, s = snap(B)) {
     ...over,
   };
   const app = new Hono();
-  mountUpdate(app, async () => s, () => A, deps);
-  return { app, calls };
+  const { pass } = mountUpdate(app, async () => s, () => A, deps);
+  return { app, calls, pass };
 }
 const post = (app: Hono) => app.request("/api/update/start", { method: "POST", headers: { "content-type": "application/json", origin: "http://localhost:7702" }, body: "{}" });
 const mccLines = () => (existsSync(join(config.stateDir, "mcc.jsonl")) ? readFileSync(join(config.stateDir, "mcc.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)) : []);
@@ -124,4 +124,89 @@ test("/api/mcc/rts도 같은 규칙: land+rts여도 임시 상태 폴더의 서�
   assert.equal(body.started, false);
   assert.match(body.why, /시작하지 않음/);
   assert.deepEqual(mccLines(), []);
+});
+
+// ── 서버의 자동 RTS(ATC-84). 유닛 시작은 스텁이고 guard도 스텁 — 실제 유닛은 시작되지 않는다 ──
+const fresh = (mode: "shadow" | "land" | "land+rts" | "rts") => {
+  config.stateDir = mkdtempSync(join(tmpdir(), "update-auto-"));
+  after(() => rmSync(config.stateDir, { recursive: true, force: true }));
+  saveMcc({ mode, airport: "ATCC", ciCheck: "check", holds: [] });
+};
+
+test("자동 RTS: shadow·land에서는 아무것도 하지 않는다", async () => {
+  for (const mode of ["shadow", "land"] as const) {
+    fresh(mode);
+    const { pass, calls } = setup();
+    assert.equal((await pass()).started, false);
+    assert.equal(calls.start, 0);
+    assert.equal(calls.compare, 0);
+    assert.deepEqual(mccLines(), []);
+  }
+});
+
+test("자동 RTS: rts에서 할 때면 유닛(스텁)을 by server로 시작하고, 5분 안 두 번째는 시작하지 않는다", async () => {
+  fresh("rts");
+  const { pass, calls } = setup();
+  const r = await pass();
+  assert.equal(r.started, true);
+  assert.equal(calls.start, 1);
+  const [rec] = mccLines();
+  assert.deepEqual([rec.op, rec.by, rec.result, rec.to], ["rts", "server", "started", B]);
+  const again = await pass();
+  assert.equal(again.started, false);
+  assert.match(again.why, /5분/);
+  assert.equal(calls.start, 1);
+});
+
+test("자동 RTS: 상태에 자동 배포 켜짐과 다음 시각이 실린다(모드가 rts·land+rts일 때만)", async () => {
+  fresh("land+rts");
+  const { app, pass } = setup();
+  assert.deepEqual((await (await app.request("/api/update")).json()).auto, { on: true, nextAt: null });
+  await pass();
+  const auto = (await (await app.request("/api/update")).json()).auto;
+  assert.equal(auto.on, true);
+  assert.ok(Date.parse(auto.nextAt) > Date.now());
+  fresh("land");
+  assert.deepEqual((await (await setup().app.request("/api/update")).json()).auto, { on: false, nextAt: null });
+});
+
+test("자동 RTS: 범위가 package.json을 바꾸면 사람에게 넘기고, 시험 서버 guard면 시작하지 않는다", async () => {
+  fresh("rts");
+  const manual = setup({ compare: async () => ({ prs: [], files: ["package.json"] }) });
+  const r = await manual.pass();
+  assert.equal(r.started, false);
+  assert.match(r.why, /사람이 배포/);
+  assert.equal(manual.calls.start, 0);
+  const guarded = setup({ guard: rtsGuard });
+  assert.equal((await guarded.pass()).started, false);
+  assert.equal(guarded.calls.start, 0);
+  assert.deepEqual(mccLines(), []);
+});
+
+test("자동 RTS: 같은 main에 거절되면 멈추고, 유닛 시작 오류는 failed로 남기고 바로 다시 하지 않는다", async () => {
+  fresh("rts");
+  const bad = setup({ startUnit: async () => { throw new Error("systemctl 실패"); } });
+  assert.equal((await bad.pass()).started, false);
+  assert.equal(mccLines()[0].result, "failed");
+  const retry = setup();
+  assert.match((await retry.pass()).why, /5분/);
+  assert.equal(retry.calls.start, 0);
+  fresh("rts");
+  appendFileSync(RTS_FILE(), JSON.stringify({ at: new Date().toISOString(), from: A, to: B, result: "refused", detail: "세션 점검" }) + "\n");
+  const stopped = setup();
+  assert.match((await stopped.pass()).why, /자동 배포 멈춤/);
+  assert.equal(stopped.calls.start, 0);
+});
+
+test("/api/mcc/rts: rts 모드에서 서버가 이미 시작했으면 그렇다고 알린다", async () => {
+  fresh("rts");
+  const { pass } = setup();
+  await pass();
+  const app = new Hono();
+  mountMcc(app, async () => snap(B), () => A);
+  const r = await app.request("/api/mcc/rts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "claude-opus-5-5" }) });
+  assert.equal(r.status, 409);
+  const body = await r.json();
+  assert.equal(body.serverStarted, true);
+  assert.match(body.why, /서버가 이미 RTS를 시작함/);
 });
