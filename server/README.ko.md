@@ -60,6 +60,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `occupancy.ts` | 점유 구간 `[since, lastAt]`으로 HANDOFF·충돌·잠깐 들름 판정 |
 | `airports.ts` | AIRPORT 등록부: `~/projects` 아래 자동 개설, 첫 커밋 해시로 식별, 코드, 개설·폐쇄·이름 변경·삭제 |
 | `away.ts` | OUTSTATION: 소속 AIRPORT 밖 STAND를 점유한 세션(화면과 공용) |
+| `fleet-live.ts` | FLEET 라이브 부분(ATC-100): REGISTRATION마다 상태·FLYING FLIGHT·마지막 활동·health·ACCOUNT hold·칩을 `Snapshot`만으로 셈(순수 함수 `liveViewOf`, `mergeLive`). `fleetView`와 화면이 같이 씀 |
 | `fleet-status.ts` | FLEET 운항 상태 목록(ATC-44): AIRCRAFT마다 AIRBORNE·HOLDING·PARKED·AOG·NORDO(순수 함수 `fleetStatusOf`), 상태 다음 AIRPORT 순으로 한 줄씩(순수 함수 `fleetRows`), 경과 시간 글(화면과 같이 씀) |
 | `restarting.ts` | RESTARTING(ATC-91, docs/fleet.ko.md 8.5 "RESTARTING as built"), 순수 함수: `restartingOf`(정상으로 끝나 세션 파일이 없고 같은 REGISTRATION의 살아 있는 세션이 없는 것, `restartGraceMin` 안), `normalEndOf`, 화면과 같이 쓰는 글. 읽기는 `sources/claude.ts`의 `readEndedSessions` |
 | `health-flights.ts` | FLIGHT를 쥔 AIRCRAFT의 health(ATC-86, docs/fleet.ko.md 8.8 "AIRCRAFT health from events as built"), 순수 함수 `applyFlightHealth`: 세션에 `STALLED`(STAND 점유나 `tail:` 라벨의 In Progress FLIGHT, `stalledMin` 넘게 idle, 열린 PR 없음)와 `keptFlights`(멈춘 AIRCRAFT가 점유가 `claimTtl`을 넘은 뒤에도 쥔 FLIGHT)를 붙인다 |

@@ -1,6 +1,9 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { AircraftView } from "../../../../server/fleet.ts";
+import { mergeLive } from "../../../../server/fleet-live.ts";
 import { fleetRows } from "../../../../server/fleet-status.ts";
+import type { Snapshot } from "../../../../server/model.ts";
+import { DEFAULT_TEAM_PATTERN } from "../../../../server/registration.ts";
 import { isBackground, manualStepsOf } from "../../../../server/session-origin.ts";
 // CSS 순서: 한 파일이던 때처럼 FleetCrew·Checkride·FleetPlan → FLEET 공통(Fleet.css) → 부분별 CSS.
 // 같은 세기의 규칙(.fc-error/.fl-error, .fp-switch/.fl-btn, .fl-input/.fl-reg·.fl-num)이 이 순서에 기댄다
@@ -42,7 +45,8 @@ function saveLayout(l: Layout) {
   } catch {}
 }
 
-export function Fleet({ refreshKey }: { refreshKey: string }) {
+// 빠르게 바뀌는 값(상태·FLYING·마지막 활동·health·chips)은 SSE 스냅샷이 덮고, 느린 부분은 GET /api/fleet을 분마다 다시 읽는다(ATC-100)
+export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: Snapshot }) {
   const [brief, setBrief] = useState<FleetBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -168,9 +172,14 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
     if (ok && bg && confirm(`${a.registration} 세션도 멈출까요?`)) await stop(a, false);
   };
 
+  const aircraft = useMemo(
+    () => (brief ? mergeLive(brief.aircraft, snapshot, brief.teamPattern ?? DEFAULT_TEAM_PATTERN, Date.now()) : []),
+    [brief, snapshot],
+  );
+
   if (!brief) return <p className="empty">{error ? `불러오지 못함: ${error}` : "불러오는 중…"}</p>;
-  const inService = brief.aircraft.filter((a) => !a.retired);
-  const retired = brief.aircraft.filter((a) => a.retired);
+  const inService = aircraft.filter((a) => !a.retired);
+  const retired = aircraft.filter((a) => a.retired);
   // AIRCRAFT 한 대의 지금 카드(고치는 중이면 편집기). 목록에서 펼칠 때와 카드 보기에서 같이 쓴다.
   // 그 카드가 연 패널(LAUNCH, CREW BRIEFING)은 카드 바로 아래에 붙는다(ATC-61)
   const cardOf = (a: AircraftView) => (
