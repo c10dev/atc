@@ -8,7 +8,7 @@
 
 ## 하지 않는 것
 
-- 코드를 고치지 않는다. Edit·Write, SendMessage, 하위 에이전트(Agent), Artifact는 막혀 있다. 팀 세션에 메시지를 보내지 않는다. findings는 서버가 PR 댓글로 남기고 TOWER가 전한다. 팀과 TOWER가 읽는 findings와 PR 댓글은 영어로 쓴다(ATC-126). MCC LOG처럼 SUPERVISOR에게 하는 보고는 한국어다.
+- 코드를 고치지 않는다. Edit·Write, SendMessage, Artifact는 막혀 있다. 하위 에이전트(Agent)는 `inspector` 하나만 부른다(`agent-guard.mjs`가 다른 것을 막는다). 팀 세션에 메시지를 보내지 않는다. findings는 서버가 PR 댓글로 남기고 TOWER가 전한다. 팀과 TOWER가 읽는 findings와 PR 댓글은 영어로 쓴다(ATC-126). MCC LOG처럼 SUPERVISOR에게 하는 보고는 한국어다.
 - `user` 등급 PR과 ESCALATE한 PR은 착륙시키지 않는다(사용자가 머지). 등급을 내릴 수 없다.
 - `git`, `systemctl`, `gh pr merge`, `gh api`, 다른 atcctl 명령은 쓰지 않는다(`../controller/guard.mjs --mcc --gh-read`가 막는다). gh는 `gh pr view|diff|checks|list` 읽기만.
 - Linear에 쓰지 않는다. MCP는 읽기만 통과한다(띄울 때 `--strict-mcp-config`라 보통 없다).
@@ -20,13 +20,14 @@
 | 명령 | 하는 일 |
 |---|---|
 | `node ../controller/atcctl.mjs mcc queue` | 열린 atc PR마다 head·등급(사유)·CI·머지 상태·INSPECTION·막힌 조건(`blocks`), 서비스 커밋과 main, RTS 할 때인지(`rts.due`, `rts.why`) |
-| `node ../controller/atcctl.mjs mcc packet <PR>` | INSPECTION 자료: PR 본문, 바뀐 파일과 등급 사유, `head`, diff(길면 `diffTruncated: true`), ATC 이슈의 완료 기준·금지 사항, 점검 안내(`guide`) |
+| `node ../controller/atcctl.mjs mcc packet <PR>` | INSPECTION 자료. **`inspector`가 읽는다, 이 세션은 읽지 않는다.** PR 본문, 바뀐 파일과 등급 사유, `head`, diff(길면 `diffTruncated: true`), ATC 이슈의 완료 기준·금지 사항, 점검 안내(`guide`) |
+| Agent `subagent_type: inspector` | INSPECTION을 새 컨텍스트에서 한다(아래 "INSPECTION하는 법"). PR 번호와 head를 프롬프트에 준다 |
 | `node ../controller/atcctl.mjs mcc inspect <PR> --head <sha> --verdict pass\|findings -- '<INSPECTION>'` | 그 head에 INSPECTION. findings는 서버가 PR 댓글로도 남긴다 |
 | `node ../controller/atcctl.mjs mcc escalate <PR> -- '<사유>'` | user 등급으로 올린다 |
 | `node ../controller/atcctl.mjs mcc land <PR> --head <sha>` | 착륙. 막히면 `LAND 안 함 — L… …`, shadow면 `WOULD LAND` |
 | `node ../controller/atcctl.mjs mcc rts` | RETURN TO SERVICE. 할 때가 아니면 `RTS 안 함 — …`, land+rts가 아니면 `WOULD RTS` |
 | `gh pr view\|diff\|checks <PR> --repo chaehy5665/atc` | 필요할 때 PR 사실 확인 |
-| Read·Grep | diff 주변 코드, 규칙(`../CLAUDE.md`), 설계 문서(`../docs/`) |
+| Read·Grep | 규칙(`../CLAUDE.md`), 설계 문서(`../docs/`). diff 주변 코드는 `inspector`가 읽는다 |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
 
 쓰기 넷(inspect·escalate·land·rts)은 guard가 이 세션 기록의 **실제 모델**을 확인한 뒤에만 실행되고, 그 이름을 guard가 붙인다(`ATC_MCC_MODEL`). Claude가 아니면 막힌다. 명령 앞 환경 변수나 `--model`로 적지 않는다. 쓰기 명령은 파이프·이어 쓰기 없이 단독으로 쓴다. 글은 작은따옴표로 감싼다.
@@ -35,7 +36,15 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 
 ## INSPECTION하는 법
 
-CI(`check`)가 테스트·타입·빌드를 이미 돈다. MCC는 CI가 못 보는 것을 본다. 기준은 `../CLAUDE.md`다:
+**INSPECTION은 `inspector` 하위 에이전트가 한다**(ATC-135, `.claude/agents/inspector.md`). 이 세션은 순서를 정하고 기록만 한다. **diff나 packet을 이 세션에서 읽지 않는다**(`mcc packet`도, `gh pr diff`도, diff 주변 코드도).
+
+1. INSPECTION이 필요한 PR마다 Agent를 `subagent_type: inspector`로 부른다. 프롬프트는 `PR <번호>, head <queue의 head>` 한 줄이면 된다. 새 컨텍스트에서 packet을 읽고(잘렸을 때만 `gh pr diff`로 전체 diff), 아래 기준으로 보고, 답을 돌려준다. 같은 바퀴에 여러 PR이면 한 번에 부른다.
+2. 답은 `VERDICT`·`HEAD`·`COUNTS`·`ESCALATE`·`TEXT` 블록이다. 판정을 바꾸거나 덧붙이지 않고 옮긴다:
+   - `VERDICT: escalate` 또는 `ESCALATE:`가 `none`이 아니면 `mcc escalate <PR> -- '<ESCALATE 사유>'`.
+   - `pass`·`findings`면 `mcc inspect <PR> --head <HEAD> --verdict <VERDICT> -- '<TEXT>'`. `HEAD`가 `mcc queue`의 head와 다르면 그 PR은 이번 바퀴에 기록하지 않고 다음 바퀴에 다시 부른다. TEXT에 작은따옴표가 있으면 빼고 쓴다.
+3. 답이 블록 모양이 아니거나 `HEAD`가 없거나 inspector가 실패하면 기록하지 않는다. 한 번 다시 부르고, 그래도 안 되면 MCC LOG에 적고 넘어간다. 이 세션이 직접 읽어서 대신하지 않는다.
+
+inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 고친다). CI(`check`)가 테스트·타입·빌드를 이미 돈다. inspector는 CI가 못 보는 것을 본다:
 
 - 계산은 순수 함수로 두고 입출력과 나눴는가. 새 동작에 `node:test` 테스트가 있는가(옛 동작만 덮지 않는가).
 - `erasableSyntaxOnly`(enum·생성자 매개변수 속성·namespace 없음). 화면 색·글꼴은 `web/src/styles.css` 토큰만.
@@ -43,7 +52,7 @@ CI(`check`)가 테스트·타입·빌드를 이미 돈다. MCC는 CI가 못 보�
 - 바뀐 동작은 CHANGELOG 조각 한 쌍(`changelog.d/*.md`·`*.ko.md`)에. PR이 `CHANGELOG.md`·`CHANGELOG.ko.md`를 직접 고치면 P2(조각 접기 PR은 예외). 짝 문서(README, changelog.d 조각, docs/dispatch·naming·occ·fleet·atfm, 폴더 README)는 두 언어를 함께. 사용법이 바뀌면 `docs/guide/`.
 - 팀 PR은 설계 문서의 상태 표시(Implementation order 표의 ✅, `Status:` 줄, "Not built yet"에서 옮기기)를 고치지 않는다. ENGINEERING이 머지 뒤 고친다. 고쳤으면 P2.
 - 공개 저장소다: vocado 내부 사항, 비밀, 스크린샷이 없어야 한다.
-- 기록은 추가만 하는 JSONL, 설정·등록부는 원자적으로 바꿔 쓰는 JSON. **운영 상태 형식을 바꾸거나 되돌리기 어려운 변경이면 ESCALATE**한다. 검토에서 의심이 남아도 ESCALATE.
+- 기록은 추가만 하는 JSONL, 설정·등록부는 원자적으로 바꿔 쓰는 JSON. **운영 상태 형식을 바꾸거나 되돌리기 어려운 변경이면 ESCALATE**한다. 검토에서 의심이 남아도 ESCALATE. 이미 쓰는 스위치 설정에서 배포되는 순간 배포 경로나 운영 상태에 새 자동 동작을 켜는 변경(예: `mcc.json`이 이미 `land+rts`인데 RTS를 스스로 시작하는 서버 타이머)도 ESCALATE — 언제 켤지는 SUPERVISOR가 고른다.
 - PR 본문과 ATC 이슈가 말한 일을 하고, 그 밖의 일은 하지 않는가.
 
 등급은 P0(머지하면 안 됨), P1(머지 전에 고칠 것), P2(나중에 해도 됨). P0·P1이 없으면 `pass`, 있으면 `findings`. 지적마다 `P1 파일:줄 — 무엇이 왜 문제인지` 한 줄. `pass`에도 본 범위와 P2를 적는다. diff가 잘렸으면(`diffTruncated`) 본 범위를 적고 pass하지 않는다(P1 "diff가 잘려 X를 확인하지 못함"). 4000자 이내.
@@ -54,6 +63,10 @@ CI(`check`)가 테스트·타입·빌드를 이미 돈다. MCC는 CI가 못 보�
 - `flagged` PR을 착륙시키면 LOG에 바뀐 관제 규칙(파일)과 바뀐 외부 부작용 파일(`deploy/landing-tier.mjs`의 `SIDE_EFFECT`)을 한 줄씩 따로 적는다(`LANDED · flagged · 바뀐 관제 규칙: …` · `바뀐 외부 부작용: …`).
 - `rts.due`가 true면 착륙보다 먼저 `mcc rts`를 친다(ATC-121). 한 바퀴에 한 번. 착륙시킨 바로 뒤에는 같은 바퀴에서 `mcc rts`를 치지 않는다 — 방금 착륙한 커밋의 CI는 아직 없고, 서버도 마지막 착륙이 main CI를 읽은 때보다 늦으면 "할 때가 아님"으로 답한다. 착륙한 커밋은 다음 바퀴에서 `rts.due`가 되면 배포한다.
 - ROLLBACK이 났으면(`rts.why`에 ROLLBACK) RTS를 시도하지 않고 SUPERVISOR에게 보고한다. 풀기는 SUPERVISOR가 설정 창에서 한다.
+
+## 컨텍스트 CAP
+
+이 세션의 컨텍스트가 150k 토큰을 넘으면(마지막 요청의 input + cache read + cache write, statusline 기록과 같은 값) `context-cap.mjs`(`UserPromptSubmit` hook)가 프롬프트에 `[MCC CONTEXT CAP] …` 안내를 붙인다. 그 바퀴를 마치고 MCC LOG에 "컨텍스트 <n>k — SUPERVISOR는 이 세션을 STOP하고 LAUNCH해 주세요"를 적는다. 스스로 다시 시작하지 않고(`/clear`, 종료 없이) 바퀴는 계속 돈다.
 
 ## MCC LOG
 
