@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
+import { followingExceptions } from "../readiness-line.ts";
 import "./Following.css";
 
 // FLIGHT FOLLOWING(운항 추적, docs/occ.md 8장). 배정된 FLIGHT의 단계와 지연·불일치를 보여 주기만 한다.
@@ -35,7 +36,7 @@ interface FollowItem {
   pr: { repo: string; number: number; url: string; merged: boolean } | null;
   issues: FollowIssue[];
 }
-interface FollowBrief {
+export interface FollowBrief {
   at: string;
   items: FollowItem[];
 }
@@ -62,7 +63,8 @@ function normalize(raw: Partial<FollowBrief> | null): FollowBrief | null {
   };
 }
 
-export function FollowingPanel({ refreshKey, now }: { refreshKey: string; now: number }) {
+// FLIGHT FOLLOWING 상태 하나를 예외 줄(FollowingAlert)과 READINESS 안 전체 패널(FollowingPanel)이 함께 쓴다(ATC-113)
+export function useFollowing(refreshKey: string): FollowBrief | null {
   const [brief, setBrief] = useState<FollowBrief | null>(null);
 
   // 서버에 FLIGHT FOLLOWING이 없거나(404) 실패하면 아무것도 그리지 않는다
@@ -78,7 +80,57 @@ export function FollowingPanel({ refreshKey, now }: { refreshKey: string; now: n
   useEffect(() => {
     load();
   }, [load, refreshKey]);
+  return brief;
+}
 
+const ALERT_MAX = 3; // 예외 줄에 펴 두는 FLIGHT 수. 넘으면 개수만 적고 나머지는 전체 패널에서
+
+// 예외: 지연·불일치가 있는 FLIGHT 줄만 맨 위에. 전체 패널은 READINESS 안에 그대로 있고, onOpenFull이 그리로 연다
+export function FollowingAlert({ brief, now, onOpenFull }: { brief: FollowBrief | null; now: number; onOpenFull: () => void }) {
+  const rows = followingExceptions(brief?.items);
+  if (!brief || !rows.length) return null;
+  return (
+    <section className="ff ff-alert" aria-labelledby="ff-alert-title">
+      <header className="ff-head">
+        <h2 className="label" id="ff-alert-title">
+          FLIGHT FOLLOWING <em>지연·불일치 {rows.length}건</em>
+        </h2>
+        <button type="button" className="dp-btn ff-full" onClick={onOpenFull}>
+          전체 FLIGHT FOLLOWING ↓
+        </button>
+      </header>
+      <ul className="ff-list">
+        {rows.slice(0, ALERT_MAX).map((f) => (
+          <li key={f.flight} className="ff-item ff-compact">
+            <div className="ff-row">
+              {f.url ? (
+                <a className="mono ff-flight" href={f.url} target="_blank" rel="noreferrer">
+                  {flightNumber(f.flight)}
+                </a>
+              ) : (
+                <span className="mono ff-flight">{flightNumber(f.flight)}</span>
+              )}
+              <span className="ff-title" title={f.title ?? undefined}>
+                {f.title ?? "—"}
+              </span>
+              <span className="ff-meta">
+                <span className="mono">{f.aircraft ?? "—"}</span>
+              </span>
+            </div>
+            <FollowIssues f={f} now={now} />
+          </li>
+        ))}
+      </ul>
+      {rows.length > ALERT_MAX && (
+        <p className="faint ff-more">
+          외 {rows.length - ALERT_MAX}건 — 위 버튼으로 전체를 본다
+        </p>
+      )}
+    </section>
+  );
+}
+
+export function FollowingPanel({ brief, now }: { brief: FollowBrief | null; now: number }) {
   if (!brief) return null;
   const { items } = brief;
   const issues = items.flatMap((f) => f.issues);
@@ -176,6 +228,14 @@ function FollowRow({ f, now }: { f: FollowItem; now: number }) {
         )}
       </div>
 
+      <FollowIssues f={f} now={now} />
+    </li>
+  );
+}
+
+function FollowIssues({ f, now }: { f: FollowItem; now: number }) {
+  return (
+    <>
       {f.issues.length > 0 && (
         <ul className="ff-issues">
           {f.issues.map((i) => (
@@ -193,7 +253,7 @@ function FollowRow({ f, now }: { f: FollowItem; now: number }) {
           ))}
         </ul>
       )}
-    </li>
+    </>
   );
 }
 

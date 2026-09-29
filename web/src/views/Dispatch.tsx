@@ -5,11 +5,13 @@ import type { Proposal } from "../../../server/proposals.ts";
 import type { Delivery } from "../../../server/session-origin.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
+import { atfmAlertOf, dispatchLineParts } from "../readiness-line.ts";
 import { PriorityMark } from "../ui.tsx";
-import { AtfmPanel } from "./Atfm.tsx";
+import { AtfmAlert, AtfmPanel, useAtfm } from "./Atfm.tsx";
 import { type ReadinessItem, Readiness2b } from "./Readiness2b.tsx";
 import { BriefingLines, CardDetails, type CardBrief, FactsLine } from "./DispatchBriefing.tsx";
-import { FollowingPanel } from "./Following.tsx";
+import { FollowingAlert, FollowingPanel, useFollowing } from "./Following.tsx";
+import { ReadinessFold, useFoldOpen } from "./ReadinessFold.tsx";
 import { BriefsPanel } from "./Briefs.tsx";
 import "./Dispatch.css";
 
@@ -228,6 +230,9 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
   const [brief, setBrief] = useState<Brief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // 판정을 보내는 중인 제안(두 번 누름 방지)
+  const atfm = useAtfm(refreshKey);
+  const following = useFollowing(refreshKey);
+  const [foldOpen, setFoldOpen] = useFoldOpen("dispatch");
 
   const load = useCallback(async () => {
     try {
@@ -316,6 +321,12 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
     }
   };
 
+  // 예외의 "전체 FLIGHT FOLLOWING" 링크: READINESS를 펴고 그 패널로 스크롤
+  const openFollowing = () => {
+    setFoldOpen(true);
+    requestAnimationFrame(() => document.getElementById("ff-title")?.scrollIntoView({ block: "start" }));
+  };
+
   if (!brief) return <p className="empty">{error ? `불러오지 못함: ${error}` : "불러오는 중…"}</p>;
   const { plan, gate, flights } = brief;
   const codes = brief.reasonCodes ?? [];
@@ -341,46 +352,14 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
           {brief.mode === "shadow" ? "2b 승인 운용 켜기" : "2a 그림자 운용으로"}
         </button>
       </div>
-      {brief.readiness2b?.items?.length ? <Readiness2b items={brief.readiness2b.items} mode={brief.mode} /> : null}
       {error && (
         <p className="dp-error" role="alert">
           {error}
         </p>
       )}
 
-      <Gate gate={gate} labelOf={labelOf} stats={brief.reasonStats} judges={brief.judges} />
-      {(brief.mode === "approval" || brief.gate3.dispatched > 0) && <Gate3 gate={brief.gate3} />}
-      <AtfmPanel refreshKey={refreshKey} now={now} />
-      <FollowingPanel refreshKey={refreshKey} now={now} />
-      <BriefsPanel refreshKey={refreshKey} />
-
-      {brief.inFlight.length > 0 && (
-        <>
-          <h2 className="label">
-            IN FLIGHT <em>승인 뒤 진행 중</em>
-          </h2>
-          <table className="dp-table dp-inflight">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>FLIGHT</th>
-                <th>AIRCRAFT</th>
-                <th>상태</th>
-                <th>언제부터</th>
-                <th>
-                  <span className="dp-sr">조치</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {brief.inFlight.map((p) => (
-                <InFlightRow key={p.id} p={p} flight={flights[p.flight]} waiting={brief.waiting?.[p.id]} now={now} overdue={brief.overdue.includes(p.id)} mode={brief.mode} busy={busy === p.id} onRecall={recall} candidate={(brief.arrivalCandidates ?? []).find((c) => c.proposal === p.id)} />
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
-      <DirectCandidates candidates={(brief.arrivalCandidates ?? []).filter((c) => !c.proposal)} now={now} />
+      <AtfmAlert atfm={atfm} now={now} />
+      <FollowingAlert brief={following} now={now} onOpenFull={openFollowing} />
 
       <div className="dp-slots" aria-label="슬롯">
         {plan.slots.map((s) => (
@@ -446,6 +425,34 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       ) : (
         <p className="empty">열린 RELEASE 제안 없음</p>
       )}
+
+      {brief.inFlight.length > 0 && (
+        <>
+          <h2 className="label">
+            IN FLIGHT <em>승인 뒤 진행 중</em>
+          </h2>
+          <table className="dp-table dp-inflight">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>FLIGHT</th>
+                <th>AIRCRAFT</th>
+                <th>상태</th>
+                <th>언제부터</th>
+                <th>
+                  <span className="dp-sr">조치</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {brief.inFlight.map((p) => (
+                <InFlightRow key={p.id} p={p} flight={flights[p.flight]} waiting={brief.waiting?.[p.id]} now={now} overdue={brief.overdue.includes(p.id)} mode={brief.mode} busy={busy === p.id} onRecall={recall} candidate={(brief.arrivalCandidates ?? []).find((c) => c.proposal === p.id)} />
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      <DirectCandidates candidates={(brief.arrivalCandidates ?? []).filter((c) => !c.proposal)} now={now} />
 
       <div className="dp-grid">
         <div>
@@ -518,6 +525,16 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       ) : (
         <p className="empty">아직 결정된 제안 없음</p>
       )}
+
+      <ReadinessFold id="dp-readiness" open={foldOpen} onOpenChange={setFoldOpen} parts={dispatchLineParts(brief)}>
+        {brief.readiness2b?.items?.length ? <Readiness2b items={brief.readiness2b.items} mode={brief.mode} /> : null}
+        <Gate gate={gate} labelOf={labelOf} stats={brief.reasonStats} judges={brief.judges} />
+        {(brief.mode === "approval" || brief.gate3.dispatched > 0) && <Gate3 gate={brief.gate3} />}
+        <AtfmPanel atfm={atfm} now={now} alertShown={atfmAlertOf(atfm.brief).active} />
+        <FollowingPanel brief={following} now={now} />
+        <BriefsPanel refreshKey={refreshKey} />
+
+      </ReadinessFold>
 
     </section>
     </DeliveryCtx.Provider>
