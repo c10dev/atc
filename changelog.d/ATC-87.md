@@ -1,0 +1,5 @@
+### Added
+- SUPERVISOR alerts (ATC-87, [docs/guide/alerts.md](docs/guide/alerts.md)): an open atc tab sends one browser notification and, separately, a sound when something needs the SUPERVISOR, even in the background. Both are opt-in per browser (settings → 알림, default off).
+  - Server: an `alert` SSE event when a key first appears or clears (`server/supervisor-alerts.ts`, keys from ALERT, FLIGHT FOLLOWING, health PENDING, DISPATCH proposals to judge, HUMAN CHECK, PRs CLEARED TO LAND and the RTS result); `GET /api/supervisor-alerts`. No new detection. The ALERT level (ATC-110) moved to `server/alert-level.ts`.
+  - Screen: notification per key, once, across tabs (Web Locks); a reconnect (RTS restart) only notifies what is new; a flapping key waits 10 minutes; BELL list and tab-title count when notifications are off or denied.
+  - Sound: four tones synthesized with Web Audio (no files) — WARNING repeats until ACK, CAUTION once, CALL for new items waiting on the SUPERVISOR, DONE for an RTS success (off by default). One at a time, bursts merge to the highest level, quiet hours, volume.

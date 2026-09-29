@@ -1,0 +1,167 @@
+/* SUPERVISOR alerts(ATC-87): BELL 목록과 설정 창의 알림 탭. 색과 글꼴은 :root 토큰만 쓴다 */
+.bell-wrap {
+  position: relative;
+}
+.bell.lv-warning b,
+.bell.lv-warning span {
+  color: var(--alert);
+}
+.bell.lv-caution b {
+  color: var(--amber);
+}
+.bell-ring {
+  color: var(--alert);
+  font-style: normal;
+}
+.bell-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  width: min(420px, calc(100vw - 2 * var(--gutter)));
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  padding: 8px;
+  color: var(--text);
+}
+.bell-list header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 2px 4px 8px;
+}
+.bell-list header em {
+  font-style: normal;
+  color: var(--faint);
+}
+.bell-list header button,
+.bell-ack,
+.alert-unlock,
+.alert-preview {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.bell-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.bell-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+.bell-item.lv-warning {
+  border-left-color: var(--alert);
+}
+.bell-item.lv-caution {
+  border-left-color: var(--amber);
+}
+.bell-item.lv-advisory,
+.bell-item.lv-none {
+  border-left-color: var(--line-strong);
+}
+.bell-item.is-acked {
+  opacity: 0.6;
+}
+.bell-open {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  padding: 6px 8px;
+  cursor: pointer;
+  min-width: 0;
+}
+.bell-open .code-chip {
+  justify-self: start;
+}
+.bell-text {
+  overflow-wrap: anywhere;
+}
+.bell-ack {
+  margin: 6px 6px 0 0;
+}
+.bell-empty {
+  color: var(--muted);
+  margin: 8px 4px;
+}
+.alert-checks {
+  border: 0;
+  padding: 0;
+  margin: 8px 0 0;
+  display: grid;
+  gap: 4px;
+}
+.alert-checks legend {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 0 0 4px;
+}
+.alert-checks label,
+.alert-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.alert-checks:disabled {
+  opacity: 0.55;
+}
+.alert-sound-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.alert-range {
+  margin-top: 8px;
+}
+.alert-range input {
+  flex: 1;
+}
+.alert-quiet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.alert-msg {
+  color: var(--amber);
+}
+.alert-unlock {
+  margin-top: 8px;
+  color: var(--amber);
+  border-color: var(--amber);
+}
+@media (max-width: 640px) {
+  .bell-list {
+    position: fixed;
+    left: var(--gutter);
+    right: var(--gutter);
+    top: 64px;
+    width: auto;
+  }
+}

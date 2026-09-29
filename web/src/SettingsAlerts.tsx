@@ -1,0 +1,124 @@
+import { type ReactNode, useState } from "react";
+import { disableSound, enableNotify, enableSound, previewSound, resumeSound, stopSound, updatePrefs, useAlerts } from "./alerts-runtime.ts";
+import { ALERT_GROUPS, GROUP_LABEL, SOUND_LABEL, SOUND_NAMES } from "./supervisor-alerts.ts";
+import "./alerts.css";
+
+// 설정 창의 알림 탭(ATC-87). 알림(브라우저 Notification)과 소리(Web Audio)는 각자 따로 켜고, 둘 다 이 브라우저에만 저장되며 기본은 꺼짐이다.
+export function AlertsSettings() {
+  const { prefs, permission, audio } = useAlerts();
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const toggleNotify = async (on: boolean) => {
+    setMsg(null);
+    if (!on) return updatePrefs({ notify: false });
+    const p = await enableNotify();
+    if (p === "unsupported") setMsg("이 브라우저는 알림을 지원하지 않습니다. 종 목록과 탭 제목 숫자로 알려 드립니다.");
+    else if (p !== "granted") setMsg("알림 권한이 없어 꺼져 있습니다. 브라우저 사이트 설정에서 허용한 뒤 다시 켜세요. 종 목록과 탭 제목 숫자는 그대로 보입니다.");
+  };
+
+  return (
+    <>
+      <Section code="NOTIFY" label="브라우저 알림" hint="atc 탭이 열려 있으면 백그라운드에서도 하나씩 알립니다. 같은 항목은 한 번만, 여러 탭이 열려 있어도 한 번만 울립니다. 알림 글은 화면에 이미 있는 문구뿐이고 밖으로 나가지 않습니다.">
+        <Segmented
+          label="브라우저 알림"
+          value={prefs.notify}
+          options={[
+            [true, "켜기"],
+            [false, "끄기"],
+          ]}
+          onChange={toggleNotify}
+        />
+        <p className="settings-hint" data-testid="notify-permission">
+          권한: {permission === "unsupported" ? "지원 안 함" : permission === "granted" ? "허용됨" : permission === "denied" ? "거부됨" : "아직 묻지 않음"}
+        </p>
+        {msg && <p className="settings-hint alert-msg">{msg}</p>}
+        <fieldset className="alert-checks" aria-label="알림 종류" disabled={!prefs.notify && !prefs.sound}>
+          <legend>받을 종류</legend>
+          {ALERT_GROUPS.map((g) => (
+            <label key={g}>
+              <input type="checkbox" checked={prefs.groups[g]} onChange={(e) => updatePrefs((p) => ({ ...p, groups: { ...p.groups, [g]: e.target.checked } }))} />
+              {GROUP_LABEL[g]}
+            </label>
+          ))}
+        </fieldset>
+      </Section>
+
+      <Section code="SOUND" label="소리" hint="WARNING은 확인(ACK)할 때까지 되풀이, CAUTION은 한 번, SUPERVISOR를 기다리는 새 항목(CALL)은 짧게 한 번. ADVISORY는 조용합니다. 알림 권한이 없어도 울립니다. 켜는 클릭이 브라우저의 소리 잠금을 풉니다.">
+        <Segmented
+          label="소리"
+          value={prefs.sound}
+          options={[
+            [true, "켜기"],
+            [false, "끄기"],
+          ]}
+          onChange={(on) => void (on ? enableSound() : disableSound())}
+        />
+        {prefs.sound && audio !== "running" && (
+          <button className="alert-unlock" onClick={() => void resumeSound()}>
+            소리 꺼짐 — 눌러서 켜기
+          </button>
+        )}
+        <fieldset className="alert-checks" aria-label="소리 종류" disabled={!prefs.sound}>
+          <legend>낼 소리</legend>
+          {SOUND_NAMES.map((n) => (
+            <div key={n} className="alert-sound-row">
+              <label>
+                <input type="checkbox" checked={prefs.sounds[n]} onChange={(e) => updatePrefs((p) => ({ ...p, sounds: { ...p.sounds, [n]: e.target.checked } }))} />
+                {SOUND_LABEL[n]}
+              </label>
+              <button className="alert-preview" onClick={() => previewSound(n)} aria-label={`${SOUND_LABEL[n]} 들어 보기`}>
+                ▶
+              </button>
+            </div>
+          ))}
+          <button className="alert-preview" onClick={stopSound}>
+            ■ 그치기
+          </button>
+        </fieldset>
+        <label className="alert-range">
+          음량
+          <input type="range" min={0} max={100} value={Math.round(prefs.volume * 100)} disabled={!prefs.sound} onChange={(e) => updatePrefs({ volume: Number(e.target.value) / 100 })} aria-label="음량" />
+          <span className="mono">{Math.round(prefs.volume * 100)}%</span>
+        </label>
+        <fieldset className="alert-checks" aria-label="조용한 시간" disabled={!prefs.sound}>
+          <legend>조용한 시간(현지)</legend>
+          <label>
+            <input type="checkbox" checked={prefs.quiet.on} onChange={(e) => updatePrefs((p) => ({ ...p, quiet: { ...p.quiet, on: e.target.checked } }))} />
+            이 시간에는 소리를 내지 않는다
+          </label>
+          <span className="alert-quiet">
+            <input type="time" value={prefs.quiet.from} onChange={(e) => e.target.value && updatePrefs((p) => ({ ...p, quiet: { ...p.quiet, from: e.target.value } }))} aria-label="시작" />
+            —
+            <input type="time" value={prefs.quiet.to} onChange={(e) => e.target.value && updatePrefs((p) => ({ ...p, quiet: { ...p.quiet, to: e.target.value } }))} aria-label="끝" />
+          </span>
+        </fieldset>
+      </Section>
+
+      <p className="settings-foot">이 브라우저에만 저장됩니다.</p>
+    </>
+  );
+}
+
+function Section({ code, label, hint, children }: { code: string; label: string; hint?: string; children: ReactNode }) {
+  return (
+    <section className="settings-section">
+      <h3 className="label">
+        {code} <em>{label}</em>
+      </h3>
+      {children}
+      {hint && <p className="settings-hint">{hint}</p>}
+    </section>
+  );
+}
+
+function Segmented<T extends boolean>({ label, value, options, onChange }: { label: string; value: T; options: [T, string][]; onChange: (value: T) => void }) {
+  return (
+    <div className="segmented" role="radiogroup" aria-label={label}>
+      {options.map(([v, text]) => (
+        <button key={String(v)} role="radio" aria-checked={value === v} onClick={() => onChange(v)}>
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}

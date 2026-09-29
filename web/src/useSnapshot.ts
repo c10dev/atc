@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Snapshot } from "../../server/model.ts";
+import { handleAlertEvent } from "./alerts-runtime.ts";
 
 export type Connection = "connecting" | "live" | "lost";
 
@@ -18,6 +19,8 @@ export function useSnapshot() {
       setSnapshot(JSON.parse((e as MessageEvent).data));
       setConnection("live");
     });
+    // SUPERVISOR alerts(ATC-87): key가 처음 생기거나 사라질 때
+    es.addEventListener("alert", (e) => void handleAlertEvent(JSON.parse((e as MessageEvent).data)));
     es.onopen = () => setConnection("live");
     es.onerror = () => setConnection("lost");
     return () => es.close();
