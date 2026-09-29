@@ -74,3 +74,33 @@ test("브리핑: landText는 holder에만, landBy는 모든 항목에, repoSeq�
   assert.deepEqual(seqs(q), seqs(before)); // 순서는 MCC에도 뜻이 있어 그대로
   assert.deepEqual(q.map((x) => x.goAround), before.map((x) => x.goAround)); // GO AROUND는 landBy와 무관
 });
+
+// teamsMerge(ATC-154): "팀은 여기서 머지하지 않는다"로 표시한 AIRPORT는 등급과 상관없이 supervisor, 기본값과 ATCC는 그대로
+test("landBy: teamsMerge false는 등급과 상관없이 supervisor, 기본(true)은 holder 그대로, ATCC는 ATC-151 규칙 그대로", () => {
+  const APP = "/home/c10/projects/atc-app";
+  assert.equal(landByOf(pr(APP, 1), null, false), "supervisor");
+  assert.equal(landByOf(pr(APP, 1), info({}, { 1: "auto" }), false), "supervisor"); // MCC 자료가 있어도(다른 저장소)
+  assert.equal(landByOf(pr(APP, 1), null), "holder");
+  assert.equal(landByOf(pr(APP, 1), null, true), "holder");
+  // ATCC: teamsMerge 인자와 상관없이 ATC-151 규칙(mcc/supervisor)
+  const m = info({}, { 1: "auto", 2: "user" });
+  assert.deepEqual([landByOf(pr(ATC, 1), m, true), landByOf(pr(ATC, 2), m, true)], ["mcc", "supervisor"]);
+  assert.equal(landByOf(pr(ATC, 1), m, false), "mcc");
+});
+
+test("브리핑: airports의 teamsMerge false인 AIRPORT만 supervisor이고 landText가 null, 다른 AIRPORT는 그대로", () => {
+  const APP = "/home/c10/projects/atc-app";
+  const s = {
+    at: iso(0), linear: { enabled: true, error: null, fetchedAt: iso(0) }, github: { enabled: true, error: null, fetchedAt: iso(0) },
+    atfm: { mains: [], groundStops: [] },
+    airports: [{ id: "1", repo: APP, name: "atc-app", code: "ATAP", teamsMerge: false }, { id: "2", repo: VCDO, name: "vocado_nextjs", code: "VCDO" }],
+    pulls: [pr(APP, 1), pr(VCDO, 5), pr(APP, 2)],
+    sessions: [], workspaces: [], tickets: [], columns: [], claims: [], handoffs: [], alerts: [], clearances: [],
+  } as unknown as Snapshot;
+  const q = buildBrief(s, { events: [], reset: false, cursor: "e:0" }, [], T0).landingQueue;
+  const at = (n: number) => q.find((x) => x.pr.number === n)!;
+  assert.deepEqual([1, 2, 5].map((n) => at(n).landBy), ["supervisor", "supervisor", "holder"]);
+  assert.deepEqual([1, 2].map((n) => at(n).landText), [null, null]);
+  assert.equal(at(5).landText, landTextOf(1, "VCDO", 5, "ATC5", null));
+  assert.deepEqual([1, 5, 2].map((n) => [at(n).seq, at(n).repoSeq]), [[1, 1], [2, 1], [3, 2]]); // 순서는 그대로
+});

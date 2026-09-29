@@ -47,6 +47,13 @@ Related: [guide/menubar.md](guide/menubar.md) (the SwiftBar plugin and the SSH f
 - **AIRPORT registration.** The atc-app checkout (`/home/c10/projects/atc-app`) sits under `ATC_PROJECTS_DIR`, so atc finds it. The SUPERVISOR gives it an AIRPORT code in the AIRPORTS screen (for example `ATAP`); atc sessions don't write `airports.json`.
 - **The SwiftBar plugin** stays as the documented fallback. It switches to `/api/supervisor-summary` in N1 and is otherwise frozen.
 
+### `teamsMerge` as built (ATC-154)
+
+- `airports.json` entries take an optional `teamsMerge`. Only `false` is written; `true` removes the field, so old files read unchanged and mean `true`. `AirportStatus.teamsMerge` is always a boolean on `GET /api/airports`; the open-AIRPORT list in the snapshot carries `teamsMerge` only when it is `false`.
+- `landByOf` (`server/land-by.ts`) returns `supervisor` for any PR on an AIRPORT with `teamsMerge: false`, whatever the tier or MCC mode. The MCC AIRPORT keeps its ATC-151 rules first. `landText` is `null` there, so TOWER sends no `LAND`; GO AROUND and the other rules are unchanged.
+- The SUPERVISOR sets it from the AIRPORTS screen ("팀 머지" ON/OFF), which sends `PATCH /api/airports/:id {teamsMerge}`. That field alone needs the screen's own JSON request (`fromThisApp`); sessions and `atcctl` get `403` and never write `airports.json`. Name, code and CLOSE keep their old behaviour.
+- After atc-app is registered, the SUPERVISOR turns "팀 머지" OFF for its AIRPORT. TOWER needs no restart: the manual already reads `landBy`.
+
 ## 5. Implementation order (atc side)
 
 | Step | What | Needs | Tier | Size |

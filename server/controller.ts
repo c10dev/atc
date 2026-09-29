@@ -105,7 +105,7 @@ export function buildBrief(
     const repoSeq = seq ? lane.indexOf(p) + 1 : null;
     const airport = codeOf(p.repo) ?? null;
     // 누가 착륙시키나(ATC-151). holder가 아니면 TOWER는 팀에 LAND를 내지 않는다. 순서(repoSeq)는 MCC에도 뜻이 있어 그대로 둔다
-    const landBy: LandBy = landByOf(p, mcc);
+    const landBy: LandBy = landByOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false);
     return {
       seq,
       landing: p.landing,

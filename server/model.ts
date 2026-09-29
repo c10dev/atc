@@ -48,6 +48,7 @@ export interface Airport {
   repo: string; // 본 체크아웃 경로
   name: string;
   code: string; // 대문자 4자
+  teamsMerge?: boolean; // false면 팀은 여기서 머지하지 않는다(LAND를 내지 않음, ATC-154). 없으면 true
 }
 
 // AIRPORT 관리 화면용. open: 운항 중, closed: 폐쇄, missing: 등록된 경로에 저장소가 없음
