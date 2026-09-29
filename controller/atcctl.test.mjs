@@ -178,6 +178,17 @@ test("TAIL 초안: FLIGHT와 REGISTRATION 하나, 근거(ATC-68)", () => {
   assert.equal(payloadText({ ...op, payload: { registration: "TEAM_E", caution: "다른 팀의 tail:을 바꿈 — TEAM_A가 AIRBORNE" } }), "tail:TEAM_E · CAUTION 다른 팀의 tail:을 바꿈 — TEAM_A가 AIRBORNE");
 });
 
+test("WAYPOINT 초안: FLIGHT와 마일스톤 이름(빈칸 이어 붙임)이나 id, 근거(ATC-77)", () => {
+  assert.deepEqual(parseDraft(argv("waypoint VOC-201 Beta Ready -- 완료 기준 2가 이 FLIGHT")), { kind: "WAYPOINT", flight: "VOC-201", milestone: "Beta Ready", reason: "완료 기준 2가 이 FLIGHT" });
+  assert.deepEqual(parseDraft(["WAYPOINT", "VOC-201", "Beta Ready", "--", "x"]).milestone, "Beta Ready");
+  assert.throws(() => parseDraft(argv("WAYPOINT VOC-201 -- x")), /마일스톤/);
+  assert.throws(() => parseDraft(argv("WAYPOINT -- x")), /FLIGHT key/);
+  assert.throws(() => parseDraft(argv("WAYPOINT VOC-201 M1")), /근거/);
+  assert.throws(() => parseDraft(argv("WAYPOINT VOC-201 M1 --gap -- x")), /WAYPOINT에는 옵션이 없음/);
+  const op = { id: "S-0020", kind: "WAYPOINT", flight: "VOC-201", payload: { route: "Song Catalog", milestone: { id: "m-2", name: "Beta Ready" } } };
+  assert.equal(draftText(op), "S-0020 WAYPOINT VOC-201 초안 · WAYPOINT Song Catalog · Beta Ready (그림자 운용, Linear에 쓰지 않음)");
+});
+
 test("dispatch crosscheck --code: 쉼표·여러 번, disagree에만", () => {
   assert.deepEqual(parseCrosscheck(argv("D-0022 disagree --code needs-human,waiting-on-prior --code needs-human -- 사용자 지시를 기다림")).body.reasonCodes, ["needs-human", "waiting-on-prior"]);
   assert.equal(parseCrosscheck(argv("D-0022 disagree -- x")).body.reasonCodes, undefined);

@@ -113,6 +113,15 @@ ROUTE마다 한 줄: ROUTE 이름, 진행률, 그다음 가로 SVG 경로. WAYPO
 9. SCHEDULE: WAYPOINT가 없는 ROUTE의 FLIGHT에 "마일스톤 지정" 초안. 아직 없음.
 10. SCHEDULE: WAYPOINT gap(만듦, ATC-8). `schedule brief`에 `waypointGaps`가 더해진다(`server/waypoint-gaps.ts`). ROUTE마다 지금 구간과 그다음 WAYPOINT의 완료 기준(번호 목록이 없으면 설명)과 이슈를 함께 보인다. 기준과 이슈를 짝짓는 것은 서버가 아니라 OCC가 판단하고, 덮는 이슈가 없는 기준을 `NEW --gap --milestone <WAYPOINT>`로 바퀴마다 2건까지 올린다(docs/occ.ko.md 5.6). `NEW`는 그 프로젝트의 마일스톤을 가질 수 있고, S2 발부 호출에 그 id가 들어간다.
 
+### 9단계와 ROUTE 알림 as built (ATC-77)
+
+9단계는 "WAYPOINT가 없는 ROUTE의 FLIGHT에 마일스톤 지정 초안"이라 적혀 있다. ATC-77대로 만든 것은, WAYPOINT가 있는 ROUTE에서 WAYPOINT가 없는 FLIGHT를 다루는 초안과, WAYPOINT가 하나도 없는 ROUTE를 알리는 알림이다. WAYPOINT가 하나도 없는 ROUTE에는 붙일 마일스톤이 없기 때문이다.
+
+- **SCHEDULE `WAYPOINT`** ([occ.ko.md](occ.ko.md) "WAYPOINT as built"): `atcctl schedule draft WAYPOINT <FLIGHT> <마일스톤 이름이나 id> -- <근거>`. 발부는 `save_issue {id, milestone: <id>}` 하나와 댓글이다. 마일스톤 자체는 만들거나 고치지 않는다(원칙 1). FLIGHT가 닫혔거나 이미 마일스톤에 있을 때, 마일스톤이 그 FLIGHT의 프로젝트 것이 아니거나 지났을 때, ROUTE에 잘린 마일스톤이 있을 때 받지 않는다.
+- **소속은 마일스톤 쪽에서**(원칙 5): 마일스톤의 `issues`에 있으면 그 WAYPOINT의 FLIGHT다. `server/sources/linear.ts`는 그대로다. `truncated` 마일스톤이 하나라도 있는 ROUTE는 후보가 없다. 빠진 FLIGHT가 읽지 못한 부분에 있을 수 있어서다.
+- **후보**(`schedule brief`의 `candidates.waypoint`, `server/schedule-waypoint.ts`의 순수 함수 `waypointCandidatesOf`): 지나지 않은 WAYPOINT가 있는 ROUTE마다 그 WAYPOINT와 완료 기준(4장과 같게), 그리고 그 ROUTE의 어느 마일스톤에도 없는 후보 팀의 열린 FLIGHT. WAYPOINT는 OCC가 고르고, atc는 스스로 초안을 쓰지 않는다.
+- **WAYPOINT 없는 ROUTE**(`routesWithoutWaypoints`, 순수 함수 `routesWithoutWaypointsOf`): `waypoints: []`이고 열린 FLIGHT(4장의 `open`)가 있는 ROUTE MAP 행과 그 수. OCC가 SUPERVISOR에게 한 번 알리고 지연 경고처럼 ack한다(`atcctl schedule route-ack`, `routes-without-waypoints.json`). 결정 5가 나중으로 남긴 알림이다. WAYPOINT가 모두 지난 ROUTE는 여기에 없다.
+
 ## 8. 위험 (Risks)
 
 | 위험 | 대응 |

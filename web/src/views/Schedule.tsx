@@ -1,14 +1,15 @@
 import { createContext, type KeyboardEvent, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { RoutePayload, TargetPayload } from "../../../server/network-drafts.ts";
-import type { ClassifyPayload, ClosePayload, NewPayload, PrioritizePayload, ScheduleOp, TailPayload } from "../../../server/schedule.ts";
+import type { ClassifyPayload, ClosePayload, NewPayload, PrioritizePayload, ScheduleOp, TailPayload, WaypointPayload } from "../../../server/schedule.ts";
 import type { TailSignal } from "../../../server/schedule-tail.ts";
+import type { RouteWithoutWaypoints, WaypointCandidate } from "../../../server/schedule-waypoint.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { PriorityMark } from "../ui.tsx";
 import "./Schedule.css";
 
-// OCC SCHEDULE — OCC가 Linear에 쓸 변경(CLASSIFY 라벨, PRIORITIZE 우선순위, TAIL tail:TEAM_X, NEW 새 이슈, CLOSE 닫기)을 초안으로 남긴다.
+// OCC SCHEDULE — OCC가 Linear에 쓸 변경(CLASSIFY 라벨, PRIORITIZE 우선순위, TAIL tail:TEAM_X, WAYPOINT 마일스톤, NEW 새 이슈, CLOSE 닫기)을 초안으로 남긴다.
 // CLOSE는 이슈 상태를 바꾸는 일이라 OCC가 발부하지 않고, 승인되면 SUPERVISOR가 Linear에서 직접 Done으로 바꾼다.
 // S1(shadow): SUPERVISOR는 "승인했을 것 / 거절했을 것"만 표시하고 아무것도 Linear에 쓰지 않는다.
 // S2(approval): 승인한 작업을 OCC가 발부받아 Linear에 쓴다(linear-guard가 입력을 비교). 기본은 S1.
@@ -101,11 +102,14 @@ interface Brief {
     network?: Record<"TARGET" | "ROUTE", { decided: number; agreed: number; agreement: number | null }>;
   };
   limit: number;
-  candidates: { classify: string[]; prioritize: string[]; close?: string[]; tail?: TailSignal[] }; // close·tail은 옛 서버면 없음
+  // close·tail·waypoint는 옛 서버면 없음. waypoint는 마일스톤을 못 읽었으면 null
+  candidates: { classify: string[]; prioritize: string[]; close?: string[]; tail?: TailSignal[]; waypoint?: WaypointCandidate[] | null };
   close?: Record<string, { pr: ClosePayload["pr"]; mergedAt: string; link: "fixes" | "part-of" | "none" | null }>;
   closeManual?: ScheduleOp[]; // SUPERVISOR가 Linear에서 직접 Done으로 바꿀 CLOSE
   flights: Record<string, FlightInfo>;
   slips?: Slip[] | null; // WAYPOINT 지연 경고(ATC-24). 옛 서버면 없고, 마일스톤을 못 읽었으면 null
+  // WAYPOINT가 없는 ROUTE(ATC-77). 옛 서버면 없고, 마일스톤을 못 읽었으면 null
+  routesWithoutWaypoints?: (RouteWithoutWaypoints & { fresh: boolean; reportedAt: string | null })[] | null;
   judges?: Judges; // 판정 계열(ATC-36). 옛 서버면 없음
 }
 
@@ -147,6 +151,7 @@ const REJECT_REASONS: Record<ScheduleOp["kind"], string[]> = {
   CLASSIFY: ["FLIGHT TYPE이 다름", "WAKE가 다름", "TYPE RATING이 빠지거나 넘침", "근거가 본문과 맞지 않음", "지금 분류할 필요 없음"],
   PRIORITIZE: ["우선순위가 더 높아야 함", "우선순위가 더 낮아야 함", "근거가 본문과 맞지 않음", "지금 정할 필요 없음"],
   TAIL: ["다른 AIRCRAFT가 맡아야 함", "지금 모는 팀을 바꾸면 안 됨", "근거 기록이 맞지 않음", "tail 없이 둬도 됨"],
+  WAYPOINT: ["다른 WAYPOINT가 맞음", "완료 기준이 이 FLIGHT를 덮지 않음", "WAYPOINT 없이 둬도 됨", "근거가 본문과 맞지 않음"],
   NEW: ["중복임", "본문 템플릿 부족", "프로젝트·라벨이 다름", "티켓 없이 AD HOC로 충분", "지금 만들 필요 없음"],
   CLOSE: ["Part of — 일부만 끝남", "남은 작업이 있음", "PR이 되돌려졌거나 불완전", "지금 닫을 필요 없음"],
   TARGET: ["목표가 너무 높음", "목표가 너무 낮음", "근거 기간이 짧음", "지금 바꿀 필요 없음"],
@@ -191,6 +196,10 @@ function payloadText(op: ScheduleOp): string {
   if (op.kind === "TAIL") {
     const t = op.payload as TailPayload;
     return [`tail:${t.registration}`, t.caution && "CAUTION"].filter(Boolean).join(" · ");
+  }
+  if (op.kind === "WAYPOINT") {
+    const w = op.payload as WaypointPayload;
+    return `WAYPOINT ${w.route} · ${w.milestone.name}`;
   }
   if (op.kind === "TARGET") {
     const t = op.payload as TargetPayload;
@@ -298,7 +307,7 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
           <span className="muted">
             <span className="sc-mode">SHADOW</span> OCC S1 · OCC가 Linear에 쓸 변경을 초안으로 남긴다. 판정은 초안 품질을 재는 데만 쓰고{" "}
             <b className="sc-strong">Linear에는 아무것도 쓰지 않는다.</b> CLASSIFY·PRIORITIZE는 atc 신호에서, AD HOC FLIGHT 초안은
-            SUPERVISOR가 OCC 세션에 낸 CHARTER REQUEST에서, TAIL은 둘 다에서 나온다.
+            SUPERVISOR가 OCC 세션에 낸 CHARTER REQUEST에서, TAIL은 둘 다에서 나온다. WAYPOINT는 마일스톤이 없는 FLIGHT에서 나온다.
           </span>
         ) : (
           <span className="muted">
@@ -352,6 +361,34 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
           <p className="faint sc-slips-more">
             <a href="#network">NETWORK → ROUTE MAP</a>
           </p>
+        </>
+      )}
+
+      {(brief.routesWithoutWaypoints?.length ?? 0) > 0 && (
+        <>
+          <h2 className="label">
+            ROUTES WITHOUT WAYPOINTS <em>열린 FLIGHT가 있는데 WAYPOINT(Linear 마일스톤)가 없는 ROUTE — ETA를 셀 수 없다. OCC가 새것을 한 번 보고하고, WAYPOINT는 SUPERVISOR가 Linear에서 만든다</em>
+          </h2>
+          <ul className="sc-slips sc-noway">
+            {brief.routesWithoutWaypoints!.map((x) => (
+              <li key={x.route}>
+                <span className="sc-slip-code c-no-waypoints">WAYPOINT 없음</span>
+                <span className="sc-slip-where">
+                  <b>{x.route}</b>
+                </span>
+                <span className="mono faint">열린 FLIGHT {x.open}</span>
+                <span className="faint">
+                  {x.reportedAt ? (
+                    <time dateTime={x.reportedAt} title={stamp(x.reportedAt, clock)}>
+                      OCC 보고 {timeAgo(x.reportedAt, now)}
+                    </time>
+                  ) : (
+                    "OCC 보고 전"
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
         </>
       )}
 
@@ -456,7 +493,11 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
       )}
 
       <h2 className="label">
-        CANDIDATES <em>계획 단계(Todo·Backlog)에서 OCC가 초안을 쓸 FLIGHT, CLOSE는 PR이 머지됐는데 열린 FLIGHT, TAIL은 tail: 없이 팀이 몰고 있는 FLIGHT · 열린 초안이 있는 것은 뺌</em>
+        CANDIDATES{" "}
+        <em>
+          계획 단계(Todo·Backlog)에서 OCC가 초안을 쓸 FLIGHT, CLOSE는 PR이 머지됐는데 열린 FLIGHT, TAIL은 tail: 없이 팀이 몰고 있는 FLIGHT, WAYPOINT는
+          WAYPOINT가 있는 ROUTE에서 어느 WAYPOINT에도 없는 열린 FLIGHT · 열린 초안이 있는 것은 뺌
+        </em>
       </h2>
       <div className="sc-cands">
         <Candidates kind="CLASSIFY" note="type:·wake: 라벨이 없음" keys={brief.candidates.classify} flights={flights} />
@@ -473,6 +514,18 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
                 .map((x) => `${x.registration} · ${x.evidence.map((e) => (e.source === "READBACK" ? e.detail : e.source)).join(", ")}`)
                 .join(" / ")
             }
+          />
+        )}
+        {brief.candidates.waypoint && (
+          <Candidates
+            kind="WAYPOINT"
+            note="ROUTE에 WAYPOINT가 있는데 어느 것에도 없음"
+            keys={brief.candidates.waypoint.flatMap((x) => x.flights)}
+            flights={flights}
+            metaOf={(k) => {
+              const c = brief.candidates.waypoint!.find((x) => x.flights.includes(k));
+              return c ? `${c.route} · 붙일 곳 ${c.waypoints.map((w) => w.name).join(", ")}` : null;
+            }}
           />
         )}
         {brief.candidates.close && (
@@ -708,6 +761,10 @@ function DraftCard({
             </span>
           ) : op.kind === "TAIL" ? (
             <span className="mono">{labels.filter((l) => /^tail:/i.test(l.trim())).join(" ") || <span className="faint">tail: 없음</span>}</span>
+          ) : op.kind === "WAYPOINT" ? (
+            <span>
+              <span className="faint">WAYPOINT 없음</span> · ROUTE {(op.payload as WaypointPayload).route}
+            </span>
           ) : op.kind === "CLOSE" ? (
             <span>
               <a className="mono" href={(op.payload as ClosePayload).pr.url} target="_blank" rel="noreferrer">
@@ -1167,6 +1224,18 @@ function ManualHint({ op, changes, labels }: { op: ScheduleOp; changes: string[]
       </div>
     );
   }
+  if (op.kind === "WAYPOINT") {
+    const w = op.payload as WaypointPayload;
+    return (
+      <div className="sc-hint">
+        <span className="sc-hint-head">LINEAR 수동 반영</span>
+        <span>
+          {op.flight} → Milestone <code>{w.milestone.name}</code>
+        </span>
+        <span className="faint sc-hint-note">마일스톤은 만들거나 바꾸지 않고, 상태·담당·라벨은 그대로 — atc는 Linear에 쓰지 않음</span>
+      </div>
+    );
+  }
   if (op.kind === "PRIORITIZE") {
     const to = PRIORITY_NAME[(op.payload as PrioritizePayload).priority];
     return (
@@ -1257,7 +1326,7 @@ function Candidates({
   metaOf?: (key: string) => string | null;
 }) {
   return (
-    <div className={`sc-cand k-${kind}`}>
+    <div className={`sc-cand k-${kind}${metaOf ? " has-meta-line" : ""}`}>
       <h3 className="sc-cand-head">
         <span className="sc-kind">{kind}</span>
         <b className="sc-cand-count">{keys.length}</b>

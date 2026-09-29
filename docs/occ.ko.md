@@ -192,6 +192,18 @@ ROUTE MAP은 이미 WAYPOINT마다 ETA와 지연 여부를 안다([routes.ko.md]
 - **게이트.** `TAIL` 판정은 `CLASSIFY`·`PRIORITIZE`처럼 S2 게이트에 센다. ATFM의 S3 후보는 그대로 `CLASSIFY`뿐이다.
 - **8장.** President의 "일 맡기기" 줄과 "President는 물러난다"가 말하는 `TAIL` 작업이 이것이다. 그 줄들의 상태 표시는 머지 뒤 ENGINEERING이 고친다.
 
+### WAYPOINT as built (ATC-77)
+
+`WAYPOINT` 작업은 마일스톤이 없는 FLIGHT를 그 ROUTE의 WAYPOINT(Linear 마일스톤)에 붙인다. 그래야 ROUTE MAP의 WAYPOINT 수·ETA에 잡히고 DISPATCH `waypoint` 가점을 받는다([routes.ko.md](routes.ko.md) 9단계). atc는 마일스톤을 만들거나 이름·순서를 바꾸지 않는다. 이슈의 마일스톤을 정하는 것은 `NEW`의 `milestone`처럼 이슈 수정이다.
+
+- **Payload.** ROUTE와 마일스톤 하나 `{id, name}`(`atcctl schedule draft WAYPOINT <FLIGHT> <마일스톤 이름이나 id> -- <근거>`, `server/schedule-waypoint.ts`의 순수 함수 `parseWaypoint`). FLIGHT가 닫혔거나 프로젝트가 없을 때, 이미 마일스톤이 있을 때, 마일스톤이 그 FLIGHT의 프로젝트 것이 아니거나 지났을(`done`) 때, ROUTE에 이슈 목록이 잘린 마일스톤이 있을 때(소속을 알 수 없다), 마일스톤을 못 읽었을 때 atc가 받지 않는다. 닫히지 않은 FLIGHT면 In Progress여도 된다. 소속은 마일스톤 쪽에서 읽는다(routes.ko.md 원칙 5). 이슈 조회는 그대로다.
+- **발부.** `save_issue {id, milestone: <마일스톤 id>}` 하나와 여느 `[OCC S-xxxx]` 댓글. 라벨·상태·담당은 없다. linear-guard(`occ/mcp-guard.mjs`, 그대로)는 그 입력 그대로만 통과시킨다. `occ/mcp-guard.test.mjs`가 id 대신 이름, 다른 FLIGHT, 상태·담당을 얹은 입력이 막히는지 확인한다.
+- **닫힘.** 마일스톤(10분 캐시)과 맞춰 본다. 열린 `WAYPOINT` 작업이 있을 때만 읽는다. 발부 뒤 그 마일스톤의 이슈에 FLIGHT가 보이면 APPLIED(발부 전이면 SUPERSEDED). FLIGHT가 닫히거나, 다른 마일스톤에 보이거나, 마일스톤이 없어지거나, 발부 전에 WAYPOINT를 지나면 SUPERSEDED. 마일스톤을 못 읽으면 닫힘과 3일 만료만 본다.
+- **후보.** `schedule brief`의 `candidates.waypoint`: 지나지 않은 WAYPOINT가 있는 ROUTE마다 그 WAYPOINT(`id`, `name`, `state`, `targetDate`, `criteria`, 번호 목록이 없으면 `description`)와, 그 ROUTE의 어느 마일스톤에도 없는 후보 팀의 열린 FLIGHT(`flights`). 열린 `WAYPOINT` 작업이 있는 FLIGHT는 뺀다. WAYPOINT가 모두 지난 ROUTE, 잘린 마일스톤이 있는 ROUTE는 후보가 없다. 마일스톤을 못 읽었으면 `null`. atc는 이것으로 초안을 쓰지 않는다. OCC가 FLIGHT를 읽고, 한 WAYPOINT의 완료 기준이 분명히 덮을 때만 한 바퀴 2건까지 쓴다(`occ/.claude/skills/tick/schedule.md` "WAYPOINT 전에").
+- **WAYPOINT 없는 ROUTE.** `schedule brief`의 `routesWithoutWaypoints`: 열린 FLIGHT(active·blocked·planned, 상위 이슈 빼고)가 있는데 WAYPOINT가 하나도 없는 ROUTE MAP 행. 항목마다 `open`, `fresh`, `reportedAt`. 읽는 Linear 팀 전부(지연 경고처럼)이고, 마일스톤을 못 읽었으면 `null`. OCC는 fresh ROUTE를 SUPERVISOR에게 한 번 알리고 `atcctl schedule route-ack`(`POST /api/schedule/routes/ack`, ROUTE 이름 `{keys?}`)를 실행한다. 알린 ROUTE는 `routes-without-waypoints.json`에 둔다. WAYPOINT가 생기거나 열린 FLIGHT가 없어지면 잊으니, 다시 그렇게 되면 다시 fresh다. WAYPOINT가 모두 지난 ROUTE는 이 알림에 없다.
+- **화면.** SCHEDULE 탭은 `WAYPOINT` 카드를 `PRIORITIZE`처럼 보인다(지금: WAYPOINT 없음과 ROUTE, 바뀜: 그 WAYPOINT, 수동 반영: Milestone). WAYPOINT 후보 목록이 있고, LATE WAYPOINTS 아래에 ROUTES WITHOUT WAYPOINTS가 있다. `WAYPOINT` 판정은 S2 게이트에 센다. ATFM의 S3 후보는 그대로 `CLASSIFY`만이다.
+- **되돌리기.** 옛 atc가 `schedule.jsonl`을 읽으면 `TAIL`에서 본 것과 같이 `WAYPOINT` 줄을 건너뛰지 않는다. 모르는 종류를 일반 동기화가 "바꿀 것 없음"으로 보아, 다음 브리핑에 열린 `WAYPOINT` 초안을 SUPERSEDED로(발부된 것은 APPLIED로) 닫는다. Linear에는 쓰지 않는다. 새 `routes-without-waypoints.json`은 그냥 읽지 않는다.
+
 ## 6. linear-guard
 
 linear-guard는 `occ/mcp-guard.mjs` 안에 있다. OCC의 MCP 도구 전부에 거는 PreToolUse hook이다(matcher `mcp__.*`, fail-closed `… || exit 2`). 읽기 도구는 S0처럼 통과한다. linear-guard는 Linear 쓰기 도구 둘, `save_issue`와 `save_comment`를 판정한다. 다른 쓰기 도구(관계, 라벨, GitHub)는 S0처럼 모두 막힌다.
@@ -440,7 +452,7 @@ ATC-39 리서치([research/human-preview.ko.md](research/human-preview.ko.md)) �
 | `server/schedule.ts` (새 파일) | SCHEDULE 기록(`~/.local/state/atc/schedule.jsonl`, 추가만 함), 상태 전이, Linear 조회로 APPLIED 감지, 열린 초안 한도(하루 한도는 아직 만들지 않음) |
 | `server/sources/linear.ts` | 라벨(`tail:`, `type:`, `wake:`, `rating:`), 최근 닫힌 이슈(중복 검색용) 읽기. NEW의 APPLIED는 `S-xxxx` footer가 아니라 제목으로 감지한다(6장) |
 | `server/dispatch.ts` | `tail:TEAM_X`와 [fleet.ko.md](fleet.ko.md) 5장의 분류 규칙 따르기 |
-| API | `GET /api/schedule/brief`, `GET /api/schedule/ops/:id`, `POST /api/schedule/ops`(초안), `POST /api/schedule/ops/:id/{verdict,approve,reject,release}`, `POST /api/schedule/mode`, `POST /api/schedule/slips/ack` |
+| API | `GET /api/schedule/brief`, `GET /api/schedule/ops/:id`, `POST /api/schedule/ops`(초안), `POST /api/schedule/ops/:id/{verdict,approve,reject,release}`, `POST /api/schedule/mode`, `POST /api/schedule/slips/ack`, `POST /api/schedule/routes/ack` |
 | `atc/occ/` | `atc/dispatch/`에서 옮김: `CLAUDE.md`(운영 매뉴얼의 핵심), `/tick`과 그 절차 파일, send-guard, **linear-guard**, 읽기 전용 `gh`가 있는 Bash guard |
 | `controller/atcctl.mjs` | `schedule draft`, `schedule release`, `schedule brief` |
 | 화면 | SCHEDULE 탭: 이유·payload 미리보기·중복 검색 결과가 있는 초안, 판정·승인 버튼, 적용 이력 |

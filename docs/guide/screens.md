@@ -10,7 +10,7 @@
 | NETWORK | `#network` | 4단계 운항 개요(읽기 전용): ROUTE MAP(ROUTE마다 WAYPOINT 경로·지금 구간·ETA), ROUTE(Linear 프로젝트)별 열린 FLIGHT·14일 ARRIVED·도는 AIRCRAFT·착륙 대기·프로젝트 목표, AIRCRAFT별 TARGETS 대 실적, 28일 추세(ARRIVED·착륙 대기·되돌림, 게이트 판정·합의율·CROSSCHECK 일치율) | — |
 | METRICS | `#metrics` | FLIGHT RECORDER로 본 운용 지표와 추이 | — |
 | DISPATCH | `#dispatch` | 배정 계획과 제안(CROSSCHECK 동의 묶음, BRIEFING 세 줄, 사실 줄, CROSSCHECK 칩, `CROSSCHECK 대기`, BLIND 표본, 접힌 점수 요소·본문·메모), HELD(PREFLIGHT), IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검과 CROSSCHECK 일치, BLIND 합의율, PREFLIGHT HELD·준비율, ATFM 블록(출발 중지, main CI, 머지 슬롯, 자동 배정·S3 대상 그림자 판정), FLIGHT FOLLOWING 블록(배정된 FLIGHT의 단계 막대, 지연·불일치, OCC가 보고했는지), VECTORS · DIRECT 블록(지시서별·SOLO·CREW별·2×2로 묶어 FLIGHT당 중간 질문, 질문 없이 PR, READBACK → PR 중앙값, P0–P2 지적, PR 뒤 수정 커밋, 14·30·90일, FLIGHT별 행) | 판정, CROSSCHECK에 동의, HELD 대기열로·FLIGHT 보류 확정, 모드 전환, ATFM 스위치(main 깨짐·수동)와 수동 출발 중지, ATFM OFF |
-| SCHEDULE | `#schedule` | OCC 초안(CLASSIFY·PRIORITIZE·TAIL·NEW, CROSSCHECK 칩), S2 점검과 CROSSCHECK 일치, 판정 계열 일치(`JEV 일치`, 켜져 있을 때), RECENT의 판정 계열 칩(`JEV agree`, 판정한 초안에만), LATE WAYPOINTS(지연 경고), 후보 수 | 판정, CROSSCHECK에 동의 |
+| SCHEDULE | `#schedule` | OCC 초안(CLASSIFY·PRIORITIZE·TAIL·WAYPOINT·NEW, CROSSCHECK 칩), S2 점검과 CROSSCHECK 일치, 판정 계열 일치(`JEV 일치`, 켜져 있을 때), RECENT의 판정 계열 칩(`JEV agree`, 판정한 초안에만), LATE WAYPOINTS(지연 경고), ROUTES WITHOUT WAYPOINTS(WAYPOINT 없는 ROUTE), 후보 수 | 판정, CROSSCHECK에 동의 |
 | DOCS | `#docs` | 이 안내와 변경 기록(`CHANGELOG.ko.md`에 아직 접지 않은 `changelog.d/` 조각까지 `[Unreleased]` 아래에) | — |
 
 ## NETWORK
