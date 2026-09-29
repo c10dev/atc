@@ -19,11 +19,11 @@
 
 | 상황 (브리핑 위치) | 할 일 |
 |---|---|
-| `inFlight` 중 `approved` ASSIGN | `dispatch release <ID>` → 출력의 `SEND TO` 세션에 `---` 아래 문구를 **그대로** SendMessage. 한 바퀴에 CAPTAIN마다 하나 |
+| `inFlight` 중 `approved` ASSIGN | `dispatch release <ID>` → 출력의 `SEND TO` 세션에 `SEND:` 줄(머리 `[DISPATCH D-xxxx]`만)을 SendMessage. send-guard가 저장된 문구로 바꿔 넣는다(`---` 아래 전체 문구는 로그용이니 다시 치지 않는다). 한 바퀴에 CAPTAIN마다 하나 |
 | 그 ASSIGN의 AIRCRAFT가 `dispatch brief`의 `fuel.coldCache`에 있음(캐시가 식은 HOLDING CAPTAIN, ATC-56) | 그래도 위대로 보낸다 — 경고만 하고 막지 않는다. OCC LOG에 그 `text`를 적는다. 캐시를 데우려는 메시지는 따로 보내지 않는다 |
 | CAPTAIN 답장 "READBACK D-xxxx" | `dispatch readback D-xxxx` |
 | CAPTAIN이 STAND 없는 FLIGHT(SURVEY·CHECK, READBACK 때 DEPARTED)를 마쳤다고 보고 | `dispatch arrived D-xxxx -- '<결과 링크나 한 줄>'` |
-| `inFlight` 중 `recalling`(SUPERVISOR가 화면·API로 RECALL 요청) | `dispatch recall-send <ID>` → 출력의 `SEND TO` 세션에 `---` 아래 RECALL 문구를 **그대로** SendMessage. RECALL 요청은 SUPERVISOR만 한다 — OCC는 만들지 않는다. 켜진 출발 중지가 있어도 보낸다(회수는 안전 쪽 동작) |
+| `inFlight` 중 `recalling`(SUPERVISOR가 화면·API로 RECALL 요청) | `dispatch recall-send <ID>` → 출력의 `SEND TO` 세션에 `SEND:` 줄(`[DISPATCH D-xxxx] RECALL`만)을 SendMessage. send-guard가 저장된 RECALL 문구로 바꿔 넣는다. RECALL 요청은 SUPERVISOR만 한다 — OCC는 만들지 않는다. 켜진 출발 중지가 있어도 보낸다(회수는 안전 쪽 동작) |
 | CAPTAIN 답장 "READBACK D-xxxx RECALL" | `dispatch recalled D-xxxx`. FLIGHT는 다시 후보가 되고 같은 AIRCRAFT에는 24시간 제안되지 않는다. "RECALL" 없는 "READBACK D-xxxx"는 FLIGHT PLAN의 READBACK이니 헷갈리지 않는다 |
 | `overdue`에 든 recalling(RECALL 뒤 10분 넘게 READBACK 없음) | `dispatch recall-send <ID>`로 같은 문구를 받아 한 번 더 보낸다. 그래도 없으면 SUPERVISOR 보고 |
 | CAPTAIN이 사유를 들어 거절 | `dispatch decline D-xxxx -- <사유 요약>`. SUPERVISOR 보고 |

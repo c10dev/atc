@@ -21,11 +21,11 @@ Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it (2b) in `/tic
 
 | Situation (brief field) | What to do |
 |---|---|
-| An `approved` ASSIGN in `inFlight` | `dispatch release <ID>` → SendMessage the text below `---` **unchanged** to the `SEND TO` session. One per CAPTAIN per pass |
+| An `approved` ASSIGN in `inFlight` | `dispatch release <ID>` → SendMessage the `SEND:` line (only the header `[DISPATCH D-xxxx]`) to the `SEND TO` session. send-guard swaps in the stored text (the full text below `---` is for the log; don't retype it). One per CAPTAIN per pass |
 | That ASSIGN's AIRCRAFT is in `fuel.coldCache` of `dispatch brief` (a HOLDING CAPTAIN whose cache has gone cold, ATC-56) | Send it as above anyway: it only warns and never blocks. Put its `text` in the OCC LOG. Don't send a separate message to warm the cache |
 | The CAPTAIN replies "READBACK D-xxxx" | `dispatch readback D-xxxx` |
 | The CAPTAIN reports a STAND-free FLIGHT (SURVEY, CHECK; DEPARTED at READBACK) done | `dispatch arrived D-xxxx -- '<result link or one line>'` |
-| `recalling` in `inFlight` (the SUPERVISOR requested a RECALL in the tab or API) | `dispatch recall-send <ID>` → SendMessage the RECALL text below `---` to the printed `SEND TO` session **unchanged**. Only the SUPERVISOR requests a RECALL; OCC never creates one. Send it even during an enforced ground stop (recalling is the safe direction) |
+| `recalling` in `inFlight` (the SUPERVISOR requested a RECALL in the tab or API) | `dispatch recall-send <ID>` → SendMessage the `SEND:` line (only `[DISPATCH D-xxxx] RECALL`) to the printed `SEND TO` session; send-guard swaps in the stored RECALL text. Only the SUPERVISOR requests a RECALL; OCC never creates one. Send it even during an enforced ground stop (recalling is the safe direction) |
 | The CAPTAIN replies "READBACK D-xxxx RECALL" | `dispatch recalled D-xxxx`. The FLIGHT becomes a candidate again and is not proposed to the same AIRCRAFT for 24 hours. A "READBACK D-xxxx" without "RECALL" is a FLIGHT PLAN READBACK; don't mix them up |
 | A recalling proposal in `overdue` (no READBACK for over 10 minutes after the RECALL) | Get the same text with `dispatch recall-send <ID>` and send it once more. If there's still nothing, report to the SUPERVISOR |
 | The CAPTAIN declines with a reason | `dispatch decline D-xxxx -- <reason summary>`. Report to the SUPERVISOR |

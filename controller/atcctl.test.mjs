@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CREW_CHANGE_CMDS, crosscheckBrief, draftText, manualFiles, manualHash, parseArrived, parseBriefingArgs, parseCrewChange, parseCrosscheck, parseDraft, parseLandingReview, parseMccArgs, mccText, payloadText } from "./atcctl.mjs";
+import { CREW_CHANGE_CMDS, crosscheckBrief, draftText, manualFiles, manualHash, sendOutput, parseArrived, parseBriefingArgs, parseCrewChange, parseCrosscheck, parseDraft, parseLandingReview, parseMccArgs, mccText, payloadText } from "./atcctl.mjs";
 import { simpleCommands } from "../hooks/shell.mjs";
 
 const argv = (s) => s.split(" ");
@@ -240,7 +240,7 @@ test("crew-change send·readback: 서버 창구를 부르고 SEND TO와 문구�
       ),
     );
   try {
-    assert.equal((await run("send", "cc-0003")).stdout, `SEND TO: TEAM_H\n---\n${message}\n`);
+    assert.equal((await run("send", "cc-0003")).stdout, `SEND TO: TEAM_H\nSEND: [OCC CC-0003]\n---\n${message}\n`);
     assert.equal((await run("readback", "CC-0003")).stdout, "CC-0003 READBACK 확인 (TEAM_H)\n");
     const refused = await run("send", "CC-0004");
     assert.equal(refused.code, 1);
@@ -384,4 +384,11 @@ test("schedule draft TARGET·ROUTE(ATC-25): AIRCRAFT와 옵션, 근거", () => {
     "S-0009 TARGET TEAM_I 초안 · flightsPerWeek 3 → 5 (그림자 판정만, FLEET에 쓰지 않음)",
   );
   assert.equal(payloadText({ kind: "ROUTE", payload: { registration: "TEAM_C", add: ["A"], remove: ["B"] } }), "+ A · − B");
+});
+
+test("sendOutput: SEND에 머리 한 줄만 먼저 내고 전체 문구는 로그용으로 아래에 둔다(ATC-119)", () => {
+  assert.equal(sendOutput("TEAM_B", "[DISPATCH D-0007] FLIGHT PLAN · X\n본문"), "SEND TO: TEAM_B\nSEND: [DISPATCH D-0007]\n---\n[DISPATCH D-0007] FLIGHT PLAN · X\n본문");
+  assert.match(sendOutput("TEAM_B", "[DISPATCH D-0007] RECALL · X"), /\nSEND: \[DISPATCH D-0007\] RECALL\n---\n/);
+  assert.match(sendOutput("TEAM_H", "[OCC CC-0003] CREW CHANGE · X"), /\nSEND: \[OCC CC-0003\]\n---\n/);
+  assert.equal(sendOutput("TEAM_B", "머리 없음"), "SEND TO: TEAM_B\n---\n머리 없음");
 });

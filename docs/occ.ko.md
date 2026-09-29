@@ -300,6 +300,16 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 
 `/tick` 3단계에서 OCC는 검토 메모와 별도로, BRIEFING이 없는 열린·HELD 제안마다 `atcctl dispatch briefing <D-xxxx> --what '…' --why '…' --risk '…'`로 쉬운 한국어 세 문장(무슨 일, 왜 이 AIRCRAFT, 걸리는 점)을 쓴다. HOLD를 걸거나 풀 때, 또는 바뀐 본문을 다시 읽었을 때는 다시 쓴다. 숫자(PRIORITY, 대기 일수, ROUTE·WAYPOINT, 선행, 최근 FLIGHT)는 서버가 `briefs.<ID>.facts`로 주니, BRIEFING은 그것을 되풀이하지 않고 뜻을 풀어 쓴다. 카드는 docs/dispatch.ko.md 5.5를 본다.
 
+### 8.3 ID로 보내기, 만든 대로 (ATC-119)
+
+OCC는 머리만 보내고, send-guard가 atc가 저장한 문구를 바꿔 넣는다. OCC가 FLIGHT PLAN·RECALL·CREW CHANGE를 다시 치지 않으므로, 오타가 팀이 받는 지시가 되지 않는다.
+
+- **머리만:** `[DISPATCH D-xxxx]`, `[DISPATCH D-xxxx] RECALL`, `[OCC CC-xxxx]`, 뒤에는 공백만. `atcctl dispatch release`·`dispatch recall-send`·`crew-change send`가 `SEND TO:` 아래 `SEND:` 줄로 내고, 전체 문구는 로그용으로 `---` 아래에 그대로 둔다.
+- **guard:** 확인은 모두 전과 같다: approval 모드, 상태(`sent`, RECALL은 `recalling`), 받는 사람이 그 CAPTAIN(CREW CHANGE는 그 AIRCRAFT, `[ref]` 허용), 저장된 문구가 있음. 저장된 문구가 같은 머리로 시작해야 한다. 통과하면 PreToolUse hook이 `permissionDecision: "allow"`와 `updatedInput`으로 답한다: `message`(와 하네스 사본 `content`)가 저장된 문구가 되고, `additionalContext`로 실제로 나간 문구가 OCC의 대화 기록에 남는다.
+- **그대로인 길:** 저장된 문구와 정확히 같은 전체 문구는 전처럼 통과한다(바꿔 넣지 않는다). 그 밖에는 막힌다: 머리 뒤에 다른 글, 틀린 받는 사람·상태, shadow 모드, 없는 기록, atc 연결 실패. hook 명령은 `|| exit 2`를 유지한다.
+- **만들기 전에 확인:** OCC나 팀이 아닌 임시 폴더의 보내는 세션과 받는 세션으로 확인했다. Claude Code 2.1.284는 `SendMessage` PreToolUse hook의 `updatedInput`을 적용한다. 받는 쪽은 바뀐 문구를 받았다. 보내는 세션의 대화 기록에는 원래 도구 입력이 남고 도구 결과도 원래 문구를 되풀이하므로, guard가 `additionalContext`에 실제로 나간 문구를 붙인다.
+- 바뀐 것: `occ/send-guard.mjs`(`resolveSend`, `hookOutputOf`. `checkSend`는 뜻이 그대로), `controller/atcctl.mjs`(`SEND:` 줄), OCC 매뉴얼과 `/tick` 파일. 안 바뀐 것: 저장된 문구, atc가 만드는 방식, DISPATCH·CREW CHANGE 상태, `controller/guard.mjs`, `occ/mcp-guard.mjs`.
+
 ## 9. ATC가 맡는 것
 
 - **CLEARED TO LAND**(구현): LANDING SEQUENCE 항목은 아래를 모두 만족할 때만 준비됨으로 표시된다.

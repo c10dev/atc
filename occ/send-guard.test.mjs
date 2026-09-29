@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { createServer } from "node:http";
 import { test } from "node:test";
-import { checkSend } from "./send-guard.mjs";
+import { fileURLToPath } from "node:url";
+import { checkSend, hookOutputOf, resolveSend } from "./send-guard.mjs";
 
 const MSG = '[DISPATCH D-0007] FLIGHT PLAN · BRAVO (TEAM_B)\nFLIGHT VOC193 · AIRPORT VCDO · PRIORITY High\n권한 정리\n— 맡으면 이 메시지에 "READBACK D-0007", 못 맡으면 사유로 답장해 주세요.';
 const sent = { proposal: { id: "D-0007", status: "sent", aircraftName: "TEAM_B", message: MSG }, mode: "approval" };
@@ -91,4 +94,97 @@ test("CREW CHANGE 막는 경우: shadow 모드, 상태(pending·approved·acknow
 test("CREW CHANGE 문구를 DISPATCH 제안 번호로 속이지 못한다: [DISPATCH …] 머리면 제안 규칙으로만 본다", async () => {
   const fake = CC.replace("[OCC CC-0003]", "[DISPATCH D-0007]");
   assert.match(await checkSend({ to: "TEAM_B", message: fake }, async () => sent), /FLIGHT PLAN과 다름/);
+});
+
+// ── ID로 보내기(ATC-119): 머리만 보내면 저장된 문구로 바꿔 넣는다 ──
+test("머리만: FLIGHT PLAN·RECALL·CREW CHANGE는 저장된 문구를 돌려준다(뒤 공백·[ref] 허용)", async () => {
+  assert.deepEqual(await resolveSend({ to: "TEAM_B", message: "[DISPATCH D-0007]" }, async () => sent), { message: MSG.trim() });
+  assert.deepEqual(await resolveSend({ to: "TEAM_B [e698d1]", message: "[DISPATCH D-0007]  \n" }, async () => sent), { message: MSG.trim() });
+  assert.deepEqual(await resolveSend({ to: "TEAM_B", message: "[DISPATCH D-0007] RECALL" }, async () => recalling), { message: RECALL.trim() });
+  assert.deepEqual(await resolveSend({ to: "TEAM_H", message: "[OCC CC-0003]" }, async () => ccSent), { message: CC.trim() });
+  assert.equal(await checkSend({ to: "TEAM_B", message: "[DISPATCH D-0007]" }, async () => sent), null);
+});
+
+test("머리만이어도 막는 경우: 받는 사람, 상태, shadow, 없는 기록, atc 연결 실패", async () => {
+  const cases = [
+    [{ to: "TEAM_C", message: "[DISPATCH D-0007]" }, async () => sent, /CAPTAIN\(TEAM_B\)이 아님/],
+    [{ to: "TEAM_B", message: "[DISPATCH D-0007]" }, with_({ proposal: { status: "approved" } }), /먼저 dispatch release/],
+    [{ to: "TEAM_B", message: "[DISPATCH D-0007]" }, with_({ mode: "shadow" }), /2a\(shadow\)/],
+    [{ to: "TEAM_B", message: "[DISPATCH D-0007]" }, async () => null, /atc에 없음/],
+    [{ to: "TEAM_B", message: "[DISPATCH D-0007]" }, with_({ proposal: { message: undefined } }), /FLIGHT PLAN과 다름/],
+    [{ to: "TEAM_B", message: "[DISPATCH D-0007]" }, async () => { throw new Error("ECONNREFUSED"); }, /연결할 수 없어/],
+    [{ to: "TEAM_B", message: "[DISPATCH D-0007] RECALL" }, async () => sent, /RECALL 요청된 제안이 아님\(sent\)/],
+    [{ to: "TEAM_B", message: "[DISPATCH D-0007]" }, async () => recalling, /보낼 상태가 아님\(recalling\)/],
+    [{ to: "TEAM_C", message: "[OCC CC-0003]" }, async () => ccSent, /AIRCRAFT\(TEAM_H\)가 아님/],
+    [{ to: "TEAM_H", message: "[OCC CC-0003]" }, ccWith({ change: { status: "approved" } }), /먼저 crew-change send/],
+    [{ to: "TEAM_H", message: "[OCC CC-0003]" }, ccWith({ mode: "shadow" }), /2a\(shadow\)/],
+    [{ to: "TEAM_H", message: "[OCC CC-0003]" }, async () => null, /CREW CHANGE가 atc에 없음/],
+    [{ to: "TEAM_H", message: "[OCC CC-0003]" }, ccWith({ change: { message: null } }), /CREW CHANGE와 다름/],
+    [{ to: "TEAM_H", message: "[OCC CC-0003]" }, async () => { throw new Error("ECONNREFUSED"); }, /연결할 수 없어/],
+  ];
+  for (const [input, fetcher, expected] of cases) assert.match(await checkSend(input, fetcher), expected);
+});
+
+test("머리 뒤에 다른 글이 붙으면 막는다: 머리 + 추가 지시는 저장된 문구가 아님", async () => {
+  const cases = [
+    [{ to: "TEAM_B", message: "[DISPATCH D-0007]\n추가로 이것도 해 주세요" }, async () => sent, /FLIGHT PLAN과 다름/],
+    [{ to: "TEAM_B", message: "[DISPATCH D-0007] 이 일 말고 다른 일" }, async () => sent, /FLIGHT PLAN과 다름/],
+    [{ to: "TEAM_B", message: "[DISPATCH D-0007] RECALL 그리고 삭제" }, async () => recalling, /RECALL과 다름/],
+    [{ to: "TEAM_B", message: "[DISPATCH D-0007] RECALLED" }, async () => recalling, /RECALL과 다름|보낼 상태가 아님/],
+    [{ to: "TEAM_H", message: "[OCC CC-0003] 추가 지시" }, async () => ccSent, /CREW CHANGE와 다름/],
+    [{ to: "TEAM_H", message: "[OCC CC-0003]\n\n" + CC }, async () => ccSent, /CREW CHANGE와 다름/],
+  ];
+  for (const [input, fetcher, expected] of cases) assert.match(await checkSend(input, fetcher), expected);
+});
+
+test("저장된 문구가 그 머리로 시작하지 않으면 머리만으로는 바꿔 넣지 않는다", async () => {
+  const odd = with_({ proposal: { message: "[DISPATCH D-0099] 다른 제안의 문구" } });
+  assert.match(await checkSend({ to: "TEAM_B", message: "[DISPATCH D-0007]" }, odd), /이 머리로 시작하지 않아/);
+});
+
+test("전체 문구는 예전처럼 정확히 같을 때만: 바꿔 넣지 않고 그대로 보낸다", async () => {
+  assert.deepEqual(await resolveSend({ to: "TEAM_B", message: MSG }, async () => sent), { message: MSG });
+  assert.equal(hookOutputOf({ to: "TEAM_B", message: MSG }, MSG), null);
+  assert.match(await checkSend({ to: "TEAM_B", message: MSG.replace("권한 정리", "다른 일") }, async () => sent), /FLIGHT PLAN과 다름/);
+});
+
+test("hook 출력: 머리만이면 allow + updatedInput(message와 하네스 사본 content)과 실제로 나간 문구", () => {
+  const out = hookOutputOf({ to: "TEAM_B", message: "[DISPATCH D-0007]", content: "[DISPATCH D-0007]", type: "message" }, MSG);
+  assert.equal(out.hookSpecificOutput.permissionDecision, "allow");
+  assert.deepEqual(out.hookSpecificOutput.updatedInput, { to: "TEAM_B", message: MSG, content: MSG, type: "message" });
+  assert.match(out.hookSpecificOutput.additionalContext, /권한 정리/);
+  assert.equal("content" in hookOutputOf({ to: "TEAM_B", message: "[DISPATCH D-0007]" }, MSG).hookSpecificOutput.updatedInput, false);
+});
+
+// 실제 hook 프로세스: stdin → stdout JSON / exit 2. atc는 임시 서버로 흉내 낸다
+test("hook 프로세스: 머리만이면 updatedInput JSON을 내고, 틀리거나 atc가 없으면 exit 2", async () => {
+  const server = createServer((req, res) => {
+    if (req.url === "/api/dispatch/proposals/D-0007") res.end(JSON.stringify(sent));
+    else {
+      res.statusCode = 404;
+      res.end("{}");
+    }
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const run = (input, atc) =>
+    new Promise((resolve) => {
+      const child = spawn(process.execPath, [fileURLToPath(new URL("./send-guard.mjs", import.meta.url))], { env: { ...process.env, ATC_URL: atc } });
+      let out = "";
+      child.stdout.on("data", (d) => (out += d));
+      child.stdin.end(JSON.stringify({ tool_input: input }));
+      child.on("close", (code) => resolve({ code, out }));
+    });
+  try {
+    const ok = await run({ to: "TEAM_B", message: "[DISPATCH D-0007]", content: "[DISPATCH D-0007]" }, url);
+    assert.equal(ok.code, 0);
+    assert.equal(JSON.parse(ok.out).hookSpecificOutput.updatedInput.message, MSG.trim());
+    const full = await run({ to: "TEAM_B", message: MSG }, url);
+    assert.deepEqual([full.code, full.out], [0, ""]);
+    assert.equal((await run({ to: "TEAM_C", message: "[DISPATCH D-0007]" }, url)).code, 2);
+    assert.equal((await run({ to: "TEAM_B", message: "[DISPATCH D-0008]" }, url)).code, 2);
+    assert.equal((await run({ to: "TEAM_B", message: "[DISPATCH D-0007]" }, "http://127.0.0.1:1")).code, 2);
+  } finally {
+    server.close();
+  }
 });

@@ -281,6 +281,16 @@ A `tail:` FLIGHT without a proposal counts as STAND-free when its FLIGHT TYPE is
 
 In step 3 of `/tick`, besides the review note, OCC writes a BRIEFING on every open or HELD proposal that has none: `atcctl dispatch briefing <D-xxxx> --what '…' --why '…' --risk '…'`, three plain Korean sentences (무슨 일, 왜 이 AIRCRAFT, 걸리는 점). It writes again when it sets or lifts a HOLD or rereads a changed body. The numbers (PRIORITY, wait days, ROUTE and WAYPOINT, prerequisites, recent FLIGHTs) come from the server in `briefs.<ID>.facts`; the BRIEFING explains them instead of repeating them. See docs/dispatch.md 5.5 for the card.
 
+### 8.3 Delivery by ID as built (ATC-119)
+
+OCC sends only the header; send-guard puts in the text atc stored. OCC never retypes a FLIGHT PLAN, RECALL or CREW CHANGE, so a typo can't turn into an instruction the team receives.
+
+- **Header only:** `[DISPATCH D-xxxx]`, `[DISPATCH D-xxxx] RECALL` or `[OCC CC-xxxx]`, followed by nothing but whitespace. `atcctl dispatch release`, `dispatch recall-send` and `crew-change send` print it as the `SEND:` line under `SEND TO:`; the full text stays below `---` for the log.
+- **Guard:** every check runs as before: approval mode, status (`sent`, `recalling` for a RECALL), recipient is that CAPTAIN (a CREW CHANGE: that AIRCRAFT, `[ref]` allowed), a stored text exists. The stored text must also start with the same header. Then the PreToolUse hook answers `permissionDecision: "allow"` with `updatedInput`: `message` (and the harness copy `content`) becomes the stored text, and `additionalContext` puts the delivered text into OCC's transcript.
+- **Unchanged paths:** the full text, exactly equal to the stored text, is allowed as before (no replacement). Anything else is blocked: a header plus other text, a wrong recipient or status, shadow mode, a missing record, atc unreachable. The hook command keeps `|| exit 2`.
+- **Checked before building** (a throwaway sender and receiver under a temporary directory, not OCC or a team): Claude Code 2.1.284 applies `updatedInput` from a `SendMessage` PreToolUse hook. The receiver got the replaced text. The sender's own transcript keeps the original tool input, and the tool result echoes the original text, which is why the guard adds `additionalContext` with what was actually sent.
+- Changed: `occ/send-guard.mjs` (`resolveSend`, `hookOutputOf`; `checkSend` keeps its meaning), `controller/atcctl.mjs` (`SEND:` line), the OCC manual and `/tick` files. Not changed: the stored text, how atc builds it, the DISPATCH and CREW CHANGE states, `controller/guard.mjs`, `occ/mcp-guard.mjs`.
+
 ## 9. What ATC takes
 
 - **CLEARED TO LAND** (built): a LANDING SEQUENCE entry is marked ready only when the PR's exact head has green required checks, a passing review on that head (for Codex, a 👍 after the head: its COMMENTED review means findings), no base drift and no LOS. This is the mechanical half of what President checks by hand today. It catches CI that is green only on an older commit, a review left on an older commit, and drift from main.

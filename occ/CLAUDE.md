@@ -21,7 +21,7 @@
 
 ## 하지 않는 것
 
-- **FLIGHT PLAN·RECALL·CREW CHANGE 말고는 아무것도 보내지 않는다.** SendMessage는 `send-guard.mjs`가 지킨다: approval 모드이고, `dispatch release`·`dispatch recall-send`·`crew-change send`가 돌려준 문구를 그 CAPTAIN(CREW CHANGE는 그 AIRCRAFT)에게 **그대로** 보낼 때만 통과한다. shadow 모드에서는 전부 막힌다.
+- **FLIGHT PLAN·RECALL·CREW CHANGE 말고는 아무것도 보내지 않는다.** SendMessage는 `send-guard.mjs`가 지킨다: approval 모드이고, `dispatch release`·`dispatch recall-send`·`crew-change send`가 돌려준 문구를 그 CAPTAIN(CREW CHANGE는 그 AIRCRAFT)에게 보낼 때만 통과한다. **머리만 보낸다**: 출력의 `SEND:` 줄(`[DISPATCH D-0094]`, `[DISPATCH D-0094] RECALL`, `[OCC CC-0003]`)을 그대로 SendMessage하면 send-guard가 atc에 저장된 문구로 바꿔 넣는다. 문구를 다시 치지 않는다. 머리 뒤에 다른 글을 붙이면 막힌다. 전체 문구를 그대로 보내는 길도 그대로 열려 있다. shadow 모드에서는 전부 막힌다.
 - CREW CHANGE를 만들거나 요청하거나 승인하지 않는다. COMPLEMENT를 바꾸는 것도, 승인도 SUPERVISOR가 FLEET 탭에서 한다. atcctl에는 승인 명령이 없다.
 - FLEET TARGETS·ROUTE를 바꾸지 않는다. NETWORK 숫자에서 `TARGET`·`ROUTE` 초안을 올릴 수만 있고(`schedule.md`), 그림자 판정만 받는다. 바꾸는 것은 SUPERVISOR가 FLEET 탭에서 한다.
 - 마일스톤(WAYPOINT)을 만들거나, 이름을 바꾸거나, 순서를 바꾸지 않는다. `WAYPOINT` 초안은 이슈의 milestone 칸만 바꾼다(`schedule.md` "WAYPOINT 전에").

@@ -19,7 +19,7 @@ When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT, atc w
 
 | Situation (`crew-change brief` field) | What to do |
 |---|---|
-| `approved` | `crew-change send <CC-xxxx>` → SendMessage the text below `---` **unchanged** to the `SEND TO` session (that AIRCRAFT). One per AIRCRAFT per pass |
+| `approved` | `crew-change send <CC-xxxx>` → SendMessage the `SEND:` line (only the header `[OCC CC-xxxx]`) to the `SEND TO` session (that AIRCRAFT). send-guard swaps in the stored text (the full text below `---` is for the log). One per AIRCRAFT per pass |
 | `waiting` (approved, but an earlier one for the same AIRCRAFT, `waitingFor`, has no READBACK yet) | Don't send. `crew-change send` refuses it with 409 too. After the earlier READBACK it shows up in `approved` on a later pass |
 | The CAPTAIN replies "READBACK CC-xxxx" | `crew-change readback CC-xxxx`. If only "… CREW CHANGE CC-xxxx COMPLETE" arrives without a READBACK, the CAPTAIN clearly got it: run `crew-change readback CC-xxxx` and put the COMPLETE in the OCC LOG |
 | A sent one in `overdue` (no READBACK for over 10 minutes after sending) | Get the same text with `crew-change send <CC-xxxx>` and send it **once** more. If there's still nothing, report to the SUPERVISOR |
