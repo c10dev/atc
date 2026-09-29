@@ -41,6 +41,10 @@ export const config = {
   ttsPiper: env.ATC_TTS_PIPER || join(HOME, ".local/bin/piper"),
   ttsVoices: env.ATC_TTS_VOICES || join(HOME, ".local/share/piper/voices"),
   ttsVoice: env.ATC_TTS_VOICE || "",
+  // ATC-143: 다른 엔진. 경로는 .env.local에서만 온다(화면은 고르지 못한다)
+  ttsEspeak: env.ATC_TTS_ESPEAK || "/usr/bin/espeak-ng",
+  ttsKokoro: env.ATC_TTS_KOKORO || join(HOME, ".local/bin/kokoro-say"),
+  ttsKokoroModel: env.ATC_TTS_KOKORO_MODEL || join(HOME, ".local/share/kokoro/model"),
   // AIRCRAFT health 임계값(ATC-45, 분). 기본은 server/health.ts DEFAULT_HEALTH
   health: {
     unansweredMin: Number(env.ATC_HEALTH_UNANSWERED_MIN || 10),

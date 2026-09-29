@@ -4,18 +4,21 @@ import { config } from "./config.ts";
 import type { SupervisorAlert } from "./supervisor-alerts.ts";
 import { cacheKey, getCached, putCached } from "./voice-cache.ts";
 import { PREVIEW_PHRASE, phraseOf } from "./voice-phrase.ts";
-import { type RenderResult, renderPhrase, statusOf, type TtsConfig, VOICE_NAME } from "./tts.ts";
+import { type RenderResult, renderPhrase, statusOf, TTS_ENGINES, type TtsConfig, VOICE_NAME, voiceStatusOf } from "./tts.ts";
 
 // 음성 콜아웃 API(ATC-140, docs/guide/voice.md). 서버는 WAV 파일만 만들어 주고 소리를 내지 않는다(서비스에는 오디오 세션이 없다).
 // 알림 데이터는 읽기만 한다. 화면은 알림의 key만 보내고 글은 보내지 않는다: 문구는 서버가 그 key의 알림에서 다시 만든다.
-//   GET /api/voice/status                  엔진·설치된 목소리·고른 목소리·오류
+//   GET /api/voice/status                  지금 엔진·설치된 목소리·고른 목소리·오류, engines[]에 엔진마다 쓸 수 있는지와 목소리(ATC-143)
 //   GET /api/voice/alert/:key.wav          지금 있는 알림 key의 문구를 WAV로(WARNING·CALL 종류만 문구가 있다)
-//   GET /api/voice/preview.wav?voice=      고정 예시 문구(목소리 고르기용)
+//   GET /api/voice/preview.wav?voice=&engine=  고정 예시 문구(목소리 고르기용)
 
 export const ttsConfigNow = (): TtsConfig => ({
   engine: config.ttsEngine,
   piper: config.ttsPiper,
   voices: config.ttsVoices,
+  espeak: config.ttsEspeak,
+  kokoro: config.ttsKokoro,
+  kokoroModel: config.ttsKokoroModel,
   voice: config.ttsVoice,
   tmpDir: join(config.stateDir, "voice-cache"),
 });
@@ -46,7 +49,7 @@ export async function wavFor(cfg: TtsConfig, phrase: string, voice?: string): Pr
 const wav = (c: Context, bytes: Buffer) => c.body(new Uint8Array(bytes), 200, { "content-type": "audio/wav", "cache-control": "private, max-age=600" });
 
 export function mountVoice(app: Hono, currentAlerts: () => SupervisorAlert[], cfgOf: () => TtsConfig = ttsConfigNow) {
-  app.get("/api/voice/status", (c) => c.json(statusOf(cfgOf())));
+  app.get("/api/voice/status", (c) => c.json(voiceStatusOf(cfgOf())));
 
   app.get("/api/voice/alert/:key", async (c) => {
     const raw = c.req.param("key");
@@ -61,7 +64,12 @@ export function mountVoice(app: Hono, currentAlerts: () => SupervisorAlert[], cf
   });
 
   app.get("/api/voice/preview.wav", async (c) => {
-    const cfg = cfgOf();
+    let cfg = cfgOf();
+    const engine = c.req.query("engine"); // 고르기 전에 그 엔진으로 미리 듣기(없으면 지금 엔진)
+    if (engine !== undefined) {
+      if (!(TTS_ENGINES as readonly string[]).includes(engine) || engine === "none") return c.json({ error: "엔진 이름이 올바르지 않음" }, 400);
+      cfg = { ...cfg, engine };
+    }
     const voice = c.req.query("voice");
     if (voice !== undefined && !VOICE_NAME.test(voice)) return c.json({ error: "목소리 이름이 올바르지 않음" }, 400);
     const st = statusOf(cfg);

@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import type { VoiceStatus } from "../../server/tts.ts";
+import type { VoiceStatusAll as VoiceStatus } from "../../server/tts.ts";
 import { disableSound, enableNotify, enableSound, previewSound, previewVoice, resumeSound, stopSound, updatePrefs, useAlerts } from "./alerts-runtime.ts";
 import type { Save } from "./SettingsServer.tsx";
 import { ALERT_GROUPS, GROUP_LABEL, SOUND_LABEL, SOUND_NAMES } from "./supervisor-alerts.ts";
@@ -152,9 +152,11 @@ export function AlertsSettings({ save }: { save: Save }) {
           <label className="alert-range">
             엔진
             <select value={voice.engine} onChange={(e) => void pickEngine(e.target.value)} aria-label="엔진">
-              {[...new Set(["none", "piper", voice.engine])].map((e) => (
-                <option key={e} value={e}>
-                  {e}
+              <option value="none">none</option>
+              {(voice.engines ?? []).map((e) => (
+                // 없는 엔진은 못 고르게 흐리게 두고 사유를 붙인다(지금 고른 것은 그대로 보이게 남긴다)
+                <option key={e.engine} value={e.engine} disabled={!e.available && e.engine !== voice.engine} title={e.error?.message}>
+                  {e.available ? e.engine : `${e.engine} — ${e.error?.message ?? "쓸 수 없음"}`}
                 </option>
               ))}
             </select>

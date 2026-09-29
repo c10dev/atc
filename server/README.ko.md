@@ -75,7 +75,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `milestones.ts` | FLIGHT별 OOOI(ATC-123): 이미 있는 기록에서 OUT·OFF·ON·IN 실제 시각(순수 함수 `milestonesOf`, `latestMilestone`, `milestoneLine`). 화면도 씀 |
 | `milestones-run.ts` | OOOI 실행부: 기록과 로컬 저장소를 읽어(읽기만, 캐시) FLIGHT·이정표마다 `milestone` FLIGHT RECORDER 줄 한 번, `GET /api/milestones` |
 | `voice-phrase.ts` | 라디오 음성 콜아웃(ATC-140): WARNING·CALL 알림 종류마다 고정 영어 문구, 콜사인과 한 자리씩 읽는 FLIGHT 번호, `[A-Za-z0-9 ,.'-]`만(순수 함수 `phraseOf`, `flightWords`, `kindOf`) |
-| `tts.ts` | TTS 엔진 어댑터(ATC-140): `piper`(`execFile`, 셸 없음, 문구는 stdin, 5초, 한 번에 하나), `stub`, `none`. 예외 대신 상태(`statusOf`, `renderPhrase`) |
+| `tts.ts` | TTS 엔진 어댑터(ATC-140, ATC-143): `piper`·`espeak`·`kokoro`가 `execFile` 실행기 하나를 함께 쓴다(셸 없음, 문구는 stdin, 엔진별 시간 제한 — 5초, Kokoro 20초 — 엔진마다 한 번에 하나, 목소리는 `VOICE_NAME`과 그 엔진의 목록으로 둘 다 확인). 그 밖에 `stub`, `none`. 예외 대신 상태(`statusOf`, `voiceStatusOf`, `renderPhrase`). Kokoro 래퍼는 `tts/kokoro-say.py` |
 | `voice-cache.ts` | 상태 폴더 `voice-cache/`의 버려도 되는 WAV 캐시(ATC-140): 200개 또는 20 MB, 오래된 것부터 지움 |
 | `voice-run.ts` | `GET /api/voice/status`, `/api/voice/alert/:key.wav`(지금 있는 알림 key만), `/api/voice/preview.wav`. 파일만 만들고 소리는 내지 않는다 |
 | `recorder.ts` | FLIGHT RECORDER: 날짜별 JSONL(`event`, `sample`, `dispatch`, `ack`, `schedule`, `checkride`, `milestone`), 30일 보관 |
