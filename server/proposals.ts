@@ -46,6 +46,8 @@ import { type Crosscheck, CrosscheckError, type CrosscheckLine, crosscheckRateOf
 import { blindStatsOf, isBlind } from "./blind.ts";
 import { type Briefing, BriefingError, factsOf, leadOf, parseBriefing, waypointIndex } from "./briefing.ts";
 import { loadFleet } from "./fleet.ts";
+import { type DispatchMeasured, dispatchStatsOf } from "./judges/dispatch.ts";
+import { type DispatchMarks, dispatchMarksOf, loadJudges, readJudgeLines } from "./judges/store.ts";
 import { loadLogbook, loadPricedLogbook } from "./logbook.ts";
 import type { FuelWatch } from "./fuel-watch.ts";
 import { confirmCodesOf, confirmReasonOf, type Preflight, preflightOf, preflightOps } from "./preflight.ts";
@@ -653,6 +655,28 @@ export function gateOf(proposals: Proposal[]) {
   };
 }
 
+// DISPATCH 판정 계열(ATC-88)의 화면용 묶음. 그림자 전용이라 제안·점수·상태는 건드리지 않는다.
+// marks: RECENT(닫힌 제안)에만 싣는다 — 열린·HOLD 카드에는 보내지 않아 SUPERVISOR가 쏠리지 않게. hidden은 그 숨긴 수.
+// stats: 게이트 패널의 세 줄(Ready = no ↔ 거절, Prerequisite = yes ↔ waiting-on-prior 칩·OCC HOLD, Same area ↔ 승인)
+export const occHeldOf = (p: Proposal) => p.hold.length > 0 || (p.holdAt !== null && !p.preflight);
+
+export function judgesBriefOf(proposals: Proposal[], recent: Proposal[], marks: DispatchMarks, mode: string) {
+  const items: DispatchMeasured[] = [];
+  const visible: Record<string, { family: string; model: string; engine: string; run: string; at: string; ready: number; prerequisite: number; sameArea: { score: number; level: number; confidence: number | null } | null; withheld: string | null; recentWithheld: string | null; sent: string[] }[]> = {};
+  const recentIds = new Set(recent.map((p) => p.id));
+  let hidden = 0;
+  for (const p of proposals) {
+    const m = marks.get(p.id);
+    if (!m || p.kind !== "ASSIGN") continue;
+    const list = Object.values(m);
+    if (p.status === "proposed") hidden += list.length;
+    else if (recentIds.has(p.id))
+      visible[p.id] = list.map((l) => ({ family: l.family, model: l.model, engine: l.engine, run: l.run, at: l.at, ready: l.judgment.ready, prerequisite: l.judgment.prerequisite, sameArea: l.judgment.sameArea, withheld: l.withheld, recentWithheld: l.recentWithheld, sent: l.sent }));
+    for (const l of list) items.push({ id: p.id, judgment: l.judgment, human: humanOf(p), codes: gateCodesOf(p), occHold: occHeldOf(p) });
+  }
+  return { mode, marks: visible, hidden, stats: dispatchStatsOf(items) };
+}
+
 // PREFLIGHT 통계(ASSIGN만). held: 한 번이라도 HOLD(OCC·PREFLIGHT)된 제안(대기열로 돌렸거나 확정했어도 센다),
 // notReady: HOLD 없이 판정까지 갔지만 준비 안 됨 거절(칩이 모두 FLIGHT 칩, ATC-5)이 된 제안 — 거름을 빠져나간 것,
 // passed: 그 밖에 HOLD 없이 SUPERVISOR 판정까지 간 제안. readyRate = passed / (passed + held + notReady) — 게이트 기준은 아니다
@@ -908,6 +932,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       // ARRIVED 후보(ATC-72): OCC가 증거를 확인하고 command를 친다. atc는 ARRIVED를 스스로 적지 않는다
       arrivalCandidates: standFree?.candidates() ?? [],
       crosscheck: crosscheckBriefOf(proposals),
+      judges: judgesBriefOf(proposals, recent, dispatchMarksOf(readJudgeLines()), loadJudges().jev),
       // 2b 켜기 점검표(표시만)
       readiness2b: readiness2bNow(gate, now, files),
       reasonCodes: REASON_CODES,

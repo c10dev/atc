@@ -14,9 +14,18 @@ export interface EngineResult {
   usage?: { input_tokens?: number; output_tokens?: number };
 }
 
+// 한 번의 판정 요청: state는 허용 목록으로 만든 입력, questions는 TypeSafe 질문 맵. title은 stub의 녹화 응답 키
+export interface JudgeCall {
+  target: "schedule" | "dispatch";
+  title: string;
+  state: Record<string, unknown>;
+  questions: Record<string, unknown>;
+}
+
 export interface JudgeEngine {
   name: EngineName;
-  judge(input: ClassifyInput): Promise<EngineResult>;
+  ask(call: JudgeCall): Promise<EngineResult>;
+  judge(input: ClassifyInput): Promise<EngineResult>; // SCHEDULE CLASSIFY
 }
 
 export class JudgeEngineError extends Error {
@@ -28,20 +37,37 @@ export class JudgeEngineError extends Error {
 }
 
 // 요청 본문(docs.typesafe.ai/api.md): state는 허용 목록으로 만든 입력 하나(`ticket`)뿐이다
-export const requestBodyOf = (input: ClassifyInput) => ({ state: { ticket: input }, model: JEV_MODEL, questions: classifyQuestions() });
+export const bodyOfCall = (call: Pick<JudgeCall, "state" | "questions">) => ({ state: call.state, model: JEV_MODEL, questions: call.questions });
+export const classifyCall = (input: ClassifyInput): JudgeCall => ({ target: "schedule", title: input.title, state: { ticket: input }, questions: classifyQuestions() });
+export const requestBodyOf = (input: ClassifyInput) => bodyOfCall(classifyCall(input));
 
 // 녹화 응답: 제목으로 찾고, 없으면 fallback. 받은 입력은 inputs에 남긴다(테스트가 반출 내용을 확인한다)
-export function stubEngine(recorded: Record<string, unknown> = {}, fallback: unknown = STUB_FALLBACK): JudgeEngine & { inputs: ClassifyInput[] } {
+// inputs: CLASSIFY로 받은 입력, calls: 모든 요청(DISPATCH state 포함)
+export function stubEngine(recorded: Record<string, unknown> = {}, fallback: unknown = STUB_FALLBACK, dispatchFallback: unknown = STUB_DISPATCH_FALLBACK): JudgeEngine & { inputs: ClassifyInput[]; calls: JudgeCall[] } {
   const inputs: ClassifyInput[] = [];
-  return {
-    name: "stub",
+  const calls: JudgeCall[] = [];
+  const engine = {
+    name: "stub" as const,
     inputs,
-    async judge(input) {
+    calls,
+    async ask(call: JudgeCall) {
+      calls.push(call);
+      return { model: "stub", answers: structuredClone(recorded[call.title] ?? (call.target === "dispatch" ? dispatchFallback : fallback)) };
+    },
+    async judge(input: ClassifyInput) {
       inputs.push(input);
-      return { model: "stub", answers: structuredClone(recorded[input.title] ?? fallback) };
+      return engine.ask(classifyCall(input));
     },
   };
+  return engine;
 }
+
+// DISPATCH 기본 응답: Ready yes, Prerequisite no, Same area는 5단계 중 3(같은 모양의 score 답)
+export const STUB_DISPATCH_FALLBACK = {
+  ready: { type: "noul", noul: 0.8 },
+  prerequisite: { type: "noul", noul: 0.1 },
+  same_area: { type: "score", score: 3, legend: { "1": "a", "2": "b", "3": "c", "4": "d", "5": "e" }, probabilities: { "3": 0.6, "2": 0.2, "4": 0.2 }, confidence: 0.6 },
+};
 
 // 녹화한 모양 그대로의 기본 응답(BUILD · M · rating 없음)
 export const STUB_FALLBACK = {
@@ -59,13 +85,16 @@ export function jevEngine(apiKey: string, fetchImpl: Fetch = fetch): JudgeEngine
   return {
     name: "jev",
     async judge(input) {
+      return this.ask(classifyCall(input));
+    },
+    async ask(call) {
       if (!apiKey) throw new JudgeEngineError("TYPESAFE_API_KEY 없음");
       let res: Response;
       try {
         res = await fetchImpl(JEV_URL, {
           method: "POST",
           headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify(requestBodyOf(input)),
+          body: JSON.stringify(bodyOfCall(call)),
           signal: AbortSignal.timeout(TIMEOUT_MS),
         });
       } catch (e) {
