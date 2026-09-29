@@ -35,5 +35,7 @@ Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it (2b) in `/tic
 | An accepted proposal in `overdue` (no STAND for over 30 minutes after READBACK), or a STAND-free departed one (no ARRIVED report for over 24 hours) | Report to the SUPERVISOR only |
 | send-guard blocks the send | Don't retry with changed text or recipient; report to the SUPERVISOR |
 | `dispatch release` refuses with `GROUND STOP — …` (an enforced ground stop covers that AIRPORT) | Don't send. Leave the approved proposal as it is until the stop is released. Put the stop's reason in the OCC LOG; for "main 깨짐" (main broken), check the failing check and commit with read-only `gh` and report to the SUPERVISOR |
+| `dispatch release` refuses with `… LAUNCHING — 새 세션을 기다림 …` or `… RESTARTING …` (no session — waiting for the first message after /clear) (the SUPERVISOR approved a launch card and the session atc launched isn't up yet, ATC-129 and 91) | Don't send. The approval stays. Run `dispatch release` again next pass; once the new session is up it goes out as usual. Don't send anything to start or wake a session |
+| `dispatch release` refuses with `… LAUNCH 실패 …` (launch failed), or `following` has a `launch` issue | Don't send. Report to the SUPERVISOR (approving again or launching from FLEET is the SUPERVISOR's call) |
 
 When a STAND appears, atc marks the proposal DEPARTED. RELEASE proposals are not sent even when approved (the SUPERVISOR tidies them up in Linear).

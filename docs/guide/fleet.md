@@ -199,7 +199,8 @@ atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude C
 - 막히는 경우: 이미 같은 이름의 세션이 있음, 백그라운드 세션이 상한(기본 6, `ATC_MAX_LAUNCHED`)에 닿음, RETIRED, base AIRPORT 없음, 그 저장소를 Claude Code가 신뢰하지 않음(그 저장소에서 `claude`를 한 번 열어 trust를 수락한다).
 - 띄운 세션은 사용량 한도를 쓴다. atc의 비밀(`.env.local`)은 세션에 넘기지 않는다. `bypassPermissions`는 고를 수 없다.
 - 관제 세션(TOWER·OCC·CROSSCHECK·REVIEW)은 세션을 띄우거나 멈출 수 없다. 이 화면에서 보낸 요청만 받는다.
-- LAUNCH·STOP은 모두 FLIGHT RECORDER에 남는다.
+- LAUNCH·STOP은 모두 FLIGHT RECORDER에 남는다. DISPATCH 카드 승인으로 띄운 것은 그 제안 번호(D-xxxx)도 남는다.
+- **백그라운드 세션은 60분쯤 쉬면 끝난다**: Claude Code가 마지막 턴 뒤 60분쯤 쉰 백그라운드 세션을 거둔다(`~/.claude/daemon.log`의 `bg retire …: idle 60m`). 대화는 남는다. 관제 세션은 `/loop`가 몇 분마다 돌아 끝나지 않는다. 끝난 AIRCRAFT는 NOT IN SERVICE로 보이지만 DISPATCH 후보로 남아, 그 카드를 승인하면 atc가 다시 띄운다(판정하기의 "LAUNCH 카드와 RESUME 카드"). atc는 세션을 붙잡아 두려고 메시지를 보내지 않는다.
 
 ## FLEET PLAN: atc의 제안
 

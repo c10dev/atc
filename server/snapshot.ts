@@ -29,6 +29,7 @@ import { fastTrackOf, isHeld, loadAutoland, loadAutolandState, mergeExclusionOf,
 import { regKey } from "./registration.ts";
 import { readRecords } from "./recorder.ts";
 import { launchModeOf } from "./session-origin.ts";
+import { readAbsent } from "./absent-run.ts";
 
 // PR head별로 CLEARED TO LAND가 처음 된 시각 (메모리, 서버를 재시작하면 다시 센다)
 const readySince = new Map<string, string>();
@@ -171,6 +172,19 @@ export async function buildSnapshot(): Promise<Snapshot> {
     const ids = m?.account ? members.filter((y) => y.account === m.account).flatMap((y) => y.sessionIds) : (m?.sessionIds ?? [x.id]);
     x.health = settleCut(x.health, cutResetOf(Date.parse(x.health.cutAt), readFuelHistory(ids), fuelCfg.holdPct), healthAt);
   }
+  // ABSENT(ATC-129): 세션이 없는 백그라운드 AIRCRAFT. 마지막 턴이 한도로 잘렸으면 reset을 같은 ACCOUNT의 FUEL 기록에서 되짚는다
+  const absent = readAbsent({
+    sessions,
+    restarting,
+    fleet,
+    teamPattern: dispatchCfg.teamPattern,
+    now: healthAt,
+    resetOf: (cutAt, sessionId, reg) => {
+      const acct = accountOf(fleet, reg);
+      const ids = [sessionId, ...(acct ? members.filter((y) => y.account === acct).flatMap((y) => y.sessionIds) : [])];
+      return cutResetOf(cutAt, readFuelHistory(ids), fuelCfg.holdPct);
+    },
+  });
   // health ALERT: NETWORK는 기계에 한 번, LIMIT은 같은 ACCOUNT끼리(ATC-51), ACCOUNT를 모르면 같은 reset끼리 한 번(docs/fleet.md 8.8)
   // NEEDS YOU(ATC-99): 백그라운드 job이 blocked로 몇 분 넘게 사람을 기다리면 경보. state가 blocked를 벗어나면 저절로 사라진다
   for (const a of blockedAlerts(sessions, healthAt, config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!)) alerts.push({ kind: "health", key: a.key, message: a.message, sessionIds: a.sessionIds });
@@ -294,6 +308,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     fuel,
     fuelAccounts,
     restarting,
+    absent,
   };
 }
 

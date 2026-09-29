@@ -19,7 +19,7 @@ import { mountFleet } from "./fleet.ts";
 import { addLogbookFuel, aircraftContexts, mountFuel } from "./fuel-run.ts";
 import { fuelWatch } from "./fuel-watch.ts";
 import { mountFleetPlan, runFleetPlan } from "./fleet-plan-run.ts";
-import { mountSessionControl } from "./session-control.ts";
+import { launchAircraft, MAX_LAUNCHED, mountSessionControl } from "./session-control.ts";
 import { mountHumanCheck } from "./human-check-run.ts";
 import { mountStandFree, proposalArrived, runStandFree, standFreeCandidates, standFreeTimeliness } from "./standfree-run.ts";
 import { mountFollowing } from "./following.ts";
@@ -133,6 +133,13 @@ mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   candidates: standFreeCandidates,
   timeliness: () => standFreeTimeliness(),
   arrived: (p, s) => proposalArrived(p, s, addLogbookFuel),
+}, {
+  // LAUNCH on approve(ATC-129): FLEET LAUNCH와 같은 길. 옵션은 그 AIRCRAFT의 마지막 atc LAUNCH와 같게
+  max: MAX_LAUNCHED,
+  launch: (s, reg, proposal) => {
+    const a = s.absent?.find((x) => x.registration === reg);
+    return launchAircraft(s, reg, { permissionMode: a?.permissionMode, model: a?.model }, "SUPERVISOR", proposal);
+  },
 });
 mountStandFree(app, getSnapshot, addLogbookFuel);
 mountCrewChange(app);

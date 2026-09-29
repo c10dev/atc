@@ -348,8 +348,9 @@ export interface ControlResult {
   error?: string;
 }
 
-// LAUNCH: FLEET 카드 버튼과 FLEET PLAN 승인(8.7)이 같이 쓴다. 결과는 FLIGHT RECORDER에 by와 함께 남는다
-export async function launchAircraft(s: Snapshot, registration: string, options: { permissionMode?: unknown; model?: unknown }, by: string): Promise<ControlResult> {
+// LAUNCH: FLEET 카드 버튼과 FLEET PLAN 승인(8.7), DISPATCH launch 카드 승인(ATC-129)이 같이 쓴다. 결과는 FLIGHT RECORDER에 by와 함께 남는다.
+// proposal: launch 카드로 띄웠으면 그 제안 id(기록에 남는다)
+export async function launchAircraft(s: Snapshot, registration: string, options: { permissionMode?: unknown; model?: unknown }, by: string, proposal?: string): Promise<ControlResult> {
   const reg = regKey(registration);
   const cfg = loadDispatchConfig();
   const a = fleetView(s, loadFleet(), cfg.teamPattern).find((x) => x.registration === reg);
@@ -365,10 +366,14 @@ export async function launchAircraft(s: Snapshot, registration: string, options:
     const jobId = jobIdOf(r.out);
     const ok = r.ok && !!jobId;
     const error = ok ? undefined : /not trusted/i.test(r.out) ? `${plan.cwd}를 신뢰하지 않음 — 그 폴더에서 claude를 한 번 열어 trust를 수락한다` : r.out.slice(0, 300) || "claude --bg 실패";
-    record({ t, kind: "fleet", op: "launch", aircraft: reg, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model ?? undefined, error });
+    record({ t, kind: "fleet", op: "launch", aircraft: reg, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model ?? undefined, error, ...(proposal ? { proposal } : {}) });
     return ok ? { ok, status: 200, jobId: jobId!, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model } : { ok, status: 502, error };
   } catch (e) {
-    if (e instanceof ControlError) return { ok: false, status: e.status, error: e.message };
+    // 띄우기 전에 거절된 것(상한, 이미 떠 있음, RETIRED …)도 launch 카드로 온 것이면 남긴다
+    if (e instanceof ControlError) {
+      if (proposal) record({ t, kind: "fleet", op: "launch", aircraft: reg, by, ok: false, error: e.message, proposal });
+      return { ok: false, status: e.status, error: e.message };
+    }
     throw e;
   }
 }
