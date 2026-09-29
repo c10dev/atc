@@ -2,8 +2,8 @@
 
 | 탭 | 주소 | 보는 것 | 할 수 있는 것 |
 |---|---|---|---|
-| RADAR | `#radar` | 세션 ─ STAND ─ FLIGHT 3열을 선으로 연결. 주인 없는 STAND, STAND 없는 진행 FLIGHT 강조 | 전체 보기 전환 |
-| STRIPS | `#strips` | 맨 위 HUMAN CHECK(사람 확인을 기다리는 PR, 있을 때만)와 LANDING SEQUENCE(열린 PR), 세션마다 FLIGHT STRIP: 상태, 쥔 STAND, FLIGHT(없으면 AD HOC), STAND의 PR 착륙 배지, 마지막 교신 | PR 링크 열기, 막는 조건 펼치기 |
+| RADAR | `#radar` | 세션 ─ STAND ─ FLIGHT 3열을 선으로 연결. 주인 없는 STAND, STAND 없는 진행 FLIGHT 강조. ARRIVED·취소된 FLIGHT의 STAND와 그것만 쥔 AIRCRAFT는 기본으로 접고 툴바에 `ARRIVED STAND N 숨김`을 보임 | 전체 보기 전환, `ARRIVED STAND 포함` |
+| STRIPS | `#strips` | 맨 위 HUMAN CHECK(사람 확인을 기다리는 PR, 있을 때만)와 LANDING SEQUENCE(열린 PR), 세션마다 FLIGHT STRIP(쥔 STAND가 모두 ARRIVED·취소된 FLIGHT의 것인 AIRCRAFT는 맨 아래 접힌 `GATE CLEANUP`에 모임. 미완 FLIGHT의 STAND를 쥔 NORDO는 NORDO에 그대로): 상태, 쥔 STAND, FLIGHT(없으면 AD HOC), STAND의 PR 착륙 배지, 마지막 교신 | PR 링크 열기, 막는 조건 펼치기 |
 | FIDS | `#board` | Linear 상태 열별 FLIGHT 카드와 점유 팀 배지 | — |
 | AIRPORTS | `#airports` | 저장소 등록부, 소속 AIRCRAFT, OUTSTATION으로 와 있는 AIRCRAFT | AIRPORT 개설·코드 변경·폐쇄 |
 | FLEET | `#fleet` | 팀별 상태, 지금 FLIGHT, RULES(규칙 파일을 확인했나: `RULES current` 또는 `RULES 미확인 since <시각>`과 파일, rules-drift hook이 있을 때), 팀원, 자격, ROUTE, TARGETS와 LOGBOOK 실적(이번 주, 정시, 되돌림, LOS, 최근 FLIGHT), CHECKRIDE(TYPE RATING 근거와 추천), FLEET PLAN(atc의 제안과 AIRPORT별 수요, 그림자·승인 운용) | 프로필 편집, ENTRY INTO SERVICE, LAUNCH·STOP(세션 띄우기·멈추기), CREW BRIEFING, AOG, 퇴역, rating 부여·회수, FLEET PLAN 동의·반대, 승인 운용 켜기·끄기, 승인(실행) |

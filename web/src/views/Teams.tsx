@@ -10,7 +10,7 @@ import {
   flightNumber,
   flightPhase,
 } from "../aviation.ts";
-import { activeFirst, hasActiveClaim, type Index, sortSessions, timeAgo } from "../derive.ts";
+import { activeFirst, hasActiveClaim, type Index, isGateCleanup, sortSessions, timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { AirportCode, AwayTag, NeedsYou, SessionPlace } from "../ui.tsx";
 import { HumanCheckQueue, HumanCheckTag } from "./HumanCheck.tsx";
@@ -30,7 +30,10 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
   };
 
   const bays = new Map<AircraftStatus, Session[]>(BAYS.map((b) => [b, []]));
-  for (const s of visible) bays.get(aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id))))!.push(s);
+  // Dark cockpit(ATC-111): 쥔 STAND가 모두 ARRIVED·취소 FLIGHT의 것인 AIRCRAFT는 bay에서 빼 맨 아래 GATE CLEANUP에 모은다
+  const cleanup = visible.filter((s) => isGateCleanup(s, idx));
+  const cleanupIds = new Set(cleanup.map((s) => s.id));
+  for (const s of visible) if (!cleanupIds.has(s.id)) bays.get(aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id))))!.push(s);
   // 옛 서버 스냅샷에는 pulls·github가 없다
   const pulls = snapshot.pulls ?? [];
   const github = snapshot.github ?? null;
@@ -80,6 +83,27 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
           </div>
         );
       })}
+      {cleanup.length > 0 && (
+        <details className="bay bay-gate">
+          <summary className="label" title="쥔 STAND가 모두 ARRIVED·취소된 FLIGHT의 것인 AIRCRAFT. 워크트리를 치우면 사라진다">
+            GATE CLEANUP <em>{cleanup.length}</em>
+          </summary>
+          <div className="bay-rail">
+            {cleanup.map((s) => (
+              <Strip
+                key={s.id}
+                session={s}
+                status={aircraftStatus(s, true)}
+                idx={idx}
+                now={now}
+                nameOf={nameOf}
+                landing={landing}
+                clearances={snapshot.clearances.filter((c) => c.to === s.id)}
+              />
+            ))}
+          </div>
+        </details>
+      )}
     </section>
   );
 }
