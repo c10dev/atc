@@ -25,7 +25,7 @@ Rules for sessions that change atc's code (team sessions, the ENGINEERING sessio
 
 ## Operations
 
-- Don't restart the production service (7700). Deploys (main fast-forward and restart) go through RETURN TO SERVICE (the `atc-rts` unit). With MCC in `land` mode, as now, the user starts it from the UPDATE bar on the screen; in `land+rts` mode MCC does (`docs/mcc.md` 5.1, 6).
+- Don't restart the production service (7700). Deploys (main fast-forward and restart) go through RETURN TO SERVICE (the `atc-rts` unit). With MCC in `land+rts` mode, as now (since 2026-09-29), MCC starts RTS after it lands, batched to at most once every 5 minutes. The user may start it first from the UPDATE bar on the screen. After a ROLLBACK, RTS stays stopped until the user picks the MCC mode again in the settings window (`docs/mcc.md` 5.1, 6).
 - Keep the control sessions' guards (`controller/guard.mjs`, `occ/send-guard.mjs`, `occ/mcp-guard.mjs`) fail-closed (`… || exit 2`). Ask the user before loosening what they block.
 
 ## git and PRs
@@ -34,7 +34,7 @@ Rules for sessions that change atc's code (team sessions, the ENGINEERING sessio
 - No attribution lines (Co-Authored-By etc.) in commit messages. PR bodies end with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 - Don't open PRs as drafts. MCC never lands a draft (`docs/mcc.md` L2), so it waits until someone marks it ready. If the work isn't finished, report instead of opening a PR.
 - Team sessions and the ENGINEERING session don't merge. Merging follows the LANDING CLEARANCE tier (`deploy/landing-tier.mjs`, decided by the changed paths).
-  - `auto` (read-only server code, UI, docs, tests) and `flagged` (control-session manuals and CLI, server code with outside side effects): once CI (`check`) passes and the MCC INSPECTION is `pass`, MCC lands it (`land` mode since 2026-09-29, `docs/mcc.md` 5.1). The user may still merge first. For `flagged`, the PR body and the report list the changed control rules and the changed side-effect files separately. GitHub auto-merge is not used.
+  - `auto` (read-only server code, UI, docs, tests) and `flagged` (control-session manuals and CLI, server code with outside side effects): once CI (`check`) passes and the MCC INSPECTION is `pass`, MCC lands it (since 2026-09-29, now in `land+rts` mode, `docs/mcc.md` 5.1). The user may still merge first. For `flagged`, the PR body and the report list the changed control rules and the changed side-effect files separately. GitHub auto-merge is not used.
   - `user` (guards, `.claude/` settings, the root `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`): the user merges. A PR that changes the production state format, is hard to undo, or leaves doubts after review is raised to `user` too (the session that opened it says so in the tier section; an MCC INSPECTION escalates it).
 
 ## Code
