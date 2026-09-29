@@ -53,7 +53,7 @@ export interface SettingsPatch {
   claimTtlMin?: number;
   handoffGraceMin?: number;
   projectsDir?: string;
-  ttsEngine?: string; // none·piper·stub. .env.local의 ATC_TTS_ENGINE(ATC-140)
+  ttsEngine?: string; // none·piper·espeak·kokoro·stub. .env.local의 ATC_TTS_ENGINE(ATC-140)
   ttsVoice?: string; // 고른 목소리 이름. 비우면 첫 번째. ATC_TTS_VOICE
   reviewSecurity?: ExternalReviewSecurity; // dispatch.json에 쓴다(.env.local이 아님)
   fuelHold?: "off" | "on"; // dispatch.json fuel.hold에 쓴다(ATC-55). SUPERVISOR만: 이 화면 Origin이 있어야 받는다

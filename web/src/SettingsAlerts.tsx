@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import type { VoiceStatus } from "../../server/tts.ts";
+import type { VoiceStatusAll as VoiceStatus } from "../../server/tts.ts";
 import { disableSound, enableNotify, enableSound, previewSound, previewVoice, resumeSound, stopSound, updatePrefs, useAlerts } from "./alerts-runtime.ts";
 import type { Save } from "./SettingsServer.tsx";
 import { ALERT_GROUPS, GROUP_LABEL, SOUND_LABEL, SOUND_NAMES } from "./supervisor-alerts.ts";
@@ -27,6 +27,8 @@ function useVoiceStatus() {
 const VOICE_ENGINES: [string, string][] = [
   ["none", "none"],
   ["piper", "piper"],
+  ["espeak", "espeak"],
+  ["kokoro", "kokoro"],
   ["stub", "stub (시험용)"],
 ];
 
@@ -159,11 +161,16 @@ export function AlertsSettings({ save }: { save: Save }) {
           <label className="alert-range">
             엔진
             <select value={voice.engine} onChange={(e) => void pickEngine(e.target.value)} aria-label="엔진">
-              {VOICE_ENGINES.map(([e, label]) => (
-                <option key={e} value={e}>
-                  {label}
-                </option>
-              ))}
+              {VOICE_ENGINES.map(([e, label]) => {
+                // 없는 엔진은 못 고르게 흐리게 두고 사유를 붙인다(지금 고른 것은 그대로 보이게 남긴다). stub·none은 늘 쓸 수 있다
+                const info = (voice.engines ?? []).find((x) => x.engine === e);
+                const off = info !== undefined && !info.available && e !== voice.engine;
+                return (
+                  <option key={e} value={e} disabled={off} title={info?.error?.message}>
+                    {info && !info.available ? `${label} — ${info.error?.message ?? "쓸 수 없음"}` : label}
+                  </option>
+                );
+              })}
             </select>
           </label>
         )}

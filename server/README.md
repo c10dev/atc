@@ -75,7 +75,7 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 | `milestones.ts` | OOOI per FLIGHT (ATC-123): OUT, OFF, ON, IN actual times from existing records (pure `milestonesOf`, `latestMilestone`, `milestoneLine`); also used by the browser |
 | `milestones-run.ts` | OOOI runner: reads the records and the local repository (read-only, cached), writes one `milestone` FLIGHT RECORDER line per FLIGHT and milestone, `GET /api/milestones` |
 | `voice-phrase.ts` | Radio voice callouts (ATC-140): fixed English phrase per WARNING/CALL alert kind, callsigns and digit-by-digit FLIGHT numbers, `[A-Za-z0-9 ,.'-]` only (pure `phraseOf`, `flightWords`, `kindOf`) |
-| `tts.ts` | TTS engine adapter (ATC-140): `piper` (`execFile`, no shell, phrase on stdin, 5 s, one at a time), `stub`, `none`; status instead of exceptions (`statusOf`, `renderPhrase`) |
+| `tts.ts` | TTS engine adapters (ATC-140, ATC-143): `piper`, `espeak`, `kokoro` share one `execFile` runner (no shell, phrase on stdin, per-engine timeout — 5 s, Kokoro 20 s — one render at a time per engine; voice checked by `VOICE_NAME` and the engine's own list), plus `stub` and `none`; status instead of exceptions (`statusOf`, `voiceStatusOf`, `renderPhrase`). The Kokoro wrapper is `tts/kokoro-say.py` |
 | `voice-cache.ts` | Disposable WAV cache in `voice-cache/` of the state folder (ATC-140): 200 files or 20 MB, oldest out |
 | `voice-run.ts` | `GET /api/voice/status`, `/api/voice/alert/:key.wav` (current alert keys only), `/api/voice/preview.wav`; renders files only, never plays audio |
 | `recorder.ts` | FLIGHT RECORDER: daily JSONL (`event`, `sample`, `dispatch`, `ack`, `schedule`, `checkride`, `milestone`), kept 30 days |

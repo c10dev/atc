@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { engineOf, piperVoices, renderPhrase, RENDER_TIMEOUT_MS, statusOf, stubWav, type TtsConfig } from "./tts.ts";
+import { clearVoiceListCache, ENGINE_TIMEOUT_MS, engineOf, espeakArgs, kokoroArgs, parseEspeakVoices, parseKokoroVoices, piperArgs, piperVoices, renderPhrase, RENDER_TIMEOUT_MS, statusOf, stubWav, type TtsConfig, voiceStatusOf } from "./tts.ts";
 import { cacheKey, CACHE_MAX_BYTES, CACHE_MAX_FILES, getCached, pruneCache, putCached } from "./voice-cache.ts";
 
 // TTS 어댑터와 음성 캐시(ATC-140). 진짜 piper는 설치하지 않는다: 시험은 stub 엔진과, piper처럼 인자를 받는 가짜 실행 파일을 쓴다.
@@ -47,7 +47,35 @@ process.stdin.on("end", () => {
 `,
 );
 chmodSync(fake, 0o755);
-const cfg = (over: Partial<TtsConfig> = {}): TtsConfig => ({ engine: "piper", piper: fake, voices, voice: "", tmpDir: join(root, "tmp"), timeoutMs: 3000, ...over });
+// 가짜 espeak-ng·kokoro-say(ATC-143): 목록 요청(--voices=en, --list-voices)에는 이름을 찍고, 아니면 -w나 --out 파일에 WAV를 쓴다. 인자와 stdin, 받은 ATC_TTS_KOKORO_MODEL을 로그에 남긴다
+const LOG2 = join(root, "fake-multi.log");
+const fakeMulti = join(root, "fake-multi");
+writeFileSync(
+  fakeMulti,
+  `#!/usr/bin/env node
+const fs = require("fs");
+const a = process.argv.slice(2);
+if (a.includes("--voices=en")) return console.log("Pty Language       Age/Gender VoiceName          File                 Other Languages\\n 5  en-gb          M  English_(Great_Britain) gmw/en  (en 2)\\n 2  en-us          M  English_(America)   gmw/en-US (en 3)\\n 5  en-gb-scotland M  English_(Scotland)   gmw/en-GB-scotland (en 4)\\n 5  en-us          M  dup                 x");
+if (a.includes("--list-voices")) return console.log("af_heart\\nam_michael\\n\\nbad name\\naf_heart\\n../x");
+const out = a[a.includes("-w") ? a.indexOf("-w") + 1 : a.indexOf("--out") + 1];
+let text = "";
+process.stdin.on("data", (d) => (text += d));
+process.stdin.on("end", () => {
+  fs.appendFileSync(${JSON.stringify(LOG2)}, JSON.stringify({ args: a, text, model: process.env.ATC_TTS_KOKORO_MODEL }) + "\\n");
+  const go = () => {
+    const wav = Buffer.alloc(44 + 200);
+    wav.write("RIFF", 0); wav.writeUInt32LE(36 + 200, 4); wav.write("WAVEfmt ", 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+    wav.writeUInt32LE(22050, 24); wav.writeUInt32LE(44100, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write("data", 36); wav.writeUInt32LE(200, 40);
+    fs.writeFileSync(out, wav);
+  };
+  const ms = Number(process.env.FAKE_MULTI_SLEEP_MS || 0);
+  ms ? setTimeout(go, ms) : go();
+});
+`,
+);
+chmodSync(fakeMulti, 0o755);
+const cfg = (over: Partial<TtsConfig> = {}): TtsConfig => ({ engine: "piper", piper: fake, voices, espeak: fakeMulti, kokoro: fakeMulti, kokoroModel: join(root, "kokoro-model"), voice: "", tmpDir: join(root, "tmp"), timeoutMs: 3000, ...over });
+const logged2 = () => (existsSync(LOG2) ? readFileSync(LOG2, "utf8").trim().split("\n").map((l) => JSON.parse(l)) : []);
 const logged = () => (existsSync(LOG) ? readFileSync(LOG, "utf8").trim().split("\n").map((l) => JSON.parse(l)) : []);
 
 test("piperVoices: .onnx와 .onnx.json이 함께 있고 이름이 올바른 것만", () => {
@@ -132,7 +160,88 @@ test("stub: WAV를 만들고, 없는 목소리는 no-voice, 제한을 넘는 지
   assert.equal(statusOf(c).available, true);
 });
 
+test("인자 만들기(순수): 문구는 인자에 없다", () => {
+  assert.deepEqual(piperArgs({ voices: "/v" }, "en_US-a", "/o"), ["-m", "/v/en_US-a.onnx", "-f", "/o"]);
+  assert.deepEqual(espeakArgs("en-us", "/o"), ["-v", "en-us", "-w", "/o", "--stdin"]);
+  assert.deepEqual(kokoroArgs("af_heart", "/o"), ["--voice", "af_heart", "--out", "/o"]);
+});
+
+test("목소리 목록 읽기(순수): espeak-ng --voices=en, kokoro-say --list-voices", () => {
+  const espeak = "Pty Language       Age/Gender VoiceName          File                 Other Languages\n 5  en-gb          M  English_(Great_Britain) gmw/en  (en 2)\n 2  en-us          M  English_(America)   gmw/en-US (en 3)\n 5  en-us          M  dup   x\n 5  en-029         M  English_(Caribbean) gmw/en-029\n";
+  assert.deepEqual(parseEspeakVoices(espeak), ["en-029", "en-gb", "en-us"]); // 머리줄은 빼고, 중복 없이, 정렬
+  assert.deepEqual(parseEspeakVoices(""), []);
+  assert.deepEqual(parseEspeakVoices("Pty Language\n 5  bad/name  M  x\n"), []); // VOICE_NAME에 안 맞으면 뺀다
+  assert.deepEqual(parseKokoroVoices("af_heart\nam_michael\n\nbad name\naf_heart\n../x\n"), ["af_heart", "am_michael"]);
+  assert.deepEqual(parseKokoroVoices(""), []);
+});
+
+test("espeak: 셸 없이 인자 배열로, 문구는 stdin, 엔진이 아는 목소리만", async () => {
+  clearVoiceListCache();
+  const c = cfg({ engine: "espeak", voice: "en-gb" });
+  assert.deepEqual(statusOf(c).voices, ["en-gb", "en-gb-scotland", "en-us"]);
+  const r = await renderPhrase(c, "Supervisor, GOLF; $(whoami).");
+  assert.equal(r.ok, true);
+  const e = logged2().at(-1);
+  assert.deepEqual(e.args.slice(0, 3), ["-v", "en-gb", "-w"]);
+  assert.equal(e.args.at(-1), "--stdin");
+  assert.equal(e.text, "Supervisor, GOLF; $(whoami).\n");
+  assert.equal(e.args.some((x: string) => x.includes("whoami")), false);
+  for (const bad of ["nope", "../../etc/passwd", "en-us;rm"]) {
+    const v = await renderPhrase(c, "x", bad);
+    assert.equal(v.ok === false && v.code, "no-voice", bad);
+  }
+  assert.equal(statusOf(cfg({ engine: "espeak", espeak: join(root, "no-espeak") })).error?.code, "no-binary");
+});
+
+test("kokoro: 래퍼에 --voice·--out, 모델 폴더는 환경변수(설정에서만), 목록은 --list-voices", async () => {
+  clearVoiceListCache();
+  const c = cfg({ engine: "kokoro", voice: "am_michael" });
+  const st = statusOf(c);
+  assert.deepEqual([st.available, st.voices, st.selected], [true, ["af_heart", "am_michael"], "am_michael"]);
+  const r = await renderPhrase(c, "Supervisor, GOLF, standing by for approval.");
+  assert.equal(r.ok, true);
+  const e = logged2().at(-1);
+  assert.deepEqual(e.args.slice(0, 2), ["--voice", "am_michael"]);
+  assert.equal(e.args[2], "--out");
+  assert.equal(e.model, join(root, "kokoro-model"));
+  assert.equal(e.text, "Supervisor, GOLF, standing by for approval.\n");
+  const bad = await renderPhrase(c, "x", "bf_emma"); // 이름 모양은 맞아도 래퍼 목록에 없다
+  assert.equal(bad.ok === false && bad.code, "no-voice");
+  assert.equal((await renderPhrase(cfg({ engine: "kokoro", kokoro: join(root, "no-kokoro") }), "x")).ok, false);
+  assert.deepEqual(readdirSync(join(root, "tmp")), []);
+});
+
+test("엔진별 시간 제한: kokoro만 길다, 넘으면 timeout, 엔진마다 따로 한 번에 하나", async () => {
+  assert.deepEqual([ENGINE_TIMEOUT_MS.piper, ENGINE_TIMEOUT_MS.espeak, ENGINE_TIMEOUT_MS.kokoro], [5000, 5000, 20000]);
+  clearVoiceListCache();
+  process.env.FAKE_MULTI_SLEEP_MS = "1500";
+  const t0 = Date.now();
+  const slow = await renderPhrase(cfg({ engine: "kokoro", voice: "af_heart", timeoutMs: 200 }), "x");
+  assert.equal(slow.ok === false && slow.code, "timeout");
+  assert.ok(Date.now() - t0 < 1400);
+  process.env.FAKE_MULTI_SLEEP_MS = "150";
+  const t1 = Date.now();
+  const rs = await Promise.all([renderPhrase(cfg({ engine: "espeak", voice: "en-us" }), "a"), renderPhrase(cfg({ engine: "espeak", voice: "en-us" }), "b"), renderPhrase(cfg({ engine: "kokoro", voice: "af_heart" }), "c")]);
+  delete process.env.FAKE_MULTI_SLEEP_MS;
+  assert.deepEqual(rs.map((r) => r.ok), [true, true, true]);
+  const took = Date.now() - t1;
+  assert.ok(took >= 290 && took < 700, `espeak 둘은 차례로(300ms), kokoro는 그 옆에서 함께(${took}ms)`);
+});
+
+test("voiceStatusOf: 엔진마다 쓸 수 있는지와 목소리, 없는 엔진은 사유", () => {
+  clearVoiceListCache();
+  const s = voiceStatusOf(cfg({ engine: "espeak", voice: "en-us", kokoro: join(root, "no-kokoro"), piper: join(root, "no-piper") }));
+  assert.equal(s.engine, "espeak");
+  assert.deepEqual(s.engines.map((e) => [e.engine, e.available]), [["piper", false], ["espeak", true], ["kokoro", false]]);
+  assert.equal(s.engines[0].error?.code, "no-binary");
+  assert.deepEqual(s.engines[1].voices, ["en-gb", "en-gb-scotland", "en-us"]);
+  assert.deepEqual(s.engines[2].voices, []);
+  assert.deepEqual(voiceStatusOf(cfg({ engine: "stub" })).engines.map((e) => e.engine), ["piper", "espeak", "kokoro", "stub"]);
+  assert.deepEqual(voiceStatusOf(cfg({ engine: "none" })).engines.map((e) => e.engine), ["piper", "espeak", "kokoro"]);
+});
+
 test("캐시 키는 엔진·목소리·문구로 정해진다", () => {
+  assert.notEqual(cacheKey("espeak", "en-us", "hello"), cacheKey("kokoro", "en-us", "hello")); // 엔진이 다르면 같은 이름·문구여도 다른 키
   const k = cacheKey("piper", "en_US-a", "hello");
   assert.equal(k, cacheKey("piper", "en_US-a", "hello"));
   for (const other of [cacheKey("stub", "en_US-a", "hello"), cacheKey("piper", "en_US-b", "hello"), cacheKey("piper", "en_US-a", "hello!")]) assert.notEqual(k, other);

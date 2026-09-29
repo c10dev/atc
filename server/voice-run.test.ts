@@ -21,7 +21,7 @@ const alerts = [
   alert("pending|humancheck|o/r#5|abc", { group: "pending", level: "advisory", cue: "call", aircraft: null, flight: "ATC-5" }),
   alert("following|ATC-9|no-pr", { group: "following", level: "caution" }), // 틀이 없는 종류
 ];
-let cfg: TtsConfig = { engine: "stub", piper: "/none", voices: "/none", voice: "", tmpDir: join(dir, "voice-cache") };
+let cfg: TtsConfig = { engine: "stub", piper: "/none", voices: "/none", espeak: "/none", kokoro: "/none", kokoroModel: "/none", voice: "", tmpDir: join(dir, "voice-cache") };
 const app = new Hono();
 mountVoice(app, () => alerts, () => cfg);
 const get = (path: string) => app.request(path);
@@ -29,7 +29,11 @@ const wavUrl = (key: string) => `/api/voice/alert/${encodeURIComponent(key)}.wav
 
 test("GET /api/voice/status: 엔진, 설치된 목소리, 고른 목소리", async () => {
   const s = await (await get("/api/voice/status")).json();
-  assert.deepEqual(s, { engine: "stub", available: true, error: null, voices: ["stub", "stub-two"], selected: "stub" });
+  const { engines, ...current } = s;
+  assert.deepEqual(current, { engine: "stub", available: true, error: null, voices: ["stub", "stub-two"], selected: "stub" });
+  // 엔진마다 쓸 수 있는지와 사유(ATC-143). 이 시험 설정에서 piper·espeak·kokoro는 실행 파일이 없다
+  assert.deepEqual(engines.map((e: { engine: string; available: boolean }) => [e.engine, e.available]), [["piper", false], ["espeak", false], ["kokoro", false], ["stub", true]]);
+  assert.equal(engines[1].error.code, "no-binary");
   cfg = { ...cfg, voice: "stub-two" };
   assert.equal((await (await get("/api/voice/status")).json()).selected, "stub-two");
   cfg = { ...cfg, voice: "" };
@@ -75,6 +79,13 @@ test("엔진이 없으면 503과 사유(예외가 아니다), 미리 듣기는 �
   assert.equal((await missing.json()).code, "no-voice");
   assert.equal((await get(`/api/voice/preview.wav?voice=${encodeURIComponent("../../etc/passwd")}`)).status, 400);
   assert.ok(PREVIEW_PHRASE.length > 10);
+  // 엔진을 지정한 미리 듣기(ATC-143): 모르는 이름과 none은 400, 실행 파일이 없는 엔진은 503 no-binary
+  assert.equal((await get("/api/voice/preview.wav?engine=evil")).status, 400);
+  assert.equal((await get("/api/voice/preview.wav?engine=none")).status, 400);
+  const noBin = await get("/api/voice/preview.wav?engine=espeak");
+  assert.equal(noBin.status, 503);
+  assert.equal((await noBin.json()).code, "no-binary");
+  assert.equal((await get("/api/voice/preview.wav?engine=stub")).status, 200);
 });
 
 test("만든 WAV는 상태 폴더의 voice-cache/에 남고 같은 문구는 다시 만들지 않는다", async () => {

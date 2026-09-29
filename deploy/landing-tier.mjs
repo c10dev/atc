@@ -28,7 +28,8 @@ export const SIDE_EFFECT = [
   ["server/mcc-run.ts", "PR 머지·INSPECTION 코멘트·atc-rts 유닛 시작"],
   ["server/human-check-run.ts", "PR 본문 수정·코멘트(gh api)"],
   ["server/session-control.ts", "claude --bg 세션 시작·정지, tmux pane 닫기"],
-  ["server/tts.ts", "외부 TTS 명령(piper) 실행: 문구를 WAV로 렌더링(ATC-140)"],
+  ["server/tts.ts", "외부 TTS 명령(piper·espeak-ng·Kokoro 래퍼) 실행: 문구를 WAV로 렌더링(ATC-140, ATC-143)"],
+  ["tts/kokoro-say.py", "server/tts.ts가 부르는 Kokoro 래퍼: 모델을 돌려 WAV를 파일로 씀(네트워크 없음, ATC-143)"],
   // 위 파일의 부작용 helper를 불러 시점을 정하는 파일(SIDE_EFFECT_HELPERS를 import). 자기는 명령을 돌리지 않는다
   ["server/update-run.ts", "RTS 유닛 시작 시점(UPDATE 바)"],
   ["server/voice-run.ts", "TTS 렌더링 시점(GET /api/voice/*)과 상태 폴더 voice-cache/ 쓰기"],
@@ -40,7 +41,7 @@ export const SIDE_EFFECT_HELPERS = [
   ["startRtsUnit", "server/mcc-run.ts", "atc-rts 유닛 시작(운영 7700 배포)"],
   ["runAutoland", "server/autoland-run.ts", "AUTOLAND 한 주기: PR 머지·브랜치 갱신·코멘트"],
   ["recordHumanCheck", "server/human-check-run.ts", "PR 본문 수정·코멘트"],
-  ["renderPhrase", "server/tts.ts", "외부 TTS 명령(piper) 실행"],
+  ["renderPhrase", "server/tts.ts", "외부 TTS 명령(piper·espeak-ng·Kokoro) 실행"],
   ["launchAircraft", "server/session-control.ts", "AIRCRAFT 세션 시작"],
   ["stopAircraft", "server/session-control.ts", "AIRCRAFT 세션 정지"],
   ["launchControl", "server/session-control.ts", "관제 세션 시작"],

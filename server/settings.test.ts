@@ -19,6 +19,19 @@ test("값 검사: 맞는 값은 환경 변수로, 틀린 값은 항목별 오류
   assert.deepEqual(bad.env, {});
 });
 
+test("음성 엔진(ATC-143): 새 엔진 이름은 받고, 모르는 이름은 오류, 엔진 경로는 화면에서 못 바꾼다", () => {
+  for (const e of ["none", "piper", "espeak", "kokoro", "stub"]) assert.deepEqual(validatePatch({ ttsEngine: e }).env, { ATC_TTS_ENGINE: e });
+  assert.ok(validatePatch({ ttsEngine: "festival" }).errors.ttsEngine);
+  assert.ok(validatePatch({ ttsEngine: "espeak; rm -rf /" }).errors.ttsEngine);
+  assert.deepEqual(validatePatch({ ttsVoice: "en-us" }).env, { ATC_TTS_VOICE: "en-us" });
+  assert.deepEqual(validatePatch({ ttsVoice: "af_heart" }).env, { ATC_TTS_VOICE: "af_heart" });
+  for (const key of ["ttsEspeak", "ttsKokoro", "ttsKokoroModel", "ttsPiper"]) {
+    const r = validatePatch({ [key]: "/tmp/evil" } as never);
+    assert.equal((r.errors as Record<string, string>)[key], "고칠 수 없는 항목", key);
+    assert.deepEqual(r.env, {});
+  }
+});
+
 test("API 키: 공백 없는 문자열이면 저장, null이면 삭제", () => {
   assert.deepEqual(validatePatch({ apiKey: " lin_api_abcdef123 " }).env, { LINEAR_API_KEY: "lin_api_abcdef123" });
   assert.deepEqual(validatePatch({ apiKey: null }).env, { LINEAR_API_KEY: null });
@@ -45,12 +58,12 @@ test("읽는 팀(LINEAR_TEAM_KEYS): 쉼표 목록을 대문자로, 틀린 key는
   assert.deepEqual(Object.keys(validatePatch({ teamKeys: "VOC, 1X" }).errors), ["teamKeys"]);
 });
 
-test("ttsEngine·ttsVoice 검사(ATC-142): 엔진은 none·piper·stub만, 목소리는 VOICE_NAME, 비우면 지운다", () => {
-  for (const e of ["none", "piper", "stub"]) assert.deepEqual(validatePatch({ ttsEngine: e }), { env: { ATC_TTS_ENGINE: e }, errors: {} });
-  for (const bad of ["kokoro", "", "PIPER", null, 3]) {
+test("ttsEngine·ttsVoice 검사(ATC-142): 엔진은 none·piper·espeak·kokoro·stub만, 목소리는 VOICE_NAME, 비우면 지운다", () => {
+  for (const e of ["none", "piper", "espeak", "kokoro", "stub"]) assert.deepEqual(validatePatch({ ttsEngine: e }), { env: { ATC_TTS_ENGINE: e }, errors: {} });
+  for (const bad of ["festival", "", "PIPER", null, 3]) {
     const r = validatePatch({ ttsEngine: bad });
     assert.deepEqual(r.env, {});
-    assert.match(r.errors.ttsEngine ?? "", /none, piper, stub/);
+    assert.match(r.errors.ttsEngine ?? "", /none, piper, espeak, kokoro, stub/);
   }
   assert.deepEqual(validatePatch({ ttsVoice: "en_US-lessac-medium" }).env, { ATC_TTS_VOICE: "en_US-lessac-medium" });
   for (const bad of ["../etc/passwd", "a b", "x/y", "a".repeat(81), 5]) {
