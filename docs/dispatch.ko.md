@@ -242,6 +242,17 @@ CAPTAIN(STAND 없는 FLIGHT만): 마쳤다고 보고 → OCC: atcctl dispatch ar
 - **준비 안 됨 거절은 게이트에서 뺀다.** `gateOf`는 사유 칩이 모두 FLIGHT 칩(`FLIGHT_HOLD_CODES`: `already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`, `no-priority`, `out-of-repo`)인 `disagreed` 제안을 빼고 `gate.notReady`로 센다. `agreed`와, `wrong-aircraft`·`other`가 있거나 섞였거나 칩이 없는 거절은 전처럼 센다. 점검 패널에는 PREFLIGHT HELD 옆에 "준비 안 됨 거절 n건"(게이트 제외)이 보이고, 판정 줄은 "판정한 제안(HELD·준비 안 됨 제외)"이 된다.
 - **지난 판정에 칩 달기.** `POST /api/dispatch/proposals/:id/codes {codes}`(`server/reasons.ts`의 칩 하나 이상)는 `{op:"recode", id, at, by:"SUPERVISOR", codes}`를 남긴다. 사람이 판정한 `disagreed` 제안에만 받고(그 밖은 409, ATFM·PREFLIGHT 확정도), 나중 recode가 앞의 것을 대신한다. fold는 이것을 `reasonCodes`와 따로 `gateCodes`로 두고 게이트만 읽는다(`gateCodesOf`: `gateCodes`, 없으면 `reasonCodes`). 그래서 recode는 6.1의 FLIGHT 보류를 뒤늦게 걸지 않고, 사유 문장, `reasonCounts`, `reasonStats`, CROSSCHECK 일치와 한 번 클릭 수치도 그대로다. atcctl 명령은 없다: 배포 뒤 SUPERVISOR 지시로 structure가 위 6건에 API를 한 번 부른다(칩은 ATC-5에 있다). 그러면 게이트는 3/3에서 다시 시작한다.
 
+#### 6.4 AIRCRAFT가 `/clear`를 넘어 남는다 (ATC-91)
+
+D-0068(ATC-82 → TEAM_I)은 2026-09-29 01:40:31Z에 `aircraft: 04a9a868…`, 곧 세션 id로 만들어졌다. SUPERVISOR가 TEAM_I에서 `/clear`를 했고(대화 기록의 마지막 쓰기 01:41:20Z) 01:41:23Z에 승인했다. 새 세션은 새 id를 받았고 첫 지시가 오기 전까지 세션 파일이 없어서, 01:45:33Z에 제안이 `AIRCRAFT 불가: 세션 없음`으로 SUPERSEDED됐다. `/clear`는 `wrong-aircraft` 거절도 잊게 했고(짝 규칙이 세션 id를 키로 썼다), 진행 중인 FLIGHT PLAN의 AIRCRAFT를 잃게 할 수도 있었다. REFRESH([fleet.ko.md](fleet.ko.md) 8.6)와 FRESH START가 모두 SUPERVISOR에게 `/clear`를 부탁하므로 다시 생길 일이다.
+
+- **키는 REGISTRATION이다.** 새 ASSIGN은 이미 있던 세션 id·이름 옆에 `registration`을 담는다(`registrationOf`, ATC-67: `Team I`와 `TEAM_I`는 한 AIRCRAFT). 짝 규칙(`recentPairsOf`, planner의 `blockedPairs`), AIRCRAFT 예약(`reservedOf`, AIRCRAFT마다 진행 중인 제안 하나와 쥔 FLIGHT), `stillValid`와 SUPERSEDED 사유(`why`), READBACK 추적이 모두 이것을 쓴다. `aircraft`(제안을 만들 때의 세션 id)와 `aircraftName`은 그대로다: FUEL 귀속이 id를 읽고, send-guard는 받는 사람을 `aircraftName`과 저장된 문구에 그대로 견준다. 메시지는 그 이름으로 가서 그 이름을 쓰는 살아 있는 세션에 닿는다. atc가 살아 있는 세션을 찾는 때는 제안을 만들 때가 아니라 메시지가 나갈 때다.
+- **옛 줄**에는 `registration`이 없다. 전처럼 읽는다: `aircraftName`(그때의 이름)에서 REGISTRATION을 얻고, 이름도 없는 줄은 세션 id 그대로다. `proposals.jsonl`의 새 필드는 모르는 리더가 무시하므로 기록 형식은 그들에게 바뀐 것이 없다.
+- **`RESTARTING`**([fleet.ko.md](fleet.ko.md) 8.5, "RESTARTING as built"). `/clear`와 다음 지시 사이에는 AIRCRAFT에 세션이 없다. `restartGraceMin`(`dispatch.json`, 기본 30, 양수) 동안은 없음(absent)이 아니라 `RESTARTING`이다. planner는 이것을 `plan.aircraft`에 `restarting: true`, `available: false`, `reason: "RESTARTING — 세션 없음 — /clear 뒤 첫 메시지 대기 (02:11Z까지)"`로 두어 새 FLIGHT를 받지 않게 한다.
+- **제안은 닫히지 않고 기다린다.** AIRCRAFT가 `RESTARTING`인 `proposed`·`approved` ASSIGN은 "AIRCRAFT 불가"로 SUPERSEDED되지 않는다(다른 사유는 전처럼 바로 닫는다). `sent`는 원래 자동으로 닫지 않았다. 새 세션이 같은 이름으로 뜨면 같은 제안이 유효하고 그대로 나간다. 유예가 지나도 세션이 없으면 `RESTARTING`이 사라지고 제안은 전처럼 `AIRCRAFT 불가: 세션 없음`으로 닫힌다. `POST …/release`(보내기)는 그 AIRCRAFT에 살아 있는 세션이 없고 `RESTARTING`이면 409를 돌려주어 OCC가 아무도 없는 곳에 보내지 않게 한다. 승인은 그대로 남는다.
+- **카드가 말한다.** brief의 `waiting: {D-0068: "세션 없음 — /clear 뒤 첫 메시지 대기"}`가 그 제안들에 붙고, DISPATCH가 카드와 진행 중 줄에 보인다.
+- **빠진 것.** 친화(AFFINITY) 요소는 이전 FLIGHT를 세션 id로 읽어서 `/clear`가 그것은 여전히 초기화한다(별도의 더 작은 신호).
+
 ## 7. atc에 더할 것
 
 | 곳 | 내용 |

@@ -243,6 +243,13 @@
   color: var(--muted);
   font-size: var(--text-sm);
 }
+/* /clear 뒤 첫 메시지 대기(ATC-91) */
+.dp-wait {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--cyan);
+  font: var(--text-2xs) var(--mono);
+}
 .dp-target {
   display: flex;
   align-items: center;

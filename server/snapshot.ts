@@ -3,7 +3,8 @@ import { type Alert, type Claim, parentKeysOf, type Session, type Snapshot, type
 import { resolveAirports } from "./airports.ts";
 import { recentClearances } from "./clearances.ts";
 import { type Occupancy, resolveOccupancy } from "./occupancy.ts";
-import { healthOfSession, inferTranscriptClaim, readClaudeSessions, readHookClaims } from "./sources/claude.ts";
+import { healthOfSession, inferTranscriptClaim, readClaudeSessions, readEndedSessions, readHookClaims } from "./sources/claude.ts";
+import { restartingOf } from "./restarting.ts";
 import { cutResetOf, healthAlerts, settleCut } from "./health.ts";
 import { applyFlightHealth } from "./health-flights.ts";
 import { readCodex } from "./sources/codex.ts";
@@ -145,6 +146,9 @@ export async function buildSnapshot(): Promise<Snapshot> {
   const dispatchCfg = loadDispatchConfig();
   const team = new RegExp(dispatchCfg.teamPattern, "i");
   const accountOfSession = (x: Session) => (x.status !== "dead" && team.test(x.name) ? accountOf(fleet, x.name) : null);
+  // RESTARTING(ATC-91): 데스크톱 /clear 뒤 다음 지시를 기다리는 AIRCRAFT. 세션 파일이 없는 최근 대화 기록에서 읽는다
+  const graceMs = dispatchCfg.restartGraceMin * 60_000;
+  const restarting = restartingOf(readEndedSessions(new Set(claude.sessions.map((x) => x.id)), healthAt, graceMs), sessions, healthAt, dispatchCfg.restartGraceMin, dispatchCfg.teamPattern);
   // FUEL REMAINING(ATC-55): statusline이 적은 rate_limits를 session → AIRCRAFT → ACCOUNT로(죽은 세션의 마지막 값도 reset까지 쓴다).
   // 관제 세션(TOWER·OCC·CROSSCHECK·MCC·ENGINEERING, ATC-60)도 같은 ACCOUNT의 구성원으로 센다 — 붙들지는 않는다
   const regOf = (name: string) => regKey(name, dispatchCfg.teamPattern); // `Team G`도 TEAM_G 구성원(ATC-67)
@@ -276,6 +280,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     autoland,
     fuel,
     fuelAccounts,
+    restarting,
   };
 }
 

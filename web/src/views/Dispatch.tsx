@@ -93,6 +93,7 @@ interface Brief {
   plan: Plan;
   open: Proposal[];
   held: Proposal[];
+  waiting?: Record<string, string>; // /clear 뒤 첫 메시지를 기다리는 AIRCRAFT의 제안 id → 글(ATC-91). 옛 서버면 없음
   briefs?: Record<string, CardBrief>; // 열린·HELD 카드의 사실 줄과 본문 첫 문장(옛 서버면 없음)
   inFlight: Proposal[];
   delivery?: Record<string, Delivery>; // 2b 전달(ATC-76): AIRCRAFT 세션 이름 → 출처·permission mode·OCC mode. 옛 서버면 없음
@@ -349,7 +350,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
             </thead>
             <tbody>
               {brief.inFlight.map((p) => (
-                <InFlightRow key={p.id} p={p} flight={flights[p.flight]} now={now} overdue={brief.overdue.includes(p.id)} mode={brief.mode} busy={busy === p.id} onRecall={recall} candidate={(brief.arrivalCandidates ?? []).find((c) => c.proposal === p.id)} />
+                <InFlightRow key={p.id} p={p} flight={flights[p.flight]} waiting={brief.waiting?.[p.id]} now={now} overdue={brief.overdue.includes(p.id)} mode={brief.mode} busy={busy === p.id} onRecall={recall} candidate={(brief.arrivalCandidates ?? []).find((c) => c.proposal === p.id)} />
               ))}
             </tbody>
           </table>
@@ -381,7 +382,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
           busy={busy}
           onAgree={(p) => acceptCrosscheck(p, markOf(p)!)}
           renderCard={(p) => (
-            <Card p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
+            <Card p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} waiting={brief.waiting?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
           )}
           flights={flights}
         />
@@ -389,7 +390,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {expanded.length ? (
         <div className="dp-cards">
           {expanded.map((p) => (
-            <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
+            <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} waiting={brief.waiting?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
           ))}
         </div>
       ) : agreeLane.length ? null : (
@@ -403,7 +404,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
           </h2>
           <div className="dp-cards">
             {brief.held.map((p) => (
-              <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} now={now} onVerdict={submit} onHeld={heldAction} codes={codes} mode={brief.mode} held busy={busy === p.id} />
+              <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} waiting={brief.waiting?.[p.id]} now={now} onVerdict={submit} onHeld={heldAction} codes={codes} mode={brief.mode} held busy={busy === p.id} />
             ))}
           </div>
         </>
@@ -415,7 +416,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {release.length ? (
         <div className="dp-cards">
           {release.map((p) => (
-            <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
+            <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} waiting={brief.waiting?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
           ))}
         </div>
       ) : (
@@ -508,9 +509,11 @@ function InFlightRow({
   busy,
   onRecall,
   candidate,
+  waiting,
 }: {
   p: Proposal;
   flight: FlightInfo | undefined;
+  waiting?: string;
   now: number;
   overdue: boolean;
   mode: DispatchConfig["mode"];
@@ -534,6 +537,11 @@ function InFlightRow({
         </td>
         <td className="dp-c-air">
           {p.aircraftName} <DeliveryWarn aircraft={p.aircraftName} />
+          {waiting && (
+            <span className="dp-wait" title="세션이 /clear로 끝났고 새 세션이 첫 메시지를 받을 때까지 이 제안은 닫히지 않는다">
+              {waiting}
+            </span>
+          )}
         </td>
         <td className="dp-c-result dp-result">
           {p.status === "recalling" ? (
@@ -1124,9 +1132,11 @@ function Card({
   held,
   onHeld,
   busy,
+  waiting,
 }: {
   p: Proposal;
   flight: FlightInfo | undefined;
+  waiting?: string;
   info?: CardBrief;
   now: number;
   onVerdict: (p: Proposal, v: "agree" | "disagree", input: VerdictInput) => Promise<boolean>;
@@ -1181,6 +1191,11 @@ function Card({
         {p.kind === "ASSIGN" ? (
           <>
             → <b>{p.aircraftName}</b> <span className="apt">{p.airport}</span> <DeliveryWarn aircraft={p.aircraftName} />
+            {waiting && (
+              <span className="dp-wait" title="세션이 /clear로 끝났고 새 세션이 첫 메시지를 받을 때까지 이 제안은 닫히지 않는다">
+                {waiting}
+              </span>
+            )}
           </>
         ) : (
           <>Todo로 되돌릴지 확인 {flight && <span className="faint">· 지금 {flight.state}</span>}</>

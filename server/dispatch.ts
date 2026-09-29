@@ -1,3 +1,4 @@
+import { DEFAULT_RESTART_GRACE_MIN, restartingReason } from "./restarting.ts";
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { callsign } from "./callsign.ts";
@@ -40,6 +41,8 @@ export interface DispatchConfig {
   externalReview: { security: ExternalReviewSecurity };
   // FUEL REMAINING(ATC-55): INFO·HOLD 임계값(쓴 몫 %)과 DISPATCH HOLD 스위치(D3, 기본 꺼짐). SUPERVISOR만 설정 창에서 켠다
   fuel: FuelConfig;
+  // /clear 뒤 첫 메시지를 기다려 주는 분(ATC-91, docs/fleet.md 8.5). 그 안에는 AIRCRAFT가 RESTARTING이고 승인된 제안이 기다린다
+  restartGraceMin: number;
 }
 export type ExternalReviewSecurity = "exclude" | "deepseek";
 export const EXTERNAL_REVIEW_SECURITY: readonly ExternalReviewSecurity[] = ["exclude", "deepseek"];
@@ -62,6 +65,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   teamPattern: DEFAULT_TEAM_PATTERN,
   externalReview: { security: "exclude" },
   fuel: DEFAULT_FUEL,
+  restartGraceMin: DEFAULT_RESTART_GRACE_MIN,
 };
 
 const CONFIG_FILE = join(config.stateDir, "dispatch.json");
@@ -120,6 +124,8 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       externalReview: { security: user.externalReview?.security === "deepseek" ? "deepseek" : "exclude" },
       // 모르는 값은 기본으로 — HOLD는 true일 때만 켠다
       fuel: fuelConfigOf(user.fuel),
+      // 양수가 아니면 기본으로 — 0이나 음수는 기다림을 없애는 것이 아니라 잘못된 값이다
+      restartGraceMin: typeof user.restartGraceMin === "number" && Number.isFinite(user.restartGraceMin) && user.restartGraceMin > 0 ? user.restartGraceMin : d.restartGraceMin,
     };
   } catch {
     return DEFAULT_DISPATCH_CONFIG;
@@ -164,6 +170,7 @@ export interface AssignPlan {
   flight: string;
   aircraft: string; // sessionId
   aircraftName: string;
+  registration?: string; // 짝·예약·FLIGHT 점유의 키(ATC-91). /clear로 세션 id가 바뀌어도 같다. planDispatch는 늘 채운다(옛 기록·손으로 만든 계획에는 없어 regOfAssign이 이름에서 읽는다)
   airport: string;
   score: number;
   factors: Factor[];
@@ -180,6 +187,7 @@ export interface ReleasePlan {
 
 export interface AircraftState {
   id: string;
+  registration?: string; // REGISTRATION(ATC-67). 제안·짝 규칙·예약은 이것으로 짝짓는다(ATC-91). planDispatch는 늘 채운다(regOfAircraft가 이름에서도 읽는다)
   name: string;
   callsign: string;
   airport: string | null;
@@ -189,6 +197,7 @@ export interface AircraftState {
   // STAND 없는 FLIGHT(SURVEY·CHECK)를 받을 수 있는 상태: HOLDING이나 PARKED(AIRBORNE·AOG·RETIRED 아님)
   resting?: boolean;
   reservedLight?: string | null; // 이 AIRCRAFT로 진행 중인 STAND 없는 제안 id
+  restarting?: true; // /clear 뒤 첫 메시지를 기다리는 자리(ATC-91). 세션은 없고 배정은 받지 않지만 승인된 제안은 닫지 않는다
 }
 
 // 진행 중인 제안이 잡고 있는 AIRCRAFT·FLIGHT → 제안 id. 새 계획에서 뺀다.
@@ -197,10 +206,10 @@ export interface Reserved {
   flights: Map<string, string>;
   // FLIGHT key → HOLD 표시("D-0007 — 선행 FLIGHT 대기"). HELD는 AIRCRAFT를 잡지 않으므로 aircraft에는 없다.
   held?: Map<string, string>;
-  // AIRCRAFT → 진행 중인 ASSIGN의 FLIGHT들. aircraft는 한 대에 제안 하나만 담아서,
+  // REGISTRATION → 진행 중인 ASSIGN의 FLIGHT들. aircraft는 한 대에 제안 하나만 담아서,
   // STAND 있는 FLIGHT와 없는 FLIGHT를 함께 쥔 AIRCRAFT를 가르려면 이것이 필요하다.
   aircraftFlights?: Map<string, string[]>;
-  // "FLIGHT|AIRCRAFT id" → 24시간 안에 제안됐다 닫힌 짝(거절·SUPERSEDED·EXPIRED·RECALLED …)과 다시 가능해지는 시각.
+  // "FLIGHT|REGISTRATION" → 24시간 안에 제안됐다 닫힌 짝(거절·SUPERSEDED·EXPIRED·RECALLED …)과 다시 가능해지는 시각.
   // syncOps가 이 짝을 다시 제안하지 않으므로 계획에서도 빼야 AIRCRAFT가 다음으로 좋은 FLIGHT를 받는다.
   recentPairs?: Map<string, { id: string; until: string }>;
   // FLIGHT key → FLIGHT 자체의 문제로 거절된 제안(사유 칩이 FLIGHT_HOLD_CODES 중 하나). 모든 AIRCRAFT에서 뺀다.
@@ -209,6 +218,8 @@ export interface Reserved {
   // FLIGHT key → 최근 ARRIVED한 STAND 없는 FLIGHT의 제안 id. LOGBOOK에 남지 않아 여기서 뺀다(Linear가 아직 Todo여도)
   arrived?: Map<string, string>;
 }
+export const regOfAssign = (a: Pick<AssignPlan, "registration" | "aircraftName">, teamPattern?: string): string => a.registration ?? regKey(a.aircraftName, teamPattern);
+export const regOfAircraft = (a: Pick<AircraftState, "registration" | "name">, teamPattern?: string): string => a.registration ?? regKey(a.name, teamPattern);
 const NO_RESERVED: Reserved = { aircraft: new Map(), flights: new Map(), held: new Map() };
 
 // 이 AIRCRAFT가 지금 그 FLIGHT를 받을 수 있는 상태인가(예약은 따로 본다).
@@ -467,7 +478,7 @@ export function planDispatch(
   const holds = accountHolds(teamSessions.map((x) => ({ name: x.name, account: accountOf(fleet, x.name), health: x.health })), now);
   const aircraft: AircraftState[] = teamSessions
     .map((x) => {
-      const base = { id: x.id, name: x.name, callsign: callsign(x), airport: codeOf(x.repo), ...reservationsOf(x.id), resting: false };
+      const base = { id: x.id, registration: regOf(x.name), name: x.name, callsign: callsign(x), airport: codeOf(x.repo), ...reservationsOf(regOf(x.name)), resting: false };
       // FLEET에서 퇴역시키거나 AOG(잠시 운항 중지)로 둔 AIRCRAFT는 배정하지 않는다
       const status = profileOf(fleet, x.name);
       if (status.retired) return { ...base, available: false, reason: "RETIRED" };
@@ -488,6 +499,11 @@ export function planDispatch(
       if (!base.airport) return { ...base, available: false, reason: "소속 AIRPORT 없음" };
       return { ...base, resting: true, available: true, reason: held.length ? "HOLDING, 남은 FLIGHT 없음" : "PARKED" };
     });
+  // RESTARTING(ATC-91): 세션은 없지만 /clear 뒤 첫 메시지를 기다리는 AIRCRAFT. 배정은 받지 않고(available false), 그 REGISTRATION의 승인된 제안은 닫지 않는다
+  for (const r of s.restarting ?? []) {
+    if (aircraft.some((a) => regOfAircraft(a, cfg.teamPattern) === r.registration)) continue;
+    aircraft.push({ id: `restarting:${r.registration}`, registration: r.registration, name: r.name, callsign: callsign({ name: r.registration }), airport: null, ...reservationsOf(r.registration), resting: false, available: false, reason: restartingReason(r), restarting: true });
+  }
 
   // ── FLIGHT ──
   const excluded: Plan["excluded"] = [];
@@ -682,9 +698,9 @@ export function planDispatch(
   const blockedPairs = new Map<string, NonNullable<Plan["blockedPairs"]>[number]>();
   const hadPair = new Set<string>();
   const notBlocked = (ac: AircraftState, t: Candidate) => {
-    const b = reserved.recentPairs?.get(`${t.key}|${ac.id}`);
+    const b = reserved.recentPairs?.get(`${t.key}|${regOfAircraft(ac, cfg.teamPattern)}`);
     if (!b) return true;
-    blockedPairs.set(`${t.key}|${ac.id}`, { flight: t.key, aircraft: ac.id, aircraftName: ac.name, proposal: b.id, until: b.until });
+    blockedPairs.set(`${t.key}|${regOfAircraft(ac, cfg.teamPattern)}`, { flight: t.key, aircraft: regOfAircraft(ac, cfg.teamPattern), aircraftName: ac.name, proposal: b.id, until: b.until });
     return false;
   };
   const pairsOf = (flights: Candidate[], ok: (ac: AircraftState, t: Candidate) => boolean, extra: (ac: AircraftState, t: Candidate) => Factor[]) =>
@@ -707,14 +723,14 @@ export function planDispatch(
   const assign: AssignPlan[] = [];
   const place = (pairs: ReturnType<typeof pairsOf>) => {
     for (const p of pairs) {
-      if (usedFlights.has(p.t.key) || usedAircraft.has(p.ac.id)) continue;
+      if (usedFlights.has(p.t.key) || usedAircraft.has(regOfAircraft(p.ac, cfg.teamPattern))) continue;
       const load = (airborneAt.get(p.t.airport) ?? 0) + (planned.get(p.t.airport) ?? 0);
       const size = WAKE_SLOTS[p.t.cls.wake];
       if (load + size > limitOf(p.t.airport) + 1e-9) continue;
       usedFlights.add(p.t.key);
-      usedAircraft.add(p.ac.id);
+      usedAircraft.add(regOfAircraft(p.ac, cfg.teamPattern));
       planned.set(p.t.airport, (planned.get(p.t.airport) ?? 0) + size);
-      assign.push({ kind: "ASSIGN", flight: p.t.key, aircraft: p.ac.id, aircraftName: p.ac.name, airport: p.t.airport, score: p.score, factors: p.factors });
+      assign.push({ kind: "ASSIGN", flight: p.t.key, aircraft: p.ac.id, aircraftName: p.ac.name, registration: regOfAircraft(p.ac, cfg.teamPattern), airport: p.t.airport, score: p.score, factors: p.factors });
     }
   };
   // 1) STAND 규칙: 배정 가능(available)하고 예약 없는 AIRCRAFT에 TEAM당 1건. STAND 없는 FLIGHT도 여기서 먼저 받을 수 있다
@@ -726,7 +742,7 @@ export function planDispatch(
   place(
     pairsOf(
       light,
-      (ac, t) => !usedAircraft.has(ac.id) && canTake(ac, t),
+      (ac, t) => !usedAircraft.has(regOfAircraft(ac, cfg.teamPattern)) && canTake(ac, t),
       (ac, t) => [mark("standFree", "STAND 없이", 1, `${ac.reason} — ${t.cls.type}는 STAND가 필요 없어 STAND 규칙 밖(AIRCRAFT당 1건)`)],
     ),
   );

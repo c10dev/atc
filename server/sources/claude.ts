@@ -5,6 +5,7 @@ import { toolPaths } from "../../hooks/paths.mjs";
 import { lastPushRecord, type PushRecord } from "../../hooks/health.mjs";
 import type { Claim, Session, Workspace } from "../model.ts";
 import { type TalkEvent, talkEventsOf } from "../briefs.ts";
+import { type EndedSession, normalEndOf } from "../restarting.ts";
 import { type Fact, factsOf, type Health, type HealthConfig, healthOf, mergeHealth } from "../health.ts";
 import { sessionProcOf } from "../session-proc.ts";
 
@@ -325,4 +326,59 @@ export function healthOfSession(s: SessionFile, status: Session["status"], now: 
   const pull = healthOf(hit.facts, { status, lastWriteAt: st.mtimeMs }, now, cfg);
   // push가 대화 기록의 마지막 사실보다 새로우면 push가 이긴다(ATC-47)
   return mergeHealth(readPushRecord(s.sessionId), pull, hit.facts);
+}
+
+// 세션 파일이 없는 대화 기록 중 maxAgeMs 안에 쓴 것(ATC-91 RESTARTING). 데스크톱 /clear는 세션을 끝내고 새 id를 받는데, 새 대화 기록은
+// 다음 지시가 와야 생긴다. 이름은 대화 기록의 마지막 custom-title, 정상 종료인지는 끝의 사실로 본다. 본문은 남기지 않는다
+const ENDED_TAIL = 96 * 1024;
+export function readEndedSessions(knownIds: ReadonlySet<string>, now: number, maxAgeMs: number, root = join(config.claudeDir, "projects")): EndedSession[] {
+  const out: EndedSession[] = [];
+  let projects: string[] = [];
+  try {
+    projects = readdirSync(root);
+  } catch {
+    return out;
+  }
+  for (const proj of projects) {
+    let names: string[] = [];
+    try {
+      names = readdirSync(join(root, proj));
+    } catch {
+      continue;
+    }
+    for (const f of names) {
+      if (!f.endsWith(".jsonl")) continue;
+      const sessionId = f.slice(0, -6);
+      if (knownIds.has(sessionId)) continue;
+      const path = join(root, proj, f);
+      let st;
+      try {
+        st = statSync(path);
+      } catch {
+        continue;
+      }
+      if (now - st.mtimeMs >= maxAgeMs) continue;
+      let text = "";
+      try {
+        const fd = openSync(path, "r");
+        try {
+          const len = Math.min(st.size, ENDED_TAIL);
+          const buf = Buffer.alloc(len);
+          readSync(fd, buf, 0, len, st.size - len);
+          text = buf.toString("utf8");
+          if (len < st.size) text = text.slice(text.indexOf("\n") + 1);
+        } finally {
+          closeSync(fd);
+        }
+      } catch {
+        continue;
+      }
+      const title = /"type":"custom-title","customTitle":"((?:[^"\\]|\\.)*)"/g;
+      let name: string | null = null;
+      for (let m = title.exec(text); m; m = title.exec(text)) name = m[1]!;
+      if (!name) continue;
+      out.push({ sessionId, name: JSON.parse(`"${name}"`) as string, endedAt: st.mtimeMs, normalEnd: normalEndOf(text) });
+    }
+  }
+  return out;
 }

@@ -84,6 +84,17 @@ test("LAUNCH: 받을 곳 없는 FLIGHT가 있으면 운항하지 않는 등록 A
   assert.deepEqual(out.demand.find((d) => d.airport === "ATCC"), { airport: "ATCC", served: 0, unserved: ["ATC-2", "ATC-3"], parked: 0, blocked: null });
 });
 
+test("LAUNCH(ATC-91): /clear 뒤 첫 메시지를 기다리는(RESTARTING) AIRCRAFT는 LAUNCH 후보에서 뺀다 — 곧 그 이름으로 세션이 뜬다", () => {
+  const restarting = { registration: "TEAM_I", name: "TEAM_I", sessionId: "old", since: new Date(NOW - 5 * 60_000).toISOString(), until: new Date(NOW + 25 * 60_000).toISOString() };
+  const out = fleetPlanOf(
+    inputs({
+      aircraft: [view("TEAM_H", { status: "busy", flying: ["ATC-1"] }), view("TEAM_I", { status: "absent", ratings: ["UI"], restarting }), view("TEAM_J", { status: "absent", ratings: ["UI"] })],
+      plan: { assign: [], unserved: [need("ATC-2", { ratings: ["UI"] })] },
+    }),
+  );
+  assert.deepEqual(kinds(out.candidates), ["LAUNCH TEAM_J"]);
+});
+
 test("LAUNCH를 막는 것: GROUND STOP, 활주로 병목, 백그라운드 상한, 최근 STOP(minDwell)", () => {
   const base = {
     aircraft: [view("TEAM_I", { status: "absent" })],

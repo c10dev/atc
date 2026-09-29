@@ -686,6 +686,20 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **쓰임.** 카드의 STOP, STOP API(`stopTargetOf`와 `rowOriginOf`), FLEET PLAN 실행(`STOP`, `RESTART`, `REFRESH`, `RETIRE`의 세션 멈춤)은 출처가 `background`일 때만 한다. 다른 출처는 그 출처의 손 절차를 받는다(`manualStepsOf`): Claude 앱에서 닫기, 터미널에서 `/exit`, REFRESH면 `/clear` 뒤 CREW BRIEFING 붙여 넣기. FLEET PLAN의 `session` 사유에 출처가 나오고, 저장된 `value`는 그대로 `interactive`·`background`다.
 - **2b 전달.** `GET /api/dispatch/brief`의 `delivery`: 제안 AIRCRAFT마다 출처, permission mode, OCC의 permission mode, 둘 다 알고 다를 때의 `warn`(`deliveryOf`). DISPATCH 카드와 IN FLIGHT 줄에 `MODE <m> ≠ OCC <m>`이 떠 메시지가 붙들릴 수 있음을 알린다. 막지 않는다.
 
+### RESTARTING as built (ATC-91)
+
+데스크톱의 `/clear`는 세션을 끝내고 다음 세션에 새 id를 준다. 이름은 이어진다. 한동안 AIRCRAFT에 세션이 없어서 FLEET는 `absent`를 보였고 DISPATCH는 승인된 제안을 닫았다([dispatch.ko.md](dispatch.ko.md) 6.4). ATC-91은 그 틈을 하나의 상태로 만든다: `RESTARTING`, 최대 `restartGraceMin`(기본 30, `dispatch.json`).
+
+**Step 0, 실제 파일에서(2026-09-29).**
+
+- **`/clear`가 남기는 것.** 이 기계에서 두 경우가 있다. TEAM_J 자신의 `/clear`(09-28 17:07:14Z): 옛 대화 기록 `4a0c058e…`의 마지막 쓰기는 17:07:14.911Z이고, 새 것 `7e5461b1…`은 5 ms 먼저(17:07:14.906Z) 태어나 이미 `custom-title`·`agent-name` `TEAM_J`, `/clear` 명령 줄과 빈 출력을 담았다. 첫 지시는 17:07:28Z. TEAM_I의 `/clear`(ATC-91의 경우): 옛 `04a9a868…`의 마지막 쓰기 01:41:20Z, 그 뒤 01:49:24.583Z에 첫 지시 `TEAM_I`와 `custom-title TEAM_I`로 `085b1336…`이 태어날 때까지 새 대화 기록이 없다. 그러니 `/clear` 때 새 파일이 생길 수도 아닐 수도 있고, 그 사이 세션 파일(`~/.claude/sessions/<pid>.json`)은 없다. atc는 어느 쪽에도 기댈 수 없다. 두 대화 기록에 끝 표시는 없다: 마지막 줄은 `stop_hook_summary`와 `last-prompt`다.
+- **이름은 이어진다.** 두 경우 모두 새 세션의 `custom-title`이 옛 것(`TEAM_J`, `TEAM_I`)이고, 세션 파일도(생기면) 같은 이름이다. id는 새것이다. (TEAM_I는 지금 `cli` 세션인데 이는 `/clear`의 효과가 아니라 진입점이 따로 바뀐 것이다.)
+- **hook.** 이 기계에는 `SessionStart`·`SessionEnd` hook이 없고(`~/.claude/settings.json`에 `PreToolUse`·`PostToolUse`·`StopFailure`·`Stop`·`Notification`뿐) 어떤 대화 기록에도 그 `hookEvent`가 없어서, 데스크톱 세션에서 그것이 도는지는 파일로 알 수 없다. Claude Code 2.1.284 바이너리는 `SessionEnd`와 `reason` `clear | resume | logout | prompt_input_exit | other`를 정의한다. 시험하려면 SUPERVISOR의 `settings.json`에 hook을 넣어야 하는데 이 변경은 건드리지 않는다. **결정: hook 없음.** 파일만으로 찾으므로 PR이 `hooks/` 밖에 머문다. hook은 즉시성만 더하고 나중에 더할 수 있다.
+
+**찾기**(`server/restarting.ts`의 순수 함수 `restartingOf`. 읽기는 `server/sources/claude.ts`의 `readEndedSessions`). 세션 파일이 없고(상태와 무관: 죽은 pid의 파일은 clear가 아니라 crash다), `restartGraceMin` 안에 쓰였고, 마지막 `custom-title`이 REGISTRATION으로 읽히고, 마지막 사실이 도구 호출이 남지 않은 답인(정상 종료: API 오류·승인 대기·대답 없는 지시는 `health`가 다룬다) 대기 기록이 있으면 그 REGISTRATION은 마지막 쓰기 뒤 `restartGraceMin` 동안 `RESTARTING`이다. 같은 REGISTRATION의 살아 있는 세션이 뜨면(`Team I`도) 바로 끝나고, 유예가 지나면 끝난다. 시계는 atc의 기억이 아니라 대화 기록의 마지막 쓰기라서 서버를 다시 띄워도 잃지 않는다. `snapshot.restarting`이 목록이다. 사람이 일부러 닫은 세션도 유예 동안은 같게 보인다. hook이 필요 없는 값이다.
+
+**보이는 곳.** `GET /api/fleet`이 `restarting: {registration, name, sessionId, since, until}`(없으면 `null`)을 주고 `status: "absent"`는 그대로여서 FLEET PLAN은 전과 같이 보되, `RESTARTING` AIRCRAFT에는 `LAUNCH`를 제안하지 않는다(SUPERVISOR가 곧 말을 건다). FLEET 상태 목록은 STATUS `RESTARTING`과 FLYING 칸의 `세션 없음 — /clear 뒤 첫 메시지 대기`를 보이고, 카드는 기다리는 시각과 승인된 제안이 열려 있다는 것을 같이 적는다. DISPATCH는 [dispatch.ko.md](dispatch.ko.md) 6.4.
+
 ### 8.6 FLEET PLAN: LAUNCH·STOP 등을 제안하기
 
 상태: 1·2단계 만듦(그림자, 2026-09-28). `REFRESH`(객실 정비, ATC-69)도 함께 만들었다. SUPERVISOR 결정은 아래에 적었다. 8.5가 SUPERVISOR에게 조종 버튼을 줬다면, 이 절은 atc가 언제 그 버튼을 쓰자고 제안할지 정한다. 팀을 꾸리고, 세우고, 정비하고, 퇴역시키는 일을 손으로 챙기지 않게 하려는 것이다.

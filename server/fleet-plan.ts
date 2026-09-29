@@ -197,7 +197,7 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
       { code: "cap", detail: `백그라운드 세션 ${background.length}/${i.maxLaunched}`, value: background.length },
     ];
     // 운항하지 않는 등록 AIRCRAFT 중 가장 많은 FLIGHT를 받을 수 있는 것. 같으면 최근 ARRIVED가 많은 쪽
-    const idle = i.aircraft.filter((a) => a.status === "absent" && !a.retired && !a.aog && a.base === code && !i.nordo.has(a.registration) && !dwelling(a.registration, "stop"));
+    const idle = i.aircraft.filter((a) => a.status === "absent" && !a.restarting && !a.retired && !a.aog && a.base === code && !i.nordo.has(a.registration) && !dwelling(a.registration, "stop"));
     const fitting = idle
       .map((a) => ({ a, served: mine.filter((u) => canServe(a.registration, a.ratings, a.complement, u)), fuel: fuelOfPlan(i, "LAUNCH", a.registration) }))
       .filter((x) => x.served.length)
