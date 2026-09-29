@@ -309,7 +309,7 @@ DISPATCH는 날고 있는 FLIGHT가 바꾼 파일과 Todo FLIGHT가 고칠 파�
 | `stub` | 녹화한 응답, 네트워크 없음. 테스트와 `ATC_JUDGE_ENGINE=stub`으로 띄운 시험 서버가 쓴다 |
 | `jev` | TypeSafe System One: `POST https://api.typesafe.ai/v1/systemone`, 모델 `jev-latest`, `Authorization: Bearer $TYPESAFE_API_KEY`(`.env.local`. 로그·출력·기록에 쓰지 않는다) |
 
-**스위치**는 `~/.local/state/atc/judges.json`의 `judges.jev`다: `off`(기본), `replay`, `shadow`. SUPERVISOR만 바꾼다. 설정 창 → AGENTS → JUDGES에서 바꾸거나, 이 화면 Origin으로 `PUT /api/settings {judgesJev}`를 보낸다(AUTOLAND와 같다). atcctl에는 명령이 없어 관제 세션은 바꿀 수 없다. 값이 없거나 모르는 값이면 `off`로 읽는다.
+**스위치**는 `~/.local/state/atc/judges.json`의 `judges.jev`다: `off`(기본), `replay`, `shadow`. SUPERVISOR만 바꾼다. 설정 창 → AUTOMATION → JUDGES에서 바꾸거나, 이 화면 Origin으로 `PUT /api/settings {judgesJev}`를 보낸다(AUTOLAND와 같다). atcctl에는 명령이 없어 관제 세션은 바꿀 수 없다. 값이 없거나 모르는 값이면 `off`로 읽는다.
 
 | 모드 | 판정하는 것 |
 |---|---|
@@ -1021,7 +1021,7 @@ ATC-69는 대화 기록에 `[1m]`이 남지 않아 창을 짐작했다. ATC-85�
 - 관제 세션(TOWER, OCC, CROSSCHECK, MCC, ENGINEERING, ATC-60)도 ACCOUNT의 구성원이다. SUPERVISOR가 설정 창(AGENTS 탭 CONTROL 블록, `fleet.json` `control`, 선택 항목)에서 라벨을 단다. 라벨이 없으면 라벨이 하나라도 있을 때 `default`로, 하나도 없으면 자기 이름으로 따로 센다. 그 기록은 ACCOUNT의 값, TOWER INFO, 그 ACCOUNT의 AIRCRAFT에 대한 DISPATCH HOLD에 들어간다. 관제 세션 자신은 붙들지 않는다. FLEET 탭의 FUEL 블록이 ACCOUNT마다 AIRCRAFT와, 따로 관제 세션을 적는다.
 - FLEET FUEL 블록과 카드: ACCOUNT마다 `사용 82% · resets 21:00Z` — 가장 많이 쓴 창에서 **쓴 몫**과 그 창의 reset(ATC-81: 늘 쓴 몫이라고 적는다. "FUEL 82%"는 남은 눈금처럼 읽혔다). 80 % 아래는 회색, 80 %부터 노랑(INFO), 95 %부터 빨강(HOLD 임계값). 툴팁에 창마다의 값과 어느 세션이 언제 적었는지가 있다. 목록 줄에는 싣지 않는다. 같은 ACCOUNT의 AIRCRAFT마다 같은 숫자가 자기 것처럼 보이기 때문이다. 줄에는 AIRCRAFT 자기 연료 FOB(아래 "FOB as built (ATC-81)")를 두고, ACCOUNT는 hold 수준일 때 꼬리표 `HOLD · FUEL (account pro-2) until 21:00Z`(백분율 없이)로만 둔다.
 - 80 %(`dispatch.json` `fuel.infoPct`)부터 TOWER 브리핑 `open.fuel`에 INFO 항목(ACCOUNT·창·reset마다 한 번), 그 ACCOUNT의 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING에 `fuel` 문제(`info`)가 생긴다.
-- 95 %(`fuel.holdPct`)부터는 SUPERVISOR가 DISPATCH HOLD 스위치를 켰을 **때만**(설정 창 AGENTS 탭 FUEL 블록, `fuel.hold`, 기본 꺼짐, 결정 D3) DISPATCH가 그 ACCOUNT의 AIRCRAFT를 reset까지 `HOLD · FUEL (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다. 계정을 저절로 바꾸는 일은 없다.
+- 95 %(`fuel.holdPct`)부터는 SUPERVISOR가 DISPATCH HOLD 스위치를 켰을 **때만**(설정 창 AUTOMATION 탭 FUEL 블록, `fuel.hold`, 기본 꺼짐, 결정 D3) DISPATCH가 그 ACCOUNT의 AIRCRAFT를 reset까지 `HOLD · FUEL (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다. 계정을 저절로 바꾸는 일은 없다.
 
 **Push(`hooks/health.mjs`, ATC-47).** Claude Code hook이 멈춘 순간을 바로 알려서, 승인을 기다리는 세션이 30분 뒤 `HUNG`이 아니라 곧바로 `PENDING`으로 보인다. 이벤트마다 상태 폴더의 `health/<sessionId>.jsonl`에 한 줄을 덧붙인다: `{t, event, code?, error?, line?}`(`StopFailure`, `Notification`, `Stop`, `PostToolUse`. 코드·시각·오류 첫 줄만, 본문 없음). 서버는 세션마다 마지막 줄을 읽고, 대화 기록의 마지막 사실보다 새 push 기록이 이긴다(`mergeHealth`). 아니면 pull 결과가 그대로 선다. SUPERVISOR의 설치 방법은 [hooks/README.ko.md](hooks/README.ko.md)에 있다.
 

@@ -16,7 +16,10 @@ const CTL = "node ../controller/atcctl.mjs";
 test("MCC 설정: Claude, guard --mcc --gh-read, 모델은 guard가 붙이고, 쓰기·메시지·게시 도구는 막는다", () => {
   assert.equal(settings.model, "opus");
   assert.equal(settings.env?.ATC_MCC_MODEL, undefined);
-  for (const t of ["Edit", "Write", "NotebookEdit", "SendMessage", "Agent", "Artifact"]) assert.ok(settings.permissions.deny.includes(t), t);
+  for (const t of ["Edit", "Write", "NotebookEdit", "SendMessage", "Artifact"]) assert.ok(settings.permissions.deny.includes(t), t);
+  // ATC-135: Agent는 inspector만(허용 규칙 + agent-guard hook), 다른 하위 에이전트는 hook이 막는다
+  assert.ok(!settings.permissions.deny.includes("Agent"));
+  assert.ok(settings.permissions.allow.includes("Agent(inspector)"));
   const hooks = settings.hooks.PreToolUse.flatMap((h) => h.hooks.map((x) => x.command));
   assert.ok(hooks.every((c) => c.endsWith("exit 2")), "hook은 fail-closed");
   assert.ok(hooks.some((c) => c.includes('guard.mjs" --mcc --gh-read ||')), "Bash guard 옵션");
@@ -116,13 +119,15 @@ const GUARD_HOOKS = [
   ["Bash", "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/guard.mjs\" --mcc --gh-read || exit 2"],
   ["mcp__.*", "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../occ/mcp-guard.mjs\" --read-only || exit 2"],
   ["Read|Glob|Grep", "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/read-guard.mjs\" || exit 2"],
-  ["Edit|Write|MultiEdit|NotebookEdit|SendMessage|Agent|Task|Artifact", "echo 'MCC는 파일을 고치거나 메시지를 보내거나 하위 에이전트를 부르지 않습니다 — 착륙은 atcctl mcc로만.' >&2; exit 2"],
+  ["Edit|Write|MultiEdit|NotebookEdit|SendMessage|Artifact", "echo 'MCC는 파일을 고치거나 메시지를 보내지 않습니다 — 착륙은 atcctl mcc로만.' >&2; exit 2"],
+  // ATC-135: 하위 에이전트는 inspector 하나만(agent-guard.mjs)
+  ["Agent|Task", "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/agent-guard.mjs\" || exit 2"],
 ];
 
 test("SQUELCH hook: mcc 역할로 걸려 있고 exit 2가 없다", () => {
   const ups = settings.hooks.UserPromptSubmit;
   assert.equal(ups.length, 1);
-  assert.equal(ups[0].hooks.length, 1);
+  assert.equal(ups[0].hooks.length, 2);
   const h = ups[0].hooks[0];
   assert.equal(h.type, "command");
   assert.equal(h.command, "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/squelch.mjs\" mcc");
