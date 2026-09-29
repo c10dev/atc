@@ -82,7 +82,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - FLEET 탭의 **CONTROL SESSIONS** 구역(AIRCRAFT 목록 아래, 주소 `#fleet/control`)은 관제 세션(TOWER·OCC·MCC·CROSSCHECK·REVIEW·ENGINEERING)마다 배지, LAUNCH·STOP, NEEDS YOU, ACCOUNT를 보인다. FLEET가 보이는 동안 1분에 한 번 다시 읽고, LAUNCH·STOP 뒤에는 곧장 읽는다. 백그라운드 세션 daemon이 atc 서비스 안에서 돌면 맨 위에 경고가 붙는다. 설정 창 AGENTS 탭에는 이리로 가는 안내 한 줄만 있다.
 - FLEET 탭의 **FUEL** 블록(AIRCRAFT 목록 아래)은 ACCOUNT마다 한 줄로 쓴 몫, AIRCRAFT, 그리고 따로 관제 세션을 보인다. 누가 그 계정을 쓰고 있는지 여기서 본다.
 - 80 %를 넘으면 TOWER가 SUPERVISOR에게 한 번 알리고(창마다 한 번), OCC는 그 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING에 적는다. 팀에는 보내지 않는다.
-- **DISPATCH HOLD 스위치**: 설정 창 AGENTS 탭의 FUEL 블록. 기본은 off라 FUEL은 보여 주기만 한다. on으로 바꾸면 95 % 넘게 쓴 ACCOUNT의 AIRCRAFT를 DISPATCH가 reset까지 `HOLD · FUEL (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다.
+- **DISPATCH HOLD 스위치**: 설정 창 AUTOMATION 탭의 FUEL 블록. 기본은 off라 FUEL은 보여 주기만 한다. on으로 바꾸면 95 % 넘게 쓴 ACCOUNT의 AIRCRAFT를 DISPATCH가 reset까지 `HOLD · FUEL (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다.
 - 값은 상태 줄이 다시 그려질 때만 갱신된다. CREW 서브에이전트와 다른 컴퓨터의 세션은 보고하지 않는다. ACCOUNT마다 살아 있는 CAPTAIN 세션 하나면 된다.
 
 ### FUEL: FLIGHT마다 얼마나 태웠나
