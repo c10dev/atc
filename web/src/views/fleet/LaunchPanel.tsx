@@ -29,7 +29,7 @@ export function LaunchPanel({
     ref.current?.scrollIntoView({ block: "nearest" });
     submitRef.current?.focus({ preventScroll: true });
   }, [error, ref]);
-  const launched = control.sessions.filter((x) => x.kind === "background").length;
+  const launched = control.sessions.filter((x) => x.kind === "background" && !x.stale).length; // STALE은 상한에 세지 않는다(ATC-93)
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);

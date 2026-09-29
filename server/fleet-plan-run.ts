@@ -37,7 +37,7 @@ import { allProposals, reservedOf } from "./proposals.ts";
 import { readRecords, record } from "./recorder.ts";
 import { fleetKeyOf, regKey } from "./registration.ts";
 import { activeWaypointsOf } from "./routes.ts";
-import { type AgentRow, agentRows, launchAircraft, MAX_LAUNCHED, PERMISSION_MODES, rowOriginOf, stopAircraft } from "./session-control.ts";
+import { type AgentRow, agentRows, launchAircraft, liveRowsOf, MAX_LAUNCHED, PERMISSION_MODES, rowOriginOf, stopAircraft } from "./session-control.ts";
 import { readLinearProjects } from "./sources/linear-projects.ts";
 
 // FLEET PLAN 실행부(docs/fleet.md 8.6): DISPATCH 주기(5분)마다 제안을 계산해 fleet-plan.jsonl에 적고,
@@ -163,7 +163,8 @@ export async function runFleetPlan(s: Snapshot, now = Date.now()) {
   if (inflight || !s.linear.fetchedAt || !s.github.fetchedAt) return;
   inflight = true;
   try {
-    const rows = await agentRows();
+    // STALE 줄(ATC-93)은 살아 있는 세션이 아니다: STOP·RESTART를 내지 않고 상한에 세지 않는다
+    const rows = liveRowsOf(await agentRows());
     const inputs = inputsOf(s, rows, now);
     const { candidates, demand } = fleetPlanOf(inputs);
     const p = persistOf(pending, candidates, now, FLEET_PLAN_DEFAULTS);
@@ -283,7 +284,7 @@ async function runStep(step: ExecStep, by: string, getSnapshot: () => Promise<Sn
 // RESTART: 멈춘 세션이 claude agents에서 빠질 때까지 잠깐 기다린다(곧바로 띄우면 "이미 떠 있음"으로 거절될 수 있다)
 async function goneFromAgents(reg: string, tries = 10) {
   for (let n = 0; n < tries; n++) {
-    const rows = await agentRows().catch(() => []);
+    const rows = liveRowsOf(await agentRows().catch(() => []));
     if (!rows.some((r) => regKey(r.name) === regKey(reg))) return;
     await new Promise((r) => setTimeout(r, 500));
   }
@@ -342,7 +343,7 @@ export function mountFleetPlan(app: Hono, getSnapshot: () => Promise<Snapshot>) 
       const cfg = loadDispatchConfig();
       const team = new RegExp(cfg.teamPattern, "i");
       const fleet = loadFleet();
-      const rows = await agentRows();
+      const rows = liveRowsOf(await agentRows());
       const sessions: SessionFact[] = rows
         .filter((r) => team.test(r.name ?? ""))
         .map((r) => ({ registration: regKey(r.name, cfg.teamPattern), kind: r.kind, id: r.id, startedAt: typeof r.startedAt === "number" ? r.startedAt : null, origin: rowOriginOf(r) }));

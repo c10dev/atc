@@ -125,7 +125,9 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
     return save(a.registration, { aog: { reason, until: until.trim() || null } });
   };
 
-  const sessionOf = (reg: string) => control?.sessions.find((x) => (x.name ?? "").toUpperCase() === reg) ?? null;
+  // STALE 줄(ATC-93)은 살아 있는 세션이 아니다: LAUNCH를 막지 않고 STOP 대상도 아니다. 카드에는 따로 보인다
+  const sessionOf = (reg: string) => control?.sessions.find((x) => !x.stale && (x.name ?? "").toUpperCase() === reg) ?? null;
+  const staleOf = (reg: string) => control?.sessions.filter((x) => x.stale && (x.name ?? "").toUpperCase() === reg) ?? [];
 
   // 실패하면 사유를 돌려준다. 패널 안에 보인다(맨 위 오류 줄은 목록 아래쪽에서 안 보인다)
   const launch = async (reg: string, input: { permissionMode: string; model: string }): Promise<string | null> => {
@@ -183,6 +185,7 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
           onAog={() => toggleAog(a)}
           onRetire={() => retire(a)}
           session={control ? sessionOf(a.registration) : undefined}
+          stale={staleOf(a.registration)}
           onLaunch={(opener) => (setError(null), setLaunching({ a, opener }))}
           onStop={() => stop(a)}
           windowDays={brief.observedWindowDays}

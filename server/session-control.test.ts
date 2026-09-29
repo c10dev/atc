@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type AgentRow, CONTROL_SESSIONS, ControlError, controlDirOf, controlLaunchPlanOf, controlRowsOf, controlSpecOf, controlStopTargetOf, inServiceCgroup, isControlRow, launchCommandOf, parentPidOf, tmuxPaneOf, jobIdOf, launchPlanOf, launchBlockOf, findBin, stopTargetOf } from "./session-control.ts";
+import { type AgentRow, CONTROL_SESSIONS, ControlError, controlDirOf, controlLaunchPlanOf, controlRowsOf, controlSpecOf, controlStopTargetOf, inServiceCgroup, isControlRow, launchCommandOf, parentPidOf, tmuxPaneOf, jobIdOf, launchPlanOf, launchBlockOf, findBin, stopTargetOf, isStaleRow, liveRowsOf, controlStaleOf, jobStateOf, STALE_MIN_AGE_MS } from "./session-control.ts";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const base = { registration: "team_k", retired: false, repo: "/home/u/projects/app", briefing: "[ATC FLEET] CREW BRIEFING · KILO (TEAM_K)" };
 const bg = (name: string, id = "abc12345"): AgentRow => ({ id, sessionId: `${id}-x`, name, kind: "background", status: "idle", cwd: "/w" });
@@ -177,4 +180,67 @@ test("findBin: PATH 순서대로 첫 실행 파일", () => {
   const have = new Set(["/b/tmux", "/c/tmux"]);
   assert.equal(findBin("tmux", ["/a", "/b", "/c"], (p) => have.has(p)), "/b/tmux");
   assert.equal(findBin("screen", ["", "/a"], (p) => have.has(p)), null);
+});
+
+// ── STALE(ATC-93): 2026-09-29 claude agents --json에서 본 실제 줄 모양 ──
+const NOW = 1790649200000;
+const T_START = 1790613548886; // 10시간 전
+// 살아 있는 bg: 쉬는 것·일하는 것 모두 pid와 status가 있다
+const liveIdle: AgentRow = { id: "13183364", sessionId: "13183364-a", name: "TOWER", kind: "background", status: "idle", cwd: "/r/atc/controller", startedAt: 1790644169111, pid: 172971 };
+const liveBusy: AgentRow = { id: "c911a92b", sessionId: "c911a92b-a", name: "S93", kind: "background", status: "busy", cwd: "/tmp/x", startedAt: NOW - 1000, pid: 363706 };
+// 유령: done에서 STOP한 뒤에도 "working"으로 남은 TOWER. pid·status가 없다
+const ghost: AgentRow = { id: "3bf04645", sessionId: "3bf04645-a", name: "TOWER", kind: "background", cwd: "/r/atc/controller", startedAt: T_START };
+const interactive: AgentRow = { sessionId: "i", name: "TEAM_G", kind: "interactive", status: "idle", cwd: "/r/atc", pid: 1 };
+
+test("STALE: pid·status 없는 background이고 job state가 끝났고 2분이 넘은 줄만", () => {
+  assert.equal(isStaleRow(ghost, "done", NOW), true);
+  assert.equal(isStaleRow(ghost, "stopped", NOW), true);
+  assert.equal(isStaleRow(ghost, "failed", NOW), true);
+  // 살아 있는 줄은 state가 done이어도(한 턴을 마침) STALE이 아니다
+  assert.equal(isStaleRow(liveIdle, "done", NOW), false);
+  assert.equal(isStaleRow(liveBusy, "working", NOW), false);
+  assert.equal(isStaleRow(interactive, "done", NOW), false);
+  // 막 띄운 job: 0.4초쯤 pid·status 없이 보이지만 state가 끝난 값이 아니고, 2분도 안 됐다
+  const spawning: AgentRow = { ...ghost, id: "c911a92b", startedAt: NOW - 400 };
+  assert.equal(isStaleRow(spawning, "working", NOW), false);
+  assert.equal(isStaleRow(spawning, "done", NOW), false);
+  assert.equal(isStaleRow({ ...ghost, startedAt: NOW - STALE_MIN_AGE_MS + 1 }, "done", NOW), false);
+  // job 파일을 못 읽으면 STALE로 보지 않는다
+  assert.equal(isStaleRow(ghost, null, NOW), false);
+  assert.equal(isStaleRow(ghost, "working", NOW), false);
+  assert.deepEqual(liveRowsOf([{ ...ghost, stale: true }, liveIdle]).map((r) => r.id), ["13183364"]);
+});
+
+test("job state: state 한 칸만 읽고, 없거나 이상한 id면 null", () => {
+  const dir = mkdtempSync(join(tmpdir(), "atc93-"));
+  mkdirSync(join(dir, "3bf04645"));
+  writeFileSync(join(dir, "3bf04645", "state.json"), JSON.stringify({ state: "done", providerEnv: { SECRET: "x" } }));
+  assert.equal(jobStateOf("3bf04645", dir), "done");
+  assert.equal(jobStateOf("deadbeef", dir), null);
+  assert.equal(jobStateOf("../etc", dir), null);
+});
+
+test("관제 LAUNCH·STOP: STALE 유령은 떠 있는 세션이 아니다. 유령만 있으면 STOP은 이유를 말하고 claude stop을 다시 하지 않는다", () => {
+  const TOWER = controlSpecOf("TOWER")!;
+  const DIR = "/r/atc/controller";
+  const staleGhost = { ...ghost, stale: true };
+  assert.deepEqual(controlLaunchPlanOf(TOWER, [staleGhost], DIR).args.slice(0, 3), ["--bg", "-n", "TOWER"]);
+  assert.deepEqual(controlRowsOf(TOWER, [staleGhost, liveIdle], DIR).map((r) => r.id), ["13183364"]);
+  assert.deepEqual(controlStaleOf(TOWER, [staleGhost, liveIdle], DIR).map((r) => r.id), ["3bf04645"]);
+  // 살아 있는 TOWER가 있으면 그것을 멈춘다(유령이 아니라)
+  assert.equal((controlStopTargetOf(TOWER, [staleGhost, liveIdle], DIR) as { row: AgentRow }).row.id, "13183364");
+  refused(() => controlStopTargetOf(TOWER, [staleGhost], DIR), 409, /STALE 3bf04645만 있음/);
+  // 표시가 없는 줄(옛 경로·테스트)은 예전대로 떠 있는 세션
+  refused(() => controlLaunchPlanOf(TOWER, [ghost], DIR), 409, /이미 떠 있음/);
+});
+
+test("팀 LAUNCH: 같은 이름의 STALE 유령이 막지 않고, 상한에 세지 않는다. STOP은 유령만 있으면 이유를 말한다", () => {
+  const input = { registration: "TEAM_G", retired: false, repo: "/r/atc", briefing: "b" };
+  const g = { ...ghost, name: "TEAM_G", stale: true };
+  assert.equal(launchPlanOf(input, [g]).registration, "TEAM_G");
+  // 상한 1: 살아 있는 bg 하나면 막히고, 유령 하나로는 막히지 않는다
+  assert.equal(launchPlanOf(input, [{ ...g, name: "TEAM_H" }], 1).registration, "TEAM_G");
+  refused(() => launchPlanOf(input, [{ ...liveIdle, name: "TEAM_H" }], 1), 409, /상한 1/);
+  refused(() => stopTargetOf("TEAM_G", [g]), 409, /STALE 3bf04645만 있음/);
+  refused(() => stopTargetOf("TEAM_G", []), 404, /떠 있지 않음/);
 });
