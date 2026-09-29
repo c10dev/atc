@@ -5,7 +5,8 @@ import { recentClearances } from "./clearances.ts";
 import { type Occupancy, resolveOccupancy } from "./occupancy.ts";
 import { healthOfSession, inferTranscriptClaim, readClaudeSessions, readEndedSessions, readHookClaims } from "./sources/claude.ts";
 import { restartingOf } from "./restarting.ts";
-import { cutResetOf, healthAlerts, settleCut } from "./health.ts";
+import { cutResetOf, DEFAULT_HEALTH, healthAlerts, settleCut } from "./health.ts";
+import { blockedAlerts } from "./job-state.ts";
 import { applyFlightHealth } from "./health-flights.ts";
 import { readCodex } from "./sources/codex.ts";
 import { readWorkspaces, ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
@@ -170,6 +171,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
     x.health = settleCut(x.health, cutResetOf(Date.parse(x.health.cutAt), readFuelHistory(ids), fuelCfg.holdPct), healthAt);
   }
   // health ALERT: NETWORK는 기계에 한 번, LIMIT은 같은 ACCOUNT끼리(ATC-51), ACCOUNT를 모르면 같은 reset끼리 한 번(docs/fleet.md 8.8)
+  // NEEDS YOU(ATC-99): 백그라운드 job이 blocked로 몇 분 넘게 사람을 기다리면 경보. state가 blocked를 벗어나면 저절로 사라진다
+  for (const a of blockedAlerts(sessions, healthAt, config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!)) alerts.push({ kind: "health", key: a.key, message: a.message, sessionIds: a.sessionIds });
   for (const a of healthAlerts(sessions.map((x) => ({ sessionId: x.id, name: x.name, health: x.health, account: accountOfSession(x) })), healthAt)) {
     alerts.push({ kind: "health", key: a.key, message: a.message, sessionIds: a.sessionIds });
   }

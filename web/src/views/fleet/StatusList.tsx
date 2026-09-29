@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { elapsedText, type FleetRow, flightDetailText } from "../../../../server/fleet-status.ts";
 import { flightNumber } from "../../aviation.ts";
 import { timeAgo } from "../../derive.ts";
+import { JobDetail, NeedsYou } from "../../ui.tsx";
 import { ContextCell } from "./Context.tsx";
 import { pct } from "./shared.ts";
 import "./StatusList.css";
@@ -53,6 +54,7 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                 <span className="fl-r-apt">{r.airport ? <span className="apt">{r.airport}</span> : <span className="faint">—</span>}</span>
                 <span className="fl-r-status">{r.status}</span>
                 <span className={`fl-r-flight${(r.flight?.detail && (r.flight.kept || r.health)) || r.restarting ? " has-detail" : ""}`} title={r.flight ? `${r.flight.key}${r.flight.title ? ` ${r.flight.title}` : ""}${r.more ? ` 외 ${r.more}건` : ""}${r.flight.detail && (r.flight.kept || r.health) ? ` — ${flightDetailText(r.flight.detail, now).text}` : ""}` : undefined}>
+                  <NeedsYou job={r.job} />
                   {r.health && (
                     <span className={`fl-r-health lv-${r.health.level}`} title={`${r.health.detail} — ${r.health.next}`}>
                       {r.health.label}
@@ -82,7 +84,9 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                       {r.flight.title && <span className="fl-r-title">{r.flight.title}</span>}
                       {r.more > 0 && <span className="fl-r-more">+{r.more}</span>}
                     </>
-                  ) : r.health || r.accountHold || r.fuelHold || r.restarting ? null : (
+                  ) : r.health || r.accountHold || r.fuelHold || r.restarting || r.job?.state === "blocked" ? null : r.job?.state === "working" && r.job.detail ? (
+                    <JobDetail job={r.job} />
+                  ) : (
                     <span className="faint">—</span>
                   )}
                 </span>

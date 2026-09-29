@@ -10,6 +10,7 @@ import type { RulesView } from "../../../../server/rules-state.ts";
 import { isBackground, manualStepsOf, originBadgeOf } from "../../../../server/session-origin.ts";
 import { flightNumber } from "../../aviation.ts";
 import { timeAgo } from "../../derive.ts";
+import { JobDetail, NeedsYou, SuggestedReply } from "../../ui.tsx";
 import { formatClock, useSettings } from "../../settings.ts";
 import { FleetCrew } from "../FleetCrew.tsx";
 import { ContextLine } from "./Context.tsx";
@@ -258,6 +259,14 @@ export function Card({
       </h3>
       <p className="fl-line">{a.account ? <span className="mono">{a.account}</span> : <span className="faint">지정 없음 — 한도는 reset 시각으로 묶는다</span>}</p>
       {/* 출처 힌트(ATC-76): 백그라운드 세션은 이 호스트 CLI의 로그인을, 데스크톱 세션은 앱의 계정을 쓴다. 계정 정보는 읽지 않는다 */}
+      {a.job?.state === "blocked" && (
+        <div className="fl-needs-you">
+          <NeedsYou job={a.job} />
+          {a.job.detail && <p className="fl-line faint">{a.job.detail}</p>}
+          <SuggestedReply job={a.job} />
+        </div>
+      )}
+      {a.job?.state === "working" && a.job.detail && <p className="fl-line"><JobDetail job={a.job} /></p>}
       {(a.origin === "background" || a.origin === "desktop") && (
         <p className="fl-origin-note faint">{a.origin === "background" ? "BG 세션 — 이 호스트의 CLI 로그인을 따른다" : "DESKTOP 세션 — Claude 앱의 계정을 따른다"}</p>
       )}

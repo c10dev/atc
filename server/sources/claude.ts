@@ -8,6 +8,7 @@ import { type TalkEvent, talkEventsOf } from "../briefs.ts";
 import { type EndedSession, normalEndOf } from "../restarting.ts";
 import { type Fact, factsOf, type Health, type HealthConfig, healthOf, mergeHealth } from "../health.ts";
 import { sessionProcOf } from "../session-proc.ts";
+import { readJob } from "../job-state.ts";
 
 interface SessionFile {
   pid: number;
@@ -18,6 +19,7 @@ interface SessionFile {
   name?: string;
   status?: string;
   kind?: string; // bg·interactive
+  jobId?: string; // kind가 bg일 때 ~/.claude/jobs/<jobId>(ATC-99)
   entrypoint?: string; // claude-desktop·cli
 }
 
@@ -74,6 +76,8 @@ export function readClaudeSessions(): { sessions: Session[]; files: SessionFile[
       repo: null,
       workspacePath: null,
       ...(proc ? { origin: proc.origin, permissionMode: proc.permissionMode } : {}),
+      // 백그라운드 job 상태(ATC-99): 살아 있는 bg 세션만. 파일은 mtime으로 캐시하고 읽기만 한다
+      ...(alive && s.kind === "bg" ? { job: readJob(s.jobId) } : {}),
     };
   });
   return { sessions, files };

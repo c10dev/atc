@@ -16,6 +16,7 @@ import type { Snapshot } from "./model.ts";
 import { fleetKeyOf, registrationNamesOf, registrationOf, regKey } from "./registration.ts";
 import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state.ts";
 import type { SessionOrigin } from "./session-origin.ts";
+import type { Job } from "./job-state.ts";
 
 // FLEET 등록부(~/.local/state/atc/fleet.json). 팀(AIRCRAFT)마다 CREW COMPLEMENT, TYPE RATING, ROUTE, TARGETS를 적는다.
 // 설계: docs/fleet.md. 타입·기본값·판정은 crew.ts에 있고, planner도 그것을 쓴다.
@@ -249,6 +250,7 @@ export interface AircraftView {
   flyingSince: string | null; // 지금 쥔 STAND를 처음 잡은 시각(점유 since 중 가장 이른 것). 없으면 null
   lastActiveAt: string | null; // 세션의 마지막 활동 시각
   health?: Health | null; // AIRCRAFT health(ATC-45). 세션이 없거나 문제가 없으면 null
+  job?: Job | null; // 백그라운드 job 상태(ATC-99). NEEDS YOU는 state가 blocked일 때. bg 세션이 아니면 null
   account?: string | null; // ACCOUNT(ATC-51). 라벨이 없으면 기본 ACCOUNT, 등록부에 라벨이 하나도 없으면 null
   accountIsDefault?: boolean; // 라벨 없이 기본 ACCOUNT로 센다
   accountHold?: AccountHold | null; // 같은 ACCOUNT의 다른 AIRCRAFT가 LIMIT에 걸려 붙들림(ATC-51)
@@ -361,6 +363,7 @@ export function fleetView(
       permissionMode: session?.permissionMode ?? null,
       restarting: session ? null : (s.restarting?.find((r) => r.registration === reg) ?? null),
       health: session?.health ?? null,
+      job: session?.job ?? null,
       account: accountOf(fleet, reg),
       accountIsDefault: accountOf(fleet, reg) != null && !profile.account,
       accountHold: session ? accountHoldOf(holds, accountOf(fleet, reg), reg) : null,

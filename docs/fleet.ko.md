@@ -1091,6 +1091,15 @@ FLEET PLAN 블록의 FUEL(8.6의 "주간 사용량 줄")은 만들었다(ATC-63)
 - `tail:` 라벨이 붙은 In Progress FLIGHT는 점유가 없어도 쥔 것으로 센다. SURVEY·CHECK FLIGHT는 PR을 열지 않으므로 `STALLED`에서 뺀다.
 - `RESUME`·`STALLED`는 hold가 아니다: 한도가 풀린 AIRCRAFT는 새 배정을 받을 수 있고, 그 배정이 곧 "계속"이다.
 
+### NEEDS YOU as built (ATC-99)
+
+백그라운드 세션(세션 파일 `kind: "bg"`와 `jobId`)은 atc가 아는 busy/idle보다 풍부한 기록을 `~/.claude/jobs/<jobId>/state.json`에 둔다. `claude agents --json`의 `state` 칸이 여기서 온다. atc는 이 파일을 읽기만 하고 `Session`에 `job: {state, detail, needs, suggestedReply, since}`를 붙인다. 백그라운드 세션이 아니면 `null`이다.
+
+- **읽기.** `server/job-state.ts`: `parseJob`(순수)은 `state`(`working`·`blocked`·`done`·`stopped`·`failed`, 그 밖의 값은 `null`), `detail`, `needs`·`suggestedReply`(`blocked`일 때만), `updatedAt`만 고른다. `intent`(팀은 CREW BRIEFING 전체)·`output`·`providerEnv`·`linkScanPath`는 읽지도 내보내지도 않는다. `since`는 `timeline.jsonl` 끝(16 KB)에서 지금 state가 이어진 줄들의 첫 줄이고, timeline이 없으면 `updatedAt`이다. `readJob`은 두 파일의 mtime·크기로 job마다 캐시하고, 아무것도 쓰거나 지우거나 잠그지 않는다. ATC-93의 `jobStateOf`(STALE 줄)도 같은 파일의 `state`를 읽는다.
+- **화면.** `blocked`인 동안 `NEEDS YOU · <needs>` 칩. 툴팁에 `detail`과 답하는 방법이 있다. FLEET 목록 줄과 카드(카드에는 `suggestedReply`가 복사만 되는 줄로 함께 보이고, atc는 보내지 않는다), STRIPS 스트립(blocked 세션은 PARKED여도 보인다), 관제 세션의 CONTROL 블록 줄에 붙는다. `working`이면 `detail`이 FLEET 목록과 카드에 흐린 한 줄로 보인다.
+- **경보.** `health.blockedMin`분(기본 3, `ATC_HEALTH_BLOCKED_MIN`) 넘게 `blocked`이면 `health` 경보 `BLOCKED — <이름>이 N분째 사람을 기다림: <needs>`(키 `health|BLOCKED|<세션>`)가 뜬다. `HealthCode`가 아니라 따로 둔 경보다: `Health`는 DISPATCH를 붙들고 매뉴얼 항목이 있는데 이것은 그렇지 않다. state가 `blocked`를 벗어나면 풀리고 `alert.raised` / `alert.cleared`가 따라온다.
+- **확인한 버전** Claude Code 2.1.284(2026-09-29). Claude Code 내부 파일이라 파일이 없거나 다른 버전이거나 모르는 state면 아무것도 보이지 않고 오류도 내지 않는다.
+
 ## 9. `lane:`에서 `tail:`로 옮기기
 
 네 단계 모두 끝났다.

@@ -12,7 +12,7 @@ import {
 } from "../aviation.ts";
 import { activeFirst, hasActiveClaim, type Index, sortSessions, timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
-import { AirportCode, AwayTag, SessionPlace } from "../ui.tsx";
+import { AirportCode, AwayTag, NeedsYou, SessionPlace } from "../ui.tsx";
 import { HumanCheckQueue, HumanCheckTag } from "./HumanCheck.tsx";
 import "./Teams.css";
 
@@ -22,7 +22,7 @@ const agentCode = { claude: "CLD", codex: "CDX" } as const;
 export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; now: number }) {
   const [showAll, setShowAll] = useState(false);
   const all = sortSessions(snapshot.sessions, idx);
-  const visible = showAll ? all : all.filter((s) => s.status === "busy" || idx.claimsBySession.has(s.id));
+  const visible = showAll ? all : all.filter((s) => s.status === "busy" || idx.claimsBySession.has(s.id) || s.job?.state === "blocked") // blocked job은 PARKED여도 보인다(NEEDS YOU, ATC-99);
   const hidden = all.length - visible.length;
   const nameOf = (id: string) => {
     const s = idx.sessionById.get(id);
@@ -116,6 +116,7 @@ function Strip({
           {sign}
           <span className="type">{agentCode[s.agent]}</span>
           <AwayTag airports={idx.awayBySession.get(s.id)} />
+          <NeedsYou job={s.job} />
         </div>
         <div className="sub">
           {sign !== s.name && `${s.name} · `}

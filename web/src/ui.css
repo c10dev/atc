@@ -25,3 +25,50 @@
   margin-left: 6px;
   vertical-align: 3px;
 }
+
+/* NEEDS YOU(ATC-99): blocked 백그라운드 job. 색은 :root 토큰만 */
+.needs-you {
+  display: inline-block;
+  max-width: 100%;
+  margin-right: var(--space-1-5);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--alert);
+  border-radius: var(--radius-sm);
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--alert);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.needs-you-text {
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.job-detail {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  font-size: var(--text-2xs);
+}
+.needs-you-reply {
+  margin: var(--space-1) 0;
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.needs-you-reply code {
+  font-family: var(--mono);
+}
+.needs-you-copy {
+  padding: 0 var(--space-1-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
