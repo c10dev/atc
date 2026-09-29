@@ -2,7 +2,7 @@
 
 A radio's squelch keeps the speaker quiet until a real signal comes in. SQUELCH does the same for the control sessions. Before a `/loop`-scheduled `/tick` reaches the model, atc checks whether anything that session acts on has changed since its last pass. If nothing has changed, the prompt is dropped and the session spends no tokens.
 
-> Status (2026-09-29): draft. S0 done (ATC-80): the hook path works ("S0 as probed" below), so the fallback is not needed. S1 is ATC-96. Nothing else built. Written from a usage reading of the last 4 hours of local transcripts (section 1).
+> Status (2026-09-29): draft. S0 done (ATC-80): the hook path works ("S0 as probed" below), so the fallback is not needed. S1 is built (ATC-94, "S1 as built"): the server decides QUIET/OPEN per role in `shadow`. S2–S5 are not built. Written from a usage reading of the last 4 hours of local transcripts (section 1).
 
 Related: [fuel.md](fuel.md) (FUEL, `controlWake`, the 1 h cache tier on main transcripts), [fleet.md](fleet.md) 8.5–8.6 (how control sessions are launched, `/loop` intervals), [mcc.md](mcc.md) 4 (MCC pass), `controller/.claude/skills/tick/SKILL.md` and the other folders' `/tick`.
 
@@ -112,13 +112,13 @@ Consequences for S1–S3:
 
 - The hook is the mechanism; the fallback is dropped.
 - The block reason is printed on every block, so it stays short (`SQUELCH QUIET since HH:MM`).
-- atc's transcript readers (health, FUEL, the section 1 tick count) must treat the four lines of a blocked tick as neither a prompt waiting for an answer nor a tick (S1, ATC-96).
+- atc's transcript readers (health, FUEL, the section 1 tick count) must treat the four lines of a blocked tick as neither a prompt waiting for an answer nor a tick (S1, ATC-94).
 - A slow hook delays the tick by up to its timeout, so the 3 s API timeout inside a 5 s hook timeout stands.
 - A Haiku background session loaded the scheduling tool but never scheduled its loop. That is the model, not the hook: don't use Haiku for a `/loop` control session.
 
 ### S1 as built (ATC-94)
 
-The server side of the gate. No hook, `.claude/` setting, guard or control-session manual calls it yet (S2, S3), and the default mode is `shadow`, so nothing drops a tick. (Linear has S1 as ATC-94; the ATC-96 above is a slip in this draft.)
+The server side of the gate. No hook, `.claude/` setting, guard or control-session manual calls it yet (S2, S3), and the default mode is `shadow`, so nothing drops a tick.
 
 - **Files.** `server/squelch.ts` (pure: `project`, `canonical`, `fingerprint`, `naturalReason`, `decide`), `server/squelch-run.ts` (I/O, `mountSquelch`), both wired in `server/index.ts`. Tests: `squelch.test.ts`, `squelch-run.test.ts`, `squelch-transcript.test.ts`.
 - **Inputs.** `gatherInputs` reads the same JSON as the `atcctl` read commands by calling the mounted brief handlers in-process (`app.request`, no network): TOWER `/api/controller/brief?consumer=controller`; MCC `/api/mcc/queue`; OCC `/api/dispatch/brief`, `/api/fleet/crew-changes/brief`, `/api/schedule/brief`, `/api/following`; CROSSCHECK `crosscheck.pending` inside the dispatch and schedule briefs (what `atcctl crosscheck brief` filters); REVIEW `/api/landing/reviews`.
@@ -142,7 +142,7 @@ The server side of the gate. No hook, `.claude/` setting, guard or control-sessi
 | Step | What | Needs | Tier |
 |---|---|---|---|
 | S0 ✅ (ATC-80) | Probe on a throwaway session in a temp folder (not a control folder): does a `/loop`-fired `/tick` pass through `UserPromptSubmit`, does `decision: block` drop it with no API request, and do the loop's later firings still come? Check `claude --bg` and `ocx claude` both. The result decides between the hook and the fallback | – | – (no PR, a note in this doc) |
-| S1 (ATC-96) | `server/squelch.ts` (pure, tests), `squelch-run.ts`, `POST /api/squelch/<role>`, `squelch.json`/`.jsonl`, `mode: shadow` by default; transcript readers ignore blocked ticks | S0 | `auto` |
+| S1 ✅ (ATC-94) | `server/squelch.ts` (pure, tests), `squelch-run.ts`, `POST /api/squelch/<role>`, `squelch.json`/`.jsonl`, `mode: shadow` by default; transcript readers ignore blocked ticks | S0 | `auto` |
 | S2 | `atcctl squelch`, `controller/squelch.mjs` hook script (tests: non-`/tick` passes, error passes, QUIET blocks) | S1 | `flagged` |
 | S3 | Wire the hook into the five folders' `.claude/settings.json`, still `shadow` | S2 | `user` |
 | S4 | A week of `shadow`: for every `shadow:quiet` decision, check in the transcript that the tick really did nothing (the section 1 method). Zero missed working ticks → SUPERVISOR switches `on` role by role, REVIEW and CROSSCHECK first, TOWER last | S3 | – |

@@ -32,6 +32,7 @@ Rules for sessions that change atc's code (team sessions, the ENGINEERING sessio
 
 - Commit, push and open PRs when the task asks for it. Commit messages and PR titles and bodies are in English.
 - No attribution lines (Co-Authored-By etc.) in commit messages. PR bodies end with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- Don't open PRs as drafts. MCC never lands a draft (`docs/mcc.md` L2), so it waits until someone marks it ready. If the work isn't finished, report instead of opening a PR.
 - Team sessions and the ENGINEERING session don't merge. Merging follows the LANDING CLEARANCE tier (`deploy/landing-tier.mjs`, decided by the changed paths).
   - `auto` (server, UI, docs, tests) and `flagged` (control-session manuals and CLI): once CI (`check`) passes and the MCC INSPECTION is `pass`, MCC lands it (`land` mode since 2026-09-29, `docs/mcc.md` 5.1). The user may still merge first. For `flagged`, the PR body and the report list the changed control rules separately. GitHub auto-merge is not used.
   - `user` (guards, `.claude/` settings, the root `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`): the user merges. A PR that changes the production state format, is hard to undo, or leaves doubts after review is raised to `user` too (the session that opened it says so in the tier section; an MCC INSPECTION escalates it).
