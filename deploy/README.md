@@ -12,7 +12,8 @@
 | `Environment="PATH=…/node/v24.19.0/bin:…"` | Puts Node 24 (installed with nvm) on the PATH, since user services don't load your shell profile |
 | `ExecStartPre=… node --run build` | Rebuilds the web UI (`vite build`) on every start, so a plain restart picks up UI changes |
 | `ExecStart=… node server/index.ts` | Starts the server (Node runs the TypeScript directly) |
-| `Restart=on-failure`, `RestartSec=5` | Restarts 5 seconds after a crash |
+| `Restart=always`, `RestartSec=5` | Restarts 5 seconds after the process dies for any reason, a crash or a stray `kill` (ATC-134). A deliberate `systemctl --user stop atc` stays stopped, and `restart` (RTS) works as before |
+| `StartLimitIntervalSec=600`, `StartLimitBurst=20` | If the service restarts more than 20 times in 10 minutes (a failing build, say) systemd gives up and leaves it stopped, so a broken checkout doesn't loop forever |
 | `WantedBy=default.target` | Starts with your user session |
 
 The paths are for this machine. On another machine, change `WorkingDirectory`, the node path in `PATH`, `ExecStartPre` and `ExecStart` to yours (`which node` must be Node 24 or later).
@@ -39,7 +40,20 @@ journalctl --user -u atc -f           # logs
 systemctl --user disable --now atc    # stop and remove from startup
 ```
 
-After editing `atc.service` itself, copy it again and run `systemctl --user daemon-reload` before restarting.
+After editing `atc.service` itself, copy it again and run `systemctl --user daemon-reload` before restarting. **ATC-134 changes the unit (`Restart=always`), so the SUPERVISOR reinstalls it once** (RTS refuses a range that changes a `deploy/*.service`):
+
+```bash
+cp deploy/atc.service ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user restart atc
+```
+
+## Stopping test servers safely (ATC-134)
+
+On 2026-09-29 07:12 a team ran `pkill -f "node server/index.ts"` to stop its test server on 7702; the pattern also matched production on 7700. Since then:
+
+- Test servers are started with their PID saved (`( … exec node server/index.ts ) & echo $! > <tmp>/server.pid`; the `exec` makes the subshell's PID node's own) and stopped only with `kill "$(cat <tmp>/server.pid)"` (root `CLAUDE.md` "검증").
+- `hooks/kill-guard.mjs`, a `PreToolUse(Bash)` hook in the root `.claude/settings.json`, blocks `pkill`/`killall` with `server/index`, `atc` or `node` in the pattern, `kill $(pgrep …)` and `pgrep … | xargs kill`, `fuser -k`, and `systemctl --user stop|restart|kill|disable|mask atc`. It is fail-closed (`… || exit 2`), and it does not block `kill <pid>` or `atc-rts`. See [hooks/README.md](../hooks/README.md).
+- `Restart=always` brings 7700 back within 5 seconds if it dies anyway.
+- The server prints its `pid`, `ppid` and port at start and logs `SIGTERM`/`SIGINT`/`SIGHUP` before it exits, so `journalctl --user -u atc` shows what happened. Node can't see who sent the signal; a `systemctl` stop also shows up as `Stopping …` in the same journal.
 
 ## RETURN TO SERVICE (MCC)
 

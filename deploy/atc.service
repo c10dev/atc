@@ -2,6 +2,9 @@
 Description=atc control web on 127.0.0.1:7700
 Wants=network-online.target
 After=network-online.target
+# 계속 죽는 서비스가 10분에 20번 넘게 다시 뜨면(빌드 실패 등) 멈춘다
+StartLimitIntervalSec=600
+StartLimitBurst=20
 
 [Service]
 Type=simple
@@ -10,7 +13,8 @@ Environment="PATH=/home/c10/.nvm/versions/node/v24.19.0/bin:/usr/local/bin:/usr/
 # 화면을 고친 뒤 `systemctl --user restart atc`만 하면 새로 빌드된다.
 ExecStartPre=/home/c10/.nvm/versions/node/v24.19.0/bin/node --run build
 ExecStart=/home/c10/.nvm/versions/node/v24.19.0/bin/node server/index.ts
-Restart=on-failure
+# 어떤 이유로든 죽으면 다시 뜬다(누가 실수로 kill해도). `systemctl stop`은 멈춘 채로 남는다
+Restart=always
 RestartSec=5
 
 [Install]

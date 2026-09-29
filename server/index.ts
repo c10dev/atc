@@ -181,5 +181,12 @@ app.use("/*", serveStatic({ root: DIST, onFound: (path, c) => void (path.endsWit
 pruneRecords();
 await tick();
 serve({ fetch: app.fetch, port: config.port, hostname: "127.0.0.1" }, (info) =>
-  console.log(`[atc] http://localhost:${info.port}  (linear: ${config.linearApiKey ? "on" : "off"})`),
+  console.log(`[atc] http://localhost:${info.port}  (linear: ${config.linearApiKey ? "on" : "off"}) pid ${process.pid} ppid ${process.ppid}`),
 );
+// 누가 껐는지 다음에 읽을 수 있게(ATC-134): 신호를 받으면 로그를 남기고 신호 관례대로(128+번호) 끝낸다. 보낸 쪽은 Node가 알 수 없다
+for (const [sig, code] of [["SIGTERM", 143], ["SIGINT", 130], ["SIGHUP", 129]] as const) {
+  process.on(sig, () => {
+    console.log(`[atc] ${sig} received (pid ${process.pid}, port ${config.port}, up ${Math.round(process.uptime())}s) — exiting`);
+    process.exit(code);
+  });
+}

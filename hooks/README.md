@@ -229,3 +229,18 @@ If a running session doesn't show the line, restart it. Sessions on other machin
 | `fuel-statusline.test.mjs` | Record format, numbers and model id only, write on change (also without `rate_limits`), output line, fail open (`npm test`) |
 
 How atc turns claims into handoffs and conflicts is described in the main [README](../README.md#handoffs-and-conflicts).
+
+## KILL GUARD (ATC-134)
+
+`kill-guard.mjs` is a `PreToolUse(Bash)` hook wired in the repository's own `.claude/settings.json`, so every session opened in this repository or in one of its worktrees gets it. On 2026-09-29 07:12 a team's `pkill -f "node server/index.ts"` stopped production 7700 along with its test server.
+
+It exits 2 (blocks, with the reason on stderr) for:
+
+- `pkill` / `killall` whose pattern contains `server/index`, `atc` or `node`;
+- `kill $(pgrep …)`, `kill \`pidof …\``, and `pgrep|ps|lsof … | xargs kill`;
+- `fuser -k`;
+- `systemctl [--user] stop|restart|try-restart|kill|disable|mask|isolate atc` (`atc.service` too).
+
+It does not block `kill <pid>`, `kill "$(cat <tmp>/server.pid)"`, `systemctl … atc-rts` or read-only `systemctl status`. A command that only mentions the words (`echo 'pkill …'`, `grep`) passes. If the hook input can't be read or parsed, it blocks. The settings entry is `… || exit 2`, and it falls back to the main checkout's copy (`/home/c10/projects/atc/hooks/kill-guard.mjs`) when the project folder has none (a control folder), so a missing hook blocks instead of passing.
+
+Only sessions opened here are covered. A session in another repository (vocado) needs the same hook in its own settings.
