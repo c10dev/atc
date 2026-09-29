@@ -1,5 +1,0 @@
-### Changed
-- The 2b readiness checklist's vocado-only READBACK row is now one row per AIRPORT `candidateTeams` can assign to (`readback-*`, `airportReadbackOf` in `server/readiness.ts`), computed from `teamAirports`/`projectAirports`: vocado keeps reading `ATC_VOCADO_CLAUDE_MD` (or `<projectsDir>/vocado_nextjs/CLAUDE.md`), atc's own AIRPORT always reads this repository's root `CLAUDE.md`, and any other AIRPORT reads `CLAUDE.md` from the AIRPORT registry (ATC-75).
-
-### Docs
-- Root `CLAUDE.md`/`CLAUDE.en.md` "교신"/"Radio" and `.claude/skills/atc-task/SKILL.md` now spell out the same 2b message rules vocado's teams follow: answer an OCC `[DISPATCH D-xxxx]` FLIGHT PLAN with `READBACK D-xxxx` (or a reason), a `RECALL` with `READBACK D-xxxx RECALL`, an `[OCC CC-xxxx]` CREW CHANGE with `READBACK CC-xxxx`, and report a STAND-free SURVEY/CHECK's result to OCC; a direct brief from ENGINEERING or the user is still answered with `READBACK ATC-n`, and the final report goes to whoever sent the work (ATC-75).

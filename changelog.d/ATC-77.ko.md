@@ -1,8 +1,0 @@
-### 추가
-- OCC SCHEDULE `WAYPOINT` 작업과 WAYPOINT 없는 ROUTE 알림(ATC-77, [docs/occ.ko.md](docs/occ.ko.md) "WAYPOINT as built", [docs/routes.ko.md](docs/routes.ko.md) "9단계와 ROUTE 알림 as built"). 마일스톤이 없는 FLIGHT는 ROUTE MAP의 WAYPOINT 수·ETA에 잡히지 않았고 DISPATCH `waypoint` 가점도 받지 못했다.
-  - `atcctl schedule draft WAYPOINT <FLIGHT> <마일스톤 이름이나 id> -- <근거>`. FLIGHT가 닫혔거나 이미 마일스톤에 있을 때, 마일스톤이 그 FLIGHT의 프로젝트 것이 아니거나 지났을(`done`) 때, ROUTE에 이슈 목록이 잘린 마일스톤이 있을 때, 마일스톤을 못 읽었을 때 atc가 받지 않는다. 닫히지 않은 FLIGHT면 In Progress여도 된다. 소속은 마일스톤 쪽에서 읽고, 이슈 조회는 그대로다(`server/schedule-waypoint.ts`).
-  - 발부는 `save_issue {id, milestone: <id>}` 하나와 `[OCC S-xxxx]` 댓글이다. 라벨·상태·담당은 없고, 마일스톤을 만들거나 이름·순서를 바꾸지 않는다. linear-guard는 그대로이고 그 입력 그대로만 통과시킨다(`occ/mcp-guard.test.mjs`에 시험 추가). 마일스톤을 읽어 FLIGHT가 보이면 APPLIED. FLIGHT가 닫히거나, 다른 마일스톤에 붙거나, 마일스톤이 없어지거나, 발부 전에 지나면 SUPERSEDED.
-  - `schedule brief`의 `candidates.waypoint`: 지나지 않은 WAYPOINT가 있는 ROUTE마다 그 WAYPOINT와 완료 기준, 어느 WAYPOINT에도 없는 열린 FLIGHT. WAYPOINT가 모두 지난 ROUTE나 잘린 마일스톤이 있는 ROUTE는 없다. atc는 이것으로 초안을 쓰지 않는다. OCC가 한 WAYPOINT의 완료 기준이 그 FLIGHT를 분명히 덮을 때만 한 바퀴 2건까지 쓴다.
-  - `schedule brief`에 `routesWithoutWaypoints`(ROUTE, 열린 FLIGHT 수, `fresh`, `reportedAt`)가 생겼다. OCC가 새것을 SUPERVISOR에게 한 번 알리고 `atcctl schedule route-ack`(`POST /api/schedule/routes/ack`, `routes-without-waypoints.json`)로 적는다. WAYPOINT가 생기거나 열린 FLIGHT가 없어진 ROUTE는 잊는다.
-  - SCHEDULE 탭은 WAYPOINT 카드를 PRIORITIZE처럼 보이고, WAYPOINT 후보 목록과 ROUTES WITHOUT WAYPOINTS가 생겼다. WAYPOINT 판정은 S2 진입 점검에 센다. OCC SCHEDULE 절차에 "WAYPOINT 전에"와 "WAYPOINT 없는 ROUTE"가 생겼고, OCC 규칙에 마일스톤을 만들거나 이름·순서를 바꾸지 않는다는 줄이 더해졌다.
-  - 되돌린 옛 atc가 `schedule.jsonl`을 읽으면 `TAIL`에서 본 것처럼 `WAYPOINT` 줄을 건너뛰지 않는다: 다음 브리핑에 열린 WAYPOINT 초안을 SUPERSEDED로(발부된 것은 APPLIED로) 닫는다. Linear에는 쓰지 않는다.

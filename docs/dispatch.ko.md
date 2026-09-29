@@ -389,7 +389,7 @@ Not built yet: vocado 쪽 템플릿(vocado `CLAUDE.md`의 네 칸 규칙, Linear
 ### 2b 켜기 전 알려진 빈틈
 
 - `dispatch release`는 메시지를 보내기 전에 제안을 SENT로 바꾼다. 전달이 실패하면(CAPTAIN 세션이 없거나 메시지가 승인 대기로 잡힘) SENT로 남고, 10분 뒤 NO READBACK으로 보이면 DISPATCH가 한 번 재송신한 뒤 SUPERVISOR에게 보고한다.
-- STAND 없는 FLIGHT는 CAPTAIN 보고로만 ARRIVED한다. 자동 감지(대상 PR의 리뷰, 문서 PR·이슈 댓글)는 아직 없다. 보고를 잊으면 SUPERVISOR가 `overdue`(24시간)를 보고 챙길 때까지 그 AIRCRAFT의 STAND 없는 칸 하나가 잡혀 있다. send-guard가 FLIGHT PLAN·RECALL·CREW CHANGE만 통과시키므로 OCC가 CAPTAIN에게 직접 묻지 못한다.
+- STAND 없는 FLIGHT는 OCC가 확인할 때 ARRIVED한다. CAPTAIN 보고로, 또는 그 팀이 한 리뷰·댓글·문서 PR에서 atc가 찾은 ARRIVED 후보로 확인한다(ATC-72, [fleet.ko.md](fleet.ko.md) 5.1.1). atc가 스스로 적지는 않는다. 확인을 잊으면 SUPERVISOR가 `overdue`(24시간)를 보고 챙길 때까지 그 AIRCRAFT의 STAND 없는 칸 하나가 잡혀 있다. send-guard가 FLIGHT PLAN·RECALL·CREW CHANGE만 통과시키므로 OCC가 CAPTAIN에게 직접 묻지 못한다.
 - STAND 없는 READBACK은 CAPTAIN이 실제로 시작하지 않아도 DEPARTED로 센다. 일이 시작됐다는 다른 신호가 없다.
 - STAND 없는 ARRIVED는 LOGBOOK에 오르지 않아 TARGETS에 세지 않는다. planner는 ARRIVED 뒤 7일 동안 그 FLIGHT를 빼고, 그 뒤에는 Linear를 믿으므로 Linear에서 닫아야 한다.
 - FLIGHT TYPE은 READBACK 때 읽는다. 그 뒤에 라벨을 바꿔도 기록된 DEPARTED는 바뀌지 않는다.

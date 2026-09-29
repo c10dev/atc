@@ -246,7 +246,7 @@ Session names are matched against `teamPattern` and upper-cased, like the LOGBOO
 
 **When the builder is unknown** (no target, or no source names one), the CHECK is not blocked. The card carries a 0-point factor `CHECK 독립성` saying `확인 못 함 — …`, so the SUPERVISOR checks it by hand. When it is known, the factor names the builder that was left out.
 
-Not built yet: WAKE-scaled conflict risk (a same-area approach is sketched in [issue #41](https://github.com/chaehy5665/atc/issues/41)), automatic ARRIVED detection for STAND-free FLIGHTs (section 5.1.1), and LOGBOOK entries for them (a STAND-free ARRIVED does not count toward TARGETS). ATFM's auto-eligibility (A8) still requires an assignable AIRCRAFT, so a STAND-free proposal to a HOLDING team is never auto-eligible (A3 excludes SURVEY and CHECK anyway).
+Not built yet: WAKE-scaled conflict risk (a same-area approach is sketched in [issue #41](https://github.com/chaehy5665/atc/issues/41)), and ARRIVED without a person: atc now finds ARRIVED candidates for STAND-free FLIGHTs and OCC confirms them, which writes a PR-less LOGBOOK line that TARGETS count (ATC-72, 5.1.1 as built). ATFM's auto-eligibility (A8) still requires an assignable AIRCRAFT, so a STAND-free proposal to a HOLDING team is never auto-eligible (A3 excludes SURVEY and CHECK anyway).
 
 ## 6. Who classifies
 
@@ -830,7 +830,7 @@ Not built yet: step 4 (automatic STOP); CROSSCHECK marks on FLEET PLAN proposals
 
 ### 8.8 AIRCRAFT health
 
-Status: steps 1–6 built (ATC-45, ATC-47, ATC-48, ATC-51, ATC-55): the manual, the pull classifier, the push hook, FLEET PLAN proposals from health, `LIMIT` held by ACCOUNT, and FUEL REMAINING per ACCOUNT.
+Status: steps 1–6 built (ATC-45, ATC-47, ATC-48, ATC-51, ATC-55): the manual, the pull classifier, the push hook, FLEET PLAN proposals from health, `LIMIT` held by ACCOUNT, and FUEL REMAINING per ACCOUNT. States from events are built too (ATC-86): a limit-cut `LIMIT`, `RESUME` after the reset, and `STALLED` FLIGHTs, with the FLIGHT kept on the FLEET row. DISPATCH still proposes to them (ATC-90).
 
 **Why.** On 2026-09-28 TEAM_H got an ATC-44 BRIEF at 07:37:13Z and hit its account's session limit three seconds later. Until someone typed "Try again" at 07:40:57Z, atc showed TEAM_H as `idle`, so FLEET, DISPATCH and TOWER all saw an AIRCRAFT free for work. atc knew only `dead`, `busy` and `idle`; it never read why a session stopped or what it was waiting for.
 
@@ -985,7 +985,7 @@ All four steps are done:
 7. ✅ Team building in the FLEET tab (section 8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE (section 8.2): TYPE RATING evidence from the LOGBOOK, GRANT and REVIEW recommendations, grant and revoke by the SUPERVISOR
 9. ✅ Session control (section 8.5): LAUNCH and STOP from the FLEET tab. Left: automatic STOP (FLEET PLAN step 4; shadow and approval built, 8.6 and 8.7), RESTART outside FLEET PLAN, relaunch CREW CHANGE, usage budget
-10. ✅ AIRCRAFT health (section 8.8, ATC-45·47·48·51·55): the manual, the pull classifier in the snapshot and the push hook, FLEET row, FLIGHT FOLLOWING, TOWER brief, DISPATCH/SCHEDULE filters, FLEET PLAN proposals from health, `LIMIT` grouped and held by ACCOUNT, and FUEL REMAINING per ACCOUNT
+10. ✅ AIRCRAFT health (section 8.8, ATC-45·47·48·51·55·86): the manual, the pull classifier in the snapshot and the push hook, FLEET row, FLIGHT FOLLOWING, TOWER brief, DISPATCH/SCHEDULE filters, FLEET PLAN proposals from health, `LIMIT` grouped and held by ACCOUNT, FUEL REMAINING per ACCOUNT, and the event states limit-cut `LIMIT`, `RESUME` and `STALLED`
 
 ## 11. Risks and mitigations
 

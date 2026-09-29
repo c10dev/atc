@@ -1,6 +1,0 @@
-### 추가
-- 이벤트로 보는 AIRCRAFT health(ATC-86, [docs/fleet.ko.md](docs/fleet.ko.md) 8.8 "AIRCRAFT health from events as built"). 오류 줄 없이 사용 한도로 잘린 턴(Claude Code의 `usageLimitNote: "wrap_up"` 줄 뒤 정상 `Stop`)은 이제 `cut: true`인 `LIMIT`이다: `HOLD · LIMIT (cut 18:10Z)`, 다른 `LIMIT`처럼 hold이고, 알면 ACCOUNT의 FUEL 기록에서 찾은 `until …`이 붙는다. reset 뒤에도 새 지시가 없으면 `RESUME 필요`가 된다(ALERT, 표시만. SUPERVISOR가 "계속"을 보내고 atc는 팀에 메시지를 보내지 않는다). In Progress FLIGHT(STAND 점유나 `tail:` 라벨)를 쥔 채 PR 없이 `stalledMin`(60분) 넘게 idle이면 `STALLED`가 보인다. 새 활동은 셋을 모두 푼다. FLIGHT FOLLOWING, TOWER 브리핑, OCC FOLLOWING 매뉴얼에 새 코드가 들어간다.
-- `hooks/health.mjs`가 `UserPromptSubmit`(푼다)과 `quota_auto_resume_*` notification(시각만, `fired`가 `RESUME`을 푼다)도 기록한다. `hooks/`는 `user` 등급이라 SUPERVISOR가 `UserPromptSubmit`과 넓힌 `Notification` matcher를 `~/.claude/settings.json`에 더한다([hooks/README.ko.md](hooks/README.ko.md)). 안 해도 모든 상태는 대화 기록을 따른다.
-
-### 변경
-- FLEET 줄이 멈춘 AIRCRAFT(cut `LIMIT`, `RESUME`, `STALLED`)의 FLIGHT를 쥔다. 전에는 마지막 STAND 점유 갱신 뒤 3시간(`ATC_CLAIM_TTL_MIN`)이 지나면 FLIGHT가 사라졌고, 2026-09-28에 TEAM_G·TEAM_H가 일곱 시간 동안 알려지지 않은 까닭이다. `GET /api/fleet`은 그 FLIGHT를 `flights`에 `kept: true`로 싣고, 거기 모든 FLIGHT에 `detail: {commit, pushed, pr}`(워크트리의 마지막 커밋, `origin/<branch>`에 있나, 열린 PR)을 붙인다. 줄에는 `59a9fdc 7h ago · pushed · no PR`로 보이고 STATUS는 HOLDING이다. `flying`과 FLEET PLAN은 그대로다.

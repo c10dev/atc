@@ -279,8 +279,7 @@ CAPTAIN: "done: <link>"     → OCC: atcctl dispatch arrived D-0012 -- '<result 
 아직 만들지 않은 것:
 
 - WAKE 크기를 반영한 충돌 위험(같은 영역 접근 방식은 [issue #41](https://github.com/chaehy5665/atc/issues/41)에 스케치)
-- STAND 없는 FLIGHT의 자동 ARRIVED 감지(5.1.1)
-- STAND 없는 FLIGHT의 LOGBOOK 항목(STAND 없는 ARRIVED는 TARGETS에 세지 않는다)
+- 사람 없이 끝나는 ARRIVED. 지금은 atc가 STAND 없는 FLIGHT의 ARRIVED 후보를 찾고 OCC가 확인하면, TARGETS에 세는 PR 없는 LOGBOOK 줄이 적힌다(ATC-72, 5.1.1 as built)
 
 ATFM의 자동 대상 판정(A8)은 여전히 배정 가능한 AIRCRAFT를 요구한다. 그래서 HOLDING 팀에 간 STAND 없는 제안은 자동 대상이 되지 않는다(어차피 A3가 SURVEY와 CHECK를 뺀다).
 
@@ -894,7 +893,7 @@ ATC-69는 대화 기록에 `[1m]`이 남지 않아 창을 짐작했다. ATC-85�
 
 ### 8.8 AIRCRAFT health
 
-상태: 1–6단계를 만들었다(ATC-45, ATC-47, ATC-48, ATC-51, ATC-55). 대응 매뉴얼과 pull 분류기, push hook, health에서 나오는 FLEET PLAN 제안, ACCOUNT로 붙드는 `LIMIT`, ACCOUNT별 FUEL REMAINING이다.
+상태: 1–6단계를 만들었다(ATC-45, ATC-47, ATC-48, ATC-51, ATC-55). 대응 매뉴얼과 pull 분류기, push hook, health에서 나오는 FLEET PLAN 제안, ACCOUNT로 붙드는 `LIMIT`, ACCOUNT별 FUEL REMAINING이다. 이벤트로 읽는 상태도 만들었다(ATC-86): 한도로 끊긴 `LIMIT`, reset 뒤 `RESUME`, `STALLED` FLIGHT이고, 그동안 FLEET 줄에 FLIGHT가 남는다. DISPATCH는 아직 이들에게도 제안한다(ATC-90).
 
 **왜.** 2026-09-28 07:37:13Z에 TEAM_H가 ATC-44 BRIEF를 받고 3초 뒤 계정의 session limit에 걸렸다. 07:40:57Z에 누가 "Try again"을 칠 때까지 atc는 TEAM_H를 `idle`로 보여서, FLEET·DISPATCH·TOWER 모두 일을 받을 수 있는 AIRCRAFT로 봤다. atc는 `dead`·`busy`·`idle`만 알았고, 세션이 왜 멈췄는지, 무엇을 기다리는지는 읽지 않았다.
 
@@ -1049,7 +1048,7 @@ FLEET PLAN 블록의 FUEL(8.6의 "주간 사용량 줄")은 만들었다(ATC-63)
 7. ✅ FLEET 탭의 팀 꾸리기(8.1): ENTRY INTO SERVICE, CONFIGURATION, CREW BRIEFING, AOG, RETIREMENT
 8. ✅ CHECKRIDE(8.2): LOGBOOK의 TYPE RATING 근거, GRANT·REVIEW 추천, SUPERVISOR의 부여·회수
 9. ✅ 세션 조종(8.5): FLEET 탭의 LAUNCH·STOP. 남은 일: 자동 STOP(FLEET PLAN 4단계. 그림자·승인 운용은 8.6·8.7에서 만듦), FLEET PLAN 밖의 RESTART, 다시 띄우는 CREW CHANGE, 사용량 예산
-10. ✅ AIRCRAFT health(8.8, ATC-45·47·48·51·55): 대응 매뉴얼과 pull 분류기, push hook. snapshot, FLEET 줄, FLIGHT FOLLOWING, TOWER 브리핑, DISPATCH·SCHEDULE 거르기, health에서 나오는 FLEET PLAN 제안, ACCOUNT로 묶고 붙드는 `LIMIT`, ACCOUNT별 FUEL REMAINING
+10. ✅ AIRCRAFT health(8.8, ATC-45·47·48·51·55·86): 대응 매뉴얼과 pull 분류기, push hook. snapshot, FLEET 줄, FLIGHT FOLLOWING, TOWER 브리핑, DISPATCH·SCHEDULE 거르기, health에서 나오는 FLEET PLAN 제안, ACCOUNT로 묶고 붙드는 `LIMIT`, ACCOUNT별 FUEL REMAINING, 이벤트로 읽는 한도 끊김 `LIMIT`·`RESUME`·`STALLED`
 
 ## 11. 위험과 대응
 
