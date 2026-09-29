@@ -21,6 +21,9 @@ atc는 팀 세션 하나를 AIRCRAFT(`TEAM_B`, callsign BRAVO)로, 그 리더를
 > - DEPARTURE LOG(7.5)
 > - TYPE RATING의 CHECKRIDE 추천(8.2)
 > - 세션 조종: LAUNCH·STOP(8.5)
+> - FLEET PLAN 그림자·승인 운용과 REFRESH(8.6, 8.7, ATC-69)
+> - FLEET 목록의 FOB(ATC-81)
+> - 세션 이름 표기를 REGISTRATION 하나로 읽기(ATC-67)
 >
 > 결정 사항은 맨 아래에 있다.
 
@@ -629,7 +632,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **기록.** LAUNCH·STOP마다 FLIGHT RECORDER에 `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}` 한 줄.
 - **화면.** 세션이 없는 카드에 **LAUNCH**(permission mode, 선택 모델, 상한 대비 백그라운드 수). 백그라운드 세션이면 `BG <id>`와 **STOP**. 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
 
-아직 만들지 않음: 쉬는 세션의 자동 STOP(FLEET PLAN 4단계. 그림자 제안과 승인 운용은 8.6·8.7에서 만듦), 오래 도는 세션의 정기 정비로서 RESTART, 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, ATC-46, [fuel.md](fuel.md)).
+아직 만들지 않음: 쉬는 세션의 자동 STOP(FLEET PLAN 4단계. 그림자 제안과 승인 운용은 8.6·8.7에서 만듦), FLIGHT 도중 오래 도는 세션의 정기 정비로서 RESTART(쉬는 AIRCRAFT는 REFRESH, 8.6, ATC-69), 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, ATC-46, [fuel.md](fuel.md)).
 
 #### 8.5.1 관제 세션(2026-09-28 만듦)
 
@@ -656,7 +659,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 ### 8.6 FLEET PLAN: LAUNCH·STOP 등을 제안하기
 
-상태: 1·2단계 만듦(그림자, 2026-09-28). SUPERVISOR 결정은 아래에 적었다. 8.5가 SUPERVISOR에게 조종 버튼을 줬다면, 이 절은 atc가 언제 그 버튼을 쓰자고 제안할지 정한다. 팀을 꾸리고, 세우고, 정비하고, 퇴역시키는 일을 손으로 챙기지 않게 하려는 것이다.
+상태: 1·2단계 만듦(그림자, 2026-09-28). `REFRESH`(객실 정비, ATC-69)도 함께 만들었다. SUPERVISOR 결정은 아래에 적었다. 8.5가 SUPERVISOR에게 조종 버튼을 줬다면, 이 절은 atc가 언제 그 버튼을 쓰자고 제안할지 정한다. 팀을 꾸리고, 세우고, 정비하고, 퇴역시키는 일을 손으로 챙기지 않게 하려는 것이다.
 
 **지금 사실(2026-09-28 06:30 UTC).**
 
