@@ -50,12 +50,17 @@ const ORIGIN_TITLE: Record<SessionOrigin, string> = {
   unknown: "출처를 모름 — 프로세스 명령줄을 읽지 못했거나 알 수 없는 모양. atc가 멈추거나 다시 띄우지 않는다",
 };
 // FLEET 줄·카드의 작은 표시(순수): BG·DESKTOP·TERM과 permission mode. id는 툴팁에만
+// id: 백그라운드의 jobId(ATC-98). 있으면 툴팁이 `BG <jobId> — claude attach <jobId>`를 싣고, attach가 그 명령이다(카드의 복사 버튼)
 export function originBadgeOf(origin: SessionOrigin | null | undefined, permissionMode: string | null | undefined, id?: string | null) {
   if (!origin) return null;
   const mode = permissionMode ?? null;
-  const title = [ORIGIN_TITLE[origin], id && origin === "background" ? `BG ${id}` : null, `permission mode ${mode ?? "모름"}`].filter(Boolean).join(" · ");
-  return { origin, badge: ORIGIN_BADGE[origin], mode, title };
+  const jobId = origin === "background" && id ? id : null;
+  const attach = jobId ? attachCommandOf(jobId) : null;
+  const title = [ORIGIN_TITLE[origin], jobId ? `BG ${jobId} — ${attach}` : null, `permission mode ${mode ?? "모름"}`].filter(Boolean).join(" · ");
+  return { origin, badge: ORIGIN_BADGE[origin], mode, title, attach };
 }
+// 백그라운드 세션을 여는 명령
+export const attachCommandOf = (jobId: string) => `claude attach ${jobId}`;
 
 // 백그라운드가 아닌 세션을 멈추거나 새로 시작하는 손 절차(atc가 하지 않는다). action: stop(멈춤), restart(새 CREW BRIEFING으로 다시), refresh(대화 비우기)
 export function manualStepsOf(origin: SessionOrigin | null | undefined, reg: string, action: "stop" | "restart" | "refresh"): string {

@@ -731,6 +731,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **화면.** 목록 줄과 카드에 `BG`·`DESKTOP`·`TERM`·`?`와 permission mode. `BG <id>` 배지를 대신하고 id는 툴팁에 있다. 세션이 백그라운드가 아닌 카드에는 그 출처의 손 절차가 한 줄 보인다. ACCOUNT 줄에는 BG 세션은 호스트 CLI 로그인을, DESKTOP 세션은 앱의 계정을 따른다는 말이 붙는다(보여 주기만).
 - **쓰임.** 카드의 STOP, STOP API(`stopTargetOf`와 `rowOriginOf`), FLEET PLAN 실행(`STOP`, `RESTART`, `REFRESH`, `RETIRE`의 세션 멈춤)은 출처가 `background`일 때만 한다. 다른 출처는 그 출처의 손 절차를 받는다(`manualStepsOf`): Claude 앱에서 닫기, 터미널에서 `/exit`, REFRESH면 `/clear` 뒤 CREW BRIEFING 붙여 넣기. FLEET PLAN의 `session` 사유에 출처가 나오고, 저장된 `value`는 그대로 `interactive`·`background`다.
 - **2b 전달.** `GET /api/dispatch/brief`의 `delivery`: 제안 AIRCRAFT마다 출처, permission mode, OCC의 permission mode, 둘 다 알고 다를 때의 `warn`(`deliveryOf`). DISPATCH 카드와 IN FLIGHT 줄에 `MODE <m> ≠ OCC <m>`이 떠 메시지가 붙들릴 수 있음을 알린다. 막지 않는다.
+- **jobId가 든 BG 칩(ATC-98).** 목록 줄과 카드의 `BG` 칩은 이미 있었다(ATC-76). ATC-98은 그 칩이 가리키는 id를 더한다: 스냅샷의 `Session`이 세션 파일에서 `kind?: "background" | "interactive"`와 `jobId?`를 읽는다(`server/sources/claude.ts`의 순수 함수 `sessionKindOf`. `kind`가 없거나 모르는 값이면, 옛 스냅샷이나 Codex 세션이면 둘 다 없다). `AircraftView`와 `FleetRow`는 AIRCRAFT의 *살아 있는* 세션에서 `background: { jobId: string | null } | null`을 싣는다. 스냅샷만으로 셈하므로(`liveViewOf`) `claude agents`를 더 부르지 않는다. 칩 툴팁은 `BG <jobId> — claude attach <jobId>`이고, 카드에 `claude attach <jobId>`를 복사하는 `ATTACH 복사` 버튼이 있다. 죽은 세션, STALE job(ATC-93), 세션 없는 AIRCRAFT는 `background: null`이라 칩이 없다. `jobId`를 못 읽은 background 세션은 칩은 있고 attach 명령은 없다.
 
 ### RESTARTING as built (ATC-91)
 

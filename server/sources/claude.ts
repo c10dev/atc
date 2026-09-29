@@ -24,6 +24,13 @@ interface SessionFile {
   entrypoint?: string; // claude-desktop·cli
 }
 
+// 세션 파일의 kind·jobId(ATC-98, 순수). bg는 background, interactive는 그대로, 없거나 모르는 값이면 아무것도 없다. jobId는 background에만
+export function sessionKindOf(s: Pick<SessionFile, "kind" | "jobId">): Pick<Session, "kind" | "jobId"> {
+  if (s.kind === "bg" || s.kind === "background") return { kind: "background", ...(typeof s.jobId === "string" && s.jobId ? { jobId: s.jobId } : {}) };
+  if (s.kind === "interactive") return { kind: "interactive" };
+  return {};
+}
+
 // pid 재사용을 피하려고 /proc/<pid>/stat의 starttime(22번째 필드)까지 맞춘다.
 function isAlive(pid: number, procStart?: string): boolean {
   try {
@@ -78,6 +85,7 @@ export function readClaudeSessions(): { sessions: Session[]; files: SessionFile[
       repo: null,
       workspacePath: null,
       ...(proc ? { origin: proc.origin, permissionMode: proc.permissionMode } : {}),
+      ...sessionKindOf(s),
       // 백그라운드 job 상태(ATC-99): 살아 있는 bg 세션만. 파일은 mtime으로 캐시하고 읽기만 한다
       ...(alive && s.kind === "bg" ? { job: settleJob(readJob(s.jobId), lastActiveAt) ?? null } : {}),
     };

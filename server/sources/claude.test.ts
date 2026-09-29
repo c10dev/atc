@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { Workspace } from "../model.ts";
-import { sessionEventsOf, talkEventsFile, touchesFromTranscript } from "./claude.ts";
+import { sessionEventsOf, sessionKindOf, talkEventsFile, touchesFromTranscript } from "./claude.ts";
 
 const MAIN = "/home/c10/projects/vocado_nextjs";
 const WT = "/home/c10/projects/worktrees";
@@ -60,4 +60,15 @@ test("sessionEventsOf: 같은 세션 폴더를 여러 번 불러도 사건 수�
   // 파일이 자라면 새 줄만 더한다
   appendFileSync(`${dir}.jsonl`, use("2026-09-28T01:10:00Z", "Write", { file_path: "/w/s/c.ts" }));
   assert.deepEqual(sessionEventsOf(dir).map((e) => e.path), ["/w/s/a.ts", "/w/s/c.ts", "/w/s/b.ts"]);
+});
+
+// ATC-98: 세션 파일의 kind·jobId
+test("sessionKindOf: bg는 background와 jobId, interactive와 kind 없음·모르는 값은 background가 아니다", () => {
+  assert.deepEqual(sessionKindOf({ kind: "bg", jobId: "job-1234" }), { kind: "background", jobId: "job-1234" });
+  assert.deepEqual(sessionKindOf({ kind: "background", jobId: "j" }), { kind: "background", jobId: "j" });
+  assert.deepEqual(sessionKindOf({ kind: "bg" }), { kind: "background" }); // jobId를 못 읽어도 background
+  assert.deepEqual(sessionKindOf({ kind: "bg", jobId: "" }), { kind: "background" });
+  assert.deepEqual(sessionKindOf({ kind: "interactive", jobId: "ignored" }), { kind: "interactive" }); // jobId는 background에만
+  assert.deepEqual(sessionKindOf({}), {});
+  assert.deepEqual(sessionKindOf({ kind: "something-new" }), {});
 });
