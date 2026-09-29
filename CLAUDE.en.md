@@ -25,7 +25,7 @@ Rules for sessions that change atc's code (team sessions, the ENGINEERING sessio
 
 ## Operations
 
-- Don't restart the production service (7700). Whoever merges deploys (main fast-forward and restart): today the user, and MCC once it is in `land` mode (`docs/mcc.md`).
+- Don't restart the production service (7700). Deploys (main fast-forward and restart) go through RETURN TO SERVICE (the `atc-rts` unit). With MCC in `land` mode, as now, the user starts it from the UPDATE bar on the screen; in `land+rts` mode MCC does (`docs/mcc.md` 5.1, 6).
 - Keep the control sessions' guards (`controller/guard.mjs`, `occ/send-guard.mjs`, `occ/mcp-guard.mjs`) fail-closed (`… || exit 2`). Ask the user before loosening what they block.
 
 ## git and PRs
@@ -33,7 +33,7 @@ Rules for sessions that change atc's code (team sessions, the ENGINEERING sessio
 - Commit, push and open PRs when the task asks for it. Commit messages and PR titles and bodies are in English.
 - No attribution lines (Co-Authored-By etc.) in commit messages. PR bodies end with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 - Team sessions and the ENGINEERING session don't merge. Merging follows the LANDING CLEARANCE tier (`deploy/landing-tier.mjs`, decided by the changed paths).
-  - `auto` (server, UI, docs, tests) and `flagged` (control-session manuals and CLI): once CI (`check`) passes, the user merges and deploys. Once MCC is in `land` mode, MCC lands after its INSPECTION and returns the service to operation (`docs/mcc.md`). For `flagged`, the PR body and the report list the changed control rules separately. GitHub auto-merge is not used.
+  - `auto` (server, UI, docs, tests) and `flagged` (control-session manuals and CLI): once CI (`check`) passes and the MCC INSPECTION is `pass`, MCC lands it (`land` mode since 2026-09-29, `docs/mcc.md` 5.1). The user may still merge first. For `flagged`, the PR body and the report list the changed control rules separately. GitHub auto-merge is not used.
   - `user` (guards, `.claude/` settings, the root `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`): the user merges. A PR that changes the production state format, is hard to undo, or leaves doubts after review is raised to `user` too (the session that opened it says so in the tier section; an MCC INSPECTION escalates it).
 
 ## Code
