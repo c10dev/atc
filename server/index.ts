@@ -11,7 +11,7 @@ import { mountJudges, runJudges } from "./judges/run.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { mountLandingReview } from "./landing-review.ts";
-import { mountMcc } from "./mcc-run.ts";
+import { mccLandInfo, mountMcc } from "./mcc-run.ts";
 import { mountMilestones, runMilestones } from "./milestones-run.ts";
 import { mountUpdate } from "./update-run.ts";
 import { mountCrewChange } from "./crew-change.ts";
@@ -134,7 +134,7 @@ const getSnapshot = async () => current ?? (current = await buildSnapshot());
 
 app.get("/api/snapshot", async (c) => c.json(await getSnapshot()));
 app.get("/api/version", (c) => c.json(version()));
-mountController(app, getSnapshot, eventLog, (s) => fuelWatch(s));
+mountController(app, getSnapshot, eventLog, (s) => fuelWatch(s), mccLandInfo);
 mountLandingReview(app, getSnapshot);
 mountHumanCheck(app, getSnapshot);
 mountAirports(app);

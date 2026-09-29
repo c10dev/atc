@@ -90,6 +90,18 @@ If the packet's diff was cut (`diffTruncated`), MCC writes what it read and does
 
 The merge goes through REST (`PUT /repos/…/pulls/N/merge` with `sha: head`, merge commit), so GitHub refuses it if the head moved, and GraphQL rate limits (hit on 2026-09-28) don't block it.
 
+### Who lands on the MCC AIRPORT (ATC-151)
+
+TOWER sends no `LAND` to team holders on the MCC AIRPORT: MCC or the SUPERVISOR lands there, so every such `LAND` used to end in `UNABLE`. The brief's `landingQueue` items carry `landBy`:
+
+| `landBy` | When | TOWER |
+|---|---|---|
+| `mcc` | ATCC PR, mode `land` or `land+rts`, tier `auto` or `flagged`, no MCC ESCALATE, no SUPERVISOR hold | nothing to send |
+| `supervisor` | ATCC PR with tier `user`, an ESCALATE or hold, mode `shadow` or `rts` (MCC records `would-land` there), or a tier the server has not read yet | nothing to the team; at most one ATC LOG line |
+| `holder` | every other AIRPORT (today's flow) | `LAND` with `landText` |
+
+`landText` is `null` unless `landBy` is `holder`. `repoSeq` and `seq` are unchanged, because ordering still matters to MCC. The tier is the one MCC already computes (`tierOfFiles` over the PR's files, cached per PR and head, shared with `/api/mcc/queue` and the packet); an unknown or stale tier counts as `supervisor`. GO AROUND, APPROACH INFO, GROUND STOP and slots are unchanged, and GO AROUND still goes to the holders on ATCC. TOWER picks up the manual at its next restart (STOP, LAUNCH TOWER).
+
 For ATCC PRs, CLEARED TO LAND counts an INSPECTION `pass` on the head as the review, so `no-review` clears the same way a Codex 👍 or a DeepSeek pass does for vocado. `findings` shows as `review-findings`.
 
 ### 5.1 Landing baseline (SHIP / SHOW / ASK)

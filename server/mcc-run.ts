@@ -36,6 +36,7 @@ import {
   saveMcc,
   tierOfFiles,
 } from "./mcc.ts";
+import type { MccLandInfo } from "./land-by.ts";
 import { loadLogbook, prEntries } from "./logbook.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
@@ -95,6 +96,42 @@ export function airportOf(s: Snapshot) {
   return { cfg, repo: a.repo, slug, defaultBranch: main?.branch ?? "main", main: main?.sha ?? null, mainReadAt: main?.at ?? null, mainCi, groundStop: stop ? stop.text : null };
 }
 
+// 등급 캐시(PR 번호 + head → 등급). 등급은 바뀐 파일로만 정하므로 head가 같으면 같다. judge()와 landBy(ATC-151)가 함께 쓴다 — 등급을 두 갈래로 재지 않는다
+const tierCache = new Map<string, "auto" | "flagged" | "user">();
+const tierKey = (slug: string, n: number, head: string) => `${slug}#${n}@${head}`;
+async function tierCached(slug: string, n: number, head: string) {
+  const k = tierKey(slug, n, head);
+  const hit = tierCache.get(k);
+  if (hit) return hit;
+  const { tier } = await tierOfFiles(await fetchFiles(slug, n));
+  if (tierCache.size > 500) tierCache.clear();
+  tierCache.set(k, tier);
+  return tier;
+}
+
+// TOWER 브리핑의 landBy 자료(ATC-151): MCC AIRPORT의 저장소·모드·HOLD·ESCALATE와 열린 PR의 등급.
+// MCC AIRPORT가 운항 중이 아니면 null(모든 AIRPORT가 holder). 등급을 못 읽은 PR은 tiers에서 빠져 landBy가 supervisor가 된다
+export async function mccLandInfo(s: Snapshot): Promise<MccLandInfo | null> {
+  const cfg = loadMcc();
+  const a = s.airports.find((x) => x.code === cfg.airport);
+  if (!a?.repo) return null;
+  const records = readMccRecords();
+  const escalated = [...new Set(records.filter((r) => r.op === "escalate").map((r) => (r as { pr: number }).pr))];
+  const tiers = new Map<number, { head: string; tier: "auto" | "flagged" | "user" }>();
+  let slug: string | null = null;
+  try {
+    slug = airportOf(s).slug;
+  } catch {}
+  if (slug) {
+    for (const p of s.pulls.filter((x) => x.repo === a.repo && !x.draft)) {
+      try {
+        tiers.set(p.number, { head: p.head, tier: await tierCached(slug, p.number, p.head) });
+      } catch {}
+    }
+  }
+  return { repo: a.repo, mode: cfg.mode, holds: cfg.holds, escalated, tiers };
+}
+
 const fetchPull = async (slug: string, n: number) => JSON.parse(await gh(["api", `repos/${slug}/pulls/${n}`])) as RestPull;
 const fetchFiles = async (slug: string, n: number) =>
   (await gh(["api", "--paginate", `repos/${slug}/pulls/${n}/files?per_page=100`, "--jq", ".[].filename"])).split("\n").filter(Boolean);
@@ -137,6 +174,7 @@ async function judge(s: Snapshot, number: number, head?: string) {
   const want = head ?? pr.head.sha;
   const files = await fetchFiles(ap.slug, number);
   const { tier, reasons } = await tierOfFiles(files);
+  tierCache.set(tierKey(ap.slug, number, pr.head.sha), tier); // landBy가 같은 등급을 쓴다(ATC-151)
   const ci = await fetchCi(ap.slug, pr.head.sha, ap.cfg.ciCheck);
   const records = readMccRecords();
   const inspection = inspectionOf(records, number, pr.head.sha);

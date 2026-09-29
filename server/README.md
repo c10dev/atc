@@ -69,7 +69,7 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 | `version.ts` | Build id: the entry script path in `index.html` (pure `entryScript`), and whether a tab should show the new-version notice (pure `showNewVersion`, shared with the UI) |
 | `changelog.ts` · `changelog-fold.ts` | CHANGELOG fragments (ATC-64, [changelog.d](../changelog.d/README.md)): pair `changelog.d/*.md` with `*.ko.md` (`pairFragments`), check a fragment (`parseFragment`) and fold fragments into `[Unreleased]` (pure `foldChangelog`, shared with the DOCS 변경 기록 page). `node server/changelog-fold.ts [--check]` folds every pair into both CHANGELOGs and deletes them, or changes nothing when a pair is missing or malformed |
 | `events.ts` | Snapshot differences → events (alerts, handoffs, LANDING SEQUENCE `landing.requested` / `cleared` / `blocked` / `left`, lost sessions, OUTSTATION), with a cursor-based event log |
-| `controller.ts` | CONTROLLER (TOWER) API: brief, ack, CLEARANCE issue / readback / cancel, the fixed message format, the LAND text for CLEARED PRs (pure `landTextOf`) |
+| `controller.ts` | CONTROLLER (TOWER) API: brief, ack, CLEARANCE issue / readback / cancel, the fixed message format, the LAND text for CLEARED PRs (pure `landTextOf`); `land-by.ts` decides who lands a PR (`landByOf`, ATC-151) |
 | `clearances.ts` | CLEARANCE log: append-only JSONL folded into current state |
 | `response.ts` | Response attributes (ATC-122, pure): which answer closes a message (W/U: READBACK or UNABLE, STANDBY holds; R: ROGER), the closing line atc writes, and the overdue base after a first STANDBY |
 | `milestones.ts` | OOOI per FLIGHT (ATC-123): OUT, OFF, ON, IN actual times from existing records (pure `milestonesOf`, `latestMilestone`, `milestoneLine`); also used by the browser |
@@ -132,7 +132,7 @@ Every `*.test.ts` next to a module is its unit test.
 | `POST /api/airports` | Open an AIRPORT `{path, code?, name?}` |
 | `PATCH /api/airports/:id` | Rename, change code, close or reopen `{code?, name?, closed?}` |
 | `DELETE /api/airports/:id` | Remove a manually opened AIRPORT |
-| `GET /api/controller/brief?consumer=controller` | Events since the last ack + current state (CLEARED `landingQueue` entries carry `repoSeq` and `landText`; `open.fuelLeaks`, `open.coldCache` and `open.fuelError` are the FUEL warnings, ATC-56) |
+| `GET /api/controller/brief?consumer=controller` | Events since the last ack + current state (`landingQueue` entries carry `landBy` (`mcc`, `supervisor` or `holder`, ATC-151); CLEARED ones carry `repoSeq`, and `landText` only when `landBy` is `holder`; `open.fuelLeaks`, `open.coldCache` and `open.fuelError` are the FUEL warnings, ATC-56) |
 | `POST /api/controller/ack` | Mark a brief handled `{cursor}` |
 | `POST /api/clearances` | Record a CLEARANCE `{to, type, stand?, flight?, text}`, returns the message to send |
 | `POST /api/clearances/:id/readback` · `/roger` · `/unable` · `/standby` · `/cancel` | The team's answer (ATC-122, `response.ts`): READBACK, ROGER (R only), UNABLE `{reason}` close it; STANDBY (W/U only) restarts the overdue once · cancel |
