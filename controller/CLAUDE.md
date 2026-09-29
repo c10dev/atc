@@ -23,6 +23,8 @@
 
 CLEARANCE 종류: `TRAFFIC`(교통 정보) `HOLD`(대기) `CONTINUE`(계속) `LAND`(LANDING 순서) `REPORT`(상황 보고 요청) `INFO`(참고).
 
+SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버릴 수 있다. guard가 아니다: 버려진 tick은 ATC LOG 줄 없이 없던 일이고, 팀 메시지와 SUPERVISOR 프롬프트는 그대로 온다.
+
 ## 판단 기준
 
 | 상황 (브리핑 위치) | 할 일 |

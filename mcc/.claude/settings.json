@@ -64,6 +64,17 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/squelch.mjs\" mcc",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

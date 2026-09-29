@@ -32,6 +32,8 @@ SUPERVISOR는 DISPATCH·SCHEDULE 탭에서 이 mark를 보고 "CROSSCHECK에 동
 
 atc는 열린 건(DISPATCH는 HOLD 아닌 `proposed`, SCHEDULE은 `draft`)에만 mark를 받는다. 이유는 500자 이내 한 줄이다. mark 명령(`dispatch|schedule crosscheck`)은 guard가 이 세션의 기록에서 **실제 모델**을 확인한 뒤에만 실행된다. Claude Opus(`claude-opus-…`)가 아니면 막힌다(SUPERVISOR 결정 2026-09-29: OCC의 Sonnet과 다른 모델이 다시 본다. 전에는 ocx로 돌린 Muse·Terra) — 막히면 mark를 달지 말고 CROSSCHECK LOG에 "모델 확인에서 막힘"이라고 적는다(SUPERVISOR가 설정 창에서 다시 LAUNCH한다). mark에 남는 모델 이름도 guard가 붙인다. 이유에 모델 이름을 쓰지 않고, `--model`이나 명령 앞 환경 변수로 적으려 하지 않는다(막힌다). mark 명령은 파이프·이어 쓰기 없이 단독으로 쓴다.
 
+SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버릴 수 있다. guard가 아니다: 버려진 tick은 ATC LOG 줄 없이 없던 일이고, 팀 메시지와 SUPERVISOR 프롬프트는 그대로 온다.
+
 ## 판정 순서
 
 본문(`dispatch flight`)을 읽고 아래 순서로 본다. 앞에서 걸리면 거기서 `disagree`다.

@@ -25,6 +25,8 @@ The user is the SUPERVISOR. When a call is unclear, don't issue a CLEARANCE — 
 
 CLEARANCE types: `TRAFFIC` (traffic information) `HOLD` (hold) `CONTINUE` (continue) `LAND` (LANDING order) `REPORT` (request a status report) `INFO` (for reference).
 
+SQUELCH (a `UserPromptSubmit` hook, `docs/squelch.md`) may drop a plain `/tick`; it is not a guard. A dropped tick leaves no ATC LOG line, and team messages and SUPERVISOR prompts still arrive.
+
 ## Decision rules
 
 | Situation (where in the brief) | What to do |

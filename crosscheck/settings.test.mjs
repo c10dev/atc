@@ -39,3 +39,31 @@ test("CROSSCHECK 읽기: 허용은 ../docs 하나(additionalDirectories)이고, 
   assert.ok(read, "Read|Glob|Grep hook");
   assert.match(read.hooks[0].command, /read-guard\.mjs" \|\| exit 2$/);
 });
+
+// SQUELCH(docs/squelch.md 5장, ATC-109): UserPromptSubmit hook은 guard가 아니다. 평범한 /tick만 서버에 묻고, 어떤 오류든 통과시킨다.
+// 그래서 `|| exit 2`가 붙으면 안 된다. 그리고 PreToolUse guard hook은 그대로다.
+const GUARD_HOOKS = [
+  ["Bash", "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/guard.mjs\" --crosscheck --gh-read || exit 2"],
+  ["mcp__.*", "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../occ/mcp-guard.mjs\" --read-only || exit 2"],
+  ["Read|Glob|Grep", "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/read-guard.mjs\" || exit 2"],
+  ["Edit|Write|MultiEdit|NotebookEdit|SendMessage|Agent|Task|Artifact", "echo 'CROSSCHECK는 파일을 고치거나 메시지를 보내거나 하위 에이전트를 부르지 않습니다 — 예비 판정은 atcctl crosscheck 명령으로만.' >&2; exit 2"],
+];
+
+test("SQUELCH hook: crosscheck 역할로 걸려 있고 exit 2가 없다", () => {
+  const ups = settings.hooks.UserPromptSubmit;
+  assert.equal(ups.length, 1);
+  assert.equal(ups[0].hooks.length, 1);
+  const h = ups[0].hooks[0];
+  assert.equal(h.type, "command");
+  assert.equal(h.command, "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/squelch.mjs\" crosscheck");
+  assert.equal(h.timeout, 5);
+  assert.doesNotMatch(h.command, /exit\s+2/);
+  assert.doesNotMatch(h.command, /\|\|/);
+  assert.equal(ups[0].matcher, undefined, "UserPromptSubmit은 matcher를 쓰지 않는다");
+});
+
+test("SQUELCH를 걸어도 PreToolUse guard hook은 그대로다", () => {
+  const pre = settings.hooks.PreToolUse.map((h) => [h.matcher, h.hooks.map((x) => x.command).join("\n")]);
+  assert.deepEqual(pre, GUARD_HOOKS);
+  assert.deepEqual(Object.keys(settings.hooks).sort(), ["PreToolUse", "UserPromptSubmit"]);
+});

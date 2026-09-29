@@ -34,6 +34,8 @@ In the DISPATCH and SCHEDULE tabs the SUPERVISOR sees the mark and either follow
 
 atc accepts a mark only on open items (DISPATCH: `proposed` and not on HOLD; SCHEDULE: `draft`). The reason is one line of at most 500 characters. A mark command (`dispatch|schedule crosscheck`) runs only after the guard confirms this session's **real model** from its transcript. Anything other than Claude Opus (`claude-opus-…`) is blocked (SUPERVISOR decision 2026-09-29: a model other than OCC's Sonnet takes the second look; before that, Muse or Terra through ocx). If blocked, leave no mark and note "blocked by the model check" in the CROSSCHECK LOG (the SUPERVISOR relaunches it from the settings window). The guard also adds the model name to the mark. Don't write the model name in the reason, and don't try to set it with `--model` or a variable in front of the command (both are blocked). Run a mark command on its own, with no pipes or chains.
 
+SQUELCH (a `UserPromptSubmit` hook, `docs/squelch.md`) may drop a plain `/tick`; it is not a guard. A dropped tick leaves no ATC LOG line, and team messages and SUPERVISOR prompts still arrive.
+
 ## Order of checks
 
 Read the body (`dispatch flight`) and check in this order. The first check that fails means `disagree`.

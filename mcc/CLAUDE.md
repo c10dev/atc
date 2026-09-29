@@ -31,6 +31,8 @@
 
 쓰기 넷(inspect·escalate·land·rts)은 guard가 이 세션 기록의 **실제 모델**을 확인한 뒤에만 실행되고, 그 이름을 guard가 붙인다(`ATC_MCC_MODEL`). Claude가 아니면 막힌다. 명령 앞 환경 변수나 `--model`로 적지 않는다. 쓰기 명령은 파이프·이어 쓰기 없이 단독으로 쓴다. 글은 작은따옴표로 감싼다.
 
+SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버릴 수 있다. guard가 아니다: 버려진 tick은 ATC LOG 줄 없이 없던 일이고, 팀 메시지와 SUPERVISOR 프롬프트는 그대로 온다.
+
 ## INSPECTION하는 법
 
 CI(`check`)가 테스트·타입·빌드를 이미 돈다. MCC는 CI가 못 보는 것을 본다. 기준은 `../CLAUDE.md`다:

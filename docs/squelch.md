@@ -147,6 +147,20 @@ The hook script and the debugging command. Nothing runs them yet: no `.claude/se
 - **End to end** (a temp state folder on port 7703, because 7702 was taken by another session's test server, with `airports.json` and `fleet.json` copied and a `manual ack` from `review/`): in `shadow`, `atcctl squelch review` printed `OPEN shadow:first`, then `OPEN shadow:quiet`, and the hook printed nothing for `/tick`. After editing `squelch.json` to `mode: on`, the command printed `QUIET since 03:43 (3)` and `echo '{"prompt":"/tick"}' | node controller/squelch.mjs review` printed `{"decision":"block","reason":"SQUELCH QUIET since 03:43Z (4)"}` with exit 0. `/tick now` and a dead `ATC_URL` printed nothing and exited 0.
 - **Not done here (S3).** The `UserPromptSubmit` entry in each folder's `.claude/settings.json`, and a test that its command has no `exit 2`. When S3 wires it, the command must not end in `|| exit 2`.
 
+### S3 as built (ATC-109)
+
+The hook is wired into the five control folders, and the mode is still `shadow`, so no tick is dropped. `GET /api/squelch` and `squelch.jsonl` start filling per role once a session loads the new settings.
+
+- **Wiring.** Each folder's `.claude/settings.json` gets one `UserPromptSubmit` entry (no `matcher`, `timeout` 5): `"<node>" "$CLAUDE_PROJECT_DIR/../controller/squelch.mjs" <role>`, with the node path written as the PreToolUse guards write it. `controller/` (TOWER, role `tower`) uses its own file, `$CLAUDE_PROJECT_DIR/squelch.mjs`. The other roles are `occ`, `mcc`, `crosscheck`, `review`. There is no `|| exit 2`, unlike the guards, and the PreToolUse guards are untouched.
+- **Tests.** Each folder's `settings.test.mjs` (new for `controller/` and `occ/`) asserts that the squelch hook is there with its role and `timeout` 5, that its command has no `exit 2` and no `||`, that `UserPromptSubmit` has no `matcher`, and that the PreToolUse hooks equal their exact previous list (so the guards can't drift silently).
+- **Check.** The five commands, run as Claude Code would (`CLAUDE_PROJECT_DIR` set to each folder, `ATC_URL` pointing at a closed port, stdin `{"prompt":"/tick"}`), each exit 0 with no output, so the paths resolve and a dead server fails open.
+- **Manuals.** Each folder's `CLAUDE.md` and `CLAUDE.en.md` says in one line that SQUELCH may drop a plain `/tick` and is not a guard. Because the manual text changed, each session's `manual check` reports a change once, and its next `squelch` decision is `shadow:manual`.
+- **Step 0 after merge (plan; the result goes here).** Whether a running control session reloads `.claude/settings.json` is not known: S0 only started sessions with the hook already in place.
+  1. After the merge, and after the SUPERVISOR has run RETURN TO SERVICE, read `GET /api/squelch` and `squelch.jsonl` for one loop interval (TOWER 3 min, OCC and CROSSCHECK and REVIEW 10 min, MCC 5 min).
+  2. A `shadow:*` line for a role means that session loaded the hook. Write which roles did, and Claude Code's version, in this section.
+  3. A role with no line after one interval didn't reload. The SUPERVISOR relaunches it from the settings window's CONTROL block, STOP then LAUNCH (the new session reads the settings at start), and the line then appears within one interval.
+  - The PR's session does not restart or message any control session. A separate S0-style probe (throwaway folder in `/tmp`, hook added to a running `claude --bg` session) can answer the reload question without touching the real sessions.
+
 ## 6. Display
 
 - In the CONTROL block of the settings window, each control row shows `QUIET since HH:MM · n dropped` or its last OPEN reason.

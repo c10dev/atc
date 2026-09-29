@@ -43,6 +43,8 @@
 | `node ../controller/atcctl.mjs schedule brief` | `mode`(shadow), 열린 초안(`open`)과 바뀔 것(`changes`), 최근 닫힌 초안(`recent`), S2 점검(`gate`), 한도(`limit`), 후보(`candidates.classify`, `candidates.prioritize`, `candidates.close`, `candidates.tail`, `candidates.waypoint`), CLOSE 후보의 PR·머지 시각·Fixes 여부(`close`), FLIGHT 요약(`flights`), 보정용 최근 SUPERVISOR 판정(`examples`: OCC가 냈던 분류 `proposed`, 근거 `draft`, 판정·사유), WAYPOINT gap(`waypointGaps`), 지나지 않은 WAYPOINT의 ETA(`waypointEtas`), 지연 경고(`slips`, `fresh`는 아직 보고 안 한 것), WAYPOINT 없는 ROUTE(`routesWithoutWaypoints`, `fresh`는 아직 알리지 않은 것) |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick과 그 절차 파일)이 바뀌었는지 / 다시 읽었음 |
 
+SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버릴 수 있다. guard가 아니다: 버려진 tick은 ATC LOG 줄 없이 없던 일이고, 팀 메시지와 SUPERVISOR 프롬프트는 그대로 온다.
+
 ## 절차 파일
 
 아래 절차는 `.claude/skills/tick/`에 있다. 그 단계에 할 일이 있을 때만 Read한다(언제인지는 `/tick`에 있다). 그 절차에서만 쓰는 명령도 그 파일의 표에 있다.
