@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { blockedAlerts, type Job, parseJob, readJob, sinceOf } from "./job-state.ts";
+import { blockedAlerts, type Job, parseJob, readJob, settleJob, sinceOf } from "./job-state.ts";
 
 // 2026-09-29(Claude Code 2.1.284)의 state.json 모양. intent는 CREW BRIEFING 전체라 읽으면 안 된다
 const base = {
@@ -15,7 +15,7 @@ const line = (at: string, state: string) => JSON.stringify({ at, state, detail: 
 
 test("working: 상태와 한 줄만, needs·suggestedReply 없음", () => {
   const j = parseJob({ ...base, state: "working", detail: "PR 리뷰 중" }, null);
-  assert.deepEqual(j, { state: "working", detail: "PR 리뷰 중", needs: null, suggestedReply: null, since: "2026-09-29T02:29:10.000Z" });
+  assert.deepEqual(j, { state: "working", detail: "PR 리뷰 중", needs: null, suggestedReply: null, since: "2026-09-29T02:29:10.000Z", tempo: "idle" });
 });
 
 test("blocked: needs·suggestedReply를 싣는다", () => {
@@ -42,7 +42,7 @@ test("모르는 state·모양은 null, 모르는 필드는 무시", () => {
   assert.equal(parseJob([]), null);
   const j = parseJob({ ...base, state: "working", futureField: { a: 1 }, detail: 5 });
   assert.equal(j?.detail, "");
-  assert.deepEqual(Object.keys(j!).sort(), ["detail", "needs", "since", "state", "suggestedReply"]);
+  assert.deepEqual(Object.keys(j!).sort(), ["detail", "needs", "since", "state", "suggestedReply", "tempo"]);
 });
 
 test("intent·output·providerEnv·linkScanPath는 결과 어디에도 없다", () => {
@@ -110,4 +110,50 @@ test("BLOCKED 경보: 기준 분 미만은 없고, 넘으면 needs와 함께, bl
   assert.deepEqual(blockedAlerts(x(null), now, 3), []);
   // since를 모르면 세지 않는다
   assert.deepEqual(blockedAlerts(x({ ...blocked(9), since: null }), now, 3), []);
+});
+
+// ATC-133: 답한 뒤에도 blocked로 남은 job
+const stale = (over: Partial<Job> = {}): Job => ({ state: "blocked", detail: "SUPERVISOR의 답 그대로", needs: "message when PR merges", suggestedReply: "go", since: "2026-09-29T07:04:00.000Z", tempo: "blocked", ...over });
+
+test("settleJob: tempo가 active면 blocked는 끝났다 — working으로 보이고 파일의 원래 모습은 남긴다 (H)", () => {
+  const j = settleJob(stale({ tempo: "active" }), null)!;
+  assert.equal(j.state, "working");
+  assert.equal(j.detail, ""); // 답한 글을 요청처럼 보이지 않는다
+  assert.equal(j.needs, null);
+  assert.equal(j.suggestedReply, null);
+  assert.deepEqual(j.settled, { from: "blocked", since: "2026-09-29T07:04:00.000Z", reason: "tempo", resumedAt: null });
+});
+
+test("settleJob: since 뒤의 대화 기록 활동이 있으면 tempo가 idle이어도 working (J)", () => {
+  const j = settleJob(stale({ tempo: "idle" }), "2026-09-29T07:05:00.000Z")!;
+  assert.equal(j.state, "working");
+  assert.deepEqual(j.settled, { from: "blocked", since: "2026-09-29T07:04:00.000Z", reason: "turn", resumedAt: "2026-09-29T07:05:00.000Z" });
+});
+
+test("settleJob: 진짜 blocked는 그대로 — 뒤 턴이 없거나 blocked 때 마지막 턴(GRACE 안)뿐이다", () => {
+  for (const tempo of ["blocked", "idle"]) {
+    const j = stale({ tempo });
+    assert.equal(settleJob(j, null), j);
+    assert.equal(settleJob(j, "2026-09-29T07:03:00.000Z"), j); // 이전 활동
+    assert.equal(settleJob(j, "2026-09-29T07:04:10.000Z"), j); // 마지막 턴의 꼬리(GRACE 30초 안)
+  }
+  const w: Job = { ...stale(), state: "working", needs: null, suggestedReply: null };
+  assert.equal(settleJob(w, "2026-09-29T09:00:00.000Z"), w);
+  assert.equal(settleJob(null, null), null);
+});
+
+test("BLOCKED 경보: 이미 일하는 blocked job은 울리지 않고, 진짜 blocked는 울린다. detail은 요청으로 쓰지 않는다", () => {
+  const now = Date.parse("2026-09-29T07:30:00.000Z");
+  const run = (job: Job, lastActiveAt: string | null) => blockedAlerts([{ id: "s1", name: "TEAM_H", job, lastActiveAt }], now, 3);
+  assert.deepEqual(run(stale({ tempo: "active" }), null), []);
+  assert.deepEqual(run(stale({ tempo: "idle" }), "2026-09-29T07:20:00.000Z"), []);
+  const real = run(stale({ tempo: "blocked" }), "2026-09-29T07:04:00.000Z");
+  assert.equal(real.length, 1);
+  assert.match(real[0].message, /26분째 사람을 기다림: message when PR merges/);
+  assert.doesNotMatch(run(stale({ needs: null }), null)[0].message, /SUPERVISOR의 답/);
+});
+
+test("parseJob: tempo를 싣는다", () => {
+  assert.equal(parseJob({ ...base, state: "blocked", tempo: "active" })?.tempo, "active");
+  assert.equal(parseJob({ state: "blocked" })?.tempo, null);
 });
