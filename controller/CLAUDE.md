@@ -40,7 +40,7 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 | APPROACH (`landing: "APPROACH"`) | `LAND`를 내지 않는다. `events`에 그 PR의 `landing.requested`나 `landing.blocked`가 왔고 `blocks`에 `checks-pending`·`merge-unknown`·`los` 말고 다른 코드가 있을 때만, `holders`에게 `INFO`로 알린다: "PR #번호 LANDING 불가: " 뒤에 `landingQueue`의 `blocks[].text`를 ` · `로 잇는다. 이벤트가 없으면(같은 막힘) 다시 보내지 않고, `reset: true`인 바퀴에는 보내지 않는다. holder가 없으면 ATC LOG에만 남긴다. `los`는 위 LOSS OF SEPARATION 규칙이 맡는다 |
 | 쌓인 PR (`landingQueue[].stacked`, `stack`) | base가 기본 브랜치가 아닌 PR은 CLEARED가 되지 않는다(ATC-29). `LAND`를 내지 않는다. `blocks`의 `stacked` 글("쌓인 PR — #395가 먼저 main에 들어간 뒤 …")은 위 APPROACH 규칙대로 holders에게 INFO로 전한다 |
 | STRANDED (`open.stranded`, `events`의 `alert.raised`·`alertKind: "stranded"`) | FLIGHT가 있는 PR이 기본 브랜치가 아닌 곳에 머지돼 main에 닿지 않음. 새로 생겼을 때 SUPERVISOR에게 한 번 보고한다(`message` 그대로). Linear가 Done이어도 남는다. 팀에는 보내지 않는다 |
-| Codex 지적 등급 (`landingQueue[].codexFindings`) | Codex의 head 지적이 모두 P3이고 스레드가 해결·답글됐으면 CLEARED가 된다(ATC-28). 이때 `landText` 끝에 "Codex P3 지적 N건은 남아 있음(…)"이 들어 있다 — 문구 그대로 `LAND`를 낸다. P0~P2가 있으면 APPROACH이고 `review-findings` 글에 등급별 수가 있다(위 APPROACH 규칙대로 INFO). `blocked` 글이 "해결 안 된 리뷰 스레드 N개"면 GitHub 보호 규칙(스레드 해결 필수) 때문이니 그대로 전한다 |
+| Codex 지적 등급 (`landingQueue[].codexFindings`) | Codex의 head 지적이 모두 P3이고 스레드가 해결·답글됐으면 CLEARED가 된다(ATC-28). 이때 `landText` 끝에 "Codex P3 findings left: N (…)"이 들어 있다 — 문구 그대로 `LAND`를 낸다. P0~P2가 있으면 APPROACH이고 `review-findings` 글에 등급별 수가 있다(위 APPROACH 규칙대로 INFO). `blocked` 글이 "해결 안 된 리뷰 스레드 N개"면 GitHub 보호 규칙(스레드 해결 필수) 때문이니 그대로 전한다 |
 | CODEX 한도 · 착륙 리뷰 (`landingQueue[].codex`·`extReview`·`review`) | Codex가 한도에 걸렸거나 6시간 말이 없으면 착륙 리뷰 세션(REVIEW, Claude Sonnet)의 리뷰가 Codex 리뷰를 대신한다(ATC-7, ATC-27). `review`(예: `"SONNET"`, 옛 기록은 `"DEEPSEEK"`)가 있는 CLEARED PR은 다른 CLEARED와 똑같이 `landText` 그대로 `LAND`를 낸다(문구를 고치지 않는다). 리뷰 지적은 `blocks`의 `review-findings` 글("SONNET 지적(…): …")에 들어 있어 위 APPROACH 규칙대로 CAPTAIN에게 전해진다. `extReview.status: "waiting"`은 REVIEW 세션 몫이라 할 일이 없다. `extReview.status: "excluded"`(FLIGHT 없음·rating:SEC·Risk 라벨, migrations·SQL·auth·session·admission·RLS·middleware·비밀 경로, 보안 키워드 — 외부 모델에 보내지 않는 PR)는 외부 리뷰의 pass가 있어도 CLEARED가 되지 않는다. 처음 보였을 때 SUPERVISOR에게 한 번 보고한다(Codex나 SUPERVISOR 리뷰가 필요) |
 | GitHub 오류 (`github.error`) | LANDING SEQUENCE가 낡았을 수 있다. 새로 생겼을 때 SUPERVISOR에게 보고 |
 | HANDOFF (`events`의 `handoff`) | ATC LOG에 적기만 한다. 메시지 보내지 않는다 |
@@ -50,7 +50,7 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 | FUEL LEAK·COLD CACHE (`open.fuelLeaks`, `open.coldCache`) | FUEL 경고(docs/fuel.md 8.6, ATC-56). 경고만 하고 아무것도 막지 않는다. `open.fuelLeaks`(24시간 안 LEAK이 큰 팀 AIRCRAFT)에 새 `key`가 보이면 SUPERVISOR에게 INFO로 한 번 알리고(`text` 그대로) `key`를 ATC LOG에 적는다. 같은 `key`는 다시 알리지 않는다. `open.coldCache`(캐시가 식은 HOLDING CAPTAIN)의 AIRCRAFT에 낼 CLEARANCE가 있으면 그대로 내고 `text`를 ATC LOG에 적는다. 캐시를 데우려고 미리 메시지를 보내거나 CLEARANCE를 미루지 않는다. FUEL 때문에 팀에 메시지를 보내지 않는다. `open.fuelError`가 있으면 대화 기록을 읽지 못한 것이니 ATC LOG에만 적는다 |
 | NORDO STAND (`open.orphans`), `session.lost` | 받을 세션이 없다. SUPERVISOR에게 보고 |
 | UNIDENTIFIED (`open.unattended`), NO CONTACT (`open.noContact`) | SUPERVISOR에게 보고. `events`에 새로 뜬 것만 보고하고 이미 보고한 것은 반복하지 않는다 |
-| NO READBACK (`clearances.overdue`, 10분. 첫 STANDBY가 있으면 그때부터 10분) | 같은 CLEARANCE를 한 번 더 보낸다(문구 맨 앞에 "재송신"). 그래도 답이 없으면 SUPERVISOR 보고 |
+| NO READBACK (`clearances.overdue`, 10분. 첫 STANDBY가 있으면 그때부터 10분) | 같은 CLEARANCE를 한 번 더 보낸다(문구 맨 앞에 "RESEND"). 그래도 답이 없으면 SUPERVISOR 보고 |
 | 팀 답장 "READBACK C-xxxx" / "ROGER C-xxxx" | `node atcctl.mjs readback C-xxxx` / `node atcctl.mjs roger C-xxxx` |
 | 팀 답장 "UNABLE C-xxxx — 사유" | `node atcctl.mjs unable C-xxxx -- <사유 그대로>`. 다시 보내지 않고, 사유를 SUPERVISOR에게 보고한다 |
 | 팀 답장 "STANDBY C-xxxx" | `node atcctl.mjs standby C-xxxx`. 다시 보내지 않고 기다린다(`clearances.overdue`가 첫 STANDBY부터 10분을 다시 센다. 두 번째 STANDBY는 기록만 된다) |
@@ -62,6 +62,7 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 - `issue`가 출력한 `SEND TO` 세션에, `---` 아래 문구를 **그대로** SendMessage로 보낸다. 문구를 새로 짓지 않는다.
 - 한 메시지에 CLEARANCE 하나. 팀마다 한 바퀴에 최대 두 개.
 - 세션 이름이 겹쳐 SendMessage가 모호하다고 하면 ListAgents의 `[ref]`를 붙인다.
+- **팀과 다른 관제 세션에 보내는 글은 영어다**(ATC-126). CLEARANCE 본문(`--text`)도 영어로 쓴다. `[DISPATCH D-xxxx]`·`[OCC CC-xxxx]`·`[ATC C-xxxx]` 머리와 `READBACK …`·`UNABLE …`·`STANDBY …`·`ROGER …`는 guard가 읽으므로 바꾸지 않는다. ATC LOG처럼 SUPERVISOR에게 남기는 글은 한국어다.
 
 ## ATC LOG
 

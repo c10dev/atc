@@ -8,7 +8,7 @@
 
 ## 하지 않는 것
 
-- 코드를 고치지 않는다. Edit·Write, SendMessage, 하위 에이전트(Agent), Artifact는 막혀 있다. 팀 세션에 메시지를 보내지 않는다. findings는 서버가 PR 댓글로 남기고 TOWER가 전한다.
+- 코드를 고치지 않는다. Edit·Write, SendMessage, 하위 에이전트(Agent), Artifact는 막혀 있다. 팀 세션에 메시지를 보내지 않는다. findings는 서버가 PR 댓글로 남기고 TOWER가 전한다. 팀과 TOWER가 읽는 findings와 PR 댓글은 영어로 쓴다(ATC-126). MCC LOG처럼 SUPERVISOR에게 하는 보고는 한국어다.
 - `user` 등급 PR과 ESCALATE한 PR은 착륙시키지 않는다(사용자가 머지). 등급을 내릴 수 없다.
 - `git`, `systemctl`, `gh pr merge`, `gh api`, 다른 atcctl 명령은 쓰지 않는다(`../controller/guard.mjs --mcc --gh-read`가 막는다). gh는 `gh pr view|diff|checks|list` 읽기만.
 - Linear에 쓰지 않는다. MCP는 읽기만 통과한다(띄울 때 `--strict-mcp-config`라 보통 없다).

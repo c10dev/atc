@@ -58,10 +58,10 @@ test("planCrewChange: 새 CREW CHANGE를 만들고 CAPTAIN 지시문을 쓴다",
   assert.deepEqual(c.added, []);
   assert.deepEqual(c.before, DEFAULT);
   assert.ok(c.text.startsWith("[ATC FLEET] CREW CHANGE · HOTEL (TEAM_H) · CC-0001\n"));
-  assert.ok(c.text.includes("내리는 CREW"));
-  assert.ok(!c.text.includes("타는 CREW"));
-  assert.ok(c.text.includes("- 배정 범위는 그대로입니다."));
-  assert.ok(c.text.endsWith('"TEAM_H CREW CHANGE CC-0001 COMPLETE" 한 줄만 남기세요.'));
+  assert.ok(c.text.includes("CREW leaving"));
+  assert.ok(!c.text.includes("CREW joining"));
+  assert.ok(c.text.includes("- The assignment range is unchanged."));
+  assert.ok(c.text.endsWith('When applied, leave only the line "TEAM_H CREW CHANGE CC-0001 COMPLETE".'));
   // COMPLEMENT가 안 바뀐 PATCH는 기록하지 않는다
   assert.deepEqual(planCrewChange(null, DEFAULT, { ...DEFAULT, ratings: ["DOCS"] }, ctx("CC-0001")), []);
 });
@@ -112,9 +112,9 @@ test("pairChanges: 같은 POSITION이 한 번씩 내리고 타면 바뀜으로 �
     added: ["reviewer: sonnet"],
     removed: ["flash-helper: flash-helper (no BUILD, no CHECK verdicts, no SEC)"],
   });
-  assert.ok(c.text.includes("바뀌는 CREW (같은 POSITION)\n- backend: claude-opus-5-5 → claude-opus-5-5 (no CHECK verdicts)"));
-  assert.ok(c.text.includes("제약만 바뀐 팀원은"));
-  assert.ok(!c.text.includes("agent나 모델이 바뀐 팀원은"));
+  assert.ok(c.text.includes("CREW changing (same POSITION)\n- backend: claude-opus-5-5 → claude-opus-5-5 (no CHECK verdicts)"));
+  assert.ok(c.text.includes("Leave crew whose limits alone changed"));
+  assert.ok(!c.text.includes("Stop crew whose agent or model changed"));
 });
 
 // ── 2단계: 승인 → OCC 발부 → READBACK ──
@@ -170,16 +170,16 @@ test("crewChangeMessage: [OCC CC-xxxx] 머리 + 지시문 본문(옛 머리 뗌)
   const lines = m.split("\n");
   assert.equal(lines[0], "[OCC CC-0001] CREW CHANGE · HOTEL (TEAM_H)");
   assert.equal(lines[1], "");
-  assert.equal(lines[2], "TEAM_H CAPTAIN, SUPERVISOR가 이 AIRCRAFT의 CREW COMPLEMENT를 바꿨습니다. 아래대로 팀원을 바꿔 주세요.");
+  assert.equal(lines[2], "TEAM_H CAPTAIN, the SUPERVISOR changed this AIRCRAFT's CREW COMPLEMENT. Change your crew as follows.");
   assert.ok(!m.includes("[ATC FLEET]"));
-  assert.ok(m.includes('"TEAM_H CREW CHANGE CC-0001 COMPLETE" 한 줄만 남기세요.\n\n— 받았으면 이 메시지에 "READBACK CC-0001", 못 하면 "UNABLE CC-0001 — 사유", 시간이 필요하면 "STANDBY CC-0001"로 답장해 주세요.'));
-  assert.ok(m.endsWith('— 받았으면 이 메시지에 "READBACK CC-0001", 못 하면 "UNABLE CC-0001 — 사유", 시간이 필요하면 "STANDBY CC-0001"로 답장해 주세요.'));
+  assert.ok(m.includes('When applied, leave only the line "TEAM_H CREW CHANGE CC-0001 COMPLETE".'));
+  assert.ok(m.endsWith('— Reply to this message with "READBACK CC-0001" if you take it, "UNABLE CC-0001 — reason" if you cannot, or "STANDBY CC-0001" if you need time.'));
   // 본문은 지시문 그대로(머리 두 줄만 다름)
   assert.equal(lines.slice(2, -2).join("\n"), c.text.split("\n").slice(2).join("\n"));
   // 이미 [OCC …] 머리가 붙은 본문도 머리를 한 번만 둔다
   assert.equal(crewChangeMessage({ ...c, text: m.split("\n").slice(0, -2).join("\n") }), m);
   // 머리가 없는 본문은 그대로 감싼다. callsign이 없는 이름은 REGISTRATION만
-  assert.equal(crewChangeMessage({ id: "CC-0009", registration: "OPS", text: "본문" }), '[OCC CC-0009] CREW CHANGE · OPS\n\n본문\n\n— 받았으면 이 메시지에 "READBACK CC-0009", 못 하면 "UNABLE CC-0009 — 사유", 시간이 필요하면 "STANDBY CC-0009"로 답장해 주세요.');
+  assert.equal(crewChangeMessage({ id: "CC-0009", registration: "OPS", text: "본문" }), '[OCC CC-0009] CREW CHANGE · OPS\n\n본문\n\n— Reply to this message with "READBACK CC-0009" if you take it, "UNABLE CC-0009 — reason" if you cannot, or "STANDBY CC-0009" if you need time.');
 });
 
 test("planCrewChange: approved는 새 변경이 대신하고(다시 승인), sent는 그대로 두고 새 건은 지금 선언에서 시작한다", () => {

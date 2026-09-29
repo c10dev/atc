@@ -542,7 +542,7 @@ FLEET 탭은 팀을 만들고 내리는 곳이기도 하다. 2026-09-28 전까�
 |---|---|---|
 | 팀 더하기 | **ENTRY INTO SERVICE** | REGISTRATION(다음 빈 `TEAM_X`를 제안), 기지 AIRPORT(기본은 팀 세션이 가장 많은 곳), **CONFIGURATION**. 그 이름의 세션이 나타날 때까지 AIRCRAFT는 NOT IN SERVICE로 보이고, 나타나면 atc가 이름으로 잇는다 |
 | 팀 템플릿 | **CONFIGURATION** | `general`(vocado 기본 CREW. 기본값을 따른다), `security`(Opus backend + Codex 리뷰. SEC, DATA, DOCS), `ui`(Opus backend + `ui-builder` + `ui-qa`. UI, DOCS), `research`(Opus backend + `flash-helper`. DATA, DOCS) |
-| 세션 시작 | **CREW BRIEFING** | 복사할 수 있는 시작 문구: 세션 이름과 폴더, 만들 CREW와 그 모델, TYPE RATING(SEC 규칙 포함), ROUTE, 교신 규칙(`tail:` 라벨, `READBACK C-xxxx`. `READBACK D-xxxx`는 승인 운용에서만). 사용자가 그 저장소에서 세션을 열고 이름을 붙인 뒤 붙여 넣는다 |
+| 세션 시작 | **CREW BRIEFING** | 복사할 수 있는 시작 문구: 세션 이름과 폴더, 만들 CREW와 그 모델, TYPE RATING(SEC 규칙 포함), ROUTE, 교신 규칙(`tail:` 라벨, `READBACK C-xxxx`. `READBACK D-xxxx`는 승인 운용에서만). 사용자가 그 저장소에서 세션을 열고 이름을 붙인 뒤 붙여 넣는다. 문구는 영어이고(ATC-126), 돌고 있는 세션은 다시 LAUNCH하기 전까지 처음 받은 CREW BRIEFING을 그대로 갖는다 |
 | 팀을 잠시 쉬게 하기 | **AOG** | 사유와 선택적 복귀 날짜. planner가 그 팀에 제안을 멈춘다(`AOG — reason (~date)`) |
 | 팀 없애기 | **RETIREMENT** | AIRCRAFT가 FLEET 목록에서 빠진다(날짜·사유와 함께 RETIRED 아래 남음). 제안을 받지 않는다. 살아 있는 세션을 닫지는 않는다. 되살릴 수 있다 |
 
@@ -613,7 +613,7 @@ COMPLEMENT는 SUPERVISOR가 선언한 것이다. 관찰한 CREW는 AIRCRAFT의 �
 
 ### 8.4 CREW CHANGE
 
-SUPERVISOR가 운항 중인 AIRCRAFT의 CREW COMPLEMENT를 `PATCH /api/fleet/:registration`으로 바꾸면 atc가 CREW CHANGE를 쓴다. CAPTAIN에게 줄 문구로, CREW BRIEFING과 비슷하지만 이미 돌고 있는 팀용이다. `server/crew-change.ts`에 있고, `fleet.ts`에 걸린 것은 프로필 저장 뒤의 호출 하나뿐이다. 1단계(아래 앞부분)는 문구와 SUPERVISOR의 손 전달이다. 2단계(나머지)는 DISPATCH approval 모드(2b)에서 OCC가 보내게 한다.
+SUPERVISOR가 운항 중인 AIRCRAFT의 CREW COMPLEMENT를 `PATCH /api/fleet/:registration`으로 바꾸면 atc가 CREW CHANGE를 쓴다. CAPTAIN에게 줄 문구로, CREW BRIEFING과 비슷하지만 이미 돌고 있는 팀용이다. CREW BRIEFING처럼 영어이지만(ATC-126), FLEET 탭에도 보이는 `ratingImpact` 줄은 한국어 그대로다. `server/crew-change.ts`에 있고, `fleet.ts`에 걸린 것은 프로필 저장 뒤의 호출 하나뿐이다. 1단계(아래 앞부분)는 문구와 SUPERVISOR의 손 전달이다. 2단계(나머지)는 DISPATCH approval 모드(2b)에서 OCC가 보내게 한다.
 
 - **운항 중**: RETIRED가 아니고 그 이름의 살아 있는 세션이 있음. 아직 운항을 시작하지 않은 AIRCRAFT는 CREW BRIEFING으로 CREW를 받는다. AOG AIRCRAFT도 운항 중으로 센다.
 - **차이**(`diffCrew`): 팀원은 CREW BRIEFING과 같은 한 줄 표기 `position: agent (limits)`로 비교한다. agent나 limits가 바뀐 팀원은 빠지고 다시 들어온 것으로 본다. 문구에서는 한 번 빠지고 다시 들어온 POSITION을 "바뀌는 CREW"로 묶는다.
@@ -680,7 +680,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 #### 8.5.1 관제 세션(2026-09-28 만듦)
 
-같은 LAUNCH·STOP이 atc 자신의 관제 세션에도 된다. 설정 창 AGENTS 탭의 CONTROL 블록에서 누르므로, SUPERVISOR가 세션마다 tmux 창을 열지 않는다. 줄마다 live 배지가 있다(ATC-66).
+같은 LAUNCH·STOP이 atc 자신의 관제 세션에도 된다. FLEET 탭의 CONTROL SESSIONS 구역(ATC-130)에서 누르므로, SUPERVISOR가 세션마다 tmux 창을 열지 않는다. 줄마다 live 배지가 있다(ATC-66).
 
 | 세션 | 폴더 | 방식 | 첫 메시지 | 추가 옵션 |
 |---|---|---|---|---|
@@ -712,6 +712,14 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
   - **화면**: `GET /api/control/sessions`는 관제 세션마다 `stale: [{id, name}]`를, `GET /api/fleet/sessions`는 줄에 `stale: true`를 준다. CONTROL 블록과 FLEET 카드는 `STALE <id>`와 "Claude Code가 멈춘 job을 아직 목록에 둠 — 무시해도 된다"를 보이고, LAUNCH는 그대로 쓸 수 있다.
 - **API**(`server/session-control.ts`): `GET /api/control/sessions`(`{daemonInService, sessions: [{name, dir, prompt, launch: "bg" | null, blocked, live}], accounts}`), `POST /api/control/:name/launch`, `POST /api/control/:name/stop`. 둘 다 SUPERVISOR만(이 화면 Origin). 순수 함수: `controlLaunchPlanOf`, `launchBlockOf`, `controlStopTargetOf`, `controlRowsOf`, `isControlRow`.
 - **기록.** FLIGHT RECORDER `{kind: "control", op: "launch" | "stop", session, by: "SUPERVISOR", ok, jobId, tmux, cwd, permissionMode, error}`(`permissionMode`는 ATC-76부터). 백그라운드 세션이면 `jobId`, tmux 세션이면 `tmux`(launch는 세션, stop은 `<세션> <pane>`).
+
+##### FLEET 탭의 CONTROL SESSIONS as built (ATC-130)
+
+- **옮겼을 뿐 바꾸지 않았다.** 설정 창 AGENTS 탭의 블록을 FLEET의 `CONTROL SESSIONS` 구역(AIRCRAFT 목록 아래)으로 옮겼다. 보이는 것은 같다: LAUNCH·STOP(같은 tmux 확인), 배지, job 상태와 NEEDS YOU, STALE 줄, ACCOUNT 라벨, daemon 경고, 모델 안내. API와 `session-control.ts`는 그대로이고, LAUNCH·STOP은 SUPERVISOR 전용이다.
+- **순서.** daemon이 서비스 안에서 돈다는 경고가 구역의 첫 줄이다(줄들 위).
+- **새로 읽기.** FLEET가 보이는 동안 `GET /api/control/sessions`를 1분에 한 번까지 다시 읽고(브라우저 탭이 숨겨져 있으면 건너뜀), LAUNCH·STOP 직후에는 곧장 읽는다. 1분 안에 탭을 다시 열면 API를 부르지 않고 마지막에 읽은 값을 보인다. 서버가 `claude agents`를 캐시하든 말든 화면은 60초보다 자주 읽지 않는다.
+- **안내.** 설정 AGENTS 탭에는 `#fleet/control`로 가는 한 줄만 남는다. 그 주소는 FLEET 탭을 열고 구역으로 스크롤한다. 헤더 CONTROL 띠(ATC-127)도 같은 곳을 가리킨다.
+- **코드.** `web/src/views/fleet/ControlSessions.tsx`가 그린다. 줄 계산(배지, 색, 어느 버튼, NEEDS YOU, STALE)과 60초 규칙은 `server/control-view.ts`의 순수 함수이고 `server/control-view.test.ts`가 시험한다.
 
 #### 8.5.2 세션 출처 as built (ATC-76)
 

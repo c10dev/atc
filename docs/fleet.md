@@ -492,7 +492,7 @@ The FLEET tab is also where teams are formed and stood down. Until 2026-09-28 at
 |---|---|---|
 | Add a team | **ENTRY INTO SERVICE** | Registration (the next free `TEAM_X` is suggested), base AIRPORT (defaults to where most team sessions live), and a **CONFIGURATION**. The AIRCRAFT shows as NOT IN SERVICE until a session with that name appears, then atc links it by name |
 | Team template | **CONFIGURATION** | `general` (the vocado default crew; follows the defaults), `security` (Opus backend + Codex review; SEC, DATA, DOCS), `ui` (Opus backend + `ui-builder` + `ui-qa`; UI, DOCS), `research` (Opus backend + `flash-helper`; DATA, DOCS) |
-| Start the session | **CREW BRIEFING** | A copyable kickoff text: session name and folder, the CREW to create with their models, TYPE RATINGS (with the SEC rules), ROUTE, and the radio rules (`tail:` labels, `READBACK C-xxxx`; `READBACK D-xxxx` only in approval mode). The user opens a session in that repository, names it, and pastes it |
+| Start the session | **CREW BRIEFING** | A copyable kickoff text: session name and folder, the CREW to create with their models, TYPE RATINGS (with the SEC rules), ROUTE, and the radio rules (`tail:` labels, `READBACK C-xxxx`; `READBACK D-xxxx` only in approval mode). The user opens a session in that repository, names it, and pastes it. The text is English (ATC-126); a running session keeps the CREW BRIEFING it started with until it is launched again |
 | Stand a team down for a while | **AOG** | Reason plus an optional release date. The planner stops proposing to it (`AOG — reason (~date)`) |
 | Remove a team | **RETIREMENT** | The AIRCRAFT leaves the FLEET list (kept under RETIRED with its date and reason) and gets no proposals. A live session is not closed. It can be restored |
 
@@ -563,7 +563,7 @@ Calls are grouped by `agentType` and `model`: `observedCrew: {agentType, positio
 
 ### 8.4 CREW CHANGE
 
-When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT through `PATCH /api/fleet/:registration`, atc writes a CREW CHANGE: a text for the CAPTAIN, like the CREW BRIEFING but for a running team. Built in `server/crew-change.ts`; the only hook in `fleet.ts` is one call after the profile is saved. Step 1 (below, first part) is the text and the SUPERVISOR's manual delivery. Step 2 (the rest) lets OCC send it in DISPATCH approval mode (2b).
+When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT through `PATCH /api/fleet/:registration`, atc writes a CREW CHANGE: a text for the CAPTAIN, like the CREW BRIEFING but for a running team. It is English like the CREW BRIEFING (ATC-126), except the `ratingImpact` lines, which are Korean because the FLEET tab shows them too. Built in `server/crew-change.ts`; the only hook in `fleet.ts` is one call after the profile is saved. Step 1 (below, first part) is the text and the SUPERVISOR's manual delivery. Step 2 (the rest) lets OCC send it in DISPATCH approval mode (2b).
 
 - **In service** means not retired and a live session with that name exists. An AIRCRAFT that has not entered service gets its crew from the CREW BRIEFING instead. AOG AIRCRAFT count as in service.
 - **Diff** (`diffCrew`): members are compared by their one-line form `position: agent (limits)`, the same as the CREW BRIEFING. A member whose agent or limits changed is removed and added; the text pairs a POSITION that leaves and returns once as "바뀌는 CREW".
@@ -617,7 +617,7 @@ Not built yet: automatic STOP of idle sessions (FLEET PLAN step 4; shadow propos
 
 #### 8.5.1 Control sessions (built 2026-09-28)
 
-The same LAUNCH and STOP work for atc's own control sessions, from the settings window's AGENTS tab (block CONTROL), so the SUPERVISOR doesn't open a tmux window per session. Every row has a live badge (ATC-66).
+The same LAUNCH and STOP work for atc's own control sessions, from the FLEET tab (section CONTROL SESSIONS, ATC-130), so the SUPERVISOR doesn't open a tmux window per session. Every row has a live badge (ATC-66).
 
 | Session | Folder | How | First message | Extra flags |
 |---|---|---|---|---|
@@ -649,6 +649,14 @@ The same LAUNCH and STOP work for atc's own control sessions, from the settings 
   - **Display**: `GET /api/control/sessions` returns `stale: [{id, name}]` per control session, and `GET /api/fleet/sessions` marks rows `stale: true`. The CONTROL block and the FLEET card show `STALE <id>` with "Claude Code가 멈춘 job을 아직 목록에 둠 — 무시해도 된다", and LAUNCH stays available.
 - **API** (`server/session-control.ts`): `GET /api/control/sessions` (`{daemonInService, sessions: [{name, dir, prompt, launch: "bg" | null, blocked, live}], accounts}`), `POST /api/control/:name/launch`, `POST /api/control/:name/stop`, both SUPERVISOR-only (this screen's Origin). Pure parts: `controlLaunchPlanOf`, `launchBlockOf`, `controlStopTargetOf`, `controlRowsOf`, `isControlRow`.
 - **Record.** FLIGHT RECORDER `{kind: "control", op: "launch" | "stop", session, by: "SUPERVISOR", ok, jobId, tmux, cwd, permissionMode, error}` (`permissionMode` since ATC-76): `jobId` for background sessions, `tmux` for tmux ones (the session on launch, `<session> <pane>` on stop).
+
+##### CONTROL SESSIONS on the FLEET tab, as built (ATC-130)
+
+- **Moved, not changed.** The block moved from the settings window's AGENTS tab to a FLEET section, `CONTROL SESSIONS`, under the AIRCRAFT list. It shows the same things: LAUNCH and STOP (same tmux confirm), badges, job state and NEEDS YOU, STALE rows, ACCOUNT labels, the daemon warning and the model note. The API and `session-control.ts` are unchanged, and LAUNCH and STOP stay SUPERVISOR-only.
+- **Order.** The daemon-in-service warning is the first line of the section, above the rows.
+- **Refresh.** While FLEET is shown the section re-reads `GET /api/control/sessions` at most once a minute (skipped while the browser tab is hidden), and right after each LAUNCH or STOP. Opening the tab again within a minute shows the last reading instead of calling the API. The screen never polls faster than 60 s, with or without a server-side cache of `claude agents`.
+- **Pointer.** The settings AGENTS tab keeps one line that links to `#fleet/control`. That address opens the FLEET tab and scrolls to the section, and the header CONTROL strip (ATC-127) uses the same target.
+- **Code.** `web/src/views/fleet/ControlSessions.tsx` draws it. The row logic (badge, tone, which button, NEEDS YOU, STALE) and the 60 s rule are pure functions in `server/control-view.ts`, tested in `server/control-view.test.ts`.
 
 #### 8.5.2 Session origin as built (ATC-76)
 

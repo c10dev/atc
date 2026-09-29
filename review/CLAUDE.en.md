@@ -38,7 +38,7 @@ SQUELCH (a `UserPromptSubmit` hook, `docs/squelch.md`) may drop a plain `/tick`;
 - **Security PRs** (the packet has `security`: sent by the setting): review them. Look hard at permissions (GRANT, REVOKE, EXECUTE, SECURITY DEFINER), RLS and policies, authentication, session and admission checks, whether migrations can be rolled back, and whether secrets leak into code or logs. When unsure, don't pass; leave a P1. The server marks the record `security: true`.
 - **Severity**: like Codex, P0 (must not merge), P1 (fix before merging), P2 (can wait). With no P0 or P1 it is `pass`, otherwise `findings`. One line per finding: `P1 file:line — what is wrong and why`. A `pass` also states what was checked and any P2.
 - **Cut diff**: state what you saw. If the cut part may hide a risk, leave `findings` (P1 "diff cut, could not check X").
-- **Record**: `--head` is the packet's `head`. At most 4000 characters. A changed head gives 409 — review the new packet next pass. TOWER passes `findings` to the CAPTAIN.
+- **Record**: `--head` is the packet's `head`. At most 4000 characters. A changed head gives 409 — review the new packet next pass. TOWER passes `findings` to the CAPTAIN, so the review text (the finding lines) is English (ATC-126). The REVIEW LOG is a report to the SUPERVISOR and stays Korean.
 - At most 2 PRs per pass. Don't review the same head again (it leaves pending).
 
 ## REVIEW LOG

@@ -1102,3 +1102,15 @@ test("같은 팀 이어가기: 그 파일을 만지는 팀이 그 팀뿐이면 �
   const q = planDispatch(s, new Map(), cfg(), NOW, undefined, undefined, undefined, undefined, undefined, both);
   assert.equal(factor(q, "VOC-41", "overlapSame"), undefined);
 });
+
+// ── SUPERVISOR CONFIRM AT AIRCRAFT(ATC-120) ──
+test("SUPERVISOR CONFIRM: 예측 경로 중 사용자 등급 파일이 ASSIGN에 실리고, 모르는 경로는 표시하지 않는다", () => {
+  const s = snap({ sessions: [session("b", "TEAM_B")], tickets: [ticket("VOC-41")] });
+  const run = (body: Record<string, string>) => planDispatch(s, new Map(), cfg(), NOW, undefined, undefined, undefined, undefined, undefined, { holders: [], bodies: bodies(body) });
+  // 루트 CLAUDE.md와 .claude/ 설정은 사용자 등급, server/는 아니다
+  const marked = run({ "VOC-41": "`CLAUDE.md`와 `.claude/settings.json`, `server/a.ts`를 고친다" });
+  assert.deepEqual(marked.assign[0].supervisorConfirm, ["CLAUDE.md", ".claude/settings.json"]);
+  // 예측이 없거나 사용자 등급이 아니면 필드 자체가 없다
+  assert.equal("supervisorConfirm" in run({}).assign[0], false);
+  assert.equal("supervisorConfirm" in run({ "VOC-41": "`server/a.ts`만 고친다" }).assign[0], false);
+});

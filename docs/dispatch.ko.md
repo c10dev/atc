@@ -201,10 +201,10 @@ DISPATCH 세션: FLIGHT PLAN을 CAPTAIN에게 SendMessage
   [DISPATCH D-0003] FLIGHT PLAN · BRAVO (TEAM_B)
   BRIEF: DIRECT
   FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High
-  <티켓 제목과 URL, 이슈에서 옮긴 목표·완료 기준·이 작업만의 제약, DISPATCH 메모>
+  <티켓 제목과 URL, 이슈에서 옮긴 Goal·Done when·Constraints, DISPATCH note>
   <PILOT'S DISCRETION 줄>
-  — 받았으면 이 메시지에 "READBACK D-0003", 못 하면 "UNABLE D-0003 — 사유", 시간이 필요하면 "STANDBY D-0003"로 답장해 주세요.(ATC-122)
-  끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요. ("DIRECT briefs" 참고)
+  — Reply to this message with "READBACK D-0003" if you take it, "UNABLE D-0003 — reason" if you cannot, or "STANDBY D-0003" if you need time.(ATC-122)
+  Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision. ("DIRECT briefs" 참고)
 CAPTAIN: READBACK → Linear In Progress, STAND 준비(지금 규칙 그대로)
 atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER처럼 재확인
      STAND 없는 FLIGHT(SURVEY·CHECK): READBACK 자체로 DEPARTED(기다릴 STAND가 없다)
@@ -371,11 +371,11 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 
   ```
   [DISPATCH D-0003] RECALL · BRAVO (TEAM_B)
-  FLIGHT VOC193 · AIRPORT VCDO — 이 FLIGHT PLAN을 거둬들입니다.
+  FLIGHT VOC193 · AIRPORT VCDO — this FLIGHT PLAN is withdrawn.
   <티켓 제목>
   사유: <SUPERVISOR의 사유>
-  작업을 멈추세요. STAND(워크트리)는 정리하지 말고 그대로 두세요 — 다른 AIRCRAFT가 이어받을 수 있게.
-  — 받았으면 이 메시지에 "READBACK D-0003 RECALL"로 답장해 주세요.
+  Stop work. Do not clean up the STAND (worktree); leave it as is — so another AIRCRAFT can pick it up.
+  — When received, reply to this message with "READBACK D-0003 RECALL".
   ```
 
   답장에 RECALL을 붙이게 해서(`READBACK D-0003 RECALL`) FLIGHT PLAN의 `READBACK D-0003`과 헷갈리지 않는다.
@@ -390,6 +390,16 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
   - `POST /api/dispatch/proposals/:id/recall {reason}`: SUPERVISOR.
   - `POST …/recall-send`: `{sendTo, message}`를 돌려주고 상태는 바꾸지 않는다(OCC, approval 모드만).
   - `POST …/recalled`: CAPTAIN의 READBACK 뒤 OCC.
+
+## SUPERVISOR CONFIRM AT AIRCRAFT (ATC-120 as built)
+
+사용자 등급 파일(`deploy/landing-tier.mjs`의 USER: guard, `.claude/`, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`)을 만질 FLIGHT는 AIRCRAFT가 자기 세션 안에서 SUPERVISOR에게 go를 직접 묻는다. go는 SUPERVISOR가 그 세션에서 친다. **OCC도 서버도 "SUPERVISOR가 승인했다"고 말하지 않고**, SUPERVISOR의 go를 대신하는 atc 메시지도 없다.
+
+- **예측(순수, `server/supervisor-confirm.ts`)**: ASSIGN마다 `planDispatch`가 이슈의 예측 경로(`predictedOf`, ATC-71)를 `tierOf`로 하나씩 돌린다. 사용자 등급인 경로가 ASSIGN의 `supervisorConfirm`이 되고 `create` op를 거쳐 제안에 실린다. 예측이 비었거나 모르는 경로면 아무것도 세우지 않는다(오탐 없음). 표시는 승인을 막지 않는다.
+- **카드와 승인 창**: DISPATCH 카드, IN FLIGHT 줄(approved·sent), 승인 확인 창에 `SUPERVISOR CONFIRM AT AIRCRAFT`, 이유가 된 경로, 그 AIRCRAFT 세션에 붙여 넣을 한 줄(서버가 만든다: `D-0094 (ATC-115): SUPERVISOR go for CLAUDE.md, .claude/settings.json edits in this FLIGHT.`), 세션 여는 법(`claude agents`, 그 REGISTRATION 선택)이 보인다. `GET /api/dispatch/brief`의 `confirm[<D-xxxx>] = {paths, line, open}`이다.
+- **HOLD 상태**: `atcctl dispatch await-supervisor <D-xxxx> -- <사유>`(`POST …/await-supervisor {reason}`)는 READBACK도 거절도 아닌 CAPTAIN 답(자기 사용자를 기다림)에 쓴다. `proposals.jsonl`에 추가만 하는 op `await-supervisor`. sent인 제안에만(아니면 409, 사유가 없으면 400). PILOT'S DISCRETION: 새 상태가 아니라 필드다. 제안은 `sent` 그대로 `awaitSupervisor {at, reason}`을 가져서 RELEASE·RECALL·상태 검사가 그대로 돈다. 다시 부르면 사유만 바뀌고 처음 `at`은 그대로다. READBACK(`accept`)·UNABLE(`decline`)·RECALL·만료가 지운다. 걸려 있는 동안은 READBACK overdue로 세지 않는다.
+- **경보**: FLIGHT FOLLOWING이 SUPERVISOR를 기다리는 sent 제안을 따라가며 warn 문제 `await-supervisor`(key `<FLIGHT>|await-supervisor`, SUPERVISOR에게 한 번 보고)를 낸다. 스냅샷은 그 AIRCRAFT 세션에 `health` 경보(key `health|AWAIT-SUPERVISOR|<D-xxxx>`)를 올린다. ATC-99(BLOCKED 백그라운드 세션)·ATC-87과 같은 길이고 key마다 한 번이다. PILOT'S DISCRETION: 새 health 코드는 없다(`HealthCode`와 `hooks/health.d.mts`는 그대로).
+- **OCC**: `occ/CLAUDE.md`와 `flight-plan.md`: CAPTAIN이 자기 사용자를 기다리며 멈추면 `dispatch await-supervisor`를 치고, 다시 보내지 않고, 어떤 승인도 전하지 않는다. guard·send-guard·FLIGHT PLAN 문구는 그대로다.
 
 ## DIRECT briefs (ATC-32)
 
@@ -407,7 +417,7 @@ AUTOPILOT이라는 말은 쓰지 않는다. 기계가 날고 조종사는 지켜
 
 늘 지키는 규칙은 제자리(vocado `CLAUDE.md`·`AGENTS.md`, atc `CLAUDE.md`, guard, 브랜치 보호, 승인 게이트)에 두고 지시서에 되풀이하지 않는다. 그것들이 그대로라서 짧은 지시서가 안전하다.
 
-**지시서.** 모든 지시서의 둘째 줄은 `BRIEF: DIRECT`다. 그다음 FLIGHT, 제목과 링크, 이슈 본문에서 옮긴 세 칸(`server/briefs.ts` `directSectionsOf`): `목표`(Goal·Outcome), `완료 기준`(Acceptance·Done criteria·Done when·Exit criteria), `이 작업만의 제약`(Constraints·Hard constraints·금지·Forbidden·Invariants·Not in scope). 칸의 글은 쓴 그대로 싣는다(ATC-58): Linear의 역슬래시 이스케이프를 풀고(`\~31 K` → `~31 K`), `linear.app/<워크스페이스>/issue/<KEY>/…`로 가는 이슈 링크는 key만 남긴다(`ATC-46`. 글을 따로 쓴 링크는 `the design (ATC-46)`처럼 글도 남긴다). Linear가 `linear.app/<워크스페이스>/review/…` 링크로 둔 PR 언급은 링크 글만 남긴다(`chaehy5665/atc#134`, ATC-70). 코드 스팬과 펜스 블록 안은 그대로다. 한 줄짜리 칸이 목록 항목이면 이름표 다음 줄에 싣는다. 완료 기준과 제약은 자르지 않고 모두 싣는다. 목표만 푼 글 기준 600자에서 줄 경계로 자른다(ATC-35). 세 칸을 합쳐 4,000자를 넘으면 일부만 싣지 않고, 목표만 두고 `완료 기준·제약 전문은 이슈 본문에서 읽으세요.`라고 적는다. 첫 항목 뒤에서 잘린 목록은 뒤따르는 규칙을 가리기 때문이다. 보통 이슈는 들어간다: ATC-34 본문(약 3,200자)이 시험 fixture다. 허용 범위, 배경, 확인 방법은 링크의 이슈에 둔다. 완료 기준 칸이 없으면 이슈의 완료 기준을 따르라고 적는다. 끝은 PILOT'S DISCRETION 줄, READBACK 요청, `끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요.`
+**지시서.** 모든 지시서의 둘째 줄은 `BRIEF: DIRECT`다. 그다음 FLIGHT, 제목과 링크, 이슈 본문에서 옮긴 세 칸(`server/briefs.ts` `directSectionsOf`): `Goal:`, `Done when:`, `Constraints:`로 이름 붙인다(ATC-126: 지시서 글은 영어). 이슈 본문에서는 `목표`(Goal·Outcome), `완료 기준`(Acceptance·Done criteria·Done when·Exit criteria), `이 작업만의 제약`(Constraints·Hard constraints·금지·Forbidden·Invariants·Not in scope) 칸을 찾는다. 칸의 글은 쓴 그대로 싣는다(ATC-58): Linear의 역슬래시 이스케이프를 풀고(`\~31 K` → `~31 K`), `linear.app/<워크스페이스>/issue/<KEY>/…`로 가는 이슈 링크는 key만 남긴다(`ATC-46`. 글을 따로 쓴 링크는 `the design (ATC-46)`처럼 글도 남긴다). Linear가 `linear.app/<워크스페이스>/review/…` 링크로 둔 PR 언급은 링크 글만 남긴다(`chaehy5665/atc#134`, ATC-70). 코드 스팬과 펜스 블록 안은 그대로다. 한 줄짜리 칸이 목록 항목이면 이름표 다음 줄에 싣는다. 완료 기준과 제약은 자르지 않고 모두 싣는다. 목표만 푼 글 기준 600자에서 줄 경계로 자른다(ATC-35). 세 칸을 합쳐 4,000자를 넘으면 일부만 싣지 않고, 목표만 두고 `Read the full done criteria and constraints in the issue body.`라고 적는다. 첫 항목 뒤에서 잘린 목록은 뒤따르는 규칙을 가리기 때문이다. 보통 이슈는 들어간다: ATC-34 본문(약 3,200자)이 시험 fixture다. 허용 범위, 배경, 확인 방법은 링크의 이슈에 둔다. 완료 기준 칸이 없으면 이슈의 완료 기준을 따르라고 적는다. 끝은 PILOT'S DISCRETION 줄, READBACK 요청, `Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision.`
 
 - **FLIGHT PLAN**(`formatFlightPlan`): `dispatch release`가 Linear에서 이슈 본문을 읽고(읽기 전용) 지시서를 제안의 `message`로 저장한다. Linear를 못 읽어도 세 칸 없이 보낸다. send-guard는 전처럼 저장된 문구와 비교한다.
 - **다른 세션의 배정**(ENGINEERING, 사람): `GET /api/dispatch/flight/:key/brief?to=TEAM_X`가 같은 모양의 문구를 `{key, brief: "DIRECT", text}`로 준다. 손으로 쓴 지시서도 `BRIEF: DIRECT` 줄만 있으면 된다.

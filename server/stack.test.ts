@@ -61,7 +61,7 @@ test("쌓인 PR(14:41 전): base가 main이 아닌 #396~#398은 조건이 모두
   // 기본 브랜치를 모르면(아직 못 읽음) 가리지 않는다
   assert.equal(build(STACK, null).find((p) => p.number === 396)!.landing, "CLEARED");
   // CLEARED인 #395만 LAND 글을 받는다(쌓인 PR에는 repoSeq가 없다)
-  assert.match(landTextOf(1, "VCDO", 395, "VOC189", null), /^LANDING 순서 1번 \(VCDO\): PR #395/);
+  assert.match(landTextOf(1, "VCDO", 395, "VOC189", null), /^LANDING sequence 1 \(VCDO\): PR #395/);
 });
 
 test("사슬 모양: 갈래가 있으면 번호가 작은 쪽으로 오르고, 순환 base도 멈춘다", () => {

@@ -228,3 +228,19 @@
 .fl-origin-mode {
   color: var(--faint);
 }
+
+/* ── CONTROL SESSIONS(ATC-130): 설정 창 AGENTS에서 옮겨 옴. 줄 모양은 설정의 .config-* 그대로 ── */
+.fl-control {
+  margin: var(--space-4) 0 0;
+  scroll-margin-top: calc(var(--space-12) * 2);
+}
+.fl-control:focus {
+  outline: none;
+}
+.fl-control:focus-visible {
+  outline: 1px solid var(--line-strong);
+  outline-offset: var(--space-1);
+}
+.fl-control .label {
+  margin: 0 0 var(--space-2);
+}

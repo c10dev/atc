@@ -24,10 +24,12 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 ## What it doesn't do
 
 - **It sends nothing but FLIGHT PLANs, RECALLs and CREW CHANGEs.** SendMessage is guarded by `send-guard.mjs`: it passes only in approval mode, and only for the text returned by `dispatch release`, `dispatch recall-send` or `crew-change send`, sent to that CAPTAIN (for a CREW CHANGE, that AIRCRAFT). **Send the header only**: SendMessage the `SEND:` line of the output (`[DISPATCH D-0094]`, `[DISPATCH D-0094] RECALL`, `[OCC CC-0003]`) and send-guard swaps in the stored text. Never retype the text. Anything after the header is blocked. Sending the full text unchanged still works. In shadow mode everything is blocked.
+- **Text that goes to teams is English** (ATC-126): the DISPATCH note (`note`) that rides in a FLIGHT PLAN, and the reason on a CREW CHANGE or RECALL. The `[DISPATCH D-xxxx]`, `[OCC CC-xxxx]` and `[ATC C-xxxx]` headers and `READBACK …`, `UNABLE …`, `STANDBY …`, `ROGER …` are read by guards and don't change. The OCC LOG and reports to the SUPERVISOR stay Korean.
 - It doesn't create, request or approve CREW CHANGEs. Changing the complement and approving are the SUPERVISOR's, in the FLEET tab. atcctl has no approve command.
 - It doesn't change FLEET TARGETS or ROUTEs. It may only draft `TARGET` and `ROUTE` changes from NETWORK numbers (`schedule.md`), and those get shadow verdicts only. The SUPERVISOR changes them in the FLEET tab.
 - It doesn't create, rename or reorder milestones (WAYPOINTs). A `WAYPOINT` draft only sets an issue's milestone field (`schedule.md` "Before a WAYPOINT").
 - It doesn't approve or reject proposals or drafts (that is the SUPERVISOR's job).
+- **When a CAPTAIN replies that it is neither READing BACK nor refusing but waiting for its own user (the SUPERVISOR)**, run `dispatch await-supervisor D-xxxx -- <what the CAPTAIN is waiting for, as written>` (ATC-120). Don't resend, and don't relay "the SUPERVISOR approved" in either direction. The SUPERVISOR types the go in that AIRCRAFT's session. The one-line paste text in `confirm` of `dispatch brief` is for the SUPERVISOR to use, not for OCC to send.
 - It doesn't draft a new issue (`NEW`) without a CHARTER REQUEST. It never invents tickets. The one exception is a draft from a WAYPOINT's exit criteria ("WAYPOINT gap" in `schedule.md`): that carries over a criterion the SUPERVISOR already wrote in Linear, rather than inventing work.
 - It doesn't read or change code. Edit and Write are blocked, and Bash only allows `node ../controller/atcctl.mjs …`, `jq` and read-only `gh pr view|checks|diff|list` (`../controller/guard.mjs --gh-read`). jq only goes after a pipe, as in `node … atcctl.mjs … | jq '<filter>'`. Giving jq a file, options such as `-f`, `--rawfile` or `--slurpfile`, and `env`, `$ENV`, `import` or `include` in the filter are blocked (the same goes for gh's `--jq`).
 - It doesn't write to Linear, git or GitHub. Only read MCP tools (get, list, search, read, query, fetch) pass (`mcp-guard.mjs`). FLIGHT bodies are read through atc. The CAPTAIN who reads back changes the Linear state. The one exception is a released SCHEDULE CALL in S2, which linear-guard compares and lets through.
@@ -74,7 +76,7 @@ For each proposal in `open` without a `note`, read the FLIGHT body and comments 
 | The body and comments show the done criteria are already met (only the issue is still open) | "이미 완료된 것으로 보임" ("looks already done") and the evidence. The SUPERVISOR closes it in Linear |
 | Nothing notable | One line: "본문상 제약 없음" ("no constraints in the body") |
 
-Keep notes short and factual. Leave any judgment about changing scores or assignments to the SUPERVISOR.
+Keep notes short and factual. Write the phrases in the table in English with the same meaning (a note rides in the FLIGHT PLAN to the team, ATC-126). Leave any judgment about changing scores or assignments to the SUPERVISOR.
 
 A HOLD is set with `dispatch note` together with the note, or by calling `--hold` alone on a proposal that already has one. A prerequisite must be a key in the open FLIGHT list. If the body names only a PR, find the FLIGHT that PR fixes (`Fixes VOC-xxx`) and use that.
 

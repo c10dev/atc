@@ -16,6 +16,8 @@ import { readLinear } from "./sources/linear.ts";
 import { buildPulls, strandedMessage, strandedOf } from "./landing.ts";
 import { inspectionOf, loadMcc, readMccRecords } from "./mcc.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
+import { allProposals } from "./proposals.ts";
+import { awaitSupervisorAlerts } from "./supervisor-confirm.ts";
 import { accountOf, CONTROL_DIRS, type ControlName, controlAccountOf, controlNameOf } from "./crew.ts";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
@@ -188,6 +190,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
   // health ALERT: NETWORK는 기계에 한 번, LIMIT은 같은 ACCOUNT끼리(ATC-51), ACCOUNT를 모르면 같은 reset끼리 한 번(docs/fleet.md 8.8)
   // NEEDS YOU(ATC-99): 백그라운드 job이 blocked로 몇 분 넘게 사람을 기다리면 경보. state가 blocked를 벗어나면 저절로 사라진다
   for (const a of blockedAlerts(sessions, healthAt, config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!)) alerts.push({ kind: "health", key: a.key, message: a.message, sessionIds: a.sessionIds });
+  // AWAITING SUPERVISOR(ATC-120): CAPTAIN이 READBACK도 거절도 아닌 채 사용자의 go를 기다린다. 같은 경보 경로, 제안마다 한 번(key)
+  for (const a of awaitSupervisorAlerts(allProposals(), sessions)) alerts.push({ kind: "health", key: a.key, message: a.message, sessionIds: a.sessionIds });
   for (const a of healthAlerts(sessions.map((x) => ({ sessionId: x.id, name: x.name, health: x.health, account: accountOfSession(x) })), healthAt)) {
     alerts.push({ kind: "health", key: a.key, message: a.message, sessionIds: a.sessionIds });
   }

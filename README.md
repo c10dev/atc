@@ -235,16 +235,16 @@ A Claude session opened in the `controller/` folder becomes the TOWER session (C
 - Role and decision rules: [controller/CLAUDE.en.md](controller/CLAUDE.en.md) (English translation; the session loads the Korean [CLAUDE.md](controller/CLAUDE.md)). One pass: [controller/.claude/skills/tick](controller/.claude/skills/tick/SKILL.en.md).
 - The CONTROLLER doesn't fly: Edit and Write are left out of its permissions, and `guard.mjs` blocks every Bash command except `node atcctl.mjs …` and `jq`. Redirection is blocked, and so are command substitution and variable expansion anywhere outside single quotes (`$(…)`, backticks, `${…}`, `$VAR`), because the shell expands them even inside double quotes. Put message text in single quotes.
 - CLEARANCE flow: `atcctl issue` records the CLEARANCE in atc and returns a fixed message → the CONTROLLER sends it to the team session with SendMessage → when the team replies `READBACK C-0007`, the CONTROLLER runs `atcctl readback`. FLIGHT STRIPS show it as awaiting READBACK (blue), NO READBACK after 10 minutes (orange), or READBACK (dotted).
-- Example of the fixed message (`formatClearance` in `server/controller.ts`; the instruction line is in Korean):
+- Example of the fixed message (`formatClearance` in `server/controller.ts`; the instruction line is written by TOWER, in English):
 
   ```
   [ATC C-0007] BRAVO (TEAM_B) · HOLD
   STAND vocado-voc-175 · FLIGHT VOC175
-  앞 팀이 끝나 HANDOFF할 때까지 이 STAND를 건드리지 말 것
-  — 받았으면 이 메시지에 "READBACK C-0007", 못 하면 "UNABLE C-0007 — 사유", 시간이 필요하면 "STANDBY C-0007"로 답장해 주세요.
+  Do not touch this STAND until the team ahead finishes and hands it off
+  — Reply to this message with "READBACK C-0007" if you take it, "UNABLE C-0007 — reason" if you cannot, or "STANDBY C-0007" if you need time.
   ```
 
-  (Roughly: "Don't touch this STAND until the team ahead finishes and hands it off. Reply "READBACK C-0007" once received, "UNABLE C-0007 — reason" if you can't, or "STANDBY C-0007" if you need time." Notices such as INFO ask for "ROGER C-0007" instead; see [docs/guide/radio.md](docs/guide/radio.md), ATC-122.)
+  Notices such as INFO ask for "ROGER C-0007" instead; see [docs/guide/radio.md](docs/guide/radio.md), ATC-122. Text that sessions send each other is English (ATC-126).
 
 - If the team session and the TOWER session use different permission modes (auto-approve or not), messages may wait for user approval.
 

@@ -11,14 +11,17 @@ import { type Actuals, computeActuals, loadPricedLogbook } from "./logbook.ts";
 import { type FleetFuel, fleetFuelOf, type PricedEntry, type TripFuel, tripCheckOf, type TripVerdict } from "./fuel-view.ts";
 import { loadReportThreshold, type ReportView } from "./judges/store.ts";
 import { needsDecision } from "./judges/report.ts";
-import { type AccountHold, accountHoldOf, accountHolds, type Health } from "./health.ts";
+import type { AccountHold, Health } from "./health.ts";
 import type { FuelRemaining } from "./fuel-remaining.ts";
 import { type ContextSize, type ContextView, contextView } from "./fuel-context.ts";
 import type { Snapshot } from "./model.ts";
-import { fleetKeyOf, registrationNamesOf, registrationOf, regKey } from "./registration.ts";
+import { fleetKeyOf, registrationOf, regKey } from "./registration.ts";
 import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state.ts";
 import type { SessionOrigin } from "./session-origin.ts";
 import type { Job } from "./job-state.ts";
+import { flightDetailOf, liveViewOf } from "./fleet-live.ts";
+
+export { flightDetailOf };
 
 // FLEET 등록부(~/.local/state/atc/fleet.json). 팀(AIRCRAFT)마다 CREW COMPLEMENT, TYPE RATING, ROUTE, TARGETS를 적는다.
 // 설계: docs/fleet.md. 타입·기본값·판정은 crew.ts에 있고, planner도 그것을 쓴다.
@@ -308,16 +311,6 @@ export function fuelRecentOf(e: PricedEntry, all: readonly PricedEntry[], now: n
   };
 }
 
-export function flightDetailOf(s: Pick<Snapshot, "workspaces"> & Partial<Pick<Snapshot, "pulls">>, key: string): FlightDetail {
-  const ws = s.workspaces.find((w) => w.ticketKey === key && !w.isMain) ?? s.workspaces.find((w) => w.ticketKey === key);
-  const pr = s.pulls?.find((p) => p.ticketKey === key);
-  return {
-    commit: ws && ws.head ? { sha: ws.head.slice(0, 7), at: ws.lastCommitAt } : null,
-    pushed: ws?.pushed ?? null,
-    pr: pr ? { number: pr.number, url: pr.url, draft: pr.draft } : null,
-  };
-}
-
 // 스냅샷의 TEAM 세션과 등록부를 합친다. 세션이 없는 등록 항목도 "absent"로 보인다.
 export function fleetView(
   s: Pick<Snapshot, "sessions" | "claims" | "workspaces" | "airports"> & Partial<Pick<Snapshot, "tickets" | "fuel" | "pulls" | "restarting">>,
@@ -328,26 +321,23 @@ export function fleetView(
 ): AircraftView[] {
   const team = new RegExp(teamPattern, "i");
   const codeOf = (repo: string | null) => s.airports.find((a) => a.repo === repo)?.code ?? null;
-  const wsTicket = new Map(s.workspaces.map((w) => [w.path, w.ticketKey]));
   const live = s.sessions.filter((x) => team.test(x.name) && x.status !== "dead");
   // 세션 이름은 `Team G`, `team_g`처럼 달라도 한 REGISTRATION으로 읽는다(ATC-67)
   const regOf = (name: string) => regKey(name, teamPattern);
-  const liveNames = registrationNamesOf(live.map((x) => x.name), teamPattern);
   const names = [...new Set([...live.map((x) => regOf(x.name)), ...Object.keys(fleet.aircraft).map(regOf)])].sort();
-  const holds = accountHolds(live.map((x) => ({ name: x.name, account: accountOf(fleet, x.name), health: x.health })), now);
+  // 라이브 부분(상태·FLYING·마지막 활동·health·chips)은 스냅샷만으로 셈한다(fleet-live.ts, 화면도 같이 쓴다)
+  const liveOf = liveViewOf(s, names, teamPattern, (n) => accountOf(fleet, n), now);
   const reportMin = loadReportThreshold();
   return names.map((reg) => {
     const session = live.find((x) => regOf(x.name) === reg);
+    const lv = liveOf.get(reg)!;
     const key = fleetKeyOf(Object.keys(fleet.aircraft), reg, teamPattern);
     const profile: AircraftProfile = (key ? fleet.aircraft[key] : undefined) ?? {};
-    const seen = liveNames.get(reg);
-    const held = session ? s.claims.filter((c) => c.sessionId === session.id && c.state === "active") : [];
-    const flying = [...new Set(held.map((c) => wsTicket.get(c.workspacePath)).filter(Boolean) as string[])];
     const actuals = computeActuals(logbook, reg, now);
     return {
       registration: reg,
       callsign: callsign({ name: reg }),
-      status: session ? session.status : "absent",
+      ...lv,
       base: profile.base ?? (session ? codeOf(session.repo) : null),
       complement: profile.complement ?? fleet.defaults.complement,
       complementIsDefault: !profile.complement,
@@ -356,22 +346,9 @@ export function fleetView(
       routes: profile.routes ?? [],
       targets: profile.targets ?? {},
       note: profile.note ?? null,
-      flying,
-      flights: [
-        ...flying.map((key) => ({ key, title: s.tickets?.find((t) => t.key === key)?.title ?? null, detail: flightDetailOf(s, key) })),
-        ...(session?.keptFlights ?? []).filter((k) => !flying.includes(k)).map((key) => ({ key, title: s.tickets?.find((t) => t.key === key)?.title ?? null, kept: true as const, detail: flightDetailOf(s, key) })),
-      ],
-      flyingSince: held.map((c) => c.since).sort()[0] ?? null,
-      lastActiveAt: session?.lastActiveAt ?? null,
-      origin: session ? (session.origin ?? "unknown") : null,
-      permissionMode: session?.permissionMode ?? null,
-      restarting: session ? null : (s.restarting?.find((r) => r.registration === reg) ?? null),
-      health: session?.health ?? null,
-      job: session?.job ?? null,
       report: session?.report ? { ...session.report, decision: needsDecision(session.report, reportMin) } : null,
       account: accountOf(fleet, reg),
       accountIsDefault: accountOf(fleet, reg) != null && !profile.account,
-      accountHold: session ? accountHoldOf(holds, accountOf(fleet, reg), reg) : null,
       fuel: s.fuel?.[reg] ?? null,
       configuration: profile.configuration ?? null,
       enteredAt: profile.enteredAt ?? null,
@@ -380,8 +357,6 @@ export function fleetView(
       actuals,
       fuelBurn: fleetFuelOf(reg, logbook, now),
       fuelRecent: actuals.recent.map((e) => fuelRecentOf(e, logbook, now)),
-      sessionName: seen?.rename ?? null,
-      sessionConflict: seen?.conflict ? seen.names : null,
     };
   });
 }
@@ -435,26 +410,26 @@ export function entryIntoService(
   return { registration: reg, profile: { ...profile, configuration: cfgId, enteredAt: now } };
 }
 
-// CREW BRIEFING: 새 세션에 붙여 넣을 시작 지시문. 팀 세션은 vocado CLAUDE.md를 따르므로 한국어로 쓴다.
+// CREW BRIEFING: 새 세션에 붙여 넣을 시작 지시문. 에이전트끼리 주고받는 글이라 영어로 쓴다(ATC-126). 항공 용어와 머리말은 그대로.
 export function crewBriefing(a: AircraftView, repo: string | null, mode: "shadow" | "approval"): string {
   const crew = a.complement.map((m) => `- ${m.position}: ${m.agent}${m.limits?.length ? ` (${m.limits.join(", ")})` : ""}`);
   const lines = [
     `[ATC FLEET] CREW BRIEFING · ${a.callsign} (${a.registration})${a.base ? ` · AIRPORT ${a.base}` : ""}`,
     "",
-    `이 세션의 이름은 ${a.registration}입니다.${repo ? ` 작업 폴더는 ${repo}입니다.` : ""} 당신은 이 팀의 CAPTAIN(리더)이고, 그 저장소의 CLAUDE.md 팀 규칙을 따릅니다.`,
+    `This session is named ${a.registration}.${repo ? ` Its working folder is ${repo}.` : ""} You are this team's CAPTAIN (lead) and follow the team rules in that repository's CLAUDE.md.`,
     "",
-    "CREW COMPLEMENT (팀원을 만들 때 이 구성과 모델을 씁니다)",
+    "CREW COMPLEMENT (use this composition and these models when you create crew)",
     ...crew,
     "",
-    `TYPE RATING: ${a.ratings.join(", ") || "없음"} — 이 범위의 FLIGHT가 배정됩니다.${a.ratings.includes("SEC") ? " SEC 작업은 Codex Engineering Task 템플릿을 쓰고 flash-helper(DeepSeek)는 쓰지 않습니다." : " SEC(DB·보안·권리) 작업은 받지 않습니다."}`,
-    `ROUTE: ${a.routes.join(", ") || "지정 없음"}`,
+    `TYPE RATING: ${a.ratings.join(", ") || "none"} — FLIGHTs in this range are assigned to you.${a.ratings.includes("SEC") ? " Use the Codex Engineering Task template for SEC work, not flash-helper (DeepSeek)." : " You do not take SEC (DB, security, rights) work."}`,
+    `ROUTE: ${a.routes.join(", ") || "unassigned"}`,
     "",
-    "배정과 교신",
-    `- Linear 라벨이 tail:${a.registration}인 이슈는 이 팀 몫입니다. Linear에는 CAPTAIN만 씁니다.`,
-    "- atc TOWER가 [ATC C-xxxx]로 시작하는 CLEARANCE를 보내면 그 메시지에 READBACK C-xxxx로 답합니다.",
-    ...(mode === "approval" ? ["- atc OCC가 [DISPATCH D-xxxx] FLIGHT PLAN을 보내면 맡을 때 READBACK D-xxxx, 못 맡으면 사유로 답합니다."] : []),
+    "Assignments and messages",
+    `- Issues labeled tail:${a.registration} in Linear are this team's. Only the CAPTAIN writes to Linear.`,
+    "- When atc TOWER sends a CLEARANCE starting with [ATC C-xxxx], answer that message with READBACK C-xxxx.",
+    ...(mode === "approval" ? ["- When atc OCC sends a [DISPATCH D-xxxx] FLIGHT PLAN, answer READBACK D-xxxx if you take it, or UNABLE D-xxxx — reason if you cannot."] : []),
     "",
-    `준비가 끝나면 \"${a.registration} IN SERVICE\" 한 줄만 남기고 배정을 기다리세요.`,
+    `When ready, leave only the line \"${a.registration} IN SERVICE\" and wait for assignments.`,
   ];
   return lines.join("\n");
 }
@@ -486,6 +461,7 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>, cont
       airports: s.airports.map((a) => a.code),
       defaultBase: defaultBase(s, cfg.teamPattern),
       dispatchMode: cfg.mode, // approval(2b)일 때만 CREW CHANGE 승인을 보인다
+      teamPattern: cfg.teamPattern, // 화면이 스냅샷으로 라이브 값을 덮을 때 같은 REGISTRATION 규칙을 쓴다(ATC-100)
       nextRegistration: nextRegistration([...aircraft.map((a) => a.registration), ...s.sessions.map((x) => x.name)]),
     });
   });

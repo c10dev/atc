@@ -33,7 +33,7 @@ export const STAGES = ["readback", "departed", "prOpened", "cleared", "arrived"]
 export type Stage = (typeof STAGES)[number];
 
 export interface FollowIssue {
-  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health" | "fuel" | "report" | "unable" | "launch";
+  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health" | "fuel" | "report" | "unable" | "launch" | "await-supervisor";
   kind: "delay" | "mismatch";
   severity: "warn" | "info"; // info: 보여 주기만(착륙 대기는 SUPERVISOR 몫, 머지 뒤 Done 아님은 CLOSE 초안 몫)
   text: string;
@@ -112,7 +112,7 @@ const isClosed = (t: Ticket | undefined) => Boolean(t && (t.stateType === "compl
 export function targetsOf(inp: Pick<FollowInput, "proposals" | "tickets">): { flight: string; proposal: Proposal | null; aircraft: string | null }[] {
   const out = new Map<string, { flight: string; proposal: Proposal | null; aircraft: string | null }>();
   const live = inp.proposals
-    .filter((p) => p.kind === "ASSIGN" && (p.status === "accepted" || p.status === "departed" || p.status === "recalling" || p.status === "arrived"))
+    .filter((p) => p.kind === "ASSIGN" && (p.status === "accepted" || p.status === "departed" || p.status === "recalling" || p.status === "arrived" || (p.status === "sent" && p.awaitSupervisor)))
     .sort((a, b) => a.statusAt.localeCompare(b.statusAt));
   for (const p of live) out.set(p.flight, { flight: p.flight, proposal: p, aircraft: p.aircraftName });
   for (const t of inp.tickets) {
@@ -180,6 +180,10 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
   if (!standFree && isReview(t) && !open && !merged) issues.push({ code: "review-no-pr", kind: "mismatch", severity: "warn", text: `Linear는 ${t!.state}인데 PR이 없음`, since: t!.updatedAt ?? iso(inp.now) });
   if (!standFree && isDone(t) && !merged) issues.push({ code: "done-not-merged", kind: "mismatch", severity: "warn", text: `Linear는 ${t!.state}인데 ${open ? `PR #${open.number}이 머지되지 않음` : "머지된 PR이 없음"}`, since: t!.updatedAt ?? iso(inp.now) });
   if (!standFree && merged && t && !isClosed(t)) issues.push({ code: "merged-not-done", kind: "mismatch", severity: "info", text: `PR #${merged.pr.number}은 머지됐는데 Linear는 ${t.state} — CLOSE 초안 대상`, since: merged.arrivedAt });
+
+  // AWAITING SUPERVISOR(ATC-120): CAPTAIN이 READBACK도 거절도 아닌 채 사용자의 go를 기다린다. key에 제안을 넣어 제안마다 한 번 보고한다
+  if (proposal?.status === "sent" && proposal.awaitSupervisor)
+    issues.push({ code: "await-supervisor", kind: "delay", severity: "warn", text: `${proposal.aircraftName ?? "CAPTAIN"}가 ${proposal.id}에서 SUPERVISOR의 go를 기다림 — ${proposal.awaitSupervisor.reason}. SUPERVISOR가 그 세션에서 직접 go를 친다(atc는 보내지 않는다)`, since: proposal.awaitSupervisor.at });
 
   return {
     flight,

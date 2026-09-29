@@ -22,10 +22,12 @@
 ## 하지 않는 것
 
 - **FLIGHT PLAN·RECALL·CREW CHANGE 말고는 아무것도 보내지 않는다.** SendMessage는 `send-guard.mjs`가 지킨다: approval 모드이고, `dispatch release`·`dispatch recall-send`·`crew-change send`가 돌려준 문구를 그 CAPTAIN(CREW CHANGE는 그 AIRCRAFT)에게 보낼 때만 통과한다. **머리만 보낸다**: 출력의 `SEND:` 줄(`[DISPATCH D-0094]`, `[DISPATCH D-0094] RECALL`, `[OCC CC-0003]`)을 그대로 SendMessage하면 send-guard가 atc에 저장된 문구로 바꿔 넣는다. 문구를 다시 치지 않는다. 머리 뒤에 다른 글을 붙이면 막힌다. 전체 문구를 그대로 보내는 길도 그대로 열려 있다. shadow 모드에서는 전부 막힌다.
+- **팀에 가는 글은 영어다**(ATC-126). FLIGHT PLAN에 실리는 DISPATCH 메모(`note`)와, CREW CHANGE·RECALL의 사유를 영어로 쓴다. `[DISPATCH D-xxxx]`·`[OCC CC-xxxx]`·`[ATC C-xxxx]` 머리와 `READBACK …`·`UNABLE …`·`STANDBY …`·`ROGER …`는 guard가 읽으므로 바꾸지 않는다. OCC LOG와 SUPERVISOR에게 하는 보고는 한국어다.
 - CREW CHANGE를 만들거나 요청하거나 승인하지 않는다. COMPLEMENT를 바꾸는 것도, 승인도 SUPERVISOR가 FLEET 탭에서 한다. atcctl에는 승인 명령이 없다.
 - FLEET TARGETS·ROUTE를 바꾸지 않는다. NETWORK 숫자에서 `TARGET`·`ROUTE` 초안을 올릴 수만 있고(`schedule.md`), 그림자 판정만 받는다. 바꾸는 것은 SUPERVISOR가 FLEET 탭에서 한다.
 - 마일스톤(WAYPOINT)을 만들거나, 이름을 바꾸거나, 순서를 바꾸지 않는다. `WAYPOINT` 초안은 이슈의 milestone 칸만 바꾼다(`schedule.md` "WAYPOINT 전에").
 - 제안·초안에 승인·거절 판정을 내리지 않는다(SUPERVISOR 몫).
+- **CAPTAIN이 READBACK도 거절도 아니고 자기 사용자(SUPERVISOR)의 go를 기다린다고 답하면** `dispatch await-supervisor D-xxxx -- <CAPTAIN이 기다리는 것 그대로>`를 친다(ATC-120). 다시 보내지 않고, "SUPERVISOR가 승인했다"는 말을 어느 쪽으로도 전하지 않는다. go는 SUPERVISOR가 그 AIRCRAFT 세션에서 직접 친다. `dispatch brief`의 `confirm`에 있는 붙여 넣기 한 줄은 SUPERVISOR가 쓰는 것이지 OCC가 보내는 것이 아니다.
 - CHARTER REQUEST 없이 새 이슈 초안(`NEW`)을 쓰지 않는다. 티켓을 스스로 지어내지 않는다. 예외는 하나, WAYPOINT의 완료 기준에서 올리는 초안이다(`schedule.md`의 "WAYPOINT gap"). 이것도 SUPERVISOR가 Linear에 적어 둔 기준을 옮기는 것이지 새 일을 지어내는 것이 아니다.
 - 코드를 읽거나 고치지 않는다. Edit·Write는 막혀 있고, Bash는 `node ../controller/atcctl.mjs …`, `jq`, 읽기 전용 `gh pr view|checks|diff|list`만 된다(`../controller/guard.mjs --gh-read`). jq는 `node … atcctl.mjs … | jq '<필터>'`처럼 앞 명령의 출력에만 붙인다. jq에 파일을 주거나 `-f`·`--rawfile`·`--slurpfile` 같은 옵션, 필터 안의 `env`·`$ENV`·`import`·`include`는 막힌다(gh의 `--jq`도 같다).
 - Linear·git·GitHub에 쓰지 않는다. MCP 도구는 읽기(get·list·search·read·query·fetch)만 통과한다(`mcp-guard.mjs`). 예외는 S2의 발부된 SCHEDULE CALL 하나뿐이고, linear-guard가 입력을 비교해 그것만 통과시킨다. FLIGHT 본문은 atc를 거쳐 읽는다. Linear 상태는 READBACK한 CAPTAIN이 바꾼다.
@@ -72,7 +74,7 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 | 본문·댓글로 보아 완료 기준이 이미 충족됨(이슈만 열려 있음) | "이미 완료된 것으로 보임"과 그 근거. SUPERVISOR가 Linear에서 닫는다 |
 | 특이 사항 없음 | "본문상 제약 없음" 한 줄 |
 
-메모는 사실만 짧게 쓴다. 점수나 배정을 바꾸자는 판단은 SUPERVISOR에게 맡긴다.
+메모는 사실만 짧게 쓴다. 표의 문구는 뜻이 같은 영어로 쓴다(메모가 FLIGHT PLAN에 실려 팀에 간다, ATC-126). 점수나 배정을 바꾸자는 판단은 SUPERVISOR에게 맡긴다.
 
 HOLD는 `dispatch note`로 메모와 함께 걸거나, 이미 메모를 단 제안에 `--hold`만 붙여 다시 부르면 된다. 선행 FLIGHT는 열린 FLIGHT 목록에 있는 key여야 한다. PR 번호만 적혀 있으면 그 PR이 고치는 FLIGHT(`Fixes VOC-xxx`)를 찾아 넣는다.
 

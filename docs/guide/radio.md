@@ -14,6 +14,7 @@
 | `STANDBY <id>` | 받았지만 시간이 필요하다 | W/U 메시지. 열린 채 남고, READBACK 10분 overdue를 첫 STANDBY부터 한 번 다시 센다. 두 번째 STANDBY는 기록만 된다 |
 
 - RECALL은 `READBACK D-xxxx RECALL`로만 닫힌다(멈추라는 지시라 UNABLE·STANDBY가 없다).
+- CAPTAIN이 READBACK도 UNABLE도 아니고 "내 사용자의 go를 기다린다"고 답하면(사용자 등급 파일을 만질 때 흔하다) OCC가 `dispatch await-supervisor`로 기록한다. 제안은 `sent` 그대로 `AWAITING SUPERVISOR`로 보이고 경보가 한 번 뜬다. OCC는 다시 보내지 않고 어떤 승인도 전하지 않는다: go는 사용자가 그 AIRCRAFT 세션에서 직접 친다(ATC-120).
 - 받을 수 없는 답(지시에 ROGER, 알림에 STANDBY)은 관제 세션이 기록하려 할 때 atc가 거절한다. 그때는 SUPERVISOR에게 올라간다.
 - 답은 관제 세션(TOWER·OCC)이 읽고 `atcctl`로 기록한다. STRIPS 도장에 `ROGER`·`STANDBY`·`UNABLE — 사유`가, DISPATCH IN FLIGHT 줄에 `STANDBY`가 보인다. FLIGHT가 있는 UNABLE은 FLIGHT FOLLOWING에 하루 뜨고, CREW CHANGE의 UNABLE은 `crew-change brief`의 `unable`에 하루 남는다.
 
@@ -22,8 +23,8 @@
 ```
 [ATC C-0007] BRAVO (TEAM_B) · HOLD
 STAND vocado-voc-175 · FLIGHT VOC175
-DELTA가 끝날 때까지 대기
-— 받았으면 이 메시지에 "READBACK C-0007", 못 하면 "UNABLE C-0007 — 사유", 시간이 필요하면 "STANDBY C-0007"로 답장해 주세요.
+Wait until DELTA finishes
+— Reply to this message with "READBACK C-0007" if you take it, "UNABLE C-0007 — reason" if you cannot, or "STANDBY C-0007" if you need time.
 ```
 
 - 팀 리더는 끝줄이 청하는 답으로 답한다(위 "답하는 말"). 형식 없이 거부하거나 질문하면 TOWER가 SUPERVISOR에게 전한다.
@@ -34,9 +35,9 @@ DELTA가 끝날 때까지 대기
 - `LAND`는 **CLEARED TO LAND**인 PR에만 나간다([개념](concepts.md)의 LANDING SEQUENCE). 받는 쪽은 그 PR의 STAND를 쥔 팀이다. 문구는 atc 서버가 만들고 TOWER는 그대로 보낸다. 번호는 같은 저장소·같은 base의 CLEARED PR 안에서 센 순번이다. 다른 저장소의 PR이 머지돼도 rebase할 필요가 없어서다:
 
   ```
-  LANDING 순서 1번 (VCDO): PR #389 (VOC52). 지금 LANDING 가능 — 머지 전에 base가 최신인지 확인.
-  LANDING 순서 2번 (VCDO): PR #393 (VOC191). 앞 PR #389 머지 뒤 rebase하고 LANDING.
-  LANDING 순서 1번 (TNNS): PR #21. 지금 LANDING 가능 — 머지 전에 base가 최신인지 확인.
+  LANDING sequence 1 (VCDO): PR #389 (VOC52). Clear to LAND now — check that base is current before merging.
+  LANDING sequence 2 (VCDO): PR #393 (VOC191). Rebase and LAND after the PR ahead (#389) merges.
+  LANDING sequence 1 (TNNS): PR #21. Clear to LAND now — check that base is current before merging.
   ```
 
   1번은 바로 머지해도 된다. 2번부터는 같은 저장소의 바로 앞 PR이 머지되기를 기다렸다가 rebase하고 LANDING한다. FLIGHT가 없는 PR은 괄호 부분이 빠진다.
@@ -45,8 +46,8 @@ DELTA가 끝날 때까지 대기
   ```
   [ATC C-0012] ECHO (TEAM_E) · INFO
   STAND vocado-voc-52-persistent-exec · FLIGHT VOC52
-  PR #389 LANDING 불가: 리뷰가 이전 커밋 3510a91에만 있음: head 4cbacd8에 리뷰 필요
-  — 받았으면 이 메시지에 "ROGER C-0012"로 답장해 주세요.
+  PR #389 cannot LAND: the review is only on the earlier commit 3510a91; head 4cbacd8 needs a review
+  — When received, reply to this message with "ROGER C-0012".
   ```
 
 - 같은 막힘으로는 다시 보내지 않는다. CI 진행 중이나 GitHub 계산 중처럼 기다리면 풀리는 것은 알리지 않는다.
@@ -61,16 +62,16 @@ BRIEF: DIRECT
 FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High
 <제목>
 <URL>
-목표: …
-완료 기준: …
-이 작업만의 제약: …
-DISPATCH 메모: CAUTION · …
-애매한 곳은 PILOT'S DISCRETION으로 합리적인 기본값을 고르고 PR에 적으세요.
-— 받았으면 이 메시지에 "READBACK D-0003", 못 하면 "UNABLE D-0003 — 사유", 시간이 필요하면 "STANDBY D-0003"로 답장해 주세요.
-끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요.
+Goal: …
+Done when: …
+Constraints: …
+DISPATCH note: CAUTION · …
+Where it is ambiguous, use PILOT'S DISCRETION: pick a reasonable default and record it in the PR.
+— Reply to this message with "READBACK D-0003" if you take it, "UNABLE D-0003 — reason" if you cannot, or "STANDBY D-0003" if you need time.
+Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision.
 ```
 
-- FLIGHT PLAN은 DIRECT 지시서다. 목표·완료 기준·이 작업만의 제약은 보낼 때 이슈 본문에서 옮긴다. 늘 지키는 규칙(CLAUDE.md, guard, 브랜치 보호)은 적지 않는다.
+- FLIGHT PLAN은 DIRECT 지시서다. Goal·Done when·Constraints(이슈 본문의 목표·완료 기준·제약)는 보낼 때 옮긴다. 세션끼리 주고받는 글이라 이 문구들은 영어다(ATC-126). 늘 지키는 규칙(CLAUDE.md, guard, 브랜치 보호)은 적지 않는다.
 - 사용자나 다른 세션이 팀에 직접 일을 줄 때도 같은 모양을 쓴다. `GET /api/dispatch/flight/<FLIGHT>/brief?to=TEAM_X`가 붙여 넣을 문구를 준다. 손으로 쓸 때도 `BRIEF: DIRECT` 줄을 넣어야 비교에 DIRECT로 잡힌다.
 
 - 지금은 2a(그림자 운용)라 보내지 않는다. 2b를 켜기 전에 vocado `CLAUDE.md`의 READBACK 규칙을 FLIGHT PLAN과 CREW CHANGE까지 넓힌다.
@@ -82,11 +83,11 @@ SUPERVISOR가 보낸 FLIGHT PLAN을 거둬들이면 OCC가 서버가 만든 문�
 
 ```
 [DISPATCH D-0003] RECALL · BRAVO (TEAM_B)
-FLIGHT VOC193 · AIRPORT VCDO — 이 FLIGHT PLAN을 거둬들입니다.
+FLIGHT VOC193 · AIRPORT VCDO — this FLIGHT PLAN is withdrawn.
 권한 정리
-사유: 우선순위 바뀜
-작업을 멈추세요. STAND(워크트리)는 정리하지 말고 그대로 두세요 — 다른 AIRCRAFT가 이어받을 수 있게.
-— 받았으면 이 메시지에 "READBACK D-0003 RECALL"로 답장해 주세요.
+Reason: 우선순위 바뀜
+Stop work. Do not clean up the STAND (worktree); leave it as is — so another AIRCRAFT can pick it up.
+— When received, reply to this message with "READBACK D-0003 RECALL".
 ```
 
 - CAPTAIN은 작업을 멈추고, 워크트리는 그대로 두고, `READBACK D-0003 RECALL`로 답한다(RECALL을 꼭 붙인다).
@@ -99,14 +100,14 @@ FLIGHT VOC193 · AIRPORT VCDO — 이 FLIGHT PLAN을 거둬들입니다.
 ```
 [OCC CC-0001] CREW CHANGE · HOTEL (TEAM_H)
 
-TEAM_H CAPTAIN, SUPERVISOR가 이 AIRCRAFT의 CREW COMPLEMENT를 바꿨습니다. 아래대로 팀원을 바꿔 주세요.
+TEAM_H CAPTAIN, the SUPERVISOR changed this AIRCRAFT's CREW COMPLEMENT. Change your crew as follows.
 
-내리는 CREW (멈추고 더 부르지 않습니다)
+CREW leaving (stop them and do not call them again)
 - flash-helper: flash-helper (no BUILD, no CHECK verdicts, no SEC)
 …
-적용이 끝나면 "TEAM_H CREW CHANGE CC-0001 COMPLETE" 한 줄만 남기세요.
+When applied, leave only the line "TEAM_H CREW CHANGE CC-0001 COMPLETE".
 
-— 받았으면 이 메시지에 "READBACK CC-0001", 못 하면 "UNABLE CC-0001 — 사유", 시간이 필요하면 "STANDBY CC-0001"로 답장해 주세요.
+— Reply to this message with "READBACK CC-0001" if you take it, "UNABLE CC-0001 — reason" if you cannot, or "STANDBY CC-0001" if you need time.
 ```
 
 - CAPTAIN은 받으면 `READBACK CC-0001`로 답하고, 팀원을 바꾼 뒤 `COMPLETE` 한 줄을 남긴다. OCC가 READBACK을 기록한다(`crew-change readback`).
