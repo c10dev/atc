@@ -7,6 +7,15 @@
   border-radius: var(--radius);
   font-size: var(--text-sm);
 }
+/* 예외 줄의 "전체" 링크 버튼: 머리줄 오른쪽 끝, 늘어나지 않게 */
+.ff-full {
+  margin-left: auto;
+  flex: none;
+}
+.ff-more {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+}
 .ff-head {
   display: flex;
   flex-wrap: wrap;

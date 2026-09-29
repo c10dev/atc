@@ -5,8 +5,10 @@ import type { TailSignal } from "../../../server/schedule-tail.ts";
 import type { RouteWithoutWaypoints, WaypointCandidate } from "../../../server/schedule-waypoint.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
+import { scheduleLineParts } from "../readiness-line.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { PriorityMark } from "../ui.tsx";
+import { ReadinessFold, useFoldOpen } from "./ReadinessFold.tsx";
 import "./Schedule.css";
 
 // OCC SCHEDULE — OCC가 Linear에 쓸 변경(CLASSIFY 라벨, PRIORITIZE 우선순위, TAIL tail:TEAM_X, WAYPOINT 마일스톤, NEW 새 이슈, CLOSE 닫기)을 초안으로 남긴다.
@@ -236,6 +238,7 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
   const draftsHead = useRef<HTMLHeadingElement>(null);
+  const [foldOpen, setFoldOpen] = useFoldOpen("schedule");
 
   const load = useCallback(async () => {
     try {
@@ -328,8 +331,6 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
         {notice?.text}
       </p>
 
-      <Gate gate={gate} judges={brief.judges} />
-
       {(brief.slips?.length ?? 0) > 0 && (
         <>
           <h2 className="label">
@@ -361,34 +362,6 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
           <p className="faint sc-slips-more">
             <a href="#network">NETWORK → ROUTE MAP</a>
           </p>
-        </>
-      )}
-
-      {(brief.routesWithoutWaypoints?.length ?? 0) > 0 && (
-        <>
-          <h2 className="label">
-            ROUTES WITHOUT WAYPOINTS <em>열린 FLIGHT가 있는데 WAYPOINT(Linear 마일스톤)가 없는 ROUTE — ETA를 셀 수 없다. OCC가 새것을 한 번 보고하고, WAYPOINT는 SUPERVISOR가 Linear에서 만든다</em>
-          </h2>
-          <ul className="sc-slips sc-noway">
-            {brief.routesWithoutWaypoints!.map((x) => (
-              <li key={x.route}>
-                <span className="sc-slip-code c-no-waypoints">WAYPOINT 없음</span>
-                <span className="sc-slip-where">
-                  <b>{x.route}</b>
-                </span>
-                <span className="mono faint">열린 FLIGHT {x.open}</span>
-                <span className="faint">
-                  {x.reportedAt ? (
-                    <time dateTime={x.reportedAt} title={stamp(x.reportedAt, clock)}>
-                      OCC 보고 {timeAgo(x.reportedAt, now)}
-                    </time>
-                  ) : (
-                    "OCC 보고 전"
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
         </>
       )}
 
@@ -597,6 +570,39 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
       ) : (
         <p className="empty">최근 7일 동안 닫힌 초안 없음</p>
       )}
+
+      <ReadinessFold id="sc-readiness" open={foldOpen} onOpenChange={setFoldOpen} parts={scheduleLineParts(brief)}>
+        <Gate gate={gate} judges={brief.judges} />
+
+
+        {(brief.routesWithoutWaypoints?.length ?? 0) > 0 && (
+          <>
+            <h2 className="label">
+              ROUTES WITHOUT WAYPOINTS <em>열린 FLIGHT가 있는데 WAYPOINT(Linear 마일스톤)가 없는 ROUTE — ETA를 셀 수 없다. OCC가 새것을 한 번 보고하고, WAYPOINT는 SUPERVISOR가 Linear에서 만든다</em>
+            </h2>
+            <ul className="sc-slips sc-noway">
+              {brief.routesWithoutWaypoints!.map((x) => (
+                <li key={x.route}>
+                  <span className="sc-slip-code c-no-waypoints">WAYPOINT 없음</span>
+                  <span className="sc-slip-where">
+                    <b>{x.route}</b>
+                  </span>
+                  <span className="mono faint">열린 FLIGHT {x.open}</span>
+                  <span className="faint">
+                    {x.reportedAt ? (
+                      <time dateTime={x.reportedAt} title={stamp(x.reportedAt, clock)}>
+                        OCC 보고 {timeAgo(x.reportedAt, now)}
+                      </time>
+                    ) : (
+                      "OCC 보고 전"
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </ReadinessFold>
     </section>
     </ModeContext.Provider>
   );
