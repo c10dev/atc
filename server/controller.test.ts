@@ -168,15 +168,17 @@ test("세션 찾기: 이름·콜사인·ID, 겹치는 이름은 거절", () => {
   assert.match(resolveSession(s, "nobody") as string, /찾을 수 없음/);
 });
 
-test("CLEARANCE 문구: 콜사인·STAND·FLIGHT·READBACK 요청", () => {
+test("CLEARANCE 문구: 콜사인·STAND·FLIGHT·W/U 끝줄(HOLD는 READBACK·UNABLE·STANDBY)", () => {
   const c: Clearance = {
     id: "C-0007", at: iso(0), to: "s-b", toName: "TEAM_B", type: "HOLD", stand: `${WT}/vocado-voc-175`,
     flight: "VOC-175", text: "DELTA 작업이 끝날 때까지 대기", readbackAt: null, cancelledAt: null,
   };
   assert.equal(
     formatClearance(c, snapshot()),
-    '[ATC C-0007] BRAVO (TEAM_B) · HOLD\nSTAND vocado-voc-175 · FLIGHT VOC175\nDELTA 작업이 끝날 때까지 대기\n— 받았으면 이 메시지에 "READBACK C-0007"로 답장해 주세요.',
+    '[ATC C-0007] BRAVO (TEAM_B) · HOLD\nSTAND vocado-voc-175 · FLIGHT VOC175\nDELTA 작업이 끝날 때까지 대기\n— 받았으면 이 메시지에 "READBACK C-0007", 못 하면 "UNABLE C-0007 — 사유", 시간이 필요하면 "STANDBY C-0007"로 답장해 주세요.',
   );
+  // INFO·TRAFFIC·REPORT는 R: ROGER만 청한다(ATC-122)
+  assert.ok(formatClearance({ ...c, type: "INFO" }, snapshot()).endsWith('— 받았으면 이 메시지에 "ROGER C-0007"로 답장해 주세요.'));
 });
 
 test("OUTSTATION: 소속 AIRPORT 밖 STAND 점유, HANDOFF된 것과 소속 모르는 세션은 제외", async () => {

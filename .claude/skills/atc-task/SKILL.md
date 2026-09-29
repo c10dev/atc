@@ -11,7 +11,7 @@ description: Linear ATC 이슈 하나(ATC-n)를 atc 저장소에서 구현해 PR
 
 ATC-<n> 배정은 두 갈래로 온다. 어느 쪽이든 CAPTAIN이 그 메시지에 바로 답한다(루트 `CLAUDE.md` "교신").
 
-- **OCC(운항관제 세션)의 `[DISPATCH D-xxxx]` FLIGHT PLAN.** 대개 `BRIEF: DIRECT`와 함께 이슈 본문(목표·완료 기준·제약)을 메시지에 담아 온다. 맡으면 그 메시지에 `READBACK D-xxxx`로 답하고, 맡지 못하면 READBACK 대신 이유를 답한다. 일하는 중에 `[DISPATCH D-xxxx] RECALL`을 받으면 즉시 멈추고 `READBACK D-xxxx RECALL`로 답한다. 이때 최종 보고도 OCC에 보낸다(8절).
+- **OCC(운항관제 세션)의 `[DISPATCH D-xxxx]` FLIGHT PLAN.** 대개 `BRIEF: DIRECT`와 함께 이슈 본문(목표·완료 기준·제약)을 메시지에 담아 온다. 맡으면 그 메시지에 `READBACK D-xxxx`로 답하고, 맡지 못하면 `UNABLE D-xxxx — 사유`, 시간이 필요하면 `STANDBY D-xxxx`로 답한다(ATC-122). 일하는 중에 `[DISPATCH D-xxxx] RECALL`을 받으면 즉시 멈추고 `READBACK D-xxxx RECALL`로 답한다. 이때 최종 보고도 OCC에 보낸다(8절).
 - **ENGINEERING이나 사용자가 직접 맡기는 지시.** 아래 "1. 명세 읽기"대로 이슈를 읽고 `READBACK ATC-<n>`으로 그 세션에 답한다. 최종 보고도 그 세션에 보낸다(8절).
 
 ## 1. 명세 읽기

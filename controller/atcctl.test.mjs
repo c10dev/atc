@@ -204,13 +204,13 @@ test("dispatch crosscheck --code: 쉼표·여러 번, disagree에만", () => {
 });
 
 test("crew-change: brief | send <CC-ID> | readback <CC-ID>. 승인(approve)은 없다", () => {
-  assert.deepEqual(CREW_CHANGE_CMDS, ["brief", "send", "readback"]);
+  assert.deepEqual(CREW_CHANGE_CMDS, ["brief", "send", "readback", "unable", "standby"]);
   assert.deepEqual(parseCrewChange(argv("brief")), { action: "brief" });
   assert.deepEqual(parseCrewChange(argv("send CC-0003")), { action: "send", id: "CC-0003" });
   assert.deepEqual(parseCrewChange(argv("readback cc-0003")), { action: "readback", id: "CC-0003" });
   assert.throws(() => parseCrewChange(argv("approve CC-0003")), /승인은 SUPERVISOR/);
-  assert.throws(() => parseCrewChange(argv("delivered CC-0003")), /brief\|send\|readback/);
-  assert.throws(() => parseCrewChange([]), /brief\|send\|readback/);
+  assert.throws(() => parseCrewChange(argv("delivered CC-0003")), /brief\|send\|readback\|unable\|standby/);
+  assert.throws(() => parseCrewChange([]), /brief\|send\|readback\|unable\|standby/);
   assert.throws(() => parseCrewChange(argv("send")), /CREW CHANGE ID/);
   assert.throws(() => parseCrewChange(argv("send D-0003")), /CREW CHANGE ID/);
   assert.throws(() => parseCrewChange(argv("send CC-3")), /CREW CHANGE ID/);
@@ -391,4 +391,19 @@ test("sendOutput: SEND에 머리 한 줄만 먼저 내고 전체 문구는 로�
   assert.match(sendOutput("TEAM_B", "[DISPATCH D-0007] RECALL · X"), /\nSEND: \[DISPATCH D-0007\] RECALL\n---\n/);
   assert.match(sendOutput("TEAM_H", "[OCC CC-0003] CREW CHANGE · X"), /\nSEND: \[OCC CC-0003\]\n---\n/);
   assert.equal(sendOutput("TEAM_B", "머리 없음"), "SEND TO: TEAM_B\n---\n머리 없음");
+});
+
+test("CAPTAIN의 답(ATC-122): <ID> [-- 사유]. unable만 사유가 필요하고 나머지는 ID 뒤에 아무것도 받지 않는다", async () => {
+  const { parseAnswerArgs, CLEARANCE_ANSWERS } = await import("./atcctl.mjs");
+  assert.deepEqual(CLEARANCE_ANSWERS, ["readback", "roger", "unable", "standby", "cancel"]);
+  assert.deepEqual(parseAnswerArgs("roger", ["c-0007"]), { id: "C-0007" });
+  assert.deepEqual(parseAnswerArgs("standby", ["D-0003"]), { id: "D-0003" });
+  assert.deepEqual(parseAnswerArgs("unable", ["C-0007", "--", "PR이", "아직", "CI", "중"]), { id: "C-0007", reason: "PR이 아직 CI 중" });
+  assert.throws(() => parseAnswerArgs("unable", ["C-0007"]), /사유가 필요함/);
+  assert.throws(() => parseAnswerArgs("unable", ["C-0007", "--", " "]), /사유가 필요함/);
+  assert.throws(() => parseAnswerArgs("standby", ["C-0007", "extra"]), /알 수 없는 인자/);
+  assert.throws(() => parseAnswerArgs("roger", []), /ID가 필요함/);
+  assert.deepEqual(parseCrewChange(argv("unable CC-0003 -- 지금 FLIGHT 중")), { action: "unable", id: "CC-0003", reason: "지금 FLIGHT 중" });
+  assert.deepEqual(parseCrewChange(argv("standby cc-0003")), { action: "standby", id: "CC-0003" });
+  assert.throws(() => parseCrewChange(argv("unable CC-0003")), /사유가 필요함/);
 });

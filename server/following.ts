@@ -9,7 +9,7 @@ import { hasPr, type LogEntry, type PrEntry, loadLogbook, WAKE_EXPECT_MIN } from
 import type { Stranded } from "./landing.ts";
 import { type Health, healthLabel } from "./health.ts";
 import { type FuelRemaining, fuelUsedText, membersText } from "./fuel-remaining.ts";
-import type { PullRequest, Snapshot, Ticket, Workspace } from "./model.ts";
+import type { Clearance, PullRequest, Snapshot, Ticket, Workspace } from "./model.ts";
 import { allProposals, type Proposal, standFreeTicket } from "./proposals.ts";
 import { regKey } from "./registration.ts";
 import { needsDecision } from "./judges/report.ts";
@@ -32,7 +32,7 @@ export const STAGES = ["readback", "departed", "prOpened", "cleared", "arrived"]
 export type Stage = (typeof STAGES)[number];
 
 export interface FollowIssue {
-  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health" | "fuel" | "report";
+  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health" | "fuel" | "report" | "unable";
   kind: "delay" | "mismatch";
   severity: "warn" | "info"; // info: 보여 주기만(착륙 대기는 SUPERVISOR 몫, 머지 뒤 Done 아님은 CLOSE 초안 몫)
   text: string;
@@ -71,6 +71,29 @@ export interface FollowInput {
   health?: Map<string, Health>; // REGISTRATION(대문자) → 그 AIRCRAFT의 health(ATC-45)
   fuel?: Record<string, FuelRemaining>; // REGISTRATION(대문자) → 그 ACCOUNT의 FUEL REMAINING(ATC-55)
   reports?: Map<string, { id: string; at: string; p: number }>; // REGISTRATION → 마지막 턴에 CAPTAIN이 결정을 청한 것으로 판정된 것(ATC-89, 문턱을 넘은 것만)
+  unables?: Unable[]; // CAPTAIN이 UNABLE로 닫은 CLEARANCE·FLIGHT PLAN(ATC-122)
+}
+
+// CAPTAIN의 UNABLE(ATC-122): FLIGHT가 있는 CLEARANCE와 FLIGHT PLAN(decline). FLIGHT가 없는 CREW CHANGE는 OCC 브리핑(crew-change brief의 unable)에 있다
+export interface Unable {
+  flight: string;
+  id: string; // C-xxxx 또는 D-xxxx
+  aircraft: string | null;
+  reason: string;
+  at: string;
+}
+export const UNABLE_KEEP_MS = DAY; // 하루 보이고 빠진다
+
+// 스냅샷의 CLEARANCE와 제안에서 최근 UNABLE(순수)
+export function unablesOf(clearances: Pick<Clearance, "id" | "flight" | "toName" | "unableAt" | "unableReason">[], proposals: Pick<Proposal, "id" | "flight" | "kind" | "status" | "statusAt" | "reason" | "aircraftName">[], now: number): Unable[] {
+  const out: Unable[] = [];
+  for (const c of clearances)
+    if (c.flight && c.unableAt && now - Date.parse(c.unableAt) < UNABLE_KEEP_MS)
+      out.push({ flight: c.flight, id: c.id, aircraft: c.toName, reason: c.unableReason ?? "", at: c.unableAt });
+  for (const p of proposals)
+    if (p.kind === "ASSIGN" && p.status === "declined" && now - Date.parse(p.statusAt) < UNABLE_KEEP_MS)
+      out.push({ flight: p.flight, id: p.id, aircraft: p.aircraftName, reason: p.reason ?? "", at: p.statusAt });
+  return out;
 }
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -182,6 +205,7 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
 export function followingOf(inp: FollowInput): FollowItem[] {
   const targets = targetsOf(inp);
   for (const x of inp.stranded ?? []) if (!targets.some((t) => t.flight === x.flight)) targets.push({ flight: x.flight, proposal: null, aircraft: null });
+  for (const x of inp.unables ?? []) if (!targets.some((t) => t.flight === x.flight)) targets.push({ flight: x.flight, proposal: null, aircraft: x.aircraft });
   return targets
     .map((t) => {
       const f = followOne(t, inp);
@@ -232,10 +256,21 @@ export function followingOf(inp: FollowInput): FollowItem[] {
           key: `${t.flight}|stranded|${x.number}`,
         });
       }
+      // UNABLE(ATC-122): CAPTAIN이 못 한다고 답했다. OCC가 SUPERVISOR에게 보고한다(다시 보내지 않는다)
+      for (const x of (inp.unables ?? []).filter((y) => y.flight === t.flight)) {
+        f.issues.push({
+          code: "unable",
+          kind: "delay",
+          severity: "warn",
+          text: `${x.aircraft ?? "CAPTAIN"} UNABLE ${x.id} — ${x.reason || "사유 없음"}`,
+          since: x.at,
+          key: `${t.flight}|unable|${x.id}`,
+        });
+      }
       return f;
     })
     .filter((f) => {
-      if (f.issues.some((i) => i.code === "stranded")) return true;
+      if (f.issues.some((i) => i.code === "stranded" || i.code === "unable")) return true;
       if (!f.stages.arrived || inp.now - Date.parse(f.stages.arrived) <= KEEP_ARRIVED_MS) return true;
       return !(f.standFree || isClosed(inp.tickets.find((t) => t.key === f.flight)));
     });
@@ -280,7 +315,8 @@ export function followingNow(s: Snapshot, now = Date.now()): FollowItem[] {
   const health = new Map(s.sessions.filter((x) => x.status !== "dead" && x.health).map((x) => [regKey(x.name), x.health!]));
   const min = loadReportThreshold();
   const reports = new Map(s.sessions.filter((x) => x.status === "idle" && x.report && needsDecision(x.report, min)).map((x) => [regKey(x.name), { id: x.report!.id, at: x.report!.turnAt, p: x.report!.decisionP }]));
-  return followingOf({ proposals: allProposals(), tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, reports });
+  const proposals = allProposals();
+  return followingOf({ proposals, tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, reports, unables: unablesOf(s.clearances ?? [], proposals, now) });
 }
 
 export function mountFollowing(app: Hono, getSnapshot: () => Promise<Snapshot>) {

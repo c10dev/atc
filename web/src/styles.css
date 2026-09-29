@@ -1147,6 +1147,15 @@ a.blk[href] {
 .bay-nordo .label {
   color: var(--alert);
 }
+/* Dark cockpit(ATC-111): 끝난 STAND만 쥔 AIRCRAFT는 접힌 GATE CLEANUP에 모은다 */
+.bay-gate > summary {
+  cursor: pointer;
+  margin-bottom: var(--space-2);
+  color: var(--faint);
+}
+.gate-hidden {
+  color: var(--faint);
+}
 .bay-rail {
   display: grid;
   gap: var(--gap-item);

@@ -156,8 +156,14 @@ export interface Clearance {
   stand: string | null; // 워크스페이스 경로
   flight: string | null; // "VOC-191"
   text: string;
-  readbackAt: string | null;
+  readbackAt: string | null; // READBACK이나 ROGER로 닫힌 시각
   cancelledAt: string | null;
+  // 응답(ATC-122, server/response.ts). 옛 기록에는 없다
+  ackWord?: "READBACK" | "ROGER"; // 무엇으로 닫혔나
+  unableAt?: string | null; // UNABLE로 닫힌 시각
+  unableReason?: string | null;
+  standbyAt?: string | null; // 첫 STANDBY(overdue를 한 번 다시 센다)
+  standbys?: number;
 }
 
 export type TrafficEventKind =

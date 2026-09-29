@@ -129,6 +129,7 @@ FLEET 탭의 **팀 빌딩**: **ENTRY INTO SERVICE**로 **CONFIGURATION** 템플�
 | `GET /api/fleet/crew-changes/:id` | CREW CHANGE 하나와 모드 `{change, mode}`(send-guard가 씀) |
 | `POST /api/fleet/crew-changes/:id/send` | OCC: approved → sent(approval 모드), 보낼 `message`를 저장해 `sendTo`와 함께 돌려준다. sent면 같은 문구 다시. 승인 전이거나 그 AIRCRAFT에 READBACK 대기 건이 있으면 409 |
 | `POST /api/fleet/crew-changes/:id/readback` | OCC: CAPTAIN의 `READBACK CC-xxxx` → acknowledged(모드 상관없음). sent가 아니면 409 |
+| `POST /api/fleet/crew-changes/:id/{unable,standby}` | OCC: CAPTAIN의 `UNABLE CC-xxxx` `{reason}` → unable(닫힘, `crew-changes/brief`의 `unable`에 하루) / `STANDBY CC-xxxx`(sent 그대로, overdue를 한 번 다시 센다). ATC-122 |
 | `GET /api/fleet/checkride` | CHECKRIDE 행: AIRCRAFT × TYPE RATING마다 상태(`GRANT`, `REVIEW`, `BLOCKED`, `BUILDING`, `HOLDS`), 이유, 건수, 근거와 기준값 |
 | `POST /api/fleet/:registration/checkride` | `{rating, action: "grant" \| "revoke"}`: SUPERVISOR의 rating 부여·회수. FLIGHT RECORDER에 남는다 |
 | `GET /api/logbook?aircraft=TEAM_X&days=14` | LOGBOOK 기록, 도착 최신순(`aircraft`는 선택, `days`는 1~90). 마지막으로 읽은 시각과 오류도 |
@@ -240,7 +241,7 @@ journalctl --user -u atc -f           # 로그
   [ATC C-0007] BRAVO (TEAM_B) · HOLD
   STAND vocado-voc-175 · FLIGHT VOC175
   앞 팀이 끝나 HANDOFF할 때까지 이 STAND를 건드리지 말 것
-  — 받았으면 이 메시지에 "READBACK C-0007"로 답장해 주세요.
+  — 받았으면 이 메시지에 "READBACK C-0007", 못 하면 "UNABLE C-0007 — 사유", 시간이 필요하면 "STANDBY C-0007"로 답장해 주세요.
   ```
 
 - 팀 세션과 TOWER 세션의 권한 모드(자동 승인 여부)가 다르면 메시지가 사용자 승인 대기로 잡힐 수 있다.
@@ -253,7 +254,7 @@ journalctl --user -u atc -f           # 로그
 | `GET /api/landing/review/:repo/:pr` | 리뷰 자료: PR 제목·본문, FLIGHT 완료 기준·금지 사항, head, 바뀐 파일, diff(크기 제한, `diffTruncated`). 제외 PR(FLIGHT 없음, rating:SEC·Risk 라벨, migrations·SQL·auth·session·admission·RLS·middleware·비밀 같은 보안 경로, PR·FLIGHT의 보안 키워드)은 403, Draft·Codex를 쓸 수 있는 PR·head가 바뀐 PR·FLIGHT를 못 읽은 PR은 409 |
 | `POST /api/landing/review/:repo/:pr` | `{head, verdict: pass\|findings, text, model}` REVIEW 세션(Claude Sonnet만)의 현재 head 착륙 리뷰를 `landing-reviews.jsonl`에 추가. 등급 P0·P1·P2, `pass`에는 P0·P1 없음. Codex를 쓸 수 없는 동안(`ATC_CODEX_SILENT_HOURS`, 기본 6) 제외되지 않은 PR의 pass가 CLEARED TO LAND의 head 리뷰가 된다 |
 | `POST /api/clearances` | `{to, type, stand?, flight?, text}` CLEARANCE 기록, 보낼 문구 반환 |
-| `POST /api/clearances/:id/readback` · `/cancel` | READBACK 확인 · 취소 |
+| `POST /api/clearances/:id/readback` · `/roger` · `/unable` · `/standby` · `/cancel` | 팀의 답(ATC-122): READBACK·ROGER(R만)·UNABLE `{reason}`은 닫고, STANDBY(W/U만)는 10분 overdue를 한 번 다시 센다 · 취소. 받을 수 없는 답이면 409 |
 
 이벤트(`server/events.ts`)는 스냅샷 사이의 차이다: 경보 발생·해제, HANDOFF, LANDING SEQUENCE(PR이 들어옴 `landing.requested`, CLEARED TO LAND가 됨 `landing.cleared`, CAPTAIN이 손써야 할 막힘이 새로 생김 `landing.blocked`, 머지·닫힘·Draft로 돌아가 떠남 `landing.left`), 점유 중이던 세션 종료, OUTSTATION 시작·끝. 서버가 막 떠서 Linear·git·GitHub을 처음 읽기 전의 스냅샷과는 비교하지 않고, LANDING 이벤트는 양쪽 스냅샷 다 GitHub PR을 읽었을 때만 비교한다.
 
@@ -324,7 +325,7 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 | `POST /api/dispatch/proposals/:id/codes` | `{codes: ["needs-human", …]}` SUPERVISOR가 지난 그림자 거절에 사유 칩을 단다(`disagreed`에만, 그 밖은 409). 게이트만 읽는 `recode` op를 남긴다: 칩이 모두 FLIGHT 칩인 거절은 게이트에서 빠진다(`gate.notReady`). FLIGHT 보류는 걸지 않는다 |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR 결정(approval 모드에서만), 둘 다 `{via?}`, `reject`는 `{reason?, reasonCodes?}`도 |
 | `POST /api/dispatch/proposals/:id/release` | 승인 → SENT, `sendTo`와 FLIGHT PLAN 반환(이미 보냈으면 같은 문구) |
-| `POST /api/dispatch/proposals/:id/{accept,decline}` | CAPTAIN READBACK, 또는 `{reason}`과 함께 거절. STAND 없는 FLIGHT(SURVEY·CHECK)는 READBACK에 DEPARTED(`departedStand: null`, `departedVia: "readback"`) |
+| `POST /api/dispatch/proposals/:id/{accept,decline,standby}` | CAPTAIN READBACK, `{reason}`과 함께 거절(`UNABLE D-xxxx`), 또는 STANDBY(sent 그대로, READBACK overdue를 한 번 다시 센다, ATC-122). STAND 없는 FLIGHT(SURVEY·CHECK)는 READBACK에 DEPARTED(`departedStand: null`, `departedVia: "readback"`) |
 | `POST /api/dispatch/proposals/:id/arrived` | OCC: `{note}`(결과 링크나 한 줄, 500자). STAND 없이 DEPARTED한 FLIGHT를 CAPTAIN이 마쳤다는 보고 → ARRIVED(`arrivedNote`, `arrivedUrl`) |
 | `POST /api/dispatch/proposals/:id/recall` | SUPERVISOR: `{reason}`, SENT·ACCEPTED·STAND 없는 DEPARTED → RECALLING(STAND가 있는 DEPARTED 뒤에는 안 됨, 출발 중지 중에도 됨) |
 | `POST /api/dispatch/proposals/:id/{recall-send,recalled}` | OCC: RECALL 문구와 `sendTo`(approval 모드, 상태 그대로) / CAPTAIN의 `READBACK D-xxxx RECALL` → RECALLED |

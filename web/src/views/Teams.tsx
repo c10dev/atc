@@ -10,7 +10,7 @@ import {
   flightNumber,
   flightPhase,
 } from "../aviation.ts";
-import { activeFirst, hasActiveClaim, type Index, sortSessions, timeAgo } from "../derive.ts";
+import { activeFirst, hasActiveClaim, type Index, isGateCleanup, sortSessions, timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { AirportCode, AwayTag, NeedsYou, SessionPlace } from "../ui.tsx";
 import { HumanCheckQueue, HumanCheckTag } from "./HumanCheck.tsx";
@@ -30,7 +30,10 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
   };
 
   const bays = new Map<AircraftStatus, Session[]>(BAYS.map((b) => [b, []]));
-  for (const s of visible) bays.get(aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id))))!.push(s);
+  // Dark cockpit(ATC-111): 쥔 STAND가 모두 ARRIVED·취소 FLIGHT의 것인 AIRCRAFT는 bay에서 빼 맨 아래 GATE CLEANUP에 모은다
+  const cleanup = visible.filter((s) => isGateCleanup(s, idx));
+  const cleanupIds = new Set(cleanup.map((s) => s.id));
+  for (const s of visible) if (!cleanupIds.has(s.id)) bays.get(aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id))))!.push(s);
   // 옛 서버 스냅샷에는 pulls·github가 없다
   const pulls = snapshot.pulls ?? [];
   const github = snapshot.github ?? null;
@@ -80,6 +83,27 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
           </div>
         );
       })}
+      {cleanup.length > 0 && (
+        <details className="bay bay-gate">
+          <summary className="label" title="쥔 STAND가 모두 ARRIVED·취소된 FLIGHT의 것인 AIRCRAFT. 워크트리를 치우면 사라진다">
+            GATE CLEANUP <em>{cleanup.length}</em>
+          </summary>
+          <div className="bay-rail">
+            {cleanup.map((s) => (
+              <Strip
+                key={s.id}
+                session={s}
+                status={aircraftStatus(s, true)}
+                idx={idx}
+                now={now}
+                nameOf={nameOf}
+                landing={landing}
+                clearances={snapshot.clearances.filter((c) => c.to === s.id)}
+              />
+            ))}
+          </div>
+        </details>
+      )}
     </section>
   );
 }
@@ -554,21 +578,34 @@ function LandingSequence({
 const OVERDUE_MS = 10 * 60_000;
 const RECENT_READBACK_MS = 30 * 60_000;
 
-// CLEARANCE: READBACK 대기(파랑), 10분 넘게 NO READBACK(주황), 최근 30분 안에 READBACK 받음(점선)
+// CLEARANCE: 답 대기(파랑), 10분 넘게 답 없음(주황), UNABLE(빨강), 최근 30분 안에 답 받음(점선).
+// 답(ATC-122): W/U는 READBACK·UNABLE, R은 ROGER가 닫는다. 첫 STANDBY부터 10분을 한 번 다시 센다
 function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: number }) {
   const { clock } = useSettings();
-  const shown = clearances.filter(
-    (c) => !c.cancelledAt && (!c.readbackAt || now - Date.parse(c.readbackAt) < RECENT_READBACK_MS),
-  );
+  const answeredAt = (c: Clearance) => c.readbackAt ?? c.unableAt ?? null;
+  const shown = clearances.filter((c) => {
+    const at = answeredAt(c);
+    return !c.cancelledAt && (!at || now - Date.parse(at) < RECENT_READBACK_MS);
+  });
   if (!shown.length) return null;
   return (
     <div className="sub">
       {shown.map((c) => {
-        const overdue = !c.readbackAt && now - Date.parse(c.at) > OVERDUE_MS;
-        const tone = c.readbackAt ? "dashed" : overdue ? "amber" : "blue";
-        const state = c.readbackAt ? "READBACK" : overdue ? "NO READBACK" : "READBACK 대기";
+        const base = c.standbyAt && c.standbyAt >= c.at ? c.standbyAt : c.at;
+        const overdue = !answeredAt(c) && now - Date.parse(base) > OVERDUE_MS;
+        const tone = c.unableAt ? "red" : c.readbackAt ? "dashed" : overdue ? "amber" : "blue";
+        // 도장은 좁은 칸이라 짧게. UNABLE 사유는 제목(title)에
+        const state = c.unableAt
+          ? "UNABLE"
+          : c.readbackAt
+            ? (c.ackWord ?? "READBACK")
+            : overdue
+              ? "NO READBACK"
+              : c.standbyAt
+                ? "STANDBY"
+                : "READBACK 대기";
         return (
-          <span key={c.id} className={`stamp ${tone}`} title={`${c.text}\n${formatClock(c.at, clock)} 발부 · ${state}`}>
+          <span key={c.id} className={`stamp ${tone}`} title={`${c.text}\n${formatClock(c.at, clock)} 발부 · ${state}${c.unableReason ? ` — ${c.unableReason}` : ""}`}>
             {c.id} {c.type} · {state}
           </span>
         );
