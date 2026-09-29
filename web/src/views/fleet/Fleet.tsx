@@ -30,7 +30,7 @@ import { StatusList } from "./StatusList.tsx";
 // FLEET PLAN: atc가 그 버튼들을 언제 쓰자고 제안하는지(docs/fleet.md 8.6, 그림자).
 // 운항 상태 목록(ATC-44): 기본은 AIRCRAFT 한 대가 한 줄인 목록. 줄을 누르면 그 AIRCRAFT의 카드가 펼쳐진다. 목록/카드 선택은 localStorage.
 // 카드 버튼이 여는 패널(LAUNCH, CREW BRIEFING)은 그 카드 바로 아래에 열린다(ATC-61). ENTRY INTO SERVICE 뒤의 CREW BRIEFING만 맨 위.
-// CONTROL SESSIONS(ATC-130): 관제 세션 LAUNCH·STOP·ACCOUNT는 ControlSessions.tsx. 주소 #fleet/control이 그 구역을 연다.
+// CONTROL(ATC-130·132): 관제 세션 그룹은 AIRCRAFT 목록과 같은 줄·같은 열(ControlSessions.tsx). LAUNCH·STOP·ACCOUNT 편집은 펼친 곳에. 주소 #fleet/control이 그룹을 연다.
 // 파일: Fleet.tsx(이 쪽 틀·불러오기·목록/카드 선택), StatusList, Card(실적·RULES 포함), Fuel, EntryForm, LaunchPanel, BriefingPanel, Editor, shared(타입·api).
 
 // 목록/카드 선택(ATC-44). 저장소를 못 쓰면 목록이 기본
@@ -247,7 +247,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
         <BriefingPanel registration={briefing.registration} text={briefing.text} opener={briefing.opener} onClose={() => setBriefing(null)} />
       )}
       {controlError && <p className="fl-entry-preview faint">세션 조종을 쓸 수 없음(LAUNCH·STOP 숨김): {controlError}</p>}
-      <FleetPlan refreshKey={refreshKey} onChanged={load} />
+      <FleetPlan refreshKey={refreshKey} onChanged={load} fleetAccounts={brief.fuelAccounts} />
       <div className="fl-layout" role="group" aria-label="FLEET 보기">
         <h2 className="label">
           AIRCRAFT <em>{inService.length}</em>
@@ -259,7 +259,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
           카드
         </button>
       </div>
-      {layout === "list" ? (
+      {layout === "list" && inService.length > 0 ? (
         <StatusList
           rows={fleetRows(inService, Date.now())}
           open={open}
@@ -272,11 +272,19 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
             const a = inService.find((x) => x.registration === reg);
             return a ? cardOf(a) : null;
           }}
-        />
+        >
+          {/* CONTROL 그룹은 같은 격자로 이어진다(ATC-132) */}
+          <ControlSessions snapshot={snapshot} attached />
+        </StatusList>
       ) : (
-        <div className="fl-cards">{inService.map(cardOf)}</div>
+        <>
+          {/* 카드 보기이거나 운항 중인 AIRCRAFT가 없으면 CONTROL 그룹이 혼자 선다(StatusList는 빈 목록에서 그룹을 그리지 않는다) */}
+          {layout === "cards" && <div className="fl-cards">{inService.map(cardOf)}</div>}
+          <div className="fl-list fl-list-solo">
+            <ControlSessions snapshot={snapshot} attached={false} />
+          </div>
+        </>
       )}
-      <ControlSessions />
       <FuelAccounts accounts={brief.fuelAccounts ?? []} />
       <Checkride refreshKey={refreshKey} onChanged={load} />
       {retired.length > 0 && (

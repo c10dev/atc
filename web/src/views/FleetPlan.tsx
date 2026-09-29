@@ -1,5 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type { DemandRow, FleetPlanKind, FleetProposal, PlanReason, StepResult } from "../../../server/fleet-plan.ts";
+import { accountViewOf, ACCOUNT_EFFECT } from "../../../server/control-view.ts";
 import { type FuelRemaining, fuelLabel, fuelTitle } from "../../../server/fuel-remaining.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
@@ -77,7 +78,8 @@ async function post(path: string, body: unknown) {
   return data;
 }
 
-export function FleetPlan({ refreshKey, onChanged }: { refreshKey: string; onChanged?: () => void }) {
+// fleetAccounts: FLEET 응답의 fuelAccounts. ACCOUNT는 FLEET의 FUEL 블록 하나에서 보이고(ATC-132), 이 줄은 그 블록이 없는 옛 서버일 때만 대신 보인다
+export function FleetPlan({ refreshKey, onChanged, fleetAccounts }: { refreshKey: string; onChanged?: () => void; fleetAccounts?: readonly unknown[] | null }) {
   const [brief, setBrief] = useState<PlanBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -209,7 +211,7 @@ export function FleetPlan({ refreshKey, onChanged }: { refreshKey: string; onCha
           ))}
         </ul>
       )}
-      <FuelLines accounts={brief.fuel ?? []} />
+      {accountViewOf(fleetAccounts, brief.fuel) === "plan" && <FuelLines accounts={brief.fuel ?? []} />}
       {brief.open.length ? (
         <ul className="fp-rows">
           {brief.open.map((p) => (
@@ -391,7 +393,7 @@ function ApproveForm({
 }
 
 // FUEL(ATC-63, "weekly-usage line"): ACCOUNT마다 가장 많이 쓴 창과 reset, 구성원. hold 수준이면 그 ACCOUNT로는 LAUNCH·ENTRY를 내지 않는다
-const FUEL_EFFECT: Record<FuelRemaining["level"], string | null> = { ok: null, info: "제안에 FUEL 사유 줄", hold: "LAUNCH·ENTRY 제안 안 함" };
+const FUEL_EFFECT = ACCOUNT_EFFECT;
 function FuelLines({ accounts }: { accounts: FuelRemaining[] }) {
   if (!accounts.length) return null;
   const now = Date.now();

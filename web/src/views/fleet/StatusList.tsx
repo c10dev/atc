@@ -9,6 +9,57 @@ import { ContextCell } from "./Context.tsx";
 import { pct } from "./shared.ts";
 import "./StatusList.css";
 
+// 줄의 틀(ATC-132): AIRCRAFT 줄과 CONTROL 줄이 같이 쓴다. 같은 열 격자(.fl-row)에 칸들이 들어가고 뒤에 ▸·▾가 붙는다. 누르면(키보드 포함) 아래에 펼친 내용이 열린다
+export function FleetRowShell({
+  className,
+  detailId,
+  isOpen,
+  onToggle,
+  cells,
+  detail,
+}: {
+  className: string;
+  detailId: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  cells: ReactNode;
+  detail: ReactNode;
+}) {
+  return (
+    <li className={`fl-li ${className}${isOpen ? " is-open" : ""}`}>
+      <button className="fl-row" aria-expanded={isOpen} aria-controls={detailId} onClick={onToggle}>
+        {cells}
+        <span className="fl-r-chev" aria-hidden="true">
+          {isOpen ? "▾" : "▸"}
+        </span>
+      </button>
+      {isOpen && (
+        <div className="fl-detail" id={detailId}>
+          {detail}
+        </div>
+      )}
+    </li>
+  );
+}
+
+// 열 이름 줄. CONTROL 그룹이 따로 설 때도 같은 것을 쓴다
+export function FleetListHead({ first = "AIRCRAFT" }: { first?: string }) {
+  return (
+    <div className="fl-list-head" aria-hidden="true">
+      <span>{first}</span>
+      <span>AIRPORT</span>
+      <span>STATUS</span>
+      <span>FLYING</span>
+      <span>경과</span>
+      <span>마지막 활동</span>
+      <span>이번 주</span>
+      <span>FOB</span>
+      <span>FUEL 14일</span>
+      <span />
+    </div>
+  );
+}
+
 // 운항 상태 목록(ATC-44). 한 줄: REGISTRATION·callsign, AIRPORT, 상태, FLYING FLIGHT, 경과, 마지막 활동, 이번 주.
 // 줄(버튼)을 누르면 아래에 그 AIRCRAFT의 카드가 펼쳐진다(키보드로도)
 export function StatusList({
@@ -17,36 +68,34 @@ export function StatusList({
   onToggle,
   detail,
   absent,
+  children,
 }: {
   rows: FleetRow[];
   open: ReadonlySet<string>;
   onToggle: (reg: string) => void;
   detail: (reg: string) => ReactNode;
   absent?: (reg: string) => AbsentMark | null; // 세션 없는 백그라운드 AIRCRAFT(ATC-129)
+  children?: ReactNode; // 목록 아래 같은 격자로 이어지는 그룹(CONTROL SESSIONS, ATC-132)
 }) {
   const now = Date.now();
   if (!rows.length) return <p className="fl-line faint">운항 중인 AIRCRAFT 없음</p>;
   return (
     <div className="fl-list">
-      <div className="fl-list-head" aria-hidden="true">
-        <span>AIRCRAFT</span>
-        <span>AIRPORT</span>
-        <span>STATUS</span>
-        <span>FLYING</span>
-        <span>경과</span>
-        <span>마지막 활동</span>
-        <span>이번 주</span>
-        <span>FOB</span>
-        <span>FUEL 14일</span>
-        <span />
-      </div>
+      <FleetListHead />
       <ul className="fl-rows">
         {rows.map((r) => {
           const isOpen = open.has(r.registration);
           const gone = absent?.(r.registration) ?? null;
           return (
-            <li key={r.registration} className={`fl-li st-${r.status.replace(/ /g, "-")}${r.health || r.accountHold || r.fuelHold || r.restarting || gone ? " has-health" : ""}${isOpen ? " is-open" : ""}`}>
-              <button className="fl-row" aria-expanded={isOpen} aria-controls={`fl-detail-${r.registration}`} onClick={() => onToggle(r.registration)}>
+            <FleetRowShell
+              key={r.registration}
+              className={`st-${r.status.replace(/ /g, "-")}${r.health || r.accountHold || r.fuelHold || r.restarting || gone ? " has-health" : ""}`}
+              detailId={`fl-detail-${r.registration}`}
+              isOpen={isOpen}
+              onToggle={() => onToggle(r.registration)}
+              detail={detail(r.registration)}
+              cells={
+                <>
                 <span className="fl-r-id">
                   <b>{r.callsign}</b> <span className="mono faint">{r.registration}</span>
                   {r.account && !r.accountIsDefault && (
@@ -121,19 +170,13 @@ export function StatusList({
                 <span className="fl-r-burn mono" title={r.fuelBurn?.title ?? "최근 14일 fuel이 있는 ARRIVED FLIGHT 없음(옛 LOGBOOK 줄에는 fuel이 없다)"}>
                   {r.fuelBurn ? r.fuelBurn.label.replace(/^FUEL /, "") : <span className="faint">FUEL —</span>}
                 </span>
-                <span className="fl-r-chev" aria-hidden="true">
-                  {isOpen ? "▾" : "▸"}
-                </span>
-              </button>
-              {isOpen && (
-                <div className="fl-detail" id={`fl-detail-${r.registration}`}>
-                  {detail(r.registration)}
-                </div>
-              )}
-            </li>
+                </>
+              }
+            />
           );
         })}
       </ul>
+      {children}
     </div>
   );
 }
