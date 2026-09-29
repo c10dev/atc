@@ -76,6 +76,7 @@ atc 코드를 고치는 세션(팀 세션, ENGINEERING 세션, 사용자와 직�
 ## 교신
 
 - 세션끼리 주고받는 글은 영어로 쓴다(ATC-126): FLIGHT PLAN, READBACK·UNABLE·STANDBY·ROGER, CLEARANCE, CREW BRIEFING, CREW CHANGE, 팀·관제 세션에 보내는 보고와 메시지. SUPERVISOR가 읽는 글(사용자와의 대화, 화면, 관제 세션이 SUPERVISOR에게 남기는 로그)은 한국어다. `[DISPATCH D-xxxx]`·`[OCC CC-xxxx]`·`[ATC C-xxxx]` 머리와 `READBACK …`·`UNABLE …`·`STANDBY …`·`ROGER …`는 guard가 읽으므로 그대로 쓴다.
+- SUPERVISOR가 읽는 글(이 세션의 턴 글, 질문, 요약)은 한국어로 쓰고 일본어·중국어는 쓰지 않는다(ATC-150). 세션끼리 주고받는 글은 그대로 영어다.
 - 다른 팀 세션에 메시지를 보내지 않는다. 결과와 막힌 점은 일을 맡긴 세션(보통 ENGINEERING, 또는 사용자)에게만 보고한다.
 - atc OCC(운항관제 세션)에서 `[DISPATCH D-xxxx]`로 시작하는 FLIGHT PLAN을 받으면 리더가 그 메시지에 `READBACK D-xxxx`로 답하고, 맡지 못하면 `UNABLE D-xxxx — 사유`, 시간이 필요하면 `STANDBY D-xxxx`로 답한다. `[DISPATCH D-xxxx] RECALL`을 받으면 작업을 멈추고 `READBACK D-xxxx RECALL`로 답한다. `[OCC CC-xxxx]`로 시작하는 CREW CHANGE를 받으면 `READBACK CC-xxxx`로 답하고 그대로 팀원을 바꾼다(못 하면 `UNABLE CC-xxxx — 사유`). `[ATC C-xxxx]` CLEARANCE는 끝줄이 청하는 답으로 답한다(지시는 `READBACK`·`UNABLE`·`STANDBY`, 알림은 `ROGER C-xxxx`). STAND(worktree) 없이 하는 SURVEY·CHECK FLIGHT를 마치면 OCC에 결과 링크나 한 줄로 알린다.
 - TOWER의 `GO AROUND`(ATC-128)는 참고(INFO)가 아니라 행동 지시다. `READBACK C-xxxx`로 답하고, `origin/main`을 병합하거나 그 위로 rebase해 충돌을 풀고, 충돌 조각을 대화에 보이고, 검증(`npm test`·`tsc`·`vite build`)을 모두 돌린 뒤 `--force-with-lease`로만 push하고(맨 `--force`는 쓰지 않는다), PR 본문에 무엇을 어떻게 풀었는지 적는다. 두 PR이 같은 동작을 다르게 바꿔 한쪽을 골라야 하면 풀지 말고 `UNABLE C-xxxx — 사유`로 답한다.
