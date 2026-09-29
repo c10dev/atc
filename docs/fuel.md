@@ -143,6 +143,21 @@ Built in F8 (ATC-56); section 8.6 has the rules as built.
 - **TOWER/OCC brief**: AIRCRAFT with large leaks, and whether a message to a HOLDING CAPTAIN would hit a cold cache. Warn, never block.
 - **Cost formula**: `input·P_in + cacheWrite5m·1.25·P_in + cacheWrite1h·2·P_in + cacheRead·readMult·P_in + output·P_out` (× data-residency or fast-mode multipliers). The cache-read multiplier differs by model (Opus 5.5 0.05, Fable 5.1 0.025); the table lives in a config file (`server/fuel-prices.json`, see 8.4).
 
+### 7.1 FUEL overview as built (ATC-137)
+
+One screen for burn so far, inside METRICS: **`#metrics/fuel`** (the METRICS tab has two sub-views, OPERATIONS and FUEL; `#metrics` is unchanged). Read only: nothing about how FUEL is measured, attributed or priced changed, and `server/fuel-prices.json` is untouched.
+
+- **Loading.** The window is 1, 7, 14 or 30 days (`FUEL_MAX_DAYS`), 7 by default, with the `since` time shown. `GET /api/fuel?days=N` and `GET /api/logbook?days=N` are read when the sub-view opens, when the window changes and when the refresh button is pressed; the 2 s snapshot never triggers them. Loading, error (with retry) and empty (no requests in the window) states are shown.
+- **Summary.** FUEL COST, CAPTAIN, CREW (with its share of the cost), CACHE HIT, requests and NET. The unpriced part is always next to it (`가격 없는 모델 4,710건 · 1.04B tokens 제외`, or `0건`), and a line says dollars are API list price, not billing.
+- **ACCOUNT.** The same FUEL REMAINING block as FLEET (from `snapshot.fuelAccounts`, no new fetch); hidden when no ACCOUNT has a statusline record.
+- **BY AIRCRAFT.** Sortable table: COST, requests, CACHE, CREW share (of cost), LEAK (priced), NET, top model. Rows are grouped: team AIRCRAFT (the `teamPattern` names, returned by `/api/fuel` as `teamPattern`) first, then control sessions (TOWER, OCC, MCC, CROSSCHECK, REVIEW, ENGINEERING), then other. Sessions without a name go under "other" one row each. A team AIRCRAFT links to `#fleet/<REGISTRATION>`, which opens its FLEET row.
+- **BY MODEL.** Requests, tokens and cost per model; a model with no priced request is listed with its tokens and `no price`.
+- **LEAKS.** Totals by rule (COLD CACHE, CONTROL WAKE, MODEL SWITCH, COMPACTION, SESSION CHANGE, UPGRADE, UNEXPLAINED) with a one-line meaning from section 5, then the two buckets outside LEAK (PROXIED, EXPECTED REBUILD), then the CREW warning counts.
+- **PER DAY.** A stacked bar per UTC day, CAPTAIN and CREW cost, with a hover/focus tooltip, a legend, a "table view" and a marker under days that had unpriced tokens. Days without records are drawn as zero. Colours are `--series-captain` and `--series-crew` (`--cyan` and `--amber`; `--radar` gold in the night theme, where `--amber` is a blue star). Checked with the dataviz validator per theme: colour-blind separation ΔE 15–25, contrast against the panel passes; the lightness-band check flags the two accents only because the app's neon accents sit above that band (both are equally light), and identity never rests on colour alone (legend, table view).
+- **TOP FLIGHTS.** The 10 most expensive ARRIVED FLIGHTs in the window by NET, from the priced LOGBOOK (`/api/logbook` entries carry `trip`), with the TRIP verdict (`inside` / `UNEXPECTED`) and a link to the FLIGHT (its Linear URL from the snapshot).
+- **API (additive).** `GET /api/fuel` gains `byDay` (per UTC day: CAPTAIN and CREW cost, requests, unpriced tokens; only days with records, oldest first), `byModel` (requests, tokens, priced cost, unpriced requests and tokens; largest cost first) and `teamPattern`. Both aggregates come from the same pass as the rest of `summarizeFuel`; nothing is scanned twice. On 400,000 synthetic requests over 30 days `summarizeFuel` took about 490 ms against about 430–530 ms before, within run-to-run noise; the scan cost of `/api/fuel` is unchanged (ATC-83 is the fix for that). Older clients ignore the new fields.
+- **Pure view functions** are in `web/src/fuel-overview.ts` (grouping, sorting, the unpriced summary, leak rows, day bars, top FLIGHTs) and tested in `server/fuel-overview.test.ts`; `byDay` and `byModel` are tested in `server/fuel-byday.test.ts`.
+
 ## 8. Implementation order (one issue each)
 
 | # | Issue | Depends on | Tier | Size |

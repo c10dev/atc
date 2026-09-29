@@ -1,7 +1,9 @@
 import { type KeyboardEvent, type MouseEvent, useEffect, useState } from "react";
 import type { Metrics as MetricsData, SeriesPoint } from "../../../server/metrics.ts";
+import type { Snapshot } from "../../../server/model.ts";
 import type { Sample } from "../../../server/recorder.ts";
 import { formatClock, useSettings } from "../settings.ts";
+import { MetricsFuel } from "./MetricsFuel.tsx";
 import "./Metrics.css";
 
 // 1.5단계 운용 지표. FLIGHT RECORDER 기록으로 2단계(DISPATCH)로 넘어갈지 판단한다.
@@ -37,7 +39,41 @@ function stamp(iso: string, clock: "utc" | "local", withDate: boolean): string {
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 const mins = (x: number | null) => (x === null ? "—" : `${x}분`);
 
-export function Metrics({ refreshKey }: { refreshKey: string }) {
+// 하위 화면(ATC-137): #metrics는 운용 지표, #metrics/fuel은 FUEL 개요. 주소로 고른다
+type Sub = "ops" | "fuel";
+const subOfHash = (): Sub => (location.hash.slice(1).split("/")[1] === "fuel" ? "fuel" : "ops");
+function useSub(): [Sub, (s: Sub) => void] {
+  const [sub, setSub] = useState<Sub>(subOfHash);
+  useEffect(() => {
+    const on = () => setSub(subOfHash());
+    addEventListener("hashchange", on);
+    return () => removeEventListener("hashchange", on);
+  }, []);
+  return [sub, (s) => (location.hash = s === "fuel" ? "metrics/fuel" : "metrics")];
+}
+
+export function Metrics({ refreshKey, snapshot }: { refreshKey: string; snapshot?: Snapshot | null }) {
+  const [sub, goSub] = useSub();
+  return (
+    <section className="metrics">
+      <div className="mx-sub" role="tablist" aria-label="METRICS">
+        {(
+          [
+            ["ops", "OPERATIONS"],
+            ["fuel", "FUEL"],
+          ] as const
+        ).map(([id, label]) => (
+          <button key={id} role="tab" aria-selected={sub === id} onClick={() => goSub(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {sub === "fuel" ? <MetricsFuel snapshot={snapshot ?? null} /> : <Operations refreshKey={refreshKey} />}
+    </section>
+  );
+}
+
+function Operations({ refreshKey }: { refreshKey: string }) {
   const [days, setDays] = useState<number>(7);
   const [data, setData] = useState<MetricsData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +91,7 @@ export function Metrics({ refreshKey }: { refreshKey: string }) {
   }, [days, refreshKey]);
 
   return (
-    <section className="metrics">
+    <>
       <div className="toolbar">
         <span className="muted">
           FLIGHT RECORDER 기록 기준
@@ -96,7 +132,7 @@ export function Metrics({ refreshKey }: { refreshKey: string }) {
           <Daily data={data} />
         </>
       )}
-    </section>
+    </>
   );
 }
 

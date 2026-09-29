@@ -58,7 +58,11 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
   const [controlError, setControlError] = useState<string | null>(null);
   const [launching, setLaunching] = useState<{ a: AircraftView; opener: HTMLElement | null } | null>(null);
   const [layout, setLayout] = useState<Layout>(loadLayout);
-  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  // #fleet/TEAM_G로 오면 그 줄을 펼쳐 둔다(METRICS FUEL 개요의 링크, ATC-137)
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => {
+    const m = /^#fleet\/([^/]+)/.exec(location.hash);
+    return new Set(m ? [decodeURIComponent(m[1]).toUpperCase()] : []);
+  });
   const chooseLayout = (l: Layout) => {
     setLayout(l);
     saveLayout(l);

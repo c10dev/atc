@@ -23,6 +23,9 @@
   --radar: #3ef08f; /* AIRBORNE, ENROUTE */
   --amber: #ffb627; /* HOLDING, CLEARED TO LAND */
   --cyan: #5cd0ff; /* APPROACH, 정보 */
+  /* 차트의 두 계열(FUEL 개요, ATC-137): 테마마다 두 색이 떨어져 보이는 짝. night는 --amber가 푸른 별이라 금색(--radar)으로 */
+  --series-captain: var(--cyan);
+  --series-crew: var(--amber);
   --alert: #ff4a4a; /* LOSS OF SEPARATION, NORDO */
   --blue: #8aa8ff; /* HANDOFF */
   --ring: var(--radar); /* RADAR 거리 링, 스위프 */
@@ -2510,6 +2513,7 @@ a.ticket:hover {
   --radar: #ffd98a; /* 금색 별 */
   --amber: #9ec2ff; /* 푸른 별: HOLDING */
   --cyan: #7fe8ff;
+  --series-crew: var(--radar);
   --alert: #ff6b85;
   --blue: #c3adff;
   --gold: #ffd98a;
