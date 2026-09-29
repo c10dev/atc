@@ -55,6 +55,11 @@ codex/voc-<n>-<slug>      # Codex sessions
 - **ENGINEERING** is an airline's Technical Services, which designs modifications and issues Engineering Orders (EO). It replaces the ad hoc name `structure` for this role (GitHub #121, 2026-09-28). `structure`'s other role, landing and deploying atc PRs, goes to the user until MCC is in `land` mode, then to MCC.
 - Old records keep the name they were written with, e.g. `by: "structure"` in LOGBOOK `measured` lines.
 
+## FUEL words on screen
+
+- **FOB (FUEL ON BOARD)** is an AIRCRAFT's own fuel: the context window still free (`FOB 50% · 504k/1M`). It is a share **left**.
+- An ACCOUNT's plan limit is always a share **used** (`사용 87% · resets 21:00Z`). It is shared by every AIRCRAFT of the ACCOUNT and is not called FOB. Definitions: [fuel.md](fuel.md) section 3.
+
 ## Claim records
 
 - Claims are recorded automatically by the Claude Code hook ([README "Claim hook"](../README.md#claim-hook)). Leaders and teammates don't need to write anything.

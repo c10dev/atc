@@ -55,6 +55,11 @@ codex/voc-<n>-<slug>      # Codex 세션
 - **ENGINEERING**은 항공사의 Technical Services다. 개조와 개선을 설계하고 작업 지시서(Engineering Order, EO)를 낸다. 이 역할에 쓰던 임시 이름 `structure`를 대신한다(GitHub #121, 2026-09-28). `structure`의 다른 역할인 atc PR 착륙·배포는 MCC가 `land` 모드가 될 때까지 사용자가, 그 뒤로는 MCC가 맡는다.
 - 옛 기록은 쓸 때의 이름을 그대로 둔다. 예: LOGBOOK `measured` 줄의 `by: "structure"`.
 
+## 화면의 FUEL 말
+
+- **FOB(FUEL ON BOARD)**는 AIRCRAFT 자기 연료, 곧 아직 비어 있는 맥락 창이다(`FOB 50% · 504k/1M`). **남은** 몫이다.
+- ACCOUNT의 사용 한도는 늘 **쓴** 몫이다(`사용 87% · resets 21:00Z`). 같은 ACCOUNT의 모든 AIRCRAFT가 같이 쓰므로 FOB라고 부르지 않는다. 정의는 [fuel.md](fuel.md) 3절.
+
 ## 점유 기록
 
 - 점유는 Claude Code hook이 자동으로 남긴다([README.ko.md "점유 hook"](../README.ko.md#점유-hook)). 리더나 팀원이 따로 쓸 것은 없다.

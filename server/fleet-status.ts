@@ -1,6 +1,6 @@
 import type { AircraftView } from "./fleet.ts";
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel, type HealthCode, healthLabel } from "./health.ts";
-import { type FuelRemaining, fuelLabel, fuelTitle } from "./fuel-remaining.ts";
+import { fuelHoldTag, fuelTitle } from "./fuel-remaining.ts";
 import { type ContextBadge, contextBadgeOf } from "./fuel-context.ts";
 import { fleetFuelLabel, fleetFuelTitle } from "./fuel-view.ts";
 import { conflictHintOf, renameHintOf } from "./registration.ts";
@@ -45,11 +45,12 @@ export interface FleetRow {
   accountIsDefault: boolean;
   // 같은 ACCOUNT의 LIMIT으로 붙들림(ATC-51): "HOLD · LIMIT (account pro-2) until 07:40Z". health 코드는 아니다
   accountHold: { label: string; detail: string; next: string } | null;
-  // FUEL REMAINING(ATC-55): "FUEL 82% · resets 21:00Z"(쓴 몫, 가장 많이 쓴 창). statusline 값이 없으면 null
-  fuel: { label: string; level: FuelRemaining["level"]; title: string } | null;
+  // ACCOUNT의 FUEL이 hold 수준일 때만(ATC-81): "HOLD · FUEL (account acct-2) until 21:00Z". 사용 %는 줄에 싣지 않는다(툴팁에만).
+  // 줄의 연료는 AIRCRAFT 자기 것 FOB(context)다. statusline 값이 없거나 hold 아래면 null
+  fuelHold: { label: string; title: string } | null;
   // FUEL F8(ATC-56): 최근 14일 "FUEL $6.20/FLT · CACHE 97%". FUEL REMAINING 옆에 둔다. fuel 있는 FLIGHT가 없으면 null
   fuelBurn: { label: string; title: string } | null;
-  // CONTEXT SIZE(ATC-69): "502k / 1M". 살아 있는 세션의 기록이 없으면 null
+  // FOB(ATC-81, CONTEXT SIZE는 ATC-69): "FOB 50% · 504k/1M". 살아 있는 세션의 기록이 없으면 null
   context: ContextBadge | null;
   // 세션 이름(ATC-67): 같은 REGISTRATION으로 읽히는 세션이 둘 이상이면 충돌, 정식 표기가 아니면 이름 바꾸기 힌트. 없으면 null
   name: { label: string; title: string; conflict: boolean } | null;
@@ -75,7 +76,7 @@ export function fleetRows(aircraft: readonly AircraftView[], now: number): Fleet
       account: a.account ?? null,
       accountIsDefault: Boolean(a.accountIsDefault),
       accountHold: a.accountHold ? { label: accountHoldLabel(a.accountHold, now), detail: accountHoldDetail(a.accountHold), next: ACCOUNT_HOLD_NEXT } : null,
-      fuel: a.fuel ? { label: fuelLabel(a.fuel, now), level: a.fuel.level, title: fuelTitle(a.fuel, now) } : null,
+      fuelHold: a.fuel?.level === "hold" ? { label: fuelHoldTag(a.fuel, now), title: fuelTitle(a.fuel, now) } : null,
       fuelBurn: a.fuelBurn && fleetFuelLabel(a.fuelBurn) ? { label: fleetFuelLabel(a.fuelBurn)!, title: fleetFuelTitle(a.fuelBurn) } : null,
       context: contextBadgeOf(a.context),
       name: a.sessionConflict?.length

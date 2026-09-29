@@ -111,9 +111,15 @@ test("운항 상태 줄에 ACCOUNT와 같은 ACCOUNT의 LIMIT HOLD 표시(ATC-51
   assert.deepEqual([bare!.account, bare!.accountIsDefault, bare!.accountHold], [null, false, null]);
 });
 
-test("운항 상태 줄에 FUEL REMAINING(ATC-55): 쓴 몫과 가장 이른 막힘 창의 reset", () => {
-  const fuel = { group: "pro-2", account: "pro-2", at: "2026-09-28T05:30:00Z", from: "TEAM_K", fromKind: "aircraft" as const, windows: [{ name: "five_hour" as const, pct: 82.4, resetsAt: "2026-09-28T09:00:00.000Z" }], top: { name: "five_hour" as const, pct: 82.4, resetsAt: "2026-09-28T09:00:00.000Z" }, level: "info" as const, aircraft: ["TEAM_K", "TEAM_L"], control: [] };
+test("운항 상태 줄에는 ACCOUNT 사용 %가 없다. hold 수준일 때만 HOLD · FUEL 꼬리표(ATC-81)", () => {
+  const top = { name: "five_hour" as const, pct: 82.4, resetsAt: "2026-09-28T09:00:00.000Z" };
+  const fuel = { group: "pro-2", account: "pro-2", at: "2026-09-28T05:30:00Z", from: "TEAM_K", fromKind: "aircraft" as const, windows: [top], top, level: "info" as const, aircraft: ["TEAM_K", "TEAM_L"], control: [] };
   const [r] = fleetRows([view("TEAM_L", { fuel })], NOW);
-  assert.deepEqual(r!.fuel, { label: "FUEL 82% · resets 09:00Z", level: "info", title: "ACCOUNT pro-2 · 쓴 몫 5h 82% (reset 09:00Z) · TEAM_K statusline 05:30Z" });
-  assert.equal(fleetRows([view("TEAM_A")], NOW)[0]!.fuel, null);
+  assert.equal(r!.fuelHold, null);
+  assert.equal("fuel" in r!, false); // 줄에 ACCOUNT %를 싣는 자리가 없다
+  const held = { ...fuel, top: { ...top, pct: 96.2 }, windows: [{ ...top, pct: 96.2 }], level: "hold" as const };
+  const [h] = fleetRows([view("TEAM_L", { fuel: held })], NOW);
+  assert.deepEqual(h!.fuelHold, { label: "HOLD · FUEL (account pro-2) until 09:00Z", title: "ACCOUNT pro-2 · 사용 5h 96% (reset 09:00Z) · TEAM_K statusline 05:30Z" });
+  assert.equal(h!.fuelHold!.label.includes("%"), false);
+  assert.equal(fleetRows([view("TEAM_A")], NOW)[0]!.fuelHold, null);
 });

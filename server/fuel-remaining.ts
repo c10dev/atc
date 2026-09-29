@@ -127,16 +127,23 @@ export const fuelHolds = (f: FuelRemaining | null | undefined, cfg: FuelConfig) 
 
 const pctText = (p: number) => `${Math.round(p)}%`;
 
-// FLEET 줄: FUEL 82% · resets 21:00Z (가장 많이 쓴 창)
-export const fuelLabel = (f: FuelRemaining, now: number) => `FUEL ${pctText(f.top.pct)} · resets ${hhmm(Date.parse(f.top.resetsAt), now)}`;
+// ACCOUNT의 사용 한도(ATC-81): 늘 쓴 몫이라고 적는다 — "FUEL 87%"는 남은 눈금처럼 읽힌다. 남은 몫은 AIRCRAFT 자기 연료 FOB(fuel-context.ts)
+// FLEET FUEL 블록·카드: 사용 82% · resets 21:00Z (가장 많이 쓴 창)
+export const fuelLabel = (f: FuelRemaining, now: number) => `사용 ${pctText(f.top.pct)} · resets ${hhmm(Date.parse(f.top.resetsAt), now)}`;
+
+// 관제·FLEET PLAN 글에 끼우는 꼴: FUEL 사용 82% · resets 21:00Z
+export const fuelUsedText = (f: FuelRemaining, now: number) => `FUEL ${fuelLabel(f, now)}`;
 
 // 툴팁: 창마다 쓴 몫과 reset, 언제 누가 적었나
 export const fuelTitle = (f: FuelRemaining, now: number) =>
-  `${f.account ? `ACCOUNT ${f.account} · ` : ""}쓴 몫 ${f.windows.map((w) => `${SHORT[w.name]} ${pctText(w.pct)} (reset ${hhmm(Date.parse(w.resetsAt), now)})`).join(", ")} · ${f.fromKind === "control" ? "control " : ""}${f.from} statusline ${hhmm(Date.parse(f.at), now)}${f.control.length ? ` · 같은 ACCOUNT의 관제 세션 ${f.control.join(", ")}` : ""}`;
+  `${f.account ? `ACCOUNT ${f.account} · ` : ""}사용 ${f.windows.map((w) => `${SHORT[w.name]} ${pctText(w.pct)} (reset ${hhmm(Date.parse(w.resetsAt), now)})`).join(", ")} · ${f.fromKind === "control" ? "control " : ""}${f.from} statusline ${hhmm(Date.parse(f.at), now)}${f.control.length ? ` · 같은 ACCOUNT의 관제 세션 ${f.control.join(", ")}` : ""}`;
 
-// DISPATCH 사유: HOLD · FUEL 96% (account pro-2) until 21:00Z
-export const fuelHoldReason = (f: FuelRemaining, now: number) =>
-  `HOLD · FUEL ${pctText(f.top.pct)}${f.account ? ` (account ${f.account})` : ""} until ${hhmm(Date.parse(f.top.resetsAt), now)} — ${SHORT[f.top.name]} 한도의 ${pctText(f.top.pct)}를 씀`;
+// FLEET 줄의 HOLD 꼬리표: HOLD · FUEL (account pro-2) until 21:00Z. %는 싣지 않는다 — 붙드는 사실만
+export const fuelHoldTag = (f: FuelRemaining, now: number) =>
+  `HOLD · FUEL${f.account ? ` (account ${f.account})` : ""} until ${hhmm(Date.parse(f.top.resetsAt), now)}`;
+
+// DISPATCH 사유: HOLD · FUEL (account pro-2) until 21:00Z — 5h 한도 사용 96%
+export const fuelHoldReason = (f: FuelRemaining, now: number) => `${fuelHoldTag(f, now)} — ${SHORT[f.top.name]} 한도 사용 ${pctText(f.top.pct)}`;
 
 export interface FuelInfo {
   key: string; // 같은 ACCOUNT·창·reset이면 같은 키 — 한 번만 알린다
@@ -166,6 +173,6 @@ export function fuelInfos(accounts: FuelRemaining[] | Record<string, FuelRemaini
       pct: f.top.pct,
       resetsAt: f.top.resetsAt,
       level: f.level as "info" | "hold",
-      text: `${fuelLabel(f, now)}${f.account ? ` (account ${f.account})` : ""} — ${membersText(f)}`,
+      text: `${fuelUsedText(f, now)}${f.account ? ` (account ${f.account})` : ""} — ${membersText(f)}`,
     }));
 }

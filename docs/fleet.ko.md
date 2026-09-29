@@ -710,10 +710,10 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **API.** `GET /api/fleet/plan`은 `{mode, config, ranAt, error, demand, fuel, open, waiting, recent, gate}`를 돌려준다. `open[].now`는 지금 계산한 사유다. `waiting`에는 지속 조건을 기다리는 후보가 들어가고, 판정 뒤 쉬는 후보는 빠진다. `POST /api/fleet/plan/:id/verdict`는 `{verdict: "agree" | "disagree", reason?}`를 받는다. 이 화면의 Origin이 있어야 하고(아니면 403), 닫힌 제안에는 409를 돌려준다.
 - **탭.** 카드 위에 FLEET PLAN 블록이 있다. 게이트, AIRPORT별 수요 한 줄과 LAUNCH를 막는 이유, ACCOUNT별 FUEL 한 줄(아래), 사유가 붙은 열린 제안과 반대·동의 버튼, 지켜보는 후보, 최근 닫힌 제안이 보인다.
 - **FUEL(ATC-63, [fuel.md](fuel.md) 6).** FLEET PLAN이 ACCOUNT별 FUEL REMAINING(`snapshot.fuelAccounts`, 관제 세션 포함)을 읽는다.
-  - **hold 수준**(`holdPct`, 기본 95 %): 그 ACCOUNT의 AIRCRAFT는 LAUNCH하지 않는다. 다음으로 맞는 AIRCRAFT를 고르고, hold인 AIRCRAFT를 건너뛴 LAUNCH에는 `fuel-held` 사유가 붙는다. 맞는 AIRCRAFT가 모두 hold면 ENTRY도 내지 않고 아무것도 제안하지 않는다. AIRPORT 수요 줄이 이유를 말한다: `FUEL 100% (account acct-1) until 21:48Z — TEAM_Q — ENTRY도 제안 안 함(새 세션이 열릴 계정을 모름)`. 새 세션은 이 기기에 로그인된 계정으로 열리는데 atc는 그 계정을 모르기 때문이다(ENGINEERING 결정: AIRCRAFT가 모두 한 ACCOUNT면 ENTRY는 바닥난 같은 계정에 새 세션을 띄우는 제안이 된다).
-  - 평소의 ENTRY(맞는 등록 AIRCRAFT가 아예 없음)는 새 AIRCRAFT를 `default` ACCOUNT로 세고, `default`가 hold면 내지 않는다: `FUEL 97% (account default) until 21:49Z — 새 AIRCRAFT(ENTRY)가 들 ACCOUNT`.
+  - **hold 수준**(`holdPct`, 기본 95 %): 그 ACCOUNT의 AIRCRAFT는 LAUNCH하지 않는다. 다음으로 맞는 AIRCRAFT를 고르고, hold인 AIRCRAFT를 건너뛴 LAUNCH에는 `fuel-held` 사유가 붙는다. 맞는 AIRCRAFT가 모두 hold면 ENTRY도 내지 않고 아무것도 제안하지 않는다. AIRPORT 수요 줄이 이유를 말한다: `FUEL 사용 100% (account acct-1) until 21:48Z — TEAM_Q — ENTRY도 제안 안 함(새 세션이 열릴 계정을 모름)`. 새 세션은 이 기기에 로그인된 계정으로 열리는데 atc는 그 계정을 모르기 때문이다(ENGINEERING 결정: AIRCRAFT가 모두 한 ACCOUNT면 ENTRY는 바닥난 같은 계정에 새 세션을 띄우는 제안이 된다).
+  - 평소의 ENTRY(맞는 등록 AIRCRAFT가 아예 없음)는 새 AIRCRAFT를 `default` ACCOUNT로 세고, `default`가 hold면 내지 않는다: `FUEL 사용 97% (account default) until 21:49Z — 새 AIRCRAFT(ENTRY)가 들 ACCOUNT`.
   - DISPATCH FUEL HOLD 스위치(D3)와 상관없이 hold 수준을 쓴다(ENGINEERING 결정). 제안은 조언이고, 빈 ACCOUNT에 세션을 띄우자는 제안은 쓸모가 없다. DISPATCH 동작은 그대로다.
-  - **info 수준**(`infoPct`, 기본 80 %): 제안은 하고 `fuel` 사유 줄을 단다(`FUEL 85% · resets 21:00Z (account acct-1) — 한도에 가까움(INFO) · TEAM_I · control OCC`).
+  - **info 수준**(`infoPct`, 기본 80 %): 제안은 하고 `fuel` 사유 줄을 단다(`FUEL 사용 85% · resets 21:00Z (account acct-1) — 한도에 가까움(INFO) · TEAM_I · control OCC`).
   - **찾는 법**: AIRCRAFT의 ACCOUNT 라벨로 찾는다. 운항하지 않는 AIRCRAFT는 세션이 없어 자기 값이 없기 때문이다. 관제 세션만 적은 ACCOUNT도 잡힌다. 라벨이 하나도 없으면 AIRCRAFT는 자기 세션의 값만 보고, ENTRY는 볼 ACCOUNT가 없다. FUEL 기록이 없으면 아무것도 바뀌지 않는다.
   - **expire**: 열린 LAUNCH·ENTRY의 ACCOUNT가 hold가 되면 다음 주기에 FUEL 글을 사유로 expire한다. 같은 후보가 여전히 나와도 그렇다. 같은 AIRPORT의 새 후보는 supersede가 아니라 새로 낸다.
   - **블록**: ACCOUNT마다 한 줄. 가장 많이 쓴 창과 reset, hold면 `LAUNCH·ENTRY 제안 안 함`, info면 `제안에 FUEL 사유 줄`, 그 AIRCRAFT와 관제 세션. `GET /api/fleet/plan`의 `fuel`로 오고, 계획 주기가 아니라 볼 때의 스냅샷에서 읽는다.
@@ -759,7 +759,15 @@ FLIGHT를 마친 팀은 그 대화를 통째로 들고 있다. 2026-09-28에 TEA
 - **RESTART와 함께.** 같은 AIRCRAFT에 RESTART 후보(오래됨·health)가 이미 있으면 REFRESH를 따로 내지 않고 그 RESTART에 `context`·`saving` 줄을 붙인다. `minDwell`은 LAUNCH·RESTART 제안을 REFRESH의 반대 제안으로 본다.
 - **승인.** 백그라운드 세션은 RESTART 단계로 실행한다(8.5 STOP, 그다음 마지막 LAUNCH의 permission mode·모델로 LAUNCH). 데스크톱·터미널 세션은 승인이 거절된다(409). 카드에 그 세션에서 `/clear`하고 CREW BRIEFING을 붙여 넣으라는 글과 **CREW BRIEFING 복사** 버튼이 있고, 승인 운용에서는 **했음**이 동의로 닫는다. 승인 운용에서 받는 유일한 동의다.
 - **API.** `GET /api/fleet`은 AIRCRAFT마다 살아 있는 세션(여럿이면 가장 최근)의 `context: {contextTokens, window, at, pct, model, windowSource, compacted}`를 준다. `GET /api/fuel`은 세션마다, AIRCRAFT마다(기간 안 가장 최근 세션) 같은 것을 준다. 크기는 최근 7일에 바뀐 대화 기록으로 세고 60초 동안 같은 값을 쓴다.
-- **화면.** FLEET 목록에 CONTEXT 열(`502k / 1M`, 40 %부터 색), 카드에 `context 502k / 1M (50%)` 줄과 시각·창의 근거가 보인다.
+- **화면.** FLEET 목록에 CONTEXT 열(`502k / 1M`, 40 %부터 색), 카드에 `context 502k / 1M (50%)` 줄과 시각·창의 근거가 보인다. ATC-81이 둘을 FOB로 바꿨다(아래).
+
+### FOB as built (ATC-81)
+
+FLEET 줄에서 둘이 모두 연료라 불리며 비슷하게 읽혔다: ACCOUNT의 사용 한도(**쓴 몫**, 같은 ACCOUNT의 모든 AIRCRAFT에 같은 값)와, ATC-69부터 있는 AIRCRAFT 자기 맥락. ATC-81(표시 글만)이 각자의 이름을 준다.
+
+- **FOB(FUEL ON BOARD)**는 AIRCRAFT 자기 연료, 곧 창에 남은 몫이다. 목록 열은 `FOB 50% · 504k/1M`, 카드 줄은 `FOB 50% · 504k / 1M`. 색은 뜻을 따른다: 남은 몫 60 % 이하 노랑, 30 % 이하 빨강(ATC-69의 쓴 몫 40 %/70 %와 같은 지점). 화면에 적힌 정수 %로 가른다. 창이 200k 짐작일 뿐이면 토큰 기준(300k, 500k)이 그대로 가른다. `GET /api/fleet`은 필드 이름 `context`를 그대로 두고 `fobPct`(0–100, compaction 뒤 크기를 모르면 `null`)를 더한다. FLEET PLAN의 REFRESH `context` 사유 줄은 그대로다(쓴 몫을 말한다).
+- **ACCOUNT 사용 한도**는 줄에서 빠진다. FLEET FUEL 블록, 카드, FLEET PLAN의 FUEL 줄에는 남고, 줄에는 하나만 둔다: ACCOUNT가 hold 수준(`holdPct`, DISPATCH 스위치와 상관없이, 전에 줄 색이 그랬듯)일 때 꼬리표 `HOLD · FUEL (account pro-2) until 21:00Z`. 붙들린 ACCOUNT는 배정을 막기 때문이다. 꼬리표에는 백분율이 없고 툴팁에 있다.
+- **문구.** 사용 한도 글은 모두 쓴 몫이라고 말한다: 화면은 `사용 87% · resets 21:00Z`, TOWER `open.fuel`·FOLLOWING `fuel` 글과 FLEET PLAN FUEL 줄은 `FUEL 사용 87% · resets 21:00Z (account pro-2) — TEAM_K`, DISPATCH 사유는 `HOLD · FUEL (account pro-2) until 21:00Z — 5h 한도 사용 96%`. 값·임계값·규칙은 바뀌지 않았다.
 
 ### 8.7 FLEET PLAN 3단계: 승인 운용
 
@@ -904,9 +912,9 @@ FLIGHT를 마친 팀은 그 대화를 통째로 들고 있다. 2026-09-28에 TEA
 
 - 서버는 session → AIRCRAFT → ACCOUNT로 잇고 ACCOUNT마다 가장 새 값을 쓴다. 그래서 자기 세션이 보고하지 않은 AIRCRAFT도 그 ACCOUNT의 값을 보인다. ACCOUNT가 없으면 그 AIRCRAFT 자신의 세션 값만 쓴다. reset이 지난 창은 뺀다.
 - 관제 세션(TOWER, OCC, CROSSCHECK, MCC, ENGINEERING, ATC-60)도 ACCOUNT의 구성원이다. SUPERVISOR가 설정 창(AGENTS 탭 CONTROL 블록, `fleet.json` `control`, 선택 항목)에서 라벨을 단다. 라벨이 없으면 라벨이 하나라도 있을 때 `default`로, 하나도 없으면 자기 이름으로 따로 센다. 그 기록은 ACCOUNT의 값, TOWER INFO, 그 ACCOUNT의 AIRCRAFT에 대한 DISPATCH HOLD에 들어간다. 관제 세션 자신은 붙들지 않는다. FLEET 탭의 FUEL 블록이 ACCOUNT마다 AIRCRAFT와, 따로 관제 세션을 적는다.
-- FLEET 줄: `FUEL 82% · resets 21:00Z` — 가장 많이 쓴 창에서 **쓴 몫**과 그 창의 reset. 80 % 아래는 회색, 80 %부터 노랑(INFO), 95 %부터 빨강(HOLD 임계값). 툴팁에 창마다의 값과 어느 세션이 언제 적었는지가 있다.
+- FLEET FUEL 블록과 카드: ACCOUNT마다 `사용 82% · resets 21:00Z` — 가장 많이 쓴 창에서 **쓴 몫**과 그 창의 reset(ATC-81: 늘 쓴 몫이라고 적는다. "FUEL 82%"는 남은 눈금처럼 읽혔다). 80 % 아래는 회색, 80 %부터 노랑(INFO), 95 %부터 빨강(HOLD 임계값). 툴팁에 창마다의 값과 어느 세션이 언제 적었는지가 있다. 목록 줄에는 싣지 않는다. 같은 ACCOUNT의 AIRCRAFT마다 같은 숫자가 자기 것처럼 보이기 때문이다. 줄에는 AIRCRAFT 자기 연료 FOB(아래 "FOB as built (ATC-81)")를 두고, ACCOUNT는 hold 수준일 때 꼬리표 `HOLD · FUEL (account pro-2) until 21:00Z`(백분율 없이)로만 둔다.
 - 80 %(`dispatch.json` `fuel.infoPct`)부터 TOWER 브리핑 `open.fuel`에 INFO 항목(ACCOUNT·창·reset마다 한 번), 그 ACCOUNT의 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING에 `fuel` 문제(`info`)가 생긴다.
-- 95 %(`fuel.holdPct`)부터는 SUPERVISOR가 DISPATCH HOLD 스위치를 켰을 **때만**(설정 창 AGENTS 탭 FUEL 블록, `fuel.hold`, 기본 꺼짐, 결정 D3) DISPATCH가 그 ACCOUNT의 AIRCRAFT를 reset까지 `HOLD · FUEL 96% (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다. 계정을 저절로 바꾸는 일은 없다.
+- 95 %(`fuel.holdPct`)부터는 SUPERVISOR가 DISPATCH HOLD 스위치를 켰을 **때만**(설정 창 AGENTS 탭 FUEL 블록, `fuel.hold`, 기본 꺼짐, 결정 D3) DISPATCH가 그 ACCOUNT의 AIRCRAFT를 reset까지 `HOLD · FUEL (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다. 계정을 저절로 바꾸는 일은 없다.
 
 **Push(`hooks/health.mjs`, ATC-47).** Claude Code hook이 멈춘 순간을 바로 알려서, 승인을 기다리는 세션이 30분 뒤 `HUNG`이 아니라 곧바로 `PENDING`으로 보인다. 이벤트마다 상태 폴더의 `health/<sessionId>.jsonl`에 한 줄을 덧붙인다: `{t, event, code?, error?, line?}`(`StopFailure`, `Notification`, `Stop`, `PostToolUse`. 코드·시각·오류 첫 줄만, 본문 없음). 서버는 세션마다 마지막 줄을 읽고, 대화 기록의 마지막 사실보다 새 push 기록이 이긴다(`mergeHealth`). 아니면 pull 결과가 그대로 선다. SUPERVISOR의 설치 방법은 [hooks/README.ko.md](hooks/README.ko.md)에 있다.
 

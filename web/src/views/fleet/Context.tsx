@@ -1,6 +1,6 @@
 import type { ContextBadge } from "../../../../server/fuel-context.ts";
 
-// CONTEXT SIZE(ATC-69, docs/fleet.md 8.6 "REFRESH as built"): 살아 있는 세션의 대화 크기. FLEET 목록의 칸과 카드의 줄
+// FOB(ATC-81, CONTEXT SIZE는 ATC-69): AIRCRAFT 자기 연료 = 살아 있는 세션의 창에 남은 몫. FLEET 목록의 칸과 카드의 줄
 
 export function ContextCell({ c }: { c: ContextBadge | null }) {
   return (

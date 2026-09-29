@@ -21,7 +21,7 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
         <span>경과</span>
         <span>마지막 활동</span>
         <span>이번 주</span>
-        <span>CONTEXT</span>
+        <span>FOB</span>
         <span>FUEL 14일</span>
         <span />
       </div>
@@ -29,7 +29,7 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
         {rows.map((r) => {
           const isOpen = open.has(r.registration);
           return (
-            <li key={r.registration} className={`fl-li st-${r.status.replace(/ /g, "-")}${r.health || r.accountHold || r.fuel ? " has-health" : ""}${isOpen ? " is-open" : ""}`}>
+            <li key={r.registration} className={`fl-li st-${r.status.replace(/ /g, "-")}${r.health || r.accountHold || r.fuelHold ? " has-health" : ""}${isOpen ? " is-open" : ""}`}>
               <button className="fl-row" aria-expanded={isOpen} aria-controls={`fl-detail-${r.registration}`} onClick={() => onToggle(r.registration)}>
                 <span className="fl-r-id">
                   <b>{r.callsign}</b> <span className="mono faint">{r.registration}</span>
@@ -57,9 +57,9 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                       {r.accountHold.label}
                     </span>
                   )}
-                  {r.fuel && (
-                    <span className={`fl-r-fuel lv-${r.fuel.level}`} title={r.fuel.title}>
-                      {r.fuel.label}
+                  {r.fuelHold && (
+                    <span className="fl-r-health lv-hold" title={r.fuelHold.title}>
+                      {r.fuelHold.label}
                     </span>
                   )}
                   {r.flight ? (
@@ -67,7 +67,7 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                       <b className="mono">{flightNumber(r.flight.key)}</b> {r.flight.title && <span className="fl-r-title">{r.flight.title}</span>}
                       {r.more > 0 && <span className="fl-r-more">+{r.more}</span>}
                     </>
-                  ) : r.health || r.accountHold || r.fuel ? null : (
+                  ) : r.health || r.accountHold || r.fuelHold ? null : (
                     <span className="faint">—</span>
                   )}
                 </span>
