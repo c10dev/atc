@@ -322,6 +322,14 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
           />
         ))}
       </ul>
+      {/* 목록에 없는 세션의 ACCOUNT 라벨도 고칠 수 있다(전 구역과 같다) */}
+      {accounts?.rows
+        .filter((r) => !rows.some((x) => x.name === r.name))
+        .map((r) => (
+          <div key={r.name} className="fl-c-fallback">
+            {accountEdit(r.name)}
+          </div>
+        ))}
     </section>
   );
 }

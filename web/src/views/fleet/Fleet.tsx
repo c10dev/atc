@@ -259,7 +259,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
           카드
         </button>
       </div>
-      {layout === "list" ? (
+      {layout === "list" && inService.length > 0 ? (
         <StatusList
           rows={fleetRows(inService, Date.now())}
           open={open}
@@ -278,7 +278,8 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
         </StatusList>
       ) : (
         <>
-          <div className="fl-cards">{inService.map(cardOf)}</div>
+          {/* 카드 보기이거나 운항 중인 AIRCRAFT가 없으면 CONTROL 그룹이 혼자 선다(StatusList는 빈 목록에서 그룹을 그리지 않는다) */}
+          {layout === "cards" && <div className="fl-cards">{inService.map(cardOf)}</div>}
           <div className="fl-list fl-list-solo">
             <ControlSessions snapshot={snapshot} attached={false} />
           </div>

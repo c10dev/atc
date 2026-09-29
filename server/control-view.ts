@@ -220,7 +220,7 @@ export function controlGroupOf(rows: readonly ControlRow2[], daemonInService = f
   };
 }
 
-// 폴더 설정이 정하는 모델(FUEL 기록이 아직 없을 때 머리에 적는 안내)
+// 폴더 설정이 정하는 모델(FUEL 기록이 아직 없을 때 머리에 적는 안내). 폴더의 .claude/settings.json이 바뀌면 이 글도 고친다 — 기록이 있으면 쓰지 않는다
 export const CONTROL_MODEL_NOTE = "model: TOWER·OCC·REVIEW Sonnet, MCC·CROSSCHECK Opus";
 
 // 그룹 머리의 한 줄 조각들: `claude --bg`, `auto`, `acct-2`, `model: TOWER·OCC·REVIEW Sonnet, MCC·CROSSCHECK Opus`. 모르는 조각은 빠진다
