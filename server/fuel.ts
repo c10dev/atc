@@ -261,11 +261,30 @@ export interface AircraftFuel {
   crewWarnings: CrewWarningCounts;
   netCost: number;
 }
+// UTC 하루의 CAPTAIN·CREW 비용(ATC-137). 값이 매겨진 요청만 비용에 든다. 기록이 있는 날만, 오래된 날부터
+export interface DayFuel {
+  day: string; // YYYY-MM-DD(UTC)
+  captain: number; // USD
+  crew: number; // USD
+  requests: number;
+  unpricedTokens: number; // 가격표에 없어 비용에서 뺀 요청의 토큰
+}
+// 모델 하나의 요청·토큰·비용(ATC-137). 값 없는 요청은 unpriced*에만 든다. 비용이 큰 순서
+export interface ModelFuel {
+  model: string;
+  requests: number;
+  tokens: number; // 다섯 종류 합(값 없는 요청 포함)
+  cost: number; // USD, 값이 매겨진 요청만
+  unpricedRequests: number;
+  unpricedTokens: number;
+}
 export interface FuelSummary {
   days: number;
   since: string;
   totals: { captain: Burn; crew: CrewBurn; total: Burn; leak: LeakTotals; netCost: number; crewWarnings: CrewWarningCounts };
   models: Record<string, number>;
+  byDay: DayFuel[]; // ATC-137. 기존 클라이언트는 무시한다
+  byModel: ModelFuel[]; // ATC-137
   requests: number;
   unknownLines: number;
   priceWarnings: PriceWarning[]; // 가격표에 없어 비용에서 뺀 모델(요청이 많은 순서)
@@ -389,12 +408,18 @@ const addModels = (to: Record<string, number>, from: Record<string, number>) => 
 // NET FUEL: 전체 비용에서 값이 매겨진 LEAK를 뺀다(LEAK는 CAPTAIN 요청에서만 나온다)
 const netOf = (total: Burn, leak: LeakTotals) => Math.round((total.cost.total - leak.total.cost) * 10_000) / 10_000;
 
+// 기록 시각의 UTC 날짜. 기록은 늘 `…Z`라 앞 10자면 되고, 다른 꼴이면 시각으로 바꿔 읽는다
+export const utcDay = (t: string): string => (t.length >= 11 && t.endsWith("Z") ? t.slice(0, 10) : new Date(t).toISOString().slice(0, 10));
+
 // 기간(now − days) 안의 기록을 세션·AIRCRAFT(세션 이름)별로 모은다. 많이 쓴 순서
 export function summarizeFuel(input: SummaryInput): FuelSummary {
   const since = input.now - input.days * 86_400_000;
   const bySession = new Map<string, Acc & { first: string; last: string; versions: Set<string> }>();
   const all = acc();
   const warnings = new Map<string, PriceWarning>();
+  // ATC-137: 같은 패스에서 날짜별·모델별 합(기록을 다시 읽지 않는다)
+  const dayOf = new Map<string, DayFuel>();
+  const modelOf = new Map<string, ModelFuel>();
   for (const r of input.records) {
     if (Date.parse(r.t) < since) continue;
     let s = bySession.get(r.session);
@@ -407,6 +432,22 @@ export function summarizeFuel(input: SummaryInput): FuelSummary {
       w.requests++;
       w.tokens += tokenSum(r);
       warnings.set(key, w);
+    }
+    const day = utcDay(r.t);
+    let d = dayOf.get(day);
+    if (!d) dayOf.set(day, (d = { day, captain: 0, crew: 0, requests: 0, unpricedTokens: 0 }));
+    d.requests++;
+    let m = modelOf.get(r.model);
+    if (!m) modelOf.set(r.model, (m = { model: r.model, requests: 0, tokens: 0, cost: 0, unpricedRequests: 0, unpricedTokens: 0 }));
+    m.requests++;
+    m.tokens += tokenSum(r);
+    if (cost) {
+      d[r.sidechain ? "crew" : "captain"] += cost.total;
+      m.cost += cost.total;
+    } else {
+      d.unpricedTokens += tokenSum(r);
+      m.unpricedRequests++;
+      m.unpricedTokens += tokenSum(r);
     }
     for (const a of [s, all]) {
       if (r.sidechain) a.crew.add(r, cost, input.agents);
@@ -505,6 +546,8 @@ export function summarizeFuel(input: SummaryInput): FuelSummary {
     since: new Date(since).toISOString(),
     totals: { captain: costBurn(all.captain), crew: all.crew.view(), total, leak: roundLeaks(allLeak), netCost: netOf(total, allLeak), crewWarnings: allWarn },
     models: all.models,
+    byDay: [...dayOf.values()].sort((a, b) => a.day.localeCompare(b.day)).map((d) => ({ ...d, captain: round4(d.captain), crew: round4(d.crew) })),
+    byModel: [...modelOf.values()].sort((a, b) => b.cost - a.cost || b.tokens - a.tokens || a.model.localeCompare(b.model)).map((m) => ({ ...m, cost: round4(m.cost) })),
     requests: all.captain.n + all.crew.t.n,
     unknownLines: unknown,
     priceWarnings: [...warnings.values()].sort((a, b) => b.requests - a.requests || a.model.localeCompare(b.model)),
@@ -514,6 +557,8 @@ export function summarizeFuel(input: SummaryInput): FuelSummary {
     crewWarningEvents: crewWarningEvents.slice(0, CREW_WARNING_EVENTS_MAX),
   };
 }
+
+const round4 = (v: number) => Math.round(v * 10_000) / 10_000;
 
 function mergeLeaks(to: LeakTotals, from: LeakTotals) {
   for (const k of Object.keys(to) as (keyof LeakTotals)[]) {

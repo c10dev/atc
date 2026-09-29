@@ -16,6 +16,7 @@ export interface Job {
   suggestedReply: string | null; // 보여 주고 복사만 한다. atc는 어디에도 보내지 않는다
   since: string | null; // 지금 state가 시작된 시각(timeline.jsonl), 없으면 state.json의 updatedAt
   tempo?: string | null; // state.json의 tempo(active·idle·blocked …). blocked가 끝났는지 가리는 데 쓴다(ATC-133)
+  writtenAt?: string | null; // state.json을 마지막으로 쓴 시각(updatedAt, 없으면 파일 mtime). 지금 needs·detail이 적힌 때라서 "가장 최근의 기다림"을 가린다(ATC-138)
   // blocked인 채 남은 job 파일을 working으로 고쳐 보인 것(settleJob). 툴팁이 파일의 원래 모습을 말한다. 고치지 않았으면 없다
   settled?: { from: "blocked"; since: string | null; reason: "tempo" | "turn"; resumedAt: string | null };
 }
@@ -49,7 +50,7 @@ export function sinceOf(timelineTail: string | null | undefined, state: string):
 }
 
 // state.json(파싱한 값)과 timeline 꼬리 → Job. state가 모르는 값이면 null
-export function parseJob(raw: unknown, timelineTail?: string | null): Job | null {
+export function parseJob(raw: unknown, timelineTail?: string | null, mtimeMs?: number | null): Job | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   const state = r.state;
@@ -61,21 +62,27 @@ export function parseJob(raw: unknown, timelineTail?: string | null): Job | null
     suggestedReply: state === "blocked" ? clean(r.suggestedReply, REPLY_MAX) : null,
     since: sinceOf(timelineTail, state) ?? isoOf(r.updatedAt),
     tempo: clean(r.tempo, 20),
+    writtenAt: isoOf(r.updatedAt) ?? (mtimeMs != null && Number.isFinite(mtimeMs) ? new Date(mtimeMs).toISOString() : null),
   };
 }
 
-// blocked인데 이미 일하는 job(ATC-133): SUPERVISOR가 답한 뒤에도 파일이 blocked로 남는다.
-// tempo가 active이거나, 세션의 마지막 활동(대화 기록 mtime — atc가 이미 읽는 값)이 since보다 나중이면 blocked는 끝난 것이다.
-// blocked가 시작될 때 마지막 턴이 함께 기록되므로 GRACE 안의 활동은 그 턴으로 본다. 읽기만 한다
+// blocked인데 이미 일하는 job(ATC-133, ATC-138): SUPERVISOR가 답한 뒤에도 파일이 blocked로 남는다.
+// 끝난 것으로 보는 것은 다음 둘뿐이다:
+//  - tempo가 active
+//  - 세션의 마지막 활동(대화 기록 mtime — atc가 이미 읽는 값)이 "지금 needs·detail이 적힌 때"(writtenAt, 없으면 since)보다 나중이고 tempo가 blocked가 아님
+// since는 blocked가 처음 시작된 순간이라, working을 거치지 않고 다시 blocked가 되면 옛 기다림이다. 그래서 가장 최근에 쓴 때와 견준다.
+// tempo가 blocked이고 needs가 있으면 그 사이 턴이 있었어도 끝난 것이 아니다(다시 사람을 기다림). blocked가 적힐 때 마지막 턴이 함께 기록되므로 GRACE 안의 활동은 그 턴으로 본다. 읽기만 한다
 const SETTLE_GRACE_MS = 30_000;
 export function settleJob(job: Job | null | undefined, lastActiveAt?: string | null): Job | null | undefined {
   if (!job || job.state !== "blocked" || job.settled) return job;
-  const since = job.since ? Date.parse(job.since) : NaN;
+  const active = job.tempo === "active";
+  if (!active && job.tempo === "blocked" && job.needs) return job; // 다시 기다리는 중
+  const wait = Date.parse(job.writtenAt ?? job.since ?? "");
   const last = lastActiveAt ? Date.parse(lastActiveAt) : NaN;
-  const turn = Number.isFinite(since) && Number.isFinite(last) && last > since + SETTLE_GRACE_MS;
-  if (job.tempo !== "active" && !turn) return job;
+  const turn = Number.isFinite(wait) && Number.isFinite(last) && last > wait + SETTLE_GRACE_MS;
+  if (!active && !(turn && job.tempo !== "blocked")) return job;
   // detail은 답한 글이거나 blocked 때의 옛 글이라 working의 한 줄로 보이지 않는다
-  return { ...job, state: "working", detail: "", needs: null, suggestedReply: null, settled: { from: "blocked", since: job.since, reason: job.tempo === "active" ? "tempo" : "turn", resumedAt: turn ? new Date(last).toISOString() : null } };
+  return { ...job, state: "working", detail: "", needs: null, suggestedReply: null, settled: { from: "blocked", since: job.since, reason: active ? "tempo" : "turn", resumedAt: turn ? new Date(last).toISOString() : null } };
 }
 
 // ── 읽기: mtime·크기로 캐시 ──
@@ -89,6 +96,14 @@ const statOf = (p: string) => {
     return `${st.mtimeMs}:${st.size}`;
   } catch {
     return "-";
+  }
+};
+
+const mtimeOf = (p: string): number | null => {
+  try {
+    return statSync(p).mtimeMs;
+  } catch {
+    return null;
   }
 };
 
@@ -119,7 +134,7 @@ export function readJob(jobId: string | null | undefined, dir = join(config.clau
   if (hit?.key === key) return hit.job;
   let job: Job | null = null;
   try {
-    job = parseJob(JSON.parse(readFileSync(stateFile, "utf8")), tailOf(timeline));
+    job = parseJob(JSON.parse(readFileSync(stateFile, "utf8")), tailOf(timeline), mtimeOf(stateFile));
   } catch {} // 없음·깨짐·바뀐 모양: null
   cache.set(ck, { key, job });
   return job;

@@ -15,7 +15,7 @@ const line = (at: string, state: string) => JSON.stringify({ at, state, detail: 
 
 test("working: 상태와 한 줄만, needs·suggestedReply 없음", () => {
   const j = parseJob({ ...base, state: "working", detail: "PR 리뷰 중" }, null);
-  assert.deepEqual(j, { state: "working", detail: "PR 리뷰 중", needs: null, suggestedReply: null, since: "2026-09-29T02:29:10.000Z", tempo: "idle" });
+  assert.deepEqual(j, { state: "working", detail: "PR 리뷰 중", needs: null, suggestedReply: null, since: "2026-09-29T02:29:10.000Z", tempo: "idle", writtenAt: "2026-09-29T02:29:10.000Z" });
 });
 
 test("blocked: needs·suggestedReply를 싣는다", () => {
@@ -42,7 +42,7 @@ test("모르는 state·모양은 null, 모르는 필드는 무시", () => {
   assert.equal(parseJob([]), null);
   const j = parseJob({ ...base, state: "working", futureField: { a: 1 }, detail: 5 });
   assert.equal(j?.detail, "");
-  assert.deepEqual(Object.keys(j!).sort(), ["detail", "needs", "since", "state", "suggestedReply", "tempo"]);
+  assert.deepEqual(Object.keys(j!).sort(), ["detail", "needs", "since", "state", "suggestedReply", "tempo", "writtenAt"]);
 });
 
 test("intent·output·providerEnv·linkScanPath는 결과 어디에도 없다", () => {
@@ -156,4 +156,48 @@ test("BLOCKED 경보: 이미 일하는 blocked job은 울리지 않고, 진짜 b
 test("parseJob: tempo를 싣는다", () => {
   assert.equal(parseJob({ ...base, state: "blocked", tempo: "active" })?.tempo, "active");
   assert.equal(parseJob({ state: "blocked" })?.tempo, null);
+});
+
+// ATC-138: working을 거치지 않고 다시 blocked가 되면 since는 옛 기다림이다 — 가장 최근에 쓴 때와 견준다
+test("settleJob: 07:24부터 blocked, 그 뒤 턴들, 07:44에 새 needs로 다시 blocked(tempo blocked)면 NEEDS YOU (H)", () => {
+  const reblocked = stale({ since: "2026-09-29T07:24:00.000Z", writtenAt: "2026-09-29T07:44:00.000Z", needs: "new: which branch should I use?", detail: "waiting for the answer", tempo: "blocked" });
+  assert.equal(settleJob(reblocked, "2026-09-29T07:40:00.000Z"), reblocked); // 사이의 턴
+  assert.equal(settleJob(reblocked, "2026-09-29T07:44:10.000Z"), reblocked); // blocked를 쓴 턴의 꼬리(GRACE 안)
+  assert.equal(settleJob(reblocked, "2026-09-29T07:58:00.000Z"), reblocked); // 그 뒤 턴이 있어도 tempo가 blocked이고 needs가 있으면 끝난 것이 아니다
+  assert.equal(settleJob(reblocked, null), reblocked);
+});
+
+test("settleJob: tempo가 blocked가 아니어도 턴이 쓴 때보다 이르면 아직 기다림, 늦으면 끝남", () => {
+  const j = stale({ since: "2026-09-29T07:24:00.000Z", writtenAt: "2026-09-29T07:44:00.000Z", tempo: "idle" });
+  assert.equal(settleJob(j, "2026-09-29T07:40:00.000Z"), j); // 07:24 뒤이지만 07:44에 다시 적은 것보다 이르다
+  const done = settleJob(j, "2026-09-29T07:50:00.000Z")!;
+  assert.equal(done.state, "working");
+  assert.deepEqual(done.settled, { from: "blocked", since: "2026-09-29T07:24:00.000Z", reason: "turn", resumedAt: "2026-09-29T07:50:00.000Z" });
+  // tempo가 blocked이면(needs가 비었어도) 턴만으로는 끝난 것으로 보지 않는다
+  const empty = stale({ tempo: "blocked", needs: null });
+  assert.equal(settleJob(empty, "2026-09-29T09:00:00.000Z"), empty);
+  // 쓴 때를 모르면 since로 견준다(ATC-133 그대로)
+  assert.equal(settleJob(stale({ tempo: "idle", writtenAt: null }), "2026-09-29T07:05:00.000Z")!.state, "working");
+  // tempo가 active면 언제나 끝남
+  assert.equal(settleJob(stale({ tempo: "active", writtenAt: "2026-09-29T07:44:00.000Z" }), null)!.state, "working");
+});
+
+test("BLOCKED 경보: 다시 blocked가 된 진짜 기다림과 오래된 진짜 기다림은 울리고, 답 뒤 일하는 job은 울리지 않는다", () => {
+  const now = Date.parse("2026-09-29T08:00:00.000Z");
+  const run = (job: Job, lastActiveAt: string | null) => blockedAlerts([{ id: "s1", name: "TEAM_H", job, lastActiveAt }], now, 3);
+  const reblocked = stale({ since: "2026-09-29T07:24:00.000Z", writtenAt: "2026-09-29T07:44:00.000Z", needs: "new needs", tempo: "blocked" });
+  const a = run(reblocked, "2026-09-29T07:50:00.000Z");
+  assert.equal(a.length, 1);
+  assert.match(a[0].message, /new needs/);
+  // 오래된 진짜 기다림: 몇 시간이어도 울린다
+  assert.equal(run(stale({ since: "2026-09-29T02:00:00.000Z", writtenAt: "2026-09-29T02:00:00.000Z", tempo: "blocked" }), "2026-09-29T02:00:00.000Z").length, 1);
+  assert.equal(run(stale({ since: "2026-09-29T02:00:00.000Z", writtenAt: "2026-09-29T02:00:00.000Z", tempo: "idle" }), "2026-09-29T02:00:00.000Z").length, 1);
+  // 답한 뒤 일하는 job(ATC-133)은 그대로 울리지 않는다
+  assert.deepEqual(run(stale({ tempo: "idle" }), "2026-09-29T07:20:00.000Z"), []);
+});
+
+test("parseJob: writtenAt은 updatedAt, 없으면 파일 mtime, 둘 다 없으면 null", () => {
+  assert.equal(parseJob({ state: "blocked", updatedAt: "2026-09-29T07:44:00.000Z" }, null, Date.parse("2026-09-29T07:50:00.000Z"))?.writtenAt, "2026-09-29T07:44:00.000Z");
+  assert.equal(parseJob({ state: "blocked" }, null, Date.parse("2026-09-29T07:50:00.000Z"))?.writtenAt, "2026-09-29T07:50:00.000Z");
+  assert.equal(parseJob({ state: "blocked" })?.writtenAt, null);
 });

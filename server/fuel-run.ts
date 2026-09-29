@@ -7,6 +7,7 @@ import { allCrewChanges } from "./crew-change.ts";
 import { readDepartures } from "./departures.ts";
 import { rememberAgentModels } from "./agent-models.ts";
 import type { CrewMember } from "./crew.ts";
+import { loadDispatchConfig } from "./dispatch.ts";
 import { loadFleet } from "./fleet.ts";
 import { agentModels, type CrewWarning, crewWarnings } from "./fuel-crew.ts";
 import { type PriceTable, priceFlightFuel } from "./fuel-cost.ts";
@@ -346,7 +347,8 @@ export function mountFuel(app: Hono, getSnapshot: () => Promise<Snapshot>, loadE
   // 읽기 전용. 세션·AIRCRAFT별 FUEL BURN(다섯 가지, CAPTAIN·CREW, CACHE HIT)과 FLIGHT 몫·UNATTRIBUTED. 비용은 F5, 화면은 F8
   app.get("/api/fuel", async (c) => {
     const s = await getSnapshot();
-    return c.json(readFuel(fuelDays(c.req.query("days")), s, loadEntries()));
+    // teamPattern(ATC-137): 화면이 AIRCRAFT·관제 세션·기타를 가르는 데 쓴다. 더하는 필드라 옛 클라이언트는 무시한다
+    return c.json({ ...readFuel(fuelDays(c.req.query("days")), s, loadEntries()), teamPattern: loadDispatchConfig().teamPattern });
   });
 }
 
