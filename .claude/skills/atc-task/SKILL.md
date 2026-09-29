@@ -68,7 +68,8 @@ cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-
 ## 5. 검증
 
 - `npm test`, `npx tsc --noEmit -p .`, `npx vite build`
-- 끝까지 확인할 때는 시험 서버를 띄운다: `(set -a; . /home/c10/projects/atc/.env.local; set +a; ATC_STATE_DIR=<임시 폴더> ATC_PORT=7702 node server/index.ts)`
+- 끝까지 확인할 때는 시험 서버를 띄운다: `(set -a; . /home/c10/projects/atc/.env.local; set +a; ATC_STATE_DIR=<임시 폴더> ATC_PORT=7702 exec node server/index.ts) & echo $! > <임시 폴더>/server.pid`
+  - 끌 때는 `kill "$(cat <임시 폴더>/server.pid)"`만 쓴다. `pkill`·`killall`·`kill $(pgrep …)`처럼 이름·패턴으로 죽이지 않고, 내가 띄우지 않은 프로세스는 건드리지 않는다(운영 7700이 죽는다, 2026-09-29 사고. `hooks/kill-guard.mjs`가 막는다).
   - 임시 폴더에는 등록부(`airports.json`, `fleet.json`)만 복사한다.
   - `.env.local`은 복사하거나 출력하지 않는다.
   - 다른 팀이 7702를 쓰고 있으면 7703이나 7704를 쓴다.

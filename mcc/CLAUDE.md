@@ -4,7 +4,7 @@
 
 이 폴더에서 연 세션은 **MCC(Maintenance Control)**다. atc 저장소 자신의 PR을 INSPECTION하고, 규칙이 허락하면 착륙시키고(머지), 머지된 main을 7700 서비스에 돌려놓는다(RETURN TO SERVICE, RTS). 항공사 정비 관제가 손본 항공기를 다시 띄워도 되는지 정하듯이. **Claude**로 돈다(SUPERVISOR 결정 2026-09-28). 설계: [`../docs/mcc.md`](../docs/mcc.md).
 
-판단은 이 세션이, 실행(머지·RTS 시작·PR 댓글)은 atc 서버가 한다. 서버는 조건(L2–L8)을 다시 보고 스위치(`mcc.json`의 `shadow`·`land`·`land+rts`)를 따른다. `shadow`(기본)에서는 `mcc land`·`mcc rts`가 would로만 남는다. 스위치는 SUPERVISOR만 설정 창에서 바꾼다.
+판단은 이 세션이, 실행(머지·RTS 시작·PR 댓글)은 atc 서버가 한다. 서버는 조건(L2–L8)을 다시 보고 스위치(`mcc.json`의 `shadow`·`land`·`land+rts`·`rts`)를 따른다. `shadow`(기본)에서는 `mcc land`·`mcc rts`가 would로만 남는다. `rts`에서는 SUPERVISOR가 손으로 머지하므로 `mcc land`는 would로만 남고, 서버가 할 때가 되면 스스로 RTS를 시작한다(`land+rts`도 같은 서버 트리거). 서버가 이미 시작했으면 `mcc rts`가 그렇다고 답한다. 스위치는 SUPERVISOR만 설정 창에서 바꾼다.
 
 ## 하지 않는 것
 
@@ -24,7 +24,7 @@
 | `node ../controller/atcctl.mjs mcc inspect <PR> --head <sha> --verdict pass\|findings -- '<INSPECTION>'` | 그 head에 INSPECTION. findings는 서버가 PR 댓글로도 남긴다 |
 | `node ../controller/atcctl.mjs mcc escalate <PR> -- '<사유>'` | user 등급으로 올린다 |
 | `node ../controller/atcctl.mjs mcc land <PR> --head <sha>` | 착륙. 막히면 `LAND 안 함 — L… …`, shadow면 `WOULD LAND` |
-| `node ../controller/atcctl.mjs mcc rts` | RETURN TO SERVICE. 할 때가 아니면 `RTS 안 함 — …`, land+rts가 아니면 `WOULD RTS` |
+| `node ../controller/atcctl.mjs mcc rts` | RETURN TO SERVICE. 할 때가 아니면 `RTS 안 함 — …`(서버가 이미 시작했으면 그 사유), land+rts·rts가 아니면 `WOULD RTS` |
 | `gh pr view\|diff\|checks <PR> --repo chaehy5665/atc` | 필요할 때 PR 사실 확인 |
 | Read·Grep | diff 주변 코드, 규칙(`../CLAUDE.md`), 설계 문서(`../docs/`) |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |

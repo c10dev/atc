@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { fidsRows, FIDS_ARRIVED_CAP } from "../fids-rows.ts";
 import type { Snapshot, Ticket, TicketColumn } from "../../../server/model.ts";
 import {
   alertCode,
@@ -15,8 +16,6 @@ import { formatClock, type Settings, updateSettings, useSettings } from "../sett
 import { SplitFlap } from "../SplitFlap.tsx";
 import { AirportCode, PriorityMark, SessionBadge } from "../ui.tsx";
 
-const RECENT_DONE_MS = 3 * 86_400_000;
-
 // DEPARTURES 순서: 곧 LANDING할 FLIGHT가 위로
 const LIST_ORDER: PhaseTone[] = ["cleared", "approach", "enroute", "filed", "triage", "scheduled", "arrived", "canceled"];
 
@@ -28,12 +27,11 @@ export function Tickets({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
     (c) => showClosed || (c.type !== "canceled" && c.type !== "duplicate" && c.type !== "backlog"),
   );
   const shownStates = new Set(columns.map((c) => c.name));
-  const keep = (t: Ticket) =>
-    shownStates.has(t.state) &&
-    (showClosed ||
-      t.stateType !== "completed" ||
-      idx.workspacesByTicket.has(t.key) ||
-      (t.updatedAt !== null && now - Date.parse(t.updatedAt) < RECENT_DONE_MS));
+  // ARRIVED는 최근 FIDS_ARRIVED_CAP개와 STAND가 남은 것만(ATC-112). "more" 줄을 누르면 그 자리에서 ARRIVED 전체(이 화면에서만, 저장하지 않음). fidsClosed는 전부(전과 같다)
+  const [arrivedOpen, setArrivedOpen] = useState(false);
+  const { rows, moreArrived } = fidsRows(snapshot.tickets.filter((t) => shownStates.has(t.state)), idx, showClosed || arrivedOpen);
+  const more = { count: moreArrived, open: arrivedOpen && !showClosed, toggle: () => setArrivedOpen((v) => !v) };
+  const lastDone = columns.filter((c) => c.type === "completed").at(-1)?.name;
   const byActivity = (a: Ticket, b: Ticket) =>
     occupantsOf(b.key, idx).length - occupantsOf(a.key, idx).length || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
 
@@ -50,8 +48,8 @@ export function Tickets({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
       </div>
       {settings.fidsView === "list" ? (
         <DepartureBoard
-          tickets={snapshot.tickets
-            .filter(keep)
+          more={more}
+          tickets={[...rows]
             .sort((a, b) => LIST_ORDER.indexOf(phaseTone(a)) - LIST_ORDER.indexOf(phaseTone(b)) || byActivity(a, b))}
           idx={idx}
           clock={settings.clock}
@@ -60,11 +58,25 @@ export function Tickets({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
       ) : (
         <div className="board">
           {columns.map((col) => (
-            <Column key={col.name} col={col} tickets={snapshot.tickets.filter((t) => t.state === col.name && keep(t)).sort(byActivity)} idx={idx} />
+            <Column key={col.name} col={col} tickets={rows.filter((t) => t.state === col.name).sort(byActivity)} idx={idx} more={col.name === lastDone ? more : undefined} />
           ))}
         </div>
       )}
     </section>
+  );
+}
+
+// ARRIVED "more" 줄(ATC-112): 가려진 수를 알리고 그 자리에서 펼친다(펼친 뒤엔 다시 접는다)
+interface MoreArrived {
+  count: number;
+  open: boolean;
+  toggle: () => void;
+}
+function MoreButton({ more }: { more: MoreArrived }) {
+  return (
+    <button type="button" className="fids-more-btn" aria-expanded={more.open} onClick={more.toggle}>
+      {more.open ? `ARRIVED 최근 ${FIDS_ARRIVED_CAP}건만 · 접기` : `ARRIVED ${more.count} more · 전체 보기`}
+    </button>
   );
 }
 
@@ -128,7 +140,7 @@ function ViewOptions({ settings }: { settings: Settings }) {
 }
 
 // 목록 보기: 실제 DEPARTURES 안내판. TIME · FLIGHT · DESTINATION · AIRCRAFT · STAND · PRI · REMARKS
-function DepartureBoard({ tickets, idx, clock, now }: { tickets: Ticket[]; idx: Index; clock: Settings["clock"]; now: number }) {
+function DepartureBoard({ tickets, idx, clock, now, more }: { tickets: Ticket[]; idx: Index; clock: Settings["clock"]; now: number; more: MoreArrived }) {
   return (
     <div className="fids-list">
       <header className="fids-list-head">
@@ -167,6 +179,13 @@ function DepartureBoard({ tickets, idx, clock, now }: { tickets: Ticket[]; idx: 
             {tickets.map((t) => (
               <DepartureRow key={t.key} ticket={t} idx={idx} clock={clock} />
             ))}
+            {(more.count > 0 || more.open) && (
+              <tr className="fids-more">
+                <td colSpan={7}>
+                  <MoreButton more={more} />
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
         {tickets.length === 0 && <p className="empty fids-empty">표시할 편이 없음</p>}
@@ -229,7 +248,7 @@ function DepartureRow({ ticket: t, idx, clock }: { ticket: Ticket; idx: Index; c
   );
 }
 
-function Column({ col, tickets, idx }: { col: TicketColumn; tickets: Ticket[]; idx: Index }) {
+function Column({ col, tickets, idx, more }: { col: TicketColumn; tickets: Ticket[]; idx: Index; more?: MoreArrived }) {
   return (
     <div className={`column tone-${phaseTone(col)}`}>
       <header className="column-head" title={col.name}>
@@ -241,6 +260,7 @@ function Column({ col, tickets, idx }: { col: TicketColumn; tickets: Ticket[]; i
         {tickets.map((t) => (
           <TicketCard key={t.key} ticket={t} idx={idx} />
         ))}
+        {more && (more.count > 0 || more.open) && <MoreButton more={more} />}
       </div>
     </div>
   );

@@ -98,6 +98,7 @@ export interface UpdateStatus {
   prs: RangePr[] | null; // 둘 사이에 머지된 PR. 읽지 못했으면 null
   refusal: string | null; // 시작 전에 아는 거절(범위)
   last: RtsRecord | null;
+  auto?: { on: boolean; nextAt: string | null }; // 자동 배포(ATC-84, mcc 모드 rts·land+rts): 켜짐이고 5분 간격을 기다리는 중이면 다음 시각
   at: string;
 }
 

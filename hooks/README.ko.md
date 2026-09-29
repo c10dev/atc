@@ -231,3 +231,18 @@ SUPERVISOR가 `~/.claude/settings.json`에 아래를 넣는다(절대 경로). `
 | `fuel-statusline.test.mjs` | 기록 모양, 숫자와 모델 id만, 바뀔 때만 쓰기(`rate_limits` 없이도), 출력 줄, fail open(`npm test`) |
 
 atc가 점유로 HANDOFF와 충돌을 판정하는 방법은 저장소 [README](../README.ko.md#handoff와-충돌)에 있다.
+
+## KILL GUARD (ATC-134)
+
+`kill-guard.mjs`는 저장소 자체의 `.claude/settings.json`에 건 `PreToolUse(Bash)` hook이라, 이 저장소나 그 워크트리에서 연 세션은 모두 받는다. 2026-09-29 07:12에 한 팀의 `pkill -f "node server/index.ts"`가 시험 서버와 함께 운영 7700까지 껐다.
+
+이런 명령은 exit 2로 막고(사유는 stderr):
+
+- 패턴에 `server/index`·`atc`·`node`가 든 `pkill`/`killall`
+- `kill $(pgrep …)`, `kill \`pidof …\``, `pgrep|ps|lsof … | xargs kill`
+- `fuser -k`
+- `systemctl [--user] stop|restart|try-restart|kill|disable|mask|isolate atc`(`atc.service`도)
+
+`kill <pid>`, `kill "$(cat <임시 폴더>/server.pid)"`, `systemctl … atc-rts`, 읽기만 하는 `systemctl status`는 막지 않는다. 낱말만 들어 있는 명령(`echo 'pkill …'`, `grep`)도 통과한다. hook 입력을 읽거나 해석하지 못하면 막는다. 설정 항목은 `… || exit 2`이고, 프로젝트 폴더에 hook이 없으면(관제 폴더) main 체크아웃의 것(`/home/c10/projects/atc/hooks/kill-guard.mjs`)으로 돌아, hook이 없을 때는 통과하지 않고 막는다.
+
+이 저장소에서 연 세션만 덮는다. 다른 저장소(vocado)의 세션에는 그 저장소 설정에 같은 hook이 있어야 한다.
