@@ -54,6 +54,32 @@ Read on 2026-09-28 from local transcripts (field names and numbers only, no bodi
 - **Codex**: sum `last_token_usage` from `token_count` events; `uncached = input − cached − cache_write`; skip the parent history a MultiAgent rollout replays.
 - **FLIGHT attribution**: cut usage by the FLIGHT interval (STAND occupancy, `departures.jsonl`, LOGBOOK `departedAt`–`arrivedAt`), CAPTAIN and CREW separately. What fits no FLIGHT is `UNATTRIBUTED`. Built in F4 (ATC-53), see 8.3. The LOGBOOK `arrived` line gains an optional `fuel` field (old lines have none): `{captain, crew, cost, netCost, cacheHit, leak: {coldCache, controlWake, sessionChange, compaction, modelSwitch, unexplained}, crewWarnings, models}`.
 
+### 4.1 Read watch and disposable cache as built (ATC-83)
+
+**Step 0: where the time went** (measured 2026-09-29 on a 7712 test server, temporary `ATC_STATE_DIR`, the real `~/.claude`, read-only; 607 transcript files in 7 days, 1.15 GB, 42,154 unique requests):
+
+| Measure | Before | Where it goes |
+|---|---|---|
+| First `GET /api/fuel?days=7` after a restart | 3.8–4.6 s (8.1 s for a bare `scanFuel` while the machine was busy) | Reading and parsing 1.15 GB of transcript text. The tree walk is 5–18 ms and the global dedupe 15 ms |
+| Later calls with no new bytes | 0.29–0.43 s | `scanFuel` itself is about 25 ms (walk 5 ms, per-file no-op 2 ms, dedupe 15 ms). The rest is `analyzeWindow`, the summary and encoding an 800 KB body |
+| Server RSS | 195 MB at start, 415–442 MB after the first call | 4 MB read buffers and the decoded text, on top of about 30 MB of records |
+| A new line to show in FUEL | Next request (0.2 ms of extra reading) | Nothing waits on a read. The waits are the caches in front: FLEET CONTEXT SIZE and the FUEL WATCH brief keep one value for 60 s |
+
+So the cold scan is the cost to remove, and the per-call walk is small. A new line was already read on the next call; what lagged was the 60-second values.
+
+**Watch** (`server/fuel-tree.ts`). `mountFuel` starts `fs.watch` (`recursive`, inotify, `persistent: false`) on `~/.claude/projects`. A `.jsonl` event marks the path; the list of transcripts (`FuelTree`, mtime per file) re-stats only marked paths instead of walking the tree, `classifyFuelPath` giving the same main/CREW rule as `fuelFiles`. About 0.5 s after a change (debounced) the changed files inside the 7-day window are read on from their offset, so the next request finds them read. If the watch cannot start or errors, or an event has no file name, the list falls back to the full walk on every call. A **periodic full walk** (every 60 s) stays and catches anything the watch missed. Each change also bumps `fuelChangeSeq()`: the 60-second FLEET CONTEXT SIZE and FUEL WATCH values are recomputed after at least 5 s (`REFRESH_MIN_MS`) instead of waiting out the 60 s. Measured on a temporary transcript: the event arrives in 1.7 ms and the pre-read leaves nothing for the next scan (0 bytes).
+
+**Cache** (`server/fuel-cache.ts`, `~/.cache/atc/fuel/`, or `$XDG_CACHE_HOME/atc/fuel/`; `config.cacheDir`). One JSON file per transcript, named by the sha1 of its path, holding what the reader already keeps in memory for that file: the deduped `FuelRecord`s in order, compactions, `/model` commands, the session name, `agentType`/`spawnDepth`, `unknown`, and the read position (inode, byte offset, and a sha1 of the first 512 bytes). It is not in the state directory (`~/.local/state/atc/` is untouched) because it can be deleted at any time: deleting it, or any file in it, costs one cold read.
+
+- **Only the fields `FuelRecord` keeps.** Transcript bodies, `message.content`, prompts and the `description` of a `meta.json` are never written (tested with a sentinel body).
+- **Loaded lazily, per file**, the first time a file is read after a restart, and used only if it still fits: same format version (`FUEL_CACHE_FORMAT`), same path and inode, offset not beyond the file, the same first-512-bytes hash, and sane record fields. Otherwise it is ignored and that file is read from the start, then written again. Bump `FUEL_CACHE_FORMAT` whenever `FuelRecord`, `Compaction`, `ModelCommand` or the parser change what they keep.
+- **Written by a timer** (30 s, at most 100 ms of writing per tick, atomic rename), only for files whose offset moved; a restart loses at most the last few seconds of reading, and the next read resumes from the saved offset. Shards of transcripts that no longer exist are removed once, 10 s after start.
+- The same results with and without the cache are checked over fixture transcripts (`server/fuel-cache.test.ts`: records in order, compactions, model commands, names, agents; a restart reads 0 bytes; a new line reads only that line; damaged, old-format, wrong-inode, shrunk and rewritten caches all give the cold result). Nothing about what FUEL computes changed: dedupe, `proxied`, prices, leaks and attribution are the same code over the same records.
+
+**Measured after** (same machine and transcripts): the first `GET /api/fuel?days=7` after a restart takes **0.54 s** with **0 bytes read** (was 3.8–4.6 s and 1.15 GB); RSS 207 MB at start and 336 MB after the first call (was 195 and 415–442). The cache holds 607 files in 18 MB and was fully written about 45 s after the first cold run. A cold run with an empty cache costs what it did before (3.8 s).
+
+PILOT'S DISCRETION: the full-walk check stays at 60 s (about the cost of one scan); FLEET CONTEXT SIZE and the FUEL WATCH brief refresh after 5 s instead of 60 s when a transcript changed; the cache is per transcript rather than one file, so a restart loads only what it reads and each write is small. The test servers write to the cache like the real one (it depends only on the transcripts, not the state directory), so measure with `XDG_CACHE_HOME` set to a temporary folder.
+
 ## 5. Leaks and CREW warnings
 
 A **miss** follows Claude Code: re-processing more than 5 % of what could have been read from cache, and at least 2,000 tokens. Rebuilds explained by compaction or tool-result clearing are "expected rebuilds".

@@ -18,6 +18,8 @@ export const config = {
   // AIRCRAFT 세션을 띄우고 멈출 때 쓰는 claude CLI(docs/fleet.md 8.5). 서비스 PATH에 없어서 경로로 둔다
   claudeBin: env.ATC_CLAUDE_BIN || join(HOME, ".local/bin/claude"),
   codexDir: join(HOME, ".codex"),
+  // 버려도 되는 캐시(FUEL 읽기 캐시 등, ATC-83). 상태 폴더가 아니다. 지워도 한 번 다시 읽을 뿐
+  cacheDir: join(env.XDG_CACHE_HOME || join(HOME, ".cache"), "atc"),
   stateDir: env.ATC_STATE_DIR || join(HOME, ".local/state/atc"),
   airportsFile: env.ATC_AIRPORTS_FILE || join(env.ATC_STATE_DIR || join(HOME, ".local/state/atc"), "airports.json"),
   // 마지막으로 건드린 뒤 이 시간이 지나면 점유가 끝난 것으로 본다.
