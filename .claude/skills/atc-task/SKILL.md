@@ -97,11 +97,19 @@ git diff --name-only origin/main...HEAD | node deploy/landing-tier.mjs
 
 일을 맡긴 세션에만 `SendMessage`로 보고한다(0절: FLIGHT PLAN으로 받았으면 OCC, 직접 지시로 받았으면 ENGINEERING이나 사용자). 다른 팀 세션에는 보내지 않는다. 세션끼리 주고받는 글이라 보고는 영어로 쓴다(루트 `CLAUDE.md` "교신", ATC-126). 사용자와의 대화만 한국어다.
 
-- 첫 줄: `[TEAM_X → ENGINEERING] ATC-<n>: PR #<번호> <링크>`(OCC에 보고할 때는 `→ OCC`)
-- 한 일을 요약한다(항목 3~5개).
-- 명세와 다르게 한 점, PILOT'S DISCRETION으로 고른 것과 그 이유를 적는다.
-- 등급을 적고, `flagged`면 바뀐 관제 규칙을 적는다.
-- 검증 결과를 적는다: 테스트 수, tsc, build, 시험 서버와 Playwright에서 확인한 것. 스크린샷은 올리지 않고 글로 적는다(공개 저장소, 루트 CLAUDE.md).
-- 막힌 점이나 SUPERVISOR가 결정할 일을 적는다.
+보고는 **고정 머리와 고정 줄**로 시작한다(ATC-124). 받은 세션이 `atcctl dispatch report`로 한 번에 기록하는 칸이라 모양을 바꾸지 않는다:
+
+```
+[TEAM_X → OCC] ARRIVED ATC-<n> · PR #<번호>
+TIER auto|flagged|user
+TESTS <통과>/<전체> · tsc ✓ · build ✓
+DISCRETION <수> — <하나씩 한 줄, 없으면 none>
+BLOCKED none | <막힌 점 한 줄씩>
+<자유 요약>
+```
+
+- 첫 줄의 `→ OCC`는 FLIGHT PLAN으로 받았을 때, 직접 지시면 `→ ENGINEERING`(사용자에게는 같은 꼴로 대화에 쓴다). PR이 없는 SURVEY·CHECK FLIGHT는 `PR #<번호>` 대신 `RESULT <링크>`를 쓴다.
+- `TIER`는 6절 등급, `DISCRETION`은 PILOT'S DISCRETION으로 고른 것의 수(줄마다 무엇을 왜), `BLOCKED`는 막힌 점이나 SUPERVISOR가 결정할 일이다. tsc나 build가 실패했으면 ✓ 대신 ✗와 이유를 적는다.
+- 고정 줄 뒤 자유 요약에는: 한 일 3~5개, 명세와 다르게 한 점, `flagged`면 바뀐 관제 규칙, 검증 결과(시험 서버와 Playwright에서 확인한 것. 스크린샷은 올리지 않고 글로, 공개 저장소, 루트 CLAUDE.md), PR 링크.
 
 같은 파일을 고치는 다른 ATC 작업이 먼저 머지되면, `origin/main` 위로 rebase하고 force-with-lease로 다시 올린 뒤 알린다.

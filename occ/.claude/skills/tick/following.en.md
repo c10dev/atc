@@ -27,6 +27,8 @@ The stages are READBACK → DEPARTED (a STAND or a departure record) → PR open
 | code | Meaning | Report |
 |---|---|---|
 | `no-departure` · `no-pr` · `pr-not-cleared` · `no-arrival` | Delay: no next stage after 1.5× the WAKE expectation (L 60 min, M 240 min, H 2 days). STAND-free FLIGHTs (SURVEY, CHECK) have no PR stage, so only `no-arrival` (DEPARTED, no ARRIVED report) applies | SUPERVISOR |
+| `no-report` | Mismatch: the PR merged (ON) more than 30 minutes ago and no arrival report is recorded (ATC-124). Either the CAPTAIN didn't report or OCC missed recording it — record a report you received with `dispatch report`; if there is none, tell the SUPERVISOR (don't ask the team) | SUPERVISOR |
+| `blocked-report` | The recorded arrival report's `BLOCKED` is not `none` (visible for a day). `text` has the blocker | SUPERVISOR |
 | `landing-wait` | CLEARED for over an hour without landing (information; landing is the SUPERVISOR's call) | OCC LOG only |
 | `review-no-pr` · `done-not-merged` | Mismatch: Linear says In Review or Done but there's no PR, or it isn't merged | SUPERVISOR |
 | `merged-not-done` | Mismatch: the PR merged but Linear isn't Done (information; a CLOSE draft candidate) | OCC LOG only |

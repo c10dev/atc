@@ -115,6 +115,23 @@ When applied, leave only the line "TEAM_H CREW CHANGE CC-0001 COMPLETE".
 - 2a(shadow)에서는 보내지 않는다. SUPERVISOR가 FLEET 카드에서 복사해 붙여 넣는다. 2b를 켜기 전에 vocado `CLAUDE.md`의 READBACK 규칙을 `[OCC CC-xxxx]`까지 넓힌다(SUPERVISOR가 고친다).
 - send-guard는 approval 모드이고, `crew-change send`로 보냄(sent) 상태가 된 건을 그 AIRCRAFT(REGISTRATION)에게 서버가 저장한 문구 그대로 보낼 때만 통과시킨다.
 
+## CAPTAIN → OCC: 도착 보고 (ATC-124)
+
+FLIGHT를 끝낸 CAPTAIN의 최종 보고는 고정 머리와 고정 줄로 시작한다. 세션끼리 주고받는 글이라 영어다:
+
+```
+[TEAM_H → OCC] ARRIVED ATC-124 · PR #211
+TIER user
+TESTS 1149/1149 · tsc ✓ · build ✓
+DISCRETION 2 — <하나씩 한 줄>
+BLOCKED none
+<자유 요약>
+```
+
+- PR이 없는 SURVEY·CHECK FLIGHT는 `PR #211` 대신 `RESULT <링크>`를 쓴다. 직접 지시로 받았으면 `→ ENGINEERING`이다.
+- 받은 세션(OCC, 또는 ENGINEERING)이 `atcctl dispatch report`로 고정 칸만 기록한다. atc는 팀 메시지를 읽지 않고, 자유 요약은 저장하지 않는다.
+- FLIGHT FOLLOWING에 두 가지가 더 뜬다: PR이 머지된 지 30분이 지나도 기록된 보고가 없는 FLIGHT(`no-report`), 보고의 `BLOCKED`가 `none`이 아닌 FLIGHT(`blocked-report`, 하루). OCC가 SUPERVISOR에게 알린다.
+
 ## 기계적 안전장치
 
 | guard | 지키는 것 |
