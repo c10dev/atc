@@ -12,7 +12,8 @@
 | `Environment="PATH=…/node/v24.19.0/bin:…"` | 사용자 서비스는 셸 프로필을 읽지 않으므로 nvm으로 설치한 Node 24를 PATH에 넣는다 |
 | `ExecStartPre=… node --run build` | 시작할 때마다 웹 화면을 새로 빌드(`vite build`)한다. 화면을 고친 뒤 재시작만 하면 반영된다 |
 | `ExecStart=… node server/index.ts` | 서버 시작(Node가 TypeScript를 바로 실행) |
-| `Restart=on-failure`, `RestartSec=5` | 죽으면 5초 뒤 다시 시작 |
+| `Restart=always`, `RestartSec=5` | 프로세스가 무슨 이유로든 죽으면(크래시든 잘못 날아온 `kill`이든) 5초 뒤 다시 시작(ATC-134). `systemctl --user stop atc`로 일부러 멈춘 것은 멈춘 채로 남고, `restart`(RTS)는 전과 같다 |
+| `StartLimitIntervalSec=600`, `StartLimitBurst=20` | 10분에 20번 넘게 다시 뜨면(빌드 실패 등) systemd가 포기하고 멈춘 채로 둔다. 깨진 체크아웃이 끝없이 도는 것을 막는다 |
 | `WantedBy=default.target` | 사용자 세션과 함께 시작 |
 
 경로는 이 머신 기준이다. 다른 머신에서는 `WorkingDirectory`, `PATH`의 node 경로, `ExecStartPre`, `ExecStart`를 자기 것으로 바꾼다(`which node`가 Node 24 이상이어야 한다).
@@ -39,7 +40,20 @@ journalctl --user -u atc -f           # 로그
 systemctl --user disable --now atc    # 멈추고 자동 시작에서 빼기
 ```
 
-`atc.service` 자체를 고쳤으면 다시 복사하고 `systemctl --user daemon-reload`한 뒤 재시작한다.
+`atc.service` 자체를 고쳤으면 다시 복사하고 `systemctl --user daemon-reload`한 뒤 재시작한다. **ATC-134가 유닛을 바꾸므로(`Restart=always`) SUPERVISOR가 한 번 다시 설치한다**(RTS는 `deploy/*.service`가 바뀐 범위를 거절한다):
+
+```bash
+cp deploy/atc.service ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user restart atc
+```
+
+## 시험 서버를 안전하게 끄기 (ATC-134)
+
+2026-09-29 07:12에 한 팀이 7702 시험 서버를 `pkill -f "node server/index.ts"`로 끄다가, 같은 패턴에 걸린 운영 7700까지 껐다. 그 뒤로:
+
+- 시험 서버는 띄울 때 PID를 저장하고(`( … exec node server/index.ts ) & echo $! > <임시 폴더>/server.pid`. `exec`가 서브셸의 PID를 node의 것으로 만든다) `kill "$(cat <임시 폴더>/server.pid)"`로만 끈다(루트 `CLAUDE.md` "검증").
+- 루트 `.claude/settings.json`의 `PreToolUse(Bash)` hook `hooks/kill-guard.mjs`가 패턴에 `server/index`·`atc`·`node`가 든 `pkill`/`killall`, `kill $(pgrep …)`, `pgrep … | xargs kill`, `fuser -k`, `systemctl --user stop|restart|kill|disable|mask atc`를 막는다. fail-closed(`… || exit 2`)이고 `kill <pid>`와 `atc-rts`는 막지 않는다. [hooks/README.ko.md](../hooks/README.ko.md) 참고.
+- 그래도 죽으면 `Restart=always`가 5초 안에 7700을 다시 띄운다.
+- 서버는 시작할 때 `pid`·`ppid`·포트를 찍고, `SIGTERM`/`SIGINT`/`SIGHUP`을 받으면 끝나기 전에 로그를 남긴다. `journalctl --user -u atc`로 볼 수 있다. Node는 신호를 보낸 쪽을 알 수 없다. `systemctl`로 멈췄다면 같은 저널에 `Stopping …`도 남는다.
 
 ## RETURN TO SERVICE(MCC)
 
