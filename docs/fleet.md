@@ -182,7 +182,7 @@ The plan is made in two passes over the same eligible FLIGHTs:
 | Reservations are split | An in-flight STAND-free proposal does not block the STAND rule (a team doing a SURVEY can still be given a BUILD), and an in-flight BUILD proposal does not block a STAND-free FLIGHT. `AircraftState.reserved` is the STAND-needing reservation, `reservedLight` the STAND-free one. A reserved FLIGHT the snapshot no longer knows counts as needing a STAND |
 | Same rules | TAIL ASSIGNMENT (a HOLDING tail team can take a STAND-free FLIGHT), TYPE RATING, crew, CHECK independence, WAKE slots |
 | Order | STAND rule first, so BUILD work keeps its place; STAND-free FLIGHTs fill what is left. Within the pass, by score |
-| Shown as | A 0-point factor `STAND 없이` with the AIRCRAFT's state: `HOLDING — VOC-10 진행 중 — SURVEY는 STAND가 필요 없어 STAND 규칙 밖(AIRCRAFT당 1건)` |
+| Shown as | A 0-point factor `STAND 없이` with the AIRCRAFT's state: `VOC-10 아직 진행 중(PR 없음) — SURVEY는 STAND가 필요 없어 STAND 규칙 밖(AIRCRAFT당 1건)` |
 | Approval mode | An approved STAND-free proposal stays valid while its AIRCRAFT is HOLDING (`canTakeNow`); `syncOps` uses the same rule for the SUPERSEDED reason. Departure and arrival: section 5.1.1 |
 
 Only labelled FLIGHTs take this path. The SCHEDULE `classify` candidates put titles that look like research, review, comparison or planning first (`standFreeHint` in `server/schedule.ts`), so OCC classifies likely `SURVEY` and `CHECK` FLIGHTs sooner. The order is a hint; the label is still OCC's call.

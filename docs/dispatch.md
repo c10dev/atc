@@ -90,6 +90,7 @@ Every FLIGHT left out of `ASSIGN` is listed under "excluded" with one of these r
 | **Being worked**: an open PR (Draft included) whose ticket key is the FLIGHT | `열린 PR #N 있음` | 2026-09-27 |
 | **FLIGHT hold**: an ASSIGN for it was rejected in the last 24 hours with a FLIGHT chip, and the issue has not changed since (6.1) | `FLIGHT 보류 — <chip> (D-xxxx 판정) — 이슈가 바뀌거나 MM-DD HH:MM부터 다시` | 2026-09-27 |
 | A worktree (STAND) already exists | `이미 STAND가 있음` | |
+| **Stopped AIRCRAFT** (ATC-90): health `RESUME` or `STALLED`, or it still holds an In Progress FLIGHT with no merged PR (by `tail:` label or claimed STAND) that is not a STAND-free FLIGHT. The held FLIGHTs use the AIRCRAFT's slots by WAKE, so a team with room left (e.g. `wake:L` held, `perTeam` 1) can still get a FLIGHT that fits | `TEAM_G — VOC-72 아직 진행 중(PR 없음)`, `TEAM_H — RESUME 필요(한도 풀림 22:10Z)`. The key is the REGISTRATION. An open proposal is SUPERSEDED with `AIRCRAFT 멈춤 — …`, which is not a SUPERVISOR verdict, so the 24-hour pair rule does not start | 2026-09-29 |
 | An open proposal or a HOLD already covers it | `진행 중인 제안 D-xxxx`, `HOLD D-xxxx — …` | |
 | Every qualifying AIRCRAFT for it was proposed with it in the last 24 hours and that proposal is closed (6.1) | `24시간 안에 제안된 짝(D-xxxx) — MM-DD HH:MM부터 다시` | 2026-09-27 |
 | No priority | `우선순위 없음 — 사람이 정할 때까지 배정하지 않음` | |
@@ -137,7 +138,7 @@ When slots are full, nothing is proposed instead of an `ASSIGN` (extended to gro
 
 Each proposal shows the per-factor scores as they are ("why this flight for this team"). The SUPERVISOR changes the weights in a settings file.
 
-Two marks add no points and only explain the pair: `STAND 없이` (a SURVEY or CHECK given outside the STAND rule, with the AIRCRAFT's state, e.g. `HOLDING — VOC-10 진행 중`), and `CHECK 독립성` on every CHECK (the builder that was left out, or `확인 못 함 — …` when atc could not tell who built it). There is no bonus for idle AIRCRAFT.
+Two marks add no points and only explain the pair: `STAND 없이` (a SURVEY or CHECK given outside the STAND rule, with the AIRCRAFT's state, e.g. `VOC-10 아직 진행 중(PR 없음) — 남은 슬롯 0.5`), and `CHECK 독립성` on every CHECK (the builder that was left out, or `확인 못 함 — …` when atc could not tell who built it). There is no bonus for idle AIRCRAFT.
 
 #### 5.3.1 File overlap (ATC-71)
 

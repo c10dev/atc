@@ -4,7 +4,7 @@ import { basename, dirname, join } from "node:path";
 import { callsign } from "./callsign.ts";
 import { config } from "./config.ts";
 import { accountOf, type Classification, canFly, classOf, DEFAULT_FLEET, type FleetFile, type FlightType, needsStand, profileOf, type Rating, WAKE_SLOTS } from "./crew.ts";
-import { accountHoldDetail, accountHoldLabel, accountHoldOf, accountHolds, healthLabel } from "./health.ts";
+import { accountHoldDetail, accountHoldLabel, accountHoldOf, accountHolds, type Health, healthLabel, hhmm } from "./health.ts";
 import { DEFAULT_FUEL, type FuelConfig, fuelConfigOf, fuelHoldReason, fuelHolds } from "./fuel-remaining.ts";
 import { type Holder, holderLabel, isHeavy, overlapConfigOf, DEFAULT_OVERLAP, type OverlapConfig, overlapDetail, overlapHoldWhy, overlapsOf, overlapValueOf, predictedOf, splitByTeam } from "./overlap.ts";
 import { keyInName, keyPatternOf, teamOfKey } from "./linear-keys.ts";
@@ -202,6 +202,8 @@ export interface AircraftState {
   // STAND 없는 FLIGHT(SURVEY·CHECK)를 받을 수 있는 상태: HOLDING이나 PARKED(AIRBORNE·AOG·RETIRED 아님)
   resting?: boolean;
   reservedLight?: string | null; // 이 AIRCRAFT로 진행 중인 STAND 없는 제안 id
+  stopped?: true; // 멈춘 팀(ATC-90): health RESUME·STALLED, 또는 끝나지 않은 In Progress FLIGHT를 쥠. 열린 제안은 "AIRCRAFT 멈춤 — …"으로 닫고 짝 규칙은 시작하지 않는다
+  room?: number; // 끝나지 않은 FLIGHT를 쥐고도 슬롯(perTeam)이 남은 양(WAKE로 셈). STAND가 필요한 새 FLIGHT는 WAKE가 이 안에 들어야 한다
   restarting?: true; // /clear 뒤 첫 메시지를 기다리는 자리(ATC-91). 세션은 없고 배정은 받지 않지만 승인된 제안은 닫지 않는다
 }
 
@@ -234,6 +236,14 @@ export function canTakeNow(ac: Pick<AircraftState, "available" | "resting">, t: 
   if (ac.available) return true;
   return Boolean(ac.resting && t && !needsStand(classOf(t.labels).type));
 }
+
+// 멈춘 팀의 사유(ATC-90). health RESUME·STALLED는 SUPERVISOR가 풀어야 다시 배정된다
+export function stoppedHealthWhy(h: Pick<Health, "code" | "detail" | "resetsAt"> & Parameters<typeof healthLabel>[0], now: number): string {
+  if (h.code === "RESUME") return `RESUME 필요${h.resetsAt ? `(한도 풀림 ${hhmm(Date.parse(h.resetsAt), now)})` : ""}`;
+  return `${healthLabel(h, now)} — ${h.detail}`;
+}
+// 끝나지 않은 In Progress FLIGHT 하나의 사유. PR이 열려 있어도 머지 전이면 아직 진행 중이다
+export const unfinishedWhy = (key: string, hasPr: boolean) => `${key} 아직 진행 중(${hasPr ? "PR 머지 전" : "PR 없음"})`;
 
 export interface Plan {
   at: string;
@@ -501,6 +511,8 @@ export function planDispatch(
       if (status.aog) return { ...base, available: false, reason: `AOG — ${status.aog.reason}${status.aog.until ? ` (~${status.aog.until})` : ""}` };
       // AIRCRAFT health(ATC-45): 사용 한도·모델·맥락·경로 문제나 HUNG이면 풀릴 때까지 배정하지 않는다
       if (x.health?.holds) return { ...base, available: false, reason: `${healthLabel(x.health, now)} — ${x.health.detail}` };
+      // RESUME·STALLED(ATC-86): 멈춘 팀은 비어 있는 팀이 아니다. STAND 없는 FLIGHT도 받지 않는다(resting false)
+      if (x.health?.code === "RESUME" || x.health?.code === "STALLED") return { ...base, available: false, stopped: true as const, reason: stoppedHealthWhy(x.health, now) };
       const acct = accountHoldOf(holds, accountOf(fleet, x.name), x.name);
       if (acct) return { ...base, available: false, reason: `${accountHoldLabel(acct, now)} — ${accountHoldDetail(acct)}` };
       // FUEL HOLD(ATC-55, D3): SUPERVISOR 스위치가 켜져 있고 그 ACCOUNT가 holdPct 이상 썼으면 reset까지 배정하지 않는다
@@ -509,6 +521,22 @@ export function planDispatch(
       if (x.status === "busy") return { ...base, available: false, reason: "AIRBORNE" };
       const held = active.filter((c) => c.sessionId === x.id).map((c) => wsTicket.get(c.workspacePath));
       const open = held.filter((k) => !k || !isDone(k));
+      // 끝나지 않은 In Progress FLIGHT(ATC-90): STAND를 쥐었든 tail: 라벨이든, 머지된 PR이 없고 STAND 없이 나간 FLIGHT가 아닌 것.
+      // 그 WAKE만큼 이 AIRCRAFT의 슬롯(perTeam)을 쓴다. 다 찼으면 멈춘 팀(STAND 없는 FLIGHT는 받는다), 남았으면 그 안에 드는 FLIGHT만 받는다
+      const reg = regOf(x.name);
+      const unfinished = new Set<string>();
+      for (const k of held) if (k) unfinished.add(k);
+      for (const t of s.tickets) if (t.stateType === "started" && tailsOf(t, now).has(reg)) unfinished.add(t.key);
+      const holding = [...unfinished].filter((k) => {
+        const t = byKey.get(k);
+        return t && t.stateType === "started" && !landed.has(k) && needsStand(classOf(t.labels).type);
+      });
+      if (holding.length) {
+        const load = holding.reduce((a, k) => a + WAKE_SLOTS[classOf(byKey.get(k)!.labels).wake], 0);
+        const why = holding.map((k) => unfinishedWhy(k, (s.pulls ?? []).some((p) => p.ticketKey === k))).join(", ");
+        if (load >= cfg.slots.perTeam - 1e-9) return { ...base, resting: true, available: false, stopped: true as const, reason: why };
+        if (base.airport) return { ...base, resting: true, available: true, room: cfg.slots.perTeam - load, reason: `${why} — 남은 슬롯 ${cfg.slots.perTeam - load}` };
+      }
       if (open.length >= cfg.slots.perTeam) {
         return { ...base, resting: true, available: false, reason: `HOLDING — ${open.map((k) => k ?? "AD HOC STAND").join(", ")} 진행 중` };
       }
@@ -523,6 +551,8 @@ export function planDispatch(
 
   // ── FLIGHT ──
   const excluded: Plan["excluded"] = [];
+  // 멈춘 팀(ATC-90)은 제외 목록에도 사유와 쥐고 있는 FLIGHT를 남긴다. 키는 그 REGISTRATION
+  for (const ac of aircraft) if (ac.stopped) excluded.push({ flight: regOfAircraft(ac, cfg.teamPattern), reason: `${ac.name} — ${ac.reason}` });
   const hold: Plan["hold"] = [];
   const unserved: Unserved[] = [];
   const unservedOf = (t: Ticket, airport: string, cls: Classification, why: Unserved["why"], tails: Set<string> = new Set()): Unserved => ({
@@ -544,8 +574,10 @@ export function planDispatch(
     return `type:${cls.type} — 그 일을 날 수 있는 CREW 없음 (FLEET 탭의 CREW COMPLEMENT)`;
   };
   // 지금 이 FLIGHT를 받을 수 있나(예약 포함). STAND 없는 FLIGHT는 HOLDING·PARKED 팀이 STAND 규칙 밖으로 하나씩 받는다.
+  // room(ATC-90): 끝나지 않은 FLIGHT를 쥔 팀은 남은 슬롯 안에 드는 WAKE의 FLIGHT만 STAND 규칙으로 받는다
+  const fitsRoom = (ac: AircraftState, t: { cls: Classification }) => ac.room === undefined || !needsStand(t.cls.type) || WAKE_SLOTS[t.cls.wake] <= ac.room + 1e-9;
   const canTake = (ac: AircraftState, t: { airport: string; cls: Classification }) =>
-    ac.airport === t.airport && (needsStand(t.cls.type) ? ac.available && !ac.reserved : Boolean(ac.resting) && !ac.reservedLight);
+    ac.airport === t.airport && (needsStand(t.cls.type) ? ac.available && !ac.reserved && fitsRoom(ac, t) : Boolean(ac.resting) && !ac.reservedLight);
   const builderSrc: BuilderSources = { logbook, pulls: s.pulls ?? [], claims: s.claims, workspaces: s.workspaces, sessions: s.sessions, history, team };
   const independenceOf = (t: Ticket, airport: string): Independence => {
     const target = checkTargetOf(t);
@@ -751,7 +783,7 @@ export function planDispatch(
       .flatMap((t) => {
         const tails = tailsOf(t, now);
         return aircraft
-          .filter((ac) => ok(ac, t) && (!tails.size || tails.has(regOf(ac.name))) && qualifies(ac, t.cls) && independent(ac, t.ind) && notBlocked(ac, t))
+          .filter((ac) => ok(ac, t) && fitsRoom(ac, t) && (!tails.size || tails.has(regOf(ac.name))) && qualifies(ac, t.cls) && independent(ac, t.ind) && notBlocked(ac, t))
           .map((ac) => {
             hadPair.add(t.key);
             const sc = score(t, ac);
