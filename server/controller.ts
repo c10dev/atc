@@ -11,6 +11,7 @@ import { healthLabel } from "./health.ts";
 import { fuelInfos } from "./fuel-remaining.ts";
 import type { FuelWatch } from "./fuel-watch.ts";
 import { goAroundOf } from "./go-around.ts";
+import { type LandBy, landByOf, type MccLandInfo } from "./land-by.ts";
 import { inSequence, pullKey, reviewerOf } from "./landing.ts";
 import { record } from "./recorder.ts";
 import { closingLine, responseOf } from "./response.ts";
@@ -44,6 +45,7 @@ export function buildBrief(
   now = Date.now(),
   atfm: AtfmConfig = DEFAULT_ATFM,
   fuel: FuelWatch | null = null,
+  mcc: MccLandInfo | null = null, // MCC AIRPORT의 모드·HOLD·ESCALATE·등급(ATC-151). 없으면 모든 AIRPORT가 holder
 ) {
   const sessionById = new Map(s.sessions.map((x) => [x.id, x]));
   const label = (id: string) => sessionLabel(sessionById.get(id), id);
@@ -102,6 +104,8 @@ export function buildBrief(
     const lane = cleared.filter((x) => x.repo === p.repo && x.base === p.base);
     const repoSeq = seq ? lane.indexOf(p) + 1 : null;
     const airport = codeOf(p.repo) ?? null;
+    // 누가 착륙시키나(ATC-151). holder가 아니면 TOWER는 팀에 LAND를 내지 않는다. 순서(repoSeq)는 MCC에도 뜻이 있어 그대로 둔다
+    const landBy: LandBy = landByOf(p, mcc);
     return {
       seq,
       landing: p.landing,
@@ -118,11 +122,12 @@ export function buildBrief(
       extReview: p.extReview ? { status: p.extReview.status, reason: p.extReview.reason, security: p.extReview.security ?? null, family: p.extReview.review?.family ?? null, at: p.extReview.review?.at ?? null } : null,
       review: p.landing === "CLEARED" && p.extReview?.status === "pass" && p.extReview.review ? reviewerOf(p.extReview.review.family) : null,
       landClearance: lastLand ? { id: lastLand.id, readBack: Boolean(lastLand.readbackAt) } : null,
-      // CLEARED에만. TOWER가 LAND CLEARANCE 본문으로 그대로 쓴다
+      // CLEARED에만. TOWER가 LAND CLEARANCE 본문으로 그대로 쓴다(landText는 landBy가 holder일 때만)
       repoSeq,
+      landBy,
       // PR이 base와 충돌·뒤처졌거나 LAND 문구의 앞 PR이 머지됨(ATC-128). action "send"면 TOWER가 holders에게 GO AROUND로 text 그대로 보낸다
       goAround: goAroundOf(p, { clearances, events: since.events, pulls: s.pulls, lastLand, holders: p.standPath ? active.filter((c) => c.workspacePath === p.standPath).length : 0, now }),
-      landText: repoSeq ? landTextOf(repoSeq, airport, p.number, fl, repoSeq > 1 ? lane[repoSeq - 2].number : null, p.codexFindings?.ok ? p.codexFindings.p3 : 0) : null,
+      landText: repoSeq && landBy === "holder" ? landTextOf(repoSeq, airport, p.number, fl, repoSeq > 1 ? lane[repoSeq - 2].number : null, p.codexFindings?.ok ? p.codexFindings.p3 : 0) : null,
       // 쌓인 PR(base가 기본 브랜치가 아님, ATC-29): CLEARED가 되지 않고 LAND를 내지 않는다. stack.chain은 아래부터
       stacked: p.blocks.some((b) => b.code === "stacked"),
       // 이어받은 리뷰(ATC-31): main 병합만 한 head에 이전 커밋 R의 리뷰. findings면 지적으로 막는다
@@ -270,14 +275,16 @@ function writeCursor(name: string, cursor: string) {
 }
 
 // watchFuel: FUEL 경고(fuel-watch.ts). fuel-run.ts를 거쳐 순환이 되므로 index.ts가 넘긴다
-export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>, log: EventLog, watchFuel?: (s: Snapshot) => FuelWatch) {
+// mccInfo: MCC AIRPORT의 landBy 자료(mcc-run.ts). mcc-run.ts를 거쳐 순환이 되므로 index.ts가 넘긴다
+export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>, log: EventLog, watchFuel?: (s: Snapshot) => FuelWatch, mccInfo?: (s: Snapshot) => Promise<MccLandInfo | null>) {
   const consumerOf = (v: string | undefined) => (v && /^[\w-]+$/.test(v) ? v : "controller");
 
   app.get("/api/controller/brief", async (c) => {
     const consumer = consumerOf(c.req.query("consumer"));
     const since = log.since(c.req.query("cursor") ?? readCursor(consumer));
     const s = await getSnapshot();
-    return c.json(buildBrief(s, since, allClearances(), Date.now(), loadAtfm(), watchFuel?.(s) ?? null));
+    const mcc = await (mccInfo?.(s) ?? Promise.resolve(null)).catch(() => null); // 예상 못 한 오류면 옛 흐름(holder)으로. 등급을 못 읽은 것은 mccInfo가 tiers에서 빼서 supervisor가 된다
+    return c.json(buildBrief(s, since, allClearances(), Date.now(), loadAtfm(), watchFuel?.(s) ?? null, mcc));
   });
 
   app.post("/api/controller/ack", async (c) => {

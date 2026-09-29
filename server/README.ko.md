@@ -69,7 +69,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `version.ts` | 빌드 정체: `index.html`의 진입 스크립트 경로(순수 함수 `entryScript`)와 탭이 새 버전 알림을 띄울지(순수 함수 `showNewVersion`, 화면과 공용) |
 | `changelog.ts` · `changelog-fold.ts` | CHANGELOG 조각(ATC-64, [changelog.d](../changelog.d/README.ko.md)): `changelog.d/*.md`와 `*.ko.md` 짝 짓기(`pairFragments`), 조각 형식 확인(`parseFragment`), 조각을 `[Unreleased]`에 넣기(순수 함수 `foldChangelog`, DOCS 변경 기록 쪽과 함께 씀). `node server/changelog-fold.ts [--check]`는 모든 짝을 두 CHANGELOG에 넣고 지운다. 짝이 없거나 형식이 틀리면 아무것도 바꾸지 않는다 |
 | `events.ts` | 스냅샷 차이 → 이벤트(경보, HANDOFF, LANDING SEQUENCE `landing.requested`·`cleared`·`blocked`·`left`, 세션 종료, OUTSTATION). 커서로 읽는 이벤트 기록 |
-| `controller.ts` | CONTROLLER(TOWER) API: 브리핑, ack, CLEARANCE 발행·READBACK·취소, 정해진 문구, CLEARED PR의 LAND 문구(순수 함수 `landTextOf`) |
+| `controller.ts` | CONTROLLER(TOWER) API: 브리핑, ack, CLEARANCE 발행·READBACK·취소, 정해진 문구, CLEARED PR의 LAND 문구(순수 함수 `landTextOf`), 누가 착륙시키나는 `land-by.ts`(`landByOf`, ATC-151) |
 | `clearances.ts` | CLEARANCE 기록: 추가만 하는 JSONL을 접어 현재 상태를 만든다 |
 | `response.ts` | 응답 속성(ATC-122, 순수): 어떤 답이 메시지를 닫나(W/U는 READBACK·UNABLE, STANDBY는 열어 둠. R은 ROGER), atc가 쓰는 끝줄, 첫 STANDBY 뒤 overdue 기준 |
 | `milestones.ts` | FLIGHT별 OOOI(ATC-123): 이미 있는 기록에서 OUT·OFF·ON·IN 실제 시각(순수 함수 `milestonesOf`, `latestMilestone`, `milestoneLine`). 화면도 씀 |
@@ -132,7 +132,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `POST /api/airports` | AIRPORT 개설 `{path, code?, name?}` |
 | `PATCH /api/airports/:id` | 이름·코드 변경, 폐쇄·재개 `{code?, name?, closed?}` |
 | `DELETE /api/airports/:id` | 수동 개설한 AIRPORT 삭제 |
-| `GET /api/controller/brief?consumer=controller` | 지난 ack 이후 이벤트 + 현재 상태(CLEARED `landingQueue` 항목에 `repoSeq`·`landText`. FUEL 경고 `open.fuelLeaks`·`open.coldCache`·`open.fuelError`, ATC-56) |
+| `GET /api/controller/brief?consumer=controller` | 지난 ack 이후 이벤트 + 현재 상태(`landingQueue` 항목에 `landBy`(`mcc`·`supervisor`·`holder`, ATC-151), CLEARED 항목에 `repoSeq`와 `landBy`가 `holder`일 때만 `landText`. FUEL 경고 `open.fuelLeaks`·`open.coldCache`·`open.fuelError`, ATC-56) |
 | `POST /api/controller/ack` | 브리핑 처리 완료 `{cursor}` |
 | `POST /api/clearances` | CLEARANCE 기록 `{to, type, stand?, flight?, text}`, 보낼 문구 반환 |
 | `POST /api/clearances/:id/readback` · `/roger` · `/unable` · `/standby` · `/cancel` | 팀의 답(ATC-122, `response.ts`): READBACK·ROGER(R만)·UNABLE `{reason}`은 닫고, STANDBY(W/U만)는 overdue를 한 번 다시 센다 · 취소 |

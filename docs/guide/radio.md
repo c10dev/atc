@@ -53,6 +53,7 @@ GO AROUND: PR #194 (ATC-89) head 1a2b3c4 conflicts with base after #190, #192 me
   ```
 
   1번은 바로 머지해도 된다. 2번부터는 같은 저장소의 바로 앞 PR이 머지되기를 기다렸다가 rebase하고 LANDING한다. FLIGHT가 없는 PR은 괄호 부분이 빠진다.
+- MCC AIRPORT(ATCC)의 PR은 `LAND`를 받지 않는다(ATC-151). 그 저장소의 착륙은 MCC(`land`·`land+rts` 모드에서 `auto`·`flagged` 등급)나 SUPERVISOR(`user` 등급, ESCALATE·HOLD, `shadow`·`rts` 모드, 등급을 아직 모를 때)의 몫이라 브리핑의 `landBy`가 `mcc`·`supervisor`이고 `landText`가 `null`이다. 충돌(GO AROUND)은 그대로 팀에 간다. 다른 AIRPORT는 위와 같다.
 - APPROACH인 PR은 `LAND`를 받지 않는다. CAPTAIN이 손써야 할 막힘(CI 실패, head 리뷰 없음, Codex 지적, Codex 한도, 변경 요청, rebase·충돌 등)이 새로 생기면 TOWER가 `INFO`로 알린다:
 
   ```
