@@ -1088,6 +1088,13 @@ ATC-69는 대화 기록에 `[1m]`이 남지 않아 창을 짐작했다. ATC-85�
 
 PILOT'S DISCRETION(ATC-89): 표시 버튼은 행 툴팁이 아니라 카드에 둔다(툴팁에는 버튼을 못 넣고 행 자체가 버튼이다). 표시로 믿을 만하다고 나오기 전까지 문제는 `info`(OCC LOG만)다. 턴의 끝은 세션 상태로 보므로 hook(`user` 등급)은 바꾸지 않았다.
 
+#### CAPTAIN 보고 판정, 규칙 먼저와 넓은 입력 구현 (ATC-141)
+
+- **규칙 먼저.** 사용 한도로 잘린 턴(ATC-86과 같은 검사: 마지막 지시와 마지막 `release` 뒤에 `usageLimitNote: "wrap_up"` 줄)은 `engine: "rule"`, `reason: "limit-cut"`, `sent: {chars: 0}`인 `stopped`로 기록한다. Jev를 부르지 않고 아무것도 보내지 않는다. 기록 모양은 그대로라 툴팁·표시·일치율이 전처럼 돈다.
+- **입력.** 마스킹한 메시지가 1,500자보다 길면 앞 500자와 뒤 1,000자를 " … "로 이어 보낸다(앞은 턴이 어떻게 시작했는지, 뒤는 어떻게 끝났는지). 상한은 그대로다.
+- **기준.** `decision`은 "지금 결정·승인·선택을 SUPERVISOR에게 청하고 그 답을 기다린다"이고, 나중을 위한 메모("설치 뒤 확인", "SUPERVISOR가 머지")는 결정이 아니다. `stopped`에 "사용 한도로 잘림"이 들어간다. "둘 다면 decision"은 그 청이 일을 막을 때만 적용한다.
+- **점검.** `node --env-file=<env> server/judges/report-rerun.ts [--all] [--rule-only] [--only R-…]`가 기록된 판정을 그림자로 다시 돌리고(`judges.jsonl`을 읽기만 하며, 마스킹한 ATCC 메시지만 보낸다) 전후 일치율을 낸다. R-29953b2d-1790672807은 규칙으로 `stopped`가 된다.
+
 **구현 순서.**
 
 1. ✅ 설계와 매뉴얼: 이 절, `controller/CLAUDE.md`의 TOWER 줄, OCC FOLLOWING 줄, `docs/guide/`.

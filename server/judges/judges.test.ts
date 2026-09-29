@@ -373,7 +373,7 @@ test("쏠림 방지: mark는 닫힌 제안(RECENT)에만 싣는다. 열린 제�
 });
 
 // ---- REPORT(ATC-89) ----
-const { lastMessageOf, maskText, reportCandidatesOf, reportJudgmentOf, reportQuestions, reportRateOf, needsDecision, MESSAGE_MAX, REPORT_CLASSES } = await import("./report.ts");
+const { lastMessageOf, maskText, reportCandidatesOf, reportJudgmentOf, reportQuestions, reportRateOf, needsDecision, ruleJudgmentOf, MESSAGE_MAX, REPORT_CLASSES } = await import("./report.ts");
 const { loadReportThreshold, loadReportViews, markReport, reportViewsOf, appendJudgeLines } = await import("./store.ts");
 const { judgeReportOp, reportTargetsOf } = await import("./run.ts");
 
@@ -414,9 +414,42 @@ test("REPORT 마스킹: 경로·URL·토큰·이메일은 나가지 않는다. 1
   assert.match(m, /<path>/);
   assert.match(m, /and\/or/);
   assert.match(m, /9\/29/);
-  const long = maskText("가".repeat(3000) + "끝");
-  assert.equal(long.length, MESSAGE_MAX);
-  assert.ok(long.endsWith("끝"));
+  const long = maskText("시작" + "가".repeat(3000) + "끝");
+  assert.equal(long.length, 500 + 3 + 1000);
+  assert.ok(long.startsWith("시작") && long.endsWith("끝") && long.includes(" … "), long.slice(0, 20));
+  assert.equal(maskText("가".repeat(MESSAGE_MAX)).length, MESSAGE_MAX); // 상한 안이면 그대로
+});
+
+test("REPORT 규칙(ATC-141): 마지막 지시 뒤 wrap_up이 있으면 cut, release나 새 지시가 오면 아니다", () => {
+  const text = (t: string) => [{ type: "text", text: t }];
+  const note = (n: string, at: string) => tl("user", "[Usage limit reached]", at, { isMeta: true, usageLimitNote: n });
+  const base = [tl("user", "지시", "2026-09-29T00:00:00Z"), note("wrap_up", "2026-09-29T00:00:05Z"), tl("assistant", text("한도에 걸렸다. 설치 뒤 확인이 필요하다"), "2026-09-29T00:00:10Z")];
+  assert.equal(lastMessageOf(base.join("\n"))!.cut, true);
+  assert.equal(lastMessageOf([...base.slice(0, 2), tl("user", "다시", "2026-09-29T00:00:06Z"), base[2]].join("\n"))!.cut, undefined);
+  assert.equal(lastMessageOf([base[0], note("wrap_up", "2026-09-29T00:00:05Z"), note("release", "2026-09-29T00:00:06Z"), base[2]].join("\n"))!.cut, undefined);
+  assert.equal(lastMessageOf([tl("user", "지시", "2026-09-29T00:00:00Z"), base[2]].join("\n"))!.cut, undefined);
+  assert.equal(ruleJudgmentOf(undefined), null);
+  const r = ruleJudgmentOf(true)!;
+  assert.equal(r.judgment.class, "stopped");
+  assert.equal(r.reason, "limit-cut");
+});
+
+test("REPORT 질문(ATC-141): decision은 지금 답을 기다릴 때만, stopped는 한도로 잘림도 포함", () => {
+  const q = reportQuestions() as Record<string, { instructions: string; criteria: Record<string, string> }>;
+  assert.match(q.report_class.criteria.decision, /now, and it waits for that answer/);
+  assert.match(q.report_class.criteria.decision, /Notes for later/);
+  assert.match(q.report_class.criteria.stopped, /cut by a usage limit/);
+  assert.match(q.report_class.instructions, /blocks the work/);
+});
+
+test("stub으로 REPORT 한도로 잘린 턴: 규칙으로 stopped, 엔진을 부르지 않는다", async () => {
+  const engine = stubEngine({ TEAM_J: rAnswers("done") });
+  const line = (await judgeReportOp({ id: "abcdef123456", name: "TEAM_J", cwd: "/p/atc" }, "^TEAM_", () => ({ text: "잘렸다", at: Date.parse("2026-09-29T01:00:00Z"), cut: true }), new Set(), engine, "jev", "shadow", "2026-09-29T01:00:05Z"))!;
+  assert.equal(line.judgment.class, "stopped");
+  assert.equal(line.engine, "rule");
+  assert.equal(line.reason, "limit-cut");
+  assert.equal(line.sent.chars, 0);
+  assert.equal(engine.calls.length, 0);
 });
 
 test("REPORT 질문·답 검사: Choice 하나, 다섯 분류, 확률", () => {

@@ -1025,6 +1025,13 @@ The judge family of [6.1](#61-typed-judges-jev) also reads how an atc AIRCRAFT's
 
 Pilot's discretion (ATC-89): the marking buttons live on the card, not in the row's tooltip (a tooltip cannot hold buttons, and the row is itself a button); the issue is `info` (OCC LOG only) until the marks show it is reliable; the turn end is seen from the session state, so the hook (`user` tier) is unchanged.
 
+#### CAPTAIN report judge, rule first and wider input as built (ATC-141)
+
+- **Rule first.** A turn that a usage limit cut (the ATC-86 test: a `usageLimitNote: "wrap_up"` line after the last prompt and after the last `release`) is recorded as `stopped` with `engine: "rule"`, `reason: "limit-cut"` and `sent: {chars: 0}`. Jev is not called and nothing is sent. The record shape is unchanged, so the tooltip, marks and agreement work as before.
+- **Input.** When the masked message is longer than 1,500 characters, the first 500 and the last 1,000 are sent, joined by " … " (the head says how the turn opened, the tail how it closed). The cap is unchanged.
+- **Criteria.** `decision` is "asks the supervisor to decide, approve or choose something now, and it waits for that answer before it goes on"; notes for later ("confirm after installing", "the supervisor merges") are not decisions. `stopped` also names "cut by a usage limit". "Both → decision" applies only when the ask blocks the work.
+- **Check.** `node --env-file=<env> server/judges/report-rerun.ts [--all] [--rule-only] [--only R-…]` re-runs recorded judgments in shadow (reads `judges.jsonl`, writes nothing, sends the masked ATCC message only) and prints the agreement before and after. R-29953b2d-1790672807 comes out `stopped` by rule.
+
 **Implementation order.**
 
 1. ✅ Design and manual: this section, TOWER rows in `controller/CLAUDE.md`, the OCC FOLLOWING row, `docs/guide/`.

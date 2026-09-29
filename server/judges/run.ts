@@ -9,7 +9,7 @@ import { fromThisApp } from "../origin.ts";
 import { fetchIssueDetail } from "../sources/linear.ts";
 import { bodyWithheld, classifyInputOf, JUDGE_FAMILIES, type JudgeFamily, judgmentOf, verdictOf } from "./classify.ts";
 import { lastMessageOfSession } from "../sources/claude.ts";
-import { maskText, reportCandidatesOf, reportJudgmentOf, reportQuestions, registrationOf } from "./report.ts";
+import { maskText, reportCandidatesOf, reportJudgmentOf, reportQuestions, registrationOf, ruleJudgmentOf } from "./report.ts";
 import { dispatchJudgmentOf, dispatchQuestions, dispatchStateOf, dispatchWithheld, recentEntriesOf, sentOf } from "./dispatch.ts";
 import { type JudgeEngine, jevEngine, stubEngine } from "./engines.ts";
 import { appendJudgeLines, type DispatchJudgeLine, type DispatchMarks, dispatchMarksOf, type JudgeLine, type JudgeMarks, type JudgeMode, type JudgeRun, loadJudges, marksOf, markReport, readJudgeLines, type ReportJudgeLine, reportRate, reportViewsOf } from "./store.ts";
@@ -118,7 +118,7 @@ export function reportTargetsOf(
 export async function judgeReportOp(
   s: Pick<Session, "id" | "name" | "cwd">,
   teamPattern: string,
-  readLast: (cwd: string, id: string) => { text: string; at: number } | null,
+  readLast: (cwd: string, id: string) => { text: string; at: number; cut?: true } | null,
   judgedIds: ReadonlySet<string>,
   engine: JudgeEngine,
   family: JudgeFamily,
@@ -132,6 +132,9 @@ export async function judgeReportOp(
   const masked = maskText(msg.text);
   if (!masked) return null;
   const aircraft = registrationOf(s.name, teamPattern);
+  // 규칙 먼저(ATC-141): 한도로 잘린 턴은 Jev를 부르지 않는다. 보내는 것이 없어 sent.chars는 0
+  const rule = ruleJudgmentOf(msg.cut);
+  if (rule) return { op: "judge", family, target: "report", id, session: s.id, aircraft, at, turnAt: new Date(msg.at).toISOString(), run, engine: "rule", model: "rule", judgment: rule.judgment, reason: rule.reason, sent: { chars: 0 } };
   const result = await engine.ask({ target: "report", title: aircraft, state: { message: masked }, questions: reportQuestions() });
   return {
     op: "judge",
