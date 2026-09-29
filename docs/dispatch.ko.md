@@ -149,6 +149,7 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 - **점수.** 겹침은 예측 ∩ 날고 있는 파일이고 날고 있는 FLIGHT마다 센다. 값은 `min(파일 수, 3) × WAKE(이 FLIGHT) × WAKE(잡은 FLIGHT)`(L 0.5 · M 1 · H 2)라 양쪽 어느 쪽이든 큰 FLIGHT가 낄수록 무겁다. 설명에 파일, 잡은 FLIGHT와 그 팀, 출처(`본문 → STAND`, `본문 → PR #12`)가 보인다.
 - **같은 팀.** 이 AIRCRAFT의 팀이 날고 있는 FLIGHT와의 겹침은 충돌이 아니다. 겹치는 파일을 만지는 팀이 그 팀뿐이면 그 짝에 `이어서 하면 충돌 없음`(×1)을 준다. 그 팀이 달리 배정 가능할 때만 짝이 있다.
 - **HOLD 스위치**(`dispatch.json`의 `overlap.hold`, 기본 `false`. `overlap.holdFiles`, 기본 2). `holdFiles`개 이상 겹치고 WAKE 곱이 1 이상(L끼리만은 아님)이면 무거운 겹침이다. 스위치가 켜져 있으면 그 FLIGHT는 `파일 겹침 — <FLIGHT>가 머지될 때까지`로 HOLD_DEPARTURE 된다. 잡은 FLIGHT의 STAND와 PR이 없어지면 다시 후보다. 그 파일을 만지는 팀이 그 팀뿐이고 그 팀이 날 수 있으면 HOLD하지 않는다. 꺼져 있으면 계획이 HOLD할 것을 목록(`overlapHolds`, DISPATCH 탭에 `shadow —`)으로만 보이고 요소 설명에도 적는다.
+- **같은 팀 예외, 지은 대로(ATC-136).** 예외는 그 FLIGHT가 실제로 그 팀에 갈 때만 통한다. 겹치는 파일을 만지는 팀이 그 팀뿐이고 그 팀이 지금 받을 수 있으면(자격 있음, CHECK면 독립, 비어 있음, 자리 있음) 그 FLIGHT의 후보를 `tail:` 라벨처럼 그 팀 AIRCRAFT로 좁히고, 요소 설명에 `겹침은 TEAM_X뿐 — TEAM_X에만 제안`이 뜬다. 그 팀이 못 받으면(바쁨·HOLD·세션 없음·RATING 안 맞음) 다른 겹침과 똑같이 HOLD하고(스위치가 꺼져 있으면 `overlapHolds` shadow에만 남기고), 사유에 팀이 나온다: `파일 겹침 — <FLIGHT>가 머지될 때까지 (겹침은 TEAM_X뿐인데 TEAM_X가 지금 못 받음: <이유>)`. 겹치는 팀이 둘 이상이면 예전처럼 HOLD한다. 스위치 기본값, 무거운 겹침 기준, 점수 가중치는 그대로다.
 - **지표.** 열린 PR이 `DIRTY`가 되면 ATFM이 `behind`처럼 `dirty` 기록을 남기고, 그때 파일이 겹치던 다른 열린 PR을 함께 적는다. ATFM 데이터 줄 `DIRTY(겹침 예측 가능)`은 7일 동안 `seen/dirty`: `DIRTY`가 된 PR 중 파일을 나누는 PR이 열려 있던 수/전체.
 
 ### 5.4 DISPATCH 세션의 검토
@@ -266,6 +267,53 @@ D-0068(ATC-82 → TEAM_I)은 2026-09-29 01:40:31Z에 `aircraft: 04a9a868…`, �
 - **제안은 닫히지 않고 기다린다.** AIRCRAFT가 `RESTARTING`인 `proposed`·`approved` ASSIGN은 "AIRCRAFT 불가"로 SUPERSEDED되지 않는다(다른 사유는 전처럼 바로 닫는다). `sent`는 원래 자동으로 닫지 않았다. 새 세션이 같은 이름으로 뜨면 같은 제안이 유효하고 그대로 나간다. 유예가 지나도 세션이 없으면 `RESTARTING`이 사라지고 제안은 전처럼 `AIRCRAFT 불가: 세션 없음`으로 닫힌다. `POST …/release`(보내기)는 그 AIRCRAFT에 살아 있는 세션이 없고 `RESTARTING`이면 409를 돌려주어 OCC가 아무도 없는 곳에 보내지 않게 한다. 승인은 그대로 남는다.
 - **카드가 말한다.** brief의 `waiting: {D-0068: "세션 없음 — /clear 뒤 첫 메시지 대기"}`가 그 제안들에 붙고, DISPATCH가 카드와 진행 중 줄에 보인다.
 - **빠진 것.** 친화(AFFINITY) 요소는 이전 FLIGHT를 세션 id로 읽어서 `/clear`가 그것은 여전히 초기화한다(별도의 더 작은 신호).
+
+### LAUNCH on approve와 RESUME as built (ATC-129)
+
+백그라운드 AIRCRAFT는 마지막 턴 뒤 60분쯤 지나면 Claude Code가 거둔다(증거는 [fleet.ko.md](fleet.ko.md)의 "유휴 종료와 DISPATCH의 LAUNCH as built (ATC-129)"). ATC-129 전에는 그 뒤 planner가 세션을 보지 못해 그 AIRCRAFT에 아무것도 주지 않았고, 사용 한도로 끊긴 FLIGHT는 SUPERVISOR가 세션을 다시 열어 "계속"을 칠 때까지 기다렸다. 이제 둘 다 SUPERVISOR가 카드 한 번 누르는 것으로 간다.
+
+**후보**(`planDispatch`, [fleet.ko.md](fleet.ko.md)의 `snapshot.absent`). 살아 있는 세션이 없고, 전에 atc가 띄웠고(최근 14일 FLIGHT RECORDER LAUNCH), 등록부에 있고, RETIRED·`RESTARTING`이 아닌 AIRCRAFT를 `plan.aircraft`에 `id: "absent:<REG>"`, `launch: true`, 등록부의 base AIRPORT로 더한다. 붙들리지 않았으면 PARKED AIRCRAFT처럼 FLIGHT를 받는다(`reason: "ABSENT — 세션 없음, 승인하면 LAUNCH"`). 붙드는 것:
+
+- AOG;
+- `LIMIT`: 마지막 턴이 잘렸고 reset 전(`HOLD · LIMIT (cut 04:30Z) until 07:40Z`)이거나 reset을 모름. 살아 있는 형제의 ACCOUNT HOLD. FUEL HOLD;
+- 그 AIRCRAFT의 RESUME 카드가 나올 차례(`RESUME — ATC-200을 이어서(RESUME 카드)`, `stopped`);
+- 끝나지 않은 `tail:` 라벨 In Progress FLIGHT(ATC-90, `stopped`);
+- base AIRPORT 없음.
+
+그 AIRCRAFT로 가는 ASSIGN은 계획과 제안에 `launch: true`를 싣는다. 데스크톱·터미널 AIRCRAFT는 LAUNCH 줄이 없어 목록에 없다.
+
+**상한.** `launchCapOf`: 살아 있는 백그라운드 세션(관제 세션 제외)에, AIRCRAFT에 아직 살아 있는 세션이 없는 `approved` `launch` 카드를 더해 `ATC_MAX_LAUNCHED`(8.5와 같은 상한)와 견준다. `GET /api/dispatch/brief`는 `launchCap: {launched, pending, max, full}`과, 열린·HELD·승인된 `launch` 카드마다 `launch: {"D-xxxx": "LAUNCH on approve"}`를 준다. 상한이 차면 열린 카드의 글은 `LAUNCH 대기 — 백그라운드 5 + 승인된 LAUNCH 1 / 상한 6(ATC_MAX_LAUNCHED) — 자리가 나면 승인한다`이고, 승인하면 그 글과 함께 409이며 아무것도 바뀌지 않는다. 그래서 수가 상한을 넘지 않는다.
+
+**승인**(`POST /api/dispatch/proposals/:id/approve`, `approveLaunch`). `launch` 카드는:
+
+1. 세션을 띄우므로 이 화면에서만(`fromThisApp`, 아니면 403). OCC의 `atcctl`에는 승인이 없다.
+2. 그새 그 REGISTRATION의 살아 있는 세션이 생겼으면 보통 승인이다: 아무것도 띄우지 않는다.
+3. 아니면 상한을 보고(위), `approve`를 적고, `launchAircraft`를 부르고(FLEET LAUNCH와 같은 길, 그 AIRCRAFT의 마지막 LAUNCH의 permission mode·모델, FLIGHT RECORDER `by: "SUPERVISOR"`, `proposal: "D-xxxx"`), 그 결과를 새 op `{op: "launch", id, at, ok, by: "SUPERVISOR", jobId?, error?}`로 적는다. fold는 이것을 `proposal.launched`로 둔다. 상태는 `approved` 그대로다.
+4. **LAUNCH 실패**: 결과는 `ok: false`이고 카드는 곧바로 `LAUNCH 실패 — <오류>`로 SUPERSEDED되어 아무것도 보내지 않는다. 응답은 같은 글의 502. 이 사유는 짝 규칙을 시작하지 않아(`BETTER_WHY`처럼) 다음 계획에 같은 카드가 다시 나오고 SUPERVISOR가 다시 승인할 수 있다. 스스로 다시 띄우지는 않는다. FLIGHT FOLLOWING에 `launch` 문제(`warn`)가 하루 뜬다.
+
+**새 세션 기다리기**(`RESTARTING`과 같다, 6.4). `POST …/release`는 그 REGISTRATION의 살아 있는 세션이 생길 때까지 409 `TEAM_G: LAUNCHING — 새 세션을 기다림 — 새 세션이 뜬 뒤에 보낸다(승인은 그대로다)`를 돌려주고, brief의 `waiting`이 그 카드에 `LAUNCHING — 새 세션을 기다림`을 준다. LAUNCH 뒤 `restartGraceMin` 동안은 "AIRCRAFT 불가"로 카드를 닫지 않는다(새 세션이 CREW BRIEFING을 읽는 동안 AIRBORNE이다). 유예가 지나도 세션이 없으면 `LAUNCH 실패 — LAUNCH 뒤 30분 동안 새 세션이 뜨지 않음`으로 닫는다(FOLLOWING `launch` 문제도). 승인은 적혔는데 LAUNCH 결과가 없으면(그 사이 서버가 멈춤) 유예 뒤 `LAUNCH 실패 — 승인 뒤 30분 동안 LAUNCH 기록이 없음 …`으로 똑같이 닫는다. atc가 스스로 다시 띄우지는 않는다. 세션이 뜨면 OCC가 전처럼 release하고 보낸다.
+
+**RESUME 카드**(`resumePlansOf`, 순수). 세션이 없는 백그라운드 AIRCRAFT의 `cut`에 reset이 있고 그것이 지났으면(새 턴 없음: cut 뒤 지시가 있으면 `cut`이 없다), DISPATCH가 그 AIRCRAFT가 날던 FLIGHT를 고른다: cut 전 마지막 DEPARTURE LOG claim·HANDOFF가 그 REGISTRATION인 FLIGHT, 없으면 `tail:` 라벨 FLIGHT 중 Linear In Progress이고 LOGBOOK에 없는 것, 가장 최근 하나. 이것이 `plan.resume`이 되고 `kind: "ASSIGN"`, `launch: true`, `resume: {cutAt, resetsAt, stand, branch, commit: {sha, at, pushed} | null, report}`인 제안이 된다: DEPARTURE LOG의 STAND와 브랜치(워크트리가 남아 있으면 그 브랜치), 워크트리의 마지막 커밋(WIP), CAPTAIN 마지막 메시지의 마지막 줄. AIRPORT는 DEPARTURE LOG의 저장소가 가리키는 것이다(착수 기록이 없는 `tail:` FLIGHT는 등록부의 base AIRPORT). AIRPORT를 모르면 카드를 만들지 않는다. 점수는 0이고 `resume` 요소가 붙으며, AIRPORT 슬롯과 `openProposals`에 세지 않는다.
+
+- **cut 하나에 한 번.** `syncOps`는 같은 FLIGHT·같은 cut 시각으로 두 번째 카드를 만들지 않는다(`resumedOf`). 첫 카드가 어떻게 됐든(거절, 만료, 보냄) 그렇다. LAUNCH 실패로 닫힌 카드는 세지 않아 다시 나온다. 같은 FLIGHT가 나중에 새로 잘리면 새 카드가 나올 수 있다.
+- **유효한 동안**은 FLIGHT가 In Progress이고 LOGBOOK에 없는 동안이다. 승인된 카드는 AIRCRAFT 사정(브리핑을 읽는 동안 AIRBORNE)으로 닫지 않는다. 열린 카드의 AIRCRAFT에 살아 있는 세션이 다시 생기면(누가 열었음) `AIRCRAFT 불가: 세션이 다시 떴음 — RESUME은 그 세션에서 SUPERVISOR가 "계속"(ATC-86)`으로 닫는다.
+- **FLIGHT PLAN**(`formatFlightPlan`)은 머리와 DIRECT 줄을 그대로 두고, 제목·링크 뒤에 `RESUME — This FLIGHT was cut by a usage LIMIT at 04:30Z. Resume, don't restart — continue from the remaining work.`, `STAND … · branch … · last commit abc1234 (04:20Z) — not on origin yet`(워크트리가 없으면 `no last commit (worktree not found)`), `CAPTAIN's last report: …`(CAPTAIN이 쓴 그대로)를 더한다. FLIGHT PLAN의 다른 줄처럼 영어다(ATC-126). send-guard는 전처럼 저장된 문구와 견준다.
+- **살아 있는 세션은 그대로.** 살아 있는 세션의 `RESUME`(ATC-86)에는 카드가 없다: SUPERVISOR가 그 세션에서 "계속"을 보낸다.
+
+**OCC.** FLIGHT PLAN 절차(`occ/.claude/skills/tick/flight-plan.md`)에 한 줄이 더해졌다: `dispatch release`가 `LAUNCHING`이나 `RESTARTING`으로 409를 주면 보내지 않고 다음 바퀴에 다시 한다. `LAUNCH 실패`면 SUPERVISOR에게 보고한다. OCC의 다른 것은 그대로다.
+
+**화면이 쓰는 API 필드.** `Proposal.launch?: true`, `Proposal.launched?: {at, ok, by, jobId?, error?}`, `Proposal.resume?: {cutAt, resetsAt, stand, branch, commit, report}`, `AssignPlan.launch?`, `AssignPlan.resume?`, `AircraftState.launch?`, `Plan.resume?`, brief의 `launch`·`launchCap`·`waiting`(이제 `LAUNCHING`도), FOLLOWING 문제 코드 `launch`.
+
+**PILOT'S DISCRETION (ATC-129).**
+
+- **백그라운드 출처**는 "atc가 띄웠다"(14일 안의 FLIGHT RECORDER LAUNCH, permission mode 조회가 이미 쓰는 창)이다. 등록부에는 출처 필드가 없고, 사람이 손으로 `claude --bg`로 띄운 job은 세지 않는다.
+- LAUNCH 뒤 **유예**는 새 설정이 아니라 ATC-91의 `restartGraceMin`이다.
+- **LAUNCH 실패**는 보낼 수 없는 승인된 카드를 남기지 않고 카드를 닫는다. 24시간 짝 규칙을 시작하지 않아 다음 계획이 다시 내놓는다.
+- **RESUME 카드는 세션이 없는 백그라운드 AIRCRAFT에만**: 살아 있는 세션의 `RESUME`은 ATC-86대로이고, 세션이 없는 데스크톱 AIRCRAFT는 띄울 수 없으니 카드도 없다.
+- **FLIGHT마다 한 번은 cut마다 한 번**이다. LAUNCH 실패로 닫힌 카드는 그 한 번을 쓰지 않는다.
+- **RESUME 카드는 AIRCRAFT마다 하나**, 가장 최근 FLIGHT로. AIRPORT 슬롯과 `openProposals`는 보지 않는다: 이미 시작된 FLIGHT다.
+- **승인하는 사이 AIRCRAFT가 다시 떴으면** 보통 승인이다. 남은 `launch` 표시는 아무것도 띄우지 않는다.
+- **FLEET PLAN**도 같은 planner를 돌리므로, `launch` 카드가 받을 수 있는 FLIGHT는 거기서 더는 받을 AIRCRAFT 없는 수요가 아니고 FLEET PLAN이 같은 LAUNCH를 한 번 더 제안하지 않는다.
 
 ## 7. atc에 더할 것
 

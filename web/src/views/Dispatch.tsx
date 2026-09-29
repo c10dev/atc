@@ -2,6 +2,7 @@ import { createContext, Fragment, type KeyboardEvent, type ReactNode, useCallbac
 import type { ArrivalSuggestion } from "../../../server/standfree.ts";
 import type { DispatchConfig, Plan } from "../../../server/dispatch.ts";
 import type { Proposal } from "../../../server/proposals.ts";
+import type { LaunchCap } from "../../../server/dispatch-launch.ts";
 import type { Delivery } from "../../../server/session-origin.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
@@ -125,7 +126,9 @@ interface Brief {
   plan: Plan;
   open: Proposal[];
   held: Proposal[];
-  waiting?: Record<string, string>; // /clear 뒤 첫 메시지를 기다리는 AIRCRAFT의 제안 id → 글(ATC-91). 옛 서버면 없음
+  waiting?: Record<string, string>; // /clear 뒤 첫 메시지를 기다리는 AIRCRAFT의 제안 id → 글(ATC-91), LAUNCH 뒤 새 세션 대기(ATC-129). 옛 서버면 없음
+  launch?: Record<string, string>; // launch 카드 id → "LAUNCH on approve" 또는 상한 대기 글(ATC-129). 옛 서버면 없음
+  launchCap?: LaunchCap; // 백그라운드 세션 + 승인된 LAUNCH / ATC_MAX_LAUNCHED(ATC-129). 옛 서버면 없음
   briefs?: Record<string, CardBrief>; // 열린·HELD 카드의 사실 줄과 본문 첫 문장(옛 서버면 없음)
   inFlight: Proposal[];
   confirm?: Record<string, ConfirmView>; // 제안 id → SUPERVISOR CONFIRM 표시(ATC-120)
@@ -304,7 +307,10 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
   const submit = async (p: Proposal, v: "agree" | "disagree", input: VerdictInput) => {
     const sc = brief?.confirm?.[p.id];
     const scText = sc ? `\n\nSUPERVISOR CONFIRM AT AIRCRAFT — ${sc.paths.join(", ")}\n${p.aircraftName}가 이 파일을 고치기 전에 세션에서 직접 SUPERVISOR의 go를 묻습니다. 승인은 막히지 않습니다. 그때 붙여 넣을 한 줄:\n${sc.line}\n(${sc.open})` : "";
-    if (v === "agree" && brief?.mode === "approval" && p.kind === "ASSIGN" && !confirm(`${p.id}를 승인하면 DISPATCH가 ${p.aircraftName}에게 FLIGHT PLAN을 보냅니다.${scText}\n\n승인할까요?`)) return false;
+    const ask = p.launch
+      ? `${p.id}를 승인하면 atc가 세션이 없는 ${p.aircraftName}를 LAUNCH하고, 새 세션이 뜬 뒤 DISPATCH가 FLIGHT PLAN을 보냅니다${p.resume ? "(RESUME — 끊긴 FLIGHT를 이어서)" : ""}.${scText}\n\n승인할까요?`
+      : `${p.id}를 승인하면 DISPATCH가 ${p.aircraftName}에게 FLIGHT PLAN을 보냅니다.${scText}\n\n승인할까요?`;
+    if (v === "agree" && brief?.mode === "approval" && p.kind === "ASSIGN" && !confirm(ask)) return false;
     const payload = { via: input.via, reason: input.reason, ...(v === "disagree" && input.reasonCodes ? { reasonCodes: input.reasonCodes } : {}) };
     setBusy(p.id);
     try {
@@ -313,6 +319,8 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       await load();
       return true;
     } catch (e) {
+      // launch 카드는 LAUNCH가 실패하면 서버가 카드를 닫는다(ATC-129). 다시 읽어 RECENT로 옮기고 오류는 남긴다
+      if (p.launch) await load();
       setError((e as Error).message);
       return false;
     } finally {
@@ -423,6 +431,14 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
         <span className="dp-slot">
           열린 RELEASE {release.length} / {brief.config.slots.openReleases}
         </span>
+        {brief.launchCap && (brief.launchCap.pending > 0 || brief.launchCap.full) && (
+          <span
+            className={`dp-slot${brief.launchCap.full ? " is-full" : ""}`}
+            title={`LAUNCH 상한(ATC_MAX_LAUNCHED): 살아 있는 백그라운드 세션 ${brief.launchCap.launched} + 승인됐지만 아직 세션이 없는 LAUNCH ${brief.launchCap.pending}${brief.launchCap.full ? " — 찼다. 자리가 나면 launch 카드를 승인한다" : ""}`}
+          >
+            <b>LAUNCH</b> {brief.launchCap.launched + brief.launchCap.pending} / {brief.launchCap.max}
+          </span>
+        )}
       </div>
 
       <h2 className="label">
@@ -435,7 +451,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
           busy={busy}
           onAgree={(p) => acceptCrosscheck(p, markOf(p)!)}
           renderCard={(p) => (
-            <Card p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} waiting={brief.waiting?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
+            <Card p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} waiting={brief.waiting?.[p.id]} launch={brief.launch?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
           )}
           flights={flights}
         />
@@ -443,7 +459,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {expanded.length ? (
         <div className="dp-cards">
           {expanded.map((p) => (
-            <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} waiting={brief.waiting?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
+            <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} waiting={brief.waiting?.[p.id]} launch={brief.launch?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
           ))}
         </div>
       ) : agreeLane.length ? null : (
@@ -457,7 +473,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
           </h2>
           <div className="dp-cards">
             {brief.held.map((p) => (
-              <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} waiting={brief.waiting?.[p.id]} now={now} onVerdict={submit} onHeld={heldAction} codes={codes} mode={brief.mode} held busy={busy === p.id} />
+              <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} waiting={brief.waiting?.[p.id]} launch={brief.launch?.[p.id]} now={now} onVerdict={submit} onHeld={heldAction} codes={codes} mode={brief.mode} held busy={busy === p.id} />
             ))}
           </div>
         </>
@@ -469,7 +485,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       {release.length ? (
         <div className="dp-cards">
           {release.map((p) => (
-            <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} waiting={brief.waiting?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
+            <Card key={p.id} p={p} flight={flights[p.flight]} info={brief.briefs?.[p.id]} waiting={brief.waiting?.[p.id]} launch={brief.launch?.[p.id]} now={now} onVerdict={submit} onAccept={acceptCrosscheck} codes={codes} mode={brief.mode} busy={busy === p.id} />
           ))}
         </div>
       ) : (
@@ -637,10 +653,11 @@ function InFlightRow({
         <td className="dp-c-air">
           {p.aircraftName} <DeliveryWarn aircraft={p.aircraftName} />
           {waiting && (
-            <span className="dp-wait" title="세션이 /clear로 끝났고 새 세션이 첫 메시지를 받을 때까지 이 제안은 닫히지 않는다">
+            <span className="dp-wait" title={waitTitle(waiting)}>
               {waiting}
             </span>
           )}
+          <LaunchLines p={p} launch={undefined} now={now} />
         </td>
         <td className="dp-c-result dp-result">
           {p.status === "recalling" ? (
@@ -804,6 +821,81 @@ function DirectCandidates({ candidates, now }: { candidates: ArrivalSuggestion[]
         ))}
       </ul>
     </>
+  );
+}
+
+// 기다림 글의 설명: LAUNCH 뒤 새 세션 대기(ATC-129)와 /clear 뒤 첫 메시지 대기(ATC-91)
+const waitTitle = (w: string) =>
+  w.startsWith("LAUNCHING")
+    ? "승인 때 atc가 이 AIRCRAFT를 LAUNCH했다. 새 세션이 뜨면 OCC가 FLIGHT PLAN을 보낸다 — 유예 안에 뜨지 않으면 LAUNCH 실패로 닫힌다"
+    : "세션이 /clear로 끝났고 새 세션이 첫 메시지를 받을 때까지 이 제안은 닫히지 않는다";
+
+// LAUNCH on approve·RESUME(ATC-129): 세션이 없는 백그라운드 AIRCRAFT의 카드. launch는 서버 글 — 이것이면 승인 때 띄우고, 아니면 상한 대기 글
+const LAUNCH_TEXT = "LAUNCH on approve"; // server/dispatch-launch.ts와 같은 글
+const utc = (iso: string) => `${iso.slice(11, 16)}Z`;
+function LaunchLines({ p, launch, now }: { p: Proposal; launch: string | undefined; now: number }) {
+  const r = p.resume;
+  const failed = p.launched && !p.launched.ok ? p.launched : null;
+  const text = p.status === "proposed" ? launch : undefined; // 승인 뒤에는 기다림 글(waiting)이 대신한다
+  if (!r && !text && !failed) return null;
+  return (
+    <div className="dp-launch">
+      {(r || text) && (
+        <p className="dp-launch-head">
+          {r && (
+            <span className="dp-resume-mark" title="사용 한도로 끊긴 FLIGHT — reset이 지났고 새 턴이 없다. 승인하면 LAUNCH하고 FLIGHT PLAN이 처음부터가 아니라 이어서 하라고 적는다">
+              RESUME after LIMIT
+            </span>
+          )}
+          {text &&
+            (text === LAUNCH_TEXT ? (
+              <span className="dp-launch-text" title="이 AIRCRAFT는 세션이 없다(백그라운드 세션이 쉬다 거둬짐). 승인하면 FLEET LAUNCH와 같은 옵션으로 띄운 뒤 FLIGHT PLAN을 보낸다">
+                absent · {text}
+              </span>
+            ) : (
+              <span className="dp-launch-text is-full">{text}</span>
+            ))}
+        </p>
+      )}
+      {r && (
+        <dl className="dp-resume" aria-label="RESUME">
+          <dt>STAND</dt>
+          <dd className="mono" title={r.stand ?? undefined}>
+            {r.stand ?? <span className="faint">모름</span>}
+          </dd>
+          <dt>브랜치</dt>
+          <dd className="mono">{r.branch ?? <span className="faint">모름</span>}</dd>
+          <dt>커밋</dt>
+          <dd>
+            {r.commit ? (
+              <>
+                <span className="mono">{r.commit.sha}</span>
+                {r.commit.at && <span className="faint"> · {timeAgo(r.commit.at, now)}</span>}
+                {r.commit.pushed === true && <span className="dp-fact-ok"> · pushed</span>}
+                {r.commit.pushed === false && <span className="dp-fact-warn"> · origin에 아직 없음</span>}
+              </>
+            ) : (
+              <span className="faint">없음 — 워크트리를 찾지 못함</span>
+            )}
+          </dd>
+          {r.report && (
+            <>
+              <dt>마지막 보고</dt>
+              <dd>{r.report}</dd>
+            </>
+          )}
+          <dt>LIMIT</dt>
+          <dd className="mono">
+            cut {utc(r.cutAt)} · reset {utc(r.resetsAt)}
+          </dd>
+        </dl>
+      )}
+      {failed && (
+        <p className="dp-launch-fail">
+          <span className="dp-caution">LAUNCH 실패</span> {failed.error ?? "원인 모름"} <span className="faint">· {timeAgo(failed.at, now)}</span>
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -1278,10 +1370,12 @@ function Card({
   onHeld,
   busy,
   waiting,
+  launch,
 }: {
   p: Proposal;
   flight: FlightInfo | undefined;
   waiting?: string;
+  launch?: string; // "LAUNCH on approve" 또는 상한 대기 글(ATC-129)
   info?: CardBrief;
   now: number;
   onVerdict: (p: Proposal, v: "agree" | "disagree", input: VerdictInput) => Promise<boolean>;
@@ -1337,7 +1431,7 @@ function Card({
           <>
             → <b>{p.aircraftName}</b> <span className="apt">{p.airport}</span> <DeliveryWarn aircraft={p.aircraftName} />
             {waiting && (
-              <span className="dp-wait" title="세션이 /clear로 끝났고 새 세션이 첫 메시지를 받을 때까지 이 제안은 닫히지 않는다">
+              <span className="dp-wait" title={waitTitle(waiting)}>
                 {waiting}
               </span>
             )}
@@ -1349,6 +1443,7 @@ function Card({
           {p.score}
         </span>
       </div>
+      {p.kind === "ASSIGN" && <LaunchLines p={p} launch={launch} now={now} />}
       {p.kind === "ASSIGN" && <SupervisorConfirm id={p.id} />}
       {p.holdAt && (
         <p className="dp-hold">

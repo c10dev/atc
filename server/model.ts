@@ -1,4 +1,5 @@
 import type { Restarting } from "./restarting.ts";
+import type { AbsentAircraft } from "./dispatch-launch.ts";
 import type { CarriedReview, CodexFindingSummary, CodexUnavailable, ExtReviewState, Stranded } from "./landing.ts";
 import type { GroundStop, MainStatus } from "./atfm.ts";
 import type { AutolandView } from "./autoland.ts";
@@ -263,4 +264,7 @@ export interface Snapshot {
   fuel?: Record<string, FuelRemaining>; // FUEL REMAINING(ATC-55): REGISTRATION(대문자) → 그 ACCOUNT의 가장 새 statusline 값
   fuelAccounts?: FuelRemaining[]; // ACCOUNT마다 하나(ATC-60): 관제 세션만 있는 ACCOUNT도 들어간다
   restarting?: Restarting[]; // /clear 뒤 첫 메시지를 기다리는 AIRCRAFT(ATC-91). restartGraceMin 안에서만
+  // 세션이 없는 백그라운드 AIRCRAFT(ATC-129): atc가 띄운 적이 있고 등록부에 있으며 RETIRED·RESTARTING이 아닌 것. DISPATCH 후보로 남고(LAUNCH on approve),
+  // cut이 있으면 한도로 끊긴 마지막 턴(reset이 지나면 RESUME 카드)
+  absent?: AbsentAircraft[];
 }

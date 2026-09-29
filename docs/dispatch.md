@@ -149,6 +149,7 @@ DISPATCH avoids starting two FLIGHTs that edit the same files at one AIRPORT.
 - **Score.** Overlap is predicted ∩ in-flight, per holding FLIGHT. The factor value is `min(files, 3) × WAKE(this) × WAKE(holder)` (L 0.5 · M 1 · H 2), so a heavier FLIGHT on either side weighs more. The detail names the files, the holding FLIGHT and its team, and where each came from (`본문 → STAND` or `본문 → PR #12`).
 - **Same team.** Overlap with a FLIGHT the asked AIRCRAFT's own team is flying is not a conflict. When that team is the only one touching the overlapping files, the pair gets `이어서 하면 충돌 없음` (×1). The pair only exists when that team is otherwise assignable.
 - **HOLD switch** (`dispatch.json` `overlap.hold`, default `false`; `overlap.holdFiles`, default 2). An overlap of at least `holdFiles` files where the WAKE product is at least 1 (not L against L) is heavy. With the switch on, the FLIGHT is held as HOLD_DEPARTURE with `파일 겹침 — <FLIGHT>가 머지될 때까지`; it comes back when the holding FLIGHT's STAND and PR are gone. A same-team-only overlap on a qualified team is not held. With the switch off the plan lists what it would hold (`overlapHolds`, shown as `shadow —` on the DISPATCH tab) and the factor detail says so.
+- **Same-team exemption as built (ATC-136).** The exemption holds only if the FLIGHT actually goes to that team. When the sole team touching the overlapping files can take the FLIGHT now (qualified, independent for a CHECK, free, with room), the FLIGHT's candidates are limited to that team's AIRCRAFT, as a `tail:` label would limit them, and the factor detail says `겹침은 TEAM_X뿐 — TEAM_X에만 제안`. If that team can't (busy, held, no session, wrong rating), the FLIGHT gets the overlap HOLD like any other, or with the switch off the shadow `overlapHolds` entry, and the why names the team: `파일 겹침 — <FLIGHT>가 머지될 때까지 (겹침은 TEAM_X뿐인데 TEAM_X가 지금 못 받음: <reason>)`. Two or more overlapping teams are held as before. The switch default, the heavy-overlap thresholds and the scoring weights are unchanged.
 - **Metric.** ATFM records a `dirty` operation when an open PR turns `DIRTY` (like `behind`), with the other open PRs that shared files with it at that moment. The ATFM data line `DIRTY(겹침 예측 가능)` is `seen/dirty` over 7 days: PRs that went `DIRTY` while a PR sharing files was open, out of all that went `DIRTY`.
 
 ### 5.4 DISPATCH session review
@@ -266,6 +267,53 @@ D-0068 (ATC-82 → TEAM_I) was created at 01:40:31Z on 2026-09-29 with `aircraft
 - **Proposals wait instead of closing.** A `proposed` or `approved` ASSIGN whose AIRCRAFT is `RESTARTING` is not SUPERSEDED for "AIRCRAFT 불가" (every other reason still closes it at once). A proposal that is `sent` was never auto-closed. When the new session appears with the same name, the same proposal is valid and goes out. When the grace passes with no session, `RESTARTING` disappears and the proposal closes as before with `AIRCRAFT 불가: 세션 없음`. `POST …/release` (send) returns 409 while the AIRCRAFT has no live session and is `RESTARTING`, so OCC does not send into nothing: the approval stays.
 - **The cards say so.** The brief has `waiting: {D-0068: "세션 없음 — /clear 뒤 첫 메시지 대기"}` for those proposals; DISPATCH shows it on the card and on the in-flight row.
 - **Not covered.** The AFFINITY factor reads earlier FLIGHTs by session id, so a `/clear` still resets it (a separate, smaller signal).
+
+### LAUNCH on approve and RESUME as built (ATC-129)
+
+A background AIRCRAFT is retired by Claude Code about 60 minutes after its last turn ([fleet.md](fleet.md), "Idle exit and LAUNCH from DISPATCH as built (ATC-129)", has the evidence). Until ATC-129 the planner then saw no session and gave the AIRCRAFT nothing; a FLIGHT cut by the usage limit waited for the SUPERVISOR to open the session again and type "continue". Now both go through the SUPERVISOR's one click on a card.
+
+**Candidates** (`planDispatch`, the `snapshot.absent` list from [fleet.md](fleet.md)). An AIRCRAFT with no live session, launched by atc before (a FLIGHT RECORDER LAUNCH in the last 14 days), in the registry and not RETIRED or `RESTARTING` is added to `plan.aircraft` with `id: "absent:<REG>"`, `launch: true`, and its base AIRPORT from the registry. It takes FLIGHTs like a PARKED AIRCRAFT (`reason: "ABSENT — 세션 없음, 승인하면 LAUNCH"`) unless it is held:
+
+- AOG;
+- `LIMIT`: its last turn was cut and the reset has not passed (`HOLD · LIMIT (cut 04:30Z) until 07:40Z`), or the reset is unknown; an ACCOUNT HOLD from a live sibling; a FUEL HOLD;
+- a RESUME card is due for it (`RESUME — ATC-200을 이어서(RESUME 카드)`, `stopped`);
+- an unfinished `tail:`-labelled In Progress FLIGHT (ATC-90, `stopped`);
+- no base AIRPORT.
+
+An ASSIGN to it carries `launch: true` in the plan and in the proposal. A desktop or terminal AIRCRAFT has no LAUNCH line and is never in the list.
+
+**The cap.** `launchCapOf`: live background sessions (not the control sessions) plus `approved` `launch` cards whose AIRCRAFT has no live session yet, against `ATC_MAX_LAUNCHED` (the same cap as 8.5). `GET /api/dispatch/brief` returns `launchCap: {launched, pending, max, full}` and `launch: {"D-xxxx": "LAUNCH on approve"}` for every open, held or approved `launch` card. When the cap is full an open card's text is `LAUNCH 대기 — 백그라운드 5 + 승인된 LAUNCH 1 / 상한 6(ATC_MAX_LAUNCHED) — 자리가 나면 승인한다`, and approving it returns 409 with that text and changes nothing. So the count never passes the cap.
+
+**Approve** (`POST /api/dispatch/proposals/:id/approve`, `approveLaunch`). For a `launch` card:
+
+1. Only from this screen (`fromThisApp`, 403 otherwise), because it starts a session. OCC's `atcctl` has no approve.
+2. If a live session with that REGISTRATION exists by now, it is an ordinary approval: nothing is launched.
+3. Otherwise the cap is checked (above); then `approve` is written, then `launchAircraft` runs (the FLEET LAUNCH path, with the permission mode and model of the AIRCRAFT's last LAUNCH; FLIGHT RECORDER `by: "SUPERVISOR"`, `proposal: "D-xxxx"`), then its result as a new op `{op: "launch", id, at, ok, by: "SUPERVISOR", jobId?, error?}`. The fold keeps it as `proposal.launched`. The status stays `approved`.
+4. **Launch failure**: the result has `ok: false` and the card is SUPERSEDED at once with `LAUNCH 실패 — <error>`, so nothing is sent. The response is 502 with the same text. The reason starts no pair rule (like `BETTER_WHY`), so the same card comes back in the next plan and the SUPERVISOR can approve it again; nothing retries by itself. FLIGHT FOLLOWING shows a `launch` issue (`warn`) for a day.
+
+**Waiting for the new session** (like `RESTARTING`, 6.4). `POST …/release` returns 409 `TEAM_G: LAUNCHING — 새 세션을 기다림 — 새 세션이 뜬 뒤에 보낸다(승인은 그대로다)` until a live session carries the REGISTRATION; the brief's `waiting` has `LAUNCHING — 새 세션을 기다림` for the card. For `restartGraceMin` after the LAUNCH, "AIRCRAFT 불가" does not close the card (the new session is AIRBORNE while it reads its CREW BRIEFING). If the grace passes with no session, the card closes with `LAUNCH 실패 — LAUNCH 뒤 30분 동안 새 세션이 뜨지 않음` (also a FOLLOWING `launch` issue). If the approval was written but no LAUNCH result was (the server stopped in between), the card closes the same way after the grace with `LAUNCH 실패 — 승인 뒤 30분 동안 LAUNCH 기록이 없음 …`; atc never launches it on its own. Once the session is live, OCC releases and sends as usual.
+
+**RESUME cards** (`resumePlansOf`, pure). For an absent background AIRCRAFT whose `cut` has a reset that has passed (and no new turn: a prompt after the cut clears `cut`), DISPATCH picks the FLIGHT it was flying: the FLIGHT whose last DEPARTURE LOG claim or HANDOFF before the cut names that REGISTRATION, else its `tail:`-labelled FLIGHT, In Progress in Linear and not in the LOGBOOK; the most recent one. It becomes `plan.resume` and a proposal with `kind: "ASSIGN"`, `launch: true` and `resume: {cutAt, resetsAt, stand, branch, commit: {sha, at, pushed} | null, report}`: the STAND and branch from the DEPARTURE LOG (the branch from the worktree if it still exists), the worktree's last commit (the WIP), and the last line of the CAPTAIN's last message. Its AIRPORT is the one whose repository the DEPARTURE LOG names (for a `tail:` FLIGHT with no departure, the registry's base AIRPORT); with no known AIRPORT there is no card. Its score is 0 with a `resume` factor, and it counts against neither the AIRPORT slots nor `openProposals`.
+
+- **Once per cut.** `syncOps` makes no second card for the same FLIGHT and cut time (`resumedOf`), whatever happened to the first (rejected, expired, sent). A card closed by a launch failure does not count, so it comes back. A later new cut of the same FLIGHT can make a new card.
+- **It stays valid** while the FLIGHT is In Progress and not in the LOGBOOK; AIRCRAFT reasons (AIRBORNE while it reads the briefing) don't close an approved one. An open card whose AIRCRAFT got a live session again (someone opened it) closes with `AIRCRAFT 불가: 세션이 다시 떴음 — RESUME은 그 세션에서 SUPERVISOR가 "계속"(ATC-86)`.
+- **The FLIGHT PLAN** (`formatFlightPlan`) keeps its header and DIRECT lines and adds, after the title and link: `RESUME — This FLIGHT was cut by a usage LIMIT at 04:30Z. Resume, don't restart — continue from the remaining work.`, `STAND … · branch … · last commit abc1234 (04:20Z) — not on origin yet` (or `no last commit (worktree not found)`), and `CAPTAIN's last report: …` (the CAPTAIN's line as written). The lines are English like the rest of the FLIGHT PLAN (ATC-126). send-guard compares the stored text as before.
+- **Live sessions are unchanged.** A live session in `RESUME` (ATC-86) gets no card: the SUPERVISOR sends "continue" in that session.
+
+**OCC.** The flight-plan procedure (`occ/.claude/skills/tick/flight-plan.md`) has one new row: when `dispatch release` answers 409 with `LAUNCHING` or `RESTARTING`, OCC sends nothing and tries again next tick; with `LAUNCH 실패` it reports to the SUPERVISOR. Nothing else in OCC changes.
+
+**API fields for the screen.** `Proposal.launch?: true`, `Proposal.launched?: {at, ok, by, jobId?, error?}`, `Proposal.resume?: {cutAt, resetsAt, stand, branch, commit, report}`; `AssignPlan.launch?`, `AssignPlan.resume?`, `AircraftState.launch?`, `Plan.resume?`; brief `launch`, `launchCap`, and `waiting` (now also `LAUNCHING`); FOLLOWING issue code `launch`.
+
+**Pilot's discretion (ATC-129).**
+
+- **Background origin** is "atc launched it" (a FLIGHT RECORDER LAUNCH in 14 days, the window the permission-mode lookup already uses). The registry has no origin field, and a job someone started by hand with `claude --bg` is not counted.
+- **The grace** after a LAUNCH is `restartGraceMin`, ATC-91's setting, not a new one.
+- **A launch failure** closes the card rather than leaving an approved card that can't be sent; it starts no 24-hour pair rule, so the next plan offers it again.
+- **RESUME cards only for absent background AIRCRAFT**: a live session in `RESUME` keeps ATC-86; an absent desktop AIRCRAFT can't be launched, so it gets none either.
+- **Once per FLIGHT means once per cut**; a card closed by a launch failure doesn't use it up.
+- **One RESUME card per AIRCRAFT**, for its most recent FLIGHT. RESUME cards ignore AIRPORT slots and `openProposals`: the FLIGHT is already started.
+- **An approval whose AIRCRAFT came back live** is an ordinary approval; the stale `launch` flag launches nothing.
+- **FLEET PLAN** runs the same planner, so a FLIGHT a `launch` card can serve is no longer unserved demand there and FLEET PLAN proposes no second LAUNCH for it.
 
 ## 7. What to add to atc
 

@@ -250,6 +250,68 @@
   color: var(--cyan);
   font: var(--text-2xs) var(--mono);
 }
+/* LAUNCH on approve·RESUME(ATC-129) */
+.dp-launch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.dp-launch-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+}
+.dp-launch-text {
+  color: var(--cyan);
+  font: var(--text-2xs) var(--mono);
+  overflow-wrap: anywhere;
+}
+.dp-launch-text.is-full {
+  color: var(--amber);
+}
+.dp-resume-mark {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-sm);
+  color: var(--amber);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+.dp-resume {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-0-5) var(--space-2);
+  margin: 0;
+  padding: var(--space-1-5) var(--space-2);
+  background: var(--panel-2);
+  border-left: 2px solid var(--amber);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+}
+.dp-resume dt {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.dp-resume dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.dp-launch-fail {
+  margin: 0;
+  color: var(--alert);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.dp-slot.is-full {
+  border-color: var(--amber);
+  color: var(--amber);
+}
 .dp-target {
   display: flex;
   align-items: center;

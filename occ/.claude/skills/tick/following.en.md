@@ -34,6 +34,7 @@ The stages are READBACK → DEPARTED (a STAND or a departure record) → PR open
 | `fuel` | The ACCOUNT of the AIRCRAFT holding the FLIGHT has used at least the INFO threshold of its plan limit (default 80 %; docs/fuel.md 6, ATC-55). `text` has the share used, the reset and the AIRCRAFT on that ACCOUNT. It comes once per ACCOUNT, window and reset. Don't send it to the team (TOWER tells the SUPERVISOR) | OCC LOG only |
 | `report` | Jev judged that the CAPTAIN of the AIRCRAFT holding the FLIGHT asked the SUPERVISOR for a decision in its last turn (docs/fleet.md 8.8, ATC-89, shadow). `text` has the probability. It comes once per turn. The judgment can be wrong, so if you write it up, tell the SUPERVISOR to read that session's last message. Never message the team again | OCC LOG only |
 | `stranded` | Mismatch: the PR was merged into a non-default branch and doesn't reach main (e.g. a stack merged bottom-up, each into the branch below; ATC-29). Shown even when Linear says Done | SUPERVISOR |
+| `launch` | The launch of a launch card the SUPERVISOR approved failed, or no new session came up after it (ATC-129). The FLIGHT PLAN was not sent. Shown for a day. Don't launch again and don't message the team | SUPERVISOR |
 
 - Only issues with `fresh: true` are new. Put each in one OCC LOG line; report the ones with `severity: "warn"` to the SUPERVISOR. Then run `atcctl following ack` to record that they were reported.
 - `fresh: false` issues were already reported; don't report them again. If one clears and comes back, atc marks it fresh again.

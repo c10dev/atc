@@ -4,13 +4,26 @@ import { elapsedText, type FleetRow, flightDetailText } from "../../../../server
 import { flightNumber } from "../../aviation.ts";
 import { timeAgo } from "../../derive.ts";
 import { JobDetail, NeedsYou } from "../../ui.tsx";
+import { type AbsentMark, AbsentChip } from "./Absent.tsx";
 import { ContextCell } from "./Context.tsx";
 import { pct } from "./shared.ts";
 import "./StatusList.css";
 
 // 운항 상태 목록(ATC-44). 한 줄: REGISTRATION·callsign, AIRPORT, 상태, FLYING FLIGHT, 경과, 마지막 활동, 이번 주.
 // 줄(버튼)을 누르면 아래에 그 AIRCRAFT의 카드가 펼쳐진다(키보드로도)
-export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[]; open: ReadonlySet<string>; onToggle: (reg: string) => void; detail: (reg: string) => ReactNode }) {
+export function StatusList({
+  rows,
+  open,
+  onToggle,
+  detail,
+  absent,
+}: {
+  rows: FleetRow[];
+  open: ReadonlySet<string>;
+  onToggle: (reg: string) => void;
+  detail: (reg: string) => ReactNode;
+  absent?: (reg: string) => AbsentMark | null; // 세션 없는 백그라운드 AIRCRAFT(ATC-129)
+}) {
   const now = Date.now();
   if (!rows.length) return <p className="fl-line faint">운항 중인 AIRCRAFT 없음</p>;
   return (
@@ -30,8 +43,9 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
       <ul className="fl-rows">
         {rows.map((r) => {
           const isOpen = open.has(r.registration);
+          const gone = absent?.(r.registration) ?? null;
           return (
-            <li key={r.registration} className={`fl-li st-${r.status.replace(/ /g, "-")}${r.health || r.accountHold || r.fuelHold || r.restarting ? " has-health" : ""}${isOpen ? " is-open" : ""}`}>
+            <li key={r.registration} className={`fl-li st-${r.status.replace(/ /g, "-")}${r.health || r.accountHold || r.fuelHold || r.restarting || gone ? " has-health" : ""}${isOpen ? " is-open" : ""}`}>
               <button className="fl-row" aria-expanded={isOpen} aria-controls={`fl-detail-${r.registration}`} onClick={() => onToggle(r.registration)}>
                 <span className="fl-r-id">
                   <b>{r.callsign}</b> <span className="mono faint">{r.registration}</span>
@@ -67,6 +81,7 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                       {r.restarting.label}
                     </span>
                   )}
+                  <AbsentChip m={gone} />
                   {r.accountHold && (
                     <span className="fl-r-health lv-hold" title={`${r.accountHold.detail} — ${r.accountHold.next}`}>
                       {r.accountHold.label}
@@ -86,7 +101,7 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                       {r.flight.title && <span className="fl-r-title">{r.flight.title}</span>}
                       {r.more > 0 && <span className="fl-r-more">+{r.more}</span>}
                     </>
-                  ) : r.health || r.accountHold || r.fuelHold || r.restarting || r.job?.state === "blocked" ? null : r.job?.state === "working" && (r.job.detail || r.job.settled) ? (
+                  ) : r.health || r.accountHold || r.fuelHold || r.restarting || gone || r.job?.state === "blocked" ? null : r.job?.state === "working" && (r.job.detail || r.job.settled) ? (
                     <JobDetail job={r.job} />
                   ) : (
                     <span className="faint">—</span>

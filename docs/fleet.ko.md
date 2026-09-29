@@ -747,6 +747,36 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 **보이는 곳.** `GET /api/fleet`이 `restarting: {registration, name, sessionId, since, until}`(없으면 `null`)을 주고 `status: "absent"`는 그대로여서 FLEET PLAN은 전과 같이 보되, `RESTARTING` AIRCRAFT에는 `LAUNCH`를 제안하지 않는다(SUPERVISOR가 곧 말을 건다). FLEET 상태 목록은 STATUS `RESTARTING`과 FLYING 칸의 `세션 없음 — /clear 뒤 첫 메시지 대기`를 보이고, 카드는 기다리는 시각과 승인된 제안이 열려 있다는 것을 같이 적는다. DISPATCH는 [dispatch.ko.md](dispatch.ko.md) 6.4.
 
+### 유휴 종료와 DISPATCH의 LAUNCH as built (ATC-129)
+
+FLIGHT를 마치고 기다리는 백그라운드 AIRCRAFT는 한 시간 뒤 사라지고, ATC-129 전에는 DISPATCH에서도 빠졌다: planner는 살아 있는 세션만 본다. 이제 세션이 없는 백그라운드 AIRCRAFT도 후보로 남고, 그 카드를 승인하면 OCC가 FLIGHT PLAN을 보내기 전에 띄운다(8.5의 `launchAircraft`). DISPATCH 쪽은 [dispatch.ko.md](dispatch.ko.md)의 "LAUNCH on approve와 RESUME as built (ATC-129)".
+
+**Step 0: 유휴 종료(2026-09-29, Claude Code 2.1.284, 읽기만).**
+
+- **일어나는 일.** 백그라운드 daemon(`claude daemon run`, 8.5)이 60분쯤 쉰 백그라운드 worker를 거둔다. 로그 `~/.claude/daemon.log`에 한 줄씩 남는다:
+  - `05:34:30Z bg retire 2b7110c1: settled, idle 60m`, `bg settled 2b7110c1 (done)`: TEAM_G, 마지막 턴 04:34:21Z.
+  - `05:44:30Z bg retire a7bd6d77: idle-prompt, idle 60m`, `bg retire 0edf3386: idle-prompt, idle 60m`: TEAM_I, TEAM_K.
+  - `06:20:30Z bg retire 647369e3: idle-prompt, idle 97m`: TEAM_J, 마지막 턴 05:19:44Z.
+  - 그 전: `2026-09-28T19:10:30Z bg retire 44a0a5d5: settled, idle 61m`(TEAM_K), `2026-09-29T04:21:30Z bg retire dd6ea8ef: stale-spare, idle 61m`(쓰이지 않은 예비 worker).
+- **로그의 사유**는 `settled`(턴이 끝나 job이 `done`), `idle-prompt`(프롬프트에서 기다림), `stale-spare`(아무도 쓰지 않은 미리 띄운 예비)다. 검사는 1분 주기다(모든 retire가 `:30`초). 그래서 job이 마지막으로 바뀐 뒤 60~61분에 끝난다. J의 97분: 쉰 시간은 job의 `updatedAt`부터 세고, 다른 것(최근 입력이나 도는 작업, 아래 규칙)이 06:20Z까지 거두기를 막았다.
+- **그 뒤.** `~/.claude/jobs/<id>/state.json`은 `state: "done"`이고 `lastTerminalAt`이 retire 시각이다(G `05:34:30.488Z`, J `06:20:30.456Z`). `~/.claude/sessions/`의 세션 파일은 없어지고, `claude agents --json`에 `pid`가 있는 줄이 없고, FLEET는 `absent`다. 대화 기록은 그대로다: 마지막 쓰기가 마지막 턴이라 RESTARTING(ATC-91)이 retire를 `/clear`로 오해하지 않는다(유예가 한참 전에 지났다).
+- **바이너리의 규칙**(2.1.284 daemon 코드의 `retireIfSettled`, `grep`·`dd`로 읽기만 하고 실행하지 않았다). 60초마다 한 바퀴 돈다(`Me=60000`). job이 `~/.claude/jobs/<id>/state.json`의 `updatedAt`부터 `3600000` ms(1시간. 원격 클라이언트에 이어진 세션은 `28800000`, 8시간. 메모리가 모자라면 60초) 넘게 쉬면 worker를 거둔다. 클라이언트가 붙어 있을 때(`claude attach`), 고정(pin)됐을 때, 최근 입력이 있을 때, routine이나 세션 cron(`/loop`)이 걸려 있을 때, 작업이 돌고 있을 때는 거두지 않는다. 사유는 job 상태가 끝났으면 `settled`, 아니면 `idle-prompt`, 쓰이지 않은 예비면 `stale-spare`다. 기준은 상수다: 환경 변수나 설정이 들어가지 않는다.
+- **관제 세션이 살아남는 까닭.** TOWER·OCC·MCC·CROSSCHECK는 `/loop`를 돌려 세션 cron이 걸려 있으니 "settled"가 되지 않고, 몇 분마다 tick이 턴을 시작한다.
+- **설정.** 2.1.284의 `claude --help`와 설정 목록에 백그라운드 세션의 유휴 시간 제한은 없고, 그것을 늘리는 문서화된 길도 없다. 고정(agent view의 pin)이나 붙어 있는 클라이언트는 거두기를 막고 `/loop`는 세션을 바쁘게 두지만, atc는 어느 것도 쓰지 않는다. 세션을 붙잡아 두지 않고 승인 때 다시 띄우며, keep-alive 메시지는 보내지 않는다.
+- **문서.** Claude Code의 agent view 문서(code.claude.com/docs/en/agent-view)는 끝났거나 다음 메시지를 기다리며 한 시간쯤 아무도 붙지 않은 세션을 supervisor가 멈춰 자원을 푼다고 적는다. 계속 돌게 하는 것은 고정(agent view에서 Ctrl+T)뿐이다. 늘리는 설정은 없다.
+- **이어 가는 길(쓰지 않음).** 대화는 남는다. `claude --help`(2.1.284)가 적는 길은 셋이다: `claude attach <id>`(대화형, 터미널 필요), `claude --resume <session-id>`, 그리고 "그 세션을 같은 ID로 백그라운드에서 이어 가는" `claude --bg --resume <session-id> "<지시>"`. 마지막 것은 끊긴 FLIGHT를 맥락째 이어 갈 수 있다. `claude respawn <id>`는 도는 세션을 지금 바이너리로 다시 띄울 뿐이다. ATC-129는 명세대로 새 LAUNCH(`launchAircraft`, FLEET 버튼과 같은 길)를 쓰고 STAND·브랜치·마지막 커밋·마지막 보고를 FLIGHT PLAN에 싣는다. `--bg --resume`으로 이어 가기는 나중에 바꿀 수 있는 길이고, 여기서 시험하지 않았다.
+
+**어떤 AIRCRAFT인가**(`snapshot.absent`, 읽기는 `server/absent-run.ts`, 순수 함수 `absentOf`는 `server/dispatch-launch.ts`).
+
+- 그 REGISTRATION의 살아 있는 세션(출처 무관)이 없고, `RESTARTING`이 아니고, 등록부(`fleet.json`)에 있고 RETIRED가 아니다.
+- **백그라운드 출처:** 최근 14일 FLIGHT RECORDER에 성공한 atc LAUNCH(`kind: "fleet"`, `op: "launch"`, `ok`)가 있다. 데스크톱·터미널 AIRCRAFT는 그런 줄이 없어 이 길로 띄워지지 않는다. 그 LAUNCH의 permission mode와 모델을 다시 쓴다.
+- **cut**(ATC-86): 그 LAUNCH의 job id로 대화 기록을 찾는다(`~/.claude/projects/*/<jobId>-….jsonl`, 세션이 워크트리로 옮겨 갔어도). 그 끝이 한도로 잘린 턴이면(마지막 지시와 마지막 `release` 뒤에 `wrap_up` 안내) `cut`에 잘린 시각, ACCOUNT의 FUEL 기록에서 되짚은 reset(`cutResetOf`, 살아 있는 cut과 같다), CAPTAIN 마지막 메시지의 마지막 줄을 싣는다. cut 뒤에 새 지시가 있으면 cut이 아니다. 대화 기록은 LAUNCH한 저장소(와 그 워크트리)의 프로젝트 폴더를 먼저 보고, 없을 때만 모든 폴더를 본다. 찾은 경로는 계속 쓰고, 못 찾으면 10분 뒤 다시 찾는다. FLIGHT RECORDER는 1분에 한 번 읽고, 대화 기록 끝은 크기·mtime으로 캐시한다.
+- `GET /api/snapshot`의 `absent: [{registration, launchedAt, jobId, permissionMode?, model?, cut: {sessionId, cutAt, resetsAt | null, weekly?, report} | null}]`.
+
+**카드의 LAUNCH.** `launchAircraft`를 부르는 것은 이 화면에서 누른(`fromThisApp`) DISPATCH `launch` 카드의 승인뿐이다. tick이나 타이머는 부르지 않는다. FLIGHT RECORDER 줄은 8.5의 것에 `by: "SUPERVISOR"`와 새 필드 `proposal: "D-xxxx"`다. 카드에서 온 LAUNCH는 `claude --bg`를 부르기 전에 거절된 것(상한, 이미 떠 있음, RETIRED)도 이제 남긴다. 상한(`ATC_MAX_LAUNCHED`)은 살아 있는 백그라운드 세션에 승인됐지만 아직 세션이 뜨지 않은 `launch` 카드를 더해 센다.
+
+**RESUME.** 한도로 끊긴 FLIGHT는 reset 뒤 같은 REGISTRATION의 RESUME 카드로 돌아온다([dispatch.ko.md](dispatch.ko.md)). SUPERVISOR가 손으로 보내던 "계속"을 대신하는 것은 세션이 없는 백그라운드 AIRCRAFT뿐이다. 살아 있는 세션의 `RESUME`은 위 ATC-86대로다: `RESUME 필요`, SUPERVISOR가 그 세션에서 "계속"을 보낸다.
+
 ### 8.6 FLEET PLAN: LAUNCH·STOP 등을 제안하기
 
 상태: 1·2단계 만듦(그림자, 2026-09-28). `REFRESH`(객실 정비, ATC-69)도 함께 만들었다. SUPERVISOR 결정은 아래에 적었다. 8.5가 SUPERVISOR에게 조종 버튼을 줬다면, 이 절은 atc가 언제 그 버튼을 쓰자고 제안할지 정한다. 팀을 꾸리고, 세우고, 정비하고, 퇴역시키는 일을 손으로 챙기지 않게 하려는 것이다.

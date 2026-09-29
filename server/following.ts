@@ -12,6 +12,7 @@ import { type Health, healthLabel } from "./health.ts";
 import { type FuelRemaining, fuelUsedText, membersText } from "./fuel-remaining.ts";
 import type { Clearance, PullRequest, Snapshot, Ticket, Workspace } from "./model.ts";
 import { allProposals, type Proposal, standFreeTicket } from "./proposals.ts";
+import { type LaunchFail, launchFailsOf } from "./dispatch-launch.ts";
 import { regKey } from "./registration.ts";
 import { needsDecision } from "./judges/report.ts";
 import { loadReportThreshold } from "./judges/store.ts";
@@ -34,7 +35,7 @@ export const STAGES = ["readback", "departed", "prOpened", "cleared", "arrived"]
 export type Stage = (typeof STAGES)[number];
 
 export interface FollowIssue {
-  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health" | "fuel" | "report" | "unable" | "await-supervisor";
+  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health" | "fuel" | "report" | "unable" | "launch" | "await-supervisor";
   kind: "delay" | "mismatch";
   severity: "warn" | "info"; // info: 보여 주기만(착륙 대기는 SUPERVISOR 몫, 머지 뒤 Done 아님은 CLOSE 초안 몫)
   text: string;
@@ -76,6 +77,7 @@ export interface FollowInput {
   reports?: Map<string, { id: string; at: string; p: number }>; // REGISTRATION → 마지막 턴에 CAPTAIN이 결정을 청한 것으로 판정된 것(ATC-89, 문턱을 넘은 것만)
   milestones?: Map<string, Milestones>; // FLIGHT → OOOI(ATC-123, milestonesNow)
   unables?: Unable[]; // CAPTAIN이 UNABLE로 닫은 CLEARANCE·FLIGHT PLAN(ATC-122)
+  launchFails?: LaunchFail[]; // launch 카드 승인 때 LAUNCH가 실패했거나 새 세션이 뜨지 않음(ATC-129)
 }
 
 // CAPTAIN의 UNABLE(ATC-122): FLIGHT가 있는 CLEARANCE와 FLIGHT PLAN(decline). FLIGHT가 없는 CREW CHANGE는 OCC 브리핑(crew-change brief의 unable)에 있다
@@ -215,6 +217,7 @@ export function followingOf(inp: FollowInput): FollowItem[] {
   const targets = targetsOf(inp);
   for (const x of inp.stranded ?? []) if (!targets.some((t) => t.flight === x.flight)) targets.push({ flight: x.flight, proposal: null, aircraft: null });
   for (const x of inp.unables ?? []) if (!targets.some((t) => t.flight === x.flight)) targets.push({ flight: x.flight, proposal: null, aircraft: x.aircraft });
+  for (const x of inp.launchFails ?? []) if (!targets.some((t) => t.flight === x.flight)) targets.push({ flight: x.flight, proposal: null, aircraft: x.aircraft });
   return targets
     .map((t) => {
       const f = followOne(t, inp);
@@ -276,10 +279,21 @@ export function followingOf(inp: FollowInput): FollowItem[] {
           key: `${t.flight}|unable|${x.id}`,
         });
       }
+      // LAUNCH 실패(ATC-129): 승인한 launch 카드의 세션이 뜨지 않아 FLIGHT PLAN을 보내지 않았다. SUPERVISOR가 FLEET에서 보거나 다시 승인한다
+      for (const x of (inp.launchFails ?? []).filter((y) => y.flight === t.flight)) {
+        f.issues.push({
+          code: "launch",
+          kind: "delay",
+          severity: "warn",
+          text: `${x.aircraft ?? "AIRCRAFT"} ${x.id} — ${x.reason}. FLIGHT PLAN은 보내지 않았다`,
+          since: x.at,
+          key: `${t.flight}|launch|${x.id}`,
+        });
+      }
       return f;
     })
     .filter((f) => {
-      if (f.issues.some((i) => i.code === "stranded" || i.code === "unable")) return true;
+      if (f.issues.some((i) => i.code === "stranded" || i.code === "unable" || i.code === "launch")) return true;
       if (!f.stages.arrived || inp.now - Date.parse(f.stages.arrived) <= KEEP_ARRIVED_MS) return true;
       return !(f.standFree || isClosed(inp.tickets.find((t) => t.key === f.flight)));
     });
@@ -325,7 +339,7 @@ export function followingNow(s: Snapshot, now = Date.now()): FollowItem[] {
   const min = loadReportThreshold();
   const reports = new Map(s.sessions.filter((x) => x.status === "idle" && x.report && needsDecision(x.report, min)).map((x) => [regKey(x.name), { id: x.report!.id, at: x.report!.turnAt, p: x.report!.decisionP }]));
   const proposals = allProposals();
-  return followingOf({ proposals, tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, reports, unables: unablesOf(s.clearances ?? [], proposals, now), milestones: milestonesNow(s, now) });
+  return followingOf({ proposals, tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, reports, unables: unablesOf(s.clearances ?? [], proposals, now), launchFails: launchFailsOf(proposals, now), milestones: milestonesNow(s, now) });
 }
 
 export function mountFollowing(app: Hono, getSnapshot: () => Promise<Snapshot>) {
