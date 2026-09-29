@@ -125,6 +125,14 @@ test("crosscheck brief: 두 브리핑의 pending·examples와 그 FLIGHT만", ()
   assert.deepEqual(crosscheckBrief({ mode: "shadow" }, { mode: "shadow" }).dispatch.pending, []);
 });
 
+test("crosscheck brief(ATC-117): dispatch의 unsettledMarks 수를 그대로 싣고, 없으면(옛 서버) 키를 두지 않는다", () => {
+  const d = { mode: "shadow", flights: {}, crosscheck: { pending: [{ id: "D-0001", flight: "VOC-1" }], unsettledMarks: 3, examples: [] } };
+  const out = crosscheckBrief(d, { mode: "shadow", flights: {}, crosscheck: { pending: [], examples: [] } });
+  assert.equal(out.dispatch.unsettledMarks, 3);
+  assert.equal("unsettledMarks" in out.schedule, false);
+  assert.equal("unsettledMarks" in crosscheckBrief({ mode: "shadow", crosscheck: { pending: [], examples: [] } }, { mode: "shadow" }).dispatch, false);
+});
+
 test("schedule brief: OCC 보정 예시(examples)가 JSON 출력에 그대로 나온다", async () => {
   const { createServer } = await import("node:http");
   const { execFile } = await import("node:child_process");

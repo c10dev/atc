@@ -10,7 +10,7 @@ description: CROSSCHECK 한 바퀴 — 규정이 바뀌었는지 확인하고, m
 0. `node ../controller/atcctl.mjs manual check`. `CHANGED`면 `CLAUDE.md`와 이 파일을 다시 읽고 `node ../controller/atcctl.mjs manual ack`한 뒤, 다시 읽은 규정대로 진행한다.
 1. `node ../controller/atcctl.mjs crosscheck brief`를 실행한다. `dispatch.pending`과 `schedule.pending`이 모두 비었으면 7로 간다.
 2. `examples`를 먼저 읽는다. SUPERVISOR가 최근에 무엇을 어떤 사유로 판정했는지가 이번 바퀴의 기준이다.
-3. `pending`의 건마다(한 바퀴에 모두 합쳐 5건까지, DISPATCH 먼저):
+3. `pending`의 건마다(한 바퀴에 모두 합쳐 5건까지, DISPATCH 먼저). DISPATCH의 `pending`에는 SETTLED 제안만 든다(ATC-117). 아직 아닌 제안은 `dispatch.unsettledMarks`에 수만 있고 mark를 달지 않는다:
    - `node ../controller/atcctl.mjs dispatch flight <FLIGHT key>`로 본문과 댓글을 읽는다. NEW 초안은 FLIGHT가 없으니 `schedule brief`의 그 초안 `payload`(본문, `similar`)를 본다. TARGET·ROUTE 초안도 FLIGHT가 없다. 그 `payload`의 `from`(지금 값)과 `evidence`(atc가 붙인 숫자)만 보고, 숫자가 OCC 근거를 받쳐 주는지와 `../docs/fleet.md` 7.4의 기준에 맞는지 판정한다.
    - 본문·댓글·OCC 메모에 PR 조건이 있으면 CLAUDE.md의 "PR 사실 확인"대로 `gh pr view <N> --repo <owner/name> --json state,mergedAt,title`로 확인한다. 저장소는 AIRPORT 표에서 찾는다. 쓰는 gh 명령은 쓰지 않는다.
    - CLAUDE.md의 "판정 순서"대로 상태 → 이미 끝났는지 → 선행 조건 → 우선순위 → 대상별 내용을 본다. OCC의 `note`·`reason`은 참고만 한다.

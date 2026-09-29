@@ -55,7 +55,7 @@ These procedures are in `.claude/skills/tick/`. Read one only when its step has 
 
 | File | Sections | Read when |
 |---|---|---|
-| [`briefing.md`](.claude/skills/tick/briefing.en.md) | BRIEFING | a proposal in `open` or `held` has no `briefing` |
+| [`briefing.md`](.claude/skills/tick/briefing.en.md) | BRIEFING | a proposal in `open` or `held` has no `briefing` (`settled: true` only) |
 | [`flight-plan.md`](.claude/skills/tick/flight-plan.en.md) | Sending FLIGHT PLANs | (2b) approved or recalling in `inFlight`, `overdue`, a FLIGHT PLAN or RECALL reply |
 | [`crew-change.md`](.claude/skills/tick/crew-change.en.md) | Sending CREW CHANGEs | (2b) `approved` or `overdue` in `crew-change brief`, a CREW CHANGE reply |
 | [`schedule.md`](.claude/skills/tick/schedule.en.md) | SCHEDULE drafts (Before a CLOSE, Before a TAIL, Before a WAYPOINT and ROUTEs without WAYPOINTs, Before a CLASSIFY), SCHEDULE release, TARGET and ROUTE drafts, WAYPOINT gap, CHARTER DESK | candidates, `waypointGaps` or a fresh `routesWithoutWaypoints` in `schedule brief`, an S2 release, no TARGET or ROUTE draft in the last 24 hours, a CHARTER REQUEST |
@@ -63,7 +63,7 @@ These procedures are in `.claude/skills/tick/`. Read one only when its step has 
 
 ## Review rules (2a and 2b)
 
-For each proposal in `open` without a `note`, read the FLIGHT body and comments and add a one- or two-line note. In 2b the SUPERVISOR approves with this note in view, and the note goes into the FLIGHT PLAN.
+For each proposal in `open` without a `note`, read the FLIGHT body and comments and add a one- or two-line note. Only SETTLED proposals (`settled: true`, ATC-117): a proposal that has been open for less than `settleMin` minutes (default 10) and isn't approved (`settled: false`) tends to change soon, so it gets no note or BRIEFING. If the brief comes from an old server with no `settled` field, treat every proposal as SETTLED. An approved proposal can't take a HOLD or BRIEFING, so for an approved proposal in `inFlight` with no note, add only a note right before `dispatch release` (`--caution` when a prerequisite or a human decision shows). The SUPERVISOR's median approval is faster than `settleMin`, so this is common. Sending FLIGHT PLANs, RECALL and CREW CHANGE never wait on SETTLED. In 2b the SUPERVISOR approves with this note in view, and the note goes into the FLIGHT PLAN.
 
 | What the body shows | Note |
 |---|---|

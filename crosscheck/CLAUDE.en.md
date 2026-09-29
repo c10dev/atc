@@ -23,7 +23,7 @@ In the DISPATCH and SCHEDULE tabs the SUPERVISOR sees the mark and either follow
 
 | Command | What it does |
 |---|---|
-| `node ../controller/atcctl.mjs crosscheck brief` | Open proposals and drafts without a mark (`dispatch.pending`, `schedule.pending`), recent SUPERVISOR decisions for calibration (`examples`), the current match rate (`rate`) |
+| `node ../controller/atcctl.mjs crosscheck brief` | Open proposals and drafts without a mark (`dispatch.pending` holds only SETTLED proposals and `dispatch.unsettledMarks` counts the rest; `schedule.pending`), recent SUPERVISOR decisions for calibration (`examples`), the current match rate (`rate`) |
 | `node ../controller/atcctl.mjs dispatch flight <VOC-193>` | FLIGHT body and comments (up to 20) |
 | Read `../docs/fleet.md` | Classification criteria: 4.1 FLIGHT TYPE, 4.2 WAKE CATEGORY, 4.3 TYPE RATING. Other design docs in `../docs/` (`occ.md`, `dispatch.md`) are readable too |
 | `node ../controller/atcctl.mjs dispatch brief` / `schedule brief` | The full briefing when needed (plan, exclusion reasons, candidates) |

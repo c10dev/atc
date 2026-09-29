@@ -97,8 +97,9 @@ function projectOcc(i: Inputs) {
   return {
     mode: d?.mode ?? null,
     scheduleMode: sch?.mode ?? null,
-    // 메모나 BRIEFING이 아직 없는 열린·HELD 제안
-    needsNote: [...arr(d?.open), ...arr(d?.held)].filter((p) => !p.note || !p.briefing).map((p) => String(p.id)).sort(),
+    // 메모나 BRIEFING이 아직 없는 열린·HELD 제안. SETTLED인 것만 센다(ATC-117): settled가 없는 옛 서버의 브리핑은 전부 SETTLED로 본다.
+    // 제안이 SETTLED가 되면 이 목록에 ID가 들어와 지문이 저절로 바뀐다
+    needsNote: [...arr(d?.open), ...arr(d?.held)].filter((p) => p.settled !== false && (!p.note || !p.briefing)).map((p) => String(p.id)).sort(),
     inFlight: inflight.map((p) => `${p.id}:${p.status}`).sort(),
     overdue: arr(d?.overdue).map(String).sort(),
     arrivalCandidates: arr(d?.arrivalCandidates).map((c) => `${c.flight}|${c.aircraft}|${c.proposal ?? ""}`).sort(),

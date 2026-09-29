@@ -53,7 +53,7 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 
 | 파일 | 절 | 읽을 때 |
 |---|---|---|
-| [`briefing.md`](.claude/skills/tick/briefing.md) | BRIEFING | `open`·`held`에 `briefing` 없는 제안 |
+| [`briefing.md`](.claude/skills/tick/briefing.md) | BRIEFING | `open`·`held`에 `briefing` 없는 제안(`settled: true`만) |
 | [`flight-plan.md`](.claude/skills/tick/flight-plan.md) | FLIGHT PLAN 전달 | (2b) `inFlight`의 approved·recalling, `overdue`, FLIGHT PLAN·RECALL 답장 |
 | [`crew-change.md`](.claude/skills/tick/crew-change.md) | CREW CHANGE 발부 | (2b) `crew-change brief`의 `approved`·`overdue`, CREW CHANGE 답장 |
 | [`schedule.md`](.claude/skills/tick/schedule.md) | SCHEDULE 초안(CLOSE 전에, TAIL 전에, WAYPOINT 전에·WAYPOINT 없는 ROUTE, CLASSIFY 전에), SCHEDULE 발부, TARGET·ROUTE 초안, WAYPOINT gap, CHARTER DESK | `schedule brief`의 후보·`waypointGaps`·새 `routesWithoutWaypoints`, S2 발부, 24시간 안에 쓴 TARGET·ROUTE 초안이 없을 때, CHARTER REQUEST |
@@ -61,7 +61,7 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 
 ## 검토 기준 (2a·2b 공통)
 
-열린 제안(`open`) 중 `note`가 없는 것마다 FLIGHT 본문·댓글을 읽고 한두 줄 메모를 단다. 2b에서는 SUPERVISOR가 이 메모를 보고 승인하고, 메모는 FLIGHT PLAN에도 들어간다.
+열린 제안(`open`) 중 `note`가 없는 것마다 FLIGHT 본문·댓글을 읽고 한두 줄 메모를 단다. 단 SETTLED인 제안(`settled: true`)만 한다(ATC-117). 열린 채 `settleMin`분(기본 10) 안이고 승인도 안 된 제안(`settled: false`)은 곧 바뀌기 쉬워 메모·BRIEFING을 달지 않는다. `settled`가 없는 옛 서버의 브리핑이면 모두 SETTLED로 본다. 승인된 제안은 HOLD·BRIEFING을 받을 수 없어서, 메모가 없는 채 승인된 제안(`inFlight`의 approved)에는 `dispatch release` 직전에 메모만 단다(`--caution`은 선행 작업·사람 결정이 보일 때). 승인 중앙값이 `settleMin`보다 빨라 이런 제안이 흔하다. FLIGHT PLAN 전달, RECALL, CREW CHANGE는 SETTLED와 상관없이 늦추지 않는다. 2b에서는 SUPERVISOR가 이 메모를 보고 승인하고, 메모는 FLIGHT PLAN에도 들어간다.
 
 | 본문에서 보이는 것 | 메모 |
 |---|---|

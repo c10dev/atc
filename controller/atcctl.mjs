@@ -151,7 +151,7 @@ SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만. S2 승인 운용
 
 CROSSCHECK (CROSSCHECK 세션이 맡음. SUPERVISOR 판정 전에 다른 모델이 예비 판정을 달아 둔다. 상태는 바꾸지 않음 —
             DISPATCH disagree에 FLIGHT 칩이 있으면 서버가 그 결과로 PREFLIGHT HOLD를 건다)
-  node atcctl.mjs crosscheck brief          mark가 없는 열린 제안·초안(pending)과 최근 SUPERVISOR 판정 예시(examples) (JSON)
+  node atcctl.mjs crosscheck brief          mark가 없는 열린 제안·초안(pending, DISPATCH는 SETTLED만·아직 아닌 수는 unsettledMarks)과 최근 SUPERVISOR 판정 예시(examples) (JSON)
   node atcctl.mjs dispatch crosscheck <D-0003> agree|disagree [--code <코드>[,<코드>]] -- <이유>
                                             열린 제안에 예비 판정(이유는 500자 이내). 다시 달면 대신한다.
                                             disagree는 --code로 거절 사유 칩: already-done parent-issue waiting-on-prior
@@ -525,7 +525,7 @@ export function crosscheckBrief(dispatch, schedule) {
   const pick = (flights, keys) => Object.fromEntries(keys.filter((k) => k && flights?.[k]).map((k) => [k, flights[k]]));
   const part = (b) => {
     const cc = b.crosscheck ?? { pending: [], examples: [] };
-    return { mode: b.mode, pending: cc.pending, examples: cc.examples, flights: pick(b.flights, [...cc.pending, ...cc.examples].map((x) => x.flight)) };
+    return { mode: b.mode, pending: cc.pending, ...(cc.unsettledMarks ? { unsettledMarks: cc.unsettledMarks } : {}), examples: cc.examples, flights: pick(b.flights, [...cc.pending, ...cc.examples].map((x) => x.flight)) };
   };
   return { dispatch: part(dispatch), schedule: part(schedule), rate: { dispatch: dispatch.gate?.crosscheck ?? null, schedule: schedule.gate?.crosscheck ?? null } };
 }
