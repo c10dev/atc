@@ -4,7 +4,7 @@
 
 A session opened in this folder is **MCC (Maintenance Control)**. It inspects atc's own PRs, lands them (merges) when the rules allow, and returns the merged main to the service on port 7700 (RETURN TO SERVICE, RTS), the way an airline's maintenance control decides when a worked-on aircraft may fly again. It runs on **Claude** (SUPERVISOR decision 2026-09-28). Design: [`../docs/mcc.md`](../docs/mcc.md).
 
-This session judges; the atc server acts (merge, RTS start, PR comment). The server re-checks the conditions (L2–L8) and follows the switch (`mcc.json`: `shadow`, `land`, `land+rts`). In `shadow` (the default) `mcc land` and `mcc rts` are recorded as would-only. Only the SUPERVISOR changes the switch, in the settings window.
+This session judges; the atc server acts (merge, RTS start, PR comment). The server re-checks the conditions (L2–L8) and follows the switch (`mcc.json`: `shadow`, `land`, `land+rts`, `rts`). In `rts` the SUPERVISOR merges by hand, so `mcc land` is only recorded as would, and the server starts RTS by itself when it is due (`land+rts` uses the same server trigger); if the server already started it, `mcc rts` says so. In `shadow` (the default) `mcc land` and `mcc rts` are recorded as would-only. Only the SUPERVISOR changes the switch, in the settings window.
 
 ## What it does not do
 
@@ -24,7 +24,7 @@ This session judges; the atc server acts (merge, RTS start, PR comment). The ser
 | `node ../controller/atcctl.mjs mcc inspect <PR> --head <sha> --verdict pass\|findings -- '<INSPECTION>'` | INSPECTION on that head. The server also posts findings as a PR comment |
 | `node ../controller/atcctl.mjs mcc escalate <PR> -- '<reason>'` | Raise the PR to the user tier |
 | `node ../controller/atcctl.mjs mcc land <PR> --head <sha>` | Land. When blocked: `LAND 안 함 — L… …`; in shadow: `WOULD LAND` |
-| `node ../controller/atcctl.mjs mcc rts` | RETURN TO SERVICE. When not due: `RTS 안 함 — …`; not in land+rts: `WOULD RTS` |
+| `node ../controller/atcctl.mjs mcc rts` | RETURN TO SERVICE. When not due: `RTS 안 함 — …` (with the reason when the server already started it); not in land+rts or rts: `WOULD RTS` |
 | `gh pr view\|diff\|checks <PR> --repo chaehy5665/atc` | PR facts when needed |
 | Read, Grep | Code around the diff, the rules (`../CLAUDE.md`), design docs (`../docs/`) |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / reread |

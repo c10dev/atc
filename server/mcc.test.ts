@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { type GhPull, reviewBlocks } from "./landing.ts";
 import {
+  autoRtsInfoOf,
+  autoRtsOf,
   escalationOf,
   type Inspection,
   inspectionComment,
@@ -12,7 +14,10 @@ import {
   type LandInput,
   type GateEntry,
   landBlocksOf,
+  lastRtsFailureOf,
   loadMcc,
+  mccDeploys,
+  mccLands,
   MCC_GATE,
   mccGateLine,
   mccGateOf,
@@ -321,4 +326,58 @@ test("SHADOW GATE: 20건·5일·되돌림 0이면 ready — 하나라도 모자�
   assert.equal(mccGateOf({ records, entries: entries.slice(1), airport: "ATCC", heads, now: Date.parse(at(5)) }).ready, false);
   const back = [...records, would(1, H("c"), at(0, 0.5))];
   assert.equal(mccGateOf({ records: back, entries: [{ ...entries[0], reverted: true }, ...entries.slice(1)], airport: "ATCC", heads, now: Date.parse(at(5)) }).ready, false);
+});
+
+// ── 자동 RTS(ATC-84) ──
+const AUTO = { mode: "rts", due: { due: true, why: "aaaaaaa → bbbbbbb" }, main: OLD, rangeRefusal: null, guard: null, last: null, lastFailedAt: null, now: NOW } as const;
+
+test("모드 rts: 설정에서 읽히고, MCC는 착륙하지 않고 서버는 배포한다", () => {
+  assert.equal(parseMcc({ mode: "rts" }).mode, "rts");
+  assert.deepEqual(["shadow", "land", "land+rts", "rts"].map((m) => mccLands(m as never)), [false, true, true, false]);
+  assert.deepEqual(["shadow", "land", "land+rts", "rts"].map((m) => mccDeploys(m as never)), [false, false, true, true]);
+});
+
+test("autoRtsOf: rts·land+rts에서 할 때면 시작하고, 그 밖의 모드는 시작하지 않는다", () => {
+  assert.deepEqual(autoRtsOf(AUTO), { start: true, why: "aaaaaaa → bbbbbbb" });
+  assert.equal(autoRtsOf({ ...AUTO, mode: "land+rts" }).start, true);
+  for (const mode of ["shadow", "land"] as const) assert.equal(autoRtsOf({ ...AUTO, mode }).start, false);
+});
+
+test("autoRtsOf: 할 때가 아니거나 시험 서버거나 범위가 사람 몫이면 시작하지 않는다", () => {
+  assert.deepEqual(autoRtsOf({ ...AUTO, due: { due: false, why: "지난 RTS에서 5분이 안 지남" } }), { start: false, why: "지난 RTS에서 5분이 안 지남" });
+  assert.match(autoRtsOf({ ...AUTO, guard: "시험 서버(포트 7702)는 …" }).why, /시험 서버/);
+  const r = autoRtsOf({ ...AUTO, rangeRefusal: "package.json 변경" });
+  assert.equal(r.start, false);
+  assert.match(r.why, /사람이 배포: package\.json/);
+});
+
+test("autoRtsOf: 같은 main에 RTS가 거절·실패했으면 멈추고, 새 main이면 다시 한다", () => {
+  const refused: RtsRecord = { at: iso(3), from: OLD, to: OLD, result: "refused", detail: "세션 점검" };
+  const r = autoRtsOf({ ...AUTO, last: refused });
+  assert.equal(r.start, false);
+  assert.match(r.why, /자동 배포 멈춤.*거절/);
+  assert.equal(autoRtsOf({ ...AUTO, last: { ...refused, result: "failed" } }).start, false);
+  assert.equal(autoRtsOf({ ...AUTO, last: { ...refused, to: HEAD } }).start, true);
+  assert.equal(autoRtsOf({ ...AUTO, last: { ...refused, result: "ok" } }).start, true);
+});
+
+test("autoRtsOf: 유닛 시작이 방금 실패했으면 5분 뒤에 다시 한다", () => {
+  assert.equal(autoRtsOf({ ...AUTO, lastFailedAt: iso(2) }).start, false);
+  assert.equal(autoRtsOf({ ...AUTO, lastFailedAt: iso(6) }).start, true);
+  const recs: MccRecord[] = [
+    { op: "rts", at: iso(9), from: null, to: HEAD, result: "failed" },
+    { op: "rts", at: iso(8), from: null, to: OLD, result: "started", by: "server" },
+    { op: "rts", at: iso(2), from: null, to: OLD, result: "failed" },
+  ];
+  assert.equal(lastRtsFailureOf(recs, OLD.slice(0, 7)), iso(2));
+  assert.equal(lastRtsFailureOf(recs, HEAD), iso(9));
+  assert.equal(lastRtsFailureOf(recs, null), null);
+});
+
+test("autoRtsInfoOf: 켜짐 표시와 다음 시각(5분 간격 대기 중일 때만)", () => {
+  assert.deepEqual(autoRtsInfoOf("land", iso(1), true, NOW), { on: false, nextAt: null });
+  assert.deepEqual(autoRtsInfoOf("rts", iso(2), true, NOW), { on: true, nextAt: new Date(NOW + 3 * 60_000).toISOString() });
+  assert.deepEqual(autoRtsInfoOf("land+rts", iso(6), true, NOW), { on: true, nextAt: null });
+  assert.deepEqual(autoRtsInfoOf("rts", null, true, NOW), { on: true, nextAt: null });
+  assert.deepEqual(autoRtsInfoOf("rts", iso(2), false, NOW), { on: true, nextAt: null });
 });

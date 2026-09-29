@@ -1693,6 +1693,31 @@ a.ticket:hover {
 .fids-empty {
   padding: var(--space-4);
 }
+/* ARRIVED "more" 줄(ATC-112): 목록은 표 맨 아래 한 줄, 보드는 열 맨 아래 */
+.fids-more td {
+  padding: 0;
+}
+.fids-more-btn {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 0;
+  border-top: 1px dashed var(--line-strong);
+  color: var(--muted);
+  font: var(--text-xs) var(--mono);
+  text-align: left;
+  cursor: pointer;
+}
+.fids-more-btn:hover,
+.fids-more-btn:focus-visible {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.column-body .fids-more-btn {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+}
 
 /* 애니메이션 끄기(설정). 기본값은 OS의 동작 줄이기 설정을 따른다. */
 :root[data-motion="off"] *,

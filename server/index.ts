@@ -149,7 +149,14 @@ mountFollowing(app, getSnapshot);
 mountAtfm(app, getSnapshot);
 mountAutoland(app, getSnapshot);
 mountMcc(app, getSnapshot, () => head);
-mountUpdate(app, getSnapshot, () => head); // UPDATE bar(ATC-82)
+const update = mountUpdate(app, getSnapshot, () => head); // UPDATE bar(ATC-82)
+// 자동 RTS(ATC-84): mcc 모드가 rts·land+rts일 때만 일한다. 그 밖의 모드나 시험 서버는 아무것도 하지 않는다
+setInterval(() => {
+  update
+    .pass()
+    .then((r) => r.started && console.log(`[atc] auto RTS started: ${r.why}`))
+    .catch(() => {});
+}, 30_000).unref();
 mountSettings(app);
 mountJudges(app);
 mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다
@@ -181,5 +188,12 @@ app.use("/*", serveStatic({ root: DIST, onFound: (path, c) => void (path.endsWit
 pruneRecords();
 await tick();
 serve({ fetch: app.fetch, port: config.port, hostname: "127.0.0.1" }, (info) =>
-  console.log(`[atc] http://localhost:${info.port}  (linear: ${config.linearApiKey ? "on" : "off"})`),
+  console.log(`[atc] http://localhost:${info.port}  (linear: ${config.linearApiKey ? "on" : "off"}) pid ${process.pid} ppid ${process.ppid}`),
 );
+// 누가 껐는지 다음에 읽을 수 있게(ATC-134): 신호를 받으면 로그를 남기고 신호 관례대로(128+번호) 끝낸다. 보낸 쪽은 Node가 알 수 없다
+for (const [sig, code] of [["SIGTERM", 143], ["SIGINT", 130], ["SIGHUP", 129]] as const) {
+  process.on(sig, () => {
+    console.log(`[atc] ${sig} received (pid ${process.pid}, port ${config.port}, up ${Math.round(process.uptime())}s) — exiting`);
+    process.exit(code);
+  });
+}

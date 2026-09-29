@@ -1,17 +1,15 @@
-import { Fragment, type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
 import type { Snapshot } from "../../server/model.ts";
 import type { MccGate } from "../../server/mcc.ts";
 import type { ServerSettings, SettingsErrors, SettingsPatch } from "../../server/settings.ts";
-import type { Job } from "../../server/job-state.ts";
 import { callsign } from "./aviation.ts";
-import { JobDetail, NeedsYou } from "./ui.tsx";
 import { timeAgo } from "./derive.ts";
 
 // 설정 창의 LINEAR, AGENTS 탭. 서버 설정을 읽고 고친다.
 // 저장하면 서버가 .env.local에 쓰고 실행 중인 설정에도 바로 반영한다(재시작 필요 없음).
 
 type Loaded = { state: "loading" } | { state: "error" } | { state: "ready"; data: ServerSettings };
-type SaveResult = { ok: true } | { ok: false; error: string };
+export type SaveResult = { ok: true } | { ok: false; error: string };
 export type Save = (patch: SettingsPatch) => Promise<SaveResult>;
 
 export function useServerSettings(): { server: Loaded; save: Save } {
@@ -107,7 +105,7 @@ export function LinearSettings({ snapshot, server, save }: { snapshot: Snapshot 
   );
 }
 
-export function AgentSettings({ snapshot, server, save }: { snapshot: Snapshot | null; server: Loaded; save: Save }) {
+export function AgentSettings({ snapshot, server, save, onNavigate }: { snapshot: Snapshot | null; server: Loaded; save: Save; onNavigate?: () => void }) {
   const sessions = snapshot?.sessions ?? [];
   const count = (agent: "claude" | "codex") => {
     const list = sessions.filter((s) => s.agent === agent);
@@ -134,8 +132,10 @@ export function AgentSettings({ snapshot, server, save }: { snapshot: Snapshot |
         </ServerRows>
       </Block>
 
-      <Block code="CONTROL" label="관제 세션 띄우기·멈추기(SUPERVISOR 전용)">
-        <ControlSessions />
+      <Block code="CONTROL" label="관제 세션(ATC-130)">
+        <p className="settings-hint">
+          관제 세션은 <a href="#fleet/control" onClick={() => (onNavigate?.(), location.hash === "#fleet/control" && dispatchEvent(new HashChangeEvent("hashchange")))}>FLEET 탭 CONTROL SESSIONS</a>로 옮겼다. LAUNCH·STOP과 ACCOUNT도 거기서 한다.
+        </p>
       </Block>
 
       <Block code="STANDS" label="점유 규칙">
@@ -247,11 +247,11 @@ export function AgentSettings({ snapshot, server, save }: { snapshot: Snapshot |
                 env="mcc.mode"
                 value={s.mcc.mode}
                 note={`mcc.json · 맡은 AIRPORT ${s.mcc.airport} · 이 화면에서만 바꾼다 — MCC 세션은 못 바꿈. ROLLBACK 뒤 멈춘 RTS는 모드를 다시 고르면 풀린다`}
-                input={{ kind: "select", options: ["shadow", "land", "land+rts"] }}
-                onSave={(v) => save({ mccMode: v as "shadow" | "land" | "land+rts" })}
+                input={{ kind: "select", options: ["shadow", "land", "land+rts", "rts"] }}
+                onSave={(v) => save({ mccMode: v as "shadow" | "land" | "land+rts" | "rts" })}
               />
               <ul className="autoland-modes">
-                {(["shadow", "land", "land+rts"] as const).map((m) => (
+                {(["shadow", "land", "land+rts", "rts"] as const).map((m) => (
                   <li key={m} className={m === s.mcc.mode ? "is-current" : undefined}>
                     <b>{m}</b> {MCC_WARN[m]}
                   </li>
@@ -314,13 +314,13 @@ export function AgentSettings({ snapshot, server, save }: { snapshot: Snapshot |
   );
 }
 
-type Input =
+export type Input =
   | { kind: "text"; upper?: boolean; mono?: boolean; maxLength: number }
   | { kind: "number"; min: number; max: number }
   | { kind: "select"; options: string[] };
 
 // 값을 보여 주다가 "편집"을 누르면 입력 칸이 된다. Enter 저장, Esc 취소(설정 창은 닫히지 않음).
-function EditRow({
+export function EditRow({
   label,
   env,
   value,
@@ -514,7 +514,8 @@ const AUTOLAND_WARN = {
 const MCC_WARN = {
   shadow: "기본: MCC는 INSPECTION하고 착륙·RTS는 would로만 남긴다. 머지·배포는 사용자.",
   land: "⚠ auto·flagged 등급 PR을 CI·INSPECTION pass·정확한 head로 atc가 머지. user 등급과 ESCALATE는 사용자. 배포는 사람.",
-  "land+rts": "⚠ land에 더해 머지된 main을 atc-rts 유닛으로 7700에 RETURN TO SERVICE(상태 확인 실패면 ROLLBACK 후 멈춤).",
+  "land+rts": "⚠ land에 더해 머지된 main을 atc-rts 유닛으로 7700에 RETURN TO SERVICE(상태 확인 실패면 ROLLBACK 후 멈춤). 시작은 서버가 스스로 한다.",
+  rts: "⚠ MCC는 착륙하지 않는다(would-land만): 사용자가 손으로 머지한 main을 서버가 atc-rts 유닛으로 7700에 스스로 RETURN TO SERVICE(CI 통과, 5분 간격, 상태 확인 실패면 ROLLBACK 후 멈춤). package·유닛 파일 변경은 사람이 배포.",
 } as const;
 
 // 판정 계열 모드마다 한 줄(ATC-36). replay·shadow는 티켓 제목과 허용한 칸이 TypeSafe로 나간다(데이터 반출)
@@ -634,157 +635,6 @@ function MccGatePanel() {
       )}
       {x.error && <p className="conn-error">{x.error} — head 없이 머지 전 마지막 INSPECTION으로 맞춤</p>}
     </div>
-  );
-}
-
-// 관제 세션(docs/fleet.md 8.5.1). 줄마다 live 배지. TOWER·OCC·MCC·CROSSCHECK·REVIEW는 atc가 그 폴더에서 `claude --bg`로 띄운다
-// (ocx·tmux LAUNCH는 2026-09-29에 끊음). ENGINEERING은 배지만. tmux pane에서 손으로 연 세션도 STOP한다(그 pane만 닫음, 묻고 나서).
-// 데스크톱 세션은 그 창에서 닫는다
-type ControlLive = { id?: string; name?: string; kind: string; status?: string; tmux?: string; job?: Job | null };
-type ControlAccounts = { labeled: boolean; rows: { name: string; label: string | null; account: string | null }[] };
-type ControlSession = { name: string; dir: string | null; prompt: string | null; launch: "bg" | null; blocked: string | null; live: ControlLive[]; stale?: { id?: string; name?: string }[] };
-type ControlList = { daemonInService?: boolean; sessions: ControlSession[] };
-function ControlSessions() {
-  const [list, setList] = useState<ControlList | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [accounts, setAccounts] = useState<ControlAccounts | null>(null);
-  const load = async () => {
-    fetch("/api/control/accounts")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((a: ControlAccounts | null) => a && setAccounts(a))
-      .catch(() => {});
-    try {
-      const res = await fetch("/api/control/sessions");
-      const body = await res.json();
-      if (res.ok) {
-        setList(body as ControlList);
-        setError(null);
-      } else setError(body.error ?? `HTTP ${res.status}`);
-    } catch {
-      setError("서버에 연결할 수 없음");
-    }
-  };
-  useEffect(() => {
-    void load();
-  }, []);
-  const act = async (name: string, op: "launch" | "stop", tmux?: string) => {
-    if (tmux && !window.confirm(`${name}: tmux ${tmux}의 pane을 닫습니다. 대화 기록은 남고 claude --resume으로 다시 열 수 있습니다.`)) return;
-    setBusy(name);
-    setError(null);
-    try {
-      const res = await fetch(`/api/control/${encodeURIComponent(name)}/${op}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      if (!res.ok) setError(`${name}: ${((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`}`);
-    } catch {
-      setError("서버에 연결할 수 없음");
-    }
-    await load();
-    setBusy(null);
-  };
-  // ACCOUNT(ATC-60): 관제 세션도 FUEL에서 그 ACCOUNT에 센다. 라벨만 둔다(fleet.json control)
-  const saveAccount = async (name: string, v: string): Promise<SaveResult> => {
-    try {
-      const res = await fetch(`/api/control/${encodeURIComponent(name)}/account`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account: v || null }) });
-      const body = (await res.json().catch(() => ({}))) as { error?: string; accounts?: ControlAccounts };
-      if (!res.ok) return { ok: false, error: body.error ?? `HTTP ${res.status}` };
-      if (body.accounts) setAccounts(body.accounts);
-      return { ok: true };
-    } catch {
-      return { ok: false, error: "서버에 연결할 수 없음" };
-    }
-  };
-  const accountRow = (name: string) => {
-    const a = accounts?.rows.find((r) => r.name === name);
-    if (!a) return null;
-    return (
-      <EditRow
-        key={`${name}-account`}
-        label={`${name} ACCOUNT`}
-        env={`fleet.json control.${name}`}
-        value={a.label ?? ""}
-        note={
-          a.label
-            ? `FUEL에서 ACCOUNT ${a.label}에 센다. 비우면 ${accounts?.labeled ? "default" : "자기 이름으로 따로"}`
-            : a.account
-              ? `라벨 없음 — ACCOUNT ${a.account}로 센다. 사용 한도를 같이 쓰는 AIRCRAFT와 같은 라벨(main, pro-2 …). email은 쓰지 않는다`
-              : "라벨 없음 — 어느 AIRCRAFT에도 ACCOUNT가 없어 이 세션 이름으로 따로 센다"
-        }
-        input={{ kind: "text", mono: true, maxLength: 24 }}
-        onSave={(v) => saveAccount(name, v.toLowerCase())}
-      />
-    );
-  };
-  // 세션 목록을 못 읽어도 ACCOUNT 라벨은 보이고 고칠 수 있다
-  if (!list)
-    return error ? (
-      <dl className="config-rows">
-        <p className="conn-error">{error}</p>
-        {accounts?.rows.map((r) => accountRow(r.name))}
-      </dl>
-    ) : (
-      <p className="settings-hint">불러오는 중…</p>
-    );
-  const shown = new Set(list.sessions.map((c) => c.name));
-  return (
-    <dl className="config-rows">
-      {list.sessions.map((c) => {
-        const bg = c.live.find((l) => l.kind === "background" && l.id);
-        const tmux = bg ? undefined : c.live.find((l) => l.tmux);
-        const other = c.live.find((l) => l !== bg);
-        // live 배지: BG <id>, tmux <세션>, interactive(데스크톱 등), not running
-        const badge = bg ? `BG ${bg.id}` : tmux ? `tmux ${tmux.tmux}` : other ? "interactive" : "not running";
-        const detail = bg ? bg.status : tmux ? [tmux.name ?? tmux.kind, tmux.status].filter(Boolean).join(" · ") : other ? `${other.name ?? other.kind} · 데스크톱 세션은 그 창에서 닫는다` : undefined;
-        const how = c.launch === "bg" ? (tmux ? "tmux에서 연 세션" : "claude --bg") : null;
-        return (
-          <Fragment key={c.name}>
-          <div className="config-row">
-            <dt>
-              {c.name} <code className="config-env">{c.dir ? `${c.dir}/` : "저장소 뿌리"}</code>
-            </dt>
-            <dd>
-              {c.launch === null ? null : bg || tmux ? (
-                <button className="config-btn is-danger" onClick={() => void act(c.name, "stop", tmux?.tmux)} disabled={busy !== null}>
-                  STOP
-                </button>
-              ) : (
-                <button className="config-btn is-primary" onClick={() => void act(c.name, "launch")} disabled={busy !== null || Boolean(other) || Boolean(c.blocked)} title={c.blocked ?? undefined}>
-                  LAUNCH
-                </button>
-              )}
-            </dd>
-            <p className="config-note">
-              <span className={`session-badge ${bg || tmux ? "is-busy" : other ? "" : "is-dead"}`}>{badge}</span>
-              {detail ? ` · ${detail}` : ""}
-              {bg?.job?.state === "blocked" ? <> · <NeedsYou job={bg.job} /></> : bg?.job?.state === "working" && (bg.job.detail || bg.job.settled) ? <> · <JobDetail job={bg.job} /></> : null}
-              {how ? (
-                <>
-                  {" "}· {how} · 첫 메시지 <code>{c.prompt}</code>
-                </>
-              ) : (
-                " · 이름으로 알아본다"
-              )}
-              {c.blocked && c.launch !== null ? <span className="is-error"> · LAUNCH 꺼짐: {c.blocked}</span> : null}
-              {/* STALE(ATC-93): 멈췄는데 Claude Code가 아직 목록에 둔 job. live가 아니고 LAUNCH를 막지 않는다 */}
-              {(c.stale ?? []).length > 0 && (
-                <span className="config-stale" title="claude agents --json에 pid·status 없이 남은 멈춘 background job">
-                  {" "}· <span className="session-badge">STALE {(c.stale ?? []).map((x) => x.id).join(", ")}</span> Claude Code가 멈춘 job을 아직 목록에 둠 — 무시해도 된다
-                </span>
-              )}
-            </p>
-          </div>
-          {accountRow(c.name)}
-          </Fragment>
-        );
-      })}
-      {list.daemonInService && (
-        <p className="config-note is-error">
-          백그라운드 세션 daemon이 atc 서비스 안에서 돌고 있음 — atc를 재시작하면(배포·RTS) 모든 백그라운드 세션이 함께 멈춘다. 재시작한 뒤 LAUNCH하면 daemon이 서비스 밖(systemd scope)에서 뜬다
-        </p>
-      )}
-      <p className="config-note">모델은 폴더의 .claude/settings.json이 정한다: TOWER·OCC·REVIEW Claude Sonnet, MCC·CROSSCHECK Claude Opus</p>
-      {accounts?.rows.filter((r) => !shown.has(r.name)).map((r) => accountRow(r.name))}
-      {error && <p className="config-note is-error">{error}</p>}
-    </dl>
   );
 }
 
