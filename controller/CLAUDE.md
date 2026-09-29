@@ -23,11 +23,11 @@
 | `node atcctl.mjs cancel <C-0007>` | CLEARANCE 취소 |
 | ListAgents, SendMessage | 팀 세션에 메시지. 주소는 세션 이름(`TEAM_B`) |
 
-CLEARANCE 종류: `TRAFFIC`(교통 정보) `HOLD`(대기) `CONTINUE`(계속) `LAND`(LANDING 순서) `REPORT`(상황 보고 요청) `INFO`(참고).
+CLEARANCE 종류: `TRAFFIC`(교통 정보) `HOLD`(대기) `CONTINUE`(계속) `LAND`(LANDING 순서) `GO AROUND`(충돌·뒤처짐을 풀라는 지시) `REPORT`(상황 보고 요청) `INFO`(참고).
 
 SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버릴 수 있다. guard가 아니다: 버려진 tick은 ATC LOG 줄 없이 없던 일이고, 팀 메시지와 SUPERVISOR 프롬프트는 그대로 온다.
 
-응답 속성(ATC-122): 문구 끝줄이 어떤 답을 청하는지 atc가 정한다. 따를 지시(`LAND`·`HOLD`·`CONTINUE`)는 **W/U**: READBACK이나 UNABLE이 닫고, STANDBY는 열어 둔다. 알림(`INFO`·`TRAFFIC`·`REPORT`)은 **R**: ROGER가 닫는다. READBACK은 어느 쪽이든 받는다. 받을 수 없는 답(W/U에 ROGER, R에 STANDBY)은 서버가 사유와 함께 거절한다 — 그러면 기록하지 않고 SUPERVISOR 보고 목록에 올린다.
+응답 속성(ATC-122): 문구 끝줄이 어떤 답을 청하는지 atc가 정한다. 따를 지시(`LAND`·`GO AROUND`·`HOLD`·`CONTINUE`)는 **W/U**: READBACK이나 UNABLE이 닫고, STANDBY는 열어 둔다. 알림(`INFO`·`TRAFFIC`·`REPORT`)은 **R**: ROGER가 닫는다. READBACK은 어느 쪽이든 받는다. 받을 수 없는 답(W/U에 ROGER, R에 STANDBY)은 서버가 사유와 함께 거절한다 — 그러면 기록하지 않고 SUPERVISOR 보고 목록에 올린다.
 
 ## 판단 기준
 
@@ -37,7 +37,8 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 | GROUND STOP (`events`의 `groundstop.started`, `landingQueue[].groundStop`) | 그 AIRPORT에는 `LAND`를 내지 않는다(`groundStop`이 있는 PR은 CLEARED여도 건너뛴다). `groundstop.started` 이벤트가 오면, 그 AIRPORT에서 CLEARED인 PR의 `holders`에게 `HOLD` 하나씩: "GROUND STOP: " 뒤에 이벤트 `message` 그대로, 이어서 " — LAND 보류". `groundstop.ended`가 오면 같은 holders에게 `CONTINUE`("GROUND STOP 풀림 — LANDING SEQUENCE대로 진행")를 보내고 LAND를 다시 순서대로 낸다. `groundStops`의 `enforced: false`(그림자)는 참고만 하고 따르지 않는다 |
 | 머지 슬롯 (`landingQueue[].slotHold`) | `slotHold`가 있는 PR에는 `LAND`를 내지 않고 기다린다(메시지도 보내지 않는다). 슬롯이 켜져(ATFM `slots: on`) 같은 저장소에 먼저 LAND를 받은 PR이 있다는 뜻이다. 앞 PR이 머지되거나 그 LAND 뒤 30분이 지나면 다음 브리핑에서 `slotHold`가 사라지니 그때 LAND를 낸다. `slotHold` 없이 `slot`만 있으면(그림자) 참고만 한다 |
 | CLEARED TO LAND (`landingQueue`에서 `landing: "CLEARED"`) | `groundStop`·`slotHold`가 없고 `landClearance`가 없는 PR에만 `LAND`로 순서를 준다. `--` 뒤 문구는 그 항목의 `landText` 그대로다(AIRPORT·PR 번호·FLIGHT와, 같은 저장소·base 안의 순서 `repoSeq`와 앞 PR이 다 들어 있다. 고치거나 덧붙이지 않는다). 전체 `seq`는 처리 순서로만 쓴다. `--stand <stand>`, FLIGHT가 있으면 `--flight`도 붙인다. 대상은 `holders`. holder가 없으면 SUPERVISOR 보고만 |
-| APPROACH (`landing: "APPROACH"`) | `LAND`를 내지 않는다. `events`에 그 PR의 `landing.requested`나 `landing.blocked`가 왔고 `blocks`에 `checks-pending`·`merge-unknown`·`los` 말고 다른 코드가 있을 때만, `holders`에게 `INFO`로 알린다: "PR #번호 LANDING 불가: " 뒤에 `landingQueue`의 `blocks[].text`를 ` · `로 잇는다. 이벤트가 없으면(같은 막힘) 다시 보내지 않고, `reset: true`인 바퀴에는 보내지 않는다. holder가 없으면 ATC LOG에만 남긴다. `los`는 위 LOSS OF SEPARATION 규칙이 맡는다 |
+| APPROACH (`landing: "APPROACH"`) | `LAND`를 내지 않는다. `events`에 그 PR의 `landing.requested`나 `landing.blocked`가 왔고 `blocks`에 `checks-pending`·`merge-unknown`·`los`·`dirty`·`behind` 말고 다른 코드가 있을 때만, `holders`에게 `INFO`로 알린다: "PR #번호 LANDING 불가: " 뒤에 `landingQueue`의 `blocks[].text`를 ` · `로 잇는다. 이벤트가 없으면(같은 막힘) 다시 보내지 않고, `reset: true`인 바퀴에는 보내지 않는다. holder가 없으면 ATC LOG에만 남긴다. `los`는 위 LOSS OF SEPARATION 규칙이, `dirty`·`behind`는 아래 GO AROUND 규칙이 맡는다 |
+| GO AROUND (`landingQueue[].goAround`, `events`의 `landing.conflict`·`landing.prevMerged`) | PR이 base와 충돌(`dirty`)하거나 뒤처졌거나(`behind`), LAND 문구가 말한 앞 PR이 머지됐다(ATC-128). atc가 상태에서 만든 것이라 `reset: true`인 바퀴에도 그대로 따른다. `action`에 따라: `send`면 `holders`마다 `node atcctl.mjs issue <holder> "GO AROUND" --stand <STAND> [--flight <FLIGHT>] -- <goAround.text>`를 내고 받은 메시지를 보낸다(`text`는 고치거나 덧붙이지 않는다. 끝의 `head <7자리>`가 같은 head에 두 번 내지 않게 하는 표지다). `sent`면 이 head에는 이미 나갔으니 아무것도 하지 않는다. `supervisor`면 보내지 않고 SUPERVISOR에게 한 번 보고한다(`why`: `no-holder`는 STAND를 쥔 세션이 없음, `repeat`는 같은 PR에 한 시간 안 두 번째). 팀이 GO AROUND에 `UNABLE`로 답하면(두 PR이 같은 동작을 다르게 바꿈 등) 사유 그대로 SUPERVISOR에게 보고한다. atc와 TOWER는 충돌을 스스로 풀지 않는다 |
 | 쌓인 PR (`landingQueue[].stacked`, `stack`) | base가 기본 브랜치가 아닌 PR은 CLEARED가 되지 않는다(ATC-29). `LAND`를 내지 않는다. `blocks`의 `stacked` 글("쌓인 PR — #395가 먼저 main에 들어간 뒤 …")은 위 APPROACH 규칙대로 holders에게 INFO로 전한다 |
 | STRANDED (`open.stranded`, `events`의 `alert.raised`·`alertKind: "stranded"`) | FLIGHT가 있는 PR이 기본 브랜치가 아닌 곳에 머지돼 main에 닿지 않음. 새로 생겼을 때 SUPERVISOR에게 한 번 보고한다(`message` 그대로). Linear가 Done이어도 남는다. 팀에는 보내지 않는다 |
 | Codex 지적 등급 (`landingQueue[].codexFindings`) | Codex의 head 지적이 모두 P3이고 스레드가 해결·답글됐으면 CLEARED가 된다(ATC-28). 이때 `landText` 끝에 "Codex P3 findings left: N (…)"이 들어 있다 — 문구 그대로 `LAND`를 낸다. P0~P2가 있으면 APPROACH이고 `review-findings` 글에 등급별 수가 있다(위 APPROACH 규칙대로 INFO). `blocked` 글이 "해결 안 된 리뷰 스레드 N개"면 GitHub 보호 규칙(스레드 해결 필수) 때문이니 그대로 전한다 |
