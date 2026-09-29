@@ -49,7 +49,7 @@ Landing itself keeps the existing words: CLEARED TO LAND, LANDING, ARRIVED.
 
 1. `atcctl manual check`: reread the manual if it changed.
 2. `atcctl mcc queue`: open atc PRs with head, tier and its reasons, CI `check` on the head, merge state, INSPECTION on the head, holds; plus the commit in service against `origin/main`.
-3. For each PR without an INSPECTION on its head (oldest first, at most 5 a pass): `atcctl mcc packet <PR>` (PR body, changed files, diff, tier reasons, the ATC issue's goal and exit criteria when the branch or body names one), then `atcctl mcc inspect <PR> --head <sha> --verdict pass|findings -- '<text>'`, or `atcctl mcc escalate <PR> -- '<reason>'`.
+3. For each PR without an INSPECTION on its head (oldest first, at most 3 a pass): call the `inspector` sub-agent with the PR number and head (section 8.2). It reads the packet (`atcctl mcc packet <PR>`: PR body, changed files, diff, tier reasons, the ATC issue's goal and exit criteria when the branch or body names one) in a fresh context and returns the verdict. MCC copies it into `atcctl mcc inspect <PR> --head <sha> --verdict pass|findings -- '<text>'`, or `atcctl mcc escalate <PR> -- '<reason>'`. MCC reads no packet or diff itself.
 4. For each PR the server reports as landable: `atcctl mcc land <PR> --head <sha>`.
 5. If `origin/main` is ahead of the commit in service and its CI passed: `atcctl mcc rts`.
 6. Report to the SUPERVISOR in its own session: each LANDED PR with its tier (for `flagged`, the control rules that changed), each RTS with the commit, each ROLLBACK and ESCALATE with the reason.
@@ -210,11 +210,36 @@ A fourth MCC mode, `rts`: the SUPERVISOR merges atc PRs by hand, and the atc ser
 
 ## 8. The session
 
-- Folder `atc/mcc/`: `CLAUDE.md` (Korean source) and `CLAUDE.en.md`, `.claude/skills/tick/SKILL.md`, `.claude/settings.json`, `read-guard.mjs`, `settings.test.mjs`.
+- Folder `atc/mcc/`: `CLAUDE.md` (Korean source) and `CLAUDE.en.md`, `.claude/skills/tick/SKILL.md`, `.claude/settings.json`, `.claude/agents/inspector.md`, `read-guard.mjs`, `inspector-guard.mjs`, `agent-guard.mjs`, `context-cap.mjs`, `packet-size.mjs`, `cost-report.mjs`, `settings.test.mjs`, `inspector.test.mjs`, `cost-report.test.mjs`.
 - Launch in tmux as `atc-mcc`, `claude --strict-mcp-config` (no MCP servers), then `/loop 5m /tick`.
 - Bash: `controller/guard.mjs --mcc --gh-read`. It allows `atcctl manual`, `atcctl mcc queue|packet|inspect|escalate|land|rts`, `jq` after a pipe, and read-only `gh pr view|diff|checks|list`. Everything else is blocked, including `git`, `systemctl`, `gh pr merge`, `gh api` and every other atcctl command.
 - Read, Glob and Grep: the atc repository, so an INSPECTION can read the code around a diff. Not `.env*`, `~/.local/state/`, `~/.claude/` or other repositories.
-- Denied: Edit, Write, NotebookEdit, SendMessage, Agent, Artifact.
+- Denied: Edit, Write, NotebookEdit, SendMessage, Artifact. Agent is allowed for `inspector` only (`agent-guard.mjs`, fail-closed).
+
+### 8.2 INSPECTION in a fresh context (ATC-135)
+
+**Why.** MCC is one long session on a `/loop 5m /tick`. Every call re-reads the whole context, and a packet read in a pass stays in it for the rest of the session. Measured on 2026-09-29 (00:00 UTC to about 07:40): 420 calls, an average context of 491k tokens per call (peak 887k), 23 INSPECTIONs, about $7.6 an hour and $2.5 per inspected PR. The packet itself is small: the last 19 inspected PRs averaged 11.8k tokens (median 11.6k, p90 22.1k, max 23.1k; 2 were cut). The cost is the packet riding along in every later call, not reading it once.
+
+**What changed.**
+- `mcc/.claude/agents/inspector.md`: a sub-agent on Opus (same as the session's `model: opus`). Tools: Read, Grep, Glob, Bash. Its Bash hook (`inspector-guard.mjs`) allows exactly `atcctl mcc packet <PR>` and `gh pr diff <PR> --repo chaehy5665/atc [--name-only]`, on top of the MCC Bash guard, so it can never run `mcc inspect`, `land`, `rts` or `escalate`. Its Read/Glob/Grep go through `read-guard.mjs`. Input: the PR number and head. It reads the packet once and the whole diff through `gh pr diff` only when the packet says `diffTruncated`. Output: one block, `VERDICT` (`pass|findings|escalate`), `HEAD`, `COUNTS` (P0/P1/P2), `ESCALATE` (reason or `none`), `TEXT` (the INSPECTION text with the scope read, at most 4,000 characters). It is written in English because it talks to MCC and, through the PR comment, to the team (ATC-126).
+- MCC (`mcc/CLAUDE.md`, `.en.md`, `/tick`): calls `inspector` for each PR that needs an INSPECTION and copies the block into `mcc inspect` / `mcc escalate` unchanged. It doesn't read a packet or a diff. If the block is malformed, its `HEAD` differs from the queue head, or the inspector fails, MCC records nothing, retries once, then logs it.
+- The guard's model check is untouched: the four writes still run only from the MCC session, whose real model is checked (`ATC_MCC_MODEL`). The inspector has no path to a write.
+- Context cap: when the MCC session's context passes 150k tokens, `context-cap.mjs` (a `UserPromptSubmit` hook; it reads the transcript's last request, the same number as the statusline record, because MCC can't read the state folder) adds a notice and MCC writes in its log line for the SUPERVISOR to STOP and LAUNCH it. It never restarts itself. It only informs, so it can't block a pass.
+
+**Control rules changed (for the landing report).**
+- `mcc/.claude/settings.json`: `Agent` is no longer denied; `Agent(inspector)` is allowed; the blanket Agent|Task block hook is replaced by `agent-guard.mjs`, which passes only `subagent_type: inspector`; a `UserPromptSubmit` hook `context-cap.mjs` is added.
+- `mcc/CLAUDE.md`, `.claude/skills/tick/SKILL.md` (and `.en.md`): INSPECTION goes through `inspector`; the context cap.
+- New `mcc/.claude/agents/inspector.md`, `mcc/inspector-guard.mjs`, `mcc/agent-guard.mjs`, `mcc/context-cap.mjs`.
+- Unchanged: L1–L8, the tiers, `controller/guard.mjs`, `occ/mcp-guard.mjs`, `read-guard.mjs`, who merges.
+
+**Measure before and after.** `node mcc/packet-size.mjs --last 20` (packet tokens) and `node mcc/cost-report.mjs --since <ISO> [--until <ISO>] --label <name>` (average context per MCC call, $ per hour, $ per inspected PR counting the sub-agent transcripts under `<session>/subagents/`, from `server/fuel-prices.json`). Both are read-only and run by a person. "Hours" is the wall-clock window, so a window with a paused MCC counts as cheaper per hour than it was while running.
+
+| Window | Avg context per call | $ per hour | $ per inspected PR | INSPECTIONs | Calls (main + sub) |
+|---|---|---|---|---|---|
+| before: 2026-09-29 00:00 → ~07:40 UTC | 490,649 | 7.58 | 2.52 | 23 | 420 + 0 |
+| after: one day from the first `/tick` on the new manual | _to fill (ATC-135 follow-up)_ | | | | |
+
+**Quality check (shadow, not recorded).** Before this landed, 10 already-inspected PRs were re-inspected through an inspector-style sub-agent (Opus, same standard) and compared with the recorded INSPECTION: see the PR body for the table.
 
 ### 8.1 Changes elsewhere
 

@@ -268,7 +268,7 @@ export function Card({
           <SuggestedReply job={a.job} />
         </div>
       )}
-      {a.job?.state === "working" && a.job.detail && <p className="fl-line"><JobDetail job={a.job} /></p>}
+      {a.job?.state === "working" && (a.job.detail || a.job.settled) && <p className="fl-line"><JobDetail job={a.job} /></p>}
       {(a.origin === "background" || a.origin === "desktop") && (
         <p className="fl-origin-note faint">{a.origin === "background" ? "BG 세션 — 이 호스트의 CLI 로그인을 따른다" : "DESKTOP 세션 — Claude 앱의 계정을 따른다"}</p>
       )}
