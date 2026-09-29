@@ -17,6 +17,7 @@ import { regKey } from "./registration.ts";
 import { needsDecision } from "./judges/report.ts";
 import { loadReportThreshold } from "./judges/store.ts";
 import { milestonesNow } from "./milestones-run.ts";
+import { type ArrivalReport, appendReport, foldReports, parseReport, readReports, ReportError, reportLine } from "./arrival-report.ts";
 
 // FLIGHT FOLLOWING(운항 추적, docs/occ.md 8장). 배정된 FLIGHT의 진행을 기존 기록으로 따라가고,
 // 늦거나(지연) Linear와 어긋나면(불일치) OCC가 SUPERVISOR에게 보고한다. 팀에 묻지는 않는다.
@@ -35,7 +36,7 @@ export const STAGES = ["readback", "departed", "prOpened", "cleared", "arrived"]
 export type Stage = (typeof STAGES)[number];
 
 export interface FollowIssue {
-  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health" | "fuel" | "report" | "unable" | "launch" | "await-supervisor";
+  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health" | "fuel" | "report" | "unable" | "launch" | "await-supervisor" | "no-report" | "blocked-report";
   kind: "delay" | "mismatch";
   severity: "warn" | "info"; // info: 보여 주기만(착륙 대기는 SUPERVISOR 몫, 머지 뒤 Done 아님은 CLOSE 초안 몫)
   text: string;
@@ -78,6 +79,7 @@ export interface FollowInput {
   milestones?: Map<string, Milestones>; // FLIGHT → OOOI(ATC-123, milestonesNow)
   unables?: Unable[]; // CAPTAIN이 UNABLE로 닫은 CLEARANCE·FLIGHT PLAN(ATC-122)
   launchFails?: LaunchFail[]; // launch 카드 승인 때 LAUNCH가 실패했거나 새 세션이 뜨지 않음(ATC-129)
+  arrivalReports?: Map<string, ArrivalReport>; // FLIGHT → 기록된 도착 보고(ATC-124, arrival-report.ts)
 }
 
 // CAPTAIN의 UNABLE(ATC-122): FLIGHT가 있는 CLEARANCE와 FLIGHT PLAN(decline). FLIGHT가 없는 CREW CHANGE는 OCC 브리핑(crew-change brief의 unable)에 있다
@@ -89,6 +91,8 @@ export interface Unable {
   at: string;
 }
 export const UNABLE_KEEP_MS = DAY; // 하루 보이고 빠진다
+export const REPORT_GRACE_MS = 30 * MIN; // PR이 머지(ON)된 뒤 도착 보고가 기록되기를 기다리는 시간(ATC-124)
+export const BLOCKED_KEEP_MS = DAY; // BLOCKED 보고는 하루 보이고 빠진다
 
 // 스냅샷의 CLEARANCE와 제안에서 최근 UNABLE(순수)
 export function unablesOf(clearances: Pick<Clearance, "id" | "flight" | "toName" | "unableAt" | "unableReason">[], proposals: Pick<Proposal, "id" | "flight" | "kind" | "status" | "statusAt" | "reason" | "aircraftName">[], now: number): Unable[] {
@@ -211,6 +215,9 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
   };
 }
 
+// BLOCKED가 none이 아닌 보고가 하루 안이면 보인다(ATC-124)
+const blockedFresh = (r: ArrivalReport, now: number) => r.blocked !== "none" && now - Date.parse(r.at) < BLOCKED_KEEP_MS;
+
 // 전체(순수). ARRIVED하고 Linear도 끝난 지 하루가 지난 FLIGHT는 뺀다(STAND 없는 FLIGHT는 ARRIVED 보고 뒤 하루).
 // STRANDED(ATC-29)인 FLIGHT는 따라가는 대상이 아니어도(이미 Done이어도) 넣고, 경보가 풀릴 때까지 빼지 않는다
 export function followingOf(inp: FollowInput): FollowItem[] {
@@ -218,6 +225,7 @@ export function followingOf(inp: FollowInput): FollowItem[] {
   for (const x of inp.stranded ?? []) if (!targets.some((t) => t.flight === x.flight)) targets.push({ flight: x.flight, proposal: null, aircraft: null });
   for (const x of inp.unables ?? []) if (!targets.some((t) => t.flight === x.flight)) targets.push({ flight: x.flight, proposal: null, aircraft: x.aircraft });
   for (const x of inp.launchFails ?? []) if (!targets.some((t) => t.flight === x.flight)) targets.push({ flight: x.flight, proposal: null, aircraft: x.aircraft });
+  for (const r of inp.arrivalReports?.values() ?? []) if (blockedFresh(r, inp.now) && !targets.some((t) => t.flight === r.flight)) targets.push({ flight: r.flight, proposal: null, aircraft: null });
   return targets
     .map((t) => {
       const f = followOne(t, inp);
@@ -290,10 +298,32 @@ export function followingOf(inp: FollowInput): FollowItem[] {
           key: `${t.flight}|launch|${x.id}`,
         });
       }
+      // 도착 보고(ATC-124): PR이 머지(ON)된 지 30분이 지났는데 기록된 보고가 없다 / 보고의 BLOCKED가 none이 아니다. 팀에 묻지 않는다(OCC가 SUPERVISOR에게 보고)
+      const arrivalReport = inp.arrivalReports?.get(t.flight);
+      if (!f.standFree && f.stages.arrived && f.pr?.merged && !arrivalReport && inp.now - Date.parse(f.stages.arrived) > REPORT_GRACE_MS) {
+        f.issues.push({
+          code: "no-report",
+          kind: "delay",
+          severity: "warn",
+          text: `PR #${f.pr.number}이 머지된 지(ON) ${hours(inp.now - Date.parse(f.stages.arrived))} 지났는데 도착 보고(ARRIVED report)가 기록되지 않음 — CAPTAIN이 아직 보고하지 않았거나 받은 세션이 기록을 빠뜨렸다`,
+          since: iso(Date.parse(f.stages.arrived) + REPORT_GRACE_MS),
+          key: `${t.flight}|no-report`,
+        });
+      }
+      if (arrivalReport && blockedFresh(arrivalReport, inp.now)) {
+        f.issues.push({
+          code: "blocked-report",
+          kind: "delay",
+          severity: "warn",
+          text: `${f.aircraft ?? arrivalReport.proposal ?? "CAPTAIN"}의 도착 보고에 BLOCKED가 있음 — ${arrivalReport.blocked}`,
+          since: arrivalReport.at,
+          key: `${t.flight}|blocked-report|${arrivalReport.at}`,
+        });
+      }
       return f;
     })
     .filter((f) => {
-      if (f.issues.some((i) => i.code === "stranded" || i.code === "unable" || i.code === "launch")) return true;
+      if (f.issues.some((i) => i.code === "stranded" || i.code === "unable" || i.code === "launch" || i.code === "blocked-report")) return true;
       if (!f.stages.arrived || inp.now - Date.parse(f.stages.arrived) <= KEEP_ARRIVED_MS) return true;
       return !(f.standFree || isClosed(inp.tickets.find((t) => t.key === f.flight)));
     });
@@ -339,10 +369,34 @@ export function followingNow(s: Snapshot, now = Date.now()): FollowItem[] {
   const min = loadReportThreshold();
   const reports = new Map(s.sessions.filter((x) => x.status === "idle" && x.report && needsDecision(x.report, min)).map((x) => [regKey(x.name), { id: x.report!.id, at: x.report!.turnAt, p: x.report!.decisionP }]));
   const proposals = allProposals();
-  return followingOf({ proposals, tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, reports, unables: unablesOf(s.clearances ?? [], proposals, now), launchFails: launchFailsOf(proposals, now), milestones: milestonesNow(s, now) });
+  return followingOf({ proposals, tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, reports, unables: unablesOf(s.clearances ?? [], proposals, now), milestones: milestonesNow(s, now), launchFails: launchFailsOf(proposals, now), arrivalReports: foldReports(readReports()) });
 }
 
 export function mountFollowing(app: Hono, getSnapshot: () => Promise<Snapshot>) {
+  // 도착 보고를 기록한다(ATC-124). 받은 세션(OCC, 또는 ENGINEERING)이 atcctl dispatch report로 부른다. ref는 D-xxxx 또는 FLIGHT key.
+  // 고정 칸만 받는다 — 자유 요약은 받지도 저장하지도 않는다
+  app.post("/api/dispatch/report", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const ref = typeof body.ref === "string" ? body.ref.trim().toUpperCase() : "";
+    let flight = ref;
+    let proposal: string | null = null;
+    if (/^D-\d+$/.test(ref)) {
+      const p = allProposals().find((x) => x.id === ref);
+      if (!p) return c.json({ error: `${ref} 제안이 없음` }, 404);
+      flight = p.flight;
+      proposal = p.id;
+    } else if (!ref) return c.json({ error: "ref(D-xxxx 또는 FLIGHT key)가 필요함" }, 400);
+    try {
+      const r = parseReport(body, flight, proposal, new Date().toISOString());
+      appendReport(r);
+      return c.json({ ok: true, report: r, line: reportLine(r) });
+    } catch (e) {
+      if (e instanceof ReportError) return c.json({ error: e.message }, 400);
+      throw e;
+    }
+  });
+  app.get("/api/dispatch/reports", (c) => c.json({ reports: [...foldReports(readReports()).values()] }));
+
   // 읽기만 한다. fresh는 아직 OCC가 보고하지 않은 문제
   app.get("/api/following", async (c) => {
     const s = await getSnapshot();

@@ -27,6 +27,7 @@
 - FLEET TARGETS·ROUTE를 바꾸지 않는다. NETWORK 숫자에서 `TARGET`·`ROUTE` 초안을 올릴 수만 있고(`schedule.md`), 그림자 판정만 받는다. 바꾸는 것은 SUPERVISOR가 FLEET 탭에서 한다.
 - 마일스톤(WAYPOINT)을 만들거나, 이름을 바꾸거나, 순서를 바꾸지 않는다. `WAYPOINT` 초안은 이슈의 milestone 칸만 바꾼다(`schedule.md` "WAYPOINT 전에").
 - 제안·초안에 승인·거절 판정을 내리지 않는다(SUPERVISOR 몫).
+- **CAPTAIN의 최종 보고가 `[TEAM_X → OCC] ARRIVED …`로 시작하면** 고정 줄만 `dispatch report <D-xxxx|ATC-n> --pr <n> --tier <t> --tests <통과/전체> --discretion <수> --blocked <none|막힌 점>`으로 기록한다(ATC-124. PR이 없는 SURVEY·CHECK는 `--pr` 대신 `--result <링크>`). 자유 요약은 기록하지 않는다. `blocked-report`가 뜨면 SUPERVISOR에게 보고한다. 팀의 메시지를 atc가 대신 읽지는 않는다: 받은 OCC가 기록한다.
 - **CAPTAIN이 READBACK도 거절도 아니고 자기 사용자(SUPERVISOR)의 go를 기다린다고 답하면** `dispatch await-supervisor D-xxxx -- <CAPTAIN이 기다리는 것 그대로>`를 친다(ATC-120). 다시 보내지 않고, "SUPERVISOR가 승인했다"는 말을 어느 쪽으로도 전하지 않는다. go는 SUPERVISOR가 그 AIRCRAFT 세션에서 직접 친다. `dispatch brief`의 `confirm`에 있는 붙여 넣기 한 줄은 SUPERVISOR가 쓰는 것이지 OCC가 보내는 것이 아니다.
 - CHARTER REQUEST 없이 새 이슈 초안(`NEW`)을 쓰지 않는다. 티켓을 스스로 지어내지 않는다. 예외는 하나, WAYPOINT의 완료 기준에서 올리는 초안이다(`schedule.md`의 "WAYPOINT gap"). 이것도 SUPERVISOR가 Linear에 적어 둔 기준을 옮기는 것이지 새 일을 지어내는 것이 아니다.
 - 코드를 읽거나 고치지 않는다. Edit·Write는 막혀 있고, Bash는 `node ../controller/atcctl.mjs …`, `jq`, 읽기 전용 `gh pr view|checks|diff|list`만 된다(`../controller/guard.mjs --gh-read`). jq는 `node … atcctl.mjs … | jq '<필터>'`처럼 앞 명령의 출력에만 붙인다. jq에 파일을 주거나 `-f`·`--rawfile`·`--slurpfile` 같은 옵션, 필터 안의 `env`·`$ENV`·`import`·`include`는 막힌다(gh의 `--jq`도 같다).

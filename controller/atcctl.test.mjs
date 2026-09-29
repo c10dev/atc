@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CREW_CHANGE_CMDS, crosscheckBrief, draftText, manualFiles, manualHash, sendOutput, parseArrived, parseBriefingArgs, parseCrewChange, parseCrosscheck, parseDraft, parseLandingReview, parseMccArgs, mccText, payloadText } from "./atcctl.mjs";
+import { CREW_CHANGE_CMDS, crosscheckBrief, draftText, manualFiles, manualHash, sendOutput, parseArrived, parseBriefingArgs, parseReportArgs, parseCrewChange, parseCrosscheck, parseDraft, parseLandingReview, parseMccArgs, mccText, payloadText } from "./atcctl.mjs";
 import { simpleCommands } from "../hooks/shell.mjs";
 
 const argv = (s) => s.split(" ");
@@ -409,4 +409,26 @@ test("CAPTAIN의 답(ATC-122): <ID> [-- 사유]. unable만 사유가 필요하�
   assert.deepEqual(parseCrewChange(argv("unable CC-0003 -- 지금 FLIGHT 중")), { action: "unable", id: "CC-0003", reason: "지금 FLIGHT 중" });
   assert.deepEqual(parseCrewChange(argv("standby cc-0003")), { action: "standby", id: "CC-0003" });
   assert.throws(() => parseCrewChange(argv("unable CC-0003")), /사유가 필요함/);
+});
+
+test("dispatch report(ATC-124): 고정 칸 플래그를 풀고, 빠진 칸·모르는 플래그·PR/RESULT 충돌은 거절", () => {
+  const full = "D-0119 --pr 211 --tier user --tests 1149/1149 --discretion 2 --blocked none";
+  assert.deepEqual(parseReportArgs(argv(full)), {
+    ref: "D-0119",
+    body: { ref: "D-0119", pr: "211", tier: "user", tests: "1149/1149", discretion: "2", blocked: "none" },
+  });
+  // FLIGHT key(직접 배정)와 소문자, 공백이 든 BLOCKED는 한 인자로
+  assert.deepEqual(parseReportArgs(["atc-124", "--pr", "5", "--tier", "flagged", "--tests", "3/3", "--discretion", "0", "--blocked", "CI 대기 중; 리뷰 필요"]).body.blocked, "CI 대기 중; 리뷰 필요");
+  assert.equal(parseReportArgs(["atc-124", "--pr", "5", "--tier", "flagged", "--tests", "3/3", "--discretion", "0", "--blocked", "none"]).ref, "ATC-124");
+  // PR 없는 FLIGHT: --result, --tests는 없어도 된다
+  assert.deepEqual(parseReportArgs(argv("ATC-77 --result https://x/y --tier auto --discretion 0 --blocked none")).body, { ref: "ATC-77", result: "https://x/y", tier: "auto", discretion: "0", blocked: "none" });
+  assert.throws(() => parseReportArgs(argv("D-0119 --pr 211 --tier user --discretion 2 --blocked none")), /--tests/);
+  assert.throws(() => parseReportArgs(argv("D-0119 --pr 211 --tier user --tests 1/1 --blocked none")), /--discretion가 필요/);
+  assert.throws(() => parseReportArgs(argv("D-0119 --tier user --tests 1/1 --discretion 0 --blocked none")), /--pr/);
+  assert.throws(() => parseReportArgs(argv("D-0119 --pr 1 --result u --tier user --tests 1/1 --discretion 0 --blocked none")), /함께 쓰지 않는다/);
+  assert.throws(() => parseReportArgs(argv("D-0119 --pr 1 --pr 2 --tier user --tests 1/1 --discretion 0 --blocked none")), /두 번/);
+  assert.throws(() => parseReportArgs(argv("D-0119 --pr 1 --summary hi --tier user --tests 1/1 --discretion 0 --blocked none")), /알 수 없는 인자 --summary/);
+  assert.throws(() => parseReportArgs(argv("D-0119 --pr --tier user")), /뒤에 값이 필요함/);
+  assert.throws(() => parseReportArgs([]), /필요함/);
+  assert.throws(() => parseReportArgs(argv("nonsense --pr 1")), /아님/);
 });

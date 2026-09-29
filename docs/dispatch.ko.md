@@ -420,6 +420,30 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 - PILOT'S DISCRETION: 머지된 PR이 여럿이면 ON은 가장 이른 머지이고 IN은 그 PR의 머지 커밋을 따른다. OFF는 "대표 PR"을 고르지 않고 가장 이른 후보를 쓴다.
 - 아직 없는 것(뒤에 더할 수 있다): WAKE 기대치에서 온 이정표별 목표 시각, IATA식 지연 사유 코드, ETA.
 
+## 도착 보고 구현 내용(ATC-124)
+
+CAPTAIN의 최종 보고는 OCC가 읽고 요약해야 하는 자유 글이었다. 이제 고정 머리와 고정 줄로 시작하고, 받은 세션이 명령 하나로 기록한다. atc는 팀 메시지를 읽지 않는다: 보고를 받은 세션(OCC, 또는 ENGINEERING)이 READBACK처럼 기록한다.
+
+```
+[TEAM_X → OCC] ARRIVED ATC-n · PR #n
+TIER auto|flagged|user
+TESTS <통과>/<전체> · tsc ✓ · build ✓
+DISCRETION <수> — <하나씩 한 줄, 없으면 none>
+BLOCKED none | <한 줄씩>
+<자유 요약>
+```
+
+PR이 없는 SURVEY·CHECK FLIGHT는 `PR #n` 대신 `RESULT <링크>`를 쓴다. 형식은 루트 `CLAUDE.md` "교신"과 `atc-task` skill 8절에 있다.
+
+- **기록.** `atcctl dispatch report <D-xxxx|ATC-n> --pr <n> --tier <t> --tests <p/t> --discretion <수> --blocked <none|글>`(PR이 없는 FLIGHT는 `--pr` 대신 `--result <링크>`, 그때 `--tests`는 없어도 된다)이 `POST /api/dispatch/report`를 부른다. `D-xxxx`는 그 FLIGHT로 풀리고, `ATC-n` key는 직접 배정을 덮는다. `report` op를 `arrival-reports.jsonl`(`server/arrival-report.ts`, 추가만 함)에 FLIGHT별로 더하고, FLIGHT의 마지막 보고가 유효하다. 고정 칸만 저장한다: `flight`, `at`, `proposal`, `pr` 또는 `result`, `tier`, `tests`, `discretion`(수), `blocked`. 자유 요약은 atc로 보내지 않는다. `GET /api/dispatch/reports`가 목록을 준다.
+- **FOLLOWING**(`server/following.ts`, key `FLIGHT|code`):
+  - `no-report`: PR이 머지(ON)된 지 30분이 넘도록 기록된 보고가 없는 FLIGHT. CAPTAIN이 PR을 올릴 때 보고하므로 머지 전에 기록된 보고도 센다. STAND 없는 FLIGHT에는 없다(ARRIVED는 `dispatch arrived`로 온다).
+  - `blocked-report`: 기록된 보고의 `BLOCKED`가 `none`이 아님. 하루 보이고 보고마다 한 번(`FLIGHT|blocked-report|<at>`). FOLLOWING이 더는 따라가지 않는 FLIGHT도 이 때문에 다시 들어온다.
+  - 둘 다 OCC가 SUPERVISOR에게 보고할 것이고, 팀에 묻지 않는다.
+- **매뉴얼.** OCC 매뉴얼(`CLAUDE.md`, `flight-plan.md`, `following.md`, 한국어가 원본)이 보고가 오면 기록하라고 하고 두 코드를 적는다. ENGINEERING도 받은 보고를 같은 명령으로 기록할 수 있다.
+- PILOT'S DISCRETION: `tsc ✓ · build ✓`는 줄의 고정 부분이지만 저장하지 않는다(테스트 수는 저장하고, ✗는 `BLOCKED`에 쓴다). 한 FLIGHT에 `dispatch report`를 다시 치면 앞의 것을 대신한다. 규칙은 이 변경 뒤에 머지되는 FLIGHT뿐 아니라 최근 하루 안에 머지된 FLIGHT에도 적용되므로, 배포 뒤 첫 tick에 `no-report`가 몇 건 한꺼번에 뜰 수 있다(`following ack` 한 번으로 정리된다).
+- 만들지 않은 것: 응용 저장소의 보고 규칙(SUPERVISOR가 각 저장소 `CLAUDE.md`에 줄을 더한다), 팀 메시지를 자동으로 읽는 것.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

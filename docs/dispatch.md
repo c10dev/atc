@@ -420,6 +420,30 @@ Airlines log OOOI, the four actual times of a flight. atc gives each FLIGHT the 
 - PILOT'S DISCRETION: ON is the earliest merge when a FLIGHT has several merged PRs, and IN follows that PR's merge commit; OFF takes the earliest candidate rather than trying to pick a "main" PR.
 - Not built (a later step could add): target times per milestone from the WAKE expectation, IATA-style delay reason codes, and ETAs.
 
+## Arrival reports as built (ATC-124)
+
+The CAPTAIN's final report used to be free text that OCC had to read and summarize. It now starts with a fixed header and fixed lines that the receiving session records with one command. atc does not read team messages: the session that received the report (OCC, or ENGINEERING) records it, like a READBACK.
+
+```
+[TEAM_X → OCC] ARRIVED ATC-n · PR #n
+TIER auto|flagged|user
+TESTS <pass>/<total> · tsc ✓ · build ✓
+DISCRETION <n> — <one line each, or none>
+BLOCKED none | <one line each>
+<free summary>
+```
+
+A SURVEY or CHECK FLIGHT without a PR writes `RESULT <link>` in place of `PR #n`. The format is in root `CLAUDE.md` "교신" and the `atc-task` skill section 8.
+
+- **Recording.** `atcctl dispatch report <D-xxxx|ATC-n> --pr <n> --tier <t> --tests <p/t> --discretion <n> --blocked <none|text>` (`--result <link>` in place of `--pr` for a FLIGHT without a PR, and `--tests` is then optional) calls `POST /api/dispatch/report`. `D-xxxx` resolves to its FLIGHT; an `ATC-n` key covers a direct assignment. A `report` op is appended to `arrival-reports.jsonl` (`server/arrival-report.ts`, append-only), keyed by FLIGHT; the latest report for a FLIGHT counts. Only the fixed fields are stored: `flight`, `at`, `proposal`, `pr` or `result`, `tier`, `tests`, `discretion` (a count), `blocked`. The free summary is never sent to atc. `GET /api/dispatch/reports` lists them.
+- **FOLLOWING** (`server/following.ts`, key `FLIGHT|code`):
+  - `no-report`: a FLIGHT whose PR merged (ON) more than 30 minutes ago with no recorded report. A report recorded before the merge counts, since the CAPTAIN reports when the PR goes up. Not for STAND-free FLIGHTs (their ARRIVED comes from `dispatch arrived`).
+  - `blocked-report`: a recorded report whose `BLOCKED` is not `none`, visible for a day, once per report (`FLIGHT|blocked-report|<at>`). It also brings in a FLIGHT that FOLLOWING no longer tracks.
+  - Both are for OCC to report to the SUPERVISOR; nothing asks the team.
+- **Manuals.** The OCC manual (`CLAUDE.md`, `flight-plan.md`, `following.md`, Korean first) says to record a report when it arrives and lists the two codes. ENGINEERING may record reports it receives with the same command.
+- PILOT'S DISCRETION: `tsc ✓ · build ✓` are a fixed part of the line but not stored (the tests count is; a ✗ goes in `BLOCKED`); a second `dispatch report` for a FLIGHT replaces the first; rules apply to FLIGHTs that merge after this ships as well as the ones merged in the last day, so the first tick after the deploy may list a few `no-report` items at once (one `following ack` clears them).
+- Not built: application repositories' report rules (the SUPERVISOR adds the line to each repo's `CLAUDE.md`), and any automatic reading of team messages.
+
 ## DIRECT briefs (ATC-32)
 
 Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.

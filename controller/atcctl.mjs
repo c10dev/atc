@@ -81,6 +81,9 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
   node atcctl.mjs dispatch release <D-0003> (2b) 승인된 제안을 sent로 바꾸고 SEND TO·SEND(보낼 머리 한 줄)와 FLIGHT PLAN 출력
   node atcctl.mjs dispatch readback <D-0003>
                                             (2b) CAPTAIN이 READBACK함
+  node atcctl.mjs dispatch report <D-0003|ATC-124> --pr <번호> --tier <auto|flagged|user> --tests <통과/전체> --discretion <수> --blocked <none|막힌 점>
+                                            CAPTAIN의 도착 보고("[TEAM_X → OCC] ARRIVED ATC-n · PR #n")의 고정 칸을 기록(ATC-124). 자유 요약은 저장하지 않는다.
+                                            PR이 없는 SURVEY·CHECK는 --pr 대신 --result <링크>. FLIGHT PLAN과 직접 배정 모두 쓴다
   node atcctl.mjs dispatch decline <D-0003> -- <사유>
   node atcctl.mjs dispatch unable <D-0003> -- <사유>
                                             (2b) CAPTAIN이 맡지 못함("UNABLE D-0003 — 사유". 두 명령은 같다)
@@ -350,6 +353,28 @@ export function parseArrived(args) {
   return { flight: id.toUpperCase(), body: { note, aircraft } };
 }
 
+// dispatch report <D-0003|ATC-124> --pr <n> --tier <auto|flagged|user> --tests <p/t> --discretion <n> --blocked <none|text> → { ref, body }.
+// PR이 없는 SURVEY·CHECK FLIGHT는 --pr 대신 --result <링크>(그때 --tests는 없어도 된다). 자유 요약은 받지 않는다(ATC-124). 값 검사는 서버가 한다
+const REPORT_OPTS = ["--pr", "--result", "--tier", "--tests", "--discretion", "--blocked"];
+export function parseReportArgs(args) {
+  const [ref, ...rest] = args;
+  if (!ref || ref.startsWith("--")) throw new Error("제안 ID(D-0003)나 FLIGHT key(ATC-124)가 필요함");
+  if (!/^(D-\d+|[A-Z][A-Z0-9]*-\d+)$/i.test(ref)) throw new Error(`제안 ID나 FLIGHT key가 아님: ${ref}`);
+  const body = {};
+  for (let i = 0; i < rest.length; i += 2) {
+    const [opt, val] = [rest[i], rest[i + 1]];
+    if (!REPORT_OPTS.includes(opt)) throw new Error(`알 수 없는 인자 ${opt} (가능: ${REPORT_OPTS.join(" ")})`);
+    if (val === undefined || val.startsWith("--") || !val.trim()) throw new Error(`${opt} 뒤에 값이 필요함`);
+    if (body[opt.slice(2)] !== undefined) throw new Error(`${opt}를 두 번 줬음`);
+    body[opt.slice(2)] = val.trim();
+  }
+  for (const need of ["tier", "discretion", "blocked"]) if (body[need] === undefined) throw new Error(`--${need}가 필요함`);
+  if (body.pr === undefined && body.result === undefined) throw new Error("--pr <번호>(PR이 없는 FLIGHT는 --result <링크>)가 필요함");
+  if (body.pr !== undefined && body.result !== undefined) throw new Error("--pr와 --result는 함께 쓰지 않는다");
+  if (body.pr !== undefined && body.tests === undefined) throw new Error("--tests <통과>/<전체>가 필요함");
+  return { ref: ref.toUpperCase(), body: { ref: ref.toUpperCase(), ...body } };
+}
+
 // dispatch briefing <D-0003> --what … --why … --risk … → { id, body: { what, why, risk } }. 길이 검사는 서버가 한다
 const BRIEFING_OPTS = ["--what", "--why", "--risk"];
 export function parseBriefingArgs(args) {
@@ -600,6 +625,11 @@ if (isMain) {
       if (hold) await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/hold`, { blockedBy });
       const holdText = !hold ? "" : blockedBy.length ? ` · HOLD (선행 ${blockedBy.join(", ")})` : " · HOLD (선행 FLIGHT 없음, 사유는 메모)";
       console.log(`${r.proposal.id} 메모${r.proposal.caution ? " · CAUTION" : ""}${holdText}`);
+    } else if (cmd === "dispatch" && args[0] === "report") {
+      // CAPTAIN의 도착 보고(ATC-124)를 고정 칸만 기록한다
+      const { body } = parseReportArgs(args.slice(1));
+      const r = await call("POST", "/api/dispatch/report", body);
+      console.log(r.line);
     } else if (cmd === "dispatch" && args[0] === "briefing") {
       const { id, body } = parseBriefingArgs(args.slice(1));
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(id)}/briefing`, body);
