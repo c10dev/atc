@@ -465,7 +465,13 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
             {plan.hold.map((h) => (
               <li key={h.flight}>
                 <b>{flightNumber(h.flight)}</b>
-                <span className="dp-list-note">HOLD_DEPARTURE — {h.blockedBy.map(flightNumber).join(", ")}에 막힘</span>
+                <span className="dp-list-note">HOLD_DEPARTURE — {h.why ?? `${h.blockedBy.map(flightNumber).join(", ")}에 막힘`}</span>
+              </li>
+            ))}
+            {(plan.overlapHolds ?? []).filter((h) => !h.enforced).map((h) => (
+              <li key={`ov-${h.flight}`}>
+                <b>{flightNumber(h.flight)}</b>
+                <span className="dp-list-note">shadow — {h.why} (파일 겹침 HOLD 꺼짐, 켜면 대기)</span>
               </li>
             ))}
             {plan.excluded.map((e) => (
@@ -474,7 +480,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
                 <span className="dp-list-note">{e.reason}</span>
               </li>
             ))}
-            {!plan.hold.length && !plan.excluded.length && <li className="faint">없음</li>}
+            {!plan.hold.length && !plan.excluded.length && !(plan.overlapHolds ?? []).some((h) => !h.enforced) && <li className="faint">없음</li>}
           </ul>
         </div>
       </div>

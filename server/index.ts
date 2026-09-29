@@ -29,6 +29,7 @@ import { diffSnapshots, EventLog, isWarm } from "./events.ts";
 import { mountMetrics } from "./metrics.ts";
 import { mountNetwork } from "./network.ts";
 import { mountRoutes } from "./routes.ts";
+import { refreshOverlap } from "./overlap-run.ts";
 import { allProposals, DISPATCH_MS, mountDispatch, runDispatch } from "./proposals.ts";
 import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
@@ -95,6 +96,7 @@ async function tick() {
     }
     if (isWarm(next) && Date.now() - lastDispatchAt >= DISPATCH_MS) {
       lastDispatchAt = Date.now();
+      void refreshOverlap(next); // 파일 겹침(ATC-71): 이번 주기에 읽은 것은 다음 계획부터 쓴다
       runDispatch(next);
       runFleetPlan(next); // FLEET PLAN(docs/fleet.md 8.6): 같은 주기에 그림자 제안. claude agents를 읽어 기다리지 않는다
     }

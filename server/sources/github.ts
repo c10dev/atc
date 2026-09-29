@@ -204,6 +204,22 @@ async function attachFiles(slug: string, pulls: GhPull[], errors: string[]) {
   }
 }
 
+// 파일 겹침(ATC-71)·DIRTY 기록: 열린 PR 모두의 바뀐 파일(head별 캐시라 새 head마다 gh 한 번). files와 따로 둬 다른 판단을 바꾸지 않는다
+async function attachChanged(slug: string, pulls: GhPull[], errors: string[]) {
+  for (let i = 0; i < pulls.length; i += 4) {
+    await Promise.all(
+      pulls.slice(i, i + 4).map(async (p) => {
+        try {
+          p.changed = await filesOf(slug, p);
+        } catch (e) {
+          const err = e as Error & { stderr?: string };
+          errors.push(`${slug}#${p.number} 겹침용 파일: ${(err.stderr?.trim() || err.message).split("\n")[0]}`);
+        }
+      }),
+    );
+  }
+}
+
 async function fetchAll(repos: string[]) {
   const errors: string[] = [];
   let ok = 0;
@@ -227,6 +243,7 @@ async function fetchAll(repos: string[]) {
         await attachHumanCarry(slug, pulls, errors, mainSha);
         // AUTOLAND merge 모드(ATC-34): 머지 후보의 바뀐 파일로 보안 게이트를 본다(못 읽으면 머지하지 않는다)
         if (loadAutoland().mode === "merge") await attachFiles(slug, pulls, errors);
+        await attachChanged(slug, pulls, errors);
         state.byRepo.set(repo, pulls);
         ok++;
         try {

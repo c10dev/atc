@@ -91,6 +91,8 @@ interface AtfmBrief {
   data: {
     ci: { airport: string | null; samples: number; medianMin: number | null }[];
     behind: { airport: string | null; merges: number; behind: number; perMerge: number | null }[];
+    // 7일 동안 DIRTY가 된 PR과 그중 그때 파일이 겹치는 열린 PR이 있던 수(파일 겹침 지표, ATC-71). 옛 서버면 없음
+    dirty?: { airport: string; dirty: number; seen: number }[];
     undone: number;
     // 머지 슬롯 켜기 판단(7일, docs/atfm.md 5장). 옛 서버면 없음
     lands: { airport: string; lands: number; concurrent: number; mergedMedianMin: number | null; timeouts: number }[];
@@ -370,6 +372,17 @@ export function AtfmPanel({ refreshKey, now }: { refreshKey: string; now: number
                   <span key={b.airport ?? i} title={`머지 ${b.merges} · BEHIND ${b.behind}`}>
                     {i > 0 && <span className="faint"> · </span>}
                     {aptOf(b.airport)} <b>{b.perMerge === null ? "—" : b.perMerge}</b>
+                  </span>
+                ))
+              : "—"}
+          </li>
+          <li>
+            <span className="atfm-head-mini">DIRTY(겹침 예측 가능)</span>
+            {brief.data.dirty?.length
+              ? brief.data.dirty.map((d, i) => (
+                  <span key={d.airport} title="7일 동안 DIRTY가 된 PR 수 / 그때 파일이 겹치는 다른 열린 PR이 있어 DISPATCH가 볼 수 있었던 수">
+                    {i > 0 && <span className="faint"> · </span>}
+                    {aptOf(d.airport)} <b>{d.seen}/{d.dirty}</b>
                   </span>
                 ))
               : "—"}

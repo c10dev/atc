@@ -44,6 +44,7 @@ import { classLabel, classOf, needsStand } from "./crew.ts";
 import { selfCheckCrewChange } from "./crew-change.ts";
 import { type Crosscheck, CrosscheckError, type CrosscheckLine, crosscheckRateOf, examplesOf, type HumanDecision, markOf, oneClickOf, parseCrosscheck, type Via, viaOf } from "./crosscheck.ts";
 import { blindStatsOf, isBlind } from "./blind.ts";
+import { filesInFlight } from "./overlap-run.ts";
 import { type Briefing, BriefingError, factsOf, leadOf, parseBriefing, waypointIndex } from "./briefing.ts";
 import { loadFleet } from "./fleet.ts";
 import { type DispatchMeasured, dispatchStatsOf } from "./judges/dispatch.ts";
@@ -838,7 +839,7 @@ export function runDispatch(s: Snapshot, now = Date.now()): Plan {
   const logbook = loadLogbook();
   const landed = landedOf(logbook);
   // 켜진 GROUND STOP이 걸린 AIRPORT의 ASSIGN은 계획에서 뺀다(docs/atfm.md 6장). 열린 제안은 그 사유로 SUPERSEDED
-  const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), loadFleet(), landed, logbook, activeWaypointsOf(readLinearProjects().milestones)), s.atfm?.groundStops ?? []);
+  const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), loadFleet(), landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight()), s.atfm?.groundStops ?? []);
   const seq = ops.filter((o) => o.op === "create").length;
   append(syncOps(existing, plan, s, cfg, now, seq, landed));
   return plan;
@@ -894,7 +895,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
     // 값을 매긴 LOGBOOK: planner에는 fuelCost를 쓰지 않는다(TRIP FUEL은 카드의 사실 줄에만)
     const logbook = loadPricedLogbook();
     const fuel = watchFuel?.(s) ?? null;
-    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), loadFleet(), landedOf(logbook), logbook, activeWaypointsOf(readLinearProjects().milestones)), s.atfm?.groundStops ?? []);
+    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), loadFleet(), landedOf(logbook), logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight()), s.atfm?.groundStops ?? []);
     const open = proposals.filter((p) => p.status === "proposed" && !isHeld(p));
     const held = proposals.filter((p) => p.status === "proposed" && isHeld(p));
     const inFlight = proposals.filter(isInFlight).sort((a, b) => a.statusAt.localeCompare(b.statusAt));
