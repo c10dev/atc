@@ -149,9 +149,9 @@ test("CREW BRIEFING: 등록번호·폴더·팀원·자격·교신 규칙을 담�
   };
   const text = crewBriefing(a, "/home/c10/projects/vocado_nextjs", "shadow");
   assert.ok(text.startsWith("[ATC FLEET] CREW BRIEFING · GOLF (TEAM_G) · AIRPORT VCDO"));
-  assert.ok(text.includes("이 세션의 이름은 TEAM_G입니다. 작업 폴더는 /home/c10/projects/vocado_nextjs입니다."));
+  assert.ok(text.includes("This session is named TEAM_G. Its working folder is /home/c10/projects/vocado_nextjs."));
   assert.ok(text.includes("- flash-helper: flash-helper (no BUILD, no CHECK verdicts, no SEC)"));
-  assert.ok(text.includes("SEC 작업은 Codex Engineering Task 템플릿을 쓰고"));
+  assert.ok(text.includes("Use the Codex Engineering Task template for SEC work"));
   assert.ok(text.includes("tail:TEAM_G"));
   assert.ok(text.includes("READBACK C-xxxx"));
   assert.ok(!text.includes("READBACK D-xxxx"));

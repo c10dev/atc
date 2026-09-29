@@ -136,7 +136,7 @@ export function pairChanges(added: string[], removed: string[]) {
   return { changed, added: added.filter((x) => !paired.has(x)), removed: removed.filter((x) => !paired.has(x)) };
 }
 
-// CAPTAIN에게 붙여 넣을 지시문. crewBriefing()과 같은 형식·말투(한국어, 항공 용어는 영어)
+// CAPTAIN에게 붙여 넣을 지시문. crewBriefing()과 같은 형식·말투(영어, ATC-126)
 export function crewChangeText(c: Pick<Created, "id" | "registration" | "after" | "added" | "removed" | "ratingImpact">): string {
   const reg = c.registration;
   const sec = c.after.ratings.includes("SEC");
@@ -145,27 +145,27 @@ export function crewChangeText(c: Pick<Created, "id" | "registration" | "after" 
   const lines = [
     `[ATC FLEET] CREW CHANGE · ${callsign({ name: reg })} (${reg}) · ${c.id}`,
     "",
-    `${reg} CAPTAIN, SUPERVISOR가 이 AIRCRAFT의 CREW COMPLEMENT를 바꿨습니다. 아래대로 팀원을 바꿔 주세요.`,
-    ...(p.removed.length ? ["", "내리는 CREW (멈추고 더 부르지 않습니다)", ...p.removed.map((x) => `- ${x}`)] : []),
-    ...(p.added.length ? ["", "타는 CREW (이 구성과 모델로 만듭니다)", ...p.added.map((x) => `- ${x}`)] : []),
-    ...(p.changed.length ? ["", "바뀌는 CREW (같은 POSITION)", ...p.changed.map(([from, to]) => `- ${from} → ${to.slice(to.indexOf(": ") + 2)}`)] : []),
+    `${reg} CAPTAIN, the SUPERVISOR changed this AIRCRAFT's CREW COMPLEMENT. Change your crew as follows.`,
+    ...(p.removed.length ? ["", "CREW leaving (stop them and do not call them again)", ...p.removed.map((x) => `- ${x}`)] : []),
+    ...(p.added.length ? ["", "CREW joining (create them with this composition and model)", ...p.added.map((x) => `- ${x}`)] : []),
+    ...(p.changed.length ? ["", "CREW changing (same POSITION)", ...p.changed.map(([from, to]) => `- ${from} → ${to.slice(to.indexOf(": ") + 2)}`)] : []),
     "",
-    "바뀐 뒤 CREW COMPLEMENT",
+    "CREW COMPLEMENT after the change",
     ...c.after.complement.map((m) => `- ${memberLabel(m)}`),
     "",
-    `TYPE RATING: ${c.after.ratings.join(", ") || "없음"}${sec ? " — SEC 작업은 Codex Engineering Task 템플릿을 쓰고 flash-helper(DeepSeek)는 쓰지 않습니다." : ""}`,
-    ...(c.ratingImpact.length ? c.ratingImpact.map((x) => `- ${x}`) : ["- 배정 범위는 그대로입니다."]),
+    `TYPE RATING: ${c.after.ratings.join(", ") || "none"}${sec ? " — Use the Codex Engineering Task template for SEC work, not flash-helper (DeepSeek)." : ""}`,
+    ...(c.ratingImpact.length ? c.ratingImpact.map((x) => `- ${x}`) : ["- The assignment range is unchanged."]),
     "",
-    "적용",
-    ...(p.removed.length ? ["- 내리는 팀원은 맡은 일을 마무리하게 한 뒤 멈추고, 그 구성으로 새로 부르지 않습니다."] : []),
-    ...(p.added.length ? ["- 타는 팀원은 위 agent로 만들고, 모델이 적혀 있으면 그 모델을 지정합니다."] : []),
+    "Apply",
+    ...(p.removed.length ? ["- Let crew who are leaving finish what they hold, then stop them; do not call them again in that role."] : []),
+    ...(p.added.length ? ["- Create joining crew with the agent above, and set the model if one is given."] : []),
     ...(p.changed.some(([from, to]) => agentOf(from) !== agentOf(to))
-      ? ["- agent나 모델이 바뀐 팀원은 멈추고 새 agent·모델로 다시 만듭니다."]
+      ? ["- Stop crew whose agent or model changed and recreate them with the new agent and model."]
       : []),
-    ...(p.changed.some(([from, to]) => agentOf(from) === agentOf(to)) ? ["- 제약만 바뀐 팀원은 그대로 두고 새 제약을 알려 줍니다."] : []),
-    `- 지금 FLIGHT는 그대로 계속합니다.${c.ratingImpact.length ? " 다음 배정부터 위 영향이 적용됩니다." : ""}`,
+    ...(p.changed.some(([from, to]) => agentOf(from) === agentOf(to)) ? ["- Leave crew whose limits alone changed as they are and tell them the new limits."] : []),
+    `- Continue the current FLIGHT as is.${c.ratingImpact.length ? " The impact above applies from the next assignment." : ""}`,
     "",
-    `적용이 끝나면 \"${reg} CREW CHANGE ${c.id} COMPLETE\" 한 줄만 남기세요.`,
+    `When applied, leave only the line \"${reg} CREW CHANGE ${c.id} COMPLETE\".`,
   ];
   return lines.join("\n");
 }

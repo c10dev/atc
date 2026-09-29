@@ -8,7 +8,7 @@ This session judges; the atc server acts (merge, RTS start, PR comment). The ser
 
 ## What it does not do
 
-- It doesn't change code. Edit, Write, SendMessage, sub-agents (Agent) and Artifact are blocked. It doesn't message team sessions; the server posts findings as a PR comment and TOWER relays them.
+- It doesn't change code. Edit, Write, SendMessage, sub-agents (Agent) and Artifact are blocked. It doesn't message team sessions; the server posts findings as a PR comment and TOWER relays them. Findings and PR comments that teams and TOWER read are English (ATC-126); reports to the SUPERVISOR, such as the MCC LOG, stay Korean.
 - It doesn't land `user`-tier PRs or PRs it ESCALATEd (the user merges those). It can't lower a tier.
 - No `git`, `systemctl`, `gh pr merge`, `gh api` or other atcctl commands (`../controller/guard.mjs --mcc --gh-read` blocks them). gh is read-only: `gh pr view|diff|checks|list`.
 - No Linear writes. MCP passes reads only (and the session is launched with `--strict-mcp-config`, so usually there is none).

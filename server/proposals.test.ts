@@ -266,11 +266,11 @@ test("FLIGHT PLAN 문구(DIRECT): BRIEF 줄·콜사인·FLIGHT·AIRPORT·PRIORIT
       "FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High",
       "권한 정리",
       "https://linear.app/x/VOC-193",
-      "완료 기준: 이슈 본문(링크)의 완료 기준을 따릅니다.",
-      "DISPATCH 메모: CAUTION · DB 권한 작업",
-      "애매한 곳은 PILOT'S DISCRETION으로 합리적인 기본값을 고르고 PR에 적으세요.",
-      '— 받았으면 이 메시지에 "READBACK D-0007", 못 하면 "UNABLE D-0007 — 사유", 시간이 필요하면 "STANDBY D-0007"로 답장해 주세요.',
-      "끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요.",
+      "Done when: Follow the done criteria in the issue body (link).",
+      "DISPATCH note: CAUTION · DB 권한 작업",
+      "Where it is ambiguous, use PILOT'S DISCRETION: pick a reasonable default and record it in the PR.",
+      '— Reply to this message with "READBACK D-0007" if you take it, "UNABLE D-0007 — reason" if you cannot, or "STANDBY D-0007" if you need time.',
+      "Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision.",
     ].join("\n"),
   );
 });
@@ -279,7 +279,7 @@ test("FLIGHT PLAN 문구(DIRECT): 이슈 본문에서 목표·완료 기준·이
   const [p] = fold([create("D-0009", "VOC-200", "b", 10)]);
   const body = ["## 목표", "재생 버튼 정리", "## 수정 허용 범위", "- src/app/song/**", "## 금지 사항", "- DB 변경", "## 완료 기준", "- 테스트 통과", "- 화면 확인"].join("\n");
   const msg = formatFlightPlan({ ...p, airport: "VCDO" }, { title: "버튼", url: "u", priority: 3 }, "TEAM_F", body);
-  assert.ok(msg.includes("목표: 재생 버튼 정리\n완료 기준:\n- 테스트 통과\n- 화면 확인\n이 작업만의 제약:\n- DB 변경"), msg);
+  assert.ok(msg.includes("Goal: 재생 버튼 정리\nDone when:\n- 테스트 통과\n- 화면 확인\nConstraints:\n- DB 변경"), msg);
   assert.ok(!msg.includes("src/app/song"));
   assert.ok(msg.split("\n")[1] === "BRIEF: DIRECT");
 });
@@ -287,7 +287,7 @@ test("FLIGHT PLAN 문구(DIRECT): 이슈 본문에서 목표·완료 기준·이
 test("FLIGHT PLAN 문구: HOLD가 있으면 선행 FLIGHT 줄이 들어간다", () => {
   const [p] = fold([create("D-0008", "VOC-192", "b", 10), { op: "hold", id: "D-0008", at: iso(9), blockedBy: ["VOC-180"] }]);
   const msg = formatFlightPlan({ ...p, airport: "VCDO" }, { title: "별도 이슈", url: "u", priority: 2 }, "TEAM_F");
-  assert.ok(msg.includes("HOLD — 선행 FLIGHT VOC180가 끝난 뒤 착수"));
+  assert.ok(msg.includes("HOLD — start after the preceding FLIGHT VOC180 is done"));
 });
 
 test("HOLD: 제안은 열린 목록에서 빠지고, AIRCRAFT는 놓아 주되 FLIGHT는 잡아 둔 채 선행이 끝나면 풀린다", () => {
@@ -513,9 +513,9 @@ test("RECALL: sent·accepted → recalling → recalled, departed·approved에�
   // 문구: 머리, FLIGHT, 사유, STAND를 두라는 말, READBACK 방법
   const text = formatRecall(fold(base)[0], { title: "권한 정리" }, "TEAM_B", "우선순위 바뀜");
   assert.equal(text.split("\n")[0], "[DISPATCH D-0001] RECALL · BRAVO (TEAM_B)");
-  assert.match(text, /FLIGHT VOC1 · AIRPORT VCDO — 이 FLIGHT PLAN을 거둬들입니다/);
-  assert.match(text, /사유: 우선순위 바뀜/);
-  assert.match(text, /STAND\(워크트리\)는 정리하지 말고 그대로/);
+  assert.match(text, /FLIGHT VOC1 · AIRPORT VCDO — this FLIGHT PLAN is withdrawn/);
+  assert.match(text, /Reason: 우선순위 바뀜/);
+  assert.match(text, /Do not clean up the STAND \(worktree\)/);
   assert.match(text, /"READBACK D-0001 RECALL"/);
 });
 
@@ -699,8 +699,8 @@ test("RECALL: STAND 없이 DEPARTED한 FLIGHT도 RECALL되고, RECALLED면 STAND
   assert.equal(reservedOf([p], NOW).aircraft.get("TEAM_B"), "D-0001");
   // STAND 없는 FLIGHT의 RECALL 문구는 STAND 대신 중간 결과를 남기라고 한다
   const text = formatRecall(fold(flying)[0], { title: "t" }, "TEAM_B", "r");
-  assert.match(text, /중간 결과가 있으면 링크나 한 줄로/);
-  assert.doesNotMatch(text, /STAND\(워크트리\)/);
+  assert.match(text, /interim results, leave a link or one line/);
+  assert.doesNotMatch(text, /STAND \(worktree\)/);
   [p] = fold([...flying, { op: "recall", id: "D-0001", at: iso(60), reason: "r", message: "R" }, { op: "recalled", id: "D-0001", at: iso(30) }]);
   assert.equal(p.status, "recalled");
   assert.equal(isInFlight(p), false);
@@ -866,7 +866,7 @@ test("FLIGHT PLAN 문구(DIRECT): 긴 이슈(ATC-34)도 완료 기준·제약을
   assert.ok(msg.includes("any PR the SUPERVISOR marks \"hold\""));
   assert.ok(msg.includes("puts AUTOLAND in GROUND STOP"));
   assert.ok(msg.includes("The atc repo's own landing (structure merges auto/flagged) is out of scope."));
-  assert.ok(msg.endsWith("끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요."));
+  assert.ok(msg.endsWith("Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision."));
 });
 
 test("STANDBY D-xxxx(ATC-122): sent에서만 받고, 첫 STANDBY부터 READBACK overdue 10분을 한 번 다시 센다", () => {

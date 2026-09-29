@@ -435,26 +435,26 @@ export function entryIntoService(
   return { registration: reg, profile: { ...profile, configuration: cfgId, enteredAt: now } };
 }
 
-// CREW BRIEFING: 새 세션에 붙여 넣을 시작 지시문. 팀 세션은 vocado CLAUDE.md를 따르므로 한국어로 쓴다.
+// CREW BRIEFING: 새 세션에 붙여 넣을 시작 지시문. 에이전트끼리 주고받는 글이라 영어로 쓴다(ATC-126). 항공 용어와 머리말은 그대로.
 export function crewBriefing(a: AircraftView, repo: string | null, mode: "shadow" | "approval"): string {
   const crew = a.complement.map((m) => `- ${m.position}: ${m.agent}${m.limits?.length ? ` (${m.limits.join(", ")})` : ""}`);
   const lines = [
     `[ATC FLEET] CREW BRIEFING · ${a.callsign} (${a.registration})${a.base ? ` · AIRPORT ${a.base}` : ""}`,
     "",
-    `이 세션의 이름은 ${a.registration}입니다.${repo ? ` 작업 폴더는 ${repo}입니다.` : ""} 당신은 이 팀의 CAPTAIN(리더)이고, 그 저장소의 CLAUDE.md 팀 규칙을 따릅니다.`,
+    `This session is named ${a.registration}.${repo ? ` Its working folder is ${repo}.` : ""} You are this team's CAPTAIN (lead) and follow the team rules in that repository's CLAUDE.md.`,
     "",
-    "CREW COMPLEMENT (팀원을 만들 때 이 구성과 모델을 씁니다)",
+    "CREW COMPLEMENT (use this composition and these models when you create crew)",
     ...crew,
     "",
-    `TYPE RATING: ${a.ratings.join(", ") || "없음"} — 이 범위의 FLIGHT가 배정됩니다.${a.ratings.includes("SEC") ? " SEC 작업은 Codex Engineering Task 템플릿을 쓰고 flash-helper(DeepSeek)는 쓰지 않습니다." : " SEC(DB·보안·권리) 작업은 받지 않습니다."}`,
-    `ROUTE: ${a.routes.join(", ") || "지정 없음"}`,
+    `TYPE RATING: ${a.ratings.join(", ") || "none"} — FLIGHTs in this range are assigned to you.${a.ratings.includes("SEC") ? " Use the Codex Engineering Task template for SEC work, not flash-helper (DeepSeek)." : " You do not take SEC (DB, security, rights) work."}`,
+    `ROUTE: ${a.routes.join(", ") || "unassigned"}`,
     "",
-    "배정과 교신",
-    `- Linear 라벨이 tail:${a.registration}인 이슈는 이 팀 몫입니다. Linear에는 CAPTAIN만 씁니다.`,
-    "- atc TOWER가 [ATC C-xxxx]로 시작하는 CLEARANCE를 보내면 그 메시지에 READBACK C-xxxx로 답합니다.",
-    ...(mode === "approval" ? ["- atc OCC가 [DISPATCH D-xxxx] FLIGHT PLAN을 보내면 맡을 때 READBACK D-xxxx, 못 맡으면 사유로 답합니다."] : []),
+    "Assignments and messages",
+    `- Issues labeled tail:${a.registration} in Linear are this team's. Only the CAPTAIN writes to Linear.`,
+    "- When atc TOWER sends a CLEARANCE starting with [ATC C-xxxx], answer that message with READBACK C-xxxx.",
+    ...(mode === "approval" ? ["- When atc OCC sends a [DISPATCH D-xxxx] FLIGHT PLAN, answer READBACK D-xxxx if you take it, or UNABLE D-xxxx — reason if you cannot."] : []),
     "",
-    `준비가 끝나면 \"${a.registration} IN SERVICE\" 한 줄만 남기고 배정을 기다리세요.`,
+    `When ready, leave only the line \"${a.registration} IN SERVICE\" and wait for assignments.`,
   ];
   return lines.join("\n");
 }

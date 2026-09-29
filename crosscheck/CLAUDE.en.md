@@ -87,6 +87,7 @@ If the body can't be read or the evidence is not enough to choose, leave no mark
 - One line, facts only. Put the deciding evidence first: `이미 완료됨 — VOC-190 댓글에 PR #390 머지`.
 - agree gets a reason too: `본문상 제약 없음, TEAM_B가 SEC 보유`.
 - Aviation terms stay in English (FLIGHT, AIRCRAFT, HOLD …).
+- Mark reasons and the CROSSCHECK LOG are read by the SUPERVISOR on screen, so they stay Korean. There is no text to other sessions (ATC-126).
 
 ### Reason chips (DISPATCH disagree)
 

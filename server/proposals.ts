@@ -581,12 +581,12 @@ export const descriptionOf = (d: Record<string, unknown>): string | null => (typ
 export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "url" | "priority"> | undefined, sessionName: string, description: string | null = null): string {
   const sign = callsign({ name: sessionName });
   const who = sign === sessionName ? sessionName : `${sign} (${sessionName})`;
-  const note = p.note ? `DISPATCH 메모: ${p.caution ? "CAUTION · " : ""}${p.note}` : p.caution ? "DISPATCH 메모: CAUTION" : null;
-  const hold = p.hold.length ? `HOLD — 선행 FLIGHT ${p.hold.map(flightNumber).join(", ")}가 끝난 뒤 착수` : null;
+  const note = p.note ? `DISPATCH note: ${p.caution ? "CAUTION · " : ""}${p.note}` : p.caution ? "DISPATCH note: CAUTION" : null;
+  const hold = p.hold.length ? `HOLD — start after the preceding FLIGHT ${p.hold.map(flightNumber).join(", ")} is done` : null;
   return [
     `[DISPATCH ${p.id}] FLIGHT PLAN · ${who}`,
     DIRECT_LINE,
-    `FLIGHT ${flightNumber(p.flight)} · AIRPORT ${p.airport ?? "—"} · PRIORITY ${PRIORITY_NAME[ticket?.priority ?? 0] ?? "없음"}`,
+    `FLIGHT ${flightNumber(p.flight)} · AIRPORT ${p.airport ?? "—"} · PRIORITY ${ticket?.priority ? (PRIORITY_NAME[ticket.priority] ?? "None") : "None"}`,
     ticket?.title ?? p.flight,
     ticket?.url ?? null,
     ...directLines(directSectionsOf(description)),
@@ -606,13 +606,13 @@ export function formatRecall(p: Pick<Proposal, "id" | "flight" | "airport" | "st
   const who = sign === sessionName ? sessionName : `${sign} (${sessionName})`;
   return [
     `[DISPATCH ${p.id}] RECALL · ${who}`,
-    `FLIGHT ${flightNumber(p.flight)} · AIRPORT ${p.airport ?? "—"} — 이 FLIGHT PLAN을 거둬들입니다.`,
+    `FLIGHT ${flightNumber(p.flight)} · AIRPORT ${p.airport ?? "—"} — this FLIGHT PLAN is withdrawn.`,
     ticket?.title ?? p.flight,
-    `사유: ${reason}`,
+    `Reason: ${reason}`,
     // STAND 없이 DEPARTED한 FLIGHT(SURVEY·CHECK)에는 정리할 STAND가 없다. 중간 결과를 남기게 한다
     isStandFreeAirborne(p)
-      ? "작업을 멈추세요. 중간 결과가 있으면 링크나 한 줄로 남겨 두세요 — 다른 AIRCRAFT가 이어받을 수 있게."
-      : "작업을 멈추세요. STAND(워크트리)는 정리하지 말고 그대로 두세요 — 다른 AIRCRAFT가 이어받을 수 있게.",
+      ? "Stop work. If you have interim results, leave a link or one line — so another AIRCRAFT can pick it up."
+      : "Stop work. Do not clean up the STAND (worktree); leave it as is — so another AIRCRAFT can pick it up.",
     closingLine("recall", responseOf("recall"), p.id),
   ].join("\n");
 }

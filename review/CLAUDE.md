@@ -36,7 +36,7 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 - **보안 PR**(자료에 `security`가 있음: 설정으로 보낸 PR): 리뷰한다. 권한(GRANT·REVOKE·EXECUTE·SECURITY DEFINER), RLS·policy, 인증·세션·admission 검사, 마이그레이션을 되돌릴 수 있는지, 비밀이 코드나 로그에 새지 않는지를 특히 본다. 확신이 없으면 pass하지 않고 P1로 남긴다. 기록에는 서버가 `security: true`를 붙인다.
 - **등급**: Codex처럼 P0(머지하면 안 됨), P1(머지 전에 고칠 것), P2(나중에 해도 됨). P0·P1이 하나도 없으면 `pass`, 있으면 `findings`. 지적마다 `P1 파일:줄 — 무엇이 왜 문제인지` 한 줄로 쓴다. `pass`에도 본 범위와 P2를 적는다.
 - **잘린 diff**: 본 범위를 적는다. 잘린 부분에 위험이 있을 수 있으면 `findings`(P1 "diff가 잘려 X를 확인하지 못함")로 남긴다.
-- **기록**: `--head`는 자료의 `head`. 4000자 이내. head가 바뀌었으면 409 — 다음 바퀴에 새 자료로 다시 본다. `findings`는 TOWER가 CAPTAIN에게 전한다.
+- **기록**: `--head`는 자료의 `head`. 4000자 이내. head가 바뀌었으면 409 — 다음 바퀴에 새 자료로 다시 본다. `findings`는 TOWER가 CAPTAIN에게 전한다. 그래서 리뷰 글(지적 줄)은 영어로 쓴다(ATC-126). REVIEW LOG는 SUPERVISOR에게 하는 보고라 한국어다.
 - 한 바퀴에 PR 2건까지. 같은 head를 다시 리뷰하지 않는다(pending에서 빠진다).
 
 ## REVIEW LOG

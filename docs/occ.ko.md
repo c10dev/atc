@@ -302,7 +302,7 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 
 ### 8.3 ID로 보내기, 만든 대로 (ATC-119)
 
-OCC는 머리만 보내고, send-guard가 atc가 저장한 문구를 바꿔 넣는다. OCC가 FLIGHT PLAN·RECALL·CREW CHANGE를 다시 치지 않으므로, 오타가 팀이 받는 지시가 되지 않는다.
+OCC는 머리만 보내고, send-guard가 atc가 저장한 문구를 바꿔 넣는다. ATC-126부터 저장되는 FLIGHT PLAN·RECALL·CREW CHANGE 문구는 영어다(머리 `[DISPATCH D-xxxx]`·`[OCC CC-xxxx]`와 `READBACK …` 답은 그대로라 guard의 비교는 바뀌지 않는다). 그 전에 저장된 문구는 저장된 대로 남는다. OCC가 FLIGHT PLAN·RECALL·CREW CHANGE를 다시 치지 않으므로, 오타가 팀이 받는 지시가 되지 않는다.
 
 - **머리만:** `[DISPATCH D-xxxx]`, `[DISPATCH D-xxxx] RECALL`, `[OCC CC-xxxx]`, 뒤에는 공백만. `atcctl dispatch release`·`dispatch recall-send`·`crew-change send`가 `SEND TO:` 아래 `SEND:` 줄로 내고, 전체 문구는 로그용으로 `---` 아래에 그대로 둔다.
 - **guard:** 확인은 모두 전과 같다: approval 모드, 상태(`sent`, RECALL은 `recalling`), 받는 사람이 그 CAPTAIN(CREW CHANGE는 그 AIRCRAFT, `[ref]` 허용), 저장된 문구가 있음. 저장된 문구가 같은 머리로 시작해야 한다. 통과하면 PreToolUse hook이 `permissionDecision: "allow"`와 `updatedInput`으로 답한다: `message`(와 하네스 사본 `content`)가 저장된 문구가 되고, `additionalContext`로 실제로 나간 문구가 OCC의 대화 기록에 남는다.
@@ -376,7 +376,7 @@ vocado #394는 수정 → `@codex review` → 더 작은 새 지적(P2, 그다�
 - **착륙 규칙**(`reviewBlocks`): head의 지적이 모두 P3이고 P3 스레드마다 resolve됐거나 Codex 아닌 사람의 답글이 달렸으면, Codex의 head 리뷰를 리뷰로 치고 `review-findings`로 막지 않는다. P0·P1·P2가 하나라도 있으면 전처럼 막고 수를 보인다: "Codex 지적 있음(head b1c684c, P2 1 · P3 1) — 반영 후 재리뷰 필요". 해결도 답글도 없는 P3가 있으면 "Codex P3 지적 2건 중 1건이 해결·답글 없음 … — 스레드를 resolve하거나 답글을 달면 P3는 착륙을 막지 않음"으로 막는다. 인라인 지적 없는 head 리뷰, atc가 스레드를 못 읽은 경우는 전처럼 막는다. 뒤이은 Codex 👍나 사람 APPROVED는 여전히 풀어 준다.
 - **스레드**: atc는 head에 Codex 지적이 있는 PR과 BLOCKED인 PR(Draft 아님)의 리뷰 스레드를 읽는다(`gh api graphql`, `reviewThreads`, 읽기 전용, 매 바퀴, 캐시 없음).
 - **BLOCKED 사유**: vocado 보호 규칙 "리뷰 스레드 해결 필수"는 GitHub에서 그대로 적용된다. 해결 안 된 스레드가 있는 BLOCKED PR은 "GitHub 보호 규칙이 머지를 막음 — 해결 안 된 리뷰 스레드 N개(스레드 해결 필수: resolve해야 머지된다)"로 보인다. head에 P2와 P3가 열려 있는 #394가 이 경우다.
-- **보이는 곳**: `PullRequest.codexFindings`와 `landingQueue[].codexFindings`(`p0`–`p3`, `unmarked`, `open`, `ok`). 스트립에는 "Codex P3 2건(해결됨) — 착륙 막지 않음", LAND 글 끝에는 "Codex P3 지적 2건은 남아 있음(해결·답글됨, 착륙은 막지 않음)."이 붙는다.
+- **보이는 곳**: `PullRequest.codexFindings`와 `landingQueue[].codexFindings`(`p0`–`p3`, `unmarked`, `open`, `ok`). 스트립에는 "Codex P3 2건(해결됨) — 착륙 막지 않음", LAND 글 끝에는 "Codex P3 findings left: 2 (resolved or answered; they do not block landing)."이 붙는다.
 
 ### 9.4 쌓인 PR과 STRANDED 머지 (2026-09-27, ATC-29)
 

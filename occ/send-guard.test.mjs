@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { checkSend, hookOutputOf, resolveSend } from "./send-guard.mjs";
 
-const MSG = '[DISPATCH D-0007] FLIGHT PLAN · BRAVO (TEAM_B)\nFLIGHT VOC193 · AIRPORT VCDO · PRIORITY High\n권한 정리\n— 맡으면 이 메시지에 "READBACK D-0007", 못 맡으면 사유로 답장해 주세요.';
+const MSG = '[DISPATCH D-0007] FLIGHT PLAN · BRAVO (TEAM_B)\nFLIGHT VOC193 · AIRPORT VCDO · PRIORITY High\n권한 정리\n— Reply to this message with "READBACK D-0007" if you take it, "UNABLE D-0007 — reason" if you cannot, or "STANDBY D-0007" if you need time.';
 const sent = { proposal: { id: "D-0007", status: "sent", aircraftName: "TEAM_B", message: MSG }, mode: "approval" };
 const with_ = (over) => async () => ({ ...sent, ...over, proposal: { ...sent.proposal, ...over.proposal } });
 
@@ -28,7 +28,7 @@ test("막는 경우: shadow 모드, 상태, 받는 사람, 문구, 형식, 없�
   for (const [input, fetcher, expected] of cases) assert.match(await checkSend(input, fetcher), expected);
 });
 
-const RECALL = '[DISPATCH D-0007] RECALL · BRAVO (TEAM_B)\nFLIGHT VOC193 · AIRPORT VCDO — 이 FLIGHT PLAN을 거둬들입니다.\n권한 정리\n사유: 우선순위 바뀜\n작업을 멈추세요. STAND(워크트리)는 정리하지 말고 그대로 두세요 — 다른 AIRCRAFT가 이어받을 수 있게.\n— 받았으면 이 메시지에 "READBACK D-0007 RECALL"로 답장해 주세요.';
+const RECALL = '[DISPATCH D-0007] RECALL · BRAVO (TEAM_B)\nFLIGHT VOC193 · AIRPORT VCDO — this FLIGHT PLAN is withdrawn.\n권한 정리\nReason: 우선순위 바뀜\nStop work. Do not clean up the STAND (worktree); leave it as is — so another AIRCRAFT can pick it up.\n— When received, reply to this message with "READBACK D-0007 RECALL".';
 const recalling = { proposal: { id: "D-0007", status: "recalling", aircraftName: "TEAM_B", message: MSG, recallMessage: RECALL }, mode: "approval" };
 const recallWith = (over) => async () => ({ ...recalling, ...over, proposal: { ...recalling.proposal, ...over.proposal } });
 
@@ -52,7 +52,7 @@ test("RECALL 막는 경우: shadow 모드, 상태(sent·accepted·recalled), 받
   for (const [input, fetcher, expected] of cases) assert.match(await checkSend(input, fetcher), expected);
 });
 
-const CC = '[OCC CC-0003] CREW CHANGE · HOTEL (TEAM_H)\n\nTEAM_H CAPTAIN, SUPERVISOR가 이 AIRCRAFT의 CREW COMPLEMENT를 바꿨습니다.\n\n내리는 CREW (멈추고 더 부르지 않습니다)\n- flash-helper: flash-helper\n\n— 받았으면 이 메시지에 "READBACK CC-0003"로 답장해 주세요.';
+const CC = '[OCC CC-0003] CREW CHANGE · HOTEL (TEAM_H)\n\nTEAM_H CAPTAIN, the SUPERVISOR changed this AIRCRAFT\'s CREW COMPLEMENT.\n\nCREW leaving (stop them and do not call them again)\n- flash-helper: flash-helper\n\n— Reply to this message with "READBACK CC-0003" if you take it, "UNABLE CC-0003 — reason" if you cannot, or "STANDBY CC-0003" if you need time.';
 const ccSent = { change: { id: "CC-0003", status: "sent", registration: "TEAM_H", message: CC }, mode: "approval" };
 const ccWith = (over) => async () => ({ ...ccSent, ...over, change: { ...ccSent.change, ...over.change } });
 

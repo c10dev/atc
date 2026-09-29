@@ -283,7 +283,7 @@ In step 3 of `/tick`, besides the review note, OCC writes a BRIEFING on every op
 
 ### 8.3 Delivery by ID as built (ATC-119)
 
-OCC sends only the header; send-guard puts in the text atc stored. OCC never retypes a FLIGHT PLAN, RECALL or CREW CHANGE, so a typo can't turn into an instruction the team receives.
+OCC sends only the header; send-guard puts in the text atc stored. Since ATC-126 the stored FLIGHT PLAN, RECALL and CREW CHANGE texts are English (the headers `[DISPATCH D-xxxx]`, `[OCC CC-xxxx]` and the `READBACK …` replies are unchanged, so the guard's matching is unchanged); a text stored before that stays as it was stored. OCC never retypes a FLIGHT PLAN, RECALL or CREW CHANGE, so a typo can't turn into an instruction the team receives.
 
 - **Header only:** `[DISPATCH D-xxxx]`, `[DISPATCH D-xxxx] RECALL` or `[OCC CC-xxxx]`, followed by nothing but whitespace. `atcctl dispatch release`, `dispatch recall-send` and `crew-change send` print it as the `SEND:` line under `SEND TO:`; the full text stays below `---` for the log.
 - **Guard:** every check runs as before: approval mode, status (`sent`, `recalling` for a RECALL), recipient is that CAPTAIN (a CREW CHANGE: that AIRCRAFT, `[ref]` allowed), a stored text exists. The stored text must also start with the same header. Then the PreToolUse hook answers `permissionDecision: "allow"` with `updatedInput`: `message` (and the harness copy `content`) becomes the stored text, and `additionalContext` puts the delivered text into OCC's transcript.
@@ -345,7 +345,7 @@ vocado #394 went through fix → `@codex review` → a new, smaller finding (P2,
 - **Landing rule** (`reviewBlocks`): when every head finding is P3 and each P3 thread is resolved or answered by someone other than Codex, the Codex head review counts as the review and `review-findings` does not block. Any P0, P1 or P2 blocks as before, with the counts: "Codex 지적 있음(head b1c684c, P2 1 · P3 1) — 반영 후 재리뷰 필요". An open P3 (neither resolved nor answered) blocks with "Codex P3 지적 2건 중 1건이 해결·답글 없음 … — 스레드를 resolve하거나 답글을 달면 P3는 착륙을 막지 않음". A head review with no inline findings, or threads atc couldn't read, blocks as before. A later Codex 👍 or a human APPROVED still clears.
 - **Threads**: atc reads review threads (`gh api graphql`, `reviewThreads`, read-only, every poll, not cached) for non-draft PRs with Codex findings on the head and for BLOCKED PRs.
 - **BLOCKED reason**: vocado's protection rule "review threads must be resolved" still applies on GitHub. A BLOCKED PR with unresolved threads shows "GitHub 보호 규칙이 머지를 막음 — 해결 안 된 리뷰 스레드 N개(스레드 해결 필수: resolve해야 머지된다)". #394 (a P2 and a P3 open on the head) is this case.
-- **Shown**: `PullRequest.codexFindings` and `landingQueue[].codexFindings` (`p0`–`p3`, `unmarked`, `open`, `ok`). The strip shows "Codex P3 2건(해결됨) — 착륙 막지 않음", and the LAND text ends with "Codex P3 지적 2건은 남아 있음(해결·답글됨, 착륙은 막지 않음)."
+- **Shown**: `PullRequest.codexFindings` and `landingQueue[].codexFindings` (`p0`–`p3`, `unmarked`, `open`, `ok`). The strip shows "Codex P3 2건(해결됨) — 착륙 막지 않음", and the LAND text ends with "Codex P3 findings left: 2 (resolved or answered; they do not block landing)."
 
 ### 9.4 Stacked PRs and stranded merges (2026-09-27, ATC-29)
 

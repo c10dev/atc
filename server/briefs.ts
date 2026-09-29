@@ -8,8 +8,8 @@ import { findingSeverityOf, type GhThread, isCodexBot, type LandingReview } from
 export type BriefKind = "DIRECT" | "VECTORS";
 export const BRIEF_KINDS: BriefKind[] = ["VECTORS", "DIRECT"];
 export const DIRECT_LINE = "BRIEF: DIRECT";
-export const FINISH_LINE = "끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요.";
-export const DISCRETION_LINE = "애매한 곳은 PILOT'S DISCRETION으로 합리적인 기본값을 고르고 PR에 적으세요.";
+export const FINISH_LINE = "Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision.";
+export const DISCRETION_LINE = "Where it is ambiguous, use PILOT'S DISCRETION: pick a reasonable default and record it in the PR.";
 
 // 지시서 머리 줄. `BRIEF: DIRECT`가 있으면 DIRECT, `BRIEF: VECTORS`면 VECTORS, 없으면 null
 export function briefLineOf(text: string): BriefKind | null {
@@ -172,14 +172,14 @@ export function directSectionsOf(md: string | null | undefined): DirectSections 
 // 넘으면 완료 기준·제약을 일부만 싣지 않는다 — 앞부분만 보이면 빠진 금지 항목을 놓친다(ATC-35).
 // 대신 목표만 두고 FULL_TEXT_LINE 한 줄로 이슈 본문을 읽으라고 적는다
 export const BRIEF_BODY_MAX = 4000;
-export const FULL_TEXT_LINE = "완료 기준·제약 전문은 이슈 본문에서 읽으세요.";
+export const FULL_TEXT_LINE = "Read the full done criteria and constraints in the issue body.";
 
 // DIRECT 지시서의 본문 줄(머리 줄과 끝 줄 사이). 여러 줄이면 이름표 다음 줄부터
 export function directLines(s: DirectSections): string[] {
   // 여러 줄이거나 한 줄이라도 목록 항목(`* x`, `- x`, `1. x`)이면 이름표 다음 줄부터(ATC-58)
   const field = (name: string, v: string) => (v.includes("\n") || /^\s*(?:[*+-]|\d+[.)])\s/.test(v) ? `${name}:\n${v}` : `${name}: ${v}`);
-  const goal = s.goal ? field("목표", s.goal) : null;
-  const rest = [field("완료 기준", s.done ?? "이슈 본문(링크)의 완료 기준을 따릅니다."), s.constraints ? field("이 작업만의 제약", s.constraints) : null].filter((x) => x !== null);
+  const goal = s.goal ? field("Goal", s.goal) : null;
+  const rest = [field("Done when", s.done ?? "Follow the done criteria in the issue body (link)."), s.constraints ? field("Constraints", s.constraints) : null].filter((x) => x !== null);
   if ((goal?.length ?? 0) + rest.reduce((n, x) => n + x.length + 1, 0) > BRIEF_BODY_MAX) return [goal, FULL_TEXT_LINE].filter((x) => x !== null);
   return [goal, ...rest].filter((x) => x !== null);
 }
@@ -193,7 +193,7 @@ export function formatAssignment(t: { key: string; title: string | null; url: st
     t.url,
     ...directLines(directSectionsOf(description)),
     DISCRETION_LINE,
-    `— 맡으면 "READBACK ${t.key}", 못 맡으면 사유로 답해 주세요. PR을 올리면 번호를 알려 주세요.`,
+    `— If you take it, answer "READBACK ${t.key}"; if you cannot, answer with the reason. Tell me the PR number when you open it.`,
     FINISH_LINE,
   ]
     .filter(Boolean)
