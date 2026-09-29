@@ -93,7 +93,7 @@ export function SettingsPanel({
         ) : tab === "agents" ? (
           <AgentSettings snapshot={snapshot} server={server} save={save} onNavigate={onClose} />
         ) : tab === "alerts" ? (
-          <AlertsSettings />
+          <AlertsSettings save={save} />
         ) : (
           <AutomationSettings server={server} save={save} />
         )}

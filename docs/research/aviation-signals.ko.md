@@ -285,6 +285,16 @@ atc는 이미 같은 모양이다:
 - 이 출처들 중 어느 것도 공개 MIT 저장소에 넣을 수 없다.
 - 나중에 음성 안내("TEAM_G STALLED")를 원하면, 브라우저의 `speechSynthesis`가 데이터 없이 글에서 로컬로 만든다. ATC-87은 지금은 범위 밖으로 둔다.
 
+**As built (ATC-140, 음성 콜아웃).** 위의 "음성 콜아웃은 나중에"가 만들어졌다. 다만 브라우저 `speechSynthesis`가 아니다: 그 출력은 Web Audio로 보낼 수 없고, 이 컴퓨터의 Chrome은 글을 밖으로 보내는 Google 음성으로 물러난다. **로컬 엔진**이 목소리를 만들고 브라우저가 무전 효과를 씌운다. 안내: [docs/guide/voice.md](../guide/voice.md).
+
+- **문구**(`server/voice-phrase.ts`, 순수 함수). 알림 종류마다 정해진 영어 틀. 알림 `key`에서 종류를 읽고, 콜사인은 `callsign()`, FLIGHT 번호는 한 자리씩(`ATC-120` → "ATC one two zero", 9는 "niner"). 한국어 `text`는 읽지 않는다. 출력은 `[A-Za-z0-9 ,.'-]`와 200자까지. 종류: WARNING `conflict`·`stranded`·RTS `rollback`/`failed`, CALL은 도구 승인 PENDING·DISPATCH 제안·HUMAN CHECK. `STALLED` 틀도 있지만 health는 CAUTION이라 읽지 않는다. 틀이 없으면 `null`(톤만).
+- **엔진 어댑터**(`server/tts.ts`). `piper`는 셸 없이 `execFile`(`-m <목소리>.onnx -f <파일>`, 문구는 stdin, 5초 제한, 한 번에 하나. 짧은 옵션이라 옛 `piper` 실행 파일과 `piper-tts` 모두 받는다), `stub`은 시험용, 설치된 것이 없으면 기본 `none`. 설정은 `ATC_TTS_ENGINE`·`ATC_TTS_PIPER`·`ATC_TTS_VOICES`·`ATC_TTS_VOICE`. 실행 파일이나 목소리가 없으면 예외가 아니라 상태다. 다른 엔진은 어댑터 하나다.
+- **API**(`server/voice-run.ts`, 파일만. 서버는 소리를 내지 않는다). `GET /api/voice/status`, `GET /api/voice/alert/:key.wav`는 **지금 있는** 알림 key의 문구를 만든다(그 밖은 404, 화면은 글을 보내지 않는다), `GET /api/voice/preview.wav?voice=`는 고정 예시. WAV는 `hash(엔진, 목소리, 문구)`로 `~/.local/state/atc/voice-cache/`에 캐시한다(200개 또는 20 MB, 오래된 것부터 지움. 버려도 되고 저장소에 들어가지 않는다).
+- **라디오 체인**(`web/src/radio.ts`, 순수 함수 `radioSpecOf`·`planOf`·`driveCurve`). 키 클릭(잡음 15 ms), 스켈치 열림(대역 제한 잡음 80 ms), 음성은 하이패스 300 Hz → 로패스 3000 Hz → 가벼운 `WaveShaper` → `DynamicsCompressor`, 음성 밑의 낮은 치익, 스켈치 꼬리 150 ms, 모든 가장자리 25 ms 램프. `radio` 하나(0 깨끗함 … 1 완전한 무전)가 전부를 조절한다.
+- **규칙.** 음성은 WARNING·CALL만, 톤 뒤에 한 번(되풀이하는 WARNING 톤이 음성을 되풀이하지 않는다). ACK하면 둘 다 멈춘다. 묶인 알림은 가장 높은 것 하나만 읽는다(맨 위가 CAUTION이면 낮은 CALL을 대신 읽지 않는다). 소리를 내는 탭, 한 번에 하나, 조용한 시간, 10분 재울림 방지는 ATC-87 그대로다.
+- **설정.** VOICE 켜기·끄기(기본 꺼짐, 브라우저별), `/api/voice/status`로 채운 목소리 목록과 미리 듣기, `radio` 양. 고른 목소리와 엔진은 설정 저장으로 `.env.local`에 간다. 엔진이 안 되면 `TTS 엔진 없음`과 안내 링크.
+- **라이선스(2026-09-29 확인).** `piper-tts`(OHF-Voice/piper1-gpl)는 GPL-3.0이고 따로 도는 프로세스로만 쓴다(싣지 않는다). 목소리 모델은 각자 라이선스가 있다: `en_US-ryan-high`·`en_US-hfc_male-medium`은 CC BY-NC-SA 4.0, `en_US-lessac-medium`은 Edinburgh CSTR의 Lessac Blizzard 2013 조건(상업 사용은 모델 카드만으로 확인하지 못함). 녹음이나 관제 음성 자료는 쓰지 않는다.
+
 ## 권고(ENGINEERING을 위한 작업 지시서 초안)
 
 ### EO 1. 응답 속성, UNABLE, STANDBY

@@ -10,6 +10,7 @@ import { engineName, judgeStatus } from "./judges/run.ts";
 import { JUDGE_MODES, type JudgeMode, loadJudges, setJudgeMode } from "./judges/store.ts";
 import { parseTeamKeys, TEAM_KEY } from "./linear-keys.ts";
 import { loadMcc, MCC_MODES, type MccMode } from "./mcc.ts";
+import { TTS_ENGINES, VOICE_NAME } from "./tts.ts";
 import { setMccMode } from "./mcc-run.ts";
 import { fromThisApp } from "./origin.ts";
 import { resetTicketPattern } from "./sources/git.ts";
@@ -39,6 +40,8 @@ export interface ServerSettings {
   // MCC(docs/mcc.md): mcc.json의 스위치와 맡은 AIRPORT
   mcc: { mode: MccMode; airport: string };
   // 판정 계열(ATC-36): judges.json의 스위치, 엔진, 키가 있는지(값은 내보내지 않음), 마지막 실행
+  // 음성 콜아웃(ATC-140): 고른 엔진과 목소리(.env.local). 설치된 목소리 목록은 GET /api/voice/status
+  voice: { engine: string; voice: string };
   judges: { jev: { mode: JudgeMode; engine: "stub" | "jev"; apiKeySet: boolean; lastRunAt: string | null; lastError: string | null; judged: number } };
 }
 
@@ -50,6 +53,8 @@ export interface SettingsPatch {
   claimTtlMin?: number;
   handoffGraceMin?: number;
   projectsDir?: string;
+  ttsEngine?: string; // none·piper·stub. .env.local의 ATC_TTS_ENGINE(ATC-140)
+  ttsVoice?: string; // 고른 목소리 이름. 비우면 첫 번째. ATC_TTS_VOICE
   reviewSecurity?: ExternalReviewSecurity; // dispatch.json에 쓴다(.env.local이 아님)
   fuelHold?: "off" | "on"; // dispatch.json fuel.hold에 쓴다(ATC-55). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   autolandMode?: AutolandMode; // autoland.json에 쓴다(ATC-34). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
@@ -95,6 +100,7 @@ export function readServerSettings(): ServerSettings {
       const m = loadMcc();
       return { mode: m.mode, airport: m.airport };
     })(),
+    voice: { engine: config.ttsEngine, voice: config.ttsVoice },
     judges: { jev: { mode: loadJudges().jev, engine: engineName(), apiKeySet: Boolean(config.typesafeApiKey), ...judgeStatus.jev } },
   };
 }
@@ -144,6 +150,15 @@ export function validatePatch(patch: Record<string, unknown>): { env: Record<str
         else errors.projectsDir = "있는 폴더의 절대 경로";
         break;
       }
+      case "ttsEngine":
+        if (typeof raw === "string" && (TTS_ENGINES as readonly string[]).includes(raw)) env.ATC_TTS_ENGINE = raw;
+        else errors.ttsEngine = `${TTS_ENGINES.join(", ")} 중 하나`;
+        break;
+      case "ttsVoice":
+        if (raw === null || raw === "") env.ATC_TTS_VOICE = null;
+        else if (typeof raw === "string" && VOICE_NAME.test(raw)) env.ATC_TTS_VOICE = raw;
+        else errors.ttsVoice = "목소리 이름(영문·숫자·-_.)";
+        break;
       default:
         (errors as Record<string, string>)[key] = "고칠 수 없는 항목";
     }
@@ -181,6 +196,8 @@ function applyToConfig(env: Record<string, string | null>) {
   if (env.ATC_CLAIM_TTL_MIN) config.claimTtlMs = Number(env.ATC_CLAIM_TTL_MIN) * 60_000;
   if (env.ATC_HANDOFF_GRACE_MIN) config.handoffGraceMs = Number(env.ATC_HANDOFF_GRACE_MIN) * 60_000;
   if (env.ATC_PROJECTS_DIR) config.projectsDir = env.ATC_PROJECTS_DIR;
+  if (env.ATC_TTS_ENGINE) config.ttsEngine = env.ATC_TTS_ENGINE;
+  if ("ATC_TTS_VOICE" in env) config.ttsVoice = env.ATC_TTS_VOICE ?? "";
   if (keysChanged) resetTicketPattern();
   if ("LINEAR_API_KEY" in env || keysChanged) resetLinear();
 }

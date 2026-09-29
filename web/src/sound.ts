@@ -1,3 +1,4 @@
+import { playRadioVoice, type RadioPlayback, radioSpecOf } from "./radio.ts";
 import type { SoundName } from "./supervisor-alerts.ts";
 
 // SUPERVISOR alerts(ATC-87)의 소리. Web Audio로 합성한다: 오디오 파일도 CDN도 없다. FAA AC 25.1322-1 부록 2를 따라 넷뿐이고,
@@ -45,10 +46,20 @@ export const specEnd = (s: SoundSpec) => Math.max(...s.tones.map((t) => t.at + t
 
 // ── 재생 ──
 export type AudioState = "off" | "running" | "suspended";
+// 음성 콜아웃(ATC-140): 톤 한 번 뒤에 서버가 만든 WAV를 무전 체인으로 한 번 들려준다(되풀이하는 톤이 음성을 되풀이하지 않는다)
+export interface VoiceCue {
+  url: string; // GET /api/voice/alert/<key>.wav 또는 preview
+  radio: number; // 0..1
+}
+export type SpeakResult = { ok: true } | { ok: false; error: string };
+const VOICE_GAP_S = 0.15; // 톤이 끝난 뒤 음성까지
+const RESUME_GAP_S = 0.5; // 음성이 끝난 뒤 되풀이 톤까지
+
 export interface Player {
   unlock(): Promise<void>; // 사용자가 소리를 켜는 클릭 안에서 부른다(브라우저 자동재생 규칙)
   state(): AudioState;
-  play(sound: SoundName, volume: number, repeat: boolean): void;
+  play(sound: SoundName, volume: number, repeat: boolean, voice?: VoiceCue): void;
+  speak(voice: VoiceCue, volume: number): Promise<SpeakResult>; // 음성만(미리 듣기). 톤 없이
   stop(): void; // 지금 울리는 소리를 그친다(ACK)
   playing(): SoundName | null;
 }
@@ -57,7 +68,22 @@ type Ctor = typeof AudioContext;
 
 export function createPlayer(getCtor: () => Ctor | undefined = () => (globalThis as { AudioContext?: Ctor }).AudioContext, onChange: () => void = () => {}): Player {
   let ctx: AudioContext | null = null;
-  let current: { sound: SoundName; timer: ReturnType<typeof setTimeout> | null; nodes: AudioScheduledSourceNode[] } | null = null;
+  let current: { sound: SoundName; timer: ReturnType<typeof setTimeout> | null; nodes: AudioScheduledSourceNode[]; voice: RadioPlayback | null } | null = null;
+  let previewing: RadioPlayback | null = null;
+
+  // 서버가 만든 WAV를 받아 디코드한다. 못 받으면(엔진 없음·목소리 없음 등) 이유를 돌려준다
+  const fetchVoice = async (url: string): Promise<{ buffer: AudioBuffer } | { error: string }> => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        return { error: body.error ?? `음성을 받지 못함(${res.status})` };
+      }
+      return { buffer: await ctx!.decodeAudioData(await res.arrayBuffer()) };
+    } catch (e) {
+      return { error: (e as Error).message || "음성을 받지 못함" };
+    }
+  };
 
   const schedule = (sound: SoundName, volume: number) => {
     const c = ctx!;
@@ -93,6 +119,7 @@ export function createPlayer(getCtor: () => Ctor | undefined = () => (globalThis
         n.stop();
       } catch {}
     }
+    current.voice?.stop();
     current = null;
     onChange();
   };
@@ -111,23 +138,55 @@ export function createPlayer(getCtor: () => Ctor | undefined = () => (globalThis
     state: () => (!ctx ? "off" : ctx.state === "running" ? "running" : "suspended"),
     playing: () => current?.sound ?? null,
     stop,
-    play(sound, volume, repeat) {
+    async speak(voice, volume) {
+      if (!ctx || ctx.state !== "running") return { ok: false, error: "소리가 꺼져 있음" };
+      previewing?.stop();
+      const got = await fetchVoice(voice.url);
+      if ("error" in got) return { ok: false, error: got.error };
+      const p = playRadioVoice(ctx, got.buffer, volume, radioSpecOf(voice.radio));
+      previewing = p;
+      await p.done;
+      if (previewing === p) previewing = null;
+      return { ok: true };
+    },
+    play(sound, volume, repeat, voice) {
       if (!ctx || ctx.state !== "running") return;
       stop();
-      const run = () => {
+      previewing?.stop();
+      // 음성은 톤이 울리는 동안 미리 받아 둔다. 못 받으면 톤만 낸다
+      const audio = voice ? fetchVoice(voice.url) : null;
+      const run = (first: boolean) => {
         const { nodes, spec } = schedule(sound, volume);
-        const cur = { sound, timer: null as ReturnType<typeof setTimeout> | null, nodes };
+        const cur = { sound, timer: null as ReturnType<typeof setTimeout> | null, nodes, voice: null as RadioPlayback | null };
         current = cur;
-        cur.timer = setTimeout(() => {
+        const speakNow = first && audio !== null;
+        cur.timer = setTimeout(async () => {
           if (current !== cur) return;
-          if (repeat) run();
+          if (speakNow) {
+            const got = await audio;
+            if (current !== cur) return;
+            if ("buffer" in got) {
+              const p = playRadioVoice(ctx!, got.buffer, volume, radioSpecOf(voice!.radio));
+              cur.voice = p;
+              await p.done;
+              if (current !== cur) return;
+              if (repeat) {
+                cur.timer = setTimeout(() => current === cur && run(false), RESUME_GAP_S * 1000);
+                return;
+              }
+              current = null;
+              onChange();
+              return;
+            }
+          }
+          if (repeat) run(false);
           else {
             current = null;
             onChange();
           }
-        }, (repeat ? spec.period : specEnd(spec) + 0.05) * 1000);
+        }, (speakNow ? specEnd(spec) + VOICE_GAP_S : repeat ? spec.period : specEnd(spec) + 0.05) * 1000);
       };
-      run();
+      run(true);
       onChange();
     },
   };

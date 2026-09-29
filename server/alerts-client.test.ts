@@ -190,3 +190,45 @@ test("소리 명세: 주파수 범위, 램프 길이, 서로 다른 높이와 �
   assert.ok(specs.warning.tones.length >= 4 && specs.warning.tones.every((t) => t.dur <= 0.1));
   assert.equal(specs.caution.tones.length, 2);
 });
+
+// ── 음성 콜아웃(ATC-140) ──
+const voiceOn: AlertPrefs = { ...on, voice: { on: true, radio: 0.7 } };
+
+test("음성 설정: 기본은 꺼짐(톤과 따로), 모르는 값은 기본으로, radio는 0..1로 자른다", () => {
+  assert.deepEqual(DEFAULT_PREFS.voice, { on: false, radio: 0.7 });
+  assert.deepEqual(parsePrefs({ voice: { on: true, radio: 5 } }).voice, { on: true, radio: 1 });
+  assert.deepEqual(parsePrefs({ voice: { on: "yes", radio: "x" } }).voice, { on: false, radio: 0.7 });
+  assert.deepEqual(parsePrefs({ voice: null }).voice, DEFAULT_PREFS.voice);
+  assert.deepEqual(parsePrefs({ sound: true }).voice, DEFAULT_PREFS.voice); // 옛 저장값
+});
+
+test("음성은 WARNING·CALL에만: 톤 뒤에 그 알림 하나(voiceKey)", () => {
+  const warning = al("w", { level: "warning" });
+  const call = al("c", { level: "advisory", cue: "call" });
+  assert.equal(soundFor([warning], voiceOn, NOW, ctx()).voiceKey, "w");
+  assert.equal(soundFor([call], voiceOn, NOW, ctx()).voiceKey, "c");
+  // CAUTION·DONE에는 음성이 없다
+  assert.equal(soundFor([al("k", { level: "caution" })], voiceOn, NOW, ctx()).voiceKey, null);
+  assert.equal(soundFor([al("d", { level: null, cue: "done" })], voiceOn, NOW, ctx()).voiceKey, null);
+  // 음성이 꺼져 있으면 톤만
+  const off = soundFor([warning], on, NOW, ctx());
+  assert.equal(off.sound, "warning");
+  assert.equal(off.voiceKey, null);
+});
+
+test("묶인 알림은 가장 높은 것 하나만 읽고, 이미 더 높은 소리가 울리는 중이면 소리도 음성도 없다", () => {
+  const w = al("w", { level: "warning" });
+  const c = al("c", { level: "advisory", cue: "call" });
+  const k = al("k", { level: "caution" });
+  const d = soundFor([k, c, w], voiceOn, NOW, ctx());
+  assert.deepEqual([d.sound, d.voiceKey, d.keys.sort()], ["warning", "w", ["c", "k", "w"]]);
+  // 가장 높은 것이 CAUTION이면 톤만 난다(음성이 없는 것이 더 높으면 낮은 CALL을 대신 읽지 않는다)
+  const lowCall = soundFor([k, c], voiceOn, NOW, ctx());
+  assert.deepEqual([lowCall.sound, lowCall.voiceKey], ["caution", null]);
+  const blocked = soundFor([c], voiceOn, NOW, ctx({ playing: "warning" }));
+  assert.deepEqual([blocked.sound, blocked.voiceKey], [null, null]);
+  // 음성이 있어도 조용한 시간, 소리 꺼짐, 10분 재울림 방지는 그대로
+  assert.equal(soundFor([w], { ...voiceOn, sound: false }, NOW, ctx()).voiceKey, null);
+  assert.equal(soundFor([w], voiceOn, NOW, ctx({ lastSounded: { w: NOW - 60_000 } })).voiceKey, null);
+  assert.equal(soundFor([w], { ...voiceOn, quiet: { on: true, from: "11:00", to: "13:00" } }, NOW, ctx()).voiceKey, null);
+});

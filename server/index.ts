@@ -39,6 +39,7 @@ import { mountSettings } from "./settings.ts";
 import { mountSquelch } from "./squelch-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { currentAlerts, runSupervisorAlerts } from "./supervisor-alerts-run.ts";
+import { mountVoice } from "./voice-run.ts";
 import type { AlertEvent } from "./supervisor-alerts.ts";
 import { entryScript } from "./version.ts";
 
@@ -162,6 +163,7 @@ mountNetwork(app, getSnapshot);
 mountRoutes(app, getSnapshot);
 mountSchedule(app, getSnapshot, allProposals);
 mountFollowing(app, getSnapshot);
+mountVoice(app, currentAlerts); // 음성 콜아웃(ATC-140): WAV만 만든다(소리는 브라우저)
 mountMilestones(app, getSnapshot);
 mountAtfm(app, getSnapshot);
 mountAutoland(app, getSnapshot);
