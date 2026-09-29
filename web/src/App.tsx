@@ -2,6 +2,7 @@ import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState }
 import { showNewVersion } from "../../server/version.ts";
 import { alertCode, alertLabel, alertLevel, alertLevelLabel, alertMessage, callsign, flightNumber, groupAlerts, HANDOFF_LABEL } from "./aviation.ts";
 import { buildIndex, timeAgo } from "./derive.ts";
+import { ControlStrip } from "./ControlStrip.tsx";
 import { NewVersionBar } from "./NewVersion.tsx";
 import { UpdateBar, useUpdate } from "./UpdateBar.tsx";
 import { MoonIcon, Starfield } from "./Starfield.tsx";
@@ -155,6 +156,7 @@ export function App({ build }: { build: string }) {
             </span>
           </div>
         </div>
+        <ControlStrip snapshot={snapshot} now={now} />
       </header>
 
       <UpdateBar update={update} />

@@ -7,10 +7,10 @@ import { JobDetail, NeedsYou } from "../../ui.tsx";
 // 줄마다 live 배지. TOWER·OCC·MCC·CROSSCHECK·REVIEW는 atc가 그 폴더에서 `claude --bg`로 띄운다(ocx·tmux LAUNCH는 2026-09-29에 끊음).
 // ENGINEERING은 배지만. tmux pane에서 손으로 연 세션도 STOP한다(그 pane만 닫음, 묻고 나서). 데스크톱 세션은 그 창에서 닫는다.
 // 새로 읽기: FLEET가 보이는 동안 60초에 한 번(탭을 막 열어도 마지막 읽은 지 60초 전이면 그 값을 보인다), LAUNCH·STOP 뒤에는 곧장.
-type ControlAccounts = { labeled: boolean; rows: { name: string; label: string | null; account: string | null }[] };
+import { type ControlAccounts, controlMemo } from "../../controlData.ts";
 
 // 탭을 오가도 60초 안에는 다시 읽지 않도록 모듈에 둔다
-const memo: { list: ControlList | null; accounts: ControlAccounts | null; at: number | null } = { list: null, accounts: null, at: null };
+const memo = controlMemo;
 
 export function ControlSessions() {
   const [list, setList] = useState<ControlList | null>(memo.list);
@@ -32,7 +32,7 @@ export function ControlSessions() {
       })
       .catch(() => {});
     try {
-      const res = await fetch("/api/control/sessions");
+      const res = await fetch(`/api/control/sessions${force ? "?fresh=1" : ""}`);
       const body = await res.json();
       if (res.ok) {
         memo.list = body as ControlList;
