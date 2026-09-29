@@ -7,6 +7,7 @@ import { type FuelRemaining, fuelLabel, membersText } from "./fuel-remaining.ts"
 import { hhmm } from "./health.ts";
 import type { LogEntry } from "./logbook.ts";
 import { GATE } from "./proposals.ts";
+import { regKey } from "./registration.ts";
 import { MAX_LAUNCHED, PERMISSION_MODES, type PermissionMode } from "./session-control.ts";
 
 // FLEET PLAN(docs/fleet.md 8.6): 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·REFRESH·AOG·RETIRE를 제안한다.
@@ -130,7 +131,7 @@ const isParked = (a: AircraftView) => !a.retired && !a.aog && a.status === "idle
 export function fuelOfPlan(i: Pick<FleetInputs, "aircraft" | "fuelAccounts">, kind: FleetPlanKind, registration: string | null): FuelRemaining | null {
   const accounts = i.fuelAccounts ?? [];
   if (kind === "ENTRY") return accounts.find((f) => f.account === DEFAULT_ACCOUNT) ?? null;
-  const a = registration ? i.aircraft.find((x) => x.registration === registration.toUpperCase()) : undefined;
+  const a = registration ? i.aircraft.find((x) => x.registration === regKey(registration)) : undefined;
   if (!a) return null;
   if (a.account) return accounts.find((f) => f.account === a.account) ?? null;
   return accounts.find((f) => f.group === `aircraft:${a.registration}`) ?? null;
@@ -157,7 +158,7 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
   const cfg = i.config;
   const out: FleetCandidate[] = [];
   const byReg = new Map(i.aircraft.map((a) => [a.registration, a]));
-  const assigned = new Set(i.plan.assign.map((p) => p.aircraftName.toUpperCase()));
+  const assigned = new Set(i.plan.assign.map((p) => regKey(p.aircraftName))); // 제안은 세션 이름 그대로(ATC-67)
   const unserved = i.plan.unserved ?? [];
   const background = i.sessions.filter((x) => x.kind === "background");
   // 최근 LAUNCH·STOP이 minDwell 안이면 반대 제안을 하지 않는다
@@ -265,10 +266,10 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
     return at ? i.now - Date.parse(at) : null;
   };
   const stopOrder = background
-    .map((x) => ({ x, a: byReg.get(x.registration.toUpperCase()), idle: idleFor(x.registration.toUpperCase()) }))
+    .map((x) => ({ x, a: byReg.get(regKey(x.registration)), idle: idleFor(regKey(x.registration)) }))
     .sort((p, q) => (q.idle ?? 0) - (p.idle ?? 0));
   for (const { x, a, idle } of stopOrder) {
-    const reg = x.registration.toUpperCase();
+    const reg = regKey(x.registration);
     if (!a) continue;
     const bg = `BG ${x.id ?? "?"} — 멈춰도 대화는 남아 다시 이어짐`;
     if (a.retired) {
@@ -308,7 +309,7 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
   for (const a of i.aircraft) {
     const h = a.health;
     if (a.retired || a.aog || !h || !(h.code === "CONTEXT" || (h.code === "HUNG" && h.level === "alert"))) continue;
-    const session = i.sessions.find((x) => x.registration.toUpperCase() === a.registration);
+    const session = i.sessions.find((x) => regKey(x.registration) === a.registration);
     const reasons: PlanReason[] = [
       { code: h.code.toLowerCase(), detail: `${h.code} — ${h.detail} (since ${h.since.slice(0, 16).replace("T", " ")}Z)`, value: h.since },
       { code: "handoff", detail: a.flying.length ? `STAND·PR(${a.flying.join(", ")})은 새 세션에 HANDOFF — ${h.next}` : h.next },
@@ -666,7 +667,7 @@ export function executionOf(p: FleetProposal, input: Record<string, unknown>, ct
   const reg = p.aircraft ?? "";
   const a = ctx.aircraft.find((x) => x.registration === reg);
   const bg = ctx.sessions.filter((x) => x.kind === "background");
-  const session = ctx.sessions.find((x) => x.registration === reg);
+  const session = ctx.sessions.find((x) => regKey(x.registration) === regKey(reg));
   const max = ctx.maxLaunched ?? MAX_LAUNCHED;
   const launchOptions = (fallback?: { permissionMode?: string; model?: string }) => {
     const mode = (input.permissionMode ?? fallback?.permissionMode ?? "auto") as PermissionMode;
@@ -702,7 +703,7 @@ export function executionOf(p: FleetProposal, input: Record<string, unknown>, ct
       return { steps: [{ action: "launch", registration: reg, ...o }], options: o };
     }
     case "ENTRY": {
-      if (ctx.taken.some((n) => n.toUpperCase() === reg)) throw new PlanError(`${reg}는 이미 쓰는 등록번호 — 다음 주기가 새 번호로 제안한다`);
+      if (ctx.taken.some((n) => regKey(n) === regKey(reg))) throw new PlanError(`${reg}는 이미 쓰는 등록번호 — 다음 주기가 새 번호로 제안한다`);
       if (!p.configuration || !p.airport) throw new PlanError("ENTRY에 CONFIGURATION·AIRPORT가 없음");
       capRoom();
       const o = launchOptions();

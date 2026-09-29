@@ -41,6 +41,7 @@ import { loadLogbook } from "./logbook.ts";
 import { parentKeysOf, type Snapshot } from "./model.ts";
 import { allProposals, gate3Of, gateOf as dispatchGateOf, humanOf as proposalHuman, isInFlight, reservedOf } from "./proposals.ts";
 import { readRecords, record, type RecordLine } from "./recorder.ts";
+import { regKey } from "./registration.ts";
 import { changesOf, gateOf as scheduleGateOf, humanOf as scheduleHuman, loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { activeWaypointsOf } from "./routes.ts";
 import { readGithub } from "./sources/github.ts";
@@ -244,11 +245,11 @@ export function eligibilityView(s: Snapshot, now = Date.now()) {
   const auto: AutoItem[] = proposals
     .filter((p) => p.kind === "ASSIGN" && p.status === "proposed" && p.holdAt === null)
     .map((p) => {
-      const name = (p.aircraftName ?? "").toUpperCase();
+      const name = regKey(p.aircraftName, cfg.teamPattern); // `Team G`도 TEAM_G(ATC-67)
       const e = autoEligibility(p, {
         ticket: byKey.get(p.flight),
-        aircraft: aircraftViews.find((a) => a.registration.toUpperCase() === name),
-        state: plan.aircraft.find((a) => a.name.toUpperCase() === name),
+        aircraft: aircraftViews.find((a) => a.registration === name),
+        state: plan.aircraft.find((a) => regKey(a.name, cfg.teamPattern) === name),
         parentKeys,
         history: proposals,
         stopped,

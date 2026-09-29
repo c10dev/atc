@@ -12,6 +12,7 @@ import { type AccountHold, accountHoldOf, accountHolds, type Health } from "./he
 import type { FuelRemaining } from "./fuel-remaining.ts";
 import { type ContextSize, type ContextView, contextView } from "./fuel-context.ts";
 import type { Snapshot } from "./model.ts";
+import { fleetKeyOf, registrationNamesOf, registrationOf, regKey } from "./registration.ts";
 import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state.ts";
 
 // FLEET 등록부(~/.local/state/atc/fleet.json). 팀(AIRCRAFT)마다 CREW COMPLEMENT, TYPE RATING, ROUTE, TARGETS를 적는다.
@@ -246,6 +247,10 @@ export interface AircraftView {
   // 최근 FLIGHT(actuals.recent와 같은 순서)의 FUEL BURN·NET·LEAK과 TRIP FUEL 안이었나
   fuelRecent?: FuelRecent[];
   context?: ContextView | null; // CONTEXT SIZE(ATC-69). GET /api/fleet만 붙인다
+  // 세션 이름(ATC-67): 살아 있는 세션 이름이 정식 REGISTRATION이 아니면 그 이름(바꾸라는 힌트), 아니면 null
+  sessionName?: string | null;
+  // 같은 REGISTRATION으로 읽히는 살아 있는 세션이 둘 이상이면 그 이름들(합치지 않고 충돌로 보인다, idea #96). 아니면 null
+  sessionConflict?: string[] | null;
 }
 
 export interface FuelRecent {
@@ -291,11 +296,16 @@ export function fleetView(
   const codeOf = (repo: string | null) => s.airports.find((a) => a.repo === repo)?.code ?? null;
   const wsTicket = new Map(s.workspaces.map((w) => [w.path, w.ticketKey]));
   const live = s.sessions.filter((x) => team.test(x.name) && x.status !== "dead");
-  const names = [...new Set([...live.map((x) => x.name.toUpperCase()), ...Object.keys(fleet.aircraft).map((k) => k.toUpperCase())])].sort();
+  // 세션 이름은 `Team G`, `team_g`처럼 달라도 한 REGISTRATION으로 읽는다(ATC-67)
+  const regOf = (name: string) => regKey(name, teamPattern);
+  const liveNames = registrationNamesOf(live.map((x) => x.name), teamPattern);
+  const names = [...new Set([...live.map((x) => regOf(x.name)), ...Object.keys(fleet.aircraft).map(regOf)])].sort();
   const holds = accountHolds(live.map((x) => ({ name: x.name, account: accountOf(fleet, x.name), health: x.health })), now);
   return names.map((reg) => {
-    const session = live.find((x) => x.name.toUpperCase() === reg);
-    const profile = Object.entries(fleet.aircraft).find(([k]) => k.toUpperCase() === reg)?.[1] ?? {};
+    const session = live.find((x) => regOf(x.name) === reg);
+    const key = fleetKeyOf(Object.keys(fleet.aircraft), reg, teamPattern);
+    const profile: AircraftProfile = (key ? fleet.aircraft[key] : undefined) ?? {};
+    const seen = liveNames.get(reg);
     const held = session ? s.claims.filter((c) => c.sessionId === session.id && c.state === "active") : [];
     const flying = [...new Set(held.map((c) => wsTicket.get(c.workspacePath)).filter(Boolean) as string[])];
     const actuals = computeActuals(logbook, reg, now);
@@ -327,6 +337,8 @@ export function fleetView(
       actuals,
       fuelBurn: fleetFuelOf(reg, logbook, now),
       fuelRecent: actuals.recent.map((e) => fuelRecentOf(e, logbook, now)),
+      sessionName: seen?.rename ?? null,
+      sessionConflict: seen?.conflict ? seen.names : null,
     };
   });
 }
@@ -346,7 +358,7 @@ export function defaultBase(s: Pick<Snapshot, "sessions" | "airports">, teamPatt
 
 // 비어 있는 다음 등록번호: TEAM_A … TEAM_Z 중 세션도 등록 항목도 없는 첫 글자
 export function nextRegistration(taken: Iterable<string>): string | null {
-  const used = new Set([...taken].map((x) => x.toUpperCase()));
+  const used = new Set([...taken].map((x) => regKey(x)));
   for (const c of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") if (!used.has(`TEAM_${c}`)) return `TEAM_${c}`;
   return null;
 }
@@ -360,11 +372,13 @@ export function entryIntoService(
   teamPattern: string,
   now = new Date().toISOString(),
 ): { registration: string; profile: AircraftProfile } {
-  const reg = String(input.registration ?? "").trim().toUpperCase();
-  if (!new RegExp(teamPattern, "i").test(reg)) throw new FleetError(`등록번호는 TEAM_X 형식: ${reg || "(비었음)"}`);
-  const existing = Object.entries(fleet.aircraft).find(([k]) => k.toUpperCase() === reg)?.[1];
+  const raw = String(input.registration ?? "").trim();
+  const reg = registrationOf(raw, teamPattern); // 정식 표기로 들인다(ATC-67)
+  if (!reg) throw new FleetError(`등록번호는 TEAM_X 형식: ${raw.toUpperCase() || "(비었음)"}`);
+  const found = fleetKeyOf(Object.keys(fleet.aircraft), reg, teamPattern);
+  const existing = found ? fleet.aircraft[found] : undefined;
   if (existing?.retired) throw new FleetError(`${reg}는 퇴역 상태 — 복귀(RETIREMENT 해제)를 쓰세요`, 409);
-  if (existing || liveNames.some((n) => n.toUpperCase() === reg)) throw new FleetError(`${reg}는 이미 FLEET에 있음`, 409);
+  if (existing || liveNames.some((n) => regKey(n, teamPattern) === reg)) throw new FleetError(`${reg}는 이미 FLEET에 있음`, 409);
   const cfgId = String(input.configuration ?? "general") as ConfigurationId;
   const template = CONFIGURATIONS[cfgId];
   if (!template) throw new FleetError(`모르는 CONFIGURATION: ${cfgId} (가능: ${Object.keys(CONFIGURATIONS).join(", ")})`);
@@ -412,7 +426,7 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>, cont
     const cfg = loadDispatchConfig();
     // RULES(ATC-42): 그 AIRCRAFT의 살아 있는 세션이 규칙 파일 변경을 확인했나. rules-drift hook 기록이 없으면 null
     const rulesRecords = loadRulesRecords();
-    const rulesOf = (reg: string): RulesView | null => rulesOfAircraft(s.sessions.filter((x) => x.status !== "dead" && x.name.toUpperCase() === reg), rulesRecords);
+    const rulesOf = (reg: string): RulesView | null => rulesOfAircraft(s.sessions.filter((x) => x.status !== "dead" && regKey(x.name, cfg.teamPattern) === reg), rulesRecords);
     const context = contextOf(s.sessions, cfg.teamPattern);
     const aircraft = fleetView(s, fleet, cfg.teamPattern, loadPricedLogbook())
       .map(withCrew(s))
@@ -451,21 +465,21 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>, cont
     }
   });
   app.get("/api/fleet/:registration/briefing", async (c) => {
-    const reg = (c.req.param("registration") ?? "").toUpperCase();
-    const s = await getSnapshot();
     const cfg = loadDispatchConfig();
+    const reg = regKey(c.req.param("registration"), cfg.teamPattern);
+    const s = await getSnapshot();
     const a = fleetView(s, loadFleet(), cfg.teamPattern).find((x) => x.registration === reg);
     if (!a) return c.json({ error: `FLEET에 없음: ${reg}` }, 404);
     const repo = s.airports.find((x) => x.code === a.base)?.repo ?? null;
     return c.json({ registration: reg, briefing: crewBriefing(a, repo, cfg.mode) });
   });
   app.patch("/api/fleet/:registration", async (c: Context) => {
-    const reg = (c.req.param("registration") ?? "").toUpperCase();
     const teamPattern = loadDispatchConfig().teamPattern;
-    if (!new RegExp(teamPattern, "i").test(reg)) return c.json({ error: `TEAM 이름이 아님: ${reg}` }, 400);
+    const reg = registrationOf(c.req.param("registration"), teamPattern);
+    if (!reg) return c.json({ error: `TEAM 이름이 아님: ${(c.req.param("registration") ?? "").toUpperCase()}` }, 400);
     const body = await c.req.json().catch(() => ({}));
     const fleet = loadFleet();
-    const key = Object.keys(fleet.aircraft).find((k) => k.toUpperCase() === reg) ?? reg;
+    const key = fleetKeyOf(Object.keys(fleet.aircraft), reg, teamPattern) ?? reg;
     try {
       const next = applyPatch(fleet.aircraft[key] ?? {}, body, fleet.defaults);
       saveAircraft(key, next);

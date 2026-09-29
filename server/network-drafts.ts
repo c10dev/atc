@@ -3,6 +3,7 @@ import { ACTUALS_DAYS, type LogEntry } from "./logbook.ts";
 import type { Ticket } from "./model.ts";
 import { aircraftRows, type AircraftRow, type RouteRow } from "./network.ts";
 import type { ProjectGoal } from "./sources/linear-projects.ts";
+import { regKey } from "./registration.ts";
 
 // OCC의 TARGET·ROUTE 변경 초안(ATC-25, docs/fleet.md 7.4). SCHEDULE 작업의 두 종류로, AIRCRAFT 하나의 FLEET TARGETS나
 // ROUTE를 바꾸자는 제안이다. 지금은 그림자 운용만: SUPERVISOR가 판정하고, 아무것도 fleet.json에 쓰지 않는다.
@@ -71,7 +72,7 @@ export interface NetworkCtx {
   now: number;
 }
 
-const upper = (v: unknown) => String(v ?? "").trim().toUpperCase().replace(/^TAIL:/, "");
+const upper = (v: unknown) => regKey(String(v ?? "").trim().replace(/^TAIL:\s*/i, "")); // `Team G`도 TEAM_G(ATC-67)
 
 function viewOf(ctx: NetworkCtx, registration: unknown) {
   const reg = upper(registration);

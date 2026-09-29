@@ -11,6 +11,7 @@ import { type Health, healthLabel } from "./health.ts";
 import { type FuelRemaining, fuelLabel, membersText } from "./fuel-remaining.ts";
 import type { PullRequest, Snapshot, Ticket, Workspace } from "./model.ts";
 import { allProposals, type Proposal, standFreeTicket } from "./proposals.ts";
+import { regKey } from "./registration.ts";
 
 // FLIGHT FOLLOWING(운항 추적, docs/occ.md 8장). 배정된 FLIGHT의 진행을 기존 기록으로 따라가고,
 // 늦거나(지연) Linear와 어긋나면(불일치) OCC가 SUPERVISOR에게 보고한다. 팀에 묻지는 않는다.
@@ -181,7 +182,7 @@ export function followingOf(inp: FollowInput): FollowItem[] {
     .map((t) => {
       const f = followOne(t, inp);
       // AIRCRAFT health(ATC-45): 그 FLIGHT를 쥔 AIRCRAFT가 멈췄거나 기다리고 있다. key에 코드를 넣어 코드가 바뀌면 새로 보고한다
-      const h = f.aircraft ? inp.health?.get(f.aircraft.toUpperCase()) : undefined;
+      const h = f.aircraft ? inp.health?.get(regKey(f.aircraft)) : undefined;
       if (h && !f.stages.arrived) {
         f.issues.push({
           code: "health",
@@ -193,7 +194,7 @@ export function followingOf(inp: FollowInput): FollowItem[] {
         });
       }
       // FUEL REMAINING(ATC-55): 그 FLIGHT를 쥔 AIRCRAFT의 ACCOUNT가 INFO 임계값을 넘었다. key에 ACCOUNT·창·reset을 넣어 창마다 한 번 보고한다
-      const fuel = f.aircraft ? inp.fuel?.[f.aircraft.toUpperCase()] : undefined;
+      const fuel = f.aircraft ? inp.fuel?.[regKey(f.aircraft)] : undefined;
       if (fuel && fuel.level !== "ok" && !f.stages.arrived) {
         f.issues.push({
           code: "fuel",
@@ -260,7 +261,7 @@ export function ackReported(items: FollowItem[], r: Reported, keys: string[], no
 // ── API ──
 
 export function followingNow(s: Snapshot, now = Date.now()): FollowItem[] {
-  const health = new Map(s.sessions.filter((x) => x.status !== "dead" && x.health).map((x) => [x.name.toUpperCase(), x.health!]));
+  const health = new Map(s.sessions.filter((x) => x.status !== "dead" && x.health).map((x) => [regKey(x.name), x.health!]));
   return followingOf({ proposals: allProposals(), tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {} });
 }
 

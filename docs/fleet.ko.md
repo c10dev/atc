@@ -88,6 +88,14 @@ AIRPORT 등록부(`airports.json`)처럼 `~/.local/state/atc/fleet.json`에 둔�
 - **TYPE RATING**은 COMPLEMENT가 허용하는 것에서 시작한다. 도우미가 `flash-helper`뿐인 CREW는 `SEC`를 가질 수 없다. vocado가 보안 작업에 DeepSeek을 금지하기 때문이다.
 - **ROUTES**와 **TARGETS**는 SUPERVISOR가 정한다. OCC는 변경 초안을 쓸 수 있지만(4단계) 적용하지는 않는다.
 
+### REGISTRATION 표기 as built (ATC-67)
+
+세션 이름을 어떻게 적었든 atc는 한 REGISTRATION을 어디서나 같게 읽는다. `server/registration.ts`의 `registrationOf(name, teamPattern)`는 DISPATCH `teamPattern`이 받는 이름을 정식 표기(대문자, `_`)로 바꾼다(`Team G`, `TEAM-G`, `team_g`, `TEAMG` → `TEAM_G`). 구분자가 없으면 규칙이 받는 첫 자리에 `_`를 넣으므로, `teamPattern`을 바꾸면 그 규칙이 정한다. 규칙이 받지 않는 이름(TOWER, OCC, President)은 `null`이고 전처럼 대문자로 비교한다.
+
+- **읽기.** 세션·AIRCRAFT 이름을 REGISTRATION과 비교하는 곳은 모두 이것을 쓴다: FLEET(`fleetView`, 카드 API, ENTRY INTO SERVICE), DISPATCH(tail, CHECK 독립성, FUEL 조회, `crew.ts`의 프로필·ACCOUNT), CREW CHANGE, 관찰한 CREW, CHECKRIDE, BRIEFING, FLEET PLAN, ATFM 자동 배정 판정, FUEL 구성원·FUEL BURN, FLIGHT FOLLOWING, 세션 조종(`sameName`), `tail:` 라벨(`tail:team-g`도 `TEAM_G`), TAIL 초안. `fleet.json` 키가 `Team_G`로 적혀 있어도 찾고, 바꿔 쓰지 않는다.
+- **새 기록.** LOGBOOK `aircraft`, DEPARTURE LOG 줄, FLIGHT RECORDER `fleet`·`checkride` 줄, FLEET PLAN 제안, atc가 띄운 세션은 정식 REGISTRATION을 쓴다. 옛 줄은 표기를 그대로 두고 읽을 때 맞춘다. 두 기록은 일부러 살아 있는 세션 이름을 둔다. `occ/send-guard.mjs`가 정확히 맞춰 보는 SendMessage 수신자이기 때문이다: DISPATCH 제안의 `aircraftName`, CREW CHANGE의 `registration`(SUPERVISOR 결정, 2026-09-28). guard는 바꾸지 않았다.
+- **FLEET.** 살아 있는 팀 세션의 이름이 정식 표기가 아니면 그 AIRCRAFT에 한 줄 힌트 `세션 이름 Team G → TEAM_G로 바꾸면 좋다`와 상태 목록의 작은 `이름` 표시가 보인다. 세션은 그대로 잇는다. 같은 REGISTRATION으로 읽히는 살아 있는 세션이 둘 이상이면 합치지 않고 충돌로 보인다(`세션 2개가 TEAM_H로 읽힘: …`, 실선 `세션 2개` 표시). 어느 쪽이 SUPERSEDED인지 정하는 것은 idea [#96](https://github.com/chaehy5665/atc/issues/96)이다.
+
 ## 4. FLIGHT 분류
 
 축은 셋이고 서로 독립이다. 각각 OCC가 맡는 Linear 라벨이다(occ.ko.md 4장의 계획 필드).
@@ -324,7 +332,7 @@ AIRCRAFT마다 SUPERVISOR가 FLEET 탭에서 정한다. 보여 주기만 하고 
 | 필드 | 뜻 |
 |---|---|
 | `key` | `owner/repo#number`, 중복을 막는 key. PR 하나는 한 번만 적는다 |
-| `aircraft` | 그 FLIGHT를 난 팀 세션의 REGISTRATION(아래), 대문자. atc가 알 수 없으면 `null`이고, 그래도 줄은 적는다 |
+| `aircraft` | 그 FLIGHT를 난 팀 세션의 REGISTRATION(아래), 정식 표기(`TEAM_G`, ATC-67. 옛 줄은 적힌 대로 대문자). atc가 알 수 없으면 `null`이고, 그래도 줄은 적는다 |
 | `flight` | PR 브랜치(`voc-<n>`)나 제목 끝 `(VOC-n)`에서 얻은 ticket key. AD HOC 작업은 `null` |
 | `class` | 도착 시점 그 FLIGHT의 Linear 라벨로 본 `classOf(labels)`(FLIGHT TYPE, WAKE, rating, 그리고 type·wake가 라벨에서 왔는지). AD HOC이거나 Linear가 티켓을 모르면 `null` |
 | `airport` | 저장소의 AIRPORT code |
@@ -534,7 +542,7 @@ COMPLEMENT는 SUPERVISOR가 선언한 것이다. 관찰한 CREW는 AIRCRAFT의 �
 
 대화 기록(`*.jsonl` 본문), 프롬프트, 메타의 `description`은 읽지도, 저장하지도, 돌려주지도 않는다. 메타 파일은 파싱한 즉시 `agentType`과 `model` 말고는 모두 버린다(`parseMeta`).
 
-**어느 세션인가.** 이름이 REGISTRATION과 같은 세션이 그 AIRCRAFT의 것이다. 스냅숏의 살아 있는 Claude 세션(지금 atc가 AIRCRAFT를 잇는 방식)이거나, `custom-title.json`이 그렇게 말하고 창 안에서 활동한 세션 폴더다. 하나도 없으면 `observedCrew`와 `crewDrift`는 `null`이다(카드에는 "unused"가 아니라 관찰 없음으로 보인다).
+**어느 세션인가.** 이름이 그 REGISTRATION으로 읽히는 세션(`Team G`도 `TEAM_G`, ATC-67)이 그 AIRCRAFT의 것이다. 스냅숏의 살아 있는 Claude 세션(지금 atc가 AIRCRAFT를 잇는 방식)이거나, `custom-title.json`이 그렇게 말하고 창 안에서 활동한 세션 폴더다. 하나도 없으면 `observedCrew`와 `crewDrift`는 `null`이다(카드에는 "unused"가 아니라 관찰 없음으로 보인다).
 
 **POSITION 대응**(`positionOf`, 선언한 COMPLEMENT 기준):
 

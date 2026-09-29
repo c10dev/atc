@@ -945,3 +945,33 @@ test("GROUND DELAY(ATC-62): 켜진 CI 혼잡은 그 AIRPORT의 AIRBORNE 한도�
   assert.deepEqual([plan(true).assign.length, plan(true).slots[0].limit], [1, 1]);
   assert.deepEqual([plan(false).assign.length, plan(false).slots[0].limit], [2, 2]);
 });
+
+test("REGISTRATION(ATC-67): `Team D` 세션도 tail:TEAM_D·tail:team-d를 받고, FLEET 항목(TEAM_D)의 RETIRED·rating을 따른다", async () => {
+  const { DEFAULT_FLEET } = await import("./crew.ts");
+  const s = snap({
+    sessions: [session("b", "TEAM_B"), session("d", "Team D")],
+    tickets: [ticket("VOC-90", { priority: 1, labels: ["tail:TEAM_D"] }), ticket("VOC-91", { priority: 1, labels: ["tail:team-d"] }), ticket("VOC-92")],
+  });
+  const p = planDispatch(s, new Map(), cfg(), NOW);
+  // 제안의 aircraftName은 실제 세션 이름(FLIGHT PLAN 수신자, send-guard가 정확히 맞춰 본다)
+  const tailed = p.assign.filter((a) => a.flight === "VOC-90" || a.flight === "VOC-91");
+  assert.equal(tailed.length, 1);
+  assert.equal(tailed[0].aircraftName, "Team D");
+  assert.ok(!p.excluded.some((e) => /그 TEAM 세션이 없음/.test(e.reason)));
+  // 등록부의 TEAM_D가 RETIRED면 `Team D` 세션도 RETIRED
+  const retired = planDispatch(s, new Map(), cfg(), NOW, undefined, { defaults: DEFAULT_FLEET.defaults, aircraft: { TEAM_D: { retired: { reason: "x", at: daysAgo(1) } } } });
+  assert.equal(retired.aircraft.find((a) => a.id === "d")?.reason, "RETIRED");
+  // tail: 라벨의 표기도 REGISTRATION으로
+  const { tailsOf } = await import("./dispatch.ts");
+  assert.deepEqual([...tailsOf({ labels: ["tail:Team-D"] }, NOW)], ["TEAM_D"]);
+});
+
+test("CHECK 독립성(ATC-67): LOGBOOK의 옛 표기와 `Team D` 세션을 한 REGISTRATION(TEAM_D)으로 모은다", async () => {
+  const { checkBuildersOf } = await import("./dispatch.ts");
+  const b = checkBuildersOf({ flights: ["VOC-5"], prs: [] }, { code: "VCDO", repo: VCDO }, {
+    logbook: [{ flight: "VOC-5", aircraft: "TEAM D", airport: "VCDO", pr: { repo: "chaehy5665/vocado_nextjs", number: 1, url: "", title: "" } }],
+    pulls: [], claims: [], workspaces: [], sessions: [{ id: "d", name: "Team D" }], history: new Map([["d", ["VOC-5"]]]), team: new RegExp(DEFAULT_DISPATCH_CONFIG.teamPattern, "i"),
+  });
+  assert.deepEqual([...b.entries()], [["TEAM_D", ["VOC-5 LOGBOOK", "VOC-5 청구 기록"]]]);
+});
+

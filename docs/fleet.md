@@ -73,6 +73,14 @@ Kept in `~/.local/state/atc/fleet.json`, like the AIRPORT registry (`airports.js
 - **TYPE RATING** starts from what the complement allows. A crew whose only helper is `flash-helper` cannot hold `SEC`, because vocado forbids DeepSeek for security work.
 - **ROUTES** and **TARGETS** are set by the SUPERVISOR. OCC may draft changes (stage 4) but never applies them.
 
+### REGISTRATION spellings as built (ATC-67)
+
+atc reads one REGISTRATION the same way everywhere, whatever the session name's spelling. `server/registration.ts` `registrationOf(name, teamPattern)` maps any name that DISPATCH's `teamPattern` accepts to the canonical form: upper case with `_` (`Team G`, `TEAM-G`, `team_g`, `TEAMG` → `TEAM_G`). With no separator it inserts `_` at the first place the pattern accepts, so a custom `teamPattern` still decides. Names the pattern rejects (TOWER, OCC, President) give `null` and are compared in upper case, as before.
+
+- **Reads.** Every place that compares a session or AIRCRAFT name with a REGISTRATION uses it: FLEET (`fleetView`, card APIs, ENTRY INTO SERVICE), DISPATCH (tails, CHECK independence, FUEL lookup, profile and ACCOUNT via `crew.ts`), CREW CHANGE, observed crew, CHECKRIDE, BRIEFING, FLEET PLAN, ATFM auto eligibility, FUEL members and FUEL BURN, FLIGHT FOLLOWING, session control (`sameName`), `tail:` labels (`tail:team-g` is `TEAM_G`) and TAIL drafts. A `fleet.json` key written as `Team_G` is still found and is not rewritten.
+- **New records.** LOGBOOK `aircraft`, DEPARTURE LOG lines, FLIGHT RECORDER `fleet` and `checkride` lines, FLEET PLAN proposals and sessions launched by atc use the canonical REGISTRATION. Old lines keep their spelling and match on read. Two records keep the live session name on purpose, because they name the SendMessage recipient that `occ/send-guard.mjs` compares exactly: DISPATCH proposals' `aircraftName` and CREW CHANGE `registration` (SUPERVISOR decision, 2026-09-28). The guard is unchanged.
+- **FLEET.** A live team session whose name is not canonical shows a one-line hint on its AIRCRAFT, `세션 이름 Team G → TEAM_G로 바꾸면 좋다`, and a small `이름` tag in the status list; the session stays linked. Two or more live sessions that read as the same REGISTRATION are shown as a conflict (`세션 2개가 TEAM_H로 읽힘: …`, a solid `세션 2개` tag) and are not merged. Deciding which one is SUPERSEDED is idea [#96](https://github.com/chaehy5665/atc/issues/96).
+
 ## 4. FLIGHT classification
 
 Three independent axes. Each is a Linear label that OCC owns (a plan field in occ.md section 4).
@@ -291,7 +299,7 @@ Kept in `~/.local/state/atc/logbook.jsonl`, append-only like the other records. 
 | Field | Meaning |
 |---|---|
 | `key` | `owner/repo#number`, the dedupe key. A PR is written once |
-| `aircraft` | The REGISTRATION of the team session that flew it (below), upper case. `null` when atc cannot tell; the line is still written |
+| `aircraft` | The REGISTRATION of the team session that flew it (below), canonical (`TEAM_G`, ATC-67; older lines are upper case as written). `null` when atc cannot tell; the line is still written |
 | `flight` | Ticket key from the PR branch (`voc-<n>`) or the title's trailing `(VOC-n)`. `null` for AD HOC work |
 | `class` | `classOf(labels)` of that FLIGHT's Linear labels at arrival (FLIGHT TYPE, WAKE, ratings, and whether type and wake came from labels). `null` for AD HOC or when Linear does not know the ticket |
 | `airport` | AIRPORT code of the repository |
@@ -486,7 +494,7 @@ The complement is what the SUPERVISOR declared. The observed crew is what the AI
 
 Transcripts (`*.jsonl` bodies), prompts and the meta `description` are never read, stored or returned. The meta file is parsed and everything except `agentType` and `model` is dropped at once (`parseMeta`).
 
-**Which sessions.** A session belongs to an AIRCRAFT when its name equals the REGISTRATION: a live Claude session in the snapshot (the way atc links AIRCRAFT today), or any session folder whose `custom-title.json` says so and that was active in the window. When there is none, `observedCrew` and `crewDrift` are `null` (the card shows nothing observed, not "unused").
+**Which sessions.** A session belongs to an AIRCRAFT when its name reads as the REGISTRATION (`Team G` is `TEAM_G`, ATC-67): a live Claude session in the snapshot (the way atc links AIRCRAFT today), or any session folder whose `custom-title.json` says so and that was active in the window. When there is none, `observedCrew` and `crewDrift` are `null` (the card shows nothing observed, not "unused").
 
 **Mapping to POSITIONs** (`positionOf`, against the declared complement):
 

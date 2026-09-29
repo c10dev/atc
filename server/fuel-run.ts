@@ -20,6 +20,7 @@ import type { Snapshot } from "./model.ts";
 import { allProposals } from "./proposals.ts";
 import { readHookClaims } from "./sources/claude.ts";
 import { type FuelStatusRecord, lastRecord, readTail } from "../hooks/fuel-statusline.mjs";
+import { fleetKeyOf, regKey } from "./registration.ts";
 
 // FUEL 읽기(ATC-50, docs/fuel.md 4): ~/.claude/projects의 대화 기록을 파일마다 지난번 바이트 뒤부터만 읽는다(talkEventsFile과 같은 방식).
 // 본 대화 기록 <sessionId>.jsonl은 CAPTAIN, <sessionId>/subagents/**/agent-*.jsonl은 CREW. 읽기만 하고 아무것도 쓰지 않는다.
@@ -227,8 +228,9 @@ function complements(names: Map<string, string>): (session: string) => CrewMembe
     fleet = loadFleet();
   } catch {}
   return (session) => {
-    const reg = names.get(session)?.toUpperCase();
-    const profile = reg && fleet?.aircraft[reg];
+    const name = names.get(session);
+    const key = name && fleet ? fleetKeyOf(Object.keys(fleet.aircraft), name) : null; // `Team G`도 TEAM_G 항목(ATC-67)
+    const profile = key && fleet?.aircraft[key];
     return profile ? (profile.complement ?? fleet!.defaults.complement) : null;
   };
 }
@@ -255,7 +257,7 @@ export function analyzeWindow(
   const claims = [...readHookClaims(), ...s.claims];
   const byClaimant = new Map<string, ClaimSpan[]>();
   for (const c of claims) byClaimant.set(c.sessionId, [...(byClaimant.get(c.sessionId) ?? []), c]);
-  const aircraftOf = (id: string) => scan.names.get(id)?.toUpperCase() ?? null;
+  const aircraftOf = (id: string) => (scan.names.get(id) ? regKey(scan.names.get(id)) : null);
   const change = sessionChangeLeaks(scan.records.values(), (r) => {
     const f = flightOf(r, spans, aircraftOf, (id) => byClaimant.get(id) ?? []);
     return f && { key: f.key, airport: f.airport ?? null };
@@ -400,7 +402,7 @@ export function aircraftContexts(sessions: Snapshot["sessions"], teamPattern: st
   for (const x of sessions) {
     if (x.agent !== "claude" || x.status === "dead" || !team.test(x.name)) continue;
     const c = sizes.get(x.id);
-    const reg = x.name.toUpperCase();
+    const reg = regKey(x.name, teamPattern); // `Team G`도 TEAM_G(ATC-67)
     if (c && (!out.has(reg) || c.at > out.get(reg)!.at)) out.set(reg, c);
   }
   return out;

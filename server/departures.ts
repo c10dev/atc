@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { config } from "./config.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import type { Snapshot } from "./model.ts";
+import { regKey } from "./registration.ts";
 
 // DEPARTURE LOG(착수 기록): FLIGHT에 처음 STAND나 claim이 생긴 순간, AIRCRAFT가 바뀐 순간(HANDOFF)을 남긴다.
 // PR이 머지될 때쯤이면 claim은 정리되거나 3시간 유휴로 다시 시작되고 워크트리도 지워지므로,
@@ -53,7 +54,7 @@ export function diffDepartures(
       if (c.workspacePath !== w.path || c.state !== "active") continue;
       const name = nameOf.get(c.sessionId);
       if (!name || !team.test(name)) continue;
-      const reg = name.toUpperCase();
+      const reg = regKey(name, opts.teamPattern); // 새 줄은 정식 REGISTRATION(ATC-67)
       if (!holders.has(reg) || c.since < holders.get(reg)!) holders.set(reg, c.since);
     }
     const known = state.has(w.path);

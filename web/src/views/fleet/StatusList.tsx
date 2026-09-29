@@ -38,6 +38,11 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                       {r.account}
                     </span>
                   )}
+                  {r.name && (
+                    <span className={`fl-r-name${r.name.conflict ? " is-conflict" : ""}`} title={r.name.title}>
+                      {r.name.label}
+                    </span>
+                  )}
                 </span>
                 <span className="fl-r-apt">{r.airport ? <span className="apt">{r.airport}</span> : <span className="faint">—</span>}</span>
                 <span className="fl-r-status">{r.status}</span>

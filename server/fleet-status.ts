@@ -3,6 +3,7 @@ import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel, type HealthCode
 import { type FuelRemaining, fuelLabel, fuelTitle } from "./fuel-remaining.ts";
 import { type ContextBadge, contextBadgeOf } from "./fuel-context.ts";
 import { fleetFuelLabel, fleetFuelTitle } from "./fuel-view.ts";
+import { conflictHintOf, renameHintOf } from "./registration.ts";
 
 // FLEET 운항 상태 목록(ATC-44, UI report #99): AIRCRAFT 한 대가 한 줄. 화면과 같이 쓰는 순수 함수.
 
@@ -50,6 +51,8 @@ export interface FleetRow {
   fuelBurn: { label: string; title: string } | null;
   // CONTEXT SIZE(ATC-69): "502k / 1M". 살아 있는 세션의 기록이 없으면 null
   context: ContextBadge | null;
+  // 세션 이름(ATC-67): 같은 REGISTRATION으로 읽히는 세션이 둘 이상이면 충돌, 정식 표기가 아니면 이름 바꾸기 힌트. 없으면 null
+  name: { label: string; title: string; conflict: boolean } | null;
 }
 
 // 목록 줄: 상태 순서, 같은 상태 안에서는 AIRPORT(없으면 뒤), 그다음 REGISTRATION
@@ -75,6 +78,11 @@ export function fleetRows(aircraft: readonly AircraftView[], now: number): Fleet
       fuel: a.fuel ? { label: fuelLabel(a.fuel, now), level: a.fuel.level, title: fuelTitle(a.fuel, now) } : null,
       fuelBurn: a.fuelBurn && fleetFuelLabel(a.fuelBurn) ? { label: fleetFuelLabel(a.fuelBurn)!, title: fleetFuelTitle(a.fuelBurn) } : null,
       context: contextBadgeOf(a.context),
+      name: a.sessionConflict?.length
+        ? { label: `세션 ${a.sessionConflict.length}개`, title: conflictHintOf(a.sessionConflict, a.registration), conflict: true }
+        : a.sessionName
+          ? { label: "이름", title: renameHintOf(a.sessionName, a.registration), conflict: false }
+          : null,
     };
   });
   return rows.sort(

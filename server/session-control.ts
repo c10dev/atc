@@ -10,6 +10,7 @@ import { accountsLabeled, CONTROL_NAMES, controlAccountOf, type FleetFile } from
 import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { record } from "./recorder.ts";
+import { regKey, sameReg } from "./registration.ts";
 
 // 세션 조종(docs/fleet.md 8.5). atc가 `claude --bg`로 AIRCRAFT 세션을 띄우고 `claude stop`으로 멈춘다.
 // SUPERVISOR가 FLEET 탭에서 누를 때만 한다(Origin 검사). 관제 세션의 atcctl은 부를 수 없다.
@@ -59,11 +60,11 @@ export interface LaunchPlan {
   args: string[];
 }
 
-const sameName = (row: AgentRow, reg: string) => (row.name ?? "").toUpperCase() === reg.toUpperCase();
+const sameName = (row: AgentRow, reg: string) => sameReg(row.name, reg); // `Team G` 세션도 TEAM_G(ATC-67)
 
 // 띄울 수 있는지 보고 claude 인자를 만든다(순수)
 export function launchPlanOf(input: LaunchInput, rows: AgentRow[], max = MAX_LAUNCHED): LaunchPlan {
-  const reg = input.registration.toUpperCase();
+  const reg = regKey(input.registration); // 새 세션은 정식 REGISTRATION으로 띄운다(ATC-67)
   if (input.retired) throw new ControlError(`${reg}는 RETIRED — 먼저 복귀시킨다`, 409);
   if (!input.repo) throw new ControlError(`${reg}의 base AIRPORT 저장소를 모름 — 프로필에서 base를 정한다`, 409);
   const live = rows.find((r) => sameName(r, reg));
@@ -224,7 +225,7 @@ export function tmuxPanes(bin = controlBins().tmux ?? "tmux"): Promise<TmuxPane[
 
 // 멈출 백그라운드 세션(순수). 데스크톱·터미널 세션은 atc가 멈추지 않는다
 export function stopTargetOf(registration: string, rows: AgentRow[]): AgentRow {
-  const reg = registration.toUpperCase();
+  const reg = regKey(registration);
   const row = rows.find((r) => sameName(r, reg));
   if (!row) throw new ControlError(`${reg} 세션이 떠 있지 않음`, 404);
   if (row.kind !== "background" || !row.id) throw new ControlError(`${reg}는 데스크톱·터미널 세션 — 그 창에서 닫는다`, 409);
@@ -313,7 +314,7 @@ export interface ControlResult {
 
 // LAUNCH: FLEET 카드 버튼과 FLEET PLAN 승인(8.7)이 같이 쓴다. 결과는 FLIGHT RECORDER에 by와 함께 남는다
 export async function launchAircraft(s: Snapshot, registration: string, options: { permissionMode?: unknown; model?: unknown }, by: string): Promise<ControlResult> {
-  const reg = registration.toUpperCase();
+  const reg = regKey(registration);
   const cfg = loadDispatchConfig();
   const a = fleetView(s, loadFleet(), cfg.teamPattern).find((x) => x.registration === reg);
   if (!a) return { ok: false, status: 404, error: `FLEET에 없음: ${reg}` };
@@ -338,7 +339,7 @@ export async function launchAircraft(s: Snapshot, registration: string, options:
 
 // STOP: 백그라운드 세션만 멈춘다
 export async function stopAircraft(registration: string, by: string): Promise<ControlResult> {
-  const reg = registration.toUpperCase();
+  const reg = regKey(registration);
   const t = new Date().toISOString();
   try {
     const row = stopTargetOf(reg, await agentRows());
@@ -495,7 +496,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
 
   app.post("/api/fleet/:registration/launch", async (c: Context) => {
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
-    const reg = (c.req.param("registration") ?? "").toUpperCase();
+    const reg = regKey(c.req.param("registration"));
     const body = await c.req.json().catch(() => ({}));
     const r = await launchAircraft(await getSnapshot(), reg, body, "SUPERVISOR");
     if (!r.ok) return c.json({ error: r.error }, r.status as 400);
@@ -504,7 +505,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
 
   app.post("/api/fleet/:registration/stop", async (c: Context) => {
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
-    const reg = (c.req.param("registration") ?? "").toUpperCase();
+    const reg = regKey(c.req.param("registration"));
     const r = await stopAircraft(reg, "SUPERVISOR");
     if (!r.ok) return c.json({ error: r.error }, r.status as 400);
     return c.json({ ok: true, registration: reg, jobId: r.jobId });

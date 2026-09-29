@@ -24,6 +24,7 @@ import type { Proposal } from "./proposals.ts";
 import { loadTailLabels } from "./sources/linear-labels.ts";
 import { judgesViewOf, loadJudges, marksOf, readJudgeLines } from "./judges/store.ts";
 import { ackSlips, freshSlipKeys, loadSlipsReported, saveSlipsReported, slipsOf, waypointEtasOf } from "./waypoint-slips.ts";
+import { regKey } from "./registration.ts";
 
 // OCC SCHEDULE — OCC가 Linear에 쓸 변경을 초안으로 남긴다. 설계: docs/occ.md 5~7장.
 // 작업 종류는 CLASSIFY(분류 라벨), PRIORITIZE(우선순위), NEW(새 이슈), CLOSE(PR이 머지된 FLIGHT를 Done으로),
@@ -431,8 +432,8 @@ export function parseNew(raw: Record<string, unknown>, tickets: Ticket[], tails:
     out.milestone = { id: m.id, name: m.name };
   }
   if (raw.tail != null) {
-    const tail = String(raw.tail).trim().toUpperCase().replace(/^TAIL:/, "");
-    if (!tails.some((x) => x.toUpperCase() === tail)) throw new ScheduleError(`FLEET에 없거나 퇴역했거나 health·ACCOUNT LIMIT으로 HOLD된 AIRCRAFT: ${tail}`);
+    const tail = regKey(String(raw.tail).trim().replace(/^TAIL:\s*/i, "")); // `Team J`도 TEAM_J(ATC-67)
+    if (!tails.some((x) => regKey(x) === tail)) throw new ScheduleError(`FLEET에 없거나 퇴역했거나 health·ACCOUNT LIMIT으로 HOLD된 AIRCRAFT: ${tail}`);
     out.tail = tail;
   }
   const keys = new Set(tickets.map((t) => t.key));
@@ -779,7 +780,7 @@ export function candidatesOf(tickets: Ticket[], ops: ScheduleOp[], closable: Map
 
 // FLEET 등록부의 AIRCRAFT(TAIL 검사용): fleet.json에 있는 것만, RETIRED 표시
 const fleetRegsOf = (fleet: ReturnType<typeof loadFleet>): TailCtx["fleet"] =>
-  Object.entries(fleet.aircraft).map(([k, v]) => ({ registration: k.toUpperCase(), retired: Boolean(v.retired) }));
+  Object.entries(fleet.aircraft).map(([k, v]) => ({ registration: regKey(k), retired: Boolean(v.retired) }));
 
 // proposals: DISPATCH 제안 목록(TAIL 신호의 READBACK). proposals.ts가 routes.ts를 거쳐 이 파일을 읽어 index.ts에서 넘긴다(순환 import 방지)
 export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, proposals: () => Proposal[] = () => []) {

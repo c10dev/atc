@@ -1,6 +1,7 @@
 import { addCost, type Cost, costOf, type PriceTable, type PriceWarning, rateOf, roundCost, zeroCost } from "./fuel-cost.ts";
 import { countWarnings, type CrewWarning, type CrewWarningCounts, emptyWarnings } from "./fuel-crew.ts";
 import { addLeak, emptyLeaks, type LeakEvent, type LeakTotals, OUTSIDE_LEAK } from "./fuel-leaks.ts";
+import { regKey } from "./registration.ts";
 
 // FUEL(ATC-50, docs/fuel.md 1·2·4): 대화 기록의 message.usage로 요청마다 토큰을 센다. 순수 함수만 둔다(읽기는 fuel-run.ts).
 // 본문은 읽지도 남기지도 않는다 — "usage"·"compact_boundary"·"agent-name"이 없는 줄은 JSON.parse 전에 버리고,
@@ -441,7 +442,7 @@ export function summarizeFuel(input: SummaryInput): FuelSummary {
   const byName = new Map<string, Acc & { sessions: string[]; leak: LeakTotals; crewWarnings: CrewWarningCounts }>();
   for (const s of sessions) {
     if (!s.name) continue;
-    const key = s.name.toUpperCase();
+    const key = regKey(s.name); // AIRCRAFT마다(`Team G`도 TEAM_G, ATC-67)
     let g = byName.get(key);
     if (!g) byName.set(key, (g = { ...acc(), sessions: [], leak: emptyLeaks(), crewWarnings: emptyWarnings() }));
     mergeLeaks(g.leak, leakOf.get(s.session) ?? emptyLeaks());

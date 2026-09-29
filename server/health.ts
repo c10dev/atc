@@ -1,6 +1,7 @@
 // AIRCRAFT health(ATC-45, docs/fleet.md 8.8): 세션이 왜 멈췄는지, 무엇을 기다리는지를 대화 기록 끝에서 읽는다.
 // atc는 알리고 제안만 한다 — 다시 보내기·승인·재시작은 하지 않는다. 계산은 순수 함수이고,
 // 본문은 두지 않는다(코드, 시각, 오류 한 줄만).
+import { sameReg } from "./registration.ts";
 
 export const HEALTH_CODES = ["LIMIT", "THROTTLE", "NETWORK", "MODEL", "CONTEXT", "PROVIDER", "PENDING", "UNANSWERED", "HUNG", "DENIED", "UNKNOWN"] as const;
 export type HealthCode = (typeof HEALTH_CODES)[number];
@@ -340,7 +341,7 @@ export function accountHolds(xs: { name: string; account?: string | null; health
 // 이 AIRCRAFT를 붙드는 ACCOUNT HOLD. 스스로 LIMIT에 걸린 AIRCRAFT는 자기 health로 보이므로 없다
 export function accountHoldOf(holds: Map<string, AccountHold>, account: string | null | undefined, name: string): AccountHold | null {
   const h = account ? holds.get(account) : undefined;
-  return h && !h.by.some((b) => b.toUpperCase() === name.toUpperCase()) ? h : null;
+  return h && !h.by.some((b) => sameReg(b, name)) ? h : null;
 }
 
 // FLEET 줄·DISPATCH 사유: HOLD · LIMIT (account pro-2) until 07:40Z

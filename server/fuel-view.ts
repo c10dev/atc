@@ -4,6 +4,7 @@ import type { FlightFuel } from "./fuel-flights.ts";
 import { CREW_WARNING_KINDS, type CrewWarningKind } from "./fuel-crew.ts";
 import { type LeakEvent, LEAK_RULES, type LeakRule, TTL_1H_MS, TTL_5M_MS, ttlAfter } from "./fuel-leaks.ts";
 import type { LogEntry } from "./logbook.ts";
+import { regKey } from "./registration.ts";
 
 // FUEL F8(ATC-56, docs/fuel.md 7): 화면과 브리핑에 보일 FUEL 값. 순수 함수만 두고, 화면(web)도 이 파일을 부른다(서버 입출력 import 없음).
 // 보여 주기만 한다: DISPATCH 점수·배정에 쓰지 않고, COLD CACHE 경고는 막지 않는다.
@@ -136,9 +137,9 @@ const hit = (read: number, all: number) => (all > 0 ? Math.round((read / all) * 
 const promptOf = (k: { input: number; cacheWrite5m: number; cacheWrite1h: number; cacheRead: number }) => k.input + k.cacheWrite5m + k.cacheWrite1h + k.cacheRead;
 
 export function fleetFuelOf(registration: string, entries: readonly PricedEntry[], now: number, days = FLEET_FUEL_DAYS): FleetFuel {
-  const reg = registration.toUpperCase();
+  const reg = regKey(registration);
   const since = now - days * DAY;
-  const mine = entries.filter((e) => e.aircraft === reg && Date.parse(e.arrivedAt) >= since && Date.parse(e.arrivedAt) <= now);
+  const mine = entries.filter((e) => regKey(e.aircraft) === reg && Date.parse(e.arrivedAt) >= since && Date.parse(e.arrivedAt) <= now);
   const fueled = mine.filter((e) => e.fuel);
   const priced = mine.filter((e) => e.fuelCost?.total);
   const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -206,7 +207,7 @@ export function largeLeaksOf(events: readonly (LeakEvent & { name?: string | nul
   const since = now - LARGE_LEAK_HOURS * 3_600_000;
   const by = new Map<string, { count: number; tokens: number; cost: number; rules: Map<LeakName, number> }>();
   for (const e of events) {
-    const name = e.name?.toUpperCase();
+    const name = e.name ? regKey(e.name) : null;
     if (!name || e.rule === "expectedRebuild" || e.rule === "proxied" || e.cost === null || !isTeam(name)) continue;
     const t = Date.parse(e.t);
     if (t < since || t > now) continue;
@@ -265,7 +266,7 @@ export function coldCachesOf(holding: readonly HoldingCaptain[], records: Iterab
   const out: ColdCache[] = [];
   for (const h of holding) {
     const list = (bySession.get(h.session) ?? []).sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
-    const aircraft = h.name.toUpperCase();
+    const aircraft = regKey(h.name);
     if (!list.length) {
       const at = h.lastActiveAt ? Date.parse(h.lastActiveAt) : NaN;
       if (!Number.isFinite(at) || now - at <= TTL_1H_MS) continue;
