@@ -8,9 +8,10 @@ import type { ClearanceType } from "./model.ts";
 export type ResponseAttr = "W/U" | "R";
 export type Answer = "READBACK" | "ROGER" | "UNABLE" | "STANDBY";
 
-// 알림(INFO·TRAFFIC·REPORT)은 R, 따를 지시(LAND·HOLD·CONTINUE)는 W/U
+// 알림(INFO·TRAFFIC·REPORT)은 R, 따를 지시(LAND·GO AROUND·HOLD·CONTINUE)는 W/U
 const CLEARANCE_ATTR: Record<ClearanceType, ResponseAttr> = {
   LAND: "W/U",
+  "GO AROUND": "W/U", // 행동 지시(ATC-128): 합치고 풀고 push하거나 UNABLE
   HOLD: "W/U",
   CONTINUE: "W/U",
   INFO: "R",

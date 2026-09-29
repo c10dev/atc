@@ -626,6 +626,7 @@ export function buildPulls(
         blocks,
         readyAt,
         createdAt: gh.createdAt,
+        changed: gh.changed,
         codexUnavailable: unavailable,
         // 현재 head의 Codex 인라인 지적 요약(등급별 수, 해결·답글). Codex 지적이 없거나 스레드를 못 읽었으면 null
         codexFindings: codexFindings(gh) ? (() => {

@@ -1,5 +1,6 @@
 import { stopKey } from "./atfm.ts";
 import { awayOperations } from "./away.ts";
+import { goAroundEvents } from "./go-around.ts";
 import { inSequence, pullKey } from "./landing.ts";
 import type { LandingBlockCode, PullRequest, Snapshot, TrafficEvent } from "./model.ts";
 
@@ -47,7 +48,7 @@ export function diffSnapshots(prev: Snapshot | null, next: Snapshot): Draft[] {
     if (!seen.has(handoffKey(h))) out.push({ kind: "handoff", workspacePath: h.workspacePath, sessionIds: [h.from, h.to] });
   }
 
-  if (prev.github.fetchedAt && next.github.fetchedAt) out.push(...diffLanding(prev, next), ...diffGroundStops(prev, next));
+  if (prev.github.fetchedAt && next.github.fetchedAt) out.push(...diffLanding(prev, next), ...goAroundEvents(prev, next), ...diffGroundStops(prev, next));
 
   const pairs = (m: Map<string, string[]>) => new Set([...m].flatMap(([id, repos]) => repos.map((r) => `${id}|${r}`)));
   const wasAway = pairs(awayOperations(prev));

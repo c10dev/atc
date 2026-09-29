@@ -58,7 +58,7 @@ const USAGE = `사용법:
   node atcctl.mjs brief                     지난 확인 이후 변화 + 현재 상태 (JSON)
   node atcctl.mjs ack <cursor>              브리핑을 처리했다고 표시 (다음 brief는 이후 변화만)
   node atcctl.mjs issue <세션> <TYPE> [--stand <STAND>] [--flight <FLIGHT>] -- <CLEARANCE 내용>
-                                            TYPE: TRAFFIC HOLD CONTINUE LAND REPORT INFO
+                                            TYPE: TRAFFIC HOLD CONTINUE LAND "GO AROUND" REPORT INFO
                                             보낼 대상(SEND TO)과 보낼 문구를 출력한다
   node atcctl.mjs readback <C-0007>         팀이 READBACK함(W/U·R 모두 닫는다)
   node atcctl.mjs roger <C-0007>            팀이 ROGER함(R: INFO·TRAFFIC·REPORT만 닫는다)
@@ -202,11 +202,15 @@ async function call(method, path, body, { limit, soft } = {}) {
   return data;
 }
 
-function parseIssue(args) {
+export function parseIssue(args) {
   const sep = args.indexOf("--");
   const head = sep < 0 ? args : args.slice(0, sep);
   const text = sep < 0 ? "" : args.slice(sep + 1).join(" ");
-  const [to, type, ...rest] = head;
+  const [to, type0, ...rest0] = head;
+  // GO AROUND는 두 낱말이다(ATC-128): `GO AROUND`(따옴표)·`GO-AROUND`·띄어 쓴 `GO AROUND` 모두 받는다
+  const twoWords = type0?.toUpperCase() === "GO" && rest0[0]?.toUpperCase() === "AROUND";
+  const type = twoWords ? "GO AROUND" : type0?.replace(/^GO[-_]AROUND$/i, "GO AROUND");
+  const rest = twoWords ? rest0.slice(1) : rest0;
   const opts = {};
   for (let i = 0; i < rest.length; i += 2) {
     if (rest[i] === "--stand") opts.stand = rest[i + 1];

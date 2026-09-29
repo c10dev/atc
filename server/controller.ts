@@ -10,6 +10,7 @@ import { type AtfmConfig, DEFAULT_ATFM, enforcedStops, landOf, loadAtfm, slotHol
 import { healthLabel } from "./health.ts";
 import { fuelInfos } from "./fuel-remaining.ts";
 import type { FuelWatch } from "./fuel-watch.ts";
+import { goAroundOf } from "./go-around.ts";
 import { inSequence, pullKey, reviewerOf } from "./landing.ts";
 import { record } from "./recorder.ts";
 import { closingLine, responseOf } from "./response.ts";
@@ -119,6 +120,8 @@ export function buildBrief(
       landClearance: lastLand ? { id: lastLand.id, readBack: Boolean(lastLand.readbackAt) } : null,
       // CLEARED에만. TOWER가 LAND CLEARANCE 본문으로 그대로 쓴다
       repoSeq,
+      // PR이 base와 충돌·뒤처졌거나 LAND 문구의 앞 PR이 머지됨(ATC-128). action "send"면 TOWER가 holders에게 GO AROUND로 text 그대로 보낸다
+      goAround: goAroundOf(p, { clearances, events: since.events, pulls: s.pulls, lastLand, holders: p.standPath ? active.filter((c) => c.workspacePath === p.standPath).length : 0, now }),
       landText: repoSeq ? landTextOf(repoSeq, airport, p.number, fl, repoSeq > 1 ? lane[repoSeq - 2].number : null, p.codexFindings?.ok ? p.codexFindings.p3 : 0) : null,
       // 쌓인 PR(base가 기본 브랜치가 아님, ATC-29): CLEARED가 되지 않고 LAND를 내지 않는다. stack.chain은 아래부터
       stacked: p.blocks.some((b) => b.code === "stacked"),
@@ -170,6 +173,9 @@ export function buildBrief(
       airport: codeOf(e.repo),
       pr: e.pull,
       blocks: e.blocks,
+      head: e.head,
+      merged: e.merged,
+      shared: e.shared,
       message: e.message,
     })),
     open: {
