@@ -84,7 +84,15 @@ export function NeedsYou({ job, className = "" }: { job: Job | null | undefined;
 
 // working 중인 백그라운드 job의 한 줄(Claude Code가 적은 detail)
 export function JobDetail({ job }: { job: Job | null | undefined }) {
-  if (job?.state !== "working" || !job.detail) return null;
+  if (job?.state !== "working") return null;
+  const st = job.settled;
+  if (st) {
+    // ATC-133: 파일은 blocked로 남았지만 이미 일하는 job. 파일의 원래 모습을 툴팁에 남긴다
+    const hm = (t: string | null) => (t ? `${t.slice(11, 16)}Z` : "");
+    const tip = `job 파일은 blocked${st.since ? ` since ${hm(st.since)}` : ""}${st.resumedAt ? `, working since ${hm(st.resumedAt)}` : ""}${st.reason === "tempo" ? " (tempo active)" : " (이후 턴 있음)"}`;
+    return <span className="job-detail faint" title={tip}>working</span>;
+  }
+  if (!job.detail) return null;
   return <span className="job-detail faint" title="백그라운드 job의 detail(Claude Code가 적음)">{job.detail}</span>;
 }
 

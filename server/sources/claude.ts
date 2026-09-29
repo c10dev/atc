@@ -8,7 +8,7 @@ import { type TalkEvent, talkEventsOf } from "../briefs.ts";
 import { type EndedSession, normalEndOf } from "../restarting.ts";
 import { type Fact, factsOf, type Health, type HealthConfig, healthOf, mergeHealth } from "../health.ts";
 import { sessionProcOf } from "../session-proc.ts";
-import { readJob } from "../job-state.ts";
+import { readJob, settleJob } from "../job-state.ts";
 import { lastMessageOf } from "../judges/report.ts";
 
 interface SessionFile {
@@ -63,6 +63,7 @@ export function readClaudeSessions(): { sessions: Session[]; files: SessionFile[
   }
   const sessions = files.map((s): Session => {
     const alive = isAlive(s.pid, s.procStart);
+    const lastActiveAt = mtime(transcriptPath(s))?.toISOString() ?? null;
     // 출처(ATC-76): 살아 있는 세션만, pid마다 한 번 읽는다(session-origin.ts가 캐시)
     const proc = alive ? sessionProcOf(s.pid, s.kind, s.entrypoint) : null;
     return {
@@ -73,12 +74,12 @@ export function readClaudeSessions(): { sessions: Session[]; files: SessionFile[
       pid: s.pid,
       cwd: s.cwd,
       startedAt: new Date(s.startedAt).toISOString(),
-      lastActiveAt: mtime(transcriptPath(s))?.toISOString() ?? null,
+      lastActiveAt,
       repo: null,
       workspacePath: null,
       ...(proc ? { origin: proc.origin, permissionMode: proc.permissionMode } : {}),
       // 백그라운드 job 상태(ATC-99): 살아 있는 bg 세션만. 파일은 mtime으로 캐시하고 읽기만 한다
-      ...(alive && s.kind === "bg" ? { job: readJob(s.jobId) } : {}),
+      ...(alive && s.kind === "bg" ? { job: settleJob(readJob(s.jobId), lastActiveAt) ?? null } : {}),
     };
   });
   return { sessions, files };

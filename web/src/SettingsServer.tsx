@@ -755,7 +755,7 @@ function ControlSessions() {
             <p className="config-note">
               <span className={`session-badge ${bg || tmux ? "is-busy" : other ? "" : "is-dead"}`}>{badge}</span>
               {detail ? ` · ${detail}` : ""}
-              {bg?.job?.state === "blocked" ? <> · <NeedsYou job={bg.job} /></> : bg?.job?.state === "working" && bg.job.detail ? <> · <JobDetail job={bg.job} /></> : null}
+              {bg?.job?.state === "blocked" ? <> · <NeedsYou job={bg.job} /></> : bg?.job?.state === "working" && (bg.job.detail || bg.job.settled) ? <> · <JobDetail job={bg.job} /></> : null}
               {how ? (
                 <>
                   {" "}· {how} · 첫 메시지 <code>{c.prompt}</code>

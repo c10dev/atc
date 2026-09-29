@@ -15,6 +15,9 @@ export interface Job {
   needs: string | null; // blocked일 때 사람에게 필요한 것
   suggestedReply: string | null; // 보여 주고 복사만 한다. atc는 어디에도 보내지 않는다
   since: string | null; // 지금 state가 시작된 시각(timeline.jsonl), 없으면 state.json의 updatedAt
+  tempo?: string | null; // state.json의 tempo(active·idle·blocked …). blocked가 끝났는지 가리는 데 쓴다(ATC-133)
+  // blocked인 채 남은 job 파일을 working으로 고쳐 보인 것(settleJob). 툴팁이 파일의 원래 모습을 말한다. 고치지 않았으면 없다
+  settled?: { from: "blocked"; since: string | null; reason: "tempo" | "turn"; resumedAt: string | null };
 }
 
 const DETAIL_MAX = 300;
@@ -57,7 +60,22 @@ export function parseJob(raw: unknown, timelineTail?: string | null): Job | null
     needs: state === "blocked" ? clean(r.needs, DETAIL_MAX) : null,
     suggestedReply: state === "blocked" ? clean(r.suggestedReply, REPLY_MAX) : null,
     since: sinceOf(timelineTail, state) ?? isoOf(r.updatedAt),
+    tempo: clean(r.tempo, 20),
   };
+}
+
+// blocked인데 이미 일하는 job(ATC-133): SUPERVISOR가 답한 뒤에도 파일이 blocked로 남는다.
+// tempo가 active이거나, 세션의 마지막 활동(대화 기록 mtime — atc가 이미 읽는 값)이 since보다 나중이면 blocked는 끝난 것이다.
+// blocked가 시작될 때 마지막 턴이 함께 기록되므로 GRACE 안의 활동은 그 턴으로 본다. 읽기만 한다
+const SETTLE_GRACE_MS = 30_000;
+export function settleJob(job: Job | null | undefined, lastActiveAt?: string | null): Job | null | undefined {
+  if (!job || job.state !== "blocked" || job.settled) return job;
+  const since = job.since ? Date.parse(job.since) : NaN;
+  const last = lastActiveAt ? Date.parse(lastActiveAt) : NaN;
+  const turn = Number.isFinite(since) && Number.isFinite(last) && last > since + SETTLE_GRACE_MS;
+  if (job.tempo !== "active" && !turn) return job;
+  // detail은 답한 글이거나 blocked 때의 옛 글이라 working의 한 줄로 보이지 않는다
+  return { ...job, state: "working", detail: "", needs: null, suggestedReply: null, settled: { from: "blocked", since: job.since, reason: job.tempo === "active" ? "tempo" : "turn", resumedAt: turn ? new Date(last).toISOString() : null } };
 }
 
 // ── 읽기: mtime·크기로 캐시 ──
@@ -114,10 +132,10 @@ export interface BlockedAlert {
   sessionIds: string[];
 }
 export const BLOCKED_NEXT = "SUPERVISOR가 `claude attach <id>`로 붙어 답하거나 메시지를 보낸다";
-export function blockedAlerts(xs: { id: string; name: string; job?: Job | null; jobId?: string | null }[], now: number, minMin: number): BlockedAlert[] {
+export function blockedAlerts(xs: { id: string; name: string; job?: Job | null; jobId?: string | null; lastActiveAt?: string | null }[], now: number, minMin: number): BlockedAlert[] {
   const out: BlockedAlert[] = [];
   for (const x of xs) {
-    const j = x.job;
+    const j = settleJob(x.job, x.lastActiveAt);
     if (!j || j.state !== "blocked") continue;
     const since = j.since ? Date.parse(j.since) : NaN;
     if (!Number.isFinite(since) || now - since < minMin * 60_000) continue;
@@ -125,7 +143,7 @@ export function blockedAlerts(xs: { id: string; name: string; job?: Job | null; 
     out.push({
       key: `health|BLOCKED|${x.id}`,
       sessionIds: [x.id],
-      message: `BLOCKED — ${x.name}이 ${min}분째 사람을 기다림: ${j.needs ?? j.detail ?? "(내용 없음)"} — ${BLOCKED_NEXT}`,
+      message: `BLOCKED — ${x.name}이 ${min}분째 사람을 기다림: ${j.needs ?? "(내용 없음)"} — ${BLOCKED_NEXT}`,
     });
   }
   return out;
