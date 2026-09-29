@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { applyPatch, canHoldSec, DEFAULT_FLEET, FleetError, fleetView, loadFleet } from "./fleet.ts";
 import { computeActuals } from "./logbook.ts";
-import type { Session, Ticket } from "./model.ts";
+import type { PullRequest, Session, Ticket } from "./model.ts";
 
 const D = DEFAULT_FLEET.defaults;
 
@@ -98,9 +98,10 @@ test("FLEET 화면: FLYING FLIGHT의 제목, 가장 이른 점유 시각, 세션
     },
     { defaults: D, aircraft: {} },
   );
+  const noDetail = { commit: null, pushed: null, pr: null }; // 워크트리 head·origin·PR을 모르면
   assert.deepEqual(b.flights, [
-    { key: "VOC-193", title: "Practice player two columns" },
-    { key: "VOC-194", title: null },
+    { key: "VOC-193", title: "Practice player two columns", detail: noDetail },
+    { key: "VOC-194", title: null, detail: noDetail },
   ]);
   assert.equal(b.flyingSince, "2026-09-28T04:50:00Z");
   assert.equal(b.lastActiveAt, "2026-09-28T05:40:00Z");
@@ -236,3 +237,25 @@ test("FLEET 화면(ATC-67): `Team G` 세션은 TEAM_G 항목과 한 AIRCRAFT, �
   assert.equal(plain[0].sessionConflict, null);
 });
 
+
+test("FLEET 화면(ATC-86): 멈춘 AIRCRAFT는 점유(claimTtl)가 지나 claims에서 빠져도 FLIGHT를 잃지 않는다. 마지막 커밋·push·PR을 붙인다", () => {
+  const D2 = D;
+  const mk = (name: string, over: Partial<Session> = {}) => ({ id: `s-${name}`, name, status: "idle", repo: "/r/atc", cwd: "/r/atc", agent: "claude", pid: 1, startedAt: "", lastActiveAt: "2026-09-28T18:11:06Z", workspacePath: null, ...over }) as Session;
+  const ws = (path: string, ticketKey: string, over = {}) => ({ path, name: path, repo: "/r/atc", isMain: false, branch: `claude/${ticketKey.toLowerCase()}`, head: "59a9fdc1234", dirty: 0, lastCommitAt: "2026-09-28T18:00:00Z", ticketKey, pushed: true, ...over });
+  const views = fleetView(
+    {
+      sessions: [mk("TEAM_G", { keptFlights: ["ATC-72"] }), mk("TEAM_H", { keptFlights: ["ATC-77"] }), mk("TEAM_I")],
+      claims: [], // G·H의 점유는 3시간 TTL로 빠졌다
+      workspaces: [ws("/w/atc-72", "ATC-72"), ws("/w/atc-77", "ATC-77", { head: "7955be6ffff", pushed: false })],
+      airports: [{ id: "r", code: "ATCC", name: "atc", repo: "/r/atc" }],
+      tickets: [{ key: "ATC-72", title: "STAND-free" } as Ticket, { key: "ATC-77", title: "Waypoint" } as Ticket],
+      pulls: [{ number: 147, url: "https://x/147", draft: false, ticketKey: "ATC-72" } as PullRequest],
+    },
+    { defaults: D2, aircraft: {} },
+  );
+  const by = (r: string) => views.find((v) => v.registration === r)!;
+  assert.deepEqual(by("TEAM_G").flying, []); // STAND를 쥔 것은 아니다(FLEET PLAN·SCHEDULE은 그대로)
+  assert.deepEqual(by("TEAM_G").flights, [{ key: "ATC-72", title: "STAND-free", kept: true, detail: { commit: { sha: "59a9fdc", at: "2026-09-28T18:00:00Z" }, pushed: true, pr: { number: 147, url: "https://x/147", draft: false } } }]);
+  assert.deepEqual(by("TEAM_H").flights, [{ key: "ATC-77", title: "Waypoint", kept: true, detail: { commit: { sha: "7955be6", at: "2026-09-28T18:00:00Z" }, pushed: false, pr: null } }]);
+  assert.deepEqual(by("TEAM_I").flights, []);
+});

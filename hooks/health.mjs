@@ -2,7 +2,8 @@
 // Claude Code hook(ATC-47): 세션이 멈춘 순간을 health/<sessionId>.jsonl에 한 줄로 남긴다(push).
 //   StopFailure                        API 오류로 턴이 끝났다 → {t, event, code, error, line?}
 //   Notification permission_prompt·elicitation_dialog → code PENDING, idle_prompt → 코드 없음
-//   Stop·PostToolUse                   세션이 다시 움직였다 → 코드를 지우는 줄
+//   Stop·PostToolUse·UserPromptSubmit  세션이 다시 움직였다 → 코드를 지우는 줄(ATC-86: UserPromptSubmit 더함)
+//   Notification quota_auto_resume_fired·_stale·_disabled  CLI의 한도 자동 이어가기(ATC-86) → 코드 없는 줄. fired가 RESUME을 푼다
 // 코드는 server/health.ts의 classifyError로 뽑아 pull 분류기와 같은 규칙을 쓴다(ATC-45).
 // 코드, 시각, 오류 한 줄(≤200자)만 둔다 — 본문은 두지 않는다. 출력 없이 항상 exit 0.
 import { appendFileSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
@@ -13,7 +14,9 @@ import { classifyError, firstLine } from "../server/health.ts";
 
 const SESSION_RE = /^[\w-]{1,128}$/;
 // 코드를 지우는 이벤트: 세션이 다시 돌기 시작했다
-export const CLEAR_EVENTS = new Set(["Stop", "PostToolUse"]);
+export const CLEAR_EVENTS = new Set(["Stop", "PostToolUse", "UserPromptSubmit"]);
+// 한도 자동 이어가기(quota auto-resume) notification_type. 시각만 남긴다
+export const QUOTA_TYPES = new Set(["quota_auto_resume_fired", "quota_auto_resume_stale", "quota_auto_resume_disabled"]);
 // 대기 코드를 만드는 notification_type
 export const PENDING_TYPES = new Set(["permission_prompt", "elicitation_dialog"]);
 
@@ -32,7 +35,7 @@ export function recordOf(input, now = Date.now()) {
   }  if (event === "Notification") {
     const type = input.notification_type;
     if (PENDING_TYPES.has(type)) return { t, event: type, code: "PENDING" };
-    if (type === "idle_prompt") return { t, event: type }; // 혼자서는 코드가 아니다
+    if (type === "idle_prompt" || QUOTA_TYPES.has(type)) return { t, event: type }; // 혼자서는 코드가 아니다
     return null;
   }
   if (CLEAR_EVENTS.has(event)) return { t, event }; // 앞의 코드를 지운다

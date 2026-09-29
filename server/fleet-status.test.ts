@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_FLEET } from "./crew.ts";
 import type { AircraftView } from "./fleet.ts";
-import { elapsedText, fleetRows, fleetStatusOf } from "./fleet-status.ts";
+import { elapsedText, fleetRows, fleetStatusOf, flightDetailText } from "./fleet-status.ts";
 import { ACCOUNT_HOLD_NEXT } from "./health.ts";
 import { computeActuals } from "./logbook.ts";
 
@@ -122,4 +122,23 @@ test("운항 상태 줄에는 ACCOUNT 사용 %가 없다. hold 수준일 때만 
   assert.deepEqual(h!.fuelHold, { label: "HOLD · FUEL (account pro-2) until 09:00Z", title: "ACCOUNT pro-2 · 사용 5h 96% (reset 09:00Z) · TEAM_K statusline 05:30Z" });
   assert.equal(h!.fuelHold!.label.includes("%"), false);
   assert.equal(fleetRows([view("TEAM_A")], NOW)[0]!.fuelHold, null);
+});
+
+test("ATC-86: 점유는 지났지만 멈춘 채 FLIGHT를 쥔 AIRCRAFT(kept)는 HOLDING이고, 줄에 그 FLIGHT와 마지막 커밋·push·PR이 남는다", () => {
+  const detail = { commit: { sha: "59a9fdc", at: "2026-09-28T18:10:00Z" }, pushed: true, pr: null };
+  const kept = view("TEAM_G", { flights: [{ key: "ATC-72", title: "STAND-free FLIGHTs ARRIVED", kept: true, detail }], flying: [], health: { code: "LIMIT", level: "alert", since: "2026-09-28T18:10:48Z", detail: "d", next: "n", holds: true, cut: true, cutAt: "2026-09-28T18:10:48Z" } });
+  assert.equal(fleetStatusOf(kept), "HOLDING");
+  assert.equal(fleetStatusOf(view("TEAM_H")), "PARKED"); // FLIGHT가 없으면 그대로
+  const [row] = fleetRows([kept], NOW);
+  assert.deepEqual(row!.flight, { key: "ATC-72", title: "STAND-free FLIGHTs ARRIVED", kept: true, detail });
+  assert.equal(row!.health?.label, "HOLD · LIMIT (cut 18:10Z)");
+  assert.equal(row!.elapsedMin, null); // STAND를 쥔 시각이 없으면 경과도 없다
+});
+
+test("flightDetailText: 마지막 커밋과 나이, origin에 있나, PR(없으면 no PR). 워크트리를 모르면 no worktree", () => {
+  const at = "2026-09-28T04:55:00Z"; // NOW보다 65분 앞
+  assert.deepEqual(flightDetailText({ commit: { sha: "59a9fdc", at }, pushed: true, pr: null }, NOW), { text: "59a9fdc 1h05m ago · pushed · no PR", unpushed: false });
+  assert.deepEqual(flightDetailText({ commit: { sha: "7955be6", at }, pushed: false, pr: { number: 147, url: "u", draft: true } }, NOW), { text: "7955be6 1h05m ago · not pushed · PR #147 draft", unpushed: true });
+  assert.deepEqual(flightDetailText({ commit: { sha: "7955be6", at: null }, pushed: null, pr: { number: 9, url: "u", draft: false } }, NOW), { text: "7955be6 · PR #9", unpushed: false });
+  assert.deepEqual(flightDetailText({ commit: null, pushed: null, pr: null }, NOW), { text: "no worktree · no PR", unpushed: false });
 });

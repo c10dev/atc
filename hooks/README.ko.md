@@ -139,9 +139,10 @@ SUPERVISOR가 아래 항목을 vocado `.claude/settings.json`에 합친다(기�
 | `StopFailure` | `{t, event, code, error}`와 `line`(오류 첫 줄, ≤200자). `code`는 서버의 `classifyError`로 뽑는다 |
 | `Notification` `permission_prompt` / `elicitation_dialog` | `{t, event, code: "PENDING"}` — 세션 파일이 `busy`여도 승인을 기다리는 중임을 알린다 |
 | `Notification` `idle_prompt` | `{t, event}`. 혼자서는 코드가 아니다 |
-| `Stop`, `PostToolUse` | `{t, event}` — push 코드를 지운다 |
+| `Stop`, `PostToolUse`, `UserPromptSubmit` | `{t, event}` — push 코드를 지운다. `UserPromptSubmit`(ATC-86)은 지시가 들어온 순간이고, atc는 대화 기록이 따라오기 전에 cut `LIMIT`·`RESUME`을 풀 때 쓴다. `Stop`은 cut을 풀지 않는다(잘린 턴 자신의 끝이다) |
+| `Notification` `quota_auto_resume_fired` / `_stale` / `_disabled` | `{t, event}`(ATC-86) — CLI 세션에서만. `fired`가 `RESUME`을 푼다 |
 
-- 코드, 시각, 오류 첫 줄만 둔다. 메시지 본문은 남기지 않는다. hook 입력의 나머지 필드는 보지 않는다.
+- 코드, 시각, 오류 첫 줄만 둔다. 메시지 본문은 남기지 않는다. hook 입력의 나머지 필드는 보지 않는다(`prompt`와 `last_assistant_message`도 남기지 않는다).
 - 서버는 세션마다 파일의 마지막 줄을 읽어, 대화 기록의 마지막 사실보다 새로우면 그것을 쓴다. 그래서 승인 대기는 30분 `HUNG`을 기다리지 않고 `PENDING`으로 바로 보인다. `Stop`이나 다음 `PostToolUse`가 오면 다시 풀린다.
 - hook은 아무것도 출력하지 않고 항상 exit 0이다. 쓰기 오류는 삼킨다. stdin을 읽어 한 줄 쓰고 끝나며 네트워크를 쓰지 않는다.
 - 옵션: `ATC_STATE_DIR`(기본 `~/.local/state/atc`). `health/` 폴더는 언제 지워도 되고, 그러면 대화 기록만으로 판정한다.
@@ -160,14 +161,19 @@ SUPERVISOR가 `~/.claude/settings.json`에 아래 항목을 넣는다(절대 경
       { "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
     ],
     "Notification": [
-      { "matcher": "permission_prompt|idle_prompt|elicitation_dialog", "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
+      { "matcher": "permission_prompt|idle_prompt|elicitation_dialog|quota_auto_resume_fired|quota_auto_resume_stale|quota_auto_resume_disabled", "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
     ],
     "PostToolUse": [
       { "matcher": "*", "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
     ]
   }
 }
 ```
+
+ATC-86이 `UserPromptSubmit`을 더하고 `Notification` matcher를 넓혔다. ATC-86 전에 설치한 것도 계속 돌지만 빠른 해제는 없다.
 
 끄려면 항목을 지운다.
 

@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { changed, fuelFile, lastRecord, lastRecordWith, limitsOf, lineOf, parseRecord, recordOf, run } from "./fuel-statusline.mjs";
+import { changed, fuelFile, lastRecord, lastRecordWith, limitsOf, lineOf, parseRecord, recordOf, recordsOf, run } from "./fuel-statusline.mjs";
 
 // statusline 입력 모양은 Claude Code 2.1.283의 statusline 입력 생성 코드에서 따왔다(ATC-55 Step 0)
 const SCRIPT = new URL("./fuel-statusline.mjs", import.meta.url).pathname;
@@ -130,4 +130,11 @@ test("명령으로: 상태 줄을 출력하고 exit 0. --quiet면 출력 없음.
   } finally {
     s.done();
   }
+});
+
+test("recordsOf: 텍스트 안의 모든 유효한 기록(cut LIMIT의 reset을 그때의 기록에서 되짚을 때). 깨진 줄은 건너뛴다", () => {
+  const a = { t: T, sessionId: "s", rate_limits: RL };
+  const b = { t: "2026-09-28T15:05:00.000Z", sessionId: "s", context_window_size: 200000, model: "claude-sonnet-5-5" };
+  assert.deepEqual(recordsOf(`${JSON.stringify(a)}\n{broken\n\n${JSON.stringify(b)}\n`), [a, b]);
+  assert.deepEqual(recordsOf(""), []);
 });

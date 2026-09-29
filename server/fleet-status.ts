@@ -1,4 +1,4 @@
-import type { AircraftView } from "./fleet.ts";
+import type { AircraftView, FlightDetail } from "./fleet.ts";
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel, type HealthCode, healthLabel } from "./health.ts";
 import { fuelHoldTag, fuelTitle } from "./fuel-remaining.ts";
 import { type ContextBadge, contextBadgeOf } from "./fuel-context.ts";
@@ -10,7 +10,8 @@ import { conflictHintOf, renameHintOf } from "./registration.ts";
 export type FleetStatus = "AIRBORNE" | "HOLDING" | "PARKED" | "AOG" | "NORDO" | "NOT IN SERVICE" | "RETIRED";
 
 // RADAR·STRIPS와 같은 말: 작업 중 AIRBORNE, 대기 중 STAND를 쥐었으면 HOLDING, 아니면 PARKED
-export const fleetStatusOf = (a: Pick<AircraftView, "retired" | "aog" | "status" | "flying">): FleetStatus =>
+// 점유는 놓쳤어도 멈춘 채 FLIGHT를 쥔 AIRCRAFT(ATC-86, flights의 kept)도 HOLDING이다
+export const fleetStatusOf = (a: Pick<AircraftView, "retired" | "aog" | "status" | "flying"> & Partial<Pick<AircraftView, "flights">>): FleetStatus =>
   a.retired
     ? "RETIRED"
     : a.aog
@@ -18,7 +19,7 @@ export const fleetStatusOf = (a: Pick<AircraftView, "retired" | "aog" | "status"
       : a.status === "busy"
         ? "AIRBORNE"
         : a.status === "idle"
-          ? a.flying.length
+          ? (a.flights?.length ?? a.flying.length)
             ? "HOLDING"
             : "PARKED"
           : a.status === "dead"
@@ -33,7 +34,7 @@ export interface FleetRow {
   callsign: string;
   airport: string | null;
   status: FleetStatus;
-  flight: { key: string; title: string | null } | null; // 첫 FLYING FLIGHT
+  flight: { key: string; title: string | null; kept?: true; detail?: FlightDetail } | null; // 첫 FLYING FLIGHT. kept: 점유는 지났지만 멈춘 AIRCRAFT가 쥔 FLIGHT(ATC-86)
   more: number; // 그 밖의 FLYING FLIGHT 수
   elapsedMin: number | null; // 지금 쥔 STAND를 잡은 뒤 흐른 분(FLYING일 때만)
   lastActiveAt: string | null;
@@ -92,6 +93,18 @@ export function fleetRows(aircraft: readonly AircraftView[], now: number): Fleet
       (x.airport ?? "￿").localeCompare(y.airport ?? "￿") ||
       x.registration.localeCompare(y.registration),
   );
+}
+
+// FLIGHT 옆의 한 줄(ATC-86): "59a9fdc 7h ago · pushed · no PR". 워크트리를 모르면 "no worktree"
+export function flightDetailText(d: FlightDetail, now: number): { text: string; unpushed: boolean } {
+  const parts: string[] = [];
+  if (d.commit) {
+    const at = d.commit.at ? Date.parse(d.commit.at) : NaN;
+    parts.push(`${d.commit.sha}${Number.isFinite(at) ? ` ${elapsedText(Math.max(0, Math.floor((now - at) / 60_000)))} ago` : ""}`);
+  } else parts.push("no worktree");
+  if (d.pushed !== null) parts.push(d.pushed ? "pushed" : "not pushed");
+  parts.push(d.pr ? `PR #${d.pr.number}${d.pr.draft ? " draft" : ""}` : "no PR");
+  return { text: parts.join(" · "), unpushed: d.pushed === false };
 }
 
 // 경과 시간: 45m, 3h05m, 2d4h

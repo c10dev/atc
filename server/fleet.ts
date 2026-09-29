@@ -216,6 +216,19 @@ export function applyPatch(
   return next;
 }
 
+// FLEET 줄·카드가 FLIGHT 옆에 두는 것(ATC-86): 그 FLIGHT 워크트리의 마지막 커밋, origin에 있나, PR(없으면 null)
+export interface FlightDetail {
+  commit: { sha: string; at: string | null } | null;
+  pushed: boolean | null; // 모르면 null(브랜치·origin 없음)
+  pr: { number: number; url: string; draft: boolean } | null;
+}
+export interface AircraftFlight {
+  key: string;
+  title: string | null;
+  kept?: true; // 점유(claimTtl)가 지나 STAND는 안 쥐었지만 멈춘 AIRCRAFT의 FLIGHT로 남겨 둔 것(cut LIMIT·RESUME·STALLED)
+  detail?: FlightDetail;
+}
+
 export interface AircraftView {
   registration: string;
   callsign: string;
@@ -229,7 +242,7 @@ export interface AircraftView {
   targets: Targets;
   note: string | null;
   flying: string[]; // 지금 STAND를 쥔 FLIGHT
-  flights: { key: string; title: string | null }[]; // flying과 같은 순서, Linear 제목(모르면 null). FLEET 운항 상태 목록(ATC-44)
+  flights: AircraftFlight[]; // flying 다음에 keptFlights. Linear 제목(모르면 null). FLEET 운항 상태 목록(ATC-44)
   flyingSince: string | null; // 지금 쥔 STAND를 처음 잡은 시각(점유 since 중 가장 이른 것). 없으면 null
   lastActiveAt: string | null; // 세션의 마지막 활동 시각
   health?: Health | null; // AIRCRAFT health(ATC-45). 세션이 없거나 문제가 없으면 null
@@ -284,9 +297,19 @@ export function fuelRecentOf(e: PricedEntry, all: readonly PricedEntry[], now: n
   };
 }
 
+export function flightDetailOf(s: Pick<Snapshot, "workspaces"> & Partial<Pick<Snapshot, "pulls">>, key: string): FlightDetail {
+  const ws = s.workspaces.find((w) => w.ticketKey === key && !w.isMain) ?? s.workspaces.find((w) => w.ticketKey === key);
+  const pr = s.pulls?.find((p) => p.ticketKey === key);
+  return {
+    commit: ws && ws.head ? { sha: ws.head.slice(0, 7), at: ws.lastCommitAt } : null,
+    pushed: ws?.pushed ?? null,
+    pr: pr ? { number: pr.number, url: pr.url, draft: pr.draft } : null,
+  };
+}
+
 // 스냅샷의 TEAM 세션과 등록부를 합친다. 세션이 없는 등록 항목도 "absent"로 보인다.
 export function fleetView(
-  s: Pick<Snapshot, "sessions" | "claims" | "workspaces" | "airports"> & Partial<Pick<Snapshot, "tickets" | "fuel">>,
+  s: Pick<Snapshot, "sessions" | "claims" | "workspaces" | "airports"> & Partial<Pick<Snapshot, "tickets" | "fuel" | "pulls">>,
   fleet: FleetFile,
   teamPattern = DEFAULT_DISPATCH_CONFIG.teamPattern,
   logbook: PricedEntry[] = [], // loadPricedLogbook()이면 FUEL COST까지, loadPricedLogbook()이면 토큰까지
@@ -322,7 +345,10 @@ export function fleetView(
       targets: profile.targets ?? {},
       note: profile.note ?? null,
       flying,
-      flights: flying.map((key) => ({ key, title: s.tickets?.find((t) => t.key === key)?.title ?? null })),
+      flights: [
+        ...flying.map((key) => ({ key, title: s.tickets?.find((t) => t.key === key)?.title ?? null, detail: flightDetailOf(s, key) })),
+        ...(session?.keptFlights ?? []).filter((k) => !flying.includes(k)).map((key) => ({ key, title: s.tickets?.find((t) => t.key === key)?.title ?? null, kept: true as const, detail: flightDetailOf(s, key) })),
+      ],
       flyingSince: held.map((c) => c.since).sort()[0] ?? null,
       lastActiveAt: session?.lastActiveAt ?? null,
       health: session?.health ?? null,

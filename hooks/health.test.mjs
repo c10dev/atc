@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { CLEAR_EVENTS, PENDING_TYPES, lastPushRecord, recordOf, run, sessionFile } from "./health.mjs";
+import { CLEAR_EVENTS, PENDING_TYPES, QUOTA_TYPES, lastPushRecord, recordOf, run, sessionFile } from "./health.mjs";
 
 const SCRIPT = new URL("./health.mjs", import.meta.url).pathname;
 const T = "2026-09-28T07:37:16.000Z";
@@ -57,11 +57,19 @@ test("Notification: permission_prompt·elicitation_dialog는 PENDING, idle_promp
   assert.equal(recordOf({ session_id: "s", hook_event_name: "Notification", notification_type: "something_else" }, now), null);
 });
 
-test("Stop·PostToolUse는 코드를 지우는 줄, 그 밖의 이벤트는 아무것도 남기지 않는다", () => {
+test("Stop·PostToolUse·UserPromptSubmit은 코드를 지우는 줄, 그 밖의 이벤트는 아무것도 남기지 않는다. 본문은 두지 않는다", () => {
   assert.deepEqual(recordOf({ hook_event_name: "Stop" }, now), { t: T, event: "Stop" });
   assert.deepEqual(recordOf({ hook_event_name: "PostToolUse", tool_name: "Edit" }, now), { t: T, event: "PostToolUse" });
-  for (const e of ["SessionStart", "UserPromptSubmit", "PreToolUse", "SubagentStop"]) assert.equal(recordOf({ hook_event_name: e }, now), null);
-  assert.ok(CLEAR_EVENTS.has("Stop") && CLEAR_EVENTS.has("PostToolUse") && PENDING_TYPES.has("permission_prompt"));
+  // ATC-86: 지시가 들어온 순간. prompt 본문·Stop의 마지막 답은 옮기지 않는다
+  assert.deepEqual(recordOf({ hook_event_name: "UserPromptSubmit", prompt: "BODY-must-not-survive" }, now), { t: T, event: "UserPromptSubmit" });
+  assert.deepEqual(recordOf({ hook_event_name: "Stop", last_assistant_message: "BODY-must-not-survive" }, now), { t: T, event: "Stop" });
+  for (const e of ["SessionStart", "PreToolUse", "SubagentStop"]) assert.equal(recordOf({ hook_event_name: e }, now), null);
+  assert.ok(CLEAR_EVENTS.has("Stop") && CLEAR_EVENTS.has("PostToolUse") && CLEAR_EVENTS.has("UserPromptSubmit") && PENDING_TYPES.has("permission_prompt"));
+});
+
+test("Notification quota_auto_resume_*: 코드 없이 시각만 남긴다(fired가 RESUME을 푼다)", () => {
+  assert.deepEqual([...QUOTA_TYPES].sort(), ["quota_auto_resume_disabled", "quota_auto_resume_fired", "quota_auto_resume_stale"]);
+  for (const type of QUOTA_TYPES) assert.deepEqual(recordOf({ hook_event_name: "Notification", notification_type: type, message: "BODY-must-not-survive" }, now), { t: T, event: type });
 });
 
 test("run: 세션마다 health/<sessionId>.jsonl에 추가만 한다. 이상한 세션 id는 무시", () => {

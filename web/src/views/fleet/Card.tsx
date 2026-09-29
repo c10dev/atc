@@ -1,5 +1,5 @@
 import type { AircraftView } from "../../../../server/fleet.ts";
-import { fleetStatusOf } from "../../../../server/fleet-status.ts";
+import { fleetStatusOf, flightDetailText } from "../../../../server/fleet-status.ts";
 import { contextBadgeOf } from "../../../../server/fuel-context.ts";
 import { fuelLabel, fuelTitle } from "../../../../server/fuel-remaining.ts";
 import { usd } from "../../../../server/fuel-view.ts";
@@ -181,6 +181,21 @@ export function Card({
         <p className="fl-absent faint">세션이 없음 — LAUNCH로 띄우거나, CREW BRIEFING을 새 세션에 붙여 넣으면 IN SERVICE가 된다</p>
       )}
       {a.flying.length > 0 && <p className="fl-flying">FLYING {a.flying.map(flightNumber).join(", ")}</p>}
+      {(a.flights ?? []).some((f) => f.kept) && (
+        <ul className="fl-kept">
+          {a.flights
+            .filter((f) => f.kept)
+            .map((f) => {
+              const d = f.detail ? flightDetailText(f.detail, Date.now()) : null;
+              return (
+                <li key={f.key} title="STAND 점유(claimTtl)는 지났지만 이 AIRCRAFT가 멈춘 채 쥔 FLIGHT">
+                  HOLDING <b className="mono">{flightNumber(f.key)}</b>
+                  {d && <span className={`fl-r-detail mono${d.unpushed ? " is-unpushed" : ""}`}>{d.text}</span>}
+                </li>
+              );
+            })}
+        </ul>
+      )}
       <ContextLine c={contextBadgeOf(a.context)} />
       <RulesLine r={(a as AircraftView & { rules?: RulesView | null }).rules ?? null} />
 

@@ -3,15 +3,17 @@
 // 본문은 두지 않는다(코드, 시각, 오류 한 줄만).
 import { sameReg } from "./registration.ts";
 
-export const HEALTH_CODES = ["LIMIT", "THROTTLE", "NETWORK", "MODEL", "CONTEXT", "PROVIDER", "PENDING", "UNANSWERED", "HUNG", "DENIED", "UNKNOWN"] as const;
+export const HEALTH_CODES = ["LIMIT", "RESUME", "STALLED", "THROTTLE", "NETWORK", "MODEL", "CONTEXT", "PROVIDER", "PENDING", "UNANSWERED", "HUNG", "DENIED", "UNKNOWN"] as const;
 export type HealthCode = (typeof HEALTH_CODES)[number];
 
 export interface Health {
   code: HealthCode;
   level: "info" | "alert";
   since: string;
-  resetsAt?: string; // LIMIT: 한도가 풀리는 시각
+  resetsAt?: string; // LIMIT: 한도가 풀리는 시각. RESUME: 풀린 시각
   weekly?: boolean; // LIMIT: 주간 한도
+  cut?: boolean; // LIMIT(ATC-86): 오류 없이 턴이 한도로 잘렸다(대화 기록의 usageLimitNote "wrap_up" 뒤 멈춤). reset은 ACCOUNT의 FUEL REMAINING에서
+  cutAt?: string; // cut LIMIT과 RESUME: 한도에 걸린 시각(wrap_up 안내가 들어온 시각)
   detail: string; // 오류 한 줄(잘라서) 또는 상황
   next: string; // 대응 매뉴얼의 다음 한 걸음
   holds: boolean; // DISPATCH·SCHEDULE이 이 AIRCRAFT를 건너뛴다
@@ -25,6 +27,7 @@ export interface HealthConfig {
   throttleWindowMin: number;
   deniedCount: number; // 거부·hook 막힘이 창 안에 이만큼이면 DENIED
   deniedWindowMin: number;
+  stalledMin: number; // In Progress FLIGHT를 쥔 AIRCRAFT가 idle로 이만큼 지나면 STALLED(ATC-86)
 }
 
 export const DEFAULT_HEALTH: HealthConfig = {
@@ -35,6 +38,7 @@ export const DEFAULT_HEALTH: HealthConfig = {
   throttleWindowMin: 30,
   deniedCount: 3,
   deniedWindowMin: 10,
+  stalledMin: 60,
 };
 
 // 대화 기록 한 줄에서 뽑은 사실. 본문은 없다(오류 한 줄만)
@@ -42,7 +46,9 @@ export type Fact =
   | { t: number; kind: "prompt" }
   | { t: number; kind: "reply"; toolUses: string[] }
   | { t: number; kind: "result"; toolUseIds: string[]; denied: number }
-  | { t: number; kind: "error"; error: string; text: string; resetsAt?: number; rateLimitType?: string };
+  | { t: number; kind: "error"; error: string; text: string; resetsAt?: number; rateLimitType?: string }
+  // usageLimitNote(ATC-86): Claude Code가 한도에 닿으면 넣는 isMeta 줄. wrap_up = "곧 잘린다, 마무리하라", release = 한도가 풀린 뒤 다음 지시와 함께 "앞의 안내는 잊어라". 본문은 읽지 않는다
+  | { t: number; kind: "limit-note"; note: "wrap_up" | "release" };
 
 // 자동 모드 거부와 hook 막힘(tool_result 앞부분만 본다)
 const DENIED_RE = /^(Permission for this action was denied|The server-side auto mode classifier|\S+ hook (blocking )?error|<tool_use_error>Blocked:)/i;
@@ -71,9 +77,13 @@ export function factsOf(text: string): Fact[] {
       continue;
     }
     if ((d.type !== "user" && d.type !== "assistant") || d.isSidechain || d.isCompactSummary) continue;
-    if (d.isMeta && !("turnOrigin" in d)) continue;
     const t = Date.parse(d.timestamp);
     if (Number.isNaN(t)) continue;
+    if (d.type === "user" && (d.usageLimitNote === "wrap_up" || d.usageLimitNote === "release")) {
+      out.push({ t, kind: "limit-note", note: d.usageLimitNote });
+      continue;
+    }
+    if (d.isMeta && !("turnOrigin" in d)) continue;
     const content = d.message?.content;
     if (d.type === "assistant") {
       if (d.isApiErrorMessage) {
@@ -139,6 +149,8 @@ export function classifyError(e: { error: string; text: string; resetsAt?: numbe
 
 export const NEXT: Record<HealthCode, string> = {
   LIMIT: "reset까지 기다린다. reset 뒤에도 지시가 UNANSWERED면 지시를 보낸 쪽(OCC·사용자)이나 SUPERVISOR가 다시 보낸다",
+  RESUME: "SUPERVISOR가 그 세션에서 \"계속\"을 보낸다. 한도는 이미 풀렸다. atc는 팀에 메시지를 보내지 않는다",
+  STALLED: "SUPERVISOR가 그 세션을 들여다본다. 막힌 것이 없으면 \"계속\"을 보내고, 되살릴 수 없으면 RESTART. atc는 팀에 메시지를 보내지 않는다",
   THROTTLE: "서버가 잠시 붐빈다. 몇 분 뒤 다시 보낸다",
   NETWORK: "SUPERVISOR가 네트워크·프록시·ANTHROPIC_BASE_URL/NO_PROXY를 확인하고 다시 보낸다",
   MODEL: "SUPERVISOR가 모델이나 경로를 고쳐 다시 띄운다. 그대로 재시도하지 않는다",
@@ -151,7 +163,11 @@ export const NEXT: Record<HealthCode, string> = {
   UNKNOWN: "SUPERVISOR가 오류 원문을 보고 판단한다",
 };
 
-// DISPATCH·SCHEDULE이 건너뛰는 코드(명세 표). HUNG은 busy라 원래도 배정되지 않는다
+// 오류 없이 한도로 잘린 턴(cut LIMIT)의 다음 한 걸음
+export const NEXT_CUT =
+  "reset까지 기다린다. reset 뒤에도 새 지시가 없으면 RESUME으로 바뀐다 — 그때 SUPERVISOR가 그 세션에서 \"계속\"을 보낸다. atc는 팀에 메시지를 보내지 않는다";
+
+// DISPATCH·SCHEDULE이 건너뛰는 코드(명세 표). cut LIMIT도 LIMIT이라 건너뛴다. RESUME·STALLED는 보여 주기만 한다(ATC-86). HUNG은 busy라 원래도 배정되지 않는다
 const HOLDS = new Set<HealthCode>(["LIMIT", "MODEL", "CONTEXT", "PROVIDER", "HUNG"]);
 
 const MIN = 60_000;
@@ -211,6 +227,13 @@ export function healthOf(facts: Fact[], s: SessionState, now: number, cfg: Healt
     if (r.toolUses.some((id) => !done.has(id))) return make("PENDING", "info", r.t, "도구 호출이 승인을 기다림");
   }
 
+  // 2b) 오류 없이 한도로 턴이 잘렸다(ATC-86): 마지막 지시 뒤에 wrap_up 안내가 들어왔고 세션이 쉬고 있다. release가 오면 풀린 것
+  const iNote = lastIndex(facts, (f) => f.kind === "limit-note" && f.note === "wrap_up");
+  if (s.status === "idle" && iNote >= 0 && iNote > iPrompt && iNote > lastIndex(facts, (f) => f.kind === "limit-note" && f.note === "release")) {
+    const at = facts[iNote]!.t;
+    return make("LIMIT", "alert", at, "사용 한도에 걸려 턴이 도중에 끝남(오류 없이 잘림)", { cut: true, cutAt: iso(at), next: NEXT_CUT });
+  }
+
   // 3) 지시 뒤 대답 없이 쉬고 있다
   if (s.status === "idle" && promptAt != null && iPrompt > iReply && now - promptAt >= cfg.unansweredMin * MIN) {
     return unanswered(promptAt, `지시 뒤 ${Math.round((now - promptAt) / MIN)}분째 대답 없음`);
@@ -227,6 +250,62 @@ export function healthOf(facts: Fact[], s: SessionState, now: number, cfg: Healt
   const count = denials.reduce((n, f) => n + (f.kind === "result" ? f.denied : 0), 0);
   if (count >= cfg.deniedCount) return make("DENIED", "info", denials[0]!.t, `${cfg.deniedWindowMin}분 안에 거부·hook 막힘 ${count}번`);
   return null;
+}
+
+// cut LIMIT의 reset(ATC-86). 대화 기록의 wrap_up 안내에는 reset이 없어서 ACCOUNT의 FUEL REMAINING 기록에서 찾는다.
+// 잘린 시각 직전(5분 뒤까지)의 기록 중 세션마다 가장 새 것에서, 그때 아직 오지 않은 reset을 가진 창 가운데 holdPct 이상 쓴 것 —
+// 여럿이면 가장 늦은 reset. reset이 지난 지금은 FUEL REMAINING이 그 창을 버리므로 기록(줄마다 t가 있다)에서 되짚는다
+export function cutResetOf(
+  cutAt: number,
+  records: readonly { t: string; sessionId: string; rate_limits?: Partial<Record<string, { used_percentage: number; resets_at: number }>> }[],
+  holdPct: number,
+): { resetsAt: number; weekly: boolean } | null {
+  const latest = new Map<string, (typeof records)[number]>();
+  for (const r of records) {
+    const at = Date.parse(r.t);
+    if (!r.rate_limits || !Number.isFinite(at) || at > cutAt + 5 * MIN) continue;
+    const cur = latest.get(r.sessionId);
+    if (!cur || at > Date.parse(cur.t)) latest.set(r.sessionId, r);
+  }
+  let best: { resetsAt: number; weekly: boolean } | null = null;
+  for (const r of latest.values()) {
+    for (const [name, w] of Object.entries(r.rate_limits!)) {
+      if (!w || w.used_percentage < holdPct) continue;
+      const resetsAt = w.resets_at * 1000;
+      if (resetsAt <= cutAt) continue;
+      if (!best || resetsAt > best.resetsAt) best = { resetsAt, weekly: name === "seven_day" };
+    }
+  }
+  return best;
+}
+
+// cut LIMIT에 reset을 붙인다. reset이 지났으면 RESUME(한도는 풀렸는데 새 지시가 없다). reset을 모르면 그대로(LIMIT이 풀릴 때까지 HOLD)
+export function settleCut(h: Health, reset: { resetsAt: number; weekly: boolean } | null, now: number): Health {
+  if (h.code !== "LIMIT" || !h.cut || !reset) return h;
+  const cutAt = h.cutAt ? Date.parse(h.cutAt) : Date.parse(h.since);
+  if (now >= reset.resetsAt) {
+    return make("RESUME", "alert", reset.resetsAt, `한도가 풀렸다(reset ${hhmm(reset.resetsAt, now)}) — cut ${hhmm(cutAt, now)} 뒤 새 지시가 없어 멈춰 있음`, {
+      resetsAt: iso(reset.resetsAt),
+      cutAt: iso(cutAt),
+      ...(reset.weekly ? { weekly: true } : {}),
+    });
+  }
+  return { ...h, resetsAt: iso(reset.resetsAt), ...(reset.weekly ? { weekly: true } : {}) };
+}
+
+// STALLED(ATC-86): In Progress FLIGHT를 쥐었는데(STAND 점유나 tail: 라벨) idle로 stalledMin 넘게 활동이 없고, 그 FLIGHT에 열린 PR이 없다.
+// 다른 health가 없을 때만 붙는다(호출하는 쪽이 정한다). 활동이 있으면 lastActiveAt이 움직여 풀린다
+export interface StallInput {
+  status: SessionState["status"];
+  lastActiveAt: number | null;
+  flights: { key: string; hasPr: boolean }[]; // In Progress FLIGHT
+}
+export function stalledOf(x: StallInput, now: number, cfg: HealthConfig = DEFAULT_HEALTH): Health | null {
+  if (x.status !== "idle" || x.lastActiveAt == null) return null;
+  const bare = x.flights.filter((f) => !f.hasPr);
+  if (!bare.length || now - x.lastActiveAt < cfg.stalledMin * MIN) return null;
+  const min = Math.round((now - x.lastActiveAt) / MIN);
+  return make("STALLED", "info", x.lastActiveAt, `${bare.map((f) => f.key).join(", ")} In Progress인데 ${min}분째 활동 없음 — 열린 PR 없음`);
 }
 
 // 07:40Z. 하루 넘게 남았으면 날짜도(10-03 07:40Z)
@@ -278,6 +357,13 @@ export function mergeHealth(push: PushRecord | null | undefined, pull: Health | 
   if (!Number.isFinite(at)) return pull;
   const pullAt = lastFactAt(facts);
   if (pullAt != null && pullAt >= at) return pull; // 그 뒤 대화 기록이 움직였다 → pull이 최신
+  // ATC-86: cut LIMIT·RESUME은 새 활동(지시·도구 결과)이 오면 풀린다. 대화 기록이 아직 따라오지 못했어도 hook이 먼저 안다.
+  // quota_auto_resume_fired(CLI가 스스로 이어감)는 RESUME을 푼다. Stop은 지우지 않는다(잘린 턴의 끝이다)
+  const since = pull?.cutAt ? Date.parse(pull.cutAt) : NaN;
+  if (pull && (pull.cut || pull.code === "RESUME") && at > since) {
+    if (push.event === "UserPromptSubmit" || push.event === "PostToolUse") return null;
+    if (push.event === "quota_auto_resume_fired" && pull.code === "RESUME") return null;
+  }
   return pushHealth(push) ?? pull; // 코드 없는 clear·idle_prompt는 pull을 그대로 둔다
 }
 
@@ -289,8 +375,14 @@ const ago = (since: string, now: number) => {
 // FLEET 줄에 붙이는 짧은 글: HOLD · LIMIT until 07:40Z, PENDING approval 12m, CONTEXT — RESTART
 export function healthLabel(h: Health, now: number): string {
   switch (h.code) {
-    case "LIMIT":
-      return `HOLD · LIMIT${h.weekly ? " (weekly)" : ""}${h.resetsAt ? ` until ${hhmm(Date.parse(h.resetsAt), now)}` : ""}`;
+    case "LIMIT": {
+      const tags = [h.weekly ? "weekly" : null, h.cut && h.cutAt ? `cut ${hhmm(Date.parse(h.cutAt), now)}` : null].filter(Boolean);
+      return `HOLD · LIMIT${tags.length ? ` (${tags.join(", ")})` : ""}${h.resetsAt ? ` until ${hhmm(Date.parse(h.resetsAt), now)}` : ""}`;
+    }
+    case "RESUME":
+      return "RESUME 필요";
+    case "STALLED":
+      return `STALLED ${ago(h.since, now)}`;
     case "PENDING":
       return `PENDING approval ${ago(h.since, now)}`;
     case "UNANSWERED":
@@ -383,12 +475,12 @@ export function healthAlerts(xs: { sessionId: string; name: string; health: Heal
       code: "LIMIT",
       sessionIds: g.map((x) => x.sessionId),
       message:
-        `LIMIT${account ? ` (account ${account})` : ""} — ${g.map((x) => x.name).join(", ")} 사용 한도${weekly ? "(주간)" : ""}${reset ? `, reset ${hhmm(Date.parse(reset), now)}` : ""}까지 HOLD` +
+        `LIMIT${account ? ` (account ${account})` : ""} — ${g.map((x) => (x.health.cut && x.health.cutAt ? `${x.name}(cut ${hhmm(Date.parse(x.health.cutAt), now)})` : x.name)).join(", ")} 사용 한도${weekly ? "(주간)" : ""}${reset ? `, reset ${hhmm(Date.parse(reset), now)}` : ""}까지 HOLD` +
         (siblings.length ? ` · 같은 ACCOUNT도 HOLD: ${siblings.join(", ")}` : ""),
     });
   }
   for (const x of hot.filter((y) => y.health.code !== "NETWORK" && y.health.code !== "LIMIT")) {
-    out.push({ key: `health|${x.health.code}|${x.sessionId}`, code: x.health.code, sessionIds: [x.sessionId], message: `${x.health.code} — ${x.name}: ${x.health.detail}` });
+    out.push({ key: `health|${x.health.code}|${x.sessionId}`, code: x.health.code, sessionIds: [x.sessionId], message: `${x.health.code} — ${x.name}: ${x.health.detail}${x.health.code === "RESUME" ? " — SUPERVISOR가 그 세션에서 \"계속\"을 보낸다" : ""}` });
   }
   return out;
 }

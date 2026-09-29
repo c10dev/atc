@@ -39,6 +39,22 @@
   color: var(--radar);
   font: var(--text-sm) var(--mono);
 }
+/* 멈춘 AIRCRAFT가 점유(claimTtl) 뒤에도 쥐고 있는 FLIGHT(ATC-86) */
+.fl-kept {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--cyan);
+  font: var(--text-sm) var(--mono);
+}
+.fl-kept .fl-r-detail {
+  margin-left: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-2xs);
+}
+.fl-kept .fl-r-detail.is-unpushed {
+  color: var(--amber);
+}
 /* RULES(ATC-42): 규칙 파일 확인 상태. 뒤처지면 경고색 */
 .fl-rules {
   margin: 0;

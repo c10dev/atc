@@ -59,6 +59,7 @@ async function listWorktrees(repo: string): Promise<Workspace[]> {
 interface Detail {
   dirty: number;
   lastCommitAt: string | null;
+  pushed: boolean | null;
   checkedAt: number;
 }
 
@@ -67,17 +68,21 @@ const DETAIL_TTL_MS = 30_000;
 
 async function refreshDetail(ws: Workspace) {
   try {
-    const [status, log] = await Promise.all([
+    const [status, log, remote] = await Promise.all([
       git(ws.path, ["status", "--porcelain"]),
-      git(ws.path, ["log", "-1", "--format=%cI"]),
+      git(ws.path, ["log", "-1", "--format=%H %cI"]),
+      // origin/<branch> 추적 ref(push가 갱신한다). 없으면 빈 글
+      ws.branch ? git(ws.path, ["for-each-ref", "--format=%(objectname)", `refs/remotes/origin/${ws.branch}`]) : Promise.resolve(null),
     ]);
+    const [sha, at] = log.trim().split(" ");
     details.set(ws.path, {
       dirty: status.split("\n").filter(Boolean).length,
-      lastCommitAt: log.trim() || null,
+      lastCommitAt: at || null,
+      pushed: remote === null || !sha ? null : remote.trim() === sha,
       checkedAt: Date.now(),
     });
   } catch {
-    details.set(ws.path, { dirty: 0, lastCommitAt: null, checkedAt: Date.now() });
+    details.set(ws.path, { dirty: 0, lastCommitAt: null, pushed: null, checkedAt: Date.now() });
   }
 }
 
@@ -96,7 +101,7 @@ export async function readWorkspaces(repos: string[]): Promise<Workspace[]> {
   }
   for (const w of all) {
     const d = details.get(w.path);
-    if (d) Object.assign(w, { dirty: d.dirty, lastCommitAt: d.lastCommitAt });
+    if (d) Object.assign(w, { dirty: d.dirty, lastCommitAt: d.lastCommitAt, pushed: d.pushed });
   }
   return all;
 }

@@ -91,6 +91,26 @@
 .fl-r-title {
   color: var(--muted);
 }
+/* 멈춘 AIRCRAFT의 FLIGHT 옆(ATC-86): 마지막 커밋, origin에 있나, PR */
+.fl-r-detail {
+  margin-left: var(--space-1-5);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+.fl-r-detail.is-unpushed {
+  color: var(--amber);
+}
+/* 마지막 커밋·push·PR은 잘리면 안 되는 정보라 이 칸만 줄을 바꾼다 */
+.fl-r-flight.has-detail {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.fl-r-flight.has-detail .fl-r-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* AIRCRAFT health(ATC-45): FLYING 칸 앞에 붙는 짧은 표시 */
 .fl-r-health {
   margin-right: var(--space-1-5);
