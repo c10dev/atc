@@ -3,6 +3,8 @@
 MCC (Maintenance Control) is a control session that lands atc's own PRs and puts the merged code back into service on the machine. An airline's maintenance control centre decides when an aircraft that has been worked on may fly again. MCC does the same for atc: it inspects an atc PR, lands it when the rules allow, and returns the service on port 7700 to operation with the new code. Today a temporary `structure` session does this work, opened in a conversation and gone after it.
 
 > Status (2026-09-28): the SUPERVISOR answered the open questions and chose MCC over the parallel SELF-LANDING draft (#105, #107); see "Decisions". Steps 2–5 are built: the server side in shadow, `atcctl mcc`, the `mcc/` session with guard mode `--mcc`, and the `atc-rts` unit (section 11). The shadow gate is measured on the settings window (ATC-49). What is left is operation: install the unit, launch the session, run shadow until the gate is met.
+>
+> 2026-09-29: the SUPERVISOR waived the 5-day part of the shadow gate. `land` goes on now; `land+rts` follows ATC-101 (SHOW tier) and ATC-102 (RTS session checks). See "Landing baseline" (5.1) and "Decisions".
 
 Related: root `CLAUDE.md` "git과 PR" (LANDING CLEARANCE tiers), `deploy/landing-tier.mjs`, `deploy/atc.service`, [occ.md](occ.md) section 9 (CLEARED TO LAND, REVIEW, AUTOLAND), [atfm.md](atfm.md) (shadow before action), `review/` (the DeepSeek REVIEW session).
 
@@ -89,6 +91,39 @@ If the packet's diff was cut (`diffTruncated`), MCC writes what it read and does
 The merge goes through REST (`PUT /repos/…/pulls/N/merge` with `sha: head`, merge commit), so GitHub refuses it if the head moved, and GraphQL rate limits (hit on 2026-09-28) don't block it.
 
 For ATCC PRs, CLEARED TO LAND counts an INSPECTION `pass` on the head as the review, so `no-review` clears the same way a Codex 👍 or a DeepSeek pass does for vocado. `findings` shows as `review-findings`.
+
+### 5.1 Landing baseline (SHIP / SHOW / ASK)
+
+The goal is a bar that is not strict but keeps accidents out. The evidence of 2026-09-27/29 is below.
+
+**Code review was not where accidents came from.**
+* 150 atc PRs were merged, with no revert and no fix-up PR.
+* MCC inspected 22 PRs in shadow: 24 `pass`, and 3 correct ESCALATEs (state-format changes).
+* REVIEW found one problem in atc, a truncated diff.
+
+**What did go wrong was out of a reviewer's sight:**
+* A deploy killed every background session: the Claude daemon was in `atc.service`'s cgroup.
+* CROSSCHECK marks were recorded under the wrong model.
+* The ATC-63 EO had a spec error.
+* `/clear` lost an approved proposal (ATC-91).
+
+So the bar is set by blast radius and reversibility, and the safety net sits after the deploy. The doors follow the Ship / Show / Ask model (Rouan Wilsenach, martinfowler.com, 2021):
+
+| Door | Tier | What | How it lands |
+|---|---|---|---|
+| SHIP | `auto` | Docs, tests, screens, read-only server code | CI `check` + INSPECTION `pass` → MCC lands (L1–L8); RTS deploys in `land+rts` |
+| SHOW | `flagged` | Control manuals and CLI, and server code with outside side effects: merges, PR comments, Linear/GitHub writes, starting/stopping sessions or units, sending messages (ATC-101) | As SHIP; MCC's report names the changed rules and side-effect files |
+| ASK | `user` | Guards, hooks, `.claude/`, root `CLAUDE.md`, CI, dependencies, `deploy/`, operating-state formats, anything hard to reverse | The SUPERVISOR merges |
+
+**After the deploy:** RTS is healthy only when three things hold (ATC-102). Otherwise it runs ROLLBACK and stops RTS.
+* atc answers on the target head.
+* The background sessions that were live before the restart are still live.
+* The Claude daemon is outside the service.
+
+**Later, not a precondition:**
+* MCC does not pass a PR whose diff it could not read in full (`diffTruncated`, already in 4.1).
+* A change-failure measure: ROLLBACK + revert + fix-up PR within 24 h, per landing, with a target under 5 % (DORA's change failure rate).
+* An automatic GROUND STOP of a door after a failure it caused.
 
 ## 6. RETURN TO SERVICE
 
@@ -205,6 +240,12 @@ Shadow gate (ATC-49, 2026-09-28): atc now measures the gate in section 9 itself.
   3. **Shadow gate**: as in section 9 (20 PRs, 5 days, nothing reverted).
   4. **Findings**: posted as a PR comment as well as recorded.
 - 2026-09-28, SUPERVISOR: a second session had drafted the same goal as SELF-LANDING ([#105](https://github.com/chaehy5665/atc/pull/105), [#107](https://github.com/chaehy5665/atc/pull/107): a lander outside the server, DeepSeek review, `auto` tier only). The SUPERVISOR chose MCC as the one design, with `auto` and `flagged` landed. From SELF-LANDING, MCC takes the fork exclusion (L2).
+
+- 2026-09-29, SUPERVISOR: no week of shadow.
+  * Shadow so far: 22 PRs inspected, 0 missed, 0 reverted, but only two days (section 9 asked for 5).
+  * Order: set `land` now (merging only; deploys stay a SUPERVISOR click on the UPDATE bar). Set `land+rts` once ATC-101 (SHOW tier) and ATC-102 (RTS session checks) are merged.
+  * The baseline is section 5.1.
+  * After `land` is on, ENGINEERING updates step 7's texts: root `CLAUDE.md`, the TOWER manual and `landing-tier.mjs` comments, all `user` or `flagged`.
 
 ## Questions for the SUPERVISOR (answered above)
 
