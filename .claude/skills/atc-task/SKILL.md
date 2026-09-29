@@ -71,7 +71,7 @@ cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-
 git diff --name-only origin/main...HEAD | node deploy/landing-tier.mjs
 ```
 
-- `auto`나 `flagged`: CI가 통과하면 사용자가 머지한다(MCC가 `land` 모드가 되면 MCC가 INSPECTION 뒤 착륙).
+- `auto`나 `flagged`: CI(`check`)가 통과하고 MCC INSPECTION이 `pass`면 MCC가 착륙시키고, `land+rts` 모드(2026-09-29부터)라 RETURN TO SERVICE로 배포까지 한다. 사용자가 먼저 머지해도 된다. `flagged`면 PR 본문과 보고에 바뀐 관제 규칙과 외부 부작용 파일을 따로 적는다.
 - `user`: 사용자가 머지한다. guard, 루트 `.claude/`, 루트 `CLAUDE.md`, `.github/`, 의존성, `hooks/`, `deploy/`를 바꾸면 이 등급이다.
 
 ## 7. PR
