@@ -142,3 +142,22 @@ test("flightDetailText: 마지막 커밋과 나이, origin에 있나, PR(없으�
   assert.deepEqual(flightDetailText({ commit: { sha: "7955be6", at: null }, pushed: null, pr: { number: 9, url: "u", draft: false } }, NOW), { text: "7955be6 · PR #9", unpushed: false });
   assert.deepEqual(flightDetailText({ commit: null, pushed: null, pr: null }, NOW), { text: "no worktree · no PR", unpushed: false });
 });
+
+// ATC-98: BG chip
+test("row: BG chip carries the jobId and a `claude attach` tooltip only for a background AIRCRAFT", () => {
+  const [bg, inter, none] = fleetRows([view("TEAM_A", { origin: "background", background: { jobId: "job-1234" } }), view("TEAM_B", { origin: "terminal", background: null }), view("TEAM_C")], NOW);
+  assert.deepEqual(bg.background, { jobId: "job-1234" });
+  assert.equal(bg.origin?.badge, "BG");
+  assert.match(bg.origin!.title, /BG job-1234 — claude attach job-1234/);
+  assert.equal(bg.origin?.attach, "claude attach job-1234");
+  assert.equal(inter.background, null);
+  assert.equal(inter.origin?.badge, "TERM");
+  assert.equal(inter.origin?.attach, null);
+  assert.doesNotMatch(inter.origin!.title, /claude attach job/);
+  assert.equal(none.background, null);
+  assert.equal(none.origin, null);
+  // jobId를 모르는 background: 칩은 있고 attach는 없다
+  const [unknown] = fleetRows([view("TEAM_D", { origin: "background", background: { jobId: null } })], NOW);
+  assert.equal(unknown.origin?.badge, "BG");
+  assert.equal(unknown.origin?.attach, null);
+});
