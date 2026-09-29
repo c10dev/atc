@@ -47,7 +47,7 @@ export function rangeRefusalOf(planRts: PlanRts, deployed: string, main: string,
 export type UpdateKind =
   | "current" // 서비스가 최신(또는 비교할 수 없음): 막대 없음
   | "available" // [업데이트] 버튼
-  | "waiting" // 곧 됨: CI 진행 중, 지난 RTS 뒤 5분
+  | "waiting" // 곧 됨: CI 진행 중
   | "manual" // 사람이 배포(범위 사유, 시험 서버)
   | "starting" // 시작을 눌렀고 rts.jsonl이 아직 running이 아님
   | "running"

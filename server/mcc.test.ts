@@ -138,6 +138,7 @@ test("RTS 할 때: 서비스가 main보다 뒤이고 main CI가 통과했고 지
   assert.match(rtsDueOf({ ...x, mainCi: "failed" }, null).why, /실패/);
   assert.match(rtsDueOf({ ...x, lastStartAt: iso(3) }, null).why, /5분/);
   assert.equal(rtsDueOf({ ...x, lastStartAt: iso(6) }, null).due, true);
+  assert.equal(rtsDueOf({ ...x, lastStartAt: iso(1) }, null, 0).due, true); // SUPERVISOR 클릭은 간격 없음
   assert.deepEqual(rtsDueOf(x, "ROLLBACK 뒤 멈춤"), { due: false, why: "ROLLBACK 뒤 멈춤" });
 });
 
