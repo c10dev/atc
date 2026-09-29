@@ -35,7 +35,7 @@ import { allClearances } from "./clearances.ts";
 import { config } from "./config.ts";
 import { readDepartures } from "./departures.ts";
 import { modelFamily, UNKNOWN_MODEL } from "./crosscheck.ts";
-import { landedOf, loadDispatchConfig, planDispatch, readFlightHistory } from "./dispatch.ts";
+import { landedOf, loadDispatchConfig, mccAirportNow, planDispatch, readFlightHistory } from "./dispatch.ts";
 import { fleetView, loadFleet } from "./fleet.ts";
 import { pullKey } from "./landing.ts";
 import { loadLogbook } from "./logbook.ts";
@@ -248,7 +248,7 @@ export function eligibilityView(s: Snapshot, now = Date.now()) {
   const proposals = allProposals();
   const fleet = loadFleet();
   const logbook = loadLogbook();
-  const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals), fleet, landedOf(logbook), logbook, activeWaypointsOf(readLinearProjects().milestones));
+  const plan = planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals), fleet, landedOf(logbook), logbook, activeWaypointsOf(readLinearProjects().milestones), undefined, undefined, mccAirportNow());
   const aircraftViews = fleetView(s, fleet, cfg.teamPattern, logbook, now);
   const byKey = new Map(s.tickets.map((t) => [t.key, t]));
   const parentKeys = parentKeysOf(s.tickets);
