@@ -8,8 +8,14 @@ atc 코드를 고치는 세션(팀 세션, ENGINEERING 세션, 사용자와 직�
 
 ## 작업 위치
 
-- `/home/c10/projects/atc`(main 체크아웃)는 **운영 서비스 폴더**다. systemd 서비스가 여기서 빌드하고 돈다. 여기서 코드를 고치거나 브랜치를 바꾸지 않는다.
-- 작업은 `origin/main` 기준 워크트리에서 한다: `git -C /home/c10/projects/atc worktree add /home/c10/projects/worktrees/atc-<작업> -b claude/<작업> origin/main`. node_modules는 `cp -al /home/c10/projects/atc/node_modules <워크트리>/node_modules`.
+- `/home/c10/projects/atc`(main 체크아웃)는 **운영 서비스 폴더**다. systemd 서비스가 여기서 빌드하고 돈다. 여기서 코드를 고치거나 브랜치를 바꾸지 않는다. 이 폴더 안의 `.claude/worktrees/`에 워크트리가 들어 있으므로, 여기서 `git clean`과 `git stash`를 쓰지 않고 워크트리를 지울 수 있는 명령(재귀 삭제, 폴더 통째 정리)도 돌리지 않는다.
+- 작업은 `origin/main` 기준 워크트리에서 한다. 자리는 두 곳 모두 된다:
+  - `/home/c10/projects/worktrees/atc-<작업>`(브랜치 `claude/<작업>`): `git -C /home/c10/projects/atc worktree add /home/c10/projects/worktrees/atc-<작업> -b claude/<작업> origin/main`.
+  - `/home/c10/projects/atc/.claude/worktrees/<이름>`(브랜치 `worktree-<이름>`): Claude Code의 워크트리 도구(`EnterWorktree name=<이름>`)가 만든다.
+  - 브랜치 접두어 `claude/`와 `worktree-`는 atc가 똑같이 읽는다. 이름에 key(`atc-<n>`)를 넣는다.
+- 워크트리 도구를 쓰는 세션(백그라운드 AIRCRAFT)은 STAND를 `EnterWorktree name=atc-<n>-<짧은 이름>`으로 새로 만들고, 다음 FLIGHT는 `ExitWorktree action=keep` 뒤 새 `name`으로 옮긴다. `EnterWorktree path=`로 `.claude/worktrees/` 밖의 워크트리(예: `/home/c10/projects/worktrees/…`)에 들어가면 permission root 이동으로 승인을 물어 백그라운드 세션이 멈춘다. `.claude/worktrees/` 안의 기존 워크트리는 `path=`로 들어가도 묻지 않는다.
+- node_modules는 어느 자리든 `cp -al /home/c10/projects/atc/node_modules <워크트리>/node_modules`.
+- 끝난 워크트리는 `git worktree remove <경로>`(또는 도구의 `ExitWorktree action=remove`)로 치운다.
 - git stash는 모든 워크트리가 함께 쓴다. 맨 `git stash`·`git stash pop`을 쓰지 않는다. 치워 둘 것은 임시 커밋으로.
 - 운영 상태 `~/.local/state/atc/`(제안·CLEARANCE·FLEET·FLIGHT RECORDER)는 손대지 않는다. 시험은 임시 상태 폴더로 한다(아래).
 

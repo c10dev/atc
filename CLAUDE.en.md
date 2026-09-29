@@ -10,8 +10,14 @@ Rules for sessions that change atc's code (team sessions, the ENGINEERING sessio
 
 ## Where to work
 
-- `/home/c10/projects/atc` (the main checkout) is the **production service folder**: the systemd service builds and runs from it. Don't change code or switch branches there.
-- Work in a worktree based on `origin/main`: `git -C /home/c10/projects/atc worktree add /home/c10/projects/worktrees/atc-<task> -b claude/<task> origin/main`. For node_modules, `cp -al /home/c10/projects/atc/node_modules <worktree>/node_modules`.
+- `/home/c10/projects/atc` (the main checkout) is the **production service folder**: the systemd service builds and runs from it. Don't change code or switch branches there. Worktrees live in its `.claude/worktrees/`, so don't run `git clean` or `git stash` there, and don't run anything that could delete a worktree (a recursive delete, a sweep of the whole folder).
+- Work in a worktree based on `origin/main`. Either place is fine:
+  - `/home/c10/projects/worktrees/atc-<task>` (branch `claude/<task>`): `git -C /home/c10/projects/atc worktree add /home/c10/projects/worktrees/atc-<task> -b claude/<task> origin/main`.
+  - `/home/c10/projects/atc/.claude/worktrees/<name>` (branch `worktree-<name>`): made by Claude Code's worktree tool (`EnterWorktree name=<name>`).
+  - atc reads the branch prefixes `claude/` and `worktree-` the same way. Put the key (`atc-<n>`) in the name.
+- A session that uses the worktree tool (a background AIRCRAFT) makes its STAND with `EnterWorktree name=atc-<n>-<short name>` and moves to the next FLIGHT with `ExitWorktree action=keep`, then a new `name`. `EnterWorktree path=` into a worktree outside `.claude/worktrees/` (for example `/home/c10/projects/worktrees/…`) asks for approval as a permission-root move, and a background session stops there. An existing worktree inside `.claude/worktrees/` can be entered with `path=` without asking.
+- node_modules, in either place: `cp -al /home/c10/projects/atc/node_modules <worktree>/node_modules`.
+- Clean a finished worktree up with `git worktree remove <path>` (or the tool's `ExitWorktree action=remove`).
 - The git stash is shared by every worktree. Never use bare `git stash` / `git stash pop`; set work aside with a temporary commit.
 - Don't touch the production state in `~/.local/state/atc/` (proposals, CLEARANCEs, FLEET, FLIGHT RECORDER). Test with a temporary state folder (below).
 

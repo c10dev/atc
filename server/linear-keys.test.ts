@@ -17,6 +17,10 @@ test("브랜치·워크트리 이름의 key: 읽는 팀 모두, 경계가 있어
   const keys = ["VOC", "ATC"];
   assert.equal(keyInName("claude/voc-123-fix", keys), "VOC-123");
   assert.equal(keyInName("claude/atc-1-linear-teams", keys), "ATC-1");
+  // Claude Code 워크트리 도구의 브랜치(worktree-<이름>, ATC-115)도 같은 FLIGHT로 읽는다
+  assert.equal(keyInName("worktree-atc-115-worktree-rule", keys), "ATC-115");
+  assert.equal(keyInName("worktree-voc-7", keys), "VOC-7");
+  assert.equal(keyInName("worktree-bright-otter", keys), null);
   assert.equal(keyInName("vocado-VOC007", keys), "VOC-7");
   assert.equal(keyInName("/home/c10/projects/worktrees/atc-12", keys), "ATC-12");
   // atc 저장소의 흔한 워크트리 이름은 key가 아니다

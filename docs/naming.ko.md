@@ -15,6 +15,7 @@ claude/voc-<n>-<slug>     # Claude 세션
 codex/voc-<n>-<slug>      # Codex 세션
 ```
 
+- Claude Code의 워크트리 도구는 브랜치를 `worktree-<이름>`, 자리를 `/home/c10/projects/atc/.claude/worktrees/<이름>`으로 만든다. atc는 똑같이 읽는다: 이름 속 key(`worktree-atc-115-slug` → `ATC-115`)로 FLIGHT를 찾고, STAND 탐지·DEPARTURE LOG·LOGBOOK·LANDING SEQUENCE는 `claude/`를 가정하지 않고 브랜치를 그대로 맞춘다([ATC-115](https://linear.app/vocado/issue/ATC-115)).
 - 티켓 없는 작업은 `claude/<slug>` 그대로 둔다. atc에서는 **AD HOC**(티켓 없는 작업, 예: 팀에 직접 맡긴 5줄 이하 수정)으로 표시된다. 티켓이 필요한 일은 CHARTER DESK를 거친다([occ.ko.md](occ.ko.md)).
 
 ## 워크트리 디렉터리
