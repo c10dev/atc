@@ -72,3 +72,48 @@
   font: inherit;
   cursor: pointer;
 }
+
+/* ACTIVITY(ATC-97): 지금 하는 일 한 줄. idle은 흐리게. 색은 :root 토큰만 */
+.activity {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  white-space: nowrap;
+  font: 400 var(--text-2xs) var(--mono);
+}
+.activity-what {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.activity-ago {
+  flex: none;
+  white-space: pre;
+}
+.activity-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: var(--space-1);
+  border-radius: 50%;
+  background: currentColor;
+}
+.activity.is-tool .activity-dot {
+  background: var(--radar);
+}
+.activity.is-model .activity-dot {
+  background: var(--cyan);
+}
+.activity.is-idle {
+  opacity: 0.55;
+}
+.strip .activity {
+  margin-top: var(--space-0-5);
+  color: var(--paper-ink);
+}
+.strip .activity.is-tool .activity-dot {
+  background: var(--stamp-blue);
+}
+.strip .activity.is-model .activity-dot {
+  background: var(--stamp-amber);
+}

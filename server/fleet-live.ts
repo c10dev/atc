@@ -1,6 +1,7 @@
 import type { AccountHold, Health } from "./health.ts";
 import { accountHoldOf, accountHolds } from "./health.ts";
 import type { Job } from "./job-state.ts";
+import type { Activity } from "./activity.ts";
 import type { Snapshot } from "./model.ts";
 import { registrationNamesOf, regKey } from "./registration.ts";
 import type { Restarting } from "./restarting.ts";
@@ -24,6 +25,7 @@ export interface AircraftLive {
   restarting: Restarting | null;
   health: Health | null;
   job: Job | null;
+  activity: Activity | null; // ACTIVITY(ATC-97). 스냅샷 속도로 바뀐다
   accountHold: AccountHold | null;
   sessionName: string | null;
   sessionConflict: string[] | null;
@@ -77,6 +79,7 @@ export function liveViewOf(
       restarting: session ? null : (s.restarting?.find((r) => r.registration === reg) ?? null),
       health: session?.health ?? null,
       job: session?.job ?? null,
+      activity: session?.activity ?? null,
       accountHold: session ? accountHoldOf(holds, accountOf(reg), reg) : null,
       sessionName: seen?.rename ?? null,
       sessionConflict: seen?.conflict ? seen.names : null,

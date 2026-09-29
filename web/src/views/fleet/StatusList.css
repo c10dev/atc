@@ -114,6 +114,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* ACTIVITY(ATC-97): FLYING 칸의 둘째 줄 */
+.fl-r-activity {
+  color: var(--muted);
+}
 /* AIRCRAFT health(ATC-45): FLYING 칸 앞에 붙는 짧은 표시 */
 .fl-r-health {
   margin-right: var(--space-1-5);

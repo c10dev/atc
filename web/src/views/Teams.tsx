@@ -12,7 +12,7 @@ import {
 } from "../aviation.ts";
 import { activeFirst, hasActiveClaim, type Index, isGateCleanup, sortSessions, timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
-import { AirportCode, AwayTag, NeedsYou, SessionPlace } from "../ui.tsx";
+import { ActivityLine, AirportCode, AwayTag, NeedsYou, SessionPlace } from "../ui.tsx";
 import { HumanCheckQueue, HumanCheckTag } from "./HumanCheck.tsx";
 import "./Teams.css";
 
@@ -142,6 +142,7 @@ function Strip({
           <AwayTag airports={idx.awayBySession.get(s.id)} />
           <NeedsYou job={s.job} />
         </div>
+        <ActivityLine activity={s.activity} now={now} />
         <div className="sub">
           {sign !== s.name && `${s.name} · `}
           <SessionPlace session={s} idx={idx} /> · {timeAgo(s.lastActiveAt, now)}

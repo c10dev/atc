@@ -24,6 +24,10 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - 오른쪽 위 **목록 / 카드**로 예전처럼 모든 카드를 펼친 보기로 바꿀 수 있다. 고른 보기는 이 브라우저에 기억한다(기억하지 못하면 목록).
 - 좁은 화면에서는 한 줄이 두 줄로 접힌다: 위는 AIRCRAFT · AIRPORT · STATUS, 아래는 FLYING · 경과 · 마지막 활동 · 이번 주 health 표시가 있는 줄은 FLYING이 한 줄을 다 쓰고, 경과부터는 셋째 줄로 내려간다.
 
+## ACTIVITY: 지금 무엇을 하는지
+
+살아 있는 Claude AIRCRAFT마다 `Bash · Run the test suite · 12s` 같은 한 줄이 STRIPS 스트립의 callsign 아래, FLEET 줄의 FLYING 칸 둘째 줄, 카드의 FLYING 아래에 붙는다. 마지막으로 부른 도구와 짧은 라벨(Bash 설명, 파일 이름, MCP 서버와 도구, 서브에이전트 설명, skill 이름, 메시지 받는 쪽), 그리고 그게 언제 시작됐는지다. 점 색은 도구가 도는 중(`tool`)과 모델 응답을 기다리는 중(`model · …`, 도구 없이 생각 중이면 `thinking · …`)을 가르고, 턴이 끝난 세션은 `idle · …`로 흐리게 보인다. 스냅샷마다 바뀐다. 명령, 파일 내용, 메시지와 도구 결과는 싣지 않는다.
+
 ## NEEDS YOU: 백그라운드 세션이 사람을 기다릴 때
 
 창이 없는 백그라운드 세션(관제 세션과 `claude --bg`로 띄운 팀)은 사람의 답이 필요하면 `blocked`가 되어 아무도 모르게 기다린다. atc가 Claude Code가 적어 둔 job 상태를 읽어 `NEEDS YOU · <필요한 것>` 표시를 FLEET 줄과 카드, STRIPS, FLEET 탭의 CONTROL SESSIONS 구역에 붙인다. 마우스를 올리면 세션이 적은 한 줄 설명이 나온다. 3분 넘게 `blocked`이면 ALERTS에도 `BLOCKED`로 올라간다.
