@@ -22,6 +22,8 @@ import { allProposals } from "./proposals.ts";
 import { readHookClaims } from "./sources/claude.ts";
 import { type FuelLimitsRecord, type FuelStatusRecord, lastRecordWith, readTail, recordsOf } from "../hooks/fuel-statusline.mjs";
 import { fleetKeyOf, regKey } from "./registration.ts";
+import { loadShard, pruneShards, saveShard, shardName } from "./fuel-cache.ts";
+import { type FuelFile, FuelTree } from "./fuel-tree.ts";
 
 // FUEL 읽기(ATC-50, docs/fuel.md 4): ~/.claude/projects의 대화 기록을 파일마다 지난번 바이트 뒤부터만 읽는다(talkEventsFile과 같은 방식).
 // 본 대화 기록 <sessionId>.jsonl은 CAPTAIN, <sessionId>/subagents/**/agent-*.jsonl은 CREW. 읽기만 하고 아무것도 쓰지 않는다.
@@ -31,13 +33,7 @@ export const FUEL_DEFAULT_DAYS = 7;
 export const FUEL_MAX_DAYS = 30;
 const CHUNK = 4 * 1024 * 1024;
 
-interface FuelFile {
-  path: string;
-  session: string;
-  crew: boolean;
-  agent: string | null;
-  mtime: number;
-}
+export type { FuelFile } from "./fuel-tree.ts";
 interface FileState {
   ino: number;
   size: number; // 읽은 데까지(마지막 줄바꿈 뒤)
@@ -49,6 +45,103 @@ interface FileState {
   meta: AgentMeta | null;
 }
 const cache = new Map<string, FileState>();
+
+// ── 감시와 디스크 캐시(ATC-83, docs/fuel.md 4.1) ──
+// 감시: ~/.claude/projects를 fs.watch(recursive)로 지켜 바뀐 기록 파일만 바로 읽고(목록도 바뀐 것만 다시 stat), 놓쳐도 1분마다 전체를 걷는다.
+// 캐시: 파일마다 읽은 자리와 파싱 결과를 ~/.cache/atc/fuel/에. 재시작하면 그것을 읽어 이어 간다. 둘 다 mountFuel이 켠다(시험은 켜지 않으면 옛 동작 그대로)
+let tree: FuelTree | null = null;
+let cacheDir: string | null = null;
+const dirtyShards = new Set<string>();
+const projectsRoot = () => join(config.claudeDir, "projects");
+const activeTree = () => (tree && tree.root === projectsRoot() ? tree : null);
+const FLUSH_MS = 30_000;
+const FLUSH_BUDGET_MS = 100;
+const READ_DEBOUNCE_MS = 500;
+const timers = new Set<ReturnType<typeof setTimeout>>();
+const later = (fn: () => void, ms: number) => {
+  const h = setTimeout(() => {
+    timers.delete(h);
+    fn();
+  }, ms);
+  h.unref();
+  timers.add(h);
+  return h;
+};
+
+// 기록 파일이 바뀔 때마다 오른다. 60초 캐시(CONTEXT SIZE·FUEL WATCH)가 새 줄을 기다리지 않게 하는 신호다
+export const fuelChangeSeq = () => tree?.seq ?? 0;
+
+// 바뀐 파일을 잠깐 모았다가 그 파일만 읽는다. 다음 요청이 읽을 것을 미리 읽어 둘 뿐이라 결과는 같다
+let readScheduled = false;
+function scheduleChangedRead() {
+  if (readScheduled) return;
+  readScheduled = true;
+  later(() => {
+    readScheduled = false;
+    const t = tree;
+    if (!t) return;
+    const since = Date.now() - FUEL_DEFAULT_DAYS * DAY_MS;
+    try {
+      for (const f of t.takeChanged()) if (f.mtime >= since) readFuelFile(f);
+    } catch (e) {
+      console.warn("[atc] fuel watch read:", (e as Error).message);
+    }
+  }, READ_DEBOUNCE_MS);
+}
+
+export function startFuelWatch(): boolean {
+  const root = projectsRoot();
+  if (tree?.root === root && tree.watching) return true;
+  tree?.stop();
+  tree = new FuelTree(root, (since, r) => fuelFiles(since, r));
+  return tree.start(scheduleChangedRead); // false면 목록은 매번 전체를 걷는다(옛 방식)
+}
+
+// 더러워진 캐시 파일을 쓴다. budgetMs를 넘기면 멈추고 남은 수를 돌려준다
+export function flushFuelCache(budgetMs = Infinity): number {
+  if (!cacheDir) return 0;
+  const t0 = performance.now();
+  for (const path of dirtyShards) {
+    if (performance.now() - t0 > budgetMs) break;
+    dirtyShards.delete(path);
+    const s = cache.get(path);
+    if (s) saveShard(cacheDir, path, s);
+  }
+  return dirtyShards.size;
+}
+
+export function startFuelCache(dir = join(config.cacheDir, "fuel")) {
+  if (cacheDir === dir) return;
+  cacheDir = dir;
+  const tick = () => {
+    const left = flushFuelCache(FLUSH_BUDGET_MS);
+    later(tick, left ? 1_000 : FLUSH_MS);
+  };
+  later(tick, FLUSH_MS);
+  // 지워진 대화 기록의 캐시를 정리한다(시작하고 조금 뒤 한 번)
+  later(() => {
+    const all = fuelFiles(0);
+    if (all.length && cacheDir) pruneShards(cacheDir, new Set(all.map((f) => shardName(f.path))));
+  }, 10_000);
+}
+
+// 재시작을 흉내 낼 때(시험): 메모리에 읽어 둔 상태만 버린다. 캐시 폴더와 감시는 그대로
+export function dropFuelMemory() {
+  cache.clear();
+  dirtyShards.clear();
+}
+
+// 시험과 재설정용: 감시·캐시를 끄고 메모리 상태를 버린다
+export function stopFuelCache() {
+  tree?.stop();
+  tree = null;
+  cacheDir = null;
+  for (const h of timers) clearTimeout(h);
+  timers.clear();
+  readScheduled = false;
+  dirtyShards.clear();
+  cache.clear();
+}
 
 // agent-*.meta.json에서 agentType·spawnDepth만(description 같은 나머지는 버린다)
 export function parseAgentMeta(text: string): AgentMeta | null {
@@ -115,6 +208,8 @@ export function readFuelFile(f: FuelFile): { state: FileState; bytes: number } {
     return { state: emptyState(0), bytes: 0 };
   }
   let s = cache.get(f.path);
+  // 처음 보는 파일은 디스크 캐시가 지금 파일과 맞으면 그 상태에서 이어 읽는다(ATC-83). 안 맞으면 처음부터
+  if (!s && cacheDir) s = loadShard(cacheDir, f.path, st) ?? undefined;
   if (!s || st.ino !== s.ino || st.size < s.size) s = emptyState(st.ino);
   if (f.crew && !s.meta) {
     try {
@@ -154,6 +249,7 @@ export function readFuelFile(f: FuelFile): { state: FileState; bytes: number } {
       pos = found + 1;
     }
     s.size = pos;
+    if (cacheDir && pos > start) dirtyShards.add(f.path);
     return { state: s, bytes: pos - start };
   } finally {
     closeSync(fd);
@@ -187,7 +283,7 @@ export interface FuelScan {
 
 // since 뒤에 바뀐 기록 파일을 읽는다(파일마다 지난번 바이트 뒤부터). GET /api/fuel과 LOGBOOK(FUEL F4)이 같이 쓴다
 export function scanFuel(since: number, sessions: Snapshot["sessions"]): FuelScan {
-  const files = fuelFiles(since);
+  const files = activeTree()?.list(since) ?? fuelFiles(since);
   const seen = new Set(files.map((f) => f.path));
   // 더 긴 기간으로 한 번 읽은 파일은 캐시에 남기고, 없어진 파일만 지운다
   for (const p of cache.keys()) if (!seen.has(p) && mtimeOf(p) === null) cache.delete(p);
@@ -344,6 +440,8 @@ export function fuelDays(q: string | undefined): number {
 
 // loadEntries는 접은 LOGBOOK(logbook.ts가 이 파일을 부르므로 index.ts가 넘긴다)
 export function mountFuel(app: Hono, getSnapshot: () => Promise<Snapshot>, loadEntries: () => LogEntry[]) {
+  startFuelCache(); // ATC-83: 재시작해도 처음부터 읽지 않게(~/.cache/atc/fuel/)
+  startFuelWatch(); // ATC-83: 바뀐 기록 파일만 바로 읽는다
   // 읽기 전용. 세션·AIRCRAFT별 FUEL BURN(다섯 가지, CAPTAIN·CREW, CACHE HIT)과 FLIGHT 몫·UNATTRIBUTED. 비용은 F5, 화면은 F8
   app.get("/api/fuel", async (c) => {
     const s = await getSnapshot();
@@ -410,17 +508,22 @@ export function contextSizesOf(
 
 
 // FLEET(/api/fleet)과 FLEET PLAN 주기가 쓴다. 최근 FUEL_DEFAULT_DAYS에 바뀐 기록 파일만, CONTEXT_MS 동안 같은 값
+// 기록 파일이 바뀌었으면(감시) REFRESH_MIN_MS가 지난 뒤에는 60초를 기다리지 않고 다시 센다(ATC-83)
 const CONTEXT_MS = 60_000;
-let lastContext: { at: number; value: Map<string, ContextSize> } | null = null;
+export const REFRESH_MIN_MS = 5_000;
+export const freshEnough = (last: { at: number; seq: number }, now: number, ttl: number) =>
+  now - last.at < ttl && !(last.seq !== fuelChangeSeq() && now - last.at >= REFRESH_MIN_MS);
+let lastContext: { at: number; seq: number; value: Map<string, ContextSize> } | null = null;
 export function contextSizes(sessions: Snapshot["sessions"], now = Date.now()): Map<string, ContextSize> {
-  if (lastContext && now - lastContext.at < CONTEXT_MS) return lastContext.value;
+  if (lastContext && freshEnough(lastContext, now, CONTEXT_MS)) return lastContext.value;
+  const seq = fuelChangeSeq();
   let value = new Map<string, ContextSize>();
   try {
     value = contextSizesOf(scanFuel(now - FUEL_DEFAULT_DAYS * DAY_MS, sessions), loadContextWindows(), readStatusWindows());
   } catch (e) {
     console.error("[atc] context size failed:", e);
   }
-  lastContext = { at: now, value };
+  lastContext = { at: now, seq, value };
   return value;
 }
 

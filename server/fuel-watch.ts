@@ -1,6 +1,6 @@
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig } from "./dispatch.ts";
 import { readPrices } from "./fuel-prices.ts";
-import { analyzeWindow, scanFuel } from "./fuel-run.ts";
+import { analyzeWindow, freshEnough, fuelChangeSeq, scanFuel } from "./fuel-run.ts";
 import { loadLogbook } from "./logbook.ts";
 import { type ColdCache, coldCachesOf, LARGE_LEAK_HOURS, type LargeLeak, largeLeaksOf } from "./fuel-view.ts";
 import type { Snapshot } from "./model.ts";
@@ -16,10 +16,11 @@ export interface FuelWatch {
 }
 
 const WATCH_MS = 60_000;
-let last: { at: number; value: FuelWatch } | null = null;
+let last: { at: number; seq: number; value: FuelWatch } | null = null;
 
 export function fuelWatch(s: Pick<Snapshot, "sessions" | "claims" | "workspaces" | "airports">, now = Date.now()): FuelWatch {
-  if (last && now - last.at < WATCH_MS) return last.value;
+  if (last && freshEnough(last, now, WATCH_MS)) return last.value;
+  const seq = fuelChangeSeq();
   let value: FuelWatch;
   try {
     const team = new RegExp(loadDispatchConfig().teamPattern ?? DEFAULT_DISPATCH_CONFIG.teamPattern, "i");
@@ -40,6 +41,6 @@ export function fuelWatch(s: Pick<Snapshot, "sessions" | "claims" | "workspaces"
   } catch (e) {
     value = { at: new Date(now).toISOString(), largeLeaks: [], coldCache: [], error: String((e as Error).message ?? e).split("\n")[0] };
   }
-  last = { at: now, value };
+  last = { at: now, seq, value };
   return value;
 }
