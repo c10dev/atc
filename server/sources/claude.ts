@@ -352,7 +352,7 @@ export function healthOfSession(
 
 // 턴이 끝난 세션의 마지막 CAPTAIN 메시지(ATC-89 REPORT 판정). 대화 기록 끝만 읽고 저장하지 않는다 — 부르는 쪽이 ATCC 확인을 먼저 한다.
 const REPORT_TAIL = 128 * 1024;
-export function lastMessageOfSession(cwd: string, sessionId: string): { text: string; at: number } | null {
+export function lastMessageOfSession(cwd: string, sessionId: string): { text: string; at: number; cut?: true } | null {
   const path = `${sessionDir(cwd, sessionId)}.jsonl`;
   let st;
   try {

@@ -98,6 +98,7 @@ export interface ReportJudgeLine {
   engine: EngineName;
   model: string;
   judgment: ReportJudgment;
+  reason?: string; // engine이 "rule"일 때 어떤 규칙인가(limit-cut)
   sent: { chars: number };
 }
 

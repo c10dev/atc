@@ -3,7 +3,7 @@ import { type ClassifyInput, classifyQuestions } from "./classify.ts";
 // 판정 엔진(ATC-36). stub: 녹화한 응답을 돌려준다(네트워크 없음, 테스트·시험 서버용). jev: TypeSafe System One.
 // API 키는 요청 헤더에만 쓴다. 오류 문구·로그·기록에 넣지 않는다.
 
-export type EngineName = "stub" | "jev";
+export type EngineName = "stub" | "jev" | "rule"; // rule: atc가 규칙으로 가른 판정(ATC-141), 아무것도 보내지 않는다
 export const JEV_URL = "https://api.typesafe.ai/v1/systemone";
 export const JEV_MODEL = "jev-latest";
 const TIMEOUT_MS = 20_000;

@@ -9,6 +9,8 @@ import { JudgeAnswerError } from "./classify.ts";
 // atc(ATCC) AIRCRAFT의 세션만 읽는다
 export const ATC_AIRPORT = "ATCC";
 export const MESSAGE_MAX = 1500; // 보내는 글자 수 상한(마스킹한 뒤)
+export const HEAD_CHARS = 500; // MESSAGE_MAX를 넘으면 앞 500자와 뒤 1,000자를 보낸다(ATC-141)
+export const JOINER = " … ";
 export const DECISION_MIN = 0.7; // "결정이 필요함" 확률이 이 이상이면 FLIGHT FOLLOWING 항목
 
 export const REPORT_CLASSES = ["done", "decision", "stopped", "ready", "unknown"] as const;
@@ -40,9 +42,11 @@ function textOf(content: unknown): string {
 }
 
 // 대화 기록 끝(여러 줄) → 턴이 끝난 CAPTAIN의 마지막 메시지. 마지막 assistant 줄이 글이고(tool_use로 끝나지 않고) 그 뒤에 새 지시가 없을 때만.
-// 서브에이전트(isSidechain)와 API 오류 줄은 건너뛴다. 본문은 호출한 쪽이 곧바로 마스킹해 보내고 저장하지 않는다
-export function lastMessageOf(text: string): { text: string; at: number } | null {
+// 서브에이전트(isSidechain)와 API 오류 줄은 건너뛴다. 본문은 호출한 쪽이 곧바로 마스킹해 보내고 저장하지 않는다.
+// cut(ATC-141): 한도로 턴이 잘렸다 — health.ts healthOf 2b(ATC-86)와 같은 규칙으로, 마지막 지시 뒤에 wrap_up 안내가 있고 그 뒤 release가 없다. 잘렸을 때만 붙는다
+export function lastMessageOf(text: string): { text: string; at: number; cut?: true } | null {
   let last: { text: string; at: number; tool: boolean } | null = null;
+  let cut = false;
   for (const line of text.split("\n")) {
     if (!line.includes('"type":"assistant"') && !line.includes('"type":"user"')) continue;
     let d;
@@ -54,6 +58,10 @@ export function lastMessageOf(text: string): { text: string; at: number } | null
     if ((d.type !== "user" && d.type !== "assistant") || d.isSidechain || d.isCompactSummary) continue;
     const at = Date.parse(d.timestamp);
     if (Number.isNaN(at)) continue;
+    if (d.type === "user" && (d.usageLimitNote === "wrap_up" || d.usageLimitNote === "release")) {
+      cut = d.usageLimitNote === "wrap_up";
+      continue;
+    }
     const content = d.message?.content;
     if (d.type === "assistant") {
       if (d.isApiErrorMessage) {
@@ -67,11 +75,12 @@ export function lastMessageOf(text: string): { text: string; at: number } | null
     // tool_result는 턴 안의 일이고, 그 밖의 user 줄은 새 지시다
     if (Array.isArray(content) && content.some((b) => b?.type === "tool_result")) continue;
     last = null;
+    cut = false; // 새 지시가 오면 앞의 안내는 지난 일이다
   }
-  return last && last.text && !last.tool ? { text: last.text, at: last.at } : null;
+  return last && last.text && !last.tool ? { text: last.text, at: last.at, ...(cut ? { cut: true as const } : {}) } : null;
 }
 
-// ---- 마스킹: 경로·URL(그리고 토큰·이메일)은 나가지 않는다. 남은 글이 MESSAGE_MAX를 넘으면 끝부분만(결론·질문은 대개 끝에 있다) ----
+// ---- 마스킹: 경로·URL(그리고 토큰·이메일)은 나가지 않는다. 남은 글이 MESSAGE_MAX를 넘으면 앞 500자 + " … " + 뒤 1,000자(글이 어떻게 시작하고 어떻게 끝나는지 둘 다 본다, ATC-141) ----
 const URL_RE = /\b(?:https?|ftp|file):\/\/[^\s<>"')\]]+/gi;
 const EMAIL_RE = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
 const ABS_PATH_RE = /(?<![\w<])(?:~|\.{1,2})?\/[\w.\-@~+/]*[\w\-@~+/]/g; // /home/x, ~/x, ./x, ../x
@@ -86,14 +95,16 @@ export function maskText(s: string, max = MESSAGE_MAX): string {
     .replace(REL_PATH_RE, (m) => (/^\d+(?:\/\d+)+$/.test(m) ? m : "<path>")) // 날짜·비율(1/2)은 그대로
     .replace(TOKEN_RE, "<token>")
     .trim();
-  return masked.length > max ? masked.slice(masked.length - max) : masked;
+  if (masked.length <= max) return masked;
+  const head = Math.min(HEAD_CHARS, Math.floor(max / 3));
+  return masked.slice(0, head).trimEnd() + JOINER + masked.slice(masked.length - (max - head)).trimStart();
 }
 
 // ---- 질문 ----
 const CRITERIA: Record<ReportClass, string> = {
   done: "It reports finished work and points to a result, such as a pull request, a merged change, a verified fix or written findings.",
-  decision: "It asks the supervisor to decide, approve or choose something before it can go on.",
-  stopped: "It stops in the middle of the work without finishing or asking: an unfinished plan, an error, a timeout, or a promise to continue.",
+  decision: "It asks the supervisor to decide, approve or choose something now, and it waits for that answer before it goes on. Notes for later, such as \"confirm after installing\" or \"the supervisor merges\", are not decisions.",
+  stopped: "It stops in the middle of the work without finishing or asking: an unfinished plan, an error, a timeout, being cut by a usage limit, or a promise to continue.",
   ready: "It is idle and waiting for the next assignment; nothing is pending.",
   unknown: "The message is too short or too unclear to tell which of these it is.",
 };
@@ -104,10 +115,17 @@ export function reportQuestions(): Record<string, unknown> {
     [REPORT_QUESTION_ID]: {
       type: "choice",
       instructions:
-        "The text in `message` is the last message an AI coding agent (the captain of a team) wrote at the end of its turn, addressed to its supervisor. Paths, links and tokens in it were replaced by placeholders. Which state is the agent in? If it both reports work and asks for a decision, pick `decision`.",
+        "The text in `message` is the last message an AI coding agent (the captain of a team) wrote at the end of its turn, addressed to its supervisor. Paths, links and tokens in it were replaced by placeholders. Which state is the agent in? If it both reports work and asks for a decision that blocks the work, pick `decision`.",
       criteria: CRITERIA,
     },
   };
+}
+
+// ---- 규칙: 한도로 잘린 턴은 Jev에게 묻지 않고 stopped(ATC-141) ----
+export const LIMIT_CUT_REASON = "limit-cut";
+export function ruleJudgmentOf(cut: boolean | undefined): { judgment: ReportJudgment; reason: string } | null {
+  if (!cut) return null;
+  return { judgment: { class: "stopped", probabilities: { done: 0, decision: 0, stopped: 1, ready: 0, unknown: 0 }, confidence: 1 }, reason: LIMIT_CUT_REASON };
 }
 
 // ---- 답: 모양 검사 ----
