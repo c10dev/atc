@@ -15,6 +15,7 @@ claude/voc-<n>-<slug>     # Claude sessions
 codex/voc-<n>-<slug>      # Codex sessions
 ```
 
+- Claude Code's worktree tool names its branch `worktree-<name>` and puts the worktree in `/home/c10/projects/atc/.claude/worktrees/<name>`. atc reads it the same way: the key inside the name (`worktree-atc-115-slug` → `ATC-115`) finds the FLIGHT, and STAND detection, the DEPARTURE LOG, the LOGBOOK and the LANDING SEQUENCE match on the branch as it is, with no `claude/` assumed ([ATC-115](https://linear.app/vocado/issue/ATC-115)).
 - Work without a ticket stays `claude/<slug>`. atc shows it as **AD HOC** (ticketless work, such as a fix of 5 lines or less handed to a team directly). Work that needs a ticket goes through the CHARTER DESK instead ([occ.md](occ.md)).
 
 ## Worktree directories

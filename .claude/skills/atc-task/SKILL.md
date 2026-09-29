@@ -29,14 +29,25 @@ ATC-<n> 배정은 두 갈래로 온다. 어느 쪽이든 CAPTAIN이 그 메시�
 
 ## 2. 작업 위치
 
+워크트리 도구를 쓰는 세션(백그라운드 AIRCRAFT)은 도구로 만든다. 승인을 묻지 않고 STAND가 `.claude/worktrees/` 아래에 생긴다:
+
 ```bash
 git -C /home/c10/projects/atc fetch -q origin
+# EnterWorktree name=atc-<n>-<짧은 이름>  → /home/c10/projects/atc/.claude/worktrees/atc-<n>-<짧은 이름>, 브랜치 worktree-atc-<n>-<짧은 이름>(origin/main 기준)
+cp -al /home/c10/projects/atc/node_modules /home/c10/projects/atc/.claude/worktrees/atc-<n>-<짧은 이름>/node_modules
+```
+
+- 다음 FLIGHT로 옮길 때는 `ExitWorktree action=keep` 뒤 새 `EnterWorktree name=…`. 지금 워크트리 안에서 `name`으로 또 만들면 오류이고, `EnterWorktree path=`로 `.claude/worktrees/` 밖(`/home/c10/projects/worktrees/…`)에 들어가면 승인을 물어 백그라운드 세션이 멈춘다.
+- 도구가 없는 세션은 옛 방식도 된다:
+
+```bash
 git -C /home/c10/projects/atc worktree add /home/c10/projects/worktrees/atc-<n>-<짧은 이름> -b claude/atc-<n>-<짧은 이름> origin/main
 cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-<짧은 이름>/node_modules
 ```
 
-- main 체크아웃(`/home/c10/projects/atc`)과 운영 상태(`~/.local/state/atc/`)는 손대지 않는다.
+- main 체크아웃(`/home/c10/projects/atc`)의 파일과 운영 상태(`~/.local/state/atc/`)는 손대지 않는다. main 체크아웃에서 `git clean`·`git stash`를 쓰지 않는다(`.claude/worktrees/`가 안에 있다).
 - 맨 `git stash`를 쓰지 않는다.
+- 끝난 워크트리는 `git worktree remove <경로>`나 `ExitWorktree action=remove`로 치운다.
 
 ## 3. 구현
 
