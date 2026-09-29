@@ -4,6 +4,7 @@ import type { AutolandView } from "./autoland.ts";
 import type { Health } from "./health.ts";
 import type { FuelRemaining } from "./fuel-remaining.ts";
 import type { HumanCheckStatus, UiChange } from "./human-check.ts";
+import type { SessionOrigin } from "./session-origin.ts";
 export type Agent = "claude" | "codex";
 
 export interface Session {
@@ -20,6 +21,9 @@ export interface Session {
   workspacePath: string | null;
   // AIRCRAFT health(ATC-45): 왜 멈췄는지, 무엇을 기다리는지. 문제가 없으면 없다(null)
   health?: Health | null;
+  // 세션 출처(ATC-76): background·desktop·terminal·unknown. 살아 있는 claude 세션만(죽었거나 codex면 없다)
+  origin?: SessionOrigin;
+  permissionMode?: string | null; // 명령줄의 --permission-mode, 백그라운드면 LAUNCH 기록. 모르면 null
   // 한도로 잘리거나(cut LIMIT) 한도가 풀렸는데 멈췄거나(RESUME) 멈춘(STALLED) AIRCRAFT가 쥔 FLIGHT 중, 점유(claimTtl)가 지나 claims에서 빠진 것.
   // FLEET 줄이 FLIGHT를 잃지 않게 한다(ATC-86). 그 밖에는 없다
   keptFlights?: string[];

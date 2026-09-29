@@ -53,6 +53,7 @@ import { activeWaypointsOf, loadRoutes } from "./routes.ts";
 import { readLinearProjects } from "./sources/linear-projects.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 import { DIRECT_LINE, directLines, directSectionsOf, DISCRETION_LINE, FINISH_LINE, formatAssignment } from "./briefs.ts";
+import { type Delivery, deliveryOf } from "./session-origin.ts";
 
 // DISPATCH 제안 기록. 추가만 하는 JSONL을 접어 현재 상태를 만든다(clearances.ts와 같은 방식).
 // - 2a(mode "shadow"): SUPERVISOR가 "나라면 승인/거절"만 표시하고 아무에게도 보내지 않는다.
@@ -805,6 +806,18 @@ export interface StandFreeHooks {
   timeliness: () => { within: number; total: number; rate: number | null };
   arrived: (p: Proposal, s: Snapshot) => unknown;
 }
+// 제안 AIRCRAFT(세션 이름)마다 전달 정보. OCC는 살아 있는 OCC 세션의 permission mode
+export function deliveryMapOf(s: Pick<Snapshot, "sessions">, proposals: Pick<Proposal, "aircraftName">[]): Record<string, Delivery> {
+  const live = s.sessions.filter((x) => x.status !== "dead");
+  const occ = live.find((x) => x.name.toUpperCase() === "OCC")?.permissionMode ?? null;
+  const out: Record<string, Delivery> = {};
+  for (const p of proposals) {
+    if (!p.aircraftName || out[p.aircraftName]) continue;
+    out[p.aircraftName] = deliveryOf(live.find((x) => x.name === p.aircraftName) ?? null, occ);
+  }
+  return out;
+}
+
 export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, watchFuel?: (s: Snapshot) => FuelWatch, standFree?: StandFreeHooks) {
   app.get("/api/dispatch/brief", async (c) => {
     const s = await getSnapshot();
@@ -856,6 +869,8 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       config: cfg,
       // FUEL F8(ATC-56): OCC가 FLIGHT PLAN을 보내기 전에 보는 경고. HOLDING CAPTAIN의 COLD CACHE와 24시간 안 큰 LEAK. 막지 않는다
       fuel: fuel && { coldCache: fuel.coldCache, largeLeaks: fuel.largeLeaks, error: fuel.error },
+      // 2b 전달(ATC-76): 제안 AIRCRAFT 세션의 출처·permission mode와 OCC의 mode. 다르면 warn(메시지가 붙들릴 수 있음). 막지 않는다
+      delivery: deliveryMapOf(s, [...open, ...held, ...inFlight]),
     });
   });
 

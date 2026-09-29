@@ -24,6 +24,8 @@ import { readLandingReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, holdStops, loadAtfm, readRecordedStops, reviveStops, stopFigures } from "./atfm.ts";
 import { fastTrackOf, isHeld, loadAutoland, loadAutolandState, mergeExclusionOf, planAutoland } from "./autoland.ts";
 import { regKey } from "./registration.ts";
+import { readRecords } from "./recorder.ts";
+import { launchModeOf } from "./session-origin.ts";
 
 // PR head별로 CLEARED TO LAND가 처음 된 시각 (메모리, 서버를 재시작하면 다시 센다)
 const readySince = new Map<string, string>();
@@ -47,6 +49,23 @@ export async function buildSnapshot(): Promise<Snapshot> {
   for (const f of claude.files) {
     const x = sessionById.get(f.sessionId);
     if (x) x.health = healthOfSession(f, x.status, healthAt, config.health);
+  }
+
+  // 백그라운드 세션의 permission mode(ATC-76): 명령줄에 없으니 그 세션을 띄운 LAUNCH 기록에서. 관제 세션 LAUNCH는 늘 auto
+  const bgNoMode = claude.sessions.filter((x) => x.origin === "background" && !x.permissionMode);
+  if (bgNoMode.length) {
+    const records = readRecords(Date.now() - 14 * 86_400_000);
+    for (const x of bgNoMode) {
+      const name = regKey(x.name);
+      const mine = records.flatMap((r) =>
+        r.kind === "fleet" && r.op === "launch" && regKey(r.aircraft) === name
+          ? [{ t: r.t, ok: r.ok, permissionMode: r.permissionMode }]
+          : r.kind === "control" && r.op === "launch" && r.session.toUpperCase() === x.name.toUpperCase()
+            ? [{ t: r.t, ok: r.ok, permissionMode: r.permissionMode ?? "auto" }]
+            : [],
+      );
+      x.permissionMode = launchModeOf(mine, x.startedAt);
+    }
   }
 
   const hookClaims = readHookClaims().filter((c) => wsByPath.has(c.workspacePath));

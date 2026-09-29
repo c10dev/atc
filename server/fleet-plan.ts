@@ -9,6 +9,7 @@ import type { LogEntry } from "./logbook.ts";
 import { GATE } from "./proposals.ts";
 import { regKey } from "./registration.ts";
 import { MAX_LAUNCHED, PERMISSION_MODES, type PermissionMode } from "./session-control.ts";
+import { isBackground, manualStepsOf, type SessionOrigin } from "./session-origin.ts";
 
 // FLEET PLAN(docs/fleet.md 8.6): 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·REFRESH·AOG·RETIRE를 제안한다.
 // 여기는 계산만(순수). 기록·API·주기 실행은 fleet-plan-run.ts. 1·2단계는 그림자: 제안하고 SUPERVISOR가 동의·반대만 한다.
@@ -51,7 +52,11 @@ export interface SessionFact {
   kind: string; // background | interactive
   id?: string;
   startedAt: number | null;
+  origin?: SessionOrigin; // ATC-76: background·desktop·terminal·unknown. 없으면 kind로 본다
 }
+// atc가 멈추고 다시 띄울 수 있는 세션인가(ATC-76): 출처가 background
+const originOfFact = (x: Pick<SessionFact, "kind" | "origin"> | null | undefined): SessionOrigin | null => (x ? (x.origin ?? (x.kind === "background" ? "background" : "unknown")) : null);
+const isBgFact = (x: Pick<SessionFact, "kind" | "origin"> | null | undefined) => isBackground(originOfFact(x));
 
 // AIRPORT마다 수요와 막힌 이유(화면용)
 export interface DemandRow {
@@ -160,7 +165,7 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
   const byReg = new Map(i.aircraft.map((a) => [a.registration, a]));
   const assigned = new Set(i.plan.assign.map((p) => regKey(p.aircraftName))); // 제안은 세션 이름 그대로(ATC-67)
   const unserved = i.plan.unserved ?? [];
-  const background = i.sessions.filter((x) => x.kind === "background");
+  const background = i.sessions.filter(isBgFact);
   // 최근 LAUNCH·STOP이 minDwell 안이면 반대 제안을 하지 않는다
   const dwelling = (reg: string, op: "launch" | "stop") => {
     const d = i.dwell.get(reg);
@@ -315,7 +320,7 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
       { code: "handoff", detail: a.flying.length ? `STAND·PR(${a.flying.join(", ")})은 새 세션에 HANDOFF — ${h.next}` : h.next },
       {
         code: "session",
-        detail: session?.kind === "background" ? `BG ${session.id ?? "?"} — 멈추고 새 CREW BRIEFING으로 다시 띄움` : "데스크톱·터미널 세션 — 승인 실행은 안 됨, 그 창을 닫고 새 CREW BRIEFING으로 연다",
+        detail: isBgFact(session) ? `BG ${session!.id ?? "?"} — 멈추고 새 CREW BRIEFING으로 다시 띄움` : `승인 실행은 안 됨 — ${manualStepsOf(originOfFact(session), a.registration, "restart")}`,
       },
     ];
     const key = `RESTART|${a.registration}`;
@@ -421,7 +426,7 @@ export function refreshOf(
   const last = i.logbook.filter((e) => e.aircraft === a.registration).sort((x, y) => x.arrivedAt.localeCompare(y.arrivedAt)).at(-1);
   const threshold = `기준 ${tokensShort(cfg.refreshTokens)}${c.windowSource === "default" ? "" : ` 또는 ${Math.round(cfg.refreshPct * 100)}%`}`;
   const windowNote = c.windowSource === "observed" ? ", 창은 본 크기로 짐작" : c.windowSource === "default" ? ", 창은 기본값" : "";
-  const manual = session?.kind !== "background";
+  const manual = !isBgFact(session);
   return [
     { code: "context", detail: `${contextLabel(c).replace(/^context /, "")} — ${c.model}, ${c.at.slice(0, 16).replace("T", " ")}Z (${threshold}${windowNote})`, value: c.contextTokens },
     { code: "saving", detail: savingText(saving, c.tier), value: saving?.coldWake ?? null },
@@ -432,9 +437,9 @@ export function refreshOf(
     {
       code: "session",
       detail: manual
-        ? "데스크톱·터미널 세션 — atc가 다시 띄우지 않는다. SUPERVISOR: 그 세션에서 /clear, 그다음 FLEET 카드의 CREW BRIEFING을 붙여 넣는다"
+        ? manualStepsOf(originOfFact(session), a.registration, "refresh")
         : `BG ${session?.id ?? "?"} — 멈추고 새 CREW BRIEFING으로 다시 띄움`,
-      value: manual ? "interactive" : "background",
+      value: manual ? "interactive" : "background", // isManual이 본다(저장된 제안과 같은 값). 출처는 detail에
     },
   ];
 }
@@ -666,7 +671,7 @@ export function executionOf(p: FleetProposal, input: Record<string, unknown>, ct
   if (isStale(p, ctx.latest, ctx.ranAt, ctx.now)) throw new PlanError("조건이 바뀜 — 최근 주기가 이 제안을 더는 내지 않는다. 다음 주기를 기다린다");
   const reg = p.aircraft ?? "";
   const a = ctx.aircraft.find((x) => x.registration === reg);
-  const bg = ctx.sessions.filter((x) => x.kind === "background");
+  const bg = ctx.sessions.filter(isBgFact);
   const session = ctx.sessions.find((x) => regKey(x.registration) === regKey(reg));
   const max = ctx.maxLaunched ?? MAX_LAUNCHED;
   const launchOptions = (fallback?: { permissionMode?: string; model?: string }) => {
@@ -687,7 +692,7 @@ export function executionOf(p: FleetProposal, input: Record<string, unknown>, ct
   };
   const needBackground = () => {
     if (!session) throw new PlanError(`${reg} 세션이 떠 있지 않음`);
-    if (session.kind !== "background") throw new PlanError(`${reg}는 데스크톱·터미널 세션 — 그 창에서 닫는다`);
+    if (!isBgFact(session)) throw new PlanError(manualStepsOf(originOfFact(session), reg, p.kind === "STOP" ? "stop" : p.kind === "REFRESH" ? "refresh" : "restart"));
   };
   const capRoom = () => {
     if (bg.length >= max) throw new PlanError(`백그라운드 세션 ${bg.length}개 — 상한 ${max}(ATC_MAX_LAUNCHED)`);
@@ -720,7 +725,7 @@ export function executionOf(p: FleetProposal, input: Record<string, unknown>, ct
       return { steps: [{ action: "stop", registration: reg }], options: {} };
     case "REFRESH":
       // 데스크톱·터미널 세션은 atc가 다시 띄우지 않는다: SUPERVISOR가 /clear하고 CREW BRIEFING을 붙여 넣은 뒤 "했음"(동의)
-      if (isManual(p)) throw new PlanError(`${reg}는 데스크톱·터미널 세션 — 그 세션에서 /clear 후 CREW BRIEFING을 붙여 넣고 "했음"을 누른다`);
+      if (isManual(p)) throw new PlanError(`${reg}는 백그라운드 세션이 아님 — 그 세션에서 /clear 후 CREW BRIEFING을 붙여 넣고 "했음"을 누른다`);
     // falls through: 백그라운드 세션은 RESTART와 같은 단계(8.5 STOP → LAUNCH)
     case "RESTART": {
       const x = needAircraft();
@@ -748,7 +753,7 @@ export function executionOf(p: FleetProposal, input: Record<string, unknown>, ct
       if (x.retired) throw new PlanError(`${reg}는 이미 RETIRED`);
       // SUPERVISOR 결정: 백그라운드 세션도 기본으로 멈춘다(체크를 풀면 남김)
       const stopSession = input.stopSession !== false;
-      const stop = stopSession && session?.kind === "background";
+      const stop = stopSession && isBgFact(session);
       return {
         steps: [{ action: "retire", registration: reg, reason: `FLEET PLAN ${p.id}` }, ...(stop ? [{ action: "stop" as const, registration: reg }] : [])],
         options: { stopSession },

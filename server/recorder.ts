@@ -37,7 +37,7 @@ export type RecordLine =
   // FLEET PLAN 모드 전환(8.7). 4단계가 승인 운용 기간을 잰다
   | { t: string; kind: "fleet-plan"; op: "mode:shadow" | "mode:approval"; by: string }
   // 관제 세션 LAUNCH·STOP(docs/fleet.md 8.5.1)
-  | { t: string; kind: "control"; op: "launch" | "stop"; session: string; by: string; ok: boolean; jobId?: string; tmux?: string; cwd?: string; error?: string }
+  | { t: string; kind: "control"; op: "launch" | "stop"; session: string; by: string; ok: boolean; jobId?: string; tmux?: string; cwd?: string; permissionMode?: string; error?: string }
   | { t: string; kind: "atfm"; op: string; id?: string; airport?: string; data?: Record<string, unknown> };
 
 const DIR = join(config.stateDir, "flight-recorder");

@@ -418,9 +418,18 @@ test("executionOf LAUNCH·ENTRY: 기본 permission mode auto, 상한·이미 떠
   assert.match(refused(() => executionOf(e.p, {}, ctx({ latest: e.latest, taken: ["TEAM_L"] }))), /이미 쓰는 등록번호/);
 });
 
+test("executionOf(ATC-76): 출처가 background일 때만 실행, 데스크톱·터미널은 그 출처의 손 절차로 거절", () => {
+  const s = openOf("F-0001", "STOP", "TEAM_H");
+  assert.match(refused(() => executionOf(s.p, {}, ctx({ latest: s.latest, sessions: [{ ...bgRow("TEAM_H", "interactive"), origin: "desktop" as const }] }))), /데스크톱\(Claude 앱\) 세션 — atc가 멈추지 않는다\. SUPERVISOR: Claude 앱에서 그 세션을 닫는다/);
+  const r = openOf("F-0002", "RESTART", "TEAM_H");
+  assert.match(refused(() => executionOf(r.p, {}, ctx({ latest: r.latest, sessions: [{ ...bgRow("TEAM_H", "interactive"), origin: "terminal" as const }] }))), /터미널 세션 — atc가 다시 띄우지 않는다\. SUPERVISOR: 그 터미널에서 \/exit로 claude를 닫고, 새 세션을 이름 TEAM_H로/);
+  // background 출처는 실행된다(STOP 한 단계)
+  assert.deepEqual(executionOf(s.p, {}, ctx({ latest: s.latest, sessions: [{ ...bgRow("TEAM_H"), origin: "background" as const }] })).steps, [{ action: "stop", registration: "TEAM_H" }]);
+});
+
 test("executionOf STOP·RESTART: 백그라운드 세션만. RESTART는 마지막 LAUNCH의 permission mode·모델로 다시 띄운다", () => {
   const s = openOf("F-0001", "STOP", "TEAM_H");
-  assert.match(refused(() => executionOf(s.p, {}, ctx({ latest: s.latest, sessions: [bgRow("TEAM_H", "interactive")] }))), /데스크톱·터미널 세션/);
+  assert.match(refused(() => executionOf(s.p, {}, ctx({ latest: s.latest, sessions: [bgRow("TEAM_H", "interactive")] }))), /백그라운드가 아닌 세션 — atc가 멈추지 않는다/);
   const r = openOf("F-0002", "RESTART", "TEAM_H");
   const plan = executionOf(r.p, {}, ctx({ latest: r.latest, lastLaunch: new Map([["TEAM_H", { permissionMode: "acceptEdits", model: "sonnet" }]]) }));
   assert.deepEqual(plan.steps, [
@@ -473,7 +482,7 @@ test("health: MODEL·주간 LIMIT은 AOG, CONTEXT·ALERT HUNG은 RESTART, 나머
   assert.deepEqual(by("TEAM_B").reasons.at(-1), { code: "until", detail: "해제 기한 2026-10-02(주간 LIMIT reset 날)", value: "2026-10-02" });
   assert.deepEqual(by("TEAM_D").reasons.map((r) => r.code), ["context", "handoff", "session"]);
   assert.match(by("TEAM_D").reasons[1]!.detail, /ATC-9.*HANDOFF/);
-  assert.match(by("TEAM_E").reasons[2]!.detail, /데스크톱·터미널 세션/);
+  assert.match(by("TEAM_E").reasons[2]!.detail, /승인 실행은 안 됨 — TEAM_E는 백그라운드가 아닌 세션 — atc가 다시 띄우지 않는다/);
 });
 
 test("health: NORDO와 MODEL이 겹치면 AOG 하나에 사유 둘, 승인하면 사유 머리에 두 코드", () => {
@@ -669,5 +678,5 @@ test("executionOf REFRESH: 백그라운드는 RESTART처럼 STOP → LAUNCH, 데
     { action: "launch", registration: "TEAM_H", permissionMode: "acceptEdits", model: null },
   ]);
   const hand = openOf("F-0002", "REFRESH", "TEAM_H", { reasons: [{ code: "session", detail: "", value: "interactive" }] } as Partial<FleetPlanOp>);
-  assert.match(refused(() => executionOf(hand.p, {}, ctx({ latest: hand.latest }))), /^409 TEAM_H는 데스크톱·터미널 세션 — 그 세션에서 \/clear/);
+  assert.match(refused(() => executionOf(hand.p, {}, ctx({ latest: hand.latest }))), /^409 TEAM_H는 백그라운드 세션이 아님 — 그 세션에서 \/clear/);
 });

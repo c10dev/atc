@@ -11,6 +11,8 @@ import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { record } from "./recorder.ts";
 import { regKey, sameReg } from "./registration.ts";
+import { isBackground, manualStepsOf, permissionModeOf, type SessionOrigin } from "./session-origin.ts";
+import { sessionProcOf } from "./session-proc.ts";
 
 // 세션 조종(docs/fleet.md 8.5). atc가 `claude --bg`로 AIRCRAFT 세션을 띄우고 `claude stop`으로 멈춘다.
 // SUPERVISOR가 FLEET 탭에서 누를 때만 한다(Origin 검사). 관제 세션의 atcctl은 부를 수 없다.
@@ -206,12 +208,16 @@ export function tmuxPanes(bin = tmuxBin() ?? "tmux"): Promise<TmuxPane[]> {
   });
 }
 
-// 멈출 백그라운드 세션(순수). 데스크톱·터미널 세션은 atc가 멈추지 않는다
-export function stopTargetOf(registration: string, rows: AgentRow[]): AgentRow {
+// `claude agents --json` 한 줄의 출처(ATC-76): background면 그대로, 아니면 pid의 명령줄(읽기만, pid마다 캐시)
+export const rowOriginOf = (row: Pick<AgentRow, "kind" | "pid">): SessionOrigin => sessionProcOf(row.pid ?? null, row.kind).origin;
+
+// 멈출 백그라운드 세션(순수, originOf는 주입). 출처가 background가 아니면 atc가 멈추지 않고, 그 출처의 손 절차를 사유로 돌려준다
+export function stopTargetOf(registration: string, rows: AgentRow[], originOf: (row: AgentRow) => SessionOrigin = (r) => (r.kind === "background" ? "background" : "unknown")): AgentRow {
   const reg = regKey(registration);
   const row = rows.find((r) => sameName(r, reg));
   if (!row) throw new ControlError(`${reg} 세션이 떠 있지 않음`, 404);
-  if (row.kind !== "background" || !row.id) throw new ControlError(`${reg}는 데스크톱·터미널 세션 — 그 창에서 닫는다`, 409);
+  const origin = originOf(row);
+  if (!isBackground(origin) || !row.id) throw new ControlError(manualStepsOf(origin, reg, "stop"), 409);
   return row;
 }
 
@@ -324,7 +330,7 @@ export async function stopAircraft(registration: string, by: string): Promise<Co
   const reg = regKey(registration);
   const t = new Date().toISOString();
   try {
-    const row = stopTargetOf(reg, await agentRows());
+    const row = stopTargetOf(reg, await agentRows(), rowOriginOf);
     const r = await claude(["stop", row.id as string]);
     const error = r.ok ? undefined : r.out.slice(0, 300) || "claude stop 실패";
     record({ t, kind: "fleet", op: "stop", aircraft: reg, by, ok: r.ok, jobId: row.id, cwd: row.cwd, error });
@@ -347,7 +353,7 @@ export async function launchControl(name: string, by: string): Promise<ControlRe
     const jobId = jobIdOf(r.out);
     const ok = r.ok && !!jobId;
     const error = ok ? undefined : /not trusted/i.test(r.out) ? `${plan.cwd}를 신뢰하지 않음 — 그 폴더에서 claude를 한 번 열어 trust를 수락한다` : r.out.slice(0, 300) || "claude --bg 실패";
-    record({ t, kind: "control", op: "launch", session: spec.name, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, error });
+    record({ t, kind: "control", op: "launch", session: spec.name, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: permissionModeOf(plan.args) ?? undefined, error });
     return ok ? { ok, status: 200, jobId: jobId!, cwd: plan.cwd, permissionMode: "auto" } : { ok, status: 502, error };
   } catch (e) {
     if (e instanceof ControlError) return { ok: false, status: e.status, error: e.message };

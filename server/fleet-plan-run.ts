@@ -37,7 +37,7 @@ import { allProposals, reservedOf } from "./proposals.ts";
 import { readRecords, record } from "./recorder.ts";
 import { fleetKeyOf, regKey } from "./registration.ts";
 import { activeWaypointsOf } from "./routes.ts";
-import { type AgentRow, agentRows, launchAircraft, MAX_LAUNCHED, PERMISSION_MODES, stopAircraft } from "./session-control.ts";
+import { type AgentRow, agentRows, launchAircraft, MAX_LAUNCHED, PERMISSION_MODES, rowOriginOf, stopAircraft } from "./session-control.ts";
 import { readLinearProjects } from "./sources/linear-projects.ts";
 
 // FLEET PLAN 실행부(docs/fleet.md 8.6): DISPATCH 주기(5분)마다 제안을 계산해 fleet-plan.jsonl에 적고,
@@ -135,7 +135,7 @@ export function inputsOf(s: Snapshot, rows: AgentRow[], now: number): FleetInput
     plan,
     sessions: rows
       .filter((r) => team.test(r.name ?? ""))
-      .map((r) => ({ registration: regOf(r.name), kind: r.kind, id: r.id, startedAt: typeof r.startedAt === "number" ? r.startedAt : null })),
+      .map((r) => ({ registration: regOf(r.name), kind: r.kind, id: r.id, startedAt: typeof r.startedAt === "number" ? r.startedAt : null, origin: rowOriginOf(r) })),
     lastActive: new Map(live.map((x) => [regOf(x.name), x.lastActiveAt ?? x.startedAt])),
     nordo: new Set(s.sessions.filter((x) => team.test(x.name) && x.status === "dead" && !liveNames.has(regOf(x.name))).map((x) => regOf(x.name))),
     los,
@@ -345,7 +345,7 @@ export function mountFleetPlan(app: Hono, getSnapshot: () => Promise<Snapshot>) 
       const rows = await agentRows();
       const sessions: SessionFact[] = rows
         .filter((r) => team.test(r.name ?? ""))
-        .map((r) => ({ registration: regKey(r.name, cfg.teamPattern), kind: r.kind, id: r.id, startedAt: typeof r.startedAt === "number" ? r.startedAt : null }));
+        .map((r) => ({ registration: regKey(r.name, cfg.teamPattern), kind: r.kind, id: r.id, startedAt: typeof r.startedAt === "number" ? r.startedAt : null, origin: rowOriginOf(r) }));
       const lastLaunch = new Map<string, { permissionMode?: string; model?: string }>();
       for (const r of readRecords(now - 30 * DAY)) if (r.kind === "fleet" && r.op === "launch" && r.ok) lastLaunch.set(regKey(r.aircraft, cfg.teamPattern), { permissionMode: r.permissionMode, model: r.model });
       let plan: { steps: ExecStep[]; options: ApproveOptions };

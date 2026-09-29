@@ -648,7 +648,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **환경.** 세션은 atc 서비스의 환경이 아니라 깨끗한 환경(HOME, USER, 로캘, XDG runtime, claude CLI와 node가 든 PATH)을 받는다. `.env.local`의 비밀(Linear, TypeSafe)이 세션에 가지 않는다. CLI 경로는 `ATC_CLAUDE_BIN`(기본 `~/.local/bin/claude`. 서비스 PATH에 없다).
 - **폴더 신뢰.** Claude Code는 trust 질문을 수락하지 않은 폴더에서 백그라운드 세션을 거절한다. atc는 그 사실을 알리고 trust 설정은 건드리지 않는다. 그 저장소에서 `claude`를 한 번 열어 수락한다.
 - **기록.** LAUNCH·STOP마다 FLIGHT RECORDER에 `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}` 한 줄.
-- **화면.** 세션이 없는 카드에 **LAUNCH**(permission mode, 선택 모델, 상한 대비 백그라운드 수). 백그라운드 세션이면 `BG <id>`와 **STOP**. 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
+- **화면.** 세션이 없는 카드에 **LAUNCH**(permission mode, 선택 모델, 상한 대비 백그라운드 수). 살아 있는 세션마다 출처(`BG`·`DESKTOP`·`TERM`)와 permission mode(8.5.2), 백그라운드 세션이면 **STOP**도. 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
 
 아직 만들지 않음: 쉬는 세션의 자동 STOP(FLEET PLAN 4단계. 그림자 제안과 승인 운용은 8.6·8.7에서 만듦), FLIGHT 도중 오래 도는 세션의 정기 정비로서 RESTART(쉬는 AIRCRAFT는 REFRESH, 8.6, ATC-69), 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, ATC-46, [fuel.md](fuel.md)).
 
@@ -673,7 +673,18 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **ENGINEERING**은 저장소 뿌리에서 여는 작업 세션인데 팀 세션도 거기서 돌므로, 이름으로만 알아보고 LAUNCH·STOP이 없다.
 - **상한.** 관제 세션은 팀 세션 상한 `ATC_MAX_LAUNCHED`에 세지 않는다.
 - **API**(`server/session-control.ts`): `GET /api/control/sessions`(`{daemonInService, sessions: [{name, dir, prompt, launch: "bg" | null, blocked, live}], accounts}`), `POST /api/control/:name/launch`, `POST /api/control/:name/stop`. 둘 다 SUPERVISOR만(이 화면 Origin). 순수 함수: `controlLaunchPlanOf`, `launchBlockOf`, `controlStopTargetOf`, `controlRowsOf`, `isControlRow`.
-- **기록.** FLIGHT RECORDER `{kind: "control", op: "launch" | "stop", session, by: "SUPERVISOR", ok, jobId, tmux, cwd, error}`. 백그라운드 세션이면 `jobId`, tmux 세션이면 `tmux`(launch는 세션, stop은 `<세션> <pane>`).
+- **기록.** FLIGHT RECORDER `{kind: "control", op: "launch" | "stop", session, by: "SUPERVISOR", ok, jobId, tmux, cwd, permissionMode, error}`(`permissionMode`는 ATC-76부터). 백그라운드 세션이면 `jobId`, tmux 세션이면 `tmux`(launch는 세션, stop은 `<세션> <pane>`).
+
+#### 8.5.2 세션 출처 as built (ATC-76)
+
+`claude agents --json`은 `background`인지 `interactive`인지만 알려 준다. 2026-09-28에 interactive 팀 세션 10개가 모두 데스크톱 세션이었다. 이 차이는 조종(atc는 백그라운드 세션만 멈추고 다시 띄운다), 계정(백그라운드는 호스트 CLI 로그인, 데스크톱은 앱의 계정), 수명(데스크톱 세션은 앱 연결에 달림), 2b 전달(permission mode가 다른 세션은 cross-session 메시지를 사용자 승인까지 붙들 수 있다)에 모두 걸렸다.
+
+- **출처**(`server/session-origin.ts`의 순수 함수 `originOf`): 세션 파일의 `kind`가 `bg`이거나 `claude agents` 줄의 `kind`가 `background`면 `background`. 아니면 프로세스 명령줄로 정한다. pid와 시작 시각마다 한 번 `/proc/<pid>/cmdline`과 부모의 것을 읽는다(`server/session-proc.ts`). `~/.claude/remote/` 아래 실행 파일이면 `desktop`(데스크톱 세션은 `~/.claude/remote/srv/<hash>/server` 아래의 `~/.claude/remote/ccd-cli/<버전>`), 그냥 `claude`·`…/bin/claude`·`…/claude/versions/<버전>`이면 `terminal`, 백그라운드 daemon 아래(`bg-spare`, `bg-pty-host`)면 `background`, 그 밖은 `unknown`. 프로세스를 못 읽으면 세션 파일의 `entrypoint: "claude-desktop"`으로 `desktop`을 안다. 읽기만 한다: 신호를 보내거나 붙지 않고, 계정 정보는 읽거나 저장하지 않는다.
+- **permission mode**(`permissionModeOf`): 명령줄의 `--permission-mode <m>`이나 `--permission-mode=<m>`. 백그라운드 세션은 명령줄에 없으니 그 세션을 띄운 LAUNCH에서 읽는다. 세션 시작 2분 안의 성공한 FLIGHT RECORDER launch 기록이다(`launchModeOf`). 관제 세션 LAUNCH도 이제 `permissionMode`를 적는다. 그 전 기록은 `controlLaunchPlanOf`가 늘 넘기던 `auto`로 본다. 그 밖에는 모름.
+- **API.** 스냅샷의 살아 있는 Claude 세션마다 `origin`과 `permissionMode`가 있다. `GET /api/fleet`은 AIRCRAFT 보기마다 싣고(세션이 없으면 `null`), FLEET 목록 줄에는 `origin` 표시가 붙는다.
+- **화면.** 목록 줄과 카드에 `BG`·`DESKTOP`·`TERM`·`?`와 permission mode. `BG <id>` 배지를 대신하고 id는 툴팁에 있다. 세션이 백그라운드가 아닌 카드에는 그 출처의 손 절차가 한 줄 보인다. ACCOUNT 줄에는 BG 세션은 호스트 CLI 로그인을, DESKTOP 세션은 앱의 계정을 따른다는 말이 붙는다(보여 주기만).
+- **쓰임.** 카드의 STOP, STOP API(`stopTargetOf`와 `rowOriginOf`), FLEET PLAN 실행(`STOP`, `RESTART`, `REFRESH`, `RETIRE`의 세션 멈춤)은 출처가 `background`일 때만 한다. 다른 출처는 그 출처의 손 절차를 받는다(`manualStepsOf`): Claude 앱에서 닫기, 터미널에서 `/exit`, REFRESH면 `/clear` 뒤 CREW BRIEFING 붙여 넣기. FLEET PLAN의 `session` 사유에 출처가 나오고, 저장된 `value`는 그대로 `interactive`·`background`다.
+- **2b 전달.** `GET /api/dispatch/brief`의 `delivery`: 제안 AIRCRAFT마다 출처, permission mode, OCC의 permission mode, 둘 다 알고 다를 때의 `warn`(`deliveryOf`). DISPATCH 카드와 IN FLIGHT 줄에 `MODE <m> ≠ OCC <m>`이 떠 메시지가 붙들릴 수 있음을 알린다. 막지 않는다.
 
 ### 8.6 FLEET PLAN: LAUNCH·STOP 등을 제안하기
 

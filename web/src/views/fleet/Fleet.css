@@ -208,3 +208,23 @@
   background: var(--panel-2);
   color: var(--text);
 }
+/* 세션 출처(ATC-76): BG(atc가 멈추고 다시 띄움)·DESKTOP·TERM과 permission mode. 목록 줄과 카드가 같이 쓴다 */
+.fl-origin {
+  margin-left: var(--space-1-5);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.fl-origin.o-background {
+  border-color: var(--radar);
+  color: var(--radar);
+}
+.fl-origin.o-unknown {
+  border-style: dashed;
+}
+.fl-origin-mode {
+  color: var(--faint);
+}

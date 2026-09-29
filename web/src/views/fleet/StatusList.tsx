@@ -38,6 +38,12 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                       {r.account}
                     </span>
                   )}
+                  {r.origin && (
+                    <span className={`fl-origin mono o-${r.origin.origin}`} title={r.origin.title}>
+                      {r.origin.badge}
+                      {r.origin.mode && <span className="fl-origin-mode"> {r.origin.mode}</span>}
+                    </span>
+                  )}
                   {r.name && (
                     <span className={`fl-r-name${r.name.conflict ? " is-conflict" : ""}`} title={r.name.title}>
                       {r.name.label}

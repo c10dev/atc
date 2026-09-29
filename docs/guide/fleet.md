@@ -179,11 +179,14 @@ Linear에 `tail:TEAM_G` 라벨이 없으면 먼저 만든다.
 
 atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude Code 백그라운드 세션(`claude --bg`)이다.
 
-- **LAUNCH**: 세션이 없는 카드에 보인다. 누르면 그 카드 바로 아래에 LAUNCH 패널이 열리고(목록에선 펼친 줄 안), 초점이 permission mode에 간다. permission mode(`auto` 기본, `acceptEdits`, `default`)와 모델(비우면 기본값)을 고르고 패널의 LAUNCH를 누른다. 세션은 base AIRPORT 저장소에서 뜨고, 이름은 등록번호, 첫 지시는 CREW BRIEFING이다. 곧 카드에 `BG <id>`가 붙는다. 막히면 사유가 패널 안에 보인다. 취소나 Esc는 패널을 닫고 카드의 LAUNCH로 초점을 돌린다.
+- **LAUNCH**: 세션이 없는 카드에 보인다. 누르면 그 카드 바로 아래에 LAUNCH 패널이 열리고(목록에선 펼친 줄 안), 초점이 permission mode에 간다. permission mode(`auto` 기본, `acceptEdits`, `default`)와 모델(비우면 기본값)을 고르고 패널의 LAUNCH를 누른다. 세션은 base AIRPORT 저장소에서 뜨고, 이름은 등록번호, 첫 지시는 CREW BRIEFING이다. 곧 카드에 `BG`와 permission mode가 붙는다(id는 툴팁). 막히면 사유가 패널 안에 보인다. 취소나 Esc는 패널을 닫고 카드의 LAUNCH로 초점을 돌린다.
 - **CREW BRIEFING**도 그 카드 바로 아래에 열린다. ENTRY INTO SERVICE로 들인 직후의 CREW BRIEFING만 맨 위, 그 양식 자리에 보인다.
 - **STOP**: atc가 띄운 백그라운드 세션에만 보인다. 멈춰도 대화는 남는다. 터미널에서 `claude attach <id>`로 들여다보거나 `claude --resume`으로 다시 연다.
 - **퇴역**: 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
-- 데스크톱·터미널에서 직접 연 세션은 atc가 멈추지 않는다. 그 창에서 닫는다.
+- **세션 출처**: 목록 줄과 카드에 `BG`(atc가 띄운 백그라운드), `DESKTOP`(Claude 앱), `TERM`(터미널), `?`(모름)과 permission mode가 보인다. 마우스를 올리면 자세한 설명이 나온다.
+- 데스크톱·터미널에서 직접 연 세션은 atc가 멈추거나 다시 띄우지 않는다. 카드에 그 출처의 손 절차가 한 줄 보인다(데스크톱: Claude 앱에서 닫기, 터미널: `/exit`). FLEET PLAN의 RESTART·REFRESH도 같은 절차를 사유에 적는다.
+- **ACCOUNT**: BG 세션은 이 호스트의 CLI 로그인을, DESKTOP 세션은 Claude 앱의 계정을 따른다(카드의 ACCOUNT 아래 한 줄). atc는 계정 정보를 읽지 않는다.
+- **2b 전달 경고**: DISPATCH 카드와 IN FLIGHT 줄의 AIRCRAFT 옆에 `MODE default ≠ OCC auto` 같은 노란 표시가 뜨면, 그 세션의 permission mode가 OCC와 다르다는 뜻이다. FLIGHT PLAN 메시지가 그 세션에서 사용자 승인 대기로 잡혀 NO READBACK이 될 수 있다. 데스크톱 세션이면 앱에서 메시지를 승인하거나 모드를 맞춘다. 막지는 않는다.
 - 막히는 경우: 이미 같은 이름의 세션이 있음, 백그라운드 세션이 상한(기본 6, `ATC_MAX_LAUNCHED`)에 닿음, RETIRED, base AIRPORT 없음, 그 저장소를 Claude Code가 신뢰하지 않음(그 저장소에서 `claude`를 한 번 열어 trust를 수락한다).
 - 띄운 세션은 사용량 한도를 쓴다. atc의 비밀(`.env.local`)은 세션에 넘기지 않는다. `bypassPermissions`는 고를 수 없다.
 - 관제 세션(TOWER·OCC·CROSSCHECK·REVIEW)은 세션을 띄우거나 멈출 수 없다. 이 화면에서 보낸 요청만 받는다.

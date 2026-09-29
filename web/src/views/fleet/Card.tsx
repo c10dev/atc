@@ -6,6 +6,7 @@ import { usd } from "../../../../server/fuel-view.ts";
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel } from "../../../../server/health.ts";
 import { conflictHintOf, IDEA_SUPERSEDED, renameHintOf } from "../../../../server/registration.ts";
 import type { RulesView } from "../../../../server/rules-state.ts";
+import { isBackground, manualStepsOf, originBadgeOf } from "../../../../server/session-origin.ts";
 import { flightNumber } from "../../aviation.ts";
 import { timeAgo } from "../../derive.ts";
 import { formatClock, useSettings } from "../../settings.ts";
@@ -133,6 +134,8 @@ export function Card({
   dispatchMode?: string;
   onCrewChanged: () => void;
 }) {
+  // 세션 출처(ATC-76): BG·DESKTOP·TERM과 permission mode. BG id는 툴팁에
+  const origin = originBadgeOf(a.origin, a.permissionMode, session?.id);
   return (
     <article className={`fl-card s-${a.status}${a.aog ? " is-aog" : ""}`}>
       <header className="fl-head">
@@ -140,12 +143,15 @@ export function Card({
         <span className="mono faint">{a.registration}</span>
         {a.base && <span className="apt">{a.base}</span>}
         <span className="fl-status">{statusOf(a)}</span>
-        {session?.kind === "background" && (
-          <span className="fl-bg mono" title="atc가 띄운 백그라운드 세션 — claude attach로 열 수 있다">
-            BG {session.id}
+        {origin && (
+          <span className={`fl-origin mono o-${origin.origin}`} title={origin.title}>
+            {origin.badge}
+            {origin.mode && <span className="fl-origin-mode"> {origin.mode}</span>}
           </span>
         )}
       </header>
+      {/* 백그라운드가 아닌 세션(ATC-76): atc가 멈추거나 다시 띄우지 않는다 — 손 절차 */}
+      {a.origin && !isBackground(a.origin) && <p className="fl-origin-note faint">{manualStepsOf(a.origin, a.registration, "stop")}</p>}
       {a.aog && (
         <p className="fl-aog">
           <span className="fl-aog-mark">AOG</span> {a.aog.reason}
@@ -237,6 +243,10 @@ export function Card({
         ACCOUNT {a.accountIsDefault && <em>기본값</em>}
       </h3>
       <p className="fl-line">{a.account ? <span className="mono">{a.account}</span> : <span className="faint">지정 없음 — 한도는 reset 시각으로 묶는다</span>}</p>
+      {/* 출처 힌트(ATC-76): 백그라운드 세션은 이 호스트 CLI의 로그인을, 데스크톱 세션은 앱의 계정을 쓴다. 계정 정보는 읽지 않는다 */}
+      {(a.origin === "background" || a.origin === "desktop") && (
+        <p className="fl-origin-note faint">{a.origin === "background" ? "BG 세션 — 이 호스트의 CLI 로그인을 따른다" : "DESKTOP 세션 — Claude 앱의 계정을 따른다"}</p>
+      )}
       {a.fuel && (
         <p className={`fl-fuel lv-${a.fuel.level}`} title={fuelTitle(a.fuel, Date.now())}>
           ACCOUNT{a.fuel.account ? ` ${a.fuel.account}` : ""} {fuelLabel(a.fuel, Date.now())} <span className="faint">· {a.fuel.fromKind === "control" ? "control " : ""}{a.fuel.from} statusline</span>
@@ -258,7 +268,7 @@ export function Card({
             LAUNCH
           </button>
         )}
-        {session?.kind === "background" && (
+        {session && isBackground(a.origin ?? (session.kind === "background" ? "background" : null)) && (
           <button className="fl-btn" onClick={onStop}>
             STOP
           </button>

@@ -1,7 +1,8 @@
-import { Fragment, type KeyboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { createContext, Fragment, type KeyboardEvent, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ArrivalSuggestion } from "../../../server/standfree.ts";
 import type { DispatchConfig, Plan } from "../../../server/dispatch.ts";
 import type { Proposal } from "../../../server/proposals.ts";
+import type { Delivery } from "../../../server/session-origin.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import { PriorityMark } from "../ui.tsx";
@@ -94,6 +95,7 @@ interface Brief {
   held: Proposal[];
   briefs?: Record<string, CardBrief>; // 열린·HELD 카드의 사실 줄과 본문 첫 문장(옛 서버면 없음)
   inFlight: Proposal[];
+  delivery?: Record<string, Delivery>; // 2b 전달(ATC-76): AIRCRAFT 세션 이름 → 출처·permission mode·OCC mode. 옛 서버면 없음
   arrivalCandidates?: ArrivalSuggestion[]; // STAND 없는 FLIGHT의 ARRIVED 후보(ATC-72). 옛 서버면 없음
   overdue: string[];
   recent: Proposal[];
@@ -183,6 +185,18 @@ async function post(path: string, body: unknown) {
   const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
   if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
   return data;
+}
+
+// 2b 전달(ATC-76): 카드·IN FLIGHT 줄이 AIRCRAFT의 permission mode 경고를 읽는다
+const DeliveryCtx = createContext<Record<string, Delivery>>({});
+function DeliveryWarn({ aircraft }: { aircraft: string | null | undefined }) {
+  const d = useContext(DeliveryCtx)[aircraft ?? ""];
+  if (!d?.warn) return null;
+  return (
+    <span className="dp-delivery mono" title={d.warn.title}>
+      {d.warn.label}
+    </span>
+  );
 }
 
 export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number }) {
@@ -291,6 +305,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
   const release = brief.open.filter((p) => p.kind === "RELEASE").sort(byMarked);
 
   return (
+    <DeliveryCtx.Provider value={brief.delivery ?? {}}>
     <section className="dispatch">
       <div className="toolbar">
         <span className="muted">
@@ -479,6 +494,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       )}
 
     </section>
+    </DeliveryCtx.Provider>
   );
 }
 
@@ -516,7 +532,9 @@ function InFlightRow({
         <td className="dp-c-flight mono" title={flight?.title}>
           {flightNumber(p.flight)}
         </td>
-        <td className="dp-c-air">{p.aircraftName}</td>
+        <td className="dp-c-air">
+          {p.aircraftName} <DeliveryWarn aircraft={p.aircraftName} />
+        </td>
         <td className="dp-c-result dp-result">
           {p.status === "recalling" ? (
             <span className="dp-recall">
@@ -1162,7 +1180,7 @@ function Card({
       <div className="dp-target">
         {p.kind === "ASSIGN" ? (
           <>
-            → <b>{p.aircraftName}</b> <span className="apt">{p.airport}</span>
+            → <b>{p.aircraftName}</b> <span className="apt">{p.airport}</span> <DeliveryWarn aircraft={p.aircraftName} />
           </>
         ) : (
           <>Todo로 되돌릴지 확인 {flight && <span className="faint">· 지금 {flight.state}</span>}</>

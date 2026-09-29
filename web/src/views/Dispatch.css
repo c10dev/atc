@@ -1212,3 +1212,12 @@
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+/* 2b 전달(ATC-76): AIRCRAFT의 permission mode가 OCC와 다름 — FLIGHT PLAN이 붙들릴 수 있음. 막지 않는다 */
+.dp-delivery {
+  padding: 0 var(--space-1);
+  border: 1px dashed var(--amber);
+  border-radius: var(--radius-sm);
+  color: var(--amber);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
