@@ -63,18 +63,24 @@ STAND 줄의 REMARKS 칸에도 그 STAND 브랜치의 PR 배지가 붙는다.
 
 ## 상단
 
-- **숫자판**: AIRBORNE(작업 중 세션), STANDS(점유), ENROUTE(진행 FLIGHT), HANDOFF, ALERTS.
+- **숫자판**: AIRBORNE(작업 중 세션), STANDS(점유), ENROUTE(진행 FLIGHT), HANDOFF, ALERTS(WARNING·CAUTION만 센다. ADVISORY는 `+n ADV`로 옆에 보인다. 색: WARNING이 있으면 빨강, CAUTION만 있으면 호박, 없으면 기본).
 - **UPDATE 막대**: 서비스가 `origin/main`보다 뒤이고 main CI가 통과했으면 `업데이트 있음 · c0ca22e → 4678e03 · PR 2 · CI ✓ [업데이트]`가 뜬다. 버튼이 MCC와 같은 `atc-rts`를 시작하고 막대가 진행·거절·ROLLBACK을 보인다. 사람이 배포해야 하면 버튼 대신 사유가 뜬다([배포하기](deploy.md)).
 - **새 버전 알림**: 이 탭을 연 뒤에 atc가 새로 배포되면 콘솔 바로 아래에 "새 버전이 배포됨"과 새로고침·닫기 버튼이 뜬다. 저절로 새로고침하지 않는다(입력 중인 내용을 지키려고). 닫으면 다음 배포 때까지 안 뜬다.
-- **ALERT 줄**: 경보가 흘러간다. 누르면 목록이 열린다.
+- **ALERT 줄**: WARNING·CAUTION이 흘러간다(WARNING이 있으면 빨강). ADVISORY만 있으면 줄이 없다. 누르면 목록이 열린다(등급별로 묶인다). [경보 종류](#경보-종류)
 - **ATC 로고**: 설정(테마, 움직임, 시계, LINEAR, AGENTS). AGENTS 탭의 **REVIEW** 줄(`externalReview.security`)은 Codex 한도 때 보안 PR도 착륙 리뷰 세션(REVIEW, Claude Sonnet)에 보낼지 정한다. 기본 exclude, deepseek(옛 이름, 뜻은 "보냄")으로 바꾸면 보안 PR도 REVIEW가 리뷰한다(`.env`·비밀 경로와 FLIGHT 없는 PR은 계속 빠짐). 스트립에는 "REVIEW: SONNET (보안, Codex 한도)"로 보인다. 같은 탭의 **AUTOLAND** 줄(`autoland.mode`)은 착륙 자동화 스위치다: `off`(기본), `update`(behind인 CLEARED PR을 하나씩 갱신, 머지는 SUPERVISOR), `merge`(위임된 PR은 머지까지. vocado AGENTS.md에 예외를 적은 뒤에만). 모드마다 경고가 한 줄씩 보이고, GROUND STOP이 걸려 있으면 그 아래 **풀기** 버튼이 있다. 이 스위치는 이 화면에서만 바뀐다(관제 세션은 못 바꿈). 같은 탭의 **MCC** 줄 아래 **SHADOW GATE** 패널은 MCC를 `land`로 올릴 근거를 보여 준다: 판단한 atc PR(머지된 head에 INSPECTION·ESCALATE) 20건 이상, 첫 MCC 기록부터 5일 이상, would-land였는데 되돌린 PR 0건. 셋 다 맞으면 "준비됨"이다. 그 아래에는 불일치가 PR 링크와 함께 보인다: MCC가 findings였거나 INSPECTION이 없었는데 사람·structure가 머지한 PR, would-land였는데 되돌린 PR. 불일치를 보고 판단하는 것과 모드를 올리는 것은 SUPERVISOR가 MCC 줄에서 한다(패널은 읽기만). 같은 탭의 **CONTROL** 블록은 관제 세션마다(TOWER·OCC·MCC·CROSSCHECK·REVIEW·ENGINEERING) 떠 있는지 배지로 보인다: `BG <id>`(atc가 띄운 백그라운드), `tmux <세션>`(tmux pane), `interactive`(데스크톱 등, 그 창에서 닫는다), `not running`. 꺼져 있으면 **LAUNCH**: 다섯 세션 모두 그 폴더에서 백그라운드(`claude --bg`)로 띄운다(첫 메시지 `/loop … /tick`). 모델은 폴더 설정이 정한다: TOWER·OCC·REVIEW는 Claude Sonnet, MCC·CROSSCHECK는 Claude Opus. 떠 있으면 **STOP**(tmux pane에서 연 세션이면 묻고 나서 그 pane만 닫는다). 2026-09-29 전에는 CROSSCHECK·REVIEW를 tmux의 `ocx claude`로 띄웠다. ENGINEERING은 배지만 있다. 같은 탭의 **JUDGES** 줄(`judges.jev`)은 판정 계열 Jev 스위치다: `off`(기본), `replay`(판정한 지난 CLASSIFY 초안을 다시 판정), `shadow`(새 CLASSIFY 초안을 판정해 두고 판정 뒤에만 보임). 켜면 티켓 제목과 목표·수정 허용 범위·완료 기준이 TypeSafe로 나간다(`rating:SEC`·Risk 티켓은 제목만). DISPATCH의 열린 ASSIGN도 같은 스위치로 판정하고, 그때는 AIRCRAFT의 지난 atc FLIGHT 3개의 제목도 나간다. 이것도 이 화면에서만 바뀐다.
 
 ## 경보 종류
 
-| 경보 | 뜻 |
-|---|---|
-| LOSS OF SEPARATION | 두 세션이 같은 STAND를 겹쳐 건드림 |
-| NORDO STAND | 죽은 세션이 쥔 STAND |
-| STRANDED | FLIGHT의 PR이 main이 아닌 브랜치에 머지돼 main에 닿지 않음(Linear가 Done이어도 뜬다, ATC-29) |
-| NO CONTACT | ENROUTE인데 STAND가 없는 FLIGHT(상위 이슈는 제외) |
-| UNIDENTIFIED | 점유한 AIRCRAFT 없이 바뀐 STAND |
+경보마다 등급이 있다(ECAM의 WARNING·CAUTION·ADVISORY). 상단 ALERTS 숫자와 ALERT 줄은 조치가 필요한 WARNING·CAUTION만 센다. ADVISORY는 숫자에서 빠지고 `+n ADV`로 옆에 보인다. 목록에는 세 등급이 모두 있다.
+
+| 경보 | 등급 | 뜻 |
+|---|---|---|
+| LOSS OF SEPARATION | WARNING(빨강) | 두 세션이 같은 STAND를 겹쳐 건드림 |
+| STRANDED | WARNING(빨강) | FLIGHT의 PR이 main이 아닌 브랜치에 머지돼 main에 닿지 않음(Linear가 Done이어도 뜬다, ATC-29) |
+| AIRCRAFT HEALTH | CAUTION(호박) | AIRCRAFT의 NETWORK·LIMIT 같은 health 경보(ATC-45) |
+| NO CONTACT | CAUTION(호박) | ENROUTE인데 STAND가 없는 FLIGHT(상위 이슈는 제외) |
+| UNIDENTIFIED | CAUTION(호박) | 점유한 AIRCRAFT 없이 바뀐 STAND |
+| NORDO STAND | CAUTION(호박) | 죽은 세션이 쥔 STAND. 그 STAND의 FLIGHT가 아직 ARRIVED·CANCELLED가 아니거나 FLIGHT가 없을 때 |
+| NORDO STAND | ADVISORY(회색) | 죽은 세션이 쥔 STAND인데 그 FLIGHT가 ARRIVED·CANCELLED라 정리만 하면 됨 |
+
+목록은 등급 순(WARNING → CAUTION → ADVISORY)이고, 같은 등급 안에서는 종류끼리 묶인다. ADVISORY만 있으면 ALERT 줄이 뜨지 않고 ALERTS는 `00 +n ADV`로 보인다. 그것을 누르면 목록이 열린다.

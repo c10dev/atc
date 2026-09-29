@@ -1,6 +1,6 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showNewVersion } from "../../server/version.ts";
-import { alertCode, alertLabel, alertMessage, callsign, flightNumber, HANDOFF_LABEL } from "./aviation.ts";
+import { alertCode, alertLabel, alertLevel, alertLevelLabel, alertMessage, callsign, flightNumber, groupAlerts, HANDOFF_LABEL } from "./aviation.ts";
 import { buildIndex, timeAgo } from "./derive.ts";
 import { NewVersionBar } from "./NewVersion.tsx";
 import { UpdateBar, useUpdate } from "./UpdateBar.tsx";
@@ -88,7 +88,11 @@ export function App({ build }: { build: string }) {
   const inProgress = snapshot?.tickets.filter((t) => t.stateType === "started").length ?? 0;
   const alerts = snapshot?.alerts ?? [];
   const handoffs = snapshot?.handoffs ?? [];
-  const serious = alerts.filter((a) => a.kind === "conflict" || a.kind === "orphan").length;
+  // 등급(ATC-110): 숫자와 ALERT 줄은 조치가 필요한 WARNING·CAUTION만. ADVISORY는 목록과 `+n ADV`에 남는다
+  const levelOf = (a: (typeof alerts)[number]) => (idx ? alertLevel(a, idx) : "caution");
+  const actionable = alerts.filter((a) => levelOf(a) !== "advisory");
+  const serious = actionable.filter((a) => levelOf(a) === "warning").length;
+  const advisories = alerts.length - actionable.length;
   const nameOf = (id: string) => {
     const session = idx?.sessionById.get(id);
     return session ? callsign(session) : id.slice(0, 8);
@@ -134,12 +138,14 @@ export function App({ build }: { build: string }) {
             <span>HANDOFF</span>
           </button>
           <button
-            className={`readout is-button${serious ? " tone-alert" : alerts.length ? " tone-amber" : ""}`}
+            className={`readout is-button${serious ? " tone-alert" : actionable.length ? " tone-amber" : ""}`}
             onClick={() => setAlertsOpen((v) => !v)}
             aria-expanded={alertsOpen}
           >
-            <b>{pad(alerts.length)}</b>
-            <span>ALERTS</span>
+            <b>{pad(actionable.length)}</b>
+            <span>
+              ALERTS{advisories > 0 && <em className="adv-count"> +{advisories} ADV</em>}
+            </span>
           </button>
           <div className="readout clock">
             <Clock clock={settings.clock} />
@@ -154,12 +160,12 @@ export function App({ build }: { build: string }) {
       <UpdateBar update={update} />
       <NewVersionBar own={build} server={serverBuild} />
 
-      {alerts.length > 0 && !alertsOpen && (
+      {actionable.length > 0 && !alertsOpen && (
         <button className={`ticker${serious ? " is-serious" : ""}`} onClick={() => setAlertsOpen(true)} aria-label="경보 목록 펼치기">
           <span className="ticker-head">ALERT</span>
           <Ticker>
-            {alerts.map((a, i) => (
-              <span key={i} className={`ticker-item alert-${a.kind}`}>
+            {actionable.map((a, i) => (
+              <span key={i} className={`ticker-item alert-${a.kind} lv-${levelOf(a)}`}>
                 <span className="code-chip">{alertCode[a.kind]}</span>
                 {alertLabel[a.kind] !== alertCode[a.kind] && `${alertLabel[a.kind]} · `}
                 <span className="mono">{subjectOf(a)}</span> · {alertMessage(a, nameOf)}
@@ -171,13 +177,18 @@ export function App({ build }: { build: string }) {
 
       {alertsOpen && alerts.length + handoffs.length > 0 && (
         <ul className="alerts">
-          {alerts.map((a, i) => (
-            <li key={i} className={`alert alert-${a.kind}`}>
-              <span className="code-chip">{alertCode[a.kind]}</span>
-              {alertLabel[a.kind] !== alertCode[a.kind] && <span className="alert-label">{alertLabel[a.kind]}</span>}
-              <span className="mono">{subjectOf(a)}</span>
-              <span className="muted">{alertMessage(a, nameOf)}</span>
-            </li>
+          {groupAlerts(alerts, levelOf).map((g) => (
+            <Fragment key={g.level}>
+              <li className={`alert-group lv-${g.level}`}>{alertLevelLabel[g.level]}</li>
+              {g.alerts.map((a, i) => (
+                <li key={i} className={`alert alert-${a.kind} lv-${g.level}`}>
+                  <span className="code-chip">{alertCode[a.kind]}</span>
+                  {alertLabel[a.kind] !== alertCode[a.kind] && <span className="alert-label">{alertLabel[a.kind]}</span>}
+                  <span className="mono">{subjectOf(a)}</span>
+                  <span className="muted">{alertMessage(a, nameOf)}</span>
+                </li>
+              ))}
+            </Fragment>
           ))}
           {handoffs.map((h) => (
             <li key={`${h.workspacePath}:${h.from}`} className="alert alert-handoff">
