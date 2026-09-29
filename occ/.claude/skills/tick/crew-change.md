@@ -17,7 +17,7 @@ SUPERVISOR가 운항 중인 AIRCRAFT의 CREW COMPLEMENT를 바꾸면 atc가 CREW
 
 | 상황 (`crew-change brief` 위치) | 할 일 |
 |---|---|
-| `approved` | `crew-change send <CC-xxxx>` → 출력의 `SEND TO` 세션(그 AIRCRAFT)에 `---` 아래 문구를 **그대로** SendMessage. 한 바퀴에 AIRCRAFT마다 하나 |
+| `approved` | `crew-change send <CC-xxxx>` → 출력의 `SEND TO` 세션(그 AIRCRAFT)에 `SEND:` 줄(머리 `[OCC CC-xxxx]`만)을 SendMessage. send-guard가 저장된 문구로 바꿔 넣는다(`---` 아래 전체 문구는 로그용). 한 바퀴에 AIRCRAFT마다 하나 |
 | `waiting`(승인됐지만 같은 AIRCRAFT의 앞 건 `waitingFor`가 READBACK 전) | 보내지 않는다. `crew-change send`도 409로 거절한다. 앞 건의 READBACK 뒤 다음 바퀴에 `approved`로 온다 |
 | CAPTAIN 답장 "READBACK CC-xxxx" | `crew-change readback CC-xxxx`. READBACK 없이 "… CREW CHANGE CC-xxxx COMPLETE"만 와도 받은 것이 분명하니 `crew-change readback CC-xxxx`하고 OCC LOG에 COMPLETE를 적는다 |
 | `overdue`에 든 sent(보낸 뒤 10분 넘게 READBACK 없음) | `crew-change send <CC-xxxx>`로 같은 문구를 받아 **한 번만** 더 보낸다. 그래도 없으면 SUPERVISOR 보고 |

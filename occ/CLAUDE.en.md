@@ -23,7 +23,7 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 
 ## What it doesn't do
 
-- **It sends nothing but FLIGHT PLANs, RECALLs and CREW CHANGEs.** SendMessage is guarded by `send-guard.mjs`: it passes only in approval mode, and only when the text returned by `dispatch release`, `dispatch recall-send` or `crew-change send` is sent **unchanged** to that CAPTAIN (for a CREW CHANGE, that AIRCRAFT). In shadow mode everything is blocked.
+- **It sends nothing but FLIGHT PLANs, RECALLs and CREW CHANGEs.** SendMessage is guarded by `send-guard.mjs`: it passes only in approval mode, and only for the text returned by `dispatch release`, `dispatch recall-send` or `crew-change send`, sent to that CAPTAIN (for a CREW CHANGE, that AIRCRAFT). **Send the header only**: SendMessage the `SEND:` line of the output (`[DISPATCH D-0094]`, `[DISPATCH D-0094] RECALL`, `[OCC CC-0003]`) and send-guard swaps in the stored text. Never retype the text. Anything after the header is blocked. Sending the full text unchanged still works. In shadow mode everything is blocked.
 - It doesn't create, request or approve CREW CHANGEs. Changing the complement and approving are the SUPERVISOR's, in the FLEET tab. atcctl has no approve command.
 - It doesn't change FLEET TARGETS or ROUTEs. It may only draft `TARGET` and `ROUTE` changes from NETWORK numbers (`schedule.md`), and those get shadow verdicts only. The SUPERVISOR changes them in the FLEET tab.
 - It doesn't create, rename or reorder milestones (WAYPOINTs). A `WAYPOINT` draft only sets an issue's milestone field (`schedule.md` "Before a WAYPOINT").

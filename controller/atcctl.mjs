@@ -13,6 +13,13 @@ const STATE = process.env.ATC_STATE_DIR || join(homedir(), ".local/state/atc");
 // 관제 세션의 운영 규정(CLAUDE.md, /tick과 그 절차 파일). 오래 도는 세션이 바뀐 규정을 모른 채 돌지 않게 해시로 비교한다.
 const MANUAL = ["CLAUDE.md", ".claude/skills/tick/SKILL.md"];
 // 절차 파일은 tick 폴더의 한국어 *.md다(*.en.md 번역은 읽히지 않아 뺀다). 앞 두 파일 뒤에 이름순으로 붙어, 절차 파일이 없는 폴더의 해시는 전과 같다.
+// OCC가 보낼 것(ATC-119): 머리 한 줄만 SendMessage하면 send-guard가 저장된 문구로 바꿔 넣는다. 전체 문구는 로그용으로 아래에 그대로 둔다
+const SEND_HEADER = /^(\[DISPATCH D-\d{4,}\](?: RECALL)?|\[OCC CC-\d{4,}\])/;
+export function sendOutput(sendTo, message) {
+  const header = SEND_HEADER.exec(String(message))?.[1];
+  return header ? `SEND TO: ${sendTo}\nSEND: ${header}\n---\n${message}` : `SEND TO: ${sendTo}\n---\n${message}`;
+}
+
 export function manualFiles(dir) {
   let procedures = [];
   try {
@@ -58,13 +65,13 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
                                             값 없는 --hold는 선행 FLIGHT 없는 HOLD(사람 결정 대기 등, 사유는 메모)
   node atcctl.mjs dispatch briefing <D-0003> --what '<무슨 일>' --why '<왜 이 AIRCRAFT>' --risk '<걸리는 점>'
                                             제안 카드 맨 위의 쉬운 세 줄(BRIEFING). 열린 제안·HELD에만, 다시 쓰면 덮어쓴다
-  node atcctl.mjs dispatch release <D-0003> (2b) 승인된 제안을 sent로 바꾸고 SEND TO와 FLIGHT PLAN 출력
+  node atcctl.mjs dispatch release <D-0003> (2b) 승인된 제안을 sent로 바꾸고 SEND TO·SEND(보낼 머리 한 줄)와 FLIGHT PLAN 출력
   node atcctl.mjs dispatch readback <D-0003>
                                             (2b) CAPTAIN이 READBACK함
   node atcctl.mjs dispatch decline <D-0003> -- <사유>
                                             (2b) CAPTAIN이 맡지 못함
   node atcctl.mjs dispatch recall-send <D-0003>
-                                            (2b) SUPERVISOR가 RECALL을 요청한 제안의 SEND TO와 RECALL 문구 출력(재송신도 같은 문구)
+                                            (2b) SUPERVISOR가 RECALL을 요청한 제안의 SEND TO·SEND(머리 한 줄)와 RECALL 문구 출력(재송신도 같은 문구)
   node atcctl.mjs dispatch recalled <D-0003>
                                             (2b) CAPTAIN이 "READBACK D-0003 RECALL"로 답함
   node atcctl.mjs dispatch arrived <D-0003> -- <결과 링크나 한 줄>
@@ -76,7 +83,7 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
 CREW CHANGE (OCC 세션이 맡음. approval 모드(2b)만. 승인은 SUPERVISOR가 FLEET 탭에서, OCC는 만들거나 승인하지 않음)
   node atcctl.mjs crew-change brief         보낼 것(approved)·기다리는 것(waiting)·READBACK 대기(sent)·늦은 것(overdue) (JSON)
   node atcctl.mjs crew-change send <CC-0001>
-                                            승인된 CREW CHANGE를 sent로 바꾸고 SEND TO와 문구 출력(이미 sent면 같은 문구)
+                                            승인된 CREW CHANGE를 sent로 바꾸고 SEND TO·SEND(머리 한 줄)와 문구 출력(이미 sent면 같은 문구)
   node atcctl.mjs crew-change readback <CC-0001>
                                             CAPTAIN이 "READBACK CC-0001"로 답함
 
@@ -564,13 +571,13 @@ if (isMain) {
       console.log(`${r.proposal.id} BRIEFING`);
     } else if (cmd === "dispatch" && args[0] === "release" && args[1]) {
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/release`);
-      console.log(`SEND TO: ${r.sendTo}\n---\n${r.message}`);
+      console.log(sendOutput(r.sendTo, r.message));
     } else if (cmd === "dispatch" && args[0] === "readback" && args[1]) {
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/accept`);
       console.log(`${r.proposal.id} READBACK 확인`);
     } else if (cmd === "dispatch" && args[0] === "recall-send" && args[1]) {
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/recall-send`);
-      console.log(`SEND TO: ${r.sendTo}\n---\n${r.message}`);
+      console.log(sendOutput(r.sendTo, r.message));
     } else if (cmd === "dispatch" && args[0] === "recalled" && args[1]) {
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/recalled`);
       console.log(`${r.proposal.id} RECALLED — FLIGHT는 다시 후보(같은 AIRCRAFT에는 24시간 제안하지 않음)`);
@@ -595,7 +602,7 @@ if (isMain) {
         console.log(JSON.stringify(await call("GET", "/api/fleet/crew-changes/brief"), null, 1));
       } else if (action === "send") {
         const r = await call("POST", `/api/fleet/crew-changes/${encodeURIComponent(id)}/send`);
-        console.log(`SEND TO: ${r.sendTo}\n---\n${r.message}`);
+        console.log(sendOutput(r.sendTo, r.message));
       } else {
         const r = await call("POST", `/api/fleet/crew-changes/${encodeURIComponent(id)}/readback`);
         console.log(`${r.change.id} READBACK 확인 (${r.change.registration})`);
