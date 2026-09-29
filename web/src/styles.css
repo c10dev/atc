@@ -467,13 +467,28 @@ button {
   font: 700 var(--text-2xs)/15px var(--mono);
   letter-spacing: 0.1em;
 }
-.alert-conflict,
-.alert-orphan {
-  color: #ff7a7a;
+/* 등급(ATC-110): WARNING 빨강, CAUTION 호박, ADVISORY 회색 */
+.lv-warning {
+  color: var(--alert);
 }
-.alert-unattended,
-.alert-no-workspace {
+.lv-caution {
   color: var(--amber);
+}
+.lv-advisory {
+  color: var(--muted);
+}
+.alert-group {
+  padding-top: var(--space-1);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.16em;
+}
+.alert-group:not(:first-child) {
+  margin-top: var(--space-1);
+  border-top: 1px solid var(--line);
+}
+.readout .adv-count {
+  color: var(--muted);
+  font-style: normal;
 }
 .alert-handoff {
   color: var(--blue);
@@ -2579,8 +2594,7 @@ a.ticket:hover {
   color: var(--alert);
 }
 :root[data-theme="night"] .tone-amber b,
-:root[data-theme="night"] .alert-unattended,
-:root[data-theme="night"] .alert-no-workspace,
+:root[data-theme="night"] .lv-caution,
 :root[data-theme="night"] .dirty,
 :root[data-theme="night"] .nc {
   color: var(--gold);

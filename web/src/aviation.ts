@@ -104,6 +104,42 @@ export const alertLabel: Record<AlertKind, string> = {
   health: "AIRCRAFT HEALTH",
 };
 
+// ALERT 등급(ATC-110, ECAM의 WARNING·CAUTION·ADVISORY). 상단 숫자와 ALERT 줄은 조치가 필요한 WARNING·CAUTION만 센다.
+// ADVISORY는 지워지지 않는다: 목록에는 그대로 있고 숫자판에 `+n ADV`로 보인다
+export type AlertLevel = "warning" | "caution" | "advisory";
+export const ALERT_LEVELS: readonly AlertLevel[] = ["warning", "caution", "advisory"];
+export const alertLevelLabel: Record<AlertLevel, string> = { warning: "WARNING", caution: "CAUTION", advisory: "ADVISORY" };
+
+// orphan(NORDO STAND)은 그 STAND의 FLIGHT가 ARRIVED·CANCELLED면 정리만 하면 되는 ADVISORY, 아니면(FLIGHT 없음 포함) CAUTION
+export function alertLevel(
+  a: Pick<Alert, "kind" | "workspacePath">,
+  idx: { wsByPath: ReadonlyMap<string, { ticketKey: string | null }>; ticketByKey: ReadonlyMap<string, Pick<Ticket, "stateType">> },
+): AlertLevel {
+  switch (a.kind) {
+    case "conflict":
+    case "stranded":
+      return "warning";
+    case "orphan": {
+      const key = a.workspacePath ? idx.wsByPath.get(a.workspacePath)?.ticketKey : null;
+      const type = key ? idx.ticketByKey.get(key)?.stateType : undefined;
+      return type === "completed" || type === "canceled" ? "advisory" : "caution";
+    }
+    case "health":
+    case "no-workspace":
+    case "unattended":
+      return "caution";
+  }
+}
+
+// 목록 순서: 등급(WARNING → ADVISORY), 같은 등급 안에서는 종류별로 묶는다(들어온 순서는 유지)
+export function groupAlerts<T extends Pick<Alert, "kind">>(alerts: readonly T[], levelOf: (a: T) => AlertLevel): { level: AlertLevel; alerts: T[] }[] {
+  return ALERT_LEVELS.map((level) => {
+    const list = alerts.filter((a) => levelOf(a) === level);
+    const kinds = [...new Set(list.map((a) => a.kind))];
+    return { level, alerts: kinds.flatMap((k) => list.filter((a) => a.kind === k)) };
+  }).filter((g) => g.alerts.length);
+}
+
 export function alertMessage(a: Alert, sessionName: (id: string) => string): string {
   switch (a.kind) {
     case "conflict":
