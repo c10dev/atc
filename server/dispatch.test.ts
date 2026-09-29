@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -1148,13 +1148,47 @@ test("같은 팀 예외: 겹치는 팀이 둘이면 지금처럼 HOLD(팀 이름
 // ── SUPERVISOR CONFIRM AT AIRCRAFT(ATC-120) ──
 test("SUPERVISOR CONFIRM: 예측 경로 중 사용자 등급 파일이 ASSIGN에 실리고, 모르는 경로는 표시하지 않는다", () => {
   const s = snap({ sessions: [session("b", "TEAM_B")], tickets: [ticket("VOC-41")] });
-  const run = (body: Record<string, string>) => planDispatch(s, new Map(), cfg(), NOW, undefined, undefined, undefined, undefined, undefined, { holders: [], bodies: bodies(body) });
+  // 이 시험의 FLIGHT는 VCDO라서 MCC AIRPORT를 VCDO로 넘긴다(ATC-159: 줄은 MCC AIRPORT에서만)
+  const run = (body: Record<string, string>) => planDispatch(s, new Map(), cfg(), NOW, undefined, undefined, undefined, undefined, undefined, { holders: [], bodies: bodies(body) }, undefined, "VCDO");
   // 루트 CLAUDE.md와 .claude/ 설정은 사용자 등급, server/는 아니다
   const marked = run({ "VOC-41": "`CLAUDE.md`와 `.claude/settings.json`, `server/a.ts`를 고친다" });
   assert.deepEqual(marked.assign[0].supervisorConfirm, ["CLAUDE.md", ".claude/settings.json"]);
   // 예측이 없거나 사용자 등급이 아니면 필드 자체가 없다
   assert.equal("supervisorConfirm" in run({}).assign[0], false);
   assert.equal("supervisorConfirm" in run({ "VOC-41": "`server/a.ts`만 고친다" }).assign[0], false);
+});
+
+// ── ATC-159: 착륙 등급 규칙은 MCC AIRPORT에서만 ──
+test("SUPERVISOR CONFIRM(ATC-159): ATCC FLIGHT는 그대로 줄을 받고, VCDO 등 다른 AIRPORT는 CLAUDE.md·.claude/settings.json을 예측해도 없다", () => {
+  const ATC = "/home/c10/projects/atc";
+  const airports = [{ id: "r1", code: "VCDO", name: "vocado_nextjs", repo: VCDO }, { id: "r2", code: "ATCC", name: "atc", repo: ATC }];
+  const s = snap({
+    airports,
+    sessions: [session("b", "TEAM_B"), session("i", "TEAM_I", "idle", ATC)],
+    tickets: [ticket("VOC-41"), ticket("ATC-1", { project: "atc" })],
+  });
+  const both = "`CLAUDE.md`와 `.claude/settings.json`을 고친다";
+  const files = { holders: [], bodies: bodies({ "VOC-41": both, "ATC-1": both }) };
+  const run = (...confirmAirport: [] | [string]) =>
+    planDispatch(s, new Map(), cfg({ candidateTeams: ["VOC", "ATC"] }), NOW, undefined, undefined, undefined, undefined, undefined, files, undefined, ...confirmAirport);
+  const byFlight = (p: ReturnType<typeof planDispatch>) => Object.fromEntries(p.assign.map((a) => [a.flight, a.supervisorConfirm ?? null]));
+  // MCC 설정을 안 넘기면(파일 없음·깨짐) 옛 동작: ATCC에서만
+  assert.deepEqual(byFlight(run()), { "VOC-41": null, "ATC-1": ["CLAUDE.md", ".claude/settings.json"] });
+  assert.deepEqual(byFlight(run("ATCC")), { "VOC-41": null, "ATC-1": ["CLAUDE.md", ".claude/settings.json"] });
+  // MCC AIRPORT를 다른 곳으로 바꾸면 그곳만
+  assert.deepEqual(byFlight(run("VCDO")), { "VOC-41": ["CLAUDE.md", ".claude/settings.json"], "ATC-1": null });
+});
+
+test("SUPERVISOR CONFIRM(ATC-159): mcc.json이 없거나 깨졌거나 airport가 비면 ATCC (mccAirportNow의 뿌리 loadMcc)", async () => {
+  const { loadMcc, parseMcc, DEFAULT_MCC } = await import("./mcc.ts");
+  const dir = mkdtempSync(join(tmpdir(), "mcc159-"));
+  assert.equal(loadMcc(join(dir, "none.json")).airport, "ATCC"); // 없음
+  writeFileSync(join(dir, "bad.json"), "{not json");
+  assert.equal(loadMcc(join(dir, "bad.json")).airport, "ATCC"); // 깨짐
+  assert.equal(parseMcc({ airport: "  " }).airport, "ATCC");
+  assert.equal(parseMcc({ airport: "atap" }).airport, "ATAP"); // 다른 AIRPORT로 옮기면 그대로 따른다
+  assert.equal(DEFAULT_MCC.airport, "ATCC");
+  rmSync(dir, { recursive: true, force: true });
 });
 
 // ── ATC-139: 끝난 FLIGHT는 AIRBORNE이 아니다 ──

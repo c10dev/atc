@@ -24,6 +24,7 @@ import {
   landedOf,
   landedWhy,
   loadDispatchConfig,
+  mccAirportNow,
   NO_PRIORITY_WHY,
   noProjectWhy,
   type Plan,
@@ -968,7 +969,7 @@ export function runDispatch(s: Snapshot, now = Date.now()): Plan {
   const fleet = loadFleet();
   const resumes = resumePlansOf(s, readDepartures(), landed, now, baseOfFleet(fleet, cfg.teamPattern));
   // 켜진 GROUND STOP이 걸린 AIRPORT의 ASSIGN은 계획에서 뺀다(docs/atfm.md 6장). 열린 제안은 그 사유로 SUPERSEDED
-  const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes), s.atfm?.groundStops ?? []);
+  const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes, mccAirportNow()), s.atfm?.groundStops ?? []);
   const seq = ops.filter((o) => o.op === "create").length;
   append(syncOps(existing, plan, s, cfg, now, seq, landed));
   return plan;
@@ -1039,7 +1040,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
     const fuel = watchFuel?.(s) ?? null;
     const landed = landedOf(logbook);
     const fleet = loadFleet();
-    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumePlansOf(s, readDepartures(), landed, now, baseOfFleet(fleet, cfg.teamPattern))), s.atfm?.groundStops ?? []);
+    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumePlansOf(s, readDepartures(), landed, now, baseOfFleet(fleet, cfg.teamPattern)), mccAirportNow()), s.atfm?.groundStops ?? []);
     // SETTLED(ATC-117): 열린·HELD 제안마다 settled와 남은 분(settlesInMin)을 붙인다. OCC는 settled인 것만 메모·BRIEFING을 단다
     const { open, held, unsettled } = settledItemsOf(proposals, now, cfg.settleMin);
     const inFlight = proposals.filter(isInFlight).sort((a, b) => a.statusAt.localeCompare(b.statusAt));

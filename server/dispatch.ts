@@ -13,6 +13,7 @@ import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket,
 import { REASON_CODES } from "./reasons.ts";
 import { ABSENT_REASON, cutHoldWhy, type ResumeInfo } from "./dispatch-launch.ts";
 import { DEFAULT_TEAM_PATTERN, fleetKeyOf, regKey } from "./registration.ts";
+import { DEFAULT_MCC, loadMcc } from "./mcc.ts";
 import { supervisorConfirmOf } from "./supervisor-confirm.ts";
 
 // 2단계 DISPATCH: 어떤 FLIGHT를 어떤 AIRCRAFT에 보낼지 계산한다(순수 함수 planDispatch).
@@ -490,6 +491,10 @@ export function independenceDetail(ind: Independence): string {
   return `대상 ${what} — 만든 ${by} 제외`;
 }
 
+// SUPERVISOR CONFIRM은 atc의 착륙 등급 규칙(deploy/landing-tier.mjs)이 미치는 곳, 곧 MCC AIRPORT(mcc.json의 airport, 기본 ATCC)에서만 낸다(ATC-159).
+// 파일이 없거나 깨졌으면 loadMcc가 기본값을 줘서 ATCC로 남는다
+export const mccAirportNow = () => loadMcc().airport;
+
 export function planDispatch(
   s: Snapshot,
   history: FlightHistory,
@@ -502,6 +507,7 @@ export function planDispatch(
   activeWaypoint: Map<string, string> = new Map(), // FLIGHT key → 지금 구간 WAYPOINT(routes.ts activeWaypointsOf, 8단계)
   files: FilesInFlight = NO_FILES, // 파일 겹침(ATC-71): 날고 있는 FLIGHT의 파일과 이슈 본문
   resumes: AssignPlan[] = [], // RESUME 카드(ATC-129, dispatch-launch.ts resumePlansOf). 그 AIRCRAFT는 새 FLIGHT를 받지 않는다
+  confirmAirport: string = DEFAULT_MCC.airport, // SUPERVISOR CONFIRM을 내는 AIRPORT(ATC-159). 호출부는 mccAirportNow()를 넘긴다
 ): Plan {
   const team = new RegExp(cfg.teamPattern, "i");
   const regOf = (name: string) => regKey(name, cfg.teamPattern); // 세션 이름 → REGISTRATION(ATC-67)
@@ -900,7 +906,8 @@ export function planDispatch(
       usedFlights.add(p.t.key);
       usedAircraft.add(regOfAircraft(p.ac, cfg.teamPattern));
       // SUPERVISOR CONFIRM AT AIRCRAFT(ATC-120): 예측 경로 중 사용자 등급 파일. 예측이 비면 표시 없음
-      const confirm = supervisorConfirmOf(predictedFor(p.t).map((x) => x.pattern));
+      // 다른 AIRPORT는 그 규칙을 쓰지 않으니 줄을 내지 않는다(ATC-159)
+      const confirm = p.t.airport === confirmAirport ? supervisorConfirmOf(predictedFor(p.t).map((x) => x.pattern)) : [];
       planned.set(p.t.airport, (planned.get(p.t.airport) ?? 0) + size);
       assign.push({ kind: "ASSIGN", flight: p.t.key, aircraft: p.ac.id, aircraftName: p.ac.name, registration: regOfAircraft(p.ac, cfg.teamPattern), airport: p.t.airport, score: p.score, factors: p.factors, ...(p.ac.launch ? { launch: true as const } : {}), ...(confirm.length ? { supervisorConfirm: confirm } : {}) });
     }
