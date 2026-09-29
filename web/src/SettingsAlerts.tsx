@@ -23,6 +23,13 @@ function useVoiceStatus() {
   return { status, reload: load };
 }
 
+// docs/guide/voice.md가 적은 엔진 값 그대로(server/tts.ts TTS_ENGINES). stub은 시험용
+const VOICE_ENGINES: [string, string][] = [
+  ["none", "none"],
+  ["piper", "piper"],
+  ["stub", "stub (시험용)"],
+];
+
 export function AlertsSettings({ save }: { save: Save }) {
   const { prefs, permission, audio } = useAlerts();
   const [msg, setMsg] = useState<string | null>(null);
@@ -152,9 +159,9 @@ export function AlertsSettings({ save }: { save: Save }) {
           <label className="alert-range">
             엔진
             <select value={voice.engine} onChange={(e) => void pickEngine(e.target.value)} aria-label="엔진">
-              {[...new Set(["none", "piper", voice.engine])].map((e) => (
+              {VOICE_ENGINES.map(([e, label]) => (
                 <option key={e} value={e}>
-                  {e}
+                  {label}
                 </option>
               ))}
             </select>
@@ -163,7 +170,7 @@ export function AlertsSettings({ save }: { save: Save }) {
         {noEngine && (
           <p className="settings-hint alert-msg" data-testid="voice-none">
             <b>TTS 엔진 없음</b>
-            {voice !== "error" && voice.error ? ` — ${voice.error.message}` : ""}. 설치 방법은{" "}
+            {voice !== "error" && voice.error && voice.error.code !== "no-engine" ? ` — ${voice.error.message}` : ""}. 설치 방법은{" "}
             <a href="#docs/voice">
               음성 콜아웃 안내
             </a>

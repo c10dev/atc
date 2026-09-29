@@ -44,3 +44,22 @@ test("읽는 팀(LINEAR_TEAM_KEYS): 쉼표 목록을 대문자로, 틀린 key는
   assert.deepEqual(validatePatch({ teamKeys: "" }).env, { LINEAR_TEAM_KEYS: null });
   assert.deepEqual(Object.keys(validatePatch({ teamKeys: "VOC, 1X" }).errors), ["teamKeys"]);
 });
+
+test("ttsEngine·ttsVoice 검사(ATC-142): 엔진은 none·piper·stub만, 목소리는 VOICE_NAME, 비우면 지운다", () => {
+  for (const e of ["none", "piper", "stub"]) assert.deepEqual(validatePatch({ ttsEngine: e }), { env: { ATC_TTS_ENGINE: e }, errors: {} });
+  for (const bad of ["kokoro", "", "PIPER", null, 3]) {
+    const r = validatePatch({ ttsEngine: bad });
+    assert.deepEqual(r.env, {});
+    assert.match(r.errors.ttsEngine ?? "", /none, piper, stub/);
+  }
+  assert.deepEqual(validatePatch({ ttsVoice: "en_US-lessac-medium" }).env, { ATC_TTS_VOICE: "en_US-lessac-medium" });
+  for (const bad of ["../etc/passwd", "a b", "x/y", "a".repeat(81), 5]) {
+    const r = validatePatch({ ttsVoice: bad });
+    assert.deepEqual(r.env, {});
+    assert.ok(r.errors.ttsVoice, String(bad));
+  }
+  assert.deepEqual(validatePatch({ ttsVoice: "" }), { env: { ATC_TTS_VOICE: null }, errors: {} });
+  assert.deepEqual(validatePatch({ ttsVoice: null }), { env: { ATC_TTS_VOICE: null }, errors: {} });
+  // null이면 .env.local의 줄이 지워진다
+  assert.equal(mergeEnv("A=1\nATC_TTS_VOICE=x\n", { ATC_TTS_VOICE: null }), "A=1\n");
+});

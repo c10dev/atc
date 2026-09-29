@@ -90,3 +90,16 @@ test("만든 WAV는 상태 폴더의 voice-cache/에 남고 같은 문구는 다
   assert.equal(readdirSync(cacheDir).filter((f) => f.endsWith(".wav")).length, before + 1);
   cfg = { ...cfg, voice: "" };
 });
+
+test("WARNING이나 CALL이 아닌 알림은 문구 틀이 있어도 만들지 않는다(CAUTION 404, 클라이언트 soundFor와 같은 규칙)", async () => {
+  const stalled = alert("alert|health|STALLED|s1", { level: "caution", cue: null }); // phraseOf에 틀이 있다
+  const local = new Hono();
+  mountVoice(local, () => [stalled, ...alerts], () => cfg);
+  const r = await local.request(wavUrl(stalled.key));
+  assert.equal(r.status, 404);
+  assert.match((await r.json()).error, /WARNING·CALL/);
+  // 같은 틀이 WARNING 등급이면 만든다
+  const warn = new Hono();
+  mountVoice(warn, () => [{ ...stalled, level: "warning" }], () => cfg);
+  assert.equal((await warn.request(wavUrl(stalled.key))).status, 200);
+});

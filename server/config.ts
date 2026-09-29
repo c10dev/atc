@@ -36,8 +36,8 @@ export const config = {
   // 판정 계열 Jev(ATC-36): TypeSafe API 키. 로그·출력·기록에 쓰지 않는다. ATC_JUDGE_ENGINE=stub이면 녹화 응답(네트워크 없음)
   typesafeApiKey: env.TYPESAFE_API_KEY || "",
   judgeEngine: env.ATC_JUDGE_ENGINE === "stub" ? "stub" : "jev",
-  // 음성 콜아웃(ATC-140, docs/guide/voice.md): 로컬 TTS 엔진. 서버는 WAV만 만들고 소리는 브라우저가 낸다. 기본 engine은 piper(없으면 "TTS 엔진 없음")
-  ttsEngine: env.ATC_TTS_ENGINE || "piper",
+  // 음성 콜아웃(ATC-140, docs/guide/voice.md): 로컬 TTS 엔진. 서버는 WAV만 만들고 소리는 브라우저가 낸다. 기본 engine은 none(설치하고 ATC_TTS_ENGINE=piper로 켠다. 엔진이 없으면 "TTS 엔진 없음")
+  ttsEngine: env.ATC_TTS_ENGINE || "none",
   ttsPiper: env.ATC_TTS_PIPER || join(HOME, ".local/bin/piper"),
   ttsVoices: env.ATC_TTS_VOICES || join(HOME, ".local/share/piper/voices"),
   ttsVoice: env.ATC_TTS_VOICE || "",
