@@ -32,7 +32,7 @@ atc 코드를 고치는 세션(팀 세션, ENGINEERING 세션, 사용자와 직�
 - 커밋 메시지에 attribution 줄(Co-Authored-By 등)을 넣지 않는다. PR 본문 끝은 `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 - PR은 Draft로 올리지 않는다. MCC는 Draft를 착륙시키지 않아서(`docs/mcc.md` L2) 누가 Ready로 바꿀 때까지 멈춘다. 아직 끝나지 않은 일이면 PR을 올리지 말고 보고한다.
 - 팀 세션과 ENGINEERING 세션은 머지하지 않는다. 머지는 LANDING CLEARANCE 등급(`deploy/landing-tier.mjs`, 바뀐 파일 경로로 정함)을 따른다.
-  - `auto`(서버·화면·문서·테스트)와 `flagged`(관제 세션 매뉴얼·CLI): CI(`check`)가 통과하고 MCC INSPECTION이 `pass`면 MCC가 착륙시킨다(`land` 모드, 2026-09-29부터, `docs/mcc.md` 5.1). 사용자가 먼저 머지해도 된다. `flagged`는 PR 본문과 보고에 바뀐 관제 규칙을 따로 적는다. GitHub auto-merge는 쓰지 않는다.
+  - `auto`(읽기만 하는 서버·화면·문서·테스트)와 `flagged`(관제 세션 매뉴얼·CLI, 외부 부작용이 있는 서버 코드): CI(`check`)가 통과하고 MCC INSPECTION이 `pass`면 MCC가 착륙시킨다(`land` 모드, 2026-09-29부터, `docs/mcc.md` 5.1). 사용자가 먼저 머지해도 된다. `flagged`는 PR 본문과 보고에 바뀐 관제 규칙과 외부 부작용 파일을 따로 적는다. GitHub auto-merge는 쓰지 않는다.
   - `user`(guard, `.claude/` 설정, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`)는 사용자가 머지한다. 운영 상태 형식을 바꾸거나 되돌리기 어려운 PR, 검토에서 의심이 남는 PR도 `user`로 올린다(PR을 올린 세션이 본문의 등급에 적고, MCC INSPECTION은 ESCALATE한다).
 
 ## 코드
