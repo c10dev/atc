@@ -1,0 +1,274 @@
+/* FUEL 개요(ATC-137). 색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다). 두 계열은 --series-captain·--series-crew */
+.mf .mf-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.mf-refresh,
+.mf-linkbtn {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--text);
+  font: 600 var(--text-sm) var(--sans);
+  cursor: pointer;
+}
+.mf-refresh:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.mf-linkbtn {
+  margin-top: var(--space-2);
+  background: transparent;
+  color: var(--muted);
+}
+.mf-empty {
+  margin-top: var(--space-4);
+}
+
+/* 요약 */
+.mf-sum {
+  margin-bottom: var(--space-4);
+}
+.mf-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+.mf-kpis > div {
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+.mf-kpis dt {
+  color: var(--faint);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+.mf-kpis dd {
+  margin: var(--space-0-5) 0 0;
+  font: 600 var(--text-xl) var(--mono);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.mf-kpis dd .faint {
+  font-size: var(--text-sm);
+}
+.mf-unpriced {
+  margin: var(--space-2) 0 0;
+  color: var(--amber);
+  font: var(--text-sm) var(--mono);
+  overflow-wrap: anywhere;
+}
+.mf-note {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+}
+
+/* 표: 좁은 화면에서는 표 안에서만 가로로 민다(페이지는 넘치지 않는다) */
+.mf-sec {
+  margin-top: var(--space-4);
+}
+.mf-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.mf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.mf-table th {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--faint);
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.mf-table th button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.mf-table th button:hover,
+.mf-table th button:focus-visible {
+  color: var(--text);
+}
+.mf-table th[aria-sort="ascending"],
+.mf-table th[aria-sort="descending"] {
+  color: var(--text);
+}
+.mf-table td {
+  padding: var(--space-1-5) var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+.mf-table tr:last-child td {
+  border-bottom: 0;
+}
+.mf-table .num {
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mf-table th.num {
+  text-align: right;
+}
+.mf-group th {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.mf-name a {
+  color: var(--cyan);
+}
+.mf-model {
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mf-noprice td {
+  color: var(--muted);
+}
+.mf-noprice-tag {
+  padding: 0 var(--space-1);
+  border: 1px dashed var(--amber);
+  border-radius: var(--radius-sm);
+  color: var(--amber);
+  font: var(--text-2xs) var(--mono);
+}
+.mf-outside td {
+  color: var(--muted);
+}
+.mf-mean {
+  min-width: 26ch;
+  color: var(--muted);
+}
+.mf-sub {
+  margin: var(--space-3) 0 var(--space-1);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--faint);
+}
+.mf-warns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.mf-warns li {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.mf-warns li.has b {
+  color: var(--amber);
+}
+.mf-verdict {
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.mf-verdict.is-bad {
+  color: var(--alert);
+}
+
+/* 날짜별 차트 */
+.mf-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-1) 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.mf-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: var(--space-1);
+  border-radius: var(--radius-sm);
+  vertical-align: baseline;
+}
+.mf-swatch.cap,
+.mf-bar-cap {
+  background: var(--series-captain);
+  fill: var(--series-captain);
+}
+.mf-swatch.crew,
+.mf-bar-crew {
+  background: var(--series-crew);
+  fill: var(--series-crew);
+}
+.mf-chart {
+  position: relative;
+  padding: var(--space-2);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.mf-chart svg {
+  display: block;
+  width: 100%;
+  height: 200px;
+}
+.mf-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.mf-axis {
+  fill: var(--muted);
+  font: var(--text-2xs) var(--mono);
+}
+.mf-bar-unpriced {
+  fill: var(--muted);
+}
+.mf-swatch.unpriced {
+  height: 3px;
+  vertical-align: middle;
+  background: var(--muted);
+}
+.mf-hit {
+  fill: transparent;
+  outline: none;
+}
+.mf-hit:focus-visible {
+  stroke: var(--text);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.is-hover .mf-bar-cap,
+.is-hover .mf-bar-crew {
+  filter: brightness(1.2);
+}
+.mf-tip {
+  position: absolute;
+  top: var(--space-2);
+  z-index: 1;
+  display: grid;
+  gap: var(--space-0-5);
+  padding: var(--space-1-5) var(--space-2);
+  background: var(--panel-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  pointer-events: none;
+}

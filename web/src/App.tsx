@@ -20,7 +20,7 @@ const Teams = lazyTab<SnapProps>(() => import("./views/Teams.tsx"), "Teams");
 const Tickets = lazyTab<SnapProps>(() => import("./views/Tickets.tsx"), "Tickets");
 const Airports = lazyTab<{ snapshot: Snapshot }>(() => import("./views/Airports.tsx"), "Airports");
 const Fleet = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/fleet/Fleet.tsx"), "Fleet");
-const Metrics = lazyTab<{ refreshKey: string }>(() => import("./views/Metrics.tsx"), "Metrics");
+const Metrics = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/Metrics.tsx"), "Metrics");
 const Network = lazyTab<{ refreshKey: string }>(() => import("./views/Network.tsx"), "Network");
 const Dispatch = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Dispatch.tsx"), "Dispatch");
 const Schedule = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Schedule.tsx"), "Schedule");
@@ -233,7 +233,7 @@ function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number) {
     case "fleet":
       return <Fleet refreshKey={refreshKey} snapshot={snapshot} />;
     case "metrics":
-      return <Metrics refreshKey={refreshKey} />;
+      return <Metrics refreshKey={refreshKey} snapshot={snapshot} />;
     case "network":
       return <Network refreshKey={refreshKey} />;
     case "dispatch":

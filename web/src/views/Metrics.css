@@ -271,3 +271,25 @@
     display: none;
   }
 }
+
+/* METRICS 하위 화면(ATC-137): OPERATIONS · FUEL */
+.mx-sub {
+  display: inline-flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+.mx-sub button {
+  padding: var(--space-1-5) var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: 700 var(--text-xs) var(--mono);
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+.mx-sub button[aria-selected="true"] {
+  border-bottom-color: var(--radar);
+  color: var(--text);
+}
