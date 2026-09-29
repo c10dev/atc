@@ -51,7 +51,7 @@ atc 코드를 고치는 세션(팀 세션, ENGINEERING 세션, 사용자와 직�
 
 ## 용어와 문서
 
-- 항공 용어는 영어로 쓴다. 화면, 문서, 메시지 모두(AIRCRAFT, STAND, FLIGHT, READBACK, HOLD, CLEARANCE, HANDOFF …). "복창"처럼 한국어로 옮기지 않는다. 설명 문장은 한국어.
+- 항공 용어는 영어로 쓴다. 화면, 문서, 메시지 모두(AIRCRAFT, STAND, FLIGHT, READBACK, HOLD, CLEARANCE, HANDOFF …). "복창"처럼 한국어로 옮기지 않는다. 설명 문장은 SUPERVISOR가 읽는 글(화면, 문서, 보고, 사용자와의 대화)에서만 한국어다. 세션끼리 주고받는 글은 영어다(아래 "교신").
 - 팀 세션 이름 `TEAM_X`는 REGISTRATION이다. atc의 말로 팀은 CAPTAIN이 이끄는 CREW가 모는 AIRCRAFT다(`docs/fleet.md`).
 - `README`, `CHANGELOG`, `docs/dispatch`, `docs/naming`, `docs/occ`, `docs/fleet`, `docs/atfm`, 각 폴더 README는 영어판(`*.md`)과 한국어판(`*.ko.md`)을 함께 고친다. 관제 세션 폴더는 한국어 `CLAUDE.md`·`SKILL.md`가 원본이고 `*.en.md`가 번역이다.
 - 바뀐 동작은 `CHANGELOG`의 `[Unreleased]`에 들어간다. PR은 `CHANGELOG.md`·`CHANGELOG.ko.md`를 고치지 않고 조각 한 쌍(`changelog.d/ATC-n.md`·`ATC-n.ko.md`, `### Added`처럼 절 제목 아래 항목)을 더한다. 조각은 ENGINEERING이나 사용자가 `node server/changelog-fold.ts`로 접는다(`changelog.d/README.ko.md`).
@@ -75,6 +75,7 @@ atc 코드를 고치는 세션(팀 세션, ENGINEERING 세션, 사용자와 직�
 
 ## 교신
 
+- 세션끼리 주고받는 글은 영어로 쓴다(ATC-126): FLIGHT PLAN, READBACK·UNABLE·STANDBY·ROGER, CLEARANCE, CREW BRIEFING, CREW CHANGE, 팀·관제 세션에 보내는 보고와 메시지. SUPERVISOR가 읽는 글(사용자와의 대화, 화면, 관제 세션이 SUPERVISOR에게 남기는 로그)은 한국어다. `[DISPATCH D-xxxx]`·`[OCC CC-xxxx]`·`[ATC C-xxxx]` 머리와 `READBACK …`·`UNABLE …`·`STANDBY …`·`ROGER …`는 guard가 읽으므로 그대로 쓴다.
 - 다른 팀 세션에 메시지를 보내지 않는다. 결과와 막힌 점은 일을 맡긴 세션(보통 ENGINEERING, 또는 사용자)에게만 보고한다.
 - atc OCC(운항관제 세션)에서 `[DISPATCH D-xxxx]`로 시작하는 FLIGHT PLAN을 받으면 리더가 그 메시지에 `READBACK D-xxxx`로 답하고, 맡지 못하면 `UNABLE D-xxxx — 사유`, 시간이 필요하면 `STANDBY D-xxxx`로 답한다. `[DISPATCH D-xxxx] RECALL`을 받으면 작업을 멈추고 `READBACK D-xxxx RECALL`로 답한다. `[OCC CC-xxxx]`로 시작하는 CREW CHANGE를 받으면 `READBACK CC-xxxx`로 답하고 그대로 팀원을 바꾼다(못 하면 `UNABLE CC-xxxx — 사유`). `[ATC C-xxxx]` CLEARANCE는 끝줄이 청하는 답으로 답한다(지시는 `READBACK`·`UNABLE`·`STANDBY`, 알림은 `ROGER C-xxxx`). STAND(worktree) 없이 하는 SURVEY·CHECK FLIGHT를 마치면 OCC에 결과 링크나 한 줄로 알린다.
 - ENGINEERING이나 사용자가 직접 맡기는 지시(`BRIEF: DIRECT`)는 `READBACK ATC-n`으로 그 세션에 답한다(`.claude/skills/atc-task/SKILL.md`). 끝낸 일의 최종 보고는 늘 일을 맡긴 세션에 보낸다 — FLIGHT PLAN으로 받았으면 OCC, 직접 지시로 받았으면 ENGINEERING이나 사용자다.

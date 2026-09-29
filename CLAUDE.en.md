@@ -53,7 +53,7 @@ Rules for sessions that change atc's code (team sessions, the ENGINEERING sessio
 
 ## Terms and docs
 
-- Aviation terms stay in English everywhere: UI, docs and messages (AIRCRAFT, STAND, FLIGHT, READBACK, HOLD, CLEARANCE, HANDOFF …). Don't translate them into Korean words such as "복창". Explanatory sentences are Korean.
+- Aviation terms stay in English everywhere: UI, docs and messages (AIRCRAFT, STAND, FLIGHT, READBACK, HOLD, CLEARANCE, HANDOFF …). Don't translate them into Korean words such as "복창". Explanatory sentences are Korean only in text the SUPERVISOR reads (UI, docs, reports, conversation with the user); text sessions exchange with each other is English (see "Radio" below).
 - A team session name `TEAM_X` is a REGISTRATION. In atc's words a team is an AIRCRAFT flown by a CREW under a CAPTAIN (`docs/fleet.md`).
 - Update the English (`*.md`) and Korean (`*.ko.md`) versions together for `README`, `CHANGELOG`, `docs/dispatch`, `docs/naming`, `docs/occ`, `docs/fleet`, `docs/atfm` and each folder README. In the control session folders the Korean `CLAUDE.md` / `SKILL.md` are the originals and `*.en.md` are translations.
 - Changed behavior goes under `[Unreleased]` in the `CHANGELOG`. A PR doesn't edit `CHANGELOG.md` / `CHANGELOG.ko.md`; it adds a pair of fragments (`changelog.d/ATC-n.md` and `ATC-n.ko.md`, entries under a section heading such as `### Added`). ENGINEERING or the user folds them with `node server/changelog-fold.ts` (`changelog.d/README.md`).
@@ -77,6 +77,7 @@ Rules for sessions that change atc's code (team sessions, the ENGINEERING sessio
 
 ## Radio
 
+- Text that sessions exchange with each other is English (ATC-126): FLIGHT PLAN, READBACK/UNABLE/STANDBY/ROGER, CLEARANCE, CREW BRIEFING, CREW CHANGE, and reports or messages to team and control sessions. Text the SUPERVISOR reads (conversation with the user, UI, logs a control session leaves for the SUPERVISOR) stays Korean. The `[DISPATCH D-xxxx]`, `[OCC CC-xxxx]` and `[ATC C-xxxx]` headers and `READBACK …`, `UNABLE …`, `STANDBY …`, `ROGER …` are read by guards, so they stay byte for byte.
 - Don't message other team sessions. Report results and blockers only to the session (usually ENGINEERING) or user that gave you the task.
 - When atc OCC (the operations control session) sends a `[DISPATCH D-xxxx]` FLIGHT PLAN, the leader answers that message with `READBACK D-xxxx`, with `UNABLE D-xxxx — reason` if it can't take the work, or with `STANDBY D-xxxx` if it needs time. A `[DISPATCH D-xxxx] RECALL` stops the work and gets `READBACK D-xxxx RECALL`. A `[OCC CC-xxxx]` CREW CHANGE gets `READBACK CC-xxxx` and the crew change goes ahead as told (or `UNABLE CC-xxxx — reason`). An `[ATC C-xxxx]` CLEARANCE gets the answer its closing line asks for (`READBACK`, `UNABLE` or `STANDBY` for an instruction, `ROGER C-xxxx` for a notice). A STAND-free (no worktree) SURVEY/CHECK FLIGHT reports its result link or one line to OCC when it finishes.
 - A direct assignment from ENGINEERING or the user (`BRIEF: DIRECT`) is answered with `READBACK ATC-n` to that session (`.claude/skills/atc-task/SKILL.md`). The final report always goes to whoever gave the work — OCC for a FLIGHT PLAN, ENGINEERING or the user for a direct assignment.

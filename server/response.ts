@@ -37,9 +37,9 @@ export function answerError(kind: MessageKind, attr: ResponseAttr, answer: Answe
 
 // 메시지 끝줄: 어떤 답을 기다리는지 적는다. RECALL은 늘 READBACK <id> RECALL 하나
 export function closingLine(kind: MessageKind, attr: ResponseAttr, id: string): string {
-  if (kind === "recall") return `— 받았으면 이 메시지에 "READBACK ${id} RECALL"로 답장해 주세요.`;
-  if (attr === "R") return `— 받았으면 이 메시지에 "ROGER ${id}"로 답장해 주세요.`;
-  return `— 받았으면 이 메시지에 "READBACK ${id}", 못 하면 "UNABLE ${id} — 사유", 시간이 필요하면 "STANDBY ${id}"로 답장해 주세요.`;
+  if (kind === "recall") return `— When received, reply to this message with "READBACK ${id} RECALL".`;
+  if (attr === "R") return `— When received, reply to this message with "ROGER ${id}".`;
+  return `— Reply to this message with "READBACK ${id}" if you take it, "UNABLE ${id} — reason" if you cannot, or "STANDBY ${id}" if you need time.`;
 }
 
 // READBACK overdue를 세는 기준 시각(ms). STANDBY는 한 번만 다시 세게 한다: 보낸 뒤 첫 STANDBY가 기준이 되고,
