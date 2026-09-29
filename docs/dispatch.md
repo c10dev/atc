@@ -130,7 +130,7 @@ When slots are full, nothing is proposed instead of an `ASSIGN` (extended to gro
 | Wait time | Days spent in Todo (max 14) | ×0.5 |
 | FLIGHTs it unblocks | Number of Todo items this FLIGHT blocks | ×2 |
 | Team fit | How many times this AIRCRAFT flew FLIGHTs in the same project or related ones (FLIGHT RECORDER, claim history) | ×1 |
-| Conflict risk | Number of currently AIRBORNE FLIGHTs linked by related | ×−2 |
+| Conflict risk | Number of currently AIRBORNE FLIGHTs linked by related. A FLIGHT is AIRBORNE only while its Linear state is not completed or canceled and the LOGBOOK has no ARRIVED for it (ATC-139); the same test decides which held FLIGHTs count toward an AIRCRAFT's slots, the AIRPORT AIRBORNE load and the file-overlap holders | ×−2 |
 | File overlap | Files the FLIGHT is predicted to edit that a FLIGHT in flight at the same AIRPORT already changes, WAKE-scaled (5.3.1). `weights.overlap` | ×−1 |
 | Continue the same team | Only the asked AIRCRAFT's own team touches those files (5.3.1). `weights.sameTeam` | ×1 |
 | ROUTE | The FLIGHT's project is on the AIRCRAFT's routes ([fleet.md](fleet.md) 5) | ×1 |

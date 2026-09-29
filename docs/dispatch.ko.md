@@ -130,7 +130,7 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 | 대기 시간 | Todo로 머문 일수(최대 14) | ×0.5 |
 | 풀어 주는 FLIGHT | 이 FLIGHT가 blocks 하는 Todo 수 | ×2 |
 | 팀 적합도 | 이 AIRCRAFT가 과거에 같은 프로젝트·related FLIGHT를 날았던 횟수(FLIGHT RECORDER·청구 이력) | ×1 |
-| 충돌 위험 | 지금 AIRBORNE인 FLIGHT와 related로 묶인 수 | ×−2 |
+| 충돌 위험 | 지금 AIRBORNE인 FLIGHT와 related로 묶인 수. AIRBORNE은 Linear 상태가 completed·canceled가 아니고 LOGBOOK에 ARRIVED도 없을 때만이다(ATC-139). 같은 기준이 AIRCRAFT 슬롯에 세는 FLIGHT, AIRPORT AIRBORNE 부하, 파일 겹침 holder도 정한다 | ×−2 |
 | 파일 겹침 | 이 FLIGHT가 고칠 것으로 예측한 파일 중 같은 AIRPORT에서 날고 있는 FLIGHT가 이미 바꾼 파일, WAKE 가중(5.3.1). `weights.overlap` | ×−1 |
 | 이어서 하면 충돌 없음 | 그 파일을 만지는 팀이 이 AIRCRAFT의 팀뿐(5.3.1). `weights.sameTeam` | ×1 |
 | ROUTE | FLIGHT의 프로젝트가 그 AIRCRAFT의 routes에 있음([fleet.ko.md](fleet.ko.md) 5장) | ×1 |

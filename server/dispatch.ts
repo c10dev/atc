@@ -317,6 +317,28 @@ export const FLIGHT_HOLD_CODES = ["already-done", "parent-issue", "waiting-on-pr
 const chipLabel = (code: string) => REASON_CODES.find((r) => r.code === code)?.label ?? code;
 export const flightHeldWhy = (id: string, codes: string[], until: string) =>
   `FLIGHT 보류 — ${codes.map(chipLabel).join(" · ")} (${id} 판정) — 이슈가 바뀌거나 ${localStamp(until)}부터 다시`;
+// FLIGHT가 지금 정말 날고 있나(ATC-139): Linear 상태가 끝나지(completed·canceled·duplicate) 않았고, LOGBOOK ARRIVED도, STAND 없는 FLIGHT의 ARRIVED 보고도 없다.
+// 모르는 FLIGHT(티켓 목록에 없음)는 날고 있는 것으로 본다(막지 않는 쪽)
+export function isFlying(key: string, byKey: ReadonlyMap<string, Pick<Ticket, "stateType">>, landed: Landed, arrived?: ReadonlyMap<string, string>): boolean {
+  return !DONE_STATES.has(byKey.get(key)?.stateType ?? "") && !landed.has(key) && !arrived?.has(key);
+}
+
+// AIRBORNE FLIGHT 집합(충돌 위험 요소): 죽지 않은 세션의 활성 점유가 가리키는 FLIGHT 중 지금 정말 날고 있는 것만
+export function airborneFlightsOf(
+  active: readonly Pick<Claim, "sessionId" | "workspacePath">[],
+  sessions: readonly Pick<Session, "id" | "status">[],
+  wsTicket: ReadonlyMap<string, string | null>,
+  inFlight: (key: string) => boolean,
+): Set<string> {
+  const alive = new Set(sessions.filter((x) => x.status !== "dead").map((x) => x.id));
+  const out = new Set<string>();
+  for (const c of active) {
+    const k = wsTicket.get(c.workspacePath);
+    if (k && alive.has(c.sessionId) && inFlight(k)) out.add(k);
+  }
+  return out;
+}
+
 export const STAND_FREE_LANDED = "(STAND 없음)";
 export const landedWhy = (pr: string) => (pr === STAND_FREE_LANDED ? "이미 완료됨 — STAND 없이 ARRIVED(LOGBOOK)" : `이미 완료됨 — PR ${pr} 머지됨(LOGBOOK)`);
 export const openPrWhy = (n: number) => `열린 PR #${n} 있음`;
@@ -491,6 +513,10 @@ export function planDispatch(
   const wsTicket = new Map(s.workspaces.map((w) => [w.path, w.ticketKey]));
   const flightsWithStand = new Set(s.workspaces.map((w) => w.ticketKey).filter(Boolean) as string[]);
   const isDone = (key: string) => DONE_STATES.has(byKey.get(key)?.stateType ?? "");
+  // 지금 정말 날고 있는 FLIGHT(ATC-139): Linear가 끝냈거나(completed·canceled) LOGBOOK·CAPTAIN 보고가 ARRIVED라 한 FLIGHT는 팀이 옛 STAND에 앉아 있어도 아니다
+  const inFlight = (key: string) => isFlying(key, byKey, landed, reserved.arrived);
+  // 겹침 holder도 같은 기준: ARRIVED한 FLIGHT의 파일은 더 겹치지 않는다(overlap-run은 Linear 상태만 본다)
+  const overlapHolders = files.holders.filter((h) => inFlight(h.flight));
   // 상위 이슈(하위 이슈를 묶는 컨테이너)는 그 자체로 작업 대상이 아니다.
   const parents = parentKeysOf(s.tickets);
   const childrenOf = (t: Ticket) => new Set([...t.children, ...s.tickets.filter((x) => x.parent === t.key).map((x) => x.key)]).size;
@@ -537,7 +563,7 @@ export function planDispatch(
       if (fuel && fuelHolds(fuel, cfg.fuel ?? DEFAULT_FUEL)) return { ...base, available: false, reason: fuelHoldReason(fuel, now) };
       if (x.status === "busy") return { ...base, available: false, reason: "AIRBORNE" };
       const held = active.filter((c) => c.sessionId === x.id).map((c) => wsTicket.get(c.workspacePath));
-      const open = held.filter((k) => !k || !isDone(k));
+      const open = held.filter((k) => !k || inFlight(k));
       // 끝나지 않은 In Progress FLIGHT(ATC-90): STAND를 쥐었든 tail: 라벨이든, 머지된 PR이 없고 STAND 없이 나간 FLIGHT가 아닌 것.
       // 그 WAKE만큼 이 AIRCRAFT의 슬롯(perTeam)을 쓴다. 다 찼으면 멈춘 팀(STAND 없는 FLIGHT는 받는다), 남았으면 그 안에 드는 FLIGHT만 받는다
       const reg = regOf(x.name);
@@ -762,7 +788,7 @@ export function planDispatch(
     // 파일 겹침 HOLD(ATC-71): 곧 고칠 파일을 날고 있는 FLIGHT가 무겁게 만지면 그 FLIGHT가 머지될 때까지 기다린다.
     // 그 파일을 만지는 팀이 그 팀뿐이고 그 팀이 이 FLIGHT를 지금 받을 수 있으면 HOLD하지 않고 그 팀에만 제안한다(이어서 하면 충돌 없음, ATC-136).
     // 그 팀이 못 받으면(바쁨·HOLD·세션 없음) 다른 겹침과 같이 HOLD
-    const ov = overlapsOf(t.key, cls.wake, airport, predictedFor(t), files.holders);
+    const ov = overlapsOf(t.key, cls.wake, airport, predictedFor(t), overlapHolders);
     const heavy = ov.filter((o) => isHeavy(o, cfg.overlap));
     if (heavy.length) {
       const soleTeam = soleTeamOf(ov);
@@ -788,9 +814,7 @@ export function planDispatch(
   }
 
   // ── 점수 ──
-  const airborneFlights = new Set(
-    active.filter((c) => s.sessions.find((x) => x.id === c.sessionId)?.status !== "dead").map((c) => wsTicket.get(c.workspacePath)).filter(Boolean) as string[],
-  );
+  const airborneFlights = airborneFlightsOf(active, s.sessions, wsTicket, inFlight);
   const w = cfg.weights;
   const score = (t: Ticket & { airport?: string }, ac: AircraftState): { score: number; factors: Factor[] } => {
     const pv = PRIORITY_VALUE[t.priority] ?? 1.5;
@@ -802,7 +826,7 @@ export function planDispatch(
     const conflicts = [...linked].filter((k) => airborneFlights.has(k));
     // 파일 겹침(ATC-71): 이 팀이 이미 날고 있는 FLIGHT와의 겹침은 충돌이 아니다. 그 팀뿐이면 이어서 하는 보너스
     const team = regOfAircraft(ac, cfg.teamPattern);
-    const ov = splitByTeam(overlapsOf(t.key, classOf(t.labels).wake, t.airport ?? "", predictedFor(t), files.holders), team);
+    const ov = splitByTeam(overlapsOf(t.key, classOf(t.labels).wake, t.airport ?? "", predictedFor(t), overlapHolders), team);
     const holdNote = overlapHolds.find((h) => h.flight === t.key && !h.enforced) ? " — HOLD 스위치가 꺼져 있어 기다리지 않음(켜면 대기)" : "";
     const same = ov.mine.length && !ov.others.length ? ov.mine : [];
     const onRoute = Boolean(t.project && profileOf(fleet, ac.name).routes.includes(t.project));
@@ -831,7 +855,7 @@ export function planDispatch(
   for (const x of s.sessions) {
     const code = codeOf(x.repo);
     if (x.status !== "busy" || !team.test(x.name) || !code) continue;
-    const keys = active.filter((c) => c.sessionId === x.id).map((c) => wsTicket.get(c.workspacePath));
+    const keys = active.filter((c) => c.sessionId === x.id).map((c) => wsTicket.get(c.workspacePath)).filter((k) => !k || inFlight(k));
     const load = keys.length ? Math.max(...keys.map(wakeOfKey)) : 1;
     airborneAt.set(code, (airborneAt.get(code) ?? 0) + (Number.isFinite(load) ? load : 1));
   }

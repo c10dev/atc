@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DEFAULT_DISPATCH_CONFIG, type DispatchConfig, type Landed, flightHeldWhy, landedOf, pairBlockedWhy, planDispatch, readFlightHistory, workedWhy } from "./dispatch.ts";
+import { airborneFlightsOf, DEFAULT_DISPATCH_CONFIG, type DispatchConfig, isFlying, type Landed, flightHeldWhy, landedOf, pairBlockedWhy, planDispatch, readFlightHistory, workedWhy } from "./dispatch.ts";
 import type { Claim, PullRequest, Session, Snapshot, Ticket, Workspace } from "./model.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
@@ -1155,4 +1155,79 @@ test("SUPERVISOR CONFIRM: 예측 경로 중 사용자 등급 파일이 ASSIGN에
   // 예측이 없거나 사용자 등급이 아니면 필드 자체가 없다
   assert.equal("supervisorConfirm" in run({}).assign[0], false);
   assert.equal("supervisorConfirm" in run({ "VOC-41": "`server/a.ts`만 고친다" }).assign[0], false);
+});
+
+// ── ATC-139: 끝난 FLIGHT는 AIRBORNE이 아니다 ──
+const done = (key: string, over: Partial<Ticket> = {}) => ticket(key, { state: "Done", stateType: "completed", ...over });
+const conflictOf = (p: ReturnType<typeof planDispatch>, flight: string) => p.assign.find((a) => a.flight === flight)?.factors.find((f) => f.id === "conflict");
+
+test("isFlying: Linear가 끝냈거나 LOGBOOK·CAPTAIN 보고가 ARRIVED면 날고 있지 않다", () => {
+  const byKey = new Map(
+    [inProgress("VOC-1"), done("VOC-2"), ticket("VOC-3", { state: "Canceled", stateType: "canceled" }), inProgress("VOC-4"), inProgress("VOC-5")].map((t) => [t.key, t]),
+  );
+  const landed: Landed = new Map([["VOC-4", "vocado_nextjs#9"]]);
+  const arrivedNoStand = new Map([["VOC-5", "D-0001"]]);
+  assert.equal(isFlying("VOC-1", byKey, landed, arrivedNoStand), true);
+  assert.equal(isFlying("VOC-2", byKey, landed, arrivedNoStand), false); // Done
+  assert.equal(isFlying("VOC-3", byKey, landed, arrivedNoStand), false); // Canceled
+  assert.equal(isFlying("VOC-4", byKey, landed, arrivedNoStand), false); // LOGBOOK ARRIVED, Linear는 아직 In Progress
+  assert.equal(isFlying("VOC-5", byKey, landed, arrivedNoStand), false); // STAND 없는 FLIGHT의 ARRIVED 보고
+  assert.equal(isFlying("VOC-9", byKey, landed, arrivedNoStand), true); // 모르는 FLIGHT는 막지 않는 쪽
+});
+
+test("airborneFlightsOf: 죽은 세션과 끝난 FLIGHT는 빼고 나머지만 센다", () => {
+  const wsTicket = new Map<string, string | null>([["/w/a", "VOC-1"], ["/w/b", "VOC-2"], ["/w/c", "VOC-3"], ["/w/d", null]]);
+  const claims = [{ sessionId: "s1", workspacePath: "/w/a" }, { sessionId: "s1", workspacePath: "/w/b" }, { sessionId: "dead", workspacePath: "/w/c" }, { sessionId: "s1", workspacePath: "/w/d" }];
+  const sessions = [{ id: "s1", status: "idle" as const }, { id: "dead", status: "dead" as const }];
+  assert.deepEqual([...airborneFlightsOf(claims, sessions, wsTicket, (k) => k !== "VOC-2")], ["VOC-1"]);
+});
+
+test("충돌 위험(D-0132): 같은 팀의 idle 세션이 쥔 연결된 Done FLIGHT 다섯 건은 0, 실제로 날고 있는 연결 FLIGHT만 센다", () => {
+  const keys = ["VOC-501", "VOC-502", "VOC-503", "VOC-504", "VOC-505"];
+  const held = keys.map((k, i) => ({ id: `a${i}`, h: holding(`a${i}`, k) }));
+  const flying = holding("f", "VOC-506");
+  const target = ticket("VOC-300", { related: [...keys, "VOC-506"] });
+  const mk = (tickets: Ticket[], withFlying: boolean) =>
+    snap({
+      sessions: [...held.map((x) => session(x.id, `TEAM_A${x.id}`)), session("f", "TEAM_F"), session("b", "TEAM_B")],
+      workspaces: [...held.map((x) => x.h.ws), ...(withFlying ? [flying.ws] : [])],
+      claims: [...held.map((x) => x.h.claim), ...(withFlying ? [flying.claim] : [])],
+      tickets,
+    });
+  // 다섯 건이 모두 Done: 충돌 0
+  const allDone = mk([...keys.map((k) => done(k)), target], false);
+  assert.equal(conflictOf(planDispatch(allDone, new Map(), cfg(), NOW), "VOC-300")?.value, 0);
+  // 다섯 건은 Done이고 하나만 진행 중: 1건만 센다
+  const oneFlying = mk([...keys.map((k) => done(k)), inProgress("VOC-506"), target], true);
+  const f = conflictOf(planDispatch(oneFlying, new Map(), cfg(), NOW), "VOC-300");
+  assert.equal(f?.value, 1);
+  assert.match(f?.detail ?? "", /VOC-506/);
+  // Linear는 아직 In Progress지만 LOGBOOK에 ARRIVED: 역시 0
+  const inLog = mk([...keys.map((k) => inProgress(k)), target], false);
+  const landed = landedOf(keys.map((k, i) => logged(k, 600 + i)));
+  assert.equal(conflictOf(planDispatch(inLog, new Map(), cfg(), NOW, undefined, undefined, landed), "VOC-300")?.value, 0);
+  // 끝나지 않았고 LOGBOOK에도 없으면 예전처럼 다섯 건
+  assert.equal(conflictOf(planDispatch(inLog, new Map(), cfg(), NOW), "VOC-300")?.value, 5);
+});
+
+test("ATC-90 가용성: LOGBOOK ARRIVED로 끝난 FLIGHT만 쥔 팀은 HOLDING이 아니다", () => {
+  const n = DEFAULT_DISPATCH_CONFIG.slots.perTeam;
+  const held = Array.from({ length: n }, (_, i) => holding("a", `VOC-${700 + i}`));
+  const keys = held.map((_, i) => `VOC-${700 + i}`);
+  const s = snap({ sessions: [session("a", "TEAM_A")], workspaces: held.map((h) => h.ws), claims: held.map((h) => h.claim), tickets: [...keys.map((k) => inProgress(k)), ticket("VOC-310")] });
+  const before = planDispatch(s, new Map(), cfg(), NOW);
+  assert.equal(before.aircraft.find((a) => a.id === "a")?.available, false); // 아직 끝난 줄 모른다: HOLDING
+  const landed = landedOf(keys.map((k, i) => logged(k, 800 + i)));
+  const after = planDispatch(s, new Map(), cfg(), NOW, undefined, undefined, landed);
+  assert.equal(after.aircraft.find((a) => a.id === "a")?.available, true);
+});
+
+test("파일 겹침 holder: ARRIVED한 FLIGHT의 파일은 더 겹치지 않는다", () => {
+  const s = snap({ sessions: [session("b", "TEAM_B")], tickets: [ticket("VOC-41"), inProgress("VOC-40")] });
+  const files = { holders: [holderOf("VOC-40", ["server/a.ts", "server/b.ts"])], bodies: bodies({ "VOC-41": "`server/a.ts` `server/b.ts`" }) };
+  const run = (landed?: Landed) => planDispatch(s, new Map(), cfg(), NOW, undefined, undefined, landed, undefined, undefined, files);
+  assert.equal(factor(run(), "VOC-41", "overlap")?.value, 2); // 날고 있는 holder와는 겹친다
+  const after = run(landedOf([logged("VOC-40", 900)]));
+  assert.equal(factor(after, "VOC-41", "overlap")?.value, 0); // LOGBOOK ARRIVED: 더 겹치지 않는다
+  assert.deepEqual(after.overlapHolds, []);
 });
