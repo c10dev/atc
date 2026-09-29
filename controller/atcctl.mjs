@@ -86,6 +86,8 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
                                             (2b) CAPTAIN이 맡지 못함("UNABLE D-0003 — 사유". 두 명령은 같다)
   node atcctl.mjs dispatch standby <D-0003>
                                             (2b) CAPTAIN이 "STANDBY D-0003"로 답함(sent 그대로, READBACK overdue를 한 번 다시 센다)
+  node atcctl.mjs dispatch await-supervisor <D-0003> -- <사유>
+                                            (2b) CAPTAIN이 READBACK도 거절도 아니고 사용자(SUPERVISOR)의 go를 기다림(sent 유지, 경보). 다시 보내지도, 승인을 전하지도 않는다
   node atcctl.mjs dispatch recall-send <D-0003>
                                             (2b) SUPERVISOR가 RECALL을 요청한 제안의 SEND TO·SEND(머리 한 줄)와 RECALL 문구 출력(재송신도 같은 문구)
   node atcctl.mjs dispatch recalled <D-0003>
@@ -366,15 +368,15 @@ export function parseBriefingArgs(args) {
   return { id, body };
 }
 
-// CAPTAIN의 답(ATC-122) 인자: <ID> [-- <사유>]. unable만 사유가 필요하고, 나머지는 ID 뒤에 아무것도 받지 않는다
+// CAPTAIN의 답(ATC-122) 인자: <ID> [-- <사유>]. unable·await-supervisor(ATC-120)만 사유가 필요하고, 나머지는 ID 뒤에 아무것도 받지 않는다
 export function parseAnswerArgs(verb, args) {
   const [id, ...rest] = args;
   if (!id || id === "--") throw new Error(`${verb}에는 ID가 필요함`);
-  if (verb !== "unable") {
+  if (verb !== "unable" && verb !== "await-supervisor") {
     if (rest.length) throw new Error(`알 수 없는 인자 ${rest.join(" ")}`);
     return { id: id.toUpperCase() };
   }
-  if (rest[0] !== "--" || !rest.slice(1).join(" ").trim()) throw new Error("unable에는 -- 뒤에 CAPTAIN의 사유가 필요함");
+  if (rest[0] !== "--" || !rest.slice(1).join(" ").trim()) throw new Error(`${verb}에는 -- 뒤에 CAPTAIN의 사유가 필요함`);
   return { id: id.toUpperCase(), reason: rest.slice(1).join(" ").trim() };
 }
 
@@ -634,6 +636,11 @@ if (isMain) {
       const { id } = parseAnswerArgs("standby", args.slice(1));
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(id)}/standby`);
       console.log(`${r.proposal.id} STANDBY ${r.proposal.standbys}번째 — READBACK overdue는 첫 STANDBY(${r.proposal.standbyAt})부터 10분`);
+    } else if (cmd === "dispatch" && args[0] === "await-supervisor") {
+      // CAPTAIN이 사용자의 go를 기다린다(ATC-120). 상태는 sent 그대로, 다시 보내지 않고 승인을 전하지도 않는다
+      const { id, reason } = parseAnswerArgs("await-supervisor", args.slice(1));
+      const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(id)}/await-supervisor`, { reason });
+      console.log(`${r.proposal.id} AWAITING SUPERVISOR — ${r.proposal.awaitSupervisor.reason}. 다시 보내지 않고, 승인을 전하지 않는다. READBACK이 오면 dispatch readback`);
     } else if (cmd === "crew-change") {
       const { action, id, reason } = parseCrewChange(args);
       if (action === "brief") {

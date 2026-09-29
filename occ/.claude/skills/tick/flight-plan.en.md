@@ -14,6 +14,7 @@ Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it (2b) in `/tic
 | `node ../controller/atcctl.mjs dispatch readback <D-0003>` | (2b) The CAPTAIN read back |
 | `node ../controller/atcctl.mjs dispatch unable <D-0003> -- <reason>` | (2b) The CAPTAIN replied "UNABLE D-0003 — reason" (same as `dispatch decline`; closes it) |
 | `node ../controller/atcctl.mjs dispatch standby <D-0003>` | (2b) The CAPTAIN replied "STANDBY D-0003" (stays sent; READBACK overdue counts again once, from the first STANDBY) |
+| `node ../controller/atcctl.mjs dispatch await-supervisor <D-0003> -- <reason>` | (2b) The CAPTAIN is neither READING BACK nor refusing but waiting for its user (the SUPERVISOR) (stays sent; the reason goes into `awaitSupervisor`; raises an alert). A later `dispatch readback` clears it |
 | `node ../controller/atcctl.mjs dispatch recall-send <D-0003>` | (2b) `SEND TO` and the RECALL text for a proposal the SUPERVISOR asked to recall (`recalling`). A resend gets the same text |
 | `node ../controller/atcctl.mjs dispatch recalled <D-0003>` | (2b) The CAPTAIN replied "READBACK D-0003 RECALL" |
 | `node ../controller/atcctl.mjs dispatch arrived <D-0003> -- <result link or one line>` | (2b) The CAPTAIN reported a STAND-free FLIGHT (SURVEY, CHECK) done |
@@ -26,6 +27,7 @@ Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it (2b) in `/tic
 | That ASSIGN's AIRCRAFT is in `fuel.coldCache` of `dispatch brief` (a HOLDING CAPTAIN whose cache has gone cold, ATC-56) | Send it as above anyway: it only warns and never blocks. Put its `text` in the OCC LOG. Don't send a separate message to warm the cache |
 | The CAPTAIN replies "READBACK D-xxxx" | `dispatch readback D-xxxx` |
 | The CAPTAIN replies "STANDBY D-xxxx" | `dispatch standby D-xxxx`. Don't resend; wait. A second STANDBY is recorded too, but overdue counts from the first |
+| The CAPTAIN replies with neither READBACK nor UNABLE but "waiting for my user's go" (e.g. user-tier files need the SUPERVISOR's confirmation) | `dispatch await-supervisor D-xxxx -- <reason as written>`. Don't resend, don't retry, and don't relay an approval (never tell anyone "the SUPERVISOR approved"). The atc alert and FOLLOWING report it to the SUPERVISOR. The one-line paste text in `confirm` is the SUPERVISOR's. If "READBACK D-xxxx" arrives later, run `dispatch readback D-xxxx` |
 | The CAPTAIN reports a STAND-free FLIGHT (SURVEY, CHECK; DEPARTED at READBACK) done | `dispatch arrived D-xxxx -- '<result link or one line>'` |
 | `recalling` in `inFlight` (the SUPERVISOR requested a RECALL in the tab or API) | `dispatch recall-send <ID>` → SendMessage the `SEND:` line (only `[DISPATCH D-xxxx] RECALL`) to the printed `SEND TO` session; send-guard swaps in the stored RECALL text. Only the SUPERVISOR requests a RECALL; OCC never creates one. Send it even during an enforced ground stop (recalling is the safe direction) |
 | The CAPTAIN replies "READBACK D-xxxx RECALL" | `dispatch recalled D-xxxx`. The FLIGHT becomes a candidate again and is not proposed to the same AIRCRAFT for 24 hours. A "READBACK D-xxxx" without "RECALL" is a FLIGHT PLAN READBACK; don't mix them up |

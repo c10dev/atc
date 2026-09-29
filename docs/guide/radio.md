@@ -14,6 +14,7 @@
 | `STANDBY <id>` | 받았지만 시간이 필요하다 | W/U 메시지. 열린 채 남고, READBACK 10분 overdue를 첫 STANDBY부터 한 번 다시 센다. 두 번째 STANDBY는 기록만 된다 |
 
 - RECALL은 `READBACK D-xxxx RECALL`로만 닫힌다(멈추라는 지시라 UNABLE·STANDBY가 없다).
+- CAPTAIN이 READBACK도 UNABLE도 아니고 "내 사용자의 go를 기다린다"고 답하면(사용자 등급 파일을 만질 때 흔하다) OCC가 `dispatch await-supervisor`로 기록한다. 제안은 `sent` 그대로 `AWAITING SUPERVISOR`로 보이고 경보가 한 번 뜬다. OCC는 다시 보내지 않고 어떤 승인도 전하지 않는다: go는 사용자가 그 AIRCRAFT 세션에서 직접 친다(ATC-120).
 - 받을 수 없는 답(지시에 ROGER, 알림에 STANDBY)은 관제 세션이 기록하려 할 때 atc가 거절한다. 그때는 SUPERVISOR에게 올라간다.
 - 답은 관제 세션(TOWER·OCC)이 읽고 `atcctl`로 기록한다. STRIPS 도장에 `ROGER`·`STANDBY`·`UNABLE — 사유`가, DISPATCH IN FLIGHT 줄에 `STANDBY`가 보인다. FLIGHT가 있는 UNABLE은 FLIGHT FOLLOWING에 하루 뜨고, CREW CHANGE의 UNABLE은 `crew-change brief`의 `unable`에 하루 남는다.
 

@@ -141,6 +141,7 @@ Every `*.test.ts` next to a module is its unit test.
 | `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR releases a HOLD (the proposal is superseded) |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | SUPERVISOR decision in approval mode; both take `{via?}`, `reject` also `{reason?, reasonCodes?}` |
 | `POST /api/dispatch/proposals/:id/release` | Approved → SENT; returns `sendTo` and the FLIGHT PLAN text |
+| `POST /api/dispatch/proposals/:id/await-supervisor` | A sent proposal whose CAPTAIN waits for its user (ATC-120): `{reason}`; stays `sent` with `awaitSupervisor`, alert once per proposal. `GET /api/dispatch/brief` also carries `confirm` (SUPERVISOR CONFIRM AT AIRCRAFT, `supervisor-confirm.ts`) |
 | `POST /api/dispatch/proposals/:id/{accept,decline,standby}` | CAPTAIN READBACK, decline (`UNABLE D-xxxx`) with `{reason}`, or STANDBY (ATC-122). A STAND-free FLIGHT is DEPARTED at the READBACK (`readbackOps`) |
 | `POST /api/dispatch/proposals/:id/arrived` | OCC records the CAPTAIN's report `{note}` for a STAND-free DEPARTED FLIGHT → ARRIVED |
 | `GET /api/dispatch/proposals/:id` | One proposal and the current mode (for send-guard) |

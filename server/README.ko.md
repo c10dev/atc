@@ -141,6 +141,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR가 HOLD를 풂(제안은 SUPERSEDED) |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | approval 모드에서 SUPERVISOR 결정, 둘 다 `{via?}`, `reject`는 `{reason?, reasonCodes?}`도 |
 | `POST /api/dispatch/proposals/:id/release` | 승인 → SENT, `sendTo`와 FLIGHT PLAN 문구 반환 |
+| `POST /api/dispatch/proposals/:id/await-supervisor` | CAPTAIN이 자기 사용자를 기다리는 sent 제안(ATC-120): `{reason}`. `sent` 그대로 `awaitSupervisor`, 경보는 제안마다 한 번. `GET /api/dispatch/brief`는 `confirm`(SUPERVISOR CONFIRM AT AIRCRAFT, `supervisor-confirm.ts`)도 싣는다 |
 | `POST /api/dispatch/proposals/:id/{accept,decline,standby}` | CAPTAIN READBACK, `{reason}`과 함께 거절(`UNABLE D-xxxx`), 또는 STANDBY(ATC-122). STAND 없는 FLIGHT는 READBACK에 DEPARTED(`readbackOps`) |
 | `POST /api/dispatch/proposals/:id/arrived` | STAND 없이 DEPARTED한 FLIGHT의 CAPTAIN 보고 `{note}`를 OCC가 적음 → ARRIVED |
 | `GET /api/dispatch/proposals/:id` | 제안 하나와 지금 모드(send-guard용) |

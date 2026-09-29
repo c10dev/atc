@@ -344,6 +344,16 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
   - `POST …/recall-send`: `{sendTo, message}`를 돌려주고 상태는 바꾸지 않는다(OCC, approval 모드만).
   - `POST …/recalled`: CAPTAIN의 READBACK 뒤 OCC.
 
+## SUPERVISOR CONFIRM AT AIRCRAFT (ATC-120 as built)
+
+사용자 등급 파일(`deploy/landing-tier.mjs`의 USER: guard, `.claude/`, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`)을 만질 FLIGHT는 AIRCRAFT가 자기 세션 안에서 SUPERVISOR에게 go를 직접 묻는다. go는 SUPERVISOR가 그 세션에서 친다. **OCC도 서버도 "SUPERVISOR가 승인했다"고 말하지 않고**, SUPERVISOR의 go를 대신하는 atc 메시지도 없다.
+
+- **예측(순수, `server/supervisor-confirm.ts`)**: ASSIGN마다 `planDispatch`가 이슈의 예측 경로(`predictedOf`, ATC-71)를 `tierOf`로 하나씩 돌린다. 사용자 등급인 경로가 ASSIGN의 `supervisorConfirm`이 되고 `create` op를 거쳐 제안에 실린다. 예측이 비었거나 모르는 경로면 아무것도 세우지 않는다(오탐 없음). 표시는 승인을 막지 않는다.
+- **카드와 승인 창**: DISPATCH 카드, IN FLIGHT 줄(approved·sent), 승인 확인 창에 `SUPERVISOR CONFIRM AT AIRCRAFT`, 이유가 된 경로, 그 AIRCRAFT 세션에 붙여 넣을 한 줄(서버가 만든다: `D-0094 (ATC-115): SUPERVISOR go for CLAUDE.md, .claude/settings.json edits in this FLIGHT.`), 세션 여는 법(`claude agents`, 그 REGISTRATION 선택)이 보인다. `GET /api/dispatch/brief`의 `confirm[<D-xxxx>] = {paths, line, open}`이다.
+- **HOLD 상태**: `atcctl dispatch await-supervisor <D-xxxx> -- <사유>`(`POST …/await-supervisor {reason}`)는 READBACK도 거절도 아닌 CAPTAIN 답(자기 사용자를 기다림)에 쓴다. `proposals.jsonl`에 추가만 하는 op `await-supervisor`. sent인 제안에만(아니면 409, 사유가 없으면 400). PILOT'S DISCRETION: 새 상태가 아니라 필드다. 제안은 `sent` 그대로 `awaitSupervisor {at, reason}`을 가져서 RELEASE·RECALL·상태 검사가 그대로 돈다. 다시 부르면 사유만 바뀌고 처음 `at`은 그대로다. READBACK(`accept`)·UNABLE(`decline`)·RECALL·만료가 지운다. 걸려 있는 동안은 READBACK overdue로 세지 않는다.
+- **경보**: FLIGHT FOLLOWING이 SUPERVISOR를 기다리는 sent 제안을 따라가며 warn 문제 `await-supervisor`(key `<FLIGHT>|await-supervisor`, SUPERVISOR에게 한 번 보고)를 낸다. 스냅샷은 그 AIRCRAFT 세션에 `health` 경보(key `health|AWAIT-SUPERVISOR|<D-xxxx>`)를 올린다. ATC-99(BLOCKED 백그라운드 세션)·ATC-87과 같은 길이고 key마다 한 번이다. PILOT'S DISCRETION: 새 health 코드는 없다(`HealthCode`와 `hooks/health.d.mts`는 그대로).
+- **OCC**: `occ/CLAUDE.md`와 `flight-plan.md`: CAPTAIN이 자기 사용자를 기다리며 멈추면 `dispatch await-supervisor`를 치고, 다시 보내지 않고, 어떤 승인도 전하지 않는다. guard·send-guard·FLIGHT PLAN 문구는 그대로다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

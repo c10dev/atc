@@ -12,6 +12,7 @@ import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
 import { REASON_CODES } from "./reasons.ts";
 import { DEFAULT_TEAM_PATTERN, regKey } from "./registration.ts";
+import { supervisorConfirmOf } from "./supervisor-confirm.ts";
 
 // 2단계 DISPATCH: 어떤 FLIGHT를 어떤 AIRCRAFT에 보낼지 계산한다(순수 함수 planDispatch).
 // 제안을 기록하고 보이는 것은 proposals.ts, 설계는 docs/dispatch.md.
@@ -179,6 +180,7 @@ export interface AssignPlan {
   airport: string;
   score: number;
   factors: Factor[];
+  supervisorConfirm?: string[]; // 예측 경로 중 사용자 등급 파일(ATC-120). 있을 때만
 }
 
 export interface ReleasePlan {
@@ -804,8 +806,10 @@ export function planDispatch(
       if (load + size > limitOf(p.t.airport) + 1e-9) continue;
       usedFlights.add(p.t.key);
       usedAircraft.add(regOfAircraft(p.ac, cfg.teamPattern));
+      // SUPERVISOR CONFIRM AT AIRCRAFT(ATC-120): 예측 경로 중 사용자 등급 파일. 예측이 비면 표시 없음
+      const confirm = supervisorConfirmOf(predictedFor(p.t).map((x) => x.pattern));
       planned.set(p.t.airport, (planned.get(p.t.airport) ?? 0) + size);
-      assign.push({ kind: "ASSIGN", flight: p.t.key, aircraft: p.ac.id, aircraftName: p.ac.name, registration: regOfAircraft(p.ac, cfg.teamPattern), airport: p.t.airport, score: p.score, factors: p.factors });
+      assign.push({ kind: "ASSIGN", flight: p.t.key, aircraft: p.ac.id, aircraftName: p.ac.name, registration: regOfAircraft(p.ac, cfg.teamPattern), airport: p.t.airport, score: p.score, factors: p.factors, ...(confirm.length ? { supervisorConfirm: confirm } : {}) });
     }
   };
   // 1) STAND 규칙: 배정 가능(available)하고 예약 없는 AIRCRAFT에 TEAM당 1건. STAND 없는 FLIGHT도 여기서 먼저 받을 수 있다

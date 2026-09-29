@@ -344,6 +344,16 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
   - `POST …/recall-send` returns `{sendTo, message}` and changes nothing (OCC, approval mode only);
   - `POST …/recalled` (OCC, after the CAPTAIN's READBACK).
 
+## SUPERVISOR CONFIRM AT AIRCRAFT (ATC-120 as built)
+
+Some FLIGHTs touch user-tier files (`deploy/landing-tier.mjs` USER: guards, `.claude/`, root `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`). The AIRCRAFT then asks the SUPERVISOR for a go inside its own session. The go is typed by the SUPERVISOR there; **neither OCC nor the server ever says "the SUPERVISOR approved"**, and no atc message stands for that go.
+
+- **Prediction (pure, `server/supervisor-confirm.ts`).** For an ASSIGN, `planDispatch` takes the issue's predicted paths (`predictedOf`, ATC-71) and runs `tierOf` on each. Paths that are user tier become `supervisorConfirm` on the ASSIGN and, through the `create` op, on the proposal. An empty or unknown prediction sets nothing (no false alarms). The mark never blocks approval.
+- **Card and approve dialog.** The DISPATCH card, its IN FLIGHT row (approved, sent) and the approve confirm show `SUPERVISOR CONFIRM AT AIRCRAFT`, the paths that caused it, one line the server builds for the SUPERVISOR to paste into that AIRCRAFT's session (`D-0094 (ATC-115): SUPERVISOR go for CLAUDE.md, .claude/settings.json edits in this FLIGHT.`), and how to open the session (`claude agents`, then the REGISTRATION). `GET /api/dispatch/brief` carries it as `confirm[<D-xxxx>] = {paths, line, open}`.
+- **Hold state.** `atcctl dispatch await-supervisor <D-xxxx> -- <reason>` (`POST …/await-supervisor {reason}`) is for a CAPTAIN reply that is neither READBACK nor a refusal (it waits for its user). Append-only op `await-supervisor` in `proposals.jsonl`; sent proposals only (409 otherwise, 400 without a reason). PILOT'S DISCRETION: it is a field, not a new status. The proposal stays `sent` with `awaitSupervisor {at, reason}`, so RELEASE, RECALL and every status check keep working. Calling it again replaces the reason and keeps the first `at`. A READBACK (`accept`), UNABLE (`decline`), RECALL or expiry clears it. While it is set the proposal isn't counted as READBACK overdue.
+- **Alerts.** FLIGHT FOLLOWING follows a sent proposal that awaits the SUPERVISOR and shows a warn issue `await-supervisor` (key `<FLIGHT>|await-supervisor`, reported to the SUPERVISOR once). The snapshot raises a `health` alert on the AIRCRAFT session, key `health|AWAIT-SUPERVISOR|<D-xxxx>`, through the same path as ATC-99 (BLOCKED background session) and ATC-87, once per key. PILOT'S DISCRETION: no new health code (`HealthCode` and `hooks/health.d.mts` are unchanged).
+- **OCC.** `occ/CLAUDE.md` and `flight-plan.md` say: when a CAPTAIN holds for its user, run `dispatch await-supervisor`; don't retry, and don't relay any approval. Guards, send-guard and the FLIGHT PLAN text are unchanged.
+
 ## DIRECT briefs (ATC-32)
 
 Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.

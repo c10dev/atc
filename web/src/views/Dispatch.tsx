@@ -112,6 +112,13 @@ const BLIND_NOTE =
   "blind 표본(카드의 약 1/5, 제안 ID로 정함)에서 CROSSCHECK를 보지 않고 낸 판정의 합의율. 전체 합의율보다 크게 낮으면 한 번 클릭을 기본값처럼 따르고 있다는 뜻(anchoring 점검)";
 const ONE_CLICK_NOTE = "사람 판정 가운데 CROSSCHECK에 동의 버튼 한 번으로 낸 비율 — 어떻게 판정했는지 기록된 판정만 셈. blind 카드 판정은 한 번 클릭이 막혀 있어 뺀다";
 
+// SUPERVISOR CONFIRM AT AIRCRAFT(ATC-120, server/supervisor-confirm.ts confirmViewOf). 승인을 막지 않는다. 옛 서버면 없음
+interface ConfirmView {
+  paths: string[];
+  line: string; // SUPERVISOR가 그 AIRCRAFT 세션에 붙여 넣을 한 줄
+  open: string; // 그 세션을 여는 법
+}
+
 interface Brief {
   mode: DispatchConfig["mode"];
   at: string;
@@ -121,6 +128,7 @@ interface Brief {
   waiting?: Record<string, string>; // /clear 뒤 첫 메시지를 기다리는 AIRCRAFT의 제안 id → 글(ATC-91). 옛 서버면 없음
   briefs?: Record<string, CardBrief>; // 열린·HELD 카드의 사실 줄과 본문 첫 문장(옛 서버면 없음)
   inFlight: Proposal[];
+  confirm?: Record<string, ConfirmView>; // 제안 id → SUPERVISOR CONFIRM 표시(ATC-120)
   delivery?: Record<string, Delivery>; // 2b 전달(ATC-76): AIRCRAFT 세션 이름 → 출처·permission mode·OCC mode. 옛 서버면 없음
   arrivalCandidates?: ArrivalSuggestion[]; // STAND 없는 FLIGHT의 ARRIVED 후보(ATC-72). 옛 서버면 없음
   overdue: string[];
@@ -226,6 +234,45 @@ function DeliveryWarn({ aircraft }: { aircraft: string | null | undefined }) {
   );
 }
 
+// SUPERVISOR CONFIRM(ATC-120): 카드·IN FLIGHT 줄이 표시를 읽는다
+const ConfirmCtx = createContext<Record<string, ConfirmView>>({});
+
+// 이 AIRCRAFT가 SUPERVISOR의 go를 세션 안에서 직접 묻는다는 표시와 붙여 넣을 한 줄. atc는 그 go를 대신 보내지 않는다
+function SupervisorConfirm({ id }: { id: string }) {
+  const v = useContext(ConfirmCtx)[id];
+  const [copied, setCopied] = useState(false);
+  if (!v) return null;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(v.line);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // 복사가 막힌 환경: 아래 글을 직접 고른다
+    }
+  };
+  return (
+    <div className="dp-confirm" role="group" aria-label={`${id} SUPERVISOR CONFIRM AT AIRCRAFT`}>
+      <p className="dp-confirm-head">
+        <span className="dp-confirm-mark">SUPERVISOR CONFIRM AT AIRCRAFT</span>
+        <span className="dp-confirm-note">승인은 그대로 됩니다. AIRCRAFT가 이 파일 앞에서 직접 묻습니다.</span>
+      </p>
+      <ul className="dp-confirm-paths mono" aria-label="사용자 등급 예측 경로">
+        {v.paths.map((x) => (
+          <li key={x}>{x}</li>
+        ))}
+      </ul>
+      <div className="dp-confirm-paste">
+        <code className="dp-confirm-line mono">{v.line}</code>
+        <button type="button" className="dp-btn dp-confirm-copy" onClick={copy} aria-label={`${id}의 붙여 넣을 한 줄 복사`}>
+          {copied ? "복사됨" : "복사"}
+        </button>
+      </div>
+      <p className="dp-confirm-open faint">{v.open}</p>
+    </div>
+  );
+}
+
 export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number }) {
   const [brief, setBrief] = useState<Brief | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -255,7 +302,9 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
 
   // shadow: 그림자 판정(verdict), approval: 실제 승인·거절. 성공하면 true
   const submit = async (p: Proposal, v: "agree" | "disagree", input: VerdictInput) => {
-    if (v === "agree" && brief?.mode === "approval" && p.kind === "ASSIGN" && !confirm(`${p.id}를 승인하면 DISPATCH가 ${p.aircraftName}에게 FLIGHT PLAN을 보냅니다. 승인할까요?`)) return false;
+    const sc = brief?.confirm?.[p.id];
+    const scText = sc ? `\n\nSUPERVISOR CONFIRM AT AIRCRAFT — ${sc.paths.join(", ")}\n${p.aircraftName}가 이 파일을 고치기 전에 세션에서 직접 SUPERVISOR의 go를 묻습니다. 승인은 막히지 않습니다. 그때 붙여 넣을 한 줄:\n${sc.line}\n(${sc.open})` : "";
+    if (v === "agree" && brief?.mode === "approval" && p.kind === "ASSIGN" && !confirm(`${p.id}를 승인하면 DISPATCH가 ${p.aircraftName}에게 FLIGHT PLAN을 보냅니다.${scText}\n\n승인할까요?`)) return false;
     const payload = { via: input.via, reason: input.reason, ...(v === "disagree" && input.reasonCodes ? { reasonCodes: input.reasonCodes } : {}) };
     setBusy(p.id);
     try {
@@ -342,6 +391,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
 
   return (
     <DeliveryCtx.Provider value={brief.delivery ?? {}}>
+    <ConfirmCtx.Provider value={brief.confirm ?? {}}>
     <section className="dispatch">
       <div className="toolbar">
         <span className="muted">
@@ -543,6 +593,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       </ReadinessFold>
 
     </section>
+    </ConfirmCtx.Provider>
     </DeliveryCtx.Provider>
   );
 }
@@ -608,6 +659,13 @@ function InFlightRow({
               STANDBY <time dateTime={p.standbyAt}>{timeAgo(p.standbyAt, now)}</time>
             </span>
           )}
+          {p.status === "sent" && p.awaitSupervisor && (
+            <span className="dp-await" title={`CAPTAIN이 READBACK도 거절도 아닌 채 SUPERVISOR의 go를 기다림: ${p.awaitSupervisor.reason}. SUPERVISOR가 그 세션에서 직접 go를 친다(atc는 대신 보내지 않는다)`}>
+              AWAITING SUPERVISOR <time dateTime={p.awaitSupervisor.at}>{timeAgo(p.awaitSupervisor.at, now)}</time>
+              <span className="dp-await-reason">{p.awaitSupervisor.reason}</span>
+            </span>
+          )}
+          {(p.status === "approved" || p.status === "sent") && <SupervisorConfirm id={p.id} />}
           {candidate && <CandidateLine c={candidate} now={now} />}
           {overdue && <span className="dp-overdue">{overdueText(p)}</span>}
         </td>
@@ -1291,6 +1349,7 @@ function Card({
           {p.score}
         </span>
       </div>
+      {p.kind === "ASSIGN" && <SupervisorConfirm id={p.id} />}
       {p.holdAt && (
         <p className="dp-hold">
           <span className="dp-hold-mark">{p.preflight ? "PREFLIGHT" : "HOLD"}</span>

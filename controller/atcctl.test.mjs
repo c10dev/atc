@@ -402,6 +402,9 @@ test("CAPTAIN의 답(ATC-122): <ID> [-- 사유]. unable만 사유가 필요하�
   assert.throws(() => parseAnswerArgs("unable", ["C-0007"]), /사유가 필요함/);
   assert.throws(() => parseAnswerArgs("unable", ["C-0007", "--", " "]), /사유가 필요함/);
   assert.throws(() => parseAnswerArgs("standby", ["C-0007", "extra"]), /알 수 없는 인자/);
+  // await-supervisor(ATC-120)는 unable처럼 사유가 필요하다
+  assert.deepEqual(parseAnswerArgs("await-supervisor", ["d-0094", "--", "사용자", "go", "대기"]), { id: "D-0094", reason: "사용자 go 대기" });
+  assert.throws(() => parseAnswerArgs("await-supervisor", ["D-0094"]), /await-supervisor에는 -- 뒤에 CAPTAIN의 사유가 필요함/);
   assert.throws(() => parseAnswerArgs("roger", []), /ID가 필요함/);
   assert.deepEqual(parseCrewChange(argv("unable CC-0003 -- 지금 FLIGHT 중")), { action: "unable", id: "CC-0003", reason: "지금 FLIGHT 중" });
   assert.deepEqual(parseCrewChange(argv("standby cc-0003")), { action: "standby", id: "CC-0003" });

@@ -1228,3 +1228,80 @@
   font-size: var(--text-2xs);
   white-space: nowrap;
 }
+
+/* SUPERVISOR CONFIRM AT AIRCRAFT(ATC-120): 사용자 등급 파일을 만질 FLIGHT. 승인을 막지 않고, AIRCRAFT가 세션에서 직접 묻는다는 표시 */
+.dp-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-1-5) var(--space-2);
+  background: var(--panel-2);
+  border: 1px dashed var(--amber);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+.dp-confirm-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+}
+.dp-confirm-mark {
+  color: var(--amber);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+.dp-confirm-note {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.dp-confirm-paths {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+  color: var(--text);
+}
+.dp-confirm-paths li {
+  padding: 0 var(--space-1);
+  background: var(--panel-3);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+.dp-confirm-paste {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+}
+.dp-confirm-line {
+  flex: 1 1 14em;
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.dp-confirm-open {
+  margin: 0;
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+/* CAPTAIN이 사용자의 go를 기다림(sent 유지) */
+.dp-await {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--amber);
+  font: var(--text-2xs) var(--mono);
+  overflow-wrap: anywhere;
+}
+.dp-await-reason {
+  display: block;
+  color: var(--muted);
+}
