@@ -283,6 +283,10 @@ CAPTAIN: "done: <link>"     → OCC: atcctl dispatch arrived D-0012 -- '<result 
 
 ATFM의 자동 대상 판정(A8)은 여전히 배정 가능한 AIRCRAFT를 요구한다. 그래서 HOLDING 팀에 간 STAND 없는 제안은 자동 대상이 되지 않는다(어차피 A3가 SURVEY와 CHECK를 뺀다).
 
+### File overlap as built (ATC-71)
+
+DISPATCH는 날고 있는 FLIGHT가 바꾼 파일과 Todo FLIGHT가 고칠 파일을 읽어 겹침을 점수에 넣는다(WAKE 가중, `파일 겹침`). `dispatch.json`의 `overlap.hold` 스위치(기본 꺼짐)를 켜면 그 파일을 잡은 FLIGHT가 머지될 때까지 기다리게 한다. 겹치는 FLIGHT를 이미 날고 있는 팀에는 `이어서 하면 충돌 없음`을 준다. 규칙·읽는 곳·`DIRTY` 지표는 [dispatch.ko.md](dispatch.ko.md) 5.3.1에 있다.
+
 ## 6. 누가 분류하나
 
 | 단계 | 라벨을 쓰는 쪽 |

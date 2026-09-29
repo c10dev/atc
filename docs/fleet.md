@@ -248,6 +248,10 @@ Session names are matched against `teamPattern` and upper-cased, like the LOGBOO
 
 Not built yet: WAKE-scaled conflict risk (a same-area approach is sketched in [issue #41](https://github.com/chaehy5665/atc/issues/41)), and ARRIVED without a person: atc now finds ARRIVED candidates for STAND-free FLIGHTs and OCC confirms them, which writes a PR-less LOGBOOK line that TARGETS count (ATC-72, 5.1.1 as built). ATFM's auto-eligibility (A8) still requires an assignable AIRCRAFT, so a STAND-free proposal to a HOLDING team is never auto-eligible (A3 excludes SURVEY and CHECK anyway).
 
+### File overlap as built (ATC-71)
+
+DISPATCH now reads which files each FLIGHT in flight changes and which files a Todo FLIGHT will change, and scores the overlap (WAKE-scaled, `파일 겹침`) or, behind the `dispatch.json` `overlap.hold` switch (default off), holds the FLIGHT until the one holding the files merges. A team that already flies the overlapping FLIGHT gets `이어서 하면 충돌 없음`. The rules, the sources and the `DIRTY` metric are in [dispatch.md](dispatch.md) 5.3.1.
+
 ## 6. Who classifies
 
 | Stage | Who writes the labels |

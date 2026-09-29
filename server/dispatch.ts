@@ -6,6 +6,7 @@ import { config } from "./config.ts";
 import { accountOf, type Classification, canFly, classOf, DEFAULT_FLEET, type FleetFile, type FlightType, needsStand, profileOf, type Rating, WAKE_SLOTS } from "./crew.ts";
 import { accountHoldDetail, accountHoldLabel, accountHoldOf, accountHolds, healthLabel } from "./health.ts";
 import { DEFAULT_FUEL, type FuelConfig, fuelConfigOf, fuelHoldReason, fuelHolds } from "./fuel-remaining.ts";
+import { type Holder, holderLabel, isHeavy, overlapConfigOf, DEFAULT_OVERLAP, type OverlapConfig, overlapDetail, overlapHoldWhy, overlapsOf, overlapValueOf, predictedOf, splitByTeam } from "./overlap.ts";
 import { keyInName, keyPatternOf, teamOfKey } from "./linear-keys.ts";
 import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
@@ -30,7 +31,9 @@ export interface DispatchConfig {
     openProposals: number; // 결정 안 된 ASSIGN 제안 최대 수
     openReleases: number;
   };
-  weights: { priority: number; wait: number; unblock: number; affinity: number; conflict: number; route: number; waypoint: number };
+  weights: { priority: number; wait: number; unblock: number; affinity: number; conflict: number; route: number; waypoint: number; overlap: number; sameTeam: number };
+  // 파일 겹침(ATC-71, docs/dispatch.md): 곧 배정할 FLIGHT가 고칠 파일과 날고 있는 FLIGHT가 고치는 파일. hold가 켜지면 무겁게 겹치는 FLIGHT는 머지될 때까지 HOLD
+  overlap: OverlapConfig;
   releaseDays: number; // STAND 없이 이만큼 ENROUTE면 RELEASE 제안
   releaseStates: string[]; // RELEASE 대상 상태 이름
   excludeLabels: string[];
@@ -58,7 +61,8 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   teamAirports: { ATC: "ATCC" },
   candidateTeams: [],
   slots: { perTeam: 1, airborne: { VCDO: 4 }, defaultAirborne: 2, openProposals: 5, openReleases: 5 },
-  weights: { priority: 3, wait: 0.5, unblock: 2, affinity: 1, conflict: -2, route: 1, waypoint: 1 },
+  weights: { priority: 3, wait: 0.5, unblock: 2, affinity: 1, conflict: -2, route: 1, waypoint: 1, overlap: -1, sameTeam: 1 },
+  overlap: DEFAULT_OVERLAP,
   releaseDays: 3,
   releaseStates: ["In Progress"],
   excludeLabels: ["symphony-pilot"],
@@ -120,6 +124,7 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       candidateTeams: Array.isArray(user.candidateTeams) ? user.candidateTeams.map((k: unknown) => String(k).toUpperCase()) : d.candidateTeams,
       slots: { ...d.slots, ...user.slots, airborne: { ...d.slots.airborne, ...user.slots?.airborne } },
       weights: { ...d.weights, ...user.weights },
+      overlap: overlapConfigOf(user.overlap),
       // 모르는 값은 기본("exclude")으로 — 보안 PR을 잘못 내보내지 않게
       externalReview: { security: user.externalReview?.security === "deepseek" ? "deepseek" : "exclude" },
       // 모르는 값은 기본으로 — HOLD는 true일 때만 켠다
@@ -157,7 +162,7 @@ export function airportOfTicket(t: Pick<Ticket, "key" | "project">, cfg: Pick<Di
 
 export interface Factor {
   // standFree·independence는 0점짜리 표시(점수를 바꾸지 않고 왜 이 짝인지 보여 준다)
-  id: "priority" | "wait" | "unblock" | "affinity" | "conflict" | "route" | "waypoint" | "standFree" | "independence";
+  id: "priority" | "wait" | "unblock" | "affinity" | "conflict" | "route" | "waypoint" | "overlap" | "overlapSame" | "standFree" | "independence";
   label: string;
   value: number;
   weight: number;
@@ -234,7 +239,10 @@ export interface Plan {
   at: string;
   assign: AssignPlan[];
   release: ReleasePlan[];
-  hold: { flight: string; blockedBy: string[] }[];
+  // why: 선행 FLIGHT(Linear blockedBy)가 아닌 HOLD의 사유(파일 겹침, ATC-71)
+  hold: { flight: string; blockedBy: string[]; why?: string }[];
+  // 파일 겹침으로 HOLD할 FLIGHT(ATC-71). enforced가 false면 스위치가 꺼져 있어 HOLD하지 않고 보여 주기만 한다(shadow)
+  overlapHolds?: { flight: string; blockedBy: string[]; why: string; enforced: boolean }[];
   excluded: { flight: string; reason: string }[];
   // 24시간 규칙으로 후보에서 뺀 짝(FLIGHT·AIRCRAFT·제안 id·다시 가능한 시각)
   blockedPairs?: { flight: string; aircraft: string; aircraftName: string; proposal: string; until: string }[];
@@ -349,6 +357,13 @@ const round1 = (x: number) => Math.round(x * 10) / 10;
 // 점수에 들어가지 않는 표시(weight 0). 왜 이 짝인지 카드에 보이게 한다.
 const mark = (id: Factor["id"], label: string, value: number, detail: string): Factor => ({ id, label, value, weight: 0, points: 0, detail });
 
+// 파일 겹침의 입력(overlap-run.ts가 캐시에서 채운다). 순수 planner는 git·gh·Linear를 읽지 않는다
+export interface FilesInFlight {
+  holders: Holder[];
+  bodies: Map<string, string | null>; // FLIGHT key → 이슈 본문(읽은 것만)
+}
+const NO_FILES: FilesInFlight = { holders: [], bodies: new Map() };
+
 // 과거 운항 이력: 세션 id → 그 세션이 STAND를 점유했던 FLIGHT key들
 export type FlightHistory = Map<string, string[]>;
 
@@ -437,6 +452,7 @@ export function planDispatch(
   landed: Landed = new Map(),
   logbook: BuilderSources["logbook"] = [], // CHECK 독립성: 검토 대상을 만든 AIRCRAFT
   activeWaypoint: Map<string, string> = new Map(), // FLIGHT key → 지금 구간 WAYPOINT(routes.ts activeWaypointsOf, 8단계)
+  files: FilesInFlight = NO_FILES, // 파일 겹침(ATC-71): 날고 있는 FLIGHT의 파일과 이슈 본문
 ): Plan {
   const team = new RegExp(cfg.teamPattern, "i");
   const regOf = (name: string) => regKey(name, cfg.teamPattern); // 세션 이름 → REGISTRATION(ATC-67)
@@ -512,6 +528,9 @@ export function planDispatch(
   const unservedOf = (t: Ticket, airport: string, cls: Classification, why: Unserved["why"], tails: Set<string> = new Set()): Unserved => ({
     flight: t.key, airport, type: cls.type, ratings: cls.ratings, labeled: cls.sources.length > 0, why, tails: [...tails],
   });
+  const overlapHolds: NonNullable<Plan["overlapHolds"]> = [];
+  // 예측 경로: 이 FLIGHT와 연결된 FLIGHT의 본문(관계·blocks·blockedBy)에서. 같은 FLIGHT는 한 번만 센다
+  const predictedFor = (t: Ticket) => predictedOf(t.key, [...new Set([...t.related, ...t.blocks, ...t.blockedBy])], files.bodies);
   const eligible: (Ticket & { airport: string; cls: Classification; ind: Independence | null })[] = [];
   // FLEET 규칙(docs/fleet.md 5장): 필요한 TYPE RATING을 모두 가졌고, CREW가 그 FLIGHT TYPE을 날 수 있어야 한다.
   const qualifies = (ac: AircraftState, cls: Classification) => {
@@ -645,6 +664,23 @@ export function planDispatch(
       excluded.push({ flight: t.key, reason: notIndependentWhy(ind) });
       continue;
     }
+    // 파일 겹침 HOLD(ATC-71): 곧 고칠 파일을 날고 있는 FLIGHT가 무겁게 만지면 그 FLIGHT가 머지될 때까지 기다린다.
+    // 그 파일을 만지는 팀이 그 팀뿐이고 그 팀이 이 FLIGHT를 날 수 있으면 HOLD하지 않는다(이어서 하면 충돌 없음)
+    const ov = overlapsOf(t.key, cls.wake, airport, predictedFor(t), files.holders);
+    const heavy = ov.filter((o) => isHeavy(o, cfg.overlap));
+    if (heavy.length) {
+      const teams = new Set(ov.map((o) => o.holder.team));
+      const sameTeam = teams.size === 1 && [...teams][0] !== null && aircraft.some((ac) => regOf(ac.name) === [...teams][0] && qualifies(ac, cls));
+      if (!sameTeam) {
+        const blockedBy = [...new Set(heavy.map((o) => o.holder.flight))];
+        const why = overlapHoldWhy(blockedBy);
+        overlapHolds.push({ flight: t.key, blockedBy, why, enforced: cfg.overlap.hold });
+        if (cfg.overlap.hold) {
+          hold.push({ flight: t.key, blockedBy, why });
+          continue;
+        }
+      }
+    }
     eligible.push({ ...t, airport, cls, ind });
   }
 
@@ -653,7 +689,7 @@ export function planDispatch(
     active.filter((c) => s.sessions.find((x) => x.id === c.sessionId)?.status !== "dead").map((c) => wsTicket.get(c.workspacePath)).filter(Boolean) as string[],
   );
   const w = cfg.weights;
-  const score = (t: Ticket, ac: AircraftState): { score: number; factors: Factor[] } => {
+  const score = (t: Ticket & { airport?: string }, ac: AircraftState): { score: number; factors: Factor[] } => {
     const pv = PRIORITY_VALUE[t.priority] ?? 1.5;
     const waitDays = t.createdAt ? Math.min(14, Math.max(0, (now - Date.parse(t.createdAt)) / DAY)) : 0;
     const unblocks = t.blocks.filter((k) => byKey.get(k)?.stateType === "unstarted" || byKey.get(k)?.stateType === "backlog");
@@ -661,6 +697,11 @@ export function planDispatch(
     const flown = (history.get(ac.id) ?? []).filter((k) => k !== t.key);
     const affinity = flown.filter((k) => linked.has(k) || (t.project && byKey.get(k)?.project === t.project));
     const conflicts = [...linked].filter((k) => airborneFlights.has(k));
+    // 파일 겹침(ATC-71): 이 팀이 이미 날고 있는 FLIGHT와의 겹침은 충돌이 아니다. 그 팀뿐이면 이어서 하는 보너스
+    const team = regOfAircraft(ac, cfg.teamPattern);
+    const ov = splitByTeam(overlapsOf(t.key, classOf(t.labels).wake, t.airport ?? "", predictedFor(t), files.holders), team);
+    const holdNote = overlapHolds.find((h) => h.flight === t.key && !h.enforced) ? " — HOLD 스위치가 꺼져 있어 기다리지 않음(켜면 대기)" : "";
+    const same = ov.mine.length && !ov.others.length ? ov.mine : [];
     const onRoute = Boolean(t.project && profileOf(fleet, ac.name).routes.includes(t.project));
     const f = (id: Factor["id"], label: string, value: number, weight: number, detail: string): Factor => ({
       id, label, value: round1(value), weight, points: round1(value * weight), detail,
@@ -671,6 +712,8 @@ export function planDispatch(
       f("unblock", "풀어 주는 FLIGHT", unblocks.length, w.unblock, unblocks.join(", ") || "없음"),
       f("affinity", "팀 적합도", affinity.length, w.affinity, affinity.join(", ") || "이력 없음"),
       f("conflict", "충돌 위험", conflicts.length, w.conflict, conflicts.length ? `AIRBORNE과 연결: ${conflicts.join(", ")}` : "없음"),
+      f("overlap", "파일 겹침", overlapValueOf(ov.others), w.overlap ?? -1, overlapDetail(ov.others, ov.others.length ? holdNote : "")),
+      ...(same.length ? [f("overlapSame", "이어서 하면 충돌 없음", 1, w.sameTeam ?? 1, `${same.map(holderLabel).join(", ")}를 날고 있는 ${team}가 이어 함 — ${overlapDetail(same)}`)] : []),
       f("route", "ROUTE", onRoute ? 1 : 0, w.route ?? 1, onRoute ? `${t.project} 담당` : "담당 아님"),
       // 지금 구간 WAYPOINT의 FLIGHT: ROUTE를 앞으로 미는 일(docs/routes.md 8단계)
       f("waypoint", "지금 WAYPOINT", activeWaypoint.has(t.key) ? 1 : 0, w.waypoint ?? 1, activeWaypoint.get(t.key) ?? "아님"),
@@ -795,7 +838,7 @@ export function planDispatch(
     limit: limitOf(code),
   }));
 
-  return { at: new Date(now).toISOString(), assign, release, hold, excluded, blockedPairs: [...blockedPairs.values()], aircraft, slots, unserved };
+  return { at: new Date(now).toISOString(), assign, release, hold, overlapHolds, excluded, blockedPairs: [...blockedPairs.values()], aircraft, slots, unserved };
 }
 
 // 청구 기록(~/.local/state/atc/claims)으로 세션별 과거 FLIGHT를 모은다. TTL과 상관없이 전부 본다.

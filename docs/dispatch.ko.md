@@ -130,12 +130,25 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 | 풀어 주는 FLIGHT | 이 FLIGHT가 blocks 하는 Todo 수 | ×2 |
 | 팀 적합도 | 이 AIRCRAFT가 과거에 같은 프로젝트·related FLIGHT를 날았던 횟수(FLIGHT RECORDER·청구 이력) | ×1 |
 | 충돌 위험 | 지금 AIRBORNE인 FLIGHT와 related로 묶인 수 | ×−2 |
+| 파일 겹침 | 이 FLIGHT가 고칠 것으로 예측한 파일 중 같은 AIRPORT에서 날고 있는 FLIGHT가 이미 바꾼 파일, WAKE 가중(5.3.1). `weights.overlap` | ×−1 |
+| 이어서 하면 충돌 없음 | 그 파일을 만지는 팀이 이 AIRCRAFT의 팀뿐(5.3.1). `weights.sameTeam` | ×1 |
 | ROUTE | FLIGHT의 프로젝트가 그 AIRCRAFT의 routes에 있음([fleet.ko.md](fleet.ko.md) 5장) | ×1 |
 | 지금 WAYPOINT | FLIGHT가 그 ROUTE의 지금 구간 WAYPOINT(지나지 않은 첫 Linear 마일스톤) 이슈임([routes.ko.md](routes.ko.md) 8단계). 설명에 ROUTE와 WAYPOINT가 보인다. `dispatch.json`의 `weights.waypoint` | ×1 |
 
 각 제안에 요소별 점수를 그대로 보여 준다("왜 이 팀에 이 편인가"). 가중치는 설정 파일로 SUPERVISOR가 바꾼다.
 
 점수 없이 짝의 이유만 보여 주는 표시가 둘 있다. `STAND 없이`(STAND 규칙 밖으로 준 SURVEY·CHECK, AIRCRAFT 상태와 함께. 예: `HOLDING — VOC-10 진행 중`)와 모든 CHECK에 붙는 `CHECK 독립성`(빼 둔 만든 팀, 누가 만들었는지 모르면 `확인 못 함 — …`). 쉬는 AIRCRAFT에 주는 가산점은 없다.
+
+#### 5.3.1 파일 겹침 (ATC-71)
+
+같은 AIRPORT에서 같은 파일을 고칠 두 FLIGHT를 한꺼번에 시작하지 않도록 DISPATCH가 겹침을 본다.
+
+- **날고 있는 FLIGHT의 파일**(읽기 전용, AIRPORT별). STAND에 활성 점유가 있는 FLIGHT(AIRBORNE·HOLDING)는 기본 브랜치와의 merge-base부터 HEAD까지 `git diff --name-only` 경로(head·merge-base별 캐시)와 커밋하지 않은 변경·새 파일(`git status`, DISPATCH 주기마다)을 본다. 열린 PR은 `gh`로 읽은 파일 목록(head SHA별 캐시, 새 head마다 한 번). git은 쓰지 않는다: fetch·checkout 없이 `GIT_OPTIONAL_LOCKS=0`. 둘 다 DISPATCH 주기에만 읽고 스냅샷마다 읽지 않는다. 서버를 켠 첫 바퀴는 이 값 없이 계획한다.
+- **예측 파일**(순수 함수, 모델 호출 없음). FLIGHT 본문과 연결된 FLIGHT(related·blocks·blockedBy) 본문의 백틱 저장소 경로와 glob: `server/fuel-*.ts`, `docs/dispatch.md`, `web/src/{a,b}.tsx`, `server/sources` 같은 디렉터리. 펜스 코드 블록은 명령·예시가 많아 건너뛰고, URL·명령·`and/or` 같은 낱말도 뺀다. 예측한 경로마다 출처(`본문`, `ATC-70 본문`)가 보인다. 본문에 경로가 없는 FLIGHT는 겹침이 없다고 본다. 본문은 주기당 최대 8건만 Linear에서 읽고 30분(이슈가 바뀌면 그 전에) 캐시한다.
+- **점수.** 겹침은 예측 ∩ 날고 있는 파일이고 날고 있는 FLIGHT마다 센다. 값은 `min(파일 수, 3) × WAKE(이 FLIGHT) × WAKE(잡은 FLIGHT)`(L 0.5 · M 1 · H 2)라 양쪽 어느 쪽이든 큰 FLIGHT가 낄수록 무겁다. 설명에 파일, 잡은 FLIGHT와 그 팀, 출처(`본문 → STAND`, `본문 → PR #12`)가 보인다.
+- **같은 팀.** 이 AIRCRAFT의 팀이 날고 있는 FLIGHT와의 겹침은 충돌이 아니다. 겹치는 파일을 만지는 팀이 그 팀뿐이면 그 짝에 `이어서 하면 충돌 없음`(×1)을 준다. 그 팀이 달리 배정 가능할 때만 짝이 있다.
+- **HOLD 스위치**(`dispatch.json`의 `overlap.hold`, 기본 `false`. `overlap.holdFiles`, 기본 2). `holdFiles`개 이상 겹치고 WAKE 곱이 1 이상(L끼리만은 아님)이면 무거운 겹침이다. 스위치가 켜져 있으면 그 FLIGHT는 `파일 겹침 — <FLIGHT>가 머지될 때까지`로 HOLD_DEPARTURE 된다. 잡은 FLIGHT의 STAND와 PR이 없어지면 다시 후보다. 그 파일을 만지는 팀이 그 팀뿐이고 그 팀이 날 수 있으면 HOLD하지 않는다. 꺼져 있으면 계획이 HOLD할 것을 목록(`overlapHolds`, DISPATCH 탭에 `shadow —`)으로만 보이고 요소 설명에도 적는다.
+- **지표.** 열린 PR이 `DIRTY`가 되면 ATFM이 `behind`처럼 `dirty` 기록을 남기고, 그때 파일이 겹치던 다른 열린 PR을 함께 적는다. ATFM 데이터 줄 `DIRTY(겹침 예측 가능)`은 7일 동안 `seen/dirty`: `DIRTY`가 된 PR 중 파일을 나누는 PR이 열려 있던 수/전체.
 
 ### 5.4 DISPATCH 세션의 검토
 

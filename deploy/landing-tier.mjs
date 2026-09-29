@@ -34,6 +34,7 @@ export const READ_ONLY = [
   ["server/index.ts", "rev-parse HEAD만 읽음"],
   ["server/airports.ts", "rev-list·rev-parse만 읽음"],
   ["server/rules-state.ts", "log만 읽음"],
+  ["server/overlap-run.ts", "git merge-base·diff·status·rev-parse만 읽음(파일 겹침, ATC-71)"],
   ["server/sources/git.ts", "worktree list·status·log·for-each-ref만 읽음"],
   ["server/sources/github.ts", "gh pr list·view·diff와 GET api만 읽음"],
   ["server/standfree-run.ts", "gh api GET(리뷰·코멘트·파일)만 읽음"],

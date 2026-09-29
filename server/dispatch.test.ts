@@ -994,3 +994,62 @@ test("AIRCRAFT health(ATC-86): cut LIMIT는 LIMIT처럼 배정하지 않고, RES
     ["TEAM_B:false:HOLD · LIMIT (cut 11:00Z) until 12:30Z — LIMIT 원문", "TEAM_C:false:HOLD · LIMIT (cut 11:00Z) — LIMIT 원문", "TEAM_D:true:PARKED", "TEAM_E:true:PARKED"],
   );
 });
+
+// ── 파일 겹침(ATC-71) ──
+const holderOf = (flight: string, paths: string[], team: string | null = "TEAM_A", wake: "L" | "M" | "H" = "M") => ({
+  flight, team, airport: "VCDO", wake, files: new Map(paths.map((p) => [p, "STAND"])),
+});
+const bodies = (o: Record<string, string>) => new Map(Object.entries(o));
+const factor = (p: ReturnType<typeof planDispatch>, flight: string, id: string) => p.assign.find((a) => a.flight === flight)?.factors.find((f) => f.id === id);
+
+test("파일 겹침: 날고 있는 FLIGHT가 고치는 파일을 곧 고칠 FLIGHT는 점수가 깎이고, 상세에 파일·FLIGHT·팀이 보인다", () => {
+  const s = snap({ sessions: [session("b", "TEAM_B")], tickets: [ticket("VOC-41"), ticket("VOC-42")] });
+  const files = { holders: [holderOf("VOC-40", ["server/a.ts", "server/b.ts"])], bodies: bodies({ "VOC-41": "`server/a.ts` `server/b.ts`을 고친다" }) };
+  const p = planDispatch(s, new Map(), cfg(), NOW, undefined, undefined, undefined, undefined, undefined, files);
+  assert.deepEqual(p.assign.map((a) => a.flight), ["VOC-42"]); // 팀 하나에 FLIGHT 하나: 겹치지 않는 쪽이 먼저
+  const off = planDispatch(snap({ sessions: [session("b", "TEAM_B")], tickets: [ticket("VOC-41")] }), new Map(), cfg(), NOW, undefined, undefined, undefined, undefined, undefined, files);
+  const f = factor(off, "VOC-41", "overlap")!;
+  assert.equal(f.value, 2);
+  assert.equal(f.points, -2);
+  assert.match(f.detail, /VOC-40\(TEAM_A\)가 고치는 server\/a\.ts, server\/b\.ts \(본문 → STAND\)/);
+});
+
+test("파일 겹침 WAKE 가중: 큰 FLIGHT일수록 더 깎인다", () => {
+  const files = { holders: [holderOf("VOC-40", ["server/a.ts"])], bodies: bodies({ "VOC-41": "`server/a.ts`" }) };
+  const at = (labels: string[]) => factor(planDispatch(snap({ sessions: [session("b", "TEAM_B")], tickets: [ticket("VOC-41", { labels })] }), new Map(), cfg(), NOW, undefined, undefined, undefined, undefined, undefined, files), "VOC-41", "overlap")!.points;
+  assert.equal(at(["wake:M"]), -1);
+  assert.equal(at(["wake:H"]), -2);
+});
+
+test("파일 겹침 HOLD 스위치: 꺼져 있으면 보여 주기만, 켜면 머지될 때까지 HOLD", () => {
+  const s = snap({ sessions: [session("b", "TEAM_B")], tickets: [ticket("VOC-41")] });
+  const files = { holders: [holderOf("VOC-40", ["server/a.ts", "server/b.ts"])], bodies: bodies({ "VOC-41": "`server/a.ts` `server/b.ts`" }) };
+  const run = (c: DispatchConfig) => planDispatch(s, new Map(), c, NOW, undefined, undefined, undefined, undefined, undefined, files);
+  const off = run(cfg());
+  assert.deepEqual(off.assign.map((a) => a.flight), ["VOC-41"]);
+  assert.deepEqual(off.overlapHolds, [{ flight: "VOC-41", blockedBy: ["VOC-40"], why: "파일 겹침 — VOC-40가 머지될 때까지", enforced: false }]);
+  assert.match(factor(off, "VOC-41", "overlap")!.detail, /HOLD 스위치가 꺼져 있어/);
+  assert.deepEqual(off.hold, []);
+  const on = run(cfg({ overlap: { hold: true, holdFiles: 2 } }));
+  assert.deepEqual(on.assign, []);
+  assert.deepEqual(on.hold, [{ flight: "VOC-41", blockedBy: ["VOC-40"], why: "파일 겹침 — VOC-40가 머지될 때까지" }]);
+  // 파일 하나만 겹치면 무겁지 않아 HOLD하지 않는다
+  const one = planDispatch(s, new Map(), cfg({ overlap: { hold: true, holdFiles: 2 } }), NOW, undefined, undefined, undefined, undefined, undefined, { ...files, bodies: bodies({ "VOC-41": "`server/a.ts`" }) });
+  assert.deepEqual(one.assign.map((a) => a.flight), ["VOC-41"]);
+});
+
+test("같은 팀 이어가기: 그 파일을 만지는 팀이 그 팀뿐이면 그 팀에 보너스, 다른 팀은 겹침으로 깎이고 HOLD는 걸지 않는다", () => {
+  const s = snap({ sessions: [session("a", "TEAM_A"), session("b", "TEAM_B")], tickets: [ticket("VOC-41")] });
+  const files = { holders: [holderOf("VOC-40", ["server/a.ts", "server/b.ts"])], bodies: bodies({ "VOC-41": "`server/a.ts` `server/b.ts`" }) };
+  const p = planDispatch(s, new Map(), cfg({ overlap: { hold: true, holdFiles: 2 } }), NOW, undefined, undefined, undefined, undefined, undefined, files);
+  assert.deepEqual(p.assign.map((a) => `${a.flight}→${a.aircraftName}`), ["VOC-41→TEAM_A"]);
+  const same = factor(p, "VOC-41", "overlapSame")!;
+  assert.equal(same.points, 1);
+  assert.match(same.detail, /이어 함/);
+  assert.equal(factor(p, "VOC-41", "overlap")!.value, 0);
+  assert.deepEqual(p.hold, []);
+  // 다른 팀도 그 파일을 만지면 보너스가 없다
+  const both = { ...files, holders: [...files.holders, holderOf("VOC-43", ["server/a.ts"], "TEAM_C")] };
+  const q = planDispatch(s, new Map(), cfg(), NOW, undefined, undefined, undefined, undefined, undefined, both);
+  assert.equal(factor(q, "VOC-41", "overlapSame"), undefined);
+});

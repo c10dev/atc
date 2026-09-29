@@ -130,12 +130,25 @@ When slots are full, nothing is proposed instead of an `ASSIGN` (extended to gro
 | FLIGHTs it unblocks | Number of Todo items this FLIGHT blocks | ×2 |
 | Team fit | How many times this AIRCRAFT flew FLIGHTs in the same project or related ones (FLIGHT RECORDER, claim history) | ×1 |
 | Conflict risk | Number of currently AIRBORNE FLIGHTs linked by related | ×−2 |
+| File overlap | Files the FLIGHT is predicted to edit that a FLIGHT in flight at the same AIRPORT already changes, WAKE-scaled (5.3.1). `weights.overlap` | ×−1 |
+| Continue the same team | Only the asked AIRCRAFT's own team touches those files (5.3.1). `weights.sameTeam` | ×1 |
 | ROUTE | The FLIGHT's project is on the AIRCRAFT's routes ([fleet.md](fleet.md) 5) | ×1 |
 | Active WAYPOINT | The FLIGHT is an issue of its ROUTE's active WAYPOINT (the first unpassed Linear milestone, [routes.md](routes.md) step 8); the detail names the ROUTE and WAYPOINT. `weights.waypoint` in `dispatch.json` | ×1 |
 
 Each proposal shows the per-factor scores as they are ("why this flight for this team"). The SUPERVISOR changes the weights in a settings file.
 
 Two marks add no points and only explain the pair: `STAND 없이` (a SURVEY or CHECK given outside the STAND rule, with the AIRCRAFT's state, e.g. `HOLDING — VOC-10 진행 중`), and `CHECK 독립성` on every CHECK (the builder that was left out, or `확인 못 함 — …` when atc could not tell who built it). There is no bonus for idle AIRCRAFT.
+
+#### 5.3.1 File overlap (ATC-71)
+
+DISPATCH avoids starting two FLIGHTs that edit the same files at one AIRPORT.
+
+- **Files in flight** (read-only, per AIRPORT). For each FLIGHT whose STAND has an active claim (AIRBORNE or HOLDING): the paths of `git diff --name-only` from the merge-base with the default branch to HEAD (cached per head and merge-base), plus uncommitted and untracked paths (`git status`, read on every DISPATCH cycle). For each open PR: its file list from `gh`, cached per head SHA (one call per new head). Git never writes: no fetch, no checkout, `GIT_OPTIONAL_LOCKS=0`. Both are read on the DISPATCH cycle only, never per snapshot; the first cycle after a start plans without them.
+- **Predicted files** (pure, no model call). Backticked repository paths and globs in the FLIGHT's body and in its linked FLIGHTs' bodies (related, blocks, blockedBy): `server/fuel-*.ts`, `docs/dispatch.md`, `web/src/{a,b}.tsx`, a directory such as `server/sources`. Fenced code blocks are skipped (they hold commands and examples), so are URLs, commands and words like `and/or`. Every predicted path shows where it came from (`본문` or `ATC-70 본문`). A FLIGHT whose body names no path is not predicted to overlap with anything. Bodies are read from Linear at most 8 per cycle and cached 30 minutes or until the issue changes.
+- **Score.** Overlap is predicted ∩ in-flight, per holding FLIGHT. The factor value is `min(files, 3) × WAKE(this) × WAKE(holder)` (L 0.5 · M 1 · H 2), so a heavier FLIGHT on either side weighs more. The detail names the files, the holding FLIGHT and its team, and where each came from (`본문 → STAND` or `본문 → PR #12`).
+- **Same team.** Overlap with a FLIGHT the asked AIRCRAFT's own team is flying is not a conflict. When that team is the only one touching the overlapping files, the pair gets `이어서 하면 충돌 없음` (×1). The pair only exists when that team is otherwise assignable.
+- **HOLD switch** (`dispatch.json` `overlap.hold`, default `false`; `overlap.holdFiles`, default 2). An overlap of at least `holdFiles` files where the WAKE product is at least 1 (not L against L) is heavy. With the switch on, the FLIGHT is held as HOLD_DEPARTURE with `파일 겹침 — <FLIGHT>가 머지될 때까지`; it comes back when the holding FLIGHT's STAND and PR are gone. A same-team-only overlap on a qualified team is not held. With the switch off the plan lists what it would hold (`overlapHolds`, shown as `shadow —` on the DISPATCH tab) and the factor detail says so.
+- **Metric.** ATFM records a `dirty` operation when an open PR turns `DIRTY` (like `behind`), with the other open PRs that shared files with it at that moment. The ATFM data line `DIRTY(겹침 예측 가능)` is `seen/dirty` over 7 days: PRs that went `DIRTY` while a PR sharing files was open, out of all that went `DIRTY`.
 
 ### 5.4 DISPATCH session review
 

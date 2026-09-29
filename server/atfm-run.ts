@@ -196,6 +196,16 @@ function heavy(s: Snapshot, st: RunState, now: number): boolean {
       }
       const k = `${repo}#${p.number}`;
       nextBehind[k] = p.mergeStateStatus;
+      // DIRTY 전이(ATC-71): 그때 파일이 겹치는 다른 열린 PR이 있었나 — DISPATCH가 볼 수 있었던 겹침의 지표
+      if (p.mergeStateStatus === "DIRTY" && k in st.behind && st.behind[k] !== "DIRTY") {
+        const mine = new Set(p.changed ?? []);
+        const overlaps = pulls
+          .filter((o) => o.number !== p.number && o.changed)
+          .map((o) => ({ pr: o.number, files: o.changed!.filter((f) => mine.has(f)).length }))
+          .filter((o) => o.files > 0);
+        record(atfmLine("dirty", { airport: codeOf(repo), data: { pr: p.number, was: st.behind[k], overlaps } }));
+        dirty = true;
+      }
       if (p.mergeStateStatus === "BEHIND" && k in st.behind && st.behind[k] !== "BEHIND") {
         record(atfmLine("behind", { airport: codeOf(repo), data: { pr: p.number, was: st.behind[k] } }));
         dirty = true;
@@ -396,6 +406,11 @@ export function atfmView(s: Snapshot, cfg: AtfmConfig = loadAtfm(), now = Date.n
     const n = week.filter((r) => r.op === "behind" && r.airport === code).length;
     return { airport: code, repo, merges, behind: n, perMerge: merges ? Math.round((n / merges) * 100) / 100 : null };
   });
+  // 7일 동안 DIRTY가 된 PR 수와, 그중 그때 파일이 겹치는 열린 PR이 있던 수(파일 겹침 지표, ATC-71)
+  const dirtyWeek = airports.map((code) => {
+    const rs = week.filter((r) => r.op === "dirty" && r.airport === code);
+    return { airport: code, dirty: rs.length, seen: rs.filter((r) => Array.isArray(r.data?.overlaps) && (r.data!.overlaps as unknown[]).length > 0).length };
+  });
   // 머지 슬롯 켜기 판단(5장 Turn-on): 7일 동안 AIRPORT별 LAND, 동시에 살아 있던 LAND, LAND → 머지 중앙값, 시간 초과
   const repoOfStand = new Map(s.workspaces.map((w) => [w.path, w.repo]));
   const lands = landFiguresOf(
@@ -415,7 +430,7 @@ export function atfmView(s: Snapshot, cfg: AtfmConfig = loadAtfm(), now = Date.n
     slots,
     auto: { mode: cfg.autoAssign, open: auto.map(({ id, flight, aircraft, eligible, failed }) => ({ id, flight, aircraft, eligible, failed })), precision: autoPrecision, turnOn: autoTurnOn },
     s3: { mode: cfg.s3, open: s3.map(({ id, flight, eligible, failed }) => ({ id, flight, aircraft: null, eligible, failed })), precision: s3Precision, turnOn: s3TurnOn },
-    data: { ci, behind: behind.map(({ repo: _r, ...x }) => x), undone, lands },
+    data: { ci, behind: behind.map(({ repo: _r, ...x }) => x), dirty: dirtyWeek, undone, lands },
     caps: AUTO_CAP,
     thresholds: THRESHOLDS,
   };
