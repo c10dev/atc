@@ -28,6 +28,7 @@ export interface AlertPrefs {
   sound: boolean; // 소리(알림과 따로)
   sounds: Record<SoundName, boolean>; // 소리별 켜기. DONE은 기본 꺼짐
   volume: number; // 0..1
+  voice: { on: boolean; radio: number }; // 음성 콜아웃(ATC-140): 톤과 따로 켠다(기본 꺼짐). radio 0..1 = 깨끗한 음성부터 완전한 무전까지
   quiet: { on: boolean; from: string; to: string }; // 조용한 시간(현지). "HH:MM"
 }
 
@@ -37,6 +38,7 @@ export const DEFAULT_PREFS: AlertPrefs = {
   sound: false,
   sounds: { warning: true, caution: true, call: true, done: false },
   volume: 0.6,
+  voice: { on: false, radio: 0.7 },
   quiet: { on: false, from: "22:00", to: "08:00" },
 };
 
@@ -51,6 +53,7 @@ export function parsePrefs(raw: unknown): AlertPrefs {
   const g = obj(o.groups);
   const s = obj(o.sounds);
   const q = obj(o.quiet);
+  const v = obj(o.voice);
   const vol = typeof o.volume === "number" && Number.isFinite(o.volume) ? Math.min(1, Math.max(0, o.volume)) : d.volume;
   return {
     notify: bool(o.notify, d.notify),
@@ -58,6 +61,7 @@ export function parsePrefs(raw: unknown): AlertPrefs {
     sound: bool(o.sound, d.sound),
     sounds: Object.fromEntries(Object.entries(d.sounds).map(([k, v]) => [k, bool(s[k], v)])) as AlertPrefs["sounds"],
     volume: vol,
+    voice: { on: bool(v.on, d.voice.on), radio: typeof v.radio === "number" && Number.isFinite(v.radio) ? Math.min(1, Math.max(0, v.radio)) : d.voice.radio },
     quiet: { on: bool(q.on, d.quiet.on), from: typeof q.from === "string" && HHMM.test(q.from) ? q.from : d.quiet.from, to: typeof q.to === "string" && HHMM.test(q.to) ? q.to : d.quiet.to },
   };
 }
@@ -146,8 +150,9 @@ export interface SoundDecision {
   repeat: boolean; // WARNING은 ACK할 때까지 되풀이
   interrupt: boolean; // 지금 울리는 낮은 소리를 끊는다
   keys: string[]; // 이 결정에 든 key(울린 시각을 적는다)
+  voiceKey: string | null; // 톤 뒤에 음성으로 읽을 알림 key(ATC-140). WARNING·CALL의 가장 높은 것 하나, 음성이 꺼져 있거나 CAUTION·DONE이면 null
 }
-const NONE: SoundDecision = { sound: null, repeat: false, interrupt: false, keys: [] };
+const NONE: SoundDecision = { sound: null, repeat: false, interrupt: false, keys: [], voiceKey: null };
 
 // changes: 2초 안에 함께 온 알림들(이미 한 번만 알림을 통과한 것). 소리 하나만 고른다
 export function soundFor(changes: readonly SupervisorAlert[], prefs: AlertPrefs, now: number, ctx: SoundContext): SoundDecision {
@@ -160,5 +165,7 @@ export function soundFor(changes: readonly SupervisorAlert[], prefs: AlertPrefs,
   const top = eligible.reduce((m, x) => (SOUND_RANK[x.s] > SOUND_RANK[m.s] ? x : m));
   // 한 번에 하나: 울리는 소리가 같거나 높으면 새 소리는 내지 않는다. 더 높으면 끊는다
   if (ctx.playing && SOUND_RANK[top.s] <= SOUND_RANK[ctx.playing]) return NONE;
-  return { sound: top.s, repeat: top.s === "warning", interrupt: ctx.playing !== null, keys: eligible.map((x) => x.a.key) };
+  // 음성은 WARNING·CALL만, 한 번에 가장 높은 알림 하나(묶인 알림 여럿을 읽지 않는다)
+  const voiceKey = prefs.voice.on && (top.s === "warning" || top.s === "call") ? top.a.key : null;
+  return { sound: top.s, repeat: top.s === "warning", interrupt: ctx.playing !== null, keys: eligible.map((x) => x.a.key), voiceKey };
 }

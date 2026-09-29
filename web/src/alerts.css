@@ -143,6 +143,18 @@
 .alert-range input {
   flex: 1;
 }
+/* 음성 콜아웃(ATC-140): 목소리 고르기 */
+.alert-range select {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
 .alert-quiet {
   display: flex;
   align-items: center;

@@ -1,12 +1,52 @@
-import { type ReactNode, useState } from "react";
-import { disableSound, enableNotify, enableSound, previewSound, resumeSound, stopSound, updatePrefs, useAlerts } from "./alerts-runtime.ts";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
+import type { VoiceStatus } from "../../server/tts.ts";
+import { disableSound, enableNotify, enableSound, previewSound, previewVoice, resumeSound, stopSound, updatePrefs, useAlerts } from "./alerts-runtime.ts";
+import type { Save } from "./SettingsServer.tsx";
 import { ALERT_GROUPS, GROUP_LABEL, SOUND_LABEL, SOUND_NAMES } from "./supervisor-alerts.ts";
 import "./alerts.css";
 
 // 설정 창의 알림 탭(ATC-87). 알림(브라우저 Notification)과 소리(Web Audio)는 각자 따로 켜고, 둘 다 이 브라우저에만 저장되며 기본은 꺼짐이다.
-export function AlertsSettings() {
+// 음성 콜아웃(ATC-140): 서버가 로컬 TTS 엔진으로 만든 WAV를 무전 체인으로 들려준다. 켜기·무전 효과는 이 브라우저에, 엔진·목소리는 서버 설정(.env.local)에 둔다
+function useVoiceStatus() {
+  const [status, setStatus] = useState<VoiceStatus | null | "error">(null);
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch("/api/voice/status");
+      setStatus(r.ok ? ((await r.json()) as VoiceStatus) : "error");
+    } catch {
+      setStatus("error");
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  return { status, reload: load };
+}
+
+export function AlertsSettings({ save }: { save: Save }) {
   const { prefs, permission, audio } = useAlerts();
   const [msg, setMsg] = useState<string | null>(null);
+  const { status: voice, reload: reloadVoice } = useVoiceStatus();
+  const [voiceMsg, setVoiceMsg] = useState<string | null>(null);
+  const noEngine = voice !== null && (voice === "error" || !voice.available);
+
+  const pickVoice = async (name: string) => {
+    setVoiceMsg(null);
+    const r = await save({ ttsVoice: name });
+    if (!r.ok) setVoiceMsg(r.error);
+    await reloadVoice();
+  };
+  const pickEngine = async (engine: string) => {
+    setVoiceMsg(null);
+    const r = await save({ ttsEngine: engine });
+    if (!r.ok) setVoiceMsg(r.error);
+    await reloadVoice();
+  };
+  const listen = async () => {
+    setVoiceMsg(null);
+    const r = await previewVoice(voice && voice !== "error" ? (voice.selected ?? undefined) : undefined);
+    if (!r.ok) setVoiceMsg(`미리 듣기 실패: ${r.error}`);
+  };
 
   const toggleNotify = async (on: boolean) => {
     setMsg(null);
@@ -94,7 +134,73 @@ export function AlertsSettings() {
         </fieldset>
       </Section>
 
-      <p className="settings-foot">이 브라우저에만 저장됩니다.</p>
+      <Section
+        code="VOICE"
+        label="음성 콜아웃"
+        hint="WARNING과 CALL은 톤 뒤에 짧은 영어 콜아웃을 한 번 읽습니다(예: “Supervisor, GOLF, standing by for approval.”). 목소리는 이 컴퓨터의 엔진이 만들고 밖으로 나가지 않습니다. 소리가 켜져 있어야 들립니다. CAUTION과 DONE은 톤만 냅니다."
+      >
+        <Segmented
+          label="음성 콜아웃"
+          value={prefs.voice.on}
+          options={[
+            [true, "켜기"],
+            [false, "끄기"],
+          ]}
+          onChange={(on) => updatePrefs((p) => ({ ...p, voice: { ...p.voice, on } }))}
+        />
+        {voice !== null && voice !== "error" && (
+          <label className="alert-range">
+            엔진
+            <select value={voice.engine} onChange={(e) => void pickEngine(e.target.value)} aria-label="엔진">
+              {[...new Set(["none", "piper", voice.engine])].map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {noEngine && (
+          <p className="settings-hint alert-msg" data-testid="voice-none">
+            <b>TTS 엔진 없음</b>
+            {voice !== "error" && voice.error ? ` — ${voice.error.message}` : ""}. 설치 방법은{" "}
+            <a href="#docs/voice">
+              음성 콜아웃 안내
+            </a>
+            를 보세요.
+          </p>
+        )}
+        {voice !== null && voice !== "error" && voice.available && (
+          <label className="alert-range">
+            목소리
+            <select value={voice.selected ?? ""} onChange={(e) => void pickVoice(e.target.value)} aria-label="목소리">
+              {voice.voices.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            <button className="alert-preview" onClick={() => void listen()} aria-label="목소리 미리 듣기">
+              미리 듣기
+            </button>
+          </label>
+        )}
+        <label className="alert-range">
+          무전 효과
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(prefs.voice.radio * 100)}
+            onChange={(e) => updatePrefs((p) => ({ ...p, voice: { ...p.voice, radio: Number(e.target.value) / 100 } }))}
+            aria-label="무전 효과"
+          />
+          <span className="mono">{Math.round(prefs.voice.radio * 100)}%</span>
+        </label>
+        {voiceMsg && <p className="settings-hint alert-msg">{voiceMsg}</p>}
+      </Section>
+
+      <p className="settings-foot">켜기·무전 효과는 이 브라우저에만 저장됩니다. 엔진과 목소리는 서버 설정입니다.</p>
     </>
   );
 }

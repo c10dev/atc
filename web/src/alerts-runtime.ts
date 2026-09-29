@@ -135,7 +135,9 @@ function flushBurst() {
   const d = soundFor(batch, view.prefs, now, { lastSounded, playing: player.playing() });
   if (!d.sound) return;
   for (const k of d.keys) lastSounded[k] = now;
-  player.play(d.sound, view.prefs.volume, d.repeat);
+  // 음성(ATC-140): 서버가 그 key의 알림 문구로 만든 WAV. 화면은 key만 보낸다
+  const voice = d.voiceKey ? { url: `/api/voice/alert/${encodeURIComponent(d.voiceKey)}.wav`, radio: view.prefs.voice.radio } : undefined;
+  player.play(d.sound, view.prefs.volume, d.repeat, voice);
 }
 
 // ── 확인(ACK): WARNING 되풀이를 그친다. 다른 탭에도 알린다 ──
@@ -197,6 +199,12 @@ export const resumeSound = async () => {
   emit();
 };
 export const previewSound = (sound: Parameters<typeof player.play>[0]) => player.play(sound, view.prefs.volume, false);
+// 목소리 미리 듣기(ATC-140): 고정 예시 문구를 무전 체인으로. 켜는 클릭 안에서 불러 AudioContext를 푼다
+export async function previewVoice(voice?: string) {
+  await player.unlock();
+  const url = `/api/voice/preview.wav${voice ? `?voice=${encodeURIComponent(voice)}` : ""}`;
+  return player.speak({ url, radio: view.prefs.voice.radio }, view.prefs.volume);
+}
 export const stopSound = () => player.stop();
 
 const subscribe = (fn: () => void) => {
