@@ -520,8 +520,8 @@ const MCC_WARN = {
 // 판정 계열 모드마다 한 줄(ATC-36). replay·shadow는 티켓 제목과 허용한 칸이 TypeSafe로 나간다(데이터 반출)
 const JUDGE_WARN = {
   off: "꺼짐(기본): 아무것도 읽거나 보내지 않는다.",
-  replay: "⚠ SUPERVISOR가 판정한 지난 CLASSIFY 초안과 DISPATCH ASSIGN을 합쳐 1분에 3건씩 다시 판정한다. 제목과 목표·수정 허용 범위·완료 기준이 TypeSafe로 나간다(rating:SEC·Risk:* 티켓은 제목만). ASSIGN은 그 AIRCRAFT의 지난 atc FLIGHT 3개의 제목도 나간다.",
-  shadow: "⚠ 새 CLASSIFY 초안과 열린 DISPATCH ASSIGN마다 판정해 둔다(결과는 SUPERVISOR 판정 뒤에만 보임). 반출 범위는 replay와 같다.",
+  replay: "⚠ SUPERVISOR가 판정한 지난 CLASSIFY 초안과 DISPATCH ASSIGN을 합쳐 1분에 3건씩 다시 판정한다. 제목과 목표·수정 허용 범위·완료 기준이 TypeSafe로 나간다(rating:SEC·Risk:* 티켓은 제목만). ASSIGN은 그 AIRCRAFT의 지난 atc FLIGHT 3개의 제목도 나가고, atc AIRCRAFT의 턴이 끝날 때는 CAPTAIN의 마지막 메시지(경로·URL을 가리고 최대 1,500자)가 나간다.",
+  shadow: "⚠ 새 CLASSIFY 초안, 열린 DISPATCH ASSIGN, 끝난 atc AIRCRAFT 턴마다 판정해 둔다(결과는 SUPERVISOR 판정 뒤에만 보임). 반출 범위는 replay와 같다.",
 } as const;
 
 // AUTOLAND GROUND STOP: main의 post-merge Application Check가 빨가 두 모드가 멈춤. SUPERVISOR가 확인하고 푼다

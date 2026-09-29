@@ -202,3 +202,25 @@
   font-size: var(--text-2xs);
   color: var(--muted);
 }
+
+/* REPORT 판정 줄(ATC-89): 분류와 맞음·틀림 표시 */
+.fl-report {
+  margin: var(--space-1-5) 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.fl-report-mark {
+  margin-right: var(--space-1);
+  color: var(--faint);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.08em;
+}
+.fl-report-btns {
+  display: inline-flex;
+  gap: var(--space-1);
+  margin-left: var(--space-1);
+}
+.fl-report-btns .fl-btn.is-on {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}

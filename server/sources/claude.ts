@@ -9,6 +9,7 @@ import { type EndedSession, normalEndOf } from "../restarting.ts";
 import { type Fact, factsOf, type Health, type HealthConfig, healthOf, mergeHealth } from "../health.ts";
 import { sessionProcOf } from "../session-proc.ts";
 import { readJob } from "../job-state.ts";
+import { lastMessageOf } from "../judges/report.ts";
 
 interface SessionFile {
   pid: number;
@@ -330,6 +331,28 @@ export function healthOfSession(s: SessionFile, status: Session["status"], now: 
   const pull = healthOf(hit.facts, { status, lastWriteAt: st.mtimeMs }, now, cfg);
   // push가 대화 기록의 마지막 사실보다 새로우면 push가 이긴다(ATC-47)
   return mergeHealth(readPushRecord(s.sessionId), pull, hit.facts);
+}
+
+// 턴이 끝난 세션의 마지막 CAPTAIN 메시지(ATC-89 REPORT 판정). 대화 기록 끝만 읽고 저장하지 않는다 — 부르는 쪽이 ATCC 확인을 먼저 한다.
+const REPORT_TAIL = 128 * 1024;
+export function lastMessageOfSession(cwd: string, sessionId: string): { text: string; at: number } | null {
+  const path = `${sessionDir(cwd, sessionId)}.jsonl`;
+  let st;
+  try {
+    st = statSync(path);
+  } catch {
+    return null;
+  }
+  const fd = openSync(path, "r");
+  try {
+    const len = Math.min(st.size, REPORT_TAIL);
+    const buf = Buffer.alloc(len);
+    readSync(fd, buf, 0, len, st.size - len);
+    const text = buf.toString("utf8");
+    return lastMessageOf(len < st.size ? text.slice(text.indexOf("\n") + 1) : text);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 // 세션 파일이 없는 대화 기록 중 maxAgeMs 안에 쓴 것(ATC-91 RESTARTING). 데스크톱 /clear는 세션을 끝내고 새 id를 받는데, 새 대화 기록은

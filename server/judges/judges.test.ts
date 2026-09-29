@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -236,7 +236,7 @@ test("스위치는 SUPERVISOR만: 이 화면 Origin이 없으면 403, 관제 CLI
 // ---- DISPATCH(ATC-88) ----
 const { dispatchJudgmentOf, dispatchQuestions, dispatchStateOf, dispatchStatsOf, recentEntriesOf, sentOf, levelOf } = await import("./dispatch.ts");
 const { dispatchMarksOf } = await import("./store.ts");
-const { dispatchTargetsOf, interleave, judgeDispatchOp } = await import("./run.ts");
+const { dispatchTargetsOf, judgeDispatchOp, takeTurns } = await import("./run.ts");
 const { fold: foldProposals, judgesBriefOf } = await import("../proposals.ts");
 
 const dAnswers = (ready: number, prereq: number, score?: number) => ({
@@ -305,9 +305,10 @@ test("DISPATCH 대상: shadow는 열린 ASSIGN(HOLD 포함), replay는 SUPERVISO
   assert.deepEqual(dispatchTargetsOf(ps, marked, "jev", "shadow", new Set(["D-0004"])), []);
 });
 
-test("한도는 CLASSIFY와 DISPATCH가 번갈아 나눠 쓴다", () => {
-  assert.deepEqual(interleave(["s1", "s2", "s3"], ["d1", "d2", "d3"], 3).map((x) => ("a" in x ? x.a : x.b)), ["s1", "d1", "s2"]);
-  assert.deepEqual(interleave([], ["d1", "d2", "d3", "d4"], 3).map((x) => ("a" in x ? x.a : x.b)), ["d1", "d2", "d3"]);
+test("한도는 CLASSIFY·DISPATCH·REPORT가 번갈아 나눠 쓴다", () => {
+  assert.deepEqual(takeTurns([["s1", "s2", "s3"], ["d1", "d2", "d3"], ["r1"]], 3), ["s1", "d1", "r1"]);
+  assert.deepEqual(takeTurns([[], ["d1", "d2", "d3", "d4"], []], 3), ["d1", "d2", "d3"]);
+  assert.deepEqual(takeTurns([["s1"], ["d1"]], 5), ["s1", "d1"]);
 });
 
 test("stub으로 ASSIGN 하나: 최근 FLIGHT 제목을 보내고, 보낸 것·안 보낸 것을 기록한다. SEC는 제목만", async () => {
@@ -369,4 +370,131 @@ test("쏠림 방지: mark는 닫힌 제안(RECENT)에만 싣는다. 열린 제�
   assert.equal(view.stats.judged, 2);
   assert.equal(JSON.stringify(ps), before);
   assert.ok(!existsSync(join(STATE, "proposals.jsonl"))); // 판정 계열은 proposals.jsonl에 쓰지 않는다
+});
+
+// ---- REPORT(ATC-89) ----
+const { lastMessageOf, maskText, reportCandidatesOf, reportJudgmentOf, reportQuestions, reportRateOf, needsDecision, MESSAGE_MAX, REPORT_CLASSES } = await import("./report.ts");
+const { loadReportThreshold, loadReportViews, markReport, reportViewsOf, appendJudgeLines } = await import("./store.ts");
+const { judgeReportOp, reportTargetsOf } = await import("./run.ts");
+
+const rAnswers = (choice: string, p: Record<string, number> = {}) => ({
+  report_class: { type: "choice", choice, probabilities: { done: 0, decision: 0, stopped: 0, ready: 0, unknown: 0, [choice]: 0.9, ...p }, confidence: 0.8 },
+});
+const tl = (type: string, content: unknown, t: string, extra: Record<string, unknown> = {}) => JSON.stringify({ type, timestamp: t, message: { content }, ...extra });
+
+test("REPORT 대상: ATCC 저장소의 idle AIRCRAFT만. vocado·control·busy 세션은 후보가 아니다(읽기 전에 거른다)", () => {
+  const s = (over: Record<string, unknown>) => ({ id: "s1", agent: "claude", name: "TEAM_J", status: "idle", repo: "/p/atc", cwd: "/p/atc", lastActiveAt: "2026-09-29T00:00:00Z", ...over }) as Parameters<typeof reportCandidatesOf>[0][number];
+  const airports = [{ repo: "/p/atc", code: "ATCC" }, { repo: "/p/vocado", code: "VCDO" }];
+  const ids = (xs: ReturnType<typeof reportCandidatesOf>) => xs.map((x) => x.id);
+  assert.deepEqual(ids(reportCandidatesOf([s({})], airports, "^TEAM_")), ["s1"]);
+  assert.deepEqual(ids(reportCandidatesOf([s({ repo: "/p/vocado", cwd: "/p/vocado" })], airports, "^TEAM_")), []);
+  assert.deepEqual(ids(reportCandidatesOf([s({ repo: null })], airports, "^TEAM_")), []);
+  assert.deepEqual(ids(reportCandidatesOf([s({ name: "TOWER" })], airports, "^TEAM_")), []);
+  assert.deepEqual(ids(reportCandidatesOf([s({ status: "busy" }), s({ id: "s2", agent: "codex" })], airports, "^TEAM_")), []);
+});
+
+test("REPORT 마지막 메시지: 글로 끝난 마지막 assistant 줄만. tool_use로 끝났거나 새 지시가 뒤따르면 없다", () => {
+  const text = (t: string) => [{ type: "text", text: t }];
+  const a = [tl("user", "지시", "2026-09-29T00:00:00Z"), tl("assistant", text("중간 설명"), "2026-09-29T00:00:10Z"), tl("assistant", text("끝났다. PR을 올렸다"), "2026-09-29T00:00:20Z")].join("\n");
+  assert.deepEqual(lastMessageOf(a), { text: "끝났다. PR을 올렸다", at: Date.parse("2026-09-29T00:00:20Z") });
+  // tool_result가 사이에 있어도 턴 안이다
+  const b = [tl("assistant", [...text("확인하겠다"), { type: "tool_use", id: "t1" }], "2026-09-29T00:00:10Z"), tl("user", [{ type: "tool_result", tool_use_id: "t1" }], "2026-09-29T00:00:11Z"), tl("assistant", text("결과다"), "2026-09-29T00:00:12Z")].join("\n");
+  assert.equal(lastMessageOf(b)!.text, "결과다");
+  assert.equal(lastMessageOf(tl("assistant", [...text("x"), { type: "tool_use", id: "t" }], "2026-09-29T00:00:10Z")), null);
+  assert.equal(lastMessageOf([tl("assistant", text("답"), "2026-09-29T00:00:10Z"), tl("user", "새 지시", "2026-09-29T00:00:20Z")].join("\n")), null);
+  // 서브에이전트 줄과 API 오류 줄은 건너뛴다
+  assert.equal(lastMessageOf([tl("assistant", text("본문"), "2026-09-29T00:00:10Z"), tl("assistant", text("sub"), "2026-09-29T00:00:11Z", { isSidechain: true })].join("\n"))!.text, "본문");
+  assert.equal(lastMessageOf([tl("assistant", text("본문"), "2026-09-29T00:00:10Z"), tl("assistant", text("rate limit"), "2026-09-29T00:00:11Z", { isApiErrorMessage: true })].join("\n")), null);
+});
+
+test("REPORT 마스킹: 경로·URL·토큰·이메일은 나가지 않는다. 1500자를 넘으면 끝부분만", () => {
+  const m = maskText("PR https://github.com/o/r/pull/9 을 올렸다. server/judges/run.ts 와 /home/c10/projects/atc/x.ts, ~/notes.md, ../up/x, docs/a.md 수정. and/or 는 그대로. 메일 a.b@x.com 키 sk-abcdefghijklmnopqrstuv 해시 0123456789abcdef0123456789abcdef01. 날짜 9/29.");
+  assert.ok(!/github|server\/|\/home|notes|up\/x|docs\/|a\.b@|sk-abc|0123456789abcdef/.test(m), m);
+  assert.match(m, /<url>/);
+  assert.match(m, /<path>/);
+  assert.match(m, /and\/or/);
+  assert.match(m, /9\/29/);
+  const long = maskText("가".repeat(3000) + "끝");
+  assert.equal(long.length, MESSAGE_MAX);
+  assert.ok(long.endsWith("끝"));
+});
+
+test("REPORT 질문·답 검사: Choice 하나, 다섯 분류, 확률", () => {
+  const q = reportQuestions() as Record<string, { type: string; criteria: Record<string, unknown> }>;
+  assert.deepEqual(Object.keys(q), ["report_class"]);
+  assert.equal(q.report_class.type, "choice");
+  assert.deepEqual(Object.keys(q.report_class.criteria), [...REPORT_CLASSES]);
+  const j = reportJudgmentOf(rAnswers("decision", { done: 0.05 }));
+  assert.equal(j.class, "decision");
+  assert.equal(j.probabilities.decision, 0.9);
+  assert.equal(j.confidence, 0.8);
+  assert.throws(() => reportJudgmentOf({ report_class: { type: "choice", choice: "party" } }), JudgeAnswerError);
+  assert.throws(() => reportJudgmentOf(null), JudgeAnswerError);
+  assert.equal(needsDecision(j), true);
+  assert.equal(needsDecision(reportJudgmentOf(rAnswers("decision", { decision: 0.6 })), 0.7), false);
+});
+
+test("REPORT 대상: shadow는 서버가 켜진 뒤 끝난 턴만(처음 본 세션은 기준선), replay는 처음 본 세션의 마지막 턴도", () => {
+  const c = [{ id: "a", lastActiveAt: "t1" }, { id: "b", lastActiveAt: "t2" }];
+  assert.deepEqual(reportTargetsOf(c, new Map(), "off"), { targets: [], baseline: [] });
+  assert.deepEqual(reportTargetsOf(c, new Map(), "shadow"), { targets: [], baseline: ["a", "b"] });
+  assert.deepEqual(reportTargetsOf(c, new Map(), "replay"), { targets: ["a", "b"], baseline: [] });
+  assert.deepEqual(reportTargetsOf(c, new Map([["a", "t1"], ["b", "t0"]]), "shadow"), { targets: ["b"], baseline: [] }); // b는 새 턴
+  assert.deepEqual(reportTargetsOf(c, new Map([["a", "t1"], ["b", "t2"]]), "shadow"), { targets: [], baseline: [] });
+  assert.deepEqual(reportTargetsOf(c, new Map([["a", "t0"], ["b", "t0"]]), "shadow", new Set(["a"])).targets, ["b"]);
+});
+
+test("stub으로 REPORT 한 턴: 마스킹한 메시지만 보내고, 본문은 기록하지 않는다(보낸 글자 수만)", async () => {
+  const engine = stubEngine({ TEAM_J: rAnswers("decision") });
+  const secret = "SECRET_PATH_/home/c10/private/notes.txt";
+  const line = (await judgeReportOp({ id: "abcdef123456", name: "TEAM_J", cwd: "/p/atc" }, "^TEAM_", () => ({ text: `PR https://x.y/z 를 볼까요? ${secret} 어떻게 할까요`, at: Date.parse("2026-09-29T01:00:00Z") }), new Set(), engine, "jev", "shadow", "2026-09-29T01:00:05Z"))!;
+  assert.equal(line.target, "report");
+  assert.equal(line.id, "R-abcdef12-1790643600");
+  assert.equal(line.aircraft, "TEAM_J");
+  assert.equal(line.judgment.class, "decision");
+  assert.equal(typeof line.sent.chars, "number");
+  const sent = JSON.stringify(engine.calls[0].state);
+  assert.ok(!sent.includes("x.y") && !sent.includes("private") && !sent.includes("/home"));
+  assert.ok(!JSON.stringify(line).includes("볼까요")); // 기록에는 본문이 없다
+  // 같은 턴은 다시 판정하지 않는다. 메시지가 없으면 null
+  assert.equal(await judgeReportOp({ id: "abcdef123456", name: "TEAM_J", cwd: "/p/atc" }, "^TEAM_", () => ({ text: "x", at: Date.parse("2026-09-29T01:00:00Z") }), new Set([line.id]), engine, "jev", "shadow", "t"), null);
+  assert.equal(await judgeReportOp({ id: "abcdef123456", name: "TEAM_J", cwd: "/p/atc" }, "^TEAM_", () => null, new Set(), engine, "jev", "shadow", "t"), null);
+  assert.equal(engine.calls.length, 1);
+});
+
+test("REPORT 표시·일치율·문턱: 나중 표시가 앞의 것을 대신하고, judges.json의 문턱을 읽는다", () => {
+  const mk = (id: string, session: string, turnAt: string, choice = "done") =>
+    ({ op: "judge", family: "jev", target: "report", id, session, aircraft: "TEAM_J", at: turnAt, turnAt, run: "shadow", engine: "stub", model: "stub", judgment: reportJudgmentOf(rAnswers(choice)), sent: { chars: 10 } }) as never;
+  const lines = [mk("R-1", "s1", "2026-09-29T00:00:00Z"), mk("R-2", "s1", "2026-09-29T01:00:00Z", "decision"), mk("R-3", "s2", "2026-09-29T00:30:00Z", "ready"), { op: "mark", target: "report", id: "R-1", verdict: "wrong", at: "t" }, { op: "mark", target: "report", id: "R-1", verdict: "right", at: "t2" }, { op: "mark", target: "report", id: "R-3", verdict: "wrong", at: "t" }] as never[];
+  const v = reportViewsOf(lines);
+  assert.equal(v.bySession.get("s1")!.id, "R-2"); // 세션마다 마지막 턴
+  assert.equal(v.bySession.get("s1")!.decisionP, 0.9);
+  assert.equal(v.all.find((x) => x.id === "R-1")!.mark, "right");
+  assert.deepEqual(reportRateOf(v.all), { judged: 3, marked: 2, right: 1, rate: 0.5 });
+  assert.deepEqual(reportRateOf([]), { judged: 0, marked: 0, right: 0, rate: null });
+  // 파일: 표시는 있는 판정에만
+  appendJudgeLines([mk("R-9", "s9", "2026-09-29T02:00:00Z")]);
+  assert.equal(markReport("R-none", "right"), false);
+  assert.equal(markReport("R-9", "wrong"), true);
+  assert.equal(loadReportViews().all.find((x) => x.id === "R-9")!.mark, "wrong");
+  assert.equal(loadReportThreshold(), 0.7);
+  writeFileSync(join(STATE, "judges.json"), JSON.stringify({ jev: "off", reportDecisionMin: 0.8 }));
+  assert.equal(loadReportThreshold(), 0.8);
+  writeFileSync(join(STATE, "judges.json"), JSON.stringify({ jev: "off", reportDecisionMin: 5 }));
+  assert.equal(loadReportThreshold(), 0.7);
+  writeFileSync(join(STATE, "judges.json"), JSON.stringify({ jev: "off" }));
+});
+
+test("REPORT 표시 API는 SUPERVISOR만: 이 화면 Origin이 없으면 403", async () => {
+  const { Hono } = await import("hono");
+  const { mountJudges } = await import("./run.ts");
+  const app = new Hono();
+  mountJudges(app);
+  const post = (headers: Record<string, string>, body: unknown, id = "R-9") => app.request(`/api/judges/report/${id}/mark`, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) });
+  assert.equal((await post({}, { verdict: "right" })).status, 403);
+  assert.equal((await post({ Origin: "http://localhost:7700" }, { verdict: "meh" })).status, 400);
+  assert.equal((await post({ Origin: "http://localhost:7700" }, { verdict: "right" }, "R-none")).status, 404);
+  const ok = await post({ Origin: "http://localhost:7700" }, { verdict: "right" });
+  assert.equal(ok.status, 200);
+  assert.equal(loadReportViews().all.find((x) => x.id === "R-9")!.mark, "right");
 });

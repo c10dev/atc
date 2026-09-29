@@ -290,7 +290,7 @@ The server runs at most 3 drafts a minute. It backs off an hour after an error a
 
 **Measuring without anchoring.** A mark is shown only on drafts the SUPERVISOR has judged: a chip in RECENT, like `JEV agree`, with the classification and what was sent in its tooltip. Marks on open drafts are counted but hidden. The gate panel's `JEV 일치 m/n` line is `crosscheckRateOf` per family over human verdicts, `replay` marks included (the judge's input never contains the verdict). ATFM auto-verdicts are left out. Marks never change a draft's status and never count toward the 20 / 80% gate.
 
-Not built yet: other families, using a judge's agreement for S3, and using the DISPATCH marks for anything (below).
+Not built yet: other families, using a judge's agreement for S3, and using the DISPATCH marks for anything (below). The same family also classifies the CAPTAIN's last message at Stop (REPORT, [8.8](#88-aircraft-health)).
 
 ### DISPATCH judges as built (ATC-88)
 
@@ -960,6 +960,19 @@ Status: steps 1–6 built (ATC-45, ATC-47, ATC-48, ATC-51, ATC-55): the manual, 
 - DISPATCH skips an AIRCRAFT whose code holds (`LIMIT`, `MODEL`, `CONTEXT`, `PROVIDER`, `HUNG`), or whose ACCOUNT is held, with the tag as the reason. SCHEDULE NEW does not accept it as a tail. With the FUEL switch on, DISPATCH also skips an ACCOUNT at or above 95 % (above).
 - FLIGHT FOLLOWING: a `health` issue on the FLIGHT the AIRCRAFT holds (`warn` for ALERT, `info` otherwise). OCC reports it like the other issues.
 - TOWER brief: `open.health` (every AIRCRAFT with a code) and `open.healthAlerts`.
+
+#### CAPTAIN report judge as built (ATC-89)
+
+The judge family of [6.1](#61-typed-judges-jev) also reads how an atc AIRCRAFT's turn ended. At Stop (the session is `idle` and its last activity changed) Jev classifies the CAPTAIN's last message with one Choice: `done` (reported done, with a PR or a result), `decision` (asks the SUPERVISOR to decide), `stopped` (stopped mid-work), `ready` (idle and ready) or `unknown` (can't tell). It never changes a health code, DISPATCH or FLEET PLAN, and it needs no hook: the server sees the turn end from the session file and reads the message from the transcript at judge time.
+
+- **What is read.** Only sessions that are AIRCRAFT (`TEAM_*`) whose working folder belongs to the `ATCC` AIRPORT, and the check comes before any read: any other session (a vocado AIRCRAFT, a control session) never has its transcript opened. Only the last 128 KB of the transcript is read, for the last `assistant` line that ends in text (not a `tool_use`) with no newer prompt after it.
+- **What is sent.** The message with paths, URLs, e-mail addresses and token-like strings replaced by `<path>`, `<url>`, `<email>`, `<token>`, and at most the last 1,500 characters (conclusions and questions come last). The message is never stored: the record keeps `sent: {chars}` only.
+- **Switch and limit.** The same `judges.jev`: `off` reads and sends nothing. `shadow` judges turns that end while the server runs (a session seen for the first time only sets a baseline); `replay` also judges the last turn of sessions already idle at the first look. The 3-a-minute limit is shared with CLASSIFY and DISPATCH; the three take turns.
+- **Record.** `judges.jsonl`: a `judge` line with `target: "report"`, `id` (`R-<session 8>-<message time>`), `session`, `aircraft`, `turnAt`, `judgment` (`class`, `probabilities`, `confidence`) and `sent`. A `mark` line (`target: "report"`, `id`, `verdict: right|wrong`) is the SUPERVISOR's mark.
+- **Screen.** A chip with the class on the FLEET row (amber when "needs a decision" is at or above the threshold), the probabilities in its tooltip. The AIRCRAFT card has a `JEV REPORT` line with **맞음 / 틀림** buttons for the SUPERVISOR (this screen's Origin only, like the switch; control sessions can't mark). The FLEET PLAN panel's meta line shows `JEV REPORT 맞음 m/n`. It does not count toward any gate. The chip disappears when the session is busy again.
+- **FLIGHT FOLLOWING.** `decision` with a probability at or above the threshold (`judges.json` `reportDecisionMin`, default 0.7) adds one `report` issue (`info`) to the FLIGHT the AIRCRAFT holds, once per turn (the key carries the judged turn), and only while the session is still idle.
+
+Pilot's discretion (ATC-89): the marking buttons live on the card, not in the row's tooltip (a tooltip cannot hold buttons, and the row is itself a button); the issue is `info` (OCC LOG only) until the marks show it is reliable; the turn end is seen from the session state, so the hook (`user` tier) is unchanged.
 
 **Implementation order.**
 

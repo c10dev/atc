@@ -23,6 +23,7 @@ interface PlanBrief {
   waiting: { key: string; kind: FleetPlanKind; aircraft: string | null; airport: string | null; since: string | null }[];
   recent: FleetProposal[];
   gate: { decided: number; agreed: number; agreement: number | null; target: { decided: number; agreement: number }; ready: boolean };
+  judges?: { report: { judged: number; marked: number; right: number; rate: number | null } }; // REPORT 판정(ATC-89, 그림자). 옛 서버면 없음
 }
 
 const KIND_HELP: Record<FleetPlanKind, string> = {
@@ -167,6 +168,11 @@ export function FleetPlan({ refreshKey, onChanged }: { refreshKey: string; onCha
         <span className={g.ready ? "fp-ready" : undefined} title="DISPATCH·SCHEDULE과 같은 그림자 게이트. 넘어야 승인 운용을 켤 수 있다">
           판정 {g.decided}/{g.target.decided} · 합의 {pct(g.agreement)} (목표 {pct(g.target.agreement)}){g.ready ? " · 게이트 통과" : ""}
         </span>
+        {brief.judges && brief.judges.report.judged > 0 && (
+          <span title="Jev가 CAPTAIN의 마지막 메시지를 분류한 것을 SUPERVISOR가 맞다·틀리다고 표시한 것(FLEET 카드의 JEV REPORT 줄). 게이트에 세지 않음">
+            {" · "}JEV REPORT 맞음 {brief.judges.report.right}/{brief.judges.report.marked} {pct(brief.judges.report.rate)} (판정 {brief.judges.report.judged}턴)
+          </span>
+        )}
         {approval && brief.approvalSince && <> · 승인 운용 {timeAgo(brief.approvalSince, Date.now())}부터</>}
         {" · "}
         {brief.ranAt ? <>계산 {timeAgo(brief.ranAt, Date.now())}</> : "아직 계산 전(DISPATCH 주기 5분)"}

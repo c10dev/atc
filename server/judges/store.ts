@@ -1,10 +1,11 @@
-import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { config } from "../config.ts";
 import { type CrosscheckVerdict, crosscheckRateOf, type HumanDecision } from "../crosscheck.ts";
 import type { Rating } from "../crew.ts";
 import { type ClassifyJudgment, JUDGE_FAMILIES, type JudgeFamily } from "./classify.ts";
 import type { DispatchJudgment } from "./dispatch.ts";
+import { DECISION_MIN, type ReportClass, type ReportJudgment, reportRateOf } from "./report.ts";
 import type { EngineName } from "./engines.ts";
 
 // 판정 계열의 스위치와 기록(ATC-36).
@@ -83,6 +84,32 @@ export interface DispatchJudgeLine {
   sent: string[]; // 보낸 칸(title, goal, allowed_scope, done_criteria, recent_flights)
 }
 
+// REPORT 판정(ATC-89): atc AIRCRAFT의 턴 하나(세션·시각)의 분류. 메시지 본문은 없다 — 보낸 글자 수만
+export interface ReportJudgeLine {
+  op: "judge";
+  family: JudgeFamily;
+  target: "report";
+  id: string; // R-<세션 앞 8자>-<메시지 시각 epoch초>
+  session: string;
+  aircraft: string; // REGISTRATION
+  at: string;
+  turnAt: string; // 판정한 마지막 메시지의 시각
+  run: JudgeRun;
+  engine: EngineName;
+  model: string;
+  judgment: ReportJudgment;
+  sent: { chars: number };
+}
+
+// SUPERVISOR가 분류를 맞다·틀리다고 표시(나중 줄이 앞의 것을 대신한다)
+export interface ReportMarkLine {
+  op: "mark";
+  target: "report";
+  id: string;
+  verdict: "right" | "wrong";
+  at: string;
+}
+
 // 모드 변경 기록(누가·언제 켰나)
 export interface JudgeModeLine {
   op: "mode";
@@ -92,7 +119,7 @@ export interface JudgeModeLine {
   to: JudgeMode;
 }
 
-export type JudgesLogLine = JudgeLine | DispatchJudgeLine | JudgeModeLine;
+export type JudgesLogLine = JudgeLine | DispatchJudgeLine | ReportJudgeLine | ReportMarkLine | JudgeModeLine;
 
 export function readJudgeLines(file = RECORD_FILE()): JudgesLogLine[] {
   let text = "";
@@ -107,6 +134,7 @@ export function readJudgeLines(file = RECORD_FILE()): JudgesLogLine[] {
     try {
       const l = JSON.parse(line);
       if (l && (l.op === "judge" || l.op === "mode") && JUDGE_FAMILIES.includes(l.family)) out.push(l);
+      else if (l && l.op === "mark" && l.target === "report" && (l.verdict === "right" || l.verdict === "wrong") && typeof l.id === "string") out.push(l);
     } catch {}
   }
   return out;
@@ -130,7 +158,7 @@ export type JudgeMarks = Map<string, Partial<Record<JudgeFamily, JudgeLine>>>;
 export function marksOf(lines: JudgesLogLine[]): JudgeMarks {
   const out: JudgeMarks = new Map();
   for (const l of lines) {
-    if (l.op !== "judge" || l.target === "dispatch") continue;
+    if (l.op !== "judge" || l.target !== "schedule") continue;
     out.set(l.id, { ...out.get(l.id), [l.family]: l });
   }
   return out;
@@ -213,4 +241,77 @@ export function judgesViewOf(ops: JudgedOp[], marks: JudgeMarks, modes: JudgesCo
     }));
   }
   return { modes, rate: judgeRateOf(ops, marks), marks: visible, hidden };
+}
+
+// ---- REPORT: 세션마다 마지막 판정과 SUPERVISOR 표시, 문턱, 일치율 ----
+export interface ReportView {
+  id: string;
+  session: string;
+  class: ReportClass;
+  probabilities: ReportJudgment["probabilities"];
+  confidence: number | null;
+  decisionP: number;
+  turnAt: string;
+  at: string;
+  chars: number;
+  model: string;
+  run: JudgeRun;
+  mark: "right" | "wrong" | null;
+}
+
+export function reportViewsOf(lines: JudgesLogLine[]): { bySession: Map<string, ReportView>; all: ReportView[]; ids: Set<string> } {
+  const marks = new Map<string, "right" | "wrong">();
+  const judged: ReportJudgeLine[] = [];
+  for (const l of lines) {
+    if (l.op === "mark") marks.set(l.id, l.verdict);
+    else if (l.op === "judge" && l.target === "report") judged.push(l);
+  }
+  const all = judged.map<ReportView>((l) => ({
+    id: l.id,
+    session: l.session,
+    class: l.judgment.class,
+    probabilities: l.judgment.probabilities,
+    confidence: l.judgment.confidence,
+    decisionP: l.judgment.probabilities.decision,
+    turnAt: l.turnAt,
+    at: l.at,
+    chars: l.sent.chars,
+    model: l.model,
+    run: l.run,
+    mark: marks.get(l.id) ?? null,
+  }));
+  const bySession = new Map<string, ReportView>();
+  for (const v of all) if (!bySession.get(v.session) || v.turnAt >= bySession.get(v.session)!.turnAt) bySession.set(v.session, v);
+  return { bySession, all, ids: new Set(all.map((v) => v.id)) };
+}
+
+// 판정은 파일을 다시 읽지 않고 크기·수정 시각이 같으면 캐시를 쓴다(스냅숏마다 부른다)
+let viewCache: { key: string; views: ReturnType<typeof reportViewsOf> } | null = null;
+export function loadReportViews(file = RECORD_FILE()) {
+  let key = "none";
+  try {
+    const st = statSync(file);
+    key = `${file}:${st.size}:${st.mtimeMs}`;
+  } catch {}
+  if (viewCache?.key !== key) viewCache = { key, views: reportViewsOf(readJudgeLines(file)) };
+  return viewCache.views;
+}
+
+export const reportRate = (views = loadReportViews()) => reportRateOf(views.all);
+
+// SUPERVISOR 표시를 적는다. 없는 판정 id면 false
+export function markReport(id: string, verdict: "right" | "wrong", at = new Date().toISOString(), file = RECORD_FILE()): boolean {
+  if (!readJudgeLines(file).some((l) => l.op === "judge" && l.target === "report" && l.id === id)) return false;
+  appendJudgeLines([{ op: "mark", target: "report", id, verdict, at }], file);
+  return true;
+}
+
+// "결정이 필요함" 문턱: judges.json의 reportDecisionMin(0~1), 없거나 틀리면 기본값
+export function loadReportThreshold(file = CONFIG_FILE()): number {
+  try {
+    const v = JSON.parse(readFileSync(file, "utf8")).reportDecisionMin;
+    return typeof v === "number" && v > 0 && v <= 1 ? v : DECISION_MIN;
+  } catch {
+    return DECISION_MIN;
+  }
 }

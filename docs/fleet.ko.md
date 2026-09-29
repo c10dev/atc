@@ -325,7 +325,7 @@ DISPATCH는 날고 있는 FLIGHT가 바꾼 파일과 Todo FLIGHT가 고칠 파�
 
 **쏠림 없이 재기.** mark는 SUPERVISOR가 판정한 초안에만 보인다. RECENT에 `JEV agree` 같은 칩으로 보이고, 툴팁에 분류와 보낸 범위가 있다. 열린 초안의 mark는 세기만 하고 숨긴다. 점검 패널의 `JEV 일치 m/n` 줄은 계열마다 사람 판정에 대해 `crosscheckRateOf`로 잰 값이고, `replay` mark도 센다(판정 계열의 입력에는 판정이 들어가지 않는다). ATFM 자동 판정은 뺀다. mark는 초안 상태를 바꾸지 않고, 20건·80% 게이트에도 들지 않는다.
 
-아직 만들지 않음: 다른 계열, 판정 계열 일치율을 S3에 쓰는 것, DISPATCH mark를 어디에든 쓰는 것(아래).
+아직 만들지 않음: 다른 계열, 판정 계열 일치율을 S3에 쓰는 것, DISPATCH mark를 어디에든 쓰는 것(아래). 같은 계열이 Stop 때 CAPTAIN의 마지막 메시지도 분류한다(REPORT, [8.8](#88-aircraft-health)).
 
 ### DISPATCH 판정 계열 구현 (ATC-88)
 
@@ -1023,6 +1023,19 @@ ATC-69는 대화 기록에 `[1m]`이 남지 않아 창을 짐작했다. ATC-85�
 - DISPATCH는 막는 코드(`LIMIT`, `MODEL`, `CONTEXT`, `PROVIDER`, `HUNG`)의 AIRCRAFT와 ACCOUNT로 붙들린 AIRCRAFT를 그 표시를 사유로 건너뛴다. SCHEDULE NEW는 그 AIRCRAFT를 tail로 받지 않는다. FUEL 스위치가 켜져 있으면 95 % 이상인 ACCOUNT도 건너뛴다(위).
 - FLIGHT FOLLOWING: 그 AIRCRAFT가 쥔 FLIGHT에 `health` 문제(ALERT면 `warn`, 아니면 `info`). OCC가 다른 문제처럼 보고한다.
 - TOWER 브리핑: `open.health`(코드가 있는 AIRCRAFT 전부)와 `open.healthAlerts`.
+
+#### CAPTAIN 보고 판정 구현 (ATC-89)
+
+[6.1](#61-판정-계열jev)의 판정 계열이 atc AIRCRAFT의 턴이 어떻게 끝났는지도 읽는다. Stop 때(세션이 `idle`이고 마지막 활동이 바뀜) Jev가 CAPTAIN의 마지막 메시지를 Choice 하나로 분류한다: `done`(끝났다고 보고, PR이나 결과 포함), `decision`(SUPERVISOR의 결정을 청함), `stopped`(일하다 멈춤), `ready`(놀고 있고 준비됨), `unknown`(알 수 없음). health 코드, DISPATCH, FLEET PLAN은 바꾸지 않는다. hook도 필요 없다: 서버가 세션 파일로 턴의 끝을 보고 판정할 때 대화 기록에서 메시지를 읽는다.
+
+- **읽는 것.** AIRCRAFT(`TEAM_*`)이고 작업 폴더가 `ATCC` AIRPORT에 속한 세션만이고, 그 확인이 어떤 읽기보다 먼저다: 그 밖의 세션(vocado AIRCRAFT, 관제 세션)은 대화 기록을 열지도 않는다. 대화 기록 끝 128 KB만 읽어, 글로 끝난(`tool_use`가 아닌) 마지막 `assistant` 줄 가운데 뒤에 새 지시가 없는 것을 본다.
+- **보내는 것.** 경로, URL, 이메일, 토큰 같은 글자열을 `<path>`, `<url>`, `<email>`, `<token>`으로 바꾼 메시지를 끝에서 1,500자까지(결론과 질문은 끝에 온다). 메시지는 저장하지 않는다: 기록에는 `sent: {chars}`만 남는다.
+- **스위치와 한도.** 같은 `judges.jev`다: `off`면 아무것도 읽거나 보내지 않는다. `shadow`는 서버가 도는 동안 끝난 턴을 판정한다(처음 본 세션은 기준선만 적음). `replay`는 처음 볼 때 이미 idle인 세션의 마지막 턴도 판정한다. 1분 3건 한도는 CLASSIFY, DISPATCH와 나눠 쓰고 셋이 번갈아 뽑는다.
+- **기록.** `judges.jsonl`에 `target: "report"`인 `judge` 줄: `id`(`R-<세션 8자>-<메시지 시각>`), `session`, `aircraft`, `turnAt`, `judgment`(`class`, `probabilities`, `confidence`), `sent`. SUPERVISOR의 표시는 `mark` 줄(`target: "report"`, `id`, `verdict: right|wrong`)이다.
+- **화면.** FLEET 줄에 분류 칩(결정 필요 확률이 문턱 이상이면 앰버), 툴팁에 확률. AIRCRAFT 카드에 `JEV REPORT` 줄과 SUPERVISOR용 **맞음 / 틀림** 버튼(스위치처럼 이 화면 Origin만, 관제 세션은 표시할 수 없다). FLEET PLAN 패널 위쪽 줄에 `JEV REPORT 맞음 m/n`. 어떤 게이트에도 세지 않는다. 세션이 다시 busy가 되면 칩은 사라진다.
+- **FLIGHT FOLLOWING.** `decision` 확률이 문턱(`judges.json`의 `reportDecisionMin`, 기본 0.7) 이상이면 그 AIRCRAFT가 쥔 FLIGHT에 `report` 문제(`info`) 하나가 붙는다. 턴마다 한 번(key에 판정한 턴), 세션이 아직 idle일 때만.
+
+PILOT'S DISCRETION(ATC-89): 표시 버튼은 행 툴팁이 아니라 카드에 둔다(툴팁에는 버튼을 못 넣고 행 자체가 버튼이다). 표시로 믿을 만하다고 나오기 전까지 문제는 `info`(OCC LOG만)다. 턴의 끝은 세션 상태로 보므로 hook(`user` 등급)은 바꾸지 않았다.
 
 **구현 순서.**
 

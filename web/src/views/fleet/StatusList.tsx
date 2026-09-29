@@ -1,3 +1,4 @@
+import { ReportChip } from "./ReportMark.tsx";
 import type { ReactNode } from "react";
 import { elapsedText, type FleetRow, flightDetailText } from "../../../../server/fleet-status.ts";
 import { flightNumber } from "../../aviation.ts";
@@ -60,6 +61,7 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                       {r.health.label}
                     </span>
                   )}
+                  {r.report && <ReportChip r={r.report} />}
                   {r.restarting && (
                     <span className="fl-r-health" title={`세션이 /clear로 끝났다. ${r.restarting.until.slice(11, 16)}Z까지 새 세션의 첫 메시지를 기다린다`}>
                       {r.restarting.label}

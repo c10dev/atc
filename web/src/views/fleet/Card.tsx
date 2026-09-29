@@ -15,6 +15,7 @@ import { formatClock, useSettings } from "../../settings.ts";
 import { FleetCrew } from "../FleetCrew.tsx";
 import { ContextLine } from "./Context.tsx";
 import { FuelBlock, RecentFuel } from "./Fuel.tsx";
+import { ReportLine } from "./ReportMark.tsx";
 import { type SessionRow, pct, ratingHelp } from "./shared.ts";
 import "./Card.css";
 
@@ -172,6 +173,7 @@ export function Card({
           {accountHoldLabel(a.accountHold, Date.now())} <span className="faint">· {accountHoldDetail(a.accountHold)}</span>
         </p>
       )}
+      {a.report && <ReportLine r={a.report} />}
       {a.sessionConflict?.length ? (
         <p className="fl-name-conflict" title={conflictHintOf(a.sessionConflict, a.registration)}>
           세션 {a.sessionConflict.length}개가 {a.registration}로 읽힘:{" "}
