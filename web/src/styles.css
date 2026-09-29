@@ -2934,3 +2934,33 @@ a.ticket:hover {
 :root[data-density="compact"][data-theme="radar"] .flap b {
   font-size: var(--text-xs);
 }
+/* AUTOMATION 탭(ATC-131): 지금 정책 한 줄, ⚠ 모드는 호박색, 나머지 모드 경고는 접음 */
+.automation-line {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font: var(--text-xs) var(--mono);
+  color: var(--muted);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.automation-line b {
+  color: var(--text);
+}
+.automation-line .is-warn,
+.automation-line .is-warn b,
+.config-note.is-warn,
+.config-row .tone-warn {
+  color: var(--amber);
+}
+.mode-others {
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+.mode-others summary {
+  cursor: pointer;
+  margin: var(--space-1) 0;
+}

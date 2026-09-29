@@ -203,7 +203,7 @@ A fourth MCC mode, `rts`: the SUPERVISOR merges atc PRs by hand, and the atc ser
 
 ## 7. Records and switches
 
-- `~/.local/state/atc/mcc.json` (atomic): `mode` `shadow` (default) | `land` | `land+rts` | `rts`, `holds` (PR numbers). It is changed only from the settings window (AGENTS tab, MCC row), like AUTOLAND. `atcctl` has no command for it.
+- `~/.local/state/atc/mcc.json` (atomic): `mode` `shadow` (default) | `land` | `land+rts` | `rts`, `holds` (PR numbers). It is changed only from the settings window (AUTOMATION tab, MCC row), like AUTOLAND. `atcctl` has no command for it.
 - `~/.local/state/atc/mcc.jsonl` (append-only): `inspect` (PR, head, verdict, text, model), `escalate`, `land` / `would-land` (PR, head, tier, result), `mode`.
 - `~/.local/state/atc/rts.jsonl` (append-only), written by `deploy/rts.mjs`.
 - Every MCC write (`inspect`, `escalate`, `land`, `rts`) must carry a model named in `MCC_MODELS`. As with CROSSCHECK, the MCC guard reads the model from the session transcript and passes it as `ATC_MCC_MODEL`; `atcctl mcc` sends it. The TOWER and OCC guards let any `atcctl` command through but never set it, so an `atcctl mcc` write from those sessions is refused by the server.

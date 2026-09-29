@@ -1,16 +1,34 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { Snapshot } from "../../server/model.ts";
 import { formatClock, type Settings, THEMES, updateSettings } from "./settings.ts";
+import { settingsTabOf } from "../../server/settings-policy.ts";
+import { AutomationSettings } from "./SettingsAutomation.tsx";
 import { AgentSettings, LinearSettings, useServerSettings } from "./SettingsServer.tsx";
 
 const TABS = [
   { id: "display", label: "화면" },
   { id: "linear", label: "LINEAR" },
   { id: "agents", label: "AGENTS" },
+  { id: "automation", label: "AUTOMATION" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
-// 로고를 누르면 열리는 설정 창. 화면 설정은 이 브라우저에, LINEAR·AGENTS는 서버 설정을 읽어 보여 준다.
+// 마지막에 쓴 탭을 기억한다(ATC-131). 저장소를 못 쓰거나 값이 없으면 화면
+const TAB_KEY = "atc.settings.tab";
+const loadTab = (): Tab => {
+  try {
+    return settingsTabOf(localStorage.getItem(TAB_KEY), TABS.map((t) => t.id), "display");
+  } catch {
+    return "display";
+  }
+};
+const saveTab = (t: Tab) => {
+  try {
+    localStorage.setItem(TAB_KEY, t);
+  } catch {}
+};
+
+// 로고를 누르면 열리는 설정 창. 화면 설정은 이 브라우저에, LINEAR·AGENTS·AUTOMATION은 서버 설정을 읽어 보여 준다.
 // 바깥을 누르거나 Esc로 닫는다.
 export function SettingsPanel({
   settings,
@@ -22,7 +40,11 @@ export function SettingsPanel({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [tab, setTab] = useState<Tab>("display");
+  const [tab, setTab] = useState<Tab>(loadTab);
+  const chooseTab = (t: Tab) => {
+    setTab(t);
+    saveTab(t);
+  };
   const { server, save } = useServerSettings();
 
   useEffect(() => {
@@ -55,7 +77,7 @@ export function SettingsPanel({
       </header>
       <nav className="settings-tabs" role="tablist" aria-label="설정 종류">
         {TABS.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>
+          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => chooseTab(t.id)}>
             {t.label}
           </button>
         ))}
@@ -66,8 +88,10 @@ export function SettingsPanel({
           <DisplaySettings settings={settings} />
         ) : tab === "linear" ? (
           <LinearSettings snapshot={snapshot} server={server} save={save} />
-        ) : (
+        ) : tab === "agents" ? (
           <AgentSettings snapshot={snapshot} server={server} save={save} onNavigate={onClose} />
+        ) : (
+          <AutomationSettings server={server} save={save} />
         )}
       </div>
     </div>
