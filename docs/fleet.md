@@ -552,7 +552,7 @@ When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT throug
 
 **Views.** `GET /api/fleet` returns `dispatchMode` and, per AIRCRAFT, `pendingCrewChange: {id, at, text, added, removed, ratingImpact, status: "pending" | "approved" | "sent", message, approvedAt, sentAt, overdue, waitingFor}` (`openCrewChangeOf`): the unsent one when there is one, otherwise the `sent` one, until it is acknowledged, delivered or superseded. `waitingFor` is the id of the `sent` one an unsent one waits behind. `GET /api/fleet/crew-changes/brief` (`atcctl crew-change brief`) returns `{mode, approved, waiting, sent, overdue, pending}` for OCC: `approved` ready to send, `waiting` approved but behind a `sent` one, `sent` waiting for READBACK, `overdue` ids, `pending` ids waiting for the SUPERVISOR.
 
-**2b checklist.** The `crew-change` item ("CREW CHANGE 발부", `selfCheckCrewChange`) checks these transitions, the refusals, the message, the overdue rule, the endpoints and the `atcctl` commands from code facts. The `vocado-readback` item is ready only when vocado `CLAUDE.md` also answers `[OCC CC-xxxx]` with `READBACK CC-xxxx` ([dispatch.md](dispatch.md) "2b readiness checklist").
+**2b checklist.** The `crew-change` item ("CREW CHANGE 발부", `selfCheckCrewChange`) checks these transitions, the refusals, the message, the overdue rule, the endpoints and the `atcctl` commands from code facts. Each `readback-*` item (one per AIRPORT `candidateTeams` can assign to, including `vocado-readback`) is ready only when that AIRPORT's `CLAUDE.md` also answers `[OCC CC-xxxx]` with `READBACK CC-xxxx` ([dispatch.md](dispatch.md) "2b readiness checklist").
 
 ### 8.5 Session control: LAUNCH and STOP
 

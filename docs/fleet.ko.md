@@ -613,7 +613,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - `overdue`: 늦은 id
 - `pending`: SUPERVISOR를 기다리는 id
 
-**2b 점검표.** `crew-change` 항목("CREW CHANGE 발부", `selfCheckCrewChange`)은 이 전이, 거절, 메시지, 늦음 규칙, 엔드포인트, `atcctl` 명령을 코드 사실로 확인한다. `vocado-readback` 항목은 vocado `CLAUDE.md`가 `[OCC CC-xxxx]`에도 `READBACK CC-xxxx`로 답할 때만 준비됨이다([dispatch.ko.md](dispatch.ko.md) "2b 켜기 점검표").
+**2b 점검표.** `crew-change` 항목("CREW CHANGE 발부", `selfCheckCrewChange`)은 이 전이, 거절, 메시지, 늦음 규칙, 엔드포인트, `atcctl` 명령을 코드 사실로 확인한다. `readback-*` 항목(`candidateTeams`가 배정할 수 있는 AIRPORT마다 하나, `vocado-readback` 포함)은 그 AIRPORT의 `CLAUDE.md`가 `[OCC CC-xxxx]`에도 `READBACK CC-xxxx`로 답할 때만 준비됨이다([dispatch.ko.md](dispatch.ko.md) "2b 켜기 점검표").
 
 ### 8.5 세션 조종: LAUNCH와 STOP
 

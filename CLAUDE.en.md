@@ -71,3 +71,5 @@ Rules for sessions that change atc's code (team sessions, the ENGINEERING sessio
 ## Radio
 
 - Don't message other team sessions. Report results and blockers only to the session (usually ENGINEERING) or user that gave you the task.
+- When atc OCC (the operations control session) sends a `[DISPATCH D-xxxx]` FLIGHT PLAN, the leader answers that message with `READBACK D-xxxx`, or a reason instead if it can't take the work. A `[DISPATCH D-xxxx] RECALL` stops the work and gets `READBACK D-xxxx RECALL`. A `[OCC CC-xxxx]` CREW CHANGE gets `READBACK CC-xxxx` and the crew change goes ahead as told. A STAND-free (no worktree) SURVEY/CHECK FLIGHT reports its result link or one line to OCC when it finishes.
+- A direct assignment from ENGINEERING or the user (`BRIEF: DIRECT`) is answered with `READBACK ATC-n` to that session (`.claude/skills/atc-task/SKILL.md`). The final report always goes to whoever gave the work — OCC for a FLIGHT PLAN, ENGINEERING or the user for a direct assignment.

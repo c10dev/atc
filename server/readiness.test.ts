@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { KNOWN_GAPS_LINK, readiness2bOf, sendGuardOf, VOCADO_READBACK_SUGGESTION, vocadoReadbackOf } from "./readiness.ts";
+import { airportReadbackOf, KNOWN_GAPS_LINK, readiness2bOf, sendGuardOf, VOCADO_READBACK_SUGGESTION, vocadoReadbackOf } from "./readiness.ts";
 
 // vocado CLAUDE.md 66행(2026-09-27)과 같은 줄
 const ATC_LINE = "- atc TOWER(관제 세션)에서 `[ATC C-xxxx]`로 시작하는 CLEARANCE를 받으면 리더가 그 메시지에 `READBACK C-xxxx`로 답한다. 따를 수 없거나 판단이 필요하면 READBACK 대신 이유를 답한다.";
@@ -41,6 +42,34 @@ test("vocado READBACK: [ATC C-xxxx] 줄만 있으면 not-ready와 추가할 문�
   assert.equal(vocadoReadbackOf(null, "/p").status, "check");
 });
 
+test("AIRPORT READBACK(vocado 밖): ready·not-ready·저장소 못 찾음(check)·파일 못 읽음(check)", () => {
+  const today = ["# ATCC", "병렬 작업:", ""].join("\n");
+  const notReady = airportReadbackOf(today, "/atc/CLAUDE.md", "ATCC");
+  assert.equal(notReady.status, "not-ready");
+  assert.equal(notReady.id, "readback-atcc");
+  assert.equal(notReady.label, "ATCC READBACK 규칙");
+  assert.match(notReady.detail, /\/atc\/CLAUDE\.md에 READBACK 규칙이 없다/);
+  assert.equal(notReady.suggestion, VOCADO_READBACK_SUGGESTION);
+  const ready = airportReadbackOf(`${today}${VOCADO_READBACK_SUGGESTION}\n`, "/atc/CLAUDE.md", "ATCC");
+  assert.equal(ready.status, "ready");
+  // 저장소를 등록부에서 못 찾음(path === null)
+  const noRepo = airportReadbackOf(null, null, "XXXX");
+  assert.equal(noRepo.status, "check");
+  assert.equal(noRepo.id, "readback-xxxx");
+  assert.match(noRepo.detail, /등록부에서 찾지 못함/);
+  // 저장소는 있지만 CLAUDE.md를 못 읽음
+  const noFile = airportReadbackOf(null, "/other/CLAUDE.md", "OTHR");
+  assert.equal(noFile.status, "check");
+  assert.match(noFile.detail, /\/other\/CLAUDE\.md을 읽지 못함 — 직접 확인$/);
+});
+
+test("atc AIRPORT READBACK: 이 저장소의 루트 CLAUDE.md가 airportReadbackOf를 ready로 통과한다", () => {
+  const path = fileURLToPath(new URL("../CLAUDE.md", import.meta.url));
+  const text = readFileSync(path, "utf8");
+  const r = airportReadbackOf(text, path, "ATCC");
+  assert.equal(r.status, "ready");
+});
+
 test("vocado READBACK: 지금 vocado CLAUDE.md가 있으면 not-ready로 읽힌다(읽기만)", (t) => {
   let text: string;
   try {
@@ -72,26 +101,28 @@ test("send-guard: 실제 파일은 check(테스트는 서버가 돌리지 않음
   assert.equal(sendGuardOf(null, false).status, "not-ready");
 });
 
-test("점검표: 항목 순서·상태, 게이트는 gateOf의 ready, 코드 사실이 빠지면 not-ready, 알려진 빈틈은 늘 check와 링크", () => {
+test("점검표: 항목 순서·상태(AIRPORT마다 한 줄), 게이트는 gateOf의 ready, 코드 사실이 빠지면 not-ready, 알려진 빈틈은 늘 check와 링크", () => {
   const gate = { decided: 12, agreement: 0.75, ready: false, target: { decided: 20, agreement: 0.8 } };
   const sendGuard = sendGuardOf(null, false);
   const vocado = vocadoReadbackOf(null, "/p");
-  const r = readiness2bOf({ gate, recallMissing: [], standFreeMissing: [], crewChangeMissing: [], sendGuard, vocado });
-  assert.deepEqual(r.items.map((i) => i.id), ["gate", "recall", "send-guard", "vocado-readback", "stand-free", "crew-change", "known-gaps"]);
-  assert.deepEqual(r.items.map((i) => i.status), ["not-ready", "ready", "not-ready", "check", "ready", "ready", "check"]);
+  const atcc = airportReadbackOf("# ATCC", "/atc/CLAUDE.md", "ATCC");
+  const readback = [vocado, atcc];
+  const r = readiness2bOf({ gate, recallMissing: [], standFreeMissing: [], crewChangeMissing: [], sendGuard, readback });
+  assert.deepEqual(r.items.map((i) => i.id), ["gate", "recall", "send-guard", "vocado-readback", "readback-atcc", "stand-free", "crew-change", "known-gaps"]);
+  assert.deepEqual(r.items.map((i) => i.status), ["not-ready", "ready", "not-ready", "check", "not-ready", "ready", "ready", "check"]);
   assert.equal(r.items[0].detail, "판정 12/20건 · 일치 75% (기준 80%)");
-  assert.equal(r.items[5].label, "CREW CHANGE 발부");
-  assert.match(r.items[5].detail, /crew-change send\(sent\) → READBACK CC-xxxx\(acknowledged\)/);
-  assert.equal(r.items[6].link, KNOWN_GAPS_LINK);
+  assert.equal(r.items[6].label, "CREW CHANGE 발부");
+  assert.match(r.items[6].detail, /crew-change send\(sent\) → READBACK CC-xxxx\(acknowledged\)/);
+  assert.equal(r.items[7].link, KNOWN_GAPS_LINK);
   const ready = readiness2bOf({
     gate: { ...gate, decided: 21, agreement: 0.9, ready: true },
     recallMissing: ["POST …/recall"],
     standFreeMissing: [],
     crewChangeMissing: ["atcctl crew-change send"],
     sendGuard,
-    vocado,
+    readback,
   });
   assert.equal(ready.items[0].status, "ready");
   assert.deepEqual([ready.items[1].status, ready.items[1].detail], ["not-ready", "코드에서 확인 안 됨: POST …/recall"]);
-  assert.deepEqual([ready.items[5].status, ready.items[5].detail], ["not-ready", "코드에서 확인 안 됨: atcctl crew-change send"]);
+  assert.deepEqual([ready.items[6].status, ready.items[6].detail], ["not-ready", "코드에서 확인 안 됨: atcctl crew-change send"]);
 });

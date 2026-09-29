@@ -151,7 +151,7 @@ drift 두 줄의 뜻:
 - 이미 보낸(sent) 건은 대신하지 않는다. 새 지시문은 그 다음 변경으로 따로 생기고, 승인해 두어도 앞 건의 READBACK이 온 뒤에 나간다(카드에 기다리는 CC 번호가 보인다).
 - 아직 운항 전인 AIRCRAFT는 CREW CHANGE 없이 CREW BRIEFING에 새 구성이 들어간다.
 
-기록은 `~/.local/state/atc/crew-changes.jsonl`에 추가만 한다. 2b를 켜기 전에 DISPATCH 탭 "2b 켜기 점검표"의 **CREW CHANGE 발부**와 **vocado READBACK 규칙**(`[OCC CC-xxxx]` → `READBACK CC-xxxx`까지)을 확인한다.
+기록은 `~/.local/state/atc/crew-changes.jsonl`에 추가만 한다. 2b를 켜기 전에 DISPATCH 탭 "2b 켜기 점검표"의 **CREW CHANGE 발부**와 배정 대상 AIRPORT마다 있는 **READBACK 규칙**(`[OCC CC-xxxx]` → `READBACK CC-xxxx`까지)을 확인한다.
 
 ## 새 팀 들이기
 
