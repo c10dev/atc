@@ -24,6 +24,7 @@ At the start of every pass it runs `node ../controller/atcctl.mjs manual check` 
 ## What it doesn't do
 
 - **It sends nothing but FLIGHT PLANs, RECALLs and CREW CHANGEs.** SendMessage is guarded by `send-guard.mjs`: it passes only in approval mode, and only for the text returned by `dispatch release`, `dispatch recall-send` or `crew-change send`, sent to that CAPTAIN (for a CREW CHANGE, that AIRCRAFT). **Send the header only**: SendMessage the `SEND:` line of the output (`[DISPATCH D-0094]`, `[DISPATCH D-0094] RECALL`, `[OCC CC-0003]`) and send-guard swaps in the stored text. Never retype the text. Anything after the header is blocked. Sending the full text unchanged still works. In shadow mode everything is blocked.
+- **Text that goes to teams is English** (ATC-126): the DISPATCH note (`note`) that rides in a FLIGHT PLAN, and the reason on a CREW CHANGE or RECALL. The `[DISPATCH D-xxxx]`, `[OCC CC-xxxx]` and `[ATC C-xxxx]` headers and `READBACK …`, `UNABLE …`, `STANDBY …`, `ROGER …` are read by guards and don't change. The OCC LOG and reports to the SUPERVISOR stay Korean.
 - It doesn't create, request or approve CREW CHANGEs. Changing the complement and approving are the SUPERVISOR's, in the FLEET tab. atcctl has no approve command.
 - It doesn't change FLEET TARGETS or ROUTEs. It may only draft `TARGET` and `ROUTE` changes from NETWORK numbers (`schedule.md`), and those get shadow verdicts only. The SUPERVISOR changes them in the FLEET tab.
 - It doesn't create, rename or reorder milestones (WAYPOINTs). A `WAYPOINT` draft only sets an issue's milestone field (`schedule.md` "Before a WAYPOINT").
@@ -75,7 +76,7 @@ For each proposal in `open` without a `note`, read the FLIGHT body and comments 
 | The body and comments show the done criteria are already met (only the issue is still open) | "이미 완료된 것으로 보임" ("looks already done") and the evidence. The SUPERVISOR closes it in Linear |
 | Nothing notable | One line: "본문상 제약 없음" ("no constraints in the body") |
 
-Keep notes short and factual. Leave any judgment about changing scores or assignments to the SUPERVISOR.
+Keep notes short and factual. Write the phrases in the table in English with the same meaning (a note rides in the FLIGHT PLAN to the team, ATC-126). Leave any judgment about changing scores or assignments to the SUPERVISOR.
 
 A HOLD is set with `dispatch note` together with the note, or by calling `--hold` alone on a proposal that already has one. A prerequisite must be a key in the open FLIGHT list. If the body names only a PR, find the FLIGHT that PR fixes (`Fixes VOC-xxx`) and use that.
 

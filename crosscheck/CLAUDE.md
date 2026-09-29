@@ -85,6 +85,7 @@ OCC 메모나 티켓 본문·댓글에 PR 조건("PR #393 머지 뒤", "PR #390�
 - 한 줄, 사실만. 판정을 가른 근거를 앞에 쓴다: `이미 완료됨 — VOC-190 댓글에 PR #390 머지`.
 - agree도 이유를 쓴다: `본문상 제약 없음, TEAM_B가 SEC 보유`.
 - 항공 용어는 영어 그대로 쓴다(FLIGHT, AIRCRAFT, HOLD …).
+- mark 사유와 CROSSCHECK LOG는 SUPERVISOR가 화면에서 읽으므로 한국어다. 다른 세션에 보내는 글은 없다(ATC-126).
 
 ### 사유 칩 (DISPATCH disagree)
 

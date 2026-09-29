@@ -94,7 +94,7 @@ git diff --name-only origin/main...HEAD | node deploy/landing-tier.mjs
 
 ## 8. 보고
 
-일을 맡긴 세션에만 `SendMessage`로 보고한다(0절: FLIGHT PLAN으로 받았으면 OCC, 직접 지시로 받았으면 ENGINEERING이나 사용자). 다른 팀 세션에는 보내지 않는다.
+일을 맡긴 세션에만 `SendMessage`로 보고한다(0절: FLIGHT PLAN으로 받았으면 OCC, 직접 지시로 받았으면 ENGINEERING이나 사용자). 다른 팀 세션에는 보내지 않는다. 세션끼리 주고받는 글이라 보고는 영어로 쓴다(루트 `CLAUDE.md` "교신", ATC-126). 사용자와의 대화만 한국어다.
 
 - 첫 줄: `[TEAM_X → ENGINEERING] ATC-<n>: PR #<번호> <링크>`(OCC에 보고할 때는 `→ OCC`)
 - 한 일을 요약한다(항목 3~5개).

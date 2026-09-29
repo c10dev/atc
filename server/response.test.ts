@@ -30,10 +30,10 @@ test("answerError: READBACK은 늘 받고, ROGER는 R만, STANDBY는 W/U만, REC
 test("closingLine: W/U는 세 답을, R은 ROGER를, RECALL은 READBACK <id> RECALL을 청한다", () => {
   assert.equal(
     closingLine("clearance", "W/U", "C-0007"),
-    '— 받았으면 이 메시지에 "READBACK C-0007", 못 하면 "UNABLE C-0007 — 사유", 시간이 필요하면 "STANDBY C-0007"로 답장해 주세요.',
+    '— Reply to this message with "READBACK C-0007" if you take it, "UNABLE C-0007 — reason" if you cannot, or "STANDBY C-0007" if you need time.',
   );
-  assert.equal(closingLine("clearance", "R", "C-0008"), '— 받았으면 이 메시지에 "ROGER C-0008"로 답장해 주세요.');
-  assert.equal(closingLine("recall", "W/U", "D-0003"), '— 받았으면 이 메시지에 "READBACK D-0003 RECALL"로 답장해 주세요.');
+  assert.equal(closingLine("clearance", "R", "C-0008"), '— When received, reply to this message with "ROGER C-0008".');
+  assert.equal(closingLine("recall", "W/U", "D-0003"), '— When received, reply to this message with "READBACK D-0003 RECALL".');
   // 모든 끝줄에 READBACK이나 ROGER <id>가 있다(readiness 점검과 옛 습관)
   for (const line of [closingLine("flight-plan", "W/U", "D-0001"), closingLine("crew-change", "W/U", "CC-0001")]) assert.match(line, /"READBACK (D|CC)-0001"/);
 });

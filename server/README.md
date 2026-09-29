@@ -60,6 +60,7 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 | `occupancy.ts` | HANDOFF vs conflict vs brief visit from claim intervals `[since, lastAt]` |
 | `airports.ts` | AIRPORT registry: auto-discovery under `~/projects`, identity by first commit hash, codes, open/close/rename/delete |
 | `away.ts` | OUTSTATION: sessions holding a STAND outside their home AIRPORT (shared with the UI) |
+| `fleet-live.ts` | FLEET live part (ATC-100): per-REGISTRATION status, FLYING FLIGHTs, last activity, health, ACCOUNT hold and chips from `Snapshot` alone (pure `liveViewOf`, `mergeLive`); shared by `fleetView` and the browser |
 | `fleet-status.ts` | FLEET status list (ATC-44): AIRBORNE / HOLDING / PARKED / AOG / NORDO per AIRCRAFT (pure `fleetStatusOf`), one row each sorted by status then AIRPORT (pure `fleetRows`), elapsed text (shared with the UI) |
 | `restarting.ts` | RESTARTING (ATC-91, docs/fleet.md 8.5 "RESTARTING as built"), pure: `restartingOf` (a session that ended normally, no session file, same REGISTRATION not live, within `restartGraceMin`), `normalEndOf`, the shared text. The read is `readEndedSessions` in `sources/claude.ts` |
 | `health-flights.ts` | FLIGHT-holding AIRCRAFT health (ATC-86, docs/fleet.md 8.8 "AIRCRAFT health from events as built"), pure `applyFlightHealth`: attaches `STALLED` (In Progress FLIGHT by STAND claim or `tail:` label, idle past `stalledMin`, no open PR) and `keptFlights` (FLIGHTs a stopped AIRCRAFT still holds after its claim passed `claimTtl`) to the sessions |

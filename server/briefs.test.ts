@@ -40,11 +40,11 @@ test("DIRECT 배정 문구: 받는 팀·BRIEF 줄·목표·완료 기준·PILOT'
       "BRIEF: DIRECT",
       "짧은 일",
       "https://linear.app/x/ATC-40",
-      "목표: 한 줄",
-      "완료 기준: 테스트",
-      "애매한 곳은 PILOT'S DISCRETION으로 합리적인 기본값을 고르고 PR에 적으세요.",
-      '— 맡으면 "READBACK ATC-40", 못 맡으면 사유로 답해 주세요. PR을 올리면 번호를 알려 주세요.',
-      "끝까지 진행하고, SUPERVISOR 결정이 필요한 것만 멈춰서 물어 주세요.",
+      "Goal: 한 줄",
+      "Done when: 테스트",
+      "Where it is ambiguous, use PILOT'S DISCRETION: pick a reasonable default and record it in the PR.",
+      '— If you take it, answer "READBACK ATC-40"; if you cannot, answer with the reason. Tell me the PR number when you open it.',
+      "Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision.",
     ].join("\n"),
   );
 });
@@ -228,11 +228,11 @@ test("DIRECT 지시서: ATC-34 본문의 완료 기준·제약을 자르지 않�
 test("DIRECT 지시서: 상한을 넘으면 완료 기준·제약을 일부만 싣지 않고, 이슈 본문을 읽으라고 한 줄로 적는다", () => {
   const big = { goal: "짧은 목표", done: Array.from({ length: 400 }, (_, i) => `* 기준 ${i} ${"z".repeat(10)}`).join("\n"), constraints: "* 금지" };
   assert.ok(big.done.length > BRIEF_BODY_MAX);
-  assert.deepEqual(directLines(big), ["목표: 짧은 목표", FULL_TEXT_LINE]);
+  assert.deepEqual(directLines(big), ["Goal: 짧은 목표", FULL_TEXT_LINE]);
   // 목표가 없어도 한 줄은 남는다
   assert.deepEqual(directLines({ ...big, goal: null }), [FULL_TEXT_LINE]);
   // 상한 안이면 그대로
-  assert.deepEqual(directLines({ goal: null, done: "* 하나", constraints: null }), ["완료 기준:\n* 하나"]);
+  assert.deepEqual(directLines({ goal: null, done: "* 하나", constraints: null }), ["Done when:\n* 하나"]);
 });
 
 // ── 쓴 그대로(ATC-58): Linear의 이스케이프와 긴 이슈 링크 ──
@@ -316,7 +316,7 @@ test("directSectionsOf: 목표·완료 기준·제약 모두 푼 글로 싣고, 
   assert.equal(s.done, "* ATC-46 참고");
   assert.equal(s.constraints, "* Display only.");
   // 한 줄짜리 목록 항목은 이름표 다음 줄에
-  assert.deepEqual(directLines(s), [`목표: ${s.goal}`, "완료 기준:\n* ATC-46 참고", "이 작업만의 제약:\n* Display only."]);
+  assert.deepEqual(directLines(s), [`Goal: ${s.goal}`, "Done when:\n* ATC-46 참고", "Constraints:\n* Display only."]);
   // 푼 글이 600자를 넘을 때만 자른다
   const long = directSectionsOf(`## 목표\n${"긴 목표 ".repeat(150)}\\~`);
   assert.ok(long.goal!.endsWith(" …") && long.goal!.length <= GOAL_MAX + 2);

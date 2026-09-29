@@ -492,7 +492,7 @@ The FLEET tab is also where teams are formed and stood down. Until 2026-09-28 at
 |---|---|---|
 | Add a team | **ENTRY INTO SERVICE** | Registration (the next free `TEAM_X` is suggested), base AIRPORT (defaults to where most team sessions live), and a **CONFIGURATION**. The AIRCRAFT shows as NOT IN SERVICE until a session with that name appears, then atc links it by name |
 | Team template | **CONFIGURATION** | `general` (the vocado default crew; follows the defaults), `security` (Opus backend + Codex review; SEC, DATA, DOCS), `ui` (Opus backend + `ui-builder` + `ui-qa`; UI, DOCS), `research` (Opus backend + `flash-helper`; DATA, DOCS) |
-| Start the session | **CREW BRIEFING** | A copyable kickoff text: session name and folder, the CREW to create with their models, TYPE RATINGS (with the SEC rules), ROUTE, and the radio rules (`tail:` labels, `READBACK C-xxxx`; `READBACK D-xxxx` only in approval mode). The user opens a session in that repository, names it, and pastes it |
+| Start the session | **CREW BRIEFING** | A copyable kickoff text: session name and folder, the CREW to create with their models, TYPE RATINGS (with the SEC rules), ROUTE, and the radio rules (`tail:` labels, `READBACK C-xxxx`; `READBACK D-xxxx` only in approval mode). The user opens a session in that repository, names it, and pastes it. The text is English (ATC-126); a running session keeps the CREW BRIEFING it started with until it is launched again |
 | Stand a team down for a while | **AOG** | Reason plus an optional release date. The planner stops proposing to it (`AOG — reason (~date)`) |
 | Remove a team | **RETIREMENT** | The AIRCRAFT leaves the FLEET list (kept under RETIRED with its date and reason) and gets no proposals. A live session is not closed. It can be restored |
 
@@ -563,7 +563,7 @@ Calls are grouped by `agentType` and `model`: `observedCrew: {agentType, positio
 
 ### 8.4 CREW CHANGE
 
-When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT through `PATCH /api/fleet/:registration`, atc writes a CREW CHANGE: a text for the CAPTAIN, like the CREW BRIEFING but for a running team. Built in `server/crew-change.ts`; the only hook in `fleet.ts` is one call after the profile is saved. Step 1 (below, first part) is the text and the SUPERVISOR's manual delivery. Step 2 (the rest) lets OCC send it in DISPATCH approval mode (2b).
+When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT through `PATCH /api/fleet/:registration`, atc writes a CREW CHANGE: a text for the CAPTAIN, like the CREW BRIEFING but for a running team. It is English like the CREW BRIEFING (ATC-126), except the `ratingImpact` lines, which are Korean because the FLEET tab shows them too. Built in `server/crew-change.ts`; the only hook in `fleet.ts` is one call after the profile is saved. Step 1 (below, first part) is the text and the SUPERVISOR's manual delivery. Step 2 (the rest) lets OCC send it in DISPATCH approval mode (2b).
 
 - **In service** means not retired and a live session with that name exists. An AIRCRAFT that has not entered service gets its crew from the CREW BRIEFING instead. AOG AIRCRAFT count as in service.
 - **Diff** (`diffCrew`): members are compared by their one-line form `position: agent (limits)`, the same as the CREW BRIEFING. A member whose agent or limits changed is removed and added; the text pairs a POSITION that leaves and returns once as "바뀌는 CREW".
