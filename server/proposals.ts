@@ -39,7 +39,7 @@ import {
   workedWhy,
 } from "./dispatch.ts";
 import { teamOfKey } from "./linear-keys.ts";
-import { regKey } from "./registration.ts";
+import { fleetKeyOf, regKey } from "./registration.ts";
 import { RESTARTING_TEXT } from "./restarting.ts";
 import { applyGroundStops, enforcedStops, groundStopWhy } from "./atfm.ts";
 import { classLabel, classOf, needsStand } from "./crew.ts";
@@ -73,6 +73,8 @@ import {
   type LaunchResult,
   launchCapOf,
   launchReleaseWhyOf,
+  launchMissing,
+  launchMissingWhy,
   launchTimedOut,
   launchTimeoutWhy,
   launchViewOf,
@@ -582,6 +584,7 @@ export function syncOps(
       if (age(p) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at, reason: "승인 뒤 24시간 동안 전달되지 않음" });
       // LAUNCH했는데 유예가 지나도 세션이 없다(계획에 아직 absent)
       else if (acOf(p)?.launch && launchTimedOut(p, now, cfg.restartGraceMin)) ops.push({ op: "supersede", id: p.id, at, reason: launchTimeoutWhy(cfg.restartGraceMin) });
+      else if (acOf(p)?.launch && launchMissing(p, now, cfg.restartGraceMin)) ops.push({ op: "supersede", id: p.id, at, reason: launchMissingWhy(cfg.restartGraceMin) });
       else if (p.resume) {
         const reason = resumeWhy(p);
         if (reason) ops.push({ op: "supersede", id: p.id, at, reason });
@@ -935,9 +938,10 @@ export function runDispatch(s: Snapshot, now = Date.now()): Plan {
   const logbook = loadLogbook();
   const landed = landedOf(logbook);
   // RESUME 카드(ATC-129): 세션이 없는 백그라운드 AIRCRAFT가 한도로 끊긴 FLIGHT. DEPARTURE LOG로 STAND·브랜치를 찾는다
-  const resumes = resumePlansOf(s, readDepartures(), landed, now);
+  const fleet = loadFleet();
+  const resumes = resumePlansOf(s, readDepartures(), landed, now, baseOfFleet(fleet, cfg.teamPattern));
   // 켜진 GROUND STOP이 걸린 AIRPORT의 ASSIGN은 계획에서 뺀다(docs/atfm.md 6장). 열린 제안은 그 사유로 SUPERSEDED
-  const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), loadFleet(), landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes), s.atfm?.groundStops ?? []);
+  const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes), s.atfm?.groundStops ?? []);
   const seq = ops.filter((o) => o.op === "create").length;
   append(syncOps(existing, plan, s, cfg, now, seq, landed));
   return plan;
@@ -956,6 +960,12 @@ async function cardBriefsOf(cards: Proposal[], s: Snapshot, all: Proposal[], log
     cards.map((p) => [p.id, { facts: factsOf(p, ctx, index), lead: p.briefing ? null : leadOf(p.flight, now), blind: !isHeld(p) && isBlind(p.id) }]),
   );
 }
+
+// 등록부의 base AIRPORT(RESUME 카드, ATC-129)
+const baseOfFleet = (fleet: ReturnType<typeof loadFleet>, teamPattern: string) => (reg: string) => {
+  const key = fleetKeyOf(Object.keys(fleet.aircraft), reg, teamPattern);
+  return (key ? fleet.aircraft[key]?.base : null) ?? null;
+};
 
 // POST /api/dispatch/proposals/:id/<동작>. 2b 점검표(readiness.ts)도 이 목록으로 RECALL·ARRIVED 창구를 확인한다
 export const DISPATCH_ACTIONS = [
@@ -1001,7 +1011,8 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
     const logbook = loadPricedLogbook();
     const fuel = watchFuel?.(s) ?? null;
     const landed = landedOf(logbook);
-    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), loadFleet(), landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumePlansOf(s, readDepartures(), landed, now)), s.atfm?.groundStops ?? []);
+    const fleet = loadFleet();
+    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumePlansOf(s, readDepartures(), landed, now, baseOfFleet(fleet, cfg.teamPattern))), s.atfm?.groundStops ?? []);
     const open = proposals.filter((p) => p.status === "proposed" && !isHeld(p));
     const held = proposals.filter((p) => p.status === "proposed" && isHeld(p));
     const inFlight = proposals.filter(isInFlight).sort((a, b) => a.statusAt.localeCompare(b.statusAt));

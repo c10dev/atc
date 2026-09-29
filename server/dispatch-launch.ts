@@ -174,6 +174,10 @@ export const launchWaiting = (p: Pick<Proposal, "launch" | "launched">, now: num
 export const launchTimedOut = (p: Pick<Proposal, "launch" | "launched">, now: number, graceMin: number) =>
   Boolean(p.launch && p.launched?.ok && now - Date.parse(p.launched.at) >= graceMin * 60_000);
 export const launchTimeoutWhy = (graceMin: number) => `${LAUNCH_FAILED_WHY} — LAUNCH 뒤 ${graceMin}분 동안 새 세션이 뜨지 않음`;
+// 승인은 적혔는데 LAUNCH 결과가 없다(승인과 LAUNCH 사이에 서버가 멈춤). 유예가 지나면 닫는다 — 스스로 다시 띄우지 않는다
+export const launchMissing = (p: Pick<Proposal, "launch" | "launched" | "timeline">, now: number, graceMin: number) =>
+  Boolean(p.launch && !p.launched && p.timeline.approved && now - Date.parse(p.timeline.approved) >= graceMin * 60_000);
+export const launchMissingWhy = (graceMin: number) => `${LAUNCH_FAILED_WHY} — 승인 뒤 ${graceMin}분 동안 LAUNCH 기록이 없음(승인 중 서버가 멈췄을 수 있음). 스스로 다시 띄우지 않는다 — 다시 승인한다`;
 
 // ── 승인 + LAUNCH(순서만, 입출력은 주입). 상한이 찼으면 아무것도 적지 않는다. 승인을 먼저 적고 띄운다.
 // 실패하면 LAUNCH 결과와 SUPERSEDED를 적어 OCC가 보내지 않는다. 이미 세션이 떠 있으면 띄우지 않고 승인만 ──
@@ -226,6 +230,7 @@ export function resumePlansOf(
   departures: readonly Departure[],
   landed: Landed,
   now: number,
+  baseOf: (registration: string) => string | null = () => null, // 등록부의 base AIRPORT(착수 기록이 없는 tail: FLIGHT)
 ): AssignPlan[] {
   const out: AssignPlan[] = [];
   const byKey = new Map(s.tickets.map((t) => [t.key, t]));
@@ -251,9 +256,11 @@ export function resumePlansOf(
       commit: ws?.head ? { sha: ws.head.slice(0, 7), at: ws.lastCommitAt, pushed: ws.pushed ?? null } : null,
       report: cut.report,
     };
-    const airport = (dep && s.airports.find((x) => x.repo === dep.repo)?.code) ?? null;
+    // AIRPORT를 모르면 카드를 만들지 않는다(어느 AIRPORT인지 모르는 FLIGHT PLAN이 된다)
+    const airport = dep ? (s.airports.find((x) => x.repo === dep.repo)?.code ?? null) : (s.airports.find((x) => x.code === baseOf(reg))?.code ?? null);
+    if (!airport) continue;
     const factor: Factor = { id: "resume", label: "RESUME", value: 1, weight: 0, points: 0, detail: `cut ${hhmm(Date.parse(cut.cutAt), now)} · reset ${hhmm(Date.parse(cut.resetsAt), now)} 지남 · 새 턴 없음` };
-    out.push({ kind: "ASSIGN", flight, aircraft: `absent:${reg}`, aircraftName: reg, registration: reg, airport: airport ?? "—", score: 0, factors: [factor], launch: true, resume });
+    out.push({ kind: "ASSIGN", flight, aircraft: `absent:${reg}`, aircraftName: reg, registration: reg, airport, score: 0, factors: [factor], launch: true, resume });
   }
   return out;
 }
@@ -268,10 +275,11 @@ export function resumedOf(existing: readonly Pick<Proposal, "flight" | "resume" 
 
 // FLIGHT PLAN에 넣는 RESUME 줄. "resume, don't restart"
 export function resumeLines(r: ResumeInfo, now: number): string[] {
-  const commit = r.commit ? `마지막 커밋 ${r.commit.sha}${r.commit.at ? ` (${hhmm(Date.parse(r.commit.at), now)})` : ""}${r.commit.pushed === false ? " — origin에 아직 없음" : ""}` : "마지막 커밋 없음(워크트리를 찾지 못함)";
+  // 세션끼리 주고받는 글은 영어(ATC-126). CAPTAIN 보고 줄은 쓴 그대로
+  const commit = r.commit ? `last commit ${r.commit.sha}${r.commit.at ? ` (${hhmm(Date.parse(r.commit.at), now)})` : ""}${r.commit.pushed === false ? " — not on origin yet" : ""}` : "no last commit (worktree not found)";
   return [
-    `RESUME — resume, don't restart: 이 FLIGHT는 ${hhmm(Date.parse(r.cutAt), now)} 사용 한도로 끊겼다. 처음부터 다시 하지 말고 남은 작업에서 이어서 한다.`,
-    `STAND ${r.stand ?? "모름"} · 브랜치 ${r.branch ?? "모름"} · ${commit}`,
-    r.report ? `CAPTAIN 마지막 보고: ${r.report}` : null,
+    `RESUME — This FLIGHT was cut by a usage LIMIT at ${hhmm(Date.parse(r.cutAt), now)}. Resume, don't restart — continue from the remaining work.`,
+    `STAND ${r.stand ?? "unknown"} · branch ${r.branch ?? "unknown"} · ${commit}`,
+    r.report ? `CAPTAIN's last report: ${r.report}` : null,
   ].filter((l): l is string => Boolean(l));
 }

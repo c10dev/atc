@@ -14,10 +14,10 @@ import type { Restarting } from "./restarting.ts";
 
 const LAUNCH_DAYS = 14;
 const LAUNCH_TTL_MS = 60_000; // FLIGHT RECORDER는 크니 1분에 한 번만 읽는다
-const PATH_TTL_MS = 60_000;
+const MISS_TTL_MS = 10 * 60_000; // 못 찾은 job은 10분 동안 다시 찾지 않는다
 const TAIL = 96 * 1024;
 
-type LaunchRow = { t: string; jobId?: string; permissionMode?: string; model?: string };
+type LaunchRow = { t: string; jobId?: string; cwd?: string; permissionMode?: string; model?: string };
 let launchCache: { at: number; rows: Map<string, LaunchRow> } | null = null;
 
 // REGISTRATION → 마지막으로 성공한 atc LAUNCH
@@ -29,21 +29,25 @@ function lastLaunches(now: number, teamPattern: string): Map<string, LaunchRow> 
     .sort((a, b) => a.t.localeCompare(b.t));
   for (const r of sorted) {
     if (r.kind !== "fleet") continue;
-    rows.set(regKey(r.aircraft, teamPattern), { t: r.t, ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.permissionMode ? { permissionMode: r.permissionMode } : {}), ...(r.model ? { model: r.model } : {}) });
+    rows.set(regKey(r.aircraft, teamPattern), { t: r.t, ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.cwd ? { cwd: r.cwd } : {}), ...(r.permissionMode ? { permissionMode: r.permissionMode } : {}), ...(r.model ? { model: r.model } : {}) });
   }
   launchCache = { at: now, rows };
   return rows;
 }
 
-// job id(세션 id 앞자리)로 대화 기록 찾기: ~/.claude/projects/*/<jobId>-….jsonl. 워크트리로 옮긴 세션은 그 폴더에 있다
+// job id(세션 id 앞자리)로 대화 기록 찾기: ~/.claude/projects/*/<jobId>-….jsonl. 워크트리로 옮긴 세션은 그 폴더에 있다.
+// LAUNCH한 저장소(cwd)의 폴더와 그 아래 워크트리 폴더(이름이 같은 앞머리)를 먼저 보고, 없을 때만 전부 본다. 찾은 것은 계속, 못 찾은 것은 10분 캐시
 const pathCache = new Map<string, { at: number; path: string | null }>();
-function transcriptOf(jobId: string, now: number, root = join(config.claudeDir, "projects")): string | null {
+function transcriptOf(jobId: string, cwd: string | undefined, now: number, root = join(config.claudeDir, "projects")): string | null {
   if (!/^[0-9a-f]{6,}$/.test(jobId)) return null;
   const hit = pathCache.get(jobId);
-  if (hit && (hit.path || now - hit.at < PATH_TTL_MS)) return hit.path;
+  if (hit && (hit.path || now - hit.at < MISS_TTL_MS)) return hit.path;
   let found: string | null = null;
   try {
-    for (const proj of readdirSync(root)) {
+    const all = readdirSync(root);
+    const near = cwd ? cwd.replace(/[^a-zA-Z0-9]/g, "-") : null; // sources/claude.ts sessionDir와 같은 이름
+    const first = near ? all.filter((d) => d.startsWith(near)) : [];
+    for (const proj of [...first, ...all.filter((d) => !first.includes(d))]) {
       let names: string[] = [];
       try {
         names = readdirSync(join(root, proj));
@@ -105,8 +109,9 @@ export interface AbsentInput {
 export function readAbsent(i: AbsentInput): AbsentAircraft[] {
   const reg = (name: string) => regKey(name, i.teamPattern);
   const keys = Object.keys(i.fleet.aircraft);
+  const launches = lastLaunches(i.now, i.teamPattern);
   return absentOf(
-    lastLaunches(i.now, i.teamPattern),
+    launches,
     {
       liveRegs: new Set(i.sessions.filter((x) => x.status !== "dead").map((x) => reg(x.name))),
       restarting: new Set(i.restarting.map((r) => r.registration)),
@@ -114,7 +119,7 @@ export function readAbsent(i: AbsentInput): AbsentAircraft[] {
       retired: new Set(keys.filter((k) => i.fleet.aircraft[k]?.retired).map(reg)),
     },
     (registration, jobId): CutInfo | null => {
-      const path = jobId ? transcriptOf(jobId, i.now) : null;
+      const path = jobId ? transcriptOf(jobId, launches.get(registration)?.cwd, i.now) : null;
       const cut = path ? cutOfTranscript(path) : null;
       if (!path || !cut) return null;
       const sessionId = path.slice(path.lastIndexOf("/") + 1, -".jsonl".length);

@@ -769,7 +769,7 @@ FLIGHT를 마치고 기다리는 백그라운드 AIRCRAFT는 한 시간 뒤 사�
 
 - 그 REGISTRATION의 살아 있는 세션(출처 무관)이 없고, `RESTARTING`이 아니고, 등록부(`fleet.json`)에 있고 RETIRED가 아니다.
 - **백그라운드 출처:** 최근 14일 FLIGHT RECORDER에 성공한 atc LAUNCH(`kind: "fleet"`, `op: "launch"`, `ok`)가 있다. 데스크톱·터미널 AIRCRAFT는 그런 줄이 없어 이 길로 띄워지지 않는다. 그 LAUNCH의 permission mode와 모델을 다시 쓴다.
-- **cut**(ATC-86): 그 LAUNCH의 job id로 대화 기록을 찾는다(`~/.claude/projects/*/<jobId>-….jsonl`, 세션이 워크트리로 옮겨 갔어도). 그 끝이 한도로 잘린 턴이면(마지막 지시와 마지막 `release` 뒤에 `wrap_up` 안내) `cut`에 잘린 시각, ACCOUNT의 FUEL 기록에서 되짚은 reset(`cutResetOf`, 살아 있는 cut과 같다), CAPTAIN 마지막 메시지의 마지막 줄을 싣는다. cut 뒤에 새 지시가 있으면 cut이 아니다. FLIGHT RECORDER는 1분에 한 번 읽고, 대화 기록 끝은 크기·mtime으로 캐시한다.
+- **cut**(ATC-86): 그 LAUNCH의 job id로 대화 기록을 찾는다(`~/.claude/projects/*/<jobId>-….jsonl`, 세션이 워크트리로 옮겨 갔어도). 그 끝이 한도로 잘린 턴이면(마지막 지시와 마지막 `release` 뒤에 `wrap_up` 안내) `cut`에 잘린 시각, ACCOUNT의 FUEL 기록에서 되짚은 reset(`cutResetOf`, 살아 있는 cut과 같다), CAPTAIN 마지막 메시지의 마지막 줄을 싣는다. cut 뒤에 새 지시가 있으면 cut이 아니다. 대화 기록은 LAUNCH한 저장소(와 그 워크트리)의 프로젝트 폴더를 먼저 보고, 없을 때만 모든 폴더를 본다. 찾은 경로는 계속 쓰고, 못 찾으면 10분 뒤 다시 찾는다. FLIGHT RECORDER는 1분에 한 번 읽고, 대화 기록 끝은 크기·mtime으로 캐시한다.
 - `GET /api/snapshot`의 `absent: [{registration, launchedAt, jobId, permissionMode?, model?, cut: {sessionId, cutAt, resetsAt | null, weekly?, report} | null}]`.
 
 **카드의 LAUNCH.** `launchAircraft`를 부르는 것은 이 화면에서 누른(`fromThisApp`) DISPATCH `launch` 카드의 승인뿐이다. tick이나 타이머는 부르지 않는다. FLIGHT RECORDER 줄은 8.5의 것에 `by: "SUPERVISOR"`와 새 필드 `proposal: "D-xxxx"`다. 카드에서 온 LAUNCH는 `claude --bg`를 부르기 전에 거절된 것(상한, 이미 떠 있음, RETIRED)도 이제 남긴다. 상한(`ATC_MAX_LAUNCHED`)은 살아 있는 백그라운드 세션에 승인됐지만 아직 세션이 뜨지 않은 `launch` 카드를 더해 센다.

@@ -16,6 +16,7 @@ import {
   launchFailsOf,
   launchReleaseWhyOf,
   launchViewOf,
+  resumeLines,
   resumePlansOf,
 } from "./dispatch-launch.ts";
 import { followingOf } from "./following.ts";
@@ -276,9 +277,13 @@ test("RESUME: 한 FLIGHT(cut)에 한 번. 거절해도 다시 만들지 않고, 
   // FLIGHT PLAN: 이어서, 처음부터 다시 하지 않는다
   const text = formatFlightPlan(p, inProgress, "TEAM_G", null, now);
   assert.match(text, /^\[DISPATCH D-0021\] FLIGHT PLAN · /);
-  assert.match(text, /RESUME — resume, don't restart/);
-  assert.match(text, /STAND .*atc-200-x · 브랜치 worktree-atc-200-x · 마지막 커밋 abc1234 \(04:20Z\) — origin에 아직 없음/);
-  assert.match(text, /CAPTAIN 마지막 보고: WIP 커밋 abc1234 — 남은 것: docs/);
+  assert.match(text, /RESUME — This FLIGHT was cut by a usage LIMIT at 04:30Z\. Resume, don't restart — continue from the remaining work\./);
+  assert.match(text, /STAND .*atc-200-x · branch worktree-atc-200-x · last commit abc1234 \(04:20Z\) — not on origin yet/);
+  assert.match(text, /CAPTAIN's last report: WIP 커밋 abc1234 — 남은 것: docs/);
+  // 세션에 보내는 글은 영어(ATC-126): RESUME 줄에 한국어가 없다(CAPTAIN 보고 줄은 쓴 그대로)
+  const resumePart = text.split("\n").filter((l) => /^(RESUME|STAND) /.test(l)).join("\n");
+  assert.doesNotMatch(resumePart, /[가-힣]/);
+  assert.match(resumeLines({ ...p.resume!, commit: null, stand: null, branch: null, report: null }, now).join("\n"), /STAND unknown · branch unknown · no last commit \(worktree not found\)/);
 });
 
 test("RESUME 카드: 세션이 다시 떴으면(사람이 열었음) 닫고 ATC-86대로. 승인된 카드는 FLIGHT가 In Progress인 동안 AIRCRAFT 사정으로 닫지 않는다", () => {
@@ -295,4 +300,29 @@ test("RESUME 카드: 세션이 다시 떴으면(사람이 열었음) 닫고 ATC-
   const busyPlan = planDispatch(busy, new Map(), cfg, now + 120_000, reservedOf(approved, now + 120_000), fleet);
   assert.deepEqual(brief(syncOps(approved, busyPlan, busy, cfg, now + 120_000, 21)), []);
   assert.equal(launchReleaseWhyOf(approved[0]!, busy), null); // 보낼 수 있다
+});
+
+test("승인은 적혔는데 LAUNCH 기록이 없다(승인과 LAUNCH 사이에 서버가 멈춤): 유예 동안은 두고, 지나면 LAUNCH 실패로 닫는다. 다시 띄우지 않는다", () => {
+  const log: Op[] = [...d0010(), { op: "approve", id: "D-0010", at: iso("06:02:00") }];
+  const existing = fold(log);
+  const opsAt = (hms: string, s: Snapshot) => {
+    const plan = planDispatch(s, new Map(), cfg, at(hms), reservedOf(existing, at(hms)), fleet);
+    return syncOps(existing, plan, s, cfg, at(hms), 10);
+  };
+  assert.deepEqual(brief(opsAt("06:20:00", snap({ absent: [absentG()] }))), []);
+  const ops = opsAt("06:32:00", snap({ absent: [absentG()] }));
+  assert.equal(ops.length, 1); // supersede 하나뿐 — 새로 띄우는 일은 없다
+  assert.match(brief(ops)[0]!, /^supersede:D-0010:LAUNCH 실패 — 승인 뒤 30분 동안 LAUNCH 기록이 없음/);
+  assert.equal(launchFailsOf(fold([...log, ...ops]), at("06:40:00")).length, 1); // FOLLOWING
+  // 세션이 이미 떠 있어 LAUNCH 없이 승인만 한 카드는 닫지 않는다
+  assert.deepEqual(brief(opsAt("06:32:00", snap({ sessions: [session("g", "TEAM_G")] }))), []);
+});
+
+test("RESUME: DEPARTURE LOG의 저장소가 어느 AIRPORT도 아니면 카드를 만들지 않는다. 착수 기록 없는 tail: FLIGHT는 등록부 base AIRPORT로", () => {
+  const elsewhere = departures.map((d) => ({ ...d, repo: "/home/c10/projects/unknown" }));
+  const s = snap({ tickets: [inProgress], workspaces: [stand], absent: [absentG({ cut: cutG })] });
+  assert.deepEqual(resumePlansOf(s, elsewhere, new Map(), at("07:41:00")), []);
+  const tailed = snap({ tickets: [{ ...inProgress, labels: ["tail:TEAM_G"] }], absent: [absentG({ cut: cutG })] });
+  assert.deepEqual(resumePlansOf(tailed, [], new Map(), at("07:41:00")), []); // base를 모름
+  assert.deepEqual(resumePlansOf(tailed, [], new Map(), at("07:41:00"), () => "ATCC").map((r) => [r.flight, r.airport]), [["ATC-200", "ATCC"]]);
 });
