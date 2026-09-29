@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { AircraftView } from "../../../../server/fleet.ts";
 import { fleetStatusOf, flightDetailText } from "../../../../server/fleet-status.ts";
 import { RESTARTING_TEXT } from "../../../../server/restarting.ts";
@@ -143,7 +144,8 @@ export function Card({
   onCrewChanged: () => void;
 }) {
   // 세션 출처(ATC-76): BG·DESKTOP·TERM과 permission mode. BG id는 툴팁에
-  const origin = originBadgeOf(a.origin, a.permissionMode, session?.id);
+  // 백그라운드면 세션 파일의 jobId가 우선(ATC-98, 스냅샷). 없으면 claude agents의 id
+  const origin = originBadgeOf(a.background ? "background" : a.origin, a.permissionMode, a.background?.jobId ?? session?.id);
   return (
     <article className={`fl-card s-${a.status}${a.aog ? " is-aog" : ""}`}>
       <header className="fl-head">
@@ -275,7 +277,7 @@ export function Card({
           <SuggestedReply job={a.job} />
         </div>
       )}
-      {a.job?.state === "working" && a.job.detail && <p className="fl-line"><JobDetail job={a.job} /></p>}
+      {a.job?.state === "working" && (a.job.detail || a.job.settled) && <p className="fl-line"><JobDetail job={a.job} /></p>}
       {(a.origin === "background" || a.origin === "desktop") && (
         <p className="fl-origin-note faint">{a.origin === "background" ? "BG 세션 — 이 호스트의 CLI 로그인을 따른다" : "DESKTOP 세션 — Claude 앱의 계정을 따른다"}</p>
       )}
@@ -300,6 +302,7 @@ export function Card({
             LAUNCH
           </button>
         )}
+        {origin?.attach && <CopyAttach command={origin.attach} />}
         {session && isBackground(a.origin ?? (session.kind === "background" ? "background" : null)) && (
           <button className="fl-btn" onClick={onStop}>
             STOP
@@ -319,6 +322,25 @@ export function Card({
         </button>
       </div>
     </article>
+  );
+}
+
+// BG 세션을 여는 명령을 복사한다(ATC-98). 복사가 막힌 환경에서는 조용히 넘어가고, 명령은 버튼 툴팁에 그대로 있다
+function CopyAttach({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // 클립보드를 못 쓰면 툴팁의 명령을 직접 복사한다
+    }
+  };
+  return (
+    <button type="button" className="fl-btn fl-copy-attach mono" title={command} aria-label={`${command} 복사`} onClick={copy}>
+      {copied ? "복사됨" : "ATTACH 복사"}
+    </button>
   );
 }
 

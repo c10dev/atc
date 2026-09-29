@@ -56,11 +56,14 @@ test("백그라운드 세션의 permission mode: 세션 시작 전후 2분 안�
 });
 
 test("표시: BG·DESKTOP·TERM과 permission mode, BG id는 툴팁에만, 세션이 없으면 null", () => {
-  assert.deepEqual(originBadgeOf("desktop", "auto"), { origin: "desktop", badge: "DESKTOP", mode: "auto", title: originBadgeOf("desktop", "auto")!.title });
+  assert.deepEqual(originBadgeOf("desktop", "auto"), { origin: "desktop", badge: "DESKTOP", mode: "auto", title: originBadgeOf("desktop", "auto")!.title, attach: null });
   assert.match(originBadgeOf("desktop", "auto")!.title, /데스크톱 앱의 원격 세션 .* permission mode auto$/);
   const bg = originBadgeOf("background", null, "efbbe208")!;
   assert.equal(bg.badge, "BG");
-  assert.match(bg.title, /BG efbbe208 · permission mode 모름$/);
+  // ATC-98: 툴팁은 `BG <jobId> — claude attach <jobId>`, attach가 복사할 명령
+  assert.match(bg.title, /BG efbbe208 — claude attach efbbe208 · permission mode 모름$/);
+  assert.equal(bg.attach, "claude attach efbbe208");
+  assert.equal(originBadgeOf("desktop", "auto", "efbbe208")!.attach, null); // background가 아니면 id를 싣지 않는다
   assert.equal(originBadgeOf("terminal", "default")!.badge, "TERM");
   assert.equal(originBadgeOf(null, "auto"), null);
 });

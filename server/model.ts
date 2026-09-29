@@ -27,6 +27,9 @@ export interface Session {
   health?: Health | null;
   // 세션 출처(ATC-76): background·desktop·terminal·unknown. 살아 있는 claude 세션만(죽었거나 codex면 없다)
   origin?: SessionOrigin;
+  // 세션 파일의 kind(ATC-98): bg → background, interactive → interactive. 옛 스냅샷·Codex 세션·모르는 값이면 없다
+  kind?: "background" | "interactive";
+  jobId?: string; // kind가 background일 때 세션 파일의 jobId(`claude attach <jobId>`)
   permissionMode?: string | null; // 명령줄의 --permission-mode, 백그라운드면 LAUNCH 기록. 모르면 null
   // 한도로 잘리거나(cut LIMIT) 한도가 풀렸는데 멈췄거나(RESUME) 멈춘(STALLED) AIRCRAFT가 쥔 FLIGHT 중, 점유(claimTtl)가 지나 claims에서 빠진 것.
   // FLEET 줄이 FLIGHT를 잃지 않게 한다(ATC-86). 그 밖에는 없다

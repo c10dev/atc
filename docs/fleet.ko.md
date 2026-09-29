@@ -309,7 +309,7 @@ DISPATCH는 날고 있는 FLIGHT가 바꾼 파일과 Todo FLIGHT가 고칠 파�
 | `stub` | 녹화한 응답, 네트워크 없음. 테스트와 `ATC_JUDGE_ENGINE=stub`으로 띄운 시험 서버가 쓴다 |
 | `jev` | TypeSafe System One: `POST https://api.typesafe.ai/v1/systemone`, 모델 `jev-latest`, `Authorization: Bearer $TYPESAFE_API_KEY`(`.env.local`. 로그·출력·기록에 쓰지 않는다) |
 
-**스위치**는 `~/.local/state/atc/judges.json`의 `judges.jev`다: `off`(기본), `replay`, `shadow`. SUPERVISOR만 바꾼다. 설정 창 → AGENTS → JUDGES에서 바꾸거나, 이 화면 Origin으로 `PUT /api/settings {judgesJev}`를 보낸다(AUTOLAND와 같다). atcctl에는 명령이 없어 관제 세션은 바꿀 수 없다. 값이 없거나 모르는 값이면 `off`로 읽는다.
+**스위치**는 `~/.local/state/atc/judges.json`의 `judges.jev`다: `off`(기본), `replay`, `shadow`. SUPERVISOR만 바꾼다. 설정 창 → AUTOMATION → JUDGES에서 바꾸거나, 이 화면 Origin으로 `PUT /api/settings {judgesJev}`를 보낸다(AUTOLAND와 같다). atcctl에는 명령이 없어 관제 세션은 바꿀 수 없다. 값이 없거나 모르는 값이면 `off`로 읽는다.
 
 | 모드 | 판정하는 것 |
 |---|---|
@@ -731,6 +731,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **화면.** 목록 줄과 카드에 `BG`·`DESKTOP`·`TERM`·`?`와 permission mode. `BG <id>` 배지를 대신하고 id는 툴팁에 있다. 세션이 백그라운드가 아닌 카드에는 그 출처의 손 절차가 한 줄 보인다. ACCOUNT 줄에는 BG 세션은 호스트 CLI 로그인을, DESKTOP 세션은 앱의 계정을 따른다는 말이 붙는다(보여 주기만).
 - **쓰임.** 카드의 STOP, STOP API(`stopTargetOf`와 `rowOriginOf`), FLEET PLAN 실행(`STOP`, `RESTART`, `REFRESH`, `RETIRE`의 세션 멈춤)은 출처가 `background`일 때만 한다. 다른 출처는 그 출처의 손 절차를 받는다(`manualStepsOf`): Claude 앱에서 닫기, 터미널에서 `/exit`, REFRESH면 `/clear` 뒤 CREW BRIEFING 붙여 넣기. FLEET PLAN의 `session` 사유에 출처가 나오고, 저장된 `value`는 그대로 `interactive`·`background`다.
 - **2b 전달.** `GET /api/dispatch/brief`의 `delivery`: 제안 AIRCRAFT마다 출처, permission mode, OCC의 permission mode, 둘 다 알고 다를 때의 `warn`(`deliveryOf`). DISPATCH 카드와 IN FLIGHT 줄에 `MODE <m> ≠ OCC <m>`이 떠 메시지가 붙들릴 수 있음을 알린다. 막지 않는다.
+- **jobId가 든 BG 칩(ATC-98).** 목록 줄과 카드의 `BG` 칩은 이미 있었다(ATC-76). ATC-98은 그 칩이 가리키는 id를 더한다: 스냅샷의 `Session`이 세션 파일에서 `kind?: "background" | "interactive"`와 `jobId?`를 읽는다(`server/sources/claude.ts`의 순수 함수 `sessionKindOf`. `kind`가 없거나 모르는 값이면, 옛 스냅샷이나 Codex 세션이면 둘 다 없다). `AircraftView`와 `FleetRow`는 AIRCRAFT의 *살아 있는* 세션에서 `background: { jobId: string | null } | null`을 싣는다. 스냅샷만으로 셈하므로(`liveViewOf`) `claude agents`를 더 부르지 않는다. 칩 툴팁은 `BG <jobId> — claude attach <jobId>`이고, 카드에 `claude attach <jobId>`를 복사하는 `ATTACH 복사` 버튼이 있다. 죽은 세션, STALE job(ATC-93), 세션 없는 AIRCRAFT는 `background: null`이라 칩이 없다. `jobId`를 못 읽은 background 세션은 칩은 있고 attach 명령은 없다.
 
 ### RESTARTING as built (ATC-91)
 
@@ -1050,7 +1051,7 @@ ATC-69는 대화 기록에 `[1m]`이 남지 않아 창을 짐작했다. ATC-85�
 - 관제 세션(TOWER, OCC, CROSSCHECK, MCC, ENGINEERING, ATC-60)도 ACCOUNT의 구성원이다. SUPERVISOR가 설정 창(AGENTS 탭 CONTROL 블록, `fleet.json` `control`, 선택 항목)에서 라벨을 단다. 라벨이 없으면 라벨이 하나라도 있을 때 `default`로, 하나도 없으면 자기 이름으로 따로 센다. 그 기록은 ACCOUNT의 값, TOWER INFO, 그 ACCOUNT의 AIRCRAFT에 대한 DISPATCH HOLD에 들어간다. 관제 세션 자신은 붙들지 않는다. FLEET 탭의 FUEL 블록이 ACCOUNT마다 AIRCRAFT와, 따로 관제 세션을 적는다.
 - FLEET FUEL 블록과 카드: ACCOUNT마다 `사용 82% · resets 21:00Z` — 가장 많이 쓴 창에서 **쓴 몫**과 그 창의 reset(ATC-81: 늘 쓴 몫이라고 적는다. "FUEL 82%"는 남은 눈금처럼 읽혔다). 80 % 아래는 회색, 80 %부터 노랑(INFO), 95 %부터 빨강(HOLD 임계값). 툴팁에 창마다의 값과 어느 세션이 언제 적었는지가 있다. 목록 줄에는 싣지 않는다. 같은 ACCOUNT의 AIRCRAFT마다 같은 숫자가 자기 것처럼 보이기 때문이다. 줄에는 AIRCRAFT 자기 연료 FOB(아래 "FOB as built (ATC-81)")를 두고, ACCOUNT는 hold 수준일 때 꼬리표 `HOLD · FUEL (account pro-2) until 21:00Z`(백분율 없이)로만 둔다.
 - 80 %(`dispatch.json` `fuel.infoPct`)부터 TOWER 브리핑 `open.fuel`에 INFO 항목(ACCOUNT·창·reset마다 한 번), 그 ACCOUNT의 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING에 `fuel` 문제(`info`)가 생긴다.
-- 95 %(`fuel.holdPct`)부터는 SUPERVISOR가 DISPATCH HOLD 스위치를 켰을 **때만**(설정 창 AGENTS 탭 FUEL 블록, `fuel.hold`, 기본 꺼짐, 결정 D3) DISPATCH가 그 ACCOUNT의 AIRCRAFT를 reset까지 `HOLD · FUEL (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다. 계정을 저절로 바꾸는 일은 없다.
+- 95 %(`fuel.holdPct`)부터는 SUPERVISOR가 DISPATCH HOLD 스위치를 켰을 **때만**(설정 창 AUTOMATION 탭 FUEL 블록, `fuel.hold`, 기본 꺼짐, 결정 D3) DISPATCH가 그 ACCOUNT의 AIRCRAFT를 reset까지 `HOLD · FUEL (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다. 계정을 저절로 바꾸는 일은 없다.
 
 **Push(`hooks/health.mjs`, ATC-47).** Claude Code hook이 멈춘 순간을 바로 알려서, 승인을 기다리는 세션이 30분 뒤 `HUNG`이 아니라 곧바로 `PENDING`으로 보인다. 이벤트마다 상태 폴더의 `health/<sessionId>.jsonl`에 한 줄을 덧붙인다: `{t, event, code?, error?, line?}`(`StopFailure`, `Notification`, `Stop`, `PostToolUse`. 코드·시각·오류 첫 줄만, 본문 없음). 서버는 세션마다 마지막 줄을 읽고, 대화 기록의 마지막 사실보다 새 push 기록이 이긴다(`mergeHealth`). 아니면 pull 결과가 그대로 선다. SUPERVISOR의 설치 방법은 [hooks/README.ko.md](hooks/README.ko.md)에 있다.
 
@@ -1149,6 +1150,7 @@ FLEET PLAN 블록의 FUEL(8.6의 "주간 사용량 줄")은 만들었다(ATC-63)
 - **읽기.** `server/job-state.ts`: `parseJob`(순수)은 `state`(`working`·`blocked`·`done`·`stopped`·`failed`, 그 밖의 값은 `null`), `detail`, `needs`·`suggestedReply`(`blocked`일 때만), `updatedAt`만 고른다. `intent`(팀은 CREW BRIEFING 전체)·`output`·`providerEnv`·`linkScanPath`는 읽지도 내보내지도 않는다. `since`는 `timeline.jsonl` 끝(16 KB)에서 지금 state가 이어진 줄들의 첫 줄이고, timeline이 없으면 `updatedAt`이다. `readJob`은 두 파일의 mtime·크기로 job마다 캐시하고, 아무것도 쓰거나 지우거나 잠그지 않는다. ATC-93의 `jobStateOf`(STALE 줄)도 같은 파일의 `state`를 읽는다.
 - **화면.** `blocked`인 동안 `NEEDS YOU · <needs>` 칩. 툴팁에 `detail`과 답하는 방법이 있다. FLEET 목록 줄과 카드(카드에는 `suggestedReply`가 복사만 되는 줄로 함께 보이고, atc는 보내지 않는다), STRIPS 스트립(blocked 세션은 PARKED여도 보인다), 관제 세션의 CONTROL 블록 줄에 붙는다. `working`이면 `detail`이 FLEET 목록과 카드에 흐린 한 줄로 보인다.
 - **경보.** `health.blockedMin`분(기본 3, `ATC_HEALTH_BLOCKED_MIN`) 넘게 `blocked`이면 `health` 경보 `BLOCKED — <이름>이 N분째 사람을 기다림: <needs>`(키 `health|BLOCKED|<세션>`)가 뜬다. `HealthCode`가 아니라 따로 둔 경보다: `Health`는 DISPATCH를 붙들고 매뉴얼 항목이 있는데 이것은 그렇지 않다. state가 `blocked`를 벗어나면 풀리고 `alert.raised` / `alert.cleared`가 따라온다.
+- **이미 끝난 `blocked`(ATC-133).** SUPERVISOR가 답한 뒤에도 job 파일이 `blocked`로 남을 수 있다. `settleJob`(순수, `server/job-state.ts`)은 `tempo`가 `active`이거나, 세션의 마지막 활동(atc가 이미 `lastActiveAt`으로 읽는 대화 기록 mtime, 새 스캔 없음)이 `since`+30초(blocked가 시작될 때 마지막 턴이 함께 기록되므로 두는 GRACE)보다 나중이면 `blocked`가 끝난 것으로 보고 `working`으로 보인다. `detail`(답한 글 그대로이거나 옛 글일 수 있다)·`needs`·`suggestedReply`는 지우고, 파일의 원래 모습은 `settled`에 남겨 `working` 칩 툴팁에 쓴다("job file says blocked since 07:04, working since 07:05"). `blockedAlerts`도 같은 규칙이라 경보가 울리지 않는다. 경보 글은 `needs`이거나 없음이고 `detail`은 쓰지 않는다. 진짜 blocked(뒤 턴 없음, tempo `blocked`·`idle`)는 그대로 보이고 울린다.
 - **확인한 버전** Claude Code 2.1.284(2026-09-29). Claude Code 내부 파일이라 파일이 없거나 다른 버전이거나 모르는 state면 아무것도 보이지 않고 오류도 내지 않는다.
 
 ## 9. `lane:`에서 `tail:`로 옮기기

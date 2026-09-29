@@ -401,6 +401,24 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 - **경보**: FLIGHT FOLLOWING이 SUPERVISOR를 기다리는 sent 제안을 따라가며 warn 문제 `await-supervisor`(key `<FLIGHT>|await-supervisor`, SUPERVISOR에게 한 번 보고)를 낸다. 스냅샷은 그 AIRCRAFT 세션에 `health` 경보(key `health|AWAIT-SUPERVISOR|<D-xxxx>`)를 올린다. ATC-99(BLOCKED 백그라운드 세션)·ATC-87과 같은 길이고 key마다 한 번이다. PILOT'S DISCRETION: 새 health 코드는 없다(`HealthCode`와 `hooks/health.d.mts`는 그대로).
 - **OCC**: `occ/CLAUDE.md`와 `flight-plan.md`: CAPTAIN이 자기 사용자를 기다리며 멈추면 `dispatch await-supervisor`를 치고, 다시 보내지 않고, 어떤 승인도 전하지 않는다. guard·send-guard·FLIGHT PLAN 문구는 그대로다.
 
+## FLIGHT FOLLOWING: 이정표 구현 내용(ATC-123)
+
+항공사는 비행마다 OOOI, 네 개의 실제 시각을 적는다. atc도 이미 가진 기록으로 FLIGHT마다 같은 넷을 붙인다. 팀 작업을 새로 감지하지 않고 Linear에 쓰지도 않는다. ARRIVED의 뜻은 그대로고 IN이 그 옆에 놓인다.
+
+| 이정표 | 뜻 | 출처(있는 첫 것) |
+|---|---|---|
+| `out` | OUT: DEPARTED | 그 FLIGHT의 첫 DEPARTURE LOG 줄(`departures.jsonl`). 없으면 제안의 `departed` 시각(STAND 없는 FLIGHT). 그것도 없으면 LOGBOOK 줄의 `departedAt`(`departedFrom`이 `pr`이 아닐 때만. PR로 추정한 값은 쓰지 않는다) |
+| `off` | OFF: PR을 엶 | 다음 중 가장 이른 것: 그 FLIGHT에 묶인(브랜치, `Fixes`·`Refs` key) 열린 PR의 `createdAt`, 머지된 PR의 (머지 시각 − 착륙 대기), 첫 `landing.requested` 이벤트 |
+| `on` | ON: 머지 | 머지된 PR의 LOGBOOK `arrivedAt`(여럿이면 가장 이른 머지) |
+| `in` | IN: 서비스에 들어감 | `rts.jsonl`에서 결과가 `ok`이고 ON 이후이며 `to`가 머지 커밋을 품은(`git merge-base --is-ancestor`) 첫 줄의 `at`. RTS가 배포하는 저장소의 AIRPORT(`mcc.json`의 `airport`) FLIGHT에만 있다. 다른 AIRPORT는 IN이 없다 |
+
+- `milestonesOf(flight, sources)`(`server/milestones.ts`, 순수 함수, 화면도 씀)는 `{out, off, on, in, reverted}`를 돌려준다. 출처가 없으면 그 시각은 `null`이고 추측하지 않는다. 로컬 저장소 읽기(`origin/main`의 `Merge pull request #n` 커밋으로 머지 커밋을 찾고 `is-ancestor`로 확인)는 `server/milestones-run.ts`에 있고, 읽기만 하며 캐시한다. 거절·실패한 RTS는 건너뛰고, IN은 머지를 품은 첫 성공이다.
+- **되돌림**은 ON을 옮기지 않는다. 기록에서 그 PR은 머지된 채이고, `reverted`가 되돌린 PR을 담아 FIDS 툴팁이 그렇다고 알린다.
+- **FLIGHT RECORDER**: FLIGHT·이정표마다 atc가 처음 본 때 한 줄. `{"t", "kind": "milestone", "milestone": "out|off|on|in", "flight", "at", "seenAt"}`. `t`와 `at`은 일이 일어난 시각이라(그 UTC 날짜 파일에 들어간다) `seenAt`이 atc가 본 시각이다. 위 기록에서 1분에 한 번 이하로 돌고, 이미 적힌 줄을 recorder에서 읽어 확인하므로 재시작해도 두 번 적지 않는다. 보관 30일보다 오래된 이정표는 적지 않는다. JSON에서는 스냅샷 차이 모양인 `TrafficEvent`가 아니라 `kind: "milestone"` 줄이라 `RecordLine`에 변형이 하나 늘었다.
+- **화면**: FLIGHT FOLLOWING은 단계 막대 아래에 `OUT 03:12 · OFF 03:40 · ON 04:02 · IN 04:07`을 보인다(닿지 않은 칸은 `—`, 시계는 UTC·지역 설정을 따른다). FIDS는 REMARKS 옆에 가장 늦은 이정표를, 행 툴팁에 넷 모두 보인다. `GET /api/following` 항목에 `milestones`가 실리고, `GET /api/milestones`는 하나라도 닿은 FLIGHT의 `{at, flights: {<FLIGHT>: {out, off, on, in, reverted}}}`를 돌려준다.
+- PILOT'S DISCRETION: 머지된 PR이 여럿이면 ON은 가장 이른 머지이고 IN은 그 PR의 머지 커밋을 따른다. OFF는 "대표 PR"을 고르지 않고 가장 이른 후보를 쓴다.
+- 아직 없는 것(뒤에 더할 수 있다): WAKE 기대치에서 온 이정표별 목표 시각, IATA식 지연 사유 코드, ETA.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

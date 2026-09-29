@@ -8,7 +8,7 @@ import { type TalkEvent, talkEventsOf } from "../briefs.ts";
 import { type EndedSession, normalEndOf } from "../restarting.ts";
 import { type Fact, factsOf, type Health, type HealthConfig, healthOf, mergeHealth } from "../health.ts";
 import { sessionProcOf } from "../session-proc.ts";
-import { readJob } from "../job-state.ts";
+import { readJob, settleJob } from "../job-state.ts";
 import { lastMessageOf } from "../judges/report.ts";
 
 interface SessionFile {
@@ -22,6 +22,13 @@ interface SessionFile {
   kind?: string; // bg·interactive
   jobId?: string; // kind가 bg일 때 ~/.claude/jobs/<jobId>(ATC-99)
   entrypoint?: string; // claude-desktop·cli
+}
+
+// 세션 파일의 kind·jobId(ATC-98, 순수). bg는 background, interactive는 그대로, 없거나 모르는 값이면 아무것도 없다. jobId는 background에만
+export function sessionKindOf(s: Pick<SessionFile, "kind" | "jobId">): Pick<Session, "kind" | "jobId"> {
+  if (s.kind === "bg" || s.kind === "background") return { kind: "background", ...(typeof s.jobId === "string" && s.jobId ? { jobId: s.jobId } : {}) };
+  if (s.kind === "interactive") return { kind: "interactive" };
+  return {};
 }
 
 // pid 재사용을 피하려고 /proc/<pid>/stat의 starttime(22번째 필드)까지 맞춘다.
@@ -63,6 +70,7 @@ export function readClaudeSessions(): { sessions: Session[]; files: SessionFile[
   }
   const sessions = files.map((s): Session => {
     const alive = isAlive(s.pid, s.procStart);
+    const lastActiveAt = mtime(transcriptPath(s))?.toISOString() ?? null;
     // 출처(ATC-76): 살아 있는 세션만, pid마다 한 번 읽는다(session-origin.ts가 캐시)
     const proc = alive ? sessionProcOf(s.pid, s.kind, s.entrypoint) : null;
     return {
@@ -73,12 +81,13 @@ export function readClaudeSessions(): { sessions: Session[]; files: SessionFile[
       pid: s.pid,
       cwd: s.cwd,
       startedAt: new Date(s.startedAt).toISOString(),
-      lastActiveAt: mtime(transcriptPath(s))?.toISOString() ?? null,
+      lastActiveAt,
       repo: null,
       workspacePath: null,
       ...(proc ? { origin: proc.origin, permissionMode: proc.permissionMode } : {}),
+      ...sessionKindOf(s),
       // 백그라운드 job 상태(ATC-99): 살아 있는 bg 세션만. 파일은 mtime으로 캐시하고 읽기만 한다
-      ...(alive && s.kind === "bg" ? { job: readJob(s.jobId) } : {}),
+      ...(alive && s.kind === "bg" ? { job: settleJob(readJob(s.jobId), lastActiveAt) ?? null } : {}),
     };
   });
   return { sessions, files };

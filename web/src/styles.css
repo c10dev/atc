@@ -1687,6 +1687,13 @@ a.ticket:hover {
 .fids-table tr.tone-cleared .remark {
   animation: blink 1.2s steps(2) infinite;
 }
+/* OOOI(ATC-123): REMARKS 옆에 가장 늦은 이정표(OUT·OFF·ON·IN) 하나 */
+.remark-ms {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--faint);
+  letter-spacing: 0.04em;
+}
 .fids-remark .code-chip {
   margin-left: var(--space-2);
 }
@@ -2933,4 +2940,34 @@ a.ticket:hover {
 /* 판 타일이 있는 Radar Console에서만 글자를 줄인다(다른 테마는 타일 없이 글자만) */
 :root[data-density="compact"][data-theme="radar"] .flap b {
   font-size: var(--text-xs);
+}
+/* AUTOMATION 탭(ATC-131): 지금 정책 한 줄, ⚠ 모드는 호박색, 나머지 모드 경고는 접음 */
+.automation-line {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font: var(--text-xs) var(--mono);
+  color: var(--muted);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.automation-line b {
+  color: var(--text);
+}
+.automation-line .is-warn,
+.automation-line .is-warn b,
+.config-note.is-warn,
+.config-row .tone-warn {
+  color: var(--amber);
+}
+.mode-others {
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+.mode-others summary {
+  cursor: pointer;
+  margin: var(--space-1) 0;
 }

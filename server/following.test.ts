@@ -30,6 +30,17 @@ const logEntry = (flight: string, arrivedMin: number, over: Partial<LogEntry> = 
   }) as LogEntry;
 const input = (over: Partial<FollowInput>): FollowInput => ({ proposals: [], tickets: [], workspaces: [], pulls: [], logbook: [], departures: [], now: NOW, ...over });
 
+test("OOOI(ATC-123): FollowItem은 그 FLIGHT의 이정표를 싣고, 없으면 null", () => {
+  const ms = { out: ago(200), off: ago(90), on: null, in: null, reverted: null };
+  const [a, b] = followingOf(input({
+    proposals: [proposal("D-1", "VOC-1", "accepted", { accepted: ago(210) }), proposal("D-2", "VOC-2", "accepted", { accepted: ago(210) })],
+    tickets: [ticket("VOC-1"), ticket("VOC-2")],
+    milestones: new Map([["VOC-1", ms]]),
+  }));
+  assert.deepEqual(a.milestones, ms);
+  assert.equal(b.milestones, null);
+});
+
 test("대상: accepted·departed·recalling인 ASSIGN과 tail:이 붙은 In Progress, 그 밖은 아님", () => {
   const ps = [
     proposal("D-1", "VOC-1", "accepted", { accepted: ago(10) }),

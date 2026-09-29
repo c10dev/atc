@@ -278,6 +278,8 @@ export interface AircraftView {
   // 세션 출처(ATC-76): background(atc가 띄움)·desktop(Claude 앱)·terminal·unknown. 세션이 없으면 null
   origin?: SessionOrigin | null;
   permissionMode?: string | null; // 세션의 permission mode. 모르면 null
+  // 살아 있는 세션이 백그라운드일 때(ATC-98): 세션 파일의 jobId(모르면 null). `claude attach <jobId>`. 아니거나 세션이 없으면 null
+  background?: { jobId: string | null } | null;
 }
 
 export interface FuelRecent {

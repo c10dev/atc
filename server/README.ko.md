@@ -72,7 +72,9 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `controller.ts` | CONTROLLER(TOWER) API: 브리핑, ack, CLEARANCE 발행·READBACK·취소, 정해진 문구, CLEARED PR의 LAND 문구(순수 함수 `landTextOf`) |
 | `clearances.ts` | CLEARANCE 기록: 추가만 하는 JSONL을 접어 현재 상태를 만든다 |
 | `response.ts` | 응답 속성(ATC-122, 순수): 어떤 답이 메시지를 닫나(W/U는 READBACK·UNABLE, STANDBY는 열어 둠. R은 ROGER), atc가 쓰는 끝줄, 첫 STANDBY 뒤 overdue 기준 |
-| `recorder.ts` | FLIGHT RECORDER: 날짜별 JSONL(`event`, `sample`, `dispatch`, `ack`, `schedule`, `checkride`), 30일 보관 |
+| `milestones.ts` | FLIGHT별 OOOI(ATC-123): 이미 있는 기록에서 OUT·OFF·ON·IN 실제 시각(순수 함수 `milestonesOf`, `latestMilestone`, `milestoneLine`). 화면도 씀 |
+| `milestones-run.ts` | OOOI 실행부: 기록과 로컬 저장소를 읽어(읽기만, 캐시) FLIGHT·이정표마다 `milestone` FLIGHT RECORDER 줄 한 번, `GET /api/milestones` |
+| `recorder.ts` | FLIGHT RECORDER: 날짜별 JSONL(`event`, `sample`, `dispatch`, `ack`, `schedule`, `checkride`, `milestone`), 30일 보관 |
 | `metrics.ts` | 운용 지표와 2단계 진입 점검(순수 함수 `computeMetrics`) |
 | `logbook.ts` | LOGBOOK: 10분마다 머지된 PR → ARRIVED FLIGHT마다 `arrived` 줄, 머지된 Revert PR은 `reverted` 줄(순수 함수 `buildEntry`, `planLogbook`, `foldLogbook`). FLEET 카드의 TARGETS 실적(순수 함수 `computeActuals`, `expectationMin`). `GET /api/logbook`. AIRCRAFT와 출발은 착수 기록으로도 찾고, 옛 모름 줄은 `attributed` 줄로 채운다(순수 함수 `attribution`). `measured` 줄로 지시서(VECTORS·DIRECT), SOLO·CREW, PR 뒤 수정 커밋, P0–P2 지적을 더한다(순수 함수 `measureLines`). `GET /api/logbook/briefs`. 새 `arrived` 줄에는 14일 FUEL 읽기로 선택 필드 `fuel`을 붙인다(FUEL F4, ATC-53). 옛 줄은 그대로. `GET /api/logbook`의 `fuel`이 있는 항목에 `fuelCost`(ATC-59)를 붙인다. 읽을 때 지금 가격표로 값을 매긴다(`loadPricedLogbook`). `trip`(ATC-56: NET을 TRIP FUEL과 비교, `verdict`는 `inside`·`unexpected`·`null`)도 붙는다 |
 | `briefs.ts` | DIRECT 지시서(ATC-32, 순수 함수): 이슈 본문에서 지시서 칸(`directSectionsOf`), 배정 문구(`formatAssignment`), 대화 기록 사건과 FLIGHT의 지시서 사실(`talkEventsOf`, `briefFactsOf`), STAND 안 쓰기로 SOLO·CREW(`crewModeOf`), P0–P2 지적(`findingsOf`), 수정 커밋(`reworkOf`), VECTORS 대 DIRECT 비교(`compareBriefs`) |

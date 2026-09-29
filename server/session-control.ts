@@ -13,7 +13,7 @@ import { record } from "./recorder.ts";
 import { regKey, sameReg } from "./registration.ts";
 import { isBackground, manualStepsOf, permissionModeOf, type SessionOrigin } from "./session-origin.ts";
 import { sessionProcOf } from "./session-proc.ts";
-import { readJob } from "./job-state.ts";
+import { readJob, settleJob } from "./job-state.ts";
 
 // 세션 조종(docs/fleet.md 8.5). atc가 `claude --bg`로 AIRCRAFT 세션을 띄우고 `claude stop`으로 멈춘다.
 // SUPERVISOR가 FLEET 탭에서 누를 때만 한다(Origin 검사). 관제 세션의 atcctl은 부를 수 없다.
@@ -458,7 +458,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
           // bg: claude --bg, null: 배지만. blocked는 LAUNCH를 끈 이유
           launch: spec.launch,
           blocked: launchBlockOf(spec),
-          live: controlRowsOf(spec, rows, controlDirOf(spec)).map(({ id, name, kind, status, pid }) => ({ id, name, kind, status, job: kind === "background" ? readJob(id) : null, tmux: kind === "background" ? undefined : tmuxPaneOf(pid, panes, parentPidOf)?.session })),
+          live: controlRowsOf(spec, rows, controlDirOf(spec)).map(({ id, name, kind, status, pid }) => ({ id, name, kind, status, job: kind === "background" ? settleJob(readJob(id)) ?? null : null, tmux: kind === "background" ? undefined : tmuxPaneOf(pid, panes, parentPidOf)?.session })),
           // STALE(ATC-93): 멈췄는데 Claude Code가 아직 목록에 둔 job. live에 들지 않고 LAUNCH를 막지 않는다
           stale: controlStaleOf(spec, rows, controlDirOf(spec)).map(({ id, name }) => ({ id, name })),
         })),

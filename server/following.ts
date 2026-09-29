@@ -5,6 +5,7 @@ import { config } from "./config.ts";
 import { classOf, type Wake } from "./crew.ts";
 import { type Departure, readDepartures } from "./departures.ts";
 import { tailsOf } from "./dispatch.ts";
+import type { Milestones } from "./milestones.ts";
 import { hasPr, type LogEntry, type PrEntry, loadLogbook, WAKE_EXPECT_MIN } from "./logbook.ts";
 import type { Stranded } from "./landing.ts";
 import { type Health, healthLabel } from "./health.ts";
@@ -15,6 +16,7 @@ import { type LaunchFail, launchFailsOf } from "./dispatch-launch.ts";
 import { regKey } from "./registration.ts";
 import { needsDecision } from "./judges/report.ts";
 import { loadReportThreshold } from "./judges/store.ts";
+import { milestonesNow } from "./milestones-run.ts";
 
 // FLIGHT FOLLOWING(운항 추적, docs/occ.md 8장). 배정된 FLIGHT의 진행을 기존 기록으로 따라가고,
 // 늦거나(지연) Linear와 어긋나면(불일치) OCC가 SUPERVISOR에게 보고한다. 팀에 묻지는 않는다.
@@ -57,6 +59,7 @@ export interface FollowItem {
   stageAt: string | null;
   stand: string | null; // 지금 있는 STAND(워크트리) 경로
   pr: { repo: string; number: number; url: string; merged: boolean } | null;
+  milestones: Milestones | null; // OOOI(ATC-123): OUT·OFF·ON·IN의 실제 시각. 하나도 닿지 않았으면 null
   issues: (FollowIssue & { key: string })[];
 }
 
@@ -72,6 +75,7 @@ export interface FollowInput {
   health?: Map<string, Health>; // REGISTRATION(대문자) → 그 AIRCRAFT의 health(ATC-45)
   fuel?: Record<string, FuelRemaining>; // REGISTRATION(대문자) → 그 ACCOUNT의 FUEL REMAINING(ATC-55)
   reports?: Map<string, { id: string; at: string; p: number }>; // REGISTRATION → 마지막 턴에 CAPTAIN이 결정을 청한 것으로 판정된 것(ATC-89, 문턱을 넘은 것만)
+  milestones?: Map<string, Milestones>; // FLIGHT → OOOI(ATC-123, milestonesNow)
   unables?: Unable[]; // CAPTAIN이 UNABLE로 닫은 CLEARANCE·FLIGHT PLAN(ATC-122)
   launchFails?: LaunchFail[]; // launch 카드 승인 때 LAUNCH가 실패했거나 새 세션이 뜨지 않음(ATC-129)
 }
@@ -202,6 +206,7 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
     stageAt: stage ? stages[stage] : null,
     stand,
     pr: open ? { repo: open.repo, number: open.number, url: open.url, merged: false } : merged ? { repo: merged.pr.repo, number: merged.pr.number, url: merged.pr.url, merged: true } : null,
+    milestones: inp.milestones?.get(flight) ?? null,
     issues: issues.map((i) => ({ ...i, key: `${flight}|${i.code}` })),
   };
 }
@@ -334,7 +339,7 @@ export function followingNow(s: Snapshot, now = Date.now()): FollowItem[] {
   const min = loadReportThreshold();
   const reports = new Map(s.sessions.filter((x) => x.status === "idle" && x.report && needsDecision(x.report, min)).map((x) => [regKey(x.name), { id: x.report!.id, at: x.report!.turnAt, p: x.report!.decisionP }]));
   const proposals = allProposals();
-  return followingOf({ proposals, tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, reports, unables: unablesOf(s.clearances ?? [], proposals, now), launchFails: launchFailsOf(proposals, now) });
+  return followingOf({ proposals, tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, reports, unables: unablesOf(s.clearances ?? [], proposals, now), launchFails: launchFailsOf(proposals, now), milestones: milestonesNow(s, now) });
 }
 
 export function mountFollowing(app: Hono, getSnapshot: () => Promise<Snapshot>) {

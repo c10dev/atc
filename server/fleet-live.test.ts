@@ -103,3 +103,23 @@ test("merge matches a `Team A` session name to TEAM_A and ignores dead sessions"
   const [dead] = mergeLive([view("TEAM_A", { status: "busy" })], snap({ sessions: [session("TEAM_A", { status: "dead" })] }), DEFAULT_TEAM_PATTERN, NOW);
   assert.equal(dead.status, "absent");
 });
+
+// ATC-98: 살아 있는 세션이 백그라운드일 때만 background, 스냅샷만으로
+test("background: bg 세션은 jobId와, interactive·kind 없음은 null, 죽은 세션과 세션 없음도 null", () => {
+  const bg = live(snap({ sessions: [session("TEAM_A", { kind: "background", jobId: "job-1234" })] })).get("TEAM_A")!;
+  assert.deepEqual(bg.background, { jobId: "job-1234" });
+  assert.equal(live(snap({ sessions: [session("TEAM_A", { kind: "interactive" })] })).get("TEAM_A")!.background, null);
+  assert.equal(live(snap({ sessions: [session("TEAM_A")] })).get("TEAM_A")!.background, null);
+  // 죽은 세션(멈춘 job이 남은 STALE 포함)은 칩을 만들지 않는다(ATC-93)
+  assert.equal(live(snap({ sessions: [session("TEAM_A", { kind: "background", jobId: "job-1", status: "dead" })] })).get("TEAM_A")!.background, null);
+  assert.equal(live(snap()).get("TEAM_A")!.background, null);
+  // jobId를 모르는 background(origin이 background)는 jobId null
+  assert.deepEqual(live(snap({ sessions: [session("TEAM_A", { origin: "background" })] })).get("TEAM_A")!.background, { jobId: null });
+});
+
+test("background: mergeLive가 느린 값 위에 얹고, 세션이 사라지면 지운다", () => {
+  const [a] = mergeLive([view("TEAM_A")], snap({ sessions: [session("Team A", { kind: "background", jobId: "job-9" })] }), DEFAULT_TEAM_PATTERN, NOW);
+  assert.deepEqual(a.background, { jobId: "job-9" });
+  const [gone] = mergeLive([view("TEAM_A", { background: { jobId: "old" } })], snap(), DEFAULT_TEAM_PATTERN, NOW);
+  assert.equal(gone.background, null);
+});

@@ -101,7 +101,7 @@ export function StatusList({
                       {r.flight.title && <span className="fl-r-title">{r.flight.title}</span>}
                       {r.more > 0 && <span className="fl-r-more">+{r.more}</span>}
                     </>
-                  ) : r.health || r.accountHold || r.fuelHold || r.restarting || gone || r.job?.state === "blocked" ? null : r.job?.state === "working" && r.job.detail ? (
+                  ) : r.health || r.accountHold || r.fuelHold || r.restarting || gone || r.job?.state === "blocked" ? null : r.job?.state === "working" && (r.job.detail || r.job.settled) ? (
                     <JobDetail job={r.job} />
                   ) : (
                     <span className="faint">—</span>

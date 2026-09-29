@@ -7,9 +7,14 @@ The control session that inspects atc's own PRs, lands `auto` and `flagged` ones
 | File | Role |
 |---|---|
 | `CLAUDE.md`, `.claude/skills/tick/SKILL.md` | Rules and one pass (Korean originals; `*.en.md` are translations) |
-| `.claude/settings.json` | Model `opus`, fail-closed hooks: Bash → `../controller/guard.mjs --mcc --gh-read`, MCP → `../occ/mcp-guard.mjs --read-only`, Read/Glob/Grep → `read-guard.mjs`, Edit/Write/SendMessage/Agent/Artifact blocked |
+| `.claude/settings.json` | Model `opus`, fail-closed hooks: Bash → `../controller/guard.mjs --mcc --gh-read`, MCP → `../occ/mcp-guard.mjs --read-only`, Read/Glob/Grep → `read-guard.mjs`, Agent/Task → `agent-guard.mjs` (only `inspector`), Edit/Write/SendMessage/Artifact blocked; a `UserPromptSubmit` hook `context-cap.mjs` |
+| `.claude/agents/inspector.md` | The INSPECTOR sub-agent (Opus, read-only): reads one PR packet in a fresh context and returns the verdict block MCC records (ATC-135). English on purpose: it talks to MCC, not to the SUPERVISOR |
+| `inspector-guard.mjs` | The inspector's Bash guard: only `mcc packet <PR>` and `gh pr diff <PR> --repo …`, never `mcc inspect\|land\|rts\|escalate` |
+| `agent-guard.mjs` | Lets MCC call the `inspector` sub-agent and no other |
+| `context-cap.mjs` | Adds a notice to the prompt when the session's context passes 150k tokens, so MCC asks the SUPERVISOR to STOP and LAUNCH it |
 | `read-guard.mjs` | Reads the atc repository only: not `.env*`, not the repository root with Grep, nothing outside it except the session's own tool output |
-| `settings.test.mjs` | Tests for the settings, the guard mode, the model rule (same as the server's) and the read rule |
+| `packet-size.mjs`, `cost-report.mjs` | Measuring tools (read-only, run by a person): packet size in tokens for the last N inspected PRs; average context, $ per hour and $ per inspected PR for a time window ([docs/mcc.md](../docs/mcc.md) 8.2) |
+| `settings.test.mjs`, `inspector.test.mjs`, `cost-report.test.mjs` | Tests for the settings, the guard mode, the model rule (same as the server's), the read rule, the inspector guards, the context cap and the cost report |
 
 ## Launch
 
@@ -27,4 +32,4 @@ tmux send-keys -t atc-mcc '/loop 5m /tick' Enter
 
 ## What it may do
 
-`node ../controller/atcctl.mjs manual check|ack` and `mcc queue|packet|inspect|escalate|land|rts`, `jq` after a pipe, and read-only `gh pr view|diff|checks|list`. Nothing else: no `git`, no `systemctl`, no `gh pr merge` or `gh api`, no other atc commands. The server decides whether a landing or RTS happens (conditions L2–L8, the `mcc.json` switch), and does the merge, the PR comment and the RTS start itself.
+`node ../controller/atcctl.mjs manual check|ack` and `mcc queue|packet|inspect|escalate|land|rts`, `jq` after a pipe, and read-only `gh pr view|diff|checks|list`, plus the `inspector` sub-agent (which does the INSPECTION; MCC itself reads no packet or diff). Nothing else: no `git`, no `systemctl`, no `gh pr merge` or `gh api`, no other atc commands. The server decides whether a landing or RTS happens (conditions L2–L8, the `mcc.json` switch), and does the merge, the PR comment and the RTS start itself.

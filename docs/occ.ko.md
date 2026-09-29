@@ -389,7 +389,7 @@ vocado VOC-189/190 스택(#395 → main ← #396 ← #397 ← #398, 각자 바�
 
 Codex가 5시간 한도에 걸려 vocado #392(admission 키워드)와 #395(SQL 경로)가 리뷰어 없이 멈췄다. ATC-27이 보안 PR을 모든 외부 리뷰어에서 빼기 때문이다. SUPERVISOR는 비공개 저장소의 vocado 보안 diff가 DeepSeek로 나가는 것을 받아들이고, DeepSeek V4.1 Flash 리뷰어가 이것도 맡게 했다.
 
-- **스위치**: `dispatch.json`의 `externalReview.security`. `"exclude"`(기본, 모르는 값도 exclude)나 `"deepseek"`. 설정 창 AGENTS 탭의 REVIEW 줄에서 경고 "보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나감"과 함께 고친다. `PUT /api/settings {reviewSecurity}`가 원자적으로 쓴다.
+- **스위치**: `dispatch.json`의 `externalReview.security`. `"exclude"`(기본, 모르는 값도 exclude)나 `"deepseek"`. 설정 창 AUTOMATION 탭의 REVIEW 줄에서 경고 "보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나감"과 함께 고친다. `PUT /api/settings {reviewSecurity}`가 원자적으로 쓴다.
 - **제외 두 가지**(`externalGateOf`): **hard**는 어느 모드에서든 뺀다: FLIGHT 없음, `.env*`·비밀·키·자격 증명 경로(먼저 본다). **security**는 rating:SEC·Risk 라벨, 보안 경로, 보안 키워드다. `"deepseek"`이면 보안 규칙에만 걸린 PR이 REVIEW 대기열로 간다. `extReview.security`에 사유가 남고, 대기 글은 "보안 PR: …", 스트립은 "REVIEW: DEEPSEEK (보안, Codex 한도)", 지적은 "DEEPSEEK 지적(보안, …)"이며, 자료에 `security`와 더 엄격한 안내가 붙고 기록에 `security: true`가 남는다. 현재 head의 DeepSeek pass는 다른 PR처럼 착륙 근거가 된다.
 - Muse는 여전히 착륙 리뷰에 쓰지 않고(서버는 DeepSeek V4.1 Flash만 받는다) guard도 그대로다. REVIEW 규정에 보안 PR 리뷰법(권한, RLS, 인증, 마이그레이션 되돌림, 유출, 불확실하면 P1)을 적었다.
 
@@ -405,7 +405,7 @@ vocado의 `main` 규칙은 최신 main을 요구해서(`strict`) 머지가 있�
 
 vocado `main`의 `strict` 때문에 머지가 있을 때마다 다른 열린 PR이 `behind`가 되고, SUPERVISOR가 PR마다 Update branch → CI 대기 → 머지를 되풀이했다. ATC-31로 main 병합만 한 갱신은 리뷰를 이어받으니 그 대기는 기계 일이다. AUTOLAND가 스위치 하나 뒤에서 그것을 한다.
 
-- **스위치**: `autoland.json`의 `mode`. `"off"`(기본, 모르는 값도 off), `"update"`, `"merge"`. SUPERVISOR만 바꾼다: 설정 창 AGENTS 탭의 AUTOLAND 줄(모드마다 한 줄 경고)이나 `PUT /api/settings {autolandMode}`. 서버는 이 화면에서 온 요청(localhost `Origin`이 있는 JSON)만 받는다. 관제 세션 CLI(`atcctl`)에는 AUTOLAND 명령이 없고 `Origin`도 보내지 않으며, guard가 `curl`을 막는다. 같은 파일에 `airports`(기본 `["VCDO"]`, atc 저장소 자신의 착륙은 범위 밖), `mergeMethod`(기본 `squash`), `applicationCheck`(기본 `Application Check`), SUPERVISOR의 `holds`가 있다.
+- **스위치**: `autoland.json`의 `mode`. `"off"`(기본, 모르는 값도 off), `"update"`, `"merge"`. SUPERVISOR만 바꾼다: 설정 창 AUTOMATION 탭의 AUTOLAND 줄(모드마다 한 줄 경고)이나 `PUT /api/settings {autolandMode}`. 서버는 이 화면에서 온 요청(localhost `Origin`이 있는 JSON)만 받는다. 관제 세션 CLI(`atcctl`)에는 AUTOLAND 명령이 없고 `Origin`도 보내지 않으며, guard가 `curl`을 막는다. 같은 파일에 `airports`(기본 `["VCDO"]`, atc 저장소 자신의 착륙은 범위 밖), `mergeMethod`(기본 `squash`), `applicationCheck`(기본 `Application Check`), SUPERVISOR의 `holds`가 있다.
 - **GitHub을 새로 읽을 때마다 한 주기**(90초, `server/autoland-run.ts`). 목록의 AIRPORT마다 할 일은 많아야 하나다(순수 `planAutoland`):
   1. GROUND STOP → 아무것도 안 함.
   2. 갱신한 PR이 비행 중 → 새 head의 CI가 끝날 때까지 기다린다(CLEARED, 다른 막힘, 닫힘. 10분 동안 head가 안 바뀌거나 CI가 90분을 넘으면 포기하고 다음으로).

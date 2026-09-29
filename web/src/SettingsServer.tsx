@@ -1,14 +1,13 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
 import type { Snapshot } from "../../server/model.ts";
-import type { MccGate } from "../../server/mcc.ts";
 import type { ServerSettings, SettingsErrors, SettingsPatch } from "../../server/settings.ts";
 import { callsign } from "./aviation.ts";
 import { timeAgo } from "./derive.ts";
 
-// 설정 창의 LINEAR, AGENTS 탭. 서버 설정을 읽고 고친다.
+// 설정 창의 LINEAR, AGENTS 탭(정책 스위치는 SettingsAutomation.tsx의 AUTOMATION 탭). 서버 설정을 읽고 고친다.
 // 저장하면 서버가 .env.local에 쓰고 실행 중인 설정에도 바로 반영한다(재시작 필요 없음).
 
-type Loaded = { state: "loading" } | { state: "error" } | { state: "ready"; data: ServerSettings };
+export type Loaded = { state: "loading" } | { state: "error" } | { state: "ready"; data: ServerSettings };
 export type SaveResult = { ok: true } | { ok: false; error: string };
 export type Save = (patch: SettingsPatch) => Promise<SaveResult>;
 
@@ -173,128 +172,6 @@ export function AgentSettings({ snapshot, server, save, onNavigate }: { snapshot
         </ServerRows>
       </Block>
 
-      <Block code="REVIEW" label="Codex 한도 때 착륙 리뷰">
-        <ServerRows server={server}>
-          {(s) => (
-            <EditRow
-              label="보안 PR"
-              env="externalReview.security"
-              value={s.review.security}
-              note={
-                s.review.security === "deepseek"
-                  ? "deepseek(dispatch.json, 옛 이름): 보안 PR도 REVIEW 세션(Claude Sonnet)이 리뷰함. .env·비밀·키 경로와 FLIGHT 없는 PR은 계속 보내지 않음"
-                  : "dispatch.json. exclude(기본): 보안 규칙(라벨·경로·키워드)에 걸린 PR은 REVIEW 세션에 보내지 않고 SUPERVISOR 리뷰로. deepseek(옛 이름)으로 바꾸면 보안 PR도 REVIEW(Claude Sonnet)가 리뷰함"
-              }
-              input={{ kind: "select", options: ["exclude", "deepseek"] }}
-              onSave={(v) => save({ reviewSecurity: v as "exclude" | "deepseek" })}
-            />
-          )}
-        </ServerRows>
-      </Block>
-
-      <Block code="FUEL" label="사용 한도 HOLD(SUPERVISOR 전용)">
-        <ServerRows server={server}>
-          {(s) => (
-            <EditRow
-              label="DISPATCH HOLD"
-              env="fuel.hold"
-              value={s.fuel?.hold ? "on" : "off"}
-              note={
-                s.fuel?.hold
-                  ? `on(dispatch.json): ACCOUNT가 한도의 ${s.fuel.holdPct}% 이상을 쓰면 reset까지 DISPATCH가 그 ACCOUNT의 AIRCRAFT를 건너뜀. ${s.fuel.infoPct}%부터 TOWER·OCC에 INFO`
-                  : `off(기본, dispatch.json): FUEL은 FLEET 줄과 TOWER·OCC INFO(${s.fuel?.infoPct ?? 80}%)에만 보임. on이면 ${s.fuel?.holdPct ?? 95}% 이상인 ACCOUNT의 AIRCRAFT를 DISPATCH가 건너뜀. statusline hook이 있어야 값이 들어옴`
-              }
-              input={{ kind: "select", options: ["off", "on"] }}
-              onSave={(v) => save({ fuelHold: v as "off" | "on" })}
-            />
-          )}
-        </ServerRows>
-      </Block>
-
-      <Block code="AUTOLAND" label="착륙 자동화(SUPERVISOR 전용)">
-        <ServerRows server={server}>
-          {(s) => (
-            <>
-              <EditRow
-                label="AUTOLAND"
-                env="autoland.mode"
-                value={s.autoland.mode}
-                note={`autoland.json · 맡은 AIRPORT ${s.autoland.airports.join(", ") || "없음"} · 이 화면(또는 SUPERVISOR의 API)에서만 바꾼다 — 관제 세션은 못 바꿈`}
-                input={{ kind: "select", options: ["off", "update", "merge"] }}
-                onSave={(v) => save({ autolandMode: v as "off" | "update" | "merge" })}
-              />
-              <ul className="autoland-modes">
-                {(["off", "update", "merge"] as const).map((m) => (
-                  <li key={m} className={m === s.autoland.mode ? "is-current" : undefined}>
-                    <b>{m}</b> {AUTOLAND_WARN[m]}
-                  </li>
-                ))}
-              </ul>
-              {s.autoland.groundStops.map((g) => (
-                <GroundStopRow key={g.airport} stop={g} check={s.autoland.applicationCheck} refresh={() => save({})} />
-              ))}
-            </>
-          )}
-        </ServerRows>
-      </Block>
-
-      <Block code="MCC" label="atc 착륙·RETURN TO SERVICE(SUPERVISOR 전용)">
-        <ServerRows server={server}>
-          {(s) => (
-            <>
-              <EditRow
-                label="MCC"
-                env="mcc.mode"
-                value={s.mcc.mode}
-                note={`mcc.json · 맡은 AIRPORT ${s.mcc.airport} · 이 화면에서만 바꾼다 — MCC 세션은 못 바꿈. ROLLBACK 뒤 멈춘 RTS는 모드를 다시 고르면 풀린다`}
-                input={{ kind: "select", options: ["shadow", "land", "land+rts", "rts"] }}
-                onSave={(v) => save({ mccMode: v as "shadow" | "land" | "land+rts" | "rts" })}
-              />
-              <ul className="autoland-modes">
-                {(["shadow", "land", "land+rts", "rts"] as const).map((m) => (
-                  <li key={m} className={m === s.mcc.mode ? "is-current" : undefined}>
-                    <b>{m}</b> {MCC_WARN[m]}
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </ServerRows>
-        <MccGatePanel />
-      </Block>
-
-      <Block code="JUDGES" label="판정 계열(SUPERVISOR 전용)">
-        <ServerRows server={server}>
-          {(s) =>
-            s.judges ? (
-              <>
-                <EditRow
-                  label="JEV"
-                  env="judges.jev"
-                  value={s.judges.jev.mode}
-                  note={`judges.json · 엔진 ${s.judges.jev.engine}${s.judges.jev.engine === "jev" ? ` · TYPESAFE_API_KEY ${s.judges.jev.apiKeySet ? "있음" : "없음"}` : " (녹화 응답, 네트워크 없음)"} · 이 화면(또는 SUPERVISOR의 API)에서만 바꾼다 — 관제 세션은 못 바꿈`}
-                  input={{ kind: "select", options: ["off", "replay", "shadow"] }}
-                  onSave={(v) => save({ judgesJev: v as "off" | "replay" | "shadow" })}
-                />
-                <ul className="autoland-modes">
-                  {(["off", "replay", "shadow"] as const).map((m) => (
-                    <li key={m} className={m === s.judges.jev.mode ? "is-current" : undefined}>
-                      <b>{m}</b> {JUDGE_WARN[m]}
-                    </li>
-                  ))}
-                </ul>
-                {(s.judges.jev.lastRunAt || s.judges.jev.lastError) && (
-                  <p className="settings-hint">
-                    마지막 실행 {s.judges.jev.lastRunAt ? timeAgo(s.judges.jev.lastRunAt, Date.now()) : "—"} · 이번 실행 뒤 mark {s.judges.jev.judged}건
-                    {s.judges.jev.lastError && ` · 오류: ${s.judges.jev.lastError}`}
-                  </p>
-                )}
-              </>
-            ) : null
-          }
-        </ServerRows>
-      </Block>
-
       <Block code="CALLSIGNS" label="콜사인">
         {teams.length ? (
           <ul className="callsigns">
@@ -317,7 +194,7 @@ export function AgentSettings({ snapshot, server, save, onNavigate }: { snapshot
 export type Input =
   | { kind: "text"; upper?: boolean; mono?: boolean; maxLength: number }
   | { kind: "number"; min: number; max: number }
-  | { kind: "select"; options: string[] };
+  | { kind: "select"; options: string[]; labels?: Record<string, string> }; // labels: 보이는 이름만(저장 값은 options 그대로)
 
 // 값을 보여 주다가 "편집"을 누르면 입력 칸이 된다. Enter 저장, Esc 취소(설정 창은 닫히지 않음).
 export function EditRow({
@@ -328,6 +205,7 @@ export function EditRow({
   note,
   input,
   onSave,
+  guard,
 }: {
   label: string;
   env: string;
@@ -336,8 +214,11 @@ export function EditRow({
   note?: string;
   input: Input;
   onSave: (value: string) => Promise<SaveResult>;
+  // 정책 스위치(ATC-131): 고르는 중인 값의 경고 줄. warn이 true면 ⚠ 모드라 저장 전에 확인 단계를 거친다(SecretRow의 삭제처럼)
+  guard?: (to: string) => { line: string; warn: boolean } | null;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const editing = draft !== null;
@@ -345,11 +226,14 @@ export function EditRow({
 
   const cancel = () => {
     setDraft(null);
+    setConfirming(false);
     setError(null);
   };
-  const submit = async () => {
+  const chosen = draft !== null && draft.trim() !== value ? (guard?.(draft.trim()) ?? null) : null;
+  const submit = async (confirmed = false) => {
     if (draft === null) return;
     if (draft.trim() === value) return cancel();
+    if (chosen?.warn && !confirmed) return setConfirming(true);
     setBusy(true);
     const res = await onSave(draft.trim());
     setBusy(false);
@@ -357,7 +241,7 @@ export function EditRow({
     else setError(res.error);
   };
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter") void submit();
+    if (e.key === "Enter" && !confirming) void submit();
     if (e.key === "Escape") {
       e.stopPropagation();
       cancel();
@@ -370,12 +254,26 @@ export function EditRow({
         {label}
         <code className="config-env">{env}</code>
       </dt>
-      {editing ? (
+      {confirming && draft !== null ? (
+        <dd className="config-edit">
+          <span className="config-value tone-warn">
+            {input.kind === "select" ? (input.labels?.[value] ?? value) : value} → {input.kind === "select" ? (input.labels?.[draft] ?? draft) : draft}
+          </span>
+          <button className="config-btn is-danger" onClick={() => void submit(true)} disabled={busy} autoFocus>
+            {busy ? "저장 중" : `${input.kind === "select" ? (input.labels?.[draft] ?? draft) : draft}로 올리기`}
+          </button>
+          <button className="config-btn" onClick={cancel} disabled={busy} onKeyDown={onKey}>
+            취소
+          </button>
+        </dd>
+      ) : editing ? (
         <dd className="config-edit">
           {input.kind === "select" ? (
             <select value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey} autoFocus aria-label={label}>
               {input.options.map((o) => (
-                <option key={o}>{o}</option>
+                <option key={o} value={o}>
+                  {input.labels?.[o] ?? o}
+                </option>
               ))}
             </select>
           ) : (
@@ -404,7 +302,7 @@ export function EditRow({
       ) : (
         <dd className={mono ? "mono" : undefined}>
           <span className="config-value" title={value}>
-            {value}
+            {input.kind === "select" ? (input.labels?.[value] ?? value) : value}
             {unit && ` ${unit}`}
           </span>
           <button className="config-btn" onClick={() => setDraft(value)} aria-label={`${label} 편집`}>
@@ -412,7 +310,15 @@ export function EditRow({
           </button>
         </dd>
       )}
-      {error ? <p className="config-note is-error">{error}</p> : note && <p className="config-note">{note}</p>}
+      {error ? (
+        <p className="config-note is-error">{error}</p>
+      ) : chosen ? (
+        <p className={`config-note${chosen.warn ? " is-warn" : ""}`} role={confirming ? "alert" : undefined}>
+          {chosen.line}
+        </p>
+      ) : (
+        note && <p className="config-note">{note}</p>
+      )}
     </div>
   );
 }
@@ -503,142 +409,7 @@ function SecretRow({ label, env, isSet, save }: { label: string; env: string; is
   );
 }
 
-// 모드마다 한 줄 경고(ATC-34). merge는 vocado AGENTS.md에 SUPERVISOR가 AUTOLAND 예외를 적은 뒤에만 켠다
-const AUTOLAND_WARN = {
-  off: "꺼짐(기본): atc는 PR 브랜치에 아무것도 쓰지 않는다.",
-  update: "⚠ CLEARED인데 behind인 PR을 LANDING SEQUENCE 순서로 AIRPORT마다 하나씩 update-branch로 갱신(팀 브랜치에 merge 커밋). 머지는 SUPERVISOR.",
-  merge: "⚠ 위임된 PR(보안·Risk·HUMAN CHECK·UI change 블록 없음·FLIGHT 없음·HOLD 제외)을 정확한 head로 atc가 머지. vocado AGENTS.md에 AUTOLAND 예외를 적은 뒤에만 켤 것.",
-} as const;
-
-// MCC 모드마다 한 줄(docs/mcc.md). findings 댓글은 모든 모드에서 남긴다
-const MCC_WARN = {
-  shadow: "기본: MCC는 INSPECTION하고 착륙·RTS는 would로만 남긴다. 머지·배포는 사용자.",
-  land: "⚠ auto·flagged 등급 PR을 CI·INSPECTION pass·정확한 head로 atc가 머지. user 등급과 ESCALATE는 사용자. 배포는 사람.",
-  "land+rts": "⚠ land에 더해 머지된 main을 atc-rts 유닛으로 7700에 RETURN TO SERVICE(상태 확인 실패면 ROLLBACK 후 멈춤). 시작은 서버가 스스로 한다.",
-  rts: "⚠ MCC는 착륙하지 않는다(would-land만): 사용자가 손으로 머지한 main을 서버가 atc-rts 유닛으로 7700에 스스로 RETURN TO SERVICE(CI 통과, 5분 간격, 상태 확인 실패면 ROLLBACK 후 멈춤). package·유닛 파일 변경은 사람이 배포.",
-} as const;
-
-// 판정 계열 모드마다 한 줄(ATC-36). replay·shadow는 티켓 제목과 허용한 칸이 TypeSafe로 나간다(데이터 반출)
-const JUDGE_WARN = {
-  off: "꺼짐(기본): 아무것도 읽거나 보내지 않는다.",
-  replay: "⚠ SUPERVISOR가 판정한 지난 CLASSIFY 초안과 DISPATCH ASSIGN을 합쳐 1분에 3건씩 다시 판정한다. 제목과 목표·수정 허용 범위·완료 기준이 TypeSafe로 나간다(rating:SEC·Risk:* 티켓은 제목만). ASSIGN은 그 AIRCRAFT의 지난 atc FLIGHT 3개의 제목도 나가고, atc AIRCRAFT의 턴이 끝날 때는 CAPTAIN의 마지막 메시지(경로·URL을 가리고 최대 1,500자)가 나간다.",
-  shadow: "⚠ 새 CLASSIFY 초안, 열린 DISPATCH ASSIGN, 끝난 atc AIRCRAFT 턴마다 판정해 둔다(결과는 SUPERVISOR 판정 뒤에만 보임). 반출 범위는 replay와 같다.",
-} as const;
-
-// AUTOLAND GROUND STOP: main의 post-merge Application Check가 빨가 두 모드가 멈춤. SUPERVISOR가 확인하고 푼다
-function GroundStopRow({ stop, check, refresh }: { stop: ServerSettings["autoland"]["groundStops"][number]; check: string; refresh: () => Promise<SaveResult> }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const clear = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/autoland/groundstop/clear", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ airport: stop.airport }),
-      });
-      if (res.ok) await refresh();
-      else setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`);
-    } catch {
-      setError("서버에 연결할 수 없음");
-    }
-    setBusy(false);
-  };
-  return (
-    <div className="config-row">
-      <dt>
-        GROUND STOP <code className="config-env">{stop.airport}</code>
-      </dt>
-      <dd>
-        <button className="config-btn is-danger" onClick={() => void clear()} disabled={busy}>
-          풀기
-        </button>
-      </dd>
-      <p className="config-note is-error">
-        {error ?? `main ${stop.failing.join(", ") || check} 실패(${stop.sha.slice(0, 7)}) — AUTOLAND 두 모드 모두 멈춤. main을 확인한 뒤 SUPERVISOR가 푼다`}
-      </p>
-    </div>
-  );
-}
-
-// MCC SHADOW GATE(docs/mcc.md 9장): land로 올릴 근거. 읽기만 — 모드는 위 MCC 줄에서 SUPERVISOR가 바꾼다
-type GateLoaded = { state: "loading" } | { state: "error"; error: string } | { state: "ready"; gate: MccGate & { error: string | null } };
-const GATE_MISS: Record<MccGate["misses"][number]["kind"], string> = { findings: "findings", "no-inspection": "no-inspection", "reverted-would-land": "reverted" };
-const MISS_SHOWN = 8;
-function MccGatePanel() {
-  const [g, setG] = useState<GateLoaded>({ state: "loading" });
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/mcc/gate")
-      .then(async (r) => (r.ok ? r.json() : Promise.reject(((await r.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${r.status}`)))
-      .then((gate: MccGate & { error: string | null }) => alive && setG({ state: "ready", gate }))
-      .catch((e) => alive && setG({ state: "error", error: typeof e === "string" ? e : "서버에 연결할 수 없음" }));
-    return () => {
-      alive = false;
-    };
-  }, []);
-  if (g.state === "loading") return <p className="settings-hint">SHADOW GATE 계산 중…</p>;
-  if (g.state === "error") return <p className="conn-error">SHADOW GATE를 읽지 못함(/api/mcc/gate) — {g.error}</p>;
-  const x = g.gate;
-  const started = x.since !== null;
-  const rows = [
-    { label: "판단한 atc PR", note: "머지된 head에 INSPECTION·ESCALATE", value: `${x.prs}건`, target: `≥ ${x.target.prs}건`, state: x.prs >= x.target.prs ? "pass" : "fail" },
-    { label: "shadow 기간", note: "첫 MCC 기록부터", value: `${x.days}일`, target: `≥ ${x.target.days}일`, state: x.days >= x.target.days ? "pass" : "fail" },
-    { label: "would-land 되돌림", note: "would-land·LANDED였는데 되돌린 PR", value: `${x.reverted}건`, target: `${x.target.reverted}건`, state: !x.wouldLand ? "insufficient" : x.reverted <= x.target.reverted ? "pass" : "fail" },
-  ] as const;
-  const mark = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족" } as const;
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const clock = (iso: string) => {
-    const d = new Date(iso);
-    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-  return (
-    <div className="mcc-gate">
-      <h4 className="label">
-        SHADOW GATE <em>land로 올리기 전 점검 · {x.ready ? "준비됨" : "아직"}</em>
-      </h4>
-      {!started ? (
-        <p className="mcc-gate-note">아직 MCC 기록이 없음 — MCC가 INSPECTION을 남기면 그때부터 잰다</p>
-      ) : (
-        <>
-          <ul>
-            {rows.map((r) => (
-              <li key={r.label} className={`s-${r.state}`}>
-                <span className="mcc-gate-label" title={r.note}>
-                  {r.label}
-                </span>
-                <span className="mcc-gate-value">{r.value}</span>
-                <span className="mcc-gate-target">{r.target}</span>
-                <span className="mcc-gate-state">{mark[r.state]}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mcc-gate-note">
-            {x.airport} · {clock(x.since!)}부터 머지 {x.merged}건 · would-land {x.wouldLand}건 · 불일치 {x.misses.length}건. 불일치는 SUPERVISOR가 사유를 보고 판단한다. 충족돼도 모드는 위 MCC 줄에서 직접 올린다
-          </p>
-          {x.misses.length > 0 && (
-            <ul className="mcc-gate-misses">
-              {x.misses.slice(0, MISS_SHOWN).map((m) => (
-                <li key={`${m.pr}-${m.kind}`} className={`k-${m.kind}`}>
-                  <a href={m.url} target="_blank" rel="noreferrer">
-                    #{m.pr}
-                  </a>
-                  <b>{GATE_MISS[m.kind]}</b>
-                  <span title={m.title}>{m.text}</span>
-                </li>
-              ))}
-              {x.misses.length > MISS_SHOWN && <li className="mcc-gate-more">외 {x.misses.length - MISS_SHOWN}건 — /api/mcc/gate</li>}
-            </ul>
-          )}
-        </>
-      )}
-      {x.error && <p className="conn-error">{x.error} — head 없이 머지 전 마지막 INSPECTION으로 맞춤</p>}
-    </div>
-  );
-}
-
-function Block({ code, label, children }: { code: string; label: string; children: ReactNode }) {
+export function Block({ code, label, children }: { code: string; label: string; children: ReactNode }) {
   return (
     <section className="settings-section">
       <h3 className="label">
@@ -649,7 +420,7 @@ function Block({ code, label, children }: { code: string; label: string; childre
   );
 }
 
-function ServerRows({ server, children }: { server: Loaded; children: (s: ServerSettings) => ReactNode }) {
+export function ServerRows({ server, children }: { server: Loaded; children: (s: ServerSettings) => ReactNode }) {
   if (server.state === "loading") return <p className="settings-hint">불러오는 중…</p>;
   if (server.state === "error") return <p className="conn-error">서버가 설정을 알려주지 않음(/api/settings). 서버를 다시 시작하면 보입니다.</p>;
   return <dl className="config-rows">{children(server.data)}</dl>;
@@ -693,6 +464,6 @@ function StatusChip({ tone, children }: { tone: "ok" | "bad" | "mute"; children:
   return <span className={`status-chip tone-${tone}`}>{children}</span>;
 }
 
-function EditNote() {
+export function EditNote() {
   return <p className="settings-foot">저장하면 .env.local에 쓰고 서버에 바로 반영됩니다(재시작 필요 없음).</p>;
 }
