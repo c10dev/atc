@@ -3,7 +3,9 @@ import type { Job } from "./job-state.ts";
 // FLEET 탭 CONTROL SESSIONS 구역의 계산(ATC-130). 줄마다 live 배지와 버튼, 새로 읽는 간격. 화면(web/src/views/fleet/ControlSessions.tsx)은 이 결과를 그리기만 한다.
 // API(/api/control/sessions)와 그 모양은 그대로다(docs/fleet.md 8.5.1).
 export type ControlLive = { id?: string; name?: string; kind: string; status?: string; tmux?: string; job?: Job | null };
-export type ControlSession = { name: string; dir: string | null; prompt: string | null; launch: "bg" | null; blocked: string | null; live: ControlLive[]; stale?: { id?: string; name?: string }[] };
+// SQUELCH의 마지막 판정(ATC-127, 헤더 CONTROL 띠): 마지막 tick 시각과 마지막 OPEN 뒤 QUIET 수. 옛 서버 응답이나 SQUELCH 기록이 없으면 없다
+export type SquelchLast = { lastAt: string; open: boolean; reason: string; openedAt: string | null; quietSince: string | null; quietCount: number };
+export type ControlSession = { name: string; dir: string | null; prompt: string | null; launch: "bg" | null; blocked: string | null; live: ControlLive[]; stale?: { id?: string; name?: string }[]; squelch?: SquelchLast | null };
 export type ControlList = { daemonInService?: boolean; sessions: ControlSession[] };
 
 // /api/control/sessions를 이보다 자주 읽지 않는다. `claude agents`를 매번 부르는 값이라 서버가 아끼는 만큼 화면도 아낀다(ATC-127의 30초 캐시와 별개로 늘 60초)

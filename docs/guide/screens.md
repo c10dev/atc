@@ -64,6 +64,7 @@ STAND 줄의 REMARKS 칸에도 그 STAND 브랜치의 PR 배지가 붙는다.
 ## 상단
 
 - **숫자판**: AIRBORNE(작업 중 세션), STANDS(점유), ENROUTE(진행 FLIGHT), HANDOFF, ALERTS(WARNING·CAUTION만 센다. ADVISORY는 `+n ADV`로 옆에 보인다. 색: WARNING이 있으면 빨강, CAUTION만 있으면 호박, 없으면 기본).
+- **CONTROL 띠**(탭 줄 아래, 관제 세션이 있을 때): 관제 세션마다 칩 하나 `TWR`·`OCC`·`MCC`·`XCHK`·`REV`·`ENG`. `MCC ● 5m · 2분 전`은 그 세션의 `/loop` 주기(5분)와 마지막 tick이 2분 전이라는 뜻이다. 색: 초록 `ok`, 하늘색 `working`(job이 일하는 중), 호박색 `NEEDS`(job이 blocked이거나 NEEDS YOU가 있거나 health가 alert 수준)와 `LATE`(마지막 tick이 2 × 주기 + 1분보다 오래됨), 빨강 `DOWN`(떠 있지 않거나 세션이 죽음). ENG는 떠 있는지만 보인다(주기 없음). 마지막 tick은 SQUELCH의 마지막 판정 시각이고, SQUELCH 기록이 없을 때만 세션의 마지막 활동을 쓴다(툴팁에 출처가 적힌다). 툴팁에는 종류(`BG <id>`·tmux·interactive), job의 detail과 needs, 주기, 마지막 tick과 출처, 마지막 OPEN 뒤 QUIET 수가 있다. 칩을 누르면 FLEET 탭의 CONTROL SESSIONS(`#fleet/control`)가 열린다. 보기만 한다: LAUNCH·STOP은 거기서 한다. 768px보다 좁으면 `CTRL 5/6` 한 칩으로 접힌다(하나라도 ok가 아니면 호박색, DOWN이면 빨강). 1분에 한 번 읽는다(서버가 `claude agents`를 30초 캐시).
 - **UPDATE 막대**: 서비스가 `origin/main`보다 뒤이고 main CI가 통과했으면 `업데이트 있음 · c0ca22e → 4678e03 · PR 2 · CI ✓ [업데이트]`가 뜬다. 버튼이 MCC와 같은 `atc-rts`를 시작하고 막대가 진행·거절·ROLLBACK을 보인다. 사람이 배포해야 하면 버튼 대신 사유가 뜬다([배포하기](deploy.md)).
 - **새 버전 알림**: 이 탭을 연 뒤에 atc가 새로 배포되면 콘솔 바로 아래에 "새 버전이 배포됨"과 새로고침·닫기 버튼이 뜬다. 저절로 새로고침하지 않는다(입력 중인 내용을 지키려고). 닫으면 다음 배포 때까지 안 뜬다.
 - **ALERT 줄**: WARNING·CAUTION이 흘러간다(WARNING이 있으면 빨강). ADVISORY만 있으면 줄이 없다. 누르면 목록이 열린다(등급별로 묶인다). [경보 종류](#경보-종류)
