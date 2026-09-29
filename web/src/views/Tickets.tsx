@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { fidsRows, FIDS_ARRIVED_CAP } from "../fids-rows.ts";
+import { latestMilestone, type Milestones, milestoneTitle } from "../../../server/milestones.ts";
 import type { Snapshot, Ticket, TicketColumn } from "../../../server/model.ts";
 import {
   alertCode,
@@ -17,11 +18,28 @@ import { SplitFlap } from "../SplitFlap.tsx";
 import { AirportCode, PriorityMark, SessionBadge } from "../ui.tsx";
 
 // DEPARTURES 순서: 곧 LANDING할 FLIGHT가 위로
+// OOOI(ATC-123): FLIGHT마다 OUT·OFF·ON·IN의 실제 시각. 서버에 없거나 실패하면 아무것도 그리지 않는다. 스냅샷이 바뀌는 분마다 다시 읽는다
+function useMilestones(refreshKey: string): ReadonlyMap<string, Milestones> {
+  const [flights, setFlights] = useState<ReadonlyMap<string, Milestones>>(new Map());
+  useEffect(() => {
+    let live = true;
+    fetch("/api/milestones")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b: { flights?: Record<string, Milestones> } | null) => live && setFlights(new Map(Object.entries(b?.flights ?? {}))))
+      .catch(() => live && setFlights(new Map()));
+    return () => {
+      live = false;
+    };
+  }, [refreshKey]);
+  return flights;
+}
+
 const LIST_ORDER: PhaseTone[] = ["cleared", "approach", "enroute", "filed", "triage", "scheduled", "arrived", "canceled"];
 
 export function Tickets({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; now: number }) {
   const settings = useSettings();
   const showClosed = settings.fidsClosed;
+  const milestones = useMilestones(snapshot.at.slice(0, 16));
 
   const columns = snapshot.columns.filter(
     (c) => showClosed || (c.type !== "canceled" && c.type !== "duplicate" && c.type !== "backlog"),
@@ -54,6 +72,7 @@ export function Tickets({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
           idx={idx}
           clock={settings.clock}
           now={now}
+          milestones={milestones}
         />
       ) : (
         <div className="board">
@@ -140,7 +159,7 @@ function ViewOptions({ settings }: { settings: Settings }) {
 }
 
 // 목록 보기: 실제 DEPARTURES 안내판. TIME · FLIGHT · DESTINATION · AIRCRAFT · STAND · PRI · REMARKS
-function DepartureBoard({ tickets, idx, clock, now, more }: { tickets: Ticket[]; idx: Index; clock: Settings["clock"]; now: number; more: MoreArrived }) {
+function DepartureBoard({ tickets, idx, clock, now, more, milestones }: { tickets: Ticket[]; idx: Index; clock: Settings["clock"]; now: number; more: MoreArrived; milestones: ReadonlyMap<string, Milestones> }) {
   return (
     <div className="fids-list">
       <header className="fids-list-head">
@@ -177,7 +196,7 @@ function DepartureBoard({ tickets, idx, clock, now, more }: { tickets: Ticket[];
           </thead>
           <tbody>
             {tickets.map((t) => (
-              <DepartureRow key={t.key} ticket={t} idx={idx} clock={clock} />
+              <DepartureRow key={t.key} ticket={t} idx={idx} clock={clock} milestones={milestones.get(t.key) ?? null} />
             ))}
             {(more.count > 0 || more.open) && (
               <tr className="fids-more">
@@ -194,7 +213,8 @@ function DepartureBoard({ tickets, idx, clock, now, more }: { tickets: Ticket[];
   );
 }
 
-function DepartureRow({ ticket: t, idx, clock }: { ticket: Ticket; idx: Index; clock: Settings["clock"] }) {
+function DepartureRow({ ticket: t, idx, clock, milestones }: { ticket: Ticket; idx: Index; clock: Settings["clock"]; milestones: Milestones | null }) {
+  const latest = latestMilestone(milestones);
   const occupants = occupantsOf(t.key, idx);
   const workspaces = idx.workspacesByTicket.get(t.key) ?? [];
   const alerts = idx.alertsByTicket.get(t.key) ?? [];
@@ -202,7 +222,7 @@ function DepartureRow({ ticket: t, idx, clock }: { ticket: Ticket; idx: Index; c
   const tone = phaseTone(t);
   const stand = workspaces[0];
   return (
-    <tr className={`tone-${tone}${occupants.length ? " is-occupied" : ""}`}>
+    <tr className={`tone-${tone}${occupants.length ? " is-occupied" : ""}`} title={latest ? milestoneTitle(milestones, (iso) => formatClock(iso, clock)) : undefined}>
       <td className="col-time mono">
         <SplitFlap bare text={t.updatedAt ? formatClock(t.updatedAt, clock) : "—"} />
       </td>
@@ -238,6 +258,11 @@ function DepartureRow({ ticket: t, idx, clock }: { ticket: Ticket; idx: Index; c
         <span className="remark" title={t.state}>
           <SplitFlap bare text={flightPhase(t)} />
         </span>
+        {latest && (
+          <span className="remark-ms mono">
+            {latest.name.toUpperCase()} {formatClock(latest.at, clock)}
+          </span>
+        )}
         {noContact && (
           <span className="code-chip alert-no-workspace" title={alertMessage(alerts.find((a) => a.kind === "no-workspace")!, (id) => id)}>
             NO CONTACT

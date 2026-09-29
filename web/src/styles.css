@@ -1687,6 +1687,13 @@ a.ticket:hover {
 .fids-table tr.tone-cleared .remark {
   animation: blink 1.2s steps(2) infinite;
 }
+/* OOOI(ATC-123): REMARKS 옆에 가장 늦은 이정표(OUT·OFF·ON·IN) 하나 */
+.remark-ms {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--faint);
+  letter-spacing: 0.04em;
+}
 .fids-remark .code-chip {
   margin-left: var(--space-2);
 }
