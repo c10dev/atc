@@ -1,15 +1,29 @@
 import { type PriceTable, rateOf } from "./fuel-cost.ts";
 import { TTL_1H_MS, ttlAfter } from "./fuel-leaks.ts";
-import type { Compaction, FuelRecord } from "./fuel.ts";
+import type { Compaction, FuelRecord, ModelCommand } from "./fuel.ts";
 
 // CONTEXT SIZE(ATC-69, docs/fuel.md 5·fleet.md 8.6): 세션마다 지금 대화가 얼마나 큰가. FUEL F1이 이미 읽은 기록(fuel.ts)으로만 센다.
 // 마지막 CAPTAIN(non-sidechain) 요청의 input + cacheRead + cacheWrite가 그 크기다. 그 뒤에 compaction이 있으면 postTokens로 줄인다.
+// 창 크기는 세션이 스스로 말하면 그것(ATC-85): statusline의 context_window_size(CLI) → 대화 기록의 `/model` 출력(데스크톱) → 아래 windowOf의 짐작.
 // 순수 함수만. 읽기는 fuel-run.ts(contextSizes)
 
 export const WINDOW_200K = 200_000;
 export const WINDOW_1M = 1_000_000;
 
-export type WindowSource = "config" | "model" | "observed" | "default";
+// statusline·model-command는 세션이 말한 것, model·observed·default는 짐작, config는 SUPERVISOR가 덮어쓴 것
+export type WindowSource = "statusline" | "model-command" | "config" | "model" | "observed" | "default";
+
+// statusline hook이 fuel/<sessionId>.jsonl에 남긴 창 크기와 그 모델 id(있으면), 그 기록의 시각
+export interface StatusWindow {
+  t: string;
+  window: number;
+  model: string | null;
+}
+
+export interface DeclaredWindow {
+  window: number;
+  source: "statusline" | "model-command";
+}
 
 export interface SessionContext {
   session: string;
@@ -22,6 +36,7 @@ export interface SessionContext {
   tier: "5m" | "1h"; // 마지막 요청 뒤 캐시 층(F3의 TTL 규칙)
   speed: string | null;
   geo: string | null;
+  declared?: DeclaredWindow | null; // 세션이 스스로 말한 창(ATC-85). 없으면 windowOf가 짐작한다
 }
 
 export interface ContextSize extends SessionContext {
@@ -32,8 +47,34 @@ export interface ContextSize extends SessionContext {
 
 const promptOf = (r: FuelRecord) => r.input + r.cacheWrite5m + r.cacheWrite1h + r.cacheRead;
 
+// `/model`이 말하는 창: [1m]이면 1M, claude-* id인데 [1m]이 없으면 200k. 다른 공급자 id(프록시로 도는 DeepSeek·Muse)나 표시 이름은 모른다(null)
+export function commandWindowOf(model: string | null): number | null {
+  if (!model) return null;
+  if (/\[1m\]$/i.test(model)) return WINDOW_1M;
+  return /^claude-/i.test(model) ? WINDOW_200K : null;
+}
+
+// 모델 id 비교용: [1m]과 날짜 접미어를 뗀 소문자
+const baseModel = (m: string) => m.replace(/\[[^\]]*\]$/, "").replace(/-\d{8}$/, "").toLowerCase();
+
+export interface WindowSignals {
+  commands?: readonly ModelCommand[];
+  statusline?: ReadonlyMap<string, StatusWindow>;
+}
+
+// 세션이 스스로 말한 창. statusline 기록은 뒤의 `/model`이나 다른 모델의 요청이 있으면 낡은 것으로 보고, `/model`이 말하는 창은 그 뒤 요청이 넘으면 틀린 것으로 본다
+function declaredWindowOf(last: FuelRecord, lastCmd: ModelCommand | undefined, sl: StatusWindow | undefined, maxSeenAfter: number): DeclaredWindow | null {
+  const cmdMs = lastCmd ? Date.parse(lastCmd.t) : -Infinity;
+  if (sl && Date.parse(sl.t) >= cmdMs) {
+    const otherModel = sl.model && Date.parse(last.t) > Date.parse(sl.t) && baseModel(last.model) !== baseModel(sl.model);
+    if (!otherModel) return { window: sl.window, source: "statusline" };
+  }
+  const w = lastCmd ? commandWindowOf(lastCmd.model) : null;
+  return w !== null && maxSeenAfter <= w ? { window: w, source: "model-command" } : null;
+}
+
 // 세션마다 마지막 CAPTAIN 요청의 크기. CREW(sidechain) 요청은 보지 않는다
-export function sessionContexts(records: Iterable<FuelRecord>, compactions: readonly Compaction[] = []): Map<string, SessionContext> {
+export function sessionContexts(records: Iterable<FuelRecord>, compactions: readonly Compaction[] = [], signals: WindowSignals = {}): Map<string, SessionContext> {
   const bySession = new Map<string, FuelRecord[]>();
   for (const r of records) {
     if (r.sidechain) continue;
@@ -43,6 +84,8 @@ export function sessionContexts(records: Iterable<FuelRecord>, compactions: read
   }
   const cutsOf = new Map<string, Compaction[]>();
   for (const c of compactions) cutsOf.set(c.session, [...(cutsOf.get(c.session) ?? []), c]);
+  const cmdsOf = new Map<string, ModelCommand[]>();
+  for (const c of signals.commands ?? []) cmdsOf.set(c.session, [...(cmdsOf.get(c.session) ?? []), c]);
   const out = new Map<string, SessionContext>();
   for (const [session, list] of bySession) {
     list.sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
@@ -50,6 +93,10 @@ export function sessionContexts(records: Iterable<FuelRecord>, compactions: read
     for (const r of list) ttl = ttlAfter(r, ttl);
     const last = list.at(-1)!;
     const lastCut = (cutsOf.get(session) ?? []).filter((c) => Date.parse(c.t) > Date.parse(last.t)).sort((a, b) => Date.parse(a.t) - Date.parse(b.t)).at(-1);
+    // 마지막 `/model` 뒤에 본 요청만 창을 짐작하는 데 쓴다(다른 모델로 바꿨으면 앞 크기는 그 모델의 것)
+    const lastCmd = (cmdsOf.get(session) ?? []).sort((a, b) => Date.parse(a.t) - Date.parse(b.t)).at(-1);
+    const seen = list.filter((r) => r.model === last.model && (!lastCmd || Date.parse(r.t) > Date.parse(lastCmd.t)));
+    const maxSeen = Math.max(0, ...seen.map(promptOf));
     out.set(session, {
       session,
       contextTokens: lastCut ? lastCut.postTokens : promptOf(last),
@@ -57,10 +104,11 @@ export function sessionContexts(records: Iterable<FuelRecord>, compactions: read
       model: last.model,
       compacted: Boolean(lastCut),
       base: promptOf(list[0]),
-      maxSeen: Math.max(...list.filter((r) => r.model === last.model).map(promptOf)),
+      maxSeen,
       tier: ttl === TTL_1H_MS ? "1h" : "5m",
       speed: last.speed,
       geo: last.geo,
+      declared: declaredWindowOf(last, lastCmd, signals.statusline?.get(session), maxSeen),
     });
   }
   return out;
@@ -78,7 +126,7 @@ export function windowOf(model: string, maxSeen: number, windows: Record<string,
 }
 
 export function contextSizeOf(c: SessionContext, windows: Record<string, number> = {}): ContextSize {
-  const w = windowOf(c.model, c.maxSeen, windows);
+  const w = c.declared ? { window: c.declared.window, source: c.declared.source } : windowOf(c.model, c.maxSeen, windows);
   return { ...c, window: w.window, windowSource: w.source, pct: c.contextTokens === null ? null : Math.round((c.contextTokens / w.window) * 1000) / 1000 };
 }
 
@@ -109,6 +157,8 @@ export interface ContextBadge {
   title: string;
 }
 const WINDOW_WHY: Record<WindowSource, string> = {
+  statusline: "세션이 알림(statusline context_window_size)",
+  "model-command": "세션의 마지막 /model 출력",
   config: "fleet-plan.json contextWindows",
   model: "모델 이름의 [1m]",
   observed: "200k를 넘는 요청을 봄 — 1M으로 짐작",

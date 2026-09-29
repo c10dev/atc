@@ -17,7 +17,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 | FOB | 그 AIRCRAFT 자기 연료: 살아 있는 세션의 맥락 창에 **남은** 몫과 크기(`FOB 50% · 504k/1M`). 남은 몫 60 % 이하부터 노랗게, 30 % 이하부터 빨갛게 보인다. 세션이 없거나 최근 7일 기록이 없으면 `—` |
 | 이번 주 | 이번 주(월요일부터) ARRIVED 수와 정시율(기대 block time이 있는 FLIGHT만, 없으면 `—`) |
 
-- **FOB**(FUEL ON BOARD)는 그 AIRCRAFT가 실제로 지고 있는 연료, 곧 맥락 창의 남은 몫이다. 계정 사용 한도(아래 FUEL)와 다르다. 사용 한도는 같은 ACCOUNT의 모든 AIRCRAFT가 같이 쓰니 줄에는 싣지 않는다. 크기는 마지막 CAPTAIN 요청이 읽고 쓴 토큰이다(CREW는 세지 않음). 대화 기록에는 `[1m]`이 적히지 않아서, 200k를 넘는 요청을 한 번 보면 창을 1M으로 짐작한다. 카드에는 `FOB 50% · 504k / 1M`과 그 시각이 보이고, 마우스를 올리면 창을 어떻게 정했는지 나온다. 창이 틀리면 `~/.local/state/atc/fleet-plan.json`에 `"contextWindows": {"claude-opus-5-5": 1000000}`처럼 적는다.
+- **FOB**(FUEL ON BOARD)는 그 AIRCRAFT가 실제로 지고 있는 연료, 곧 맥락 창의 남은 몫이다. 계정 사용 한도(아래 FUEL)와 다르다. 사용 한도는 같은 ACCOUNT의 모든 AIRCRAFT가 같이 쓰니 줄에는 싣지 않는다. 크기는 마지막 CAPTAIN 요청이 읽고 쓴 토큰이다(CREW는 세지 않음). 창은 세션이 스스로 말하면 그것이다(CLI 세션은 statusline이 알려 주고, 데스크톱 세션은 마지막 `/model` 출력에서 읽는다). 말이 없으면 대화 기록에 `[1m]`이 적히지 않아서, 200k를 넘는 요청을 한 번 보면 1M으로 짐작한다. 카드에는 `FOB 50% · 504k / 1M`과 그 시각이 보이고, 마우스를 올리면 창을 어떻게 정했는지 나온다(세션이 알림, `/model` 출력, 설정, 짐작). 짐작이 틀리면 `~/.local/state/atc/fleet-plan.json`에 `"contextWindows": {"claude-opus-5-5": 1000000}`처럼 적는다.
 - 순서는 AIRBORNE → HOLDING → PARKED, 그다음 NORDO · AOG · NOT IN SERVICE. 같은 상태 안에서는 AIRPORT 순서다.
 - 줄을 누르면(키보드 Enter·Space도) 그 AIRCRAFT의 카드가 아래에 펼쳐진다. 카드에는 CREW COMPLEMENT, OBSERVED CREW, TYPE RATING, ROUTE, TARGETS와 실적, 최근 FLIGHT, 그리고 LAUNCH · STOP · CREW BRIEFING · AOG · 퇴역 · 고치기 버튼이 그대로 있다. 다시 누르면 접힌다.
 - 오른쪽 위 **목록 / 카드**로 예전처럼 모든 카드를 펼친 보기로 바꿀 수 있다. 고른 보기는 이 브라우저에 기억한다(기억하지 못하면 목록).

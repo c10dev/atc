@@ -12,14 +12,14 @@ import { agentModels, type CrewWarning, crewWarnings } from "./fuel-crew.ts";
 import { type PriceTable, priceFlightFuel } from "./fuel-cost.ts";
 import { readPrices } from "./fuel-prices.ts";
 import { type Baseline, controlSendsOf, findLeaks, type LeakEvent, sessionChangeLeaks } from "./fuel-leaks.ts";
-import { type AgentMeta, type Compaction, dedupeFuel, type FuelRecord, parseFuelLines, summarizeFuel } from "./fuel.ts";
-import { type ContextSize, contextSizeOf, contextView, sessionContexts } from "./fuel-context.ts";
+import { type AgentMeta, type Compaction, dedupeFuel, type FuelRecord, type ModelCommand, parseFuelLines, summarizeFuel } from "./fuel.ts";
+import { type ContextSize, contextSizeOf, contextView, sessionContexts, type StatusWindow } from "./fuel-context.ts";
 import { arrivedSpan, type Attribution, attributeFuel, type ClaimSpan, enRouteSpans, flightOf, fuelForEntry } from "./fuel-flights.ts";
 import type { LogEntry, LogLine } from "./logbook.ts";
 import type { Snapshot } from "./model.ts";
 import { allProposals } from "./proposals.ts";
 import { readHookClaims } from "./sources/claude.ts";
-import { type FuelStatusRecord, lastRecord, readTail } from "../hooks/fuel-statusline.mjs";
+import { type FuelLimitsRecord, lastRecordWith, readTail } from "../hooks/fuel-statusline.mjs";
 import { fleetKeyOf, regKey } from "./registration.ts";
 
 // FUEL 읽기(ATC-50, docs/fuel.md 4): ~/.claude/projects의 대화 기록을 파일마다 지난번 바이트 뒤부터만 읽는다(talkEventsFile과 같은 방식).
@@ -42,6 +42,7 @@ interface FileState {
   size: number; // 읽은 데까지(마지막 줄바꿈 뒤)
   records: Map<string, FuelRecord>; // 파일 안에서 먼저 중복을 없앤 기록
   compactions: Compaction[];
+  modelCommands: ModelCommand[];
   unknown: number;
   name: string | null;
   meta: AgentMeta | null;
@@ -159,13 +160,14 @@ export function readFuelFile(f: FuelFile): { state: FileState; bytes: number } {
 }
 
 function emptyState(ino: number): FileState {
-  return { ino, size: 0, records: new Map(), compactions: [], unknown: 0, name: null, meta: null };
+  return { ino, size: 0, records: new Map(), compactions: [], modelCommands: [], unknown: 0, name: null, meta: null };
 }
 
 function take(s: FileState, f: FuelFile, text: string) {
   const p = parseFuelLines(text, { session: f.session, crew: f.crew, agent: f.agent });
   dedupeFuel(p.records, s.records);
   s.compactions.push(...p.compactions);
+  s.modelCommands.push(...p.modelCommands);
   s.unknown += p.unknown;
   if (p.name) s.name = p.name;
 }
@@ -173,6 +175,7 @@ function take(s: FileState, f: FuelFile, text: string) {
 export interface FuelScan {
   records: Map<string, FuelRecord>; // 전역 중복 제거를 마친 기록(기간 앞 기록이 섞여 있을 수 있다)
   compactions: Compaction[];
+  modelCommands: ModelCommand[];
   unknownBySession: Map<string, number>;
   names: Map<string, string>; // session → 이름. 스냅샷의 Claude 세션, 없으면 기록의 agent-name 줄
   live: Set<string>;
@@ -190,6 +193,7 @@ export function scanFuel(since: number, sessions: Snapshot["sessions"]): FuelSca
   let bytes = 0;
   const all = new Map<string, FuelRecord>();
   const compactions: Compaction[] = [];
+  const modelCommands: ModelCommand[] = [];
   const unknownBySession = new Map<string, number>();
   const names = new Map<string, string>();
   const agents = new Map<string, AgentMeta>();
@@ -198,6 +202,7 @@ export function scanFuel(since: number, sessions: Snapshot["sessions"]): FuelSca
     bytes += r.bytes;
     dedupeFuel(r.state.records.values(), all);
     compactions.push(...r.state.compactions);
+    modelCommands.push(...r.state.modelCommands);
     if (r.state.unknown) unknownBySession.set(f.session, (unknownBySession.get(f.session) ?? 0) + r.state.unknown);
     if (!f.crew && r.state.name) names.set(f.session, r.state.name);
     if (f.agent && r.state.meta) agents.set(f.agent, r.state.meta);
@@ -209,7 +214,7 @@ export function scanFuel(since: number, sessions: Snapshot["sessions"]): FuelSca
     if (s.name && s.name !== s.id.slice(0, 8)) names.set(s.id, s.name);
   }
   rememberAgentModels(agentModels(all.values())); // OBSERVED CREW의 COMPLEMENT DRIFT(ATC-57)
-  return { records: all, compactions, unknownBySession, names, live, agents, files: files.length, bytes };
+  return { records: all, compactions, modelCommands, unknownBySession, names, live, agents, files: files.length, bytes };
 }
 
 export type FlightContext = Pick<Snapshot, "workspaces" | "airports" | "claims">;
@@ -346,17 +351,29 @@ export function mountFuel(app: Hono, getSnapshot: () => Promise<Snapshot>, loadE
 }
 
 // FUEL REMAINING(ATC-55): 상태 폴더의 fuel/<sessionId>.jsonl마다 끝의 마지막 기록(statusline hook이 적음). 파일 이름과 sessionId가 다르면 버린다
-export function readFuelRecords(dir = join(config.stateDir, "fuel")): FuelStatusRecord[] {
-  let files: string[] = [];
+export function readFuelRecords(dir = join(config.stateDir, "fuel")): FuelLimitsRecord[] {
+  return fuelFilesIn(dir).flatMap((f) => {
+    const r = lastRecordWith(readTail(join(dir, f)), "rate_limits"); // 창 크기만 있는 줄(ATC-85)은 FUEL REMAINING이 아니다
+    return r && `${r.sessionId}.jsonl` === f ? [r] : [];
+  });
+}
+
+function fuelFilesIn(dir: string): string[] {
   try {
-    files = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
+    return readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
   } catch {
     return [];
   }
-  return files.flatMap((f) => {
-    const r = lastRecord(readTail(join(dir, f)));
-    return r && `${r.sessionId}.jsonl` === f ? [r] : [];
-  });
+}
+
+// 세션이 스스로 알린 창 크기(ATC-85): fuel/<sessionId>.jsonl에서 context_window_size가 있는 마지막 기록(CLI 세션의 statusline)
+export function readStatusWindows(dir = join(config.stateDir, "fuel")): Map<string, StatusWindow> {
+  const out = new Map<string, StatusWindow>();
+  for (const f of fuelFilesIn(dir)) {
+    const r = lastRecordWith(readTail(join(dir, f)), "context_window_size");
+    if (r && r.context_window_size && `${r.sessionId}.jsonl` === f) out.set(r.sessionId, { t: r.t, window: r.context_window_size, model: r.model ?? null });
+  }
+  return out;
 }
 
 // ── CONTEXT SIZE(ATC-69, docs/fuel.md 5): 세션마다 지금 대화 크기. 같은 scanFuel 기록으로 센다(대화 기록을 따로 읽지 않는다) ──
@@ -372,9 +389,13 @@ export function loadContextWindows(file = join(config.stateDir, "fleet-plan.json
   }
 }
 
-export function contextSizesOf(scan: Pick<FuelScan, "records" | "compactions">, windows: Record<string, number>): Map<string, ContextSize> {
+export function contextSizesOf(
+  scan: Pick<FuelScan, "records" | "compactions"> & Partial<Pick<FuelScan, "modelCommands">>,
+  windows: Record<string, number>,
+  statusline: Map<string, StatusWindow> = new Map(),
+): Map<string, ContextSize> {
   const out = new Map<string, ContextSize>();
-  for (const [id, c] of sessionContexts(scan.records.values(), scan.compactions)) out.set(id, contextSizeOf(c, windows));
+  for (const [id, c] of sessionContexts(scan.records.values(), scan.compactions, { commands: scan.modelCommands, statusline })) out.set(id, contextSizeOf(c, windows));
   return out;
 }
 
@@ -386,7 +407,7 @@ export function contextSizes(sessions: Snapshot["sessions"], now = Date.now()): 
   if (lastContext && now - lastContext.at < CONTEXT_MS) return lastContext.value;
   let value = new Map<string, ContextSize>();
   try {
-    value = contextSizesOf(scanFuel(now - FUEL_DEFAULT_DAYS * DAY_MS, sessions), loadContextWindows());
+    value = contextSizesOf(scanFuel(now - FUEL_DEFAULT_DAYS * DAY_MS, sessions), loadContextWindows(), readStatusWindows());
   } catch (e) {
     console.error("[atc] context size failed:", e);
   }
