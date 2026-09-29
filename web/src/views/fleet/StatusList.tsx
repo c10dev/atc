@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { elapsedText, type FleetRow } from "../../../../server/fleet-status.ts";
+import { elapsedText, type FleetRow, flightDetailText } from "../../../../server/fleet-status.ts";
 import { flightNumber } from "../../aviation.ts";
 import { timeAgo } from "../../derive.ts";
 import { ContextCell } from "./Context.tsx";
@@ -66,6 +66,9 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                     <>
                       <b className="mono">{flightNumber(r.flight.key)}</b> {r.flight.title && <span className="fl-r-title">{r.flight.title}</span>}
                       {r.more > 0 && <span className="fl-r-more">+{r.more}</span>}
+                      {r.flight.detail && (r.flight.kept || r.health) && (
+                        <span className={`fl-r-detail mono${flightDetailText(r.flight.detail, now).unpushed ? " is-unpushed" : ""}`}>{flightDetailText(r.flight.detail, now).text}</span>
+                      )}
                     </>
                   ) : r.health || r.accountHold || r.fuelHold ? null : (
                     <span className="faint">—</span>

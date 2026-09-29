@@ -4,7 +4,8 @@ import { resolveAirports } from "./airports.ts";
 import { recentClearances } from "./clearances.ts";
 import { type Occupancy, resolveOccupancy } from "./occupancy.ts";
 import { healthOfSession, inferTranscriptClaim, readClaudeSessions, readHookClaims } from "./sources/claude.ts";
-import { healthAlerts } from "./health.ts";
+import { cutResetOf, healthAlerts, settleCut } from "./health.ts";
+import { applyFlightHealth } from "./health-flights.ts";
 import { readCodex } from "./sources/codex.ts";
 import { readWorkspaces, ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
 import { readGithub } from "./sources/github.ts";
@@ -18,7 +19,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadFleet } from "./fleet.ts";
 import { fuelAccountsOf, fuelByAircraft, fuelConfigOf, type FuelMember } from "./fuel-remaining.ts";
-import { readFuelRecords } from "./fuel-run.ts";
+import { readFuelHistory, readFuelRecords } from "./fuel-run.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, holdStops, loadAtfm, readRecordedStops, reviveStops, stopFigures } from "./atfm.ts";
 import { fastTrackOf, isHeld, loadAutoland, loadAutolandState, mergeExclusionOf, planAutoland } from "./autoland.ts";
@@ -48,7 +49,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
     if (x) x.health = healthOfSession(f, x.status, healthAt, config.health);
   }
 
-  const claims = readHookClaims().filter((c) => wsByPath.has(c.workspacePath) && fresh(c));
+  const hookClaims = readHookClaims().filter((c) => wsByPath.has(c.workspacePath));
+  const claims = hookClaims.filter(fresh);
   const hooked = new Set(claims.map((c) => c.sessionId));
   for (const f of claude.files) {
     if (hooked.has(f.sessionId) || sessionById.get(f.sessionId)?.status === "dead") continue;
@@ -120,14 +122,10 @@ export async function buildSnapshot(): Promise<Snapshot> {
   }
 
   const alerts = buildAlerts(sessions, workspaces, tickets, claims, occupancy);
-  // health ALERT: NETWORK는 기계에 한 번, LIMIT은 같은 ACCOUNT끼리(ATC-51), ACCOUNT를 모르면 같은 reset끼리 한 번(docs/fleet.md 8.8)
   const fleet = loadFleet();
   const dispatchCfg = loadDispatchConfig();
   const team = new RegExp(dispatchCfg.teamPattern, "i");
   const accountOfSession = (x: Session) => (x.status !== "dead" && team.test(x.name) ? accountOf(fleet, x.name) : null);
-  for (const a of healthAlerts(sessions.map((x) => ({ sessionId: x.id, name: x.name, health: x.health, account: accountOfSession(x) })), healthAt)) {
-    alerts.push({ kind: "health", key: a.key, message: a.message, sessionIds: a.sessionIds });
-  }
   // FUEL REMAINING(ATC-55): statusline이 적은 rate_limits를 session → AIRCRAFT → ACCOUNT로(죽은 세션의 마지막 값도 reset까지 쓴다).
   // 관제 세션(TOWER·OCC·CROSSCHECK·MCC·ENGINEERING, ATC-60)도 같은 ACCOUNT의 구성원으로 센다 — 붙들지는 않는다
   const regOf = (name: string) => regKey(name, dispatchCfg.teamPattern); // `Team G`도 TEAM_G 구성원(ATC-67)
@@ -138,8 +136,20 @@ export async function buildSnapshot(): Promise<Snapshot> {
     ...regs.map((reg): FuelMember => ({ name: reg, kind: "aircraft", account: accountOf(fleet, reg), sessionIds: sessions.filter((x) => team.test(x.name) && regOf(x.name) === reg).map((x) => x.id) })),
     ...controls.map((n): FuelMember => ({ name: n, kind: "control", account: controlAccountOf(fleet, n), sessionIds: sessions.filter((x) => controlOf.get(x.id) === n).map((x) => x.id) })),
   ];
-  const fuelAccounts = fuelAccountsOf(members, readFuelRecords(), fuelConfigOf(dispatchCfg.fuel), healthAt);
+  const fuelCfg = fuelConfigOf(dispatchCfg.fuel);
+  const fuelAccounts = fuelAccountsOf(members, readFuelRecords(), fuelCfg, healthAt);
   const fuel = fuelByAircraft(fuelAccounts);
+  // 오류 없이 한도로 잘린 턴(cut LIMIT, ATC-86): reset은 같은 ACCOUNT 구성원의 FUEL 기록에서 되짚는다. reset이 지났으면 RESUME
+  for (const x of sessions) {
+    if (x.health?.code !== "LIMIT" || !x.health.cut || !x.health.cutAt) continue;
+    const m = members.find((y) => y.sessionIds.includes(x.id));
+    const ids = m?.account ? members.filter((y) => y.account === m.account).flatMap((y) => y.sessionIds) : (m?.sessionIds ?? [x.id]);
+    x.health = settleCut(x.health, cutResetOf(Date.parse(x.health.cutAt), readFuelHistory(ids), fuelCfg.holdPct), healthAt);
+  }
+  // health ALERT: NETWORK는 기계에 한 번, LIMIT은 같은 ACCOUNT끼리(ATC-51), ACCOUNT를 모르면 같은 reset끼리 한 번(docs/fleet.md 8.8)
+  for (const a of healthAlerts(sessions.map((x) => ({ sessionId: x.id, name: x.name, health: x.health, account: accountOfSession(x) })), healthAt)) {
+    alerts.push({ kind: "health", key: a.key, message: a.message, sessionIds: a.sessionIds });
+  }
   const repos = airports.open.map((a) => a.repo);
   const github = readGithub(repos);
   // AUTOLAND(ATC-34·38). 재리뷰로 Codex 대신 넘긴 head는 6시간을 기다리지 않고 REVIEW 대기열로 — update·merge이고 GROUND STOP이 아닌 AIRPORT만
@@ -175,6 +185,9 @@ export async function buildSnapshot(): Promise<Snapshot> {
       })(),
     },
   );
+
+  // STALLED와 멈춘 AIRCRAFT의 FLIGHT 유지(ATC-86): 점유·Linear·PR이 모두 읽힌 뒤에
+  applyFlightHealth({ sessions, teamPattern: dispatchCfg.teamPattern, freshClaims: claims, staleClaims: hookClaims.filter((c) => !fresh(c)), workspaces, tickets, pulls, now: healthAt, cfg: config.health });
 
   // STRANDED(ATC-29): FLIGHT가 있는 PR이 기본 브랜치가 아닌 곳에 머지됐고, 그 커밋이 기본 브랜치에도 그리로 가는 열린 PR에도 없음.
   // Linear가 Done이어도 경보를 둔다(Done이 틀렸다는 뜻이다)

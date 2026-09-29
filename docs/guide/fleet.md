@@ -30,6 +30,9 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 | 코드 | 뜻 | 할 일 |
 |---|---|---|
 | `LIMIT` | 계정 사용 한도. reset 시각까지 HOLD(DISPATCH가 일을 주지 않음). ACCOUNT 라벨이 있으면 같은 ACCOUNT의 다른 AIRCRAFT도 HOLD(아래) | 기다린다. reset 뒤 `UNANSWERED`로 바뀌면 지시를 다시 보낸다 |
+| `LIMIT (cut)` | 오류 없이 턴이 한도로 잘림. `HOLD · LIMIT (cut 18:10Z)`. 기다리는 동안 그 FLIGHT는 줄에 그대로 남는다 | 기다린다. reset 뒤에도 새 지시가 없으면 `RESUME`으로 바뀐다 |
+| `RESUME` | 한도는 풀렸는데 새 지시가 없어 멈춰 있음. `RESUME 필요` | 그 세션에서 "계속"을 보낸다. atc는 스스로 보내지 않는다 |
+| `STALLED` | In Progress FLIGHT를 쥔 채(STAND나 `tail:` 라벨) PR 없이 60분 넘게 쉬는 중 | 세션을 들여다본다. 막힌 것이 없으면 "계속", 살릴 수 없으면 다시 띄운다 |
 | `THROTTLE` | 서버가 잠시 붐빔 | 몇 분 뒤 다시 보낸다 |
 | `NETWORK` | 이 컴퓨터에서 API에 연결이 안 됨(모든 세션이 같이 걸림) | 네트워크·프록시·`ANTHROPIC_BASE_URL`/`NO_PROXY`를 보고 다시 보낸다 |
 | `MODEL` | 고른 모델이나 경로가 없음 | 모델을 고쳐 다시 띄운다. 그대로 재시도하지 않는다 |
@@ -41,7 +44,8 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 | `DENIED` | 10분 안에 거부·hook 막힘이 3번 넘음 | permission 규칙으로 허용하거나 다시 브리핑한다 |
 | `UNKNOWN` | 그 밖의 오류 | 오류 한 줄을 보고 판단한다 |
 
-- 코드는 세션이 다시 정상으로 대답하면 저절로 풀린다.
+- 코드는 세션이 다시 정상으로 대답하면 저절로 풀린다. `LIMIT (cut)`·`RESUME`·`STALLED`는 세션이 새 지시를 받거나 도구를 다시 쓰기 시작하면 풀린다.
+- 멈춘 세션(`LIMIT (cut)`·`RESUME`·`STALLED`)은 STAND 점유 시간(3시간)이 지나도 FLEET 줄에 FLIGHT가 남고, 그 옆에 마지막 커밋, origin에 올라갔는지, PR이 보인다(`59a9fdc 7h ago · pushed · no PR`). 이때 줄의 STATUS는 HOLDING이다.
 - ALERT는 화면 위 ALERTS에도 올라간다. `NETWORK`는 세션이 여럿이어도 하나, `LIMIT`은 같은 ACCOUNT끼리(라벨이 없으면 reset 시각이 같은 것끼리) 하나로 묶인다.
 - OCC는 그 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING 문제로, TOWER는 브리핑으로 받아 SUPERVISOR에게 보고한다. 둘 다 팀에 다시 보내지는 않는다.
 - 사람이 결정할 코드는 FLEET PLAN이 제안으로 올린다: `MODEL`과 주간 `LIMIT`은 AOG, `CONTEXT`와 60분 넘은 `HUNG`은 RESTART(아래 "FLEET PLAN"). 코드가 풀리면 제안도 닫힌다.

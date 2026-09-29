@@ -139,16 +139,17 @@ To turn it off, remove the entries. The `rules-ack/` folder can be deleted at an
 | `StopFailure` | `{t, event, code, error}` plus `line` (the first line of the error, ≤200 chars), with `code` from the server's `classifyError` |
 | `Notification` `permission_prompt` / `elicitation_dialog` | `{t, event, code: "PENDING"}` — a session waiting on an approval, even while its session file says `busy` |
 | `Notification` `idle_prompt` | `{t, event}`; raises no code on its own |
-| `Stop`, `PostToolUse` | `{t, event}` — clears the push code |
+| `Stop`, `PostToolUse`, `UserPromptSubmit` | `{t, event}` — clears the push code. `UserPromptSubmit` (ATC-86) is the moment a prompt arrives; atc uses it to clear a cut `LIMIT` or `RESUME` before the transcript catches up. `Stop` never clears a cut (it is the cut turn's own end) |
+| `Notification` `quota_auto_resume_fired` / `_stale` / `_disabled` | `{t, event}` (ATC-86) — CLI sessions only; `fired` clears `RESUME` |
 
-- Only the code, the time and the first error line are stored, never message bodies. Everything else in the hook input is ignored.
+- Only the code, the time and the first error line are stored, never message bodies. Everything else in the hook input is ignored (`prompt` and `last_assistant_message` are never stored).
 - The server reads the last line of each file and prefers it over the transcript when it is newer than the transcript's last fact, so `PENDING` shows without waiting for the 30-minute `HUNG`. It clears again on `Stop` or the next `PostToolUse`.
 - The hook prints nothing and always exits 0; write errors are swallowed, so it never blocks the session. It reads stdin, writes one line and exits — no network.
 - Options: `ATC_STATE_DIR` (default `~/.local/state/atc`). The `health/` folder can be deleted at any time; atc then falls back to the transcript.
 
 ### Install (SUPERVISOR)
 
-The SUPERVISOR adds these entries to `~/.claude/settings.json` (absolute paths; `async` keeps them off the critical path). The `PostToolUse` entry needs its own `matcher: "*"` — clearing matters for every tool, not only the claim tools:
+The SUPERVISOR adds these entries to `~/.claude/settings.json` (absolute paths; `async` keeps them off the critical path). The `PostToolUse` entry needs its own `matcher: "*"` — clearing matters for every tool, not only the claim tools. ATC-86 adds `UserPromptSubmit` and widens the `Notification` matcher; an installation from before ATC-86 keeps working, without the early clearing:
 
 ```json
 {
@@ -160,10 +161,13 @@ The SUPERVISOR adds these entries to `~/.claude/settings.json` (absolute paths; 
       { "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
     ],
     "Notification": [
-      { "matcher": "permission_prompt|idle_prompt|elicitation_dialog", "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
+      { "matcher": "permission_prompt|idle_prompt|elicitation_dialog|quota_auto_resume_fired|quota_auto_resume_stale|quota_auto_resume_disabled", "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
     ],
     "PostToolUse": [
       { "matcher": "*", "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "\"/path/to/node\" \"/path/to/atc/hooks/health.mjs\"", "timeout": 5, "async": true }] }
     ]
   }
 }

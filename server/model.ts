@@ -20,6 +20,9 @@ export interface Session {
   workspacePath: string | null;
   // AIRCRAFT health(ATC-45): 왜 멈췄는지, 무엇을 기다리는지. 문제가 없으면 없다(null)
   health?: Health | null;
+  // 한도로 잘리거나(cut LIMIT) 한도가 풀렸는데 멈췄거나(RESUME) 멈춘(STALLED) AIRCRAFT가 쥔 FLIGHT 중, 점유(claimTtl)가 지나 claims에서 빠진 것.
+  // FLEET 줄이 FLIGHT를 잃지 않게 한다(ATC-86). 그 밖에는 없다
+  keptFlights?: string[];
 }
 
 export interface Airport {
@@ -47,6 +50,8 @@ export interface Workspace {
   dirty: number | null; // 변경 파일 수, 아직 모르면 null
   lastCommitAt: string | null;
   ticketKey: string | null; // 브랜치의 voc-<n>에서 추출
+  // 이 브랜치의 마지막 커밋이 origin에 있나(origin/<branch> 추적 ref가 HEAD와 같다, ATC-86). 브랜치가 없거나 origin이 없으면 null. 모르면 없다
+  pushed?: boolean | null;
 }
 
 export type TicketStateType =

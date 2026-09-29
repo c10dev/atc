@@ -919,6 +919,9 @@ ATC-69는 대화 기록에 `[1m]`이 남지 않아 창을 짐작했다. ATC-85�
 | 코드 | 무엇으로 아나 | 수준 | DISPATCH·SCHEDULE | 누가, 어떻게 |
 |---|---|---|---|---|
 | `LIMIT` | 사용 한도 문구의 `rate_limit`. `resetsAt`은 `quotaLimits`에서, 없으면 "resets 7:40am (UTC)"에서 | ALERT, ACCOUNT마다 한 번(라벨이 없으면 reset 시각마다) | `resetsAt`까지 뺀다. 같은 ACCOUNT의 다른 AIRCRAFT도 | 기다린다. reset 뒤에도 지시가 대답을 못 받았으면 `UNANSWERED`로 바뀐다. 지시를 보낸 쪽(OCC·사용자)이나 SUPERVISOR가 다시 보낸다 |
+| `LIMIT`(cut) | idle이고, 마지막 지시와 마지막 `release` 뒤에 `usageLimitNote: "wrap_up"` 줄이 있고, 그 뒤 API 오류가 없다(ATC-86): 오류 줄 없이 턴이 정상으로 끝났다. 표시 `HOLD · LIMIT (cut 18:10Z)`, 알면 ACCOUNT의 FUEL 기록에서 `resetsAt` | ALERT, ACCOUNT마다 한 번 | `LIMIT`과 같다 | 기다린다. reset 뒤에도 새 지시가 없으면 `RESUME`으로 바뀐다 |
+| `RESUME` | reset이 지난 cut `LIMIT`이고 그 뒤 새 활동이 없다(ATC-86). 표시 `RESUME 필요` | ALERT | — (표시만) | SUPERVISOR가 그 세션에서 "계속"을 보낸다. atc는 팀에 메시지를 보내지 않는다 |
+| `STALLED` | `stalledMin`(60분) 넘게 idle이고, In Progress FLIGHT(STAND 점유나 `tail:` 라벨)를 쥐었는데 열린 PR이 없고, 다른 코드가 없다(ATC-86) | INFO | — (표시만) | SUPERVISOR가 그 세션을 들여다본다: 막힌 것이 없으면 "계속", 되살릴 수 없으면 RESTART |
 | `THROTTLE` | `rate_limit` "not your usage limit", overloaded, 그 밖의 `server_error` | INFO, 30분에 3번이면 ALERT | — | 몇 분 뒤 다시 보낸다. 10분 넘게 대답이 없으면 `UNANSWERED`로 바뀐다 |
 | `NETWORK` | "Unable to connect", SSL·TLS, 연결 오류 | ALERT, 기계에 한 번 | — | SUPERVISOR가 네트워크·프록시·`ANTHROPIC_BASE_URL`/`NO_PROXY`를 보고 다시 보낸다 |
 | `MODEL` | `model_not_found` | ALERT | 뺀다 | SUPERVISOR가 모델이나 경로를 고쳐 다시 띄운다. 그대로 재시도하지 않는다 |
@@ -993,6 +996,38 @@ FLEET PLAN 블록의 FUEL(8.6의 "주간 사용량 줄")은 만들었다(ATC-63)
 - `DENIED`는 STAND가 아니라 세션마다 센다. 세션은 한 번에 STAND 하나를 쥔다.
 - `NETWORK`, `UNANSWERED`, `UNKNOWN`은 DISPATCH를 막지 않는다(명세 목록에 없음). 다음 지시는 통할 수 있다.
 - `THROTTLE`과 reset이 지난 `LIMIT`은 `UNANSWERED`로 바뀐다. 대답 못 받은 BRIEF가 지난 코드 뒤에 숨지 않게.
+
+### AIRCRAFT health from events as built (ATC-86)
+
+2026-09-28 18:10Z에 TEAM_G와 TEAM_H가 사용 한도로 멈춘 채 일곱 시간 동안 아무도 몰랐다: 오류 줄도 `StopFailure`도 없었고, 줄은 평범한 `idle`이었고, FLEET 줄에는 FLIGHT가 없었다. ATC-86은 AIRCRAFT의 상태가 그 이벤트(대화 기록 줄, hook 기록, 알려진 reset 시각)를 따르게 해서 아무도 확인하지 않아도 되게 한다. 세션을 폴링하지 않는다.
+
+**Step 0, G와 H의 대화 기록에서(2026-09-29).**
+
+- **한도로 잘린 표시.** 한도에 닿으면 Claude Code가 `isMeta: true`, `turnCompanion: true`, `usageLimitNote: "wrap_up"`인 `user` 줄을 쓴다(G 18:10:48Z, H 18:10:15Z). 본문은 짧은 여유(grace)가 남았으니 마무리하라는 안내다. 그 뒤 턴은 정상 `Stop`으로 끝난다(G 18:11:06Z, H 18:10:39Z). `isApiErrorMessage` 줄도 `StopFailure`도 없어서 hook도 pull 분류기도 평범한 idle로 보았다. 사람이 돌아오면 다음 지시(G 09-29 01:33:25Z, H 01:36:56Z) 뒤에 `usageLimitNote: "release"` 줄이 온다. 전체 대화 기록에서 `wrap_up` 9줄, `release` 4줄이고 모두 `user` 줄이다. 안내에는 reset 시각이 없다.
+- **atc가 보는 길: pull 분류기.** `factsOf`가 그 줄을 시각과 종류(`limit-note`, `wrap_up`·`release`)만 있는 사실로 옮긴다. 본문은 읽지도 남기지도 않는다. `Stop` hook이 대화 기록 끝을 확인하는 길은 택하지 않았다: 서버가 이미 끝을 바뀔 때마다 읽고, 대화 기록을 여는 hook은 세션을 막을 위험이 있고, hook 변경은 SUPERVISOR가 머지하고 다시 설치한 세션에만 닿고, 분류기가 하나여야 push와 pull이 어긋나지 않는다. hook은 새 활동 이벤트만 더 기록한다(아래).
+- **FLEET 줄이 FLIGHT를 잃은 까닭.** 줄의 FLIGHT는 그 세션이 쥔 STAND, 곧 active hook 점유다. 점유의 `lastAt`은 파일 mtime이고, 스냅샷은 `ATC_CLAIM_TTL_MIN`(180분)보다 오래된 점유를 뺀다. G의 점유는 18:10:58Z에 마지막으로 갱신되어 21:10Z부터 줄이 `flights: []`였다. FLIGHT를 붙들어 둔 것이 달리 없었다: `tail:` 라벨은 Linear 이슈에 있고 줄은 그것을 읽지 않았다. hook은 다 기록했는데 스냅샷이 놓았다.
+- **`quota_auto_resume_*`.** CLI 세션에서만 보인다: `cli` 대화 기록에 `informational` 줄 열 개("Usage limit reached · continuing automatically at 7:40am", "Usage limit reset · continuing automatically"), `claude-desktop` 대화 기록 162개에는 없다. notification 종류(`quota_auto_resume_fired`·`_stale`·`_disabled`)는 Claude Code 2.1.284에 있지만 hook이 `idle_prompt`와 승인 프롬프트 말고는 버려서 `health/`로는 일어났는지 알 수 없다. ATC-86부터 셋 다 기록한다. 여기 데스크톱 세션은 자동으로 이어가지 않으므로 그쪽에서는 `RESUME`이 중요한 상태다.
+
+**상태** (순수 함수, `server/health.ts`. 표시한 곳 말고는 `hooks/`와 무관).
+
+- **`cut: true`인 `LIMIT`.** 세션이 idle이고, 마지막 지시와 마지막 `release` 뒤에 `wrap_up` 안내가 들어왔고, 그 뒤 API 오류가 없다. ALERT이고 다른 `LIMIT`처럼 hold다: DISPATCH가 건너뛰고 같은 ACCOUNT의 다른 AIRCRAFT를 reset까지 붙든다(reset을 모르면 코드가 풀릴 때까지). 표시 `HOLD · LIMIT (cut 18:10Z)`, reset을 알면 `until 23:10Z`가 붙는다. **reset**은 안내에 없어서 `cutResetOf`가 ACCOUNT의 FUEL 기록에서 찾는다. ACCOUNT의 세션마다 잘린 시각 직전(5분 뒤까지)의 statusline 기록을 하나씩 고르고, 그 가운데 `holdPct`(95 %) 이상 쓴 창으로서 그때 reset이 아직 오지 않은 것, 여럿이면 가장 늦은 reset을 쓴다. 지금의 FUEL REMAINING 값이 아니라 기록을 쓰는 까닭은, FUEL REMAINING이 reset이 지난 창을 버리기 때문이다. ACCOUNT에 CLI 세션이 없으면(데스크톱 세션은 statusline 기록을 쓰지 않는다) reset을 모른 채 다시 쓰일 때까지 `LIMIT (cut)`으로 남는다.
+- **`RESUME`.** reset이 지난 cut `LIMIT`이고 새 활동이 없다. ALERT이고 `holds: false`, 표시만 한다. 표시 `RESUME 필요`. 매뉴얼의 다음 한 걸음: SUPERVISOR가 그 세션에서 "계속"을 보낸다. atc는 팀에 메시지를 보내지 않는다.
+- **`STALLED`.** 살아 있는 세션이 `stalledMin`(기본 60, `ATC_HEALTH_STALLED_MIN`) 넘게 idle이고, In Progress FLIGHT(Linear `started`이고, 그 세션의 STAND 점유나 그 팀 이름의 `tail:` 라벨)를 쥐었는데 열린 PR이 없고, 다른 코드가 없다. INFO, 표시만. PR을 열지 않는 FLIGHT(SURVEY, CHECK)는 세지 않는다. 표시 `STALLED 1h20m`.
+- **새 활동은 셋을 모두 푼다.** 대화 기록의 지시(다른 세션의 메시지도 늘 그렇듯 지시다), `release` 줄, 그리고 대화 기록이 따라오기 전에는 hook의 `UserPromptSubmit`·`PostToolUse` 기록. `Stop`은 cut을 풀지 않는다: 잘린 턴 자신의 끝이다. `quota_auto_resume_fired`는 `RESUME`을 푼다. `STALLED`는 세션의 활동 시각이 움직이면 풀린다.
+- reset과 `RESUME`은 이벤트 시각과 기록된 reset 시각에서 스냅샷마다 계산한다. 세션에 핑을 보내지 않는다.
+
+**FLEET 줄이 FLIGHT를 쥔다.** 이 세 상태의 AIRCRAFT는, 더는 새 STAND 점유가 없는 FLIGHT를 스냅샷이 `sessions[].keptFlights`에 둔다: `tail:` 라벨이 붙은 In Progress FLIGHT와, 오래된 점유가 가리키는 FLIGHT 중 Linear 이슈가 Done·Canceled가 아닌 것. `GET /api/fleet`은 이것을 STAND를 쥔 FLIGHT 뒤에 `flights`로 싣고 `kept: true`를 붙이며, 거기 모든 FLIGHT에 `detail: {commit: {sha, at} | null, pushed: boolean | null, pr: {number, url, draft} | null}`이 붙는다: 그 FLIGHT 워크트리의 마지막 커밋, `origin/<branch>`가 그 커밋과 같은가(추적 ref라 push하는 즉시 반영), 열린 PR(없으면 `null`). `flying`(지금 쥔 STAND)은 그대로여서 FLEET PLAN과 SCHEDULE은 전과 같은 것을 본다. 줄은 HOLDING이고 표시 옆에 FLIGHT와 `59a9fdc 7h ago · pushed · no PR`(push 안 됐으면 amber)를 보이며, 카드는 `HOLDING ATC-72`와 같은 줄을 적는다.
+
+**그 밖의 곳.** FLIGHT FOLLOWING은 이미 FLIGHT를 쥔 AIRCRAFT의 `health` 문제를 올리는데, 이제 새 코드가 들어간다(cut `LIMIT`과 `RESUME`은 `warn`, `STALLED`는 `info`, 코드마다 key가 달라 바뀌면 다시 보고한다). TOWER 브리핑의 `open.health`가 표시와 다음 한 걸음을 싣고, `open.healthAlerts`에 `LIMIT (cut …)`·`RESUME` 경보가 들어간다. OCC FOLLOWING 매뉴얼에 새 코드 둘이 적힌다. DISPATCH는 cut `LIMIT`을 `LIMIT`처럼(이미 hold) 다루고, `RESUME`·`STALLED`는 DISPATCH·SCHEDULE·FLEET PLAN에 아무 영향이 없다. SUPERVISOR에게 알림을 보내는 일은 별도 이슈다.
+
+**hook(`user` 등급).** `hooks/health.mjs`가 `UserPromptSubmit`(푼다)과 `Notification` `quota_auto_resume_fired`·`_stale`·`_disabled`(코드 없이 시각만)를 기록한다. SUPERVISOR가 `~/.claude/settings.json`의 matcher에 `UserPromptSubmit`과 세 notification 종류를 더한다([hooks/README.ko.md](../hooks/README.ko.md)). 그때까지는 대화 기록만으로 모든 상태가 돌고, 빠른 해제와 `fired`만 빠진다. 기록에는 코드와 시각만 둔다. `last_assistant_message`, 지시, 대화 기록 글은 남기지 않는다.
+
+**Pilot's discretion (ATC-86).**
+
+- `RESUME`은 ALERT, `STALLED`는 INFO다: `RESUME`은 늘 SUPERVISOR가 필요하고, 열린 FLIGHT가 있는데 PR 없이 쉬는 세션은 흔히 결정을 기다리는 중이다.
+- reset을 모르는 cut은 reset을 모르는 다른 `LIMIT`처럼 세션이 다시 쓰일 때까지 hold다. 조용한 ACCOUNT에 너무 엄하면 짐작이 아니라 라벨을 단 ACCOUNT와 CLI 세션으로 고친다.
+- `tail:` 라벨이 붙은 In Progress FLIGHT는 점유가 없어도 쥔 것으로 센다. SURVEY·CHECK FLIGHT는 PR을 열지 않으므로 `STALLED`에서 뺀다.
+- `RESUME`·`STALLED`는 hold가 아니다: 한도가 풀린 AIRCRAFT는 새 배정을 받을 수 있고, 그 배정이 곧 "계속"이다.
 
 ## 9. `lane:`에서 `tail:`로 옮기기
 

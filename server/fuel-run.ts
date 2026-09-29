@@ -19,7 +19,7 @@ import type { LogEntry, LogLine } from "./logbook.ts";
 import type { Snapshot } from "./model.ts";
 import { allProposals } from "./proposals.ts";
 import { readHookClaims } from "./sources/claude.ts";
-import { type FuelLimitsRecord, lastRecordWith, readTail } from "../hooks/fuel-statusline.mjs";
+import { type FuelLimitsRecord, type FuelStatusRecord, lastRecordWith, readTail, recordsOf } from "../hooks/fuel-statusline.mjs";
 import { fleetKeyOf, regKey } from "./registration.ts";
 
 // FUEL 읽기(ATC-50, docs/fuel.md 4): ~/.claude/projects의 대화 기록을 파일마다 지난번 바이트 뒤부터만 읽는다(talkEventsFile과 같은 방식).
@@ -356,6 +356,13 @@ export function readFuelRecords(dir = join(config.stateDir, "fuel")): FuelLimits
     const r = lastRecordWith(readTail(join(dir, f)), "rate_limits"); // 창 크기만 있는 줄(ATC-85)은 FUEL REMAINING이 아니다
     return r && `${r.sessionId}.jsonl` === f ? [r] : [];
   });
+}
+
+// 세션들의 statusline 기록 전체(파일 끝 512KB 안). cut LIMIT의 reset을 그때의 기록에서 되짚는다(ATC-86).
+// FUEL REMAINING은 reset이 지난 창을 버리므로 지금 값으로는 몇 시간 전에 걸린 한도의 reset을 알 수 없다
+const HISTORY_BYTES = 512 * 1024;
+export function readFuelHistory(sessionIds: readonly string[], dir = join(config.stateDir, "fuel")): FuelStatusRecord[] {
+  return sessionIds.flatMap((id) => (/^[\w-]{1,128}$/.test(id) ? recordsOf(readTail(join(dir, `${id}.jsonl`), HISTORY_BYTES)).filter((r) => r.sessionId === id) : []));
 }
 
 function fuelFilesIn(dir: string): string[] {

@@ -3,7 +3,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { contextSizesOf, DEFAULT_PRICES_FILE, fuelDays, fuelFiles, parseAgentMeta, readFuelFile, readFuelRecords, readPrices, readStatusWindows } from "./fuel-run.ts";
+import { contextSizesOf, DEFAULT_PRICES_FILE, fuelDays, fuelFiles, parseAgentMeta, readFuelFile, readFuelHistory, readFuelRecords, readPrices, readStatusWindows } from "./fuel-run.ts";
 
 const root = mkdtempSync(join(tmpdir(), "atc-fuel-"));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -158,4 +158,15 @@ test("readFuelRecords·readStatusWindows: 옛 줄과 새 줄이 섞인 fuel/ 폴
   const w = readStatusWindows(dir);
   assert.deepEqual([...w.keys()], [B]);
   assert.deepEqual(w.get(B), { t: "2026-09-28T11:00:00.000Z", window: 200000, model: "claude-sonnet-5-5" });
+});
+
+test("readFuelHistory: 세션의 statusline 기록 전체(파일 끝 512KB). 파일이 없거나 sessionId·이름이 다르거나 이상한 id면 빈 값(ATC-86)", () => {
+  const dir = join(root, "fuel-history");
+  mkdirSync(dir, { recursive: true });
+  const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const RL = { five_hour: { used_percentage: 100, resets_at: 1790000000 } };
+  const j = (o: object) => `${JSON.stringify(o)}\n`;
+  writeFileSync(join(dir, `${A}.jsonl`), j({ t: "2026-09-28T17:00:00.000Z", sessionId: A, rate_limits: RL }) + j({ t: "2026-09-28T18:00:00.000Z", sessionId: A, rate_limits: RL, context_window_size: 1000000 }) + j({ t: "2026-09-28T19:00:00.000Z", sessionId: "other", rate_limits: RL }));
+  const rows = readFuelHistory([A, "missing-session", "../etc/passwd"], dir);
+  assert.deepEqual(rows.map((r) => r.t.slice(11, 13)), ["17", "18"]); // 다른 sessionId의 줄은 뺀다
 });

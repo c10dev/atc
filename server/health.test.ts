@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { accountHoldLabel, accountHoldOf, accountHolds, classifyError, DEFAULT_HEALTH, factsOf, healthAlerts, healthLabel, healthOf, lastFactAt, mergeHealth, type PushRecord, resetFromText, type SessionState } from "./health.ts";
+import { accountHoldLabel, accountHoldOf, accountHolds, classifyError, cutResetOf, DEFAULT_HEALTH, factsOf, healthAlerts, healthLabel, healthOf, lastFactAt, mergeHealth, type PushRecord, resetFromText, type SessionState, settleCut, stalledOf } from "./health.ts";
 
 // AIRCRAFT health(ATC-45). 줄 모양은 실제 대화 기록(2026-09-24~28)에서 따왔고, 본문·경로·id는 지웠다.
 const T = (hms: string) => `2026-09-28T${hms}Z`;
@@ -306,3 +306,153 @@ test("clear(코드 없는 줄)는 pull을 낮추지 않는다", () => {
   assert.equal(mergeHealth(push("07:31:00", { code: "MODEL", error: "model_not_found", line: "issue with the selected model" }), pull, lines)!.code, "MODEL");
 });
 
+
+// ── 오류 없이 한도로 잘린 턴(ATC-86) ──
+// TEAM_G(7cae8be1, ATC-72)와 TEAM_H(b8a9ff31, ATC-77), 2026-09-28. 대화 기록 줄의 키 구조는 실제 그대로, 본문은 표시 문자열로 바꿨다.
+// 한도 안내는 usageLimitNote "wrap_up"인 isMeta 사용자 줄이고, 그 뒤 턴이 정상 Stop으로 끝났다(StopFailure 없음). 다음 사람 지시 앞에 "release" 줄이 온다
+const NOTE_TEXT = "[Usage limit reached; a short grace allowance remains ... NOTE-TEXT-must-not-survive]";
+const limitNote = (hms: string, note: "wrap_up" | "release" = "wrap_up", day = "2026-09-28") =>
+  JSON.stringify({ ...base, type: "user", isMeta: true, turnCompanion: true, usageLimitNote: note, timestamp: `${day}T${hms}Z`, message: { role: "user", content: note === "wrap_up" ? NOTE_TEXT : "[Earlier usage-limit notes no longer apply. Continue working normally.]" } });
+const nextDay = (hms: string, text: string) => JSON.stringify({ ...base, type: "user", timestamp: `2026-09-29T${hms}Z`, turnOrigin: "human", message: { role: "user", content: text } });
+
+// TEAM_G: 일하다가 18:10:48에 안내, 마지막 도구 하나 더, 18:11:06에 보고하고 Stop
+const teamG = [prompt("14:00:00", "ATC-72 진행"), reply("18:10:23"), reply("18:10:45", ["g1"]), result("18:10:48", "g1"), limitNote("18:10:48"), reply("18:10:53", ["g2"]), result("18:10:58", "g2"), reply("18:11:06"), ...noise("18:11:06")];
+// TEAM_H: 18:10:15 안내, 18:10:39 보고하고 Stop
+const teamHcut = [prompt("12:00:00", "ATC-77 진행"), reply("18:10:13", ["h1"]), result("18:10:15", "h1"), limitNote("18:10:15"), reply("18:10:21", ["h2"]), result("18:10:27", "h2"), reply("18:10:39")];
+
+test("cut LIMIT: G·H 재생 — 안내 뒤 정상 Stop으로 끝나면 HOLD · LIMIT (cut 18:10Z). 오류 줄이 없어도, 본문은 남기지 않는다", () => {
+  const g = run(teamG, "19:00:00", idle(at("18:11:06")))!;
+  assert.equal(g.code, "LIMIT");
+  assert.equal(g.cut, true);
+  assert.equal(g.cutAt, "2026-09-28T18:10:48.000Z");
+  assert.equal(g.since, "2026-09-28T18:10:48.000Z");
+  assert.equal(g.level, "alert");
+  assert.equal(g.holds, true); // DISPATCH는 cut LIMIT도 LIMIT처럼 건너뛴다
+  assert.equal(g.resetsAt, undefined); // reset은 ACCOUNT의 FUEL 기록에서(settleCut)
+  assert.equal(healthLabel(g, at("19:00:00")), "HOLD · LIMIT (cut 18:10Z)");
+  assert.match(g.next, /RESUME/);
+  assert.equal(JSON.stringify(g).includes("NOTE-TEXT"), false);
+  const h = run(teamHcut, "19:00:00", idle(at("18:10:39")))!;
+  assert.equal(healthLabel(h, at("19:00:00")), "HOLD · LIMIT (cut 18:10Z)");
+  assert.equal(h.cutAt, "2026-09-28T18:10:15.000Z");
+  // 사실에는 안내 시각과 종류만 있다
+  assert.deepEqual(factsOf(limitNote("18:10:48")), [{ t: at("18:10:48"), kind: "limit-note", note: "wrap_up" }]);
+});
+
+test("cut LIMIT: 안내가 있어도 아직 일하는 중(busy), 안내가 마지막 지시보다 앞, release가 뒤에 오면 아니다", () => {
+  assert.equal(run(teamG.slice(0, 6), "18:10:55", { status: "busy", lastWriteAt: at("18:10:53") }), null); // 마무리 중
+  assert.equal(run([...teamG, prompt("19:00:00", "계속")], "19:05:00", idle(at("19:00:00"))), null); // 새 지시가 오면 풀림
+  assert.equal(run([...teamG, limitNote("19:00:00", "release"), reply("19:00:05")], "19:05:00", idle(at("19:00:05"))), null);
+  assert.equal(run([prompt("14:00:00"), limitNote("14:30:00"), reply("14:30:10"), peer("15:00:00"), reply("15:01:00")], "15:10:00", idle(at("15:01:00"))), null); // 다른 세션의 BRIEF도 지시다
+});
+
+test("cut LIMIT: 안내 뒤 정말 API 오류로 끝나면 그 오류(cut 아님)가 이긴다", () => {
+  const later = [...teamG.slice(0, 7), apiError("18:11:00", "rate_limit", "You've hit your session limit · resets 11:10pm (UTC)", { quotaLimits: { resetsAt: at("23:10:00") / 1000, rateLimitType: "five_hour" } })];
+  const h = run(later, "19:00:00", idle(at("18:11:00")))!;
+  assert.equal(h.code, "LIMIT");
+  assert.equal(h.cut, undefined);
+  assert.equal(h.resetsAt, T("23:10:00.000"));
+});
+
+test("cutResetOf: 잘린 시각 직전의 같은 ACCOUNT 기록에서, 그때 아직 오지 않은 reset을 가진 창 중 holdPct 이상. 지금 FUEL이 버린 창도 기록에서 되짚는다", () => {
+  const rl = (five: number, seven = 30, reset5 = at("23:10:00"), reset7 = at("23:59:59") + 3 * 86_400_000) => ({ five_hour: { used_percentage: five, resets_at: reset5 / 1000 }, seven_day: { used_percentage: seven, resets_at: reset7 / 1000 } });
+  const recs = [
+    { t: T("17:00:00"), sessionId: "tower", rate_limits: rl(80) },
+    { t: T("18:09:00"), sessionId: "tower", rate_limits: rl(100) },
+    { t: T("18:20:00"), sessionId: "tower", rate_limits: rl(2, 31, at("23:10:00") + 5 * 3600_000) }, // 잘린 뒤의 기록은 쓰지 않는다
+    { t: T("18:08:00"), sessionId: "occ", rate_limits: rl(96) },
+  ];
+  const cut = at("18:10:48");
+  assert.deepEqual(cutResetOf(cut, recs, 95), { resetsAt: at("23:10:00"), weekly: false });
+  // 주간 한도가 찼으면 weekly, 둘 다 찼으면 늦은 쪽
+  assert.deepEqual(cutResetOf(cut, [{ t: T("18:09:00"), sessionId: "tower", rate_limits: rl(40, 100) }], 95), { resetsAt: at("23:59:59") + 3 * 86_400_000, weekly: true });
+  // 찬 창이 없거나 기록이 없으면 모른다
+  assert.equal(cutResetOf(cut, [{ t: T("18:09:00"), sessionId: "tower", rate_limits: rl(50, 50) }], 95), null);
+  assert.equal(cutResetOf(cut, [], 95), null);
+  assert.equal(cutResetOf(cut, [{ t: T("18:09:00"), sessionId: "tower" }], 95), null);
+  // 잘린 시각보다 앞선 reset은 지난 창의 것
+  assert.equal(cutResetOf(cut, [{ t: T("18:09:00"), sessionId: "tower", rate_limits: rl(100, 0, at("17:00:00")) }], 95), null);
+});
+
+test("settleCut: reset 전에는 LIMIT (cut) until reset, reset이 지나면 RESUME 필요(alert, 보여 주기만). reset을 모르면 그대로", () => {
+  const g = run(teamG, "19:00:00", idle(at("18:11:06")))!;
+  const reset = { resetsAt: at("23:10:00"), weekly: false };
+  const before = settleCut(g, reset, at("20:00:00"));
+  assert.equal(before.code, "LIMIT");
+  assert.equal(before.resetsAt, T("23:10:00.000"));
+  assert.equal(healthLabel(before, at("20:00:00")), "HOLD · LIMIT (cut 18:10Z) until 23:10Z");
+  const wk = settleCut(g, { resetsAt: at("23:10:00"), weekly: true }, at("20:00:00"));
+  assert.equal(healthLabel(wk, at("20:00:00")), "HOLD · LIMIT (weekly, cut 18:10Z) until 23:10Z");
+  const after = settleCut(g, reset, at("23:10:01"));
+  assert.equal(after.code, "RESUME");
+  assert.equal(after.level, "alert");
+  assert.equal(after.holds, false); // 표시만: DISPATCH·FLEET PLAN은 바뀌지 않는다
+  assert.equal(after.since, T("23:10:00.000"));
+  assert.equal(after.cutAt, "2026-09-28T18:10:48.000Z");
+  assert.equal(healthLabel(after, at("23:30:00")), "RESUME 필요");
+  assert.match(after.detail, /reset 23:10Z/);
+  assert.match(after.next, /계속/);
+  assert.match(after.next, /메시지를 보내지 않는다/);
+  assert.equal(settleCut(g, null, at("23:30:00")), g);
+  const plain = healthOf(factsOf([prompt("14:00:00"), apiError("14:00:05", "rate_limit", "hit · resets 11:10pm (UTC)")].join("\n")), idle(), at("14:10:00"))!;
+  assert.equal(settleCut(plain, reset, at("23:30:00")), plain); // cut이 아닌 LIMIT은 그대로
+});
+
+test("RESUME: 새 지시가 오면 풀린다(대화 기록의 다음 사람 지시와 release 줄). 하루 지난 cut은 날짜와 함께", () => {
+  const resumed = [...teamG, nextDay("01:33:25", "ATC-72 계속"), limitNote("01:33:25", "release", "2026-09-29"), reply("01:33:34")];
+  assert.equal(run(resumed, "01:40:00", idle(at("01:33:34").valueOf())), null);
+  const g = settleCut(run(teamG, "19:00:00", idle(at("18:11:06")))!, { resetsAt: at("23:10:00"), weekly: false }, Date.parse("2026-09-29T19:00:00Z"));
+  assert.equal(g.code, "RESUME");
+  assert.match(g.detail, /cut 09-28 18:10Z/);
+});
+
+test("mergeHealth: cut LIMIT·RESUME은 대화 기록이 따라오기 전이라도 hook의 UserPromptSubmit·PostToolUse로 풀리고, Stop은 지우지 않는다. quota_auto_resume_fired는 RESUME만 푼다", () => {
+  const facts = factsOf(teamG.join("\n"));
+  const cut = run(teamG, "19:00:00", idle(at("18:11:06")))!;
+  const resume = settleCut(cut, { resetsAt: at("23:10:00"), weekly: false }, Date.parse("2026-09-29T01:30:00Z"));
+  const push = (event: string, t: string): PushRecord => ({ t: `2026-09-29T${t}Z`, event });
+  assert.equal(mergeHealth({ t: T("18:11:07"), event: "Stop" }, cut, facts), cut); // 잘린 턴의 Stop
+  for (const e of ["UserPromptSubmit", "PostToolUse"]) {
+    assert.equal(mergeHealth(push(e, "01:33:25.000"), cut, facts), null, e);
+    assert.equal(mergeHealth(push(e, "01:33:25.000"), resume, facts), null, e);
+  }
+  assert.equal(mergeHealth(push("quota_auto_resume_fired", "01:33:25.000"), resume, facts), null);
+  assert.equal(mergeHealth(push("quota_auto_resume_fired", "01:33:25.000"), cut, facts), cut); // cut LIMIT(reset 전)은 fired로 풀지 않는다
+  assert.equal(mergeHealth(push("quota_auto_resume_stale", "01:33:25.000"), resume, facts), resume);
+  // 잘린 시각보다 앞선 push는 상관없다
+  assert.equal(mergeHealth({ t: T("18:00:00"), event: "PostToolUse" }, cut, factsOf([prompt("14:00:00"), reply("17:00:00"), limitNote("18:10:48")].join("\n"))), cut);
+});
+
+test("STALLED: In Progress FLIGHT를 쥐고 idle로 60분 넘게, 열린 PR이 없을 때만. busy·PR 있음·FLIGHT 없음은 아니다", () => {
+  const f = (key: string, hasPr = false) => ({ key, hasPr });
+  const ok = stalledOf({ status: "idle", lastActiveAt: at("10:00:00"), flights: [f("ATC-77")] }, at("11:05:00"))!;
+  assert.equal(ok.code, "STALLED");
+  assert.equal(ok.level, "info");
+  assert.equal(ok.holds, false);
+  assert.equal(ok.since, T("10:00:00.000"));
+  assert.match(ok.detail, /ATC-77 In Progress/);
+  assert.equal(healthLabel(ok, at("11:05:00")), "STALLED 1h05m");
+  assert.match(ok.next, /계속/);
+  assert.equal(stalledOf({ status: "idle", lastActiveAt: at("10:00:00"), flights: [f("ATC-77")] }, at("10:59:00")), null); // 60분 전
+  assert.equal(stalledOf({ status: "busy", lastActiveAt: at("10:00:00"), flights: [f("ATC-77")] }, at("12:00:00")), null);
+  assert.equal(stalledOf({ status: "idle", lastActiveAt: at("10:00:00"), flights: [f("ATC-77", true)] }, at("12:00:00")), null);
+  assert.equal(stalledOf({ status: "idle", lastActiveAt: at("10:00:00"), flights: [] }, at("12:00:00")), null);
+  assert.equal(stalledOf({ status: "idle", lastActiveAt: null, flights: [f("ATC-77")] }, at("12:00:00")), null);
+  // FLIGHT가 둘이고 하나만 PR이 있으면 PR 없는 쪽으로
+  assert.match(stalledOf({ status: "idle", lastActiveAt: at("10:00:00"), flights: [f("A-1", true), f("A-2")] }, at("12:00:00"))!.detail, /A-2 In Progress/);
+  // stalledMin은 설정으로
+  assert.equal(stalledOf({ status: "idle", lastActiveAt: at("10:00:00"), flights: [f("A-1")] }, at("10:20:00"), { ...DEFAULT_HEALTH, stalledMin: 15 })?.code, "STALLED");
+});
+
+test("healthAlerts: RESUME은 ALERT로 SUPERVISOR의 \"계속\"을 말하고, cut LIMIT은 cut 시각이 붙고, STALLED(info)는 경보가 아니다", () => {
+  const cut = run(teamG, "19:00:00", idle(at("18:11:06")))!;
+  const resume = settleCut(cut, { resetsAt: at("23:10:00"), weekly: false }, at("23:30:00"));
+  const stalled = stalledOf({ status: "idle", lastActiveAt: at("10:00:00"), flights: [{ key: "ATC-77", hasPr: false }] }, at("12:00:00"))!;
+  const a = healthAlerts([{ sessionId: "g", name: "TEAM_G", health: resume }, { sessionId: "h", name: "TEAM_H", health: stalled }], at("23:30:00"));
+  assert.equal(a.length, 1);
+  assert.equal(a[0]!.code, "RESUME");
+  assert.match(a[0]!.message, /^RESUME — TEAM_G: 한도가 풀렸다\(reset 23:10Z\)/);
+  assert.match(a[0]!.message, /"계속"을 보낸다/);
+  const c = healthAlerts([{ sessionId: "g", name: "TEAM_G", health: cut }], at("19:00:00"));
+  assert.match(c[0]!.message, /TEAM_G\(cut 18:10Z\) 사용 한도/);
+});

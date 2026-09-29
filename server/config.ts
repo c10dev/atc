@@ -43,5 +43,6 @@ export const config = {
     throttleWindowMin: Number(env.ATC_HEALTH_THROTTLE_WINDOW_MIN || 30),
     deniedCount: Number(env.ATC_HEALTH_DENIED_COUNT || 3),
     deniedWindowMin: Number(env.ATC_HEALTH_DENIED_WINDOW_MIN || 10),
+    stalledMin: Number(env.ATC_HEALTH_STALLED_MIN || 60),
   },
 };

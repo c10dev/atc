@@ -169,3 +169,17 @@ test("FUEL REMAINING(ATC-55): 그 FLIGHT를 쥔 AIRCRAFT의 ACCOUNT가 INFO 임�
   // 임계값 아래면 문제 없음
   assert.deepEqual(run({ TEAM_B: { ...f82, level: "ok" as never } }), []);
 });
+
+test("AIRCRAFT health(ATC-86): cut LIMIT·RESUME·STALLED가 그 FLIGHT의 health 문제로. RESUME은 warn, STALLED는 info, 다음 한 걸음은 SUPERVISOR의 \"계속\"", () => {
+  const mk = (code: "LIMIT" | "RESUME" | "STALLED", level: "alert" | "info", extra = {}) => new Map([["TEAM_B", { code, level, since: ago(3), detail: `${code} 원문`, next: `${code} — SUPERVISOR가 "계속"을 보낸다`, holds: code === "LIMIT", ...extra }]]);
+  const one = (health: ReturnType<typeof mk>) => followingOf(input({ proposals: [proposal("D-1", "VOC-1", "accepted", { accepted: ago(5) })], tickets: [ticket("VOC-1")], health }))[0]!.issues.find((i) => i.code === "health")!;
+  const cut = one(mk("LIMIT", "alert", { cut: true, cutAt: ago(3) }));
+  assert.deepEqual([cut.severity, cut.key], ["warn", "VOC-1|health|LIMIT"]);
+  assert.match(cut.text, /^TEAM_B HOLD · LIMIT \(cut \d\d:\d\dZ\) — LIMIT 원문/);
+  const resume = one(mk("RESUME", "alert"));
+  assert.deepEqual([resume.severity, resume.key], ["warn", "VOC-1|health|RESUME"]); // 코드가 바뀌면 새로 보고한다
+  assert.equal(resume.text, 'TEAM_B RESUME 필요 — RESUME 원문. RESUME — SUPERVISOR가 "계속"을 보낸다');
+  const stalled = one(mk("STALLED", "info"));
+  assert.deepEqual([stalled.severity, stalled.key], ["info", "VOC-1|health|STALLED"]);
+  assert.match(stalled.text, /^TEAM_B STALLED 3m — STALLED 원문/);
+});

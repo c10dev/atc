@@ -20,6 +20,7 @@ export function parseRecord(line: string): FuelStatusRecord | null;
 export function lastRecord(text: string): FuelStatusRecord | null;
 export function lastRecordWith(text: string, key: "rate_limits"): FuelLimitsRecord | null;
 export function lastRecordWith(text: string, key: "context_window_size" | "model"): FuelStatusRecord | null;
+export function recordsOf(text: string): FuelStatusRecord[];
 export function changed(prev: FuelStatusRecord | null, rec: FuelStatusRecord): boolean;
 export function sameLimits(a: unknown, b: unknown): boolean;
 export function lineOf(rec: FuelStatusRecord): string;

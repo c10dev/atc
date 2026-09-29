@@ -303,3 +303,24 @@ test("브리핑: FUEL 경고(FUEL F8)는 open.fuelLeaks·open.coldCache로 그�
   assert.deepEqual(brief.open.coldCache.map((c) => c.key), ["cold|s-b|t"]);
   assert.deepEqual(brief.open.fuelLeaks.map((l) => l.key), ["leak|TEAM_D|2026-09-28"]);
 });
+
+test("브리핑(ATC-86): TOWER의 health에 cut LIMIT·RESUME·STALLED가 코드·표시 글·다음 한 걸음으로 들어간다", () => {
+  const h = (code: "LIMIT" | "RESUME" | "STALLED", over: Partial<NonNullable<Session["health"]>> = {}): NonNullable<Session["health"]> => ({ code, level: code === "STALLED" ? "info" : "alert", since: iso(-30), detail: `${code} 원문`, next: `${code} 다음`, holds: code === "LIMIT", ...over });
+  const s = snapshot({
+    sessions: [
+      { ...session("s-b", "TEAM_B"), health: h("LIMIT", { cut: true, cutAt: iso(-30), resetsAt: iso(60) }) },
+      { ...session("s-d", "TEAM_D"), health: h("RESUME", { cutAt: iso(-400), resetsAt: iso(-10) }) },
+      { ...session("s-p", "TEAM_P"), health: h("STALLED") },
+    ],
+  });
+  const brief = buildBrief(s, { events: [], reset: false, cursor: "e:0" }, [], T0);
+  assert.deepEqual(
+    brief.open.health.map((x) => [x.callsign, x.code, x.level, x.text]),
+    [
+      ["BRAVO", "LIMIT", "alert", "HOLD · LIMIT (cut 06:30Z) until 08:00Z"],
+      ["DELTA", "RESUME", "alert", "RESUME 필요"],
+      ["PAPA", "STALLED", "info", "STALLED 30m"],
+    ],
+  );
+  assert.equal(brief.open.health[1]!.next, "RESUME 다음");
+});

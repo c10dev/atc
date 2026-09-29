@@ -95,6 +95,9 @@ export function lastRecordWith(text, key) {
   return null;
 }
 
+// 텍스트 안의 모든 기록 (순수). cut LIMIT의 reset을 그때의 기록에서 되짚을 때(ATC-86)
+export const recordsOf = (text) => text.split("\n").flatMap((l) => (l.trim() ? [parseRecord(l)].filter(Boolean) : []));
+
 export const sameLimits = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // 새 기록이 앞 기록과 다른가: 새 기록에 담긴 값 중 앞 기록에 없거나 다른 것이 하나라도 있으면 (순수)

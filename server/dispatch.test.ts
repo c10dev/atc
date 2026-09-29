@@ -975,3 +975,22 @@ test("CHECK 독립성(ATC-67): LOGBOOK의 옛 표기와 `Team D` 세션을 한 R
   assert.deepEqual([...b.entries()], [["TEAM_D", ["VOC-5 LOGBOOK", "VOC-5 청구 기록"]]]);
 });
 
+
+test("AIRCRAFT health(ATC-86): cut LIMIT는 LIMIT처럼 배정하지 않고, RESUME·STALLED는 보여 주기만 한다(DISPATCH는 그대로)", () => {
+  const h = (code: string, holds: boolean, extra = {}) => ({ code, level: "alert", since: daysAgo(0), detail: `${code} 원문`, next: "", holds, ...extra }) as Session["health"];
+  const cutAt = new Date(NOW - 60 * 60_000).toISOString();
+  const s = snap({
+    sessions: [
+      { ...session("b", "TEAM_B"), health: h("LIMIT", true, { cut: true, cutAt, resetsAt: new Date(NOW + 30 * 60_000).toISOString() }) },
+      { ...session("c", "TEAM_C"), health: h("LIMIT", true, { cut: true, cutAt }) }, // reset을 모르는 cut
+      { ...session("d", "TEAM_D"), health: h("RESUME", false, { cutAt }) },
+      { ...session("e", "TEAM_E"), health: h("STALLED", false) },
+    ],
+    tickets: [ticket("VOC-170"), ticket("VOC-171")],
+  });
+  const p = planDispatch(s, new Map(), cfg(), NOW);
+  assert.deepEqual(
+    p.aircraft.map((a) => `${a.name}:${a.available}:${a.reason}`),
+    ["TEAM_B:false:HOLD · LIMIT (cut 11:00Z) until 12:30Z — LIMIT 원문", "TEAM_C:false:HOLD · LIMIT (cut 11:00Z) — LIMIT 원문", "TEAM_D:true:PARKED", "TEAM_E:true:PARKED"],
+  );
+});
