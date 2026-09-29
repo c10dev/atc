@@ -247,11 +247,11 @@ export function AgentSettings({ snapshot, server, save }: { snapshot: Snapshot |
                 env="mcc.mode"
                 value={s.mcc.mode}
                 note={`mcc.json · 맡은 AIRPORT ${s.mcc.airport} · 이 화면에서만 바꾼다 — MCC 세션은 못 바꿈. ROLLBACK 뒤 멈춘 RTS는 모드를 다시 고르면 풀린다`}
-                input={{ kind: "select", options: ["shadow", "land", "land+rts"] }}
-                onSave={(v) => save({ mccMode: v as "shadow" | "land" | "land+rts" })}
+                input={{ kind: "select", options: ["shadow", "land", "land+rts", "rts"] }}
+                onSave={(v) => save({ mccMode: v as "shadow" | "land" | "land+rts" | "rts" })}
               />
               <ul className="autoland-modes">
-                {(["shadow", "land", "land+rts"] as const).map((m) => (
+                {(["shadow", "land", "land+rts", "rts"] as const).map((m) => (
                   <li key={m} className={m === s.mcc.mode ? "is-current" : undefined}>
                     <b>{m}</b> {MCC_WARN[m]}
                   </li>
@@ -514,7 +514,8 @@ const AUTOLAND_WARN = {
 const MCC_WARN = {
   shadow: "기본: MCC는 INSPECTION하고 착륙·RTS는 would로만 남긴다. 머지·배포는 사용자.",
   land: "⚠ auto·flagged 등급 PR을 CI·INSPECTION pass·정확한 head로 atc가 머지. user 등급과 ESCALATE는 사용자. 배포는 사람.",
-  "land+rts": "⚠ land에 더해 머지된 main을 atc-rts 유닛으로 7700에 RETURN TO SERVICE(상태 확인 실패면 ROLLBACK 후 멈춤).",
+  "land+rts": "⚠ land에 더해 머지된 main을 atc-rts 유닛으로 7700에 RETURN TO SERVICE(상태 확인 실패면 ROLLBACK 후 멈춤). 시작은 서버가 스스로 한다.",
+  rts: "⚠ MCC는 착륙하지 않는다(would-land만): 사용자가 손으로 머지한 main을 서버가 atc-rts 유닛으로 7700에 스스로 RETURN TO SERVICE(CI 통과, 5분 간격, 상태 확인 실패면 ROLLBACK 후 멈춤). package·유닛 파일 변경은 사람이 배포.",
 } as const;
 
 // 판정 계열 모드마다 한 줄(ATC-36). replay·shadow는 티켓 제목과 허용한 칸이 TypeSafe로 나간다(데이터 반출)

@@ -79,7 +79,7 @@ If the packet's diff was cut (`diffTruncated`), MCC writes what it read and does
 
 | # | Condition |
 |---|---|
-| L1 | MCC mode is `land` or `land+rts` (in `shadow` the server records `would-land` instead) |
+| L1 | MCC mode is `land` or `land+rts` (in `shadow` and `rts` the server records `would-land` instead) |
 | L2 | The PR is open, not a Draft, based on `main`, its head is `head`, and it comes from a branch of this repository, not a fork (atc is public) |
 | L3 | Tier from the changed files (`deploy/landing-tier.mjs` `tierOf`) is `auto` or `flagged`, and MCC has not ESCALATEd it |
 | L4 | CI `check` on `head` succeeded |
@@ -111,7 +111,7 @@ So the bar is set by blast radius and reversibility, and the safety net sits aft
 
 | Door | Tier | What | How it lands |
 |---|---|---|---|
-| SHIP | `auto` | Docs, tests, screens, read-only server code | CI `check` + INSPECTION `pass` → MCC lands (L1–L8); RTS deploys in `land+rts` |
+| SHIP | `auto` | Docs, tests, screens, read-only server code | CI `check` + INSPECTION `pass` → MCC lands (L1–L8); RTS deploys in `land+rts` and `rts` |
 | SHOW | `flagged` | Control manuals and CLI, and server code with outside side effects: merges, PR comments, Linear/GitHub writes, starting/stopping sessions or units, sending messages (ATC-101) | As SHIP; MCC's report names the changed rules and side-effect files |
 | ASK | `user` | Guards, hooks, `.claude/`, root `CLAUDE.md`, CI, dependencies, `deploy/`, operating-state formats, anything hard to reverse | The SUPERVISOR merges |
 
@@ -182,9 +182,28 @@ MCC used to land a PR in the same pass that started RTS, and RTS could read a ma
 - **Refused starts don't hold the next one.** `spacingStartOf(records, rts)` (`server/mcc.ts`) gives the last `mcc.jsonl` `rts started` whose result in `rts.jsonl` is not `refused` (results are matched by time and target; an unfinished start counts). `rts.due` and `POST /api/mcc/rts` use it for the 5-minute spacing. The UPDATE bar keeps the plain last start, because it shows that start's refusal.
 - **RTS before landing.** `rtsDueOf` also answers not due when the last `land` `ok` in `mcc.jsonl` is newer than the time atc read main's CI (`main.at`), which covers a tick that lands first anyway. `mcc/CLAUDE.md` and `/tick` say to run `mcc rts` first when `rts.due`, and not right after a landing in the same pass. `deploy/rts.mjs` is unchanged; its own check stays the last line of defence.
 
+### Mode `rts` and the server's own RTS as built (ATC-84)
+
+A fourth MCC mode, `rts`: the SUPERVISOR merges atc PRs by hand, and the atc server starts RETURN TO SERVICE by itself when it is due, without waiting for the MCC session's `/tick`. `land+rts` keeps MCC's landing and uses the same server-side trigger. "When to deploy" needs no judgment, so the server does it. Nothing in `deploy/` changed; `rts.mjs` keeps its refusals.
+
+| Mode | MCC lands (L1) | Server starts RTS by itself | `mcc rts` from the session |
+|---|---|---|---|
+| `shadow` | no (`would-land`) | no | `would-rts` |
+| `land` | yes | no | `would-rts` |
+| `land+rts` | yes | yes | starts when due |
+| `rts` | no (`would-land`) | yes | starts when due |
+
+- `mccLands(mode)` and `mccDeploys(mode)` (`server/mcc.ts`) are the two predicates; `mcc.json` and the settings window accept `rts` (`MCC_MODES`).
+- **The pass.** `mountUpdate` (`server/update-run.ts`) returns `pass`, and `server/index.ts` runs it every 30 s (`unref`'d). It does nothing unless the mode is `rts` or `land+rts`. When RTS is due (`rtsDueOf`: main CI passed, the 5-minute spacing, not stopped after ROLLBACK, service behind main) it reads the range (`compare`, once per range, cached) and starts the unit with the same `deps.startUnit` as the UPDATE bar, appending `{op: "rts", by: "server", from, to, result}` to `mcc.jsonl`. It never calls `claude agents` and reads no LOGBOOK or FUEL.
+- **The decision is a pure function**, `autoRtsOf` (`server/mcc.ts`), tested in `server/mcc.test.ts`; the pass and the stubbed unit start are tested in `server/update-run.test.ts`. It says no when: the mode is not `rts`/`land+rts`; the server is a test server (`rtsUnitGuard`: a temporary `ATC_STATE_DIR` or a port other than 7700 never starts the real unit); RTS is not due; the range changes `package*.json` or `deploy/*.service`/`*.timer` (`rangeRefusalOf`, the SUPERVISOR deploys those; the UPDATE bar shows `manual`); the last `rts.jsonl` line for the same `main` is `refused` or `failed` (automatic deploys stop for that `main`; the SUPERVISOR retries from the UPDATE bar, and a new `main` is tried again); or a unit start for this `main` failed less than 5 minutes ago.
+- **`mcc rts` still works.** In `rts` and `land+rts` it starts the unit when due (no `by`, with the session's `model`). When the server already started it, it answers `409` with `serverStarted: true` and a `why` of `서버가 이미 RTS를 시작함(<time>) — <reason>`; `atcctl` prints it as `RTS 안 함 — …`.
+- **UPDATE bar.** `GET /api/update` carries `auto: {on, nextAt}`. In these modes the bar adds `자동 배포 켜짐`, with `· 다음 HH:MM` while it waits out the 5-minute spacing. The bar itself still shows only when the service is behind. The SUPERVISOR's [업데이트] click keeps working and has no spacing.
+- **ROLLBACK** stops the server's RTS like MCC's, until the SUPERVISOR picks the MCC mode again.
+- PILOT'S DISCRETION: the pass runs every 30 s (the snapshot refreshes about every 20 s); after a `refused` RTS the server does not retry the same `main` (the refusal needs a person); `rts` mode's `would-land` records use `detail: "rts"`; root `CLAUDE.md` is `user` tier and is not changed here (it describes `land+rts`, the mode in use).
+
 ## 7. Records and switches
 
-- `~/.local/state/atc/mcc.json` (atomic): `mode` `shadow` (default) | `land` | `land+rts`, `holds` (PR numbers). It is changed only from the settings window (AGENTS tab, MCC row), like AUTOLAND. `atcctl` has no command for it.
+- `~/.local/state/atc/mcc.json` (atomic): `mode` `shadow` (default) | `land` | `land+rts` | `rts`, `holds` (PR numbers). It is changed only from the settings window (AGENTS tab, MCC row), like AUTOLAND. `atcctl` has no command for it.
 - `~/.local/state/atc/mcc.jsonl` (append-only): `inspect` (PR, head, verdict, text, model), `escalate`, `land` / `would-land` (PR, head, tier, result), `mode`.
 - `~/.local/state/atc/rts.jsonl` (append-only), written by `deploy/rts.mjs`.
 - Every MCC write (`inspect`, `escalate`, `land`, `rts`) must carry a model named in `MCC_MODELS`. As with CROSSCHECK, the MCC guard reads the model from the session transcript and passes it as `ATC_MCC_MODEL`; `atcctl mcc` sends it. The TOWER and OCC guards let any `atcctl` command through but never set it, so an `atcctl mcc` write from those sessions is refused by the server.
@@ -237,7 +256,7 @@ MCC used to land a PR in the same pass that started RTS, and RTS could read a ma
 - `server/mcc-run.ts`: `GET /api/mcc/queue`, `GET /api/mcc/packet/:pr`, `POST /api/mcc/inspect/:pr`, `POST /api/mcc/escalate/:pr`, `POST /api/mcc/land/:pr`, `POST /api/mcc/rts`, `GET /api/mcc`, `POST /api/mcc/hold` (SUPERVISOR only). GitHub is read and written through REST only. In `shadow`, `land` and `rts` record `would-land` / `would-rts`; `rts` in `land+rts` starts `atc-rts.service`, which does not exist until step 5.
 - CLEARED TO LAND: for the MCC AIRPORT, an INSPECTION `pass` on the head counts as the review, `findings` is `review-findings`, and a PR without one shows `MCC INSPECTION 대기`.
 - `/api/version` has `head`, the commit the service started from.
-- The settings window's AGENTS tab has an MCC row (`shadow` · `land` · `land+rts`), changed only from the screen.
+- The settings window's AGENTS tab has an MCC row (`shadow` · `land` · `land+rts` · `rts`), changed only from the screen.
 
 Step 3 (2026-09-28): `atcctl mcc queue|packet|inspect|escalate|land|rts` (`parseMccArgs`, `mccText`, tests in `controller/atcctl.test.mjs`). The writes send `ATC_MCC_MODEL` when the guard set it; the server now requires it on all four writes (`mccModelOf`) and records the model on `land`, `escalate` and `rts` lines.
 

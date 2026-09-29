@@ -16,7 +16,9 @@ import {
   landBlocksOf,
   loadMcc,
   mccGateLine,
+  mccDeploys,
   mccGateOf,
+  mccLands,
   MCC_MODES,
   MccError,
   mccModelOf,
@@ -40,7 +42,7 @@ import { fromThisApp } from "./origin.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 
 // MCC 실행부(docs/mcc.md). MCC 세션은 atcctl로 읽고 판단만 한다. GitHub 쓰기와 RTS 시작은 여기서만 한다:
-// findings의 PR 댓글, 정확한 head 머지(sha), systemctl --user start --no-block atc-rts(land+rts 모드).
+// findings의 PR 댓글, 정확한 head 머지(sha, land·land+rts 모드), systemctl --user start --no-block atc-rts(rts·land+rts 모드).
 // GraphQL 한도(2026-09-28)에 막히지 않게 GitHub은 모두 REST(gh api)로 읽고 쓴다.
 
 const run = promisify(execFile);
@@ -122,10 +124,10 @@ export function rtsState(records: readonly MccRecord[]) {
   const rts = readJsonl<RtsRecord>(RTS_FILE());
   const last = rts.at(-1) ?? null;
   const lastMode = [...records].reverse().find((r) => r.op === "mode");
-  const lastStart = [...records].reverse().find((r) => r.op === "rts" && r.result === "started");
+  const lastStart = [...records].reverse().find((r): r is Extract<MccRecord, { op: "rts" | "would-rts" }> => r.op === "rts" && r.result === "started");
   const lastLand = [...records].reverse().find((r) => r.op === "land" && r.result === "ok");
   // lastStartAt은 UPDATE 막대가 쓰는 그대로(거절도 포함). spacingAt은 MCC의 5분 간격용(거절된 시작은 뺀다, ATC-121)
-  return { last, stop: rtsStopOf(last, lastMode?.at ?? null), lastStartAt: lastStart?.at ?? null, spacingAt: spacingStartOf(records, rts), lastLandAt: lastLand?.at ?? null };
+  return { last, stop: rtsStopOf(last, lastMode?.at ?? null), lastStartAt: lastStart?.at ?? null, lastStartBy: lastStart?.by ?? null, spacingAt: spacingStartOf(records, rts), lastLandAt: lastLand?.at ?? null };
 }
 
 // PR 하나의 착륙 판단(머지 직전과 queue가 같이 쓴다). 자료는 모두 지금 GitHub에서 읽는다
@@ -371,8 +373,8 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
       if (j.blocks.length) return c.json({ landed: false, blocks: j.blocks }, 409);
       const at = new Date().toISOString();
       const base = { at, pr: n, head: j.pr.head.sha, tier: j.tier, model };
-      if (j.ap.cfg.mode === "shadow") {
-        appendMccRecord({ op: "would-land", ...base, result: "ok", detail: "shadow" });
+      if (!mccLands(j.ap.cfg.mode)) {
+        appendMccRecord({ op: "would-land", ...base, result: "ok", detail: j.ap.cfg.mode });
         return c.json({ landed: false, would: true, tier: j.tier });
       }
       try {
@@ -401,9 +403,13 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
       const rts = rtsState(records);
       const deployed = deployedHead();
       const due = rtsDueOf({ deployed, main: ap.main, mainCi: ap.mainCi, last: rts.last, lastStartAt: rts.spacingAt, mainReadAt: ap.mainReadAt, lastLandAt: rts.lastLandAt, now: Date.now() }, rts.stop);
-      if (!due.due) return c.json({ started: false, why: due.why }, 409);
+      if (!due.due) {
+        // rts·land+rts에서는 서버가 이미 시작했을 수 있다(ATC-84): 그렇다고 알린다
+        const byServer = mccDeploys(ap.cfg.mode) && rts.lastStartBy === "server";
+        return c.json({ started: false, ...(byServer ? { serverStarted: true } : {}), why: byServer ? `서버가 이미 RTS를 시작함(${rts.lastStartAt}) — ${due.why}` : due.why }, 409);
+      }
       const base = { at: new Date().toISOString(), from: deployed, to: ap.main!, model };
-      if (ap.cfg.mode !== "land+rts") {
+      if (!mccDeploys(ap.cfg.mode)) {
         appendMccRecord({ op: "would-rts", ...base, result: "started", detail: ap.cfg.mode });
         return c.json({ started: false, would: true, why: due.why });
       }
