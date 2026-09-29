@@ -6,6 +6,7 @@ import type { Health } from "./health.ts";
 import type { FuelRemaining } from "./fuel-remaining.ts";
 import type { HumanCheckStatus, UiChange } from "./human-check.ts";
 import type { SessionOrigin } from "./session-origin.ts";
+import type { Job } from "./job-state.ts";
 export type Agent = "claude" | "codex";
 
 export interface Session {
@@ -28,6 +29,8 @@ export interface Session {
   // 한도로 잘리거나(cut LIMIT) 한도가 풀렸는데 멈췄거나(RESUME) 멈춘(STALLED) AIRCRAFT가 쥔 FLIGHT 중, 점유(claimTtl)가 지나 claims에서 빠진 것.
   // FLEET 줄이 FLIGHT를 잃지 않게 한다(ATC-86). 그 밖에는 없다
   keptFlights?: string[];
+  // 백그라운드 job 상태(ATC-99): ~/.claude/jobs/<jobId>/state.json에서 읽은 state·detail·needs. bg 세션이 아니거나 못 읽으면 없다(null)
+  job?: Job | null;
 }
 
 export interface Airport {

@@ -2,7 +2,9 @@ import { Fragment, type KeyboardEvent, type ReactNode, useEffect, useState } fro
 import type { Snapshot } from "../../server/model.ts";
 import type { MccGate } from "../../server/mcc.ts";
 import type { ServerSettings, SettingsErrors, SettingsPatch } from "../../server/settings.ts";
+import type { Job } from "../../server/job-state.ts";
 import { callsign } from "./aviation.ts";
+import { JobDetail, NeedsYou } from "./ui.tsx";
 import { timeAgo } from "./derive.ts";
 
 // 설정 창의 LINEAR, AGENTS 탭. 서버 설정을 읽고 고친다.
@@ -638,7 +640,7 @@ function MccGatePanel() {
 // 관제 세션(docs/fleet.md 8.5.1). 줄마다 live 배지. TOWER·OCC·MCC·CROSSCHECK·REVIEW는 atc가 그 폴더에서 `claude --bg`로 띄운다
 // (ocx·tmux LAUNCH는 2026-09-29에 끊음). ENGINEERING은 배지만. tmux pane에서 손으로 연 세션도 STOP한다(그 pane만 닫음, 묻고 나서).
 // 데스크톱 세션은 그 창에서 닫는다
-type ControlLive = { id?: string; name?: string; kind: string; status?: string; tmux?: string };
+type ControlLive = { id?: string; name?: string; kind: string; status?: string; tmux?: string; job?: Job | null };
 type ControlAccounts = { labeled: boolean; rows: { name: string; label: string | null; account: string | null }[] };
 type ControlSession = { name: string; dir: string | null; prompt: string | null; launch: "bg" | null; blocked: string | null; live: ControlLive[]; stale?: { id?: string; name?: string }[] };
 type ControlList = { daemonInService?: boolean; sessions: ControlSession[] };
@@ -753,6 +755,7 @@ function ControlSessions() {
             <p className="config-note">
               <span className={`session-badge ${bg || tmux ? "is-busy" : other ? "" : "is-dead"}`}>{badge}</span>
               {detail ? ` · ${detail}` : ""}
+              {bg?.job?.state === "blocked" ? <> · <NeedsYou job={bg.job} /></> : bg?.job?.state === "working" && bg.job.detail ? <> · <JobDetail job={bg.job} /></> : null}
               {how ? (
                 <>
                   {" "}· {how} · 첫 메시지 <code>{c.prompt}</code>

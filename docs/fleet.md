@@ -1028,6 +1028,15 @@ On 2026-09-28 at 18:10Z TEAM_G and TEAM_H stopped on the usage limit and sat unn
 - `tail:`-labelled In Progress FLIGHTs count as held even without a claim; SURVEY and CHECK FLIGHTs are excluded from `STALLED` because they never open a PR.
 - `RESUME` and `STALLED` are not holds: an AIRCRAFT with the limit over can take a new assignment, and that assignment is the "continue".
 
+### NEEDS YOU as built (ATC-99)
+
+A background session (session file `kind: "bg"`, with its `jobId`) keeps a richer record than atc's busy/idle: `~/.claude/jobs/<jobId>/state.json`, the source of the `state` column in `claude agents --json`. atc reads it, read-only, and puts `job: {state, detail, needs, suggestedReply, since}` on the `Session`; it is `null` for anything else.
+
+- **Reader.** `server/job-state.ts`: `parseJob` (pure) takes only `state` (`working`, `blocked`, `done`, `stopped`, `failed`; any other value gives `null`), `detail`, `needs` and `suggestedReply` (the last two only while `blocked`), and `updatedAt`. It never reads or returns `intent` (for a team, the whole CREW BRIEFING), `output`, `providerEnv` or `linkScanPath`. `since` is the first line of the run of the current state at the end of `timeline.jsonl` (16 KB tail), or `updatedAt` when there is no timeline. `readJob` caches per job by mtime and size of both files, and never writes, deletes or locks anything. ATC-93's `jobStateOf` (STALE rows) reads the same file's `state`.
+- **Screens.** A `NEEDS YOU · <needs>` chip while `blocked`, with `detail` and the way to answer in its tooltip: on the FLEET list row and card (the card also shows `suggestedReply` as a copy-only line; atc never sends it), on the STRIPS strip (a blocked session is shown there even when PARKED), and on the CONTROL block row of a control session. A `working` job shows its `detail` as a dim line on the FLEET list and card.
+- **Alert.** A job `blocked` for `health.blockedMin` minutes (default 3, `ATC_HEALTH_BLOCKED_MIN`) raises a `health` alert `BLOCKED — <name>이 N분째 사람을 기다림: <needs>` with key `health|BLOCKED|<session>`. It is its own alert, not a `HealthCode`: `Health` does not hold DISPATCH and has no manual entry for it. It clears when the state leaves `blocked`, so `alert.raised` / `alert.cleared` follow.
+- **Checked against** Claude Code 2.1.284 (2026-09-29). The file is a Claude Code internal: a missing file, other version or unknown state shows nothing and raises no error.
+
 ## 9. Moving from `lane:` to `tail:`
 
 All four steps are done:

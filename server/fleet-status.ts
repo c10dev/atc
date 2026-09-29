@@ -1,4 +1,5 @@
 import type { AircraftView, FlightDetail } from "./fleet.ts";
+import type { Job } from "./job-state.ts";
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel, type HealthCode, healthLabel } from "./health.ts";
 import { fuelHoldTag, fuelTitle } from "./fuel-remaining.ts";
 import { type ContextBadge, contextBadgeOf } from "./fuel-context.ts";
@@ -49,6 +50,7 @@ export interface FleetRow {
   restarting: { label: string; until: string } | null;
   // AIRCRAFT health(ATC-45): "HOLD · LIMIT until 07:40Z" 같은 짧은 글과 원인·다음 한 걸음
   health: { code: HealthCode; level: "info" | "alert"; label: string; detail: string; next: string } | null;
+  job?: Job | null; // 백그라운드 job 상태(ATC-99): blocked면 NEEDS YOU
   account: string | null; // ACCOUNT 라벨(ATC-51). 등록부에 라벨이 하나도 없으면 null
   accountIsDefault: boolean;
   // 같은 ACCOUNT의 LIMIT으로 붙들림(ATC-51): "HOLD · LIMIT (account pro-2) until 07:40Z". health 코드는 아니다
@@ -83,6 +85,7 @@ export function fleetRows(aircraft: readonly AircraftView[], now: number): Fleet
       week: a.actuals.week,
       weekOnTime: a.actuals.weekOnTime?.rate ?? null,
       restarting: a.restarting ? { label: RESTARTING_TEXT, until: a.restarting.until } : null,
+      job: a.job ?? null,
       health: a.health ? { code: a.health.code, level: a.health.level, label: healthLabel(a.health, now), detail: a.health.detail, next: a.health.next } : null,
       account: a.account ?? null,
       accountIsDefault: Boolean(a.accountIsDefault),
