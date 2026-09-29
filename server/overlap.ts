@@ -156,4 +156,15 @@ export function splitByTeam(list: readonly HolderOverlap[], team: string): { oth
 
 // HOLD 대상: 많이 겹치고(holdFiles 이상) 양쪽 무게가 가벼운 것끼리(L·L)만은 아닌 FLIGHT
 export const isHeavy = (o: HolderOverlap, cfg: OverlapConfig) => o.hits.length >= cfg.holdFiles && o.weight >= 1;
-export const overlapHoldWhy = (flights: readonly string[]) => `파일 겹침 — ${flights.join(", ")}가 머지될 때까지`;
+// team이 있으면 예외가 안 통한 이유(그 팀이 지금 못 받음)를 덧붙인다(ATC-136)
+export const overlapHoldWhy = (flights: readonly string[], team?: { name: string; why: string }) =>
+  `파일 겹침 — ${flights.join(", ")}가 머지될 때까지${team ? ` (겹침은 ${team.name}뿐인데 ${team.name}가 지금 못 받음: ${team.why})` : ""}`;
+
+// 같은 팀 예외(ATC-71·136): 겹치는 FLIGHT를 쥔 팀이 하나뿐이고 정해져 있으면 그 팀, 아니면 null
+export function soleTeamOf(list: readonly HolderOverlap[]): string | null {
+  const teams = new Set(list.map((o) => o.holder.team));
+  return teams.size === 1 && [...teams][0] !== null ? [...teams][0] : null;
+}
+
+// 예외가 통한 FLIGHT의 카드 문구: 그 팀에만 제안한다
+export const sameTeamOnlyNote = (team: string) => `겹침은 ${team}뿐 — ${team}에만 제안`;

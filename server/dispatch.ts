@@ -6,7 +6,7 @@ import { config } from "./config.ts";
 import { accountOf, type Classification, canFly, classOf, DEFAULT_FLEET, type FleetFile, type FlightType, needsStand, profileOf, type Rating, WAKE_SLOTS } from "./crew.ts";
 import { accountHoldDetail, accountHoldLabel, accountHoldOf, accountHolds, type Health, healthLabel, hhmm } from "./health.ts";
 import { DEFAULT_FUEL, type FuelConfig, fuelConfigOf, fuelHoldReason, fuelHolds } from "./fuel-remaining.ts";
-import { type Holder, holderLabel, isHeavy, overlapConfigOf, DEFAULT_OVERLAP, type OverlapConfig, overlapDetail, overlapHoldWhy, overlapsOf, overlapValueOf, predictedOf, splitByTeam } from "./overlap.ts";
+import { type Holder, holderLabel, isHeavy, overlapConfigOf, DEFAULT_OVERLAP, type OverlapConfig, overlapDetail, overlapHoldWhy, overlapsOf, overlapValueOf, predictedOf, sameTeamOnlyNote, soleTeamOf, splitByTeam } from "./overlap.ts";
 import { keyInName, keyPatternOf, teamOfKey } from "./linear-keys.ts";
 import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
@@ -561,6 +561,7 @@ export function planDispatch(
     flight: t.key, airport, type: cls.type, ratings: cls.ratings, labeled: cls.sources.length > 0, why, tails: [...tails],
   });
   const overlapHolds: NonNullable<Plan["overlapHolds"]> = [];
+  const sameTeamOnly = new Map<string, string>(); // 같은 팀 예외가 통한 FLIGHT → 그 팀(후보를 그 팀 AIRCRAFT로 좁힌다, ATC-136)
   // 예측 경로: 이 FLIGHT와 연결된 FLIGHT의 본문(관계·blocks·blockedBy)에서. 같은 FLIGHT는 한 번만 센다
   const predictedFor = (t: Ticket) => predictedOf(t.key, [...new Set([...t.related, ...t.blocks, ...t.blockedBy])], files.bodies);
   const eligible: (Ticket & { airport: string; cls: Classification; ind: Independence | null })[] = [];
@@ -580,6 +581,11 @@ export function planDispatch(
   const fitsRoom = (ac: AircraftState, t: { cls: Classification }) => ac.room === undefined || !needsStand(t.cls.type) || WAKE_SLOTS[t.cls.wake] <= ac.room + 1e-9;
   const canTake = (ac: AircraftState, t: { airport: string; cls: Classification }) =>
     ac.airport === t.airport && (needsStand(t.cls.type) ? ac.available && !ac.reserved && fitsRoom(ac, t) : Boolean(ac.resting) && !ac.reservedLight);
+  // 이 AIRCRAFT가 지금 이 FLIGHT를 못 받는 이유
+  const notTakeWhy = (ac: AircraftState, cls: Classification) =>
+    !needsStand(cls.type)
+      ? !ac.resting ? ac.reason : ac.reservedLight ? `진행 중인 제안 ${ac.reservedLight}` : `소속 AIRPORT ${ac.airport ?? "없음"}`
+      : !ac.available ? ac.reason : ac.reserved ? `진행 중인 제안 ${ac.reserved}` : !fitsRoom(ac, { cls }) ? "남은 슬롯 부족" : `소속 AIRPORT ${ac.airport ?? "없음"}`;
   const builderSrc: BuilderSources = { logbook, pulls: s.pulls ?? [], claims: s.claims, workspaces: s.workspaces, sessions: s.sessions, history, team };
   const independenceOf = (t: Ticket, airport: string): Independence => {
     const target = checkTargetOf(t);
@@ -681,12 +687,7 @@ export function planDispatch(
         continue;
       }
       if (!mine.some((ac) => canTake(ac, { airport, cls }))) {
-        const light = !needsStand(cls.type);
-        const stateOf = (ac: AircraftState) =>
-          light
-            ? !ac.resting ? ac.reason : ac.reservedLight ? `진행 중인 제안 ${ac.reservedLight}` : `소속 AIRPORT ${ac.airport ?? "없음"}`
-            : !ac.available ? ac.reason : ac.reserved ? `진행 중인 제안 ${ac.reserved}` : `소속 AIRPORT ${ac.airport ?? "없음"}`;
-        const why = mine.map((ac) => `${ac.name} ${stateOf(ac)}`).join(", ");
+        const why = mine.map((ac) => `${ac.name} ${notTakeWhy(ac, cls)}`).join(", ");
         excluded.push({ flight: t.key, reason: `${tailTag} — 지정 팀 배정 불가(${why})` });
         continue;
       }
@@ -699,15 +700,23 @@ export function planDispatch(
       continue;
     }
     // 파일 겹침 HOLD(ATC-71): 곧 고칠 파일을 날고 있는 FLIGHT가 무겁게 만지면 그 FLIGHT가 머지될 때까지 기다린다.
-    // 그 파일을 만지는 팀이 그 팀뿐이고 그 팀이 이 FLIGHT를 날 수 있으면 HOLD하지 않는다(이어서 하면 충돌 없음)
+    // 그 파일을 만지는 팀이 그 팀뿐이고 그 팀이 이 FLIGHT를 지금 받을 수 있으면 HOLD하지 않고 그 팀에만 제안한다(이어서 하면 충돌 없음, ATC-136).
+    // 그 팀이 못 받으면(바쁨·HOLD·세션 없음) 다른 겹침과 같이 HOLD
     const ov = overlapsOf(t.key, cls.wake, airport, predictedFor(t), files.holders);
     const heavy = ov.filter((o) => isHeavy(o, cfg.overlap));
     if (heavy.length) {
-      const teams = new Set(ov.map((o) => o.holder.team));
-      const sameTeam = teams.size === 1 && [...teams][0] !== null && aircraft.some((ac) => regOf(ac.name) === [...teams][0] && qualifies(ac, cls));
-      if (!sameTeam) {
+      const soleTeam = soleTeamOf(ov);
+      const teamAc = soleTeam ? aircraft.filter((ac) => regOf(ac.name) === soleTeam) : [];
+      const sameTeam = teamAc.some((ac) => qualifies(ac, cls) && independent(ac, ind) && canTake(ac, { airport, cls }));
+      if (sameTeam) sameTeamOnly.set(t.key, soleTeam as string);
+      else {
         const blockedBy = [...new Set(heavy.map((o) => o.holder.flight))];
-        const why = overlapHoldWhy(blockedBy);
+        const teamWhy = soleTeam
+          ? teamAc.length
+            ? teamAc.map((ac) => (!qualifies(ac, cls) ? "TYPE RATING·CREW 안 맞음" : !independent(ac, ind) ? "CHECK 독립성" : notTakeWhy(ac, cls))).join(", ")
+            : "세션 없음"
+          : "";
+        const why = overlapHoldWhy(blockedBy, soleTeam ? { name: soleTeam, why: teamWhy } : undefined);
         overlapHolds.push({ flight: t.key, blockedBy, why, enforced: cfg.overlap.hold });
         if (cfg.overlap.hold) {
           hold.push({ flight: t.key, blockedBy, why });
@@ -747,7 +756,7 @@ export function planDispatch(
       f("affinity", "팀 적합도", affinity.length, w.affinity, affinity.join(", ") || "이력 없음"),
       f("conflict", "충돌 위험", conflicts.length, w.conflict, conflicts.length ? `AIRBORNE과 연결: ${conflicts.join(", ")}` : "없음"),
       f("overlap", "파일 겹침", overlapValueOf(ov.others), w.overlap ?? -1, overlapDetail(ov.others, ov.others.length ? holdNote : "")),
-      ...(same.length ? [f("overlapSame", "이어서 하면 충돌 없음", 1, w.sameTeam ?? 1, `${same.map(holderLabel).join(", ")}를 날고 있는 ${team}가 이어 함 — ${overlapDetail(same)}`)] : []),
+      ...(same.length ? [f("overlapSame", "이어서 하면 충돌 없음", 1, w.sameTeam ?? 1, `${same.map(holderLabel).join(", ")}를 날고 있는 ${team}가 이어 함 — ${overlapDetail(same)}${sameTeamOnly.get(t.key) === team ? ` — ${sameTeamOnlyNote(team)}` : ""}`)] : []),
       f("route", "ROUTE", onRoute ? 1 : 0, w.route ?? 1, onRoute ? `${t.project} 담당` : "담당 아님"),
       // 지금 구간 WAYPOINT의 FLIGHT: ROUTE를 앞으로 미는 일(docs/routes.md 8단계)
       f("waypoint", "지금 WAYPOINT", activeWaypoint.has(t.key) ? 1 : 0, w.waypoint ?? 1, activeWaypoint.get(t.key) ?? "아님"),
@@ -785,7 +794,7 @@ export function planDispatch(
       .flatMap((t) => {
         const tails = tailsOf(t, now);
         return aircraft
-          .filter((ac) => ok(ac, t) && fitsRoom(ac, t) && (!tails.size || tails.has(regOf(ac.name))) && qualifies(ac, t.cls) && independent(ac, t.ind) && notBlocked(ac, t))
+          .filter((ac) => ok(ac, t) && fitsRoom(ac, t) && (!tails.size || tails.has(regOf(ac.name))) && (!sameTeamOnly.has(t.key) || regOf(ac.name) === sameTeamOnly.get(t.key)) && qualifies(ac, t.cls) && independent(ac, t.ind) && notBlocked(ac, t))
           .map((ac) => {
             hadPair.add(t.key);
             const sc = score(t, ac);
