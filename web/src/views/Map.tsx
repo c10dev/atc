@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Session, Snapshot, Ticket, Workspace } from "../../../server/model.ts";
-import { hasActiveClaim, type Index, sortSessions, timeAgo } from "../derive.ts";
+import { hasActiveClaim, type Index, isGateCleanup, isParkedAtGate, sortSessions, timeAgo } from "../derive.ts";
 import { AirportCode, AwayTag, SessionPlace } from "../ui.tsx";
 import { aircraftStatus, aircraftStatusCode, aircraftStatusLabel, callsign, flightNumber, flightPhase, phaseCode, phaseTone } from "../aviation.ts";
 
@@ -25,9 +25,10 @@ const statusColor = { busy: "var(--radar)", idle: "var(--amber)", dead: "var(--a
 
 export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; now: number }) {
   const [showAll, setShowAll] = useState(false);
+  const [showGate, setShowGate] = useState(false); // ARRIVED STAND 포함(ATC-111)
   const [hover, setHover] = useState<string | null>(null);
 
-  const graph = useMemo(() => layout(snapshot, idx, showAll), [snapshot, idx, showAll]);
+  const graph = useMemo(() => layout(snapshot, idx, showAll, showGate), [snapshot, idx, showAll, showGate]);
 
   const lit = useMemo(() => {
     if (!hover) return null;
@@ -95,10 +96,15 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
           <span className="legend">
             <i className="legend-line" /> IDENTIFIED <i className="legend-line is-dashed" /> ESTIMATED TRACK <i className="legend-line is-dotted" /> HANDOFF
           </span>
+          {graph.gateHidden > 0 && !showGate && <span className="gate-hidden"> · ARRIVED STAND {graph.gateHidden} 숨김</span>}
         </span>
         <label className="toggle">
           <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
           빈 STAND 포함
+        </label>
+        <label className="toggle">
+          <input type="checkbox" checked={showGate} onChange={(e) => setShowGate(e.target.checked)} />
+          ARRIVED STAND 포함
         </label>
       </div>
       <div className="scope-frame">
@@ -204,18 +210,22 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
 }
 
 // 교차를 줄이려고 왼쪽 열 순서의 평균(barycenter)으로 다음 열을 정렬한다.
-function layout(snapshot: Snapshot, idx: Index, showAll: boolean) {
+function layout(snapshot: Snapshot, idx: Index, showAll: boolean, showGate: boolean) {
   const sessions = sortSessions(
-    snapshot.sessions.filter((s) => idx.claimsBySession.has(s.id)),
+    snapshot.sessions.filter((s) => idx.claimsBySession.has(s.id) && (showGate || !isGateCleanup(s, idx))),
     idx,
   );
   const sessionOrder = new Map(sessions.map((s, i) => [s.id, i]));
 
   const wsSet = new Set<Workspace>();
+  let gateHidden = 0;
   for (const w of snapshot.workspaces) {
     if (w.isMain) continue;
     const ticket = w.ticketKey ? idx.ticketByKey.get(w.ticketKey) : undefined;
-    if (showAll || idx.claimsByWorkspace.has(w.path) || ticket?.stateType === "started") wsSet.add(w);
+    if (!(showAll || idx.claimsByWorkspace.has(w.path) || ticket?.stateType === "started")) continue;
+    // Dark cockpit(ATC-111): ARRIVED·취소 FLIGHT의 STAND는 기본으로 접는다
+    if (!showGate && isParkedAtGate(w, idx)) gateHidden++;
+    else wsSet.add(w);
   }
   const wsRank = (w: Workspace) => {
     const ranks = (idx.claimsByWorkspace.get(w.path) ?? []).map((c) => sessionOrder.get(c.sessionId) ?? 0);
@@ -253,5 +263,5 @@ function layout(snapshot: Snapshot, idx: Index, showAll: boolean) {
     const t = w.ticketKey ? ticketSet.get(w.ticketKey) : undefined;
     if (t) edges.push({ from: wid(w.path), to: tid(t.key), kind: "ticket", color: `var(--phase-${phaseTone(t)})`, dashed: false });
   }
-  return { sessions, workspaces, tickets, edges };
+  return { sessions, workspaces, tickets, edges, gateHidden };
 }

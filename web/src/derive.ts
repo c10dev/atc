@@ -98,3 +98,18 @@ export function sortSessions(list: Session[], idx: Index): Session[] {
       (b.lastActiveAt ?? "").localeCompare(a.lastActiveAt ?? ""),
   );
 }
+
+// Dark cockpit(ATC-111): FLIGHT가 ARRIVED(completed)나 취소(canceled)됐고 busy 세션이 쥐고 있지 않은 STAND.
+// 끝난 일의 워크트리가 아직 치워지지 않은 것이라 RADAR·STRIPS가 기본으로 접는다. 표시만 바꾸고 점유·경보는 그대로다
+export function isParkedAtGate(w: Workspace, idx: Index): boolean {
+  const t = w.ticketKey ? idx.ticketByKey.get(w.ticketKey) : undefined;
+  if (t?.stateType !== "completed" && t?.stateType !== "canceled") return false;
+  return !(idx.claimsByWorkspace.get(w.path) ?? []).some((c) => c.state === "active" && idx.sessionById.get(c.sessionId)?.status === "busy");
+}
+
+// busy가 아니고, 쥔 STAND가 하나 이상이며 모두 parked-at-gate인 AIRCRAFT. 미완 FLIGHT의 STAND를 쥔 NORDO는 진짜 문제라 여기 들지 않는다
+export function isGateCleanup(s: Session, idx: Index): boolean {
+  if (s.status === "busy") return false;
+  const stands = (idx.claimsBySession.get(s.id) ?? []).filter((c) => c.state === "active").map((c) => idx.wsByPath.get(c.workspacePath));
+  return stands.length > 0 && stands.every((w) => w !== undefined && isParkedAtGate(w, idx));
+}
