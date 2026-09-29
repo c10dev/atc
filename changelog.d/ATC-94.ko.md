@@ -1,0 +1,2 @@
+### 추가
+- SQUELCH S1(ATC-94, [docs/squelch.md](docs/squelch.md) "S1 as built"). `POST /api/squelch/:role`(`tower`, `mcc`, `occ`, `crosscheck`, `review`)가 그 관제 세션의 `/tick`이 다루는 것을, `atcctl`이 읽는 것과 같은 브리핑으로 지문을 만들어 `{open, reason, quietSince, quietCount}`로 답한다. 기본 모드는 `shadow`라 늘 열려 있고 `squelch.jsonl`에 `shadow:quiet`나 `shadow:<reason>`만 남기므로 아무것도 버리지 않으며, 아직 부르는 hook도 없다. `squelch.json`(원자적)에 모드, 역할별 heartbeat(50분), 역할마다 마지막 통과가 들어 있고 `GET /api/squelch`가 그것을 돌려준다. 오류는 `200 fail-open`. hook이 막은 tick의 네 줄이 AIRCRAFT health와 FUEL 읽기를 바꾸지 않는다는 것도 테스트로 고정했다.
