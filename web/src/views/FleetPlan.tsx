@@ -5,7 +5,7 @@ import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import "./FleetPlan.css";
 
-// FLEET PLAN(docs/fleet.md 8.6·8.7): atc가 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·AOG·RETIRE·RETURN을 제안한다.
+// FLEET PLAN(docs/fleet.md 8.6·8.7): atc가 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·REFRESH·AOG·RETIRE·RETURN을 제안한다.
 // 그림자: SUPERVISOR는 동의·반대만 한다. 승인 운용: 승인(실행)하면 카드의 버튼과 같은 코드로 바로 실행한다.
 
 type Open = FleetProposal & { now: PlanReason[] | null; stale: boolean };
@@ -14,7 +14,7 @@ interface PlanBrief {
   approvalSince: string | null;
   background: { count: number | null; max: number };
   permissionModes: string[];
-  config: { reserve: number; waitMin: number; idleHours: number; restartDays: number; retireDays: number; minDwellMin: number };
+  config: { reserve: number; waitMin: number; idleHours: number; restartDays: number; retireDays: number; minDwellMin: number; refreshTokens?: number; refreshPct?: number };
   ranAt: string | null;
   error: string | null;
   demand: DemandRow[];
@@ -30,6 +30,7 @@ const KIND_HELP: Record<FleetPlanKind, string> = {
   ENTRY: "맞는 AIRCRAFT가 없어 새로 들이고 띄운다(wet lease)",
   STOP: "쉬는 백그라운드 세션을 멈춘다(주기). 대화는 남는다",
   RESTART: "오래된 백그라운드 세션을 새 CREW BRIEFING으로 다시 띄운다(정기 점검)",
+  REFRESH: "FLIGHT를 마치고 쉬는 AIRCRAFT의 큰 대화를 새로 시작한다(다음 cold wake의 캐시 쓰기를 아낌)",
   AOG: "기한을 두고 배정을 멈춘다(MEL)",
   RETIRE: "퇴역(SUPERVISOR만, 자동 없음)",
   RETURN: "FLEET PLAN이 건 AOG를 푼다(기한이 지남)",
@@ -40,6 +41,7 @@ const WILL_DO: Record<FleetPlanKind, (p: FleetProposal) => string> = {
   ENTRY: (p) => `${p.aircraft}를 ${p.configuration ?? ""} CONFIGURATION으로 ${p.airport ?? ""}에 들인 뒤 띄운다`,
   STOP: (p) => `${p.aircraft}의 백그라운드 세션을 멈춘다(대화는 남는다)`,
   RESTART: (p) => `${p.aircraft}의 백그라운드 세션을 멈추고 새 CREW BRIEFING으로 다시 띄운다`,
+  REFRESH: (p) => `${p.aircraft}의 백그라운드 세션을 멈추고 새 CREW BRIEFING으로 다시 띄운다(대화를 새로 시작)`,
   AOG: (p) => `${p.aircraft}를 AOG로 둔다(사유 FLEET PLAN ${p.id})`,
   RETIRE: (p) => `${p.aircraft}를 퇴역시킨다`,
   RETURN: (p) => `${p.aircraft}의 AOG를 푼다`,
@@ -59,6 +61,9 @@ const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%
 const minutesSince = (iso: string) => Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
 // 사유 안의 FLIGHT key를 FLIGHT NUMBER로
 const withFlights = (text: string) => text.replace(/\b([A-Z]{2,5}-\d+)\b/g, (k) => flightNumber(k));
+// 사람이 하는 제안: 데스크톱·터미널 세션의 REFRESH(/clear 뒤 CREW BRIEFING). 승인 운용에서도 "했음"(동의)으로 닫는다
+const isManual = (p: FleetProposal) => p.kind === "REFRESH" && p.reasons.some((r) => r.code === "session" && r.value === "interactive");
+const kTokens = (n: number) => (n >= 1_000_000 ? `${n / 1_000_000}M` : `${Math.round(n / 1000)}k`);
 const stepText = (x: StepResult) => `${x.action} ${x.registration}${x.jobId ? ` (${x.jobId})` : ""}${x.ok ? "" : ` 실패: ${x.error ?? ""}`}`;
 
 async function post(path: string, body: unknown) {
@@ -115,6 +120,18 @@ export function FleetPlan({ refreshKey, onChanged }: { refreshKey: string; onCha
     return run(p.id, () => post(`/api/fleet/plan/${encodeURIComponent(p.id)}/verdict`, { verdict, reason }));
   };
 
+  // CREW BRIEFING을 클립보드로(데스크톱·터미널 세션의 REFRESH: /clear 뒤 붙여 넣는다)
+  const [copied, setCopied] = useState<string | null>(null);
+  const copyBriefing = (p: Open) =>
+    run(p.id, async () => {
+      const res = await fetch(`/api/fleet/${encodeURIComponent(p.aircraft ?? "")}/briefing`);
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
+      if (!navigator.clipboard) throw new Error("클립보드를 쓸 수 없음 — FLEET 카드의 CREW BRIEFING을 연다");
+      await navigator.clipboard.writeText(data.briefing);
+      setCopied(p.id);
+    });
+
   const approve = (p: Open, input: Record<string, unknown>) =>
     run(p.id, async () => {
       await post(`/api/fleet/plan/${encodeURIComponent(p.id)}/approve`, input);
@@ -153,7 +170,8 @@ export function FleetPlan({ refreshKey, onChanged }: { refreshKey: string; onCha
         {approval && brief.approvalSince && <> · 승인 운용 {timeAgo(brief.approvalSince, Date.now())}부터</>}
         {" · "}
         {brief.ranAt ? <>계산 {timeAgo(brief.ranAt, Date.now())}</> : "아직 계산 전(DISPATCH 주기 5분)"}
-        {" · "}예비 {brief.config.reserve} · 대기 {brief.config.waitMin}분 · 유휴 {brief.config.idleHours}h · RESTART {brief.config.restartDays}일 · 퇴역 {brief.config.retireDays}일
+        {" · "}예비 {brief.config.reserve} · 대기 {brief.config.waitMin}분 · 유휴 {brief.config.idleHours}h · RESTART {brief.config.restartDays}일
+        {brief.config.refreshTokens != null && <> · REFRESH {kTokens(brief.config.refreshTokens)} 또는 창의 {Math.round((brief.config.refreshPct ?? 0) * 100)}%</>} · 퇴역 {brief.config.retireDays}일
         {approval ? (
           <button className="fl-btn fp-switch" disabled={busy === "mode"} onClick={() => switchMode("shadow")}>
             그림자로 돌리기
@@ -214,11 +232,25 @@ export function FleetPlan({ refreshKey, onChanged }: { refreshKey: string; onCha
               ) : (
                 <>
                   {approval && p.stale && <p className="fp-note faint">조건이 바뀜 — 최근 주기가 이 제안을 더는 내지 않는다. 다음 주기를 기다린다</p>}
+                  {approval && isManual(p) && (
+                    <p className="fp-note">
+                      atc는 실행하지 않는다. {p.aircraft} 세션에서 <code>/clear</code>하고 CREW BRIEFING을 붙여 넣은 뒤 "했음"
+                    </p>
+                  )}
                   <div className="fl-actions">
                     <button className="fl-btn" disabled={busy === p.id} onClick={() => judge(p, "disagree")}>
                       {approval ? "거절" : "반대"}
                     </button>
-                    {approval ? (
+                    {isManual(p) && (
+                      <button className="fl-btn" disabled={busy === p.id} onClick={() => copyBriefing(p)}>
+                        {copied === p.id ? "복사함" : "CREW BRIEFING 복사"}
+                      </button>
+                    )}
+                    {approval && isManual(p) ? (
+                      <button className="fl-btn primary" disabled={busy === p.id} onClick={() => judge(p, "agree")}>
+                        했음
+                      </button>
+                    ) : approval ? (
                       <button className="fl-btn primary" disabled={busy === p.id || p.stale} onClick={() => (setError(null), setApproving(p.id))}>
                         승인(실행)
                       </button>
@@ -286,9 +318,10 @@ function ApproveForm({
   onCancel: () => void;
   onApprove: (input: Record<string, unknown>) => void;
 }) {
-  const launches = p.kind === "LAUNCH" || p.kind === "ENTRY" || p.kind === "RESTART";
-  // RESTART는 비워 두면 서버가 마지막 LAUNCH의 값을 쓴다. 나머지는 auto(SUPERVISOR 결정)
-  const [permissionMode, setPermissionMode] = useState(p.kind === "RESTART" ? "" : (brief.permissionModes[0] ?? "auto"));
+  const relaunch = p.kind === "RESTART" || p.kind === "REFRESH";
+  const launches = p.kind === "LAUNCH" || p.kind === "ENTRY" || relaunch;
+  // RESTART·REFRESH는 비워 두면 서버가 마지막 LAUNCH의 값을 쓴다. 나머지는 auto(SUPERVISOR 결정)
+  const [permissionMode, setPermissionMode] = useState(relaunch ? "" : (brief.permissionModes[0] ?? "auto"));
   const [model, setModel] = useState("");
   const [until, setUntil] = useState(String(p.reasons.find((r) => r.code === "until")?.value ?? ""));
   const [stopSession, setStopSession] = useState(true);
@@ -309,7 +342,7 @@ function ApproveForm({
           <label>
             permission mode{" "}
             <select className="fl-input" value={permissionMode} onChange={(e) => setPermissionMode(e.target.value)} aria-label="permission mode">
-              {p.kind === "RESTART" && <option value="">마지막 LAUNCH와 같게</option>}
+              {relaunch && <option value="">마지막 LAUNCH와 같게</option>}
               {brief.permissionModes.map((m) => (
                 <option key={m} value={m}>
                   {m}
@@ -319,7 +352,7 @@ function ApproveForm({
           </label>
           <label>
             모델{" "}
-            <input className="fl-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder={p.kind === "RESTART" ? "마지막 LAUNCH와 같게" : "기본값"} aria-label="모델" />
+            <input className="fl-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder={relaunch ? "마지막 LAUNCH와 같게" : "기본값"} aria-label="모델" />
           </label>
           {brief.background.count !== null && (
             <p className="fp-note faint">

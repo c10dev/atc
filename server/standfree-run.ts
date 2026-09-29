@@ -10,6 +10,7 @@ import { appendLogbook, hasPr, type LogbookFuel, type LogEntry, loadLogbook, rea
 import type { Snapshot, Ticket } from "./model.ts";
 import { allProposals, isInFlight, type Proposal, standFreeTicket } from "./proposals.ts";
 import { sessionEventsOf } from "./sources/claude.ts";
+import { registrationOf } from "./registration.ts";
 import { slugOf } from "./sources/github.ts";
 import {
   type ArrivalSuggestion,
@@ -89,7 +90,6 @@ const typeOf = (t: Ticket | undefined): "CHECK" | "SURVEY" | null => {
 async function once(s: Snapshot) {
   const now = Date.now();
   const cfg = loadDispatchConfig();
-  const team = new RegExp(cfg.teamPattern, "i");
   const byKey = new Map(s.tickets.map((t) => [t.key, t]));
   const repoOf = (flight: string) => {
     const t = byKey.get(flight);
@@ -106,8 +106,10 @@ async function once(s: Snapshot) {
   const entries = loadLogbook();
 
   // 1) 직접 배정의 READBACK → DEPARTURE LOG 착수
-  const teams = [...new Set(s.sessions.filter((x) => team.test(x.name)).map((x) => x.name.toUpperCase()))];
-  const dispatched = new Set(proposals.filter((p) => p.kind === "ASSIGN" && p.timeline.sent && p.aircraftName).map((p) => `${p.flight}|${p.aircraftName!.toUpperCase()}`));
+  // REGISTRATION은 정식 표기(ATC-67): Team G·team-g도 TEAM_G
+  const regOf = (name: string | null | undefined) => registrationOf(name, cfg.teamPattern);
+  const teams = [...new Set(s.sessions.flatMap((x) => regOf(x.name) ?? []))];
+  const dispatched = new Set(proposals.filter((p) => p.kind === "ASSIGN" && p.timeline.sent && regOf(p.aircraftName)).map((p) => `${p.flight}|${regOf(p.aircraftName)}`));
   const existing = readDepartures();
   const fresh = readbackDeparturesOf({
     events: new Map(teams.map((r) => [r, eventsOf(r)])),
@@ -126,7 +128,7 @@ async function once(s: Snapshot) {
   const inFlight = proposals.filter((p) => isInFlight(p) && p.departedVia === "readback" && p.timeline.departed);
   for (const p of inFlight) {
     const type = typeOf(byKey.get(p.flight));
-    if (type) flights.push({ flight: p.flight, type, aircraft: p.aircraftName?.toUpperCase() ?? null, departedAt: p.timeline.departed!, proposal: p.id, slug: await repoSlug(repoOf(p.flight)) });
+    if (type) flights.push({ flight: p.flight, type, aircraft: regOf(p.aircraftName), departedAt: p.timeline.departed!, proposal: p.id, slug: await repoSlug(repoOf(p.flight)) });
   }
   const since = new Date(now - WINDOW_DAYS * DAY).toISOString();
   const last = new Map<string, (typeof existing)[number]>();
@@ -221,10 +223,10 @@ const suggestionFor = (flight: string, aircraft: string) => state.suggestions.fi
 
 // DISPATCH D-xxxx의 ARRIVED(proposals.ts가 부른다)
 export function proposalArrived(p: Proposal, s: Snapshot, addFuel: LogbookFuel | null) {
-  const aircraft = p.aircraftName?.toUpperCase();
+  const cfg = loadDispatchConfig();
+  const aircraft = registrationOf(p.aircraftName, cfg.teamPattern);
   if (p.status !== "arrived" || !aircraft || !p.timeline.departed) return null;
   const t = s.tickets.find((x) => x.key === p.flight);
-  const cfg = loadDispatchConfig();
   const suggestion = suggestionFor(p.flight, aircraft);
   // 확인된 후보는 다음 바퀴를 기다리지 않고 목록에서 뺀다
   state.suggestions = state.suggestions.filter((x) => x.proposal !== p.id);
@@ -253,9 +255,9 @@ export function mountStandFree(app: Hono, getSnapshot: () => Promise<Snapshot>, 
   app.post("/api/dispatch/standfree/:flight/arrived", async (c: Context) => {
     const flight = (c.req.param("flight") ?? "").toUpperCase();
     const body = (await c.req.json().catch(() => ({}))) as { aircraft?: unknown; note?: unknown };
-    const aircraft = typeof body.aircraft === "string" ? body.aircraft.trim().toUpperCase() : "";
+    const aircraft = registrationOf(typeof body.aircraft === "string" ? body.aircraft : null, loadDispatchConfig().teamPattern) ?? "";
     const note = typeof body.note === "string" ? body.note.trim() : "";
-    if (!new RegExp(loadDispatchConfig().teamPattern, "i").test(aircraft)) return c.json({ error: "aircraft(TEAM_X)가 필요함" }, 400);
+    if (!aircraft) return c.json({ error: "aircraft(TEAM_X)가 필요함" }, 400);
     if (!note) return c.json({ error: "arrived에는 결과 링크나 한 줄(note)이 필요함" }, 400);
     if (note.length > 500) return c.json({ error: "보고는 500자 이내" }, 400);
     const s = await getSnapshot();

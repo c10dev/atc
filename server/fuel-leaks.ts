@@ -1,5 +1,6 @@
 import { leakPriceOf, type PriceTable } from "./fuel-cost.ts";
 import type { Compaction, FuelRecord } from "./fuel.ts";
+import { regKey } from "./registration.ts";
 
 // FUEL LEAK(ATC-52·ATC-57, docs/fuel.md 5): 이미 캐시에 있던 맥락을 다시 쓴 몫. 규칙이 설명하는 miss만 이름을 붙인다 —
 // COLD CACHE(HOLD), COLD CACHE(control wake), MODEL SWITCH(F3), COMPACTION, SESSION CHANGE, UPGRADE / EFFORT CHANGE(F7).
@@ -164,8 +165,8 @@ export function findLeaks(
   const out: LeakEvent[] = [];
   for (const [session, list] of bySession) {
     list.sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
-    const name = names.get(session)?.toUpperCase() ?? null;
-    const mine = sends.filter((s) => s.session === session || (name !== null && s.name?.toUpperCase() === name));
+    const name = names.get(session) ? regKey(names.get(session)) : null;
+    const mine = sends.filter((s) => s.session === session || (name !== null && s.name != null && regKey(s.name) === name));
     out.push(...sessionLeaks(list, cutsOf.get(session) ?? [], mine, prices));
   }
   for (const list of byAgent.values()) {

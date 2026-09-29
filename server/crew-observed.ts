@@ -4,6 +4,7 @@ import { config } from "./config.ts";
 import type { CrewMember } from "./crew.ts";
 import { driftOf } from "./fuel-crew.ts";
 import type { Session } from "./model.ts";
+import { regKey } from "./registration.ts";
 import { sessionDir } from "./sources/claude.ts";
 
 // OBSERVED CREW: CAPTAIN 세션의 서브에이전트 기록으로 본 실제 CREW. 설계: docs/fleet.md 8.3.
@@ -121,7 +122,7 @@ function titleOf(dir: string): string | null {
   let title: string | null = null;
   try {
     const t = JSON.parse(readFileSync(file, "utf8"))?.customTitle;
-    title = typeof t === "string" && t.trim() ? t.trim().toUpperCase() : null;
+    title = typeof t === "string" && t.trim() ? regKey(t) : null; // `Team G`도 TEAM_G(ATC-67)
   } catch {}
   titleCache.set(dir, { mtime: m, title });
   return title;
@@ -203,11 +204,11 @@ export function sessionDirsOf(
   now = Date.now(),
   windowDays = OBSERVED_WINDOW_DAYS,
 ): string[] | null {
-  const reg = registration.toUpperCase();
+  const reg = regKey(registration);
   const since = now - windowDays * DAY_MS;
   const dirs = new Set<string>();
   for (const s of sessions) {
-    if (s.agent === "claude" && s.status !== "dead" && s.name.toUpperCase() === reg) dirs.add(sessionDir(s.cwd, s.id));
+    if (s.agent === "claude" && s.status !== "dead" && regKey(s.name) === reg) dirs.add(sessionDir(s.cwd, s.id));
   }
   const live = new Set(dirs);
   for (const d of titledDirs(now).get(reg) ?? []) if (activeWithin(d, since)) dirs.add(d);

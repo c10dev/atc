@@ -3,6 +3,7 @@ import { fleetStatusOf } from "./fleet-status.ts";
 import type { AircraftView } from "./fleet.ts";
 import type { Clearance, Ticket } from "./model.ts";
 import type { Proposal } from "./proposals.ts";
+import { registrationOf, regKey } from "./registration.ts";
 
 // SCHEDULE TAIL(ATC-68): FLIGHT의 `tail:TEAM_X`(TAIL ASSIGNMENT)를 한 AIRCRAFT로 정하는 초안. 설계: docs/occ.md 5장, docs/fleet.md.
 // DISPATCH 밖에서 정한 배정(CHARTER DESK의 SUPERVISOR 지시, 팀이 이미 몰고 있는 FLIGHT)을 라벨로 남긴다.
@@ -23,12 +24,15 @@ export class TailError extends Error {
 
 // `tail:` 라벨만(옛 `lane:`은 여기서 보지 않는다 — 바꾸지도 지우지도 않는다)
 const TAIL_ONLY = /^tail:\s*(\S+)$/i;
-export const tailRegOf = (label: string) => TAIL_ONLY.exec(label.trim())?.[1]?.toUpperCase() ?? null;
+export const tailRegOf = (label: string) => {
+  const m = TAIL_ONLY.exec(label.trim());
+  return m ? regKey(m[1]) : null; // `tail:team-g`도 TEAM_G(ATC-67)
+};
 export const tailRegsOf = (labels: string[]) => [...new Set(labels.map(tailRegOf).filter(Boolean) as string[])];
 
 // 발부 때 바꿀 것: 붙일 라벨과 뗄 다른 tail: 라벨(Linear 이름 그대로). 이미 붙어 있으면 add는 빈다
 export function tailDiffOf(labels: string[], reg: string): { add: string[]; remove: string[] } {
-  const want = reg.toUpperCase();
+  const want = regKey(reg);
   const remove = labels.filter((l) => {
     const r = tailRegOf(l);
     return r !== null && r !== want;
@@ -44,7 +48,7 @@ export function tailLabelsOf(labels: string[], reg: string): string[] {
 
 // 화면·APPLIED 판정용 바뀜 목록. 그 tail:이 이미 붙어 있으면 빈 배열(APPLIED)
 export function tailChangesOf(labels: string[], reg: string): string[] {
-  const want = reg.toUpperCase();
+  const want = regKey(reg);
   if (tailRegsOf(labels).includes(want)) return [];
   const { add, remove } = tailDiffOf(labels, want);
   return [...add.map((l) => `+ ${l}`), ...remove.map((l) => `− ${l}`)];
@@ -58,10 +62,11 @@ export interface TailCtx {
 
 // TAIL 입력 검사(순수). ticket: 대상 FLIGHT
 export function parseTail(raw: Record<string, unknown>, ticket: Pick<Ticket, "key" | "labels">, ctx: TailCtx): string {
-  const reg = String(raw.registration ?? "").trim().toUpperCase().replace(/^TAIL:\s*/, "");
-  if (!reg) throw new TailError("REGISTRATION이 필요함 (예: TEAM_J)");
-  if (!new RegExp(ctx.teamPattern, "i").test(reg)) throw new TailError(`${reg}는 팀 세션 이름 규칙(teamPattern ${ctx.teamPattern})에 맞지 않음`);
-  const a = ctx.fleet.find((x) => x.registration.toUpperCase() === reg);
+  const input = String(raw.registration ?? "").trim().replace(/^TAIL:\s*/i, "");
+  if (!input) throw new TailError("REGISTRATION이 필요함 (예: TEAM_J)");
+  const reg = registrationOf(input, ctx.teamPattern); // `Team J`도 TEAM_J(ATC-67)
+  if (!reg) throw new TailError(`${input.toUpperCase()}는 팀 세션 이름 규칙(teamPattern ${ctx.teamPattern})에 맞지 않음`);
+  const a = ctx.fleet.find((x) => regKey(x.registration, ctx.teamPattern) === reg);
   if (!a) throw new TailError(`${reg}는 FLEET에 없음 — ENTRY INTO SERVICE 뒤에 붙인다`);
   if (a.retired) throw new TailError(`${reg}는 RETIRED`);
   if (!ctx.tailLabels) throw new TailError("Linear 라벨 목록을 아직 읽지 못함 — 잠시 뒤 다시", 503);
@@ -78,8 +83,8 @@ export function tailCautionOf(
 ): string | null {
   const notes: string[] = [];
   for (const other of tailRegsOf(ticket.labels)) {
-    if (other === reg.toUpperCase()) continue;
-    const v = views.find((x) => x.registration.toUpperCase() === other);
+    if (other === regKey(reg)) continue;
+    const v = views.find((x) => regKey(x.registration) === other);
     if (!v) continue;
     const airborne = fleetStatusOf(v) === "AIRBORNE";
     const stand = v.flying.includes(ticket.key);
@@ -122,11 +127,11 @@ const READBACK_LIVE = new Set(["accepted", "departed"]); // READBACK 뒤 몰고 
 // REGISTRATION은 teamPattern에 맞고 FLEET에 있고 RETIRED가 아니어야 한다(그래야 TAIL 초안이 된다). FLIGHT·REGISTRATION 순
 export function tailSignalsOf(inp: TailSignalInput): TailSignal[] {
   const team = new RegExp(inp.teamPattern, "i");
-  const usable = new Set(inp.fleet.filter((a) => !a.retired).map((a) => a.registration.toUpperCase()));
+  const usable = new Set(inp.fleet.filter((a) => !a.retired).map((a) => regKey(a.registration, inp.teamPattern)));
   const open = new Map(inp.tickets.filter((t) => !CLOSED.has(t.stateType) && !tailRegsOf(t.labels).length).map((t) => [t.key, t]));
   const out = new Map<string, TailSignal>();
   const add = (flight: string | null, reg: string | null, e: TailEvidence) => {
-    const r = reg?.toUpperCase();
+    const r = reg ? regKey(reg, inp.teamPattern) : null;
     if (!flight || !r || !open.has(flight) || !team.test(r) || !usable.has(r)) return;
     const k = `${flight}|${r}`;
     const s = out.get(k) ?? { flight, registration: r, evidence: [] };

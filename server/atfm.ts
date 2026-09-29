@@ -10,6 +10,7 @@ import type { GhPull } from "./landing.ts";
 import type { Clearance, PullRequest, Snapshot, Ticket } from "./model.ts";
 import type { AircraftView } from "./fleet.ts";
 import type { Proposal } from "./proposals.ts";
+import { regKey } from "./registration.ts";
 import type { ScheduleOp } from "./schedule.ts";
 
 // ATFM(3단계 흐름 관리). 설계: docs/atfm.md. 이 파일은 8장의 1~5단계다:
@@ -596,7 +597,7 @@ export interface AutoContext {
 export function autoEligibility(p: Proposal, ctx: AutoContext): Eligibility {
   const t = ctx.ticket;
   const cls = classOf(t?.labels ?? []);
-  const name = (p.aircraftName ?? "").toUpperCase();
+  const name = regKey(p.aircraftName); // 제안의 세션 이름 → REGISTRATION(ATC-67)
   const checks: Check[] = [];
   const add = (code: string, ok: boolean, text: string) => checks.push({ code, ok, text });
   add("A1", cls.explicit.type && cls.explicit.wake, "type:·wake: 라벨이 명시돼 있어야 함(기본값 BUILD·M 아님)");
@@ -610,7 +611,7 @@ export function autoEligibility(p: Proposal, ctx: AutoContext): Eligibility {
   const mark = p.crosscheck;
   add("A7", Boolean(mark && mark.verdict === "agree" && CROSSCHECK_MODELS.test(mark.model)), "허용 모델의 CROSSCHECK agree가 있어야 함");
   const ratingsOk = cls.ratings.every((r) => ctx.aircraft?.ratings.includes(r));
-  const mine = ctx.history.filter((x) => (x.aircraftName ?? "").toUpperCase() === name);
+  const mine = ctx.history.filter((x) => regKey(x.aircraftName) === name);
   const noReadback = mine.some((x) => x.status === "sent" && ctx.now - Date.parse(x.statusAt) > 10 * MIN);
   const declined = mine.some((x) => x.timeline.declined && ctx.now - Date.parse(x.timeline.declined) < 7 * DAY);
   // STAND 없이 DEPARTED한 FLIGHT(SURVEY·CHECK)를 날고 있는 AIRCRAFT는 세션이 쉬고 있어도 실제로는 바쁘다(ARRIVED 보고 전)

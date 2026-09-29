@@ -118,4 +118,6 @@ test("저장소 가격표(server/fuel-prices.json)는 오류 없이 읽힌다", 
   assert.deepEqual(p.errors, []);
   assert.ok(p.table.source);
   assert.ok(Object.keys(p.table.models).length > 0);
+  // Sonnet 5.5는 Sonnet 5와 정가가 같다
+  assert.deepEqual(p.table.models["claude-sonnet-5-5"], p.table.models["claude-sonnet-5"]);
 });

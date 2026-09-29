@@ -6,6 +6,7 @@ import { type AircraftView, applyPatch, FleetError, fleetView, loadFleet, saveAi
 import { type LogEntry, loadLogbook } from "./logbook.ts";
 import type { Snapshot } from "./model.ts";
 import { record } from "./recorder.ts";
+import { fleetKeyOf, regKey } from "./registration.ts";
 import { type ClassifyPayload, loadScheduleOps, type ScheduleOp } from "./schedule.ts";
 
 // CHECKRIDE: AIRCRAFT × TYPE RATING마다 LOGBOOK에서 근거를 모아 부여·재검토를 추천한다(docs/fleet.md 8.2).
@@ -129,7 +130,7 @@ export function checkrideRows(
     if (a.retired) continue;
     for (const rating of RATINGS) {
       const evidence: Evidence[] = rated
-        .filter(({ e, fr }) => e.aircraft === a.registration && fr.ratings.includes(rating))
+        .filter(({ e, fr }) => regKey(e.aircraft) === regKey(a.registration) && fr.ratings.includes(rating)) // 옛 LOGBOOK 표기도(ATC-67)
         .map(({ e, fr }) => ({
           key: e.key,
           flight: e.flight!,
@@ -166,7 +167,7 @@ export function mountCheckride(app: Hono, getSnapshot: () => Promise<Snapshot>) 
 
   // SUPERVISOR가 누른 부여·회수. FLEET 편집과 같은 길(applyPatch → fleet.json)로 바꾸고 FLIGHT RECORDER에 근거를 남긴다.
   app.post("/api/fleet/:registration/checkride", async (c: Context) => {
-    const reg = (c.req.param("registration") ?? "").toUpperCase();
+    const reg = regKey(c.req.param("registration"), loadDispatchConfig().teamPattern);
     const body = await c.req.json().catch(() => ({}));
     const rating = body.rating as Rating;
     const action = body.action;
@@ -178,7 +179,7 @@ export function mountCheckride(app: Hono, getSnapshot: () => Promise<Snapshot>) 
     if (action === "grant" && row.holds) return c.json({ error: `${reg}는 이미 ${rating}를 가짐` }, 409);
     if (action === "revoke" && !row.holds) return c.json({ error: `${reg}에 ${rating}가 없음` }, 409);
     const fleet = loadFleet();
-    const key = Object.keys(fleet.aircraft).find((k) => k.toUpperCase() === reg) ?? reg;
+    const key = fleetKeyOf(Object.keys(fleet.aircraft), reg) ?? reg;
     const current = fleet.aircraft[key] ?? {};
     try {
       const next = applyPatch(current, { ratings: nextRatings(current.ratings ?? fleet.defaults.ratings, rating, action) }, fleet.defaults);

@@ -100,7 +100,8 @@
   border-left-color: var(--radar);
 }
 .fp-row.k-STOP,
-.fp-row.k-RESTART {
+.fp-row.k-RESTART,
+.fp-row.k-REFRESH {
   border-left-color: var(--cyan);
 }
 .fp-row.k-AOG {
@@ -126,7 +127,8 @@
   color: var(--radar);
 }
 .k-STOP .fp-kind,
-.k-RESTART .fp-kind {
+.k-RESTART .fp-kind,
+.k-REFRESH .fp-kind {
   color: var(--cyan);
 }
 .k-AOG .fp-kind {

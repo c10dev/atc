@@ -7,11 +7,18 @@ description: Linear ATC 이슈 하나(ATC-n)를 atc 저장소에서 구현해 PR
 
 규칙이 이 파일과 루트 `CLAUDE.md`가 다르면 `CLAUDE.md`를 따른다.
 
+## 0. 배정 받기
+
+ATC-<n> 배정은 두 갈래로 온다. 어느 쪽이든 CAPTAIN이 그 메시지에 바로 답한다(루트 `CLAUDE.md` "교신").
+
+- **OCC(운항관제 세션)의 `[DISPATCH D-xxxx]` FLIGHT PLAN.** 대개 `BRIEF: DIRECT`와 함께 이슈 본문(목표·완료 기준·제약)을 메시지에 담아 온다. 맡으면 그 메시지에 `READBACK D-xxxx`로 답하고, 맡지 못하면 READBACK 대신 이유를 답한다. 일하는 중에 `[DISPATCH D-xxxx] RECALL`을 받으면 즉시 멈추고 `READBACK D-xxxx RECALL`로 답한다. 이때 최종 보고도 OCC에 보낸다(8절).
+- **ENGINEERING이나 사용자가 직접 맡기는 지시.** 아래 "1. 명세 읽기"대로 이슈를 읽고 `READBACK ATC-<n>`으로 그 세션에 답한다. 최종 보고도 그 세션에 보낸다(8절).
+
 ## 1. 명세 읽기
 
-- `curl -s localhost:7700/api/dispatch/flight/ATC-<n>`으로 이슈 본문과 댓글을 읽는다. Linear에는 쓰지 않는다.
+- `curl -s localhost:7700/api/dispatch/flight/ATC-<n>`으로 이슈 본문과 댓글을 읽는다. FLIGHT PLAN 메시지에 이미 본문이 담겨 있으면 다시 조회하지 않아도 된다. Linear에는 쓰지 않는다.
 - 목표, 완료 기준(Done when·Exit criteria), 이 작업만의 제약을 확인한다. 지시가 `BRIEF: DIRECT`면 목표로 곧장 간다(`docs/dispatch.md` "DIRECT briefs"). 번호 붙은 단계가 있어도 목표와 완료 기준이 우선이다.
-- 받았으면 일을 맡긴 세션에 `READBACK ATC-<n>`으로 답하고, 끝까지 한 번에 진행한다.
+- 0절에서 이미 READBACK했으면 다시 답하지 않는다. 직접 지시로 받았고 아직 답하지 않았으면 일을 맡긴 세션에 `READBACK ATC-<n>`으로 답한다. 어느 쪽이든 끝까지 한 번에 진행한다.
 - 명세에 없는 변경을 하게 되면 PR 본문에 따로 적는다.
 
 ## PILOT'S DISCRETION
@@ -76,9 +83,9 @@ git diff --name-only origin/main...HEAD | node deploy/landing-tier.mjs
 
 ## 8. 보고
 
-일을 맡긴 세션(보통 ENGINEERING)에만 `SendMessage`로 보고한다. 다른 팀 세션에는 보내지 않는다.
+일을 맡긴 세션에만 `SendMessage`로 보고한다(0절: FLIGHT PLAN으로 받았으면 OCC, 직접 지시로 받았으면 ENGINEERING이나 사용자). 다른 팀 세션에는 보내지 않는다.
 
-- 첫 줄: `[TEAM_X → ENGINEERING] ATC-<n>: PR #<번호> <링크>`
+- 첫 줄: `[TEAM_X → ENGINEERING] ATC-<n>: PR #<번호> <링크>`(OCC에 보고할 때는 `→ OCC`)
 - 한 일을 요약한다(항목 3~5개).
 - 명세와 다르게 한 점, PILOT'S DISCRETION으로 고른 것과 그 이유를 적는다.
 - 등급을 적고, `flagged`면 바뀐 관제 규칙을 적는다.

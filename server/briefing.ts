@@ -2,6 +2,7 @@ import { classOf } from "./crew.ts";
 import { DONE_STATES } from "./dispatch.ts";
 import { type ColdCache, type PricedEntry, type TripFuel, tripFuelOf } from "./fuel-view.ts";
 import type { Ticket } from "./model.ts";
+import { regKey } from "./registration.ts";
 import type { Route } from "./routes.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 
@@ -110,15 +111,15 @@ export function factsOf(p: FactsProposal, ctx: FactsContext, index = waypointInd
   });
   const projectOf = (key: string) => byKey.get(key)?.project ?? index.get(key)?.route ?? null;
   const since = ctx.now - RECENT_DAYS * DAY;
-  const reg = p.aircraftName?.toUpperCase() ?? null;
+  const reg = p.aircraftName ? regKey(p.aircraftName) : null; // 제안의 세션 이름과 LOGBOOK의 옛 표기를 한 REGISTRATION으로(ATC-67)
   const recent: Facts["recent"] = [];
   if (reg && route) {
     for (const f of ctx.flying)
-      if (f.flight !== p.flight && f.aircraftName?.toUpperCase() === reg && projectOf(f.flight) === route)
+      if (f.flight !== p.flight && (f.aircraftName ? regKey(f.aircraftName) : null) === reg && projectOf(f.flight) === route)
         recent.push({ key: f.flight, title: byKey.get(f.flight)?.title ?? null, at: f.at, how: "ENROUTE" });
     for (const e of ctx.entries) {
       const at = Date.parse(e.arrivedAt);
-      if (!e.flight || e.flight === p.flight || e.aircraft?.toUpperCase() !== reg || at < since || at > ctx.now) continue;
+      if (!e.flight || e.flight === p.flight || (e.aircraft ? regKey(e.aircraft) : null) !== reg || at < since || at > ctx.now) continue;
       if (projectOf(e.flight) === route && !recent.some((r) => r.key === e.flight))
         recent.push({ key: e.flight, title: byKey.get(e.flight)?.title ?? e.pr?.title ?? null, at: e.arrivedAt, how: "ARRIVED" });
     }

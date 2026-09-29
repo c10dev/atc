@@ -578,7 +578,7 @@ export function notReadyOf(p: Pick<Proposal, "status" | "gateCodes" | "reasonCod
 
 // 2b 켜기 점검표(표시만). DISPATCH 브리핑과 ROUTE MAP의 WAYPOINT 점검(docs/routes.md 6단계)이 같이 쓴다
 export function readiness2bNow(gate: ReturnType<typeof gateOf>, now = Date.now(), files = readinessFiles()) {
-  return readiness2bOf({ gate, ...selfCheck2b(files.atcctl, now), crewChangeMissing: selfCheckCrewChange(files.atcctl, now), sendGuard: files.sendGuard, vocado: files.vocado });
+  return readiness2bOf({ gate, ...selfCheck2b(files.atcctl, now), crewChangeMissing: selfCheckCrewChange(files.atcctl, now), sendGuard: files.sendGuard, readback: files.readback });
 }
 
 export function gateOf(proposals: Proposal[]) {

@@ -22,6 +22,7 @@ import { readFuelRecords } from "./fuel-run.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, holdStops, loadAtfm, readRecordedStops, reviveStops, stopFigures } from "./atfm.ts";
 import { fastTrackOf, isHeld, loadAutoland, loadAutolandState, mergeExclusionOf, planAutoland } from "./autoland.ts";
+import { regKey } from "./registration.ts";
 
 // PR head별로 CLEARED TO LAND가 처음 된 시각 (메모리, 서버를 재시작하면 다시 센다)
 const readySince = new Map<string, string>();
@@ -129,11 +130,12 @@ export async function buildSnapshot(): Promise<Snapshot> {
   }
   // FUEL REMAINING(ATC-55): statusline이 적은 rate_limits를 session → AIRCRAFT → ACCOUNT로(죽은 세션의 마지막 값도 reset까지 쓴다).
   // 관제 세션(TOWER·OCC·CROSSCHECK·MCC·ENGINEERING, ATC-60)도 같은 ACCOUNT의 구성원으로 센다 — 붙들지는 않는다
-  const regs = [...new Set(sessions.filter((x) => team.test(x.name)).map((x) => x.name.toUpperCase()))];
+  const regOf = (name: string) => regKey(name, dispatchCfg.teamPattern); // `Team G`도 TEAM_G 구성원(ATC-67)
+  const regs = [...new Set(sessions.filter((x) => team.test(x.name)).map((x) => regOf(x.name)))];
   const controlOf = new Map(sessions.map((x) => [x.id, team.test(x.name) ? null : controlNameOf({ name: x.name, cwd: realDir(x.cwd) }, CONTROL_ABS)]));
   const controls = [...new Set([...controlOf.values()].filter((n): n is ControlName => Boolean(n)))];
   const members: FuelMember[] = [
-    ...regs.map((reg): FuelMember => ({ name: reg, kind: "aircraft", account: accountOf(fleet, reg), sessionIds: sessions.filter((x) => x.name.toUpperCase() === reg).map((x) => x.id) })),
+    ...regs.map((reg): FuelMember => ({ name: reg, kind: "aircraft", account: accountOf(fleet, reg), sessionIds: sessions.filter((x) => team.test(x.name) && regOf(x.name) === reg).map((x) => x.id) })),
     ...controls.map((n): FuelMember => ({ name: n, kind: "control", account: controlAccountOf(fleet, n), sessionIds: sessions.filter((x) => controlOf.get(x.id) === n).map((x) => x.id) })),
   ];
   const fuelAccounts = fuelAccountsOf(members, readFuelRecords(), fuelConfigOf(dispatchCfg.fuel), healthAt);

@@ -21,6 +21,9 @@ atc는 팀 세션 하나를 AIRCRAFT(`TEAM_B`, callsign BRAVO)로, 그 리더를
 > - DEPARTURE LOG(7.5)
 > - TYPE RATING의 CHECKRIDE 추천(8.2)
 > - 세션 조종: LAUNCH·STOP(8.5)
+> - FLEET PLAN 그림자·승인 운용과 REFRESH(8.6, 8.7, ATC-69)
+> - FLEET 목록의 FOB(ATC-81)
+> - 세션 이름 표기를 REGISTRATION 하나로 읽기(ATC-67)
 >
 > 결정 사항은 맨 아래에 있다.
 
@@ -87,6 +90,14 @@ AIRPORT 등록부(`airports.json`)처럼 `~/.local/state/atc/fleet.json`에 둔�
 - **CREW COMPLEMENT**는 감지하지 않고 선언한다. atc는 실제로 관찰한 CREW도 보여 준다(CAPTAIN 세션 아래 기록된 서브에이전트 호출, 8.3). FLEET 탭이 둘을 나란히 보여 주므로 어긋남이 보인다.
 - **TYPE RATING**은 COMPLEMENT가 허용하는 것에서 시작한다. 도우미가 `flash-helper`뿐인 CREW는 `SEC`를 가질 수 없다. vocado가 보안 작업에 DeepSeek을 금지하기 때문이다.
 - **ROUTES**와 **TARGETS**는 SUPERVISOR가 정한다. OCC는 변경 초안을 쓸 수 있지만(4단계) 적용하지는 않는다.
+
+### REGISTRATION 표기 as built (ATC-67)
+
+세션 이름을 어떻게 적었든 atc는 한 REGISTRATION을 어디서나 같게 읽는다. `server/registration.ts`의 `registrationOf(name, teamPattern)`는 DISPATCH `teamPattern`이 받는 이름을 정식 표기(대문자, `_`)로 바꾼다(`Team G`, `TEAM-G`, `team_g`, `TEAMG` → `TEAM_G`). 구분자가 없으면 규칙이 받는 첫 자리에 `_`를 넣으므로, `teamPattern`을 바꾸면 그 규칙이 정한다. 규칙이 받지 않는 이름(TOWER, OCC, President)은 `null`이고 전처럼 대문자로 비교한다.
+
+- **읽기.** 세션·AIRCRAFT 이름을 REGISTRATION과 비교하는 곳은 모두 이것을 쓴다: FLEET(`fleetView`, 카드 API, ENTRY INTO SERVICE), DISPATCH(tail, CHECK 독립성, FUEL 조회, `crew.ts`의 프로필·ACCOUNT), CREW CHANGE, 관찰한 CREW, CHECKRIDE, BRIEFING, FLEET PLAN, ATFM 자동 배정 판정, FUEL 구성원·FUEL BURN, FLIGHT FOLLOWING, 세션 조종(`sameName`), `tail:` 라벨(`tail:team-g`도 `TEAM_G`), TAIL 초안. `fleet.json` 키가 `Team_G`로 적혀 있어도 찾고, 바꿔 쓰지 않는다.
+- **새 기록.** LOGBOOK `aircraft`, DEPARTURE LOG 줄, FLIGHT RECORDER `fleet`·`checkride` 줄, FLEET PLAN 제안, atc가 띄운 세션은 정식 REGISTRATION을 쓴다. 옛 줄은 표기를 그대로 두고 읽을 때 맞춘다. 두 기록은 일부러 살아 있는 세션 이름을 둔다. `occ/send-guard.mjs`가 정확히 맞춰 보는 SendMessage 수신자이기 때문이다: DISPATCH 제안의 `aircraftName`, CREW CHANGE의 `registration`(SUPERVISOR 결정, 2026-09-28). guard는 바꾸지 않았다.
+- **FLEET.** 살아 있는 팀 세션의 이름이 정식 표기가 아니면 그 AIRCRAFT에 한 줄 힌트 `세션 이름 Team G → TEAM_G로 바꾸면 좋다`와 상태 목록의 작은 `이름` 표시가 보인다. 세션은 그대로 잇는다. 같은 REGISTRATION으로 읽히는 살아 있는 세션이 둘 이상이면 합치지 않고 충돌로 보인다(`세션 2개가 TEAM_H로 읽힘: …`, 실선 `세션 2개` 표시). 어느 쪽이 SUPERSEDED인지 정하는 것은 idea [#96](https://github.com/chaehy5665/atc/issues/96)이다.
 
 ## 4. FLIGHT 분류
 
@@ -342,7 +353,7 @@ AIRCRAFT마다 SUPERVISOR가 FLEET 탭에서 정한다. 보여 주기만 하고 
 | 필드 | 뜻 |
 |---|---|
 | `key` | `owner/repo#number`, 중복을 막는 key. PR 하나는 한 번만 적는다 |
-| `aircraft` | 그 FLIGHT를 난 팀 세션의 REGISTRATION(아래), 대문자. atc가 알 수 없으면 `null`이고, 그래도 줄은 적는다 |
+| `aircraft` | 그 FLIGHT를 난 팀 세션의 REGISTRATION(아래), 정식 표기(`TEAM_G`, ATC-67. 옛 줄은 적힌 대로 대문자). atc가 알 수 없으면 `null`이고, 그래도 줄은 적는다 |
 | `flight` | PR 브랜치(`voc-<n>`)나 제목 끝 `(VOC-n)`에서 얻은 ticket key. AD HOC 작업은 `null` |
 | `class` | 도착 시점 그 FLIGHT의 Linear 라벨로 본 `classOf(labels)`(FLIGHT TYPE, WAKE, rating, 그리고 type·wake가 라벨에서 왔는지). AD HOC이거나 Linear가 티켓을 모르면 `null` |
 | `airport` | 저장소의 AIRPORT code |
@@ -553,7 +564,7 @@ COMPLEMENT는 SUPERVISOR가 선언한 것이다. 관찰한 CREW는 AIRCRAFT의 �
 
 대화 기록(`*.jsonl` 본문), 프롬프트, 메타의 `description`은 읽지도, 저장하지도, 돌려주지도 않는다. 메타 파일은 파싱한 즉시 `agentType`과 `model` 말고는 모두 버린다(`parseMeta`).
 
-**어느 세션인가.** 이름이 REGISTRATION과 같은 세션이 그 AIRCRAFT의 것이다. 스냅숏의 살아 있는 Claude 세션(지금 atc가 AIRCRAFT를 잇는 방식)이거나, `custom-title.json`이 그렇게 말하고 창 안에서 활동한 세션 폴더다. 하나도 없으면 `observedCrew`와 `crewDrift`는 `null`이다(카드에는 "unused"가 아니라 관찰 없음으로 보인다).
+**어느 세션인가.** 이름이 그 REGISTRATION으로 읽히는 세션(`Team G`도 `TEAM_G`, ATC-67)이 그 AIRCRAFT의 것이다. 스냅숏의 살아 있는 Claude 세션(지금 atc가 AIRCRAFT를 잇는 방식)이거나, `custom-title.json`이 그렇게 말하고 창 안에서 활동한 세션 폴더다. 하나도 없으면 `observedCrew`와 `crewDrift`는 `null`이다(카드에는 "unused"가 아니라 관찰 없음으로 보인다).
 
 **POSITION 대응**(`positionOf`, 선언한 COMPLEMENT 기준):
 
@@ -624,7 +635,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - `overdue`: 늦은 id
 - `pending`: SUPERVISOR를 기다리는 id
 
-**2b 점검표.** `crew-change` 항목("CREW CHANGE 발부", `selfCheckCrewChange`)은 이 전이, 거절, 메시지, 늦음 규칙, 엔드포인트, `atcctl` 명령을 코드 사실로 확인한다. `vocado-readback` 항목은 vocado `CLAUDE.md`가 `[OCC CC-xxxx]`에도 `READBACK CC-xxxx`로 답할 때만 준비됨이다([dispatch.ko.md](dispatch.ko.md) "2b 켜기 점검표").
+**2b 점검표.** `crew-change` 항목("CREW CHANGE 발부", `selfCheckCrewChange`)은 이 전이, 거절, 메시지, 늦음 규칙, 엔드포인트, `atcctl` 명령을 코드 사실로 확인한다. `readback-*` 항목(`candidateTeams`가 배정할 수 있는 AIRPORT마다 하나, `vocado-readback` 포함)은 그 AIRPORT의 `CLAUDE.md`가 `[OCC CC-xxxx]`에도 `READBACK CC-xxxx`로 답할 때만 준비됨이다([dispatch.ko.md](dispatch.ko.md) "2b 켜기 점검표").
 
 ### 8.5 세션 조종: LAUNCH와 STOP
 
@@ -640,7 +651,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **기록.** LAUNCH·STOP마다 FLIGHT RECORDER에 `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}` 한 줄.
 - **화면.** 세션이 없는 카드에 **LAUNCH**(permission mode, 선택 모델, 상한 대비 백그라운드 수). 백그라운드 세션이면 `BG <id>`와 **STOP**. 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
 
-아직 만들지 않음: 쉬는 세션의 자동 STOP(FLEET PLAN 4단계. 그림자 제안과 승인 운용은 8.6·8.7에서 만듦), 오래 도는 세션의 정기 정비로서 RESTART, 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, ATC-46, [fuel.md](fuel.md)).
+아직 만들지 않음: 쉬는 세션의 자동 STOP(FLEET PLAN 4단계. 그림자 제안과 승인 운용은 8.6·8.7에서 만듦), FLIGHT 도중 오래 도는 세션의 정기 정비로서 RESTART(쉬는 AIRCRAFT는 REFRESH, 8.6, ATC-69), 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, ATC-46, [fuel.md](fuel.md)).
 
 #### 8.5.1 관제 세션(2026-09-28 만듦)
 
@@ -667,7 +678,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 ### 8.6 FLEET PLAN: LAUNCH·STOP 등을 제안하기
 
-상태: 1·2단계 만듦(그림자, 2026-09-28). SUPERVISOR 결정은 아래에 적었다. 8.5가 SUPERVISOR에게 조종 버튼을 줬다면, 이 절은 atc가 언제 그 버튼을 쓰자고 제안할지 정한다. 팀을 꾸리고, 세우고, 정비하고, 퇴역시키는 일을 손으로 챙기지 않게 하려는 것이다.
+상태: 1·2단계 만듦(그림자, 2026-09-28). `REFRESH`(객실 정비, ATC-69)도 함께 만들었다. SUPERVISOR 결정은 아래에 적었다. 8.5가 SUPERVISOR에게 조종 버튼을 줬다면, 이 절은 atc가 언제 그 버튼을 쓰자고 제안할지 정한다. 팀을 꾸리고, 세우고, 정비하고, 퇴역시키는 일을 손으로 챙기지 않게 하려는 것이다.
 
 **지금 사실(2026-09-28 06:30 UTC).**
 
@@ -699,6 +710,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 | `ENTRY` | wet lease | `LAUNCH`와 같은데 맞는 등록 AIRCRAFT가 없음. REGISTRATION·AIRPORT·CONFIGURATION을 제안 | ENTRY INTO SERVICE 뒤 LAUNCH |
 | `STOP` | 주기(parking) | atc가 띄운 백그라운드 세션이 `idleHours`(기본 12) 동안 STAND·FLIGHT·활동이 없고, 그것 없이도 AIRPORT의 예비가 유지됨 | 8.5 STOP(다시 이어짐) |
 | `RESTART` | 정기 점검 | 백그라운드 세션이 PARKED이고 `restartDays`(기본 3)보다 오래됨. 또는 AIRCRAFT health(8.8)가 `CONTEXT`이거나 ALERT 수준의 `HUNG`(ATC-48) | STOP 뒤 새 CREW BRIEFING으로 LAUNCH(데스크톱·터미널 세션은 손으로 닫고 다시 연다) |
+| `REFRESH` | 객실 정비(turnaround) | AIRCRAFT가 PARKED이거나 ARRIVED한 FLIGHT의 STAND만 쥔 HOLDING이고, 열린 PR과 이번 계획의 FLIGHT가 없고, 최근 `minDwell` 안에 띄우지 않았고, 대화가 `refreshTokens`(기본 300k)나 창의 `refreshPct`(기본 40 %)를 넘음(ATC-69) | 백그라운드 세션: `RESTART`와 같다. 데스크톱·터미널 세션: 실행하지 않는다. SUPERVISOR가 그 세션에서 `/clear`하고 CREW BRIEFING을 붙여 넣는다 |
 | `AOG` | 기한이 있는 MEL 유예 | 세션이 NORDO이거나 최근 24시간에 LOS. 또는 AIRCRAFT health(8.8)가 `MODEL`이거나 주간 `LIMIT`(ATC-48) | `until` = 지금 + 24시간으로 AOG(주간 `LIMIT`만이면 reset 날). 풀리지 않고 기한이 지나면 `RETIRE`나 복귀 제안이 뒤따름 |
 | `RETIRE` | 퇴역 | `retireDays`(기본 30) 동안 ARRIVED 없음, 예비에 필요 없음, 열린 PR 없음 | SUPERVISOR만, 자동 없음 |
 
@@ -720,10 +732,10 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **API.** `GET /api/fleet/plan`은 `{mode, config, ranAt, error, demand, fuel, open, waiting, recent, gate}`를 돌려준다. `open[].now`는 지금 계산한 사유다. `waiting`에는 지속 조건을 기다리는 후보가 들어가고, 판정 뒤 쉬는 후보는 빠진다. `POST /api/fleet/plan/:id/verdict`는 `{verdict: "agree" | "disagree", reason?}`를 받는다. 이 화면의 Origin이 있어야 하고(아니면 403), 닫힌 제안에는 409를 돌려준다.
 - **탭.** 카드 위에 FLEET PLAN 블록이 있다. 게이트, AIRPORT별 수요 한 줄과 LAUNCH를 막는 이유, ACCOUNT별 FUEL 한 줄(아래), 사유가 붙은 열린 제안과 반대·동의 버튼, 지켜보는 후보, 최근 닫힌 제안이 보인다.
 - **FUEL(ATC-63, [fuel.md](fuel.md) 6).** FLEET PLAN이 ACCOUNT별 FUEL REMAINING(`snapshot.fuelAccounts`, 관제 세션 포함)을 읽는다.
-  - **hold 수준**(`holdPct`, 기본 95 %): 그 ACCOUNT의 AIRCRAFT는 LAUNCH하지 않는다. 다음으로 맞는 AIRCRAFT를 고르고, hold인 AIRCRAFT를 건너뛴 LAUNCH에는 `fuel-held` 사유가 붙는다. 맞는 AIRCRAFT가 모두 hold면 ENTRY도 내지 않고 아무것도 제안하지 않는다. AIRPORT 수요 줄이 이유를 말한다: `FUEL 100% (account acct-1) until 21:48Z — TEAM_Q — ENTRY도 제안 안 함(새 세션이 열릴 계정을 모름)`. 새 세션은 이 기기에 로그인된 계정으로 열리는데 atc는 그 계정을 모르기 때문이다(ENGINEERING 결정: AIRCRAFT가 모두 한 ACCOUNT면 ENTRY는 바닥난 같은 계정에 새 세션을 띄우는 제안이 된다).
-  - 평소의 ENTRY(맞는 등록 AIRCRAFT가 아예 없음)는 새 AIRCRAFT를 `default` ACCOUNT로 세고, `default`가 hold면 내지 않는다: `FUEL 97% (account default) until 21:49Z — 새 AIRCRAFT(ENTRY)가 들 ACCOUNT`.
+  - **hold 수준**(`holdPct`, 기본 95 %): 그 ACCOUNT의 AIRCRAFT는 LAUNCH하지 않는다. 다음으로 맞는 AIRCRAFT를 고르고, hold인 AIRCRAFT를 건너뛴 LAUNCH에는 `fuel-held` 사유가 붙는다. 맞는 AIRCRAFT가 모두 hold면 ENTRY도 내지 않고 아무것도 제안하지 않는다. AIRPORT 수요 줄이 이유를 말한다: `FUEL 사용 100% (account acct-1) until 21:48Z — TEAM_Q — ENTRY도 제안 안 함(새 세션이 열릴 계정을 모름)`. 새 세션은 이 기기에 로그인된 계정으로 열리는데 atc는 그 계정을 모르기 때문이다(ENGINEERING 결정: AIRCRAFT가 모두 한 ACCOUNT면 ENTRY는 바닥난 같은 계정에 새 세션을 띄우는 제안이 된다).
+  - 평소의 ENTRY(맞는 등록 AIRCRAFT가 아예 없음)는 새 AIRCRAFT를 `default` ACCOUNT로 세고, `default`가 hold면 내지 않는다: `FUEL 사용 97% (account default) until 21:49Z — 새 AIRCRAFT(ENTRY)가 들 ACCOUNT`.
   - DISPATCH FUEL HOLD 스위치(D3)와 상관없이 hold 수준을 쓴다(ENGINEERING 결정). 제안은 조언이고, 빈 ACCOUNT에 세션을 띄우자는 제안은 쓸모가 없다. DISPATCH 동작은 그대로다.
-  - **info 수준**(`infoPct`, 기본 80 %): 제안은 하고 `fuel` 사유 줄을 단다(`FUEL 85% · resets 21:00Z (account acct-1) — 한도에 가까움(INFO) · TEAM_I · control OCC`).
+  - **info 수준**(`infoPct`, 기본 80 %): 제안은 하고 `fuel` 사유 줄을 단다(`FUEL 사용 85% · resets 21:00Z (account acct-1) — 한도에 가까움(INFO) · TEAM_I · control OCC`).
   - **찾는 법**: AIRCRAFT의 ACCOUNT 라벨로 찾는다. 운항하지 않는 AIRCRAFT는 세션이 없어 자기 값이 없기 때문이다. 관제 세션만 적은 ACCOUNT도 잡힌다. 라벨이 하나도 없으면 AIRCRAFT는 자기 세션의 값만 보고, ENTRY는 볼 ACCOUNT가 없다. FUEL 기록이 없으면 아무것도 바뀌지 않는다.
   - **expire**: 열린 LAUNCH·ENTRY의 ACCOUNT가 hold가 되면 다음 주기에 FUEL 글을 사유로 expire한다. 같은 후보가 여전히 나와도 그렇다. 같은 AIRPORT의 새 후보는 supersede가 아니라 새로 낸다.
   - **블록**: ACCOUNT마다 한 줄. 가장 많이 쓴 창과 reset, hold면 `LAUNCH·ENTRY 제안 안 함`, info면 `제안에 FUEL 사유 줄`, 그 AIRCRAFT와 관제 세션. `GET /api/fleet/plan`의 `fuel`로 오고, 계획 주기가 아니라 볼 때의 스냅샷에서 읽는다.
@@ -754,8 +766,30 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - 기본값은 제안대로: `reserve` 1, `waitMin` 120, `idleHours` 12, `restartDays` 3, `retireDays` 30, `minDwell` 2시간. 이후 조정은 그림자 기록과 게이트로 정한다.
 - ATC FLIGHT도 수요로 센다. FLEET PLAN은 `candidateTeams`만이 아니라 `LINEAR_TEAM_KEYS`의 모든 팀에서 열린 FLIGHT를 세고, 제외 규칙은 planner와 같다(상위 이슈, 닫힌 상태, 다른 AIRCRAFT로 가는 `tail:`). DISPATCH는 `candidateTeams`만 배정한다. 2026-09-28에 ATC를 거기 넣어 ATC FLIGHT도 DISPATCH가 배정한다. ATC FLIGHT도 워크스페이스 분류 라벨을 쓴다. 라벨이 없는 FLIGHT는 rating 확인을 건너뛰고 사유에 그렇게 적는다.
 - 4단계(자동 STOP)는 계획에 두되 마지막에 만들고, 스위치는 기본으로 꺼 둔다. 켜는 것은 그림자 게이트를 통과한 뒤 SUPERVISOR가 따로 정한다.
+- REFRESH(ATC-69, 작업 지시의 PILOT'S DISCRETION, SUPERVISOR 검토 대상): RESTART의 셋째 조건이 아니라 따로 둔 종류다. 그래야 게이트가 판정을 따로 세고, 데스크톱 세션에는 거절 대신 손으로 할 단계를 보인다. 기준은 `refreshTokens` 300k와 `refreshPct` 40 % 중 먼저 닿는 것. 데스크톱·터미널 세션은 자동으로 다시 띄우지 않고, 자동 STOP은 여전히 4단계가 정한다.
 
 출처: [Jeppesen crew pairing](https://ww2.jeppesen.com/airline-crew-optimization-solutions/airline-crew-pairing/), [Lufthansa Systems NetLine/Crew](https://www.lhsystems.com/solutions/operations-control-center/netline-crew), [항공 disruption recovery 조사(arXiv 2510.26831)](https://arxiv.org/html/2510.26831), [OAG: wet leasing](https://www.oag.com/blog/what-is-wet-leasing), [SKYbrary: MEL](https://skybrary.aero/articles/minimum-equipment-list-mel), [EASA AI 등급(Halldale)](https://www.halldale.com/civil-aviation/easa-ai-framework-aviation-safety-regulations), [ICAO: 항공기 주기](https://www.icao.int/operational-safety/Aircraft-Parking).
+
+### REFRESH 만든 것 (ATC-69)
+
+FLIGHT를 마친 팀은 그 대화를 통째로 들고 있다. 2026-09-28에 TEAM_J는 ATC-63이 머지된 뒤 1M 창 중 504k를 들고 PARKED로 쉬었다. 턴마다 그 접두부를 캐시에서 다시 읽고, 캐시가 식은 뒤 처음 깨어날 때는 전부 다시 쓴다(F3의 COLD CACHE, [fuel.md](fuel.md) 5). 새로 시작하기에 가장 싼 때는 FLIGHT 직후, 팀이 쉬는 동안이다. REFRESH가 그것을 제안한다.
+
+- **CONTEXT SIZE**(`server/fuel-context.ts`, 순수). 세션마다 마지막 CAPTAIN(non-sidechain) 요청의 `input + cacheRead + cacheWrite`와 그 시각·모델. FUEL F1이 이미 읽은 기록으로 센다. CREW 요청은 세지 않는다. 그 요청 뒤에 `compact_boundary`가 있으면 compaction의 `postTokens`로 바꾼다(줄에 없으면 모름). `base`는 세션의 첫 CAPTAIN 요청(시스템 프롬프트·규칙·CREW BRIEFING, 2026-09-28에 약 50k)이다. 새 세션도 어차피 다시 쓰는 몫이다.
+- **창.** 대화 기록에는 `claude-opus-5-5`만 적히고 `[1m]` 접미어가 없다. 그래서 이 순서로 정한다: `fleet-plan.json`의 `contextWindows`(`{"claude-opus-5-5": 1000000}`, 모델 이름, `-YYYYMMDD` 접미어는 뗀다), 모델 이름의 `[1m]`, 그 세션에서 200k를 넘는 요청을 이미 봤으면 1M, 아니면 200k. 근거(`config`, `model`, `observed`, `default`)가 크기와 함께 간다. `refreshPct` 기준은 창이 200k 짐작이 아닐 때만 쓰고, 짐작이면 `refreshTokens`만 본다.
+- **아낌.** `(context − base)`를 F5 가격표로 매긴다. 다음 cold wake에 쓰지 않아도 되는 캐시 쓰기(세션의 지금 층, CAPTAIN은 1h)와 턴마다 읽지 않아도 되는 캐시 읽기. 2026-09-28 TEAM_J의 504k 세션은 Opus 5.5로 cold wake마다 약 $3.64, 턴마다 $0.09. 값이 없는 모델은 토큰만 보인다.
+- **사유.** `context`(`502k / 1M (50%) — claude-opus-5-5, 2026-09-28 17:07Z (기준 300k 또는 40%, 창은 본 크기로 짐작)`), `saving`, `arrived`(마지막 ARRIVED FLIGHT와, 그런 FLIGHT의 STAND를 아직 쥐었으면 그것), `session`(값이 `background`나 `interactive`).
+- **RESTART와 함께.** 같은 AIRCRAFT에 RESTART 후보(오래됨·health)가 이미 있으면 REFRESH를 따로 내지 않고 그 RESTART에 `context`·`saving` 줄을 붙인다. `minDwell`은 LAUNCH·RESTART 제안을 REFRESH의 반대 제안으로 본다.
+- **승인.** 백그라운드 세션은 RESTART 단계로 실행한다(8.5 STOP, 그다음 마지막 LAUNCH의 permission mode·모델로 LAUNCH). 데스크톱·터미널 세션은 승인이 거절된다(409). 카드에 그 세션에서 `/clear`하고 CREW BRIEFING을 붙여 넣으라는 글과 **CREW BRIEFING 복사** 버튼이 있고, 승인 운용에서는 **했음**이 동의로 닫는다. 승인 운용에서 받는 유일한 동의다.
+- **API.** `GET /api/fleet`은 AIRCRAFT마다 살아 있는 세션(여럿이면 가장 최근)의 `context: {contextTokens, window, at, pct, model, windowSource, compacted}`를 준다. `GET /api/fuel`은 세션마다, AIRCRAFT마다(기간 안 가장 최근 세션) 같은 것을 준다. 크기는 최근 7일에 바뀐 대화 기록으로 세고 60초 동안 같은 값을 쓴다.
+- **화면.** FLEET 목록에 CONTEXT 열(`502k / 1M`, 40 %부터 색), 카드에 `context 502k / 1M (50%)` 줄과 시각·창의 근거가 보인다. ATC-81이 둘을 FOB로 바꿨다(아래).
+
+### FOB as built (ATC-81)
+
+FLEET 줄에서 둘이 모두 연료라 불리며 비슷하게 읽혔다: ACCOUNT의 사용 한도(**쓴 몫**, 같은 ACCOUNT의 모든 AIRCRAFT에 같은 값)와, ATC-69부터 있는 AIRCRAFT 자기 맥락. ATC-81(표시 글만)이 각자의 이름을 준다.
+
+- **FOB(FUEL ON BOARD)**는 AIRCRAFT 자기 연료, 곧 창에 남은 몫이다. 목록 열은 `FOB 50% · 504k/1M`, 카드 줄은 `FOB 50% · 504k / 1M`. 색은 뜻을 따른다: 남은 몫 60 % 이하 노랑, 30 % 이하 빨강(ATC-69의 쓴 몫 40 %/70 %와 같은 지점). 화면에 적힌 정수 %로 가른다. 창이 200k 짐작일 뿐이면 토큰 기준(300k, 500k)이 그대로 가른다. `GET /api/fleet`은 필드 이름 `context`를 그대로 두고 `fobPct`(0–100, compaction 뒤 크기를 모르면 `null`)를 더한다. FLEET PLAN의 REFRESH `context` 사유 줄은 그대로다(쓴 몫을 말한다).
+- **ACCOUNT 사용 한도**는 줄에서 빠진다. FLEET FUEL 블록, 카드, FLEET PLAN의 FUEL 줄에는 남고, 줄에는 하나만 둔다: ACCOUNT가 hold 수준(`holdPct`, DISPATCH 스위치와 상관없이, 전에 줄 색이 그랬듯)일 때 꼬리표 `HOLD · FUEL (account pro-2) until 21:00Z`. 붙들린 ACCOUNT는 배정을 막기 때문이다. 꼬리표에는 백분율이 없고 툴팁에 있다.
+- **문구.** 사용 한도 글은 모두 쓴 몫이라고 말한다: 화면은 `사용 87% · resets 21:00Z`, TOWER `open.fuel`·FOLLOWING `fuel` 글과 FLEET PLAN FUEL 줄은 `FUEL 사용 87% · resets 21:00Z (account pro-2) — TEAM_K`, DISPATCH 사유는 `HOLD · FUEL (account pro-2) until 21:00Z — 5h 한도 사용 96%`. 값·임계값·규칙은 바뀌지 않았다.
 
 ### 8.7 FLEET PLAN 3단계: 승인 운용
 
@@ -900,9 +934,9 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 - 서버는 session → AIRCRAFT → ACCOUNT로 잇고 ACCOUNT마다 가장 새 값을 쓴다. 그래서 자기 세션이 보고하지 않은 AIRCRAFT도 그 ACCOUNT의 값을 보인다. ACCOUNT가 없으면 그 AIRCRAFT 자신의 세션 값만 쓴다. reset이 지난 창은 뺀다.
 - 관제 세션(TOWER, OCC, CROSSCHECK, MCC, ENGINEERING, ATC-60)도 ACCOUNT의 구성원이다. SUPERVISOR가 설정 창(AGENTS 탭 CONTROL 블록, `fleet.json` `control`, 선택 항목)에서 라벨을 단다. 라벨이 없으면 라벨이 하나라도 있을 때 `default`로, 하나도 없으면 자기 이름으로 따로 센다. 그 기록은 ACCOUNT의 값, TOWER INFO, 그 ACCOUNT의 AIRCRAFT에 대한 DISPATCH HOLD에 들어간다. 관제 세션 자신은 붙들지 않는다. FLEET 탭의 FUEL 블록이 ACCOUNT마다 AIRCRAFT와, 따로 관제 세션을 적는다.
-- FLEET 줄: `FUEL 82% · resets 21:00Z` — 가장 많이 쓴 창에서 **쓴 몫**과 그 창의 reset. 80 % 아래는 회색, 80 %부터 노랑(INFO), 95 %부터 빨강(HOLD 임계값). 툴팁에 창마다의 값과 어느 세션이 언제 적었는지가 있다.
+- FLEET FUEL 블록과 카드: ACCOUNT마다 `사용 82% · resets 21:00Z` — 가장 많이 쓴 창에서 **쓴 몫**과 그 창의 reset(ATC-81: 늘 쓴 몫이라고 적는다. "FUEL 82%"는 남은 눈금처럼 읽혔다). 80 % 아래는 회색, 80 %부터 노랑(INFO), 95 %부터 빨강(HOLD 임계값). 툴팁에 창마다의 값과 어느 세션이 언제 적었는지가 있다. 목록 줄에는 싣지 않는다. 같은 ACCOUNT의 AIRCRAFT마다 같은 숫자가 자기 것처럼 보이기 때문이다. 줄에는 AIRCRAFT 자기 연료 FOB(아래 "FOB as built (ATC-81)")를 두고, ACCOUNT는 hold 수준일 때 꼬리표 `HOLD · FUEL (account pro-2) until 21:00Z`(백분율 없이)로만 둔다.
 - 80 %(`dispatch.json` `fuel.infoPct`)부터 TOWER 브리핑 `open.fuel`에 INFO 항목(ACCOUNT·창·reset마다 한 번), 그 ACCOUNT의 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING에 `fuel` 문제(`info`)가 생긴다.
-- 95 %(`fuel.holdPct`)부터는 SUPERVISOR가 DISPATCH HOLD 스위치를 켰을 **때만**(설정 창 AGENTS 탭 FUEL 블록, `fuel.hold`, 기본 꺼짐, 결정 D3) DISPATCH가 그 ACCOUNT의 AIRCRAFT를 reset까지 `HOLD · FUEL 96% (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다. 계정을 저절로 바꾸는 일은 없다.
+- 95 %(`fuel.holdPct`)부터는 SUPERVISOR가 DISPATCH HOLD 스위치를 켰을 **때만**(설정 창 AGENTS 탭 FUEL 블록, `fuel.hold`, 기본 꺼짐, 결정 D3) DISPATCH가 그 ACCOUNT의 AIRCRAFT를 reset까지 `HOLD · FUEL (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다. 계정을 저절로 바꾸는 일은 없다.
 
 **Push(`hooks/health.mjs`, ATC-47).** Claude Code hook이 멈춘 순간을 바로 알려서, 승인을 기다리는 세션이 30분 뒤 `HUNG`이 아니라 곧바로 `PENDING`으로 보인다. 이벤트마다 상태 폴더의 `health/<sessionId>.jsonl`에 한 줄을 덧붙인다: `{t, event, code?, error?, line?}`(`StopFailure`, `Notification`, `Stop`, `PostToolUse`. 코드·시각·오류 첫 줄만, 본문 없음). 서버는 세션마다 마지막 줄을 읽고, 대화 기록의 마지막 사실보다 새 push 기록이 이긴다(`mergeHealth`). 아니면 pull 결과가 그대로 선다. SUPERVISOR의 설치 방법은 [hooks/README.ko.md](hooks/README.ko.md)에 있다.
 

@@ -1,0 +1,51 @@
+/* FLEET의 FUEL(Fuel.tsx): 최근 FLIGHT 줄, ACCOUNT별 FUEL, FUEL REMAINING 표시. 색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다). */
+/* FUEL(ATC-56): 그 FLIGHT 줄 바로 아래 한 줄로(좁은 카드에서 다음 FLIGHT 것처럼 보이지 않게) */
+.fl-log-fuel {
+  flex-basis: 100%;
+  padding-left: var(--space-3);
+  color: var(--muted);
+}
+/* FUEL · ACCOUNT(ATC-60): ACCOUNT마다 한 줄. 좁으면 접힌다 */
+.fl-fuel-accounts {
+  margin-top: var(--space-4);
+}
+.fl-fuel-accounts ul {
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.fl-fuel-accounts li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-1-5) var(--space-3);
+  font-size: var(--text-sm);
+}
+.fl-fuel-accounts li + li {
+  border-top: 1px solid var(--line);
+}
+.fl-fa-name {
+  min-width: 8ch;
+  font-weight: 700;
+}
+.fl-fa-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+  font-size: var(--text-xs);
+}
+/* FUEL REMAINING(ATC-55): ACCOUNT가 쓴 몫(ATC-81: 줄에는 싣지 않는다). INFO 임계값부터 노랑, HOLD 임계값부터 빨강 */
+.fl-fuel.lv-info {
+  color: var(--amber);
+}
+.fl-fuel.lv-hold {
+  color: var(--alert);
+}
+.fl-fuel {
+  margin: 0;
+  font: 600 var(--text-xs) var(--mono);
+}
