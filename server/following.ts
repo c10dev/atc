@@ -12,6 +12,8 @@ import { type FuelRemaining, fuelUsedText, membersText } from "./fuel-remaining.
 import type { Clearance, PullRequest, Snapshot, Ticket, Workspace } from "./model.ts";
 import { allProposals, type Proposal, standFreeTicket } from "./proposals.ts";
 import { regKey } from "./registration.ts";
+import { needsDecision } from "./judges/report.ts";
+import { loadReportThreshold } from "./judges/store.ts";
 
 // FLIGHT FOLLOWING(운항 추적, docs/occ.md 8장). 배정된 FLIGHT의 진행을 기존 기록으로 따라가고,
 // 늦거나(지연) Linear와 어긋나면(불일치) OCC가 SUPERVISOR에게 보고한다. 팀에 묻지는 않는다.
@@ -30,7 +32,7 @@ export const STAGES = ["readback", "departed", "prOpened", "cleared", "arrived"]
 export type Stage = (typeof STAGES)[number];
 
 export interface FollowIssue {
-  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health" | "fuel" | "unable";
+  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health" | "fuel" | "report" | "unable";
   kind: "delay" | "mismatch";
   severity: "warn" | "info"; // info: 보여 주기만(착륙 대기는 SUPERVISOR 몫, 머지 뒤 Done 아님은 CLOSE 초안 몫)
   text: string;
@@ -68,6 +70,7 @@ export interface FollowInput {
   stranded?: Stranded[]; // 기본 브랜치에 닿지 않은 머지(ATC-29)
   health?: Map<string, Health>; // REGISTRATION(대문자) → 그 AIRCRAFT의 health(ATC-45)
   fuel?: Record<string, FuelRemaining>; // REGISTRATION(대문자) → 그 ACCOUNT의 FUEL REMAINING(ATC-55)
+  reports?: Map<string, { id: string; at: string; p: number }>; // REGISTRATION → 마지막 턴에 CAPTAIN이 결정을 청한 것으로 판정된 것(ATC-89, 문턱을 넘은 것만)
   unables?: Unable[]; // CAPTAIN이 UNABLE로 닫은 CLEARANCE·FLIGHT PLAN(ATC-122)
 }
 
@@ -230,6 +233,18 @@ export function followingOf(inp: FollowInput): FollowItem[] {
           key: `${t.flight}|fuel|${fuel.group}|${fuel.top.name}|${fuel.top.resetsAt}`,
         });
       }
+      // REPORT(ATC-89): 그 FLIGHT를 쥔 AIRCRAFT의 CAPTAIN이 마지막 턴에 SUPERVISOR의 결정을 청했다(Jev 판정, 그림자). key에 판정한 턴을 넣어 턴마다 한 번
+      const rep = f.aircraft ? inp.reports?.get(regKey(f.aircraft)) : undefined;
+      if (rep && !f.stages.arrived) {
+        f.issues.push({
+          code: "report",
+          kind: "delay",
+          severity: "info",
+          text: `${f.aircraft}의 CAPTAIN이 마지막 보고에서 SUPERVISOR의 결정을 청한 것으로 판정됨(Jev ${Math.round(rep.p * 100)}%, 그림자) — 그 세션의 마지막 메시지를 읽어 본다`,
+          since: rep.at,
+          key: `${t.flight}|report|${rep.id}`,
+        });
+      }
       for (const x of (inp.stranded ?? []).filter((y) => y.flight === t.flight)) {
         const done = isDone(inp.tickets.find((y) => y.key === t.flight));
         f.issues.push({
@@ -298,8 +313,10 @@ export function ackReported(items: FollowItem[], r: Reported, keys: string[], no
 
 export function followingNow(s: Snapshot, now = Date.now()): FollowItem[] {
   const health = new Map(s.sessions.filter((x) => x.status !== "dead" && x.health).map((x) => [regKey(x.name), x.health!]));
+  const min = loadReportThreshold();
+  const reports = new Map(s.sessions.filter((x) => x.status === "idle" && x.report && needsDecision(x.report, min)).map((x) => [regKey(x.name), { id: x.report!.id, at: x.report!.turnAt, p: x.report!.decisionP }]));
   const proposals = allProposals();
-  return followingOf({ proposals, tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, unables: unablesOf(s.clearances ?? [], proposals, now) });
+  return followingOf({ proposals, tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, reports, unables: unablesOf(s.clearances ?? [], proposals, now) });
 }
 
 export function mountFollowing(app: Hono, getSnapshot: () => Promise<Snapshot>) {

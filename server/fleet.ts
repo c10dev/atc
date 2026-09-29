@@ -9,6 +9,8 @@ import { OBSERVED_WINDOW_DAYS } from "./crew-observed.ts";
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig } from "./dispatch.ts";
 import { type Actuals, computeActuals, loadPricedLogbook } from "./logbook.ts";
 import { type FleetFuel, fleetFuelOf, type PricedEntry, type TripFuel, tripCheckOf, type TripVerdict } from "./fuel-view.ts";
+import { loadReportThreshold, type ReportView } from "./judges/store.ts";
+import { needsDecision } from "./judges/report.ts";
 import { type AccountHold, accountHoldOf, accountHolds, type Health } from "./health.ts";
 import type { FuelRemaining } from "./fuel-remaining.ts";
 import { type ContextSize, type ContextView, contextView } from "./fuel-context.ts";
@@ -253,6 +255,7 @@ export interface AircraftView {
   job?: Job | null; // 백그라운드 job 상태(ATC-99). NEEDS YOU는 state가 blocked일 때. bg 세션이 아니면 null
   account?: string | null; // ACCOUNT(ATC-51). 라벨이 없으면 기본 ACCOUNT, 등록부에 라벨이 하나도 없으면 null
   accountIsDefault?: boolean; // 라벨 없이 기본 ACCOUNT로 센다
+  report?: (ReportView & { decision: boolean }) | null; // 마지막 턴의 REPORT 판정(ATC-89, 그림자 전용). decision: "결정이 필요함" 확률이 문턱 이상
   accountHold?: AccountHold | null; // 같은 ACCOUNT의 다른 AIRCRAFT가 LIMIT에 걸려 붙들림(ATC-51)
   fuel?: FuelRemaining | null; // 그 ACCOUNT의 FUEL REMAINING(ATC-55). statusline 값이 없으면 null
   configuration: ConfigurationId | null;
@@ -332,6 +335,7 @@ export function fleetView(
   const liveNames = registrationNamesOf(live.map((x) => x.name), teamPattern);
   const names = [...new Set([...live.map((x) => regOf(x.name)), ...Object.keys(fleet.aircraft).map(regOf)])].sort();
   const holds = accountHolds(live.map((x) => ({ name: x.name, account: accountOf(fleet, x.name), health: x.health })), now);
+  const reportMin = loadReportThreshold();
   return names.map((reg) => {
     const session = live.find((x) => regOf(x.name) === reg);
     const key = fleetKeyOf(Object.keys(fleet.aircraft), reg, teamPattern);
@@ -364,6 +368,7 @@ export function fleetView(
       restarting: session ? null : (s.restarting?.find((r) => r.registration === reg) ?? null),
       health: session?.health ?? null,
       job: session?.job ?? null,
+      report: session?.report ? { ...session.report, decision: needsDecision(session.report, reportMin) } : null,
       account: accountOf(fleet, reg),
       accountIsDefault: accountOf(fleet, reg) != null && !profile.account,
       accountHold: session ? accountHoldOf(holds, accountOf(fleet, reg), reg) : null,

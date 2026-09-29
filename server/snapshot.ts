@@ -8,6 +8,7 @@ import { restartingOf } from "./restarting.ts";
 import { cutResetOf, DEFAULT_HEALTH, healthAlerts, settleCut } from "./health.ts";
 import { blockedAlerts } from "./job-state.ts";
 import { applyFlightHealth } from "./health-flights.ts";
+import { loadReportViews } from "./judges/store.ts";
 import { readCodex } from "./sources/codex.ts";
 import { readWorkspaces, ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
 import { readGithub } from "./sources/github.ts";
@@ -216,6 +217,12 @@ export async function buildSnapshot(): Promise<Snapshot> {
   );
 
   // STALLED와 멈춘 AIRCRAFT의 FLIGHT 유지(ATC-86): 점유·Linear·PR이 모두 읽힌 뒤에
+  // REPORT 판정(ATC-89): 세션마다 마지막 판정을 붙인다. 판정 뒤에 다시 움직이기 시작한 세션(busy)에는 붙이지 않는다
+  const reports = loadReportViews().bySession;
+  for (const x of sessions) {
+    const r = reports.get(x.id);
+    if (r && x.status === "idle") x.report = r;
+  }
   applyFlightHealth({ sessions, teamPattern: dispatchCfg.teamPattern, freshClaims: claims, staleClaims: hookClaims.filter((c) => !fresh(c)), workspaces, tickets, pulls, now: healthAt, cfg: config.health });
 
   // STRANDED(ATC-29): FLIGHT가 있는 PR이 기본 브랜치가 아닌 곳에 머지됐고, 그 커밋이 기본 브랜치에도 그리로 가는 열린 PR에도 없음.

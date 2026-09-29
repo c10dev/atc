@@ -7,6 +7,7 @@ import type { FuelRemaining } from "./fuel-remaining.ts";
 import type { HumanCheckStatus, UiChange } from "./human-check.ts";
 import type { SessionOrigin } from "./session-origin.ts";
 import type { Job } from "./job-state.ts";
+import type { ReportView } from "./judges/store.ts";
 export type Agent = "claude" | "codex";
 
 export interface Session {
@@ -31,6 +32,8 @@ export interface Session {
   keptFlights?: string[];
   // 백그라운드 job 상태(ATC-99): ~/.claude/jobs/<jobId>/state.json에서 읽은 state·detail·needs. bg 세션이 아니거나 못 읽으면 없다(null)
   job?: Job | null;
+  // 마지막 턴의 REPORT 판정(ATC-89, 그림자 전용): Jev가 CAPTAIN의 마지막 메시지를 분류한 것. 꺼져 있거나 아직 판정 전이면 없다
+  report?: ReportView;
 }
 
 export interface Airport {

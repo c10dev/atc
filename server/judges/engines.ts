@@ -16,7 +16,7 @@ export interface EngineResult {
 
 // 한 번의 판정 요청: state는 허용 목록으로 만든 입력, questions는 TypeSafe 질문 맵. title은 stub의 녹화 응답 키
 export interface JudgeCall {
-  target: "schedule" | "dispatch";
+  target: "schedule" | "dispatch" | "report";
   title: string;
   state: Record<string, unknown>;
   questions: Record<string, unknown>;
@@ -52,7 +52,7 @@ export function stubEngine(recorded: Record<string, unknown> = {}, fallback: unk
     calls,
     async ask(call: JudgeCall) {
       calls.push(call);
-      return { model: "stub", answers: structuredClone(recorded[call.title] ?? (call.target === "dispatch" ? dispatchFallback : fallback)) };
+      return { model: "stub", answers: structuredClone(recorded[call.title] ?? (call.target === "dispatch" ? dispatchFallback : call.target === "report" ? STUB_REPORT_FALLBACK : fallback)) };
     },
     async judge(input: ClassifyInput) {
       inputs.push(input);
@@ -61,6 +61,11 @@ export function stubEngine(recorded: Record<string, unknown> = {}, fallback: unk
   };
   return engine;
 }
+
+// REPORT 기본 응답: reported done
+export const STUB_REPORT_FALLBACK = {
+  report_class: { type: "choice", choice: "done", probabilities: { done: 0.7, decision: 0.1, stopped: 0.05, ready: 0.1, unknown: 0.05 }, confidence: 0.6 },
+};
 
 // DISPATCH 기본 응답: Ready yes, Prerequisite no, Same area는 5단계 중 3(같은 모양의 score 답)
 export const STUB_DISPATCH_FALLBACK = {

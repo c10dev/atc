@@ -184,6 +184,23 @@ test("AIRCRAFT health(ATC-86): cut LIMIT·RESUME·STALLED가 그 FLIGHT의 healt
   assert.match(stalled.text, /^TEAM_B STALLED 3m — STALLED 원문/);
 });
 
+test("REPORT(ATC-89): CAPTAIN이 결정을 청했다고 판정되면 그 FLIGHT에 info 항목 하나, key에 판정한 턴", () => {
+  const base = {
+    proposals: [proposal("D-1", "VOC-1", "accepted", { accepted: ago(10) })],
+    tickets: [ticket("VOC-1")],
+  };
+  const reports = new Map([["TEAM_B", { id: "R-abc-1", at: ago(2), p: 0.85 }]]);
+  const [f] = followingOf(input({ ...base, reports }));
+  const r = f.issues.filter((i) => i.code === "report");
+  assert.equal(r.length, 1);
+  assert.equal(r[0].severity, "info");
+  assert.equal(r[0].key, "VOC-1|report|R-abc-1");
+  assert.match(r[0].text, /85%/);
+  // 다음 턴은 새 key, 판정이 없으면 항목 없음
+  assert.equal(followingOf(input({ ...base, reports: new Map([["TEAM_B", { id: "R-abc-2", at: ago(1), p: 0.9 }]]) }))[0].issues.find((i) => i.code === "report")!.key, "VOC-1|report|R-abc-2");
+  assert.equal(followingOf(input(base))[0].issues.some((i) => i.code === "report"), false);
+});
+
 test("UNABLE(ATC-122): FLIGHT가 있는 CLEARANCE와 declined FLIGHT PLAN을 하루 동안 문제로 올린다", () => {
   const clearances = [
     { id: "C-0009", flight: "VOC-7", toName: "TEAM_B", unableAt: ago(20), unableReason: "PR이 아직 CI 중" },

@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } fr
 import { dirname, join } from "node:path";
 import type { Context, Hono } from "hono";
 import { config } from "./config.ts";
+import { reportRate } from "./judges/store.ts";
 import { landedOf, loadDispatchConfig, planDispatch, readFlightHistory } from "./dispatch.ts";
 import { applyPatch, entryIntoService, FleetError, fleetView, loadFleet, nextRegistration, saveAircraft } from "./fleet.ts";
 import {
@@ -221,6 +222,7 @@ export function fleetPlanView(now = Date.now(), fuel: FuelRemaining[] = []) {
     waiting,
     recent,
     gate: fleetPlanGateOf(all),
+    judges: { report: reportRate() }, // REPORT 판정(ATC-89, 그림자 전용)의 SUPERVISOR 표시 일치율
     now: new Date(now).toISOString(),
   };
 }

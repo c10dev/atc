@@ -7,7 +7,7 @@ import { streamSSE } from "hono/streaming";
 import { mountAirports } from "./airports.ts";
 import { mountAtfm, runAtfm } from "./atfm-run.ts";
 import { mountAutoland, runAutoland } from "./autoland-run.ts";
-import { runJudges } from "./judges/run.ts";
+import { mountJudges, runJudges } from "./judges/run.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { mountLandingReview } from "./landing-review.ts";
@@ -151,6 +151,7 @@ mountAutoland(app, getSnapshot);
 mountMcc(app, getSnapshot, () => head);
 mountUpdate(app, getSnapshot, () => head); // UPDATE bar(ATC-82)
 mountSettings(app);
+mountJudges(app);
 mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다
 
 app.get("/api/events", (c) =>
