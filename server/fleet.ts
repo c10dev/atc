@@ -11,14 +11,17 @@ import { type Actuals, computeActuals, loadPricedLogbook } from "./logbook.ts";
 import { type FleetFuel, fleetFuelOf, type PricedEntry, type TripFuel, tripCheckOf, type TripVerdict } from "./fuel-view.ts";
 import { loadReportThreshold, type ReportView } from "./judges/store.ts";
 import { needsDecision } from "./judges/report.ts";
-import { type AccountHold, accountHoldOf, accountHolds, type Health } from "./health.ts";
+import type { AccountHold, Health } from "./health.ts";
 import type { FuelRemaining } from "./fuel-remaining.ts";
 import { type ContextSize, type ContextView, contextView } from "./fuel-context.ts";
 import type { Snapshot } from "./model.ts";
-import { fleetKeyOf, registrationNamesOf, registrationOf, regKey } from "./registration.ts";
+import { fleetKeyOf, registrationOf, regKey } from "./registration.ts";
 import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state.ts";
 import type { SessionOrigin } from "./session-origin.ts";
 import type { Job } from "./job-state.ts";
+import { flightDetailOf, liveViewOf } from "./fleet-live.ts";
+
+export { flightDetailOf };
 
 // FLEET 등록부(~/.local/state/atc/fleet.json). 팀(AIRCRAFT)마다 CREW COMPLEMENT, TYPE RATING, ROUTE, TARGETS를 적는다.
 // 설계: docs/fleet.md. 타입·기본값·판정은 crew.ts에 있고, planner도 그것을 쓴다.
@@ -308,16 +311,6 @@ export function fuelRecentOf(e: PricedEntry, all: readonly PricedEntry[], now: n
   };
 }
 
-export function flightDetailOf(s: Pick<Snapshot, "workspaces"> & Partial<Pick<Snapshot, "pulls">>, key: string): FlightDetail {
-  const ws = s.workspaces.find((w) => w.ticketKey === key && !w.isMain) ?? s.workspaces.find((w) => w.ticketKey === key);
-  const pr = s.pulls?.find((p) => p.ticketKey === key);
-  return {
-    commit: ws && ws.head ? { sha: ws.head.slice(0, 7), at: ws.lastCommitAt } : null,
-    pushed: ws?.pushed ?? null,
-    pr: pr ? { number: pr.number, url: pr.url, draft: pr.draft } : null,
-  };
-}
-
 // 스냅샷의 TEAM 세션과 등록부를 합친다. 세션이 없는 등록 항목도 "absent"로 보인다.
 export function fleetView(
   s: Pick<Snapshot, "sessions" | "claims" | "workspaces" | "airports"> & Partial<Pick<Snapshot, "tickets" | "fuel" | "pulls" | "restarting">>,
@@ -328,26 +321,23 @@ export function fleetView(
 ): AircraftView[] {
   const team = new RegExp(teamPattern, "i");
   const codeOf = (repo: string | null) => s.airports.find((a) => a.repo === repo)?.code ?? null;
-  const wsTicket = new Map(s.workspaces.map((w) => [w.path, w.ticketKey]));
   const live = s.sessions.filter((x) => team.test(x.name) && x.status !== "dead");
   // 세션 이름은 `Team G`, `team_g`처럼 달라도 한 REGISTRATION으로 읽는다(ATC-67)
   const regOf = (name: string) => regKey(name, teamPattern);
-  const liveNames = registrationNamesOf(live.map((x) => x.name), teamPattern);
   const names = [...new Set([...live.map((x) => regOf(x.name)), ...Object.keys(fleet.aircraft).map(regOf)])].sort();
-  const holds = accountHolds(live.map((x) => ({ name: x.name, account: accountOf(fleet, x.name), health: x.health })), now);
+  // 라이브 부분(상태·FLYING·마지막 활동·health·chips)은 스냅샷만으로 셈한다(fleet-live.ts, 화면도 같이 쓴다)
+  const liveOf = liveViewOf(s, names, teamPattern, (n) => accountOf(fleet, n), now);
   const reportMin = loadReportThreshold();
   return names.map((reg) => {
     const session = live.find((x) => regOf(x.name) === reg);
+    const lv = liveOf.get(reg)!;
     const key = fleetKeyOf(Object.keys(fleet.aircraft), reg, teamPattern);
     const profile: AircraftProfile = (key ? fleet.aircraft[key] : undefined) ?? {};
-    const seen = liveNames.get(reg);
-    const held = session ? s.claims.filter((c) => c.sessionId === session.id && c.state === "active") : [];
-    const flying = [...new Set(held.map((c) => wsTicket.get(c.workspacePath)).filter(Boolean) as string[])];
     const actuals = computeActuals(logbook, reg, now);
     return {
       registration: reg,
       callsign: callsign({ name: reg }),
-      status: session ? session.status : "absent",
+      ...lv,
       base: profile.base ?? (session ? codeOf(session.repo) : null),
       complement: profile.complement ?? fleet.defaults.complement,
       complementIsDefault: !profile.complement,
@@ -356,22 +346,9 @@ export function fleetView(
       routes: profile.routes ?? [],
       targets: profile.targets ?? {},
       note: profile.note ?? null,
-      flying,
-      flights: [
-        ...flying.map((key) => ({ key, title: s.tickets?.find((t) => t.key === key)?.title ?? null, detail: flightDetailOf(s, key) })),
-        ...(session?.keptFlights ?? []).filter((k) => !flying.includes(k)).map((key) => ({ key, title: s.tickets?.find((t) => t.key === key)?.title ?? null, kept: true as const, detail: flightDetailOf(s, key) })),
-      ],
-      flyingSince: held.map((c) => c.since).sort()[0] ?? null,
-      lastActiveAt: session?.lastActiveAt ?? null,
-      origin: session ? (session.origin ?? "unknown") : null,
-      permissionMode: session?.permissionMode ?? null,
-      restarting: session ? null : (s.restarting?.find((r) => r.registration === reg) ?? null),
-      health: session?.health ?? null,
-      job: session?.job ?? null,
       report: session?.report ? { ...session.report, decision: needsDecision(session.report, reportMin) } : null,
       account: accountOf(fleet, reg),
       accountIsDefault: accountOf(fleet, reg) != null && !profile.account,
-      accountHold: session ? accountHoldOf(holds, accountOf(fleet, reg), reg) : null,
       fuel: s.fuel?.[reg] ?? null,
       configuration: profile.configuration ?? null,
       enteredAt: profile.enteredAt ?? null,
@@ -380,8 +357,6 @@ export function fleetView(
       actuals,
       fuelBurn: fleetFuelOf(reg, logbook, now),
       fuelRecent: actuals.recent.map((e) => fuelRecentOf(e, logbook, now)),
-      sessionName: seen?.rename ?? null,
-      sessionConflict: seen?.conflict ? seen.names : null,
     };
   });
 }
@@ -486,6 +461,7 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>, cont
       airports: s.airports.map((a) => a.code),
       defaultBase: defaultBase(s, cfg.teamPattern),
       dispatchMode: cfg.mode, // approval(2b)일 때만 CREW CHANGE 승인을 보인다
+      teamPattern: cfg.teamPattern, // 화면이 스냅샷으로 라이브 값을 덮을 때 같은 REGISTRATION 규칙을 쓴다(ATC-100)
       nextRegistration: nextRegistration([...aircraft.map((a) => a.registration), ...s.sessions.map((x) => x.name)]),
     });
   });
