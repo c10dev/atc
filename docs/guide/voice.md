@@ -4,7 +4,7 @@ WARNING과 CALL 알림은 톤에 이어 **짧은 영어 콜아웃**을 한 번 �
 
 > 예: 키 클릭 → 스켈치 → *"Supervisor, GOLF, standing by for approval."* → 스켈치 꼬리
 
-목소리는 **이 컴퓨터의 엔진(Piper, espeak-ng, Kokoro 중 하나)** 이 만들고, 문구도 소리도 밖으로 나가지 않습니다. 엔진이 없으면 톤만 나고 설정에 `TTS 엔진 없음`이 보입니다. 기본은 꺼져 있습니다.
+목소리는 **이 컴퓨터의 엔진(Piper, espeak-ng, Kokoro 중 하나)** 이 만들고, 문구도 소리도 밖으로 나가지 않습니다. 엔진을 고르지 않았거나(기본 `none`) 설치가 없으면 톤만 나고 설정에 `TTS 엔진 없음`이 보입니다. 기본은 꺼져 있습니다.
 
 ## 무엇을 읽나
 
@@ -65,7 +65,7 @@ ATC_TTS_PIPER=/home/you/.local/bin/piper
 ATC_TTS_VOICES=/home/you/.local/share/piper/voices
 ```
 
-서버를 다시 띄우면 적용됩니다(설정 창은 엔진과 목소리만 바로 바꿉니다). 처음 들어 볼 목소리: `en_US-lessac-medium`.
+엔진 기본값은 `none`이라 설치만 해서는 켜지지 않습니다. 설정 창의 엔진에서 `piper`를 고르거나 위처럼 `ATC_TTS_ENGINE=piper`를 적습니다. 서버를 다시 띄우면 적용됩니다(설정 창은 엔진과 목소리만 바로 바꿉니다). 처음 들어 볼 목소리: `en_US-lessac-medium`.
 
 ### espeak-ng
 
@@ -129,7 +129,7 @@ ATC_TTS_KOKORO_MODEL=/home/you/.local/share/kokoro/model
 
 - 목소리는 `<이름>.onnx`와 `<이름>.onnx.json` 한 쌍입니다. 둘 다 있어야 목록에 나옵니다. 다른 목소리를 받아 같은 폴더에 두면(`python -m piper.download_voices <이름> --data-dir …`) 설정의 목록에 생깁니다.
 - 목록에서 고르고 **미리 듣기**로 확인합니다. 마음에 안 들면 다른 목소리를 고르거나, 무전 효과를 줄입니다. 코드를 고칠 일은 없습니다.
-- 엔진과 목소리는 설정에서 엔진을 고르면 그 엔진이 아는 목소리 목록으로 바뀝니다. 엔진 값은 `piper`, `espeak`, `kokoro`, `none`, `stub`(시험용)입니다. 다른 엔진을 더하려면 `server/tts.ts`에 인자 만들기와 목소리 목록 읽기 함수를 하나씩 더하면 되고 화면은 바뀌지 않습니다.
+- 엔진과 목소리는 설정에서 엔진을 고르면 그 엔진이 아는 목소리 목록으로 바뀝니다. 엔진 값은 `piper`, `espeak`, `kokoro`, `none`, `stub`(시험용: 소리 없는 톤 WAV를 만들 뿐이라 화면 시험에만 씁니다)입니다. 다른 엔진을 더하려면 `server/tts.ts`에 인자 만들기와 목소리 목록 읽기 함수를 하나씩 더하면 되고 화면은 바뀌지 않습니다.
 
 ## 끄기
 
@@ -154,6 +154,7 @@ atc는 엔진과 목소리를 **따로 도는 프로그램과 파일**로 쓸 �
 
 | 설정 창의 표시 | 뜻 | 할 일 |
 |---|---|---|
+| `TTS 엔진 없음` (뒤에 이유가 없음) | 엔진이 `none`(기본값) | 설치한 뒤 설정 창의 엔진에서 `piper`를 고릅니다 |
 | `TTS 엔진 없음 — piper 실행 파일 없음` | `ATC_TTS_PIPER` 경로(기본 `~/.local/bin/piper`)에 실행 파일이 없음 | 위 설치 2)를 하거나 경로를 고칩니다 |
 | `TTS 엔진 없음 — 목소리 없음` | 목소리 폴더에 `.onnx`와 `.onnx.json` 한 쌍이 없음 | 위 설치 3)을 하거나 `ATC_TTS_VOICES`를 고칩니다 |
 | `미리 듣기 실패: 5초 안에 끝나지 않음` | 엔진이 시간 제한(Piper·espeak-ng 5초, Kokoro 20초) 안에 못 끝냄 | 한 번 더 누릅니다. Piper는 더 작은 목소리(`low`·`medium`)를 씁니다 |

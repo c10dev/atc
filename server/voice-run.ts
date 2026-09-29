@@ -9,7 +9,7 @@ import { type RenderResult, renderPhrase, statusOf, TTS_ENGINES, type TtsConfig,
 // 음성 콜아웃 API(ATC-140, docs/guide/voice.md). 서버는 WAV 파일만 만들어 주고 소리를 내지 않는다(서비스에는 오디오 세션이 없다).
 // 알림 데이터는 읽기만 한다. 화면은 알림의 key만 보내고 글은 보내지 않는다: 문구는 서버가 그 key의 알림에서 다시 만든다.
 //   GET /api/voice/status                  지금 엔진·설치된 목소리·고른 목소리·오류, engines[]에 엔진마다 쓸 수 있는지와 목소리(ATC-143)
-//   GET /api/voice/alert/:key.wav          지금 있는 알림 key의 문구를 WAV로(WARNING·CALL 종류만 문구가 있다)
+//   GET /api/voice/alert/:key.wav          지금 있는 알림 key의 문구를 WAV로(WARNING 등급이거나 CALL인 알림만, 그중 문구 틀이 있는 종류)
 //   GET /api/voice/preview.wav?voice=&engine=  고정 예시 문구(목소리 고르기용)
 
 export const ttsConfigNow = (): TtsConfig => ({
@@ -57,6 +57,8 @@ export function mountVoice(app: Hono, currentAlerts: () => SupervisorAlert[], cf
     const key = raw.slice(0, -4);
     const alert = currentAlerts().find((a) => a.key === key);
     if (!alert) return c.json({ error: "지금 있는 알림이 아님" }, 404);
+    // 음성은 WARNING과 CALL만(클라이언트 soundFor와 같은 규칙). CAUTION에 틀이 있어도 만들지 않는다
+    if (!(alert.level === "warning" || alert.cue === "call")) return c.json({ error: "이 알림은 음성이 없음(WARNING·CALL만)" }, 404);
     const phrase = phraseOf(alert);
     if (!phrase) return c.json({ error: "이 알림은 음성이 없음(소리만)" }, 404);
     const r = await wavFor(cfgOf(), phrase);

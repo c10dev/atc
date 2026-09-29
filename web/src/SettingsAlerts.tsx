@@ -23,6 +23,15 @@ function useVoiceStatus() {
   return { status, reload: load };
 }
 
+// docs/guide/voice.md가 적은 엔진 값 그대로(server/tts.ts TTS_ENGINES). stub은 시험용
+const VOICE_ENGINES: [string, string][] = [
+  ["none", "none"],
+  ["piper", "piper"],
+  ["espeak", "espeak"],
+  ["kokoro", "kokoro"],
+  ["stub", "stub (시험용)"],
+];
+
 export function AlertsSettings({ save }: { save: Save }) {
   const { prefs, permission, audio } = useAlerts();
   const [msg, setMsg] = useState<string | null>(null);
@@ -152,20 +161,23 @@ export function AlertsSettings({ save }: { save: Save }) {
           <label className="alert-range">
             엔진
             <select value={voice.engine} onChange={(e) => void pickEngine(e.target.value)} aria-label="엔진">
-              <option value="none">none</option>
-              {(voice.engines ?? []).map((e) => (
-                // 없는 엔진은 못 고르게 흐리게 두고 사유를 붙인다(지금 고른 것은 그대로 보이게 남긴다)
-                <option key={e.engine} value={e.engine} disabled={!e.available && e.engine !== voice.engine} title={e.error?.message}>
-                  {e.available ? e.engine : `${e.engine} — ${e.error?.message ?? "쓸 수 없음"}`}
-                </option>
-              ))}
+              {VOICE_ENGINES.map(([e, label]) => {
+                // 없는 엔진은 못 고르게 흐리게 두고 사유를 붙인다(지금 고른 것은 그대로 보이게 남긴다). stub·none은 늘 쓸 수 있다
+                const info = (voice.engines ?? []).find((x) => x.engine === e);
+                const off = info !== undefined && !info.available && e !== voice.engine;
+                return (
+                  <option key={e} value={e} disabled={off} title={info?.error?.message}>
+                    {info && !info.available ? `${label} — ${info.error?.message ?? "쓸 수 없음"}` : label}
+                  </option>
+                );
+              })}
             </select>
           </label>
         )}
         {noEngine && (
           <p className="settings-hint alert-msg" data-testid="voice-none">
             <b>TTS 엔진 없음</b>
-            {voice !== "error" && voice.error ? ` — ${voice.error.message}` : ""}. 설치 방법은{" "}
+            {voice !== "error" && voice.error && voice.error.code !== "no-engine" ? ` — ${voice.error.message}` : ""}. 설치 방법은{" "}
             <a href="#docs/voice">
               음성 콜아웃 안내
             </a>
