@@ -4,6 +4,7 @@ import { config } from "../config.ts";
 import { type CrosscheckVerdict, crosscheckRateOf, type HumanDecision } from "../crosscheck.ts";
 import type { Rating } from "../crew.ts";
 import { type ClassifyJudgment, JUDGE_FAMILIES, type JudgeFamily } from "./classify.ts";
+import type { DispatchJudgment } from "./dispatch.ts";
 import type { EngineName } from "./engines.ts";
 
 // 판정 계열의 스위치와 기록(ATC-36).
@@ -51,7 +52,7 @@ export type JudgeRun = "replay" | "shadow";
 export interface JudgeLine {
   op: "judge";
   family: JudgeFamily;
-  target: "schedule"; // 지금은 SCHEDULE CLASSIFY만(DISPATCH는 범위 밖)
+  target: "schedule"; // SCHEDULE CLASSIFY. DISPATCH는 DispatchJudgeLine
   id: string; // S-0001
   flight: string | null;
   at: string;
@@ -65,6 +66,23 @@ export interface JudgeLine {
   sent: string[]; // 보낸 칸(title, goal, allowed_scope, done_criteria)
 }
 
+// DISPATCH 판정(ATC-88): 열린 ASSIGN 하나(D-0085)의 세 답. 제안 상태·점수는 바꾸지 않는다
+export interface DispatchJudgeLine {
+  op: "judge";
+  family: JudgeFamily;
+  target: "dispatch";
+  id: string; // D-0085
+  flight: string;
+  at: string;
+  run: JudgeRun;
+  engine: EngineName;
+  model: string;
+  judgment: DispatchJudgment;
+  withheld: string | null; // 본문을 보내지 않은 이유. 보냈으면 null
+  recentWithheld: string | null; // 최근 FLIGHT 제목을 보내지 않은(Same area를 묻지 않은) 이유. 보냈으면 null
+  sent: string[]; // 보낸 칸(title, goal, allowed_scope, done_criteria, recent_flights)
+}
+
 // 모드 변경 기록(누가·언제 켰나)
 export interface JudgeModeLine {
   op: "mode";
@@ -74,7 +92,7 @@ export interface JudgeModeLine {
   to: JudgeMode;
 }
 
-export type JudgesLogLine = JudgeLine | JudgeModeLine;
+export type JudgesLogLine = JudgeLine | DispatchJudgeLine | JudgeModeLine;
 
 export function readJudgeLines(file = RECORD_FILE()): JudgesLogLine[] {
   let text = "";
@@ -112,7 +130,17 @@ export type JudgeMarks = Map<string, Partial<Record<JudgeFamily, JudgeLine>>>;
 export function marksOf(lines: JudgesLogLine[]): JudgeMarks {
   const out: JudgeMarks = new Map();
   for (const l of lines) {
-    if (l.op !== "judge") continue;
+    if (l.op !== "judge" || l.target === "dispatch") continue;
+    out.set(l.id, { ...out.get(l.id), [l.family]: l });
+  }
+  return out;
+}
+
+export type DispatchMarks = Map<string, Partial<Record<JudgeFamily, DispatchJudgeLine>>>;
+export function dispatchMarksOf(lines: JudgesLogLine[]): DispatchMarks {
+  const out: DispatchMarks = new Map();
+  for (const l of lines) {
+    if (l.op !== "judge" || l.target !== "dispatch") continue;
     out.set(l.id, { ...out.get(l.id), [l.family]: l });
   }
   return out;

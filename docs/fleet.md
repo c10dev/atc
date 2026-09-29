@@ -286,7 +286,29 @@ The server runs at most 3 drafts a minute. It backs off an hour after an error a
 
 **Measuring without anchoring.** A mark is shown only on drafts the SUPERVISOR has judged: a chip in RECENT, like `JEV agree`, with the classification and what was sent in its tooltip. Marks on open drafts are counted but hidden. The gate panel's `JEV 일치 m/n` line is `crosscheckRateOf` per family over human verdicts, `replay` marks included (the judge's input never contains the verdict). ATFM auto-verdicts are left out. Marks never change a draft's status and never count toward the 20 / 80% gate.
 
-Not built yet: DISPATCH judges, other families, and using a judge's agreement for S3.
+Not built yet: other families, using a judge's agreement for S3, and using the DISPATCH marks for anything (below).
+
+### DISPATCH judges as built (ATC-88)
+
+The same family, switch, engines, back-off and 3-a-minute limit also mark **open DISPATCH ASSIGN proposals** (`kind: ASSIGN`, status `proposed`, HELD ones included; `replay` takes the ones the SUPERVISOR has already judged). CLASSIFY drafts and ASSIGN proposals share the limit and take turns, so neither starves the other. Shadow only: no planner weight, no HOLD, no status or score change, and `proposals.jsonl` is never written. Using the marks is a later SUPERVISOR decision, after 20+ judged proposals.
+
+| Question | Type | Asks |
+|---|---|---|
+| `ready` | Noul | Does the body give enough to start: what to change and how to tell it is done? |
+| `prerequisite` | Noul | Does the body say it waits on other work (a FLIGHT, a PR, a release, a decision)? |
+| `same_area` | Score, 5 levels | How close is the FLIGHT to the AIRCRAFT's recent FLIGHTs? Stored as the raw score and as a 0–1 level |
+
+**What leaves.** The FLIGHT is the ATC-36 allowlist unchanged: the title and the three sections (goal, allowed scope, done criteria), clipped to 600 characters; a `rating:SEC` or `Risk:*` FLIGHT, or one whose labels atc doesn't know, sends the title only and its body isn't read. For `same_area` only, the **titles** of the AIRCRAFT's last 3 LOGBOOK FLIGHTs go too, and only when all three are atc FLIGHTs (AIRPORT `ATCC`, no AD HOC, distinct FLIGHTs counted once) and every title is known. If any is not, `same_area` is not asked. No REGISTRATION, FLIGHT key, comments or scores are sent. Each line records `sent`, `withheld` (why the body was cut) and `recentWithheld` (why `same_area` wasn't asked).
+
+**Record.** `judges.jsonl` gets a `judge` line with `target: "dispatch"`, the proposal `id`, `flight`, `run`, `engine`, `model`, `judgment` (`ready` and `prerequisite` as yes probabilities, `sameArea` as `{score, level, confidence}` or `null`), `sent`, `withheld` and `recentWithheld`.
+
+**Screen, without anchoring.** A `JEV` chip shows only on closed proposals in RECENT, with the three answers, what was sent and why anything was withheld in its tooltip. Open and HELD cards never show it (it is only counted). The gate panel adds three reference lines, not gate criteria:
+
+| Line | Counts |
+|---|---|
+| `JEV Ready = no → 거절` | Of the marks with Ready = no on a proposal the SUPERVISOR judged, how many were rejections (disagree, reject) |
+| `JEV Prerequisite = yes → 선행 대기` | Of the marks with Prerequisite = yes on a judged or HELD proposal, how many carry a `waiting-on-prior` chip or an OCC HOLD (a HOLD with a blocking FLIGHT, or one set without a PREFLIGHT mark; a HOLD requeued by the SUPERVISOR is no longer visible as OCC's) |
+| `JEV Same area 가까움 → 승인` | Of the marks whose `same_area` level is ≥ 50% on a judged proposal, how many were approvals (agree, approve) |
 
 ## 7. TARGETS
 

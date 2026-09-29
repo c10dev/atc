@@ -41,6 +41,29 @@ interface CrosscheckRate {
   matched: number;
   rate: number | null;
 }
+// 판정 계열 Jev의 DISPATCH mark(ATC-88, server/proposals.ts judgesBriefOf). 닫힌 제안(RECENT)에만 온다 — 열린 카드는 쏠림을 막으려 숨긴다
+interface JudgeRate {
+  marked: number;
+  matched: number;
+  rate: number | null;
+}
+interface JudgeMark {
+  family: string;
+  model: string;
+  run: string;
+  ready: number;
+  prerequisite: number;
+  sameArea: { score: number; level: number; confidence: number | null } | null;
+  withheld: string | null;
+  recentWithheld: string | null;
+  sent: string[];
+}
+interface Judges {
+  mode: string;
+  marks: Record<string, JudgeMark[]>;
+  hidden: number;
+  stats: { judged: number; ready: JudgeRate; prerequisite: JudgeRate; sameArea: JudgeRate };
+}
 // 서버 타입에 아직 없을 수 있어 따로 읽는다(옛 서버면 null)
 const markOf = (p: Proposal): Crosscheck | null => (p as unknown as { crosscheck?: Crosscheck | null }).crosscheck ?? null;
 const modelOf = (m: Crosscheck) => m.model || "unknown";
@@ -100,6 +123,7 @@ interface Brief {
   arrivalCandidates?: ArrivalSuggestion[]; // STAND 없는 FLIGHT의 ARRIVED 후보(ATC-72). 옛 서버면 없음
   overdue: string[];
   recent: Proposal[];
+  judges?: Judges; // 판정 계열(ATC-88). 옛 서버면 없음
   flights: Record<string, FlightInfo>;
   gate: {
     decided: number;
@@ -324,7 +348,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
         </p>
       )}
 
-      <Gate gate={gate} labelOf={labelOf} stats={brief.reasonStats} />
+      <Gate gate={gate} labelOf={labelOf} stats={brief.reasonStats} judges={brief.judges} />
       {(brief.mode === "approval" || brief.gate3.dispatched > 0) && <Gate3 gate={brief.gate3} />}
       <AtfmPanel refreshKey={refreshKey} now={now} />
       <FollowingPanel refreshKey={refreshKey} now={now} />
@@ -484,6 +508,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
                 <td className="dp-c-reason dp-reason" data-label="사유">
                   <RecentReason p={p} labelOf={labelOf} />
                   <CrosscheckMini m={markOf(p)} />
+                  {brief.judges?.marks[p.id]?.map((m) => <JudgeMini key={m.family} m={m} />)}
                 </td>
                 <td className="dp-c-at faint">{timeAgo(p.statusAt, now)}</td>
               </tr>
@@ -828,6 +853,23 @@ function CrosscheckMini({ m }: { m: Crosscheck | null }) {
   );
 }
 
+// Jev의 세 답(툴팁): 확률은 yes 확률, Same area는 5단계 점수. 보낸 칸과 안 보낸 이유도 적는다
+const judgeTitle = (m: JudgeMark) =>
+  [
+    `${m.family.toUpperCase()} · ${m.model} · ${m.run}`,
+    `Ready ${pct(m.ready)} · Prerequisite ${pct(m.prerequisite)} · Same area ${m.sameArea ? `${m.sameArea.score.toFixed(1)} (${pct(m.sameArea.level)})` : `안 물음${m.recentWithheld ? ` — ${m.recentWithheld}` : ""}`}`,
+    `보냄: ${m.sent.join(", ")}${m.withheld ? ` · 본문 안 보냄(${m.withheld})` : ""}`,
+  ].join("\n");
+
+// 닫힌 제안에 남은 Jev 표시(그림자 전용, 판정 뒤에만 보인다)
+function JudgeMini({ m }: { m: JudgeMark }) {
+  return (
+    <span className="dp-xc-mini dp-judge-mini" title={judgeTitle(m)} aria-label={judgeTitle(m)}>
+      {m.family.toUpperCase()}
+    </span>
+  );
+}
+
 // 열린 제안의 CROSSCHECK 칩: "CROSSCHECK agree · 사유"(길면 두 줄에서 자르고 전체는 title)
 function CrosscheckChip({ m, now, labelOf }: { m: Crosscheck; now: number; labelOf: (code: string) => string }) {
   const chips = (m.reasonCodes ?? []).map(labelOf);
@@ -850,7 +892,7 @@ function CrosscheckChip({ m, now, labelOf }: { m: Crosscheck; now: number; label
   );
 }
 
-function Gate({ gate, labelOf, stats }: { gate: Brief["gate"]; labelOf: (code: string) => string; stats?: ReasonStat[] }) {
+function Gate({ gate, labelOf, stats, judges }: { gate: Brief["gate"]; labelOf: (code: string) => string; stats?: ReasonStat[]; judges?: Judges }) {
   const enough = gate.decided >= gate.target.decided;
   const rateOk = gate.agreement !== null && gate.agreement >= gate.target.agreement;
   const rows = [
@@ -937,6 +979,23 @@ function Gate({ gate, labelOf, stats }: { gate: Brief["gate"]; labelOf: (code: s
                 </span>
               </span>
               <span className="dp-gate-value">{pct(r.rate)}</span>
+            </li>
+          ))}
+        {judges && (judges.mode !== "off" || judges.stats.judged > 0) &&
+          (
+            [
+              ["Ready = no → 거절", judges.stats.ready, "Ready가 no인 제안 가운데 SUPERVISOR가 거절한 것"],
+              ["Prerequisite = yes → 선행 대기", judges.stats.prerequisite, "Prerequisite가 yes인 제안 가운데 waiting-on-prior 칩이 달렸거나 OCC가 HOLD한 것"],
+              ["Same area 가까움 → 승인", judges.stats.sameArea, "Same area가 가깝다(≥ 50%)고 본 제안 가운데 SUPERVISOR가 승인한 것"],
+            ] as const
+          ).map(([label, r, note]) => (
+            <li key={label} className="s-info dp-gate-judge" title={`JEV(그림자 전용) · ${note} · 게이트에 세지 않음`}>
+              <span className="dp-gate-label">
+                JEV {label} {r.matched}/{r.marked}
+              </span>
+              <span className="dp-gate-value">{pct(r.rate)}</span>
+              <span className="dp-gate-target">기준 없음</span>
+              <span className="dp-gate-state">참고</span>
             </li>
           ))}
         {one && (

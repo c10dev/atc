@@ -321,7 +321,29 @@ ATFM의 자동 대상 판정(A8)은 여전히 배정 가능한 AIRCRAFT를 요�
 
 **쏠림 없이 재기.** mark는 SUPERVISOR가 판정한 초안에만 보인다. RECENT에 `JEV agree` 같은 칩으로 보이고, 툴팁에 분류와 보낸 범위가 있다. 열린 초안의 mark는 세기만 하고 숨긴다. 점검 패널의 `JEV 일치 m/n` 줄은 계열마다 사람 판정에 대해 `crosscheckRateOf`로 잰 값이고, `replay` mark도 센다(판정 계열의 입력에는 판정이 들어가지 않는다). ATFM 자동 판정은 뺀다. mark는 초안 상태를 바꾸지 않고, 20건·80% 게이트에도 들지 않는다.
 
-아직 만들지 않음: DISPATCH 판정 계열, 다른 계열, 판정 계열 일치율을 S3에 쓰는 것.
+아직 만들지 않음: 다른 계열, 판정 계열 일치율을 S3에 쓰는 것, DISPATCH mark를 어디에든 쓰는 것(아래).
+
+### DISPATCH 판정 계열 구현 (ATC-88)
+
+같은 계열·스위치·엔진·백오프·1분 3건 한도가 **열린 DISPATCH ASSIGN 제안**(`kind: ASSIGN`, 상태 `proposed`, HELD 포함. `replay`는 SUPERVISOR가 이미 판정한 것)에도 mark를 남긴다. CLASSIFY 초안과 ASSIGN 제안이 한도를 나눠 쓰고 번갈아 뽑아서 한쪽이 굶지 않는다. 그림자 전용이다: planner 가중치, HOLD, 상태·점수 변경이 없고 `proposals.jsonl`에는 쓰지 않는다. mark를 쓰는 것은 판정한 제안이 20건 넘은 뒤 SUPERVISOR가 나중에 정한다.
+
+| 질문 | 종류 | 묻는 것 |
+|---|---|---|
+| `ready` | Noul | 본문이 시작하기에 충분한가: 무엇을 바꾸고 어떻게 끝났다고 아는가 |
+| `prerequisite` | Noul | 본문이 다른 일(FLIGHT, PR, 릴리스, 결정)을 기다린다고 적었나 |
+| `same_area` | Score 5단계 | 그 FLIGHT가 AIRCRAFT의 최근 FLIGHT와 얼마나 가까운가. 원래 점수와 0~1 level로 남긴다 |
+
+**나가는 것.** FLIGHT는 ATC-36 허용 목록 그대로다: 제목과 세 칸(목표, 수정 허용 범위, 완료 기준), 칸마다 600자. `rating:SEC`·`Risk:*` FLIGHT나 라벨을 모르는 FLIGHT는 제목만 보내고 본문은 읽지 않는다. `same_area`를 물을 때만 AIRCRAFT의 마지막 LOGBOOK FLIGHT 3개의 **제목**이 더 나가고, 셋이 모두 atc FLIGHT(AIRPORT `ATCC`, AD HOC 없음, 같은 FLIGHT는 한 번만 셈)이고 제목을 모두 알 때만이다. 하나라도 아니면 `same_area`를 묻지 않는다. REGISTRATION, FLIGHT key, 댓글, 점수는 보내지 않는다. 줄마다 `sent`, `withheld`(본문을 뺀 까닭), `recentWithheld`(`same_area`를 묻지 않은 까닭)가 남는다.
+
+**기록.** `judges.jsonl`에 `target: "dispatch"`인 `judge` 줄이 붙는다: 제안 `id`, `flight`, `run`, `engine`, `model`, `judgment`(`ready`·`prerequisite`는 yes 확률, `sameArea`는 `{score, level, confidence}` 또는 `null`), `sent`, `withheld`, `recentWithheld`.
+
+**화면, 쏠림 없이.** `JEV` 칩은 RECENT의 닫힌 제안에만 보이고, 툴팁에 세 답과 보낸 범위, 뺀 까닭이 있다. 열린 카드와 HELD 카드에는 보이지 않는다(수만 센다). 점검 패널에 참고 줄 셋이 더해진다(게이트 기준이 아니다):
+
+| 줄 | 세는 것 |
+|---|---|
+| `JEV Ready = no → 거절` | SUPERVISOR가 판정한 제안 중 Ready = no mark 가운데 거절(disagree, reject)이었던 것 |
+| `JEV Prerequisite = yes → 선행 대기` | 판정했거나 HELD였던 제안 중 Prerequisite = yes mark 가운데 `waiting-on-prior` 칩이 달렸거나 OCC HOLD였던 것(선행 FLIGHT가 있는 HOLD, 또는 PREFLIGHT mark 없이 건 HOLD. SUPERVISOR가 대기열로 돌린 HOLD는 OCC의 것으로 더 알아볼 수 없다) |
+| `JEV Same area 가까움 → 승인` | 판정한 제안 중 `same_area` level이 50% 이상인 mark 가운데 승인(agree, approve)이었던 것 |
 
 ## 7. TARGETS
 

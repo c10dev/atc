@@ -232,3 +232,141 @@ test("스위치는 SUPERVISOR만: 이 화면 Origin이 없으면 403, 관제 CLI
   const cli = readFileSync(new URL("../../controller/atcctl.mjs", import.meta.url), "utf8");
   assert.ok(!/judges|\/api\/settings/.test(cli));
 });
+
+// ---- DISPATCH(ATC-88) ----
+const { dispatchJudgmentOf, dispatchQuestions, dispatchStateOf, dispatchStatsOf, recentEntriesOf, sentOf, levelOf } = await import("./dispatch.ts");
+const { dispatchMarksOf } = await import("./store.ts");
+const { dispatchTargetsOf, interleave, judgeDispatchOp } = await import("./run.ts");
+const { fold: foldProposals, judgesBriefOf } = await import("../proposals.ts");
+
+const dAnswers = (ready: number, prereq: number, score?: number) => ({
+  ready: { type: "noul", noul: ready },
+  prerequisite: { type: "noul", noul: prereq },
+  ...(score === undefined ? {} : { same_area: { type: "score", score, legend: { "1": "a", "2": "b", "3": "c", "4": "d", "5": "e" }, probabilities: {}, confidence: 0.5 } }),
+});
+const entry = (n: number, over: Record<string, unknown> = {}) =>
+  ({ key: `o/r#${n}`, aircraft: "TEAM_J", flight: `ATC-${n}`, airport: "ATCC", arrivedAt: `2026-09-0${n}T00:00:00Z`, ...over }) as unknown as Parameters<typeof recentEntriesOf>[0][number];
+
+test("DISPATCH 질문: Ready·Prerequisite는 Noul, Same area는 Score(최근 FLIGHT가 있을 때만)", () => {
+  const q = dispatchQuestions(true) as Record<string, { type: string; criteria: unknown }>;
+  assert.deepEqual(Object.keys(q), ["ready", "prerequisite", "same_area"]);
+  assert.deepEqual([q.ready.type, q.prerequisite.type, q.same_area.type], ["noul", "noul", "score"]);
+  assert.equal((q.same_area.criteria as unknown[]).length, 5);
+  assert.deepEqual(Object.keys(dispatchQuestions(false)), ["ready", "prerequisite"]);
+});
+
+test("DISPATCH 입력: FLIGHT는 ATC-36 허용 목록, 최근 FLIGHT는 제목만. key·REGISTRATION·댓글은 없다", () => {
+  const s = dispatchStateOf({ title: "합성", description: BODY }, false, ["a", "b", "c"]);
+  assert.deepEqual(Object.keys(s).sort(), ["recent_flights", "ticket"]);
+  assert.ok(!JSON.stringify(s).includes(SECRET_LINE));
+  assert.deepEqual(sentOf(s), ["title", "goal", "allowed_scope", "done_criteria", "recent_flights"]);
+  const t = dispatchStateOf({ title: "합성", description: BODY }, true, null);
+  assert.deepEqual(t, { ticket: { title: "합성", sections: {} } });
+  assert.deepEqual(sentOf(t), ["title"]);
+});
+
+test("최근 FLIGHT: 마지막 3개가 모두 ATCC의 FLIGHT일 때만. 아니면 묻지 않는다", () => {
+  const log = [1, 2, 3, 4].map((n) => entry(n));
+  assert.deepEqual(recentEntriesOf(log, "team_j"), { keys: ["ATC-4", "ATC-3", "ATC-2"], why: null });
+  assert.match(recentEntriesOf([...log, entry(5, { airport: "VOCA" })], "TEAM_J").why!, /VOCA/);
+  assert.match(recentEntriesOf([...log, entry(5, { flight: null })], "TEAM_J").why!, /AD HOC/);
+  assert.match(recentEntriesOf(log, "TEAM_K").why!, /지난 FLIGHT가 없음/);
+  assert.match(recentEntriesOf(log, null).why!, /AIRCRAFT/);
+  // 3개보다 오래된 vocado 줄은 상관없다
+  assert.equal(recentEntriesOf([entry(1, { airport: "VOCA" }), entry(2), entry(3), entry(4)], "TEAM_J").why, null);
+});
+
+test("DISPATCH 답 검사: score는 legend 범위 안이어야 하고 0~1로 바꾼다", () => {
+  const j = dispatchJudgmentOf(dAnswers(0.9, 0.2, 4), true);
+  assert.equal(j.ready, 0.9);
+  assert.equal(j.sameArea!.level, 0.75);
+  assert.equal(dispatchJudgmentOf(dAnswers(0.9, 0.2), false).sameArea, null);
+  assert.throws(() => dispatchJudgmentOf(dAnswers(0.9, 0.2), true), JudgeAnswerError);
+  assert.throws(() => dispatchJudgmentOf(dAnswers(0.9, 0.2, 9), true), JudgeAnswerError);
+  assert.throws(() => dispatchJudgmentOf({ ...dAnswers(0.9, 0.2), ready: { type: "noul", noul: 3 } }, false), JudgeAnswerError);
+  assert.equal(levelOf({ score: 0, legend: { "0": "x", "1": "y", "2": "z" } }), 0);
+});
+
+const p = (id: string, over: Record<string, unknown> = {}) =>
+  ({ op: "create", id, at: "2026-09-10T00:00:00Z", kind: "ASSIGN", flight: "ATC-9", aircraft: "s", aircraftName: "TEAM_J", registration: "TEAM_J", airport: "ATCC", score: 1, factors: [], ...over }) as unknown as Parameters<typeof foldProposals>[0][number];
+
+test("DISPATCH 대상: shadow는 열린 ASSIGN(HOLD 포함), replay는 SUPERVISOR가 판정한 ASSIGN. RELEASE·mark 있는 것은 뺀다", () => {
+  const ps = foldProposals([
+    p("D-0001"),
+    p("D-0002", { at: "2026-09-11T00:00:00Z" }),
+    { op: "verdict", id: "D-0002", at: "2026-09-11T01:00:00Z", verdict: "agree", reason: null },
+    p("D-0003", { kind: "RELEASE" }),
+    p("D-0004", { at: "2026-09-12T00:00:00Z" }),
+  ] as Parameters<typeof foldProposals>[0]);
+  assert.deepEqual(dispatchTargetsOf(ps, new Map(), "jev", "off"), []);
+  assert.deepEqual(dispatchTargetsOf(ps, new Map(), "jev", "shadow").map((x) => x.id), ["D-0001", "D-0004"]);
+  assert.deepEqual(dispatchTargetsOf(ps, new Map(), "jev", "replay").map((x) => x.id), ["D-0002"]);
+  const marked = dispatchMarksOf([{ op: "judge", family: "jev", target: "dispatch", id: "D-0001" } as never]);
+  assert.deepEqual(dispatchTargetsOf(ps, marked, "jev", "shadow", new Set(["D-0004"])), []);
+});
+
+test("한도는 CLASSIFY와 DISPATCH가 번갈아 나눠 쓴다", () => {
+  assert.deepEqual(interleave(["s1", "s2", "s3"], ["d1", "d2", "d3"], 3).map((x) => ("a" in x ? x.a : x.b)), ["s1", "d1", "s2"]);
+  assert.deepEqual(interleave([], ["d1", "d2", "d3", "d4"], 3).map((x) => ("a" in x ? x.a : x.b)), ["d1", "d2", "d3"]);
+});
+
+test("stub으로 ASSIGN 하나: 최근 FLIGHT 제목을 보내고, 보낸 것·안 보낸 것을 기록한다. SEC는 제목만", async () => {
+  const engine = stubEngine({ "합성 티켓": dAnswers(0.9, 0.1, 5) });
+  let reads = 0;
+  const read = async () => (reads++, { title: "합성 티켓", description: BODY });
+  const titleOf = async (k: string) => `제목 ${k}`;
+  const line = (await judgeDispatchOp({ id: "D-0001", flight: "SYN-1" }, { title: "합성 티켓", labels: [] }, read, { keys: ["ATC-1", "ATC-2"], why: null }, titleOf, engine, "jev", "shadow", "2026-09-01T00:00:00Z"))!;
+  assert.equal(line.target, "dispatch");
+  assert.equal(line.judgment.sameArea!.level, 1);
+  assert.deepEqual(line.sent, ["title", "goal", "allowed_scope", "done_criteria", "recent_flights"]);
+  assert.equal(line.withheld, null);
+  const call = engine.calls[0];
+  assert.deepEqual(call.state.recent_flights, ["제목 ATC-1", "제목 ATC-2"]);
+  assert.ok(!JSON.stringify(call.state).includes("SYN-1") && !JSON.stringify(call.state).includes("TEAM_J") && !JSON.stringify(call.state).includes(SECRET_LINE));
+  // SEC: 본문을 읽지도 않는다. 최근 FLIGHT를 못 보내면 Same area를 묻지 않는다
+  const sec = (await judgeDispatchOp({ id: "D-0002", flight: "SYN-2" }, { title: "합성 보안", labels: ["Risk: Security"] }, read, { keys: [], why: "AD HOC이 섞임" }, titleOf, engine, "jev", "shadow", "2026-09-01T00:00:00Z"))!;
+  assert.equal(reads, 1);
+  assert.deepEqual(sec.sent, ["title"]);
+  assert.match(sec.withheld!, /Risk/);
+  assert.equal(sec.recentWithheld, "AD HOC이 섞임");
+  assert.equal(sec.judgment.sameArea, null);
+  assert.deepEqual(Object.keys(engine.calls[1].questions), ["ready", "prerequisite"]);
+  // 제목을 모르는 지난 FLIGHT가 있으면 묻지 않는다
+  const unk = (await judgeDispatchOp({ id: "D-0003", flight: "SYN-3" }, { title: "합성", labels: [] }, read, { keys: ["ATC-1"], why: null }, async () => null, engine, "jev", "shadow", "2026-09-01T00:00:00Z"))!;
+  assert.equal(unk.judgment.sameArea, null);
+  assert.match(unk.recentWithheld!, /제목/);
+  // 라벨을 모르면 제목만
+  const nolabel = (await judgeDispatchOp({ id: "D-0004", flight: "SYN-4" }, null, async () => ({ title: "x", description: BODY }), { keys: [], why: "x" }, titleOf, engine, "jev", "shadow", "2026-09-01T00:00:00Z"))!;
+  assert.equal(nolabel, null); // 제목도 모름 → 판정 안 함
+});
+
+test("게이트 통계: Ready=no↔거절, Prerequisite=yes↔waiting-on-prior·OCC HOLD, Same area 가까움↔승인", () => {
+  const h = (verdict: "agree" | "disagree") => ({ verdict, at: "t", reason: null });
+  const j = (ready: number, prereq: number, level: number | null) => ({ ready, prerequisite: prereq, sameArea: level === null ? null : { score: 1, level, confidence: null } });
+  const st = dispatchStatsOf([
+    { id: "a", judgment: j(0.2, 0.1, 0.9), human: h("disagree"), codes: [], occHold: false }, // ready no → 거절 ✓, near → 승인 ✗
+    { id: "b", judgment: j(0.1, 0.1, 0.9), human: h("agree"), codes: [], occHold: false }, // ready no → 거절 ✗, near → 승인 ✓
+    { id: "c", judgment: j(0.9, 0.8, null), human: h("disagree"), codes: ["waiting-on-prior"], occHold: false }, // prereq ✓
+    { id: "d", judgment: j(0.9, 0.8, null), human: null, codes: [], occHold: true }, // 판정 없이 OCC HOLD ✓
+    { id: "e", judgment: j(0.9, 0.9, null), human: h("agree"), codes: [], occHold: false }, // prereq ✗
+    { id: "f", judgment: j(0.1, 0.1, null), human: null, codes: [], occHold: false }, // 결과 없음 → 세지 않음
+  ]);
+  assert.deepEqual(st.ready, { marked: 2, matched: 1, rate: 0.5 });
+  assert.deepEqual(st.prerequisite, { marked: 3, matched: 2, rate: 2 / 3 });
+  assert.deepEqual(st.sameArea, { marked: 2, matched: 1, rate: 0.5 });
+  assert.equal(st.judged, 6);
+  assert.deepEqual(dispatchStatsOf([]).ready, { marked: 0, matched: 0, rate: null });
+});
+
+test("쏠림 방지: mark는 닫힌 제안(RECENT)에만 싣는다. 열린 제안은 수만 센다. proposals는 그대로", () => {
+  const ps = foldProposals([p("D-0001"), p("D-0002", { at: "2026-09-11T00:00:00Z" }), { op: "verdict", id: "D-0002", at: "2026-09-11T01:00:00Z", verdict: "agree", reason: null }] as Parameters<typeof foldProposals>[0]);
+  const before = JSON.stringify(ps);
+  const line = (id: string) => ({ op: "judge", family: "jev", target: "dispatch", id, flight: "ATC-9", at: "t", run: "shadow", engine: "stub", model: "stub", judgment: dispatchJudgmentOf(dAnswers(0.9, 0.1, 3), true), withheld: null, recentWithheld: null, sent: ["title"] }) as never;
+  const view = judgesBriefOf(ps, [ps[1]], dispatchMarksOf([line("D-0001"), line("D-0002")]), "shadow");
+  assert.deepEqual(Object.keys(view.marks), ["D-0002"]);
+  assert.equal(view.hidden, 1);
+  assert.equal(view.marks["D-0002"][0].ready, 0.9);
+  assert.equal(view.stats.judged, 2);
+  assert.equal(JSON.stringify(ps), before);
+  assert.ok(!existsSync(join(STATE, "proposals.jsonl"))); // 판정 계열은 proposals.jsonl에 쓰지 않는다
+});
