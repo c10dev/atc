@@ -23,7 +23,7 @@ export interface ControlRow {
   how: string | null; // 띄운 방식. 첫 메시지를 보여 줄 때만
   action: ControlAction; // STOP·LAUNCH·없음(ENGINEERING은 배지만)
   needs: Job | null; // job이 blocked면 NEEDS YOU
-  working: Job | null; // job이 working이고 detail이 있으면 그 한 줄
+  working: Job | null; // job이 working이고 detail이 있거나 blocked에서 고쳐 보인 것이면 그 한 줄
   launchOff: string | null; // LAUNCH를 끈 사유(launch가 있는 줄만)
   stale: string[]; // STALE job id(ATC-93). live가 아니고 LAUNCH를 막지 않는다
 }
@@ -53,7 +53,7 @@ export function controlRowOf(c: ControlSession): ControlRow {
     how: c.launch === "bg" ? (tmux ? "tmux에서 연 세션" : "claude --bg") : null,
     action,
     needs: job?.state === "blocked" ? job : null,
-    working: job?.state === "working" && job.detail ? job : null,
+    working: job?.state === "working" && (job.detail || job.settled) ? job : null,
     launchOff: c.blocked && c.launch !== null ? c.blocked : null,
     stale: (c.stale ?? []).map((x) => x.id ?? "").filter(Boolean),
   };
