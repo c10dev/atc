@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { READ_ONLY, SIDE_EFFECT, tierOf } from "./landing-tier.mjs";
+import { posix } from "node:path";
+import { READ_ONLY, SIDE_EFFECT, SIDE_EFFECT_HELPERS, tierOf } from "./landing-tier.mjs";
 
 test("서버·화면·문서만 바꾸면 auto", () => {
   assert.equal(tierOf(["server/routes.ts", "web/src/views/RouteMap.tsx", "docs/routes.md", "CHANGELOG.md", "README.ko.md"]).tier, "auto");
@@ -87,6 +88,58 @@ test("명령·비GET fetch를 쓰는 server 파일은 모두 등급 목록에 �
     missing,
     [],
     `deploy/landing-tier.mjs의 SIDE_EFFECT(머지·코멘트·쓰기·세션 시작·정지·메시지 전송이 있으면) 또는 READ_ONLY(읽기만 하면)에 올릴 것: ${missing.join(", ")}`,
+  );
+});
+
+// 부작용 helper를 부르는 파일(ATC-114): 명령을 직접 돌리지 않아도 시점을 정하므로 등급 목록에 있어야 한다.
+// import 문만 본다(이름 있는 import·export from, 통째 import, 동적 import). 정의한 파일을 가리키는 것만 센다.
+const IMPORT_RE = /\b(?:import|export)\s+(?:type\s+)?(?:(\*\s+as\s+\w+)|\{([^}]*)\})\s*from\s*["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/g;
+const nameOf = (s) => s.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0].trim();
+
+export function helperImports(src, file) {
+  const found = new Set();
+  for (const m of src.matchAll(IMPORT_RE)) {
+    const spec = m[3] ?? m[4];
+    if (!spec?.startsWith(".")) continue;
+    const target = posix.normalize(posix.join(posix.dirname(file), spec));
+    const all = m[1] !== undefined || m[4] !== undefined; // 통째·동적 import는 그 파일의 helper를 모두 셈
+    const names = all ? null : m[2].split(",").map(nameOf);
+    for (const [name, from] of SIDE_EFFECT_HELPERS) if (target === from && (all || names.includes(name))) found.add(name);
+  }
+  return [...found];
+}
+
+test("helper 목록의 이름은 정의한 파일이 실제로 export한다", () => {
+  for (const [name, from] of SIDE_EFFECT_HELPERS) {
+    assert.ok(existsSync(from), `${from} 없음 — SIDE_EFFECT_HELPERS에서 고칠 것`);
+    const src = readFileSync(from, "utf8");
+    assert.match(src, new RegExp(`export\\s+(?:async\\s+)?(?:function|const)\\s+${name}\\b`), `${from}가 ${name}을 export하지 않음 — deploy/landing-tier.mjs SIDE_EFFECT_HELPERS를 고칠 것`);
+    assert.ok(SIDE_EFFECT.some(([f]) => f === from), `${from}는 SIDE_EFFECT에 있어야 함`);
+  }
+});
+
+test("import 스캔: 이름·통째·동적 import와 다른 파일의 같은 이름", () => {
+  const f = "server/x.ts";
+  assert.deepEqual(helperImports('import { startRtsUnit, gh } from "./mcc-run.ts";', f), ["startRtsUnit"]);
+  assert.deepEqual(helperImports('import {\n  type AgentRow,\n  launchAircraft as launch,\n  liveRowsOf,\n} from "./session-control.ts";', f), ["launchAircraft"]);
+  assert.deepEqual(helperImports('export { stopControl } from "./session-control.ts";', f), ["stopControl"]);
+  assert.deepEqual(helperImports('import * as sc from "./session-control.ts";', f).sort(), ["launchAircraft", "launchControl", "stopAircraft", "stopControl"]);
+  assert.deepEqual(helperImports('const m = await import("./autoland-run.ts");', f), ["runAutoland"]);
+  assert.deepEqual(helperImports('import { setMccMode } from "./mcc-run.ts";', f), []);
+  assert.deepEqual(helperImports('import { startRtsUnit } from "./other.ts";', f), []);
+  assert.deepEqual(helperImports('import { runAutoland } from "../autoland-run.ts";', "server/sources/y.ts"), ["runAutoland"]);
+  assert.deepEqual(helperImports('import { startRtsUnit } from "node:fs";', f), []);
+});
+
+test("부작용 helper를 import하는 server 파일은 모두 등급 목록에 있다", () => {
+  const listed = new Set([...SIDE_EFFECT, ...READ_ONLY].map(([f]) => f));
+  const missing = serverSources()
+    .map((f) => [f, helperImports(readFileSync(f, "utf8"), f)])
+    .filter(([f, names]) => names.length > 0 && !listed.has(f));
+  assert.deepEqual(
+    missing,
+    [],
+    `deploy/landing-tier.mjs의 SIDE_EFFECT(그 helper로 시점을 정하면) 또는 READ_ONLY(읽기만 하면)에 올릴 것:\n${missing.map(([f, names]) => `  ${f} — ${names.join(", ")} import`).join("\n")}`,
   );
 });
 
