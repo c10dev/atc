@@ -8,14 +8,14 @@
       "Bash(gh pr view *)",
       "Bash(gh pr diff *)",
       "Bash(gh pr checks *)",
-      "Bash(gh pr list *)"
+      "Bash(gh pr list *)",
+      "Agent(inspector)"
     ],
     "deny": [
       "Edit",
       "Write",
       "NotebookEdit",
       "SendMessage",
-      "Agent",
       "Artifact"
     ],
     "additionalDirectories": [
@@ -55,11 +55,21 @@
         ]
       },
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit|SendMessage|Agent|Task|Artifact",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|SendMessage|Artifact",
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'MCC는 파일을 고치거나 메시지를 보내거나 하위 에이전트를 부르지 않습니다 — 착륙은 atcctl mcc로만.' >&2; exit 2",
+            "command": "echo 'MCC는 파일을 고치거나 메시지를 보내지 않습니다 — 착륙은 atcctl mcc로만.' >&2; exit 2",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/agent-guard.mjs\" || exit 2",
             "timeout": 5
           }
         ]
@@ -71,6 +81,11 @@
           {
             "type": "command",
             "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/squelch.mjs\" mcc",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/context-cap.mjs\"",
             "timeout": 5
           }
         ]
