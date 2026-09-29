@@ -134,13 +134,25 @@ The service can't restart itself from inside its own process, so RTS runs as a s
 3. Target = `origin/main` after `git fetch`. Refuses unless CI `check` on the target succeeded.
 4. Refuses, and reports that the user must do it, when the range changes `package.json`, `package-lock.json` (needs `npm ci`) or `deploy/atc.service` (needs `daemon-reload`).
 5. `git merge --ff-only <target>`, `systemctl --user restart atc`.
-6. Health check for up to 90 s: `/api/version` reports the target commit (a new `head` field) and a later `startedAt`, and `/api/snapshot` answers 200.
+6. Health check for up to 90 s: `/api/version` reports the target commit (a new `head` field) and a later `startedAt`, and `/api/snapshot` answers 200. Then the session checks (ATC-102, below).
 7. On failure: ROLLBACK. `git reset --hard <previous>` (the tree was clean and the move was a fast-forward, so nothing else is lost), restart, health check again, and set RTS off until the SUPERVISOR turns it back on.
 8. Appends one line to `rts.jsonl` for every attempt: from, to, result, duration, and the reason for any refusal or ROLLBACK.
 
 A restart takes the screen and API away for a few seconds. MCC runs RTS after a landing, and at most once every 5 minutes, so a burst of merges goes out as one RTS.
 
 The user can still deploy by hand. RTS only needs the checkout to be clean and behind `origin/main`.
+
+### Session checks as built (ATC-102)
+
+A RETURN TO SERVICE is healthy only if atc is up **and** it did not take the fleet down with it (2026-09-28: a deploy killed OCC `a578bf15` because the Claude daemon sat in `atc.service`'s cgroup). RTS only reads here: it never stops, restarts or messages a session.
+
+* **Before the restart** RTS snapshots the live background sessions from `claude agents --json` (`snapshotOf`: `id`, `name`, `kind`, `pid`). Interactive rows and ghost rows (no `pid` and no `status`, ATC-93) are left out. If `claude` can't be read, the session comparison is skipped and the record says so; the other two checks still run.
+* **After the version check** (`sessionsHealth`, retried every 3 s for up to 30 s more) `checkSessions` needs all three:
+  1. every snapshotted session is still listed live (same `id`; a new `pid` is fine while the job runs);
+  2. `daemonInService` from `GET /api/control/sessions` is `false`;
+  3. that endpoint answers.
+* **On failure** the existing ROLLBACK runs, and RTS stays stopped until the SUPERVISOR picks the MCC mode again. The `rts.jsonl` record's `detail` names the check (`sessions`, `daemon-in-service`, `control-sessions`) and the dead sessions by name, and carries `sessions: [{id, name}]`. ROLLBACK does not revive a killed session: the record and the stop keep the next deploy from repeating the damage, and show the SUPERVISOR which sessions to relaunch.
+* Pure functions `snapshotOf`, `diedOf`, `checkSessions` are tested in `deploy/rts.test.mjs`. Tests never run the real unit or restart 7700.
 
 ### UPDATE bar as built (ATC-82)
 

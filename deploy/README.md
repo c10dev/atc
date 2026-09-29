@@ -56,7 +56,8 @@ cp deploy/atc-rts.service ~/.config/systemd/user/ && systemctl --user daemon-rel
 3. Refuses when the range changes `package.json`, `package-lock.json` (needs `npm ci`) or a `deploy/*.service` / `*.timer` (needs `daemon-reload`): the user deploys those.
 4. `git merge --ff-only`, `systemctl --user restart atc` (the unit's `ExecStartPre` rebuilds the screen). If the checkout is already there but the service reports another commit, it only restarts.
 5. Health check for up to 90 s: `/api/version` reports the target `head` with a later `startedAt`, and `/api/snapshot` answers.
-6. On failure: ROLLBACK. `git reset --hard` to the previous commit and restart. RTS then stays stopped until the SUPERVISOR picks the MCC mode again in the settings window.
+6. Session check (ATC-102), up to 30 s more: every background session (control and team) that was live before the restart is still live, `daemonInService` from `/api/control/sessions` is `false`, and that endpoint answers. RTS only reads; it never stops or messages a session. Before the restart it snapshots `claude agents --json` (ghost rows without `pid` and `status` left out).
+7. On failure of 5 or 6: ROLLBACK. `git reset --hard` to the previous commit and restart (it does not revive a session that died; the `rts.jsonl` record names the check and the dead sessions as `sessions: [{id, name}]`). RTS then stays stopped until the SUPERVISOR picks the MCC mode again in the settings window.
 
 Every attempt appends a line to `~/.local/state/atc/rts.jsonl` (`running`, then `ok`, `refused`, `rollback` or `failed`).
 

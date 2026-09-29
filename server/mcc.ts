@@ -218,6 +218,7 @@ export interface RtsRecord {
   to: string;
   result: "running" | "ok" | "refused" | "rollback" | "failed";
   detail?: string;
+  sessions?: { id: string; name: string | null }[]; // 세션 점검(ATC-102)이 실패했을 때 죽은 세션
 }
 export const RTS_SPACING_MS = 5 * 60_000;
 export interface RtsInput {

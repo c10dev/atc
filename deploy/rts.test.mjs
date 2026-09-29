@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ciOf, healthyVersion, planRts } from "./rts.mjs";
+import { checkSessions, ciOf, diedOf, healthyVersion, planRts, snapshotOf } from "./rts.mjs";
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
@@ -47,4 +47,47 @@ test("CI: 마지막에 시작한 check run. 끝나지 않았으면 pending, 성�
   assert.equal(ciOf([{ status: "completed", conclusion: "failure", started_at: "1" }, { status: "completed", conclusion: "success", started_at: "2" }]), "ok");
   assert.equal(ciOf([{ status: "in_progress", conclusion: null, started_at: "3" }, { status: "completed", conclusion: "success", started_at: "2" }]), "pending");
   assert.equal(ciOf([{ status: "completed", conclusion: "cancelled", started_at: "1" }]), "failed");
+});
+
+const row = (id, name, over = {}) => ({ id, sessionId: `s-${id}`, name, kind: "background", status: "idle", pid: Number(`1${id.length}`), cwd: "/x", ...over });
+const okControl = { daemonInService: false, sessions: [] };
+
+test("세션 스냅샷: 유령 줄(pid·status 없음)과 interactive는 뺀다(ATC-93)", () => {
+  const rows = [row("aa11", "TOWER"), row("bb22", "OCC", { pid: undefined, status: "working" }), row("cc33", "ghost", { pid: undefined, status: undefined }), row("dd44", "tty", { kind: "interactive" })];
+  assert.deepEqual(snapshotOf(rows).map((s) => s.id), ["aa11", "bb22"]);
+  assert.deepEqual(snapshotOf(rows)[0], { id: "aa11", name: "TOWER", kind: "background", pid: 14 });
+  assert.deepEqual(snapshotOf(null), []);
+});
+
+test("세션 점검: 모두 살아 있으면 ok, 세션이 없어도 ok", () => {
+  const before = snapshotOf([row("aa11", "TOWER"), row("bb22", "TEAM_G")]);
+  assert.equal(checkSessions({ before, after: [...before].reverse(), control: okControl }).ok, true);
+  assert.equal(checkSessions({ before: [], after: [], control: okControl }).ok, true);
+});
+
+test("세션 점검: 하나가 죽으면 rollback 사유에 이름이 든다", () => {
+  const before = snapshotOf([row("aa11", "TOWER"), row("bb22", "TEAM_G")]);
+  const r = checkSessions({ before, after: before.slice(0, 1), control: okControl });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.failures, [{ check: "sessions", sessions: [{ id: "bb22", name: "TEAM_G" }] }]);
+  assert.match(r.detail, /TEAM_G/);
+  assert.deepEqual(diedOf(before, []), [{ id: "aa11", name: "TOWER" }, { id: "bb22", name: "TEAM_G" }]);
+  // claude agents를 뒤에 못 읽으면 모두 죽은 것으로 본다
+  assert.equal(checkSessions({ before, after: null, control: okControl }).ok, false);
+});
+
+test("세션 점검: daemon이 서비스 안이거나 control 엔드포인트가 답하지 않으면 실패", () => {
+  const before = snapshotOf([row("aa11", "TOWER")]);
+  const d = checkSessions({ before, after: before, control: { daemonInService: true } });
+  assert.deepEqual(d.failures.map((f) => f.check), ["daemon-in-service"]);
+  const c = checkSessions({ before, after: before, control: null });
+  assert.deepEqual(c.failures.map((f) => f.check), ["control-sessions"]);
+});
+
+test("세션 점검: 유령 줄은 무시하고, 재시작 전 목록을 못 읽으면 세션 비교만 건너뛴다", () => {
+  const before = snapshotOf([row("aa11", "TOWER"), row("cc33", "ghost", { pid: undefined, status: undefined })]);
+  const after = snapshotOf([row("aa11", "TOWER")]);
+  assert.equal(checkSessions({ before, after, control: okControl }).ok, true);
+  assert.equal(checkSessions({ before: null, after: null, control: okControl }).ok, true);
+  assert.equal(checkSessions({ before: null, after: null, control: { daemonInService: true } }).ok, false);
 });

@@ -56,7 +56,8 @@ cp deploy/atc-rts.service ~/.config/systemd/user/ && systemctl --user daemon-rel
 3. 범위가 `package.json`, `package-lock.json`(`npm ci` 필요)이나 `deploy/*.service`·`*.timer`(`daemon-reload` 필요)를 바꾸면 거절한다: 사용자가 배포한다.
 4. `git merge --ff-only`, `systemctl --user restart atc`(유닛의 `ExecStartPre`가 화면을 다시 빌드한다). 체크아웃은 이미 대상인데 서비스가 다른 커밋을 알리면 재시작만 한다.
 5. 90초까지 상태 확인: `/api/version`이 대상 `head`와 더 늦은 `startedAt`을 알리고 `/api/snapshot`이 답한다.
-6. 실패하면 ROLLBACK: 직전 커밋으로 `git reset --hard`하고 재시작한다. 그 뒤 RTS는 SUPERVISOR가 설정 창에서 MCC 모드를 다시 고를 때까지 멈춘다.
+6. 세션 점검(ATC-102), 30초까지 더: 재시작 전 살아 있던 백그라운드 세션(관제·팀)이 모두 그대로 살아 있고, `/api/control/sessions`의 `daemonInService`가 `false`이고, 그 엔드포인트가 답한다. RTS는 읽기만 한다: 세션을 멈추거나 메시지를 보내지 않는다. 재시작 전에 `claude agents --json`을 적어 둔다(`pid`·`status` 없는 유령 줄은 뺀다).
+7. 5나 6이 실패하면 ROLLBACK: 직전 커밋으로 `git reset --hard`하고 재시작한다(죽은 세션은 되살리지 않는다. `rts.jsonl` 기록이 실패한 점검과 죽은 세션을 `sessions: [{id, name}]`으로 적는다). 그 뒤 RTS는 SUPERVISOR가 설정 창에서 MCC 모드를 다시 고를 때까지 멈춘다.
 
 시도마다 `~/.local/state/atc/rts.jsonl`에 한 줄을 붙인다(`running` 다음 `ok`·`refused`·`rollback`·`failed`).
 
