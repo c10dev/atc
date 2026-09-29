@@ -1,2 +1,0 @@
-### Changed
-- The FLEET screen code is split into one file per part under `web/src/views/fleet/` (ATC-65): page shell (`Fleet.tsx`), status list, card, FUEL, ENTRY INTO SERVICE, LAUNCH and CREW BRIEFING panels, editor, and shared types and API helpers. `Fleet.css` keeps the shared rules and each part has its own CSS. Parallel FLEET changes had kept colliding in the 1,148-line `web/src/views/Fleet.tsx`. Nothing on screen changes; the tab lazy-loads `views/fleet/Fleet.tsx`.

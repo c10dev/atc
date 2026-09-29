@@ -7,7 +7,7 @@ atc knows each team session as an AIRCRAFT (`TEAM_B`, callsign BRAVO) and its le
 - **FLEET**: the teams, their crews, what they are rated for, their routes and targets.
 - **FLIGHT classification**: the kind of work, its size and the rating it needs.
 
-> Status: design draft (2026-09-26, updated 2026-09-27). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE steps 1 and 2 (sections 8.3 and 8.4; step 2, OCC sending it, only in DISPATCH approval mode), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules, then STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (see section 5 for what is left), STAND-free departure and arrival (section 5.1.1), OCC S1 `CLASSIFY` drafts (section 6), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), NETWORK (section 7.3), the DEPARTURE LOG (section 7.5), CHECKRIDE recommendations for TYPE RATINGS (section 8.2), and session control: LAUNCH and STOP (section 8.5). Decisions are listed at the end.
+> Status: design draft (2026-09-26, updated 2026-09-27). Built so far: TAIL ASSIGNMENT (`tail:TEAM_X`, with `lane:TEAM_X` read as an alias until 2026-10-10), the FLEET registry and tab (step 2), observed crew and CREW CHANGE steps 1 and 2 (sections 8.3 and 8.4; step 2, OCC sending it, only in DISPATCH approval mode), step 3: the planner reads the classification labels and applies the TYPE RATING, crew, WAKE and ROUTE rules, then STAND-free FLIGHTs for HOLDING and PARKED teams and CHECK independence (see section 5 for what is left), STAND-free departure and arrival (section 5.1.1), OCC S1 `CLASSIFY` drafts (section 6), team building (section 8.1), the LOGBOOK with TARGETS actuals on the FLEET cards (sections 7.1 and 7.2), NETWORK (section 7.3), the DEPARTURE LOG (section 7.5), CHECKRIDE recommendations for TYPE RATINGS (section 8.2), session control: LAUNCH and STOP (section 8.5), FLEET PLAN in shadow and approval with REFRESH (sections 8.6 and 8.7, ATC-69), FOB on the FLEET list (ATC-81), and one REGISTRATION for session-name spellings (ATC-67). Decisions are listed at the end.
 
 Related: [occ.md](occ.md) (OCC writes the classification and tail labels as SCHEDULE operations), [dispatch.md](dispatch.md) (the planner that uses them).
 
@@ -568,7 +568,7 @@ Decision changed 2026-09-28 (SUPERVISOR): atc starts and stops AIRCRAFT sessions
 - **Record.** Every LAUNCH and STOP is a FLIGHT RECORDER line `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}`.
 - **Tab.** A card with no session shows **LAUNCH** (permission mode, optional model, background count against the cap). A background session shows `BG <id>` and **STOP**. RETIREMENT of an AIRCRAFT flying a background session then asks whether to stop it too.
 
-Not built yet: automatic STOP of idle sessions (FLEET PLAN step 4; shadow proposals and approval are built in 8.6 and 8.7); RESTART as scheduled maintenance for long sessions; CREW CHANGE by relaunching with the new complement; a usage budget per AIRCRAFT (FUEL, ATC-46, [fuel.md](fuel.md)).
+Not built yet: automatic STOP of idle sessions (FLEET PLAN step 4; shadow proposals and approval are built in 8.6 and 8.7); RESTART as scheduled maintenance for a long session in the middle of a FLIGHT (a resting AIRCRAFT gets REFRESH, 8.6, ATC-69); CREW CHANGE by relaunching with the new complement; a usage budget per AIRCRAFT (FUEL, ATC-46, [fuel.md](fuel.md)).
 
 #### 8.5.1 Control sessions (built 2026-09-28)
 
@@ -595,7 +595,7 @@ The same LAUNCH and STOP work for atc's own control sessions, from the settings 
 
 ### 8.6 FLEET PLAN: proposing LAUNCH, STOP and the rest
 
-Status: steps 1 and 2 built (shadow, 2026-09-28); SUPERVISOR decisions recorded below. Section 8.5 gave the SUPERVISOR the controls; this section decides when atc suggests using them, so that forming, parking, servicing and retiring teams stops being manual bookkeeping.
+Status: steps 1 and 2 built (shadow, 2026-09-28), with the `REFRESH` kind (cabin turnaround, ATC-69); SUPERVISOR decisions recorded below. Section 8.5 gave the SUPERVISOR the controls; this section decides when atc suggests using them, so that forming, parking, servicing and retiring teams stops being manual bookkeeping.
 
 **Current facts (2026-09-28 06:30 UTC).**
 

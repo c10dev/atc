@@ -1,6 +1,0 @@
-### Changed
-- One REGISTRATION everywhere (ATC-67, [docs/fleet.md](docs/fleet.md) "REGISTRATION spellings as built"). DISPATCH's `teamPattern` accepted `Team G`, `TEAM-G` and `team_g` as team sessions, but the rest of atc compared names with `toUpperCase()`, so those spellings never met `fleet.json`'s `TEAM_G`, `tail:TEAM_G` or the ACCOUNT members.
-  - New pure `registrationOf(name, teamPattern)` (`server/registration.ts`) maps any accepted spelling to `TEAM_G`, derived from `teamPattern`. Non-team names return `null` and are compared in upper case as before.
-  - FLEET, DISPATCH (tails, CHECK independence, FUEL, profile and ACCOUNT), CREW CHANGE, observed crew, CHECKRIDE, BRIEFING, FLEET PLAN, ATFM, FUEL, FLIGHT FOLLOWING, session control and TAIL drafts compare by REGISTRATION. `tail:team-g` is `TEAM_G`.
-  - New LOGBOOK, DEPARTURE LOG, FLIGHT RECORDER and FLEET PLAN records write the canonical REGISTRATION; old lines keep their spelling and still match. DISPATCH proposals' `aircraftName` and CREW CHANGE `registration` keep the live session name, the recipient `occ/send-guard.mjs` compares exactly (SUPERVISOR decision); the guard is unchanged.
-  - FLEET shows `세션 이름 Team G → TEAM_G로 바꾸면 좋다` on an AIRCRAFT whose live session name isn't canonical, and shows two live sessions that read as one REGISTRATION as a conflict instead of merging them (idea #96).
