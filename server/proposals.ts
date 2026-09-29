@@ -112,6 +112,8 @@ export const regOfProposal = (p: Pick<Proposal, "registration" | "aircraftName">
 
 // SUPERSEDED 사유의 앞머리: AIRCRAFT 사정으로 닫힘
 export const AIRCRAFT_WHY = "AIRCRAFT 불가";
+// 멈춘 AIRCRAFT(RESUME·STALLED, 끝나지 않은 In Progress FLIGHT, ATC-90)로 닫힘. SUPERVISOR 판정이 아니라 24시간 짝 규칙을 시작하지 않는다
+export const STOPPED_WHY = "AIRCRAFT 멈춤";
 
 export const isHeld = (p: Proposal) => p.kind === "ASSIGN" && p.holdAt !== null;
 // READBACK으로 DEPARTED한 STAND 없는 FLIGHT(ARRIVED 보고 전)
@@ -336,7 +338,7 @@ function pairUntil(p: Pick<Proposal, "at" | "timeline" | "requeuedAt">, now: num
   return until > now ? until : null;
 }
 // "더 나은 배정으로 바뀜"으로 닫힌 제안은 판정받지 못한 것이다. 24시간 규칙에서 빼 다시 후보가 되게 한다
-const churned = (p: Pick<Proposal, "status" | "reason">) => p.status === "superseded" && (p.reason ?? "").startsWith(BETTER_WHY);
+const churned = (p: Pick<Proposal, "status" | "reason">) => p.status === "superseded" && ((p.reason ?? "").startsWith(BETTER_WHY) || (p.reason ?? "").startsWith(STOPPED_WHY));
 // 판정 대기 중인 제안을 바꾸려면 새 제안 점수가 이만큼(비율) 높아야 한다
 export const REPLACE_MARGIN = 0.2;
 
@@ -453,6 +455,7 @@ export function syncOps(
     const done = worked(p.flight);
     if (done) return done;
     const ac = acOf(p);
+    if (ac?.stopped && !canTakeNow(ac, t)) return `${STOPPED_WHY} — ${ac.name} — ${ac.reason}`;
     if (!ac || !canTakeNow(ac, t)) return `${AIRCRAFT_WHY}: ${ac?.reason ?? "세션 없음"}`;
     // 계획의 제외 목록을 먼저 믿는다. 거기에 없을 때만 planner의 규칙을 직접 확인한다 —
     // plan.excluded는 "지금 후보인 FLIGHT"의 사유만 담아서, 이미 후보에서 빠진 FLIGHT는 여기 없다.

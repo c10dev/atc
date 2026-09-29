@@ -212,7 +212,7 @@ DISPATCH 카드는 제목 아래 분류를 보여 준다. 예: `BUILD · H · SE
 | 예약은 나뉜다 | 진행 중인 STAND 없는 제안은 STAND 규칙을 막지 않는다(SURVEY 중인 팀도 BUILD를 받을 수 있다). 진행 중인 BUILD 제안도 STAND 없는 FLIGHT를 막지 않는다. `AircraftState.reserved`는 STAND가 필요한 예약, `reservedLight`는 STAND 없는 예약이다. 스냅숏이 더는 모르는 예약 FLIGHT는 STAND가 필요한 것으로 센다 |
 | 같은 규칙 | TAIL ASSIGNMENT(HOLDING인 tail 팀도 STAND 없는 FLIGHT를 받을 수 있음), TYPE RATING, CREW, CHECK 독립성, WAKE 슬롯 |
 | 순서 | STAND 규칙이 먼저라 BUILD 작업이 자리를 지킨다. STAND 없는 FLIGHT는 남은 자리를 채운다. 이 훑기 안에서는 점수 순 |
-| 표시 | 0점 요소 `STAND 없이`와 AIRCRAFT 상태: `HOLDING — VOC-10 진행 중 — SURVEY는 STAND가 필요 없어 STAND 규칙 밖(AIRCRAFT당 1건)` |
+| 표시 | 0점 요소 `STAND 없이`와 AIRCRAFT 상태: `VOC-10 아직 진행 중(PR 없음) — SURVEY는 STAND가 필요 없어 STAND 규칙 밖(AIRCRAFT당 1건)` |
 | 승인 운용 | 승인된 STAND 없는 제안은 AIRCRAFT가 HOLDING인 동안 유효하다(`canTakeNow`). `syncOps`도 SUPERSEDED 사유에 같은 규칙을 쓴다. 출발과 도착은 5.1.1 |
 
 라벨이 붙은 FLIGHT만 이 길로 간다. SCHEDULE `classify` 후보는 조사, 리뷰, 비교, 계획처럼 보이는 제목을 앞에 둔다(`server/schedule.ts`의 `standFreeHint`). 그래서 OCC가 `SURVEY`·`CHECK`일 것 같은 FLIGHT를 더 빨리 분류한다. 순서는 힌트일 뿐이고, 라벨은 여전히 OCC가 정한다.

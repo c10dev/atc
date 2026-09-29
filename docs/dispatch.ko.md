@@ -90,6 +90,7 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
 | **작업 중**: ticket key가 그 FLIGHT인 열린 PR(Draft 포함) | `열린 PR #N 있음` | 2026-09-27 |
 | **FLIGHT 보류**: 최근 24시간 안에 FLIGHT 칩으로 거절된 ASSIGN이 있고, 그 뒤로 이슈가 바뀌지 않음(6.1) | `FLIGHT 보류 — <칩> (D-xxxx 판정) — 이슈가 바뀌거나 MM-DD HH:MM부터 다시` | 2026-09-27 |
 | 워크트리(STAND)가 이미 있음 | `이미 STAND가 있음` | |
+| **멈춘 AIRCRAFT**(ATC-90): health가 `RESUME`·`STALLED`이거나, 머지된 PR이 없는 In Progress FLIGHT(`tail:` 라벨이나 쥔 STAND)를 아직 쥐고 있다(STAND 없는 FLIGHT는 제외). 쥔 FLIGHT는 WAKE만큼 슬롯을 쓰므로, 슬롯이 남은 팀(예: `wake:L`을 쥐고 `perTeam` 1)은 그 안에 드는 FLIGHT를 받을 수 있다 | `TEAM_G — VOC-72 아직 진행 중(PR 없음)`, `TEAM_H — RESUME 필요(한도 풀림 22:10Z)`. 키는 REGISTRATION이다. 열린 제안은 `AIRCRAFT 멈춤 — …`으로 SUPERSEDED되고, SUPERVISOR 판정이 아니라서 24시간 짝 규칙을 시작하지 않는다 | 2026-09-29 |
 | 진행 중인 제안·HOLD가 있음 | `진행 중인 제안 D-xxxx`, `HOLD D-xxxx — …` | |
 | 배정 가능한 AIRCRAFT가 모두 최근 24시간 안에 이 FLIGHT와 제안됐다 닫힌 짝(6.1) | `24시간 안에 제안된 짝(D-xxxx) — MM-DD HH:MM부터 다시` | 2026-09-27 |
 | 우선순위 없음 | `우선순위 없음 — 사람이 정할 때까지 배정하지 않음` | |
@@ -137,7 +138,7 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 
 각 제안에 요소별 점수를 그대로 보여 준다("왜 이 팀에 이 편인가"). 가중치는 설정 파일로 SUPERVISOR가 바꾼다.
 
-점수 없이 짝의 이유만 보여 주는 표시가 둘 있다. `STAND 없이`(STAND 규칙 밖으로 준 SURVEY·CHECK, AIRCRAFT 상태와 함께. 예: `HOLDING — VOC-10 진행 중`)와 모든 CHECK에 붙는 `CHECK 독립성`(빼 둔 만든 팀, 누가 만들었는지 모르면 `확인 못 함 — …`). 쉬는 AIRCRAFT에 주는 가산점은 없다.
+점수 없이 짝의 이유만 보여 주는 표시가 둘 있다. `STAND 없이`(STAND 규칙 밖으로 준 SURVEY·CHECK, AIRCRAFT 상태와 함께. 예: `VOC-10 아직 진행 중(PR 없음) — 남은 슬롯 0.5`)와 모든 CHECK에 붙는 `CHECK 독립성`(빼 둔 만든 팀, 누가 만들었는지 모르면 `확인 못 함 — …`). 쉬는 AIRCRAFT에 주는 가산점은 없다.
 
 #### 5.3.1 파일 겹침 (ATC-71)
 

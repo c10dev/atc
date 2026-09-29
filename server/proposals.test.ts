@@ -63,6 +63,19 @@ test("동기화: 새 짝은 만들고, 빠진 짝은 사유와 함께 SUPERSEDED
   );
 });
 
+test("동기화(ATC-90): 멈춘 AIRCRAFT의 열린 제안은 AIRCRAFT 멈춤으로 닫고, 그 짝은 24시간 규칙에 걸리지 않는다", () => {
+  const existing = fold([create("D-0001", "VOC-1", "c", 30)]);
+  const stopped = { id: "c", name: "TEAM_C", callsign: "CHARLIE", airport: "VCDO", available: false, resting: true, stopped: true as const, reason: "VOC-72 아직 진행 중(PR 없음)", reserved: null };
+  const tickets = [{ ...t("VOC-1"), labels: [], project: "Beta Readiness", priority: 3 } as Ticket];
+  const plan = planOf({ aircraft: [stopped] });
+  const ops = syncOps(existing, plan, { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 2);
+  assert.deepEqual(ops.map((o) => `${o.op}:${o.id}${"reason" in o ? `:${o.reason}` : ""}`), ["supersede:D-0001:AIRCRAFT 멈춤 — TEAM_C — VOC-72 아직 진행 중(PR 없음)"]);
+  // 판정이 아니라서 같은 짝은 바로 다시 후보가 된다
+  const closed = fold([create("D-0001", "VOC-1", "c", 30), { op: "supersede", id: "D-0001", at: iso(5), reason: "AIRCRAFT 멈춤 — TEAM_C — VOC-72 아직 진행 중(PR 없음)" }]);
+  const back = syncOps(closed, planOf({ assign: [assign("VOC-1", "b")], aircraft: [{ ...stopped, available: true, stopped: undefined, reason: "PARKED" }] }), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 2);
+  assert.equal(back.filter((o) => o.op === "create").length, 1);
+});
+
 test("동기화: 24시간 안에 거절한 짝은 다시 제안하지 않고, 열린 제안 한도를 지킨다", () => {
   const existing = fold([create("D-0001", "VOC-1", "b", 60), { op: "verdict", id: "D-0001", at: iso(50), verdict: "disagree", reason: null }]);
   const many = ["VOC-1", "VOC-2", "VOC-3", "VOC-4"].map((f) => assign(f, "b"));

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DEFAULT_DISPATCH_CONFIG, type DispatchConfig, flightHeldWhy, landedOf, pairBlockedWhy, planDispatch, readFlightHistory, workedWhy } from "./dispatch.ts";
+import { DEFAULT_DISPATCH_CONFIG, type DispatchConfig, type Landed, flightHeldWhy, landedOf, pairBlockedWhy, planDispatch, readFlightHistory, workedWhy } from "./dispatch.ts";
 import type { Claim, PullRequest, Session, Snapshot, Ticket, Workspace } from "./model.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
@@ -101,7 +101,7 @@ test("AIRCRAFT: AIRBORNE·진행 중 STAND·소속 없음은 불가, PARKED와 �
   const p = planDispatch(s, new Map(), cfg(), NOW);
   assert.deepEqual(
     p.aircraft.map((a) => `${a.callsign}:${a.available ? "Y" : "N"}:${a.reason}`),
-    ["ALPHA:N:AIRBORNE", "BRAVO:Y:PARKED", "CHARLIE:N:HOLDING — VOC-10 진행 중", "DELTA:Y:HOLDING, 남은 FLIGHT 없음", "ECHO:N:소속 AIRPORT 없음"],
+    ["ALPHA:N:AIRBORNE", "BRAVO:Y:PARKED", "CHARLIE:N:VOC-10 아직 진행 중(PR 없음)", "DELTA:Y:HOLDING, 남은 FLIGHT 없음", "ECHO:N:소속 AIRPORT 없음"],
   );
 });
 
@@ -463,7 +463,7 @@ test("STAND 없는 FLIGHT: HOLDING 팀이 SURVEY를 받고, PARKED 팀은 STAND 
   assert.deepEqual(pairsOf(p), ["VOC-200→TEAM_B", "VOC-201→TEAM_C"]);
   const survey = p.assign.find((a) => a.flight === "VOC-201")!;
   assert.deepEqual(survey.factors.find((f) => f.id === "standFree"), {
-    id: "standFree", label: "STAND 없이", value: 1, weight: 0, points: 0, detail: "HOLDING — VOC-10 진행 중 — SURVEY는 STAND가 필요 없어 STAND 규칙 밖(AIRCRAFT당 1건)",
+    id: "standFree", label: "STAND 없이", value: 1, weight: 0, points: 0, detail: "VOC-10 아직 진행 중(PR 없음) — SURVEY는 STAND가 필요 없어 STAND 규칙 밖(AIRCRAFT당 1건)",
   });
   // 표시는 점수를 바꾸지 않는다
   assert.equal(survey.score, Math.round(survey.factors.reduce((a, f) => a + f.points, 0) * 10) / 10);
@@ -646,7 +646,7 @@ test("tail: 지정 팀이 HOLDING이면 STAND 없는 FLIGHT는 받고, BUILD는 
   });
   const p = planDispatch(s, new Map(), cfg(), NOW);
   assert.deepEqual(pairsOf(p), ["VOC-260→TEAM_E"]);
-  assert.equal(p.excluded.find((x) => x.flight === "VOC-261")?.reason, "tail:TEAM_E — 지정 팀 배정 불가(TEAM_E HOLDING — VOC-10 진행 중)");
+  assert.equal(p.excluded.find((x) => x.flight === "VOC-261")?.reason, "tail:TEAM_E — 지정 팀 배정 불가(TEAM_E VOC-10 아직 진행 중(PR 없음))");
 });
 
 test("canTakeNow: STAND 없는 FLIGHT는 HOLDING(resting) AIRCRAFT도 받을 수 있다 — 승인된 제안이 SUPERSEDED되지 않는다", async () => {
@@ -707,7 +707,8 @@ test("현실적인 스냅샷: HOLDING 4대·PARKED 1대·AIRBORNE 1대에서 BUI
   // SEC SURVEY는 SEC 팀(TEAM_B·E), flash-helper만 태운 TEAM_C는 SURVEY만, AIRBORNE TEAM_A는 없음.
   assert.deepEqual(pairsOf(p), ["VOC-125→TEAM_B", "VOC-177→TEAM_E", "VOC-181→TEAM_F", "VOC-182→TEAM_C"]);
   // CHECK(VOC-180)는 PR #400을 만든 TEAM_D와 flash-helper 팀을 뺀 TEAM_B·E가 더 급한 SURVEY를 받아 기다린다(제외가 아님)
-  assert.equal(p.excluded.length, 0);
+  // 끝나지 않은 FLIGHT를 쥔 HOLDING 4대는 멈춘 팀으로 excluded에 사유와 함께 남는다(ATC-90). FLIGHT는 하나도 빠지지 않는다
+  assert.ok(p.excluded.every((e) => /^TEAM_[A-Z] — /.test(e.reason)));
   assert.deepEqual(p.slots, [{ airport: "VCDO", airborne: 1, planned: 5.5, limit: 8 }]);
   // 기본 한도(VCDO 4)에서는 WAKE 슬롯이 먼저 찬다: BUILD M(1) + SURVEY H(2) + AIRBORNE 1
   const tight = planDispatch(s, new Map(), cfg(), NOW, undefined, fleet, undefined, logbook);
@@ -976,7 +977,7 @@ test("CHECK 독립성(ATC-67): LOGBOOK의 옛 표기와 `Team D` 세션을 한 R
 });
 
 
-test("AIRCRAFT health(ATC-86): cut LIMIT는 LIMIT처럼 배정하지 않고, RESUME·STALLED는 보여 주기만 한다(DISPATCH는 그대로)", () => {
+test("AIRCRAFT health(ATC-86): cut LIMIT는 LIMIT처럼 배정하지 않고, RESUME·STALLED는 멈춘 팀이다(ATC-90)", () => {
   const h = (code: string, holds: boolean, extra = {}) => ({ code, level: "alert", since: daysAgo(0), detail: `${code} 원문`, next: "", holds, ...extra }) as Session["health"];
   const cutAt = new Date(NOW - 60 * 60_000).toISOString();
   const s = snap({
@@ -991,8 +992,56 @@ test("AIRCRAFT health(ATC-86): cut LIMIT는 LIMIT처럼 배정하지 않고, RES
   const p = planDispatch(s, new Map(), cfg(), NOW);
   assert.deepEqual(
     p.aircraft.map((a) => `${a.name}:${a.available}:${a.reason}`),
-    ["TEAM_B:false:HOLD · LIMIT (cut 11:00Z) until 12:30Z — LIMIT 원문", "TEAM_C:false:HOLD · LIMIT (cut 11:00Z) — LIMIT 원문", "TEAM_D:true:PARKED", "TEAM_E:true:PARKED"],
+    ["TEAM_B:false:HOLD · LIMIT (cut 11:00Z) until 12:30Z — LIMIT 원문", "TEAM_C:false:HOLD · LIMIT (cut 11:00Z) — LIMIT 원문", "TEAM_D:false:RESUME 필요", "TEAM_E:false:STALLED 0m — STALLED 원문"],
   );
+});
+
+test("멈춘 팀(ATC-90): RESUME·STALLED와 끝나지 않은 In Progress FLIGHT를 쥔 팀은 배정하지 않고 사유를 남긴다", () => {
+  const h = (code: string, extra = {}) => ({ code, level: "alert", since: daysAgo(0), detail: `${code} 원문`, next: "", holds: false, ...extra }) as Session["health"];
+  const resetsAt = new Date(NOW + 30 * 60_000).toISOString();
+  const s = snap({
+    sessions: [
+      { ...session("g", "TEAM_G"), lastActiveAt: daysAgo(0) },
+      { ...session("h", "TEAM_H"), health: h("RESUME", { resetsAt }) },
+      { ...session("i", "TEAM_I"), health: h("STALLED") },
+      session("j", "TEAM_J"),
+    ],
+    tickets: [
+      ticket("VOC-72", { state: "In Progress", stateType: "started", labels: ["tail:TEAM_G"] }),
+      ticket("VOC-80"),
+    ],
+  });
+  const p = planDispatch(s, new Map(), cfg(), NOW);
+  const ex = Object.fromEntries(p.excluded.map((e) => [e.flight, e.reason]));
+  assert.equal(ex["TEAM_G"], "TEAM_G — VOC-72 아직 진행 중(PR 없음)");
+  assert.match(ex["TEAM_H"], /^TEAM_H — RESUME 필요\(한도 풀림 /);
+  assert.match(ex["TEAM_I"], /^TEAM_I — .*STALLED/);
+  assert.deepEqual(p.assign.map((a) => `${a.flight}→${a.aircraftName}`), ["VOC-80→TEAM_J"]);
+});
+
+test("멈춘 팀(ATC-90): 슬롯이 남으면 그 안에 드는 WAKE의 FLIGHT만 받는다(L은 받고 M은 못 받는다)", () => {
+  const s = snap({
+    sessions: [session("g", "TEAM_G")],
+    tickets: [
+      ticket("VOC-72", { state: "In Progress", stateType: "started", labels: ["tail:TEAM_G", "wake:L"] }),
+      ticket("VOC-81", { labels: ["wake:L"] }),
+      ticket("VOC-82", { labels: ["wake:M"] }),
+    ],
+  });
+  const p = planDispatch(s, new Map(), cfg(), NOW);
+  assert.deepEqual(p.assign.map((a) => a.flight), ["VOC-81"]);
+  assert.equal(p.aircraft[0].stopped, undefined);
+  assert.equal(p.aircraft[0].room, 0.5);
+});
+
+test("멈춘 팀(ATC-90): 머지된 PR이 있으면 쥔 것으로 세지 않고, 열린 제안은 AIRCRAFT 멈춤으로 닫되 짝 규칙은 시작하지 않는다", () => {
+  const landed: Landed = new Map([["VOC-72", "repo#9"]]);
+  const s = snap({
+    sessions: [session("g", "TEAM_G")],
+    tickets: [ticket("VOC-72", { state: "In Progress", stateType: "started", labels: ["tail:TEAM_G"] }), ticket("VOC-80")],
+  });
+  const p = planDispatch(s, new Map(), cfg(), NOW, undefined, undefined, landed);
+  assert.equal(p.aircraft[0].available, true);
 });
 
 // ── 파일 겹침(ATC-71) ──
