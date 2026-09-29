@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import type { Milestones } from "../../../server/milestones.ts";
+import { milestoneLine, milestoneTitle } from "../../../server/milestones.ts";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import { followingExceptions } from "../readiness-line.ts";
+import { formatClock, useSettings } from "../settings.ts";
 import "./Following.css";
 
 // FLIGHT FOLLOWING(운항 추적, docs/occ.md 8장). 배정된 FLIGHT의 단계와 지연·불일치를 보여 주기만 한다.
@@ -34,6 +37,7 @@ interface FollowItem {
   stageAt: string | null;
   stand: string | null;
   pr: { repo: string; number: number; url: string; merged: boolean } | null;
+  milestones?: Milestones | null; // OOOI(ATC-123)
   issues: FollowIssue[];
 }
 export interface FollowBrief {
@@ -174,6 +178,8 @@ export function FollowingPanel({ brief, now }: { brief: FollowBrief | null; now:
 
 function FollowRow({ f, now }: { f: FollowItem; now: number }) {
   const fn = flightNumber(f.flight);
+  const { clock: clockMode } = useSettings();
+  const fmt = (iso: string) => formatClock(iso, clockMode);
   return (
     <li className="ff-item">
       <div className="ff-row">
@@ -227,6 +233,12 @@ function FollowRow({ f, now }: { f: FollowItem; now: number }) {
           </span>
         )}
       </div>
+
+      {f.milestones && (
+        <p className="ff-ms mono" title={milestoneTitle(f.milestones, (iso) => `${clock(iso)}`)}>
+          {milestoneLine(f.milestones, fmt)}
+        </p>
+      )}
 
       <FollowIssues f={f} now={now} />
     </li>

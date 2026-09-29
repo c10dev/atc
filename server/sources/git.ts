@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { promisify } from "node:util";
@@ -11,6 +11,11 @@ const run = promisify(execFile);
 async function git(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await run("git", ["-C", cwd, ...args], { timeout: 10_000, maxBuffer: 4 << 20 });
   return stdout;
+}
+
+// 읽기만 하는 명령 한 줄(동기, OOOI의 머지 커밋·포함 확인, ATC-123). 실패하면 던지고 e.status가 종료 코드다
+export function gitReadSync(cwd: string, args: string[]): string {
+  return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] }).trim();
 }
 
 // TEAM 키는 설정 창에서 바뀔 수 있어서, 바뀌면 다시 만든다. 읽는 팀 key 모두(voc-123, atc-12)

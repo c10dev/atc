@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync, readdirSync, readFileSync, rmSync } from "no
 import { join } from "node:path";
 import { config } from "./config.ts";
 import { inSequence } from "./landing.ts";
+import type { Milestone } from "./milestones.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 
 // FLIGHT RECORDER. 날짜(UTC)별 JSONL에 추가만 한다. 서버를 재시작해도 남아 지표 계산에 쓴다.
@@ -11,6 +12,7 @@ import type { Snapshot, TrafficEvent } from "./model.ts";
 // - ack: CONTROLLER가 브리핑을 처리함(TOWER가 실제로 운용된 날을 센다)
 // - checkride: SUPERVISOR의 TYPE RATING 부여·회수와 그 근거(checkride.ts)
 // - fleet: SUPERVISOR가 AIRCRAFT 세션을 띄우거나 멈춤(session-control.ts)
+// - milestone: FLIGHT의 OOOI(ATC-123, milestone.out|off|on|in)를 처음 본 때. t는 이정표가 일어난 시각, seenAt은 atc가 처음 본 시각. FLIGHT·이정표마다 한 줄
 
 export interface Sample {
   airborne: number; // 작업 중(busy) 세션
@@ -26,6 +28,7 @@ export type RecordLine =
   | { t: string; kind: "event"; epoch: string; event: TrafficEvent }
   | ({ t: string; kind: "sample" } & Sample)
   | { t: string; kind: "ack"; consumer: string }
+  | { t: string; kind: "milestone"; milestone: Milestone; flight: string; at: string; seenAt: string }
   | { t: string; kind: "dispatch"; op: string; id: string }
   | { t: string; kind: "schedule"; op: string; id: string }
   | { t: string; kind: "landing"; op: string; id: string } // 착륙 리뷰(ATC-7, REVIEW 세션)

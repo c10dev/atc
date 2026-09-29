@@ -354,6 +354,24 @@ Some FLIGHTs touch user-tier files (`deploy/landing-tier.mjs` USER: guards, `.cl
 - **Alerts.** FLIGHT FOLLOWING follows a sent proposal that awaits the SUPERVISOR and shows a warn issue `await-supervisor` (key `<FLIGHT>|await-supervisor`, reported to the SUPERVISOR once). The snapshot raises a `health` alert on the AIRCRAFT session, key `health|AWAIT-SUPERVISOR|<D-xxxx>`, through the same path as ATC-99 (BLOCKED background session) and ATC-87, once per key. PILOT'S DISCRETION: no new health code (`HealthCode` and `hooks/health.d.mts` are unchanged).
 - **OCC.** `occ/CLAUDE.md` and `flight-plan.md` say: when a CAPTAIN holds for its user, run `dispatch await-supervisor`; don't retry, and don't relay any approval. Guards, send-guard and the FLIGHT PLAN text are unchanged.
 
+## FLIGHT FOLLOWING: milestones as built (ATC-123)
+
+Airlines log OOOI, the four actual times of a flight. atc gives each FLIGHT the same four, from records it already has. Nothing new detects team work, nothing is written to Linear, and ARRIVED means what it meant; IN sits beside it.
+
+| Milestone | Meaning | Source (first one that exists) |
+|---|---|---|
+| `out` | OUT: DEPARTED | The first DEPARTURE LOG entry (`departures.jsonl`) for the FLIGHT; else the proposal's `departed` time (STAND-free FLIGHT); else the LOGBOOK line's `departedAt` when its `departedFrom` is not `pr` (an estimate from the PR is never used) |
+| `off` | OFF: PR opened | The earliest of: `createdAt` of an open PR linked to the FLIGHT (branch, `Fixes` or `Refs` key); a merged PR's merge time minus its landing wait; the first `landing.requested` event |
+| `on` | ON: merged | The LOGBOOK `arrivedAt` of the merged PR (the earliest merge if there are several) |
+| `in` | IN: in service | The `at` of the first `rts.jsonl` record with result `ok`, at or after ON, whose `to` contains the merge commit (`git merge-base --is-ancestor`). Only for the AIRPORT whose repository RTS deploys (`mcc.json` `airport`); other AIRPORTs show no IN |
+
+- `milestonesOf(flight, sources)` (`server/milestones.ts`, pure, also used by the browser) returns `{out, off, on, in, reverted}`; a time is `null` when its source is missing, never guessed. The reads of the local repository (the merge commit is found from the `Merge pull request #n` commit on `origin/main`, then `is-ancestor`) live in `server/milestones-run.ts`, are read-only, and are cached. A refused or failed RTS is skipped; the IN is the first success that contains the merge.
+- **A revert** does not move ON: the PR stays merged in the record, and `reverted` carries the reverting PR, which the FIDS tooltip states.
+- **FLIGHT RECORDER.** One line per FLIGHT and milestone the first time atc sees it: `{"t", "kind": "milestone", "milestone": "out|off|on|in", "flight", "at", "seenAt"}`. `t` and `at` are when it happened (so the line sits in that UTC day's file); `seenAt` is when atc saw it. The pass runs at most once a minute from the records above and asks the recorder which lines exist, so a restart writes nothing twice. Milestones older than the 30-day retention are not written. In the JSON this is a `kind: "milestone"` line, not a `TrafficEvent` (the snapshot-diff shape), so `RecordLine` gains one variant.
+- **Screens.** FLIGHT FOLLOWING shows `OUT 03:12 · OFF 03:40 · ON 04:02 · IN 04:07` under the stage bar (`—` for a milestone not reached; the clock follows the UTC/local setting). FIDS shows the latest milestone beside REMARKS, and all four in the row tooltip. `GET /api/following` items carry `milestones`; `GET /api/milestones` returns `{at, flights: {<FLIGHT>: {out, off, on, in, reverted}}}` for FLIGHTs with at least one.
+- PILOT'S DISCRETION: ON is the earliest merge when a FLIGHT has several merged PRs, and IN follows that PR's merge commit; OFF takes the earliest candidate rather than trying to pick a "main" PR.
+- Not built (a later step could add): target times per milestone from the WAKE expectation, IATA-style delay reason codes, and ETAs.
+
 ## DIRECT briefs (ATC-32)
 
 Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.
