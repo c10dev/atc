@@ -957,7 +957,7 @@ Status: steps 1–6 built (ATC-45, ATC-47, ATC-48, ATC-51, ATC-55): the manual, 
 
 **Principles.**
 
-- Detect and propose, never act on a team session. atc does not resend prompts, approve prompts, switch accounts or restart sessions.
+- Detect and propose, never act on a team session. atc does not resend prompts, approve prompts, switch accounts or restart sessions. Running AIRCRAFT on more than one Claude account is a separate design: see [accounts.md](accounts.md) (draft).
 - Cause, not just state: each code carries the error line, when it started, and the one next step from the manual.
 - Host-level versus AIRCRAFT-level: `NETWORK` is raised once for the machine. A `LIMIT` is raised once per ACCOUNT when the SUPERVISOR has labelled accounts (ATC-51), and otherwise once per reset time (the same account window).
 - Store only the code, the time and the error line, never message bodies. atc reads only the last 64 KB of each live transcript, again only when its size or time changes.
