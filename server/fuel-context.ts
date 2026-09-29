@@ -88,17 +88,23 @@ export interface ContextView {
   window: number;
   at: string;
   pct: number | null;
+  fobPct: number | null; // FOB(ATC-81): 창에 남은 몫 0–100 정수. 크기를 모르면 null
   model: string;
   windowSource: WindowSource;
   compacted: boolean;
 }
+export const fobPctOf = (pct: number | null): number | null => (pct === null ? null : Math.max(0, Math.min(100, Math.round((1 - pct) * 100))));
 export const contextView = (c: ContextSize | null): ContextView | null =>
-  c && { contextTokens: c.contextTokens, window: c.window, at: c.at, pct: c.pct, model: c.model, windowSource: c.windowSource, compacted: c.compacted };
+  c && { contextTokens: c.contextTokens, window: c.window, at: c.at, pct: c.pct, fobPct: fobPctOf(c.pct), model: c.model, windowSource: c.windowSource, compacted: c.compacted };
 
-// FLEET 목록·카드의 표시(ATC-69). 40 %부터 info, 70 %부터 alert(창을 짐작만 했으면 토큰 300k·500k로)
+// FLEET 목록·카드의 FOB(FUEL ON BOARD, ATC-81): AIRCRAFT 자기 연료 = 창에 남은 몫. ATC-69의 쓴 몫 40 %/70 %가
+// 남은 몫 60 %/30 %다. 색은 화면에 적힌 정수 %로 가른다(글자와 색이 어긋나지 않게). 창을 짐작만 했으면 토큰 300k·500k로
+export const FOB_INFO_LEFT = 60; // 이하면 info(amber)
+export const FOB_ALERT_LEFT = 30; // 이하면 alert
 export interface ContextBadge {
-  short: string; // 502k / 1M
-  label: string; // context 502k / 1M (50%)
+  short: string; // FOB 50% · 504k/1M (FLEET 목록 칸)
+  label: string; // FOB 50% · 504k / 1M (카드 줄)
+  fobPct: number | null;
   level: "ok" | "info" | "alert";
   title: string;
 }
@@ -108,17 +114,30 @@ const WINDOW_WHY: Record<WindowSource, string> = {
   observed: "200k를 넘는 요청을 봄 — 1M으로 짐작",
   default: "기본 200k(짐작)",
 };
+export function fobLevelOf(c: Pick<ContextView, "contextTokens" | "fobPct" | "windowSource">): ContextBadge["level"] {
+  const n = c.contextTokens;
+  if (n === null) return "ok";
+  if (c.windowSource === "default") return n >= 500_000 ? "alert" : n >= 300_000 ? "info" : "ok";
+  const left = c.fobPct ?? 100;
+  return left <= FOB_ALERT_LEFT ? "alert" : left <= FOB_INFO_LEFT ? "info" : "ok";
+}
 export function contextBadgeOf(c: ContextView | null | undefined): ContextBadge | null {
   if (!c) return null;
-  const n = c.contextTokens;
-  const known = c.windowSource !== "default";
-  const level = n === null ? "ok" : known ? ((c.pct ?? 0) >= 0.7 ? "alert" : (c.pct ?? 0) >= 0.4 ? "info" : "ok") : n >= 500_000 ? "alert" : n >= 300_000 ? "info" : "ok";
+  const fobPct = c.fobPct ?? fobPctOf(c.pct);
+  const view = { ...c, fobPct };
   return {
-    short: `${n === null ? "—" : tokensShort(n)} / ${tokensShort(c.window)}`,
-    label: contextLabel(c),
-    level,
-    title: `${contextLabel(c)} · ${c.model} · ${c.at.slice(0, 16).replace("T", " ")}Z${c.compacted ? " · compaction 뒤" : ""} · 창: ${WINDOW_WHY[c.windowSource]}. 마지막 CAPTAIN 요청의 input + cache read + cache write`,
+    short: fobText(view, false),
+    label: fobText(view, true),
+    fobPct,
+    level: fobLevelOf(view),
+    title: `FOB(FUEL ON BOARD) ${fobPct === null ? "—" : `${fobPct}%`} = 창 ${tokensShort(c.window)}에 남은 몫. ${contextLabel(c)} · ${c.model} · ${c.at.slice(0, 16).replace("T", " ")}Z${c.compacted ? " · compaction 뒤" : ""} · 창: ${WINDOW_WHY[c.windowSource]}. 마지막 CAPTAIN 요청의 input + cache read + cache write`,
   };
+}
+
+// FOB 50% · 504k/1M. spaced면 카드 줄: FOB 50% · 504k / 1M
+export function fobText(c: Pick<ContextView, "contextTokens" | "window" | "fobPct">, spaced: boolean): string {
+  const size = `${c.contextTokens === null ? "—" : tokensShort(c.contextTokens)}${spaced ? " / " : "/"}${tokensShort(c.window)}`;
+  return `FOB ${c.fobPct === null ? "—" : `${c.fobPct}%`} · ${size}${c.contextTokens === null ? " (compacted)" : ""}`;
 }
 
 // 502k, 1M, 18k

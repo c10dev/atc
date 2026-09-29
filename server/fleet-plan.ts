@@ -3,7 +3,7 @@ import type { Plan, Unserved } from "./dispatch.ts";
 import type { AircraftView } from "./fleet.ts";
 import { type ContextSize, contextLabel, type RefreshSaving, refreshSavingOf, tokensShort } from "./fuel-context.ts";
 import type { PriceTable } from "./fuel-cost.ts";
-import { type FuelRemaining, fuelLabel, membersText } from "./fuel-remaining.ts";
+import { type FuelRemaining, fuelUsedText, membersText } from "./fuel-remaining.ts";
 import { hhmm } from "./health.ts";
 import type { LogEntry } from "./logbook.ts";
 import { GATE } from "./proposals.ts";
@@ -136,13 +136,13 @@ export function fuelOfPlan(i: Pick<FleetInputs, "aircraft" | "fuelAccounts">, ki
   return accounts.find((f) => f.group === `aircraft:${a.registration}`) ?? null;
 }
 
-// FUEL 100% (account acct-1) until 21:00Z
+// FUEL 사용 100% (account acct-1) until 21:00Z
 export const fuelHoldText = (f: FuelRemaining, now: number) =>
-  `FUEL ${Math.round(f.top.pct)}%${f.account ? ` (account ${f.account})` : ""} until ${hhmm(Date.parse(f.top.resetsAt), now)}`;
+  `FUEL 사용 ${Math.round(f.top.pct)}%${f.account ? ` (account ${f.account})` : ""} until ${hhmm(Date.parse(f.top.resetsAt), now)}`;
 
 const fuelInfoReason = (f: FuelRemaining, now: number): PlanReason => ({
   code: "fuel",
-  detail: `${fuelLabel(f, now)}${f.account ? ` (account ${f.account})` : ""} — 한도에 가까움(INFO) · ${membersText(f) || "구성원 없음"}`,
+  detail: `${fuelUsedText(f, now)}${f.account ? ` (account ${f.account})` : ""} — 한도에 가까움(INFO) · ${membersText(f) || "구성원 없음"}`,
   value: f.top.pct,
 });
 

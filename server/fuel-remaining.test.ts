@@ -53,8 +53,8 @@ test("ACCOUNT마다 가장 새 값: 같은 ACCOUNT의 형제는 statusline이 �
     control: [],
   });
   assert.deepEqual([out.TEAM_M!.group, out.TEAM_M!.aircraft, out.TEAM_M!.level], ["aircraft:TEAM_M", ["TEAM_M"], "ok"]);
-  assert.equal(fuelLabel(out.TEAM_K!, NOW), "FUEL 82% · resets 21:00Z");
-  assert.equal(fuelTitle(out.TEAM_K!, NOW), "ACCOUNT pro-2 · 쓴 몫 5h 82% (reset 21:00Z), 7d 10% (reset 10-03 07:00Z) · TEAM_L statusline 14:30Z");
+  assert.equal(fuelLabel(out.TEAM_K!, NOW), "사용 82% · resets 21:00Z");
+  assert.equal(fuelTitle(out.TEAM_K!, NOW), "ACCOUNT pro-2 · 사용 5h 82% (reset 21:00Z), 7d 10% (reset 10-03 07:00Z) · TEAM_L statusline 14:30Z");
 });
 
 test("임계값: 80 미만 ok, 80 이상 info, 95 이상 hold. 가장 많이 쓴 창으로 잰다", () => {
@@ -63,7 +63,7 @@ test("임계값: 80 미만 ok, 80 이상 info, 95 이상 hold. 가장 많이 쓴
   assert.equal(one(80, 10).level, "info");
   assert.equal(one(10, 95).level, "hold");
   assert.equal(one(10, 95).top.name, "seven_day");
-  assert.equal(fuelLabel(one(10, 95), NOW), "FUEL 95% · resets 10-03 07:00Z");
+  assert.equal(fuelLabel(one(10, 95), NOW), "사용 95% · resets 10-03 07:00Z");
 });
 
 test("DISPATCH HOLD 스위치(D3): 꺼져 있으면 95 %여도 붙들지 않고, 켜면 holdPct 이상만", () => {
@@ -72,7 +72,7 @@ test("DISPATCH HOLD 스위치(D3): 꺼져 있으면 95 %여도 붙들지 않고,
   assert.equal(fuelHolds(f, { ...DEFAULT_FUEL, hold: true }), true);
   assert.equal(fuelHolds(f, { ...DEFAULT_FUEL, hold: true, holdPct: 97 }), false);
   assert.equal(fuelHolds(null, { ...DEFAULT_FUEL, hold: true }), false);
-  assert.equal(fuelHoldReason(f, NOW), "HOLD · FUEL 96% (account main) until 21:00Z — 5h 한도의 96%를 씀");
+  assert.equal(fuelHoldReason(f, NOW), "HOLD · FUEL (account main) until 21:00Z — 5h 한도 사용 96%");
 });
 
 test("fuelInfos: INFO 이상인 ACCOUNT마다 하나, 창·reset이 같으면 같은 key", () => {
@@ -95,7 +95,7 @@ test("fuelInfos: INFO 이상인 ACCOUNT마다 하나, 창·reset이 같으면 �
       ["fuel|pro-2|five_hour|2026-09-28T21:00:00.000Z", "info", "TEAM_K,TEAM_L"],
     ],
   );
-  assert.equal(infos[1]!.text, "FUEL 85% · resets 21:00Z (account pro-2) — TEAM_K, TEAM_L");
+  assert.equal(infos[1]!.text, "FUEL 사용 85% · resets 21:00Z (account pro-2) — TEAM_K, TEAM_L");
 });
 
 // ── 관제 세션(ATC-60): 같은 ACCOUNT의 구성원으로 센다 ──
@@ -115,7 +115,7 @@ test("관제 세션의 기록이 그 ACCOUNT에 닿는다: 자기 기록이 없�
   assert.equal(by.TEAM_A, f);
   assert.equal(by.TEAM_B, f);
   assert.equal(by.MCC, undefined); // 관제 세션은 AIRCRAFT 자리에 들어가지 않는다
-  assert.equal(fuelTitle(f!, NOW), "ACCOUNT main · 쓴 몫 5h 20% (reset 21:00Z), 7d 99% (reset 10-03 07:00Z) · control MCC statusline 14:00Z · 같은 ACCOUNT의 관제 세션 MCC");
+  assert.equal(fuelTitle(f!, NOW), "ACCOUNT main · 사용 5h 20% (reset 21:00Z), 7d 99% (reset 10-03 07:00Z) · control MCC statusline 14:00Z · 같은 ACCOUNT의 관제 세션 MCC");
 });
 
 test("가장 새 기록은 AIRCRAFT·관제 세션 어느 쪽이든: 더 새 쪽이 이긴다", () => {
@@ -140,7 +140,7 @@ test("라벨이 하나도 없으면 관제 세션은 자기 이름으로 따로,
   // TOWER INFO: 관제 세션만 있는 묶음도 알린다
   const infos = fuelInfos(accounts, NOW);
   assert.deepEqual(infos.map((i) => [i.key, i.aircraft, i.control, i.text]), [
-    ["fuel|control:MCC|seven_day|2026-10-03T07:00:00.000Z", [], ["MCC"], "FUEL 99% · resets 10-03 07:00Z — control MCC"],
+    ["fuel|control:MCC|seven_day|2026-10-03T07:00:00.000Z", [], ["MCC"], "FUEL 사용 99% · resets 10-03 07:00Z — control MCC"],
   ]);
 });
 
@@ -151,6 +151,6 @@ test("DISPATCH HOLD: 관제 세션이 holdPct를 넘긴 ACCOUNT의 AIRCRAFT가 �
   const on = { ...DEFAULT_FUEL, hold: true };
   assert.equal(fuelHolds(by.TEAM_A, on), true);
   assert.equal(fuelHolds(by.TEAM_A, DEFAULT_FUEL), false);
-  assert.equal(fuelHoldReason(by.TEAM_A!, NOW), "HOLD · FUEL 97% (account main) until 21:00Z — 5h 한도의 97%를 씀");
-  assert.equal(fuelInfos([by.TEAM_A!], NOW)[0]!.text, "FUEL 97% · resets 21:00Z (account main) — TEAM_A · control MCC");
+  assert.equal(fuelHoldReason(by.TEAM_A!, NOW), "HOLD · FUEL (account main) until 21:00Z — 5h 한도 사용 97%");
+  assert.equal(fuelInfos([by.TEAM_A!], NOW)[0]!.text, "FUEL 사용 97% · resets 21:00Z (account main) — TEAM_A · control MCC");
 });

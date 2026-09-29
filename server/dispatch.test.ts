@@ -391,8 +391,8 @@ test("FUEL HOLD(ATC-55, D3): 스위치가 켜져 있고 holdPct 이상이면 배
   const on = { ...cfg(), fuel: { infoPct: 80, holdPct: 95, hold: true } };
   const p = planDispatch(s, new Map(), on, NOW);
   assert.deepEqual(reasons(p), [
-    "TEAM_K:false:HOLD · FUEL 96% (account pro-2) until 13:00Z — 5h 한도의 96%를 씀",
-    "TEAM_L:false:HOLD · FUEL 96% (account pro-2) until 13:00Z — 5h 한도의 96%를 씀",
+    "TEAM_K:false:HOLD · FUEL (account pro-2) until 13:00Z — 5h 한도 사용 96%",
+    "TEAM_L:false:HOLD · FUEL (account pro-2) until 13:00Z — 5h 한도 사용 96%",
     "TEAM_M:true:PARKED",
   ]);
   assert.ok(p.assign.every((a) => a.aircraftName === "TEAM_M"), pairsOf(p).join(" "));
@@ -412,7 +412,7 @@ test("FUEL HOLD(ATC-60): 관제 세션이 holdPct를 넘긴 ACCOUNT의 AIRCRAFT�
   const p = planDispatch(s, new Map(), { ...cfg(), fuel: { infoPct: 80, holdPct: 95, hold: true } }, NOW);
   assert.deepEqual(
     p.aircraft.map((a) => `${a.name}:${a.available}:${a.reason}`),
-    ["TEAM_K:false:HOLD · FUEL 99% (account main) until 13:00Z — 7d 한도의 99%를 씀", "TEAM_M:true:PARKED"],
+    ["TEAM_K:false:HOLD · FUEL (account main) until 13:00Z — 7d 한도 사용 99%", "TEAM_M:true:PARKED"],
   );
 });
 

@@ -14,10 +14,10 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 | FLYING | 지금 쥔 STAND의 FLIGHT 번호와 제목 한 줄. 여러 개면 `+2`처럼 나머지 수. 세션이 멈췄거나 무언가를 기다리면 앞에 health 표시가 붙는다(아래) |
 | 경과 | 지금 쥔 STAND를 처음 잡은 뒤 흐른 시간(`3h05m`) |
 | 마지막 활동 | 세션이 마지막으로 움직인 때(`12분 전`) |
-| CONTEXT | 살아 있는 세션의 대화 크기와 창(`502k / 1M`). 창의 40 %부터 노랗게, 70 %부터 빨갛게 보인다. 세션이 없거나 최근 7일 기록이 없으면 `—` |
+| FOB | 그 AIRCRAFT 자기 연료: 살아 있는 세션의 맥락 창에 **남은** 몫과 크기(`FOB 50% · 504k/1M`). 남은 몫 60 % 이하부터 노랗게, 30 % 이하부터 빨갛게 보인다. 세션이 없거나 최근 7일 기록이 없으면 `—` |
 | 이번 주 | 이번 주(월요일부터) ARRIVED 수와 정시율(기대 block time이 있는 FLIGHT만, 없으면 `—`) |
 
-- **CONTEXT**는 마지막 CAPTAIN 요청이 읽고 쓴 토큰이다(CREW는 세지 않음). 대화 기록에는 `[1m]`이 적히지 않아서, 200k를 넘는 요청을 한 번 보면 창을 1M으로 짐작한다. 카드에는 `context 502k / 1M (50%)`와 그 시각이 보이고, 마우스를 올리면 창을 어떻게 정했는지 나온다. 창이 틀리면 `~/.local/state/atc/fleet-plan.json`에 `"contextWindows": {"claude-opus-5-5": 1000000}`처럼 적는다.
+- **FOB**(FUEL ON BOARD)는 그 AIRCRAFT가 실제로 지고 있는 연료, 곧 맥락 창의 남은 몫이다. 계정 사용 한도(아래 FUEL)와 다르다. 사용 한도는 같은 ACCOUNT의 모든 AIRCRAFT가 같이 쓰니 줄에는 싣지 않는다. 크기는 마지막 CAPTAIN 요청이 읽고 쓴 토큰이다(CREW는 세지 않음). 대화 기록에는 `[1m]`이 적히지 않아서, 200k를 넘는 요청을 한 번 보면 창을 1M으로 짐작한다. 카드에는 `FOB 50% · 504k / 1M`과 그 시각이 보이고, 마우스를 올리면 창을 어떻게 정했는지 나온다. 창이 틀리면 `~/.local/state/atc/fleet-plan.json`에 `"contextWindows": {"claude-opus-5-5": 1000000}`처럼 적는다.
 - 순서는 AIRBORNE → HOLDING → PARKED, 그다음 NORDO · AOG · NOT IN SERVICE. 같은 상태 안에서는 AIRPORT 순서다.
 - 줄을 누르면(키보드 Enter·Space도) 그 AIRCRAFT의 카드가 아래에 펼쳐진다. 카드에는 CREW COMPLEMENT, OBSERVED CREW, TYPE RATING, ROUTE, TARGETS와 실적, 최근 FLIGHT, 그리고 LAUNCH · STOP · CREW BRIEFING · AOG · 퇴역 · 고치기 버튼이 그대로 있다. 다시 누르면 접힌다.
 - 오른쪽 위 **목록 / 카드**로 예전처럼 모든 카드를 펼친 보기로 바꿀 수 있다. 고른 보기는 이 브라우저에 기억한다(기억하지 못하면 목록).
@@ -62,19 +62,20 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 `LIMIT`은 이미 막힌 뒤에 뜬다. FUEL은 막히기 전에 ACCOUNT가 한도를 얼마나 썼는지 보여 준다.
 
 - **켜기(한 번, SUPERVISOR)**: `~/.claude/settings.json`에 atc의 statusline 명령을 넣는다([hooks/README.ko.md](../../hooks/README.ko.md#fuel-statusline)). 그러면 Claude Code 아래 상태 줄에 `FUEL 5h 82% · 7d 40%`가 보이고, 같은 숫자가 atc에 남는다. 계정 정보는 남기지 않고 숫자만 남긴다.
-- **FLEET 줄**: FLYING 칸에 `FUEL 82% · resets 21:00Z`. 가장 많이 쓴 창(5시간·주간)의 **쓴 몫**과 그 창이 풀리는 시각이다. 80 % 아래는 회색, 80 %부터 노랑, 95 %부터 빨강. 마우스를 올리면 창마다의 값과, 어느 AIRCRAFT가 언제 적은 값인지 나온다.
+- **FUEL 블록과 카드**: `사용 82% · resets 21:00Z`. 가장 많이 쓴 창(5시간·주간)에서 **쓴** 몫과 그 창이 풀리는 시각이다. 남은 몫이 아니다. 80 % 아래는 회색, 80 %부터 노랑, 95 %부터 빨강. 마우스를 올리면 창마다의 값과, 어느 AIRCRAFT가 언제 적은 값인지 나온다.
+- **FLEET 줄**에는 이 숫자를 싣지 않는다(위 FOB가 줄의 연료다). 95 %(hold 수준)를 넘은 ACCOUNT의 AIRCRAFT에만 FLYING 칸에 `HOLD · FUEL (account pro-2) until 21:00Z` 표시가 붙는다. 배정이 막힌다는 표시다.
 - 같은 ACCOUNT의 AIRCRAFT는 같은 값을 보인다(가장 새로 적힌 값). ACCOUNT 라벨이 없으면 AIRCRAFT마다 자기 세션의 값만 보인다.
 - **관제 세션도 센다**: TOWER, OCC, CROSSCHECK, MCC, ENGINEERING도 같은 계정의 한도를 쓴다. 설정 창 AGENTS 탭 CONTROL 블록에서 세션마다 **ACCOUNT**를 적어 둔다(AIRCRAFT와 같은 라벨 형식). 적지 않으면 라벨이 하나라도 있을 때 `default`로 센다. 관제 세션이 한도를 많이 써도 붙들리는 것은 같은 ACCOUNT의 AIRCRAFT뿐이고, 관제 세션은 멈추지 않는다.
 - FLEET 탭의 **FUEL** 블록(AIRCRAFT 목록 아래)은 ACCOUNT마다 한 줄로 쓴 몫, AIRCRAFT, 그리고 따로 관제 세션을 보인다. 누가 그 계정을 쓰고 있는지 여기서 본다.
 - 80 %를 넘으면 TOWER가 SUPERVISOR에게 한 번 알리고(창마다 한 번), OCC는 그 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING에 적는다. 팀에는 보내지 않는다.
-- **DISPATCH HOLD 스위치**: 설정 창 AGENTS 탭의 FUEL 블록. 기본은 off라 FUEL은 보여 주기만 한다. on으로 바꾸면 95 % 넘게 쓴 ACCOUNT의 AIRCRAFT를 DISPATCH가 reset까지 `HOLD · FUEL 96% (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다.
+- **DISPATCH HOLD 스위치**: 설정 창 AGENTS 탭의 FUEL 블록. 기본은 off라 FUEL은 보여 주기만 한다. on으로 바꾸면 95 % 넘게 쓴 ACCOUNT의 AIRCRAFT를 DISPATCH가 reset까지 `HOLD · FUEL (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다.
 - 값은 상태 줄이 다시 그려질 때만 갱신된다. CREW 서브에이전트와 다른 컴퓨터의 세션은 보고하지 않는다. ACCOUNT마다 살아 있는 CAPTAIN 세션 하나면 된다.
 
 ### FUEL: FLIGHT마다 얼마나 태웠나
 
 위 FUEL REMAINING이 "한도를 얼마나 썼나"라면, 이것은 "끝낸 FLIGHT가 얼마나 들었나"다. LOGBOOK 줄에 적힌 토큰에 지금 가격표로 값을 매긴다. 보여 주기만 하고 DISPATCH 점수·배정에는 쓰지 않는다.
 
-- **FLEET 줄의 FUEL 14일 칸**: `$6.10/FLT · CACHE 93%`. 최근 14일 ARRIVED FLIGHT의 FLIGHT당 FUEL COST(달러, 목록가 기준)와 CACHE HIT. 마우스를 올리면 NET, CREW 몫, 큰 LEAK, 값 없는 모델이 나온다. FUEL REMAINING(`FUEL 82% · resets …`)은 FLYING 칸에 그대로 있다. 좁은 화면에서는 줄 맨 아래 한 줄이 된다.
+- **FLEET 줄의 FUEL 14일 칸**: `$6.10/FLT · CACHE 93%`. 최근 14일 ARRIVED FLIGHT의 FLIGHT당 FUEL COST(달러, 목록가 기준)와 CACHE HIT. 마우스를 올리면 NET, CREW 몫, 큰 LEAK, 값 없는 모델이 나온다. 좁은 화면에서는 줄 맨 아래 한 줄이 된다.
 - **카드의 FUEL 블록**(최근 14일): FUEL COST와 NET(LEAK을 뺀 값), CACHE HIT(CAPTAIN · CREW), CREW 몫, 몇 건에 값이 있나, TRIP FUEL을 넘은 FLIGHT 수, 가장 큰 LEAK 셋, CREW 경고(HEAVY PREFIX, COLD CREW …).
 - **최근 FLIGHT**: 각 FLIGHT 아래 줄에 `NET $2.76 LEAK $0.39 TRIP ✓`. `TRIP ✓`은 비슷한 FLIGHT들의 범위(TRIP FUEL p90) 안, `UNEXPECTED`는 넘었다는 뜻이다. 값이 없는 모델뿐이면 토큰(`4.6M tok`)만 보인다.
 - **없는 값은 0이 아니라 `—`**: FUEL 기록이 생기기 전 FLIGHT(`FUEL —`), 가격표에 없는 모델(DeepSeek 등), 비교할 FLIGHT가 모자란 TRIP FUEL은 비워 둔다.
@@ -200,7 +201,7 @@ atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude C
 | RETURN | FLEET PLAN이 건 AOG의 해제 예정일이 지남 | AOG를 푼다 |
 
 - **수요**는 DISPATCH와 같은 제외 규칙을 통과한 FLIGHT다. ATC 팀 FLIGHT도 센다. AIRPORT마다 "배정 · 받을 곳 없음 · PARKED" 한 줄이 보인다. LAUNCH를 막는 것(GROUND STOP, 착륙 대기가 block time보다 긴 활주로, 백그라운드 세션 상한)이 있으면 그 줄에 적힌다.
-- **FUEL**: 수요 줄 아래에 ACCOUNT마다 한 줄이 보인다. 가장 많이 쓴 창과 reset, 그 ACCOUNT의 AIRCRAFT와 관제 세션이다. 95 %(hold 수준)를 넘은 ACCOUNT의 AIRCRAFT는 LAUNCH하지 않고(`LAUNCH·ENTRY 제안 안 함`), 수요 줄에 `FUEL 100% (account acct-1) until 21:48Z — TEAM_Q`처럼 이유가 적힌다. 맞는 다른 AIRCRAFT가 있으면 그것을 제안하고, 맞는 AIRCRAFT가 모두 막혔으면 ENTRY도 내지 않는다(새 세션은 이 기기에 로그인된 계정으로 열리는데 atc는 그 계정을 모른다). 맞는 등록 AIRCRAFT가 아예 없어 내는 ENTRY는 새 AIRCRAFT를 `default` ACCOUNT로 세고, `default`가 hold면 내지 않는다. 80 %(info)부터는 제안은 하되 사유에 FUEL 줄(`fuel`)이 붙는다. 열린 LAUNCH·ENTRY의 ACCOUNT가 hold가 되면 그 제안은 FUEL 사유로 닫힌다. 이것은 DISPATCH HOLD 스위치와 상관없다. 스위치는 DISPATCH만 정한다.
+- **FUEL**: 수요 줄 아래에 ACCOUNT마다 한 줄이 보인다. 가장 많이 쓴 창과 reset, 그 ACCOUNT의 AIRCRAFT와 관제 세션이다. 95 %(hold 수준)를 넘은 ACCOUNT의 AIRCRAFT는 LAUNCH하지 않고(`LAUNCH·ENTRY 제안 안 함`), 수요 줄에 `FUEL 사용 100% (account acct-1) until 21:48Z — TEAM_Q`처럼 이유가 적힌다. 맞는 다른 AIRCRAFT가 있으면 그것을 제안하고, 맞는 AIRCRAFT가 모두 막혔으면 ENTRY도 내지 않는다(새 세션은 이 기기에 로그인된 계정으로 열리는데 atc는 그 계정을 모른다). 맞는 등록 AIRCRAFT가 아예 없어 내는 ENTRY는 새 AIRCRAFT를 `default` ACCOUNT로 세고, `default`가 hold면 내지 않는다. 80 %(info)부터는 제안은 하되 사유에 FUEL 줄(`fuel`)이 붙는다. 열린 LAUNCH·ENTRY의 ACCOUNT가 hold가 되면 그 제안은 FUEL 사유로 닫힌다. 이것은 DISPATCH HOLD 스위치와 상관없다. 스위치는 DISPATCH만 정한다.
 - 조건이 두 주기(10분) 이어져야 제안이 되고, LAUNCH·ENTRY는 120분 이어져야 된다. 그 전에는 "지켜보는 중"에 보인다. 조건이 풀리면 제안은 저절로 닫힌다(조건 풀림).
 - **반대**를 누르면 이유를 적을 수 있다(선택). 판정한 제안은 24시간 다시 나오지 않는다. 띄우거나 멈춘 지 2시간 안에는 반대 제안(LAUNCH ↔ STOP)을 내지 않는다.
 - 판정이 20건이 넘고 동의가 80% 이상이면 게이트를 통과한다. 그러면 블록 오른쪽의 **승인 운용 켜기**가 눌린다.

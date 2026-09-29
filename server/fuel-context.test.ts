@@ -74,16 +74,43 @@ test("refreshSavingOf: (context − base)의 캐시 쓰기(다음 cold wake)와 
   assert.deepEqual(refreshSavingOf({ ...c, contextTokens: 10_000 }, null), { tokens: 0, coldWake: null, perTurn: null });
 });
 
-test("contextBadgeOf: FLEET 칸과 카드. 창의 40 %부터 info, 70 %부터 alert. 200k 짐작이면 토큰 300k·500k로", () => {
+test("contextBadgeOf: FOB = 창에 남은 몫. 목록은 FOB 50% · 504k/1M, 카드는 FOB 50% · 504k / 1M(ATC-81)", () => {
   const view = (cacheRead: number, over = {}) => contextView(contextSizeOf({ ...sessionContexts([rec("2026-09-28T11:00:00Z", { cacheRead })]).get("s1")!, ...over }));
   const b = contextBadgeOf(view(501_690))!;
-  assert.equal(b.short, "502k / 1M");
-  assert.equal(b.label, "context 502k / 1M (50%)");
-  assert.equal(b.level, "info");
-  assert.match(b.title, /claude-opus-5-5 · 2026-09-28 11:00Z · 창: 200k를 넘는 요청을 봄/);
-  assert.equal(contextBadgeOf(view(750_000))!.level, "alert");
-  assert.equal(contextBadgeOf(view(250_000))!.level, "ok");
-  assert.equal(contextBadgeOf(view(120_000))!.level, "ok"); // 200k 짐작: 60%지만 토큰 기준
-  assert.equal(contextBadgeOf(view(120_000))!.short, "120k / 200k");
+  assert.equal(b.short, "FOB 50% · 502k/1M");
+  assert.equal(b.label, "FOB 50% · 502k / 1M");
+  assert.equal(b.fobPct, 50);
+  assert.equal(b.level, "info"); // 50 % 남음은 amber
+  assert.match(b.title, /FOB\(FUEL ON BOARD\) 50% = 창 1M에 남은 몫\. context 502k \/ 1M \(50%\) · claude-opus-5-5 · 2026-09-28 11:00Z · 창: 200k를 넘는 요청을 봄/);
+  assert.equal(contextView(null), null);
   assert.equal(contextBadgeOf(null), null);
+  assert.equal(view(501_690)!.fobPct, 50); // API에도 실린다(field 이름 context는 그대로)
+});
+
+test("contextBadgeOf 색: 남은 몫 60 % 이하 info, 30 % 이하 alert(ATC-69의 쓴 몫 40 %/70 %). 1M 창", () => {
+  const view = (used: number) => contextView(contextSizeOf({ ...sessionContexts([rec("2026-09-28T11:00:00Z", { cacheRead: used })]).get("s1")!, maxSeen: 300_000 }))!;
+  const at = (used: number) => {
+    const b = contextBadgeOf(view(used))!;
+    return `${b.fobPct}:${b.level}`;
+  };
+  assert.equal(at(300_000), "70:ok");
+  assert.equal(at(390_000), "61:ok");
+  assert.equal(at(400_000), "60:info"); // 60 % 남음부터 amber
+  assert.equal(at(690_000), "31:info");
+  assert.equal(at(700_000), "30:alert"); // 30 % 남음부터 alert
+  assert.equal(at(1_000_000), "0:alert");
+  assert.equal(at(1_200_000), "0:alert"); // 창을 넘어도 0 아래로 내려가지 않는다
+  // 화면에 적힌 정수 %로 가른다: 39.6 % 쓴 것은 FOB 60 %로 적히니 amber
+  assert.equal(at(396_000), "60:info");
+});
+
+test("contextBadgeOf: 창을 200k로 짐작만 했으면 토큰 300k·500k로 가른다. compaction 뒤 크기를 모르면 FOB —", () => {
+  const view = (cacheRead: number) => contextView(contextSizeOf(sessionContexts([rec("2026-09-28T11:00:00Z", { cacheRead })]).get("s1")!))!;
+  const b = contextBadgeOf(view(120_000))!;
+  assert.equal(b.short, "FOB 40% · 120k/200k");
+  assert.equal(b.level, "ok"); // 남은 몫 40 %지만 짐작한 창이라 토큰 기준
+  const unknown = contextBadgeOf(contextView(contextSizeOf(sessionContexts([rec("2026-09-28T10:00:00Z")], [{ session: "s1", t: "2026-09-28T11:05:00Z", trigger: null, preTokens: null, postTokens: null }]).get("s1")!)))!;
+  assert.equal(unknown.short, "FOB — · —/200k (compacted)");
+  assert.equal(unknown.fobPct, null);
+  assert.equal(unknown.level, "ok");
 });

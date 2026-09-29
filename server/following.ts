@@ -8,7 +8,7 @@ import { tailsOf } from "./dispatch.ts";
 import { type LogEntry, loadLogbook, WAKE_EXPECT_MIN } from "./logbook.ts";
 import type { Stranded } from "./landing.ts";
 import { type Health, healthLabel } from "./health.ts";
-import { type FuelRemaining, fuelLabel, membersText } from "./fuel-remaining.ts";
+import { type FuelRemaining, fuelUsedText, membersText } from "./fuel-remaining.ts";
 import type { PullRequest, Snapshot, Ticket, Workspace } from "./model.ts";
 import { allProposals, type Proposal, standFreeTicket } from "./proposals.ts";
 
@@ -199,7 +199,7 @@ export function followingOf(inp: FollowInput): FollowItem[] {
           code: "fuel",
           kind: "delay",
           severity: "info",
-          text: `${f.aircraft} ${fuelLabel(fuel, inp.now)}${fuel.account ? ` (account ${fuel.account})` : ""} — 한도에 가까움. 같은 ACCOUNT: ${membersText(fuel)}`,
+          text: `${f.aircraft} ${fuelUsedText(fuel, inp.now)}${fuel.account ? ` (account ${fuel.account})` : ""} — 한도에 가까움. 같은 ACCOUNT: ${membersText(fuel)}`,
           since: fuel.at,
           key: `${t.flight}|fuel|${fuel.group}|${fuel.top.name}|${fuel.top.resetsAt}`,
         });

@@ -8,7 +8,7 @@
 .fl-list-head,
 .fl-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1.1fr) 70px 104px minmax(0, 3fr) 64px 84px 124px 84px 184px 16px;
+  grid-template-columns: minmax(150px, 1.1fr) 70px 104px minmax(0, 3fr) 64px 84px 124px 140px 184px 16px;
   align-items: center;
   column-gap: var(--space-3);
   padding: 0 var(--space-3);
@@ -135,7 +135,12 @@
   font-size: var(--text-xs);
   color: var(--muted);
 }
-/* CONTEXT SIZE(ATC-69): 창의 40 %부터 amber, 70 %부터 alert */
+/* FOB(ATC-81): 창에 남은 몫 60 % 이하 amber, 30 % 이하 alert(ATC-69의 쓴 몫 40 %/70 %) */
+.fl-r-ctx {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .fl-r-ctx.lv-info {
   color: var(--amber);
 }
@@ -204,7 +209,7 @@
   .has-health .fl-r-week {
     grid-area: 3 / 4;
   }
-  /* FUEL 14일(ATC-56): 좁은 화면에서는 맨 아래 한 줄. CONTEXT(ATC-69)는 그 줄 오른쪽 */
+  /* FUEL 14일(ATC-56): 좁은 화면에서는 맨 아래 한 줄. FOB(ATC-69·81)는 그 줄 오른쪽 */
   .fl-r-burn {
     grid-column: 1 / 4;
   }

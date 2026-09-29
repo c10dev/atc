@@ -200,7 +200,7 @@ export function Card({
       <p className="fl-line">{a.account ? <span className="mono">{a.account}</span> : <span className="faint">지정 없음 — 한도는 reset 시각으로 묶는다</span>}</p>
       {a.fuel && (
         <p className={`fl-fuel lv-${a.fuel.level}`} title={fuelTitle(a.fuel, Date.now())}>
-          {fuelLabel(a.fuel, Date.now())} <span className="faint">· 쓴 몫, {a.fuel.fromKind === "control" ? "control " : ""}{a.fuel.from} statusline</span>
+          ACCOUNT{a.fuel.account ? ` ${a.fuel.account}` : ""} {fuelLabel(a.fuel, Date.now())} <span className="faint">· {a.fuel.fromKind === "control" ? "control " : ""}{a.fuel.from} statusline</span>
         </p>
       )}
 
