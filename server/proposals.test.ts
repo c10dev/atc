@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { DEFAULT_DISPATCH_CONFIG, type Plan } from "./dispatch.ts";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig, type Plan } from "./dispatch.ts";
 import type { Ticket, Workspace } from "./model.ts";
 import { parentKeysOf } from "./model.ts";
-import { canApply, fold, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, recentFlightsOf, recentPairsOf, reservedOf, syncOps } from "./proposals.ts";
+import { canApply, crosscheckBriefOf, DEFAULT_SETTLE_MIN, fold, settledItemsOf, settledOf, settlesInMin, withSettled, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, recentFlightsOf, recentPairsOf, reservedOf, syncOps } from "./proposals.ts";
 import { takenByOf, toTicket } from "./sources/linear.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
@@ -892,4 +894,113 @@ test("STANDBY D-xxxx(ATC-122): sent에서만 받고, 첫 STANDBY부터 READBACK 
   assert.equal(unable[0].status, "declined");
   assert.equal(unable[0].reason, "다른 FLIGHT가 먼저");
   assert.deepEqual(overdueOf(unable, NOW), []);
+});
+
+// ── SETTLED(ATC-117) ──
+const settleAt = (o: Op[], id: string) => fold(o).find((p) => p.id === id)!;
+
+test("settledOf: 승인은 바로, 열린·HELD는 W분 뒤에, 그 밖의 상태는 아니다, W=0은 곧장", () => {
+  const young = settleAt([create("D-0001", "VOC-1", "b", 3)], "D-0001");
+  const old = settleAt([create("D-0002", "VOC-2", "b", 10)], "D-0002");
+  const held = settleAt([create("D-0003", "VOC-3", "b", 12), { op: "hold", id: "D-0003", at: iso(11), blockedBy: ["VOC-9"] }], "D-0003");
+  const heldYoung = settleAt([create("D-0004", "VOC-4", "b", 2), { op: "hold", id: "D-0004", at: iso(1), blockedBy: [] }], "D-0004");
+  const approvedAtOnce = settleAt([create("D-0005", "VOC-5", "b", 1), { op: "approve", id: "D-0005", at: iso(0.5) }], "D-0005");
+  const superseded = settleAt([create("D-0006", "VOC-6", "b", 30), { op: "supersede", id: "D-0006", at: iso(5), reason: "x" }], "D-0006");
+  assert.equal(DEFAULT_SETTLE_MIN, 10);
+  assert.equal(settledOf(young, NOW, 10), false);
+  assert.equal(settledOf(old, NOW, 10), true); // 정확히 W분
+  assert.equal(settledOf(held, NOW, 10), true);
+  assert.equal(isHeld(heldYoung), true);
+  assert.equal(settledOf(heldYoung, NOW, 10), false);
+  assert.equal(settledOf(approvedAtOnce, NOW, 10), true);
+  assert.equal(settledOf(superseded, NOW, 10), false); // 닫힌 제안은 SETTLED가 아니다
+  for (const p of [young, heldYoung, approvedAtOnce]) assert.equal(settledOf(p, NOW, 0), true); // W=0: 예전처럼 곧장
+  assert.equal(settledOf(superseded, NOW, 0), false);
+});
+
+test("settlesInMin·withSettled: 남은 분은 올림, SETTLED이거나 닫혔으면 0, 브리핑 항목에 settled가 붙는다", () => {
+  const young = settleAt([create("D-0001", "VOC-1", "b", 3.5)], "D-0001");
+  assert.equal(settlesInMin(young, NOW, 10), 7); // 6.5분 → 7
+  assert.equal(settlesInMin(settleAt([create("D-0002", "VOC-2", "b", 11)], "D-0002"), NOW, 10), 0);
+  assert.equal(settlesInMin(settleAt([create("D-0003", "VOC-3", "b", 1), { op: "supersede", id: "D-0003", at: iso(0), reason: "x" }], "D-0003"), NOW, 10), 0);
+  const item = withSettled(young, NOW, 10);
+  assert.equal(item.settled, false);
+  assert.equal(item.settlesInMin, 7);
+  assert.equal(item.id, "D-0001");
+  assert.equal(withSettled(young, NOW, 0).settled, true);
+});
+
+test("crosscheckBriefOf(ATC-117): SETTLED인 제안만 pending, 나머지는 unsettledMarks 수, W=0이면 전부", () => {
+  const ps = fold([
+    create("D-0001", "VOC-1", "b", 30), // SETTLED
+    create("D-0002", "VOC-2", "b", 4), // 어림
+    create("D-0003", "VOC-3", "b", 20), { op: "hold", id: "D-0003", at: iso(19), blockedBy: [] }, // HELD는 원래 mark 대상이 아니다
+    create("D-0004", "VOC-4", "b", 2),
+    create("D-0005", "VOC-5", "b", 30), { op: "crosscheck", id: "D-0005", at: iso(5), by: "CROSSCHECK", model: "muse", verdict: "agree", reason: "r" }, // 이미 mark: 세지 않음
+  ]);
+  const b = crosscheckBriefOf(ps, NOW, 10);
+  assert.deepEqual(b.pending.map((p) => p.id), ["D-0001"]);
+  assert.equal(b.unsettledMarks, 2);
+  const all = crosscheckBriefOf(ps, NOW, 0);
+  assert.deepEqual(all.pending.map((p) => p.id), ["D-0001", "D-0002", "D-0004"]);
+  assert.equal(all.unsettledMarks, 0);
+});
+
+test("replay(ATC-117): 로그와 같은 모양의 고정 자료에서 W=10이면 헛된 메모+BRIEFING 세트가 29건 중 17건 줄고, 승인된 제안은 하나도 늦지 않는다", () => {
+  // 메모까지 받고 SUPERSEDED된 29건의 살아 있던 분. 5분 미만 1, 5–10 16, 10–15 5, 15–20 2, 20 이상 5
+  const lifetimes = [3, 5.1, 5.5, 6, 6.1, 6.5, 7, 7.1, 7.5, 8, 8.5, 9, 9.2, 9.4, 9.6, 9.8, 9.9, 10.5, 11, 12, 13, 14, 15.5, 18, 20, 25, 40, 90, 200];
+  assert.equal(lifetimes.length, 29);
+  const ops: Op[] = [];
+  lifetimes.forEach((life, i) => {
+    const id = `D-${String(i + 1).padStart(4, "0")}`;
+    const created = 400 - i * 10; // 분 전. 서로 겹치지 않게 흩는다
+    ops.push(create(id, `ATC-${i + 1}`, "b", created));
+    ops.push({ op: "note", id, at: iso(created - 1), text: "note", caution: false });
+    ops.push({ op: "brief", id, at: iso(created - 1), what: "w", why: "y", risk: "r" } as Op);
+    ops.push({ op: "supersede", id, at: iso(created - life), reason: "더 나은 배정으로 바뀜" });
+  });
+  // 승인된 20건(만든 지 3.9분 뒤 승인 같은 것)은 W와 상관없이 SETTLED
+  for (let i = 0; i < 20; i++) {
+    const id = `D-${String(100 + i).padStart(4, "0")}`;
+    ops.push(create(id, `ATC-${200 + i}`, "b", 1000 - i * 5), { op: "approve", id, at: iso(1000 - i * 5 - 3.9) });
+  }
+  const ps = fold(ops);
+  const superseded = ps.filter((p) => p.status === "superseded" && p.note);
+  const avoided = (w: number) =>
+    superseded.filter((p) => !settledOf({ status: "proposed", at: p.at }, Date.parse(p.statusAt), w)).length;
+  assert.equal(superseded.length, 29);
+  assert.deepEqual([5, 10, 15, 20].map(avoided), [1, 17, 22, 24]);
+  assert.equal(avoided(0), 0); // W=0은 오늘과 같다
+  const approved = ps.filter((p) => p.status === "approved");
+  assert.equal(approved.length, 20);
+  assert.equal(approved.filter((p) => !settledOf(p, NOW, 10)).length, 0);
+});
+
+test("dispatch.json settleMin(ATC-117): 기본 10, 0은 받고, 음수·숫자가 아닌 값은 기본으로", () => {
+  const dir = mkdtempSync(join(tmpdir(), "settle-"));
+  const file = join(dir, "dispatch.json");
+  assert.equal(loadDispatchConfig(file).settleMin, 10); // 파일 없음
+  for (const [v, want] of [[0, 0], [15, 15], [-1, 10], ["5", 10], [null, 10]] as const) {
+    writeFileSync(file, JSON.stringify({ settleMin: v }));
+    assert.equal(loadDispatchConfig(file).settleMin, want, String(v));
+  }
+});
+
+test("settledItemsOf(ATC-117): dispatch brief의 open·held에 settled·settlesInMin이 붙고 unsettled는 아직 SETTLED가 아닌 열린·HELD 수(메모가 있어도)", () => {
+  const ps = fold([
+    create("D-0001", "VOC-1", "b", 30), // SETTLED
+    create("D-0002", "VOC-2", "b", 4), { op: "note", id: "D-0002", at: iso(3), text: "n", caution: false }, // 어림, 메모가 있어도 센다
+    create("D-0003", "VOC-3", "b", 2), { op: "hold", id: "D-0003", at: iso(1), blockedBy: [] }, // 어린 HELD
+    create("D-0004", "VOC-4", "b", 20), { op: "hold", id: "D-0004", at: iso(19), blockedBy: [] }, // 오래된 HELD
+    create("D-0005", "VOC-5", "b", 1), { op: "approve", id: "D-0005", at: iso(0.5) }, // 승인: open·held에 없다
+  ]);
+  const r = settledItemsOf(ps, NOW, 10);
+  assert.deepEqual(r.open.map((p) => [p.id, p.settled, p.settlesInMin]), [["D-0001", true, 0], ["D-0002", false, 6]]);
+  assert.deepEqual(r.held.map((p) => [p.id, p.settled, p.settlesInMin]), [["D-0003", false, 8], ["D-0004", true, 0]]);
+  assert.equal(r.unsettled, 2);
+  assert.equal(settledItemsOf(ps, NOW, 0).unsettled, 0); // W=0
+});
+
+test("DEFAULT_SETTLE_MIN(ATC-117): 설정 기본값과 같은 상수를 쓴다", () => {
+  assert.equal(DEFAULT_DISPATCH_CONFIG.settleMin, DEFAULT_SETTLE_MIN);
 });

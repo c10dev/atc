@@ -14,6 +14,8 @@ import { regKey, sameReg } from "./registration.ts";
 import { isBackground, manualStepsOf, permissionModeOf, type SessionOrigin } from "./session-origin.ts";
 import { sessionProcOf } from "./session-proc.ts";
 import { readJob, settleJob } from "./job-state.ts";
+import { ttlCache } from "./agents-cache.ts";
+import { readSquelchLast, squelchOfName } from "./squelch-last.ts";
 
 // 세션 조종(docs/fleet.md 8.5). atc가 `claude --bg`로 AIRCRAFT 세션을 띄우고 `claude stop`으로 멈춘다.
 // SUPERVISOR가 FLEET 탭에서 누를 때만 한다(Origin 검사). 관제 세션의 atcctl은 부를 수 없다.
@@ -337,6 +339,9 @@ export function jobStateOf(id: string, dir = join(config.claudeDir, "jobs")): st
   }
 }
 
+// GET /api/control/sessions만 쓴다(헤더 CONTROL 띠와 FLEET가 함께, ATC-127). LAUNCH·STOP의 판단은 늘 agentRows()로 새로 읽는다
+const cachedAgentRows = ttlCache(agentRows);
+
 export interface ControlResult {
   ok: boolean;
   status: number; // 실패면 HTTP 상태
@@ -447,7 +452,8 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
   // 관제 세션(8.5.1): 설정 창 AGENTS 탭의 CONTROL 블록이 쓴다
   app.get("/api/control/sessions", async (c) => {
     try {
-      const [rows, panes] = await Promise.all([agentRows(), tmuxPanes(tmuxBin() ?? "tmux")]);
+      const [rows, panes] = await Promise.all([cachedAgentRows.get(c.req.query("fresh") === "1"), tmuxPanes(tmuxBin() ?? "tmux")]);
+      const squelch = readSquelchLast();
       return c.json({
         // 백그라운드 세션 daemon이 atc 서비스 안에 있으면 atc 재시작(배포·RTS) 때 모든 백그라운드 세션이 죽는다
         daemonInService: inServiceCgroup(daemonCgroups()),
@@ -457,6 +463,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
           prompt: spec.prompt,
           // bg: claude --bg, null: 배지만. blocked는 LAUNCH를 끈 이유
           launch: spec.launch,
+          squelch: squelchOfName(squelch, spec.name),
           blocked: launchBlockOf(spec),
           live: controlRowsOf(spec, rows, controlDirOf(spec)).map(({ id, name, kind, status, pid }) => ({ id, name, kind, status, job: kind === "background" ? settleJob(readJob(id)) ?? null : null, tmux: kind === "background" ? undefined : tmuxPaneOf(pid, panes, parentPidOf)?.session })),
           // STALE(ATC-93): 멈췄는데 Claude Code가 아직 목록에 둔 job. live에 들지 않고 LAUNCH를 막지 않는다

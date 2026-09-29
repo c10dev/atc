@@ -207,6 +207,9 @@ interface Lifecycle {
   arrivedUrl?: string | null; // 보고 안 첫 http(s) 링크
 }
 const lifeOf = (p: Proposal) => p as unknown as Lifecycle;
+// SETTLED(ATC-117): 열린·HELD 제안에 서버가 붙인다. settled가 false면 OCC가 아직 메모·BRIEFING을 달지 않는다(옛 서버는 필드가 없음 → 대기 표시 없음)
+const settleOf = (p: Proposal) => p as unknown as { settled?: boolean; settlesInMin?: number };
+const waitText = (p: Proposal) => `메모 대기 (${settleOf(p).settlesInMin ?? 0}분 뒤)`;
 const standFreeDeparted = (p: Proposal) => p.status === "departed" && !p.departedStand && lifeOf(p).departedVia === "readback";
 
 // RECALL은 보냈거나(sent) READBACK 받은(accepted) FLIGHT PLAN, 그리고 STAND 없이 DEPARTED한 것에만
@@ -1328,7 +1331,7 @@ function AgreeLane({
                 </button>
                 <span className="dp-agree-what" title={what}>
                   {what}
-                  {!p.briefing && <span className="faint"> (BRIEFING 대기)</span>}
+                  {!p.briefing && <span className="faint"> {settleOf(p).settled === false ? `(${waitText(p)})` : "(BRIEFING 대기)"}</span>}
                 </span>
                 <span className="mono dp-agree-fn">{flightNumber(p.flight)}</span>
                 <span className="dp-agree-ac">
@@ -1522,10 +1525,12 @@ function Card({
             ))}
           </tbody>
         </table>
-        {p.note && (
+        {p.note ? (
           <p className="dp-note">
             {p.caution && <span className="dp-caution">CAUTION</span>} {p.note}
           </p>
+        ) : (
+          settleOf(p).settled === false && <p className="dp-note faint">{waitText(p)}</p>
         )}
       </CardDetails>
     </article>

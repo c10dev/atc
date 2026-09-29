@@ -237,6 +237,19 @@ CAPTAIN(STAND 없는 FLIGHT만): 마쳤다고 보고 → OCC: atcctl dispatch ar
 
 브리핑의 `reasonStats`는 칩을 planner의 할 일 목록으로 바꾼다. 칩마다 건수, 최근 예시 FLIGHT 3건까지, 그리고 planner가 그 사유를 이미 스스로 거르는지(`auto`, `partial`, `manual`과 방법)를 준다. 지금은: 이미 완료됨 → LOGBOOK·열린 PR 규칙과 Linear Done 상태(auto), 상위 이슈 → 5.1.1(auto), 우선순위 미정 → 우선순위 없음 규칙(auto), 선행 FLIGHT·PR 대기 → Linear `blockedBy`는 HOLD, 다른 PR은 OCC HOLD로만(partial), 저장소 밖 작업 → 프로젝트 매핑만(partial), AIRCRAFT 부적합 → TYPE RATING·CREW·`tail:` 규칙(partial), 사람 결정 필요 → "사용자가 정한다"류 문구는 OCC HOLD(partial), 기타 → manual. 칩마다 차단 범위(`scope`: `flight`나 `pair`, 위 FLIGHT 보류)도 붙는다. DISPATCH 점검 패널에 "거절 사유 → 배정 규칙"으로 보인다.
 
+#### SETTLED as built (ATC-117)
+
+2026-09-27의 churn 수정 뒤 만든 ASSIGN 65건을 비용 면에서 살펴보니 36건이 SUPERSEDED됐고, 그중 29건은 OCC 메모를, 28건은 BRIEFING을 받은 뒤였다(각각 OCC 한 바퀴. 메모에서 SUPERSEDE까지 중앙값 4.5분). SUPERVISOR는 빨리 승인하므로(만들고 승인까지 중앙값 3.9분) 메모 전에 그냥 기다리게 하면 정작 필요한 제안이 늦는다. 그래서 한 바퀴를 쓸 만한 제안인지를 본다.
+
+- **SETTLED.** 제안이 `approved`이거나, 만든 뒤 열린 채(`proposed`, HOLD 포함) `settleMin`분 이상 지냈으면 SETTLED다. `settleMin`은 `dispatch.json`에 둔다(기본 10. `0`이면 전부 곧장 SETTLED라 예전과 같다. 음수나 숫자가 아니면 10). 읽을 때 계산한다(`server/proposals.ts`의 `settledOf`). `proposals.jsonl`에는 새 op이 없다.
+- **무엇을 막나.** 관제 세션이 한 바퀴를 쓰는 때만이다. OCC는 `settled: true`인 것에만 메모·BRIEFING을 달고, CROSSCHECK는 SETTLED 제안에만 mark를 단다. 승인된 제안의 전달, RECALL, CREW CHANGE는 기다리지 않는다. planner, 점수, `REPLACE_MARGIN`, 짝 규칙, FLIGHT 보류는 그대로다.
+- **빠른 승인(맞바꿈).** SUPERVISOR의 승인은 중앙값 3.9분으로 `settleMin`(10)보다 빠르다. 메모 전에 승인된 제안은 BRIEFING·CROSSCHECK mark 없이, 본문을 보고 `--hold`를 거는 OCC 검토도 없이 FLIGHT PLAN으로 나간다. 승인된 제안은 HOLD·BRIEFING·mark를 받을 수 없고 `open`·`held`에도 없어서 OCC 3단계가 읽지 않는다. ATC-117 전에는 OCC 한 바퀴보다 빠른 승인만 그랬다. 팀에게 가는 부분을 지키려고, OCC는 `inFlight`의 approved ASSIGN 중 메모가 없는 것에 `dispatch release` 직전에 메모를 단다(`dispatch note`. 본문에 선행 작업이나 "사용자가 정한다" 문구가 보이면 `--caution`). 전달은 늦추지 않는다. `settleMin`을 `0`으로 두면 예전 검토 시간으로 돌아간다.
+- **브리핑.** `dispatch brief`는 `open`·`held` 항목마다 `settled: true|false`와 `settlesInMin`(남은 분, 올림, SETTLED면 0)을 붙이고 `unsettled: n`을 더한다. `crosscheckBriefOf`는 `pending`에 SETTLED만 담고 나머지 수는 `unsettledMarks`에 둔다(mark를 받을 수 있는 것만: 열림, HOLD 아님, mark 없음. 브리핑 자체의 `unsettled`는 메모가 있든 없든 아직 SETTLED가 아닌 열린·HELD 전부다). `atcctl crosscheck brief`가 `unsettledMarks`를 그대로 전한다. `settled`가 없는 옛 서버의 브리핑은 전부 SETTLED로 읽는다.
+- **SQUELCH.** OCC 지문의 `needsNote`는 settled인 ID만 세고, CROSSCHECK 지문은 SETTLED뿐인 `pending`을 읽는다. 그래서 아직 아닌 제안은 tick을 열지 않는다. 제안이 SETTLED가 되면 그 ID가 저절로 들어와 시계 없이도 지문이 바뀐다.
+- **카드.** 아직 아닌 제안은 메모 자리에 `메모 대기 (n분 뒤)`가 보인다(접힌 줄에서는 `BRIEFING 대기` 자리). SUPERVISOR는 그래도 바로 승인할 수 있다.
+- **재생**(`server/proposals.test.ts`): 로그와 같은 모양의 고정 자료에서 메모를 받고 SUPERVISOR 판정 없이 SUPERSEDED된 29건 중 W = 5·10·15·20분이면 1·17·22·24건이 줄고, 승인된 제안은 하나도 늦지 않는다. W = 0이면 줄어드는 것이 없다.
+- **다루지 않음.** 제안 몇 분 뒤 AIRCRAFT가 AIRBORNE이 되는 까닭(36건 중 13건)은 따로다. [ATC-90](https://linear.app/vocado/issue/ATC-90)(가용성)과 [ATC-95](https://linear.app/vocado/issue/ATC-95)를 본다.
+
 #### 6.2 PREFLIGHT: 시작할 상태가 아닌 FLIGHT 잡아 두기
 
 2026-09-27에 만들었다(ATC-3). 처음 DISPATCH 판정 9건 중 6건이 거절이었고, 6건 모두 티켓이 아직 시작할 상태가 아니어서였다: 상위 이슈(VOC-34), 이미 완료됨, 사람의 결정이나 손이 필요함(VOC-177, VOC-125 …), 우선순위·담당 없음. AIRCRAFT 때문인 것은 없었다. 게이트(9/20, 33%)는 대부분 티켓 준비 상태를 재고 있었고, SUPERVISOR는 CROSSCHECK가 같은 사유로 이미 짚은 것을 잡으려고 티켓을 모두 읽어야 했다.

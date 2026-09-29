@@ -9,6 +9,7 @@ import {
   canTakeNow,
   BETTER_WHY,
   DEFAULT_DISPATCH_CONFIG,
+  DEFAULT_SETTLE_MIN,
   DONE_STATES,
   FLIGHT_HOLD_CODES,
   type DispatchConfig,
@@ -137,6 +138,29 @@ export const regOfProposal = (p: Pick<Proposal, "registration" | "aircraftName">
 export const AIRCRAFT_WHY = "AIRCRAFT 불가";
 // 멈춘 AIRCRAFT(RESUME·STALLED, 끝나지 않은 In Progress FLIGHT, ATC-90)로 닫힘. SUPERVISOR 판정이 아니라 24시간 짝 규칙을 시작하지 않는다
 export const STOPPED_WHY = "AIRCRAFT 멈춤";
+
+// SETTLED(ATC-117): OCC의 메모·BRIEFING과 CROSSCHECK mark는 SETTLED 제안만 받는다. 승인된 제안이거나, 열린(proposed·HELD) 채로 settleMin분 넘게 지낸 제안.
+// 바로 바뀌는 제안(SUPERSEDED가 36/65)에 관제 세션의 한 바퀴를 쓰지 않으려는 것이다. 읽을 때 계산하고 기록 형식은 그대로다. 0은 예전처럼 곧장 SETTLED
+export { DEFAULT_SETTLE_MIN };
+export function settledOf(p: Pick<Proposal, "status" | "at">, now: number, settleMin: number): boolean {
+  if (p.status === "approved") return true;
+  if (p.status !== "proposed") return false;
+  return now - Date.parse(p.at) >= settleMin * 60_000;
+}
+// SETTLED까지 남은 분(올림). 이미 SETTLED이거나 열려 있지 않으면 0
+export function settlesInMin(p: Pick<Proposal, "status" | "at">, now: number, settleMin: number): number {
+  if (p.status !== "proposed" || settledOf(p, now, settleMin)) return 0;
+  return Math.ceil((settleMin * 60_000 - (now - Date.parse(p.at))) / 60_000);
+}
+// 열린·HELD 제안 하나에 settled와 남은 분을 붙인다(dispatch brief)
+export const withSettled = <T extends Pick<Proposal, "status" | "at">>(p: T, now: number, settleMin: number) => ({ ...p, settled: settledOf(p, now, settleMin), settlesInMin: settlesInMin(p, now, settleMin) });
+
+// dispatch brief의 open·held(settled·settlesInMin을 붙인 것)와 아직 SETTLED가 아닌 열린·HELD 수. 라우트는 이 결과를 그대로 싣는다
+export function settledItemsOf(proposals: Proposal[], now: number, settleMin: number) {
+  const open = proposals.filter((p) => p.status === "proposed" && !isHeld(p)).map((p) => withSettled(p, now, settleMin));
+  const held = proposals.filter((p) => p.status === "proposed" && isHeld(p)).map((p) => withSettled(p, now, settleMin));
+  return { open, held, unsettled: [...open, ...held].filter((p) => !p.settled).length };
+}
 
 export const isHeld = (p: Proposal) => p.kind === "ASSIGN" && p.holdAt !== null;
 // READBACK으로 DEPARTED한 STAND 없는 FLIGHT(ARRIVED 보고 전)
@@ -808,8 +832,10 @@ export function reasonStatsOf(proposals: Proposal[]) {
 }
 
 // CROSSCHECK 브리핑: mark가 없는 열린 제안과 보정용 최근 SUPERVISOR 판정
-export function crosscheckBriefOf(proposals: Proposal[]) {
-  const pending = proposals.filter((p) => canCrosscheck(p) && !p.crosscheck);
+// SETTLED인 것만 pending에 두고(ATC-117), 나머지 수는 unsettledMarks로 알린다
+export function crosscheckBriefOf(proposals: Proposal[], now = Date.now(), settleMin = DEFAULT_SETTLE_MIN) {
+  const markable = proposals.filter((p) => canCrosscheck(p) && !p.crosscheck);
+  const pending = markable.filter((p) => settledOf(p, now, settleMin));
   const examples = examplesOf(proposals.map((p) => ({ p, human: humanOf(p) }))).map(({ p, human }) => ({
     id: p.id,
     kind: p.kind,
@@ -821,6 +847,7 @@ export function crosscheckBriefOf(proposals: Proposal[]) {
   }));
   return {
     pending: pending.map((p) => ({ id: p.id, kind: p.kind, flight: p.flight, aircraft: p.aircraftName, airport: p.airport, score: p.score, note: p.note, caution: p.caution })),
+    unsettledMarks: markable.length - pending.length, // mark를 받을 수 있는데(열림, HOLD 아님, mark 없음) 아직 SETTLED가 아닌 수. dispatch brief의 unsettled와 다르다
     examples,
   };
 }
@@ -1013,8 +1040,8 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
     const landed = landedOf(logbook);
     const fleet = loadFleet();
     const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumePlansOf(s, readDepartures(), landed, now, baseOfFleet(fleet, cfg.teamPattern))), s.atfm?.groundStops ?? []);
-    const open = proposals.filter((p) => p.status === "proposed" && !isHeld(p));
-    const held = proposals.filter((p) => p.status === "proposed" && isHeld(p));
+    // SETTLED(ATC-117): 열린·HELD 제안마다 settled와 남은 분(settlesInMin)을 붙인다. OCC는 settled인 것만 메모·BRIEFING을 단다
+    const { open, held, unsettled } = settledItemsOf(proposals, now, cfg.settleMin);
     const inFlight = proposals.filter(isInFlight).sort((a, b) => a.statusAt.localeCompare(b.statusAt));
     const recent = proposals
       .filter((p) => p.status !== "proposed" && !isInFlight(p) && now - Date.parse(p.statusAt) < 7 * DAY)
@@ -1040,6 +1067,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       plan,
       open,
       held,
+      unsettled, // 열린·HELD 중 아직 SETTLED가 아닌 수(메모가 있어도 센다). CROSSCHECK 브리핑의 unsettledMarks와 다르다
       waiting,
       // launch 카드(proposal.launch)마다 "LAUNCH on approve", 상한이 찬 열린 카드는 기다린다는 글(ATC-129)
       launch: launchViewOf([...open, ...held, ...inFlight], launchCap),
@@ -1054,7 +1082,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       gate3: gate3Of(proposals, standFree?.timeliness() ?? null),
       // ARRIVED 후보(ATC-72): OCC가 증거를 확인하고 command를 친다. atc는 ARRIVED를 스스로 적지 않는다
       arrivalCandidates: standFree?.candidates() ?? [],
-      crosscheck: crosscheckBriefOf(proposals),
+      crosscheck: crosscheckBriefOf(proposals, now, cfg.settleMin),
       judges: judgesBriefOf(proposals, recent, dispatchMarksOf(readJudgeLines()), loadJudges().jev),
       // 2b 켜기 점검표(표시만)
       readiness2b: readiness2bNow(gate, now, files),
