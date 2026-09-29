@@ -83,6 +83,24 @@ test("기본 브랜치 상태: 실패 체크·실패 status는 failure, 진행 �
   assert.deepEqual(mainStateOf([], []), { state: "none", failing: [], checks: 0 });
 });
 
+test("기본 브랜치 상태(ATC-121): 늘 도는 체크가 이 SHA에 아직 없으면 pending — none·success가 아니다", () => {
+  // 새 커밋: 체크가 아직 하나도 안 떴다
+  assert.deepEqual(mainStateOf([], [], "check"), { state: "pending", failing: [], checks: 0 });
+  // 다른 체크만 떴고 check는 아직: 통과한 것이 있어도 pending
+  assert.equal(mainStateOf([{ name: "codex", status: "completed", conclusion: "success" }], [], "check").state, "pending");
+  // 체크가 떠서 도는 중 · 끝남
+  assert.equal(mainStateOf([{ name: "check", status: "in_progress", conclusion: null }], [], "check").state, "pending");
+  assert.equal(mainStateOf([{ name: "check", status: "completed", conclusion: "success" }], [], "check").state, "success");
+  // commit status의 context로 있어도 있는 것으로 본다
+  assert.equal(mainStateOf([], [{ context: "check", state: "success" }], "check").state, "success");
+  // 이미 실패한 체크가 있으면 그대로 failure
+  assert.equal(mainStateOf([{ name: "codex", status: "completed", conclusion: "failure" }], [], "check").state, "failure");
+  // 정한 체크가 없는 저장소는 예전 그대로
+  assert.deepEqual(mainStateOf([], [], null), { state: "none", failing: [], checks: 0 });
+  assert.deepEqual(mainStateOf([], []), { state: "none", failing: [], checks: 0 });
+  assert.equal(mainStateOf([{ name: "codex", status: "completed", conclusion: "success" }], []).state, "success");
+});
+
 test("CI 소요 시간: 체크가 모두 끝났을 때 가장 이른 시작 → 가장 늦은 끝", () => {
   assert.equal(ciMinutesOf([
     { __typename: "CheckRun", name: "a", status: "COMPLETED", conclusion: "SUCCESS", startedAt: ago(10), completedAt: ago(7) },

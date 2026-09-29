@@ -155,18 +155,23 @@ export interface MainStatus {
 
 const FAIL = new Set(["failure", "timed_out", "cancelled", "action_required", "startup_failure", "error"]);
 
-// check-runs(name·status·conclusion)와 commit status(context·state)로 head 상태를 정한다(순수)
+// check-runs(name·status·conclusion)와 commit status(context·state)로 head 상태를 정한다(순수).
+// expectCheck: 이 저장소가 main에서 늘 돌리는 체크 이름(MCC AIRPORT의 ciCheck). 그 체크가 이 SHA에 아직 없으면 — 새 커밋이라 체크가 뜨기 전 —
+// none·success가 아니라 pending이다(ATC-121). 실패한 체크가 이미 있으면 그대로 failure. 정하지 않은 저장소는 예전 그대로
 export function mainStateOf(
   runs: { name: string; status: string; conclusion: string | null }[],
   statuses: { context: string; state: string }[],
+  expectCheck: string | null = null,
 ): Pick<MainStatus, "state" | "failing" | "checks"> {
   const failing = [
     ...runs.filter((r) => FAIL.has(String(r.conclusion).toLowerCase())).map((r) => r.name),
     ...statuses.filter((s) => FAIL.has(s.state.toLowerCase())).map((s) => s.context),
   ];
   const checks = runs.length + statuses.length;
-  if (!checks) return { state: "none", failing: [], checks };
   if (failing.length) return { state: "failure", failing: [...new Set(failing)], checks };
+  const waiting = Boolean(expectCheck) && !runs.some((r) => r.name === expectCheck) && !statuses.some((x) => x.context === expectCheck);
+  if (waiting) return { state: "pending", failing: [], checks };
+  if (!checks) return { state: "none", failing: [], checks };
   const pending = runs.some((r) => r.status.toLowerCase() !== "completed") || statuses.some((s) => s.state.toLowerCase() === "pending");
   return { state: pending ? "pending" : "success", failing: [], checks };
 }

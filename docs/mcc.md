@@ -173,6 +173,15 @@ The top bar of the screen shows when the running service is behind `origin/main`
 - Pure functions in `server/update.ts` (`prsOfMessages`, `rangeRefusalOf`, `updateStateOf`, `barKindOf`); tests in `server/update.test.ts` and `server/update-run.test.ts`.
 - PILOT'S DISCRETION: the bar sits for the MCC AIRPORT only (`mcc.json` `airport`). `refused`/`failed` keep showing until the next start or the next `main` head. A clicked-but-not-yet-recorded start shows `starting` for at most 2 minutes.
 
+### RTS race as built (ATC-121)
+
+MCC used to land a PR in the same pass that started RTS, and RTS could read a main whose CI belonged to another commit. Four changes:
+
+- **One commit.** `readMain` (`server/sources/github.ts`) resolves the default branch's head SHA first (the one the poll already read, or one more `gh api` call) and reads `check-runs` and `status` for that SHA, never for the branch name. `MainStatus.sha` and `state` therefore describe the same commit.
+- **A commit with no check yet is pending.** `mainStateOf(runs, statuses, expectCheck)` (`server/atfm.ts`) returns `pending` when the repo's usual main check (`mcc.json` `ciCheck`, `check` for ATCC; passed in for the MCC AIRPORT only) is not among the SHA's runs or statuses, unless another check has already failed. Repos with no configured check keep `none`.
+- **Refused starts don't hold the next one.** `spacingStartOf(records, rts)` (`server/mcc.ts`) gives the last `mcc.jsonl` `rts started` whose result in `rts.jsonl` is not `refused` (results are matched by time and target; an unfinished start counts). `rts.due` and `POST /api/mcc/rts` use it for the 5-minute spacing. The UPDATE bar keeps the plain last start, because it shows that start's refusal.
+- **RTS before landing.** `rtsDueOf` also answers not due when the last `land` `ok` in `mcc.jsonl` is newer than the time atc read main's CI (`main.at`), which covers a tick that lands first anyway. `mcc/CLAUDE.md` and `/tick` say to run `mcc rts` first when `rts.due`, and not right after a landing in the same pass. `deploy/rts.mjs` is unchanged; its own check stays the last line of defence.
+
 ## 7. Records and switches
 
 - `~/.local/state/atc/mcc.json` (atomic): `mode` `shadow` (default) | `land` | `land+rts`, `holds` (PR numbers). It is changed only from the settings window (AGENTS tab, MCC row), like AUTOLAND. `atcctl` has no command for it.
