@@ -180,8 +180,8 @@ export function AgentSettings({ snapshot, server, save }: { snapshot: Snapshot |
               value={s.review.security}
               note={
                 s.review.security === "deepseek"
-                  ? "⚠ deepseek(dispatch.json): 보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나감. .env·비밀·키 경로와 FLIGHT 없는 PR은 계속 보내지 않음"
-                  : "dispatch.json. exclude(기본): 보안 규칙(라벨·경로·키워드)에 걸린 PR은 외부 리뷰에 보내지 않음. deepseek으로 바꾸면 보안 PR diff와 Linear 이슈 본문이 DeepSeek로 나감"
+                  ? "deepseek(dispatch.json, 옛 이름): 보안 PR도 REVIEW 세션(Claude Sonnet)이 리뷰함. .env·비밀·키 경로와 FLIGHT 없는 PR은 계속 보내지 않음"
+                  : "dispatch.json. exclude(기본): 보안 규칙(라벨·경로·키워드)에 걸린 PR은 REVIEW 세션에 보내지 않고 SUPERVISOR 리뷰로. deepseek(옛 이름)으로 바꾸면 보안 PR도 REVIEW(Claude Sonnet)가 리뷰함"
               }
               input={{ kind: "select", options: ["exclude", "deepseek"] }}
               onSave={(v) => save({ reviewSecurity: v as "exclude" | "deepseek" })}
@@ -635,12 +635,12 @@ function MccGatePanel() {
   );
 }
 
-// 관제 세션(docs/fleet.md 8.5.1). 줄마다 live 배지. TOWER·OCC·MCC는 atc가 그 폴더에서 `claude --bg`로, REVIEW·CROSSCHECK는
-// tmux 세션에서 `ocx claude`로 띄운다(ATC-66). ENGINEERING은 배지만. tmux로 연 세션도 STOP한다(그 pane만 닫음, 묻고 나서).
+// 관제 세션(docs/fleet.md 8.5.1). 줄마다 live 배지. TOWER·OCC·MCC·CROSSCHECK·REVIEW는 atc가 그 폴더에서 `claude --bg`로 띄운다
+// (ocx·tmux LAUNCH는 2026-09-29에 끊음). ENGINEERING은 배지만. tmux pane에서 손으로 연 세션도 STOP한다(그 pane만 닫음, 묻고 나서).
 // 데스크톱 세션은 그 창에서 닫는다
 type ControlLive = { id?: string; name?: string; kind: string; status?: string; tmux?: string };
 type ControlAccounts = { labeled: boolean; rows: { name: string; label: string | null; account: string | null }[] };
-type ControlSession = { name: string; dir: string | null; prompt: string | null; launch: "bg" | "tmux" | null; tmux?: string; command?: string; blocked: string | null; live: ControlLive[] };
+type ControlSession = { name: string; dir: string | null; prompt: string | null; launch: "bg" | null; blocked: string | null; live: ControlLive[] };
 type ControlList = { daemonInService?: boolean; sessions: ControlSession[] };
 function ControlSessions() {
   const [list, setList] = useState<ControlList | null>(null);
@@ -732,7 +732,7 @@ function ControlSessions() {
         // live 배지: BG <id>, tmux <세션>, interactive(데스크톱 등), not running
         const badge = bg ? `BG ${bg.id}` : tmux ? `tmux ${tmux.tmux}` : other ? "interactive" : "not running";
         const detail = bg ? bg.status : tmux ? [tmux.name ?? tmux.kind, tmux.status].filter(Boolean).join(" · ") : other ? `${other.name ?? other.kind} · 데스크톱 세션은 그 창에서 닫는다` : undefined;
-        const how = c.launch === "bg" ? "claude --bg" : c.launch === "tmux" ? (tmux ? "ocx claude" : `ocx claude → tmux ${c.tmux}`) : null;
+        const how = c.launch === "bg" ? (tmux ? "tmux에서 연 세션" : "claude --bg") : null;
         return (
           <Fragment key={c.name}>
           <div className="config-row">
@@ -745,7 +745,7 @@ function ControlSessions() {
                   STOP
                 </button>
               ) : (
-                <button className="config-btn is-primary" onClick={() => void act(c.name, "launch")} disabled={busy !== null || Boolean(other) || Boolean(c.blocked)} title={c.blocked ?? c.command ?? undefined}>
+                <button className="config-btn is-primary" onClick={() => void act(c.name, "launch")} disabled={busy !== null || Boolean(other) || Boolean(c.blocked)} title={c.blocked ?? undefined}>
                   LAUNCH
                 </button>
               )}
@@ -772,7 +772,7 @@ function ControlSessions() {
           백그라운드 세션 daemon이 atc 서비스 안에서 돌고 있음 — atc를 재시작하면(배포·RTS) 모든 백그라운드 세션이 함께 멈춘다. 재시작한 뒤 LAUNCH하면 daemon이 서비스 밖(systemd scope)에서 뜬다
         </p>
       )}
-      <p className="config-note">CROSSCHECK·REVIEW는 ocx로 다른 계열 모델에 돌리므로 tmux 세션에서 띄운다(docs/occ.md CROSSCHECK, review/README.md)</p>
+      <p className="config-note">모델은 폴더의 .claude/settings.json이 정한다: TOWER·OCC·REVIEW Claude Sonnet, MCC·CROSSCHECK Claude Opus</p>
       {accounts?.rows.filter((r) => !shown.has(r.name)).map((r) => accountRow(r.name))}
       {error && <p className="config-note is-error">{error}</p>}
     </dl>

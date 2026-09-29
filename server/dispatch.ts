@@ -34,8 +34,9 @@ export interface DispatchConfig {
   releaseStates: string[]; // RELEASE 대상 상태 이름
   excludeLabels: string[];
   teamPattern: string; // 배정 대상 세션 이름
-  // 외부 착륙 리뷰(ATC-30). security: 보안 규칙(라벨·경로·키워드)에만 걸린 PR을 DeepSeek REVIEW에 보낼까.
-  // "exclude"(기본): 보내지 않음. "deepseek": 보냄(SUPERVISOR 결정 2026-09-27). 비밀·키 경로와 FLIGHT 없는 PR은 어느 쪽이든 보내지 않는다
+  // 외부 착륙 리뷰(ATC-30). security: 보안 규칙(라벨·경로·키워드)에만 걸린 PR을 REVIEW 세션에 보낼까.
+  // "exclude"(기본): 보내지 않음. "deepseek": 보냄(SUPERVISOR 결정 2026-09-27). REVIEW가 Claude Sonnet이 된 뒤에도(2026-09-29)
+  // dispatch.json 값과 맞추려고 이름은 그대로 둔다. 비밀·키 경로와 FLIGHT 없는 PR은 어느 쪽이든 보내지 않는다
   externalReview: { security: ExternalReviewSecurity };
   // FUEL REMAINING(ATC-55): INFO·HOLD 임계값(쓴 몫 %)과 DISPATCH HOLD 스위치(D3, 기본 꺼짐). SUPERVISOR만 설정 창에서 켠다
   fuel: FuelConfig;

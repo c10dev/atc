@@ -82,13 +82,13 @@ test("스위치 켜짐(deepseek): #392·#395는 REVIEW 대기열로 가고(보�
   }
 });
 
-test("기록: 스위치로 보낸 보안 PR의 리뷰는 security: true, 아니면 없음. 모델은 여전히 DeepSeek V4.1 Flash만(Muse 안 됨)", () => {
-  const body = { head: HEAD.slice(0, 7), verdict: "pass", text: "OK. P2 x", model: "claude-ocx-opencode-go--deepseek-v4.1-flash" };
+test("기록: 스위치로 보낸 보안 PR의 리뷰는 security: true, 아니면 없음. 모델은 Claude Sonnet만(옛 DeepSeek·Muse 안 됨)", () => {
+  const body = { head: HEAD.slice(0, 7), verdict: "pass", text: "OK. P2 x", model: "claude-sonnet-5-5" };
   const sec = parseReview(body, build(PR395, "deepseek"), AT);
   assert.equal(sec.security, true);
   const plain = parseReview(body, { ...build(PR395, "deepseek"), extReview: { status: "waiting", reason: null, review: null, security: null } }, AT);
   assert.equal("security" in plain, false);
-  assert.throws(() => parseReview({ ...body, model: "muse-spark-1.3-contributor" }, build(PR395, "deepseek"), AT), /DeepSeek V4\.1 Flash만/);
+  for (const model of ["muse-spark-1.3-contributor", "claude-ocx-opencode-go--deepseek-v4.1-flash"]) assert.throws(() => parseReview({ ...body, model }, build(PR395, "deepseek"), AT), /Claude Sonnet만/);
 });
 
 test("설정: dispatch.json externalReview.security — 기본 exclude, 모르는 값도 exclude, 저장은 다른 설정을 지우지 않는다", () => {

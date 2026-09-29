@@ -30,7 +30,7 @@ export interface ServerSettings {
     handoffGraceMin: number;
     projectsDir: string;
   };
-  // 외부 착륙 리뷰(ATC-30): 보안 규칙에만 걸린 PR을 DeepSeek REVIEW에 보낼까(dispatch.json externalReview.security)
+  // 외부 착륙 리뷰(ATC-30): 보안 규칙에만 걸린 PR을 REVIEW 세션(Claude Sonnet)에 보낼까(dispatch.json externalReview.security)
   review: { security: ExternalReviewSecurity };
   // FUEL REMAINING(ATC-55): dispatch.json fuel. hold는 DISPATCH HOLD 스위치(D3, 기본 꺼짐), 임계값은 쓴 몫 %
   fuel: { hold: boolean; infoPct: number; holdPct: number };

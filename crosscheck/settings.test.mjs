@@ -11,8 +11,8 @@ test("CROSSCHECK 설정: 모델은 허용 목록 안, mark의 모델은 settings
   assert.match(settings.model, CROSSCHECK_MODELS);
   // settings env에 모델을 적어 두면 Desktop처럼 다른 모델로 돌 때 거짓 이름이 남는다
   assert.equal(settings.env?.ATC_CROSSCHECK_MODEL, undefined);
-  // DeepSeek(flash-helper와 같은 모델)은 FLEET 규칙상 판정에 쓰지 않는다
-  assert.doesNotMatch(settings.model, /deepseek/i);
+  // OCC(Sonnet)와 다른 모델이 다시 본다. ocx 경로는 끊었다(2026-09-29)
+  assert.doesNotMatch(settings.model, /sonnet|ocx|deepseek/i);
   for (const t of ["Edit", "Write", "NotebookEdit", "SendMessage", "Agent", "Artifact"]) assert.ok(settings.permissions.deny.includes(t), t);
   const hooks = settings.hooks.PreToolUse.flatMap((h) => h.hooks.map((x) => x.command));
   assert.ok(hooks.every((c) => c.endsWith("exit 2")), "hook은 fail-closed");

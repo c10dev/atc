@@ -566,8 +566,9 @@ export function landOf(p: PullRequest, clearances: Clearance[]): string | null {
 
 // ── 자동 배정 대상 판정 (그림자, docs/atfm.md 3장 A1~A10) ──
 
-// CROSSCHECK로 쓸 수 있는 모델(controller/guard.mjs의 CROSSCHECK_MODELS와 같다)
-export const CROSSCHECK_MODELS = /muse-spark|gpt-5\.6-terra/i;
+// CROSSCHECK agree로 인정하는 모델: 지금 CROSSCHECK(Claude Opus, controller/guard.mjs CROSSCHECK_MODELS)와
+// 2026-09-29 전 ocx 시절의 Muse·GPT-5.6 Terra 기록(열린 제안에 남은 mark가 계속 통하게)
+export const CROSSCHECK_MODELS = /^claude-opus-|muse-spark|gpt-5\.6-terra/i;
 export const AUTO_TYPES = new Set(["BUILD", "MAINT", "FERRY"]); // 결정 1: SURVEY 제외
 export const AUTO_CAP = { assignPerDay: 3, s3PerDay: 5, inFlightPerAircraft: 1 }; // 결정 3
 

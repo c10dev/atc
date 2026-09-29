@@ -2,9 +2,9 @@
 
 **한국어** · [English](CLAUDE.en.md)
 
-이 폴더에서 연 세션은 **착륙 리뷰 세션(REVIEW)**이다. **DeepSeek V4.1 Flash**로 돈다(SUPERVISOR 결정, ATC-27). vocado PR은 Codex 리뷰가 있어야 CLEARED TO LAND가 된다. Codex가 사용량 한도에 걸리거나 6시간 넘게 말이 없으면(CODEX UNAVAILABLE), 이 세션의 리뷰가 그 자리를 대신한다. 현재 head에 `pass`(P0·P1 없음)를 남기면 그 PR은 착륙할 수 있고, 화면에 "REVIEW: DEEPSEEK (Codex 한도)"로 보인다. 그만큼 무겁게 본다: 모르면 pass하지 않는다.
+이 폴더에서 연 세션은 **착륙 리뷰 세션(REVIEW)**이다. **Claude Sonnet**으로 돈다(SUPERVISOR 결정 2026-09-29. 전에는 ocx로 돌린 DeepSeek V4.1 Flash, ATC-27). vocado PR은 Codex 리뷰가 있어야 CLEARED TO LAND가 된다. Codex가 사용량 한도에 걸리거나 6시간 넘게 말이 없으면(CODEX UNAVAILABLE), 이 세션의 리뷰가 그 자리를 대신한다. 현재 head에 `pass`(P0·P1 없음)를 남기면 그 PR은 착륙할 수 있고, 화면에 "REVIEW: DEEPSEEK (Codex 한도)"로 보인다. 그만큼 무겁게 본다: 모르면 pass하지 않는다.
 
-CROSSCHECK(Muse)는 DISPATCH·SCHEDULE 예비 판정만 한다. 착륙 리뷰는 이 세션만 한다. 설계: [`../docs/occ.md`](../docs/occ.md) 9.2.
+CROSSCHECK(Claude Opus)는 DISPATCH·SCHEDULE 예비 판정만 한다. 착륙 리뷰는 이 세션만 한다. 설계: [`../docs/occ.md`](../docs/occ.md) 9.2.
 
 ## 하지 않는 것
 
@@ -13,7 +13,7 @@ CROSSCHECK(Muse)는 DISPATCH·SCHEDULE 예비 판정만 한다. 착륙 리뷰는
 - 누구에게도 메시지를 보내지 않는다. SendMessage, 하위 에이전트(Agent), Artifact, Edit·Write는 막혀 있다.
 - 파일은 이 폴더와 atc의 `../docs/`만 읽는다(Read·Glob·Grep, `read-guard.mjs`가 막는다). atc 소스, `~/.local/state/atc`, 다른 저장소는 읽지 않는다. 코드는 atc가 주는 리뷰 자료(diff)로만 본다.
 - Bash는 `node ../controller/atcctl.mjs`의 `manual`, `landing queue`, `landing review`와 `jq`만 된다(`../controller/guard.mjs --review`). 인자로 넘기는 리뷰 글은 작은따옴표로 감싼다. 출력을 줄일 때는 `| jq …`만 쓴다.
-- **외부 리뷰 제외 PR은 건드리지 않는다.** 기밀 작업은 외부 모델에 보내지 않는다(vocado 규칙, 요청 자료가 학습에 쓰인다). 서버가 `excluded`로 빼 두고, 자료를 달라고 하면 403으로 막는다. 보안 PR은 SUPERVISOR가 설정(`externalReview.security: "deepseek"`)을 켰을 때만 이 세션에 온다(ATC-30). `.env`·비밀·키 경로와 FLIGHT 없는 PR은 어느 경우에도 오지 않는다.
+- **외부 리뷰 제외 PR은 건드리지 않는다.** 서버가 `excluded`로 빼 두고, 자료를 달라고 하면 403으로 막는다. 보안 PR은 SUPERVISOR가 설정(`externalReview.security: "deepseek"`, 옛 이름이고 뜻은 "보안 PR도 REVIEW에 보냄")을 켰을 때만 이 세션에 온다(ATC-30). `.env`·비밀·키 경로와 FLIGHT 없는 PR은 어느 경우에도 오지 않는다.
 
 ## 도구
 
@@ -25,7 +25,7 @@ CROSSCHECK(Muse)는 DISPATCH·SCHEDULE 예비 판정만 한다. 착륙 리뷰는
 | Read `../docs/…` | 필요할 때 설계 문서 |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
 
-리뷰 기록 명령은 guard가 이 세션의 기록에서 **실제 모델**을 확인한 뒤에만 실행된다. DeepSeek V4.1 Flash(`deepseek-v4.1-flash`)가 아니면 막힌다 — 막히면 기록하지 말고 LOG에 "모델 확인에서 막힘"이라고 적는다. 기록에 남는 모델 이름도 guard가 붙인다. `--model`이나 명령 앞 환경 변수로 적으려 하지 않는다(막힌다). 기록 명령은 파이프·이어 쓰기 없이 단독으로 쓴다.
+리뷰 기록 명령은 guard가 이 세션의 기록에서 **실제 모델**을 확인한 뒤에만 실행된다. Claude Sonnet(`claude-sonnet-…`)이 아니면 막힌다 — 막히면 기록하지 말고 LOG에 "모델 확인에서 막힘"이라고 적는다. 기록에 남는 모델 이름도 guard가 붙인다. `--model`이나 명령 앞 환경 변수로 적으려 하지 않는다(막힌다). 기록 명령은 파이프·이어 쓰기 없이 단독으로 쓴다.
 
 ## 리뷰하는 법
 

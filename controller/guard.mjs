@@ -68,18 +68,18 @@ const CROSSCHECK_CMDS = new Set([
   "dispatch brief", "dispatch flight", "dispatch crosscheck",
   "schedule brief", "schedule crosscheck",
 ]);
-// REVIEW 세션(착륙 리뷰, DeepSeek V4.1 Flash)이 쓸 수 있는 atcctl 하위 명령. 착륙 리뷰는 CROSSCHECK에서 옮겨 왔다(ATC-27)
+// REVIEW 세션(착륙 리뷰, Claude Sonnet)이 쓸 수 있는 atcctl 하위 명령. 착륙 리뷰는 CROSSCHECK에서 옮겨 왔다(ATC-27)
 const REVIEW_CMDS = new Set(["manual check", "manual ack", "landing queue", "landing review"]);
 // MCC 세션이 쓸 수 있는 atcctl 하위 명령(docs/mcc.md). 쓰기 넷은 MCC 세션에서만
 const MCC_WRITES = new Set(["inspect", "escalate", "land", "rts"]);
 const MCC_CMDS = new Set(["manual check", "manual ack", "mcc queue", "mcc packet", ...[...MCC_WRITES].map((w) => `mcc ${w}`)]);
 
-// CROSSCHECK로 쓸 수 있는 모델: Muse Spark 1.3(기본), GPT-5.6 Terra(대체). 두 경로에서 기록되는 이름:
-// ocx claude → claude-ocx-opencode-go--muse-spark-1.3-contributor, ClaudeRipple(Desktop) → muse-spark-1.3-contributor
-export const CROSSCHECK_MODELS = /muse-spark|gpt-5\.6-terra/i;
-// REVIEW로 쓸 수 있는 모델: DeepSeek V4.1 Flash(SUPERVISOR 결정, ATC-27). ocx claude → claude-ocx-opencode-go--deepseek-v4.1-flash,
-// ClaudeRipple(Desktop) → deepseek-v4.1-flash
-export const REVIEW_MODELS = /deepseek-v4\.1-flash/i;
+// CROSSCHECK로 쓸 수 있는 모델: Claude Opus(SUPERVISOR 결정 2026-09-29). OCC(Sonnet)와 다른 모델이 다시 본다.
+// ocx로 돌리던 Muse·GPT-5.6 Terra는 끊었다(claude-ocx-… 이름은 막힌다)
+export const CROSSCHECK_MODELS = /^claude-opus-/i;
+// REVIEW로 쓸 수 있는 모델: Claude Sonnet(SUPERVISOR 결정 2026-09-29, 전에는 ocx의 DeepSeek V4.1 Flash, ATC-27).
+// 팀 CAPTAIN(Opus)과 다른 모델이 리뷰한다
+export const REVIEW_MODELS = /^claude-sonnet-/i;
 // MCC로 쓸 수 있는 모델: Claude(SUPERVISOR 결정 2026-09-28). 서버 server/mcc.ts MCC_MODELS와 같다. ocx로 돌린 다른 모델(claude-ocx-…)은 아니다
 export const MCC_MODELS = /^claude-(opus|sonnet|fable|haiku)\b/i;
 const MODEL_NAME = /^[A-Za-z0-9._:@\/\[\]-]{1,120}$/; // 명령에 붙여도 안전한 글자만
@@ -134,8 +134,8 @@ const isMarkCommand = (words, cwd, mode = "crosscheck") =>
       : (words[2] === "dispatch" || words[2] === "schedule") && words[3] === "crosscheck");
 
 const MODES = {
-  crosscheck: { models: CROSSCHECK_MODELS, env: "ATC_CROSSCHECK_MODEL", who: "CROSSCHECK", what: "crosscheck 명령", switchTo: "앱에서 모델을 Muse(muse-spark-1.3-contributor)로 바꾸거나, 터미널에서 ocx claude로 여세요" },
-  review: { models: REVIEW_MODELS, env: "ATC_REVIEW_MODEL", who: "착륙 리뷰(REVIEW)", what: "landing review 기록", switchTo: "review/ 폴더에서 DeepSeek V4.1 Flash로 여세요(review/README.md의 명령)" },
+  crosscheck: { models: CROSSCHECK_MODELS, env: "ATC_CROSSCHECK_MODEL", who: "CROSSCHECK", what: "crosscheck 명령", switchTo: "crosscheck/ 폴더에서 Claude Opus로 여세요(설정 창 AGENTS → CONTROL의 LAUNCH)" },
+  review: { models: REVIEW_MODELS, env: "ATC_REVIEW_MODEL", who: "착륙 리뷰(REVIEW)", what: "landing review 기록", switchTo: "review/ 폴더에서 Claude Sonnet으로 여세요(설정 창 AGENTS → CONTROL의 LAUNCH)" },
   mcc: { models: MCC_MODELS, env: "ATC_MCC_MODEL", who: "MCC", what: "mcc 쓰기", switchTo: "mcc/ 폴더에서 Claude 모델로 여세요(mcc/README.md의 명령)" },
 };
 

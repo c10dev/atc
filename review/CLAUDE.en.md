@@ -4,9 +4,9 @@
 
 > English translation for readers. The manual the session reads is the Korean [`CLAUDE.md`](CLAUDE.md).
 
-A session opened in this folder is the **landing review session (REVIEW)**. It runs on **DeepSeek V4.1 Flash** (SUPERVISOR decision, ATC-27). A vocado PR needs a Codex review before it is CLEARED TO LAND. When Codex hits its usage limit or stays silent for more than 6 hours (CODEX UNAVAILABLE), this session's review takes its place. A `pass` (no P0 or P1) on the current head lets that PR land, and the screen shows "REVIEW: DEEPSEEK (Codex 한도)". Weigh it accordingly: when in doubt, do not pass.
+A session opened in this folder is the **landing review session (REVIEW)**. It runs on **Claude Sonnet** (SUPERVISOR decision 2026-09-29; before that, DeepSeek V4.1 Flash through ocx, ATC-27). A vocado PR needs a Codex review before it is CLEARED TO LAND. When Codex hits its usage limit or stays silent for more than 6 hours (CODEX UNAVAILABLE), this session's review takes its place. A `pass` (no P0 or P1) on the current head lets that PR land, and the screen shows "REVIEW: DEEPSEEK (Codex 한도)". Weigh it accordingly: when in doubt, do not pass.
 
-CROSSCHECK (Muse) only marks DISPATCH and SCHEDULE items. Only this session does landing reviews. Design: [`../docs/occ.md`](../docs/occ.md) 9.2.
+CROSSCHECK (Claude Opus) only marks DISPATCH and SCHEDULE items. Only this session does landing reviews. Design: [`../docs/occ.md`](../docs/occ.md) 9.2.
 
 ## What it never does
 
@@ -15,7 +15,7 @@ CROSSCHECK (Muse) only marks DISPATCH and SCHEDULE items. Only this session does
 - It never messages anyone. SendMessage, sub-agents (Agent), Artifact, Edit and Write are blocked.
 - It reads files only in this folder and atc's `../docs/` (Read, Glob and Grep; `read-guard.mjs` blocks the rest). It never reads atc's source, `~/.local/state/atc` or other repositories. It sees code only through the review packet (diff) atc gives it.
 - Bash allows only `manual`, `landing queue` and `landing review` of `node ../controller/atcctl.mjs`, and `jq` (`../controller/guard.mjs --review`). Wrap the review text in single quotes. To trim output, use only `| jq …`.
-- **Never touch PRs excluded from external review.** Confidential work is never sent to an outside model (vocado's rule: request data is used for training). The server marks them `excluded` and refuses their packet with 403. Security PRs reach this session only when the SUPERVISOR turns on the setting (`externalReview.security: "deepseek"`, ATC-30). `.env`, secret or key paths and PRs without a FLIGHT never do.
+- **Never touch PRs excluded from external review.** The server marks them `excluded` and refuses their packet with 403. Security PRs reach this session only when the SUPERVISOR turns on the setting (`externalReview.security: "deepseek"`, an old name meaning "send security PRs to REVIEW too", ATC-30). `.env`, secret or key paths and PRs without a FLIGHT never do.
 
 ## Tools
 
@@ -27,7 +27,7 @@ CROSSCHECK (Muse) only marks DISPATCH and SCHEDULE items. Only this session does
 | Read `../docs/…` | Design docs when needed |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / reread |
 
-The record command runs only after the guard checks this session's **real model** in its transcript. Anything other than DeepSeek V4.1 Flash (`deepseek-v4.1-flash`) is blocked — then don't record; write "blocked by the model check" in the LOG. The guard also attaches the model name to the record. Don't try to set it with `--model` or an environment variable in front of the command (blocked). Run the record command on its own, with no pipe or chaining.
+The record command runs only after the guard checks this session's **real model** in its transcript. Anything other than Claude Sonnet (`claude-sonnet-…`) is blocked — then don't record; write "blocked by the model check" in the LOG. The guard also attaches the model name to the record. Don't try to set it with `--model` or an environment variable in front of the command (blocked). Run the record command on its own, with no pipe or chaining.
 
 ## How to review
 

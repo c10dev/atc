@@ -157,19 +157,21 @@ test("lastModelOf: 마지막 assistant의 model, <synthetic>·깨진 줄은 건�
   assert.equal(lastModelOf(""), null);
 });
 
-test("mark 명령: 실제 모델이 Muse·Terra(두 경로 이름)면 그 이름을 붙이고, Claude·DeepSeek·기록 없음·깨짐은 막는다", () => {
-  for (const m of ["claude-ocx-opencode-go--muse-spark-1.3-contributor", "muse-spark-1.3-contributor", "claude-ocx-native--gpt-5.6-terra"]) {
-    const r = checkMarkModel(MARK, CROSSCHECK, transcript("claude-opus-5-5", m));
+test("mark 명령: 실제 모델이 Claude Opus면 그 이름을 붙이고, Sonnet·옛 ocx 모델(Muse·Terra·DeepSeek)·기록 없음·깨짐은 막는다", () => {
+  for (const m of ["claude-opus-5-5", "claude-opus-5"]) {
+    const r = checkMarkModel(MARK, CROSSCHECK, transcript("claude-sonnet-5-5", m));
     assert.equal(r.reason, undefined, m);
     assert.equal(r.command, `ATC_CROSSCHECK_MODEL='${m}' ${MARK}`);
   }
-  for (const m of ["claude-opus-5-5", "claude-sonnet-5", "deepseek-v4.1-flash"]) assert.match(checkMarkModel(MARK, CROSSCHECK, transcript("muse-spark-1.3-contributor", m)).reason, /쓸 수 없음.*Muse/, m);
+  for (const m of ["claude-sonnet-5-5", "claude-ocx-opencode-go--muse-spark-1.3-contributor", "muse-spark-1.3-contributor", "claude-ocx-native--gpt-5.6-terra", "deepseek-v4.1-flash"]) {
+    assert.match(checkMarkModel(MARK, CROSSCHECK, transcript("claude-opus-5-5", m)).reason, /쓸 수 없음.*Claude Opus/, m);
+  }
   assert.match(checkMarkModel(MARK, CROSSCHECK, null).reason, /읽지 못해/);
   assert.match(checkMarkModel(MARK, CROSSCHECK, "{broken\n").reason, /모델이 없어/);
-  assert.match(checkMarkModel(MARK, CROSSCHECK, transcript("muse-spark-1.3-contributor'; x")).reason, /쓸 수 없음/); // 명령에 붙일 수 없는 글자
+  assert.match(checkMarkModel(MARK, CROSSCHECK, transcript("claude-opus-5-5'; x")).reason, /쓸 수 없음/); // 명령에 붙일 수 없는 글자
   // 세션이 모델을 적으려 하면 막는다
-  assert.match(checkMarkModel("node ../controller/atcctl.mjs dispatch crosscheck D-0003 agree --model muse -- 'x'", CROSSCHECK, transcript("claude-opus-5-5")).reason, /세션이 적지 않는다/);
-  assert.match(checkMarkModel(`${MARK} | jq .`, CROSSCHECK, transcript("muse-spark-1.3-contributor")).reason, /단독으로/);
+  assert.match(checkMarkModel("node ../controller/atcctl.mjs dispatch crosscheck D-0003 agree --model opus -- 'x'", CROSSCHECK, transcript("claude-opus-5-5")).reason, /세션이 적지 않는다/);
+  assert.match(checkMarkModel(`${MARK} | jq .`, CROSSCHECK, transcript("claude-opus-5-5")).reason, /단독으로/);
   // 읽기 명령은 확인하지 않는다
   assert.deepEqual(checkMarkModel("node ../controller/atcctl.mjs crosscheck brief", CROSSCHECK, null), { command: "node ../controller/atcctl.mjs crosscheck brief" });
 });
@@ -181,28 +183,28 @@ const runHook = (command, transcriptPath, flags = ["--crosscheck", "--gh-read"])
     encoding: "utf8",
   });
 
-test("guard CLI: opus 기록이면 exit 2, muse 기록이면 updatedInput으로 실제 모델을 붙이고, 기록이 없으면 exit 2, 읽기 명령은 기록과 무관", () => {
+test("guard CLI: sonnet 기록이면 exit 2, opus 기록이면 updatedInput으로 실제 모델을 붙이고, 기록이 없으면 exit 2, 읽기 명령은 기록과 무관", () => {
+  const sonnet = join(TMP, "sonnet.jsonl");
   const opus = join(TMP, "opus.jsonl");
-  const muse = join(TMP, "muse.jsonl");
+  writeFileSync(sonnet, transcript("claude-sonnet-5-5"));
   writeFileSync(opus, transcript("claude-opus-5-5"));
-  writeFileSync(muse, transcript("muse-spark-1.3-contributor"));
-  const blocked = runHook(MARK, opus);
+  const blocked = runHook(MARK, sonnet);
   assert.equal(blocked.status, 2);
-  assert.match(blocked.stderr, /claude-opus-5-5.*ocx claude/);
-  const ok = runHook(MARK, muse);
+  assert.match(blocked.stderr, /claude-sonnet-5-5.*Claude Opus/);
+  const ok = runHook(MARK, opus);
   assert.equal(ok.status, 0, ok.stderr);
   const out = JSON.parse(ok.stdout).hookSpecificOutput;
   assert.equal(out.hookEventName, "PreToolUse");
-  assert.equal(out.updatedInput.command, `ATC_CROSSCHECK_MODEL='muse-spark-1.3-contributor' ${MARK}`);
+  assert.equal(out.updatedInput.command, `ATC_CROSSCHECK_MODEL='claude-opus-5-5' ${MARK}`);
   assert.equal(out.updatedInput.description, "d");
   assert.equal(runHook(MARK, join(TMP, "none.jsonl")).status, 2);
   assert.equal(runHook(MARK, undefined).status, 2);
   const read = runHook("node ../controller/atcctl.mjs crosscheck brief", undefined);
   assert.equal(read.status, 0);
   assert.equal(read.stdout, "");
-  assert.equal(runHook("gh pr view 393 --repo chaehy5665/vocado_nextjs --json state", opus).status, 0);
+  assert.equal(runHook("gh pr view 393 --repo chaehy5665/vocado_nextjs --json state", sonnet).status, 0);
   // 세션이 앞에 모델을 적으면(환경 변수) 명령 자체가 막힌다
-  assert.equal(runHook(`ATC_CROSSCHECK_MODEL='muse-spark-1.3-contributor' ${MARK}`, opus).status, 2);
+  assert.equal(runHook(`ATC_CROSSCHECK_MODEL='claude-opus-5-5' ${MARK}`, opus).status, 2);
   // OCC(--crosscheck 없음)는 이 확인을 하지 않는다
   assert.equal(runHook("node ../controller/atcctl.mjs dispatch brief", undefined, ["--gh-read"]).status, 0);
 });
@@ -318,7 +320,7 @@ test("착륙 리뷰는 CROSSCHECK에서 빠졌다(ATC-27): --crosscheck는 landi
   }
 });
 
-test("REVIEW(--review, ATC-27): manual·landing queue·landing review만, gh 없음. 기록(--verdict)은 DeepSeek V4.1 Flash만 모델을 붙여 통과", () => {
+test("REVIEW(--review, ATC-27): manual·landing queue·landing review만, gh 없음. 기록(--verdict)은 Claude Sonnet만 모델을 붙여 통과", () => {
   const REVIEW = HERE.replace(/controller$/, "review");
   const READ = "node ../controller/atcctl.mjs landing review vocado_nextjs#385";
   const WRITE = "node ../controller/atcctl.mjs landing review vocado_nextjs#385 --head abc1234 --verdict pass -- '완료 기준 충족, P2 없음'";
@@ -331,22 +333,22 @@ test("REVIEW(--review, ATC-27): manual·landing queue·landing review만, gh 없
     "node ../controller/atcctl.mjs landing clear vocado_nextjs#385",
     "gh pr view 385 --repo chaehy5665/vocado_nextjs",
     "gh pr diff 385",
-    `ATC_REVIEW_MODEL=deepseek-v4.1-flash ${WRITE}`,
+    `ATC_REVIEW_MODEL=claude-sonnet-5-5 ${WRITE}`,
   ]) assert.notEqual(check(c, REVIEW, { review: true, ghRead: true }), null, c);
   // 읽기에는 모델 확인이 없다
   assert.deepEqual(checkMarkModel(READ, REVIEW, null, "review"), { command: READ });
-  // 기록: DeepSeek V4.1 Flash(두 경로 이름)면 ATC_REVIEW_MODEL을 붙인다
-  for (const m of ["claude-ocx-opencode-go--deepseek-v4.1-flash", "deepseek-v4.1-flash"]) {
+  // 기록: Claude Sonnet이면 ATC_REVIEW_MODEL을 붙인다
+  for (const m of ["claude-sonnet-5-5", "claude-sonnet-5"]) {
     assert.equal(checkMarkModel(WRITE, REVIEW, transcript("claude-opus-5-5", m), "review").command, `ATC_REVIEW_MODEL='${m}' ${WRITE}`);
   }
-  // Muse·Claude·다른 DeepSeek·기록 없음은 막는다
-  for (const m of ["muse-spark-1.3-contributor", "claude-opus-5-5", "deepseek-v4-pro", "deepseek-chat"]) {
+  // Opus·옛 ocx 모델(DeepSeek·Muse)·기록 없음은 막는다
+  for (const m of ["claude-opus-5-5", "claude-ocx-opencode-go--deepseek-v4.1-flash", "deepseek-v4.1-flash", "muse-spark-1.3-contributor"]) {
     assert.match(checkMarkModel(WRITE, REVIEW, transcript(m), "review").reason, /착륙 리뷰\(REVIEW\)로 쓸 수 없음/, m);
   }
   assert.match(checkMarkModel(WRITE, REVIEW, null, "review").reason, /읽지 못해/);
-  assert.match(checkMarkModel(`${WRITE} && node ../controller/atcctl.mjs landing queue`, REVIEW, transcript("deepseek-v4.1-flash"), "review").reason, /단독으로/);
-  assert.match(checkMarkModel(WRITE.replace("--verdict pass", "--model x --verdict pass"), REVIEW, transcript("deepseek-v4.1-flash"), "review").reason, /세션이 적지 않는다/);
+  assert.match(checkMarkModel(`${WRITE} && node ../controller/atcctl.mjs landing queue`, REVIEW, transcript("claude-sonnet-5-5"), "review").reason, /단독으로/);
+  assert.match(checkMarkModel(WRITE.replace("--verdict pass", "--model x --verdict pass"), REVIEW, transcript("claude-sonnet-5-5"), "review").reason, /세션이 적지 않는다/);
   assert.deepEqual(checkMarkModel(`${READ} -- --verdict`, REVIEW, null, "review"), { command: `${READ} -- --verdict` });
-  // CROSSCHECK 모드의 mark는 여전히 Muse만(DeepSeek은 CROSSCHECK로 쓰지 않는다)
-  assert.match(checkMarkModel(MARK, CROSSCHECK, transcript("deepseek-v4.1-flash")).reason, /CROSSCHECK로 쓸 수 없음/);
+  // CROSSCHECK 모드의 mark는 Opus만(REVIEW의 Sonnet은 CROSSCHECK로 쓰지 않는다)
+  assert.match(checkMarkModel(MARK, CROSSCHECK, transcript("claude-sonnet-5-5")).reason, /CROSSCHECK로 쓸 수 없음/);
 });

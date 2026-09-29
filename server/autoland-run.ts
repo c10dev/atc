@@ -114,7 +114,7 @@ async function cycle(s: Snapshot) {
   });
 
   // 재리뷰(ATC-38): update·merge이고 GROUND STOP이 아닌 AIRPORT만. 갱신이 끝난 head에 리뷰가 이어지지 않았으면 head마다 한 번 요청하고,
-  // codex로 요청한 것은 한도·30분 무응답이면 DeepSeek(외부 리뷰 제외 PR은 SUPERVISOR)로 넘긴다
+  // codex로 요청한 것은 한도·30분 무응답이면 REVIEW(외부 리뷰 제외 PR은 SUPERVISOR)로 넘긴다
   const active = (airport: string) => cfg.mode !== "off" && cfg.airports.includes(airport) && !st.groundStops.some((g) => g.airport === airport);
   const airportOfRepo = (repo: string) => s.airports.find((a) => a.repo === repo)?.code ?? "";
   for (const { f, p } of settled) {
@@ -159,7 +159,7 @@ async function requestReview(r: ReviewRequest, mode: AutolandMode, airport: stri
     await gh(["api", "-X", "POST", `repos/${r.slug}/issues/${r.number}/comments`, "-f", "body=@codex review"]);
     appendRecord({ ...base, result: "ok", detail: "PR 댓글 @codex review" });
   } catch (e) {
-    // 댓글이 실패해도 요청은 남는다: 30분 뒤 DeepSeek로 넘어간다
+    // 댓글이 실패해도 요청은 남는다: 30분 뒤 REVIEW로 넘어간다
     appendRecord({ ...base, result: "failed", detail: writeResultOf(errText(e)).detail });
   }
 }

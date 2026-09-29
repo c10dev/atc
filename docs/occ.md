@@ -314,7 +314,7 @@ Order: CLEARED PRs by `readyAt`, the first time every condition held at that hea
 On 2026-09-27, 17 vocado PRs (#366–#399) sat at APPROACH for 26–49 hours with CI green, because Codex answered "You have reached your Codex usage limits". ATC-7 let a CROSSCHECK (Muse) review stand in for Codex. Its exclusion rule read only Linear labels, and VOC FLIGHTs carry almost none (S1 doesn't write them), so seven security diffs went to Muse (#382, #388, #391, #395–#398) and four of them (#391, #396, #397, #398) became CLEARED on the Muse pass alone. ATC-27 fixed that: the SUPERVISOR moved landing reviews to a separate session on **DeepSeek V4.1 Flash** and made the exclusion look at the diff and the text, not just labels.
 
 - **CODEX UNAVAILABLE** (`codexUnavailableOf`, `server/landing.ts`): a PR whose current head has no Codex review (no Codex findings, no Codex 👍 after the head) and no passing human review, and either the Codex bot posted a usage-limit comment after the head (`why: "limit"`), or no Codex signal arrived for `ATC_CODEX_SILENT_HOURS` (default 6) after the head commit or the PR's creation, whichever is later (`why: "silent"`). A Codex comment that is not about the limit resets the wait. Drafts are not read for Codex signals, so they never qualify. The PR carries `codexUnavailable` and `extReview` (`excluded`, `waiting`, `pass`, `findings`); the TOWER brief's `landingQueue` has `codex`, `extReview` and `review` (the reviewer, e.g. `"DEEPSEEK"`, when a landing review cleared it).
-- **The reviewer** is the REVIEW session in [`review/`](../review/README.md) (tmux `atc-review`, `ocx claude` on `claude-ocx-opencode-go--deepseek-v4.1-flash`), separate from CROSSCHECK, which keeps Muse for DISPATCH and SCHEDULE marks so per-family figures stay clean. Its guard mode `controller/guard.mjs --review` allows only `atcctl manual`, `landing queue` and `landing review`, with the transcript real-model check limited to DeepSeek V4.1 Flash names (`REVIEW_MODELS`); `--crosscheck` no longer allows any `landing` command. The server also refuses a review whose model is not DeepSeek V4.1 Flash (`LANDING_REVIEW_MODELS`). Older Muse records in `landing-reviews.jsonl` stay as they are.
+- **The reviewer** is the REVIEW session in [`review/`](../review/README.md) (until 2026-09-29 tmux `atc-review`, `ocx claude` on `claude-ocx-opencode-go--deepseek-v4.1-flash`; now Claude Sonnet, 9.9), separate from CROSSCHECK, which keeps Muse for DISPATCH and SCHEDULE marks so per-family figures stay clean. Its guard mode `controller/guard.mjs --review` allows only `atcctl manual`, `landing queue` and `landing review`, with the transcript real-model check limited to DeepSeek V4.1 Flash names (`REVIEW_MODELS`); `--crosscheck` no longer allows any `landing` command. The server also refuses a review whose model is not DeepSeek V4.1 Flash (`LANDING_REVIEW_MODELS`). Older Muse records in `landing-reviews.jsonl` stay as they are.
 - **Never sent to an external reviewer** (`externalExclusionOf`): vocado forbids outside models for confidential work because request data is used for training. A PR is excluded when **any** of these holds, even with no labels:
   - it has no FLIGHT key ("FLIGHT 없음": no code goes out unless a FLIGHT asked for it);
   - the FLIGHT has `rating:SEC`, or the FLIGHT or PR has `Risk: Security`/`Risk/Security`/`Security`, `Risk: Rights`/`Rights` or `Risk: Contract`/`Contract`;
@@ -414,6 +414,15 @@ atc doesn't read the old Human Preview gate section at all.
   - `GET /api/human-check/:owner/:name/:number/runup/:run/<file>`: RUN-UP report files. Only files inside that report folder are served, and only `.html`/`.json`/images/`.css`/`.js`, after resolving symlinks. They are sent with `Content-Security-Policy: sandbox allow-scripts`, so the report's scripts run on an opaque origin and can't call atc's SUPERVISOR-only endpoints.
 - Pure parts: `server/human-check.ts` (`uiChangeOf`, `humanCheckStatusOf`, `humanCheckExclusionOf`, `setHumanCheckLine`, `checkRequestOf`, `imagesOf`, `pickRunup`). I/O: `server/human-check-run.ts`.
 
+### 9.9 REVIEW on Claude Sonnet, no ocx (2026-09-29)
+
+SUPERVISOR decision 2026-09-29: atc stops using the `ocx` (opencodex) route for its control sessions. On that day a newly launched `ocx claude` DeepSeek session failed every main request with `400 Provider error` (the ATC-80 probe), and TOWER and OCC had just moved to Sonnet 5.5.
+
+- **Reviewer**: REVIEW runs on `claude-sonnet-5-5` (`review/.claude/settings.json`). That is a different model from the teams' CAPTAINs (Opus) and from CROSSCHECK (Opus). The guard (`REVIEW_MODELS`) and the server (`LANDING_REVIEW_MODELS`) accept only `claude-sonnet-…` names; DeepSeek and Muse names are refused.
+- **Launch**: `claude --bg -n REVIEW --permission-mode auto --strict-mcp-config "/loop 10m /tick"` in `review/`, the same path as TOWER, OCC and MCC ([fleet.md](fleet.md) 8.5.1). The tmux and `ocx claude` LAUNCH of ATC-66 is gone. STOP still closes a control session someone opened in a tmux pane.
+- **Old records**: carrying a review across main-only merges (9.6) accepts landing reviews from the `claude-sonnet-…` family and the older `deepseek…` family (`LANDING_REVIEW_FAMILIES`), still not Muse. The reviewer name on strips and in TOWER's `review` drops the `claude-` prefix: `REVIEW: SONNET (Codex 한도)`. A carried review shows `by: "review"` instead of `"deepseek"`; it is computed, not stored.
+- **Security PRs**: SUPERVISOR decision 2026-09-29: security PRs go to REVIEW too. That is the 9.5 switch, which was already set to send. Its value keeps the old name `"deepseek"` (`dispatch.json` `externalReview.security`), and AUTOLAND keeps `via: "deepseek"` (`autoland-state.json`), so no stored state changes. The hard exclusions (no FLIGHT, secret or key paths) stay.
+
 ## 10. What to add to atc
 
 | Where | What |
@@ -477,7 +486,7 @@ Shadow verdicts (DISPATCH proposals and SCHEDULE drafts) are decided one by one 
 | Read, Glob, Grep | `crosscheck/` itself and atc's `docs/` only (SUPERVISOR decision, 2026-09-26), so it can read the classification criteria in `docs/fleet.md` 4.1–4.3 and cite them. `permissions.additionalDirectories: ["../docs"]` grants the one extra directory (a relative `Read(../docs/**)` allow rule did not take effect in testing). `crosscheck/read-guard.mjs`, a fail-closed PreToolUse hook, blocks everything else: atc's source, `~/.local/state/atc`, other repositories, other sessions' files, Glob patterns with `..` or absolute paths. This also covers interactive sessions (Desktop), where a read outside the working directories would otherwise open a permission prompt. The session's own saved tool outputs (`<transcript dir>/<session_id>/`) stay readable, because oversized results are stored there and read back |
 | Edit, Write, NotebookEdit, SendMessage, Agent, Artifact | Denied, and a PreToolUse hook exits 2 |
 
-**Model.** It must not be OCC's family (Claude). DeepSeek V4.1 Flash is out too: it is the model behind `flash-helper`, and FLEET does not let it give verdicts ([fleet.md](fleet.md)). Two models are set up, both served by the local opencodex proxy:
+**Model.** (The ocx period, until 2026-09-29; now Claude Opus, see "CROSSCHECK on Claude Opus" below.) It must not be OCC's family (Claude). DeepSeek V4.1 Flash is out too: it is the model behind `flash-helper`, and FLEET does not let it give verdicts ([fleet.md](fleet.md)). Two models are set up, both served by the local opencodex proxy:
 
 | Role | Model id | Agent file |
 |---|---|---|
@@ -531,6 +540,15 @@ env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localh
 - `gateOf(...).crosscheck` keeps the overall `{marked, matched, rate}` and adds `byModel: {<family>: {marked, matched, rate}}`, keyed by model family (`modelFamily` in `server/crosscheck.ts` strips the path prefix, a `[1m]`-style suffix and `-contributor`, so both Muse paths count as `muse-spark-1.3`). `examples` carry the mark's model. The mark itself keeps its full model name, which the chip's tooltip shows. Marks from before model names were recorded stay `unknown`, and ATFM's turn-on conditions never count them.
 
 **Web.** Open cards in the DISPATCH and SCHEDULE tabs show a dashed chip `CROSSCHECK agree · <reason>`, and a "CROSSCHECK에 동의" button submits the same decision in one click: shadow → verdict, approval → approve/reject. When agreeing with a `disagree` mark, its reason becomes the decision reason. Approval-mode approvals keep their confirm dialog, since they send a FLIGHT PLAN or write to Linear. The gate panels show "CROSSCHECK 일치 n/m (xx%)" as a reference row outside the gate criteria, with one sub-row per model (short name, e.g. `muse-spark-1.3-contributor`, full id in the tooltip). The chip shows the short model name next to its time, and the chip and RECENT tooltips give the full id.
+
+### CROSSCHECK on Claude Opus (2026-09-29)
+
+SUPERVISOR decision 2026-09-29, together with 9.9: CROSSCHECK runs on `claude-opus-5-5` (`crosscheck/.claude/settings.json`) and is launched with `claude --bg` like the other control sessions. OCC runs on Sonnet 5.5, so the second look still comes from a different model, though no longer from a different family. The "Model" and "Real model on each mark" parts above describe the ocx period.
+
+- The guard passes a mark only from a `claude-opus-…` transcript (`CROSSCHECK_MODELS`). Sonnet, Muse, Terra and DeepSeek names are blocked.
+- ATFM A7 and S3 ([atfm.md](atfm.md)) accept an agree from Claude Opus, and from Muse or Terra for marks already on open items.
+- `modelFamily` still strips the old `claude-ocx-…--` prefixes, so the per-model figures keep the Muse history apart from the new `claude-opus-5-5` family.
+- A judge from outside Claude is left to the Jev judges ([fleet.md](fleet.md) 6.1), not to this session.
 
 ## 11. Criteria for moving on
 

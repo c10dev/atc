@@ -70,8 +70,8 @@ export interface AutolandState {
   reviewRequests: ReviewRequest[]; // 갱신한 head에 리뷰가 이어지지 않아 atc가 낸 재리뷰 요청(ATC-38). head마다 하나
 }
 
-// 재리뷰 요청(ATC-38). via: codex(PR 댓글 `@codex review`) → 30분 무응답·한도면 deepseek(REVIEW 대기열).
-// 외부 리뷰에서 빠지는 PR(ATC-27·30)은 DeepSeek로 보내지 않고 supervisor(SUPERVISOR 리뷰 필요)
+// 재리뷰 요청(ATC-38). via: codex(PR 댓글 `@codex review`) → 30분 무응답·한도면 deepseek(REVIEW 대기열. REVIEW가 Claude Sonnet이 된 뒤에도
+// autoland 기록과 맞추려고 이름은 그대로 둔다). 외부 리뷰에서 빠지는 PR(ATC-27·30)은 REVIEW로 보내지 않고 supervisor(SUPERVISOR 리뷰 필요)
 export type ReviewVia = "codex" | "deepseek" | "supervisor";
 export interface ReviewRequest {
   repo: string;
@@ -80,7 +80,7 @@ export interface ReviewRequest {
   head: string;
   at: string; // 요청한 시각
   via: ReviewVia;
-  escalatedAt?: string; // codex → deepseek·supervisor로 넘긴 시각
+  escalatedAt?: string; // codex → deepseek(REVIEW)·supervisor로 넘긴 시각
   reason?: string; // 한도, 30분 무응답, 외부 리뷰 제외 사유
 }
 
@@ -163,7 +163,7 @@ const REVIEW_CODES: LandingBlockCode[] = ["no-review", "review-stale"];
 // 리뷰가 이어지지 않아 새 리뷰가 필요한 head
 export const needsReview = (p: Pick<PullRequest, "blocks">) => p.blocks.some((b) => REVIEW_CODES.includes(b.code));
 const codexLimited = (p: Pick<PullRequest, "codexUnavailable">) => p.codexUnavailable?.why === "limit";
-// Codex를 쓸 수 없을 때 가는 곳: 외부 리뷰에서 빠지면 SUPERVISOR, 아니면 DeepSeek
+// Codex를 쓸 수 없을 때 가는 곳: 외부 리뷰에서 빠지면 SUPERVISOR, 아니면 REVIEW(via "deepseek")
 const fallbackOf = (p: Pick<PullRequest, "externalExclusion">): { via: ReviewVia; reason?: string } =>
   p.externalExclusion === undefined ? { via: "supervisor", reason: "외부 리뷰 제외 여부 모름" } : p.externalExclusion ? { via: "supervisor", reason: `외부 리뷰 제외(${p.externalExclusion})` } : { via: "deepseek" };
 
@@ -177,7 +177,7 @@ export function reviewRequestOf(p: PullRequest, slug: string, requests: readonly
   return { ...base, via: f.via, reason: f.reason ? `Codex 한도 · ${f.reason}` : "Codex 한도" };
 }
 
-// codex로 요청한 뒤: 한도가 오거나 30분 안에 답이 없으면 DeepSeek(제외 PR은 SUPERVISOR)로 넘긴다. 바꿀 것이 없으면 null.
+// codex로 요청한 뒤: 한도가 오거나 30분 안에 답이 없으면 REVIEW(제외 PR은 SUPERVISOR)로 넘긴다. 바꿀 것이 없으면 null.
 // head가 바뀌었거나 PR이 닫혔거나 이미 리뷰가 붙었으면(needsReview 아님) 넘기지 않는다
 export function escalateOf(r: ReviewRequest, p: PullRequest | undefined, now: number): ReviewRequest | null {
   if (r.via !== "codex" || !p || p.head !== r.head || !needsReview(p)) return null;
@@ -349,7 +349,7 @@ export function planAutoland({ cfg, airports, pulls, st, exclusionOf }: PlanInpu
       // 이 head에 낸 재리뷰 요청(ATC-38). 리뷰가 붙으면(needsReview 아님) 지운다
       const rr = st.reviewRequests.find((r) => r.repo === p.repo && r.number === p.number && r.head === p.head);
       if (rr && needsReview(p)) {
-        // Codex 대신이면 지금 외부 리뷰 제외(스위치 반영)로 DeepSeek·SUPERVISOR를 가른다
+        // Codex 대신이면 지금 외부 리뷰 제외(스위치 반영)로 REVIEW·SUPERVISOR를 가른다
         const excluded = rr.via !== "codex" && p.externalExclusion !== null;
         if (excluded) tag(p, "supervisor", `AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(${p.externalExclusion ?? "모름"})`);
         else tag(p, "review", `AUTOLAND: review requested (${rr.via === "codex" ? "codex" : "deepseek"})`);

@@ -128,7 +128,7 @@ CROSSCHECK (CROSSCHECK 세션이 맡음. SUPERVISOR 판정 전에 다른 모델�
   node atcctl.mjs schedule crosscheck <S-0001> agree|disagree -- <이유>
                                             열린 SCHEDULE 초안에 예비 판정
 
-REVIEW (착륙 리뷰 세션, review/ 폴더, DeepSeek V4.1 Flash. Codex 한도 PR만 — ATC-27)
+REVIEW (착륙 리뷰 세션, review/ 폴더, Claude Sonnet. Codex 한도 PR만 — ATC-27)
   node atcctl.mjs landing queue             리뷰를 기다리는 PR(pending), 외부 리뷰에서 뺀 PR(excluded, 사유), 최근 리뷰 (JSON)
   node atcctl.mjs landing review <repo>#<PR>  리뷰 자료(JSON): PR 본문, FLIGHT 완료 기준·금지 사항, head,
                                             크기를 제한한 diff. 외부 리뷰 제외(보안 경로·키워드·라벨, FLIGHT 없음)면 403

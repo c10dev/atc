@@ -345,7 +345,7 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 2026-09-27에 vocado PR 17개(#366–#399)가 CI는 초록인데 Codex가 "You have reached your Codex usage limits"로 답해 26–49시간째 APPROACH에 서 있었다. ATC-7은 CROSSCHECK(Muse)의 리뷰가 Codex를 대신하게 했다. 그런데 제외 규칙이 Linear 라벨만 보았고 VOC FLIGHT에는 라벨이 거의 없어서(S1이 쓰지 않는다), 보안 diff 7개(#382, #388, #391, #395–#398)가 Muse로 나갔고 그중 4개(#391, #396, #397, #398)는 Muse pass만으로 CLEARED가 됐다. ATC-27에서 고쳤다: SUPERVISOR는 착륙 리뷰를 **DeepSeek V4.1 Flash**의 별도 세션으로 옮기고, 제외를 라벨이 아니라 diff와 글로도 보게 했다.
 
 - **CODEX UNAVAILABLE**(`codexUnavailableOf`, `server/landing.ts`): 현재 head에 Codex 리뷰(Codex 지적, head 뒤 Codex 👍)도 사람 통과 리뷰도 없고, head 뒤에 Codex 봇이 한도 댓글을 남겼거나(`why: "limit"`), head 커밋과 PR을 연 때 중 늦은 쪽부터 `ATC_CODEX_SILENT_HOURS`(기본 6)시간 동안 Codex 신호가 없는(`why: "silent"`) PR. 한도가 아닌 Codex 댓글이 오면 기다림은 다시 센다. Draft는 Codex 신호를 읽지 않으므로 해당하지 않는다. PR에는 `codexUnavailable`과 `extReview`(`excluded`, `waiting`, `pass`, `findings`)가 붙고, TOWER 브리핑의 `landingQueue`에는 `codex`, `extReview`, `review`(착륙 리뷰로 CLEARED가 됐을 때 리뷰어, 예: `"DEEPSEEK"`)가 있다.
-- **리뷰어**는 [`review/`](../review/README.ko.md)의 REVIEW 세션이다(tmux `atc-review`, `claude-ocx-opencode-go--deepseek-v4.1-flash`로 `ocx claude`). CROSSCHECK와 따로 둔다: CROSSCHECK는 DISPATCH·SCHEDULE mark에 Muse를 계속 써서 계열별 수치가 섞이지 않는다. guard 모드 `controller/guard.mjs --review`는 `atcctl manual`, `landing queue`, `landing review`만 허용하고, 세션 기록의 실제 모델 확인은 DeepSeek V4.1 Flash 이름(`REVIEW_MODELS`)만 통과시킨다. `--crosscheck`는 이제 `landing` 명령을 하나도 허용하지 않는다. 서버도 DeepSeek V4.1 Flash가 아닌 모델의 리뷰를 받지 않는다(`LANDING_REVIEW_MODELS`). `landing-reviews.jsonl`의 옛 Muse 기록은 그대로 둔다.
+- **리뷰어**는 [`review/`](../review/README.ko.md)의 REVIEW 세션이다(2026-09-29까지 tmux `atc-review`, `claude-ocx-opencode-go--deepseek-v4.1-flash`로 `ocx claude`. 지금은 Claude Sonnet, 9.9). CROSSCHECK와 따로 둔다: CROSSCHECK는 DISPATCH·SCHEDULE mark에 Muse를 계속 써서 계열별 수치가 섞이지 않는다. guard 모드 `controller/guard.mjs --review`는 `atcctl manual`, `landing queue`, `landing review`만 허용하고, 세션 기록의 실제 모델 확인은 DeepSeek V4.1 Flash 이름(`REVIEW_MODELS`)만 통과시킨다. `--crosscheck`는 이제 `landing` 명령을 하나도 허용하지 않는다. 서버도 DeepSeek V4.1 Flash가 아닌 모델의 리뷰를 받지 않는다(`LANDING_REVIEW_MODELS`). `landing-reviews.jsonl`의 옛 Muse 기록은 그대로 둔다.
 - **외부 리뷰어에 보내지 않는 PR**(`externalExclusionOf`): vocado 규칙은 요청 자료가 학습에 쓰이므로 기밀 작업을 외부 모델에 보내지 않는다. 라벨이 없어도 **하나라도** 맞으면 뺀다:
   - FLIGHT key가 없음("FLIGHT 없음": FLIGHT가 요청하지 않은 코드는 내보내지 않는다);
   - FLIGHT에 `rating:SEC`, FLIGHT나 PR에 `Risk: Security`·`Risk/Security`·`Security`, `Risk: Rights`·`Rights`, `Risk: Contract`·`Contract`;
@@ -445,6 +445,15 @@ ATC-39 리서치([research/human-preview.ko.md](research/human-preview.ko.md)) �
   - `GET /api/human-check/:owner/:name/:number/runup/:run/<파일>`: RUN-UP 보고서 파일. symlink를 풀어 본 뒤 그 보고서 폴더 안의 파일만, `.html`·`.json`·이미지·`.css`·`.js`만 보낸다. `Content-Security-Policy: sandbox allow-scripts`로 보내므로 보고서의 스크립트는 불투명한 출처에서 돌아 atc의 SUPERVISOR 전용 API를 부를 수 없다.
 - 순수 함수는 `server/human-check.ts`(`uiChangeOf`, `humanCheckStatusOf`, `humanCheckExclusionOf`, `setHumanCheckLine`, `checkRequestOf`, `imagesOf`, `pickRunup`), 입출력은 `server/human-check-run.ts`.
 
+### 9.9 REVIEW를 Claude Sonnet으로, ocx 끊음 (2026-09-29)
+
+SUPERVISOR 결정 2026-09-29: atc는 관제 세션에 `ocx`(opencodex) 경로를 더 쓰지 않는다. 그날 새로 띄운 `ocx claude` DeepSeek 세션은 주 요청이 모두 `400 Provider error`로 실패했고(ATC-80 확인), TOWER와 OCC는 막 Sonnet 5.5로 옮겼다.
+
+- **리뷰어**: REVIEW는 `claude-sonnet-5-5`로 돈다(`review/.claude/settings.json`). 팀 CAPTAIN(Opus)과도, CROSSCHECK(Opus)와도 다른 모델이다. guard(`REVIEW_MODELS`)와 서버(`LANDING_REVIEW_MODELS`)는 `claude-sonnet-…` 이름만 받는다. DeepSeek·Muse 이름은 거절한다.
+- **여는 법**: `review/`에서 `claude --bg -n REVIEW --permission-mode auto --strict-mcp-config "/loop 10m /tick"`. TOWER·OCC·MCC와 같은 길이다([fleet.ko.md](fleet.ko.md) 8.5.1). ATC-66의 tmux와 `ocx claude` LAUNCH는 없앴다. 누가 tmux pane에서 연 관제 세션은 STOP이 여전히 닫는다.
+- **옛 기록**: main 병합만 한 head에 리뷰를 이어받을 때(9.6) `claude-sonnet-…` 계열과 옛 `deepseek…` 계열의 착륙 리뷰를 인정한다(`LANDING_REVIEW_FAMILIES`). Muse는 여전히 아니다. 스트립과 TOWER의 `review`에 보이는 리뷰어 이름은 `claude-`를 뗀다: `REVIEW: SONNET (Codex 한도)`. 이어받은 리뷰는 `by: "deepseek"` 대신 `by: "review"`로 보인다(저장하지 않고 계산하는 값).
+- **보안 PR**: SUPERVISOR 결정 2026-09-29: 보안 PR도 REVIEW가 리뷰한다. 9.5의 스위치이고 이미 "보냄"으로 켜져 있었다. 값은 옛 이름 `"deepseek"`을 그대로 쓰고(`dispatch.json` `externalReview.security`), AUTOLAND의 `via: "deepseek"`(`autoland-state.json`)도 그대로라 저장된 상태는 바뀌지 않는다. 강한 제외(FLIGHT 없음, 비밀·키 경로)는 그대로다.
+
 ## 10. atc에 더할 것
 
 | 곳 | 내용 |
@@ -524,7 +533,7 @@ S2는 구현돼 있고 SCHEDULE `mode`(`~/.local/state/atc/schedule.json`, 기�
 | Read, Glob, Grep | `crosscheck/` 자신과 atc의 `docs/`만(SUPERVISOR 결정, 2026-09-26). `docs/fleet.md` 4.1–4.3의 분류 기준을 읽고 인용할 수 있게 하려는 것이다. `permissions.additionalDirectories: ["../docs"]`가 추가 디렉터리 하나를 준다(상대 경로 `Read(../docs/**)` allow 규칙은 시험에서 먹지 않았다). fail-closed PreToolUse hook인 `crosscheck/read-guard.mjs`가 나머지를 모두 막는다: atc 소스, `~/.local/state/atc`, 다른 저장소, 다른 세션의 파일, `..`나 절대 경로가 든 Glob 패턴. 대화형 세션(Desktop)도 다룬다. 거기서는 작업 디렉터리 밖을 읽으면 권한 창이 뜨기 때문이다. 세션 자신이 저장한 도구 출력(`<transcript dir>/<session_id>/`)은 읽을 수 있다. 큰 결과가 거기 저장되고 다시 읽히기 때문이다 |
 | Edit, Write, NotebookEdit, SendMessage, Agent, Artifact | 거부되고, PreToolUse hook이 exit 2로 끝난다 |
 
-**모델.** OCC 계열(Claude)이면 안 된다. DeepSeek V4.1 Flash도 안 된다. `flash-helper` 뒤의 모델이고, FLEET는 그 모델에 판정을 맡기지 않는다([fleet.ko.md](fleet.ko.md)). 모델 둘을 설정했고, 둘 다 로컬 opencodex 프록시가 제공한다.
+**모델.** (ocx 시절, 2026-09-29까지. 지금은 Claude Opus — 아래 "CROSSCHECK를 Claude Opus로".) OCC 계열(Claude)이면 안 된다. DeepSeek V4.1 Flash도 안 된다. `flash-helper` 뒤의 모델이고, FLEET는 그 모델에 판정을 맡기지 않는다([fleet.ko.md](fleet.ko.md)). 모델 둘을 설정했고, 둘 다 로컬 opencodex 프록시가 제공한다.
 
 | 역할 | 모델 id | 에이전트 파일 |
 |---|---|---|
@@ -588,6 +597,15 @@ env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localh
 - 승인 모드의 승인은 확인 창을 유지한다. FLIGHT PLAN을 보내거나 Linear에 쓰기 때문이다.
 - 게이트 패널은 "CROSSCHECK 일치 n/m (xx%)"를 게이트 기준 밖의 참고 줄로 보이고, 모델마다 하위 줄을 둔다(짧은 이름, 예: `muse-spark-1.3-contributor`, 전체 id는 툴팁).
 - 칩은 시각 옆에 짧은 모델 이름을 보이고, 칩과 RECENT 툴팁은 전체 id를 준다.
+
+### CROSSCHECK를 Claude Opus로 (2026-09-29)
+
+SUPERVISOR 결정 2026-09-29(9.9와 함께): CROSSCHECK는 `claude-opus-5-5`로 돌고(`crosscheck/.claude/settings.json`), 다른 관제 세션처럼 `claude --bg`로 연다. OCC가 Sonnet 5.5라 두 번째 눈은 여전히 다른 모델이지만, 이제 다른 계열은 아니다. 위의 "모델"과 "mark마다 실제 모델"은 ocx 시절 이야기다.
+
+- guard는 기록이 `claude-opus-…`일 때만 mark를 통과시킨다(`CROSSCHECK_MODELS`). Sonnet·Muse·Terra·DeepSeek 이름은 막는다.
+- ATFM A7·S3([atfm.ko.md](atfm.ko.md))은 Claude Opus의 agree를, 열린 건에 이미 달린 mark면 Muse·Terra의 agree도 인정한다.
+- `modelFamily`는 옛 `claude-ocx-…--` 접두어를 계속 떼므로, 모델별 수치에서 Muse 기록과 새 `claude-opus-5-5` 계열이 섞이지 않는다.
+- Claude 밖의 판정자는 이 세션이 아니라 Jev 판정기([fleet.ko.md](fleet.ko.md) 6.1)에 맡긴다.
 
 ## 11. 넘어가는 기준
 

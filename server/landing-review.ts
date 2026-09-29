@@ -10,7 +10,7 @@ import { record } from "./recorder.ts";
 import { fetchReviewSource } from "./sources/github.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 
-// Codex 한도 때 착륙 리뷰(ATC-7, ATC-27, docs/occ.md 9.2). REVIEW 세션(DeepSeek V4.1 Flash)이 자료를 읽고(GET) 리뷰를 남긴다(POST).
+// Codex 한도 때 착륙 리뷰(ATC-7, ATC-27, docs/occ.md 9.2). REVIEW 세션(Claude Sonnet, 2026-09-29)이 자료를 읽고(GET) 리뷰를 남긴다(POST).
 // 기록은 추가만 하는 landing-reviews.jsonl. CLEARED TO LAND 판단은 landing.ts(extReviewStateOf)가 한다.
 
 const FILE = join(config.stateDir, "landing-reviews.jsonl");
@@ -67,8 +67,9 @@ export function findPull(pulls: readonly PullRequest[], repo: string, number: nu
   return hits[0];
 }
 
-// 착륙 리뷰를 남길 수 있는 모델: DeepSeek V4.1 Flash(SUPERVISOR 결정, ATC-27). guard(--review)가 세션 기록의 실제 모델을 붙인다
-export const LANDING_REVIEW_MODELS = /deepseek-v4\.1-flash/i;
+// 착륙 리뷰를 남길 수 있는 모델: Claude Sonnet(SUPERVISOR 결정 2026-09-29, 전에는 ocx의 DeepSeek V4.1 Flash, ATC-27).
+// guard(--review)가 세션 기록의 실제 모델을 붙인다. controller/guard.mjs REVIEW_MODELS와 같다
+export const LANDING_REVIEW_MODELS = /^claude-sonnet-/i;
 
 // 외부 리뷰에 보낼 수 있는 PR인가: Codex를 쓸 수 없고(CODEX UNAVAILABLE), 제외 사유가 없음
 export function assertReviewTarget(p: PullRequest) {
@@ -91,7 +92,7 @@ export function parseReview(body: Record<string, unknown>, p: Pick<PullRequest, 
   if (body.verdict === "findings" && !sev.p0 && !sev.p1 && !sev.p2) throw new ReviewError("findings에는 P0·P1·P2 등급을 하나 이상 적는다", 400);
   const model = typeof body.model === "string" ? body.model.trim().slice(0, 120) : "";
   if (!model) throw new ReviewError("model이 없음 — REVIEW 세션에서만 남긴다(guard가 실제 모델을 붙인다)", 400);
-  if (!LANDING_REVIEW_MODELS.test(model)) throw new ReviewError(`착륙 리뷰는 DeepSeek V4.1 Flash만 남긴다 — 지금 ${model}`, 400);
+  if (!LANDING_REVIEW_MODELS.test(model)) throw new ReviewError(`착륙 리뷰는 Claude Sonnet만 남긴다 — 지금 ${model}`, 400);
   const by = typeof body.by === "string" && body.by.trim() ? body.by.trim().slice(0, 40) : "REVIEW";
   // 보안 규칙에 걸렸지만 스위치로 보낸 PR의 리뷰는 security: true로 남긴다(ATC-30)
   return { at, repo: slugOfUrl(p.url)!, number: p.number, head: p.head, verdict: body.verdict, text, by, model, family: modelFamily(model), ...sev, ...(p.extReview?.security ? { security: true as const } : {}) };
@@ -180,7 +181,7 @@ export function mountLandingReview(app: Hono, getSnapshot: () => Promise<Snapsho
         files: [...src.files, ...diffFiles],
         texts: [src.title, src.body, issue.title, desc],
       });
-      // 비밀·키 경로와 FLIGHT 없음은 어느 모드에서든, 보안 규칙은 스위치가 "deepseek"이 아니면 보내지 않는다(ATC-30)
+      // 비밀·키 경로와 FLIGHT 없음은 어느 모드에서든, 보안 규칙은 스위치가 "deepseek"(옛 이름: 보안 PR도 REVIEW에 보냄)이 아니면 보내지 않는다(ATC-30)
       const allowSecurity = loadDispatchConfig().externalReview.security === "deepseek";
       const exclusion = gate.hard ?? (allowSecurity ? null : gate.security);
       if (exclusion) throw new ReviewError(`외부 리뷰 제외 — ${exclusion}`, 403);
@@ -208,7 +209,7 @@ export function mountLandingReview(app: Hono, getSnapshot: () => Promise<Snapsho
     }
   });
 
-  // 리뷰 기록. 현재 head에만, 외부 리뷰 대상 PR에만. model은 guard가 붙인 실제 모델(DeepSeek V4.1 Flash만)
+  // 리뷰 기록. 현재 head에만, 외부 리뷰 대상 PR에만. model은 guard가 붙인 실제 모델(Claude Sonnet만)
   app.post("/api/landing/review/:repo/:pr", async (c) => {
     try {
       const body = await c.req.json().catch(() => ({}));

@@ -9,9 +9,10 @@ import { checkRead, rootsOf } from "./read-guard.mjs";
 const HERE = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const settings = JSON.parse(readFileSync(new URL(".claude/settings.json", import.meta.url), "utf8"));
 
-test("REVIEW 설정: 모델은 DeepSeek V4.1 Flash, 기록의 모델은 guard가 붙이고, 쓰기·메시지·게시 도구와 gh는 막는다", () => {
+test("REVIEW 설정: 모델은 Claude Sonnet, 기록의 모델은 guard가 붙이고, 쓰기·메시지·게시 도구와 gh는 막는다", () => {
   assert.match(settings.model, REVIEW_MODELS);
-  assert.doesNotMatch(settings.model, CROSSCHECK_MODELS); // CROSSCHECK(Muse)와 계열을 섞지 않는다
+  assert.doesNotMatch(settings.model, CROSSCHECK_MODELS); // CROSSCHECK(Opus)와 모델을 섞지 않는다
+  assert.doesNotMatch(settings.model, /ocx/i); // ocx 경로는 끊었다(2026-09-29)
   assert.equal(settings.env?.ATC_REVIEW_MODEL, undefined);
   for (const t of ["Edit", "Write", "NotebookEdit", "SendMessage", "Agent", "Artifact"]) assert.ok(settings.permissions.deny.includes(t), t);
   const hooks = settings.hooks.PreToolUse.flatMap((h) => h.hooks.map((x) => x.command));

@@ -32,7 +32,8 @@ test("MCC 모델: 서버와 guard가 같은 규칙. Claude만, ocx로 돌린 다
   for (const m of ["claude-opus-5-5", "claude-sonnet-5", "claude-fable-5-1", "claude-haiku-4-5-20251001"]) assert.match(m, MCC_MODELS, m);
   for (const m of ["claude-ocx-opencode-go--deepseek-v4.1-flash", "muse-spark-1.3-contributor", "deepseek-v4.1-flash", "gpt-5.6-terra"]) assert.doesNotMatch(m, MCC_MODELS, m);
   assert.doesNotMatch("claude-opus-5-5", REVIEW_MODELS);
-  assert.doesNotMatch("claude-opus-5-5", CROSSCHECK_MODELS);
+  // CROSSCHECK도 Opus다(2026-09-29). 쓰기 권한은 모델이 아니라 guard 모드(--mcc·--crosscheck)로 가른다
+  assert.match("claude-opus-5-5", CROSSCHECK_MODELS);
 });
 
 test("MCC Bash: manual·mcc 명령·읽기 gh·jq만. 다른 atcctl, gh 쓰기, git·systemctl은 막는다", () => {

@@ -109,7 +109,7 @@ export function buildBrief(
       holders: p.standPath ? active.filter((c) => c.workspacePath === p.standPath).map((c) => label(c.sessionId)) : [],
       blocks: p.blocks,
       readyAt: p.readyAt,
-      // CODEX UNAVAILABLE(ATC-7·27): Codex 한도·무응답이면 착륙 리뷰 상태. review는 착륙 리뷰 통과로 CLEARED일 때 리뷰어("DEEPSEEK" → "REVIEW: DEEPSEEK (Codex 한도)")
+      // CODEX UNAVAILABLE(ATC-7·27): Codex 한도·무응답이면 착륙 리뷰 상태. review는 착륙 리뷰 통과로 CLEARED일 때 리뷰어("SONNET" → "REVIEW: SONNET (Codex 한도)")
       codex: p.codexUnavailable ?? null,
       extReview: p.extReview ? { status: p.extReview.status, reason: p.extReview.reason, security: p.extReview.security ?? null, family: p.extReview.review?.family ?? null, at: p.extReview.review?.at ?? null } : null,
       review: p.landing === "CLEARED" && p.extReview?.status === "pass" && p.extReview.review ? reviewerOf(p.extReview.review.family) : null,
