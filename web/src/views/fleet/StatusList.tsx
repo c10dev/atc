@@ -46,7 +46,7 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                 </span>
                 <span className="fl-r-apt">{r.airport ? <span className="apt">{r.airport}</span> : <span className="faint">—</span>}</span>
                 <span className="fl-r-status">{r.status}</span>
-                <span className="fl-r-flight" title={r.flight ? `${r.flight.key}${r.flight.title ? ` ${r.flight.title}` : ""}${r.more ? ` 외 ${r.more}건` : ""}` : undefined}>
+                <span className={`fl-r-flight${r.flight?.detail && (r.flight.kept || r.health) ? " has-detail" : ""}`} title={r.flight ? `${r.flight.key}${r.flight.title ? ` ${r.flight.title}` : ""}${r.more ? ` 외 ${r.more}건` : ""}${r.flight.detail && (r.flight.kept || r.health) ? ` — ${flightDetailText(r.flight.detail, now).text}` : ""}` : undefined}>
                   {r.health && (
                     <span className={`fl-r-health lv-${r.health.level}`} title={`${r.health.detail} — ${r.health.next}`}>
                       {r.health.label}
@@ -64,11 +64,12 @@ export function StatusList({ rows, open, onToggle, detail }: { rows: FleetRow[];
                   )}
                   {r.flight ? (
                     <>
-                      <b className="mono">{flightNumber(r.flight.key)}</b> {r.flight.title && <span className="fl-r-title">{r.flight.title}</span>}
-                      {r.more > 0 && <span className="fl-r-more">+{r.more}</span>}
+                      <b className="mono">{flightNumber(r.flight.key)}</b>
                       {r.flight.detail && (r.flight.kept || r.health) && (
                         <span className={`fl-r-detail mono${flightDetailText(r.flight.detail, now).unpushed ? " is-unpushed" : ""}`}>{flightDetailText(r.flight.detail, now).text}</span>
-                      )}
+                      )}{" "}
+                      {r.flight.title && <span className="fl-r-title">{r.flight.title}</span>}
+                      {r.more > 0 && <span className="fl-r-more">+{r.more}</span>}
                     </>
                   ) : r.health || r.accountHold || r.fuelHold ? null : (
                     <span className="faint">—</span>
