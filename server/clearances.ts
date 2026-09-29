@@ -7,7 +7,7 @@ import { type Answer, answerError, overdueBase, responseOf } from "./response.ts
 // CLEARANCE 기록. 추가만 하는 JSONL(issue / readback / roger / unable / standby / cancel)을 접어서 현재 상태를 만든다.
 // roger·unable·standby는 ATC-122. 옛 서버는 모르는 op를 건너뛴다(되돌려도 기록이 깨지지 않는다)
 const FILE = join(config.stateDir, "clearances.jsonl");
-export const CLEARANCE_TYPES: ClearanceType[] = ["TRAFFIC", "HOLD", "CONTINUE", "LAND", "REPORT", "INFO"];
+export const CLEARANCE_TYPES: ClearanceType[] = ["TRAFFIC", "HOLD", "CONTINUE", "LAND", "GO AROUND", "REPORT", "INFO"];
 
 type Base = Omit<Clearance, "readbackAt" | "cancelledAt" | "ackWord" | "unableAt" | "unableReason" | "standbyAt" | "standbys">;
 export type ClearanceOp =

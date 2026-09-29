@@ -152,7 +152,7 @@ export interface Alert {
 }
 
 // CLEARANCE. TOWER 세션이 atc에 기록하고 팀 세션에 메시지로 보낸다. 팀이 READBACK하면 readbackAt이 찍힌다.
-export type ClearanceType = "TRAFFIC" | "HOLD" | "CONTINUE" | "LAND" | "REPORT" | "INFO";
+export type ClearanceType = "TRAFFIC" | "HOLD" | "CONTINUE" | "LAND" | "GO AROUND" | "REPORT" | "INFO";
 
 export interface Clearance {
   id: string; // "C-0007"
@@ -181,6 +181,8 @@ export type TrafficEventKind =
   | "landing.cleared"
   | "landing.blocked"
   | "landing.left"
+  | "landing.conflict" // DIRTY·BEHIND가 새 head에 생김(ATC-128). message가 GO AROUND 본문
+  | "landing.prevMerged" // LAND 문구의 앞 PR이 머지됨(ATC-128)
   | "session.lost"
   | "away.started"
   | "away.ended"
@@ -199,6 +201,9 @@ export interface TrafficEvent {
   repo?: string; // away.*: OUTSTATION으로 간 AIRPORT(저장소), landing.*: PR의 AIRPORT
   pull?: number; // landing.*: PR 번호
   blocks?: LandingBlockCode[]; // landing.requested·landing.blocked: 그때 막힌 조건
+  head?: string; // landing.conflict·landing.prevMerged: 그 PR의 head 7자리
+  merged?: number[]; // 같은 이벤트: 원인이 된 머지 PR
+  shared?: string[]; // 같은 이벤트: 그 PR들과 함께 고친 파일(모르면 빈 배열)
   carriedFrom?: string; // landing.cleared: 이전 커밋의 리뷰를 이어받아 CLEARED가 됐으면 그 커밋(ATC-31)
   message?: string;
 }
@@ -235,6 +240,7 @@ export interface PullRequest {
   landing: "CLEARED" | "APPROACH";
   blocks: { code: LandingBlockCode; text: string }[]; // 한국어 한 줄씩
   readyAt: string | null; // 이 head에서 모든 조건이 처음 맞은 시각. CLEARED일 때만
+  changed?: string[]; // PR이 고친 파일(ATC-71 읽기, 못 읽었으면 없음). GO AROUND가 머지된 PR과 겹친 파일을 적는다(ATC-128)
   createdAt: string; // PR을 연 시각 (APPROACH 정렬, LAND CLEARANCE 짝짓기)
   carried?: CarriedReview | null; // main 병합만 한 head에 이어받은 이전 커밋의 리뷰(ATC-31)
   stack?: { base: number | null; chain: number[] } | null; // 쌓인 PR의 사슬(아래부터, ATC-29). base: 바로 아래 열린 PR

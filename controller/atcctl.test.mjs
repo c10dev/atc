@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CREW_CHANGE_CMDS, crosscheckBrief, draftText, manualFiles, manualHash, sendOutput, parseArrived, parseBriefingArgs, parseReportArgs, parseCrewChange, parseCrosscheck, parseDraft, parseLandingReview, parseMccArgs, mccText, payloadText } from "./atcctl.mjs";
+import { CREW_CHANGE_CMDS, parseIssue, crosscheckBrief, draftText, manualFiles, manualHash, sendOutput, parseArrived, parseBriefingArgs, parseReportArgs, parseCrewChange, parseCrosscheck, parseDraft, parseLandingReview, parseMccArgs, mccText, payloadText } from "./atcctl.mjs";
 import { simpleCommands } from "../hooks/shell.mjs";
 
 const argv = (s) => s.split(" ");
@@ -439,4 +439,13 @@ test("dispatch report(ATC-124): 고정 칸 플래그를 풀고, 빠진 칸·모�
   assert.throws(() => parseReportArgs(argv("D-0119 --pr --tier user")), /뒤에 값이 필요함/);
   assert.throws(() => parseReportArgs([]), /필요함/);
   assert.throws(() => parseReportArgs(argv("nonsense --pr 1")), /아님/);
+});
+
+test("issue: GO AROUND는 따옴표·하이픈·띄어 쓴 세 꼴 모두 같은 TYPE(ATC-128)", () => {
+  const want = { to: "TEAM_X", type: "GO AROUND", text: "GO AROUND: PR #5 head abc", stand: "atc-5", flight: "ATC-5" };
+  const tail = ["--stand", "atc-5", "--flight", "ATC-5", "--", "GO AROUND: PR #5 head abc"];
+  assert.deepEqual(parseIssue(["TEAM_X", "GO AROUND", ...tail]), want);
+  assert.deepEqual(parseIssue(["TEAM_X", "go-around", ...tail]), want);
+  assert.deepEqual(parseIssue(["TEAM_X", "GO", "AROUND", ...tail]), want);
+  assert.equal(parseIssue(["TEAM_X", "land", "--", "x"]).type, "LAND");
 });

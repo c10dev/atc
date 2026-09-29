@@ -28,7 +28,19 @@ Wait until DELTA finishes
 ```
 
 - 팀 리더는 끝줄이 청하는 답으로 답한다(위 "답하는 말"). 형식 없이 거부하거나 질문하면 TOWER가 SUPERVISOR에게 전한다.
-- 종류: TRAFFIC · HOLD · CONTINUE · LAND · REPORT · INFO. LAND·HOLD·CONTINUE는 W/U, INFO·TRAFFIC·REPORT는 R(끝줄이 `ROGER C-xxxx`를 청한다).
+- 종류: TRAFFIC · HOLD · CONTINUE · LAND · GO AROUND · REPORT · INFO. LAND·GO AROUND·HOLD·CONTINUE는 W/U, INFO·TRAFFIC·REPORT는 R(끝줄이 `ROGER C-xxxx`를 청한다).
+
+## GO AROUND: base와 어긋난 PR
+
+PR이 base와 충돌하거나(`dirty`) 뒤처지거나(`behind`), LAND 문구가 "앞 PR 머지 뒤 rebase"라고 한 그 앞 PR이 머지되면 atc는 그 PR의 STAND를 쥔 팀에 `GO AROUND`를 보낸다(ATC-128). 알림(INFO)이 아니라 **행동 지시**다. 문구는 서버가 만들고 TOWER는 그대로 보낸다. 어느 머지가 원인인지, 그 PR들과 함께 고친 파일, 할 일이 들어 있다:
+
+```
+GO AROUND: PR #194 (ATC-89) head 1a2b3c4 conflicts with base after #190, #192 merged. Shared files: server/fleet.ts, server/model.ts. Merge origin/main, resolve, run the checks, push (--force-with-lease only). Keep the merged PR's behaviour. If the two PRs change the same behaviour differently, answer UNABLE with the reason.
+```
+
+- 팀 리더는 `READBACK C-xxxx`로 답하고, origin/main을 합치거나 rebase해서 충돌 조각을 대화에 보이고, 검사를 모두 돌린 뒤 `--force-with-lease`로 push한다. PR 본문에 무엇을 풀었는지 적는다. 두 PR이 같은 동작을 다르게 바꿨으면 `UNABLE C-xxxx — 사유`로 답한다. push한 뒤 MCC가 새 head를 다시 INSPECTION한다.
+- SUPERVISOR는 팀이 풀지 못할 때만 듣는다: UNABLE, 받을 세션이 없음, 같은 PR에 한 시간 안 두 번째 GO AROUND.
+- 같은 head에는 한 번만 나간다. 새로 push한 head가 아직 충돌이면 다시 나갈 수 있다(한 시간 안이면 SUPERVISOR 몫). atc는 충돌을 스스로 풀지 않는다. 감지하고 알릴 뿐이다.
 
 ## LAND와 LANDING 막힘 알림
 
