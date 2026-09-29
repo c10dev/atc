@@ -59,7 +59,7 @@ SCHEDULE 초안은 FLIGHT가 Todo·Backlog를 벗어나거나, Linear에 이미 
 PR에 붙은 막힌 조건을 본다([개념](concepts.md)의 LANDING SEQUENCE).
 
 - `review-stale` / `no-review` → head(최신 커밋)에 리뷰도, 그 뒤에 달린 Codex 👍도 없다. push 뒤에는 리뷰를 다시 받는다(`@codex review` 등). PR 작성자 계정의 댓글은 세지 않는다. 문구가 "Codex 한도 — 사람 리뷰 필요"면 Codex가 한도에 걸린 것이라 사람이 리뷰해야 한다. main을 병합하기만 했다면 이전 리뷰를 이어받으니 기다릴 필요가 없다(ATC-31). 그래도 `review-stale`이면 그 사이에 사람이 쓴 커밋이 있거나, 병합하며 PR 파일의 충돌을 풀어 변경이 달라진 것이다.
-- `review-findings`(리뷰 지적) → Codex가 head에 COMMENTED 리뷰로 문제를 짚었거나, Codex 한도 때 착륙 리뷰 세션(DeepSeek)이 P0·P1 지적을 남겼다(글이 "DEEPSEEK 지적(…)"으로 시작하고 지적 내용이 들어 있다. TOWER가 CAPTAIN에게 전한다). Codex 지적이면 PR의 P1·P2 줄 댓글을 반영해 push하면 새 head를 Codex가 다시 본다(필요하면 `@codex review`). 지적이 틀렸다고 판단하면 스레드에 이유를 답하고 `@codex review`로 재리뷰를 받거나, 사람(작성자 계정 아님)이 지적을 보고 head에 APPROVED한다(Codex가 한도에 걸렸을 때도 이 길). 지적 뒤에 달린 Codex 👍나 지적 뒤의 사람 APPROVED가 있어야 풀린다. 지적 전의 APPROVED나 사람 COMMENTED로는 풀리지 않는다.
+- `review-findings`(리뷰 지적) → Codex가 head에 COMMENTED 리뷰로 문제를 짚었거나, Codex 한도 때 착륙 리뷰 세션(REVIEW, Claude Sonnet)이 P0·P1 지적을 남겼다(글이 "SONNET 지적(…)"으로 시작하고(옛 기록은 "DEEPSEEK 지적") 지적 내용이 들어 있다. TOWER가 CAPTAIN에게 전한다). Codex 지적이면 PR의 P1·P2 줄 댓글을 반영해 push하면 새 head를 Codex가 다시 본다(필요하면 `@codex review`). 지적이 틀렸다고 판단하면 스레드에 이유를 답하고 `@codex review`로 재리뷰를 받거나, 사람(작성자 계정 아님)이 지적을 보고 head에 APPROVED한다(Codex가 한도에 걸렸을 때도 이 길). 지적 뒤에 달린 Codex 👍나 지적 뒤의 사람 APPROVED가 있어야 풀린다. 지적 전의 APPROVED나 사람 COMMENTED로는 풀리지 않는다.
 - `review-findings` 글이 "Codex P3 지적 … 해결·답글 없음"이면 → P3만 남았다. 고칠 만하면 고쳐 push하고, 아니면 스레드에 이유를 답글로 달거나 resolve한다. 그러면 착륙을 막지 않는다.
 - `blocked` 글에 "해결 안 된 리뷰 스레드 N개"가 있으면 → vocado 보호 규칙(스레드 해결 필수)이다. 지적을 반영했거나 답했으면 GitHub에서 스레드를 resolve한다.
 - `stacked`(STACKED) → base가 main이 아닌 쌓인 PR이다. 사슬의 아래 PR부터 main에 머지하고, 그다음 이 PR의 base를 main으로 바꾼다(GitHub에서 base 변경). 아래 PR에 squash 머지하지 않는다 — 그러면 변경이 중간 브랜치에 남는다(STRANDED).
@@ -78,8 +78,8 @@ LANDING SEQUENCE 머리의 AUTOLAND 줄과 PR의 AUTOLAND 표시를 본다([개�
 - `AUTOLAND: updating #n — CI 대기` → 갱신한 PR의 CI를 기다린다. AIRPORT마다 하나씩이다. CI가 끝나면(또는 90분이 지나면) 다음으로 간다.
 - `AUTOLAND: GROUND STOP` → main의 `Application Check`가 빨갛다. main을 고친 뒤 설정 창 AGENTS 탭 AUTOLAND 아래 **풀기**를 누른다. main이 다시 초록이 돼도 저절로 풀리지 않는다.
 - `AUTOLAND: 갱신 실패한 PR만 남음` → 갱신이 실패한 head는 다시 하지 않는다(충돌 등). 새 push로 head가 바뀌면 다시 후보가 된다. head가 움직여 거절된 것은 다음 주기(90초)에 새 head로 다시 한다. 결과는 `GET /api/autoland`의 `records`에 있다.
-- `AUTOLAND: review requested (codex)` → 갱신한 head에 리뷰가 이어지지 않아(main에서 PR 파일이 바뀜) atc가 `@codex review`를 달았다. 30분 안에 Codex가 답하지 않으면 `(deepseek)`로 바뀌고 REVIEW 대기열에 들어간다. head마다 한 번만 요청한다.
-- `AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(…)` → 보안 경로·키워드 등으로 DeepSeek에 보낼 수 없는 PR이다. Codex나 SUPERVISOR가 리뷰한다.
+- `AUTOLAND: review requested (codex)` → 갱신한 head에 리뷰가 이어지지 않아(main에서 PR 파일이 바뀜) atc가 `@codex review`를 달았다. 30분 안에 Codex가 답하지 않으면 `(deepseek)`(옛 이름, 지금은 REVIEW 세션)로 바뀌고 REVIEW 대기열에 들어간다. head마다 한 번만 요청한다.
+- `AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(…)` → 비밀·키 경로, FLIGHT 없음, 또는 스위치가 exclude일 때 보안 경로·키워드로 REVIEW에 보낼 수 없는 PR이다. Codex나 SUPERVISOR가 리뷰한다.
 - `SUPERVISOR 머지 — …` → merge 모드에서 빠진 PR이다(HOLD, FLIGHT 없음, `rating:SEC`·Risk 라벨, 보안 게이트, HUMAN CHECK 대기, `## UI change` 블록 없음). SUPERVISOR가 직접 머지한다.
 
 ## 새 기능이 안 보인다 · 코드를 고친 뒤 화면이 그대로다

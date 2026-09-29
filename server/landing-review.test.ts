@@ -88,6 +88,10 @@ test("착륙: Codex 한도 + 보안 아닌 PR의 현재 head DeepSeek pass(P0·P
   const old = build(pr(), [review({ by: "CROSSCHECK", model: "muse-spark-1.3-contributor", family: "muse-spark-1.3" })]);
   assert.equal(old.landing, "CLEARED");
   assert.equal(reviewerOf(old.extReview!.review!.family), "MUSE");
+  // 지금 REVIEW(Claude Sonnet): claude- 를 떼고 SONNET
+  const sonnet = build(pr(), [review({ model: "claude-sonnet-5-5", family: "claude-sonnet-5-5" })]);
+  assert.equal(sonnet.landing, "CLEARED");
+  assert.equal(reviewerOf(sonnet.extReview!.review!.family), "SONNET");
 });
 
 test("리뷰 대기·옛 head·지적·제외는 APPROACH. 지적 글은 CAPTAIN에게 가도록 block에 든다", () => {
@@ -131,12 +135,12 @@ test("Codex가 돌아오면 Codex가 이긴다: head 👍면 외부 리뷰 없�
   assert.match(legacy.blocks.find((x) => x.code === "no-review")!.text, /Codex 한도 — 사람 리뷰 필요/);
 });
 
-test("리뷰 기록 검사: 지금 head만(짧은 SHA 가능), pass에 P0·P1 없음, findings에 등급, 모델은 DeepSeek V4.1 Flash만이고 계열을 남긴다", () => {
+test("리뷰 기록 검사: 지금 head만(짧은 SHA 가능), pass에 P0·P1 없음, findings에 등급, 모델은 Claude Sonnet만이고 계열을 남긴다", () => {
   const p = { url: pr().url, number: 385, head: HEAD };
-  const r = parseReview({ head: "aaaaaaa", verdict: "pass", text: "OK. P2 로그 문구", model: "claude-ocx-opencode-go--deepseek-v4.1-flash" }, p, at(2));
-  assert.deepEqual([r.repo, r.head, r.family, r.p2, r.by], ["chaehy5665/vocado_nextjs", HEAD, "deepseek-v4.1-flash", 1, "REVIEW"]);
+  const r = parseReview({ head: "aaaaaaa", verdict: "pass", text: "OK. P2 로그 문구", model: "claude-sonnet-5-5" }, p, at(2));
+  assert.deepEqual([r.repo, r.head, r.family, r.p2, r.by], ["chaehy5665/vocado_nextjs", HEAD, "claude-sonnet-5-5", 1, "REVIEW"]);
   const bad = (body: Record<string, unknown>, status: number, re: RegExp) =>
-    assert.throws(() => parseReview({ head: HEAD, verdict: "pass", text: "ok", model: "deepseek-v4.1-flash", ...body }, p, at(2)), (e) => e instanceof ReviewError && e.status === status && re.test(e.message));
+    assert.throws(() => parseReview({ head: HEAD, verdict: "pass", text: "ok", model: "claude-sonnet-5-5", ...body }, p, at(2)), (e) => e instanceof ReviewError && e.status === status && re.test(e.message));
   bad({ head: "bbbbbbb" }, 409, /새 head는 새 리뷰/);
   bad({ head: "aaa" }, 409, /지금 head/);
   bad({ verdict: "lgtm" }, 400, /pass\|findings/);
@@ -145,8 +149,8 @@ test("리뷰 기록 검사: 지금 head만(짧은 SHA 가능), pass에 P0·P1 �
   bad({ text: "P1 누락" }, 400, /pass에는 P0·P1/);
   bad({ verdict: "findings", text: "조금 이상함" }, 400, /등급/);
   bad({ model: "" }, 400, /model이 없음/);
-  // CROSSCHECK(Muse)·다른 모델은 이제 착륙 리뷰를 남기지 않는다
-  for (const m of ["claude-ocx-opencode-go--muse-spark-1.3-contributor", "claude-opus-5-5", "deepseek-v4-pro"]) bad({ model: m }, 400, /DeepSeek V4\.1 Flash만/);
+  // CROSSCHECK(Opus)·옛 ocx 모델(DeepSeek·Muse)은 착륙 리뷰를 남기지 않는다(2026-09-29)
+  for (const m of ["claude-opus-5-5", "claude-ocx-opencode-go--deepseek-v4.1-flash", "deepseek-v4.1-flash", "claude-ocx-opencode-go--muse-spark-1.3-contributor"]) bad({ model: m }, 400, /Claude Sonnet만/);
   assert.deepEqual(severityOf("P0 a. P1 b, P1 c; P2 d. SP1X는 아님"), { p0: 1, p1: 2, p2: 1 });
 });
 

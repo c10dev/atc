@@ -79,11 +79,11 @@ export interface CarryCandidate {
 }
 export interface CarriedReview {
   from: string; // 리뷰가 달린 커밋 R(전체 SHA)
-  by: "human" | "codex" | "deepseek";
+  by: "human" | "codex" | "review"; // review: REVIEW 세션의 착륙 리뷰
   findings: boolean; // R의 지적이 남아 있음: 통과가 아니라 지적으로 이어진다
 }
-// 이어받을 리뷰: 최근 R부터 사람 APPROVED → Codex 지적(뒤 👍로 풀리지 않은 것) → Codex 👍(R 뒤) → DeepSeek 착륙 리뷰.
-// allowExternal: 이 PR이 외부 리뷰에서 빠지지 않았나(빠졌으면 DeepSeek 기록을 잇지 않는다)
+// 이어받을 리뷰: 최근 R부터 사람 APPROVED → Codex 지적(뒤 👍로 풀리지 않은 것) → Codex 👍(R 뒤) → REVIEW 착륙 리뷰.
+// allowExternal: 이 PR이 외부 리뷰에서 빠지지 않았나(빠졌으면 REVIEW 기록을 잇지 않는다)
 export function carriedReviewOf(
   pr: ReviewInput & Pick<GhPull, "carryFrom">,
   landingReviews: readonly Pick<LandingReview, "head" | "verdict" | "p0" | "p1" | "family">[],
@@ -97,8 +97,8 @@ export function carriedReviewOf(
       .reduce<GhReview | null>((a, b) => (!a || (b.submittedAt ?? "") > (a.submittedAt ?? "") ? b : a), null);
     if (found && !after(thumbs, found.submittedAt)) return { from: r.sha, by: "codex", findings: true };
     if (thumbs && r.at && atOrAfter(thumbs, r.at)) return { from: r.sha, by: "codex", findings: false };
-    const d = allowExternal ? landingReviews.filter((x) => x.head === r.sha && /^deepseek/i.test(x.family)).at(-1) : undefined;
-    if (d) return { from: r.sha, by: "deepseek", findings: !reviewPasses(d as LandingReview) };
+    const d = allowExternal ? landingReviews.filter((x) => x.head === r.sha && LANDING_REVIEW_FAMILIES.test(x.family)).at(-1) : undefined;
+    if (d) return { from: r.sha, by: "review", findings: !reviewPasses(d as LandingReview) };
   }
   return null;
 }
@@ -124,7 +124,7 @@ export async function mergeOnlyChain(
 // PR 자신의 변경(merge-base 대비 바뀐 파일 → "상태:blob")이 같은가. 못 읽었으면(null) 다르다고 본다
 export const sameChange = (a: ReadonlyMap<string, string> | null, b: ReadonlyMap<string, string> | null) =>
   Boolean(a && b && a.size === b.size && [...a].every(([f, v]) => b.get(f) === v));
-const carriedWho = (c: CarriedReview) => (c.by === "human" ? "사람 APPROVED" : c.by === "codex" ? "Codex" : "DEEPSEEK");
+const carriedWho = (c: CarriedReview) => (c.by === "human" ? "사람 APPROVED" : c.by === "codex" ? "Codex" : "REVIEW");
 
 // ── Codex 지적의 등급(ATC-28): P3만 남고 스레드가 해결·답글이면 착륙을 막지 않는다 ──
 
@@ -176,13 +176,13 @@ export function codexFindingSummaryOf(findings: readonly CodexHeadFinding[]): Co
 const findingCounts = (s: CodexFindingSummary) =>
   [s.p0 && `P0 ${s.p0}`, s.p1 && `P1 ${s.p1}`, s.p2 && `P2 ${s.p2}`, s.p3 && `P3 ${s.p3}`].filter(Boolean).join(" · ") + (s.unmarked ? ` (등급 표시 없는 ${s.unmarked}건은 P2로 봄)` : "");
 
-// ── Codex 한도 때 외부 모델 착륙 리뷰(ATC-7, ATC-27: DeepSeek V4.1 Flash REVIEW 세션, docs/occ.md 9.2) ──
+// ── Codex 한도 때 착륙 리뷰(ATC-7, ATC-27: REVIEW 세션, 2026-09-29부터 Claude Sonnet, docs/occ.md 9.2) ──
 
 // CODEX UNAVAILABLE: head에 Codex 리뷰(지적·👍)도 사람 통과 리뷰도 없고, head 뒤에 Codex가 한도 댓글을 남겼거나
 // head(또는 PR을 연 때) 뒤로 silentMs 동안 Codex 신호가 없음. Codex 신호를 아직 안 읽은 PR(Draft 포함)은 null.
 export interface CodexUnavailable {
   why: "limit" | "silent" | "autoland"; // autoland: AUTOLAND가 재리뷰를 요청했는데 Codex가 30분 동안 답하지 않음(ATC-38)
-  since: string; // 한도 댓글 시각 | 조용해진 지 silentMs가 지난 시각 | AUTOLAND가 DeepSeek로 넘긴 시각
+  since: string; // 한도 댓글 시각 | 조용해진 지 silentMs가 지난 시각 | AUTOLAND가 REVIEW로 넘긴 시각
 }
 export function codexUnavailableOf(pr: ReviewInput & Pick<GhPull, "createdAt">, now: number, silentMs: number): CodexUnavailable | null {
   const c = pr.codex;
@@ -268,14 +268,20 @@ export function externalGateOf(x: ExclusionInput): { hard: string | null; securi
   const word = securityWordOf(x.texts);
   return { hard: null, security: word ? `키워드 ${word}` : null };
 }
-// 외부 리뷰에서 빼는 사유. security가 "deepseek"이면 hard만 뺀다
+// 외부 리뷰에서 빼는 사유. security가 "deepseek"(보안 PR도 REVIEW에 보냄, 옛 이름을 그대로 쓴다)이면 hard만 뺀다
 export function externalExclusionOf(x: ExclusionInput, security: "exclude" | "deepseek" = "exclude"): string | null {
   const g = externalGateOf(x);
   return g.hard ?? (security === "exclude" ? g.security : null);
 }
 
-// 리뷰어 이름(모델 계열 앞머리): deepseek-v4.1-flash → DEEPSEEK, muse-spark-1.3 → MUSE
-export const reviewerOf = (family: string) => (family.split(/[-.\s]/)[0] || family).toUpperCase();
+// 리뷰어 이름(모델 계열 앞머리, claude- 는 뗀다): claude-sonnet-5-5 → SONNET, deepseek-v4.1-flash → DEEPSEEK(옛 기록)
+export const reviewerOf = (family: string) => {
+  const f = family.replace(/^claude-/i, "");
+  return (f.split(/[-.\s]/)[0] || family).toUpperCase();
+};
+// 착륙 리뷰로 인정하는 기록의 모델 계열: 지금 REVIEW(Claude Sonnet, SUPERVISOR 결정 2026-09-29)와 옛 DeepSeek 기록(ATC-27).
+// 옛 Muse 기록은 예전처럼 잇지 않는다
+export const LANDING_REVIEW_FAMILIES = /^(claude-sonnet-|deepseek)/i;
 
 // 착륙 리뷰 기록(landing-reviews.jsonl 한 줄). 지적 등급은 Codex처럼 P0·P1·P2. 옛 Muse 기록도 그대로 둔다
 export interface LandingReview {
@@ -558,7 +564,7 @@ export function buildPulls(
     ticketLabelsOf: (key: string | null) => string[];
     ticketTitleOf?: (key: string | null) => string | null;
     security?: "exclude" | "deepseek"; // dispatch.json externalReview.security(ATC-30). 없으면 "exclude"
-    // AUTOLAND가 이 head를 DeepSeek로 넘긴 시각(ATC-38). 있으면 6시간을 기다리지 않는다. Codex가 head 뒤에 이미 답했으면 넘기지 않는다
+    // AUTOLAND가 이 head를 REVIEW로 넘긴 시각(ATC-38). 있으면 6시간을 기다리지 않는다. Codex가 head 뒤에 이미 답했으면 넘기지 않는다
     fastTrack?: (repo: string, number: number, head: string) => string | null;
     // MCC가 맡은 저장소(docs/mcc.md): 그 저장소 PR은 이 head의 INSPECTION이 리뷰를 대신한다
     mcc?: { repo: string; reviewOf: (number: number, head: string) => MccReviewContext["review"] };
@@ -572,7 +578,7 @@ export function buildPulls(
       const stand = workspaces.find((w) => w.repo === repo && w.branch === gh.headRefName) ?? null;
       const ticketKey = ticketKeyOf(gh);
       const slug = slugOfUrl(gh.url);
-      // 외부 리뷰 제외(ATC-27·30): 착륙 리뷰 대기열과, 이전 커밋의 DeepSeek 기록을 이어받을지(ATC-31)에 쓴다
+      // 외부 리뷰 제외(ATC-27·30): 착륙 리뷰 대기열과, 이전 커밋의 REVIEW 기록을 이어받을지(ATC-31)에 쓴다
       const gate = ext && slug ? externalGateOf({ flight: ticketKey, ticketLabels: ext.ticketLabelsOf(ticketKey), prLabels: (gh.labels ?? []).map((l) => l.name), files: gh.files ?? null, texts: [gh.title, gh.body, ext.ticketTitleOf?.(ticketKey)] }) : null;
       const allowSec = ext?.security === "deepseek";
       const exclusion = gate ? (gate.hard ?? (allowSec ? null : gate.security)) : null;
@@ -626,7 +632,7 @@ export function buildPulls(
           return f?.length ? codexFindingSummaryOf(f) : null;
         })() : null,
         extReview: extReviewStateOf(ctx),
-        // 외부 리뷰(DeepSeek)에서 빼는 사유(ATC-27·30, 스위치 반영). AUTOLAND 재리뷰가 DeepSeek로 넘길지 볼 때 쓴다(ATC-38)
+        // 외부 리뷰(REVIEW)에서 빼는 사유(ATC-27·30, 스위치 반영). AUTOLAND 재리뷰가 REVIEW로 넘길지 볼 때 쓴다(ATC-38)
         externalExclusion: ext && slug ? exclusion : undefined,
         // 이어받은 리뷰(ATC-31): 스트립 "REVIEW: … (carried from R, main merge only)", landing.cleared 기록의 carriedFrom
         carried: carried ?? null,

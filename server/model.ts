@@ -215,7 +215,7 @@ export interface PullRequest {
   // HUMAN CHECK(ATC-37): PR 본문 `## UI change` 블록(없으면 null)과 이 head에서 사람 확인 상태(main 병합만 한 head는 이어받음)
   uiChange?: UiChange | null;
   humanCheck?: HumanCheckStatus | null;
-  externalExclusion?: string | null; // 외부 리뷰에서 빼는 사유(ATC-27·30). null이면 DeepSeek에 보낼 수 있음. 모르면 없음 // Codex를 쓸 수 없을 때 Muse 리뷰 상태(제외·대기·통과·지적). Codex를 쓸 수 있으면 null
+  externalExclusion?: string | null; // 외부 리뷰에서 빼는 사유(ATC-27·30). null이면 REVIEW에 보낼 수 있음. 모르면 없음 // Codex를 쓸 수 없을 때 Muse 리뷰 상태(제외·대기·통과·지적). Codex를 쓸 수 있으면 null
 }
 
 export interface Snapshot {

@@ -185,7 +185,9 @@ test("자동 배정 대상(A1~A10): 모두 맞으면 대상, 조건마다 빠진
   assert.deepEqual(failedCodes(proposal(), autoCtx({ ticket: ticket({ project: "Beta Readiness", labels: ["type:BUILD", "wake:M", "tail:TEAM_F"] }) })), []); // tail이 맞으면 ROUTE는 보지 않는다
   assert.deepEqual(failedCodes(proposal(), autoCtx({ ticket: ticket({ labels: ["type:BUILD", "wake:M", "tail:TEAM_B"] }) })), ["A6"]);
   assert.deepEqual(failedCodes(proposal({ crosscheck: null })), ["A7"]);
-  assert.deepEqual(failedCodes(proposal({ crosscheck: { by: "x", model: "claude-opus-5-5", verdict: "agree", reason: "r", at: ago(1) } })), ["A7"]);
+  // OCC와 같은 Sonnet의 agree는 CROSSCHECK로 치지 않는다. 지금 CROSSCHECK(Opus)와 옛 Muse는 된다(2026-09-29)
+  assert.deepEqual(failedCodes(proposal({ crosscheck: { by: "x", model: "claude-sonnet-5-5", verdict: "agree", reason: "r", at: ago(1) } })), ["A7"]);
+  assert.deepEqual(failedCodes(proposal({ crosscheck: { by: "x", model: "claude-opus-5-5", verdict: "agree", reason: "r", at: ago(1) } })), []);
   assert.deepEqual(failedCodes(proposal({ crosscheck: { by: "x", model: "muse-spark-1.3-contributor", verdict: "disagree", reason: "r", at: ago(1) } })), ["A7"]);
   assert.deepEqual(failedCodes(proposal(), autoCtx({ state: { ...autoCtx().state, available: false } })), ["A8"]);
   const declined = proposal({ id: "D-0000", flight: "VOC-9", status: "declined", timeline: { declined: ago(60) } });

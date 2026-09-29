@@ -163,7 +163,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
       reviews: readLandingReviews(),
       ticketLabelsOf: (key) => tickets.find((t) => t.key === key)?.labels ?? [],
       ticketTitleOf: (key) => tickets.find((t) => t.key === key)?.title ?? null,
-      // 보안 규칙에만 걸린 PR도 DeepSeek에 보낼까(ATC-30, 설정 창). 기본 "exclude"
+      // 보안 규칙에만 걸린 PR도 REVIEW 세션에 보낼까(ATC-30, 설정 창). 기본 "exclude", 보내면 옛 이름 "deepseek"
       security: loadDispatchConfig().externalReview.security,
       fastTrack: (repo, number, head) => (alActive(repo) ? fastTrack(repo, number, head) : null),
       // MCC(docs/mcc.md): 맡은 AIRPORT(atc) PR은 이 head의 INSPECTION이 리뷰를 대신한다

@@ -52,7 +52,7 @@ test("#394 실제 모양: c12b706(main 병합만)은 18700c1의 DeepSeek pass를
   assert.deepEqual(from.map((r) => r.sha.slice(0, 7)), ["18700c1", "ccd3c40"]); // ccd3c40 뒤로는 main 병합뿐이고 변경이 같다
   const p = build(pr("c12b706", from), [deepseek("18700c1")]);
   assert.equal(p.landing, "CLEARED");
-  assert.deepEqual(p.carried, { from: full("18700c1"), by: "deepseek", findings: false });
+  assert.deepEqual(p.carried, { from: full("18700c1"), by: "review", findings: false });
   assert.equal(p.extReview, null); // 한도여도 이어받았으니 REVIEW가 돌지 않는다
   // 7a78711(또 main 병합)도 c12b706의 pass를 잇는다
   assert.equal(build(pr("7a78711", await candidates("7a78711")), [deepseek("c12b706")]).landing, "CLEARED");
@@ -96,9 +96,12 @@ test("무엇을 잇나: 사람 APPROVED, R 뒤 Codex 👍, DeepSeek pass. R의 �
   assert.equal(codexFound.blocks.find((b) => b.code === "review-findings")!.text, "Codex 지적이 이전 커밋 18700c1에 남아 있음(그 뒤 main 병합만) — 반영 후 재리뷰 필요");
   // R의 DeepSeek 지적
   const dsFound = build(pr("c12b706", from), [deepseek("18700c1", { verdict: "findings", text: "P1 x", p1: 1, p2: 0 })]);
-  assert.match(dsFound.blocks.find((b) => b.code === "review-findings")!.text, /^DEEPSEEK 지적이 이전 커밋 18700c1에 남아 있음/);
-  // Muse 기록은 잇지 않는다(착륙 리뷰는 DeepSeek만)
-  assert.equal(carriedReviewOf(pr("c12b706", from), [{ ...deepseek("18700c1"), family: "muse-spark-1.3" }], true), null);
+  assert.match(dsFound.blocks.find((b) => b.code === "review-findings")!.text, /^REVIEW 지적이 이전 커밋 18700c1에 남아 있음/);
+  // 지금 REVIEW(Claude Sonnet) 기록도 잇는다(2026-09-29)
+  const sonnet = { ...deepseek("18700c1"), model: "claude-sonnet-5-5", family: "claude-sonnet-5-5" };
+  assert.deepEqual(carriedReviewOf(pr("c12b706", from), [sonnet], true), { from: full("18700c1"), by: "review", findings: false });
+  // Muse·다른 모델 기록은 잇지 않는다(착륙 리뷰는 REVIEW의 Sonnet과 옛 DeepSeek만)
+  for (const family of ["muse-spark-1.3", "claude-opus-5-5"]) assert.equal(carriedReviewOf(pr("c12b706", from), [{ ...deepseek("18700c1"), family }], true), null, family);
 });
 
 test("외부 리뷰에서 빠진 보안 PR은 이전 DeepSeek pass를 잇지 않고 제외 그대로", async () => {

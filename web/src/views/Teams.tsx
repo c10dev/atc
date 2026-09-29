@@ -268,8 +268,11 @@ function LandingBadge({ pr }: { pr: PullRequest }) {
 }
 
 // Codex 한도 때 착륙 리뷰 상태(ATC-7·27). Codex를 쓸 수 있으면 없음
-// 리뷰어 이름은 모델 계열 앞머리(서버 reviewerOf와 같다): deepseek-v4.1-flash → DEEPSEEK
-const reviewerOf = (family: string) => (family.split(/[-.\s]/)[0] || family).toUpperCase();
+// 리뷰어 이름은 모델 계열 앞머리, claude- 는 뗀다(서버 reviewerOf와 같다): claude-sonnet-5-5 → SONNET, 옛 deepseek-v4.1-flash → DEEPSEEK
+const reviewerOf = (family: string) => {
+  const f = family.replace(/^claude-/i, "");
+  return (f.split(/[-.\s]/)[0] || family).toUpperCase();
+};
 function ExtReviewTag({ pr }: { pr: PullRequest }) {
   const m = pr.extReview;
   if (!m) return null;
@@ -279,12 +282,12 @@ function ExtReviewTag({ pr }: { pr: PullRequest }) {
   const who = r ? reviewerOf(r.family) : "";
   const text =
     m.status === "pass" ? `REVIEW: ${who} (${codex})` : m.status === "findings" ? `${who} 지적 (${codex})` : m.status === "waiting" ? `${codex} · 착륙 리뷰 대기` : `외부 리뷰 제외 — ${m.reason}`;
-  const sec = m.security ? `보안 PR(${m.security}) — 설정 externalReview.security가 deepseek이라 외부 리뷰로 보냄\n` : "";
+  const sec = m.security ? `보안 PR(${m.security}) — 설정 externalReview.security가 deepseek(옛 이름)이라 REVIEW 세션으로 보냄\n` : "";
   const tip = r
     ? `${sec}착륙 리뷰 ${r.verdict} · ${r.family} (${r.model}) · ${r.at}\nP0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}\n${r.text}`
     : m.status === "excluded"
-      ? "보안·기밀 작업은 외부 모델에 보내지 않는다 — Codex나 SUPERVISOR 리뷰"
-      : `${sec}REVIEW 세션(DeepSeek)이 이 head를 리뷰하면 CLEARED TO LAND 근거가 된다`;
+      ? "착륙 리뷰에서 빠진 PR(비밀·키 경로, FLIGHT 없음, 스위치가 exclude면 보안 규칙) — Codex나 SUPERVISOR 리뷰"
+      : `${sec}REVIEW 세션(Claude Sonnet)이 이 head를 리뷰하면 CLEARED TO LAND 근거가 된다`;
   return (
     <span className={`pr-extreview is-${m.status}`} title={tip}>
       {text}
@@ -296,7 +299,7 @@ function ExtReviewTag({ pr }: { pr: PullRequest }) {
 function CarriedTag({ pr }: { pr: PullRequest }) {
   const c = pr.carried;
   if (!c) return null;
-  const who = c.by === "human" ? "HUMAN" : c.by === "codex" ? "CODEX" : "DEEPSEEK";
+  const who = c.by === "human" ? "HUMAN" : c.by === "codex" ? "CODEX" : "REVIEW";
   const from = c.from.slice(0, 7);
   return (
     <span
@@ -329,7 +332,7 @@ const AUTOLAND_TIP: Record<PullTagKind, string> = {
   supervisor: "AUTOLAND가 머지하지 않는다 — SUPERVISOR가 머지",
   excluded: "AUTOLAND가 손대지 않는다",
   waiting: "AUTOLAND 대기",
-  review: "AUTOLAND가 갱신한 head에 리뷰가 이어지지 않아 재리뷰를 요청함: codex는 PR 댓글 @codex review, 30분 무응답·한도면 deepseek(REVIEW 대기열)",
+  review: "AUTOLAND가 갱신한 head에 리뷰가 이어지지 않아 재리뷰를 요청함: codex는 PR 댓글 @codex review, 30분 무응답·한도면 REVIEW 대기열",
 };
 function AutolandTag({ pr, landing }: { pr: PullRequest; landing: LandingIndex }) {
   const t = landing.autoland?.pulls[prKey(pr)];

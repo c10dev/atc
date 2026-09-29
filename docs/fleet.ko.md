@@ -662,18 +662,18 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 | TOWER | `controller/` | `claude --bg` | `/loop 3m /tick` | |
 | OCC | `occ/` | `claude --bg` | `/loop 10m /tick` | |
 | MCC | `mcc/` | `claude --bg` | `/loop 5m /tick` | `--strict-mcp-config` |
-| CROSSCHECK | `crosscheck/` | tmux `atc-crosscheck`, `ocx claude` | `/loop 10m /tick` | `--strict-mcp-config` |
-| REVIEW | `review/` | tmux `atc-review`, `ocx claude` | `/loop 10m /tick` | `--strict-mcp-config` |
+| CROSSCHECK | `crosscheck/` | `claude --bg` | `/loop 10m /tick` | `--strict-mcp-config` |
+| REVIEW | `review/` | `claude --bg` | `/loop 10m /tick` | `--strict-mcp-config` |
 | ENGINEERING | 저장소 뿌리 | 배지만 | | |
 
 - **배지.** `BG <id>`(백그라운드 세션), `tmux <세션>`(tmux pane에서 도는 세션), `interactive`(Claude Desktop 등 다른 곳에서 연 세션), `not running`. 2026-09-28에 CROSSCHECK가 꺼져 있었는데 화면 어디에도 보이지 않아서 더했다.
 
 - **방식.** atc 저장소의 그 폴더에서 `claude --bg -n <이름> --permission-mode auto [옵션] "<첫 메시지>"`, 환경은 8.5와 같이 깨끗하게. 폴더의 `.claude/settings.json`(모델, 허용 목록, fail-closed guard)이 그대로 걸린다. 백그라운드 세션은 권한 창에 답할 수 없으므로 `auto`로 고정하고, 막는 일은 guard가 한다. 2026-09-28에 백그라운드 MCC로 확인했다: `/loop`이 `/tick`을 걸었고, guard hook이 돌았고, `atcctl manual check`와 `mcc queue`가 권한 창 없이 돌았다.
 - **이미 떠 있음.** 이름이 같거나 그 폴더에서 연 세션을 그 관제 세션으로 본다(이름 없이 tmux로 연 `mcc-b4` 같은 세션도 폴더로 알아본다). 하나라도 떠 있으면 LAUNCH를 거절해, 두 벌이 같은 일을 하지 않게 한다. STOP은 백그라운드 세션이면 `claude stop`으로, tmux pane에서 도는 세션이면(그 pid나 조상이 pane의 첫 프로세스, `tmux list-panes -a`와 `/proc/<pid>/stat`로 찾는다) 그 pane만 `tmux kill-pane`으로 닫는다. tmux 세션의 다른 창은 그대로다. tmux pane을 닫기 전에 화면이 묻는다. 어느 쪽이든 대화는 남는다(`claude --resume`). 데스크톱(Claude 앱) 세션은 그 창에서 닫는다.
-- **CROSSCHECK·REVIEW**(ATC-66). `ocx claude`로 다른 계열 모델에 돌리는데 `claude --bg`로는 그렇게 할 수 없어서, LAUNCH가 tmux 세션을 연다: `tmux new-session -d -s atc-crosscheck -c <저장소>/crosscheck -e PATH=<깨끗한 PATH> "env -u ANTHROPIC_BASE_URL NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost ocx claude --strict-mcp-config -n CROSSCHECK '/loop 10m /tick'"`(REVIEW는 `atc-review`, `review/`, `-n REVIEW`). 명령은 [occ.ko.md](occ.ko.md) "CROSSCHECK"와 [review/README.ko.md](../review/README.ko.md)에 적힌 고정 문구이고, 요청에서 오는 것은 없다. `-n`이 세션 이름을 정하고, 위치 인자 프롬프트가 첫 메시지가 된다(2026-09-28에 버리는 `ocx claude` 세션으로 확인: `claude agents`에 이름이 보였고, 프롬프트가 시작하자마자 보내졌다). tmux는 깨끗한 환경으로 따로 systemd scope에서 부르므로, 그 호출이 띄운 tmux 서버는 `atc.service` 밖에 있고 `.env.local`이 없다. 세션의 `PATH`는 `ocx`의 폴더를 앞에 둔다. 폴더의 fail-closed 설정과 실제 모델 확인은 그대로 걸린다. 그 폴더의 세션이나 같은 이름의 tmux 세션이 있으면 LAUNCH를 거절한다. 서버가 `tmux`나 `ocx`를 못 찾으면(서버의 `PATH`와 깨끗한 `PATH`) 그 이유와 함께 LAUNCH를 끄고, 배지는 그대로 보인다. STOP은 위의 tmux pane 닫기다. trust 질문을 수락하지 않은 폴더면 tmux 안에서 그 질문에 멈춘다. 한 번 손으로 연다.
+- **CROSSCHECK·REVIEW**(ATC-66, 2026-09-29에 바뀜). 2026-09-29까지는 `ocx claude`로 다른 계열 모델에 돌렸고, `claude --bg`로는 그렇게 할 수 없어서 LAUNCH가 tmux 세션(`atc-crosscheck`, `atc-review`)을 열었다. 그 뒤로 CROSSCHECK는 Claude Opus, REVIEW는 Claude Sonnet으로 돌고, TOWER·OCC·MCC처럼 `claude --bg`로 연다([occ.ko.md](occ.ko.md) 9.9와 "CROSSCHECK를 Claude Opus로"). tmux와 `ocx`로 띄우는 코드는 없앴다. tmux pane에서 도는 관제 세션은 STOP이 여전히 알아보고 그 pane만 닫는다.
 - **ENGINEERING**은 저장소 뿌리에서 여는 작업 세션인데 팀 세션도 거기서 돌므로, 이름으로만 알아보고 LAUNCH·STOP이 없다.
 - **상한.** 관제 세션은 팀 세션 상한 `ATC_MAX_LAUNCHED`에 세지 않는다.
-- **API**(`server/session-control.ts`): `GET /api/control/sessions`(`{daemonInService, sessions: [{name, dir, prompt, launch: "bg" | "tmux" | null, tmux, command, blocked, live}], accounts}`), `POST /api/control/:name/launch`, `POST /api/control/:name/stop`. 둘 다 SUPERVISOR만(이 화면 Origin). 순수 함수: `controlLaunchPlanOf`, `tmuxLaunchPlanOf`, `ocxCommandOf`, `launchBlockOf`, `controlStopTargetOf`, `controlRowsOf`, `isControlRow`.
+- **API**(`server/session-control.ts`): `GET /api/control/sessions`(`{daemonInService, sessions: [{name, dir, prompt, launch: "bg" | null, blocked, live}], accounts}`), `POST /api/control/:name/launch`, `POST /api/control/:name/stop`. 둘 다 SUPERVISOR만(이 화면 Origin). 순수 함수: `controlLaunchPlanOf`, `launchBlockOf`, `controlStopTargetOf`, `controlRowsOf`, `isControlRow`.
 - **기록.** FLIGHT RECORDER `{kind: "control", op: "launch" | "stop", session, by: "SUPERVISOR", ok, jobId, tmux, cwd, error}`. 백그라운드 세션이면 `jobId`, tmux 세션이면 `tmux`(launch는 세션, stop은 `<세션> <pane>`).
 
 ### 8.6 FLEET PLAN: LAUNCH·STOP 등을 제안하기
