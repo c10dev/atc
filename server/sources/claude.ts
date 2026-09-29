@@ -6,6 +6,7 @@ import { lastPushRecord, type PushRecord } from "../../hooks/health.mjs";
 import type { Claim, Session, Workspace } from "../model.ts";
 import { type TalkEvent, talkEventsOf } from "../briefs.ts";
 import { type Fact, factsOf, type Health, type HealthConfig, healthOf, mergeHealth } from "../health.ts";
+import { sessionProcOf } from "../session-proc.ts";
 
 interface SessionFile {
   pid: number;
@@ -15,6 +16,8 @@ interface SessionFile {
   procStart?: string;
   name?: string;
   status?: string;
+  kind?: string; // bg·interactive
+  entrypoint?: string; // claude-desktop·cli
 }
 
 // pid 재사용을 피하려고 /proc/<pid>/stat의 starttime(22번째 필드)까지 맞춘다.
@@ -56,6 +59,8 @@ export function readClaudeSessions(): { sessions: Session[]; files: SessionFile[
   }
   const sessions = files.map((s): Session => {
     const alive = isAlive(s.pid, s.procStart);
+    // 출처(ATC-76): 살아 있는 세션만, pid마다 한 번 읽는다(session-origin.ts가 캐시)
+    const proc = alive ? sessionProcOf(s.pid, s.kind, s.entrypoint) : null;
     return {
       id: s.sessionId,
       agent: "claude",
@@ -67,6 +72,7 @@ export function readClaudeSessions(): { sessions: Session[]; files: SessionFile[
       lastActiveAt: mtime(transcriptPath(s))?.toISOString() ?? null,
       repo: null,
       workspacePath: null,
+      ...(proc ? { origin: proc.origin, permissionMode: proc.permissionMode } : {}),
     };
   });
   return { sessions, files };

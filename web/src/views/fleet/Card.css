@@ -176,12 +176,10 @@
   margin: 0;
   font-size: var(--text-xs);
 }
-.fl-bg {
-  padding: 0 var(--space-1-5);
+/* 백그라운드가 아닌 세션의 손 절차(ATC-76) */
+.fl-origin-note {
+  margin: 0;
   font-size: var(--text-xs);
-  color: var(--muted);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
 }
 /* FOB(ATC-81): 창에 남은 몫 60 % 이하 amber, 30 % 이하 alert */
 .fl-ctx {

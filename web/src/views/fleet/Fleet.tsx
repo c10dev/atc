@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import type { AircraftView } from "../../../../server/fleet.ts";
 import { fleetRows } from "../../../../server/fleet-status.ts";
+import { isBackground, manualStepsOf } from "../../../../server/session-origin.ts";
 // CSS 순서: 한 파일이던 때처럼 FleetCrew·Checkride·FleetPlan → FLEET 공통(Fleet.css) → 부분별 CSS.
 // 같은 세기의 규칙(.fc-error/.fl-error, .fp-switch/.fl-btn, .fl-input/.fl-reg·.fl-num)이 이 순서에 기댄다
 import "../FleetCrew.css";
@@ -151,11 +152,13 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
 
   const retire = async (a: AircraftView) => {
     if (a.retired) return save(a.registration, { retired: false });
-    const bg = sessionOf(a.registration)?.kind === "background";
+    // 출처(ATC-76)가 background일 때만 atc가 세션을 멈춘다
+    const row = sessionOf(a.registration);
+    const bg = Boolean(row) && isBackground(a.origin ?? (row?.kind === "background" ? "background" : null));
     const live = bg
       ? `\n${a.registration}는 atc가 띄운 세션입니다. 퇴역하면 세션도 멈출지 다음에 묻습니다.`
       : a.status !== "absent"
-        ? `\n${a.registration} 세션이 아직 살아 있습니다. 데스크톱·터미널 세션은 atc가 닫지 않고, 배정만 멈춥니다.`
+        ? `\n${a.registration} 세션이 아직 살아 있습니다. atc는 배정만 멈춥니다. ${manualStepsOf(a.origin, a.registration, "stop")}`
         : "";
     const reason = prompt(`${a.callsign}(${a.registration})를 퇴역시킬까요? 사유(선택)${live}`);
     if (reason === null) return;

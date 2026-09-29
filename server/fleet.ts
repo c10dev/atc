@@ -14,6 +14,7 @@ import { type ContextSize, type ContextView, contextView } from "./fuel-context.
 import type { Snapshot } from "./model.ts";
 import { fleetKeyOf, registrationNamesOf, registrationOf, regKey } from "./registration.ts";
 import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state.ts";
+import type { SessionOrigin } from "./session-origin.ts";
 
 // FLEET 등록부(~/.local/state/atc/fleet.json). 팀(AIRCRAFT)마다 CREW COMPLEMENT, TYPE RATING, ROUTE, TARGETS를 적는다.
 // 설계: docs/fleet.md. 타입·기본값·판정은 crew.ts에 있고, planner도 그것을 쓴다.
@@ -264,6 +265,9 @@ export interface AircraftView {
   sessionName?: string | null;
   // 같은 REGISTRATION으로 읽히는 살아 있는 세션이 둘 이상이면 그 이름들(합치지 않고 충돌로 보인다, idea #96). 아니면 null
   sessionConflict?: string[] | null;
+  // 세션 출처(ATC-76): background(atc가 띄움)·desktop(Claude 앱)·terminal·unknown. 세션이 없으면 null
+  origin?: SessionOrigin | null;
+  permissionMode?: string | null; // 세션의 permission mode. 모르면 null
 }
 
 export interface FuelRecent {
@@ -351,6 +355,8 @@ export function fleetView(
       ],
       flyingSince: held.map((c) => c.since).sort()[0] ?? null,
       lastActiveAt: session?.lastActiveAt ?? null,
+      origin: session ? (session.origin ?? "unknown") : null,
+      permissionMode: session?.permissionMode ?? null,
       health: session?.health ?? null,
       account: accountOf(fleet, reg),
       accountIsDefault: accountOf(fleet, reg) != null && !profile.account,

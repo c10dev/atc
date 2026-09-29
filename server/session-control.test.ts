@@ -43,7 +43,11 @@ test("launchPlanOf: RETIRED, base 없음, 상한을 막는다", () => {
 
 test("stopTargetOf: 백그라운드 세션만 멈춘다", () => {
   assert.equal(stopTargetOf("team_k", [bg("TEAM_K", "12345678")]).id, "12345678");
-  refused(() => stopTargetOf("TEAM_K", [ui("TEAM_K")]), 409, /데스크톱·터미널/);
+  refused(() => stopTargetOf("TEAM_K", [ui("TEAM_K")]), 409, /백그라운드가 아닌 세션 — atc가 멈추지 않는다/);
+  // 출처(ATC-76)를 주면 그 출처의 손 절차로 거절한다
+  refused(() => stopTargetOf("TEAM_K", [ui("TEAM_K")], () => "desktop"), 409, /데스크톱\(Claude 앱\) 세션 — atc가 멈추지 않는다\. SUPERVISOR: Claude 앱에서 그 세션을 닫는다/);
+  refused(() => stopTargetOf("TEAM_K", [ui("TEAM_K")], () => "terminal"), 409, /터미널 세션 — .*\/exit로 claude를 닫는다/);
+  assert.equal(stopTargetOf("TEAM_K", [bg("TEAM_K", "12345678")], () => "background").id, "12345678");
   refused(() => stopTargetOf("TEAM_K", []), 404, /떠 있지 않음/);
 });
 

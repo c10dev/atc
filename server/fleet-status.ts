@@ -4,6 +4,7 @@ import { fuelHoldTag, fuelTitle } from "./fuel-remaining.ts";
 import { type ContextBadge, contextBadgeOf } from "./fuel-context.ts";
 import { fleetFuelLabel, fleetFuelTitle } from "./fuel-view.ts";
 import { conflictHintOf, renameHintOf } from "./registration.ts";
+import { originBadgeOf } from "./session-origin.ts";
 
 // FLEET 운항 상태 목록(ATC-44, UI report #99): AIRCRAFT 한 대가 한 줄. 화면과 같이 쓰는 순수 함수.
 
@@ -55,6 +56,8 @@ export interface FleetRow {
   context: ContextBadge | null;
   // 세션 이름(ATC-67): 같은 REGISTRATION으로 읽히는 세션이 둘 이상이면 충돌, 정식 표기가 아니면 이름 바꾸기 힌트. 없으면 null
   name: { label: string; title: string; conflict: boolean } | null;
+  // 세션 출처(ATC-76): BG·DESKTOP·TERM과 permission mode. 세션이 없으면 null
+  origin: ReturnType<typeof originBadgeOf>;
 }
 
 // 목록 줄: 상태 순서, 같은 상태 안에서는 AIRPORT(없으면 뒤), 그다음 REGISTRATION
@@ -85,6 +88,7 @@ export function fleetRows(aircraft: readonly AircraftView[], now: number): Fleet
         : a.sessionName
           ? { label: "이름", title: renameHintOf(a.sessionName, a.registration), conflict: false }
           : null,
+      origin: originBadgeOf(a.origin, a.permissionMode),
     };
   });
   return rows.sort(
