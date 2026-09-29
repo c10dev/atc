@@ -389,7 +389,7 @@ Not built yet: vocado's own templates (the four-section rule in vocado `CLAUDE.m
 ### Known gaps before turning on 2b
 
 - `dispatch release` marks a proposal SENT before the message goes out. If delivery fails (the CAPTAIN session is gone, or the message is held for approval), it stays SENT; after 10 minutes it shows as NO READBACK, DISPATCH resends once, then reports to the SUPERVISOR.
-- A STAND-free FLIGHT ARRIVES only on the CAPTAIN's report. There is no automatic detection yet (a review on the target PR, a docs PR or issue comment). A forgotten report keeps the AIRCRAFT's one STAND-free slot until the SUPERVISOR follows up from `overdue` (24 hours); OCC cannot ask the CAPTAIN itself, since send-guard lets through only FLIGHT PLANs, RECALLs and CREW CHANGEs.
+- A STAND-free FLIGHT ARRIVES when OCC confirms it: on the CAPTAIN's report, or on an ARRIVED candidate atc finds from the team's own review, comment or docs PR (ATC-72, [fleet.md](fleet.md) 5.1.1). atc never marks it by itself. A forgotten confirmation keeps the AIRCRAFT's one STAND-free slot until the SUPERVISOR follows up from `overdue` (24 hours); OCC cannot ask the CAPTAIN itself, since send-guard lets through only FLIGHT PLANs, RECALLs and CREW CHANGEs.
 - A STAND-free READBACK counts as DEPARTED even if the CAPTAIN never starts; nothing else shows the work began.
 - A STAND-free ARRIVED does not enter the LOGBOOK, so it does not count toward TARGETS. The planner excludes the FLIGHT for 7 days after ARRIVED; after that it trusts Linear, so the FLIGHT should be closed there.
 - The FLIGHT TYPE is read at READBACK. Relabelling afterwards does not change a recorded departure.

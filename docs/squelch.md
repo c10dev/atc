@@ -2,7 +2,7 @@
 
 A radio's squelch keeps the speaker quiet until a real signal comes in. SQUELCH does the same for the control sessions. Before a `/loop`-scheduled `/tick` reaches the model, atc checks whether anything that session acts on has changed since its last pass. If nothing has changed, the prompt is dropped and the session spends no tokens.
 
-> Status (2026-09-29): draft. Nothing built. Written from a usage reading of the last 4 hours of local transcripts (section 1). No Linear issue yet.
+> Status (2026-09-29): draft. S0 done (ATC-80): the hook path works ("S0 as probed" below), so the fallback is not needed. S1 is ATC-96. Nothing else built. Written from a usage reading of the last 4 hours of local transcripts (section 1).
 
 Related: [fuel.md](fuel.md) (FUEL, `controlWake`, the 1 h cache tier on main transcripts), [fleet.md](fleet.md) 8.5–8.6 (how control sessions are launched, `/loop` intervals), [mcc.md](mcc.md) 4 (MCC pass), `controller/.claude/skills/tick/SKILL.md` and the other folders' `/tick`.
 
@@ -89,11 +89,32 @@ OCC's TARGET and ROUTE draft ("once in 24 h") has no field to watch, so HEARTBEA
 - Otherwise it calls the API with a 3 s timeout. On QUIET it prints `{"decision":"block","reason":"SQUELCH QUIET since …"}` and exits 0. On OPEN, and on every error, it exits 0 with no output.
 - Never `exit 2` and never `|| exit 2` (principle 2).
 
-**Fallback, if hooks don't see `/loop` prompts** (verified in S0): step 0 of each `/tick` becomes `atcctl squelch <role>`, and on `QUIET` the model stops without an ATC LOG line. That still costs one call per tick (one context re-read) instead of 3–6, so roughly 60–75 % of the quiet-tick tokens are saved instead of ~100 %.
+**Fallback, if hooks don't see `/loop` prompts** (not needed: S0 confirmed that they do): step 0 of each `/tick` becomes `atcctl squelch <role>`, and on `QUIET` the model stops without an ATC LOG line. That still costs one call per tick (one context re-read) instead of 3–6, so roughly 60–75 % of the quiet-tick tokens are saved instead of ~100 %.
 
 **HEARTBEAT and the cache.** A QUIET stretch longer than an hour lets the 1 h cache expire, and the next tick rewrites the whole context (300 K–966 K here). The default `heartbeatMin` is therefore 50 minutes, so a heartbeat tick is a cache read. Section 9 asks for the value.
 
 **Estimate for the window in section 1.** 6 working ticks, about as many follow-up ticks (a write changes the state once more), and 5 sessions × ~5 heartbeats come to ~37 ticks instead of 202. That is about 60–70 M tokens instead of 314 M, a 75–85 % cut. Most of what's left is heartbeats.
+
+### S0 as probed (ATC-80)
+
+TEAM_G, 2026-09-29 02:02–02:15 UTC, Claude Code 2.1.284. Throwaway folders in `/tmp`, each with its own `.claude/settings.json`, a one-word `tick` skill and a stub `UserPromptSubmit` hook (`timeout` 5) that logged stdin and acted from a mode file. Two launch styles: `claude --bg --permission-mode auto --setting-sources project --strict-mcp-config --model claude-sonnet-5-5 "/loop 1m /tick"`, and `ocx claude` in tmux on DeepSeek V4.1 Flash (opencodex 2.56.0). `--setting-sources project` kept the user-level atc hooks out, so nothing touched the state folder. Both styles gave the same answers.
+
+| Question | Answer |
+|---|---|
+| Does a `/loop`-fired `/tick` run `UserPromptSubmit`? | Yes. `prompt` is exactly `/tick`, not the expanded skill. The initial `/loop 1m /tick` passes the hook as its own prompt. Stdin has `session_id`, `transcript_path`, `cwd`, `scratchpad_dir`, `prompt_id`, `permission_mode`, `hook_event_name`, `prompt`, `session_title` (the `-n` name), and no secrets |
+| Does `{"decision":"block"}` drop the turn with no API request? | Yes: 5 blocked ticks per session, 0 assistant lines, 0 usage. A blocked tick writes 4 transcript lines: `queue-operation` ×2, system `scheduled_task_fire`, and system `informational` ("UserPromptSubmit operation blocked by hook: <reason> Original prompt: /tick"). No user line, no skill text. An allowed tick writes the `/tick` user line, the skill text, an attachment, an assistant line and `turn_duration` |
+| Does `/loop` keep firing after blocks? | Yes, every 60 s through 5 blocks in a row, and ticks ran normally once the hook stopped blocking |
+| Fail open? | Yes. Exit 1 → attachment `hook_non_blocking_error`; a crash → the same with stderr; a timeout (12 s against 5) → `hook_cancelled`, and the turn went ahead about 6 s late |
+| Does a peer message wake an idle session between ticks? | Yes, within 5 s, as its own `<cross-session-message …>` prompt. The hook passed it untouched while blocking ticks |
+| Is a block visible? | In the tmux pane and `claude logs`, 3 lines per block. `claude agents --json` shows only `idle`. Claude Desktop was not checked |
+
+Consequences for S1–S3:
+
+- The hook is the mechanism; the fallback is dropped.
+- The block reason is printed on every block, so it stays short (`SQUELCH QUIET since HH:MM`).
+- atc's transcript readers (health, FUEL, the section 1 tick count) must treat the four lines of a blocked tick as neither a prompt waiting for an answer nor a tick (S1, ATC-96).
+- A slow hook delays the tick by up to its timeout, so the 3 s API timeout inside a 5 s hook timeout stands.
+- A Haiku background session loaded the scheduling tool but never scheduled its loop. That is the model, not the hook: don't use Haiku for a `/loop` control session.
 
 ## 6. Display
 
@@ -104,8 +125,8 @@ OCC's TARGET and ROUTE draft ("once in 24 h") has no field to watch, so HEARTBEA
 
 | Step | What | Needs | Tier |
 |---|---|---|---|
-| S0 | Probe on a throwaway session in a temp folder (not a control folder): does a `/loop`-fired `/tick` pass through `UserPromptSubmit`, does `decision: block` drop it with no API request, and do the loop's later firings still come? Check `claude --bg` and `ocx claude` both. The result decides between the hook and the fallback | – | – (no PR, a note in this doc) |
-| S1 | `server/squelch.ts` (pure, tests), `squelch-run.ts`, `POST /api/squelch/<role>`, `squelch.json`/`.jsonl`, `mode: shadow` by default | S0 | `auto` |
+| S0 ✅ (ATC-80) | Probe on a throwaway session in a temp folder (not a control folder): does a `/loop`-fired `/tick` pass through `UserPromptSubmit`, does `decision: block` drop it with no API request, and do the loop's later firings still come? Check `claude --bg` and `ocx claude` both. The result decides between the hook and the fallback | – | – (no PR, a note in this doc) |
+| S1 (ATC-96) | `server/squelch.ts` (pure, tests), `squelch-run.ts`, `POST /api/squelch/<role>`, `squelch.json`/`.jsonl`, `mode: shadow` by default; transcript readers ignore blocked ticks | S0 | `auto` |
 | S2 | `atcctl squelch`, `controller/squelch.mjs` hook script (tests: non-`/tick` passes, error passes, QUIET blocks) | S1 | `flagged` |
 | S3 | Wire the hook into the five folders' `.claude/settings.json`, still `shadow` | S2 | `user` |
 | S4 | A week of `shadow`: for every `shadow:quiet` decision, check in the transcript that the tick really did nothing (the section 1 method). Zero missed working ticks → SUPERVISOR switches `on` role by role, REVIEW and CROSSCHECK first, TOWER last | S3 | – |
@@ -118,8 +139,8 @@ OCC's TARGET and ROUTE draft ("once in 24 h") has no field to watch, so HEARTBEA
 | A tick that should have run is dropped (missing field in the fingerprint) | `shadow` week with a per-tick check (S4); HEARTBEAT caps any miss at `heartbeatMin`; the switch is per role |
 | Hook bug blocks every tick | Fail open by construction: only an explicit QUIET from the server blocks; tests cover error paths |
 | Gate mistaken for a guard and made fail-closed | Separate file name (no `guard` in it, so its tier stays `flagged`), a note in each folder's `CLAUDE.md`, and a test that the settings command has no `exit 2` |
-| `/loop` prompts don't go through `UserPromptSubmit` | S0 checks this first; the fallback is ready |
-| A dropped prompt still shows in the transcript or ends the loop | S0 checks for both |
+| `/loop` prompts don't go through `UserPromptSubmit` | S0: they do (Claude Code 2.1.284). Re-check after a Claude Code upgrade |
+| A dropped prompt still shows in the transcript or ends the loop | S0: the loop continues; the transcript gets four non-turn lines, which S1 teaches atc's readers to skip |
 | A team message arrives only with the next `/tick` | Principle 3: only `/tick` is gated, and team messages are separate prompts. S0 also confirms that a message wakes an idle session on its own |
 | Cold cache after long QUIET | HEARTBEAT under the 1 h TTL |
 | Server restart loses the last fingerprint | The first tick after a restart opens (`reset`), same as TOWER today |
