@@ -33,6 +33,8 @@ const state: GithubState = { enabled: true, error: null, fetchedAt: null, byRepo
 let lastFetch = 0;
 let inflight: Promise<void> | null = null;
 let known = new Set<string>();
+// 저장소별로 main에서 늘 도는 체크 이름(MCC AIRPORT의 ciCheck). 없는 저장소는 지금 그대로 본다(ATC-121)
+let expectedChecks = new Map<string, string>();
 
 // git remote URL → "owner/name". GitHub가 아니면 null.
 export function githubSlug(url: string): string | null {
@@ -247,7 +249,7 @@ async function fetchAll(repos: string[]) {
         state.byRepo.set(repo, pulls);
         ok++;
         try {
-          state.mainByRepo.set(repo, await readMain(repo, slug));
+          state.mainByRepo.set(repo, await readMain(repo, slug, mainSha, expectedChecks.get(repo) ?? null));
         } catch (e) {
           const err = e as { stderr?: string; message?: string };
           errors.push(`${slug} main CI: ${(err.stderr?.trim() || err.message || String(e)).split("\n")[0]}`);
@@ -389,16 +391,18 @@ async function defaultBranchOf(slug: string): Promise<string> {
   return base;
 }
 
-// 기본 브랜치 head의 check-runs와 commit status(읽기 전용 gh api)
-async function readMain(repo: string, slug: string): Promise<MainStatus> {
+// 기본 브랜치 head의 check-runs와 commit status(읽기 전용 gh api). head SHA를 먼저 정하고(이미 읽은 mainSha가 있으면 그것, 없으면 한 번 더)
+// 그 SHA로 check-runs와 status를 읽는다 — 브랜치 이름으로 읽으면 두 호출 사이에 head가 바뀌어 서로 다른 커밋의 상태가 섞인다(ATC-121)
+async function readMain(repo: string, slug: string, knownSha: string | null, expectCheck: string | null): Promise<MainStatus> {
   const branch = await defaultBranchOf(slug);
-  const runs = tsv(await gh(["api", `repos/${slug}/commits/${branch}/check-runs?per_page=100`, "--jq", '.check_runs[] | [.name, .status, (.conclusion // "")] | @tsv']))
+  const sha = knownSha ?? (await gh(["api", `repos/${slug}/commits/${branch}`, "--jq", ".sha"])).trim();
+  if (!sha) throw new Error("기본 브랜치 head를 모름");
+  const runs = tsv(await gh(["api", `repos/${slug}/commits/${sha}/check-runs?per_page=100`, "--jq", '.check_runs[] | [.name, .status, (.conclusion // "")] | @tsv']))
     .map(([name, status, conclusion]) => ({ name, status, conclusion: conclusion || null }));
-  const combined = JSON.parse(await gh(["api", `repos/${slug}/commits/${branch}/status`, "--jq", "{sha, statuses: [.statuses[] | {context, state}]}"])) as { sha: string | null; statuses: { context: string; state: string }[] };
-  return { repo, slug, branch, sha: combined.sha, ...mainStateOf(runs, combined.statuses), at: new Date().toISOString() };
+  const combined = JSON.parse(await gh(["api", `repos/${slug}/commits/${sha}/status`, "--jq", "{statuses: [.statuses[] | {context, state}]}"])) as { statuses: { context: string; state: string }[] };
+  return { repo, slug, branch, sha, ...mainStateOf(runs, combined.statuses, expectCheck), at: new Date().toISOString() };
 }
 
-// GitHub remote가 없으면 null
 export async function listMerged(repo: string, limit = 30): Promise<{ slug: string; pulls: GhMerged[] } | null> {
   const slug = await slugOf(repo);
   if (!slug) return null;
@@ -430,8 +434,9 @@ export function fetchPrBody(key: string): Promise<string | null> {
 }
 
 // 90초마다 백그라운드로 갱신하고, 호출 시점에는 마지막 결과를 바로 돌려준다(스냅샷을 막지 않는다).
-export function readGithub(repos: string[]): GithubState {
+export function readGithub(repos: string[], expected: Map<string, string> = new Map()): GithubState {
   if (!state.enabled) return state;
+  expectedChecks = expected;
   const grew = repos.some((r) => !known.has(r));
   known = new Set(repos);
   if (!inflight && (grew || Date.now() - lastFetch > POLL_MS)) {

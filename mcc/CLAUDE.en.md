@@ -50,7 +50,7 @@ Grades: P0 (must not merge), P1 (fix before merging), P2 (can wait). No P0 or P1
 
 - Only PRs whose `blocks` is empty in `mcc queue`: `mcc land <PR> --head <head from queue>`. If the server blocks it, log the condition and move on; don't retry in the same pass.
 - When a `flagged` PR lands, log the control rules (files) that changed and the side-effect files that changed (`SIDE_EFFECT` in `deploy/landing-tier.mjs`), one line each (`LANDED · flagged · 바뀐 관제 규칙: …` · `바뀐 외부 부작용: …`).
-- After a landing, or when `rts.due` is true: `mcc rts`, once per pass.
+- When `rts.due` is true, run `mcc rts` before landing (ATC-121), once per pass. Don't run `mcc rts` right after a landing in the same pass: the commit you just landed has no CI yet, and the server answers "not due" when the last landing is newer than the main CI state it read. The landed commit is deployed on a later pass, when `rts.due` is true.
 - After a ROLLBACK (`rts.why` mentions ROLLBACK), don't try RTS; report to the SUPERVISOR, who clears it in the settings window.
 
 ## MCC LOG

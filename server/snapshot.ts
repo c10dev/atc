@@ -177,7 +177,10 @@ export async function buildSnapshot(): Promise<Snapshot> {
     alerts.push({ kind: "health", key: a.key, message: a.message, sessionIds: a.sessionIds });
   }
   const repos = airports.open.map((a) => a.repo);
-  const github = readGithub(repos);
+  // main에서 늘 도는 체크(MCC AIRPORT의 ciCheck)가 새 커밋에 아직 없으면 CI는 pending이다(ATC-121)
+  const mccCfg = loadMcc();
+  const mccAirport = airports.open.find((a) => a.code === mccCfg.airport);
+  const github = readGithub(repos, new Map(mccAirport ? [[mccAirport.repo, mccCfg.ciCheck]] : []));
   // AUTOLAND(ATC-34·38). 재리뷰로 Codex 대신 넘긴 head는 6시간을 기다리지 않고 REVIEW 대기열로 — update·merge이고 GROUND STOP이 아닌 AIRPORT만
   const alCfg = loadAutoland();
   const alSt = loadAutolandState();

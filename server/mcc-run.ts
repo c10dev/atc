@@ -29,6 +29,7 @@ import {
   RTS_FILE,
   rtsDueOf,
   rtsStopOf,
+  spacingStartOf,
   rtsUnitGuard,
   saveMcc,
   tierOfFiles,
@@ -89,7 +90,7 @@ export function airportOf(s: Snapshot) {
   if (!slug) throw new MccError(`${cfg.airport}의 GitHub 저장소를 아직 모름 — atc가 GitHub을 읽은 뒤(90초 안) 다시`, 409);
   const mainCi: CiState = !main?.sha ? "none" : main.state === "success" ? "ok" : main.state === "pending" ? "pending" : main.state === "none" ? "none" : "failed";
   const stop = s.atfm.groundStops.find((g) => g.airport === cfg.airport && g.kind === "stop" && g.enforced && g.land !== false);
-  return { cfg, repo: a.repo, slug, defaultBranch: main?.branch ?? "main", main: main?.sha ?? null, mainCi, groundStop: stop ? stop.text : null };
+  return { cfg, repo: a.repo, slug, defaultBranch: main?.branch ?? "main", main: main?.sha ?? null, mainReadAt: main?.at ?? null, mainCi, groundStop: stop ? stop.text : null };
 }
 
 const fetchPull = async (slug: string, n: number) => JSON.parse(await gh(["api", `repos/${slug}/pulls/${n}`])) as RestPull;
@@ -122,7 +123,9 @@ export function rtsState(records: readonly MccRecord[]) {
   const last = rts.at(-1) ?? null;
   const lastMode = [...records].reverse().find((r) => r.op === "mode");
   const lastStart = [...records].reverse().find((r) => r.op === "rts" && r.result === "started");
-  return { last, stop: rtsStopOf(last, lastMode?.at ?? null), lastStartAt: lastStart?.at ?? null };
+  const lastLand = [...records].reverse().find((r) => r.op === "land" && r.result === "ok");
+  // lastStartAt은 UPDATE 막대가 쓰는 그대로(거절도 포함). spacingAt은 MCC의 5분 간격용(거절된 시작은 뺀다, ATC-121)
+  return { last, stop: rtsStopOf(last, lastMode?.at ?? null), lastStartAt: lastStart?.at ?? null, spacingAt: spacingStartOf(records, rts), lastLandAt: lastLand?.at ?? null };
 }
 
 // PR 하나의 착륙 판단(머지 직전과 queue가 같이 쓴다). 자료는 모두 지금 GitHub에서 읽는다
@@ -255,7 +258,7 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
         repo: ap.slug,
         service: { head: deployed?.slice(0, 7) ?? null },
         main: { branch: ap.defaultBranch, head: ap.main?.slice(0, 7) ?? null, ci: ap.mainCi },
-        rts: { ...rtsDueOf({ deployed, main: ap.main, mainCi: ap.mainCi, last: rts.last, lastStartAt: rts.lastStartAt, now: Date.now() }, rts.stop), last: rts.last },
+        rts: { ...rtsDueOf({ deployed, main: ap.main, mainCi: ap.mainCi, last: rts.last, lastStartAt: rts.spacingAt, mainReadAt: ap.mainReadAt, lastLandAt: rts.lastLandAt, now: Date.now() }, rts.stop), last: rts.last },
         groundStop: ap.groundStop,
         pulls,
         recent: records.slice(-10).reverse().map((r) => ({ op: r.op, at: r.at, ...("pr" in r ? { pr: r.pr } : {}), ...("result" in r ? { result: r.result } : {}), ...("verdict" in r ? { verdict: r.verdict } : {}) })),
@@ -397,7 +400,7 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
       const records = readMccRecords();
       const rts = rtsState(records);
       const deployed = deployedHead();
-      const due = rtsDueOf({ deployed, main: ap.main, mainCi: ap.mainCi, last: rts.last, lastStartAt: rts.lastStartAt, now: Date.now() }, rts.stop);
+      const due = rtsDueOf({ deployed, main: ap.main, mainCi: ap.mainCi, last: rts.last, lastStartAt: rts.spacingAt, mainReadAt: ap.mainReadAt, lastLandAt: rts.lastLandAt, now: Date.now() }, rts.stop);
       if (!due.due) return c.json({ started: false, why: due.why }, 409);
       const base = { at: new Date().toISOString(), from: deployed, to: ap.main!, model };
       if (ap.cfg.mode !== "land+rts") {

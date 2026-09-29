@@ -50,7 +50,7 @@ CI(`check`)가 테스트·타입·빌드를 이미 돈다. MCC는 CI가 못 보�
 
 - `mcc queue`에서 `blocks`가 빈 PR만 `mcc land <PR> --head <queue의 head>`. 서버가 조건을 다시 보고 막으면 그 조건을 LOG에 적고 넘어간다. 같은 바퀴에 다시 시도하지 않는다.
 - `flagged` PR을 착륙시키면 LOG에 바뀐 관제 규칙(파일)과 바뀐 외부 부작용 파일(`deploy/landing-tier.mjs`의 `SIDE_EFFECT`)을 한 줄씩 따로 적는다(`LANDED · flagged · 바뀐 관제 규칙: …` · `바뀐 외부 부작용: …`).
-- 착륙 뒤, 또는 `rts.due`가 true면 `mcc rts`. 한 바퀴에 한 번.
+- `rts.due`가 true면 착륙보다 먼저 `mcc rts`를 친다(ATC-121). 한 바퀴에 한 번. 착륙시킨 바로 뒤에는 같은 바퀴에서 `mcc rts`를 치지 않는다 — 방금 착륙한 커밋의 CI는 아직 없고, 서버도 마지막 착륙이 main CI를 읽은 때보다 늦으면 "할 때가 아님"으로 답한다. 착륙한 커밋은 다음 바퀴에서 `rts.due`가 되면 배포한다.
 - ROLLBACK이 났으면(`rts.why`에 ROLLBACK) RTS를 시도하지 않고 SUPERVISOR에게 보고한다. 풀기는 SUPERVISOR가 설정 창에서 한다.
 
 ## MCC LOG

@@ -23,6 +23,7 @@ import {
   parseMcc,
   type RtsRecord,
   rtsDueOf,
+  spacingStartOf,
   rtsStopOf,
   saveMcc,
   tierOfFiles,
@@ -140,6 +141,77 @@ test("RTS 할 때: 서비스가 main보다 뒤이고 main CI가 통과했고 지
   assert.equal(rtsDueOf({ ...x, lastStartAt: iso(6) }, null).due, true);
   assert.equal(rtsDueOf({ ...x, lastStartAt: iso(1) }, null, 0).due, true); // SUPERVISOR 클릭은 간격 없음
   assert.deepEqual(rtsDueOf(x, "ROLLBACK 뒤 멈춤"), { due: false, why: "ROLLBACK 뒤 멈춤" });
+});
+
+test("RTS 할 때(ATC-121): 마지막 착륙이 main CI를 읽은 때보다 늦으면 아직", () => {
+  const x = { deployed: OLD, main: HEAD, mainCi: "ok" as const, last: null, lastStartAt: null, now: NOW, mainReadAt: iso(3), lastLandAt: iso(5) };
+  assert.equal(rtsDueOf(x, null).due, true); // 착륙 뒤에 읽었다
+  assert.match(rtsDueOf({ ...x, lastLandAt: iso(1) }, null).why, /착륙 뒤 main CI/); // 방금 착륙했는데 읽은 건 그 전
+  assert.equal(rtsDueOf({ ...x, lastLandAt: null }, null).due, true);
+  assert.equal(rtsDueOf({ ...x, mainReadAt: null, lastLandAt: iso(1) }, null).due, true); // 모르면 다른 조건대로(예전 그대로)
+  assert.equal(rtsDueOf({ ...x, lastLandAt: iso(1) }, null, 0).due, false); // 간격 0이어도 이 순서 규칙은 같다
+});
+
+test("5분 간격(ATC-121): 거절된 시작은 세지 않는다", () => {
+  const start = (min: number, to = HEAD): MccRecord => ({ op: "rts", at: iso(min), from: OLD, to, result: "started" });
+  assert.equal(spacingStartOf([], []), null);
+  assert.equal(spacingStartOf([start(3)], []), iso(3)); // 아직 결과가 없다
+  assert.equal(spacingStartOf([start(3)], [rts({ at: iso(2.9), result: "running" })]), iso(3));
+  assert.equal(spacingStartOf([start(3)], [rts({ at: iso(2.9), result: "running" }), rts({ at: iso(2), result: "ok" })]), iso(3));
+  assert.equal(spacingStartOf([start(3)], [rts({ at: iso(2.9), result: "failed" })]), iso(3)); // 실패는 센다
+  assert.equal(spacingStartOf([start(3)], [rts({ at: iso(2.9), result: "refused", detail: "커밋하지 않은 변경" })]), null);
+  // 거절된 것은 건너뛰고 그 앞의 시작을 본다
+  assert.equal(spacingStartOf([start(9), start(3)], [rts({ at: iso(2.9), result: "refused" })]), iso(9));
+  // 다른 main을 향한 거절, 시작 이전 거절은 이 시작의 결과가 아니다
+  assert.equal(spacingStartOf([start(3)], [rts({ at: iso(2.9), to: OLD, result: "refused" })]), iso(3));
+  assert.equal(spacingStartOf([start(3)], [rts({ at: iso(20), result: "refused" })]), iso(3));
+  // 거절된 시작이 다음 RTS를 막지 않는다
+  const x = { deployed: OLD, main: HEAD, mainCi: "ok" as const, last: null, now: NOW };
+  assert.equal(rtsDueOf({ ...x, lastStartAt: spacingStartOf([start(3)], [rts({ at: iso(2.9), result: "refused" })]) }, null).due, true);
+  assert.equal(rtsDueOf({ ...x, lastStartAt: spacingStartOf([start(3)], []) }, null).due, false);
+});
+
+test("순서(ATC-121): 착륙·RTS·착륙을 5분마다 해도 적어도 두 tick에 한 번은 배포된다", () => {
+  // 모델: tick마다 5분. 착륙하면 90초 뒤 다음 읽기에 main이 새 커밋이 되고, CI(check)는 3분이면 끝난다.
+  // MCC는 rts.due를 먼저 보고(배포), 아니면 착륙한다(매뉴얼의 순서). 배포하면 서비스가 main에 닿는다
+  const MIN = 60_000;
+  let deployed = "d0";
+  let main = "d0";
+  let mainReadAt = 0;
+  let mainCiOkAt = 0; // 이 시각부터 ok
+  let lastLandAt: number | null = null;
+  let lastStartAt: number | null = null;
+  let lands = 0;
+  let deploys = 0;
+  let pendingLand = 0;
+  const TICKS = 12;
+  for (let k = 0; k < TICKS; k++) {
+    const now = k * 5 * MIN;
+    // atc의 읽기(90초 간격 근사): 착륙이 있었으면 main이 그 커밋이 되고 CI는 3분 뒤 통과
+    if (pendingLand && now - pendingLand >= 90_000) {
+      main = `d${lands}`;
+      mainCiOkAt = pendingLand + 90_000 + 3 * MIN;
+      pendingLand = 0;
+    }
+    mainReadAt = Math.max(mainReadAt, now - 30_000);
+    const due = () =>
+      rtsDueOf(
+        { deployed, main, mainCi: now >= mainCiOkAt ? "ok" : "pending", last: null, lastStartAt: lastStartAt === null ? null : new Date(lastStartAt).toISOString(), mainReadAt: new Date(mainReadAt).toISOString(), lastLandAt: lastLandAt === null ? null : new Date(lastLandAt).toISOString(), now },
+        null,
+      ).due;
+    if (due()) {
+      deployed = main;
+      lastStartAt = now;
+      deploys++;
+    }
+    lands++; // 이 tick의 착륙(RTS 뒤, 매뉴얼의 순서)
+    lastLandAt = now + 1000;
+    pendingLand = now + 1000;
+  }
+  assert.ok(deploys >= TICKS / 2 - 1, `deploys ${deploys}`);
+  // 착륙을 먼저 하고 같은 tick에 RTS를 치면 서버가 막는다(순서 규칙)
+  const x = { deployed: "a", main: "b", mainCi: "ok" as const, last: null, lastStartAt: null, now: NOW, mainReadAt: iso(1), lastLandAt: iso(0.5) };
+  assert.equal(rtsDueOf(x, null).due, false);
 });
 
 test("등급: deploy/landing-tier.mjs와 같은 규칙(서버·문서 auto, 관제 매뉴얼 flagged, guard·deploy user)", async () => {

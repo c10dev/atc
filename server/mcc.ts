@@ -226,8 +226,26 @@ export interface RtsInput {
   main: string | null; // origin 기본 브랜치 head
   mainCi: CiState;
   last: RtsRecord | null; // rts.jsonl 마지막 줄
-  lastStartAt: string | null; // mcc.jsonl의 마지막 rts 시작
+  lastStartAt: string | null; // 5분 간격을 세는 마지막 rts 시작(거절된 시작은 뺀 것, spacingStartOf)
   now: number;
+  mainReadAt?: string | null; // atc가 main의 CI 상태를 읽은 시각(main 상태 at)
+  lastLandAt?: string | null; // mcc.jsonl의 마지막 실제 착륙(land ok)
+}
+// 5분 간격을 세는 마지막 RTS 시작(순수, ATC-121). mcc.jsonl의 rts started 가운데, 그 시작의 결과가 unit의 "refused"(rts.jsonl에서 시작 뒤,
+// 같은 main을 향한 줄)인 것은 뺀다 — 거절된 시작이 다음 시작을 5분 막지 않게. 아직 결과가 없거나 running·ok·rollback·failed면 센다
+export function spacingStartOf(records: readonly MccRecord[], rts: readonly RtsRecord[]): string | null {
+  const same = (a: string | null, b: string) => Boolean(a) && (a!.startsWith(b) || b.startsWith(a!));
+  type Start = { at: string; to: string };
+  const starts: Start[] = [];
+  for (const r of records) if (r.op === "rts" && r.result === "started") starts.push({ at: r.at, to: r.to });
+  for (let i = starts.length - 1; i >= 0; i--) {
+    const r = starts[i];
+    const until = i + 1 < starts.length ? Date.parse(starts[i + 1].at) : Infinity; // 다음 시작 전까지가 이 시작의 결과다
+    const own = rts.filter((x) => Date.parse(x.at) >= Date.parse(r.at) && Date.parse(x.at) < until && same(x.to, r.to));
+    if (own.length && own.every((x) => x.result === "refused")) continue;
+    return r.at;
+  }
+  return null;
 }
 // ROLLBACK 뒤에는 SUPERVISOR가 모드를 다시 고를 때까지 멈춘다(모드 기록이 ROLLBACK보다 늦으면 풀림)
 export function rtsStopOf(last: RtsRecord | null, lastModeAt: string | null): string | null {
@@ -252,6 +270,8 @@ export function rtsDueOf(x: RtsInput, stop: string | null, spacingMs = RTS_SPACI
   if (!x.main) return { due: false, why: "기본 브랜치 head를 모름" };
   if (x.main.startsWith(x.deployed) || x.deployed.startsWith(x.main)) return { due: false, why: "서비스가 최신" };
   if (x.mainCi !== "ok") return { due: false, why: `기본 브랜치 CI ${x.mainCi === "none" ? "없음" : x.mainCi === "pending" ? "진행 중" : "실패"}` };
+  // 마지막 착륙이 atc가 main CI를 읽은 때보다 늦으면 그 CI 상태는 착륙 전 커밋의 것일 수 있다(ATC-121)
+  if (x.lastLandAt && x.mainReadAt && Date.parse(x.lastLandAt) > Date.parse(x.mainReadAt)) return { due: false, why: "마지막 착륙 뒤 main CI를 아직 다시 읽지 못함" };
   if (spacingMs > 0 && x.lastStartAt && x.now - Date.parse(x.lastStartAt) < spacingMs) return { due: false, why: "지난 RTS에서 5분이 안 지남" };
   return { due: true, why: `${x.deployed.slice(0, 7)} → ${x.main.slice(0, 7)}` };
 }
