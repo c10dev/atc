@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import type { AircraftView } from "../../../../server/fleet.ts";
+import type { AbsentAircraft } from "../../../../server/dispatch-launch.ts";
 import { fleetRows } from "../../../../server/fleet-status.ts";
 import { isBackground, manualStepsOf } from "../../../../server/session-origin.ts";
 // CSS 순서: 한 파일이던 때처럼 FleetCrew·Checkride·FleetPlan → FLEET 공통(Fleet.css) → 부분별 CSS.
@@ -8,6 +9,7 @@ import "../FleetCrew.css";
 import { Checkride } from "../Checkride.tsx";
 import { FleetPlan } from "../FleetPlan.tsx";
 import "./Fleet.css";
+import { absentMarkOf } from "./Absent.tsx";
 import { BriefingPanel } from "./BriefingPanel.tsx";
 import { Card } from "./Card.tsx";
 import { Editor } from "./Editor.tsx";
@@ -42,7 +44,8 @@ function saveLayout(l: Layout) {
   } catch {}
 }
 
-export function Fleet({ refreshKey }: { refreshKey: string }) {
+// absent: 스냅샷의 세션 없는 백그라운드 AIRCRAFT(ATC-129). 옛 서버면 없음
+export function Fleet({ refreshKey, absent }: { refreshKey: string; absent?: AbsentAircraft[] }) {
   const [brief, setBrief] = useState<FleetBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -170,6 +173,8 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
 
   if (!brief) return <p className="empty">{error ? `불러오지 못함: ${error}` : "불러오는 중…"}</p>;
   const inService = brief.aircraft.filter((a) => !a.retired);
+  // 세션이 없을 때만: LAUNCH on approve 또는 RESUME after LIMIT(ATC-129)
+  const absentMark = (a: AircraftView) => (a.status === "absent" && !a.restarting ? absentMarkOf(absent?.find((x) => x.registration === a.registration), Boolean(a.aog), Date.now()) : null);
   const retired = brief.aircraft.filter((a) => a.retired);
   // AIRCRAFT 한 대의 지금 카드(고치는 중이면 편집기). 목록에서 펼칠 때와 카드 보기에서 같이 쓴다.
   // 그 카드가 연 패널(LAUNCH, CREW BRIEFING)은 카드 바로 아래에 붙는다(ATC-61)
@@ -186,6 +191,7 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
           onRetire={() => retire(a)}
           session={control ? sessionOf(a.registration) : undefined}
           stale={staleOf(a.registration)}
+          absent={absentMark(a)}
           onLaunch={(opener) => (setError(null), setLaunching({ a, opener }))}
           onStop={() => stop(a)}
           windowDays={brief.observedWindowDays}
@@ -244,6 +250,10 @@ export function Fleet({ refreshKey }: { refreshKey: string }) {
           rows={fleetRows(inService, Date.now())}
           open={open}
           onToggle={toggleOpen}
+          absent={(reg) => {
+            const a = inService.find((x) => x.registration === reg);
+            return a ? absentMark(a) : null;
+          }}
           detail={(reg) => {
             const a = inService.find((x) => x.registration === reg);
             return a ? cardOf(a) : null;

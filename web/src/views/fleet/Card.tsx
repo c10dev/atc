@@ -13,6 +13,7 @@ import { timeAgo } from "../../derive.ts";
 import { JobDetail, NeedsYou, SuggestedReply } from "../../ui.tsx";
 import { formatClock, useSettings } from "../../settings.ts";
 import { FleetCrew } from "../FleetCrew.tsx";
+import type { AbsentMark } from "./Absent.tsx";
 import { ContextLine } from "./Context.tsx";
 import { FuelBlock, RecentFuel } from "./Fuel.tsx";
 import { ReportLine } from "./ReportMark.tsx";
@@ -120,6 +121,7 @@ export function Card({
   onRetire,
   session,
   stale = [],
+  absent = null,
   onLaunch,
   onStop,
   windowDays,
@@ -133,6 +135,7 @@ export function Card({
   onRetire: () => void;
   session: SessionRow | null | undefined; // undefined: 세션 조종을 못 읽음
   stale?: SessionRow[]; // 멈췄는데 Claude Code가 아직 목록에 둔 job(ATC-93)
+  absent?: AbsentMark | null; // 세션 없는 백그라운드 AIRCRAFT: LAUNCH on approve·RESUME after LIMIT(ATC-129)
   onLaunch: (opener: HTMLElement) => void;
   onStop: () => void;
   windowDays?: number;
@@ -198,6 +201,10 @@ export function Card({
         a.restarting ? (
           <p className="fl-absent faint" title="데스크톱의 /clear는 세션을 끝낸다. 새 세션은 같은 이름으로 다음 지시와 함께 뜬다">
             {RESTARTING_TEXT} — {a.restarting.until.slice(11, 16)}Z까지. 승인된 제안은 그동안 닫히지 않는다
+          </p>
+        ) : absent ? (
+          <p className={`fl-absent${absent.resume ? " is-resume" : " is-launch"}`} title={absent.title}>
+            {absent.label} — {absent.resume ? "reset 뒤 DISPATCH에 RESUME 카드가 나온다" : "DISPATCH 카드를 승인하면 atc가 띄운다"}. FLEET LAUNCH로 직접 띄워도 된다
           </p>
         ) : (
           <p className="fl-absent faint">세션이 없음 — LAUNCH로 띄우거나, CREW BRIEFING을 새 세션에 붙여 넣으면 IN SERVICE가 된다</p>

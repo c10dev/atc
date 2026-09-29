@@ -754,7 +754,8 @@ FLIGHT를 마치고 기다리는 백그라운드 AIRCRAFT는 한 시간 뒤 사�
 - **바이너리의 규칙**(2.1.284 daemon 코드의 `retireIfSettled`, `grep`·`dd`로 읽기만 하고 실행하지 않았다). 60초마다 한 바퀴 돈다(`Me=60000`). job이 `~/.claude/jobs/<id>/state.json`의 `updatedAt`부터 `3600000` ms(1시간. 원격 클라이언트에 이어진 세션은 `28800000`, 8시간. 메모리가 모자라면 60초) 넘게 쉬면 worker를 거둔다. 클라이언트가 붙어 있을 때(`claude attach`), 고정(pin)됐을 때, 최근 입력이 있을 때, routine이나 세션 cron(`/loop`)이 걸려 있을 때, 작업이 돌고 있을 때는 거두지 않는다. 사유는 job 상태가 끝났으면 `settled`, 아니면 `idle-prompt`, 쓰이지 않은 예비면 `stale-spare`다. 기준은 상수다: 환경 변수나 설정이 들어가지 않는다.
 - **관제 세션이 살아남는 까닭.** TOWER·OCC·MCC·CROSSCHECK는 `/loop`를 돌려 세션 cron이 걸려 있으니 "settled"가 되지 않고, 몇 분마다 tick이 턴을 시작한다.
 - **설정.** 2.1.284의 `claude --help`와 설정 목록에 백그라운드 세션의 유휴 시간 제한은 없고, 그것을 늘리는 문서화된 길도 없다. 고정(agent view의 pin)이나 붙어 있는 클라이언트는 거두기를 막고 `/loop`는 세션을 바쁘게 두지만, atc는 어느 것도 쓰지 않는다. 세션을 붙잡아 두지 않고 승인 때 다시 띄우며, keep-alive 메시지는 보내지 않는다.
-- **쓰지 않은 것.** `claude respawn <id>`는 거둔 백그라운드 세션을 옛 대화 그대로 다시 띄운다. ATC-129는 새 LAUNCH(FLEET 버튼과 같은 길)를 쓰고 새 세션에 필요한 것을 FLIGHT PLAN에 싣는다. respawn은 나중에 바꿀 수 있는 길이다.
+- **문서.** Claude Code의 agent view 문서(code.claude.com/docs/en/agent-view)는 끝났거나 다음 메시지를 기다리며 한 시간쯤 아무도 붙지 않은 세션을 supervisor가 멈춰 자원을 푼다고 적는다. 계속 돌게 하는 것은 고정(agent view에서 Ctrl+T)뿐이다. 늘리는 설정은 없다.
+- **이어 가는 길(쓰지 않음).** 대화는 남는다. `claude --help`(2.1.284)가 적는 길은 셋이다: `claude attach <id>`(대화형, 터미널 필요), `claude --resume <session-id>`, 그리고 "그 세션을 같은 ID로 백그라운드에서 이어 가는" `claude --bg --resume <session-id> "<지시>"`. 마지막 것은 끊긴 FLIGHT를 맥락째 이어 갈 수 있다. `claude respawn <id>`는 도는 세션을 지금 바이너리로 다시 띄울 뿐이다. ATC-129는 명세대로 새 LAUNCH(`launchAircraft`, FLEET 버튼과 같은 길)를 쓰고 STAND·브랜치·마지막 커밋·마지막 보고를 FLIGHT PLAN에 싣는다. `--bg --resume`으로 이어 가기는 나중에 바꿀 수 있는 길이고, 여기서 시험하지 않았다.
 
 **어떤 AIRCRAFT인가**(`snapshot.absent`, 읽기는 `server/absent-run.ts`, 순수 함수 `absentOf`는 `server/dispatch-launch.ts`).
 
