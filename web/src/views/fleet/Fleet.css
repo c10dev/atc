@@ -229,18 +229,87 @@
   color: var(--faint);
 }
 
-/* ── CONTROL SESSIONS(ATC-130): 설정 창 AGENTS에서 옮겨 옴. 줄 모양은 설정의 .config-* 그대로 ── */
+/* ── CONTROL 그룹(ATC-130·132): AIRCRAFT 목록과 같은 줄·같은 열(.fl-row 격자). 그룹 머리 한 줄에 모두가 같은 사실을 적는다 ── */
 .fl-control {
-  margin: var(--space-4) 0 0;
   scroll-margin-top: calc(var(--space-12) * 2);
+}
+.fl-control.is-attached {
+  border-top: 1px solid var(--line);
+}
+.fl-list-solo {
+  margin-top: var(--space-4);
 }
 .fl-control:focus {
   outline: none;
 }
 .fl-control:focus-visible {
-  outline: 1px solid var(--line-strong);
-  outline-offset: var(--space-1);
+  outline: 2px solid var(--cyan);
+  outline-offset: -2px;
 }
-.fl-control .label {
-  margin: 0 0 var(--space-2);
+.fl-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-1-5) var(--space-3);
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+}
+.fl-group-head .label {
+  margin: 0;
+}
+.fl-group-facts {
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.fl-c-warn {
+  margin: 0;
+  padding: var(--space-1-5) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-xs);
+}
+.fl-c-warn.is-error {
+  color: var(--alert);
+}
+.st-NEEDS-YOU .fl-row {
+  border-left-color: var(--amber);
+}
+.st-NEEDS-YOU .fl-r-status {
+  color: var(--amber);
+}
+.fl-c-fallback {
+  padding: var(--space-2) var(--space-3);
+}
+/* 펼친 곳: LAUNCH·STOP, 폴더와 첫 메시지, STALE, ACCOUNT 편집 */
+.fl-c-detail {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  min-width: 0;
+}
+.fl-c-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+.fl-c-line {
+  margin: 0;
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+/* STALE는 조용한 칩: 접힌 줄에는 없고 펼친 곳에만, 호박색 아님(ATC-132) */
+.fl-stale {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+.fl-c-account {
+  margin: 0;
 }

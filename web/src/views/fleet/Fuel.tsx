@@ -1,10 +1,12 @@
 import type { AircraftView } from "../../../../server/fleet.ts";
+import { ACCOUNT_EFFECT } from "../../../../server/control-view.ts";
 import { type FuelRemaining, fuelLabel, fuelTitle } from "../../../../server/fuel-remaining.ts";
 import { CREW_WARNING_LABEL, LEAK_LABEL, tokensText, usd } from "../../../../server/fuel-view.ts";
 import { pct } from "./shared.ts";
 import "./Fuel.css";
 
-// FUEL · ACCOUNT(ATC-60): ACCOUNT마다 쓴 몫과 구성원. 관제 세션은 AIRCRAFT와 따로 적는다 — 누가 그 ACCOUNT를 쓰는지 보이게
+// FUEL · ACCOUNT(ATC-60): ACCOUNT마다 쓴 몫과 구성원. 관제 세션은 AIRCRAFT와 따로 적는다 — 누가 그 ACCOUNT를 쓰는지 보이게.
+// FLEET의 ACCOUNT 보기는 이 블록 하나다(ATC-132). FLEET PLAN의 같은 줄에 있던 효과(hold면 LAUNCH·ENTRY 제안 안 함)를 여기에 옮겼다
 export function FuelAccounts({ accounts }: { accounts: FuelRemaining[] }) {
   if (!accounts.length) return null;
   const now = Date.now();
@@ -18,6 +20,7 @@ export function FuelAccounts({ accounts }: { accounts: FuelRemaining[] }) {
           <li key={f.group} title={fuelTitle(f, now)}>
             <span className="fl-fa-name mono">{f.account ?? `${f.control.length ? "control" : "AIRCRAFT"} ${f.control[0] ?? f.aircraft[0]}`}</span>
             <span className={`fl-fuel lv-${f.level}`}>{fuelLabel(f, now)}</span>
+            {ACCOUNT_EFFECT[f.level] && <span className={`fl-fa-effect lv-${f.level}`}>{ACCOUNT_EFFECT[f.level]}</span>}
             <span className="fl-fa-members">
               {f.aircraft.length > 0 && (
                 <span>

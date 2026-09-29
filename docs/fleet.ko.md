@@ -723,6 +723,16 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **띠의 데이터(ATC-127).** `GET /api/control/sessions`가 새 엔드포인트 대신 세션마다 `squelch`를 싣는다(`squelch.jsonl` 꼬리의 마지막 판정 시각, `squelch.json`의 `openedAt`·`quietSince`·`quietCount`. 읽기만 하고 기록이 없으면 `null`). 서버는 `claude agents --json`을 30초 캐시하고(`server/agents-cache.ts`) 띠와 FLEET 구역이 나눠 쓴다. `?fresh=1`은 캐시를 건너뛰고, FLEET 구역은 LAUNCH·STOP 뒤에 그것을 보낸다. LAUNCH·STOP의 판단은 여전히 `agentRows()`를 새로 읽는다. 브라우저는 이 엔드포인트를 1분에 한 번까지 읽고, 띠와 구역이 마지막 값(`web/src/controlData.ts`)을 나눠 쓰되 60초 시계는 각자 가진다(구역은 ACCOUNT 라벨도 읽는다). 옛 서버(`squelch`·`job` 없음)도 있는 것으로 그린다.
 - **코드.** `web/src/views/fleet/ControlSessions.tsx`가 그린다. 줄 계산(배지, 색, 어느 버튼, NEEDS YOU, STALE)과 60초 규칙은 `server/control-view.ts`의 순수 함수이고 `server/control-view.test.ts`가 시험한다.
 
+##### CONTROL 그룹 as built (ATC-132)
+
+- **AIRCRAFT와 같은 줄.** CONTROL SESSIONS는 이제 같은 목록의 둘째 그룹이다(AIRCRAFT 줄 아래, 그룹 머리 줄 `CONTROL 6`). 카드 덩어리가 아니다. 줄의 틀을 AIRCRAFT 목록과 나눠 쓰므로(`StatusList.tsx`의 `FleetRowShell`) 같은 열에 맞는다: 이름(역할과 폴더. 폴더가 이름의 소문자일 뿐이면 뺀다), AIRPORT `ATCC`, STATUS(`BUSY`·`IDLE`·`NEEDS YOU`·`NOT RUNNING`, 색은 AIRBORNE·HOLDING·호박색·NOT IN SERVICE), FLYING(job의 `detail`이나 NEEDS YOU 칩), 경과(loop 주기 `3m`), 마지막 활동, FOB, FUEL 14일. 이번 주 칸은 비운다. 목록 보기에서는 목록 아래에 이어 붙고, 카드 보기에서는 자기 열 이름 줄을 달고 따로 선다.
+- **펼침(▸, Enter·Space도 된다).** STOP이나 LAUNCH(같은 tmux 확인, 여전히 SUPERVISOR 전용), 폴더와 첫 메시지, 조용한 `STALE n` 칩(툴팁: id와 "Claude Code가 멈춘 job을 목록에 남긴 것, 무시해도 됨". 호박색이 아니고 접힌 줄에는 없다), ACCOUNT 편집(`PUT /api/control/:name/account`, 전과 같다). NEEDS YOU인 줄은 펼친 채 시작하고, SUPERVISOR가 접으면 접힌 채로 둔다.
+- **공통 사실은 한 번.** 그룹 머리에 모든 세션이 같은 것을 적는다: `CONTROL 6 · claude --bg · auto · acct-2 · model: TOWER·OCC Sonnet, MCC·CROSSCHECK Opus`. 공통 값은 가장 흔한 값이고, 줄은 그것과 다를 때만 칩을 보인다(ACCOUNT, `tmux에서 연 세션` 같은 띄운 방식, BG·TERM 칩의 permission mode). 모델은 각 세션이 최근 14일에 실제로 쓴 것(`/api/fuel`)에서 오고, 아직 기록이 없으면 폴더 설정 안내로 대신한다. daemon 경고는 그룹 맨 위에 그대로 있다.
+- **origin 칩.** ATC-98이 AIRCRAFT 줄에 붙인 것과 같은 `fl-origin` 칩: `BG`(툴팁에 job id), tmux pane이면 `TERM`, 데스크톱 세션이면 `DESKTOP`.
+- **데이터.** 새로 읽기는 ATC-130 그대로다(`/api/control/sessions`는 1분에 한 번까지). 마지막 활동·origin·permission mode는 snapshot에서, FOB와 14일 FUEL COST는 그룹을 열 때 `GET /api/fuel?days=14`를 한 번 읽어(60초 동안 재사용) 얻는다. 새로 도는 것은 없다. FUEL 기록이나 context가 없는 세션은 0이 아니라 `—`이다. API는 바뀌지 않았다.
+- **ACCOUNT 보기는 하나.** AIRCRAFT 목록 아래 FUEL ACCOUNT 블록이 FLEET의 유일한 ACCOUNT 보기다. `hold` 수준이 하는 일(`LAUNCH·ENTRY 제안 안 함`, FLEET PLAN이 싣던 효과 글)도 이제 여기에 있다. FLEET PLAN의 ACCOUNT 줄은 없앴고, FLEET 응답에 `fuelAccounts`가 없는 옛 서버일 때만 다시 보인다.
+- **코드.** 줄 모델, 그룹 사실(공통 값과 줄별 다름 표시), 상태 규칙, ACCOUNT 보기 선택은 `server/control-view.ts`의 순수 함수(`controlRow2Of`, `controlGroupOf`, `controlGroupFacts`, `accountViewOf`)이고 `server/control-view.test.ts`가 시험한다. `web/src/views/fleet/ControlSessions.tsx`가 그린다.
+
 #### 8.5.2 세션 출처 as built (ATC-76)
 
 `claude agents --json`은 `background`인지 `interactive`인지만 알려 준다. 2026-09-28에 interactive 팀 세션 10개가 모두 데스크톱 세션이었다. 이 차이는 조종(atc는 백그라운드 세션만 멈추고 다시 띄운다), 계정(백그라운드는 호스트 CLI 로그인, 데스크톱은 앱의 계정), 수명(데스크톱 세션은 앱 연결에 달림), 2b 전달(permission mode가 다른 세션은 cross-session 메시지를 사용자 승인까지 붙들 수 있다)에 모두 걸렸다.

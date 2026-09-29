@@ -49,3 +49,12 @@
   margin: 0;
   font: 600 var(--text-xs) var(--mono);
 }
+
+/* ACCOUNT가 hold일 때 DISPATCH가 하는 일(ATC-132, FLEET PLAN 줄에서 옮김) */
+.fl-fa-effect {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.fl-fa-effect.lv-hold {
+  color: var(--amber);
+}
