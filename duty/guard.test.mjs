@@ -235,15 +235,25 @@ test("Grep: .env* 파일이 든 폴더는 통째로 훑지 않는다(하위에 �
 });
 
 test("심볼릭 링크로 저장소 밖 비밀을 가리켜도 푼 경로로 막는다", () => {
+  // 이 컴퓨터에 ~/.ssh가 없어도(CI) 되도록 저장소 밖 임시 폴더와 저장소 안의 .env 파일을 목표로 삼는다
   const dir = mkdtempSync(join(REPO, "duty", "guard-link-"));
+  const outside = mkdtempSync(join(tmpdir(), "duty-guard-out-"));
   try {
-    symlinkSync(join(HOME, ".ssh"), join(dir, "ssh"));
+    writeFileSync(join(outside, "secret.txt"), "x");
+    symlinkSync(outside, join(dir, "out"));
+    symlinkSync(join(outside, "secret.txt"), join(dir, "file"));
+    writeFileSync(join(dir, ".env.tmp"), "SECRET=1");
+    symlinkSync(join(dir, ".env.tmp"), join(dir, "innocent"));
     symlinkSync("/etc/passwd", join(dir, "pw"));
-    assert.notEqual(read("Read", { file_path: join(dir, "ssh", "config") }), null);
+    assert.notEqual(read("Read", { file_path: join(dir, "out", "secret.txt") }), null, "저장소 밖 폴더로의 링크");
+    assert.notEqual(read("Read", { file_path: join(dir, "file") }), null, "저장소 밖 파일로의 링크");
     assert.notEqual(read("Read", { file_path: join(dir, "pw") }), null);
-    assert.notEqual(read("Glob", { pattern: "*", path: join(dir, "ssh") }), null);
+    assert.notEqual(read("Glob", { pattern: "*", path: join(dir, "out") }), null);
+    assert.match(read("Read", { file_path: join(dir, "innocent") }) ?? "", /\.env/, "이름이 무해한 링크가 .env 파일을 가리켜도 푼 경로로 막는다");
+    assert.equal(read("Read", { file_path: join(dir, "missing.txt") }), null, "없는 파일은 이름만 본다(저장소 안이면 통과)");
   } finally {
     rmSync(dir, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
   }
 });
 
