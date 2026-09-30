@@ -9,6 +9,8 @@ import { OpenFlight } from "../FlightLink.tsx";
 import { timeAgo } from "../derive.ts";
 import { atfmAlertOf, dispatchLineParts } from "../readiness-line.ts";
 import { PriorityMark } from "../ui.tsx";
+import { useAlerts } from "../alerts-runtime.ts";
+import { proposalAlertKey } from "../dispatch-alerts.ts";
 import { AtfmAlert, AtfmPanel, useAtfm } from "./Atfm.tsx";
 import { type ReadinessItem, Readiness2b } from "./Readiness2b.tsx";
 import { BriefingLines, CardDetails, type CardBrief, FactsLine } from "./DispatchBriefing.tsx";
@@ -298,9 +300,11 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       setError((e as Error).message);
     }
   }, []);
+  // 제안은 스냅샷을 바꾸지 않고 5분 주기로 생기므로, 제안 알림(pending|proposal|)이 늘거나 줄 때도 다시 읽는다(ATC-212)
+  const proposalKey = proposalAlertKey(useAlerts().items);
   useEffect(() => {
     load();
-  }, [load, refreshKey]);
+  }, [load, refreshKey, proposalKey]);
 
   // CROSSCHECK 판정을 그대로 기록한다(한 번 클릭). disagree면 CROSSCHECK 사유와 사유 칩(reasonCodes)을 거절 사유로 쓴다.
   // 칩이 없는 옛 mark는 칩 없이(사유 문장에서 추정하지 않는다)
