@@ -15,31 +15,16 @@ import {
 import { type Index, occupantsOf, timeAgo } from "../derive.ts";
 import { formatClock, type Settings, updateSettings, useSettings } from "../settings.ts";
 import { SplitFlap } from "../SplitFlap.tsx";
+import { useMilestones } from "../useMilestones.ts";
 import { AirportCode, PriorityMark, SessionBadge } from "../ui.tsx";
 
 // DEPARTURES 순서: 곧 LANDING할 FLIGHT가 위로
-// OOOI(ATC-123): FLIGHT마다 OUT·OFF·ON·IN의 실제 시각. 서버에 없거나 실패하면 아무것도 그리지 않는다. 스냅샷이 바뀌는 분마다 다시 읽는다
-function useMilestones(refreshKey: string): ReadonlyMap<string, Milestones> {
-  const [flights, setFlights] = useState<ReadonlyMap<string, Milestones>>(new Map());
-  useEffect(() => {
-    let live = true;
-    fetch("/api/milestones")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((b: { flights?: Record<string, Milestones> } | null) => live && setFlights(new Map(Object.entries(b?.flights ?? {}))))
-      .catch(() => live && setFlights(new Map()));
-    return () => {
-      live = false;
-    };
-  }, [refreshKey]);
-  return flights;
-}
-
 const LIST_ORDER: PhaseTone[] = ["cleared", "approach", "enroute", "filed", "triage", "scheduled", "arrived", "canceled"];
 
 export function Tickets({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; now: number }) {
   const settings = useSettings();
   const showClosed = settings.fidsClosed;
-  const milestones = useMilestones(snapshot.at.slice(0, 16));
+  const milestones = useMilestones(snapshot.at.slice(0, 16)).flights;
 
   const columns = snapshot.columns.filter(
     (c) => showClosed || (c.type !== "canceled" && c.type !== "duplicate" && c.type !== "backlog"),

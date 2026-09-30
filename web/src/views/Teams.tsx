@@ -14,6 +14,8 @@ import { OpenFlight } from "../FlightLink.tsx";
 import { activeFirst, hasActiveClaim, type Index, isGateCleanup, sortSessions, timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { ActivityLine, AirportCode, AwayTag, NeedsYou, SessionPlace } from "../ui.tsx";
+import { type MilestoneData, useMilestones } from "../useMilestones.ts";
+import { FlightProgressBar } from "./FlightProgress.tsx";
 import { HumanCheckQueue, HumanCheckTag } from "./HumanCheck.tsx";
 import "./Teams.css";
 
@@ -39,6 +41,7 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
   const pulls = snapshot.pulls ?? [];
   const github = snapshot.github ?? null;
   const landing = landingIndex(pulls, snapshot.autoland);
+  const ms = useMilestones(snapshot.at.slice(0, 16)); // 진행 막대(ATC-211): 스냅샷이 바뀌는 분마다 한 번
 
   return (
     <section>
@@ -82,6 +85,7 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
                   now={now}
                   nameOf={nameOf}
                   landing={landing}
+                  ms={ms}
                   clearances={snapshot.clearances.filter((c) => c.to === s.id)}
                 />
               ))}
@@ -104,6 +108,7 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
                 now={now}
                 nameOf={nameOf}
                 landing={landing}
+                ms={ms}
                 clearances={snapshot.clearances.filter((c) => c.to === s.id)}
               />
             ))}
@@ -121,6 +126,7 @@ function Strip({
   now,
   nameOf,
   landing,
+  ms,
   clearances,
 }: {
   session: Session;
@@ -129,6 +135,7 @@ function Strip({
   now: number;
   nameOf: (id: string) => string;
   landing: LandingIndex;
+  ms: MilestoneData;
   clearances: Clearance[];
 }) {
   const { clock } = useSettings();
@@ -228,6 +235,19 @@ function Strip({
                   {c.source === "transcript" && <span className="stamp dashed">ESTIMATED TRACK</span>}
                   {c.source === "cwd" && <span className="stamp dashed">CWD</span>}
                 </div>
+                {ws?.ticketKey && ms.progress.get(ws.ticketKey) && (
+                  <div className="leg-progress">
+                    <FlightProgressBar progress={ms.progress.get(ws.ticketKey)!} milestones={ms.flights.get(ws.ticketKey) ?? null} clock={clock}>
+                      {ms.progress.get(ws.ticketKey)!.segment === "landing" &&
+                        (landing.byStand.get(c.workspacePath) ?? []).map((pr) => (
+                          <span key={prKey(pr)} className="fp-tags">
+                            <LandingBadge pr={pr} />
+                            <AutolandTag pr={pr} landing={landing} />
+                          </span>
+                        ))}
+                    </FlightProgressBar>
+                  </div>
+                )}
               </div>
             );
           })

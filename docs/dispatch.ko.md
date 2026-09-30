@@ -433,6 +433,16 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 - PILOT'S DISCRETION: 머지된 PR이 여럿이면 ON은 가장 이른 머지이고 IN은 그 PR의 머지 커밋을 따른다. OFF는 "대표 PR"을 고르지 않고 가장 이른 후보를 쓴다.
 - 아직 없는 것(뒤에 더할 수 있다): WAKE 기대치에서 온 이정표별 목표 시각, IATA식 지연 사유 코드, ETA.
 
+## STRIPS 진행 막대 as built (ATC-211)
+
+STRIPS에 AIRCRAFT마다 그 FLIGHT가 어디까지 왔는지 보인다. 위의 OOOI 이정표를 바탕으로 한다. 지난 이정표는 사실이고, 추정은 지금 구간에만 있으며 퍼센트나 도착 시각이 아니라 범위다. 팀이 스스로 알리는 진행(%, todo)은 읽지 않는다.
+
+- **모델**(`server/progress.ts`, 순수, 브라우저에서도 씀. GLOBE가 다시 쓴다). `typicalDurations`가 최근 60일 LOGBOOK 줄의 `blockMin`(OUT→OFF, `work`)과 `landingWaitMin`(OFF→ON, `landing`)의 p25·p50·p75를 셈한다. TYPE×WAKE → WAKE → AIRPORT로 넓혀 가며 표본이 3개 이상인 첫 단계를 쓴다(`tripFuelOf`와 같은 방식, 같은 `quantile`). 되돌려진 줄, PR 없는 줄, `null` 값, 그 FLIGHT 자신은 뺀다. `progressOf`는 지금 구간(`work` OUT→OFF, `landing` OFF→ON, `rts` ON→IN, `done`), 지난 분, 보통 범위(표본이 적으면 `null`), p75를 넘었는지(`late`), 표식 위치를 돌려준다. OUT이 없으면 막대가 없다.
+- **구간.** `rts`는 LOGBOOK 통계가 없어 지난 시간만 보인다. 머지가 RTS로 배포되지 않는 FLIGHT(MCC AIRPORT가 아님)는 ON에서 `done`이다. STAND 없는 FLIGHT(PR 없음)는 ARRIVED까지 `work`뿐이다.
+- **API.** `GET /api/milestones`가 FLIGHT마다 `progress`도 돌려준다(`server/milestones-run.ts`의 `progressNow`). PILOT'S DISCRETION: 새 길을 내지 않고 한 응답에 붙였다. 화면이 이미 스냅샷 분마다 이 길을 읽고, 진행이 같은 이정표를 쓰기 때문이다. LOGBOOK과 스냅샷만 읽고 아무것도 쓰지 않으며 코드 호스트·Linear를 부르지 않는다.
+- **화면**(`web/src/views/FlightProgress.tsx`, 그리기만). FLIGHT가 있는 STAND 줄마다 얇은 막대 하나: 네 칸, 지난 칸은 실선, 지금 칸은 점선과 경과/p75 위치의 표식(칸 끝에서 멈춤), 앞 칸은 옅은 점선. 옆에 `작업 42분 · 보통 30–60분 (BUILD·M, n=12)`, `착륙 대기 8분 · 보통 5–20분 (…)`, `작업 42분 · 데이터 부족`, `RTS 대기 5분`이 붙는다. p75를 넘으면 표식과 글이 amber이고 글에 `길어짐`이 붙는다. 마우스를 올리면 이정표 시각(`milestoneTitle`), 같은 글이 `aria-label`에도 있다. `landing`에서는 이미 있는 착륙 배지와 AUTOLAND 표시를 막대 옆에 놓는다(다시 셈하지 않음). HOLD·NORDO·NEEDS YOU 표시는 그대로이고 AD HOC 줄에는 막대가 없다. 색은 `:root` 토큰만 쓴다.
+- 아직 없음: 연료 게이지(토큰은 진행이 아니다), GLOBE, 막대 위 GO AROUND.
+
 ## 도착 보고 구현 내용(ATC-124)
 
 CAPTAIN의 최종 보고는 OCC가 읽고 요약해야 하는 자유 글이었다. 이제 고정 머리와 고정 줄로 시작하고, 받은 세션이 명령 하나로 기록한다. atc는 팀 메시지를 읽지 않는다: 보고를 받은 세션(OCC, 또는 ENGINEERING)이 READBACK처럼 기록한다.

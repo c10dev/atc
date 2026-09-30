@@ -433,6 +433,16 @@ Airlines log OOOI, the four actual times of a flight. atc gives each FLIGHT the 
 - PILOT'S DISCRETION: ON is the earliest merge when a FLIGHT has several merged PRs, and IN follows that PR's merge commit; OFF takes the earliest candidate rather than trying to pick a "main" PR.
 - Not built (a later step could add): target times per milestone from the WAKE expectation, IATA-style delay reason codes, and ETAs.
 
+## STRIPS progress bar as built (ATC-211)
+
+STRIPS shows how far each AIRCRAFT's FLIGHT is, built on the OOOI milestones above. Past milestones are facts; only the current segment gets an estimate, and the estimate is a range, not a percentage or an ETA. The crew's own progress (%, todo lists) is not read.
+
+- **Model** (`server/progress.ts`, pure, browser-safe; GLOBE can reuse it). `typicalDurations` takes p25/p50/p75 of `blockMin` (OUT→OFF, segment `work`) and `landingWaitMin` (OFF→ON, `landing`) from LOGBOOK lines of the last 60 days, widening TYPE×WAKE → WAKE → AIRPORT until a level has at least 3 samples (like `tripFuelOf`, same `quantile`). Reverted lines, lines without a PR and `null` values are left out, and so is the FLIGHT itself. `progressOf(input, now)` returns the current segment (`work` OUT→OFF, `landing` OFF→ON, `rts` ON→IN, `done`), the elapsed minutes, the typical range (`null` with too few samples), `late` past p75 and a `marker` position. No OUT means no bar.
+- **Segments.** `rts` has no LOGBOOK statistics, so it shows elapsed time only. A FLIGHT whose merge RTS does not deploy (not the MCC AIRPORT) is `done` at ON. A STAND-free FLIGHT (no PR) has only `work` until its ARRIVED.
+- **API.** `GET /api/milestones` now also returns `progress` per FLIGHT (`server/milestones-run.ts`, `progressNow`). PILOT'S DISCRETION: one response, not a sibling endpoint, because the screens already read it once per snapshot minute and the progress needs the same milestones. It only reads LOGBOOK and the snapshot; it writes nothing and calls neither the code host nor Linear.
+- **Screen** (`web/src/views/FlightProgress.tsx`, drawing only). One thin bar per STAND leg that has a FLIGHT: four segments, solid past, dashed current with a marker at elapsed/p75 (stopping at the segment end), faint dashed future. Next to it: `작업 42분 · 보통 30–60분 (BUILD·M, n=12)`, `착륙 대기 8분 · 보통 5–20분 (…)`, `작업 42분 · 데이터 부족`, `RTS 대기 5분`. Past p75 the marker and text turn amber and the text adds `길어짐`. Hover shows the milestone times (`milestoneTitle`); the bar has an `aria-label` with the same text. In `landing` the existing landing badge and AUTOLAND tag sit next to the bar (not computed again). HOLD, NORDO and NEEDS YOU keep their marks; AD HOC strips get no bar. Colours use `:root` tokens only.
+- Not built: a fuel gauge (tokens are not progress), GLOBE, GO AROUND on the bar.
+
 ## Arrival reports as built (ATC-124)
 
 The CAPTAIN's final report used to be free text that OCC had to read and summarize. It now starts with a fixed header and fixed lines that the receiving session records with one command. atc does not read team messages: the session that received the report (OCC, or ENGINEERING) records it, like a READBACK.
