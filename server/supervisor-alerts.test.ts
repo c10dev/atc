@@ -78,3 +78,21 @@ test("diffAlerts: 처음 생긴 key와 사라진 key", () => {
   assert.deepEqual([keys(d.raised), d.cleared], [["c"], ["a"]]);
   assert.deepEqual(diffAlerts(new Map(), []), { raised: [], cleared: [] });
 });
+
+test("STAND 경로가 든 ALERT는 문구 끝에 STAND 이름을 붙인다(ATC-152): 키는 그대로, 이미 이름이 있으면 중복하지 않는다", () => {
+  const alerts = [
+    { kind: "unattended", message: "주인 없는 변경 1개", workspacePath: "/wt/atc-101-show-tier" },
+    { kind: "orphan", message: "종료된 세션 be933ce6 의 점유가 남아 있음", workspacePath: "/wt/gone", sessionIds: [] },
+    { kind: "conflict", message: "atc-121-rts-race에 두 세션이 있음", workspacePath: "/wt/atc-121-rts-race" },
+    { kind: "no-workspace", message: "진행 중인데 워크트리가 없음", ticketKey: "VOC-145" },
+  ] as AlertsInput["alerts"];
+  const out = supervisorAlertsOf(base({ alerts, workspaces: [{ path: "/wt/atc-101-show-tier", ticketKey: "ATC-101", name: "atc-101-show-tier" }, { path: "/wt/atc-121-rts-race", ticketKey: "ATC-121" }] }));
+  assert.deepEqual(out.map((a) => a.text), [
+    "주인 없는 변경 1개 — atc-101-show-tier",
+    "종료된 세션 be933ce6 의 점유가 남아 있음 — gone", // 워크트리 목록에 없으면 경로의 마지막 마디
+    "atc-121-rts-race에 두 세션이 있음", // 문구에 이미 있음(이름이 목록에 없어도 경로의 마지막 마디로 비교)
+    "진행 중인데 워크트리가 없음", // STAND 경로 없음
+  ]);
+  // 키는 문구와 무관하다: 브라우저와 메뉴 막대가 이 키로 거른다
+  assert.deepEqual(keys(out), ["alert|unattended|/wt/atc-101-show-tier||", "alert|orphan|/wt/gone||", "alert|conflict|/wt/atc-121-rts-race||", "alert|no-workspace||VOC-145|"]);
+});

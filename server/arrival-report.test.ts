@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendReport, foldReports, parseReport, readReports, ReportError, reportLine, type ArrivalReport } from "./arrival-report.ts";
-import { BLOCKED_KEEP_MS, followingOf, REPORT_GRACE_MS, type FollowInput } from "./following.ts";
+import { BLOCKED_KEEP_MS, followingOf, REPORT_GRACE_MS, REPORT_START, type FollowInput } from "./following.ts";
+import type { Proposal } from "./proposals.ts";
 import type { PrEntry } from "./logbook.ts";
 import type { Ticket } from "./model.ts";
 
@@ -79,18 +80,35 @@ const input = (patch: Partial<FollowInput> = {}): FollowInput => ({
 });
 const codes = (i: FollowInput) => followingOf(i).flatMap((f) => f.issues.map((x) => `${f.flight}:${x.code}`));
 
-test("FOLLOWING no-report: PR이 머지(ON)된 지 30분이 지나도 기록된 보고가 없으면 한 건, 보고가 있으면 없다", () => {
-  assert.ok(codes(input()).includes("ATC-1:no-report"));
-  const item = followingOf(input()).find((f) => f.flight === "ATC-1")!.issues.find((x) => x.code === "no-report")!;
+// DISPATCH가 보낸(send) 제안. 머지 뒤라 DEPARTED 상태로 남아 있다
+const sentProposal = (over: Partial<Proposal> = {}): Proposal =>
+  ({ id: "D-0001", at: MERGED_AT, kind: "ASSIGN", flight: "ATC-1", aircraft: null, aircraftName: "TEAM_H", airport: "ATCC", status: "departed", statusAt: MERGED_AT, decidedAt: MERGED_AT, departedVia: "stand", timeline: { proposed: MERGED_AT, approved: MERGED_AT, sent: MERGED_AT, accepted: MERGED_AT, departed: MERGED_AT }, hold: [], holdAt: null, ...over }) as unknown as Proposal;
+const noReport = (i: FollowInput) => followingOf(i).find((f) => f.flight === "ATC-1")?.issues.find((x) => x.code === "no-report");
+
+test("FOLLOWING no-report(ATC-152): DISPATCH가 보낸 FLIGHT가 ATC-124 뒤에 머지됐고 보고가 없을 때만, 정보로, 머지 뒤 하루만", () => {
+  const dispatched = input({ proposals: [sentProposal()] });
+  const item = noReport(dispatched)!;
+  assert.ok(item);
+  assert.equal(item.severity, "info"); // ADVISORY라 SUPERVISOR 알림 제목 숫자에 세지 않는다
   assert.equal(item.key, "ATC-1|no-report");
   assert.equal(item.since, new Date(Date.parse(MERGED_AT) + REPORT_GRACE_MS).toISOString());
+  // 보고를 기록하면 없다(머지 전에 기록돼도 된다)
+  const rep = parseReport(ok, "ATC-1", "D-0001", "2026-09-29T09:00:00.000Z");
+  assert.equal(noReport(input({ proposals: [sentProposal()], arrivalReports: foldReports([rep]) })), undefined);
   // 30분이 안 됐으면 아직
-  assert.ok(!codes(input({ now: Date.parse(MERGED_AT) + 29 * MIN })).includes("ATC-1:no-report"));
-  // 보고는 머지 전에 기록돼도 된다(PR을 올릴 때 보고하므로)
-  const rep = parseReport(ok, "ATC-1", null, "2026-09-29T09:00:00.000Z");
-  assert.ok(!codes(input({ arrivalReports: foldReports([rep]) })).includes("ATC-1:no-report"));
+  assert.equal(noReport(input({ proposals: [sentProposal()], now: Date.parse(MERGED_AT) + 29 * MIN })), undefined);
+  // 24시간이 지나면 저절로 사라진다(경계: 정확히 24시간은 아직)
+  assert.ok(noReport(input({ proposals: [sentProposal()], now: Date.parse(MERGED_AT) + 24 * 60 * MIN })));
+  assert.equal(noReport(input({ proposals: [sentProposal()], now: Date.parse(MERGED_AT) + 24 * 60 * MIN + 1 })), undefined);
+  // DISPATCH가 보내지 않은 FLIGHT(직접 작업·ENGINEERING PR: 제안이 없거나 send가 없다)는 받지 않는다
+  assert.equal(noReport(input()), undefined);
+  assert.equal(noReport(input({ proposals: [sentProposal({ timeline: { proposed: MERGED_AT, approved: MERGED_AT } })] })), undefined);
+  // ATC-124 보고 기록이 시작되기 전에 머지된 FLIGHT는 받지 않는다
+  const early = (at: string) => input({ proposals: [sentProposal()], logbook: [{ ...entry("ATC-1"), arrivedAt: at } as PrEntry], now: Date.parse(at) + 31 * MIN });
+  assert.equal(noReport(early("2026-09-29T08:00:00.000Z")), undefined);
+  assert.ok(noReport(early(REPORT_START)));
   // 머지 안 된 FLIGHT는 대상이 아니다
-  assert.ok(!codes(input({ logbook: [] })).includes("ATC-1:no-report"));
+  assert.equal(noReport(input({ proposals: [sentProposal()], logbook: [] })), undefined);
 });
 
 test("FOLLOWING blocked-report: BLOCKED가 none이 아닌 보고가 하루 안이면 한 건, none이거나 하루가 지나면 없다", () => {

@@ -30,7 +30,7 @@ export interface SupervisorAlert {
 export interface AlertsInput {
   sessions: Pick<Session, "id" | "name" | "status" | "health">[];
   alerts: Alert[];
-  workspaces: Pick<Workspace, "path" | "ticketKey">[];
+  workspaces: (Pick<Workspace, "path" | "ticketKey"> & Partial<Pick<Workspace, "name">>)[];
   tickets: Pick<Ticket, "key" | "stateType">[];
   following: Pick<FollowItem, "flight" | "aircraft" | "issues">[];
   proposals: Pick<Proposal, "id" | "kind" | "status" | "flight" | "aircraftName" | "holdAt" | "statusAt">[];
@@ -49,6 +49,9 @@ const NEXT_BY_ISSUE: Partial<Record<string, string>> = {
   fuel: "ACCOUNT의 FUEL을 확인한다",
 };
 
+// STAND 이름(ATC-152): 워크트리 이름, 없으면 경로의 마지막 마디
+export const standNameOf = (path: string, names: ReadonlyMap<string, string | undefined>) => names.get(path) || path.replace(/\/+$/, "").split("/").pop() || path;
+
 const short = (sha: string | null | undefined) => (sha ? sha.slice(0, 7) : "?");
 
 export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
@@ -58,6 +61,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
     ticketByKey: new Map(inp.tickets.map((t) => [t.key, { stateType: t.stateType }])),
   };
   const nameOf = new Map(inp.sessions.map((s) => [s.id, s.name]));
+  const standNames = new Map(inp.workspaces.map((w) => [w.path, w.name]));
 
   // 1) ALERT(ATC-110 등급 그대로). health 종류는 LIMIT·RESUME·STALLED·NETWORK 같은 AIRCRAFT health
   for (const a of inp.alerts) {
@@ -71,7 +75,8 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       cue: null,
       aircraft,
       flight: a.ticketKey ?? (a.workspacePath ? (idx.wsByPath.get(a.workspacePath)?.ticketKey ?? null) : null),
-      text: a.message,
+      // 키에 STAND 경로가 든 ALERT(주인 없는 변경·종료된 세션의 점유 …)는 어느 STAND인지 문구에 붙인다(ATC-152). 이미 이름이 있으면 그대로
+      text: a.workspacePath && !a.message.includes(standNameOf(a.workspacePath, standNames)) ? `${a.message} — ${standNameOf(a.workspacePath, standNames)}` : a.message,
       next: health?.next ?? "",
       link: "#strips",
       since: null,

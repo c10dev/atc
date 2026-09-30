@@ -143,7 +143,7 @@ BLOCKED none
 
 - PR이 없는 SURVEY·CHECK FLIGHT는 `PR #211` 대신 `RESULT <링크>`를 쓴다. 직접 지시로 받았으면 `→ ENGINEERING`이다.
 - 받은 세션(OCC, 또는 ENGINEERING)이 `atcctl dispatch report`로 고정 칸만 기록한다. atc는 팀 메시지를 읽지 않고, 자유 요약은 저장하지 않는다.
-- FLIGHT FOLLOWING에 두 가지가 더 뜬다: PR이 머지된 지 30분이 지나도 기록된 보고가 없는 FLIGHT(`no-report`), 보고의 `BLOCKED`가 `none`이 아닌 FLIGHT(`blocked-report`, 하루). OCC가 SUPERVISOR에게 알린다.
+- FLIGHT FOLLOWING에 두 가지가 더 뜬다: DISPATCH가 보낸 FLIGHT의 PR이 머지된 지 30분이 지나도 기록된 보고가 없으면(`no-report`, 정보라 알림 제목 숫자에 세지 않고 머지 뒤 하루면 사라진다), 보고의 `BLOCKED`가 `none`이 아닌 FLIGHT(`blocked-report`, 하루). `blocked-report`는 OCC가 SUPERVISOR에게 알린다.
 
 ## 기계적 안전장치
 

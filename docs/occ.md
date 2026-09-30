@@ -268,7 +268,7 @@ A `tail:` FLIGHT without a proposal counts as STAND-free when its FLIGHT TYPE is
 | `pr-not-cleared` | a PR, not CLEARED after 1.5×; the text lists its landing blocks | warn |
 | `landing-wait` | CLEARED for more than 1 hour without landing; landing is the SUPERVISOR's call | info |
 | `no-arrival` | STAND-free FLIGHTs only: DEPARTED, no ARRIVED after 1.5× the WAKE expectation | warn |
-| `no-report` | the PR merged (ON) more than 30 minutes ago and no arrival report is recorded (ATC-124, `dispatch report`) | warn |
+| `no-report` | the PR of a DISPATCH-sent FLIGHT merged (ON) more than 30 minutes ago, after reports began (2026-09-29T08:34Z), and no arrival report is recorded; gone 24 hours after ON (ATC-124, ATC-152, `dispatch report`) | info |
 | `blocked-report` | a recorded arrival report has `BLOCKED` other than `none`; visible for a day | warn |
 | `review-no-pr` | Linear says In Review but there is no PR | warn |
 | `done-not-merged` | Linear says Done but there is no merged PR | warn |
