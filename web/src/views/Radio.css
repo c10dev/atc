@@ -1,0 +1,193 @@
+/* RADIO 탭(ATC-171). 색·글꼴·간격은 styles.css의 :root 토큰만 쓴다(테마를 따라간다). 상태는 색만이 아니라 글자로도 적는다. */
+.radio {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+.rd-bar,
+.rd-replay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.rd-freqs,
+.rd-speeds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.rd-chip,
+.rd-btn,
+.rd-more,
+.rd-new {
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: var(--space-0-5) var(--space-2);
+  cursor: pointer;
+}
+.rd-chip:hover,
+.rd-btn:hover,
+.rd-more:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.rd-chip[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--panel-3);
+  border-color: var(--cyan);
+}
+.rd-chip:focus-visible,
+.rd-btn:focus-visible,
+.rd-more:focus-visible,
+.rd-new:focus-visible,
+.rd-log:focus-visible,
+.rd-link:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 1px;
+}
+.rd-select {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--faint);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.12em;
+}
+.rd-select select {
+  font: var(--text-sm) var(--mono);
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--space-0-5) var(--space-1);
+}
+.rd-mode {
+  font: 700 var(--text-xs) var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+.rd-scrub {
+  flex: 1 1 160px;
+  min-width: 120px;
+  accent-color: var(--cyan);
+}
+.rd-range {
+  font-size: var(--text-xs);
+}
+.rd-wrap {
+  position: relative;
+}
+.rd-log {
+  max-height: calc(100vh - 260px);
+  min-height: 200px;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  background: var(--scope);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.rd-list,
+.rd-replies {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.rd-thread {
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--line);
+}
+.rd-thread:last-child {
+  border-bottom: 0;
+}
+.rd-replies {
+  margin-left: var(--space-6);
+  border-left: 1px solid var(--line-strong);
+  padding-left: var(--space-2);
+}
+.rd-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-0-5) var(--space-2);
+  padding: var(--space-0-5) 0;
+}
+.rd-time {
+  color: var(--faint);
+}
+.rd-freq {
+  min-width: 8ch;
+  color: var(--cyan);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+}
+.rd-head {
+  color: var(--text);
+  min-width: 0;
+}
+.rd-state {
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1-5);
+}
+.rd-state.is-overdue {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.rd-state.is-unable {
+  color: var(--alert);
+  border-color: var(--alert);
+}
+.rd-state.is-orphan {
+  color: var(--faint);
+  border-style: dashed;
+}
+.rd-line.is-overdue {
+  border-left: 3px solid var(--amber);
+  padding-left: var(--space-2);
+}
+.rd-link {
+  color: var(--blue);
+  font-size: var(--text-xs);
+}
+.rd-body {
+  flex-basis: 100%;
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2) var(--space-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: var(--text-sm) var(--mono);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.rd-new {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-3);
+  color: var(--text);
+  background: var(--panel-3);
+  border-color: var(--cyan);
+  box-shadow: var(--shadow-2);
+}
+@media (max-width: 640px) {
+  .rd-time {
+    flex-basis: 100%;
+  }
+  .rd-log {
+    max-height: calc(100vh - 340px);
+  }
+}

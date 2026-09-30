@@ -26,6 +26,7 @@ const Metrics = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import
 const Network = lazyTab<{ refreshKey: string }>(() => import("./views/Network.tsx"), "Network");
 const Dispatch = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Dispatch.tsx"), "Dispatch");
 const Schedule = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Schedule.tsx"), "Schedule");
+const Radio = lazyTab<Record<string, never>>(() => import("./views/Radio.tsx"), "Radio");
 const Docs = lazyTab<Record<string, never>>(() => import("./views/Docs.tsx"), "Docs");
 
 const TABS = [
@@ -38,6 +39,7 @@ const TABS = [
   { id: "network", code: "NETWORK" },
   { id: "dispatch", code: "DISPATCH" },
   { id: "schedule", code: "SCHEDULE" },
+  { id: "radio", code: "RADIO" },
   { id: "docs", code: "DOCS" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
@@ -245,6 +247,8 @@ function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number) {
       return <Dispatch refreshKey={refreshKey} now={now} />;
     case "schedule":
       return <Schedule refreshKey={refreshKey} now={now} />;
+    case "radio":
+      return <Radio />;
     case "docs":
       return <Docs />;
     default:
