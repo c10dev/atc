@@ -38,7 +38,8 @@ import { mountSchedule } from "./schedule.ts";
 import { mountSettings } from "./settings.ts";
 import { mountSquelch } from "./squelch-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
-import { currentAlerts, runSupervisorAlerts } from "./supervisor-alerts-run.ts";
+import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
+import { parseTopics, type SupervisorSummary } from "./supervisor-summary.ts";
 import { mountVoice } from "./voice-run.ts";
 import type { AlertEvent } from "./supervisor-alerts.ts";
 import { entryScript } from "./version.ts";
@@ -51,6 +52,7 @@ let current: Snapshot | null = null;
 let signature = "";
 const listeners = new Set<(s: Snapshot) => void>();
 const alertListeners = new Set<(e: AlertEvent) => void>(); // SUPERVISOR alerts(ATC-87)
+const summaryListeners = new Set<(s: SupervisorSummary) => void>(); // SUPERVISOR SUMMARY(ATC-153)
 const eventLog = new EventLog();
 let lastSampleAt = 0;
 let lastDispatchAt = 0;
@@ -118,6 +120,9 @@ async function tick() {
     // SUPERVISOR alerts(ATC-87): 새로 생기거나 사라진 key를 `alert` 이벤트로. 스냅샷이 안 바뀌어도(RTS 결과 같은 파일 기록) 센다
     const alertEvent = isWarm(next) ? runSupervisorAlerts(next) : null;
     if (alertEvent) for (const l of alertListeners) l(alertEvent);
+    // SUPERVISOR SUMMARY(ATC-153): 알림 목록을 센 직후, 내용이 바뀐 때만 `summary` 이벤트로
+    const summary = isWarm(next) ? runSummary(next) : null;
+    if (summary) for (const l of summaryListeners) l(summary);
 
     current = next;
     if (sig !== signature) {
@@ -184,31 +189,44 @@ mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고
 
 app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); // 지금 있는 알림 key 전체(읽기만)
 
-app.get("/api/events", (c) =>
-  streamSSE(c, async (stream) => {
+// 알림 요약(ATC-153, 읽기만): 메뉴 막대·브라우저·atc-app이 같은 숫자를 읽는다. 아직 스냅샷이 없으면 503
+app.get("/api/supervisor-summary", (c) => (current ? c.json(summaryNow(current)) : c.json({ error: "snapshot not ready" }, 503)));
+
+// ?topics=snapshot,alert,version,summary: 받을 이벤트를 고른다. 없으면 summary만 뺀 전부(지금까지와 같다). ping은 늘 보낸다. 모르는 이름은 400
+app.get("/api/events", (c) => {
+  const parsed = parseTopics(c.req.query("topics"));
+  if (!parsed.ok) return c.json({ error: `unknown topics: ${parsed.unknown.join(", ")}` }, 400);
+  const want = parsed.topics;
+  return streamSSE(c, async (stream) => {
     const send = (s: Snapshot) => stream.writeSSE({ event: "snapshot", data: JSON.stringify(s) });
     // 연결(재연결 포함)마다 먼저 번들을 알려 주고, 바뀌면 다시 보낸다
     const sendVersion = () => stream.writeSSE({ event: "version", data: JSON.stringify(version()) });
     const onVersion = () => void sendVersion();
     const sendAlert = (e: AlertEvent) => stream.writeSSE({ event: "alert", data: JSON.stringify(e) });
-    await sendVersion();
-    if (current) await send(current);
-    const items = currentAlerts();
-    await sendAlert({ raised: items, cleared: [], initial: true, items });
-    listeners.add(send);
-    alertListeners.add(sendAlert);
-    versionListeners.add(onVersion);
+    const sendSummary = (s: SupervisorSummary) => stream.writeSSE({ event: "summary", data: JSON.stringify(s) });
+    if (want.has("version")) await sendVersion();
+    if (want.has("snapshot") && current) await send(current);
+    if (want.has("alert")) {
+      const items = currentAlerts();
+      await sendAlert({ raised: items, cleared: [], initial: true, items });
+    }
+    if (want.has("summary") && current) await sendSummary(summaryNow(current));
+    if (want.has("snapshot")) listeners.add(send);
+    if (want.has("alert")) alertListeners.add(sendAlert);
+    if (want.has("version")) versionListeners.add(onVersion);
+    if (want.has("summary")) summaryListeners.add(sendSummary);
     stream.onAbort(() => {
       listeners.delete(send);
       alertListeners.delete(sendAlert);
       versionListeners.delete(onVersion);
+      summaryListeners.delete(sendSummary);
     });
     while (!stream.aborted) {
       await stream.sleep(25_000);
       await stream.writeSSE({ event: "ping", data: "" });
     }
-  }),
-);
+  });
+});
 
 // index.html은 늘 다시 확인하게 한다(새로고침·새 탭이 예전 번들을 잡지 않게). 번들 파일은 이름에 해시가 있다.
 app.use("/*", serveStatic({ root: DIST, onFound: (path, c) => void (path.endsWith(".html") && c.header("Cache-Control", "no-cache")) }));

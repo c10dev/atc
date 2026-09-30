@@ -1,19 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { esc, fuelOf, menuLines, newAlerts, nextSeen, notifyUrl, rtsLine, SEEN_TTL_MS, unreachableLines, workingOf, zTime } from "./format.mjs";
+import { esc, fuelOf, menuLines, newAlerts, nextSeen, notifyUrl, rtsLine, SEEN_TTL_MS, unreachableLines, zTime } from "./format.mjs";
 
 const item = (key, level, over = {}) => ({ key, group: "alert", level, cue: null, aircraft: null, flight: null, text: `${key} 문구`, next: "", link: "#strips", since: null, ...over });
-const fleet = {
-  fuelAccounts: [
-    { account: "a", windows: [{ name: "five_hour", pct: 10 }, { name: "seven_day", pct: 20 }] },
-    { account: "b", windows: [{ name: "five_hour", pct: 33.4 }, { name: "seven_day", pct: 53 }] },
-  ],
-  aircraft: [{ registration: "TEAM_A", status: "busy" }, { registration: "TEAM_B", status: "idle" }, { registration: "TEAM_C", status: "busy" }],
-};
-const control = { sessions: [{ name: "TOWER", live: [{ status: "idle", job: { state: "working" } }] }, { name: "OCC", live: [{ status: "idle", job: null }] }, { name: "MCC", live: [] }] };
-const update = { last: { at: "2026-09-29T15:21:11.692Z", result: "ok", detail: "4초 · 세션 9개 그대로" } };
-const opts = { fleet, update, control };
-const menu = (items) => menuLines({ alerts: { items }, ...opts });
+// 서버 요약(GET /api/supervisor-summary, v: 1). 숫자는 서버가 세므로 시험은 요약을 그대로 넣는다
+const summaryOf = (over = {}) => ({
+  v: 1, at: "2026-09-29T15:22:00Z", master: null, counts: { warning: 0, caution: 0, advisory: 0 }, pending: { dispatch: 0, humanCheck: 0, tool: 0 },
+  fuel: { label: "b", windows: [{ name: "five_hour", pct: 33.4, resetsAt: "2026-09-29T20:00:00Z" }, { name: "seven_day", pct: 53, resetsAt: "2026-10-01T00:00:00Z" }] },
+  rts: { result: "ok", at: "2026-09-29T15:21:11.692Z", from: "aaaaaaa1234", to: "bbbbbbb5678" }, working: { aircraft: 2, control: 1 }, needsYou: [], ...over,
+});
+const withCounts = (warning, caution, advisory) => ({ counts: { warning, caution, advisory }, master: warning ? "warning" : caution ? "caution" : null });
+const summary = summaryOf();
+const menu = (items, over = {}) => menuLines({ alerts: { items }, summary: summaryOf(over) });
 const BASE = "http://localhost:7700";
 
 test("빈 알림: 제목 ✈ 0과 FUEL, 색 없음, 항목 자리에 안내", () => {
@@ -22,20 +20,20 @@ test("빈 알림: 제목 ✈ 0과 FUEL, 색 없음, 항목 자리에 안내", ()
   assert.equal(m[1], "---");
   assert.equal(m[2], "지금 알릴 것 없음");
   assert.ok(m.includes(`DISPATCH 승인 대기 0 | href=${BASE}/#dispatch`));
-  assert.ok(m.includes(`RTS ok 15:21Z · 4초 · 세션 9개 그대로 | href=${BASE}/#radar`));
+  assert.ok(m.includes(`RTS ok 15:21Z · aaaaaaa → bbbbbbb | href=${BASE}/#radar`));
   assert.ok(m.includes(`일하는 중: AIRCRAFT 2 · 관제 세션 1 | href=${BASE}/#fleet`));
   assert.deepEqual(m.slice(-2), [`Open atc | href=${BASE}/`, "Refresh | refresh=true"]);
 });
 
 test("advisory만: 숫자는 0, +n으로 따로, 색 없음", () => {
-  const m = menu([item("a|1", "advisory"), item("a|2", "advisory")]);
+  const m = menu([item("a|1", "advisory"), item("a|2", "advisory")], withCounts(0, 0, 2));
   assert.equal(m[0], "✈ 0 +2 5h 33% · 7d 53%");
   assert.ok(m.includes("ADVISORY 2"));
   assert.ok(!m.some((l) => l.startsWith("WARNING") || l.startsWith("CAUTION")));
 });
 
 test("warning: 빨강 제목, 등급 순(높은 것 먼저), 항목은 text — next, 누르면 탭 주소", () => {
-  const m = menu([item("c1", "caution", { text: "주인 없는 변경", next: "정리한다" }), item("w1", "warning", { text: "충돌", link: "#airports" }), item("v1", "advisory")]);
+  const m = menu([item("c1", "caution", { text: "주인 없는 변경", next: "정리한다" }), item("w1", "warning", { text: "충돌", link: "#airports" }), item("v1", "advisory")], withCounts(1, 1, 1));
   assert.equal(m[0], "✈ 2 +1 5h 33% · 7d 53% | color=#FF3B30");
   const at = (s) => m.findIndex((l) => l.startsWith(s));
   assert.ok(at("WARNING 1") < at("CAUTION 1") && at("CAUTION 1") < at("ADVISORY 1"));
@@ -44,15 +42,15 @@ test("warning: 빨강 제목, 등급 순(높은 것 먼저), 항목은 text — 
 });
 
 test("caution만: 호박색 제목", () => {
-  assert.match(menu([item("c1", "caution")])[0], /\| color=#FF9500$/);
+  assert.match(menu([item("c1", "caution")], withCounts(0, 1, 0))[0], /\| color=#FF9500$/);
 });
 
-test("call: DISPATCH 승인 대기는 pending|proposal 항목 수, 제목 색은 advisory라 없음", () => {
+test("call: DISPATCH 승인 대기는 요약의 pending.dispatch, 제목 색은 advisory라 없음", () => {
   const m = menu([
     item("pending|proposal|P-1", "advisory", { group: "pending", cue: "call", link: "#dispatch", text: "제안 P-1 판정 대기" }),
     item("pending|proposal|P-2", "advisory", { group: "pending", cue: "call", link: "#dispatch" }),
     item("pending|tool|s1|t", "advisory", { group: "pending", cue: "call" }),
-  ]);
+  ], { pending: { dispatch: 2, humanCheck: 0, tool: 1 }, ...withCounts(0, 0, 3) });
   assert.ok(m.includes(`DISPATCH 승인 대기 2 | href=${BASE}/#dispatch`));
   assert.ok(!/color=/.test(m[0]));
 });
@@ -75,28 +73,33 @@ test("한글 문구 속 |는 SwiftBar 구분자라 막는다: 제목 줄에 ` | 
 });
 
 test("한 등급이 15개를 넘으면 15개만 펼치고 나머지는 한 줄로", () => {
-  const m = menu(Array.from({ length: 20 }, (_, n) => item(`c${n}`, "caution", { text: `항목 ${n}` })));
+  const m = menu(Array.from({ length: 20 }, (_, n) => item(`c${n}`, "caution", { text: `항목 ${n}` })), withCounts(0, 20, 0));
   assert.equal(m.filter((l) => l.startsWith("항목 ")).length, 15);
   assert.ok(m.includes(`외 5개 — atc에서 보기 | href=${BASE}/#radar`));
   assert.ok(m.includes("CAUTION 20 | color=#FF9500"));
 });
 
-test("FUEL은 가장 많이 쓴 ACCOUNT, 모르면 빠진다", () => {
-  assert.equal(fuelOf(fleet), "5h 33% · 7d 53%");
-  assert.equal(fuelOf({ fuelAccounts: [{ windows: [{ name: "seven_day", pct: 7 }] }] }), "7d 7%");
+test("FUEL은 요약의 fuel 창에서, 모르면 빠진다", () => {
+  assert.equal(fuelOf(summary), "5h 33% · 7d 53%");
+  assert.equal(fuelOf(summaryOf({ fuel: { label: "x", windows: [{ name: "seven_day", pct: 7 }] } })), "7d 7%");
   assert.equal(fuelOf({}), null);
-  assert.equal(menuLines({ alerts: { items: [] }, fleet: null, update: null, control: null })[0], "✈ 0");
+  assert.equal(fuelOf({ fuel: null }), null);
+  assert.equal(menuLines({ alerts: { items: [] }, summary: summaryOf({ fuel: null }) })[0], "✈ 0");
 });
 
-test("일하는 수·RTS는 자료가 없으면 줄이 빠진다", () => {
-  assert.deepEqual(workingOf(fleet, control), { aircraft: 2, control: 1 });
-  assert.deepEqual(workingOf(null, null), { aircraft: null, control: null });
-  assert.equal(rtsLine({ last: null }), null);
+test("제목의 숫자와 색은 서버 요약 그대로다(여기서 세지 않는다): 항목 목록과 달라도 요약을 따른다", () => {
+  const m = menu([item("x", "warning")], withCounts(0, 3, 4));
+  assert.equal(m[0], "✈ 3 +4 5h 33% · 7d 53% | color=#FF9500");
+});
+
+test("RTS·일하는 수는 요약에 없으면 줄이 빠진다", () => {
+  assert.equal(rtsLine({ rts: null }), null);
+  assert.equal(rtsLine(null), null);
   // UTC `HH:MMZ`: Mac의 시간대와 무관하다(ATC-152)
-  assert.equal(rtsLine({ last: { at: "2026-09-29T00:05:00Z", result: "ok" } }), "RTS ok 00:05Z");
+  assert.equal(rtsLine({ rts: { at: "2026-09-29T00:05:00Z", result: "ok", from: null, to: "abc1234def" } }), "RTS ok 00:05Z · ? → abc1234");
   assert.equal(zTime("2026-09-29T23:59:59+09:00"), "14:59Z");
   assert.equal(zTime("nope"), "—");
-  const m = menuLines({ alerts: { items: [] }, fleet: null, update: null, control: null });
+  const m = menuLines({ alerts: { items: [] }, summary: summaryOf({ rts: null, working: undefined }) });
   assert.ok(m.every((l) => !l.startsWith("RTS") && !l.startsWith("일하는")));
 });
 

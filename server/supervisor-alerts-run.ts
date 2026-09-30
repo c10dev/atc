@@ -2,8 +2,12 @@ import { followingNow } from "./following.ts";
 import { readMccRecords } from "./mcc.ts";
 import { rtsState } from "./mcc-run.ts";
 import type { Snapshot } from "./model.ts";
+import { loadDispatchConfig } from "./dispatch.ts";
 import { allProposals } from "./proposals.ts";
+import { registrationOf } from "./registration.ts";
+import { CONTROL_SESSIONS } from "./session-control.ts";
 import { type AlertEvent, diffAlerts, type SupervisorAlert, supervisorAlertsOf } from "./supervisor-alerts.ts";
+import { summaryKey, summaryOf, type SupervisorSummary, workingOf } from "./supervisor-summary.ts";
 
 // SUPERVISOR alerts(ATC-87)의 읽기와 상태. 계산은 supervisor-alerts.ts(순수). 여기는 파일을 읽어 입력을 모으고 지난 key 집합을 든다.
 // 파일(logbook·제안·rts)을 읽으므로 스냅샷마다가 아니라 GAP_MS에 한 번만 다시 센다.
@@ -41,4 +45,26 @@ export function runSupervisorAlerts(s: Snapshot, now = Date.now()): AlertEvent |
     return { raised: items, cleared: [], initial: true, items };
   }
   return d.raised.length || d.cleared.length ? { ...d, initial: false, items } : null;
+}
+
+// SUPERVISOR SUMMARY(ATC-153): 지금 있는 알림 목록(currentAlerts)과 스냅샷의 FUEL·세션에서 센다. 파일을 더 읽지 않는다
+export function summaryNow(s: Snapshot, now = Date.now()): SupervisorSummary {
+  const teamPattern = loadDispatchConfig().teamPattern;
+  return summaryOf({
+    items: currentAlerts(),
+    fuelAccounts: s.fuelAccounts ?? [],
+    rts: rtsState(readMccRecords()).last,
+    working: workingOf(s.sessions.filter((x) => x.status !== "dead"), (name) => registrationOf(name, teamPattern), CONTROL_SESSIONS.map((c) => c.name)),
+    at: new Date(now).toISOString(),
+  });
+}
+
+// 스냅샷이 새로 나올 때 부른다(runSupervisorAlerts 뒤에). 내용이 바뀌었을 때만 새 요약을 돌려준다(첫 번은 늘 돌려준다)
+let lastSummaryKey: string | null = null;
+export function runSummary(s: Snapshot, now = Date.now()): SupervisorSummary | null {
+  const sum = summaryNow(s, now);
+  const key = summaryKey(sum);
+  if (key === lastSummaryKey) return null;
+  lastSummaryKey = key;
+  return sum;
 }

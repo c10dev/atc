@@ -7,7 +7,7 @@ A [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin (ATC-149). It reads at
 | File | Role |
 |---|---|
 | `atc.15s.mjs` | The plugin. Run by the Mac's node (`#!/usr/bin/env node`); `15s` is the refresh interval. Does the GETs, prints the menu, sends notifications, keeps the seen keys in `$SWIFTBAR_PLUGIN_CACHE_PATH/seen.json` |
-| `format.mjs` | Pure formatting: alerts + fleet + update + control JSON in, SwiftBar lines out; the new-key diff; the `swiftbar://notify` URL |
+| `format.mjs` | Pure formatting: alerts + summary JSON in, SwiftBar lines out (no counting: the numbers come from the server summary); the new-key diff; the `swiftbar://notify` URL |
 | `format.test.mjs` | `node:test` on Linux (fixtures: empty, advisory only, warning, call, unreachable, Korean text with `\|`), part of `npm test` |
 
 ## What it reads
@@ -15,11 +15,9 @@ A [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin (ATC-149). It reads at
 | Endpoint | Used for |
 |---|---|
 | `GET /api/supervisor-alerts` | Items (level, cue, text, next, link). Required: if it fails the title is `✈ —` |
-| `GET /api/fleet` | `fuelAccounts` (most-used ACCOUNT: `5h 33% · 7d 53%`) and how many AIRCRAFT are `busy` |
-| `GET /api/update` | The last RTS (`RTS ok 15:21Z · …`, times in UTC like the atc screens) |
-| `GET /api/control/sessions` | How many control sessions are working |
+| `GET /api/supervisor-summary` | Title numbers and colour (`counts`, `master`), FUEL (`fuel`), DISPATCH approvals (`pending.dispatch`), the last RTS (`rts`, times in UTC like the atc screens), working AIRCRAFT and control sessions (`working`). Required too (ATC-153) |
 
-A missing optional endpoint only drops its line. The base URL is `ATC_URL` (default `http://localhost:7700`).
+If either fails, the menu shows the unreachable line. The base URL is `ATC_URL` (default `http://localhost:7700`).
 
 ## Menu
 
