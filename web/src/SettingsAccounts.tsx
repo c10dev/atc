@@ -34,7 +34,7 @@ export function AccountsBlock() {
     setSharing(true);
     setError(null);
     try {
-      const res = await fetch("/api/accounts/memory", { method: "POST" });
+      const res = await fetch("/api/accounts/memory", { method: "POST", headers: { "Content-Type": "application/json" } });
       const body = await res.json();
       if (res.ok) setMemory((body as { memory: MemoryFolderView[] }).memory);
       else setError(body.error ?? `HTTP ${res.status}`);
