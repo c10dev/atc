@@ -240,7 +240,7 @@ function Strip({
                     <FlightProgressBar progress={ms.progress.get(ws.ticketKey)!} milestones={ms.flights.get(ws.ticketKey) ?? null} clock={clock}>
                       {ms.progress.get(ws.ticketKey)!.segment === "landing" &&
                         (landing.byStand.get(c.workspacePath) ?? []).map((pr) => (
-                          <span key={prKey(pr)} className="fp-tags">
+                          <span key={prKey(pr)} className="flp-tags">
                             <LandingBadge pr={pr} />
                             <AutolandTag pr={pr} landing={landing} />
                           </span>

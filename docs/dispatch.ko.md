@@ -466,6 +466,12 @@ STRIPS에 AIRCRAFT마다 그 FLIGHT가 어디까지 왔는지 보인다. 위의 
 - **화면**(`web/src/views/FlightProgress.tsx`, 그리기만). FLIGHT가 있는 STAND 줄마다 얇은 막대 하나: 네 칸, 지난 칸은 실선, 지금 칸은 점선과 경과/p75 위치의 표식(칸 끝에서 멈춤), 앞 칸은 옅은 점선. 옆에 `작업 42분 · 보통 30–60분 (BUILD·M, n=12)`, `착륙 대기 8분 · 보통 5–20분 (…)`, `작업 42분 · 데이터 부족`, `RTS 대기 5분`이 붙는다. p75를 넘으면 표식과 글이 amber이고 글에 `길어짐`이 붙는다. 마우스를 올리면 이정표 시각(`milestoneTitle`), 같은 글이 `aria-label`에도 있다. `landing`에서는 이미 있는 착륙 배지와 AUTOLAND 표시를 막대 옆에 놓는다(다시 셈하지 않음). HOLD·NORDO·NEEDS YOU 표시는 그대로이고 AD HOC 줄에는 막대가 없다. 색은 `:root` 토큰만 쓴다.
 - 아직 없음: 연료 게이지(토큰은 진행이 아니다), GLOBE, 막대 위 GO AROUND.
 
+### STRIPS 진행 막대 고침 as built (ATC-218)
+
+- **클래스 충돌.** 막대의 뿌리 클래스 `.fp`가 FLEET PLAN 카드의 클래스(`FleetPlan.css`, FLEET 탭과 함께 불러와 문서에 남는다)와 `styles.css`의 옛 규칙과 같아서, FLEET 탭을 한 번 연 뒤에는 막대마다 어두운 판이 됐다. 막대 클래스는 이제 `flp`, `flp-bar`, `flp-seg`, `flp-fill`, `flp-mark`, `flp-text`, `flp-tags`다(`FlightProgress.tsx`, `Teams.tsx`, `Teams.css`). `web/src`의 다른 곳은 쓰지 않는다. FLEET PLAN과 옛 `.fp` 규칙은 건드리지 않았다.
+- **끝난 막대는 조용히.** `done` FLIGHT는 막대를 그리지 않고 `--paper-muted`의 작은 `완료`만 둔다. `aria-label`과 이정표 `title`은 그대로다. PILOT'S DISCRETION: 아무것도 그리지 않는 대신 작은 글을 남겨, 줄이 그 FLIGHT가 끝났음을 여전히 말하게 했다.
+- **지금 칸이 눈에 띈다.** 지금 칸에서 표식까지 지난 부분을 실색(`--paper-ink`, 길어지면 amber)으로 채우고 나머지는 점선으로 둔다. 앞 칸은 옅게 두고 막대는 8px, 표식은 5×16px이다. 모델(`server/progress.ts`)은 그대로다: 퍼센트도 도착 시각도 없고 추정은 지금 칸 안에만 있다.
+
 ## 도착 보고 구현 내용(ATC-124)
 
 CAPTAIN의 최종 보고는 OCC가 읽고 요약해야 하는 자유 글이었다. 이제 고정 머리와 고정 줄로 시작하고, 받은 세션이 명령 하나로 기록한다. atc는 팀 메시지를 읽지 않는다: 보고를 받은 세션(OCC, 또는 ENGINEERING)이 READBACK처럼 기록한다.

@@ -322,53 +322,63 @@
   padding: var(--space-1) var(--space-3) var(--space-2);
   border-top: 1px dashed var(--paper-line);
 }
-.fp {
+.flp {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
   flex-wrap: wrap;
 }
-.fp-bar {
+.flp-bar {
   position: relative;
   display: flex;
   gap: 2px;
   flex: 0 1 240px;
   min-width: 120px;
-  height: 6px;
+  height: 8px;
 }
-.fp-seg {
+.flp-seg {
   flex: 1;
   height: 100%;
   border-radius: 1px;
   box-sizing: border-box;
 }
-.fp-seg.is-past {
+.flp-seg.is-past {
   background: var(--paper-ink);
 }
-.fp-seg.is-now {
+.flp-seg.is-now {
+  position: relative;
   border: 1px dashed var(--paper-ink);
 }
-.fp-seg.is-future {
+/* 지금 칸에서 지난 만큼(표식 자리까지)을 채운다. 앞 칸의 옅은 점선과 확실히 다르다 */
+.flp-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--paper-ink);
+}
+.flp-seg.is-future {
   border: 1px dashed var(--paper-line);
 }
-.fp-mark {
+.flp-mark {
   position: absolute;
-  top: -3px;
-  width: 4px;
-  height: 12px;
-  margin-left: -2px;
+  top: -4px;
+  width: 5px;
+  height: 16px;
+  margin-left: -2.5px;
   background: var(--paper-ink);
   border: 1px solid var(--paper);
   border-radius: 1px;
 }
-.fp.is-late .fp-seg.is-now {
+.flp.is-late .flp-seg.is-now {
   border-color: var(--stamp-amber);
 }
-.fp.is-late .fp-mark {
+.flp.is-late .flp-fill {
   background: var(--stamp-amber);
 }
-.fp-text {
+.flp.is-late .flp-mark {
+  background: var(--stamp-amber);
+}
+.flp-text {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -376,11 +386,14 @@
   font-size: var(--text-xs);
   color: var(--paper-muted);
 }
-.fp.is-late .fp-text {
+.flp.is-late .flp-text {
   color: var(--stamp-amber);
   font-weight: 700;
 }
-.fp-tags {
+.flp.is-done .flp-text {
+  font-size: var(--text-2xs);
+}
+.flp-tags {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);

@@ -10,18 +10,28 @@ export function FlightProgressBar({ progress: p, milestones, clock, children }: 
   const text = progressText(p);
   const times = milestoneTitle(milestones, (iso) => formatClock(iso, clock));
   const now = SEGMENTS.indexOf(p.segment);
-  const segs = p.standFree ? SEGMENTS.slice(0, 1) : SEGMENTS;
   const label = `FLIGHT 진행: ${text}. ${times.replace(/\n/g, ", ")}`;
-  return (
-    <div className={`fp${p.late ? " is-late" : ""}`} title={times} aria-label={label} role="group">
-      <div className="fp-bar" aria-hidden="true">
-        {segs.map((seg, i) => (
-          <span key={seg} className={`fp-seg ${p.segment === "done" || i < now ? "is-past" : i === now ? "is-now" : "is-future"}`} />
-        ))}
-        {p.marker !== null && !p.standFree && <i className="fp-mark" style={{ left: `${p.marker * 100}%` }} />}
-        {p.marker !== null && p.standFree && <i className="fp-mark" style={{ left: `${Math.min(1, p.marker * 4) * 100}%` }} />}
+  // 끝난 FLIGHT(done)는 막대를 그리지 않는다: 네 칸이 모두 찬 막대는 새 정보가 없는데 STRIPS에서 가장 진한 표시가 돼 진행 중인 FLIGHT를 가린다.
+  // 작은 글만 남기고, aria-label과 이정표 title은 그대로 둔다
+  if (p.segment === "done")
+    return (
+      <div className="flp is-done" title={times} aria-label={label} role="group">
+        <span className="flp-text mono">{text}</span>
       </div>
-      <span className="fp-text mono">{text}</span>
+    );
+  const segs = p.standFree ? SEGMENTS.slice(0, 1) : SEGMENTS;
+  const frac = p.marker === null ? 0 : Math.min(1, Math.max(0, p.marker * segs.length - now)); // 지금 칸 안의 위치. 채움과 표식이 같은 자리다
+  return (
+    <div className={`flp${p.late ? " is-late" : ""}`} title={times} aria-label={label} role="group">
+      <div className="flp-bar" aria-hidden="true">
+        {segs.map((seg, i) => (
+          <span key={seg} className={`flp-seg ${i < now ? "is-past" : i === now ? "is-now" : "is-future"}`}>
+            {i === now && <span className="flp-fill" style={{ width: `${frac * 100}%` }} />}
+          </span>
+        ))}
+        {p.marker !== null && <i className="flp-mark" style={{ left: `${((now + frac) / segs.length) * 100}%` }} />}
+      </div>
+      <span className="flp-text mono">{text}</span>
       {children}
     </div>
   );
