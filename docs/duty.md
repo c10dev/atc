@@ -150,6 +150,44 @@ The guard enforces L1 by path and command, fail-closed, like `controller/guard.m
 
 `settings.test.mjs` pins the allow and deny lists.
 
+### 3.6 Linear and GitHub inside atc
+
+The SUPERVISOR opens Linear and GitHub for a few reasons. Each reason gets a home in atc, or is left out on purpose.
+
+**Current facts:**
+
+- **Reading.** atc polls both services. Linear gives issues, states, labels and relations (`server/sources/linear.ts`), and `fetchIssueDetail` already reads an issue's description and 20 comments, read-only, for briefings, landing review and MCC. GitHub gives PRs, CI, reviews and comments through `gh` (`server/sources/github.ts`). No screen shows an issue body or a PR description.
+- **Writing.**
+  - The server never writes Linear. SCHEDULE S2 builds the call inputs, and OCC runs them through MCP.
+  - The server writes GitHub in two places, both exact-head: AUTOLAND (`update-branch`, delegated merges) and MCC landings.
+
+| Why the SUPERVISOR goes there | Home in atc | Kind |
+|---|---|---|
+| Read an issue: body, state, labels, blockers, comments, linked PRs | **FLIGHT drawer**: opened from any FLIGHT key on any screen, address `#flight/<KEY>`. It uses `fetchIssueDetail`, fetched on open and cached for a short time | Read |
+| Read a PR: description, checks, MCC INSPECTION, changed files and tier | **PR drawer**, address `#pr/<airport>/<n>`. It uses the polled PR data plus one `gh` call on open | Read |
+| Merge a `user`-tier PR | **MERGE** button on the QUEUE LANDING card and in the PR drawer | SUPERVISOR write |
+| Move an issue (Backlog → Todo when its blockers are done) | A **state** button in the FLIGHT drawer, and a QUEUE row **READY** ("all blockers done, move to Todo?") | SUPERVISOR write |
+| Write issues, designs and work orders | DUTY at L1 (3.5) | DUTY |
+| Browse and adopt `idea` issues | **IDEAS** list, read. An **ADOPT** card asks DUTY to write the design draft | Read, then DUTY |
+| Line-by-line diff review, long editing, notifications settings | **Left out.** Links open GitHub or Linear. These are the core of those products and not worth rebuilding | — |
+
+**Write routes** (MERGE, the state button, READY):
+
+- **Origin.** SUPERVISOR only: `fromThisApp`, like every settings write.
+- **Exactness.** MERGE sends the head SHA it showed (`--match-head-commit`), is allowed only for a `user`-tier PR that is CLEARED, and never enables auto-merge.
+- **The server writes.** Linear state changes go through the server with the existing API key. The browser never gets a token.
+- **Recording.** Each write is one FLIGHT RECORDER line: who, what, before and after.
+- **No model can call them.** atcctl has no such command, and the guards block `curl`. This is the same rule as L3 (3.5).
+- **Tier.** Each route is its own issue with tier `user`, because it adds an outward write.
+
+**Load.**
+
+- Drawers fetch on open and cache for 60 s; nothing new is polled in the background.
+- READY is computed from relations that atc already polls.
+- 7700 is local-only, so there are no webhooks.
+
+**Public repository.** The drawers show issue and PR text on the SUPERVISOR's screen only. PRs, docs and screenshots keep describing screens in words.
+
 ## 4. Screens
 
 - **DUTY drawer.**
@@ -174,11 +212,16 @@ Each step is one issue. Everything is shadow or read-only until the step that sa
 | D4 | Memory: `brief-hook.mjs`, `decisions.jsonl`, confirm and retire cards, the brief cap | Standing decisions survive NEW SHIFT |
 | D5 | Routing on: OCC reads the `duty` source; the `duty.charter` switch (settings, AUTOMATION → OPERATIONS) | Operations requests without Claude desktop |
 | D6 | ANNUNCIATOR DUTY window (atc-app repo) | Mac window |
+| G1 | FLIGHT drawer (`#flight/<KEY>`) and PR drawer (`#pr/<airport>/<n>`), read only, opened from FLIGHT keys and PR numbers everywhere; short cache | Reading without Linear or GitHub. Tier auto |
+| G2 | MERGE for `user`-tier CLEARED PRs: exact head, Origin, FLIGHT RECORDER; on the PR drawer and the QUEUE LANDING card | Merging without GitHub. Tier user |
+| G3 | Linear state button in the FLIGHT drawer, and the QUEUE row READY (blockers done → move to Todo?) | Releasing work without Linear. Tier user |
+| G4 | IDEAS list (`idea` issues) and the ADOPT card that asks DUTY for a design draft | Ideas without GitHub. Needs D3 |
 | D7 | **L1**: worktree, `gh pr create` and Linear in DUTY's settings and guard; root `CLAUDE.md` "ENGINEERING" moves to DUTY; [naming.md](naming.md) gets DUTY as a control session; `duty work` LAUNCH cards and ARRIVED reports as cards | Design, work orders and code hand-off without Claude desktop. `user` tier |
 
 - Q1 can run beside D0.
 - D1 needs D0's answers on hooks and denied tools.
 - D3 needs Q1.
+- G1 needs nothing and can start at once. G2 and G3 need the QUEUE (Q1, and ALERTING A4 for the popover) to show their cards, but their drawer buttons do not.
 - D7 comes after D1–D4 have run, and uses ATC-191 so DUTY shares the memory on any ACCOUNT.
 
 ## 6. Risks
@@ -205,6 +248,7 @@ Decided by the SUPERVISOR (2026-09-30):
 - **Queue placement:** in the DUTY drawer. ui-visibility step 3's separate drawer is not built; its badges may still read the queue API.
 - **Routing:** operations requests go to OCC as CHARTER REQUESTs, starting in shadow.
 - **Claude desktop:** everyday work moves to DUTY. A terminal or Claude desktop stays only as break-glass.
+- **Linear and GitHub:** bring in reading (drawers) and the few SUPERVISOR writes (MERGE, state, READY). Leave diff review and long editing in the services (3.6).
 - **Permissions:** L1 (ENGINEERING powers). Code work goes to working sessions LAUNCHed from DUTY cards. L3 and L4 never.
 
 Decided by this draft (pilot's discretion, reversible):
