@@ -8,6 +8,8 @@ import { check, checkMarkModel, CROSSCHECK_MODELS, MCC_MODELS, REVIEW_MODELS } f
 import { MCC_MODELS as SERVER_MCC_MODELS } from "../server/mcc.ts";
 import { checkRead, rootsOf } from "./read-guard.mjs";
 
+// 가짜 HOME(ATC-190): 진짜 ~/.claude·~/.local/state/atc를 realpath하지 않는다
+const FAKE_HOME = join(tmpdir(), "atc-fake-home");
 const HERE = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const REPO = join(HERE, "..");
 const settings = JSON.parse(readFileSync(new URL(".claude/settings.json", import.meta.url), "utf8"));
@@ -84,7 +86,7 @@ test("MCC 읽기: atc 저장소는 읽고, .env*·저장소 밖·운영 상태·
   for (const f of ["../server/mcc.ts", "../docs/mcc.md", "CLAUDE.md", "../package.json"]) {
     assert.equal(checkRead("Read", { file_path: f }, { cwd: HERE, roots }), null, f);
   }
-  for (const f of ["../.env.local", "../.env.example", "/home/c10/.local/state/atc/mcc.jsonl", "/home/c10/.claude/settings.json", "../../vocado_nextjs/AGENTS.md"]) {
+  for (const f of ["../.env.local", "../.env.example", join(FAKE_HOME, ".local/state/atc/mcc.jsonl"), join(FAKE_HOME, ".claude/settings.json"), "../../vocado_nextjs/AGENTS.md"]) {
     assert.notEqual(checkRead("Read", { file_path: f }, { cwd: HERE, roots }), null, f);
   }
   assert.equal(checkRead("Grep", { pattern: "mccModelOf", path: join(REPO, "server") }, { cwd: HERE, roots }), null);

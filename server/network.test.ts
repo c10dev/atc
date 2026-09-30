@@ -1,3 +1,4 @@
+import "./test-hermetic.ts"; // 진짜 HOME·상태 폴더를 읽지 않게(ATC-190). 첫 import여야 한다
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { crosscheckRateOf } from "./crosscheck.ts";
