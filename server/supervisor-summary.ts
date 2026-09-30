@@ -18,7 +18,7 @@ export interface SupervisorSummary {
   at: string; // 이 값을 만든 시각(ISO). 내용이 같으면 SSE로 다시 보내지 않으므로 `at`은 내용 비교에서 뺀다
   master: "warning" | "caution" | null;
   counts: { warning: number; caution: number; advisory: number };
-  pending: { dispatch: number; humanCheck: number; tool: number };
+  pending: { dispatch: number; humanCheck: number; tool: number; schedule: number };
   fuel: { label: string; windows: SummaryFuelWindow[] } | null;
   rts: { result: RtsRecord["result"]; at: string; from: string | null; to: string } | null;
   working: { aircraft: number; control: number };
@@ -53,7 +53,7 @@ export function summaryOf(inp: SummaryInput): SupervisorSummary {
     at: inp.at,
     master: counts.warning ? "warning" : counts.caution ? "caution" : null,
     counts,
-    pending: { dispatch: count(inp.items, "pending|proposal|"), humanCheck: count(inp.items, "pending|humancheck|"), tool: count(inp.items, "pending|tool|") },
+    pending: { dispatch: count(inp.items, "pending|proposal|"), humanCheck: count(inp.items, "pending|humancheck|"), tool: count(inp.items, "pending|tool|"), schedule: count(inp.items, "pending|schedule|") },
     fuel: topFuelOf(inp.fuelAccounts),
     rts: inp.rts ? { result: inp.rts.result, at: inp.rts.at, from: inp.rts.from, to: inp.rts.to } : null,
     working: inp.working,

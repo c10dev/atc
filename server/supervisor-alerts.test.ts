@@ -96,3 +96,31 @@ test("STAND 경로가 든 ALERT는 문구 끝에 STAND 이름을 붙인다(ATC-1
   // 키는 문구와 무관하다: 브라우저와 메뉴 막대가 이 키로 거른다
   assert.deepEqual(keys(out), ["alert|unattended|/wt/atc-101-show-tier||", "alert|orphan|/wt/gone||", "alert|conflict|/wt/atc-121-rts-race||", "alert|no-workspace||VOC-145|"]);
 });
+
+// ---- SCHEDULE 판정(ATC-162) ----
+const sop = (id: string, status: string, over: Record<string, unknown> = {}) => ({ id, kind: "TAIL", flight: "ATC-146", status, statusAt: "2026-09-30T01:00:00Z", ...over }) as NonNullable<AlertsInput["schedule"]>["ops"][number];
+
+test("SCHEDULE: approval 모드에서 열린 작업(draft·agreed·disagreed)마다 CALL 항목, key 형식은 pending|schedule|<id>", () => {
+  const out = supervisorAlertsOf(base({ schedule: { mode: "approval", ops: [sop("S-0001", "draft"), sop("S-0002", "agreed", { kind: "CLASSIFY" }), sop("S-0003", "disagreed", { kind: "NEW", flight: null })] } }));
+  assert.deepEqual(keys(out), ["pending|schedule|S-0001", "pending|schedule|S-0002", "pending|schedule|S-0003"]);
+  const [a] = out;
+  assert.deepEqual([a.group, a.level, a.cue, a.aircraft, a.flight, a.link, a.since, a.ask], ["pending", "advisory", "call", null, "ATC-146", "#schedule", "2026-09-30T01:00:00Z", "tail"]);
+  assert.match(a.text, /^SCHEDULE S-0001 — TAIL ATC-146 판정 대기$/);
+  assert.equal(out[2].ask, "new");
+  assert.match(out[2].text, /^SCHEDULE S-0003 — NEW 판정 대기$/);
+});
+
+test("SCHEDULE: shadow 모드나 schedule 입력이 없으면 항목이 없다(게이트 판정은 일이 기다리는 결정이 아니다)", () => {
+  assert.deepEqual(supervisorAlertsOf(base({ schedule: { mode: "shadow", ops: [sop("S-0001", "draft")] } })), []);
+  assert.deepEqual(supervisorAlertsOf(base()), []);
+});
+
+test("SCHEDULE: 닫힌 상태(approved·rejected·released·applied·superseded·expired)는 항목이 없다", () => {
+  const closed = ["approved", "rejected", "released", "applied", "superseded", "expired"].map((s, i) => sop(`S-${i}`, s));
+  assert.deepEqual(supervisorAlertsOf(base({ schedule: { mode: "approval", ops: closed } })), []);
+});
+
+test("DISPATCH 제안 항목에 ask가 붙는다: ASSIGN은 assign, RELEASE는 release. key는 그대로", () => {
+  const out = supervisorAlertsOf(base({ proposals: [proposal({ id: "D-0001" }), proposal({ id: "D-0002", kind: "RELEASE", aircraftName: null })] }));
+  assert.deepEqual(out.map((a) => [a.key, a.ask]), [["pending|proposal|D-0001", "assign"], ["pending|proposal|D-0002", "release"]]);
+});

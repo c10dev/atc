@@ -52,13 +52,19 @@ export interface VoiceCue {
   radio: number; // 0..1
 }
 export type SpeakResult = { ok: true } | { ok: false; error: string };
+// play의 결과(ATC-162): locked면 톤을 내지 못했다(resume이 거절됐거나 제때 풀리지 않음). 부르는 쪽이 "놓침"으로 든다
+export type PlayResult = "played" | "locked";
+export const RESUME_WAIT_MS = 400; // resume()이 이 안에 풀리지 않으면 잠긴 것으로 본다(제스처 없이는 약속이 안 끝나는 브라우저가 있다)
 const VOICE_GAP_S = 0.15; // 톤이 끝난 뒤 음성까지
 const RESUME_GAP_S = 0.5; // 음성이 끝난 뒤 되풀이 톤까지
 
 export interface Player {
   unlock(): Promise<void>; // 사용자가 소리를 켜는 클릭 안에서 부른다(브라우저 자동재생 규칙)
   state(): AudioState;
-  play(sound: SoundName, volume: number, repeat: boolean, voice?: VoiceCue): void;
+  // running이면 곧장 내고("played"), 아니면 먼저 resume()을 해 본 뒤 내고, 그래도 안 되면 "locked"(ATC-162)
+  play(sound: SoundName, volume: number, repeat: boolean, voice?: VoiceCue): Promise<PlayResult>;
+  // 제스처 없이 풀어 본다(visibilitychange·focus). 풀렸으면 true. AudioContext가 아직 없으면 false(unlock이 만든다)
+  resume(): Promise<boolean>;
   speak(voice: VoiceCue, volume: number): Promise<SpeakResult>; // 음성만(미리 듣기). 톤 없이
   stop(): void; // 지금 울리는 소리를 그친다(ACK)
   playing(): SoundName | null;
@@ -111,6 +117,22 @@ export function createPlayer(getCtor: () => Ctor | undefined = () => (globalThis
     return { nodes, spec };
   };
 
+  // running이 아니면 resume()을 해 본다: Safari의 interrupted나, 제스처 뒤에 브라우저가 멈춘 컨텍스트. 거절돼도 제때 안 풀려도 false
+  const tryResume = async (): Promise<boolean> => {
+    if (!ctx) return false;
+    if (ctx.state === "running") return true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([ctx.resume(), new Promise<void>((r) => (timer = setTimeout(r, RESUME_WAIT_MS)))]);
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+    onChange();
+    return (ctx.state as string) === "running";
+  };
+
   const stop = () => {
     if (!current) return;
     if (current.timer) clearTimeout(current.timer);
@@ -136,6 +158,7 @@ export function createPlayer(getCtor: () => Ctor | undefined = () => (globalThis
       onChange();
     },
     state: () => (!ctx ? "off" : ctx.state === "running" ? "running" : "suspended"),
+    resume: tryResume,
     playing: () => current?.sound ?? null,
     stop,
     async speak(voice, volume) {
@@ -150,44 +173,55 @@ export function createPlayer(getCtor: () => Ctor | undefined = () => (globalThis
       return { ok: true };
     },
     play(sound, volume, repeat, voice) {
-      if (!ctx || ctx.state !== "running") return;
-      stop();
-      previewing?.stop();
-      // 음성은 톤이 울리는 동안 미리 받아 둔다. 못 받으면 톤만 낸다
-      const audio = voice ? fetchVoice(voice.url) : null;
-      const run = (first: boolean) => {
-        const { nodes, spec } = schedule(sound, volume);
-        const cur = { sound, timer: null as ReturnType<typeof setTimeout> | null, nodes, voice: null as RadioPlayback | null };
-        current = cur;
-        const speakNow = first && audio !== null;
-        cur.timer = setTimeout(async () => {
-          if (current !== cur) return;
-          if (speakNow) {
-            const got = await audio;
-            if (current !== cur) return;
-            if ("buffer" in got) {
-              const p = playRadioVoice(ctx!, got.buffer, volume, radioSpecOf(voice!.radio));
-              cur.voice = p;
-              await p.done;
-              if (current !== cur) return;
-              if (repeat) {
-                cur.timer = setTimeout(() => current === cur && run(false), RESUME_GAP_S * 1000);
-                return;
-              }
-              current = null;
-              onChange();
-              return;
-            }
-          }
-          if (repeat) run(false);
-          else {
-            current = null;
-            onChange();
-          }
-        }, (speakNow ? specEnd(spec) + VOICE_GAP_S : repeat ? spec.period : specEnd(spec) + 0.05) * 1000);
-      };
-      run(true);
-      onChange();
+      if (ctx && ctx.state === "running") {
+        start(sound, volume, repeat, voice);
+        return Promise.resolve("played");
+      }
+      return tryResume().then((ok) => {
+        if (!ok) return "locked";
+        start(sound, volume, repeat, voice);
+        return "played";
+      });
     },
   };
+
+  function start(sound: SoundName, volume: number, repeat: boolean, voice?: VoiceCue) {
+    stop();
+    previewing?.stop();
+    // 음성은 톤이 울리는 동안 미리 받아 둔다. 못 받으면 톤만 낸다
+    const audio = voice ? fetchVoice(voice.url) : null;
+    const run = (first: boolean) => {
+      const { nodes, spec } = schedule(sound, volume);
+      const cur = { sound, timer: null as ReturnType<typeof setTimeout> | null, nodes, voice: null as RadioPlayback | null };
+      current = cur;
+      const speakNow = first && audio !== null;
+      cur.timer = setTimeout(async () => {
+        if (current !== cur) return;
+        if (speakNow) {
+          const got = await audio;
+          if (current !== cur) return;
+          if ("buffer" in got) {
+            const p = playRadioVoice(ctx!, got.buffer, volume, radioSpecOf(voice!.radio));
+            cur.voice = p;
+            await p.done;
+            if (current !== cur) return;
+            if (repeat) {
+              cur.timer = setTimeout(() => current === cur && run(false), RESUME_GAP_S * 1000);
+              return;
+            }
+            current = null;
+            onChange();
+            return;
+          }
+        }
+        if (repeat) run(false);
+        else {
+          current = null;
+          onChange();
+        }
+      }, (speakNow ? specEnd(spec) + VOICE_GAP_S : repeat ? spec.period : specEnd(spec) + 0.05) * 1000);
+    };
+    run(true);
+    onChange();
+  }
 }

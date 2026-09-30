@@ -169,3 +169,42 @@ export function soundFor(changes: readonly SupervisorAlert[], prefs: AlertPrefs,
   const voiceKey = prefs.voice.on && (top.s === "warning" || top.s === "call") ? top.a.key : null;
   return { sound: top.s, repeat: top.s === "warning", interrupt: ctx.playing !== null, keys: eligible.map((x) => x.a.key), voiceKey };
 }
+
+// ── 소리가 잠겨 있는 동안 놓친 것(ATC-162) ──
+// 소리가 켜져 있는데(prefs.sound) AudioContext가 running이 아니면 톤을 낼 수 없다. soundFor가 고른 WARNING·CALL은 "놓침"으로 들고,
+// 잠금이 풀릴 때 아직 있는 것 가운데 가장 높은 하나만 한 번 울린다. 조용한 시간은 그때 다시 본다.
+export interface Missed {
+  key: string;
+  sound: "warning" | "call";
+  at: number; // 놓친 시각(ms)
+}
+
+// soundFor가 소리를 골랐는데 잠겨서 못 낸 것을 놓침 목록에 더한다. WARNING·CALL만(CAUTION·DONE은 놓쳐도 다시 울리지 않는다). 같은 key는 한 번만
+export function noteMissed(missed: readonly Missed[], d: Pick<SoundDecision, "sound" | "keys">, batch: readonly SupervisorAlert[], now: number): Missed[] {
+  if (!d.sound) return [...missed];
+  const out = [...missed];
+  for (const a of batch) {
+    const s = soundOfAlert(a);
+    if ((s === "warning" || s === "call") && d.keys.includes(a.key) && !out.some((m) => m.key === a.key)) out.push({ key: a.key, sound: s, at: now });
+  }
+  return out;
+}
+
+// 잠금이 풀렸다. 아직 알림 목록에 있는 놓친 항목 가운데 가장 높은 하나(같으면 더 최근)를 한 번 울린다(되풀이 없음). 음성은 켜져 있으면 그 항목을 읽는다.
+// 소리가 꺼졌거나 그 소리가 꺼져 있거나 조용한 시간이면 울리지 않는다. 어느 쪽이든 부르는 쪽이 놓침 목록을 비운다
+export function replayOnUnlock(missed: readonly Missed[], items: readonly Pick<SupervisorAlert, "key">[], prefs: AlertPrefs, now: number): SoundDecision {
+  if (!prefs.sound || inQuiet(prefs.quiet, new Date(now))) return NONE;
+  const present = new Set(items.map((a) => a.key));
+  const live = missed.filter((m) => present.has(m.key) && prefs.sounds[m.sound]);
+  if (!live.length) return NONE;
+  const top = live.reduce((m, x) => (SOUND_RANK[x.sound] > SOUND_RANK[m.sound] || (SOUND_RANK[x.sound] === SOUND_RANK[m.sound] && x.at > m.at) ? x : m));
+  return { sound: top.sound, repeat: false, interrupt: false, keys: [top.key], voiceKey: prefs.voice.on ? top.key : null };
+}
+
+// 탭 제목: 알림이 꺼졌을 때 조치할 항목 수 `(n)`, 잠겨서 놓친 것이 있으면 앞에 `🔇n`(잠금이 풀릴 때까지)
+export function tabTitleOf(base: string, fallbackCount: number, missedCount: number): string {
+  return `${missedCount ? `🔇${missedCount} ` : ""}${fallbackCount ? `(${fallbackCount}) ` : ""}${base}`;
+}
+
+// 잠금 상태: 소리가 켜져 있는데 AudioContext가 running이 아니다(아직 만들지 않은 "off" 포함)
+export const soundLocked = (prefs: Pick<AlertPrefs, "sound">, audio: "off" | "running" | "suspended") => prefs.sound && audio !== "running";

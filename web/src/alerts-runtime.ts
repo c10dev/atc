@@ -8,12 +8,17 @@ import {
   DEFAULT_PREFS,
   EMPTY_SEEN,
   kindFilter,
+  type Missed,
   needsAction,
+  noteMissed,
   parsePrefs,
   parseSeen,
+  replayOnUnlock,
   type SeenState,
   soundFor,
+  soundLocked,
   type SupervisorAlert,
+  tabTitleOf,
 } from "./supervisor-alerts.ts";
 
 // SUPERVISOR alerts(ATC-87)의 브라우저 쪽: SSE `alert` 이벤트를 받아 알림(Notification)과 소리(Web Audio)를 내고, 종 목록을 든다.
@@ -44,6 +49,7 @@ interface View {
   permission: NotificationPermission | "unsupported";
   audio: AudioState;
   playing: string | null;
+  missed: Missed[]; // 소리가 잠겨 있는 동안 놓친 WARNING·CALL(ATC-162). 잠금이 풀리면 가장 높은 하나만 울리고 비운다
 }
 
 const permissionNow = (): View["permission"] => (typeof Notification === "undefined" ? "unsupported" : Notification.permission);
@@ -54,13 +60,19 @@ function ackedStored(): string[] {
   return Array.isArray(v) ? v.filter((k): k is string => typeof k === "string") : [];
 }
 
-let view: View = { prefs: parsePrefs(read(PREFS_KEY)), items: [], acked: ackedStored(), permission: permissionNow(), audio: "off", playing: null };
+let view: View = { prefs: parsePrefs(read(PREFS_KEY)), items: [], acked: ackedStored(), permission: permissionNow(), audio: "off", playing: null, missed: [] };
 const subs = new Set<() => void>();
 const emit = (patch: Partial<View> = {}) => {
   view = { ...view, ...patch, audio: player.state(), playing: player.playing(), permission: permissionNow() };
+  // 잠금이 풀렸다(ATC-162): 다음 제스처에 다시 풀어 보게 하고, 놓친 것이 있으면 울린다
+  if (view.audio === "running") {
+    gestureTried = false;
+    if (view.missed.length) replayMissed();
+  }
   updateTitle();
   for (const s of subs) s();
 };
+let gestureTried = false; // 이 잠금 동안 아무 클릭·키로 풀어 본 적이 있나
 
 const player = createPlayer(undefined, () => emit());
 const lastSounded: Record<string, number> = {};
@@ -76,7 +88,7 @@ function updateTitle() {
   baseTitle ??= document.title.replace(/^\(\d+\) /, "");
   const fallback = !view.prefs.notify || view.permission !== "granted";
   const n = view.items.filter((a) => needsAction(a) && !view.acked.includes(a.key)).length;
-  document.title = fallback && n ? `(${n}) ${baseTitle}` : baseTitle;
+  document.title = tabTitleOf(baseTitle, fallback ? n : 0, view.missed.length);
 }
 
 // ── 이벤트 ──
@@ -137,7 +149,39 @@ function flushBurst() {
   for (const k of d.keys) lastSounded[k] = now;
   // 음성(ATC-140): 서버가 그 key의 알림 문구로 만든 WAV. 화면은 key만 보낸다
   const voice = d.voiceKey ? { url: `/api/voice/alert/${encodeURIComponent(d.voiceKey)}.wav`, radio: view.prefs.voice.radio } : undefined;
-  player.play(d.sound, view.prefs.volume, d.repeat, voice);
+  // 잠겨서 못 냈으면(resume도 안 됨) 놓침으로 들고 탭 제목에 보인다(ATC-162)
+  void player.play(d.sound, view.prefs.volume, d.repeat, voice).then((r) => {
+    if (r === "locked") emit({ missed: noteMissed(view.missed, d, batch, now) });
+  });
+}
+
+// 잠금이 풀렸을 때: 놓친 것 가운데 아직 있는 가장 높은 하나를 한 번 울린다(음성은 켜져 있으면). 놓침 목록은 늘 비운다
+function replayMissed() {
+  const now = Date.now();
+  const d = replayOnUnlock(view.missed, view.items, view.prefs, now);
+  view = { ...view, missed: [] };
+  if (!d.sound) return;
+  for (const k of d.keys) lastSounded[k] = now;
+  const voice = d.voiceKey ? { url: `/api/voice/alert/${encodeURIComponent(d.voiceKey)}.wav`, radio: view.prefs.voice.radio } : undefined;
+  void player.play(d.sound, view.prefs.volume, false, voice);
+}
+
+// ── 잠금 풀기(ATC-162) ──
+// 소리가 켜져 있는데 잠겨 있으면, 이 페이지의 첫 클릭·키 입력이 AudioContext를 푼다(잠금 하나에 한 번). 명시적 버튼은 그대로 있다.
+// 탭이 다시 보이거나 창이 초점을 받을 때는 제스처 없이 resume()만 해 본다(브라우저가 멈춘 컨텍스트)
+if (typeof document !== "undefined") {
+  const onGesture = () => {
+    if (gestureTried || !soundLocked(view.prefs, view.audio)) return;
+    gestureTried = true;
+    void player.unlock().then(() => emit());
+  };
+  document.addEventListener("pointerdown", onGesture, true);
+  document.addEventListener("keydown", onGesture, true);
+  const tryQuiet = () => {
+    if (document.visibilityState === "visible" && soundLocked(view.prefs, view.audio)) void player.resume().then((ok) => ok && emit());
+  };
+  document.addEventListener("visibilitychange", tryQuiet);
+  addEventListener("focus", tryQuiet);
 }
 
 // ── 확인(ACK): WARNING 되풀이를 그친다. 다른 탭에도 알린다 ──
@@ -166,7 +210,7 @@ if (typeof document !== "undefined") {
 export function updatePrefs(patch: Partial<AlertPrefs> | ((p: AlertPrefs) => AlertPrefs)) {
   const prefs = typeof patch === "function" ? patch(view.prefs) : { ...view.prefs, ...patch };
   write(PREFS_KEY, prefs);
-  emit({ prefs });
+  emit({ prefs, ...(prefs.sound ? {} : { missed: [] }) }); // 소리를 끄면 놓친 것은 잊는다
 }
 // storage 이벤트: 다른 탭에서 바꾼 설정을 따른다
 if (typeof addEventListener === "function") {
@@ -187,7 +231,7 @@ export async function enableNotify(): Promise<NotificationPermission | "unsuppor
 export async function enableSound() {
   await player.unlock();
   updatePrefs({ sound: true });
-  if (player.state() === "running") player.play("caution", view.prefs.volume, false);
+  if (player.state() === "running") void player.play("caution", view.prefs.volume, false);
 }
 export const disableSound = () => {
   player.stop();
@@ -198,7 +242,7 @@ export const resumeSound = async () => {
   await player.unlock();
   emit();
 };
-export const previewSound = (sound: Parameters<typeof player.play>[0]) => player.play(sound, view.prefs.volume, false);
+export const previewSound = (sound: Parameters<typeof player.play>[0]) => void player.play(sound, view.prefs.volume, false);
 // 목소리 미리 듣기(ATC-140): 고정 예시 문구를 무전 체인으로. 켜는 클릭 안에서 불러 AudioContext를 푼다
 export async function previewVoice(voice?: string) {
   await player.unlock();

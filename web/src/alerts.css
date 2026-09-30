@@ -163,6 +163,21 @@
 .alert-msg {
   color: var(--amber);
 }
+.sound-lock {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--amber);
+  background: var(--panel-2);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-md);
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sound-lock em {
+  font-style: normal;
+  color: var(--text);
+}
 .alert-unlock {
   margin-top: 8px;
   color: var(--amber);

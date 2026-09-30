@@ -10,7 +10,7 @@ const win = (name: string, pct: number) => ({ name: name as "five_hour", pct, re
 
 test("빈 목록: master null, 전부 0, fuel·rts 없음", () => {
   assert.deepEqual(summaryOf(input()), {
-    v: 1, at: AT, master: null, counts: { warning: 0, caution: 0, advisory: 0 }, pending: { dispatch: 0, humanCheck: 0, tool: 0 },
+    v: 1, at: AT, master: null, counts: { warning: 0, caution: 0, advisory: 0 }, pending: { dispatch: 0, humanCheck: 0, tool: 0, schedule: 0 },
     fuel: null, rts: null, working: { aircraft: 0, control: 0 }, needsYou: [],
   });
 });
@@ -37,13 +37,13 @@ test("counts는 알림 목록의 등급과 같다(supervisorAlertsOf의 실제 �
   assert.deepEqual(s.counts, { warning: n("warning"), caution: n("caution"), advisory: n("advisory") });
   assert.ok(s.counts.warning >= 2 && s.counts.caution >= 1 && s.counts.advisory >= 3); // 목록이 세 등급을 다 가진다
   assert.equal(s.master, "warning");
-  assert.deepEqual(s.pending, { dispatch: 1, humanCheck: 1, tool: 1 });
+  assert.deepEqual(s.pending, { dispatch: 1, humanCheck: 1, tool: 1, schedule: 0 });
   assert.deepEqual(s.needsYou, ["TEAM_B", "TEAM_G"]); // cue call이고 이름이 있는 것만(HUMAN CHECK는 이름 없음), 중복 없이 정렬
 });
 
 test("pending은 key 종류별로 센다", () => {
-  const s = summaryOf(input({ items: [item("pending|proposal|D-1", "advisory", "call"), item("pending|proposal|D-2", "advisory", "call"), item("pending|humancheck|r#1|x", "advisory", "call"), item("pending|tool|s|t", "advisory", "call"), item("land|x", "advisory")] }));
-  assert.deepEqual(s.pending, { dispatch: 2, humanCheck: 1, tool: 1 });
+  const s = summaryOf(input({ items: [item("pending|proposal|D-1", "advisory", "call"), item("pending|proposal|D-2", "advisory", "call"), item("pending|humancheck|r#1|x", "advisory", "call"), item("pending|tool|s|t", "advisory", "call"), item("pending|schedule|S-0001", "advisory", "call"), item("land|x", "advisory")] }));
+  assert.deepEqual(s.pending, { dispatch: 2, humanCheck: 1, tool: 1, schedule: 1 });
 });
 
 test("fuel: 가장 많이 쓴 ACCOUNT의 라벨과 창. 라벨이 없으면 group", () => {

@@ -85,8 +85,38 @@ test("글자는 [A-Za-z0-9 ,.'-]만이고, 한국어 text·제목은 읽지 않�
       ["warning", "Supervisor, GOLF, traffic conflict on ATC one two zero, request instructions."],
       ["warning", "Supervisor, return to service rolled back, request instructions."],
       ["call", "Supervisor, GOLF, standing by for approval."],
-      ["call", "Supervisor, dispatch proposal waiting on ATC one five zero, request decision."],
+      ["call", "Supervisor, dispatch requests ATC one five zero for KILO, request decision."],
     ].sort((x, y) => x[1].localeCompare(y[1])),
   );
   for (const [, p] of phrases) assert.doesNotMatch(String(p), /[가-힣]/);
+});
+
+test("DISPATCH 문구는 무엇을 청하는지 말한다(ATC-162): ASSIGN은 AIRCRAFT에, RELEASE는 그 FLIGHT를 풀어 달라고", () => {
+  const p = (ask: string | undefined, who: string | null, flight: string | null) => phraseOf({ key: "pending|proposal|D-0001", aircraft: who, flight, ...(ask ? { ask } : {}) });
+  assert.equal(p("assign", "TEAM_H", "ATC-146"), "Supervisor, dispatch requests ATC one four six for HOTEL, request decision.");
+  assert.equal(p("release", null, "ATC-146"), "Supervisor, dispatch requests release of ATC one four six, request decision.");
+  assert.equal(p("assign", null, "ATC-146"), "Supervisor, dispatch requests ATC one four six, request decision.");
+  assert.equal(p("release", null, null), "Supervisor, dispatch requests release, request decision.");
+  // ask가 없는 옛 항목은 예전 문구 그대로
+  assert.equal(p(undefined, "TEAM_H", "ATC-146"), "Supervisor, dispatch proposal waiting on ATC one four six, request decision.");
+});
+
+test("SCHEDULE 문구(ATC-162): 종류와 FLIGHT. NEW는 FLIGHT가 아직 없다", () => {
+  const s = (ask: string, flight: string | null) => phraseOf({ key: "pending|schedule|S-0001", aircraft: null, flight, ask });
+  assert.equal(s("tail", "ATC-146"), "Supervisor, schedule requests tail on ATC one four six, request decision.");
+  assert.equal(s("new", null), "Supervisor, schedule requests a new flight, request decision.");
+  assert.equal(phraseOf({ key: "pending|schedule|S-0001", aircraft: null, flight: null }), "Supervisor, schedule requests an update, request decision.");
+  assert.equal(kindOf({ key: "pending|schedule|S-0001" }), "pending:schedule");
+});
+
+test("새 문구도 같은 글자 집합과 길이 한도(PHRASE_CHARS, PHRASE_MAX)를 지킨다", () => {
+  const hostile = [
+    phraseOf({ key: "pending|proposal|D-1", aircraft: "TEAM_G; <b>x</b>, TEAM_K\n\"q\"", flight: "ATC-1", ask: "assign" }),
+    phraseOf({ key: "pending|schedule|S-1", aircraft: null, flight: "ATC-1", ask: "ta;il <script>\n" + "x".repeat(400) }),
+  ];
+  for (const h of hostile) {
+    assert.ok(h);
+    assert.match(h!, /^[A-Za-z0-9 ,.'-]+$/);
+    assert.ok(h!.length <= PHRASE_MAX);
+  }
 });
