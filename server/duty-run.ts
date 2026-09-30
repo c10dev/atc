@@ -15,6 +15,7 @@ import { config } from "./config.ts";
 import { type DutyConfig, loadDutyConfig, saveDutyConfig } from "./duty-config.ts";
 import { imageCheck, logLineOf, pageOf, TEXT_MAX, type DutyLogLine } from "./duty-log.ts";
 import { type DutyAction, type DutyEventIn, type DutyMsg, type DutyState, initialState, step } from "./duty-machine.ts";
+import type { DraftLine } from "./duty-drafts.ts";
 import { createDutyParser, type DutyEvent, type DutyRate, type DutyTurnUsage } from "./duty-stream.ts";
 import { fromThisApp } from "./origin.ts";
 
@@ -51,7 +52,9 @@ export interface DutyOpts {
   idleMs?: number; // 시험용: duty.idleMin(분) 대신 이 값(ms)
 }
 
-type Feed = (e: (DutyEvent | ({ type: "status" } & DutyStatus)) & { t: string }) => void;
+export type DutyCardEvent = { type: "card"; queueKind: string; key: string; draft: string } | { type: "draft"; draftKind: "note" | "charter"; draft: string; text: string; until: string | null };
+type Emitted = DutyEvent | DutyCardEvent | ({ type: "status" } & DutyStatus);
+type Feed = (e: Emitted & { t: string }) => void;
 
 export class DutyRuntime {
   private s: DutyState;
@@ -103,7 +106,7 @@ export class DutyRuntime {
     this.listeners.add(fn);
     return () => void this.listeners.delete(fn);
   }
-  private emit(e: DutyEvent | ({ type: "status" } & DutyStatus)) {
+  private emit(e: Emitted) {
     const t = new Date(this.now()).toISOString();
     for (const l of this.listeners) l({ ...e, t });
   }
@@ -150,6 +153,19 @@ export class DutyRuntime {
     const r = this.apply({ kind: "message", msg });
     if (r.verdict === "refused") return { verdict: "refused", reason: this.s.error ? `DUTY가 내려가 있습니다: ${this.s.error}` : "DUTY가 내려가 있습니다. NEW SHIFT로 다시 시작합니다" };
     return { verdict: r.verdict ?? "sent" };
+  }
+
+  // D3: 받아들여진 초안을 대화의 이 자리에 적는다(카드는 큐 줄을 가리킬 뿐이다). 글 이벤트와 같은 길이라 순서가 섞이지 않는다
+  recordDraft(d: DraftLine) {
+    const t = new Date(this.now()).toISOString();
+    if (d.kind === "card") {
+      this.append({ t, kind: "card", queueKind: d.card.queueKind, key: d.card.key, draft: d.id });
+      this.emit({ type: "card", queueKind: d.card.queueKind, key: d.card.key, draft: d.id });
+    } else {
+      const until = d.kind === "note" ? d.until : null;
+      this.append({ t, kind: "draft", draftKind: d.kind, draft: d.id, text: d.text, until });
+      this.emit({ type: "draft", draftKind: d.kind, draft: d.id, text: d.text, until });
+    }
   }
 
   stop() {
@@ -219,7 +235,8 @@ export class DutyRuntime {
     this.badBase += this.parser.malformed();
     this.parser = createDutyParser();
     this.stderrLast = "";
-    const p = spawn(argv.command, argv.args, { cwd: argv.cwd, env: cleanEnv(dir), stdio: ["pipe", "pipe", "pipe"] });
+    // DUTY의 atcctl은 자기를 띄운 서버에 말한다(기본값 7700이면 시험 서버(7702)의 DUTY가 운영에 말하게 된다)
+    const p = spawn(argv.command, argv.args, { cwd: argv.cwd, env: { ...cleanEnv(dir), ATC_URL: `http://127.0.0.1:${config.port}` }, stdio: ["pipe", "pipe", "pipe"] });
     this.proc = p;
     let done = false;
     this.exited = new Promise<void>((resolve) => {

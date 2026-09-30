@@ -41,7 +41,7 @@ const KIND_HELP: Record<FleetPlanKind, string> = {
   RETURN: "FLEET PLAN이 건 AOG를 푼다(기한이 지남)",
 };
 // 승인하면 하는 일(양식에 보인다)
-const WILL_DO: Record<FleetPlanKind, (p: FleetProposal) => string> = {
+export const WILL_DO: Record<FleetPlanKind, (p: FleetProposal) => string> = {
   LAUNCH: (p) => `${p.aircraft}를 ${p.airport ?? "base"} 저장소에서 백그라운드 세션으로 띄우고 CREW BRIEFING을 넣는다`,
   ENTRY: (p) => `${p.aircraft}를 ${p.configuration ?? ""} CONFIGURATION으로 ${p.airport ?? ""}에 들인 뒤 띄운다`,
   STOP: (p) => `${p.aircraft}의 백그라운드 세션을 멈춘다(대화는 남는다)`,
@@ -69,7 +69,7 @@ const minutesSince = (iso: string) => Math.max(0, Math.round((Date.now() - Date.
 // 사유 안의 FLIGHT key를 FLIGHT NUMBER로
 const withFlights = (text: string) => text.replace(/\b([A-Z]{2,5}-\d+)\b/g, (k) => flightNumber(k));
 // 사람이 하는 제안: 데스크톱·터미널 세션의 REFRESH(/clear 뒤 CREW BRIEFING). 승인 운용에서도 "했음"(동의)으로 닫는다
-const isManual = (p: FleetProposal) => p.kind === "REFRESH" && p.reasons.some((r) => r.code === "session" && r.value === "interactive");
+export const isManual = (p: FleetProposal) => p.kind === "REFRESH" && p.reasons.some((r) => r.code === "session" && r.value === "interactive");
 const kTokens = (n: number) => (n >= 1_000_000 ? `${n / 1_000_000}M` : `${Math.round(n / 1000)}k`);
 const stepText = (x: StepResult) => `${x.action} ${x.registration}${x.jobId ? ` (${x.jobId})` : ""}${x.ok ? "" : ` 실패: ${x.error ?? ""}`}`;
 

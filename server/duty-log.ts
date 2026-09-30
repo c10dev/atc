@@ -7,7 +7,11 @@ export type DutyLogLine =
   | { t: string; kind: "tool"; name: string; summary: string; error: boolean }
   | { t: string; kind: "notice"; text: string }
   | { t: string; kind: "usage"; turn: DutyTurnUsage }
-  | { t: string; kind: "shift" }; // NEW SHIFT: 여기부터 새 대화
+  | { t: string; kind: "shift" } // NEW SHIFT: 여기부터 새 대화
+  // D3: DUTY의 카드 요청이 받아들여진 자리(draft는 duty-drafts.jsonl의 DD-n). 카드의 내용은 그릴 때 지금의 큐에서 읽는다
+  | { t: string; kind: "card"; queueKind: string; key: string; draft: string }
+  // D3: note·charter 초안(읽기만 하는 흐린 카드). 확정은 D4·D5
+  | { t: string; kind: "draft"; draftKind: "note" | "charter"; draft: string; text: string; until?: string | null };
 
 // 스트림 이벤트 → 적을 줄(적지 않는 것은 null). 조각·init·state·rate는 적지 않는다
 export function logLineOf(e: DutyEvent, t: string): DutyLogLine | null {

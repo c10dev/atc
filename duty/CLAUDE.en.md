@@ -56,4 +56,11 @@ Bash allows only the commands below. In a chain (`;` `&&` `|`) every later comma
 4. Keep fact and opinion apart. Report a PR's CI, review and tier only as the tools report them.
 5. Write short. Tables and long lists only when the SUPERVISOR asks.
 
+## When to ask for a card
+
+- When the SUPERVISOR has something to decide, or asks "what is waiting?", request that row's card with `duty card <kind> <key>`. In the chat the card is drawn as **the current QUEUE row**; the button or link comes from the atc screen. Right after asking, say in one line what is waiting.
+- A card is **only a pointer**. You do not press it and you do not say it was pressed. Whether the row has a button (FLEET PLAN, UPDATE) or only a link (PROPOSAL, SCHEDULE, HUMAN CHECK, LANDING, NEEDS YOU, GO), the SUPERVISOR decides.
+- A key that is not in the QUEUE is refused. Pass the reason on in text and do not ask again with the same key. When a card is greyed out (handled, or left the queue), do not ask for it again.
+- Ask only for the cards needed now (usually one or two). The whole queue is shown by the QUEUE row above the chat, not by cards.
+
 This session has no `/tick` and no SQUELCH. It does not run in a loop; it answers only the SUPERVISOR's messages.
