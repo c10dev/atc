@@ -56,7 +56,7 @@ export const LAUNCH_FAILED_WHY = "LAUNCH 실패";
 export const ABSENT_REASON = "ABSENT — 세션 없음, 승인하면 LAUNCH";
 
 // ── cut: 대화 기록 끝의 사실 → 한도로 잘린 뒤 새 턴이 없나 ──
-// health.ts healthOf의 2b와 같은 규칙: 마지막 지시 뒤에 wrap_up 안내가 있고 그 뒤 release가 없다. 세션이 없어 healthOf는 이것을 보지 않는다
+// health.ts healthOf의 2b와 같은 규칙에서 end_turn 예외(ATC-167)만 뺐다: 마지막 지시 뒤에 wrap_up 안내가 있고 그 뒤 release가 없다. 세션이 없어 healthOf는 이것을 보지 않는다. 세션이 사라진 AIRCRAFT는 마무리한 턴도 일이 남았을 수 있어 RESUME 카드를 그대로 낸다
 export function cutAtOf(facts: readonly Fact[]): number | null {
   let prompt = -1;
   let wrap = -1;

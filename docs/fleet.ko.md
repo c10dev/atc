@@ -1193,6 +1193,14 @@ FLEET PLAN 블록의 FUEL(8.6의 "주간 사용량 줄")은 만들었다(ATC-63)
 - `tail:` 라벨이 붙은 In Progress FLIGHT는 점유가 없어도 쥔 것으로 센다. SURVEY·CHECK FLIGHT는 PR을 열지 않으므로 `STALLED`에서 뺀다.
 - `RESUME`·`STALLED`는 hold가 아니다: 한도가 풀린 AIRCRAFT는 새 배정을 받을 수 있고, 그 배정이 곧 "계속"이다.
 
+### LIMIT that expires as built (ATC-167)
+
+`LIMIT`은 atc가 reset 시각을 모르거나 세션이 이미 마무리했어도 새 지시가 올 때까지 남았다. 이제 늘 끝난다(`server/health.ts`, 순수 함수).
+
+- **마무리는 cut이 아니다.** `wrap_up` 안내 뒤 마지막 assistant 대답이 `stop_reason: "end_turn"`으로 끝나고 세션이 idle이면 health 코드가 없다(cut `LIMIT` 아님). cut은 `end_turn` 없이 멈춘 것이다(도구 결과를 받은 뒤 다음 대답이 없거나, 대답이 아예 없음). 결과 없는 도구 호출은 그대로 `PENDING`이다. 세션이 없는 ABSENT 길(`cutAtOf`)은 ATC-86 규칙 그대로라 RESUME 카드는 바뀌지 않는다.
+- **reset 시각을 모르면 5시간 창.** `LIMIT_WINDOW_MS`(5시간)는 atc가 아는 가장 긴 창이다. `resetsAt`이 없는 `LIMIT`(API 오류 `LIMIT`, hook의 `LIMIT` push, ACCOUNT의 FUEL 기록에서 reset을 못 찾은 cut `LIMIT`)은 시작한 지 그만큼 뒤에 풀린 것으로 본다. cut `LIMIT`은 `RESUME`이 되고(`resetsAt` = cut + 5시간, ABSENT AIRCRAFT도 같은 시각이라 기존 RESUME 카드 길을 따른다), 그 밖의 `LIMIT`은 사라진다. FUEL이 아는 진짜 reset이 이기고, reset을 알고 지난 `LIMIT`은 전처럼 `UNANSWERED`다.
+- 경보 key 형식과 RESUME 카드는 그대로다.
+
 ### NEEDS YOU as built (ATC-99)
 
 백그라운드 세션(세션 파일 `kind: "bg"`와 `jobId`)은 atc가 아는 busy/idle보다 풍부한 기록을 `~/.claude/jobs/<jobId>/state.json`에 둔다. `claude agents --json`의 `state` 칸이 여기서 온다. atc는 이 파일을 읽기만 하고 `Session`에 `job: {state, detail, needs, suggestedReply, since}`를 붙인다. 백그라운드 세션이 아니면 `null`이다.

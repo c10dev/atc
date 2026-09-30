@@ -1130,6 +1130,14 @@ On 2026-09-28 at 18:10Z TEAM_G and TEAM_H stopped on the usage limit and sat unn
 - `tail:`-labelled In Progress FLIGHTs count as held even without a claim; SURVEY and CHECK FLIGHTs are excluded from `STALLED` because they never open a PR.
 - `RESUME` and `STALLED` are not holds: an AIRCRAFT with the limit over can take a new assignment, and that assignment is the "continue".
 
+### LIMIT that expires as built (ATC-167)
+
+A `LIMIT` used to stay until a new prompt, even when atc had no reset time or the session had already wrapped up. Now it always ends (`server/health.ts`, pure):
+
+- **A wrap-up is not a cut.** After the `wrap_up` note, if the last assistant reply ends with `stop_reason: "end_turn"` and the session is idle, there is no health code (not `cut` `LIMIT`). A cut is a session that stops without `end_turn` (for example after a tool result with no next reply, or no reply at all). A tool call with no result is still `PENDING`. The ABSENT path (`cutAtOf`, no live session) keeps the ATC-86 rule, so its RESUME card is unchanged.
+- **No reset time: a 5-hour window.** `LIMIT_WINDOW_MS` (5 hours) is the longest window atc knows. A `LIMIT` without `resetsAt` (an API-error `LIMIT`, a hook `LIMIT` push, a cut `LIMIT` whose reset the ACCOUNT's FUEL records do not give) counts as reset that long after it started. A cut `LIMIT` then becomes `RESUME` (`resetsAt` = cut + 5 hours; ABSENT AIRCRAFT get the same time, so the existing RESUME card path follows). Any other `LIMIT` clears. A reset that FUEL knows still wins, and a `LIMIT` with a known reset that has passed is `UNANSWERED` as before.
+- The alert key format and the RESUME card do not change.
+
 ### NEEDS YOU as built (ATC-99)
 
 A background session (session file `kind: "bg"`, with its `jobId`) keeps a richer record than atc's busy/idle: `~/.claude/jobs/<jobId>/state.json`, the source of the `state` column in `claude agents --json`. atc reads it, read-only, and puts `job: {state, detail, needs, suggestedReply, since}` on the `Session`; it is `null` for anything else.

@@ -373,7 +373,7 @@ export function healthOfSession(
   }
   const pull = healthOf(hit.facts, { status, lastWriteAt: st.mtimeMs }, now, cfg);
   // push가 대화 기록의 마지막 사실보다 새로우면 push가 이긴다(ATC-47)
-  return { health: mergeHealth(readPushRecord(s.sessionId), pull, hit.facts), activity: activityFromTrack(hit.track, status), ...(kanaSeen.has(s.sessionId) ? { languageAt: kanaSeen.get(s.sessionId)! } : {}) };
+  return { health: mergeHealth(readPushRecord(s.sessionId), pull, hit.facts, now), activity: activityFromTrack(hit.track, status), ...(kanaSeen.has(s.sessionId) ? { languageAt: kanaSeen.get(s.sessionId)! } : {}) };
 }
 
 // 턴이 끝난 세션의 마지막 CAPTAIN 메시지(ATC-89 REPORT 판정). 대화 기록 끝만 읽고 저장하지 않는다 — 부르는 쪽이 ATCC 확인을 먼저 한다.

@@ -46,7 +46,7 @@ export const DEFAULT_HEALTH: HealthConfig = {
 // 대화 기록 한 줄에서 뽑은 사실. 본문은 없다(오류 한 줄만)
 export type Fact =
   | { t: number; kind: "prompt" }
-  | { t: number; kind: "reply"; toolUses: string[] }
+  | { t: number; kind: "reply"; toolUses: string[]; stop?: string } // stop: 응답의 stop_reason(end_turn = 정상 마무리, ATC-167)
   | { t: number; kind: "result"; toolUseIds: string[]; denied: number }
   | { t: number; kind: "error"; error: string; text: string; resetsAt?: number; rateLimitType?: string }
   // usageLimitNote(ATC-86): Claude Code가 한도에 닿으면 넣는 isMeta 줄. wrap_up = "곧 잘린다, 마무리하라", release = 한도가 풀린 뒤 다음 지시와 함께 "앞의 안내는 잊어라". 본문은 읽지 않는다
@@ -100,7 +100,8 @@ export function factsOf(text: string): Fact[] {
         });
       } else {
         const toolUses = Array.isArray(content) ? content.filter((b) => b?.type === "tool_use" && b.id).map((b) => String(b.id)) : [];
-        out.push({ t, kind: "reply", toolUses });
+        const stop = d.message?.stop_reason;
+        out.push({ t, kind: "reply", toolUses, ...(typeof stop === "string" ? { stop } : {}) });
       }
       continue;
     }
@@ -184,6 +185,9 @@ const make = (code: HealthCode, level: Health["level"], since: number, detail: s
   ...extra,
 });
 
+// reset 시각을 모르는 LIMIT이 풀린 것으로 보는 시간(ATC-167). atc가 아는 가장 긴 창(5시간)이다. FUEL이 진짜 reset을 알면 그쪽이 이긴다
+export const LIMIT_WINDOW_MS = 5 * 3_600_000;
+
 export interface SessionState {
   status: "busy" | "idle" | "dead";
   lastWriteAt: number | null; // 대화 기록을 마지막으로 쓴 시각
@@ -193,6 +197,12 @@ const lastIndex = <T>(xs: T[], f: (x: T) => boolean) => {
   for (let i = xs.length - 1; i >= 0; i--) if (f(xs[i]!)) return i;
   return -1;
 };
+
+// wrap_up 안내(facts[iNote]) 뒤 마지막 대답이 end_turn으로 끝났나(ATC-167)
+export function wrappedUp(facts: Fact[], iNote: number): boolean {
+  const last = facts.slice(iNote + 1).findLast((f) => f.kind === "reply");
+  return last?.kind === "reply" && last.stop === "end_turn";
+}
 
 // 세션 하나의 health. 문제가 없으면 null. 코드는 다음 정상 턴(대답)이 오면 풀린다
 export function healthOf(facts: Fact[], s: SessionState, now: number, cfg: HealthConfig = DEFAULT_HEALTH): Health | null {
@@ -212,6 +222,7 @@ export function healthOf(facts: Fact[], s: SessionState, now: number, cfg: Healt
       const resetsAt = e.resetsAt ?? resetFromText(e.text, e.t);
       const weekly = /seven_day|week/i.test(e.rateLimitType ?? "") || /weekly/i.test(e.text);
       if (resetsAt && now >= resetsAt) return unanswered(promptAt ?? e.t, `LIMIT reset ${hhmm(resetsAt)} 지남 — 지시가 아직 대답을 받지 못함`);
+      if (!resetsAt && now - e.t >= LIMIT_WINDOW_MS) return null; // reset을 몰라도 가장 긴 창이 지나면 풀린 것(ATC-167). 영원히 LIMIT이 아니다
       return make("LIMIT", "alert", e.t, detail, { ...(resetsAt ? { resetsAt: iso(resetsAt) } : {}), ...(weekly ? { weekly } : {}) });
     }
     if (code === "THROTTLE") {
@@ -229,9 +240,10 @@ export function healthOf(facts: Fact[], s: SessionState, now: number, cfg: Healt
     if (r.toolUses.some((id) => !done.has(id))) return make("PENDING", "info", r.t, "도구 호출이 승인을 기다림");
   }
 
-  // 2b) 오류 없이 한도로 턴이 잘렸다(ATC-86): 마지막 지시 뒤에 wrap_up 안내가 들어왔고 세션이 쉬고 있다. release가 오면 풀린 것
+  // 2b) 오류 없이 한도로 턴이 잘렸다(ATC-86): 마지막 지시 뒤에 wrap_up 안내가 들어왔고 세션이 쉬고 있다. release가 오면 풀린 것.
+  // 안내 뒤 마지막 대답이 end_turn으로 정상 마무리했으면 잘린 것이 아니다(ATC-167): 도구 호출이나 끊긴 대답으로 멈춰야 cut이다
   const iNote = lastIndex(facts, (f) => f.kind === "limit-note" && f.note === "wrap_up");
-  if (s.status === "idle" && iNote >= 0 && iNote > iPrompt && iNote > lastIndex(facts, (f) => f.kind === "limit-note" && f.note === "release")) {
+  if (s.status === "idle" && iNote >= 0 && iNote > iPrompt && iNote > lastIndex(facts, (f) => f.kind === "limit-note" && f.note === "release") && !wrappedUp(facts, iNote)) {
     const at = facts[iNote]!.t;
     return make("LIMIT", "alert", at, "사용 한도에 걸려 턴이 도중에 끝남(오류 없이 잘림)", { cut: true, cutAt: iso(at), next: NEXT_CUT });
   }
@@ -281,10 +293,16 @@ export function cutResetOf(
   return best;
 }
 
-// cut LIMIT에 reset을 붙인다. reset이 지났으면 RESUME(한도는 풀렸는데 새 지시가 없다). reset을 모르면 그대로(LIMIT이 풀릴 때까지 HOLD)
+// cut LIMIT에 reset을 붙인다. reset이 지났으면 RESUME(한도는 풀렸는데 새 지시가 없다).
+// reset을 모르면 cut 뒤 LIMIT_WINDOW_MS(5시간)가 지날 때까지 HOLD, 그 뒤엔 풀린 것으로 보고 RESUME(ATC-167)
 export function settleCut(h: Health, reset: { resetsAt: number; weekly: boolean } | null, now: number): Health {
-  if (h.code !== "LIMIT" || !h.cut || !reset) return h;
+  if (h.code !== "LIMIT" || !h.cut) return h;
   const cutAt = h.cutAt ? Date.parse(h.cutAt) : Date.parse(h.since);
+  if (!reset) {
+    const assumed = cutAt + LIMIT_WINDOW_MS;
+    if (now < assumed) return h;
+    return make("RESUME", "alert", assumed, `reset 시각을 몰라 cut ${hhmm(cutAt, now)} 뒤 ${LIMIT_WINDOW_MS / 3_600_000}시간이 지나 풀린 것으로 봄 — 새 지시가 없어 멈춰 있음`, { resetsAt: iso(assumed), cutAt: iso(cutAt) });
+  }
   if (now >= reset.resetsAt) {
     return make("RESUME", "alert", reset.resetsAt, `한도가 풀렸다(reset ${hhmm(reset.resetsAt, now)}) — cut ${hhmm(cutAt, now)} 뒤 새 지시가 없어 멈춰 있음`, {
       resetsAt: iso(reset.resetsAt),
@@ -334,6 +352,8 @@ export function lastFactAt(facts: Fact[]): number | null {
   return facts.reduce<number | null>((a, f) => (a == null || f.t > a ? f.t : a), null);
 }
 
+const pushDetail = (p: PushRecord) => (p.code === "PENDING" ? "도구 호출이 승인을 기다림" : p.line || p.error || p.event);
+
 // 최신 push 기록 하나를 Health로. 코드가 없으면(clear·idle_prompt) null.
 // StopFailure의 error는 pull과 같은 classifyError를 거쳤고, 여기서는 reset 문구만 문장에서 다시 읽는다
 function pushHealth(p: PushRecord): Health | null {
@@ -341,7 +361,7 @@ function pushHealth(p: PushRecord): Health | null {
   const at = pushSince(p);
   if (!Number.isFinite(at)) return null;
   // PENDING은 대화 기록의 pull과 같은 문구로, 나머지는 hook이 남긴 오류 한 줄(또는 error 코드)
-  const detail = p.code === "PENDING" ? "도구 호출이 승인을 기다림" : p.line || p.error || p.event;
+  const detail = pushDetail(p);
   if (p.code === "LIMIT") {
     const resetsAt = resetFromText(detail, at);
     return make("LIMIT", "alert", at, detail, { ...(resetsAt ? { resetsAt: iso(resetsAt) } : {}) });
@@ -353,10 +373,11 @@ function pushHealth(p: PushRecord): Health | null {
 
 // ATC-47 push/pull: 대화 기록의 마지막 사실보다 새 push 기록이 이기고, 아니면(pull이 나중이거나 같으면) pull이 남는다.
 // push는 permission_prompt 같은 대기(대화 기록에 없는 사실)를 바로 알려 주는 용도다
-export function mergeHealth(push: PushRecord | null | undefined, pull: Health | null, facts: Fact[]): Health | null {
+export function mergeHealth(push: PushRecord | null | undefined, pull: Health | null, facts: Fact[], now: number = Date.now()): Health | null {
   if (!push) return pull;
   const at = pushSince(push);
   if (!Number.isFinite(at)) return pull;
+  if (push.code === "LIMIT" && !resetFromText(pushDetail(push), at) && now - at >= LIMIT_WINDOW_MS) return pull; // reset을 모르는 push LIMIT도 가장 긴 창 뒤엔 풀린 것(ATC-167)
   const pullAt = lastFactAt(facts);
   if (pullAt != null && pullAt >= at) return pull; // 그 뒤 대화 기록이 움직였다 → pull이 최신
   // ATC-86: cut LIMIT·RESUME은 새 활동(지시·도구 결과)이 오면 풀린다. 대화 기록이 아직 따라오지 못했어도 hook이 먼저 안다.

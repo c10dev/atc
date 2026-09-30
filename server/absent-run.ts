@@ -2,6 +2,7 @@ import { closeSync, openSync, readdirSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { accountFolders } from "./accounts.ts";
 import type { FleetFile } from "./crew.ts";
+import { LIMIT_WINDOW_MS } from "./health.ts";
 import { type AbsentAircraft, absentOf, type CutInfo, cutAtOfText, lastReportLineOf } from "./dispatch-launch.ts";
 import type { Session } from "./model.ts";
 import { readRecords } from "./recorder.ts";
@@ -131,7 +132,8 @@ export function readAbsent(i: AbsentInput): AbsentAircraft[] {
       return {
         sessionId,
         cutAt: new Date(cut.cutAt).toISOString(),
-        resetsAt: reset ? new Date(reset.resetsAt).toISOString() : null,
+        // reset을 모르면 cut 뒤 5시간이 지난 것부터 풀린 것으로 본다(ATC-167). 그 전엔 null(HOLD · LIMIT — reset 모름)
+        resetsAt: reset ? new Date(reset.resetsAt).toISOString() : i.now >= cut.cutAt + LIMIT_WINDOW_MS ? new Date(cut.cutAt + LIMIT_WINDOW_MS).toISOString() : null,
         ...(reset?.weekly ? { weekly: true } : {}),
         report: cut.report,
       };
