@@ -269,6 +269,12 @@ export async function runFleetPlan(s: Snapshot, now = Date.now()) {
   }
 }
 
+// 열린 제안과 옛것인지(SUPERVISOR QUEUE, ATC-194). fleetPlanView의 open과 같은 규칙이고 다른 것은 읽지 않는다
+export const openFleetPlanNow = (now = Date.now()) =>
+  allFleetPlan()
+    .filter((p) => p.status === "open")
+    .map((p) => ({ ...p, stale: isStale(p, last?.candidates ?? [], last?.at ?? null, now) }));
+
 // fuel: 지금 스냅샷의 FUEL REMAINING per ACCOUNT(ATC-63). 계획 주기(5분)를 기다리지 않고 보인다
 export function fleetPlanView(now = Date.now(), fuel: FuelRemaining[] = []) {
   const all = allFleetPlan();
