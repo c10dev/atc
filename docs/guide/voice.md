@@ -16,7 +16,9 @@ WARNING과 CALL 알림은 톤에 이어 **짧은 영어 콜아웃**을 한 번 �
 | 머지가 기본 브랜치에 닿지 않음(STRANDED) | WARNING | Supervisor, ATC one two one stranded, merge not on main, request instructions. |
 | RTS가 ROLLBACK · 실패 | WARNING | Supervisor, return to service rolled back, request instructions. |
 | 도구 승인을 기다리는 AIRCRAFT(PENDING) | CALL | Supervisor, GOLF, standing by for approval. |
-| 판정을 기다리는 DISPATCH 제안 | CALL | Supervisor, dispatch proposal waiting on ATC one four zero, request decision. |
+| 판정을 기다리는 DISPATCH 제안(ASSIGN) | CALL | Supervisor, dispatch requests ATC one four zero for HOTEL, request decision. |
+| 판정을 기다리는 DISPATCH 제안(RELEASE) | CALL | Supervisor, dispatch requests release of ATC one four zero, request decision. |
+| 판정을 기다리는 SCHEDULE 작업(approval 모드만) | CALL | Supervisor, schedule requests tail on ATC one four zero, request decision. |
 | HUMAN CHECK 대기 | CALL | Supervisor, human check waiting on ATC five, request decision. |
 
 CAUTION(예: AIRCRAFT health, FLIGHT FOLLOWING 문제), ADVISORY, DONE에는 음성이 없습니다(CAUTION은 하루 30번쯤 울립니다). 톤 다음에 **한 번만** 읽고, WARNING 톤이 되풀이돼도 음성은 되풀이하지 않습니다. 확인(ACK)하면 톤과 음성이 함께 멈춥니다. 여러 알림이 한꺼번에 오면 가장 높은 등급 하나만 읽습니다. 소리가 켜진 탭 하나, 조용한 시간, 10분 재울림 방지는 톤과 같습니다.
@@ -159,5 +161,6 @@ atc는 엔진과 목소리를 **따로 도는 프로그램과 파일**로 쓸 �
 | `TTS 엔진 없음 — 목소리 없음` | 목소리 폴더에 `.onnx`와 `.onnx.json` 한 쌍이 없음 | 위 설치 3)을 하거나 `ATC_TTS_VOICES`를 고칩니다 |
 | `미리 듣기 실패: 5초 안에 끝나지 않음` | 엔진이 시간 제한(Piper·espeak-ng 5초, Kokoro 20초) 안에 못 끝냄 | 한 번 더 누릅니다. Piper는 더 작은 목소리(`low`·`medium`)를 씁니다 |
 | 엔진 목록에서 `kokoro — kokoro 실행 파일 없음` 등이 흐리게 보임 | 그 엔진의 경로(`ATC_TTS_ESPEAK`, `ATC_TTS_KOKORO`)에 실행 파일이 없음 | 위 설치를 하거나 `.env.local` 경로를 고칩니다 |
-| `미리 듣기 실패: 소리가 꺼져 있음` | 브라우저가 소리를 막음 | SOUND를 켜는 클릭을 다시 합니다 |
+| `미리 듣기 실패: 소리가 꺼져 있음` | 브라우저가 소리를 막음 | 헤더의 `🔇 소리 잠김` 칩이나 페이지의 아무 곳을 누릅니다. SOUND를 켜는 클릭을 다시 해도 됩니다 |
+| 헤더에 `🔇 소리 잠김 — 클릭하면 켜짐`이 떠 있음, 탭 제목에 `🔇1` | 브라우저가 오디오를 잠갔고 atc가 스스로 풀지 못함 | 아무 곳이나 한 번 누릅니다. 잠겨 있는 동안 온 WARNING·CALL 가운데 아직 있는 가장 높은 것 하나가 풀릴 때 한 번 읽힙니다 |
 | 톤만 나고 음성이 없음 | CAUTION·DONE이거나, VOICE가 꺼짐, 그 알림에 문구 틀이 없음 | 위 표를 봅니다 |

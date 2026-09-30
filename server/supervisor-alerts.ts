@@ -3,6 +3,7 @@ import type { FollowItem } from "./following.ts";
 import type { Alert, PullRequest, Session, Ticket, Workspace } from "./model.ts";
 import type { RtsRecord } from "./mcc.ts";
 import type { Proposal } from "./proposals.ts";
+import type { ScheduleMode, ScheduleOp } from "./schedule.ts";
 
 // SUPERVISOR alerts(ATC-87): 화면을 안 보는 SUPERVISOR에게 알릴 변화의 목록. 새 감지는 없다 — 이미 있는 것(ALERT, FLIGHT FOLLOWING, health, 제안, PR, RTS)의
 // 키를 모아 안정된 key로 세울 뿐이다. 서버는 key가 처음 생기거나 사라질 때 `alert` SSE 이벤트를 보내고, 알림·소리는 화면(브라우저)이 정한다.
@@ -25,6 +26,9 @@ export interface SupervisorAlert {
   next: string; // 다음 한 걸음
   link: string; // 화면 주소(hash): 그 항목이 있는 탭
   since: string | null;
+  // 무엇을 청하나(ATC-162, 음성 문구용, 선택). pending|proposal은 `assign`·`release`, pending|schedule은 SCHEDULE 종류를 소문자로(`tail`·`classify` …).
+  // key 형식은 그대로다(브라우저·메뉴 막대·atc-app이 key로 중복을 거른다). 다른 항목에는 없다
+  ask?: string;
 }
 
 export interface AlertsInput {
@@ -36,6 +40,8 @@ export interface AlertsInput {
   proposals: Pick<Proposal, "id" | "kind" | "status" | "flight" | "aircraftName" | "holdAt" | "statusAt">[];
   pulls: Pick<PullRequest, "repo" | "number" | "title" | "head" | "landing" | "draft" | "ticketKey" | "humanCheck">[];
   rts: Pick<RtsRecord, "at" | "from" | "to" | "result" | "detail"> | null;
+  // SCHEDULE 판정(ATC-162): approval 모드에서만 SUPERVISOR 결정을 기다리는 일이다. shadow는 게이트 판정이라 항목이 없다. 없으면 항목 없음
+  schedule?: { mode: ScheduleMode; ops: Pick<ScheduleOp, "id" | "kind" | "flight" | "status" | "statusAt">[] };
 }
 
 // FOLLOWING 문제 가운데 다른 경로가 이미 알리는 것은 뺀다: health·stranded는 ALERT가, landing-wait는 PR 항목이 알린다
@@ -133,7 +139,28 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       next: "DISPATCH 탭에서 승인하거나 거절한다",
       link: "#dispatch",
       since: p.statusAt,
+      ask: p.kind === "RELEASE" ? "release" : "assign",
     });
+  }
+
+  // 4b) SCHEDULE 판정(approval 모드만): 열린 작업(draft·agreed·disagreed)은 SUPERVISOR의 승인·거절을 기다린다
+  if (inp.schedule?.mode === "approval") {
+    for (const op of inp.schedule.ops) {
+      if (op.status !== "draft" && op.status !== "agreed" && op.status !== "disagreed") continue;
+      out.push({
+        key: `pending|schedule|${op.id}`,
+        group: "pending",
+        level: "advisory",
+        cue: "call",
+        aircraft: null,
+        flight: op.flight,
+        text: `SCHEDULE ${op.id} — ${op.kind}${op.flight ? ` ${op.flight}` : ""} 판정 대기`,
+        next: "SCHEDULE 탭에서 승인하거나 거절한다",
+        link: "#schedule",
+        since: op.statusAt,
+        ask: op.kind.toLowerCase(),
+      });
+    }
   }
 
   // 5) PR: 착륙할 수 있음(CLEARED), HUMAN CHECK 대기

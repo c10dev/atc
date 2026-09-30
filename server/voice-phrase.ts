@@ -44,7 +44,7 @@ const on = (flight: string | null) => (flight ? ` on ${flight}` : "");
 const list = (...parts: (string | null)[]) => parts.filter(Boolean).join(", ");
 
 // 알림 하나의 문구. 틀이 없는 종류는 null(그 알림은 소리만 난다)
-export function phraseOf(a: Pick<SupervisorAlert, "key" | "aircraft" | "flight">): string | null {
+export function phraseOf(a: Pick<SupervisorAlert, "key" | "aircraft" | "flight"> & { ask?: string }): string | null {
   const kind = kindOf(a);
   if (!kind) return null;
   const who = whoWords(a.aircraft);
@@ -69,7 +69,17 @@ export function phraseOf(a: Pick<SupervisorAlert, "key" | "aircraft" | "flight">
       phrase = `${list("Supervisor", who || null, "standing by for approval")}.`;
       break;
     case "pending:proposal":
-      phrase = `Supervisor, dispatch proposal waiting${on(flight)}, request decision.`;
+      // ATC-162: 무엇을 청하나. ASSIGN은 어느 AIRCRAFT에, RELEASE는 그 FLIGHT를 풀어 달라는 것. ask가 없는 옛 항목은 예전 문구
+      phrase =
+        a.ask === "release"
+          ? `Supervisor, dispatch requests release${flight ? ` of ${flight}` : ""}, request decision.`
+          : a.ask === "assign"
+            ? `Supervisor, dispatch requests ${flight ?? "an assignment"}${who ? ` for ${who}` : ""}, request decision.`
+            : `Supervisor, dispatch proposal waiting${on(flight)}, request decision.`;
+      break;
+    case "pending:schedule":
+      // SCHEDULE 판정(approval 모드): ask는 종류(tail, classify …). NEW는 FLIGHT가 아직 없다
+      phrase = `Supervisor, schedule requests ${a.ask === "new" ? "a new flight" : `${a.ask || "an update"}${on(flight)}`}, request decision.`;
       break;
     case "pending:humancheck":
       phrase = `Supervisor, human check waiting${on(flight)}, request decision.`;

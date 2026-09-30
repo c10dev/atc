@@ -5,6 +5,7 @@ import type { Snapshot } from "./model.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { allProposals } from "./proposals.ts";
 import { registrationOf } from "./registration.ts";
+import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { CONTROL_SESSIONS } from "./session-control.ts";
 import { type AlertEvent, diffAlerts, type SupervisorAlert, supervisorAlertsOf } from "./supervisor-alerts.ts";
 import { summaryKey, summaryOf, type SupervisorSummary, workingOf } from "./supervisor-summary.ts";
@@ -29,6 +30,7 @@ export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
     proposals: allProposals(),
     pulls: s.pulls ?? [],
     rts: rtsState(readMccRecords()).last,
+    schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
   });
 }
 
