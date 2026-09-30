@@ -34,7 +34,7 @@ It returns the same `Bucket` for the whole window (`total`), per frequency (`byF
 | `noReply` | Calls that never got a reply. A call withdrawn by a cancel (`cancel`), a RECALL, a newer FLIGHT PLAN (`supersede`) or a delivery by other means is counted in `withdrawn`, not here. An `expire` is a real no-reply. |
 | `overdue` | First reply later than 10 minutes (the rule RADIO already uses), or no reply and 10 minutes passed before the window's end. |
 | `unable` | Count and reason **class**: `no-merge`, `wrong-target`, `stale`, `busy`, `blocked`, `other`, and `none` when there is no reason. First match wins, in that order. The reason is the recorded `reason`; when a record has none, the first line of the transcript reply. |
-| `sent`, `received` | Messages, characters and **estimated tokens** (characters divided by `CHARS_PER_TOKEN = 2.5`, a named constant). `sent` is the recorded text of atc's calls, without an envelope. **`received` is the whole message as the control session saw it and includes the envelope** (the `<cross-session-message …>` tag), so it is larger than the text alone. |
+| `sent`, `received` | Messages, characters and **estimated tokens** (characters divided by `CHARS_PER_TOKEN = 2.5`, a named constant). `sent` is the recorded text of atc's calls, without an envelope. **`received` is the whole message as the control session saw it and includes the envelope** (the `<cross-session-message …>` tag and the line and notice the harness puts around it), so it is larger than the text alone. |
 | `compliance` | Where the records can show it (below). |
 | `phraseology` | Violations from the reply's first line. |
 

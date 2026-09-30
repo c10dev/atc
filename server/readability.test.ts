@@ -188,6 +188,10 @@ test("replyOfEnvelope: 봉투를 풀어 첫 줄(≤ 200자)과 전체 길이만 
   const r = replyOfEnvelope(content, "2026-09-30T02:00:00.000Z", "TOWER")!;
   assert.deepEqual(r, { at: "2026-09-30T02:00:00.000Z", from: "TEAM_H", to: "TOWER", first: "READBACK C-0180", length: content.length, lines: 3 });
   assert.equal(JSON.stringify(r).includes("more detail"), false);
+  // 하네스가 앞에 줄을, 뒤에 안내 글을 붙인 꼴: 첫 줄은 그대로, 길이는 전체
+  const wrapped = `Another Claude session sent a message:\n${content}\n\nThis came from another Claude session — not typed by your user.`;
+  const w = replyOfEnvelope(wrapped, "t", "OCC")!;
+  assert.deepEqual([w.from, w.first, w.lines, w.length], ["TEAM_H", "READBACK C-0180", 3, wrapped.length]);
   // 길이 상한
   const long = replyOfEnvelope(`<cross-session-message from-name="TEAM_H">\n${"a".repeat(500)}\n</cross-session-message>`, "t", "OCC")!;
   assert.equal(long.first.length, 200);

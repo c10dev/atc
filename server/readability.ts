@@ -30,7 +30,8 @@ export interface TranscriptReply {
   lines: number; // 봉투 안 본문의 비어 있지 않은 줄 수
 }
 
-const ENVELOPE = /^\s*<cross-session-message\b([^>]*)>\n?/;
+// 대화 기록의 user 줄은 봉투 앞에 하네스가 "Another Claude session sent a message:" 줄을 붙이고 뒤에 안내 글을 덧붙인다. 길이는 그 전체다
+const ENVELOPE = /^\s*(?:Another Claude session sent a message:\s*)?<cross-session-message\b([^>]*)>\n?/;
 const attr = (tag: string, name: string) => new RegExp(`\\b${name}="([^"]*)"`).exec(tag)?.[1] ?? null;
 const cap = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s);
 
