@@ -328,6 +328,29 @@ An ASSIGN to it carries `launch: true` in the plan and in the proposal. A deskto
 - **An approval whose AIRCRAFT came back live** is an ordinary approval; the stale `launch` flag launches nothing.
 - **FLEET PLAN** runs the same planner, so a FLIGHT a `launch` card can serve is no longer unserved demand there and FLEET PLAN proposes no second LAUNCH for it.
 
+### The LAUNCH loop as built (ATC-213)
+
+2026-09-30: the SUPERVISOR approved a launch card for TEAM_F twice and both failed with `TEAM_F 세션이 이미 떠 있음(bg 40bb5e74)`. A LAUNCH failure is not a verdict, so each next cycle proposed the same card again: 11 failed cards for TEAM_F and TEAM_K in 40 minutes. The two sides of LAUNCH disagreed. The planner counts only snapshot sessions as live, so TEAM_F was `absent` and got a card. LAUNCH reads `claude agents` and drops STALE rows (ATC-93), but a pid-less row with job state `blocked` was not STALE, so it counted as a live session.
+
+Measured on Claude Code 2.1.285, on a scratch job (`claude --bg --model haiku` in an empty folder, asked one question so it went `blocked`; nothing of an AIRCRAFT or control session was touched):
+
+| Step | Result |
+|---|---|
+| Live, waiting for the person | Row has `pid`, `status: idle`, `state: blocked`; `state.json` `blocked` with `needs` |
+| Worker killed with SIGTERM (a crash) | The daemon respawns it within seconds (`[worker crashed (exit 143) — respawning…]`), a new `pid`, still `blocked` |
+| Worker ended cleanly (SIGINT, like the idle exit after about 60 minutes) | **Not respawned.** The row stays with no `pid`, no `status`, `state: blocked`; `state.json` stays `blocked`. Still there 15 s later |
+| `claude stop <id>` on that row | Prints `stopped <id>`, `state.json` becomes `stopped`, the row disappears from `claude agents --json` |
+
+The same shape is on the prod machine: TEAM_F (`40bb5e74`) and TEAM_K (`77803763`) both have `state.json` `stopped` after the SUPERVISOR stopped them by hand, with no process before that. A process-less job cannot receive a message (there is no session socket), so it is not a running AIRCRAFT.
+
+What was built:
+
+- **A pid-less `blocked` row is STALE.** `STALE_JOB_STATES` gains `blocked` (`server/session-control.ts`). The ATC-93 guards stay: no `pid`, no `status`, job state in the set, and started at least 2 minutes ago. A live blocked job has a `pid` and `status: idle`, so it never reaches the check. LAUNCH then goes ahead, and the old row is left as STALE (never two rows that both look live).
+- **No card while a refused LAUNCH is unresolved.** If the last LAUNCH attempt for a REGISTRATION failed with "already up (bg <id>)" and that job's state is not `done`, `stopped` or `failed`, `absentOf` marks the AIRCRAFT `stuck` and DISPATCH lists it as unavailable, `LAUNCH 막힘 — bg <id>가 아직 목록에 남아 있음 — FLEET에서 그 세션을 STOP하거나 그 안에서 답한다`. It frees itself when the person stops the job or a later attempt succeeds. This is the backstop for the same failure with any other cause.
+- **FOLLOWING** says the same for a `launch` issue whose reason is "already up": stop the leftover job or reply in it. atc still never stops a job by itself.
+
+Not solved: a worker that has just crashed is pid-less for the seconds before the daemon respawns it, so a `blocked` row can look STALE for that moment (the same exposure `done` rows had). A LAUNCH approved in that window could start a second session. This was not measured further.
+
 ## 7. What to add to atc
 
 | Where | What |

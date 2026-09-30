@@ -205,6 +205,13 @@ test("STALE: pid·status 없는 background이고 job state가 끝났고 2분이 
   assert.equal(isStaleRow(spawning, "working", NOW), false);
   assert.equal(isStaleRow(spawning, "done", NOW), false);
   assert.equal(isStaleRow({ ...ghost, startedAt: NOW - STALE_MIN_AGE_MS + 1 }, "done", NOW), false);
+  // ATC-213: 사람을 기다리다 idle로 끝난 job(state blocked, 프로세스 없음)도 STALE이다. TEAM_F 40bb5e74·TEAM_K 77803763
+  assert.equal(isStaleRow(ghost, "blocked", NOW), true);
+  // 살아 있는 blocked job은 pid와 status(idle)가 있어 STALE이 아니다(scratch job에서 확인: pid 있음·status idle·state blocked)
+  assert.equal(isStaleRow({ ...liveIdle }, "blocked", NOW), false);
+  // 막 띄운 job과 2분이 안 된 줄은 blocked여도 STALE이 아니다(ATC-93 guard)
+  assert.equal(isStaleRow({ ...ghost, startedAt: NOW - 400 }, "blocked", NOW), false);
+  assert.equal(isStaleRow({ ...ghost, startedAt: NOW - STALE_MIN_AGE_MS + 1 }, "blocked", NOW), false);
   // job 파일을 못 읽으면 STALE로 보지 않는다
   assert.equal(isStaleRow(ghost, null, NOW), false);
   assert.equal(isStaleRow(ghost, "working", NOW), false);

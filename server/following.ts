@@ -12,7 +12,7 @@ import { type Health, healthLabel } from "./health.ts";
 import { type FuelRemaining, fuelUsedText, membersText } from "./fuel-remaining.ts";
 import type { Clearance, PullRequest, Snapshot, Ticket, Workspace } from "./model.ts";
 import { allProposals, type Proposal, standFreeTicket } from "./proposals.ts";
-import { type LaunchFail, launchFailsOf } from "./dispatch-launch.ts";
+import { ALREADY_UP_RE, type LaunchFail, launchFailsOf, stuckHintOf } from "./dispatch-launch.ts";
 import { regKey } from "./registration.ts";
 import { needsDecision } from "./judges/report.ts";
 import { loadReportThreshold } from "./judges/store.ts";
@@ -364,7 +364,8 @@ export function followingOf(inp: FollowInput): FollowItem[] {
           code: "launch",
           kind: "delay",
           severity: "warn",
-          text: `${x.aircraft ?? "AIRCRAFT"} ${x.id} — ${x.reason}. FLIGHT PLAN은 보내지 않았다`,
+          // "이미 떠 있음(bg <id>)"이면 다시 승인해도 같은 이유로 실패한다(ATC-213): 남은 job을 정리하라고 말한다
+          text: `${x.aircraft ?? "AIRCRAFT"} ${x.id} — ${x.reason}. FLIGHT PLAN은 보내지 않았다${ALREADY_UP_RE.exec(x.reason) ? `. ${stuckHintOf(ALREADY_UP_RE.exec(x.reason)![1])}` : ""}`,
           since: x.at,
           key: `${t.flight}|launch|${x.id}`,
         });

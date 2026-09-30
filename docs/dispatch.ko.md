@@ -328,6 +328,29 @@ D-0068(ATC-82 → TEAM_I)은 2026-09-29 01:40:31Z에 `aircraft: 04a9a868…`, �
 - **승인하는 사이 AIRCRAFT가 다시 떴으면** 보통 승인이다. 남은 `launch` 표시는 아무것도 띄우지 않는다.
 - **FLEET PLAN**도 같은 planner를 돌리므로, `launch` 카드가 받을 수 있는 FLIGHT는 거기서 더는 받을 AIRCRAFT 없는 수요가 아니고 FLEET PLAN이 같은 LAUNCH를 한 번 더 제안하지 않는다.
 
+### LAUNCH 루프 as built (ATC-213)
+
+2026-09-30: SUPERVISOR가 TEAM_F의 launch 카드를 두 번 승인했고 둘 다 `TEAM_F 세션이 이미 떠 있음(bg 40bb5e74)`로 실패했다. LAUNCH 실패는 판정이 아니라서 다음 주기에 같은 카드가 또 나왔다: 40분 동안 TEAM_F·TEAM_K 카드 11건이 실패했다. LAUNCH의 두 쪽이 서로 달리 봤다. 계획은 스냅샷 세션만 살아 있다고 세므로 TEAM_F는 `absent`였고 카드가 났다. LAUNCH는 `claude agents`에서 STALE 줄(ATC-93)을 빼는데, pid 없고 job state가 `blocked`인 줄은 STALE이 아니라서 살아 있는 세션으로 셌다.
+
+Claude Code 2.1.285에서 scratch job으로 쟀다(빈 폴더에서 `claude --bg --model haiku`, 질문 하나를 해서 `blocked`가 되게 함. AIRCRAFT·관제 세션은 건드리지 않았다):
+
+| 단계 | 결과 |
+|---|---|
+| 살아서 사람을 기다림 | 줄에 `pid`, `status: idle`, `state: blocked`. `state.json`은 `blocked`와 `needs` |
+| worker를 SIGTERM으로 죽임(크래시) | daemon이 몇 초 안에 다시 띄움(`[worker crashed (exit 143) — respawning…]`). 새 `pid`, 여전히 `blocked` |
+| worker가 정상 종료(SIGINT, 약 60분 idle 종료와 같은 꼴) | **다시 띄우지 않는다.** 줄은 `pid`·`status` 없이 `state: blocked`로 남고 `state.json`도 `blocked` 그대로. 15초 뒤에도 그대로 |
+| 그 줄에 `claude stop <id>` | `stopped <id>`를 찍고 `state.json`이 `stopped`가 되며 `claude agents --json`에서 줄이 사라진다 |
+
+운영 머신에도 같은 꼴이 있다: TEAM_F(`40bb5e74`)와 TEAM_K(`77803763`)는 SUPERVISOR가 손으로 멈춘 뒤 `state.json`이 `stopped`이고, 그 전에는 프로세스가 없었다. 프로세스 없는 job은 메시지를 받을 수 없다(세션 소켓이 없다). 실행 중인 AIRCRAFT가 아니다.
+
+만든 것:
+
+- **pid 없는 `blocked` 줄은 STALE이다.** `STALE_JOB_STATES`에 `blocked`를 더했다(`server/session-control.ts`). ATC-93의 보호는 그대로다: `pid`·`status` 없음, job state가 그 집합, 시작한 지 2분 이상. 살아 있는 blocked job은 `pid`와 `status: idle`이 있어 이 검사에 오지 않는다. 그러면 LAUNCH가 진행되고 옛 줄은 STALE로 남는다(둘 다 살아 보이는 줄은 생기지 않는다).
+- **거절된 LAUNCH가 풀리지 않은 동안은 카드를 내지 않는다.** 그 REGISTRATION의 마지막 LAUNCH 시도가 "이미 떠 있음(bg <id>)"로 실패했고 그 job의 state가 `done`·`stopped`·`failed`가 아니면 `absentOf`가 그 AIRCRAFT를 `stuck`으로 표시하고 DISPATCH는 `LAUNCH 막힘 — bg <id>가 아직 목록에 남아 있음 — FLEET에서 그 세션을 STOP하거나 그 안에서 답한다`로 후보에서 뺀다. 사람이 그 job을 멈추거나 뒤 시도가 성공하면 저절로 풀린다. 다른 원인으로 같은 실패가 나도 막는 안전망이다.
+- **FOLLOWING**의 `launch` 이슈도 사유가 "이미 떠 있음"이면 같은 말을 한다: 남은 job을 STOP하거나 그 안에서 답한다. atc가 스스로 job을 멈추지는 않는다.
+
+풀지 못한 것: worker가 방금 크래시하면 daemon이 다시 띄우기 전 몇 초 동안 pid가 없으므로, 그 순간에는 `blocked` 줄이 STALE로 보일 수 있다(`done` 줄에도 있던 노출이다). 그 사이에 승인한 LAUNCH는 두 번째 세션을 띄울 수 있다. 더 재지는 않았다.
+
 ## 7. atc에 더할 것
 
 | 곳 | 내용 |

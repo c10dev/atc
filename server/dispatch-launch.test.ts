@@ -18,6 +18,8 @@ import {
   launchViewOf,
   resumeLines,
   resumePlansOf,
+  stuckHintOf,
+  stuckLaunchOf,
 } from "./dispatch-launch.ts";
 import { followingOf } from "./following.ts";
 import type { Session, Snapshot, Ticket, Workspace } from "./model.ts";
@@ -213,6 +215,59 @@ test("LAUNCH 실패: 카드는 사유와 함께 닫히고 보내지 않는다. F
   const s = snap({ absent: [absentG()] });
   const plan = planDispatch(s, new Map(), cfg, at("06:10:00"), reservedOf([p], at("06:10:00")), fleet);
   assert.deepEqual(brief(syncOps([p], plan, s, cfg, at("06:10:00"), 10)), ["create:D-0011"]);
+});
+
+// ── LAUNCH 루프(ATC-213) ──
+// 2026-09-30: 사람을 기다리다 idle로 끝난 TEAM_F(40bb5e74)가 pid 없는 blocked 줄로 남아, LAUNCH는 "이미 떠 있음"으로 거절하고
+// 계획은 absent라 카드를 또 냈다(TEAM_F·TEAM_K 카드 11건). STALE 규칙(session-control.test.ts)이 근본 원인이고, 아래는 같은 일이 다른 이유로 되풀이될 때의 차단
+
+const alreadyUp = (jobId: string) => `TEAM_F 세션이 이미 떠 있음(bg ${jobId})`;
+
+test("stuckLaunchOf: 마지막 시도가 '이미 떠 있음'으로 거절됐고 그 job이 끝나지 않았을 때만", () => {
+  const rec = { t: iso("10:06:24"), ok: false, error: alreadyUp("40bb5e74") };
+  assert.deepEqual(stuckLaunchOf(rec, () => "blocked"), { jobId: "40bb5e74", at: iso("10:06:24"), state: "blocked" });
+  assert.deepEqual(stuckLaunchOf(rec, () => "working"), { jobId: "40bb5e74", at: iso("10:06:24"), state: "working" });
+  // job이 끝났거나(사람이 STOP했다) 파일을 못 읽으면 막힌 것이 아니다
+  for (const st of ["stopped", "done", "failed"]) assert.equal(stuckLaunchOf(rec, () => st), null);
+  assert.equal(stuckLaunchOf(rec, () => null), null);
+  // 뒤에 성공했거나 다른 이유로 실패했거나 기록이 없다
+  assert.equal(stuckLaunchOf({ ...rec, ok: true }, () => "blocked"), null);
+  assert.equal(stuckLaunchOf({ t: rec.t, ok: false, error: "상한 6(ATC_MAX_LAUNCHED)" }, () => "blocked"), null);
+  assert.equal(stuckLaunchOf(undefined, () => "blocked"), null);
+});
+
+test("absentOf: 막힌 LAUNCH가 있으면 stuck을 싣는다", () => {
+  const launches = new Map([["TEAM_F", { t: iso("05:40:00"), jobId: "40bb5e74" }]]);
+  const input = { liveRegs: new Set<string>(), restarting: new Set<string>(), registered: new Set(["TEAM_F"]), retired: new Set<string>() };
+  const stuck = { jobId: "40bb5e74", at: iso("10:06:24"), state: "blocked" };
+  assert.deepEqual(absentOf(launches, input, () => null, () => stuck)[0]!.stuck, stuck);
+  assert.equal("stuck" in absentOf(launches, input)[0]!, false);
+});
+
+test("막힌 AIRCRAFT는 카드를 다시 내지 않는다. 사람이 그 job을 STOP하면 풀려 다시 나온다", () => {
+  const fleetF: FleetFile = { ...DEFAULT_FLEET, aircraft: { TEAM_F: { base: "ATCC" } } };
+  const absentF = (over: Partial<AbsentAircraft> = {}): AbsentAircraft => ({ registration: "TEAM_F", launchedAt: iso("05:40:00"), jobId: "40bb5e74", cut: null, ...over });
+  const stuck = { jobId: "40bb5e74", at: iso("10:06:24"), state: "blocked" };
+  const blocked = planDispatch(snap({ absent: [absentF({ stuck })] }), new Map(), cfg, at("10:10:00"), undefined, fleetF);
+  assert.deepEqual(blocked.assign, []);
+  const ac = blocked.aircraft.find((a) => a.registration === "TEAM_F")!;
+  assert.equal(ac.available, false);
+  assert.match(ac.reason!, /^LAUNCH 막힘 — bg 40bb5e74가 아직 목록에 남아 있음/);
+  assert.ok(ac.reason!.includes(stuckHintOf("40bb5e74")));
+  // 풀린 뒤(stuck 없음)에는 카드가 다시 나온다
+  const freed = planDispatch(snap({ absent: [absentF()] }), new Map(), cfg, at("10:10:00"), undefined, fleetF);
+  assert.deepEqual(freed.assign.map((a) => [a.flight, a.registration, a.launch]), [["ATC-200", "TEAM_F", true]]);
+});
+
+test("FOLLOWING: '이미 떠 있음'으로 실패한 카드는 남은 job을 정리하라고 말한다. 다른 실패는 그대로", () => {
+  const mk = (error: string) => {
+    const log = [...d0010()];
+    log.push({ op: "approve", id: "D-0010", at: iso("06:02:00") }, { op: "launch", id: "D-0010", at: iso("06:02:05"), ok: false, by: "SUPERVISOR", error }, { op: "supersede", id: "D-0010", at: iso("06:02:05"), reason: `${LAUNCH_FAILED_WHY} — ${error}` });
+    const p = fold(log)[0]!;
+    return followingOf({ proposals: [p], tickets: [ticket("ATC-200")], workspaces: [], pulls: [], logbook: [], departures: [], now: at("06:10:00"), launchFails: launchFailsOf([p], at("06:10:00")) })[0]!.issues.find((i) => i.code === "launch")!.text;
+  };
+  assert.match(mk(alreadyUp("40bb5e74")), /FLEET에서 그 세션을 STOP하거나 그 안에서 답한다/);
+  assert.doesNotMatch(mk("/home/c10/projects/atc를 신뢰하지 않음"), /STOP/);
 });
 
 // ── RESUME ──
