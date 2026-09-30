@@ -76,9 +76,11 @@ STAND 줄의 REMARKS 칸에도 그 STAND 브랜치의 PR 배지가 붙는다.
 
 ## FLIGHT 서랍과 PR 서랍
 
-FLIGHT 번호(`ATC206`)나 STRIPS의 PR 번호를 누르면 화면 오른쪽에 서랍이 열린다(폰에서는 화면 전체). Linear 이슈와 GitHub PR을 atc 안에서 읽는다. 읽기만 한다: 서랍에는 머지·상태 변경 버튼이 없다.
+FLIGHT 번호(`ATC206`)나 STRIPS의 PR 번호를 누르면 화면 오른쪽에 서랍이 열린다(폰에서는 화면 전체). Linear 이슈와 GitHub PR을 atc 안에서 읽는다. 읽기가 기본이고, 쓰는 것은 FLIGHT 서랍의 상태 이동 버튼 하나뿐이다(아래). PR 서랍에는 머지 버튼이 없다.
 
 - **FLIGHT 서랍**(주소 `#flight/ATC-206`): 상태, 우선순위, 담당, 라벨, 막는·막고 있는 FLIGHT(눌러 그 FLIGHT 서랍으로), 상위·하위, 붙은 PR, 본문, 댓글. 마지막 줄 링크로 Linear를 연다.
+- **상태 이동**(FLIGHT 서랍): 그 이슈가 Backlog·Todo·Canceled에 있을 때만 이 팀의 Backlog·Todo·Canceled 중 지금 상태를 뺀 버튼이 보인다. 누르면 "Backlog → Todo로 옮긴다. Linear에 바로 쓴다."를 한 번 더 묻고, [확인]을 눌러야 Linear에 쓴다. 지금 상태가 그 사이에 바뀌었으면 옮기지 않고 알린다. Started·Done으로는 옮길 수 없다: 그 상태는 팀의 PR(`Fixes ATC-n`)과 Linear에서 SUPERVISOR가 정한다. 옮길 때마다 FLIGHT RECORDER에 한 줄 남는다. 이 화면에서 누른 클릭만 쓴다(세션·`atcctl`·`curl`은 못 한다).
+- **READY**: Backlog인 이슈가 막는 FLIGHT를 하나 이상 갖고 모두 Done이나 Canceled면 상태 옆에 `READY` 칩이 뜨고 Todo 버튼이 강조된다. "막는 FLIGHT가 다 풀렸으니 Todo로 옮길까?"를 알려 줄 뿐이고, 옮기는 것은 늘 SUPERVISOR의 클릭이다. 아직 QUEUE 목록에는 올라가지 않는다.
 - **PR 서랍**(주소 `#pr/ATCC/281`): 브랜치, 작성자, 착륙 상태와 막는 조건, 등급(TIER), MCC INSPECTION, 리뷰 결정, 체크, 본문, 바뀐 파일(100개까지). 착륙 상태·등급·INSPECTION은 atc가 폴링하는 열린 PR만 보인다.
 - 본문과 댓글의 Markdown은 안전하게 그린다: HTML 태그는 글자로 보이고, 이미지는 링크로만 남고, 링크는 새 탭에서 열린다.
 - Esc, 바깥 클릭, ×로 닫는다. 브라우저 뒤로 가기도 닫는다. 서랍은 열 때 한 번 읽고 60초 동안 기억한다(백그라운드로 다시 읽지 않는다). `ATC_GITHUB=off`인 서버에서는 PR 서랍이 "GitHub이 꺼져 있다"고 알린다.

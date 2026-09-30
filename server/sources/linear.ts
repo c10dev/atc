@@ -227,6 +227,7 @@ const DRAWER_QUERY = `query Drawer($id: String!) {
   issue(id: $id) {
     identifier title url description priority
     state { name type }
+    team { states(first: 30) { nodes { name type } } }
     assignee { displayName }
     project { name }
     labels(first: 20) { nodes { name parent { name } } }

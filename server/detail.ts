@@ -55,6 +55,9 @@ export interface IssueDetail {
   children: IssueRef[];
   comments: { author: string | null; at: string | null; body: string; truncated: boolean }[];
   prs: { url: string; title: string | null }[];
+  // DUTY G3: READY(Backlog이고 막는 FLIGHT가 모두 Done·Canceled)와, SUPERVISOR가 상태 버튼으로 옮길 수 있는 곳(이 팀의 Backlog·Todo·Canceled, 지금 상태는 뺀다)
+  ready: boolean;
+  moves: { name: string; type: string }[];
 }
 
 const refOf = (n: Record<string, unknown>): IssueRef | null => {
@@ -65,18 +68,36 @@ const refOf = (n: Record<string, unknown>): IssueRef | null => {
 };
 const refs = (xs: (Record<string, unknown> | null)[]) => xs.map((x) => (x ? refOf(x) : null)).filter((r): r is IssueRef => r !== null);
 
+// 상태 버튼이 다루는 곳은 Backlog·Todo·Canceled뿐이다(DUTY G3). Started·Done은 팀의 PR(`Fixes ATC-n`)과 Linear에서 SUPERVISOR가 한다
+export const MOVABLE_TYPES: readonly string[] = ["backlog", "unstarted", "canceled"];
+const FINISHED_TYPES: readonly string[] = ["completed", "canceled"];
+
+// READY: Backlog이고 막는 FLIGHT가 하나 이상 있고 모두 Done·Canceled. 막는 FLIGHT가 없으면 "풀린 것"이 아니라 그냥 Backlog다.
+// 이미 읽은 관계만 본다: 상태를 모르는 blocker가 있으면 READY가 아니다
+export const isReady = (stateType: string | null, blockerTypes: readonly (string | null)[]): boolean =>
+  stateType === "backlog" && blockerTypes.length > 0 && blockerTypes.every((t) => t !== null && FINISHED_TYPES.includes(t));
+
+// 지금 상태에서 상태 버튼이 옮길 수 있는 곳. 지금 상태가 Started·Done이면 없다(그 이슈는 팀과 Linear의 몫)
+export function movesOf(current: { name: string | null; type: string | null }, states: readonly { name: string; type: string }[]): { name: string; type: string }[] {
+  if (!current.type || !MOVABLE_TYPES.includes(current.type)) return [];
+  return states.filter((x) => MOVABLE_TYPES.includes(x.type) && x.name !== current.name).map((x) => ({ name: x.name, type: x.type }));
+}
+
 // Linear GraphQL issue 노드 → IssueDetail
 export function shapeIssue(raw: unknown): IssueDetail {
   const n = obj(raw);
   const desc = cut(n.description, BODY_MAX);
   const rel = nodes(n.relations);
   const inv = nodes(n.inverseRelations);
+  const blockedBy = refs(inv.filter((r) => r.type === "blocks").map((r) => obj(r.issue)).map((i) => (i.identifier ? i : null)));
+  const stateName = str(obj(n.state).name);
+  const stateType = str(obj(n.state).type);
   return {
     key: str(n.identifier) ?? "",
     title: str(n.title) ?? "",
     url: safeUrl(n.url),
-    state: str(obj(n.state).name),
-    stateType: str(obj(n.state).type),
+    state: stateName,
+    stateType,
     priority: typeof n.priority === "number" ? n.priority : 0,
     assignee: str(obj(n.assignee).displayName),
     project: str(obj(n.project).name),
@@ -86,7 +107,7 @@ export function shapeIssue(raw: unknown): IssueDetail {
     }).filter(Boolean),
     description: desc.text,
     descriptionTruncated: desc.truncated,
-    blockedBy: refs(inv.filter((r) => r.type === "blocks").map((r) => obj(r.issue)).map((i) => (i.identifier ? i : null))),
+    blockedBy,
     blocks: refs(rel.filter((r) => r.type === "blocks").map((r) => obj(r.relatedIssue)).map((i) => (i.identifier ? i : null))),
     parent: n.parent ? refOf(obj(n.parent)) : null,
     children: refs(nodes(n.children)),
@@ -98,6 +119,8 @@ export function shapeIssue(raw: unknown): IssueDetail {
     prs: nodes(n.attachments)
       .map((a) => ({ url: safeUrl(a.url), title: str(a.title) }))
       .filter((a): a is { url: string; title: string | null } => a.url !== null && /github\.com\/[^/]+\/[^/]+\/pull\/\d+/.test(a.url)),
+    ready: isReady(stateType, blockedBy.map((r) => r.stateType)),
+    moves: movesOf({ name: stateName, type: stateType }, nodes(obj(n.team).states).map((x) => ({ name: str(x.name) ?? "", type: str(x.type) ?? "" })).filter((x) => x.name && x.type)),
   };
 }
 
@@ -197,7 +220,7 @@ export function drawerOfHash(hash: string): DrawerRef | null {
 // 60초 캐시(백그라운드 폴링 없음). 오류는 캐시하지 않는다
 export function makeCache<T>(ttlMs: number, now: () => number = Date.now) {
   const m = new Map<string, { at: number; v: Promise<T> }>();
-  return (key: string, load: () => Promise<T>): Promise<T> => {
+  const get = (key: string, load: () => Promise<T>): Promise<T> => {
     const hit = m.get(key);
     if (hit && now() - hit.at < ttlMs) return hit.v;
     const v = load();
@@ -208,4 +231,6 @@ export function makeCache<T>(ttlMs: number, now: () => number = Date.now) {
     if (m.size > 200) for (const [k, e] of m) if (now() - e.at >= ttlMs) m.delete(k);
     return v;
   };
+  // 쓰기 뒤에 그 항목을 버린다(DUTY G3: 옮긴 상태를 60초 동안 옛 값으로 보이지 않게)
+  return Object.assign(get, { forget: (key: string) => void m.delete(key) });
 }

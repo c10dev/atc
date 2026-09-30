@@ -13,6 +13,9 @@ const TTL_MS = 60_000;
 const issueCache = makeCache<IssueDetail>(TTL_MS);
 const prCache = makeCache<PrDetail>(TTL_MS);
 
+// 상태를 옮긴 뒤 그 FLIGHT의 캐시를 버린다(flight-state-run.ts)
+export const forgetIssue = (key: string) => issueCache.forget(key);
+
 export function mountDetail(app: Hono, getSnapshot: () => Promise<Snapshot>) {
   app.get("/api/flight/:key/detail", async (c) => {
     const key = flightKeyOf(c.req.param("key"));
