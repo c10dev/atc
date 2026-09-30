@@ -63,6 +63,8 @@ headless 출력에는 없다: `--output-format json`과 Agent SDK 결과에는 �
 - `/usage` 글을 파싱하는 것(b)은 하나뿐이다. `/status`를 파싱하는 것은 없다.
 - **형식 변경 대처:** 이중 출처 대체(stdin → 엔드포인트 → transcript), 관대한 파싱(`jq`의 `// empty`, 없으면 0이나 "unknown"), TTL 캐시, 실패 캐시와 `retry-after` backoff. (c) 도구들은 엔드포인트가 "can change or disappear without notice"라고 스스로 적는다.
 - **토큰 보관:** 대부분 폴링마다 자격 증명을 읽고 사용량 숫자만 캐시한다. 예외는 토큰을 돌려 쓰고 다시 쓰는 claude-swap이다.
+- **macOS 메뉴 막대 앱**은 대부분 CLI의 keychain 항목(`Claude Code-credentials`)으로 (c)를 쓴다. ACL 창을 피하려고 `/usr/bin/security`로 읽는다. 토큰 갱신에서는 갈린다: 셋은 토큰을 스스로 갱신해 다시 쓰고, 셋은 일부러 갱신하지 않는다. 그중 둘은 Claude Code도 쥔 refresh token을 돌리면 OAuth 서버의 재사용 감지에 걸려 Claude Code가 로그아웃될 수 있다고 적는다. atc가 토큰을 쥐거나 돌리지 않아야 하는 이유가 하나 더 는다.
+- [AgentUsageMonitor](https://github.com/chocolatechipscookiecrumbles/AgentUsageMonitor) (~3, MIT, macOS)가 아래 권고에 가장 가까운 선례다: (a) 먼저, (c)는 keychain 창을 띄우지 않는 대체, 마지막으로 (b) `claude -p /usage`를 명시적 동의 버튼 뒤에 둔다(소스 확인: `ClaudeCLIUsageProbe.swift`).
 - ccusage 메인테이너는 statusline에 플랜 퍼센트를 넣자는 요청을 받아들이지 않았다(이슈 #658, not planned로 닫음): transcript 토큰은 서버의 계기가 아니다.
 
 ## 5. 여러 계정을 돌리는 길

@@ -63,6 +63,8 @@ Patterns across roughly thirty projects:
 - Only one project parses `/usage` text (b). No project parses `/status`.
 - **Format changes:** dual-source fallbacks (stdin, then endpoint, then transcripts), tolerant parsing (`// empty` in `jq`, missing means 0 or "unknown"), TTL caches, negative caching and `retry-after` backoff. The (c) tools say themselves the endpoint "can change or disappear without notice".
 - **Token storage:** most read the credential on each poll and cache only usage numbers. The exception is claude-swap, which rotates and rewrites tokens.
+- **macOS menu bar apps** mostly take (c) through the CLI's keychain item (`Claude Code-credentials`), read with `/usr/bin/security` to avoid the ACL prompt. They split on refreshing: three refresh the token themselves and write it back; three deliberately never do, and two of those state that rotating a refresh token Claude Code also holds can trip the OAuth server's reuse detection and log Claude Code out. This is one more reason for atc not to hold or rotate tokens.
+- [AgentUsageMonitor](https://github.com/chocolatechipscookiecrumbles/AgentUsageMonitor) (~3, MIT, macOS) is the closest precedent to the recommendation below: (a) first, (c) as a fallback that never prompts for keychain access, and (b) `claude -p /usage` as a last fallback behind an explicit consent button (source read: `ClaudeCLIUsageProbe.swift`).
 - ccusage's maintainers declined to add plan percent to its statusline (issue #658, closed as not planned): transcript tokens are not the server's meter.
 
 ## 5. Ways to run several accounts
