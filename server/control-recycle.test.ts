@@ -106,6 +106,12 @@ test("safeBlocksOf: 세션마다 다른 조건", () => {
   // 다른 세션의 조건은 TOWER를 막지 않는다
   assert.deepEqual(safeBlocksOf("TOWER", { ...clean, occ: { approved: 1, recalling: 1, youngSent: 1, crewChangeOpen: 1 } }), []);
   assert.equal(safeBlocksOf("OCC", { ...clean, occ: { approved: 1, recalling: 1, youngSent: 1, crewChangeOpen: 1 } }).length, 4);
+  // ATC-169: 머지 직후 도착 보고가 오는 중인 FLIGHT와 다듬는 중인 CHARTER REQUEST도 OCC만 막는다
+  const occ2 = { ...clean, occ: { approved: 0, recalling: 0, youngSent: 0, crewChangeOpen: 0, arrivalFresh: 1, wipActive: 1 } };
+  assert.equal(safeBlocksOf("OCC", occ2).length, 2);
+  assert.match(safeBlocksOf("OCC", occ2).join(" "), /도착 보고.*CHARTER REQUEST/);
+  assert.deepEqual(safeBlocksOf("TOWER", occ2), []);
+  assert.deepEqual(safeBlocksOf("OCC", clean), []); // 필드가 없으면(옛 자료) 막지 않는다
   assert.equal(safeBlocksOf("MCC", { ...clean, mcc: { blocked: "INSPECTION 중" } }).length, 1);
   assert.equal(safeBlocksOf("OCC", { ...clean, occ: null }).length, 1);
   assert.equal(safeBlocksOf("CROSSCHECK", null).length, 1);

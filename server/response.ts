@@ -36,11 +36,23 @@ export function answerError(kind: MessageKind, attr: ResponseAttr, answer: Answe
   return null;
 }
 
-// 메시지 끝줄: 어떤 답을 기다리는지 적는다. RECALL은 늘 READBACK <id> RECALL 하나
+// 답 주소 줄(ATC-169): 답장은 보낸 세션의 주소(from)가 아니라 세션 이름으로 보낸다. 관제 세션을 다시 띄우면 주소가 바뀌고, 옛 주소로 보내면 ENOENT로 실패한다(docs/control-recycle.md 1.1).
+// 이름으로 보내면 다시 뜬 같은 이름의 세션에 닿는다. CLEARANCE는 TOWER가, FLIGHT PLAN·RECALL·CREW CHANGE는 OCC가 보낸다
+export const replyToName = (kind: MessageKind) => (kind === "clearance" ? "TOWER" : "OCC");
+export function addressLine(kind: MessageKind): string {
+  const name = replyToName(kind);
+  return `— Send your reply to the session name "${name}" (SendMessage to: "${name}"), not to the from address: the address changes when ${name} restarts.`;
+}
+
+// 메시지 끝줄: 어떤 답을 기다리는지 적는다. RECALL은 늘 READBACK <id> RECALL 하나. 바로 위에 답 주소 줄이 붙는다
 export function closingLine(kind: MessageKind, attr: ResponseAttr, id: string): string {
-  if (kind === "recall") return `— When received, reply to this message with "READBACK ${id} RECALL".`;
-  if (attr === "R") return `— When received, reply to this message with "ROGER ${id}".`;
-  return `— Reply to this message with "READBACK ${id}" if you take it, "UNABLE ${id} — reason" if you cannot, or "STANDBY ${id}" if you need time.`;
+  const ask =
+    kind === "recall"
+      ? `— When received, reply to this message with "READBACK ${id} RECALL".`
+      : attr === "R"
+        ? `— When received, reply to this message with "ROGER ${id}".`
+        : `— Reply to this message with "READBACK ${id}" if you take it, "UNABLE ${id} — reason" if you cannot, or "STANDBY ${id}" if you need time.`;
+  return `${addressLine(kind)}\n${ask}`;
 }
 
 // READBACK overdue를 세는 기준 시각(ms). STANDBY는 한 번만 다시 세게 한다: 보낸 뒤 첫 STANDBY가 기준이 되고,

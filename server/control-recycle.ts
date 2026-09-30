@@ -94,7 +94,7 @@ export function contextTokensOf(lines: readonly string[]): number | null {
 export interface SafeFacts {
   rtsBusy: string | null; // RTS가 돌거나 곧 시작되면 그 사유(UPDATE 상태 starting·running, 또는 자동 배포 모드에서 available). 모르면 null이 아니라 사유 글로 막는다
   tower: { events: number; overdue: number } | null; // brief에 아직 안 acked 이벤트 수, overdue CLEARANCE 수
-  occ: { approved: number; recalling: number; youngSent: number; crewChangeOpen: number } | null; // 승인됐지만 아직 안 나간 FLIGHT PLAN, RECALL 중, 10분 안에 나간 것, 열린 CREW CHANGE
+  occ: { approved: number; recalling: number; youngSent: number; crewChangeOpen: number; arrivalFresh?: number; wipActive?: number } | null; // 승인됐지만 아직 안 나간 FLIGHT PLAN, RECALL 중, 10분 안에 나간 것, 열린 CREW CHANGE, 머지 30분 안인데 도착 보고가 없는 FLIGHT(ATC-169), 30분 안에 손댄 CHARTER REQUEST(wip)
   mcc: { blocked: string | null } | null; // 지금 land·inspect를 하는 중이라 볼 근거
 }
 export const NO_FACTS: SafeFacts = { rtsBusy: null, tower: null, occ: null, mcc: null };
@@ -118,6 +118,8 @@ export function safeBlocksOf(name: string, f: SafeFacts | null): string[] {
       if (f.occ.recalling > 0) out.push(`RECALL 진행 ${f.occ.recalling}건`);
       if (f.occ.youngSent > 0) out.push(`10분 안에 나간 FLIGHT PLAN ${f.occ.youngSent}건(READBACK이 오는 중일 수 있음)`);
       if (f.occ.crewChangeOpen > 0) out.push(`열린 CREW CHANGE ${f.occ.crewChangeOpen}건`);
+      if ((f.occ.arrivalFresh ?? 0) > 0) out.push(`머지 30분 안인데 도착 보고가 없는 FLIGHT ${f.occ.arrivalFresh}건(CAPTAIN 보고가 오는 중일 수 있음)`);
+      if ((f.occ.wipActive ?? 0) > 0) out.push(`30분 안에 손댄 CHARTER REQUEST ${f.occ.wipActive}건(다듬는 중)`);
     }
   } else if (n === "MCC") {
     if (!f.mcc) out.push("MCC queue를 읽지 못함");

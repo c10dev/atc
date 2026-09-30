@@ -1,4 +1,8 @@
 import type { Hono } from "hono";
+import { foldReports, readReports } from "./arrival-report.ts";
+import { readWips, wipView } from "./charter-wip.ts";
+import { arrivalMissingOf, followingNow } from "./following.ts";
+import { restartSafetyOf } from "./occ-safe.ts";
 import { closeSync, fstatSync, openSync, readdirSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config.ts";
@@ -92,6 +96,17 @@ export interface FactDeps {
 }
 const TEN_MIN = READBACK_OVERDUE_MS;
 
+// restartSafetyOf(server/occ-safe.ts)의 arrival-fresh·wip-active 개수
+function occExtraFacts(s: Snapshot, now: number): { arrivalFresh: number; wipActive: number } {
+  try {
+    const arrivalMissing = arrivalMissingOf(followingNow(s, now), foldReports(readReports()), now);
+    const r = restartSafetyOf({ inFlight: [], arrivalMissing, wip: wipView(readWips(), now), now });
+    return { arrivalFresh: r.blockers.filter((b) => b.code === "arrival-fresh").length, wipActive: r.blockers.filter((b) => b.code === "wip-active").length };
+  } catch {
+    return { arrivalFresh: 1, wipActive: 0 }; // 읽지 못하면 막는다(fail-closed)
+  }
+}
+
 export async function safeFactsOf(s: Snapshot, d: FactDeps): Promise<SafeFacts> {
   const now = d.now();
   const rtsBusy = await d.rtsBusy(s).catch((e) => `UPDATE 상태를 읽지 못함(${e instanceof Error ? e.message : String(e)})`);
@@ -105,6 +120,8 @@ export async function safeFactsOf(s: Snapshot, d: FactDeps): Promise<SafeFacts> 
       recalling: props.filter((p) => p.status === "recalling").length,
       youngSent: props.filter((p) => p.status === "sent" && now - Date.parse(p.statusAt) < TEN_MIN).length,
       crewChangeOpen: allCrewChanges().filter(isOpenCrewChange).length,
+      // ATC-169: dispatch brief의 restartSafety와 같은 함수. 도착 보고가 오는 중일 수 있는 FLIGHT, 다듬는 중인 CHARTER REQUEST
+      ...occExtraFacts(s, now),
     },
     // MCC: INSPECTION·LAND 중인지는 atc가 보지 못한다(ATC-165 1.3). 턴 사이(job idle)와 RTS 조건이 그 근사다
     mcc: { blocked: null },

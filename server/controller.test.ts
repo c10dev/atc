@@ -183,7 +183,7 @@ test("CLEARANCE 문구: 콜사인·STAND·FLIGHT·W/U 끝줄(HOLD는 READBACK·U
   };
   assert.equal(
     formatClearance(c, snapshot()),
-    '[ATC C-0007] BRAVO (TEAM_B) · HOLD\nSTAND vocado-voc-175 · FLIGHT VOC175\nDELTA 작업이 끝날 때까지 대기\n— Reply to this message with "READBACK C-0007" if you take it, "UNABLE C-0007 — reason" if you cannot, or "STANDBY C-0007" if you need time.',
+    '[ATC C-0007] BRAVO (TEAM_B) · HOLD\nSTAND vocado-voc-175 · FLIGHT VOC175\nDELTA 작업이 끝날 때까지 대기\n— Send your reply to the session name "TOWER" (SendMessage to: "TOWER"), not to the from address: the address changes when TOWER restarts.\n— Reply to this message with "READBACK C-0007" if you take it, "UNABLE C-0007 — reason" if you cannot, or "STANDBY C-0007" if you need time.',
   );
   // INFO·TRAFFIC·REPORT는 R: ROGER만 청한다(ATC-122)
   assert.ok(formatClearance({ ...c, type: "INFO" }, snapshot()).endsWith('— When received, reply to this message with "ROGER C-0007".'));
