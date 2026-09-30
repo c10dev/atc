@@ -10,7 +10,9 @@ import {
   controlRow2Of,
   type ControlRow2,
   type ControlSessionInfo,
+  type OtherView,
 } from "../../../../server/control-view.ts";
+import { idleText } from "../../../../server/other-background.ts";
 import type { Snapshot } from "../../../../server/model.ts";
 import { EditRow, type SaveResult } from "../../SettingsServer.tsx";
 import { JobDetail, NeedsYou } from "../../ui.tsx";
@@ -120,6 +122,20 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
     try {
       const res = await fetch(`/api/control/${encodeURIComponent(name)}/${op}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
       if (!res.ok) setError(`${name}: ${((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`}`);
+    } catch {
+      setError("서버에 연결할 수 없음");
+    }
+    await load(true);
+    setBusy(null);
+  };
+  // 그 밖의 백그라운드 세션 STOP(ATC-184): SUPERVISOR가 누를 때만. CONTROL STOP과 같은 Origin 검사(서버)
+  const stopOther = async (o: OtherView) => {
+    if (!window.confirm(`${o.name}(${o.id}): 이 백그라운드 세션을 멈춥니다. 대화 기록은 남고 claude --resume으로 다시 열 수 있습니다.`)) return;
+    setBusy(o.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/control/others/${encodeURIComponent(o.id)}/stop`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      if (!res.ok) setError(`${o.name}: ${((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`}`);
     } catch {
       setError("서버에 연결할 수 없음");
     }
@@ -322,6 +338,42 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
           />
         ))}
       </ul>
+      {/* OTHER BACKGROUND SESSIONS(ATC-184): 비어 있으면 그룹이 없다 */}
+      {list && (list.others?.length ?? 0) > 0 && (
+        <section className="fl-others" id="other-background" aria-label="OTHER BACKGROUND SESSIONS">
+          <div className="fl-group-head">
+            <h2 className="label">
+              OTHER BACKGROUND SESSIONS <em>{list.others!.length}</em>
+            </h2>
+          </div>
+          <p className="fl-c-line faint">
+            AIRCRAFT도 관제 세션도 아닌 백그라운드 세션이다. 이 세션들도 백그라운드 세션 상한(ATC_MAX_LAUNCHED{list.max ? ` ${list.max}` : ""})에 센다. STOP은 누를 때만 하고, atc가 스스로 멈추지 않는다.
+          </p>
+          <ul className="fl-others-list">
+            {list.others!.map((o) => (
+              <li key={o.id} className="fl-other">
+                <span className="fl-other-id">
+                  <b>{o.name}</b> <span className="mono faint">{o.id}</span>
+                </span>
+                <code className="config-env fl-other-cwd" title={o.cwd}>
+                  {o.cwdShort}
+                </code>
+                <span className="fl-other-status">{o.job?.state ?? o.status ?? "?"}</span>
+                <span className="fl-other-idle mono" title={o.lastActiveAt ?? undefined}>
+                  {idleText(o.idleMin) ?? <span className="faint">idle ?</span>}
+                </span>
+                <span className="fl-other-detail ellipsis" title={o.job?.detail || undefined}>
+                  {o.job?.detail || <span className="faint">—</span>}
+                </span>
+                {o.account && <span className="fl-r-acct mono">{o.account}</span>}
+                <button className="config-btn is-danger" onClick={() => void stopOther(o)} disabled={busy !== null} aria-label={`${o.name} STOP`}>
+                  STOP
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {/* 목록에 없는 세션의 ACCOUNT 라벨도 고칠 수 있다(전 구역과 같다) */}
       {accounts?.rows
         .filter((r) => !rows.some((x) => x.name === r.name))

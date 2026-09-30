@@ -63,8 +63,8 @@ export function LaunchPanel({
         LAUNCH <em>{a.callsign} ({a.registration}) · AIRPORT {a.base ?? "—"}</em>
       </h2>
       <p className="fl-entry-preview faint">
-        그 AIRPORT 저장소에서 백그라운드 세션을 띄우고 CREW BRIEFING을 첫 지시로 넣는다. 세션은 사용량 한도를 쓴다. 지금 백그라운드 세션 {launched}/
-        {control.max}.
+        그 AIRPORT 저장소에서 백그라운드 세션을 띄우고 CREW BRIEFING을 첫 지시로 넣는다. 세션은 사용량 한도를 쓴다. 지금 백그라운드 세션 {control.launched ?? launched}/
+        {control.max}{control.holders ? ` — ${control.holders}` : ""}.
       </p>
       <label>
         permission mode{" "}

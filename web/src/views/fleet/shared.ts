@@ -35,6 +35,8 @@ export interface SessionRow {
 }
 export interface SessionBrief {
   max: number;
+  holders?: string; // 자리를 쥔 쪽(ATC-184): `AIRCRAFT 6 · 그 밖 1 (이름, 6h idle)`
+  launched?: number; // 상한이 세는 살아 있는 백그라운드 세션 수(관제·STALE 뺌)
   permissionModes: string[];
   sessions: SessionRow[];
 }
