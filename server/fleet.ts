@@ -21,6 +21,8 @@ import type { SessionOrigin } from "./session-origin.ts";
 import type { Job } from "./job-state.ts";
 import type { Activity } from "./activity.ts";
 import { flightDetailOf, liveViewOf } from "./fleet-live.ts";
+import { accountFolders, observedLabelsOn } from "./accounts.ts";
+import { effectiveLaunchAccount, launchSettingOf } from "./launch-account.ts";
 import { readRecords } from "./recorder.ts";
 
 export { flightDetailOf };
@@ -76,7 +78,19 @@ export function loadFleet(file = fleetFile()): FleetFile {
     aircraft: raw.aircraft && typeof raw.aircraft === "object" ? raw.aircraft : {},
     ...(raw.control && typeof raw.control === "object" ? { control: raw.control } : {}), // 관제 세션 ACCOUNT(ATC-60). 옛 파일엔 없다
     ...(raw.accounts && typeof raw.accounts === "object" ? { accounts: raw.accounts } : {}), // ACCOUNT 등록부(ATC-146). 읽는 쪽은 accounts.ts loadAccounts가 검사한다
+    ...(Object.keys(launchSettingOf(raw.launchAccount)).length ? { launchAccount: launchSettingOf(raw.launchAccount) } : {}), // LAUNCH ACCOUNT(ATC-239). 모양이 맞는 칸만
   };
+}
+
+// LAUNCH ACCOUNT를 바꿔 쓴다(ATC-239). 검사는 부르는 쪽(launchSettingPatchOf). 다른 항목은 그대로, 비면 항목을 지운다
+export function saveLaunchAccount(setting: NonNullable<FleetFile["launchAccount"]>, file = fleetFile()) {
+  const raw = readRaw(file);
+  const next: Partial<FleetFile> = { ...raw, launchAccount: setting };
+  if (!Object.keys(setting).length) delete next.launchAccount;
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n");
+  renameSync(tmp, file);
 }
 
 // ACCOUNT 등록부를 바꿔 쓴다(ATC-146). 검사는 부르는 쪽(validateAccounts). 다른 항목은 그대로, 비면 항목을 지운다
@@ -470,6 +484,16 @@ function languageOf(sessions: Snapshot["sessions"], reg: string, teamPattern: st
   return at ? { at } : null;
 }
 
+// LAUNCH ACCOUNT의 보이는 모양(ATC-239): 등록부에 있는 라벨만 설정으로 보이고, 없는 라벨은 경고로
+export function launchAccountView(fleet: Pick<FleetFile, "launchAccount">) {
+  const folders = accountFolders();
+  const reg = observedLabelsOn(folders) ? folders.map((f) => f.label) : [];
+  const setting = launchSettingOf(fleet.launchAccount);
+  const a = effectiveLaunchAccount(setting, "aircraft", reg);
+  const c = effectiveLaunchAccount(setting, "control", reg);
+  return { aircraft: a.label, control: c.label, warnings: [a.warning, c.warning].filter((w): w is string => w !== null) };
+}
+
 // contextOf: REGISTRATION → CONTEXT SIZE(ATC-69). fuel-run.ts가 이 파일을 부르므로 index.ts가 넘긴다
 export type AircraftContexts = (sessions: Snapshot["sessions"], teamPattern: string) => Map<string, ContextSize>;
 export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>, contextOf: AircraftContexts = () => new Map()) {
@@ -492,6 +516,7 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>, cont
     return c.json({
       ratings: RATINGS,
       fuelAccounts: s.fuelAccounts ?? [], // ACCOUNT마다 FUEL과 구성원(AIRCRAFT·관제 세션, ATC-60)
+      launchAccount: launchAccountView(fleet), // LAUNCH ACCOUNT(ATC-239): 지금 설정과 경고. 머리에 작게 보인다
       defaults: fleet.defaults,
       projects,
       aircraft,

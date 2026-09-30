@@ -147,6 +147,7 @@ export function AccountsBlock() {
         </button>
         {error && <span className="settings-hint acct-err"> {error}</span>}
       </div>
+      <LaunchAccountRow registryKey={data ? Object.keys(data.registry).join(",") : ""} />
       <AddAccount dirty={dirty} folders={data?.folders ?? []} onAdded={(d) => {
           load(d);
           void loadMemory();
@@ -422,3 +423,74 @@ function LoginPanel({ label, onDone }: { label: string; onDone: (v: LoginView) =
 
 const loginNote = (v: LoginView) =>
   `로그인됨${v.onboarding === "marked" ? " · 첫 화면과 AIRPORT 신뢰 표시함" : v.onboarding === "failed" || v.onboarding === "kept" ? " · 첫 화면 표시를 못 함 — 그 폴더로 claude를 한 번 연다" : ""}.`;
+
+// LAUNCH ACCOUNT(ATC-239, docs/accounts.md): 이름을 대지 않은 다음 LAUNCH(AIRCRAFT, 관제 세션)가 쓸 ACCOUNT를 종류마다 하나 고른다.
+// 각 AIRCRAFT의 home(프로필 account)은 그대로고 "각 home"으로 되돌리면 전과 같다. 돌고 있는 세션은 옮기지 않는다(그것은 ACCOUNT CHANGE).
+// 거절 사유가 있는 ACCOUNT(로그인 안 됨, FUEL hold, 상한)는 고를 수 없고 사유를 보인다. 저장은 SUPERVISOR만: JSON Content-Type을 꼭 보낸다(서버가 이 화면 Origin과 JSON을 본다).
+interface LaunchAccountsView {
+  launchAccount: { aircraft: string | null; control: string | null };
+  launchAccountWarnings: string[];
+  accounts: { label: string; refused: string | null }[];
+}
+function LaunchAccountRow({ registryKey }: { registryKey: string }) {
+  const [view, setView] = useState<LaunchAccountsView | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState<"aircraft" | "control" | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/fleet/launch-accounts")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((d: LaunchAccountsView) => alive && setView(d))
+      .catch(() => alive && setError("LAUNCH ACCOUNT를 읽지 못함"));
+    return () => {
+      alive = false;
+    };
+  }, [registryKey]);
+  const change = async (kind: "aircraft" | "control", value: string) => {
+    setSaving(kind);
+    setError(null);
+    try {
+      const res = await fetch("/api/fleet/launch-account", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [kind]: value || null }) });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) setView((v) => (v ? { ...v, launchAccount: body.launchAccount, launchAccountWarnings: [] } : v));
+      else setError((body as { error?: string }).error ?? `HTTP ${res.status}`);
+    } catch {
+      setError("서버에 연결할 수 없음");
+    } finally {
+      setSaving(null);
+    }
+  };
+  if (!view || view.accounts.length === 0) return null;
+  const select = (kind: "aircraft" | "control", label: string) => (
+    <label className="acct-launch-row">
+      <span>{label}</span>
+      <select className="mono" aria-label={`LAUNCH ACCOUNT — ${label}`} value={view.launchAccount[kind] ?? ""} disabled={saving !== null} onChange={(e) => void change(kind, e.target.value)}>
+        <option value="">각 home (프로필)</option>
+        {view.accounts.map((x) => (
+          <option key={x.label} value={x.label} disabled={x.refused !== null && x.label !== view.launchAccount[kind]}>
+            {x.label}
+            {x.refused ? ` — ${x.refused}` : ""}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+  return (
+    <>
+      <h4 className="label acct-registry">
+        LAUNCH ACCOUNT <em>이름을 대지 않은 다음 LAUNCH가 쓴다 · 돌고 있는 세션은 옮기지 않는다 · 각 AIRCRAFT의 home은 그대로</em>
+      </h4>
+      {select("aircraft", "AIRCRAFT")}
+      {select("control", "관제 세션")}
+      <p className="settings-hint">
+        다음 LAUNCH에만 적용된다. FLEET의 LAUNCH 칸에서 ACCOUNT를 직접 고르거나, ACCOUNT CHANGE를 승인하거나, 한도 뒤 RESUME은 이 설정보다 먼저 쓴다. AIRCRAFT를 켜 두면 FLEET PLAN의 ACCOUNT CHANGE는 프로필 home 대신 이 ACCOUNT를 기준으로 제안하고, 새 AIRCRAFT(ENTRY)도 여기서 난다.
+      </p>
+      {view.launchAccountWarnings.map((w) => (
+        <p key={w} className="settings-hint acct-err">
+          ⚠ {w}
+        </p>
+      ))}
+      {error && <p className="settings-hint acct-err">{error}</p>}
+    </>
+  );
+}

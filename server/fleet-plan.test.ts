@@ -16,6 +16,7 @@ import {
   foldFleetPlan,
   entryAccountOf,
   fuelExpiryOf,
+  fuelOfPlan,
   isManual,
   isStale,
   PlanError,
@@ -878,4 +879,54 @@ test("executionOf ACCOUNT CHANGE: 옛 ACCOUNT에서 STOP 뒤 새 ACCOUNT에서 L
   assert.match(refused(() => executionOf({ ...p, account: undefined }, {}, ok({ latest: [{ ...c, key: p.key, account: undefined }] }))), /옮길 ACCOUNT가 없음/);
   // 다른 제안 열쇠는 낡음
   assert.match(refused(() => executionOf(p, {}, ctx({ latest: [{ ...c, key: p.key, account: "acct-1" }] }))), /^409 조건이 바뀜/);
+});
+
+// ── LAUNCH ACCOUNT(ATC-239): AIRCRAFT의 것이 설정돼 있으면 그것이 효과 있는 home ──
+test("LAUNCH ACCOUNT + ACCOUNT CHANGE: 설정이 없으면 전과 같다. 설정이 있으면 프로필 home로 돌아가자는 제안이 없고, 돌아감은 LAUNCH ACCOUNT로", () => {
+  const away = [view("TEAM_H", { account: "acct-2", observedAccount: "acct-1" })]; // home acct-2, 지금 acct-1에서 돈다
+  const fuel = [fuelAt("acct-2", 30), fuelAt("acct-1", 60), fuelAt("acct-3", 10)];
+  // 설정 없음: home(acct-2)로 돌아가자는 제안(ATC-148)
+  const before = changes(changeBase({ fuelAccounts: fuel }, away));
+  assert.equal(before[0].account, "acct-2");
+  assert.match(before[0].reasons.find((r) => r.code === "home")!.detail, /^home ACCOUNT acct-2:/);
+  // LAUNCH ACCOUNT acct-1 = 이미 그 ACCOUNT에서 돈다 → 프로필 home(acct-2)로 돌아가자는 제안이 없다
+  assert.equal(changes(changeBase({ fuelAccounts: fuel, launchAccount: "acct-1" }, away)).length, 0);
+  // LAUNCH ACCOUNT acct-3 = 그쪽이 여유 있으면 "돌아감"은 LAUNCH ACCOUNT로(acct-3가 acct-2보다 낮아도 home로 돌아가는 사유는 LAUNCH ACCOUNT 하나)
+  const toLaunch = changes(changeBase({ fuelAccounts: fuel, launchAccount: "acct-3" }, away));
+  assert.equal(toLaunch.length, 1);
+  assert.equal(toLaunch[0].account, "acct-3");
+  assert.match(toLaunch[0].reasons.find((r) => r.code === "home")!.detail, /^LAUNCH ACCOUNT acct-3: 사용 10% — infoPct 아래로 돌아옴/);
+  assert.match(toLaunch[0].reasons.find((r) => r.code === "session")!.detail, /프로필 home ACCOUNT acct-2는 그대로\(지금은 LAUNCH ACCOUNT acct-3가 기준\)/);
+  // LAUNCH ACCOUNT가 차 있으면(infoPct 이상) 돌아가자고 하지 않는다
+  assert.equal(changes(changeBase({ fuelAccounts: [fuelAt("acct-2", 30), fuelAt("acct-1", 60), fuelAt("acct-3", 88)], launchAccount: "acct-3" }, away)).length, 0);
+  // 등록부에 없는 LAUNCH ACCOUNT는 효과가 없다(전과 같다)
+  assert.equal(changes(changeBase({ fuelAccounts: fuel, launchAccount: "acct-9" }, away))[0].account, "acct-2");
+  // hold 때문에 옮기는 제안은 그대로 난다(목표는 사용이 가장 낮은 것)
+  assert.equal(changes(changeBase({ launchAccount: "acct-1" }))[0].account, "acct-3");
+});
+
+test("LAUNCH ACCOUNT + ENTRY·LAUNCH: 설정이 있으면 새 AIRCRAFT가 거기서 나고 hold 검사도 그 ACCOUNT로, 거절 사유가 있으면 다른 ACCOUNT로 돌리지 않고 막는다", () => {
+  const i = fuelBase([fuelOf("acct-1", 60), fuelOf("acct-2", 30)], []);
+  const logins = logged(["acct-1", true], ["acct-2", true]);
+  // 설정 없음: 사용이 가장 낮은 acct-2
+  assert.equal(entryAccountOf({ ...i, accountLogins: logins }).account, "acct-2");
+  // LAUNCH ACCOUNT acct-1: 더 높아도 거기서
+  assert.deepEqual(entryAccountOf({ ...i, accountLogins: logins, launchAccount: "acct-1" }), { registered: true, account: "acct-1", use: 60, blocked: null });
+  const out = fleetPlanOf({ ...i, accountLogins: logins, launchAccount: "acct-1" });
+  assert.equal(out.candidates[0].account, "acct-1");
+  // 로그인 안 됨·hold면 막는다(acct-2로 돌리지 않는다)
+  const off = entryAccountOf({ ...i, accountLogins: logged(["acct-1", false], ["acct-2", true]), launchAccount: "acct-1" });
+  assert.equal(off.account, null);
+  assert.match(off.blocked!, /LAUNCH ACCOUNT acct-1를 쓸 수 없음 — 로그인 안 됨/);
+  const hold = entryAccountOf({ ...fuelBase([fuelOf("acct-1", 99), fuelOf("acct-2", 30)], []), accountLogins: logins, launchAccount: "acct-1" });
+  assert.match(hold.blocked!, /LAUNCH ACCOUNT acct-1를 쓸 수 없음 — FUEL hold 99%/);
+  // 등록부에 없는 설정은 무시한다
+  assert.equal(entryAccountOf({ ...i, accountLogins: logins, launchAccount: "acct-9" }).account, "acct-2");
+  // LAUNCH 제안의 hold 검사는 LAUNCH ACCOUNT의 FUEL로(AIRCRAFT의 home이 아니라)
+  const fuel = [fuelOf("acct-1", 99, { group: "acct-1" }), fuelOf("acct-2", 10, { group: "acct-2" })];
+  const base = { aircraft: [view("TEAM_I", { status: "absent", account: "acct-2" })], fuelAccounts: fuel };
+  assert.equal(fuelOfPlan(base, "LAUNCH", "TEAM_I")?.account, "acct-2");
+  assert.equal(fuelOfPlan({ ...base, launchAccount: "acct-1" }, "LAUNCH", "TEAM_I")?.account, "acct-1");
+  assert.equal(fuelOfPlan({ ...base, launchAccount: "acct-1" }, "ENTRY", null)?.account, "acct-1");
+  assert.equal(fuelOfPlan({ ...base, launchAccount: "acct-1" }, "STOP", "TEAM_I")?.account, "acct-2", "멈추기는 지금 ACCOUNT, 설정과 무관");
 });

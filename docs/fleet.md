@@ -868,6 +868,15 @@ A new FLEET PLAN kind. It proposes moving an AIRCRAFT to another ACCOUNT when it
 - **DISPATCH and FOLLOWING** already use the observed ACCOUNT ([fuel.md](fuel.md) 6.2), so a moved AIRCRAFT counts against its new ACCOUNT and is eligible again (tested in `server/accounts.test.ts`).
 - **FUEL.** The new session's cold first request is a FUEL LEAK named `ACCOUNT CHANGE` ([fuel.md](fuel.md) 6.3).
 
+### LAUNCH ACCOUNT and ACCOUNT CHANGE (ATC-239)
+
+The SUPERVISOR can set a **LAUNCH ACCOUNT** for AIRCRAFT (settings window, ACCOUNTS; [accounts.md](accounts.md) 5.4). While it is set and registered it is the **effective home** for FLEET PLAN:
+
+- `accountChangeOf` uses it instead of the profile `account` as home: there is no "way back to home" proposal toward the profile home, and "way back" means back to the LAUNCH ACCOUNT (reason `LAUNCH ACCOUNT acct-3: 사용 10% — infoPct 아래로 돌아옴`; the session line says the profile home is unchanged). Proposals for a hold or a long `LIMIT` are unchanged.
+- `entryAccountOf` names the LAUNCH ACCOUNT for a new AIRCRAFT. If it is logged out or at FUEL hold the ENTRY is blocked with that reason (`새 AIRCRAFT(ENTRY)가 날 LAUNCH ACCOUNT acct-1를 쓸 수 없음 — …`); it is not sent to another ACCOUNT.
+- `fuelOfPlan` reads the LAUNCH ACCOUNT's FUEL for LAUNCH and ENTRY proposals (a STOP still reads the AIRCRAFT's own).
+- Running sessions never move because of the setting; ACCOUNT CHANGE still needs the SUPERVISOR's approval per AIRCRAFT. With the setting off nothing above changes.
+
 ### REPOSITION as built (ATC-179)
 
 A new FLEET PLAN kind: move an idle AIRCRAFT's base to an AIRPORT where FLIGHTs wait and no AIRCRAFT is based. It exists because DISPATCH pairs an AIRCRAFT only with FLIGHTs of its own base ([dispatch.md](dispatch.md) 4), so idle AIRCRAFT elsewhere cannot take them. A live session cannot change repository in place (it loads the `CLAUDE.md` of the folder it was launched in), so the move is STOP, write the new base, LAUNCH in the target AIRPORT's repository.

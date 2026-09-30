@@ -3153,6 +3153,18 @@ a.ticket:hover {
 .acct-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .acct-registry { margin-top: var(--space-4); }
 .acct-registry em { font: 500 var(--text-2xs) var(--sans); font-style: normal; letter-spacing: 0; color: var(--faint); }
+.acct-launch-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 4px 0; font-size: var(--text-sm); }
+.acct-launch-row > span { min-width: 6.5em; color: var(--muted); }
+.acct-launch-row select {
+  max-width: 100%;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
 .acct-edit input,
 .acct-add input:not([type="checkbox"]),
 .acct-login input {

@@ -23,6 +23,7 @@ export interface FleetBrief {
   teamPattern?: string; // 라이브 값을 스냅샷으로 덮을 때 쓰는 REGISTRATION 규칙(ATC-100, 옛 서버엔 없음)
   dispatchMode?: "shadow" | "approval"; // CREW CHANGE 승인은 approval(2b)에서만(옛 서버엔 없음)
   fuelAccounts?: FuelRemaining[]; // ACCOUNT마다 FUEL과 구성원(ATC-60, 옛 서버엔 없음)
+  launchAccount?: { aircraft: string | null; control: string | null; warnings: string[] }; // LAUNCH ACCOUNT(ATC-239, 옛 서버엔 없음)
 }
 
 // GET /api/fleet/sessions: REGISTRATION 이름의 세션(claude agents --json)
