@@ -52,7 +52,7 @@ Constraints that follow from these facts:
 | `ASSIGN` | Assign a FLIGHT to an AIRCRAFT | VOC193 → BRAVO (VCDO) |
 | `HOLD_DEPARTURE` | Don't depart it yet | VOC192 waits until VOC191 (blocks) is ARRIVED |
 | `RELEASE` | Clean up an ENROUTE FLIGHT with no STAND and no activity | VOC34: no STAND for 7 days → SUPERVISOR confirms whether to move it back to Todo |
-| `REPOSITION` | Move an AIRCRAFT to another AIRPORT (rare before stage 3) | DSGN FLIGHTs are piling up but no AIRCRAFT is based at DSGN |
+| `REPOSITION` | Move an AIRCRAFT to another AIRPORT. Built as a FLEET PLAN kind (ATC-179, [fleet.md](fleet.md) 8.6): DISPATCH itself does not propose it | DSGN FLIGHTs are piling up but no AIRCRAFT is based at DSGN |
 
 The first implementation covers only `ASSIGN` and `RELEASE`. `RELEASE` does a lot to clean up neglected items among the 17 In Progress, at low risk (Linear changes are made by the SUPERVISOR or CAPTAIN).
 
@@ -459,6 +459,18 @@ A SURVEY or CHECK FLIGHT without a PR writes `RESULT <link>` in place of `PR #n`
 - PILOT'S DISCRETION: `tsc ✓ · build ✓` are a fixed part of the line but not stored (the tests count is; a ✗ goes in `BLOCKED`); a second `dispatch report` for a FLIGHT replaces the first; rules apply to FLIGHTs that merge after this ships as well as the ones merged in the last day, so the first tick after the deploy may list a few `no-report` items at once (one `following ack` clears them).
 - Not built: application repositories' report rules (the SUPERVISOR adds the line to each repo's `CLAUDE.md`), and any automatic reading of team messages.
 
+## Undelivered FLIGHT PLANs as built (ATC-183)
+
+`dispatch release` marks a proposal SENT before OCC's `SendMessage` runs. When the message goes nowhere (the session does not exist, or the tool answers `success:false`), the proposal used to stay SENT for 10 minutes and OCC still wrote "sent" in its LOG. Two changes close that gap.
+
+- **No send into nothing.** `POST /api/dispatch/proposals/:id/release` answers `409` with `<AIRCRAFT>: AIRCRAFT 세션 없음 — 보내지 않음 (LAUNCH 필요)` when the proposal's AIRCRAFT has no live session (`noLiveSessionWhyOf`, `server/proposals.ts`), whether or not it is `RESTARTING`. `RESTARTING` and `LAUNCHING` keep their own, more specific refusals; this one covers the rest (an AIRCRAFT that is gone after the grace). The approval stays. A `launch: true` card is exempt, because LAUNCH brings the FLIGHT PLAN as the first prompt. It also applies to a resend of an already sent proposal. `atcctl` prints the refusal as `오류: …`, which OCC's jq filter already selects.
+- **A way to record a failed delivery.** `atcctl dispatch undelivered D-xxxx -- <reason>` (`POST …/undelivered {reason}`, reason required, at most 300 characters) is allowed for `sent` proposals only. It appends an `undelivered` op that returns the proposal to `approved` (the approval time stays, the sent time and text are dropped) and records `undelivered: { at, reason, n }`. It is **not a SUPERVISOR verdict**: `humanOf` is unchanged and nothing starts the 24-hour pair rule. The next `dispatch release` sends again once the AIRCRAFT is back. If the AIRCRAFT is no longer a candidate when the next sync runs, the proposal is closed as `AIRCRAFT 불가: 전달 실패 — <reason>`, and that reason is one of those that do not start the pair rule.
+- **CAUTION.** FLIGHT FOLLOWING gets an issue `undelivered` (severity `warn`, so the SUPERVISOR alert is CAUTION) naming the proposal, the AIRCRAFT and the reason. Its key includes the time of the attempt, so each failed attempt raises one alert; it stays for 24 hours (`undeliveredOf`, like `unable`), including after the proposal has been closed or sent again.
+- **RADIO.** The FLIGHT PLAN transmission (DELIVERY) is closed and marked: `undelivered` holds the reason and `closedBy` is `undelivered`; its id becomes `D-xxxx#undelivered1` (then `2`, …) so that the new attempt, which has the id `D-xxxx`, does not collide with it. No new record file. READABILITY counts it as withdrawn, not as a missing reply.
+- **OCC manual** (`occ/CLAUDE.md`, `.en.md`, the tick skill's FLIGHT PLAN and CREW CHANGE files): if the `SendMessage` result is `success:false`, run `dispatch undelivered` with the tool's message right away, do not send again in the same tick, and do not write "sent" in the OCC LOG.
+- **RECALL and CREW CHANGE.** A RECALL send changes no state (`recall-send` only prints the text), so there is nothing to undo: OCC writes "undelivered" in its LOG, does not resend in the same tick and reports to the SUPERVISOR, and the RECALL `overdue` rule resends once. A CREW CHANGE is recorded as sent by `crew-change send` and would need an `undelivered` op of its own; that is not built. The manual gives the same LOG and no-resend rule, and the existing 10-minute `overdue` rule resends once. It is listed under "Known gaps".
+- **Guards.** `controller/guard.mjs` has no per-command list for TOWER and OCC (any `atcctl` command passes), so the new command needs no allowlist change there; the CROSSCHECK, REVIEW and MCC lists do not contain it, and the tests check that. `occ/send-guard.mjs` guards `SendMessage` only and is unchanged: after `undelivered` the proposal is `approved`, and the guard still needs `sent` (a new `release`) to allow a send.
+
 ## DIRECT briefs (ATC-32)
 
 Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.
@@ -528,7 +540,7 @@ Not built yet: vocado's own templates (the four-section rule in vocado `CLAUDE.m
 
 ### Known gaps before turning on 2b
 
-- `dispatch release` marks a proposal SENT before the message goes out. If delivery fails (the CAPTAIN session is gone, or the message is held for approval), it stays SENT; after 10 minutes it shows as NO READBACK, DISPATCH resends once, then reports to the SUPERVISOR.
+- A message that is held for approval after `dispatch release` still leaves the proposal SENT until OCC reports it (`dispatch undelivered`, [Undelivered FLIGHT PLANs as built](#undelivered-flight-plans-as-built-atc-183)); a session that does not exist is refused before the send, and a `success:false` result is recorded by OCC. Only a delivery that succeeds and is never answered shows as NO READBACK after 10 minutes; OCC resends once, then reports to the SUPERVISOR.
 - A STAND-free FLIGHT ARRIVES when OCC confirms it: on the CAPTAIN's report, or on an ARRIVED candidate atc finds from the team's own review, comment or docs PR (ATC-72, [fleet.md](fleet.md) 5.1.1). atc never marks it by itself. A forgotten confirmation keeps the AIRCRAFT's one STAND-free slot until the SUPERVISOR follows up from `overdue` (24 hours); OCC cannot ask the CAPTAIN itself, since send-guard lets through only FLIGHT PLANs, RECALLs and CREW CHANGEs.
 - A STAND-free READBACK counts as DEPARTED even if the CAPTAIN never starts; nothing else shows the work began.
 - A STAND-free ARRIVED does not enter the LOGBOOK, so it does not count toward TARGETS. The planner excludes the FLIGHT for 7 days after ARRIVED; after that it trusts Linear, so the FLIGHT should be closed there.

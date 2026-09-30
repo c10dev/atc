@@ -125,7 +125,7 @@ test("팀 세션 상한은 관제 세션을 세지 않는다", () => {
 test("LAUNCH는 systemd scope에서: claude --bg가 띄우는 daemon이 atc.service 밖에 있게. scope가 없으면 바로", () => {
   assert.deepEqual(launchCommandOf("/b/claude", ["--bg", "-n", "MCC"], "/usr/bin/systemd-run", "atc-claude-1"), {
     cmd: "/usr/bin/systemd-run",
-    args: ["--user", "--scope", "--collect", "--quiet", "--unit=atc-claude-1", "--", "/b/claude", "--bg", "-n", "MCC"],
+    args: ["--user", "--scope", "--collect", "--quiet", "-p", "OOMPolicy=continue", "--unit=atc-claude-1", "--", "/b/claude", "--bg", "-n", "MCC"],
   });
   assert.deepEqual(launchCommandOf("/b/claude", ["agents"], null, "x"), { cmd: "/b/claude", args: ["agents"] });
 });

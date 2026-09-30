@@ -13,6 +13,7 @@
 | `node ../controller/atcctl.mjs dispatch unable <D-0003> -- <사유>` | (2b) CAPTAIN이 "UNABLE D-0003 — 사유"로 답함(= `dispatch decline`, 닫힌다) |
 | `node ../controller/atcctl.mjs dispatch standby <D-0003>` | (2b) CAPTAIN이 "STANDBY D-0003"으로 답함(sent 그대로, READBACK overdue를 첫 STANDBY부터 한 번 다시 센다) |
 | `node ../controller/atcctl.mjs dispatch await-supervisor <D-0003> -- <사유>` | (2b) CAPTAIN이 READBACK도 거절도 아니고 사용자(SUPERVISOR)의 go를 기다림(sent 유지, `awaitSupervisor`에 사유, 경보). READBACK이 오면 `dispatch readback`이 지운다 |
+| `node ../controller/atcctl.mjs dispatch undelivered <D-0003> -- <사유>` | (2b) SendMessage 결과가 `success:false`였다(ATC-183). sent를 approved로 돌려 세션이 돌아오면 다시 release한다. SUPERVISOR 판정이 아니고, CAUTION 경보가 하나 뜬다. sent인 제안에만 |
 | `node ../controller/atcctl.mjs dispatch recall-send <D-0003>` | (2b) SUPERVISOR가 RECALL을 요청한 제안(`recalling`)의 `SEND TO`와 RECALL 문구. 재송신도 같은 문구 |
 | `node ../controller/atcctl.mjs dispatch recalled <D-0003>` | (2b) CAPTAIN이 "READBACK D-0003 RECALL"로 답함 |
 | `node ../controller/atcctl.mjs dispatch arrived <D-0003> -- <결과 링크나 한 줄>` | (2b) STAND 없는 FLIGHT(SURVEY·CHECK)를 CAPTAIN이 마쳤다고 보고함 |
@@ -35,8 +36,11 @@
 | `overdue`에 든 sent(10분 넘게 READBACK 없음. 첫 STANDBY가 있으면 그때부터 10분) | `dispatch release <ID>`로 같은 문구를 받아 한 번 더 보낸다. 그래도 없으면 SUPERVISOR 보고 |
 | `overdue`에 든 accepted(READBACK 뒤 30분 넘게 STAND 없음), STAND 없는 departed(24시간 넘게 ARRIVED 보고 없음) | SUPERVISOR 보고만 |
 | send-guard가 막음 | 문구나 받는 사람을 고쳐 다시 시도하지 말고 SUPERVISOR 보고 |
+| **SendMessage 결과가 `success:false`**(FLIGHT PLAN 전송, ATC-183) | 바로 `dispatch undelivered D-xxxx -- <도구가 돌려준 메시지 그대로>`. **같은 tick에 다시 보내지 않는다.** OCC LOG에 "sent"라고 쓰지 않고 "undelivered"와 사유를 쓴다. 제안은 approved로 돌아가 세션이 돌아오면 다음 바퀴에 다시 나온다. 결과가 성공이면 아무것도 더하지 않는다(READBACK이 온 뒤에야 `dispatch readback`) |
+| RECALL을 보냈는데 `success:false` | 같은 tick에 다시 보내지 않는다. OCC LOG에 "sent"라고 쓰지 않고 SUPERVISOR 보고. `recall-send`는 상태를 바꾸지 않아 되돌릴 기록이 없다 — 다음 바퀴의 `overdue`(RECALL) 규칙이 한 번 다시 보낸다 |
 | `dispatch release`가 `GROUND STOP — …`으로 거절(켜진 출발 중지가 그 AIRPORT에 걸림) | 보내지 않는다. 승인된 제안은 풀릴 때까지 그대로 둔다. OCC LOG에 출발 중지 사유를 적고, "main 깨짐"이면 실패한 체크와 커밋을 읽기 전용 `gh`로 확인해 SUPERVISOR에게 보고 |
 | `dispatch release`가 `… LAUNCHING — 새 세션을 기다림 …`이나 `… RESTARTING …`(세션 없음 — /clear 뒤 첫 메시지 대기)으로 거절(launch 카드를 승인해 atc가 띄운 새 세션이 아직 없음, ATC-129·91) | 보내지 않는다. 승인은 그대로다. 다음 바퀴에 다시 `dispatch release`한다 — 새 세션이 뜨면 전처럼 나간다. 세션을 띄우거나 깨우는 메시지를 따로 보내지 않는다 |
+| `dispatch release`가 `AIRCRAFT 세션 없음 — 보내지 않음 (LAUNCH 필요)`로 거절(그 AIRCRAFT에 살아 있는 세션이 없고 launch 카드도 아님, ATC-183) | 보내지 않는다. 승인은 그대로다. OCC LOG에 적고 SUPERVISOR 보고(LAUNCH는 SUPERVISOR가 FLEET에서). 세션이 돌아오면 다음 바퀴에 다시 `dispatch release`한다. 이 거절이 오면 SendMessage하지 않으니 `undelivered`도 필요 없다 |
 | `dispatch release`가 `… LAUNCH 실패 …`로 거절, 또는 `following`에 `launch` 문제 | 보내지 않는다. SUPERVISOR 보고(다시 승인하거나 FLEET에서 LAUNCH하는 것은 SUPERVISOR 몫) |
 
 STAND가 생기면 atc가 DEPARTED로 바꾼다. RELEASE 제안은 승인돼도 보내지 않는다(SUPERVISOR가 Linear에서 정리).

@@ -4,14 +4,16 @@ import type { Alert, PullRequest, Session, Ticket, Workspace } from "./model.ts"
 import type { RtsRecord } from "./mcc.ts";
 import type { Proposal } from "./proposals.ts";
 import { type OverCap, overCapAlertTextOf, recycleAlertTextOf, type RecycleRecord, type WaitStuck, waitAlertTextOf } from "./control-recycle-text.ts";
+import { repositionAlertTextOf, type RepositionRecordLike, repositionFlapAlertText } from "./reposition.ts";
 import type { ScheduleMode, ScheduleOp } from "./schedule.ts";
+import { type CapIdleHint, idleText } from "./other-background.ts";
 
 // SUPERVISOR alerts(ATC-87): 화면을 안 보는 SUPERVISOR에게 알릴 변화의 목록. 새 감지는 없다 — 이미 있는 것(ALERT, FLIGHT FOLLOWING, health, 제안, PR, RTS)의
 // 키를 모아 안정된 key로 세울 뿐이다. 서버는 key가 처음 생기거나 사라질 때 `alert` SSE 이벤트를 보내고, 알림·소리는 화면(브라우저)이 정한다.
 // 순수 함수만. 읽기는 supervisor-alerts-run.ts
 
 // 알림 종류(화면 설정에서 종류별로 켠다)
-export const ALERT_GROUPS = ["health", "alert", "following", "pending", "land", "rts", "recycle"] as const;
+export const ALERT_GROUPS = ["health", "alert", "following", "pending", "land", "rts", "recycle", "reposition"] as const;
 export type AlertGroup = (typeof ALERT_GROUPS)[number];
 
 export interface SupervisorAlert {
@@ -45,7 +47,11 @@ export interface AlertsInput {
   // CONTROL RECYCLE(ATC-166): 최근 재시작 기록(shadow의 would는 알리지 않는다). 없으면 항목 없음
   recycles?: Pick<RecycleRecord, "t" | "session" | "contextBefore" | "result" | "ok" | "error" | "launch">[];
   waiting?: WaitStuck[]; // CAP을 넘고 waitAlertMin 넘게 재시작하지 못한 세션(ATC-175)
+  // REPOSITION(ATC-179): 최근 옮김 기록(자동이면 ADVISORY, 실패는 CAUTION)과 auto가 flapping 때문에 approval로 돌아온 기록
+  repositions?: RepositionRecordLike[];
+  repositionFlaps?: { t: string; reason: string }[];
   overCap?: (OverCap & { since: string })[]; // CAP을 넘었지만 자동 재시작 대상이 아닌 세션(OCC)
+  capIdle?: CapIdleHint[]; // 상한 때문에 LAUNCH가 막힌 채 120분 넘게 논 그 밖의 백그라운드 세션(ATC-184). 알리기만 한다
   schedule?: { mode: ScheduleMode; ops: Pick<ScheduleOp, "id" | "kind" | "flight" | "status" | "statusAt">[] };
 }
 
@@ -57,6 +63,7 @@ const NEXT_BY_ISSUE: Partial<Record<string, string>> = {
   report: "그 세션의 보고를 읽고 결정한다",
   unable: "UNABLE 사유를 읽고 FLIGHT를 다시 배정한다",
   launch: "LAUNCH 실패 사유를 보고 다시 띄운다",
+  undelivered: "그 AIRCRAFT 세션을 확인한다(없으면 LAUNCH). 승인은 그대로라 세션이 돌아오면 다시 보낸다",
   fuel: "ACCOUNT의 FUEL을 확인한다",
 };
 
@@ -206,6 +213,17 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
     out.push({ key: `recycle|${r.session}|${r.t}`, group: "recycle", level: r.ok ? "advisory" : "caution", cue: null, aircraft: null, flight: null, text: w.text, next: w.next, link: "#fleet/control", since: r.t });
   }
 
+  // 7c) REPOSITION: 옮긴 것마다 하나. supervisor가 승인한 성공은 SUPERVISOR가 이미 아는 일이라 알리지 않는다(자동과 실패만)
+  for (const r of inp.repositions ?? []) {
+    if (r.ok && r.by !== "auto") continue;
+    const w = repositionAlertTextOf(r);
+    out.push({ key: `reposition|${r.aircraft}|${r.t}`, group: "reposition", level: w.level, cue: null, aircraft: r.aircraft, flight: null, text: w.text, next: w.next, link: "#fleet", since: r.t });
+  }
+  for (const f of inp.repositionFlaps ?? []) {
+    const w = repositionFlapAlertText(f.reason);
+    out.push({ key: `reposition|flap|${f.t}`, group: "reposition", level: "advisory", cue: null, aircraft: null, flight: null, text: w.text, next: w.next, link: "#automation", since: f.t });
+  }
+
   // 7b) CAP을 넘은 OCC: 재시작하지 않고 알린다(넘어 있는 동안 같은 key)
   for (const o of inp.overCap ?? []) {
     const w = overCapAlertTextOf(o);
@@ -213,6 +231,21 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
   }
 
   // 7c) CAP을 넘고 오래 재시작하지 못한 세션(ATC-175): CAUTION. 막는 것이 풀려 재시작하면 저절로 사라진다(같은 key)
+  // 상한 자리를 쥔 채 논 세션(ATC-184): ADVISORY. STOP은 SUPERVISOR가 FLEET 탭에서 누를 때만 한다
+  for (const h of inp.capIdle ?? []) {
+    out.push({
+      key: `cap|other|${h.id}`,
+      group: "recycle",
+      level: "advisory",
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: `그 밖의 백그라운드 세션 ${h.name}이 ${idleText(h.idleMin) ?? "오래"} 놀고 있고 ATC_MAX_LAUNCHED 때문에 LAUNCH(${h.refused})가 막혀 있음`,
+      next: "FLEET의 OTHER BACKGROUND SESSIONS에서 그 세션을 STOP할지 정한다(자동으로 멈추지 않는다)",
+      link: "#fleet/control",
+      since: null,
+    });
+  }
   for (const w of inp.waiting ?? []) {
     const t = waitAlertTextOf(w);
     out.push({ key: `recycle|wait|${w.session}`, group: "recycle", level: "caution", cue: null, aircraft: null, flight: null, text: t.text, next: t.next, link: "#fleet/control", since: w.since });

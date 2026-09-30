@@ -10,6 +10,8 @@ import { engineName, judgeStatus } from "./judges/run.ts";
 import { JUDGE_MODES, type JudgeMode, loadJudges, setJudgeMode } from "./judges/store.ts";
 import { parseTeamKeys, TEAM_KEY } from "./linear-keys.ts";
 import { loadMcc, MCC_MODES, type MccMode } from "./mcc.ts";
+import { loadReposition, setRepositionMode } from "./fleet-plan-run.ts";
+import { REPOSITION_MODES, type RepositionMode } from "./reposition.ts";
 import { loadRecycle, RECYCLE_MODES, type RecycleMode, recycleCapOk } from "./control-recycle.ts";
 import { setRecycleAuto, setRecycleCaps, setRecycleMode } from "./control-recycle-run.ts";
 import { TTS_ENGINES, VOICE_NAME } from "./tts.ts";
@@ -41,6 +43,8 @@ export interface ServerSettings {
   autoland: { mode: AutolandMode; airports: string[]; applicationCheck: string; groundStops: { airport: string; sha: string; failing: string[]; at: string }[] };
   // MCC(docs/mcc.md): mcc.json의 스위치와 맡은 AIRPORT
   mcc: { mode: MccMode; airport: string };
+  // FLEET PLAN REPOSITION(ATC-179): fleet-plan.json. 기본 shadow. auto는 ⚠(하루 dailyMax 상한, flapping이면 approval로 돌아옴)
+  fleetPlan: { reposition: RepositionMode; repositionDailyMax: number };
   // CONTROL RECYCLE(ATC-166): control-recycle.json. 기본 off. caps는 세션 이름 → CAP 토큰(null이면 재시작 안 함)
   controlRecycle: { mode: RecycleMode; caps: Record<string, number | null>; auto: Record<string, boolean>; cooldownHours: number };
   // 판정 계열(ATC-36): judges.json의 스위치, 엔진, 키가 있는지(값은 내보내지 않음), 마지막 실행
@@ -66,6 +70,7 @@ export interface SettingsPatch {
   controlRecycleMode?: RecycleMode; // control-recycle.json에 쓴다(ATC-166). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   controlRecycleCaps?: Record<string, number | null>; // 세션 이름 → CAP 토큰. SUPERVISOR만
   controlRecycleAuto?: Record<string, boolean>; // 세션 이름 → 자동 재시작 대상인가(OCC 기본 false, 측정·알림만). SUPERVISOR만
+  fleetPlanReposition?: RepositionMode; // fleet-plan.json에 쓴다(ATC-179). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   judgesJev?: JudgeMode; // judges.json에 쓴다(ATC-36). SUPERVISOR만: 이 화면 Origin이 있어야 받는다. 데이터 반출을 켜는 스위치
 }
 export type SettingsErrors = Partial<Record<keyof SettingsPatch, string>>;
@@ -108,6 +113,7 @@ export function readServerSettings(): ServerSettings {
       return { mode: m.mode, airport: m.airport };
     })(),
     controlRecycle: loadRecycle(),
+    fleetPlan: { reposition: loadReposition().mode, repositionDailyMax: loadReposition().dailyMax },
     voice: { engine: config.ttsEngine, voice: config.ttsVoice },
     judges: { jev: { mode: loadJudges().jev, engine: engineName(), apiKeySet: Boolean(config.typesafeApiKey), ...judgeStatus.jev } },
   };
@@ -221,7 +227,7 @@ export function mountSettings(app: Hono) {
     // judgesJev는 judges.json에 쓴다(ATC-36)
     // mccMode는 mcc.json에 쓴다(docs/mcc.md)
     // fuelHold는 dispatch.json fuel.hold에 쓴다(ATC-55)
-    const { reviewSecurity, autolandMode, judgesJev, mccMode, fuelHold, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, ...rest } = body as Record<string, unknown>;
+    const { reviewSecurity, autolandMode, judgesJev, mccMode, fuelHold, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, ...rest } = body as Record<string, unknown>;
     if (fuelHold !== undefined && fuelHold !== "off" && fuelHold !== "on") return c.json({ errors: { fuelHold: `off 또는 on` } }, 400);
     if (reviewSecurity !== undefined && !EXTERNAL_REVIEW_SECURITY.includes(reviewSecurity as ExternalReviewSecurity))
       return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
@@ -241,6 +247,7 @@ export function mountSettings(app: Hono) {
       if (!a || typeof a !== "object" || Array.isArray(a) || Object.entries(a).some(([k, v]) => !known.includes(k) || typeof v !== "boolean"))
         return c.json({ errors: { controlRecycleAuto: `세션 이름(${known.join(", ")}) → true 또는 false` } }, 400);
     }
+    if (fleetPlanReposition !== undefined && !REPOSITION_MODES.includes(fleetPlanReposition as RepositionMode)) return c.json({ errors: { fleetPlanReposition: `off, shadow, approval, auto 중 하나` } }, 400);
     const { env, errors } = validatePatch(rest);
     if (Object.keys(errors).length) return c.json({ errors }, 400);
     if (Object.keys(env).length) {
@@ -252,6 +259,7 @@ export function mountSettings(app: Hono) {
     if (autolandMode !== undefined) setAutolandMode(autolandMode as AutolandMode);
     if (judgesJev !== undefined) setJudgeMode("jev", judgesJev as JudgeMode);
     if (mccMode !== undefined) setMccMode(mccMode as MccMode);
+    if (fleetPlanReposition !== undefined) setRepositionMode(fleetPlanReposition as RepositionMode);
     if (controlRecycleCaps !== undefined) setRecycleCaps(controlRecycleCaps as Record<string, number | null>);
     if (controlRecycleAuto !== undefined) setRecycleAuto(controlRecycleAuto as Record<string, boolean>);
     if (controlRecycleMode !== undefined) setRecycleMode(controlRecycleMode as RecycleMode);

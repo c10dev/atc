@@ -1,3 +1,4 @@
+import { compareRegistration } from "../../../server/registration.ts";
 import { useCallback, useEffect, useState } from "react";
 import type { CheckrideRow, CheckrideStatus } from "../../../server/checkride.ts";
 import { flightNumber } from "../aviation.ts";
@@ -60,7 +61,7 @@ export function Checkride({ refreshKey, onChanged }: { refreshKey: string; onCha
   // 볼 것만: 추천·막힘은 늘, 쌓는 중·보유는 근거가 있을 때만
   const shown = (rows ?? [])
     .filter((r) => r.status === "GRANT" || r.status === "REVIEW" || r.status === "BLOCKED" || r.evidence.length > 0)
-    .sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status) || a.registration.localeCompare(b.registration));
+    .sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status) || compareRegistration(a.registration, b.registration));
 
   return (
     <section className="cr" aria-labelledby="cr-title">

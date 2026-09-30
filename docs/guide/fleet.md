@@ -76,13 +76,16 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 
 ### ACCOUNT 폴더: 계정이 둘 이상일 때
 
-계정마다 Claude Code 설정 폴더가 하나 있다(예: `acct-1` = `~/.claude-acct-1`, `acct-2` = `~/.claude`). 설정 창 **AGENTS** 탭의 **ACCOUNTS** 블록에서 라벨과 폴더를 적으면 atc가 그 폴더의 세션·job·FUEL을 모두 읽는다. `~/.claude`는 적지 않아도 읽고, 적지 않으면 라벨이 `default`다. 폴더는 홈 아래의 `.claude…` 이름이어야 하고, email·토큰은 적지도 저장하지도 않는다. 저장은 이 화면에서만 된다(SUPERVISOR).
+계정마다 Claude Code 설정 폴더가 하나 있다(예: `acct-1` = `~/.claude-acct-1`, `acct-2` = `~/.claude`). 설정 창 **ACCOUNTS** 분류에서 라벨과 폴더를 적으면 atc가 그 폴더의 세션·job·FUEL을 모두 읽는다. `~/.claude`는 적지 않아도 읽고, 적지 않으면 라벨이 `default`다. 폴더는 홈 아래의 `.claude…` 이름이어야 하고, email·토큰은 적지도 저장하지도 않는다. 저장은 이 화면에서만 된다(SUPERVISOR).
 
+- **ADD ACCOUNT로 새 계정 폴더 준비.** ACCOUNTS 블록의 **ADD ACCOUNT**에 라벨(예: `acct-1`)을 적고 **만들고 등록**을 누르면 `~/.claude-acct-1` 폴더를 만들고, `~/.claude/settings.json`(statusline·hook·권한·env)을 복사하고, 등록한다. `~/.claude`가 아직 등록되지 않았으면 그 라벨(FLEET 프로필이 쓰는 것, 예: `acct-2`)도 함께 적는다. env는 키 이름만 보이고, 체크를 풀면 그 키는 옮기지 않는다(프록시는 이 계정도 같은 길로 나갈 때만). 폴더에 자기 hook·env·권한이 있는 settings.json이 있으면 두고 등록만 한다. 로그인은 그 폴더 줄의 **LOGIN**으로 한다(아래). 폴더 줄에 LOGGED IN과 STATUSLINE·HOOK ✓가 뜨면 된 것이다.
+- **LOGIN: 화면에서 로그인.** NOT LOGGED IN인 등록 폴더 줄에 **LOGIN** 버튼이 있다. 누르면 atc가 그 폴더로 `claude auth login`을 띄우고 로그인 링크를 보인다. 링크를 열어 그 계정으로 로그인하고, 페이지에 나온 코드를 칸에 붙여 넣고 **확인**을 누른다(10분 안). 로그인되면 atc가 그 폴더의 첫 실행 화면과 AIRPORT 폴더 신뢰도 표시해 두므로 터미널에서 할 일이 없다. 코드는 atc가 그 프로세스에만 넘기고 남기지 않는다. `~/.claude`와 이미 로그인된 폴더에는 버튼이 없다. 터미널로 로그인했다면(`CLAUDE_CONFIG_DIR=… claude auth login --claudeai`) 그 폴더로 `claude`를 한 번 열어 첫 화면을 끝낸다.
 - **세션의 ACCOUNT는 찾은 곳으로 정한다.** 세션 파일이 `~/.claude-acct-1`에 있으면 그 세션은 `acct-1`이다. FUEL도 그 ACCOUNT의 한도로 센다.
 - **home과 다를 때.** AIRCRAFT 프로필의 ACCOUNT는 home으로 남는다. 세션이 다른 폴더에서 돌면 FLEET 줄과 카드에 `acct-1 (home acct-2)`로 보인다. 오류가 아니다.
 - **폴더마다 건강 표시.** 로그인했는지(`LOGGED IN`·방식만), settings에 atc statusline과 `claim`·`health` hook이 있는지 보인다. 빠진 것은 경고로만 나온다(`FUEL blind on acct-1`). 막지는 않는다.
 - **LAUNCH·STOP도 ACCOUNT별로.** LAUNCH 패널에 **ACCOUNT** 고르개가 생긴다(기본은 그 AIRCRAFT의 home ACCOUNT). 로그인이 안 됐거나 FUEL이 hold 수준이거나 그 ACCOUNT의 세션 상한에 닿은 ACCOUNT는 사유와 함께 흐리게 보이고 고를 수 없다. STOP은 그 세션이 있는 폴더로 한다. 세션 상한은 기계 전체(`ATC_MAX_LAUNCHED`)에 더해 ACCOUNT마다 `상한` 칸에 정할 수 있다(비우면 없음).
 - **ACCOUNT CHANGE: 다른 ACCOUNT로 옮기기.** AIRCRAFT의 ACCOUNT가 한도에 닿으면(FUEL이 hold 수준이거나 reset이 한 시간 넘게 남은 LIMIT) FLEET PLAN이 `ACCOUNT CHANGE`를 제안한다. 사용이 가장 낮은 다른 ACCOUNT(로그인됐고 80 % 아래)로 옮기자는 것이다. **FLIGHT 사이에만** 나오고, 진행 중인 FLIGHT는 옮기지 않는다(한도로 잘린 FLIGHT는 같은 ACCOUNT에서 RESUME). 동의(승인)하면 옛 ACCOUNT에서 멈추고 새 ACCOUNT에서 CREW BRIEFING으로 다시 띄운다. 반대하거나 그대로 두면 아무 일도 없다. 저절로 옮기는 일은 없다. 옮긴 뒤 카드에는 `flying on acct-1 (home acct-2)`가 보이고, home ACCOUNT는 그대로다. home이 다시 여유가 생기면 돌아가는 것도 같은 제안이다. 새 세션은 캐시가 식은 채 시작하므로 FUEL의 LEAK에 `ACCOUNT CHANGE`로 따로 보인다.
+- **REPOSITION: 다른 AIRPORT로 옮기기.** FLIGHT가 기다리는데 소속 AIRCRAFT가 없는 AIRPORT가 있고, 다른 AIRPORT에서 FLIGHT 사이(세션이 쉬고 STAND·PR·FLIGHT가 없음)인 AIRCRAFT가 있으면 FLEET PLAN이 그 AIRCRAFT를 옮기자고 한다(`ATCC → DSGN`). 승인하면 옛 세션을 멈추고, base를 새 AIRPORT로 바꾸고, 그 AIRPORT 저장소에서 CREW BRIEFING으로 다시 띄운다(새 세션은 캐시 없이 시작하고 그 저장소의 규칙을 읽는다). 목표 저장소와 ACCOUNT는 멈추기 전에 확인하므로 거절되면 옛 세션은 그대로 돈다. 떠난 뒤에도 원래 AIRPORT가 자기 FLIGHT 수만큼 AIRCRAFT를 가질 때만 제안한다. 스위치는 설정 창 AUTOMATION → OPERATIONS의 **REPOSITION**(`off`·`shadow` 기본·`approval`·`auto`): `shadow`는 기록만 하고, `auto`(⚠)는 승인 없이 하루 4건까지 스스로 옮기고 옮길 때마다 알린다. 옮긴 AIRCRAFT의 카드에는 base 옆에 마지막 옮김이 보인다.
 - **새 AIRCRAFT(ENTRY)도.** FLEET PLAN의 ENTRY 제안은 새 AIRCRAFT가 날 ACCOUNT를 함께 적는다(로그인됐고 hold 아래에서 사용이 가장 낮은 ACCOUNT). 등록한 ACCOUNT가 모두 안 되면 제안하지 않고 이유를 AIRPORT 줄에 적는다.
 
 ### FUEL: 한도를 얼마나 썼나
@@ -95,10 +98,11 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - 같은 ACCOUNT의 AIRCRAFT는 같은 값을 보인다(가장 새로 적힌 값). ACCOUNT 라벨이 없으면 AIRCRAFT마다 자기 세션의 값만 보인다.
 - **관제 세션도 센다**: TOWER, OCC, CROSSCHECK, MCC, ENGINEERING도 같은 계정의 한도를 쓴다. FLEET 탭 CONTROL SESSIONS 구역에서 세션마다 **ACCOUNT**를 적어 둔다(AIRCRAFT와 같은 라벨 형식). 적지 않으면 라벨이 하나라도 있을 때 `default`로 센다. 관제 세션이 한도를 많이 써도 붙들리는 것은 같은 ACCOUNT의 AIRCRAFT뿐이고, 관제 세션은 멈추지 않는다.
 - FLEET 탭의 **CONTROL** 그룹(AIRCRAFT 목록 아래 같은 표에 이어지는 둘째 그룹, 주소 `#fleet/control`)은 관제 세션(TOWER·OCC·MCC·CROSSCHECK·REVIEW·ENGINEERING)을 AIRCRAFT와 같은 줄로 보인다: STATUS(`BUSY`·`IDLE`·`NEEDS YOU`·`NOT RUNNING`), FLYING(job이 적은 한 줄이나 NEEDS YOU), 경과(loop 주기), 마지막 활동, FOB, FUEL 14일. 모든 세션이 같은 사실(띄운 방식 `claude --bg`, permission mode, ACCOUNT, 모델)은 그룹 머리에 한 번만 적히고, 다른 세션 줄에만 칩이 붙는다. 줄을 누르면(키보드로도) LAUNCH·STOP, 폴더와 첫 메시지, `STALE n`, ACCOUNT 편집이 펼쳐지고, NEEDS YOU인 줄은 펼친 채 시작한다. FLEET가 보이는 동안 1분에 한 번 다시 읽고, LAUNCH·STOP 뒤에는 곧장 읽는다. 백그라운드 세션 daemon이 atc 서비스 안에서 돌면 맨 위에 경고가 붙는다. 설정 창 AGENTS 탭에는 이리로 가는 안내 한 줄만 있다.
+- CONTROL 그룹 아래 **OTHER BACKGROUND SESSIONS** 그룹은 AIRCRAFT도 관제 세션도 아닌 백그라운드 세션(예: `ENGINEERING-NIGHT`)을 보인다. 이 세션들도 백그라운드 세션 상한(`ATC_MAX_LAUNCHED`)의 자리를 쥐고, 세션마다 이름·폴더·상태·논 시간·job 한 줄과 **STOP**이 있다. 비어 있으면 그룹이 없다. STOP은 누를 때만 하고 atc가 스스로 멈추지 않는다. 상한 때문에 LAUNCH가 막히면 거절 글이 `AIRCRAFT 6 · 그 밖 1 (ENGINEERING-NIGHT, 6h idle)`처럼 누가 자리를 쥐었는지 적고, 그 밖의 세션이 120분 넘게 놀고 있으면 ADVISORY 알림 하나가 뜬다.
 - FLEET의 ACCOUNT 보기는 이 **FUEL** 블록 하나다(FLEET PLAN에는 같은 줄이 없다). hold 수준이 되면 그 옆에 `LAUNCH·ENTRY 제안 안 함`이 붙는다.
 - FLEET 탭의 **FUEL** 블록(AIRCRAFT 목록 아래)은 ACCOUNT마다 한 줄로 쓴 몫, AIRCRAFT, 그리고 따로 관제 세션을 보인다. 누가 그 계정을 쓰고 있는지 여기서 본다.
 - 80 %를 넘으면 TOWER가 SUPERVISOR에게 한 번 알리고(창마다 한 번), OCC는 그 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING에 적는다. 팀에는 보내지 않는다.
-- **DISPATCH HOLD 스위치**: 설정 창 AUTOMATION 탭의 FUEL 블록. 기본은 off라 FUEL은 보여 주기만 한다. on으로 바꾸면 95 % 넘게 쓴 ACCOUNT의 AIRCRAFT를 DISPATCH가 reset까지 `HOLD · FUEL (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다.
+- **DISPATCH HOLD 스위치**: 설정 창 AUTOMATION → OPERATIONS의 FUEL 블록. 기본은 off라 FUEL은 보여 주기만 한다. on으로 바꾸면 95 % 넘게 쓴 ACCOUNT의 AIRCRAFT를 DISPATCH가 reset까지 `HOLD · FUEL (account pro-2) until 21:00Z`로 건너뛴다. SCHEDULE NEW는 그대로다.
 - 값은 상태 줄이 다시 그려질 때만 갱신된다. CREW 서브에이전트와 다른 컴퓨터의 세션은 보고하지 않는다. ACCOUNT마다 살아 있는 CAPTAIN 세션 하나면 된다.
 
 ### FUEL: FLIGHT마다 얼마나 태웠나

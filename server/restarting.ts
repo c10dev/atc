@@ -1,5 +1,5 @@
 import { factsOf } from "./health.ts";
-import { registrationOf } from "./registration.ts";
+import { compareRegistration, registrationOf } from "./registration.ts";
 
 // RESTARTING(ATC-91, docs/fleet.md 8.5): 데스크톱의 /clear는 그 세션을 끝내고 다음 지시가 올 때까지 세션 파일이 없다.
 // 새 세션은 새 id를 받지만 같은 이름(custom-title)을 이어 간다. 그 사이의 AIRCRAFT를 "곧 다시 뜰" 상태로 본다.
@@ -49,7 +49,7 @@ export function restartingOf(
       out.set(registration, { registration, name: e.name, sessionId: e.sessionId, since: new Date(e.endedAt).toISOString(), until: new Date(until).toISOString() });
     }
   }
-  return [...out.values()].sort((a, b) => a.registration.localeCompare(b.registration));
+  return [...out.values()].sort((a, b) => compareRegistration(a.registration, b.registration));
 }
 
 // 화면과 브리핑이 같이 쓰는 말

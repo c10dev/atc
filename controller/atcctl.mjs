@@ -91,6 +91,9 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
                                             (2b) CAPTAIN이 "STANDBY D-0003"로 답함(sent 그대로, READBACK overdue를 한 번 다시 센다)
   node atcctl.mjs dispatch await-supervisor <D-0003> -- <사유>
                                             (2b) CAPTAIN이 READBACK도 거절도 아니고 사용자(SUPERVISOR)의 go를 기다림(sent 유지, 경보). 다시 보내지도, 승인을 전하지도 않는다
+  node atcctl.mjs dispatch undelivered <D-0003> -- <사유>
+                                            (2b) SendMessage가 실패했다(success:false)고 OCC가 알림(ATC-183). sent를 approved로 돌려 세션이 돌아오면 다시 release한다.
+                                            같은 tick에 다시 보내지 않는다. SUPERVISOR 판정이 아니라 24시간 짝 규칙을 시작하지 않고, CAUTION 경보가 하나 뜬다
   node atcctl.mjs dispatch recall-send <D-0003>
                                             (2b) SUPERVISOR가 RECALL을 요청한 제안의 SEND TO·SEND(머리 한 줄)와 RECALL 문구 출력(재송신도 같은 문구)
   node atcctl.mjs dispatch recalled <D-0003>
@@ -407,11 +410,11 @@ export function parseBriefingArgs(args) {
 export function parseAnswerArgs(verb, args) {
   const [id, ...rest] = args;
   if (!id || id === "--") throw new Error(`${verb}에는 ID가 필요함`);
-  if (verb !== "unable" && verb !== "await-supervisor") {
+  if (verb !== "unable" && verb !== "await-supervisor" && verb !== "undelivered") {
     if (rest.length) throw new Error(`알 수 없는 인자 ${rest.join(" ")}`);
     return { id: id.toUpperCase() };
   }
-  if (rest[0] !== "--" || !rest.slice(1).join(" ").trim()) throw new Error(`${verb}에는 -- 뒤에 CAPTAIN의 사유가 필요함`);
+  if (rest[0] !== "--" || !rest.slice(1).join(" ").trim()) throw new Error(verb === "undelivered" ? "undelivered에는 -- 뒤에 SendMessage 도구가 돌려준 메시지가 필요함" : `${verb}에는 -- 뒤에 CAPTAIN의 사유가 필요함`);
   return { id: id.toUpperCase(), reason: rest.slice(1).join(" ").trim() };
 }
 
@@ -681,6 +684,11 @@ if (isMain) {
       const { id, reason } = parseAnswerArgs("await-supervisor", args.slice(1));
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(id)}/await-supervisor`, { reason });
       console.log(`${r.proposal.id} AWAITING SUPERVISOR — ${r.proposal.awaitSupervisor.reason}. 다시 보내지 않고, 승인을 전하지 않는다. READBACK이 오면 dispatch readback`);
+    } else if (cmd === "dispatch" && args[0] === "undelivered") {
+      // SendMessage가 success:false였다(ATC-183). sent를 approved로 돌린다. 같은 tick에 다시 release하지 않는다
+      const { id, reason } = parseAnswerArgs("undelivered", args.slice(1));
+      const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(id)}/undelivered`, { reason });
+      console.log(`${r.proposal.id} UNDELIVERED — ${r.proposal.status}로 돌림. 이 tick에 다시 보내지 않고, OCC LOG에 sent로 쓰지 않는다`);
     } else if (cmd === "crew-change") {
       const { action, id, reason } = parseCrewChange(args);
       if (action === "brief") {

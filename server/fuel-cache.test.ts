@@ -5,19 +5,27 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { config } from "./config.ts";
 import { FUEL_CACHE_FORMAT, pruneShards, shardName } from "./fuel-cache.ts";
-import { dropFuelMemory, flushFuelCache, freshEnough, fuelChangeSeq, fuelFiles, scanFuel, startFuelCache, startFuelWatch, stopFuelCache } from "./fuel-run.ts";
+import { dropFuelMemory, flushFuelCache, freshEnough, fuelChangeSeq, fuelFiles, projectsRoots, scanFuel, startFuelCache, startFuelWatch, stopFuelCache } from "./fuel-run.ts";
 import { classifyFuelPath, FuelTree } from "./fuel-tree.ts";
 
 // FUEL 읽기 캐시와 감시(ATC-83). 임시 ~/.claude(config.claudeDir)와 임시 캐시 폴더만 쓴다. 진짜 ~/.cache/atc는 건드리지 않는다
+// 상태 폴더도 임시로 둔다: 운영 fleet.json의 ACCOUNT 등록부를 읽으면 진짜 transcript까지 훑어 메모리가 수십 GB로 부푼다(2026-09-30 OOM)
 const root = mkdtempSync(join(tmpdir(), "atc-fuelcache-"));
 const realClaudeDir = config.claudeDir;
+const realStateDir = config.stateDir;
 config.claudeDir = join(root, ".claude");
+config.stateDir = join(root, "state");
 const projects = join(config.claudeDir, "projects");
 const cacheDir = join(root, "cache", "fuel");
 after(() => {
   stopFuelCache();
   config.claudeDir = realClaudeDir;
+  config.stateDir = realStateDir;
   rmSync(root, { recursive: true, force: true });
+});
+
+test("FUEL이 훑는 폴더는 모두 임시 폴더 안이다(운영 ACCOUNT 등록부를 읽지 않는다)", () => {
+  assert.deepEqual(projectsRoots(), [projects]);
 });
 
 const S1 = "11111111-1111-4111-8111-111111111111";

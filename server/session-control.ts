@@ -20,6 +20,7 @@ import { sessionProcOf } from "./session-proc.ts";
 import { readJob, settleJob } from "./job-state.ts";
 import { ttlCache } from "./agents-cache.ts";
 import { readSquelchLast, squelchOfName } from "./squelch-last.ts";
+import { capHoldersOf, capHoldersText, type OtherBackground, otherBackgroundOf } from "./other-background.ts";
 
 // 세션 조종(docs/fleet.md 8.5). atc가 `claude --bg`로 AIRCRAFT 세션을 띄우고 `claude stop`으로 멈춘다.
 // SUPERVISOR가 FLEET 탭에서 누를 때만 한다(Origin 검사). 관제 세션의 atcctl은 부를 수 없다.
@@ -94,7 +95,7 @@ const configDirOf = (account: AccountFolder | null | undefined) => (account && a
 const sameName = (row: AgentRow, reg: string) => sameReg(row.name, reg); // `Team G` 세션도 TEAM_G(ATC-67)
 
 // 띄울 수 있는지 보고 claude 인자를 만든다(순수)
-export function launchPlanOf(input: LaunchInput, rows: AgentRow[], max = MAX_LAUNCHED, account: AccountFolder | null = null): LaunchPlan {
+export function launchPlanOf(input: LaunchInput, rows: AgentRow[], max = MAX_LAUNCHED, account: AccountFolder | null = null, idleOf: (row: AgentRow) => number | null = () => null, registry: readonly string[] = []): LaunchPlan {
   const reg = regKey(input.registration); // 새 세션은 정식 REGISTRATION으로 띄운다(ATC-67)
   rows = liveRowsOf(rows); // STALE 줄은 이미 떠 있는 세션도, 상한도 아니다(ATC-93)
   if (input.retired) throw new ControlError(`${reg}는 RETIRED — 먼저 복귀시킨다`, 409);
@@ -102,7 +103,7 @@ export function launchPlanOf(input: LaunchInput, rows: AgentRow[], max = MAX_LAU
   const live = rows.find((r) => sameName(r, reg));
   if (live) throw new ControlError(`${reg} 세션이 이미 떠 있음(${live.kind === "background" ? `bg ${live.id}` : "interactive"})`, 409);
   const launched = rows.filter((r) => r.kind === "background").length;
-  if (launched >= max) throw new ControlError(`백그라운드 세션 ${launched}개 — 상한 ${max}(ATC_MAX_LAUNCHED)`, 409);
+  if (launched >= max) throw new ControlError(`백그라운드 세션 ${launched}개 — 상한 ${max}(ATC_MAX_LAUNCHED) · ${capHoldersText(capHoldersOf(rows, registry, idleOf))}`, 409);
   // ACCOUNT별 상한(ATC-147, 등록부 maxLaunched): 그 ACCOUNT 폴더에서 읽은 백그라운드 세션 수
   if (account?.maxLaunched) {
     const n = rows.filter((r) => r.kind === "background" && r.account === account.label).length;
@@ -312,9 +313,11 @@ export function tmuxBin(): string | null {
 // LAUNCH는 atc 서비스 밖의 systemd scope에서 claude를 부른다. `claude --bg`는 처음 부를 때 이 기계의 백그라운드 세션을 모두 맡는
 // daemon(`claude daemon run`)을 띄우는데, atc 안에서 띄우면 daemon이 atc.service cgroup에 들어가 atc를 재시작할 때마다(배포·RTS)
 // 모든 백그라운드 세션이 함께 죽는다(2026-09-28 OCC a578bf15). ATC_BG_SCOPE=off면 예전처럼 바로 부른다
+// OOMPolicy=continue: scope 안의 프로세스 하나가 OOM으로 죽어도 scope(daemon과 모든 세션)는 두고 그 프로세스만 죽는다.
+// 기본값 stop이면 세션 하나의 테스트가 부푼 것만으로 백그라운드 세션이 모두 끝난다(2026-09-30 08:54Z, 12개)
 const SYSTEMD_RUN = "/usr/bin/systemd-run";
 export function launchCommandOf(bin: string, args: string[], scope: string | null, unit: string): { cmd: string; args: string[] } {
-  return scope ? { cmd: scope, args: ["--user", "--scope", "--collect", "--quiet", `--unit=${unit}`, "--", bin, ...args] } : { cmd: bin, args };
+  return scope ? { cmd: scope, args: ["--user", "--scope", "--collect", "--quiet", "-p", "OOMPolicy=continue", `--unit=${unit}`, "--", bin, ...args] } : { cmd: bin, args };
 }
 const scopeBin = () => (process.env.ATC_BG_SCOPE !== "off" && existsSync(SYSTEMD_RUN) ? SYSTEMD_RUN : null);
 
@@ -475,7 +478,7 @@ export async function launchAircraft(s: Snapshot, registration: string, options:
     const statuses = await accountStatusesOf(s.fuelAccounts, folders);
     const account = launchAccountOf({ requested: options.account, home, folders, status: (l) => statuses.get(l) ?? null });
     if (account && read.failed.includes(account.label)) throw new ControlError(`ACCOUNT ${account.label}의 세션 목록을 읽지 못함 — 이미 떠 있는지 몰라 띄우지 않는다`, 502);
-    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: crewBriefing(a, repo, cfg.mode), permissionMode: options.permissionMode, model: options.model }, rows, MAX_LAUNCHED, account);
+    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: crewBriefing(a, repo, cfg.mode), permissionMode: options.permissionMode, model: options.model }, rows, MAX_LAUNCHED, account, (row) => idleMinOfRow(row, s.sessions), Object.keys(loadFleet().aircraft));
     const r = await claude(plan.args, plan.cwd, { scope: true, configDir: plan.configDir });
     const jobId = jobIdOf(r.out);
     const ok = r.ok && !!jobId;
@@ -562,12 +565,52 @@ export async function stopControl(name: string, by: string): Promise<ControlResu
   }
 }
 
+// ── 그 밖의 백그라운드 세션(ATC-184) ──
+// 대화 기록이 마지막으로 바뀐 때(스냅샷 세션의 lastActiveAt). 스냅샷에 없으면 null이고 job의 updatedAt으로 물러난다
+const lastActiveOfRow = (row: Pick<AgentRow, "sessionId">, sessions: Snapshot["sessions"]): string | null => sessions.find((x) => x.id === row.sessionId)?.lastActiveAt ?? null;
+export function idleMinOfRow(row: Pick<AgentRow, "sessionId" | "id">, sessions: Snapshot["sessions"], now = Date.now()): number | null {
+  const at = lastActiveOfRow(row, sessions) ?? readJob(row.id)?.writtenAt ?? null;
+  return at && Number.isFinite(Date.parse(at)) ? Math.max(0, Math.floor((now - Date.parse(at)) / 60_000)) : null;
+}
+export function othersOf(rows: AgentRow[], sessions: Snapshot["sessions"], now = Date.now()): OtherBackground[] {
+  const dirs = CONTROL_SESSIONS.map((c) => controlDirOf(c)).filter((d): d is string => d !== null);
+  return otherBackgroundOf(rows, Object.keys(loadFleet().aircraft), CONTROL_SESSIONS.map((c) => c.name), {
+    teamPattern: loadDispatchConfig().teamPattern,
+    controlDirs: dirs,
+    resolve: realDir,
+    projectsRoot: config.projectsDir,
+    jobOf: (id) => settleJob(readJob(id)) ?? null,
+    lastActiveOf: (row) => lastActiveOfRow(row as AgentRow, sessions),
+    now,
+  });
+}
+
+// STOP: 그 밖의 백그라운드 세션 하나. SUPERVISOR가 누를 때만 하고, 지금 "그 밖"으로 읽히는 id만 멈춘다(AIRCRAFT·관제 세션은 여기로 멈추지 않는다)
+export async function stopOther(id: string, by: string, sessions: Snapshot["sessions"]): Promise<ControlResult> {
+  const t = new Date().toISOString();
+  try {
+    if (!/^[0-9a-f]{6,}$/.test(id)) throw new ControlError("세션 id가 올바르지 않음", 400);
+    const rows = await agentRows();
+    const target = othersOf(rows, sessions).find((o) => o.id === id);
+    if (!target) throw new ControlError(`그 밖의 백그라운드 세션이 아님: ${id} — 이미 끝났거나 AIRCRAFT·관제 세션이다`, 404);
+    const row = rows.find((r) => r.id === id)!;
+    const r = await claude(["stop", id], undefined, { configDir: configDirOfRow(row) }); // 그 세션의 폴더(ATC-147)
+    const error = r.ok ? undefined : r.out.slice(0, 300) || "claude stop 실패";
+    record({ t, kind: "other", op: "stop", session: target.name, by, ok: r.ok, jobId: id, cwd: row.cwd, ...(row.account ? { account: row.account } : {}), error });
+    return r.ok ? { ok: true, status: 200, jobId: id } : { ok: false, status: 502, error };
+  } catch (e) {
+    if (e instanceof ControlError) return { ok: false, status: e.status, error: e.message };
+    throw e;
+  }
+}
+
 export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapshot>) {
   // 관제 세션(8.5.1): 설정 창 AGENTS 탭의 CONTROL 블록이 쓴다
   app.get("/api/control/sessions", async (c) => {
     try {
-      const [rows, panes] = await Promise.all([cachedAgentRows.get(c.req.query("fresh") === "1"), tmuxPanes(tmuxBin() ?? "tmux")]);
+      const [rows, panes, snap] = await Promise.all([cachedAgentRows.get(c.req.query("fresh") === "1"), tmuxPanes(tmuxBin() ?? "tmux"), getSnapshot().catch(() => null)]);
       const squelch = readSquelchLast();
+      const sessionsNow = snap?.sessions ?? [];
       return c.json({
         // 백그라운드 세션 daemon이 atc 서비스 안에 있으면 atc 재시작(배포·RTS) 때 모든 백그라운드 세션이 죽는다
         daemonInService: inServiceCgroup(daemonCgroups()),
@@ -585,6 +628,9 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
         })),
         // ACCOUNT(ATC-60): 관제 세션마다 SUPERVISOR가 단 라벨(없으면 null). FUEL이 이 ACCOUNT에 센다
         accounts: controlAccountsView(loadFleet()),
+        // 그 밖의 백그라운드 세션(ATC-184): AIRCRAFT도 관제 세션도 아닌데 ATC_MAX_LAUNCHED 자리를 쥔 것. STALE은 없다
+        others: othersOf(rows, sessionsNow),
+        max: MAX_LAUNCHED,
       });
     } catch (e) {
       if (e instanceof ControlError) return c.json({ error: e.message }, e.status as 502);
@@ -620,13 +666,26 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
     return c.json({ ok: true, jobId: r.jobId, tmux: r.tmux });
   });
 
+  // 그 밖의 백그라운드 세션 STOP(ATC-184): CONTROL STOP과 같은 Origin 검사. SUPERVISOR가 누를 때만 한다
+  app.post("/api/control/others/:id/stop", async (c: Context) => {
+    if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
+    const r = await stopOther(c.req.param("id") ?? "", "SUPERVISOR", (await getSnapshot()).sessions);
+    if (!r.ok) return c.json({ error: r.error }, r.status as 400);
+    return c.json({ ok: true, jobId: r.jobId });
+  });
+
   // AIRCRAFT 이름과 같은 세션(데스크톱·터미널·백그라운드). FLEET 카드의 LAUNCH·STOP 버튼이 쓴다
   app.get("/api/fleet/sessions", async (c) => {
     try {
       const team = new RegExp(loadDispatchConfig().teamPattern, "i");
       const rows = (await agentRows()).filter((r) => team.test(r.name ?? ""));
       // stale: 멈췄는데 Claude Code가 아직 목록에 둔 job(ATC-93). 화면은 BG 대신 STALE로 보이고 LAUNCH를 막지 않는다
-      return c.json({ max: MAX_LAUNCHED, permissionModes: PERMISSION_MODES, sessions: rows.map(({ id, sessionId, name, kind, status, cwd, stale, account }) => ({ id, sessionId, name, kind, status, cwd, ...(stale ? { stale } : {}), ...(account ? { account } : {}) })) });
+      // 자리를 쥔 쪽(ATC-184): 관제 세션과 STALE을 뺀 살아 있는 백그라운드 세션을 AIRCRAFT와 그 밖으로 나눈 글
+      const dirs = CONTROL_SESSIONS.map((x) => controlDirOf(x)).filter((d): d is string => d !== null);
+      const snap = await getSnapshot().catch(() => null);
+      const counted = (await agentRows()).filter((r) => !isControlRow(r, dirs));
+      const holders = capHoldersOf(counted, Object.keys(loadFleet().aircraft), (row) => idleMinOfRow(row as AgentRow, snap?.sessions ?? []), loadDispatchConfig().teamPattern);
+      return c.json({ max: MAX_LAUNCHED, holders: capHoldersText(holders), launched: holders.aircraft + holders.other.length, permissionModes: PERMISSION_MODES, sessions: rows.map(({ id, sessionId, name, kind, status, cwd, stale, account }) => ({ id, sessionId, name, kind, status, cwd, ...(stale ? { stale } : {}), ...(account ? { account } : {}) })) });
     } catch (e) {
       if (e instanceof ControlError) return c.json({ error: e.message }, e.status as 502);
       throw e;

@@ -52,7 +52,7 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
 | `ASSIGN` | FLIGHT를 AIRCRAFT에 배정 | VOC193 → BRAVO (VCDO) |
 | `HOLD_DEPARTURE` | 지금은 출발시키지 말 것 | VOC192는 VOC191(blocks)이 ARRIVED 될 때까지 대기 |
 | `RELEASE` | STAND도 활동도 없는 ENROUTE FLIGHT를 정리 | VOC34: 7일째 STAND 없음 → Todo로 되돌릴지 SUPERVISOR 확인 |
-| `REPOSITION` | AIRCRAFT를 다른 AIRPORT로(3단계 전까지는 드묾) | DSGN FLIGHT가 쌓였는데 DSGN 소속 AIRCRAFT가 없음 |
+| `REPOSITION` | AIRCRAFT를 다른 AIRPORT로. FLEET PLAN의 종류로 만들었다(ATC-179, [fleet.ko.md](fleet.ko.md) 8.6). DISPATCH가 직접 내지는 않는다 | DSGN FLIGHT가 쌓였는데 DSGN 소속 AIRCRAFT가 없음 |
 
 첫 구현은 `ASSIGN`과 `RELEASE`만. `RELEASE`는 In Progress 17건 중 방치된 것을 정리하는 효과가 크고 위험이 낮다(Linear 변경은 SUPERVISOR/CAPTAIN이 한다).
 
@@ -459,6 +459,18 @@ PR이 없는 SURVEY·CHECK FLIGHT는 `PR #n` 대신 `RESULT <링크>`를 쓴다.
 - PILOT'S DISCRETION: `tsc ✓ · build ✓`는 줄의 고정 부분이지만 저장하지 않는다(테스트 수는 저장하고, ✗는 `BLOCKED`에 쓴다). 한 FLIGHT에 `dispatch report`를 다시 치면 앞의 것을 대신한다. 규칙은 이 변경 뒤에 머지되는 FLIGHT뿐 아니라 최근 하루 안에 머지된 FLIGHT에도 적용되므로, 배포 뒤 첫 tick에 `no-report`가 몇 건 한꺼번에 뜰 수 있다(`following ack` 한 번으로 정리된다).
 - 만들지 않은 것: 응용 저장소의 보고 규칙(SUPERVISOR가 각 저장소 `CLAUDE.md`에 줄을 더한다), 팀 메시지를 자동으로 읽는 것.
 
+## 전달 실패한 FLIGHT PLAN 구현 내용(ATC-183)
+
+`dispatch release`는 OCC의 `SendMessage`가 돌기 전에 제안을 SENT로 바꾼다. 메시지가 아무 데도 닿지 않으면(세션이 없거나 도구가 `success:false`를 돌려줌) 제안은 10분 동안 SENT로 남고 OCC는 그래도 LOG에 "sent"라고 썼다. 두 가지로 이 틈을 막는다.
+
+- **없는 곳으로 보내지 않는다.** `POST /api/dispatch/proposals/:id/release`는 제안의 AIRCRAFT에 살아 있는 세션이 없으면 `<AIRCRAFT>: AIRCRAFT 세션 없음 — 보내지 않음 (LAUNCH 필요)`로 `409`를 돌려준다(`noLiveSessionWhyOf`, `server/proposals.ts`). `RESTARTING`이든 아니든 같다. `RESTARTING`과 `LAUNCHING`은 전처럼 더 구체적인 거절을 쓰고, 이 거절은 나머지(유예가 지나 사라진 AIRCRAFT)를 맡는다. 승인은 그대로다. `launch: true` 카드는 뺀다(LAUNCH가 FLIGHT PLAN을 첫 프롬프트로 가져간다). 이미 sent인 제안의 재송신에도 같다. `atcctl`은 거절을 `오류: …`로 출력하고, OCC의 jq 필터가 이미 그 줄을 고른다.
+- **전달 실패를 기록하는 길.** `atcctl dispatch undelivered D-xxxx -- <사유>`(`POST …/undelivered {reason}`, 사유 필수, 300자 이내)는 `sent`인 제안에만 받는다. `undelivered` op를 더해 제안을 `approved`로 돌린다(승인 시각은 그대로, 보낸 시각과 문구는 지운다). `undelivered: { at, reason, n }`도 남긴다. **SUPERVISOR 판정이 아니다**: `humanOf`는 그대로이고 24시간 짝 규칙도 시작하지 않는다. AIRCRAFT가 돌아오면 다음 `dispatch release`가 다시 보낸다. 다음 동기화 때 AIRCRAFT가 더는 후보가 아니면 `AIRCRAFT 불가: 전달 실패 — <사유>`로 닫히고, 그 사유는 짝 규칙을 시작하지 않는 사유다.
+- **CAUTION.** FLIGHT FOLLOWING에 `undelivered` 문제(심각도 `warn`이라 SUPERVISOR 경보는 CAUTION)가 뜨고 제안, AIRCRAFT, 사유를 적는다. key에 시도한 시각이 들어 있어 실패한 시도마다 경보 하나가 뜨고, 제안이 닫히거나 다시 보내진 뒤에도 24시간 남는다(`undeliveredOf`, `unable`과 같다).
+- **RADIO.** DELIVERY의 FLIGHT PLAN 교신이 닫히고 표시된다: `undelivered`에 사유가, `closedBy`는 `undelivered`. 새 시도의 id가 `D-xxxx`이므로 겹치지 않게 이 교신의 id는 `D-xxxx#undelivered1`(다음은 `2`…)로 바뀐다. 새 기록 파일은 없다. READABILITY는 이것을 답 없음이 아니라 철회로 센다.
+- **OCC 매뉴얼**(`occ/CLAUDE.md`, `.en.md`, tick skill의 FLIGHT PLAN·CREW CHANGE 파일): `SendMessage` 결과가 `success:false`이면 도구의 메시지로 곧바로 `dispatch undelivered`를 하고, 같은 tick에 다시 보내지 않고, OCC LOG에 "sent"라고 쓰지 않는다.
+- **RECALL과 CREW CHANGE.** RECALL 전송은 상태를 바꾸지 않아서(`recall-send`는 문구만 출력) 되돌릴 것이 없다. OCC는 LOG에 "undelivered"라고 쓰고, 같은 tick에 다시 보내지 않고, SUPERVISOR에게 보고하며, RECALL `overdue` 규칙이 한 번 다시 보낸다. CREW CHANGE는 `crew-change send`가 sent로 기록해서 자기 `undelivered` op가 있어야 하는데 그것은 만들지 않았다. 매뉴얼은 같은 LOG·재송신 금지 규칙을 주고, 10분 `overdue` 규칙이 한 번 다시 보낸다. "알려진 빈틈"에 남는다.
+- **Guard.** `controller/guard.mjs`에는 TOWER와 OCC의 명령별 목록이 없어서(`atcctl` 명령은 모두 통과) 새 명령에 허용 목록을 고칠 곳이 없다. CROSSCHECK·REVIEW·MCC 목록에는 없고, 테스트가 그것을 확인한다. `occ/send-guard.mjs`는 `SendMessage`만 지키고 그대로다: `undelivered` 뒤 제안은 `approved`이고, guard는 보내려면 여전히 `sent`(새 `release`)를 요구한다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.
@@ -528,7 +540,7 @@ Not built yet: vocado 쪽 템플릿(vocado `CLAUDE.md`의 네 칸 규칙, Linear
 
 ### 2b 켜기 전 알려진 빈틈
 
-- `dispatch release`는 메시지를 보내기 전에 제안을 SENT로 바꾼다. 전달이 실패하면(CAPTAIN 세션이 없거나 메시지가 승인 대기로 잡힘) SENT로 남고, 10분 뒤 NO READBACK으로 보이면 DISPATCH가 한 번 재송신한 뒤 SUPERVISOR에게 보고한다.
+- `dispatch release` 뒤 메시지가 승인 대기로 잡히면 OCC가 알리기(`dispatch undelivered`, [전달 실패한 FLIGHT PLAN 구현 내용](#전달-실패한-flight-plan-구현-내용atc-183)) 전까지 제안은 SENT로 남는다. 세션이 없는 곳은 보내기 전에 거절하고, `success:false` 결과는 OCC가 기록한다. 전달은 됐는데 답이 없는 경우만 10분 뒤 NO READBACK으로 보이고, OCC가 한 번 재송신한 뒤 SUPERVISOR에게 보고한다.
 - STAND 없는 FLIGHT는 OCC가 확인할 때 ARRIVED한다. CAPTAIN 보고로, 또는 그 팀이 한 리뷰·댓글·문서 PR에서 atc가 찾은 ARRIVED 후보로 확인한다(ATC-72, [fleet.ko.md](fleet.ko.md) 5.1.1). atc가 스스로 적지는 않는다. 확인을 잊으면 SUPERVISOR가 `overdue`(24시간)를 보고 챙길 때까지 그 AIRCRAFT의 STAND 없는 칸 하나가 잡혀 있다. send-guard가 FLIGHT PLAN·RECALL·CREW CHANGE만 통과시키므로 OCC가 CAPTAIN에게 직접 묻지 못한다.
 - STAND 없는 READBACK은 CAPTAIN이 실제로 시작하지 않아도 DEPARTED로 센다. 일이 시작됐다는 다른 신호가 없다.
 - STAND 없는 ARRIVED는 LOGBOOK에 오르지 않아 TARGETS에 세지 않는다. planner는 ARRIVED 뒤 7일 동안 그 FLIGHT를 빼고, 그 뒤에는 Linear를 믿으므로 Linear에서 닫아야 한다.

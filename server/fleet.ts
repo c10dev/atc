@@ -15,12 +15,13 @@ import type { AccountHold, Health } from "./health.ts";
 import type { FuelRemaining } from "./fuel-remaining.ts";
 import { type ContextSize, type ContextView, contextView } from "./fuel-context.ts";
 import type { Snapshot } from "./model.ts";
-import { fleetKeyOf, registrationOf, regKey } from "./registration.ts";
+import { compareRegistration, fleetKeyOf, registrationOf, regKey } from "./registration.ts";
 import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state.ts";
 import type { SessionOrigin } from "./session-origin.ts";
 import type { Job } from "./job-state.ts";
 import type { Activity } from "./activity.ts";
 import { flightDetailOf, liveViewOf } from "./fleet-live.ts";
+import { readRecords } from "./recorder.ts";
 
 export { flightDetailOf };
 
@@ -341,7 +342,7 @@ export function fleetView(
   const live = s.sessions.filter((x) => team.test(x.name) && x.status !== "dead");
   // 세션 이름은 `Team G`, `team_g`처럼 달라도 한 REGISTRATION으로 읽는다(ATC-67)
   const regOf = (name: string) => regKey(name, teamPattern);
-  const names = [...new Set([...live.map((x) => regOf(x.name)), ...Object.keys(fleet.aircraft).map(regOf)])].sort();
+  const names = [...new Set([...live.map((x) => regOf(x.name)), ...Object.keys(fleet.aircraft).map(regOf)])].sort(compareRegistration);
   // 라이브 부분(상태·FLYING·마지막 활동·health·chips)은 스냅샷만으로 셈한다(fleet-live.ts, 화면도 같이 쓴다)
   // 관찰한 ACCOUNT(ATC-146): 살아 있는 세션이 home과 다른 폴더에 있으면 LIMIT 붙들림은 그 폴더의 ACCOUNT로 센다
   const observedOf = (n: string) => live.find((x) => regOf(x.name) === regOf(n))?.account ?? null;
@@ -395,11 +396,14 @@ export function defaultBase(s: Pick<Snapshot, "sessions" | "airports">, teamPatt
   return top ?? (mapped && s.airports.some((a) => a.code === mapped) ? mapped : (s.airports[0]?.code ?? null));
 }
 
-// 비어 있는 다음 등록번호: TEAM_A … TEAM_Z 중 세션도 등록 항목도 없는 첫 글자
+// 비어 있는 다음 등록번호: TEAM_A … TEAM_Z, 그다음 TEAM_AA, TEAM_AB … TEAM_ZZ(ATC-181) 중 세션도 등록 항목도 없는(퇴역 포함) 첫 번호. 다 쓰면 null
+export const REGISTRATION_SEQUENCE: readonly string[] = (() => {
+  const L = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  return [...L, ...[...L].flatMap((a) => [...L].map((b) => a + b))].map((x) => `TEAM_${x}`);
+})();
 export function nextRegistration(taken: Iterable<string>): string | null {
   const used = new Set([...taken].map((x) => regKey(x)));
-  for (const c of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") if (!used.has(`TEAM_${c}`)) return `TEAM_${c}`;
-  return null;
+  return REGISTRATION_SEQUENCE.find((r) => !used.has(r)) ?? null;
 }
 
 // ENTRY INTO SERVICE: 새 AIRCRAFT를 FLEET에 들인다. 세션은 사용자가 CREW BRIEFING을 붙여 넣어 연다.
@@ -478,9 +482,12 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>, cont
     const rulesRecords = loadRulesRecords();
     const rulesOf = (reg: string): RulesView | null => rulesOfAircraft(s.sessions.filter((x) => x.status !== "dead" && regKey(x.name, cfg.teamPattern) === reg), rulesRecords);
     const context = contextOf(s.sessions, cfg.teamPattern);
+    // REPOSITION(ATC-179): AIRCRAFT마다 마지막 옮김(최근 30일, FLIGHT RECORDER). 카드가 base 옆에 보인다
+    const lastRepo = new Map<string, { from: string; to: string; at: string; by: string; ok: boolean }>();
+    for (const r of readRecords(Date.now() - 30 * 86_400_000)) if (r.kind === "fleet" && r.op === "reposition" && r.from && r.to) lastRepo.set(regKey(r.aircraft, cfg.teamPattern), { from: r.from, to: r.to, at: r.t, by: r.by, ok: r.ok });
     const aircraft = fleetView(s, fleet, cfg.teamPattern, loadPricedLogbook())
       .map(withCrew(s))
-      .map((a) => ({ ...a, rules: rulesOf(a.registration), language: languageOf(s.sessions, a.registration, cfg.teamPattern), context: contextView(context.get(a.registration) ?? null) }));
+      .map((a) => ({ ...a, lastReposition: lastRepo.get(a.registration) ?? null, rules: rulesOf(a.registration), language: languageOf(s.sessions, a.registration, cfg.teamPattern), context: contextView(context.get(a.registration) ?? null) }));
     const configurations = Object.entries(CONFIGURATIONS).map(([id, t]) => ({ id, label: t.label, complement: t.complement, ratings: t.ratings }));
     return c.json({
       ratings: RATINGS,

@@ -43,7 +43,7 @@ DISPATCH 탭의 "제외" 목록에 이유가 있다. 흔한 이유:
 
 ## 다른 Linear 팀이 안 보인다
 
-atc는 `.env.local`의 `LINEAR_TEAM_KEY`(주 팀)만 읽는다. 팀을 더 읽으려면 설정 창 LINEAR 탭의 **TEAMS**에 쉼표로 적는다(`LINEAR_TEAM_KEYS=VOC,ATC`). 저장하면 바로 다시 읽는다.
+atc는 `.env.local`의 `LINEAR_TEAM_KEY`(주 팀)만 읽는다. 팀을 더 읽으려면 설정 창 LINEAR 분류의 **TEAMS**에 쉼표로 적는다(`LINEAR_TEAM_KEYS=VOC,ATC`). 저장하면 바로 다시 읽는다.
 
 - 한 팀을 읽지 못하면 연결 상태에 그 팀과 오류가 나온다. 그 팀은 마지막으로 읽은 티켓을 계속 보인다.
 - 더 읽은 팀의 FLIGHT는 RADAR·STRIPS·FIDS에만 보인다. 그 팀의 프로젝트와 마일스톤은 NETWORK 탭 ROUTE MAP과 SCHEDULE 탭 LATE WAYPOINTS·ROUTES WITHOUT WAYPOINTS에도 보인다. DISPATCH 제안과 SCHEDULE 초안은 `~/.local/state/atc/dispatch.json`의 `candidateTeams`에 든 팀만 받는다(비면 주 팀만). 그 밖의 팀에 SCHEDULE 초안을 쓰면 "SCHEDULE 후보가 아님"으로 거절된다.
@@ -76,7 +76,7 @@ LANDING SEQUENCE 머리의 AUTOLAND 줄과 PR의 AUTOLAND 표시를 본다([개�
 - 줄이 없다 → 스위치가 `off`이거나 그 AIRPORT가 AUTOLAND 목록(`autoland.json`의 `airports`, 기본 VCDO)에 없다. atc 저장소 자신은 맡지 않는다.
 - `AUTOLAND: waiting — #n CLEARED` → HOLD하지 않은 CLEARED PR이 머지를 기다린다. 그것을 머지하거나, 지금 머지하지 않을 거면 HOLD를 누른다. 그래야 다음 PR을 갱신한다(먼저 갱신하면 그 머지 뒤 다시 behind가 된다).
 - `AUTOLAND: updating #n — CI 대기` → 갱신한 PR의 CI를 기다린다. AIRPORT마다 하나씩이다. CI가 끝나면(또는 90분이 지나면) 다음으로 간다.
-- `AUTOLAND: GROUND STOP` → main의 `Application Check`가 빨갛다. main을 고친 뒤 설정 창 AUTOMATION 탭 AUTOLAND 아래 **풀기**를 누른다. main이 다시 초록이 돼도 저절로 풀리지 않는다.
+- `AUTOLAND: GROUND STOP` → main의 `Application Check`가 빨갛다. main을 고친 뒤 설정 창 AUTOMATION → LANDING의 AUTOLAND 아래 **풀기**를 누른다. main이 다시 초록이 돼도 저절로 풀리지 않는다.
 - `AUTOLAND: 갱신 실패한 PR만 남음` → 갱신이 실패한 head는 다시 하지 않는다(충돌 등). 새 push로 head가 바뀌면 다시 후보가 된다. head가 움직여 거절된 것은 다음 주기(90초)에 새 head로 다시 한다. 결과는 `GET /api/autoland`의 `records`에 있다.
 - `AUTOLAND: review requested (codex)` → 갱신한 head에 리뷰가 이어지지 않아(main에서 PR 파일이 바뀜) atc가 `@codex review`를 달았다. 30분 안에 Codex가 답하지 않으면 `(deepseek)`(옛 이름, 지금은 REVIEW 세션)로 바뀌고 REVIEW 대기열에 들어간다. head마다 한 번만 요청한다.
 - `AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(…)` → 비밀·키 경로, FLIGHT 없음, 또는 스위치가 exclude일 때 보안 경로·키워드로 REVIEW에 보낼 수 없는 PR이다. Codex나 SUPERVISOR가 리뷰한다.

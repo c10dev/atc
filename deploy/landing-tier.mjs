@@ -29,12 +29,15 @@ export const SIDE_EFFECT = [
   ["server/human-check-run.ts", "PR 본문 수정·코멘트(gh api)"],
   ["server/session-control.ts", "claude --bg 세션 시작·정지, tmux pane 닫기"],
   ["server/tts.ts", "외부 TTS 명령(piper·espeak-ng·Kokoro 래퍼) 실행: 문구를 WAV로 렌더링(ATC-140, ATC-143)"],
+  ["server/account-add.ts", "Claude Code 설정 폴더 만들기와 그 settings.json 쓰기(ADD ACCOUNT, ATC-186). 로그인 정보는 열지 않음"],
   ["tts/kokoro-say.py", "server/tts.ts가 부르는 Kokoro 래퍼: 모델을 돌려 WAV를 파일로 씀(네트워크 없음, ATC-143)"],
   // 위 파일의 부작용 helper를 불러 시점을 정하는 파일(SIDE_EFFECT_HELPERS를 import). 자기는 명령을 돌리지 않는다
   ["server/update-run.ts", "RTS 유닛 시작 시점(UPDATE 바)"],
   ["server/voice-run.ts", "TTS 렌더링 시점(GET /api/voice/*)과 상태 폴더 voice-cache/ 쓰기"],
   ["server/fleet-plan-run.ts", "FLEET PLAN 실행: AIRCRAFT 세션 시작·정지 시점"],
   ["server/control-recycle-run.ts", "CONTROL RECYCLE 실행: 관제 세션 정지·시작 시점(ATC-166, 스위치 off 기본)"],
+  ["server/account-login.ts", "claude auth login 실행(코드를 stdin으로), 로그인 뒤 .claude.json 온보딩 칸 셋 쓰기(ATC-187). .credentials.json은 열지 않음"],
+  ["server/accounts-run.ts", "ADD ACCOUNT·LOGIN 시점(POST /api/accounts/add, /api/accounts/:label/login, SUPERVISOR만)"],
   ["server/index.ts", "AUTOLAND 한 주기 실행 배선(머지·브랜치 갱신 시점)"],
 ];
 // 부작용을 일으키는 export(이름, 정의한 파일, 하는 일). 이것을 import하는 server 파일은 SIDE_EFFECT나 READ_ONLY에 올라야 한다(landing-tier.test.mjs)
@@ -47,6 +50,9 @@ export const SIDE_EFFECT_HELPERS = [
   ["stopAircraft", "server/session-control.ts", "AIRCRAFT 세션 정지"],
   ["launchControl", "server/session-control.ts", "관제 세션 시작"],
   ["stopControl", "server/session-control.ts", "관제 세션 정지·pane 닫기"],
+  ["addAccount", "server/account-add.ts", "ACCOUNT 폴더 만들기·settings.json 쓰기"],
+  ["startLogin", "server/account-login.ts", "claude auth login 프로세스 시작"],
+  ["submitCode", "server/account-login.ts", "로그인 코드 전달과 온보딩 칸 쓰기"],
 ];
 // 명령·외부 API를 쓰지만 읽기만 하는 서버 코드(SHIP)
 export const READ_ONLY = [

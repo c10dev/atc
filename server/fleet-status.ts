@@ -5,7 +5,7 @@ import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel, type HealthCode
 import { fuelHoldTag, fuelTitle } from "./fuel-remaining.ts";
 import { type ContextBadge, contextBadgeOf } from "./fuel-context.ts";
 import { fleetFuelLabel, fleetFuelTitle } from "./fuel-view.ts";
-import { conflictHintOf, renameHintOf } from "./registration.ts";
+import { compareRegistration, conflictHintOf, renameHintOf } from "./registration.ts";
 import { RESTARTING_TEXT } from "./restarting.ts";
 import { originBadgeOf } from "./session-origin.ts";
 
@@ -115,7 +115,7 @@ export function fleetRows(aircraft: readonly AircraftView[], now: number): Fleet
     (x, y) =>
       RANK.indexOf(x.status) - RANK.indexOf(y.status) ||
       (x.airport ?? "￿").localeCompare(y.airport ?? "￿") ||
-      x.registration.localeCompare(y.registration),
+      compareRegistration(x.registration, y.registration),
   );
 }
 

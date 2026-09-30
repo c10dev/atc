@@ -5,6 +5,7 @@ import { isControlName } from "./crew.ts";
 import type { Session, Snapshot } from "./model.ts";
 import type { Op, Proposal } from "./proposals.ts";
 import { regKey } from "./registration.ts";
+import { CAP_IDLE_MIN, type CapIdleHint, capHoldersOf, capHoldersText, capIdleHintsOf, isAircraftName } from "./other-background.ts";
 
 // LAUNCH on approve와 RESUME 카드(ATC-129, docs/dispatch.md·docs/fleet.md "as built (ATC-129)").
 // 백그라운드 세션은 마지막 턴 뒤 60분쯤 쉬면 Claude Code daemon이 거둔다(bg retire, idle 60m). 그래도 그 AIRCRAFT는 DISPATCH 후보로 남고,
@@ -128,6 +129,7 @@ export interface LaunchCap {
   pending: number;
   max: number;
   full: boolean;
+  holders?: string; // 자리를 쥔 쪽(ATC-184): `AIRCRAFT 6 · 그 밖 1 (ENGINEERING-NIGHT, 6h idle)`
 }
 const liveRegsOf = (sessions: readonly Pick<Session, "name" | "status">[], teamPattern?: string) =>
   new Set(sessions.filter((x) => x.status !== "dead").map((x) => regKey(x.name, teamPattern)));
@@ -135,19 +137,41 @@ const liveRegsOf = (sessions: readonly Pick<Session, "name" | "status">[], teamP
 const isControlSession = (name: string) => isControlName(name) || name.trim().toUpperCase() === "REVIEW";
 
 export function launchCapOf(
-  sessions: readonly Pick<Session, "name" | "status" | "origin">[],
+  sessions: readonly (Pick<Session, "name" | "status" | "origin"> & Partial<Pick<Session, "lastActiveAt">>)[],
   proposals: readonly Pick<Proposal, "kind" | "status" | "launch" | "launched" | "registration" | "aircraftName">[],
   max: number,
   teamPattern?: string,
+  now = Date.now(),
 ): LaunchCap {
-  const launched = sessions.filter((x) => x.status !== "dead" && x.origin === "background" && !isControlSession(x.name)).length;
+  const holding = sessions.filter((x) => x.status !== "dead" && x.origin === "background" && !isControlSession(x.name));
+  const launched = holding.length;
+  const holders = capHoldersText(
+    capHoldersOf(holding.map((x) => ({ name: x.name, kind: "background", idle: x.lastActiveAt ? Math.max(0, Math.floor((now - Date.parse(x.lastActiveAt)) / 60_000)) : null })), [], (r) => r.idle, teamPattern),
+  );
   const live = liveRegsOf(sessions, teamPattern);
   const pending = proposals.filter(
     (p) => p.kind === "ASSIGN" && p.launch && p.status === "approved" && p.launched?.ok !== false && !live.has(p.registration ?? regKey(p.aircraftName, teamPattern)),
   ).length;
-  return { launched, pending, max, full: launched + pending >= max };
+  return { launched, pending, max, full: launched + pending >= max, holders };
 }
-export const launchFullWhy = (cap: LaunchCap) => `LAUNCH 대기 — 백그라운드 ${cap.launched}${cap.pending ? ` + 승인된 LAUNCH ${cap.pending}` : ""} / 상한 ${cap.max}(ATC_MAX_LAUNCHED) — 자리가 나면 승인한다`;
+// 놀고 있는 자리 힌트(ATC-184, ADVISORY 알림용): 상한이 찬 채 launch 카드가 기다리는 동안, 120분 넘게 논 그 밖의 백그라운드 세션. 알리기만 한다
+export function capIdleNow(
+  sessions: readonly (Pick<Session, "name" | "status" | "origin"> & Partial<Pick<Session, "lastActiveAt" | "jobId" | "id">>)[],
+  proposals: readonly Pick<Proposal, "kind" | "status" | "launch" | "launched" | "registration" | "aircraftName" | "flight">[],
+  max: number,
+  teamPattern?: string,
+  now = Date.now(),
+): CapIdleHint[] {
+  if (max <= 0) return [];
+  const cap = launchCapOf(sessions, proposals, max, teamPattern, now);
+  if (!cap.full) return [];
+  const refused = proposals.filter((p) => p.kind === "ASSIGN" && p.launch && p.status === "proposed").map((p) => p.registration ?? regKey(p.aircraftName, teamPattern) ?? p.flight);
+  const others = sessions
+    .filter((x) => x.status !== "dead" && x.origin === "background" && !isControlSession(x.name) && !isAircraftName(x.name, [], teamPattern))
+    .map((x) => ({ id: x.jobId ?? x.id ?? x.name, name: x.name, idleMin: x.lastActiveAt ? Math.max(0, Math.floor((now - Date.parse(x.lastActiveAt)) / 60_000)) : null }));
+  return capIdleHintsOf(others, refused, CAP_IDLE_MIN);
+}
+export const launchFullWhy = (cap: LaunchCap) => `LAUNCH 대기 — 백그라운드 ${cap.launched}${cap.pending ? ` + 승인된 LAUNCH ${cap.pending}` : ""} / 상한 ${cap.max}(ATC_MAX_LAUNCHED)${cap.holders ? ` · ${cap.holders}` : ""} — 자리가 나면 승인한다`;
 
 // 카드마다 LAUNCH 표시(열린·HELD·승인된 launch 카드). 상한이 찼으면 열린 카드는 기다린다고 적는다
 export function launchViewOf(proposals: readonly Proposal[], cap: LaunchCap): Record<string, string> {

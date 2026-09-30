@@ -2,7 +2,9 @@
 // 같은 AIRCRAFT다. 등록부(fleet.json) 키, `tail:` 라벨, ACCOUNT 구성원, 새 기록은 모두 정식 표기(`TEAM_G`, 대문자·`_`)로 맞춘다. 순수 함수.
 
 // DISPATCH 설정 teamPattern의 기본값(dispatch.json에서 바꿀 수 있다)
-export const DEFAULT_TEAM_PATTERN = "^TEAM[\\s_-]?[A-Z]$";
+// 글자는 하나(TEAM_A … TEAM_Z) 또는 둘(TEAM_AA … TEAM_ZZ, ATC-181). 팀 이름 규칙은 여기 하나뿐이고, 콜사인·화면·정렬이 모두 이것을 거친다
+export const REG_LETTERS = "[A-Z]{1,2}";
+export const DEFAULT_TEAM_PATTERN = `^TEAM[\\s_-]?${REG_LETTERS}$`;
 
 const SEP = /[\s_-]+/g;
 
@@ -25,6 +27,16 @@ export function registrationOf(name: string | null | undefined, teamPattern = DE
     if (re.test(split)) return split;
   }
   return base; // `_`를 받지 않는 teamPattern이면 대문자 그대로
+}
+
+// REGISTRATION 정렬(ATC-181): 글자 수가 먼저라 TEAM_Z가 TEAM_AA보다 앞. TEAM_X 꼴이 아닌 이름은 이름순으로 그 뒤
+export const TEAM_REGISTRATION = /^TEAM_[A-Z]{1,2}$/;
+export function compareRegistration(a: string, b: string): number {
+  const ta = TEAM_REGISTRATION.test(a);
+  const tb = TEAM_REGISTRATION.test(b);
+  if (ta && tb) return a.length - b.length || (a < b ? -1 : a > b ? 1 : 0);
+  if (ta !== tb) return ta ? -1 : 1;
+  return a.localeCompare(b);
 }
 
 // 이름을 서로 비교할 때 쓰는 키: TEAM이면 정식 REGISTRATION, 아니면(관제 세션, 옛 기록의 다른 이름) 대문자

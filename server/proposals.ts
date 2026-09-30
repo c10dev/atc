@@ -141,6 +141,10 @@ export const regOfProposal = (p: Pick<Proposal, "registration" | "aircraftName">
 export const AIRCRAFT_WHY = "AIRCRAFT 불가";
 // 멈춘 AIRCRAFT(RESUME·STALLED, 끝나지 않은 In Progress FLIGHT, ATC-90)로 닫힘. SUPERVISOR 판정이 아니라 24시간 짝 규칙을 시작하지 않는다
 export const STOPPED_WHY = "AIRCRAFT 멈춤";
+// 보냈는데 닿지 않아(ATC-183) AIRCRAFT가 더는 후보가 아니라 닫힘. SUPERVISOR 판정이 아니라 24시간 짝 규칙을 시작하지 않는다
+export const DELIVERY_FAILED_WHY = `${AIRCRAFT_WHY}: 전달 실패`;
+// 받을 세션이 없어 FLIGHT PLAN을 보내지 않는다(ATC-183)
+export const NO_SESSION_SEND_WHY = "AIRCRAFT 세션 없음 — 보내지 않음 (LAUNCH 필요)";
 
 // SETTLED(ATC-117): OCC의 메모·BRIEFING과 CROSSCHECK mark는 SETTLED 제안만 받는다. 승인된 제안이거나, 열린(proposed·HELD) 채로 settleMin분 넘게 지낸 제안.
 // 바로 바뀌는 제안(SUPERSEDED가 36/65)에 관제 세션의 한 바퀴를 쓰지 않으려는 것이다. 읽을 때 계산하고 기록 형식은 그대로다. 0은 예전처럼 곧장 SETTLED
@@ -217,6 +221,7 @@ export interface Proposal {
   launched?: LaunchResult; // 승인 때 한 LAUNCH의 결과(op launch)
   resume?: ResumeInfo; // RESUME 카드(ATC-129): 사용 한도로 끊긴 FLIGHT를 같은 REGISTRATION이 이어서 한다
   supervisorConfirm?: string[]; // SUPERVISOR CONFIRM AT AIRCRAFT(ATC-120): 예측 경로 중 사용자 등급 파일. 표시만 하고 승인을 막지 않는다. 옛 기록에는 없다
+  undelivered?: { at: string; reason: string; n: number }; // 보낸 FLIGHT PLAN이 닿지 않았다고 OCC가 알림(ATC-183, op undelivered). 마지막 시각·사유와 횟수. 상태가 바뀌어도 지우지 않는다
   awaitSupervisor?: { at: string; reason: string }; // CAPTAIN이 READBACK도 거절도 아닌 채 사용자의 go를 기다림(ATC-120). sent인 동안만 — 상태가 바뀌면(READBACK 등) 지운다
 }
 
@@ -236,6 +241,7 @@ export type Op =
   | { op: "send"; id: string; at: string; message: string }
   | { op: "accept"; id: string; at: string }
   | { op: "decline"; id: string; at: string; reason: string } // CAPTAIN의 UNABLE D-xxxx(ATC-122)도 이것
+  | { op: "undelivered"; id: string; at: string; reason: string } // OCC의 SendMessage가 실패함(ATC-183). sent를 approved로 돌린다. SUPERVISOR 판정이 아니다
   | { op: "standby"; id: string; at: string } // CAPTAIN의 STANDBY D-xxxx(ATC-122). 상태는 sent 그대로
   | { op: "launch"; id: string; at: string; ok: boolean; by: string; jobId?: string; error?: string } // launch 카드 승인 때의 LAUNCH 결과(ATC-129). 상태는 그대로
   | { op: "await-supervisor"; id: string; at: string; reason: string } // CAPTAIN이 사용자의 go를 기다림(ATC-120). 상태는 sent 그대로, awaitSupervisor만 붙는다
@@ -246,7 +252,7 @@ export type Op =
   | { op: "supersede"; id: string; at: string; reason: string }
   | { op: "expire"; id: string; at: string; reason?: string };
 
-type StatusOp = Exclude<Op["op"], "create" | "note" | "brief" | "hold" | "crosscheck" | "preflight" | "requeue" | "recode" | "standby" | "launch" | "await-supervisor">;
+type StatusOp = Exclude<Op["op"], "create" | "note" | "brief" | "hold" | "crosscheck" | "preflight" | "requeue" | "recode" | "standby" | "launch" | "await-supervisor" | "undelivered">;
 
 // 상태 전이 규칙. 여기 없는 전이는 무시한다(API도 같은 규칙으로 검사한다).
 const NEXT: Partial<Record<ProposalStatus, Partial<Record<StatusOp, ProposalStatus>>>> = {
@@ -357,6 +363,19 @@ export function fold(ops: Op[]): Proposal[] {
       if (p.launch && p.status === "approved") p.launched = { at: o.at, ok: o.ok, by: o.by, ...(o.jobId ? { jobId: o.jobId } : {}), ...(o.error ? { error: o.error } : {}) };
       continue;
     }
+    if (o.op === "undelivered") {
+      // 보냈다고 했지만 닿지 않은 FLIGHT PLAN(sent)만. approved로 돌려 다음 release가 다시 시도한다. 승인 시각은 지킨다(SUPERVISOR 판정이 아니다)
+      if (p.status !== "sent") continue;
+      p.status = "approved";
+      p.statusAt = o.at;
+      delete p.timeline.sent;
+      p.message = null;
+      delete p.standbyAt;
+      delete p.standbys;
+      delete p.awaitSupervisor;
+      p.undelivered = { at: o.at, reason: o.reason, n: (p.undelivered?.n ?? 0) + 1 };
+      continue;
+    }
     if (o.op === "await-supervisor") {
       // 보냈는데 READBACK이 없는 FLIGHT PLAN(sent)에만. 다시 부르면 사유만 새로 하고 처음 시각을 지킨다
       if (p.status !== "sent") continue;
@@ -412,7 +431,7 @@ function pairUntil(p: Pick<Proposal, "at" | "timeline" | "requeuedAt">, now: num
 // "더 나은 배정으로 바뀜"으로 닫힌 제안은 판정받지 못한 것이다. 24시간 규칙에서 빼 다시 후보가 되게 한다
 // LAUNCH 실패(ATC-129)도 판정이 아니다: 다음 계획에 같은 카드가 다시 나와 SUPERVISOR가 다시 승인할 수 있다(스스로 다시 띄우지는 않는다)
 const churned = (p: Pick<Proposal, "status" | "reason">) =>
-  p.status === "superseded" && [BETTER_WHY, STOPPED_WHY, LAUNCH_FAILED_WHY].some((w) => (p.reason ?? "").startsWith(w));
+  p.status === "superseded" && [BETTER_WHY, STOPPED_WHY, LAUNCH_FAILED_WHY, DELIVERY_FAILED_WHY].some((w) => (p.reason ?? "").startsWith(w));
 // 판정 대기 중인 제안을 바꾸려면 새 제안 점수가 이만큼(비율) 높아야 한다
 export const REPLACE_MARGIN = 0.2;
 
@@ -481,6 +500,15 @@ export function restartingWhyOf(p: Proposal, s: Pick<Snapshot, "sessions"> & Par
   return s.restarting?.some((r) => r.registration === reg) ? `${p.aircraftName ?? reg}: ${RESTARTING_TEXT} — 새 세션이 뜬 뒤에 보낸다(승인은 그대로다)` : null;
 }
 
+// 받을 세션이 없어 보내지 않는 까닭(ATC-183). RESTARTING이든 아니든 살아 있는 세션이 없으면 보내지 않는다(없는 곳으로 보내고 SENT로 두지 않는다).
+// launch 카드는 LAUNCH가 FLIGHT PLAN을 첫 프롬프트로 가져가므로 뺀다(launchReleaseWhyOf가 따로 본다)
+export function noLiveSessionWhyOf(p: Pick<Proposal, "launch" | "registration" | "aircraftName"> & Partial<Pick<Proposal, "aircraft">>, s: Pick<Snapshot, "sessions">, teamPattern?: string): string | null {
+  if (p.launch) return null;
+  const reg = regOfProposal(p, teamPattern);
+  if (!reg || s.sessions.some((x) => x.status !== "dead" && regKey(x.name, teamPattern) === reg)) return null;
+  return `${p.aircraftName ?? reg}: ${NO_SESSION_SEND_WHY}`;
+}
+
 // RESTARTING(ATC-91): /clear 뒤 첫 메시지를 기다리는 AIRCRAFT의 열린·승인된 ASSIGN → 카드가 보일 글.
 // LAUNCHING(ATC-129): LAUNCH한 launch 카드의 AIRCRAFT에 아직 세션이 없다(계획에 absent로 남음)
 export function waitingOf(proposals: Proposal[], plan: Pick<Plan, "aircraft">, teamPattern?: string): Record<string, string> {
@@ -537,7 +565,7 @@ export function syncOps(
     if (done) return done;
     const ac = acOf(p);
     if (ac?.stopped && !canTakeNow(ac, t)) return `${STOPPED_WHY} — ${ac.name} — ${ac.reason}`;
-    if (!ac || !canTakeNow(ac, t)) return `${AIRCRAFT_WHY}: ${ac?.reason ?? "세션 없음"}`;
+    if (!ac || !canTakeNow(ac, t)) return p.undelivered ? `${DELIVERY_FAILED_WHY} — ${p.undelivered.reason}` : `${AIRCRAFT_WHY}: ${ac?.reason ?? "세션 없음"}`;
     // 계획의 제외 목록을 먼저 믿는다. 거기에 없을 때만 planner의 규칙을 직접 확인한다 —
     // plan.excluded는 "지금 후보인 FLIGHT"의 사유만 담아서, 이미 후보에서 빠진 FLIGHT는 여기 없다.
     const fromPlan = excludedWhy.get(p.flight);
@@ -1005,7 +1033,7 @@ const baseOfFleet = (fleet: ReturnType<typeof loadFleet>, teamPattern: string) =
 
 // POST /api/dispatch/proposals/:id/<동작>. 2b 점검표(readiness.ts)도 이 목록으로 RECALL·ARRIVED 창구를 확인한다
 export const DISPATCH_ACTIONS = [
-  "verdict", "note", "briefing", "hold", "unhold", "requeue", "confirm-hold", "codes", "approve", "reject", "release", "accept", "decline", "standby", "await-supervisor", "recall", "recall-send", "recalled", "arrived",
+  "verdict", "note", "briefing", "hold", "unhold", "requeue", "confirm-hold", "codes", "approve", "reject", "release", "accept", "decline", "standby", "await-supervisor", "undelivered", "recall", "recall-send", "recalled", "arrived",
 ] as const;
 // HELD 제안에 SUPERVISOR 판정을 받지 않는다(PREFLIGHT, ATC-3): 대기열로 돌린 뒤 판정하거나 FLIGHT 보류를 확정한다
 const JUDGE_ACTIONS: readonly DispatchAction[] = ["verdict", "approve", "reject"];
@@ -1248,14 +1276,18 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       } else if (name === "release") {
         if (mode !== "approval") return c.json({ error: "FLIGHT PLAN은 approval 모드(2b)에서만 보낸다" }, 409);
         if (p.kind !== "ASSIGN") return c.json({ error: "RELEASE 제안은 보내지 않는다" }, 400);
-        // 재송신: 이미 보낸 제안이면 같은 문구를 다시 돌려준다
-        if (p.status === "sent") return c.json({ proposal: p, sendTo: p.aircraftName, message: p.message });
+        // 재송신: 이미 보낸 제안이면 같은 문구를 다시 돌려준다. 받을 세션이 없으면 그것도 보내지 않는다(ATC-183)
+        if (p.status === "sent") {
+          const gone = noLiveSessionWhyOf(p, await getSnapshot(), loadDispatchConfig().teamPattern);
+          if (gone) return c.json({ error: gone }, 409);
+          return c.json({ proposal: p, sendTo: p.aircraftName, message: p.message });
+        }
         // 켜진 GROUND STOP이 걸린 AIRPORT에는 FLIGHT PLAN을 보내지 않는다(승인된 제안은 풀릴 때까지 기다린다)
         const stop = p.airport ? enforcedStops((await getSnapshot()).atfm?.groundStops ?? []).get(p.airport) : undefined;
         if (stop) return c.json({ error: `${groundStopWhy(stop)} — 풀릴 때까지 보내지 않는다` }, 409);
         const s = await getSnapshot();
         // /clear 뒤 첫 메시지를 기다리는 AIRCRAFT에는 아직 받을 세션이 없다(ATC-91). 승인은 그대로 두고 새 세션이 뜬 뒤에 보낸다
-        const waits = restartingWhyOf(p, s, loadDispatchConfig().teamPattern) ?? launchReleaseWhyOf(p, s, loadDispatchConfig().teamPattern);
+        const waits = restartingWhyOf(p, s, loadDispatchConfig().teamPattern) ?? launchReleaseWhyOf(p, s, loadDispatchConfig().teamPattern) ?? noLiveSessionWhyOf(p, s, loadDispatchConfig().teamPattern);
         if (waits) return c.json({ error: waits }, 409);
         const bad = closed("send");
         if (bad) return bad;
@@ -1265,6 +1297,13 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
         append([{ op: "send", id, at, message }]);
         const sent = allProposals().find((x) => x.id === id)!;
         return c.json({ proposal: sent, sendTo: sent.aircraftName, message: sent.message });
+      } else if (name === "undelivered") {
+        // OCC의 SendMessage가 실패했다(ATC-183). READBACK처럼 OCC가 CLI로 알린다 — 대화 기록을 읽어 알아내지 않는다
+        if (p.status !== "sent") return c.json({ error: `undelivered는 보낸 FLIGHT PLAN(sent)에만 — 지금 ${p.status}` }, 409);
+        const reason = reasonOf(body);
+        if (!reason) return c.json({ error: "undelivered에는 사유(reason)가 필요함" }, 400);
+        if (reason.length > 300) return c.json({ error: "사유는 300자 이내" }, 400);
+        append([{ op: "undelivered", id, at, reason }]);
       } else if (name === "recall") {
         // SUPERVISOR만(화면·API). OCC의 atcctl에는 이 명령이 없다. 출발 중지와 상관없이 받는다(회수는 안전 쪽 동작)
         const reason = reasonOf(body);

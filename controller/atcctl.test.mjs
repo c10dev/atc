@@ -414,6 +414,11 @@ test("CAPTAIN의 답(ATC-122): <ID> [-- 사유]. unable만 사유가 필요하�
   assert.deepEqual(parseAnswerArgs("await-supervisor", ["d-0094", "--", "사용자", "go", "대기"]), { id: "D-0094", reason: "사용자 go 대기" });
   assert.throws(() => parseAnswerArgs("await-supervisor", ["D-0094"]), /await-supervisor에는 -- 뒤에 CAPTAIN의 사유가 필요함/);
   assert.throws(() => parseAnswerArgs("roger", []), /ID가 필요함/);
+  // undelivered(ATC-183): OCC가 SendMessage 도구의 메시지를 그대로 사유로 넘긴다. 사유가 없으면 막는다
+  assert.deepEqual(parseAnswerArgs("undelivered", ["d-0170", "--", "No", "session", "named", "TEAM_H"]), { id: "D-0170", reason: "No session named TEAM_H" });
+  assert.throws(() => parseAnswerArgs("undelivered", ["D-0170"]), /undelivered에는 -- 뒤에 SendMessage 도구가 돌려준 메시지가 필요함/);
+  assert.throws(() => parseAnswerArgs("undelivered", ["D-0170", "--"]), /메시지가 필요함/);
+  assert.throws(() => parseAnswerArgs("undelivered", []), /ID가 필요함/);
   assert.deepEqual(parseCrewChange(argv("unable CC-0003 -- 지금 FLIGHT 중")), { action: "unable", id: "CC-0003", reason: "지금 FLIGHT 중" });
   assert.deepEqual(parseCrewChange(argv("standby cc-0003")), { action: "standby", id: "CC-0003" });
   assert.throws(() => parseCrewChange(argv("unable CC-0003")), /사유가 필요함/);

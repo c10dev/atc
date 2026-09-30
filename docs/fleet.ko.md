@@ -91,6 +91,16 @@ AIRPORT 등록부(`airports.json`)처럼 `~/.local/state/atc/fleet.json`에 둔�
 - **TYPE RATING**은 COMPLEMENT가 허용하는 것에서 시작한다. 도우미가 `flash-helper`뿐인 CREW는 `SEC`를 가질 수 없다. vocado가 보안 작업에 DeepSeek을 금지하기 때문이다.
 - **ROUTES**와 **TARGETS**는 SUPERVISOR가 정한다. OCC는 변경 초안을 쓸 수 있지만(4단계) 적용하지는 않는다.
 
+### 두 글자 REGISTRATION as built (ATC-181)
+
+`TEAM_Z` 다음 REGISTRATION은 `TEAM_AA`, `TEAM_AB` … `TEAM_ZZ`다(모두 26 + 676개). REGISTRATION은 그대로 불투명한 이름이다: 바꾸거나 다시 쓰지 않고, 퇴역한 것도 쓴 것으로 남는다.
+
+- **규칙 하나.** `server/registration.ts`의 `DEFAULT_TEAM_PATTERN`이 `^TEAM[\s_-]?[A-Z]{1,2}$`이고, 모든 곳이 여기나 DISPATCH의 `teamPattern`에서 읽는다. 어떤 표기든 정식으로 맞춘다(`Team AB`, `team-ab`, `TEAMAB` → `TEAM_AB`). 한 글자 이름은 그대로다. `TEAM_ABC`와 `TEAM_1`은 팀 이름이 아니다. 소스에 한 글자짜리 팀 정규식을 새로 하드코딩하면 테스트가 실패한다.
+- **`nextRegistration`**(ENTRY INTO SERVICE)은 `TEAM_A` … `TEAM_Z`, `TEAM_AA` … `TEAM_ZZ` 가운데 비어 있는 첫 번호를 주고, 다 쓰면 `null`이다. 등록됐거나 살아 있는 REGISTRATION(퇴역 포함)은 쓴 것으로 센다.
+- **콜사인.** 글자마다 음성 알파벳 한 단어: `TEAM_G` → GOLF, `TEAM_RA` → ROMEO ALPHA(`server/callsign.ts`, 화면과 같이 씀). RADIO 문구와 콜사인별 목소리는 전체 콜사인을 쓴다.
+- **정렬.** REGISTRATION으로 정렬하는 곳(FLEET 목록, NETWORK, METRICS FUEL, CHECKRIDE, RADIO의 AIRCRAFT 거르기)은 글자 수가 먼저, 그다음 알파벳순이다(`compareRegistration`): `TEAM_B`, `TEAM_Z`, `TEAM_AA`, `TEAM_AB`.
+- **하지 않은 것.** 비슷한 콜사인이 동시에 활동할 때(ROMEO와 ROMEO ALPHA)의 경고는 아직 없다. 기존 `fleet.json` 키, LOGBOOK 줄, `tail:` 라벨은 건드리지 않는다.
+
 ### REGISTRATION 표기 as built (ATC-67)
 
 세션 이름을 어떻게 적었든 atc는 한 REGISTRATION을 어디서나 같게 읽는다. `server/registration.ts`의 `registrationOf(name, teamPattern)`는 DISPATCH `teamPattern`이 받는 이름을 정식 표기(대문자, `_`)로 바꾼다(`Team G`, `TEAM-G`, `team_g`, `TEAMG` → `TEAM_G`). 구분자가 없으면 규칙이 받는 첫 자리에 `_`를 넣으므로, `teamPattern`을 바꾸면 그 규칙이 정한다. 규칙이 받지 않는 이름(TOWER, OCC, President)은 `null`이고 전처럼 대문자로 비교한다.
@@ -671,7 +681,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **API**(`server/session-control.ts`): `GET /api/fleet/sessions`는 이름이 `teamPattern`에 맞는 세션으로 `{max, permissionModes, sessions}`를 돌려준다. `POST /api/fleet/:registration/launch`는 `{permissionMode?, model?}`를 받는다. `POST /api/fleet/:registration/stop`.
 - **SUPERVISOR만.** LAUNCH와 STOP은 이 화면의 Origin이 있어야 받는다(`fromThisApp`, AUTOLAND 스위치와 같음). `atcctl`은 Origin을 보내지 않으므로 TOWER·OCC·CROSSCHECK·REVIEW는 세션을 띄우거나 멈출 수 없다.
 - **거절**(`launchPlanOf`, `stopTargetOf`, 순수 함수): RETIRED, base AIRPORT 없음, 그 이름의 세션이 이미 떠 있음(종류 상관없음), 백그라운드 세션이 이미 `ATC_MAX_LAUNCHED`개(기본 6, 이 머신의 백그라운드 세션 전부를 셈), permission mode가 `auto`·`acceptEdits`·`default`가 아님(`bypassPermissions`는 주지 않는다), 모델 이름에 `[\w.:[\]-]` 밖의 글자. STOP은 데스크톱·터미널 세션을 거절한다. 그 창에서 닫는다.
-- **서비스 밖에서.** LAUNCH는 `systemd-run --user --scope --collect`(임시 `atc-claude-<ms>.scope`)로 `claude`를 부른다. 이 기계에서 처음 부른 `claude --bg`가 모든 백그라운드 세션을 맡는 daemon(`claude daemon run`)을 띄우는데, atc 안에서 띄우면 daemon이 `atc.service` cgroup에 들어가 `KillMode=control-group` 때문에 `systemctl restart atc`마다 모든 백그라운드 세션이 죽었다(2026-09-28: 배포 때 OCC `a578bf15`가 `failed`로 끝남). `ATC_BG_SCOPE=off`면 바로 부른다. `GET /api/control/sessions`가 `daemonInService`를 알리고, daemon이 아직 서비스 안에 있으면 CONTROL 블록이 경고한다.
+- **서비스 밖에서.** LAUNCH는 `systemd-run --user --scope --collect`(임시 `atc-claude-<ms>.scope`)로 `claude`를 부른다. 이 기계에서 처음 부른 `claude --bg`가 모든 백그라운드 세션을 맡는 daemon(`claude daemon run`)을 띄우는데, atc 안에서 띄우면 daemon이 `atc.service` cgroup에 들어가 `KillMode=control-group` 때문에 `systemctl restart atc`마다 모든 백그라운드 세션이 죽었다(2026-09-28: 배포 때 OCC `a578bf15`가 `failed`로 끝남). scope에는 `-p OOMPolicy=continue`를 준다. systemd 기본값 `stop`이면 scope 안의 프로세스 하나가 OOM으로 죽을 때(팀 세션이 돌린 테스트 등) scope 전체가 멈춰 daemon과 모든 백그라운드 세션이 같이 끝난다(2026-09-30 08:54Z: 12개). `continue`면 그 프로세스만 죽는다. `ATC_BG_SCOPE=off`면 바로 부른다. `GET /api/control/sessions`가 `daemonInService`를 알리고, daemon이 아직 서비스 안에 있으면 CONTROL 블록이 경고한다.
 - **환경.** 세션은 atc 서비스의 환경이 아니라 깨끗한 환경(HOME, USER, 로캘, XDG runtime, claude CLI와 node가 든 PATH)을 받는다. `.env.local`의 비밀(Linear, TypeSafe)이 세션에 가지 않는다. CLI 경로는 `ATC_CLAUDE_BIN`(기본 `~/.local/bin/claude`. 서비스 PATH에 없다).
 - **폴더 신뢰.** Claude Code는 trust 질문을 수락하지 않은 폴더에서 백그라운드 세션을 거절한다. atc는 그 사실을 알리고 trust 설정은 건드리지 않는다. 그 저장소에서 `claude`를 한 번 열어 수락한다.
 - **기록.** LAUNCH·STOP마다 FLIGHT RECORDER에 `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}` 한 줄.
@@ -745,6 +755,18 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **쓰임.** 카드의 STOP, STOP API(`stopTargetOf`와 `rowOriginOf`), FLEET PLAN 실행(`STOP`, `RESTART`, `REFRESH`, `RETIRE`의 세션 멈춤)은 출처가 `background`일 때만 한다. 다른 출처는 그 출처의 손 절차를 받는다(`manualStepsOf`): Claude 앱에서 닫기, 터미널에서 `/exit`, REFRESH면 `/clear` 뒤 CREW BRIEFING 붙여 넣기. FLEET PLAN의 `session` 사유에 출처가 나오고, 저장된 `value`는 그대로 `interactive`·`background`다.
 - **2b 전달.** `GET /api/dispatch/brief`의 `delivery`: 제안 AIRCRAFT마다 출처, permission mode, OCC의 permission mode, 둘 다 알고 다를 때의 `warn`(`deliveryOf`). DISPATCH 카드와 IN FLIGHT 줄에 `MODE <m> ≠ OCC <m>`이 떠 메시지가 붙들릴 수 있음을 알린다. 막지 않는다.
 - **jobId가 든 BG 칩(ATC-98).** 목록 줄과 카드의 `BG` 칩은 이미 있었다(ATC-76). ATC-98은 그 칩이 가리키는 id를 더한다: 스냅샷의 `Session`이 세션 파일에서 `kind?: "background" | "interactive"`와 `jobId?`를 읽는다(`server/sources/claude.ts`의 순수 함수 `sessionKindOf`. `kind`가 없거나 모르는 값이면, 옛 스냅샷이나 Codex 세션이면 둘 다 없다). `AircraftView`와 `FleetRow`는 AIRCRAFT의 *살아 있는* 세션에서 `background: { jobId: string | null } | null`을 싣는다. 스냅샷만으로 셈하므로(`liveViewOf`) `claude agents`를 더 부르지 않는다. 칩 툴팁은 `BG <jobId> — claude attach <jobId>`이고, 카드에 `claude attach <jobId>`를 복사하는 `ATTACH 복사` 버튼이 있다. 죽은 세션, STALE job(ATC-93), 세션 없는 AIRCRAFT는 `background: null`이라 칩이 없다. `jobId`를 못 읽은 background 세션은 칩은 있고 attach 명령은 없다.
+
+#### 8.5.3 그 밖의 백그라운드 세션 as built (ATC-184)
+
+`ATC_MAX_LAUNCHED`는 관제 세션과 STALE을 뺀 살아 있는 백그라운드 세션을 모두 센다. AIRCRAFT도 관제 세션도 아닌 백그라운드 세션(예: 밤샘 ENGINEERING를 `ENGINEERING-NIGHT`로 연 것)도 들어가는데, 지금까지는 자리를 쥐고도 어디에도 보이지 않았다. 상한이 세는 것은 그대로이고, 이제 누가 자리를 쥐었는지를 보인다. STOP 버튼 말고는 읽기만 한다.
+
+- **순수 코드.** `server/other-background.ts`의 `otherBackgroundOf(rows, registry, controlNames)`는 등록된 AIRCRAFT(팀 패턴이거나 `fleet.json`의 REGISTRATION·콜사인, FLEET와 같은 읽기)도 관제 세션(이름이나 관제 폴더에서 연 것)도 아닌 살아 있는 백그라운드 줄을 돌려준다. STALE 줄은 뺀다. 줄마다 `id`, `name`, `cwd`와 `cwdShort`(`~/projects` 기준 상대), `status`, job의 `state`·`detail`·`tempo`, `lastActiveAt`(대화 기록의 마지막 변경, 없으면 job의 `updatedAt`), `idleMin`, `account`. 상한 줄은 `capHoldersOf`·`capHoldersText`가 만든다.
+- **API.** `GET /api/control/sessions`에 `others[]`와 `max`가 들어 있다. `GET /api/fleet/sessions`에는 `holders`(글)와 `launched`가 있다.
+- **FLEET 탭.** CONTROL 아래 `OTHER BACKGROUND SESSIONS` 그룹: 세션마다 한 줄(이름, id, 폴더, 상태, 논 시간, job detail)과 **STOP** 버튼, 그리고 이 세션들도 `ATC_MAX_LAUNCHED`에 센다는 글. 비면 그룹이 없다. STOP은 먼저 묻고 `POST /api/control/others/:id/stop`을 부른다. CONTROL STOP과 같은 Origin 검사이고, 그 순간 "그 밖"으로 읽히는 id만 멈추며(AIRCRAFT·관제 세션 id는 `404`), FLIGHT RECORDER에 `kind: "other", op: "stop"`으로 남는다. 저절로 멈추는 것은 없다.
+- **상한 줄이 자리를 쥔 쪽을 적는다.** `백그라운드 7/7 — AIRCRAFT 6 · 그 밖 1 (ENGINEERING-NIGHT, 6h idle)`. `POST /api/fleet/:reg/launch`의 `409`(`백그라운드 세션 N개 — 상한 N(ATC_MAX_LAUNCHED) · AIRCRAFT n · 그 밖 n (…)`), DISPATCH launch 카드의 `launchFullWhy`, FLEET LAUNCH 패널에 나온다.
+- **놀고 있는 자리 힌트.** 상한이 찬 채 DISPATCH launch 카드가 자리를 기다리는 동안 120분 넘게 논 그 밖의 백그라운드 세션이 있으면, 그 세션과 막힌 LAUNCH를 적은 ADVISORY SUPERVISOR 알림 하나(`cap|other|<id>`, 그룹 `recycle`, 링크 `#fleet/control`)가 뜬다. 아무것도 멈추지 않는다.
+- **하지 않은 것.** FLEET PLAN의 `blocked` 글은 아직 `백그라운드 세션 N/max — 상한`만 적는다.
+
 
 ### RESTARTING as built (ATC-91)
 
@@ -834,6 +856,7 @@ ACCOUNT 폴더를 등록하면([accounts.md](accounts.md) 5.2) 등록된 어느 
 | `STOP` | 주기(parking) | atc가 띄운 백그라운드 세션이 `idleHours`(기본 12) 동안 STAND·FLIGHT·활동이 없고, 그것 없이도 AIRPORT의 예비가 유지됨 | 8.5 STOP(다시 이어짐) |
 | `RESTART` | 정기 점검 | 백그라운드 세션이 PARKED이고 `restartDays`(기본 3)보다 오래됨. 또는 AIRCRAFT health(8.8)가 `CONTEXT`이거나 ALERT 수준의 `HUNG`(ATC-48) | STOP 뒤 새 CREW BRIEFING으로 LAUNCH(데스크톱·터미널 세션은 손으로 닫고 다시 연다) |
 | `REFRESH` | 객실 정비(turnaround) | AIRCRAFT가 PARKED이거나 ARRIVED한 FLIGHT의 STAND만 쥔 HOLDING이고, 열린 PR과 이번 계획의 FLIGHT가 없고, 최근 `minDwell` 안에 띄우지 않았고, 대화가 `refreshTokens`(기본 300k)나 창의 `refreshPct`(기본 40 %)를 넘음(ATC-69) | 백그라운드 세션: `RESTART`와 같다. 데스크톱·터미널 세션: 실행하지 않는다. SUPERVISOR가 그 세션에서 `/clear`하고 CREW BRIEFING을 붙여 넣는다 |
+| `REPOSITION` | 승무원 재배치 | 받을 AIRCRAFT가 없어서 기다리는 FLIGHT가 있고 소속 AIRCRAFT가 없는 AIRPORT로, FLIGHT 사이의 다른 AIRPORT 소속 AIRCRAFT를(위 REPOSITION 절, ATC-179) | STOP, 새 base 쓰기, 목표 AIRPORT 저장소에서 LAUNCH |
 | `AOG` | 기한이 있는 MEL 유예 | 세션이 NORDO이거나 최근 24시간에 LOS. 또는 AIRCRAFT health(8.8)가 `MODEL`이거나 주간 `LIMIT`(ATC-48) | `until` = 지금 + 24시간으로 AOG(주간 `LIMIT`만이면 reset 날). 풀리지 않고 기한이 지나면 `RETIRE`나 복귀 제안이 뒤따름 |
 | `RETIRE` | 퇴역 | `retireDays`(기본 30) 동안 ARRIVED 없음, 예비에 필요 없음, 열린 PR 없음 | SUPERVISOR만, 자동 없음 |
 
@@ -907,6 +930,24 @@ ACCOUNT 폴더를 등록하면([accounts.md](accounts.md) 5.2) 등록된 어느 
 - **AOG.** 옮길 ACCOUNT가 있으면 주간 `LIMIT`만으로는 그 AIRCRAFT에 AOG를 제안하지 않는다(8.8).
 - **DISPATCH·FOLLOWING**은 이미 관찰한 ACCOUNT를 쓰므로([fuel.md](fuel.md) 6.2) 옮긴 AIRCRAFT는 새 ACCOUNT로 세고 다시 배정할 수 있다(`server/accounts.test.ts`).
 - **FUEL.** 새 세션의 cold 첫 요청은 `ACCOUNT CHANGE`라는 이름의 FUEL LEAK다([fuel.md](fuel.md) 6.3).
+
+### REPOSITION (ATC-179)
+
+FLEET PLAN의 새 종류: 쉬는 AIRCRAFT의 base를, FLIGHT가 기다리는데 소속 AIRCRAFT가 없는 AIRPORT로 옮긴다. DISPATCH가 AIRCRAFT를 자기 base AIRPORT의 FLIGHT와만 짝짓기 때문에([dispatch.ko.md](dispatch.ko.md) 4) 다른 AIRPORT에서 쉬는 AIRCRAFT는 그 FLIGHT를 받지 못한다. 살아 있는 세션은 저장소를 바꿀 수 없다(시작한 폴더의 `CLAUDE.md`를 읽는다). 그래서 옮기기는 STOP → 새 base 쓰기 → 목표 AIRPORT 저장소에서 LAUNCH다.
+
+- **언제**(`repositionOf`, 순수, `server/fleet-plan.ts`). 목표: 받을 AIRCRAFT가 없어서(`no-aircraft`, 부모·우선순위·HOLD·슬롯·tail·rating 때문이 아님) 기다리는 FLIGHT가 있고, 소속 AIRCRAFT가 하나도 없고(퇴역·AOG는 안 세고 ABSENT는 센다), GROUND STOP이 아닌 AIRPORT. 출발 AIRCRAFT: 다른 AIRPORT 소속이고 **FLIGHT 사이**(ACCOUNT CHANGE와 같은 시험: 백그라운드 세션, 쉼, 쥔·보관한 FLIGHT 없음, 열린 PR 없음, 이번 계획에서 FLIGHT를 받지 않음)이고, RESTARTING·NORDO가 아니고, `LIMIT`이나 FUEL hold가 아니고, `minDwellMin` 안에 LAUNCH·STOP·옮김이 없고, 떠난 뒤에도 그 AIRPORT가 자기 FLIGHT 수만큼 AIRCRAFT를 갖고(계획 전체로 센다: 목표 둘이 한 출발 AIRPORT를 비우지 않는다), 기다리는 FLIGHT 하나는 날 수 있음(TYPE RATING, CREW COMPLEMENT). 후보 중 목표 AIRPORT에서 14일간 ARRIVED가 많은 것, 가장 오래 쉰 것, REGISTRATION 순. 계획마다 목표 AIRPORT당 하나. ACCOUNT CHANGE 후보인 AIRCRAFT는 건너뛴다.
+- **사유**: 기다리는 FLIGHT(`DSGN: DSG-1 대기, 소속 AIRCRAFT 0`), 두 AIRPORT의 수(`ATCC: 쉬는 AIRCRAFT 4 → 3, 대기 FLIGHT 2`), FLIGHT 사이임, 맞음, 목표에서의 이력, 새 세션이 목표 저장소에서 캐시 없이 시작함.
+- **모드**(`fleet-plan.json`의 `reposition`, FLEET PLAN의 `mode`와 별개 스위치. SUPERVISOR만, 설정 창 AUTOMATION 탭. 바꾸면 FLIGHT RECORDER에 `reposition` `mode` 한 줄. 기본 `shadow`, 배포 뒤에도):
+  - `off`: 아무것도 안 함;
+  - `shadow`: 두 주기 지속된 후보를 `reposition` `would`로만 남긴다(AIRCRAFT·짝마다 한 시간에 한 번). 멈추거나 띄우지 않는다;
+  - `approval`: FLEET PLAN 카드. SUPERVISOR가 승인한다(permission mode·모델은 마지막 LAUNCH와 같게);
+  - `auto`: atc가 새 카드를 `auto`로 스스로 승인한다. 설정 창에서 ⚠이고 CONTROL RECYCLE `on`과 같은 확인 단계를 거친다. 가드: 24시간에 `repositionDailyMax`(기본 4)건까지(넘는 카드는 SUPERVISOR용으로 열려 있음), AIRCRAFT마다 `minDwellMin`(기본 120)에 한 번, **flapping이면 auto가 멈춘다**: 모든 조건이 맞지만 `minDwellMin` 안에 직전 base로 되돌아가려는 AIRCRAFT가 있으면 아무것도 옮기지 않고 `reposition`을 `approval`로 되돌리고(`auto`가 남기는 `reposition` `mode` 줄과 사유) ADVISORY 알림. 자동으로 옮길 때마다 ADVISORY 알림 하나.
+- **승인할 때(그리고 `auto`에서)** 그 순간 다시 확인한다(`executionOf`: 옛 제안 아님, FLIGHT 사이, 백그라운드 세션, 목표 저장소를 앎). 그다음 **STOP 전에** 목표를 본다: 저장소가 있고, 그 AIRCRAFT가 뜰 ACCOUNT가 로그아웃·FUEL hold가 아님. 거절하면 옛 세션은 그대로 돌고 `reposition` 줄(`stage: precheck`)로 남는다. 단계: `claude stop`(세션이 `claude agents`에서 빠질 때까지 기다림), `fleet.json`에 새 `base` 쓰기(FLEET 탭과 같은 원자적 쓰기), 목표 AIRPORT 저장소에서 CREW BRIEFING과 마지막 LAUNCH의 permission mode·모델로 LAUNCH. `stop`·`launch` 줄 옆에 `fleet` `reposition` 한 줄(`aircraft`, `from`, `to`, `jobId`, `proposal`, `by: supervisor|auto`, `ok`, 실패면 `stage`)이 남는다. base를 쓴 뒤 LAUNCH가 실패하면 base는 그대로 두고 사건에 `stage: launch`, CAUTION 알림이 그렇게 말하며 다음 DISPATCH가 그 AIRCRAFT를 ABSENT로 보여 LAUNCH 카드를 낸다.
+- **만료**: 조건이 풀리면 카드가 닫힌다(FLIGHT를 다른 길로 받음, AIRCRAFT가 FLIGHT를 받거나 쉬지 않음, 목표에 AIRCRAFT가 생김). 가장 좋은 후보가 바뀌면 카드는 supersede된다. SUPERVISOR가 판정한 카드는 24시간 다시 내지 않는다.
+- **화면**: FLEET PLAN 목록의 REPOSITION 카드(`ATCC → DSGN`), 설정 창 AUTOMATION 탭의 스위치, FLEET 탭 AIRCRAFT 카드에 base 옆 마지막 REPOSITION.
+- **다른 규칙과의 관계**: REPOSITION은 LAUNCH 상한을 늘리지 않는다(백그라운드 세션 수가 전후 같다. LAUNCH는 그대로 상한·ACCOUNT별 상한을 거친다). FUEL hold도 바꾸지 않는다: hold인 AIRCRAFT는 옮기지 않고, 로그아웃·hold인 ACCOUNT는 STOP 전에 거절한다. 새 세션의 첫 요청은 cold cache다(FUEL LEAK `SESSION CHANGE`).
+- **원칙 2의 예외**("되돌릴 수 있는 것만 자동으로"): REPOSITION `auto`는 STOP만으로 되돌릴 수 없다(새 세션이 다른 저장소에서 차갑게 시작한다). SUPERVISOR가 2026-09-30에 스위치(기본 `shadow`), 하루 상한, AIRCRAFT별 dwell, flapping 정지, 옮길 때마다 알림 아래에서 자동 모드를 허락했다.
+- **만들지 않음**: base가 없는 AIRCRAFT에 base 주기(빠진 base는 FLEET 탭에서 고친다), 살아 있는 FLIGHT 옮기기, STOP·LAUNCH 없이 세션을 다른 저장소로 옮기기.
 
 ### ENTRY가 ACCOUNT를 고른다 (ATC-147)
 
@@ -1224,7 +1265,7 @@ FLEET PLAN 블록의 FUEL(8.6의 "주간 사용량 줄")은 만들었다(ATC-63)
 ### ACCOUNT 줄(ATC-146)
 
 - **관찰한 ACCOUNT.** FLEET 줄에는 `account`(프로필의 home ACCOUNT)와 `observedAccount`가 있다. `observedAccount`는 살아 있는 세션이 home과 다른 ACCOUNT의 폴더에서 돌 때만 채워진다([accounts.md](accounts.md) 5.1). 이때 목록 줄의 칩과 카드의 ACCOUNT 줄은 `acct-1 (home acct-2)`로 보인다. 오류가 아니고 경보도 없다. LIMIT 붙들림(8.8)과 FUEL([fuel.md](fuel.md) 6.2)은 그 AIRCRAFT를 관찰한 ACCOUNT로 센다.
-- **설정 창.** AGENTS 탭에 ACCOUNTS 블록이 있다(라벨 → 폴더, `loggedIn`, `authMethod`, statusline·hook 경고). SUPERVISOR만 고친다.
+- **설정 창.** ACCOUNTS 분류가 라벨 → 폴더, `loggedIn`, `authMethod`, statusline·hook 경고를 보인다(ATC-189부터 메뉴의 한 분류, 전에는 AGENTS 탭의 블록). SUPERVISOR만 고친다.
 - **스냅샷.** `Session.account`가 더해진다. `~/.claude`만 있으면 없다.
 
 ## 9. `lane:`에서 `tail:`로 옮기기

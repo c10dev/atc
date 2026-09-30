@@ -8,7 +8,8 @@ import { loadDispatchConfig } from "./dispatch.ts";
 import { allProposals } from "./proposals.ts";
 import { registrationOf } from "./registration.ts";
 import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
-import { CONTROL_SESSIONS } from "./session-control.ts";
+import { CONTROL_SESSIONS, MAX_LAUNCHED } from "./session-control.ts";
+import { capIdleNow } from "./dispatch-launch.ts";
 import { type AlertEvent, diffAlerts, type SupervisorAlert, supervisorAlertsOf } from "./supervisor-alerts.ts";
 import { summaryKey, summaryOf, type SupervisorSummary, workingOf } from "./supervisor-summary.ts";
 
@@ -27,19 +28,31 @@ export const RECYCLE_ALERT_MS = 6 * 3_600_000;
 const recentRecycles = (now: number) =>
   readRecords(now - RECYCLE_ALERT_MS).flatMap((r) => (r.kind === "control" && r.op === "recycle" ? [r] : []));
 
+// REPOSITION(ATC-179): 최근 6시간의 옮김과 auto → approval 기록
+const repositionAlertInputs = (now: number) => {
+  const rs = readRecords(now - RECYCLE_ALERT_MS);
+  return {
+    repositions: rs.flatMap((r) => (r.kind === "fleet" && r.op === "reposition" && r.from && r.to ? [{ t: r.t, aircraft: r.aircraft, from: r.from, to: r.to, ok: r.ok, by: r.by, stage: r.stage, error: r.error }] : [])),
+    repositionFlaps: rs.flatMap((r) => (r.kind === "reposition" && r.op === "mode" && r.by === "auto" ? [{ t: r.t, reason: r.reason ?? "flapping" }] : [])),
+  };
+};
+
 export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
+  const proposals = allProposals();
   return supervisorAlertsOf({
     sessions: s.sessions,
     alerts: s.alerts,
     workspaces: s.workspaces,
     tickets: s.tickets,
     following: followingNow(s, now),
-    proposals: allProposals(),
+    proposals,
+    capIdle: capIdleNow(s.sessions, proposals, MAX_LAUNCHED, loadDispatchConfig().teamPattern, now),
     pulls: s.pulls ?? [],
     rts: rtsState(readMccRecords()).last,
     schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
     recycles: recentRecycles(now),
     overCap: overCapNow(),
+    ...repositionAlertInputs(now),
     waiting: waitStuckNow(),
   });
 }
