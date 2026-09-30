@@ -2474,6 +2474,13 @@ a.ticket:hover {
   font-size: var(--text-xs);
   color: var(--faint);
 }
+.config-list {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
 .config-env {
   font: var(--text-2xs) var(--mono);
   font-weight: 400;

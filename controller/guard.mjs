@@ -6,6 +6,7 @@
 // `--crosscheck --gh-read`면 gh는 PR 사실 확인용 `gh pr view|checks|list`만(코드를 읽지 않으므로 diff는 뺀다).
 // `--review`로 부르면(REVIEW, 착륙 리뷰 세션 — ATC-27) atc CLI 중 manual과 landing queue·landing review만 허용한다(gh 없음).
 // `--mcc`로 부르면(MCC, atc 자신의 PR 착륙 — docs/mcc.md) atc CLI 중 manual과 mcc 명령만 허용한다. `--mcc --gh-read`면 읽기 전용 gh pr view|checks|diff|list도.
+// `--occ`로 부르면(OCC) `schedule charter-seen`(DUTY의 CHARTER REQUEST를 봤다고 기록, ATC-233)도 허용한다. 다른 모드(TOWER 포함)에서는 막는다(MCC 쓰기와 같은 방식).
 // MCC 쓰기(mcc inspect·escalate·land·rts)는 MCC 세션에서만 된다: 다른 모드에서는 막고, MCC에서는 실제 모델(Claude)을 확인해 ATC_MCC_MODEL로 붙인다.
 // `--crosscheck`에서 mark를 다는 명령(dispatch|schedule crosscheck)과 `--review`에서 착륙 리뷰를 남기는 명령
 // (landing review … --verdict)은 그 세션의 실제 모델을 확인한다:
@@ -207,7 +208,7 @@ export function checkGhJq(words) {
   return null;
 }
 
-export function check(command, cwd = HERE, { ghRead = false, crosscheck = false, review = false, mcc = false } = {}) {
+export function check(command, cwd = HERE, { ghRead = false, crosscheck = false, review = false, mcc = false, occ = false } = {}) {
   if (typeof command !== "string" || !command.trim()) return "빈 명령";
   if (hasRedirect(command)) return "리다이렉션(>, <, heredoc)은 쓸 수 없음";
   if (hasExpansion(command)) return "명령 치환·변수 확장($(…), `…`, ${…}, $VAR)은 쓸 수 없음 — 문구는 작은따옴표로 감싼다";
@@ -229,6 +230,7 @@ export function check(command, cwd = HERE, { ghRead = false, crosscheck = false,
     if (cmd === "node" && script && resolve(cwd, script) === ATCCTL) {
       if (review && !REVIEW_CMDS.has(words.slice(2, 4).join(" "))) return `착륙 리뷰 세션(REVIEW)이 쓸 수 없는 atc 명령: ${words.slice(2, 4).join(" ") || "(없음)"}`;
       if (mcc && !MCC_CMDS.has(words.slice(2, 4).join(" "))) return `MCC가 쓸 수 없는 atc 명령: ${words.slice(2, 4).join(" ") || "(없음)"}`;
+      if (!occ && words[2] === "schedule" && words[3] === "charter-seen") return "schedule charter-seen은 OCC 세션(occ/ 폴더)만 쓴다";
       if (!mcc && words[2] === "mcc" && MCC_WRITES.has(words[3])) return `mcc ${words[3]}는 MCC 세션(mcc/ 폴더)만 쓴다`;
       if (crosscheck && !CROSSCHECK_CMDS.has(words.slice(2, 4).join(" "))) return `CROSSCHECK가 쓸 수 없는 atc 명령: ${words.slice(2, 4).join(" ") || "(없음)"}`;
       continue;
@@ -247,8 +249,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const crosscheck = process.argv.includes("--crosscheck");
   const review = process.argv.includes("--review");
   const mcc = process.argv.includes("--mcc");
+  const occ = process.argv.includes("--occ");
   const cwd = input.cwd || HERE;
-  let reason = check(input.tool_input?.command, cwd, { ghRead, crosscheck, review, mcc });
+  let reason = check(input.tool_input?.command, cwd, { ghRead, crosscheck, review, mcc, occ });
   let marked = null;
   const mode = review ? "review" : crosscheck ? "crosscheck" : mcc ? "mcc" : null;
   if (!reason && mode) {

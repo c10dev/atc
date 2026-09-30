@@ -45,6 +45,60 @@ const DUTY_WARN = {
   on: "⚠ 헤더의 DUTY 서랍에서 글을 보내면 이 서버가 `claude -p` 프로세스를 띄운다(ACCOUNT의 FUEL을 쓴다). 유휴 시간이 지나면 끝나고 다음 글이 이어서 띄운다. DUTY는 읽기만 하고, 글은 소리로 읽지 않는다.",
 } as const;
 
+// DUTY CHARTER 스위치(ATC-233, docs/duty.md 3.4·D5): DUTY가 만들고 SUPERVISOR가 확정한 CHARTER REQUEST를 OCC가 읽는 정도
+const DUTY_CHARTER_WARN = {
+  off: "꺼짐(기본): 확정한 요청은 줄에 서지만 OCC의 schedule brief에는 나오지 않는다(카드에 \"switch is off — kept as a draft\").",
+  shadow: "OCC가 schedule brief의 duty 구역으로 요청을 읽고, 만들었을 초안을 charter-seen으로 기록만 한다. schedule draft NEW는 하지 않는다. 아래에서 기록을 본다.",
+  on: "⚠ OCC가 확정된 요청을 CHARTER REQUEST로 처리한다: schedule wip → schedule draft NEW(AD HOC FLIGHT 초안, 판정은 여전히 SUPERVISOR). 요청 글은 데이터로만 읽는다.",
+} as const;
+
+// 그림자 기록(ATC-233): OCC가 본 요청 수, 만들었을 초안, 그 뒤 SUPERVISOR가 직접 낸 첫 NEW 초안
+interface CharterRecord {
+  mode: string;
+  shadowRecord: { seen: number; queued: number; items: { id: string; at: string; text: string; would: string; laterNew: { id: string; title: string } | null }[] };
+}
+function CharterShadowRecord({ mode }: { mode: string }) {
+  const [rec, setRec] = useState<CharterRecord | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/duty/charters")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: CharterRecord) => alive && setRec(d))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [mode]);
+  if (!rec) return null;
+  const r = rec.shadowRecord;
+  return (
+    <div className="config-note" aria-label="DUTY CHARTER 그림자 기록">
+      <p>
+        그림자 기록: 줄에 선 요청 {r.queued}건 중 OCC가 본 것 {r.seen}건. 기준 숫자는 아직 없다(SUPERVISOR가 만족하면 on으로 올리고 Linear에 적는다).
+      </p>
+      {r.items.length > 0 && (
+        <ul className="config-list">
+          {r.items.map((i) => (
+            <li key={i.id}>
+              <code>{i.id}</code> {i.text}
+              <br />
+              OCC가 만들었을 초안: {i.would}
+              <br />
+              {i.laterNew ? (
+                <>
+                  이후 SUPERVISOR가 낸 NEW 초안: <code>{i.laterNew.id}</code> {i.laterNew.title}
+                </>
+              ) : (
+                "이후 SUPERVISOR가 낸 NEW 초안: 없음"
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // 판정 계열 모드마다 한 줄(ATC-36). replay·shadow는 티켓 제목과 허용한 칸이 TypeSafe로 나간다(데이터 반출)
 const JUDGE_WARN = {
   off: "꺼짐(기본): 아무것도 읽거나 보내지 않는다.",
@@ -449,6 +503,17 @@ export function OperationsSettings({ server, save }: { server: Loaded; save: Sav
                   onSave={(v) => save({ dutyEnabled: v as "off" | "on" })}
                 />
                 <ModeLines modes={["off", "on"] as const} current={s.duty.enabled ? "on" : "off"} lines={DUTY_WARN} />
+                <EditRow
+                  label="DUTY CHARTER"
+                  env="duty.charter"
+                  value={s.duty.charter}
+                  note="duty.json · DUTY가 만든 CHARTER REQUEST를 SUPERVISOR가 카드에서 확정하면 OCC가 다음 tick에 schedule brief로 읽는다 · 이 화면에서만 바꾼다(atcctl에는 명령이 없다)"
+                  input={{ kind: "select", options: ["off", "shadow", "on"] }}
+                  guard={guardOf("dutyCharter", s.duty.charter, DUTY_CHARTER_WARN)}
+                  onSave={(v) => save({ dutyCharter: v as "off" | "shadow" | "on" })}
+                />
+                <ModeLines modes={["off", "shadow", "on"] as const} current={s.duty.charter} lines={DUTY_CHARTER_WARN} />
+                {s.duty.charter !== "off" && <CharterShadowRecord mode={s.duty.charter} />}
               </>
             ) : (
               <p className="settings-hint">서버가 DUTY를 아직 모름(옛 서버)</p>

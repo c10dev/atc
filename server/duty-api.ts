@@ -7,12 +7,15 @@ import type { Hono } from "hono";
 import { config } from "./config.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { briefDecisionsOf, briefMaxCharsOf, dutyBriefOf, type DutyBriefInput } from "./duty-brief.ts";
+import { appendCharterLine, charterModeNow, readCharterLines } from "./duty-charters-run.ts";
+import { charterStateOf, chartersOf, confirmCharterOf, seenOf, shadowRecordOf } from "./duty-charters.ts";
 import { confirmOf, decisionsOf, parseDecisionLines, retireOf } from "./duty-decisions.ts";
 import { cardDraftOf, charterDraftOf, type DismissLine, type DraftLine, type DraftResult, nextDraftId, noteDraftOf } from "./duty-drafts.ts";
 import { fleetRows } from "./fleet-status.ts";
 import { fleetView, loadFleet } from "./fleet.ts";
 import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
+import { loadScheduleOps, type NewPayload } from "./schedule.ts";
 import { currentAlerts } from "./supervisor-alerts-run.ts";
 import { collectQueueInput } from "./supervisor-queue-run.ts";
 import { supervisorQueueView } from "./supervisor-queue.ts";
@@ -218,4 +221,57 @@ export function mountDuty(app: Hono, getSnapshot: () => Promise<Snapshot>, updat
   app.post("/api/duty/card", draft(async (b, id, now) => cardDraftOf((await queueNow(now)).items, b.kind, b.key, id, now)));
   app.post("/api/duty/note", draft((b, id, now) => noteDraftOf(b.text, b.until, id, now)));
   app.post("/api/duty/charter", draft((b, id, now) => charterDraftOf(b.text, id, now)));
+
+  // ── CHARTER REQUEST 경로(D5) ──
+  // 읽기: 줄에 선 요청과 상태(카드), 그림자 기록(설정 창). 스위치는 duty.json의 charter
+  app.get("/api/duty/charters", (c) => {
+    const mode = charterModeNow();
+    const charters = chartersOf(readCharterLines());
+    const newOps = loadScheduleOps()
+      .filter((o) => o.kind === "NEW")
+      .map((o) => ({ id: o.id, at: o.at, title: (o.payload as NewPayload).title ?? o.id }));
+    return c.json({
+      mode,
+      charters: charters.slice(-100).map((x) => ({ ...x, state: charterStateOf(x, mode) })),
+      shadowRecord: shadowRecordOf(charters, newOps),
+    });
+  });
+
+  // 확정: charter 초안의 글을 그대로 줄에 세운다(글은 서버가 초안에서 읽는다). 스위치가 꺼져 있어도 세운다
+  app.post("/api/duty/charters/:draft/confirm", async (c) => {
+    if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
+    const now = Date.now();
+    const { drafts, dismissed } = draftsNow();
+    const id = c.req.param("draft") ?? "";
+    const d = drafts.get(id);
+    const lines = readCharterLines();
+    const r = confirmCharterOf(d && { id, kind: String(d.kind), text: typeof d.text === "string" ? d.text : undefined }, chartersOf(lines), dismissed, lines, now);
+    if (!r.ok) return c.json({ error: r.error }, r.status);
+    appendCharterLine(r.line);
+    return c.json({ charter: r.line, mode: charterModeNow() });
+  });
+
+  // 버림: 줄에 세우기 전의 charter 초안만
+  app.post("/api/duty/charters/:draft/dismiss", async (c) => {
+    if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
+    const id = c.req.param("draft") ?? "";
+    const { drafts, dismissed } = draftsNow();
+    const d = drafts.get(id);
+    if (!d || d.kind !== "charter") return c.json({ error: "버릴 charter 초안이 아닙니다" }, 404);
+    if (dismissed.has(id)) return c.json({ error: `${id}는 이미 버렸습니다` }, 409);
+    if (chartersOf(readCharterLines()).some((x) => x.from === id)) return c.json({ error: `${id}는 이미 줄에 세웠습니다` }, 409);
+    const line: DismissLine = { kind: "dismiss", draft: id, at: new Date().toISOString() };
+    append(DRAFTS_FILE(), line);
+    return c.json({ dismissed: id });
+  });
+
+  // OCC의 `atcctl schedule charter-seen`(Origin 없음: 관제 세션 경로). 모양은 duty-charters.ts seenOf가 모드별로 본다
+  app.post("/api/duty/charters/:id/seen", async (c) => {
+    const body = await readBody(c);
+    if (!body) return c.json({ error: "본문은 JSON이어야 합니다" }, 400);
+    const r = seenOf(c.req.param("id") ?? "", body, chartersOf(readCharterLines()), charterModeNow(), new Set(loadScheduleOps().map((o) => o.id)), Date.now());
+    if (!r.ok) return c.json({ error: r.error }, r.status);
+    appendCharterLine(r.line);
+    return c.json({ seen: r.line });
+  });
 }

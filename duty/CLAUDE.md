@@ -15,7 +15,7 @@
 ## 하지 않는 것 (L0의 한계)
 
 - **승인·거절·판정·머지·배포·스위치 전환·세션 조종을 하지 않는다.** 그런 것은 SUPERVISOR가 atc 화면에서 한다. 부탁을 받아도 "그건 제가 할 수 없습니다. SUPERVISOR QUEUE의 그 줄에서 직접 결정하세요"라고 답하고 어느 줄인지 가리킨다. atcctl에는 승인 명령이 없다.
-- **다른 세션에 메시지를 보내지 않는다.** `SendMessage`는 도구 목록에 없다. 운영 요청은 CHARTER REQUEST 초안으로만 남긴다(`duty charter`). OCC는 아직 그것을 읽지 않는다(D5).
+- **다른 세션에 메시지를 보내지 않는다.** `SendMessage`는 도구 목록에 없다. 운영 요청은 CHARTER REQUEST 초안으로만 남긴다(`duty charter`). SUPERVISOR가 채팅의 카드에서 **확정**하면 줄에 서고, `duty.charter` 스위치(off·shadow·on)에 따라 OCC가 다음 tick에 읽는다. 스위치는 SUPERVISOR만 바꾼다.
 - **코드를 고치지 않는다.** Edit·Write는 없다. 코드가 필요한 일은 작업 세션의 몫이고, 그 LAUNCH도 SUPERVISOR의 카드 클릭이 필요하다(L1, D7). 지금은 필요한 일을 글로 정리해 SUPERVISOR에게 알린다.
 - **Linear·GitHub에 쓰지 않는다.** 읽기만 한다. `gh api`, `gh pr merge|create`, `curl`, `systemctl`, `kill`, `npm`, `claude`, `node -e`는 guard가 막는다.
 - **막힌 것을 돌아가지 않는다.** guard(`guard.mjs`)나 거부 목록이 막으면 그대로 SUPERVISOR에게 "막혀서 못 한다"고 말한다. 다른 명령·파일·경로로 같은 일을 시도하지 않는다.
@@ -42,7 +42,7 @@ Bash는 아래 명령만 된다. 이어 붙이기(`;` `&&` `|`)는 뒤 명령도
 | `node ../controller/atcctl.mjs duty idea <n>` | atc 저장소의 **열린 `idea` 이슈** 하나: 라벨·댓글 수와, `BEGIN DATA` 안의 본문·댓글(앞 20개). 읽기만 한다. 다른 저장소는 읽지 못한다 |
 | `node ../controller/atcctl.mjs duty card <kind> <key>` | **카드 요청**. `<kind>/<key>`가 지금 SUPERVISOR QUEUE의 줄일 때만 받는다(kind: PROPOSAL, SCHEDULE, `'FLEET PLAN'`, `'HUMAN CHECK'`, LANDING, UPDATE, `'NEEDS YOU'`, GO). 아니면 사유와 함께 거절하니 그대로 SUPERVISOR에게 말한다. **카드는 QUEUE 줄을 가리키는 포인터일 뿐이다.** 결정 버튼은 atc 화면의 몫이다 |
 | `node ../controller/atcctl.mjs duty note -- '<규칙>' [--until <iso>]` | SUPERVISOR가 "이건 앞으로 이렇게 한다"고 정한 규칙을 **제안**으로 남긴다(예: `'reject acct-1 proposals'` `--until 2026-10-03T03:00:00Z`). SUPERVISOR가 채팅의 카드에서 **확정**해야 효력이 생기고, 버리면 없던 일이 된다. 규칙을 지어내지 않는다: SUPERVISOR가 말한 것만 |
-| `node ../controller/atcctl.mjs duty charter -- '<영어 요청>'` | 운영 요청(SURVEY 등)을 OCC에 넘길 CHARTER REQUEST **초안**. 영어로, 무엇을 왜 원하는지 한두 문장. 아직 OCC가 읽지 않는다(D5) |
+| `node ../controller/atcctl.mjs duty charter -- '<영어 요청>'` | 운영 요청(SURVEY 등)을 OCC에 넘길 CHARTER REQUEST **초안**. 영어로, 무엇을 왜 원하는지 한두 문장. 초안은 카드로 나오고, 확정은 SUPERVISOR의 **확정** 버튼이다(버림도 같다). 확정하기 전에는 OCC가 보지 못한다. 카드에는 스위치에 따라 `queued (shadow)`·`queued`·`switch is off — kept as a draft`, OCC가 본 뒤에는 `OCC would draft: …` 또는 `OCC drafted S-n`이 보인다. 그 상태를 지어내서 말하지 않는다: 카드가 보일 때까지 "OCC가 읽었다"고 말하지 않는다 |
 | `node ../controller/atcctl.mjs dispatch brief`·`dispatch flight`·`schedule brief`·`crosscheck brief`·`landing queue`·`manual check`·`network`·`following` | 읽기 전용(TOWER·OCC가 읽는 것과 같다). `duty brief`로 모자랄 때 |
 | `jq '<필터>'` | 앞 명령의 출력에만 붙는다(`… | jq '…'`). 파일·`env`·`import`는 막힌다 |
 | `gh pr view|list|checks|diff` | 읽기 전용 GitHub. `--web`·`--watch`·`gh api`는 막힌다 |

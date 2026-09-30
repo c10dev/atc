@@ -130,6 +130,10 @@ SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만. S2 승인 운용
                                             아직 다듬는 중(시각 갱신, 글은 주면 바꾼다). 24시간 손대지 않으면 서버가 버린다
   node atcctl.mjs schedule wip done <W-0001>
                                             초안이 나왔거나 그만두라고 해서 닫는다
+  node atcctl.mjs schedule charter-seen <CR-0001> -- '<would draft: 제목 / 팀 / 이유>'
+                                            (ATC-233, OCC만) schedule brief의 duty 구역에 있는 CHARTER REQUEST를 봤다고 기록한다.
+                                            shadow: 만들었을 초안을 적는다(초안은 만들지 않는다). on: schedule draft NEW를 한 뒤 --draft <S-0001>
+  node atcctl.mjs schedule charter-seen <CR-0001> --draft <S-0001>
   node atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <근거>
                                             분류 라벨 초안. TYPE: BUILD MAINT TEST SURVEY CHECK FERRY
                                             WAKE: L M H J · RATING: SEC UI DATA DOCS (--rating은 여러 번)
@@ -200,7 +204,7 @@ DUTY (DUTY 세션, duty/ 폴더, L0 — docs/duty.md. 읽기와 초안뿐, 밖�
   node atcctl.mjs duty note -- '<규칙>' [--until <iso>]
                                             정해 둘 결정의 제안. SUPERVISOR가 카드에서 확정해야 효력이 생긴다(D4)
   node atcctl.mjs duty charter -- '<영어 요청>'
-                                            CHARTER REQUEST 초안(영어). 아직 아무도 읽지 않는다(D5)`;
+                                            CHARTER REQUEST 초안(영어). SUPERVISOR가 카드에서 확정하면 OCC가 schedule brief로 읽는다(duty.charter 스위치, D5)`;
 
 // limit: 409(한도 참)일 때 오류 대신 보여 줄 안내. 호출한 세션이 곧바로 멈추게 LIMIT으로 시작한다.
 // soft: 409를 오류로 끝내지 않고 응답을 돌려준다(MCC land·rts의 "막힘"은 정상 답이다)
@@ -621,6 +625,17 @@ export function parseDutyCard(args) {
   return { kind: args.slice(0, -1).join(" "), key: args[args.length - 1] };
 }
 
+// schedule charter-seen <CR-n> [--draft <S-id>] [-- <would draft>] → POST 본문(ATC-233). 모드별 모양 검사는 서버가 한다
+export function parseCharterSeen(args) {
+  const sep = args.indexOf("--");
+  const head = sep < 0 ? args : args.slice(0, sep);
+  const body = {};
+  const i = head.indexOf("--draft");
+  if (i >= 0) body.draft = head[i + 1];
+  if (sep >= 0) body.would = args.slice(sep + 1).join(" ");
+  return body;
+}
+
 // duty note -- '<규칙>' [--until <iso>] : --until은 -- 앞이나 뒤 어디에 있어도 된다. 규칙은 -- 뒤 낱말 전부
 export function parseDutyNote(args) {
   const sep = args.indexOf("--");
@@ -709,7 +724,7 @@ export function dutyDraftText(r) {
     ? `${x.id} card request ${x.card.queueKind}/${x.card.key} recorded (a pointer to a SUPERVISOR QUEUE row; the SUPERVISOR decides in atc)`
     : x.kind === "note"
       ? `${x.id} proposed standing decision recorded${x.until ? ` until ${x.until}` : ""} (it takes effect only when the SUPERVISOR confirms it on the card)`
-      : `${x.id} CHARTER REQUEST draft recorded (nothing reads it yet)`;
+      : `${x.id} CHARTER REQUEST draft recorded (OCC reads it only after the SUPERVISOR confirms the card and only when duty.charter is on or shadow)`;
 }
 
 // 테스트가 import할 때는 CLI를 돌리지 않는다
@@ -839,6 +854,9 @@ if (isMain) {
         const r = await call("POST", "/api/schedule/wip", { text });
         console.log(`${r.wip.id} CHARTER REQUEST 진행 중으로 기록 — 초안이 나오거나 그만두면 schedule wip done ${r.wip.id}`);
       } else throw new Error("schedule wip -- <요청 요약> | schedule wip touch <W-0001> [-- <요약>] | schedule wip done <W-0001>");
+    } else if (cmd === "schedule" && args[0] === "charter-seen") {
+      const r = await call("POST", `/api/duty/charters/${encodeURIComponent(args[1] ?? "")}/seen`, parseCharterSeen(args.slice(2)));
+      console.log(r.seen.draft ? `${r.seen.id} 기록: 만든 초안 ${r.seen.draft}` : `${r.seen.id} 기록: 만들었을 초안(shadow) — 초안은 만들지 않았다`);
     } else if (cmd === "schedule" && args[0] === "draft" && args[1]) {
       const r = await call("POST", "/api/schedule/ops", parseDraft(args.slice(1)), {
         limit: "이번 바퀴는 SCHEDULE 초안을 더 쓰지 않는다(열린 초안 한도).",

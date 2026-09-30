@@ -1,4 +1,5 @@
 import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dutySourceNow } from "./duty-charters-run.ts";
 import { closeWip, openWip, readWips, saveWips, touchWip, WipError, wipView } from "./charter-wip.ts";
 import { dirname, join } from "node:path";
 import type { Context, Hono } from "hono";
@@ -886,6 +887,16 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
     return ops;
   };
 
+  // DUTY의 CHARTER REQUEST(D5): duty.charter가 off면 구역이 없다. 읽다가 깨져도 brief를 막지 않는다
+  const dutyPart = () => {
+    try {
+      const d = dutySourceNow();
+      return d ? { duty: d } : {};
+    } catch {
+      return {};
+    }
+  };
+
   app.get("/api/schedule/brief", async (c) => {
     const s = await getSnapshot();
     const ops = await current(s);
@@ -969,7 +980,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
     // mark는 화면에 보이는 판정된 초안(recent·inProgress)만 싣는다(브리핑이 replay 기록만큼 커지지 않게)
     const shown = new Set([...recent, ...inProgress].map((x) => x.id));
     const judges = judgesViewOf(ops.map((x) => ({ id: x.id, kind: x.kind, human: humanOf(x) })), marksOf(readJudgeLines()), loadJudges(), shown);
-    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, close: closeInfoOut, closeManual, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes), waypointGaps, waypointEtas, slips, routesWithoutWaypoints, judges, wip: wipView(readWips(), now) });
+    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, close: closeInfoOut, closeManual, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes), waypointGaps, waypointEtas, slips, routesWithoutWaypoints, judges, wip: wipView(readWips(), now), ...dutyPart() });
   });
 
   // 진행 중인 CHARTER REQUEST(ATC-169): 다듬는 동안 서버에 한 줄로 둔다. 초안이 아니다(5건 한도·판정·발부와 무관). 새 OCC가 schedule brief의 wip로 이어받는다

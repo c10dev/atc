@@ -365,3 +365,17 @@ test("REVIEW(--review, ATC-27): manual·landing queue·landing review만, gh 없
   // CROSSCHECK 모드의 mark는 Opus만(REVIEW의 Sonnet은 CROSSCHECK로 쓰지 않는다)
   assert.match(checkMarkModel(MARK, CROSSCHECK, transcript("claude-sonnet-5-5")).reason, /CROSSCHECK로 쓸 수 없음/);
 });
+
+// schedule charter-seen(ATC-233): OCC(--occ)만. TOWER(옵션 없음)·--gh-read만·CROSSCHECK·REVIEW·MCC는 막는다. OCC의 다른 제한은 그대로
+test("schedule charter-seen: --occ만 통과, 그 밖의 모드는 막고, OCC도 치환·리다이렉션·다른 명령은 여전히 막는다", () => {
+  const seen = "node ../controller/atcctl.mjs schedule charter-seen CR-0001 -- 'would draft: a / TEAM_A / because'";
+  const draft = "node ../controller/atcctl.mjs schedule charter-seen CR-0001 --draft S-0007";
+  assert.equal(check(seen, HERE, { ghRead: true, occ: true }), null);
+  assert.equal(check(draft, HERE, { ghRead: true, occ: true }), null);
+  assert.match(check(seen, HERE) ?? "", /OCC 세션/, "TOWER(옵션 없음)");
+  assert.match(check(seen, HERE, { ghRead: true }) ?? "", /OCC 세션/, "--gh-read만");
+  for (const mode of [{ crosscheck: true }, { review: true }, { mcc: true }]) assert.ok(check(seen, HERE, { ...mode, occ: true }), JSON.stringify(mode));
+  assert.ok(check(`${seen} > /tmp/x`, HERE, { ghRead: true, occ: true }));
+  assert.ok(check("node ../controller/atcctl.mjs schedule charter-seen CR-0001 -- \"$(id)\"", HERE, { ghRead: true, occ: true }));
+  assert.ok(check("rm -rf x", HERE, { ghRead: true, occ: true }));
+});
