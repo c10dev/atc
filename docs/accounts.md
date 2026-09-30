@@ -1,6 +1,8 @@
 # ACCOUNTS: AIRCRAFT on more than one Claude account
 
 Status (2026-09-29): design draft for [ATC-144](https://linear.app/vocado/issue/ATC-144/claude-accounts-for-aircraft-one-claude-code-config-folder-per-account), with the step 0 measurements from [ATC-145](https://linear.app/vocado/issue/ATC-145/accounts-step-0-measure-a-second-claude-code-config-folder-on-this). Nothing here is built. Step 0 changed no code and no setting. The second folder was measured with one probe session; two things it could not measure are listed in "Not measured".
+**More than Claude logins** (Codex, OpenCode Go, API-key plans): the registry `provider`, the write-only API key and FUEL for API-key plans are in the design draft [account-providers.md](account-providers.md) (ATC-241). Nothing there is built.
+
 
 ## 1. Current facts
 
