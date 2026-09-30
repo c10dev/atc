@@ -8,7 +8,8 @@ import { loadDispatchConfig } from "./dispatch.ts";
 import { allProposals } from "./proposals.ts";
 import { registrationOf } from "./registration.ts";
 import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
-import { CONTROL_SESSIONS } from "./session-control.ts";
+import { CONTROL_SESSIONS, MAX_LAUNCHED } from "./session-control.ts";
+import { capIdleNow } from "./dispatch-launch.ts";
 import { type AlertEvent, diffAlerts, type SupervisorAlert, supervisorAlertsOf } from "./supervisor-alerts.ts";
 import { summaryKey, summaryOf, type SupervisorSummary, workingOf } from "./supervisor-summary.ts";
 
@@ -37,13 +38,15 @@ const repositionAlertInputs = (now: number) => {
 };
 
 export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
+  const proposals = allProposals();
   return supervisorAlertsOf({
     sessions: s.sessions,
     alerts: s.alerts,
     workspaces: s.workspaces,
     tickets: s.tickets,
     following: followingNow(s, now),
-    proposals: allProposals(),
+    proposals,
+    capIdle: capIdleNow(s.sessions, proposals, MAX_LAUNCHED, loadDispatchConfig().teamPattern, now),
     pulls: s.pulls ?? [],
     rts: rtsState(readMccRecords()).last,
     schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },

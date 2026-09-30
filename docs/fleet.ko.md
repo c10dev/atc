@@ -756,6 +756,18 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **2b 전달.** `GET /api/dispatch/brief`의 `delivery`: 제안 AIRCRAFT마다 출처, permission mode, OCC의 permission mode, 둘 다 알고 다를 때의 `warn`(`deliveryOf`). DISPATCH 카드와 IN FLIGHT 줄에 `MODE <m> ≠ OCC <m>`이 떠 메시지가 붙들릴 수 있음을 알린다. 막지 않는다.
 - **jobId가 든 BG 칩(ATC-98).** 목록 줄과 카드의 `BG` 칩은 이미 있었다(ATC-76). ATC-98은 그 칩이 가리키는 id를 더한다: 스냅샷의 `Session`이 세션 파일에서 `kind?: "background" | "interactive"`와 `jobId?`를 읽는다(`server/sources/claude.ts`의 순수 함수 `sessionKindOf`. `kind`가 없거나 모르는 값이면, 옛 스냅샷이나 Codex 세션이면 둘 다 없다). `AircraftView`와 `FleetRow`는 AIRCRAFT의 *살아 있는* 세션에서 `background: { jobId: string | null } | null`을 싣는다. 스냅샷만으로 셈하므로(`liveViewOf`) `claude agents`를 더 부르지 않는다. 칩 툴팁은 `BG <jobId> — claude attach <jobId>`이고, 카드에 `claude attach <jobId>`를 복사하는 `ATTACH 복사` 버튼이 있다. 죽은 세션, STALE job(ATC-93), 세션 없는 AIRCRAFT는 `background: null`이라 칩이 없다. `jobId`를 못 읽은 background 세션은 칩은 있고 attach 명령은 없다.
 
+#### 8.5.3 그 밖의 백그라운드 세션 as built (ATC-184)
+
+`ATC_MAX_LAUNCHED`는 관제 세션과 STALE을 뺀 살아 있는 백그라운드 세션을 모두 센다. AIRCRAFT도 관제 세션도 아닌 백그라운드 세션(예: 밤샘 ENGINEERING를 `ENGINEERING-NIGHT`로 연 것)도 들어가는데, 지금까지는 자리를 쥐고도 어디에도 보이지 않았다. 상한이 세는 것은 그대로이고, 이제 누가 자리를 쥐었는지를 보인다. STOP 버튼 말고는 읽기만 한다.
+
+- **순수 코드.** `server/other-background.ts`의 `otherBackgroundOf(rows, registry, controlNames)`는 등록된 AIRCRAFT(팀 패턴이거나 `fleet.json`의 REGISTRATION·콜사인, FLEET와 같은 읽기)도 관제 세션(이름이나 관제 폴더에서 연 것)도 아닌 살아 있는 백그라운드 줄을 돌려준다. STALE 줄은 뺀다. 줄마다 `id`, `name`, `cwd`와 `cwdShort`(`~/projects` 기준 상대), `status`, job의 `state`·`detail`·`tempo`, `lastActiveAt`(대화 기록의 마지막 변경, 없으면 job의 `updatedAt`), `idleMin`, `account`. 상한 줄은 `capHoldersOf`·`capHoldersText`가 만든다.
+- **API.** `GET /api/control/sessions`에 `others[]`와 `max`가 들어 있다. `GET /api/fleet/sessions`에는 `holders`(글)와 `launched`가 있다.
+- **FLEET 탭.** CONTROL 아래 `OTHER BACKGROUND SESSIONS` 그룹: 세션마다 한 줄(이름, id, 폴더, 상태, 논 시간, job detail)과 **STOP** 버튼, 그리고 이 세션들도 `ATC_MAX_LAUNCHED`에 센다는 글. 비면 그룹이 없다. STOP은 먼저 묻고 `POST /api/control/others/:id/stop`을 부른다. CONTROL STOP과 같은 Origin 검사이고, 그 순간 "그 밖"으로 읽히는 id만 멈추며(AIRCRAFT·관제 세션 id는 `404`), FLIGHT RECORDER에 `kind: "other", op: "stop"`으로 남는다. 저절로 멈추는 것은 없다.
+- **상한 줄이 자리를 쥔 쪽을 적는다.** `백그라운드 7/7 — AIRCRAFT 6 · 그 밖 1 (ENGINEERING-NIGHT, 6h idle)`. `POST /api/fleet/:reg/launch`의 `409`(`백그라운드 세션 N개 — 상한 N(ATC_MAX_LAUNCHED) · AIRCRAFT n · 그 밖 n (…)`), DISPATCH launch 카드의 `launchFullWhy`, FLEET LAUNCH 패널에 나온다.
+- **놀고 있는 자리 힌트.** 상한이 찬 채 DISPATCH launch 카드가 자리를 기다리는 동안 120분 넘게 논 그 밖의 백그라운드 세션이 있으면, 그 세션과 막힌 LAUNCH를 적은 ADVISORY SUPERVISOR 알림 하나(`cap|other|<id>`, 그룹 `recycle`, 링크 `#fleet/control`)가 뜬다. 아무것도 멈추지 않는다.
+- **하지 않은 것.** FLEET PLAN의 `blocked` 글은 아직 `백그라운드 세션 N/max — 상한`만 적는다.
+
+
 ### RESTARTING as built (ATC-91)
 
 데스크톱의 `/clear`는 세션을 끝내고 다음 세션에 새 id를 준다. 이름은 이어진다. 한동안 AIRCRAFT에 세션이 없어서 FLEET는 `absent`를 보였고 DISPATCH는 승인된 제안을 닫았다([dispatch.ko.md](dispatch.ko.md) 6.4). ATC-91은 그 틈을 하나의 상태로 만든다: `RESTARTING`, 최대 `restartGraceMin`(기본 30, `dispatch.json`).

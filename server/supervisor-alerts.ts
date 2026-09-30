@@ -6,6 +6,7 @@ import type { Proposal } from "./proposals.ts";
 import { type OverCap, overCapAlertTextOf, recycleAlertTextOf, type RecycleRecord, type WaitStuck, waitAlertTextOf } from "./control-recycle-text.ts";
 import { repositionAlertTextOf, type RepositionRecordLike, repositionFlapAlertText } from "./reposition.ts";
 import type { ScheduleMode, ScheduleOp } from "./schedule.ts";
+import { type CapIdleHint, idleText } from "./other-background.ts";
 
 // SUPERVISOR alerts(ATC-87): 화면을 안 보는 SUPERVISOR에게 알릴 변화의 목록. 새 감지는 없다 — 이미 있는 것(ALERT, FLIGHT FOLLOWING, health, 제안, PR, RTS)의
 // 키를 모아 안정된 key로 세울 뿐이다. 서버는 key가 처음 생기거나 사라질 때 `alert` SSE 이벤트를 보내고, 알림·소리는 화면(브라우저)이 정한다.
@@ -50,6 +51,7 @@ export interface AlertsInput {
   repositions?: RepositionRecordLike[];
   repositionFlaps?: { t: string; reason: string }[];
   overCap?: (OverCap & { since: string })[]; // CAP을 넘었지만 자동 재시작 대상이 아닌 세션(OCC)
+  capIdle?: CapIdleHint[]; // 상한 때문에 LAUNCH가 막힌 채 120분 넘게 논 그 밖의 백그라운드 세션(ATC-184). 알리기만 한다
   schedule?: { mode: ScheduleMode; ops: Pick<ScheduleOp, "id" | "kind" | "flight" | "status" | "statusAt">[] };
 }
 
@@ -228,6 +230,21 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
   }
 
   // 7c) CAP을 넘고 오래 재시작하지 못한 세션(ATC-175): CAUTION. 막는 것이 풀려 재시작하면 저절로 사라진다(같은 key)
+  // 상한 자리를 쥔 채 논 세션(ATC-184): ADVISORY. STOP은 SUPERVISOR가 FLEET 탭에서 누를 때만 한다
+  for (const h of inp.capIdle ?? []) {
+    out.push({
+      key: `cap|other|${h.id}`,
+      group: "recycle",
+      level: "advisory",
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: `그 밖의 백그라운드 세션 ${h.name}이 ${idleText(h.idleMin) ?? "오래"} 놀고 있고 ATC_MAX_LAUNCHED 때문에 LAUNCH(${h.refused})가 막혀 있음`,
+      next: "FLEET의 OTHER BACKGROUND SESSIONS에서 그 세션을 STOP할지 정한다(자동으로 멈추지 않는다)",
+      link: "#fleet/control",
+      since: null,
+    });
+  }
   for (const w of inp.waiting ?? []) {
     const t = waitAlertTextOf(w);
     out.push({ key: `recycle|wait|${w.session}`, group: "recycle", level: "caution", cue: null, aircraft: null, flight: null, text: t.text, next: t.next, link: "#fleet/control", since: w.since });

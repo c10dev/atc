@@ -313,3 +313,35 @@
 .fl-c-account {
   margin: 0;
 }
+
+/* OTHER BACKGROUND SESSIONS(ATC-184). 색·글꼴·간격은 :root 토큰만 */
+.fl-others {
+  margin-top: var(--space-4);
+}
+.fl-others-list {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+}
+.fl-other {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-sm);
+}
+.fl-other-status {
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.fl-other-detail {
+  flex: 1 1 200px;
+  min-width: 0;
+  color: var(--muted);
+}
+.fl-other .config-btn {
+  margin-left: auto;
+}

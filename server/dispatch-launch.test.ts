@@ -103,12 +103,12 @@ test("상한: 살아 있는 백그라운드 세션 + 승인됐지만 아직 세�
   const sessions = [session("i", "TEAM_I"), session("t", "TOWER"), session("a", "TEAM_A", "idle", "desktop"), session("x", "TEAM_X", "dead")];
   const cap = launchCapOf(sessions, ps, 2);
   // TEAM_I(백그라운드) 1 + 승인된 D-0001 1. TOWER(관제)·데스크톱·죽은 세션은 세지 않는다
-  assert.deepEqual(cap, { launched: 1, pending: 1, max: 2, full: true });
+  assert.deepEqual(cap, { launched: 1, pending: 1, max: 2, full: true, holders: "AIRCRAFT 1 · 그 밖 0" });
   const view = launchViewOf(ps, cap);
   assert.equal(view["D-0001"], LAUNCH_TEXT);
   assert.match(view["D-0002"]!, /^LAUNCH 대기 — 백그라운드 1 \+ 승인된 LAUNCH 1 \/ 상한 2/);
   // D-0001의 세션이 뜨면 pending에서 빠진다(이제 launched로 센다)
-  assert.deepEqual(launchCapOf([...sessions, session("g", "TEAM_G")], ps, 3), { launched: 2, pending: 0, max: 3, full: false });
+  assert.deepEqual(launchCapOf([...sessions, session("g", "TEAM_G")], ps, 3), { launched: 2, pending: 0, max: 3, full: false, holders: "AIRCRAFT 2 · 그 밖 0" });
 });
 
 test("상한이 찼으면 승인도 LAUNCH도 하지 않는다", async () => {
