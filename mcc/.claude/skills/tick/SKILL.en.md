@@ -13,6 +13,6 @@
    - If the reply isn't the block or the inspector failed, call once more; if that fails, log it and move on (don't read the PR yourself instead).
 3. Read `mcc queue` again; for each PR with empty `blocks`: `node ../controller/atcctl.mjs mcc land <PR> --head <head>`. On `LAND 안 함`, log the condition.
 4. Right after landing something, don't run `mcc rts` in the same pass (the landed commit is deployed by step 1 on a later pass, once `rts.due` is true).
-5. Write one or two lines of MCC LOG. If nothing happened: "특이 사항 없음". If the prompt carries a `[MCC CONTEXT CAP]` notice, add the request to the SUPERVISOR to STOP and LAUNCH, as in CLAUDE.md "Context cap".
+5. Write one or two lines of MCC LOG. If nothing happened: "특이 사항 없음". If the prompt carries a `[MCC CONTEXT CAP]` notice, read `recycle.mode` in `mcc queue` as in CLAUDE.md "Context cap": `on` means atc restarts the session, so ask for nothing; otherwise write only "context <n>k — CAP 초과".
 
 No code changes, no messages to team sessions, no Linear writes. When a guard blocks something, don't look for another way; log it.

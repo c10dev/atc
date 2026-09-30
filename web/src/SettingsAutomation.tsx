@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { MccGate } from "../../server/mcc.ts";
 import type { ServerSettings } from "../../server/settings.ts";
 import { modeLine, modeSegments, needsConfirm, reviewLabel, type PolicyKey } from "../../server/settings-policy.ts";
@@ -22,6 +22,13 @@ const MCC_WARN = {
   land: "⚠ auto·flagged 등급 PR을 CI·INSPECTION pass·정확한 head로 atc가 머지. user 등급과 ESCALATE는 사용자. 배포는 사람.",
   "land+rts": "⚠ land에 더해 머지된 main을 atc-rts 유닛으로 7700에 RETURN TO SERVICE(상태 확인 실패면 ROLLBACK 후 멈춤). 시작은 서버가 스스로 한다.",
   rts: "⚠ MCC는 착륙하지 않는다(would-land만): 사용자가 손으로 머지한 main을 서버가 atc-rts 유닛으로 7700에 스스로 RETURN TO SERVICE(CI 통과, 5분 간격, 상태 확인 실패면 ROLLBACK 후 멈춤). package·유닛 파일 변경은 사람이 배포.",
+} as const;
+
+// CONTROL RECYCLE 모드마다 한 줄(ATC-166, docs/control-recycle.md)
+const RECYCLE_WARN = {
+  off: "꺼짐(기본): 컨텍스트가 CAP을 넘어도 atc는 관제 세션을 건드리지 않는다. MCC는 MCC LOG에 STOP·LAUNCH를 청한다.",
+  shadow: "CAP을 넘고 안전한 순간이면 \"재시작했을 것\"을 FLIGHT RECORDER에만 남긴다(control recycle, would). 세션은 그대로.",
+  on: "⚠ CAP을 넘고 턴 사이이며 안전한 순간이면 atc가 그 관제 세션을 STOP하고 같은 ACCOUNT로 LAUNCH한다(FLEET의 버튼과 같은 길, 한 번에 한 세션, 3시간에 한 번). 결과는 FLIGHT RECORDER와 SUPERVISOR ALERT로 남는다.",
 } as const;
 
 // 판정 계열 모드마다 한 줄(ATC-36). replay·shadow는 티켓 제목과 허용한 칸이 TypeSafe로 나간다(데이터 반출)
@@ -181,6 +188,69 @@ function ModeLines<T extends string>({ modes, current, lines }: { modes: readonl
   );
 }
 
+// 세션마다 지금 컨텍스트와 CAP(k 토큰). 컨텍스트는 대화 기록의 마지막 요청(mcc/context-cap.mjs와 같은 합). 0이면 그 세션은 재시작하지 않는다
+type RecycleView = { sessions: { name: string; cap: number | null; auto: boolean; context: number | null; over: boolean; running: boolean }[]; recycling: string | null; recent: { t: string; session: string; result: string; mode: string; contextBefore: number }[] };
+const kOf = (n: number | null) => (n === null ? "—" : `${Math.round(n / 1000)}k`);
+function RecycleSessions({ caps, auto, save }: { caps: Record<string, number | null>; auto: Record<string, boolean>; save: Save }) {
+  const [v, setV] = useState<RecycleView | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      fetch("/api/control/recycle")
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+        .then((x: RecycleView) => alive && (setV(x), setErr(null)))
+        .catch((e) => alive && setErr(e instanceof Error ? e.message : "읽지 못함"));
+    void load();
+    const t = setInterval(load, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [caps, auto]);
+  if (err) return <p className="conn-error">컨텍스트를 읽지 못함(/api/control/recycle) — {err}</p>;
+  if (!v) return <p className="settings-hint">컨텍스트 읽는 중…</p>;
+  return (
+    <>
+      {v.sessions.map((x) => (
+        <Fragment key={x.name}>
+        <EditRow
+          label={x.name}
+          env="cap"
+          value={x.cap === null ? "0" : String(Math.round(x.cap / 1000))}
+          unit="k 토큰"
+          note={`지금 컨텍스트 ${kOf(x.context)}${x.running ? "" : " (세션 없음)"} · CAP ${x.cap === null ? "없음(0)" : kOf(x.cap)}${x.over ? " · CAP 초과" : ""}${v.recycling === x.name ? " · 재시작 중" : ""}`}
+          input={{ kind: "number", min: 0, max: 900 }}
+          onSave={(t) => save({ controlRecycleCaps: { [x.name]: Number(t) === 0 ? null : Number(t) * 1000 } })}
+        />
+        <EditRow
+          label={`${x.name} 재시작`}
+          env="auto"
+          value={x.auto ? "auto" : "alert"}
+          note={x.auto ? "CAP을 넘으면 atc가 안전한 순간에 재시작한다(스위치가 shadow·on일 때)" : "CAP을 넘어도 재시작하지 않고 알림만 한다(OCC: 미기록 CAPTAIN 보고 틈이 닫힐 때까지)"}
+          input={{ kind: "select", options: ["auto", "alert"], labels: { auto: "auto (재시작)", alert: "alert (알림만)" } }}
+          guard={(to) => (to === "auto" && !x.auto ? { line: "auto ⚠ 이 세션도 atc가 스스로 STOP·LAUNCH한다.", warn: true } : null)}
+          onSave={(t) => save({ controlRecycleAuto: { [x.name]: t === "auto" } })}
+        />
+        </Fragment>
+      ))}
+      {v.recent.length > 0 && (
+        <details className="mode-others">
+          <summary>최근 24시간 재시작 기록 {v.recent.length}건</summary>
+          <ul className="autoland-modes">
+            {v.recent.map((r) => (
+              <li key={`${r.t}${r.session}`}>
+                <b>{r.session}</b> {r.result}
+                {r.mode === "shadow" ? "(shadow)" : ""} · {kOf(r.contextBefore)} · {timeAgo(r.t, Date.now())}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </>
+  );
+}
+
 // 고르는 중인 값의 경고 줄과, ⚠ 모드로 올리는 것이라 확인이 필요한지
 const guardOf = (key: PolicyKey, current: string, lines: Record<string, string>) => (to: string) => (lines[to] ? { line: `${to} ${lines[to]}`, warn: needsConfirm(key, current, to) } : null);
 
@@ -243,6 +313,30 @@ export function AutomationSettings({ server, save }: { server: Loaded; save: Sav
           )}
         </ServerRows>
         <MccGatePanel />
+      </Block>
+
+      <Block code="CONTROL RECYCLE" label="관제 세션 자동 재시작(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) =>
+            s.controlRecycle ? (
+              <>
+                <EditRow
+                  label="CONTROL RECYCLE"
+                  env="controlRecycle.mode"
+                  value={s.controlRecycle.mode}
+                  note={`control-recycle.json · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈 · 같은 세션은 ${s.controlRecycle.cooldownHours}시간에 한 번`}
+                  input={{ kind: "select", options: ["off", "shadow", "on"] }}
+                  guard={guardOf("recycle", s.controlRecycle.mode, RECYCLE_WARN)}
+                  onSave={(v) => save({ controlRecycleMode: v as "off" | "shadow" | "on" })}
+                />
+                <ModeLines modes={["off", "shadow", "on"] as const} current={s.controlRecycle.mode} lines={RECYCLE_WARN} />
+                <RecycleSessions caps={s.controlRecycle.caps} auto={s.controlRecycle.auto} save={save} />
+              </>
+            ) : (
+              <p className="settings-hint">서버가 CONTROL RECYCLE을 아직 모름(옛 서버)</p>
+            )
+          }
+        </ServerRows>
       </Block>
 
       <Block code="JUDGES" label="판정 계열(SUPERVISOR 전용)">

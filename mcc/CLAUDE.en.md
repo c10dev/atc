@@ -66,7 +66,16 @@ Grades: P0 (must not merge), P1 (fix before merging), P2 (can wait). No P0 or P1
 
 ## Context cap
 
-When this session's context passes 150k tokens (the last request's input + cache read + cache write, the same value as the statusline record), `context-cap.mjs` (a `UserPromptSubmit` hook) adds a `[MCC CONTEXT CAP] …` notice to the prompt. Finish the pass and write in the MCC LOG "context <n>k — SUPERVISOR, please STOP and LAUNCH this session" (in Korean, as the MCC LOG is). Don't restart yourself (no `/clear`, no exit); the passes keep running.
+When this session's context passes 150k tokens (the last request's input + cache read + cache write, the same value as the statusline record), `context-cap.mjs` (a `UserPromptSubmit` hook) adds a `[MCC CONTEXT CAP] …` notice to the prompt. Finish the pass and read `recycle.mode` in `mcc queue` (ATC-166).
+
+- `on`: when the context is over the cap, the job is between turns and the moment is safe, atc itself STOPs this session and LAUNCHes it again with the same ACCOUNT. Ask for nothing: do not ask the SUPERVISOR to STOP and LAUNCH, and do not mark yourself BLOCKED for it.
+- `off` or `shadow` (default): atc does not restart this session (`shadow` only records "would recycle" in the FLIGHT RECORDER). Write only "context <n>k — CAP 초과" in the MCC LOG.
+
+Either way don't restart yourself (no `/clear`, no exit); the passes keep running.
+
+### After a fresh start (a session atc relaunched)
+
+The earlier conversation is not carried over, and nothing is lost because all state is in the server. Read `mcc queue` in the first pass and do what it says; don't assume earlier passes are in the LOG. INSPECTIONs are recorded per head, so a PR already inspected shows `inspection`, and a PR that was mid-INSPECTION is inspected again (cost only). If an RTS is running (`rts.why` "RTS 진행 중") leave it and watch.
 
 ## MCC LOG
 

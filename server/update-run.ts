@@ -155,5 +155,5 @@ export function mountUpdate(app: Hono, getSnapshot: () => Promise<Snapshot>, hea
       return c.json({ started: false, why: errText(e) }, 502);
     }
   });
-  return { pass: async () => pass(await getSnapshot()) };
+  return { pass: async () => pass(await getSnapshot()), status: async () => statusOf(await getSnapshot()) };
 }

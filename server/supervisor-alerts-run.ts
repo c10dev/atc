@@ -1,3 +1,5 @@
+import { overCapNow } from "./control-recycle-run.ts";
+import { readRecords } from "./recorder.ts";
 import { followingNow } from "./following.ts";
 import { readMccRecords } from "./mcc.ts";
 import { rtsState } from "./mcc-run.ts";
@@ -20,6 +22,11 @@ let warmed = false;
 
 export const currentAlerts = (): SupervisorAlert[] => [...known.values()];
 
+// 최근 6시간의 재시작 기록(알림은 이 창 안에서만 남는다)
+export const RECYCLE_ALERT_MS = 6 * 3_600_000;
+const recentRecycles = (now: number) =>
+  readRecords(now - RECYCLE_ALERT_MS).flatMap((r) => (r.kind === "control" && r.op === "recycle" ? [r] : []));
+
 export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
   return supervisorAlertsOf({
     sessions: s.sessions,
@@ -31,6 +38,8 @@ export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
     pulls: s.pulls ?? [],
     rts: rtsState(readMccRecords()).last,
     schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
+    recycles: recentRecycles(now),
+    overCap: overCapNow(),
   });
 }
 
