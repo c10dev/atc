@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -78,6 +78,21 @@ test("STAND: 문서를 쓰고 커밋해 로컬 bare origin에 푸시할 수 있�
     sh(path, "push", "-q", "-u", "origin", "claude/duty-topic");
     assert.match(execFileSync("git", ["-C", s.bare, "branch", "--list", "claude/duty-topic"], { encoding: "utf8" }), /claude\/duty-topic/);
     assert.equal(execFileSync("git", ["-C", s.bare, "show", "claude/duty-topic:docs-topic.md"], { encoding: "utf8" }), "# Topic\n");
+  } finally {
+    s.done();
+  }
+});
+
+test("STAND: node_modules가 심볼릭 링크면 링크하지 않는다(STAND가 운영의 node_modules를 가리키지 않게)", async () => {
+  const s = scratch();
+  try {
+    const { d } = deps(s.repo);
+    rmSync(join(s.repo, "node_modules"), { recursive: true });
+    symlinkSync(tmpdir(), join(s.repo, "node_modules"));
+    const r = await makeStand(d, "nolink");
+    assert.equal(r.status, 200);
+    assert.equal((r.body as { nodeModules: boolean }).nodeModules, false);
+    assert.equal(existsSync(join(s.repo, ".claude", "worktrees", "duty-nolink", "node_modules")), false);
   } finally {
     s.done();
   }
@@ -271,7 +286,8 @@ test("길: Linear 오류는 502(키가 없으면 503)로 돌려주고 기록한�
     mountDutyL1(app, d);
     const r = await post(app, "/api/duty/linear", { action: "comment", key: "ATC-7", body: "x" });
     assert.equal(r.status, 502);
-    assert.equal(lines.at(-1)?.kind === "duty" && lines.at(-1)?.ok, false);
+    const last = lines.at(-1);
+    assert.equal(last?.kind === "duty" && last.ok, false);
     const { o: o2 } = fake({ issue: async () => { throw new Error("Linear 미연결"); } });
     const app2 = new Hono();
     mountDutyL1(app2, deps(s.repo, o2).d);

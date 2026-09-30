@@ -6,7 +6,7 @@
 // - duty.json의 `l1`이 꺼져 있으면(기본) 세 길 모두 403이다. 운영 서버에서는 SUPERVISOR가 켜기 전까지 STAND도 Linear 쓰기도 없다
 // - 한 번 부를 때마다 FLIGHT RECORDER 한 줄(`by: "DUTY"`, 본문은 적지 않는다, 거절·실패도)
 import { execFile } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -82,7 +82,8 @@ export async function makeStand(d: L1Deps, raw: unknown): Promise<Reply> {
     }
     let modules = false;
     try {
-      if (existsSync(resolve(d.repo, "node_modules"))) {
+      // 진짜 폴더일 때만 하드링크한다(심볼릭 링크를 그대로 복사하면 STAND가 운영의 node_modules를 가리키고 git add -A가 링크를 담는다)
+      if (lstatSync(resolve(d.repo, "node_modules")).isDirectory()) {
         await d.linkModules(resolve(d.repo, "node_modules"), resolve(path, "node_modules"));
         modules = true;
       }
