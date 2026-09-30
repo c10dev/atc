@@ -727,6 +727,15 @@ A background AIRCRAFT that finishes a FLIGHT and waits is gone an hour later, an
 
 **RESUME.** A FLIGHT cut by the limit comes back after the reset as a RESUME card for the same REGISTRATION ([dispatch.md](dispatch.md)). This replaces the SUPERVISOR's manual "continue" only for an absent background AIRCRAFT. A live session in `RESUME` keeps the ATC-86 behaviour above: `RESUME 필요`, and the SUPERVISOR sends "continue" in that session.
 
+### LAUNCH per ACCOUNT as built (ATC-147)
+
+With ACCOUNTS registered ([accounts.md](accounts.md) 5.2) LAUNCH and STOP work on any registered ACCOUNT.
+
+- **Which ACCOUNT.** The AIRCRAFT's profile `account` (a control session's `control` label), or the ACCOUNT named in the request; the LAUNCH panel has a picker (SUPERVISOR only). An ACCOUNT that is not logged in, at the FUEL hold level, or at its own `maxLaunched` is shown disabled with the reason and refused if requested. With no registry nothing changes and the argv and environment are what they were.
+- **Environment.** `CLAUDE_CONFIG_DIR` for the ACCOUNT's folder is the only variable added (not for `~/.claude`). LAUNCH still runs in its own systemd scope, so each daemon lives outside `atc.service`.
+- **Per folder.** `claude agents --json` is read per folder (daemon up) and merged with an `account` tag; `claude stop` uses the row's folder; RESUME after LIMIT (8.5 ATC-129) launches on the ACCOUNT of the last atc LAUNCH. The FLIGHT RECORDER launch and stop records carry `account` when there is a registry.
+- **Caps.** `ATC_MAX_LAUNCHED` stays machine-wide; `maxLaunched` per ACCOUNT is optional in the registry.
+
 ### 8.6 FLEET PLAN: proposing LAUNCH, STOP and the rest
 
 Status: steps 1 and 2 built (shadow, 2026-09-28), with the `REFRESH` kind (cabin turnaround, ATC-69); SUPERVISOR decisions recorded below. Section 8.5 gave the SUPERVISOR the controls; this section decides when atc suggests using them, so that forming, parking, servicing and retiring teams stops being manual bookkeeping.
@@ -820,6 +829,12 @@ Not built yet: step 4 (automatic STOP). Step 3 (approval) and the follow-up of a
 - REFRESH (ATC-69, PILOT'S DISCRETION in the EO, open to SUPERVISOR review): a kind of its own rather than a third RESTART trigger, so the gate counts its verdicts apart and a desktop session gets hand steps instead of a refusal. Thresholds `refreshTokens` 300k and `refreshPct` 40 %, whichever comes first. Nothing restarts a desktop or terminal session automatically, and step 4 still decides any automatic STOP.
 
 Sources: [Jeppesen crew pairing](https://ww2.jeppesen.com/airline-crew-optimization-solutions/airline-crew-pairing/), [Lufthansa Systems NetLine/Crew](https://www.lhsystems.com/solutions/operations-control-center/netline-crew), [airline disruption recovery survey (arXiv 2510.26831)](https://arxiv.org/html/2510.26831), [OAG on wet leasing](https://www.oag.com/blog/what-is-wet-leasing), [SKYbrary: MEL](https://skybrary.aero/articles/minimum-equipment-list-mel), [EASA AI levels (Halldale)](https://www.halldale.com/civil-aviation/easa-ai-framework-aviation-safety-regulations), [ICAO on aircraft parking](https://www.icao.int/operational-safety/Aircraft-Parking).
+
+### ENTRY names its ACCOUNT as built (ATC-147)
+
+- With ACCOUNTS registered, an ENTRY proposal carries `account`: the registered ACCOUNT that is not known to be logged out and is below `holdPct`, with the lowest use (no FUEL record counts as 0; ties by label). The reason line says which and why (`새 AIRCRAFT는 ACCOUNT acct-1에서 …`). Approving it enters the AIRCRAFT with that `account` in its profile, so the LAUNCH that follows uses it.
+- The old block "ENTRY도 제안 안 함(새 세션이 열릴 계정을 모름)" no longer applies once ACCOUNTS are registered: when every fitting AIRCRAFT is held, ENTRY still goes to another ACCOUNT. If no registered ACCOUNT qualifies, nothing is proposed and the AIRPORT line says why per ACCOUNT (`acct-1: FUEL hold 100%, acct-2: 로그인 안 됨`). An open ENTRY expires if its ACCOUNT reaches hold.
+- Without a registry: unchanged (new AIRCRAFT counted under `default`, the old block for held fits).
 
 ### REFRESH as built (ATC-69)
 

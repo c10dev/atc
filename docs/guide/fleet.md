@@ -81,7 +81,8 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - **세션의 ACCOUNT는 찾은 곳으로 정한다.** 세션 파일이 `~/.claude-acct-1`에 있으면 그 세션은 `acct-1`이다. FUEL도 그 ACCOUNT의 한도로 센다.
 - **home과 다를 때.** AIRCRAFT 프로필의 ACCOUNT는 home으로 남는다. 세션이 다른 폴더에서 돌면 FLEET 줄과 카드에 `acct-1 (home acct-2)`로 보인다. 오류가 아니다.
 - **폴더마다 건강 표시.** 로그인했는지(`LOGGED IN`·방식만), settings에 atc statusline과 `claim`·`health` hook이 있는지 보인다. 빠진 것은 경고로만 나온다(`FUEL blind on acct-1`). 막지는 않는다.
-- **아직 못 하는 것.** LAUNCH·STOP은 아직 `~/.claude`의 세션만 다룬다. 다른 폴더의 세션은 보이기만 한다.
+- **LAUNCH·STOP도 ACCOUNT별로.** LAUNCH 패널에 **ACCOUNT** 고르개가 생긴다(기본은 그 AIRCRAFT의 home ACCOUNT). 로그인이 안 됐거나 FUEL이 hold 수준이거나 그 ACCOUNT의 세션 상한에 닿은 ACCOUNT는 사유와 함께 흐리게 보이고 고를 수 없다. STOP은 그 세션이 있는 폴더로 한다. 세션 상한은 기계 전체(`ATC_MAX_LAUNCHED`)에 더해 ACCOUNT마다 `상한` 칸에 정할 수 있다(비우면 없음).
+- **새 AIRCRAFT(ENTRY)도.** FLEET PLAN의 ENTRY 제안은 새 AIRCRAFT가 날 ACCOUNT를 함께 적는다(로그인됐고 hold 아래에서 사용이 가장 낮은 ACCOUNT). 등록한 ACCOUNT가 모두 안 되면 제안하지 않고 이유를 AIRPORT 줄에 적는다.
 
 ### FUEL: 한도를 얼마나 썼나
 

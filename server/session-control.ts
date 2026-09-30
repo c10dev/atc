@@ -4,9 +4,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Context, Hono } from "hono";
 import { config } from "./config.ts";
-import { accountFolders } from "./accounts.ts";
+import { type AccountFolder, accountFolders, folderOfAccount, observedLabelsOn } from "./accounts.ts";
+import { authStatusOf } from "./account-health.ts";
+import { cleanEnv, cleanPath } from "./clean-env.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { crewBriefing, FleetError, fleetView, loadFleet, saveControlAccount } from "./fleet.ts";
+import { fleetKeyOf } from "./registration.ts";
 import { accountsLabeled, CONTROL_NAMES, controlAccountOf, type FleetFile } from "./crew.ts";
 import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
@@ -41,6 +44,8 @@ export interface AgentRow {
   pid?: number;
   // atc가 붙인다(ATC-93): Claude Code가 멈춘 job을 아직 목록에 둔 줄(STALE). 살아 있는 세션으로 세지 않는다
   stale?: boolean;
+  // atc가 붙인다(ATC-147): 이 줄을 읽은 폴더의 ACCOUNT 라벨. 등록부가 없으면 없다(폴더가 ~/.claude 하나)
+  account?: string;
 }
 
 // ── STALE(ATC-93) ──
@@ -80,12 +85,16 @@ export interface LaunchPlan {
   permissionMode: PermissionMode;
   model: string | null;
   args: string[];
+  // ATC-147: 띄울 ACCOUNT의 라벨과 CLAUDE_CONFIG_DIR로 줄 폴더(~/.claude나 등록부가 없으면 null = 환경을 바꾸지 않음)
+  account: string | null;
+  configDir: string | null;
 }
+const configDirOf = (account: AccountFolder | null | undefined) => (account && account.dir !== config.claudeDir ? account.dir : null);
 
 const sameName = (row: AgentRow, reg: string) => sameReg(row.name, reg); // `Team G` 세션도 TEAM_G(ATC-67)
 
 // 띄울 수 있는지 보고 claude 인자를 만든다(순수)
-export function launchPlanOf(input: LaunchInput, rows: AgentRow[], max = MAX_LAUNCHED): LaunchPlan {
+export function launchPlanOf(input: LaunchInput, rows: AgentRow[], max = MAX_LAUNCHED, account: AccountFolder | null = null): LaunchPlan {
   const reg = regKey(input.registration); // 새 세션은 정식 REGISTRATION으로 띄운다(ATC-67)
   rows = liveRowsOf(rows); // STALE 줄은 이미 떠 있는 세션도, 상한도 아니다(ATC-93)
   if (input.retired) throw new ControlError(`${reg}는 RETIRED — 먼저 복귀시킨다`, 409);
@@ -94,12 +103,43 @@ export function launchPlanOf(input: LaunchInput, rows: AgentRow[], max = MAX_LAU
   if (live) throw new ControlError(`${reg} 세션이 이미 떠 있음(${live.kind === "background" ? `bg ${live.id}` : "interactive"})`, 409);
   const launched = rows.filter((r) => r.kind === "background").length;
   if (launched >= max) throw new ControlError(`백그라운드 세션 ${launched}개 — 상한 ${max}(ATC_MAX_LAUNCHED)`, 409);
+  // ACCOUNT별 상한(ATC-147, 등록부 maxLaunched): 그 ACCOUNT 폴더에서 읽은 백그라운드 세션 수
+  if (account?.maxLaunched) {
+    const n = rows.filter((r) => r.kind === "background" && r.account === account.label).length;
+    if (n >= account.maxLaunched) throw new ControlError(`ACCOUNT ${account.label}의 백그라운드 세션 ${n}개 — 상한 ${account.maxLaunched}(등록부 maxLaunched)`, 409);
+  }
   const mode = input.permissionMode ?? DEFAULT_PERMISSION_MODE;
   if (!PERMISSION_MODES.includes(mode as PermissionMode)) throw new ControlError(`permission mode는 ${PERMISSION_MODES.join(" | ")}`, 400);
   const model = typeof input.model === "string" && input.model.trim() ? input.model.trim() : null;
   if (model && !/^[\w.:[\]-]+$/.test(model)) throw new ControlError(`모델 이름이 이상함: ${model}`, 400);
   const args = ["--bg", "-n", reg, "--permission-mode", mode as string, ...(model ? ["--model", model] : []), input.briefing];
-  return { registration: reg, cwd: input.repo, permissionMode: mode as PermissionMode, model, args };
+  return { registration: reg, cwd: input.repo, permissionMode: mode as PermissionMode, model, args, account: account?.label ?? null, configDir: configDirOf(account) };
+}
+
+// ── 어느 ACCOUNT에서 띄우나(ATC-147, 순수) ──
+// 등록부가 없으면 null(전과 같다: ~/.claude, 환경 변경 없음). 이름을 대면 그 ACCOUNT, 없으면 home(AIRCRAFT 프로필·관제 세션 라벨).
+// home 라벨이 등록부에 없으면 ~/.claude로 간다. 로그인이 안 됐거나 FUEL hold 수준인 ACCOUNT는 사유와 함께 거절한다(loggedIn null=모름은 막지 않는다)
+export interface AccountStatus {
+  loggedIn: boolean | null;
+  hold: string | null; // FUEL hold 수준이면 그 글("FUEL 사용 97% until 21:00Z")
+}
+export function launchAccountOf(input: { requested?: unknown; home?: string | null; folders: readonly AccountFolder[]; status: (label: string) => AccountStatus | null }): AccountFolder | null {
+  const { folders } = input;
+  const asked = input.requested === undefined || input.requested === null || input.requested === "" ? null : input.requested;
+  if (!observedLabelsOn(folders)) {
+    if (asked !== null) throw new ControlError("ACCOUNT 등록부가 비어 있음 — 설정 창 AGENTS 탭의 ACCOUNTS에서 먼저 등록한다", 409);
+    return null;
+  }
+  const label = asked === null ? null : typeof asked === "string" ? asked.trim().toLowerCase() : "";
+  if (label !== null && !/^[a-z0-9][a-z0-9-]{0,23}$/.test(label)) throw new ControlError("ACCOUNT는 등록부의 라벨(소문자·숫자·-)", 400);
+  const home = (input.home ?? "").trim().toLowerCase();
+  const dflt = folders.find((f) => f.dir === config.claudeDir);
+  const folder = label !== null ? folders.find((f) => f.label === label) : (folders.find((f) => f.label === home) ?? dflt);
+  if (!folder) throw new ControlError(`등록되지 않은 ACCOUNT: ${label} (등록: ${folders.map((f) => f.label).join(", ")})`, 404);
+  const st = input.status(folder.label);
+  if (st?.loggedIn === false) throw new ControlError(`ACCOUNT ${folder.label}는 로그인되어 있지 않음 — SUPERVISOR가 그 폴더에서 claude auth login을 한다`, 409);
+  if (st?.hold) throw new ControlError(`ACCOUNT ${folder.label}는 FUEL hold 수준: ${st.hold}`, 409);
+  return folder;
 }
 
 // ── 관제 세션(docs/fleet.md 8.5.1) ──
@@ -154,9 +194,10 @@ function refuseLive(spec: ControlSpec, rows: AgentRow[], dir: string | null) {
 }
 
 // LAUNCH할 수 있는지 보고 claude 인자를 만든다(순수)
-export function controlLaunchPlanOf(spec: ControlSpec, rows: AgentRow[], dir: string): { cwd: string; args: string[] } {
+export function controlLaunchPlanOf(spec: ControlSpec, rows: AgentRow[], dir: string, account: AccountFolder | null = null): { cwd: string; args: string[]; account?: string; configDir?: string } {
   refuseLive(spec, rows, dir);
-  return { cwd: dir, args: ["--bg", "-n", spec.name, "--permission-mode", "auto", ...spec.flags, spec.prompt ?? ""] };
+  // ACCOUNT를 안 주면(등록부 없음) 전과 같은 모양 그대로
+  return { cwd: dir, args: ["--bg", "-n", spec.name, "--permission-mode", "auto", ...spec.flags, spec.prompt ?? ""], ...(account ? { account: account.label, ...(configDirOf(account) ? { configDir: configDirOf(account)! } : {}) } : {}) };
 }
 
 // LAUNCH를 막는 이유(순수). ENGINEERING은 배지만
@@ -261,15 +302,8 @@ export function jobIdOf(out: string): string | null {
   return /backgrounded\s*·\s*([0-9a-f]{6,})\s*·/.exec(out)?.[1] ?? null;
 }
 
-// 세션에 atc의 비밀(.env.local)을 물려주지 않는다
-const cleanPath = () => [dirname(config.claudeBin), dirname(process.execPath), "/usr/local/bin", "/usr/bin", "/bin"];
-export function cleanEnv(): NodeJS.ProcessEnv {
-  const keep = ["HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "SHELL", "TERM", "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "DBUS_SESSION_BUS_ADDRESS"];
-  const env: NodeJS.ProcessEnv = {};
-  for (const k of keep) if (process.env[k]) env[k] = process.env[k];
-  env.PATH = cleanPath().join(":");
-  return env;
-}
+// 깨끗한 환경은 clean-env.ts(ATC-147: ACCOUNT의 폴더면 CLAUDE_CONFIG_DIR 하나만 더한다)
+export { cleanEnv };
 // tmux pane에서 연 관제 세션을 알아보고 닫을 때 쓰는 tmux. 서버의 PATH와 깨끗한 PATH에서 찾는다
 export function tmuxBin(): string | null {
   return findBin("tmux", [...(process.env.PATH ?? "").split(":"), ...cleanPath()]);
@@ -284,10 +318,10 @@ export function launchCommandOf(bin: string, args: string[], scope: string | nul
 }
 const scopeBin = () => (process.env.ATC_BG_SCOPE !== "off" && existsSync(SYSTEMD_RUN) ? SYSTEMD_RUN : null);
 
-function claude(args: string[], cwd?: string, { scope = false } = {}): Promise<{ ok: boolean; out: string }> {
+function claude(args: string[], cwd?: string, { scope = false, configDir = null as string | null } = {}): Promise<{ ok: boolean; out: string }> {
   const { cmd, args: argv } = launchCommandOf(config.claudeBin, args, scope ? scopeBin() : null, `atc-claude-${Date.now()}`);
   return new Promise((resolve) => {
-    execFile(cmd, argv, { cwd, env: cleanEnv(), timeout: 60_000, maxBuffer: 4 << 20 }, (err, stdout, stderr) =>
+    execFile(cmd, argv, { cwd, env: cleanEnv(configDir), timeout: 60_000, maxBuffer: 4 << 20 }, (err, stdout, stderr) =>
       resolve({ ok: !err, out: `${stdout}${stderr}`.trim() }),
     );
   });
@@ -314,20 +348,56 @@ export function daemonCgroups(): string[] {
   return out;
 }
 
-export async function agentRows(): Promise<AgentRow[]> {
-  const r = await claude(["agents", "--json"]);
-  if (!r.ok) throw new ControlError(`claude agents 실패: ${r.out.slice(0, 300)}`, 502);
-  let rows: AgentRow[];
+// 그 폴더의 백그라운드 daemon이 떠 있나(ATC-147). daemon.status.json의 supervisorPid가 살아 있고 daemon 명령줄이면 참.
+// 안 떠 있는 폴더에서 `claude agents`를 부르면 daemon을 atc.service 안에서 새로 띄울 수 있어서(scope 밖) 부르지 않는다. 읽기만
+export function daemonUpIn(dir: string): boolean {
   try {
-    rows = JSON.parse(r.out) as AgentRow[];
+    const pid = (JSON.parse(readFileSync(join(dir, "daemon.status.json"), "utf8")) as { supervisorPid?: unknown }).supervisorPid;
+    if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 1) return false;
+    return readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").includes("daemon");
   } catch {
-    throw new ControlError("claude agents 출력을 읽지 못함", 502);
+    return false;
   }
-  // STALE 표시(ATC-93): pid·status 없는 background 줄만 그 job 파일의 state 한 칸을 읽는다(쓰지 않는다)
-  const now = Date.now();
-  for (const row of rows) if (row.kind === "background" && row.pid == null && row.status == null && row.id) row.stale = isStaleRow(row, jobStateOf(row.id), now);
-  return rows;
 }
+
+// 등록된 모든 폴더의 `claude agents --json`(ATC-147). 폴더마다 자기 CLAUDE_CONFIG_DIR로 부르고 줄에 ACCOUNT를 붙여 합친다.
+// ~/.claude는 늘 부른다(전과 같다: 실패하면 던진다). 다른 폴더는 daemon이 떠 있을 때만 부르고, 못 읽으면 failed에 라벨만 남긴다
+export async function agentRowsOf(folders: readonly AccountFolder[] = accountFolders()): Promise<{ rows: AgentRow[]; failed: string[] }> {
+  const labeled = observedLabelsOn(folders);
+  const rows: AgentRow[] = [];
+  const failed: string[] = [];
+  const now = Date.now();
+  for (const f of folders) {
+    const isDefault = f.dir === config.claudeDir;
+    if (!isDefault && !daemonUpIn(f.dir)) continue;
+    const r = await claude(["agents", "--json"], undefined, { configDir: f.dir });
+    let list: AgentRow[] | null = null;
+    if (r.ok) {
+      try {
+        list = JSON.parse(r.out) as AgentRow[];
+      } catch {}
+    }
+    if (!list) {
+      if (isDefault) throw new ControlError(r.ok ? "claude agents 출력을 읽지 못함" : `claude agents 실패: ${r.out.slice(0, 300)}`, 502);
+      failed.push(f.label);
+      continue;
+    }
+    // STALE 표시(ATC-93): pid·status 없는 background 줄만 그 job 파일의 state 한 칸을 읽는다(쓰지 않는다)
+    for (const row of list) {
+      if (row.kind === "background" && row.pid == null && row.status == null && row.id) row.stale = isStaleRow(row, jobStateOf(row.id, [join(f.dir, "jobs")]), now);
+      if (labeled) row.account = f.label;
+    }
+    rows.push(...list);
+  }
+  return { rows, failed };
+}
+
+export async function agentRows(): Promise<AgentRow[]> {
+  return (await agentRowsOf()).rows;
+}
+
+// 한 줄이 있는 폴더(stop·respawn은 그 세션의 폴더로 부른다). 라벨이 없으면 ~/.claude
+export const configDirOfRow = (row: Pick<AgentRow, "account">, folders: readonly AccountFolder[] = accountFolders()) => configDirOf(folderOfAccount(row.account, folders));
 
 // ~/.claude/jobs/<id>/state.json의 state. 없거나 못 읽으면 null(STALE로 보지 않는다)
 // dirs: 볼 jobs/ 폴더들(기본은 등록된 모든 폴더, ATC-146). 처음 읽은 state를 돌려준다
@@ -345,6 +415,21 @@ export function jobStateOf(id: string, dirs: readonly string[] = accountFolders(
 // GET /api/control/sessions만 쓴다(헤더 CONTROL 띠와 FLEET가 함께, ATC-127). LAUNCH·STOP의 판단은 늘 agentRows()로 새로 읽는다
 const cachedAgentRows = ttlCache(agentRows);
 
+// 등록된 ACCOUNT마다 로그인 여부와 FUEL hold 글(ATC-147). FUEL은 스냅샷의 ACCOUNT별 값, 로그인은 claude auth status(loggedIn만, 60초 캐시)
+export async function accountStatusesOf(fuelAccounts: Snapshot["fuelAccounts"], folders: readonly AccountFolder[] = accountFolders(), now = Date.now()): Promise<Map<string, AccountStatus>> {
+  const out = new Map<string, AccountStatus>();
+  if (!observedLabelsOn(folders)) return out;
+  await Promise.all(
+    folders.map(async (f) => {
+      const auth = await authStatusOf(f.dir);
+      const fuel = (fuelAccounts ?? []).find((x) => x.account === f.label);
+      const hold = fuel?.level === "hold" ? `FUEL 사용 ${Math.round(fuel.top.pct)}% until ${new Date(fuel.top.resetsAt).toISOString().slice(11, 16)}Z` : null;
+      out.set(f.label, { loggedIn: auth.loggedIn, hold });
+    }),
+  );
+  return out;
+}
+
 export interface ControlResult {
   ok: boolean;
   status: number; // 실패면 HTTP 상태
@@ -353,12 +438,13 @@ export interface ControlResult {
   cwd?: string;
   permissionMode?: PermissionMode;
   model?: string | null;
+  account?: string | null; // 띄운 ACCOUNT 라벨(등록부가 없으면 없다)
   error?: string;
 }
 
 // LAUNCH: FLEET 카드 버튼과 FLEET PLAN 승인(8.7), DISPATCH launch 카드 승인(ATC-129)이 같이 쓴다. 결과는 FLIGHT RECORDER에 by와 함께 남는다.
 // proposal: launch 카드로 띄웠으면 그 제안 id(기록에 남는다)
-export async function launchAircraft(s: Snapshot, registration: string, options: { permissionMode?: unknown; model?: unknown }, by: string, proposal?: string): Promise<ControlResult> {
+export async function launchAircraft(s: Snapshot, registration: string, options: { permissionMode?: unknown; model?: unknown; account?: unknown }, by: string, proposal?: string): Promise<ControlResult> {
   const reg = regKey(registration);
   const cfg = loadDispatchConfig();
   const a = fleetView(s, loadFleet(), cfg.teamPattern).find((x) => x.registration === reg);
@@ -368,14 +454,21 @@ export async function launchAircraft(s: Snapshot, registration: string, options:
   try {
     // 관제 세션은 팀 세션 상한(ATC_MAX_LAUNCHED)에 세지 않는다
     const dirs = CONTROL_SESSIONS.map((c) => controlDirOf(c)).filter((d): d is string => d !== null);
-    const rows = (await agentRows()).filter((r) => !isControlRow(r, dirs));
-    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: crewBriefing(a, repo, cfg.mode), permissionMode: options.permissionMode, model: options.model }, rows);
-    const r = await claude(plan.args, plan.cwd, { scope: true });
+    const folders = accountFolders();
+    const read = await agentRowsOf(folders);
+    const rows = read.rows.filter((r) => !isControlRow(r, dirs));
+    // ACCOUNT(ATC-147): 이름을 댔으면 그것, 아니면 AIRCRAFT의 home. 로그인 안 됨·FUEL hold는 사유와 함께 거절
+    const home = loadFleet().aircraft[fleetKeyOf(Object.keys(loadFleet().aircraft), reg, cfg.teamPattern) ?? ""]?.account ?? null;
+    const statuses = await accountStatusesOf(s.fuelAccounts, folders);
+    const account = launchAccountOf({ requested: options.account, home, folders, status: (l) => statuses.get(l) ?? null });
+    if (account && read.failed.includes(account.label)) throw new ControlError(`ACCOUNT ${account.label}의 세션 목록을 읽지 못함 — 이미 떠 있는지 몰라 띄우지 않는다`, 502);
+    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: crewBriefing(a, repo, cfg.mode), permissionMode: options.permissionMode, model: options.model }, rows, MAX_LAUNCHED, account);
+    const r = await claude(plan.args, plan.cwd, { scope: true, configDir: plan.configDir });
     const jobId = jobIdOf(r.out);
     const ok = r.ok && !!jobId;
     const error = ok ? undefined : /not trusted/i.test(r.out) ? `${plan.cwd}를 신뢰하지 않음 — 그 폴더에서 claude를 한 번 열어 trust를 수락한다` : r.out.slice(0, 300) || "claude --bg 실패";
-    record({ t, kind: "fleet", op: "launch", aircraft: reg, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model ?? undefined, error, ...(proposal ? { proposal } : {}) });
-    return ok ? { ok, status: 200, jobId: jobId!, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model } : { ok, status: 502, error };
+    record({ t, kind: "fleet", op: "launch", aircraft: reg, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model ?? undefined, ...(plan.account ? { account: plan.account } : {}), error, ...(proposal ? { proposal } : {}) });
+    return ok ? { ok, status: 200, jobId: jobId!, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model, account: plan.account } : { ok, status: 502, error };
   } catch (e) {
     // 띄우기 전에 거절된 것(상한, 이미 떠 있음, RETIRED …)도 launch 카드로 온 것이면 남긴다
     if (e instanceof ControlError) {
@@ -392,9 +485,9 @@ export async function stopAircraft(registration: string, by: string): Promise<Co
   const t = new Date().toISOString();
   try {
     const row = stopTargetOf(reg, await agentRows(), rowOriginOf);
-    const r = await claude(["stop", row.id as string]);
+    const r = await claude(["stop", row.id as string], undefined, { configDir: configDirOfRow(row) }); // 그 세션의 폴더(ATC-147)
     const error = r.ok ? undefined : r.out.slice(0, 300) || "claude stop 실패";
-    record({ t, kind: "fleet", op: "stop", aircraft: reg, by, ok: r.ok, jobId: row.id, cwd: row.cwd, error });
+    record({ t, kind: "fleet", op: "stop", aircraft: reg, by, ok: r.ok, jobId: row.id, cwd: row.cwd, ...(row.account ? { account: row.account } : {}), error });
     return r.ok ? { ok: true, status: 200, jobId: row.id } : { ok: false, status: 502, error };
   } catch (e) {
     if (e instanceof ControlError) return { ok: false, status: e.status, error: e.message };
@@ -402,20 +495,25 @@ export async function stopAircraft(registration: string, by: string): Promise<Co
   }
 }
 
-export async function launchControl(name: string, by: string): Promise<ControlResult> {
+export async function launchControl(name: string, by: string, requestedAccount?: unknown, fuelAccounts?: Snapshot["fuelAccounts"]): Promise<ControlResult> {
   const spec = controlSpecOf(name);
   if (!spec) return { ok: false, status: 404, error: `관제 세션이 아님: ${name} (${CONTROL_SESSIONS.map((c) => c.name).join(", ")})` };
   const dir = controlDirOf(spec);
   if (spec.launch === null || dir === null) return { ok: false, status: 409, error: `${spec.name}: ${launchBlockOf(spec)}` };
   const t = new Date().toISOString();
   try {
-    const plan = controlLaunchPlanOf(spec, await agentRows(), dir);
-    const r = await claude(plan.args, plan.cwd, { scope: true });
+    const folders = accountFolders();
+    const read = await agentRowsOf(folders);
+    const statuses = await accountStatusesOf(fuelAccounts, folders);
+    const account = launchAccountOf({ requested: requestedAccount, home: loadFleet().control?.[spec.name as keyof NonNullable<FleetFile["control"]>]?.account ?? null, folders, status: (l) => statuses.get(l) ?? null });
+    if (account && read.failed.includes(account.label)) throw new ControlError(`ACCOUNT ${account.label}의 세션 목록을 읽지 못함 — 이미 떠 있는지 몰라 띄우지 않는다`, 502);
+    const plan = controlLaunchPlanOf(spec, read.rows, dir, account);
+    const r = await claude(plan.args, plan.cwd, { scope: true, configDir: plan.configDir ?? null });
     const jobId = jobIdOf(r.out);
     const ok = r.ok && !!jobId;
     const error = ok ? undefined : /not trusted/i.test(r.out) ? `${plan.cwd}를 신뢰하지 않음 — 그 폴더에서 claude를 한 번 열어 trust를 수락한다` : r.out.slice(0, 300) || "claude --bg 실패";
-    record({ t, kind: "control", op: "launch", session: spec.name, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: permissionModeOf(plan.args) ?? undefined, error });
-    return ok ? { ok, status: 200, jobId: jobId!, cwd: plan.cwd, permissionMode: "auto" } : { ok, status: 502, error };
+    record({ t, kind: "control", op: "launch", session: spec.name, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: permissionModeOf(plan.args) ?? undefined, ...(plan.account ? { account: plan.account } : {}), error });
+    return ok ? { ok, status: 200, jobId: jobId!, cwd: plan.cwd, permissionMode: "auto", account: plan.account ?? null } : { ok, status: 502, error };
   } catch (e) {
     if (e instanceof ControlError) return { ok: false, status: e.status, error: e.message };
     throw e;
@@ -441,9 +539,9 @@ export async function stopControl(name: string, by: string): Promise<ControlResu
       return r.ok ? { ok: true, status: 200, tmux: target.pane.session } : { ok: false, status: 502, error };
     }
     const row = target.row;
-    const r = await claude(["stop", row.id as string]);
+    const r = await claude(["stop", row.id as string], undefined, { configDir: configDirOfRow(row) }); // 그 세션의 폴더(ATC-147)
     const error = r.ok ? undefined : r.out.slice(0, 300) || "claude stop 실패";
-    record({ t, kind: "control", op: "stop", session: spec.name, by, ok: r.ok, jobId: row.id, cwd: row.cwd, error });
+    record({ t, kind: "control", op: "stop", session: spec.name, by, ok: r.ok, jobId: row.id, cwd: row.cwd, ...(row.account ? { account: row.account } : {}), error });
     return r.ok ? { ok: true, status: 200, jobId: row.id } : { ok: false, status: 502, error };
   } catch (e) {
     if (e instanceof ControlError) return { ok: false, status: e.status, error: e.message };
@@ -497,9 +595,10 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
   });
   app.post("/api/control/:name/launch", async (c: Context) => {
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
-    const r = await launchControl(c.req.param("name") ?? "", "SUPERVISOR");
+    const body = (await c.req.json().catch(() => ({}))) as { account?: unknown };
+    const r = await launchControl(c.req.param("name") ?? "", "SUPERVISOR", body?.account, (await getSnapshot()).fuelAccounts);
     if (!r.ok) return c.json({ error: r.error }, r.status as 400);
-    return c.json({ ok: true, jobId: r.jobId, tmux: r.tmux, cwd: r.cwd });
+    return c.json({ ok: true, jobId: r.jobId, tmux: r.tmux, cwd: r.cwd, account: r.account });
   });
   app.post("/api/control/:name/stop", async (c: Context) => {
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
@@ -514,11 +613,28 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
       const team = new RegExp(loadDispatchConfig().teamPattern, "i");
       const rows = (await agentRows()).filter((r) => team.test(r.name ?? ""));
       // stale: 멈췄는데 Claude Code가 아직 목록에 둔 job(ATC-93). 화면은 BG 대신 STALE로 보이고 LAUNCH를 막지 않는다
-      return c.json({ max: MAX_LAUNCHED, permissionModes: PERMISSION_MODES, sessions: rows.map(({ id, sessionId, name, kind, status, cwd, stale }) => ({ id, sessionId, name, kind, status, cwd, ...(stale ? { stale } : {}) })) });
+      return c.json({ max: MAX_LAUNCHED, permissionModes: PERMISSION_MODES, sessions: rows.map(({ id, sessionId, name, kind, status, cwd, stale, account }) => ({ id, sessionId, name, kind, status, cwd, ...(stale ? { stale } : {}), ...(account ? { account } : {}) })) });
     } catch (e) {
       if (e instanceof ControlError) return c.json({ error: e.message }, e.status as 502);
       throw e;
     }
+  });
+
+  // LAUNCH의 ACCOUNT 고르개(ATC-147): 등록된 ACCOUNT마다 띄울 수 있는지와 거절 사유. 등록부가 비면 빈 목록(고르개가 없다)
+  app.get("/api/fleet/launch-accounts", async (c) => {
+    const folders = accountFolders();
+    const statuses = await accountStatusesOf((await getSnapshot()).fuelAccounts, folders);
+    const dispatch = (await agentRowsOf(folders).catch(() => ({ rows: [] as AgentRow[], failed: [] as string[] }))).rows;
+    return c.json({
+      accounts: observedLabelsOn(folders)
+        ? folders.map((f) => {
+            const st = statuses.get(f.label);
+            const n = dispatch.filter((r) => r.kind === "background" && !r.stale && r.account === f.label).length;
+            const refused = st?.loggedIn === false ? "로그인되어 있지 않음" : st?.hold ? `FUEL hold 수준: ${st.hold}` : f.maxLaunched && n >= f.maxLaunched ? `ACCOUNT 상한 ${f.maxLaunched} 찼음` : null;
+            return { label: f.label, loggedIn: st?.loggedIn ?? null, refused, maxLaunched: f.maxLaunched ?? null, running: n };
+          })
+        : [],
+    });
   });
 
   app.post("/api/fleet/:registration/launch", async (c: Context) => {
@@ -527,7 +643,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
     const body = await c.req.json().catch(() => ({}));
     const r = await launchAircraft(await getSnapshot(), reg, body, "SUPERVISOR");
     if (!r.ok) return c.json({ error: r.error }, r.status as 400);
-    return c.json({ ok: true, registration: reg, jobId: r.jobId, cwd: r.cwd, permissionMode: r.permissionMode, model: r.model });
+    return c.json({ ok: true, registration: reg, jobId: r.jobId, cwd: r.cwd, permissionMode: r.permissionMode, model: r.model, account: r.account });
   });
 
   app.post("/api/fleet/:registration/stop", async (c: Context) => {

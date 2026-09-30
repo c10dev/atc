@@ -17,7 +17,7 @@ const LAUNCH_TTL_MS = 60_000; // FLIGHT RECORDER는 크니 1분에 한 번만 �
 const MISS_TTL_MS = 10 * 60_000; // 못 찾은 job은 10분 동안 다시 찾지 않는다
 const TAIL = 96 * 1024;
 
-type LaunchRow = { t: string; jobId?: string; cwd?: string; permissionMode?: string; model?: string };
+type LaunchRow = { t: string; jobId?: string; cwd?: string; permissionMode?: string; model?: string; account?: string };
 let launchCache: { at: number; rows: Map<string, LaunchRow> } | null = null;
 
 // REGISTRATION → 마지막으로 성공한 atc LAUNCH
@@ -29,7 +29,7 @@ function lastLaunches(now: number, teamPattern: string): Map<string, LaunchRow> 
     .sort((a, b) => a.t.localeCompare(b.t));
   for (const r of sorted) {
     if (r.kind !== "fleet") continue;
-    rows.set(regKey(r.aircraft, teamPattern), { t: r.t, ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.cwd ? { cwd: r.cwd } : {}), ...(r.permissionMode ? { permissionMode: r.permissionMode } : {}), ...(r.model ? { model: r.model } : {}) });
+    rows.set(regKey(r.aircraft, teamPattern), { t: r.t, ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.cwd ? { cwd: r.cwd } : {}), ...(r.permissionMode ? { permissionMode: r.permissionMode } : {}), ...(r.model ? { model: r.model } : {}), ...(r.account ? { account: r.account } : {}) });
   }
   launchCache = { at: now, rows };
   return rows;

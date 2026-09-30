@@ -12,6 +12,7 @@ interface AccountsState {
 interface Row {
   label: string;
   configDir: string;
+  maxLaunched: string; // ACCOUNT별 백그라운드 세션 상한(ATC-147). 비우면 없음
 }
 
 export function AccountsBlock() {
@@ -21,7 +22,7 @@ export function AccountsBlock() {
   const [saving, setSaving] = useState(false);
   const load = (d: AccountsState) => {
     setData(d);
-    setRows(Object.entries(d.registry).map(([label, e]) => ({ label, configDir: e.configDir })));
+    setRows(Object.entries(d.registry).map(([label, e]) => ({ label, configDir: e.configDir, maxLaunched: e.maxLaunched ? String(e.maxLaunched) : "" })));
   };
   useEffect(() => {
     let alive = true;
@@ -34,12 +35,12 @@ export function AccountsBlock() {
     };
   }, []);
 
-  const dirty = data ? JSON.stringify(rows.map((r) => [r.label.trim(), r.configDir.trim()])) !== JSON.stringify(Object.entries(data.registry).map(([l, e]) => [l, e.configDir])) : false;
+  const dirty = data ? JSON.stringify(rows.map((r) => [r.label.trim(), r.configDir.trim(), r.maxLaunched.trim()])) !== JSON.stringify(Object.entries(data.registry).map(([l, e]) => [l, e.configDir, e.maxLaunched ? String(e.maxLaunched) : ""])) : false;
   const save = async () => {
     setSaving(true);
     setError(null);
     try {
-      const accounts = Object.fromEntries(rows.filter((r) => r.label.trim() || r.configDir.trim()).map((r) => [r.label.trim(), { configDir: r.configDir.trim() }]));
+      const accounts = Object.fromEntries(rows.filter((r) => r.label.trim() || r.configDir.trim()).map((r) => [r.label.trim(), { configDir: r.configDir.trim(), ...(r.maxLaunched.trim() ? { maxLaunched: Number(r.maxLaunched) } : {}) }]));
       const res = await fetch("/api/accounts", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accounts }) });
       const body = await res.json();
       if (res.ok) load(body as AccountsState);
@@ -83,13 +84,14 @@ export function AccountsBlock() {
         <div key={i} className="acct-edit">
           <input className="mono" aria-label="ACCOUNT 라벨" placeholder="acct-1" maxLength={24} value={r.label} onChange={(e) => set(i, { label: e.target.value })} />
           <input className="mono" aria-label="설정 폴더" placeholder="/home/…/.claude-acct-1" maxLength={400} value={r.configDir} onChange={(e) => set(i, { configDir: e.target.value })} />
+          <input className="mono acct-cap" aria-label="ACCOUNT별 세션 상한" title="이 ACCOUNT의 백그라운드 세션 상한(비우면 기계 전체 상한만)" placeholder="상한" inputMode="numeric" maxLength={3} value={r.maxLaunched} onChange={(e) => set(i, { maxLaunched: e.target.value.replace(/\D/g, "") })} />
           <button type="button" onClick={() => setRows(rows.filter((_, j) => j !== i))}>
             삭제
           </button>
         </div>
       ))}
       <div className="acct-actions">
-        <button type="button" onClick={() => setRows([...rows, { label: "", configDir: "" }])}>
+        <button type="button" onClick={() => setRows([...rows, { label: "", configDir: "", maxLaunched: "" }])}>
           + ACCOUNT
         </button>{" "}
         <button type="button" disabled={!dirty || saving} onClick={save}>

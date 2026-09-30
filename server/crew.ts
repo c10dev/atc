@@ -43,7 +43,7 @@ export interface FleetFile {
   // 관제 세션의 ACCOUNT(ATC-60). 선택 항목 — 없으면 옛 파일 그대로. 이름(TOWER …) → {account}
   control?: Partial<Record<ControlName, { account?: string }>>;
   // ACCOUNT 등록부(ATC-146, accounts.ts): 라벨 → Claude Code 설정 폴더. 선택 항목 — 없으면 ~/.claude 하나
-  accounts?: Record<string, { configDir: string }>;
+  accounts?: Record<string, { configDir: string; maxLaunched?: number }>;
 }
 
 // vocado CLAUDE.md의 팀원 규칙을 옮긴 기본 CREW COMPLEMENT.

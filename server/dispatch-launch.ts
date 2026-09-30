@@ -18,6 +18,7 @@ export interface AbsentAircraft {
   jobId: string | null; // 그 LAUNCH의 job(대화 기록을 찾는다)
   permissionMode?: string; // 다시 띄울 때 같은 옵션
   model?: string;
+  account?: string; // 그 LAUNCH의 ACCOUNT(ATC-147). RESUME은 같은 ACCOUNT에서
   cut: CutInfo | null; // 그 세션의 마지막 턴이 사용 한도로 잘렸고 그 뒤 새 턴이 없다(ATC-86 cut)
 }
 
@@ -93,7 +94,7 @@ export function lastReportLineOf(text: string): string | null {
 
 // 세션이 없는 백그라운드 AIRCRAFT(순수). launches: REGISTRATION → 마지막 성공한 atc LAUNCH. 살아 있는 세션·RESTARTING·등록부에 없음·RETIRED는 뺀다
 export function absentOf(
-  launches: ReadonlyMap<string, { t: string; jobId?: string; permissionMode?: string; model?: string }>,
+  launches: ReadonlyMap<string, { t: string; jobId?: string; permissionMode?: string; model?: string; account?: string }>,
   input: { liveRegs: ReadonlySet<string>; restarting: ReadonlySet<string>; registered: ReadonlySet<string>; retired: ReadonlySet<string> },
   cutOf: (reg: string, jobId: string | null) => CutInfo | null = () => null,
 ): AbsentAircraft[] {
@@ -106,6 +107,7 @@ export function absentOf(
       jobId: l.jobId ?? null,
       ...(l.permissionMode ? { permissionMode: l.permissionMode } : {}),
       ...(l.model ? { model: l.model } : {}),
+      ...(l.account ? { account: l.account } : {}),
       cut: cutOf(reg, l.jobId ?? null),
     });
   }

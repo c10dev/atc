@@ -142,7 +142,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
   const staleOf = (reg: string) => control?.sessions.filter((x) => x.stale && (x.name ?? "").toUpperCase() === reg) ?? [];
 
   // 실패하면 사유를 돌려준다. 패널 안에 보인다(맨 위 오류 줄은 목록 아래쪽에서 안 보인다)
-  const launch = async (reg: string, input: { permissionMode: string; model: string }): Promise<string | null> => {
+  const launch = async (reg: string, input: { permissionMode: string; model: string; account?: string }): Promise<string | null> => {
     try {
       await api("POST", `/api/fleet/${encodeURIComponent(reg)}/launch`, input);
       setLaunching(null);

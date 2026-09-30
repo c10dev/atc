@@ -43,6 +43,7 @@ export interface FleetCandidate {
   aircraft: string | null; // REGISTRATION. ENTRY는 새로 들일 등록번호
   airport: string | null;
   configuration?: ConfigurationId; // ENTRY
+  account?: string; // ENTRY(ATC-147): 새 AIRCRAFT가 날 ACCOUNT. 등록부가 없으면 없다
   reasons: PlanReason[];
 }
 
@@ -85,6 +86,8 @@ export interface FleetInputs {
   now: number;
   // FUEL REMAINING(ATC-55·60)의 ACCOUNT마다 한 줄(snapshot.fuelAccounts). 없으면 FUEL을 보지 않는다(전과 같다)
   fuelAccounts?: FuelRemaining[];
+  // 등록된 ACCOUNT와 로그인 여부(ATC-147, loggedIn null=모름). 없거나 비면 ENTRY는 전과 같다(ACCOUNT를 고르지 않는다)
+  accountLogins?: { label: string; loggedIn: boolean | null }[];
   // CONTEXT SIZE(ATC-69): REGISTRATION → 살아 있는 세션의 대화 크기와 F5 가격표. 없으면 REFRESH를 내지 않는다
   context?: Map<string, ContextSize>;
   prices?: PriceTable | null;
@@ -152,10 +155,23 @@ const fuelInfoReason = (f: FuelRemaining, now: number): PlanReason => ({
   value: f.top.pct,
 });
 
+// ENTRY가 새 AIRCRAFT를 올릴 ACCOUNT(ATC-147, 순수). 등록부가 있으면: 등록되고 로그인이 안 됐다고 알려지지 않은(loggedIn이 false가 아닌) ACCOUNT 중
+// hold 수준(holdPct) 아래에서 사용이 가장 낮은 것(기록이 없으면 0으로, 같으면 라벨 순). 하나도 없으면 blocked 사유. 등록부가 없으면 registered false(전과 같다)
+export function entryAccountOf(i: Pick<FleetInputs, "accountLogins" | "fuelAccounts">): { registered: boolean; account: string | null; use: number | null; blocked: string | null } {
+  const logins = i.accountLogins ?? [];
+  if (!logins.length) return { registered: false, account: null, use: null, blocked: null };
+  const fuel = i.fuelAccounts ?? [];
+  const rows = logins.map((l) => ({ label: l.label, loggedIn: l.loggedIn, f: fuel.find((x) => x.account === l.label) ?? null }));
+  const ok = rows.filter((r) => r.loggedIn !== false && r.f?.level !== "hold").sort((a, b) => (a.f?.top.pct ?? 0) - (b.f?.top.pct ?? 0) || a.label.localeCompare(b.label));
+  if (ok.length) return { registered: true, account: ok[0].label, use: ok[0].f?.top.pct ?? null, blocked: null };
+  const why = rows.map((r) => `${r.label}: ${r.loggedIn === false ? "로그인 안 됨" : `FUEL hold${r.f ? ` ${Math.round(r.f.top.pct)}%` : ""}`}`).join(", ");
+  return { registered: true, account: null, use: null, blocked: `새 AIRCRAFT(ENTRY)가 날 ACCOUNT가 없음 — ${why}` };
+}
+
 // 열린 LAUNCH·ENTRY 제안의 ACCOUNT가 hold 수준이 됐으면 그 사유(syncFleetPlan이 expire한다)
-export function fuelExpiryOf(i: Pick<FleetInputs, "aircraft" | "fuelAccounts" | "now">, p: Pick<FleetProposal, "kind" | "aircraft">): string | null {
+export function fuelExpiryOf(i: Pick<FleetInputs, "aircraft" | "fuelAccounts" | "now">, p: Pick<FleetProposal, "kind" | "aircraft"> & { account?: string }): string | null {
   if (p.kind !== "LAUNCH" && p.kind !== "ENTRY") return null;
-  const f = fuelOfPlan(i, p.kind, p.aircraft);
+  const f = p.kind === "ENTRY" && p.account ? ((i.fuelAccounts ?? []).find((x) => x.account === p.account) ?? null) : fuelOfPlan(i, p.kind, p.aircraft); // ENTRY가 ACCOUNT를 정했으면 그 ACCOUNT(ATC-147)
   return f?.level === "hold" ? `${fuelHoldText(f, i.now)} — ACCOUNT가 FUEL hold 수준` : null;
 }
 
@@ -224,8 +240,10 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
       continue;
     }
     // 맞는 AIRCRAFT가 모두 FUEL hold면 아무것도 제안하지 않는다(ENTRY로 넘기지 않는다, ENGINEERING 결정).
-    // 새 세션은 이 기기에 로그인된 계정으로 열리는데 atc는 그 계정을 모른다 — 바닥난 계정에 새 세션을 띄우자는 제안이 될 수 있다
-    if (heldFits.length) {
+    // 새 세션은 이 기기에 로그인된 계정으로 열리는데 atc는 그 계정을 모른다 — 바닥난 계정에 새 세션을 띄우자는 제안이 될 수 있다.
+    // ACCOUNT 등록부가 있으면(ATC-147) 새 세션이 열릴 ACCOUNT를 atc가 골라 주므로 이 경우는 없다: 아래 ENTRY가 다른 ACCOUNT를 고른다
+    const entryAcct = entryAccountOf(i);
+    if (heldFits.length && !entryAcct.registered) {
       row.blocked = `${heldText} — ENTRY도 제안 안 함(새 세션이 열릴 계정을 모름)`;
       continue;
     }
@@ -246,8 +264,12 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
       row.blocked = open.length ? "맞는 등록 AIRCRAFT도 CONFIGURATION도 없음" : `tail로 정한 팀이 운항할 수 없음: ${mine.map((u) => `${u.flight}(tail:${u.tails.join(",")})`).join(", ")}`;
       continue;
     }
-    // 평소의 ENTRY(맞는 등록 AIRCRAFT가 없음)는 새 AIRCRAFT를 default ACCOUNT로 센다
-    const entryFuel = fuelOfPlan(i, "ENTRY", i.nextRegistration);
+    // 평소의 ENTRY(맞는 등록 AIRCRAFT가 없음)는 새 AIRCRAFT를 default ACCOUNT로 센다. 등록부가 있으면 고른 ACCOUNT(ATC-147)
+    if (entryAcct.registered && !entryAcct.account) {
+      row.blocked = entryAcct.blocked;
+      continue;
+    }
+    const entryFuel = entryAcct.registered ? ((i.fuelAccounts ?? []).find((x) => x.account === entryAcct.account) ?? null) : fuelOfPlan(i, "ENTRY", i.nextRegistration);
     if (entryFuel?.level === "hold") {
       row.blocked = `${fuelHoldText(entryFuel, i.now)} — 새 AIRCRAFT(ENTRY)가 들 ACCOUNT`;
       continue;
@@ -256,10 +278,12 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
     const c = pick.id === "general" ? i.defaults : CONFIGURATIONS[pick.id];
     out.push({
       key: `DEMAND|${code}`, kind: "ENTRY", aircraft: i.nextRegistration, airport: code, configuration: pick.id,
+      ...(entryAcct.account ? { account: entryAcct.account } : {}),
       reasons: [
         ...common(pick.served),
         { code: "no-fit", detail: `${code}에 운항하지 않는 등록 AIRCRAFT 중 맞는 것이 없음` },
         { code: "fits", detail: `${pick.id} CONFIGURATION: TYPE RATING ${c.ratings.join("·")}, CREW ${c.complement.map((m) => m.position).join("·")}` },
+        ...(entryAcct.account ? [{ code: "account", detail: `새 AIRCRAFT는 ACCOUNT ${entryAcct.account}에서(등록·로그인됨, hold 아래에서 사용이 가장 낮음${entryAcct.use !== null ? `: ${Math.round(entryAcct.use)}%` : ", FUEL 기록 없음"})`, value: entryAcct.account }] : []),
         ...(entryFuel?.level === "info" ? [fuelInfoReason(entryFuel, i.now)] : []),
       ],
     });
@@ -473,7 +497,7 @@ export function persistOf(pending: Record<string, string>, candidates: FleetCand
 // ── 기록(fleet-plan.jsonl, 추가만) ──
 
 export type FleetPlanOp =
-  | { op: "create"; id: string; key: string; kind: FleetPlanKind; aircraft: string | null; airport: string | null; configuration?: ConfigurationId; reasons: PlanReason[]; at: string }
+  | { op: "create"; id: string; key: string; kind: FleetPlanKind; aircraft: string | null; airport: string | null; configuration?: ConfigurationId; account?: string; reasons: PlanReason[]; at: string }
   | { op: "verdict"; id: string; verdict: "agree" | "disagree"; by: string; reason?: string; at: string }
   | { op: "expire"; id: string; reason?: string; at: string }
   | { op: "supersede"; id: string; by: string; at: string }
@@ -489,7 +513,7 @@ export interface ApproveOptions {
   stopSession?: boolean;
 }
 export type ExecStep =
-  | { action: "entry"; registration: string; configuration: ConfigurationId; base: string }
+  | { action: "entry"; registration: string; configuration: ConfigurationId; base: string; account?: string }
   | { action: "launch"; registration: string; permissionMode: PermissionMode; model: string | null }
   | { action: "stop"; registration: string }
   | { action: "aog"; registration: string; reason: string; until: string | null }
@@ -509,6 +533,7 @@ export interface FleetProposal {
   aircraft: string | null;
   airport: string | null;
   configuration?: ConfigurationId;
+  account?: string; // ENTRY(ATC-147)
   reasons: PlanReason[];
   at: string;
   status: FleetProposalStatus;
@@ -609,7 +634,7 @@ export function syncFleetPlan(
     if (opposite) continue;
     const id = nextFleetPlanId([...all, ...created]);
     if (o) ops.push({ op: "supersede", id: o.id, by: id, at });
-    const line: FleetPlanOp = { op: "create", id, key: c.key, kind: c.kind, aircraft: c.aircraft, airport: c.airport, ...(c.configuration ? { configuration: c.configuration } : {}), reasons: c.reasons, at };
+    const line: FleetPlanOp = { op: "create", id, key: c.key, kind: c.kind, aircraft: c.aircraft, airport: c.airport, ...(c.configuration ? { configuration: c.configuration } : {}), ...(c.account ? { account: c.account } : {}), reasons: c.reasons, at };
     ops.push(line);
     created.push({ ...c, id, at, status: "open", closedAt: null, verdict: null, closeReason: null, approval: null, execution: null });
   }
@@ -714,7 +739,7 @@ export function executionOf(p: FleetProposal, input: Record<string, unknown>, ct
       const o = launchOptions();
       return {
         steps: [
-          { action: "entry", registration: reg, configuration: p.configuration, base: p.airport },
+          { action: "entry", registration: reg, configuration: p.configuration, base: p.airport, ...(p.account ? { account: p.account } : {}) },
           { action: "launch", registration: reg, ...o },
         ],
         options: o,
