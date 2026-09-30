@@ -25,7 +25,7 @@ export const countsEn = (counts: string, unmarked: number) => counts + (unmarked
 export const codexFindingsEn = (head: string, countsE: string | null) =>
   countsE ? `Codex findings on head ${head} (${countsE}) — fix and get a re-review` : `Codex findings on head ${head} — fix and get a re-review`;
 export const codexP3OpenEn = (head: string, p3: number, open: number) =>
-  `${open} of ${p3} Codex P3 finding${p3 === 1 ? "" : "s"} on head ${head} have no resolution or reply — resolving the thread or replying lifts the block`;
+  `${open} of ${p3} Codex P3 finding${p3 === 1 ? "" : "s"} on head ${head} ${open === 1 ? "has" : "have"} no resolution or reply — resolving the thread or replying lifts the block`;
 export const carriedFindingsEn = (who: string, from: string) =>
   `${who} findings remain on the earlier commit ${from} (only main merges since) — fix and get a re-review`;
 export const mccFindingsEn = (head: string, p: [number, number, number], text: string) =>
@@ -33,9 +33,21 @@ export const mccFindingsEn = (head: string, p: [number, number, number], text: s
 export const extFindingsEn = (reviewer: string, security: boolean, whyEn: string, head: string, p: [number, number, number], text: string) =>
   `${reviewer} findings (${security ? "security, " : ""}${whyEn}, head ${head}, P0 ${p[0]} · P1 ${p[1]} · P2 ${p[2]}): ${text} — fix and get a re-review on the new head`;
 
+// 외부 리뷰 제외·보안 사유(externalGateOf가 한국어로 만든 값)의 영어. 아는 꼴이 아니고 한글이 남으면 자리표시로 바꾼다
+export function gateReasonEn(reason: string | null): string {
+  if (!reason) return "unspecified";
+  const r = reason.trim();
+  const m = /^(FLIGHT 없음|비밀·키 경로|키워드)(?:\s+(.*))?$/.exec(r);
+  if (m) {
+    const kind = m[1] === "FLIGHT 없음" ? "no FLIGHT" : m[1] === "키워드" ? "security keyword" : "secret or key path";
+    return m[2] ? `${kind} ${m[2]}` : kind;
+  }
+  return /[\u3131-\uD79D]/.test(r) ? "see the screen" : r;
+}
+
 // no-review·review-stale 뒤에 붙는 사유
-export const noteExcludedEn = (whyEn: string, reason: string | null) => `${whyEn} — excluded from external review (${reason}) — needs a Codex or SUPERVISOR review`;
-export const noteWaitingEn = (whyEn: string, security: string | null) => `${whyEn} — waiting for the landing review (REVIEW session${security ? `, security PR: ${security}` : ""})`;
+export const noteExcludedEn = (whyEn: string, reason: string | null) => `${whyEn} — excluded from external review (${gateReasonEn(reason)}) — needs a Codex or SUPERVISOR review`;
+export const noteWaitingEn = (whyEn: string, security: string | null) => `${whyEn} — waiting for the landing review (REVIEW session${security ? `, security PR: ${gateReasonEn(security)}` : ""})`;
 export const noteLimitEn = () => "Codex limit — needs a human review";
 export const noteMccEn = (head: string) => `waiting for the MCC INSPECTION of head ${head}`;
 export const noteReviewEn = (head: string, oldThumbs: boolean) => `head ${head} needs a review${oldThumbs ? " (the Codex thumbs-up is for an earlier commit)" : ""}`;

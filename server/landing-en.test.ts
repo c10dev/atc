@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { infoTextOf, stackedEn } from "./landing-en.ts";
+import { codexFindingsEn, codexP3OpenEn, countsEn, gateReasonEn, infoTextOf, stackedEn } from "./landing-en.ts";
 import { checkBlocks, type GhCheck, type GhPull, type GhReview, landingBlocks, mergeBlocks, reviewBlocks, stackedText } from "./landing.ts";
 import type { LandingBlockCode } from "./model.ts";
 
@@ -59,6 +59,39 @@ test("en: 리뷰 코드 no-review · review-stale · changes-requested · review
   assert.match(en(reviewBlocks(gh({ reviews: [] }), undefined, undefined, { from: OLD, by: "human", findings: true }))[0], /^human APPROVED findings remain/);
   // MCC INSPECTION 대기(리뷰 없음의 사유)
   assert.equal(en(reviewBlocks(gh({ reviews: [] }), undefined, undefined, undefined, { review: null }))[0], "no review: waiting for the MCC INSPECTION of head aaaaaaa");
+});
+
+test("en: Codex 한도 때 제외·대기·한도·지적 변형에도 한글이 없다 (MCC P1)", () => {
+  const unavailable = { why: "limit" as const, since: "2026-09-26T09:00:00Z" };
+  const lr = (verdict: "pass" | "findings", p1: number) => ({ at: "t", repo: "o/r", number: 389, head: HEAD, model: "claude-sonnet-5-5", family: "claude-sonnet-5-5", verdict, p0: 0, p1, p2: 0, text: "x" }) as never;
+  const none = gh({ reviews: [] });
+  const first = (ext: Parameters<typeof reviewBlocks>[1]) => en(reviewBlocks(none, ext))[0];
+  // 제외: 사유 종류마다
+  assert.equal(first({ unavailable, exclusion: "FLIGHT 없음", review: null }), "no review: Codex limit — excluded from external review (no FLIGHT) — needs a Codex or SUPERVISOR review");
+  assert.match(first({ unavailable, exclusion: "비밀·키 경로 .env.local", review: null }), /\(secret or key path \.env\.local\)/);
+  assert.match(first({ unavailable, exclusion: "키워드 grant", review: null }), /\(security keyword grant\)/);
+  assert.match(first({ unavailable, exclusion: "rating:SEC", review: null }), /\(rating:SEC\)/);
+  assert.match(first({ unavailable, exclusion: "비밀·키 경로", review: null }), /\(secret or key path\)/);
+  assert.match(first({ unavailable, exclusion: "알 수 없는 사유", review: null }), /\(see the screen\)/);
+  // 대기: 보안 PR이면 사유, 아니면 없음
+  assert.equal(first({ unavailable, exclusion: null, review: null }), "no review: Codex limit — waiting for the landing review (REVIEW session)");
+  assert.match(first({ unavailable, exclusion: null, security: "키워드 auth", review: null }), /security PR: security keyword auth\)/);
+  assert.match(first({ unavailable, exclusion: null, security: "Risk: High", review: null }), /security PR: Risk: High\)/);
+  // 한도 때 착륙 리뷰 지적(REVIEW 세션), 보안 PR이면 "security, "
+  assert.equal(
+    first({ unavailable, exclusion: null, security: "auth", review: lr("findings", 1) }),
+    "SONNET findings (security, Codex limit, head aaaaaaa, P0 0 · P1 1 · P2 0): x — fix and get a re-review on the new head",
+  );
+  assert.match(first({ unavailable: { why: "silent", since: "t" }, exclusion: null, review: lr("findings", 1) }), /Codex silent for 6 hours/);
+  // Codex 한도 댓글: 사람 리뷰 필요
+  const limited = gh({ reviews: [], codex: { headAt: "2026-09-26T14:30:33Z", thumbsAt: null, lastComment: { at: "2026-09-26T14:40:00Z", limit: true } } });
+  assert.equal(en(reviewBlocks(limited))[0], "no review: Codex limit — needs a human review");
+  // Codex 지적 등급 수: 미표시 건은 P2, P3만 남아 해결·답글 없음(1건과 여러 건)
+  assert.equal(codexFindingsEn("aaaaaaa", countsEn("P1 1 · P2 2", 1)), "Codex findings on head aaaaaaa (P1 1 · P2 2 (1 without a severity mark counted as P2)) — fix and get a re-review");
+  assert.match(codexP3OpenEn("aaaaaaa", 3, 1), /^1 of 3 Codex P3 findings on head aaaaaaa has no resolution/);
+  assert.match(codexP3OpenEn("aaaaaaa", 3, 2), /^2 of 3 Codex P3 findings on head aaaaaaa have no resolution/);
+  assert.match(codexP3OpenEn("aaaaaaa", 1, 1), /^1 of 1 Codex P3 finding on head aaaaaaa has no resolution/);
+  assert.equal(gateReasonEn(null), "unspecified");
 });
 
 test("en: draft · los, 정렬된 landingBlocks", () => {
