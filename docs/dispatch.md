@@ -466,6 +466,12 @@ STRIPS shows how far each AIRCRAFT's FLIGHT is, built on the OOOI milestones abo
 - **Screen** (`web/src/views/FlightProgress.tsx`, drawing only). One thin bar per STAND leg that has a FLIGHT: four segments, solid past, dashed current with a marker at elapsed/p75 (stopping at the segment end), faint dashed future. Next to it: `작업 42분 · 보통 30–60분 (BUILD·M, n=12)`, `착륙 대기 8분 · 보통 5–20분 (…)`, `작업 42분 · 데이터 부족`, `RTS 대기 5분`. Past p75 the marker and text turn amber and the text adds `길어짐`. Hover shows the milestone times (`milestoneTitle`); the bar has an `aria-label` with the same text. In `landing` the existing landing badge and AUTOLAND tag sit next to the bar (not computed again). HOLD, NORDO and NEEDS YOU keep their marks; AD HOC strips get no bar. Colours use `:root` tokens only.
 - Not built: a fuel gauge (tokens are not progress), GLOBE, GO AROUND on the bar.
 
+### STRIPS progress bar fixes as built (ATC-218)
+
+- **Class collision.** The bar's root class `.fp` was also FLEET PLAN's card class (`FleetPlan.css`, loaded with the FLEET tab and kept in the document) and an older rule in `styles.css`, so after the FLEET tab had been opened once every bar turned into a dark panel. The bar classes are now `flp`, `flp-bar`, `flp-seg`, `flp-fill`, `flp-mark`, `flp-text`, `flp-tags` (`FlightProgress.tsx`, `Teams.tsx`, `Teams.css`); nothing else in `web/src` uses them. The FLEET PLAN and older `.fp` rules are untouched.
+- **Done bars are quiet.** A `done` FLIGHT draws no bar, only a small `완료` in `--paper-muted`; the `aria-label` and the milestone `title` stay. PILOT'S DISCRETION: small text rather than nothing, so a strip still says the FLIGHT is finished.
+- **The current segment stands out.** Its elapsed part, up to the marker, is filled solid (`--paper-ink`, amber when late); the rest stays dashed, the future segments stay faint, the bar is 8 px and the marker 5 × 16 px. The model (`server/progress.ts`) is unchanged: no percentage, no ETA, the estimate only inside the current segment.
+
 ## Arrival reports as built (ATC-124)
 
 The CAPTAIN's final report used to be free text that OCC had to read and summarize. It now starts with a fixed header and fixed lines that the receiving session records with one command. atc does not read team messages: the session that received the report (OCC, or ENGINEERING) records it, like a READBACK.
