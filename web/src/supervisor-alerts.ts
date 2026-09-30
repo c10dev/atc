@@ -19,6 +19,7 @@ export const GROUP_LABEL: Record<AlertGroup, string> = {
   pending: "SUPERVISOR 대기 (PENDING·제안·HUMAN CHECK)",
   land: "PR 착륙 가능",
   rts: "RTS 결과",
+  recycle: "CONTROL RECYCLE 결과",
 };
 export const SOUND_LABEL: Record<SoundName, string> = { warning: "WARNING", caution: "CAUTION", call: "CALL (대기 항목)", done: "DONE (RTS 결과)" };
 
@@ -34,7 +35,7 @@ export interface AlertPrefs {
 
 export const DEFAULT_PREFS: AlertPrefs = {
   notify: false,
-  groups: { health: true, alert: true, following: true, pending: true, land: true, rts: true },
+  groups: { health: true, alert: true, following: true, pending: true, land: true, rts: true, recycle: true },
   sound: false,
   sounds: { warning: true, caution: true, call: true, done: false },
   volume: 0.6,

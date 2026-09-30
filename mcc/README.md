@@ -11,7 +11,7 @@ The control session that inspects atc's own PRs, lands `auto` and `flagged` ones
 | `.claude/agents/inspector.md` | The INSPECTOR sub-agent (Opus, read-only): reads one PR packet in a fresh context and returns the verdict block MCC records (ATC-135). English on purpose: it talks to MCC, not to the SUPERVISOR |
 | `inspector-guard.mjs` | The inspector's Bash guard: only `mcc packet <PR>` and `gh pr diff <PR> --repo …`, never `mcc inspect\|land\|rts\|escalate` |
 | `agent-guard.mjs` | Lets MCC call the `inspector` sub-agent and no other |
-| `context-cap.mjs` | Adds a notice to the prompt when the session's context passes 150k tokens, so MCC asks the SUPERVISOR to STOP and LAUNCH it |
+| `context-cap.mjs` | Adds a notice to the prompt when the session's context passes 150k tokens, and MCC reacts by `mcc queue` `recycle.mode` (`on`: atc restarts it itself, CONTROL RECYCLE; otherwise it only logs the cap) |
 | `read-guard.mjs` | Reads the atc repository only: not `.env*`, not the repository root with Grep, nothing outside it except the session's own tool output |
 | `packet-size.mjs`, `cost-report.mjs` | Measuring tools (read-only, run by a person): packet size in tokens for the last N inspected PRs; average context, $ per hour and $ per inspected PR for a time window ([docs/mcc.md](../docs/mcc.md) 8.2) |
 | `settings.test.mjs`, `inspector.test.mjs`, `cost-report.test.mjs` | Tests for the settings, the guard mode, the model rule (same as the server's), the read rule, the inspector guards, the context cap and the cost report |

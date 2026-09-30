@@ -11,7 +11,7 @@ import { mountJudges, runJudges } from "./judges/run.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { mountLandingReview } from "./landing-review.ts";
-import { mccLandInfo, mountMcc } from "./mcc-run.ts";
+import { mccLandInfo, mountMcc, rtsState } from "./mcc-run.ts";
 import { mountMilestones, runMilestones } from "./milestones-run.ts";
 import { mountUpdate } from "./update-run.ts";
 import { mountCrewChange } from "./crew-change.ts";
@@ -21,6 +21,9 @@ import { addLogbookFuel, aircraftContexts, mountFuel } from "./fuel-run.ts";
 import { fuelWatch } from "./fuel-watch.ts";
 import { mountFleetPlan, runFleetPlan } from "./fleet-plan-run.ts";
 import { launchAircraft, MAX_LAUNCHED, mountSessionControl } from "./session-control.ts";
+import { defaultActDeps, mountControlRecycle, runControlRecycle } from "./control-recycle-run.ts";
+import { readCursor } from "./controller.ts";
+import { loadMcc, mccDeploys, readMccRecords } from "./mcc.ts";
 import { mountHumanCheck } from "./human-check-run.ts";
 import { mountStandFree, proposalArrived, runStandFree, standFreeCandidates, standFreeTimeliness } from "./standfree-run.ts";
 import { mountFollowing } from "./following.ts";
@@ -184,6 +187,26 @@ setInterval(() => {
     .then((r) => r.started && console.log(`[atc] auto RTS started: ${r.why}`))
     .catch(() => {});
 }, 30_000).unref();
+// CONTROL RECYCLE(ATC-166): 스위치가 off(기본)면 아무것도 하지 않는다. shadow는 "재시작했을 것"만 FLIGHT RECORDER에 남긴다. 1분에 한 번
+setInterval(() => {
+  if (!current) return;
+  const s = current;
+  void runControlRecycle(s, {
+    now: Date.now,
+    towerEvents: () => eventLog.since(readCursor("controller")).events.length,
+    rtsBusy: async () => {
+      const last = rtsState(readMccRecords()).last;
+      if (last?.result === "running") return `RTS 진행 중(${last.to.slice(0, 7)})`;
+      // GitHub을 못 읽으면(main·CI를 모름) RTS도 시작하지 못하므로 상태를 못 읽은 것은 막지 않는다
+      const st = await update.status().catch(() => null);
+      if (st && (st.kind === "running" || st.kind === "starting")) return st.why;
+      if (st?.kind === "available" && mccDeploys(loadMcc().mode)) return `곧 시작함(${st.why})`;
+      return null;
+    },
+    act: defaultActDeps(() => current?.fuelAccounts),
+  }).catch((e) => console.error("[atc] control recycle failed:", e));
+}, 60_000).unref();
+mountControlRecycle(app);
 mountSettings(app);
 mountAccounts(app);
 mountJudges(app);

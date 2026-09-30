@@ -16,6 +16,6 @@ description: MCC 한 바퀴 — 규정이 바뀌었는지 확인하고, 열린 a
    - 답이 블록 모양이 아니거나 inspector가 실패하면 한 번 다시 부르고, 안 되면 LOG에 적고 넘어간다(직접 읽어 대신하지 않는다).
 3. `mcc queue`를 다시 읽고, `blocks`가 빈 PR마다 `node ../controller/atcctl.mjs mcc land <PR> --head <head>`. `LAND 안 함`이면 그 조건을 LOG에 적는다.
 4. 착륙시킨 바로 뒤에는 같은 바퀴에서 `mcc rts`를 치지 않는다(착륙한 커밋은 다음 바퀴에서 `rts.due`가 되면 1번에서 배포한다).
-5. MCC LOG를 한두 줄 남긴다. 아무 일 없으면 "특이 사항 없음". 프롬프트에 `[MCC CONTEXT CAP]` 안내가 붙었으면 CLAUDE.md "컨텍스트 CAP"대로 SUPERVISOR에게 STOP·LAUNCH를 청하는 말을 넣는다.
+5. MCC LOG를 한두 줄 남긴다. 아무 일 없으면 "특이 사항 없음". 프롬프트에 `[MCC CONTEXT CAP]` 안내가 붙었으면 CLAUDE.md "컨텍스트 CAP"대로 `mcc queue`의 `recycle.mode`를 본다: `on`이면 atc가 다시 시작하니 아무것도 청하지 않고, 아니면 "컨텍스트 <n>k — CAP 초과"만 적는다.
 
 코드를 고치지 않고, 팀 세션에 메시지를 보내지 않고, Linear에 쓰지 않는다. guard가 막으면 다른 방법을 찾지 말고 LOG에 적는다.

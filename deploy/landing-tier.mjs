@@ -34,6 +34,7 @@ export const SIDE_EFFECT = [
   ["server/update-run.ts", "RTS 유닛 시작 시점(UPDATE 바)"],
   ["server/voice-run.ts", "TTS 렌더링 시점(GET /api/voice/*)과 상태 폴더 voice-cache/ 쓰기"],
   ["server/fleet-plan-run.ts", "FLEET PLAN 실행: AIRCRAFT 세션 시작·정지 시점"],
+  ["server/control-recycle-run.ts", "CONTROL RECYCLE 실행: 관제 세션 정지·시작 시점(ATC-166, 스위치 off 기본)"],
   ["server/index.ts", "AUTOLAND 한 주기 실행 배선(머지·브랜치 갱신 시점)"],
 ];
 // 부작용을 일으키는 export(이름, 정의한 파일, 하는 일). 이것을 import하는 server 파일은 SIDE_EFFECT나 READ_ONLY에 올라야 한다(landing-tier.test.mjs)

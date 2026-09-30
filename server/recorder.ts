@@ -42,6 +42,9 @@ export type RecordLine =
   | { t: string; kind: "fleet-plan"; op: "mode:shadow" | "mode:approval"; by: string }
   // 관제 세션 LAUNCH·STOP(docs/fleet.md 8.5.1)
   | { t: string; kind: "control"; op: "launch" | "stop"; session: string; by: string; ok: boolean; jobId?: string; tmux?: string; cwd?: string; permissionMode?: string; account?: string; error?: string }
+  // CONTROL RECYCLE(ATC-166): atc가 관제 세션을 안전한 순간에 STOP·LAUNCH한 결과(shadow면 result would). 스위치 바꿈은 recycle-mode
+  | { t: string; kind: "control"; op: "recycle"; session: string; by: string; mode: "shadow" | "on"; ok: boolean; contextBefore: number; reason: string; result: "recycled" | "would" | "stop-failed" | "stop-unconfirmed" | "launch-failed"; account?: string; jobId?: string; error?: string }
+  | { t: string; kind: "control"; op: "recycle-mode"; by: string; from: string; to: string }
   | { t: string; kind: "atfm"; op: string; id?: string; airport?: string; data?: Record<string, unknown> };
 
 const DIR = join(config.stateDir, "flight-recorder");
