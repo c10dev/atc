@@ -27,6 +27,15 @@ export const RECYCLE_ALERT_MS = 6 * 3_600_000;
 const recentRecycles = (now: number) =>
   readRecords(now - RECYCLE_ALERT_MS).flatMap((r) => (r.kind === "control" && r.op === "recycle" ? [r] : []));
 
+// REPOSITION(ATC-179): 최근 6시간의 옮김과 auto → approval 기록
+const repositionAlertInputs = (now: number) => {
+  const rs = readRecords(now - RECYCLE_ALERT_MS);
+  return {
+    repositions: rs.flatMap((r) => (r.kind === "fleet" && r.op === "reposition" && r.from && r.to ? [{ t: r.t, aircraft: r.aircraft, from: r.from, to: r.to, ok: r.ok, by: r.by, stage: r.stage, error: r.error }] : [])),
+    repositionFlaps: rs.flatMap((r) => (r.kind === "reposition" && r.op === "mode" && r.by === "auto" ? [{ t: r.t, reason: r.reason ?? "flapping" }] : [])),
+  };
+};
+
 export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
   return supervisorAlertsOf({
     sessions: s.sessions,
@@ -40,6 +49,7 @@ export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
     schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
     recycles: recentRecycles(now),
     overCap: overCapNow(),
+    ...repositionAlertInputs(now),
     waiting: waitStuckNow(),
   });
 }

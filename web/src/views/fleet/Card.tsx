@@ -44,6 +44,18 @@ function blockTime(min: number) {
 }
 
 // TARGETS 옆 실적(LOGBOOK, docs/fleet.md 7.2). 보여 주기만 한다.
+// REPOSITION(ATC-179): 마지막 옮김 한 줄(base 옆). 실패한 옮김은 그렇게 적는다
+type LastReposition = { from: string; to: string; at: string; by: string; ok: boolean };
+function RepositionNote({ r }: { r: LastReposition | null }) {
+  if (!r) return null;
+  return (
+    <span className="faint" title={`REPOSITION ${r.from} → ${r.to} · ${r.by} · ${r.at.slice(0, 16).replace("T", " ")}Z${r.ok ? "" : " · 실패"}`}>
+      ← {r.from}
+      {r.ok ? "" : " (실패)"} · {timeAgo(r.at, Date.now())}
+    </span>
+  );
+}
+
 function Actuals({ a }: { a: AircraftView }) {
   const x = a.actuals;
   const fuelOf = new Map((a.fuelRecent ?? []).map((f) => [f.key, f]));
@@ -152,6 +164,7 @@ export function Card({
         <b className="fl-callsign">{a.callsign}</b>
         <span className="mono faint">{a.registration}</span>
         {a.base && <span className="apt">{a.base}</span>}
+        <RepositionNote r={(a as AircraftView & { lastReposition?: LastReposition | null }).lastReposition ?? null} />
         <span className="fl-status">{statusOf(a)}</span>
         {origin && (
           <span className={`fl-origin mono o-${origin.origin}`} title={origin.title}>

@@ -24,6 +24,14 @@ const MCC_WARN = {
   rts: "⚠ MCC는 착륙하지 않는다(would-land만): 사용자가 손으로 머지한 main을 서버가 atc-rts 유닛으로 7700에 스스로 RETURN TO SERVICE(CI 통과, 5분 간격, 상태 확인 실패면 ROLLBACK 후 멈춤). package·유닛 파일 변경은 사람이 배포.",
 } as const;
 
+// FLEET PLAN REPOSITION 모드마다 한 줄(ATC-179, docs/fleet.md 8.6)
+const REPOSITION_WARN = {
+  off: "꺼짐: 쉬는 AIRCRAFT의 base를 옮기자는 제안을 내지 않는다.",
+  shadow: "기본: 조건이 맞으면 \"옮겼을 것\"(would-reposition)을 FLIGHT RECORDER에만 남긴다. 아무것도 멈추거나 띄우지 않는다.",
+  approval: "조건이 맞으면 FLEET PLAN에 REPOSITION 카드를 낸다. SUPERVISOR가 승인하면 그 AIRCRAFT를 멈추고 base를 바꿔 새 AIRPORT 저장소에서 다시 띄운다.",
+  auto: "⚠ 카드를 승인 없이 atc가 스스로 실행한다(하루 상한, AIRCRAFT마다 minDwell, 옮길 때마다 알림). 같은 AIRCRAFT가 minDwell 안에 되돌아가려 하면 approval로 돌아온다.",
+} as const;
+
 // CONTROL RECYCLE 모드마다 한 줄(ATC-166, docs/control-recycle.md)
 const RECYCLE_WARN = {
   off: "꺼짐(기본): 컨텍스트가 CAP을 넘어도 atc는 관제 세션을 건드리지 않는다. MCC는 MCC LOG에 STOP·LAUNCH를 청한다.",
@@ -313,6 +321,29 @@ export function AutomationSettings({ server, save }: { server: Loaded; save: Sav
           )}
         </ServerRows>
         <MccGatePanel />
+      </Block>
+
+      <Block code="REPOSITION" label="쉬는 AIRCRAFT의 소속 AIRPORT 옮기기(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) =>
+            s.fleetPlan ? (
+              <>
+                <EditRow
+                  label="REPOSITION"
+                  env="fleet-plan.reposition"
+                  value={s.fleetPlan.reposition}
+                  note={`fleet-plan.json · 자동일 때 하루 ${s.fleetPlan.repositionDailyMax}건까지 · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈`}
+                  input={{ kind: "select", options: ["off", "shadow", "approval", "auto"] }}
+                  guard={guardOf("reposition", s.fleetPlan.reposition, REPOSITION_WARN)}
+                  onSave={(v) => save({ fleetPlanReposition: v as "off" | "shadow" | "approval" | "auto" })}
+                />
+                <ModeLines modes={["off", "shadow", "approval", "auto"] as const} current={s.fleetPlan.reposition} lines={REPOSITION_WARN} />
+              </>
+            ) : (
+              <p className="settings-hint">서버가 REPOSITION을 아직 모름(옛 서버)</p>
+            )
+          }
+        </ServerRows>
       </Block>
 
       <Block code="CONTROL RECYCLE" label="관제 세션 자동 재시작(SUPERVISOR 전용)">

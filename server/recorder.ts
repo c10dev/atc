@@ -37,7 +37,11 @@ export type RecordLine =
   // ATFM(docs/atfm.md): 출발 중지 시작·끝, CI 소요 시간, BEHIND 전이, 그림자 판정(eligible, s3-eligible), 되돌린 라벨, 스위치
   // 세션 조종: LAUNCH·STOP 결과(docs/fleet.md 8.5). FLEET PLAN 승인(8.7)은 entry·aog·return·retire도, by는 "FLEET PLAN F-0001"
   // proposal: DISPATCH launch 카드 승인으로 띄웠으면 그 제안 id(ATC-129)
-  | { t: string; kind: "fleet"; op: "launch" | "stop" | "entry" | "aog" | "return" | "retire" | "account-change"; aircraft: string; by: string; ok: boolean; jobId?: string; cwd?: string; permissionMode?: string; model?: string; account?: string; from?: string; to?: string; error?: string; proposal?: string }
+  // reposition(ATC-179): AIRCRAFT의 base를 옮김(STOP·base 쓰기·LAUNCH를 한 사건으로). by는 supervisor | auto, stage는 실패한 단계(precheck는 STOP 전 거절)
+  | { t: string; kind: "fleet"; op: "launch" | "stop" | "entry" | "aog" | "return" | "retire" | "account-change" | "reposition"; aircraft: string; by: string; ok: boolean; jobId?: string; cwd?: string; permissionMode?: string; model?: string; account?: string; from?: string; to?: string; error?: string; proposal?: string; stage?: "stop" | "base" | "launch" | "precheck" }
+  // REPOSITION 스위치와 그림자(ATC-179): mode는 스위치 바꿈(auto가 flapping으로 approval이 되면 by auto), would는 shadow의 "옮겼을 것"
+  | { t: string; kind: "reposition"; op: "mode"; by: string; from: string; to: string; reason?: string }
+  | { t: string; kind: "reposition"; op: "would"; aircraft: string; from: string; to: string; reasons: string[] }
   // FLEET PLAN 모드 전환(8.7). 4단계가 승인 운용 기간을 잰다
   | { t: string; kind: "fleet-plan"; op: "mode:shadow" | "mode:approval"; by: string }
   // 관제 세션 LAUNCH·STOP(docs/fleet.md 8.5.1)

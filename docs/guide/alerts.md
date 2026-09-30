@@ -17,6 +17,7 @@ atc가 이미 찾아내는 것을 알릴 뿐, 새로 찾아내지는 않습니�
 | PR 착륙 가능 | CLEARED TO LAND가 된 PR | 조용함 |
 | RTS 결과 | RETURN TO SERVICE 성공·거절·ROLLBACK·실패 | 성공은 DONE, 실패·ROLLBACK은 WARNING, 거절은 CAUTION |
 | CONTROL RECYCLE 대기 | 컨텍스트가 CAP을 넘었는데 `waitAlertMin`(기본 60분) 넘게 재시작하지 못함. 막는 것이 글에 적힌다 | CAUTION. 기다리거나, 괜찮으면 FLEET의 CONTROL SESSIONS에서 손으로 STOP·LAUNCH |
+| REPOSITION | atc가 AIRCRAFT를 자동으로 옮김, 옮기기 실패, auto가 flapping으로 approval이 됨(SUPERVISOR가 승인한 성공은 알리지 않음) | 자동 옮김·되돌림은 ADVISORY, 실패는 CAUTION(LAUNCH만 실패하면 base는 바뀐 채) |
 | CONTROL RECYCLE 결과 | atc가 관제 세션을 재시작함(`on`일 때만. shadow의 기록은 알리지 않음) | 성공은 ADVISORY, 실패는 CAUTION(LAUNCH만 실패했으면 세션이 멈춘 채. STOP을 확인하지 못했을 때도 LAUNCH를 시도하고, 거절되면 세션이 내려갔을 수 있다고 알린다) |
 
 알림에는 AIRCRAFT, FLIGHT, 한 줄 문구와 **다음 한 걸음**이 들어 있습니다. 알림을 누르면 atc 탭이 앞으로 오고 그 항목이 있는 탭이 열립니다.
