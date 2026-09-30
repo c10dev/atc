@@ -17,6 +17,7 @@ import {
   entryAccountOf,
   fuelExpiryOf,
   isManual,
+  isStale,
   PlanError,
   persistOf,
   runwayOf,
@@ -740,4 +741,141 @@ test("ENTRY ACCOUNT: 제안이 account를 실어 나르고, 그 ACCOUNT가 hold�
   assert.equal(fuelExpiryOf({ ...i, now: later }, all[0]), null);
   const held = { ...i, fuelAccounts: [fuelOf("acct-2", 99)], now: later };
   assert.match(fuelExpiryOf(held, all[0])!, /\(account acct-2\).*FUEL hold 수준$/);
+});
+
+// ── ACCOUNT CHANGE(ATC-148): FLIGHT 사이의 AIRCRAFT를 여유 있는 ACCOUNT로 ──
+const RESET_SOON = new Date(NOW + 5 * HOUR).toISOString();
+const bgFact = (reg: string) => ({ registration: reg, kind: "background", id: reg.slice(-1).toLowerCase(), startedAt: NOW - DAY });
+const fuelAt = (account: string, pct: number) => fuelOf(account, pct, { group: account });
+// TEAM_H는 home acct-2인데 acct-2가 hold. 등록 ACCOUNT 셋. 세션은 백그라운드로 떠 있고 쉬는 중
+const changeBase = (over: Partial<FleetInputs> = {}, aircraft: AircraftView[] = [view("TEAM_H", { account: "acct-2", observedAccount: null })]): FleetInputs =>
+  inputs({
+    aircraft,
+    sessions: [bgFact("TEAM_H")],
+    lastActive: new Map([["TEAM_H", ago(2 * HOUR)]]),
+    fuelAccounts: [fuelAt("acct-2", 97), fuelAt("acct-1", 40), fuelAt("acct-3", 10)],
+    accountLogins: logged(["acct-1", true], ["acct-2", true], ["acct-3", true]),
+    ...over,
+  });
+const changes = (i: FleetInputs) => fleetPlanOf(i).candidates.filter((c) => c.kind === "ACCOUNT CHANGE");
+
+test("ACCOUNT CHANGE: hold인 ACCOUNT의 쉬는 AIRCRAFT를 사용이 가장 낮은 ACCOUNT로(셋 중). 사유가 두 ACCOUNT의 사용과 reset을 적는다", () => {
+  const [c] = changes(changeBase());
+  assert.equal(c.account, "acct-3"); // acct-1 40%, acct-3 10% 중 가장 낮은 것
+  assert.deepEqual([c.key, c.kind, c.aircraft], ["ACCOUNT CHANGE|TEAM_H", "ACCOUNT CHANGE", "TEAM_H"]);
+  const by = Object.fromEntries(c.reasons.map((r) => [r.code, r.detail]));
+  assert.match(by.account, /^FUEL 사용 97% \(account acct-2\) until 21:00Z — hold 수준$/);
+  assert.match(by.target, /^옮길 ACCOUNT acct-3: 사용 10%\(reset 21:00Z\).*사용이 가장 낮음\(다른 후보 acct-1 40%\)/);
+  assert.match(by.between, /FLIGHT 사이/);
+  assert.match(by.cold, /ACCOUNT CHANGE/);
+  assert.match(by.session, /ACCOUNT acct-2에서 멈추고 ACCOUNT acct-3에서.*home ACCOUNT acct-2는 그대로/);
+  // 관찰한 ACCOUNT를 쓴다: home은 acct-1(여유)이지만 세션이 acct-2 폴더에서 돌고 있다
+  const [o] = changes(changeBase({}, [view("TEAM_H", { account: "acct-1", observedAccount: "acct-2" })]));
+  assert.equal(o.account, "acct-3");
+});
+
+test("ACCOUNT CHANGE: 오래 남은 LIMIT도 이유가 된다(reset이 accountChangeLimitMin 넘게 남았을 때만). 잘린 턴은 RESUME이라 옮기지 않는다", () => {
+  const ok = { fuelAccounts: [fuelAt("acct-2", 50), fuelAt("acct-1", 40)], accountLogins: logged(["acct-1", true], ["acct-2", true]) };
+  const limit = (resetsAt: string, over = {}) => view("TEAM_H", { account: "acct-2", observedAccount: null, health: { ...health("LIMIT"), resetsAt, ...over } as never });
+  const [c] = changes(changeBase(ok, [limit(RESET_SOON)]));
+  assert.equal(c.account, "acct-1");
+  assert.match(c.reasons.find((r) => r.code === "limit")!.detail, /ACCOUNT acct-2: LIMIT — reset 17:00Z까지 .*남음\(기준 60분\)/);
+  assert.equal(changes(changeBase(ok, [limit(new Date(NOW + 30 * MIN).toISOString())])).length, 0); // 곧 풀린다
+  assert.equal(changes(changeBase(ok, [limit(RESET_SOON, { cut: true })])).length, 0); // 한도로 잘린 턴 = RESUME(같은 ACCOUNT)
+});
+
+test("ACCOUNT CHANGE: FLIGHT 중이거나 점유·PR이 있거나 FLIGHT를 받을 예정이면 없다. 살아 있는 FLIGHT는 옮기지 않는다", () => {
+  const base = (over: Partial<AircraftView>) => changeBase({}, [view("TEAM_H", { account: "acct-2", observedAccount: null, ...over })]);
+  assert.equal(changes(base({})).length, 1);
+  assert.equal(changes(base({ status: "busy" })).length, 0);
+  assert.equal(changes(base({ flying: ["ATC-5"] })).length, 0);
+  assert.equal(changes(base({ flights: [{ key: "ATC-5", title: null, kept: true }] })).length, 0);
+  assert.equal(changes({ ...changeBase(), openPrs: new Set(["TEAM_H"]) }).length, 0);
+  // 이번 계획에서 FLIGHT를 받으면(수요) 옮기지 않는다
+  const assign = { flight: "ATC-9", aircraft: "TEAM_H", aircraftName: "TEAM_H", airport: "ATCC", score: 1, factors: [] } as never;
+  assert.equal(changes({ ...changeBase(), plan: { assign: [assign], unserved: [] } }).length, 0);
+  // 방금 띄웠으면(minDwell) 쉰다
+  assert.equal(changes({ ...changeBase(), dwell: new Map([["TEAM_H", { op: "launch" as const, at: ago(30 * MIN) }]]) }).length, 0);
+  // 백그라운드 세션이 아니면 atc가 옮기지 못한다
+  assert.equal(changes({ ...changeBase(), sessions: [{ ...bgFact("TEAM_H"), kind: "interactive" }] }).length, 0);
+});
+
+test("ACCOUNT CHANGE: 옮길 ACCOUNT가 없으면(하나도 여유 없음·로그인 안 됨·상한) 없다. 등록부가 없어도 없다", () => {
+  const solo = (login: [string, boolean | null][], fuel: FuelRemaining[]) => changeBase({ accountLogins: logged(["acct-2", true], ...login), fuelAccounts: fuel });
+  assert.equal(changes(solo([["acct-1", true]], [fuelAt("acct-2", 97), fuelAt("acct-1", 85)])).length, 0); // infoPct 이상
+  assert.equal(changes(solo([["acct-1", true]], [fuelAt("acct-2", 97), fuelAt("acct-1", 96)])).length, 0); // hold
+  assert.equal(changes(solo([["acct-1", false]], [fuelAt("acct-2", 97), fuelAt("acct-1", 5)])).length, 0); // 로그인 안 됨
+  assert.equal(changes(solo([["acct-1", null]], [fuelAt("acct-2", 97)])).length, 1); // 로그인을 모르면 막지 않는다
+  const capped = changeBase({ accountLogins: [{ label: "acct-2", loggedIn: true }, { label: "acct-1", loggedIn: true, maxLaunched: 2, running: 2 }, { label: "acct-3", loggedIn: false }] });
+  assert.equal(changes(capped).length, 0); // 상한 참 + 로그인 안 됨
+  assert.equal(changes(changeBase({ accountLogins: [] })).length, 0); // 등록부 없음
+  assert.equal(changes(changeBase({}, [view("TEAM_H", { account: null, observedAccount: null })])).length, 0); // ACCOUNT를 모름
+  // 이유가 없으면(hold도 LIMIT도 아님) 없다
+  assert.equal(changes(changeBase({ fuelAccounts: [fuelAt("acct-2", 50), fuelAt("acct-1", 40)] })).length, 0);
+});
+
+test("ACCOUNT CHANGE: home이 아닌 ACCOUNT에서 돌다가 home이 infoPct 아래로 돌아오면 home로 돌아가자는 평범한 제안(자동 아님)", () => {
+  const away = [view("TEAM_H", { account: "acct-2", observedAccount: "acct-1" })];
+  const back = changes(changeBase({ fuelAccounts: [fuelAt("acct-2", 30), fuelAt("acct-1", 60), fuelAt("acct-3", 10)] }, away));
+  assert.equal(back.length, 1);
+  assert.equal(back[0].account, "acct-2"); // acct-3가 더 낮아도 home로 돌아가는 것만이 이유면 home로
+  assert.match(back[0].reasons.find((r) => r.code === "home")!.detail, /home ACCOUNT acct-2: 사용 30% — infoPct 아래로 돌아옴/);
+  // home이 아직 차 있으면 없다
+  assert.equal(changes(changeBase({ fuelAccounts: [fuelAt("acct-2", 88), fuelAt("acct-1", 60)] }, away)).length, 0);
+  // 옮겨 가 있는 ACCOUNT가 hold이면 가장 낮은 곳(home이 아니어도)
+  assert.equal(changes(changeBase({ fuelAccounts: [fuelAt("acct-2", 88), fuelAt("acct-1", 99), fuelAt("acct-3", 10)] }, away))[0].account, "acct-3");
+});
+
+test("ACCOUNT CHANGE: 옮길 ACCOUNT가 있으면 주간 LIMIT만으로 AOG를 제안하지 않는다", () => {
+  const weekly = view("TEAM_H", { account: "acct-2", observedAccount: null, health: { ...health("LIMIT"), weekly: true, resetsAt: RESET_SOON } as never });
+  assert.deepEqual(kinds(fleetPlanOf(changeBase({}, [weekly])).candidates), ["ACCOUNT CHANGE TEAM_H"]);
+  const none = changeBase({ accountLogins: logged(["acct-2", true]) }, [weekly]);
+  assert.deepEqual(kinds(fleetPlanOf(none).candidates), ["AOG TEAM_H"]); // 옮길 곳이 없으면 전과 같다
+});
+
+test("ACCOUNT CHANGE: 열린 제안은 AIRCRAFT가 FLIGHT를 받거나 옛 ACCOUNT가 풀리면 expire, 옮길 ACCOUNT가 바뀌면 새 제안, 옮길 ACCOUNT가 차면 expire", () => {
+  const cfg = FLEET_PLAN_DEFAULTS;
+  const [c] = changes(changeBase());
+  const all = foldFleetPlan(syncFleetPlan([], [c], [c], NOW, cfg));
+  assert.equal(all[0].account, "acct-3");
+  const later = NOW + 10 * MIN;
+  // 이어서 같은 후보면 그대로
+  assert.deepEqual(syncFleetPlan(all, [c], [c], later, cfg), []);
+  // AIRCRAFT가 FLIGHT를 받으면 후보가 사라진다 → expire
+  const busy = fleetPlanOf(changeBase({}, [view("TEAM_H", { account: "acct-2", observedAccount: null, status: "busy", flying: ["ATC-7"] })])).candidates;
+  assert.deepEqual(syncFleetPlan(all, busy, [], later, cfg).map((o) => `${o.op} ${(o as { reason?: string }).reason ?? ""}`), ["expire 조건이 풀림"]);
+  // 옛 ACCOUNT의 창이 풀리면(hold 아래) 후보가 사라진다 → expire
+  const reset = fleetPlanOf(changeBase({ fuelAccounts: [fuelAt("acct-2", 20), fuelAt("acct-1", 40), fuelAt("acct-3", 10)] })).candidates;
+  assert.deepEqual(syncFleetPlan(all, reset, [], later, cfg).map((o) => o.op), ["expire"]);
+  // 옮길 ACCOUNT가 바뀌면 같은 AIRCRAFT라도 다른 제안: 옛 것은 supersede
+  const other = changes(changeBase({ fuelAccounts: [fuelAt("acct-2", 97), fuelAt("acct-1", 40), fuelAt("acct-3", 70)] }))[0];
+  assert.equal(other.account, "acct-1");
+  assert.deepEqual(syncFleetPlan(all, [other], [other], later, cfg).map((o) => `${o.op} ${o.id}`), ["supersede F-0001", "create F-0002"]);
+  // 옮길 ACCOUNT가 infoPct 이상이 되면 후보가 같아도 expire(사유는 FUEL)
+  const i = { ...changeBase({ fuelAccounts: [fuelAt("acct-2", 97), fuelAt("acct-3", 85)] }), now: later };
+  const ops = syncFleetPlan(all, [c], [], later, cfg, (p) => fuelExpiryOf(i, p));
+  assert.match((ops[0] as { reason: string }).reason, /\(account acct-3\).*옮길 ACCOUNT에 여유가 없음$/);
+  assert.equal(fuelExpiryOf({ ...changeBase(), now: later }, all[0]), null);
+  // isStale: 최근 주기가 다른 ACCOUNT로 내면 이 제안은 낡았다
+  assert.equal(isStale(all[0], [c], at(-MIN), NOW), false);
+  assert.equal(isStale(all[0], [other], at(-MIN), NOW), true);
+});
+
+test("executionOf ACCOUNT CHANGE: 옛 ACCOUNT에서 STOP 뒤 새 ACCOUNT에서 LAUNCH(마지막 LAUNCH의 옵션). FLIGHT 중·백그라운드 아님·옮길 ACCOUNT 없음은 거절", () => {
+  const [c] = changes(changeBase());
+  const p = foldFleetPlan([created("F-0001", "ACCOUNT CHANGE", "TEAM_H", { account: c.account } as Partial<FleetPlanOp>)])[0];
+  const latest: FleetCandidate[] = [{ ...c, key: p.key }];
+  const ok = (over: Partial<ExecContext> = {}) => ctx({ latest, ...over });
+  const plan = executionOf(p, {}, ok({ lastLaunch: new Map([["TEAM_H", { permissionMode: "acceptEdits", model: "sonnet" }]]) }));
+  assert.deepEqual(plan.steps, [
+    { action: "stop", registration: "TEAM_H" },
+    { action: "launch", registration: "TEAM_H", permissionMode: "acceptEdits", model: "sonnet", account: "acct-3" },
+  ]);
+  // 승인하는 사이 FLIGHT를 받았으면 거절(최근 주기가 아직 안 봤어도)
+  assert.match(refused(() => executionOf(p, {}, ok({ aircraft: [view("TEAM_H", { flying: ["ATC-7"] })] }))), /^409 TEAM_H가 FLIGHT 중\(ATC-7\) — 살아 있는 FLIGHT는 옮기지 않는다/);
+  assert.match(refused(() => executionOf(p, {}, ok({ aircraft: [view("TEAM_H", { status: "busy" })] }))), /FLIGHT 중/);
+  assert.match(refused(() => executionOf(p, {}, ok({ sessions: [bgRow("TEAM_H", "interactive")] }))), /백그라운드가 아닌 세션/);
+  assert.match(refused(() => executionOf({ ...p, account: undefined }, {}, ok({ latest: [{ ...c, key: p.key, account: undefined }] }))), /옮길 ACCOUNT가 없음/);
+  // 다른 제안 열쇠는 낡음
+  assert.match(refused(() => executionOf(p, {}, ctx({ latest: [{ ...c, key: p.key, account: "acct-1" }] }))), /^409 조건이 바뀜/);
 });

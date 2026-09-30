@@ -6,7 +6,7 @@ import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import "./FleetPlan.css";
 
-// FLEET PLAN(docs/fleet.md 8.6·8.7): atc가 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·REFRESH·AOG·RETIRE·RETURN을 제안한다.
+// FLEET PLAN(docs/fleet.md 8.6·8.7): atc가 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·REFRESH·ACCOUNT CHANGE·AOG·RETIRE·RETURN을 제안한다.
 // 그림자: SUPERVISOR는 동의·반대만 한다. 승인 운용: 승인(실행)하면 카드의 버튼과 같은 코드로 바로 실행한다.
 
 type Open = FleetProposal & { now: PlanReason[] | null; stale: boolean };
@@ -33,6 +33,7 @@ const KIND_HELP: Record<FleetPlanKind, string> = {
   STOP: "쉬는 백그라운드 세션을 멈춘다(주기). 대화는 남는다",
   RESTART: "오래된 백그라운드 세션을 새 CREW BRIEFING으로 다시 띄운다(정기 점검)",
   REFRESH: "FLIGHT를 마치고 쉬는 AIRCRAFT의 큰 대화를 새로 시작한다(다음 cold wake의 캐시 쓰기를 아낌)",
+  "ACCOUNT CHANGE": "FLIGHT 사이의 AIRCRAFT를 사용 한도가 남은 ACCOUNT로 옮긴다(멈추고 그 ACCOUNT에서 다시 띄움). 진행 중인 FLIGHT는 옮기지 않는다",
   AOG: "기한을 두고 배정을 멈춘다(MEL)",
   RETIRE: "퇴역(SUPERVISOR만, 자동 없음)",
   RETURN: "FLEET PLAN이 건 AOG를 푼다(기한이 지남)",
@@ -44,6 +45,7 @@ const WILL_DO: Record<FleetPlanKind, (p: FleetProposal) => string> = {
   STOP: (p) => `${p.aircraft}의 백그라운드 세션을 멈춘다(대화는 남는다)`,
   RESTART: (p) => `${p.aircraft}의 백그라운드 세션을 멈추고 새 CREW BRIEFING으로 다시 띄운다`,
   REFRESH: (p) => `${p.aircraft}의 백그라운드 세션을 멈추고 새 CREW BRIEFING으로 다시 띄운다(대화를 새로 시작)`,
+  "ACCOUNT CHANGE": (p) => `${p.aircraft}의 백그라운드 세션을 멈추고 ACCOUNT ${p.account ?? "?"}에서 CREW BRIEFING으로 다시 띄운다(home ACCOUNT는 그대로, 캐시는 새로 시작)`,
   AOG: (p) => `${p.aircraft}를 AOG로 둔다(사유 FLEET PLAN ${p.id})`,
   RETIRE: (p) => `${p.aircraft}를 퇴역시킨다`,
   RETURN: (p) => `${p.aircraft}의 AOG를 푼다`,
@@ -326,7 +328,7 @@ function ApproveForm({
   onCancel: () => void;
   onApprove: (input: Record<string, unknown>) => void;
 }) {
-  const relaunch = p.kind === "RESTART" || p.kind === "REFRESH";
+  const relaunch = p.kind === "RESTART" || p.kind === "REFRESH" || p.kind === "ACCOUNT CHANGE";
   const launches = p.kind === "LAUNCH" || p.kind === "ENTRY" || relaunch;
   // RESTART·REFRESH는 비워 두면 서버가 마지막 LAUNCH의 값을 쓴다. 나머지는 auto(SUPERVISOR 결정)
   const [permissionMode, setPermissionMode] = useState(relaunch ? "" : (brief.permissionModes[0] ?? "auto"));

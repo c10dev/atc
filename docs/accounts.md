@@ -105,6 +105,15 @@ Step 3. Tested without launching a real session: the launch plans are pure funct
 - **ENTRY** ([fleet.md](fleet.md) 8.6): with accounts registered, FLEET PLAN ENTRY names the ACCOUNT the new AIRCRAFT would fly on and sets it as the new profile's `account`.
 - **Live check.** None was needed; no session was launched, stopped or messaged. The 7713 test server ran with a fake `claude` binary, a temp HOME and a fake daemon process.
 
+### 5.3 ACCOUNT CHANGE as built (ATC-148)
+
+Step 4. FLEET PLAN proposes moving an AIRCRAFT to an ACCOUNT with headroom. It stops and launches sessions, so it happens only when the SUPERVISOR approves; **no automatic mode exists, not even behind a switch** (an automatic mode would be a separate SUPERVISOR decision). The rule, expiry and execution are in [fleet.md](fleet.md) 8.6 ("ACCOUNT CHANGE as built"); the FUEL label is [fuel.md](fuel.md) 6.3.
+
+- **What it proposes.** Between FLIGHTs only, and never a live FLIGHT: idle background session, no FLIGHT held or kept, no open PR, not given a FLIGHT. A limit cut mid-FLIGHT stays RESUME on the same ACCOUNT. Reason: the observed ACCOUNT at `holdPct`, or a LIMIT with more than 60 min to its reset (`accountChangeLimitMin`), or a way back to home once home is below `infoPct`. Target: a registered ACCOUNT not known to be logged out, below `infoPct` and under `maxLaunched`, lowest use.
+- **On approve**: STOP on the old ACCOUNT's folder, LAUNCH with the CREW BRIEFING on the new one (the new ACCOUNT's login and FUEL are checked before anything is stopped), one `account-change` FLIGHT RECORDER event. The profile's home ACCOUNT is unchanged and the card reads `flying on acct-1 (home acct-2)`. On 반대 or expiry nothing happens.
+- **PILOT'S DISCRETION.** (1) Only background sessions atc can stop are proposed; a desktop or terminal session gets no ACCOUNT CHANGE. (2) The way back to home is proposed whenever home is below `infoPct` and the AIRCRAFT is between FLIGHTs, even if the ACCOUNT it is on has room (the SUPERVISOR can 반대; a decided proposal rests 24 h). (3) With a target available, a weekly LIMIT alone no longer proposes AOG. (4) The pre-check before STOP means a refused target returns 409 and the old session keeps running.
+- **Tests** are fixtures only (`server/fleet-plan.test.ts`, `server/fuel-leaks.test.ts`, `server/accounts.test.ts`); nothing was stopped or launched.
+
 ## 6. Design notes from the measurement
 
 - **Reading**: a per-folder reader is enough. Nothing has to change in the statusline or health hooks, because their records carry `sessionId` and each session's files sit in exactly one folder.

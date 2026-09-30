@@ -893,6 +893,21 @@ ACCOUNT 폴더를 등록하면([accounts.md](accounts.md) 5.2) 등록된 어느 
 
 출처: [Jeppesen crew pairing](https://ww2.jeppesen.com/airline-crew-optimization-solutions/airline-crew-pairing/), [Lufthansa Systems NetLine/Crew](https://www.lhsystems.com/solutions/operations-control-center/netline-crew), [항공 disruption recovery 조사(arXiv 2510.26831)](https://arxiv.org/html/2510.26831), [OAG: wet leasing](https://www.oag.com/blog/what-is-wet-leasing), [SKYbrary: MEL](https://skybrary.aero/articles/minimum-equipment-list-mel), [EASA AI 등급(Halldale)](https://www.halldale.com/civil-aviation/easa-ai-framework-aviation-safety-regulations), [ICAO: 항공기 주기](https://www.icao.int/operational-safety/Aircraft-Parking).
 
+### ACCOUNT CHANGE (ATC-148)
+
+새 FLEET PLAN 종류. AIRCRAFT의 ACCOUNT가 바닥났을 때 FLIGHT 사이에 다른 ACCOUNT로 옮기자고 제안한다. 스스로 옮기는 일은 없고 자동 모드도 없다.
+
+- **언제**(`accountChangeOf`, 순수, `server/fleet-plan.ts`. ACCOUNT를 등록해 둔 경우만, [accounts.md](accounts.md) 5.1): 아래가 모두 맞을 때
+  - AIRCRAFT의 관찰한 ACCOUNT가 `holdPct`(D3 스위치와 상관없이)이거나, reset이 `accountChangeLimitMin`(기본 60)분 넘게 남은 `LIMIT`이 있거나, home이 아닌 ACCOUNT에서 나는데 home이 다시 `infoPct` 아래가 됐을 때(돌아가는 길도 평범한 제안이고 자동이 아니다);
+  - FLIGHT 사이: 백그라운드 세션이 쉬고, 쥐거나 남겨 둔 FLIGHT가 없고, 열린 PR이 없고, 이번 계획에서 FLIGHT를 받지 않고, `minDwellMin` 안에 띄운 것이 아님. `LIMIT`으로 잘린 턴(RESUME)은 옮기지 않는다;
+  - 다른 등록 ACCOUNT가 로그인 안 됨으로 알려지지 않았고 `infoPct` 아래이고 `maxLaunched` 아래. 목표는 그중 사용이 가장 낮은 것(FUEL 기록이 없으면 0, 같으면 라벨 순). home이 유일한 이유면 home로 간다.
+- **사유**는 두 ACCOUNT의 사용과 reset(`FUEL 사용 97% (account acct-2) until 21:00Z — hold 수준`, `옮길 ACCOUNT acct-3: 사용 10%(reset 21:00Z) …`), FLIGHT 사이라는 것, 새 세션이 캐시 없이 시작한다는 것을 적는다.
+- **승인하면**(승인 운용, SUPERVISOR): 먼저 목표 ACCOUNT를 본다(로그인, FUEL hold 아님). 거절이면 옛 세션은 멈추지 않는다. 그다음 옛 ACCOUNT 폴더로 `claude stop`, 목표 ACCOUNT에서 기존 CREW BRIEFING으로 LAUNCH(`launchAircraft`에 `account`, 마지막 LAUNCH의 permission mode·모델). 두 단계는 평소의 `stop`·`launch` 기록 옆에 FLIGHT RECORDER의 `account-change` 사건 하나(`from`, `to`, `jobId`, `proposal`)로도 남는다. 프로필의 home ACCOUNT는 그대로고 카드는 `flying on acct-1 (home acct-2)`로 보인다.
+- **반대하거나 expire하면** 아무 일도 없다. AIRCRAFT가 FLIGHT를 받거나(FLIGHT 사이가 아니게 됨), 옛 ACCOUNT의 창이 풀리거나(`holdPct` 아래, LIMIT이 풀리거나 기준 아래), 목표가 `infoPct`에 닿으면(FUEL 사유) expire한다. 가장 좋은 목표가 바뀌면 열린 제안은 새 제안으로 바뀐다(supersede). 승인할 때 다시 본다: 그새 FLIGHT를 받았으면 거절("살아 있는 FLIGHT는 옮기지 않는다").
+- **AOG.** 옮길 ACCOUNT가 있으면 주간 `LIMIT`만으로는 그 AIRCRAFT에 AOG를 제안하지 않는다(8.8).
+- **DISPATCH·FOLLOWING**은 이미 관찰한 ACCOUNT를 쓰므로([fuel.md](fuel.md) 6.2) 옮긴 AIRCRAFT는 새 ACCOUNT로 세고 다시 배정할 수 있다(`server/accounts.test.ts`).
+- **FUEL.** 새 세션의 cold 첫 요청은 `ACCOUNT CHANGE`라는 이름의 FUEL LEAK다([fuel.md](fuel.md) 6.3).
+
 ### ENTRY가 ACCOUNT를 고른다 (ATC-147)
 
 - ACCOUNT를 등록하면 ENTRY 제안에 `account`가 실린다: 로그인이 안 됐다고 알려지지 않았고 `holdPct` 아래인 등록 ACCOUNT 중 사용이 가장 낮은 것(FUEL 기록이 없으면 0, 같으면 라벨 순). 사유 줄에 어느 ACCOUNT인지 적힌다(`새 AIRCRAFT는 ACCOUNT acct-1에서 …`). 승인하면 그 `account`를 프로필에 넣어 들이므로 뒤이은 LAUNCH가 그 ACCOUNT를 쓴다.
@@ -1036,7 +1051,7 @@ ATC-69는 대화 기록에 `[1m]`이 남지 않아 창을 짐작했다. ATC-85�
 
 **원칙.**
 
-- 알리고 제안만 한다. atc는 팀 세션에 다시 보내기, 승인, 계정 바꾸기, 재시작을 하지 않는다. 여러 Claude 계정으로 AIRCRAFT를 돌리는 일은 따로 설계한다: [accounts.md](accounts.md)(초안) 참고.
+- 알리고 제안만 한다. atc는 팀 세션에 다시 보내기·승인을 하지 않고, 세션을 스스로 다른 계정으로 옮기지도 않는다. 제안하는 것은 `ACCOUNT CHANGE`(8.6)다: 가득 찬 ACCOUNT에서 STOP, 여유 있는 ACCOUNT에서 CREW BRIEFING으로 LAUNCH. FLIGHT 사이에만, SUPERVISOR가 승인할 때만 한다. FLIGHT 도중 한도로 잘린 세션은 옮기지 않고 같은 ACCOUNT의 RESUME으로 둔다(ATC-86, ATC-129). [accounts.md](accounts.md) 5.3 참고.
 - 상태가 아니라 원인을 보인다. 코드마다 오류 한 줄, 시작 시각, 매뉴얼의 다음 한 걸음이 붙는다.
 - 기계 단위와 AIRCRAFT 단위를 가른다. `NETWORK`는 기계에 한 번 올린다. `LIMIT`은 SUPERVISOR가 ACCOUNT 라벨을 달았으면 ACCOUNT마다 한 번(ATC-51), 아니면 reset 시각(같은 계정 창)마다 한 번 올린다.
 - 코드, 시각, 오류 한 줄만 둔다. 본문은 두지 않는다. 살아 있는 세션의 대화 기록 끝 64KB만 읽고, 크기나 시각이 바뀔 때만 다시 읽는다.

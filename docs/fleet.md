@@ -830,6 +830,21 @@ Not built yet: step 4 (automatic STOP). Step 3 (approval) and the follow-up of a
 
 Sources: [Jeppesen crew pairing](https://ww2.jeppesen.com/airline-crew-optimization-solutions/airline-crew-pairing/), [Lufthansa Systems NetLine/Crew](https://www.lhsystems.com/solutions/operations-control-center/netline-crew), [airline disruption recovery survey (arXiv 2510.26831)](https://arxiv.org/html/2510.26831), [OAG on wet leasing](https://www.oag.com/blog/what-is-wet-leasing), [SKYbrary: MEL](https://skybrary.aero/articles/minimum-equipment-list-mel), [EASA AI levels (Halldale)](https://www.halldale.com/civil-aviation/easa-ai-framework-aviation-safety-regulations), [ICAO on aircraft parking](https://www.icao.int/operational-safety/Aircraft-Parking).
 
+### ACCOUNT CHANGE as built (ATC-148)
+
+A new FLEET PLAN kind. It proposes moving an AIRCRAFT to another ACCOUNT when its own has run out, between FLIGHTs. Nothing moves by itself, and there is no automatic mode.
+
+- **When** (`accountChangeOf`, pure, `server/fleet-plan.ts`; needs registered ACCOUNTS, [accounts.md](accounts.md) 5.1): all of
+  - the AIRCRAFT's observed ACCOUNT is at `holdPct` (whatever the D3 switch says), **or** it has a `LIMIT` whose reset is more than `accountChangeLimitMin` (default 60) minutes away, **or** it flies away from its home ACCOUNT and home is below `infoPct` again (the way back is an ordinary proposal, never automatic);
+  - it is between FLIGHTs: a background session, idle, no FLIGHT held or kept, no open PR, not given a FLIGHT in this plan, not launched within `minDwellMin`. A `LIMIT` cut (RESUME) is never moved;
+  - another registered ACCOUNT is not known to be logged out, is below `infoPct` and is under its `maxLaunched`. The target is the lowest use of those (no FUEL record counts as 0; ties by label). Coming home wins when home is the only reason.
+- **Reasons** name both ACCOUNTS with use and reset (`FUEL 사용 97% (account acct-2) until 21:00Z — hold 수준`, `옮길 ACCOUNT acct-3: 사용 10%(reset 21:00Z) …`), that the AIRCRAFT is between FLIGHTs, and that the new session starts with a cold cache.
+- **On approve** (approval mode, SUPERVISOR): the target is checked first (logged in, not at FUEL hold), so a refusal never leaves the old session stopped. Then `claude stop` on the old ACCOUNT's folder and a LAUNCH with the existing CREW BRIEFING on the target (`launchAircraft` with `account`, the last LAUNCH's permission mode and model). The two steps are also written to the FLIGHT RECORDER as one `account-change` event (`from`, `to`, `jobId`, `proposal`) beside the usual `stop` and `launch` records. The home ACCOUNT in the profile is unchanged; the card reads `flying on acct-1 (home acct-2)`.
+- **On 반대 or expiry** nothing happens. The proposal expires when the AIRCRAFT takes a FLIGHT (or is otherwise no longer between FLIGHTs), when the old ACCOUNT's window resets (below `holdPct`, or the LIMIT clears or drops under the threshold), or when the target reaches `infoPct` (FUEL reason). If the best target changes, the open proposal is superseded by a new one. At approve time it is checked again: an AIRCRAFT that took a FLIGHT since is refused ("살아 있는 FLIGHT는 옮기지 않는다").
+- **AOG.** With a target ACCOUNT available, a weekly `LIMIT` alone no longer proposes AOG for that AIRCRAFT (8.8).
+- **DISPATCH and FOLLOWING** already use the observed ACCOUNT ([fuel.md](fuel.md) 6.2), so a moved AIRCRAFT counts against its new ACCOUNT and is eligible again (tested in `server/accounts.test.ts`).
+- **FUEL.** The new session's cold first request is a FUEL LEAK named `ACCOUNT CHANGE` ([fuel.md](fuel.md) 6.3).
+
 ### ENTRY names its ACCOUNT as built (ATC-147)
 
 - With ACCOUNTS registered, an ENTRY proposal carries `account`: the registered ACCOUNT that is not known to be logged out and is below `holdPct`, with the lowest use (no FUEL record counts as 0; ties by label). The reason line says which and why (`새 AIRCRAFT는 ACCOUNT acct-1에서 …`). Approving it enters the AIRCRAFT with that `account` in its profile, so the LAUNCH that follows uses it.
@@ -973,7 +988,7 @@ Status: steps 1–6 built (ATC-45, ATC-47, ATC-48, ATC-51, ATC-55): the manual, 
 
 **Principles.**
 
-- Detect and propose, never act on a team session. atc does not resend prompts, approve prompts, switch accounts or restart sessions. Running AIRCRAFT on more than one Claude account is a separate design: see [accounts.md](accounts.md) (draft).
+- Detect and propose, never act on a team session. atc does not resend prompts or approve prompts, and it never moves a session between accounts by itself. What it proposes: `ACCOUNT CHANGE` (8.6), a STOP on a full ACCOUNT and a LAUNCH with the CREW BRIEFING on one with headroom, only between FLIGHTs and only when the SUPERVISOR approves. A limit cut mid-FLIGHT is never moved; it stays RESUME on the same ACCOUNT (ATC-86, ATC-129). See [accounts.md](accounts.md) 5.3.
 - Cause, not just state: each code carries the error line, when it started, and the one next step from the manual.
 - Host-level versus AIRCRAFT-level: `NETWORK` is raised once for the machine. A `LIMIT` is raised once per ACCOUNT when the SUPERVISOR has labelled accounts (ATC-51), and otherwise once per reset time (the same account window).
 - Store only the code, the time and the error line, never message bodies. atc reads only the last 64 KB of each live transcript, again only when its size or time changes.

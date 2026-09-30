@@ -3,7 +3,7 @@ import type { Compaction, FuelRecord } from "./fuel.ts";
 import { regKey } from "./registration.ts";
 
 // FUEL LEAK(ATC-52·ATC-57, docs/fuel.md 5): 이미 캐시에 있던 맥락을 다시 쓴 몫. 규칙이 설명하는 miss만 이름을 붙인다 —
-// COLD CACHE(HOLD), COLD CACHE(control wake), MODEL SWITCH(F3), COMPACTION, SESSION CHANGE, UPGRADE / EFFORT CHANGE(F7).
+// COLD CACHE(HOLD), COLD CACHE(control wake), MODEL SWITCH(F3), COMPACTION, SESSION CHANGE, ACCOUNT CHANGE(ATC-148), UPGRADE / EFFORT CHANGE(F7).
 // 그 밖은 UNEXPLAINED. 프록시 경로(requestId 없음)의 miss는 캐시가 Anthropic 방식이 아니라 LEAK 밖 proxied로 둔다.
 // 요청 기록(숫자·모델·시각·version·effort)과 atc의 발신 기록(시각·받는 세션)만 본다. 본문은 읽지 않는다. 표시 전용(DISPATCH에 쓰지 않는다)
 
@@ -20,12 +20,13 @@ export type LeakRule =
   | "modelSwitch"
   | "compaction"
   | "sessionChange"
+  | "accountChange"
   | "upgrade"
   | "unexplained"
   | "expectedRebuild"
   | "proxied";
 // FUEL LEAK에 드는 규칙. expectedRebuild(캐시가 따뜻할 때 compaction 뒤 다시 짓기)와 proxied는 LEAK 밖
-export const LEAK_RULES: LeakRule[] = ["coldCache", "controlWake", "modelSwitch", "compaction", "sessionChange", "upgrade", "unexplained"];
+export const LEAK_RULES: LeakRule[] = ["coldCache", "controlWake", "modelSwitch", "compaction", "sessionChange", "accountChange", "upgrade", "unexplained"];
 export const OUTSIDE_LEAK: LeakRule[] = ["expectedRebuild", "proxied"];
 
 export type ControlKind = "CLEARANCE" | "FLIGHT PLAN" | "RECALL" | "CREW CHANGE";
@@ -268,6 +269,49 @@ export function sessionChangeLeaks(
   return { events, baselines };
 }
 
+// ── ACCOUNT CHANGE(ATC-148) ──
+// FLEET PLAN의 ACCOUNT CHANGE가 다른 ACCOUNT에서 다시 띄운 세션의 첫 CAPTAIN 요청 중 기준선(모든 새 세션 첫 요청의 중앙값)을 넘은 몫.
+// 새 세션은 캐시 없이 시작하니 세지만(LEAK에 든다) 이름을 붙여 설명한다. 새 세션은 FLIGHT 사이에 뜨므로 SESSION CHANGE에 걸리지 않는다.
+// marks: FLIGHT RECORDER의 account-change 사건(그 LAUNCH의 job id로 세션을 찾는다: 세션 id가 job id로 시작). 프록시 경로는 뺀다
+export interface AccountChangeMark {
+  aircraft: string;
+  jobId: string;
+  t: string;
+}
+export function accountChangeLeaks(records: Iterable<FuelRecord>, marks: readonly AccountChangeMark[], baseline: Baseline | undefined, prices: PriceTable | null = null): LeakEvent[] {
+  const events: LeakEvent[] = [];
+  const all = [...records].filter((r) => !r.sidechain && !r.proxied);
+  for (const m of marks) {
+    const at = Date.parse(m.t);
+    const first = all
+      .filter((r) => r.session.startsWith(m.jobId) && Date.parse(r.t) >= at - 60_000)
+      .sort((a, b) => Date.parse(a.t) - Date.parse(b.t))[0];
+    if (!first) continue;
+    const rewritten = firstWrite(first) - (baseline?.median ?? 0);
+    if (rewritten < MISS_MIN_TOKENS) continue;
+    const price = leakPriceOf(rewritten, first, prices);
+    events.push({
+      session: first.session,
+      t: first.t,
+      rule: "accountChange",
+      rewritten,
+      units: price?.units ?? null,
+      cost: price?.cost ?? null,
+      gapMs: Date.parse(first.t) - at,
+      model: first.model,
+      prevModel: first.model,
+      speed: first.speed,
+      geo: first.geo,
+      writeTier: first.cacheWrite1h > 0 ? "1h" : "5m",
+      wake: null,
+      crew: false,
+      agent: null,
+      change: null,
+    });
+  }
+  return events;
+}
+
 // atc가 CAPTAIN에게 보낸 발신의 시각. CLEARANCE는 기록한 때, FLIGHT PLAN은 send, RECALL은 요청한 때(recall-send는 기록이 없다), CREW CHANGE는 sent
 export function controlSendsOf(input: {
   clearances?: { at: string; to: string; toName: string }[];
@@ -298,6 +342,7 @@ export interface LeakTotals {
   modelSwitch: LeakBucket;
   compaction: LeakBucket; // compaction 뒤 다시 짓기 중 캐시가 식은 때(F7)
   sessionChange: LeakBucket; // 같은 FLIGHT의 새 세션 첫 요청 중 AIRPORT 기준선을 넘은 몫(F7)
+  accountChange: LeakBucket; // ACCOUNT CHANGE(ATC-148)로 띄운 새 세션 첫 요청 중 기준선을 넘은 몫: 캐시가 ACCOUNT마다 달라 식은 채 시작한 것
   upgrade: LeakBucket; // version·effort가 바뀐 바로 뒤 miss(F7)
   unexplained: LeakBucket;
   total: LeakBucket; // 위 규칙들의 합(FUEL LEAK)
@@ -313,6 +358,7 @@ export const emptyLeaks = (): LeakTotals => ({
   modelSwitch: bucket(),
   compaction: bucket(),
   sessionChange: bucket(),
+  accountChange: bucket(),
   upgrade: bucket(),
   unexplained: bucket(),
   total: bucket(),
@@ -322,7 +368,9 @@ export const emptyLeaks = (): LeakTotals => ({
 });
 
 // LOGBOOK arrived 줄의 fuel.leak(F4)은 F4가 정한 모양 그대로 둔다: 비용(cost)은 넣지 않는다(기록 형식을 바꾸지 않으려고)
-export type LeakCounts = Record<keyof LeakTotals, Omit<LeakBucket, "cost">>;
+// accountChange(ATC-148)는 뒤에 더한 칸이라 옛 줄에는 없다(읽는 쪽은 없으면 0으로 본다)
+type CountBucket = Omit<LeakBucket, "cost">;
+export type LeakCounts = Record<Exclude<keyof LeakTotals, "accountChange">, CountBucket> & { accountChange?: CountBucket };
 export function leakCountsOf(l: LeakTotals): LeakCounts {
   const out = {} as LeakCounts;
   for (const [k, { cost: _cost, ...rest }] of Object.entries(l) as [keyof LeakTotals, LeakBucket][]) out[k] = rest;

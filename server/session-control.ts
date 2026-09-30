@@ -430,6 +430,19 @@ export async function accountStatusesOf(fuelAccounts: Snapshot["fuelAccounts"], 
   return out;
 }
 
+// LAUNCH 전에 그 ACCOUNT로 띄울 수 있는지만 본다(ATC-148): 로그인·FUEL hold·미등록. 거절 사유(없으면 null).
+// ACCOUNT CHANGE는 STOP 다음에 LAUNCH를 하므로, 새 ACCOUNT가 거절할 것을 알고도 옛 세션을 멈추는 일이 없게 STOP 전에 부른다
+export async function launchAccountRefusal(account: string, fuelAccounts: Snapshot["fuelAccounts"], folders: readonly AccountFolder[] = accountFolders()): Promise<string | null> {
+  try {
+    const statuses = await accountStatusesOf(fuelAccounts, folders);
+    launchAccountOf({ requested: account, folders, status: (l) => statuses.get(l) ?? null });
+    return null;
+  } catch (e) {
+    if (e instanceof ControlError) return e.message;
+    throw e;
+  }
+}
+
 export interface ControlResult {
   ok: boolean;
   status: number; // 실패면 HTTP 상태

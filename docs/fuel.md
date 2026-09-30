@@ -142,7 +142,7 @@ This is the part the 2026-09-28 TEAM_K case asks for.
   1. The statusline input's `rate_limits` (what #53 cited). A statusline command would append `{t, sessionId, rate_limits}` to the atc state folder; atc maps session → AIRCRAFT → ACCOUNT. This changes user settings (`statusLine`) and adds a `hooks/` script: `user` tier.
   2. `quotaLimits` on refused requests (already read by ATC-45): exact but only after the limit is hit.
   3. FUEL BURN per ACCOUNT in the current window against a SUPERVISOR-entered budget: an estimate, labelled as such.
-- **Use** (built, ATC-55): an ACCOUNT line `사용 82% · resets 21:00Z` in the FLEET FUEL block and on the card (used, not left; since ATC-81 the AIRCRAFT rows show the AIRCRAFT's own FOB instead, and a `HOLD · FUEL (account pro-2) until 21:00Z` tag at the hold level); an INFO to TOWER/OCC at a threshold (default 80 %); optionally (SUPERVISOR switch, off by default) DISPATCH skips an AIRCRAFT whose ACCOUNT is above a second threshold (default 95 %). Nothing is switched automatically between accounts. FLEET PLAN (ATC-63) also stops proposing LAUNCH or ENTRY into an ACCOUNT at the hold level, whatever the switch says (6.1).
+- **Use** (built, ATC-55): an ACCOUNT line `사용 82% · resets 21:00Z` in the FLEET FUEL block and on the card (used, not left; since ATC-81 the AIRCRAFT rows show the AIRCRAFT's own FOB instead, and a `HOLD · FUEL (account pro-2) until 21:00Z` tag at the hold level); an INFO to TOWER/OCC at a threshold (default 80 %); optionally (SUPERVISOR switch, off by default) DISPATCH skips an AIRCRAFT whose ACCOUNT is above a second threshold (default 95 %). Atc never moves a session between accounts by itself: FLEET PLAN proposes `ACCOUNT CHANGE` (STOP on a full ACCOUNT, LAUNCH on one with headroom, between FLIGHTs only, on the SUPERVISOR's approval; [fleet.md](fleet.md) 8.6, ATC-148). FLEET PLAN (ATC-63) also stops proposing LAUNCH or ENTRY into an ACCOUNT at the hold level, whatever the switch says (6.1).
 
 ### 6.1 FUEL REMAINING as built (ATC-55)
 
@@ -164,6 +164,13 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 - **Per folder, not per label.** With ACCOUNT folders registered ([accounts.md](accounts.md) 5.1), atc reads every folder's `projects/` and `sessions/`. A session's ACCOUNT is the folder it was found in. The statusline record carries `sessionId` and no folder, so `observeMembers` (pure, `server/fuel-remaining.ts`) maps a member's sessions to their observed ACCOUNT before `fuelAccountsOf` groups the newest record per ACCOUNT.
 - **Home versus observed.** The AIRCRAFT profile `account` stays the home ACCOUNT. If a live session of the AIRCRAFT is on another folder, its FUEL REMAINING is that folder's (`acct-1`), and the FLEET row shows `acct-1 (home acct-2)`. When live sessions exist, dead older sessions on another folder are left out of that member. A member with no label, or a session with no observed folder, is grouped as before. With no registry entry there is no observed ACCOUNT and nothing changes.
 - **Cache.** FUEL's read cache and watch key on the transcript's absolute path, one watch per folder, so folders never share a key.
+
+### 6.3 ACCOUNT CHANGE in FUEL leaks as built (ATC-148)
+
+- A new session started by an approved ACCOUNT CHANGE has no cache on its new ACCOUNT (prompt cache is per organization). Its first CAPTAIN request is counted as a FUEL LEAK named `ACCOUNT CHANGE` (next to SESSION CHANGE and COLD CACHE): the part of that request's first write above the baseline (the median first write of all new sessions in the window, as SESSION CHANGE uses), when it is at least 2,000 tokens.
+- The session is found from the FLIGHT RECORDER `account-change` event: the LAUNCH's job id is the start of the session id, and the request must come no more than 60 s before the event. A session that would also count as SESSION CHANGE is counted once, as ACCOUNT CHANGE. Proxied requests are left out. It is display only (nothing in DISPATCH reads it).
+- The LOGBOOK `fuel.leak` counts gain an optional `accountChange` bucket; older lines simply lack it and read as zero.
+- Which ACCOUNT the tokens ran on comes from the session's folder (6.2); the leak is not attributed to a label.
 
 ## 7. Screens and estimates
 

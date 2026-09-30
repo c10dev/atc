@@ -40,7 +40,7 @@ import { allProposals, reservedOf } from "./proposals.ts";
 import { readRecords, record } from "./recorder.ts";
 import { fleetKeyOf, regKey } from "./registration.ts";
 import { activeWaypointsOf } from "./routes.ts";
-import { type AgentRow, agentRows, launchAircraft, liveRowsOf, MAX_LAUNCHED, PERMISSION_MODES, rowOriginOf, stopAircraft } from "./session-control.ts";
+import { type AgentRow, agentRows, launchAccountRefusal, launchAircraft, liveRowsOf, MAX_LAUNCHED, PERMISSION_MODES, rowOriginOf, stopAircraft } from "./session-control.ts";
 import { readLinearProjects } from "./sources/linear-projects.ts";
 
 // FLEET PLAN 실행부(docs/fleet.md 8.6): DISPATCH 주기(5분)마다 제안을 계산해 fleet-plan.jsonl에 적고,
@@ -163,10 +163,18 @@ let last: { at: string; candidates: FleetCandidate[]; demand: DemandRow[]; backg
 let inflight = false;
 
 // 등록된 ACCOUNT마다 로그인 여부(ATC-147). 등록부가 없으면 빈 목록. loggedIn만 남기고 60초 캐시(account-health)
-async function accountLoginsOf(): Promise<NonNullable<FleetInputs["accountLogins"]>> {
+// running·maxLaunched는 ACCOUNT CHANGE의 옮길 ACCOUNT 상한 검사용(ATC-148): 그 폴더에서 읽은 백그라운드 세션 수(STALE 뺌)
+async function accountLoginsOf(rows: AgentRow[] = []): Promise<NonNullable<FleetInputs["accountLogins"]>> {
   const folders = accountFolders();
   if (!observedLabelsOn(folders)) return [];
-  return Promise.all(folders.map(async (f) => ({ label: f.label, loggedIn: (await authStatusOf(f.dir)).loggedIn })));
+  return Promise.all(
+    folders.map(async (f) => ({
+      label: f.label,
+      loggedIn: (await authStatusOf(f.dir)).loggedIn,
+      ...(f.maxLaunched ? { maxLaunched: f.maxLaunched } : {}),
+      running: rows.filter((r) => r.kind === "background" && !r.stale && r.account === f.label).length,
+    })),
+  );
 }
 
 // DISPATCH 주기에 부른다. Linear·GitHub을 아직 못 읽었거나 claude agents를 못 읽으면 그 주기는 건너뛴다(열린 제안을 닫지 않는다)
@@ -176,7 +184,7 @@ export async function runFleetPlan(s: Snapshot, now = Date.now()) {
   try {
     // STALE 줄(ATC-93)은 살아 있는 세션이 아니다: STOP·RESTART를 내지 않고 상한에 세지 않는다
     const rows = liveRowsOf(await agentRows());
-    const inputs = inputsOf(s, rows, now, await accountLoginsOf());
+    const inputs = inputsOf(s, rows, now, await accountLoginsOf(rows));
     const { candidates, demand } = fleetPlanOf(inputs);
     const p = persistOf(pending, candidates, now, FLEET_PLAN_DEFAULTS);
     pending = p.pending;
@@ -276,7 +284,7 @@ async function runStep(step: ExecStep, by: string, getSnapshot: () => Promise<Sn
       }
     }
     case "launch": {
-      const r = await launchAircraft(await getSnapshot(), reg, { permissionMode: step.permissionMode, model: step.model }, by);
+      const r = await launchAircraft(await getSnapshot(), reg, { permissionMode: step.permissionMode, model: step.model, ...(step.account ? { account: step.account } : {}) }, by);
       return { action: "launch", registration: reg, ok: r.ok, ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.error ? { error: r.error } : {}) };
     }
     case "stop": {
@@ -377,15 +385,27 @@ export function mountFleetPlan(app: Hono, getSnapshot: () => Promise<Snapshot>) 
         if (e instanceof PlanError) return c.json({ error: e.message }, e.status as 409);
         throw e;
       }
+      // ACCOUNT CHANGE(ATC-148): 새 ACCOUNT가 거절할 것이면 옛 세션을 멈추기 전에 알린다(STOP만 되고 LAUNCH가 안 되는 일이 없게)
+      const moveTo = p.kind === "ACCOUNT CHANGE" ? p.account : undefined;
+      if (moveTo) {
+        const refusal = await launchAccountRefusal(moveTo, s.fuelAccounts);
+        if (refusal) return c.json({ error: `${refusal} — ${p.aircraft}는 멈추지 않았다` }, 409);
+      }
       append([{ op: "approve", id, by: "SUPERVISOR", options: plan.options, at: new Date().toISOString() }]);
       const by = `FLEET PLAN ${id}`;
       const steps: StepResult[] = [];
+      const fromAccount = moveTo ? rows.find((r) => regKey(r.name, cfg.teamPattern) === regKey(p.aircraft ?? "", cfg.teamPattern))?.account : undefined;
       for (const step of plan.steps) {
         const r = await runStep(step, by, getSnapshot);
         steps.push(r);
         if (!r.ok) break; // 앞 단계가 실패하면 멈춘다. 된 단계는 그대로 남고 기록에 적힌다
       }
       const ok = steps.length === plan.steps.length && steps.every((x) => x.ok);
+      // 옮기기는 STOP과 LAUNCH를 한 사건으로도 남긴다(FUEL LEAK의 ACCOUNT CHANGE가 새 세션을 알아본다)
+      if (moveTo) {
+        const launched = steps.find((x) => x.action === "launch" && x.ok);
+        record({ t: new Date().toISOString(), kind: "fleet", op: "account-change", aircraft: regKey(p.aircraft ?? "", cfg.teamPattern), by, ok, ...(fromAccount ? { from: fromAccount } : {}), to: moveTo, ...(launched?.jobId ? { jobId: launched.jobId } : {}), proposal: id });
+      }
       append([{ op: "executed", id, ok, steps, at: new Date().toISOString() }]);
       return c.json({ ok, steps, proposal: allFleetPlan().find((x) => x.id === id) }, ok ? 200 : 502);
     } catch (e) {
