@@ -554,6 +554,31 @@ async function runApproval(id: string, body: Record<string, unknown>, who: "supe
   }
 }
 
+// APPLY NOW(ATC-244): 쉬는 AIRCRAFT 하나를 ACCOUNT CHANGE와 같은 길로 옮긴다 — 목표 ACCOUNT를 STOP 전에 확인하고, STOP → 사라짐 확인 → 그 ACCOUNT에서 CREW BRIEFING으로 LAUNCH(마지막 LAUNCH의 옵션), account-change 한 줄.
+// 이 세션이 지금 FLIGHT 사이인지는 부르는 쪽(applyNowPlanOf, 매번 새로 읽음)이 정한다
+export async function moveAircraftAccount(reg: string, to: string, by: string, getSnapshot: () => Promise<Snapshot>): Promise<{ ok: boolean; error?: string; jobId?: string }> {
+  const s = await getSnapshot();
+  const cfg = loadDispatchConfig();
+  const refusal = await launchAccountRefusal(to, s.fuelAccounts);
+  if (refusal) return { ok: false, error: `${refusal} — ${reg}는 멈추지 않았다` };
+  const now = Date.now();
+  const rows = liveRowsOf(await agentRows());
+  const fromAccount = rows.find((r) => regKey(r.name, cfg.teamPattern) === regKey(reg, cfg.teamPattern))?.account;
+  let opts: { permissionMode?: string; model?: string } | undefined;
+  for (const r of readRecords(now - 30 * DAY)) if (r.kind === "fleet" && r.op === "launch" && r.ok && regKey(r.aircraft, cfg.teamPattern) === regKey(reg, cfg.teamPattern)) opts = { permissionMode: r.permissionMode, model: r.model };
+  const steps: StepResult[] = [];
+  for (const step of [{ action: "stop", registration: reg }, { action: "launch", registration: reg, permissionMode: opts?.permissionMode ?? "auto", model: opts?.model ?? null, account: to }] as ExecStep[]) {
+    const r = await runStep(step, by, getSnapshot);
+    steps.push(r);
+    if (!r.ok) break;
+  }
+  const ok = steps.length === 2 && steps.every((x) => x.ok);
+  const launched = steps.find((x) => x.action === "launch" && x.ok);
+  const failed = steps.find((x) => !x.ok);
+  record({ t: new Date().toISOString(), kind: "fleet", op: "account-change", aircraft: regKey(reg, cfg.teamPattern), by, ok, ...(fromAccount ? { from: fromAccount } : {}), to, ...(launched?.jobId ? { jobId: launched.jobId } : {}), ...(failed?.error ? { error: failed.error } : {}) });
+  return { ok, ...(launched?.jobId ? { jobId: launched.jobId } : {}), ...(failed?.error ? { error: failed.error } : {}) };
+}
+
 // STOP 전에 거절한 REPOSITION도 한 사건으로 남긴다(옛 세션은 멈추지 않았고 base도 그대로: stage precheck)
 function refuseReposition(p: FleetProposal, reg: string, who: "supervisor" | "auto", error: string, now: number) {
   record({ t: new Date(now).toISOString(), kind: "fleet", op: "reposition", aircraft: reg, by: who, ok: false, from: p.from, to: p.airport ?? undefined, proposal: p.id, stage: "precheck", error });

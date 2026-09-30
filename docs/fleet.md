@@ -867,6 +867,7 @@ A new FLEET PLAN kind. It proposes moving an AIRCRAFT to another ACCOUNT when it
 - **AOG.** With a target ACCOUNT available, a weekly `LIMIT` alone no longer proposes AOG for that AIRCRAFT (8.8).
 - **DISPATCH and FOLLOWING** already use the observed ACCOUNT ([fuel.md](fuel.md) 6.2), so a moved AIRCRAFT counts against its new ACCOUNT and is eligible again (tested in `server/accounts.test.ts`).
 - **FUEL.** The new session's cold first request is a FUEL LEAK named `ACCOUNT CHANGE` ([fuel.md](fuel.md) 6.3).
+- **APPLY NOW** (ATC-244, [accounts.md](accounts.md) 5.5) runs this same executor for every idle AIRCRAFT that is not on the LAUNCH ACCOUNT, after one confirmed click, re-checking between-FLIGHTs before each STOP. Busy AIRCRAFT wait and follow after their FLIGHT.
 
 ### LAUNCH ACCOUNT and ACCOUNT CHANGE (ATC-239)
 

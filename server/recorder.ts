@@ -54,6 +54,8 @@ export type RecordLine =
   | { t: string; kind: "control"; op: "recycle-mode"; by: string; from: string; to: string }
   // 캡·auto 바꿈(ATC-175): 세션마다 한 줄. from·to는 CAP 토큰(null이면 없음) 또는 auto true·false
   | { t: string; kind: "control"; op: "recycle-caps" | "recycle-auto"; by: string; session: string; from: number | boolean | null; to: number | boolean | null }
+  // LAUNCH ACCOUNT APPLY NOW(ATC-244): SUPERVISOR가 한 번 눌러 세션을 옮긴 요약(세션마다의 사건은 account-change·recycle). op pending은 기다림의 끝(expired·done·changed)
+  | { t: string; kind: "apply-now"; op: "apply" | "pending-end"; by: string; aircraft: string | null; control: string | null; moved: number; failed: number; waiting: number; skipped: number; note?: string }
   // 그 밖의 백그라운드 세션 STOP(ATC-184): AIRCRAFT도 관제 세션도 아닌 세션을 SUPERVISOR가 FLEET 탭에서 멈춤
   | { t: string; kind: "other"; op: "stop"; session: string; by: string; ok: boolean; jobId: string; cwd?: string; account?: string; error?: string }
   | { t: string; kind: "atfm"; op: string; id?: string; airport?: string; data?: Record<string, unknown> };
