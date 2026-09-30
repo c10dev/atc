@@ -23,7 +23,7 @@ export const ALLOWED_TOOLS = new Set(["Bash", "Read", "Glob", "Grep"]);
 const READ_ATCCTL = new Set(["dispatch brief", "dispatch flight", "schedule brief", "crosscheck brief", "landing queue", "manual check"]);
 // 인자 없이만 읽기인 것(`following ack`·`network …`의 쓰기 꼴을 막는다)
 const READ_ATCCTL_BARE = new Set(["network", "following"]);
-const DUTY_SUBS = new Set(["brief", "flight", "pr", "card", "note", "charter"]);
+const DUTY_SUBS = new Set(["brief", "flight", "pr", "idea", "card", "note", "charter"]);
 
 // 따옴표 밖의 > < 는 파일 리다이렉션(또는 heredoc·프로세스 치환)이라 허용하지 않는다.
 function hasRedirect(command) {

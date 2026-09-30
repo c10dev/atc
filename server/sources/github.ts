@@ -501,3 +501,11 @@ export async function fetchPrView(slug: string, number: number): Promise<unknown
   const fields = "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,author,createdAt,labels,body,reviewDecision,mergeStateStatus,statusCheckRollup,files,isCrossRepository";
   return JSON.parse(await gh(["pr", "view", String(number), "--repo", slug, "--json", fields]));
 }
+
+// IDEAS 서랍(DUTY G4): atc 저장소의 열린 idea 이슈. 읽기 전용 gh issue list·view. 저장소는 호출하는 쪽(ideas-run.ts)이 고정한다
+export async function fetchIdeaList(slug: string, label: string): Promise<unknown> {
+  return JSON.parse(await gh(["issue", "list", "--repo", slug, "--label", label, "--state", "open", "--limit", "100", "--json", "number,title,labels,updatedAt,comments,body"]));
+}
+export async function fetchIdeaView(slug: string, number: number): Promise<unknown> {
+  return JSON.parse(await gh(["issue", "view", String(number), "--repo", slug, "--json", "number,title,url,state,labels,author,createdAt,updatedAt,body,comments"]));
+}

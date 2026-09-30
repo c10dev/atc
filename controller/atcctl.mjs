@@ -198,6 +198,7 @@ DUTY (DUTY 세션, duty/ 폴더, L0 — docs/duty.md. 읽기와 초안뿐, 밖�
   node atcctl.mjs duty brief                atc가 아는 것의 한 장 요약(글): SUPERVISOR QUEUE, 조치가 필요한 알림, FLEET, FUEL, 진행 중 FLIGHT
   node atcctl.mjs duty flight <ATC-206>     FLIGHT 서랍 자료(글): 상태·관계·PR, 본문과 댓글은 데이터 표시 안에
   node atcctl.mjs duty pr <ATCC> <281>      PR 서랍 자료(글): 착륙 상태·등급·체크·파일, 본문은 데이터 표시 안에
+  node atcctl.mjs duty idea <번호>          atc 저장소의 열린 idea 이슈(글): 라벨·댓글 수, 본문과 댓글은 데이터 표시 안에(G4, 읽기 전용)
   node atcctl.mjs duty card <kind> <key>    카드 요청. 지금 SUPERVISOR QUEUE에 있는 줄일 때만 받는다(아니면 사유). duty-drafts.jsonl에 남는다
                                             'duty card DECISIONS retire'는 정해 둔 결정 목록 카드(해제 버튼)를 청한다
   node atcctl.mjs duty note -- '<규칙>' [--until <iso>]
@@ -702,6 +703,20 @@ export function dutyPrText(d) {
   ].join("\n");
 }
 
+// G4의 IDEAS 자료(GET /api/ideas/:n)를 글로. 아이디어는 아직 정하지 않은 것이라 본문·댓글은 데이터일 뿐이다
+export function dutyIdeaText(d) {
+  return [
+    `IDEA #${d.number} · open · labels: ${d.labels?.length ? d.labels.join(", ") : "none"}${d.author ? ` · author ${d.author}` : ""}`,
+    `updated: ${d.updatedAt ?? "?"} · comments: ${d.commentsTotal ?? 0}${d.url ? ` · ${d.url}` : ""}`,
+    DATA_NOTE,
+    `title: ${d.title}`,
+    ...dataBlock("idea body", d.body),
+    ...(d.bodyTruncated ? ["(body cut)"] : []),
+    ...(d.comments?.length ? d.comments.flatMap((c, i) => dataBlock(`comment ${i + 1} by ${c.author ?? "?"}`, c.body)) : ["(no comments)"]),
+    ...(d.commentsTotal > (d.comments?.length ?? 0) ? [`(first ${d.comments.length} of ${d.commentsTotal} comments)`] : []),
+  ].join("\n");
+}
+
 export function dutyDraftText(r) {
   const x = r.draft;
   if (x.kind === "retire-card") return `${x.id} standing-decisions card recorded (a list with a release button; only the SUPERVISOR's click changes anything)`;
@@ -909,6 +924,9 @@ if (isMain) {
         console.log(dutyFlightText(await call("GET", `/api/flight/${encodeURIComponent(rest[0].toUpperCase())}/detail`)));
       } else if (sub === "pr" && rest.length === 2) {
         console.log(dutyPrText(await call("GET", `/api/pr/${encodeURIComponent(rest[0].toUpperCase())}/${encodeURIComponent(rest[1])}/detail`)));
+      } else if (sub === "idea" && rest.length === 1) {
+        if (!/^\d{1,7}$/.test(rest[0])) throw new Error("duty idea <번호>: 이슈 번호(자연수)");
+        console.log(dutyIdeaText(await call("GET", `/api/ideas/${rest[0]}`)));
       } else if (sub === "card") {
         console.log(dutyDraftText(await call("POST", "/api/duty/card", parseDutyCard(rest))));
       } else if (sub === "note") {
@@ -916,7 +934,7 @@ if (isMain) {
       } else if (sub === "charter") {
         console.log(dutyDraftText(await call("POST", "/api/duty/charter", parseDutyCharter(rest))));
       } else {
-        throw new Error("duty brief | flight <KEY> | pr <AIRPORT> <번호> | card <kind> <key> | note -- '<규칙>' [--until <iso>] | charter -- '<영어 요청>'");
+        throw new Error("duty brief | flight <KEY> | pr <AIRPORT> <번호> | idea <번호> | card <kind> <key> | note -- '<규칙>' [--until <iso>] | charter -- '<영어 요청>'");
       }
     } else if (cmd === "squelch") {
       if (args.length !== 1 || !SQUELCH_ROLES.includes(args[0])) throw new Error(`역할은 ${SQUELCH_ROLES.join("|")} 중 하나`);

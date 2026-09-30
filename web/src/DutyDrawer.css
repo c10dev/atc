@@ -319,3 +319,7 @@ button.du-queue-head:focus-visible {
     width: 100vw;
   }
 }
+.dr a.dr-btn.du-ideas {
+  text-decoration: none;
+  color: var(--text);
+}

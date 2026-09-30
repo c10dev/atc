@@ -18,14 +18,14 @@ export function prRefOf(airport: string, number: string): { airport: string; num
   return { airport: code, number: Number(number) };
 }
 
-const cut = (s: unknown, max: number) => {
+export const cut = (s: unknown, max: number) => {
   const t = typeof s === "string" ? s : "";
   return t.length > max ? { text: t.slice(0, max), truncated: true } : { text: t, truncated: false };
 };
 // 링크는 http(s)만(그 밖은 화면에 내지 않는다)
 export const safeUrl = (u: unknown): string | null => (typeof u === "string" && /^https?:\/\/[^\s]+$/i.test(u) ? u : null);
-const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
-const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
+export const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
+export const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const nodes = (v: unknown): Record<string, unknown>[] => {
   const n = obj(v).nodes;
   return Array.isArray(n) ? n.map(obj) : [];
@@ -205,9 +205,12 @@ export function shapePr(raw: unknown, ticketKeyOf: (branch: string, title: strin
 }
 
 // 주소 #flight/<KEY> · #pr/<AIRPORT>/<번호> → 서랍. 그 밖의 주소는 null(탭 주소)
-export type DrawerRef = { kind: "flight"; key: string } | { kind: "pr"; airport: string; number: number };
+export type DrawerRef = { kind: "flight"; key: string } | { kind: "pr"; airport: string; number: number } | { kind: "ideas" } | { kind: "idea"; number: number };
 export function drawerOfHash(hash: string): DrawerRef | null {
   const [head, a, b] = hash.replace(/^#/, "").split("/");
+  // IDEAS 서랍(DUTY G4): #ideas, #ideas/<번호>
+  if (head === "ideas" && a === undefined) return { kind: "ideas" };
+  if (head === "ideas" && b === undefined && /^\d{1,7}$/.test(a) && Number(a) >= 1) return { kind: "idea", number: Number(a) };
   if (head === "flight" && a) {
     const key = flightKeyOf(a);
     return key ? { kind: "flight", key } : null;

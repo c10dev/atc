@@ -26,6 +26,7 @@ test("Bash 허용: atcctl duty 명령(상대·절대 경로), 읽기 전용 atcc
     `node ${ATCCTL} duty brief`,
     "node ../controller/atcctl.mjs duty flight ATC-206",
     "node ../controller/atcctl.mjs duty pr ATCC 281",
+    "node ../controller/atcctl.mjs duty idea 12",
     "node ../controller/atcctl.mjs duty card PROPOSAL D-0007",
     "node ../controller/atcctl.mjs duty card 'FLEET PLAN' fp-1",
     "node ../controller/atcctl.mjs duty note -- 'reject acct-1 proposals; until 10-03' --until 2026-10-03T03:00:00Z",

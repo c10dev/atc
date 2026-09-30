@@ -153,6 +153,9 @@ export default function DutyDrawer({ chat, onClose, airports, refreshKey, now }:
         <header className="du-head">
           <p className="dr-crumb mono du-title">{st ? headLine(st) : "DUTY"}</p>
           <div className="du-head-actions">
+            <a className="dr-btn du-ideas" href="#ideas">
+              IDEAS
+            </a>
             {st?.enabled &&
               (askShift ? (
                 <>
