@@ -259,7 +259,7 @@ export interface PullRequest {
 export interface Snapshot {
   at: string;
   linear: { enabled: boolean; error: string | null; fetchedAt: string | null };
-  github: { enabled: boolean; error: string | null; fetchedAt: string | null };
+  github: { enabled: boolean; reason?: string | null; error: string | null; fetchedAt: string | null };
   sessions: Session[];
   workspaces: Workspace[];
   tickets: Ticket[];

@@ -47,7 +47,7 @@ interface NetworkData {
   routes: RouteRow[];
   aircraft: AircraftRow[];
   trend: { days: DayRow[]; gates: GateRow[] };
-  sources: { linear: boolean; github: boolean; logbook: boolean };
+  sources: { linear: boolean; github: boolean; githubOff?: boolean; logbook: boolean };
 }
 
 // 서버가 필드를 빠뜨려도(옛 서버·부분 실패) 화면이 깨지지 않게 채운다.
@@ -114,7 +114,7 @@ function normalize(raw: unknown): NetworkData {
       }),
     },
     // 모르면 있다고 본다(알림은 서버가 false라고 말할 때만)
-    sources: { linear: src.linear !== false, github: src.github !== false, logbook: src.logbook !== false },
+    sources: { linear: src.linear !== false, github: src.github !== false, githubOff: src.githubOff === true, logbook: src.logbook !== false },
   };
 }
 
@@ -191,7 +191,10 @@ export function Network({ refreshKey }: { refreshKey: string }) {
 function Sources({ sources }: { sources: NetworkData["sources"] }) {
   const notes = [
     !sources.linear && { code: "LINEAR", text: "Linear를 읽지 못함 — ROUTES의 열린 FLIGHT와 프로젝트 목표가 빠졌을 수 있음" },
-    !sources.github && { code: "GITHUB", text: "GitHub를 읽지 못함 — 최근 ARRIVED·LANDING 대기·되돌림이 빠졌을 수 있음" },
+    !sources.github && {
+      code: "GITHUB",
+      text: sources.githubOff ? "GitHub off (ATC_GITHUB=off) — PR 자료를 읽지 않음, 최근 ARRIVED·LANDING 대기·되돌림이 없음" : "GitHub를 읽지 못함 — 최근 ARRIVED·LANDING 대기·되돌림이 빠졌을 수 있음",
+    },
     !sources.logbook && { code: "LOGBOOK", text: "LOGBOOK을 읽지 못함 — AIRCRAFT 실적과 TRENDS가 빠졌을 수 있음" },
   ].filter((n): n is { code: string; text: string } => !!n);
   if (!notes.length) return null;

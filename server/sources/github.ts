@@ -6,6 +6,7 @@ import { type CarryCandidate, type CodexSignal, codexFindings, codexThumbsPass, 
 import type { GhCommit } from "../briefs.ts";
 import { humanCheckStatusOf, uiChangeOf } from "../human-check.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./git.ts";
+import { assertGithubOn, githubSwitch } from "../github-switch.ts";
 
 const run = promisify(execFile);
 
@@ -17,6 +18,8 @@ const FIELDS = [
 
 export interface GithubState {
   enabled: boolean;
+  // enabled가 false인 까닭(ATC_GITHUB=off 등). 오류가 아니다(ATC-161)
+  reason: string | null;
   error: string | null;
   fetchedAt: string | null;
   // AIRPORT 본 체크아웃 경로별 마지막 결과. 실패한 저장소는 이전 결과를 그대로 둔다.
@@ -29,7 +32,7 @@ export interface GithubState {
   mergedElsewhereByRepo: Map<string, MergedElsewhere[]>;
 }
 
-const state: GithubState = { enabled: true, error: null, fetchedAt: null, byRepo: new Map(), mainByRepo: new Map(), defaultByRepo: new Map(), mergedElsewhereByRepo: new Map() };
+const state: GithubState = { ...githubSwitch(), error: null, fetchedAt: null, byRepo: new Map(), mainByRepo: new Map(), defaultByRepo: new Map(), mergedElsewhereByRepo: new Map() };
 let lastFetch = 0;
 let inflight: Promise<void> | null = null;
 let known = new Set<string>();
@@ -55,6 +58,7 @@ export async function slugOf(repo: string): Promise<string | null> {
 }
 
 async function listPulls(slug: string): Promise<GhPull[]> {
+  assertGithubOn();
   const { stdout } = await run(
     "gh",
     ["pr", "list", "--repo", slug, "--state", "open", "--limit", "100", "--json", FIELDS],
@@ -63,7 +67,10 @@ async function listPulls(slug: string): Promise<GhPull[]> {
   return JSON.parse(stdout) as GhPull[];
 }
 
-const gh = async (args: string[]) => (await run("gh", args, { timeout: 30_000, maxBuffer: 16 << 20 })).stdout;
+const gh = async (args: string[]) => {
+  assertGithubOn();
+  return (await run("gh", args, { timeout: 30_000, maxBuffer: 16 << 20 })).stdout;
+};
 // --paginate + --jq @tsv: 쪽마다 한 줄씩 [로그인, 시각, …]
 const tsv = (out: string) => out.split("\n").filter(Boolean).map((l) => l.split("\t"));
 
@@ -264,6 +271,7 @@ async function fetchAll(repos: string[]) {
         const err = e as NodeJS.ErrnoException & { stderr?: string };
         if (err.code === "ENOENT" && err.path === "gh") {
           state.enabled = false;
+          state.reason = "gh CLI가 없음";
           errors.push("gh CLI가 없음");
           return;
         }
