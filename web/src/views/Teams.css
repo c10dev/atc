@@ -315,3 +315,73 @@
     text-align: left;
   }
 }
+
+/* FLIGHT 진행 막대(ATC-211, FlightProgress.tsx). 네 칸: 지난 칸 실선, 지금 칸 점선+표식, 앞 칸 옅은 점선. p75를 넘으면 amber */
+.leg-progress {
+  grid-column: 1 / -1;
+  padding: var(--space-1) var(--space-3) var(--space-2);
+  border-top: 1px dashed var(--paper-line);
+}
+.fp {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.fp-bar {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  flex: 0 1 240px;
+  min-width: 120px;
+  height: 6px;
+}
+.fp-seg {
+  flex: 1;
+  height: 100%;
+  border-radius: 1px;
+  box-sizing: border-box;
+}
+.fp-seg.is-past {
+  background: var(--paper-ink);
+}
+.fp-seg.is-now {
+  border: 1px dashed var(--paper-ink);
+}
+.fp-seg.is-future {
+  border: 1px dashed var(--paper-line);
+}
+.fp-mark {
+  position: absolute;
+  top: -3px;
+  width: 4px;
+  height: 12px;
+  margin-left: -2px;
+  background: var(--paper-ink);
+  border: 1px solid var(--paper);
+  border-radius: 1px;
+}
+.fp.is-late .fp-seg.is-now {
+  border-color: var(--stamp-amber);
+}
+.fp.is-late .fp-mark {
+  background: var(--stamp-amber);
+}
+.fp-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--paper-muted);
+}
+.fp.is-late .fp-text {
+  color: var(--stamp-amber);
+  font-weight: 700;
+}
+.fp-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}

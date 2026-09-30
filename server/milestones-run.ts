@@ -3,7 +3,9 @@ import { type Departure, readDepartures } from "./departures.ts";
 import { loadLogbook, type LogEntry } from "./logbook.ts";
 import { loadMcc, RTS_FILE, readJsonl, type RtsRecord } from "./mcc.ts";
 import { hasMilestone, MILESTONES, type MilestoneSources, type Milestones, milestonesOf } from "./milestones.ts";
+import { classOf } from "./crew.ts";
 import type { Snapshot } from "./model.ts";
+import { type FlightProgress, progressOf, typicalDurations } from "./progress.ts";
 import { allProposals } from "./proposals.ts";
 import { readRecords, record } from "./recorder.ts";
 import { gitReadSync as git } from "./sources/git.ts";
@@ -111,6 +113,32 @@ export function milestonesNow(s: Pick<Snapshot, "pulls" | "airports">, now = Dat
   return out;
 }
 
+// FLIGHT 진행 막대(ATC-211): OUT이 있는 FLIGHT마다 지금 구간과 보통 걸린 범위. 읽기만 한다(LOGBOOK과 스냅샷이 이미 가진 것, GitHub·Linear를 더 부르지 않는다)
+export function progressNow(s: Pick<Snapshot, "pulls" | "airports" | "tickets">, milestones: ReadonlyMap<string, Milestones>, now = Date.now()): Record<string, FlightProgress> {
+  const logbook = loadLogbook();
+  const mccAirport = loadMcc().airport;
+  const ticketBy = new Map(s.tickets.map((t) => [t.key, t]));
+  const out: Record<string, FlightProgress> = {};
+  for (const [flight, m] of milestones) {
+    const lines = logbook.filter((e) => e.flight === flight);
+    const t = ticketBy.get(flight);
+    const pull = s.pulls.find((p) => p.ticketKey === flight);
+    const airport = lines.find((e) => e.airport)?.airport ?? (pull ? (s.airports.find((a) => a.repo === pull.repo)?.code ?? null) : null);
+    const c = t ? classOf(t.labels) : (lines.find((e) => e.class)?.class ?? null);
+    const p = progressOf(
+      {
+        milestones: m,
+        awaitsRts: Boolean(mccAirport) && lines.some((e) => e.pr && e.airport === mccAirport),
+        arrivedWithoutPr: lines.some((e) => e.standFree),
+        typical: typicalDurations({ key: flight, class: c ? { type: c.type, wake: c.wake } : null, airport }, logbook, now),
+      },
+      now,
+    );
+    if (p) out[flight] = p;
+  }
+  return out;
+}
+
 // ── FLIGHT RECORDER: milestone.out|off|on|in을 FLIGHT·이정표마다 한 번(이미 적었는지는 기록에서 읽는다) ──
 const RUN_MS = 60_000;
 let written: Set<string> | null = null;
@@ -138,7 +166,9 @@ export function mountMilestones(app: Hono, getSnapshot: () => Promise<Snapshot>)
   // 읽기만 한다. 하나라도 닿은 FLIGHT의 OOOI
   app.get("/api/milestones", async (c) => {
     const now = Date.now();
-    const flights = Object.fromEntries(milestonesNow(await getSnapshot(), now));
-    return c.json({ at: new Date(now).toISOString(), flights });
+    const snap = await getSnapshot();
+    const ms = milestonesNow(snap, now);
+    // progress(ATC-211): 같은 응답에 붙인다. 화면이 이미 분마다 이 길을 읽고 있어서 길을 하나 더 내지 않는다
+    return c.json({ at: new Date(now).toISOString(), flights: Object.fromEntries(ms), progress: progressNow(snap, ms, now) });
   });
 }

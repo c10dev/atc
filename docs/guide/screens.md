@@ -30,6 +30,16 @@ ROUTE·AIRCRAFT·추세를 한 화면에서 보는 읽기 전용 개요다. 아�
 
 TARGETS·ROUTE를 바꾸는 것은 지금처럼 FLEET 탭에서 SUPERVISOR가 한다. OCC가 변경 초안을 내는 흐름은 설계만 있다(`docs/fleet.ko.md` 7.4).
 
+## STRIPS의 진행 막대
+
+FLIGHT가 있는 STAND 줄 아래에 얇은 막대가 붙는다. 네 칸(작업 → 착륙 대기 → RTS 대기 → 서비스)으로, 지난 칸은 실선이고 지금 칸은 점선에 표식이 있으며 앞 칸은 옅은 점선이다. OUT·OFF·ON·IN 이정표는 atc가 기록한 실제 시각이다.
+
+- 옆의 글은 지금 칸의 경과 시간과 비슷한 지난 FLIGHT들이 보통 걸린 범위다: `작업 42분 · 보통 30–60분 (BUILD·M, n=12)`. 괄호는 어느 표본인지(TYPE·WAKE, 모자라면 WAKE나 AIRPORT)와 표본 수다. 표본이 3개보다 적으면 `데이터 부족`이고 지난 시간만 보인다.
+- 퍼센트나 도착 시각은 없다. 팀이 스스로 알리는 진행도 읽지 않는다. 표식은 지금 칸에서 경과/보통 범위의 위 끝(p75)만큼 간 자리이고, 칸 끝에서 멈춘다.
+- 보통 범위를 넘으면 표식과 글이 amber이고 `길어짐`이 붙는다. 막힌 것이 아니라 평소보다 길다는 뜻이다. HOLD·NORDO·NEEDS YOU 표시는 그대로다.
+- 마우스를 올리면 이정표 시각이 나온다. `착륙 대기` 칸에서는 CLEARED·APPROACH 배지와 AUTOLAND 표시가 막대 옆에 붙는다.
+- AD HOC 줄(티켓 없는 작업)과 아직 OUT이 없는 FLIGHT에는 막대가 없다.
+
 ## STRIPS의 HUMAN CHECK
 
 PR 본문 `## UI change` 블록의 class가 CHOICE·ACCOUNT·DEVICE인데 이 head에 `Human check: done`이 없는 PR만 LANDING SEQUENCE 위 `HUMAN CHECK n`에 모인다. 없으면 이 칸이 보이지 않는다.
