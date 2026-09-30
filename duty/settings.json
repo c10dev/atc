@@ -1,0 +1,53 @@
+{
+  "model": "claude-sonnet-5-5",
+  "permissions": {
+    "allow": [
+      "Bash(node ../controller/atcctl.mjs duty *)",
+      "Bash(node /home/c10/projects/atc/controller/atcctl.mjs duty *)",
+      "Bash(node ../controller/atcctl.mjs dispatch brief)",
+      "Bash(node ../controller/atcctl.mjs dispatch flight *)",
+      "Bash(node ../controller/atcctl.mjs schedule brief)",
+      "Bash(node ../controller/atcctl.mjs crosscheck brief)",
+      "Bash(node ../controller/atcctl.mjs landing queue)",
+      "Bash(node ../controller/atcctl.mjs manual check)",
+      "Bash(node ../controller/atcctl.mjs network)",
+      "Bash(node ../controller/atcctl.mjs following)",
+      "Bash(jq *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git diff *)",
+      "Bash(git status *)",
+      "Bash(git status)",
+      "Read",
+      "Glob",
+      "Grep"
+    ],
+    "deny": [
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "Agent",
+      "SendMessage",
+      "WebFetch",
+      "WebSearch"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/guard.mjs\" || exit 2",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

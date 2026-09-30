@@ -168,6 +168,10 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `GET /api/dispatch/proposals/:id` | 제안 하나와 지금 모드(send-guard용) |
 | `POST /api/dispatch/mode` | `{mode: "shadow" \| "approval"}` 전환(`dispatch.json`에 저장) |
 | `GET /api/dispatch/flight/:key` | Linear에서 티켓 본문과 댓글(읽기 전용) |
+| `GET /api/duty/brief` | DUTY L0(ATC-219): atc가 아는 것의 한 장 글 요약(`{v, at, chars, truncated, text}`), `duty.briefMaxChars`까지. 읽기 전용 |
+| `POST /api/duty/card` `{kind, key}` | DUTY 초안: `<kind>/<key>`가 지금 SUPERVISOR QUEUE의 줄일 때만 받는다. 상태 폴더의 `duty-drafts.jsonl`에 한 줄을 붙일 뿐 밖으로 나가는 것은 없다 |
+| `POST /api/duty/note` `{text, until?}` | DUTY 초안: 정해 둘 결정의 제안(`decisions.jsonl`은 D4). `duty-drafts.jsonl`에 붙인다 |
+| `POST /api/duty/charter` `{text}` | DUTY 초안: CHARTER REQUEST, 영어만. `duty-drafts.jsonl`에 붙인다. OCC는 아직 읽지 않는다(D5) |
 | `GET /api/flight/:key/detail` | FLIGHT 서랍(DUTY G1): Linear 이슈 본문, 상태, 라벨, 막는 FLIGHT, 상위·하위, 붙은 PR, 댓글 20개. 읽기 전용, 60초 캐시 |
 | `POST /api/flight/:key/state` | FLIGHT 상태 버튼(DUTY G3, [docs/duty.md](../docs/duty.md)): 본문 `{ from, to }`(상태 이름). Linear에 쓰는 유일한 길. 이 화면에서 온 요청만(`fromThisApp`, 아니면 `403`), 지금 상태가 아직 `from`일 때만(아니면 `409`), `to`는 그 팀의 Backlog·Todo·Canceled 상태만(아니면 `400`), 옮기는 출발점도 그런 상태일 때만(아니면 `409`). 시도마다 FLIGHT RECORDER 한 줄 |
 | `GET /api/pr/:airport/:number/detail` | PR 서랍(DUTY G1): `gh pr view`의 본문·체크·파일·리뷰, 폴링하는 열린 PR은 착륙 상태·등급·MCC INSPECTION도. 읽기 전용, 60초 캐시. `ATC_GITHUB=off`면 `503 {off:true}` |

@@ -168,6 +168,10 @@ Every `*.test.ts` next to a module is its unit test.
 | `GET /api/dispatch/proposals/:id` | One proposal and the current mode (for send-guard) |
 | `POST /api/dispatch/mode` | Switch `{mode: "shadow" \| "approval"}` (saved in `dispatch.json`) |
 | `GET /api/dispatch/flight/:key` | Ticket body and comments from Linear (read-only) |
+| `GET /api/duty/brief` | DUTY L0 (ATC-219): one-page text summary of what atc knows (`{v, at, chars, truncated, text}`), capped at `duty.briefMaxChars`. Read-only |
+| `POST /api/duty/card` `{kind, key}` | DUTY draft: accepted only if `<kind>/<key>` is a current SUPERVISOR QUEUE row. Appends a line to `duty-drafts.jsonl` (state folder); nothing goes out |
+| `POST /api/duty/note` `{text, until?}` | DUTY draft: a proposed standing decision (not `decisions.jsonl`, D4). Appends to `duty-drafts.jsonl` |
+| `POST /api/duty/charter` `{text}` | DUTY draft: CHARTER REQUEST, English only. Appends to `duty-drafts.jsonl`; OCC does not read it yet (D5) |
 | `GET /api/flight/:key/detail` | FLIGHT drawer (DUTY G1): Linear issue body, state, labels, blockers, parent/children, attached PRs, 20 comments. Read-only, 60 s cache |
 | `POST /api/flight/:key/state` | FLIGHT state button (DUTY G3, [docs/duty.md](../docs/duty.md)): body `{ from, to }` (state names). The only route that writes Linear. Only from this screen (`fromThisApp`, else `403`); moves the issue only if its state is still `from` (else `409`), `to` only a Backlog, Todo or Canceled state of its team (else `400`), and only from such a state (else `409`). One FLIGHT RECORDER line per attempt |
 | `GET /api/pr/:airport/:number/detail` | PR drawer (DUTY G1): `gh pr view` body, checks, files, review; plus landing state, tier and MCC INSPECTION for polled open PRs. Read-only, 60 s cache. `503 {off:true}` when `ATC_GITHUB=off` |

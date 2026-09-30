@@ -55,6 +55,7 @@ codex/voc-<n>-<slug>      # Codex sessions
 
 - **ENGINEERING** is an airline's Technical Services, which designs modifications and issues Engineering Orders (EO). It replaces the ad hoc name `structure` for this role (GitHub #121, 2026-09-28). `structure`'s other role, landing and deploying atc PRs, goes to the user until MCC is in `land` mode, then to MCC.
 - Old records keep the name they were written with, e.g. `by: "structure"` in LOGBOOK `measured` lines.
+- **DUTY** (the Duty Manager) exists at L0 in `duty/` and does not run yet: no server spawn and no screen. It will talk to the SUPERVISOR, draft, and never decide. It is not listed as a control session until D7 ([duty.md](duty.md) sections 3.5 and 5).
 
 ## FUEL words on screen
 
