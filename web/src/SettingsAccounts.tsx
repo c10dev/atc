@@ -72,13 +72,15 @@ export function AccountsBlock() {
           <span className="mono">
             <b>{f.label}</b> {f.dir}
             {!f.registered && <span className="faint"> (등록 안 됨, 기본 폴더)</span>}
-          </span>{" "}
-          <StatusChip tone={f.loggedIn === true ? "ok" : f.loggedIn === false ? "bad" : "mute"}>
-            {f.loggedIn === true ? `LOGGED IN${f.authMethod ? ` · ${f.authMethod}` : ""}` : f.loggedIn === false ? "NOT LOGGED IN" : "LOGIN ?"}
-          </StatusChip>{" "}
-          <StatusChip tone={f.statusline ? "ok" : "mute"}>{f.statusline ? "STATUSLINE ✓" : "STATUSLINE 없음"}</StatusChip>{" "}
-          <StatusChip tone={f.healthHook ? "ok" : "mute"}>{f.healthHook ? "HEALTH HOOK ✓" : "HEALTH HOOK 없음"}</StatusChip>{" "}
-          <StatusChip tone={f.claimHook ? "ok" : "mute"}>{f.claimHook ? "CLAIM HOOK ✓" : "CLAIM HOOK 없음"}</StatusChip>
+          </span>
+          <div className="acct-chips">
+            <StatusChip tone={f.loggedIn === true ? "ok" : f.loggedIn === false ? "bad" : "mute"}>
+              {f.loggedIn === true ? `LOGGED IN${f.authMethod ? ` · ${f.authMethod}` : ""}` : f.loggedIn === false ? "NOT LOGGED IN" : "LOGIN ?"}
+            </StatusChip>
+            <StatusChip tone={f.statusline ? "ok" : "mute"}>{f.statusline ? "STATUSLINE ✓" : "STATUSLINE 없음"}</StatusChip>
+            <StatusChip tone={f.healthHook ? "ok" : "mute"}>{f.healthHook ? "HEALTH HOOK ✓" : "HEALTH HOOK 없음"}</StatusChip>
+            <StatusChip tone={f.claimHook ? "ok" : "mute"}>{f.claimHook ? "CLAIM HOOK ✓" : "CLAIM HOOK 없음"}</StatusChip>
+          </div>
           {f.registered && f.loggedIn === false && (
             <LoginPanel
               label={f.label}
@@ -98,21 +100,24 @@ export function AccountsBlock() {
           )}
         </div>
       ))}
+      <h4 className="label acct-registry">
+        REGISTRY <em>fleet.json의 ACCOUNT 목록 · 상한은 ACCOUNT별 백그라운드 세션 수</em>
+      </h4>
       {rows.map((r, i) => (
         <div key={i} className="acct-edit">
           <input className="mono" aria-label="ACCOUNT 라벨" placeholder="acct-1" maxLength={24} value={r.label} onChange={(e) => set(i, { label: e.target.value })} />
           <input className="mono" aria-label="설정 폴더" placeholder="/home/…/.claude-acct-1" maxLength={400} value={r.configDir} onChange={(e) => set(i, { configDir: e.target.value })} />
           <input className="mono acct-cap" aria-label="ACCOUNT별 세션 상한" title="이 ACCOUNT의 백그라운드 세션 상한(비우면 기계 전체 상한만)" placeholder="상한" inputMode="numeric" maxLength={3} value={r.maxLaunched} onChange={(e) => set(i, { maxLaunched: e.target.value.replace(/\D/g, "") })} />
-          <button type="button" onClick={() => setRows(rows.filter((_, j) => j !== i))}>
+          <button type="button" className="config-btn" onClick={() => setRows(rows.filter((_, j) => j !== i))}>
             삭제
           </button>
         </div>
       ))}
       <div className="acct-actions">
-        <button type="button" onClick={() => setRows([...rows, { label: "", configDir: "", maxLaunched: "" }])}>
+        <button type="button" className="config-btn" onClick={() => setRows([...rows, { label: "", configDir: "", maxLaunched: "" }])}>
           + ACCOUNT
-        </button>{" "}
-        <button type="button" disabled={!dirty || saving} onClick={save}>
+        </button>
+        <button type="button" className="config-btn is-primary" disabled={!dirty || saving} onClick={save}>
           저장
         </button>
         {error && <span className="settings-hint acct-err"> {error}</span>}
@@ -180,10 +185,10 @@ function AddAccount({ dirty, folders, onAdded }: { dirty: boolean; folders: Fold
   if (!open)
     return (
       <div className="acct-actions">
-        <button type="button" onClick={start}>
+        <button type="button" className="config-btn is-primary" onClick={start}>
           ADD ACCOUNT
-        </button>{" "}
-        <span className="settings-hint">폴더를 만들고 settings.json을 복사하고 등록한다. 로그인은 그다음 터미널에서.</span>
+        </button>
+        <span className="settings-hint">폴더를 만들고 settings.json을 복사하고 등록한다. 로그인은 그다음 그 줄의 LOGIN으로.</span>
       </div>
     );
 
@@ -228,10 +233,10 @@ function AddAccount({ dirty, folders, onAdded }: { dirty: boolean; folders: Fold
         </>
       )}
       <div className="acct-actions">
-        <button type="button" disabled={!p || busy || !label.trim() || dirty} title={dirty ? "위 등록 칸의 바뀐 것을 먼저 저장하거나 되돌린다" : undefined} onClick={add}>
+        <button type="button" className="config-btn is-primary" disabled={!p || busy || !label.trim() || dirty} title={dirty ? "위 등록 칸의 바뀐 것을 먼저 저장하거나 되돌린다" : undefined} onClick={add}>
           {busy ? "만드는 중…" : "만들고 등록"}
         </button>{" "}
-        <button type="button" onClick={() => setOpen(false)}>
+        <button type="button" className="config-btn" onClick={() => setOpen(false)}>
           닫기
         </button>
         {error && <span className="settings-hint acct-err"> {error}</span>}
@@ -260,7 +265,7 @@ function AddAccount({ dirty, folders, onAdded }: { dirty: boolean; folders: Fold
               </p>
               <p className="settings-hint">
                 터미널로 하려면 <code className="mono">{done.loginCommand}</code>{" "}
-                <button type="button" onClick={() => copy(done.loginCommand)}>
+                <button type="button" className="config-btn" onClick={() => copy(done.loginCommand)}>
                   복사
                 </button>{" "}
                 (URL은 <kbd>c</kbd>로 복사) 뒤 그 폴더로 <code className="mono">claude</code>를 한 번 연다.
@@ -332,7 +337,7 @@ function LoginPanel({ label, onDone }: { label: string; onDone: (v: LoginView) =
     <div className="acct-login">
       {(!view || s === "failed") && (
         <>
-          <button type="button" disabled={busy} onClick={start}>
+          <button type="button" className="config-btn is-primary" disabled={busy} onClick={start}>
             {busy ? "시작하는 중…" : s === "failed" ? "다시 LOGIN" : "LOGIN"}
           </button>
           {s === "failed" && view?.error && <span className="settings-hint acct-err"> {view.error}</span>}
@@ -346,10 +351,10 @@ function LoginPanel({ label, onDone }: { label: string; onDone: (v: LoginView) =
           </p>
           <div className="acct-edit">
             <input className="mono" aria-label={`${label} 로그인 코드`} placeholder="코드" autoComplete="off" spellCheck={false} maxLength={2048} value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && code.trim() && void submit()} />
-            <button type="button" disabled={busy || !code.trim()} onClick={submit}>
+            <button type="button" className="config-btn is-primary" disabled={busy || !code.trim()} onClick={submit}>
               {busy ? "확인하는 중…" : "확인"}
             </button>
-            <button type="button" disabled={busy} onClick={cancel}>
+            <button type="button" className="config-btn" disabled={busy} onClick={cancel}>
               취소
             </button>
           </div>

@@ -1265,7 +1265,7 @@ FLEET PLAN 블록의 FUEL(8.6의 "주간 사용량 줄")은 만들었다(ATC-63)
 ### ACCOUNT 줄(ATC-146)
 
 - **관찰한 ACCOUNT.** FLEET 줄에는 `account`(프로필의 home ACCOUNT)와 `observedAccount`가 있다. `observedAccount`는 살아 있는 세션이 home과 다른 ACCOUNT의 폴더에서 돌 때만 채워진다([accounts.md](accounts.md) 5.1). 이때 목록 줄의 칩과 카드의 ACCOUNT 줄은 `acct-1 (home acct-2)`로 보인다. 오류가 아니고 경보도 없다. LIMIT 붙들림(8.8)과 FUEL([fuel.md](fuel.md) 6.2)은 그 AIRCRAFT를 관찰한 ACCOUNT로 센다.
-- **설정 창.** AGENTS 탭에 ACCOUNTS 블록이 있다(라벨 → 폴더, `loggedIn`, `authMethod`, statusline·hook 경고). SUPERVISOR만 고친다.
+- **설정 창.** ACCOUNTS 분류가 라벨 → 폴더, `loggedIn`, `authMethod`, statusline·hook 경고를 보인다(ATC-189부터 메뉴의 한 분류, 전에는 AGENTS 탭의 블록). SUPERVISOR만 고친다.
 - **스냅샷.** `Session.account`가 더해진다. `~/.claude`만 있으면 없다.
 
 ## 9. `lane:`에서 `tail:`로 옮기기
