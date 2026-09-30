@@ -319,6 +319,60 @@ function RecycleSessions({ caps, auto, save }: { caps: Record<string, number | n
   );
 }
 
+// DUTY ACCOUNT(ATC-242, docs/duty.md): DUTY가 돌 ACCOUNT. 바꾸면 다음 메시지부터 새 ACCOUNT의 새 대화(--resume은 폴더를 넘지 못한다).
+// 로그인 안 된 ACCOUNT는 고를 수 없다. FUEL hold는 고를 수 있고 경고만 한다(DUTY는 SUPERVISOR의 글에만 돈다: 막으면 DUTY가 아예 없을 수 있다).
+interface DutyAccountChoice {
+  label: string;
+  loggedIn: boolean | null;
+  refused: string | null;
+}
+function DutyAccountRow({ current, warning, save }: { current: string; warning: string | null; save: Save }) {
+  const [accounts, setAccounts] = useState<DutyAccountChoice[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/fleet/launch-accounts")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((d: { accounts: DutyAccountChoice[] }) => alive && setAccounts(d.accounts))
+      .catch(() => alive && setAccounts([]));
+    return () => {
+      alive = false;
+    };
+  }, [current]);
+  const change = async (label: string) => {
+    setBusy(true);
+    setError(null);
+    const res = await save({ dutyAccount: label });
+    setBusy(false);
+    if (!res.ok) setError(res.error);
+  };
+  const cur = accounts?.find((a) => a.label === current);
+  const hold = cur?.refused && cur.loggedIn !== false ? cur.refused : null;
+  return (
+    <>
+      <label className="acct-launch-row">
+        <span>DUTY ACCOUNT</span>
+        <select className="mono" aria-label="DUTY ACCOUNT" value={current} disabled={busy || !accounts?.length} onChange={(e) => void change(e.target.value)}>
+          {!accounts?.some((a) => a.label === current) && <option value={current}>{current}</option>}
+          {(accounts ?? []).map((a) => (
+            <option key={a.label} value={a.label} disabled={a.loggedIn === false && a.label !== current}>
+              {a.label}
+              {a.loggedIn === false ? " — 로그인되어 있지 않음" : a.refused && a.refused.startsWith("FUEL") ? ` — ⚠ ${a.refused}` : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="settings-hint">
+        duty.json · 다음 메시지부터 그 ACCOUNT에서 새 대화로 시작한다(브리프와 decisions는 이어진다, 대화는 NEW SHIFT처럼 새로). 돌고 있는 턴은 옛 ACCOUNT에서 끝난다. 관제 세션의 ACCOUNT는 AGENTS 탭의 LAUNCH ACCOUNT(ATC-239)에서 따로 고른다: DUTY는 LAUNCH하는 세션이 아니라 이 설정을 쓴다.
+      </p>
+      {hold && <p className="settings-hint acct-err">⚠ {current}: {hold}. DUTY는 SUPERVISOR의 글에만 돌아서 막지는 않는다 — FUEL이 남은 ACCOUNT가 있으면 그쪽을 고른다.</p>}
+      {warning && <p className="settings-hint acct-err">⚠ {warning}</p>}
+      {error && <p className="settings-hint acct-err">{error}</p>}
+    </>
+  );
+}
+
 // 고르는 중인 값의 경고 줄과, ⚠ 모드로 올리는 것이라 확인이 필요한지
 const guardOf = (key: PolicyKey, current: string, lines: Record<string, string>) => (to: string) => (lines[to] ? { line: `${to} ${lines[to]}`, warn: needsConfirm(key, current, to) } : null);
 
@@ -497,12 +551,13 @@ export function OperationsSettings({ server, save }: { server: Loaded; save: Sav
                   label="DUTY"
                   env="duty.enabled"
                   value={s.duty.enabled ? "on" : "off"}
-                  note={`duty.json · ACCOUNT ${s.duty.account} · 유휴 ${s.duty.idleMin}분 뒤 프로세스 종료 · 이 화면에서만 바꾼다`}
+                  note={`duty.json · 유휴 ${s.duty.idleMin}분 뒤 프로세스 종료 · 이 화면에서만 바꾼다`}
                   input={{ kind: "select", options: ["off", "on"] }}
                   guard={guardOf("duty", s.duty.enabled ? "on" : "off", DUTY_WARN)}
                   onSave={(v) => save({ dutyEnabled: v as "off" | "on" })}
                 />
                 <ModeLines modes={["off", "on"] as const} current={s.duty.enabled ? "on" : "off"} lines={DUTY_WARN} />
+                <DutyAccountRow current={s.duty.account} warning={s.duty.accountWarning} save={save} />
                 <EditRow
                   label="DUTY CHARTER"
                   env="duty.charter"

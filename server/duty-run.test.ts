@@ -18,6 +18,7 @@ const { createInterface } = require("node:readline");
 const { existsSync } = require("node:fs");
 appendFileSync(__dirname + "/argv.log", JSON.stringify(process.argv.slice(2)) + "\\n");
 appendFileSync(__dirname + "/env.log", String(process.env.ATC_URL) + "\\n");
+appendFileSync(__dirname + "/cfgdir.log", String(process.env.CLAUDE_CONFIG_DIR) + "\\n");
 const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
 let timer = null;
 const finish = (text, extra = {}) => {
@@ -62,7 +63,7 @@ function rig(over: { idleMs?: number; cfg?: Partial<DutyConfig>; crash?: boolean
   chmodSync(bin, 0o755);
   if (over.crash) writeFileSync(join(dir, "crash"), "");
   const cfg = parseDutyConfig({ enabled: true, ...over.cfg });
-  const rt = new DutyRuntime({ stateDir: state, claudeBin: bin, loadConfig: () => cfg, accountDir: (l) => (l === "acct-2" ? join(dir, "acct") : null), idleTickMs: 20, ...(over.idleMs ? { idleMs: over.idleMs } : {}) });
+  const rt = new DutyRuntime({ stateDir: state, claudeBin: bin, loadConfig: () => cfg, accountDir: (l) => (l === "acct-2" ? join(dir, "acct") : l === "acct-3" ? join(dir, "acct3") : null), idleTickMs: 20, ...(over.idleMs ? { idleMs: over.idleMs } : {}) });
   rigs.push(rt);
   const events: { type: string; final?: boolean }[] = [];
   rt.subscribe((e) => events.push(e as { type: string; final?: boolean }));
@@ -142,6 +143,58 @@ test("유휴 시간이 지나면 stdin을 닫아 끝내고, 다음 글은 같은
   assert.ok(second.includes("--resume"), "두 번째 프로세스는 resume");
   assert.equal(second[second.indexOf("--resume") + 1], id);
   r.rt.dispose();
+});
+
+test("ACCOUNT가 바뀌면 다음 글은 새 CLAUDE_CONFIG_DIR의 새 --session-id(--resume 없음), 로그에 account 줄(ATC-242)", async () => {
+  const r = rig({ idleMs: 60 });
+  await r.rt.send("one");
+  await idle(r);
+  const id = JSON.parse(readFileSync(join(r.state, "duty-session.json"), "utf8")).sessionId as string;
+  const prev = { ...r.cfg };
+  r.cfg.account = "acct-3";
+  await r.rt.configChanged(prev, r.cfg);
+  assert.equal(r.rt.status().account, "acct-3");
+  assert.equal(r.rt.status().sessionId, null);
+  assert.ok(r.log().some((l) => l.kind === "account" && (l as never as { from: string }).from === "acct-2" && (l as never as { to: string }).to === "acct-3"));
+  await r.rt.send("two");
+  await until(() => r.log().some((l) => l.text === "re:two"));
+  const second = r.argv()[1]!;
+  assert.ok(second.includes("--session-id") && !second.includes("--resume"));
+  assert.notEqual(second[second.indexOf("--session-id") + 1], id);
+  assert.deepEqual(readFileSync(join(r.dir, "cfgdir.log"), "utf8").trim().split("\n"), [join(r.dir, "acct"), join(r.dir, "acct3")]);
+  assert.equal(JSON.parse(readFileSync(join(r.state, "duty-session.json"), "utf8")).account, "acct-3");
+  r.rt.dispose();
+});
+
+test("돌고 있는 턴은 옛 ACCOUNT에서 끝나고, 줄 선 글은 새 ACCOUNT의 새 대화가 받는다(ATC-242)", async () => {
+  const r = rig();
+  await r.rt.send("slow answer");
+  await until(() => r.rt.status().state === "thinking");
+  assert.equal((await r.rt.send("queued")).verdict, "queued");
+  const prev = { ...r.cfg };
+  r.cfg.account = "acct-3";
+  await r.rt.configChanged(prev, r.cfg);
+  await until(() => r.log().some((l) => l.text === "re:queued"));
+  assert.ok(r.log().some((l) => l.text === "re:slow answer"), "돌던 턴은 죽지 않고 끝난다");
+  assert.equal(r.argv().length, 2);
+  assert.ok(!r.argv()[1]!.includes("--resume"));
+  assert.deepEqual(readFileSync(join(r.dir, "cfgdir.log"), "utf8").trim().split("\n"), [join(r.dir, "acct"), join(r.dir, "acct3")]);
+  r.rt.dispose();
+});
+
+test("서버가 내려가 있는 사이 duty.json의 ACCOUNT가 바뀌었으면(저장된 대화의 ACCOUNT와 다름) --resume하지 않는다(ATC-242)", async () => {
+  const r = rig({ idleMs: 60 });
+  await r.rt.send("one");
+  await idle(r);
+  r.rt.dispose();
+  const r2 = rig({ cfg: { account: "acct-3" } });
+  writeFileSync(join(r2.state, "duty-session.json"), readFileSync(join(r.state, "duty-session.json")));
+  const rt2 = new DutyRuntime({ stateDir: r2.state, claudeBin: join(r2.dir, "claude"), loadConfig: () => r2.cfg, accountDir: (l) => join(r2.dir, l), idleTickMs: 20 });
+  await rt2.send("after restart");
+  await until(() => existsSync(join(r2.dir, "argv.log")));
+  assert.ok(!r2.argv()[0]!.includes("--resume"));
+  rt2.dispose();
+  r2.rt.dispose();
 });
 
 test("NEW SHIFT: 프로세스를 끝내고 다음 글은 새 --session-id. 로그에 shift 줄", async () => {

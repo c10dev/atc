@@ -21,6 +21,7 @@ export interface DutyState {
   lastActiveAt: number; // 마지막 입력·결과 시각
   crashes: number[]; // 예상 밖 종료 시각
   blocked: boolean; // 다시 띄우기를 멈춤(crashes가 한도)
+  retiring: boolean; // ACCOUNT가 바뀌었는데 턴이 도는 중(ATC-242): 이 턴은 옛 프로세스에서 끝내고, 줄 선 글은 새 대화로 띄운 프로세스가 받는다
   error: string | null; // down일 때 마지막 stderr 줄
 }
 
@@ -34,6 +35,7 @@ export const initialState = (sessionId: string | null = null): DutyState => ({
   lastActiveAt: 0,
   crashes: [],
   blocked: false,
+  retiring: false,
   error: null,
 });
 
@@ -75,6 +77,7 @@ export function step(s: DutyState, e: DutyEventIn, now: number): Step {
     }
     case "result": {
       if (s.phase !== "thinking") return { state: s, actions: [] };
+      if (s.retiring) return { state: { ...s, phase: "idle", closing: true, lastActiveAt: now }, actions: [{ do: "close-stdin" }] }; // 옛 ACCOUNT의 마지막 턴이 끝났다
       const [next, ...rest] = s.queue;
       if (next) return { state: { ...s, queue: rest, lastActiveAt: now }, actions: [{ do: "write", msg: next }] };
       return { state: { ...s, phase: "idle", lastActiveAt: now }, actions: [] };
@@ -82,28 +85,35 @@ export function step(s: DutyState, e: DutyEventIn, now: number): Step {
     case "stop":
       return { state: s, actions: s.phase === "thinking" && s.alive ? [{ do: "interrupt" }] : [] };
     case "exit": {
-      if (s.closing || !s.alive) return { state: { ...s, alive: false, closing: false, phase: s.phase === "down" ? "down" : "idle", queue: s.closing ? s.queue : [] }, actions: [] };
+      if (s.retiring && s.closing) {
+        // 옛 프로세스가 끝났다: 줄 선 글이 있으면 새 ACCOUNT에서 새 대화로 이어 받는다
+        const [next, ...rest] = s.queue;
+        if (!next) return { state: { ...s, alive: false, closing: false, retiring: false, phase: "idle", queue: [] }, actions: [] };
+        return { state: { ...s, alive: true, closing: false, retiring: false, phase: "thinking", fresh: false, queue: rest, lastActiveAt: now }, actions: [{ do: "spawn", resume: false }, { do: "write", msg: next }] };
+      }
+      if (s.closing || !s.alive) return { state: { ...s, alive: false, closing: false, phase: s.phase === "down" ? "down" : "idle", queue: s.closing ? s.queue : [], retiring: false }, actions: [] };
       const crashes = [...recent(s.crashes, now), now];
       const blocked = crashes.length >= CRASH_LIMIT;
-      return { state: { ...s, alive: false, phase: "down", queue: [], crashes, blocked, error: e.error ?? "process exited" }, actions: [] };
+      return { state: { ...s, alive: false, phase: "down", queue: [], retiring: false, crashes, blocked, error: e.error ?? "process exited" }, actions: [] };
     }
     case "idle-tick": {
       if (!s.alive || s.closing || s.phase !== "idle" || now - s.lastActiveAt < e.idleMs) return { state: s, actions: [] };
       return { state: { ...s, closing: true }, actions: [{ do: "close-stdin" }] };
     }
     case "new-shift": {
-      const base = { ...s, queue: [], sessionId: null, fresh: true, crashes: [], blocked: false, error: null, phase: "idle" as const, lastActiveAt: now };
+      const base = { ...s, retiring: false, queue: [], sessionId: null, fresh: true, crashes: [], blocked: false, error: null, phase: "idle" as const, lastActiveAt: now };
       if (!s.alive) return { state: { ...base, closing: false }, actions: [] };
       return { state: { ...base, closing: true }, actions: [{ do: s.phase === "thinking" ? "kill" : "close-stdin" }] };
     }
     case "disable": {
-      const base = { ...s, queue: [], phase: "idle" as const, error: null, crashes: [], blocked: false };
+      const base = { ...s, retiring: false, queue: [], phase: "idle" as const, error: null, crashes: [], blocked: false };
       if (!s.alive) return { state: { ...base, closing: false }, actions: [] };
       return { state: { ...base, closing: true }, actions: [{ do: s.phase === "thinking" ? "kill" : "close-stdin" }] };
     }
     case "reconfigure": {
-      // ACCOUNT가 바뀌면 --resume이 안 되니 새 대화로 시작한다. 막힌 것도 푼다
-      const base = { ...s, queue: [], sessionId: null, fresh: true, crashes: [], blocked: false, error: null, phase: "idle" as const };
+      // ACCOUNT가 바뀌면 --resume이 안 되니 새 대화로 시작한다. 막힌 것도 푼다. 턴이 도는 중이면 그 턴은 옛 프로세스에서 끝낸다(ATC-242, retiring)
+      if (s.alive && s.phase === "thinking" && !s.closing) return { state: { ...s, sessionId: null, fresh: true, crashes: [], blocked: false, error: null, retiring: true }, actions: [] };
+      const base = { ...s, retiring: false, queue: [], sessionId: null, fresh: true, crashes: [], blocked: false, error: null, phase: "idle" as const };
       if (!s.alive) return { state: { ...base, closing: false }, actions: [] };
       return { state: { ...base, closing: true }, actions: [{ do: s.phase === "thinking" ? "kill" : "close-stdin" }] };
     }

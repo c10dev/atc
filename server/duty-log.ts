@@ -8,6 +8,7 @@ export type DutyLogLine =
   | { t: string; kind: "notice"; text: string }
   | { t: string; kind: "usage"; turn: DutyTurnUsage }
   | { t: string; kind: "shift" } // NEW SHIFT: 여기부터 새 대화
+  | { t: string; kind: "account"; from: string; to: string; by: string } // DUTY ACCOUNT가 바뀜(ATC-242): 다음 글부터 to에서 새 대화
   // D3: DUTY의 카드 요청이 받아들여진 자리(draft는 duty-drafts.jsonl의 DD-n). 카드의 내용은 그릴 때 지금의 큐에서 읽는다
   | { t: string; kind: "card"; queueKind: string; key: string; draft: string }
   // D3: note·charter 초안(읽기만 하는 흐린 카드). 확정은 D4·D5

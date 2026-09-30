@@ -11,7 +11,7 @@ DUTY는 기본으로 **읽고 초안만** 남깁니다. 밖으로 메시지를 �
 1. 설정(왼쪽 위 ATC) → **OPERATIONS** → **DUTY**에서 `on`으로 바꿉니다. ⚠ 확인이 한 번 나옵니다. 켠다고 바로 프로세스가 뜨지는 않습니다.
 2. 헤더에 `● DUTY`가 나옵니다. 점 색이 상태입니다: 초록 대기, 주황 답하는 중, 빨강 내려감.
 
-DUTY는 ACCOUNT `acct-2`의 한도(FUEL)를 씁니다. 다른 ACCOUNT나 유휴 시간(기본 30분)은 상태 폴더의 `duty.json`(`account`, `idleMin`)에 씁니다. 끄면 실행 중인 프로세스가 끝납니다.
+DUTY는 **DUTY ACCOUNT**의 한도(FUEL)를 씁니다(기본 `acct-2`). 같은 DUTY 블록의 **DUTY ACCOUNT** 드롭다운에서 바꿉니다: 로그인 안 된 ACCOUNT는 고를 수 없고, FUEL hold인 ACCOUNT는 경고와 함께 고를 수 있습니다(DUTY는 내 글에만 돌기 때문에 막지 않습니다). 바꾸면 **다음 메시지부터** 새 ACCOUNT에서 **새 대화**로 시작합니다. 설정 폴더가 다르면 이어 쓸 수 없어서 NEW SHIFT와 같게 대화는 새로 열리고, brief와 확정한 결정은 이어집니다. 돌고 있던 턴은 옛 ACCOUNT에서 끝납니다. 관제 세션(TOWER 등)의 ACCOUNT는 AGENTS 탭의 LAUNCH ACCOUNT에서 따로 고릅니다. 유휴 시간(기본 30분)은 상태 폴더의 `duty.json`(`idleMin`)에 씁니다. 끄면 실행 중인 프로세스가 끝납니다.
 
 ## 열고 닫기
 
