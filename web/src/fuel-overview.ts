@@ -1,3 +1,4 @@
+import { compareRegistration } from "../../server/registration.ts";
 import { CONTROL_NAMES } from "../../server/crew.ts";
 import { CREW_WARNING_KINDS, type CrewWarningCounts } from "../../server/fuel-crew.ts";
 import type { LeakTotals } from "../../server/fuel-leaks.ts";
@@ -128,11 +129,11 @@ export function sortRows(rows: readonly FuelRow[], key: SortKey, dir: "asc" | "d
   return [...rows].sort((a, b) => {
     const x = a[key];
     const y = b[key];
-    if (x === null && y === null) return a.label.localeCompare(b.label);
+    if (x === null && y === null) return compareRegistration(a.label, b.label);
     if (x === null) return 1;
     if (y === null) return -1;
-    const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
-    return c * sign || a.label.localeCompare(b.label);
+    const c = typeof x === "number" && typeof y === "number" ? x - y : compareRegistration(String(x), String(y));
+    return c * sign || compareRegistration(a.label, b.label);
   });
 }
 

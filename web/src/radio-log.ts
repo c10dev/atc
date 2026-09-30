@@ -1,3 +1,4 @@
+import { compareRegistration, TEAM_REGISTRATION } from "../../server/registration.ts";
 import type { Freq, Transmission } from "../../server/radio.ts";
 
 // RADIO 탭(ATC-171)의 순수 계산: 합치기, 거르기, 답 묶기, 나이·overdue, 링크, 되감기. 화면(views/Radio.tsx)과 분리해 node:test로 본다.
@@ -36,7 +37,7 @@ export const filterTx = (txs: readonly Transmission[], f: Filter) => txs.filter(
 
 // 필터에 쓸 값 목록(정렬, 중복 없음)
 export function optionsOf(txs: readonly Transmission[], key: "airport" | "aircraft"): string[] {
-  return [...new Set(txs.map((t) => t[key]).filter((v): v is string => Boolean(v)))].sort();
+  return [...new Set(txs.map((t) => t[key]).filter((v): v is string => Boolean(v)))].sort(key === "aircraft" ? compareRegistration : undefined);
 }
 
 export interface Thread {
@@ -106,7 +107,7 @@ export function linksOf(t: Transmission): Link[] {
   else if (/^D-\d+/.test(id)) out.push({ href: "#dispatch", label: id });
   else if (/^CC-\d+/.test(id) && t.aircraft) out.push({ href: `#fleet/${encodeURIComponent(t.aircraft)}`, label: id });
   else if (/^C-\d+/.test(id)) out.push({ href: "#strips", label: id });
-  if (t.aircraft && /^TEAM_[A-Z]$/.test(t.aircraft) && !out.some((l) => l.href.startsWith("#fleet/"))) out.push({ href: `#fleet/${encodeURIComponent(t.aircraft)}`, label: t.aircraft });
+  if (t.aircraft && TEAM_REGISTRATION.test(t.aircraft) && !out.some((l) => l.href.startsWith("#fleet/"))) out.push({ href: `#fleet/${encodeURIComponent(t.aircraft)}`, label: t.aircraft });
   return out;
 }
 

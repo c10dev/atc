@@ -15,7 +15,7 @@ import type { AccountHold, Health } from "./health.ts";
 import type { FuelRemaining } from "./fuel-remaining.ts";
 import { type ContextSize, type ContextView, contextView } from "./fuel-context.ts";
 import type { Snapshot } from "./model.ts";
-import { fleetKeyOf, registrationOf, regKey } from "./registration.ts";
+import { compareRegistration, fleetKeyOf, registrationOf, regKey } from "./registration.ts";
 import { loadRulesRecords, rulesOfAircraft, type RulesView } from "./rules-state.ts";
 import type { SessionOrigin } from "./session-origin.ts";
 import type { Job } from "./job-state.ts";
@@ -341,7 +341,7 @@ export function fleetView(
   const live = s.sessions.filter((x) => team.test(x.name) && x.status !== "dead");
   // 세션 이름은 `Team G`, `team_g`처럼 달라도 한 REGISTRATION으로 읽는다(ATC-67)
   const regOf = (name: string) => regKey(name, teamPattern);
-  const names = [...new Set([...live.map((x) => regOf(x.name)), ...Object.keys(fleet.aircraft).map(regOf)])].sort();
+  const names = [...new Set([...live.map((x) => regOf(x.name)), ...Object.keys(fleet.aircraft).map(regOf)])].sort(compareRegistration);
   // 라이브 부분(상태·FLYING·마지막 활동·health·chips)은 스냅샷만으로 셈한다(fleet-live.ts, 화면도 같이 쓴다)
   // 관찰한 ACCOUNT(ATC-146): 살아 있는 세션이 home과 다른 폴더에 있으면 LIMIT 붙들림은 그 폴더의 ACCOUNT로 센다
   const observedOf = (n: string) => live.find((x) => regOf(x.name) === regOf(n))?.account ?? null;
@@ -395,11 +395,14 @@ export function defaultBase(s: Pick<Snapshot, "sessions" | "airports">, teamPatt
   return top ?? (mapped && s.airports.some((a) => a.code === mapped) ? mapped : (s.airports[0]?.code ?? null));
 }
 
-// 비어 있는 다음 등록번호: TEAM_A … TEAM_Z 중 세션도 등록 항목도 없는 첫 글자
+// 비어 있는 다음 등록번호: TEAM_A … TEAM_Z, 그다음 TEAM_AA, TEAM_AB … TEAM_ZZ(ATC-181) 중 세션도 등록 항목도 없는(퇴역 포함) 첫 번호. 다 쓰면 null
+export const REGISTRATION_SEQUENCE: readonly string[] = (() => {
+  const L = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  return [...L, ...[...L].flatMap((a) => [...L].map((b) => a + b))].map((x) => `TEAM_${x}`);
+})();
 export function nextRegistration(taken: Iterable<string>): string | null {
   const used = new Set([...taken].map((x) => regKey(x)));
-  for (const c of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") if (!used.has(`TEAM_${c}`)) return `TEAM_${c}`;
-  return null;
+  return REGISTRATION_SEQUENCE.find((r) => !used.has(r)) ?? null;
 }
 
 // ENTRY INTO SERVICE: 새 AIRCRAFT를 FLEET에 들인다. 세션은 사용자가 CREW BRIEFING을 붙여 넣어 연다.

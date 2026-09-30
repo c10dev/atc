@@ -3,7 +3,7 @@ import { fleetStatusOf } from "./fleet-status.ts";
 import type { AircraftView } from "./fleet.ts";
 import type { Clearance, Ticket } from "./model.ts";
 import type { Proposal } from "./proposals.ts";
-import { registrationOf, regKey } from "./registration.ts";
+import { compareRegistration, registrationOf, regKey } from "./registration.ts";
 
 // SCHEDULE TAIL(ATC-68): FLIGHT의 `tail:TEAM_X`(TAIL ASSIGNMENT)를 한 AIRCRAFT로 정하는 초안. 설계: docs/occ.md 5장, docs/fleet.md.
 // DISPATCH 밖에서 정한 배정(CHARTER DESK의 SUPERVISOR 지시, 팀이 이미 몰고 있는 FLIGHT)을 라벨로 남긴다.
@@ -155,5 +155,5 @@ export function tailSignalsOf(inp: TailSignalInput): TailSignal[] {
     if (!c.readbackAt || c.cancelledAt) continue;
     add(c.flight, c.toName, { source: "READBACK", at: c.readbackAt, detail: `CLEARANCE ${c.id}` });
   }
-  return [...out.values()].sort((a, b) => a.flight.localeCompare(b.flight, "en", { numeric: true }) || a.registration.localeCompare(b.registration));
+  return [...out.values()].sort((a, b) => a.flight.localeCompare(b.flight, "en", { numeric: true }) || compareRegistration(a.registration, b.registration));
 }

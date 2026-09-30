@@ -91,6 +91,16 @@ AIRPORT 등록부(`airports.json`)처럼 `~/.local/state/atc/fleet.json`에 둔�
 - **TYPE RATING**은 COMPLEMENT가 허용하는 것에서 시작한다. 도우미가 `flash-helper`뿐인 CREW는 `SEC`를 가질 수 없다. vocado가 보안 작업에 DeepSeek을 금지하기 때문이다.
 - **ROUTES**와 **TARGETS**는 SUPERVISOR가 정한다. OCC는 변경 초안을 쓸 수 있지만(4단계) 적용하지는 않는다.
 
+### 두 글자 REGISTRATION as built (ATC-181)
+
+`TEAM_Z` 다음 REGISTRATION은 `TEAM_AA`, `TEAM_AB` … `TEAM_ZZ`다(모두 26 + 676개). REGISTRATION은 그대로 불투명한 이름이다: 바꾸거나 다시 쓰지 않고, 퇴역한 것도 쓴 것으로 남는다.
+
+- **규칙 하나.** `server/registration.ts`의 `DEFAULT_TEAM_PATTERN`이 `^TEAM[\s_-]?[A-Z]{1,2}$`이고, 모든 곳이 여기나 DISPATCH의 `teamPattern`에서 읽는다. 어떤 표기든 정식으로 맞춘다(`Team AB`, `team-ab`, `TEAMAB` → `TEAM_AB`). 한 글자 이름은 그대로다. `TEAM_ABC`와 `TEAM_1`은 팀 이름이 아니다. 소스에 한 글자짜리 팀 정규식을 새로 하드코딩하면 테스트가 실패한다.
+- **`nextRegistration`**(ENTRY INTO SERVICE)은 `TEAM_A` … `TEAM_Z`, `TEAM_AA` … `TEAM_ZZ` 가운데 비어 있는 첫 번호를 주고, 다 쓰면 `null`이다. 등록됐거나 살아 있는 REGISTRATION(퇴역 포함)은 쓴 것으로 센다.
+- **콜사인.** 글자마다 음성 알파벳 한 단어: `TEAM_G` → GOLF, `TEAM_RA` → ROMEO ALPHA(`server/callsign.ts`, 화면과 같이 씀). RADIO 문구와 콜사인별 목소리는 전체 콜사인을 쓴다.
+- **정렬.** REGISTRATION으로 정렬하는 곳(FLEET 목록, NETWORK, METRICS FUEL, CHECKRIDE, RADIO의 AIRCRAFT 거르기)은 글자 수가 먼저, 그다음 알파벳순이다(`compareRegistration`): `TEAM_B`, `TEAM_Z`, `TEAM_AA`, `TEAM_AB`.
+- **하지 않은 것.** 비슷한 콜사인이 동시에 활동할 때(ROMEO와 ROMEO ALPHA)의 경고는 아직 없다. 기존 `fleet.json` 키, LOGBOOK 줄, `tail:` 라벨은 건드리지 않는다.
+
 ### REGISTRATION 표기 as built (ATC-67)
 
 세션 이름을 어떻게 적었든 atc는 한 REGISTRATION을 어디서나 같게 읽는다. `server/registration.ts`의 `registrationOf(name, teamPattern)`는 DISPATCH `teamPattern`이 받는 이름을 정식 표기(대문자, `_`)로 바꾼다(`Team G`, `TEAM-G`, `team_g`, `TEAMG` → `TEAM_G`). 구분자가 없으면 규칙이 받는 첫 자리에 `_`를 넣으므로, `teamPattern`을 바꾸면 그 규칙이 정한다. 규칙이 받지 않는 이름(TOWER, OCC, President)은 `null`이고 전처럼 대문자로 비교한다.
