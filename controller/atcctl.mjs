@@ -81,7 +81,7 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
   node atcctl.mjs dispatch release <D-0003> (2b) 승인된 제안을 sent로 바꾸고 SEND TO·SEND(보낼 머리 한 줄)와 FLIGHT PLAN 출력
   node atcctl.mjs dispatch readback <D-0003>
                                             (2b) CAPTAIN이 READBACK함
-  node atcctl.mjs dispatch report <D-0003|ATC-124> --pr <번호> --tier <auto|flagged|user> --tests <통과/전체> --discretion <수> --blocked <none|막힌 점>
+  node atcctl.mjs dispatch report <D-0003|ATC-124> --pr <번호> --tier <auto|flagged|user> --tests <통과/전체|n/a> --discretion <수> --blocked <none|막힌 점>
                                             CAPTAIN의 도착 보고("[TEAM_X → OCC] ARRIVED ATC-n · PR #n")의 고정 칸을 기록(ATC-124). 자유 요약은 저장하지 않는다.
                                             PR이 없는 SURVEY·CHECK는 --pr 대신 --result <링크>. FLIGHT PLAN과 직접 배정 모두 쓴다
   node atcctl.mjs dispatch decline <D-0003> -- <사유>
@@ -366,7 +366,7 @@ export function parseArrived(args) {
   return { flight: id.toUpperCase(), body: { note, aircraft } };
 }
 
-// dispatch report <D-0003|ATC-124> --pr <n> --tier <auto|flagged|user> --tests <p/t> --discretion <n> --blocked <none|text> → { ref, body }.
+// dispatch report <D-0003|ATC-124> --pr <n> --tier <auto|flagged|user> --tests <p/t|n/a> --discretion <n> --blocked <none|text> → { ref, body }.
 // PR이 없는 SURVEY·CHECK FLIGHT는 --pr 대신 --result <링크>(그때 --tests는 없어도 된다). 자유 요약은 받지 않는다(ATC-124). 값 검사는 서버가 한다
 const REPORT_OPTS = ["--pr", "--result", "--tier", "--tests", "--discretion", "--blocked"];
 export function parseReportArgs(args) {

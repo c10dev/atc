@@ -446,7 +446,7 @@ BLOCKED none | <one line each>
 <free summary>
 ```
 
-A SURVEY or CHECK FLIGHT without a PR writes `RESULT <link>` in place of `PR #n`. The format is in root `CLAUDE.md` "교신" and the `atc-task` skill section 8.
+A SURVEY or CHECK FLIGHT without a PR writes `RESULT <link>` in place of `PR #n`. A PR with no code or test changes (docs, config, CI only) writes `TESTS n/a` instead of numbers (ATC-209): `dispatch report --tests n/a` stores `{ na: true }`, the report line shows `TESTS n/a`, and readers treat it as "not applicable", never as 0/0 or a failure. Other free text is still rejected, and OCC never guesses a number. The format is in root `CLAUDE.md` "교신" and the `atc-task` skill section 8.
 
 **Missing reports (ATC-169).** A report that the receiving OCC read but did not record before it was stopped is lost, because the CAPTAIN does not send it again. The OCC manual now records it the moment it is read, and `dispatch brief` lists `arrivalMissing`: FLIGHTs that DISPATCH sent, with a STAND, whose PR merged after the ATC-124 cutoff (within one day) and that have no record (`due: true` once 30 minutes have passed). OCC tells the SUPERVISOR; it does not ask the CAPTAIN. See [control-recycle.md](control-recycle.md) section 4.
 

@@ -446,7 +446,7 @@ BLOCKED none | <한 줄씩>
 <자유 요약>
 ```
 
-PR이 없는 SURVEY·CHECK FLIGHT는 `PR #n` 대신 `RESULT <링크>`를 쓴다. 형식은 루트 `CLAUDE.md` "교신"과 `atc-task` skill 8절에 있다.
+PR이 없는 SURVEY·CHECK FLIGHT는 `PR #n` 대신 `RESULT <링크>`를 쓴다. 코드나 테스트가 바뀌지 않은 PR(문서·설정·CI만)은 숫자 대신 `TESTS n/a`를 쓴다(ATC-209): `dispatch report --tests n/a`는 `{ na: true }`로 저장되고, 보고 줄에는 `TESTS n/a`가 보이며, 읽는 쪽은 0/0이나 실패가 아니라 "해당 없음"으로 본다. 그 밖의 자유 글은 여전히 거절하고, OCC는 숫자를 지어내지 않는다. 형식은 루트 `CLAUDE.md` "교신"과 `atc-task` skill 8절에 있다.
 
 **빠진 보고(ATC-169).** 받은 OCC가 읽었지만 기록하기 전에 멈추면 그 보고는 사라진다. CAPTAIN이 다시 보내지 않기 때문이다. OCC 매뉴얼은 이제 읽는 즉시 기록하게 하고, `dispatch brief`의 `arrivalMissing`이 DISPATCH가 보낸 FLIGHT 가운데 STAND가 있고 PR이 ATC-124 시작 뒤(하루 안)에 머지됐는데 기록이 없는 것을 보여 준다(30분이 지나면 `due: true`). OCC는 SUPERVISOR에게 알리고 CAPTAIN에게 묻지 않는다. [control-recycle.md](control-recycle.md) 4절.
 

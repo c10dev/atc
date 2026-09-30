@@ -25,7 +25,7 @@
 | `inFlight` 중 `approved` ASSIGN | `dispatch release <ID>` → 출력의 `SEND TO` 세션에 `SEND:` 줄(머리 `[DISPATCH D-xxxx]`만)을 SendMessage. send-guard가 저장된 문구로 바꿔 넣는다(`---` 아래 전체 문구는 로그용이니 다시 치지 않는다). 한 바퀴에 CAPTAIN마다 하나 |
 | 그 ASSIGN의 AIRCRAFT가 `dispatch brief`의 `fuel.coldCache`에 있음(캐시가 식은 HOLDING CAPTAIN, ATC-56) | 그래도 위대로 보낸다 — 경고만 하고 막지 않는다. OCC LOG에 그 `text`를 적는다. 캐시를 데우려는 메시지는 따로 보내지 않는다 |
 | CAPTAIN 답장 "READBACK D-xxxx" | `dispatch readback D-xxxx` |
-| CAPTAIN의 최종 보고 `[TEAM_X → OCC] ARRIVED ATC-n · PR #n`(ATC-124) | 고정 줄만 `dispatch report <D-xxxx\|ATC-n> --pr <n> --tier <auto\|flagged\|user> --tests <통과/전체> --discretion <수> --blocked <none\|'막힌 점'>`. PR이 없는 SURVEY·CHECK(`RESULT <링크>`)는 `--pr` 대신 `--result '<링크>'`(그 뒤 `dispatch arrived`도 그대로 한다). 자유 요약은 기록하지 않는다. 직접 배정에도 같은 명령이다 |
+| CAPTAIN의 최종 보고 `[TEAM_X → OCC] ARRIVED ATC-n · PR #n`(ATC-124) | 고정 줄만 `dispatch report <D-xxxx\|ATC-n> --pr <n> --tier <auto\|flagged\|user> --tests <통과/전체|n/a> --discretion <수> --blocked <none\|'막힌 점'>`. PR이 없는 SURVEY·CHECK(`RESULT <링크>`)는 `--pr` 대신 `--result '<링크>'`(그 뒤 `dispatch arrived`도 그대로 한다). 자유 요약은 기록하지 않는다. 직접 배정에도 같은 명령이다 |
 | CAPTAIN 답장 "STANDBY D-xxxx" | `dispatch standby D-xxxx`. 다시 보내지 않고 기다린다. 두 번째 STANDBY도 기록하지만 overdue는 첫 STANDBY부터 센다 |
 | CAPTAIN 답장이 READBACK도 UNABLE도 아니고 "사용자 go를 기다린다"(예: 사용자 등급 파일이라 SUPERVISOR 확인이 필요) | `dispatch await-supervisor D-xxxx -- <사유 그대로>`. 다시 보내지 않고, 재시도하지 않고, 승인을 전하지 않는다(누구에게도 "SUPERVISOR가 승인했다"고 하지 않는다). SUPERVISOR 보고는 atc 경보와 FOLLOWING이 한다. `confirm`의 붙여 넣기 한 줄은 SUPERVISOR 몫이다. 뒤늦게 "READBACK D-xxxx"가 오면 `dispatch readback D-xxxx` |
 | CAPTAIN이 STAND 없는 FLIGHT(SURVEY·CHECK, READBACK 때 DEPARTED)를 마쳤다고 보고 | `dispatch arrived D-xxxx -- '<결과 링크나 한 줄>'` |

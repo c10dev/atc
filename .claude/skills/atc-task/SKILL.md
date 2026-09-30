@@ -110,6 +110,7 @@ BLOCKED none | <막힌 점 한 줄씩>
 <자유 요약>
 ```
 
+- `TESTS` 줄은 늘 쓴다. 코드나 테스트가 바뀌지 않은 PR(문서·설정·CI만)은 숫자를 지어내지 말고 `TESTS n/a`로 쓴다(ATC-209): `TESTS n/a · tsc ✓ · build ✓`. 받은 OCC는 `--tests n/a`로 그대로 기록한다. 코드가 바뀐 PR은 늘 `<통과>/<전체>`다.
 - 첫 줄의 `→ OCC`는 FLIGHT PLAN으로 받았을 때, 직접 지시면 `→ ENGINEERING`(사용자에게는 같은 꼴로 대화에 쓴다). PR이 없는 SURVEY·CHECK FLIGHT는 `PR #<번호>` 대신 `RESULT <링크>`를 쓴다.
 - `TIER`는 6절 등급, `DISCRETION`은 PILOT'S DISCRETION으로 고른 것의 수(줄마다 무엇을 왜), `BLOCKED`는 막힌 점이나 SUPERVISOR가 결정할 일이다. tsc나 build가 실패했으면 ✓ 대신 ✗와 이유를 적는다.
 - 고정 줄 뒤 자유 요약에는: 한 일 3~5개, 명세와 다르게 한 점, `flagged`면 바뀐 관제 규칙, 검증 결과(시험 서버와 Playwright에서 확인한 것. 스크린샷은 올리지 않고 글로, 공개 저장소, 루트 CLAUDE.md), PR 링크.

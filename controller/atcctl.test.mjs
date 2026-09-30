@@ -433,6 +433,8 @@ test("dispatch report(ATC-124): 고정 칸 플래그를 풀고, 빠진 칸·모�
   // FLIGHT key(직접 배정)와 소문자, 공백이 든 BLOCKED는 한 인자로
   assert.deepEqual(parseReportArgs(["atc-124", "--pr", "5", "--tier", "flagged", "--tests", "3/3", "--discretion", "0", "--blocked", "CI 대기 중; 리뷰 필요"]).body.blocked, "CI 대기 중; 리뷰 필요");
   assert.equal(parseReportArgs(["atc-124", "--pr", "5", "--tier", "flagged", "--tests", "3/3", "--discretion", "0", "--blocked", "none"]).ref, "ATC-124");
+  // ATC-209: --tests n/a는 그대로 서버에 넘긴다(값 검사는 서버가 한다)
+  assert.equal(parseReportArgs(["atc-209", "--pr", "7", "--tier", "user", "--tests", "n/a", "--discretion", "0", "--blocked", "none"]).body.tests, "n/a");
   // PR 없는 FLIGHT: --result, --tests는 없어도 된다
   assert.deepEqual(parseReportArgs(argv("ATC-77 --result https://x/y --tier auto --discretion 0 --blocked none")).body, { ref: "ATC-77", result: "https://x/y", tier: "auto", discretion: "0", blocked: "none" });
   assert.throws(() => parseReportArgs(argv("D-0119 --pr 211 --tier user --discretion 2 --blocked none")), /--tests/);
