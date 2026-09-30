@@ -20,7 +20,7 @@ export interface ArrivalReport {
   pr: number | null; // PR 번호. PR이 없는 SURVEY·CHECK FLIGHT는 null
   result: string | null; // PR 대신 결과 링크(SURVEY·CHECK)
   tier: ReportTier;
-  tests: { pass: number; total: number } | null; // PR이 없으면 null일 수 있다
+  tests: { pass: number; total: number } | { na: true } | null; // PR이 없으면 null일 수 있다. { na: true }는 코드가 없는 PR(문서·설정·CI)의 "TESTS n/a"(ATC-209)
   discretion: number; // PILOT'S DISCRETION으로 고른 것의 수
   blocked: string; // "none" 또는 막힌 점 한 줄씩
 }
@@ -41,12 +41,15 @@ export function parseReport(body: unknown, flight: string, proposal: string | nu
   if (result && result.length > RESULT_MAX) throw new ReportError(`result는 ${RESULT_MAX}자 이내`);
   if (typeof b.tier !== "string" || !(REPORT_TIERS as readonly string[]).includes(b.tier)) throw new ReportError(`tier는 ${REPORT_TIERS.join("|")} 중 하나`);
   let tests: ArrivalReport["tests"] = null;
-  if (b.tests !== undefined && b.tests !== null && b.tests !== "") {
+  const isNa = (v: unknown) => (typeof v === "string" && v.trim().toLowerCase() === "n/a") || (Boolean(v) && typeof v === "object" && (v as { na?: unknown }).na === true);
+  if (isNa(b.tests)) {
+    tests = { na: true }; // 코드도 테스트도 바뀌지 않은 PR. 숫자를 지어내지 않는다(ATC-152). 0/0이나 실패가 아니다
+  } else if (b.tests !== undefined && b.tests !== null && b.tests !== "") {
     const t = b.tests as { pass?: unknown; total?: unknown } | string;
     const m = typeof t === "string" ? /^(\d+)\/(\d+)$/.exec(t.trim()) : null;
     const pass = m ? Number(m[1]) : Number((t as { pass?: unknown }).pass);
     const total = m ? Number(m[2]) : Number((t as { total?: unknown }).total);
-    if (!Number.isInteger(pass) || !Number.isInteger(total) || pass < 0 || total < 0 || pass > total) throw new ReportError("tests는 <통과>/<전체> (예: 1122/1122)");
+    if (!Number.isInteger(pass) || !Number.isInteger(total) || pass < 0 || total < 0 || pass > total) throw new ReportError("tests는 <통과>/<전체> (예: 1122/1122) 또는 n/a(코드·테스트가 바뀌지 않은 PR)");
     tests = { pass, total };
   }
   if (pr !== null && !tests) throw new ReportError("PR 보고에는 tests(<통과>/<전체>)가 필요함");
@@ -93,6 +96,6 @@ export function appendReport(r: ArrivalReport, file = FILE()) {
 // 사람이 읽는 한 줄(atcctl 출력용)
 export function reportLine(r: ArrivalReport): string {
   const where = r.pr !== null ? `PR #${r.pr}` : `RESULT ${r.result}`;
-  const tests = r.tests ? ` · TESTS ${r.tests.pass}/${r.tests.total}` : "";
+  const tests = r.tests ? ` · TESTS ${"na" in r.tests ? "n/a" : `${r.tests.pass}/${r.tests.total}`}` : "";
   return `${r.flight} ARRIVED 보고 기록 · ${where} · TIER ${r.tier}${tests} · DISCRETION ${r.discretion} · BLOCKED ${r.blocked}`;
 }

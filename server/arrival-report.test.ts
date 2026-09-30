@@ -27,6 +27,24 @@ test("parseReport: PR이 없으면 RESULT 링크(TESTS 없어도 됨), 둘 다 �
   assert.throws(() => parseReport({ ...ok, tests: undefined }, "ATC-77", null, AT), /tests/);
 });
 
+test("parseReport(ATC-209): TESTS n/a는 PR 보고에도, PR 없는 보고에도 받는다({ na: true }). 다른 글·숫자 모순은 여전히 거절", () => {
+  const withPr = parseReport({ ...ok, tests: "n/a" }, "ATC-209", "D-0190", AT);
+  assert.deepEqual(withPr.tests, { na: true });
+  assert.equal(withPr.pr, 211);
+  for (const v of [" N/A ", "n/a", { na: true }]) assert.deepEqual(parseReport({ ...ok, tests: v }, "ATC-209", null, AT).tests, { na: true });
+  const noPr = parseReport({ result: "https://x/y", tier: "auto", tests: "n/a", discretion: 0, blocked: "none" }, "ATC-77", null, AT);
+  assert.deepEqual([noPr.pr, noPr.tests], [null, { na: true }]);
+  for (const v of ["abc", "na", "n/a!", "3/2", "0/0 n/a", { na: false }, { pass: 1 }]) assert.throws(() => parseReport({ ...ok, tests: v }, "ATC-209", null, AT), /tests/, String(JSON.stringify(v)));
+  // 숫자 보고는 그대로
+  assert.deepEqual(parseReport({ ...ok, tests: "3/4" }, "ATC-1", null, AT).tests, { pass: 3, total: 4 });
+});
+
+test("reportLine(ATC-209): n/a는 TESTS n/a로 보이고 0/0이 아니다", () => {
+  const r = parseReport({ ...ok, tests: "n/a" }, "ATC-209", "D-0190", AT);
+  assert.equal(reportLine(r), "ATC-209 ARRIVED 보고 기록 · PR #211 · TIER user · TESTS n/a · DISCRETION 2 · BLOCKED none");
+  assert.match(reportLine(parseReport(ok, "ATC-1", null, AT)), /TESTS 1149\/1149/);
+});
+
 test("parseReport: 잘못된 칸은 사유와 함께 거절", () => {
   const bad = (patch: object, re: RegExp, flight = "ATC-1") => assert.throws(() => parseReport({ ...ok, ...patch }, flight, null, AT), re);
   bad({ tier: "urgent" }, /tier/);
