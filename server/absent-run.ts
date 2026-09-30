@@ -3,10 +3,11 @@ import { join } from "node:path";
 import { accountFolders } from "./accounts.ts";
 import type { FleetFile } from "./crew.ts";
 import { LIMIT_WINDOW_MS } from "./health.ts";
-import { type AbsentAircraft, absentOf, type CutInfo, cutAtOfText, lastReportLineOf } from "./dispatch-launch.ts";
+import { type AbsentAircraft, absentOf, type CutInfo, cutAtOfText, lastReportLineOf, stuckLaunchOf } from "./dispatch-launch.ts";
 import type { Session } from "./model.ts";
 import { readRecords } from "./recorder.ts";
 import { regKey } from "./registration.ts";
+import { jobStateOf } from "./session-control.ts";
 import type { Restarting } from "./restarting.ts";
 
 // 세션이 없는 백그라운드 AIRCRAFT 읽기(ATC-129). 계산은 dispatch-launch.ts의 순수 함수, 여기는 읽기만(쓰기 없음).
@@ -19,21 +20,25 @@ const MISS_TTL_MS = 10 * 60_000; // 못 찾은 job은 10분 동안 다시 찾지
 const TAIL = 96 * 1024;
 
 type LaunchRow = { t: string; jobId?: string; cwd?: string; permissionMode?: string; model?: string; account?: string };
-let launchCache: { at: number; rows: Map<string, LaunchRow> } | null = null;
+type LaunchAttempt = { t: string; ok: boolean; error?: string };
+let launchCache: { at: number; rows: Map<string, LaunchRow>; attempts: Map<string, LaunchAttempt> } | null = null;
 
 // REGISTRATION → 마지막으로 성공한 atc LAUNCH
-function lastLaunches(now: number, teamPattern: string): Map<string, LaunchRow> {
-  if (launchCache && now - launchCache.at < LAUNCH_TTL_MS) return launchCache.rows;
+function launchesOf(now: number, teamPattern: string) {
+  if (launchCache && now - launchCache.at < LAUNCH_TTL_MS) return launchCache;
   const rows = new Map<string, LaunchRow>();
-  const sorted = readRecords(now - LAUNCH_DAYS * 86_400_000)
-    .filter((r) => r.kind === "fleet" && r.op === "launch" && r.ok)
+  const attempts = new Map<string, LaunchAttempt>(); // 성공·실패 모두의 마지막(ATC-213)
+  const all = readRecords(now - LAUNCH_DAYS * 86_400_000)
+    .filter((r) => r.kind === "fleet" && r.op === "launch")
     .sort((a, b) => a.t.localeCompare(b.t));
-  for (const r of sorted) {
+  for (const r of all) {
     if (r.kind !== "fleet") continue;
+    attempts.set(regKey(r.aircraft, teamPattern), { t: r.t, ok: r.ok, ...(r.error ? { error: r.error } : {}) });
+    if (!r.ok) continue;
     rows.set(regKey(r.aircraft, teamPattern), { t: r.t, ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.cwd ? { cwd: r.cwd } : {}), ...(r.permissionMode ? { permissionMode: r.permissionMode } : {}), ...(r.model ? { model: r.model } : {}), ...(r.account ? { account: r.account } : {}) });
   }
-  launchCache = { at: now, rows };
-  return rows;
+  launchCache = { at: now, rows, attempts };
+  return launchCache;
 }
 
 // job id(세션 id 앞자리)로 대화 기록 찾기: ~/.claude/projects/*/<jobId>-….jsonl. 워크트리로 옮긴 세션은 그 폴더에 있다.
@@ -114,7 +119,7 @@ export interface AbsentInput {
 export function readAbsent(i: AbsentInput): AbsentAircraft[] {
   const reg = (name: string) => regKey(name, i.teamPattern);
   const keys = Object.keys(i.fleet.aircraft);
-  const launches = lastLaunches(i.now, i.teamPattern);
+  const { rows: launches, attempts } = launchesOf(i.now, i.teamPattern);
   return absentOf(
     launches,
     {
@@ -138,5 +143,6 @@ export function readAbsent(i: AbsentInput): AbsentAircraft[] {
         report: cut.report,
       };
     },
+    (registration) => stuckLaunchOf(attempts.get(registration), (jobId) => jobStateOf(jobId)),
   );
 }

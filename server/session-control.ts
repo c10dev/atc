@@ -53,7 +53,9 @@ export interface AgentRow {
 // 2026-09-29: done 상태에서 STOP한 TOWER job(3bf04645)이 claude agents에 pid·status 없이 "working"으로 계속 남아 LAUNCH를 막고
 // 상한에 셌다(Claude Code 2.1.284). 막 띄운 job도 0.4초쯤 pid·status 없이 보이므로, job 파일의 state가 끝난 값이고
 // 시작한 지 2분이 넘었을 때만 STALE이다. 살아 있는 job도 한 턴을 마치면 state가 done이라 state만으로는 가르지 않는다
-export const STALE_JOB_STATES: ReadonlySet<string> = new Set(["done", "stopped", "failed"]);
+// ATC-213: blocked도 같다. 사람을 기다리다 idle로 끝난(약 60분) job은 프로세스가 없는데 state.json이 blocked인 채 pid·status 없는 줄로 남는다
+// (2026-09-30 TEAM_F 40bb5e74, TEAM_K 77803763). 살아 있는 blocked job은 pid와 status(idle)가 있으므로 이 검사에 오지 않는다
+export const STALE_JOB_STATES: ReadonlySet<string> = new Set(["done", "stopped", "failed", "blocked"]);
 export const STALE_MIN_AGE_MS = 2 * 60_000;
 export function isStaleRow(row: Pick<AgentRow, "kind" | "pid" | "status" | "startedAt">, jobState: string | null, now: number): boolean {
   if (row.kind !== "background" || row.pid != null || row.status != null) return false;

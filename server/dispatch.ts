@@ -11,7 +11,7 @@ import { keyInName, keyPatternOf, teamOfKey } from "./linear-keys.ts";
 import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
 import { REASON_CODES } from "./reasons.ts";
-import { ABSENT_REASON, cutHoldWhy, type ResumeInfo } from "./dispatch-launch.ts";
+import { ABSENT_REASON, cutHoldWhy, type ResumeInfo, stuckHintOf } from "./dispatch-launch.ts";
 import { DEFAULT_TEAM_PATTERN, fleetKeyOf, regKey } from "./registration.ts";
 import { DEFAULT_MCC, loadMcc } from "./mcc.ts";
 import { supervisorConfirmOf } from "./supervisor-confirm.ts";
@@ -613,6 +613,11 @@ export function planDispatch(
     const cut = cutHoldWhy(a.cut, now);
     if (cut) {
       aircraft.push({ ...base, available: false, reason: cut });
+      continue;
+    }
+    // LAUNCH가 "이미 떠 있음"으로 거절됐고 그 job이 아직 남아 있다(ATC-213): 카드를 다시 내면 같은 이유로 또 실패한다
+    if (a.stuck) {
+      aircraft.push({ ...base, available: false, reason: `LAUNCH 막힘 — ${stuckHintOf(a.stuck.jobId)}` });
       continue;
     }
     const resume = resumes.find((r) => r.registration === reg);

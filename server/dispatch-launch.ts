@@ -21,7 +21,30 @@ export interface AbsentAircraft {
   model?: string;
   account?: string; // 그 LAUNCH의 ACCOUNT(ATC-147). RESUME은 같은 ACCOUNT에서
   cut: CutInfo | null; // 그 세션의 마지막 턴이 사용 한도로 잘렸고 그 뒤 새 턴이 없다(ATC-86 cut)
+  stuck?: StuckLaunch; // 마지막 LAUNCH가 "이미 떠 있음"으로 거절됐고 그 job 줄이 아직 남아 있다(ATC-213). 카드를 다시 내지 않는다
 }
+
+// LAUNCH가 "이미 떠 있음(bg <id>)"으로 거절한 뒤 그 job이 아직 끝나지 않았다(ATC-213).
+// 같은 카드를 다시 내 봐야 같은 이유로 또 실패한다(2026-09-30: TEAM_F·TEAM_K 카드 11건). SUPERVISOR가 그 job을 정리해야 풀린다
+export interface StuckLaunch {
+  jobId: string;
+  at: string; // 거절된 LAUNCH의 시각
+  state: string; // 지금 그 job의 state.json state
+}
+export const ALREADY_UP_RE = /이미 떠 있음\(bg ([0-9a-f]{6,})\)/;
+const JOB_ENDED = new Set(["done", "stopped", "failed"]);
+// 그 REGISTRATION의 마지막 LAUNCH 시도(성공이든 실패든) 하나만 본다: 뒤에 성공했거나 다른 이유로 실패했으면 막힌 것이 아니다.
+// jobState: job의 지금 state(job 파일을 못 읽으면 null → 막힌 것으로 보지 않는다)
+export function stuckLaunchOf(last: { t: string; ok: boolean; error?: string } | undefined, jobState: (jobId: string) => string | null): StuckLaunch | null {
+  if (!last || last.ok) return null;
+  const jobId = ALREADY_UP_RE.exec(last.error ?? "")?.[1];
+  if (!jobId) return null;
+  const state = jobState(jobId);
+  if (state === null || JOB_ENDED.has(state)) return null;
+  return { jobId, at: last.t, state };
+}
+// 사람에게 할 일을 말하는 한 줄(FOLLOWING launch 이슈와 후보 사유가 함께 쓴다)
+export const stuckHintOf = (jobId: string) => `bg ${jobId}가 아직 목록에 남아 있음 — FLEET에서 그 세션을 STOP하거나 그 안에서 답한다(atc는 스스로 멈추지 않는다)`;
 
 export interface CutInfo {
   sessionId: string;
@@ -98,10 +121,12 @@ export function absentOf(
   launches: ReadonlyMap<string, { t: string; jobId?: string; permissionMode?: string; model?: string; account?: string }>,
   input: { liveRegs: ReadonlySet<string>; restarting: ReadonlySet<string>; registered: ReadonlySet<string>; retired: ReadonlySet<string> },
   cutOf: (reg: string, jobId: string | null) => CutInfo | null = () => null,
+  stuckOf: (reg: string) => StuckLaunch | null = () => null,
 ): AbsentAircraft[] {
   const out: AbsentAircraft[] = [];
   for (const [reg, l] of [...launches].sort(([a], [b]) => a.localeCompare(b))) {
     if (input.liveRegs.has(reg) || input.restarting.has(reg) || !input.registered.has(reg) || input.retired.has(reg)) continue;
+    const stuck = stuckOf(reg);
     out.push({
       registration: reg,
       launchedAt: l.t,
@@ -110,6 +135,7 @@ export function absentOf(
       ...(l.model ? { model: l.model } : {}),
       ...(l.account ? { account: l.account } : {}),
       cut: cutOf(reg, l.jobId ?? null),
+      ...(stuck ? { stuck } : {}),
     });
   }
   return out;
