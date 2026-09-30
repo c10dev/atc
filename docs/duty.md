@@ -204,6 +204,19 @@ The FLIGHT drawer and the PR drawer, read only. No write route was added.
   - Comments are capped at 20 and body text at 20,000 characters (and 4,000 per comment), with a note when cut.
   - SCHEDULE and TICKETS numbers were not changed in this step (SCHEDULE has its own link component that goes to Linear).
 
+### G3 as built (ATC-208)
+
+The Linear state button in the FLIGHT drawer, and READY. The first place the atc server writes Linear; tier `user`.
+
+- **Route.** `POST /api/flight/:key/state` with `{from, to}` (state names), in `server/flight-state-run.ts`. Only a request from this screen passes (`fromThisApp`, else 403), so sessions, `atcctl` and `curl` cannot call it, and nothing in the server calls it by itself: no timer, hook or DUTY path. The Linear API key stays on the server.
+- **Rules** (pure, `server/flight-state.ts` `moveVerdict`, tested). In this order: the issue's team must be one atc reads (`LINEAR_TEAM_KEYS`, else 403); its current state must still be `from` (else 409, nothing written); its current state must be a Backlog, Todo or Canceled type (else 409: Started and Done issues stay with the team's PR and the SUPERVISOR in Linear); `to` must be a state of that team of a Backlog, Todo or Canceled type (else 400, and the same state is 400). The check and the write are two Linear calls, so a change made in Linear between them can still be overwritten (Linear has no compare-and-set).
+- **Only file that writes.** `server/sources/linear-write.ts` holds the one mutation (`issueUpdate` with `stateId`) and is on the `SIDE_EFFECT` list in `deploy/landing-tier.mjs`, with the route file. The other Linear source files still only query.
+- **Recording.** One FLIGHT RECORDER line per attempt, failures too: `{kind: "flight", op: "state", flight, by: "SUPERVISOR", ok, from, to, error?}`. The drawer's 60 s cache for that FLIGHT is dropped after a write.
+- **READY.** `isReady(stateType, blockerStateTypes)` (pure, `server/detail.ts`): the issue is Backlog, has at least one blocker, and every blocker is Done or Canceled. A blocker whose state is not known makes it not READY, and an issue with no blockers is not READY. It reads the relations the drawer already fetched, so nothing new is polled.
+- **Drawer.** The issue detail now also carries `ready` and `moves` (the team's other Backlog, Todo and Canceled states). A READY chip sits next to the state, and a **state move** row shows one button per `moves` entry; the Todo button is emphasised while READY. A click asks once ("Backlog → Todo … writes to Linear now") and only [Confirm] writes. A 409 or 502 shows its text and leaves the drawer as it was.
+- **Not built here.** The QUEUE row READY. Q1 exists, but the row also needs ALERTING A4 (the popover); until then READY is the drawer chip only. The Q1 kinds do not include READY.
+- **Testing.** All tests use stubs. Nothing wrote to the real Linear workspace, and the 7702 run had no Linear key.
+
 ## 4. Screens
 
 - **DUTY drawer.**

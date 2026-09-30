@@ -169,6 +169,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `POST /api/dispatch/mode` | `{mode: "shadow" \| "approval"}` 전환(`dispatch.json`에 저장) |
 | `GET /api/dispatch/flight/:key` | Linear에서 티켓 본문과 댓글(읽기 전용) |
 | `GET /api/flight/:key/detail` | FLIGHT 서랍(DUTY G1): Linear 이슈 본문, 상태, 라벨, 막는 FLIGHT, 상위·하위, 붙은 PR, 댓글 20개. 읽기 전용, 60초 캐시 |
+| `POST /api/flight/:key/state` | FLIGHT 상태 버튼(DUTY G3, [docs/duty.md](../docs/duty.md)): 본문 `{ from, to }`(상태 이름). Linear에 쓰는 유일한 길. 이 화면에서 온 요청만(`fromThisApp`, 아니면 `403`), 지금 상태가 아직 `from`일 때만(아니면 `409`), `to`는 그 팀의 Backlog·Todo·Canceled 상태만(아니면 `400`), 옮기는 출발점도 그런 상태일 때만(아니면 `409`). 시도마다 FLIGHT RECORDER 한 줄 |
 | `GET /api/pr/:airport/:number/detail` | PR 서랍(DUTY G1): `gh pr view`의 본문·체크·파일·리뷰, 폴링하는 열린 PR은 착륙 상태·등급·MCC INSPECTION도. 읽기 전용, 60초 캐시. `ATC_GITHUB=off`면 `503 {off:true}` |
 | `GET /api/dispatch/flight/:key/brief?to=TEAM_X` | 그 FLIGHT의 DIRECT 배정 문구 `{key, brief, text}`(Linear 읽기 전용) |
 | `GET /api/schedule/brief` | SCHEDULE 모드(`shadow`), 열린 초안과 초안마다 바뀔 것, 최근 7일에 닫힌 초안(`via`), S2 점검(`crosscheck.oneClick`), 열린 초안 한도, 후보, FLIGHT 요약. `waypointGaps`(ATC-8), `waypointEtas`와 `fresh`가 붙은 `slips`(ATC-24). 후보의 `candidates.waypoint`와 `fresh`가 붙은 `routesWithoutWaypoints`(ATC-77). `judges`(ATC-36: 스위치, 계열별 일치율, 판정한 초안의 mark만) |

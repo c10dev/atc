@@ -51,8 +51,60 @@ function RefList({ label, items }: { label: string; items: IssueRef[] }) {
   );
 }
 
+// 상태 버튼(DUTY G3): SUPERVISOR의 클릭 하나가 Linear 상태를 옮긴다. 누르면 한 번 더 묻고, 서버는 지금 상태가 아직 from일 때만 옮긴다(아니면 409)
+function StateMove({ d, onMoved }: { d: IssueDetail; onMoved: () => void }) {
+  const [ask, setAsk] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (!d.state || d.moves.length === 0) return null;
+  const go = async (to: string) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/flight/${d.key}/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ from: d.state, to }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(body.error ?? `HTTP ${res.status}`));
+      setAsk(null);
+      onMoved();
+    } catch (e) {
+      setErr(String((e as Error).message ?? e));
+      setAsk(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="dr-row">
+      <dt>상태 이동</dt>
+      <dd className="dr-move">
+        {ask === null ? (
+          d.moves.map((m) => (
+            <button key={m.name} type="button" className={`dr-btn${d.ready && m.type === "unstarted" ? " is-primary" : ""}`} disabled={busy} onClick={() => setAsk(m.name)}>
+              {m.name}로
+            </button>
+          ))
+        ) : (
+          <>
+            <span>
+              {d.state} → <b>{ask}</b> 로 옮긴다. Linear에 바로 쓴다.
+            </span>
+            <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void go(ask)}>
+              {busy ? "옮기는 중…" : "확인"}
+            </button>
+            <button type="button" className="dr-btn" disabled={busy} onClick={() => setAsk(null)}>
+              취소
+            </button>
+          </>
+        )}
+        {err && <span className="dr-error">{err}</span>}
+      </dd>
+    </div>
+  );
+}
+
 function Flight({ k, now }: { k: string; now: number }) {
-  const l = useDetail<IssueDetail>(`/api/flight/${k}/detail`);
+  const [rev, setRev] = useState(0);
+  const l = useDetail<IssueDetail>(`/api/flight/${k}/detail${rev ? `?r=${rev}` : ""}`);
   if (l.state === "loading") return <p className="dr-note">불러오는 중…</p>;
   if (l.state === "error") return <p className="dr-note dr-error">{l.message}</p>;
   const d = l.data;
@@ -63,8 +115,16 @@ function Flight({ k, now }: { k: string; now: number }) {
       <dl className="dr-meta">
         <div className="dr-row">
           <dt>상태</dt>
-          <dd>{d.state ?? "—"}</dd>
+          <dd>
+            {d.state ?? "—"}
+            {d.ready && (
+              <span className="dr-chip dr-ready" title="막는 FLIGHT가 모두 Done 또는 Canceled">
+                READY
+              </span>
+            )}
+          </dd>
         </div>
+        <StateMove d={d} onMoved={() => setRev((n) => n + 1)} />
         <div className="dr-row">
           <dt>우선순위</dt>
           <dd>{PRIORITY[d.priority] ?? "—"}</dd>
