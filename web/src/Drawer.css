@@ -238,6 +238,9 @@ a.fl-link:hover {
   color: var(--radar);
   border-color: var(--radar);
 }
+.dr-ok {
+  color: var(--radar);
+}
 .dr-btn:disabled {
   opacity: 0.5;
   cursor: default;

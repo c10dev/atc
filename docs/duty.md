@@ -204,6 +204,19 @@ The FLIGHT drawer and the PR drawer, read only. No write route was added.
   - Comments are capped at 20 and body text at 20,000 characters (and 4,000 per comment), with a note when cut.
   - SCHEDULE and TICKETS numbers were not changed in this step (SCHEDULE has its own link component that goes to Linear).
 
+### G2 as built (ATC-207)
+
+MERGE in the PR drawer for `user`-tier CLEARED PRs. The first place the atc server merges from a SUPERVISOR click; tier `user` (outward write).
+
+- **Route.** `POST /api/pr/:airport/:number/merge` with `{head}` (the full 40-character sha the drawer showed), in `server/pr-merge-run.ts` (on the `SIDE_EFFECT` list). Only a request from this screen passes (`fromThisApp`, else 403), so sessions, `atcctl` and `curl` cannot call it, and there is no atcctl command. Nothing on a timer or hook calls it.
+- **Rules** (pure, `server/pr-merge.ts` `mergeVerdictOf`, tested). In this order: the AIRPORT is the MCC AIRPORT (else 403, because atc's tier rules reach only there); the PR is open, not a draft, not from a fork, and goes to the default branch (else 409); `head` equals the live head (else 409 with `currentHead`, nothing merged); the tier is `user`, or MCC ESCALATEd the PR (else 403; unknown tier is 409); no SUPERVISOR HOLD (409); atc has polled this head and it is CLEARED (else 409 with the block lines). The route re-reads the PR and the full changed-file list (REST, paginated) from GitHub for every attempt and never trusts the drawer's cached data.
+- **Merge.** `gh api -X PUT repos/<slug>/pulls/<n>/merge -f sha=<head> -f merge_method=<method>`: pinned to the exact head (the same condition as `--match-head-commit`; GitHub also refuses if the head moved in between), auto-merge is never enabled. The method is the AIRPORT's: `merge` for the MCC AIRPORT (as MCC lands), the AUTOLAND `mergeMethod` for any other. A GitHub refusal is returned as 409 with its reason and is recorded as failed.
+- **Recording.** One FLIGHT RECORDER line per attempt after the request check, refusals and failures too: `{kind: "pr", op: "merge", by: "supervisor", airport, number, head, ok, result: merged|refused|rejected|failed, method?, error?}`. The drawer's 60 s cache for that PR is dropped after a merge.
+- **Drawer.** The PR detail now carries `merge` (`allowed`, `why`, `head`, `tier`, `escalated`, `method`), computed by the same pure function from cached data (the click re-checks live). A **MERGE** row shows only for a candidate (tier `user` or ESCALATEd, PR open): `MERGE…` when allowed, otherwise the reason. `MERGE…` opens a confirm step that shows the tier, the 7-character head and the method; **머지 확인** sends the request. A refusal or a moved head shows the server's message, and the success note survives the drawer re-reading.
+- **Not built here.** The button on the QUEUE LANDING card: Q1 exists, but the card needs ALERTING A4 or DUTY D3 to render QUEUE cards. The drawer button is the only one for now.
+- **Chosen without asking (PILOT'S DISCRETION).** Only the MCC AIRPORT: the tier rules exist only for atc, and other AIRPORTs land through their teams and AUTOLAND. A PR that MCC ESCALATEd counts as `user` tier (ESCALATE means "the user merges"). A SUPERVISOR HOLD blocks the button until it is released. The body needs the full 40-character sha. `refused` and `rejected` attempts are recorded too.
+- **Testing.** Every test stubs `gh`; nothing merged for real. The 7702 run used real GitHub data on an open `user`-tier PR: a request without the screen's Origin was 403, a wrong head was 409 with the real head, and the right head on a PR that was not CLEARED was 409, with two recorder lines and the PR still open. The button and confirm step were checked in the browser with the merge request stubbed at 1280 and 390 px.
+
 ### G3 as built (ATC-208)
 
 The Linear state button in the FLIGHT drawer, and READY. The first place the atc server writes Linear; tier `user`.

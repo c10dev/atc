@@ -2,6 +2,17 @@
 
 atc를 고친 PR을 머지한 뒤 운영 서비스(7700)에 반영하는 방법이다. 평소에는 화면 상단의 **UPDATE 막대**를 누르면 된다.
 
+## user 등급 PR 머지하기
+
+`auto`·`flagged` 등급 PR은 CI와 MCC INSPECTION이 통과하면 MCC가 착륙시킨다. **`user` 등급 PR**(guard, `.claude/` 설정, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`를 바꾸거나 MCC가 ESCALATE한 PR)은 사용자가 머지한다. 이제 GitHub로 가지 않고 atc 안에서 할 수 있다.
+
+1. STRIPS의 LANDING SEQUENCE 등에서 PR 번호(`#300`)를 눌러 **PR 서랍**을 연다([화면 안내](screens.md)).
+2. `착륙`이 CLEARED이고 등급이 user이면 `MERGE` 줄에 `MERGE…` 버튼이 있다. 등급, 체크, 본문, 바뀐 파일을 서랍에서 확인한다(diff 검토는 GitHub에서 한다).
+3. `MERGE…`를 누르면 등급·head·머지 방식이 보이고 [머지 확인]을 한 번 더 누른다. head가 그사이 움직였으면 머지하지 않고 새 head를 알려 주니, 서랍을 다시 열어 확인한다.
+4. 머지한 뒤에는 아래 UPDATE 막대로 배포한다(MCC가 `land+rts`이면 MCC가 시작할 수도 있다).
+
+이 버튼은 user 등급 PR만 머지한다. auto-merge는 켜지 않고, 머지 방식은 AIRPORT의 것(atc 저장소는 merge 커밋)이다. GitHub 화면에서 머지해도 전과 같다.
+
 ## UPDATE 막대
 
 서비스가 `origin/main`보다 뒤이면 콘솔 바로 아래에 막대가 뜬다.
