@@ -26,9 +26,10 @@ test("거부 목록: 서브에이전트·메시지·웹 도구, 그리고 STAND 
   assert.deepEqual(settings.permissions.deny.slice(0, 5), ["NotebookEdit", "Agent", "SendMessage", "WebFetch", "WebSearch"]);
   assert.deepEqual(
     settings.permissions.deny.slice(5),
-    ["Edit", "Write"].flatMap((t) => NO_WRITE.map((p) => `${t}(/${WT}/duty-*/${p})`)),
+    NO_WRITE.map((p) => `Edit(/${WT}/duty-*/${p})`), // Write 규칙은 없다: 이 버전은 Edit(path) 규칙만 파일 도구에 맞추고 Write(path)는 경고와 함께 무시한다
   );
   for (const t of settings.permissions.deny.slice(0, 5)) assert.equal(ALLOWED_TOOLS.has(t), false, `${t}는 guard도 허용하지 않는다`);
+  assert.ok(!JSON.stringify(settings.permissions).includes("Write("), "Write(path) 규칙은 이 버전에서 무시된다(D7a 시험): 경로 규칙은 Edit로만 쓴다(파일 도구 전부에 걸린다)");
 });
 
 test("허용 목록: L1 — 읽기 명령, STAND 안의 git과 Edit·Write, gh pr create (gh api·curl·systemctl·kill·npm·claude·node -e·gh pr merge 없음)", () => {
@@ -56,7 +57,6 @@ test("허용 목록: L1 — 읽기 명령, STAND 안의 git과 Edit·Write, gh p
     "Bash(git status)",
     `Bash(git -C ${WT}/duty-* *)`,
     `Edit(/${WT}/duty-*/**)`,
-    `Write(/${WT}/duty-*/**)`,
     "Read",
     "Glob",
     "Grep",

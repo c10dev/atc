@@ -25,7 +25,6 @@
       "Bash(git status)",
       "Bash(git -C /home/c10/projects/atc/.claude/worktrees/duty-* *)",
       "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/**)",
-      "Write(//home/c10/projects/atc/.claude/worktrees/duty-*/**)",
       "Read",
       "Glob",
       "Grep"
@@ -46,18 +45,7 @@
       "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/**/*guard*)",
       "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/**/package*.json)",
       "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/CLAUDE.md)",
-      "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/CLAUDE.en.md)",
-      "Write(//home/c10/projects/atc/.claude/worktrees/duty-*/duty/**)",
-      "Write(//home/c10/projects/atc/.claude/worktrees/duty-*/.claude/**)",
-      "Write(//home/c10/projects/atc/.claude/worktrees/duty-*/.github/**)",
-      "Write(//home/c10/projects/atc/.claude/worktrees/duty-*/hooks/**)",
-      "Write(//home/c10/projects/atc/.claude/worktrees/duty-*/deploy/**)",
-      "Write(//home/c10/projects/atc/.claude/worktrees/duty-*/**/node_modules/**)",
-      "Write(//home/c10/projects/atc/.claude/worktrees/duty-*/**/.env*)",
-      "Write(//home/c10/projects/atc/.claude/worktrees/duty-*/**/*guard*)",
-      "Write(//home/c10/projects/atc/.claude/worktrees/duty-*/**/package*.json)",
-      "Write(//home/c10/projects/atc/.claude/worktrees/duty-*/CLAUDE.md)",
-      "Write(//home/c10/projects/atc/.claude/worktrees/duty-*/CLAUDE.en.md)"
+      "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/CLAUDE.en.md)"
     ]
   },
   "hooks": {
