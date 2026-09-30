@@ -1,6 +1,6 @@
 # ALERTING: what gets the SUPERVISOR's attention, and where it goes
 
-Status (2026-09-30): design draft for [ATC-195](https://linear.app/vocado/issue/ATC-195/alerting-split-bell-into-master-attention-alerts-conditions-queue). The SUPERVISOR said it is unclear what ALERTS and the BELL each do and asked for their goals to be redesigned. Nothing here is built. The open decisions are in section 7.
+Status (2026-09-30): design draft for [ATC-195](https://linear.app/vocado/issue/ATC-195/alerting-split-bell-into-master-attention-alerts-conditions-queue). The SUPERVISOR said it is unclear what ALERTS and the BELL each do and asked for their goals to be redesigned. Nothing here is built. The SUPERVISOR's decisions are in section 7.
 
 ## 1. Current facts
 
@@ -98,7 +98,7 @@ Status (2026-09-30): design draft for [ATC-195](https://linear.app/vocado/issue/
 - **A second click, or a click while the light is off,** opens the ALERTS list.
 - **New QUEUE rows** do not light MASTER. They sound CALL once and pulse the QUEUE readout until the queue is opened.
 - **LOG** lights nothing. DONE sounds only if it is switched on (default off, as today).
-- The server's summary `master` becomes the highest level among `dest: alerts` items that are new since the last ACK, so it is per client. Decision 7.3 settles this. Proposed: the server sends `master` as the highest current ALERTS level, and each client applies its own ACK.
+- The server's summary `master` is the highest current ALERTS level. Each client applies its own ACK (decision 7.3), so a light that one browser ACKed can still be lit in ANNUNCIATOR.
 
 ### 3.3 ALERTS (conditions)
 
@@ -117,7 +117,7 @@ Status (2026-09-30): design draft for [ATC-195](https://linear.app/vocado/issue/
 - The last 50 `dest: log` items, newest first, each with a time, a tone (ok, refused or failed) and a link.
 - It has no count and makes no sound unless DONE is on.
 - The source is the same event records as today (RTS, RECYCLE, REPOSITION, MCC landing, HANDOFF). The LOG is a view; it adds no new state file.
-- Its home is decided in 7.2.
+- Its home is a header popover (decision 7.2).
 
 ### 3.6 Notifications, sound and voice
 
@@ -198,14 +198,12 @@ Each step is one issue.
 
 ## 7. Decisions
 
-Open, for the SUPERVISOR:
+Decided by the SUPERVISOR (2026-09-30), all as proposed:
 
-1. **Names.** Proposed: **MASTER** (the light), **ALERTS**, **QUEUE** and **LOG**. Alternatives:
-   - LOG: **ACARS**, the airline's datalink messages that print in the cockpit; or **MEMO**, the ECAM memo, which is closer to "status" than "events".
-   - MASTER: **MASTER CAUTION**, or **ANNUNCIATOR** (but the Mac app already has that name).
-2. **LOG's home.** A header popover (proposed). Other options: a section of RADIO, or a tab in the DUTY drawer once DUTY exists.
-3. **MASTER and ACK across devices.** ACK is per browser (proposed, as today). The alternative is one server-side ACK, so the Mac app and the browser share it; it needs a small write API with the Origin check.
-4. **CLEARED TO LAND for `auto`/`flagged` PRs.** LOG only (proposed, because MCC lands them). Or keep a QUEUE row while MCC is in `shadow`, when the SUPERVISOR merges them.
+1. **Names:** **MASTER** (the light), **ALERTS**, **QUEUE**, **LOG**.
+2. **LOG's home:** a header popover.
+3. **ACK:** per browser, as today, shared across tabs of the same browser. No server-side ACK.
+4. **CLEARED TO LAND for `auto`/`flagged` PRs:** LOG only (MCC lands them). `user`-tier PRs are QUEUE rows (LANDING).
 
 Decided by this draft (pilot's discretion, reversible):
 
