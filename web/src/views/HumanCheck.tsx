@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { HumanCheckStatus } from "../../../server/human-check.ts";
 import type { PullRequest } from "../../../server/model.ts";
 import { flightNumber } from "../aviation.ts";
+import { OpenFlight } from "../FlightLink.tsx";
 import type { Index } from "../derive.ts";
 import { AirportCode } from "../ui.tsx";
 import "./HumanCheck.css";
@@ -111,7 +112,7 @@ function HumanRow({ pr, idx, nameOf }: { pr: PullRequest; idx: Index; nameOf: (i
           #{pr.number}
         </a>
         <span className="hc-flight">
-          <AirportCode airport={idx.airportByRepo.get(pr.repo)} /> {pr.ticketKey ? flightNumber(pr.ticketKey) : <span className="faint">AD HOC</span>}
+          <AirportCode airport={idx.airportByRepo.get(pr.repo)} /> {pr.ticketKey ? <OpenFlight k={pr.ticketKey} /> : <span className="faint">AD HOC</span>}
         </span>
         <span className="hc-team" title={pr.standPath ?? undefined}>
           {holders.length ? holders.join(", ") : ws ? ws.name : "STAND 없음"}

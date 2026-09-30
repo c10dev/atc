@@ -60,7 +60,17 @@ STAND 줄의 REMARKS 칸에도 그 STAND 브랜치의 PR 배지가 붙는다.
 |---|---|
 | `CLEARED TO LAND` (+ `SEQ n`) | 머지할 수 있음. `SEQ n`은 CLEARED TO LAND PR이 둘 이상일 때 몇 번째인지 |
 | `APPROACH` + 숫자 | 막는 조건 수. 아래 줄에 짧은 이름(CI 실패, 리뷰 없음, BEHIND …)이 있고, 누르면 전체 문장이 펼쳐진다 |
-| `#번호` | GitHub PR 링크 |
+| `#번호` | PR 서랍을 연다. 옆의 `↗`는 GitHub PR 링크 |
+
+## FLIGHT 서랍과 PR 서랍
+
+FLIGHT 번호(`ATC206`)나 STRIPS의 PR 번호를 누르면 화면 오른쪽에 서랍이 열린다(폰에서는 화면 전체). Linear 이슈와 GitHub PR을 atc 안에서 읽는다. 읽기만 한다: 서랍에는 머지·상태 변경 버튼이 없다.
+
+- **FLIGHT 서랍**(주소 `#flight/ATC-206`): 상태, 우선순위, 담당, 라벨, 막는·막고 있는 FLIGHT(눌러 그 FLIGHT 서랍으로), 상위·하위, 붙은 PR, 본문, 댓글. 마지막 줄 링크로 Linear를 연다.
+- **PR 서랍**(주소 `#pr/ATCC/281`): 브랜치, 작성자, 착륙 상태와 막는 조건, 등급(TIER), MCC INSPECTION, 리뷰 결정, 체크, 본문, 바뀐 파일(100개까지). 착륙 상태·등급·INSPECTION은 atc가 폴링하는 열린 PR만 보인다.
+- 본문과 댓글의 Markdown은 안전하게 그린다: HTML 태그는 글자로 보이고, 이미지는 링크로만 남고, 링크는 새 탭에서 열린다.
+- Esc, 바깥 클릭, ×로 닫는다. 브라우저 뒤로 가기도 닫는다. 서랍은 열 때 한 번 읽고 60초 동안 기억한다(백그라운드로 다시 읽지 않는다). `ATC_GITHUB=off`인 서버에서는 PR 서랍이 "GitHub이 꺼져 있다"고 알린다.
+- 지금 번호를 눌러 열리는 곳: STRIPS(LANDING SEQUENCE의 FLIGHT와 PR 번호, HUMAN CHECK), DISPATCH 표·후보·승인 기록, FOLLOWING, FLEET(카드·목록). 이미 다른 링크(Linear) 안에 있는 번호는 그 링크 그대로다. 주소를 직접 써도 열린다.
 
 ## 상단
 

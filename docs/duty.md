@@ -188,6 +188,22 @@ The SUPERVISOR opens Linear and GitHub for a few reasons. Each reason gets a hom
 
 **Public repository.** The drawers show issue and PR text on the SUPERVISOR's screen only. PRs, docs and screenshots keep describing screens in words.
 
+### G1 as built (ATC-206)
+
+The FLIGHT drawer and the PR drawer, read only. No write route was added.
+
+- **Address and shell.** `#flight/<KEY>` and `#pr/<AIRPORT code>/<number>` open a drawer over the current tab (about 560 px on the right, full screen under 600 px). The tab does not change. Esc, the backdrop, × and the browser's Back button close it. `drawerOfHash` (pure, `server/detail.ts`) reads the address. The drawer is a lazy chunk, so the Markdown renderer loads on first open.
+- **Server.** `GET /api/flight/:key/detail` (Linear: body, state, priority, assignee, labels, blockers, parent and children, attached PRs, 20 comments) and `GET /api/pr/:airport/:number/detail` (`gh pr view`: body, checks by name, first 100 changed files, review decision, merge state). Both are in `server/detail-run.ts`; the shaping is pure (`server/detail.ts`) and tested. The keys and numbers are validated (`^[A-Z][A-Z0-9]*-\d{1,7}$`, a positive integer), and a PR is read only from an AIRPORT that atc has open (the code maps to its repository), so the route cannot be pointed at another repository.
+- **Load.** Each call happens on open and is cached for 60 s (`makeCache`, errors are not cached). Nothing is polled in the background. The two calls live in the existing read-only source files (`sources/linear.ts` `fetchIssueDrawer`, `sources/github.ts` `fetchPrView`), so the landing tier list needed no change.
+- **What atc adds to a PR.** For an open PR that atc polls, outside the cache: landing state (CLEARED or APPROACH) with the block lines, the tier (`deploy/landing-tier.mjs` over the changed files), and the MCC INSPECTION for that head on the MCC AIRPORT.
+- **Markdown.** `server/safe-markdown.ts`: raw HTML is shown as text, images become links, and only `http(s)` links are made, opened in a new tab with `rel="noreferrer"`. Tokens stay on the server.
+- **Openers.** A FLIGHT number opens the drawer from STRIPS (LANDING SEQUENCE), HUMAN CHECK, DISPATCH, FOLLOWING and FLEET. A PR number opens the PR drawer from STRIPS, and a small `↗` next to it opens GitHub. A number that already sits inside a Linear link keeps that link (no link inside a link); the drawer is still reachable from another row or by address.
+- **Chosen without asking (PILOT'S DISCRETION).**
+  - The address uses the AIRPORT code, as the plan said, and the airport must be open.
+  - Linked PRs on the FLIGHT drawer are the GitHub links attached to the Linear issue, opened on GitHub, not in the PR drawer, because the PR's AIRPORT is not known from the link.
+  - Comments are capped at 20 and body text at 20,000 characters (and 4,000 per comment), with a note when cut.
+  - SCHEDULE and TICKETS numbers were not changed in this step (SCHEDULE has its own link component that goes to Linear).
+
 ## 4. Screens
 
 - **DUTY drawer.**
