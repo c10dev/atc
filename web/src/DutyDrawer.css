@@ -166,6 +166,134 @@
   border-color: var(--amber);
 }
 
+/* 카드와 QUEUE 줄(ATC-230) */
+.du-card,
+.du-qrow {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+.du-card.is-gone {
+  border-left-color: var(--line);
+  background: var(--panel-2);
+  color: var(--faint);
+  opacity: 0.7;
+}
+.du-card.is-draft {
+  border-left-color: var(--line);
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+}
+.du-card.is-loading {
+  color: var(--faint);
+  font-size: var(--text-xs);
+}
+.du-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.du-kind {
+  font-size: var(--text-2xs);
+  letter-spacing: 0.1em;
+  color: var(--amber);
+}
+.du-card.is-gone .du-kind,
+.du-card.is-draft .du-kind {
+  color: var(--faint);
+}
+.du-since,
+.du-key,
+.du-hint {
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+.du-card-title {
+  margin: var(--space-1) 0 var(--space-2);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.du-gone {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+}
+.du-draft-text {
+  margin: var(--space-1) 0;
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.du-hint {
+  margin: var(--space-1) 0;
+}
+.du-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+a.dr-btn {
+  display: inline-block;
+  text-decoration: none;
+}
+.du-confirm {
+  margin-top: var(--space-1);
+}
+.du-reason {
+  width: 100%;
+  margin: var(--space-1) 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--scope);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+.du-err {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+  color: var(--alert);
+}
+.du-queue {
+  flex: none;
+  border-bottom: 1px solid var(--line);
+}
+.du-queue-head {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: var(--space-2) var(--gutter);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+button.du-queue-head {
+  cursor: pointer;
+}
+button.du-queue-head:focus-visible {
+  outline: 2px solid var(--radar);
+  outline-offset: -2px;
+}
+.du-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--gutter) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
 @media (max-width: 600px) {
   .dr.dr-duty {
     width: 100vw;

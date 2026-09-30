@@ -268,7 +268,7 @@ export function App({ build }: { build: string }) {
       {dutyOpen && (
         <TabBoundary key="duty" stale={false}>
           <Suspense fallback={null}>
-            <DutyDrawer chat={duty} onClose={closeDuty} />
+            <DutyDrawer chat={duty} onClose={closeDuty} airports={snapshot?.airports ?? []} refreshKey={snapshot?.at ?? ""} now={now} />
           </Suspense>
         </TabBoundary>
       )}

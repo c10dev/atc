@@ -238,7 +238,7 @@ mountJudges(app);
 mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다
 
 mountSupervisorQueue(app, getSnapshot, () => update.status()); // SUPERVISOR QUEUE(ATC-194, 읽기만)
-mountDuty(app, getSnapshot, () => update.status()); // DUTY L0(ATC-219): brief 읽기와 초안 붙이기(밖으로 나가는 동작 없음)
+mountDuty(app, getSnapshot, () => update.status(), (l) => duty().recordDraft(l)); // DUTY L0(ATC-219): brief 읽기와 초안 붙이기(밖으로 나가는 동작 없음)
 mountDutyRun(app); // DUTY D2(ATC-220): 글 보내기·중단·NEW SHIFT(Origin 검사)·기록·상태. duty.json enabled가 꺼져 있으면 아무것도 띄우지 않는다
 app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); // 지금 있는 알림 key 전체(읽기만)
 

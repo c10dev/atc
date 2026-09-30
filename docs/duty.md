@@ -415,6 +415,32 @@ The server runtime and the text chat. Tier `flagged`: `server/duty-run.ts` was p
   - The test server and its state folder were removed; the processes were stopped by saved PID.
 - **Left for later.** Cards, the queue row and their Origin-checked buttons (D3); the brief hook and `decisions.jsonl` (D4); OCC routing (D5); a CONTROL RECYCLE-style restart at the CAP; a screen for `account` and `idleMin`; L1 (D7).
 
+### D3 as built (ATC-230)
+
+Cards in the chat and the folded QUEUE row. Tier `flagged`: `duty/` manuals, screen code, and two server files that were already on the side-effect list (`server/duty-run.ts`, `server/index.ts`). No `deploy/` file changed. No approve, reject, merge or send route is callable from DUTY or `atcctl`, no `decisions.jsonl` or brief hook (D4), OCC does not read charters (D5), no L1 (D7).
+
+- **Card event.** `mountDuty` takes an `onDraft` callback. After `/api/duty/card|note|charter` accepts and appends a draft, `DutyRuntime.recordDraft` writes a `card` line (`{queueKind, key, draft: "DD-n"}`) or a `draft` line (note, charter) to `duty.jsonl` and emits the same as a `card` or `draft` event on the `duty` topic. It goes through the same append and emit as the text, so it sits in order with the text around it, and `GET /api/duty/history` pages it too. A refused card request writes nothing; DUTY reports the reason in text. The card line holds only the pointer; the content is read from the queue when drawn.
+- **Live card** (`server/duty-card.ts`, pure, tested, shared with the screen). `cardViewOf(ref, items, handled, airports)` gives `live` (the current queue row and its actions), `gone` with `처리됨` (the SUPERVISOR's click on this screen was accepted) or `큐에서 빠짐` (the row left the queue by itself), or `unknown` while the queue is not read yet. The card never re-checks by itself.
+- **Buttons** (`web/src/DutyCards.tsx`). Every inline button is the screen's own fetch with the existing Origin check, so `fromThisApp` holds. `atcctl` got no command.
+  - FLEET PLAN: reads `/api/fleet/plan` for the mode. SHADOW: `반대` and `동의` (`/verdict`). APPROVAL: `거절` (`/verdict` disagree) and `승인(실행)` (`/approve` with `{}`, so the server defaults apply; the FLEET tab has the form for permission mode and model). A stale row disables approve. A manual REFRESH (`isManual`) or a row the plan no longer lists shows a link to FLEET instead. Both paths ask for one inline confirm (reject also takes an optional reason).
+  - UPDATE: `/api/update/start` after one inline confirm.
+  - Links: PROPOSAL `#dispatch`, SCHEDULE `#schedule`, HUMAN CHECK `#strips`, LANDING `#pr/<AIRPORT>/<n>` (falls back to `#strips` when the repo is not an AIRPORT), NEEDS YOU and GO `#fleet`. GO is a link: there is still no route for the SUPERVISOR's GO and none that messages a session was added.
+- **Draft cards.** `note` and `charter` drafts are muted, dashed, read-only cards with the text and `D4에서 확정` or `D5에서 확정`. No button.
+- **QUEUE row.** `QUEUE nn · <kind n> …`, folded by default, above the chat. It expands to the whole queue with the same button or link per row. It reads `/api/supervisor/queue` when the screen's snapshot changes (`snapshot.at`), when a card arrives, and after a click. No new polling loop. A handled row is hidden at once.
+- **Manual.** `duty/CLAUDE.md` and `.en.md` have "카드를 청할 때" / "When to ask for a card": ask when the SUPERVISOR has something to decide or asks what waits; the card is only a pointer; a refused key is reported and not retried.
+- **Pilot's discretion.**
+  - DUTY's child process now gets `ATC_URL=http://127.0.0.1:<this server's port>`. Without it, `atcctl` inside DUTY talks to 7700, so DUTY on a test server would have written cards to prod. (A test pins it.)
+  - The UPDATE bar has no confirm step, but the spec asks for "the same confirm"; both inline buttons get one confirm, like the FLEET tab's approve and reject.
+  - Links do not focus the item (no tab takes an item address yet) and they close the drawer, because `hashchange` to a tab address closes `#duty`; the chat state is kept.
+  - Card order is the order the server accepted the requests. When DUTY runs several `atcctl` calls in parallel, that can differ from the order it wrote them.
+- **Checked (2026-09-30).** `npm test`, `tsc`, `vite build`. Cases: card and draft events in order in the log and the stream, refused request writes nothing, `cardViewOf` states, actions by kind, the QUEUE head, the reducer and history. 7702 test server (`ATC_GITHUB=off`, temporary state folder, `duty.json` enabled) with a temporary, uncommitted hook that added a PROPOSAL, an UPDATE and a LANDING to the queue and two FLEET PLAN proposals in `fleet-plan.jsonl`. One real DUTY conversation on acct-2 (about $0.07) asked for three cards:
+  - FLEET PLAN `FP-T1` (inline) and LANDING (link) became cards in that order; the third request (a PROPOSAL key that is not in the queue) was refused with its reason and DUTY told the SUPERVISOR in text;
+  - the FLEET PLAN `반대` with its confirm wrote a `disagree` verdict for `FP-T1` and the card greyed to `처리됨`; the QUEUE row dropped from 5 to 4;
+  - the QUEUE row showed `QUEUE 5 · PROPOSAL 1 · FLEET PLAN 2 · LANDING 1 · UPDATE 1` folded, and expanded to the rows with buttons and links; the UPDATE confirm opened and was cancelled (not sent: it would start a deploy);
+  - Playwright at 1280 and 390 px in `radar` and `night`: no horizontal overflow, the drawer 440 px and full width. In `night` the drawer background is translucent (the existing drawer style), so the page shows through behind the cards.
+  - The test server was stopped by its saved PID, the temporary hook was reverted and the state folder removed.
+- **Left for later.** `decisions.jsonl` and confirm cards (D4), OCC reading charters (D5), a route for the SUPERVISOR's GO, focusing the item on the target tab, and keeping the drawer open across a link.
+
 ## 6. Risks
 
 | Risk | Mitigation |

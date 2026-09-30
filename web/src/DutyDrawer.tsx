@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type Chat, type ChatItem, headLine } from "../../server/duty-chat.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
+import { type Airports, type CardCtx, DraftCard, DutyCard, QueueRow, useQueue } from "./DutyCards.tsx";
 import "./Drawer.css";
 import "./DutyDrawer.css";
 
-// DUTY 서랍(#duty, ATC-220, docs/duty.md 4장). 텍스트 대화만: 카드와 QUEUE 줄은 D3다.
+// DUTY 서랍(#duty, ATC-220, docs/duty.md 4장). 대화, 카드(ATC-230, D3), 채팅 위의 접힌 QUEUE 줄.
 // 서랍 껍데기와 닫는 방법(Esc, 배경, ×, Back)은 FLIGHT·PR 서랍(Drawer.tsx)과 같다. DUTY의 글은 소리로 읽지 않는다.
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const IMAGE_MAX = 5 * 1024 * 1024;
@@ -14,7 +15,7 @@ function Md({ src }: { src: string }) {
   return <div className="dr-md" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-function Item({ it }: { it: ChatItem }) {
+function Item({ it, ctx }: { it: ChatItem; ctx: CardCtx }) {
   switch (it.kind) {
     case "user":
       return (
@@ -43,6 +44,10 @@ function Item({ it }: { it: ChatItem }) {
       return <div className="du-notice">{it.text}</div>;
     case "shift":
       return <div className="du-shift">— NEW SHIFT —</div>;
+    case "card":
+      return <DutyCard it={it} ctx={ctx} />;
+    case "draft":
+      return <DraftCard it={it} />;
   }
 }
 
@@ -64,7 +69,7 @@ const readBase64 = (f: File) =>
     r.readAsDataURL(f);
   });
 
-export default function DutyDrawer({ chat, onClose }: { chat: Chat; onClose: () => void }) {
+export default function DutyDrawer({ chat, onClose, airports, refreshKey, now }: { chat: Chat; onClose: () => void; airports: Airports; refreshKey: string; now: number }) {
   const ref = useRef<HTMLElement>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true); // 맨 아래를 보고 있을 때만 새 글을 따라 내려간다
@@ -75,6 +80,23 @@ export default function DutyDrawer({ chat, onClose }: { chat: Chat; onClose: () 
   const [askShift, setAskShift] = useState(false);
   const st = chat.status;
   const thinking = st?.state === "thinking";
+  // 카드와 QUEUE 줄이 읽는 지금의 큐. 새 카드가 오면 다시 읽는다
+  const { queue, reload } = useQueue(refreshKey, st?.enabled === true);
+  const cardCount = chat.items.filter((i) => i.kind === "card").length;
+  useEffect(() => {
+    if (cardCount > 0) reload();
+  }, [cardCount, reload]);
+  const [handled, setHandled] = useState<ReadonlySet<string>>(new Set());
+  const ctx: CardCtx = {
+    items: queue?.items ?? null,
+    airports,
+    handled,
+    markHandled: (k) => {
+      setHandled((h) => new Set(h).add(k));
+      reload();
+    },
+    now,
+  };
 
   useEffect(() => {
     ref.current?.focus();
@@ -150,6 +172,7 @@ export default function DutyDrawer({ chat, onClose }: { chat: Chat; onClose: () 
         {off && <p className="dr-note du-pad">DUTY가 꺼져 있습니다. 설정 → OPERATIONS → DUTY에서 켭니다.</p>}
         {st?.enabled && (
           <>
+            <QueueRow queue={queue} ctx={ctx} />
             <div
               className="du-log"
               ref={logRef}
@@ -160,7 +183,7 @@ export default function DutyDrawer({ chat, onClose }: { chat: Chat; onClose: () 
             >
               {chat.items.length === 0 && !chat.streaming && <p className="dr-note">아직 대화가 없습니다. 아래에 써서 보내세요.</p>}
               {chat.items.map((it) => (
-                <Item key={it.id} it={it} />
+                <Item key={it.id} it={it} ctx={ctx} />
               ))}
               {chat.streaming && (
                 <div className="du-msg du-duty is-streaming">

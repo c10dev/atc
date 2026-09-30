@@ -7,7 +7,9 @@ export type ChatItem =
   | { id: string; kind: "text"; text: string; t: string }
   | { id: string; kind: "tool"; name: string; summary: string; error: boolean; t: string }
   | { id: string; kind: "notice"; text: string; t: string }
-  | { id: string; kind: "shift"; t: string };
+  | { id: string; kind: "shift"; t: string }
+  | { id: string; kind: "card"; queueKind: string; key: string; draft: string; t: string }
+  | { id: string; kind: "draft"; draftKind: "note" | "charter"; draft: string; text: string; until: string | null; t: string };
 
 export interface DutyStatusView {
   enabled: boolean;
@@ -42,6 +44,8 @@ export type DutyWire =
   | { type: "tool"; name: string; summary: string; error: boolean; t: string }
   | { type: "notice"; text: string; t: string }
   | { type: "shift"; t: string }
+  | { type: "card"; queueKind: string; key: string; draft: string; t: string }
+  | { type: "draft"; draftKind: "note" | "charter"; draft: string; text: string; until?: string | null; t: string }
   | { type: "usage"; turn: { context: number; costUsd: number | null } | null; rates: DutyRate[]; t: string }
   | { type: "init" | "other"; t?: string };
 
@@ -63,6 +67,8 @@ export function chatFromHistory(lines: readonly (DutyLogLine & { n?: number })[]
     else if (l.kind === "tool") c = push(c, { kind: "tool", name: l.name, summary: l.summary, error: l.error, t: l.t });
     else if (l.kind === "notice") c = push(c, { kind: "notice", text: l.text, t: l.t });
     else if (l.kind === "shift") c = push(c, { kind: "shift", t: l.t });
+    else if (l.kind === "card") c = push(c, { kind: "card", queueKind: l.queueKind, key: l.key, draft: l.draft, t: l.t });
+    else if (l.kind === "draft") c = push(c, { kind: "draft", draftKind: l.draftKind, draft: l.draft, text: l.text, until: l.until ?? null, t: l.t });
   }
   return c;
 }
@@ -88,6 +94,10 @@ export function foldDuty(c: Chat, e: DutyWire): Chat {
       return push(c, { kind: "notice", text: e.text, t: e.t });
     case "shift":
       return push({ ...c, streaming: "" }, { kind: "shift", t: e.t });
+    case "card":
+      return push({ ...c, streaming: "" }, { kind: "card", queueKind: e.queueKind, key: e.key, draft: e.draft, t: e.t });
+    case "draft":
+      return push(c, { kind: "draft", draftKind: e.draftKind, draft: e.draft, text: e.text, until: e.until ?? null, t: e.t });
     case "usage": {
       if (!c.status) return c;
       const status = { ...c.status };

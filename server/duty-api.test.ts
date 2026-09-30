@@ -30,3 +30,18 @@ test("초안 경로: 다른 사이트의 POST는 403이고 아무것도 쓰지 �
   assert.equal(lines.length, 1);
   assert.equal(JSON.parse(lines[0]).text, "a rule");
 });
+
+test("D3: 받아들인 초안만 onDraft로 간다(거절된 카드 요청은 대화에 아무것도 남기지 않는다)", async () => {
+  const app = new Hono();
+  const seen: string[] = [];
+  mountDuty(app, async () => ({ pulls: [], sessions: [], airports: [], tickets: [] }) as unknown as Snapshot, async () => null, (l) => seen.push(`${l.kind}:${l.id}`));
+  const post = (path: string, body: unknown) => app.request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const refused = await post("/api/duty/card", { kind: "PROPOSAL", key: "P-404" });
+  assert.equal(refused.status, 400);
+  assert.match(((await refused.json()) as { error: string }).error, /not in the SUPERVISOR QUEUE/);
+  assert.deepEqual(seen, []);
+  const note = await post("/api/duty/note", { text: "a rule" });
+  assert.equal(note.status, 200);
+  assert.equal(seen.length, 1);
+  assert.match(seen[0]!, /^note:DD-/);
+});

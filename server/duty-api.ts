@@ -7,7 +7,7 @@ import type { Hono } from "hono";
 import { config } from "./config.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { briefMaxCharsOf, dutyBriefOf, type DutyBriefInput } from "./duty-brief.ts";
-import { cardDraftOf, charterDraftOf, type DraftResult, nextDraftId, noteDraftOf } from "./duty-drafts.ts";
+import { cardDraftOf, charterDraftOf, type DraftLine, type DraftResult, nextDraftId, noteDraftOf } from "./duty-drafts.ts";
 import { fleetRows } from "./fleet-status.ts";
 import { fleetView, loadFleet } from "./fleet.ts";
 import type { Snapshot } from "./model.ts";
@@ -57,7 +57,8 @@ function draftIds(file: string): string[] {
   }
 }
 
-export function mountDuty(app: Hono, getSnapshot: () => Promise<Snapshot>, updateStatus: () => Promise<UpdateStatus | null>) {
+// onDraft(D3): 받아들인 초안을 대화에 적는 곳(duty-run.ts). 초안 줄을 붙인 뒤에 부른다. 여기에도 승인·거절·머지·보내기 길은 없다
+export function mountDuty(app: Hono, getSnapshot: () => Promise<Snapshot>, updateStatus: () => Promise<UpdateStatus | null>, onDraft: (line: DraftLine) => void = () => {}) {
   const queueNow = async (now: number) => supervisorQueueView(await collectQueueInput(await getSnapshot(), updateStatus, now), now);
 
   app.get("/api/duty/brief", async (c) => {
@@ -104,6 +105,9 @@ export function mountDuty(app: Hono, getSnapshot: () => Promise<Snapshot>, updat
     if (!r.ok) return c.json({ error: r.error }, 400);
     mkdirSync(dirname(file), { recursive: true });
     appendFileSync(file, `${JSON.stringify(r.line)}\n`);
+    try {
+      onDraft(r.line);
+    } catch {} // 대화에 적지 못해도 초안은 남았다
     return c.json({ draft: r.line });
   };
 

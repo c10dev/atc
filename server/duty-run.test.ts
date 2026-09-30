@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { Hono } from "hono";
+import { config } from "./config.ts";
 import { DutyRuntime, mountDutyRun } from "./duty-run.ts";
 import { parseDutyConfig, type DutyConfig } from "./duty-config.ts";
 
@@ -16,6 +17,7 @@ const { appendFileSync } = require("node:fs");
 const { createInterface } = require("node:readline");
 const { existsSync } = require("node:fs");
 appendFileSync(__dirname + "/argv.log", JSON.stringify(process.argv.slice(2)) + "\\n");
+appendFileSync(__dirname + "/env.log", String(process.env.ATC_URL) + "\\n");
 const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
 let timer = null;
 const finish = (text, extra = {}) => {
@@ -66,7 +68,7 @@ function rig(over: { idleMs?: number; cfg?: Partial<DutyConfig>; crash?: boolean
   rt.subscribe((e) => events.push(e as { type: string; final?: boolean }));
   const log = () => (existsSync(join(state, "duty.jsonl")) ? readFileSync(join(state, "duty.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as { kind: string; text?: string; name?: string; error?: boolean; image?: string; summary?: string }) : []);
   const argv = () => readFileSync(join(dir, "argv.log"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as string[]);
-  return { rt, state, events, log, argv, cfg };
+  return { rt, state, events, log, argv, cfg, dir };
 }
 const until = async (f: () => boolean, ms = 4000) => {
   const t = Date.now();
@@ -92,6 +94,7 @@ test("첫 글이 프로세스를 띄우고, 사용자 글·DUTY 글·사용량�
   assert.equal(st.account, "acct-2");
   assert.equal(st.rates[0]!.window, "five_hour");
   assert.ok(r.events.some((e) => e.type === "text" && e.final === false), "조각이 스트림으로 나간다");
+  assert.equal(readFileSync(join(r.dir, "env.log"), "utf8").trim(), `http://127.0.0.1:${config.port}`, "DUTY의 atcctl은 자기를 띄운 서버에 말한다");
   const a = r.argv()[0]!;
   assert.ok(a.includes("--session-id") && a.includes("--tools") && a.includes("--strict-mcp-config"));
   const saved = JSON.parse(readFileSync(join(r.state, "duty-session.json"), "utf8")) as { sessionId: string };
@@ -287,4 +290,20 @@ test("POST /api/duty/message: 검사(빈 글·긴 글·깨진 JSON)와 보냄·�
   assert.equal(hist.lines.length, 2);
   assert.equal((await app.request("/api/duty/history?before=-1")).status, 400);
   rt.dispose();
+});
+
+test("D3: 받아들인 카드·초안은 duty.jsonl과 이벤트에 글 사이의 제자리로 들어간다", async () => {
+  const r = rig();
+  await r.rt.send("hello");
+  await idle(r);
+  r.rt.recordDraft({ id: "DD-0001", at: "x", kind: "card", card: { queueKind: "FLEET PLAN", key: "FP-1", title: "t", since: null, hash: "#fleet" } });
+  r.rt.recordDraft({ id: "DD-0002", at: "x", kind: "note", text: "a rule", until: null });
+  r.rt.recordDraft({ id: "DD-0003", at: "x", kind: "charter", text: "do it" });
+  const lines = r.log() as { kind: string; queueKind?: string; key?: string; draft?: string; draftKind?: string }[];
+  assert.deepEqual(lines.map((l) => l.kind), ["user", "text", "usage", "card", "draft", "draft"]);
+  assert.deepEqual([lines[3]!.queueKind, lines[3]!.key, lines[3]!.draft], ["FLEET PLAN", "FP-1", "DD-0001"]);
+  assert.deepEqual(lines.slice(4).map((l) => [l.draftKind, l.draft]), [["note", "DD-0002"], ["charter", "DD-0003"]]);
+  assert.deepEqual(r.events.filter((e) => e.type === "card" || e.type === "draft").map((e) => e.type), ["card", "draft", "draft"]);
+  assert.equal(r.rt.history().lines.filter((l) => l.kind === "card").length, 1, "기록 쪽수에도 카드가 들어 있다");
+  r.rt.dispose();
 });
