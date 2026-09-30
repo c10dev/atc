@@ -79,6 +79,28 @@ A **transmission** is one recorded call or reply:
 | R4 | atc-app: RADIO monitor toggle (one frequency, TOWER by default) | R3, atc-app N4 (ATC-158) | atc-app (SUPERVISOR merges) | M |
 | Later | Traffic that is only in transcripts (free replies), through the transcript sensor idea (#151) | R1 | — | — |
 
+### R1 as built (ATC-170)
+
+`server/radio.ts` (pure) and `server/radio-run.ts` (reads the files, mounts the route, feeds SSE). Nothing is written, no state file is added, no record format changes, and no transcript is read.
+
+- **`radioOf(input)`** takes the raw ops and records, not the folded state, so a reply is never lost: `clearances.jsonl` ops, `proposals.jsonl` ops, `crew-changes.jsonl` ops, `arrival-reports.jsonl`, `mcc.jsonl` and `rts.jsonl`. It returns transmissions oldest first.
+- **Ids.** A call keeps the record id (`C-0007`, `D-0012`, `CC-0003`). A reply is `<call id>#<reply>` (`C-0007#readback`, `D-0012#unable`), and a RECALL is `D-0012#recall` with its reply `D-0012#recall#readback`. ARRIVED and GROUND lines get `report:<FLIGHT>:<at>`, `mcc:<at>:<op>[:<pr>]` and `rts:<at>:<result>`.
+- **Stations.** `TOWER`, `OCC`, `MCC`, `ALL` (a GROUND broadcast) and an AIRCRAFT as `GOLF (TEAM_G)` (callsign plus REGISTRATION, `server/callsign.ts`, `server/registration.ts`). `aircraft` carries the REGISTRATION for filtering. A session name that is not a team name is used as it is.
+- **Frequencies** as in section 3. Pairing:
+  - `issue` / `send` / `recall` / CREW CHANGE `sent` are calls; `readback`, `roger`, `unable`, `standby`, `accept`, `decline`, `recalled`, `acknowledged` are replies with `replyTo`.
+  - A call is `open` until a closing reply is recorded. `standby` does not close it. A CLEARANCE `cancel`, a FLIGHT PLAN `expire` / `supersede` and a CREW CHANGE `superseded` / `delivered` close it without a reply.
+  - A `recall` closes the FLIGHT PLAN call it withdraws and opens its own RECALL call.
+  - A reply with no call record is kept and marked `orphan: true`.
+- **`overdueAt`** is the existing rule and nothing new: FLIGHT PLAN, RECALL (`READBACK_OVERDUE_MS`, 10 min), CREW CHANGE (`CREW_CHANGE_READBACK_OVERDUE_MS`, 10 min), CLEARANCE (10 min, `controller.ts`). The first STANDBY counts the time again from the STANDBY (`overdueBase`, ATC-122). `isOverdue(t, now)` is `open && now > overdueAt`.
+- **Order.** By time; at the same time a call comes before a reply, then the order of the records (stable).
+- **`head`** is built from fields only: `TOWER → GOLF · GO AROUND · ATC-147`, `GOLF → TOWER · READBACK · ATC-147`, `OCC → GOLF · FLIGHT PLAN · ATC-170`, `GOLF → OCC · ARRIVED · ATC-170 · PR #252 · TIER auto`, `MCC → ALL · INSPECTION · PR #5 · PASS`. `body` is the recorded text unchanged (CLEARANCE `text`, FLIGHT PLAN and RECALL `message`, CREW CHANGE `message`, UNABLE `reason`, INSPECTION `text`, ESCALATE `reason`, MCC `detail`). ARRIVED has no body: atc does not keep the free summary (ATC-124).
+- **`GET /api/radio?since=<iso>&freq=<list>&limit=<n>`** returns `{ at, since, transmissions }`, newest last. `since` defaults to the last 6 hours, `freq` is a comma list of `DELIVERY`, `TOWER`, `GROUND`, `COMPANY` (any case), and `limit` keeps the newest n and is capped at 2000. A bad value returns `400`.
+- **SSE topic `radio`** (`/api/events?topics=radio`, ATC-153) sends `event: radio` with `{ transmissions }` holding the transmissions that are new or changed since the last send (a reply arrived, `open` cleared, `overdueAt` moved by a STANDBY). It sends nothing on connect: read `GET /api/radio` first and merge by `id`. The default set is unchanged (`snapshot`, `alert`, `version`), and the server reads the files on each tick only while someone listens.
+
+Where this differs from the design: the design said `radioOf(records)`, and it is `radioOf(input)` over the raw ops for the reason above. It adds `aircraft` and `orphan` to the transmission fields, and `ALL` as a station.
+
+**PILOT'S DISCRETION.** Only `inspect`, `escalate`, `land` and `rts` in `mcc.jsonl` are transmitted (not `would-land`, `would-rts`, `mode`, `hold`, which are shadow or SUPERVISOR-side records). Both the `mcc.jsonl` `rts started` and the `rts.jsonl` results are transmitted, as separate GROUND lines. The AIRPORT of a CLEARANCE comes from the FLIGHT's FLIGHT PLAN (`create.airport`); a CLEARANCE for a FLIGHT with no proposal has none.
+
 ## 6. Risks
 
 | Risk | Handling |

@@ -49,7 +49,7 @@ export function fold(ops: ClearanceOp[]): Clearance[] {
   return [...byId.values()];
 }
 
-function readOps(file = FILE): ClearanceOp[] {
+export function readOps(file = FILE): ClearanceOp[] {
   let text = "";
   try {
     text = readFileSync(file, "utf8");
