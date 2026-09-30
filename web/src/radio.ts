@@ -87,9 +87,11 @@ function noiseBuffer(ctx: AudioContext, durS: number): AudioBuffer {
 }
 
 // 음성 하나를 무전 체인으로 재생한다. volume은 0..1(ATC-87 음량)
-export function playRadioVoice(ctx: AudioContext, voice: AudioBuffer, volume: number, spec: RadioSpec): RadioPlayback {
+// rate는 재생 속도(1, RADIO 듣기의 1.5×). 길이는 속도로 나눈다
+export function playRadioVoice(ctx: AudioContext, voice: AudioBuffer, volume: number, spec: RadioSpec, rate = 1): RadioPlayback {
   const t0 = ctx.currentTime;
-  const plan = planOf(spec, voice.duration);
+  const dur = voice.duration / rate;
+  const plan = planOf(spec, dur);
   const nodes: AudioScheduledSourceNode[] = [];
   const master = ctx.createGain();
   master.gain.value = Math.max(0.0001, volume);
@@ -134,6 +136,7 @@ export function playRadioVoice(ctx: AudioContext, voice: AudioBuffer, volume: nu
   // 음성: 하이패스 → 로패스 → WaveShaper → 컴프레서 → 램프 게인
   const src = ctx.createBufferSource();
   src.buffer = voice;
+  if (rate !== 1) src.playbackRate.value = rate;
   const hp = ctx.createBiquadFilter();
   hp.type = "highpass";
   hp.frequency.value = spec.highpassHz;
@@ -148,12 +151,12 @@ export function playRadioVoice(ctx: AudioContext, voice: AudioBuffer, volume: nu
   comp.ratio.value = spec.compressor.ratio;
   comp.attack.value = spec.compressor.attack;
   comp.release.value = spec.compressor.release;
-  src.connect(hp).connect(lp).connect(shaper).connect(comp).connect(shaped(plan.voiceAt, voice.duration, 1, master));
+  src.connect(hp).connect(lp).connect(shaper).connect(comp).connect(shaped(plan.voiceAt, dur, 1, master));
   src.start(t0 + plan.voiceAt);
   nodes.push(src);
 
   // 음성 밑의 낮은 치익 소리(음성 길이만큼)
-  if (spec.hiss.gain > 0) burst(plan.voiceAt, voice.duration, spec.hiss.gain, { lowHz: 800, highHz: 3000 });
+  if (spec.hiss.gain > 0) burst(plan.voiceAt, dur, spec.hiss.gain, { lowHz: 800, highHz: 3000 });
 
   let finish: () => void = () => {};
   const done = new Promise<void>((resolve) => (finish = resolve));

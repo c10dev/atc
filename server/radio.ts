@@ -25,6 +25,8 @@ export interface Transmission {
   flight?: string;
   airport?: string;
   pr?: number; // 이 교신이 다루는 PR 번호(ARRIVED 보고, MCC INSPECTION·LAND·ESCALATE)
+  re?: string; // 답이면 호출의 kind(GO AROUND, FLIGHT PLAN …). 음성 문구(ATC-172)가 쓴다
+  result?: string; // GROUND 줄의 결과(소문자): pass·findings(INSPECTION), ok·rejected·failed(LAND), started·running·ok·refused·rollback·failed(RTS)
   head: string; // 필드로 만든 한 줄 요약
   body?: string; // 기록된 문구 그대로
   replyTo?: string; // 답이면 호출의 id
@@ -70,13 +72,13 @@ export function radioOf(input: RadioInput, teamPattern = DEFAULT_TEAM_PATTERN): 
   }
   const add = (t: Transmission) => {
     if (t.flight && !t.airport && airportOfFlight.has(t.flight)) t.airport = airportOfFlight.get(t.flight);
-    for (const k of ["flight", "airport", "aircraft", "body", "pr"] as const) if (t[k] === undefined) delete t[k];
+    for (const k of ["flight", "airport", "aircraft", "body", "pr", "re", "result"] as const) if (t[k] === undefined) delete t[k];
     out.push(t);
     return t;
   };
   // 답. 호출 기록이 없으면 남겨 두고 orphan으로 표시한다
   const reply = (call: Transmission | undefined, callId: string, suffix: string, t: Omit<Transmission, "id" | "replyTo">) =>
-    add({ ...t, id: `${callId}#${suffix}`, replyTo: call?.id ?? callId, ...(call ? {} : { orphan: true as const }), ...(call && !t.flight ? { flight: call.flight } : {}) });
+    add({ ...t, id: `${callId}#${suffix}`, replyTo: call?.id ?? callId, re: call?.kind, ...(call ? {} : { orphan: true as const }), ...(call && !t.flight ? { flight: call.flight } : {}) });
   const close = (call: Transmission) => {
     delete call.open;
     delete call.overdueAt;
@@ -220,14 +222,14 @@ export function radioOf(input: RadioInput, teamPattern = DEFAULT_TEAM_PATTERN): 
   }
 
   // ── GROUND: mcc.jsonl, rts.jsonl ──
-  const ground = (id: string, at: string, kind: string, head: string, body?: string, pr?: number) => add({ id, at, freq: "GROUND", from: "MCC", to: "ALL", kind, head, body, pr });
+  const ground = (id: string, at: string, kind: string, head: string, body?: string, pr?: number, result?: string) => add({ id, at, freq: "GROUND", from: "MCC", to: "ALL", kind, head, body, pr, result });
   for (const r of input.mcc) {
-    if (r.op === "inspect") ground(`mcc:${r.at}:inspect:${r.pr}`, r.at, "INSPECTION", headOf("MCC", "ALL", "INSPECTION", `PR #${r.pr}`, r.verdict.toUpperCase()), r.text, r.pr);
-    else if (r.op === "escalate") ground(`mcc:${r.at}:escalate:${r.pr}`, r.at, "ESCALATE", headOf("MCC", "ALL", "ESCALATE", `PR #${r.pr}`), r.reason, r.pr);
-    else if (r.op === "land") ground(`mcc:${r.at}:land:${r.pr}`, r.at, "LAND", headOf("MCC", "ALL", "LAND", `PR #${r.pr}`, r.result.toUpperCase()), r.detail, r.pr);
-    else if (r.op === "rts") ground(`mcc:${r.at}:rts`, r.at, "RTS", headOf("MCC", "ALL", "RTS", r.result.toUpperCase(), r.to.slice(0, 7)), r.detail);
+    if (r.op === "inspect") ground(`mcc:${r.at}:inspect:${r.pr}`, r.at, "INSPECTION", headOf("MCC", "ALL", "INSPECTION", `PR #${r.pr}`, r.verdict.toUpperCase()), r.text, r.pr, r.verdict);
+    else if (r.op === "escalate") ground(`mcc:${r.at}:escalate:${r.pr}`, r.at, "ESCALATE", headOf("MCC", "ALL", "ESCALATE", `PR #${r.pr}`), r.reason, r.pr, "escalate");
+    else if (r.op === "land") ground(`mcc:${r.at}:land:${r.pr}`, r.at, "LAND", headOf("MCC", "ALL", "LAND", `PR #${r.pr}`, r.result.toUpperCase()), r.detail, r.pr, r.result);
+    else if (r.op === "rts") ground(`mcc:${r.at}:rts`, r.at, "RTS", headOf("MCC", "ALL", "RTS", r.result.toUpperCase(), r.to.slice(0, 7)), r.detail, undefined, r.result);
   }
-  for (const r of input.rts) ground(`rts:${r.at}:${r.result}`, r.at, "RTS", headOf("MCC", "ALL", `RTS ${r.result.toUpperCase()}`, r.to.slice(0, 7)), r.detail);
+  for (const r of input.rts) ground(`rts:${r.at}:${r.result}`, r.at, "RTS", headOf("MCC", "ALL", `RTS ${r.result.toUpperCase()}`, r.to.slice(0, 7)), r.detail, undefined, r.result);
 
   // 시각순. 같은 시각이면 호출이 답보다 앞, 그다음은 기록 순서(안정 정렬)
   const idx = new Map(out.map((t, i) => [t, i]));

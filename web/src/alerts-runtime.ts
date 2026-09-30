@@ -7,6 +7,7 @@ import {
   BURST_MS,
   DEFAULT_PREFS,
   EMPTY_SEEN,
+  inQuiet,
   kindFilter,
   type Missed,
   needsAction,
@@ -250,6 +251,12 @@ export async function previewVoice(voice?: string) {
   return player.speak({ url, radio: view.prefs.voice.radio }, view.prefs.volume);
 }
 export const stopSound = () => player.stop();
+
+// RADIO 듣기(ATC-172): 같은 무전 체인·같은 AudioContext. WARNING·CALL 톤이 울리는 동안은 내지 않고("alert"), 톤이 시작하면 그친다
+export const speakRadio = (url: string, rate: number, cancelled?: () => boolean) => player.speak({ url, radio: view.prefs.voice.radio }, view.prefs.volume, { yieldToAlert: true, rate, cancelled });
+export const stopRadioSpeech = () => player.stopSpeech();
+// 조용한 시간(알림과 같은 설정)이거나, 브라우저가 소리를 잠갔는가
+export const radioQuietNow = () => inQuiet(view.prefs.quiet, new Date());
 
 const subscribe = (fn: () => void) => {
   subs.add(fn);

@@ -176,3 +176,68 @@ test("fetch가 던져도(네트워크 오류) 톤만 낸다", async () => {
   assert.equal(voices().length, 0);
   assert.equal(player.playing(), null);
 });
+
+// RADIO 듣기(ATC-172): 알림이 이긴다. WARNING·CALL 톤이 울리는 동안 RADIO 음성은 내지 않고, 톤이 시작하면 그친다
+test("RADIO 음성은 WARNING 톤이 울리는 동안 내지 않고(alert), 받지도 않는다", async () => {
+  player.play("warning", 1, true);
+  const r = await player.speak({ url: "/api/radio/C-1.wav", radio: 0 }, 1, { yieldToAlert: true });
+  assert.deepEqual(r, { ok: false, error: "alert" });
+  assert.deepEqual(fetches, []);
+  assert.equal(voices().length, 0);
+});
+
+test("RADIO 음성이 나는 중에 WARNING 톤이 시작하면 음성이 그친다", async () => {
+  const done = player.speak({ url: "/api/radio/C-1.wav", radio: 0 }, 1, { yieldToAlert: true });
+  await flush();
+  const v = voices()[0];
+  assert.equal(v.started, true);
+  assert.equal(v.stopped, false);
+  player.play("warning", 1, false);
+  assert.equal(v.stopped, true, "알림 톤이 무전 음성을 멈춘다");
+  await tick(3000);
+  await done;
+});
+
+test("RADIO 음성은 받는 동안 알림이 울리면 내지 않는다", async () => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((r) => (release = r));
+  respond = async () => {
+    await gate;
+    return okWav();
+  };
+  const p = player.speak({ url: "/api/radio/C-1.wav", radio: 0 }, 1, { yieldToAlert: true });
+  player.play("call", 1, false);
+  release();
+  await flush();
+  assert.deepEqual(await p, { ok: false, error: "alert" });
+  assert.equal(voices().length, 0);
+});
+
+test("RADIO 음성은 받는 동안 SKIP하면(cancelled) 내지 않고 끝난다", async () => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((r) => (release = r));
+  respond = async () => {
+    await gate;
+    return okWav();
+  };
+  let skipped = false;
+  const p = player.speak({ url: "/api/radio/C-1.wav", radio: 0 }, 1, { yieldToAlert: true, cancelled: () => skipped });
+  skipped = true;
+  release();
+  await flush();
+  assert.deepEqual(await p, { ok: true });
+  assert.equal(voices().length, 0);
+});
+
+test("stopSpeech는 음성만 그치고 톤은 그대로", async () => {
+  player.play("caution", 1, false);
+  const done = player.speak({ url: "/api/radio/C-1.wav", radio: 0 }, 1, { yieldToAlert: true });
+  await flush();
+  // caution은 양보 대상이 아니라 음성도 난다
+  const v = voices()[0];
+  assert.equal(v?.started, true);
+  player.stopSpeech();
+  assert.equal(v.stopped, true);
+  assert.equal(player.playing(), "caution");
+  await done;
+});
