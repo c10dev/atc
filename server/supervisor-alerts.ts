@@ -1,7 +1,9 @@
 import { type AlertLevel, alertLevel } from "./alert-level.ts";
 import type { FollowItem } from "./following.ts";
 import type { Alert, PullRequest, Session, Ticket, Workspace } from "./model.ts";
+import type { LandBy } from "./land-by.ts";
 import type { RtsRecord } from "./mcc.ts";
+import { compareRegistration } from "./registration.ts";
 import type { Proposal } from "./proposals.ts";
 import { type OverCap, overCapAlertTextOf, recycleAlertTextOf, type RecycleRecord, type WaitStuck, waitAlertTextOf } from "./control-recycle-text.ts";
 import { repositionAlertTextOf, type RepositionRecordLike, repositionFlapAlertText } from "./reposition.ts";
@@ -15,6 +17,9 @@ import { type CapIdleHint, idleText } from "./other-background.ts";
 // 알림 종류(화면 설정에서 종류별로 켠다)
 export const ALERT_GROUPS = ["health", "alert", "following", "pending", "land", "rts", "recycle", "reposition"] as const;
 export type AlertGroup = (typeof ALERT_GROUPS)[number];
+
+// 어디로 가나(ATC-197, docs/alerting.md 3.1): alerts(지금 있는 조건, 풀릴 때까지), queue(SUPERVISOR가 결정할 것), log(일어난 일)
+export type AlertDest = "alerts" | "queue" | "log";
 
 export interface SupervisorAlert {
   key: string; // 같은 일이면 늘 같은 key. 사라졌다 돌아오면 같은 key
@@ -32,6 +37,93 @@ export interface SupervisorAlert {
   // 무엇을 청하나(ATC-162, 음성 문구용, 선택). pending|proposal은 `assign`·`release`, pending|schedule은 SCHEDULE 종류를 소문자로(`tail`·`classify` …).
   // key 형식은 그대로다(브라우저·메뉴 막대·atc-app이 key로 중복을 거른다). 다른 항목에는 없다
   ask?: string;
+  // 이 항목이 가는 곳(ATC-197). 클라이언트는 A3·A4 전까지 이 칸을 무시한다. key는 그대로다
+  dest: AlertDest;
+}
+
+// ── 목적지 규칙(ATC-197, docs/alerting.md 3.1) ──
+// key의 첫 마디로 정하고, 마디가 더 필요한 것은 아래 함수가 가른다. 새 key 종류를 더하면 DEST_PREFIXES와 여기에도 규칙을 더해야 한다(시험이 이 파일의 key 모양을 읽어 확인한다).
+// 순수 함수: 읽는 것은 key와, land 항목의 landBy(PR → 누가 착륙시키나, land-by.ts)뿐이다. 등급 규칙을 새로 두지 않고 landByOf(=deploy/landing-tier.mjs의 등급)를 그대로 쓴다
+export const DEST_PREFIXES = ["alert", "pending", "following", "land", "rts", "recycle", "cap", "control", "reposition"] as const;
+export function destOf(item: Pick<SupervisorAlert, "key">, landBy?: ReadonlyMap<string, LandBy>): AlertDest {
+  const p = item.key.split("|");
+  switch (p[0]) {
+    case "alert":
+      return "alerts";
+    case "pending": // tool·proposal·schedule·humancheck: SUPERVISOR의 결정을 기다린다
+      return "queue";
+    case "following":
+      return item.key.includes("|await-supervisor") ? "queue" : "alerts"; // CAPTAIN이 SUPERVISOR의 go를 기다리는 것은 결정 대기
+    case "land": {
+      // land|<repo>#<번호>|<head>. SUPERVISOR가 착륙시켜야 하면(landBy supervisor: user 등급, ESCALATE·HOLD, MCC가 착륙시키지 않는 모드, 등급 모름) queue, MCC나 팀이 착륙시키면 log.
+      // 자료가 없으면 SUPERVISOR가 볼 수 있게 queue
+      const by = landBy?.get(p[1] ?? "");
+      return by === "mcc" || by === "holder" ? "log" : "queue";
+    }
+    case "rts":
+      return p[1] === "halted" ? "alerts" : "log"; // rts|halted는 조건, rts|<at>|<result>는 일어난 일
+    case "recycle":
+      return p[1] === "over" || p[1] === "wait" ? "alerts" : "log"; // recycle|<session>|<t>는 결과
+    case "cap":
+      return "alerts";
+    case "control": // control|down|<session>: 멈춘 채인 관제 세션
+      return "alerts";
+    case "reposition":
+      return p[1] === "stuck" ? "alerts" : "log"; // reposition|stuck|<aircraft>는 조건, 나머지는 결과
+    default:
+      return "alerts"; // 모르는 종류는 SUPERVISOR가 놓치지 않게 alerts에. 시험이 이 경우를 막는다
+  }
+}
+
+// ── 조건 항목의 상태 입력(ATC-197). 이벤트가 아니라 지금의 상태에서 만든다: 상태가 풀리면 항목이 저절로 사라진다 ──
+export interface RtsHalted {
+  since: string;
+  reason: string; // mcc.ts rtsStopOf가 돌려준 글
+}
+export interface ControlDown {
+  session: string;
+  since: string; // 멈춘 RECYCLE 기록 시각
+  reason: string;
+}
+export interface RepositionStuck {
+  aircraft: string;
+  since: string;
+  to: string;
+  error?: string;
+}
+
+// 순수: rtsState().stop(ROLLBACK 뒤 멈춤 사유, 없으면 null)과 마지막 RTS 기록 → rts|halted 입력. 모드를 다시 고르면 stop이 null이 되어 사라진다
+export function rtsHaltedOf(stop: string | null, last: Pick<RtsRecord, "at"> | null): RtsHalted | null {
+  return stop && last ? { since: last.at, reason: stop } : null;
+}
+
+// 순수: RECYCLE 기록 → 멈춘 채인 관제 세션. 세션마다 마지막 실행 기록(would·would-wait는 뺀다)이 launch-failed이거나,
+// stop-unconfirmed인데 LAUNCH도 안 됐고(launch.ok가 아님), 그 세션이 지금 돌지 않으면(running에 없음) 멈춘 것이다. 다시 뜨거나 뒤에 recycled가 나오면 사라진다
+export function controlDownOf(
+  recycles: readonly { t: string; session: string; result: string; ok: boolean; error?: string; launch?: { ok: boolean; error?: string } }[],
+  running: ReadonlySet<string>,
+): ControlDown[] {
+  const last = new Map<string, (typeof recycles)[number]>();
+  for (const r of [...recycles].sort((a, b) => a.t.localeCompare(b.t))) {
+    if (r.result === "would" || r.result === "would-wait") continue;
+    last.set(r.session, r);
+  }
+  const out: ControlDown[] = [];
+  for (const r of last.values()) {
+    const stopped = r.result === "launch-failed" || (r.result === "stop-unconfirmed" && r.launch !== undefined && !r.launch.ok);
+    if (stopped && !running.has(r.session)) out.push({ session: r.session, since: r.t, reason: r.launch?.error ?? r.error ?? r.result });
+  }
+  return out.sort((a, b) => a.session.localeCompare(b.session));
+}
+
+// 순수: REPOSITION 기록 → base는 옮겼는데 LAUNCH가 실패해 세션이 없는 AIRCRAFT. AIRCRAFT마다 마지막 기록이 stage launch의 실패이고, 그 AIRCRAFT가 지금 돌지 않으면(running에 없음) 멈춘 것이다.
+// 뒤에 성공 기록이 나오거나 세션이 다시 뜨면(FLEET LAUNCH, DISPATCH의 ABSENT LAUNCH 카드) 사라진다
+export function repositionStuckOf(repositions: readonly RepositionRecordLike[], running: ReadonlySet<string>): RepositionStuck[] {
+  const last = new Map<string, RepositionRecordLike>();
+  for (const r of [...repositions].sort((a, b) => a.t.localeCompare(b.t))) last.set(r.aircraft, r);
+  const out: RepositionStuck[] = [];
+  for (const r of last.values()) if (!r.ok && r.stage === "launch" && !running.has(r.aircraft)) out.push({ aircraft: r.aircraft, since: r.t, to: r.to, ...(r.error ? { error: r.error } : {}) });
+  return out.sort((a, b) => compareRegistration(a.aircraft, b.aircraft)); // ATC-181: REGISTRATION 정렬
 }
 
 export interface AlertsInput {
@@ -51,6 +143,11 @@ export interface AlertsInput {
   repositions?: RepositionRecordLike[];
   repositionFlaps?: { t: string; reason: string }[];
   overCap?: (OverCap & { since: string })[]; // CAP을 넘었지만 자동 재시작 대상이 아닌 세션(OCC)
+  // ATC-197: 상태에서 만드는 조건 항목 셋(각각 순수 함수 rtsHaltedOf·controlDownOf·repositionStuckOf의 결과)과, land 항목의 목적지를 가르는 PR별 landBy(`<repo>#<번호>` → 누가 착륙시키나)
+  rtsHalted?: RtsHalted | null;
+  controlDown?: ControlDown[];
+  repositionStuck?: RepositionStuck[];
+  landBy?: ReadonlyMap<string, LandBy>;
   capIdle?: CapIdleHint[]; // 상한 때문에 LAUNCH가 막힌 채 120분 넘게 논 그 밖의 백그라운드 세션(ATC-184). 알리기만 한다
   schedule?: { mode: ScheduleMode; ops: Pick<ScheduleOp, "id" | "kind" | "flight" | "status" | "statusAt">[] };
 }
@@ -73,7 +170,7 @@ export const standNameOf = (path: string, names: ReadonlyMap<string, string | un
 const short = (sha: string | null | undefined) => (sha ? sha.slice(0, 7) : "?");
 
 export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
-  const out: SupervisorAlert[] = [];
+  const out: Omit<SupervisorAlert, "dest">[] = [];
   const idx = {
     wsByPath: new Map(inp.workspaces.map((w) => [w.path, { ticketKey: w.ticketKey }])),
     ticketByKey: new Map(inp.tickets.map((t) => [t.key, { stateType: t.stateType }])),
@@ -251,9 +348,53 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
     out.push({ key: `recycle|wait|${w.session}`, group: "recycle", level: "caution", cue: null, aircraft: null, flight: null, text: t.text, next: t.next, link: "#fleet/control", since: w.since });
   }
 
-  // 같은 key는 한 번만(먼저 나온 것)
+  // 8) 조건 항목 셋(ATC-197): 이벤트가 아니라 지금의 상태에서 만든다. 상태가 풀리면 저절로 사라진다(같은 key)
+  if (inp.rtsHalted) {
+    out.push({
+      key: "rts|halted",
+      group: "rts",
+      level: "warning",
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: `RTS 멈춤 — ${inp.rtsHalted.reason}`,
+      next: "원인을 본 뒤 설정 창에서 MCC 모드를 다시 고른다(docs/mcc.md 6). 그때까지 배포되지 않는다",
+      link: "#radar",
+      since: inp.rtsHalted.since,
+    });
+  }
+  for (const c of inp.controlDown ?? []) {
+    out.push({
+      key: `control|down|${c.session}`,
+      group: "recycle",
+      level: "caution",
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: `CONTROL RECYCLE — ${c.session}을 멈췄지만 다시 뜨지 않았음: ${c.reason}`,
+      next: "FLEET 탭 CONTROL SESSIONS에서 LAUNCH한다",
+      link: "#fleet/control",
+      since: c.since,
+    });
+  }
+  for (const r of inp.repositionStuck ?? []) {
+    out.push({
+      key: `reposition|stuck|${r.aircraft}`,
+      group: "reposition",
+      level: "caution",
+      cue: null,
+      aircraft: r.aircraft,
+      flight: null,
+      text: `REPOSITION — ${r.aircraft}의 base를 ${r.to}로 바꿨지만 LAUNCH가 실패해 세션이 없음${r.error ? ` — ${r.error}` : ""}`,
+      next: "FLEET 탭에서 LAUNCH하거나, 다음 DISPATCH의 ABSENT LAUNCH 카드를 승인한다",
+      link: "#fleet",
+      since: r.since,
+    });
+  }
+
+  // 같은 key는 한 번만(먼저 나온 것). 마지막에 목적지(dest)를 붙인다
   const seen = new Set<string>();
-  return out.filter((a) => !seen.has(a.key) && (seen.add(a.key), true));
+  return out.filter((a) => !seen.has(a.key) && (seen.add(a.key), true)).map((a) => ({ ...a, dest: destOf(a, inp.landBy) }));
 }
 
 // key 차이: 새로 생긴 것과 사라진 key

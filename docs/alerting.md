@@ -88,6 +88,16 @@ Status (2026-09-30): design draft for [ATC-195](https://linear.app/vocado/issue/
 
 - QUEUE rows and `supervisorQueueOf` (Q1) must agree. Q1 builds its rows **from the same conditions** as the `pending|…` items. One function feeds both, so the queue and the CALL cue never disagree.
 
+### A1 as built (ATC-197)
+
+- **`destOf(item, landBy?)`** in `server/supervisor-alerts.ts` (pure) and `dest` on every item of `supervisorAlertsOf` (so on `/api/supervisor-alerts` and the `alert` SSE event). The keys are unchanged. Clients ignore the field until A3/A4. The rule follows the table above by the first segment of the key (`DEST_PREFIXES`); the rest of the key splits `recycle|over|wait` (alerts) from `recycle|<session>|<t>` (log), `reposition|stuck|…` (alerts) from the other `reposition|…` (log), `rts|halted` (alerts) from `rts|<at>|<result>` (log), and `following|…|await-supervisor` (queue) from the other `following|…` (alerts). An unknown prefix falls back to `alerts` so nothing is hidden; a test reads the key shapes in `supervisor-alerts.ts` and fails when a prefix has no rule.
+- **`land|…`** goes to the queue when the SUPERVISOR has to land it and to the log when MCC or the team lands it. It reuses `landByOf` (`server/land-by.ts`, which uses the `deploy/landing-tier.mjs` tier that MCC already measures); there is no second tier rule. `mccLandInfoCached` (`server/mcc-run.ts`) builds the same `MccLandInfo` as the TOWER brief from the tiers already in the cache without calling GitHub, so it can run every 5 s. A PR whose tier is not cached yet is `supervisor` (queue) until the next brief or MCC pass measures it; with no data at all the item goes to the queue, so the SUPERVISOR is never left out.
+- **Three condition items**, built from the current state, not from events (pure `rtsHaltedOf`, `controlDownOf`, `repositionStuckOf`); each clears by itself:
+  - `rts|halted` (WARNING, `rts`): while `rtsState().stop` is set (RTS stopped after a ROLLBACK), until the MCC mode is picked again.
+  - `control|down|<session>` (CAUTION, `recycle`): the session's last non-`would` RECYCLE record is `launch-failed`, or `stop-unconfirmed` with a refused LAUNCH, and no live session of that name (or folder) is running. Looks back 24 h of the FLIGHT RECORDER.
+  - `reposition|stuck|<aircraft>` (CAUTION, `reposition`): the AIRCRAFT's last REPOSITION record is a failure at stage `launch` (the base moved, the LAUNCH failed) and no live session has that REGISTRATION. Looks back 24 h.
+- The three items show in the BELL as ordinary conditions until A3, and they count in the summary `counts` and `master` like any other item.
+
 ### 3.2 MASTER (attention)
 
 - **The light** is at the BELL's place in the header. It is off, MASTER CAUTION (amber) or MASTER WARNING (red). It lights when a new key arrives at `dest: alerts` with WARNING or CAUTION, and stays lit until it is ACKed.

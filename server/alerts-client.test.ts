@@ -19,7 +19,7 @@ import {
 } from "../web/src/supervisor-alerts.ts";
 
 const NOW = Date.parse("2026-09-29T12:00:00");
-const al = (key: string, over: Partial<SupervisorAlert> = {}): SupervisorAlert => ({ key, group: "health", level: "caution", cue: null, aircraft: "TEAM_A", flight: "ATC-1", text: key, next: "n", link: "#strips", since: null, ...over });
+const al = (key: string, over: Partial<SupervisorAlert> = {}): SupervisorAlert => ({ key, group: "health", level: "caution", cue: null, aircraft: "TEAM_A", flight: "ATC-1", text: key, next: "n", link: "#strips", since: null, dest: "alerts", ...over });
 const ev = (raised: SupervisorAlert[], cleared: string[] = [], items: SupervisorAlert[] = raised, initial = false) => ({ raised, cleared, items, initial });
 const on: AlertPrefs = { ...DEFAULT_PREFS, sound: true, sounds: { warning: true, caution: true, call: true, done: true } };
 const ctx = (over: Partial<{ lastSounded: Record<string, number>; playing: SoundName | null }> = {}) => ({ lastSounded: {}, playing: null, ...over });

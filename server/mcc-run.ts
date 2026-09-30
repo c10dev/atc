@@ -137,6 +137,27 @@ export async function mccLandInfo(s: Snapshot): Promise<MccLandInfo | null> {
   return { repo: a.repo, mode: cfg.mode, holds: cfg.holds, escalated, tiers };
 }
 
+// mccLandInfo와 같은 자료를 이미 캐시된 등급으로만 만든다(ATC-197): GitHub를 부르지 않아 5초마다 알림을 셀 때 쓸 수 있다.
+// 캐시에 없는 PR은 tiers에서 빠져 landBy가 supervisor가 된다(등급을 모르면 SUPERVISOR가 본다). 등급 규칙은 landByOf와 tierOfFiles 그대로다
+export function mccLandInfoCached(s: Snapshot): MccLandInfo | null {
+  const cfg = loadMcc();
+  const a = s.airports.find((x) => x.code === cfg.airport);
+  if (!a?.repo) return null;
+  const escalated = [...new Set(readMccRecords().filter((r) => r.op === "escalate").map((r) => (r as { pr: number }).pr))];
+  const tiers = new Map<number, { head: string; tier: "auto" | "flagged" | "user" }>();
+  let slug: string | null = null;
+  try {
+    slug = airportOf(s).slug;
+  } catch {}
+  if (slug) {
+    for (const p of s.pulls.filter((x) => x.repo === a.repo && !x.draft)) {
+      const tier = tierCache.get(tierKey(slug, p.number, p.head));
+      if (tier) tiers.set(p.number, { head: p.head, tier });
+    }
+  }
+  return { repo: a.repo, mode: cfg.mode, holds: cfg.holds, escalated, tiers };
+}
+
 const fetchPull = async (slug: string, n: number) => JSON.parse(await gh(["api", `repos/${slug}/pulls/${n}`])) as RestPull;
 const fetchFiles = async (slug: string, n: number) =>
   (await gh(["api", "--paginate", `repos/${slug}/pulls/${n}/files?per_page=100`, "--jq", ".[].filename"])).split("\n").filter(Boolean);

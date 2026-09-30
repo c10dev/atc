@@ -109,7 +109,7 @@ test("resume(): AudioContext가 아직 없으면 false", async () => {
 });
 
 // ── 놓침 판정(순수) ──
-const alert = (key: string, over: Partial<SupervisorAlert> = {}): SupervisorAlert => ({ key, group: "alert", level: "warning", cue: null, aircraft: null, flight: null, text: "t", next: "", link: "#radar", since: null, ...over });
+const alert = (key: string, over: Partial<SupervisorAlert> = {}): SupervisorAlert => ({ key, group: "alert", level: "warning", cue: null, aircraft: null, flight: null, text: "t", next: "", link: "#radar", since: null, dest: "alerts", ...over });
 const prefs = (over: Partial<AlertPrefs> = {}): AlertPrefs => ({ ...DEFAULT_PREFS, sound: true, ...over });
 const NOON = new Date(2026, 8, 30, 12, 0).getTime();
 const ctx = { lastSounded: {}, playing: null } as const;
