@@ -6,7 +6,7 @@
 
 Rules for sessions that change atc's code (team sessions, the ENGINEERING session, and sessions working directly with the user). Design and terms are in `README.md` and `docs/`.
 
-**Control sessions are excluded.** Sessions opened in `controller/` (TOWER), `occ/` (OCC), `crosscheck/` (CROSSCHECK), `mcc/` (MCC) and `duty/` (DUTY, L0) follow the `CLAUDE.md` in their own folder. They load this file too, but control sessions never change code, so the working rules below don't apply to them. Where the two differ, the folder's `CLAUDE.md` wins.
+**Control sessions are excluded.** Sessions opened in `controller/` (TOWER), `occ/` (OCC), `crosscheck/` (CROSSCHECK), `mcc/` (MCC) and `duty/` (DUTY, L1) follow the `CLAUDE.md` in their own folder. They load this file too, but control sessions never change code, so the working rules below don't apply to them. Where the two differ, the folder's `CLAUDE.md` wins. DUTY writes docs and Linear issues, so it keeps the rules in "git and PRs", "Terms and docs", "Plans and ideas" and "DUTY" as they are (the worktree and test-server parts of "Where to work" and "Verification" are replaced by DUTY's STAND and the server: `duty/CLAUDE.md`).
 
 ## Where to work
 
@@ -39,7 +39,7 @@ Rules for sessions that change atc's code (team sessions, the ENGINEERING sessio
 - Commit, push and open PRs when the task asks for it. Commit messages and PR titles and bodies are in English.
 - No attribution lines (Co-Authored-By etc.) in commit messages. PR bodies end with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 - Don't open PRs as drafts. MCC never lands a draft (`docs/mcc.md` L2), so it waits until someone marks it ready. If the work isn't finished, report instead of opening a PR.
-- Team sessions and the ENGINEERING session don't merge. Merging follows the LANDING CLEARANCE tier (`deploy/landing-tier.mjs`, decided by the changed paths).
+- Team sessions, DUTY and the ENGINEERING session don't merge. Merging follows the LANDING CLEARANCE tier (`deploy/landing-tier.mjs`, decided by the changed paths).
   - `auto` (read-only server code, UI, docs, tests) and `flagged` (control-session manuals and CLI, server code with outside side effects): once CI (`check`) passes and the MCC INSPECTION is `pass`, MCC lands it (since 2026-09-29, now in `land+rts` mode, `docs/mcc.md` 5.1). The user may still merge first. For `flagged`, the PR body and the report list the changed control rules and the changed side-effect files separately. GitHub auto-merge is not used.
   - `user` (guards, `.claude/` settings, the root `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`): the user merges. A PR that changes the production state format, is hard to undo, or leaves doubts after review is raised to `user` too (the session that opened it says so in the tier section; an MCC INSPECTION escalates it).
 
@@ -64,16 +64,17 @@ Rules for sessions that change atc's code (team sessions, the ENGINEERING sessio
 - Ideas not yet decided go in a GitHub Issue labelled `idea`, not in the repository docs.
 - Once decided, write a design draft in `docs/<topic>.md` (Status line, Current facts, Principles, Implementation order, Risks, Decisions). New design docs start in English. Link the doc from the issue when it is adopted.
 - Put a stage in `docs/guide/stages.md`, work left in that design doc's "Not built yet", and finished work in the `CHANGELOG` (as fragments).
-- Status markers in design docs are ENGINEERING's, updated after merge from Linear: the ✅ rows of "Implementation order" tables, `Status:` lines, moves out of "Not built yet", and stages in `docs/guide/stages.md`. Team PRs leave them alone and describe what they built only in their own section right after the section that describes the feature, without a number (`### F7 as built (ATC-57)`).
+- Status markers in design docs are DUTY's (or ENGINEERING's), updated after merge from Linear: the ✅ rows of "Implementation order" tables, `Status:` lines, moves out of "Not built yet", and stages in `docs/guide/stages.md`. Team PRs leave them alone and describe what they built only in their own section right after the section that describes the feature, without a number (`### F7 as built (ATC-57)`).
 - atc's own work lives in the Linear `atc` team (ATC). atc reads every team in `LINEAR_TEAM_KEYS`, but only the configured teams (`candidateTeams` in `dispatch.json`; empty means the main team) produce DISPATCH and SCHEDULE candidates. The classification labels (`type`, `wake`, `rating:*`, `Risk`, `tail:*`) are workspace labels shared by both teams. Ideas stay in GitHub `idea` issues.
 
-## ENGINEERING
+## DUTY (design and work orders, formerly ENGINEERING)
 
-- ENGINEERING is the working session for atc's design and work orders (an airline's Technical Services). Its session name is `ENGINEERING`.
-- What it does: writes design docs (`docs/<topic>.md`) and Linear issues (work orders, EO), splits large issues (wake `J`) into sub-issues, and takes reports from team sessions and MCC to issue the next ones.
-- It is not a standing control session. Open it in this repository when needed; it follows the working rules in this file.
-- It doesn't merge, deploy or message team sessions. Sending work to teams is for DISPATCH, OCC and the user; `GET /api/dispatch/flight/<FLIGHT>/brief?to=TEAM_X` gives the text for a direct assignment.
-- ENGINEERING and the user create Linear issues and change their state. Team sessions don't write to Linear (`Fixes ATC-n` closes the issue on merge).
+- Design and work orders are **DUTY's** (`duty/`, L1, `docs/duty.md` 3.4 and 3.5), the work an airline's Technical Services used to do. DUTY is a standing control session; the SUPERVISOR talks to it on the atc screen.
+- What it does: writes design docs (`docs/<topic>.md`) in its own STAND (`.claude/worktrees/duty-*`, branch `claude/duty-*`, created by the server through `atcctl duty stand`) and raises them as PRs. It creates, updates and comments on Linear issues (work orders, EO) in the ATC team (the server writes with its own key; DUTY has no MCP). It splits large issues (wake `J`) into sub-issues. The details are in `duty/CLAUDE.md`.
+- The guard sets the limits of its power (`duty/guard.mjs`, fail-closed): it writes only `.md` docs inside its own STAND; git only in the fixed forms of `-C <STAND>` (`add`, `commit`, `push -u origin claude/duty-*`, `fetch`, `merge origin/main`); and only `gh pr create --base main --head claude/duty-*` (never a Draft). It cannot write the files that set its own powers (`duty/`, guards, `.claude/`, `.github/`, `package*.json`, `deploy/`, `hooks/`, the root `CLAUDE.md`, `.env*`). There is no code or test server (L2), no merge or deploy (L3), no messages to team sessions (L4). Linear is the ATC team only, states up to Backlog and Todo, and it never deletes or closes an issue. The switch is `l1` in `duty.json`, off by default.
+- DUTY's PRs follow the same rules: English, no Draft, no ATC key in a design PR's title or branch, `Fixes` only when the PR completes the issue, GitHub references in Linear bodies as full URLs, a priority on every work order. The tier decides the merge (docs only is `auto`, so MCC lands it; files such as `duty/` cannot be written anyway).
+- An **ENGINEERING session** (a working session that opens this repository, for example in Claude desktop, to do the same work) stays as break-glass. It follows the same rules and doesn't merge, deploy or message team sessions. Sending work to teams is for DISPATCH, OCC and the user; `GET /api/dispatch/flight/<FLIGHT>/brief?to=TEAM_X` gives the text for a direct assignment.
+- DUTY (up to Backlog and Todo), the user and, as break-glass, ENGINEERING create Linear issues and change their state. Team sessions don't write to Linear (`Fixes ATC-n` closes the issue on merge).
 
 ## Radio
 

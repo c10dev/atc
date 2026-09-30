@@ -42,6 +42,7 @@ codex/voc-<n>-<slug>      # Codex sessions
 | `OCC` | `occ/` | Operations control: DISPATCH review, SCHEDULE drafts, flight following |
 | `CROSSCHECK` | `crosscheck/` | A model from a different family than OCC leaves a provisional verdict before the SUPERVISOR decides |
 | `MCC` | `mcc/` | Maintenance Control: INSPECTION of atc's own PRs, landing and RETURN TO SERVICE ([mcc.md](mcc.md)) |
+| `DUTY` | `duty/` | Duty Manager: the SUPERVISOR's chat window in atc. L1: reads atc, drafts, and writes design docs (a docs PR from its own `duty-*` STAND) and Linear work orders. Decides, merges and deploys nothing ([duty.md](duty.md)) |
 
 - **CROSSCHECK** is borrowed from the cockpit cross-check, where the second pilot independently checks the first one's setting. Here it is the provisional verdict (`agree`/`disagree` plus a one-line reason) on an open DISPATCH proposal (`D-xxxx`) or SCHEDULE draft (`S-xxxx`). It is also called a **mark**. It never changes a proposal's or draft's state and is never counted in a gate.
 - **CROSSCHECK match** (`CROSSCHECK 일치`): among human decisions that had a mark before the decision, the share where the mark agreed (agree ↔ agreed/approved, disagree ↔ disagreed/rejected). It is shown overall and per model: each mark records the model id of the CROSSCHECK session (`unknown` for marks made before the field existed), shown in the screens by its short name (`muse-spark-1.3-contributor`, `gpt-5.6-terra`).
@@ -51,11 +52,11 @@ codex/voc-<n>-<slug>      # Codex sessions
 | Session name | Where | Role |
 |---|---|---|
 | `TEAM_X`, then `TEAM_XX` | a worktree per task | AIRCRAFT: builds FLIGHTs and opens PRs. One letter (`TEAM_A` … `TEAM_Z`), then two (`TEAM_AA` … `TEAM_ZZ`); the callsign is one phonetic word per letter (`TEAM_RA` → ROMEO ALPHA). See [fleet.md](fleet.md) "Two-letter REGISTRATIONs as built" |
-| `ENGINEERING` | this repository, opened when needed | Design and work orders: design docs (`docs/<topic>.md`), Linear issues (EO), splitting large issues, taking reports. Doesn't merge, deploy or message teams (root `CLAUDE.md` "ENGINEERING") |
+| `ENGINEERING` | this repository, opened when needed | Break-glass since DUTY L1: the same design and work-order work in a desktop session, under the same rules. Doesn't merge, deploy or message teams (root `CLAUDE.md` "DUTY") |
 
 - **ENGINEERING** is an airline's Technical Services, which designs modifications and issues Engineering Orders (EO). It replaces the ad hoc name `structure` for this role (GitHub #121, 2026-09-28). `structure`'s other role, landing and deploying atc PRs, goes to the user until MCC is in `land` mode, then to MCC.
 - Old records keep the name they were written with, e.g. `by: "structure"` in LOGBOOK `measured` lines.
-- **DUTY** (the Duty Manager) exists at L0 in `duty/` and does not run yet: no server spawn and no screen. It will talk to the SUPERVISOR, draft, and never decide. It is not listed as a control session until D7 ([duty.md](duty.md) sections 3.5 and 5).
+- **DUTY** (the Duty Manager) is a control session with **L1** ([duty.md](duty.md) 3.5, D7a): it does the ENGINEERING work itself. It writes `.md` docs only in its own STAND (`.claude/worktrees/duty-*`, branch `claude/duty-*`), opens PRs, and writes issues to the Linear ATC team through the server. It has no code or test servers (L2), no merge or deploy (L3), no messages to team sessions (L4), and it cannot write the files that set its own powers (the guard, `duty/settings.json`, `.claude/`, `.github/`, `package*.json`, `deploy/`, `hooks/`, the root `CLAUDE.md`). The `l1` switch in `duty.json` is off by default.
 
 ## FUEL words on screen
 

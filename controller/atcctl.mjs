@@ -194,7 +194,7 @@ MCC (atc 자신의 PR 착륙·RETURN TO SERVICE, mcc/ 폴더, Claude — docs/mc
   node atcctl.mjs mcc land <PR> --head <sha>  L2–L8이 모두 맞으면 착륙(shadow면 would-land만). 막히면 조건 목록
   node atcctl.mjs mcc rts                   서비스가 기본 브랜치보다 뒤면 RETURN TO SERVICE(land+rts·rts가 아니면 would-rts. 서버가 이미 시작했으면 그렇다고 답함)
 
-DUTY (DUTY 세션, duty/ 폴더, L0 — docs/duty.md. 읽기와 초안뿐, 밖으로 나가는 동작 없음)
+DUTY (DUTY 세션, duty/ 폴더, L1 — docs/duty.md. 읽기와 초안, 자기 STAND의 문서·PR, Linear ATC 팀 쓰기. duty.json의 l1이 켜져 있어야 stand·linear가 된다)
   node atcctl.mjs duty brief                atc가 아는 것의 한 장 요약(글): SUPERVISOR QUEUE, 조치가 필요한 알림, FLEET, FUEL, 진행 중 FLIGHT
   node atcctl.mjs duty flight <ATC-206>     FLIGHT 서랍 자료(글): 상태·관계·PR, 본문과 댓글은 데이터 표시 안에
   node atcctl.mjs duty pr <ATCC> <281>      PR 서랍 자료(글): 착륙 상태·등급·체크·파일, 본문은 데이터 표시 안에
@@ -204,7 +204,13 @@ DUTY (DUTY 세션, duty/ 폴더, L0 — docs/duty.md. 읽기와 초안뿐, 밖�
   node atcctl.mjs duty note -- '<규칙>' [--until <iso>]
                                             정해 둘 결정의 제안. SUPERVISOR가 카드에서 확정해야 효력이 생긴다(D4)
   node atcctl.mjs duty charter -- '<영어 요청>'
-                                            CHARTER REQUEST 초안(영어). SUPERVISOR가 카드에서 확정하면 OCC가 schedule brief로 읽는다(duty.charter 스위치, D5)`;
+                                            CHARTER REQUEST 초안(영어). SUPERVISOR가 카드에서 확정하면 OCC가 schedule brief로 읽는다(duty.charter 스위치, D5)
+  node atcctl.mjs duty stand <이름>         서버가 .claude/worktrees/duty-<이름>을 origin/main에서 claude/duty-<이름> 브랜치로 만든다(D7a). 문서는 여기에만 쓴다
+  node atcctl.mjs duty stand-done <이름>    그 STAND를 치운다(duty-*만, 고치던 것이 없거나 이미 머지됐을 때만. 브랜치는 남는다)
+  node atcctl.mjs duty linear create --title '<글>' --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project '<이름>'] [--label '<이름>']… -- '<Markdown 본문>'
+  node atcctl.mjs duty linear update ATC-n [--title '<글>'] [--priority <1-4>] [--state Backlog|Todo] [--label '<이름>']… [-- '<본문>']
+  node atcctl.mjs duty linear comment ATC-n -- '<본문>'
+                                            서버가 자기 키로 Linear ATC 팀에 쓴다(D7a). 상태는 Backlog·Todo까지, 라벨은 있는 것만 더한다. 한 번마다 FLIGHT RECORDER 한 줄`;
 
 // limit: 409(한도 참)일 때 오류 대신 보여 줄 안내. 호출한 세션이 곧바로 멈추게 LIMIT으로 시작한다.
 // soft: 409를 오류로 끝내지 않고 응답을 돌려준다(MCC land·rts의 "막힘"은 정상 답이다)
@@ -657,6 +663,54 @@ export function parseDutyNote(args) {
   return until ? { text, until } : { text };
 }
 
+// duty stand <이름> · stand-done <이름>: 이름 하나(모양 검사는 서버가 한다)
+export function parseDutyStand(args) {
+  if (args.length !== 1 || args[0].startsWith("-")) throw new Error("이름 하나가 필요함(소문자·숫자·하이픈, 예: charter-desk)");
+  return { name: args[0] };
+}
+
+// duty linear create|update|comment (D7a). 본문(Markdown)은 -- 뒤 낱말 전부. 옵션은 -- 앞에 쓴다
+//   create  --title <글> --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project <이름>] [--label <이름>]… -- <본문>
+//   update  ATC-n [--title <글>] [--priority <1-4>] [--state Backlog|Todo] [--label <이름>]… [-- <본문>]   (라벨은 더하기만)
+//   comment ATC-n -- <본문>
+export function parseDutyLinear(args) {
+  const [action, ...rest] = args;
+  if (!["create", "update", "comment"].includes(action)) throw new Error("duty linear create | update | comment …");
+  const sep = rest.indexOf("--");
+  const head = sep < 0 ? rest : rest.slice(0, sep);
+  const text = sep < 0 ? "" : rest.slice(sep + 1).join(" ");
+  const body = { action };
+  if (action !== "create") {
+    if (!head[0] || head[0].startsWith("-")) throw new Error(`duty linear ${action} ATC-n …`);
+    body.key = head.shift();
+  }
+  const labels = [];
+  for (let i = 0; i < head.length; i += 2) {
+    const flag = head[i];
+    const v = head[i + 1];
+    if (v === undefined) throw new Error(`${flag} 뒤에 값이 필요함`);
+    if (flag === "--title") body.title = v;
+    else if (flag === "--priority") body.priority = /^[1-4]$/.test(v) ? Number(v) : v;
+    else if (flag === "--state") body.state = v;
+    else if (flag === "--parent" && action === "create") body.parent = v;
+    else if (flag === "--project" && action === "create") body.project = v;
+    else if (flag === "--label") labels.push(v);
+    else throw new Error(`알 수 없는 옵션 ${flag}`);
+  }
+  if (labels.length) body.labels = labels;
+  if (text) body.body = text;
+  return body;
+}
+
+export function dutyStandText(r, done) {
+  return done
+    ? `STAND ${r.name} removed (${r.removed}); branch ${r.branchKept} kept`
+    : `STAND ${r.name} ready: ${r.path} on branch ${r.branch} from ${r.base}${r.nodeModules ? " (node_modules linked)" : ""}\nWrite docs there with Edit/Write and use git -C ${r.path} … for git.`;
+}
+export function dutyLinearText(r) {
+  return r.url ? `${r.key} created (${r.state}) ${r.url}` : `${r.key} ${r.state ? `updated (${r.state})` : "written"}`;
+}
+
 export function parseDutyCharter(args) {
   const sep = args.indexOf("--");
   if (sep !== 0 && sep !== -1 && args.slice(0, sep).length) throw new Error(`알 수 없는 인자 ${args[0]}`);
@@ -933,8 +987,14 @@ if (isMain) {
         console.log(dutyDraftText(await call("POST", "/api/duty/note", parseDutyNote(rest))));
       } else if (sub === "charter") {
         console.log(dutyDraftText(await call("POST", "/api/duty/charter", parseDutyCharter(rest))));
+      } else if (sub === "stand") {
+        console.log(dutyStandText(await call("POST", "/api/duty/stand", parseDutyStand(rest)), false));
+      } else if (sub === "stand-done") {
+        console.log(dutyStandText(await call("POST", "/api/duty/stand-done", parseDutyStand(rest)), true));
+      } else if (sub === "linear") {
+        console.log(dutyLinearText(await call("POST", "/api/duty/linear", parseDutyLinear(rest))));
       } else {
-        throw new Error("duty brief | flight <KEY> | pr <AIRPORT> <번호> | idea <번호> | card <kind> <key> | note -- '<규칙>' [--until <iso>] | charter -- '<영어 요청>'");
+        throw new Error("duty brief | flight <KEY> | pr <AIRPORT> <번호> | idea <번호> | card <kind> <key> | note -- '<규칙>' [--until <iso>] | charter -- '<영어 요청>' | stand <이름> | stand-done <이름> | linear create|update|comment …");
       }
     } else if (cmd === "squelch") {
       if (args.length !== 1 || !SQUELCH_ROLES.includes(args[0])) throw new Error(`역할은 ${SQUELCH_ROLES.join("|")} 중 하나`);

@@ -22,7 +22,7 @@ test("새 대화: 정확한 명령줄(D0가 잰 것 + --tools·--strict-mcp-conf
     "--include-hook-events",
     "--replay-user-messages",
     "--strict-mcp-config",
-    "--tools", "Bash,Read,Glob,Grep",
+    "--tools", "Bash,Read,Glob,Grep,Edit,Write",
     "--settings", join(DIR, "settings.json"),
     "--session-id", ID,
   ]);
@@ -47,7 +47,7 @@ test("이어 가기: --resume <id>(--session-id가 아님), id가 없거나 UUID
 });
 
 test("도구 목록은 DUTY_TOOLS 그대로, claude 경로와 폴더는 바꿀 수 있다", () => {
-  assert.equal(DUTY_TOOLS, "Bash,Read,Glob,Grep");
+  assert.equal(DUTY_TOOLS, "Bash,Read,Glob,Grep,Edit,Write");
   const r = dutyArgvOf({ sessionId: ID, claudeBin: "/x/claude", dir: "/tmp/somewhere/duty" });
   assert.equal(r.command, "/x/claude");
   assert.equal(r.cwd, "/tmp/somewhere/duty");

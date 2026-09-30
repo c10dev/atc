@@ -45,6 +45,16 @@ test("설정·지침·CI·의존성·hook·배포는 user", () => {
   assert.equal(tierOf(["deploy/README.md", "deploy/README.ko.md"]).tier, "auto");
 });
 
+test("DUTY L1(D7a): claude/duty-* 브랜치의 PR도 바뀐 파일 경로로만 등급이 정해진다(문서는 auto, 자기 권한 파일은 user)", () => {
+  assert.equal(tierOf(["docs/charter-desk.md", "docs/charter-desk.ko.md", "changelog.d/x.md"]).tier, "auto", "DUTY의 설계 문서 PR은 MCC가 착륙시킨다");
+  assert.equal(tierOf(["docs/charter-desk.md", "duty/settings.json"]).tier, "user");
+  assert.equal(tierOf(["docs/x.md", "CLAUDE.md"]).tier, "user");
+  assert.equal(tierOf(["server/duty-l1-run.ts"]).tier, "flagged", "git worktree·Linear 쓰기 요청");
+  assert.equal(tierOf(["server/sources/linear-write.ts"]).tier, "flagged");
+  assert.equal(tierOf(["server/duty-stand.ts", "server/duty-linear.ts"]).tier, "auto", "순수 판정만");
+  assert.equal(tierOf(["duty/guard-l1.test.mjs"]).tier, "flagged", "guard 테스트만 바꾸면 flagged");
+});
+
 test("DUTY(L0): duty/ 매뉴얼·CLI는 flagged, guard와 settings.json은 user", () => {
   assert.equal(tierOf(["duty/CLAUDE.md"]).tier, "flagged");
   assert.equal(tierOf(["duty/CLAUDE.en.md"]).tier, "flagged");

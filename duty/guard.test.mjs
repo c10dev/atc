@@ -12,8 +12,8 @@ const bash = (command) => check({ tool_name: "Bash", tool_input: { command }, cw
 const read = (tool, tool_input) => check({ tool_name: tool, tool_input, cwd: DUTY });
 const HOME = homedir();
 
-test("도구: Bash·Read·Glob·Grep만, 그 밖의 이름은 무엇이든 막는다", () => {
-  for (const t of ["Edit", "Write", "NotebookEdit", "Agent", "SendMessage", "WebFetch", "WebSearch", "CronCreate", "EnterWorktree", "RemoteTrigger", "PushNotification", "Workflow", "mcp__x__y", "bash", "", undefined, null, 5]) {
+test("도구: Bash·Read·Glob·Grep·Edit·Write만, 그 밖의 이름은 무엇이든 막는다", () => {
+  for (const t of ["NotebookEdit", "Agent", "SendMessage", "WebFetch", "WebSearch", "CronCreate", "EnterWorktree", "RemoteTrigger", "PushNotification", "Workflow", "mcp__x__y", "bash", "", undefined, null, 5]) {
     assert.match(check({ tool_name: t, tool_input: {} }) ?? "", /쓸 수 없는 도구/, String(t));
   }
   assert.equal(check(null) !== null, true);
@@ -319,7 +319,7 @@ test("hook 프로세스: 통과 0, 막힘 2(이유가 stderr), 깨진·빈 입�
   assert.equal(ok.status, 0, ok.stderr);
   const no = run(JSON.stringify({ tool_name: "Bash", tool_input: { command: "curl x" }, cwd: DUTY }));
   assert.equal(no.status, 2);
-  assert.match(no.stderr, /DUTY는 L0/);
+  assert.match(no.stderr, /DUTY는 L1/);
   const tool = run(JSON.stringify({ tool_name: "Write", tool_input: { file_path: "x", content: "y" }, cwd: DUTY }));
   assert.equal(tool.status, 2);
   for (const junk of ["", "not json", "{", "null", "[]", "5"]) assert.equal(run(junk).status, 2, JSON.stringify(junk));

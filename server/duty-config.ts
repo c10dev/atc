@@ -13,6 +13,7 @@ export interface DutyConfig {
   briefMaxChars: number;
   briefDecisions: number;
   charter: CharterMode; // D5: DUTY가 만든 CHARTER REQUEST를 OCC가 읽는 정도. off(기본) · shadow · on
+  l1: boolean; // D7a: DUTY STAND(duty-*)와 Linear 쓰기 길을 여는 스위치. 기본 꺼짐. duty.json에서만 켠다(화면 항목은 아직 없다)
 }
 
 export const DEFAULT_ACCOUNT = "acct-2";
@@ -34,6 +35,7 @@ export function parseDutyConfig(raw: unknown): DutyConfig {
     briefMaxChars: briefMaxCharsOf(o.briefMaxChars),
     briefDecisions: briefDecisionsOf(o.briefDecisions),
     charter: charterModeOf(o.charter),
+    l1: o.l1 === true,
   };
 }
 

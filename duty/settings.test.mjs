@@ -18,12 +18,20 @@ test("모델과 최상위 키: model만 정하고 mcp·환경·추가 폴더는 
   assert.deepEqual(Object.keys(settings.permissions).sort(), ["allow", "deny"], "additionalDirectories·defaultMode를 두지 않는다");
 });
 
-test("거부 목록: 쓰기·서브에이전트·메시지·웹 도구", () => {
-  assert.deepEqual(settings.permissions.deny, ["Edit", "Write", "NotebookEdit", "Agent", "SendMessage", "WebFetch", "WebSearch"]);
-  for (const t of settings.permissions.deny) assert.equal(ALLOWED_TOOLS.has(t), false, `${t}는 guard도 허용하지 않는다`);
+const WT = "/home/c10/projects/atc/.claude/worktrees";
+// no-self-authority(D7a): STAND 안이어도 쓰지 않는 것. 첫 자물쇠는 guard(writeForbidden), 이 거부 목록은 세 번째 자물쇠다
+const NO_WRITE = ["duty/**", ".claude/**", ".github/**", "hooks/**", "deploy/**", "**/node_modules/**", "**/.env*", "**/*guard*", "**/package*.json", "CLAUDE.md", "CLAUDE.en.md"];
+
+test("거부 목록: 서브에이전트·메시지·웹 도구, 그리고 STAND 안의 자기 권한 파일 쓰기", () => {
+  assert.deepEqual(settings.permissions.deny.slice(0, 5), ["NotebookEdit", "Agent", "SendMessage", "WebFetch", "WebSearch"]);
+  assert.deepEqual(
+    settings.permissions.deny.slice(5),
+    ["Edit", "Write"].flatMap((t) => NO_WRITE.map((p) => `${t}(/${WT}/duty-*/${p})`)),
+  );
+  for (const t of settings.permissions.deny.slice(0, 5)) assert.equal(ALLOWED_TOOLS.has(t), false, `${t}는 guard도 허용하지 않는다`);
 });
 
-test("허용 목록: L0 명령과 읽기 도구뿐(쓰기·gh api·curl·systemctl·kill·npm·claude·node -e 없음)", () => {
+test("허용 목록: L1 — 읽기 명령, STAND 안의 git과 Edit·Write, gh pr create (gh api·curl·systemctl·kill·npm·claude·node -e·gh pr merge 없음)", () => {
   assert.deepEqual(settings.permissions.allow, [
     "Bash(node ../controller/atcctl.mjs duty *)",
     "Bash(node /home/c10/projects/atc/controller/atcctl.mjs duty *)",
@@ -40,17 +48,21 @@ test("허용 목록: L0 명령과 읽기 도구뿐(쓰기·gh api·curl·systemc
     "Bash(gh pr list *)",
     "Bash(gh pr checks *)",
     "Bash(gh pr diff *)",
+    "Bash(gh pr create *)",
     "Bash(git log *)",
     "Bash(git show *)",
     "Bash(git diff *)",
     "Bash(git status *)",
     "Bash(git status)",
+    `Bash(git -C ${WT}/duty-* *)`,
+    `Edit(/${WT}/duty-*/**)`,
+    `Write(/${WT}/duty-*/**)`,
     "Read",
     "Glob",
     "Grep",
   ]);
-  const text = settings.permissions.allow.join("\n");
-  for (const bad of ["curl", "wget", "gh api", "gh pr merge", "gh pr create", "systemctl", "kill", "npm", "claude", "node -e", "tee", "rm ", "Edit", "Write", "SendMessage"]) assert.ok(!text.includes(bad), bad);
+  const text = settings.permissions.allow.join("\n").replaceAll(WT, "<worktrees>"); // 경로의 .claude는 claude 명령이 아니다
+  for (const bad of ["curl", "wget", "gh api", "gh pr merge", "gh pr edit", "systemctl", "kill", "npm", "claude", "node -e", "tee", "rm ", "SendMessage", "--force", "push"]) assert.ok(!text.includes(bad), bad);
 });
 
 test("허용 목록의 Bash 규칙은 모두 guard도 통과시킨다(둘이 어긋나지 않는다)", () => {
@@ -58,6 +70,12 @@ test("허용 목록의 Bash 규칙은 모두 guard도 통과시킨다(둘이 어
   for (const rule of settings.permissions.allow) {
     const m = /^Bash\((.*)\)$/.exec(rule);
     if (!m) continue;
+    // STAND 안의 git과 gh pr create는 형식이 정해져 있다: 실제 STAND가 있어야 하는 것은 guard.l1.test.mjs가 짝지어 본다
+    if (m[1].startsWith("git -C ")) continue;
+    if (m[1].startsWith("gh pr create")) {
+      assert.equal(check({ tool_name: "Bash", tool_input: { command: "gh pr create --base main --head claude/duty-x --title t --body b" }, cwd: DUTY }), null, rule);
+      continue;
+    }
     const command = m[1].replace(/ \*$/, " x").replace("/home/c10/projects/atc/controller", new URL("../controller", import.meta.url).pathname);
     const sample = /atcctl\.mjs duty x$/.test(command) ? command.replace(/duty x$/, "duty brief") : /^jq/.test(command) ? "node ../controller/atcctl.mjs duty brief | jq ." : command.replace(/ x$/, m[1].includes("gh pr") ? " 1" : "");
     assert.equal(check({ tool_name: "Bash", tool_input: { command: sample }, cwd: DUTY }), null, `${rule} → ${sample}`);

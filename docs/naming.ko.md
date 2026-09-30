@@ -42,6 +42,7 @@ codex/voc-<n>-<slug>      # Codex 세션
 | `OCC` | `occ/` | 운항관제: DISPATCH 검토, SCHEDULE 초안, 운항 추적 |
 | `CROSSCHECK` | `crosscheck/` | OCC와 다른 계열의 모델이 SUPERVISOR 판정 전에 예비 판정을 달아 둔다 |
 | `MCC` | `mcc/` | Maintenance Control: atc 자신의 PR INSPECTION, 착륙, RETURN TO SERVICE([mcc.md](mcc.md)) |
+| `DUTY` | `duty/` | Duty Manager: atc 안에서 SUPERVISOR가 말을 거는 채팅 창구. L1: atc를 읽고 초안을 남기고, 설계 문서(자기 `duty-*` STAND에서 문서 PR)와 Linear 작업 지시서를 쓴다. 결정·머지·배포는 하지 않는다([duty.md](duty.md)) |
 
 - **CROSSCHECK**는 조종실의 cross-check(다른 조종사가 설정을 따로 확인하는 절차)에서 따온 말이다. 열린 DISPATCH 제안(`D-xxxx`)이나 SCHEDULE 초안(`S-xxxx`)에 다는 예비 판정(`agree`/`disagree`와 이유 한 줄)이고, **mark**라고도 부른다. 제안·초안의 상태를 바꾸지 않고, 어떤 게이트에도 세지 않는다.
 - **CROSSCHECK 일치**: 사람이 판정한 건 중 판정 전에 mark가 있던 건에서, mark가 사람 판정과 맞은 비율(agree ↔ agreed·approved, disagree ↔ disagreed·rejected). 전체와 모델별로 보인다. mark마다 CROSSCHECK 세션의 모델 id가 남고(이 필드가 생기기 전의 mark는 `unknown`), 화면에는 짧은 이름(`muse-spark-1.3-contributor`, `gpt-5.6-terra`)으로 보인다.
@@ -51,11 +52,11 @@ codex/voc-<n>-<slug>      # Codex 세션
 | 세션 이름 | 어디서 | 역할 |
 |---|---|---|
 | `TEAM_X`, 그다음 `TEAM_XX` | 작업마다 워크트리 | AIRCRAFT: FLIGHT를 만들고 PR을 올린다. 한 글자(`TEAM_A` … `TEAM_Z`), 그다음 두 글자(`TEAM_AA` … `TEAM_ZZ`). 콜사인은 글자마다 음성 알파벳 한 단어(`TEAM_RA` → ROMEO ALPHA). [fleet.ko.md](fleet.ko.md) "두 글자 REGISTRATION as built" 참고 |
-| `ENGINEERING` | 이 저장소, 필요할 때 연다 | 설계와 작업 지시: 설계 문서(`docs/<주제>.md`), Linear 이슈(EO), 큰 이슈 나누기, 보고 받기. 머지·배포·팀 교신은 하지 않는다(루트 `CLAUDE.md` "ENGINEERING") |
+| `ENGINEERING` | 이 저장소, 필요할 때 연다 | DUTY L1 이후 break-glass: 데스크톱 세션에서 같은 규칙으로 하는 설계·작업 지시. 머지·배포·팀 교신은 하지 않는다(루트 `CLAUDE.md` "DUTY") |
 
 - **ENGINEERING**은 항공사의 Technical Services다. 개조와 개선을 설계하고 작업 지시서(Engineering Order, EO)를 낸다. 이 역할에 쓰던 임시 이름 `structure`를 대신한다(GitHub #121, 2026-09-28). `structure`의 다른 역할인 atc PR 착륙·배포는 MCC가 `land` 모드가 될 때까지 사용자가, 그 뒤로는 MCC가 맡는다.
 - 옛 기록은 쓸 때의 이름을 그대로 둔다. 예: LOGBOOK `measured` 줄의 `by: "structure"`.
-- **DUTY**(Duty Manager)는 `duty/`에 L0로 있고 아직 돌지 않는다(서버가 띄우지 않고 화면도 없다). SUPERVISOR와 말하고 초안을 쓰되 결정하지 않는다. D7까지는 관제 세션 목록에 넣지 않는다([duty.md](duty.md) 3.5절, 5장).
+- **DUTY**(Duty Manager)는 **L1**인 관제 세션이다([duty.md](duty.md) 3.5절, D7a). ENGINEERING의 일을 직접 한다. 자기 STAND(`.claude/worktrees/duty-*`, 브랜치 `claude/duty-*`)에만 `.md` 문서를 쓰고, PR을 열고, 서버를 거쳐 Linear ATC 팀에 이슈를 쓴다. 코드·시험 서버(L2), 머지·배포(L3), 팀 세션 메시지(L4)는 없고, 자기 권한을 정하는 파일(guard, `duty/settings.json`, `.claude/`, `.github/`, `package*.json`, `deploy/`, `hooks/`, 루트 `CLAUDE.md`)은 쓰지 못한다. `duty.json`의 `l1` 스위치는 기본이 꺼짐이다.
 
 ## 화면의 FUEL 말
 
