@@ -28,9 +28,11 @@ export const SIDE_EFFECT = [
   ["server/autoland-run.ts", "PR 머지·브랜치 갱신·코멘트(gh api)"],
   ["server/mcc-run.ts", "PR 머지·INSPECTION 코멘트·atc-rts 유닛 시작"],
   ["server/human-check-run.ts", "PR 본문 수정·코멘트(gh api)"],
+  ["server/sources/linear-write.ts", "Linear GraphQL mutation: 이슈 하나의 상태 옮기기(DUTY G3). 서버가 Linear에 쓰는 유일한 파일"],
   ["server/session-control.ts", "claude --bg 세션 시작·정지, tmux pane 닫기"],
   ["server/tts.ts", "외부 TTS 명령(piper·espeak-ng·Kokoro 래퍼) 실행: 문구를 WAV로 렌더링(ATC-140, ATC-143)"],
   ["server/duty-run.ts", "DUTY `claude -p` 프로세스 띄우기(D2). D1에서는 비어 있고, D2가 이 파일을 등급 파일 수정 없이 flagged로 들이려고 미리 올려 둠"],
+  ["server/pr-merge-run.ts", "PR 머지(gh api PUT, sha 고정, auto-merge 없음): PR 서랍 MERGE 버튼 — SUPERVISOR 클릭만, user 등급 CLEARED PR만(DUTY G2)"],
   ["server/account-add.ts", "Claude Code 설정 폴더 만들기와 그 settings.json 쓰기(ADD ACCOUNT, ATC-186). 로그인 정보는 열지 않음"],
   ["tts/kokoro-say.py", "server/tts.ts가 부르는 Kokoro 래퍼: 모델을 돌려 WAV를 파일로 씀(네트워크 없음, ATC-143)"],
   // 위 파일의 부작용 helper를 불러 시점을 정하는 파일(SIDE_EFFECT_HELPERS를 import). 자기는 명령을 돌리지 않는다
@@ -39,6 +41,7 @@ export const SIDE_EFFECT = [
   ["server/fleet-plan-run.ts", "FLEET PLAN 실행: AIRCRAFT 세션 시작·정지 시점"],
   ["server/control-recycle-run.ts", "CONTROL RECYCLE 실행: 관제 세션 정지·시작 시점(ATC-166, 스위치 off 기본)"],
   ["server/account-login.ts", "claude auth login 실행(코드를 stdin으로), 로그인 뒤 .claude.json 온보딩 칸 셋 쓰기(ATC-187). .credentials.json은 열지 않음"],
+  ["server/flight-state-run.ts", "FLIGHT 상태 버튼(POST /api/flight/:key/state): SUPERVISOR 클릭만 Linear 상태를 옮김(DUTY G3)"],
   ["server/accounts-run.ts", "ADD ACCOUNT·LOGIN 시점(POST /api/accounts/add, /api/accounts/:label/login, SUPERVISOR만)"],
   ["server/index.ts", "AUTOLAND 한 주기 실행 배선(머지·브랜치 갱신 시점)"],
 ];

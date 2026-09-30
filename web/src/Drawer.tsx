@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DrawerRef, IssueDetail, IssueRef, PrDetail } from "../../server/detail.ts";
+import type { MergeInfo } from "../../server/pr-merge.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
 import { flightNumber } from "./aviation.ts";
 import { timeAgo } from "./derive.ts";
@@ -51,8 +52,60 @@ function RefList({ label, items }: { label: string; items: IssueRef[] }) {
   );
 }
 
+// 상태 버튼(DUTY G3): SUPERVISOR의 클릭 하나가 Linear 상태를 옮긴다. 누르면 한 번 더 묻고, 서버는 지금 상태가 아직 from일 때만 옮긴다(아니면 409)
+function StateMove({ d, onMoved }: { d: IssueDetail; onMoved: () => void }) {
+  const [ask, setAsk] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (!d.state || d.moves.length === 0) return null;
+  const go = async (to: string) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/flight/${d.key}/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ from: d.state, to }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(body.error ?? `HTTP ${res.status}`));
+      setAsk(null);
+      onMoved();
+    } catch (e) {
+      setErr(String((e as Error).message ?? e));
+      setAsk(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="dr-row">
+      <dt>상태 이동</dt>
+      <dd className="dr-move">
+        {ask === null ? (
+          d.moves.map((m) => (
+            <button key={m.name} type="button" className={`dr-btn${d.ready && m.type === "unstarted" ? " is-primary" : ""}`} disabled={busy} onClick={() => setAsk(m.name)}>
+              {m.name}로
+            </button>
+          ))
+        ) : (
+          <>
+            <span>
+              {d.state} → <b>{ask}</b> 로 옮긴다. Linear에 바로 쓴다.
+            </span>
+            <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void go(ask)}>
+              {busy ? "옮기는 중…" : "확인"}
+            </button>
+            <button type="button" className="dr-btn" disabled={busy} onClick={() => setAsk(null)}>
+              취소
+            </button>
+          </>
+        )}
+        {err && <span className="dr-error">{err}</span>}
+      </dd>
+    </div>
+  );
+}
+
 function Flight({ k, now }: { k: string; now: number }) {
-  const l = useDetail<IssueDetail>(`/api/flight/${k}/detail`);
+  const [rev, setRev] = useState(0);
+  const l = useDetail<IssueDetail>(`/api/flight/${k}/detail${rev ? `?r=${rev}` : ""}`);
   if (l.state === "loading") return <p className="dr-note">불러오는 중…</p>;
   if (l.state === "error") return <p className="dr-note dr-error">{l.message}</p>;
   const d = l.data;
@@ -63,8 +116,16 @@ function Flight({ k, now }: { k: string; now: number }) {
       <dl className="dr-meta">
         <div className="dr-row">
           <dt>상태</dt>
-          <dd>{d.state ?? "—"}</dd>
+          <dd>
+            {d.state ?? "—"}
+            {d.ready && (
+              <span className="dr-chip dr-ready" title="막는 FLIGHT가 모두 Done 또는 Canceled">
+                READY
+              </span>
+            )}
+          </dd>
         </div>
+        <StateMove d={d} onMoved={() => setRev((n) => n + 1)} />
         <div className="dr-row">
           <dt>우선순위</dt>
           <dd>{PRIORITY[d.priority] ?? "—"}</dd>
@@ -141,9 +202,66 @@ function Flight({ k, now }: { k: string; now: number }) {
 
 const CHECK_MARK = { pass: "✓", fail: "✗", pending: "…", skipped: "–" } as const;
 
-type PrView = PrDetail & { airport: string };
+type PrView = PrDetail & { airport: string; merge: MergeInfo | null };
+
+// MERGE(DUTY G2): SUPERVISOR의 클릭 하나가 user 등급 CLEARED PR을 화면이 보여 준 head 그대로 머지한다. 누르면 등급·head·방식을 보이고 한 번 더 묻는다.
+// 서버는 눌린 뒤 지금 GitHub 자료로 다시 판정한다(head가 움직였으면 409와 새 head)
+function MergeRow({ d, airport, note, onDone }: { d: PrView; airport: string; note: { ok: boolean; text: string } | null; onDone: (n: { ok: boolean; text: string }) => void }) {
+  const m = d.merge;
+  const [ask, setAsk] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // 후보(user 등급이거나 MCC가 ESCALATE)일 때만 이 줄을 낸다. auto·flagged는 MCC의 몫이라 버튼도 까닭도 없다
+  if (!m || d.state !== "OPEN" || !(m.tier === "user" || m.escalated)) return null;
+  const go = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/pr/${airport}/${d.number}/merge`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ head: m.head }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(body.error ?? `HTTP ${res.status}`));
+      onDone({ ok: true, text: `머지했다 · ${m.head.slice(0, 7)} · ${m.method}` });
+    } catch (e) {
+      onDone({ ok: false, text: String((e as Error).message ?? e) });
+    } finally {
+      setAsk(false);
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="dr-row">
+      <dt>MERGE</dt>
+      <dd className="dr-move">
+        {note?.ok ? (
+          <span className="dr-ok">{note.text}</span>
+        ) : !m.allowed ? (
+          <span className="faint">{m.why}</span>
+        ) : !ask ? (
+          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => setAsk(true)}>
+            MERGE…
+          </button>
+        ) : (
+          <>
+            <span>
+              TIER <b>{m.escalated && m.tier !== "user" ? `${m.tier} (ESCALATE)` : m.tier}</b> · head <b className="mono">{m.head.slice(0, 7)}</b> · {m.method} 방식. GitHub에 바로 머지한다.
+            </span>
+            <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void go()}>
+              {busy ? "머지하는 중…" : "머지 확인"}
+            </button>
+            <button type="button" className="dr-btn" disabled={busy} onClick={() => setAsk(false)}>
+              취소
+            </button>
+          </>
+        )}
+        {note && !note.ok && <span className="dr-error">{note.text}</span>}
+      </dd>
+    </div>
+  );
+}
+
 function Pr({ airport, number, now }: { airport: string; number: number; now: number }) {
-  const l = useDetail<PrView>(`/api/pr/${airport}/${number}/detail`);
+  const [rev, setRev] = useState(0);
+  // 머지했다는 알림은 다시 읽는 동안에도 남긴다(서랍이 다시 그려져도 사라지지 않게 여기 둔다)
+  const [merged, setMerged] = useState<{ ok: boolean; text: string } | null>(null);
+  const l = useDetail<PrView>(`/api/pr/${airport}/${number}/detail${rev ? `?r=${rev}` : ""}`);
   if (l.state === "loading") return <p className="dr-note">불러오는 중…</p>;
   if (l.state === "error") return <p className="dr-note dr-error">{l.off ? "GitHub이 꺼져 있어 PR을 읽지 못한다. " : ""}{l.message}</p>;
   const d = l.data;
@@ -211,6 +329,7 @@ function Pr({ airport, number, now }: { airport: string; number: number; now: nu
             )}
           </>
         )}
+        <MergeRow d={d} airport={airport} note={merged} onDone={(n) => (setMerged(n), setRev((x) => x + 1))} />
         <div className="dr-row">
           <dt>리뷰</dt>
           <dd>{d.reviewDecision ?? "결정 없음"}</dd>

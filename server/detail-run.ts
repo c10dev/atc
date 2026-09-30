@@ -3,7 +3,9 @@
 import type { Hono } from "hono";
 import { GithubOffError } from "./github-switch.ts";
 import { flightKeyOf, makeCache, prRefOf, shapeIssue, shapePr, type IssueDetail, type PrDetail } from "./detail.ts";
-import { inspectionOf, loadMcc, readMccRecords, tierOfFiles } from "./mcc.ts";
+import { loadAutoland } from "./autoland.ts";
+import { escalationOf, inspectionOf, loadMcc, readMccRecords, tierOfFiles } from "./mcc.ts";
+import { type MergeInfo, mergeInfoOf, mergeMethodOf } from "./pr-merge.ts";
 import type { Snapshot } from "./model.ts";
 import { fetchPrView, slugOf } from "./sources/github.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
@@ -12,6 +14,11 @@ import { fetchIssueDrawer } from "./sources/linear.ts";
 const TTL_MS = 60_000;
 const issueCache = makeCache<IssueDetail>(TTL_MS);
 const prCache = makeCache<PrDetail>(TTL_MS);
+
+// 상태를 옮긴 뒤 그 FLIGHT의 캐시를 버린다(flight-state-run.ts)
+export const forgetIssue = (key: string) => issueCache.forget(key);
+// 머지한 뒤 그 PR의 캐시를 버린다(pr-merge-run.ts)
+export const forgetPr = (repo: string, n: number) => prCache.forget(`${repo}#${n}`);
 
 export function mountDetail(app: Hono, getSnapshot: () => Promise<Snapshot>) {
   app.get("/api/flight/:key/detail", async (c) => {
@@ -50,7 +57,24 @@ export function mountDetail(app: Hono, getSnapshot: () => Promise<Snapshot>) {
           inspection: ins ? { verdict: ins.verdict, p0: ins.p0, p1: ins.p1, p2: ins.p2, at: ins.at } : null,
         };
       }
-      return c.json({ ...d, airport: airport.code, landing });
+      // MERGE 버튼을 보일지(캐시된 자료로). 누르면 pr-merge-run.ts가 지금 GitHub 자료로 다시 판정한다
+      const cfg = loadMcc();
+      const merge: MergeInfo | null =
+        d.head && d.base
+          ? mergeInfoOf(
+              {
+                isMccAirport: airport.code === cfg.airport,
+                live: { state: d.state.toLowerCase(), draft: d.draft, head: d.head, base: d.base, fork: d.fork },
+                defaultBranch: snap.atfm.mains.find((m) => m.repo === airport.repo)?.branch ?? "main",
+                tier: landing?.tier ?? null,
+                escalated: escalationOf(readMccRecords(), ref.number) !== null,
+                held: cfg.holds.includes(ref.number),
+                polled: polled ? { head: polled.head, landing: polled.landing, blocks: polled.blocks.map((b) => b.en) } : null,
+              },
+              mergeMethodOf(airport.code, cfg.airport, loadAutoland().mergeMethod),
+            )
+          : null;
+      return c.json({ ...d, airport: airport.code, landing, merge });
     } catch (e) {
       if (e instanceof GithubOffError) return c.json({ error: e.message, off: true }, 503);
       return c.json({ error: String((e as Error).message ?? e) }, 502);

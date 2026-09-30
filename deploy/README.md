@@ -67,7 +67,7 @@ cp deploy/atc-rts.service ~/.config/systemd/user/ && systemctl --user daemon-rel
 
 1. Takes `~/.local/state/atc/rts.lock` (one RTS at a time; a lock older than 10 minutes is stale).
 2. Refuses unless the main checkout is on `main`, has no uncommitted changes, and can fast-forward to `origin/main`, and CI `check` on `origin/main` passed.
-3. Refuses when the range changes `package.json`, `package-lock.json` (needs `npm ci`) or a `deploy/*.service` / `*.timer` (needs `daemon-reload`): the user deploys those.
+3. Refuses when the range changes dependencies in `package.json` / `package-lock.json` (needs `npm ci`; a change to `license`, `scripts`, `version` and the like does not count, and unreadable files count as changed) or a `deploy/*.service` / `*.timer` (needs `daemon-reload`): the user deploys those.
 4. `git merge --ff-only`, `systemctl --user restart atc` (the unit's `ExecStartPre` rebuilds the screen). If the checkout is already there but the service reports another commit, it only restarts.
 5. Health check for up to 90 s: `/api/version` reports the target `head` with a later `startedAt`, and `/api/snapshot` answers.
 6. Session check (ATC-102), up to 30 s more: every background session (control and team) that was live before the restart is still live, `daemonInService` from `/api/control/sessions` is `false`, and that endpoint answers. RTS only reads; it never stops or messages a session. Before the restart it snapshots `claude agents --json` (ghost rows without `pid` and `status` left out).

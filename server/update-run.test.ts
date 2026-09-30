@@ -32,6 +32,7 @@ function setup(over: Partial<UpdateDeps> = {}, s = snap(B)) {
     guard: () => null,
     compare: async () => (calls.compare++, { prs: [{ number: 2, title: "Two" }], files: ["server/a.ts"] }),
     planRts,
+    checkout: async () => null,
     now: Date.now,
     ...over,
   };

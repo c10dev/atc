@@ -76,10 +76,13 @@ STAND 줄의 REMARKS 칸에도 그 STAND 브랜치의 PR 배지가 붙는다.
 
 ## FLIGHT 서랍과 PR 서랍
 
-FLIGHT 번호(`ATC206`)나 STRIPS의 PR 번호를 누르면 화면 오른쪽에 서랍이 열린다(폰에서는 화면 전체). Linear 이슈와 GitHub PR을 atc 안에서 읽는다. 읽기만 한다: 서랍에는 머지·상태 변경 버튼이 없다.
+FLIGHT 번호(`ATC206`)나 STRIPS의 PR 번호를 누르면 화면 오른쪽에 서랍이 열린다(폰에서는 화면 전체). Linear 이슈와 GitHub PR을 atc 안에서 읽는다. 읽기가 기본이고, 쓰는 것은 둘뿐이다: FLIGHT 서랍의 상태 이동 버튼과 PR 서랍의 **MERGE** 버튼(둘 다 아래).
 
 - **FLIGHT 서랍**(주소 `#flight/ATC-206`): 상태, 우선순위, 담당, 라벨, 막는·막고 있는 FLIGHT(눌러 그 FLIGHT 서랍으로), 상위·하위, 붙은 PR, 본문, 댓글. 마지막 줄 링크로 Linear를 연다.
+- **상태 이동**(FLIGHT 서랍): 그 이슈가 Backlog·Todo·Canceled에 있을 때만 이 팀의 Backlog·Todo·Canceled 중 지금 상태를 뺀 버튼이 보인다. 누르면 "Backlog → Todo로 옮긴다. Linear에 바로 쓴다."를 한 번 더 묻고, [확인]을 눌러야 Linear에 쓴다. 지금 상태가 그 사이에 바뀌었으면 옮기지 않고 알린다. Started·Done으로는 옮길 수 없다: 그 상태는 팀의 PR(`Fixes ATC-n`)과 Linear에서 SUPERVISOR가 정한다. 옮길 때마다 FLIGHT RECORDER에 한 줄 남는다. 이 화면에서 누른 클릭만 쓴다(세션·`atcctl`·`curl`은 못 한다).
+- **READY**: Backlog인 이슈가 막는 FLIGHT를 하나 이상 갖고 모두 Done이나 Canceled면 상태 옆에 `READY` 칩이 뜨고 Todo 버튼이 강조된다. "막는 FLIGHT가 다 풀렸으니 Todo로 옮길까?"를 알려 줄 뿐이고, 옮기는 것은 늘 SUPERVISOR의 클릭이다. 아직 QUEUE 목록에는 올라가지 않는다.
 - **PR 서랍**(주소 `#pr/ATCC/281`): 브랜치, 작성자, 착륙 상태와 막는 조건, 등급(TIER), MCC INSPECTION, 리뷰 결정, 체크, 본문, 바뀐 파일(100개까지). 착륙 상태·등급·INSPECTION은 atc가 폴링하는 열린 PR만 보인다.
+- **MERGE**(PR 서랍): MCC AIRPORT(atc 저장소)의 **user 등급**(또는 MCC가 ESCALATE한) PR이 CLEARED TO LAND일 때만 `MERGE…` 버튼이 뜬다. 누르면 "TIER user · head e726794 · merge 방식. GitHub에 바로 머지한다."를 한 번 더 묻고, [머지 확인]을 눌러야 머지한다. 서버는 눌린 뒤 지금 GitHub 자료로 다시 판정한다: 서랍이 보여 준 head가 그대로일 때만(움직였으면 409와 새 head가 뜨고 머지하지 않는다), PR이 열려 있고 Draft·fork가 아니고 SUPERVISOR HOLD가 없고 atc가 그 head를 CLEARED로 볼 때만 머지한다. 머지는 그 head(sha)에 고정하고 auto-merge는 켜지 않는다. **auto·flagged 등급 PR은 여기서 머지하지 않는다**(MCC의 몫이라 버튼도 없다). 후보인데 지금 안 되면 버튼 자리에 까닭이 보인다. 이 화면에서 누른 클릭만 받고(세션·CLI는 못 한다), 시도마다 FLIGHT RECORDER에 한 줄(누가·PR·head·결과, 거절도) 남는다. 머지한 뒤의 배포는 [배포하기](deploy.md).
 - 본문과 댓글의 Markdown은 안전하게 그린다: HTML 태그는 글자로 보이고, 이미지는 링크로만 남고, 링크는 새 탭에서 열린다.
 - Esc, 바깥 클릭, ×로 닫는다. 브라우저 뒤로 가기도 닫는다. 서랍은 열 때 한 번 읽고 60초 동안 기억한다(백그라운드로 다시 읽지 않는다). `ATC_GITHUB=off`인 서버에서는 PR 서랍이 "GitHub이 꺼져 있다"고 알린다.
 - 지금 번호를 눌러 열리는 곳: STRIPS(LANDING SEQUENCE의 FLIGHT와 PR 번호, HUMAN CHECK), DISPATCH 표·후보·승인 기록, FOLLOWING, FLEET(카드·목록). 이미 다른 링크(Linear) 안에 있는 번호는 그 링크 그대로다. 주소를 직접 써도 열린다.

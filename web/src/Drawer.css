@@ -213,3 +213,35 @@ a.fl-link:hover {
     grid-template-columns: 6em 1fr;
   }
 }
+
+.dr-ready {
+  margin-left: var(--space-2);
+  color: var(--radar);
+  border-color: var(--radar);
+}
+.dr-move {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.dr-btn {
+  padding: 2px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.dr-btn.is-primary {
+  color: var(--radar);
+  border-color: var(--radar);
+}
+.dr-ok {
+  color: var(--radar);
+}
+.dr-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

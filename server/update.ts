@@ -35,14 +35,25 @@ export type PlanRts = (x: {
   ancestor: boolean;
   ci: string;
   files: string[];
+  depsChanged?: boolean; // package*.json이 범위에 있을 때만. false가 아니면(모르면) package*.json 변경은 거절
 }) => { action: "go" | "noop" | "refuse"; reason: string };
 
-// 시작하기 전에 알 수 있는 거절: 범위가 package*.json이나 deploy/*.service·*.timer를 바꾸면 사람이 배포한다.
+// 시작하기 전에 알 수 있는 거절: 범위가 의존성(package*.json의 실제 의존성 변경)이나 deploy/*.service·*.timer를 바꾸면 사람이 배포한다.
 // planRts를 그대로 부른다(체크아웃 상태는 정상이라 가정하고 범위만 본다) — 같은 규칙이 두 곳에 있지 않게
-export function rangeRefusalOf(planRts: PlanRts, deployed: string, main: string, files: readonly string[]): string | null {
-  const plan = planRts({ branch: "main", dirty: false, head: deployed, service: deployed, target: main, ancestor: true, ci: "ok", files: [...files] });
+export function rangeRefusalOf(planRts: PlanRts, deployed: string, main: string, files: readonly string[], depsChanged?: boolean): string | null {
+  const plan = planRts({ branch: "main", dirty: false, head: deployed, service: deployed, target: main, ancestor: true, ci: "ok", files: [...files], depsChanged });
   return plan.action === "refuse" ? plan.reason : null;
 }
+
+// 본 체크아웃이 이미 origin/main이면(SUPERVISOR가 손으로 fast-forward) 유닛은 재시작만 한다(planRts head === target).
+// 그때는 범위를 미리 거절하지 않는다: 이미 체크아웃에 들어 있는 파일이라 유닛이 다시 판단할 것이 없다. 모르면 false(거절 유지)
+export interface Checkout {
+  branch: string;
+  head: string;
+  dirty: boolean;
+}
+export const checkoutAtMain = (c: Checkout | null, main: string | null): boolean =>
+  Boolean(c && main && c.branch === "main" && !c.dirty && (c.head.startsWith(main) || main.startsWith(c.head)));
 
 export type UpdateKind =
   | "current" // 서비스가 최신(또는 비교할 수 없음): 막대 없음
