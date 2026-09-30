@@ -48,6 +48,7 @@ import { buildSnapshot } from "./snapshot.ts";
 import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
 import { parseTopics, type SupervisorSummary } from "./supervisor-summary.ts";
 import { mountRadio, RadioFeed } from "./radio-run.ts";
+import { mountReadability, startReadability } from "./readability-run.ts";
 import type { Transmission } from "./radio.ts";
 import { mountVoice } from "./voice-run.ts";
 import type { AlertEvent } from "./supervisor-alerts.ts";
@@ -187,6 +188,8 @@ mountRoutes(app, getSnapshot);
 mountSchedule(app, getSnapshot, allProposals);
 mountFollowing(app, getSnapshot);
 mountRadio(app); // RADIO R1(ATC-170): 기록된 교신을 합친 목록(읽기만)
+mountReadability(app); // READABILITY R0(ATC-176): 교신 질의 하루 기록(readability.jsonl)과 오늘의 부분 지표
+startReadability();
 mountVoice(app, currentAlerts); // 음성 콜아웃(ATC-140): WAV만 만든다(소리는 브라우저)
 mountMilestones(app, getSnapshot);
 mountAtfm(app, getSnapshot);
