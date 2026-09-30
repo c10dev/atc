@@ -82,6 +82,16 @@ test("controlLaunchPlanOf: 인자는 전과 같고 ACCOUNT 폴더만 더한다",
   assert.throws(() => controlLaunchPlanOf(tower, [row("f6666666", "TOWER", "acct-3")], "/r/atc/controller", FOLDERS[0]), /이미 떠 있음/);
 });
 
+test("launchAccountOf: 카드 승인의 마지막 ACCOUNT(fallback)는 LAUNCH ACCOUNT 뒤, home 앞", () => {
+  const ok = () => null;
+  // 2026-09-30: LAUNCH ACCOUNT acct-3인데 ASSIGN 카드 승인이 마지막 ACCOUNT acct-2(hold)로 가서 거절됐다
+  assert.equal(launchAccountOf({ preferred: "acct-3", fallback: "acct-2", home: "acct-1", folders: FOLDERS, status: ok })?.label, "acct-3");
+  assert.throws(() => launchAccountOf({ requested: "acct-2", preferred: "acct-3", folders: FOLDERS, status: (l) => (l === "acct-2" ? { loggedIn: true, hold: "FUEL 사용 95% until 10:00Z" } : null) }), /acct-2는 FUEL hold/); // RESUME은 이름을 댄다
+  assert.equal(launchAccountOf({ fallback: "acct-2", home: "acct-1", folders: FOLDERS, status: ok })?.label, "acct-2"); // 설정이 없으면 전과 같다
+  assert.equal(launchAccountOf({ preferred: "pro-9", fallback: "acct-2", home: "acct-1", folders: FOLDERS, status: ok })?.label, "acct-2"); // 미등록 LAUNCH ACCOUNT는 무시
+  assert.equal(launchAccountOf({ fallback: "pro-9", home: "acct-1", folders: FOLDERS, status: ok })?.label, "acct-1"); // 미등록 fallback은 home으로(이름 지정처럼 404가 아니다)
+});
+
 test("launchAccountOf: 등록부 없음·home·이름 지정·미등록 home, 그리고 거절 사유", () => {
   const ok = () => null;
   const NOREG = [folder("default", D, { registered: false })];

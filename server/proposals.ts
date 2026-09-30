@@ -1062,7 +1062,7 @@ export function deliveryMapOf(s: Pick<Snapshot, "sessions">, proposals: Pick<Pro
 // index.ts가 session-control.ts를 넘긴다. 이 승인 말고는 카드로 세션을 띄우는 길이 없다
 export interface DispatchLauncher {
   max: number;
-  launch: (s: Snapshot, registration: string, proposal: string) => Promise<{ ok: boolean; jobId?: string; error?: string }>;
+  launch: (s: Snapshot, registration: string, proposal: string, resume: boolean) => Promise<{ ok: boolean; jobId?: string; error?: string }>; // resume: RESUME 카드(끊긴 ACCOUNT에서 다시)
 }
 
 export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, watchFuel?: (s: Snapshot) => FuelWatch, standFree?: StandFreeHooks, launcher?: DispatchLauncher, briefExtras?: (s: Snapshot, now: number, inFlight: Proposal[]) => Record<string, unknown>) {
@@ -1262,7 +1262,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
             cap: launchCapOf(s.sessions, allProposals(), launcher.max, tp),
             approve: { op: "approve", id, at, via, ...blind },
             append,
-            launch: () => launcher.launch(s, reg, id),
+            launch: () => launcher.launch(s, reg, id, !!p.resume),
             now: () => new Date().toISOString(),
           });
           if (!r.ok) return c.json({ error: r.error, proposal: allProposals().find((x) => x.id === id) }, r.status as 409);

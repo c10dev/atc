@@ -171,11 +171,12 @@ mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   timeliness: () => standFreeTimeliness(),
   arrived: (p, s) => proposalArrived(p, s, addLogbookFuel),
 }, {
-  // LAUNCH on approve(ATC-129): FLEET LAUNCH와 같은 길. 옵션은 그 AIRCRAFT의 마지막 atc LAUNCH와 같게
+  // LAUNCH on approve(ATC-129): FLEET LAUNCH와 같은 길. 옵션은 그 AIRCRAFT의 마지막 atc LAUNCH와 같게.
+  // ACCOUNT: RESUME은 끊긴 ACCOUNT를 이름으로 댄다. 다른 카드는 이름을 대지 않아 LAUNCH ACCOUNT가 먼저고, 마지막 ACCOUNT는 그다음이다(ATC-239)
   max: MAX_LAUNCHED,
-  launch: (s, reg, proposal) => {
+  launch: (s, reg, proposal, resume) => {
     const a = s.absent?.find((x) => x.registration === reg);
-    return launchAircraft(s, reg, { permissionMode: a?.permissionMode, model: a?.model, account: a?.account }, "SUPERVISOR", proposal);
+    return launchAircraft(s, reg, { permissionMode: a?.permissionMode, model: a?.model, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, "SUPERVISOR", proposal);
   },
 }, (s, now, inFlight) => {
   // ATC-169: 머지됐는데 도착 보고가 없는 FLIGHT와 OCC 재시작 안전 시점(읽기만)
