@@ -152,7 +152,7 @@ The service can't restart itself from inside its own process, so RTS runs as a s
 1. Takes a lock file in the state directory; one RTS at a time.
 2. Refuses unless the main checkout is on `main` and clean, and `HEAD` is an ancestor of `origin/main` (fast-forward only).
 3. Target = `origin/main` after `git fetch`. Refuses unless CI `check` on the target succeeded.
-4. Refuses, and reports that the user must do it, when the range changes `package.json`, `package-lock.json` (needs `npm ci`) or `deploy/atc.service` (needs `daemon-reload`).
+4. Refuses, and reports that the user must do it, when the range changes dependencies in `package.json` / `package-lock.json` (needs `npm ci`; see "RTS and `package*.json` as built" below) or `deploy/atc.service` (needs `daemon-reload`).
 5. `git merge --ff-only <target>`, `systemctl --user restart atc`.
 6. Health check for up to 90 s: `/api/version` reports the target commit (a new `head` field) and a later `startedAt`, and `/api/snapshot` answers 200. Then the session checks (ATC-102, below).
 7. On failure: ROLLBACK. `git reset --hard <previous>` (the tree was clean and the move was a fast-forward, so nothing else is lost), restart, health check again, and set RTS off until the SUPERVISOR turns it back on.
@@ -161,6 +161,17 @@ The service can't restart itself from inside its own process, so RTS runs as a s
 A restart takes the screen and API away for a few seconds. MCC runs RTS after a landing, and at most once every 5 minutes, so a burst of merges goes out as one RTS.
 
 The user can still deploy by hand. RTS only needs the checkout to be clean and behind `origin/main`.
+
+### RTS and `package*.json` as built (ATC-217)
+
+On 2026-09-30 RTS refused a range whose only `package*.json` change was `"license": "MIT"` → `"Apache-2.0"` (ATC-214), and the UPDATE bar's retry stayed blocked even after the SUPERVISOR fast-forwarded the main checkout by hand. Two changes; `planRts` stays pure.
+
+- **Refuse only when dependencies change.** A pure `depsChangedOf` in `deploy/rts.mjs` takes the contents of `package.json` and `package-lock.json` at both commits and answers whether `npm ci` is needed. `package.json`: any difference in `dependencies`, `devDependencies`, `optionalDependencies`, `peerDependencies`, `overrides`, `engines` or `packageManager` (key order is ignored); `license`, `description`, `scripts`, `version` and the rest do not count. `package-lock.json`: the file is compared with the top-level and root-entry `name`, `version` and the root `license` removed; any other difference (a `packages` entry, `lockfileVersion`, the root entry's dependency lists) counts. A file that is missing, unreadable or not JSON counts as changed. `planRts` gets `depsChanged` and lets a `package*.json` change through only when it is exactly `false`; not knowing it refuses, as before. `deploy/*.service` and `*.timer` refusals are unchanged.
+- **Who reads the files.** The unit reads both versions with local `git show`, only when `package*.json` is in the range. The server reads them through the read-only GitHub contents API (`Accept: application/vnd.github.raw+json`) inside `compare`, only when `package*.json` is in the range, and calls the same `depsChangedOf` (loaded at run time like `planRts`). If GitHub can't be read, `depsChanged` stays unset and the range is refused.
+- **Retry after a manual fast-forward.** `GET /api/update`, `POST /api/update/start` and the automatic pass skip the range pre-check when the main checkout is on `main`, clean, and its `HEAD` is the `main` commit atc read from GitHub (`checkoutAtMain`, read with local `git`). The unit then takes the restart-only path (`head === target`), which has no range to refuse. If the checkout can't be read, or it is dirty or on another branch, the range refusal stays.
+- **Tests:** `deploy/rts-deps.test.mjs` (`depsChangedOf` and `planRts`), `server/update-checkout.test.ts` (the pre-check, start and pass with a stubbed unit). No test starts `atc-rts` or restarts 7700.
+- **Not changed (follow-up).** In the restart-only path ROLLBACK resets to `from`, the checkout `HEAD`, which is already the target, so a failed health check does not return to the commit that was in service. Fixing it means rolling back to the service commit (`/api/version` `head`), which is more than a one-line change (the target may not be a fast-forward descendant of the checkout in every case, and the health check's expected commit changes), so it is left as its own issue.
+- PILOT'S DISCRETION: the lockfile rule strips the top-level `name`/`version` as well as the root entry's, since a version bump moves both; the server skips the pre-check on a matching checkout without reading the range's files (the `prs` list is still read).
 
 ### Session checks as built (ATC-102)
 

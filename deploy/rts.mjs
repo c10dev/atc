@@ -18,9 +18,38 @@ const NEEDS_USER = [
   [/^deploy\/[^/]+\.(service|timer)$/, "systemd 유닛(daemon-reload 필요)"],
 ];
 
+// package*.json은 파일이 바뀐 것만으로는 거절하지 않는다(ATC-217): 의존성이 실제로 바뀔 때만 npm ci가 필요하다.
+// package.json에서 이 필드가 다르면 의존성이 바뀐 것이다(license·description·scripts·version 등은 아니다)
+const DEP_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "overrides", "engines", "packageManager"];
+
+const sortKeys = (_, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x);
+const canon = (v) => JSON.stringify(v, sortKeys);
+
+// 두 커밋의 package.json·package-lock.json 내용(못 읽었으면 null) → 의존성이 바뀌었나. 읽지 못하거나 파싱하지 못하면 true(fail closed)
+// 잠금 파일은 루트 항목의 name·version·license와 최상위 name·version만 뺀 나머지가 다르면 바뀐 것이다
+export function depsChangedOf({ fromPkg, toPkg, fromLock, toLock }) {
+  try {
+    if ([fromPkg, toPkg, fromLock, toLock].some((t) => typeof t !== "string")) return true;
+    const a = JSON.parse(fromPkg);
+    const b = JSON.parse(toPkg);
+    if (DEP_FIELDS.some((f) => canon(a?.[f]) !== canon(b?.[f]))) return true;
+    const strip = (t) => {
+      const l = JSON.parse(t);
+      if (!l || typeof l !== "object" || !l.packages || typeof l.packages !== "object") throw new Error("lockfile 형식");
+      const { name: _n, version: _v, ...top } = l;
+      const { name: _rn, version: _rv, license: _rl, ...root } = l.packages[""] ?? {};
+      return canon({ ...top, packages: { ...l.packages, "": root } });
+    };
+    return strip(fromLock) !== strip(toLock);
+  } catch {
+    return true;
+  }
+}
+
 // RTS를 할지. 입력은 모두 읽어 온 사실. { action: "go" | "noop" | "refuse", reason }
 // service: 도는 서비스가 알리는 커밋(/api/version head, 모르면 null). 체크아웃은 대상인데 서비스가 아니면(지난 재시작 실패) 재시작만 한다
-export function planRts({ branch, dirty, head, service, target, ancestor, ci, files }) {
+// depsChanged: package*.json이 범위에 있을 때 depsChangedOf의 결과. false일 때만 package*.json 변경을 허락한다(모르면 거절)
+export function planRts({ branch, dirty, head, service, target, ancestor, ci, files, depsChanged }) {
   if (branch !== "main") return { action: "refuse", reason: `본 체크아웃이 main이 아님(${branch})` };
   if (dirty) return { action: "refuse", reason: "본 체크아웃에 커밋하지 않은 변경이 있음" };
   if (!target) return { action: "refuse", reason: "origin/main을 읽지 못함" };
@@ -29,7 +58,8 @@ export function planRts({ branch, dirty, head, service, target, ancestor, ci, fi
   if (!ancestor) return { action: "refuse", reason: "fast-forward가 아님(본 체크아웃이 origin/main에서 갈라짐)" };
   if (ci !== "ok") return { action: "refuse", reason: `origin/main CI check ${ci === "none" ? "없음" : ci === "pending" ? "진행 중" : "실패"}` };
   const user = [];
-  for (const f of files) for (const [re, why] of NEEDS_USER) if (re.test(f)) user.push(`${f}(${why})`);
+  for (const f of files)
+    for (const [re, why] of NEEDS_USER) if (re.test(f) && !(f.startsWith("package") && depsChanged === false)) user.push(`${f}(${why})`);
   if (user.length) return { action: "refuse", reason: `사용자가 배포: ${user.join(", ")}` };
   return { action: "go", reason: `${head.slice(0, 7)} → ${target.slice(0, 7)}` };
 }
@@ -181,7 +211,19 @@ async function main() {
     try {
       service = (await (await fetch(`http://127.0.0.1:${PORT}/api/version`, { signal: AbortSignal.timeout(5000) })).json()).head ?? null;
     } catch {}
-    const plan = planRts({ branch, dirty, head: from, service, target, ancestor, ci: ciOf(runs), files });
+    // package*.json이 범위에 있으면 의존성이 실제로 바뀌었는지 본다. 읽지 못하면 null → 바뀐 것으로 본다
+    let depsChanged;
+    if (files.some((f) => /^package(-lock)?\.json$/.test(f))) {
+      const show = (rev, f) => {
+        try {
+          return git("show", `${rev}:${f}`);
+        } catch {
+          return null;
+        }
+      };
+      depsChanged = depsChangedOf({ fromPkg: show(from, "package.json"), toPkg: show(target, "package.json"), fromLock: show(from, "package-lock.json"), toLock: show(target, "package-lock.json") });
+    }
+    const plan = planRts({ branch, dirty, head: from, service, target, ancestor, ci: ciOf(runs), files, depsChanged });
     if (plan.action === "noop") return console.log(`[rts] ${plan.reason}`);
     if (plan.action === "refuse") return log({ from, to: target, result: "refused", detail: plan.reason });
 
