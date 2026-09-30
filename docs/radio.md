@@ -101,6 +101,19 @@ Where this differs from the design: the design said `radioOf(records)`, and it i
 
 **PILOT'S DISCRETION.** Only `inspect`, `escalate`, `land` and `rts` in `mcc.jsonl` are transmitted (not `would-land`, `would-rts`, `mode`, `hold`, which are shadow or SUPERVISOR-side records). Both the `mcc.jsonl` `rts started` and the `rts.jsonl` results are transmitted, as separate GROUND lines. The AIRPORT of a CLEARANCE comes from the FLIGHT's FLIGHT PLAN (`create.airport`); a CLEARANCE for a FLIGHT with no proposal has none.
 
+### R2 as built (ATC-171)
+
+`web/src/views/Radio.tsx` (+ `Radio.css`), pure logic in `web/src/radio-log.ts` (tests in `server/radio-log.test.ts`). Tab id `radio`, lazy like the other tabs. Guide page `docs/guide/radio-tab.md` (id `radio-tab`, D5). Read only: no button sends, ACKs or approves, and there is no audio (R3).
+
+- **Data.** `GET /api/radio` once, then the SSE topic `radio` merged by `id` (`mergeTx`). The EventSource `open` (also after a reconnect) fetches again to close any gap. The list is kept to the R1 window of 6 hours.
+- **Filters.** `MONITOR ALL` or any set of DELIVERY, TOWER, GROUND, COMPANY (pressing one while all are on selects only that one; turning all off goes back to all), AIRPORT and AIRCRAFT selects filled from the transmissions. Kept in `localStorage` as `atc.radio.freqs`, `atc.radio.airport`, `atc.radio.aircraft`; unreadable or invalid storage means all.
+- **Log.** Oldest first, newest last. A line is `time · FREQ · head` where `head` (`FROM → TO · …`) starts with the stations in mono; time follows the clock setting (Z or L). Replies are threaded under their call (`threadsOf`); a reply whose call is not in the list is its own line. An open call shows `답 대기 <age>`, and after `overdueAt` the text `NO REPLY · <age>째 답 없음` with an amber left rule. UNABLE, orphan replies and NO REPLY are text badges, not colour alone. `body` expands in a `pre-wrap` block exactly as recorded.
+- **Links.** `pr` → the GitHub PR, `D-…` → `#dispatch`, `C-…` → `#strips`, `CC-…` and any `TEAM_X` → `#fleet/<REGISTRATION>`. R2 adds the optional `pr` field to the R1 transmissions of ARRIVED reports and MCC INSPECTION, ESCALATE and LAND.
+- **Scroll.** At the bottom the log follows new lines; scrolled up it stays put and a `N new ↓` pill (counted by visible transmissions) brings the reader down.
+- **REPLAY.** A slider over the last 6 hours (1 min steps), PLAY/PAUSE, 1×, 4×, 16× (a 250 ms clock), LIVE. At a chosen time the screen shows only what existed then (`asOf`): a call answered later is open again, and it is `NO REPLY` when 10 minutes have passed since the call. The server drops `overdueAt` once a reply arrives, so replay uses the fixed 10-minute rule (`REPLAY_OVERDUE_MS`) and ignores the re-count after a STANDBY. Reaching now returns to LIVE.
+
+**PILOT'S DISCRETION.** CLEARANCE lines link to `#strips` (the CLEARANCE stamps), as there is no per-CLEARANCE view; DISPATCH links go to the tab, as cards have no anchors. The REPLAY slider starts one hour back. The AIRPORT of a CLEARANCE is the R1 rule (its FLIGHT's FLIGHT PLAN), so CLEARANCEs without a FLIGHT PLAN have no AIRPORT and disappear when one is chosen.
+
 ## 6. Risks
 
 | Risk | Handling |

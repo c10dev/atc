@@ -24,6 +24,7 @@ export interface Transmission {
   kind: string; // GO AROUND · FLIGHT PLAN · READBACK · ROGER · UNABLE · STANDBY · RECALL · CREW CHANGE · ARRIVED · INSPECTION · LAND · ESCALATE · RTS …
   flight?: string;
   airport?: string;
+  pr?: number; // 이 교신이 다루는 PR 번호(ARRIVED 보고, MCC INSPECTION·LAND·ESCALATE)
   head: string; // 필드로 만든 한 줄 요약
   body?: string; // 기록된 문구 그대로
   replyTo?: string; // 답이면 호출의 id
@@ -69,7 +70,7 @@ export function radioOf(input: RadioInput, teamPattern = DEFAULT_TEAM_PATTERN): 
   }
   const add = (t: Transmission) => {
     if (t.flight && !t.airport && airportOfFlight.has(t.flight)) t.airport = airportOfFlight.get(t.flight);
-    for (const k of ["flight", "airport", "aircraft", "body"] as const) if (t[k] === undefined) delete t[k];
+    for (const k of ["flight", "airport", "aircraft", "body", "pr"] as const) if (t[k] === undefined) delete t[k];
     out.push(t);
     return t;
   };
@@ -213,17 +214,17 @@ export function radioOf(input: RadioInput, teamPattern = DEFAULT_TEAM_PATTERN): 
     const a = r.proposal ? who.get(r.proposal) : undefined;
     const from = a?.station ?? "AIRCRAFT";
     add({
-      id: `report:${r.flight}:${r.at}`, at: r.at, freq: "COMPANY", from, to: "OCC", aircraft: a?.aircraft, kind: "ARRIVED", flight: r.flight,
+      id: `report:${r.flight}:${r.at}`, at: r.at, freq: "COMPANY", from, to: "OCC", aircraft: a?.aircraft, kind: "ARRIVED", flight: r.flight, pr: r.pr ?? undefined,
       head: headOf(from, "OCC", "ARRIVED", r.flight, r.pr !== null ? `PR #${r.pr}` : "RESULT", `TIER ${r.tier}`),
     });
   }
 
   // ── GROUND: mcc.jsonl, rts.jsonl ──
-  const ground = (id: string, at: string, kind: string, head: string, body?: string) => add({ id, at, freq: "GROUND", from: "MCC", to: "ALL", kind, head, body });
+  const ground = (id: string, at: string, kind: string, head: string, body?: string, pr?: number) => add({ id, at, freq: "GROUND", from: "MCC", to: "ALL", kind, head, body, pr });
   for (const r of input.mcc) {
-    if (r.op === "inspect") ground(`mcc:${r.at}:inspect:${r.pr}`, r.at, "INSPECTION", headOf("MCC", "ALL", "INSPECTION", `PR #${r.pr}`, r.verdict.toUpperCase()), r.text);
-    else if (r.op === "escalate") ground(`mcc:${r.at}:escalate:${r.pr}`, r.at, "ESCALATE", headOf("MCC", "ALL", "ESCALATE", `PR #${r.pr}`), r.reason);
-    else if (r.op === "land") ground(`mcc:${r.at}:land:${r.pr}`, r.at, "LAND", headOf("MCC", "ALL", "LAND", `PR #${r.pr}`, r.result.toUpperCase()), r.detail);
+    if (r.op === "inspect") ground(`mcc:${r.at}:inspect:${r.pr}`, r.at, "INSPECTION", headOf("MCC", "ALL", "INSPECTION", `PR #${r.pr}`, r.verdict.toUpperCase()), r.text, r.pr);
+    else if (r.op === "escalate") ground(`mcc:${r.at}:escalate:${r.pr}`, r.at, "ESCALATE", headOf("MCC", "ALL", "ESCALATE", `PR #${r.pr}`), r.reason, r.pr);
+    else if (r.op === "land") ground(`mcc:${r.at}:land:${r.pr}`, r.at, "LAND", headOf("MCC", "ALL", "LAND", `PR #${r.pr}`, r.result.toUpperCase()), r.detail, r.pr);
     else if (r.op === "rts") ground(`mcc:${r.at}:rts`, r.at, "RTS", headOf("MCC", "ALL", "RTS", r.result.toUpperCase(), r.to.slice(0, 7)), r.detail);
   }
   for (const r of input.rts) ground(`rts:${r.at}:${r.result}`, r.at, "RTS", headOf("MCC", "ALL", `RTS ${r.result.toUpperCase()}`, r.to.slice(0, 7)), r.detail);
