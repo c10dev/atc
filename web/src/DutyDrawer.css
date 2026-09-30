@@ -1,0 +1,173 @@
+/* DUTY 서랍(ATC-220). 서랍 껍데기는 Drawer.css. 색·글꼴은 :root 토큰만 */
+.dr.dr-duty {
+  display: flex;
+  flex-direction: column;
+  width: min(440px, 100vw);
+  padding: 0;
+  overflow: hidden;
+}
+.du-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--gutter);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.du-title {
+  margin: 0;
+  min-width: 0;
+}
+.du-head-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.du-close {
+  position: static;
+  float: none;
+  flex: none;
+}
+.du-ask {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.du-pad {
+  padding: 0 var(--gutter);
+}
+.du-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3) var(--gutter);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.du-msg {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+.du-user {
+  border-color: var(--line-strong);
+  background: var(--scope);
+}
+.du-who {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.1em;
+  color: var(--faint);
+}
+.du-duty .du-who {
+  color: var(--radar);
+}
+.du-text {
+  margin: 0;
+  font-size: var(--text-md);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.du-msg .dr-md {
+  font-size: var(--text-md);
+}
+.du-img {
+  display: inline-block;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.du-msg.is-streaming .du-text::after {
+  content: "▍";
+  color: var(--radar);
+}
+.du-tool {
+  padding-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+.du-tool.is-error {
+  color: var(--alert);
+}
+.du-notice {
+  font-size: var(--text-sm);
+  color: var(--amber);
+}
+.du-notice.is-error {
+  color: var(--alert);
+}
+.du-shift {
+  text-align: center;
+  font-size: var(--text-2xs);
+  letter-spacing: 0.16em;
+  color: var(--faint);
+  border-top: 1px dashed var(--line);
+  padding-top: var(--space-2);
+}
+.du-thinking {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.du-foot {
+  flex: none;
+  padding: var(--space-2) var(--gutter) var(--space-3);
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+.du-note {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.du-note.is-error {
+  color: var(--alert);
+}
+.du-attach {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.du-input {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+.du-input textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  padding: var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--scope);
+  color: var(--text);
+  font: var(--text-md) / 1.4 inherit;
+  font-family: inherit;
+}
+.du-input textarea:focus-visible {
+  outline: 1px solid var(--radar);
+}
+.du-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.du-buttons .dr-btn {
+  padding: var(--space-1) var(--space-3);
+}
+.du-stop {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+
+@media (max-width: 600px) {
+  .dr.dr-duty {
+    width: 100vw;
+  }
+}

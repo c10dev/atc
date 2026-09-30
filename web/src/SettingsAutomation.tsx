@@ -39,6 +39,12 @@ const RECYCLE_WARN = {
   on: "⚠ CAP을 넘고 턴 사이이며 안전한 순간이면 atc가 그 관제 세션을 STOP하고 같은 ACCOUNT로 LAUNCH한다(FLEET의 버튼과 같은 길, 한 번에 한 세션, 3시간에 한 번). 결과는 FLIGHT RECORDER와 SUPERVISOR ALERT로 남는다.",
 } as const;
 
+// DUTY 스위치(ATC-220, docs/duty.md)
+const DUTY_WARN = {
+  off: "꺼짐(기본): 헤더에 DUTY가 보이지 않고, 글을 보내도 받지 않는다. 켜 둔 프로세스가 있으면 끝난다.",
+  on: "⚠ 헤더의 DUTY 서랍에서 글을 보내면 이 서버가 `claude -p` 프로세스를 띄운다(ACCOUNT의 FUEL을 쓴다). 유휴 시간이 지나면 끝나고 다음 글이 이어서 띄운다. DUTY는 읽기만 하고, 글은 소리로 읽지 않는다.",
+} as const;
+
 // 판정 계열 모드마다 한 줄(ATC-36). replay·shadow는 티켓 제목과 허용한 칸이 TypeSafe로 나간다(데이터 반출)
 const JUDGE_WARN = {
   off: "꺼짐(기본): 아무것도 읽거나 보내지 않는다.",
@@ -423,6 +429,29 @@ export function OperationsSettings({ server, save }: { server: Loaded; save: Sav
               </>
             ) : (
               <p className="settings-hint">서버가 CONTROL RECYCLE을 아직 모름(옛 서버)</p>
+            )
+          }
+        </ServerRows>
+      </Block>
+
+      <Block code="DUTY" label="DUTY 채팅(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) =>
+            s.duty ? (
+              <>
+                <EditRow
+                  label="DUTY"
+                  env="duty.enabled"
+                  value={s.duty.enabled ? "on" : "off"}
+                  note={`duty.json · ACCOUNT ${s.duty.account} · 유휴 ${s.duty.idleMin}분 뒤 프로세스 종료 · 이 화면에서만 바꾼다`}
+                  input={{ kind: "select", options: ["off", "on"] }}
+                  guard={guardOf("duty", s.duty.enabled ? "on" : "off", DUTY_WARN)}
+                  onSave={(v) => save({ dutyEnabled: v as "off" | "on" })}
+                />
+                <ModeLines modes={["off", "on"] as const} current={s.duty.enabled ? "on" : "off"} lines={DUTY_WARN} />
+              </>
+            ) : (
+              <p className="settings-hint">서버가 DUTY를 아직 모름(옛 서버)</p>
             )
           }
         </ServerRows>

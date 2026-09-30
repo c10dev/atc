@@ -87,6 +87,10 @@ FLIGHT 번호(`ATC206`)나 STRIPS의 PR 번호를 누르면 화면 오른쪽에 
 - Esc, 바깥 클릭, ×로 닫는다. 브라우저 뒤로 가기도 닫는다. 서랍은 열 때 한 번 읽고 60초 동안 기억한다(백그라운드로 다시 읽지 않는다). `ATC_GITHUB=off`인 서버에서는 PR 서랍이 "GitHub이 꺼져 있다"고 알린다.
 - 지금 번호를 눌러 열리는 곳: STRIPS(LANDING SEQUENCE의 FLIGHT와 PR 번호, HUMAN CHECK), DISPATCH 표·후보·승인 기록, FOLLOWING, FLEET(카드·목록). 이미 다른 링크(Linear) 안에 있는 번호는 그 링크 그대로다. 주소를 직접 써도 열린다.
 
+## DUTY 서랍
+
+헤더의 `● DUTY`(설정에서 켰을 때만 보인다)나 주소 `#duty`로 여는 글 대화 서랍이다. 어느 탭 위에서도 열리고 닫는 방법은 위 서랍과 같다. 쓰는 법은 [DUTY 채팅](duty.md).
+
 ## 상단
 
 - **숫자판**: AIRBORNE(작업 중 세션), STANDS(점유), ENROUTE(진행 FLIGHT), HANDOFF, ALERTS(WARNING·CAUTION만 센다. ADVISORY는 `+n ADV`로 옆에 보인다. 색: WARNING이 있으면 빨강, CAUTION만 있으면 호박, 없으면 기본).

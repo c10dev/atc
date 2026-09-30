@@ -106,3 +106,13 @@ test("recycleAutoGuardOf(ATC-175): alert → auto는 ⚠ 확인, auto → alert�
   assert.match(recycleAutoGuardOf("OCC", false, "auto")!.line, /OCC는 도착 보고/);
   assert.doesNotMatch(recycleAutoGuardOf("TOWER", false, "auto")!.line, /OCC는/);
 });
+
+test("DUTY(ATC-220): OPERATIONS 색인에서 찾히고, 켜는 것은 ⚠ 확인이 필요하다", () => {
+  assert.deepEqual(settingsSearch("duty").map((e) => [e.tab, e.code]), [["operations", "DUTY"]]);
+  assert.deepEqual(settingsSearch("서랍").map((e) => e.code), ["DUTY"]);
+  assert.ok(isRisky("duty", "on"));
+  assert.ok(needsConfirm("duty", "off", "on"));
+  assert.ok(!needsConfirm("duty", "on", "off"));
+  const seg = modeSegments({ autoland: { mode: "off" }, mcc: { mode: "shadow" }, review: { security: "exclude" }, duty: { enabled: true, account: "acct-2", idleMin: 30 } } as never).find((x) => x.key === "duty");
+  assert.deepEqual(seg && [seg.label, seg.value, seg.warn], ["DUTY", "on", true]);
+});

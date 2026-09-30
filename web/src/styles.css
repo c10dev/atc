@@ -334,6 +334,19 @@ button {
 .readout.is-button:hover {
   background: var(--panel-2);
 }
+/* 헤더의 DUTY readout(ATC-220): 점 하나가 상태. 서랍은 DutyDrawer.tsx */
+.readout.duty-readout > b {
+  font-size: var(--text-md);
+}
+.duty-dot.is-idle {
+  color: var(--radar);
+}
+.duty-dot.is-thinking {
+  color: var(--amber);
+}
+.duty-dot.is-down {
+  color: var(--alert);
+}
 .tone-radar b {
   color: var(--radar);
   text-shadow: 0 0 12px color-mix(in srgb, var(--radar) 35%, transparent);

@@ -50,6 +50,7 @@ import { mountSquelch } from "./squelch-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
 import { mountDuty } from "./duty-api.ts";
+import { duty, mountDutyRun } from "./duty-run.ts";
 import { mountSupervisorQueue } from "./supervisor-queue-run.ts";
 import { parseTopics, type SupervisorSummary } from "./supervisor-summary.ts";
 import { mountRadio, RadioFeed } from "./radio-run.ts";
@@ -238,12 +239,13 @@ mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고
 
 mountSupervisorQueue(app, getSnapshot, () => update.status()); // SUPERVISOR QUEUE(ATC-194, 읽기만)
 mountDuty(app, getSnapshot, () => update.status()); // DUTY L0(ATC-219): brief 읽기와 초안 붙이기(밖으로 나가는 동작 없음)
+mountDutyRun(app); // DUTY D2(ATC-220): 글 보내기·중단·NEW SHIFT(Origin 검사)·기록·상태. duty.json enabled가 꺼져 있으면 아무것도 띄우지 않는다
 app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); // 지금 있는 알림 key 전체(읽기만)
 
 // 알림 요약(ATC-153, 읽기만): 메뉴 막대·브라우저·atc-app이 같은 숫자를 읽는다. 아직 스냅샷이 없으면 503
 app.get("/api/supervisor-summary", (c) => (current ? c.json(summaryNow(current)) : c.json({ error: "snapshot not ready" }, 503)));
 
-// ?topics=snapshot,alert,version,summary,radio: 받을 이벤트를 고른다. 없으면 summary·radio를 뺀 전부(지금까지와 같다). ping은 늘 보낸다. 모르는 이름은 400
+// ?topics=snapshot,alert,version,summary,radio,duty: 받을 이벤트를 고른다. 없으면 summary·radio·duty를 뺀 전부(지금까지와 같다). ping은 늘 보낸다. 모르는 이름은 400
 app.get("/api/events", (c) => {
   const parsed = parseTopics(c.req.query("topics"));
   if (!parsed.ok) return c.json({ error: `unknown topics: ${parsed.unknown.join(", ")}` }, 400);
@@ -264,6 +266,13 @@ app.get("/api/events", (c) => {
     if (want.has("summary") && current) await sendSummary(summaryNow(current));
     const sendRadio = (txs: Transmission[]) => stream.writeSSE({ event: "radio", data: JSON.stringify({ transmissions: txs }) });
     const unRadio = want.has("radio") ? radioFeed.subscribe(sendRadio) : null;
+    // DUTY(ATC-220): 연결하자마자 지금 상태 하나, 그 뒤로 스트림 이벤트(글 조각·도구 줄·상태·사용량). 꺼져 있으면 상태만 오고 프로세스는 만들지 않는다
+    const sendDuty = (e: object) => stream.writeSSE({ event: "duty", data: JSON.stringify(e) });
+    let unDuty: (() => void) | null = null;
+    if (want.has("duty")) {
+      await sendDuty({ type: "status", ...duty().status() });
+      unDuty = duty().subscribe((e) => void sendDuty(e));
+    }
     if (want.has("snapshot")) listeners.add(send);
     if (want.has("alert")) alertListeners.add(sendAlert);
     if (want.has("version")) versionListeners.add(onVersion);
@@ -274,6 +283,7 @@ app.get("/api/events", (c) => {
       versionListeners.delete(onVersion);
       summaryListeners.delete(sendSummary);
       unRadio?.();
+      unDuty?.();
     });
     // 연결하자마자 ping 하나(ATC-210): 초기 이벤트가 없는 스트림(topics=radio)은 첫 ping까지 25초 동안 조용했다. 첫 이벤트를 기다리는 클라이언트(atc-app RadioStream의 onUp)가 바로 알게 한다.
     // 이벤트 이름·데이터·topics는 그대로다. ping은 늘 data가 비어 있고 스냅샷·알림이 아니다

@@ -13,6 +13,8 @@ import { formatClock, useSettings } from "./settings.ts";
 import { SettingsPanel } from "./SettingsPanel.tsx";
 import { lazyTab, TabBoundary, TabLoading } from "./lazyTab.tsx";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
+import { useDuty } from "./useDuty.ts";
+import { readoutState } from "../../server/duty-chat.ts";
 import { MapView } from "./views/Map.tsx";
 import type { Snapshot } from "../../server/model.ts";
 import type { Index } from "./derive.ts";
@@ -31,6 +33,7 @@ const Radio = lazyTab<Record<string, never>>(() => import("./views/Radio.tsx"), 
 const Docs = lazyTab<Record<string, never>>(() => import("./views/Docs.tsx"), "Docs");
 // 서랍은 처음 열 때 불러온다(Markdown 렌더러까지 그 청크에)
 const Drawer = lazy(() => import("./Drawer.tsx"));
+const DutyDrawer = lazy(() => import("./DutyDrawer.tsx"));
 
 const TABS = [
   { id: "radar", code: "RADAR" },
@@ -78,9 +81,16 @@ export function App({ build }: { build: string }) {
   }, []);
   const tabRef = useRef(tab);
   tabRef.current = tab;
+  // DUTY 서랍(#duty, ATC-220): 어느 탭 위에서도 열린다. 꺼져 있으면 헤더에 readout이 없고, 주소로 열면 꺼짐 안내만 보인다
+  const duty = useDuty();
+  const [dutyOpen, setDutyOpen] = useState(() => location.hash === "#duty");
+  const closeDuty = useCallback(() => {
+    setDutyOpen(false);
+    history.replaceState(null, "", `#${tabRef.current}`);
+  }, []);
   useEffect(() => {
     // 같은 탭의 하위 경로(#docs/requesting)는 그대로 둔다. 서랍이 열려 있으면 주소를 건드리지 않는다
-    if (drawerOfHash(location.hash)) return;
+    if (drawerOfHash(location.hash) || location.hash === "#duty") return;
     if (location.hash.slice(1).split("/")[0] !== tab) history.replaceState(null, "", `#${tab}`);
   }, [tab]);
   // 탭 줄이 가로로 넘칠 때 선택한 탭이 보이게(글꼴·수치가 늦게 들어와 폭이 바뀌어도)
@@ -97,7 +107,9 @@ export function App({ build }: { build: string }) {
     const onHash = () => {
       const d = drawerOfHash(location.hash);
       setDrawer(d);
-      if (!d) setTab(initialTab());
+      const isDuty = location.hash === "#duty";
+      setDutyOpen(isDuty);
+      if (!d && !isDuty) setTab(initialTab());
     };
     addEventListener("hashchange", onHash);
     return () => removeEventListener("hashchange", onHash);
@@ -153,6 +165,20 @@ export function App({ build }: { build: string }) {
           <Readout code="AIRBORNE" value={busy} tone="radar" />
           <Readout code="STANDS" label="점유" value={stands} />
           <Readout code="ENROUTE" value={inProgress} />
+          {duty.status?.enabled && (
+            <button
+              className="readout is-button duty-readout"
+              onClick={() => void (location.hash = "duty")}
+              aria-haspopup="dialog"
+              aria-expanded={dutyOpen}
+              title={`DUTY · ${duty.status.state}${duty.status.error ? ` — ${duty.status.error}` : ""}`}
+            >
+              <b className={`duty-dot is-${readoutState(duty.status)}`} aria-hidden="true">
+                ●
+              </b>
+              <span>DUTY</span>
+            </button>
+          )}
           <button className="readout is-button" onClick={() => setAlertsOpen((v) => !v)} aria-expanded={alertsOpen}>
             <b>{pad(handoffs.length)}</b>
             <span>HANDOFF</span>
@@ -239,7 +265,14 @@ export function App({ build }: { build: string }) {
           </TabBoundary>
         )}
       </main>
-      {drawer && (
+      {dutyOpen && (
+        <TabBoundary key="duty" stale={false}>
+          <Suspense fallback={null}>
+            <DutyDrawer chat={duty} onClose={closeDuty} />
+          </Suspense>
+        </TabBoundary>
+      )}
+      {drawer && !dutyOpen && (
         <TabBoundary key={JSON.stringify(drawer)} stale={false}>
           <Suspense fallback={null}>
             <Drawer target={drawer} onClose={closeDrawer} now={now} />
