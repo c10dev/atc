@@ -36,6 +36,7 @@ import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
 import { mountSchedule } from "./schedule.ts";
 import { mountSettings } from "./settings.ts";
+import { mountAccounts } from "./accounts-run.ts";
 import { mountSquelch } from "./squelch-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
@@ -184,6 +185,7 @@ setInterval(() => {
     .catch(() => {});
 }, 30_000).unref();
 mountSettings(app);
+mountAccounts(app);
 mountJudges(app);
 mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다
 

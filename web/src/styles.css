@@ -2975,3 +2975,10 @@ a.ticket:hover {
   cursor: pointer;
   margin: var(--space-1) 0;
 }
+
+/* ACCOUNTS 블록(ATC-146) */
+.acct-folder { margin: 6px 0; }
+.acct-warn { margin: 2px 0 0; padding-left: 16px; color: var(--amber); }
+.acct-edit { display: flex; gap: 6px; margin: 4px 0; }
+.acct-edit input:last-of-type { flex: 1; min-width: 0; }
+.acct-err { color: var(--alert); }

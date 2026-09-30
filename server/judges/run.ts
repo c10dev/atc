@@ -116,16 +116,16 @@ export function reportTargetsOf(
 // 세션 하나의 마지막 메시지를 판정해 기록 줄을 만든다. 메시지는 마스킹해 보내고 기록하지 않는다(보낸 글자 수만).
 // readLast는 ATCC 확인을 끝낸 세션에만 부른다(reportCandidatesOf)
 export async function judgeReportOp(
-  s: Pick<Session, "id" | "name" | "cwd">,
+  s: Pick<Session, "id" | "name" | "cwd" | "account">,
   teamPattern: string,
-  readLast: (cwd: string, id: string) => { text: string; at: number; cut?: true } | null,
+  readLast: (cwd: string, id: string, account?: string) => { text: string; at: number; cut?: true } | null,
   judgedIds: ReadonlySet<string>,
   engine: JudgeEngine,
   family: JudgeFamily,
   run: JudgeRun,
   at: string,
 ): Promise<ReportJudgeLine | null> {
-  const msg = readLast(s.cwd, s.id);
+  const msg = readLast(s.cwd, s.id, s.account);
   if (!msg) return null;
   const id = `R-${s.id.slice(0, 8)}-${Math.floor(msg.at / 1000)}`;
   if (judgedIds.has(id)) return null;

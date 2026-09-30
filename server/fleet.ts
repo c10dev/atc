@@ -74,7 +74,19 @@ export function loadFleet(file = fleetFile()): FleetFile {
     defaults: { ...structuredClone(DEFAULT_FLEET.defaults), ...(raw.defaults ?? {}) },
     aircraft: raw.aircraft && typeof raw.aircraft === "object" ? raw.aircraft : {},
     ...(raw.control && typeof raw.control === "object" ? { control: raw.control } : {}), // 관제 세션 ACCOUNT(ATC-60). 옛 파일엔 없다
+    ...(raw.accounts && typeof raw.accounts === "object" ? { accounts: raw.accounts } : {}), // ACCOUNT 등록부(ATC-146). 읽는 쪽은 accounts.ts loadAccounts가 검사한다
   };
+}
+
+// ACCOUNT 등록부를 바꿔 쓴다(ATC-146). 검사는 부르는 쪽(validateAccounts). 다른 항목은 그대로, 비면 항목을 지운다
+export function saveAccounts(accounts: NonNullable<FleetFile["accounts"]>, file = fleetFile()) {
+  const raw = readRaw(file);
+  const next: Partial<FleetFile> = { ...raw, accounts };
+  if (!Object.keys(accounts).length) delete next.accounts;
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n");
+  renameSync(tmp, file);
 }
 
 // 관제 세션의 ACCOUNT 라벨을 바꿔 쓴다(ATC-60). 다른 항목은 그대로. null이나 ""이면 지운다
@@ -260,6 +272,7 @@ export interface AircraftView {
   activity?: Activity | null; // ACTIVITY(ATC-97): 마지막 도구·라벨·phase. 살아 있는 Claude 세션만
   account?: string | null; // ACCOUNT(ATC-51). 라벨이 없으면 기본 ACCOUNT, 등록부에 라벨이 하나도 없으면 null
   accountIsDefault?: boolean; // 라벨 없이 기본 ACCOUNT로 센다
+  observedAccount?: string | null; // 세션이 home ACCOUNT와 다른 폴더에서 돌 때만(ATC-146): "acct-1 (home acct-2)". 오류가 아니다
   report?: (ReportView & { decision: boolean }) | null; // 마지막 턴의 REPORT 판정(ATC-89, 그림자 전용). decision: "결정이 필요함" 확률이 문턱 이상
   accountHold?: AccountHold | null; // 같은 ACCOUNT의 다른 AIRCRAFT가 LIMIT에 걸려 붙들림(ATC-51)
   fuel?: FuelRemaining | null; // 그 ACCOUNT의 FUEL REMAINING(ATC-55). statusline 값이 없으면 null
@@ -330,7 +343,10 @@ export function fleetView(
   const regOf = (name: string) => regKey(name, teamPattern);
   const names = [...new Set([...live.map((x) => regOf(x.name)), ...Object.keys(fleet.aircraft).map(regOf)])].sort();
   // 라이브 부분(상태·FLYING·마지막 활동·health·chips)은 스냅샷만으로 셈한다(fleet-live.ts, 화면도 같이 쓴다)
-  const liveOf = liveViewOf(s, names, teamPattern, (n) => accountOf(fleet, n), now);
+  // 관찰한 ACCOUNT(ATC-146): 살아 있는 세션이 home과 다른 폴더에 있으면 LIMIT 붙들림은 그 폴더의 ACCOUNT로 센다
+  const observedOf = (n: string) => live.find((x) => regOf(x.name) === regOf(n))?.account ?? null;
+  const acctNow = (n: string) => (accountOf(fleet, n) === null ? null : (observedOf(n) ?? accountOf(fleet, n)));
+  const liveOf = liveViewOf(s, names, teamPattern, acctNow, now);
   const reportMin = loadReportThreshold();
   return names.map((reg) => {
     const session = live.find((x) => regOf(x.name) === reg);
@@ -353,6 +369,7 @@ export function fleetView(
       report: session?.report ? { ...session.report, decision: needsDecision(session.report, reportMin) } : null,
       account: accountOf(fleet, reg),
       accountIsDefault: accountOf(fleet, reg) != null && !profile.account,
+      observedAccount: acctNow(reg) !== accountOf(fleet, reg) ? acctNow(reg) : null,
       fuel: s.fuel?.[reg] ?? null,
       configuration: profile.configuration ?? null,
       enteredAt: profile.enteredAt ?? null,

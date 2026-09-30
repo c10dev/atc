@@ -74,6 +74,15 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - reset이 지나면 저절로 풀린다. 할 일은 없다. 한도에 걸린 AIRCRAFT가 대답하지 못한 지시가 있으면 `UNANSWERED`로 바뀌니 그때 다시 보낸다.
 - 라벨을 직접 단 AIRCRAFT는 FLEET 줄의 REGISTRATION 옆에 작은 칩으로 보이고, 카드에는 ACCOUNT 줄이 있다.
 
+### ACCOUNT 폴더: 계정이 둘 이상일 때
+
+계정마다 Claude Code 설정 폴더가 하나 있다(예: `acct-1` = `~/.claude-acct-1`, `acct-2` = `~/.claude`). 설정 창 **AGENTS** 탭의 **ACCOUNTS** 블록에서 라벨과 폴더를 적으면 atc가 그 폴더의 세션·job·FUEL을 모두 읽는다. `~/.claude`는 적지 않아도 읽고, 적지 않으면 라벨이 `default`다. 폴더는 홈 아래의 `.claude…` 이름이어야 하고, email·토큰은 적지도 저장하지도 않는다. 저장은 이 화면에서만 된다(SUPERVISOR).
+
+- **세션의 ACCOUNT는 찾은 곳으로 정한다.** 세션 파일이 `~/.claude-acct-1`에 있으면 그 세션은 `acct-1`이다. FUEL도 그 ACCOUNT의 한도로 센다.
+- **home과 다를 때.** AIRCRAFT 프로필의 ACCOUNT는 home으로 남는다. 세션이 다른 폴더에서 돌면 FLEET 줄과 카드에 `acct-1 (home acct-2)`로 보인다. 오류가 아니다.
+- **폴더마다 건강 표시.** 로그인했는지(`LOGGED IN`·방식만), settings에 atc statusline과 `claim`·`health` hook이 있는지 보인다. 빠진 것은 경고로만 나온다(`FUEL blind on acct-1`). 막지는 않는다.
+- **아직 못 하는 것.** LAUNCH·STOP은 아직 `~/.claude`의 세션만 다룬다. 다른 폴더의 세션은 보이기만 한다.
+
 ### FUEL: 한도를 얼마나 썼나
 
 `LIMIT`은 이미 막힌 뒤에 뜬다. FUEL은 막히기 전에 ACCOUNT가 한도를 얼마나 썼는지 보여 준다.

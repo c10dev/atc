@@ -1,6 +1,6 @@
 import { type Dirent, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { config } from "./config.ts";
+import { accountFolders } from "./accounts.ts";
 import type { CrewMember } from "./crew.ts";
 import { driftOf } from "./fuel-crew.ts";
 import type { Session } from "./model.ts";
@@ -158,23 +158,25 @@ let titled: { at: number; byName: Map<string, string[]> } | null = null;
 function titledDirs(now: number): Map<string, string[]> {
   if (titled && now - titled.at < SCAN_MS) return titled.byName;
   const byName = new Map<string, string[]>();
-  const root = join(config.claudeDir, "projects");
-  let projects: string[] = [];
-  try {
-    projects = readdirSync(root);
-  } catch {}
-  for (const p of projects) {
-    let entries: Dirent[] = [];
+  for (const folder of accountFolders()) {
+    const root = join(folder.dir, "projects");
+    let projects: string[] = [];
     try {
-      entries = readdirSync(join(root, p), { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const e of entries) {
-      if (!e.isDirectory()) continue;
-      const dir = join(root, p, e.name);
-      const title = titleOf(dir);
-      if (title) byName.set(title, [...(byName.get(title) ?? []), dir]);
+      projects = readdirSync(root);
+    } catch {}
+    for (const p of projects) {
+      let entries: Dirent[] = [];
+      try {
+        entries = readdirSync(join(root, p), { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const e of entries) {
+        if (!e.isDirectory()) continue;
+        const dir = join(root, p, e.name);
+        const title = titleOf(dir);
+        if (title) byName.set(title, [...(byName.get(title) ?? []), dir]);
+      }
     }
   }
   titled = { at: now, byName };
@@ -190,7 +192,7 @@ function activeWithin(dir: string, since: number): boolean {
 // 잇는 규칙: 살아 있는 세션 이름(atc가 지금 잇는 방식) 또는 custom-title.json의 세션 이름이 REGISTRATION과 같다.
 export function spawnsFor(
   registration: string,
-  sessions: Pick<Session, "id" | "name" | "cwd" | "agent" | "status">[],
+  sessions: Pick<Session, "id" | "name" | "cwd" | "agent" | "status" | "account">[],
   now = Date.now(),
   windowDays = OBSERVED_WINDOW_DAYS,
 ): Spawn[] | null {
@@ -200,7 +202,7 @@ export function spawnsFor(
 // 이 REGISTRATION에 이어진 세션 폴더(기간 안에 움직인 것). 없으면 null. LOGBOOK 지시서 측정(ATC-32)도 쓴다
 export function sessionDirsOf(
   registration: string,
-  sessions: Pick<Session, "id" | "name" | "cwd" | "agent" | "status">[],
+  sessions: Pick<Session, "id" | "name" | "cwd" | "agent" | "status" | "account">[],
   now = Date.now(),
   windowDays = OBSERVED_WINDOW_DAYS,
 ): string[] | null {
@@ -208,7 +210,7 @@ export function sessionDirsOf(
   const since = now - windowDays * DAY_MS;
   const dirs = new Set<string>();
   for (const s of sessions) {
-    if (s.agent === "claude" && s.status !== "dead" && regKey(s.name) === reg) dirs.add(sessionDir(s.cwd, s.id));
+    if (s.agent === "claude" && s.status !== "dead" && regKey(s.name) === reg) dirs.add(sessionDir(s.cwd, s.id, s.account));
   }
   const live = new Set(dirs);
   for (const d of titledDirs(now).get(reg) ?? []) if (activeWithin(d, since)) dirs.add(d);

@@ -270,7 +270,17 @@ export function Card({
       <h3 className="fl-sub">
         ACCOUNT {a.accountIsDefault && <em>기본값</em>}
       </h3>
-      <p className="fl-line">{a.account ? <span className="mono">{a.account}</span> : <span className="faint">지정 없음 — 한도는 reset 시각으로 묶는다</span>}</p>
+      <p className="fl-line">
+        {a.observedAccount ? (
+          <span className="mono" title="세션이 home ACCOUNT와 다른 폴더에서 돌고 있다. 오류가 아니다">
+            {a.observedAccount} (home {a.account})
+          </span>
+        ) : a.account ? (
+          <span className="mono">{a.account}</span>
+        ) : (
+          <span className="faint">지정 없음 — 한도는 reset 시각으로 묶는다</span>
+        )}
+      </p>
       {/* 출처 힌트(ATC-76): 백그라운드 세션은 이 호스트 CLI의 로그인을, 데스크톱 세션은 앱의 계정을 쓴다. 계정 정보는 읽지 않는다 */}
       {a.job?.state === "blocked" && (
         <div className="fl-needs-you">

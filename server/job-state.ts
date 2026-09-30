@@ -1,6 +1,6 @@
 import { closeSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { config } from "./config.ts";
+import { accountFolders } from "./accounts.ts";
 
 // 백그라운드 job 상태(ATC-99, docs/fleet.md 8.5.2): Claude Code가 ~/.claude/jobs/<jobId>/state.json에 적는 job의 state·detail·needs.
 // 읽기만 한다(쓰기·삭제·잠금 없음). Claude Code 내부 파일이라 모르는 모양은 null로 물러난다(2.1.284 기준).
@@ -124,8 +124,20 @@ function tailOf(path: string): string | null {
   }
 }
 
-export function readJob(jobId: string | null | undefined, dir = join(config.claudeDir, "jobs")): Job | null {
+// dir가 없으면 등록된 모든 폴더의 jobs/를 차례로 본다(ATC-146). 세션 파일을 읽은 쪽은 그 폴더의 jobs/를 넘긴다
+export function readJob(jobId: string | null | undefined, dir?: string): Job | null {
   if (!jobId || !JOB_ID.test(jobId)) return null;
+  if (dir === undefined) {
+    for (const f of accountFolders()) {
+      const job = readJobIn(jobId, join(f.dir, "jobs"));
+      if (job) return job;
+    }
+    return null;
+  }
+  return readJobIn(jobId, dir);
+}
+
+function readJobIn(jobId: string, dir: string): Job | null {
   const stateFile = join(dir, jobId, "state.json");
   const timeline = join(dir, jobId, "timeline.jsonl");
   const key = `${statOf(stateFile)}|${statOf(timeline)}`;

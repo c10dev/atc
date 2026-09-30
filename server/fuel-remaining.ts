@@ -39,6 +39,23 @@ export interface FuelMember {
   sessionIds: string[];
 }
 
+// 관찰한 ACCOUNT로 구성원을 다시 묶는다(ATC-146). statusline 기록은 세션의 폴더(=관찰한 ACCOUNT)의 한도를 말하므로 그 세션은 그 ACCOUNT에 센다.
+// AIRCRAFT의 home ACCOUNT(fleet.json)는 그대로 두고 여기서만 옮긴다. 살아 있는 세션이 관찰된 ACCOUNT에 있으면 죽은 옛 세션은 그 구성원에서 뺀다.
+// 라벨이 없는(account null) 구성원과 관찰 값이 없는 세션은 그대로다. observed: sessionId → ACCOUNT 라벨
+export function observeMembers(members: FuelMember[], observed: ReadonlyMap<string, string>, live: ReadonlySet<string>): FuelMember[] {
+  return members.flatMap((m): FuelMember[] => {
+    if (m.account === null) return [m];
+    const liveAccts = [...new Set(m.sessionIds.filter((id) => live.has(id) && observed.has(id)).map((id) => observed.get(id)!))];
+    const accts = liveAccts.length ? liveAccts : [...new Set(m.sessionIds.filter((id) => observed.has(id)).map((id) => observed.get(id)!))];
+    if (!accts.length) return [m];
+    return accts.map((account) => ({
+      ...m,
+      account,
+      sessionIds: m.sessionIds.filter((id) => (observed.get(id) ?? m.account) === account && (!liveAccts.length || live.has(id) || !observed.has(id))),
+    }));
+  });
+}
+
 const WINDOWS: FuelWindowName[] = ["five_hour", "seven_day", "spend_limit"];
 const SHORT: Record<FuelWindowName, string> = { five_hour: "5h", seven_day: "7d", spend_limit: "spend" };
 

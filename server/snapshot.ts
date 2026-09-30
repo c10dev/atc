@@ -23,7 +23,7 @@ import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadFleet } from "./fleet.ts";
-import { fuelAccountsOf, fuelByAircraft, fuelConfigOf, type FuelMember } from "./fuel-remaining.ts";
+import { fuelAccountsOf, fuelByAircraft, fuelConfigOf, type FuelMember, observeMembers } from "./fuel-remaining.ts";
 import { readFuelHistory, readFuelRecords } from "./fuel-run.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, holdStops, loadAtfm, readRecordedStops, reviveStops, stopFigures } from "./atfm.ts";
@@ -154,7 +154,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
   const fleet = loadFleet();
   const dispatchCfg = loadDispatchConfig();
   const team = new RegExp(dispatchCfg.teamPattern, "i");
-  const accountOfSession = (x: Session) => (x.status !== "dead" && team.test(x.name) ? accountOf(fleet, x.name) : null);
+  // 관찰한 ACCOUNT가 있으면 그것(ATC-146), 등록부가 없으면 home 라벨. 라벨을 쓰지 않는 등록부(accountOf가 null)는 그대로 null
+  const accountOfSession = (x: Session) => (x.status !== "dead" && team.test(x.name) ? (accountOf(fleet, x.name) === null ? null : (x.account ?? accountOf(fleet, x.name))) : null);
   // RESTARTING(ATC-91): 데스크톱 /clear 뒤 다음 지시를 기다리는 AIRCRAFT. 세션 파일이 없는 최근 대화 기록에서 읽는다
   const graceMs = dispatchCfg.restartGraceMin * 60_000;
   const restarting = restartingOf(readEndedSessions(new Set(claude.sessions.map((x) => x.id)), healthAt, graceMs), sessions, healthAt, dispatchCfg.restartGraceMin, dispatchCfg.teamPattern);
@@ -169,13 +170,17 @@ export async function buildSnapshot(): Promise<Snapshot> {
     ...controls.map((n): FuelMember => ({ name: n, kind: "control", account: controlAccountOf(fleet, n), sessionIds: sessions.filter((x) => controlOf.get(x.id) === n).map((x) => x.id) })),
   ];
   const fuelCfg = fuelConfigOf(dispatchCfg.fuel);
-  const fuelAccounts = fuelAccountsOf(members, readFuelRecords(), fuelCfg, healthAt);
+  // 관찰한 ACCOUNT(ATC-146): 세션이 있는 폴더의 ACCOUNT로 statusline 기록을 묶는다. 등록부가 비어 있으면 관찰 값이 없어 그대로다
+  const observedAcct = new Map(sessions.flatMap((x) => (x.account ? [[x.id, x.account] as const] : [])));
+  const liveIds = new Set(sessions.filter((x) => x.status !== "dead").map((x) => x.id));
+  const obsMembers = observeMembers(members, observedAcct, liveIds);
+  const fuelAccounts = fuelAccountsOf(obsMembers, readFuelRecords(), fuelCfg, healthAt);
   const fuel = fuelByAircraft(fuelAccounts);
   // 오류 없이 한도로 잘린 턴(cut LIMIT, ATC-86): reset은 같은 ACCOUNT 구성원의 FUEL 기록에서 되짚는다. reset이 지났으면 RESUME
   for (const x of sessions) {
     if (x.health?.code !== "LIMIT" || !x.health.cut || !x.health.cutAt) continue;
-    const m = members.find((y) => y.sessionIds.includes(x.id));
-    const ids = m?.account ? members.filter((y) => y.account === m.account).flatMap((y) => y.sessionIds) : (m?.sessionIds ?? [x.id]);
+    const m = obsMembers.find((y) => y.sessionIds.includes(x.id));
+    const ids = m?.account ? obsMembers.filter((y) => y.account === m.account).flatMap((y) => y.sessionIds) : (m?.sessionIds ?? [x.id]);
     x.health = settleCut(x.health, cutResetOf(Date.parse(x.health.cutAt), readFuelHistory(ids), fuelCfg.holdPct), healthAt);
   }
   // ABSENT(ATC-129): 세션이 없는 백그라운드 AIRCRAFT. 마지막 턴이 한도로 잘렸으면 reset을 같은 ACCOUNT의 FUEL 기록에서 되짚는다
@@ -186,8 +191,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
     teamPattern: dispatchCfg.teamPattern,
     now: healthAt,
     resetOf: (cutAt, sessionId, reg) => {
-      const acct = accountOf(fleet, reg);
-      const ids = [sessionId, ...(acct ? members.filter((y) => y.account === acct).flatMap((y) => y.sessionIds) : [])];
+      const acct = obsMembers.find((y) => y.kind === "aircraft" && y.name === reg)?.account ?? accountOf(fleet, reg);
+      const ids = [sessionId, ...(acct ? obsMembers.filter((y) => y.account === acct).flatMap((y) => y.sessionIds) : [])];
       return cutResetOf(cutAt, readFuelHistory(ids), fuelCfg.holdPct);
     },
   });

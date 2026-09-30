@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Hono } from "hono";
 import { allClearances } from "./clearances.ts";
 import { config } from "./config.ts";
+import { accountFolders } from "./accounts.ts";
 import { allCrewChanges } from "./crew-change.ts";
 import { readDepartures } from "./departures.ts";
 import { rememberAgentModels } from "./agent-models.ts";
@@ -47,13 +48,32 @@ interface FileState {
 const cache = new Map<string, FileState>();
 
 // ── 감시와 디스크 캐시(ATC-83, docs/fuel.md 4.1) ──
-// 감시: ~/.claude/projects를 fs.watch(recursive)로 지켜 바뀐 기록 파일만 바로 읽고(목록도 바뀐 것만 다시 stat), 놓쳐도 1분마다 전체를 걷는다.
+// 감시: 등록된 폴더마다(ATC-146) projects/를 fs.watch(recursive)로 지켜 바뀐 기록 파일만 바로 읽고(목록도 바뀐 것만 다시 stat), 놓쳐도 1분마다 전체를 걷는다.
 // 캐시: 파일마다 읽은 자리와 파싱 결과를 ~/.cache/atc/fuel/에. 재시작하면 그것을 읽어 이어 간다. 둘 다 mountFuel이 켠다(시험은 켜지 않으면 옛 동작 그대로)
-let tree: FuelTree | null = null;
+// 폴더마다 트리 하나. 캐시 키는 기록 파일의 절대 경로라 폴더가 키에 들어 있다(같은 세션 id가 다른 폴더에 있어도 섞이지 않는다)
+let trees: FuelTree[] | null = null;
 let cacheDir: string | null = null;
 const dirtyShards = new Set<string>();
-const projectsRoot = () => join(config.claudeDir, "projects");
-const activeTree = () => (tree && tree.root === projectsRoot() ? tree : null);
+export const projectsRoots = () => accountFolders().map((f) => join(f.dir, "projects"));
+// 등록부가 바뀌면 트리를 새 폴더 목록에 맞춘다(감시를 켠 뒤에만)
+function syncTrees(): FuelTree[] | null {
+  if (!trees) return null;
+  const roots = projectsRoots();
+  if (roots.length === trees.length && roots.every((r, i) => trees![i]!.root === r)) return trees;
+  const keep = new Map(trees.map((t) => [t.root, t]));
+  for (const t of trees) if (!roots.includes(t.root)) t.stop();
+  trees = roots.map((r) => {
+    const t = keep.get(r) ?? new FuelTree(r, (since, root) => fuelFiles(since, root));
+    if (!keep.has(r)) t.start(scheduleChangedRead);
+    return t;
+  });
+  return trees;
+}
+const listFiles = (since: number): FuelFile[] => {
+  const ts = syncTrees();
+  if (!ts) return fuelFiles(since);
+  return ts.flatMap((t) => t.list(since)).sort((a, b) => a.mtime - b.mtime || a.path.localeCompare(b.path));
+};
 const FLUSH_MS = 30_000;
 const FLUSH_BUDGET_MS = 100;
 const READ_DEBOUNCE_MS = 500;
@@ -69,7 +89,7 @@ const later = (fn: () => void, ms: number) => {
 };
 
 // 기록 파일이 바뀔 때마다 오른다. 60초 캐시(CONTEXT SIZE·FUEL WATCH)가 새 줄을 기다리지 않게 하는 신호다
-export const fuelChangeSeq = () => tree?.seq ?? 0;
+export const fuelChangeSeq = () => (trees ?? []).reduce((n, t) => n + t.seq, 0);
 
 // 바뀐 파일을 잠깐 모았다가 그 파일만 읽는다. 다음 요청이 읽을 것을 미리 읽어 둘 뿐이라 결과는 같다
 let readScheduled = false;
@@ -78,11 +98,11 @@ function scheduleChangedRead() {
   readScheduled = true;
   later(() => {
     readScheduled = false;
-    const t = tree;
-    if (!t) return;
+    const ts = trees;
+    if (!ts) return;
     const since = Date.now() - FUEL_DEFAULT_DAYS * DAY_MS;
     try {
-      for (const f of t.takeChanged()) if (f.mtime >= since) readFuelFile(f);
+      for (const t of ts) for (const f of t.takeChanged()) if (f.mtime >= since) readFuelFile(f);
     } catch (e) {
       console.warn("[atc] fuel watch read:", (e as Error).message);
     }
@@ -90,11 +110,11 @@ function scheduleChangedRead() {
 }
 
 export function startFuelWatch(): boolean {
-  const root = projectsRoot();
-  if (tree?.root === root && tree.watching) return true;
-  tree?.stop();
-  tree = new FuelTree(root, (since, r) => fuelFiles(since, r));
-  return tree.start(scheduleChangedRead); // false면 목록은 매번 전체를 걷는다(옛 방식)
+  const roots = projectsRoots();
+  if (trees && trees.length === roots.length && trees.every((t, i) => t.root === roots[i] && t.watching)) return true;
+  for (const t of trees ?? []) t.stop();
+  trees = roots.map((r) => new FuelTree(r, (since, root) => fuelFiles(since, root)));
+  return trees.map((t) => t.start(scheduleChangedRead)).every(Boolean); // 하나라도 false면 그 폴더 목록은 매번 전체를 걷는다(옛 방식)
 }
 
 // 더러워진 캐시 파일을 쓴다. budgetMs를 넘기면 멈추고 남은 수를 돌려준다
@@ -133,8 +153,8 @@ export function dropFuelMemory() {
 
 // 시험과 재설정용: 감시·캐시를 끄고 메모리 상태를 버린다
 export function stopFuelCache() {
-  tree?.stop();
-  tree = null;
+  for (const t of trees ?? []) t.stop();
+  trees = null;
   cacheDir = null;
   for (const h of timers) clearTimeout(h);
   timers.clear();
@@ -172,7 +192,8 @@ function mtimeOf(path: string): number | null {
 }
 
 // 기간 안에 바뀐 기록 파일. subagents 아래는 workflows/wf_*/ 같은 하위 폴더까지 본다
-export function fuelFiles(since: number, root = join(config.claudeDir, "projects")): FuelFile[] {
+// root가 없으면 등록된 모든 폴더(ATC-146)
+export function fuelFiles(since: number, root?: string): FuelFile[] {
   const out: FuelFile[] = [];
   const crewIn = (dir: string, session: string, depth: number) => {
     for (const e of dirents(dir)) {
@@ -184,15 +205,17 @@ export function fuelFiles(since: number, root = join(config.claudeDir, "projects
       }
     }
   };
-  for (const proj of dirents(root)) {
-    if (!proj.isDirectory()) continue;
-    const pdir = join(root, proj.name);
-    for (const e of dirents(pdir)) {
-      const p = join(pdir, e.name);
-      if (e.isFile() && e.name.endsWith(".jsonl")) {
-        const m = mtimeOf(p);
-        if (m !== null && m >= since) out.push({ path: p, session: e.name.slice(0, -6), crew: false, agent: null, mtime: m });
-      } else if (e.isDirectory()) crewIn(join(p, "subagents"), e.name, 0);
+  for (const dir of root ? [root] : projectsRoots()) {
+    for (const proj of dirents(dir)) {
+      if (!proj.isDirectory()) continue;
+      const pdir = join(dir, proj.name);
+      for (const e of dirents(pdir)) {
+        const p = join(pdir, e.name);
+        if (e.isFile() && e.name.endsWith(".jsonl")) {
+          const m = mtimeOf(p);
+          if (m !== null && m >= since) out.push({ path: p, session: e.name.slice(0, -6), crew: false, agent: null, mtime: m });
+        } else if (e.isDirectory()) crewIn(join(p, "subagents"), e.name, 0);
+      }
     }
   }
   return out.sort((a, b) => a.mtime - b.mtime || a.path.localeCompare(b.path));
@@ -283,7 +306,7 @@ export interface FuelScan {
 
 // since 뒤에 바뀐 기록 파일을 읽는다(파일마다 지난번 바이트 뒤부터). GET /api/fuel과 LOGBOOK(FUEL F4)이 같이 쓴다
 export function scanFuel(since: number, sessions: Snapshot["sessions"]): FuelScan {
-  const files = activeTree()?.list(since) ?? fuelFiles(since);
+  const files = listFiles(since);
   const seen = new Set(files.map((f) => f.path));
   // 더 긴 기간으로 한 번 읽은 파일은 캐시에 남기고, 없어진 파일만 지운다
   for (const p of cache.keys()) if (!seen.has(p) && mtimeOf(p) === null) cache.delete(p);

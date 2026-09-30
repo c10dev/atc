@@ -215,9 +215,9 @@ test("job state: state 한 칸만 읽고, 없거나 이상한 id면 null", () =>
   const dir = mkdtempSync(join(tmpdir(), "atc93-"));
   mkdirSync(join(dir, "3bf04645"));
   writeFileSync(join(dir, "3bf04645", "state.json"), JSON.stringify({ state: "done", providerEnv: { SECRET: "x" } }));
-  assert.equal(jobStateOf("3bf04645", dir), "done");
-  assert.equal(jobStateOf("deadbeef", dir), null);
-  assert.equal(jobStateOf("../etc", dir), null);
+  assert.equal(jobStateOf("3bf04645", [dir]), "done");
+  assert.equal(jobStateOf("deadbeef", [dir]), null);
+  assert.equal(jobStateOf("../etc", [dir]), null);
 });
 
 test("관제 LAUNCH·STOP: STALE 유령은 떠 있는 세션이 아니다. 유령만 있으면 STOP은 이유를 말하고 claude stop을 다시 하지 않는다", () => {
