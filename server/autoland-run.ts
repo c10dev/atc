@@ -28,6 +28,7 @@ import {
   writeResultOf,
 } from "./autoland.ts";
 import { pullKey, slugOfUrl } from "./landing.ts";
+import { assertGithubOn } from "./github-switch.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 
@@ -37,7 +38,10 @@ import { fromThisApp } from "./origin.ts";
 // force-push, GitHub auto-merge, 브랜치 보호·strict는 건드리지 않는다.
 
 const run = promisify(execFile);
-const gh = async (args: string[]) => (await run("gh", args, { timeout: 60_000, maxBuffer: 16 << 20 })).stdout;
+const gh = async (args: string[]) => {
+  assertGithubOn();
+  return (await run("gh", args, { timeout: 60_000, maxBuffer: 16 << 20 })).stdout;
+};
 
 export function appendRecord(r: Omit<AutolandRecord, "at"> & { at?: string }) {
   const line: AutolandRecord = { at: r.at ?? new Date().toISOString(), ...r } as AutolandRecord;

@@ -10,6 +10,7 @@ import { parentKeysOf, type Snapshot, type Ticket } from "./model.ts";
 import { allProposals, humanOf as proposalHuman, type Proposal } from "./proposals.ts";
 import { countsForGate, humanOf as scheduleHuman, loadScheduleOps, type ScheduleOp } from "./schedule.ts";
 import { loadLinearProjects, type ProjectGoal } from "./sources/linear-projects.ts";
+import { GITHUB_OFF_REASON } from "./github-switch.ts";
 
 // NETWORK(4단계): ROUTE(Linear 프로젝트)·AIRCRAFT·추세를 한 화면에 모은 읽기 전용 운항 개요.
 // 계산은 모두 스냅샷·LOGBOOK·FLEET·DISPATCH/SCHEDULE 기록 위의 순수 함수다. 아무것도 쓰지 않는다.
@@ -58,7 +59,7 @@ export interface Network {
   routes: RouteRow[];
   aircraft: AircraftRow[];
   trend: { days: DayRow[]; gates: GateRow[] };
-  sources: { linear: boolean; github: boolean; logbook: boolean };
+  sources: { linear: boolean; github: boolean; githubOff?: boolean; logbook: boolean };
 }
 
 const median = (xs: number[]) => {
@@ -258,6 +259,7 @@ export function mountNetwork(app: Hono, getSnapshot: () => Promise<Snapshot>) {
         sources: {
           linear: s.linear.enabled && Boolean(s.linear.fetchedAt),
           github: s.github.enabled && Boolean(s.github.fetchedAt),
+          githubOff: s.github.reason === GITHUB_OFF_REASON,
           logbook: existsSync(join(config.stateDir, "logbook.jsonl")),
         },
       }),

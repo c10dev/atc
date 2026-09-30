@@ -299,7 +299,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
   return {
     at: new Date().toISOString(),
     linear: { enabled: linear.enabled, error: linear.error, fetchedAt: linear.fetchedAt },
-    github: { enabled: github.enabled, error: github.error, fetchedAt: github.fetchedAt },
+    github: { enabled: github.enabled, reason: github.reason, error: github.error, fetchedAt: github.fetchedAt },
     sessions,
     workspaces,
     tickets,

@@ -42,6 +42,8 @@ import { currentAlerts, runSupervisorAlerts } from "./supervisor-alerts-run.ts";
 import { mountVoice } from "./voice-run.ts";
 import type { AlertEvent } from "./supervisor-alerts.ts";
 import { entryScript } from "./version.ts";
+import { join } from "node:path";
+import { githubStartupWarning, githubSwitch } from "./github-switch.ts";
 
 const TICK_MS = 2_000;
 
@@ -213,6 +215,9 @@ app.use("/*", serveStatic({ root: DIST, onFound: (path, c) => void (path.endsWit
 
 pruneRecords();
 await tick();
+// 시험 서버가 SUPERVISOR의 토큰으로 GitHub를 폴링하면 시작할 때 한 줄 경고한다(ATC-161)
+const ghWarn = githubStartupWarning({ enabled: githubSwitch().enabled, stateDir: config.stateDir, prodStateDir: join(config.home, ".local/state/atc") });
+if (ghWarn) console.warn(ghWarn);
 serve({ fetch: app.fetch, port: config.port, hostname: "127.0.0.1" }, (info) =>
   console.log(`[atc] http://localhost:${info.port}  (linear: ${config.linearApiKey ? "on" : "off"}) pid ${process.pid} ppid ${process.ppid}`),
 );

@@ -40,6 +40,7 @@ import type { MccLandInfo } from "./land-by.ts";
 import { loadLogbook, prEntries } from "./logbook.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
+import { assertGithubOn } from "./github-switch.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 
 // MCC 실행부(docs/mcc.md). MCC 세션은 atcctl로 읽고 판단만 한다. GitHub 쓰기와 RTS 시작은 여기서만 한다:
@@ -47,7 +48,10 @@ import { fetchIssueDetail } from "./sources/linear.ts";
 // GraphQL 한도(2026-09-28)에 막히지 않게 GitHub은 모두 REST(gh api)로 읽고 쓴다.
 
 const run = promisify(execFile);
-export const gh = async (args: string[]) => (await run("gh", args, { timeout: 60_000, maxBuffer: 32 << 20 })).stdout;
+export const gh = async (args: string[]) => {
+  assertGithubOn();
+  return (await run("gh", args, { timeout: 60_000, maxBuffer: 32 << 20 })).stdout;
+};
 export const errText = (e: unknown) => {
   const err = e as { stderr?: string; message?: string };
   return (err.stderr?.trim() || err.message || String(e)).split("\n")[0];

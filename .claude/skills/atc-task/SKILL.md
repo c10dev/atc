@@ -68,7 +68,9 @@ cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-
 ## 5. 검증
 
 - `npm test`, `npx tsc --noEmit -p .`, `npx vite build`
-- 끝까지 확인할 때는 시험 서버를 띄운다: `(set -a; . /home/c10/projects/atc/.env.local; set +a; ATC_STATE_DIR=<임시 폴더> ATC_PORT=7702 exec node server/index.ts) & echo $! > <임시 폴더>/server.pid`
+- 끝까지 확인할 때는 시험 서버를 띄운다: `(set -a; . /home/c10/projects/atc/.env.local; set +a; ATC_GITHUB=off ATC_STATE_DIR=<임시 폴더> ATC_PORT=7702 exec node server/index.ts) & echo $! > <임시 폴더>/server.pid`
+  - `ATC_GITHUB=off`는 서버가 GitHub(`gh`)를 부르지 않게 한다(시험 서버가 SUPERVISOR의 토큰으로 폴링하지 않게). 확인이 실제 PR 자료를 필요로 할 때만 빼고, 그때는 짧게만 돌린다.
+  - 직접 만든 실행 스크립트도 PID 파일을 반드시 쓴다.
   - 끌 때는 `kill "$(cat <임시 폴더>/server.pid)"`만 쓴다. `pkill`·`killall`·`kill $(pgrep …)`처럼 이름·패턴으로 죽이지 않고, 내가 띄우지 않은 프로세스는 건드리지 않는다(운영 7700이 죽는다, 2026-09-29 사고. `hooks/kill-guard.mjs`가 막는다).
   - 임시 폴더에는 등록부(`airports.json`, `fleet.json`)만 복사한다.
   - `.env.local`은 복사하거나 출력하지 않는다.

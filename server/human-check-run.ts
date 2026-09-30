@@ -21,14 +21,19 @@ import {
 import { slugOfUrl } from "./landing.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
+import { assertGithubOn } from "./github-switch.ts";
 
 // HUMAN CHECK(ATC-37) 입출력: 증거(PR 댓글 이미지, RUN-UP 보고서)를 읽고, SUPERVISOR의 PASS·FAIL을 GitHub에 쓴다.
 // GitHub에 쓰는 것은 둘뿐이다: PR 본문 `Human check:` 줄 하나와 PR 댓글 하나. Vercel 공유 토큰은 만들지도 두지도 않는다
 
 const run = promisify(execFile);
-const gh = async (args: string[]) => (await run("gh", args, { timeout: 30_000, maxBuffer: 16 << 20 })).stdout;
+const gh = async (args: string[]) => {
+  assertGithubOn();
+  return (await run("gh", args, { timeout: 30_000, maxBuffer: 16 << 20 })).stdout;
+};
 // 긴 본문은 인자 대신 stdin(JSON)으로 보낸다
 function ghInput(args: string[], input: string): Promise<string> {
+  assertGithubOn();
   return new Promise((resolve, reject) => {
     const p = spawn("gh", [...args, "--input", "-"], { stdio: ["pipe", "pipe", "pipe"] });
     let out = "";

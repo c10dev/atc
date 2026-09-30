@@ -12,6 +12,7 @@ import { allProposals, isInFlight, type Proposal, standFreeTicket } from "./prop
 import { sessionEventsOf } from "./sources/claude.ts";
 import { registrationOf } from "./registration.ts";
 import { slugOf } from "./sources/github.ts";
+import { assertGithubOn, GithubOffError } from "./github-switch.ts";
 import {
   type ArrivalSuggestion,
   checkSuggestionOf,
@@ -40,7 +41,10 @@ const WINDOW_DAYS = 14; // 이만큼 지난 착수는 후보를 찾지 않는다
 const GH_TTL_MS = 5 * MIN;
 
 const run = promisify(execFile);
-const gh = async (args: string[]) => (await run("gh", args, { timeout: 30_000, maxBuffer: 16 << 20 })).stdout;
+const gh = async (args: string[]) => {
+  assertGithubOn();
+  return (await run("gh", args, { timeout: 30_000, maxBuffer: 16 << 20 })).stdout;
+};
 const tsv = (out: string) => out.split("\n").filter(Boolean).map((l) => l.split("\t"));
 
 const state = { suggestions: [] as ArrivalSuggestion[], ranAt: null as string | null, error: null as string | null };
@@ -183,6 +187,7 @@ async function once(s: Snapshot) {
       }
     } catch (e) {
       const err = e as Error & { stderr?: string };
+      if (e instanceof GithubOffError) continue; // GitHub off는 오류가 아니다(ATC-161)
       errors.push(`${f.flight}: ${(err.stderr?.trim() || err.message).split("\n")[0]}`);
     }
   }

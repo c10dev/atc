@@ -50,6 +50,11 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
           PARKED AIRCRAFT 포함
         </label>
       </div>
+      {github && !github.enabled && github.reason && (
+        <p className="ls-stale" title={github.reason}>
+          GitHub off · PR 상태를 읽지 않음
+        </p>
+      )}
       {github?.error && (
         <p className="ls-stale" title={github.error}>
           GitHub 조회 실패 · PR 상태가 오래됐을 수 있음
