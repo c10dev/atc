@@ -69,8 +69,8 @@ test("--tools 목록(spawn)은 guard의 허용 도구와 같다", () => {
 });
 
 // PreToolUse guard hook: 모든 도구(`.*`)에 걸리고 fail-closed(`|| exit 2`). SendMessage 같은 다른 hook은 없다(도구 자체가 없다)
-test("hook: PreToolUse 하나, matcher .*, guard.mjs || exit 2, 다른 hook 종류 없음", () => {
-  assert.deepEqual(Object.keys(settings.hooks), ["PreToolUse"], "UserPromptSubmit(brief hook)은 D4에서");
+test("hook: PreToolUse 하나, matcher .*, guard.mjs || exit 2, 그 밖에는 UserPromptSubmit(brief hook)뿐", () => {
+  assert.deepEqual(Object.keys(settings.hooks).sort(), ["PreToolUse", "UserPromptSubmit"]);
   const pre = settings.hooks.PreToolUse;
   assert.equal(pre.length, 1);
   assert.equal(pre[0].matcher, ".*");
@@ -79,4 +79,18 @@ test("hook: PreToolUse 하나, matcher .*, guard.mjs || exit 2, 다른 hook 종�
   assert.equal(h.type, "command");
   assert.equal(h.command, `${NODE} "$CLAUDE_PROJECT_DIR/guard.mjs" || exit 2`);
   assert.equal(h.timeout, 5);
+});
+
+// UserPromptSubmit brief hook(D4): fail-open. guard와 반대로 `|| exit 0`이라 hook이 죽어도 턴은 돈다. 도구를 막는 일은 하지 않는다
+test("hook: UserPromptSubmit 하나, brief-hook.mjs || exit 0(fail-open), 파일이 있다", () => {
+  const ups = settings.hooks.UserPromptSubmit;
+  assert.equal(ups.length, 1);
+  assert.equal(ups[0].matcher, undefined);
+  assert.equal(ups[0].hooks.length, 1);
+  const h = ups[0].hooks[0];
+  assert.equal(h.type, "command");
+  assert.equal(h.command, `${NODE} "$CLAUDE_PROJECT_DIR/brief-hook.mjs" || exit 0`);
+  assert.ok(h.timeout >= 6 && h.timeout <= 10, "hook 자체 제한은 fetch 제한(5초)보다 조금 길다");
+  assert.ok(existsSync(new URL("brief-hook.mjs", import.meta.url)));
+  assert.ok(!/exit 2/.test(h.command), "brief hook은 턴을 막지 않는다");
 });

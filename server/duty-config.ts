@@ -3,13 +3,14 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { config } from "./config.ts";
-import { briefMaxCharsOf } from "./duty-brief.ts";
+import { briefDecisionsOf, briefMaxCharsOf } from "./duty-brief.ts";
 
 export interface DutyConfig {
   enabled: boolean;
   account: string;
   idleMin: number;
   briefMaxChars: number;
+  briefDecisions: number;
 }
 
 export const DEFAULT_ACCOUNT = "acct-2";
@@ -29,6 +30,7 @@ export function parseDutyConfig(raw: unknown): DutyConfig {
     account: typeof o.account === "string" && /^[A-Za-z0-9._-]{1,40}$/.test(o.account) ? o.account : DEFAULT_ACCOUNT,
     idleMin: idleMinOf(o.idleMin),
     briefMaxChars: briefMaxCharsOf(o.briefMaxChars),
+    briefDecisions: briefDecisionsOf(o.briefDecisions),
   };
 }
 

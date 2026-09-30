@@ -187,6 +187,26 @@
   background: transparent;
   color: var(--muted);
 }
+.du-card.is-draft.is-confirmed {
+  border-style: solid;
+  border-left-color: var(--radar);
+  color: var(--text);
+}
+.du-card.is-decisions {
+  border-left-color: var(--radar);
+}
+.du-dec-list {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.du-dec {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
 .du-card.is-loading {
   color: var(--faint);
   font-size: var(--text-xs);

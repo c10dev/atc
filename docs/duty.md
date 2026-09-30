@@ -441,6 +441,33 @@ Cards in the chat and the folded QUEUE row. Tier `flagged`: `duty/` manuals, scr
   - The test server was stopped by its saved PID, the temporary hook was reverted and the state folder removed.
 - **Left for later.** `decisions.jsonl` and confirm cards (D4), OCC reading charters (D5), a route for the SUPERVISOR's GO, focusing the item on the target tab, and keeping the drawer open across a link.
 
+### D4 as built (ATC-231)
+
+Memory from atc state. Tier **`user`**: `duty/settings.json` changed (the `UserPromptSubmit` hook). The `PreToolUse` guard is untouched and stays fail-closed; only the brief hook is fail-open. No OCC routing (D5), no L1 (D7).
+
+- **Brief hook** (`duty/brief-hook.mjs`, `UserPromptSubmit`, `… || exit 0`, hook timeout 8 s). It prints the text of `GET /api/duty/brief` (the same the `atcctl duty brief` command prints) to the turn, using `ATC_URL` (set by the server for the DUTY child, D3) or 7700. If the server is down, answers with an error, or does not answer in 5 s, it prints one line `brief unavailable: <reason>` (`ECONNREFUSED`, `HTTP 500`, `no answer in 5s`, `empty brief`) and exits 0; the turn runs. The hook's output arrives as a hook event, which the parser ignores: a run checked that `DUTY BRIEF` is not in `duty.jsonl` and does not reach the drawer.
+- **`decisions.jsonl`** (state folder, append-only) and pure `server/duty-decisions.ts`: `{op:"note", id:"SD-n", at, text, until?, from:"DD-n"}` and `{op:"retire", id, at, why?}`. `decisionsOf(lines, now)` folds them: a retire line turns a note off, a note past `until` is off without a retire line, the first line of an id wins, broken lines are skipped. It also gives which draft became which decision.
+- **Routes** (`server/duty-api.ts`). Writes are `fromThisApp` only (a JSON content type and a localhost `Origin`; `atcctl` has no Origin, so it cannot reach them). `atcctl` got no command that writes `decisions.jsonl`; `duty note` stays a proposal.
+  - `POST /api/duty/decisions {draft}` confirms a `note` draft. The text and `until` are read **from the draft on the server**, never from the request. Refused: not a note draft (404), already confirmed, dismissed, or `until` past (409).
+  - `POST /api/duty/decisions/:id/retire {why?}`: only a decision that is active now (404 otherwise).
+  - `POST /api/duty/drafts/:id/dismiss` appends `{kind:"dismiss", draft, at}` to `duty-drafts.jsonl` (a line without `id`, so it does not count in `DD-n` numbering). A confirmed draft cannot be dismissed.
+  - `GET /api/duty/decisions`: active decisions, draft → decision map, dismissed drafts (read only, same data as the brief).
+- **Cards.** A `note` draft card now has **확정** and **버림** (states: pending, `확정됨 · SD-n`, `버림`, `until이 지났습니다`; greyed when done). `atcctl duty card DECISIONS retire` (the existing `duty card` command and guard rule; no new subcommand) requests a **retire card**: the list of active decisions, each with **해제**. `charter` drafts stay read-only (D5). The drawer reads `/api/duty/decisions` when a draft arrives, when the screen's snapshot changes and after a click; no new polling.
+- **Brief content** (`server/duty-brief.ts`). A first section `STANDING DECISIONS n` with the last `duty.briefDecisions` (default 20, 1 to 100, `duty.json`) active decisions, oldest first: `SD-n — <text> (until …)`, and `… k older decisions not shown` when more are active. The text is the SUPERVISOR's own, folded to one line and cut at 300 characters. The brief still carries keys, counts and atc terms, never ticket or PR text. The cap `briefMaxChars` cuts the other sections first; decisions are cut last and the cut note names `DECISIONS`. D1's leftover is fixed: an absolute path inside an alert key is shortened to its last segment (the STAND name).
+- **Manual.** `duty/CLAUDE.md` and `.en.md`: a section "정해 둔 결정" / "Standing decisions" (the list at the top of every turn is all the rules in force, earlier chat is not a decision, propose with `duty note` then ask for the confirm, retire card, what to do on `brief unavailable`); the tool table and "How it works" no longer tell DUTY to call `duty brief` at every start.
+- **Pilot's discretion.**
+  - The retire card is requested with `duty card DECISIONS retire` so that `duty/guard.mjs` needed no change (a new allowed subcommand would have loosened the guard).
+  - A decision's text cut is 300 characters per row in the brief; 20 rows of the full 1,000 characters would not fit the 6,000 cap.
+  - The confirm and dismiss buttons act at once (the card itself is the confirm), unlike D3's inline buttons that ask first, because nothing runs: a decision only changes what the brief says.
+  - An `until` in a note is checked when it is proposed and again when it is confirmed.
+- **Checked (2026-09-30).** `npm test`, `tsc`, `vite build`. New cases: the hook with the server down (closed port, exit 0), slow, HTTP 500, empty and broken answers, and the real script against a local server; the decisions fold (retire, `until`, duplicates, broken lines); confirm and retire and dismiss routes refuse without an Origin, from another site and without a JSON content type, and write nothing; the confirmed text comes from the draft; double confirm, dismissed, past `until`; brief order, `briefDecisions`, cap and cut order, path shortening; settings pin (`UserPromptSubmit` only beside `PreToolUse`, `|| exit 0`). 7702 test server (`ATC_GITHUB=off`, temporary state folder), real DUTY on acct-2, about $0.23 of FUEL in all:
+  - "rule: reject acct-1 proposals until 2026-12-31" → DUTY called `duty note` and a note card appeared; **확정** wrote `SD-0001` to `decisions.jsonl` and the card showed `확정됨`;
+  - NEW SHIFT, then "what rules are in force?" with no tool call → DUTY answered `SD-0001` and its text, from the brief;
+  - "I want to drop it" → DUTY called `duty card DECISIONS retire`; the retire card listed `SD-0001`; **해제** wrote a `retire` line and the card showed none active; the next turn answered that no rule is in force (the brief had `STANDING DECISIONS 0`);
+  - with the server stopped (by saved PID), one real turn run with the same argv and `ATC_URL` at the closed port: the hook event was `brief unavailable: ECONNREFUSED` with exit 0, the turn ran, and DUTY said it could not know the rules and did not invent any;
+  - `DUTY BRIEF` does not appear in `duty.jsonl`. The test server, its state folder and the direct run were stopped by saved PID.
+- **Left for later.** OCC reading charters and the `charter` confirm (D5); a screen list of active decisions outside a card; editing a proposed note before confirming; showing which decisions a brief cut.
+
 ## 6. Risks
 
 | Risk | Mitigation |

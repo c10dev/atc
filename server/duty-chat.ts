@@ -9,7 +9,7 @@ export type ChatItem =
   | { id: string; kind: "notice"; text: string; t: string }
   | { id: string; kind: "shift"; t: string }
   | { id: string; kind: "card"; queueKind: string; key: string; draft: string; t: string }
-  | { id: string; kind: "draft"; draftKind: "note" | "charter"; draft: string; text: string; until: string | null; t: string };
+  | { id: string; kind: "draft"; draftKind: "note" | "charter" | "retire"; draft: string; text: string; until: string | null; t: string };
 
 export interface DutyStatusView {
   enabled: boolean;
@@ -45,7 +45,7 @@ export type DutyWire =
   | { type: "notice"; text: string; t: string }
   | { type: "shift"; t: string }
   | { type: "card"; queueKind: string; key: string; draft: string; t: string }
-  | { type: "draft"; draftKind: "note" | "charter"; draft: string; text: string; until?: string | null; t: string }
+  | { type: "draft"; draftKind: "note" | "charter" | "retire"; draft: string; text: string; until?: string | null; t: string }
   | { type: "usage"; turn: { context: number; costUsd: number | null } | null; rates: DutyRate[]; t: string }
   | { type: "init" | "other"; t?: string };
 

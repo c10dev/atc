@@ -29,6 +29,30 @@ export function useQueue(refreshKey: string, enabled: boolean): { queue: Supervi
   return { queue, reload };
 }
 
+// 정해 둔 결정(D4): 켜져 있는 것, 확정한 초안, 버린 초안. 카드가 나올 때·화면 snapshot이 바뀔 때·버튼을 누른 뒤에만 읽는다
+export interface DecisionsData {
+  active: { id: string; at: string; text: string; until: string | null; from: string }[];
+  confirmedDrafts: Record<string, string>;
+  dismissed: string[];
+}
+export function useDecisions(refreshKey: string, enabled: boolean, extra: number): { data: DecisionsData | null; reload: () => void } {
+  const [data, setData] = useState<DecisionsData | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    fetch("/api/duty/decisions")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: DecisionsData) => alive && setData(d))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [refreshKey, enabled, extra, tick]);
+  const reload = useCallback(() => setTick((n) => n + 1), []);
+  return { data, reload };
+}
+
 async function post(path: string, body: unknown): Promise<{ ok: boolean; error?: string; data: Record<string, unknown> }> {
   try {
     const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -198,6 +222,8 @@ export interface CardCtx {
   handled: ReadonlySet<string>;
   markHandled: (key: string) => void;
   now: number;
+  decisions: DecisionsData | null;
+  reloadDecisions: () => void;
 }
 
 export function DutyCard({ it, ctx }: { it: Extract<ChatItem, { kind: "card" }>; ctx: CardCtx }) {
@@ -227,17 +253,88 @@ export function DutyCard({ it, ctx }: { it: Extract<ChatItem, { kind: "card" }>;
   );
 }
 
-// note·charter 초안: 읽기만 하는 흐린 카드. 확정은 뒤 단계다(버튼 없음)
-export function DraftCard({ it }: { it: Extract<ChatItem, { kind: "draft" }> }) {
+// note·charter 초안. charter는 읽기만 하는 흐린 카드(확정은 D5). note는 SUPERVISOR가 확정하거나 버린다(D4): 확정은 decisions.jsonl에 적고,
+// 버림은 초안에 버렸다는 줄만 붙인다. 버튼은 이 화면의 fetch(Origin 검사)이고 DUTY가 누를 수 없다
+export function DraftCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }>; ctx: CardCtx }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (it.draftKind === "retire") return <DecisionsCard it={it} ctx={ctx} />;
+  const label = it.draftKind === "note" ? "NOTE" : "CHARTER REQUEST";
+  const sd = ctx.decisions?.confirmedDrafts[it.draft];
+  const dismissed = ctx.decisions?.dismissed.includes(it.draft) ?? false;
+  const expired = it.until !== null && Date.parse(it.until) <= ctx.now;
+  const act = async (path: string, body: unknown) => {
+    setBusy(true);
+    setErr(null);
+    const r = await post(path, body);
+    setBusy(false);
+    if (!r.ok) setErr(r.error ?? "실패");
+    ctx.reloadDecisions();
+  };
+  const pending = it.draftKind === "note" && ctx.decisions !== null && !sd && !dismissed && !expired;
   return (
-    <div className="du-card is-draft" aria-label={`${it.draftKind} 초안 ${it.draft}`}>
+    <div className={`du-card is-draft${sd ? " is-confirmed" : ""}${dismissed || expired ? " is-gone" : ""}`} aria-label={`${it.draftKind} 초안 ${it.draft}`}>
       <div className="du-card-head">
-        <span className="du-kind">{it.draftKind === "note" ? "NOTE" : "CHARTER REQUEST"}</span>
-        <span className="du-key mono">{it.draft}</span>
+        <span className="du-kind">{label}</span>
+        <span className="du-key mono">{sd ?? it.draft}</span>
       </div>
       <p className="du-draft-text">{it.text}</p>
       {it.until && <p className="du-hint mono">until {it.until}</p>}
-      <p className="du-hint">{it.draftKind === "note" ? "D4에서 확정" : "D5에서 확정"}</p>
+      {it.draftKind === "charter" && <p className="du-hint">D5에서 확정</p>}
+      {sd && <p className="du-hint">확정됨 · 이제 매 턴 맨 위에 실립니다</p>}
+      {dismissed && <p className="du-hint">버림</p>}
+      {!sd && !dismissed && expired && <p className="du-hint">until이 지났습니다</p>}
+      {pending && (
+        <div className="du-actions">
+          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void act("/api/duty/decisions", { draft: it.draft })}>
+            확정
+          </button>
+          <button type="button" className="dr-btn" disabled={busy} onClick={() => void act(`/api/duty/drafts/${encodeURIComponent(it.draft)}/dismiss`, {})}>
+            버림
+          </button>
+        </div>
+      )}
+      {err && <p className="du-err">{err}</p>}
+    </div>
+  );
+}
+
+// 정해 둔 결정의 목록 카드(`duty card DECISIONS retire`): 켜져 있는 결정마다 해제 버튼. 해제는 retire 줄을 적을 뿐이다
+function DecisionsCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }>; ctx: CardCtx }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const list = ctx.decisions?.active ?? null;
+  const retire = async (id: string) => {
+    setBusy(id);
+    setErr(null);
+    const r = await post(`/api/duty/decisions/${encodeURIComponent(id)}/retire`, {});
+    setBusy(null);
+    if (!r.ok) setErr(r.error ?? "실패");
+    ctx.reloadDecisions();
+  };
+  return (
+    <div className="du-card is-decisions" aria-label={`정해 둔 결정 ${it.draft}`}>
+      <div className="du-card-head">
+        <span className="du-kind">STANDING DECISIONS</span>
+        <span className="du-key mono">{list ? list.length : "…"}</span>
+      </div>
+      {list && list.length === 0 && <p className="du-hint">켜져 있는 결정이 없습니다</p>}
+      <ul className="du-dec-list">
+        {(list ?? []).map((d) => (
+          <li key={d.id} className="du-dec">
+            <p className="du-draft-text">
+              <span className="mono du-key">{d.id}</span> {d.text}
+            </p>
+            {d.until && <p className="du-hint mono">until {d.until}</p>}
+            <div className="du-actions">
+              <button type="button" className="dr-btn" disabled={busy === d.id} onClick={() => void retire(d.id)}>
+                해제
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {err && <p className="du-err">{err}</p>}
     </div>
   );
 }
