@@ -1,0 +1,2 @@
+### Fixed
+- The systemd scope that LAUNCH starts `claude` in (and so the background-session daemon) now has `OOMPolicy=continue`. Before, one OOM-killed process in it, such as a team session's test run, made systemd stop the whole scope, and every background session ended with it (2026-09-30: 12 sessions). Only a daemon started by a LAUNCH after this change gets the setting ([docs/fleet.md](docs/fleet.md)).
