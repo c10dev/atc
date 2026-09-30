@@ -9,7 +9,9 @@ import { createInterface } from "node:readline";
 import { dirname, join } from "node:path";
 import type { Context, Hono } from "hono";
 import { dutyArgvOf } from "../duty/spawn.mjs";
-import { folderOfAccount } from "./accounts.ts";
+import { accountFolders } from "./accounts.ts";
+import { accountNotice } from "./duty-chat.ts";
+import { canResumeOn, effectiveDutyFolder } from "./duty-account.ts";
 import { cleanEnv } from "./clean-env.ts";
 import { config } from "./config.ts";
 import { type DutyConfig, loadDutyConfig, saveDutyConfig } from "./duty-config.ts";
@@ -81,9 +83,11 @@ export class DutyRuntime {
   }
 
   private file = (name: string) => join(this.o.stateDir, name);
+  private sessionAccount: string | null = null; // 저장된 대화가 시작된 ACCOUNT(ATC-242). 옛 파일엔 없다
   private readSession(): string | null {
     try {
-      const j = JSON.parse(readFileSync(this.file("duty-session.json"), "utf8")) as { sessionId?: unknown };
+      const j = JSON.parse(readFileSync(this.file("duty-session.json"), "utf8")) as { sessionId?: unknown; account?: unknown };
+      this.sessionAccount = typeof j.account === "string" ? j.account : null;
       return typeof j.sessionId === "string" ? j.sessionId : null;
     } catch {
       return null;
@@ -93,7 +97,7 @@ export class DutyRuntime {
     const f = this.file("duty-session.json");
     mkdirSync(dirname(f), { recursive: true });
     const tmp = `${f}.${process.pid}.tmp`;
-    writeFileSync(tmp, `${JSON.stringify({ sessionId: this.s.sessionId, updatedAt: new Date(this.now()).toISOString() })}\n`);
+    writeFileSync(tmp, `${JSON.stringify({ sessionId: this.s.sessionId, account: this.sessionAccount, updatedAt: new Date(this.now()).toISOString() })}\n`);
     renameSync(tmp, f);
   }
   private append(line: DutyLogLine) {
@@ -185,8 +189,14 @@ export class DutyRuntime {
   // 설정이 바뀌었을 때(설정 창): 끄면 프로세스를 끝내고, ACCOUNT가 바뀌면 새 대화로 시작한다
   async configChanged(prev: DutyConfig, next: DutyConfig) {
     if (prev.enabled && !next.enabled) this.apply({ kind: "disable" });
-    else if (prev.account !== next.account) this.apply({ kind: "reconfigure" });
-    else return;
+    else if (prev.account !== next.account) {
+      // ATC-242: 돌고 있는 턴은 옛 ACCOUNT에서 끝나고(reconfigure는 끝난 뒤 프로세스를 닫는다), 다음 글부터 새 ACCOUNT의 새 대화다. 바뀐 것을 한 줄 남긴다
+      const t = new Date(this.now()).toISOString();
+      this.append({ t, kind: "account", from: prev.account, to: next.account, by: "SUPERVISOR" });
+      this.emit({ type: "notice", text: accountNotice(prev.account, next.account) });
+      this.apply({ kind: "reconfigure" });
+      this.sessionAccount = next.account;
+    } else return;
     this.saveSession();
     this.emit({ type: "status", ...this.status() }); // 켜짐·ACCOUNT가 바뀌었다: 화면이 헤더를 다시 정한다
   }
@@ -231,8 +241,11 @@ export class DutyRuntime {
   private spawnProc(resume: boolean) {
     const cfg = this.o.loadConfig();
     const dir = this.o.accountDir(cfg.account);
-    const argv = dutyArgvOf({ claudeBin: this.o.claudeBin, ...(this.o.dutyDir ? { dir: this.o.dutyDir } : {}), ...(resume && this.s.sessionId ? { sessionId: this.s.sessionId } : {}), resume });
+    // 저장된 대화가 다른 ACCOUNT에서 시작됐으면(duty.json을 손으로 고쳤거나 서버가 내려가 있는 사이 바뀜) --resume이 안 되니 새 대화로 띄운다
+    const res = resume && canResumeOn(this.sessionAccount, cfg.account);
+    const argv = dutyArgvOf({ claudeBin: this.o.claudeBin, ...(this.o.dutyDir ? { dir: this.o.dutyDir } : {}), ...(res && this.s.sessionId ? { sessionId: this.s.sessionId } : {}), resume: res });
     this.s = { ...this.s, sessionId: argv.sessionId };
+    this.sessionAccount = cfg.account;
     this.saveSession();
     this.badBase += this.parser.malformed();
     this.parser = createDutyParser();
@@ -330,7 +343,7 @@ export function duty(): DutyRuntime {
     stateDir: config.stateDir,
     claudeBin: config.claudeBin,
     loadConfig: () => loadDutyConfig(),
-    accountDir: (label) => folderOfAccount(label)?.dir ?? null,
+    accountDir: (label) => effectiveDutyFolder(label, accountFolders(), config.claudeDir).folder?.dir ?? null,
   });
   return singleton;
 }

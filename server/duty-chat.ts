@@ -33,7 +33,9 @@ export interface Chat {
   seq: number;
 }
 
-export const emptyChat = (): Chat => ({ items: [], streaming: "", status: null, seq: 0 });
+export const accountNotice = (from: string, to: string) => `DUTY ACCOUNT ${from} → ${to} · 다음 메시지부터 새 대화`;
+
+export const emptyChat =(): Chat => ({ items: [], streaming: "", status: null, seq: 0 });
 
 // 서버 SSE `duty` 이벤트(DutyEvent + t, 그리고 연결 때의 status)
 export type DutyWire =
@@ -67,6 +69,7 @@ export function chatFromHistory(lines: readonly (DutyLogLine & { n?: number })[]
     else if (l.kind === "tool") c = push(c, { kind: "tool", name: l.name, summary: l.summary, error: l.error, t: l.t });
     else if (l.kind === "notice") c = push(c, { kind: "notice", text: l.text, t: l.t });
     else if (l.kind === "shift") c = push(c, { kind: "shift", t: l.t });
+    else if (l.kind === "account") c = push(c, { kind: "notice", text: accountNotice(l.from, l.to), t: l.t });
     else if (l.kind === "card") c = push(c, { kind: "card", queueKind: l.queueKind, key: l.key, draft: l.draft, t: l.t });
     else if (l.kind === "draft") c = push(c, { kind: "draft", draftKind: l.draftKind, draft: l.draft, text: l.text, until: l.until ?? null, t: l.t });
   }

@@ -122,3 +122,22 @@ test("disable(설정 끔): 프로세스를 끝내고 idle로. 없으면 할 일 
   assert.deepEqual(r.acts.slice(-1), ["close-stdin"]);
   assert.deepEqual(step(initialState(), { kind: "disable" }, 0).actions, []);
 });
+
+test("ACCOUNT 변경: 턴이 도는 중이면 그 턴은 끝내고(retiring) 줄 선 글은 새 대화로 이어 받는다(ATC-242)", () => {
+  let s = step(initialState("11111111-1111-4111-8111-111111111111"), { kind: "message", msg: M("a") }, 1).state;
+  s = step(s, { kind: "message", msg: M("b") }, 2).state;
+  const re = step(s, { kind: "reconfigure" }, 3);
+  assert.deepEqual(re.actions, [], "도는 턴을 죽이지 않는다");
+  assert.ok(re.state.retiring && re.state.sessionId === null);
+  assert.equal(step(re.state, { kind: "message", msg: M("c") }, 4).verdict, "queued");
+  const done = step(re.state, { kind: "result" }, 5);
+  assert.deepEqual(done.actions, [{ do: "close-stdin" }], "턴이 끝나면 옛 프로세스를 닫는다");
+  const ex = step(done.state, { kind: "exit" }, 6);
+  assert.deepEqual(ex.actions, [{ do: "spawn", resume: false }, { do: "write", msg: M("b") }]);
+  assert.ok(!ex.state.retiring && ex.state.queue.length === 0);
+  // 줄 선 글이 없으면 그냥 끝나고 다음 글이 새 대화로 띄운다
+  const t = step(step(step(initialState(), { kind: "message", msg: M("a") }, 1).state, { kind: "reconfigure" }, 2).state, { kind: "result" }, 3);
+  const e2 = step(t.state, { kind: "exit" }, 4);
+  assert.ok(!e2.state.alive && !e2.state.retiring);
+  assert.deepEqual(step(e2.state, { kind: "message", msg: M("n") }, 5).actions[0], { do: "spawn", resume: false });
+});
