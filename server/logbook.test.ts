@@ -17,6 +17,7 @@ import {
   type LogEntry,
   type LogLine,
   measureLines,
+  needsDetails,
   needsFindings,
   planLogbook,
   readLogbook,
@@ -379,4 +380,17 @@ test("measureLines: AD HOC은 지시서 null, AIRCRAFT를 모르거나 대화 �
   const old = entry(9, { departedAt: "2026-09-24T07:05:00Z", stands: ["/w/voc-1"], measured: { brief: null, rework: 0, findings: { p0: 0, p1: 0, p2: 0 } } });
   assert.deepEqual(measureLines([old], { pulls: new Map(), eventsOf: () => events, threads: new Map(), reviews: [] }, NOW), [{ op: "measured", t: "2026-09-28T00:00:00.000Z", key: "o/atc#9", crew: "SOLO" }]);
   assert.deepEqual(measureLines([{ ...old, measured: { ...old.measured, crew: null } }], { pulls: new Map(), eventsOf: () => events, threads: new Map(), reviews: [] }, NOW), []);
+});
+
+test("needsDetails: 줄 없는 새 PR, 30일 안이고 rework 없는 줄만 읽고 나머지는 건너뛴다. Revert PR은 줄 없이 되돌림으로 알아본다", () => {
+  const NOW = Date.parse("2026-09-28T00:00:00Z");
+  const e = (n: number, over: Partial<LogEntry> = {}) => ({ ...foldLogbook([{ op: "arrived", t: "x", ...buildEntry(pr({ number: n, mergedAt: "2026-09-26T14:00:00Z" }), ctx()) }])[0], ...over });
+  const entries = [e(2), e(3, { measured: { rework: 0 } }), e(4, { arrivedAt: "2026-08-01T00:00:00Z" })];
+  const pulls = [1, 2, 3, 4].map((n) => ({ slug: "o/atc", pr: pr({ number: n }) }));
+  assert.deepEqual(needsDetails(pulls, entries, NOW), [{ slug: "o/atc", number: 1 }, { slug: "o/atc", number: 2 }]);
+  const rev = pr({ number: 9, title: 'Revert "Add the LOGBOOK (VOC-201)"', body: "Reverts o/atc#2", mergedAt: "2026-09-27T00:00:00Z" });
+  delete rev.reviews;
+  assert.deepEqual(needsDetails([{ slug: "o/atc", pr: rev }], entries, NOW), []);
+  const lines = planLogbook([{ ctx: ctx(), pulls: [rev] }], entries.map((x) => ({ op: "arrived" as const, t: "x", ...x })), "2026-09-28T00:00:00.000Z");
+  assert.deepEqual(lines.filter((l) => l.op === "reverted").map((l) => l.key), ["o/atc#2"]);
 });

@@ -18,7 +18,7 @@ import { type PricedEntry, tripCheckOf } from "./fuel-view.ts";
 import { sessionDirsOf } from "./crew-observed.ts";
 import { readLandingReviews } from "./landing-review.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
-import { type GhMerged, listMerged, threadsOf } from "./sources/github.ts";
+import { fetchMergedDetails, type GhMerged, listMerged, threadsOf } from "./sources/github.ts";
 import { regKey } from "./registration.ts";
 
 // LOGBOOK: AIRCRAFT별 완료(ARRIVED) FLIGHT 기록. 기본 브랜치에 머지된 PR 하나가 한 줄이다.
@@ -276,6 +276,21 @@ export function planLogbook(merged: { ctx: EntryContext; pulls: GhMerged[] }[], 
   return out;
 }
 
+// 머지 PR 중 리뷰·커밋을 읽어야 하는 것(ATC-160): LOGBOOK 줄이 아직 없는 PR(buildEntry), 또는 MEASURE_DAYS 안이고 rework를 아직 안 잰 PR.
+// Revert PR은 줄을 만들지 않으니 읽지 않는다
+export function needsDetails(pulls: { slug: string; pr: Pick<GhMerged, "number" | "title"> }[], entries: LogEntry[], now: number): { slug: string; number: number }[] {
+  const since = now - MEASURE_DAYS * DAY;
+  const byKey = new Map(entries.map((e) => [e.key, e]));
+  return pulls
+    .filter(({ slug, pr }) => {
+      if (/^Revert "/.test(pr.title.trim())) return false;
+      const e = byKey.get(`${slug}#${pr.number}`);
+      if (!e) return true;
+      return Boolean(e.pr) && e.landingWaitMin !== null && Date.parse(e.arrivedAt) >= since && e.measured?.rework === undefined;
+    })
+    .map(({ slug, pr }) => ({ slug, number: pr.number }));
+}
+
 // AIRCRAFT를 몰랐던 LOGBOOK 줄 하나에 대한 보정 줄. 착수 기록이 생기기 전 FLIGHT는 대개 채우지 못한다(정상).
 export function attribution(e: LogEntry, repo: string, departures: Departure[], now: string): Extract<LogLine, { op: "attributed" }> | null {
   if (!e.pr || e.landingWaitMin === null) return null; // STAND 없는 FLIGHT 줄은 확인할 때 AIRCRAFT를 안다
@@ -462,6 +477,21 @@ async function run(s: Snapshot, addFuel: LogbookFuel | null) {
     }
   }
   const old = readLogbook();
+  // 리뷰·커밋은 필요한 PR만 따로 읽는다. 실패하면 그 PR은 다음 바퀴에(새 PR이면 줄도 다음 바퀴에)
+  const known = new Set(foldLogbook(old).map((e) => e.key));
+  const want = needsDetails(merged.flatMap(({ ctx, pulls }) => pulls.map((pr) => ({ slug: ctx.slug, pr }))), foldLogbook(old), Date.now());
+  const failed = new Set<string>();
+  for (const w of want) {
+    const pr = merged.find(({ ctx }) => ctx.slug === w.slug)?.pulls.find((p) => p.number === w.number);
+    if (!pr) continue;
+    try {
+      Object.assign(pr, await fetchMergedDetails(w.slug, w.number));
+    } catch (e) {
+      failed.add(`${w.slug}#${w.number}`);
+      errors.push(`#${w.number}: ${(e as Error).message.split("\n")[0]}`);
+    }
+  }
+  for (const m of merged) m.pulls = m.pulls.filter((p) => !failed.has(`${m.ctx.slug}#${p.number}`) || known.has(`${m.ctx.slug}#${p.number}`));
   const lines = planLogbook(merged, old);
   try {
     addFuel?.(lines, foldLogbook([...old, ...lines]), s);
