@@ -269,6 +269,9 @@ app.get("/api/events", (c) => {
       summaryListeners.delete(sendSummary);
       unRadio?.();
     });
+    // 연결하자마자 ping 하나(ATC-210): 초기 이벤트가 없는 스트림(topics=radio)은 첫 ping까지 25초 동안 조용했다. 첫 이벤트를 기다리는 클라이언트(atc-app RadioStream의 onUp)가 바로 알게 한다.
+    // 이벤트 이름·데이터·topics는 그대로다. ping은 늘 data가 비어 있고 스냅샷·알림이 아니다
+    await stream.writeSSE({ event: "ping", data: "" });
     while (!stream.aborted) {
       await stream.sleep(25_000);
       await stream.writeSSE({ event: "ping", data: "" });

@@ -23,7 +23,7 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 
 tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 때만 다시 읽음). 화면이 불러오는 진입 스크립트 `/assets/index-<hash>.js`가 빌드 정체(build)다. 같은 번들로 재시작하면 그대로고, 다시 빌드하면 재시작하지 않아도 바뀐다. 빌드가 없으면 `null`.
 
-`/api/events`는 연결하면 `event: version`(`{build, startedAt}`)과 현재 스냅샷을 보내고, 이후 스냅샷이 바뀔 때마다, build가 바뀔 때마다 `version`을 다시 보내며, 25초마다 `ping`을 보낸다. 재시작 뒤 EventSource가 스스로 다시 붙으므로, 열려 있던 탭은 폴링 없이 배포를 알고 "새 버전이 배포됨 · 새로고침" 알림을 띄운다.
+`/api/events`는 연결하면 `event: version`(`{build, startedAt}`)과 현재 스냅샷을 보내고, 이후 스냅샷이 바뀔 때마다, build가 바뀔 때마다 `version`을 다시 보내며, 연결하자마자 `ping` 하나를 보내고 이어서 25초마다 `ping`을 보낸다(ATC-210). 재시작 뒤 EventSource가 스스로 다시 붙으므로, 열려 있던 탭은 폴링 없이 배포를 알고 "새 버전이 배포됨 · 새로고침" 알림을 띄운다.
 
 ## 소스 (`sources/`)
 

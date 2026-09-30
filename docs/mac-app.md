@@ -12,7 +12,7 @@ Related: [guide/menubar.md](guide/menubar.md) (the SwiftBar plugin and the SSH f
 - atc has no login. SUPERVISOR-only writes are guarded by a browser Origin check (`server/origin.ts`). That check stops other sites' browser requests. It is not access control, because a direct client can send `Origin: http://localhost`.
 - **What a client reads today:**
   - `/api/supervisor-alerts`: 40 KB, `items[]` with `key`, `group`, `level`, `cue`, `aircraft`, `flight`, `text`, `next`, `link`, `since`;
-  - `/api/events` (SSE): `version`, `snapshot`, `alert`, and `ping` every 25 s. **Each `snapshot` event is the whole snapshot, 340 KB.**
+  - `/api/events` (SSE): `version`, `snapshot`, `alert`, and `ping` (one at once on every connect, then every 25 s; ATC-210). **Each `snapshot` event is the whole snapshot, 340 KB.**
   - `/api/fleet` for `fuelAccounts`, `/api/update` for RTS, `/api/control/sessions`, and `/api/voice/alert/:key.wav`.
 - The SwiftBar plugin works out the title numbers itself in `menubar/format.mjs`, and the browser does the same in its own code. Two clients already compute the same summary, and a third (the app) would be one more.
 
@@ -27,7 +27,7 @@ Related: [guide/menubar.md](guide/menubar.md) (the SwiftBar plugin and the SSH f
 
 - **`GET /api/events?topics=alert,version`**
   - Topics are a comma list out of `snapshot`, `alert`, `version` and `summary`. With no `topics`, the endpoint sends everything except `summary`, exactly as today.
-  - `ping` is always sent.
+  - `ping` is always sent: one at once on connect, before the listeners are added, and then every 25 s. A stream with no initial event (`topics=radio`) therefore gets its first event immediately instead of after 25 s (ATC-210); atc-app `RadioStream` relies on it. `ping` has empty data and is not a snapshot or an alert.
   - An unknown topic returns 400.
 - **`GET /api/supervisor-summary`**, and the `summary` SSE topic, which is sent when the summary changes. The body is `{ v: 1, at, … }`:
   - `master: "warning" | "caution" | null` and `counts: { warning, caution, advisory }`, taken from `supervisor-alerts` after ATC-152's noise fixes;
