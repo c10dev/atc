@@ -1,6 +1,6 @@
 import type { ServerSettings } from "./settings.ts";
 
-// 설정 창 AUTOMATION 탭의 계산(ATC-131). SUPERVISOR 정책 스위치의 "지금 모드 한 줄", ⚠ 모드로 올릴 때 확인이 필요한지, 마지막 탭 기억.
+// 설정 창의 계산(ATC-131). SUPERVISOR 정책 스위치(AUTOMATION: LANDING·OPERATIONS)의 "지금 모드 한 줄", ⚠ 모드로 올릴 때 확인이 필요한지, 마지막 분류 기억, 설정 찾기.
 // 저장 값과 PUT /api/settings는 그대로다. 여기는 화면에 보이는 이름과 판단만 다룬다.
 export type PolicyKey = "autoland" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle";
 
@@ -52,5 +52,58 @@ export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "revie
 }
 export const modeLine = (segs: readonly ModeSegment[]): string => segs.map((x) => `${x.label} ${x.value}`).join(" · ");
 
-// 설정 창이 다시 열릴 때 마지막 탭. 저장된 값이 없거나 모르는 값이면 fallback(화면)
-export const settingsTabOf = <T extends string>(stored: string | null | undefined, ids: readonly T[], fallback: T): T => ids.find((id) => id === stored) ?? fallback;
+// 설정 창이 다시 열릴 때 마지막 분류. 저장된 값이 없거나 모르는 값이면 fallback(화면).
+// 옛 AUTOMATION 탭(한 탭이던 때)은 LANDING으로 연다
+export const settingsTabOf = <T extends string>(stored: string | null | undefined, ids: readonly T[], fallback: T): T => {
+  const id = stored === "automation" ? "landing" : stored;
+  return ids.find((x) => x === id) ?? fallback;
+};
+
+// 설정 창 왼쪽 메뉴의 분류. landing·operations는 AUTOMATION 묶음(SUPERVISOR 정책 스위치)
+export type SettingsTab = "display" | "linear" | "agents" | "accounts" | "alerts" | "landing" | "operations";
+
+// 설정 찾기의 색인: 블록마다 분류, 제목 코드(화면의 h3), 한국어 이름, 찾을 말(줄 이름·환경 변수·저장 값).
+// 블록을 더하거나 옮기면 여기도 고친다(settings-policy.test.ts가 분류마다 하나 이상인지 본다)
+export interface SettingsEntry {
+  tab: SettingsTab;
+  code: string;
+  label: string;
+  words: string;
+}
+export const SETTINGS_INDEX: readonly SettingsEntry[] = [
+  { tab: "display", code: "THEME", label: "테마", words: "radar cockpit night sky 색 다크 라이트" },
+  { tab: "display", code: "MOTION", label: "애니메이션", words: "스위프 별 깜빡임 움직임" },
+  { tab: "display", code: "TIME", label: "시각 표시", words: "utc 현지 시계 clock last contact" },
+  { tab: "display", code: "DENSITY", label: "밀도", words: "촘촘하게 compact comfortable" },
+  { tab: "display", code: "METEORS", label: "유성(Night Sky 테마에서만)", words: "night" },
+  { tab: "linear", code: "CONNECTION", label: "Linear 연결", words: "connected 동기화 error" },
+  { tab: "linear", code: "WORKSPACE", label: "Linear 설정", words: "api key team teams LINEAR_API_KEY LINEAR_TEAM_KEY LINEAR_TEAM_KEYS 키 팀" },
+  { tab: "agents", code: "SOURCES", label: "에이전트", words: "claude code codex claim hook 세션" },
+  { tab: "agents", code: "CONTROL", label: "관제 세션", words: "control sessions launch stop tower occ mcc" },
+  { tab: "agents", code: "STANDS", label: "점유 규칙", words: "stand handoff airport 폴더 ATC_CLAIM_TTL_MIN ATC_HANDOFF_GRACE_MIN ATC_PROJECTS_DIR 유예" },
+  { tab: "agents", code: "CALLSIGNS", label: "콜사인", words: "team 음성 알파벳 alpha" },
+  { tab: "accounts", code: "ACCOUNTS", label: "ACCOUNT 폴더", words: "account add login 계정 추가 로그인 CLAUDE_CONFIG_DIR statusline health hook acct" },
+  { tab: "alerts", code: "NOTIFY", label: "브라우저 알림", words: "notification 알림 권한" },
+  { tab: "alerts", code: "SOUND", label: "소리", words: "warning caution call 방해 금지 quiet 톤" },
+  { tab: "alerts", code: "VOICE", label: "음성 콜아웃", words: "tts piper espeak kokoro 목소리 무전 radio" },
+  { tab: "landing", code: "AUTOLAND", label: "착륙 자동화", words: "update merge ground stop autoland.mode" },
+  { tab: "landing", code: "MCC", label: "atc 착륙·RETURN TO SERVICE", words: "shadow land rts land+rts rollback 배포 shadow gate mcc.mode" },
+  { tab: "landing", code: "REVIEW", label: "Codex 한도 때 착륙 리뷰", words: "보안 pr sonnet deepseek exclude externalReview.security" },
+  { tab: "operations", code: "FUEL", label: "사용 한도 HOLD", words: "dispatch hold 사용량 한도 fuel.hold" },
+  { tab: "operations", code: "REPOSITION", label: "소속 AIRPORT 옮기기", words: "base fleet plan approval auto fleet-plan.reposition" },
+  { tab: "operations", code: "CONTROL RECYCLE", label: "관제 세션 자동 재시작", words: "cap 컨텍스트 context 재시작 auto alert controlRecycle.mode" },
+  { tab: "operations", code: "JUDGES", label: "판정 계열", words: "jev typesafe replay shadow judges.jev" },
+];
+
+// 찾기: 빈칸으로 나눈 말이 모두 코드·이름·찾을 말 안에 있는 블록. 대소문자는 가리지 않는다.
+// 코드가 첫 말로 시작하는 블록을 앞에, 나머지는 색인 순서대로
+export function settingsSearch(query: string, index: readonly SettingsEntry[] = SETTINGS_INDEX): SettingsEntry[] {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return [];
+  const hits = index.filter((e) => {
+    const hay = `${e.code} ${e.label} ${e.words}`.toLowerCase();
+    return terms.every((t) => hay.includes(t));
+  });
+  const lead = (e: SettingsEntry) => (e.code.toLowerCase().startsWith(terms[0]) ? 0 : 1);
+  return hits.map((e, i) => ({ e, i })).sort((a, b) => lead(a.e) - lead(b.e) || a.i - b.i).map((x) => x.e);
+}

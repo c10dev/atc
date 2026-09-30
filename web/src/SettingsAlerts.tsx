@@ -221,7 +221,7 @@ export function AlertsSettings({ save }: { save: Save }) {
 
 function Section({ code, label, hint, children }: { code: string; label: string; hint?: string; children: ReactNode }) {
   return (
-    <section className="settings-section">
+    <section className="settings-section" data-code={code}>
       <h3 className="label">
         {code} <em>{label}</em>
       </h3>

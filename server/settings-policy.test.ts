@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { recycleAutoGuardOf, isRisky, modeLine, modeSegments, needsConfirm, reviewLabel, settingsTabOf } from "./settings-policy.ts";
+import { recycleAutoGuardOf, isRisky, modeLine, modeSegments, needsConfirm, reviewLabel, SETTINGS_INDEX, settingsSearch, settingsTabOf } from "./settings-policy.ts";
 import type { ServerSettings } from "./settings.ts";
 
 const settings = (over: Partial<Pick<ServerSettings, "autoland" | "mcc" | "review" | "fuel">> & { jev?: string } = {}) =>
@@ -56,11 +56,42 @@ test("reviewLabel: 저장 값 deepseek은 sonnet (deepseek)로만 보이고 excl
 });
 
 test("settingsTabOf: 저장된 탭이 있으면 그것, 없거나 모르는 값이면 화면", () => {
-  const ids = ["display", "linear", "agents", "automation"] as const;
-  assert.equal(settingsTabOf("automation", ids, "display"), "automation");
+  const ids = ["display", "linear", "agents", "landing"] as const;
+  assert.equal(settingsTabOf("agents", ids, "display"), "agents");
   assert.equal(settingsTabOf(null, ids, "display"), "display");
   assert.equal(settingsTabOf("gone", ids, "display"), "display");
   assert.equal(settingsTabOf(undefined, ids, "display"), "display");
+});
+
+test("settingsTabOf: 옛 AUTOMATION 탭은 LANDING으로 연다", () => {
+  const ids = ["display", "landing", "operations"] as const;
+  assert.equal(settingsTabOf("automation", ids, "display"), "landing");
+  assert.equal(settingsTabOf("operations", ids, "display"), "operations");
+});
+
+test("settingsSearch: 코드·한국어 이름·찾을 말, 대소문자 무시, 모든 말이 맞아야", () => {
+  assert.deepEqual(settingsSearch("fuel").map((e) => e.code), ["FUEL"]);
+  assert.deepEqual(settingsSearch("목소리").map((e) => e.code), ["VOICE"]);
+  assert.deepEqual(settingsSearch("음성").map((e) => e.code), ["CALLSIGNS", "VOICE"]);
+  assert.deepEqual(settingsSearch("LINEAR_API_KEY").map((e) => e.code), ["WORKSPACE"]);
+  assert.deepEqual(settingsSearch("로그인").map((e) => e.tab), ["accounts"]);
+  assert.deepEqual(settingsSearch("control recycle").map((e) => e.code), ["CONTROL RECYCLE"]);
+  assert.deepEqual(settingsSearch("   "), []);
+  assert.deepEqual(settingsSearch("없는말"), []);
+});
+
+test("settingsSearch: 코드가 첫 말로 시작하는 블록이 앞", () => {
+  const codes = settingsSearch("control").map((e) => e.code);
+  assert.deepEqual(codes.slice(0, 2), ["CONTROL", "CONTROL RECYCLE"]);
+  // shadow는 MCC·JUDGES의 찾을 말. 둘 다 코드로 시작하지 않으니 색인 순서
+  assert.deepEqual(settingsSearch("shadow").map((e) => e.code), ["MCC", "JUDGES"]);
+});
+
+test("SETTINGS_INDEX: 분류마다 블록이 하나 이상, 같은 코드는 한 번", () => {
+  for (const tab of ["display", "linear", "agents", "accounts", "alerts", "landing", "operations"]) {
+    assert.ok(SETTINGS_INDEX.some((e) => e.tab === tab), tab);
+  }
+  assert.equal(new Set(SETTINGS_INDEX.map((e) => e.code)).size, SETTINGS_INDEX.length);
 });
 
 test("recycleAutoGuardOf(ATC-175): alert → auto는 ⚠ 확인, auto → alert와 같은 값은 확인 없이. OCC는 문구가 따로", () => {
