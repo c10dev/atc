@@ -19,6 +19,14 @@ export const isRisky = (key: PolicyKey, mode: string): boolean => RISKY[key].inc
 // 지금 모드에서 to로 옮길 때 확인 단계가 필요한가. 같은 값이면 저장할 것이 없고, ⚠ 모드로 가면(⚠에서 ⚠로도) 늘 확인한다. 내리는 것은 그대로 저장
 export const needsConfirm = (key: PolicyKey, from: string, to: string): boolean => from !== to && isRisky(key, to);
 
+// CONTROL RECYCLE의 세션별 auto 스위치(ATC-175): alert → auto로 올리면 mode `on`처럼 ⚠ 확인이 필요하다(모든 세션). 내리는 것은 확인 없이 저장.
+// OCC는 문구가 따로다: 도착 보고 틈과 CHARTER REQUEST가 닫힌 뒤(ATC-169)에만 켠다
+export function recycleAutoGuardOf(session: string, wasAuto: boolean, to: "auto" | "alert"): { line: string; warn: boolean } | null {
+  if (to !== "auto" || wasAuto) return null;
+  const base = "auto ⚠ 이 세션도 atc가 스스로 STOP·LAUNCH한다(CAP을 넘고 턴 사이이며 안전한 순간에, 스위치가 on일 때).";
+  return { line: session === "OCC" ? `${base} OCC는 도착 보고 기록·wip CHARTER REQUEST 매뉴얼(ATC-169)이 돌고 있을 때만 켠다.` : base, warn: true };
+}
+
 // REVIEW의 보이는 이름. 저장 값은 dispatch.json의 `deepseek` 그대로다(옛 이름, 뜻은 "REVIEW 세션에 보냄")
 export const reviewLabel = (v: string): string => (v === "deepseek" ? "sonnet (deepseek)" : v);
 

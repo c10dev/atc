@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import type { MccGate } from "../../server/mcc.ts";
 import type { ServerSettings } from "../../server/settings.ts";
-import { modeLine, modeSegments, needsConfirm, reviewLabel, type PolicyKey } from "../../server/settings-policy.ts";
+import { modeLine, modeSegments, needsConfirm, recycleAutoGuardOf, reviewLabel, type PolicyKey } from "../../server/settings-policy.ts";
 import { timeAgo } from "./derive.ts";
 import { Block, EditNote, EditRow, type Save, type SaveResult, ServerRows, type Loaded } from "./SettingsServer.tsx";
 
@@ -229,7 +229,7 @@ function RecycleSessions({ caps, auto, save }: { caps: Record<string, number | n
           value={x.auto ? "auto" : "alert"}
           note={x.auto ? "CAP을 넘으면 atc가 안전한 순간에 재시작한다(스위치가 shadow·on일 때)" : "CAP을 넘어도 재시작하지 않고 알림만 한다(OCC: 미기록 CAPTAIN 보고 틈이 닫힐 때까지)"}
           input={{ kind: "select", options: ["auto", "alert"], labels: { auto: "auto (재시작)", alert: "alert (알림만)" } }}
-          guard={(to) => (to === "auto" && !x.auto ? { line: "auto ⚠ 이 세션도 atc가 스스로 STOP·LAUNCH한다.", warn: true } : null)}
+          guard={(to) => recycleAutoGuardOf(x.name, x.auto, to === "auto" ? "auto" : "alert")}
           onSave={(t) => save({ controlRecycleAuto: { [x.name]: t === "auto" } })}
         />
         </Fragment>

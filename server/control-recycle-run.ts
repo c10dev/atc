@@ -2,28 +2,33 @@ import type { Hono } from "hono";
 import { foldReports, readReports } from "./arrival-report.ts";
 import { readWips, wipView } from "./charter-wip.ts";
 import { arrivalMissingOf, followingNow } from "./following.ts";
-import { restartSafetyOf } from "./occ-safe.ts";
+import { type RestartSafety, restartSafetyOf } from "./occ-safe.ts";
 import { closeSync, fstatSync, openSync, readdirSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config.ts";
 import {
   type OverCap,
+  type WaitStuck,
   type RecycleConfig,
   type RecycleMode,
   type RecycleRecord,
   type SafeFacts,
+  autoChangeLines,
+  capChangeLines,
   contextTokensOf,
   controlRecycleOf,
   goneOf,
   loadRecycle,
   saveRecycle,
+  waitMinutesOf,
+  wouldWaitDue,
 } from "./control-recycle.ts";
 import { allClearances, isClearanceOverdue, isPending } from "./clearances.ts";
 import { allCrewChanges, isOpenCrewChange } from "./crew-change.ts";
 import { ttlCache } from "./agents-cache.ts";
 import { readJob, settleJob } from "./job-state.ts";
 import type { Snapshot } from "./model.ts";
-import { allProposals, READBACK_OVERDUE_MS } from "./proposals.ts";
+import { allProposals, isInFlight, READBACK_OVERDUE_MS } from "./proposals.ts";
 import { readRecords, record } from "./recorder.ts";
 import {
   type AgentRow,
@@ -96,14 +101,14 @@ export interface FactDeps {
 }
 const TEN_MIN = READBACK_OVERDUE_MS;
 
-// restartSafetyOf(server/occ-safe.ts)의 arrival-fresh·wip-active 개수
-function occExtraFacts(s: Snapshot, now: number): { arrivalFresh: number; wipActive: number } {
+// OCC의 안전 조건(ATC-169·175): dispatch brief의 restartSafety와 같은 함수(restartSafetyOf)의 blockers. 여기서 세지 않고 그 결과를 그대로 쓴다.
+// 읽지 못하면 막는다(fail-closed)
+export function occSafetyOf(s: Snapshot, now: number): RestartSafety {
   try {
     const arrivalMissing = arrivalMissingOf(followingNow(s, now), foldReports(readReports()), now);
-    const r = restartSafetyOf({ inFlight: [], arrivalMissing, wip: wipView(readWips(), now), now });
-    return { arrivalFresh: r.blockers.filter((b) => b.code === "arrival-fresh").length, wipActive: r.blockers.filter((b) => b.code === "wip-active").length };
-  } catch {
-    return { arrivalFresh: 1, wipActive: 0 }; // 읽지 못하면 막는다(fail-closed)
+    return restartSafetyOf({ inFlight: allProposals().filter(isInFlight), arrivalMissing, wip: wipView(readWips(), now), now });
+  } catch (e) {
+    return { safe: false, blockers: [{ code: "approved", id: "?", text: `dispatch 안전 조건을 읽지 못함(${e instanceof Error ? e.message : String(e)})` }] };
   }
 }
 
@@ -111,18 +116,10 @@ export async function safeFactsOf(s: Snapshot, d: FactDeps): Promise<SafeFacts> 
   const now = d.now();
   const rtsBusy = await d.rtsBusy(s).catch((e) => `UPDATE 상태를 읽지 못함(${e instanceof Error ? e.message : String(e)})`);
   const pendingC = allClearances().filter(isPending);
-  const props = allProposals();
   return {
     rtsBusy,
     tower: { events: d.towerEvents(), overdue: pendingC.filter((c) => isClearanceOverdue(c, now, TEN_MIN)).length },
-    occ: {
-      approved: props.filter((p) => p.kind === "ASSIGN" && p.status === "approved").length,
-      recalling: props.filter((p) => p.status === "recalling").length,
-      youngSent: props.filter((p) => p.status === "sent" && now - Date.parse(p.statusAt) < TEN_MIN).length,
-      crewChangeOpen: allCrewChanges().filter(isOpenCrewChange).length,
-      // ATC-169: dispatch brief의 restartSafety와 같은 함수. 도착 보고가 오는 중일 수 있는 FLIGHT, 다듬는 중인 CHARTER REQUEST
-      ...occExtraFacts(s, now),
-    },
+    occ: { blockers: occSafetyOf(s, now).blockers, crewChangeOpen: allCrewChanges().filter(isOpenCrewChange).length },
     // MCC: INSPECTION·LAND 중인지는 atc가 보지 못한다(ATC-165 1.3). 턴 사이(job idle)와 RTS 조건이 그 근사다
     mcc: { blocked: null },
   };
@@ -163,7 +160,13 @@ export async function performRecycle(d: ActDeps, row: Pick<AgentRow, "id" | "pid
       ghost = g.ghost;
       if (g.gone) break;
     }
-    if (Date.now() >= deadline) return { ...base, ok: false, result: "stop-unconfirmed", error: "STOP 뒤에도 job이 남아 있음 — LAUNCH하지 않음" };
+    if (Date.now() >= deadline) {
+      // ATC-175: 확인하지 못했어도 LAUNCH를 시도한다. launchControl은 살아 있는(STALE이 아닌) 줄이 있으면 스스로 거절하므로, 세션이 둘이 되지는 않는다.
+      // STOP이 먹었는데 줄만 남았다면 세션이 내려가 있는 것이라 다시 띄우는 것이 맞다
+      const l = await d.launch(name, row.account);
+      const launch = { ok: l.ok, ...(l.jobId ? { jobId: l.jobId } : {}), ...(l.error ? { error: l.error } : {}) };
+      return { ...base, ok: l.ok, result: "stop-unconfirmed", error: "STOP 뒤에도 job이 남아 있음", launch, ...(l.jobId ? { jobId: l.jobId } : {}) };
+    }
     await d.sleep(1000);
   }
   const l = await d.launch(name, row.account);
@@ -180,6 +183,12 @@ const wouldAt = new Map<string, number>(); // shadow: 세션·job마다 cooldown
 
 export const recyclingNow = () => recycling;
 
+// CAP을 넘고 wait인 세션이 처음 wait가 된 것을 본 때(ATC-175). 재시작하거나 조건이 바뀌면 지운다
+const waitSince = new Map<string, number>();
+const wouldWaitAt = new Map<string, number>(); // shadow: 세션마다 cooldown 안에 한 번만 would-wait를 남긴다
+let stuck: WaitStuck[] = [];
+export const waitStuckNow = () => stuck;
+
 // CAP을 넘었지만 자동 재시작 대상이 아닌 세션(OCC). 1분마다 새로 잰다. since는 처음 넘은 것을 본 때
 let overCap: (OverCap & { since: string })[] = [];
 export const overCapNow = () => overCap;
@@ -187,7 +196,7 @@ export const overCapNow = () => overCap;
 export function lastRecycleAtOf(name: string, sinceMs: number): number | null {
   let last: number | null = null;
   for (const r of readRecords(sinceMs)) {
-    if (r.kind !== "control" || r.op !== "recycle" || r.session !== name || r.result === "would") continue;
+    if (r.kind !== "control" || r.op !== "recycle" || r.session !== name || r.result === "would" || r.result === "would-wait") continue;
     const t = Date.parse(r.t);
     if (last === null || t > last) last = t;
   }
@@ -209,6 +218,7 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
     const cooldownMs = cfg.cooldownHours * 3_600_000;
     let facts: SafeFacts | null | undefined;
     const excluded: OverCap[] = [];
+    const nowStuck: WaitStuck[] = [];
     for (const spec of CONTROL_SESSIONS) {
       if (spec.launch !== "bg") continue;
       const live = controlRowsOf(spec, rows, controlDirOf(spec)).filter((r) => !r.stale);
@@ -221,7 +231,11 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
       const auto = cfg.auto[spec.name] ?? false;
       // 자동 재시작 대상이 아닌 세션은 모드와 상관없이 재고 알린다(OCC, SUPERVISOR 결정 2026-09-30)
       if (over && !auto) excluded.push({ session: spec.name, context: context!, cap: cap! });
-      if (cfg.mode === "off") continue;
+      if (cfg.mode === "off") {
+        waitSince.delete(spec.name);
+        continue;
+      }
+      if (!over) waitSince.delete(spec.name);
       if (over && auto && facts === undefined) facts = await safeFactsOf(s, d).catch(() => null);
       const lastAt = over ? lastRecycleAtOf(spec.name, now - cooldownMs) : null;
       const dec = controlRecycleOf({
@@ -239,9 +253,23 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
         now,
       });
       if (dec.action !== "recycle" || !bg || context === null) {
-        if (dec.action === "wait") out.push({ name: spec.name, action: "wait", reason: dec.reason });
+        if (dec.action === "wait") {
+          out.push({ name: spec.name, action: "wait", reason: dec.reason });
+          const since = waitSince.get(spec.name) ?? now;
+          waitSince.set(spec.name, since);
+          const minutes = waitMinutesOf(since, now, cfg.waitAlertMin);
+          if (minutes !== null && context !== null && cap !== null) {
+            nowStuck.push({ session: spec.name, context, cap, blocks: dec.blocks, since: new Date(since).toISOString(), minutes });
+            // shadow: 세션마다 cooldown에 한 줄(ATC-175)
+            if (bg && wouldWaitDue(cfg.mode, wouldWaitAt.get(spec.name), now, cooldownMs)) {
+              wouldWaitAt.set(spec.name, now);
+              record(toLine({ t: new Date(now).toISOString(), session: spec.name, contextBefore: context, reason: dec.reason, mode: "shadow", ok: true, result: "would-wait", blocks: dec.blocks, ...(bg.account ? { account: bg.account } : {}) }));
+            }
+          }
+        } else waitSince.delete(spec.name);
         continue;
       }
+      waitSince.delete(spec.name);
       if (cfg.mode === "shadow") {
         const key = `${spec.name}|${bg.id}`;
         if (now - (wouldAt.get(key) ?? 0) < cooldownMs) continue;
@@ -260,6 +288,7 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
       }
       break; // 한 주기에 한 세션만. 다음 세션은 다음 주기에(다른 세션이 재시작 중이 아닐 때)
     }
+    stuck = nowStuck;
     overCap = excluded.map((e) => ({ ...e, since: overCap.find((o) => o.session === e.session)?.since ?? new Date(now).toISOString() }));
   } finally {
     busy = false;
@@ -289,13 +318,16 @@ export function setRecycleMode(mode: RecycleMode, by = "SUPERVISOR") {
   saveRecycle({ ...cfg, mode });
   record({ t: new Date().toISOString(), kind: "control", op: "recycle-mode", by, from: cfg.mode, to: mode });
 }
-export function setRecycleAuto(patch: Record<string, boolean>) {
+// 캡·auto 바꿈은 세션마다 한 줄씩 FLIGHT RECORDER에 남긴다(ATC-175, recycle-caps·recycle-auto). 값이 그대로면 남기지 않는다
+export function setRecycleAuto(patch: Record<string, boolean>, by = "SUPERVISOR") {
   const cfg = loadRecycle();
   saveRecycle({ ...cfg, auto: { ...cfg.auto, ...patch } });
+  for (const line of autoChangeLines(cfg.auto, patch, new Date().toISOString(), by)) record(line);
 }
-export function setRecycleCaps(patch: Record<string, number | null>) {
+export function setRecycleCaps(patch: Record<string, number | null>, by = "SUPERVISOR") {
   const cfg = loadRecycle();
   saveRecycle({ ...cfg, caps: { ...cfg.caps, ...patch } });
+  for (const line of capChangeLines(cfg.caps, patch, new Date().toISOString(), by)) record(line);
 }
 
 // 화면이 읽는다(읽기만): 세션마다 지금 컨텍스트와 CAP, 최근 재시작 기록. 스위치·CAP은 PUT /api/settings로 바꾼다
@@ -312,6 +344,7 @@ export function mountControlRecycle(app: Hono) {
     return c.json({
       mode: cfg.mode,
       cooldownHours: cfg.cooldownHours,
+      waitAlertMin: cfg.waitAlertMin,
       auto: cfg.auto,
       recycling: recyclingNow(),
       sessions: CONTROL_SESSIONS.filter((x) => x.launch === "bg").map((spec) => {

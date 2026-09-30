@@ -1,4 +1,4 @@
-import { overCapNow } from "./control-recycle-run.ts";
+import { overCapNow, waitStuckNow } from "./control-recycle-run.ts";
 import { readRecords } from "./recorder.ts";
 import { followingNow } from "./following.ts";
 import { readMccRecords } from "./mcc.ts";
@@ -40,6 +40,7 @@ export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
     schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
     recycles: recentRecycles(now),
     overCap: overCapNow(),
+    waiting: waitStuckNow(),
   });
 }
 
