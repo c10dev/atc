@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AddPreview, AddResult } from "../../server/account-add.ts";
 import type { FolderHealth } from "../../server/account-health.ts";
+import type { LoginView } from "../../server/account-login.ts";
 import type { AccountsRegistry } from "../../server/accounts.ts";
 import { Block, StatusChip } from "./SettingsServer.tsx";
 
@@ -21,10 +22,16 @@ export function AccountsBlock() {
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [logins, setLogins] = useState<Record<string, LoginView>>({}); // 이 화면에서 LOGIN을 마친 폴더(줄이 LOGGED IN으로 바뀐 뒤에도 온보딩 결과를 보인다)
   const load = (d: AccountsState) => {
     setData(d);
     setRows(Object.entries(d.registry).map(([label, e]) => ({ label, configDir: e.configDir, maxLaunched: e.maxLaunched ? String(e.maxLaunched) : "" })));
   };
+  const reload = () =>
+    fetch("/api/accounts")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((d: AccountsState) => load(d))
+      .catch(() => setError("ACCOUNTS를 읽지 못함"));
   useEffect(() => {
     let alive = true;
     fetch("/api/accounts")
@@ -72,6 +79,16 @@ export function AccountsBlock() {
           <StatusChip tone={f.statusline ? "ok" : "mute"}>{f.statusline ? "STATUSLINE ✓" : "STATUSLINE 없음"}</StatusChip>{" "}
           <StatusChip tone={f.healthHook ? "ok" : "mute"}>{f.healthHook ? "HEALTH HOOK ✓" : "HEALTH HOOK 없음"}</StatusChip>{" "}
           <StatusChip tone={f.claimHook ? "ok" : "mute"}>{f.claimHook ? "CLAIM HOOK ✓" : "CLAIM HOOK 없음"}</StatusChip>
+          {f.registered && f.loggedIn === false && (
+            <LoginPanel
+              label={f.label}
+              onDone={(v) => {
+                setLogins((m) => ({ ...m, [f.label]: v }));
+                void reload();
+              }}
+            />
+          )}
+          {f.loggedIn === true && logins[f.label] && <p className="settings-hint">{loginNote(logins[f.label])}</p>}
           {f.warnings.length > 0 && (
             <ul className="settings-hint acct-warn">
               {f.warnings.map((w) => (
@@ -100,14 +117,14 @@ export function AccountsBlock() {
         </button>
         {error && <span className="settings-hint acct-err"> {error}</span>}
       </div>
-      <AddAccount dirty={dirty} onAdded={load} />
+      <AddAccount dirty={dirty} folders={data?.folders ?? []} onAdded={load} />
     </Block>
   );
 }
 
 // ADD ACCOUNT(ATC-186, docs/accounts.md 4절): 폴더 만들기 → ~/.claude/settings.json 복사 → 등록을 한 번에. 로그인과 온보딩은 터미널에 남는다.
 // env는 키 이름만 받는다(값은 서버 밖으로 나오지 않는다). 체크를 풀면 그 키는 새 폴더에 옮기지 않는다
-function AddAccount({ dirty, onAdded }: { dirty: boolean; onAdded: (d: AccountsState) => void }) {
+function AddAccount({ dirty, folders, onAdded }: { dirty: boolean; folders: FolderHealth[]; onAdded: (d: AccountsState) => void }) {
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<AddPreview | null>(null);
   const [label, setLabel] = useState("");
@@ -232,22 +249,118 @@ function AddAccount({ dirty, onAdded }: { dirty: boolean; onAdded: (d: AccountsS
             )}
             , 등록함{done.homeRegistered && <> · <span className="mono">~/.claude</span>는 {done.homeRegistered}</>}.
           </p>
-          <p className="settings-hint">남은 것은 터미널에서(atc는 로그인 정보를 다루지 않는다):</p>
-          <ol className="settings-hint acct-next">
-            <li>
-              로그인: <code className="mono">{done.loginCommand}</code>{" "}
-              <button type="button" onClick={() => copy(done.loginCommand)}>
-                복사
-              </button>{" "}
-              — 위 폴더 줄이 이미 LOGGED IN이면 건너뛴다. URL은 <kbd>c</kbd>로 복사한다(줄바꿈된 URL은 redirect_uri missing으로 실패).
-            </li>
-            <li>
-              온보딩: <code className="mono">CLAUDE_CONFIG_DIR={done.dir} claude</code>를 한 번 열어 첫 화면과 atc 체크아웃 신뢰를 끝낸다(docs/accounts.md 4절 2).
-            </li>
-            <li>위 폴더 줄에 LOGGED IN과 STATUSLINE·HOOK ✓가 뜨는지 본다.</li>
-          </ol>
+          {folders.find((f) => f.dir === done.dir)?.loggedIn === true ? (
+            <p className="settings-hint">
+              이 폴더는 LOGGED IN이다. LOGIN 버튼이 아니라 터미널로 로그인했다면, 첫 화면을 끝내려고 <code className="mono">CLAUDE_CONFIG_DIR={done.dir} claude</code>를 한 번 연다.
+            </p>
+          ) : (
+            <>
+              <p className="settings-hint">
+                이제 위 <b className="mono">{done.label}</b> 줄의 <b>LOGIN</b>: 브라우저에서 로그인하고 받은 코드를 붙여 넣으면 된다. 첫 화면과 AIRPORT 신뢰 표시도 atc가 해 둔다.
+              </p>
+              <p className="settings-hint">
+                터미널로 하려면 <code className="mono">{done.loginCommand}</code>{" "}
+                <button type="button" onClick={() => copy(done.loginCommand)}>
+                  복사
+                </button>{" "}
+                (URL은 <kbd>c</kbd>로 복사) 뒤 그 폴더로 <code className="mono">claude</code>를 한 번 연다.
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>
   );
 }
+
+// LOGIN(ATC-187): 서버가 그 폴더에서 claude auth login을 띄우고 URL을 준다. 브라우저에서 로그인해 받은 코드를 붙여 넣으면 끝.
+// 코드는 서버가 그 프로세스에만 넘기고 남기지 않는다. 로그인되면 서버가 .claude.json에 첫 화면·AIRPORT 신뢰 표시만 해 둔다
+function LoginPanel({ label, onDone }: { label: string; onDone: (v: LoginView) => void }) {
+  const [view, setView] = useState<LoginView | null>(null);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const base = `/api/accounts/${encodeURIComponent(label)}/login`;
+  useEffect(() => {
+    let alive = true;
+    fetch(base)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { login: LoginView | null } | null) => alive && d?.login && setView(d.login))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [base]);
+  const call = async (method: "POST" | "DELETE", path = "", body?: unknown) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(base + path, { method, headers: { "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
+      const d = await res.json();
+      if (!res.ok) {
+        setError(d.error ?? `HTTP ${res.status}`);
+        return null;
+      }
+      return d as { login?: LoginView | null };
+    } catch {
+      setError("서버에 연결할 수 없음");
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const start = async () => {
+    const d = await call("POST");
+    if (d?.login) setView(d.login);
+  };
+  const submit = async () => {
+    const d = await call("POST", "/code", { code });
+    if (d?.login) {
+      setView(d.login);
+      setCode("");
+      if (d.login.state === "done") onDone(d.login);
+    }
+  };
+  const cancel = async () => {
+    await call("DELETE");
+    setView(null);
+    setCode("");
+  };
+
+  const s = view?.state;
+  return (
+    <div className="acct-login">
+      {(!view || s === "failed") && (
+        <>
+          <button type="button" disabled={busy} onClick={start}>
+            {busy ? "시작하는 중…" : s === "failed" ? "다시 LOGIN" : "LOGIN"}
+          </button>
+          {s === "failed" && view?.error && <span className="settings-hint acct-err"> {view.error}</span>}
+        </>
+      )}
+      {s === "starting" && <span className="settings-hint">시작하는 중…</span>}
+      {s === "waiting-code" && view?.url && (
+        <>
+          <p className="settings-hint">
+            ① <a href={view.url} target="_blank" rel="noreferrer noopener">브라우저에서 {label} 계정으로 로그인 ↗</a> ② 페이지에 나온 코드를 붙여 넣는다(10분 안).
+          </p>
+          <div className="acct-edit">
+            <input className="mono" aria-label={`${label} 로그인 코드`} placeholder="코드" autoComplete="off" spellCheck={false} maxLength={2048} value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && code.trim() && void submit()} />
+            <button type="button" disabled={busy || !code.trim()} onClick={submit}>
+              {busy ? "확인하는 중…" : "확인"}
+            </button>
+            <button type="button" disabled={busy} onClick={cancel}>
+              취소
+            </button>
+          </div>
+        </>
+      )}
+      {s === "verifying" && <span className="settings-hint">확인하는 중…</span>}
+      {s === "done" && view && <span className="settings-hint">{loginNote(view)}</span>}
+      {error && <span className="settings-hint acct-err"> {error}</span>}
+    </div>
+  );
+}
+
+const loginNote = (v: LoginView) =>
+  `로그인됨${v.onboarding === "marked" ? " · 첫 화면과 AIRPORT 신뢰 표시함" : v.onboarding === "failed" || v.onboarding === "kept" ? " · 첫 화면 표시를 못 함 — 그 폴더로 claude를 한 번 연다" : ""}.`;
