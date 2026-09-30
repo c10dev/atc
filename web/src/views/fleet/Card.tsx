@@ -231,6 +231,7 @@ export function Card({
       )}
       <ContextLine c={contextBadgeOf(a.context)} />
       <RulesLine r={(a as AircraftView & { rules?: RulesView | null }).rules ?? null} />
+      <LanguageLine l={(a as AircraftView & { language?: { at: string } | null }).language ?? null} />
 
       <h3 className="fl-sub">
         CREW COMPLEMENT {a.complementIsDefault && <em>기본값</em>}
@@ -342,6 +343,16 @@ function CopyAttach({ command }: { command: string }) {
     <button type="button" className="fl-btn fl-copy-attach mono" title={command} aria-label={`${command} 복사`} onClick={copy}>
       {copied ? "복사됨" : "ATTACH 복사"}
     </button>
+  );
+}
+
+// LANGUAGE(ATC-150): CAPTAIN이 SUPERVISOR가 읽는 글에 일본어(가나)를 썼다. 알림만 — 세션에는 아무것도 보내지 않는다
+function LanguageLine({ l }: { l: { at: string } | null }) {
+  if (!l) return null;
+  return (
+    <p className="fl-rules is-behind" title={`가나가 처음 보인 시각 ${l.at}. CREW BRIEFING을 다시 보내면 언어 규칙이 들어 있다(자동으로 보내지 않는다)`}>
+      LANGUAGE 일본어로 씀 — CREW BRIEFING 다시 보내기
+    </p>
   );
 }
 

@@ -36,7 +36,7 @@ export const STAGES = ["readback", "departed", "prOpened", "cleared", "arrived"]
 export type Stage = (typeof STAGES)[number];
 
 export interface FollowIssue {
-  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health" | "fuel" | "report" | "unable" | "launch" | "await-supervisor" | "no-report" | "blocked-report";
+  code: "no-departure" | "no-pr" | "pr-not-cleared" | "landing-wait" | "no-arrival" | "review-no-pr" | "done-not-merged" | "merged-not-done" | "stranded" | "health" | "fuel" | "report" | "unable" | "launch" | "await-supervisor" | "no-report" | "blocked-report" | "language";
   kind: "delay" | "mismatch";
   severity: "warn" | "info"; // info: 보여 주기만(착륙 대기는 SUPERVISOR 몫, 머지 뒤 Done 아님은 CLOSE 초안 몫)
   text: string;
@@ -73,6 +73,7 @@ export interface FollowInput {
   departures: Departure[];
   now: number;
   stranded?: Stranded[]; // 기본 브랜치에 닿지 않은 머지(ATC-29)
+  language?: Map<string, string>; // REGISTRATION(대문자) → CAPTAIN이 가나를 처음 쓴 시각(ISO, ATC-150). 표시 전용
   health?: Map<string, Health>; // REGISTRATION(대문자) → 그 AIRCRAFT의 health(ATC-45)
   fuel?: Record<string, FuelRemaining>; // REGISTRATION(대문자) → 그 ACCOUNT의 FUEL REMAINING(ATC-55)
   reports?: Map<string, { id: string; at: string; p: number }>; // REGISTRATION → 마지막 턴에 CAPTAIN이 결정을 청한 것으로 판정된 것(ATC-89, 문턱을 넘은 것만)
@@ -224,6 +225,8 @@ const blockedFresh = (r: ArrivalReport, now: number) => r.blocked !== "none" && 
 
 // 전체(순수). ARRIVED하고 Linear도 끝난 지 하루가 지난 FLIGHT는 뺀다(STAND 없는 FLIGHT는 ARRIVED 보고 뒤 하루).
 // STRANDED(ATC-29)인 FLIGHT는 따라가는 대상이 아니어도(이미 Done이어도) 넣고, 경보가 풀릴 때까지 빼지 않는다
+export const languageText = (reg: string) => `${reg}가 일본어로 씀 — CREW BRIEFING 다시 보내기`;
+
 export function followingOf(inp: FollowInput): FollowItem[] {
   const targets = targetsOf(inp);
   for (const x of inp.stranded ?? []) if (!targets.some((t) => t.flight === x.flight)) targets.push({ flight: x.flight, proposal: null, aircraft: null });
@@ -244,6 +247,11 @@ export function followingOf(inp: FollowInput): FollowItem[] {
           since: h.since,
           key: `${t.flight}|health|${h.code}`,
         });
+      }
+      // LANGUAGE(ATC-150): 그 FLIGHT를 쥔 AIRCRAFT의 CAPTAIN이 일본어(가나)로 썼다. 알리기만 한다 — 세션에 보내지 않는다. key에 시각을 넣어 세션당 한 번
+      const lang = f.aircraft ? inp.language?.get(regKey(f.aircraft)) : undefined;
+      if (lang && !f.stages.arrived) {
+        f.issues.push({ code: "language", kind: "delay", severity: "info", text: languageText(f.aircraft!), since: lang, key: `${t.flight}|language|${lang}` });
       }
       // FUEL REMAINING(ATC-55): 그 FLIGHT를 쥔 AIRCRAFT의 ACCOUNT가 INFO 임계값을 넘었다. key에 ACCOUNT·창·reset을 넣어 창마다 한 번 보고한다
       const fuel = f.aircraft ? inp.fuel?.[regKey(f.aircraft)] : undefined;
@@ -375,8 +383,9 @@ export function followingNow(s: Snapshot, now = Date.now()): FollowItem[] {
   const health = new Map(s.sessions.filter((x) => x.status !== "dead" && x.health).map((x) => [regKey(x.name), x.health!]));
   const min = loadReportThreshold();
   const reports = new Map(s.sessions.filter((x) => x.status === "idle" && x.report && needsDecision(x.report, min)).map((x) => [regKey(x.name), { id: x.report!.id, at: x.report!.turnAt, p: x.report!.decisionP }]));
+  const language = new Map(s.sessions.filter((x) => x.status !== "dead" && x.languageAt).map((x) => [regKey(x.name), x.languageAt!]));
   const proposals = allProposals();
-  return followingOf({ proposals, tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, reports, unables: unablesOf(s.clearances ?? [], proposals, now), milestones: milestonesNow(s, now), launchFails: launchFailsOf(proposals, now), arrivalReports: foldReports(readReports()) });
+  return followingOf({ language, proposals, tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, reports, unables: unablesOf(s.clearances ?? [], proposals, now), milestones: milestonesNow(s, now), launchFails: launchFailsOf(proposals, now), arrivalReports: foldReports(readReports()) });
 }
 
 export function mountFollowing(app: Hono, getSnapshot: () => Promise<Snapshot>) {

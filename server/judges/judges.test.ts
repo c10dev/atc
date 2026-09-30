@@ -531,3 +531,27 @@ test("REPORT 표시 API는 SUPERVISOR만: 이 화면 Origin이 없으면 403", a
   assert.equal(ok.status, 200);
   assert.equal(loadReportViews().all.find((x) => x.id === "R-9")!.mark, "right");
 });
+
+// ---- LANGUAGE(ATC-150): 가나 감지 ----
+const { kanaAtOf } = await import("./report.ts");
+const asst = (text: string, extra: Record<string, unknown> = {}) => JSON.stringify({ type: "assistant", timestamp: "2026-09-29T00:00:10Z", message: { content: [{ type: "text", text }] }, ...extra });
+
+test("LANGUAGE(ATC-150): 산문의 가나는 잡고, 한국어·영어·한자는 잡지 않는다", () => {
+  assert.equal(kanaAtOf(asst("これはテストです")), Date.parse("2026-09-29T00:00:10Z"));
+  assert.equal(kanaAtOf(asst("작업을 마쳤다. PR을 올렸다")), null);
+  assert.equal(kanaAtOf(asst("Done. PR opened.")), null);
+  assert.equal(kanaAtOf(asst("확인 完了")), null); // 한자만이면 가나가 아니다
+});
+
+test("LANGUAGE(ATC-150): 서브에이전트(isSidechain)와 사용자 줄은 건너뛴다", () => {
+  assert.equal(kanaAtOf(asst("こんにちは", { isSidechain: true })), null);
+  assert.equal(kanaAtOf(JSON.stringify({ type: "user", timestamp: "2026-09-29T00:00:10Z", message: { content: "こんにちは" } })), null);
+});
+
+test("LANGUAGE(ATC-150): 코드 펜스·인라인 코드·인용 안의 일본어는 세지 않는다", () => {
+  assert.equal(kanaAtOf(asst("예시다.\n```\nこんにちは\n```\n끝")), null);
+  assert.equal(kanaAtOf(asst("~~~text\nテスト\n~~~")), null);
+  assert.equal(kanaAtOf(asst("문자열 `ありがとう`를 그대로 둔다")), null);
+  assert.equal(kanaAtOf(asst("> 引用: こんにちは\n한국어 본문")), null);
+  assert.equal(kanaAtOf(asst("```\n코드\n```\nこんにちは")), Date.parse("2026-09-29T00:00:10Z")); // 펜스 밖은 센다
+});

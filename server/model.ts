@@ -28,6 +28,8 @@ export interface Session {
   health?: Health | null;
   // ACTIVITY(ATC-97): 마지막 도구·짧은 라벨·phase(tool·model·idle)·시각. 살아 있는 Claude 세션만, 본문은 없다
   activity?: Activity | null;
+  // LANGUAGE(ATC-150): CAPTAIN이 SUPERVISOR가 읽는 글에 가나를 처음 쓴 시각(ISO). 없으면 없다. 표시 전용
+  languageAt?: string;
   // 세션 출처(ATC-76): background·desktop·terminal·unknown. 살아 있는 claude 세션만(죽었거나 codex면 없다)
   origin?: SessionOrigin;
   // 세션 파일의 kind(ATC-98): bg → background, interactive → interactive. 옛 스냅샷·Codex 세션·모르는 값이면 없다

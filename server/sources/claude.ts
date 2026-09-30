@@ -9,7 +9,7 @@ import { type EndedSession, normalEndOf } from "../restarting.ts";
 import { type Fact, factsOf, type Health, type HealthConfig, healthOf, mergeHealth } from "../health.ts";
 import { sessionProcOf } from "../session-proc.ts";
 import { readJob, settleJob } from "../job-state.ts";
-import { lastMessageOf } from "../judges/report.ts";
+import { kanaAtOf, lastMessageOf } from "../judges/report.ts";
 import { type Activity, type ActivityTrack, activityFromTrack, activityTrackOf } from "../activity.ts";
 
 interface SessionFile {
@@ -284,6 +284,8 @@ export function sessionEventsOf(dir: string): TalkEvent[] {
 const HEALTH_TAIL = 64 * 1024;
 // ACTIVITY(ATC-97)도 같은 끝·같은 캐시에서 읽는다(두 번 읽지 않는다)
 const factsCache = new Map<string, { key: string; facts: Fact[]; track: ActivityTrack | null }>();
+// LANGUAGE(ATC-150): 같은 끝에서 가나를 찾는다. 끝(64KB)이 지나가도 사라지지 않게 세션마다 처음 걸린 시각을 기억한다(서버가 사는 동안, 세션당 한 번)
+const kanaSeen = new Map<string, number>();
 
 // push hook(ATC-47, hooks/health.mjs)이 남긴 health/<sessionId>.jsonl의 마지막 줄. 파일 끝 4KB만 본다.
 // hook이 없거나 파일이 없으면 null — pull만으로 판정한다. 파일 크기·시각이 같으면 다시 읽지 않는다
@@ -320,7 +322,7 @@ export function healthOfSession(
   status: Session["status"],
   now: number,
   cfg?: HealthConfig,
-): { health: Health | null; activity: Activity | null } {
+): { health: Health | null; activity: Activity | null; languageAt?: number } {
   if (status === "dead") return { health: null, activity: null };
   const path = transcriptPath(s);
   let st;
@@ -340,6 +342,10 @@ export function healthOfSession(
       const text = buf.toString("utf8");
       const tail = len < st.size ? text.slice(text.indexOf("\n") + 1) : text;
       hit = { key, facts: factsOf(tail), track: activityTrackOf(tail) };
+      if (!kanaSeen.has(s.sessionId)) {
+        const at = kanaAtOf(tail);
+        if (at !== null) kanaSeen.set(s.sessionId, at);
+      }
     } finally {
       closeSync(fd);
     }
@@ -347,7 +353,7 @@ export function healthOfSession(
   }
   const pull = healthOf(hit.facts, { status, lastWriteAt: st.mtimeMs }, now, cfg);
   // push가 대화 기록의 마지막 사실보다 새로우면 push가 이긴다(ATC-47)
-  return { health: mergeHealth(readPushRecord(s.sessionId), pull, hit.facts), activity: activityFromTrack(hit.track, status) };
+  return { health: mergeHealth(readPushRecord(s.sessionId), pull, hit.facts), activity: activityFromTrack(hit.track, status), ...(kanaSeen.has(s.sessionId) ? { languageAt: kanaSeen.get(s.sessionId)! } : {}) };
 }
 
 // 턴이 끝난 세션의 마지막 CAPTAIN 메시지(ATC-89 REPORT 판정). 대화 기록 끝만 읽고 저장하지 않는다 — 부르는 쪽이 ATCC 확인을 먼저 한다.

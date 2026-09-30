@@ -530,6 +530,7 @@ S1(그림자)은 만들었고 S2(승인하면 적용)는 아직 없다. 이 절 
 
 - 기본은 운항 상태 목록(ATC-44, UI report #99). AIRCRAFT 한 대가 한 줄이다. 열은 callsign과 REGISTRATION, AIRPORT, 상태(AIRBORNE·HOLDING·PARKED·AOG·NORDO·NOT IN SERVICE), 첫 FLYING FLIGHT와 제목(더 있으면 `+N`), STAND를 잡은 뒤 흐른 시간, 세션 마지막 활동, 이번 주 ARRIVED와 정시율. 순서는 AIRBORNE → HOLDING → PARKED, 그다음 AIRPORT 순(순수 함수 `fleetRows`, `server/fleet-status.ts`). 줄을 누르면 그 아래에 AIRCRAFT의 카드가 펼쳐진다. 목록·카드 스위치로 모든 카드를 펼친 보기로 돌아갈 수 있고, 고른 보기는 `localStorage`(`atc.fleet.layout`, 못 쓰면 목록)에 기억한다. 좁은 화면에서는 한 줄이 두 줄로 접힌다.
 - AIRCRAFT마다 카드 하나: REGISTRATION과 callsign, 기지 AIRPORT, 상태, 선언한 CREW COMPLEMENT 대 관찰한 CREW, TYPE RATING, ROUTES, LOGBOOK 실적 대 TARGETS(7.2)와 최근 FLIGHT 몇 개.
+- LANGUAGE 줄(ATC-150, 표시 전용): CAPTAIN이 SUPERVISOR가 읽는 글에 가나(U+3040–U+30FF)를 쓰면 카드에 "LANGUAGE 일본어로 씀 — CREW BRIEFING 다시 보내기"가 뜨고, FLIGHT FOLLOWING에도 그 AIRCRAFT의 FLIGHT에 같은 참고 항목("TEAM_E가 일본어로 씀 — CREW BRIEFING 다시 보내기")이 뜬다. `kanaAtOf`(`server/judges/report.ts`, 순수 함수)가 AIRCRAFT health와 같은 대화 기록 끝 64KB를 읽고(새로 훑지 않는다), 본 대화(sidechain 아님)의 assistant 글 중 코드 펜스·인라인 코드·`>` 인용 밖만 본다. 세션당 한 번만 낸다(서버가 도는 동안 처음 본 것을 기억한다). 세션에는 아무것도 보내지 않는다. CREW BRIEFING은 SUPERVISOR가 다시 보낸다.
 - AIRCRAFT의 세션에서 [rules-drift hook](../hooks/README.ko.md#rules-drift-hook)이 돌면 RULES 줄(ATC-42): "RULES current", 또는 살아 있는 세션이 아직 확인하지 않은 규칙 파일과 "RULES 미확인 since <시각>". 그 세션은 다음 턴에 diff를 받는다.
 - SUPERVISOR용 수정 양식(`fleet.json`을 씀, AIRPORT 등록부와 같은 방식).
 - DISPATCH 카드마다 제목 아래 분류(5장). 아직 만들지 않음: FIDS의 분류 표시.
@@ -542,7 +543,7 @@ FLEET 탭은 팀을 만들고 내리는 곳이기도 하다. 2026-09-28 전까�
 |---|---|---|
 | 팀 더하기 | **ENTRY INTO SERVICE** | REGISTRATION(다음 빈 `TEAM_X`를 제안), 기지 AIRPORT(기본은 팀 세션이 가장 많은 곳), **CONFIGURATION**. 그 이름의 세션이 나타날 때까지 AIRCRAFT는 NOT IN SERVICE로 보이고, 나타나면 atc가 이름으로 잇는다 |
 | 팀 템플릿 | **CONFIGURATION** | `general`(vocado 기본 CREW. 기본값을 따른다), `security`(Opus backend + Codex 리뷰. SEC, DATA, DOCS), `ui`(Opus backend + `ui-builder` + `ui-qa`. UI, DOCS), `research`(Opus backend + `flash-helper`. DATA, DOCS) |
-| 세션 시작 | **CREW BRIEFING** | 복사할 수 있는 시작 문구: 세션 이름과 폴더, 만들 CREW와 그 모델, TYPE RATING(SEC 규칙 포함), ROUTE, 교신 규칙(`tail:` 라벨, `READBACK C-xxxx`. `READBACK D-xxxx`는 승인 운용에서만). 사용자가 그 저장소에서 세션을 열고 이름을 붙인 뒤 붙여 넣는다. 문구는 영어이고(ATC-126), 돌고 있는 세션은 다시 LAUNCH하기 전까지 처음 받은 CREW BRIEFING을 그대로 갖는다 |
+| 세션 시작 | **CREW BRIEFING** | 복사할 수 있는 시작 문구: 세션 이름과 폴더, 만들 CREW와 그 모델, TYPE RATING(SEC 규칙 포함), ROUTE, 언어 줄(SUPERVISOR가 읽는 글은 한국어, 일본어·중국어는 쓰지 않는다. 세션끼리 주고받는 글은 영어, ATC-150), 교신 규칙(`tail:` 라벨, `READBACK C-xxxx`. `READBACK D-xxxx`는 승인 운용에서만). 사용자가 그 저장소에서 세션을 열고 이름을 붙인 뒤 붙여 넣는다. 문구는 영어이고(ATC-126), 돌고 있는 세션은 다시 LAUNCH하기 전까지 처음 받은 CREW BRIEFING을 그대로 갖는다 |
 | 팀을 잠시 쉬게 하기 | **AOG** | 사유와 선택적 복귀 날짜. planner가 그 팀에 제안을 멈춘다(`AOG — reason (~date)`) |
 | 팀 없애기 | **RETIREMENT** | AIRCRAFT가 FLEET 목록에서 빠진다(날짜·사유와 함께 RETIRED 아래 남음). 제안을 받지 않는다. 살아 있는 세션을 닫지는 않는다. 되살릴 수 있다 |
 
