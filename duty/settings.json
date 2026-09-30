@@ -17,23 +17,35 @@
       "Bash(gh pr list *)",
       "Bash(gh pr checks *)",
       "Bash(gh pr diff *)",
+      "Bash(gh pr create *)",
       "Bash(git log *)",
       "Bash(git show *)",
       "Bash(git diff *)",
       "Bash(git status *)",
       "Bash(git status)",
+      "Bash(git -C /home/c10/projects/atc/.claude/worktrees/duty-* *)",
+      "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/**)",
       "Read",
       "Glob",
       "Grep"
     ],
     "deny": [
-      "Edit",
-      "Write",
       "NotebookEdit",
       "Agent",
       "SendMessage",
       "WebFetch",
-      "WebSearch"
+      "WebSearch",
+      "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/duty/**)",
+      "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/.claude/**)",
+      "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/.github/**)",
+      "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/hooks/**)",
+      "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/deploy/**)",
+      "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/**/node_modules/**)",
+      "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/**/.env*)",
+      "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/**/*guard*)",
+      "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/**/package*.json)",
+      "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/CLAUDE.md)",
+      "Edit(//home/c10/projects/atc/.claude/worktrees/duty-*/CLAUDE.en.md)"
     ]
   },
   "hooks": {

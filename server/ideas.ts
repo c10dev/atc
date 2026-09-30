@@ -52,7 +52,7 @@ const previewOf = (body: unknown): string => {
 const titleOf = (t: string): string => t.replace(/\s+/g, " ").replace(/"/g, "'").trim().slice(0, TITLE_MAX);
 
 export function adoptText(n: number, title: string): string {
-  return `ADOPT idea #${n} "${titleOf(title)}" — read it (duty idea ${n}) and propose a design outline: problem, current facts to check, principles, steps. Do not write files.`;
+  return `ADOPT idea #${n} "${titleOf(title)}" — read it (duty idea ${n}) and propose a design outline: problem, current facts to check, principles, steps. Do not write files yet: once the SUPERVISOR agrees in the chat, open a duty-* STAND (duty stand <short-name>) and write docs/<topic>.md as a design draft PR.`;
 }
 
 // gh issue list --json 결과 → 목록. idea 라벨이 없는 것은 뺀다. 마지막 갱신이 늦은 것부터

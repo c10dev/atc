@@ -37,7 +37,7 @@ test("imageCheck: PNG·JPEG·WebP만, base64만, 크기 상한", () => {
 });
 
 test("parseDutyConfig: 기본은 꺼짐·acct-2·30분, 이상한 값은 기본으로", () => {
-  assert.deepEqual(parseDutyConfig(null), { enabled: false, account: "acct-2", idleMin: 30, briefMaxChars: 6000, briefDecisions: 20, charter: "off" });
+  assert.deepEqual(parseDutyConfig(null), { enabled: false, account: "acct-2", idleMin: 30, briefMaxChars: 6000, briefDecisions: 20, charter: "off", l1: false });
   assert.equal(parseDutyConfig({ enabled: "yes" }).enabled, false);
   assert.equal(parseDutyConfig({ enabled: true, account: "acct-1", idleMin: 1 }).account, "acct-1");
   assert.equal(parseDutyConfig({ account: "../x" }).account, "acct-2");

@@ -33,6 +33,7 @@ export type RecordLine =
   | { t: string; kind: "schedule"; op: string; id: string }
   | { t: string; kind: "flight"; op: "state"; flight: string; by: string; ok: boolean; from: string; to: string; error?: string } // SUPERVISOR가 FLIGHT 상태 버튼으로 Linear 상태를 옮김(DUTY G3). 실패도 적는다
   | { t: string; kind: "pr"; op: "merge"; by: "supervisor"; airport: string; number: number; head: string; ok: boolean; result: string; method?: string; error?: string } // SUPERVISOR가 PR 서랍의 MERGE 버튼으로 user 등급 PR을 머지함(DUTY G2). 거절·실패도 적는다
+  | { t: string; kind: "duty"; op: "stand" | "stand-done" | "linear"; by: "DUTY"; ok: boolean; name?: string; action?: "create" | "update" | "comment"; key?: string; state?: string; error?: string } // DUTY L1(D7a): STAND 만들기·치우기, Linear 쓰기(본문은 적지 않는다). 거절·실패도 적는다
   | { t: string; kind: "landing"; op: string; id: string } // 착륙 리뷰(ATC-7, REVIEW 세션)
   // CHECKRIDE 부여·회수: 누가, 추천이었나, 근거(LOGBOOK key·FLIGHT·출처)
   | { t: string; kind: "checkride"; op: "grant" | "revoke"; aircraft: string; rating: string; by: string; recommended: boolean; status: string; reason: string; evidence: string[] }

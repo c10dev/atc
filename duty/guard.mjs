@@ -1,13 +1,16 @@
 #!/usr/bin/env node
-// DUTY 세션의 PreToolUse hook(모든 도구, matcher `.*`). DUTY는 L0다(docs/duty.md 3.5): atc를 읽고 초안을 남길 뿐 아무것도 조종하지 않는다.
-// 허용하는 도구는 Bash·Read·Glob·Grep뿐이고, 그 밖의 도구 이름은 어떻게 나타나든 막는다. 막으면 exit 2. 알 수 없는 모양·오류도 모두 막는다(fail-closed).
+// DUTY 세션의 PreToolUse hook(모든 도구, matcher `.*`). DUTY는 L1이다(docs/duty.md 3.5, D7a): atc를 읽고 초안을 남기며, 자기 STAND(.claude/worktrees/duty-*)에서만 문서를 쓰고 커밋·푸시·PR을 만든다.
+// 허용하는 도구는 Bash·Read·Glob·Grep·Edit·Write뿐이고, 그 밖의 도구 이름은 어떻게 나타나든 막는다. 막으면 exit 2. 알 수 없는 모양·오류도 모두 막는다(fail-closed).
 //
-// Bash: `node <repo>/controller/atcctl.mjs duty …`와 읽기 전용 atcctl 명령, jq, 읽기 전용 gh pr, 쓰기 옵션 없는 git log|show|diff|status만.
+// Bash: `node <repo>/controller/atcctl.mjs duty …`와 읽기 전용 atcctl 명령, jq, 읽기 전용 gh pr, git log|show|diff|status,
+//   DUTY STAND 안의 git add·commit·push·fetch·merge(형식 고정), `gh pr create --base main --head claude/duty-*`만.
 //   파이프·;·&& 뒤의 명령도 하나하나 이 목록에 맞아야 하고, 리다이렉션·명령 치환·변수 확장은 통째로 막는다.
+// Edit·Write: 자기 STAND(duty-*)의 `.md` 문서만, 심볼릭 링크를 푼 경로로 본다. no-self-authority: 자기 권한을 정하는 파일(duty/, *guard*, .claude/, .github/,
+//   package*.json, deploy/, hooks/, 루트 CLAUDE.md), .env*, .git*, node_modules는 STAND 안이어도 쓰지 않는다.
 // Read·Glob·Grep: 저장소 안에서만. `.env*`, `.credentials.json`, `.git`, `~/.claude*`, `~/.local/state/atc`, `~/.ssh`와 그 안은 읽지 않는다
 //   (atc 상태는 atcctl로 읽는다). Grep은 `.env*` 파일이 든 폴더를 통째로 훑지 않는다.
 // controller/guard.mjs와 같은 방식이지만 따로 둔다: 관제 세션의 guard는 이 파일을 위해 바뀌지 않는다.
-import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -17,13 +20,13 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO = resolve(HERE, "..");
 export const ATCCTL = join(REPO, "controller", "atcctl.mjs");
 
-export const ALLOWED_TOOLS = new Set(["Bash", "Read", "Glob", "Grep"]);
+export const ALLOWED_TOOLS = new Set(["Bash", "Read", "Glob", "Grep", "Edit", "Write"]);
 
 // 읽기 전용 atcctl 명령(앞 두 낱말, 뒤에 더 붙일 수 있는지는 EXACT). TOWER·OCC가 읽는 데 쓰는 것만
 const READ_ATCCTL = new Set(["dispatch brief", "dispatch flight", "schedule brief", "crosscheck brief", "landing queue", "manual check"]);
 // 인자 없이만 읽기인 것(`following ack`·`network …`의 쓰기 꼴을 막는다)
 const READ_ATCCTL_BARE = new Set(["network", "following"]);
-const DUTY_SUBS = new Set(["brief", "flight", "pr", "idea", "card", "note", "charter"]);
+const DUTY_SUBS = new Set(["brief", "flight", "pr", "idea", "card", "note", "charter", "stand", "stand-done", "linear"]);
 
 // 따옴표 밖의 > < 는 파일 리다이렉션(또는 heredoc·프로세스 치환)이라 허용하지 않는다.
 function hasRedirect(command) {
@@ -96,7 +99,8 @@ export function checkJq(words) {
 // gh pr view|list|checks|diff. --web·--watch와 gh api는 막는다. --jq 필터는 jq와 같은 검사
 const GH_READ = new Set(["view", "list", "checks", "diff"]);
 function checkGh(words) {
-  if (words[1] !== "pr" || !GH_READ.has(words[2])) return `gh는 pr view|list|checks|diff만 쓴다: ${words.slice(0, 3).join(" ")}`;
+  if (words[1] === "pr" && words[2] === "create") return checkGhCreate(words);
+  if (words[1] !== "pr" || !GH_READ.has(words[2])) return `gh는 pr view|list|checks|diff와 pr create(--base main --head claude/duty-*)만 쓴다: ${words.slice(0, 3).join(" ")}`;
   for (let i = 3; i < words.length; i++) {
     const w = words[i];
     if (w === "--") break;
@@ -112,15 +116,161 @@ function checkGh(words) {
   return null;
 }
 
-// git log|show|diff|status. 앞에 전역 옵션(-C·-c …)을 두지 않고, 파일을 쓰거나 저장소 밖 파일을 읽는 옵션을 막는다
+// ── DUTY STAND(D7a): .claude/worktrees/duty-<이름> ──
+// 저장소는 이 파일이 있는 곳의 위(REPO)다. 이름 모양은 server/duty-stand.ts와 같다
+const STAND_DIR = /^duty-[a-z0-9]+(-[a-z0-9]+)*$/;
+const DUTY_BRANCH = /^claude\/duty-[a-z0-9]+(-[a-z0-9]+)*$/;
+
+// 심볼릭 링크를 푼 절대 경로가 어느 DUTY STAND 안인가: { root, rel(STAND 안의 조각들) } 또는 null
+export function standOf(abs) {
+  const base = real(join(REPO, ".claude", "worktrees")).abs;
+  if (!base || !abs.startsWith(base + sep)) return null;
+  const parts = abs.slice(base.length + 1).split(sep);
+  if (!STAND_DIR.test(parts[0])) return null;
+  return { root: join(base, parts[0]), rel: parts.slice(1) };
+}
+const isDir = (p) => {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+};
+// git -C <dir>, 또는 cwd가 DUTY STAND 안의 있는 폴더인가. 문제면 사유, 괜찮으면 null
+function standDir(dir, cwd) {
+  // `..`는 심볼릭 링크 뒤에서 어디로 갈지 resolve()(글자만 정리)와 OS가 다르게 본다: 어느 쪽 경로에도 쓰지 않는다
+  if (`${dir}/${cwd}`.split("/").includes("..")) return `경로에 ..은 쓸 수 없음: ${dir}`;
+  const r = real(isAbsolute(dir) ? resolve(dir) : resolve(cwd, dir));
+  if (r.reason) return r.reason;
+  if (!standOf(r.abs)) return `DUTY STAND(${join(REPO, ".claude", "worktrees", "duty-*")}) 안이 아님: ${dir}`;
+  return isDir(r.abs) ? null : `폴더가 없음: ${dir}`;
+}
+
+// ── Edit·Write: 자기 STAND의 문서만 ──
+// 절대 경로(심볼릭 링크를 푼 것)로 본다. STAND 안이어도 자기 권한을 정하는 것은 쓰지 않는다(no-self-authority)
+const SELF_AUTHORITY_TOP = new Set(["duty", "hooks", "deploy"]); // STAND 맨 위 폴더
+const SELF_AUTHORITY_ANY = new Set([".claude", ".github", "node_modules"]); // 어느 깊이든(node_modules는 운영 폴더와 하드링크다)
+export function writeForbidden(abs) {
+  const st = standOf(abs);
+  if (!st) return "DUTY는 자기 STAND(.claude/worktrees/duty-*) 안에만 씁니다";
+  const { rel } = st;
+  if (!rel.length) return "STAND 폴더 자체는 쓰지 않는다";
+  const name = rel[rel.length - 1];
+  for (const p of rel) {
+    if (/^\.env/i.test(p)) return ".env 파일은 쓰지 않는다";
+    if (/^\.git/i.test(p)) return ".git* 는 쓰지 않는다";
+    if (SELF_AUTHORITY_ANY.has(p)) return `${p}/ 는 쓰지 않는다(자기 권한·CI·의존성)`;
+  }
+  if (SELF_AUTHORITY_TOP.has(rel[0])) return `${rel[0]}/ 는 쓰지 않는다(no-self-authority)`;
+  if (/guard/i.test(name)) return "guard 파일은 쓰지 않는다(no-self-authority)";
+  if (/^package(-lock)?\.json$/i.test(name)) return "package*.json은 쓰지 않는다";
+  if (rel.length === 1 && /^CLAUDE(\.en)?\.md$/i.test(name)) return "루트 CLAUDE.md는 쓰지 않는다(no-self-authority)";
+  if (!/\.md$/i.test(name)) return "DUTY는 문서(.md)만 씁니다 — 코드는 작업 세션의 몫(L2 아님)";
+  return null;
+}
+
+// Edit·Write 하나의 문제. 괜찮으면 null
+export function checkWrite(tool, input, cwd = HERE) {
+  const p = input && typeof input === "object" ? input.file_path : undefined;
+  if (typeof p !== "string" || !p.trim()) return `${tool}에 file_path가 없음`;
+  if (p.includes("\u0000")) return "경로에 NUL이 있음";
+  // `..`는 쓰지 않는다: resolve()는 글자만 정리하지만 OS는 심볼릭 링크를 먼저 따라가서, `docs/링크/../x.md`가 다른 곳을 가리킬 수 있다
+  if (`${p}/${cwd}`.split("/").includes("..")) return "경로에 ..은 쓸 수 없음 — 절대 경로를 정리해서 준다";
+  const expanded = p === "~" ? homedir() : p.startsWith("~/") ? join(homedir(), p.slice(2)) : p;
+  const r = real(isAbsolute(expanded) ? resolve(expanded) : resolve(cwd, expanded));
+  if (r.reason) return r.reason;
+  return writeForbidden(r.abs);
+}
+
+// ── git ──
+// 읽기: log|show|diff|status. 파일을 쓰거나 저장소 밖 파일을 읽는 옵션을 막는다. 앞에 전역 옵션은 `-C <STAND>` 하나만
 const GIT_READ = new Set(["log", "show", "diff", "status"]);
 const GIT_BANNED = /^(--output(=.*)?|--no-index|--ext-diff|--textconv|--exec-path(=.*)?|--upload-pack(=.*)?|--open-files-in-pager(=.*)?|-O.*|--git-dir(=.*)?|--work-tree(=.*)?|-c|--config-env(=.*)?)$/;
-function checkGit(words) {
-  if (!GIT_READ.has(words[1] ?? "")) return `git은 log|show|diff|status만 쓴다(앞에 전역 옵션 없이): ${words.slice(0, 3).join(" ")}`;
-  for (const w of words.slice(2)) {
+// 쓰기: STAND 안에서만(`-C <STAND>` 또는 cwd가 STAND 안). 형식이 고정이다
+const GIT_ADD_OPTS = new Set(["-A", "--all", "-u", "--update"]);
+const GIT_COMMIT_OPTS = new Set(["-a", "--all", "-q", "--quiet"]);
+
+function checkAddArgs(args) {
+  let paths = false;
+  for (const w of args) {
+    if (!paths && w === "--") paths = true;
+    else if (!paths && w.startsWith("-")) {
+      if (!GIT_ADD_OPTS.has(w)) return `git add 옵션 ${w}는 쓸 수 없음(-A --all -u --update만)`;
+    } else if (isAbsolute(w) || w.startsWith(":") || w.startsWith("~") || w.split("/").includes("..") || w.includes("\u0000")) return `git add 경로는 STAND 안의 상대 경로만: ${w}`;
+  }
+  return null;
+}
+function checkCommitArgs(args) {
+  for (let k = 0; k < args.length; k++) {
+    const w = args[k];
+    if (w === "-m" || w === "--message") {
+      if (k + 1 >= args.length) return "git commit -m 뒤에 문구가 필요함";
+      k++;
+    } else if (!/^--message=/.test(w) && !GIT_COMMIT_OPTS.has(w)) return `git commit 옵션 ${w}는 쓸 수 없음(-m --message -a --all -q만. --amend·-n·--no-verify 없음)`;
+  }
+  return null;
+}
+function checkPushArgs(args) {
+  let k = 0;
+  if (args[k] === "-u" || args[k] === "--set-upstream") k++;
+  if (args[k] !== "origin" || args.length !== k + 2 || !DUTY_BRANCH.test(args[k + 1])) return "git push는 `push [-u] origin claude/duty-<이름>` 하나만(--force·다른 refspec·태그 없음)";
+  return null;
+}
+function checkFetchArgs(args) {
+  const rest = args.filter((w) => w !== "-q" && w !== "--quiet");
+  if (rest[0] !== "origin" || rest.length > 2 || (rest.length === 2 && rest[1] !== "main")) return "git fetch는 `fetch [-q] origin [main]`만";
+  return null;
+}
+function checkMergeArgs(args) {
+  if (args.length === 1 && args[0] === "--abort") return null;
+  const rest = args.filter((w) => w !== "--no-edit" && w !== "-q" && w !== "--quiet");
+  if (rest.length !== 1 || rest[0] !== "origin/main") return "git merge는 `merge [--no-edit] origin/main`(또는 --abort)만";
+  return null;
+}
+const GIT_WRITE = { add: checkAddArgs, commit: checkCommitArgs, push: checkPushArgs, fetch: checkFetchArgs, merge: checkMergeArgs };
+
+function checkGit(words, cwd) {
+  let i = 1;
+  let inStand = false;
+  if (words[1] === "-C") {
+    if (!words[2]) return "git -C 뒤에 STAND 경로가 필요함";
+    const why = standDir(words[2], cwd);
+    if (why) return why;
+    inStand = true;
+    i = 3;
+  } else inStand = standDir(".", cwd) === null;
+  const sub = words[i] ?? "";
+  const args = words.slice(i + 1);
+  if (Object.hasOwn(GIT_WRITE, sub)) return inStand ? GIT_WRITE[sub](args) : `git ${sub}는 DUTY STAND 안에서만: git -C <STAND> ${sub} …`;
+  if (!GIT_READ.has(sub)) return `git은 log|show|diff|status와 STAND 안의 add|commit|push|fetch|merge만: ${words.slice(0, 4).join(" ")}`;
+  for (const w of args) {
     if (w === "--") break;
     if (GIT_BANNED.test(w)) return `git 옵션 ${w}는 쓸 수 없음`;
   }
+  return null;
+}
+
+// gh pr create: --base main --head claude/duty-<이름> --title <글> [--body <글>]만. Draft·--web·--fill·--repo·파일 옵션은 없다(Draft PR은 MCC가 착륙시키지 못한다)
+const GH_CREATE_VALUE = new Map([["--base", "base"], ["-B", "base"], ["--head", "head"], ["-H", "head"], ["--title", "title"], ["-t", "title"], ["--body", "body"], ["-b", "body"]]);
+function checkGhCreate(words) {
+  const got = {};
+  for (let k = 3; k < words.length; k++) {
+    let w = words[k];
+    let value;
+    const eq = /^(--[a-z-]+)=([\s\S]*)$/.exec(w);
+    if (eq) [, w, value] = eq;
+    const key = GH_CREATE_VALUE.get(w);
+    if (!key) return `gh pr create 옵션 ${w}는 쓸 수 없음(--base --head --title --body만. --draft·--web·--fill·--repo 없음)`;
+    if (value === undefined) {
+      if (k + 1 >= words.length) return `gh pr create ${w} 뒤에 값이 필요함`;
+      value = words[++k];
+    }
+    if (key in got) return `gh pr create ${w}가 두 번`;
+    got[key] = value;
+  }
+  if (got.base !== "main") return "gh pr create는 --base main만";
+  if (!DUTY_BRANCH.test(got.head ?? "")) return "gh pr create는 --head claude/duty-<이름>만";
+  if (!got.title?.trim()) return "gh pr create에는 --title이 필요함";
   return null;
 }
 
@@ -146,7 +296,7 @@ export function checkBash(command, cwd = HERE) {
     if (cmd === "jq") {
       bad = index === 0 ? "jq는 명령 맨 앞에 쓰지 않는다 — `node … atcctl.mjs … | jq '<필터>'`처럼 뒤에 붙인다" : checkJq(words);
     } else if (cmd === "gh") bad = checkGh(words);
-    else if (cmd === "git") bad = checkGit(words);
+    else if (cmd === "git") bad = checkGit(words, cwd);
     else if (cmd === "node" && words[1] && resolve(cwd, words[1]) === ATCCTL) bad = checkAtcctl(words);
     else bad = `허용되지 않은 명령: ${words.slice(0, 3).join(" ")}`;
     if (bad) return bad;
@@ -269,9 +419,10 @@ export function checkRead(tool, input, cwd = HERE) {
 // hook 입력 하나의 문제. 괜찮으면 null
 export function check(input) {
   const tool = input?.tool_name;
-  if (typeof tool !== "string" || !ALLOWED_TOOLS.has(tool)) return `DUTY(L0)가 쓸 수 없는 도구: ${typeof tool === "string" ? tool : "(이름 없음)"}. Bash·Read·Glob·Grep만`;
+  if (typeof tool !== "string" || !ALLOWED_TOOLS.has(tool)) return `DUTY(L1)가 쓸 수 없는 도구: ${typeof tool === "string" ? tool : "(이름 없음)"}. Bash·Read·Glob·Grep·Edit·Write만`;
   const cwd = typeof input.cwd === "string" && input.cwd ? input.cwd : HERE;
   if (tool === "Bash") return checkBash(input.tool_input?.command, cwd);
+  if (tool === "Edit" || tool === "Write") return checkWrite(tool, input.tool_input, cwd);
   return checkRead(tool, input.tool_input, cwd);
 }
 
@@ -283,7 +434,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     reason = `guard가 입력을 읽지 못함(${e?.message ?? e})`;
   }
   if (reason) {
-    console.error(`DUTY는 L0입니다 — 읽고 초안만 남깁니다. ${reason}. 결정·머지·배포·세션 조종은 SUPERVISOR가 atc 화면에서 합니다.`);
+    console.error(`DUTY는 L1입니다 — 자기 STAND에 문서를 쓰고 PR을 엽니다. ${reason}. 코드·머지·배포·세션 조종은 SUPERVISOR나 작업 세션의 몫입니다.`);
     process.exit(2);
   }
 }

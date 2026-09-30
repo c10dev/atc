@@ -52,6 +52,7 @@ import { buildSnapshot } from "./snapshot.ts";
 import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
 import { mountDuty } from "./duty-api.ts";
 import { duty, mountDutyRun } from "./duty-run.ts";
+import { mountDutyL1 } from "./duty-l1-run.ts";
 import { mountSupervisorQueue } from "./supervisor-queue-run.ts";
 import { parseTopics, type SupervisorSummary } from "./supervisor-summary.ts";
 import { mountRadio, RadioFeed } from "./radio-run.ts";
@@ -241,6 +242,7 @@ mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고
 
 mountSupervisorQueue(app, getSnapshot, () => update.status()); // SUPERVISOR QUEUE(ATC-194, 읽기만)
 mountDuty(app, getSnapshot, () => update.status(), (l) => duty().recordDraft(l)); // DUTY L0(ATC-219): brief 읽기와 초안 붙이기(밖으로 나가는 동작 없음)
+mountDutyL1(app); // DUTY D7a: STAND 만들기·치우기와 Linear 쓰기(duty.json l1이 켜졌을 때만, Origin 있는 요청 거절)
 mountDutyRun(app); // DUTY D2(ATC-220): 글 보내기·중단·NEW SHIFT(Origin 검사)·기록·상태. duty.json enabled가 꺼져 있으면 아무것도 띄우지 않는다
 app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); // 지금 있는 알림 key 전체(읽기만)
 

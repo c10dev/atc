@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const DUTY_DIR = HERE;
-export const DUTY_TOOLS = "Bash,Read,Glob,Grep";
+export const DUTY_TOOLS = "Bash,Read,Glob,Grep,Edit,Write"; // L1(D7a): Edit·Write는 guard가 자기 STAND의 문서로 좁힌다
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // cfg: { claudeBin?, sessionId?, resume?, dir? }. resume면 sessionId는 이어 갈 대화 id(필수), 아니면 새 대화 id(없으면 새로 만든다)

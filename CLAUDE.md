@@ -4,7 +4,7 @@
 
 atc 코드를 고치는 세션(팀 세션, ENGINEERING 세션, 사용자와 직접 작업하는 세션)이 지키는 규칙이다. 설계와 용어는 `README.ko.md`와 `docs/`에 있다.
 
-**관제 세션은 제외.** `controller/`(TOWER), `occ/`(OCC), `crosscheck/`(CROSSCHECK), `mcc/`(MCC), `duty/`(DUTY, L0) 폴더에서 연 세션은 그 폴더의 `CLAUDE.md`를 따른다. 이 파일도 함께 읽히지만, 관제 세션은 코드를 고치지 않으므로 아래 작업 규칙은 적용되지 않는다. 둘이 다르면 폴더의 `CLAUDE.md`가 우선이다.
+**관제 세션은 제외.** `controller/`(TOWER), `occ/`(OCC), `crosscheck/`(CROSSCHECK), `mcc/`(MCC), `duty/`(DUTY, L1) 폴더에서 연 세션은 그 폴더의 `CLAUDE.md`를 따른다. 이 파일도 함께 읽히지만, 관제 세션은 코드를 고치지 않으므로 아래 작업 규칙은 적용되지 않는다. 둘이 다르면 폴더의 `CLAUDE.md`가 우선이다. DUTY는 문서와 Linear 이슈를 쓰므로 "git과 PR", "용어와 문서", "계획과 아이디어", "DUTY" 절의 규칙을 그대로 지킨다(작업 위치와 검증 절의 워크트리·시험 서버는 DUTY의 STAND와 서버가 대신한다: `duty/CLAUDE.md`).
 
 ## 작업 위치
 
@@ -37,7 +37,7 @@ atc 코드를 고치는 세션(팀 세션, ENGINEERING 세션, 사용자와 직�
 - 커밋·푸시·PR은 작업 지시가 요구할 때 한다. 커밋 메시지와 PR 제목·본문은 영어로 쓴다.
 - 커밋 메시지에 attribution 줄(Co-Authored-By 등)을 넣지 않는다. PR 본문 끝은 `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 - PR은 Draft로 올리지 않는다. MCC는 Draft를 착륙시키지 않아서(`docs/mcc.md` L2) 누가 Ready로 바꿀 때까지 멈춘다. 아직 끝나지 않은 일이면 PR을 올리지 말고 보고한다.
-- 팀 세션과 ENGINEERING 세션은 머지하지 않는다. 머지는 LANDING CLEARANCE 등급(`deploy/landing-tier.mjs`, 바뀐 파일 경로로 정함)을 따른다.
+- 팀 세션, DUTY, ENGINEERING 세션은 머지하지 않는다. 머지는 LANDING CLEARANCE 등급(`deploy/landing-tier.mjs`, 바뀐 파일 경로로 정함)을 따른다.
   - `auto`(읽기만 하는 서버·화면·문서·테스트)와 `flagged`(관제 세션 매뉴얼·CLI, 외부 부작용이 있는 서버 코드): CI(`check`)가 통과하고 MCC INSPECTION이 `pass`면 MCC가 착륙시킨다(2026-09-29부터, 지금은 `land+rts` 모드, `docs/mcc.md` 5.1). 사용자가 먼저 머지해도 된다. `flagged`는 PR 본문과 보고에 바뀐 관제 규칙과 외부 부작용 파일을 따로 적는다. GitHub auto-merge는 쓰지 않는다.
   - `user`(guard, `.claude/` 설정, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`)는 사용자가 머지한다. 운영 상태 형식을 바꾸거나 되돌리기 어려운 PR, 검토에서 의심이 남는 PR도 `user`로 올린다(PR을 올린 세션이 본문의 등급에 적고, MCC INSPECTION은 ESCALATE한다).
 
@@ -62,16 +62,17 @@ atc 코드를 고치는 세션(팀 세션, ENGINEERING 세션, 사용자와 직�
 - 아직 하기로 정하지 않은 아이디어는 GitHub Issue에 `idea` 라벨로 둔다. 저장소 문서에 적지 않는다.
 - 하기로 정한 것은 `docs/<주제>.md` 설계 초안으로 쓴다(Status 줄, Current facts, Principles, Implementation order, Risks, Decisions). 새 설계 문서는 영어로 먼저 쓴다. 채택되면 이슈에 문서를 링크한다.
 - 단계로 올라간 것은 `docs/guide/stages.md`에, 남은 일은 그 설계 문서의 "Not built yet"에, 끝난 것은 `CHANGELOG`(조각)에 적는다.
-- 설계 문서의 상태 표시는 ENGINEERING이 머지 뒤 Linear를 보고 고친다: "Implementation order" 표의 ✅, `Status:` 줄, "Not built yet"에서 옮기기, `docs/guide/stages.md`의 단계. 팀 PR은 이것들을 고치지 않고, 만든 것을 그 기능을 설명하는 절 바로 뒤의 자기 절(`### F7 as built (ATC-57)`처럼 번호 없이)에만 적는다.
+- 설계 문서의 상태 표시는 DUTY(또는 ENGINEERING)가 머지 뒤 Linear를 보고 고친다: "Implementation order" 표의 ✅, `Status:` 줄, "Not built yet"에서 옮기기, `docs/guide/stages.md`의 단계. 팀 PR은 이것들을 고치지 않고, 만든 것을 그 기능을 설명하는 절 바로 뒤의 자기 절(`### F7 as built (ATC-57)`처럼 번호 없이)에만 적는다.
 - atc 작업은 Linear `atc` 팀(ATC)에 둔다. atc는 `LINEAR_TEAM_KEYS`의 팀을 모두 읽지만, DISPATCH와 SCHEDULE 후보는 설정한 팀(`dispatch.json`의 `candidateTeams`, 비면 주 팀)만 된다. 분류 라벨(`type`·`wake`·`rating:*`·`Risk`·`tail:*`)은 워크스페이스 라벨이라 두 팀이 같이 쓴다. 아이디어는 계속 GitHub `idea` 이슈에 둔다.
 
-## ENGINEERING
+## DUTY (설계와 작업 지시서, 옛 ENGINEERING)
 
-- ENGINEERING은 atc의 설계와 작업 지시를 맡는 작업 세션이다(항공사의 Technical Services). 세션 이름은 `ENGINEERING`이다.
-- 하는 일: 설계 문서(`docs/<주제>.md`)와 Linear 이슈(작업 지시서, EO)를 쓰고, 큰 이슈(wake `J`)를 하위 이슈로 나누고, 팀 세션과 MCC의 보고를 받아 다음 이슈를 낸다.
-- 상설 관제 세션이 아니다. 필요할 때 이 저장소에서 열고, 이 파일의 작업 규칙을 따른다.
-- 머지·배포와 팀 세션 교신은 하지 않는다. 팀에 일을 보내는 것은 DISPATCH·OCC와 사용자 몫이다. 직접 배정할 문구는 `GET /api/dispatch/flight/<FLIGHT>/brief?to=TEAM_X`가 준다.
-- Linear 이슈를 만들고 상태를 바꾸는 것은 ENGINEERING과 사용자다. 팀 세션은 Linear에 쓰지 않는다(`Fixes ATC-n`이 머지 때 이슈를 닫는다).
+- 설계와 작업 지시는 **DUTY**(`duty/`, L1, `docs/duty.md` 3.4·3.5)가 맡는다(항공사의 Technical Services가 하던 일). DUTY는 상설 관제 세션이라 SUPERVISOR가 atc 화면에서 말을 건다.
+- 하는 일: 설계 문서(`docs/<주제>.md`)를 자기 STAND(`.claude/worktrees/duty-*`, 브랜치 `claude/duty-*`, 서버가 `atcctl duty stand`로 만든다)에서 쓰고 PR로 올린다. Linear 이슈(작업 지시서, EO)를 ATC 팀에 만들고 고치고 댓글을 단다(서버가 자기 키로 쓴다. DUTY에는 MCP가 없다). 큰 이슈(wake `J`)를 하위 이슈로 나눈다. 규칙의 자세한 것은 `duty/CLAUDE.md`다.
+- 힘의 한계는 guard가 정한다(`duty/guard.mjs`, fail-closed): 자기 STAND 안의 `.md` 문서만 쓰고, git은 `-C <STAND>`의 정해진 형식(`add`·`commit`·`push -u origin claude/duty-*`·`fetch`·`merge origin/main`)만, `gh pr create --base main --head claude/duty-*`(Draft 없이)만 된다. 자기 권한을 정하는 파일(`duty/`, guard, `.claude/`, `.github/`, `package*.json`, `deploy/`, `hooks/`, 루트 `CLAUDE.md`, `.env*`)은 쓰지 못한다. 코드·시험 서버(L2), 머지·배포(L3), 팀 세션 메시지(L4)는 없다. Linear는 ATC 팀, 상태는 Backlog·Todo까지, 이슈를 지우거나 닫지 않는다. 켜는 것은 `duty.json`의 `l1`이고 기본은 꺼짐이다.
+- DUTY의 PR도 같은 규칙이다: 영어, Draft 없음, 설계 PR의 제목·브랜치에 ATC key를 넣지 않고 `Fixes`는 PR이 이슈를 끝낼 때만, Linear 본문의 GitHub 참조는 전체 URL, 작업 지시서에는 우선순위를 정한다. 머지는 등급이 정한다(문서만이면 `auto`라 MCC가 착륙시킨다. `duty/` 같은 파일은 어차피 쓰지 못한다).
+- **ENGINEERING 세션**(Claude 데스크톱 등에서 이 저장소를 열어 같은 일을 하는 작업 세션)은 break-glass로 남는다. 같은 규칙을 따르고, 머지·배포와 팀 세션 교신은 하지 않는다. 팀에 일을 보내는 것은 DISPATCH·OCC와 사용자 몫이다. 직접 배정할 문구는 `GET /api/dispatch/flight/<FLIGHT>/brief?to=TEAM_X`가 준다.
+- Linear 이슈를 만들고 상태를 바꾸는 것은 DUTY(Backlog·Todo까지)와 사용자, break-glass의 ENGINEERING이다. 팀 세션은 Linear에 쓰지 않는다(`Fixes ATC-n`이 머지 때 이슈를 닫는다).
 
 ## 교신
 

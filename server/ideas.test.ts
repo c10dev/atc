@@ -48,7 +48,7 @@ test("상세: 열린 idea 이슈만, 댓글은 20개까지", () => {
 });
 
 test("ADOPT 문구: 고정 틀, 제목은 한 줄·따옴표 없이·120자", () => {
-  assert.equal(adoptText(12, "Idea title"), 'ADOPT idea #12 "Idea title" — read it (duty idea 12) and propose a design outline: problem, current facts to check, principles, steps. Do not write files.');
+  assert.equal(adoptText(12, "Idea title"), 'ADOPT idea #12 "Idea title" — read it (duty idea 12) and propose a design outline: problem, current facts to check, principles, steps. Do not write files yet: once the SUPERVISOR agrees in the chat, open a duty-* STAND (duty stand <short-name>) and write docs/<topic>.md as a design draft PR.');
   const t = adoptText(3, `a "quoted"\nline ${"x".repeat(200)}`);
   assert.ok(!t.includes("\n"));
   assert.ok(t.startsWith(`ADOPT idea #3 "a 'quoted' line x`));

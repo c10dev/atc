@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dutyDraftText, dutyFlightText, dutyIdeaText, dutyPrText, parseDutyCard, parseDutyCharter, parseDutyNote } from "./atcctl.mjs";
+import { dutyDraftText, dutyFlightText, dutyIdeaText, dutyLinearText, dutyPrText, dutyStandText, parseDutyCard, parseDutyCharter, parseDutyLinear, parseDutyNote, parseDutyStand } from "./atcctl.mjs";
 
 test("duty card: kind는 두 낱말이어도 되고 마지막 낱말이 key", () => {
   assert.deepEqual(parseDutyCard(["PROPOSAL", "D-0007"]), { kind: "PROPOSAL", key: "D-0007" });
@@ -68,4 +68,41 @@ test("duty 답 문구: 카드는 SUPERVISOR가 정한다, note는 확인 전엔 
   assert.match(dutyDraftText({ draft: { id: "DD-0003", kind: "retire-card" } }), /standing-decisions card recorded/);
   assert.match(dutyDraftText({ draft: { id: "DD-0002", kind: "note", until: "2026-10-03T03:00:00.000Z" } }), /until 2026-10-03.*only when the SUPERVISOR confirms/);
   assert.match(dutyDraftText({ draft: { id: "DD-0003", kind: "charter" } }), /only after the SUPERVISOR confirms the card/);
+});
+
+test("duty stand·stand-done: 이름 하나", () => {
+  assert.deepEqual(parseDutyStand(["charter-desk"]), { name: "charter-desk" });
+  for (const a of [[], ["a", "b"], ["--force"], ["-x"]]) assert.throws(() => parseDutyStand(a), /이름 하나/);
+  assert.match(dutyStandText({ name: "x", path: "/r/.claude/worktrees/duty-x", branch: "claude/duty-x", base: "origin/main", nodeModules: true }, false), /STAND x ready: \/r\/.*duty-x on branch claude\/duty-x from origin\/main \(node_modules linked\)/);
+  assert.match(dutyStandText({ name: "x", removed: "/r/.claude/worktrees/duty-x", branchKept: "claude/duty-x" }, true), /removed.*branch claude\/duty-x kept/);
+});
+
+test("duty linear create: 옵션은 -- 앞, 본문은 -- 뒤 낱말 전부, 라벨은 여러 번", () => {
+  assert.deepEqual(parseDutyLinear(["create", "--title", "T", "--priority", "2", "--state", "Todo", "--parent", "ATC-192", "--project", "DUTY", "--label", "a", "--label", "b", "--", "Body", "text"]), {
+    action: "create",
+    title: "T",
+    priority: 2,
+    state: "Todo",
+    parent: "ATC-192",
+    project: "DUTY",
+    labels: ["a", "b"],
+    body: "Body text",
+  });
+  assert.deepEqual(parseDutyLinear(["create", "--title", "T", "--priority", "9", "--", "B"]).priority, "9", "1-4가 아니면 서버가 거절한다");
+  assert.throws(() => parseDutyLinear(["create", "--title"]), /값이 필요함/);
+  assert.throws(() => parseDutyLinear(["create", "--team", "VOC"]), /알 수 없는 옵션 --team/);
+  assert.throws(() => parseDutyLinear(["create", "--assignee", "x"]), /알 수 없는 옵션/);
+});
+
+test("duty linear update·comment: 첫 인자가 key, update에는 --parent·--project가 없다", () => {
+  assert.deepEqual(parseDutyLinear(["update", "ATC-5", "--priority", "3", "--label", "x", "--", "New", "body"]), { action: "update", key: "ATC-5", priority: 3, labels: ["x"], body: "New body" });
+  assert.deepEqual(parseDutyLinear(["comment", "ATC-5", "--", "hi"]), { action: "comment", key: "ATC-5", body: "hi" });
+  assert.throws(() => parseDutyLinear(["update", "--priority", "3"]), /ATC-n/);
+  assert.throws(() => parseDutyLinear(["update", "ATC-5", "--parent", "ATC-1"]), /알 수 없는 옵션 --parent/);
+  assert.throws(() => parseDutyLinear(["update", "ATC-5", "--project", "x"]), /알 수 없는 옵션/);
+  assert.throws(() => parseDutyLinear(["delete", "ATC-5"]), /create \| update \| comment/);
+  assert.throws(() => parseDutyLinear([]), /create \| update \| comment/);
+  assert.match(dutyLinearText({ key: "ATC-99", url: "https://linear.app/x/ATC-99", state: "Todo" }), /ATC-99 created \(Todo\) https:/);
+  assert.match(dutyLinearText({ key: "ATC-5", state: "Backlog" }), /ATC-5 updated \(Backlog\)/);
+  assert.match(dutyLinearText({ key: "ATC-5" }), /ATC-5 written/);
 });
