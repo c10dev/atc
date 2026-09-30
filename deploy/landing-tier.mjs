@@ -36,7 +36,8 @@ export const SIDE_EFFECT = [
   ["server/voice-run.ts", "TTS 렌더링 시점(GET /api/voice/*)과 상태 폴더 voice-cache/ 쓰기"],
   ["server/fleet-plan-run.ts", "FLEET PLAN 실행: AIRCRAFT 세션 시작·정지 시점"],
   ["server/control-recycle-run.ts", "CONTROL RECYCLE 실행: 관제 세션 정지·시작 시점(ATC-166, 스위치 off 기본)"],
-  ["server/accounts-run.ts", "ADD ACCOUNT 시점(POST /api/accounts/add, SUPERVISOR만)"],
+  ["server/account-login.ts", "claude auth login 실행(코드를 stdin으로), 로그인 뒤 .claude.json 온보딩 칸 셋 쓰기(ATC-187). .credentials.json은 열지 않음"],
+  ["server/accounts-run.ts", "ADD ACCOUNT·LOGIN 시점(POST /api/accounts/add, /api/accounts/:label/login, SUPERVISOR만)"],
   ["server/index.ts", "AUTOLAND 한 주기 실행 배선(머지·브랜치 갱신 시점)"],
 ];
 // 부작용을 일으키는 export(이름, 정의한 파일, 하는 일). 이것을 import하는 server 파일은 SIDE_EFFECT나 READ_ONLY에 올라야 한다(landing-tier.test.mjs)
@@ -50,6 +51,8 @@ export const SIDE_EFFECT_HELPERS = [
   ["launchControl", "server/session-control.ts", "관제 세션 시작"],
   ["stopControl", "server/session-control.ts", "관제 세션 정지·pane 닫기"],
   ["addAccount", "server/account-add.ts", "ACCOUNT 폴더 만들기·settings.json 쓰기"],
+  ["startLogin", "server/account-login.ts", "claude auth login 프로세스 시작"],
+  ["submitCode", "server/account-login.ts", "로그인 코드 전달과 온보딩 칸 쓰기"],
 ];
 // 명령·외부 API를 쓰지만 읽기만 하는 서버 코드(SHIP)
 export const READ_ONLY = [

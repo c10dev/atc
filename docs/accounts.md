@@ -46,7 +46,7 @@ Also from the SUPERVISOR's setup (comment on ATC-145, 2026-09-29), used in secti
 
 1. **One config folder per ACCOUNT, one daemon per folder.** The daemon is started by `claude --bg` with `CLAUDE_CONFIG_DIR` set and lives in its own systemd scope, outside `atc.service`, like the `~/.claude` daemon (2026-09-28 OCC a578bf15).
 2. **The registry holds a label and a folder, nothing else.** No email, token, organization or plan name is stored or shown in a public place.
-3. **atc never reads, copies or prints `.credentials.json`, tokens or the email.** `claude auth status --json` may be read only for `loggedIn` and `authMethod`; every other field is dropped before storing or showing.
+3. **atc never reads, copies or prints `.credentials.json`, tokens or the email.** `claude auth status --json` may be read only for `loggedIn` and `authMethod`; every other field is dropped before storing or showing. One exception (SUPERVISOR decision A, 2026-09-30, ATC-187): right after a LOGIN from the page, atc reads that folder's `.claude.json` in memory only to merge three onboarding fields back into it. It never stores, logs, sends or shows any value from that file.
 4. **Observed, not guessed.** A session's ACCOUNT is the folder its files are found in.
 5. **The SUPERVISOR does account setup.** Team sessions never run `/login`, `/logout` or `setup-token`, and never create or delete a config folder.
 6. **A live FLIGHT never moves.** ACCOUNT CHANGE only between FLIGHTs, proposed by FLEET PLAN, approved by the SUPERVISOR. Nothing switches automatically.
@@ -78,7 +78,34 @@ Steps 1 (the folder), 3 (the settings) and the registry entry can be done from t
 - **Settings.** `~/.claude/settings.json` is copied whole (statusline, hooks, permissions, `env` …) and written with mode 0600 through a temp file and rename. The page gets `env` **key names only**, never values, and each key can be left out (proxy and `ANTHROPIC_BASE_URL` only when this ACCOUNT should take the same route). A folder whose `settings.json` has its own `hooks`, `statusLine`, `env`, `permissions` or `apiKeyHelper`, is unreadable JSON, or is a symlink is kept as is and only registered. A trivial one (the measured `{ "theme": "auto" }`) is backed up next to it (`settings.json.atc-bak-<time>`, 0600) and replaced.
 - **Register last.** The registry is written only after the folder and the settings are done; a refused request writes nothing. Only `settings.json` is read or written: `.credentials.json` and `.claude.json` are never opened, and `claude auth status` stays filtered to `loggedIn` and `authMethod`. SUPERVISOR only (the same Origin check as `PUT /api/accounts`).
 - **After.** The page shows what it did and the remaining steps: `CLAUDE_CONFIG_DIR=<folder> claude auth login --claudeai` (with a copy button; skipped when the folder row already reads LOGGED IN) and onboarding (step 2 above). The folder row then shows LOGGED IN and the statusline and hook checks.
-- **Not built yet.** Login and onboarding from the page (measure first whether `claude auth login` runs without a terminal, and whether a first `claude --bg` LAUNCH skips the first-run screen).
+- **Login and onboarding from the page:** see "LOGIN as built" below.
+
+### LOGIN as built (ATC-187)
+
+Setup steps 1 (login) and 2 (onboarding) from the settings window: a **LOGIN** button on every registered folder row that reads NOT LOGGED IN (`server/account-login.ts`; `GET`/`POST`/`DELETE /api/accounts/<label>/login`, `POST /api/accounts/<label>/login/code`).
+
+**Measured first** (2026-09-30, Claude Code 2.1.285, no TTY, the same clean environment atc uses, an empty temp folder, login not completed):
+- `claude auth login --claudeai` runs without a terminal. It prints `If the browser didn't open, visit: https://claude.com/cai/oauth/authorize?…` on stdout, then `Paste code here if prompted >`, and reads the code from stdin.
+- The `redirect_uri` is `https://platform.claude.com/oauth/code/callback`, a page that shows the code. A browser on another machine (the SUPERVISOR's Mac) works: copy the code back.
+- It also opens a `127.0.0.1:<random>` listener for a browser on the same machine; atc doesn't use it.
+- The flow uses PKCE (`code_challenge`), so the code is useless without the verifier held by that process.
+- `--email` only pre-fills the login page; atc doesn't take an email.
+- The folder's `.claude.json` is created at start without `hasCompletedOnboarding`, so login alone leaves the first-run screen.
+
+**How it works.**
+- **Refusals.** Only a registered folder that is not `~/.claude` (its login is the one every running session uses) and not already LOGGED IN.
+- **Start.** atc spawns `claude auth login --claudeai` with `cleanEnv(folder)`, one process per folder, stopped after 10 minutes. The page shows the login URL only if it is `https` on a Claude or Anthropic host with an `/oauth/authorize` path.
+- **Code.** The SUPERVISOR logs in in the browser and pastes the code. The code must match `[A-Za-z0-9._~#-]{8,2048}`. It is written to the process stdin and nowhere else: not stored and not logged.
+- **Output stays on the server.** The process output is used only to find the URL; it is never sent to the page, because it can name the account. Errors are fixed sentences.
+- **Result.** When the process ends, `claude auth status` is read again (still only `loggedIn` and `authMethod`).
+- **Onboarding (SUPERVISOR decision A).** After a successful login, atc merges three things into that folder's `.claude.json` and changes no other field:
+  - `hasCompletedOnboarding: true`;
+  - `lastOnboardingVersion` (from `claude --version`);
+  - `projects[<path>].hasTrustDialogAccepted: true` for every open AIRPORT path.
+
+  The old file is backed up (`.claude.json.atc-bak-<time>`, 0600) and the new one written 0600 through a temp file. A symlink or a file that isn't a JSON object is left alone, and the row says to open `claude` once in that folder.
+- **The page.** The row shows the URL link, a code field, and CANCEL. Reloading the page picks the running LOGIN back up. After success the row reads LOGGED IN with the onboarding result.
+- **Not measured.** Whether a first `claude --bg` LAUNCH would skip the first-run screen by itself. The onboarding fields make the question moot for folders logged in from the page. A folder logged in from the terminal still needs `claude` opened once, as before.
 
 ## 5. Implementation order (ATC-144 sub-issues)
 
@@ -140,7 +167,7 @@ Step 4. FLEET PLAN proposes moving an AIRCRAFT to an ACCOUNT with headroom. It s
 | A link shares `settings.json` writes between ACCOUNTS, or a write replaces the link | Copy, not link, until measured; the setup steps say so |
 | `claim.mjs` not yet seen under a second daemon | Measure it on the first ACCOUNT with headroom, before step 3 relies on it |
 | The second ACCOUNT can be at its plan limit, which the first measurement hit | FUEL REMAINING per ACCOUNT and `holdPct` already cover it; an ACCOUNT CHANGE proposal must pick an ACCOUNT below `holdPct` |
-| Onboarding needs a hand edit of `.claude.json` | SUPERVISOR-only setup; do not automate |
+| Onboarding needs a hand edit of `.claude.json` | After a page LOGIN atc merges the three fields (ATC-187, decision A); a terminal login still needs `claude` opened once |
 | A wrapped login URL fails | Setup step 1: press `c` |
 | A second transient daemon inside `atc.service` would die on every deploy | Always launch through the scope, as `launchCommandOf` does |
 | Probing or stopping the wrong daemon | STOP only by job id with the folder's variable set; never touch `~/.claude`'s daemon (2026-09-29 pkill outage) |
