@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isRisky, modeLine, modeSegments, needsConfirm, reviewLabel, settingsTabOf } from "./settings-policy.ts";
+import { recycleAutoGuardOf, isRisky, modeLine, modeSegments, needsConfirm, reviewLabel, settingsTabOf } from "./settings-policy.ts";
 import type { ServerSettings } from "./settings.ts";
 
 const settings = (over: Partial<Pick<ServerSettings, "autoland" | "mcc" | "review" | "fuel">> & { jev?: string } = {}) =>
@@ -61,4 +61,17 @@ test("settingsTabOf: 저장된 탭이 있으면 그것, 없거나 모르는 값�
   assert.equal(settingsTabOf(null, ids, "display"), "display");
   assert.equal(settingsTabOf("gone", ids, "display"), "display");
   assert.equal(settingsTabOf(undefined, ids, "display"), "display");
+});
+
+test("recycleAutoGuardOf(ATC-175): alert → auto는 ⚠ 확인, auto → alert와 같은 값은 확인 없이. OCC는 문구가 따로", () => {
+  for (const name of ["TOWER", "OCC", "MCC"]) {
+    const g = recycleAutoGuardOf(name, false, "auto");
+    assert.equal(g?.warn, true, name);
+    assert.match(g!.line, /^auto ⚠ /);
+    assert.equal(recycleAutoGuardOf(name, true, "auto"), null);
+    assert.equal(recycleAutoGuardOf(name, true, "alert"), null);
+    assert.equal(recycleAutoGuardOf(name, false, "alert"), null);
+  }
+  assert.match(recycleAutoGuardOf("OCC", false, "auto")!.line, /OCC는 도착 보고/);
+  assert.doesNotMatch(recycleAutoGuardOf("TOWER", false, "auto")!.line, /OCC는/);
 });
