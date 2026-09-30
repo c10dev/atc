@@ -4,6 +4,8 @@ Status (2026-09-30): design draft for [ATC-192](https://linear.app/vocado/issue/
 
 **DUTY** is the airline's Duty Manager: the one person in the OCC whom management calls. The Duty Manager holds the overview and passes work to dispatch, crew control and maintenance control. In atc, DUTY is the SUPERVISOR's single window: it talks, writes designs and work orders (it takes over ENGINEERING), and routes the rest. Unlike a real Duty Manager, it decides nothing. The SUPERVISOR decides on DUTY's cards.
 
+Decisions made while the SUPERVISOR is away are not DUTY's either. They belong to WATCH ([watch.md](watch.md)): a separate session that acts only inside a scope and time the SUPERVISOR hands over on the screen.
+
 ## 1. Current facts
 
 **Where the SUPERVISOR talks and where they decide** (2026-09-30):
