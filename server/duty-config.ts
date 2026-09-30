@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { config } from "./config.ts";
 import { briefDecisionsOf, briefMaxCharsOf } from "./duty-brief.ts";
+import { type CharterMode, charterModeOf } from "./duty-charters.ts";
 
 export interface DutyConfig {
   enabled: boolean;
@@ -11,6 +12,7 @@ export interface DutyConfig {
   idleMin: number;
   briefMaxChars: number;
   briefDecisions: number;
+  charter: CharterMode; // D5: DUTY가 만든 CHARTER REQUEST를 OCC가 읽는 정도. off(기본) · shadow · on
 }
 
 export const DEFAULT_ACCOUNT = "acct-2";
@@ -31,6 +33,7 @@ export function parseDutyConfig(raw: unknown): DutyConfig {
     idleMin: idleMinOf(o.idleMin),
     briefMaxChars: briefMaxCharsOf(o.briefMaxChars),
     briefDecisions: briefDecisionsOf(o.briefDecisions),
+    charter: charterModeOf(o.charter),
   };
 }
 

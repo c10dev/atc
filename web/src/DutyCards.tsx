@@ -53,6 +53,29 @@ export function useDecisions(refreshKey: string, enabled: boolean, extra: number
   return { data, reload };
 }
 
+// CHARTER REQUEST(D5): 줄에 선 요청과 카드에 보일 상태. 같은 시점에 읽는다
+export interface ChartersData {
+  mode: "off" | "shadow" | "on";
+  charters: { id: string; from: string; state: { label: string; tone: "kept" | "queued" | "seen" } | null }[];
+}
+export function useCharters(refreshKey: string, enabled: boolean, extra: number): { data: ChartersData | null; reload: () => void } {
+  const [data, setData] = useState<ChartersData | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    fetch("/api/duty/charters")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: ChartersData) => alive && setData(d))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [refreshKey, enabled, extra, tick]);
+  const reload = useCallback(() => setTick((n) => n + 1), []);
+  return { data, reload };
+}
+
 async function post(path: string, body: unknown): Promise<{ ok: boolean; error?: string; data: Record<string, unknown> }> {
   try {
     const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -224,6 +247,8 @@ export interface CardCtx {
   now: number;
   decisions: DecisionsData | null;
   reloadDecisions: () => void;
+  charters: ChartersData | null;
+  reloadCharters: () => void;
 }
 
 export function DutyCard({ it, ctx }: { it: Extract<ChatItem, { kind: "card" }>; ctx: CardCtx }) {
@@ -260,7 +285,9 @@ export function DraftCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }
   const [err, setErr] = useState<string | null>(null);
   if (it.draftKind === "retire") return <DecisionsCard it={it} ctx={ctx} />;
   const label = it.draftKind === "note" ? "NOTE" : "CHARTER REQUEST";
-  const sd = ctx.decisions?.confirmedDrafts[it.draft];
+  const isCharter = it.draftKind === "charter";
+  const queued = isCharter ? ctx.charters?.charters.find((c) => c.from === it.draft) : undefined;
+  const sd = isCharter ? queued?.id : ctx.decisions?.confirmedDrafts[it.draft];
   const dismissed = ctx.decisions?.dismissed.includes(it.draft) ?? false;
   const expired = it.until !== null && Date.parse(it.until) <= ctx.now;
   const act = async (path: string, body: unknown) => {
@@ -270,8 +297,11 @@ export function DraftCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }
     setBusy(false);
     if (!r.ok) setErr(r.error ?? "실패");
     ctx.reloadDecisions();
+    ctx.reloadCharters();
   };
-  const pending = it.draftKind === "note" && ctx.decisions !== null && !sd && !dismissed && !expired;
+  const pending = (it.draftKind === "note" ? ctx.decisions !== null : ctx.decisions !== null && ctx.charters !== null) && !sd && !dismissed && !expired;
+  const confirmPath = isCharter ? `/api/duty/charters/${encodeURIComponent(it.draft)}/confirm` : "/api/duty/decisions";
+  const dismissPath = isCharter ? `/api/duty/charters/${encodeURIComponent(it.draft)}/dismiss` : `/api/duty/drafts/${encodeURIComponent(it.draft)}/dismiss`;
   return (
     <div className={`du-card is-draft${sd ? " is-confirmed" : ""}${dismissed || expired ? " is-gone" : ""}`} aria-label={`${it.draftKind} 초안 ${it.draft}`}>
       <div className="du-card-head">
@@ -280,16 +310,16 @@ export function DraftCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }
       </div>
       <p className="du-draft-text">{it.text}</p>
       {it.until && <p className="du-hint mono">until {it.until}</p>}
-      {it.draftKind === "charter" && <p className="du-hint">D5에서 확정</p>}
-      {sd && <p className="du-hint">확정됨 · 이제 매 턴 맨 위에 실립니다</p>}
+      {sd && !isCharter && <p className="du-hint">확정됨 · 이제 매 턴 맨 위에 실립니다</p>}
+      {sd && isCharter && <p className="du-hint">확정됨 · {queued?.state?.label ?? "queued"}</p>}
       {dismissed && <p className="du-hint">버림</p>}
       {!sd && !dismissed && expired && <p className="du-hint">until이 지났습니다</p>}
       {pending && (
         <div className="du-actions">
-          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void act("/api/duty/decisions", { draft: it.draft })}>
+          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void act(confirmPath, isCharter ? {} : { draft: it.draft })}>
             확정
           </button>
-          <button type="button" className="dr-btn" disabled={busy} onClick={() => void act(`/api/duty/drafts/${encodeURIComponent(it.draft)}/dismiss`, {})}>
+          <button type="button" className="dr-btn" disabled={busy} onClick={() => void act(dismissPath, {})}>
             버림
           </button>
         </div>

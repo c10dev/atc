@@ -2,7 +2,7 @@ import type { ServerSettings } from "./settings.ts";
 
 // 설정 창의 계산(ATC-131). SUPERVISOR 정책 스위치(AUTOMATION: LANDING·OPERATIONS)의 "지금 모드 한 줄", ⚠ 모드로 올릴 때 확인이 필요한지, 마지막 분류 기억, 설정 찾기.
 // 저장 값과 PUT /api/settings는 그대로다. 여기는 화면에 보이는 이름과 판단만 다룬다.
-export type PolicyKey = "autoland" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle" | "duty";
+export type PolicyKey = "autoland" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle" | "duty" | "dutyCharter";
 
 // ⚠ 모드(올리면 atc가 더 많이 쓰거나 밖으로 내보낸다). 화면의 경고 문구가 ⚠로 시작하는 모드와 같다
 export const RISKY: Record<PolicyKey, readonly string[]> = {
@@ -13,6 +13,7 @@ export const RISKY: Record<PolicyKey, readonly string[]> = {
   review: ["deepseek"], // 보안 PR도 REVIEW 세션에 보낸다
   reposition: ["auto"], // atc가 쉬는 AIRCRAFT의 base를 스스로 옮긴다(멈추고 다른 저장소에서 다시 띄움)
   recycle: ["on"], // atc가 관제 세션을 스스로 STOP·LAUNCH한다(shadow는 기록만)
+  dutyCharter: ["on"], // OCC가 DUTY의 CHARTER REQUEST를 SCHEDULE 초안으로 만든다(shadow는 만들었을 초안만 기록)
   duty: ["on"], // 서버가 `claude -p` 프로세스를 띄우고 ACCOUNT의 FUEL을 쓴다(SUPERVISOR가 글을 보낼 때만)
 };
 
@@ -50,6 +51,7 @@ export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "revie
     ...(s.controlRecycle ? [seg("recycle", "CONTROL RECYCLE", s.controlRecycle.mode)] : []),
     ...(s.fleetPlan ? [seg("reposition", "REPOSITION", s.fleetPlan.reposition)] : []),
     ...(s.duty ? [seg("duty", "DUTY", s.duty.enabled ? "on" : "off")] : []),
+    ...(s.duty?.charter ? [seg("dutyCharter", "DUTY CHARTER", s.duty.charter)] : []),
   ];
 }
 export const modeLine = (segs: readonly ModeSegment[]): string => segs.map((x) => `${x.label} ${x.value}`).join(" · ");
@@ -94,7 +96,7 @@ export const SETTINGS_INDEX: readonly SettingsEntry[] = [
   { tab: "operations", code: "FUEL", label: "사용 한도 HOLD", words: "dispatch hold 사용량 한도 fuel.hold" },
   { tab: "operations", code: "REPOSITION", label: "소속 AIRPORT 옮기기", words: "base fleet plan approval auto fleet-plan.reposition" },
   { tab: "operations", code: "CONTROL RECYCLE", label: "관제 세션 자동 재시작", words: "cap 컨텍스트 context 재시작 auto alert controlRecycle.mode" },
-  { tab: "operations", code: "DUTY", label: "DUTY 채팅(atc 안의 대화 상대)", words: "duty chat 채팅 서랍 drawer claude acct-2 duty.enabled 대화 shift" },
+  { tab: "operations", code: "DUTY", label: "DUTY 채팅(atc 안의 대화 상대)", words: "duty chat 채팅 서랍 drawer claude acct-2 duty.enabled 대화 shift charter 차터 duty.charter CHARTER REQUEST OCC" },
   { tab: "operations", code: "JUDGES", label: "판정 계열", words: "jev typesafe replay shadow judges.jev" },
 ];
 

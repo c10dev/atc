@@ -336,7 +336,7 @@ export function duty(): DutyRuntime {
 }
 
 // 설정 창의 DUTY 스위치: duty.json에 쓰고 실행 중인 프로세스에 반영한다
-export async function setDutyConfig(patch: Partial<Pick<DutyConfig, "enabled" | "account" | "idleMin">>): Promise<DutyConfig> {
+export async function setDutyConfig(patch: Partial<Pick<DutyConfig, "enabled" | "account" | "idleMin" | "charter">>): Promise<DutyConfig> {
   const prev = loadDutyConfig();
   const next = saveDutyConfig(patch);
   await duty().configChanged(prev, next);

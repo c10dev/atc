@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/guard.mjs\" --gh-read || exit 2",
+            "command": "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/guard.mjs\" --gh-read --occ || exit 2",
             "timeout": 5
           }
         ]

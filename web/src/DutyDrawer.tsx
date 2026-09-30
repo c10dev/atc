@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type Chat, type ChatItem, headLine } from "../../server/duty-chat.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
-import { type Airports, type CardCtx, DraftCard, DutyCard, QueueRow, useDecisions, useQueue } from "./DutyCards.tsx";
+import { type Airports, type CardCtx, DraftCard, DutyCard, QueueRow, useCharters, useDecisions, useQueue } from "./DutyCards.tsx";
 import "./Drawer.css";
 import "./DutyDrawer.css";
 
@@ -88,6 +88,7 @@ export default function DutyDrawer({ chat, onClose, airports, refreshKey, now }:
   }, [cardCount, reload]);
   const draftCount = chat.items.filter((i) => i.kind === "draft").length;
   const { data: decisions, reload: reloadDecisions } = useDecisions(refreshKey, st?.enabled === true, draftCount);
+  const { data: charters, reload: reloadCharters } = useCharters(refreshKey, st?.enabled === true, draftCount);
   const [handled, setHandled] = useState<ReadonlySet<string>>(new Set());
   const ctx: CardCtx = {
     items: queue?.items ?? null,
@@ -100,6 +101,8 @@ export default function DutyDrawer({ chat, onClose, airports, refreshKey, now }:
     now,
     decisions,
     reloadDecisions,
+    charters,
+    reloadCharters,
   };
 
   useEffect(() => {

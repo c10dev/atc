@@ -7,7 +7,7 @@ const settings = JSON.parse(readFileSync(new URL(".claude/settings.json", import
 // SQUELCH(docs/squelch.md 5장, ATC-109): UserPromptSubmit hook은 guard가 아니다. 평범한 /tick만 서버에 묻고, 어떤 오류든 통과시킨다.
 // 그래서 `|| exit 2`가 붙으면 안 된다. 그리고 PreToolUse guard hook은 그대로다.
 const GUARD_HOOKS = [
-  ["Bash", "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/guard.mjs\" --gh-read || exit 2"],
+  ["Bash", "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/../controller/guard.mjs\" --gh-read --occ || exit 2"],
   ["mcp__.*", "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/mcp-guard.mjs\" || exit 2"],
   ["SendMessage", "\"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$CLAUDE_PROJECT_DIR/send-guard.mjs\" || exit 2"],
 ];

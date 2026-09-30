@@ -116,3 +116,13 @@ test("DUTY(ATC-220): OPERATIONS 색인에서 찾히고, 켜는 것은 ⚠ 확인
   const seg = modeSegments({ autoland: { mode: "off" }, mcc: { mode: "shadow" }, review: { security: "exclude" }, duty: { enabled: true, account: "acct-2", idleMin: 30 } } as never).find((x) => x.key === "duty");
   assert.deepEqual(seg && [seg.label, seg.value, seg.warn], ["DUTY", "on", true]);
 });
+
+test("DUTY CHARTER(ATC-233): on은 ⚠ 확인, shadow·off는 그대로, 정책 한 줄과 색인에 보인다", () => {
+  assert.ok(isRisky("dutyCharter", "on"));
+  assert.ok(!isRisky("dutyCharter", "shadow"));
+  assert.ok(needsConfirm("dutyCharter", "shadow", "on"));
+  assert.ok(!needsConfirm("dutyCharter", "on", "shadow"));
+  const seg = modeSegments({ autoland: { mode: "off" }, mcc: { mode: "shadow" }, review: { security: "exclude" }, duty: { enabled: true, account: "acct-2", idleMin: 30, charter: "on" } } as never).find((x) => x.key === "dutyCharter");
+  assert.deepEqual(seg && [seg.label, seg.value, seg.warn], ["DUTY CHARTER", "on", true]);
+  assert.deepEqual(settingsSearch("duty.charter").map((e) => e.code), ["DUTY"]);
+});
