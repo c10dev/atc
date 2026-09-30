@@ -12,7 +12,7 @@ atc를 고친 PR을 머지한 뒤 운영 서비스(7700)에 반영하는 방법�
 - `CI ✓`: main의 CI(`check`)가 통과했다. 진행 중이면 막대가 "업데이트 대기"로 바뀌고 버튼이 없다. 통과하면 저절로 버튼이 나온다.
 - **[업데이트]**를 누르면 MCC가 쓰는 것과 같은 `atc-rts` 유닛이 시작한다(MCC 모드와 상관없다. `shadow`여도 된다). 유닛은 본 체크아웃을 fast-forward하고 서비스를 재시작하고 상태를 확인한다.
 
-MCC 모드가 `rts`나 `land+rts`이면 서버가 할 때(main CI 통과, 5분 간격, ROLLBACK으로 멈추지 않음)에 스스로 같은 유닛을 시작한다. `rts`에서는 MCC가 착륙하지 않고 사용자가 머지한 main을 서버가 배포한다. 이 모드에서는 막대에 `자동 배포 켜짐`이 붙고, 5분 간격을 기다리는 중이면 `다음 15:42`처럼 시각이 붙는다. `package*.json`이나 유닛 파일을 바꾼 범위는 자동으로 배포하지 않고 막대가 "사람이 배포"로 보인다. 같은 main에 유닛이 거절·실패했으면 자동 배포가 그 main에서 멈추니 사유를 고치고 **[업데이트]**로 다시 시도한다. [업데이트]는 자동 배포 중에도 그대로 된다.
+MCC 모드가 `rts`나 `land+rts`이면 서버가 할 때(main CI 통과, 5분 간격, ROLLBACK으로 멈추지 않음)에 스스로 같은 유닛을 시작한다. `rts`에서는 MCC가 착륙하지 않고 사용자가 머지한 main을 서버가 배포한다. 이 모드에서는 막대에 `자동 배포 켜짐`이 붙고, 5분 간격을 기다리는 중이면 `다음 15:42`처럼 시각이 붙는다. 의존성(`package*.json`)이나 유닛 파일을 바꾼 범위는 자동으로 배포하지 않고 막대가 "사람이 배포"로 보인다. 같은 main에 유닛이 거절·실패했으면 자동 배포가 그 main에서 멈추니 사유를 고치고 **[업데이트]**로 다시 시도한다. [업데이트]는 자동 배포 중에도 그대로 된다.
 
 막대는 진행을 그대로 보인다.
 
@@ -30,7 +30,7 @@ MCC 모드가 `rts`나 `land+rts`이면 서버가 할 때(main CI 통과, 5분 �
 
 막대가 버튼 대신 "사람이 배포" 사유를 보이면 손으로 한다. 그 범위(서비스 커밋 ~ `origin/main`)가 RTS가 하지 않는 것을 바꿨기 때문이다.
 
-- `package.json`·`package-lock.json`이 바뀜: `npm ci`가 필요하다.
+- `package.json`·`package-lock.json`의 **의존성**이 바뀜(`dependencies`·`devDependencies`·`overrides`·`engines`, 잠금 파일의 패키지 항목): `npm ci`가 필요하다. `license`·`description`·`scripts`·`version`만 바뀐 경우는 아니라서 RTS가 그대로 배포한다. 파일을 읽지 못하면 안전하게 사람이 배포한다.
 - `deploy/*.service`·`deploy/*.timer`가 바뀜: 유닛을 다시 읽어야 한다(`systemctl --user daemon-reload`).
 
 ```bash
@@ -40,6 +40,8 @@ npm ci                                  # package*.json이 바뀐 경우
 cp deploy/*.service ~/.config/systemd/user/ && systemctl --user daemon-reload   # 유닛이 바뀐 경우
 npx vite build && systemctl --user restart atc
 ```
+
+손으로 `git merge --ff-only origin/main`만 해 두었다면(본 체크아웃이 `main`이고 깨끗하고 HEAD가 `origin/main`) 막대의 **[다시 시도]**(또는 [업데이트])가 그대로 된다. 유닛이 재시작만 하고, 범위를 다시 거절하지 않는다. 진짜 의존성이 바뀐 범위만 `npm ci`가 필요하다.
 
 그 밖에 손으로 하는 경우: 본 체크아웃이 `main`이 아니거나 깨끗하지 않을 때(먼저 정리한다), 막대가 안 뜰 때(MCC AIRPORT의 GitHub을 아직 못 읽음, 90초쯤 기다린다).
 

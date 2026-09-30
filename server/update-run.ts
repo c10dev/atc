@@ -1,9 +1,11 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import type { Hono } from "hono";
 import { appendMccRecord, autoRtsInfoOf, autoRtsOf, lastRtsFailureOf, mccDeploys, readMccRecords, rtsDueOf } from "./mcc.ts";
 import { airportOf, errText, gh, rtsGuard, rtsState, startRtsUnit } from "./mcc-run.ts";
 import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
-import { type PlanRts, prsOfMessages, type RangePr, rangeRefusalOf, updateStateOf, type UpdateStatus } from "./update.ts";
+import { type Checkout, checkoutAtMain, type PlanRts, prsOfMessages, type RangePr, rangeRefusalOf, updateStateOf, type UpdateStatus } from "./update.ts";
 
 // UPDATE bar 실행부(ATC-82, docs/mcc.md "UPDATE bar as built"). 상태는 읽기만, 시작은 SUPERVISOR가 이 화면에서 누를 때만.
 // 실제 일은 MCC와 같은 atc-rts 유닛(deploy/rts.mjs)이 한다. deploy/는 사용자 등급이라 planRts를 런타임에 읽는다.
@@ -11,12 +13,14 @@ import { type PlanRts, prsOfMessages, type RangePr, rangeRefusalOf, updateStateO
 export interface RangeInfo {
   prs: RangePr[];
   files: string[];
+  depsChanged?: boolean; // package*.json이 범위에 있을 때만. 읽지 못했으면 없음(planRts가 거절)
 }
 export interface UpdateDeps {
   startUnit: () => Promise<void>;
   guard: () => string | null;
   compare: (slug: string, from: string, to: string) => Promise<RangeInfo>;
   planRts: () => Promise<PlanRts>;
+  checkout: () => Promise<Checkout | null>; // 본 체크아웃의 브랜치·HEAD·변경 여부(못 읽으면 null)
   now: () => number;
 }
 
@@ -25,12 +29,40 @@ export const loadPlanRts = async () => {
   if (!planFn) planFn = ((await import(new URL("../deploy/rts.mjs", import.meta.url).href)) as { planRts: PlanRts }).planRts;
   return planFn;
 };
-// 커밋 메시지와 바뀐 파일(GitHub compare, REST)
+let depsFn: ((x: { fromPkg: string | null; toPkg: string | null; fromLock: string | null; toLock: string | null }) => boolean) | null = null;
+const loadDepsChangedOf = async () => {
+  if (!depsFn) depsFn = ((await import(new URL("../deploy/rts.mjs", import.meta.url).href)) as { depsChangedOf: NonNullable<typeof depsFn> }).depsChangedOf;
+  return depsFn;
+};
+// 커밋 메시지와 바뀐 파일(GitHub compare, REST). package*.json이 있으면 두 커밋의 내용을 읽어 의존성이 바뀌었는지도 본다(ATC-217).
+// 읽지 못하면 depsChanged를 비워 둔다 → planRts가 거절(오늘과 같음)
+const fileAt = async (slug: string, path: string, ref: string): Promise<string | null> => {
+  try {
+    return await gh(["api", "-H", "Accept: application/vnd.github.raw+json", `repos/${slug}/contents/${path}?ref=${ref}`]);
+  } catch {
+    return null;
+  }
+};
 const compareRange = async (slug: string, from: string, to: string): Promise<RangeInfo> => {
   const out = JSON.parse(await gh(["api", `repos/${slug}/compare/${from}...${to}`, "--jq", "{messages: [.commits[].commit.message], files: [.files[].filename]}"])) as { messages: string[]; files: string[] };
-  return { prs: prsOfMessages(out.messages), files: out.files };
+  const info: RangeInfo = { prs: prsOfMessages(out.messages), files: out.files };
+  if (out.files.some((f) => f === "package.json" || f === "package-lock.json")) {
+    const [fromPkg, toPkg, fromLock, toLock] = await Promise.all([fileAt(slug, "package.json", from), fileAt(slug, "package.json", to), fileAt(slug, "package-lock.json", from), fileAt(slug, "package-lock.json", to)]);
+    if ([fromPkg, toPkg, fromLock, toLock].every((t) => t !== null)) info.depsChanged = (await loadDepsChangedOf())({ fromPkg, toPkg, fromLock, toLock });
+  }
+  return info;
 };
-const defaultDeps: UpdateDeps = { startUnit: startRtsUnit, guard: rtsGuard, compare: compareRange, planRts: loadPlanRts, now: Date.now };
+// 본 체크아웃(이 저장소)의 상태. 읽기만
+const REPO = new URL("..", import.meta.url).pathname;
+const readCheckout = async (): Promise<Checkout | null> => {
+  try {
+    const vcs = async (...a: string[]) => (await promisify(execFile)("git", a, { cwd: REPO, timeout: 15_000 })).stdout.trim();
+    return { branch: await vcs("rev-parse", "--abbrev-ref", "HEAD"), head: await vcs("rev-parse", "HEAD"), dirty: (await vcs("status", "--porcelain", "--untracked-files=no")) !== "" };
+  } catch {
+    return null;
+  }
+};
+const defaultDeps: UpdateDeps = { startUnit: startRtsUnit, guard: rtsGuard, compare: compareRange, planRts: loadPlanRts, checkout: readCheckout, now: Date.now };
 
 const RANGE_ERROR_MS = 60_000; // 읽기에 실패하면 이 시간 동안 다시 읽지 않는다
 export function mountUpdate(app: Hono, getSnapshot: () => Promise<Snapshot>, head: () => string | null, deps: UpdateDeps = defaultDeps) {
@@ -65,7 +97,8 @@ export function mountUpdate(app: Hono, getSnapshot: () => Promise<Snapshot>, hea
     const behind = f.deployed && f.ap.main && !f.ap.main.startsWith(f.deployed) && !f.deployed.startsWith(f.ap.main);
     const range = behind ? await rangeOf(f.ap.slug, f.deployed!, f.ap.main!) : null;
     let rangeRefusal: string | null = null;
-    if (range && behind) rangeRefusal = rangeRefusalOf(await deps.planRts(), f.deployed!, f.ap.main!, range.files);
+    // 본 체크아웃이 이미 main이면 유닛은 재시작만 하므로 범위를 미리 거절하지 않는다
+    if (range && behind && !checkoutAtMain(await deps.checkout(), f.ap.main)) rangeRefusal = rangeRefusalOf(await deps.planRts(), f.deployed!, f.ap.main!, range.files, range.depsChanged);
     const { kind, why } = updateStateOf({
       deployed: f.deployed,
       main: f.ap.main,
@@ -99,9 +132,11 @@ export function mountUpdate(app: Hono, getSnapshot: () => Promise<Snapshot>, hea
       // 범위 거절은 시작하기 전에 안다(UPDATE 바와 같은 planRts). 할 때가 아니면 GitHub을 읽지 않는다
       let rangeRefusal: string | null = null;
       if (due.due && deployed && ap.main) {
-        const range = await rangeOf(ap.slug, deployed, ap.main);
-        if (range) rangeRefusal = rangeRefusalOf(await deps.planRts(), deployed, ap.main, range.files);
-        else return { started: false, why: "범위를 읽지 못함 — 다음 점검에서 다시" };
+        if (!checkoutAtMain(await deps.checkout(), ap.main)) {
+          const range = await rangeOf(ap.slug, deployed, ap.main);
+          if (range) rangeRefusal = rangeRefusalOf(await deps.planRts(), deployed, ap.main, range.files, range.depsChanged);
+          else return { started: false, why: "범위를 읽지 못함 — 다음 점검에서 다시" };
+        }
       }
       const decision = autoRtsOf({ mode: ap.cfg.mode, due, main: ap.main, rangeRefusal, guard: deps.guard(), last: state.last, lastFailedAt: lastRtsFailureOf(records, ap.main), now });
       if (!decision.start) return { started: false, why: decision.why };
