@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { ack, openAlert, resumeSound, useAlerts } from "./alerts-runtime.ts";
-import { needsAction, soundLocked, type SupervisorAlert } from "./supervisor-alerts.ts";
+import { ack, alertSoundLocked, openAlert, resumeSound, useAlerts } from "./alerts-runtime.ts";
+import { inApp } from "./host.ts";
+import { needsAction, type SupervisorAlert } from "./supervisor-alerts.ts";
 import { alertLevelLabel } from "./aviation.ts";
 import "./alerts.css";
 
 // 소리가 켜져 있는데 브라우저가 잠갔을 때 헤더에 계속 보이는 칩(ATC-162). 누르면 푼다. 풀리면(running) 사라진다
 export function SoundLockChip() {
   const { prefs, audio, missed } = useAlerts();
-  if (!soundLocked(prefs, audio)) return null;
+  if (!alertSoundLocked(prefs, audio)) return null;
   return (
     <button className="sound-lock" onClick={() => void resumeSound()} title="브라우저가 소리를 잠갔습니다. 아무 곳이나 누르거나 이 칩을 누르면 켜집니다">
       🔇 소리 잠김 — 클릭하면 켜짐{missed.length > 0 && <em> · 놓침 {missed.length}</em>}
@@ -56,7 +57,7 @@ export function AlertBell({ onNavigate }: { onNavigate?: () => void }) {
             </span>
             {todo.length > 0 && <button onClick={() => ack(todo.map((a) => a.key))}>모두 확인</button>}
           </header>
-          {prefs.sound && audio !== "running" && (
+          {!inApp && prefs.sound && audio !== "running" && (
             <button className="alert-unlock" onClick={() => void resumeSound()}>
               소리 꺼짐 — 눌러서 켜기
             </button>

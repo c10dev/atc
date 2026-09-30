@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { inApp } from "./host.ts";
 import { createPlayer, type AudioState } from "./sound.ts";
 import {
   type AlertEvent,
@@ -112,6 +113,7 @@ function itemsAfter(cur: SupervisorAlert[], ev: AlertEvent): SupervisorAlert[] {
 }
 
 function show(a: SupervisorAlert) {
+  if (inApp) return; // ANNUNCIATOR 창: 브라우저 알림은 앱이 낸다(ATC-178)
   if (!view.prefs.notify || view.permission !== "granted") return;
   const title = `${a.aircraft ?? "atc"}${a.flight ? ` · ${a.flight}` : ""}`;
   try {
@@ -135,7 +137,7 @@ export async function handleAlertEvent(ev: AlertEvent) {
   write(ACKED_KEY, acked);
   emit({ items: itemsAfter(view.items, ev), acked });
   for (const a of fresh) show(a);
-  if (!fresh.length) return;
+  if (inApp || !fresh.length) return; // ANNUNCIATOR 창: 알림 톤·음성도 앱이 낸다. 놓침(ATC-162)도 없다
   burst.push(...fresh);
   burstTimer ??= setTimeout(flushBurst, BURST_MS);
 }
@@ -255,6 +257,8 @@ export const stopSound = () => player.stop();
 // RADIO 듣기(ATC-172): 같은 무전 체인·같은 AudioContext. WARNING·CALL 톤이 울리는 동안은 내지 않고("alert"), 톤이 시작하면 그친다
 export const speakRadio = (url: string, rate: number, cancelled?: () => boolean) => player.speak({ url, radio: view.prefs.voice.radio }, view.prefs.volume, { yieldToAlert: true, rate, cancelled });
 export const stopRadioSpeech = () => player.stopSpeech();
+// 소리가 잠겼나(ATC-162)의 화면용 판단: ANNUNCIATOR 창은 알림 소리를 내지 않으므로 잠금 칩·안내가 해당하지 않는다(RADIO의 자체 버튼은 그대로)
+export const alertSoundLocked = (prefs: AlertPrefs, audio: AudioState) => !inApp && soundLocked(prefs, audio);
 // 조용한 시간(알림과 같은 설정)이거나, 브라우저가 소리를 잠갔는가
 export const radioQuietNow = () => inQuiet(view.prefs.quiet, new Date());
 

@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import type { VoiceStatusAll as VoiceStatus } from "../../server/tts.ts";
+import { inApp } from "./host.ts";
 import { disableSound, enableNotify, enableSound, previewSound, previewVoice, resumeSound, stopSound, updatePrefs, useAlerts } from "./alerts-runtime.ts";
 import type { Save } from "./SettingsServer.tsx";
 import { ALERT_GROUPS, GROUP_LABEL, SOUND_LABEL, SOUND_NAMES } from "./supervisor-alerts.ts";
@@ -32,7 +33,24 @@ const VOICE_ENGINES: [string, string][] = [
   ["stub", "stub (시험용)"],
 ];
 
+// ANNUNCIATOR 창(ATC-178): 알림 소리·음성·브라우저 알림은 앱이 낸다. 컨트롤 대신 한 줄. 저장된 설정은 건드리지 않아 같은 저장소를 브라우저에서 열면 전처럼 동작한다
+export const APP_ALERTS_LINE = "알림 소리와 음성은 ANNUNCIATOR가 냅니다 (앱 설정)";
 export function AlertsSettings({ save }: { save: Save }) {
+  return inApp ? (
+    <section className="settings-section">
+      <h3 className="label">
+        ALERTS <em>알림</em>
+      </h3>
+      <p className="settings-hint" data-testid="app-alerts-line">
+        {APP_ALERTS_LINE}
+      </p>
+    </section>
+  ) : (
+    <BrowserAlertsSettings save={save} />
+  );
+}
+
+function BrowserAlertsSettings({ save }: { save: Save }) {
   const { prefs, permission, audio } = useAlerts();
   const [msg, setMsg] = useState<string | null>(null);
   const { status: voice, reload: reloadVoice } = useVoiceStatus();
