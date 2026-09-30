@@ -34,6 +34,7 @@ const Docs = lazyTab<Record<string, never>>(() => import("./views/Docs.tsx"), "D
 // 서랍은 처음 열 때 불러온다(Markdown 렌더러까지 그 청크에)
 const Drawer = lazy(() => import("./Drawer.tsx"));
 const DutyDrawer = lazy(() => import("./DutyDrawer.tsx"));
+const IdeasDrawer = lazy(() => import("./IdeasDrawer.tsx"));
 
 const TABS = [
   { id: "radar", code: "RADAR" },
@@ -275,7 +276,11 @@ export function App({ build }: { build: string }) {
       {drawer && !dutyOpen && (
         <TabBoundary key={JSON.stringify(drawer)} stale={false}>
           <Suspense fallback={null}>
-            <Drawer target={drawer} onClose={closeDrawer} now={now} />
+            {drawer.kind === "ideas" || drawer.kind === "idea" ? (
+              <IdeasDrawer target={drawer} onClose={closeDrawer} now={now} gate={{ enabled: duty.status ? duty.status.enabled : null, blocked: duty.status?.blocked === true }} />
+            ) : (
+              <Drawer target={drawer} onClose={closeDrawer} now={now} />
+            )}
           </Suspense>
         </TabBoundary>
       )}
