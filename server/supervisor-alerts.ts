@@ -63,6 +63,7 @@ const NEXT_BY_ISSUE: Partial<Record<string, string>> = {
   report: "그 세션의 보고를 읽고 결정한다",
   unable: "UNABLE 사유를 읽고 FLIGHT를 다시 배정한다",
   launch: "LAUNCH 실패 사유를 보고 다시 띄운다",
+  undelivered: "그 AIRCRAFT 세션을 확인한다(없으면 LAUNCH). 승인은 그대로라 세션이 돌아오면 다시 보낸다",
   fuel: "ACCOUNT의 FUEL을 확인한다",
 };
 

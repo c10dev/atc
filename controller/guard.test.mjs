@@ -72,6 +72,19 @@ test("읽기 전용 gh: --gh-read일 때 gh pr view·checks·diff·list만 허�
 });
 
 const CROSSCHECK = HERE.replace(/controller$/, "crosscheck");
+test("dispatch undelivered(ATC-183): OCC(옵션 없음·--gh-read)는 쓰고, CROSSCHECK·REVIEW·MCC는 쓰지 못한다. 그 밖의 명령은 여전히 막힌다", () => {
+  const cmd = "node ../controller/atcctl.mjs dispatch undelivered D-0170 -- 'No session named TEAM_H'";
+  assert.equal(check(cmd, OCC), null);
+  assert.equal(check(cmd, OCC, { ghRead: true }), null);
+  assert.notEqual(check(cmd, CROSSCHECK, { crosscheck: true }), null);
+  assert.notEqual(check(cmd, HERE, { review: true }), null);
+  assert.notEqual(check(cmd, HERE, { mcc: true }), null);
+  // 리다이렉션·치환·다른 프로그램으로는 여전히 못 돌린다(fail-closed)
+  assert.notEqual(check(`${cmd} > out.txt`, OCC), null);
+  assert.notEqual(check("node ../controller/atcctl.mjs dispatch undelivered D-0170 -- $(whoami)", OCC), null);
+  assert.notEqual(check("echo dispatch undelivered D-0170", OCC), null);
+});
+
 test("--crosscheck: atc CLI 중 읽기와 crosscheck 명령만, gh는 막음", () => {
   const opts = { crosscheck: true };
   const ok = [

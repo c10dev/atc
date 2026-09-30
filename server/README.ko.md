@@ -160,6 +160,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `POST /api/dispatch/proposals/:id/unhold` | SUPERVISOR가 HOLD를 풂(제안은 SUPERSEDED) |
 | `POST /api/dispatch/proposals/:id/{approve,reject}` | approval 모드에서 SUPERVISOR 결정, 둘 다 `{via?}`, `reject`는 `{reason?, reasonCodes?}`도 |
 | `POST /api/dispatch/proposals/:id/release` | 승인 → SENT, `sendTo`와 FLIGHT PLAN 문구 반환 |
+| `POST /api/dispatch/proposals/:id/undelivered` | OCC의 FLIGHT PLAN `SendMessage`가 실패함(ATC-183): `{reason}`(필수, 300자 이내), `sent` 제안에만(아니면 `409`). `undelivered` op를 더해 제안을 `approved`로 돌리고(승인 시각 유지, SUPERVISOR 판정 아님) `undelivered: { at, reason, n }`, FOLLOWING CAUTION 경보 하나, RADIO 호출에 `undelivered` 표시. `…/release`는 그 AIRCRAFT에 살아 있는 세션이 없으면 `409` `AIRCRAFT 세션 없음 — 보내지 않음 (LAUNCH 필요)`(`launch` 카드는 뺀다) |
 | `POST /api/dispatch/proposals/:id/await-supervisor` | CAPTAIN이 자기 사용자를 기다리는 sent 제안(ATC-120): `{reason}`. `sent` 그대로 `awaitSupervisor`, 경보는 제안마다 한 번. `GET /api/dispatch/brief`는 `confirm`(SUPERVISOR CONFIRM AT AIRCRAFT, `supervisor-confirm.ts`)도 싣는다 |
 | `POST /api/dispatch/proposals/:id/{accept,decline,standby}` | CAPTAIN READBACK, `{reason}`과 함께 거절(`UNABLE D-xxxx`), 또는 STANDBY(ATC-122). STAND 없는 FLIGHT는 READBACK에 DEPARTED(`readbackOps`) |
 | `POST /api/dispatch/proposals/:id/arrived` | STAND 없이 DEPARTED한 FLIGHT의 CAPTAIN 보고 `{note}`를 OCC가 적음 → ARRIVED |
