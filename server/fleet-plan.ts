@@ -24,11 +24,12 @@ export interface FleetPlanConfig {
   minDwellMin: number; // LAUNCH·STOP 뒤 이만큼은 반대 제안을 하지 않는다
   refreshTokens: number; // REFRESH(ATC-69): 쉬는 AIRCRAFT의 대화가 이 토큰을 넘거나
   refreshPct: number; // 창의 이 몫(0–1)을 넘으면. 창을 짐작만 했으면(200k 기본) 토큰 기준만 본다
+  accountChangeLimitMin: number; // ACCOUNT CHANGE(ATC-148): LIMIT의 reset이 이 분 넘게 남았으면 ACCOUNT를 옮기자고 제안
 }
 // SUPERVISOR 결정(2026-09-28): 제안한 기본값 그대로. REFRESH는 ATC-69 명세의 기본값(300k 또는 창의 40%)
-export const FLEET_PLAN_DEFAULTS: FleetPlanConfig = { reserve: 1, waitMin: 120, idleHours: 12, restartDays: 3, retireDays: 30, minDwellMin: 120, refreshTokens: 300_000, refreshPct: 0.4 };
+export const FLEET_PLAN_DEFAULTS: FleetPlanConfig = { reserve: 1, waitMin: 120, idleHours: 12, restartDays: 3, retireDays: 30, minDwellMin: 120, refreshTokens: 300_000, refreshPct: 0.4, accountChangeLimitMin: 60 };
 
-export const FLEET_PLAN_KINDS = ["LAUNCH", "ENTRY", "STOP", "RESTART", "REFRESH", "AOG", "RETIRE", "RETURN"] as const;
+export const FLEET_PLAN_KINDS = ["LAUNCH", "ENTRY", "STOP", "RESTART", "REFRESH", "ACCOUNT CHANGE", "AOG", "RETIRE", "RETURN"] as const;
 export type FleetPlanKind = (typeof FLEET_PLAN_KINDS)[number];
 
 export interface PlanReason {
@@ -87,7 +88,7 @@ export interface FleetInputs {
   // FUEL REMAINING(ATC-55·60)의 ACCOUNT마다 한 줄(snapshot.fuelAccounts). 없으면 FUEL을 보지 않는다(전과 같다)
   fuelAccounts?: FuelRemaining[];
   // 등록된 ACCOUNT와 로그인 여부(ATC-147, loggedIn null=모름). 없거나 비면 ENTRY는 전과 같다(ACCOUNT를 고르지 않는다)
-  accountLogins?: { label: string; loggedIn: boolean | null }[];
+  accountLogins?: { label: string; loggedIn: boolean | null; maxLaunched?: number; running?: number }[];
   // CONTEXT SIZE(ATC-69): REGISTRATION → 살아 있는 세션의 대화 크기와 F5 가격표. 없으면 REFRESH를 내지 않는다
   context?: Map<string, ContextSize>;
   prices?: PriceTable | null;
@@ -168,8 +169,60 @@ export function entryAccountOf(i: Pick<FleetInputs, "accountLogins" | "fuelAccou
   return { registered: true, account: null, use: null, blocked: `새 AIRCRAFT(ENTRY)가 날 ACCOUNT가 없음 — ${why}` };
 }
 
+// ── ACCOUNT CHANGE(ATC-148, docs/fleet.md 8.6): FLIGHT 사이의 AIRCRAFT를 사용 한도가 남은 ACCOUNT로 옮기자는 제안(순수) ──
+// 조건: (1) 지금 ACCOUNT(관찰한 것)가 hold 수준(holdPct)이거나 reset이 accountChangeLimitMin분 넘게 남은 LIMIT — 또는 home이 아닌 ACCOUNT에서 돌고 home이 infoPct 아래로 돌아옴,
+// (2) FLIGHT 사이: 세션이 쉬고(idle) 열린 FLIGHT·점유·PR이 없고 이번 계획에서 FLIGHT를 받지 않음. 살아 있는 FLIGHT는 옮기지 않는다 — 한도로 잘린 FLIGHT는 같은 ACCOUNT의 RESUME(ATC-86·129),
+// (3) 다른 등록 ACCOUNT가 로그인 안 됨으로 알려지지 않았고 infoPct 아래(level ok)이고 ACCOUNT 상한(maxLaunched) 아래. 목표는 그중 사용이 가장 낮은 것(기록 없음=0, 같으면 라벨 순)
+// atc가 멈추고 다시 띄울 수 있는 백그라운드 세션만. 등록부가 없으면 없다
+export function accountChangeOf(
+  a: AircraftView,
+  session: SessionFact | null,
+  i: Pick<FleetInputs, "accountLogins" | "fuelAccounts" | "openPrs" | "config" | "now">,
+  assigned: boolean,
+  launchedRecently: boolean,
+): FleetCandidate | null {
+  const logins = i.accountLogins ?? [];
+  const home = a.account;
+  const cur = a.observedAccount ?? a.account;
+  if (!logins.length || !home || !cur || a.retired || a.aog || !isBgFact(session) || launchedRecently) return null;
+  if (!logins.some((l) => l.label === cur)) return null; // 등록되지 않은 폴더의 ACCOUNT는 옮길 근거를 모른다
+  if (a.status !== "idle" || a.flying.length || a.flights.length || assigned || i.openPrs.has(a.registration)) return null;
+  if (a.health?.code === "LIMIT" && a.health.cut) return null; // 한도로 잘린 턴은 RESUME(같은 ACCOUNT)
+  const fuel = i.fuelAccounts ?? [];
+  const fuelOf = (label: string) => fuel.find((f) => f.account === label) ?? null;
+  const use = (label: string) => fuelOf(label)?.top.pct ?? 0;
+  const curFuel = fuelOf(cur);
+  const why: PlanReason[] = [];
+  if (curFuel?.level === "hold") why.push({ code: "account", detail: `${fuelHoldText(curFuel, i.now)} — hold 수준`, value: curFuel.top.pct });
+  const h = a.health;
+  const limitLeft = h?.code === "LIMIT" && h.resetsAt ? Date.parse(h.resetsAt) - i.now : null;
+  if (limitLeft !== null && limitLeft > i.config.accountChangeLimitMin * MIN) why.push({ code: "limit", detail: `ACCOUNT ${cur}: LIMIT — reset ${h!.resetsAt!.slice(11, 16)}Z까지 ${spanText(limitLeft / MIN)} 남음(기준 ${i.config.accountChangeLimitMin}분)`, value: h!.resetsAt ?? null });
+  const eligible = (l: { label: string; loggedIn: boolean | null; maxLaunched?: number; running?: number }) =>
+    l.label !== cur && l.loggedIn !== false && (fuelOf(l.label)?.level ?? "ok") === "ok" && !(l.maxLaunched && (l.running ?? 0) >= l.maxLaunched);
+  const targets = logins.filter(eligible).sort((x, y) => use(x.label) - use(y.label) || x.label.localeCompare(y.label));
+  // home로 돌아가는 제안(자동이 아니다): home이 아닌 ACCOUNT에서 돌고 home이 infoPct 아래
+  const back = cur !== home && targets.some((t) => t.label === home);
+  if (back) why.push({ code: "home", detail: `home ACCOUNT ${home}: 사용 ${Math.round(use(home))}% — infoPct 아래로 돌아옴`, value: use(home) });
+  if (!why.length || !targets.length) return null;
+  const to = back && !why.some((r) => r.code !== "home") ? home : targets[0].label; // home로 돌아가는 것만이 이유면 home로
+  const tf = fuelOf(to);
+  const reasons: PlanReason[] = [
+    ...why,
+    { code: "target", detail: `옮길 ACCOUNT ${to}: ${tf ? `사용 ${Math.round(tf.top.pct)}%(reset ${tf.top.resetsAt.slice(11, 16)}Z)` : "사용 기록 없음"} — 등록됨, 로그인 안 됨 아님, infoPct 아래${targets.length > 1 ? `, 사용이 가장 낮음(다른 후보 ${targets.slice(1).map((t) => `${t.label} ${Math.round(use(t.label))}%`).join(", ")})` : ""}`, value: to },
+    { code: "between", detail: "FLIGHT 사이: 세션이 쉬고 열린 FLIGHT·점유·PR이 없음" },
+    { code: "cold", detail: "새 세션은 캐시 없이 시작한다(ACCOUNT마다 캐시가 다름). FUEL LEAK의 ACCOUNT CHANGE로 따로 보인다" },
+    { code: "session", detail: `BG ${session!.id ?? "?"} — ACCOUNT ${cur}에서 멈추고 ACCOUNT ${to}에서 CREW BRIEFING으로 다시 띄움. home ACCOUNT ${home}는 그대로` },
+  ];
+  return { key: `ACCOUNT CHANGE|${a.registration}`, kind: "ACCOUNT CHANGE", aircraft: a.registration, airport: a.base, account: to, reasons };
+}
+
 // 열린 LAUNCH·ENTRY 제안의 ACCOUNT가 hold 수준이 됐으면 그 사유(syncFleetPlan이 expire한다)
 export function fuelExpiryOf(i: Pick<FleetInputs, "aircraft" | "fuelAccounts" | "now">, p: Pick<FleetProposal, "kind" | "aircraft"> & { account?: string }): string | null {
+  // ACCOUNT CHANGE(ATC-148)의 옮길 ACCOUNT가 infoPct 이상이 됐으면 여유가 없다
+  if (p.kind === "ACCOUNT CHANGE") {
+    const t = p.account ? ((i.fuelAccounts ?? []).find((x) => x.account === p.account) ?? null) : null;
+    return t && t.level !== "ok" ? `${fuelHoldText(t, i.now)} — 옮길 ACCOUNT에 여유가 없음` : null;
+  }
   if (p.kind !== "LAUNCH" && p.kind !== "ENTRY") return null;
   const f = p.kind === "ENTRY" && p.account ? ((i.fuelAccounts ?? []).find((x) => x.account === p.account) ?? null) : fuelOfPlan(i, p.kind, p.aircraft); // ENTRY가 ACCOUNT를 정했으면 그 ACCOUNT(ATC-147)
   return f?.level === "hold" ? `${fuelHoldText(f, i.now)} — ACCOUNT가 FUEL hold 수준` : null;
@@ -367,6 +420,17 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
     else out.push({ key: `REFRESH|${a.registration}`, kind: "REFRESH", aircraft: a.registration, airport: a.base, reasons: why });
   }
 
+  // ── ACCOUNT CHANGE(ATC-148): FLIGHT 사이의 AIRCRAFT를 여유 있는 ACCOUNT로 ──
+  const moving = new Set<string>();
+  for (const a of i.aircraft) {
+    const session = i.sessions.find((x) => regKey(x.registration) === a.registration) ?? null;
+    const c = accountChangeOf(a, session, i, assigned.has(a.registration), dwelling(a.registration, "launch") !== null);
+    if (c) {
+      out.push(c);
+      moving.add(a.registration);
+    }
+  }
+
   // ── AOG: NORDO, 최근 LOS, AIRCRAFT health의 MODEL·주간 LIMIT(ATC-48) ──
   for (const a of i.aircraft) {
     if (a.retired || a.aog) continue;
@@ -376,7 +440,7 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
     if (los) reasons.push({ code: "los", detail: `최근 24시간 LOS(${los.slice(0, 16).replace("T", " ")}Z)` });
     const h = a.health;
     if (h?.code === "MODEL") reasons.push({ code: "model", detail: `MODEL — ${h.detail}. ${h.next}` });
-    const weekly = h?.code === "LIMIT" && h.weekly ? h : null;
+    const weekly = h?.code === "LIMIT" && h.weekly && !moving.has(a.registration) ? h : null; // 옮길 ACCOUNT가 있으면 주간 LIMIT만으로 AOG를 제안하지 않는다(ATC-148)
     if (weekly) reasons.push({ code: "limit", detail: `주간 LIMIT — ${weekly.resetsAt ? `reset ${weekly.resetsAt.slice(0, 16).replace("T", " ")}Z까지` : "reset 시각 모름"}`, value: weekly.resetsAt ?? null });
     if (!reasons.length) continue;
     // 주간 LIMIT만이면 reset 날까지, 다른 사유가 있으면 24시간(reset이 더 늦으면 그날)
@@ -514,7 +578,7 @@ export interface ApproveOptions {
 }
 export type ExecStep =
   | { action: "entry"; registration: string; configuration: ConfigurationId; base: string; account?: string }
-  | { action: "launch"; registration: string; permissionMode: PermissionMode; model: string | null }
+  | { action: "launch"; registration: string; permissionMode: PermissionMode; model: string | null; account?: string }
   | { action: "stop"; registration: string }
   | { action: "aog"; registration: string; reason: string; until: string | null }
   | { action: "return"; registration: string }
@@ -612,7 +676,7 @@ export function syncFleetPlan(
   const open = all.filter((p) => p.status === "open");
   const openByKey = new Map(open.filter((p) => !fuelHeld.has(p.id)).map((p) => [p.key, p]));
   const created: FleetProposal[] = [];
-  const same = (p: Pick<FleetProposal, "kind" | "aircraft">, c: FleetCandidate) => p.kind === c.kind && p.aircraft === c.aircraft;
+  const same = (p: Pick<FleetProposal, "kind" | "aircraft"> & { account?: string }, c: FleetCandidate) => p.kind === c.kind && p.aircraft === c.aircraft && (c.kind !== "ACCOUNT CHANGE" || p.account === c.account); // 옮길 ACCOUNT가 바뀌면 다른 제안(ATC-148)
   for (const p of open) {
     const c = current.get(p.key);
     if (fuelHeld.has(p.id)) ops.push({ op: "expire", id: p.id, reason: fuelHeld.get(p.id)!, at });
@@ -683,9 +747,9 @@ export interface ExecContext {
 }
 
 // 최근 주기가 같은 AIRCRAFT에 같은 종류를 여전히 내나
-export function isStale(p: Pick<FleetProposal, "key" | "kind" | "aircraft">, latest: FleetCandidate[], ranAt: string | null, now: number): boolean {
+export function isStale(p: Pick<FleetProposal, "key" | "kind" | "aircraft"> & { account?: string }, latest: FleetCandidate[], ranAt: string | null, now: number): boolean {
   if (!ranAt || now - Date.parse(ranAt) > STALE_MS) return true;
-  return !latest.some((c) => c.key === p.key && c.kind === p.kind && c.aircraft === p.aircraft);
+  return !latest.some((c) => c.key === p.key && c.kind === p.kind && c.aircraft === p.aircraft && (p.kind !== "ACCOUNT CHANGE" || c.account === p.account));
 }
 
 // 승인 양식 값을 검사해 단계로 만든다(순수). 8.5의 거절 조건 중 지금 알 수 있는 것을 먼저 본다 —
@@ -759,6 +823,17 @@ export function executionOf(p: FleetProposal, input: Record<string, unknown>, ct
       needBackground();
       const o = launchOptions(ctx.lastLaunch.get(reg));
       return { steps: [{ action: "stop", registration: reg }, { action: "launch", registration: reg, ...o }], options: o };
+    }
+    case "ACCOUNT CHANGE": {
+      // 실행할 때 다시 본다: 살아 있는 FLIGHT는 옮기지 않는다(최근 주기가 이미 확인했지만 승인까지 시간이 걸렸을 수 있다)
+      const x = needAircraft();
+      if (x.retired) throw new PlanError(`${reg}는 RETIRED`);
+      if (!p.account) throw new PlanError("ACCOUNT CHANGE에 옮길 ACCOUNT가 없음");
+      needBase(x);
+      needBackground();
+      if (x.status !== "idle" || x.flying.length || x.flights.length) throw new PlanError(`${reg}가 FLIGHT 중(${[...x.flying, ...x.flights.map((f) => f.key)].join(", ") || x.status}) — 살아 있는 FLIGHT는 옮기지 않는다`);
+      const o = launchOptions(ctx.lastLaunch.get(reg));
+      return { steps: [{ action: "stop", registration: reg }, { action: "launch", registration: reg, ...o, account: p.account }], options: o };
     }
     case "AOG": {
       const x = needAircraft();

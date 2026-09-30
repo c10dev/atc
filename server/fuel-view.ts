@@ -303,6 +303,7 @@ export const LEAK_LABEL: Record<LeakName, string> = {
   modelSwitch: "MODEL SWITCH",
   compaction: "COMPACTION",
   sessionChange: "SESSION CHANGE",
+  accountChange: "ACCOUNT CHANGE",
   upgrade: "UPGRADE",
   unexplained: "UNEXPLAINED",
 };

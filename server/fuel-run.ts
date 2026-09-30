@@ -13,13 +13,14 @@ import { loadFleet } from "./fleet.ts";
 import { agentModels, type CrewWarning, crewWarnings } from "./fuel-crew.ts";
 import { type PriceTable, priceFlightFuel } from "./fuel-cost.ts";
 import { readPrices } from "./fuel-prices.ts";
-import { type Baseline, controlSendsOf, findLeaks, type LeakEvent, sessionChangeLeaks } from "./fuel-leaks.ts";
+import { type AccountChangeMark, accountChangeLeaks, type Baseline, controlSendsOf, findLeaks, type LeakEvent, sessionChangeLeaks } from "./fuel-leaks.ts";
 import { type AgentMeta, type Compaction, dedupeFuel, type FuelRecord, type ModelCommand, parseFuelLines, summarizeFuel } from "./fuel.ts";
 import { type ContextSize, contextSizeOf, contextView, sessionContexts, type StatusWindow } from "./fuel-context.ts";
 import { arrivedSpan, type Attribution, attributeFuel, type ClaimSpan, enRouteSpans, flightOf, fuelForEntry } from "./fuel-flights.ts";
 import type { LogEntry, LogLine } from "./logbook.ts";
 import type { Snapshot } from "./model.ts";
 import { allProposals } from "./proposals.ts";
+import { readRecords } from "./recorder.ts";
 import { readHookClaims } from "./sources/claude.ts";
 import { type FuelLimitsRecord, type FuelStatusRecord, lastRecordWith, readTail, recordsOf } from "../hooks/fuel-statusline.mjs";
 import { fleetKeyOf, regKey } from "./registration.ts";
@@ -387,7 +388,11 @@ export function analyzeWindow(
     const f = flightOf(r, spans, aircraftOf, (id) => byClaimant.get(id) ?? []);
     return f && { key: f.key, airport: f.airport ?? null };
   }, prices);
-  const leaks = [...findLeaks(scan.records.values(), scan.compactions, controlSends(), scan.names, prices), ...change.events];
+  // ACCOUNT CHANGE(ATC-148): FLIGHT RECORDER의 account-change 사건이 가리키는 새 세션의 첫 요청. 같은 세션이 SESSION CHANGE에도 걸렸으면 이쪽 이름만 남긴다
+  const marks: AccountChangeMark[] = readRecords(since - DAY_MS).flatMap((r) => (r.kind === "fleet" && r.op === "account-change" && r.ok && r.jobId ? [{ aircraft: r.aircraft, jobId: r.jobId, t: r.t }] : []));
+  const moved = accountChangeLeaks(scan.records.values(), marks, change.baselines["*"]);
+  const movedSessions = new Set(moved.map((e) => e.session));
+  const leaks = [...findLeaks(scan.records.values(), scan.compactions, controlSends(), scan.names, prices), ...change.events.filter((e) => !movedSessions.has(e.session)), ...moved];
   const warnings = crewWarnings({ records: scan.records.values(), agents: scan.agents, complementOf: complements(scan.names) });
   const inWindow = (t: string) => Date.parse(t) >= since && Date.parse(t) <= now;
   const att = attributeFuel({

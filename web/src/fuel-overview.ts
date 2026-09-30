@@ -164,6 +164,7 @@ export const LEAK_ROWS: { key: keyof LeakTotals; label: string; meaning: string 
   { key: "modelSwitch", label: "MODEL SWITCH", meaning: "요청 사이에 모델이 바뀌어 캐시를 못 읽은 것" },
   { key: "compaction", label: "COMPACTION", meaning: "compaction 뒤 다시 짓기 중 캐시가 식어 있던 것" },
   { key: "sessionChange", label: "SESSION CHANGE", meaning: "같은 FLIGHT의 새 세션 첫 요청이 AIRPORT 기준선을 넘은 몫" },
+  { key: "accountChange", label: "ACCOUNT CHANGE", meaning: "FLEET PLAN이 다른 ACCOUNT에서 다시 띄운 새 세션의 첫 요청이 기준선을 넘은 몫(캐시는 ACCOUNT마다 다르다)" },
   { key: "upgrade", label: "UPGRADE", meaning: "version·effort가 바뀐 바로 뒤의 miss" },
   { key: "unexplained", label: "UNEXPLAINED", meaning: "위 어느 규칙에도 안 맞는 miss" },
 ];

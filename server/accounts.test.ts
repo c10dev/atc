@@ -6,7 +6,7 @@ import { after, test } from "node:test";
 import { authFieldsOf, folderHealthOf, settingsPiecesOf, warningsOf } from "./account-health.ts";
 import { AccountsError, accountFolders, checkConfigDir, foldersOf, loadAccounts, observedLabelsOn, validateAccounts } from "./accounts.ts";
 import { config } from "./config.ts";
-import { fuelAccountsOf, type FuelMember, observeMembers } from "./fuel-remaining.ts";
+import { fuelAccountsOf, fuelByAircraft, fuelHolds, type FuelMember, observeMembers } from "./fuel-remaining.ts";
 import { fuelFiles } from "./fuel-run.ts";
 import { jobStateOf } from "./session-control.ts";
 import { readJob } from "./job-state.ts";
@@ -218,4 +218,22 @@ test("폴더 health: settings 조각 검사와 경고 글, auth 출력은 걸러
   assert.deepEqual([h1.loggedIn, h1.statusline, h1.claimHook, h1.healthHook], [true, true, false, false]);
   assert.ok(h1.warnings.every((w) => w.includes("acct-1")));
   assert.equal(health.find((h) => h.label === "acct-3")!.loggedIn, false);
+});
+
+test("DISPATCH: ACCOUNT CHANGE로 옮긴 AIRCRAFT는 다시 배정할 수 있다(FUEL HOLD와 FOLLOWING이 관찰한 ACCOUNT를 쓴다)", () => {
+  const now = Date.parse("2026-09-30T10:00:00Z");
+  const cfg = { infoPct: 80, holdPct: 95, hold: true };
+  const records = [rec("s-old", "2026-09-30T09:59:00Z", 97), rec("s-new", "2026-09-30T09:58:00Z", 30)];
+  const home = (ids: string[]): FuelMember[] => [{ name: "TEAM_A", kind: "aircraft", account: "acct-2", sessionIds: ids }];
+  const fuelOf = (ids: string[], observed: [string, string][], live: string[]) =>
+    fuelByAircraft(fuelAccountsOf(observeMembers(home(ids), new Map(observed), new Set(live)), records, cfg, now)).TEAM_A;
+  // 옮기기 전: 세션이 acct-2 폴더에 있고 acct-2가 97% → hold라 DISPATCH가 건너뛴다
+  const before = fuelOf(["s-old"], [["s-old", "acct-2"]], ["s-old"]);
+  assert.equal(before.account, "acct-2");
+  assert.equal(fuelHolds(before, cfg), true);
+  // 옮긴 뒤: 옛 세션은 죽었고 새 세션이 acct-1 폴더에서 산다 → 관찰한 ACCOUNT는 acct-1(30%). home은 acct-2 그대로지만 배정할 수 있다
+  const after = fuelOf(["s-old", "s-new"], [["s-old", "acct-2"], ["s-new", "acct-1"]], ["s-new"]);
+  assert.equal(after.account, "acct-1");
+  assert.equal(after.top.pct, 30);
+  assert.equal(fuelHolds(after, cfg), false);
 });

@@ -87,7 +87,7 @@ test("leakViewsOf: 규칙마다 뜻과 값, LEAK 밖(proxied·expectedRebuild)�
   l.coldCache = { count: 3, tokens: 900, units: 1, cost: 2.5, unpricedTokens: 0 };
   l.proxied = { count: 9, tokens: 5000, units: 0, cost: 0, unpricedTokens: 5000 };
   const v = leakViewsOf(l);
-  assert.deepEqual(v.map((x) => x.label), ["COLD CACHE", "CONTROL WAKE", "MODEL SWITCH", "COMPACTION", "SESSION CHANGE", "UPGRADE", "UNEXPLAINED", "PROXIED", "EXPECTED REBUILD"]);
+  assert.deepEqual(v.map((x) => x.label), ["COLD CACHE", "CONTROL WAKE", "MODEL SWITCH", "COMPACTION", "SESSION CHANGE", "ACCOUNT CHANGE", "UPGRADE", "UNEXPLAINED", "PROXIED", "EXPECTED REBUILD"]);
   assert.equal(v[0].count, 3);
   assert.equal(v[0].cost, 2.5);
   assert.ok(v.every((x) => x.meaning.length > 10));

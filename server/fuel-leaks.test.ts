@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type FuelRecord, summarizeFuel } from "./fuel.ts";
 import { parsePriceTable } from "./fuel-cost.ts";
+import { LEAK_LABEL } from "./fuel-view.ts";
 import {
+  accountChangeLeaks,
+  addLeak,
+  emptyLeaks,
+  LEAK_RULES,
   BASELINE_MIN_SAMPLES,
   controlSendsOf,
   findLeaks,
@@ -267,4 +272,29 @@ test("summarizeFuel: 세션·AIRCRAFT·전체로 규칙별 LEAK를 모으고, �
   );
   // 기간 밖 사건은 빠진다
   assert.equal(summarizeFuel({ records, leaks, now: T0 + 30 * 3_600_000, days: 1 }).totals.leak.total.count, 0);
+});
+
+// ── ACCOUNT CHANGE(ATC-148): 다른 ACCOUNT에서 다시 띄운 새 세션의 cold start에 이름을 붙인다 ──
+test("accountChangeLeaks: account-change 사건의 새 세션(job id로 시작하는 id) 첫 요청이 기준선을 넘은 몫만, 이름 ACCOUNT CHANGE", () => {
+  const NEW = "abcd1234-0000-4000-8000-000000000001";
+  const OLD = "99999999-0000-4000-8000-000000000002";
+  const first = (session: string, min: number, write: number) => req(min, { session, key: `${session}-${min}`, input: 2, cacheWrite5m: 0, cacheWrite1h: write, cacheRead: 0 });
+  const records = [first(NEW, 10, 60_000), req(11, { session: NEW, key: "n11" }), first(OLD, 0, 20_000)];
+  const marks = [{ aircraft: "TEAM_H", jobId: "abcd1234", t: at(9) }];
+  const ev = accountChangeLeaks(records, marks, { median: 20_000, n: 5 }, TABLE);
+  assert.equal(ev.length, 1);
+  assert.deepEqual([ev[0].rule, ev[0].session, ev[0].rewritten], ["accountChange", NEW, 60_002 - 20_000]);
+  assert.ok(ev[0].units !== null && ev[0].cost !== null && ev[0].cost > 0); // 값이 매겨진다
+  assert.equal(LEAK_RULES.includes("accountChange"), true); // LEAK에 든다(센다)
+  assert.equal(LEAK_LABEL.accountChange, "ACCOUNT CHANGE");
+  // 기준선 이하이거나, 사건보다 한참 전 요청이거나, job id가 다르면 세지 않는다
+  assert.equal(accountChangeLeaks(records, marks, { median: 70_000, n: 5 }, TABLE).length, 0);
+  assert.equal(accountChangeLeaks(records, [{ ...marks[0], t: at(500) }], { median: 20_000, n: 5 }, TABLE).length, 0);
+  assert.equal(accountChangeLeaks(records, [{ ...marks[0], jobId: "deadbeef" }], { median: 20_000, n: 5 }, TABLE).length, 0);
+  // 프록시 경로·CREW 요청은 보지 않는다
+  assert.equal(accountChangeLeaks([{ ...first(NEW, 10, 60_000), proxied: true }], marks, { median: 20_000, n: 5 }, TABLE).length, 0);
+  // 합계에는 accountChange 칸으로 들어가고 total에도 든다
+  const totals = emptyLeaks();
+  addLeak(totals, ev[0]);
+  assert.deepEqual([totals.accountChange.count, totals.total.count, totals.sessionChange.count], [1, 1, 0]);
 });

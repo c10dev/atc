@@ -273,7 +273,7 @@ export function Card({
       <p className="fl-line">
         {a.observedAccount ? (
           <span className="mono" title="세션이 home ACCOUNT와 다른 폴더에서 돌고 있다. 오류가 아니다">
-            {a.observedAccount} (home {a.account})
+            flying on {a.observedAccount} (home {a.account})
           </span>
         ) : a.account ? (
           <span className="mono">{a.account}</span>
