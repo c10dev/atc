@@ -42,6 +42,7 @@ import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
 import { mountDetail } from "./detail-run.ts";
 import { mountFlightState } from "./flight-state-run.ts";
+import { mountPrMerge } from "./pr-merge-run.ts";
 import { mountSchedule } from "./schedule.ts";
 import { mountSettings } from "./settings.ts";
 import { mountAccounts } from "./accounts-run.ts";
@@ -189,6 +190,7 @@ mountLogbook(app);
 mountNetwork(app, getSnapshot);
 mountRoutes(app, getSnapshot);
 mountSchedule(app, getSnapshot, allProposals);
+mountPrMerge(app, getSnapshot); // PR MERGE 버튼(DUTY G2): SUPERVISOR 클릭만, user 등급 CLEARED PR만 GitHub에 머지한다
 mountFlightState(app); // FLIGHT 상태 버튼(DUTY G3): SUPERVISOR 클릭만 Linear에 쓴다
 mountDetail(app, getSnapshot); // FLIGHT·PR drawer(DUTY G1): 읽기 전용, 60초 캐시
 mountFollowing(app, getSnapshot);

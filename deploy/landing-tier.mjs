@@ -30,6 +30,7 @@ export const SIDE_EFFECT = [
   ["server/sources/linear-write.ts", "Linear GraphQL mutation: 이슈 하나의 상태 옮기기(DUTY G3). 서버가 Linear에 쓰는 유일한 파일"],
   ["server/session-control.ts", "claude --bg 세션 시작·정지, tmux pane 닫기"],
   ["server/tts.ts", "외부 TTS 명령(piper·espeak-ng·Kokoro 래퍼) 실행: 문구를 WAV로 렌더링(ATC-140, ATC-143)"],
+  ["server/pr-merge-run.ts", "PR 머지(gh api PUT, sha 고정, auto-merge 없음): PR 서랍 MERGE 버튼 — SUPERVISOR 클릭만, user 등급 CLEARED PR만(DUTY G2)"],
   ["server/account-add.ts", "Claude Code 설정 폴더 만들기와 그 settings.json 쓰기(ADD ACCOUNT, ATC-186). 로그인 정보는 열지 않음"],
   ["tts/kokoro-say.py", "server/tts.ts가 부르는 Kokoro 래퍼: 모델을 돌려 WAV를 파일로 씀(네트워크 없음, ATC-143)"],
   // 위 파일의 부작용 helper를 불러 시점을 정하는 파일(SIDE_EFFECT_HELPERS를 import). 자기는 명령을 돌리지 않는다

@@ -149,6 +149,7 @@ export interface PrDetail {
   files: { path: string; additions: number; deletions: number }[];
   filesTotal: number;
   // atc가 폴링해 아는 것(열린 PR만): 착륙 판단과 MCC INSPECTION, 등급
+  fork: boolean; // 다른 저장소의 fork에서 온 PR
   landing: { state: "CLEARED" | "APPROACH"; blocks: string[]; tier: "auto" | "flagged" | "user" | null; inspection: { verdict: string; p0: number; p1: number; p2: number; at: string } | null } | null;
 }
 
@@ -198,6 +199,7 @@ export function shapePr(raw: unknown, ticketKeyOf: (branch: string, title: strin
     checks: [...byName.values()],
     files: files.slice(0, FILES_MAX).map((f) => ({ path: str(f.path) ?? "", additions: Number(f.additions) || 0, deletions: Number(f.deletions) || 0 })),
     filesTotal: files.length,
+    fork: v.isCrossRepository === true,
     landing: null,
   };
 }

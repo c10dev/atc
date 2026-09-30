@@ -498,6 +498,6 @@ export async function fetchReviewSource(slug: string, number: number): Promise<R
 
 // PR drawer(DUTY G1): 열 때 한 번 읽는 PR 한 건(읽기 전용 gh pr view, 호출은 detail-run.ts가 60초 캐시)
 export async function fetchPrView(slug: string, number: number): Promise<unknown> {
-  const fields = "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,author,createdAt,labels,body,reviewDecision,mergeStateStatus,statusCheckRollup,files";
+  const fields = "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,author,createdAt,labels,body,reviewDecision,mergeStateStatus,statusCheckRollup,files,isCrossRepository";
   return JSON.parse(await gh(["pr", "view", String(number), "--repo", slug, "--json", fields]));
 }
