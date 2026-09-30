@@ -25,7 +25,7 @@ const pr = (blocks: LandingBlockCode[], over: Partial<PullRequest> = {}): PullRe
   standPath: null,
   draft: false,
   landing: blocks.length ? "APPROACH" : "CLEARED",
-  blocks: blocks.map((code) => ({ code, text: code })),
+  blocks: blocks.map((code) => ({ code, text: code, en: code })),
   readyAt: null,
   createdAt: "2026-09-27T00:00:00Z",
   codexUnavailable: null,

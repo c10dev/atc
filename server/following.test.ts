@@ -20,7 +20,7 @@ const proposal = (id: string, flight: string, status: Proposal["status"], timeli
   }) as Proposal;
 const pr = (number: number, flight: string, over: Partial<PullRequest> = {}): PullRequest => ({
   repo: "/p/vocado", number, title: "t", url: `https://gh/${number}`, branch: `b${number}`, head: "h", base: "main", ticketKey: flight, standPath: null,
-  draft: false, landing: "APPROACH", blocks: [{ code: "no-review", text: "head 리뷰 없음" }], readyAt: null, createdAt: ago(60), ...over,
+  draft: false, landing: "APPROACH", blocks: [{ code: "no-review", text: "head 리뷰 없음", en: "no review" }], readyAt: null, createdAt: ago(60), ...over,
 });
 const logEntry = (flight: string, arrivedMin: number, over: Partial<LogEntry> = {}): LogEntry =>
   ({

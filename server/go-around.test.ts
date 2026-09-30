@@ -13,7 +13,7 @@ const iso = (min: number) => new Date(T0 + min * 60_000).toISOString();
 const pr = (number: number, codes: LandingBlockCode[] = [], over: Partial<PullRequest> = {}): PullRequest => ({
   repo: REPO, number, title: `PR ${number}`, url: `https://github.com/o/r/pull/${number}`, branch: `claude/atc-${number}`,
   head: `h${number}abcdef0`, base: "main", ticketKey: `ATC-${number}`, standPath: `${WT}/atc-${number}`, draft: false,
-  landing: codes.length ? "APPROACH" : "CLEARED", blocks: codes.map((code) => ({ code, text: code })),
+  landing: codes.length ? "APPROACH" : "CLEARED", blocks: codes.map((code) => ({ code, text: code, en: code })),
   readyAt: codes.length ? null : iso(-10), createdAt: iso(-100 + number), ...over,
 });
 const snap = (pulls: PullRequest[]) => ({ pulls }) as unknown as Snapshot;

@@ -56,7 +56,7 @@ test("브리핑: landText는 holder에만, landBy는 모든 항목에, repoSeq�
     at: iso(0), linear: { enabled: true, error: null, fetchedAt: iso(0) }, github: { enabled: true, error: null, fetchedAt: iso(0) },
     atfm: { mains: [], groundStops: [] },
     airports: [{ id: "1", repo: ATC, name: "atc", code: "ATCC" }, { id: "2", repo: VCDO, name: "vocado_nextjs", code: "VCDO" }],
-    pulls: [pr(ATC, 1), pr(VCDO, 5), pr(ATC, 2), pr(ATC, 3), pr(ATC, 4, { landing: "APPROACH", readyAt: null, blocks: [{ code: "behind", text: "behind" }] })],
+    pulls: [pr(ATC, 1), pr(VCDO, 5), pr(ATC, 2), pr(ATC, 3), pr(ATC, 4, { landing: "APPROACH", readyAt: null, blocks: [{ code: "behind", text: "behind", en: "behind" }] })],
     sessions: [], workspaces: [], tickets: [], columns: [], claims: [], handoffs: [], alerts: [], clearances: [],
   } as unknown as Snapshot;
   const brief = (m: MccLandInfo | null) => buildBrief(s, { events: [], reset: false, cursor: "e:0" }, [], T0, undefined, null, m).landingQueue;

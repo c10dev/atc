@@ -43,7 +43,7 @@ const pr = (number: number, blocks: LandingBlockCode[] = [], over: Partial<PullR
   standPath: null,
   draft: false,
   landing: blocks.length ? "APPROACH" : "CLEARED",
-  blocks: blocks.map((code) => ({ code, text: code })),
+  blocks: blocks.map((code) => ({ code, text: code, en: code })),
   readyAt: blocks.length ? null : "2026-09-28T01:00:00Z",
   createdAt: `2026-09-2${number % 10}T00:00:00Z`,
   ...over,

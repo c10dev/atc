@@ -33,7 +33,7 @@ const pr = (number: number, ticketKey: string | null, over: Partial<PullRequest>
   repo: VCDO, number, title: `PR ${number}`, url: `https://github.com/o/r/pull/${number}`,
   branch: `claude/${ticketKey?.toLowerCase() ?? number}`, head: `head${number}abcdef`, base: "main", ticketKey,
   standPath: ticketKey ? `${WT}/vocado-${ticketKey.toLowerCase()}` : null, draft: false,
-  landing: codes.length ? "APPROACH" : "CLEARED", blocks: codes.map((code) => ({ code, text: code })),
+  landing: codes.length ? "APPROACH" : "CLEARED", blocks: codes.map((code) => ({ code, text: code, en: code })),
   readyAt: codes.length ? null : iso(-10), createdAt: iso(-100 + number),
   ...over,
 });
@@ -132,6 +132,14 @@ test("LAND 문구: 같은 저장소·base의 첫 PR은 지금 LANDING, 그 뒤�
   assert.equal(landTextOf(1, "VCDO", 389, "VOC52", null), "LANDING sequence 1 (VCDO): PR #389 (VOC52). Clear to LAND now — check that base is current before merging.");
   assert.equal(landTextOf(2, "VCDO", 393, "VOC191", 389), "LANDING sequence 2 (VCDO): PR #393 (VOC191). Rebase and LAND after the PR ahead (#389) merges.");
   assert.equal(landTextOf(3, null, 40, null, 393), "LANDING sequence 3: PR #40. Rebase and LAND after the PR ahead (#393) merges.");
+});
+
+test("브리핑: APPROACH에는 영어 infoText(blocks[].en을 ' · '로 이음), CLEARED에는 null (ATC-174)", () => {
+  const s = snapshot({ pulls: [pr(30, "VOC-52", { readyAt: iso(-9) }), pr(31, null, {}, ["no-review", "blocked"])] });
+  const q = buildBrief(s, { events: [], reset: false, cursor: "e:0" }, [], T0).landingQueue;
+  const byPr = new Map(q.map((x) => [x.pr.number, x]));
+  assert.equal(byPr.get(31)!.infoText, "PR #31 cannot land yet: no-review · blocked");
+  assert.equal(byPr.get(30)!.infoText, null);
 });
 
 test("브리핑: CLEARED PR에만 landText, 순서와 앞 PR은 같은 저장소·base 안에서만(두 저장소가 섞여도)", () => {
