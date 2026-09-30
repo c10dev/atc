@@ -47,6 +47,7 @@ import { mountAccounts } from "./accounts-run.ts";
 import { mountSquelch } from "./squelch-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
+import { mountDuty } from "./duty-api.ts";
 import { mountSupervisorQueue } from "./supervisor-queue-run.ts";
 import { parseTopics, type SupervisorSummary } from "./supervisor-summary.ts";
 import { mountRadio, RadioFeed } from "./radio-run.ts";
@@ -232,6 +233,7 @@ mountJudges(app);
 mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다
 
 mountSupervisorQueue(app, getSnapshot, () => update.status()); // SUPERVISOR QUEUE(ATC-194, 읽기만)
+mountDuty(app, getSnapshot, () => update.status()); // DUTY L0(ATC-219): brief 읽기와 초안 붙이기(밖으로 나가는 동작 없음)
 app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); // 지금 있는 알림 key 전체(읽기만)
 
 // 알림 요약(ATC-153, 읽기만): 메뉴 막대·브라우저·atc-app이 같은 숫자를 읽는다. 아직 스냅샷이 없으면 503

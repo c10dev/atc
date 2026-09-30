@@ -17,9 +17,10 @@ const USER = [
   [/^package(-lock)?\.json$/, "의존성"],
   [/^hooks\//, "팀 세션 hook"],
   [/^deploy\/(?!README)/, "배포·등급 규칙"],
+  [/^duty\/settings\.json$/, "DUTY 설정"], // duty/*guard*.mjs는 위의 guard 규칙이 잡는다
 ];
 // 강조 등급: 관제 세션의 매뉴얼과 CLI(guard 제외)
-const FLAGGED = [[/^(controller|occ|crosscheck|review|mcc|dispatch)\//, "관제 세션"]];
+const FLAGGED = [[/^(controller|occ|crosscheck|review|mcc|dispatch|duty)\//, "관제 세션"]];
 
 // 외부 부작용이 있는 서버 코드(SHOW): 머지, PR 코멘트·본문, 세션·유닛 시작·정지처럼 밖에 흔적을 남긴다.
 // 명령을 돌리거나 GET 아닌 fetch를 하는 server 파일은 여기나 READ_ONLY에 반드시 올라야 한다(landing-tier.test.mjs).
@@ -29,6 +30,7 @@ export const SIDE_EFFECT = [
   ["server/human-check-run.ts", "PR 본문 수정·코멘트(gh api)"],
   ["server/session-control.ts", "claude --bg 세션 시작·정지, tmux pane 닫기"],
   ["server/tts.ts", "외부 TTS 명령(piper·espeak-ng·Kokoro 래퍼) 실행: 문구를 WAV로 렌더링(ATC-140, ATC-143)"],
+  ["server/duty-run.ts", "DUTY `claude -p` 프로세스 띄우기(D2). D1에서는 비어 있고, D2가 이 파일을 등급 파일 수정 없이 flagged로 들이려고 미리 올려 둠"],
   ["server/account-add.ts", "Claude Code 설정 폴더 만들기와 그 settings.json 쓰기(ADD ACCOUNT, ATC-186). 로그인 정보는 열지 않음"],
   ["tts/kokoro-say.py", "server/tts.ts가 부르는 Kokoro 래퍼: 모델을 돌려 WAV를 파일로 씀(네트워크 없음, ATC-143)"],
   // 위 파일의 부작용 helper를 불러 시점을 정하는 파일(SIDE_EFFECT_HELPERS를 import). 자기는 명령을 돌리지 않는다

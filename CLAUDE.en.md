@@ -6,7 +6,7 @@
 
 Rules for sessions that change atc's code (team sessions, the ENGINEERING session, and sessions working directly with the user). Design and terms are in `README.md` and `docs/`.
 
-**Control sessions are excluded.** Sessions opened in `controller/` (TOWER), `occ/` (OCC), `crosscheck/` (CROSSCHECK) and `mcc/` (MCC) follow the `CLAUDE.md` in their own folder. They load this file too, but control sessions never change code, so the working rules below don't apply to them. Where the two differ, the folder's `CLAUDE.md` wins.
+**Control sessions are excluded.** Sessions opened in `controller/` (TOWER), `occ/` (OCC), `crosscheck/` (CROSSCHECK), `mcc/` (MCC) and `duty/` (DUTY, L0) follow the `CLAUDE.md` in their own folder. They load this file too, but control sessions never change code, so the working rules below don't apply to them. Where the two differ, the folder's `CLAUDE.md` wins.
 
 ## Where to work
 

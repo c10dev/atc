@@ -45,6 +45,23 @@ test("설정·지침·CI·의존성·hook·배포는 user", () => {
   assert.equal(tierOf(["deploy/README.md", "deploy/README.ko.md"]).tier, "auto");
 });
 
+test("DUTY(L0): duty/ 매뉴얼·CLI는 flagged, guard와 settings.json은 user", () => {
+  assert.equal(tierOf(["duty/CLAUDE.md"]).tier, "flagged");
+  assert.equal(tierOf(["duty/CLAUDE.en.md"]).tier, "flagged");
+  assert.equal(tierOf(["duty/spawn.mjs"]).tier, "flagged");
+  assert.equal(tierOf(["duty/guard.test.mjs"]).tier, "flagged", "guard 테스트만 바꾸면 flagged");
+  assert.equal(tierOf(["duty/settings.test.mjs"]).tier, "flagged");
+  assert.equal(tierOf(["duty/guard.mjs"]).tier, "user");
+  assert.equal(tierOf(["duty/settings.json"]).tier, "user");
+  assert.equal(tierOf(["duty/.claude/settings.json"]).tier, "user");
+  assert.equal(tierOf(["duty/CLAUDE.md", "duty/guard.mjs"]).tier, "user");
+  // D2가 띄우는 server/duty-run.ts는 미리 올려 둔다(등급 파일을 건드리지 않고 flagged로 들어오게)
+  const r = tierOf(["server/duty-run.ts"]);
+  assert.equal(r.tier, "flagged");
+  assert.equal(r.reasons[0].why, "외부 부작용");
+  assert.equal(tierOf(["server/duty-brief.ts", "server/duty-drafts.ts", "server/duty-api.ts"]).tier, "auto", "브리프·초안 서버 코드는 읽기와 추가 기록뿐");
+});
+
 test("폴더 CLAUDE.md는 루트가 아니라 flagged", () => {
   assert.equal(tierOf(["occ/CLAUDE.en.md"]).tier, "flagged");
 });

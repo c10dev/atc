@@ -55,6 +55,7 @@ codex/voc-<n>-<slug>      # Codex 세션
 
 - **ENGINEERING**은 항공사의 Technical Services다. 개조와 개선을 설계하고 작업 지시서(Engineering Order, EO)를 낸다. 이 역할에 쓰던 임시 이름 `structure`를 대신한다(GitHub #121, 2026-09-28). `structure`의 다른 역할인 atc PR 착륙·배포는 MCC가 `land` 모드가 될 때까지 사용자가, 그 뒤로는 MCC가 맡는다.
 - 옛 기록은 쓸 때의 이름을 그대로 둔다. 예: LOGBOOK `measured` 줄의 `by: "structure"`.
+- **DUTY**(Duty Manager)는 `duty/`에 L0로 있고 아직 돌지 않는다(서버가 띄우지 않고 화면도 없다). SUPERVISOR와 말하고 초안을 쓰되 결정하지 않는다. D7까지는 관제 세션 목록에 넣지 않는다([duty.md](duty.md) 3.5절, 5장).
 
 ## 화면의 FUEL 말
 
