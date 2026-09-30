@@ -69,6 +69,17 @@ Team sessions do none of this. The label here is `acct-1`; use your own.
 4. **Never share** `.credentials.json` and `.claude.json` between folders. Each carries its own login and its own folder trust. Never share the transcripts, `projects/`, `jobs/`, `sessions/` or `daemon*` files either; they are what tells atc which ACCOUNT a session is on.
 5. Check the plan terms for using several subscription accounts this way. atc does not decide that.
 
+### ADD ACCOUNT as built (ATC-186)
+
+Steps 1 (the folder), 3 (the settings) and the registry entry can be done from the settings window: AGENTS tab, ACCOUNTS block, **ADD ACCOUNT** (`GET`/`POST /api/accounts/add`, `server/account-add.ts`). Login and onboarding stay in the terminal; the page lists them after the folder is ready.
+
+- **Form.** A label (`ACCOUNT_RE`) and a folder, `~/.claude-<label>` unless another path is typed (the `checkConfigDir` rules). When `~/.claude` is not registered yet, a second field registers it in the same save, prefilled with the label most used by the FLEET profiles and control sessions; without it every `~/.claude` session would read `default (home acct-2)` once the first entry exists.
+- **Folder.** Created with mode 0700 when missing; an existing folder is used as is. A path that exists but is not a folder is refused.
+- **Settings.** `~/.claude/settings.json` is copied whole (statusline, hooks, permissions, `env` …) and written with mode 0600 through a temp file and rename. The page gets `env` **key names only**, never values, and each key can be left out (proxy and `ANTHROPIC_BASE_URL` only when this ACCOUNT should take the same route). A folder whose `settings.json` has its own `hooks`, `statusLine`, `env`, `permissions` or `apiKeyHelper`, is unreadable JSON, or is a symlink is kept as is and only registered. A trivial one (the measured `{ "theme": "auto" }`) is backed up next to it (`settings.json.atc-bak-<time>`, 0600) and replaced.
+- **Register last.** The registry is written only after the folder and the settings are done; a refused request writes nothing. Only `settings.json` is read or written: `.credentials.json` and `.claude.json` are never opened, and `claude auth status` stays filtered to `loggedIn` and `authMethod`. SUPERVISOR only (the same Origin check as `PUT /api/accounts`).
+- **After.** The page shows what it did and the remaining steps: `CLAUDE_CONFIG_DIR=<folder> claude auth login --claudeai` (with a copy button; skipped when the folder row already reads LOGGED IN) and onboarding (step 2 above). The folder row then shows LOGGED IN and the statusline and hook checks.
+- **Not built yet.** Login and onboarding from the page (measure first whether `claude auth login` runs without a terminal, and whether a first `claude --bg` LAUNCH skips the first-run screen).
+
 ## 5. Implementation order (ATC-144 sub-issues)
 
 | # | Step | Needs | Tier |

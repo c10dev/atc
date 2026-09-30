@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { AddPreview, AddResult } from "../../server/account-add.ts";
 import type { FolderHealth } from "../../server/account-health.ts";
 import type { AccountsRegistry } from "../../server/accounts.ts";
 import { Block, StatusChip } from "./SettingsServer.tsx";
@@ -99,6 +100,154 @@ export function AccountsBlock() {
         </button>
         {error && <span className="settings-hint acct-err"> {error}</span>}
       </div>
+      <AddAccount dirty={dirty} onAdded={load} />
     </Block>
+  );
+}
+
+// ADD ACCOUNT(ATC-186, docs/accounts.md 4절): 폴더 만들기 → ~/.claude/settings.json 복사 → 등록을 한 번에. 로그인과 온보딩은 터미널에 남는다.
+// env는 키 이름만 받는다(값은 서버 밖으로 나오지 않는다). 체크를 풀면 그 키는 새 폴더에 옮기지 않는다
+function AddAccount({ dirty, onAdded }: { dirty: boolean; onAdded: (d: AccountsState) => void }) {
+  const [open, setOpen] = useState(false);
+  const [preview, setPreview] = useState<AddPreview | null>(null);
+  const [label, setLabel] = useState("");
+  const [dir, setDir] = useState("");
+  const [homeLabel, setHomeLabel] = useState("");
+  const [drop, setDrop] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<AddResult | null>(null);
+
+  const loadPreview = () =>
+    fetch("/api/accounts/add")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((p: AddPreview) => {
+        setPreview(p);
+        setHomeLabel(p.suggestHomeLabel ?? "");
+      })
+      .catch(() => setError("미리보기를 읽지 못함"));
+  const start = () => {
+    setOpen(true);
+    setDone(null);
+    setError(null);
+    void loadPreview();
+  };
+  const add = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/accounts/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: label.trim(), ...(dir.trim() ? { configDir: dir.trim() } : {}), ...(preview?.homeLabel ? {} : { homeLabel: homeLabel.trim() }), dropEnv: drop }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setError(body.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      onAdded({ registry: body.registry, folders: body.folders });
+      setDone(body.result as AddResult);
+      setLabel("");
+      setDir("");
+      setDrop([]);
+      void loadPreview(); // 이제 ~/.claude가 등록됐을 수 있다
+    } catch {
+      setError("서버에 연결할 수 없음");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const copy = (text: string) => void navigator.clipboard?.writeText(text).catch(() => {});
+
+  if (!open)
+    return (
+      <div className="acct-actions">
+        <button type="button" onClick={start}>
+          ADD ACCOUNT
+        </button>{" "}
+        <span className="settings-hint">폴더를 만들고 settings.json을 복사하고 등록한다. 로그인은 그다음 터미널에서.</span>
+      </div>
+    );
+
+  const p = preview;
+  const placeholder = p ? `${p.home}/.claude-${label.trim() || "<라벨>"}` : "";
+  return (
+    <div className="acct-add">
+      <h4 className="label">ADD ACCOUNT</h4>
+      {!p && !error && <p className="settings-hint">불러오는 중…</p>}
+      {p && (
+        <>
+          <div className="acct-edit">
+            <input className="mono" aria-label="새 ACCOUNT 라벨" placeholder="acct-1" maxLength={24} value={label} onChange={(e) => setLabel(e.target.value.toLowerCase())} />
+            <input className="mono" aria-label="새 설정 폴더" placeholder={placeholder} maxLength={400} value={dir} onChange={(e) => setDir(e.target.value)} />
+          </div>
+          {p.homeLabel ? (
+            <p className="settings-hint">
+              <span className="mono">{p.claudeDir}</span>는 <b className="mono">{p.homeLabel}</b>로 등록돼 있다.
+            </p>
+          ) : (
+            <div className="acct-edit">
+              <label className="settings-hint" htmlFor="acct-home-label">
+                <span className="mono">~/.claude</span> 라벨도 함께 등록(FLEET 프로필이 쓰는 라벨)
+              </label>
+              <input id="acct-home-label" className="mono acct-home" maxLength={24} value={homeLabel} onChange={(e) => setHomeLabel(e.target.value.toLowerCase())} />
+            </div>
+          )}
+          <p className="settings-hint">
+            <span className="mono">{p.claudeDir}/settings.json</span>을 통째로 복사한다(statusline·hook·권한·env). 폴더에 자기 hook·env·권한이 있는 settings.json이 있으면 두고 등록만 한다.
+            {(!p.source.statusline || !p.source.claimHook || !p.source.healthHook) && <span className="acct-err"> 원본에도 atc statusline·hook이 다 걸려 있지 않다.</span>}
+          </p>
+          {p.envKeys.length > 0 && (
+            <fieldset className="acct-env">
+              <legend className="settings-hint">옮길 env(값은 보이지 않는다). 프록시·BASE_URL은 이 ACCOUNT도 같은 길로 나갈 때만.</legend>
+              {p.envKeys.map((k) => (
+                <label key={k} className="mono">
+                  <input type="checkbox" checked={!drop.includes(k)} onChange={(e) => setDrop(e.target.checked ? drop.filter((x) => x !== k) : [...drop, k])} /> {k}
+                </label>
+              ))}
+            </fieldset>
+          )}
+        </>
+      )}
+      <div className="acct-actions">
+        <button type="button" disabled={!p || busy || !label.trim() || dirty} title={dirty ? "위 등록 칸의 바뀐 것을 먼저 저장하거나 되돌린다" : undefined} onClick={add}>
+          {busy ? "만드는 중…" : "만들고 등록"}
+        </button>{" "}
+        <button type="button" onClick={() => setOpen(false)}>
+          닫기
+        </button>
+        {error && <span className="settings-hint acct-err"> {error}</span>}
+      </div>
+      {done && (
+        <div className="acct-done" role="status">
+          <p className="settings-hint">
+            <b className="mono">{done.label}</b> → <span className="mono">{done.dir}</span>: 폴더 {done.folder === "created" ? "만듦" : "있던 것"}, settings.json{" "}
+            {done.settings === "copied" ? "복사함" : done.settings === "replaced" ? "바꿔 씀" : "그대로 둠(폴더 자기 설정)"}
+            {done.backup && (
+              <>
+                {" "}
+                (옛 파일 <span className="mono">{done.backup}</span>)
+              </>
+            )}
+            , 등록함{done.homeRegistered && <> · <span className="mono">~/.claude</span>는 {done.homeRegistered}</>}.
+          </p>
+          <p className="settings-hint">남은 것은 터미널에서(atc는 로그인 정보를 다루지 않는다):</p>
+          <ol className="settings-hint acct-next">
+            <li>
+              로그인: <code className="mono">{done.loginCommand}</code>{" "}
+              <button type="button" onClick={() => copy(done.loginCommand)}>
+                복사
+              </button>{" "}
+              — 위 폴더 줄이 이미 LOGGED IN이면 건너뛴다. URL은 <kbd>c</kbd>로 복사한다(줄바꿈된 URL은 redirect_uri missing으로 실패).
+            </li>
+            <li>
+              온보딩: <code className="mono">CLAUDE_CONFIG_DIR={done.dir} claude</code>를 한 번 열어 첫 화면과 atc 체크아웃 신뢰를 끝낸다(docs/accounts.md 4절 2).
+            </li>
+            <li>위 폴더 줄에 LOGGED IN과 STATUSLINE·HOOK ✓가 뜨는지 본다.</li>
+          </ol>
+        </div>
+      )}
+    </div>
   );
 }

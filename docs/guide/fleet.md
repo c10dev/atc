@@ -78,6 +78,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 
 계정마다 Claude Code 설정 폴더가 하나 있다(예: `acct-1` = `~/.claude-acct-1`, `acct-2` = `~/.claude`). 설정 창 **AGENTS** 탭의 **ACCOUNTS** 블록에서 라벨과 폴더를 적으면 atc가 그 폴더의 세션·job·FUEL을 모두 읽는다. `~/.claude`는 적지 않아도 읽고, 적지 않으면 라벨이 `default`다. 폴더는 홈 아래의 `.claude…` 이름이어야 하고, email·토큰은 적지도 저장하지도 않는다. 저장은 이 화면에서만 된다(SUPERVISOR).
 
+- **ADD ACCOUNT로 새 계정 폴더 준비.** ACCOUNTS 블록의 **ADD ACCOUNT**에 라벨(예: `acct-1`)을 적고 **만들고 등록**을 누르면 `~/.claude-acct-1` 폴더를 만들고, `~/.claude/settings.json`(statusline·hook·권한·env)을 복사하고, 등록한다. `~/.claude`가 아직 등록되지 않았으면 그 라벨(FLEET 프로필이 쓰는 것, 예: `acct-2`)도 함께 적는다. env는 키 이름만 보이고, 체크를 풀면 그 키는 옮기지 않는다(프록시는 이 계정도 같은 길로 나갈 때만). 폴더에 자기 hook·env·권한이 있는 settings.json이 있으면 두고 등록만 한다. 로그인과 첫 실행 화면은 터미널에서 한다: 화면에 나온 `CLAUDE_CONFIG_DIR=… claude auth login --claudeai`를 복사해 치고, 그 폴더로 `claude`를 한 번 열어 첫 화면과 신뢰를 끝낸다. 폴더 줄에 LOGGED IN과 STATUSLINE·HOOK ✓가 뜨면 된 것이다.
 - **세션의 ACCOUNT는 찾은 곳으로 정한다.** 세션 파일이 `~/.claude-acct-1`에 있으면 그 세션은 `acct-1`이다. FUEL도 그 ACCOUNT의 한도로 센다.
 - **home과 다를 때.** AIRCRAFT 프로필의 ACCOUNT는 home으로 남는다. 세션이 다른 폴더에서 돌면 FLEET 줄과 카드에 `acct-1 (home acct-2)`로 보인다. 오류가 아니다.
 - **폴더마다 건강 표시.** 로그인했는지(`LOGGED IN`·방식만), settings에 atc statusline과 `claim`·`health` hook이 있는지 보인다. 빠진 것은 경고로만 나온다(`FUEL blind on acct-1`). 막지는 않는다.

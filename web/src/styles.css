@@ -2983,3 +2983,13 @@ a.ticket:hover {
 .acct-edit input:nth-of-type(2) { flex: 1; min-width: 0; }
 .acct-cap { width: 5em; }
 .acct-err { color: var(--alert); }
+.acct-add { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.acct-add h4 { margin: 0 0 6px; }
+.acct-home { width: 10em; }
+.acct-env { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0; padding: 6px 8px; border: 1px solid var(--line); }
+.acct-env legend { padding: 0 4px; }
+.acct-env label { display: inline-flex; align-items: center; gap: 4px; }
+.acct-done { margin-top: 8px; }
+.acct-next { margin: 4px 0 0; padding-left: 20px; }
+.acct-next li { margin: 3px 0; }
+.acct-add .mono, .acct-folder .mono { overflow-wrap: anywhere; }
