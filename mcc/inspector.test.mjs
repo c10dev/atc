@@ -82,7 +82,7 @@ test("컨텍스트 CAP: 마지막 요청의 input+cache read+cache write, 넘으
   assert.equal(contextTokensOf([line({ input_tokens: 5000 }), line({ input_tokens: 900_000 }, { isSidechain: true })]), 5000);
   assert.equal(capNotice(null), null);
   assert.equal(capNotice(CAP), null);
-  assert.match(capNotice(CAP + 1000), /STOP하고 LAUNCH/);
+  assert.match(capNotice(CAP + 1000), /recycle\.mode/);
   assert.match(capNotice(200_000), /200k/);
 });
 

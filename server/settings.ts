@@ -10,6 +10,8 @@ import { engineName, judgeStatus } from "./judges/run.ts";
 import { JUDGE_MODES, type JudgeMode, loadJudges, setJudgeMode } from "./judges/store.ts";
 import { parseTeamKeys, TEAM_KEY } from "./linear-keys.ts";
 import { loadMcc, MCC_MODES, type MccMode } from "./mcc.ts";
+import { loadRecycle, RECYCLE_MODES, type RecycleMode, recycleCapOk } from "./control-recycle.ts";
+import { setRecycleAuto, setRecycleCaps, setRecycleMode } from "./control-recycle-run.ts";
 import { TTS_ENGINES, VOICE_NAME } from "./tts.ts";
 import { setMccMode } from "./mcc-run.ts";
 import { fromThisApp } from "./origin.ts";
@@ -39,6 +41,8 @@ export interface ServerSettings {
   autoland: { mode: AutolandMode; airports: string[]; applicationCheck: string; groundStops: { airport: string; sha: string; failing: string[]; at: string }[] };
   // MCC(docs/mcc.md): mcc.json의 스위치와 맡은 AIRPORT
   mcc: { mode: MccMode; airport: string };
+  // CONTROL RECYCLE(ATC-166): control-recycle.json. 기본 off. caps는 세션 이름 → CAP 토큰(null이면 재시작 안 함)
+  controlRecycle: { mode: RecycleMode; caps: Record<string, number | null>; auto: Record<string, boolean>; cooldownHours: number };
   // 판정 계열(ATC-36): judges.json의 스위치, 엔진, 키가 있는지(값은 내보내지 않음), 마지막 실행
   // 음성 콜아웃(ATC-140): 고른 엔진과 목소리(.env.local). 설치된 목소리 목록은 GET /api/voice/status
   voice: { engine: string; voice: string };
@@ -59,6 +63,9 @@ export interface SettingsPatch {
   fuelHold?: "off" | "on"; // dispatch.json fuel.hold에 쓴다(ATC-55). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   autolandMode?: AutolandMode; // autoland.json에 쓴다(ATC-34). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   mccMode?: MccMode; // mcc.json에 쓴다(docs/mcc.md). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
+  controlRecycleMode?: RecycleMode; // control-recycle.json에 쓴다(ATC-166). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
+  controlRecycleCaps?: Record<string, number | null>; // 세션 이름 → CAP 토큰. SUPERVISOR만
+  controlRecycleAuto?: Record<string, boolean>; // 세션 이름 → 자동 재시작 대상인가(OCC 기본 false, 측정·알림만). SUPERVISOR만
   judgesJev?: JudgeMode; // judges.json에 쓴다(ATC-36). SUPERVISOR만: 이 화면 Origin이 있어야 받는다. 데이터 반출을 켜는 스위치
 }
 export type SettingsErrors = Partial<Record<keyof SettingsPatch, string>>;
@@ -100,6 +107,7 @@ export function readServerSettings(): ServerSettings {
       const m = loadMcc();
       return { mode: m.mode, airport: m.airport };
     })(),
+    controlRecycle: loadRecycle(),
     voice: { engine: config.ttsEngine, voice: config.ttsVoice },
     judges: { jev: { mode: loadJudges().jev, engine: engineName(), apiKeySet: Boolean(config.typesafeApiKey), ...judgeStatus.jev } },
   };
@@ -213,13 +221,26 @@ export function mountSettings(app: Hono) {
     // judgesJev는 judges.json에 쓴다(ATC-36)
     // mccMode는 mcc.json에 쓴다(docs/mcc.md)
     // fuelHold는 dispatch.json fuel.hold에 쓴다(ATC-55)
-    const { reviewSecurity, autolandMode, judgesJev, mccMode, fuelHold, ...rest } = body as Record<string, unknown>;
+    const { reviewSecurity, autolandMode, judgesJev, mccMode, fuelHold, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, ...rest } = body as Record<string, unknown>;
     if (fuelHold !== undefined && fuelHold !== "off" && fuelHold !== "on") return c.json({ errors: { fuelHold: `off 또는 on` } }, 400);
     if (reviewSecurity !== undefined && !EXTERNAL_REVIEW_SECURITY.includes(reviewSecurity as ExternalReviewSecurity))
       return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
     if (autolandMode !== undefined && !AUTOLAND_MODES.includes(autolandMode as AutolandMode)) return c.json({ errors: { autolandMode: `off, update, merge 중 하나` } }, 400);
     if (judgesJev !== undefined && !JUDGE_MODES.includes(judgesJev as JudgeMode)) return c.json({ errors: { judgesJev: `off, replay, shadow 중 하나` } }, 400);
     if (mccMode !== undefined && !MCC_MODES.includes(mccMode as MccMode)) return c.json({ errors: { mccMode: `shadow, land, land+rts, rts 중 하나` } }, 400);
+    if (controlRecycleMode !== undefined && !RECYCLE_MODES.includes(controlRecycleMode as RecycleMode)) return c.json({ errors: { controlRecycleMode: `off, shadow, on 중 하나` } }, 400);
+    if (controlRecycleCaps !== undefined) {
+      const known = Object.keys(loadRecycle().caps);
+      const caps = controlRecycleCaps as Record<string, unknown>;
+      const bad = !caps || typeof caps !== "object" || Array.isArray(caps) || Object.entries(caps).some(([k, v]) => !known.includes(k) || !(v === null || recycleCapOk(v)));
+      if (bad) return c.json({ errors: { controlRecycleCaps: `세션 이름(${known.join(", ")}) → 50000–900000 토큰 또는 null` } }, 400);
+    }
+    if (controlRecycleAuto !== undefined) {
+      const known = Object.keys(loadRecycle().auto);
+      const a = controlRecycleAuto as Record<string, unknown>;
+      if (!a || typeof a !== "object" || Array.isArray(a) || Object.entries(a).some(([k, v]) => !known.includes(k) || typeof v !== "boolean"))
+        return c.json({ errors: { controlRecycleAuto: `세션 이름(${known.join(", ")}) → true 또는 false` } }, 400);
+    }
     const { env, errors } = validatePatch(rest);
     if (Object.keys(errors).length) return c.json({ errors }, 400);
     if (Object.keys(env).length) {
@@ -231,6 +252,9 @@ export function mountSettings(app: Hono) {
     if (autolandMode !== undefined) setAutolandMode(autolandMode as AutolandMode);
     if (judgesJev !== undefined) setJudgeMode("jev", judgesJev as JudgeMode);
     if (mccMode !== undefined) setMccMode(mccMode as MccMode);
+    if (controlRecycleCaps !== undefined) setRecycleCaps(controlRecycleCaps as Record<string, number | null>);
+    if (controlRecycleAuto !== undefined) setRecycleAuto(controlRecycleAuto as Record<string, boolean>);
+    if (controlRecycleMode !== undefined) setRecycleMode(controlRecycleMode as RecycleMode);
     console.log(
       `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(fuelHold !== undefined ? [`fuel.hold=${fuelHold}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : [])].join(", ")}`,
     );

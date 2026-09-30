@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// MCC 세션의 UserPromptSubmit hook (ATC-135). 세션 컨텍스트가 CAP을 넘으면 그 사실을 프롬프트에 붙여, MCC가 MCC LOG에 SUPERVISOR에게 STOP·LAUNCH를 청하게 한다.
+// MCC 세션의 UserPromptSubmit hook (ATC-135). 세션 컨텍스트가 CAP을 넘으면 그 사실을 프롬프트에 붙인다. 어떻게 할지는 `mcc queue`의 recycle.mode가 정한다(ATC-166):
+// on이면 atc가 안전한 순간에 이 세션을 스스로 STOP·LAUNCH하고, 아니면 MCC LOG에 CAP 초과만 적는다.
 // 컨텍스트 = 마지막 요청의 input + cache read + cache write. statusline 기록(fuel/)과 같은 값이지만 MCC는 상태 폴더를 읽지 못하므로 대화 기록에서 읽는다.
 // 안내만 하고 막지 않는다(항상 exit 0). 스스로 재시작하지 않는다.
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
@@ -30,7 +31,7 @@ export function contextTokensOf(lines) {
 export function capNotice(tokens, cap = CAP) {
   if (tokens === null || tokens <= cap) return null;
   const k = Math.round(tokens / 1000);
-  return `[MCC CONTEXT CAP] 이 세션의 컨텍스트가 ${k}k 토큰으로 ${cap / 1000}k를 넘었다. 이번 바퀴를 마치고, MCC LOG에 "컨텍스트 ${k}k — SUPERVISOR는 이 세션을 STOP하고 LAUNCH해 주세요"를 적는다. 스스로 다시 시작하지 않고 바퀴는 계속 돈다.`;
+  return `[MCC CONTEXT CAP] 이 세션의 컨텍스트가 ${k}k 토큰으로 ${cap / 1000}k를 넘었다. 이번 바퀴를 마치고 mcc queue의 recycle.mode를 본다. on이면 atc가 안전한 순간에 이 세션을 다시 시작하니 아무것도 하지 않는다. off·shadow면 MCC LOG에 "컨텍스트 ${k}k — CAP 초과"만 적는다. 어느 쪽이든 스스로 다시 시작하지 않고 바퀴는 계속 돈다.`;
 }
 
 function tailLines(path) {

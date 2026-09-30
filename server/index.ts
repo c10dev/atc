@@ -11,7 +11,7 @@ import { mountJudges, runJudges } from "./judges/run.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { mountLandingReview } from "./landing-review.ts";
-import { mccLandInfo, mountMcc } from "./mcc-run.ts";
+import { mccLandInfo, mountMcc, rtsState } from "./mcc-run.ts";
 import { mountMilestones, runMilestones } from "./milestones-run.ts";
 import { mountUpdate } from "./update-run.ts";
 import { mountCrewChange } from "./crew-change.ts";
@@ -21,6 +21,9 @@ import { addLogbookFuel, aircraftContexts, mountFuel } from "./fuel-run.ts";
 import { fuelWatch } from "./fuel-watch.ts";
 import { mountFleetPlan, runFleetPlan } from "./fleet-plan-run.ts";
 import { launchAircraft, MAX_LAUNCHED, mountSessionControl } from "./session-control.ts";
+import { defaultActDeps, mountControlRecycle, runControlRecycle } from "./control-recycle-run.ts";
+import { readCursor } from "./controller.ts";
+import { loadMcc, mccDeploys, readMccRecords } from "./mcc.ts";
 import { mountHumanCheck } from "./human-check-run.ts";
 import { mountStandFree, proposalArrived, runStandFree, standFreeCandidates, standFreeTimeliness } from "./standfree-run.ts";
 import { arrivalMissingOf, followingNow, mountFollowing } from "./following.ts";
@@ -44,6 +47,8 @@ import { mountSquelch } from "./squelch-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
 import { parseTopics, type SupervisorSummary } from "./supervisor-summary.ts";
+import { mountRadio, RadioFeed } from "./radio-run.ts";
+import type { Transmission } from "./radio.ts";
 import { mountVoice } from "./voice-run.ts";
 import type { AlertEvent } from "./supervisor-alerts.ts";
 import { entryScript } from "./version.ts";
@@ -57,6 +62,7 @@ let signature = "";
 const listeners = new Set<(s: Snapshot) => void>();
 const alertListeners = new Set<(e: AlertEvent) => void>(); // SUPERVISOR alerts(ATC-87)
 const summaryListeners = new Set<(s: SupervisorSummary) => void>(); // SUPERVISOR SUMMARY(ATC-153)
+const radioFeed = new RadioFeed(); // RADIO(ATC-170): 듣는 이가 있을 때만 기록을 읽는다
 const eventLog = new EventLog();
 let lastSampleAt = 0;
 let lastDispatchAt = 0;
@@ -127,6 +133,7 @@ async function tick() {
     // SUPERVISOR SUMMARY(ATC-153): 알림 목록을 센 직후, 내용이 바뀐 때만 `summary` 이벤트로
     const summary = isWarm(next) ? runSummary(next) : null;
     if (summary) for (const l of summaryListeners) l(summary);
+    radioFeed.poll();
 
     current = next;
     if (sig !== signature) {
@@ -179,6 +186,7 @@ mountNetwork(app, getSnapshot);
 mountRoutes(app, getSnapshot);
 mountSchedule(app, getSnapshot, allProposals);
 mountFollowing(app, getSnapshot);
+mountRadio(app); // RADIO R1(ATC-170): 기록된 교신을 합친 목록(읽기만)
 mountVoice(app, currentAlerts); // 음성 콜아웃(ATC-140): WAV만 만든다(소리는 브라우저)
 mountMilestones(app, getSnapshot);
 mountAtfm(app, getSnapshot);
@@ -192,6 +200,26 @@ setInterval(() => {
     .then((r) => r.started && console.log(`[atc] auto RTS started: ${r.why}`))
     .catch(() => {});
 }, 30_000).unref();
+// CONTROL RECYCLE(ATC-166): 스위치가 off(기본)면 아무것도 하지 않는다. shadow는 "재시작했을 것"만 FLIGHT RECORDER에 남긴다. 1분에 한 번
+setInterval(() => {
+  if (!current) return;
+  const s = current;
+  void runControlRecycle(s, {
+    now: Date.now,
+    towerEvents: () => eventLog.since(readCursor("controller")).events.length,
+    rtsBusy: async () => {
+      const last = rtsState(readMccRecords()).last;
+      if (last?.result === "running") return `RTS 진행 중(${last.to.slice(0, 7)})`;
+      // GitHub을 못 읽으면(main·CI를 모름) RTS도 시작하지 못하므로 상태를 못 읽은 것은 막지 않는다
+      const st = await update.status().catch(() => null);
+      if (st && (st.kind === "running" || st.kind === "starting")) return st.why;
+      if (st?.kind === "available" && mccDeploys(loadMcc().mode)) return `곧 시작함(${st.why})`;
+      return null;
+    },
+    act: defaultActDeps(() => current?.fuelAccounts),
+  }).catch((e) => console.error("[atc] control recycle failed:", e));
+}, 60_000).unref();
+mountControlRecycle(app);
 mountSettings(app);
 mountAccounts(app);
 mountJudges(app);
@@ -202,7 +230,7 @@ app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); //
 // 알림 요약(ATC-153, 읽기만): 메뉴 막대·브라우저·atc-app이 같은 숫자를 읽는다. 아직 스냅샷이 없으면 503
 app.get("/api/supervisor-summary", (c) => (current ? c.json(summaryNow(current)) : c.json({ error: "snapshot not ready" }, 503)));
 
-// ?topics=snapshot,alert,version,summary: 받을 이벤트를 고른다. 없으면 summary만 뺀 전부(지금까지와 같다). ping은 늘 보낸다. 모르는 이름은 400
+// ?topics=snapshot,alert,version,summary,radio: 받을 이벤트를 고른다. 없으면 summary·radio를 뺀 전부(지금까지와 같다). ping은 늘 보낸다. 모르는 이름은 400
 app.get("/api/events", (c) => {
   const parsed = parseTopics(c.req.query("topics"));
   if (!parsed.ok) return c.json({ error: `unknown topics: ${parsed.unknown.join(", ")}` }, 400);
@@ -221,6 +249,8 @@ app.get("/api/events", (c) => {
       await sendAlert({ raised: items, cleared: [], initial: true, items });
     }
     if (want.has("summary") && current) await sendSummary(summaryNow(current));
+    const sendRadio = (txs: Transmission[]) => stream.writeSSE({ event: "radio", data: JSON.stringify({ transmissions: txs }) });
+    const unRadio = want.has("radio") ? radioFeed.subscribe(sendRadio) : null;
     if (want.has("snapshot")) listeners.add(send);
     if (want.has("alert")) alertListeners.add(sendAlert);
     if (want.has("version")) versionListeners.add(onVersion);
@@ -230,6 +260,7 @@ app.get("/api/events", (c) => {
       alertListeners.delete(sendAlert);
       versionListeners.delete(onVersion);
       summaryListeners.delete(sendSummary);
+      unRadio?.();
     });
     while (!stream.aborted) {
       await stream.sleep(25_000);

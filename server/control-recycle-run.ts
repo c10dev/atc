@@ -1,0 +1,326 @@
+import type { Hono } from "hono";
+import { foldReports, readReports } from "./arrival-report.ts";
+import { readWips, wipView } from "./charter-wip.ts";
+import { arrivalMissingOf, followingNow } from "./following.ts";
+import { restartSafetyOf } from "./occ-safe.ts";
+import { closeSync, fstatSync, openSync, readdirSync, readSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { config } from "./config.ts";
+import {
+  type OverCap,
+  type RecycleConfig,
+  type RecycleMode,
+  type RecycleRecord,
+  type SafeFacts,
+  contextTokensOf,
+  controlRecycleOf,
+  goneOf,
+  loadRecycle,
+  saveRecycle,
+} from "./control-recycle.ts";
+import { allClearances, isClearanceOverdue, isPending } from "./clearances.ts";
+import { allCrewChanges, isOpenCrewChange } from "./crew-change.ts";
+import { ttlCache } from "./agents-cache.ts";
+import { readJob, settleJob } from "./job-state.ts";
+import type { Snapshot } from "./model.ts";
+import { allProposals, READBACK_OVERDUE_MS } from "./proposals.ts";
+import { readRecords, record } from "./recorder.ts";
+import {
+  type AgentRow,
+  agentRows,
+  CONTROL_SESSIONS,
+  configDirOfRow,
+  controlDirOf,
+  controlRowsOf,
+  launchControl,
+  stopControl,
+} from "./session-control.ts";
+
+// CONTROL RECYCLE의 실행(ATC-166). 판단은 control-recycle.ts(순수). 여기는 자료를 모아 넣고, 결정이 recycle이면 버튼과 같은 길(stopControl → 확인 → launchControl)로 한다.
+// 새로 세션을 보내거나 조종하는 길은 없다. guard는 그대로.
+
+const TAIL = 512 * 1024;
+
+// 대화 기록 꼬리에서 마지막 요청의 컨텍스트. 기록은 <계정 폴더>/projects/<cwd를 -로 바꾼 이름>/<sessionId>.jsonl
+export const projectDirName = (cwd: string) => cwd.replace(/[^a-zA-Z0-9]/g, "-");
+const ctxCache = new Map<string, { key: string; tokens: number | null }>();
+export function contextOfRow(row: Pick<AgentRow, "sessionId" | "cwd" | "account">, claudeDir = config.claudeDir, configDir: string | null = null): number | null {
+  const base = configDir ?? claudeDir;
+  let file = join(base, "projects", projectDirName(row.cwd), `${row.sessionId}.jsonl`);
+  try {
+    statSync(file);
+  } catch {
+    // cwd 이름 규칙이 바뀐 경우를 위해 projects/ 아래를 한 번 훑는다
+    try {
+      const hit = readdirSync(join(base, "projects")).find((d) => {
+        try {
+          statSync(join(base, "projects", d, `${row.sessionId}.jsonl`));
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      if (!hit) return null;
+      file = join(base, "projects", hit, `${row.sessionId}.jsonl`);
+    } catch {
+      return null;
+    }
+  }
+  try {
+    const fd = openSync(file, "r");
+    try {
+      const st = fstatSync(fd);
+      const key = `${st.mtimeMs}:${st.size}`;
+      const hit = ctxCache.get(file);
+      if (hit?.key === key) return hit.tokens;
+      const len = Math.min(st.size, TAIL);
+      const buf = Buffer.alloc(len);
+      readSync(fd, buf, 0, len, st.size - len);
+      const lines = buf.toString("utf8").split("\n");
+      const tokens = contextTokensOf(st.size > len ? lines.slice(1) : lines);
+      ctxCache.set(file, { key, tokens });
+      return tokens;
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+}
+
+// ── 안전 조건 자료 ──
+export interface FactDeps {
+  rtsBusy: (s: Snapshot) => Promise<string | null>; // UPDATE 상태에서(index.ts가 넘긴다)
+  towerEvents: () => number; // TOWER 커서 뒤 이벤트 수
+  now: () => number;
+}
+const TEN_MIN = READBACK_OVERDUE_MS;
+
+// restartSafetyOf(server/occ-safe.ts)의 arrival-fresh·wip-active 개수
+function occExtraFacts(s: Snapshot, now: number): { arrivalFresh: number; wipActive: number } {
+  try {
+    const arrivalMissing = arrivalMissingOf(followingNow(s, now), foldReports(readReports()), now);
+    const r = restartSafetyOf({ inFlight: [], arrivalMissing, wip: wipView(readWips(), now), now });
+    return { arrivalFresh: r.blockers.filter((b) => b.code === "arrival-fresh").length, wipActive: r.blockers.filter((b) => b.code === "wip-active").length };
+  } catch {
+    return { arrivalFresh: 1, wipActive: 0 }; // 읽지 못하면 막는다(fail-closed)
+  }
+}
+
+export async function safeFactsOf(s: Snapshot, d: FactDeps): Promise<SafeFacts> {
+  const now = d.now();
+  const rtsBusy = await d.rtsBusy(s).catch((e) => `UPDATE 상태를 읽지 못함(${e instanceof Error ? e.message : String(e)})`);
+  const pendingC = allClearances().filter(isPending);
+  const props = allProposals();
+  return {
+    rtsBusy,
+    tower: { events: d.towerEvents(), overdue: pendingC.filter((c) => isClearanceOverdue(c, now, TEN_MIN)).length },
+    occ: {
+      approved: props.filter((p) => p.kind === "ASSIGN" && p.status === "approved").length,
+      recalling: props.filter((p) => p.status === "recalling").length,
+      youngSent: props.filter((p) => p.status === "sent" && now - Date.parse(p.statusAt) < TEN_MIN).length,
+      crewChangeOpen: allCrewChanges().filter(isOpenCrewChange).length,
+      // ATC-169: dispatch brief의 restartSafety와 같은 함수. 도착 보고가 오는 중일 수 있는 FLIGHT, 다듬는 중인 CHARTER REQUEST
+      ...occExtraFacts(s, now),
+    },
+    // MCC: INSPECTION·LAND 중인지는 atc가 보지 못한다(ATC-165 1.3). 턴 사이(job idle)와 RTS 조건이 그 근사다
+    mcc: { blocked: null },
+  };
+}
+
+// ── 행동 ──
+export interface ActDeps {
+  stop: (name: string) => Promise<{ ok: boolean; error?: string }>;
+  rowsOf: () => Promise<AgentRow[]>; // 새로 읽는다
+  pidAlive: (pid: number) => boolean;
+  launch: (name: string, account: string | undefined) => Promise<{ ok: boolean; jobId?: string; account?: string | null; error?: string }>;
+  sleep: (ms: number) => Promise<void>;
+  confirmMs?: number;
+}
+
+export const pidAliveOf = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM"; // 있지만 권한 없음
+  }
+};
+
+// stopControl → job이 사라졌음을 확인 → 같은 ACCOUNT로 launchControl. 실패하면 어디까지 갔는지(result)를 돌려준다. 기록은 부르는 쪽이 한다
+export async function performRecycle(d: ActDeps, row: Pick<AgentRow, "id" | "pid" | "account">, name: string, contextBefore: number, reason: string): Promise<RecycleRecord> {
+  const base = { t: new Date().toISOString(), session: name, contextBefore, reason, mode: "on" as const, ...(row.account ? { account: row.account } : {}) };
+  const st = await d.stop(name);
+  if (!st.ok) return { ...base, ok: false, result: "stop-failed", error: st.error };
+  // ATC-165 1.5: 저장한 pid가 사라지고 줄에 pid·status가 없을 때만 안 것으로 본다. done에서 STOP한 job은 줄이 유령으로 남는다(STALE, LAUNCH는 무시한다)
+  const deadline = Date.now() + (d.confirmMs ?? 15_000);
+  let ghost = false;
+  for (;;) {
+    const rows = await d.rowsOf().catch(() => null);
+    const mine = rows ? (rows.find((r) => r.id === row.id) ?? null) : undefined;
+    if (mine !== undefined) {
+      const g = goneOf({ pid: row.pid ?? null, pidAlive: row.pid != null ? d.pidAlive(row.pid) : null, row: mine });
+      ghost = g.ghost;
+      if (g.gone) break;
+    }
+    if (Date.now() >= deadline) return { ...base, ok: false, result: "stop-unconfirmed", error: "STOP 뒤에도 job이 남아 있음 — LAUNCH하지 않음" };
+    await d.sleep(1000);
+  }
+  const l = await d.launch(name, row.account);
+  if (!l.ok) return { ...base, ok: false, result: "launch-failed", error: `${l.error ?? "LAUNCH 실패"}${ghost ? " (유령 줄은 STALE)" : ""}` };
+  return { ...base, ok: true, result: "recycled", ...(l.jobId ? { jobId: l.jobId } : {}) };
+}
+
+const toLine = (r: RecycleRecord): Parameters<typeof record>[0] => ({ kind: "control", op: "recycle", by: "atc", ...r });
+
+// ── 한 주기 ──
+let busy = false; // 한 번에 한 세션만
+let recycling: string | null = null;
+const wouldAt = new Map<string, number>(); // shadow: 세션·job마다 cooldown 안에 한 번만 남긴다
+
+export const recyclingNow = () => recycling;
+
+// CAP을 넘었지만 자동 재시작 대상이 아닌 세션(OCC). 1분마다 새로 잰다. since는 처음 넘은 것을 본 때
+let overCap: (OverCap & { since: string })[] = [];
+export const overCapNow = () => overCap;
+
+export function lastRecycleAtOf(name: string, sinceMs: number): number | null {
+  let last: number | null = null;
+  for (const r of readRecords(sinceMs)) {
+    if (r.kind !== "control" || r.op !== "recycle" || r.session !== name || r.result === "would") continue;
+    const t = Date.parse(r.t);
+    if (last === null || t > last) last = t;
+  }
+  return last;
+}
+
+export interface RunDeps extends FactDeps {
+  act: ActDeps;
+  fuelAccounts?: (s: Snapshot) => Snapshot["fuelAccounts"];
+}
+
+export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleConfig = loadRecycle()): Promise<{ name: string; action: string; reason: string }[]> {
+  if (busy) return [];
+  busy = true;
+  const out: { name: string; action: string; reason: string }[] = [];
+  try {
+    const rows = await agentRows();
+    const now = d.now();
+    const cooldownMs = cfg.cooldownHours * 3_600_000;
+    let facts: SafeFacts | null | undefined;
+    const excluded: OverCap[] = [];
+    for (const spec of CONTROL_SESSIONS) {
+      if (spec.launch !== "bg") continue;
+      const live = controlRowsOf(spec, rows, controlDirOf(spec)).filter((r) => !r.stale);
+      const bg = live.find((r) => r.kind === "background" && r.id);
+      const context = bg ? contextOfRow(bg, config.claudeDir, configDirOfRow(bg)) : null;
+      const cap = cfg.caps[spec.name] ?? null;
+      const job = bg ? (settleJob(readJob(bg.id)) ?? null) : null;
+      // 자료는 CAP을 넘은 세션이 있을 때만 읽는다
+      const over = bg && cap !== null && context !== null && context > cap;
+      const auto = cfg.auto[spec.name] ?? false;
+      // 자동 재시작 대상이 아닌 세션은 모드와 상관없이 재고 알린다(OCC, SUPERVISOR 결정 2026-09-30)
+      if (over && !auto) excluded.push({ session: spec.name, context: context!, cap: cap! });
+      if (cfg.mode === "off") continue;
+      if (over && auto && facts === undefined) facts = await safeFactsOf(s, d).catch(() => null);
+      const lastAt = over ? lastRecycleAtOf(spec.name, now - cooldownMs) : null;
+      const dec = controlRecycleOf({
+        name: spec.name,
+        mode: cfg.mode,
+        cap,
+        auto,
+        context,
+        background: Boolean(bg) && live.length === 1,
+        job,
+        safe: over ? (facts ?? null) : null,
+        lastRecycleAt: lastAt,
+        otherRecycling: recycling && recycling !== spec.name ? recycling : null,
+        cooldownMs,
+        now,
+      });
+      if (dec.action !== "recycle" || !bg || context === null) {
+        if (dec.action === "wait") out.push({ name: spec.name, action: "wait", reason: dec.reason });
+        continue;
+      }
+      if (cfg.mode === "shadow") {
+        const key = `${spec.name}|${bg.id}`;
+        if (now - (wouldAt.get(key) ?? 0) < cooldownMs) continue;
+        wouldAt.set(key, now);
+        record(toLine({ t: new Date(now).toISOString(), session: spec.name, contextBefore: context, reason: dec.reason, mode: "shadow", ok: true, result: "would", ...(bg.account ? { account: bg.account } : {}) }));
+        out.push({ name: spec.name, action: "would", reason: dec.reason });
+        continue;
+      }
+      recycling = spec.name;
+      try {
+        const r = await performRecycle(d.act, bg, spec.name, context, dec.reason);
+        record(toLine(r));
+        out.push({ name: spec.name, action: r.result, reason: dec.reason });
+      } finally {
+        recycling = null;
+      }
+      break; // 한 주기에 한 세션만. 다음 세션은 다음 주기에(다른 세션이 재시작 중이 아닐 때)
+    }
+    overCap = excluded.map((e) => ({ ...e, since: overCap.find((o) => o.session === e.session)?.since ?? new Date(now).toISOString() }));
+  } finally {
+    busy = false;
+  }
+  return out;
+}
+
+// 실제 stop·launch·읽기를 묶은 기본 ActDeps. stopControl·launchControl은 FLEET의 STOP·LAUNCH 버튼과 같은 함수다
+export const defaultActDeps = (fuelAccounts: () => Snapshot["fuelAccounts"]): ActDeps => ({
+  stop: async (name) => {
+    const r = await stopControl(name, "RECYCLE");
+    return { ok: r.ok, error: r.error };
+  },
+  rowsOf: () => agentRows(),
+  pidAlive: pidAliveOf,
+  launch: async (name, account) => {
+    const r = await launchControl(name, "RECYCLE", account, fuelAccounts());
+    return { ok: r.ok, jobId: r.jobId, account: r.account, error: r.error };
+  },
+  sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
+});
+
+// 스위치(SUPERVISOR만: 설정 창 PUT /api/settings의 controlRecycleMode). 바꾸면 FLIGHT RECORDER에 남는다
+export function setRecycleMode(mode: RecycleMode, by = "SUPERVISOR") {
+  const cfg = loadRecycle();
+  if (cfg.mode === mode) return;
+  saveRecycle({ ...cfg, mode });
+  record({ t: new Date().toISOString(), kind: "control", op: "recycle-mode", by, from: cfg.mode, to: mode });
+}
+export function setRecycleAuto(patch: Record<string, boolean>) {
+  const cfg = loadRecycle();
+  saveRecycle({ ...cfg, auto: { ...cfg.auto, ...patch } });
+}
+export function setRecycleCaps(patch: Record<string, number | null>) {
+  const cfg = loadRecycle();
+  saveRecycle({ ...cfg, caps: { ...cfg.caps, ...patch } });
+}
+
+// 화면이 읽는다(읽기만): 세션마다 지금 컨텍스트와 CAP, 최근 재시작 기록. 스위치·CAP은 PUT /api/settings로 바꾼다
+const cachedRows = ttlCache(agentRows);
+export function mountControlRecycle(app: Hono) {
+  app.get("/api/control/recycle", async (c) => {
+    const cfg = loadRecycle();
+    const rows = await cachedRows.get(c.req.query("fresh") === "1").catch(() => [] as AgentRow[]);
+    const day = Date.now() - 24 * 3_600_000;
+    const recent = readRecords(day)
+      .filter((r) => r.kind === "control" && r.op === "recycle")
+      .slice(-20)
+      .reverse();
+    return c.json({
+      mode: cfg.mode,
+      cooldownHours: cfg.cooldownHours,
+      auto: cfg.auto,
+      recycling: recyclingNow(),
+      sessions: CONTROL_SESSIONS.filter((x) => x.launch === "bg").map((spec) => {
+        const bg = controlRowsOf(spec, rows, controlDirOf(spec)).find((r) => r.kind === "background" && r.id && !r.stale);
+        const context = bg ? contextOfRow(bg, config.claudeDir, configDirOfRow(bg)) : null;
+        const cap = cfg.caps[spec.name] ?? null;
+        return { name: spec.name, cap, auto: cfg.auto[spec.name] ?? false, context, over: cap !== null && context !== null && context > cap, running: Boolean(bg) };
+      }),
+      recent,
+    });
+  });
+}

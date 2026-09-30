@@ -66,7 +66,16 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 
 ## 컨텍스트 CAP
 
-이 세션의 컨텍스트가 150k 토큰을 넘으면(마지막 요청의 input + cache read + cache write, statusline 기록과 같은 값) `context-cap.mjs`(`UserPromptSubmit` hook)가 프롬프트에 `[MCC CONTEXT CAP] …` 안내를 붙인다. 그 바퀴를 마치고 MCC LOG에 "컨텍스트 <n>k — SUPERVISOR는 이 세션을 STOP하고 LAUNCH해 주세요"를 적는다. 스스로 다시 시작하지 않고(`/clear`, 종료 없이) 바퀴는 계속 돈다.
+이 세션의 컨텍스트가 150k 토큰을 넘으면(마지막 요청의 input + cache read + cache write, statusline 기록과 같은 값) `context-cap.mjs`(`UserPromptSubmit` hook)가 프롬프트에 `[MCC CONTEXT CAP] …` 안내를 붙인다. 그 바퀴를 마치고 `mcc queue`의 `recycle.mode`를 본다(ATC-166).
+
+- `on`: atc가 컨텍스트가 CAP을 넘고 턴 사이이며 안전한 순간에 이 세션을 스스로 STOP하고 같은 ACCOUNT로 LAUNCH한다. 아무것도 청하지 않는다. SUPERVISOR에게 STOP·LAUNCH를 청하지 않고, 이것 때문에 BLOCKED로 두지 않는다.
+- `off`·`shadow`(기본): atc는 이 세션을 다시 시작하지 않는다(`shadow`는 "재시작했을 것"을 FLIGHT RECORDER에만 남긴다). MCC LOG에 "컨텍스트 <n>k — CAP 초과"만 적는다.
+
+어느 쪽이든 스스로 다시 시작하지 않고(`/clear`, 종료 없이) 바퀴는 계속 돈다.
+
+### 새로 시작했을 때(atc가 다시 띄운 세션)
+
+이전 대화는 이어지지 않는다. 그래도 잃는 것이 없게 상태는 모두 서버에 있다. 첫 바퀴는 `mcc queue`를 읽고 그 출력이 말하는 대로 한다. LOG에 이전 바퀴가 있다고 가정하지 않는다. INSPECTION은 head마다 기록되어 있어 이미 한 PR은 `inspection`에 보이고, 하던 중이던 PR은 다시 INSPECTION한다(비용만 든다). RTS가 돌고 있으면(`rts.why` "RTS 진행 중") 그대로 두고 지켜본다.
 
 ## MCC LOG
 

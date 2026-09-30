@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import type { Hono } from "hono";
 import { writeResultOf } from "./autoland.ts";
 import { config } from "./config.ts";
+import { loadRecycle } from "./control-recycle.ts";
 import { slugOfUrl } from "./landing.ts";
 import { capText, sectionsOf } from "./landing-review.ts";
 import {
@@ -298,6 +299,8 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
       return c.json({
         mode: ap.cfg.mode,
         airport: ap.cfg.airport,
+        // CONTROL RECYCLE 스위치(ATC-166). MCC는 상태 폴더를 읽지 못해서 컨텍스트 CAP 안내를 어떻게 받을지 여기서 안다
+        recycle: { mode: loadRecycle().mode },
         gate,
         repo: ap.slug,
         service: { head: deployed?.slice(0, 7) ?? null },

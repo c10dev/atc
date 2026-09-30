@@ -934,7 +934,7 @@ export function selfCheck2b(atcctlSource: string | null, now = Date.now()) {
 
 // ── 파일 ──
 
-function readOps(file = FILE): Op[] {
+export function readOps(file = FILE): Op[] {
   let text = "";
   try {
     text = readFileSync(file, "utf8");

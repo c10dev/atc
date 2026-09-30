@@ -261,7 +261,7 @@ function normalizeFlight(flight: string | undefined): string | null {
 
 const consumerFile = (name: string) => join(config.stateDir, "consumers", `${name}.json`);
 
-function readCursor(name: string): string | null {
+export function readCursor(name: string): string | null {
   try {
     return JSON.parse(readFileSync(consumerFile(name), "utf8")).cursor ?? null;
   } catch {
