@@ -53,6 +53,7 @@ test("duty pr: 열린 PR은 착륙·등급·INSPECTION, 아니면 폴링하지 �
 
 test("duty 답 문구: 카드는 SUPERVISOR가 정한다, note는 확인 전엔 효력 없음, charter는 아무도 안 읽음", () => {
   assert.match(dutyDraftText({ draft: { id: "DD-0001", kind: "card", card: { queueKind: "PROPOSAL", key: "D-1" } } }), /pointer to a SUPERVISOR QUEUE row/);
+  assert.match(dutyDraftText({ draft: { id: "DD-0003", kind: "retire-card" } }), /standing-decisions card recorded/);
   assert.match(dutyDraftText({ draft: { id: "DD-0002", kind: "note", until: "2026-10-03T03:00:00.000Z" } }), /until 2026-10-03.*only when the SUPERVISOR confirms/);
   assert.match(dutyDraftText({ draft: { id: "DD-0003", kind: "charter" } }), /nothing reads it yet/);
 });

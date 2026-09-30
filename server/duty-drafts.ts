@@ -12,7 +12,17 @@ export const CHARTER_MAX = 4000;
 export type DraftLine =
   | { id: string; at: string; kind: "card"; card: { queueKind: QueueKind; key: string; title: string; since: string | null; hash: string } }
   | { id: string; at: string; kind: "note"; text: string; until: string | null }
-  | { id: string; at: string; kind: "charter"; text: string };
+  | { id: string; at: string; kind: "charter"; text: string }
+  // D4: 정해 둔 결정의 목록 카드(해제 버튼)를 청한다. 큐 줄이 아니라 고정된 자리 `DECISIONS retire`
+  | { id: string; at: string; kind: "retire-card" };
+
+// 초안을 버린다(D4, SUPERVISOR의 클릭): id 없는 줄이라 초안 번호를 세는 데 끼지 않는다
+export interface DismissLine {
+  kind: "dismiss";
+  draft: string;
+  at: string;
+}
+export const RETIRE_CARD = { kind: "DECISIONS", key: "retire" } as const;
 
 export type DraftResult = { ok: true; line: DraftLine } | { ok: false; error: string };
 
@@ -44,6 +54,10 @@ const textOf = (v: unknown, max: number, what: string): { ok: true; text: string
 export function cardDraftOf(items: readonly Pick<QueueItem, "kind" | "key" | "since" | "title" | "hash">[], kind: unknown, key: unknown, id: string, now: number): DraftResult {
   if (typeof kind !== "string" || typeof key !== "string") return { ok: false, error: "card: kind and key are required" };
   const k = kind.trim().toUpperCase();
+  if (k === RETIRE_CARD.kind.toUpperCase()) {
+    if (key.trim() !== RETIRE_CARD.key) return { ok: false, error: `card: DECISIONS has one card, "DECISIONS retire" (the list of standing decisions with a release button)` };
+    return { ok: true, line: { id, at: new Date(now).toISOString(), kind: "retire-card" } };
+  }
   if (!(QUEUE_KINDS as readonly string[]).includes(k)) return { ok: false, error: `card: unknown kind ${JSON.stringify(kind)}; kinds are ${QUEUE_KINDS.join(", ")}` };
   const row = items.find((i) => i.kind === k && i.key === key.trim());
   if (!row) {

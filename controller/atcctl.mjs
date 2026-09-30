@@ -195,8 +195,9 @@ DUTY (DUTY 세션, duty/ 폴더, L0 — docs/duty.md. 읽기와 초안뿐, 밖�
   node atcctl.mjs duty flight <ATC-206>     FLIGHT 서랍 자료(글): 상태·관계·PR, 본문과 댓글은 데이터 표시 안에
   node atcctl.mjs duty pr <ATCC> <281>      PR 서랍 자료(글): 착륙 상태·등급·체크·파일, 본문은 데이터 표시 안에
   node atcctl.mjs duty card <kind> <key>    카드 요청. 지금 SUPERVISOR QUEUE에 있는 줄일 때만 받는다(아니면 사유). duty-drafts.jsonl에 남는다
+                                            'duty card DECISIONS retire'는 정해 둔 결정 목록 카드(해제 버튼)를 청한다
   node atcctl.mjs duty note -- '<규칙>' [--until <iso>]
-                                            정해 둘 결정의 제안. SUPERVISOR가 확인해야 효력이 생긴다(D4). 지금은 초안만
+                                            정해 둘 결정의 제안. SUPERVISOR가 카드에서 확정해야 효력이 생긴다(D4)
   node atcctl.mjs duty charter -- '<영어 요청>'
                                             CHARTER REQUEST 초안(영어). 아직 아무도 읽지 않는다(D5)`;
 
@@ -688,10 +689,11 @@ export function dutyPrText(d) {
 
 export function dutyDraftText(r) {
   const x = r.draft;
+  if (x.kind === "retire-card") return `${x.id} standing-decisions card recorded (a list with a release button; only the SUPERVISOR's click changes anything)`;
   return x.kind === "card"
     ? `${x.id} card request ${x.card.queueKind}/${x.card.key} recorded (a pointer to a SUPERVISOR QUEUE row; the SUPERVISOR decides in atc)`
     : x.kind === "note"
-      ? `${x.id} proposed standing decision recorded${x.until ? ` until ${x.until}` : ""} (it takes effect only when the SUPERVISOR confirms it, D4)`
+      ? `${x.id} proposed standing decision recorded${x.until ? ` until ${x.until}` : ""} (it takes effect only when the SUPERVISOR confirms it on the card)`
       : `${x.id} CHARTER REQUEST draft recorded (nothing reads it yet)`;
 }
 

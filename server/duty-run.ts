@@ -52,7 +52,7 @@ export interface DutyOpts {
   idleMs?: number; // 시험용: duty.idleMin(분) 대신 이 값(ms)
 }
 
-export type DutyCardEvent = { type: "card"; queueKind: string; key: string; draft: string } | { type: "draft"; draftKind: "note" | "charter"; draft: string; text: string; until: string | null };
+export type DutyCardEvent = { type: "card"; queueKind: string; key: string; draft: string } | { type: "draft"; draftKind: "note" | "charter" | "retire"; draft: string; text: string; until: string | null };
 type Emitted = DutyEvent | DutyCardEvent | ({ type: "status" } & DutyStatus);
 type Feed = (e: Emitted & { t: string }) => void;
 
@@ -162,9 +162,11 @@ export class DutyRuntime {
       this.append({ t, kind: "card", queueKind: d.card.queueKind, key: d.card.key, draft: d.id });
       this.emit({ type: "card", queueKind: d.card.queueKind, key: d.card.key, draft: d.id });
     } else {
+      const draftKind = d.kind === "retire-card" ? "retire" : d.kind;
+      const text = d.kind === "retire-card" ? "" : d.text;
       const until = d.kind === "note" ? d.until : null;
-      this.append({ t, kind: "draft", draftKind: d.kind, draft: d.id, text: d.text, until });
-      this.emit({ type: "draft", draftKind: d.kind, draft: d.id, text: d.text, until });
+      this.append({ t, kind: "draft", draftKind, draft: d.id, text, until });
+      this.emit({ type: "draft", draftKind, draft: d.id, text, until });
     }
   }
 
