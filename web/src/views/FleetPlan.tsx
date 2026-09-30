@@ -16,6 +16,7 @@ interface PlanBrief {
   background: { count: number | null; max: number };
   permissionModes: string[];
   config: { reserve: number; waitMin: number; idleHours: number; restartDays: number; retireDays: number; minDwellMin: number; refreshTokens?: number; refreshPct?: number };
+  reposition?: { mode: "off" | "shadow" | "approval" | "auto"; dailyMax: number; movedToday: number }; // REPOSITION(ATC-179). 옛 서버면 없음
   ranAt: string | null;
   error: string | null;
   demand: DemandRow[];
@@ -34,6 +35,7 @@ const KIND_HELP: Record<FleetPlanKind, string> = {
   RESTART: "오래된 백그라운드 세션을 새 CREW BRIEFING으로 다시 띄운다(정기 점검)",
   REFRESH: "FLIGHT를 마치고 쉬는 AIRCRAFT의 큰 대화를 새로 시작한다(다음 cold wake의 캐시 쓰기를 아낌)",
   "ACCOUNT CHANGE": "FLIGHT 사이의 AIRCRAFT를 사용 한도가 남은 ACCOUNT로 옮긴다(멈추고 그 ACCOUNT에서 다시 띄움). 진행 중인 FLIGHT는 옮기지 않는다",
+  REPOSITION: "쉬는 AIRCRAFT의 base를 FLIGHT가 기다리는데 AIRCRAFT가 없는 AIRPORT로 옮긴다(멈추고 base를 바꿔 그 AIRPORT 저장소에서 다시 띄움). 진행 중인 FLIGHT는 옮기지 않는다",
   AOG: "기한을 두고 배정을 멈춘다(MEL)",
   RETIRE: "퇴역(SUPERVISOR만, 자동 없음)",
   RETURN: "FLEET PLAN이 건 AOG를 푼다(기한이 지남)",
@@ -46,6 +48,7 @@ const WILL_DO: Record<FleetPlanKind, (p: FleetProposal) => string> = {
   RESTART: (p) => `${p.aircraft}의 백그라운드 세션을 멈추고 새 CREW BRIEFING으로 다시 띄운다`,
   REFRESH: (p) => `${p.aircraft}의 백그라운드 세션을 멈추고 새 CREW BRIEFING으로 다시 띄운다(대화를 새로 시작)`,
   "ACCOUNT CHANGE": (p) => `${p.aircraft}의 백그라운드 세션을 멈추고 ACCOUNT ${p.account ?? "?"}에서 CREW BRIEFING으로 다시 띄운다(home ACCOUNT는 그대로, 캐시는 새로 시작)`,
+  REPOSITION: (p) => `${p.aircraft}의 백그라운드 세션을 멈추고 base를 ${p.from ?? "?"} → ${p.airport ?? "?"}로 바꾼 뒤 ${p.airport ?? "?"} 저장소에서 CREW BRIEFING으로 다시 띄운다(캐시는 새로 시작, 그 저장소의 CLAUDE.md)`,
   AOG: (p) => `${p.aircraft}를 AOG로 둔다(사유 FLEET PLAN ${p.id})`,
   RETIRE: (p) => `${p.aircraft}를 퇴역시킨다`,
   RETURN: (p) => `${p.aircraft}의 AOG를 푼다`,
@@ -216,7 +219,10 @@ export function FleetPlan({ refreshKey, onChanged, fleetAccounts }: { refreshKey
       {accountViewOf(fleetAccounts, brief.fuel) === "plan" && <FuelLines accounts={brief.fuel ?? []} />}
       {brief.open.length ? (
         <ul className="fp-rows">
-          {brief.open.map((p) => (
+          {brief.open.map((p) => {
+            // REPOSITION은 자기 스위치(approval·auto)로 승인한다(ATC-179), 나머지는 FLEET PLAN 모드
+            const ap = p.kind === "REPOSITION" ? brief.reposition !== undefined && (brief.reposition.mode === "approval" || brief.reposition.mode === "auto") : approval;
+            return (
             <li key={p.id} className={`fp-row k-${p.kind}`}>
               <div className="fp-head">
                 <span className="fp-kind" title={KIND_HELP[p.kind]}>
@@ -224,6 +230,7 @@ export function FleetPlan({ refreshKey, onChanged, fleetAccounts }: { refreshKey
                 </span>
                 <b className="mono">{p.aircraft ?? "—"}</b>
                 {p.configuration && <span className="faint">{p.configuration}</span>}
+                {p.from && <span className="apt">{p.from} →</span>}
                 {p.airport && <span className="apt">{p.airport}</span>}
                 <span className="faint mono">{p.id}</span>
                 <span className="faint fp-age">{timeAgo(p.at, Date.now())}</span>
@@ -241,26 +248,26 @@ export function FleetPlan({ refreshKey, onChanged, fleetAccounts }: { refreshKey
                 <ApproveForm p={p} brief={brief} busy={busy === p.id} onCancel={() => setApproving(null)} onApprove={(input) => approve(p, input)} />
               ) : (
                 <>
-                  {approval && p.stale && <p className="fp-note faint">조건이 바뀜 — 최근 주기가 이 제안을 더는 내지 않는다. 다음 주기를 기다린다</p>}
-                  {approval && isManual(p) && (
+                  {ap && p.stale && <p className="fp-note faint">조건이 바뀜 — 최근 주기가 이 제안을 더는 내지 않는다. 다음 주기를 기다린다</p>}
+                  {ap && isManual(p) && (
                     <p className="fp-note">
                       atc는 실행하지 않는다. {p.aircraft} 세션에서 <code>/clear</code>하고 CREW BRIEFING을 붙여 넣은 뒤 "했음"
                     </p>
                   )}
                   <div className="fl-actions">
                     <button className="fl-btn" disabled={busy === p.id} onClick={() => judge(p, "disagree")}>
-                      {approval ? "거절" : "반대"}
+                      {ap ? "거절" : "반대"}
                     </button>
                     {isManual(p) && (
                       <button className="fl-btn" disabled={busy === p.id} onClick={() => copyBriefing(p)}>
                         {copied === p.id ? "복사함" : "CREW BRIEFING 복사"}
                       </button>
                     )}
-                    {approval && isManual(p) ? (
+                    {ap && isManual(p) ? (
                       <button className="fl-btn primary" disabled={busy === p.id} onClick={() => judge(p, "agree")}>
                         했음
                       </button>
-                    ) : approval ? (
+                    ) : ap ? (
                       <button className="fl-btn primary" disabled={busy === p.id || p.stale} onClick={() => (setError(null), setApproving(p.id))}>
                         승인(실행)
                       </button>
@@ -273,7 +280,8 @@ export function FleetPlan({ refreshKey, onChanged, fleetAccounts }: { refreshKey
                 </>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       ) : (
         <p className="faint fp-empty">열린 제안 없음</p>
@@ -328,7 +336,7 @@ function ApproveForm({
   onCancel: () => void;
   onApprove: (input: Record<string, unknown>) => void;
 }) {
-  const relaunch = p.kind === "RESTART" || p.kind === "REFRESH" || p.kind === "ACCOUNT CHANGE";
+  const relaunch = p.kind === "RESTART" || p.kind === "REFRESH" || p.kind === "ACCOUNT CHANGE" || p.kind === "REPOSITION";
   const launches = p.kind === "LAUNCH" || p.kind === "ENTRY" || relaunch;
   // RESTART·REFRESH는 비워 두면 서버가 마지막 LAUNCH의 값을 쓴다. 나머지는 auto(SUPERVISOR 결정)
   const [permissionMode, setPermissionMode] = useState(relaunch ? "" : (brief.permissionModes[0] ?? "auto"));

@@ -52,7 +52,7 @@ DISPATCH는 **어떤 FLIGHT(Linear 티켓)를 어떤 AIRCRAFT(팀 세션)에, �
 | `ASSIGN` | FLIGHT를 AIRCRAFT에 배정 | VOC193 → BRAVO (VCDO) |
 | `HOLD_DEPARTURE` | 지금은 출발시키지 말 것 | VOC192는 VOC191(blocks)이 ARRIVED 될 때까지 대기 |
 | `RELEASE` | STAND도 활동도 없는 ENROUTE FLIGHT를 정리 | VOC34: 7일째 STAND 없음 → Todo로 되돌릴지 SUPERVISOR 확인 |
-| `REPOSITION` | AIRCRAFT를 다른 AIRPORT로(3단계 전까지는 드묾) | DSGN FLIGHT가 쌓였는데 DSGN 소속 AIRCRAFT가 없음 |
+| `REPOSITION` | AIRCRAFT를 다른 AIRPORT로. FLEET PLAN의 종류로 만들었다(ATC-179, [fleet.ko.md](fleet.ko.md) 8.6). DISPATCH가 직접 내지는 않는다 | DSGN FLIGHT가 쌓였는데 DSGN 소속 AIRCRAFT가 없음 |
 
 첫 구현은 `ASSIGN`과 `RELEASE`만. `RELEASE`는 In Progress 17건 중 방치된 것을 정리하는 효과가 크고 위험이 낮다(Linear 변경은 SUPERVISOR/CAPTAIN이 한다).
 
