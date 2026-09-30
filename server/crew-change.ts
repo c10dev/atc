@@ -253,7 +253,7 @@ export function planCrewChange(
 
 const file = () => join(config.stateDir, "crew-changes.jsonl");
 
-function readOps(): CrewChangeOp[] {
+export function readOps(): CrewChangeOp[] {
   let text = "";
   try {
     text = readFileSync(file(), "utf8");

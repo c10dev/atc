@@ -82,6 +82,8 @@ test("topics: 목록을 읽고, 없거나 비면 summary만 뺀 기본, 모르�
   for (const raw of [undefined, "", " , "]) assert.deepEqual(parseTopics(raw), { ok: true, topics: new Set(DEFAULT_TOPICS) });
   assert.deepEqual(parseTopics("alert,summary"), { ok: true, topics: new Set(["alert", "summary"]) });
   assert.deepEqual(parseTopics(" version , summary,version"), { ok: true, topics: new Set(["version", "summary"]) });
+  assert.deepEqual(parseTopics("radio"), { ok: true, topics: new Set(["radio"]) }); // ATC-170: 옵트인, 기본 집합에는 없다
+  assert.ok(!DEFAULT_TOPICS.includes("radio" as never));
   assert.deepEqual(parseTopics("alert,ping"), { ok: false, unknown: ["ping"] });
   assert.deepEqual(parseTopics("nope,foo,alert"), { ok: false, unknown: ["nope", "foo"] });
 });
