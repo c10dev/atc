@@ -176,7 +176,7 @@ function finalize(a: Acc): Bucket {
 // ── 계산 ──
 
 const CLOSING = new Set(["READBACK", "ROGER", "UNABLE"]);
-const WITHDRAWN = new Set(["cancel", "recall", "supersede", "delivered"]);
+const WITHDRAWN = new Set(["cancel", "recall", "supersede", "delivered", "undelivered"]);
 const rootId = (id: string) => id.split("#")[0]!;
 const isCall = (t: Transmission) => !t.replyTo && (t.from === "TOWER" || t.from === "OCC") && t.freq !== "GROUND";
 const ms = (iso: string) => Date.parse(iso);
