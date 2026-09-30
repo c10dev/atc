@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { check, CROSSCHECK_MODELS, REVIEW_MODELS } from "../controller/guard.mjs";
 import { checkRead, rootsOf } from "./read-guard.mjs";
 
+// 가짜 HOME(ATC-190): 진짜 ~/.local/state/atc를 realpath하지 않는다
+const FAKE_HOME = join(tmpdir(), "atc-fake-home");
 const HERE = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const settings = JSON.parse(readFileSync(new URL(".claude/settings.json", import.meta.url), "utf8"));
 
@@ -33,7 +36,7 @@ test("REVIEW 읽기: review/와 docs/만. atc 소스·운영 상태·crosscheck/
   const roots = rootsOf();
   assert.equal(checkRead("Read", { file_path: join(HERE, "CLAUDE.md") }, { cwd: HERE, roots }), null);
   assert.equal(checkRead("Read", { file_path: join(HERE, "..", "docs", "occ.md") }, { cwd: HERE, roots }), null);
-  for (const f of ["../server/landing.ts", "../crosscheck/CLAUDE.md", "/home/c10/.local/state/atc/landing-reviews.jsonl", "../.env.local"]) {
+  for (const f of ["../server/landing.ts", "../crosscheck/CLAUDE.md", join(FAKE_HOME, ".local/state/atc/landing-reviews.jsonl"), "../.env.local"]) {
     assert.notEqual(checkRead("Read", { file_path: f }, { cwd: HERE, roots }), null, f);
   }
   // hook으로 부르면 exit 2
