@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type AccountFolder, accountFolders } from "./accounts.ts";
 import { config } from "./config.ts";
-import { cleanEnv } from "./session-control.ts";
+import { cleanEnv } from "./clean-env.ts";
 
 // 폴더 health(ATC-146, docs/accounts.md): 등록된 폴더마다 로그인했는지, settings.json에 atc의 statusline과 hook이 걸려 있는지.
 // 없는 조각은 경고일 뿐 막지 않는다. `claude auth status --json`에서는 loggedIn과 authMethod만 남기고 나머지(email·조직·요금제 …)는 저장도 전송도 하지 않는다.

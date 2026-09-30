@@ -156,7 +156,7 @@ mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   max: MAX_LAUNCHED,
   launch: (s, reg, proposal) => {
     const a = s.absent?.find((x) => x.registration === reg);
-    return launchAircraft(s, reg, { permissionMode: a?.permissionMode, model: a?.model }, "SUPERVISOR", proposal);
+    return launchAircraft(s, reg, { permissionMode: a?.permissionMode, model: a?.model, account: a?.account }, "SUPERVISOR", proposal);
   },
 });
 mountStandFree(app, getSnapshot, addLogbookFuel);

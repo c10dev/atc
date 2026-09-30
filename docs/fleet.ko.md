@@ -790,6 +790,15 @@ FLIGHT를 마치고 기다리는 백그라운드 AIRCRAFT는 한 시간 뒤 사�
 
 **RESUME.** 한도로 끊긴 FLIGHT는 reset 뒤 같은 REGISTRATION의 RESUME 카드로 돌아온다([dispatch.ko.md](dispatch.ko.md)). SUPERVISOR가 손으로 보내던 "계속"을 대신하는 것은 세션이 없는 백그라운드 AIRCRAFT뿐이다. 살아 있는 세션의 `RESUME`은 위 ATC-86대로다: `RESUME 필요`, SUPERVISOR가 그 세션에서 "계속"을 보낸다.
 
+### ACCOUNT별 LAUNCH (ATC-147)
+
+ACCOUNT 폴더를 등록하면([accounts.md](accounts.md) 5.2) 등록된 어느 ACCOUNT에서도 LAUNCH·STOP을 한다.
+
+- **어느 ACCOUNT.** AIRCRAFT 프로필의 `account`(관제 세션은 `control` 라벨), 또는 요청에 적은 ACCOUNT. LAUNCH 패널에 고르개가 있다(SUPERVISOR만). 로그인이 안 됐거나, FUEL hold 수준이거나, 그 ACCOUNT의 `maxLaunched`에 닿은 ACCOUNT는 사유와 함께 흐리게 보이고 요청해도 거절한다. 등록부가 없으면 달라지는 것이 없다(인자·환경 그대로).
+- **환경.** 더하는 변수는 그 ACCOUNT 폴더의 `CLAUDE_CONFIG_DIR` 하나뿐이다(`~/.claude`면 더하지 않는다). LAUNCH는 여전히 자기 systemd scope에서 돌아, daemon은 `atc.service` 밖에 산다.
+- **폴더마다.** `claude agents --json`은 폴더마다(daemon이 떠 있을 때) 읽어 `account`를 붙여 합친다. `claude stop`은 그 줄의 폴더로 부른다. LIMIT 뒤 RESUME(8.5 ATC-129)은 마지막 atc LAUNCH의 ACCOUNT에서 띄운다. 등록부가 있으면 FLIGHT RECORDER의 launch·stop 기록에 `account`가 남는다.
+- **상한.** `ATC_MAX_LAUNCHED`는 기계 전체 그대로, ACCOUNT별 `maxLaunched`는 등록부에서 고른다(기본 없음).
+
 ### 8.6 FLEET PLAN: LAUNCH·STOP 등을 제안하기
 
 상태: 1·2단계 만듦(그림자, 2026-09-28). `REFRESH`(객실 정비, ATC-69)도 함께 만들었다. SUPERVISOR 결정은 아래에 적었다. 8.5가 SUPERVISOR에게 조종 버튼을 줬다면, 이 절은 atc가 언제 그 버튼을 쓰자고 제안할지 정한다. 팀을 꾸리고, 세우고, 정비하고, 퇴역시키는 일을 손으로 챙기지 않게 하려는 것이다.
@@ -883,6 +892,12 @@ FLIGHT를 마치고 기다리는 백그라운드 AIRCRAFT는 한 시간 뒤 사�
 - REFRESH(ATC-69, 작업 지시의 PILOT'S DISCRETION, SUPERVISOR 검토 대상): RESTART의 셋째 조건이 아니라 따로 둔 종류다. 그래야 게이트가 판정을 따로 세고, 데스크톱 세션에는 거절 대신 손으로 할 단계를 보인다. 기준은 `refreshTokens` 300k와 `refreshPct` 40 % 중 먼저 닿는 것. 데스크톱·터미널 세션은 자동으로 다시 띄우지 않고, 자동 STOP은 여전히 4단계가 정한다.
 
 출처: [Jeppesen crew pairing](https://ww2.jeppesen.com/airline-crew-optimization-solutions/airline-crew-pairing/), [Lufthansa Systems NetLine/Crew](https://www.lhsystems.com/solutions/operations-control-center/netline-crew), [항공 disruption recovery 조사(arXiv 2510.26831)](https://arxiv.org/html/2510.26831), [OAG: wet leasing](https://www.oag.com/blog/what-is-wet-leasing), [SKYbrary: MEL](https://skybrary.aero/articles/minimum-equipment-list-mel), [EASA AI 등급(Halldale)](https://www.halldale.com/civil-aviation/easa-ai-framework-aviation-safety-regulations), [ICAO: 항공기 주기](https://www.icao.int/operational-safety/Aircraft-Parking).
+
+### ENTRY가 ACCOUNT를 고른다 (ATC-147)
+
+- ACCOUNT를 등록하면 ENTRY 제안에 `account`가 실린다: 로그인이 안 됐다고 알려지지 않았고 `holdPct` 아래인 등록 ACCOUNT 중 사용이 가장 낮은 것(FUEL 기록이 없으면 0, 같으면 라벨 순). 사유 줄에 어느 ACCOUNT인지 적힌다(`새 AIRCRAFT는 ACCOUNT acct-1에서 …`). 승인하면 그 `account`를 프로필에 넣어 들이므로 뒤이은 LAUNCH가 그 ACCOUNT를 쓴다.
+- 등록부가 있으면 옛 차단 "ENTRY도 제안 안 함(새 세션이 열릴 계정을 모름)"은 더 없다: 맞는 AIRCRAFT가 모두 hold여도 ENTRY는 다른 ACCOUNT로 간다. 맞는 ACCOUNT가 하나도 없으면 제안하지 않고 AIRPORT 줄이 ACCOUNT별 사유를 적는다(`acct-1: FUEL hold 100%, acct-2: 로그인 안 됨`). 열린 ENTRY의 ACCOUNT가 hold가 되면 expire한다.
+- 등록부가 없으면 전과 같다(새 AIRCRAFT는 `default`로 세고, hold인 맞는 AIRCRAFT가 있으면 옛 차단).
 
 ### REFRESH 만든 것 (ATC-69)
 

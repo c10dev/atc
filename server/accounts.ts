@@ -8,11 +8,12 @@ import { ACCOUNT_RE } from "./crew.ts";
 // ~/.claude는 등록하지 않아도 읽는다: 등록부에서 그 폴더에 붙인 라벨, 없으면 DEFAULT_FOLDER_LABEL.
 
 export const DEFAULT_FOLDER_LABEL = "default";
-export type AccountsRegistry = Record<string, { configDir: string }>;
+export type AccountsRegistry = Record<string, { configDir: string; maxLaunched?: number }>;
 export interface AccountFolder {
   label: string;
   dir: string;
   registered: boolean; // 등록부에 적힌 폴더(~/.claude를 등록하지 않았으면 false)
+  maxLaunched?: number; // ACCOUNT별 백그라운드 세션 상한(ATC-147). 없으면 기계 전체 상한(ATC_MAX_LAUNCHED)만
 }
 
 export class AccountsError extends Error {}
@@ -51,20 +52,22 @@ export function validateAccounts(raw: unknown, home = config.home): AccountsRegi
   for (const [label, entry] of Object.entries(raw as Record<string, unknown>)) {
     if (!ACCOUNT_RE.test(label)) throw new AccountsError(`ACCOUNT 라벨은 소문자·숫자·-, 24자까지: ${label}`);
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new AccountsError(`${label}: { configDir } 객체여야 함`);
-    const extra = Object.keys(entry).filter((k) => k !== "configDir");
-    if (extra.length) throw new AccountsError(`${label}: 모르는 키 ${extra.join(", ")} — configDir만 받는다 (email·토큰은 저장하지 않는다)`);
+    const extra = Object.keys(entry).filter((k) => k !== "configDir" && k !== "maxLaunched");
+    if (extra.length) throw new AccountsError(`${label}: 모르는 키 ${extra.join(", ")} — configDir와 maxLaunched만 받는다 (email·토큰은 저장하지 않는다)`);
     const dir = checkConfigDir((entry as { configDir?: unknown }).configDir, home);
+    const cap = (entry as { maxLaunched?: unknown }).maxLaunched;
+    if (cap !== undefined && cap !== null && !(Number.isInteger(cap) && (cap as number) >= 1 && (cap as number) <= 100)) throw new AccountsError(`${label}: maxLaunched는 1–100의 정수(없으면 상한 없음)`);
     const other = seen.get(dir);
     if (other) throw new AccountsError(`${label}: ${other}와 같은 폴더`);
     seen.set(dir, label);
-    out[label] = { configDir: dir };
+    out[label] = { configDir: dir, ...(typeof cap === "number" ? { maxLaunched: cap } : {}) };
   }
   return out;
 }
 
 // 폴더 목록: 등록부의 폴더(라벨 순서 그대로) + 등록되지 않은 기본 폴더(~/.claude). 기본 폴더가 맨 앞이 아니라 뒤에 온다 — 등록부가 우선
 export function foldersOf(registry: AccountsRegistry, defaultDir = config.claudeDir): AccountFolder[] {
-  const out: AccountFolder[] = Object.entries(registry).map(([label, e]) => ({ label, dir: e.configDir, registered: true }));
+  const out: AccountFolder[] = Object.entries(registry).map(([label, e]) => ({ label, dir: e.configDir, registered: true, ...(e.maxLaunched ? { maxLaunched: e.maxLaunched } : {}) }));
   if (!out.some((f) => f.dir === defaultDir)) out.push({ label: DEFAULT_FOLDER_LABEL, dir: defaultDir, registered: false });
   return out;
 }

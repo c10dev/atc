@@ -14,6 +14,7 @@ import {
   fleetPlanGateOf,
   fleetPlanOf,
   foldFleetPlan,
+  entryAccountOf,
   fuelExpiryOf,
   isManual,
   PlanError,
@@ -690,4 +691,53 @@ test("executionOf REFRESH: 백그라운드는 RESTART처럼 STOP → LAUNCH, 데
   ]);
   const hand = openOf("F-0002", "REFRESH", "TEAM_H", { reasons: [{ code: "session", detail: "", value: "interactive" }] } as Partial<FleetPlanOp>);
   assert.match(refused(() => executionOf(hand.p, {}, ctx({ latest: hand.latest }))), /^409 TEAM_H는 백그라운드 세션이 아님 — 그 세션에서 \/clear/);
+});
+
+// ── ENTRY의 ACCOUNT(ATC-147): 등록부가 있으면 등록되고 로그인이 안 됐다고 알려지지 않은 ACCOUNT 중 hold 아래에서 사용이 가장 낮은 것 ──
+const logged = (...xs: [string, boolean | null][]) => xs.map(([label, loggedIn]) => ({ label, loggedIn }));
+
+test("ENTRY ACCOUNT: 사용이 가장 낮은 등록 ACCOUNT를 고르고 사유 줄에 적는다(기록 없음은 0, 같으면 라벨 순)", () => {
+  const i = fuelBase([fuelOf("acct-1", 60), fuelOf("acct-2", 30)], []);
+  const out = fleetPlanOf({ ...i, accountLogins: logged(["acct-1", true], ["acct-2", true], ["acct-3", null]) });
+  assert.deepEqual(kinds(out.candidates), ["ENTRY TEAM_L"]);
+  assert.equal(out.candidates[0].account, "acct-3"); // 기록이 없는 ACCOUNT는 사용 0, 로그인은 모름(null)이라 막지 않는다
+  assert.match(out.candidates[0].reasons.find((r) => r.code === "account")!.detail, /ACCOUNT acct-3.*FUEL 기록 없음/);
+  const two = fleetPlanOf({ ...i, accountLogins: logged(["acct-1", true], ["acct-2", true]) });
+  assert.equal(two.candidates[0].account, "acct-2");
+  assert.match(two.candidates[0].reasons.find((r) => r.code === "account")!.detail, /ACCOUNT acct-2.*: 30%/);
+  assert.deepEqual(entryAccountOf({ ...i, accountLogins: logged(["b", true], ["a", true]) }), { registered: true, account: "a", use: null, blocked: null }); // 같으면 라벨 순
+});
+
+test("ENTRY ACCOUNT: 로그인 안 된 ACCOUNT와 hold인 ACCOUNT는 건너뛴다. 모두 그러면 사유와 함께 제안 없음", () => {
+  const i = fuelBase([fuelOf("acct-1", 100), fuelOf("acct-2", 10)], []);
+  const out = fleetPlanOf({ ...i, accountLogins: logged(["acct-1", true], ["acct-2", false]) });
+  assert.equal(out.candidates.length, 0);
+  assert.equal(out.demand[0].blocked, "새 AIRCRAFT(ENTRY)가 날 ACCOUNT가 없음 — acct-1: FUEL hold 100%, acct-2: 로그인 안 됨");
+  const ok = fleetPlanOf({ ...i, accountLogins: logged(["acct-1", true], ["acct-2", true]) });
+  assert.equal(ok.candidates[0].account, "acct-2");
+});
+
+test("ENTRY ACCOUNT: 맞는 AIRCRAFT가 모두 hold여도 등록부가 있으면 ENTRY가 다른 ACCOUNT를 고른다(옛 '계정을 모름' 차단 없음). 등록부가 없으면 전과 같다", () => {
+  const fuel = [fuelOf("acct-1", 100, { aircraft: ["TEAM_I"] }), fuelOf("acct-2", 20)];
+  const withReg = fleetPlanOf({ ...fuelBase(fuel), accountLogins: logged(["acct-1", true], ["acct-2", true]) });
+  assert.deepEqual(kinds(withReg.candidates), ["ENTRY TEAM_L"]);
+  assert.equal(withReg.candidates[0].account, "acct-2");
+  assert.equal(withReg.demand[0].blocked, null);
+  const noReg = fleetPlanOf(fuelBase(fuel));
+  assert.deepEqual(noReg.candidates, []);
+  assert.match(noReg.demand[0].blocked!, /ENTRY도 제안 안 함\(새 세션이 열릴 계정을 모름\)/);
+  // 등록부가 없을 때 ENTRY 후보에는 account가 없다(제안 기록 형식이 전과 같다)
+  assert.equal("account" in fleetPlanOf(fuelBase([], [])).candidates[0], false);
+});
+
+test("ENTRY ACCOUNT: 제안이 account를 실어 나르고, 그 ACCOUNT가 hold가 되면 expire", () => {
+  const cfg = FLEET_PLAN_DEFAULTS;
+  const i = { ...fuelBase([fuelOf("acct-2", 20)], []), accountLogins: logged(["acct-2", true]) };
+  const cand = fleetPlanOf(i).candidates;
+  const all = foldFleetPlan(syncFleetPlan([], cand, cand, NOW, cfg));
+  assert.equal(all[0].account, "acct-2");
+  const later = NOW + 10 * MIN;
+  assert.equal(fuelExpiryOf({ ...i, now: later }, all[0]), null);
+  const held = { ...i, fuelAccounts: [fuelOf("acct-2", 99)], now: later };
+  assert.match(fuelExpiryOf(held, all[0])!, /\(account acct-2\).*FUEL hold 수준$/);
 });

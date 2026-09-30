@@ -37,11 +37,11 @@ export type RecordLine =
   // ATFM(docs/atfm.md): 출발 중지 시작·끝, CI 소요 시간, BEHIND 전이, 그림자 판정(eligible, s3-eligible), 되돌린 라벨, 스위치
   // 세션 조종: LAUNCH·STOP 결과(docs/fleet.md 8.5). FLEET PLAN 승인(8.7)은 entry·aog·return·retire도, by는 "FLEET PLAN F-0001"
   // proposal: DISPATCH launch 카드 승인으로 띄웠으면 그 제안 id(ATC-129)
-  | { t: string; kind: "fleet"; op: "launch" | "stop" | "entry" | "aog" | "return" | "retire"; aircraft: string; by: string; ok: boolean; jobId?: string; cwd?: string; permissionMode?: string; model?: string; error?: string; proposal?: string }
+  | { t: string; kind: "fleet"; op: "launch" | "stop" | "entry" | "aog" | "return" | "retire"; aircraft: string; by: string; ok: boolean; jobId?: string; cwd?: string; permissionMode?: string; model?: string; account?: string; error?: string; proposal?: string }
   // FLEET PLAN 모드 전환(8.7). 4단계가 승인 운용 기간을 잰다
   | { t: string; kind: "fleet-plan"; op: "mode:shadow" | "mode:approval"; by: string }
   // 관제 세션 LAUNCH·STOP(docs/fleet.md 8.5.1)
-  | { t: string; kind: "control"; op: "launch" | "stop"; session: string; by: string; ok: boolean; jobId?: string; tmux?: string; cwd?: string; permissionMode?: string; error?: string }
+  | { t: string; kind: "control"; op: "launch" | "stop"; session: string; by: string; ok: boolean; jobId?: string; tmux?: string; cwd?: string; permissionMode?: string; account?: string; error?: string }
   | { t: string; kind: "atfm"; op: string; id?: string; airport?: string; data?: Record<string, unknown> };
 
 const DIR = join(config.stateDir, "flight-recorder");

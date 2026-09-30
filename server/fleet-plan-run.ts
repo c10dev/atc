@@ -2,6 +2,8 @@ import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } fr
 import { dirname, join } from "node:path";
 import type { Context, Hono } from "hono";
 import { config } from "./config.ts";
+import { authStatusOf } from "./account-health.ts";
+import { accountFolders, observedLabelsOn } from "./accounts.ts";
 import { reportRate } from "./judges/store.ts";
 import { landedOf, loadDispatchConfig, planDispatch, readFlightHistory } from "./dispatch.ts";
 import { applyPatch, entryIntoService, FleetError, fleetView, loadFleet, nextRegistration, saveAircraft } from "./fleet.ts";
@@ -105,7 +107,7 @@ function approvalSinceOf(now: number): string | null {
 }
 
 // 스냅샷, 등록부, LOGBOOK, FLIGHT RECORDER, claude agents로 입력을 만든다
-export function inputsOf(s: Snapshot, rows: AgentRow[], now: number): FleetInputs {
+export function inputsOf(s: Snapshot, rows: AgentRow[], now: number, accountLogins: FleetInputs["accountLogins"] = []): FleetInputs {
   const cfg = loadDispatchConfig();
   const team = new RegExp(cfg.teamPattern, "i");
   const fleet = loadFleet();
@@ -150,6 +152,7 @@ export function inputsOf(s: Snapshot, rows: AgentRow[], now: number): FleetInput
     config: FLEET_PLAN_DEFAULTS,
     now,
     fuelAccounts: s.fuelAccounts ?? [], // FUEL REMAINING per ACCOUNT(ATC-63). 관제 세션만 있는 ACCOUNT도
+    accountLogins, // 등록된 ACCOUNT와 로그인(ATC-147). ENTRY가 새 AIRCRAFT를 올릴 ACCOUNT를 고른다
     context: aircraftContexts(s.sessions, cfg.teamPattern, now), // CONTEXT SIZE(ATC-69): REFRESH
     prices: readPrices().table,
   };
@@ -159,6 +162,13 @@ let pending: Record<string, string> = {};
 let last: { at: string; candidates: FleetCandidate[]; demand: DemandRow[]; background: number; error: string | null } | null = null;
 let inflight = false;
 
+// 등록된 ACCOUNT마다 로그인 여부(ATC-147). 등록부가 없으면 빈 목록. loggedIn만 남기고 60초 캐시(account-health)
+async function accountLoginsOf(): Promise<NonNullable<FleetInputs["accountLogins"]>> {
+  const folders = accountFolders();
+  if (!observedLabelsOn(folders)) return [];
+  return Promise.all(folders.map(async (f) => ({ label: f.label, loggedIn: (await authStatusOf(f.dir)).loggedIn })));
+}
+
 // DISPATCH 주기에 부른다. Linear·GitHub을 아직 못 읽었거나 claude agents를 못 읽으면 그 주기는 건너뛴다(열린 제안을 닫지 않는다)
 export async function runFleetPlan(s: Snapshot, now = Date.now()) {
   if (inflight || !s.linear.fetchedAt || !s.github.fetchedAt) return;
@@ -166,7 +176,7 @@ export async function runFleetPlan(s: Snapshot, now = Date.now()) {
   try {
     // STALE 줄(ATC-93)은 살아 있는 세션이 아니다: STOP·RESTART를 내지 않고 상한에 세지 않는다
     const rows = liveRowsOf(await agentRows());
-    const inputs = inputsOf(s, rows, now);
+    const inputs = inputsOf(s, rows, now, await accountLoginsOf());
     const { candidates, demand } = fleetPlanOf(inputs);
     const p = persistOf(pending, candidates, now, FLEET_PLAN_DEFAULTS);
     pending = p.pending;
@@ -253,7 +263,7 @@ async function runStep(step: ExecStep, by: string, getSnapshot: () => Promise<Sn
       const cfg = loadDispatchConfig();
       try {
         const { registration, profile } = entryIntoService(
-          loadFleet(), { registration: reg, configuration: step.configuration, base: step.base },
+          loadFleet(), { registration: reg, configuration: step.configuration, base: step.base, ...(step.account ? { account: step.account } : {}) },
           s.sessions.filter((x) => x.status !== "dead").map((x) => x.name), cfg.teamPattern,
         );
         saveAircraft(registration, profile);

@@ -425,6 +425,8 @@ export function entryIntoService(
     base: input.base ?? null,
     routes: input.routes ?? null,
     note: input.note ?? null,
+    ...(typeof input.account === "string" && input.account ? { account: input.account } : {}), // ENTRY가 고른 ACCOUNT(ATC-147). 라벨 검사는 applyPatch가
+
     ...(cfgId === "general" ? {} : { complement: template.complement, ratings: template.ratings }),
   };
   const profile = applyPatch({}, patch, fleet.defaults, now);
