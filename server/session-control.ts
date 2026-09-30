@@ -313,9 +313,11 @@ export function tmuxBin(): string | null {
 // LAUNCH는 atc 서비스 밖의 systemd scope에서 claude를 부른다. `claude --bg`는 처음 부를 때 이 기계의 백그라운드 세션을 모두 맡는
 // daemon(`claude daemon run`)을 띄우는데, atc 안에서 띄우면 daemon이 atc.service cgroup에 들어가 atc를 재시작할 때마다(배포·RTS)
 // 모든 백그라운드 세션이 함께 죽는다(2026-09-28 OCC a578bf15). ATC_BG_SCOPE=off면 예전처럼 바로 부른다
+// OOMPolicy=continue: scope 안의 프로세스 하나가 OOM으로 죽어도 scope(daemon과 모든 세션)는 두고 그 프로세스만 죽는다.
+// 기본값 stop이면 세션 하나의 테스트가 부푼 것만으로 백그라운드 세션이 모두 끝난다(2026-09-30 08:54Z, 12개)
 const SYSTEMD_RUN = "/usr/bin/systemd-run";
 export function launchCommandOf(bin: string, args: string[], scope: string | null, unit: string): { cmd: string; args: string[] } {
-  return scope ? { cmd: scope, args: ["--user", "--scope", "--collect", "--quiet", `--unit=${unit}`, "--", bin, ...args] } : { cmd: bin, args };
+  return scope ? { cmd: scope, args: ["--user", "--scope", "--collect", "--quiet", "-p", "OOMPolicy=continue", `--unit=${unit}`, "--", bin, ...args] } : { cmd: bin, args };
 }
 const scopeBin = () => (process.env.ATC_BG_SCOPE !== "off" && existsSync(SYSTEMD_RUN) ? SYSTEMD_RUN : null);
 
