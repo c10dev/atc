@@ -191,3 +191,68 @@
     max-height: calc(100vh - 340px);
   }
 }
+
+/* 듣기(ATC-172) */
+.rd-listen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.rd-listen-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.rd-switch {
+  font: 700 var(--text-xs) var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  padding: var(--space-0-5) var(--space-3);
+  cursor: pointer;
+}
+.rd-switch[aria-checked="true"] {
+  color: var(--text);
+  background: var(--panel-3);
+  border-color: var(--radar);
+}
+.rd-switch:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 1px;
+}
+.rd-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.rd-listen-status {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+.rd-skipped {
+  font-style: normal;
+  color: var(--amber);
+}
+.rd-lock {
+  align-self: flex-start;
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.rd-voices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.rd-voices-note {
+  font-size: var(--text-xs);
+}
+.rd-listen-status .rd-more {
+  margin-left: var(--space-2);
+}

@@ -65,7 +65,10 @@ export interface Player {
   play(sound: SoundName, volume: number, repeat: boolean, voice?: VoiceCue): Promise<PlayResult>;
   // 제스처 없이 풀어 본다(visibilitychange·focus). 풀렸으면 true. AudioContext가 아직 없으면 false(unlock이 만든다)
   resume(): Promise<boolean>;
-  speak(voice: VoiceCue, volume: number): Promise<SpeakResult>; // 음성만(미리 듣기). 톤 없이
+  // 음성만(미리 듣기, RADIO 듣기). 톤 없이. opts.yieldToAlert면 WARNING·CALL 톤이 울리는 동안은 내지 않고 "alert"로 돌려준다(RADIO는 알림에 양보, ATC-172).
+  // 톤이 새로 울리기 시작하면 지금 나는 음성은 그친다. rate는 재생 속도
+  speak(voice: VoiceCue, volume: number, opts?: { yieldToAlert?: boolean; rate?: number; cancelled?: () => boolean }): Promise<SpeakResult>;
+  stopSpeech(): void; // 음성만 그친다(톤은 그대로)
   stop(): void; // 지금 울리는 소리를 그친다(ACK)
   playing(): SoundName | null;
 }
@@ -161,12 +164,20 @@ export function createPlayer(getCtor: () => Ctor | undefined = () => (globalThis
     resume: tryResume,
     playing: () => current?.sound ?? null,
     stop,
-    async speak(voice, volume) {
+    stopSpeech() {
+      previewing?.stop();
+      previewing = null;
+    },
+    async speak(voice, volume, opts = {}) {
       if (!ctx || ctx.state !== "running") return { ok: false, error: "소리가 꺼져 있음" };
+      const loud = () => current !== null && (current.sound === "warning" || current.sound === "call");
+      if (opts.yieldToAlert && loud()) return { ok: false, error: "alert" };
       previewing?.stop();
       const got = await fetchVoice(voice.url);
       if ("error" in got) return { ok: false, error: got.error };
-      const p = playRadioVoice(ctx, got.buffer, volume, radioSpecOf(voice.radio));
+      if (opts.yieldToAlert && loud()) return { ok: false, error: "alert" }; // 받는 동안 알림이 울렸다
+      if (opts.cancelled?.()) return { ok: true }; // 받는 동안 SKIP이 눌렸다: 내지 않고 끝난 것으로
+      const p = playRadioVoice(ctx, got.buffer, volume, radioSpecOf(voice.radio), opts.rate ?? 1);
       previewing = p;
       await p.done;
       if (previewing === p) previewing = null;

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Freq, Transmission } from "../../../server/radio.ts";
+import { resumeSound, radioQuietNow, speakRadio, stopRadioSpeech, useAlerts } from "../alerts-runtime.ts";
+import { enqueue, type ListenPrefs, LISTEN_MODES, loadListen, RATES, saveListen, wantsToHear, wavUrlOf } from "../radio-listen.ts";
 import { asOf, ageText, ALL_FILTER, type Filter, filterTx, FREQS, linksOf, loadFilter, mergeTx, openState, optionsOf, saveFilter, SPEEDS, type Speed, splitHead, threadsOf, WINDOW_MS } from "../radio-log.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { useNow } from "../useSnapshot.ts";
@@ -20,8 +22,12 @@ type Mode = { kind: "live" } | { kind: "replay"; cursor: number; playing: boolea
 const TICK_MS = 250;
 
 // 교신 목록: 처음 받아 오고, SSE radio로 새것을 합친다. 연결이 (다시) 열리면 한 번 더 받아 빈틈을 메운다.
-function useRadio(): { txs: Transmission[]; loaded: boolean; error: string | null } {
+// onFresh: SSE로 처음 보는 교신이 들어왔을 때(RADIO 듣기가 큐에 넣는다). 처음 받아 온 목록은 새것이 아니다
+function useRadio(onFresh: (txs: Transmission[]) => void): { txs: Transmission[]; loaded: boolean; error: string | null } {
   const [txs, setTxs] = useState<Transmission[]>([]);
+  const known = useRef(new Set<string>());
+  const fresh = useRef(onFresh);
+  fresh.current = onFresh;
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
@@ -29,6 +35,7 @@ function useRadio(): { txs: Transmission[]; loaded: boolean; error: string | nul
       const res = await fetch("/api/radio");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as { transmissions: Transmission[] };
+      for (const t of body.transmissions) known.current.add(t.id);
       setTxs((prev) => mergeTx(prev, body.transmissions, Date.now()));
       setError(null);
     } catch (e) {
@@ -43,7 +50,10 @@ function useRadio(): { txs: Transmission[]; loaded: boolean; error: string | nul
     es.addEventListener("radio", (e) => {
       try {
         const { transmissions } = JSON.parse((e as MessageEvent<string>).data) as { transmissions: Transmission[] };
+        const added = transmissions.filter((t) => !known.current.has(t.id));
+        for (const t of transmissions) known.current.add(t.id);
         setTxs((prev) => mergeTx(prev, transmissions, Date.now()));
+        if (added.length) fresh.current(added);
       } catch {}
     });
     return () => es.close();
@@ -53,7 +63,8 @@ function useRadio(): { txs: Transmission[]; loaded: boolean; error: string | nul
 
 export function Radio() {
   const settings = useSettings();
-  const { txs, loaded, error } = useRadio();
+  const listen = useListen();
+  const { txs, loaded, error } = useRadio(listen.onFresh);
   const nowTick = useNow(5_000);
   const [filter, setFilter] = useState<Filter>(() => loadFilter(storage()));
   const [mode, setMode] = useState<Mode>({ kind: "live" });
@@ -78,6 +89,7 @@ export function Radio() {
     return () => clearInterval(id);
   }, [playing, speed]);
 
+  listen.replaying.current = mode.kind === "replay"; // 되감기 중에는 듣지 않는다
   const now = mode.kind === "replay" ? mode.cursor : nowTick;
   const shown = useMemo(() => (mode.kind === "replay" ? asOf(txs, mode.cursor) : txs), [txs, mode]);
   const visible = useMemo(() => filterTx(shown, filter), [shown, filter]);
@@ -160,6 +172,8 @@ export function Radio() {
           </select>
         </label>
       </div>
+
+      <ListenBar l={listen} replaying={mode.kind === "replay"} />
 
       <div className="rd-replay">
         {mode.kind === "live" ? (
@@ -267,6 +281,235 @@ function Line({ t, now, clock, expanded, onToggle }: { t: Transmission; now: num
         <pre id={bodyId} className="rd-body">
           {t.body}
         </pre>
+      )}
+    </div>
+  );
+}
+
+// ── 듣기(ATC-172) ──
+// 꺼짐이 기본이고 이 브라우저에만 기억한다. 새로 들어온 교신만 큐에 넣고(과거 목록은 읽지 않는다), 한 번에 하나를 무전 체인으로 읽는다.
+// 문구는 서버가 필드로 만든 틀이고 본문은 읽지 않는다. WARNING·CALL 톤이 울리면 양보하고, 조용한 시간에는 큐에 넣지 않는다.
+function useListen() {
+  const [prefs, setPrefs] = useState<ListenPrefs>(() => loadListen(storage()));
+  const { audio } = useAlerts();
+  const [playingNow, setPlayingNow] = useState<Transmission | null>(null);
+  const [waiting, setWaiting] = useState(0);
+  const [skipped, setSkipped] = useState(0);
+  const [missed, setMissed] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const queue = useRef<Transmission[]>([]);
+  const busy = useRef(false);
+  const cur = useRef(prefs);
+  cur.current = prefs;
+  const audioRef = useRef(audio);
+  audioRef.current = audio;
+  const replaying = useRef(false);
+  const generation = useRef(0); // 끄면 진행 중인 펌프를 그만두게
+  const skipId = useRef<string | null>(null); // SKIP한 교신(받는 중이었어도 내지 않게)
+
+  const update = (patch: Partial<ListenPrefs>) => {
+    const next = { ...cur.current, ...patch };
+    cur.current = next;
+    setPrefs(next);
+    saveListen(storage(), next);
+  };
+
+  const pump = useCallback(async () => {
+    if (busy.current) return;
+    busy.current = true;
+    const mine = generation.current;
+    try {
+      while (queue.current.length && cur.current.on && generation.current === mine) {
+        const t = queue.current[0];
+        setPlayingNow(t);
+        setWaiting(queue.current.length - 1);
+        const r = await speakRadio(wavUrlOf(t.id, cur.current.voices), cur.current.rate, () => skipId.current === t.id);
+        if (generation.current !== mine) break;
+        if (!r.ok && r.error === "alert") {
+          await new Promise((res) => setTimeout(res, 1000)); // 알림 톤이 끝나길 기다린다(양보)
+          continue;
+        }
+        queue.current.shift();
+        if (!r.ok) {
+          if (r.error === "소리가 꺼져 있음") {
+            setMissed((m) => m + 1 + queue.current.length);
+            queue.current = [];
+          } else setError(r.error); // 엔진 없음·목소리 없음·문구 없음 등. 이 교신만 건너뛰고 계속
+        } else setError(null);
+      }
+    } finally {
+      busy.current = false;
+      if (generation.current === mine) {
+        setPlayingNow(null);
+        setWaiting(queue.current.length);
+      }
+    }
+  }, []);
+
+  const onFresh = useCallback(
+    (txs: Transmission[]) => {
+      const p = cur.current;
+      if (!p.on || replaying.current) return;
+      const heard = txs.filter((t) => wantsToHear(t, p.mode));
+      if (!heard.length || radioQuietNow()) return;
+      if (audioRef.current !== "running") {
+        setMissed((m) => m + heard.length); // 브라우저가 소리를 잠갔다: 읽지 못한 교신은 세기만 한다(글 로그에 있다)
+        return;
+      }
+      const r = enqueue(queue.current, heard);
+      queue.current = r.queue;
+      if (r.skipped) setSkipped((n) => n + r.skipped);
+      setWaiting(queue.current.length);
+      void pump();
+    },
+    [pump],
+  );
+
+  const stopAll = () => {
+    generation.current++;
+    queue.current = [];
+    stopRadioSpeech();
+    setPlayingNow(null);
+    setWaiting(0);
+  };
+
+  const toggle = async () => {
+    if (prefs.on) {
+      stopAll();
+      update({ on: false });
+      return;
+    }
+    await resumeSound(); // 이 클릭이 AudioContext를 푼다(브라우저 자동재생 규칙). 알림 소리 설정은 바꾸지 않는다
+    setSkipped(0);
+    setMissed(0);
+    setError(null);
+    update({ on: true });
+  };
+
+  return {
+    prefs,
+    audio,
+    playingNow,
+    waiting,
+    skipped,
+    missed,
+    error,
+    replaying,
+    onFresh,
+    toggle,
+    update,
+    skip: () => {
+      skipId.current = playingNow?.id ?? null; // 지금 읽는(또는 받는 중인) 것을 그치면 펌프가 다음으로 넘어간다
+      stopRadioSpeech();
+    },
+    clearNotes: () => {
+      setSkipped(0);
+      setMissed(0);
+    },
+    quiet: radioQuietNow(),
+  };
+}
+
+function ListenBar({ l, replaying }: { l: ReturnType<typeof useListen>; replaying: boolean }) {
+  const { prefs } = l;
+  const [voices, setVoices] = useState<string[] | null>(null);
+  const [showVoices, setShowVoices] = useState(false);
+  useEffect(() => {
+    if (!showVoices || voices) return;
+    void fetch("/api/voice/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { voices?: string[] } | null) => setVoices(j?.voices ?? []))
+      .catch(() => setVoices([]));
+  }, [showVoices, voices]);
+  const locked = prefs.on && l.audio !== "running";
+  const roles: { role: string; label: string }[] = [
+    { role: "TOWER", label: "TOWER" },
+    { role: "DELIVERY", label: "OCC · DELIVERY" },
+    { role: "GROUND", label: "MCC · GROUND" },
+    { role: "COMPANY", label: "OCC · COMPANY" },
+  ];
+  return (
+    <div className="rd-listen">
+      <div className="rd-listen-row">
+        <button type="button" role="switch" aria-checked={prefs.on} className="rd-switch" onClick={() => void l.toggle()}>
+          LISTEN <b>{prefs.on ? "ON" : "OFF"}</b>
+        </button>
+        <div className="rd-freqs" role="group" aria-label="들을 교신">
+          {LISTEN_MODES.map((m) => (
+            <button key={m.id} type="button" className="rd-chip" aria-pressed={prefs.mode === m.id} onClick={() => l.update({ mode: m.id })}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <div className="rd-speeds" role="group" aria-label="읽는 속도">
+          {RATES.map((r) => (
+            <button key={r} type="button" className="rd-chip" aria-pressed={prefs.rate === r} onClick={() => l.update({ rate: r })}>
+              {r}×
+            </button>
+          ))}
+        </div>
+        <button type="button" className="rd-btn" disabled={!l.playingNow} onClick={l.skip}>
+          SKIP
+        </button>
+        <button type="button" className="rd-btn" aria-expanded={showVoices} onClick={() => setShowVoices((v) => !v)}>
+          목소리
+        </button>
+      </div>
+      <p className="rd-listen-status muted" role="status" aria-live="polite">
+        {!prefs.on
+          ? "듣기 꺼짐 — 켜면 새로 오는 교신만 무전 소리로 읽습니다(기록에 있던 것은 읽지 않음)."
+          : replaying
+            ? "되감기 중에는 읽지 않습니다."
+            : l.playingNow
+              ? `읽는 중: ${l.playingNow.head}${l.waiting ? ` · 대기 ${l.waiting}건` : ""}`
+              : l.quiet
+                ? "조용한 시간 — 읽지 않습니다."
+                : "대기 중"}
+        {l.skipped > 0 && <em className="rd-skipped"> · 밀려서 {l.skipped}건 건너뜀</em>}
+        {l.missed > 0 && <em className="rd-skipped"> · 소리가 잠겨 {l.missed}건 못 읽음</em>}
+        {(l.skipped > 0 || l.missed > 0) && (
+          <button type="button" className="rd-more" onClick={l.clearNotes}>
+            지우기
+          </button>
+        )}
+        {l.error && <span className="error"> · 읽지 못함: {l.error}</span>}
+      </p>
+      {locked && (
+        <button type="button" className="rd-btn rd-lock" onClick={() => void resumeSound()}>
+          🔇 소리 잠김 — 클릭하면 켜짐
+        </button>
+      )}
+      {showVoices && (
+        <div className="rd-voices">
+          {voices === null ? (
+            <span className="muted">불러오는 중…</span>
+          ) : voices.length === 0 ? (
+            <span className="muted">쓸 수 있는 TTS 목소리가 없음(설정의 음성 콜아웃을 확인)</span>
+          ) : (
+            roles.map(({ role, label }) => (
+              <label key={role} className="rd-select">
+                <span>{label}</span>
+                <select
+                  value={prefs.voices[role] ?? ""}
+                  onChange={(e) => {
+                    const next = { ...prefs.voices };
+                    if (e.target.value) next[role] = e.target.value;
+                    else delete next[role];
+                    l.update({ voices: next });
+                  }}
+                >
+                  <option value="">기본</option>
+                  {voices.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))
+          )}
+          <span className="muted rd-voices-note">AIRCRAFT의 목소리는 콜사인에서 정해집니다.</span>
+        </div>
       )}
     </div>
   );

@@ -114,6 +114,17 @@ Where this differs from the design: the design said `radioOf(records)`, and it i
 
 **PILOT'S DISCRETION.** CLEARANCE lines link to `#strips` (the CLEARANCE stamps), as there is no per-CLEARANCE view; DISPATCH links go to the tab, as cards have no anchors. The REPLAY slider starts one hour back. The AIRPORT of a CLEARANCE is the R1 rule (its FLIGHT's FLIGHT PLAN), so CLEARANCEs without a FLIGHT PLAN have no AIRPORT and disappear when one is chosen.
 
+### R3 as built (ATC-172)
+
+`server/radio-phrase.ts` (pure: phrases and voices), `GET /api/radio/:id.wav` in `server/radio-run.ts`, `web/src/radio-listen.ts` (pure: what to hear, queue, saved choices) and the LISTEN bar in `web/src/views/Radio.tsx`. Local only; the server renders a WAV only when asked and never plays sound.
+
+- **Phrases.** `radioPhraseOf(transmission)` builds one short line from fields only: the stations (`Tower`, `Delivery` or `Company` for OCC by frequency, `Ground` for MCC, a callsign for an AIRCRAFT), the kind as a short verb (`go around`, `flight plan`, `recall`, `crew change`, `information` …), the FLIGHT as words and, for GROUND, the PR number and the recorded result (`inspection pass`, `landed`, `return to service complete` …). A reply repeats the call it answers (`Tower, GOLF, readback, go around, ATC one four seven.`). The free `body`, `text` and `message` are never read, and the same `PHRASE_CHARS` and `PHRASE_MAX` as the alert phrases apply. A kind or result with no template gives no phrase. To carry what the phrase needs, R3 adds two optional fields to the R1 transmissions: `re` (a reply's call kind) and `result` (a GROUND line's result, lower case).
+- **Voices.** `voiceOf` picks from the installed voices of the selected engine. The four control seats are fixed by their order (TOWER, DELIVERY, GROUND, COMPANY, wrapping when there are fewer voices), an AIRCRAFT gets a voice from a stable hash of its callsign, and one installed voice serves everyone. A seat can be overridden per browser with `?voices=TOWER:name,…` (an installed voice only; the choice is saved in `atc.radio.listen`).
+- **`GET /api/radio/<id>.wav[?voices=]`.** Finds the transmission, builds its phrase, renders it with the selected engine through the existing voice cache (`wavFor`). `404` for an unknown transmission or one without a phrase, `400` without `.wav`, `503` when no engine or voice is available.
+- **Browser.** A `LISTEN` switch, off by default and saved per browser. When on, only transmissions that arrive over SSE after that are queued (the loaded list is never read). Choices: calls only (default), unanswered calls only, everything; 1× or 1.5×; SKIP. One transmission at a time through the radio chain (`playRadioVoice`, now with a playback rate); the queue holds 5 and drops the oldest, showing how many were skipped. RADIO speech yields to a WARNING or CALL tone (it waits, and a starting tone stops it), stays silent in the alert quiet hours and during REPLAY, and when the browser has locked audio it shows the lock chip and only counts what it could not read.
+
+**PILOT'S DISCRETION.** The four station voices are chosen in the RADIO tab (saved per browser) rather than in the server settings, so no new server setting or state is added. Missed transmissions while audio is locked are counted, not replayed after unlocking (the text log has them). The queue cap is 5. Nothing is read in REPLAY or in quiet hours.
+
 ## 6. Risks
 
 | Risk | Handling |
