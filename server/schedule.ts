@@ -1,4 +1,5 @@
 import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { closeWip, openWip, readWips, saveWips, touchWip, WipError, wipView } from "./charter-wip.ts";
 import { dirname, join } from "node:path";
 import type { Context, Hono } from "hono";
 import { DONE_RE, GOAL_RE, sectionsOfMd } from "./briefs.ts";
@@ -968,7 +969,46 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
     // mark는 화면에 보이는 판정된 초안(recent·inProgress)만 싣는다(브리핑이 replay 기록만큼 커지지 않게)
     const shown = new Set([...recent, ...inProgress].map((x) => x.id));
     const judges = judgesViewOf(ops.map((x) => ({ id: x.id, kind: x.kind, human: humanOf(x) })), marksOf(readJudgeLines()), loadJudges(), shown);
-    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, close: closeInfoOut, closeManual, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes), waypointGaps, waypointEtas, slips, routesWithoutWaypoints, judges });
+    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, close: closeInfoOut, closeManual, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes), waypointGaps, waypointEtas, slips, routesWithoutWaypoints, judges, wip: wipView(readWips(), now) });
+  });
+
+  // 진행 중인 CHARTER REQUEST(ATC-169): 다듬는 동안 서버에 한 줄로 둔다. 초안이 아니다(5건 한도·판정·발부와 무관). 새 OCC가 schedule brief의 wip로 이어받는다
+  const wipFail = (e: unknown) => {
+    if (e instanceof WipError) return { body: { error: e.message }, status: e.status as 400 | 404 | 409 };
+    throw e;
+  };
+  app.post("/api/schedule/wip", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const now = Date.now();
+      const r = openWip(readWips(), body.text, now);
+      saveWips(r.items);
+      return c.json({ ok: true, wip: r.wip });
+    } catch (e) {
+      const f = wipFail(e);
+      return c.json(f.body, f.status);
+    }
+  });
+  app.post("/api/schedule/wip/:id/touch", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const r = touchWip(readWips(), c.req.param("id").toUpperCase(), body.text, Date.now());
+      saveWips(r.items);
+      return c.json({ ok: true, wip: r.wip });
+    } catch (e) {
+      const f = wipFail(e);
+      return c.json(f.body, f.status);
+    }
+  });
+  app.post("/api/schedule/wip/:id/done", (c) => {
+    try {
+      const id = c.req.param("id").toUpperCase();
+      saveWips(closeWip(readWips(), id, Date.now()));
+      return c.json({ ok: true, id });
+    } catch (e) {
+      const f = wipFail(e);
+      return c.json(f.body, f.status);
+    }
   });
 
   // OCC가 SUPERVISOR에게 보고한 WAYPOINT 지연 경고를 적는다. keys가 없으면 지금 fresh 전부

@@ -175,11 +175,11 @@ test("crewChangeMessage: [OCC CC-xxxx] 머리 + 지시문 본문(옛 머리 뗌)
   assert.ok(m.includes('When applied, leave only the line "TEAM_H CREW CHANGE CC-0001 COMPLETE".'));
   assert.ok(m.endsWith('— Reply to this message with "READBACK CC-0001" if you take it, "UNABLE CC-0001 — reason" if you cannot, or "STANDBY CC-0001" if you need time.'));
   // 본문은 지시문 그대로(머리 두 줄만 다름)
-  assert.equal(lines.slice(2, -2).join("\n"), c.text.split("\n").slice(2).join("\n"));
+  assert.equal(lines.slice(2, -3).join("\n"), c.text.split("\n").slice(2).join("\n"));
   // 이미 [OCC …] 머리가 붙은 본문도 머리를 한 번만 둔다
-  assert.equal(crewChangeMessage({ ...c, text: m.split("\n").slice(0, -2).join("\n") }), m);
+  assert.equal(crewChangeMessage({ ...c, text: m.split("\n").slice(0, -3).join("\n") }), m);
   // 머리가 없는 본문은 그대로 감싼다. callsign이 없는 이름은 REGISTRATION만
-  assert.equal(crewChangeMessage({ id: "CC-0009", registration: "OPS", text: "본문" }), '[OCC CC-0009] CREW CHANGE · OPS\n\n본문\n\n— Reply to this message with "READBACK CC-0009" if you take it, "UNABLE CC-0009 — reason" if you cannot, or "STANDBY CC-0009" if you need time.');
+  assert.equal(crewChangeMessage({ id: "CC-0009", registration: "OPS", text: "본문" }), '[OCC CC-0009] CREW CHANGE · OPS\n\n본문\n\n— Send your reply to the session name "OCC" (SendMessage to: "OCC"), not to the from address: the address changes when OCC restarts.\n— Reply to this message with "READBACK CC-0009" if you take it, "UNABLE CC-0009 — reason" if you cannot, or "STANDBY CC-0009" if you need time.');
 });
 
 test("planCrewChange: approved는 새 변경이 대신하고(다시 승인), sent는 그대로 두고 새 건은 지금 선언에서 시작한다", () => {

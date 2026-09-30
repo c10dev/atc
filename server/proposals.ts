@@ -1037,7 +1037,7 @@ export interface DispatchLauncher {
   launch: (s: Snapshot, registration: string, proposal: string) => Promise<{ ok: boolean; jobId?: string; error?: string }>;
 }
 
-export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, watchFuel?: (s: Snapshot) => FuelWatch, standFree?: StandFreeHooks, launcher?: DispatchLauncher) {
+export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, watchFuel?: (s: Snapshot) => FuelWatch, standFree?: StandFreeHooks, launcher?: DispatchLauncher, briefExtras?: (s: Snapshot, now: number, inFlight: Proposal[]) => Record<string, unknown>) {
   app.get("/api/dispatch/brief", async (c) => {
     const s = await getSnapshot();
     const cfg = loadDispatchConfig();
@@ -1091,6 +1091,8 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       gate3: gate3Of(proposals, standFree?.timeliness() ?? null),
       // ARRIVED 후보(ATC-72): OCC가 증거를 확인하고 command를 친다. atc는 ARRIVED를 스스로 적지 않는다
       arrivalCandidates: standFree?.candidates() ?? [],
+      // OCC 재시작 안전(ATC-169): arrivalMissing(머지됐는데 도착 보고가 없는 FLIGHT)과 restartSafety(지금 STOP·LAUNCH해도 잃는 것이 없나)
+      ...(briefExtras?.(s, now, inFlight) ?? {}),
       crosscheck: crosscheckBriefOf(proposals, now, cfg.settleMin),
       judges: judgesBriefOf(proposals, recent, dispatchMarksOf(readJudgeLines()), loadJudges().jev),
       // 2b 켜기 점검표(표시만)

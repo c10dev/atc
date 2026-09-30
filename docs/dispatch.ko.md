@@ -448,6 +448,8 @@ BLOCKED none | <한 줄씩>
 
 PR이 없는 SURVEY·CHECK FLIGHT는 `PR #n` 대신 `RESULT <링크>`를 쓴다. 형식은 루트 `CLAUDE.md` "교신"과 `atc-task` skill 8절에 있다.
 
+**빠진 보고(ATC-169).** 받은 OCC가 읽었지만 기록하기 전에 멈추면 그 보고는 사라진다. CAPTAIN이 다시 보내지 않기 때문이다. OCC 매뉴얼은 이제 읽는 즉시 기록하게 하고, `dispatch brief`의 `arrivalMissing`이 DISPATCH가 보낸 FLIGHT 가운데 STAND가 있고 PR이 ATC-124 시작 뒤(하루 안)에 머지됐는데 기록이 없는 것을 보여 준다(30분이 지나면 `due: true`). OCC는 SUPERVISOR에게 알리고 CAPTAIN에게 묻지 않는다. [control-recycle.md](control-recycle.md) 4절.
+
 - **기록.** `atcctl dispatch report <D-xxxx|ATC-n> --pr <n> --tier <t> --tests <p/t> --discretion <수> --blocked <none|글>`(PR이 없는 FLIGHT는 `--pr` 대신 `--result <링크>`, 그때 `--tests`는 없어도 된다)이 `POST /api/dispatch/report`를 부른다. `D-xxxx`는 그 FLIGHT로 풀리고, `ATC-n` key는 직접 배정을 덮는다. `report` op를 `arrival-reports.jsonl`(`server/arrival-report.ts`, 추가만 함)에 FLIGHT별로 더하고, FLIGHT의 마지막 보고가 유효하다. 고정 칸만 저장한다: `flight`, `at`, `proposal`, `pr` 또는 `result`, `tier`, `tests`, `discretion`(수), `blocked`. 자유 요약은 atc로 보내지 않는다. `GET /api/dispatch/reports`가 목록을 준다.
 - **FOLLOWING**(`server/following.ts`, key `FLIGHT|code`):
   - `no-report`: PR이 머지(ON)된 지 30분이 넘도록 기록된 보고가 없는 FLIGHT에 뜨는 정보(ADVISORY, 알림 제목 숫자에 세지 않는다). CAPTAIN이 PR을 올릴 때 보고하므로 머지 전에 기록된 보고도 센다. STAND 없는 FLIGHT에는 없다(ARRIVED는 `dispatch arrived`로 온다). DISPATCH가 보낸 FLIGHT(제안에 `send`가 있다)이고 PR이 첫 보고가 기록된 때(`REPORT_START`, 2026-09-29T08:34Z, ATC-124) 이후에 머지된 것에만 뜬다. ENGINEERING PR과 FLIGHT PLAN 없는 직접 작업에는 뜨지 않는다. 머지(ON) 뒤 24시간이 지나면 저절로 닫힌다(ATC-152).

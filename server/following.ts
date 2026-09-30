@@ -53,6 +53,7 @@ export interface FollowItem {
   standFree: boolean; // STAND 없는 FLIGHT: 단계는 READBACK → DEPARTED → ARRIVED(PR·CLEARED 없음)
   arrival: { note: string; url: string | null } | null; // STAND 없는 FLIGHT의 ARRIVED 보고
   proposal: { id: string; status: Proposal["status"] } | null;
+  dispatched?: boolean; // DISPATCH가 FLIGHT PLAN을 보냈다(제안 timeline에 sent, ATC-152·169)
   wake: Wake;
   expectMin: number;
   stages: Record<Stage, string | null>;
@@ -98,6 +99,35 @@ export const BLOCKED_KEEP_MS = DAY; // BLOCKED 보고는 하루 보이고 빠진
 // 기준 시각은 arrival-reports.jsonl의 첫 줄(ATC-124 보고, 2026-09-29T08:34:09Z). 그 전에 끝난 FLIGHT는 보고 규칙이 없었다
 export const REPORT_START = "2026-09-29T08:34:09.520Z";
 export const NO_REPORT_KEEP_MS = DAY;
+
+// DISPATCH가 보낸 FLIGHT 가운데 PR이 머지(ON)됐는데 도착 보고가 기록되지 않은 것의 ON 뒤 경과(ms), 아니면 null(순수, ATC-124·152·169).
+// 보고 기록이 시작되기(REPORT_START) 전에 머지된 FLIGHT, STAND 없는 FLIGHT(dispatch arrived가 맡는다), FLIGHT PLAN 없는 직접 작업은 아니다
+export function unreportedAgeMs(f: Pick<FollowItem, "standFree" | "dispatched" | "stages" | "pr">, report: ArrivalReport | undefined, now: number): number | null {
+  if (f.standFree || !f.dispatched || !f.stages.arrived || f.stages.arrived < REPORT_START || !f.pr?.merged || report) return null;
+  return now - Date.parse(f.stages.arrived);
+}
+
+export interface ArrivalMissing {
+  flight: string;
+  aircraft: string | null;
+  proposal: string | null;
+  pr: number;
+  arrivedAt: string; // PR이 머지된(ON) 시각
+  ageMin: number;
+  due: boolean; // 보고가 올 만한 시간(30분)이 지났다: 받은 세션이 빠뜨렸거나 CAPTAIN이 보내지 않았다. false면 아직 오는 중일 수 있다
+}
+
+// dispatch brief의 arrivalMissing(ATC-169): 머지 뒤 하루 안인데 도착 보고 기록이 없는 FLIGHT. 오래된 것부터.
+// 새 OCC가 이어받을 수 있게 atc가 보여 주기만 한다 — 누구에게도 보내지 않는다(새 send 종류를 만들지 않는다)
+export function arrivalMissingOf(items: readonly FollowItem[], reports: ReadonlyMap<string, ArrivalReport>, now: number): ArrivalMissing[] {
+  const out: ArrivalMissing[] = [];
+  for (const f of items) {
+    const age = unreportedAgeMs(f, reports.get(f.flight), now);
+    if (age === null || age > NO_REPORT_KEEP_MS) continue;
+    out.push({ flight: f.flight, aircraft: f.aircraft, proposal: f.proposal?.id ?? null, pr: f.pr!.number, arrivedAt: f.stages.arrived!, ageMin: Math.max(0, Math.floor(age / MIN)), due: age > REPORT_GRACE_MS });
+  }
+  return out.sort((a, b) => a.arrivedAt.localeCompare(b.arrivedAt));
+}
 
 // 스냅샷의 CLEARANCE와 제안에서 최근 UNABLE(순수)
 export function unablesOf(clearances: Pick<Clearance, "id" | "flight" | "toName" | "unableAt" | "unableReason">[], proposals: Pick<Proposal, "id" | "flight" | "kind" | "status" | "statusAt" | "reason" | "aircraftName">[], now: number): Unable[] {
@@ -208,6 +238,7 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
     standFree,
     arrival: proposal?.arrivedNote ? { note: proposal.arrivedNote, url: proposal.arrivedUrl ?? null } : null,
     proposal: proposal ? { id: proposal.id, status: proposal.status } : null,
+    dispatched: Boolean(proposal?.timeline.sent),
     wake: cls.wake,
     expectMin,
     stages,
@@ -313,15 +344,14 @@ export function followingOf(inp: FollowInput): FollowItem[] {
       // 도착 보고(ATC-124): PR이 머지(ON)된 지 30분이 지났는데 기록된 보고가 없다 / 보고의 BLOCKED가 none이 아니다. 팀에 묻지 않는다(OCC가 SUPERVISOR에게 보고)
       const arrivalReport = inp.arrivalReports?.get(t.flight);
       // DISPATCH가 보낸 FLIGHT(제안에 send)만: ENGINEERING PR과 FLIGHT PLAN 없는 직접 작업은 받지 않는다(ATC-152)
-      const dispatched = Boolean(t.proposal?.timeline.sent);
-      const onAge = f.stages.arrived ? inp.now - Date.parse(f.stages.arrived) : 0;
-      if (!f.standFree && dispatched && f.stages.arrived && f.stages.arrived >= REPORT_START && f.pr?.merged && !arrivalReport && onAge > REPORT_GRACE_MS && onAge <= NO_REPORT_KEEP_MS) {
+      const onAge = unreportedAgeMs(f, arrivalReport, inp.now);
+      if (onAge !== null && onAge > REPORT_GRACE_MS && onAge <= NO_REPORT_KEEP_MS) {
         f.issues.push({
           code: "no-report",
           kind: "delay",
           severity: "info",
-          text: `PR #${f.pr.number}이 머지된 지(ON) ${hours(inp.now - Date.parse(f.stages.arrived))} 지났는데 도착 보고(ARRIVED report)가 기록되지 않음 — CAPTAIN이 아직 보고하지 않았거나 받은 세션이 기록을 빠뜨렸다`,
-          since: iso(Date.parse(f.stages.arrived) + REPORT_GRACE_MS),
+          text: `PR #${f.pr!.number}이 머지된 지(ON) ${hours(onAge)} 지났는데 도착 보고(ARRIVED report)가 기록되지 않음 — CAPTAIN이 아직 보고하지 않았거나 받은 세션이 기록을 빠뜨렸다`,
+          since: iso(Date.parse(f.stages.arrived!) + REPORT_GRACE_MS),
           key: `${t.flight}|no-report`,
         });
       }

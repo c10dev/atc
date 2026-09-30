@@ -271,6 +271,7 @@ test("FLIGHT PLAN 문구(DIRECT): BRIEF 줄·콜사인·FLIGHT·AIRPORT·PRIORIT
       "Done when: Follow the done criteria in the issue body (link).",
       "DISPATCH note: CAUTION · DB 권한 작업",
       "Where it is ambiguous, use PILOT'S DISCRETION: pick a reasonable default and record it in the PR.",
+      '— Send your reply to the session name "OCC" (SendMessage to: "OCC"), not to the from address: the address changes when OCC restarts.',
       '— Reply to this message with "READBACK D-0007" if you take it, "UNABLE D-0007 — reason" if you cannot, or "STANDBY D-0007" if you need time.',
       "Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision.",
     ].join("\n"),

@@ -158,12 +158,15 @@ CHARTER DESK는 OCC 안의 요청 창구다. SUPERVISOR가 이 세션에서 직�
 
 | 순서 | 할 일 |
 |---|---|
+| 0. 진행 기록 | 요청을 받으면 바로 `schedule wip -- '<요청 요약 한 줄>'`(W-번호를 돌려준다). 이 세션이 바뀌어도 요청이 사라지지 않게 서버에 두는 것이다(ATC-169). 초안이 아니라서 열린 초안 5건 한도에 들지 않고, 판정·발부도 없다. 다듬는 중에 요약을 고치거나 시간이 걸리면 `schedule wip touch <W-…> [-- '<요약>']`. 초안을 썼거나 SUPERVISOR가 그만두라고 하면 `schedule wip done <W-…>`. 24시간 손대지 않으면 서버가 버린다 |
 | 1. 중복 검색 | `schedule brief`(열린 초안의 `payload.title`, `flights`)와 `dispatch brief`의 FLIGHT에서 비슷한 것을 찾고, 비슷해 보이면 `dispatch flight <FLIGHT>`로 읽는다. 같은 일이 이미 있으면 초안을 쓰지 않고 그 FLIGHT를 알린다. atc의 FLIGHT 목록은 **최근 45일 안에 바뀐 이슈**(와 그와 이어진 이슈)뿐이라, 그보다 오래 손대지 않은 열린 이슈는 여기서 찾을 수 없다 |
 | 2. 본문 | DIRECT 형식(`../docs/dispatch.md` "DIRECT briefs"): `## 목표`와 `## 완료 기준`은 필수, 이 작업만의 제약이 있으면 `## 이 작업만의 제약`. SEC 작업(DB·마이그레이션·RLS·인증·권한·보안·권리·배포·결제)은 `## Hard constraints`에 이 작업만의 보안 한계를 짧게 적는다(예: "staging에 적용하지 않음", "service_role 경로 유지"). 늘 지키는 규칙(DB 쓰기 금지, 인증 약화 금지, 관계없는 변경 금지 등)은 vocado `CLAUDE.md`·`AGENTS.md`에 있으니 되풀이하지 않는다. 번호 붙은 구현 단계는 쓰지 않는다. 허용 범위·Invariants·Verification은 요청에 있을 때만. 요청에 없는 범위는 지어내지 않고 "SUPERVISOR 확인 필요"라고 적는다 |
 | 3. 분류 | `--type`·`--wake`·`--rating`은 위 분류 기준대로. `--priority`는 요청에 근거가 있을 때만. 맞는 팀이 분명하면(범위가 그 팀의 ROUTE·과거 FLIGHT와 이어지고, SEC면 SEC 자격이 있음) `--tail TEAM_X`를 제안한다. 분명하지 않으면 비운다 |
 | 4. 관계 | 선행 작업은 `--blocked-by`, 상위 이슈는 `--parent`, 이어진 일은 `--related`. 모두 FLIGHT 목록에 있는 key |
 | 5. 근거 | `--reason "<요청 한 줄 요약>. 중복 검색: <찾아본 것과 결과>"`. "중복 검색:"이 없으면 atc가 받지 않는다 |
 | 6. 알림 | 출력의 초안 ID(`S-xxxx`)를 SUPERVISOR에게 알리고 SCHEDULE 탭에서 판정해 달라고 한다. `비슷한 FLIGHT`가 나오면 함께 알린다. `LIMIT`이면 초안을 쓰지 못했다고 알린다(열린 초안 판정이 먼저) |
+
+**새 세션이 이어받을 때**: 바퀴마다 `schedule brief`의 `wip`를 본다. 비어 있지 않으면(`idleMin`은 마지막으로 손댄 뒤 분) 그 요청은 앞 세션이 다듬던 것이다. 요약(`text`)을 OCC LOG에 한 줄로 적고 SUPERVISOR에게 "이어서 초안을 쓸까요"를 한 번 묻는다. 대답 전에는 초안을 쓰지 않고 `wip touch`도 하지 않는다. 이어 가기로 하면 위 1번부터 하고 끝나면 `wip done`. 그만두기로 하면 `wip done`. 요약은 SUPERVISOR의 말 그대로가 아닐 수 있으니 필요한 것은 SUPERVISOR에게 다시 확인한다.
 
 명령 모양: 여러 단어 값은 큰따옴표, 본문은 작은따옴표 한 덩어리 `-- '## 목표\n…\n## 완료 기준\n…'`. 줄바꿈은 `\n`으로 쓴다(heredoc·리다이렉션은 guard가 막는다). 작은따옴표 안에는 `'`를 쓰지 않고, 큰따옴표 안에는 백틱이나 `$`를 넣지 않는다(셸이 실행한다).
 

@@ -121,6 +121,12 @@ SCHEDULE (OCC 세션이 맡음. S1 그림자 운용: 초안만. S2 승인 운용
                                             보고한 WAYPOINT 지연 경고를 적는다(key 없으면 지금 fresh 전부). 같은 경고는 다시 fresh가 되지 않는다
   node atcctl.mjs schedule route-ack ["<ROUTE>"]…
                                             (ATC-77) 보고한 "WAYPOINT가 없는 ROUTE"(routesWithoutWaypoints)를 적는다(없으면 지금 fresh 전부)
+  node atcctl.mjs schedule wip -- <요청 요약>
+                                            (ATC-169) SUPERVISOR의 CHARTER REQUEST를 다듬는 동안 서버에 한 줄로 둔다(W-0001). 초안이 아니다. schedule brief의 wip에 뜬다
+  node atcctl.mjs schedule wip touch <W-0001> [-- <고친 요약>]
+                                            아직 다듬는 중(시각 갱신, 글은 주면 바꾼다). 24시간 손대지 않으면 서버가 버린다
+  node atcctl.mjs schedule wip done <W-0001>
+                                            초안이 나왔거나 그만두라고 해서 닫는다
   node atcctl.mjs schedule draft CLASSIFY <VOC-193> [--type <TYPE>] [--wake <WAKE>] [--rating <RATING>]… -- <근거>
                                             분류 라벨 초안. TYPE: BUILD MAINT TEST SURVEY CHECK FERRY
                                             WAKE: L M H J · RATING: SEC UI DATA DOCS (--rating은 여러 번)
@@ -700,6 +706,21 @@ if (isMain) {
     } else if (cmd === "schedule" && args[0] === "route-ack") {
       const r = await call("POST", "/api/schedule/routes/ack", args.length > 1 ? { keys: args.slice(1) } : {});
       console.log(`ACK ${r.acked.length}건 (보고한 WAYPOINT 없는 ROUTE ${r.reported}건 기억)`);
+    } else if (cmd === "schedule" && args[0] === "wip") {
+      const rest = args.slice(1);
+      const dash = rest.indexOf("--");
+      const text = dash >= 0 ? rest.slice(dash + 1).join(" ") : "";
+      const head = dash >= 0 ? rest.slice(0, dash) : rest;
+      if (head[0] === "touch" && head[1]) {
+        const r = await call("POST", `/api/schedule/wip/${encodeURIComponent(head[1])}/touch`, text ? { text } : {});
+        console.log(`${r.wip.id} 손댐 (${r.wip.touchedAt})`);
+      } else if (head[0] === "done" && head[1]) {
+        const r = await call("POST", `/api/schedule/wip/${encodeURIComponent(head[1])}/done`, {});
+        console.log(`${r.id} 닫음`);
+      } else if (!head.length && text) {
+        const r = await call("POST", "/api/schedule/wip", { text });
+        console.log(`${r.wip.id} CHARTER REQUEST 진행 중으로 기록 — 초안이 나오거나 그만두면 schedule wip done ${r.wip.id}`);
+      } else throw new Error("schedule wip -- <요청 요약> | schedule wip touch <W-0001> [-- <요약>] | schedule wip done <W-0001>");
     } else if (cmd === "schedule" && args[0] === "draft" && args[1]) {
       const r = await call("POST", "/api/schedule/ops", parseDraft(args.slice(1)), {
         limit: "이번 바퀴는 SCHEDULE 초안을 더 쓰지 않는다(열린 초안 한도).",
