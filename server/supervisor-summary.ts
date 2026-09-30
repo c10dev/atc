@@ -64,8 +64,8 @@ export function summaryOf(inp: SummaryInput): SupervisorSummary {
 // 내용이 같으면 같은 문자열(`at` 제외). SSE `summary`는 이 값이 바뀔 때만 보낸다
 export const summaryKey = (s: SupervisorSummary): string => JSON.stringify({ ...s, at: undefined });
 
-// /api/events?topics=: 쉼표로 나눈 목록. 없거나 비면 지금까지와 같이 summary·radio를 뺀 전부. ping은 늘 보낸다
-export const TOPICS = ["snapshot", "alert", "version", "summary", "radio"] as const;
+// /api/events?topics=: 쉼표로 나눈 목록. 없거나 비면 지금까지와 같이 summary·radio·duty를 뺀 전부. ping은 늘 보낸다
+export const TOPICS = ["snapshot", "alert", "version", "summary", "radio", "duty"] as const;
 export type Topic = (typeof TOPICS)[number];
 export const DEFAULT_TOPICS: readonly Topic[] = ["snapshot", "alert", "version"];
 
