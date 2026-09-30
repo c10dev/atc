@@ -116,7 +116,7 @@ Each step is one issue. It is shadow or read-only until the step that says other
 
 | # | Step | Output |
 |---|---|---|
-| D0 | **Probe** (SURVEY). Headless `claude -p` stream-json with a `desk/`-style settings file on a scratch folder. Measure: start time and RSS; many turns in one process; `--resume` after kill; what a denied tool looks like in the stream; whether a `UserPromptSubmit` hook's output reaches the turn in `-p`; partial-message shape; cost per idle turn | Findings in this document, "D0 as probed" |
+| D0 | **Probe** (SURVEY). Headless `claude -p` stream-json with a `desk/`-style settings file on a scratch folder. Measure: start time and RSS; many turns in one process; `--resume` after kill; what a denied tool looks like in the stream; whether a `UserPromptSubmit` hook's output reaches the turn in `-p`; partial-message shape; cost per idle turn; whether a blocked background job's permission prompt can be answered without its window | Findings in this document, "D0 as probed" |
 | Q1 | SUPERVISOR QUEUE data: `supervisorQueueOf` and `GET /api/supervisor/queue` with tests for every kind ([ui-visibility.md](ui-visibility.md) step 2, adopted here) | `server/supervisor-queue.ts`, read-only API |
 | D1 | DESK folder and CLI, no UI: `desk/CLAUDE.md`, settings, fail-closed guard, `atcctl desk brief`, `desk card` and `desk note` (drafts only), `desk charter` (draft only) | Guard and CLI tests. `user` tier: control-session settings and guard |
 | D2 | Server runtime and chat: spawn and resume, the stream-json parser (pure) → events, `desk.jsonl`, `POST /api/desk/message` (Origin), `/api/events` topic `desk`, the drawer with text only | Chat works; cards show as plain text |
@@ -124,6 +124,7 @@ Each step is one issue. It is shadow or read-only until the step that says other
 | D4 | Memory: `brief-hook.mjs`, `decisions.jsonl`, confirm and retire cards; the brief cap | Standing decisions survive a NEW DESK |
 | D5 | Routing on: OCC reads the `desk` source; the `desk.charter` switch in settings (AUTOMATION → OPERATIONS) | CHARTER REQUESTs without Claude desktop |
 | D6 | ANNUNCIATOR DESK window (atc-app repo) | Mac window |
+| D7 | ENGINEERING through DESK: atc LAUNCHes ENGINEERING as a background session; DESK routes design and issue requests to it; its questions and reports come back as DESK cards (7, open item 2) | Design and work orders without Claude desktop |
 
 Q1 can run beside D0. D1 needs D0's answers on hooks and denied tools. D3 needs Q1.
 
@@ -142,14 +143,30 @@ Q1 can run beside D0. D1 needs D0's answers on hooks and denied tools. D3 needs 
 
 ## 7. Decisions
 
+Decided by the SUPERVISOR (2026-09-30):
+
+- **Model and ACCOUNT:** Claude Sonnet 5.5 (`claude-sonnet-5-5`) on `acct-2`. `desk/.claude/settings.json` sets the model, like the other control folders. `fleet.json` `control` labels it `acct-2`.
+- **Inline buttons:** FLEET PLAN, UPDATE and GO are inline. DISPATCH, SCHEDULE, HUMAN CHECK and LANDING are links to their screens (3.2).
+- **Queue placement:** the queue lives in the DESK drawer. ui-visibility step 3's separate drawer is not built. Its badges (steps 1 and 4) may still read the queue API.
+- **Routing:** requests go to OCC as CHARTER REQUESTs (3.4). They start in shadow (confirmed on the card, queued, OCC does not read them yet). `desk.charter` `on` follows a shadow period.
+
 Open, for the SUPERVISOR:
 
-1. **Name.** DESK (proposed), DUTY, or another.
-2. **Model and ACCOUNT.** Sonnet (proposed: a chat does not need Opus, and it saves FUEL) or Opus; and which ACCOUNT runs it.
-3. **Inline buttons.** FLEET PLAN, UPDATE and GO inline (proposed); DISPATCH, SCHEDULE, HUMAN CHECK and LANDING as links. Or more kinds inline.
-4. **Queue placement.** The queue lives in the DESK drawer (proposed), and the separate ui-visibility drawer (its step 3) is dropped. Or both.
-5. **Routing.** CHARTER REQUESTs from DESK reach OCC only with `desk.charter` `on` after a shadow period (proposed), or on at once.
-6. **Claude desktop.** After D5, day-to-day requests go through DESK. ENGINEERING and working sessions stay in Claude desktop for design and code (proposed), or ENGINEERING also moves into DESK later.
+1. **Name.** The aviation names that fit, and how each one fits:
+
+   | Name | What it is in aviation | Fit |
+   |---|---|---|
+   | **DUTY** (Duty Manager) | The one person in an airline's OCC whom management calls. They hold the overview and pass work to dispatch, crew control and maintenance control | The single point of contact that routes to OCC, MCC and ENGINEERING. Unlike a real Duty Manager, it decides nothing |
+   | **FSS** (Flight Service) | Briefs pilots, files their flight plans, relays clearances, and has no control authority | Brief, draft and relay without authority. But it serves pilots, not the airline's management |
+   | **DESK** | Generic ("ops desk") | Plain, but close to OCC's CHARTER DESK |
+   | COMPANY | The company radio frequency | Taken: a RADIO frequency name ([radio.md](radio.md) 3) |
+
+   Proposed: **DUTY**.
+2. **Leaving Claude desktop entirely.** For day-to-day work this is possible if three gaps close. For break-glass it is not:
+   - **ENGINEERING work** (design docs, Linear issues, research) needs file edits, Linear and `gh`. DESK has none of these, by principle 3. Close the gap with an ENGINEERING background session that atc LAUNCHes like an AIRCRAFT. DESK routes design requests to it (D7), and its questions and reports come back to the SUPERVISOR as DESK cards.
+   - **NEEDS YOU.** A background session's permission prompt is answered only in that session today. D0 checks whether atc can answer it (the job's `needs` and `suggestedReply` in `jobs/<id>/state.json`, or a CLI). Otherwise, fewer prompts through permission modes.
+   - **Pairing speed.** Work done side by side (build, look at the screen, fix) becomes a relay through a team and is slower. Images (a pasted screenshot) need an upload in the drawer (D2).
+   - **Break-glass.** When atc itself is down (7700 stopped, a bad deploy), DESK is down with it. A terminal or Claude desktop stays the way to fix atc. So "everything through DESK" means everyday use, with desktop kept as the fallback.
 
 Decided by this draft (pilot's discretion, reversible):
 
