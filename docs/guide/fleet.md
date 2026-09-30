@@ -42,8 +42,8 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 
 | 코드 | 뜻 | 할 일 |
 |---|---|---|
-| `LIMIT` | 계정 사용 한도. reset 시각까지 HOLD(DISPATCH가 일을 주지 않음). ACCOUNT 라벨이 있으면 같은 ACCOUNT의 다른 AIRCRAFT도 HOLD(아래) | 기다린다. reset 뒤 `UNANSWERED`로 바뀌면 지시를 다시 보낸다 |
-| `LIMIT (cut)` | 오류 없이 턴이 한도로 잘림. `HOLD · LIMIT (cut 18:10Z)`. 기다리는 동안 그 FLIGHT는 줄에 그대로 남는다 | 기다린다. reset 뒤에도 새 지시가 없으면 `RESUME`으로 바뀐다 |
+| `LIMIT` | 계정 사용 한도. reset 시각까지 HOLD(DISPATCH가 일을 주지 않음). ACCOUNT 라벨이 있으면 같은 ACCOUNT의 다른 AIRCRAFT도 HOLD(아래) | 기다린다. reset 뒤 `UNANSWERED`로 바뀌면 지시를 다시 보낸다. reset 시각을 모르면 5시간 뒤 저절로 풀린다 |
+| `LIMIT (cut)` | 오류 없이 턴이 한도로 잘림. `HOLD · LIMIT (cut 18:10Z)`. 기다리는 동안 그 FLIGHT는 줄에 그대로 남는다 | 기다린다. reset 뒤에도 새 지시가 없으면 `RESUME`으로 바뀐다(reset을 모르면 5시간 뒤). 한도 안내 뒤 세션이 스스로 마무리하고 쉬면 cut이 아니라 코드가 붙지 않는다 |
 | `RESUME` | 한도는 풀렸는데 새 지시가 없어 멈춰 있음. `RESUME 필요` | 그 세션에서 "계속"을 보낸다. atc는 스스로 보내지 않는다 |
 | `STALLED` | In Progress FLIGHT를 쥔 채(STAND나 `tail:` 라벨) PR 없이 60분 넘게 쉬는 중 | 세션을 들여다본다. 막힌 것이 없으면 "계속", 살릴 수 없으면 다시 띄운다 |
 | `THROTTLE` | 서버가 잠시 붐빔 | 몇 분 뒤 다시 보낸다 |
