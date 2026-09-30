@@ -3188,6 +3188,11 @@ a.ticket:hover {
 .acct-edit input:nth-of-type(2) { flex: 1; min-width: 0; }
 .acct-cap { width: 5em; }
 .acct-err { color: var(--alert); }
+.apply-now { margin: 6px 0; }
+.apply-now.is-compact { display: inline-block; margin: 0 0 0 var(--space-2); }
+.apply-now-panel { margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel-2); max-width: 60rem; font-size: var(--text-sm); }
+.apply-now-group ul { margin: 2px 0 var(--space-2); padding-left: 1.2em; }
+.apply-now-group li { margin: 2px 0; overflow-wrap: anywhere; }
 .acct-add { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
 .acct-add h4 { margin: 0 0 6px; }
 .acct-home { width: 10em; }

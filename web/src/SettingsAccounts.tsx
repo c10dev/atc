@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ApplyNow } from "./ApplyNow.tsx";
 import type { AddPreview, AddResult } from "../../server/account-add.ts";
 import type { FolderHealth } from "../../server/account-health.ts";
 import type { LoginView } from "../../server/account-login.ts";
@@ -482,8 +483,9 @@ function LaunchAccountRow({ registryKey }: { registryKey: string }) {
       </h4>
       {select("aircraft", "AIRCRAFT")}
       {select("control", "관제 세션")}
+      <ApplyNow refreshKey={view.launchAccount} />
       <p className="settings-hint">
-        다음 LAUNCH에만 적용된다. FLEET의 LAUNCH 칸에서 ACCOUNT를 직접 고르거나, ACCOUNT CHANGE를 승인하거나, 한도 뒤 RESUME은 이 설정보다 먼저 쓴다. AIRCRAFT를 켜 두면 FLEET PLAN의 ACCOUNT CHANGE는 프로필 home 대신 이 ACCOUNT를 기준으로 제안하고, 새 AIRCRAFT(ENTRY)도 여기서 난다.
+        다음 LAUNCH에만 적용된다. 지금 돌고 있는 세션까지 옮기려면 APPLY NOW(확인 창에서 STOP → LAUNCH, 캐시는 식는다). FLEET의 LAUNCH 칸에서 ACCOUNT를 직접 고르거나, ACCOUNT CHANGE를 승인하거나, 한도 뒤 RESUME은 이 설정보다 먼저 쓴다. AIRCRAFT를 켜 두면 FLEET PLAN의 ACCOUNT CHANGE는 프로필 home 대신 이 ACCOUNT를 기준으로 제안하고, 새 AIRCRAFT(ENTRY)도 여기서 난다.
       </p>
       {view.launchAccountWarnings.map((w) => (
         <p key={w} className="settings-hint acct-err">

@@ -930,6 +930,7 @@ ACCOUNT 폴더를 등록하면([accounts.md](accounts.md) 5.2) 등록된 어느 
 - **AOG.** 옮길 ACCOUNT가 있으면 주간 `LIMIT`만으로는 그 AIRCRAFT에 AOG를 제안하지 않는다(8.8).
 - **DISPATCH·FOLLOWING**은 이미 관찰한 ACCOUNT를 쓰므로([fuel.md](fuel.md) 6.2) 옮긴 AIRCRAFT는 새 ACCOUNT로 세고 다시 배정할 수 있다(`server/accounts.test.ts`).
 - **FUEL.** 새 세션의 cold 첫 요청은 `ACCOUNT CHANGE`라는 이름의 FUEL LEAK다([fuel.md](fuel.md) 6.3).
+- **APPLY NOW**(ATC-244, [accounts.md](accounts.md) 5.5)는 LAUNCH ACCOUNT에 있지 않은 쉬는 AIRCRAFT마다 같은 실행기를, 한 번의 확인 뒤 STOP 전에 FLIGHT 사이인지 다시 보고 돌린다. 바쁜 AIRCRAFT는 기다렸다가 FLIGHT가 끝나면 따라간다.
 
 ### LAUNCH ACCOUNT와 ACCOUNT CHANGE(ATC-239)
 

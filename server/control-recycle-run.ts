@@ -18,7 +18,9 @@ import {
   contextTokensOf,
   controlRecycleOf,
   goneOf,
+  jobIdle,
   loadRecycle,
+  safeBlocksOf,
   saveRecycle,
   waitMinutesOf,
   wouldWaitDue,
@@ -26,6 +28,7 @@ import {
 import { allClearances, isClearanceOverdue, isPending } from "./clearances.ts";
 import { allCrewChanges, isOpenCrewChange } from "./crew-change.ts";
 import { ttlCache } from "./agents-cache.ts";
+import type { ApplyControl } from "./apply-now.ts";
 import { readJob, settleJob } from "./job-state.ts";
 import type { Snapshot } from "./model.ts";
 import { allProposals, isInFlight, READBACK_OVERDUE_MS } from "./proposals.ts";
@@ -37,6 +40,7 @@ import {
   configDirOfRow,
   controlDirOf,
   controlRowsOf,
+  controlSpecOf,
   launchControl,
   stopControl,
 } from "./session-control.ts";
@@ -174,7 +178,7 @@ export async function performRecycle(d: ActDeps, row: Pick<AgentRow, "id" | "pid
   return { ...base, ok: true, result: "recycled", ...(l.jobId ? { jobId: l.jobId } : {}) };
 }
 
-const toLine = (r: RecycleRecord): Parameters<typeof record>[0] => ({ kind: "control", op: "recycle", by: "atc", ...r });
+const toLine = (r: RecycleRecord, by = "atc"): Parameters<typeof record>[0] => ({ kind: "control", op: "recycle", by, ...r });
 
 // ── 한 주기 ──
 let busy = false; // 한 번에 한 세션만
@@ -294,6 +298,47 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
     busy = false;
   }
   return out;
+}
+
+// ── APPLY NOW(ATC-244): 관제 세션을 다른 ACCOUNT로 옮긴다. 같은 안전 조건과 같은 performRecycle(목표 ACCOUNT만 다르다) ──
+// 사실만 읽는다(순수 계획 applyNowPlanOf의 입력). 관제 세션마다 세션 종류·지금 ACCOUNT·턴 사이인가·안전 조건의 막는 이유
+export async function applyControlFactsOf(s: Snapshot, d: FactDeps, rows?: AgentRow[]): Promise<ApplyControl[]> {
+  const all = rows ?? (await agentRows());
+  let facts: SafeFacts | null | undefined;
+  const out: ApplyControl[] = [];
+  for (const spec of CONTROL_SESSIONS) {
+    if (spec.launch !== "bg") continue;
+    const live = controlRowsOf(spec, all, controlDirOf(spec));
+    const bg = live.find((r) => r.kind === "background" && r.id);
+    if (!live.length) {
+      out.push({ name: spec.name, current: null, session: null, idle: false, blocks: [] });
+      continue;
+    }
+    if (facts === undefined) facts = await safeFactsOf(s, d).catch(() => null);
+    const job = bg ? (settleJob(readJob(bg.id)) ?? null) : null;
+    const blocks = [...safeBlocksOf(spec.name, facts), ...(recycling && recycling !== spec.name ? [`${recycling}가 재시작 중`] : [])];
+    out.push({ name: spec.name, current: (bg ?? live[0]).account ?? null, session: bg && live.length === 1 ? "background" : "other", idle: jobIdle(job), blocks });
+  }
+  return out;
+}
+
+// 한 세션을 목표 ACCOUNT로 STOP → LAUNCH. RECYCLE과 같은 한 번에 한 세션 잠금을 쓴다. 기록: RECYCLE 줄(by SUPERVISOR, reason에 APPLY NOW)
+export async function applyNowControl(d: ActDeps, name: string, to: string, by: string): Promise<{ ok: boolean; error?: string; jobId?: string }> {
+  if (busy || recycling) return { ok: false, error: `${recycling ?? "CONTROL RECYCLE"}가 재시작 중 — 끝난 뒤 다시` };
+  busy = true;
+  recycling = name;
+  try {
+    const spec = controlSpecOf(name);
+    const bg = spec ? controlRowsOf(spec, await agentRows(), controlDirOf(spec)).find((r) => r.kind === "background" && r.id && !r.stale) : undefined;
+    if (!spec || !bg) return { ok: false, error: `${name}: 떠 있는 claude --bg 세션이 없음` };
+    const context = contextOfRow(bg, config.claudeDir, configDirOfRow(bg)) ?? 0;
+    const r = await performRecycle(d, { id: bg.id, pid: bg.pid, account: to }, name, context, `APPLY NOW: ${bg.account ?? "?"} → ${to}`);
+    record(toLine(r, by));
+    return { ok: r.ok, ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.error ? { error: r.error } : {}) };
+  } finally {
+    recycling = null;
+    busy = false;
+  }
 }
 
 // 실제 stop·launch·읽기를 묶은 기본 ActDeps. stopControl·launchControl은 FLEET의 STOP·LAUNCH 버튼과 같은 함수다
