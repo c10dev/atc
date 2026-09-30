@@ -7,7 +7,7 @@
 // Read·Glob·Grep: 저장소 안에서만. `.env*`, `.credentials.json`, `.git`, `~/.claude*`, `~/.local/state/atc`, `~/.ssh`와 그 안은 읽지 않는다
 //   (atc 상태는 atcctl로 읽는다). Grep은 `.env*` 파일이 든 폴더를 통째로 훑지 않는다.
 // controller/guard.mjs와 같은 방식이지만 따로 둔다: 관제 세션의 guard는 이 파일을 위해 바뀌지 않는다.
-import { readdirSync, readFileSync, realpathSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -178,18 +178,28 @@ export function forbiddenPath(abs) {
   return null;
 }
 
-// 존재하면 심볼릭 링크를 풀고, 없으면 있는 가장 가까운 윗길을 풀어 이어 붙인다
+// 존재하면 심볼릭 링크를 풀고, 없으면 있는 가장 가까운 윗길을 풀어 이어 붙인다. { abs } 또는 { reason }.
+// 못 푸는 마디는 lstat으로 본다: 진짜로 없는 마디(ENOENT)만 이름으로 이어 붙이고, 풀 수 없는 심볼릭 링크(가리키는 곳이 없음·고리)와
+// 그 밖의 lstat 오류는 모두 막는다(fail-closed) — 저장소 안의 끊어진 링크가 저장소 밖 비밀 경로를 가리켜도 이름만 보고 지나가지 않게.
 function real(p) {
   let cur = p;
   const tail = [];
   for (;;) {
     try {
-      return join(realpathSync(cur), ...tail.reverse());
+      return { abs: join(realpathSync(cur), ...[...tail].reverse()) };
     } catch {
-      const up = dirname(cur);
-      if (up === cur) return p;
-      tail.push(basename(cur));
-      cur = up;
+      let st;
+      try {
+        st = lstatSync(cur);
+      } catch (e) {
+        if (e?.code !== "ENOENT") return { reason: `경로를 확인하지 못함(${e?.code ?? "오류"}): ${cur}` };
+        const up = dirname(cur);
+        if (up === cur) return { reason: `경로를 풀지 못함: ${p}` };
+        tail.push(basename(cur));
+        cur = up;
+        continue;
+      }
+      return { reason: st.isSymbolicLink() ? `풀 수 없는 심볼릭 링크(가리키는 곳이 없거나 고리)는 읽지 않는다: ${cur}` : `경로를 풀지 못함: ${cur}` };
     }
   }
 }
@@ -200,7 +210,9 @@ function resolveRead(input, cwd) {
   if (typeof input !== "string" || !input.trim()) return { reason: "경로가 없음" };
   if (input.includes("\u0000")) return { reason: "경로에 NUL이 있음" };
   const expanded = input === "~" ? homedir() : input.startsWith("~/") ? join(homedir(), input.slice(2)) : input;
-  const abs = real(isAbsolute(expanded) ? resolve(expanded) : resolve(cwd, expanded));
+  const r = real(isAbsolute(expanded) ? resolve(expanded) : resolve(cwd, expanded));
+  if (r.reason) return { reason: r.reason };
+  const abs = r.abs;
   if (!under(abs, REPO)) return { reason: `저장소(${REPO}) 밖은 읽지 않는다` };
   const why = forbiddenPath(abs);
   return why ? { reason: why } : { abs };

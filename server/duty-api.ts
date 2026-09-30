@@ -20,6 +20,17 @@ const DRAFTS_FILE = () => join(config.stateDir, "duty-drafts.jsonl");
 const DUTY_CONFIG_FILE = () => join(config.stateDir, "duty.json");
 const BODY_MAX = 16 * 1024;
 
+// 브라우저는 다른 사이트의 글도 text/plain POST로 보낼 수 있다. Origin이 있는데 이 컴퓨터가 아니면 거절한다.
+// atcctl은 Origin을 보내지 않으니 그대로 통과한다(다른 관제 세션 경로와 같다)
+export function foreignOrigin(origin: string | undefined): boolean {
+  if (origin === undefined) return false;
+  try {
+    return !["localhost", "127.0.0.1", "[::1]"].includes(new URL(origin).hostname);
+  } catch {
+    return true;
+  }
+}
+
 // duty.briefMaxChars(상태 폴더의 duty.json). 없거나 깨졌으면 기본값
 export function loadBriefMaxChars(file = DUTY_CONFIG_FILE()): number {
   try {
@@ -77,6 +88,7 @@ export function mountDuty(app: Hono, getSnapshot: () => Promise<Snapshot>, updat
 
   // 초안을 한 줄 붙인다. 받은 모양만 검사하고 밖으로 나가는 동작은 없다
   const draft = (make: (body: Record<string, unknown>, id: string, now: number) => Promise<DraftResult> | DraftResult) => async (c: import("hono").Context) => {
+    if (foreignOrigin(c.req.header("origin"))) return c.json({ error: "다른 사이트에서 온 요청은 받지 않습니다" }, 403);
     const raw = await c.req.text();
     if (raw.length > BODY_MAX) return c.json({ error: "body too large" }, 413);
     let body: Record<string, unknown>;

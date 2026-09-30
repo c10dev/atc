@@ -257,6 +257,59 @@ test("심볼릭 링크로 저장소 밖 비밀을 가리켜도 푼 경로로 막
   }
 });
 
+// MCC INSPECTION P1(5e2b4a1): 못 푸는 마디를 이름으로 이어 붙이면 저장소 안의 끊어진 링크가 저장소 밖 비밀을 가리켜도 통과했다
+test("끊어진 심볼릭 링크(저장소 밖의 없는 곳을 가리킴)는 풀 수 없다고 막는다 — 링크 자체와 그 아래 경로 모두", () => {
+  const dir = mkdtempSync(join(REPO, "duty", "guard-dangling-"));
+  const gone = join(tmpdir(), `duty-guard-gone-${process.pid}-${Date.now()}`); // 저장소 밖, 아직 없는 곳
+  try {
+    symlinkSync(gone, join(dir, "ssh"));
+    for (const tool of [
+      ["Read", { file_path: join(dir, "ssh") }],
+      ["Read", { file_path: join(dir, "ssh", "config") }],
+      ["Read", { file_path: join(dir, "ssh", "a", "b", "c.txt") }],
+      ["Glob", { pattern: "*", path: join(dir, "ssh") }],
+      ["Grep", { pattern: "x", path: join(dir, "ssh", "deeper") }],
+    ]) assert.match(read(tool[0], tool[1]) ?? "", /풀 수 없는 심볼릭 링크/, JSON.stringify(tool));
+    // 저장소 안의 없는 곳을 가리키는 끊어진 링크도 같다(나중에 그 자리에 무엇이 생길지 모른다)
+    symlinkSync(join(dir, "not-yet"), join(dir, "inside-gone"));
+    assert.match(read("Read", { file_path: join(dir, "inside-gone") }) ?? "", /풀 수 없는 심볼릭 링크/);
+    // 링크 고리
+    symlinkSync(join(dir, "loop-b"), join(dir, "loop-a"));
+    symlinkSync(join(dir, "loop-a"), join(dir, "loop-b"));
+    assert.match(read("Read", { file_path: join(dir, "loop-a") }) ?? "", /풀 수 없는 심볼릭 링크/);
+    assert.notEqual(read("Read", { file_path: join(dir, "loop-a", "x") }), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("저장소 안의 다른 파일을 가리키는 링크는 통과하고, 진짜로 없는 이름은 이름만 본다", () => {
+  const dir = mkdtempSync(join(REPO, "duty", "guard-inlink-"));
+  try {
+    writeFileSync(join(dir, "real.txt"), "x");
+    symlinkSync(join(dir, "real.txt"), join(dir, "link.txt"));
+    mkdirSync(join(dir, "sub"));
+    symlinkSync(join(dir, "sub"), join(dir, "sublink"));
+    assert.equal(read("Read", { file_path: join(dir, "link.txt") }), null, "저장소 안 파일로의 링크");
+    assert.equal(read("Read", { file_path: join(dir, "sublink") + "/new.txt" }), null, "저장소 안 폴더로의 링크 아래의 없는 파일");
+    assert.equal(read("Glob", { pattern: "*", path: join(dir, "sublink") }), null);
+    assert.equal(read("Read", { file_path: join(dir, "nothing-here", "deeper.txt") }), null, "없는 폴더 아래의 없는 파일(링크 없음)");
+    assert.notEqual(read("Read", { file_path: join(dir, "nothing-here", "..", "..", "..", "..", "..", "etc", "passwd") }), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("파일 아래를 경로로 삼으면(ENOTDIR) lstat 오류라 막는다", () => {
+  const dir = mkdtempSync(join(REPO, "duty", "guard-notdir-"));
+  try {
+    writeFileSync(join(dir, "file.txt"), "x");
+    assert.match(read("Read", { file_path: join(dir, "file.txt", "child") }) ?? "", /확인하지 못함|풀지 못함/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // hook 프로세스로: 막으면 exit 2와 stderr, 통과면 exit 0. 입력이 깨졌거나 비어도 exit 2(fail-closed)
 const run = (stdin) => spawnSync(process.execPath, [join(DUTY, "guard.mjs")], { input: stdin, encoding: "utf8", cwd: DUTY });
 
