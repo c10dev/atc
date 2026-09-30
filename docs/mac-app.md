@@ -2,7 +2,7 @@
 
 The SUPERVISOR's Mac gets a native menu bar app, ANNUNCIATOR, in its own repository: [chaehy5665/atc-app](https://github.com/chaehy5665/atc-app) (public, GPL-3.0-or-later). The app's design is there (`docs/design.md`). This page covers only atc's side: what the server exposes for the app, what stays out, and what changes in this repository.
 
-> Status (2026-09-29): adopted. The SUPERVISOR asked for a native app after using the SwiftBar plugin (ATC-149) for a day. They chose a separate public repository under GPL-3.0; atc stays MIT, and the two talk only over HTTP. Nothing on this page is built yet.
+> Status (2026-09-29): adopted. The SUPERVISOR asked for a native app after using the SwiftBar plugin (ATC-149) for a day. They chose a separate public repository under GPL-3.0; atc stays MIT, and the two talk only over HTTP. The server side of step N1 is built (section 3, "as built" below); atc-app itself is in its own repository.
 
 Related: [guide/menubar.md](guide/menubar.md) (the SwiftBar plugin and the SSH forward), [guide/alerts.md](guide/alerts.md), [guide/voice.md](guide/voice.md), `server/supervisor-alerts.ts` (ATC-87), `menubar/format.mjs` (ATC-149), ATC-152 (alert noise).
 
@@ -40,6 +40,20 @@ Related: [guide/menubar.md](guide/menubar.md) (the SwiftBar plugin and the SSH f
   - Field names are stable within `v: 1`. A breaking change bumps `v` and keeps v1 for one release.
   - Times are ISO 8601 UTC, and clients show them as `HH:MMZ`.
   - The app pins the `v` it understands and shows "atc 버전 확인" on an unknown `v`.
+
+### N1 as built (ATC-153)
+
+- **`GET /api/events?topics=`** (`parseTopics` in `server/supervisor-summary.ts`): a comma list out of `snapshot`, `alert`, `version`, `summary`. No `topics` (or an empty list) sends the old set, everything except `summary`. `ping` is always sent. An unknown topic returns `400 {error}` before the stream opens. Duplicates are fine.
+- **`GET /api/supervisor-summary`** returns `summaryNow(snapshot)`; `503` until the first snapshot. The `summary` topic sends the current summary on connect, then a new one only when its content changes (`summaryKey` ignores `at`). It is evaluated each tick right after the alert list, from the same cached `currentAlerts()`, so the summary and the alert list never disagree; nothing extra is read from disk except the RTS record file the alert list already reads.
+- **Body `{ v: 1, at, master, counts, pending, fuel, rts, working, needsYou }`.** The field list is in the [server README](../server/README.md) endpoint table, which is what atc-app pins.
+  - `counts` are the level counts of the alert list (a test builds a real list with `supervisorAlertsOf` and compares). Items without a level (old shape) are not counted, so `counts` can be below the list length.
+  - `pending.dispatch|humanCheck|tool` count the `pending|proposal|`, `pending|humancheck|` and `pending|tool|` keys.
+  - `fuel` is the ACCOUNT with the highest window `pct` (ties: the first); `label` is its ACCOUNT label, or its `group` when it has none.
+  - `working.aircraft` is the number of distinct AIRCRAFT REGISTRATIONs with a live busy session, `working.control` the number of busy sessions named like a control session (TOWER, OCC, MCC …), both from the snapshot (no `claude agents` call).
+  - `needsYou` lists the AIRCRAFT of items whose cue is `call`, sorted and distinct. HUMAN CHECK items have no AIRCRAFT and show only in `pending.humanCheck`.
+- **SwiftBar plugin.** `menubar/format.mjs` no longer counts: the title numbers and colour, FUEL, DISPATCH approvals, the last RTS and the working counts come from the summary. The plugin reads `/api/supervisor-alerts` (the item lines and notifications) and `/api/supervisor-summary`, and shows the unreachable line if either fails, so it needs the new server. The RTS line lost the free-text `detail` and shows `from → to` instead, because the summary carries no detail text.
+- **Browser header: unchanged.** Its ALERT number counts the snapshot's `alerts` (not the SUPERVISOR alert list), which is a different set, so switching it to the summary would change what it means. Moving the browser is not part of this step.
+- **Not built:** `atc-app` itself, its connection handling, and anything write-side (principle 2).
 
 ## 4. Other atc changes this brings
 

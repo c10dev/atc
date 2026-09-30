@@ -25,8 +25,6 @@ const get = async (path) => {
   if (!res.ok) throw new Error(`${path} ${res.status}`);
   return res.json();
 };
-// 알림 목록은 꼭 있어야 하고(없으면 연결 안 됨), 나머지는 없으면 그 줄만 빠진다
-const optional = (path) => get(path).catch(() => null);
 
 // 본 key 캐시: SwiftBar의 플러그인 캐시 폴더(SWIFTBAR_PLUGIN_CACHE_PATH). atc 상태 폴더에는 쓰지 않는다
 const cacheDir = process.env.SWIFTBAR_PLUGIN_CACHE_PATH || join(tmpdir(), "atc-menubar");
@@ -46,16 +44,17 @@ const writeSeen = (seen) => {
   } catch {} // 캐시를 못 써도 메뉴는 보인다(다음 바퀴에 같은 알림이 다시 갈 수 있다)
 };
 
+// 항목 목록과 요약(ATC-153)은 둘 다 있어야 한다. 하나라도 못 읽으면(옛 서버 포함) 연결 안 됨 한 줄
 let alerts;
+let summary;
 try {
-  alerts = await get("/api/supervisor-alerts");
+  [alerts, summary] = await Promise.all([get("/api/supervisor-alerts"), get("/api/supervisor-summary")]);
 } catch {
   console.log(unreachableLines({ base: BASE }).join("\n"));
   process.exit(0);
 }
-const [fleet, update, control] = await Promise.all([optional("/api/fleet"), optional("/api/update"), optional("/api/control/sessions")]);
 
-console.log(menuLines({ alerts, fleet, update, control, base: BASE }).join("\n"));
+console.log(menuLines({ alerts, summary, base: BASE }).join("\n"));
 
 const items = itemsOf(alerts);
 const seen = readSeen();

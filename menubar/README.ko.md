@@ -7,7 +7,7 @@
 | 파일 | 하는 일 |
 |---|---|
 | `atc.15s.mjs` | 플러그인. Mac의 node가 돌린다(`#!/usr/bin/env node`, `15s`가 갱신 주기). GET을 하고 메뉴를 출력하고 알림을 보내고, 본 key를 `$SWIFTBAR_PLUGIN_CACHE_PATH/seen.json`에 둔다 |
-| `format.mjs` | 순수 표시 함수: alerts·fleet·update·control JSON을 받아 SwiftBar 줄을 내고, 새 key 비교와 `swiftbar://notify` 주소를 만든다 |
+| `format.mjs` | 순수 표시 함수: alerts·summary JSON을 받아 SwiftBar 줄을 내고(세지 않는다: 숫자는 서버 요약에서 온다), 새 key 비교와 `swiftbar://notify` 주소를 만든다 |
 | `format.test.mjs` | Linux에서 도는 `node:test`(빈 것, advisory만, warning, call, 연결 안 됨, `\|`가 든 한글 문구). `npm test`에 든다 |
 
 ## 읽는 것
@@ -15,11 +15,9 @@
 | 엔드포인트 | 쓰임 |
 |---|---|
 | `GET /api/supervisor-alerts` | 항목(level, cue, text, next, link). 꼭 필요하다: 실패하면 제목이 `✈ —` |
-| `GET /api/fleet` | `fuelAccounts`(가장 많이 쓴 ACCOUNT: `5h 33% · 7d 53%`)와 `busy`인 AIRCRAFT 수 |
-| `GET /api/update` | 마지막 RTS(`RTS ok 15:21Z · …`, 시각은 atc 화면처럼 UTC) |
-| `GET /api/control/sessions` | 일하는 관제 세션 수 |
+| `GET /api/supervisor-summary` | 제목의 숫자와 색(`counts`, `master`), FUEL(`fuel`), DISPATCH 승인 대기(`pending.dispatch`), 마지막 RTS(`rts`, 시각은 atc 화면처럼 UTC), 일하는 AIRCRAFT와 관제 세션(`working`). 이것도 꼭 필요하다(ATC-153) |
 
-꼭 필요하지 않은 엔드포인트가 안 되면 그 줄만 빠진다. 주소는 `ATC_URL`(기본 `http://localhost:7700`)이다.
+둘 중 하나라도 안 되면 연결 안 됨 줄이 보인다. 주소는 `ATC_URL`(기본 `http://localhost:7700`)이다.
 
 ## 메뉴
 

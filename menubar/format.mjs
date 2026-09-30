@@ -1,6 +1,6 @@
 // macOS 메뉴 막대(SwiftBar) 표시 줄을 만드는 순수 함수(ATC-149). 읽기만 하고 입출력은 atc.15s.mjs가 한다.
-// 입력: GET /api/supervisor-alerts(alerts), /api/fleet(fleet), /api/update(update), /api/control/sessions(control).
-// 어느 하나가 없어도(null) 그 줄만 빠진다. 서버는 바꾸지 않는다: 새 엔드포인트·토큰·CORS 없음.
+// 입력: GET /api/supervisor-alerts(alerts: 항목 목록)와 GET /api/supervisor-summary(summary: 숫자·FUEL·RTS·일하는 수, ATC-153).
+// 숫자는 서버가 센다(server/supervisor-summary.ts) — 여기서는 세지 않고 그대로 보인다. 토큰·CORS 없음.
 
 const LEVEL_ORDER = ["warning", "caution", "advisory"];
 const LEVEL_LABEL = { warning: "WARNING", caution: "CAUTION", advisory: "ADVISORY" };
@@ -29,23 +29,12 @@ const line = (text, params = {}) => {
 const rank = (level) => (LEVEL_ORDER.includes(level) ? LEVEL_ORDER.indexOf(level) : LEVEL_ORDER.length);
 export const itemsOf = (alerts) => (Array.isArray(alerts?.items) ? alerts.items.filter((i) => i && typeof i.key === "string") : []);
 
-// 가장 많이 쓴 ACCOUNT의 5시간·7일 사용률: `5h 33% · 7d 53%`. 없으면 null
-export function fuelOf(fleet) {
-  const accts = Array.isArray(fleet?.fuelAccounts) ? fleet.fuelAccounts : [];
-  const used = (a) => Math.max(0, ...((a.windows ?? []).map((w) => w.pct ?? 0)));
-  const top = [...accts].sort((a, b) => used(b) - used(a))[0];
-  if (!top) return null;
-  const win = (name) => (top.windows ?? []).find((w) => w.name === name)?.pct;
+// 요약의 fuel(가장 많이 쓴 ACCOUNT)의 5시간·7일 사용률: `5h 33% · 7d 53%`. 없으면 null
+export function fuelOf(summary) {
+  const windows = summary?.fuel?.windows ?? [];
+  const win = (name) => windows.find((w) => w.name === name)?.pct;
   const parts = [["5h", win("five_hour")], ["7d", win("seven_day")]].filter(([, pct]) => typeof pct === "number").map(([k, pct]) => `${k} ${Math.round(pct)}%`);
   return parts.length ? parts.join(" · ") : null;
-}
-
-// 지금 일하는 AIRCRAFT 수와 관제 세션 수. AIRCRAFT는 status "busy", 관제 세션은 살아 있는 세션이 busy거나 job이 working
-export function workingOf(fleet, control) {
-  const aircraft = Array.isArray(fleet?.aircraft) ? fleet.aircraft.filter((a) => a.status === "busy").length : null;
-  const sessions = Array.isArray(control?.sessions) ? control.sessions : null;
-  const ctl = sessions ? sessions.filter((s) => (s.live ?? []).some((l) => l.status === "busy" || l.job?.state === "working")).length : null;
-  return { aircraft, control: ctl };
 }
 
 // 시각은 화면(atc)과 같이 UTC `HH:MMZ`로 보인다(ATC-152). Mac의 시간대에 따라 다르게 읽히지 않게
@@ -56,28 +45,27 @@ export function zTime(iso) {
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}Z`;
 }
 
-// 마지막 RTS: `RTS ok 15:21Z · 4초 · 세션 9개 그대로`
-export function rtsLine(update) {
-  const last = update?.last;
-  if (!last?.at) return null;
-  return `RTS ${last.result ?? "?"} ${zTime(last.at)}${last.detail ? ` · ${last.detail}` : ""}`;
+// 마지막 RTS: `RTS ok 15:21Z · aaaaaaa → bbbbbbb`
+const short = (sha) => (sha ? String(sha).slice(0, 7) : "?");
+export function rtsLine(summary) {
+  const r = summary?.rts;
+  if (!r?.at) return null;
+  return `RTS ${r.result ?? "?"} ${zTime(r.at)} · ${short(r.from)} → ${short(r.to)}`;
 }
 
-// 제목 줄. 조치가 필요한 WARNING·CAUTION 수(화면 상단 숫자와 같다), advisory가 있으면 `+n`, 그리고 FUEL
-export function titleOf({ items, fleet }) {
-  const by = (l) => items.filter((i) => i.level === l).length;
-  const act = by("warning") + by("caution");
-  const adv = items.length - act;
-  const top = LEVEL_ORDER.find((l) => by(l) > 0);
-  const fuel = fuelOf(fleet);
-  const text = `✈ ${act}${adv ? ` +${adv}` : ""}${fuel ? ` ${fuel}` : ""}`;
-  return line(text, LEVEL_COLOR[top] ? { color: LEVEL_COLOR[top] } : {});
+// 제목 줄. 조치가 필요한 WARNING·CAUTION 수(화면 상단 숫자와 같다), advisory가 있으면 `+n`, 그리고 FUEL. 색은 요약의 master
+export function titleOf({ summary }) {
+  const c = summary?.counts ?? { warning: 0, caution: 0, advisory: 0 };
+  const act = c.warning + c.caution;
+  const fuel = fuelOf(summary);
+  const text = `✈ ${act}${c.advisory ? ` +${c.advisory}` : ""}${fuel ? ` ${fuel}` : ""}`;
+  return line(text, LEVEL_COLOR[summary?.master] ? { color: LEVEL_COLOR[summary.master] } : {});
 }
 
 // 메뉴 전체(SwiftBar 출력 줄)
-export function menuLines({ alerts, fleet, update, control, base = DEFAULT_BASE }) {
+export function menuLines({ alerts, summary, base = DEFAULT_BASE }) {
   const items = itemsOf(alerts);
-  const out = [titleOf({ items, fleet }), "---"];
+  const out = [titleOf({ summary }), "---"];
   if (!items.length) out.push(line("지금 알릴 것 없음"));
   for (const level of LEVEL_ORDER) {
     const group = items.filter((i) => i.level === level);
@@ -95,12 +83,11 @@ export function menuLines({ alerts, fleet, update, control, base = DEFAULT_BASE 
     for (const i of rest) out.push(line(`${i.text}${i.next ? ` — ${i.next}` : ""}`, { href: hrefOf(base, i.link) }));
   }
   out.push("---");
-  const approvals = items.filter((i) => i.key.startsWith("pending|proposal|")).length;
-  out.push(line(`DISPATCH 승인 대기 ${approvals}`, { href: hrefOf(base, "#dispatch") }));
-  const rts = rtsLine(update);
+  out.push(line(`DISPATCH 승인 대기 ${summary?.pending?.dispatch ?? 0}`, { href: hrefOf(base, "#dispatch") }));
+  const rts = rtsLine(summary);
   if (rts) out.push(line(rts, { href: hrefOf(base, "#radar") })); // UPDATE 바가 있는 탭(RTS 알림 항목의 link와 같다)
-  const w = workingOf(fleet, control);
-  const parts = [w.aircraft != null && `AIRCRAFT ${w.aircraft}`, w.control != null && `관제 세션 ${w.control}`].filter(Boolean);
+  const w = summary?.working;
+  const parts = [typeof w?.aircraft === "number" && `AIRCRAFT ${w.aircraft}`, typeof w?.control === "number" && `관제 세션 ${w.control}`].filter(Boolean);
   if (parts.length) out.push(line(`일하는 중: ${parts.join(" · ")}`, { href: hrefOf(base, "#fleet") }));
   out.push("---", line("Open atc", { href: hrefOf(base, "") }), line("Refresh", { refresh: "true" }));
   return out;
