@@ -136,7 +136,7 @@ Every `*.test.ts` next to a module is its unit test.
 | `POST /api/airports` | Open an AIRPORT `{path, code?, name?}` |
 | `PATCH /api/airports/:id` | Rename, change code, close or reopen `{code?, name?, closed?}` |
 | `DELETE /api/airports/:id` | Remove a manually opened AIRPORT |
-| `GET /api/controller/brief?consumer=controller` | Events since the last ack + current state (`landingQueue` entries carry `landBy` (`mcc`, `supervisor` or `holder`, ATC-151); CLEARED ones carry `repoSeq`, and `landText` only when `landBy` is `holder`; `open.fuelLeaks`, `open.coldCache` and `open.fuelError` are the FUEL warnings, ATC-56) |
+| `GET /api/controller/brief?consumer=controller` | Events since the last ack + current state (`landingQueue` entries carry `landBy` (`mcc`, `supervisor` or `holder`, ATC-151); CLEARED ones carry `repoSeq`, and `landText` only when `landBy` is `holder`; APPROACH entries carry `blocks[].en` (English next to the Korean `text`) and `infoText` (`PR #n cannot land yet: …`, ATC-174); `open.fuelLeaks`, `open.coldCache` and `open.fuelError` are the FUEL warnings, ATC-56) |
 | `POST /api/controller/ack` | Mark a brief handled `{cursor}` |
 | `POST /api/clearances` | Record a CLEARANCE `{to, type, stand?, flight?, text}`, returns the message to send |
 | `POST /api/clearances/:id/readback` · `/roger` · `/unable` · `/standby` · `/cancel` | The team's answer (ATC-122, `response.ts`): READBACK, ROGER (R only), UNABLE `{reason}` close it; STANDBY (W/U only) restarts the overdue once · cancel |

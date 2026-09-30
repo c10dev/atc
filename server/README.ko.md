@@ -136,7 +136,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `POST /api/airports` | AIRPORT 개설 `{path, code?, name?}` |
 | `PATCH /api/airports/:id` | 이름·코드 변경, 폐쇄·재개 `{code?, name?, closed?}` |
 | `DELETE /api/airports/:id` | 수동 개설한 AIRPORT 삭제 |
-| `GET /api/controller/brief?consumer=controller` | 지난 ack 이후 이벤트 + 현재 상태(`landingQueue` 항목에 `landBy`(`mcc`·`supervisor`·`holder`, ATC-151), CLEARED 항목에 `repoSeq`와 `landBy`가 `holder`일 때만 `landText`. FUEL 경고 `open.fuelLeaks`·`open.coldCache`·`open.fuelError`, ATC-56) |
+| `GET /api/controller/brief?consumer=controller` | 지난 ack 이후 이벤트 + 현재 상태(`landingQueue` 항목에 `landBy`(`mcc`·`supervisor`·`holder`, ATC-151), CLEARED 항목에 `repoSeq`와 `landBy`가 `holder`일 때만 `landText`, APPROACH 항목에 `blocks[].en`(한국어 `text` 옆의 영어)과 `infoText`(`PR #n cannot land yet: …`, ATC-174). FUEL 경고 `open.fuelLeaks`·`open.coldCache`·`open.fuelError`, ATC-56) |
 | `POST /api/controller/ack` | 브리핑 처리 완료 `{cursor}` |
 | `POST /api/clearances` | CLEARANCE 기록 `{to, type, stand?, flight?, text}`, 보낼 문구 반환 |
 | `POST /api/clearances/:id/readback` · `/roger` · `/unable` · `/standby` · `/cancel` | 팀의 답(ATC-122, `response.ts`): READBACK·ROGER(R만)·UNABLE `{reason}`은 닫고, STANDBY(W/U만)는 overdue를 한 번 다시 센다 · 취소 |

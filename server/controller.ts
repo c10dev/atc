@@ -8,6 +8,7 @@ import { config } from "./config.ts";
 import type { EventLog } from "./events.ts";
 import { type AtfmConfig, DEFAULT_ATFM, enforcedStops, landOf, loadAtfm, slotHoldOf, slotLimitOf, slotsOf } from "./atfm.ts";
 import { healthLabel } from "./health.ts";
+import { infoTextOf } from "./landing-en.ts";
 import { fuelInfos } from "./fuel-remaining.ts";
 import type { FuelWatch } from "./fuel-watch.ts";
 import { goAroundOf } from "./go-around.ts";
@@ -116,6 +117,8 @@ export function buildBrief(
       stand: stand?.name ?? null,
       holders: p.standPath ? active.filter((c) => c.workspacePath === p.standPath).map((c) => label(c.sessionId)) : [],
       blocks: p.blocks,
+      // APPROACH에서 TOWER가 holders에게 INFO 본문으로 그대로 쓴다(영어, ATC-174). blocks[].text는 화면용 한국어라 팀에 보내지 않는다
+      infoText: p.landing === "APPROACH" ? infoTextOf(p.number, p.blocks.map((b) => b.en)) : null,
       readyAt: p.readyAt,
       // CODEX UNAVAILABLE(ATC-7·27): Codex 한도·무응답이면 착륙 리뷰 상태. review는 착륙 리뷰 통과로 CLEARED일 때 리뷰어("SONNET" → "REVIEW: SONNET (Codex 한도)")
       codex: p.codexUnavailable ?? null,

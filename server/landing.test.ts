@@ -165,7 +165,7 @@ test("base: CLEAN·UNSTABLE·HAS_HOOKS 통과, BEHIND·DIRTY·BLOCKED·UNKNOWN�
   assert.deepEqual(codes(mergeBlocks("BEHIND")), ["behind"]);
   assert.deepEqual(codes(mergeBlocks("DIRTY")), ["dirty"]);
   assert.deepEqual(codes(mergeBlocks("BLOCKED")), ["blocked"]);
-  assert.deepEqual(mergeBlocks("UNKNOWN"), [{ code: "merge-unknown", text: "GitHub이 아직 계산 중(머지 가능 여부)" }]);
+  assert.deepEqual(mergeBlocks("UNKNOWN"), [{ code: "merge-unknown", text: "GitHub이 아직 계산 중(머지 가능 여부)", en: "GitHub is still computing whether the PR can merge" }]);
   assert.deepEqual(codes(mergeBlocks("")), ["merge-unknown"]);
 });
 
