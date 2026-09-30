@@ -1,5 +1,6 @@
 import { AlertBell, SoundLockChip } from "./AlertBell.tsx";
-import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { drawerOfHash, type DrawerRef } from "../../server/detail.ts";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showNewVersion } from "../../server/version.ts";
 import { alertCode, alertLabel, alertLevel, alertLevelLabel, alertMessage, callsign, flightNumber, groupAlerts, HANDOFF_LABEL } from "./aviation.ts";
 import { buildIndex, timeAgo } from "./derive.ts";
@@ -28,6 +29,8 @@ const Dispatch = lazyTab<{ refreshKey: string; now: number }>(() => import("./vi
 const Schedule = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Schedule.tsx"), "Schedule");
 const Radio = lazyTab<Record<string, never>>(() => import("./views/Radio.tsx"), "Radio");
 const Docs = lazyTab<Record<string, never>>(() => import("./views/Docs.tsx"), "Docs");
+// 서랍은 처음 열 때 불러온다(Markdown 렌더러까지 그 청크에)
+const Drawer = lazy(() => import("./Drawer.tsx"));
 
 const TABS = [
   { id: "radar", code: "RADAR" },
@@ -67,8 +70,17 @@ export function App({ build }: { build: string }) {
   const settings = useSettings();
   const idx = useMemo(() => (snapshot ? buildIndex(snapshot) : null), [snapshot]);
 
+  // FLIGHT·PR 서랍(#flight/<KEY>, #pr/<AIRPORT>/<번호>): 탭 위에 열리고, 탭은 그대로다
+  const [drawer, setDrawer] = useState<DrawerRef | null>(() => drawerOfHash(location.hash));
+  const closeDrawer = useCallback(() => {
+    setDrawer(null);
+    history.replaceState(null, "", `#${tabRef.current}`);
+  }, []);
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
   useEffect(() => {
-    // 같은 탭의 하위 경로(#docs/requesting)는 그대로 둔다
+    // 같은 탭의 하위 경로(#docs/requesting)는 그대로 둔다. 서랍이 열려 있으면 주소를 건드리지 않는다
+    if (drawerOfHash(location.hash)) return;
     if (location.hash.slice(1).split("/")[0] !== tab) history.replaceState(null, "", `#${tab}`);
   }, [tab]);
   // 탭 줄이 가로로 넘칠 때 선택한 탭이 보이게(글꼴·수치가 늦게 들어와 폭이 바뀌어도)
@@ -82,7 +94,11 @@ export function App({ build }: { build: string }) {
     return () => ro.disconnect();
   }, [tab]);
   useEffect(() => {
-    const onHash = () => setTab(initialTab());
+    const onHash = () => {
+      const d = drawerOfHash(location.hash);
+      setDrawer(d);
+      if (!d) setTab(initialTab());
+    };
     addEventListener("hashchange", onHash);
     return () => removeEventListener("hashchange", onHash);
   }, []);
@@ -223,6 +239,13 @@ export function App({ build }: { build: string }) {
           </TabBoundary>
         )}
       </main>
+      {drawer && (
+        <TabBoundary key={JSON.stringify(drawer)} stale={false}>
+          <Suspense fallback={null}>
+            <Drawer target={drawer} onClose={closeDrawer} now={now} />
+          </Suspense>
+        </TabBoundary>
+      )}
     </div>
   );
 }

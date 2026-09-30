@@ -10,6 +10,7 @@ import { conflictHintOf, IDEA_SUPERSEDED, renameHintOf } from "../../../../serve
 import type { RulesView } from "../../../../server/rules-state.ts";
 import { isBackground, manualStepsOf, originBadgeOf } from "../../../../server/session-origin.ts";
 import { flightNumber } from "../../aviation.ts";
+import { OpenFlight } from "../../FlightLink.tsx";
 import { timeAgo } from "../../derive.ts";
 import { ActivityLine, JobDetail, NeedsYou, SuggestedReply } from "../../ui.tsx";
 import { formatClock, useSettings } from "../../settings.ts";
@@ -235,7 +236,7 @@ export function Card({
               const d = f.detail ? flightDetailText(f.detail, Date.now()) : null;
               return (
                 <li key={f.key} title="STAND 점유(claimTtl)는 지났지만 이 AIRCRAFT가 멈춘 채 쥔 FLIGHT">
-                  HOLDING <b className="mono">{flightNumber(f.key)}</b>
+                  HOLDING <b className="mono"><OpenFlight k={f.key} /></b>
                   {d && <span className={`fl-r-detail mono${d.unpushed ? " is-unpushed" : ""}`}>{d.text}</span>}
                 </li>
               );

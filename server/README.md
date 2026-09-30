@@ -167,6 +167,8 @@ Every `*.test.ts` next to a module is its unit test.
 | `GET /api/dispatch/proposals/:id` | One proposal and the current mode (for send-guard) |
 | `POST /api/dispatch/mode` | Switch `{mode: "shadow" \| "approval"}` (saved in `dispatch.json`) |
 | `GET /api/dispatch/flight/:key` | Ticket body and comments from Linear (read-only) |
+| `GET /api/flight/:key/detail` | FLIGHT drawer (DUTY G1): Linear issue body, state, labels, blockers, parent/children, attached PRs, 20 comments. Read-only, 60 s cache |
+| `GET /api/pr/:airport/:number/detail` | PR drawer (DUTY G1): `gh pr view` body, checks, files, review; plus landing state, tier and MCC INSPECTION for polled open PRs. Read-only, 60 s cache. `503 {off:true}` when `ATC_GITHUB=off` |
 | `GET /api/dispatch/flight/:key/brief?to=TEAM_X` | DIRECT assignment text for that FLIGHT, `{key, brief, text}` (Linear, read-only) |
 | `GET /api/schedule/brief` | SCHEDULE mode (`shadow`), open drafts with what each would change, drafts closed in the last 7 days (`via`), S2 gate (`crosscheck.oneClick`), open-draft limit, candidates, FLIGHT summaries; `waypointGaps` (ATC-8); `waypointEtas` and `slips` with `fresh` (ATC-24); `candidates.waypoint` and `routesWithoutWaypoints` with `fresh` (ATC-77); `judges` (ATC-36: switch, per-family agreement, marks on judged drafts only) |
 | `POST /api/schedule/routes/ack` | Record the ROUTEs without WAYPOINTs OCC reported (ATC-77, `{keys?}` of ROUTE names, all fresh ones without keys) in `routes-without-waypoints.json` |

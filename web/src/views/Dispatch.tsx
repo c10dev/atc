@@ -5,6 +5,7 @@ import type { Proposal } from "../../../server/proposals.ts";
 import type { LaunchCap } from "../../../server/dispatch-launch.ts";
 import type { Delivery } from "../../../server/session-origin.ts";
 import { flightNumber } from "../aviation.ts";
+import { OpenFlight } from "../FlightLink.tsx";
 import { timeAgo } from "../derive.ts";
 import { atfmAlertOf, dispatchLineParts } from "../readiness-line.ts";
 import { PriorityMark } from "../ui.tsx";
@@ -540,19 +541,19 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
           <ul className="dp-list">
             {plan.hold.map((h) => (
               <li key={h.flight}>
-                <b>{flightNumber(h.flight)}</b>
+                <b><OpenFlight k={h.flight} /></b>
                 <span className="dp-list-note">HOLD_DEPARTURE — {h.why ?? `${h.blockedBy.map(flightNumber).join(", ")}에 막힘`}</span>
               </li>
             ))}
             {(plan.overlapHolds ?? []).filter((h) => !h.enforced).map((h) => (
               <li key={`ov-${h.flight}`}>
-                <b>{flightNumber(h.flight)}</b>
+                <b><OpenFlight k={h.flight} /></b>
                 <span className="dp-list-note">shadow — {h.why} (파일 겹침 HOLD 꺼짐, 켜면 대기)</span>
               </li>
             ))}
             {plan.excluded.map((e) => (
               <li key={e.flight}>
-                <b>{flightNumber(e.flight)}</b>
+                <b><OpenFlight k={e.flight} /></b>
                 <span className="dp-list-note">{e.reason}</span>
               </li>
             ))}
@@ -582,7 +583,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
               <tr key={p.id} className={`s-${p.status}`}>
                 <td className="dp-c-id mono">{p.id}</td>
                 <td className="dp-c-kind mono">{p.kind}</td>
-                <td className="dp-c-flight mono">{flightNumber(p.flight)}</td>
+                <td className="dp-c-flight mono"><OpenFlight k={p.flight} /></td>
                 <td className="dp-c-air">{p.aircraftName ?? "—"}</td>
                 <td className="dp-c-result dp-result">
                   <StatusLabel p={p} />
@@ -651,7 +652,7 @@ function InFlightRow({
       <tr className={`s-${p.status}${overdue ? " is-overdue" : ""}`}>
         <td className="dp-c-id mono">{p.id}</td>
         <td className="dp-c-flight mono" title={flight?.title}>
-          {flightNumber(p.flight)}
+          <OpenFlight k={p.flight} />
         </td>
         <td className="dp-c-air">
           {p.aircraftName} <DeliveryWarn aircraft={p.aircraftName} />
@@ -754,7 +755,7 @@ function RecallForm({
     >
       <p id={helpId} className="dp-recall-help">
         {mode === "approval" ? "OCC가 CAPTAIN에게 RECALL 문구를 보내고, " : "지금은 2a라 OCC가 보내지 않는다 — CAPTAIN에게 직접 알린다. "}
-        CAPTAIN은 작업을 멈추고 {p.departedStand === null && p.status === "departed" ? "그때까지의 결과를 남긴다" : "STAND를 그대로 둔다"}. RECALL을 READBACK하면 {flightNumber(p.flight)}는 다시 후보가 된다.
+        CAPTAIN은 작업을 멈추고 {p.departedStand === null && p.status === "departed" ? "그때까지의 결과를 남긴다" : "STAND를 그대로 둔다"}. RECALL을 READBACK하면 <OpenFlight k={p.flight} />는 다시 후보가 된다.
       </p>
       <label className="dp-memo-label" htmlFor={inputId}>
         RECALL 사유 <span className="faint">(필수 · CAPTAIN에게 그대로 전달)</span>
@@ -818,7 +819,7 @@ function DirectCandidates({ candidates, now }: { candidates: ArrivalSuggestion[]
       <ul className="dp-candidates">
         {candidates.map((c) => (
           <li key={`${c.flight}|${c.aircraft}`}>
-            <span className="mono">{flightNumber(c.flight)}</span> <span>{c.aircraft}</span> <span className="faint">{c.type}</span> <CandidateLine c={c} now={now} />
+            <span className="mono"><OpenFlight k={c.flight} /></span> <span>{c.aircraft}</span> <span className="faint">{c.type}</span> <CandidateLine c={c} now={now} />
             <span className="dp-candidate-reason">{c.reason}</span>
           </li>
         ))}
@@ -1333,7 +1334,7 @@ function AgreeLane({
                   {what}
                   {!p.briefing && <span className="faint"> {settleOf(p).settled === false ? `(${waitText(p)})` : "(BRIEFING 대기)"}</span>}
                 </span>
-                <span className="mono dp-agree-fn">{flightNumber(p.flight)}</span>
+                <span className="mono dp-agree-fn"><OpenFlight k={p.flight} /></span>
                 <span className="dp-agree-ac">
                   → <b>{p.aircraftName}</b>
                 </span>

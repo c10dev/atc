@@ -40,6 +40,7 @@ import { refreshOverlap } from "./overlap-run.ts";
 import { allProposals, DISPATCH_MS, mountDispatch, runDispatch } from "./proposals.ts";
 import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
+import { mountDetail } from "./detail-run.ts";
 import { mountSchedule } from "./schedule.ts";
 import { mountSettings } from "./settings.ts";
 import { mountAccounts } from "./accounts-run.ts";
@@ -186,6 +187,7 @@ mountLogbook(app);
 mountNetwork(app, getSnapshot);
 mountRoutes(app, getSnapshot);
 mountSchedule(app, getSnapshot, allProposals);
+mountDetail(app, getSnapshot); // FLIGHT·PR drawer(DUTY G1): 읽기 전용, 60초 캐시
 mountFollowing(app, getSnapshot);
 mountRadio(app); // RADIO R1(ATC-170): 기록된 교신을 합친 목록(읽기만)
 mountReadability(app); // READABILITY R0(ATC-176): 교신 질의 하루 기록(readability.jsonl)과 오늘의 부분 지표

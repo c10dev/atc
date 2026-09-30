@@ -221,3 +221,28 @@ export async function fetchIssueDetail(key: string) {
   if (!data.issue) throw new Error(`${key}를 찾을 수 없음`);
   return { ...data.issue, comments: data.issue.comments.nodes };
 }
+
+// FLIGHT drawer(DUTY G1): 본문·댓글·관계·붙은 PR까지 읽는다(읽기 전용, 호출은 detail-run.ts가 60초 캐시)
+const DRAWER_QUERY = `query Drawer($id: String!) {
+  issue(id: $id) {
+    identifier title url description priority
+    state { name type }
+    assignee { displayName }
+    project { name }
+    labels(first: 20) { nodes { name parent { name } } }
+    parent { identifier title state { name type } }
+    children(first: 50) { nodes { identifier title state { name type } } }
+    relations(first: 20) { nodes { type relatedIssue { identifier title state { name type } } } }
+    inverseRelations(first: 20) { nodes { type issue { identifier title state { name type } } } }
+    attachments(first: 20) { nodes { url title } }
+    comments(first: 20) { nodes { body createdAt user { displayName } } }
+  }
+}`;
+
+export async function fetchIssueDrawer(key: string): Promise<unknown> {
+  if (!config.linearApiKey) throw new Error("Linear 미연결");
+  if (!/^[A-Z][A-Z0-9]*-\d+$/.test(key)) throw new Error(`FLIGHT key 형식이 아님: ${key}`);
+  const data = await gql<{ issue: unknown }>(DRAWER_QUERY, { id: key });
+  if (!data.issue) throw new Error(`${key}를 찾을 수 없음`);
+  return data.issue;
+}

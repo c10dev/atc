@@ -10,6 +10,7 @@ import {
   flightNumber,
   flightPhase,
 } from "../aviation.ts";
+import { OpenFlight } from "../FlightLink.tsx";
 import { activeFirst, hasActiveClaim, type Index, isGateCleanup, sortSessions, timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { ActivityLine, AirportCode, AwayTag, NeedsYou, SessionPlace } from "../ui.tsx";
@@ -425,8 +426,9 @@ function AutolandStatus({ autoland, idx }: { autoland: AutolandView | null; idx:
   );
 }
 
-function PrLink({ pr }: { pr: PullRequest }) {
-  return (
+// airport가 있으면 번호는 PR 서랍(#pr/…)을 열고, GitHub는 옆의 ↗로 연다
+function PrLink({ pr, airport }: { pr: PullRequest; airport?: string }) {
+  const ext = (
     <a
       className="pr-num"
       href={pr.url}
@@ -435,8 +437,18 @@ function PrLink({ pr }: { pr: PullRequest }) {
       aria-label={`PR #${pr.number}: ${pr.title}`}
       title={`${pr.title}\n${pr.base} ← ${pr.branch}`}
     >
-      #{pr.number}
+      {airport ? "↗" : `#${pr.number}`}
     </a>
+  );
+  return airport ? (
+    <>
+      <a className="pr-num" href={`#pr/${airport}/${pr.number}`} title={`PR #${pr.number} 서랍 열기`}>
+        #{pr.number}
+      </a>{" "}
+      {ext}
+    </>
+  ) : (
+    ext
   );
 }
 
@@ -536,11 +548,11 @@ function LandingSequence({
         </div>
         <div className="ls-flight" title={ticket?.title}>
           <AirportCode airport={idx.airportByRepo.get(pr.repo)} />{" "}
-          {pr.ticketKey ? flightNumber(pr.ticketKey) : <span className="faint">AD HOC</span>}
+          {pr.ticketKey ? <OpenFlight k={pr.ticketKey} /> : <span className="faint">AD HOC</span>}
         </div>
         <div className="ls-pr">
           <div className="ls-title">
-            <PrLink pr={pr} /> <ExtReviewTag pr={pr} /> <CarriedTag pr={pr} /> <CodexP3Tag pr={pr} /> <HumanCheckTag pr={pr} /> <AutolandTag pr={pr} landing={landing} />{" "}
+            <PrLink pr={pr} airport={idx.airportByRepo.get(pr.repo)?.code} /> <ExtReviewTag pr={pr} /> <CarriedTag pr={pr} /> <CodexP3Tag pr={pr} /> <HumanCheckTag pr={pr} /> <AutolandTag pr={pr} landing={landing} />{" "}
             <HoldButton pr={pr} landing={landing} /> <span title={pr.title}>{pr.title}</span>
           </div>
           {pr.landing !== "CLEARED" && pr.blocks.length > 0 && (

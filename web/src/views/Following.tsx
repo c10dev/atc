@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Milestones } from "../../../server/milestones.ts";
 import { milestoneLine, milestoneTitle } from "../../../server/milestones.ts";
 import { flightNumber } from "../aviation.ts";
+import { OpenFlight } from "../FlightLink.tsx";
 import { timeAgo } from "../derive.ts";
 import { followingExceptions } from "../readiness-line.ts";
 import { formatClock, useSettings } from "../settings.ts";
@@ -112,7 +113,7 @@ export function FollowingAlert({ brief, now, onOpenFull }: { brief: FollowBrief 
                   {flightNumber(f.flight)}
                 </a>
               ) : (
-                <span className="mono ff-flight">{flightNumber(f.flight)}</span>
+                <span className="mono ff-flight"><OpenFlight k={f.flight} /></span>
               )}
               <span className="ff-title" title={f.title ?? undefined}>
                 {f.title ?? "—"}

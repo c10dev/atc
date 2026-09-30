@@ -2,6 +2,7 @@ import { ReportChip } from "./ReportMark.tsx";
 import type { ReactNode } from "react";
 import { elapsedText, type FleetRow, flightDetailText } from "../../../../server/fleet-status.ts";
 import { flightNumber } from "../../aviation.ts";
+import { OpenFlight } from "../../FlightLink.tsx";
 import { timeAgo } from "../../derive.ts";
 import { ActivityLine, JobDetail, NeedsYou } from "../../ui.tsx";
 import { type AbsentMark, AbsentChip } from "./Absent.tsx";
@@ -150,7 +151,7 @@ export function StatusList({
                   )}
                   {r.flight ? (
                     <>
-                      <b className="mono">{flightNumber(r.flight.key)}</b>
+                      <b className="mono"><OpenFlight k={r.flight.key} /></b>
                       {r.flight.detail && (r.flight.kept || r.health) && (
                         <span className={`fl-r-detail mono${flightDetailText(r.flight.detail, now).unpushed ? " is-unpushed" : ""}`}>{flightDetailText(r.flight.detail, now).text}</span>
                       )}{" "}
