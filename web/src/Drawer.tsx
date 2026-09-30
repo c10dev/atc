@@ -7,9 +7,9 @@ import { timeAgo } from "./derive.ts";
 import "./Drawer.css";
 
 // FLIGHT drawer(#flight/<KEY>)와 PR drawer(#pr/<AIRPORT>/<번호>): Linear 이슈와 GitHub PR을 읽기만 한다(DUTY G1).
-type Load<T> = { state: "loading" } | { state: "ok"; data: T } | { state: "error"; message: string; off?: boolean };
+export type Load<T> = { state: "loading" } | { state: "ok"; data: T } | { state: "error"; message: string; off?: boolean };
 
-function useDetail<T>(url: string): Load<T> {
+export function useDetail<T>(url: string): Load<T> {
   const [r, setR] = useState<{ url: string; v: Load<T> } | null>(null);
   useEffect(() => {
     const ctl = new AbortController();
@@ -24,7 +24,7 @@ function useDetail<T>(url: string): Load<T> {
   return r?.url === url ? r.v : { state: "loading" };
 }
 
-function Md({ src }: { src: string }) {
+export function Md({ src }: { src: string }) {
   const html = useMemo(() => renderSafeMarkdown(src), [src]);
   return <div className="dr-md" dangerouslySetInnerHTML={{ __html: html }} />;
 }
@@ -387,7 +387,7 @@ function Pr({ airport, number, now }: { airport: string; number: number; now: nu
   );
 }
 
-export default function Drawer({ target, onClose, now }: { target: DrawerRef; onClose: () => void; now: number }) {
+export default function Drawer({ target, onClose, now }: { target: Extract<DrawerRef, { kind: "flight" | "pr" }>; onClose: () => void; now: number }) {
   const ref = useRef<HTMLElement>(null);
   const id = target.kind === "flight" ? target.key : `${target.airport}/${target.number}`;
   useEffect(() => {

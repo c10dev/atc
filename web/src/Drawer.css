@@ -245,3 +245,44 @@ a.fl-link:hover {
   opacity: 0.5;
   cursor: default;
 }
+
+/* IDEAS 서랍(DUTY G4) */
+.id-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+}
+.dr a.id-item {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text);
+  text-decoration: none;
+}
+.dr a.id-item:hover,
+.dr a.id-item:focus-visible {
+  border-color: var(--line-strong);
+}
+.id-title {
+  font-weight: 600;
+}
+.id-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+.id-preview {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
