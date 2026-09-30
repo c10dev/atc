@@ -375,11 +375,11 @@ export interface GhMerged {
   createdAt: string;
   mergedAt: string;
   body: string;
-  reviews: GhPull["reviews"];
-  commits?: GhCommit[]; // PR 뒤 수정 커밋을 셀 때(ATC-32)
+  reviews?: GhPull["reviews"]; // 목록에는 없다. mergedDetails로 필요한 PR만 채운다(ATC-160)
+  commits?: GhCommit[]; // PR 뒤 수정 커밋을 셀 때(ATC-32). 위와 같다
 }
 
-const MERGED_FIELDS = "number,title,url,headRefName,baseRefName,createdAt,mergedAt,body,reviews,commits";
+const MERGED_FIELDS = "number,title,url,headRefName,baseRefName,createdAt,mergedAt,body" // reviews·commits는 GraphQL 점수를 많이 써서 목록에서 뺀다(ATC-160);
 const defaultBranches = new Map<string, string>();
 
 async function defaultBranchOf(slug: string): Promise<string> {
@@ -409,6 +409,23 @@ export async function listMerged(repo: string, limit = 30): Promise<{ slug: stri
   const base = await defaultBranchOf(slug);
   const out = await gh(["pr", "list", "--repo", slug, "--state", "merged", "--base", base, "--limit", String(limit), "--json", MERGED_FIELDS]);
   return { slug, pulls: (JSON.parse(out) as GhMerged[]).filter((p) => p.mergedAt) };
+}
+
+// LOGBOOK용: 머지된 PR의 리뷰와 커밋(REST, 별도 한도). 머지된 PR은 바뀌지 않아 "owner/repo#N"별로 계속 둔다(ATC-160)
+const mergedDetails = new Map<string, { reviews: NonNullable<GhMerged["reviews"]>; commits: GhCommit[] }>();
+export async function fetchMergedDetails(slug: string, number: number) {
+  const key = `${slug}#${number}`;
+  let d = mergedDetails.get(key);
+  if (!d) {
+    const reviews = tsv(await gh(["api", "--paginate", `repos/${slug}/pulls/${number}/reviews?per_page=100`, "--jq", '.[] | [(.user.login // ""), .state, (.submitted_at // ""), (.commit_id // "")] | @tsv']))
+      .map(([login, state, submittedAt, oid]) => ({ author: login ? { login } : null, state, submittedAt: submittedAt || null, commit: oid ? { oid } : null }));
+    const commits = tsv(await gh(["api", "--paginate", `repos/${slug}/pulls/${number}/commits?per_page=100`, "--jq", '.[] | [(.commit.author.date // ""), (.commit.message | split("\n")[0])] | @tsv']))
+      .map(([authoredDate, messageHeadline]) => ({ authoredDate, messageHeadline: messageHeadline ?? "" }));
+    d = { reviews, commits };
+    if (mergedDetails.size > 2000) mergedDetails.clear();
+    mergedDetails.set(key, d);
+  }
+  return d;
 }
 
 // SCHEDULE CLOSE용: 머지된 PR 본문(읽기 전용). 머지 뒤 본문은 거의 바뀌지 않아 "owner/repo#N"별로 계속 둔다.
