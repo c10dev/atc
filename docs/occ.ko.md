@@ -390,6 +390,14 @@ vocado VOC-189/190 스택(#395 → main ← #396 ← #397 ← #398, 각자 바�
 - **STACKED**(`stackOf`, `stackedText`, `server/landing.ts`): base가 저장소의 기본 브랜치(저장소마다 한 번 읽는다, `defaultByRepo`)가 아닌 PR에는 `stacked` 막힘이 붙고 CLEARED가 되지 않는다. 글에는 먼저 들어가야 할 것과 사슬이 있다: "쌓인 PR — #395가 먼저 main에 들어간 뒤 base를 main으로 바꿈 (#395 → #396 → #397 → #398)". 사슬은 base 브랜치를 따라 열린 PR을 내려가고, 그 head를 base로 가진 PR을 따라 올라간다(갈래가 있으면 번호가 작은 쪽). `PullRequest.stack`과 `landingQueue[].stack`(`stacked: true`)에 있다. base 브랜치에 열린 PR이 없으면 base를 바꾸라고만 한다. 기본 브랜치를 모르면 쌓인 PR로 가리지 않는다. 스트립에는 `STACKED #395 → #396 → …`가 뜬다. 나머지에게는 APPROACH 그대로라 TOWER는 LAND를 내지 않는다.
 - **STRANDED**(`strandedOf`, `firstReach`, `strandedMessage`, `server/sources/github.ts`): 매 바퀴 atc는 최근 14일 안에 기본 브랜치가 아닌 곳으로 머지된 PR을 읽는다(`gh pr list --state merged`, 모든 base). 그중 FLIGHT key(브랜치, 제목, 본문의 `Fixes`·`Closes`·`Resolves`)가 있는 것마다, 머지 커밋이나 head가 기본 브랜치나 그리로 가는 열린 PR의 head의 조상인지 읽기 전용 `gh api …/compare/<대상>...<커밋>`으로 본다(머지된 PR의 base를 head로 가진 PR을 먼저 본다). 고정된 SHA끼리의 결과는 캐시한다. 어디에도 닿지 않으면 `stranded` 경보가 선다: "STRANDED — #398(VOC-190)이 main에 닿지 않음 — … (Linear는 Done)". Linear가 Done이어도 남고, 커밋이 main이나 그리로 가는 열린 PR에 닿아야 풀린다. 확인이 실패하면 경보를 내지 않는다. TOWER 브리핑의 `open.stranded`에 있고, FLIGHT FOLLOWING은 그 FLIGHT에 `stranded` 문제(warn)를 붙인다(이미 Done이어도).
 
+### STRANDED: squash 머지된 PR이 main으로 실어 간 머지 (ATC-216)
+
+P1(base `main`) ← P2 ← P3 ← P4 스택을 아래부터 각자 바로 아래 브랜치로 squash 머지하면 P3·P4는 잠시 정말로 STRANDED다. 작업 세션이 그 커밋을 P1의 브랜치에 머지해 실으면, P1이 열려 있는 동안은 atc가 알리지 않았다(P1의 head가 대상이다). P1이 `main`으로 **squash 머지된** 뒤에는 어느 대상도 그 커밋을 조상으로 갖지 않아(`main`에는 squash 커밋뿐이고 P1은 더 열려 있지 않다) STRANDED가 다시 떠서 14일 창이 끝날 때까지 남았다.
+
+- **셋째 대상**(`reachTargetsOf`, `server/landing.ts`): 기본 브랜치와 그리로 가는 열린 PR 다음에, **이 PR의 `mergedAt` 이후 기본 브랜치로 머지된 PR**의 head(`headRefOid`)를 본다. 그 커밋을 품은 head의 squash 머지는 변경을 실어 간 것이다. 이 행들은 이미 같은 `gh pr list --state merged --limit 60` 호출에 들어 있어 목록을 더 읽지 않는다. 순서: 이 PR의 base 브랜치를 `headRefName`으로 가진 PR을 먼저(열린 PR과 같다), 그다음 가장 가까운 머지부터, `compare` 호출을 줄이려고 대상은 `MERGED_TARGET_MAX`(20)개까지다. 이름표는 `#N (merged)`다.
+- 이 PR **보다 앞서** 머지된 PR은 대상이 아니다(그 head는 나중 커밋을 품을 수 없다). 대상은 SHA라 기존 `containsCache`가 그대로 쓰인다. `compare`가 실패하면 예전처럼 STRANDED를 내지 않는다. 어느 것도 실어 가지 않은 머지는 그대로 STRANDED이고, 경보 문구와 등급은 그대로다. 읽기 전용 GitHub API(`gh pr list`, `compare`)만 쓴다.
+- `compare/<main>...<머지된 head SHA>`는 SHA로 답한다(머지된 PR의 head에서 읽기 전용으로 확인: main이 품으면 `behind`). 브랜치를 지운 뒤에도 SHA는 `refs/pull/N/head`로 닿지만, 지운 브랜치에서는 확인하지 못했다.
+
 ### 9.5 스위치로 보안 PR도 DeepSeek 리뷰어에게 (2026-09-27, ATC-30)
 
 Codex가 5시간 한도에 걸려 vocado #392(admission 키워드)와 #395(SQL 경로)가 리뷰어 없이 멈췄다. ATC-27이 보안 PR을 모든 외부 리뷰어에서 빼기 때문이다. SUPERVISOR는 비공개 저장소의 vocado 보안 diff가 DeepSeek로 나가는 것을 받아들이고, DeepSeek V4.1 Flash 리뷰어가 이것도 맡게 했다.

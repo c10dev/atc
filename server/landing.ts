@@ -736,7 +736,39 @@ export const strandedOf = (merged: readonly MergedElsewhere[]): Stranded[] =>
   merged
     .filter((m) => m.flight && m.reached === null)
     .map((m) => ({ repo: m.repo, number: m.number, url: m.url, title: m.title, flight: m.flight!, base: m.base, mergedAt: m.mergedAt, mergeCommit: m.mergeCommit }));
-// 커밋 중 하나가 닿은 첫 대상(기본 브랜치, 그다음 기본 브랜치로 가는 열린 PR). contains(target, commit): commit이 target의 조상인가
+// STRANDED가 "닿았다"고 볼 곳을 차례로(ATC-216, docs/occ.md 9.4): 기본 브랜치, 기본 브랜치로 가는 열린 PR의 head,
+// 그리고 이 PR보다 늦지 않게 기본 브랜치로 머지된 PR의 head. 머지된 PR의 head를 품은 squash 머지는 그 변경을 main에 실었다.
+// 열린 PR과 머지된 PR 모두 이 PR의 base 브랜치를 head로 가진 것을 먼저 본다(쌓인 PR의 바로 아래). 대상은 SHA라 compare 결과를 캐시할 수 있다.
+// compare 호출 수를 줄이려고 머지된 것은 이 PR의 mergedAt 이후로 MERGED_TARGET_MAX개까지만 본다(이르게 머지된 PR은 이 PR의 커밋을 품을 수 없다)
+export const MERGED_TARGET_MAX = 20;
+export interface ReachPull {
+  number: number;
+  headRefName: string;
+  headRefOid: string;
+}
+export function reachTargetsOf(i: {
+  base: string; // 기본 브랜치 이름
+  mainSha: string | null;
+  open: readonly ReachPull[]; // 기본 브랜치로 가는 열린 PR
+  merged: readonly (ReachPull & { mergedAt: string | null })[]; // 기본 브랜치로 머지된 PR(최근 목록)
+  prBaseRef: string; // 이 PR의 base 브랜치
+  prMergedAt: string; // 이 PR이 머지된 시각
+  selfNumber?: number;
+}): { label: string; ref: string }[] {
+  const carrierFirst = <T extends ReachPull>(list: readonly T[]) => [...list].sort((a, b) => Number(b.headRefName === i.prBaseRef) - Number(a.headRefName === i.prBaseRef));
+  const since = Date.parse(i.prMergedAt);
+  const mergedAfter = i.merged
+    .filter((m) => m.number !== i.selfNumber && m.mergedAt && Date.parse(m.mergedAt) >= since)
+    .sort((a, b) => Date.parse(a.mergedAt!) - Date.parse(b.mergedAt!)); // 이 PR에 가까운 것부터
+  return [
+    { label: i.base, ref: i.mainSha ?? i.base },
+    ...carrierFirst(i.open).map((p) => ({ label: `#${p.number}`, ref: p.headRefOid })),
+    ...carrierFirst(mergedAfter)
+      .slice(0, MERGED_TARGET_MAX)
+      .map((p) => ({ label: `#${p.number} (merged)`, ref: p.headRefOid })),
+  ];
+}
+// 커밋 중 하나가 닿은 첫 대상(기본 브랜치, 그다음 기본 브랜치로 가는 열린 PR, 그다음 머지된 PR). contains(target, commit): commit이 target의 조상인가
 export async function firstReach(commits: readonly string[], targets: readonly { label: string; ref: string }[], contains: (target: string, commit: string) => Promise<boolean>): Promise<string | null> {
   for (const t of targets) for (const c of commits) if (await contains(t.ref, c)) return t.label;
   return null;
