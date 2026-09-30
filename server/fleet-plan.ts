@@ -7,6 +7,7 @@ import { type FuelRemaining, fuelUsedText, membersText } from "./fuel-remaining.
 import { hhmm } from "./health.ts";
 import type { LogEntry } from "./logbook.ts";
 import { GATE } from "./proposals.ts";
+import { isFlap, type RepositionEvent } from "./reposition.ts";
 import { compareRegistration, regKey } from "./registration.ts";
 import { MAX_LAUNCHED, PERMISSION_MODES, type PermissionMode } from "./session-control.ts";
 import { isBackground, manualStepsOf, type SessionOrigin } from "./session-origin.ts";
@@ -29,7 +30,7 @@ export interface FleetPlanConfig {
 // SUPERVISOR 결정(2026-09-28): 제안한 기본값 그대로. REFRESH는 ATC-69 명세의 기본값(300k 또는 창의 40%)
 export const FLEET_PLAN_DEFAULTS: FleetPlanConfig = { reserve: 1, waitMin: 120, idleHours: 12, restartDays: 3, retireDays: 30, minDwellMin: 120, refreshTokens: 300_000, refreshPct: 0.4, accountChangeLimitMin: 60 };
 
-export const FLEET_PLAN_KINDS = ["LAUNCH", "ENTRY", "STOP", "RESTART", "REFRESH", "ACCOUNT CHANGE", "AOG", "RETIRE", "RETURN"] as const;
+export const FLEET_PLAN_KINDS = ["LAUNCH", "ENTRY", "STOP", "RESTART", "REFRESH", "ACCOUNT CHANGE", "REPOSITION", "AOG", "RETIRE", "RETURN"] as const;
 export type FleetPlanKind = (typeof FLEET_PLAN_KINDS)[number];
 
 export interface PlanReason {
@@ -42,7 +43,8 @@ export interface FleetCandidate {
   key: string; // 지속 조건을 세는 열쇠. LAUNCH·ENTRY는 AIRPORT마다 하나(DEMAND|VCDO), 나머지는 종류|REGISTRATION
   kind: FleetPlanKind;
   aircraft: string | null; // REGISTRATION. ENTRY는 새로 들일 등록번호
-  airport: string | null;
+  airport: string | null; // REPOSITION은 옮길 AIRPORT(to)
+  from?: string; // REPOSITION(ATC-179): 옛 base AIRPORT
   configuration?: ConfigurationId; // ENTRY
   account?: string; // ENTRY(ATC-147): 새 AIRCRAFT가 날 ACCOUNT. 등록부가 없으면 없다
   reasons: PlanReason[];
@@ -92,6 +94,8 @@ export interface FleetInputs {
   // CONTEXT SIZE(ATC-69): REGISTRATION → 살아 있는 세션의 대화 크기와 F5 가격표. 없으면 REFRESH를 내지 않는다
   context?: Map<string, ContextSize>;
   prices?: PriceTable | null;
+  // REPOSITION(ATC-179): 최근 24시간의 옮김(FLIGHT RECORDER `fleet` `reposition`). 없으면 옮긴 적 없음
+  repositions?: (RepositionEvent & { baseChanged?: boolean })[];
 }
 
 const MIN = 60_000;
@@ -216,6 +220,84 @@ export function accountChangeOf(
   return { key: `ACCOUNT CHANGE|${a.registration}`, kind: "ACCOUNT CHANGE", aircraft: a.registration, airport: a.base, account: to, reasons };
 }
 
+// ── REPOSITION(ATC-179, docs/fleet.md 8.6): 쉬는 AIRCRAFT의 base를 FLIGHT가 기다리는데 AIRCRAFT가 없는 AIRPORT로 옮기자는 제안(순수) ──
+// 세션은 시작한 폴더의 CLAUDE.md를 읽으므로 살아 있는 세션은 저장소를 바꿀 수 없다: 멈추고, base를 바꾸고, 그 AIRPORT 저장소에서 다시 띄운다.
+// 목표: 받을 AIRCRAFT가 없는(no-aircraft, 부모·우선순위·HOLD·슬롯이 아닌) FLIGHT가 기다리고, 그 AIRPORT에 소속 AIRCRAFT가 하나도 없고(ABSENT 포함), GROUND STOP이 아님.
+// 출발: 다른 AIRPORT 소속이고 FLIGHT 사이(ACCOUNT CHANGE와 같은 시험)이고, 떠난 뒤에도 그 AIRPORT가 자기 FLIGHT 수만큼은 AIRCRAFT를 갖고, 기다리는 FLIGHT 하나는 날 수 있음.
+// 고르는 순서: 그 AIRPORT의 ARRIVED 이력(14일), 가장 오래 쉼, REGISTRATION. 목표 AIRPORT마다 하나. flaps: 조건은 다 맞지만 minDwell 안에 직전 base로 되돌아가는 것
+export interface RepositionFlap {
+  aircraft: string;
+  from: string; // 지금 base
+  to: string; // 되돌아갈 AIRPORT(직전 base)
+}
+const HISTORY_DAYS = 14;
+export function repositionOf(
+  i: Pick<FleetInputs, "aircraft" | "plan" | "sessions" | "lastActive" | "nordo" | "logbook" | "openPrs" | "groundStops" | "dwell" | "config" | "now" | "fuelAccounts" | "repositions">,
+  assigned: ReadonlySet<string>,
+  skip: ReadonlySet<string> = new Set(),
+): { candidates: FleetCandidate[]; flaps: RepositionFlap[] } {
+  const unserved = i.plan.unserved ?? [];
+  const cfg = i.config;
+  const out: FleetCandidate[] = [];
+  const flaps: RepositionFlap[] = [];
+  // 배정할 수 있는 AIRCRAFT(퇴역·AOG 아님, 세션 없는 ABSENT도 DISPATCH가 LAUNCH할 수 있으므로 센다)
+  const usable = (a: AircraftView) => !a.retired && !a.aog;
+  const availableAt = (code: string) => i.aircraft.filter((a) => a.base === code && usable(a)).length;
+  const demandAt = (code: string) => i.plan.assign.filter((p) => p.airport === code).length + unserved.filter((u) => u.airport === code).length;
+  const leftAt = new Map<string, number>(); // 이번 계획에서 이미 떠나게 한 수(같은 출발 AIRPORT에서 둘을 빼지 않게)
+  const taken = new Set<string>();
+  const targets = [...new Set(unserved.filter((u) => u.why === "no-aircraft" && !u.tails.length).map((u) => u.airport))].sort();
+  for (const target of targets) {
+    if (i.groundStops.has(target) || availableAt(target) > 0) continue;
+    const waiting = unserved.filter((u) => u.airport === target && u.why === "no-aircraft" && !u.tails.length);
+    const pool = i.aircraft
+      .filter((a) => a.base && a.base !== target && usable(a) && !taken.has(a.registration) && !skip.has(a.registration))
+      .map((a) => ({ a, session: i.sessions.find((x) => regKey(x.registration) === a.registration) ?? null, served: waiting.filter((u) => canServe(a.registration, a.ratings, a.complement, u)) }))
+      .filter(({ a, session, served }) => {
+        if (!isBgFact(session) || a.status !== "idle" || a.restarting || i.nordo.has(a.registration)) return false;
+        if (a.flying.length || a.flights.length || assigned.has(a.registration) || i.openPrs.has(a.registration)) return false;
+        if (a.health?.code === "LIMIT") return false; // 한도로 잘린 턴은 RESUME이다. 한도 근처 세션도 옮기지 않는다
+        const fuel = a.fuel ?? (a.account ? ((i.fuelAccounts ?? []).find((f) => f.account === a.account) ?? null) : null);
+        if (fuel?.level === "hold") return false;
+        if (!served.length) return false;
+        return availableAt(a.base!) - (leftAt.get(a.base!) ?? 0) - 1 >= demandAt(a.base!);
+      });
+    // minDwell 안에 LAUNCH·STOP·옮김이 있으면 옮기지 않는다. 직전 base로 되돌아가는 것이면 flapping으로 센다
+    const dwelling = (reg: string) => {
+      const d = i.dwell.get(reg);
+      return (d ? i.now - Date.parse(d.at) < cfg.minDwellMin * MIN : false) || (i.repositions ?? []).some((e) => e.aircraft === reg && (e.ok || e.baseChanged) && i.now - Date.parse(e.at) < cfg.minDwellMin * MIN);
+    };
+    const fit = pool.filter(({ a }) => {
+      if (!dwelling(a.registration)) return true;
+      if (isFlap(i.repositions ?? [], a.registration, target, i.now, cfg.minDwellMin)) flaps.push({ aircraft: a.registration, from: a.base!, to: target });
+      return false;
+    });
+    if (!fit.length) continue;
+    const history = (reg: string) => i.logbook.filter((e) => e.aircraft === reg && e.airport === target && i.now - Date.parse(e.arrivedAt) < HISTORY_DAYS * DAY).length;
+    const idleFrom = (reg: string) => Date.parse(i.lastActive.get(reg) ?? "") || 0;
+    const [best] = [...fit].sort((x, y) => history(y.a.registration) - history(x.a.registration) || idleFrom(x.a.registration) - idleFrom(y.a.registration) || compareRegistration(x.a.registration, y.a.registration));
+    const { a, session, served } = best;
+    const src = a.base!;
+    taken.add(a.registration);
+    leftAt.set(src, (leftAt.get(src) ?? 0) + 1);
+    const idleMs = i.lastActive.has(a.registration) ? i.now - Date.parse(i.lastActive.get(a.registration)!) : null;
+    const seen = history(a.registration);
+    out.push({
+      key: `REPOSITION|${target}`, kind: "REPOSITION", aircraft: a.registration, airport: target, from: src,
+      reasons: [
+        { code: "waiting", detail: `${target}: ${waiting.map((u) => u.flight).join(", ")} 대기, 소속 AIRCRAFT 0`, value: waiting.length },
+        { code: "source", detail: `${src}: 쉬는 AIRCRAFT ${availableAt(src)} → ${availableAt(src) - 1}, 대기 FLIGHT ${demandAt(src)}`, value: availableAt(src) },
+        { code: "between", detail: `${a.registration}: ${a.status === "idle" ? "HOLDING·PARKED" : a.status}${idleMs !== null ? ` ${spanText(idleMs / MIN)}` : ""}, FLIGHT·STAND·PR 없음` },
+        { code: "fits", detail: `${a.registration}: TYPE RATING ${a.ratings.join("·") || "없음"}, CREW가 ${served.map((u) => u.flight).join(", ")}를 날 수 있음` },
+        ...(seen ? [{ code: "history", detail: `${a.registration}: 최근 ${HISTORY_DAYS}일 ${target}에서 ARRIVED ${seen}건`, value: seen }] : []),
+        { code: "cold", detail: `새 세션은 ${target} 저장소에서 캐시 없이 시작한다(CLAUDE.md도 그 저장소의 것)` },
+        { code: "session", detail: `BG ${session!.id ?? "?"} — ${src}에서 멈추고 base를 ${target}으로 바꾼 뒤 ${target} 저장소에서 CREW BRIEFING으로 다시 띄움` },
+      ],
+    });
+  }
+  return { candidates: out, flaps };
+}
+
 // 열린 LAUNCH·ENTRY 제안의 ACCOUNT가 hold 수준이 됐으면 그 사유(syncFleetPlan이 expire한다)
 export function fuelExpiryOf(i: Pick<FleetInputs, "aircraft" | "fuelAccounts" | "now">, p: Pick<FleetProposal, "kind" | "aircraft"> & { account?: string }): string | null {
   // ACCOUNT CHANGE(ATC-148)의 옮길 ACCOUNT가 infoPct 이상이 됐으면 여유가 없다
@@ -228,7 +310,7 @@ export function fuelExpiryOf(i: Pick<FleetInputs, "aircraft" | "fuelAccounts" | 
   return f?.level === "hold" ? `${fuelHoldText(f, i.now)} — ACCOUNT가 FUEL hold 수준` : null;
 }
 
-export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; demand: DemandRow[] } {
+export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; demand: DemandRow[]; flaps: RepositionFlap[] } {
   const cfg = i.config;
   const out: FleetCandidate[] = [];
   const byReg = new Map(i.aircraft.map((a) => [a.registration, a]));
@@ -431,6 +513,11 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
     }
   }
 
+  // ── REPOSITION(ATC-179): FLIGHT가 기다리는데 AIRCRAFT가 없는 AIRPORT로 쉬는 AIRCRAFT를 옮긴다. ACCOUNT CHANGE 중인 AIRCRAFT는 뺀다 ──
+  const rep = repositionOf(i, assigned, moving);
+  out.push(...rep.candidates);
+  for (const c of rep.candidates) if (c.aircraft) moving.add(c.aircraft);
+
   // ── AOG: NORDO, 최근 LOS, AIRCRAFT health의 MODEL·주간 LIMIT(ATC-48) ──
   for (const a of i.aircraft) {
     if (a.retired || a.aog) continue;
@@ -486,7 +573,7 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
       ],
     });
   }
-  return { candidates: out, demand };
+  return { candidates: out, demand, flaps: rep.flaps };
 }
 
 // REFRESH를 낼 때의 사유. 조건이 맞지 않으면 null(순수).
@@ -561,7 +648,7 @@ export function persistOf(pending: Record<string, string>, candidates: FleetCand
 // ── 기록(fleet-plan.jsonl, 추가만) ──
 
 export type FleetPlanOp =
-  | { op: "create"; id: string; key: string; kind: FleetPlanKind; aircraft: string | null; airport: string | null; configuration?: ConfigurationId; account?: string; reasons: PlanReason[]; at: string }
+  | { op: "create"; id: string; key: string; kind: FleetPlanKind; aircraft: string | null; airport: string | null; from?: string; configuration?: ConfigurationId; account?: string; reasons: PlanReason[]; at: string }
   | { op: "verdict"; id: string; verdict: "agree" | "disagree"; by: string; reason?: string; at: string }
   | { op: "expire"; id: string; reason?: string; at: string }
   | { op: "supersede"; id: string; by: string; at: string }
@@ -580,6 +667,7 @@ export type ExecStep =
   | { action: "entry"; registration: string; configuration: ConfigurationId; base: string; account?: string }
   | { action: "launch"; registration: string; permissionMode: PermissionMode; model: string | null; account?: string }
   | { action: "stop"; registration: string }
+  | { action: "base"; registration: string; base: string } // REPOSITION(ATC-179): fleet.json의 base를 바꾼다
   | { action: "aog"; registration: string; reason: string; until: string | null }
   | { action: "return"; registration: string }
   | { action: "retire"; registration: string; reason: string };
@@ -596,6 +684,7 @@ export interface FleetProposal {
   kind: FleetPlanKind;
   aircraft: string | null;
   airport: string | null;
+  from?: string; // REPOSITION(ATC-179): 옛 base
   configuration?: ConfigurationId;
   account?: string; // ENTRY(ATC-147)
   reasons: PlanReason[];
@@ -698,7 +787,7 @@ export function syncFleetPlan(
     if (opposite) continue;
     const id = nextFleetPlanId([...all, ...created]);
     if (o) ops.push({ op: "supersede", id: o.id, by: id, at });
-    const line: FleetPlanOp = { op: "create", id, key: c.key, kind: c.kind, aircraft: c.aircraft, airport: c.airport, ...(c.configuration ? { configuration: c.configuration } : {}), ...(c.account ? { account: c.account } : {}), reasons: c.reasons, at };
+    const line: FleetPlanOp = { op: "create", id, key: c.key, kind: c.kind, aircraft: c.aircraft, airport: c.airport, ...(c.from ? { from: c.from } : {}), ...(c.configuration ? { configuration: c.configuration } : {}), ...(c.account ? { account: c.account } : {}), reasons: c.reasons, at };
     ops.push(line);
     created.push({ ...c, id, at, status: "open", closedAt: null, verdict: null, closeReason: null, approval: null, execution: null });
   }
@@ -735,7 +824,7 @@ export class PlanError extends Error {
 export const STALE_MS = 10 * MIN;
 
 export interface ExecContext {
-  mode: "shadow" | "approval";
+  mode: "shadow" | "approval"; // REPOSITION은 자기 스위치(approval·auto면 approval)
   latest: FleetCandidate[]; // 최근 주기의 후보
   ranAt: string | null;
   aircraft: AircraftView[];
@@ -743,6 +832,7 @@ export interface ExecContext {
   taken: string[]; // 등록부와 세션에 이미 있는 이름
   lastLaunch: Map<string, { permissionMode?: string; model?: string }>; // AIRCRAFT의 마지막 LAUNCH(FLIGHT RECORDER)
   maxLaunched?: number;
+  airports?: { code: string; repo: string | null }[]; // REPOSITION: 옮길 AIRPORT의 저장소를 확인한다
   now: number;
 }
 
@@ -834,6 +924,19 @@ export function executionOf(p: FleetProposal, input: Record<string, unknown>, ct
       if (x.status !== "idle" || x.flying.length || x.flights.length) throw new PlanError(`${reg}가 FLIGHT 중(${[...x.flying, ...x.flights.map((f) => f.key)].join(", ") || x.status}) — 살아 있는 FLIGHT는 옮기지 않는다`);
       const o = launchOptions(ctx.lastLaunch.get(reg));
       return { steps: [{ action: "stop", registration: reg }, { action: "launch", registration: reg, ...o, account: p.account }], options: o };
+    }
+    case "REPOSITION": {
+      // 실행할 때 다시 본다(승인까지 시간이 걸렸을 수 있다): 살아 있는 FLIGHT는 옮기지 않는다. 목표 저장소는 STOP 전에 확인한다
+      const x = needAircraft();
+      if (x.retired) throw new PlanError(`${reg}는 RETIRED`);
+      if (x.aog) throw new PlanError(`${reg}는 AOG`);
+      if (!p.airport) throw new PlanError("REPOSITION에 옮길 AIRPORT가 없음");
+      if (x.base === p.airport) throw new PlanError(`${reg}는 이미 ${p.airport} 소속`);
+      needBackground();
+      if (x.status !== "idle" || x.flying.length || x.flights.length) throw new PlanError(`${reg}가 FLIGHT 중(${[...x.flying, ...x.flights.map((f) => f.key)].join(", ") || x.status}) — 살아 있는 FLIGHT는 옮기지 않는다`);
+      if (ctx.airports && !ctx.airports.find((a) => a.code === p.airport)?.repo) throw new PlanError(`${p.airport}의 저장소를 모름 — ${reg}는 멈추지 않았다`);
+      const o = launchOptions(ctx.lastLaunch.get(reg));
+      return { steps: [{ action: "stop", registration: reg }, { action: "base", registration: reg, base: p.airport }, { action: "launch", registration: reg, ...o }], options: o };
     }
     case "AOG": {
       const x = needAircraft();

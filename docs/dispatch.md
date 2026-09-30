@@ -52,7 +52,7 @@ Constraints that follow from these facts:
 | `ASSIGN` | Assign a FLIGHT to an AIRCRAFT | VOC193 → BRAVO (VCDO) |
 | `HOLD_DEPARTURE` | Don't depart it yet | VOC192 waits until VOC191 (blocks) is ARRIVED |
 | `RELEASE` | Clean up an ENROUTE FLIGHT with no STAND and no activity | VOC34: no STAND for 7 days → SUPERVISOR confirms whether to move it back to Todo |
-| `REPOSITION` | Move an AIRCRAFT to another AIRPORT (rare before stage 3) | DSGN FLIGHTs are piling up but no AIRCRAFT is based at DSGN |
+| `REPOSITION` | Move an AIRCRAFT to another AIRPORT. Built as a FLEET PLAN kind (ATC-179, [fleet.md](fleet.md) 8.6): DISPATCH itself does not propose it | DSGN FLIGHTs are piling up but no AIRCRAFT is based at DSGN |
 
 The first implementation covers only `ASSIGN` and `RELEASE`. `RELEASE` does a lot to clean up neglected items among the 17 In Progress, at low risk (Linear changes are made by the SUPERVISOR or CAPTAIN).
 

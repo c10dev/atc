@@ -22,6 +22,7 @@ import {
   type FleetInputs,
   FLEET_PLAN_DEFAULTS,
   type FleetPlanOp,
+  type FleetProposal,
   fleetPlanGateOf,
   fleetPlanOf,
   fuelExpiryOf,
@@ -38,6 +39,7 @@ import type { Snapshot, TrafficEvent } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { allProposals, reservedOf } from "./proposals.ts";
 import { readRecords, record } from "./recorder.ts";
+import { autoRepositionOf, parseReposition, type RepositionConfig, type RepositionEvent, type RepositionMode, REPOSITION_MODES } from "./reposition.ts";
 import { fleetKeyOf, regKey } from "./registration.ts";
 import { activeWaypointsOf } from "./routes.ts";
 import { type AgentRow, agentRows, launchAccountRefusal, launchAircraft, liveRowsOf, MAX_LAUNCHED, PERMISSION_MODES, rowOriginOf, stopAircraft } from "./session-control.ts";
@@ -97,6 +99,35 @@ function saveFleetPlanMode(mode: FleetPlanMode, file = modeFile()) {
   writeFileSync(tmp, JSON.stringify({ ...raw, mode }, null, 2) + "\n");
   renameSync(tmp, file);
 }
+// ── REPOSITION 모드(ATC-179): 같은 파일의 `reposition`(off·shadow·approval·auto, 기본 shadow)과 `repositionDailyMax`(기본 4) ──
+export function loadReposition(file = modeFile()): RepositionConfig {
+  try {
+    return parseReposition(JSON.parse(readFileSync(file, "utf8")));
+  } catch {
+    return parseReposition(null);
+  }
+}
+function saveRepositionRaw(patch: Record<string, unknown>, file = modeFile()) {
+  let raw: Record<string, unknown> = {};
+  try {
+    raw = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...raw, ...patch }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+// 스위치 바꿈은 FLIGHT RECORDER에 남는다(`reposition` `mode`). auto로 올리는 것은 SUPERVISOR만(설정 창), 내리는 것은 flapping 때 atc도 한다
+export function setRepositionMode(mode: RepositionMode, by = "SUPERVISOR", reason?: string) {
+  const cur = loadReposition();
+  if (cur.mode === mode) return;
+  saveRepositionRaw({ reposition: mode });
+  record({ t: new Date().toISOString(), kind: "reposition", op: "mode", by, from: cur.mode, to: mode, ...(reason ? { reason } : {}) });
+}
+// 이 제안을 승인(실행)할 수 있는 모드인가: REPOSITION은 자기 스위치(approval·auto), 나머지는 FLEET PLAN 모드
+export const approvalModeOf = (kind: string): "shadow" | "approval" =>
+  kind === "REPOSITION" ? (["approval", "auto"].includes(loadReposition().mode) ? "approval" : "shadow") : loadFleetPlanMode();
+
 // 지금 승인 운용이면 마지막 mode:approval 줄의 시각(30일 안). 모르면 null
 function approvalSinceOf(now: number): string | null {
   const last = readRecords(now - 30 * DAY)
@@ -132,6 +163,9 @@ export function inputsOf(s: Snapshot, rows: AgentRow[], now: number, accountLogi
   for (const e of conflicts) for (const id of e.sessionIds ?? []) if (nameOf.get(id)) los.set(nameOf.get(id)!, e.at);
   const dwell = new Map<string, { op: "launch" | "stop"; at: string }>();
   for (const r of records) if (r.kind === "fleet" && r.ok && (r.op === "launch" || r.op === "stop")) dwell.set(regOf(r.aircraft), { op: r.op, at: r.t });
+  const repositions: NonNullable<FleetInputs["repositions"]> = records.flatMap((r) =>
+    r.kind === "fleet" && r.op === "reposition" && r.from && r.to ? [{ aircraft: regOf(r.aircraft), from: r.from, to: r.to, at: r.t, ok: r.ok, baseChanged: r.ok || r.stage === "launch" }] : [],
+  );
   const holders = new Map(s.claims.filter((c) => c.state === "active").map((c) => [c.workspacePath, nameOf.get(c.sessionId)]));
   return {
     aircraft,
@@ -146,6 +180,7 @@ export function inputsOf(s: Snapshot, rows: AgentRow[], now: number, accountLogi
     openPrs: new Set(s.pulls.map((p) => (p.standPath ? holders.get(p.standPath) : undefined)).filter(Boolean) as string[]),
     groundStops: new Set(s.atfm.groundStops.filter((g) => g.kind === "stop").map((g) => g.airport)),
     dwell,
+    repositions,
     maxLaunched: MAX_LAUNCHED,
     nextRegistration: nextRegistration([...aircraft.map((a) => a.registration), ...s.sessions.map((x) => x.name)]),
     defaults: fleet.defaults,
@@ -161,6 +196,32 @@ export function inputsOf(s: Snapshot, rows: AgentRow[], now: number, accountLogi
 let pending: Record<string, string> = {};
 let last: { at: string; candidates: FleetCandidate[]; demand: DemandRow[]; background: number; error: string | null } | null = null;
 let inflight = false;
+// 시험용: 최근 주기 결과를 넣고 승인 실행기를 직접 부른다(fleet-plan-run.test.ts). 운영 코드는 쓰지 않는다
+export const testHooks = {
+  setLast: (candidates: FleetCandidate[], at: string) => void (last = { at, candidates, demand: [], background: 0, error: null }),
+  runApproval: (id: string, body: Record<string, unknown>, who: "supervisor" | "auto", getSnapshot: () => Promise<Snapshot>) => runApproval(id, body, who, getSnapshot),
+};
+let autoRun: ((id: string) => Promise<ApprovalResult>) | null = null; // mountFleetPlan이 채운다(getSnapshot을 잡은 실행기)
+const pendingShadow: Record<string, string> = {}; // shadow: 같은 짝의 would를 한 시간에 한 번만
+
+function wouldReposition(seen: Record<string, string>, cands: FleetCandidate[], now: number) {
+  for (const c of cands) {
+    const k = `${c.aircraft}|${c.from}|${c.airport}`;
+    if (seen[k] && now - Date.parse(seen[k]) < 3_600_000) continue;
+    seen[k] = new Date(now).toISOString();
+    record({ t: seen[k], kind: "reposition", op: "would", aircraft: c.aircraft ?? "", from: c.from ?? "", to: c.airport ?? "", reasons: c.reasons.slice(0, 2).map((r) => r.detail) });
+  }
+}
+
+async function autoReposition(fresh: FleetProposal[], flaps: { aircraft: string; from: string; to: string }[], events: RepositionEvent[], rep: RepositionConfig, now: number) {
+  const d = autoRepositionOf({ ready: fresh, flaps, events, now, dailyMax: rep.dailyMax });
+  if (d.toApproval) {
+    setRepositionMode("approval", "auto", d.toApproval); // flapping: auto를 멈춘다. 알림은 이 기록에서
+    console.warn(`[atc] reposition auto → approval: ${d.toApproval}`);
+    return;
+  }
+  for (const p of d.act) await autoRun?.(p.id);
+}
 
 // 등록된 ACCOUNT마다 로그인 여부(ATC-147). 등록부가 없으면 빈 목록. loggedIn만 남기고 60초 캐시(account-health)
 // running·maxLaunched는 ACCOUNT CHANGE의 옮길 ACCOUNT 상한 검사용(ATC-148): 그 폴더에서 읽은 백그라운드 세션 수(STALE 뺌)
@@ -185,11 +246,21 @@ export async function runFleetPlan(s: Snapshot, now = Date.now()) {
     // STALE 줄(ATC-93)은 살아 있는 세션이 아니다: STOP·RESTART를 내지 않고 상한에 세지 않는다
     const rows = liveRowsOf(await agentRows());
     const inputs = inputsOf(s, rows, now, await accountLoginsOf(rows));
-    const { candidates, demand } = fleetPlanOf(inputs);
+    const plan = fleetPlanOf(inputs);
+    const rep = loadReposition();
+    // REPOSITION(ATC-179): off는 아무것도, shadow는 지속 조건을 채운 것을 would로만 남긴다. approval·auto만 카드가 된다
+    const isRep = (c: FleetCandidate) => c.kind === "REPOSITION";
+    const candidates = rep.mode === "approval" || rep.mode === "auto" ? plan.candidates : plan.candidates.filter((c) => !isRep(c));
+    const demand = plan.demand;
     const p = persistOf(pending, candidates, now, FLEET_PLAN_DEFAULTS);
     pending = p.pending;
+    if (rep.mode === "shadow") wouldReposition(pendingShadow, plan.candidates.filter(isRep), now);
+    const before = new Set(allFleetPlan().map((x) => x.id));
     append(syncFleetPlan(allFleetPlan(), candidates, p.ready, now, FLEET_PLAN_DEFAULTS, (x) => fuelExpiryOf(inputs, x)));
+    // 최근 주기 결과를 먼저 둔다: 승인 실행기가 "이 제안을 최근 주기가 여전히 내나"(isStale)를 이것으로 본다
     last = { at: new Date(now).toISOString(), candidates, demand, background: rows.filter((r) => r.kind === "background").length, error: null };
+    // auto: 새로 열린 REPOSITION 카드를 가드(하루 상한·flapping) 아래에서 곧바로 실행한다
+    if (rep.mode === "auto") await autoReposition(allFleetPlan().filter((x) => !before.has(x.id) && x.kind === "REPOSITION" && x.status === "open"), plan.flaps, inputs.repositions ?? [], rep, now);
   } catch (e) {
     last = { at: new Date(now).toISOString(), candidates: last?.candidates ?? [], demand: last?.demand ?? [], background: last?.background ?? 0, error: (e as Error).message };
     console.error("[atc] fleet plan failed:", e);
@@ -232,6 +303,7 @@ export function fleetPlanView(now = Date.now(), fuel: FuelRemaining[] = []) {
     background: { count: last?.background ?? null, max: MAX_LAUNCHED },
     permissionModes: PERMISSION_MODES,
     config: FLEET_PLAN_DEFAULTS,
+    reposition: { ...loadReposition(), modes: REPOSITION_MODES, movedToday: repositionEventsOf(now).filter((e) => e.ok && now - Date.parse(e.at) < DAY).length },
     ranAt: last?.at ?? null,
     error: last?.error ?? null,
     demand: last?.demand ?? [],
@@ -244,6 +316,10 @@ export function fleetPlanView(now = Date.now(), fuel: FuelRemaining[] = []) {
     now: new Date(now).toISOString(),
   };
 }
+
+// 최근 24시간의 옮김(FLIGHT RECORDER)
+const repositionEventsOf = (now: number): RepositionEvent[] =>
+  readRecords(now - DAY).flatMap((r) => (r.kind === "fleet" && r.op === "reposition" && r.from && r.to ? [{ aircraft: r.aircraft, from: r.from, to: r.to, at: r.t, ok: r.ok }] : []));
 
 // ── 승인하면 실행(8.7) ──
 
@@ -291,6 +367,17 @@ async function runStep(step: ExecStep, by: string, getSnapshot: () => Promise<Sn
       const r = await stopAircraft(reg, by);
       if (r.ok) await goneFromAgents(reg);
       return { action: "stop", registration: reg, ok: r.ok, ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.error ? { error: r.error } : {}) };
+    }
+    case "base": {
+      // REPOSITION(ATC-179): 옛 세션은 이미 멈췄다. 새 base를 fleet.json에 쓰고(FLEET 탭과 같은 쓰기), 이어서 그 AIRPORT 저장소에서 LAUNCH한다
+      try {
+        const fleet = loadFleet();
+        const key = fleetKeyOf(Object.keys(fleet.aircraft), reg) ?? reg;
+        saveAircraft(key, applyPatch(fleet.aircraft[key] ?? {}, { base: step.base }, fleet.defaults));
+        return { action: "base", registration: reg, ok: true };
+      } catch (e) {
+        return { action: "base", registration: reg, ok: false, error: (e as Error).message };
+      }
     }
     case "aog":
       return patch("aog", { aog: { reason: step.reason, until: step.until } });
@@ -342,7 +429,7 @@ export function mountFleetPlan(app: Hono, getSnapshot: () => Promise<Snapshot>) 
     const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 500) : "";
     const p = allFleetPlan().find((x) => x.id === id);
     if (!p) return c.json({ error: `FLEET PLAN에 없음: ${id}` }, 404);
-    if (verdict === "agree" && loadFleetPlanMode() === "approval" && !isManual(p)) return c.json({ error: "승인 운용 중 — 승인(실행)을 쓴다" }, 409);
+    if (verdict === "agree" && approvalModeOf(p.kind) === "approval" && !isManual(p)) return c.json({ error: "승인 운용 중 — 승인(실행)을 쓴다" }, 409);
     if (p.status !== "open" || executing.has(id)) return c.json({ error: `${id}는 이미 닫힘(${p.status})` }, 409);
     append([{ op: "verdict", id, verdict, by: "SUPERVISOR", ...(reason ? { reason } : {}), at: new Date().toISOString() }]);
     return c.json({ ok: true, proposal: allFleetPlan().find((x) => x.id === id) });
@@ -351,71 +438,105 @@ export function mountFleetPlan(app: Hono, getSnapshot: () => Promise<Snapshot>) 
   // 승인(실행). 최근 주기와 8.5 거절 조건으로 다시 확인하고, 단계를 차례로 실행해 결과를 적는다
   app.post("/api/fleet/plan/:id/approve", async (c: Context) => {
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
-    const id = c.req.param("id") ?? "";
-    if (executing.has(id)) return c.json({ error: `${id}는 실행 중` }, 409);
-    const body = await c.req.json().catch(() => ({}));
-    const p = allFleetPlan().find((x) => x.id === id);
-    if (!p) return c.json({ error: `FLEET PLAN에 없음: ${id}` }, 404);
-    executing.add(id);
-    try {
-      const now = Date.now();
-      const s = await getSnapshot();
-      const cfg = loadDispatchConfig();
-      const team = new RegExp(cfg.teamPattern, "i");
-      const fleet = loadFleet();
-      const rows = liveRowsOf(await agentRows());
-      const sessions: SessionFact[] = rows
-        .filter((r) => team.test(r.name ?? ""))
-        .map((r) => ({ registration: regKey(r.name, cfg.teamPattern), kind: r.kind, id: r.id, startedAt: typeof r.startedAt === "number" ? r.startedAt : null, origin: rowOriginOf(r) }));
-      const lastLaunch = new Map<string, { permissionMode?: string; model?: string }>();
-      for (const r of readRecords(now - 30 * DAY)) if (r.kind === "fleet" && r.op === "launch" && r.ok) lastLaunch.set(regKey(r.aircraft, cfg.teamPattern), { permissionMode: r.permissionMode, model: r.model });
-      let plan: { steps: ExecStep[]; options: ApproveOptions };
-      try {
-        plan = executionOf(p, body, {
-          mode: loadFleetPlanMode(),
-          latest: last?.candidates ?? [],
-          ranAt: last?.at ?? null,
-          aircraft: fleetView(s, fleet, cfg.teamPattern, loadLogbook(), now),
-          sessions,
-          taken: [...Object.keys(fleet.aircraft), ...s.sessions.map((x) => x.name)],
-          lastLaunch,
-          now,
-        });
-      } catch (e) {
-        if (e instanceof PlanError) return c.json({ error: e.message }, e.status as 409);
-        throw e;
-      }
-      // ACCOUNT CHANGE(ATC-148): 새 ACCOUNT가 거절할 것이면 옛 세션을 멈추기 전에 알린다(STOP만 되고 LAUNCH가 안 되는 일이 없게)
-      const moveTo = p.kind === "ACCOUNT CHANGE" ? p.account : undefined;
-      if (moveTo) {
-        const refusal = await launchAccountRefusal(moveTo, s.fuelAccounts);
-        if (refusal) return c.json({ error: `${refusal} — ${p.aircraft}는 멈추지 않았다` }, 409);
-      }
-      append([{ op: "approve", id, by: "SUPERVISOR", options: plan.options, at: new Date().toISOString() }]);
-      const by = `FLEET PLAN ${id}`;
-      const steps: StepResult[] = [];
-      const fromAccount = moveTo ? rows.find((r) => regKey(r.name, cfg.teamPattern) === regKey(p.aircraft ?? "", cfg.teamPattern))?.account : undefined;
-      for (const step of plan.steps) {
-        const r = await runStep(step, by, getSnapshot);
-        steps.push(r);
-        if (!r.ok) break; // 앞 단계가 실패하면 멈춘다. 된 단계는 그대로 남고 기록에 적힌다
-      }
-      const ok = steps.length === plan.steps.length && steps.every((x) => x.ok);
-      // 옮기기는 STOP과 LAUNCH를 한 사건으로도 남긴다(FUEL LEAK의 ACCOUNT CHANGE가 새 세션을 알아본다)
-      if (moveTo) {
-        const launched = steps.find((x) => x.action === "launch" && x.ok);
-        record({ t: new Date().toISOString(), kind: "fleet", op: "account-change", aircraft: regKey(p.aircraft ?? "", cfg.teamPattern), by, ok, ...(fromAccount ? { from: fromAccount } : {}), to: moveTo, ...(launched?.jobId ? { jobId: launched.jobId } : {}), proposal: id });
-      }
-      append([{ op: "executed", id, ok, steps, at: new Date().toISOString() }]);
-      return c.json({ ok, steps, proposal: allFleetPlan().find((x) => x.id === id) }, ok ? 200 : 502);
-    } catch (e) {
-      // 예상 못 한 오류: 실행 중으로 남지 않게 실패로 닫는다
-      if (allFleetPlan().find((x) => x.id === id)?.status === "executing") {
-        append([{ op: "executed", id, ok: false, steps: [], at: new Date().toISOString() }]);
-      }
-      return c.json({ error: (e as Error).message }, 500);
-    } finally {
-      executing.delete(id);
-    }
+    const r = await runApproval(c.req.param("id") ?? "", await c.req.json().catch(() => ({})), "supervisor", getSnapshot);
+    return c.json(r.body, r.status as 200);
   });
+  // REPOSITION auto(ATC-179): 같은 실행기를 by "auto"로 부른다(새 길이 아니다)
+  autoRun = (id) => runApproval(id, {}, "auto", getSnapshot);
+}
+
+export interface ApprovalResult {
+  status: number;
+  body: Record<string, unknown>;
+}
+
+async function runApproval(id: string, body: Record<string, unknown>, who: "supervisor" | "auto", getSnapshot: () => Promise<Snapshot>): Promise<ApprovalResult> {
+  const fail = (status: number, error: string): ApprovalResult => ({ status, body: { error } });
+  if (executing.has(id)) return fail(409, `${id}는 실행 중`);
+  const p = allFleetPlan().find((x) => x.id === id);
+  if (!p) return fail(404, `FLEET PLAN에 없음: ${id}`);
+  executing.add(id);
+  try {
+    const now = Date.now();
+    const s = await getSnapshot();
+    const cfg = loadDispatchConfig();
+    const team = new RegExp(cfg.teamPattern, "i");
+    const fleet = loadFleet();
+    const rows = liveRowsOf(await agentRows());
+    const sessions: SessionFact[] = rows
+      .filter((r) => team.test(r.name ?? ""))
+      .map((r) => ({ registration: regKey(r.name, cfg.teamPattern), kind: r.kind, id: r.id, startedAt: typeof r.startedAt === "number" ? r.startedAt : null, origin: rowOriginOf(r) }));
+    const lastLaunch = new Map<string, { permissionMode?: string; model?: string }>();
+    for (const r of readRecords(now - 30 * DAY)) if (r.kind === "fleet" && r.op === "launch" && r.ok) lastLaunch.set(regKey(r.aircraft, cfg.teamPattern), { permissionMode: r.permissionMode, model: r.model });
+    let plan: { steps: ExecStep[]; options: ApproveOptions };
+    try {
+      plan = executionOf(p, body, {
+        mode: approvalModeOf(p.kind),
+        latest: last?.candidates ?? [],
+        ranAt: last?.at ?? null,
+        aircraft: fleetView(s, fleet, cfg.teamPattern, loadLogbook(), now),
+        sessions,
+        taken: [...Object.keys(fleet.aircraft), ...s.sessions.map((x) => x.name)],
+        lastLaunch,
+        airports: s.airports.map((a) => ({ code: a.code, repo: a.repo })),
+        now,
+      });
+    } catch (e) {
+      if (e instanceof PlanError) return fail(e.status, e.message);
+      throw e;
+    }
+    const reg = regKey(p.aircraft ?? "", cfg.teamPattern);
+    // ACCOUNT CHANGE(ATC-148)·REPOSITION(ATC-179): 새 ACCOUNT·새 저장소가 거절할 것이면 옛 세션을 멈추기 전에 알린다(STOP만 되고 LAUNCH가 안 되는 일이 없게)
+    const moveTo = p.kind === "ACCOUNT CHANGE" ? p.account : undefined;
+    if (moveTo) {
+      const refusal = await launchAccountRefusal(moveTo, s.fuelAccounts);
+      if (refusal) return fail(409, `${refusal} — ${p.aircraft}는 멈추지 않았다`);
+    }
+    if (p.kind === "REPOSITION") {
+      // 같은 ACCOUNT로 띄우므로 그 ACCOUNT가 로그인·FUEL hold 때문에 거절하면 멈추지 않는다
+      const home = fleetView(s, fleet, cfg.teamPattern, loadLogbook(), now).find((a) => a.registration === reg)?.account;
+      const refusal = home ? await launchAccountRefusal(home, s.fuelAccounts) : null;
+      if (refusal) {
+        refuseReposition(p, reg, who, `${refusal} — ${p.aircraft}는 멈추지 않았다`, now);
+        return fail(409, `${refusal} — ${p.aircraft}는 멈추지 않았다`);
+      }
+    }
+    append([{ op: "approve", id, by: who === "auto" ? "auto" : "SUPERVISOR", options: plan.options, at: new Date().toISOString() }]);
+    const by = `FLEET PLAN ${id}`;
+    const steps: StepResult[] = [];
+    const fromAccount = moveTo ? rows.find((r) => regKey(r.name, cfg.teamPattern) === regKey(p.aircraft ?? "", cfg.teamPattern))?.account : undefined;
+    for (const step of plan.steps) {
+      const r = await runStep(step, by, getSnapshot);
+      steps.push(r);
+      if (!r.ok) break; // 앞 단계가 실패하면 멈춘다. 된 단계는 그대로 남고 기록에 적힌다
+    }
+    const ok = steps.length === plan.steps.length && steps.every((x) => x.ok);
+    // 옮기기는 STOP과 LAUNCH를 한 사건으로도 남긴다(FUEL LEAK의 ACCOUNT CHANGE가 새 세션을 알아본다)
+    if (moveTo) {
+      const launched = steps.find((x) => x.action === "launch" && x.ok);
+      record({ t: new Date().toISOString(), kind: "fleet", op: "account-change", aircraft: regKey(p.aircraft ?? "", cfg.teamPattern), by, ok, ...(fromAccount ? { from: fromAccount } : {}), to: moveTo, ...(launched?.jobId ? { jobId: launched.jobId } : {}), ...(!ok ? { error: steps.find((x) => !x.ok)?.error } : {}) });
+    }
+    // REPOSITION: STOP·base·LAUNCH를 한 사건(`reposition`)으로도 남긴다. by는 supervisor | auto. LAUNCH가 실패해도 base는 바뀐 채다(stage로 말한다)
+    if (p.kind === "REPOSITION") {
+      const launched = steps.find((x) => x.action === "launch" && x.ok);
+      const failed = steps.find((x) => !x.ok);
+      const stage = failed ? (failed.action === "stop" ? "stop" : failed.action === "base" ? "base" : "launch") : undefined;
+      record({ t: new Date().toISOString(), kind: "fleet", op: "reposition", aircraft: reg, by: who, ok, from: p.from, to: p.airport ?? undefined, ...(launched?.jobId ? { jobId: launched.jobId } : {}), proposal: id, ...(stage ? { stage } : {}), ...(failed?.error ? { error: failed.error } : {}) });
+    }
+    append([{ op: "executed", id, ok, steps, at: new Date().toISOString() }]);
+    return { status: ok ? 200 : 502, body: { ok, steps, proposal: allFleetPlan().find((x) => x.id === id) } };
+  } catch (e) {
+    // 예상 못 한 오류: 실행 중으로 남지 않게 실패로 닫는다
+    if (allFleetPlan().find((x) => x.id === id)?.status === "executing") {
+      append([{ op: "executed", id, ok: false, steps: [], at: new Date().toISOString() }]);
+    }
+    return fail(500, (e as Error).message);
+  } finally {
+    executing.delete(id);
+  }
+}
+
+// STOP 전에 거절한 REPOSITION도 한 사건으로 남긴다(옛 세션은 멈추지 않았고 base도 그대로: stage precheck)
+function refuseReposition(p: FleetProposal, reg: string, who: "supervisor" | "auto", error: string, now: number) {
+  record({ t: new Date(now).toISOString(), kind: "fleet", op: "reposition", aircraft: reg, by: who, ok: false, from: p.from, to: p.airport ?? undefined, proposal: p.id, stage: "precheck", error });
 }

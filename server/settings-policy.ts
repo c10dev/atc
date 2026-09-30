@@ -2,7 +2,7 @@ import type { ServerSettings } from "./settings.ts";
 
 // 설정 창 AUTOMATION 탭의 계산(ATC-131). SUPERVISOR 정책 스위치의 "지금 모드 한 줄", ⚠ 모드로 올릴 때 확인이 필요한지, 마지막 탭 기억.
 // 저장 값과 PUT /api/settings는 그대로다. 여기는 화면에 보이는 이름과 판단만 다룬다.
-export type PolicyKey = "autoland" | "mcc" | "jev" | "fuelHold" | "review" | "recycle";
+export type PolicyKey = "autoland" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle";
 
 // ⚠ 모드(올리면 atc가 더 많이 쓰거나 밖으로 내보낸다). 화면의 경고 문구가 ⚠로 시작하는 모드와 같다
 export const RISKY: Record<PolicyKey, readonly string[]> = {
@@ -11,6 +11,7 @@ export const RISKY: Record<PolicyKey, readonly string[]> = {
   jev: ["replay", "shadow"], // 티켓 제목과 허용한 칸이 TypeSafe로 나간다
   fuelHold: ["on"],
   review: ["deepseek"], // 보안 PR도 REVIEW 세션에 보낸다
+  reposition: ["auto"], // atc가 쉬는 AIRCRAFT의 base를 스스로 옮긴다(멈추고 다른 저장소에서 다시 띄움)
   recycle: ["on"], // atc가 관제 세션을 스스로 STOP·LAUNCH한다(shadow는 기록만)
 };
 
@@ -37,7 +38,7 @@ export interface ModeSegment {
   warn: boolean;
 }
 // 탭 맨 위 한 줄: `AUTOLAND off · MCC land · JEV off · FUEL HOLD off · REVIEW exclude`. ⚠ 모드는 warn
-export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "review"> & Partial<Pick<ServerSettings, "judges" | "fuel" | "controlRecycle">>): ModeSegment[] {
+export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "review"> & Partial<Pick<ServerSettings, "judges" | "fuel" | "controlRecycle" | "fleetPlan">>): ModeSegment[] {
   const seg = (key: PolicyKey, label: string, mode: string, value = mode): ModeSegment => ({ key, label, value, warn: isRisky(key, mode) });
   return [
     seg("autoland", "AUTOLAND", s.autoland.mode),
@@ -46,6 +47,7 @@ export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "revie
     seg("fuelHold", "FUEL HOLD", s.fuel?.hold ? "on" : "off"),
     seg("review", "REVIEW", s.review.security, reviewLabel(s.review.security)),
     ...(s.controlRecycle ? [seg("recycle", "CONTROL RECYCLE", s.controlRecycle.mode)] : []),
+    ...(s.fleetPlan ? [seg("reposition", "REPOSITION", s.fleetPlan.reposition)] : []),
   ];
 }
 export const modeLine = (segs: readonly ModeSegment[]): string => segs.map((x) => `${x.label} ${x.value}`).join(" · ");

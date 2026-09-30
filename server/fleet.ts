@@ -21,6 +21,7 @@ import type { SessionOrigin } from "./session-origin.ts";
 import type { Job } from "./job-state.ts";
 import type { Activity } from "./activity.ts";
 import { flightDetailOf, liveViewOf } from "./fleet-live.ts";
+import { readRecords } from "./recorder.ts";
 
 export { flightDetailOf };
 
@@ -481,9 +482,12 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>, cont
     const rulesRecords = loadRulesRecords();
     const rulesOf = (reg: string): RulesView | null => rulesOfAircraft(s.sessions.filter((x) => x.status !== "dead" && regKey(x.name, cfg.teamPattern) === reg), rulesRecords);
     const context = contextOf(s.sessions, cfg.teamPattern);
+    // REPOSITION(ATC-179): AIRCRAFT마다 마지막 옮김(최근 30일, FLIGHT RECORDER). 카드가 base 옆에 보인다
+    const lastRepo = new Map<string, { from: string; to: string; at: string; by: string; ok: boolean }>();
+    for (const r of readRecords(Date.now() - 30 * 86_400_000)) if (r.kind === "fleet" && r.op === "reposition" && r.from && r.to) lastRepo.set(regKey(r.aircraft, cfg.teamPattern), { from: r.from, to: r.to, at: r.t, by: r.by, ok: r.ok });
     const aircraft = fleetView(s, fleet, cfg.teamPattern, loadPricedLogbook())
       .map(withCrew(s))
-      .map((a) => ({ ...a, rules: rulesOf(a.registration), language: languageOf(s.sessions, a.registration, cfg.teamPattern), context: contextView(context.get(a.registration) ?? null) }));
+      .map((a) => ({ ...a, lastReposition: lastRepo.get(a.registration) ?? null, rules: rulesOf(a.registration), language: languageOf(s.sessions, a.registration, cfg.teamPattern), context: contextView(context.get(a.registration) ?? null) }));
     const configurations = Object.entries(CONFIGURATIONS).map(([id, t]) => ({ id, label: t.label, complement: t.complement, ratings: t.ratings }));
     return c.json({
       ratings: RATINGS,

@@ -844,6 +844,7 @@ ACCOUNT 폴더를 등록하면([accounts.md](accounts.md) 5.2) 등록된 어느 
 | `STOP` | 주기(parking) | atc가 띄운 백그라운드 세션이 `idleHours`(기본 12) 동안 STAND·FLIGHT·활동이 없고, 그것 없이도 AIRPORT의 예비가 유지됨 | 8.5 STOP(다시 이어짐) |
 | `RESTART` | 정기 점검 | 백그라운드 세션이 PARKED이고 `restartDays`(기본 3)보다 오래됨. 또는 AIRCRAFT health(8.8)가 `CONTEXT`이거나 ALERT 수준의 `HUNG`(ATC-48) | STOP 뒤 새 CREW BRIEFING으로 LAUNCH(데스크톱·터미널 세션은 손으로 닫고 다시 연다) |
 | `REFRESH` | 객실 정비(turnaround) | AIRCRAFT가 PARKED이거나 ARRIVED한 FLIGHT의 STAND만 쥔 HOLDING이고, 열린 PR과 이번 계획의 FLIGHT가 없고, 최근 `minDwell` 안에 띄우지 않았고, 대화가 `refreshTokens`(기본 300k)나 창의 `refreshPct`(기본 40 %)를 넘음(ATC-69) | 백그라운드 세션: `RESTART`와 같다. 데스크톱·터미널 세션: 실행하지 않는다. SUPERVISOR가 그 세션에서 `/clear`하고 CREW BRIEFING을 붙여 넣는다 |
+| `REPOSITION` | 승무원 재배치 | 받을 AIRCRAFT가 없어서 기다리는 FLIGHT가 있고 소속 AIRCRAFT가 없는 AIRPORT로, FLIGHT 사이의 다른 AIRPORT 소속 AIRCRAFT를(위 REPOSITION 절, ATC-179) | STOP, 새 base 쓰기, 목표 AIRPORT 저장소에서 LAUNCH |
 | `AOG` | 기한이 있는 MEL 유예 | 세션이 NORDO이거나 최근 24시간에 LOS. 또는 AIRCRAFT health(8.8)가 `MODEL`이거나 주간 `LIMIT`(ATC-48) | `until` = 지금 + 24시간으로 AOG(주간 `LIMIT`만이면 reset 날). 풀리지 않고 기한이 지나면 `RETIRE`나 복귀 제안이 뒤따름 |
 | `RETIRE` | 퇴역 | `retireDays`(기본 30) 동안 ARRIVED 없음, 예비에 필요 없음, 열린 PR 없음 | SUPERVISOR만, 자동 없음 |
 
@@ -917,6 +918,24 @@ ACCOUNT 폴더를 등록하면([accounts.md](accounts.md) 5.2) 등록된 어느 
 - **AOG.** 옮길 ACCOUNT가 있으면 주간 `LIMIT`만으로는 그 AIRCRAFT에 AOG를 제안하지 않는다(8.8).
 - **DISPATCH·FOLLOWING**은 이미 관찰한 ACCOUNT를 쓰므로([fuel.md](fuel.md) 6.2) 옮긴 AIRCRAFT는 새 ACCOUNT로 세고 다시 배정할 수 있다(`server/accounts.test.ts`).
 - **FUEL.** 새 세션의 cold 첫 요청은 `ACCOUNT CHANGE`라는 이름의 FUEL LEAK다([fuel.md](fuel.md) 6.3).
+
+### REPOSITION (ATC-179)
+
+FLEET PLAN의 새 종류: 쉬는 AIRCRAFT의 base를, FLIGHT가 기다리는데 소속 AIRCRAFT가 없는 AIRPORT로 옮긴다. DISPATCH가 AIRCRAFT를 자기 base AIRPORT의 FLIGHT와만 짝짓기 때문에([dispatch.ko.md](dispatch.ko.md) 4) 다른 AIRPORT에서 쉬는 AIRCRAFT는 그 FLIGHT를 받지 못한다. 살아 있는 세션은 저장소를 바꿀 수 없다(시작한 폴더의 `CLAUDE.md`를 읽는다). 그래서 옮기기는 STOP → 새 base 쓰기 → 목표 AIRPORT 저장소에서 LAUNCH다.
+
+- **언제**(`repositionOf`, 순수, `server/fleet-plan.ts`). 목표: 받을 AIRCRAFT가 없어서(`no-aircraft`, 부모·우선순위·HOLD·슬롯·tail·rating 때문이 아님) 기다리는 FLIGHT가 있고, 소속 AIRCRAFT가 하나도 없고(퇴역·AOG는 안 세고 ABSENT는 센다), GROUND STOP이 아닌 AIRPORT. 출발 AIRCRAFT: 다른 AIRPORT 소속이고 **FLIGHT 사이**(ACCOUNT CHANGE와 같은 시험: 백그라운드 세션, 쉼, 쥔·보관한 FLIGHT 없음, 열린 PR 없음, 이번 계획에서 FLIGHT를 받지 않음)이고, RESTARTING·NORDO가 아니고, `LIMIT`이나 FUEL hold가 아니고, `minDwellMin` 안에 LAUNCH·STOP·옮김이 없고, 떠난 뒤에도 그 AIRPORT가 자기 FLIGHT 수만큼 AIRCRAFT를 갖고(계획 전체로 센다: 목표 둘이 한 출발 AIRPORT를 비우지 않는다), 기다리는 FLIGHT 하나는 날 수 있음(TYPE RATING, CREW COMPLEMENT). 후보 중 목표 AIRPORT에서 14일간 ARRIVED가 많은 것, 가장 오래 쉰 것, REGISTRATION 순. 계획마다 목표 AIRPORT당 하나. ACCOUNT CHANGE 후보인 AIRCRAFT는 건너뛴다.
+- **사유**: 기다리는 FLIGHT(`DSGN: DSG-1 대기, 소속 AIRCRAFT 0`), 두 AIRPORT의 수(`ATCC: 쉬는 AIRCRAFT 4 → 3, 대기 FLIGHT 2`), FLIGHT 사이임, 맞음, 목표에서의 이력, 새 세션이 목표 저장소에서 캐시 없이 시작함.
+- **모드**(`fleet-plan.json`의 `reposition`, FLEET PLAN의 `mode`와 별개 스위치. SUPERVISOR만, 설정 창 AUTOMATION 탭. 바꾸면 FLIGHT RECORDER에 `reposition` `mode` 한 줄. 기본 `shadow`, 배포 뒤에도):
+  - `off`: 아무것도 안 함;
+  - `shadow`: 두 주기 지속된 후보를 `reposition` `would`로만 남긴다(AIRCRAFT·짝마다 한 시간에 한 번). 멈추거나 띄우지 않는다;
+  - `approval`: FLEET PLAN 카드. SUPERVISOR가 승인한다(permission mode·모델은 마지막 LAUNCH와 같게);
+  - `auto`: atc가 새 카드를 `auto`로 스스로 승인한다. 설정 창에서 ⚠이고 CONTROL RECYCLE `on`과 같은 확인 단계를 거친다. 가드: 24시간에 `repositionDailyMax`(기본 4)건까지(넘는 카드는 SUPERVISOR용으로 열려 있음), AIRCRAFT마다 `minDwellMin`(기본 120)에 한 번, **flapping이면 auto가 멈춘다**: 모든 조건이 맞지만 `minDwellMin` 안에 직전 base로 되돌아가려는 AIRCRAFT가 있으면 아무것도 옮기지 않고 `reposition`을 `approval`로 되돌리고(`auto`가 남기는 `reposition` `mode` 줄과 사유) ADVISORY 알림. 자동으로 옮길 때마다 ADVISORY 알림 하나.
+- **승인할 때(그리고 `auto`에서)** 그 순간 다시 확인한다(`executionOf`: 옛 제안 아님, FLIGHT 사이, 백그라운드 세션, 목표 저장소를 앎). 그다음 **STOP 전에** 목표를 본다: 저장소가 있고, 그 AIRCRAFT가 뜰 ACCOUNT가 로그아웃·FUEL hold가 아님. 거절하면 옛 세션은 그대로 돌고 `reposition` 줄(`stage: precheck`)로 남는다. 단계: `claude stop`(세션이 `claude agents`에서 빠질 때까지 기다림), `fleet.json`에 새 `base` 쓰기(FLEET 탭과 같은 원자적 쓰기), 목표 AIRPORT 저장소에서 CREW BRIEFING과 마지막 LAUNCH의 permission mode·모델로 LAUNCH. `stop`·`launch` 줄 옆에 `fleet` `reposition` 한 줄(`aircraft`, `from`, `to`, `jobId`, `proposal`, `by: supervisor|auto`, `ok`, 실패면 `stage`)이 남는다. base를 쓴 뒤 LAUNCH가 실패하면 base는 그대로 두고 사건에 `stage: launch`, CAUTION 알림이 그렇게 말하며 다음 DISPATCH가 그 AIRCRAFT를 ABSENT로 보여 LAUNCH 카드를 낸다.
+- **만료**: 조건이 풀리면 카드가 닫힌다(FLIGHT를 다른 길로 받음, AIRCRAFT가 FLIGHT를 받거나 쉬지 않음, 목표에 AIRCRAFT가 생김). 가장 좋은 후보가 바뀌면 카드는 supersede된다. SUPERVISOR가 판정한 카드는 24시간 다시 내지 않는다.
+- **화면**: FLEET PLAN 목록의 REPOSITION 카드(`ATCC → DSGN`), 설정 창 AUTOMATION 탭의 스위치, FLEET 탭 AIRCRAFT 카드에 base 옆 마지막 REPOSITION.
+- **다른 규칙과의 관계**: REPOSITION은 LAUNCH 상한을 늘리지 않는다(백그라운드 세션 수가 전후 같다. LAUNCH는 그대로 상한·ACCOUNT별 상한을 거친다). FUEL hold도 바꾸지 않는다: hold인 AIRCRAFT는 옮기지 않고, 로그아웃·hold인 ACCOUNT는 STOP 전에 거절한다. 새 세션의 첫 요청은 cold cache다(FUEL LEAK `SESSION CHANGE`).
+- **원칙 2의 예외**("되돌릴 수 있는 것만 자동으로"): REPOSITION `auto`는 STOP만으로 되돌릴 수 없다(새 세션이 다른 저장소에서 차갑게 시작한다). SUPERVISOR가 2026-09-30에 스위치(기본 `shadow`), 하루 상한, AIRCRAFT별 dwell, flapping 정지, 옮길 때마다 알림 아래에서 자동 모드를 허락했다.
+- **만들지 않음**: base가 없는 AIRCRAFT에 base 주기(빠진 base는 FLEET 탭에서 고친다), 살아 있는 FLIGHT 옮기기, STOP·LAUNCH 없이 세션을 다른 저장소로 옮기기.
 
 ### ENTRY가 ACCOUNT를 고른다 (ATC-147)
 
