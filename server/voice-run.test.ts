@@ -15,7 +15,7 @@ const dir = mkdtempSync(join(tmpdir(), "atc-voice-"));
 config.stateDir = dir;
 after(() => rmSync(dir, { recursive: true, force: true }));
 
-const alert = (key: string, over: Partial<SupervisorAlert> = {}): SupervisorAlert => ({ key, group: "alert", level: "warning", cue: null, aircraft: "TEAM_G", flight: "ATC-120", text: "충돌: 한국어 문구", next: "", link: "#strips", since: null, ...over });
+const alert = (key: string, over: Partial<SupervisorAlert> = {}): SupervisorAlert => ({ key, group: "alert", level: "warning", cue: null, aircraft: "TEAM_G", flight: "ATC-120", text: "충돌: 한국어 문구", next: "", link: "#strips", since: null, dest: "alerts", ...over });
 const alerts = [
   alert("alert|conflict|/w/atc-120|ATC-120|s1"),
   alert("pending|humancheck|o/r#5|abc", { group: "pending", level: "advisory", cue: "call", aircraft: null, flight: "ATC-5" }),
