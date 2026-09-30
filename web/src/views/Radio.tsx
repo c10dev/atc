@@ -21,7 +21,7 @@ const storage = () => {
 type Mode = { kind: "live" } | { kind: "replay"; cursor: number; playing: boolean; speed: Speed };
 const TICK_MS = 250;
 
-// 교신 목록: 처음 받아 오고, SSE radio로 새것을 합친다. 연결이 (다시) 열리면 한 번 더 받아 빈틈을 메운다.
+// 교신 목록: 마운트하면 바로 받아 오고, SSE radio로 새것을 합친다. 연결이 (다시) 열리면 한 번 더 받아 빈틈을 메운다.
 // onFresh: SSE로 처음 보는 교신이 들어왔을 때(RADIO 듣기가 큐에 넣는다). 처음 받아 온 목록은 새것이 아니다
 function useRadio(onFresh: (txs: Transmission[]) => void): { txs: Transmission[]; loaded: boolean; error: string | null } {
   const [txs, setTxs] = useState<Transmission[]>([]);
@@ -45,6 +45,8 @@ function useRadio(onFresh: (txs: Transmission[]) => void): { txs: Transmission[]
     }
   }, []);
   useEffect(() => {
+    // 마운트하자마자 한 번 받는다(ATC-210): 창(WKWebView)이 open을 첫 본문 바이트까지 미룰 수 있어서 onopen만 기다리지 않는다. 다시 연결될 때의 빈틈은 onopen이 메운다(mergeTx가 중복을 합친다)
+    void load();
     const es = new EventSource("/api/events?topics=radio");
     es.onopen = () => void load();
     es.addEventListener("radio", (e) => {

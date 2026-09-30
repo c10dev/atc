@@ -23,7 +23,7 @@ npm test           # node --test for server/**/*.test.ts, hooks and controller
 
 Each tick also checks `web/dist/index.html` (only re-read when its mtime or size changes) for the entry script the page loads, `/assets/index-<hash>.js`. That path is the build id: a restart with the same bundle keeps it, a rebuild changes it, even without a restart. No build gives `null`.
 
-`/api/events` sends `event: version` (`{build, startedAt}`) and the current snapshot on connect, then each snapshot change, a new `version` whenever the build id changes, and a `ping` every 25 seconds. EventSource reconnects on its own after a restart, so open tabs learn about a deploy without polling and show the "새 버전이 배포됨 · 새로고침" notice.
+`/api/events` sends `event: version` (`{build, startedAt}`) and the current snapshot on connect, then each snapshot change, a new `version` whenever the build id changes, and a `ping` (one at once on connect, then every 25 seconds). EventSource reconnects on its own after a restart, so open tabs learn about a deploy without polling and show the "새 버전이 배포됨 · 새로고침" notice.
 
 ## Sources (`sources/`)
 
