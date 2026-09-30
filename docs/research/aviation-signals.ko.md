@@ -48,7 +48,7 @@ atc는 거기서 무엇을 가져와야 하는가?
 | 7 | A-CDM: 모든 공항 파트너가 함께 보는, 목표·실제 시각이 붙은 마일스톤 16개 | LANDING SEQUENCE, RTS, ARRIVED가 따로 보임 | 3행으로 **바꿔서**: 마일스톤 넷이 atc의 공유 마일스톤 | FLIGHT마다 타임라인 하나 | 3행과 함께 |
 | 8 | 책임이 따르는 완료: 권한 있는 사람이 작업을 확인한 뒤 서명하는 Certificate of Release to Service. 예외는 따로 적음 | MCC INSPECTION `pass`가 head SHA에 묶이고, RTS에 건강 확인과 ROLLBACK이 있음 | **유지.** 이미 같은 구조. 선택으로 도착 보고에 "달리 명시한 것"(PILOT'S DISCRETION)을 적음 | — | — |
 | 9 | 소리: master warning은 반복 차임, master caution은 한 번 차임. SELCAL은 고정 음표 | atc에는 소리가 전혀 없음 | **가져온다:** 브라우저에서 작은 소리 묶음을 합성(9절). 녹음은 절대 싣지 않음 | — | ATC-87 안에서 |
-| 10 | 음성 데이터: ATC 음성 코퍼스와 실시간 중계 | 쓰지 않음 | **보류.** MIT 저장소에 재배포를 허락하는 코퍼스가 없고, atc에는 음성이 필요 없음 | — | — |
+| 10 | 음성 데이터: ATC 음성 코퍼스와 실시간 중계 | 쓰지 않음 | **보류.** Apache-2.0 저장소에 재배포를 허락하는 코퍼스가 없고, atc에는 음성이 필요 없음 | — | — |
 
 ## 1. 음성 확인 응답
 
@@ -276,13 +276,13 @@ atc는 이미 같은 모양이다:
 | LiveATC.net | 실시간·보관 ATC 중계 | "personal non-commercial purposes only". 허락 없이 재배포·복제·제3자 제품 사용 금지 | 아니요 |
 | ATCOSIM(EUROCONTROL, TU Graz) | 모의 관제 음성 10시간, 영어, 비원어민 화자 | 무료지만 제3자에게 재배포 금지 | 저장소에는 아니요. 로컬 조사만 |
 | ATCO2(Idiap 등) | 1시간 시험 세트는 "for research purposes"로 무료. 4시간 시험 세트와 5,281시간 학습 세트는 ELRA 경유 | 유료 세트는 ELRA에서 판다. 공개 요약 하나는 CC BY-NC-ND 4.0이라 하고, 프로젝트 쪽은 "commercial and non-commercial use"라 한다. **미확인**: ELRA 카탈로그 쪽이 열리지 않았다 | 아니요 |
-| UWB-ATCC(서보헤미아 대학) | 체코 ATC 약 20시간, 영어 | CC BY-NC-SA 4.0 | 아니요(비영리·동일조건이 MIT 저장소와 맞지 않음) |
+| UWB-ATCC(서보헤미아 대학) | 체코 ATC 약 20시간, 영어 | CC BY-NC-SA 4.0 | 아니요(비영리·동일조건이 Apache-2.0 저장소와 맞지 않음) |
 | LDC Air Traffic Control Complete(LDC94S14A) | DFW, BOS, DCA 약 70시간(1994) | LDC 사용자 계약, 비회원은 유료 | 아니요 |
 
 **결론:**
 
 - atc에는 녹음된 음성이 필요 없다. 메시지는 글이고, 소리는 합성할 수 있다.
-- 이 출처들 중 어느 것도 공개 MIT 저장소에 넣을 수 없다.
+- 이 출처들 중 어느 것도 공개 Apache-2.0 저장소에 넣을 수 없다.
 - 나중에 음성 안내("TEAM_G STALLED")를 원하면, 브라우저의 `speechSynthesis`가 데이터 없이 글에서 로컬로 만든다. ATC-87은 지금은 범위 밖으로 둔다.
 
 **As built (ATC-140, 음성 콜아웃).** 위의 "음성 콜아웃은 나중에"가 만들어졌다. 다만 브라우저 `speechSynthesis`가 아니다: 그 출력은 Web Audio로 보낼 수 없고, 이 컴퓨터의 Chrome은 글을 밖으로 보내는 Google 음성으로 물러난다. **로컬 엔진**이 목소리를 만들고 브라우저가 무전 효과를 씌운다. 안내: [docs/guide/voice.md](../guide/voice.md).

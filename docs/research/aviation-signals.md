@@ -48,7 +48,7 @@ And what should atc take from it?
 | 7 | A-CDM: 16 shared milestones with target and actual times that every airport partner sees | LANDING SEQUENCE, RTS and ARRIVED are separate views | **Adapt** through row 3: the four milestones are atc's shared milestones | One timeline per FLIGHT | with row 3 |
 | 8 | Completion with accountability: a Certificate of Release to Service is signed by authorised staff after they verify the work, with exceptions stated | MCC INSPECTION `pass` is bound to the head SHA, and RTS has a health check with ROLLBACK | **Keep.** It already matches. Optionally, the arrival report lists what was "otherwise specified" (PILOT'S DISCRETION) | — | — |
 | 9 | Sounds: master warning as a repeating chime, master caution as a single chime. SELCAL as a fixed tone table | No sound anywhere in atc | **Take:** synthesize a small set in the browser (section 9). Never ship recordings | — | inside ATC-87 |
-| 10 | Voice data: ATC speech corpora and live feeds | Not used | **Skip.** No corpus allows redistribution in an MIT repository, and atc doesn't need speech | — | — |
+| 10 | Voice data: ATC speech corpora and live feeds | Not used | **Skip.** No corpus allows redistribution in an Apache-2.0 repository, and atc doesn't need speech | — | — |
 
 ## 1. Voice acknowledgement
 
@@ -276,13 +276,13 @@ atc already has the same shape:
 | LiveATC.net | Live and archived ATC feeds | "Personal non-commercial purposes only". Redistribution, reproduction and use in third-party products are not allowed without permission | No |
 | ATCOSIM (EUROCONTROL, TU Graz) | 10 h of simulated controller speech, English, non-native speakers | Free of charge, but no redistribution to third parties | Not in the repository. Local research only |
 | ATCO2 (Idiap and partners) | 1 h test set free "for research purposes". 4 h test set and 5,281 h training set through ELRA | The paid sets are sold through ELRA. One public summary names CC BY-NC-ND 4.0, the project page says "commercial and non-commercial use". **Not verified**: the ELRA catalogue page didn't load | No |
-| UWB-ATCC (University of West Bohemia) | About 20 h of Czech ATC, English | CC BY-NC-SA 4.0 | No (NonCommercial and ShareAlike don't fit an MIT repository) |
+| UWB-ATCC (University of West Bohemia) | About 20 h of Czech ATC, English | CC BY-NC-SA 4.0 | No (NonCommercial and ShareAlike don't fit an Apache-2.0 repository) |
 | LDC Air Traffic Control Complete (LDC94S14A) | About 70 h from DFW, BOS and DCA (1994) | LDC user agreement; fee for non-members | No |
 
 **Conclusion:**
 
 - atc doesn't need recorded speech. Its messages are text, and its sounds can be synthesized.
-- None of these sources can be bundled in a public MIT repository.
+- None of these sources can be bundled in a public Apache-2.0 repository.
 - If spoken callouts are wanted later ("TEAM_G STALLED"), the browser's `speechSynthesis` makes them locally from text, with no data. ATC-87 keeps that out of scope for now.
 
 **As built (ATC-140, spoken callouts).** The "spoken callouts later" idea above is built, but not with the browser's `speechSynthesis`: its output can't go through Web Audio, and on this machine Chrome falls back to Google voices that send the text away. A **local engine** renders the voice and the browser puts the radio on it. Guide: [docs/guide/voice.md](../guide/voice.md) (Korean).

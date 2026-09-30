@@ -2,7 +2,7 @@
 
 The SUPERVISOR's Mac gets a native menu bar app, ANNUNCIATOR, in its own repository: [chaehy5665/atc-app](https://github.com/chaehy5665/atc-app) (public, GPL-3.0-or-later). The app's design is there (`docs/design.md`). This page covers only atc's side: what the server exposes for the app, what stays out, and what changes in this repository.
 
-> Status (2026-09-29): adopted. The SUPERVISOR asked for a native app after using the SwiftBar plugin (ATC-149) for a day. They chose a separate public repository under GPL-3.0; atc stays MIT, and the two talk only over HTTP. The server side of step N1 is built (section 3, "as built" below); atc-app itself is in its own repository.
+> Status (2026-09-29): adopted. The SUPERVISOR asked for a native app after using the SwiftBar plugin (ATC-149) for a day. They chose a separate public repository under GPL-3.0; atc is Apache-2.0 (earlier versions stay MIT), and the two talk only over HTTP. The server side of step N1 is built (section 3, "as built" below); atc-app itself is in its own repository.
 
 Related: [guide/menubar.md](guide/menubar.md) (the SwiftBar plugin and the SSH forward), [guide/alerts.md](guide/alerts.md), [guide/voice.md](guide/voice.md), `server/supervisor-alerts.ts` (ATC-87), `menubar/format.mjs` (ATC-149), ATC-152 (alert noise).
 
