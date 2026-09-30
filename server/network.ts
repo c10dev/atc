@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import { config } from "./config.ts";
+import { compareRegistration } from "./registration.ts";
 import { crosscheckRateOf } from "./crosscheck.ts";
 import { DONE_STATES, loadDispatchConfig } from "./dispatch.ts";
 import { type AircraftView, fleetView, loadFleet } from "./fleet.ts";
@@ -136,7 +137,7 @@ export function routeRows(input: { tickets: Ticket[]; entries: LogEntry[]; views
       goal: g ? { targetDate: g.targetDate, progress: g.progress, state: g.state } : null,
       open: open.get(project) ?? { todo: 0, inProgress: 0, inReview: 0 },
       arrived14: got.length,
-      aircraft: views.filter((v) => v.routes.includes(project)).map((v) => v.registration).sort(),
+      aircraft: views.filter((v) => v.routes.includes(project)).map((v) => v.registration).sort(compareRegistration),
       landingWaitMedianMin: median(got.flatMap((e) => e.landingWaitMin ?? [])),
     };
   });

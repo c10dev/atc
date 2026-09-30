@@ -8,7 +8,7 @@ import { hhmm } from "./health.ts";
 import type { LogEntry } from "./logbook.ts";
 import { GATE } from "./proposals.ts";
 import { isFlap, type RepositionEvent } from "./reposition.ts";
-import { regKey } from "./registration.ts";
+import { compareRegistration, regKey } from "./registration.ts";
 import { MAX_LAUNCHED, PERMISSION_MODES, type PermissionMode } from "./session-control.ts";
 import { isBackground, manualStepsOf, type SessionOrigin } from "./session-origin.ts";
 
@@ -275,7 +275,7 @@ export function repositionOf(
     if (!fit.length) continue;
     const history = (reg: string) => i.logbook.filter((e) => e.aircraft === reg && e.airport === target && i.now - Date.parse(e.arrivedAt) < HISTORY_DAYS * DAY).length;
     const idleFrom = (reg: string) => Date.parse(i.lastActive.get(reg) ?? "") || 0;
-    const [best] = [...fit].sort((x, y) => history(y.a.registration) - history(x.a.registration) || idleFrom(x.a.registration) - idleFrom(y.a.registration) || x.a.registration.localeCompare(y.a.registration));
+    const [best] = [...fit].sort((x, y) => history(y.a.registration) - history(x.a.registration) || idleFrom(x.a.registration) - idleFrom(y.a.registration) || compareRegistration(x.a.registration, y.a.registration));
     const { a, session, served } = best;
     const src = a.base!;
     taken.add(a.registration);
@@ -352,7 +352,7 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
     const fitting = idle
       .map((a) => ({ a, served: mine.filter((u) => canServe(a.registration, a.ratings, a.complement, u)), fuel: fuelOfPlan(i, "LAUNCH", a.registration) }))
       .filter((x) => x.served.length)
-      .sort((x, y) => y.served.length - x.served.length || y.a.actuals.total - x.a.actuals.total || x.a.registration.localeCompare(y.a.registration));
+      .sort((x, y) => y.served.length - x.served.length || y.a.actuals.total - x.a.actuals.total || compareRegistration(x.a.registration, y.a.registration));
     // ACCOUNT가 FUEL hold 수준인 AIRCRAFT는 고르지 않는다
     const fits = fitting.filter((x) => x.fuel?.level !== "hold");
     const heldFits = fitting.filter((x) => x.fuel?.level === "hold");

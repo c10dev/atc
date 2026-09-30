@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Snapshot } from "../../../server/model.ts";
+import { DEFAULT_TEAM_PATTERN } from "../../../server/registration.ts";
 import type { FuelSummary } from "../../../server/fuel.ts";
 import { CREW_WARNING_LABEL, pctText, tokensText, usd } from "../../../server/fuel-view.ts";
 import {
@@ -153,7 +154,7 @@ const COLS: { key: SortKey; label: string; num?: boolean; title?: string }[] = [
 
 function Rows({ fuel }: { fuel: FuelData }) {
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "cost", dir: "desc" });
-  const rows = useMemo(() => rowsOf(fuel.aircraft, fuel.sessions, fuel.teamPattern ?? "^TEAM_[A-Z]$"), [fuel]);
+  const rows = useMemo(() => rowsOf(fuel.aircraft, fuel.sessions, fuel.teamPattern ?? DEFAULT_TEAM_PATTERN), [fuel]);
   const groups = groupedRows(rows, sort.key, sort.dir);
   const flip = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: s.dir === "desc" ? "asc" : "desc" } : { key, dir: key === "label" || key === "topModel" ? "asc" : "desc" }));
   return (

@@ -4,7 +4,7 @@ import type { FlightFuel } from "./fuel-flights.ts";
 import { CREW_WARNING_KINDS, type CrewWarningKind } from "./fuel-crew.ts";
 import { type LeakEvent, LEAK_RULES, type LeakRule, TTL_1H_MS, TTL_5M_MS, ttlAfter } from "./fuel-leaks.ts";
 import type { LogEntry } from "./logbook.ts";
-import { regKey } from "./registration.ts";
+import { compareRegistration, regKey } from "./registration.ts";
 
 // FUEL F8(ATC-56, docs/fuel.md 7): 화면과 브리핑에 보일 FUEL 값. 순수 함수만 두고, 화면(web)도 이 파일을 부른다(서버 입출력 import 없음).
 // 보여 주기만 한다: DISPATCH 점수·배정에 쓰지 않고, COLD CACHE 경고는 막지 않는다.
@@ -287,7 +287,7 @@ export function coldCachesOf(holding: readonly HoldingCaptain[], records: Iterab
     const cost = priced ? Math.round(priced.cost * 100) / 100 : null;
     out.push({ key: `cold|${h.session}|${last.t}`, aircraft, session: h.session, lastAt: last.t, idleMin, ttlMin, prefix, cost, text: coldText(aircraft, idleMin, ttlMin, prefix, cost) });
   }
-  return out.sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1) || a.aircraft.localeCompare(b.aircraft));
+  return out.sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1) || compareRegistration(a.aircraft, b.aircraft));
 }
 
 function coldText(aircraft: string, idleMin: number, ttlMin: number, prefix: number | null, cost: number | null) {

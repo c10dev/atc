@@ -7,7 +7,7 @@ test("registrationOf: teamPattern에 맞는 표기는 모두 정식 TEAM_X로", 
 });
 
 test("registrationOf: 팀 세션이 아닌 이름은 null", () => {
-  for (const n of ["TOWER", "OCC", "ENGINEERING", "President", "TEAM", "TEAM_GH", "TEAM_1", "MY TEAM G", "Team  G", "", null, undefined]) assert.equal(registrationOf(n), null, String(n));
+  for (const n of ["TOWER", "OCC", "ENGINEERING", "President", "TEAM", "TEAM_GHI", "TEAM_1", "MY TEAM G", "Team  G", "", null, undefined]) assert.equal(registrationOf(n), null, String(n));
 });
 
 test("registrationOf: teamPattern을 바꾸면 거기서 정한다(하드코딩 없음)", () => {
@@ -19,7 +19,7 @@ test("registrationOf: teamPattern을 바꾸면 거기서 정한다(하드코딩 
   assert.equal(registrationOf("squad7", "^SQUAD\\d$"), "SQUAD7");
   // 깨진 규칙은 아무것도 맞지 않는다
   assert.equal(registrationOf("TEAM_G", "^TEAM["), null);
-  assert.equal(DEFAULT_TEAM_PATTERN, "^TEAM[\\s_-]?[A-Z]$");
+  assert.equal(DEFAULT_TEAM_PATTERN, "^TEAM[\\s_-]?[A-Z]{1,2}$"); // 한 글자 또는 두 글자(ATC-181)
 });
 
 test("regKey·sameReg·fleetKeyOf: 비교는 REGISTRATION으로, 팀이 아닌 이름은 대문자로", () => {

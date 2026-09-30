@@ -73,6 +73,16 @@ Kept in `~/.local/state/atc/fleet.json`, like the AIRPORT registry (`airports.js
 - **TYPE RATING** starts from what the complement allows. A crew whose only helper is `flash-helper` cannot hold `SEC`, because vocado forbids DeepSeek for security work.
 - **ROUTES** and **TARGETS** are set by the SUPERVISOR. OCC may draft changes (stage 4) but never applies them.
 
+### Two-letter REGISTRATIONs as built (ATC-181)
+
+After `TEAM_Z` the next REGISTRATIONs are `TEAM_AA`, `TEAM_AB` … `TEAM_ZZ` (26 + 676 in all). REGISTRATIONs stay opaque: they are never renamed or reused, and a retired one stays used.
+
+- **One rule.** `DEFAULT_TEAM_PATTERN` in `server/registration.ts` is `^TEAM[\s_-]?[A-Z]{1,2}$`, and everything reads the team pattern from there or from DISPATCH's `teamPattern`. Every spelling still normalises (`Team AB`, `team-ab`, `TEAMAB` → `TEAM_AB`) and one-letter names are unchanged. `TEAM_ABC` and `TEAM_1` are not team names. A test fails if a new hard-coded single-letter team regex appears in the source.
+- **`nextRegistration`** (ENTRY INTO SERVICE) returns the first free of `TEAM_A` … `TEAM_Z`, `TEAM_AA` … `TEAM_ZZ`, then `null`. A registered or live REGISTRATION, retired ones included, counts as used.
+- **Callsign.** One phonetic word per letter: `TEAM_G` → GOLF, `TEAM_RA` → ROMEO ALPHA (`server/callsign.ts`, shared with the screens). RADIO phrases and the per-callsign voice use the full callsign.
+- **Sorting.** Wherever atc sorts by REGISTRATION (FLEET list, NETWORK, METRICS FUEL, CHECKRIDE, RADIO's AIRCRAFT filter) it is length first, then alphabetical (`compareRegistration`): `TEAM_B`, `TEAM_Z`, `TEAM_AA`, `TEAM_AB`.
+- **Not done.** No warning yet when similar callsigns are active at once (ROMEO and ROMEO ALPHA). Existing `fleet.json` keys, LOGBOOK lines and `tail:` labels are not touched.
+
 ### REGISTRATION spellings as built (ATC-67)
 
 atc reads one REGISTRATION the same way everywhere, whatever the session name's spelling. `server/registration.ts` `registrationOf(name, teamPattern)` maps any name that DISPATCH's `teamPattern` accepts to the canonical form: upper case with `_` (`Team G`, `TEAM-G`, `team_g`, `TEAMG` → `TEAM_G`). With no separator it inserts `_` at the first place the pattern accepts, so a custom `teamPattern` still decides. Names the pattern rejects (TOWER, OCC, President) give `null` and are compared in upper case, as before.
