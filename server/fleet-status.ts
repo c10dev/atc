@@ -56,6 +56,7 @@ export interface FleetRow {
   report: AircraftView["report"] | null; // 마지막 턴의 REPORT 판정(ATC-89, 그림자). 칩과 툴팁
   account: string | null; // ACCOUNT 라벨(ATC-51). 등록부에 라벨이 하나도 없으면 null
   accountIsDefault: boolean;
+  observedAccount: string | null; // home과 다른 폴더에서 돌 때의 ACCOUNT(ATC-146). 줄은 "acct-1 (home acct-2)"로 보인다
   // 같은 ACCOUNT의 LIMIT으로 붙들림(ATC-51): "HOLD · LIMIT (account pro-2) until 07:40Z". health 코드는 아니다
   accountHold: { label: string; detail: string; next: string } | null;
   // ACCOUNT의 FUEL이 hold 수준일 때만(ATC-81): "HOLD · FUEL (account acct-2) until 21:00Z". 사용 %는 줄에 싣지 않는다(툴팁에만).
@@ -96,6 +97,7 @@ export function fleetRows(aircraft: readonly AircraftView[], now: number): Fleet
       health: a.health ? { code: a.health.code, level: a.health.level, label: healthLabel(a.health, now), detail: a.health.detail, next: a.health.next } : null,
       account: a.account ?? null,
       accountIsDefault: Boolean(a.accountIsDefault),
+      observedAccount: a.observedAccount ?? null,
       accountHold: a.accountHold ? { label: accountHoldLabel(a.accountHold, now), detail: accountHoldDetail(a.accountHold), next: ACCOUNT_HOLD_NEXT } : null,
       fuelHold: a.fuel?.level === "hold" ? { label: fuelHoldTag(a.fuel, now), title: fuelTitle(a.fuel, now) } : null,
       fuelBurn: a.fuelBurn && fleetFuelLabel(a.fuelBurn) ? { label: fleetFuelLabel(a.fuelBurn)!, title: fleetFuelTitle(a.fuelBurn) } : null,

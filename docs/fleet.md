@@ -1120,6 +1120,12 @@ Each live Claude AIRCRAFT carries one ACTIVITY line: the last tool it called, a 
 - **No second read.** `healthOfSession` computes the track from the same 64 KB tail and keeps it in the same cache entry (size and mtime key), and now returns `{ health, activity }`. The snapshot puts `activity` on `Session` for live Claude sessions only; `fleet-live.ts` carries it to `AircraftView` and the FLEET list rows, so FLEET and STRIPS update at snapshot speed. The FLIGHT RECORDER's `sample` and `event` lines don't include it.
 - **Screens.** A dim line `Bash · Run the test suite · 12s` (`idle · …` dimmed, `model · …` or `thinking · …` while waiting on the model, a colored dot for the phase). The phase word comes first and the elapsed time always stays visible; a narrow column cuts the label. It sits under the callsign on the STRIPS strip, as a second line in the FLEET list's FLYING column, and under FLYING on the FLEET card.
 
+### ACCOUNT rows as built (ATC-146)
+
+- **Observed ACCOUNT.** A FLEET row has `account` (the profile's home ACCOUNT) and `observedAccount`, set only when a live session runs in a folder whose ACCOUNT differs from home ([accounts.md](accounts.md) 5.1). The list row chip and the card's ACCOUNT line then read `acct-1 (home acct-2)`; it is not an error and raises no alert. LIMIT holds (8.8) and FUEL ([fuel.md](fuel.md) 6.2) count the AIRCRAFT under the observed ACCOUNT.
+- **Settings window.** The AGENTS tab has an ACCOUNTS block (registry label → folder, `loggedIn`, `authMethod`, statusline and hook warnings). SUPERVISOR only.
+- **Snapshot.** `Session.account` is added; it is absent when only `~/.claude` exists.
+
 ## 9. Moving from `lane:` to `tail:`
 
 All four steps are done:

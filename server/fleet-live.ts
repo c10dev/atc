@@ -90,7 +90,7 @@ export function liveViewOf(
 
 // 느린 목록에 라이브 값을 덮어쓴다. 스냅샷에 없는 AIRCRAFT는 NOT IN SERVICE(absent)가 된다. 느린 값(TARGETS·실적·FUEL 등)은 그대로 둔다
 export function mergeLive(slow: readonly AircraftView[], s: LiveSnapshot, teamPattern: string, now: number): AircraftView[] {
-  const accounts = new Map(slow.map((a) => [a.registration, a.account ?? null]));
+  const accounts = new Map(slow.map((a) => [a.registration, a.observedAccount ?? a.account ?? null]));
   const live = liveViewOf(s, slow.map((a) => a.registration), teamPattern, (name) => accounts.get(regKey(name, teamPattern)) ?? null, now);
   return slow.map((a) => ({ ...a, ...live.get(a.registration)! }));
 }

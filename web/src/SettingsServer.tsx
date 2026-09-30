@@ -3,6 +3,7 @@ import type { Snapshot } from "../../server/model.ts";
 import type { ServerSettings, SettingsErrors, SettingsPatch } from "../../server/settings.ts";
 import { callsign } from "./aviation.ts";
 import { timeAgo } from "./derive.ts";
+import { AccountsBlock } from "./SettingsAccounts.tsx";
 
 // 설정 창의 LINEAR, AGENTS 탭(정책 스위치는 SettingsAutomation.tsx의 AUTOMATION 탭). 서버 설정을 읽고 고친다.
 // 저장하면 서버가 .env.local에 쓰고 실행 중인 설정에도 바로 반영한다(재시작 필요 없음).
@@ -130,6 +131,8 @@ export function AgentSettings({ snapshot, server, save, onNavigate }: { snapshot
           )}
         </ServerRows>
       </Block>
+
+      <AccountsBlock />
 
       <Block code="CONTROL" label="관제 세션(ATC-130)">
         <p className="settings-hint">
@@ -460,7 +463,7 @@ function AgentRow({
   );
 }
 
-function StatusChip({ tone, children }: { tone: "ok" | "bad" | "mute"; children: ReactNode }) {
+export function StatusChip({ tone, children }: { tone: "ok" | "bad" | "mute"; children: ReactNode }) {
   return <span className={`status-chip tone-${tone}`}>{children}</span>;
 }
 

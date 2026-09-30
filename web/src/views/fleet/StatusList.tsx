@@ -98,10 +98,17 @@ export function StatusList({
                 <>
                 <span className="fl-r-id">
                   <b>{r.callsign}</b> <span className="mono faint">{r.registration}</span>
-                  {r.account && !r.accountIsDefault && (
-                    <span className="fl-r-acct mono" title={`ACCOUNT ${r.account} — 사용 한도를 같이 쓰는 AIRCRAFT 묶음`}>
-                      {r.account}
+                  {r.observedAccount ? (
+                    <span className="fl-r-acct mono" title={`ACCOUNT ${r.observedAccount} 폴더에서 돌고 있다. home ACCOUNT는 ${r.account} — 오류가 아니다`}>
+                      {r.observedAccount} (home {r.account})
                     </span>
+                  ) : (
+                    r.account &&
+                    !r.accountIsDefault && (
+                      <span className="fl-r-acct mono" title={`ACCOUNT ${r.account} — 사용 한도를 같이 쓰는 AIRCRAFT 묶음`}>
+                        {r.account}
+                      </span>
+                    )
                   )}
                   {r.origin && (
                     <span className={`fl-origin mono o-${r.origin.origin}`} title={r.origin.title}>

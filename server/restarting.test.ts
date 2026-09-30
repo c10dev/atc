@@ -194,10 +194,10 @@ test("readEndedSessions: 세션 파일이 없고 최근에 쓴 대화 기록만,
   write("old-k", [{ type: "custom-title", customTitle: "TEAM_K" }, reply()], 300); // 오래됨
   write("crashed-l", [{ type: "custom-title", customTitle: "TEAM_L" }, reply(true)], 5); // 도구 호출 도중
   write("nameless", [reply()], 5);
-  const out = readEndedSessions(new Set(["live-j"]), Date.now(), 30 * 60_000, join(root, "projects"));
+  const out = readEndedSessions(new Set(["live-j"]), Date.now(), 30 * 60_000, [join(root, "projects")]);
   assert.deepEqual(out.map((e) => [e.sessionId, e.name, e.normalEnd]).sort(), [["crashed-l", "TEAM_L", false], ["ended-i", "TEAM_I", true]]);
   assert.equal(JSON.stringify(out).includes('"text"'), false); // 본문은 옮기지 않는다
-  assert.deepEqual(readEndedSessions(new Set(), Date.now(), 30 * 60_000, join(root, "no-such-dir")), []);
+  assert.deepEqual(readEndedSessions(new Set(), Date.now(), 30 * 60_000, [join(root, "no-such-dir")]), []);
 });
 
 test("restartGraceMin: dispatch.json에서 읽고 양수가 아니면 기본 30분", () => {

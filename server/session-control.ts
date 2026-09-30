@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Context, Hono } from "hono";
 import { config } from "./config.ts";
+import { accountFolders } from "./accounts.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { crewBriefing, FleetError, fleetView, loadFleet, saveControlAccount } from "./fleet.ts";
 import { accountsLabeled, CONTROL_NAMES, controlAccountOf, type FleetFile } from "./crew.ts";
@@ -262,7 +263,7 @@ export function jobIdOf(out: string): string | null {
 
 // 세션에 atc의 비밀(.env.local)을 물려주지 않는다
 const cleanPath = () => [dirname(config.claudeBin), dirname(process.execPath), "/usr/local/bin", "/usr/bin", "/bin"];
-function cleanEnv(): NodeJS.ProcessEnv {
+export function cleanEnv(): NodeJS.ProcessEnv {
   const keep = ["HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "SHELL", "TERM", "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "DBUS_SESSION_BUS_ADDRESS"];
   const env: NodeJS.ProcessEnv = {};
   for (const k of keep) if (process.env[k]) env[k] = process.env[k];
@@ -329,14 +330,16 @@ export async function agentRows(): Promise<AgentRow[]> {
 }
 
 // ~/.claude/jobs/<id>/state.json의 state. 없거나 못 읽으면 null(STALE로 보지 않는다)
-export function jobStateOf(id: string, dir = join(config.claudeDir, "jobs")): string | null {
+// dirs: 볼 jobs/ 폴더들(기본은 등록된 모든 폴더, ATC-146). 처음 읽은 state를 돌려준다
+export function jobStateOf(id: string, dirs: readonly string[] = accountFolders().map((f) => join(f.dir, "jobs"))): string | null {
   if (!/^[0-9a-f]{6,}$/.test(id)) return null;
-  try {
-    const state = (JSON.parse(readFileSync(join(dir, id, "state.json"), "utf8")) as { state?: unknown }).state;
-    return typeof state === "string" ? state : null;
-  } catch {
-    return null;
+  for (const dir of dirs) {
+    try {
+      const state = (JSON.parse(readFileSync(join(dir, id, "state.json"), "utf8")) as { state?: unknown }).state;
+      if (typeof state === "string") return state;
+    } catch {}
   }
+  return null;
 }
 
 // GET /api/control/sessions만 쓴다(헤더 CONTROL 띠와 FLEET가 함께, ATC-127). LAUNCH·STOP의 판단은 늘 agentRows()로 새로 읽는다

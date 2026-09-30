@@ -1,6 +1,7 @@
 import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../config.ts";
+import { type AccountFolder, accountFolders, folderOfAccount, observedLabelsOn } from "../accounts.ts";
 import { toolPaths } from "../../hooks/paths.mjs";
 import { lastPushRecord, type PushRecord } from "../../hooks/health.mjs";
 import type { Claim, Session, Workspace } from "../model.ts";
@@ -23,6 +24,8 @@ interface SessionFile {
   kind?: string; // bg·interactive
   jobId?: string; // kind가 bg일 때 ~/.claude/jobs/<jobId>(ATC-99)
   entrypoint?: string; // claude-desktop·cli
+  account?: string; // 읽은 폴더의 ACCOUNT 라벨(ATC-146). 파일에는 없고 reader가 붙인다. 등록부가 없으면 없다
+  configDir?: string; // 읽은 폴더(서버 안에서만 쓴다. 스냅샷에는 싣지 않는다)
 }
 
 // 세션 파일의 kind·jobId(ATC-98, 순수). bg는 background, interactive는 그대로, 없거나 모르는 값이면 아무것도 없다. jobId는 background에만
@@ -44,12 +47,14 @@ function isAlive(pid: number, procStart?: string): boolean {
 }
 
 // 세션 폴더(~/.claude/projects/<cwd>/<sessionId>/). 대화 기록은 그 옆 <sessionId>.jsonl, 서브에이전트는 안의 subagents/
-export function sessionDir(cwd: string, sessionId: string): string {
-  return join(config.claudeDir, "projects", cwd.replace(/[^a-zA-Z0-9]/g, "-"), sessionId);
+// account: 세션이 있는 ACCOUNT 라벨(ATC-146). 없거나 모르는 라벨이면 기본 폴더
+export function sessionDir(cwd: string, sessionId: string, account?: string | null, folders: readonly AccountFolder[] = accountFolders()): string {
+  const dir = folderOfAccount(account, folders)?.dir ?? config.claudeDir;
+  return join(dir, "projects", cwd.replace(/[^a-zA-Z0-9]/g, "-"), sessionId);
 }
 
 function transcriptPath(s: SessionFile): string {
-  return `${sessionDir(s.cwd, s.sessionId)}.jsonl`;
+  return `${join(s.configDir ?? config.claudeDir, "projects", s.cwd.replace(/[^a-zA-Z0-9]/g, "-"), s.sessionId)}.jsonl`;
 }
 
 function mtime(path: string): Date | null {
@@ -60,14 +65,28 @@ function mtime(path: string): Date | null {
   }
 }
 
-export function readClaudeSessions(): { sessions: Session[]; files: SessionFile[] } {
-  const dir = join(config.claudeDir, "sessions");
+// 등록된 모든 폴더의 sessions/를 읽는다(ATC-146). 세션의 ACCOUNT는 그 파일이 있는 폴더다. 폴더가 없거나 못 읽으면 그 폴더만 건너뛴다
+export function readClaudeSessions(folders: readonly AccountFolder[] = accountFolders()): { sessions: Session[]; files: SessionFile[] } {
   const files: SessionFile[] = [];
-  for (const f of readdirSync(dir)) {
-    if (!f.endsWith(".json")) continue;
+  const labeled = observedLabelsOn(folders);
+  const seen = new Set<string>();
+  for (const folder of folders) {
+    const dir = join(folder.dir, "sessions");
+    let names: string[] = [];
     try {
-      files.push(JSON.parse(readFileSync(join(dir, f), "utf8")));
-    } catch {}
+      names = readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const f of names) {
+      if (!f.endsWith(".json")) continue;
+      try {
+        const s = JSON.parse(readFileSync(join(dir, f), "utf8")) as SessionFile;
+        if (seen.has(s.sessionId)) continue; // 같은 id가 두 폴더에 있으면 먼저 읽은 폴더
+        seen.add(s.sessionId);
+        files.push({ ...s, configDir: folder.dir, ...(labeled ? { account: folder.label } : {}) });
+      } catch {}
+    }
   }
   const sessions = files.map((s): Session => {
     const alive = isAlive(s.pid, s.procStart);
@@ -86,9 +105,10 @@ export function readClaudeSessions(): { sessions: Session[]; files: SessionFile[
       repo: null,
       workspacePath: null,
       ...(proc ? { origin: proc.origin, permissionMode: proc.permissionMode } : {}),
+      ...(s.account ? { account: s.account } : {}),
       ...sessionKindOf(s),
       // 백그라운드 job 상태(ATC-99): 살아 있는 bg 세션만. 파일은 mtime으로 캐시하고 읽기만 한다
-      ...(alive && s.kind === "bg" ? { job: settleJob(readJob(s.jobId), lastActiveAt) ?? null } : {}),
+      ...(alive && s.kind === "bg" ? { job: settleJob(readJob(s.jobId, join(s.configDir ?? config.claudeDir, "jobs")), lastActiveAt) ?? null } : {}),
     };
   });
   return { sessions, files };
@@ -358,8 +378,8 @@ export function healthOfSession(
 
 // 턴이 끝난 세션의 마지막 CAPTAIN 메시지(ATC-89 REPORT 판정). 대화 기록 끝만 읽고 저장하지 않는다 — 부르는 쪽이 ATCC 확인을 먼저 한다.
 const REPORT_TAIL = 128 * 1024;
-export function lastMessageOfSession(cwd: string, sessionId: string): { text: string; at: number; cut?: true } | null {
-  const path = `${sessionDir(cwd, sessionId)}.jsonl`;
+export function lastMessageOfSession(cwd: string, sessionId: string, account?: string): { text: string; at: number; cut?: true } | null {
+  const path = `${sessionDir(cwd, sessionId, account)}.jsonl`;
   let st;
   try {
     st = statSync(path);
@@ -381,7 +401,11 @@ export function lastMessageOfSession(cwd: string, sessionId: string): { text: st
 // 세션 파일이 없는 대화 기록 중 maxAgeMs 안에 쓴 것(ATC-91 RESTARTING). 데스크톱 /clear는 세션을 끝내고 새 id를 받는데, 새 대화 기록은
 // 다음 지시가 와야 생긴다. 이름은 대화 기록의 마지막 custom-title, 정상 종료인지는 끝의 사실로 본다. 본문은 남기지 않는다
 const ENDED_TAIL = 96 * 1024;
-export function readEndedSessions(knownIds: ReadonlySet<string>, now: number, maxAgeMs: number, root = join(config.claudeDir, "projects")): EndedSession[] {
+export function readEndedSessions(knownIds: ReadonlySet<string>, now: number, maxAgeMs: number, roots: readonly string[] = accountFolders().map((f) => join(f.dir, "projects"))): EndedSession[] {
+  return roots.flatMap((root) => readEndedIn(root, knownIds, now, maxAgeMs));
+}
+
+function readEndedIn(root: string, knownIds: ReadonlySet<string>, now: number, maxAgeMs: number): EndedSession[] {
   const out: EndedSession[] = [];
   let projects: string[] = [];
   try {

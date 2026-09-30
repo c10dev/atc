@@ -84,6 +84,20 @@ test("FLEET 화면: ACCOUNT와 같은 ACCOUNT의 LIMIT HOLD(ATC-51). 라벨이 �
   assert.deepEqual(bare.map((a) => `${a.account}:${a.accountIsDefault}:${a.accountHold}`), ["null:false:null", "null:false:null", "null:false:null"]);
 });
 
+test("FLEET 화면: 관찰한 ACCOUNT가 home과 다르면 observedAccount, LIMIT HOLD도 관찰한 ACCOUNT로(ATC-146)", () => {
+  const now = Date.parse("2026-09-28T07:38:00Z");
+  const limit = { code: "LIMIT" as const, level: "alert" as const, since: "2026-09-28T07:37:00Z", resetsAt: "2026-09-28T07:40:00.000Z", detail: "limit", next: "", holds: true };
+  const session = (id: string, name: string, account?: string, health: Session["health"] = null) =>
+    ({ id, name, status: "idle", repo: "/r/vocado", cwd: "/r/vocado", agent: "claude", pid: 1, startedAt: "", lastActiveAt: "", workspacePath: null, health, ...(account ? { account } : {}) }) as Session;
+  // TEAM_K home acct-2인데 acct-1 폴더에서 LIMIT. TEAM_L home acct-1(관찰 acct-1) → 같이 붙들림. TEAM_M home acct-2, 관찰 acct-2 → 그대로
+  const s = { sessions: [session("k", "TEAM_K", "acct-1", limit), session("l", "TEAM_L", "acct-1"), session("m", "TEAM_M", "acct-2")], claims: [], workspaces: [], airports: [] };
+  const view = fleetView(s, { defaults: D, aircraft: { TEAM_K: { account: "acct-2" }, TEAM_L: { account: "acct-1" }, TEAM_M: { account: "acct-2" } } }, undefined, [], now);
+  assert.deepEqual(
+    view.map((a) => `${a.registration}:${a.account}:${a.observedAccount ?? "-"}:${a.accountHold?.by.join(",") ?? "-"}`),
+    ["TEAM_K:acct-2:acct-1:-", "TEAM_L:acct-1:-:TEAM_K", "TEAM_M:acct-2:-:-"],
+  );
+});
+
 test("FLEET 화면: FLYING FLIGHT의 제목, 가장 이른 점유 시각, 세션 마지막 활동(ATC-44)", () => {
   const session = { id: "b", name: "TEAM_B", status: "busy", repo: "/r/vocado", cwd: "/r/vocado", agent: "claude", pid: 1, startedAt: "", lastActiveAt: "2026-09-28T05:40:00Z", workspacePath: null } as Session;
   const claim = (path: string, since: string) => ({ sessionId: "b", workspacePath: path, since, lastAt: since, source: "hook" as const, tool: null, state: "active" as const, handedOffTo: null });

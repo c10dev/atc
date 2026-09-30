@@ -1,6 +1,6 @@
 import { closeSync, openSync, readdirSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { config } from "./config.ts";
+import { accountFolders } from "./accounts.ts";
 import type { FleetFile } from "./crew.ts";
 import { type AbsentAircraft, absentOf, type CutInfo, cutAtOfText, lastReportLineOf } from "./dispatch-launch.ts";
 import type { Session } from "./model.ts";
@@ -38,29 +38,33 @@ function lastLaunches(now: number, teamPattern: string): Map<string, LaunchRow> 
 // job id(세션 id 앞자리)로 대화 기록 찾기: ~/.claude/projects/*/<jobId>-….jsonl. 워크트리로 옮긴 세션은 그 폴더에 있다.
 // LAUNCH한 저장소(cwd)의 폴더와 그 아래 워크트리 폴더(이름이 같은 앞머리)를 먼저 보고, 없을 때만 전부 본다. 찾은 것은 계속, 못 찾은 것은 10분 캐시
 const pathCache = new Map<string, { at: number; path: string | null }>();
-function transcriptOf(jobId: string, cwd: string | undefined, now: number, root = join(config.claudeDir, "projects")): string | null {
+function transcriptOf(jobId: string, cwd: string | undefined, now: number, roots: readonly string[] = accountFolders().map((f) => join(f.dir, "projects"))): string | null {
   if (!/^[0-9a-f]{6,}$/.test(jobId)) return null;
   const hit = pathCache.get(jobId);
   if (hit && (hit.path || now - hit.at < MISS_TTL_MS)) return hit.path;
   let found: string | null = null;
-  try {
-    const all = readdirSync(root);
-    const near = cwd ? cwd.replace(/[^a-zA-Z0-9]/g, "-") : null; // sources/claude.ts sessionDir와 같은 이름
-    const first = near ? all.filter((d) => d.startsWith(near)) : [];
-    for (const proj of [...first, ...all.filter((d) => !first.includes(d))]) {
-      let names: string[] = [];
-      try {
-        names = readdirSync(join(root, proj));
-      } catch {
-        continue;
+  // 등록된 폴더를 차례로(ATC-146). 폴더마다 위 순서(LAUNCH cwd의 폴더 먼저)
+  for (const root of roots) {
+    try {
+      const all = readdirSync(root);
+      const near = cwd ? cwd.replace(/[^a-zA-Z0-9]/g, "-") : null; // sources/claude.ts sessionDir와 같은 이름
+      const first = near ? all.filter((d) => d.startsWith(near)) : [];
+      for (const proj of [...first, ...all.filter((d) => !first.includes(d))]) {
+        let names: string[] = [];
+        try {
+          names = readdirSync(join(root, proj));
+        } catch {
+          continue;
+        }
+        const f = names.find((n) => n.startsWith(`${jobId}-`) && n.endsWith(".jsonl"));
+        if (f) {
+          found = join(root, proj, f);
+          break;
+        }
       }
-      const f = names.find((n) => n.startsWith(`${jobId}-`) && n.endsWith(".jsonl"));
-      if (f) {
-        found = join(root, proj, f);
-        break;
-      }
-    }
-  } catch {}
+    } catch {}
+    if (found) break;
+  }
   pathCache.set(jobId, { at: now, path: found });
   return found;
 }

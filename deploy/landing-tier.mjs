@@ -50,6 +50,7 @@ export const SIDE_EFFECT_HELPERS = [
 // 명령·외부 API를 쓰지만 읽기만 하는 서버 코드(SHIP)
 export const READ_ONLY = [
   ["server/airports.ts", "rev-list·rev-parse만 읽음"],
+  ["server/account-health.ts", "claude auth status --json만 부름(loggedIn·authMethod만 남김), settings.json 읽기(ATC-146)"],
   ["server/rules-state.ts", "log만 읽음"],
   ["server/overlap-run.ts", "git merge-base·diff·status·rev-parse만 읽음(파일 겹침, ATC-71)"],
   ["server/sources/git.ts", "worktree list·status·log·for-each-ref만 읽음"],
