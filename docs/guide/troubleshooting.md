@@ -64,6 +64,7 @@ PR에 붙은 막힌 조건을 본다([개념](concepts.md)의 LANDING SEQUENCE).
 - `blocked` 글에 "해결 안 된 리뷰 스레드 N개"가 있으면 → vocado 보호 규칙(스레드 해결 필수)이다. 지적을 반영했거나 답했으면 GitHub에서 스레드를 resolve한다.
 - `stacked`(STACKED) → base가 main이 아닌 쌓인 PR이다. 사슬의 아래 PR부터 main에 머지하고, 그다음 이 PR의 base를 main으로 바꾼다(GitHub에서 base 변경). 아래 PR에 squash 머지하지 않는다 — 그러면 변경이 중간 브랜치에 남는다(STRANDED).
 - 경보 STRANDED → FLIGHT의 PR이 main이 아닌 브랜치에 머지돼 main에 닿지 않았다. Linear가 Done이어도 변경은 main에 없다. 그 커밋을 main으로 가는 새 PR로 옮기거나(cherry-pick), 남은 PR을 main으로 다시 연다.
+  - squash 머지된 PR이 그 커밋을 main으로 실어 간 경우(쌓인 PR의 커밋을 아래 PR 브랜치에 머지해 두고 그 PR을 squash 머지한 경우)는 더 STRANDED로 알리지 않는다(ATC-216).
 - `behind` → main이 앞서 갔다. rebase하고 push한다(CI와 리뷰를 다시 받는다).
 - `no-checks` → 그 저장소에 CI가 없다(atc 등). CLEARED TO LAND가 될 수 없으니 SUPERVISOR가 직접 판단한다.
 - `merge-unknown` → GitHub이 머지 가능 여부를 계산 중이다. 잠시 뒤 풀린다.

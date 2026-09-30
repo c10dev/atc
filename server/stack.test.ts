@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { landTextOf } from "./controller.ts";
 import { followingOf } from "./following.ts";
-import { buildPulls, firstReach, fixesKeyOf, type GhPull, type MergedElsewhere, stackOf, strandedMessage, strandedOf } from "./landing.ts";
+import { buildPulls, firstReach, fixesKeyOf, type GhPull, MERGED_TARGET_MAX, type MergedElsewhere, reachTargetsOf, stackOf, strandedMessage, strandedOf } from "./landing.ts";
 import type { Ticket } from "./model.ts";
 
 // 2026-09-27 vocado VOC-189/190 스택 그대로: #395(→ main) ← #396 ← #397 ← #398. 14:41에 아래에서부터 각자 바로 아래 브랜치로 squash 머지
@@ -119,4 +119,76 @@ test("Fixes 키와 FLIGHT FOLLOWING: 본문 Fixes로 FLIGHT를 찾고, Linear가
   assert.equal(issue.text, `STRANDED — PR #398이 ${B.s397}에 머지돼 기본 브랜치에 닿지 않음 (Linear는 Done이지만 변경은 main에 없음)`);
   assert.equal(issue.key, "VOC-190|stranded|398");
   assert.equal(issue.severity, "warn");
+});
+
+// ── ATC-216: squash 머지된 PR이 실어 간 쌓인 머지는 STRANDED가 아니다. 번호·이름은 모두 일반값 ──
+// P1(#201, base main) ← P2(#202) ← P3(#203) ← P4(#204). P2·P3·P4는 각자 바로 아래 브랜치로 squash 머지됐고, P1의 브랜치에 P3·P4의 squash 커밋을 머지해 실었다.
+const S = { main: "a".repeat(40), h201: "1".repeat(40), sq202: "2".repeat(40), sq203: "3".repeat(40), sq204: "4".repeat(40), head203: "5".repeat(40), head204: "6".repeat(40), head202: "7".repeat(40) };
+const stackRow = (number: 202 | 203 | 204, base: string, at: string): Omit<MergedElsewhere, "reached"> => ({
+  repo: "/r/x", number, title: `Stack PR ${number} (ATC-${number})`, url: `https://example.test/pull/${number}`, base, mergedAt: at,
+  mergeCommit: S[`sq${number}`], head: S[`head${number}`], flight: `ATC-${number}`,
+});
+const STACK_ROWS = [stackRow(202, "b1", "2026-09-30T10:00:00Z"), stackRow(203, "b2", "2026-09-30T10:00:03Z"), stackRow(204, "b3", "2026-09-30T10:00:09Z")];
+// P1의 head가 품은 것(P3·P4의 squash와 head를 P1에 병합했다). P2의 squash도 P1 브랜치 위에 있다
+const carrierAncestors = new Set([S.sq202, S.sq203, S.sq204, S.head203, S.head204, S.head202]);
+const cont = (ancestors: Map<string, Set<string>>) => async (target: string, commit: string) => ancestors.get(target)?.has(commit) ?? false;
+const reachOf = async (m: (typeof STACK_ROWS)[number], open: { number: number; headRefName: string; headRefOid: string }[], merged: { number: number; headRefName: string; headRefOid: string; mergedAt: string | null }[], ancestors: Map<string, Set<string>>) =>
+  firstReach([m.mergeCommit!, m.head], reachTargetsOf({ base: "main", mainSha: S.main, open, merged, prBaseRef: m.base, prMergedAt: m.mergedAt, selfNumber: m.number }), cont(ancestors));
+
+test("reachTargetsOf: main, 열린 PR(이 PR의 base를 head로 가진 것 먼저), 이 PR 뒤에 머지된 PR 순. 자기 자신과 앞서 머지된 PR은 뺀다", () => {
+  const open = [{ number: 301, headRefName: "other", headRefOid: "b".repeat(40) }, { number: 302, headRefName: "b2", headRefOid: "c".repeat(40) }];
+  const merged = [
+    { number: 401, headRefName: "early", headRefOid: "d".repeat(40), mergedAt: "2026-09-30T09:00:00Z" }, // 이 PR보다 앞: 뺀다
+    { number: 402, headRefName: "late", headRefOid: "e".repeat(40), mergedAt: "2026-09-30T10:05:00Z" },
+    { number: 403, headRefName: "b2", headRefOid: "f".repeat(40), mergedAt: "2026-09-30T10:20:00Z" }, // 이 PR의 base가 head: 먼저
+    { number: 203, headRefName: "self", headRefOid: "9".repeat(40), mergedAt: "2026-09-30T10:00:03Z" }, // 자기 자신
+    { number: 404, headRefName: "nulled", headRefOid: "8".repeat(40), mergedAt: null },
+  ];
+  const t = reachTargetsOf({ base: "main", mainSha: S.main, open, merged, prBaseRef: "b2", prMergedAt: "2026-09-30T10:00:03Z", selfNumber: 203 });
+  assert.deepEqual(t.map((x) => x.label), ["main", "#302", "#301", "#403 (merged)", "#402 (merged)"]);
+  assert.equal(t[0]!.ref, S.main);
+  assert.equal(t[3]!.ref, "f".repeat(40));
+  // main SHA를 모르면 브랜치 이름으로
+  assert.equal(reachTargetsOf({ base: "main", mainSha: null, open: [], merged: [], prBaseRef: "x", prMergedAt: "2026-09-30T10:00:00Z" })[0]!.ref, "main");
+  // compare 호출 수: 머지된 대상은 MERGED_TARGET_MAX개까지
+  const many = Array.from({ length: MERGED_TARGET_MAX + 10 }, (_, k) => ({ number: 500 + k, headRefName: `m${k}`, headRefOid: String(k).padStart(40, "0"), mergedAt: "2026-09-30T11:00:00Z" }));
+  assert.equal(reachTargetsOf({ base: "main", mainSha: S.main, open: [], merged: many, prBaseRef: "x", prMergedAt: "2026-09-30T10:00:00Z" }).length, 1 + MERGED_TARGET_MAX);
+});
+
+test("STRANDED(ATC-216): 열린 P1이 실어 나르는 동안은 닿음, P1이 squash로 main에 머지된 뒤에도 P1의 head(머지됨)에 닿아 STRANDED가 아니다", async () => {
+  const p1 = { number: 201, headRefName: "b1", headRefOid: S.h201 };
+  // 1) P1이 열려 있다: main에는 없고 P1 head에는 있다
+  const ancestors = new Map<string, Set<string>>([[S.main, new Set()], [S.h201, carrierAncestors]]);
+  for (const m of STACK_ROWS) assert.equal(await reachOf(m, [p1], [], ancestors), "#201", String(m.number));
+  // 2) P1이 squash 머지됐다: 열린 PR은 없고, main은 squash 커밋뿐이라 조상이 없다. 머지된 P1의 head가 커밋을 품는다
+  const p1Merged = { ...p1, mergedAt: "2026-09-30T10:30:00Z" };
+  const rows = [];
+  for (const m of STACK_ROWS) rows.push({ ...m, reached: await reachOf(m, [], [p1Merged], ancestors) });
+  assert.deepEqual(rows.map((r) => [r.number, r.reached]), [[202, "#201 (merged)"], [203, "#201 (merged)"], [204, "#201 (merged)"]]);
+  assert.deepEqual(strandedOf(rows), []);
+});
+
+test("STRANDED(ATC-216): 실어 나른 PR이 없으면 그대로 STRANDED, 앞서 머지된 PR과 머지 안 된 것은 대상이 아니다", async () => {
+  const ancestors = new Map<string, Set<string>>([[S.main, new Set()]]);
+  // 실어 나른 PR 없음
+  const rows = [];
+  for (const m of STACK_ROWS.slice(1)) rows.push({ ...m, reached: await reachOf(m, [], [], ancestors) });
+  assert.deepEqual(strandedOf(rows).map((x) => x.number), [203, 204]);
+  // 커밋을 품은 PR이 이 PR보다 앞서 머지됐다면 그 PR은 대상이 아니다(그때 이 커밋은 아직 없었다)
+  ancestors.set(S.h201, carrierAncestors);
+  const early = { number: 201, headRefName: "b1", headRefOid: S.h201, mergedAt: "2026-09-30T09:00:00Z" };
+  assert.equal(await reachOf(STACK_ROWS[1]!, [], [early], ancestors), null);
+  // 다른 PR의 head는 커밋을 품지 않으니 STRANDED 그대로
+  const unrelated = { number: 210, headRefName: "z", headRefOid: "0".repeat(40), mergedAt: "2026-09-30T10:30:00Z" };
+  assert.equal(await reachOf(STACK_ROWS[1]!, [], [unrelated], ancestors), null);
+  // main이 품으면 main
+  ancestors.set(S.main, new Set([S.sq203]));
+  assert.equal(await reachOf(STACK_ROWS[1]!, [], [], ancestors), "main");
+});
+
+test("STRANDED(ATC-216): compare가 실패하면 경보를 내지 않는 fail-safe는 firstReach가 던지면 그대로 던진다(호출하는 쪽이 catch해 경보를 내지 않는다)", async () => {
+  const boom = async () => {
+    throw new Error("compare 실패");
+  };
+  await assert.rejects(firstReach([S.sq203], reachTargetsOf({ base: "main", mainSha: S.main, open: [], merged: [], prBaseRef: "b2", prMergedAt: "2026-09-30T10:00:00Z" }), boom), /compare 실패/);
 });

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { type MainStatus, mainStateOf } from "../atfm.ts";
 import { loadAutoland } from "../autoland.ts";
-import { type CarryCandidate, type CodexSignal, codexFindings, codexThumbsPass, firstReach, fixesKeyOf, mergeOnlyChain, sameChange, type GhPull, type GhThread, hasHeadReview, isCodexBot, type MergedElsewhere, needsCodexSignal } from "../landing.ts";
+import { type CarryCandidate, type CodexSignal, codexFindings, codexThumbsPass, firstReach, fixesKeyOf, reachTargetsOf, mergeOnlyChain, sameChange, type GhPull, type GhThread, hasHeadReview, isCodexBot, type MergedElsewhere, needsCodexSignal } from "../landing.ts";
 import type { GhCommit } from "../briefs.ts";
 import { humanCheckStatusOf, uiChangeOf } from "../human-check.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./git.ts";
@@ -316,8 +316,10 @@ async function mergedElsewhere(repo: string, slug: string, base: string, open: G
   const rows = JSON.parse(await gh(["pr", "list", "--repo", slug, "--state", "merged", "--limit", "60", "--json", ELSEWHERE_FIELDS])) as Row[];
   const now = Date.now();
   const cands = rows.filter((r) => r.baseRefName !== base && r.mergedAt && now - Date.parse(r.mergedAt) < STRANDED_WINDOW_MS);
-  // 닿을 수 있는 곳: 기본 브랜치, 그리고 기본 브랜치로 가는 열린 PR의 head. 이 PR의 base 브랜치를 head로 가진 PR을 먼저 본다
+  // 닿을 수 있는 곳: 기본 브랜치, 기본 브랜치로 가는 열린 PR의 head, 그리고 이 PR 뒤에 기본 브랜치로 머지된 PR의 head(같은 목록에서 이미 읽었다, ATC-216).
+  // 이 PR의 base 브랜치를 head로 가진 PR을 먼저 본다(reachTargetsOf)
   const intoBase = open.filter((p) => p.baseRefName === base);
+  const mergedIntoBase = rows.filter((r) => r.baseRefName === base);
   const out: MergedElsewhere[] = [];
   for (const r of cands) {
     const flight = ticketKeyFromBranch(r.headRefName) ?? ticketKeyFromTitle(r.title) ?? fixesKeyOf(r.body);
@@ -326,7 +328,7 @@ async function mergedElsewhere(repo: string, slug: string, base: string, open: G
       out.push(row); // FLIGHT가 없으면 경보 대상이 아니다(닿았는지 보지 않는다)
       continue;
     }
-    const targets = [{ label: base, ref: mainSha ?? base }, ...[...intoBase].sort((a, b) => Number(b.headRefName === r.baseRefName) - Number(a.headRefName === r.baseRefName)).map((p) => ({ label: `#${p.number}`, ref: p.headRefOid }))];
+    const targets = reachTargetsOf({ base, mainSha, open: intoBase, merged: mergedIntoBase, prBaseRef: r.baseRefName, prMergedAt: r.mergedAt!, selfNumber: r.number });
     const commits = [row.mergeCommit, row.head].filter((c): c is string => Boolean(c));
     try {
       row.reached = await firstReach(commits, targets, (target, commit) => contains(slug, target, commit));
