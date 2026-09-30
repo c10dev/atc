@@ -14,7 +14,7 @@ import { overdueBase } from "./response.ts";
 export const FREQS = ["DELIVERY", "TOWER", "GROUND", "COMPANY"] as const;
 export type Freq = (typeof FREQS)[number];
 
-export type ClosedBy = "cancel" | "expire" | "supersede" | "delivered" | "recall";
+export type ClosedBy = "cancel" | "expire" | "supersede" | "delivered" | "recall" | "undelivered";
 
 export interface Transmission {
   id: string; // 호출은 기록 id(C-0007, D-0012, CC-0003), 답은 "<id>#<답>"
@@ -35,6 +35,7 @@ export interface Transmission {
   open?: true; // 호출인데 아직 닫는 답이 없음
   overdueAt?: string; // open이고 이 시각을 넘으면 overdue(기존 규칙)
   orphan?: true; // 답인데 호출 기록이 없음(남겨 두고 표시)
+  undelivered?: string; // 보냈지만 닿지 않았다고 OCC가 알림(ATC-183): 그 사유. 이 호출은 닫혔고 다시 보내면 같은 id의 새 호출이 생긴다
   closedBy?: ClosedBy; // 답 없이 닫힌 호출이 어떻게 닫혔나(READABILITY가 취소를 무응답에서 뺀다, ATC-176)
 }
 
@@ -133,6 +134,7 @@ export function radioOf(input: RadioInput, teamPattern = DEFAULT_TEAM_PATTERN): 
   const plan = new Map<string, Transmission>();
   const recall = new Map<string, Transmission>();
   const planStandby = new Set<string>();
+  const undelivers = new Map<string, number>(); // D-xxxx → 닿지 않은 횟수(ATC-183)
   for (const o of input.proposals) {
     if (o.op === "create") {
       const name = o.registration ?? o.aircraftName;
@@ -149,6 +151,15 @@ export function radioOf(input: RadioInput, teamPattern = DEFAULT_TEAM_PATTERN): 
           head: headOf("OCC", a.station, "FLIGHT PLAN", flight), body: o.message, open: true, overdueAt: iso(Date.parse(o.at) + READBACK_OVERDUE_MS),
         }),
       );
+    } else if (o.op === "undelivered") {
+      // 닿지 않은 FLIGHT PLAN(ATC-183): 그 호출을 닫고 표시한다. 다시 보내면 같은 id의 새 호출이 생기므로 이 호출의 id는 바꿔 둔다
+      const p = plan.get(o.id);
+      if (p) {
+        p.id = `${o.id}#undelivered${(undelivers.get(o.id) ?? 0) + 1}`;
+        undelivers.set(o.id, (undelivers.get(o.id) ?? 0) + 1);
+        p.undelivered = o.reason;
+        close(p, "undelivered");
+      }
     } else if (o.op === "recall") {
       const p = plan.get(o.id);
       if (p) close(p, "recall"); // 거둔 FLIGHT PLAN은 더 답을 기다리지 않는다
