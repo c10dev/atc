@@ -4,6 +4,7 @@ import type { Context, Hono } from "hono";
 import { config } from "./config.ts";
 import { authStatusOf } from "./account-health.ts";
 import { accountFolders, observedLabelsOn } from "./accounts.ts";
+import { effectiveLaunchAccount, launchSettingOf } from "./launch-account.ts";
 import { reportRate } from "./judges/store.ts";
 import { landedOf, loadDispatchConfig, planDispatch, readFlightHistory } from "./dispatch.ts";
 import { applyPatch, entryIntoService, FleetError, fleetView, loadFleet, nextRegistration, saveAircraft } from "./fleet.ts";
@@ -138,6 +139,12 @@ function approvalSinceOf(now: number): string | null {
 }
 
 // 스냅샷, 등록부, LOGBOOK, FLIGHT RECORDER, claude agents로 입력을 만든다
+// AIRCRAFT의 LAUNCH ACCOUNT(ATC-239). 설정이 없거나 등록부에 없는 라벨이면 null(프로필 home을 쓴다)
+export function launchAccountOfFleet(fleet: { launchAccount?: { aircraft?: string } }, accountLogins: FleetInputs["accountLogins"] = []): string | null {
+  const l = fleet.launchAccount?.aircraft;
+  return l && accountLogins.some((x) => x.label === l) ? l : null;
+}
+
 export function inputsOf(s: Snapshot, rows: AgentRow[], now: number, accountLogins: FleetInputs["accountLogins"] = []): FleetInputs {
   const cfg = loadDispatchConfig();
   const team = new RegExp(cfg.teamPattern, "i");
@@ -188,6 +195,7 @@ export function inputsOf(s: Snapshot, rows: AgentRow[], now: number, accountLogi
     now,
     fuelAccounts: s.fuelAccounts ?? [], // FUEL REMAINING per ACCOUNT(ATC-63). 관제 세션만 있는 ACCOUNT도
     accountLogins, // 등록된 ACCOUNT와 로그인(ATC-147). ENTRY가 새 AIRCRAFT를 올릴 ACCOUNT를 고른다
+    launchAccount: launchAccountOfFleet(fleet, accountLogins), // LAUNCH ACCOUNT(ATC-239): 등록부에 있는 AIRCRAFT용 라벨. ACCOUNT CHANGE의 효과 있는 home, ENTRY·LAUNCH의 ACCOUNT
     context: aircraftContexts(s.sessions, cfg.teamPattern, now), // CONTEXT SIZE(ATC-69): REFRESH
     prices: readPrices().table,
   };
@@ -501,7 +509,11 @@ async function runApproval(id: string, body: Record<string, unknown>, who: "supe
     if (p.kind === "REPOSITION") {
       // 같은 ACCOUNT로 띄우므로 그 ACCOUNT가 로그인·FUEL hold 때문에 거절하면 멈추지 않는다
       const home = fleetView(s, fleet, cfg.teamPattern, loadLogbook(), now).find((a) => a.registration === reg)?.account;
-      const refusal = home ? await launchAccountRefusal(home, s.fuelAccounts) : null;
+      // 이름 없는 LAUNCH는 LAUNCH ACCOUNT가 있으면 거기서 뜬다(ATC-239): 거절 검사도 그 ACCOUNT로
+      const folders = accountFolders();
+      const setAcct = effectiveLaunchAccount(launchSettingOf(fleet.launchAccount), "aircraft", observedLabelsOn(folders) ? folders.map((f) => f.label) : []).label;
+      const target = setAcct ?? home;
+      const refusal = target ? await launchAccountRefusal(target, s.fuelAccounts) : null;
       if (refusal) {
         refuseReposition(p, reg, who, `${refusal} — ${p.aircraft}는 멈추지 않았다`, now);
         return fail(409, `${refusal} — ${p.aircraft}는 멈추지 않았다`);

@@ -104,6 +104,26 @@ test("launchAccountOf: 등록부 없음·home·이름 지정·미등록 home, �
   assert.throws(() => launchAccountOf({ home: "acct-1", folders: FOLDERS, status: (l) => (l === "acct-1" ? { loggedIn: true, hold: "FUEL 사용 99% until 21:00Z" } : null) }), /acct-1는 FUEL hold 수준/);
 });
 
+// LAUNCH ACCOUNT(ATC-239): 이름을 댄 요청 → LAUNCH ACCOUNT(설정) → home → ~/.claude. 거절은 고른 ACCOUNT에 그대로 걸린다
+test("launchAccountOf: 이름을 댄 요청이 설정을 이기고, 설정이 home을 이기고, 설정이 없거나 등록부에 없으면 home으로", () => {
+  const ok = () => null;
+  assert.equal(launchAccountOf({ preferred: "acct-3", home: "acct-1", folders: FOLDERS, status: ok })?.label, "acct-3"); // 설정이 home을 이긴다
+  assert.equal(launchAccountOf({ requested: "acct-1", preferred: "acct-3", home: "acct-2", folders: FOLDERS, status: ok })?.label, "acct-1"); // 이름을 대면(LAUNCH 칸, ACCOUNT CHANGE 승인, RESUME) 설정보다 먼저
+  assert.equal(launchAccountOf({ preferred: null, home: "acct-1", folders: FOLDERS, status: ok })?.label, "acct-1"); // 설정 없음 = 전과 같다(각 home)
+  assert.equal(launchAccountOf({ preferred: "", home: "acct-1", folders: FOLDERS, status: ok })?.label, "acct-1");
+  assert.equal(launchAccountOf({ preferred: "acct-9", home: "acct-1", folders: FOLDERS, status: ok })?.label, "acct-1"); // 등록부에서 지워진 라벨은 무시하고 home으로
+  assert.equal(launchAccountOf({ preferred: "acct-9", home: null, folders: FOLDERS, status: ok })?.dir, D); // home도 없으면 ~/.claude
+  assert.equal(launchAccountOf({ preferred: "acct-3", folders: [folder("default", D, { registered: false })], status: ok }), null); // 등록부가 없으면 설정도 효과가 없다
+});
+
+test("launchAccountOf: 설정으로 고른 ACCOUNT에도 같은 거절(로그인 안 됨, FUEL hold)이 걸리고, 다른 ACCOUNT로 돌리지 않는다. 이름을 댄 다른 ACCOUNT는 된다", () => {
+  const st = (l: string) => (l === "acct-3" ? { loggedIn: false, hold: null } : { loggedIn: true, hold: null });
+  assert.throws(() => launchAccountOf({ preferred: "acct-3", home: "acct-1", folders: FOLDERS, status: st }), (e) => e instanceof ControlError && e.status === 409 && /^ACCOUNT acct-3는 로그인되어 있지 않음/.test(e.message));
+  const hold = (l: string) => (l === "acct-3" ? { loggedIn: true, hold: "FUEL 사용 98% until 21:00Z" } : null);
+  assert.throws(() => launchAccountOf({ preferred: "acct-3", home: "acct-1", folders: FOLDERS, status: hold }), /acct-3는 FUEL hold 수준/);
+  assert.equal(launchAccountOf({ requested: "acct-1", preferred: "acct-3", home: "acct-2", folders: FOLDERS, status: hold })?.label, "acct-1"); // SUPERVISOR가 직접 고르면 된다
+});
+
 // 가짜 claude: CLAUDE_CONFIG_DIR로 폴더를 알아보고 줄을 돌려준다. 부른 폴더를 로그에 남긴다. 세션을 띄우지도 멈추지도 않는다
 const BIN = join(root, "fake-claude");
 const LOG = join(root, "calls.log");

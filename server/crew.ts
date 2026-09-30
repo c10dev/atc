@@ -44,6 +44,8 @@ export interface FleetFile {
   control?: Partial<Record<ControlName, { account?: string }>>;
   // ACCOUNT 등록부(ATC-146, accounts.ts): 라벨 → Claude Code 설정 폴더. 선택 항목 — 없으면 ~/.claude 하나
   accounts?: Record<string, { configDir: string; maxLaunched?: number }>;
+  // LAUNCH ACCOUNT(ATC-239, launch-account.ts): 이름을 대지 않은 다음 LAUNCH가 쓸 ACCOUNT. 선택 항목 — 없으면 각 home. 옛 빌드는 이 칸을 읽지 않고 그대로 둔다
+  launchAccount?: { aircraft?: string; control?: string };
 }
 
 // vocado CLAUDE.md의 팀원 규칙을 옮긴 기본 CREW COMPLEMENT.

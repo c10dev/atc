@@ -91,6 +91,8 @@ export interface FleetInputs {
   fuelAccounts?: FuelRemaining[];
   // 등록된 ACCOUNT와 로그인 여부(ATC-147, loggedIn null=모름). 없거나 비면 ENTRY는 전과 같다(ACCOUNT를 고르지 않는다)
   accountLogins?: { label: string; loggedIn: boolean | null; maxLaunched?: number; running?: number }[];
+  // LAUNCH ACCOUNT(ATC-239): AIRCRAFT의 것이 설정돼 있고 등록부에 있으면 그 라벨. 있으면 AIRCRAFT의 효과 있는 home이다(없으면 프로필 home)
+  launchAccount?: string | null;
   // CONTEXT SIZE(ATC-69): REGISTRATION → 살아 있는 세션의 대화 크기와 F5 가격표. 없으면 REFRESH를 내지 않는다
   context?: Map<string, ContextSize>;
   prices?: PriceTable | null;
@@ -141,8 +143,10 @@ const isParked = (a: AircraftView) => !a.retired && !a.aog && a.status === "idle
 // DISPATCH HOLD 스위치(D3)와 상관없이 hold 수준(holdPct 이상)을 쓴다: 제안은 조언이고, 빈 ACCOUNT에 세션을 띄우자는 제안은 쓸모가 없다.
 // LAUNCH할 AIRCRAFT는 세션이 없어 AircraftView.fuel이 비므로 ACCOUNT로 찾는다(관제 세션만 적은 ACCOUNT도 잡힌다).
 // ENTRY로 들일 새 AIRCRAFT는 라벨이 없으니 default ACCOUNT로 센다. ACCOUNT를 모르면(라벨 없음) 그 AIRCRAFT 자신의 값만
-export function fuelOfPlan(i: Pick<FleetInputs, "aircraft" | "fuelAccounts">, kind: FleetPlanKind, registration: string | null): FuelRemaining | null {
+export function fuelOfPlan(i: Pick<FleetInputs, "aircraft" | "fuelAccounts"> & Partial<Pick<FleetInputs, "launchAccount">>, kind: FleetPlanKind, registration: string | null): FuelRemaining | null {
   const accounts = i.fuelAccounts ?? [];
+  // LAUNCH ACCOUNT가 있으면 이름 없는 LAUNCH·ENTRY는 거기서 뜬다(ATC-239): hold 검사도 그 ACCOUNT로
+  if (i.launchAccount && (kind === "ENTRY" || kind === "LAUNCH")) return accounts.find((f) => f.account === i.launchAccount) ?? null;
   if (kind === "ENTRY") return accounts.find((f) => f.account === DEFAULT_ACCOUNT) ?? null;
   const a = registration ? i.aircraft.find((x) => x.registration === regKey(registration)) : undefined;
   if (!a) return null;
@@ -162,10 +166,19 @@ const fuelInfoReason = (f: FuelRemaining, now: number): PlanReason => ({
 
 // ENTRY가 새 AIRCRAFT를 올릴 ACCOUNT(ATC-147, 순수). 등록부가 있으면: 등록되고 로그인이 안 됐다고 알려지지 않은(loggedIn이 false가 아닌) ACCOUNT 중
 // hold 수준(holdPct) 아래에서 사용이 가장 낮은 것(기록이 없으면 0으로, 같으면 라벨 순). 하나도 없으면 blocked 사유. 등록부가 없으면 registered false(전과 같다)
-export function entryAccountOf(i: Pick<FleetInputs, "accountLogins" | "fuelAccounts">): { registered: boolean; account: string | null; use: number | null; blocked: string | null } {
+export function entryAccountOf(i: Pick<FleetInputs, "accountLogins" | "fuelAccounts"> & Partial<Pick<FleetInputs, "launchAccount">>): { registered: boolean; account: string | null; use: number | null; blocked: string | null } {
   const logins = i.accountLogins ?? [];
   if (!logins.length) return { registered: false, account: null, use: null, blocked: null };
   const fuel = i.fuelAccounts ?? [];
+  // LAUNCH ACCOUNT(ATC-239): 설정돼 있으면 새 AIRCRAFT도 거기서 난다. 거절 사유(로그인 안 됨·hold)가 있으면 다른 ACCOUNT로 돌리지 않고 막는다
+  if (i.launchAccount) {
+    const l = logins.find((x) => x.label === i.launchAccount);
+    if (l) {
+      const f = fuel.find((x) => x.account === l.label) ?? null;
+      if (l.loggedIn === false || f?.level === "hold") return { registered: true, account: null, use: null, blocked: `새 AIRCRAFT(ENTRY)가 날 LAUNCH ACCOUNT ${l.label}를 쓸 수 없음 — ${l.loggedIn === false ? "로그인 안 됨" : `FUEL hold${f ? ` ${Math.round(f.top.pct)}%` : ""}`}` };
+      return { registered: true, account: l.label, use: f?.top.pct ?? null, blocked: null };
+    }
+  }
   const rows = logins.map((l) => ({ label: l.label, loggedIn: l.loggedIn, f: fuel.find((x) => x.account === l.label) ?? null }));
   const ok = rows.filter((r) => r.loggedIn !== false && r.f?.level !== "hold").sort((a, b) => (a.f?.top.pct ?? 0) - (b.f?.top.pct ?? 0) || a.label.localeCompare(b.label));
   if (ok.length) return { registered: true, account: ok[0].label, use: ok[0].f?.top.pct ?? null, blocked: null };
@@ -181,12 +194,14 @@ export function entryAccountOf(i: Pick<FleetInputs, "accountLogins" | "fuelAccou
 export function accountChangeOf(
   a: AircraftView,
   session: SessionFact | null,
-  i: Pick<FleetInputs, "accountLogins" | "fuelAccounts" | "openPrs" | "config" | "now">,
+  i: Pick<FleetInputs, "accountLogins" | "fuelAccounts" | "openPrs" | "config" | "now"> & Partial<Pick<FleetInputs, "launchAccount">>,
   assigned: boolean,
   launchedRecently: boolean,
 ): FleetCandidate | null {
   const logins = i.accountLogins ?? [];
-  const home = a.account;
+  // LAUNCH ACCOUNT가 설정돼 있으면(ATC-239) 그것이 효과 있는 home이다: 프로필 home로 돌아가자는 제안은 없고, "돌아감"은 LAUNCH ACCOUNT로 돌아감이다
+  const launchHome = i.launchAccount && logins.some((l) => l.label === i.launchAccount) ? i.launchAccount : null;
+  const home = launchHome ?? a.account;
   const cur = a.observedAccount ?? a.account;
   if (!logins.length || !home || !cur || a.retired || a.aog || !isBgFact(session) || launchedRecently) return null;
   if (!logins.some((l) => l.label === cur)) return null; // 등록되지 않은 폴더의 ACCOUNT는 옮길 근거를 모른다
@@ -206,7 +221,7 @@ export function accountChangeOf(
   const targets = logins.filter(eligible).sort((x, y) => use(x.label) - use(y.label) || x.label.localeCompare(y.label));
   // home로 돌아가는 제안(자동이 아니다): home이 아닌 ACCOUNT에서 돌고 home이 infoPct 아래
   const back = cur !== home && targets.some((t) => t.label === home);
-  if (back) why.push({ code: "home", detail: `home ACCOUNT ${home}: 사용 ${Math.round(use(home))}% — infoPct 아래로 돌아옴`, value: use(home) });
+  if (back) why.push({ code: "home", detail: `${launchHome ? "LAUNCH ACCOUNT" : "home ACCOUNT"} ${home}: 사용 ${Math.round(use(home))}% — infoPct 아래로 돌아옴`, value: use(home) });
   if (!why.length || !targets.length) return null;
   const to = back && !why.some((r) => r.code !== "home") ? home : targets[0].label; // home로 돌아가는 것만이 이유면 home로
   const tf = fuelOf(to);
@@ -215,7 +230,7 @@ export function accountChangeOf(
     { code: "target", detail: `옮길 ACCOUNT ${to}: ${tf ? `사용 ${Math.round(tf.top.pct)}%(reset ${tf.top.resetsAt.slice(11, 16)}Z)` : "사용 기록 없음"} — 등록됨, 로그인 안 됨 아님, infoPct 아래${targets.length > 1 ? `, 사용이 가장 낮음(다른 후보 ${targets.slice(1).map((t) => `${t.label} ${Math.round(use(t.label))}%`).join(", ")})` : ""}`, value: to },
     { code: "between", detail: "FLIGHT 사이: 세션이 쉬고 열린 FLIGHT·점유·PR이 없음" },
     { code: "cold", detail: "새 세션은 캐시 없이 시작한다(ACCOUNT마다 캐시가 다름). FUEL LEAK의 ACCOUNT CHANGE로 따로 보인다" },
-    { code: "session", detail: `BG ${session!.id ?? "?"} — ACCOUNT ${cur}에서 멈추고 ACCOUNT ${to}에서 CREW BRIEFING으로 다시 띄움. home ACCOUNT ${home}는 그대로` },
+    { code: "session", detail: `BG ${session!.id ?? "?"} — ACCOUNT ${cur}에서 멈추고 ACCOUNT ${to}에서 CREW BRIEFING으로 다시 띄움. ${launchHome ? `프로필 home ACCOUNT ${a.account}는 그대로(지금은 LAUNCH ACCOUNT ${launchHome}가 기준)` : `home ACCOUNT ${home}는 그대로`}` },
   ];
   return { key: `ACCOUNT CHANGE|${a.registration}`, kind: "ACCOUNT CHANGE", aircraft: a.registration, airport: a.base, account: to, reasons };
 }

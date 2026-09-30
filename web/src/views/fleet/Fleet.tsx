@@ -242,6 +242,18 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
           {error}
         </p>
       )}
+      {(brief.launchAccount?.aircraft || brief.launchAccount?.control) && (
+        <p className="fl-launch-account" aria-label="LAUNCH ACCOUNT">
+          {brief.launchAccount?.aircraft && <span className="fl-la-chip">LAUNCH ACCOUNT {brief.launchAccount.aircraft}</span>}
+          {brief.launchAccount?.control && <span className="fl-la-chip">관제 세션 LAUNCH ACCOUNT {brief.launchAccount.control}</span>}
+          <span className="faint"> 다음 LAUNCH에만 쓴다 · 돌고 있는 세션은 그대로 · 바꾸는 곳은 설정 → ACCOUNTS</span>
+        </p>
+      )}
+      {brief.launchAccount?.warnings.map((w) => (
+        <p key={w} className="fl-error">
+          {w}
+        </p>
+      ))}
       <EntryForm brief={brief} onEnter={enter} />
       {briefing?.from === "entry" && (
         <BriefingPanel registration={briefing.registration} text={briefing.text} opener={briefing.opener} onClose={() => setBriefing(null)} />

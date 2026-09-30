@@ -931,6 +931,15 @@ ACCOUNT 폴더를 등록하면([accounts.md](accounts.md) 5.2) 등록된 어느 
 - **DISPATCH·FOLLOWING**은 이미 관찰한 ACCOUNT를 쓰므로([fuel.md](fuel.md) 6.2) 옮긴 AIRCRAFT는 새 ACCOUNT로 세고 다시 배정할 수 있다(`server/accounts.test.ts`).
 - **FUEL.** 새 세션의 cold 첫 요청은 `ACCOUNT CHANGE`라는 이름의 FUEL LEAK다([fuel.md](fuel.md) 6.3).
 
+### LAUNCH ACCOUNT와 ACCOUNT CHANGE(ATC-239)
+
+SUPERVISOR는 AIRCRAFT용 **LAUNCH ACCOUNT**를 정할 수 있다(설정 창 ACCOUNTS, [accounts.md](accounts.md) 5.4). 정해져 있고 등록돼 있는 동안 그것이 FLEET PLAN의 **효과 있는 home**이다:
+
+- `accountChangeOf`는 프로필 `account` 대신 그것을 home으로 쓴다: 프로필 home으로 "돌아가자"는 제안이 없고, "돌아감"은 LAUNCH ACCOUNT로 돌아감이다(사유 `LAUNCH ACCOUNT acct-3: 사용 10% — infoPct 아래로 돌아옴`, 세션 줄에는 프로필 home이 그대로라고 적힌다). hold나 긴 `LIMIT` 때문에 옮기는 제안은 그대로다.
+- `entryAccountOf`는 새 AIRCRAFT가 날 ACCOUNT로 LAUNCH ACCOUNT를 적는다. 그 ACCOUNT가 로그인 안 됨이거나 FUEL hold면 다른 ACCOUNT로 돌리지 않고 사유와 함께 ENTRY를 막는다(`새 AIRCRAFT(ENTRY)가 날 LAUNCH ACCOUNT acct-1를 쓸 수 없음 — …`).
+- `fuelOfPlan`은 LAUNCH·ENTRY 제안의 FUEL을 LAUNCH ACCOUNT의 것으로 읽는다(STOP은 AIRCRAFT 자신의 것).
+- 설정 때문에 돌고 있는 세션이 옮겨 가지는 않는다. ACCOUNT CHANGE는 여전히 AIRCRAFT마다 SUPERVISOR가 승인한다. 설정을 끄면 위의 것은 모두 전과 같다.
+
 ### REPOSITION (ATC-179)
 
 FLEET PLAN의 새 종류: 쉬는 AIRCRAFT의 base를, FLIGHT가 기다리는데 소속 AIRCRAFT가 없는 AIRPORT로 옮긴다. DISPATCH가 AIRCRAFT를 자기 base AIRPORT의 FLIGHT와만 짝짓기 때문에([dispatch.ko.md](dispatch.ko.md) 4) 다른 AIRPORT에서 쉬는 AIRCRAFT는 그 FLIGHT를 받지 못한다. 살아 있는 세션은 저장소를 바꿀 수 없다(시작한 폴더의 `CLAUDE.md`를 읽는다). 그래서 옮기기는 STOP → 새 base 쓰기 → 목표 AIRPORT 저장소에서 LAUNCH다.

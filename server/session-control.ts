@@ -8,7 +8,8 @@ import { type AccountFolder, accountFolders, folderOfAccount, observedLabelsOn }
 import { authStatusOf } from "./account-health.ts";
 import { cleanEnv, cleanPath } from "./clean-env.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
-import { crewBriefing, FleetError, fleetView, loadFleet, saveControlAccount } from "./fleet.ts";
+import { crewBriefing, FleetError, fleetView, loadFleet, saveControlAccount, saveLaunchAccount } from "./fleet.ts";
+import { effectiveLaunchAccount, launchSettingOf, launchSettingPatchOf } from "./launch-account.ts";
 import { fleetKeyOf } from "./registration.ts";
 import { accountsLabeled, CONTROL_NAMES, controlAccountOf, type FleetFile } from "./crew.ts";
 import type { Snapshot } from "./model.ts";
@@ -120,13 +121,13 @@ export function launchPlanOf(input: LaunchInput, rows: AgentRow[], max = MAX_LAU
 }
 
 // ── 어느 ACCOUNT에서 띄우나(ATC-147, 순수) ──
-// 등록부가 없으면 null(전과 같다: ~/.claude, 환경 변경 없음). 이름을 대면 그 ACCOUNT, 없으면 home(AIRCRAFT 프로필·관제 세션 라벨).
+// 등록부가 없으면 null(전과 같다: ~/.claude, 환경 변경 없음). 이름을 대면 그 ACCOUNT, 없으면 LAUNCH ACCOUNT(ATC-239, 그 종류의 설정. 등록부에 없으면 무시), 없으면 home(AIRCRAFT 프로필·관제 세션 라벨).
 // home 라벨이 등록부에 없으면 ~/.claude로 간다. 로그인이 안 됐거나 FUEL hold 수준인 ACCOUNT는 사유와 함께 거절한다(loggedIn null=모름은 막지 않는다)
 export interface AccountStatus {
   loggedIn: boolean | null;
   hold: string | null; // FUEL hold 수준이면 그 글("FUEL 사용 97% until 21:00Z")
 }
-export function launchAccountOf(input: { requested?: unknown; home?: string | null; folders: readonly AccountFolder[]; status: (label: string) => AccountStatus | null }): AccountFolder | null {
+export function launchAccountOf(input: { requested?: unknown; preferred?: string | null; home?: string | null; folders: readonly AccountFolder[]; status: (label: string) => AccountStatus | null }): AccountFolder | null {
   const { folders } = input;
   const asked = input.requested === undefined || input.requested === null || input.requested === "" ? null : input.requested;
   if (!observedLabelsOn(folders)) {
@@ -137,7 +138,8 @@ export function launchAccountOf(input: { requested?: unknown; home?: string | nu
   if (label !== null && !/^[a-z0-9][a-z0-9-]{0,23}$/.test(label)) throw new ControlError("ACCOUNT는 등록부의 라벨(소문자·숫자·-)", 400);
   const home = (input.home ?? "").trim().toLowerCase();
   const dflt = folders.find((f) => f.dir === config.claudeDir);
-  const folder = label !== null ? folders.find((f) => f.label === label) : (folders.find((f) => f.label === home) ?? dflt);
+  const pref = input.preferred ? folders.find((f) => f.label === input.preferred) : undefined; // 이름을 대지 않은 LAUNCH의 기본(ATC-239). 이름을 댄 요청이 늘 이긴다
+  const folder = label !== null ? folders.find((f) => f.label === label) : (pref ?? folders.find((f) => f.label === home) ?? dflt);
   if (!folder) throw new ControlError(`등록되지 않은 ACCOUNT: ${label} (등록: ${folders.map((f) => f.label).join(", ")})`, 404);
   const st = input.status(folder.label);
   if (st?.loggedIn === false) throw new ControlError(`ACCOUNT ${folder.label}는 로그인되어 있지 않음 — SUPERVISOR가 그 폴더에서 claude auth login을 한다`, 409);
@@ -478,7 +480,7 @@ export async function launchAircraft(s: Snapshot, registration: string, options:
     // ACCOUNT(ATC-147): 이름을 댔으면 그것, 아니면 AIRCRAFT의 home. 로그인 안 됨·FUEL hold는 사유와 함께 거절
     const home = loadFleet().aircraft[fleetKeyOf(Object.keys(loadFleet().aircraft), reg, cfg.teamPattern) ?? ""]?.account ?? null;
     const statuses = await accountStatusesOf(s.fuelAccounts, folders);
-    const account = launchAccountOf({ requested: options.account, home, folders, status: (l) => statuses.get(l) ?? null });
+    const account = launchAccountOf({ requested: options.account, preferred: loadFleet().launchAccount?.aircraft ?? null, home, folders, status: (l) => statuses.get(l) ?? null });
     if (account && read.failed.includes(account.label)) throw new ControlError(`ACCOUNT ${account.label}의 세션 목록을 읽지 못함 — 이미 떠 있는지 몰라 띄우지 않는다`, 502);
     const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: crewBriefing(a, repo, cfg.mode), permissionMode: options.permissionMode, model: options.model }, rows, MAX_LAUNCHED, account, (row) => idleMinOfRow(row, s.sessions), Object.keys(loadFleet().aircraft));
     const r = await claude(plan.args, plan.cwd, { scope: true, configDir: plan.configDir });
@@ -523,7 +525,7 @@ export async function launchControl(name: string, by: string, requestedAccount?:
     const folders = accountFolders();
     const read = await agentRowsOf(folders);
     const statuses = await accountStatusesOf(fuelAccounts, folders);
-    const account = launchAccountOf({ requested: requestedAccount, home: loadFleet().control?.[spec.name as keyof NonNullable<FleetFile["control"]>]?.account ?? null, folders, status: (l) => statuses.get(l) ?? null });
+    const account = launchAccountOf({ requested: requestedAccount, preferred: loadFleet().launchAccount?.control ?? null, home: loadFleet().control?.[spec.name as keyof NonNullable<FleetFile["control"]>]?.account ?? null, folders, status: (l) => statuses.get(l) ?? null });
     if (account && read.failed.includes(account.label)) throw new ControlError(`ACCOUNT ${account.label}의 세션 목록을 읽지 못함 — 이미 떠 있는지 몰라 띄우지 않는다`, 502);
     const plan = controlLaunchPlanOf(spec, read.rows, dir, account);
     const r = await claude(plan.args, plan.cwd, { scope: true, configDir: plan.configDir ?? null });
@@ -699,7 +701,13 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
     const folders = accountFolders();
     const statuses = await accountStatusesOf((await getSnapshot()).fuelAccounts, folders);
     const dispatch = (await agentRowsOf(folders).catch(() => ({ rows: [] as AgentRow[], failed: [] as string[] }))).rows;
+    const reg = observedLabelsOn(folders) ? folders.map((f) => f.label) : [];
+    const setting = launchSettingOf(loadFleet().launchAccount);
+    const eff = { aircraft: effectiveLaunchAccount(setting, "aircraft", reg), control: effectiveLaunchAccount(setting, "control", reg) };
     return c.json({
+      // LAUNCH ACCOUNT(ATC-239): 지금 설정(등록부에 없는 라벨은 null)과 경고
+      launchAccount: { aircraft: eff.aircraft.label, control: eff.control.label },
+      launchAccountWarnings: [eff.aircraft.warning, eff.control.warning].filter((w): w is string => w !== null),
       accounts: observedLabelsOn(folders)
         ? folders.map((f) => {
             const st = statuses.get(f.label);
@@ -709,6 +717,19 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
           })
         : [],
     });
+  });
+
+  // LAUNCH ACCOUNT를 바꾼다(ATC-239). SUPERVISOR만: 이 화면 Origin과 JSON Content-Type이 있어야 받는다(fromThisApp).
+  // 본문에 적힌 칸만 바꾼다. 라벨은 등록부에 있어야 하고, null·""은 "각 home"으로 되돌린다. 돌고 있는 세션은 옮기지 않는다
+  app.put("/api/fleet/launch-account", async (c: Context) => {
+    if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
+    const folders = accountFolders();
+    const reg = observedLabelsOn(folders) ? folders.map((f) => f.label) : [];
+    const r = launchSettingPatchOf(launchSettingOf(loadFleet().launchAccount), await c.req.json().catch(() => null), reg);
+    if (!r.ok) return c.json({ error: r.error }, r.status);
+    saveLaunchAccount(r.next);
+    console.log(`[atc] launch account: aircraft=${r.next.aircraft ?? "(각 home)"} control=${r.next.control ?? "(각 home)"}`);
+    return c.json({ ok: true, launchAccount: { aircraft: r.next.aircraft ?? null, control: r.next.control ?? null } });
   });
 
   app.post("/api/fleet/:registration/launch", async (c: Context) => {
