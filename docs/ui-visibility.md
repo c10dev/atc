@@ -1,6 +1,6 @@
 # UI visibility design
 
-> Status (2026-09-29): draft, not adopted. Written for ATC-116 from a visibility review of the running screen on 2026-09-29. Nothing here is built. The quick fixes from the same review are separate and already merged: ALERT levels (ATC-110), the dark cockpit on RADAR and STRIPS (ATC-111), the FIDS ARRIVED cap (ATC-112). DISPATCH and SCHEDULE "decisions first" (ATC-113) is a related issue. Once a step is adopted, its issue links this document.
+> Status (2026-09-29): draft, not adopted. Written for ATC-116 from a visibility review of the running screen on 2026-09-29. Nothing here is built. The quick fixes from the same review are separate and already merged: ALERT levels (ATC-110), the dark cockpit on RADAR and STRIPS (ATC-111), the FIDS ARRIVED cap (ATC-112). DISPATCH and SCHEDULE "decisions first" (ATC-113) is a related issue. Once a step is adopted, its issue links this document. Step 2 (the queue data) is adopted by [desk.md](desk.md) as its step Q1 (ATC-192, 2026-09-30), which also proposes to host the queue in the DESK drawer instead of step 3's own drawer (desk.md decision 7.4).
 
 Related: [fleet.md](fleet.md) 8.5 (CONTROL SESSIONS and the header CONTROL strip), [dispatch.md](dispatch.md), [atfm.md](atfm.md), [guide/screens.md](guide/screens.md) (what each tab shows today).
 
