@@ -240,6 +240,108 @@ Each step is one issue. Everything is shadow or read-only until the step that sa
 - G1 needs nothing and can start at once. G2 and G3 need the QUEUE (Q1, and ALERTING A4 for the popover) to show their cards, but their drawer buttons do not.
 - D7 comes after D1–D4 have run, and uses ATC-191 so DUTY shares the memory on any ACCOUNT.
 
+### D0 as probed (ATC-193)
+
+Measured 2026-09-30 with Claude Code 2.1.285, model `claude-sonnet-5-5`, on **acct-2** (`~/.claude`, the default folder; also once with `CLAUDE_CONFIG_DIR=~/.claude` set explicitly, same result). Not on acct-1. About 30 short turns in all, under $2 of FUEL. The environment was `cleanEnv`-like (`HOME`, `PATH`, `USER`, `LANG`, `TERM` only). The scratch folder sat outside the repository with a DUTY-style settings file passed with `--settings`: deny `Edit`, `Write`, `NotebookEdit`, `Agent`, `SendMessage`, `WebFetch`; allow `Bash(jq:*)` and `Bash(date:*)`; a `PreToolUse` guard that exits 2 on anything but a plain `jq` or `date`; a `UserPromptSubmit` hook that prints a marker line. No repository content went to the model. Fields are named here; no credentials, tokens or emails were read.
+
+Command: `claude -p --input-format stream-json --output-format stream-json --include-partial-messages --verbose --session-id <uuid> --settings <file>`. **`--verbose` is required** with stream-json output. Input lines are `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"…"}]}}`.
+
+**1. Start.**
+
+- Nothing is written before the first user line: no `init`, no output. Idle RSS before any message is 240–258 MB.
+- After the first user line the `system/init` event comes in 0.4–0.8 s, and the first text delta in 2.2–2.9 s. A cold first turn ends in 2–3 s.
+- RSS after 5 turns was 260 MB, so it does not grow with short turns.
+- Idle costs nothing: no API traffic and no events for 15 s, and SIGINT at idle exits the process with code 0 in under a second.
+
+**2. Turns.**
+
+- Five user lines to one process were answered in order, one `result` each. A new user line can be written as soon as the previous `result` arrives.
+- Each turn repeats `system/init` and `system/status`.
+- Event types, with one example each (text shortened):
+
+| type / subtype | Example |
+|---|---|
+| `system/init` | `{"type":"system","subtype":"init","cwd":"…","session_id":"…","tools":["Bash","Read",…],"mcp_servers":[…],"model":…}` |
+| `system/status` | `{"type":"system","subtype":"status","status":"requesting","session_id":"…"}` |
+| `system/thinking_tokens` | `{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50}` |
+| `stream_event` | `{"type":"stream_event","event":{…},"session_id":"…","parent_tool_use_id":null,"uuid":"…"}` |
+| `assistant` | `{"type":"assistant","message":{"model":"claude-sonnet-5-5","id":"msg_…","role":"assistant","content":[{"type":"text","text":"ONE"}],"stop_reason":null,"usage":{…}},"session_id":"…"}` |
+| `user` (tool result) | `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"2","is_error":false,"tool_use_id":"toolu_…"}]}}` |
+| `rate_limit_event` | `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","rateLimitType":"seven_day","utilization":0.82,"resetsAt":…,"unifiedWindows":{"five_hour":{…},"seven_day":{…}}}}` |
+| `result/success` | `{"type":"result","subtype":"success","is_error":false,"result":"ONE","stop_reason":"end_turn","total_cost_usd":0.035,"usage":{…},"modelUsage":{…},"permission_denials":[],"num_turns":1,"duration_ms":2204,"session_id":"…"}` |
+
+- **User lines are not echoed.** `--replay-user-messages` re-emits them as `{"type":"user",…,"isReplay":true}`; the server should log the user text itself.
+- The `assistant` event carries `usage`, but its `stop_reason` is `null`. The end of a turn is the `result` event, not the `assistant` event.
+- Thinking blocks arrive with empty text (`"thinking":""`, a `signature`). Only `estimated_tokens` is shown.
+- The `result` event has these fields: `duration_api_ms`, `stop_reason`, `session_id`, `total_cost_usd`, `usage`, `modelUsage`, `permission_denials`, `terminal_reason`, `fast_mode_state`, `is_error`, `num_turns`, `subtype`, `api_error_status`, `result`, `ttft_ms`, `duration_ms`, `uuid`, `queued_turn_count`, `result_index`, and a few more.
+- `--include-hook-events` adds `system/hook_started` and `system/hook_response` before `init` (see 5).
+- `--strict-mcp-config` empties `init.mcp_servers`. Without it the list held account-level connectors and plugins that were failed or needed sign-in.
+
+**3. Partial text.**
+
+- With `--include-partial-messages` a turn is a run of `stream_event` lines, each with `event.type`: `message_start`, `content_block_start` (with `index` and `content_block.type`), `content_block_delta`, `content_block_stop`, `message_delta` (carries `stop_reason: "end_turn"` and `usage`), `message_stop`.
+- Text deltas are `{"event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ONE"}}}`. A 500-word story came as 55 deltas. Thinking has `thinking_delta` (empty text, `estimated_tokens`) and `signature_delta`.
+- The final text is the `assistant` event whose `content` has the whole `text` block, followed by `message_delta` and `message_stop`. Its `stop_reason` is `null`. The turn's end and full text are in `result.result` after `rate_limit_event`.
+- An interrupted turn (7) still sends the `assistant` event with the text written so far.
+
+**4. Denied tool and guard.**
+
+- **Deny list.** A denied tool is **removed from the tool list**: `init.tools` had no `Edit`, `Write`, `Agent`, `WebFetch` or `NotebookEdit`. The model said "the Edit tool isn't available". No `tool_use` line and no denial event. The process goes on.
+- **Guard (`PreToolUse` exit 2).** The stream shows `assistant` with a `tool_use` line, then a `user` line with `tool_result`, `is_error: true` and the text `PreToolUse:Bash hook error: [<command>]: <guard's stderr>`. The result's `permission_denials` lists the call (`tool_name`, `tool_use_id`, `tool_input`). The turn goes on (`num_turns` 2), and the model answered from the failure. A guard that allows the call (`jq -n 1+1`) gives a normal `tool_result`.
+- **Neither waits for anyone.** The next user line worked as usual.
+- **`init.tools` still lists tools the deny list did not name** (`CronCreate`, `EnterWorktree`, `Workflow`, `WebSearch`, `RemoteTrigger`, `PushNotification`, `ListAgents`, …). `--tools Bash,Read` made `init.tools` exactly `["Bash","Read"]`. It also cut the first-turn prompt from about 18k to about 4.6k tokens, and the cold first turn from $0.035 to $0.009. **D1 should pass `--tools` and `--strict-mcp-config`** and keep the deny list as a second lock. The guard must also see every tool the deny list does not name.
+
+**5. Hook.**
+
+- The `UserPromptSubmit` hook's **stdout reaches the model in `-p` stream-json mode**. The marker line `BRIEF-MARKER: the secret word is PELICAN-7` was repeated back by the model, which could not have known it. It ran on every user line, once per turn.
+- With `--include-hook-events` the stream shows `system/hook_response` with `hook_name`, `hook_event`, `output`, `stdout`, `stderr`, `exit_code` and `outcome`. It comes before `init`, 0.7 s after the user line.
+- The hook ran from the `--settings` file and from a project `.claude/settings.json`.
+
+**6. Resume.**
+
+- The process was killed with SIGKILL after the first result (`exit null SIGKILL`). A new process with `--resume <same id>` and a new user line answered from the earlier context (the code word was remembered).
+- The first event is a normal `system/init` with the **same `session_id`**, after the first user line (0.8 s). There is no replay of earlier messages. The new process starts its `total_cost_usd` at zero.
+- `--session-id <uuid>` on a fresh process is accepted, and `--resume` needs the same ACCOUNT folder (ATC-145 found it fails across folders).
+
+**7. Stop mid-answer.**
+
+- **Use the control message.** Write `{"type":"control_request","request_id":"<id>","request":{"subtype":"interrupt"}}` on stdin. The stream then shows a `control_response` (`{"subtype":"success","request_id":"<id>","response":{"still_queued":[]}}`), the `assistant` event with the text so far, a `user` line with `[Request interrupted by user]`, and a `result` with `subtype: "error_during_execution"`, `is_error: true` and zero usage. **The process stays up**: the next user line was answered and remembered the interrupted story.
+- An interrupt in the middle of a tool call ended the turn the same way.
+- **SIGINT also ends the turn, but the process then exits with code 0** within about a second and drops the next line. It is not a way to stop a turn in a long-lived process.
+
+**8. Cost.**
+
+- Short turns on `claude-sonnet-5-5`: a cold first turn was $0.035–0.052 (8–13k cache-write tokens for the system prompt and tools, 1 h cache), later turns $0.005–0.02 (10–23k cache-read tokens, 3–160 output tokens). Five turns to one process came to $0.071. `--tools Bash,Read` brings the cold first turn to $0.009.
+- `total_cost_usd` in `result` is **cumulative for the process**. Per-turn cost is the difference between two results. `usage` and `modelUsage` are per turn. `usage` fields: `input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`, `output_tokens_details`, `server_tool_use`, `service_tier`, `cache_creation` (`ephemeral_1h_input_tokens`, `ephemeral_5m_input_tokens`), `inference_geo`, `iterations`, `speed`, `fallback_credit`.
+- `rate_limit_event` carries the ACCOUNT's `five_hour` and `seven_day` `utilization` and `resetsAt` on every turn. FUEL for DUTY can read them from the stream instead of the statusline.
+- Idle cost is none (see 1).
+**9. Env and ACCOUNT.** The run above used acct-2 (`~/.claude`) with and without `CLAUDE_CONFIG_DIR`. `cleanEnv` omits the variable for the default folder and this was the same. `-p` refuses to load `permissions.allow` from a project `.claude/settings.json` in a folder the ACCOUNT has not trusted (stderr line `Ignoring 2 permissions.allow entries from .claude/settings.json: this workspace has not been trusted`). Hooks from the same file still ran. Settings passed with `--settings` are not affected. `claude --bg` refuses an untrusted folder outright (`Workspace not trusted. Run claude … once and accept the trust prompt`). So DUTY's settings go on the command line or `duty/` must be trusted in the ACCOUNT folder first.
+
+**10. NEEDS YOU.**
+
+- **State file.** A blocked background job has `state.json` with `state: "working"`, `tempo: "blocked"`, `detail` ("Writing ~/…") and `needs` ("approve Write: /path"). `suggestedReply` was absent for a tool approval (`server/job-state.ts` already reads all of them). Other fields: `sessionId`, `cwd`, `daemonShort`, `backend`, `inFlight`, `providerEnv`, `createdAt`, `updatedAt`. When answered, `tempo` went to `idle` and `needs` went away.
+- **CLI.** `claude --help` documents `attach`, `logs`, `stop`, `rm`, `respawn` and `agents [--json]` for background jobs. **None answers a prompt.** `logs` prints the terminal screen. `attach` needs a terminal.
+- **What works.** `claude attach <id>` inside a pty (tmux, 120×40) draws the prompt ("Do you want to create bg2.txt? 1. Yes / 2. … / 3. No"). `tmux send-keys 3` answered it, the job went on, and the `state.json` changed as above. So a server that runs `claude attach` in a pty it owns can answer NEEDS YOU from atc without Claude desktop. It scrapes a terminal screen whose text can change with the Claude Code version, so it needs a screen check and a version pin.
+- **Where the SUPERVISOR does not need it.** A DUTY-style `-p` process can be given `--permission-prompt-tool stdio`. A tool that is neither allowed nor denied then **waits**: the stream shows `{"type":"control_request","request_id":"…","request":{"subtype":"can_use_tool","tool_name":"Write","input":{…},"description":"other/no.txt","permission_suggestions":[…],"tool_use_id":"toolu_…"}}`, and the process holds until stdin gets `{"type":"control_response","response":{"subtype":"success","request_id":"…","response":{"behavior":"allow","updatedInput":{…}}}}` or `{"behavior":"deny","message":"…"}`. Deny was passed to the model as an error `tool_result` with the message, and allow ran the write. Tools that the deny list or the guard block **never** reach this request. The default (`--permission-prompts host` without the tool) denies at once, as in 4. This is the route for a DUTY card ("DUTY wants to write X: allow / deny") instead of a blanket allow list. It is a decision for the SUPERVISOR to take (L1 is chosen without it), and the button would be atc UI with the Origin check like every other card.
+- A `--bg` job started without `--permission-mode default` ran the same write with no prompt, so a held prompt needs the mode set explicitly.
+- The throwaway jobs (`claude --bg` in the atc worktree, one that ran the write and one held at the prompt) were stopped and `rm`'d; `claude agents --json` and `jobs/` no longer list them.
+
+**L1 allow list in `-p` (3.5).**
+
+- Rule paths: `Edit(//home/c10/x/allowed/**)` matches an **absolute** path. A single leading slash (`Edit(/home/c10/x/**)`) is relative to the project root and matched nothing: the write failed as "you haven't granted it yet". Use `//` or `~/`.
+- With that, `Write` and `Edit` **inside the allowed path passed** (file created, then edited). A path outside failed at once with `Claude requested permissions to write to <path>, but you haven't granted it yet.` (`is_error: true`, listed in `permission_denials`), **with no prompt** and no wait. The turn went on.
+- A worktree-shaped pattern worked: `Write(//…/.claude/worktrees/duty-*/**)` allowed `.claude/worktrees/duty-x/w.txt` and refused `.claude/worktrees/other-y/w.txt`.
+- **Paths inside the ACCOUNT's config folder are "sensitive".** A scratch folder under `~/.claude/jobs/…` was refused even with a matching allow rule (`which is a sensitive file`). DUTY's worktrees are under the repository, not the config folder, so this does not touch L1.
+- The `PreToolUse` guard runs first and can block an allowed tool. The allow list is a second door: for L1 the guard must let `Edit` and `Write` through for the allowed paths, or nothing is written.
+
+**What this changes in the design.**
+
+- D1 spawns with `--tools`, `--strict-mcp-config`, `--settings <file>`, `--include-hook-events` and `--replay-user-messages`, and does not rely on a project `.claude/settings.json` for `allow` (9).
+- D2's parser needs: `system/init` (once per turn), `stream_event` text deltas, `assistant` (full text), `user` tool results, `result` (turn end, cost, `permission_denials`), `rate_limit_event`, and `control_response`. The server logs user text itself. The stop button sends the `interrupt` control message (7).
+- Idle exit after `duty.idleMin` works: a process that ended mid-conversation resumes with its context (6).
+- NEEDS YOU has two routes: a pty around `claude attach` for other jobs, and `can_use_tool` for DUTY's own process. The SUPERVISOR decides whether either is built (10).
+- Section 3.2's line "NEEDS YOU links to the AIRCRAFT, unless D0 finds a way" is now: D0 found the pty route, with the fragility above.
+
 ## 6. Risks
 
 | Risk | Mitigation |
