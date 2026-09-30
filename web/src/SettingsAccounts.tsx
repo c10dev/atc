@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { AddPreview, AddResult } from "../../server/account-add.ts";
 import type { FolderHealth } from "../../server/account-health.ts";
 import type { LoginView } from "../../server/account-login.ts";
+import type { MemoryFolderView } from "../../server/account-memory.ts";
 import type { AccountsRegistry } from "../../server/accounts.ts";
 import { Block, StatusChip } from "./SettingsServer.tsx";
 
@@ -22,6 +23,27 @@ export function AccountsBlock() {
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [memory, setMemory] = useState<MemoryFolderView[]>([]); // ATC-191: 폴더별 memory 상태
+  const [sharing, setSharing] = useState(false);
+  const loadMemory = () =>
+    fetch("/api/accounts/memory")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((d: { memory: MemoryFolderView[] }) => setMemory(d.memory))
+      .catch(() => {});
+  const shareMemory = async () => {
+    setSharing(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/accounts/memory", { method: "POST" });
+      const body = await res.json();
+      if (res.ok) setMemory((body as { memory: MemoryFolderView[] }).memory);
+      else setError(body.error ?? `HTTP ${res.status}`);
+    } catch {
+      setError("서버에 연결할 수 없음");
+    } finally {
+      setSharing(false);
+    }
+  };
   const [logins, setLogins] = useState<Record<string, LoginView>>({}); // 이 화면에서 LOGIN을 마친 폴더(줄이 LOGGED IN으로 바뀐 뒤에도 온보딩 결과를 보인다)
   const load = (d: AccountsState) => {
     setData(d);
@@ -31,9 +53,11 @@ export function AccountsBlock() {
     fetch("/api/accounts")
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d: AccountsState) => load(d))
+      .then(loadMemory)
       .catch(() => setError("ACCOUNTS를 읽지 못함"));
   useEffect(() => {
     let alive = true;
+    void loadMemory();
     fetch("/api/accounts")
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d: AccountsState) => alive && load(d))
@@ -81,6 +105,7 @@ export function AccountsBlock() {
             <StatusChip tone={f.healthHook ? "ok" : "mute"}>{f.healthHook ? "HEALTH HOOK ✓" : "HEALTH HOOK 없음"}</StatusChip>
             <StatusChip tone={f.claimHook ? "ok" : "mute"}>{f.claimHook ? "CLAIM HOOK ✓" : "CLAIM HOOK 없음"}</StatusChip>
           </div>
+          <MemoryLine view={memory.find((m) => m.dir === f.dir)} sharing={sharing} onShare={shareMemory} />
           {f.registered && f.loggedIn === false && (
             <LoginPanel
               label={f.label}
@@ -122,8 +147,36 @@ export function AccountsBlock() {
         </button>
         {error && <span className="settings-hint acct-err"> {error}</span>}
       </div>
-      <AddAccount dirty={dirty} folders={data?.folders ?? []} onAdded={load} />
+      <AddAccount dirty={dirty} folders={data?.folders ?? []} onAdded={(d) => {
+          load(d);
+          void loadMemory();
+        }}
+      />
     </Block>
+  );
+}
+
+// SHARE MEMORY(ATC-191): 폴더의 Claude Code memory가 ~/.claude 것과 같은가. 충돌은 파일 이름만 보인다(내용은 서버도 열지 않는다)
+function MemoryLine({ view, sharing, onShare }: { view: MemoryFolderView | undefined; sharing: boolean; onShare: () => void }) {
+  if (!view) return null;
+  return (
+    <div className="acct-chips">
+      <StatusChip tone={view.status === "shared" ? "ok" : view.status === "conflict" ? "bad" : "mute"}>{view.status === "shared" ? "MEMORY shared ✓" : view.status === "conflict" ? "MEMORY conflict" : "MEMORY separate"}</StatusChip>
+      {view.status !== "shared" && (
+        <button type="button" className="config-btn" disabled={sharing} onClick={onShare} title="빈 memory 폴더를 ~/.claude 것으로 잇는다. 파일이 든 폴더는 건드리지 않는다">
+          SHARE MEMORY
+        </button>
+      )}
+      {view.conflicts.length > 0 && (
+        <ul className="settings-hint acct-warn">
+          {view.conflicts.map((c) => (
+            <li key={c.key}>
+              ⚠ <span className="mono">{c.key}</span>에 이미 memory가 있어 잇지 않음: <span className="mono">{c.names.join(", ") || "(폴더가 아님)"}</span>. 직접 합친 뒤 폴더를 치우면 다음 SHARE MEMORY가 잇는다.
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -252,7 +305,7 @@ function AddAccount({ dirty, folders, onAdded }: { dirty: boolean; folders: Fold
                 (옛 파일 <span className="mono">{done.backup}</span>)
               </>
             )}
-            , 등록함{done.homeRegistered && <> · <span className="mono">~/.claude</span>는 {done.homeRegistered}</>}.
+            , 등록함{done.homeRegistered && <> · <span className="mono">~/.claude</span>는 {done.homeRegistered}</>}. memory: {done.memory ? `${done.memory.linked}곳 이음${done.memory.conflicts ? `, 충돌 ${done.memory.conflicts}` : ""}` : "잇지 못함(SHARE MEMORY로 다시)"}.
           </p>
           {folders.find((f) => f.dir === done.dir)?.loggedIn === true ? (
             <p className="settings-hint">

@@ -107,6 +107,24 @@ Setup steps 1 (login) and 2 (onboarding) from the settings window: a **LOGIN** b
 - **The page.** The row shows the URL link, a code field, and CANCEL. Reloading the page picks the running LOGIN back up. After success the row reads LOGGED IN with the onboarding result.
 - **Not measured.** Whether a first `claude --bg` LAUNCH would skip the first-run screen by itself. The onboarding fields make the question moot for folders logged in from the page. A folder logged in from the terminal still needs `claude` opened once, as before.
 
+### Memory as built (ATC-191)
+
+Claude Code keeps its auto-memory under the config folder: `<configDir>/projects/<cwd key>/memory/`, where the key is the working directory with every non-alphanumeric character turned into `-`. Every ACCOUNT folder therefore had its own copy, and a session LAUNCHed or moved onto `acct-1` started without what the `~/.claude` sessions had learned. **SHARE MEMORY** links them (`server/account-memory.ts`; `GET`/`POST /api/accounts/memory`).
+
+**Which mechanism.** Claude Code 2.1.285 has a setting `autoMemoryDirectory` (userSettings, ignored in the checked-in project settings). It names **one** directory and replaces the per-project path, so it would mix every project's memory into one folder. atc uses a symlink per project key instead: `<acctDir>/projects/<key>/memory` → `~/.claude/projects/<key>/memory`. `~/.claude` is the source because it holds the working memory (PILOT'S DISCRETION).
+
+**Not measured.** Whether a model session on an ACCOUNT reads through the symlink and writes new memories into the shared folder was not measured: it needs a model call on a real ACCOUNT folder, and the team may not write into those. The SUPERVISOR can check once after SHARE MEMORY: in a session on `acct-1`, ask it to save a throwaway memory, then look for the new file under `~/.claude/projects/<key>/memory/`. A directory symlink is an ordinary path to the OS, so the expectation is that it works.
+
+- **Keys.** The atc checkout and the paths of the AIRPORTs that are not closed (with the resolved path too, when a path is itself a symlink). Worktree sessions have their own keys and are not linked.
+- **Plan (pure, `memoryPlanOf`).** For each registered folder other than `~/.claude` and each key:
+  - no memory directory, or an **empty** one → make the link (the empty directory is removed first);
+  - already a link → left alone (a link to somewhere else too);
+  - a directory with files, or something that is not a directory → **conflict**: never replaced. Only file names are listed.
+- **Never lose a memory.** The IO part reads directory and file **names** only, never contents, and never opens `.credentials.json` or `.claude.json`. It looks again right before each link and removes an empty directory with `rmdir` only, which fails if a file appeared meanwhile. A missing source directory is created so that memories written later are shared too.
+- **Settings window.** Each folder row in ACCOUNTS shows `MEMORY shared ✓`, `MEMORY separate` or `MEMORY conflict` and, unless shared, a **SHARE MEMORY** button (SUPERVISOR only, the same Origin check). A conflict lists the key and the file names; the SUPERVISOR merges them by hand, removes the folder, and the next SHARE MEMORY links it.
+- **ADD ACCOUNT** runs the same link step for the new folder after the registry is saved; a failure there leaves the folder and the registration as they are (the result carries `memory: null`).
+- **This machine.** `acct-1` (empty memory directory) and `acct-3` (none yet) are linked only when the SUPERVISOR presses SHARE MEMORY. Nothing here touches the real folders.
+
 ## 5. Implementation order (ATC-144 sub-issues)
 
 | # | Step | Needs | Tier |

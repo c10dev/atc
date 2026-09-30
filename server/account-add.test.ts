@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { projectKeyOf } from "./account-memory.ts";
 import { after, test } from "node:test";
 import { addAccount, addPlanOf, addPreviewOf, envKeysOf, replaceableSettings, settingsCopyOf, suggestHomeLabel } from "./account-add.ts";
 import { AccountsError, loadAccounts } from "./accounts.ts";
@@ -136,7 +137,10 @@ test("addAccount: 없는 폴더는 0700으로 만들고 복사한다", () => {
   assert.equal(r.homeRegistered, null);
   assert.equal(statSync(dir).mode & 0o777, 0o700);
   assert.deepEqual(JSON.parse(readFileSync(join(dir, "settings.json"), "utf8")).env, SRC.env);
-  assert.deepEqual(readdirSync(dir), ["settings.json"]);
+  assert.deepEqual(readdirSync(dir), ["projects", "settings.json"]); // ATC-191: memory 링크(atc 체크아웃 키)
+  assert.ok((r.memory?.linked ?? 0) >= 1 && r.memory?.conflicts === 0);
+  const link = join(dir, "projects", projectKeyOf(resolve(import.meta.dirname, "..")), "memory");
+  assert.equal(readlinkSync(link), join(config.claudeDir, "projects", projectKeyOf(resolve(import.meta.dirname, "..")), "memory"));
 });
 
 test("addAccount: 자기 설정이 있는 폴더·symlink settings는 두고 등록만 한다", () => {

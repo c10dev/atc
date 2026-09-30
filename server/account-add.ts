@@ -1,6 +1,7 @@
 import { chmodSync, copyFileSync, lstatSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type SettingsPieces, settingsPiecesOf } from "./account-health.ts";
+import { shareMemory } from "./account-memory.ts";
 import { AccountsError, type AccountsRegistry, checkConfigDir, loadAccounts, validateAccounts } from "./accounts.ts";
 import { config } from "./config.ts";
 import { ACCOUNT_RE } from "./crew.ts";
@@ -138,6 +139,7 @@ export interface AddResult {
   settings: "copied" | "replaced" | "kept";
   backup: string | null; // 바꿔 쓰기 전에 남긴 옛 settings.json
   homeRegistered: string | null;
+  memory: { linked: number; kept: number; conflicts: number; errors: string[] } | null; // ATC-191: memory 링크 결과(실패해도 등록은 유지)
   loginCommand: string; // SUPERVISOR가 터미널에서 칠 것
 }
 
@@ -179,6 +181,11 @@ export function addAccount(req: AddRequest, now = new Date()): AddResult {
   }
 
   saveAccounts(plan.registry);
+  // ATC-191: 새 폴더의 memory를 ~/.claude 것으로 잇는다. 실패해도 폴더와 등록은 그대로 두고 화면의 SHARE MEMORY로 다시 한다
+  let memory: AddResult["memory"] = null;
+  try {
+    memory = shareMemory(plan.label).result;
+  } catch {}
   return {
     label: plan.label,
     dir: plan.dir,
@@ -186,6 +193,7 @@ export function addAccount(req: AddRequest, now = new Date()): AddResult {
     settings,
     backup,
     homeRegistered: plan.homeRegistered,
+    memory,
     loginCommand: `CLAUDE_CONFIG_DIR=${plan.dir} claude auth login --claudeai`,
   };
 }

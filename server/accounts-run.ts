@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import { memoryView, shareMemory } from "./account-memory.ts";
 import { addAccount, addPreviewOf } from "./account-add.ts";
 import { folderHealthOf, forgetAuthStatus } from "./account-health.ts";
 import { cancelLogin, loginView, startLogin, submitCode } from "./account-login.ts";
@@ -40,6 +41,15 @@ export function mountAccounts(app: Hono) {
     forgetAuthStatus();
     console.log(`[atc] account added: ${result.label} → ${result.dir} (folder ${result.folder}, settings ${result.settings}${result.homeRegistered ? `, ~/.claude as ${result.homeRegistered}` : ""})`);
     return c.json({ result, registry: loadAccounts(), folders: await folderHealthOf(accountFolders()) });
+  });
+
+  // SHARE MEMORY(ATC-191): 폴더별 memory 상태(파일 이름만)와, 등록된 폴더의 memory를 ~/.claude 것으로 잇기
+  app.get("/api/accounts/memory", (c) => c.json({ memory: memoryView() }));
+  app.post("/api/accounts/memory", (c) => {
+    if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
+    const { result, view } = shareMemory();
+    console.log(`[atc] memory shared: linked ${result.linked}, kept ${result.kept}, conflicts ${result.conflicts}${result.errors.length ? `, errors ${result.errors.length}` : ""}`);
+    return c.json({ result, memory: view });
   });
 
   // LOGIN(ATC-187): 등록된 폴더에서 claude auth login을 돌리고 코드를 넘긴다. 코드와 프로세스 출력은 남기지 않는다
