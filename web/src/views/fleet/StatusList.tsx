@@ -1,6 +1,7 @@
 import { ReportChip } from "./ReportMark.tsx";
 import type { ReactNode } from "react";
 import { elapsedText, type FleetRow, flightDetailText } from "../../../../server/fleet-status.ts";
+import { NEXT_LAUNCH_TITLE, nextLaunchNote } from "../../../../server/launch-note.ts";
 import { flightNumber } from "../../aviation.ts";
 import { OpenFlight } from "../../FlightLink.tsx";
 import { timeAgo } from "../../derive.ts";
@@ -69,12 +70,14 @@ export function StatusList({
   onToggle,
   detail,
   absent,
+  launchAccount,
   children,
 }: {
   rows: FleetRow[];
   open: ReadonlySet<string>;
   onToggle: (reg: string) => void;
   detail: (reg: string) => ReactNode;
+  launchAccount?: string | null; // LAUNCH ACCOUNT(AIRCRAFT용, ATC-257): home과 다르면 행에 next LAUNCH를 보인다
   absent?: (reg: string) => AbsentMark | null; // 세션 없는 백그라운드 AIRCRAFT(ATC-129)
   children?: ReactNode; // 목록 아래 같은 격자로 이어지는 그룹(CONTROL SESSIONS, ATC-132)
 }) {
@@ -87,6 +90,7 @@ export function StatusList({
         {rows.map((r) => {
           const isOpen = open.has(r.registration);
           const gone = absent?.(r.registration) ?? null;
+          const next = nextLaunchNote(launchAccount, r.account);
           return (
             <FleetRowShell
               key={r.registration}
@@ -110,6 +114,11 @@ export function StatusList({
                         {r.account}
                       </span>
                     )
+                  )}
+                  {next && (
+                    <span className="fl-r-acct mono" title={NEXT_LAUNCH_TITLE}>
+                      {next}
+                    </span>
                   )}
                   {r.origin && (
                     <span className={`fl-origin mono o-${r.origin.origin}`} title={r.origin.title}>

@@ -4,6 +4,7 @@ import { fleetStatusOf, flightDetailText } from "../../../../server/fleet-status
 import { RESTARTING_TEXT } from "../../../../server/restarting.ts";
 import { contextBadgeOf } from "../../../../server/fuel-context.ts";
 import { fuelLabel, fuelTitle } from "../../../../server/fuel-remaining.ts";
+import { NEXT_LAUNCH_TITLE, nextLaunchNote } from "../../../../server/launch-note.ts";
 import { usd } from "../../../../server/fuel-view.ts";
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel } from "../../../../server/health.ts";
 import { conflictHintOf, IDEA_SUPERSEDED, renameHintOf } from "../../../../server/registration.ts";
@@ -140,6 +141,7 @@ export function Card({
   onStop,
   windowDays,
   dispatchMode,
+  launchAccount,
   onCrewChanged,
 }: {
   a: AircraftView;
@@ -154,8 +156,10 @@ export function Card({
   onStop: () => void;
   windowDays?: number;
   dispatchMode?: string;
+  launchAccount?: string | null; // LAUNCH ACCOUNT(AIRCRAFT용, ATC-257)
   onCrewChanged: () => void;
 }) {
+  const nextNote = nextLaunchNote(launchAccount, a.account); // ATC-257
   // 세션 출처(ATC-76): BG·DESKTOP·TERM과 permission mode. BG id는 툴팁에
   // 백그라운드면 세션 파일의 jobId가 우선(ATC-98, 스냅샷). 없으면 claude agents의 id
   const origin = originBadgeOf(a.background ? "background" : a.origin, a.permissionMode, a.background?.jobId ?? session?.id);
@@ -293,6 +297,12 @@ export function Card({
           <span className="mono">{a.account}</span>
         ) : (
           <span className="faint">지정 없음 — 한도는 reset 시각으로 묶는다</span>
+        )}
+        {nextNote && (
+          <span className="mono" title={NEXT_LAUNCH_TITLE}>
+            {" "}
+            · {nextNote}
+          </span>
         )}
       </p>
       {/* 출처 힌트(ATC-76): 백그라운드 세션은 이 호스트 CLI의 로그인을, 데스크톱 세션은 앱의 계정을 쓴다. 계정 정보는 읽지 않는다 */}
