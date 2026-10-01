@@ -58,7 +58,7 @@ const USAGE = `사용법:
   node atcctl.mjs brief                     지난 확인 이후 변화 + 현재 상태 (JSON)
   node atcctl.mjs ack <cursor>              브리핑을 처리했다고 표시 (다음 brief는 이후 변화만)
   node atcctl.mjs issue <세션> <TYPE> [--stand <STAND>] [--flight <FLIGHT>] -- <CLEARANCE 내용>
-                                            TYPE: TRAFFIC HOLD CONTINUE LAND "GO AROUND" REPORT INFO
+                                            TYPE: TRAFFIC HOLD CONTINUE LAND "GO AROUND" FIX REPORT INFO
                                             보낼 대상(SEND TO)과 보낼 문구를 출력한다
   node atcctl.mjs readback <C-0007>         팀이 READBACK함(W/U·R 모두 닫는다)
   node atcctl.mjs roger <C-0007>            팀이 ROGER함(R: INFO·TRAFFIC·REPORT만 닫는다)
