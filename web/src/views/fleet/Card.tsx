@@ -1,4 +1,4 @@
-import { ChevronDown, Copy, Ellipsis, X } from "lucide-react";
+import { ChevronDown, Ellipsis, X } from "lucide-react";
 import { Icon, IconButton } from "../../Icon.tsx";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import type { AircraftView } from "../../../../server/fleet.ts";
@@ -26,7 +26,8 @@ import { FuelSummary, RecentFuel } from "./Fuel.tsx";
 import { Kv } from "./Kv.tsx";
 import { type LaunchInfo, type LaunchInput, LaunchOptions, launchDefaultsOf } from "./LaunchPanel.tsx";
 import { ReportLine } from "./ReportMark.tsx";
-import { type SessionBrief, type SessionRow, pct, ratingHelp } from "./shared.ts";
+import { Fold } from "./Fold.tsx";
+import { LOG_OUTCOME_TEXT, type SessionBrief, type SessionRow, logOutcomeOf, pct, ratingHelp, stripOf } from "./shared.ts";
 import "./Card.css";
 
 // AIRCRAFT 한 대의 카드(ATC-280): 머리(이름·상태·버튼) → 경보 띠(있을 때만) → 네 칸 본문(NOW · CREW · ACCOUNT·FUEL · PERFORMANCE).
@@ -58,21 +59,22 @@ function RepositionNote({ r }: { r: LastReposition | null }) {
 // LOGBOOK 최근 FLIGHT는 이만큼만 먼저 보이고 나머지는 더 보기
 const LOG_ROWS = 5;
 
-// PERFORMANCE(ATC-287): 라벨·값 줄, 목표는 값 옆의 흐린 캡션. 되돌림·LOS는 0보다 클 때만(14일 건수·착륙 대기 중앙값은 툴팁)
-function Actuals({ a }: { a: AircraftView }) {
+// PERFORMANCE(ATC-287): 라벨·값 줄, 목표는 값 옆의 캡션. 되돌림·LOS는 0보다 클 때만(14일 건수·착륙 대기 중앙값은 툴팁)
+function factsOf(a: AircraftView) {
   const x = a.actuals;
-  const [more, setMore] = useState(false);
-  const fuelOf = new Map((a.fuelRecent ?? []).map((f) => [f.key, f]));
-  const t = a.targets;
-  const weekShort = t.flightsPerWeek != null && x.week < t.flightsPerWeek;
-  const lateShort = t.onTime != null && x.onTime.rate != null && x.onTime.rate < t.onTime;
-  const facts = [
+  return [
     `최근 14일 ARRIVED ${x.total} · 되돌림 ${x.reverted} · LOS ${x.los}`,
     x.landingWait.medianMin != null ? `착륙 대기 중앙값 ${blockTime(Math.round(x.landingWait.medianMin))}(PR을 연 뒤 머지될 때까지. 정시율에는 넣지 않는다)` : null,
   ]
     .filter(Boolean)
     .join(" · ");
-  const shown = more ? x.recent : x.recent.slice(0, LOG_ROWS);
+}
+function PerformanceKv({ a }: { a: AircraftView }) {
+  const x = a.actuals;
+  const t = a.targets;
+  const weekShort = t.flightsPerWeek != null && x.week < t.flightsPerWeek;
+  const lateShort = t.onTime != null && x.onTime.rate != null && x.onTime.rate < t.onTime;
+  const facts = factsOf(a);
   return (
     <>
       <Kv label="이번 주" tone={weekShort ? "short" : undefined} target={t.flightsPerWeek != null ? `목표 ${t.flightsPerWeek}` : undefined} title={facts}>
@@ -96,70 +98,126 @@ function Actuals({ a }: { a: AircraftView }) {
           {x.los}
         </Kv>
       )}
-      {x.recent.length ? (
-        <>
-          <h3 className="fl-sub">LOGBOOK</h3>
-          <table className="fl-log" aria-label={`${a.registration} 최근 FLIGHT`}>
-            <thead>
-              <tr>
-                <th scope="col">FLIGHT</th>
-                <th scope="col">PR</th>
-                <th scope="col" className="r">
-                  소요
-                </th>
-                <th scope="col" className="r">
-                  NET
-                </th>
-                <th scope="col" className="r">
-                  날짜
-                </th>
+    </>
+  );
+}
+
+// LOGBOOK 띠(ATC-325): 최근 14 FLIGHT를 작은 막대로, 오래된 것부터. 막대마다 결과(정시·지연·PR 없음·UNEXPECTED)와 읽을 수 있는 라벨이 있고,
+// 같은 말이 펼친 표에도 있다(툴팁에만 있는 결정은 없다)
+function LogStrip({ a }: { a: AircraftView }) {
+  const fuelOf = new Map((a.fuelRecent ?? []).map((f) => [f.key, f]));
+  const bars = stripOf(a.actuals.recent);
+  return (
+    <span className="fl-strip" role="list" aria-label={`${a.registration} 최근 FLIGHT ${bars.length}건`}>
+      {bars.map((e) => {
+        const o = logOutcomeOf(e, fuelOf.get(e.key)?.verdict);
+        const text = `${e.flight ? flightNumber(e.flight) : "AD HOC"} · ${e.pr ? `PR #${e.pr.number}` : "PR 없음"} · ${LOG_OUTCOME_TEXT[o]} · ${e.arrivedAt.slice(5, 10)}`;
+        return <i key={e.key} role="listitem" className={`fl-bar-o o-${o}`} aria-label={text} title={text} />;
+      })}
+    </span>
+  );
+}
+
+// LOGBOOK 접힘 머리의 접근 가능한 이름: 막대마다의 라벨(아래 표에 같은 말이 있다)이 이어붙지 않게 결과별 수 한 줄로
+function logbookName(a: AircraftView) {
+  const fuelOf = new Map((a.fuelRecent ?? []).map((f) => [f.key, f]));
+  const bars = stripOf(a.actuals.recent);
+  const n: Record<string, number> = {};
+  for (const e of bars) {
+    const o = logOutcomeOf(e, fuelOf.get(e.key)?.verdict);
+    n[o] = (n[o] ?? 0) + 1;
+  }
+  const parts = (Object.keys(LOG_OUTCOME_TEXT) as (keyof typeof LOG_OUTCOME_TEXT)[]).filter((o) => n[o]).map((o) => `${LOG_OUTCOME_TEXT[o]} ${n[o]}`);
+  return `LOGBOOK, 최근 FLIGHT ${bars.length}건: ${parts.join(" · ")}`;
+}
+
+function LogTable({ a }: { a: AircraftView }) {
+  const x = a.actuals;
+  const [more, setMore] = useState(false);
+  const fuelOf = new Map((a.fuelRecent ?? []).map((f) => [f.key, f]));
+  const shown = more ? x.recent : x.recent.slice(0, LOG_ROWS);
+  return (
+    <>
+      <table className="fl-log" aria-label={`${a.registration} 최근 FLIGHT`}>
+        <thead>
+          <tr>
+            <th scope="col">FLIGHT</th>
+            <th scope="col">PR</th>
+            <th scope="col" className="r">
+              소요
+            </th>
+            <th scope="col" className="r">
+              NET
+            </th>
+            <th scope="col" className="r">
+              날짜
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((e) => {
+            const blockTitle =
+              e.blockMin == null
+                ? "팀 소요 시간 모름(점유가 PR보다 늦게 잡힘)"
+                : `팀 소요 시간(착수 → PR)${e.expectMin == null ? ", 기대치 없음" : `, 기대 ${blockTime(Math.round(e.expectMin))} 이내`}${e.onTime == null ? "" : e.onTime ? " · ON TIME" : " · DELAYED"}`;
+            return (
+              <tr key={e.key} title={e.pr?.title ?? e.standFree?.evidence.note}>
+                <td>
+                  <a className="fl-log-flight mono" href={e.pr?.url ?? e.standFree?.evidence.url ?? undefined} target="_blank" rel="noreferrer">
+                    {e.flight ? flightNumber(e.flight) : "AD HOC"}
+                  </a>
+                  {e.reverted && <span className="fl-bad"> REVERTED</span>}
+                  {e.los > 0 && <span className="fl-bad"> LOS {e.los}</span>}
+                </td>
+                {/* STAND 없는 FLIGHT(ATC-72): PR 대신 확인한 증거 */}
+                <td className="muted tn mono">{e.pr ? `#${e.pr.number}` : e.standFree?.arrivedVia === "confirmed-suggestion" ? "STAND 없음 · 후보 확인" : "STAND 없음 · 보고"}</td>
+                <td className="r tn mono" title={blockTitle}>
+                  <span className={e.onTime === false ? "fl-late" : undefined}>{e.blockMin == null ? "—" : blockTime(e.blockMin)}</span>
+                  {e.landingWaitMin != null && (
+                    <span className="muted" title="착륙 대기(PR → 머지)">
+                      {" "}
+                      +{blockTime(e.landingWaitMin)}
+                    </span>
+                  )}
+                </td>
+                <td className="r tn mono">
+                  <RecentFuel f={fuelOf.get(e.key)} />
+                </td>
+                <td className="r muted tn mono">{e.arrivedAt.slice(5, 10)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {shown.map((e) => {
-                const blockTitle =
-                  e.blockMin == null
-                    ? "팀 소요 시간 모름(점유가 PR보다 늦게 잡힘)"
-                    : `팀 소요 시간(착수 → PR)${e.expectMin == null ? ", 기대치 없음" : `, 기대 ${blockTime(Math.round(e.expectMin))} 이내`}${e.onTime == null ? "" : e.onTime ? " · ON TIME" : " · DELAYED"}`;
-                return (
-                  <tr key={e.key} title={e.pr?.title ?? e.standFree?.evidence.note}>
-                    <td>
-                      <a className="fl-log-flight mono" href={e.pr?.url ?? e.standFree?.evidence.url ?? undefined} target="_blank" rel="noreferrer">
-                        {e.flight ? flightNumber(e.flight) : "AD HOC"}
-                      </a>
-                      {e.reverted && <span className="fl-bad"> REVERTED</span>}
-                      {e.los > 0 && <span className="fl-bad"> LOS {e.los}</span>}
-                    </td>
-                    {/* STAND 없는 FLIGHT(ATC-72): PR 대신 확인한 증거 */}
-                    <td className="faint tn mono">{e.pr ? `#${e.pr.number}` : e.standFree?.arrivedVia === "confirmed-suggestion" ? "STAND 없음 · 후보 확인" : "STAND 없음 · 보고"}</td>
-                    <td className="r tn mono" title={blockTitle}>
-                      <span className={e.onTime === false ? "fl-late" : undefined}>{e.blockMin == null ? "—" : blockTime(e.blockMin)}</span>
-                      {e.landingWaitMin != null && (
-                        <span className="faint" title="착륙 대기(PR → 머지)">
-                          {" "}
-                          +{blockTime(e.landingWaitMin)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="r tn mono">
-                      <RecentFuel f={fuelOf.get(e.key)} />
-                    </td>
-                    <td className="r faint tn mono">{e.arrivedAt.slice(5, 10)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {x.recent.length > LOG_ROWS && (
-            <button type="button" className="fl-more" aria-expanded={more} onClick={() => setMore(!more)}>
-              {more ? "접기" : `더 보기 (${x.recent.length - LOG_ROWS})`}
-            </button>
-          )}
-        </>
-      ) : (
-        <p className="fl-line faint">LOGBOOK에 ARRIVED 기록 없음</p>
+            );
+          })}
+        </tbody>
+      </table>
+      {x.recent.length > LOG_ROWS && (
+        <button type="button" className="fl-more" aria-expanded={more} onClick={() => setMore(!more)}>
+          {more ? "접기" : `더 보기 (${x.recent.length - LOG_ROWS})`}
+        </button>
       )}
     </>
+  );
+}
+
+// USAGE 막대(ATC-287·325): ACCOUNT 사용 한도(FUEL REMAINING, 같은 ACCOUNT의 모든 AIRCRAFT가 같이 쓴다). 맥락 창의 FOB가 아니다(그것은 NOW의 ContextLine). NOW의 초점 줄에 있고, 목록 행 아래(detail)에서는 NOW가 짧아 ACCOUNT 칸에 둔다. 80%(info)부터 amber, 95%(hold)부터 alert
+// FUEL 요약의 cache: CAPTAIN/CREW 둘 다 알면 `99/97%`, 하나만 알면 그 하나, 모르면 —
+function cacheText(c: { captain?: number | null; crew?: number | null } | null | undefined) {
+  const p = (v: number) => Math.round(v * 100);
+  if (c?.captain != null && c.crew != null) return `${p(c.captain)}/${p(c.crew)}%`;
+  if (c?.captain != null) return `${p(c.captain)}%`;
+  if (c?.crew != null) return `CREW ${p(c.crew)}%`;
+  return "—";
+}
+
+function UsageBar({ fuel, now }: { fuel: NonNullable<AircraftView["fuel"]>; now: number }) {
+  return (
+    <div role="img" className={`fl-usage lv-${fuel.level}`} title={fuelTitle(fuel, now)} aria-label={fuelLabel(fuel, now)}>
+      <span className="fl-usage-k">USAGE</span>
+      <span className="fl-bar" aria-hidden="true">
+        <i style={{ width: `${Math.max(0, Math.min(100, fuel.top.pct))}%` }} />
+      </span>
+      <b className="tn mono">{Math.round(fuel.top.pct)}%</b>
+      <span className="fl-kv-t tn">resets {fuelLabel(fuel, now).split(" · ")[1]?.replace("resets ", "")}</span>
+    </div>
   );
 }
 
@@ -321,12 +379,26 @@ export function Card({
   // 백그라운드가 아닌 세션(ATC-76): atc가 멈추거나 다시 띄우지 않는다 — 손 절차
   if (a.origin && !isBackground(a.origin)) alerts.push(<li key="manual" className="fl-origin-note faint">{manualStepsOf(a.origin, a.registration, "stop")}</li>);
 
-  // 칸: NOW · CREW · ACCOUNT·FUEL · PERFORMANCE. NOW가 비면 그 칸은 없다
+  // NOW(초점 하나, ATC-325): 무엇을 나는가(키 + 제목 한 줄) · 상태(일하는 중·마지막 도구·시각) · 맥락 FOB(ContextLine) · ACCOUNT USAGE 막대. 목록 행 아래(detail)는 행이 이미 보여 주니 뺀다
+  const flyingNow = a.flights.filter((f) => !f.kept && a.flying.includes(f.key));
   const nowCol: ReactNode[] = [];
-  if (!detail && a.flying.length > 0) nowCol.push(<p key="flying" className="fl-flying">
-        FLYING <span className="mono">{a.flying.map(flightNumber).join(", ")}</span>
-      </p>);
+  if (!detail && a.flying.length > 0) {
+    nowCol.push(
+      <ul key="flying" className="fl-now-flights" aria-label="FLYING">
+        {a.flying.map((k) => {
+          const title = flyingNow.find((f) => f.key === k)?.title;
+          return (
+            <li key={k}>
+              <b className="mono">{flightNumber(k)}</b>
+              {title && <span className="fl-now-title" title={title}>{title}</span>}
+            </li>
+          );
+        })}
+      </ul>,
+    );
+  }
   if (!detail && a.status !== "absent" && a.activity) nowCol.push(<ActivityLine key="activity" activity={a.activity} now={now} className="fl-activity" />);
+  if (!detail && a.fuel) nowCol.push(<UsageBar key="usage" fuel={a.fuel} now={now} />);
   if (kept.length > 0) {
     nowCol.push(
       <ul key="kept" className="fl-kept">
@@ -348,6 +420,29 @@ export function Card({
   // ACCOUNT: 이름은 한 번씩. 날고 있는 곳(관측)이 home과 다르면 home을 덧붙이고, next LAUNCH는 지금 나는 곳과 다를 때만
   const flyingOn = a.observedAccount ?? a.account;
   const nextLaunch = launchAccount && launchAccount !== flyingOn ? launchAccount : null;
+
+  // 접는 칸의 한 줄 요약(ATC-325)
+  const crewDrift = (a as AircraftView & { crewDrift?: { unused?: string[] } | null }).crewDrift;
+  const unused = crewDrift?.unused?.length ?? 0;
+  const crewSummary = a.complement.length
+    ? `${a.complement.length} · ${a.complement[0]!.agent}${a.complement.length > 1 ? ` 외 ${a.complement.length - 1}` : ""}${unused ? ` · 안 씀 ${unused}` : ""}`
+    : "—";
+  const resets = a.fuel ? fuelLabel(a.fuel, now).split(" · ")[1]?.replace("resets ", "") : null;
+  const accountName = a.observedAccount ?? a.account;
+  const accountSummary = `${accountName ?? "지정 없음"}${a.fuel ? ` · ${Math.round(a.fuel.top.pct)}%` : ""}${resets ? ` · resets ${resets}` : ""}`;
+  const accountBody = Boolean(a.observedAccount || nextLaunch || nextModel || a.accountIsDefault || !a.account);
+  const fb = a.fuelBurn;
+  const t = a.targets;
+  const fuelShort = Boolean(fb && ((t.fuelPerFlight != null && fb.netPerFlight !== null && fb.netPerFlight > t.fuelPerFlight) || (t.cacheHit != null && fb.cacheHit?.total != null && fb.cacheHit.total < t.cacheHit)));
+  const warnCount = fb?.crewWarnings?.reduce((n, w) => n + w.count, 0) ?? 0;
+  const fuelSummary = fb
+    ? fb.withFuel === 0
+      ? `fuel 기록 없음 · ARRIVED ${fb.arrived}`
+      : `${fb.netPerFlight === null ? "—" : usd(fb.netPerFlight)}/FLT · cache ${cacheText(fb.cacheHit)}${warnCount ? ` · 경고 ${warnCount}` : ""}`
+    : null;
+  const x = a.actuals;
+  const perfShort = (t.flightsPerWeek != null && x.week < t.flightsPerWeek) || (t.onTime != null && x.onTime.rate != null && x.onTime.rate < t.onTime);
+  const perfSummary = `이번 주 ${x.week} · 정시 ${x.onTime.rate == null ? "—" : pct(x.onTime.rate)}${x.reverted ? ` · 되돌림 ${x.reverted}` : ""}${x.los ? ` · LOS ${x.los}` : ""}`;
 
   return (
     <article className={`fl-card s-${a.status}${a.aog ? " is-aog" : ""}${tone ? ` fl-tone-${tone}` : ""}${detail ? " is-detail" : ""}`}>
@@ -404,7 +499,6 @@ export function Card({
               )}
             </span>
           )}
-          {origin?.attach && <CopyAttach command={origin.attach} />}
           {session && isBackground(a.origin ?? (session.kind === "background" ? "background" : null)) && (
             <button className="fl-btn" onClick={onStop}>
               STOP
@@ -414,10 +508,7 @@ export function Card({
             CREW BRIEFING
           </button>
           <RelayBox to={a.registration} flight={(a.flying[0] as string | undefined) ?? kept[0]?.key ?? null} notesFlight={(a.flying[0] as string | undefined) ?? kept[0]?.key ?? null} btnClass="fl-btn" />
-          <button className="fl-btn" onClick={onEdit}>
-            고치기
-          </button>
-          <MoreMenu aog={Boolean(a.aog)} onAog={onAog} onRetire={onRetire} />
+          <MoreMenu aog={Boolean(a.aog)} onEdit={onEdit} attach={origin?.attach ?? null} onAog={onAog} onRetire={onRetire} />
         </div>
       </header>
       {session === null && optsOpen && control && (
@@ -440,86 +531,103 @@ export function Card({
 
       <div className="fl-body">
         {nowCol.length > 0 && (
-          <section className="fl-col" aria-label="NOW">
-            <h3 className="fl-sub">NOW</h3>
+          <section className="fl-now" aria-label="NOW">
             {nowCol}
           </section>
         )}
-        <section className="fl-col" aria-label="CREW">
-          <CrewTable a={a} windowDays={windowDays} />
-          {a.ratings.length > 0 && (
-            <>
-              <h3 className="fl-sub">
-                TYPE RATING {a.ratingsIsDefault && <em>기본값</em>}
-              </h3>
-              <div className="fl-chips">
-                {a.ratings.map((r) => (
-                  <span key={r} className={`fl-chip r-${r}`} title={ratingHelp[r]}>
-                    {r}
+        <div className="fl-folds">
+          <Fold
+            id="crew"
+            label="CREW"
+            summary={crewSummary}
+          >
+            <CrewTable a={a} windowDays={windowDays} />
+          </Fold>
+          <Fold
+            id="rating"
+            label="TYPE RATING"
+            summary={
+              <>
+                {a.ratings.length ? (
+                  <span className="fl-chips">
+                    {a.ratings.map((r) => (
+                      <span key={r} className={`fl-chip r-${r}`} title={ratingHelp[r]}>
+                        {r}
+                      </span>
+                    ))}
                   </span>
-                ))}
-              </div>
-            </>
+                ) : (
+                  "—"
+                )}
+                {a.ratingsIsDefault && <em className="fl-default"> 기본값</em>}
+              </>
+            }
+          >
+            {a.routes.length > 0 ? (
+              <>
+                <h3 className="fl-sub">ROUTE</h3>
+                <p className="fl-line">{a.routes.join(", ")}</p>
+              </>
+            ) : undefined}
+          </Fold>
+          <Fold id="account" label="ACCOUNT" summary={accountSummary}>
+            {accountBody ? (
+              <>
+                <p className="fl-line mono">
+                  {a.observedAccount ? (
+                    <span title="세션이 home ACCOUNT와 다른 폴더에서 돌고 있다. 오류가 아니다">
+                      {a.observedAccount} <span className="muted">· home {a.account}</span>
+                    </span>
+                  ) : a.account ? (
+                    <span>{a.account}</span>
+                  ) : (
+                    <span className="muted">지정 없음 — 한도는 reset 시각으로 묶는다</span>
+                  )}
+                  {a.accountIsDefault && <span className="muted"> · 기본값</span>}
+                  {nextLaunch && (
+                    <span title={NEXT_LAUNCH_TITLE}>
+                      {" "}
+                      · next LAUNCH {nextLaunch}
+                    </span>
+                  )}
+                  {nextModel && (
+                    <span title={NEXT_MODEL_TITLE}>
+                      {" "}
+                      · {nextModel}
+                    </span>
+                  )}
+                </p>
+                {detail && a.fuel && <UsageBar fuel={a.fuel} now={now} />}
+              </>
+            ) : undefined}
+          </Fold>
+          {fuelSummary && (
+            <Fold id="fuel" label="FUEL" summary={fuelSummary} tone={fuelShort ? "short" : undefined}>
+              <FuelSummary a={a} />
+            </Fold>
           )}
-          {a.routes.length > 0 && (
-            <>
-              <h3 className="fl-sub">ROUTE</h3>
-              <p className="fl-line">{a.routes.join(", ")}</p>
-            </>
+          <Fold id="perf" label="PERFORMANCE" summary={perfSummary} tone={perfShort ? "short" : undefined}>
+            <PerformanceKv a={a} />
+            {a.note && <p className="fl-note">{a.note}</p>}
+          </Fold>
+          {x.recent.length ? (
+            <Fold id="logbook" label="LOGBOOK" name={logbookName(a)} summary={<><LogStrip a={a} /><span className="fl-strip-n tn">{x.recent.length}</span></>}>
+              <LogTable a={a} />
+            </Fold>
+          ) : (
+            <Fold id="logbook" label="LOGBOOK" summary="ARRIVED 기록 없음" />
           )}
-        </section>
-        <section className="fl-col" aria-label="ACCOUNT · FUEL">
-          <h3 className="fl-sub">
-            ACCOUNT {a.accountIsDefault && <em>기본값</em>}
-          </h3>
-          <p className="fl-line mono">
-            {a.observedAccount ? (
-              <span title="세션이 home ACCOUNT와 다른 폴더에서 돌고 있다. 오류가 아니다">
-                {a.observedAccount} <span className="faint">· home {a.account}</span>
-              </span>
-            ) : a.account ? (
-              <span>{a.account}</span>
-            ) : (
-              <span className="faint">지정 없음 — 한도는 reset 시각으로 묶는다</span>
-            )}
-            {nextLaunch && (
-              <span title={NEXT_LAUNCH_TITLE}>
-                {" "}
-                · next LAUNCH {nextLaunch}
-              </span>
-            )}
-            {nextModel && (
-              <span title={NEXT_MODEL_TITLE}>
-                {" "}
-                · {nextModel}
-              </span>
-            )}
-          </p>
-          {a.fuel && (
-            <div role="img" className={`fl-usage lv-${a.fuel.level}`} title={fuelTitle(a.fuel, now)} aria-label={fuelLabel(a.fuel, now)}>
-              <span className="fl-bar" aria-hidden="true">
-                <i style={{ width: `${Math.max(0, Math.min(100, a.fuel.top.pct))}%` }} />
-              </span>
-              <b className="tn mono">{Math.round(a.fuel.top.pct)}%</b>
-              <span className="fl-kv-t tn">resets {fuelLabel(a.fuel, now).split(" · ")[1]?.replace("resets ", "")}</span>
-            </div>
-          )}
-          <FuelSummary a={a} />
-        </section>
-        <section className="fl-col" aria-label="PERFORMANCE">
-          <h3 className="fl-sub">PERFORMANCE</h3>
-          <Actuals a={a} />
-          {a.note && <p className="fl-note">{a.note}</p>}
-        </section>
+        </div>
       </div>
       <CrewChangePending a={a} dispatchMode={dispatchMode} onChanged={onCrewChanged} />
     </article>
   );
 }
 
-// ⋯ 메뉴(ATC-280): AOG·퇴역. 버튼 + aria-expanded, 화살표로 옮기고 Escape·바깥 클릭·Tab으로 닫으며 닫을 때 초점은 버튼으로
-function MoreMenu({ aog, onAog, onRetire }: { aog: boolean; onAog: () => void; onRetire: () => void }) {
+// ⋯ 메뉴(ATC-280·325): 고치기·ATTACH 복사·AOG·퇴역. 버튼 + aria-expanded, 화살표로 옮기고 Escape·바깥 클릭·Tab으로 닫으며 닫을 때 초점은 버튼으로
+function MoreMenu({ aog, onEdit, attach, onAog, onRetire }: { aog: boolean; onEdit: () => void; attach: string | null; onAog: () => void; onRetire: () => void }) {
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const id = useId();
@@ -564,6 +672,25 @@ function MoreMenu({ aog, onAog, onRetire }: { aog: boolean; onAog: () => void; o
       </button>
       {open && (
         <div ref={box} id={id} role="menu" className="fl-menu" onKeyDown={key}>
+          <button type="button" role="menuitem" className="fl-btn" onClick={run(onEdit)}>
+            고치기
+          </button>
+          {attach && (
+            <button
+              type="button"
+              role="menuitem"
+              className="fl-btn"
+              title={attach}
+              aria-label={`${attach} 복사`}
+              onClick={async () => {
+                const ok = await copyText(attach);
+                setCopied(ok ? "ok" : "fail");
+                setTimeout(() => setCopied(null), 1500);
+              }}
+            >
+              {copied === "ok" ? "복사됨" : copied === "fail" ? "복사 못 함 — 툴팁의 명령을 직접" : "ATTACH 복사"}
+            </button>
+          )}
           <button type="button" role="menuitem" className="fl-btn" onClick={run(onAog)}>
             {aog ? "AOG 해제" : "AOG"}
           </button>
@@ -576,24 +703,14 @@ function MoreMenu({ aog, onAog, onRetire }: { aog: boolean; onAog: () => void; o
   );
 }
 
-// BG 세션을 여는 명령을 복사한다(ATC-98). 복사가 막힌 환경에서는 조용히 넘어가고, 명령은 버튼 툴팁에 그대로 있다
-function CopyAttach({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(command);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // 클립보드를 못 쓰면 툴팁의 명령을 직접 복사한다
-    }
-  };
-  return (
-    <button type="button" className="fl-btn fl-copy-attach mono" title={command} aria-label={`${command} 복사`} onClick={copy}>
-      <Icon icon={Copy} />
-      {copied ? "복사됨" : "ATTACH 복사"}
-    </button>
-  );
+// BG 세션을 여는 명령을 복사한다(ATC-98). 복사가 막힌 환경에서는 조용히 넘어가고, 명령은 메뉴 항목 툴팁에 그대로 있다
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false; // 클립보드를 못 쓰면 툴팁의 명령을 직접 복사한다
+  }
 }
 
 // LANGUAGE(ATC-150): CAPTAIN이 SUPERVISOR가 읽는 글에 일본어(가나)를 썼다. 알림만 — 세션에는 아무것도 보내지 않는다

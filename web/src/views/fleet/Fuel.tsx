@@ -104,6 +104,7 @@ export function FuelSummary({ a }: { a: AircraftView }) {
           </Kv>
           <Kv
             label="CACHE HIT"
+            text
             tone={cacheShort ? "short" : undefined}
             target={t.cacheHit != null ? `목표 ${pct(t.cacheHit)}` : undefined}
             title={`값을 매긴 FLIGHT의 FUEL COST 가운데 CREW(서브에이전트) 몫 ${f.crewShare === null ? "—" : pct(f.crewShare)}. CREW 출력은 하한`}
@@ -116,12 +117,12 @@ export function FuelSummary({ a }: { a: AircraftView }) {
             </Kv>
           )}
           {leak && (
-            <Kv label="LEAK" tone="short" title="다시 쓴 토큰(캐시 낭비 신호)">
+            <Kv label="LEAK" text tone="short" title="다시 쓴 토큰(캐시 낭비 신호)">
               {leak}
             </Kv>
           )}
           {warn && (
-            <Kv label="CREW 경고" tone="short" title="CREW(서브에이전트) 사용의 낭비 신호(FUEL F7). LEAK에는 넣지 않는다. F7 전 LOGBOOK 줄은 재지 않았다">
+            <Kv label="CREW 경고" text tone="short" title="CREW(서브에이전트) 사용의 낭비 신호(FUEL F7). LEAK에는 넣지 않는다. F7 전 LOGBOOK 줄은 재지 않았다">
               {warn}
             </Kv>
           )}

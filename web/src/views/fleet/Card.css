@@ -25,7 +25,9 @@
 .fl-card .mono {
   font-size: inherit;
 }
-.fl-card .faint {
+.fl-card .faint,
+.fl-card .muted {
+  color: var(--muted);
   font-size: var(--text-xs);
 }
 
@@ -113,7 +115,7 @@
   border-style: dashed;
 }
 .fl-card .fl-origin-mode {
-  color: var(--faint);
+  color: var(--muted);
 }
 .fl-card .fl-chip {
   border-radius: var(--radius-pill);
@@ -234,7 +236,7 @@
 }
 .fl-report-mark {
   margin-right: var(--space-1);
-  color: var(--faint);
+  color: var(--muted);
   font: 600 var(--text-xs) var(--sans);
 }
 .fl-report-btns {
@@ -248,24 +250,168 @@
   color: var(--text);
 }
 
-/* 본문: 칸은 넓으면 4, 중간 2, 좁으면 1. 칸 사이 세로선은 한 줄에 다 놓이는 넓이(960px)부터 */
-.fl-body {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--space-4);
+/* 본문(ATC-325, 디자인 취향 v1): NOW가 이 카드의 초점 하나(가장 크다). 그 아래는 한 줄 요약으로 접힌 칸 — 라벨 칸 하나, 값 칸 하나, 같은 왼쪽 가장자리 */
+.fl-card {
+  --fl-label-w: 7.5rem;
 }
-.fl-col {
+.fl-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.fl-now {
   display: flex;
   flex-direction: column;
   gap: var(--space-1-5);
   min-width: 0;
 }
-@container (min-width: 960px) {
-  .fl-col + .fl-col {
-    padding-left: var(--space-4);
-    border-left: 1px solid var(--line);
-  }
+.fl-now-flights {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
+.fl-now-flights li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  font: 600 var(--text-lg) var(--sans);
+}
+.fl-now-flights .mono {
+  flex: none;
+  font-size: inherit;
+}
+.fl-now-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font: 400 var(--text-md) var(--sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fl-now .fl-activity,
+.fl-now .activity {
+  font-size: var(--text-md);
+}
+.fl-folds {
+  display: flex;
+  flex-direction: column;
+}
+.fl-fold {
+  min-width: 0;
+}
+/* 접는 칸의 머리: [라벨 | 요약 | 화살표]. 버튼 전체가 눌림 칸(높이 32px) */
+.fl-fold-head {
+  display: grid;
+  grid-template-columns: var(--fl-label-w) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.fl-fold.is-static .fl-fold-head {
+  grid-template-columns: var(--fl-label-w) minmax(0, 1fr);
+}
+button.fl-fold-head {
+  cursor: pointer;
+}
+button.fl-fold-head:hover .fl-fold-k,
+button.fl-fold-head:focus-visible .fl-fold-k {
+  color: var(--text);
+}
+.fl-fold-k {
+  color: var(--muted);
+  font: 600 var(--text-xs) var(--sans);
+}
+.fl-fold-sum {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.fl-fold-sum.fl-short {
+  color: var(--amber);
+}
+.fl-fold-sum .fl-default {
+  color: var(--muted);
+  font: 400 var(--text-xs) var(--sans);
+  font-style: normal;
+}
+/* 펼친 내용은 같은 자리에서 아래로 자란다. 머리(라벨·요약)는 움직이지 않는다. 안쪽 줄의 라벨 칸도 같은 폭 */
+.fl-fold-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  min-width: 0;
+  padding: var(--space-1) 0 var(--space-3);
+}
+.fl-fold-body .fl-sub:first-child {
+  margin-top: 0;
+}
+.fl-fold-body .fl-kv-k,
+.fl-fold-body .fl-pos {
+  flex: none;
+  min-width: var(--fl-label-w);
+  margin-right: var(--space-2);
+}
+/* 숫자는 오른쪽 맞춤 tabular-nums(값 칸 폭을 같게). 글 값(CACHE HIT 등)은 왼쪽 */
+.fl-fold-body .fl-kv-v {
+  min-width: 7ch;
+  text-align: right;
+}
+.fl-fold-body .fl-kv-v.is-text {
+  text-align: left;
+}
+
+/* LOGBOOK 띠: 막대 14개. 정시 muted, 지연 amber, PR 없음 테두리만, UNEXPECTED alert, 기대치 없음 line-strong. 색만으로 말하지 않는다(막대마다 라벨, 펼친 표에 같은 말) */
+.fl-strip {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 20px;
+}
+.fl-bar-o {
+  display: block;
+  box-sizing: border-box;
+  width: 8px;
+  height: 100%;
+  background: var(--muted);
+  border-radius: var(--radius-sm);
+}
+.fl-bar-o.o-unknown {
+  background: var(--line-strong);
+}
+.fl-bar-o.o-late {
+  background: var(--amber);
+}
+.fl-bar-o.o-unexpected {
+  background: var(--alert);
+}
+.fl-bar-o.o-nopr {
+  background: none;
+  border: 1px solid var(--muted);
+}
+.fl-strip-n {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
 /* 대문자 제목은 한 단계 — 칸 제목(칸의 첫 제목)만. 칸 안의 하위 제목(TYPE RATING·ROUTE·FUEL·LOGBOOK)은 sans 캡션 */
 .fl-card .fl-sub {
   display: flex;
@@ -276,15 +422,9 @@
   font: 600 var(--text-xs) var(--sans);
   letter-spacing: 0;
 }
-.fl-card .fl-col > .fl-sub:first-child {
-  margin-top: 0;
-  color: var(--faint);
-  font-family: var(--mono);
-  letter-spacing: 0.1em;
-}
 .fl-card .fl-sub em,
 .fl-card .fl-sub .faint {
-  color: var(--faint);
+  color: var(--muted);
   font: 400 var(--text-xs) var(--sans);
   font-style: normal;
   letter-spacing: 0;
@@ -344,7 +484,7 @@
 }
 .fl-limits {
   margin-left: var(--space-2);
-  color: var(--faint);
+  color: var(--muted);
   font: var(--text-xs) var(--sans);
 }
 .fl-chips {
@@ -379,7 +519,7 @@
   color: var(--text);
 }
 .fl-kv-t {
-  color: var(--faint);
+  color: var(--muted);
   font-size: var(--text-xs);
 }
 .fl-short,
@@ -399,6 +539,18 @@
   align-items: center;
   gap: var(--space-2);
   margin: 0;
+}
+.fl-usage-k {
+  color: var(--muted);
+  font: 600 var(--text-xs) var(--sans);
+}
+.fl-now .fl-usage b {
+  font-size: var(--text-lg);
+}
+.fl-now .fl-bar {
+  flex: 1 1 160px;
+  max-width: 320px;
+  height: 6px;
 }
 .fl-bar {
   flex: 0 1 96px;
@@ -434,7 +586,7 @@
 }
 .fl-log th {
   padding: 0 0 var(--space-1);
-  color: var(--faint);
+  color: var(--muted);
   font-weight: 400;
   text-align: left;
 }

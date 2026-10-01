@@ -29,7 +29,7 @@ const MIN = 60_000;
 const DAY = 86_400_000;
 export const LOGBOOK_MS = 10 * MIN;
 export const ACTUALS_DAYS = 14;
-export const RECENT = 5;
+export const RECENT = 14; // FLEET 카드의 LOGBOOK 띠가 최근 14 FLIGHT를 그린다(ATC-325). 표는 앞 5줄만 먼저 보인다
 // WAKE별 기대 block time(분, 상한). fleet.md 4.2의 "1시간 이내 · 몇 시간 · 1~2일"을 숫자로 읽은 것
 export const WAKE_EXPECT_MIN: Partial<Record<Wake, number>> = { L: 60, M: 240, H: 2880 };
 export const MEDIAN_MIN_SAMPLES = 3;
