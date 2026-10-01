@@ -531,3 +531,81 @@
 .fl-card .fc-change .fl-actions {
   padding-top: 0;
 }
+
+/* LAUNCH(ATC-310): 한 번 눌러 기본값으로. ▾는 LAUNCH에 붙은 분할 버튼이고, 옵션은 카드 머리 아래에 열린다(상자 없음, 색 막대 없음) */
+.fl-launch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.fl-split {
+  display: inline-flex;
+}
+.fl-card .fl-split .fl-split-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.fl-card .fl-split .fl-split-more {
+  justify-content: center;
+  padding: 0 var(--space-1-5);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.fl-card .fl-split .fl-split-main + .fl-split-more {
+  border-left-width: 0;
+}
+.fl-card .fl-split .fl-split-more:only-child {
+  border-radius: var(--radius-md);
+}
+.fl-card .fl-split .fl-split-more.is-open {
+  background: var(--panel-3);
+}
+.fl-launch-cap {
+  min-width: 0;
+  max-width: 28ch;
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.fl-launch-opts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3);
+  background: var(--panel-2);
+  border-radius: var(--radius-md);
+}
+.fl-launch-opts label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+.fl-launch-opts .fl-launch-note {
+  flex: 1 1 100%;
+  margin: 0;
+}
+.fl-launch-opts .fl-actions {
+  margin: 0 0 0 auto;
+  padding: 0;
+}
+/* 거절 사유: 경보 띠의 CAUTION 한 줄 + 닫기 */
+.fl-launch-err {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--amber);
+}
+.fl-card .fl-launch-err .fl-dismiss {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  width: 24px;
+  height: 24px;
+  justify-content: center;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+}

@@ -1,5 +1,5 @@
-import { Copy, Ellipsis } from "lucide-react";
-import { Icon } from "../../Icon.tsx";
+import { ChevronDown, Copy, Ellipsis, X } from "lucide-react";
+import { Icon, IconButton } from "../../Icon.tsx";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import type { AircraftView } from "../../../../server/fleet.ts";
 import { fleetStatusOf, flightDetailText } from "../../../../server/fleet-status.ts";
@@ -24,8 +24,9 @@ import type { AbsentMark } from "./Absent.tsx";
 import { ContextLine } from "./Context.tsx";
 import { FuelSummary, RecentFuel } from "./Fuel.tsx";
 import { Kv } from "./Kv.tsx";
+import { type LaunchInfo, type LaunchInput, LaunchOptions, launchDefaultsOf } from "./LaunchPanel.tsx";
 import { ReportLine } from "./ReportMark.tsx";
-import { type SessionRow, pct, ratingHelp } from "./shared.ts";
+import { type SessionBrief, type SessionRow, pct, ratingHelp } from "./shared.ts";
 import "./Card.css";
 
 // AIRCRAFT 한 대의 카드(ATC-280): 머리(이름·상태·버튼) → 경보 띠(있을 때만) → 네 칸 본문(NOW · CREW · ACCOUNT·FUEL · PERFORMANCE).
@@ -173,6 +174,8 @@ export function Card({
   stale = [],
   absent = null,
   onLaunch,
+  control = null,
+  launchInfo = null,
   onStop,
   windowDays,
   dispatchMode,
@@ -189,7 +192,9 @@ export function Card({
   session: SessionRow | null | undefined; // undefined: 세션 조종을 못 읽음
   stale?: SessionRow[]; // 멈췄는데 Claude Code가 아직 목록에 둔 job(ATC-93)
   absent?: AbsentMark | null; // 세션 없는 백그라운드 AIRCRAFT: LAUNCH on approve·RESUME after LIMIT(ATC-129)
-  onLaunch: (opener: HTMLElement) => void;
+  onLaunch: (input?: LaunchInput) => Promise<string | null>; // input 없음 = 서버 기본값(ATC-310)
+  control?: SessionBrief | null;
+  launchInfo?: LaunchInfo | null;
   onStop: () => void;
   windowDays?: number;
   dispatchMode?: string;
@@ -219,6 +224,29 @@ export function Card({
     if (t === "alert" || tone === null) tone = t;
   };
   const alerts: ReactNode[] = [];
+  // LAUNCH(ATC-310): 한 번 눌러 기본값으로, 옵션은 ▾에서. 거절 사유는 경보 띠에 한 줄로 남고 닫을 수 있다
+  const [optsOpen, setOptsOpen] = useState(false);
+  const [launchBusy, setLaunchBusy] = useState(false);
+  const [launchErr, setLaunchErr] = useState<string | null>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const optsId = useId();
+  const defaults = session === null ? launchDefaultsOf(a, launchInfo, control, launchModel) : null;
+  const runLaunch = async (input?: LaunchInput) => {
+    setLaunchBusy(true);
+    setLaunchErr(null);
+    const err = await onLaunch(input);
+    setLaunchBusy(false);
+    if (err) setLaunchErr(err);
+  };
+  if (launchErr) {
+    raise("amber");
+    alerts.push(
+      <li key="launch-err" className="fl-launch-err" role="alert">
+        <span>LAUNCH 못 함: {launchErr}</span>
+        <IconButton className="fl-dismiss" label="LAUNCH 오류 닫기" icon={X} onClick={() => setLaunchErr(null)} />
+      </li>,
+    );
+  }
   if (a.job?.state === "blocked") {
     alerts.push(
       <li key="needs" className="fl-needs-you">
@@ -349,10 +377,32 @@ export function Card({
           )}
         </div>
         <div className="fl-actions fl-head-actions">
-          {session === null && (
-            <button className="fl-btn primary" onClick={(e) => onLaunch(e.currentTarget)}>
-              LAUNCH
-            </button>
+          {session === null && defaults && (
+            <span className="fl-launch">
+              <span className="fl-split" role="group" aria-label="LAUNCH">
+                {!optsOpen && (
+                  <button type="button" className="fl-btn primary fl-split-main" disabled={launchBusy || Boolean(defaults.refused)} title={defaults.cap || undefined} onClick={() => runLaunch()}>
+                    {launchBusy ? "띄우는 중…" : "LAUNCH"}
+                  </button>
+                )}
+                <button
+                  ref={toggleRef}
+                  type="button"
+                  className={`fl-btn fl-split-more${optsOpen ? " is-open" : ""}`}
+                  aria-expanded={optsOpen}
+                  aria-controls={optsId}
+                  aria-label={optsOpen ? "LAUNCH 옵션 닫기" : "LAUNCH 옵션"}
+                  onClick={() => setOptsOpen(!optsOpen)}
+                >
+                  <Icon icon={ChevronDown} />
+                </button>
+              </span>
+              {!optsOpen && (
+                <span className="fl-launch-cap faint" title={defaults.refused ?? (defaults.cap || undefined)}>
+                  {defaults.refused ? `LAUNCH 불가 — ${defaults.refused}` : defaults.caption}
+                </span>
+              )}
+            </span>
           )}
           {origin?.attach && <CopyAttach command={origin.attach} />}
           {session && isBackground(a.origin ?? (session.kind === "background" ? "background" : null)) && (
@@ -370,6 +420,22 @@ export function Card({
           <MoreMenu aog={Boolean(a.aog)} onAog={onAog} onRetire={onRetire} />
         </div>
       </header>
+      {session === null && optsOpen && control && (
+        <div id={optsId}>
+          <LaunchOptions
+            a={a}
+            control={control}
+            info={launchInfo}
+            launchModel={launchModel}
+            busy={launchBusy}
+            onLaunch={(input) => void runLaunch(input)}
+            onClose={() => {
+              setOptsOpen(false);
+              toggleRef.current?.focus();
+            }}
+          />
+        </div>
+      )}
       {alerts.length > 0 && <ul className={`fl-alerts${a.job?.state === "blocked" ? " has-needs" : ""}`}>{alerts}</ul>}
 
       <div className="fl-body">
