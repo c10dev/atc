@@ -316,6 +316,52 @@ export function placeAirports(hub: LatLon, places: readonly Place[], overrides: 
   return out;
 }
 
+// ── 육지 위의 자리(ATC-291, docs/globe.md "Land placement as built") ─────────────────────
+// 실제 공항 목록(web/src/views/globe-geo.ts, [IATA, lat×10, lon×10])을 인자로 받는다. 이 모듈은 표를 들고 있지 않는다.
+export type GeoAirport = readonly [iata: string, lat10: number, lon10: number];
+export type PlacedAt = LatLon & { iata?: string };
+export const LAND_BANDS = [30, 35, 40, 45]; // 허브에서 PLACE_MIN_ARC 이상, 이 호 거리 안에서 후보를 찾는다(없으면 다음 값으로 넓힌다)
+export const LAND_MIN_SEP = 3; // 같은 구역에 공항이 몰려도(도쿄 HND·NRT) 이만큼은 떨어진 공항을 먼저 고른다
+
+// 허브 기준 상대 배치(layoutAirports)가 정한 방위에 가장 가까운 실제 공항에 AIRPORT를 놓는다.
+// id 순서로 하나씩 놓고 이미 고른 공항은 피하므로, 뒤에 붙는 AIRPORT는 앞의 자리를 옮기지 않는다.
+// 홈(distance 0)은 허브 그대로, 옮긴 자리(overrides)가 이긴다. 45° 안에 후보가 없으면(바다 한가운데) placeAirports의 자리 그대로다.
+export function placeOnLand(hub: LatLon, places: readonly Place[], airports: readonly GeoAirport[], overrides: Readonly<Record<string, LatLon>> = {}): Map<string, PlacedAt> {
+  const out: Map<string, PlacedAt> = placeAirports(hub, places, overrides);
+  const cand = airports
+    .map((a) => {
+      const at: LatLon = { lat: a[1] / 10, lon: a[2] / 10 };
+      return { iata: a[0], at, d: distanceDeg(hub, at), b: bearingDeg(hub, at) };
+    })
+    .filter((c) => c.d >= PLACE_MIN_ARC && c.d <= LAND_BANDS[LAND_BANDS.length - 1])
+    .sort((x, y) => (x.iata < y.iata ? -1 : 1));
+  const taken: LatLon[] = [];
+  const used = new Set<string>();
+  const turn = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+  for (const p of [...places].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    if (p.distance === 0 || overrides[p.id]) continue;
+    for (const lim of LAND_BANDS) {
+      const inBand = cand.filter((c) => c.d <= lim && !used.has(c.iata));
+      const apart = inBand.filter((c) => !taken.some((t) => distanceDeg(t, c.at) < LAND_MIN_SEP));
+      const pool = apart.length ? apart : inBand;
+      if (!pool.length) continue;
+      let best = pool[0];
+      for (const c of pool) if (turn(c.b, p.bearing) < turn(best.b, p.bearing)) best = c;
+      out.set(p.id, { ...best.at, iata: best.iata });
+      taken.push(best.at);
+      used.add(best.iata);
+      break;
+    }
+  }
+  return out;
+}
+
+// 브라우저의 시간대(IANA 이름)에서 대표 도시의 위치. 표에 없으면(Etc/*, 모르는 이름) null이라 화면이 UTC 오프셋 규칙으로 돌아간다.
+export function tzCity(tz: string | null | undefined, table: Readonly<Record<string, readonly [number, number]>>): LatLon | null {
+  const c = tz ? table[tz] : undefined;
+  return c ? { lat: c[0] / 10, lon: c[1] / 10 } : null;
+}
+
 // ── FLIGHT의 바퀴(circuit)의 모양(G2, docs/globe.md 3.2) ───────────────────────
 // 서버가 준 outbound 방위와 AIRPORT 자리·활주로 방향으로 화면이 그린다. 점들은 큰 원 위의 꼭짓점이고 pointAlong이 꼭짓점 사이를 slerp한다.
 //   cruise: 출발(AIRPORT) → 회전점(outbound로 size°) → IAF(활주로 뒤쪽)

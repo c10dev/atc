@@ -8,7 +8,8 @@ import {
   distanceDeg,
   normLon,
   nightRing,
-  placeAirports,
+  placeOnLand,
+  tzCity,
   project,
   unproject,
   type GlobeScene,
@@ -17,6 +18,7 @@ import {
   type XY,
 } from "../../../server/globe.ts";
 import { LAND } from "./globe-land.ts";
+import { AIRPORTS, TZ_CITY } from "./globe-geo.ts";
 import { f1, pathOf, SIZE } from "./globe-draw.ts";
 import { FlightRows, FlightsLayer } from "./GlobeFlights.tsx";
 import "./Globe.css";
@@ -77,8 +79,16 @@ function storeSaved(s: Saved) {
   }
 }
 
-// 허락 없이 정하는 기본 위치: 브라우저의 UTC 오프셋으로 경도만(일부러 거칠게), 위도는 0.
-const defaultLoc = (): LatLon => ({ lat: 0, lon: clamp(normLon(-new Date().getTimezoneOffset() / 4), -180, 180) });
+// 허락 없이 정하는 기본 위치: 브라우저 시간대의 대표 도시(IANA zone1970.tab). 표에 없으면 UTC 오프셋으로 경도만, 위도는 0.
+const defaultLoc = (): LatLon => {
+  let tz: string | undefined;
+  try {
+    tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    /* 시간대를 못 읽으면 오프셋 규칙 */
+  }
+  return tzCity(tz, TZ_CITY) ?? { lat: 0, lon: clamp(normLon(-new Date().getTimezoneOffset() / 4), -180, 180) };
+};
 
 // ── 고정 데이터(한 번만 셈) ─────────────────────────────────────────
 const LAND_RINGS: LatLon[][] = LAND.map((r) => {
@@ -175,7 +185,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
   const C = SIZE / 2;
 
   const places: Place[] = useMemo(() => (scene?.airports ?? []).map((a) => ({ id: a.id, bearing: a.bearing, distance: a.distance, runway: a.runway })), [scene]);
-  const positions = useMemo(() => placeAirports(hub, places, saved.overrides ?? {}), [hub.lat, hub.lon, places, saved.overrides]); // eslint-disable-line react-hooks/exhaustive-deps
+  const positions = useMemo(() => placeOnLand(hub, places, AIRPORTS, saved.overrides ?? {}), [hub.lat, hub.lon, places, saved.overrides]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const land = useMemo(() => {
     const rings: XY[][] = [];
@@ -406,7 +416,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
             const fade = clamp(p.depth * 5, 0.25, 1);
             return (
               <g key={row.id} className={`globe-airport${row.home ? " home" : ""}`} data-airport={row.id} opacity={fade}>
-                <title>{`${row.code} · ${row.name}${row.home ? " (HOME)" : ""}${row.parked.length ? ` — 세워 둔 AIRCRAFT: ${row.parked.join(", ")}` : ""}`}</title>
+                <title>{`${row.code} · ${row.name}${row.home ? " (HOME)" : ""}${at.iata ? ` — 실제 공항 ${at.iata}` : ""}${row.parked.length ? ` — 세워 둔 AIRCRAFT: ${row.parked.join(", ")}` : ""}`}</title>
                 <circle className="globe-hit" cx={x} cy={y} r={16} />
                 <line className="globe-runway" x1={C + e1.x * R} y1={C - e1.y * R} x2={C + e2.x * R} y2={C - e2.y * R} />
                 <circle className="globe-aerodrome" cx={x} cy={y} r={row.home ? 7 : 5} />
