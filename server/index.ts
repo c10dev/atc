@@ -54,6 +54,7 @@ import { mountAccounts } from "./accounts-run.ts";
 import { mountSquelch } from "./squelch-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
+import { mountQrh, runQrh } from "./qrh-run.ts";
 import { mountDuty } from "./duty-api.ts";
 import { duty, mountDutyRun } from "./duty-run.ts";
 import { mountDutyL1 } from "./duty-l1-run.ts";
@@ -140,6 +141,7 @@ async function tick() {
     if (isWarm(next)) runAtfm(next); // 출발 중지 시작·끝, 1분마다 ATFM 데이터와 그림자 판정(docs/atfm.md)
     if (isWarm(next)) runAutoland(next); // AUTOLAND(ATC-34): GitHub을 새로 읽을 때마다 갱신·머지 한 주기(스위치가 off면 GROUND STOP만 본다)
     if (isWarm(next)) runJudges(next); // 판정 계열(ATC-36): 스위치가 off가 아닐 때만 1분에 한 번, CLASSIFY 초안 몇 건
+    if (isWarm(next)) runQrh(next); // QRH shadow(ATC-288): 서버가 체크리스트를 부를 조건을 처음 본 때만 FLIGHT RECORDER에 한 줄. 보내는 글은 바뀌지 않는다
 
     // SUPERVISOR alerts(ATC-87): 새로 생기거나 사라진 key를 `alert` 이벤트로. 스냅샷이 안 바뀌어도(RTS 결과 같은 파일 기록) 센다
     const alertEvent = isWarm(next) ? runSupervisorAlerts(next) : null;
@@ -214,6 +216,7 @@ mountSkillUsage(app); // SKILL-CALL READER(ATC-289): Skill·sub-agent 호출 수
 startSkillUsage();
 mountVoice(app, currentAlerts); // 음성 콜아웃(ATC-140): WAV만 만든다(소리는 브라우저)
 mountMilestones(app, getSnapshot);
+mountQrh(app); // QRH shadow(ATC-288): qrh.named 줄을 읽기만 한다
 mountAtfm(app, getSnapshot);
 mountAutoland(app, getSnapshot);
 mountMcc(app, getSnapshot, () => head);

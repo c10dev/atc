@@ -159,6 +159,27 @@ A fifth frequency, `PREFLIGHT`, for the check before departure. `server/radio.ts
 | D4 | Audio default | Off, opt-in per browser (proposed) |
 | D5 | Guide page id | `radio-tab` ("RADIO 탭"), keeping `radio` for the radio rules (proposed) |
 
+## QRH shadow as built (ATC-288)
+
+Why here: RADIO is where the texts the server sends to sessions are collected, and the QRH step that follows this shadow (the survey's work order 6) changes those texts. This section records only the shadow.
+
+- **What it does.** The server names a checklist for a condition it already detects, and writes one FLIGHT RECORDER line the first time it sees it. It changes **no text** a session receives and touches no guard. The denominator for the later "named → opened" rate is these lines.
+- **Line (fixed, ATC-289 reads it).** `{ t, kind: "qrh", op: "named", id, code, session?, aircraft?, flight?, subject }`. No message text. `id` is the checklist (`qrh-02-stalled`), `code` the server's condition code, `subject` a key that does not change while the condition holds (`D-0305`, `C-0123`, a REGISTRATION, a FLIGHT).
+- **Table.** `server/qrh.ts` `qrhOf(code) → { id, title } | null` is the one list of checklist IDs (`<kind>-<nn>-<slug>`, a number is never changed or reused). Only conditions with a stable code today are in it.
+
+| Checklist | Server code | Where it arises |
+|---|---|---|
+| `qrh-02-stalled` | health `STALLED` | `server/health.ts` `stalledOf` (session `health`) |
+| `qrh-03-undelivered` | `undelivered` | `server/following.ts` `undeliveredOf` (a proposal's `undelivered`; the FOLLOWING `undelivered` issue is the same condition) |
+| `qrh-03-undelivered` | `overdue` (only `sent` and `recalling`) | `server/proposals.ts` `overdueOf` |
+| `qrh-04-go-around` | TOWER CLEARANCE type `GO AROUND`, open (no READBACK, cancel or UNABLE) | `server/clearances.ts` (`ClearanceType`) |
+| `qrh-05-arrival-missing` | `arrivalMissing` with `due: true` | `server/following.ts` `arrivalMissingOf` |
+
+- **Not mapped, and why.** health `RESUME` (resuming a session cut by a LIMIT is a different procedure from a stalled one); FOLLOWING `no-pr`, `pr-not-cleared` (delays in the work, not a procedure the SUPERVISOR or OCC runs) and `unable` (the CAPTAIN answered; OCC reports it); `overdue` for `accepted` and STAND-free `departed` (no departure, no arrival: other procedures). **No server code yet:** `qrh-01-lost-comms` (an AIRCRAFT that cannot reach OCC or TOWER, ATC-258 F4).
+- **Once per subject.** `qrhSweep` (pure) takes the conditions that are true now and the keys already written and still open. It writes a line for a new key, nothing for a key already open, and drops a key that is no longer true, so a condition that returns is named again. Two codes of one checklist with the same subject (`undelivered` and `overdue` on one proposal) give one line. After a restart the open keys are rebuilt from the last 24 hours of lines, so a condition that is still true is not written twice.
+- **Run and read.** `server/qrh-run.ts` sweeps from the server tick (at most every 10 s; it reads values the server already computes). `GET /api/qrh/named?since=<ISO or ms>` returns `{ since, count, lines }` (default the last 24 h; read only). It is its own route because no existing read endpoint carries FLIGHT RECORDER lines.
+- **Not here.** No change to any text, brief field or guard, and no UI.
+
 ## Not built yet
 
 Everything in sections 3–5.
