@@ -17,12 +17,7 @@ Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it in `/tick` st
 
 ### Every pass: `atcctl following`
 
-atc follows the progress of assigned FLIGHTs (read-only). It follows two kinds of FLIGHT:
-
-- DISPATCH ASSIGNs that are accepted, departed or recalling;
-- In Progress FLIGHTs with a `tail:` label (assigned by a person), even before 2b.
-
-The stages are READBACK → DEPARTED (a STAND or a departure record) → PR opened → CLEARED → ARRIVED (LOGBOOK). The problems (`issues`) are:
+atc follows the progress of assigned FLIGHTs (read-only). The stages are READBACK → DEPARTED (a STAND or a departure record) → PR opened → CLEARED → ARRIVED (LOGBOOK). The problems (`issues`) are:
 
 | code | Meaning | Report |
 |---|---|---|

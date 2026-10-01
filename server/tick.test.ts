@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Hono } from "hono";
 import { ROLES } from "./squelch.ts";
-import { actionable, persistentKeysOf } from "./tick.ts";
+import { actionable, occKeysOf, persistentKeysOf } from "./tick.ts";
 import { mountTick } from "./tick-run.ts";
 
 // 실제 브리핑 모양(필요한 필드만). 조용한 것과 할 일이 있는 것을 역할마다 만든다
@@ -107,12 +107,14 @@ const occQuiet = () => ({
   schedule: { mode: "on", open: [], inProgress: [], candidates: { classify: [], prioritize: [], close: [], tail: [], waypoint: [] }, waypointGaps: [], slips: [], routesWithoutWaypoints: [] },
   following: { items: [] },
 });
+const NOW = Date.parse("2026-10-01T06:00:00Z");
+const OCC_SEEN = new Set(occKeysOf(occQuiet(), NOW)); // 오늘의 NETWORK 점검 key는 이미 본 것으로
 test("OCC: 비어 있으면 조용하고, 목록마다 할 일이 생기면 act", () => {
-  assert.equal(actionable("occ", occQuiet()).act, false);
+  assert.equal(actionable("occ", occQuiet(), OCC_SEEN, NOW).act, false);
   const mk = (f: (b: ReturnType<typeof occQuiet>) => void) => {
     const b = occQuiet();
     f(b);
-    return actionable("occ", b);
+    return actionable("occ", b, OCC_SEEN, NOW);
   };
   assert.deepEqual(mk((b) => ((b.dispatch.open as unknown[]) = [{ id: "D-1", settled: true }])).reasons, ["needs-note"]);
   assert.deepEqual(mk((b) => ((b.dispatch.inFlight as unknown[]) = [{ id: "D-2", status: "approved" }])).reasons, ["send-plan"]);

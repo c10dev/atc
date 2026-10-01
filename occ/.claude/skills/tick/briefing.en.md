@@ -20,7 +20,7 @@ The SUPERVISOR judges from the card alone, often without remembering the ticket.
 |---|---|
 | `--what` 무슨 일 | One plain Korean sentence on what changes when this is done. No code names, table names or abbreviations |
 | `--why` 왜 이 AIRCRAFT | The one thing that explains this pairing: base AIRPORT, TYPE RATING, or a recent FLIGHT on the same ROUTE |
-| `--risk` 걸리는 점 | Prerequisite FLIGHTs, risk (DB, permissions, deployment …), anything a person must decide. If none, "특별히 걸리는 점 없음" |
+| `--risk` 걸리는 점 | Prerequisite FLIGHTs, risk (DB, permissions, deployment …), anything a person must decide (if you set a HOLD, its reason). If none, "특별히 걸리는 점 없음" |
 
 - One sentence per line, ideally under 80 characters. Facts only; no approve or reject opinion.
 - PRIORITY, wait days, ROUTE and WAYPOINT, prerequisite states and recent FLIGHTs appear separately in the card's facts line, computed by the server (`briefs.<ID>.facts` in `dispatch brief`). Explain what they mean instead of repeating the numbers.

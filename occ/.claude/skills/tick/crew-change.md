@@ -25,8 +25,6 @@ SUPERVISOR가 운항 중인 AIRCRAFT의 CREW COMPLEMENT를 바꾸면 atc가 CREW
 | CAPTAIN 답장 "UNABLE CC-xxxx — 사유" | `crew-change unable CC-xxxx -- <사유 그대로>`. 다시 보내지 않고 SUPERVISOR 보고(`crew-change brief`의 `unable`에 하루 남는다). COMPLEMENT를 되돌릴지 정하는 것은 SUPERVISOR다 |
 | CAPTAIN 답장 "STANDBY CC-xxxx" | `crew-change standby CC-xxxx`. 다시 보내지 않고 기다린다 |
 | `overdue`에 든 sent(보낸 뒤 10분 넘게 READBACK 없음. 첫 STANDBY가 있으면 그때부터 10분) | `crew-change send <CC-xxxx>`로 같은 문구를 받아 **한 번만** 더 보낸다. 그래도 없으면 SUPERVISOR 보고 |
-| `pending` | 할 일 없음(SUPERVISOR 승인 대기). OCC는 승인하거나 재촉하지 않는다 |
-| send-guard가 막음, 또는 `crew-change send`가 거절 | 문구나 받는 사람을 고쳐 다시 시도하지 말고 SUPERVISOR 보고 |
 | SendMessage 결과가 `success:false`(ATC-183) | 같은 tick에 다시 보내지 않는다. OCC LOG에 "sent"라고 쓰지 않고 "undelivered"와 도구의 메시지를 쓰고 SUPERVISOR 보고. CREW CHANGE에는 `undelivered` 명령이 없다: 이미 sent로 기록됐지만 `overdue`(10분) 규칙이 **한 번만** 다시 보내게 하므로 되돌릴 기록이 필요하지 않다 |
 
 - `shadow`(2a)면 이 절을 건너뛴다. CREW CHANGE는 SUPERVISOR가 FLEET 카드에서 복사해 직접 붙여 넣는다.
