@@ -2,11 +2,12 @@ import type { ServerSettings } from "./settings.ts";
 
 // 설정 창의 계산(ATC-131). SUPERVISOR 정책 스위치(AUTOMATION: LANDING·OPERATIONS)의 "지금 모드 한 줄", ⚠ 모드로 올릴 때 확인이 필요한지, 마지막 분류 기억, 설정 찾기.
 // 저장 값과 PUT /api/settings는 그대로다. 여기는 화면에 보이는 이름과 판단만 다룬다.
-export type PolicyKey = "autoland" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle" | "duty" | "dutyCharter";
+export type PolicyKey = "autoland" | "autolandReview" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle" | "duty" | "dutyCharter";
 
 // ⚠ 모드(올리면 atc가 더 많이 쓰거나 밖으로 내보낸다). 화면의 경고 문구가 ⚠로 시작하는 모드와 같다
 export const RISKY: Record<PolicyKey, readonly string[]> = {
   autoland: ["update", "merge"],
+  autolandReview: ["delegate"], // 머지 리뷰 pass가 rating:SEC·보안 게이트 PR의 AUTOLAND 머지 근거가 된다(ATC-328)
   mcc: ["land", "land+rts", "rts"], // rts도 ⚠: 사용자가 머지한 main을 서버가 스스로 배포한다(MCC_WARN)
   jev: ["replay", "shadow"], // 티켓 제목과 허용한 칸이 TypeSafe로 나간다
   fuelHold: ["on"],
@@ -44,6 +45,7 @@ export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "revie
   const seg = (key: PolicyKey, label: string, mode: string, value = mode): ModeSegment => ({ key, label, value, warn: isRisky(key, mode) });
   return [
     seg("autoland", "AUTOLAND", s.autoland.mode),
+    ...(s.autoland.reviewedSecurity ? [seg("autolandReview", "AUTOLAND REVIEW", s.autoland.reviewedSecurity)] : []),
     seg("mcc", "MCC", s.mcc.mode),
     seg("jev", "JEV", s.judges?.jev.mode ?? "off"),
     seg("fuelHold", "FUEL HOLD", s.fuel?.hold ? "on" : "off"),

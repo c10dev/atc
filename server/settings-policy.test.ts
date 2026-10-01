@@ -5,7 +5,7 @@ import type { ServerSettings } from "./settings.ts";
 
 const settings = (over: Partial<Pick<ServerSettings, "autoland" | "mcc" | "review" | "fuel">> & { jev?: string } = {}) =>
   ({
-    autoland: { mode: "off", airports: [], applicationCheck: "", groundStops: [] },
+    autoland: { mode: "off", reviewedSecurity: "off", airports: [], applicationCheck: "", groundStops: [] },
     mcc: { mode: "shadow", airport: "ATCC" },
     review: { security: "exclude" },
     fuel: { hold: false, infoPct: 80, holdPct: 95 },
@@ -13,15 +13,15 @@ const settings = (over: Partial<Pick<ServerSettings, "autoland" | "mcc" | "revie
     ...over,
   }) as unknown as Parameters<typeof modeSegments>[0];
 
-test("modeLine: 다섯 스위치를 한 줄로, 기본은 모두 꺼짐", () => {
-  assert.equal(modeLine(modeSegments(settings())), "AUTOLAND off · MCC shadow · JEV off · FUEL HOLD off · REVIEW exclude");
+test("modeLine: 여섯 스위치를 한 줄로, 기본은 모두 꺼짐", () => {
+  assert.equal(modeLine(modeSegments(settings())), "AUTOLAND off · AUTOLAND REVIEW off · MCC shadow · JEV off · FUEL HOLD off · REVIEW exclude");
 });
 
 test("modeSegments: ⚠ 모드만 warn, REVIEW deepseek는 보이는 이름으로", () => {
-  const segs = modeSegments(settings({ autoland: { mode: "merge", airports: [], applicationCheck: "", groundStops: [] }, mcc: { mode: "land", airport: "ATCC" }, review: { security: "deepseek" }, fuel: { hold: true, infoPct: 80, holdPct: 95 }, jev: "shadow" }));
-  assert.deepEqual(segs.map((x) => x.warn), [true, true, true, true, true]);
-  assert.equal(modeLine(segs), "AUTOLAND merge · MCC land · JEV shadow · FUEL HOLD on · REVIEW sonnet (deepseek)");
-  assert.deepEqual(modeSegments(settings()).map((x) => x.warn), [false, false, false, false, false]);
+  const segs = modeSegments(settings({ autoland: { mode: "merge", reviewedSecurity: "delegate", airports: [], applicationCheck: "", groundStops: [] }, mcc: { mode: "land", airport: "ATCC" }, review: { security: "deepseek" }, fuel: { hold: true, infoPct: 80, holdPct: 95 }, jev: "shadow" }));
+  assert.deepEqual(segs.map((x) => x.warn), [true, true, true, true, true, true]);
+  assert.equal(modeLine(segs), "AUTOLAND merge · AUTOLAND REVIEW delegate · MCC land · JEV shadow · FUEL HOLD on · REVIEW sonnet (deepseek)");
+  assert.deepEqual(modeSegments(settings()).map((x) => x.warn), [false, false, false, false, false, false]);
 });
 
 test("modeSegments: judges·fuel이 없으면 JEV off, FUEL HOLD off", () => {
@@ -30,6 +30,8 @@ test("modeSegments: judges·fuel이 없으면 JEV off, FUEL HOLD off", () => {
 });
 
 test("needsConfirm: ⚠ 모드로 올릴 때만, 내리거나 같은 값은 아니다", () => {
+  assert.equal(needsConfirm("autolandReview", "off", "delegate"), true); // 보안 위임은 ⚠
+  assert.equal(needsConfirm("autolandReview", "delegate", "off"), false);
   assert.equal(needsConfirm("autoland", "off", "update"), true);
   assert.equal(needsConfirm("autoland", "off", "merge"), true);
   assert.equal(needsConfirm("autoland", "merge", "update"), true); // ⚠에서 ⚠로도

@@ -2,8 +2,8 @@ import { chmodSync, existsSync, readFileSync, renameSync, statSync, writeFileSyn
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { Hono } from "hono";
-import { AUTOLAND_MODES, type AutolandMode, loadAutoland, loadAutolandState } from "./autoland.ts";
-import { setAutolandMode } from "./autoland-run.ts";
+import { AUTOLAND_MODES, type AutolandMode, loadAutoland, loadAutolandState, REVIEWED_SECURITY, type ReviewedSecurity } from "./autoland.ts";
+import { setAutolandMode, setReviewedSecurity } from "./autoland-run.ts";
 import { config } from "./config.ts";
 import { accountFolders, observedLabelsOn } from "./accounts.ts";
 import { EXTERNAL_REVIEW_SECURITY, type ExternalReviewSecurity, loadDispatchConfig, saveExternalReviewSecurity, saveFuelHold } from "./dispatch.ts";
@@ -44,7 +44,7 @@ export interface ServerSettings {
   // FUEL REMAINING(ATC-55): dispatch.json fuel. hold는 DISPATCH HOLD 스위치(D3, 기본 꺼짐), 임계값은 쓴 몫 %
   fuel: { hold: boolean; infoPct: number; holdPct: number };
   // AUTOLAND(ATC-34): autoland.json의 스위치와 맡은 AIRPORT, 걸린 GROUND STOP
-  autoland: { mode: AutolandMode; airports: string[]; applicationCheck: string; groundStops: { airport: string; sha: string; failing: string[]; at: string }[] };
+  autoland: { mode: AutolandMode; reviewedSecurity: ReviewedSecurity; airports: string[]; applicationCheck: string; groundStops: { airport: string; sha: string; failing: string[]; at: string }[] };
   // MCC(docs/mcc.md): mcc.json의 스위치와 맡은 AIRPORT
   mcc: { mode: MccMode; airport: string };
   // FLEET PLAN REPOSITION(ATC-179): fleet-plan.json. 기본 shadow. auto는 ⚠(하루 dailyMax 상한, flapping이면 approval로 돌아옴)
@@ -72,6 +72,7 @@ export interface SettingsPatch {
   reviewSecurity?: ExternalReviewSecurity; // dispatch.json에 쓴다(.env.local이 아님)
   fuelHold?: "off" | "on"; // dispatch.json fuel.hold에 쓴다(ATC-55). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   autolandMode?: AutolandMode; // autoland.json에 쓴다(ATC-34). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
+  autolandReviewedSecurity?: ReviewedSecurity; // autoland.json의 reviewedSecurity(ATC-328). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   mccMode?: MccMode; // mcc.json에 쓴다(docs/mcc.md). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   controlRecycleMode?: RecycleMode; // control-recycle.json에 쓴다(ATC-166). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   controlRecycleCaps?: Record<string, number | null>; // 세션 이름 → CAP 토큰. SUPERVISOR만
@@ -115,7 +116,7 @@ export function readServerSettings(): ServerSettings {
     fuel: loadDispatchConfig().fuel,
     autoland: (() => {
       const a = loadAutoland();
-      return { mode: a.mode, airports: a.airports, applicationCheck: a.applicationCheck, groundStops: loadAutolandState().groundStops.map(({ airport, sha, failing, at }) => ({ airport, sha, failing, at })) };
+      return { mode: a.mode, reviewedSecurity: a.reviewedSecurity, airports: a.airports, applicationCheck: a.applicationCheck, groundStops: loadAutolandState().groundStops.map(({ airport, sha, failing, at }) => ({ airport, sha, failing, at })) };
     })(),
     mcc: (() => {
       const m = loadMcc();
@@ -237,11 +238,12 @@ export function mountSettings(app: Hono) {
     // judgesJev는 judges.json에 쓴다(ATC-36)
     // mccMode는 mcc.json에 쓴다(docs/mcc.md)
     // fuelHold는 dispatch.json fuel.hold에 쓴다(ATC-55)
-    const { reviewSecurity, autolandMode, judgesJev, mccMode, fuelHold, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, dutyEnabled, dutyCharter, dutyAccount, ...rest } = body as Record<string, unknown>;
+    const { reviewSecurity, autolandMode, autolandReviewedSecurity, judgesJev, mccMode, fuelHold, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, dutyEnabled, dutyCharter, dutyAccount, ...rest } = body as Record<string, unknown>;
     if (fuelHold !== undefined && fuelHold !== "off" && fuelHold !== "on") return c.json({ errors: { fuelHold: `off 또는 on` } }, 400);
     if (reviewSecurity !== undefined && !EXTERNAL_REVIEW_SECURITY.includes(reviewSecurity as ExternalReviewSecurity))
       return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
     if (autolandMode !== undefined && !AUTOLAND_MODES.includes(autolandMode as AutolandMode)) return c.json({ errors: { autolandMode: `off, update, merge 중 하나` } }, 400);
+    if (autolandReviewedSecurity !== undefined && !REVIEWED_SECURITY.includes(autolandReviewedSecurity as ReviewedSecurity)) return c.json({ errors: { autolandReviewedSecurity: `off 또는 delegate` } }, 400);
     if (judgesJev !== undefined && !JUDGE_MODES.includes(judgesJev as JudgeMode)) return c.json({ errors: { judgesJev: `off, replay, shadow 중 하나` } }, 400);
     if (mccMode !== undefined && !MCC_MODES.includes(mccMode as MccMode)) return c.json({ errors: { mccMode: `shadow, land, land+rts, rts 중 하나` } }, 400);
     if (controlRecycleMode !== undefined && !RECYCLE_MODES.includes(controlRecycleMode as RecycleMode)) return c.json({ errors: { controlRecycleMode: `off, shadow, on 중 하나` } }, 400);
@@ -271,6 +273,7 @@ export function mountSettings(app: Hono) {
     if (reviewSecurity !== undefined) saveExternalReviewSecurity(reviewSecurity as ExternalReviewSecurity);
     if (fuelHold !== undefined) saveFuelHold(fuelHold === "on");
     if (autolandMode !== undefined) setAutolandMode(autolandMode as AutolandMode);
+    if (autolandReviewedSecurity !== undefined) setReviewedSecurity(autolandReviewedSecurity as ReviewedSecurity);
     if (judgesJev !== undefined) setJudgeMode("jev", judgesJev as JudgeMode);
     if (mccMode !== undefined) setMccMode(mccMode as MccMode);
     if (fleetPlanReposition !== undefined) setRepositionMode(fleetPlanReposition as RepositionMode);
@@ -281,7 +284,7 @@ export function mountSettings(app: Hono) {
     if (dutyCharter !== undefined) await setDutyConfig({ charter: dutyCharter });
     if (dutyAcct?.ok) await setDutyConfig({ account: dutyAcct.label });
     console.log(
-      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(fuelHold !== undefined ? [`fuel.hold=${fuelHold}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : []), ...(dutyEnabled !== undefined ? [`duty.enabled=${dutyEnabled}`] : []), ...(dutyCharter !== undefined ? [`duty.charter=${dutyCharter}`] : []), ...(dutyAcct?.ok ? [`duty.account=${dutyAcct.label}`] : [])].join(", ")}`,
+      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(fuelHold !== undefined ? [`fuel.hold=${fuelHold}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(autolandReviewedSecurity !== undefined ? [`autoland.reviewedSecurity=${autolandReviewedSecurity}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : []), ...(dutyEnabled !== undefined ? [`duty.enabled=${dutyEnabled}`] : []), ...(dutyCharter !== undefined ? [`duty.charter=${dutyCharter}`] : []), ...(dutyAcct?.ok ? [`duty.account=${dutyAcct.label}`] : [])].join(", ")}`,
     );
     return c.json(readServerSettings());
   });

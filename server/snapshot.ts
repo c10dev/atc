@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 import { loadFleet } from "./fleet.ts";
 import { fuelAccountsOf, fuelByAircraft, fuelConfigOf, type FuelMember, observeMembers } from "./fuel-remaining.ts";
 import { readFuelHistory, readFuelRecords } from "./fuel-run.ts";
-import { readLandingReviews } from "./landing-review.ts";
+import { readLandingReviews, readMergeReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, holdStops, loadAtfm, readRecordedStops, reviveStops, stopFigures } from "./atfm.ts";
 import { fastTrackOf, isHeld, loadAutoland, loadAutolandState, mergeExclusionOf, planAutoland } from "./autoland.ts";
 import { regKey } from "./registration.ts";
@@ -241,6 +241,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
         const records = readMccRecords();
         return { repo, reviewOf: (number: number, head: string) => inspectionOf(records, number, head) };
       })(),
+      // AUTOLAND AIRPORT의 머지 리뷰(ATC-328): atc에 기록한 이 head의 리뷰가 착륙 리뷰
+      autoland: { repos: airports.open.filter((a) => alCfg.airports.includes(a.code)).map((a) => a.repo), reviewedSecurity: alCfg.reviewedSecurity, reviews: readMergeReviews() },
     },
   );
 
@@ -298,6 +300,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
         flightTitle: ticket?.title ?? null,
         head: p.head,
         carryFrom: raw?.humanCarryFrom ?? (raw?.carryFrom ?? []).map((c) => c.sha),
+        reviewedSecurity: alCfg.reviewedSecurity,
+        mergeReviewPass: p.mergeReview?.pass === true,
       });
     },
   });
