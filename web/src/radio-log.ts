@@ -3,7 +3,7 @@ import type { Freq, Transmission } from "../../server/radio.ts";
 
 // RADIO 탭(ATC-171)의 순수 계산: 합치기, 거르기, 답 묶기, 나이·overdue, 링크, 되감기. 화면(views/Radio.tsx)과 분리해 node:test로 본다.
 
-export const FREQS: readonly Freq[] = ["DELIVERY", "TOWER", "GROUND", "COMPANY"];
+export const FREQS: readonly Freq[] = ["DELIVERY", "TOWER", "GROUND", "COMPANY", "PREFLIGHT"];
 export const WINDOW_MS = 6 * 3_600_000; // 서버 GET /api/radio의 기본 창(R1)
 // 되감기에서 열린 호출을 overdue로 세는 기준. 서버의 규칙(FLIGHT PLAN·RECALL·CREW CHANGE·CLEARANCE READBACK 10분)과 같다.
 // 서버는 답이 붙으면 overdueAt을 지우므로, 되감기는 호출 시각 + 10분으로 센다(STANDBY로 다시 세는 것은 되감기에서 무시)
@@ -126,6 +126,8 @@ export function loadFilter(storage: Pick<Storage, "getItem"> | null): Filter {
     const raw = storage.getItem(KEY.freqs);
     const parsed: unknown = raw ? JSON.parse(raw) : null;
     const freqs = Array.isArray(parsed) ? parsed.filter((f): f is Freq => (FREQS as readonly unknown[]).includes(f)) : [];
+    // PREFLIGHT가 생기기 전에 저장된 "네 주파수 전부"는 전부 보기로 읽는다
+    if (freqs.length === FREQS.length - 1 && !freqs.includes("PREFLIGHT")) freqs.push("PREFLIGHT");
     return { freqs: freqs.length ? new Set(freqs) : ALL_FILTER.freqs, airport: storage.getItem(KEY.airport) || null, aircraft: storage.getItem(KEY.aircraft) || null };
   } catch {
     return ALL_FILTER;

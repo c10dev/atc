@@ -178,7 +178,7 @@ function finalize(a: Acc): Bucket {
 const CLOSING = new Set(["READBACK", "ROGER", "UNABLE"]);
 const WITHDRAWN = new Set(["cancel", "recall", "supersede", "delivered", "undelivered"]);
 const rootId = (id: string) => id.split("#")[0]!;
-const isCall = (t: Transmission) => !t.replyTo && (t.from === "TOWER" || t.from === "OCC") && t.freq !== "GROUND";
+const isCall = (t: Transmission) => !t.replyTo && (t.from === "TOWER" || t.from === "OCC") && t.freq !== "GROUND" && t.freq !== "PREFLIGHT"; // PREFLIGHT는 호출이 아니다(ATC-267)
 const ms = (iso: string) => Date.parse(iso);
 
 export interface Window {

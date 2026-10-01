@@ -4,6 +4,7 @@ import type { ClearanceOp } from "./clearances.ts";
 import { CREW_CHANGE_READBACK_OVERDUE_MS, type CrewChangeOp } from "./crew-change.ts";
 import type { MccRecord, RtsRecord } from "./mcc.ts";
 import type { Op } from "./proposals.ts";
+import type { LogLine as ScheduleLine } from "./schedule.ts";
 import { READBACK_OVERDUE_MS } from "./proposals.ts";
 import { DEFAULT_TEAM_PATTERN, registrationOf } from "./registration.ts";
 import { overdueBase } from "./response.ts";
@@ -11,7 +12,7 @@ import { overdueBase } from "./response.ts";
 // RADIO(docs/radio.md, ATC-170): 이미 기록된 교신을 한 줄 목록(transmission)으로 합친다. 읽기만, 순수 함수.
 // 새 상태 파일이 없고 기록 형식도 그대로다. 대화 기록(transcript)은 읽지 않는다.
 
-export const FREQS = ["DELIVERY", "TOWER", "GROUND", "COMPANY"] as const;
+export const FREQS = ["DELIVERY", "TOWER", "GROUND", "COMPANY", "PREFLIGHT"] as const;
 export type Freq = (typeof FREQS)[number];
 
 export type ClosedBy = "cancel" | "expire" | "supersede" | "delivered" | "recall" | "undelivered";
@@ -23,7 +24,7 @@ export interface Transmission {
   from: string; // TOWER · OCC · MCC · "GOLF (TEAM_G)"
   to: string; // 위와 같다. 모두에게 하는 GROUND 방송은 "ALL"
   aircraft?: string; // 이 교신의 AIRCRAFT REGISTRATION(필터용)
-  kind: string; // GO AROUND · FLIGHT PLAN · READBACK · ROGER · UNABLE · STANDBY · RECALL · CREW CHANGE · ARRIVED · INSPECTION · LAND · ESCALATE · RTS …
+  kind: string; // CROSSCHECK · PREFLIGHT HOLD · HOLD(PREFLIGHT, 호출이 아님) · GO AROUND · FLIGHT PLAN · READBACK · ROGER · UNABLE · STANDBY · RECALL · CREW CHANGE · ARRIVED · INSPECTION · LAND · ESCALATE · RTS …
   flight?: string;
   airport?: string;
   pr?: number; // 이 교신이 다루는 PR 번호(ARRIVED 보고, MCC INSPECTION·LAND·ESCALATE)
@@ -46,6 +47,7 @@ export interface RadioInput {
   reports: readonly ArrivalReport[];
   mcc: readonly MccRecord[];
   rts: readonly RtsRecord[];
+  schedule?: readonly ScheduleLine[]; // SCHEDULE 초안의 CROSSCHECK mark(PREFLIGHT)
 }
 
 // CLEARANCE READBACK overdue와 같은 10분(controller.ts OVERDUE_MS)
@@ -245,6 +247,33 @@ export function radioOf(input: RadioInput, teamPattern = DEFAULT_TEAM_PATTERN): 
     else if (r.op === "rts") ground(`mcc:${r.at}:rts`, r.at, "RTS", headOf("MCC", "ALL", "RTS", r.result.toUpperCase(), r.to.slice(0, 7)), r.detail, undefined, r.result);
   }
   for (const r of input.rts) ground(`rts:${r.at}:${r.result}`, r.at, "RTS", headOf("MCC", "ALL", `RTS ${r.result.toUpperCase()}`, r.to.slice(0, 7)), r.detail, undefined, r.result);
+
+  // ── PREFLIGHT: 출발 전 점검(ATC-267). CROSSCHECK mark, PREFLIGHT HOLD, DISPATCH HOLD ──
+  // 호출이 아니다: open·overdueAt·replyTo가 없고 READABILITY도 세지 않는다. 같은 제안에 mark가 다시 달리면 줄을 모두 남기고 head는 각 mark의 판정을 말한다
+  const pre = (id: string, at: string, from: string, to: string, kind: string, flight: string | undefined, head: string, body: string | undefined, a: Who, result?: string) =>
+    add({ id, at, freq: "PREFLIGHT", from, to, aircraft: a.aircraft, kind, flight, head, body, result });
+  const notes = new Map<string, string>(); // D-xxxx → 마지막 note(선행 없는 HOLD의 사유가 여기 있다)
+  for (const o of input.proposals) {
+    if (o.op === "note") notes.set(o.id, o.text);
+    const a = who.get(o.id) ?? { station: "?" };
+    const flight = flightOf.get(o.id);
+    const label = [o.id, flight].filter(Boolean).join(" ");
+    if (o.op === "crosscheck") {
+      pre(`${o.id}#crosscheck:${o.at}`, o.at, "CROSSCHECK", "OCC", "CROSSCHECK", flight, headOf("CROSSCHECK", "OCC", label, o.verdict.toUpperCase()), o.reason, a, o.verdict);
+    } else if (o.op === "preflight") {
+      pre(`${o.id}#preflight:${o.at}`, o.at, o.by || "OCC", "OCC", "PREFLIGHT HOLD", flight, headOf(o.by || "OCC", "OCC", label, "PREFLIGHT HOLD"), o.reason, a);
+    } else if (o.op === "hold") {
+      const why = o.blockedBy.length ? `blocked by ${o.blockedBy.join(", ")}` : notes.get(o.id);
+      pre(`${o.id}#hold:${o.at}`, o.at, "OCC", "ALL", "HOLD", flight, headOf("OCC", "ALL", label, "HOLD"), why, a);
+    }
+  }
+  const draftFlight = new Map<string, string>();
+  for (const o of input.schedule ?? []) if (o.op === "draft" && o.flight) draftFlight.set(o.id, o.flight);
+  for (const o of input.schedule ?? []) {
+    if (o.op !== "crosscheck") continue;
+    const flight = draftFlight.get(o.id);
+    pre(`${o.id}#crosscheck:${o.at}`, o.at, "CROSSCHECK", "OCC", "CROSSCHECK", flight, headOf("CROSSCHECK", "OCC", [o.id, flight].filter(Boolean).join(" "), o.verdict.toUpperCase()), o.reason, { station: "?" }, o.verdict);
+  }
 
   // 시각순. 같은 시각이면 호출이 답보다 앞, 그다음은 기록 순서(안정 정렬)
   const idx = new Map(out.map((t, i) => [t, i]));
