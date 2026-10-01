@@ -531,6 +531,18 @@ SUPERVISOR가 atc 화면에서 AIRCRAFT에게 말을 걸 길이 없었다. ENGIN
 - **NOTES FROM THE ISSUE.** `flightPlanNotesOf(comments, cfg, url)`(`server/issue-notes.ts`, 순수)가 FLIGHT PLAN(`release`)과 DIRECT 지시서(`GET /api/dispatch/flight/<FLIGHT>/brief`)의 본문 절 뒤에 블록을 더한다: SUPERVISOR의 Linear 사용자가 쓴 댓글, 가장 새것이 맨 뒤, 쓴 그대로, 댓글 3개·2,000자까지(오래된 것을 빼고 "more in the issue: <url>"). Linear 사용자가 있고 이름이 봇·연동이 아니며 본문이 링크백이 아닌 댓글을 센다. `dispatch.json`의 `issueNotes: {users: [...], maxComments, maxChars}`로 사용자를 정할 수 있다. 댓글이 없거나 봇 댓글뿐이면 블록이 없다. FLIGHT PLAN을 보낸 뒤 달린 댓글은 저절로 다시 가지 않고, FLEET 카드의 RELAY가 채워 준다.
 - **만들지 않은 것:** ACCOUNT를 넘는 소켓 전달(ATC-251), ENGINEERING·DUTY·모델이 만드는 relay, 지시용 일반 CLEARANCE 종류.
 
+## STAND를 쥔 세션이 없는 GO AROUND·FIX의 RELAY 구현 내용(ATC-308)
+
+PR에 GO AROUND나 FIX가 필요한데 그 STAND를 쥔 세션이 없으면 TOWER가 보낼 곳이 없어(`goAround.action`·`fix.action`이 `supervisor`, `why: "no-holder"`) SUPERVISOR가 TOWER의 글을 손으로 옮겨야 했다. 이제 SUPERVISOR QUEUE에 카드가 하나 뜨고, 한 번 확인하면 그 글이 전해진다.
+
+- **카드.** SUPERVISOR QUEUE의 새 종류 `RELAY`(`server/relay-offer.ts`, 순수. `relayOffersOf`). PR과 head마다 아직 안 보낸 쥔 세션 없는 동작의 첫 번째 하나: GO AROUND가 먼저고, 그것이 나가면 FIX다. 항목에 `offer: {key, type, repo, pr, head, flight, airport, stand, standName, text, to, reason}`가 있다. `text`는 TOWER의 brief가 싣는 글 그대로이고(`goAroundOf`·`fixOf`, 같은 함수와 같은 사건 목록) `to`는 제안하는 AIRCRAFT다. head가 바뀌거나(key에 head가 있다) PR이 닫히거나 Draft가 되거나 쥔 세션이 생기거나(그러면 TOWER가 보낸다) 그 PR·type·head의 relay가 이미 있으면(어느 상태든. undeliverable은 `UNDELIVERED` 카드가 맡는다) 카드가 사라진다. `why: "repeat"`는 내지 않는다.
+- **제안하는 AIRCRAFT.** `server/relay.ts`의 `lastAircraftOf(flight, …)`(순수): 그 FLIGHT의 가장 늦은 DEPARTURE LOG 줄의 AIRCRAFT. 없으면 출발했거나 도착한 가장 늦은 ASSIGN 제안의 REGISTRATION. 없으면 가장 늦은 ARRIVED 보고의 제안의 것. 아니면 `null`(SUPERVISOR가 REGISTRATION을 쓴다). 카드에서 받는 이를 고칠 수 있다.
+- **relay 기록.** `POST /api/relay`가 선택 `type`(`GO AROUND` | `FIX`)과 `stand`(아는 워크스페이스의 경로나 이름, 경로로 저장)를 받는다. `type`은 `kind: "instruction"`과 `pr`·`flight`가 있어야 하고 `stand`는 `type`이 있어야 한다. `clearanceTypeOf`가 `type`을 쓴다. brief의 `relays[]` 항목에 `stand`가 생겼다. 여전히 SUPERVISOR만(`fromThisApp`, 아니면 `403`). 화면은 TOWER의 글을 고칠 수 없게(읽기 전용) 그대로 보낸다.
+- **TOWER.** 항목에 `stand`가 있으면 `atcctl issue <to> <type> --stand <stand> --flight <FLIGHT> -- <text>`로 낸다. 서버의 `/api/relay/:id/issued`는 이제 CLEARANCE의 type과 STAND도 relay와 같아야 받는다. 그래서 `goAroundSent`·`fixSent`가 보낸 것으로 읽고, 그 head의 `goAround.action`이 `sent`가 되어 카드가 다시 뜨지 않는다. TOWER 매뉴얼: `controller/CLAUDE.md`·`.en.md`와 tick skill(2a)의 SUPERVISOR RELAY 행.
+- **PR 서랍.** 쥔 세션이 없어도 `RELAY…` 줄이 보인다: 받는 이는 제안하는 AIRCRAFT(고칠 수 있다), 글은 GO AROUND 글이 있으면 그것, 없으면 FIX 글이고 `type`과 `stand`가 붙는다(`GET /api/pr/:airport/:n/detail`의 `relay: {to, suggested, flight, pr, text, type, stand}`).
+- **팀 쪽.** 바꾼 것이 없다: 팀은 `.claude/skills/atc-task/SKILL.md`와 루트 `CLAUDE.md`대로 `GO AROUND`·`FIX`에 답하고 CLEARANCE에 STAND가 실려 있다. 그 FLIGHT를 난 AIRCRAFT가 그 STAND에 더는 없으면 `.claude/worktrees/` 안이므로 `EnterWorktree path=`로(승인 없이) 연다.
+- **만들지 않은 것:** 카드로서의 `why: "repeat"`, ACCOUNT를 넘는 전달(ATC-251: 다른 폴더의 AIRCRAFT는 전처럼 `UNDELIVERED` 카드), TOWER가 스스로 하는 relay.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

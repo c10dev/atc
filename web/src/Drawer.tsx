@@ -254,7 +254,7 @@ function Flight({ k, now }: { k: string; now: number }) {
 
 const CHECK_MARK = { pass: "✓", fail: "✗", pending: "…", skipped: "–" } as const;
 
-type PrView = PrDetail & { airport: string; merge: MergeInfo | null; relay: { to: string | null; flight: string | null; pr: number; text: string | null } | null };
+type PrView = PrDetail & { airport: string; merge: MergeInfo | null; relay: { to: string | null; suggested: boolean; flight: string | null; pr: number; text: string | null; type: "GO AROUND" | "FIX" | null; stand: string | null } | null };
 
 // MERGE(DUTY G2): SUPERVISOR의 클릭 하나가 user 등급 CLEARED PR을 화면이 보여 준 head 그대로 머지한다. 누르면 등급·head·방식을 보이고 한 번 더 묻는다.
 // 서버는 눌린 뒤 지금 GitHub 자료로 다시 판정한다(head가 움직였으면 409와 새 head)
@@ -382,12 +382,13 @@ function Pr({ airport, number, now }: { airport: string; number: number; now: nu
           </>
         )}
         <MergeRow d={d} airport={airport} note={merged} onDone={(n) => (setMerged(n), setRev((x) => x + 1))} />
-        {d.relay?.to && d.state === "OPEN" && (
+        {(d.relay?.to || d.relay?.suggested) && d.state === "OPEN" && (
           <div className="dr-row">
             <dt>RELAY</dt>
             <dd>
-              <RelayBox to={d.relay.to} flight={d.relay.flight} pr={d.relay.pr} text={d.relay.text} btnClass="dr-btn" />
-              {d.relay.text && <span className="faint"> 리뷰 지적의 FIX 글이 채워진다</span>}
+              <RelayBox to={d.relay.to} editableTo={d.relay.suggested} type={d.relay.type} stand={d.relay.stand} flight={d.relay.flight} pr={d.relay.pr} text={d.relay.text} btnClass="dr-btn" />
+              {d.relay.text && <span className="faint">{d.relay.type === "GO AROUND" ? " TOWER의 GO AROUND 글이 채워진다" : " 리뷰 지적의 FIX 글이 채워진다"}</span>}
+              {d.relay.suggested && <span className="faint"> · 이 STAND를 쥔 AIRCRAFT가 없다{d.relay.to ? ` — ${d.relay.to}가 이 FLIGHT를 날았다` : ""}</span>}
             </dd>
           </div>
         )}

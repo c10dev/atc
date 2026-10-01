@@ -7,6 +7,10 @@ import { loadAutoland } from "./autoland.ts";
 import { escalationOf, inspectionOf, loadMcc, readMccRecords, tierOfFiles } from "./mcc.ts";
 import { allClearances } from "./clearances.ts";
 import { fixOf } from "./fix.ts";
+import { noHolderPickOf } from "./relay-offer.ts";
+import { lastAircraftSources } from "./relay-run.ts";
+import { lastAircraftOf } from "./relay.ts";
+import { queueEvents } from "./supervisor-queue-run.ts";
 import { type MergeInfo, mergeInfoOf, mergeMethodOf } from "./pr-merge.ts";
 import type { Snapshot } from "./model.ts";
 import { fetchPrView, slugOf } from "./sources/github.ts";
@@ -80,7 +84,13 @@ export function mountDetail(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       const holder = polled?.standPath ? snap.claims.find((x) => x.state === "active" && x.workspacePath === polled.standPath) : undefined;
       const holders = polled?.standPath ? snap.claims.filter((x) => x.state === "active" && x.workspacePath === polled.standPath).length : 0;
       const fix = polled ? fixOf(polled, { clearances: allClearances(), holders, now: Date.now() }) : null;
-      const relay = polled ? { to: snap.sessions.find((x) => x.id === holder?.sessionId)?.name ?? null, flight: polled.ticketKey, pr: polled.number, text: fix?.text ?? null } : null;
+      // STAND를 쥔 세션이 없으면(ATC-308) 그 FLIGHT를 난 AIRCRAFT를 제안하고(고칠 수 있다), 글은 TOWER가 못 보내는 GO AROUND, 없으면 FIX의 것이다
+      const pick = polled && !holders ? noHolderPickOf(polled, snap, { clearances: allClearances(), events: queueEvents(), now: Date.now() }) : null;
+      const relay = polled
+        ? holders
+          ? { to: snap.sessions.find((x) => x.id === holder?.sessionId)?.name ?? null, suggested: false, flight: polled.ticketKey, pr: polled.number, text: fix?.text ?? null, type: null, stand: null }
+          : { to: lastAircraftOf(polled.ticketKey ?? null, lastAircraftSources()), suggested: true, flight: polled.ticketKey, pr: polled.number, text: pick?.text ?? fix?.text ?? null, type: pick?.type ?? (fix ? "FIX" : null), stand: polled.standPath ?? null }
+        : null;
       return c.json({ ...d, airport: airport.code, landing, merge, relay });
     } catch (e) {
       if (e instanceof GithubOffError) return c.json({ error: e.message, off: true }, 503);

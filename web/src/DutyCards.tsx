@@ -7,6 +7,7 @@ import type { FleetProposal } from "../../server/fleet-plan.ts";
 import type { QueueItem, SupervisorQueue } from "../../server/supervisor-queue.ts";
 import { timeAgo } from "./derive.ts";
 import { isManual, WILL_DO } from "./views/FleetPlan.tsx";
+import { RelayBox } from "./Relay.tsx";
 import "./Relay.css";
 
 // DUTY 카드와 QUEUE 줄(ATC-230, docs/duty.md 3.2·4·5장 D3). 카드는 큐 줄 자체이고, 버튼은 이 화면이 기존 길을 부르는 것이다.
@@ -291,11 +292,28 @@ function HandDelivery({ item, onDone }: { item: QueueItem; onDone: () => void })
   );
 }
 
+// RELAY(ATC-308): STAND를 쥔 세션이 없어 TOWER가 못 보내는 GO AROUND·FIX. TOWER의 글을 보이고, 한 번 확인하면 그 FLIGHT를 난 AIRCRAFT에게 그대로 전한다
+function RelayOffer({ item }: { item: QueueItem }) {
+  const o = item.offer;
+  if (!o) return null;
+  return (
+    <div className="hd" role="group" aria-label={`${o.type} PR #${o.pr} RELAY`}>
+      <p className="hd-title">이 STAND{o.standName ? ` ${o.standName}` : ""}를 쥔 AIRCRAFT가 없다. TOWER가 보내지 못한다</p>
+      <p className="hd-how">{o.to ? `${o.to}가 이 FLIGHT를 날았다. 다른 AIRCRAFT를 고를 수 있다` : "이 FLIGHT를 난 AIRCRAFT를 모른다. REGISTRATION을 쓴다"}</p>
+      <pre className="hd-cmd mono">{o.text}</pre>
+      <div className="du-actions">
+        <RelayBox to={o.to} editableTo type={o.type} stand={o.stand} flight={o.flight} pr={o.pr} text={o.text} btnClass="dr-btn" />
+      </div>
+    </div>
+  );
+}
+
 // 카드와 QUEUE 줄이 같이 쓰는 버튼 칸
 function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardAction[]; onDone: () => void }) {
   return (
     <>
       {item.hand && <HandDelivery item={item} onDone={onDone} />}
+      {item.offer && <RelayOffer item={item} />}
       {actions.map((a, n) =>
         a.type === "link" ? (
           <div className="du-actions" key={n}>
