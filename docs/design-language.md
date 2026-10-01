@@ -97,6 +97,32 @@ Charts use the series tokens (`--series-captain`, `--series-crew`), not the sign
 
 The app follows macOS: system fonts (monospaced for codes and numbers), template images in the menu bar so the title follows light and dark, system materials for the popover, and the system accent for NEEDS YOU. It maps atc's levels to the same order and the same letters, and draws the same counts with the same rule (`warning + caution`, then `+advisory`), which come from the server's summary.
 
+### 3.5 Craft
+
+Sections 2 to 3.4 decide *what* a screen shows. This section decides how calm and clean it looks. Compared with calm, well-made apps (Linear, Vercel's Geist, Apple's own apps, Stripe's dashboard), atc's behaviour rules are at the same level, but its screens use more colour, more borders, more monospace and less size contrast. These rules close that gap without changing atc's identity (the console look, the aviation words, the three themes).
+
+1. **Colour budget.** Grey is the default. Signal colour marks state, never decoration or grouping.
+   - At most **two** signal colours in one card or row in a normal state, and **none** when everything is normal (principle 1). "Healthy" and "live" are a small dot or a word in `--radar`, never a border, a background or a whole line of green text.
+   - The colour belongs to the smallest element that carries the state: the dot, the tag or the number, not the whole row or card. A coloured left bar on a card is allowed only for WARNING, CAUTION and AOG.
+   - *Check:* in the normal state, the coloured pixels in a card are a dot or a word, not a block.
+2. **Font roles.** `--mono` for things a person might copy or compare character by character: IDs, codes, keys, numbers, times, model names, commands. `--sans` for names, sentences and labels a person reads. Uppercase letter-spaced codes (`.label`, `.fl-sub`) only for section headings, at most one level of them per card.
+   - *Check:* no Korean sentence and no list of names is set in mono; no card has more than one level of uppercase headings.
+3. **Three sizes per block.** Each card or panel uses at most three text sizes: the **title** (`--text-lg`, 600), the **value** (`--text-md`), and the **caption** (`--text-xs`, `--faint`). Weight adds contrast inside the same size (600 for names and values that matter, 400 otherwise).
+   - *Decision DL7:* raise body text from 13 px to 14 px and captions from 11 px to 12 px in the default density. `compact` keeps today's sizes.
+   - *Check:* a card uses three sizes or fewer.
+4. **Border budget.** Group by space and by surface step (section 3.1), not by lines. A card has one outer border or one surface step, not both plus inner rules. Lines are for tables, inputs and the one divider between a header and its body.
+   - *Check:* no border inside a card except table rows, inputs and the header divider.
+5. **Spacing rhythm.** Inside a block, related lines sit `--space-1` to `--space-2` apart; blocks inside a card `--space-4`; cards `--space-3` to `--space-4`; sections `--gap-section`. Padding inside a card is at least `--space-4` on every side. Things that line up (labels, values, numbers) share one left edge.
+   - *Check:* the label column and the value column of a card each have one left edge.
+6. **One icon set.** Web: one outline set (proposal: Lucide, MIT) at 14 and 16 px with a 1.5 px stroke. App: SF Symbols. Text glyphs (`▸ ▾ ✓ ⋯ ✈`) are replaced where an icon exists. An icon-only control has an accessible name (principle 14).
+   - *Check:* the PR adds no new text glyph used as an icon.
+7. **Numbers.** `font-variant-numeric: tabular-nums` on every number that changes or sits in a column. Numbers in tables align right; units stay with the number (`32%`, `$4.34`, `287k`).
+   - *Check:* changing numbers do not shift their neighbours.
+8. **Motion.** Two durations (`--dur-fast` 120 ms for hover and press, `--dur-base` 200 ms for open, close and fold) and one curve (`--ease` `cubic-bezier(0.2, 0, 0, 1)`). Folds animate height or opacity, never position jumps. Liveness motion (principle 10) is the only repeating motion.
+   - *Check:* no new duration or curve outside the tokens.
+9. **One theme finished first.** The default theme (Radar Console) gets every craft fix first and is the reference for screenshots in the Mac checklist and Playwright passes. The other themes must stay readable and keep 4.5:1, but they follow the default, not the other way round.
+10. **Menu bar icon (ANNUNCIATOR).** A template (single-colour) image in the normal state, like every other menu bar app. Colour appears only with CAUTION or WARNING, and the shape changes with it (principle 2).
+
 ## 4. Patterns
 
 ### 4.1 Row and expanded detail
@@ -150,6 +176,7 @@ For a PR that changes a screen in atc or ANNUNCIATOR. Copy the lines that apply 
 - [ ] At most five visible buttons per card; destructive actions confirmed (12).
 - [ ] Tokens only (13).
 - [ ] Keyboard path checked (14).
+- [ ] Craft (3.5): normal state has no coloured blocks; mono only for IDs, codes and numbers; three text sizes per card; no inner borders; one left edge per column; icons from the set; `tabular-nums` on changing numbers; motion from the tokens.
 
 ## 6. Implementation order
 
@@ -160,7 +187,9 @@ For a PR that changes a screen in atc or ANNUNCIATOR. Copy the lines that apply 
 | L2 | [ATC-280](https://linear.app/vocado/issue/ATC-280) (FLEET card) and [ATC-222](https://linear.app/vocado/issue/ATC-222) (menu bar) cite this document and use the section 5 checklist | the two work orders | — |
 | L3 | A one-line rule in root `CLAUDE.md` and atc-app `CLAUDE.md`: screen PRs follow `docs/design-language.md` and answer the checklist | `CLAUDE.md` | `user` |
 | L4 | An audit of each tab against the checklist, one work order per tab that fails, ordered by words per screen (DISPATCH, FIDS, SCHEDULE first) | Linear | — |
-| L5 | Tooltip pass: move tooltips that carry the only copy of a decision value onto the screen (principle 11) | web | `auto` |
+| L5a | Craft tokens: `--dur-*`, `--ease`, `tabular-nums` utility, DL7 sizes, the icon set (3.5) | `web/src/styles.css`, one component | `auto` (`package.json` for the icon set: `user`) |
+| L5b | Craft pass on the FLEET card as the reference card, together with [ATC-280](https://linear.app/vocado/issue/ATC-280) | web | `auto` |
+| L6 | Tooltip pass: move tooltips that carry the only copy of a decision value onto the screen (principle 11) | web | `auto` |
 
 ### Not built yet
 
@@ -197,3 +226,6 @@ Recommended answers in bold.
 | DL4 | At most five visible buttons per card | **Yes**, the rest in `⋯` |
 | DL5 | Add the one-line rule to both `CLAUDE.md` files (L3) | **Yes**, after DL1–DL4 |
 | DL6 | Adopt ui-visibility section 2 through this document (its other sections stay a draft) | **Yes** |
+| DL7 | Body 14 px and captions 12 px in the default density (3.5 rule 3) | **Yes**; `compact` keeps 13/11 |
+| DL8 | Icon set for the web | **Lucide** (MIT, outline, tree-shaken per icon) |
+| DL9 | Radar Console is the reference theme that gets craft fixes first (3.5 rule 9) | **Yes** |
