@@ -50,7 +50,7 @@ Linear 티켓까지 보려면 `.env.local`에 `LINEAR_API_KEY`를 넣는다. 상
 | NETWORK (`#network`) | 4단계 읽기 전용 운항 개요: ROUTE MAP은 ROUTE마다 WAYPOINT(Linear 프로젝트 마일스톤)를 잇는 경로를 그린다(지남 ●, 지금 구간 ◉과 진행률·운항 중인 AIRCRAFT, 앞으로 ○. 누르면 완료 기준·FLIGHT·목표일·ETA, [docs/routes.ko.md](docs/routes.ko.md)). ROUTE(Linear 프로젝트)마다 상태별 열린 FLIGHT(Todo·In Progress·In Review), 최근 14일 ARRIVED, 그 ROUTE를 도는 AIRCRAFT, 착륙 대기 중앙값, 프로젝트 목표(목표일·진척·상태). AIRCRAFT마다 TARGETS와 FLEET 카드와 같은 LOGBOOK 실적. 최근 28일 추세: ARRIVED·착륙 대기·되돌림, DISPATCH·SCHEDULE 게이트(날마다 판정 수, 누적 합의율, CROSSCHECK 일치율) |
 | DISPATCH (`#dispatch`) | 지금 계획, OCC 메모가 달린 제안 카드와 "승인했을 것 / 거절했을 것" 판정(2b에서는 승인·거절), HELD, IN FLIGHT, 제외된 FLIGHT, 2b·3단계 점검 |
 | SCHEDULE (`#schedule`) | OCC SCHEDULE 초안(S1 그림자 운용): S2 진입 점검 패널, "승인했을 것 / 거절했을 것" 판정이 있는 열린 초안 카드, 후보 수(CLASSIFY·PRIORITIZE·TAIL·WAYPOINT·CLOSE), LATE WAYPOINTS와 ROUTES WITHOUT WAYPOINTS, 승인한 CLOSE의 "LINEAR에서 직접 DONE" 목록, 최근 7일 표 |
-| DOCS (`#docs`) | atc 사용 안내: 소개, 빠른 시작, 개념, 일 맡기기(CHARTER DESK / AD HOC), 판정하기, FLEET, 교신 규칙, 화면, 단계, 문제 해결. `docs/guide/*.md`(한국어)를 그대로 보여 준다 |
+| DOCS (`#docs`) | atc 사용 안내: 소개, 빠른 시작, 개념, 일 맡기기(CHARTER DESK / AD HOC), 판정하기, FLEET, 교신 규칙, 화면, skill과 규정집([docs/skills.md](docs/skills.md)), 단계, 문제 해결. `docs/guide/*.md`(한국어)를 그대로 보여 준다 |
 
 ## 용어
 

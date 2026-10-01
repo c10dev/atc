@@ -30,7 +30,7 @@ export const DOC_NAV = [
   { group: "시작하기", pages: [["introduction", "소개"], ["quickstart", "빠른 시작"]] },
   { group: "개념", pages: [["concepts", "개념과 용어"]] },
   { group: "가이드", pages: [["requesting", "일 맡기기"], ["follow", "일 따라가기"], ["reviewing", "판정하기"], ["fleet", "팀 운영"], ["alerts", "알림 받기"], ["menubar", "Mac 메뉴 막대"],["voice", "음성 콜아웃"], ["radio", "교신 규칙"], ["radio-tab", "RADIO 탭"], ["duty", "DUTY 채팅"], ["deploy", "배포하기"]] },
-  { group: "참고", pages: [["screens", "화면 안내"], ["stages", "단계와 로드맵"], ["troubleshooting", "문제 해결"], ["changelog", "변경 기록"]] },
+  { group: "참고", pages: [["screens", "화면 안내"], ["skills", "skill과 규정집"], ["stages", "단계와 로드맵"], ["troubleshooting", "문제 해결"], ["changelog", "변경 기록"]] },
 ] as const;
 const ORDER = DOC_NAV.flatMap((g) => g.pages.map(([slug, title]) => ({ slug, title, group: g.group })));
 const REPO = "https://github.com/chaehy5665/atc/blob/main/";
