@@ -1,4 +1,5 @@
 import { EMPTY_MILESTONES, type Milestones } from "./milestones.ts";
+import type { LandBy, LandDecision, LandWhy } from "./land-by.ts";
 import type { FlightProgress } from "./progress.ts";
 
 // GLOBE(ATC-254, docs/globe.md): 지구본의 계산. 순수 함수만 두고 그리는 것과 나눈다(server/progress.ts처럼 브라우저에서도 쓴다).
@@ -484,6 +485,10 @@ export interface GlobeFlight {
   blocks: string[]; // 착륙을 막는 조건 코드(APPROACH일 때)
   fadeFrom: string | null; // arrived: 서서히 사라지기 시작한 시각(ISO). IN, RTS가 없으면 ON
   reverted: boolean; // ON의 PR이 되돌려졌다
+  // 착륙을 누가 해 주나(ATC-300). landing 구간에 열린 PR이 있는 FLIGHT(hold·final·goAround)만이고 나머지는 null.
+  // landBy는 TOWER가 쓰는 landByOf 그대로, landWhy는 supervisor일 때의 이유 코드(land-by.ts의 LandWhy). 옛 장면을 읽는 쪽은 없을 수 있다
+  landBy?: LandBy | null;
+  landWhy?: LandWhy | null;
 }
 
 export const CRUISE_CAP = 0.9; // cruise·final의 t는 IAF·활주로 앞에서 멈춘다(도착은 마일스톤이 알려 주는 것)
@@ -501,11 +506,13 @@ export interface GlobeFlightsIn {
   now: number;
   tickets: readonly { key: string; stateType: string }[];
   workspaces: readonly { ticketKey: string | null; repo: string; isMain: boolean }[];
-  pulls: readonly { ticketKey: string | null; repo: string; landing: "CLEARED" | "APPROACH"; blocks: readonly { code: string }[] }[];
+  pulls: readonly { ticketKey: string | null; repo: string; landing: "CLEARED" | "APPROACH"; blocks: readonly { code: string }[]; number?: number; head?: string }[];
   clearances: readonly { type: string; flight: string | null; at: string; cancelledAt: string | null }[];
   aircraft: readonly GlobeAircraftState[];
   milestones: Readonly<Record<string, Milestones>>;
   progress: Readonly<Record<string, FlightProgress>>;
+  // 누가 착륙시키나(ATC-300): 부르는 쪽이 landDecisionOf를 MCC 정보와 묶어 넘긴다. 없으면 landBy·landWhy는 모두 null
+  land?: (pull: { repo: string; number: number; head: string }) => LandDecision;
 }
 
 const SEGMENT_INDEX: Record<string, number> = { work: 0, landing: 1, rts: 2, done: 3 };
@@ -552,7 +559,7 @@ export function flightsOf(input: GlobeFlightsIn, airports: readonly GlobeAirport
     const m = input.milestones[key] ?? EMPTY_MILESTONES;
     const p = input.progress[key] ?? null;
     const closed = CLOSED_TICKET.has(input.tickets.find((t) => t.key === key)?.stateType ?? "");
-    const base = { key, airport, aircraft: holder?.registration ?? null, callsign: holder?.callsign ?? null, late: Boolean(p?.late), blocks: [] as string[], fadeFrom: null as string | null, reverted: Boolean(m.reverted) };
+    const base = { key, airport, aircraft: holder?.registration ?? null, callsign: holder?.callsign ?? null, late: Boolean(p?.late), blocks: [] as string[], fadeFrom: null as string | null, reverted: Boolean(m.reverted), landBy: null as LandBy | null, landWhy: null as LandWhy | null };
 
     // 끝난 FLIGHT: 30분 동안 게이트에서 서서히 사라진다
     if (p?.segment === "done") {
@@ -596,7 +603,10 @@ export function flightsOf(input: GlobeFlightsIn, airports: readonly GlobeAirport
       state = "cruise";
       t = cruiseT;
     }
-    rows.push({ ...base, state, t, blocks });
+    // 누가 착륙시키나: landing 구간의 열린 PR이 있는 hold·final·goAround만. 규칙은 landByOf(land-by.ts) 한 곳이다
+    const landing = p.segment === "landing" && pull && pull.number !== undefined && pull.head !== undefined && (state === "hold" || state === "final" || state === "goAround");
+    const d = landing && input.land ? input.land({ repo: pull.repo, number: pull.number!, head: pull.head! }) : null;
+    rows.push({ ...base, state, t, blocks, landBy: d?.by ?? null, landWhy: d?.why ?? null });
   }
   // 나가는 방위: AIRPORT마다 key 순서로
   const outbound = new Map<string, number>();
