@@ -52,6 +52,7 @@ A **transmission** is one recorded call or reply:
 | **TOWER** | CLEARANCE (`LAND`, `GO AROUND`, `INFO`, …), READBACK, ROGER, UNABLE | `clearances.jsonl` |
 | **GROUND** | MCC INSPECTION, land and ESCALATE; RTS started, ok and rollback | `mcc.jsonl`, `rts.jsonl` |
 | **COMPANY** | CREW CHANGE and its READBACK; ARRIVED reports | crew-change records, `arrival-reports.jsonl` |
+| **PREFLIGHT** | CROSSCHECK marks, PREFLIGHT HOLD, DISPATCH HOLD (not calls, see "PREFLIGHT as built") | `proposals.jsonl`, `schedule.jsonl` |
 
 ## 4. Screens
 
@@ -94,7 +95,7 @@ A **transmission** is one recorded call or reply:
 - **`overdueAt`** is the existing rule and nothing new: FLIGHT PLAN, RECALL (`READBACK_OVERDUE_MS`, 10 min), CREW CHANGE (`CREW_CHANGE_READBACK_OVERDUE_MS`, 10 min), CLEARANCE (10 min, `controller.ts`). The first STANDBY counts the time again from the STANDBY (`overdueBase`, ATC-122). `isOverdue(t, now)` is `open && now > overdueAt`.
 - **Order.** By time; at the same time a call comes before a reply, then the order of the records (stable).
 - **`head`** is built from fields only: `TOWER → GOLF · GO AROUND · ATC-147`, `GOLF → TOWER · READBACK · ATC-147`, `OCC → GOLF · FLIGHT PLAN · ATC-170`, `GOLF → OCC · ARRIVED · ATC-170 · PR #252 · TIER auto`, `MCC → ALL · INSPECTION · PR #5 · PASS`. `body` is the recorded text unchanged (CLEARANCE `text`, FLIGHT PLAN and RECALL `message`, CREW CHANGE `message`, UNABLE `reason`, INSPECTION `text`, ESCALATE `reason`, MCC `detail`). ARRIVED has no body: atc does not keep the free summary (ATC-124).
-- **`GET /api/radio?since=<iso>&freq=<list>&limit=<n>`** returns `{ at, since, transmissions }`, newest last. `since` defaults to the last 6 hours, `freq` is a comma list of `DELIVERY`, `TOWER`, `GROUND`, `COMPANY` (any case), and `limit` keeps the newest n and is capped at 2000. A bad value returns `400`.
+- **`GET /api/radio?since=<iso>&freq=<list>&limit=<n>`** returns `{ at, since, transmissions }`, newest last. `since` defaults to the last 6 hours, `freq` is a comma list of `DELIVERY`, `TOWER`, `GROUND`, `COMPANY`, `PREFLIGHT` (any case), and `limit` keeps the newest n and is capped at 2000. A bad value returns `400`.
 - **SSE topic `radio`** (`/api/events?topics=radio`, ATC-153) sends `event: radio` with `{ transmissions }` holding the transmissions that are new or changed since the last send (a reply arrived, `open` cleared, `overdueAt` moved by a STANDBY). It sends nothing on connect: read `GET /api/radio` first and merge by `id`. The default set is unchanged (`snapshot`, `alert`, `version`), and the server reads the files on each tick only while someone listens.
 
 Where this differs from the design: the design said `radioOf(records)`, and it is `radioOf(input)` over the raw ops for the reason above. It adds `aircraft` and `orphan` to the transmission fields, and `ALL` as a station.
@@ -124,6 +125,18 @@ Where this differs from the design: the design said `radioOf(records)`, and it i
 - **Browser.** A `LISTEN` switch, off by default and saved per browser. When on, only transmissions that arrive over SSE after that are queued (the loaded list is never read). Choices: calls only (default), unanswered calls only, everything; 1× or 1.5×; SKIP. One transmission at a time through the radio chain (`playRadioVoice`, now with a playback rate); the queue holds 5 and drops the oldest, showing how many were skipped. RADIO speech yields to a WARNING or CALL tone (it waits, and a starting tone stops it), stays silent in the alert quiet hours and during REPLAY, and when the browser has locked audio it shows the lock chip and only counts what it could not read.
 
 **PILOT'S DISCRETION.** The four station voices are chosen in the RADIO tab (saved per browser) rather than in the server settings, so no new server setting or state is added. Missed transmissions while audio is locked are counted, not replayed after unlocking (the text log has them). The queue cap is 5. Nothing is read in REPLAY or in quiet hours.
+
+### PREFLIGHT as built (ATC-267)
+
+A fifth frequency, `PREFLIGHT`, for the check before departure. `server/radio.ts` (pure) reads records it used to skip; `server/radio-run.ts` also passes the lines of `schedule.jsonl` (`readScheduleLines`). Read only, no new state, no record format change.
+
+- **CROSSCHECK marks.** Every `op: "crosscheck"` line on a DISPATCH proposal or a SCHEDULE draft is one transmission: `from: "CROSSCHECK"`, `to: "OCC"`, `kind: "CROSSCHECK"`, `result: "agree" | "disagree"`, `head` `CROSSCHECK → OCC · D-0254 ATC-254 · DISAGREE` (the S-id and the draft's FLIGHT for SCHEDULE), `body` the recorded reason. A newer mark on the same record is a new line with its own verdict in its head; the older line stays.
+- **PREFLIGHT HOLD** (`op: "preflight"`): `kind: "PREFLIGHT HOLD"`, from the station recorded in `by`, to OCC, `body` the recorded reason. **DISPATCH HOLD** (`op: "hold"`): `kind: "HOLD"`, from OCC to ALL, `body` `blocked by <FLIGHTs>`, or the latest recorded note when no FLIGHT blocks it.
+- **Not calls.** No `open`, `overdueAt` or `replyTo`. READABILITY's call test excludes the frequency, and a test checks that its numbers do not change when PREFLIGHT lines are added.
+- **Screen.** PREFLIGHT is a chip beside the other four and part of `MONITOR ALL`. A saved choice of exactly the old four frequencies is read as all five.
+- **Voice (R3).** From fields only: `Crosscheck, disagree, ATC two five four.`, `Crosscheck, preflight hold, ATC two five four.`, `Delivery, hold, ATC two five four.` The reason text is never read.
+
+**PILOT'S DISCRETION.** `hold` records no author, so HOLD is shown as from OCC (the only station that can write it). A mark's line id is `<id>#crosscheck:<at>` so repeated marks do not collide. The PREFLIGHT HOLD `to` is OCC. SUPERVISOR approve/reject, atc-app's `RadioFreq` and GLOBE drawing are not part of this.
 
 ## 6. Risks
 

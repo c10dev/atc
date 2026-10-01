@@ -4,6 +4,7 @@ import { readOps as readClearanceOps } from "./clearances.ts";
 import { readOps as readCrewChangeOps } from "./crew-change.ts";
 import { readJsonl, readMccRecords, RTS_FILE, type RtsRecord } from "./mcc.ts";
 import { readOps as readProposalOps } from "./proposals.ts";
+import { readScheduleLines } from "./schedule.ts";
 import { radioPhraseOf, parseVoiceOverrides, voiceOf } from "./radio-phrase.ts";
 import { statusOf, type TtsConfig, VOICE_NAME } from "./tts.ts";
 import { ttsConfigNow, wavFor } from "./voice-run.ts";
@@ -18,6 +19,7 @@ export function readRadio(): Transmission[] {
     reports: readReports(),
     mcc: readMccRecords(),
     rts: readJsonl<RtsRecord>(RTS_FILE()),
+    schedule: readScheduleLines(),
   });
 }
 
