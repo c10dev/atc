@@ -327,7 +327,7 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
                 </span>
                 <span className="fl-r-status">{r.status}</span>
                 <span className="fl-r-flight" title={r.flying?.title}>
-                  {r.needs ? <NeedsYou job={r.needs} /> : r.working ? <JobDetail job={r.working} /> : <span className="faint">—</span>}
+                  {r.needs ? <NeedsYou job={r.needs} attach={r.origin?.attach} /> : r.working ? <JobDetail job={r.working} /> : <span className="faint">—</span>}
                 </span>
                 <span className="fl-r-elapsed mono" title={r.intervalMin === null ? "loop 주기 모름" : `첫 메시지 /loop ${r.intervalMin}m`}>
                   {r.intervalMin === null ? <span className="faint">—</span> : `${r.intervalMin}m`}

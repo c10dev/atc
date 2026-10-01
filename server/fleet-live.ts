@@ -75,7 +75,7 @@ export function liveViewOf(
       origin: session ? (session.origin ?? "unknown") : null,
       permissionMode: session?.permissionMode ?? null,
       // 살아 있는 세션이 background일 때만(ATC-98). 스냅샷만으로 셈한다 — claude agents를 더 부르지 않는다. 죽은 세션·STALE job은 세션이 없어 null
-      background: session && (session.kind === "background" || session.origin === "background") ? { jobId: session.jobId ?? null } : null,
+      background: session && (session.kind === "background" || session.origin === "background") ? { jobId: session.jobId ?? null, ...(session.attachDir ? { attachDir: session.attachDir } : {}) } : null,
       restarting: session ? null : (s.restarting?.find((r) => r.registration === reg) ?? null),
       health: session?.health ?? null,
       job: session?.job ?? null,

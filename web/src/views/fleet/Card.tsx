@@ -197,7 +197,7 @@ export function Card({
   const nextModel = nextModelNote({ registration: a.registration, airport: a.base ?? null, setting: launchModel }); // ATC-279
   // 세션 출처(ATC-76): BG·DESKTOP·TERM과 permission mode. BG id는 툴팁에
   // 백그라운드면 세션 파일의 jobId가 우선(ATC-98, 스냅샷). 없으면 claude agents의 id
-  const origin = originBadgeOf(a.background ? "background" : a.origin, a.permissionMode, a.background?.jobId ?? session?.id);
+  const origin = originBadgeOf(a.background ? "background" : a.origin, a.permissionMode, a.background?.jobId ?? session?.id, a.background?.attachDir ?? session?.attachDir);
   // 출처 힌트(ATC-76): 백그라운드 세션은 이 호스트 CLI의 로그인을, 데스크톱 세션은 앱의 계정을 쓴다. 계정 정보는 읽지 않는다 — 배지 툴팁으로 옮겼다(ATC-280)
   const originHint = a.origin === "background" ? "BG 세션 — 이 호스트의 CLI 로그인을 따른다" : a.origin === "desktop" ? "DESKTOP 세션 — Claude 앱의 계정을 따른다" : null;
   const now = Date.now();
@@ -219,7 +219,7 @@ export function Card({
   if (a.job?.state === "blocked") {
     alerts.push(
       <li key="needs" className="fl-needs-you">
-        <NeedsYou job={a.job} />
+        <NeedsYou job={a.job} attach={origin?.attach} />
         {a.job.detail && <span className="fl-line faint"> {a.job.detail}</span>}
         <SuggestedReply job={a.job} />
       </li>,

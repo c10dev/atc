@@ -323,7 +323,8 @@ export interface AircraftView {
   origin?: SessionOrigin | null;
   permissionMode?: string | null; // 세션의 permission mode. 모르면 null
   // 살아 있는 세션이 백그라운드일 때(ATC-98): 세션 파일의 jobId(모르면 null). `claude attach <jobId>`. 아니거나 세션이 없으면 null
-  background?: { jobId: string | null } | null;
+  // attachDir: 기본이 아닌 폴더의 세션이면 그 폴더(ATC-301). attach가 CLAUDE_CONFIG_DIR로 붙인다
+  background?: { jobId: string | null; attachDir?: string } | null;
 }
 
 export interface FuelRecent {

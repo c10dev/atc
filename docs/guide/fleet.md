@@ -32,7 +32,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 
 창이 없는 백그라운드 세션(관제 세션과 `claude --bg`로 띄운 팀)은 사람의 답이 필요하면 `blocked`가 되어 아무도 모르게 기다린다. atc가 Claude Code가 적어 둔 job 상태를 읽어 `NEEDS YOU · <필요한 것>` 표시를 FLEET 줄과 카드, STRIPS, FLEET 탭의 CONTROL SESSIONS 구역에 붙인다. 마우스를 올리면 세션이 적은 한 줄 설명이 나온다. 3분 넘게 `blocked`이면 ALERTS에도 `BLOCKED`로 올라간다.
 
-- 답하는 법: 터미널에서 `claude attach <job id>`로 그 세션에 붙어 답하거나, 그 세션에 메시지를 보낸다. 카드에 세션이 제안한 답(`제안된 답`)이 보이면 `복사`로 가져다 쓸 수 있다.
+- 답하는 법: 터미널에서 `claude attach <job id>`로 그 세션에 붙어 답하거나, 그 세션에 메시지를 보낸다. 세션이 기본이 아닌 ACCOUNT 폴더(`~/.claude`가 아닌 폴더)에 있으면 `claude attach`는 그 폴더의 job을 못 찾는다. 이 줄의 툴팁, BLOCKED 경보, 카드의 `ATTACH 복사`는 그때 `CLAUDE_CONFIG_DIR=~/.claude-acct-1 claude attach <job id>`처럼 폴더가 붙은 명령을 보여 주므로 그대로 붙여 넣는다. 카드에 세션이 제안한 답(`제안된 답`)이 보이면 `복사`로 가져다 쓸 수 있다.
 - atc는 답을 보내지 않는다. 표시하고 알릴 뿐이고, 답할지는 사람이 정한다.
 - `approve Entering worktree`로 멈추면 `STAND outside .claude/worktrees — attach and approve; see CREW BRIEFING`이 같이 보인다. 팀이 `.claude/worktrees/` 밖으로 워크트리를 열려 한 것이다. `claude attach`로 붙어 승인하면 이어 간다. atc가 띄운 팀의 CREW BRIEFING에는 STAND를 `EnterWorktree name=…`으로 열라는 규칙이 들어 있어 보통은 멈추지 않는다.
 - 답을 받으면 세션이 `working`이 되어 표시와 경보가 저절로 사라진다. 이때는 흐린 글씨로 세션이 하는 일이 보인다.
@@ -216,10 +216,10 @@ atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude C
 
 - **LAUNCH**: 세션이 없는 카드에 보인다. 누르면 그 카드 바로 아래에 LAUNCH 패널이 열리고(목록에선 펼친 줄 안), 초점이 permission mode에 간다. permission mode(`auto` 기본, `acceptEdits`, `default`)와 모델(비우면 기본값)을 고르고 패널의 LAUNCH를 누른다. 세션은 base AIRPORT 저장소에서 뜨고, 이름은 등록번호, 첫 지시는 CREW BRIEFING이다. 곧 카드에 `BG`와 permission mode가 붙는다(id는 툴팁). 막히면 사유가 패널 안에 보인다. 취소나 Esc는 패널을 닫고 카드의 LAUNCH로 초점을 돌린다.
 - **CREW BRIEFING**도 그 카드 바로 아래에 열린다. ENTRY INTO SERVICE로 들인 직후의 CREW BRIEFING만 맨 위, 그 양식 자리에 보인다.
-- **STOP**: atc가 띄운 백그라운드 세션에만 보인다. 멈춰도 대화는 남는다. 터미널에서 `claude attach <id>`로 들여다보거나 `claude --resume`으로 다시 연다.
+- **STOP**: atc가 띄운 백그라운드 세션에만 보인다. 멈춰도 대화는 남는다. 터미널에서 `claude attach <id>`(기본이 아닌 ACCOUNT 폴더면 `CLAUDE_CONFIG_DIR=… claude attach <id>`, `BG 칩` 참고)로 들여다보거나 `claude --resume`으로 다시 연다.
 - **퇴역**: 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
 - **세션 출처**: 목록 줄과 카드에 `BG`(atc가 띄운 백그라운드), `DESKTOP`(Claude 앱), `TERM`(터미널), `?`(모름)과 permission mode가 보인다. 마우스를 올리면 자세한 설명이 나온다.
-- **BG 칩**: 백그라운드 세션이면 목록 줄의 `BG` 칩에 마우스를 올리면 `BG <jobId> — claude attach <jobId>`가 보이고, 카드의 `ATTACH 복사`가 그 `claude attach <jobId>`를 클립보드에 복사한다. 터미널에 붙여 넣으면 그 세션이 열린다. 세션이 멈췄거나(STALE 포함) 백그라운드가 아니면 칩도 버튼도 없다.
+- **BG 칩**: 백그라운드 세션이면 목록 줄의 `BG` 칩에 마우스를 올리면 `BG <jobId> — claude attach <jobId>`가 보이고, 카드의 `ATTACH 복사`가 그 `claude attach <jobId>`를 클립보드에 복사한다. 세션이 기본이 아닌 ACCOUNT 폴더에 있으면 둘 다 `CLAUDE_CONFIG_DIR=~/.claude-acct-1 claude attach <jobId>`처럼 그 폴더가 앞에 붙는다(atc가 세션을 읽은 폴더). 터미널에 붙여 넣으면 그 세션이 열린다. 세션이 멈췄거나(STALE 포함) 백그라운드가 아니면 칩도 버튼도 없다.
 - 데스크톱·터미널에서 직접 연 세션은 atc가 멈추거나 다시 띄우지 않는다. 카드에 그 출처의 손 절차가 한 줄 보인다(데스크톱: Claude 앱에서 닫기, 터미널: `/exit`). FLEET PLAN의 RESTART·REFRESH도 같은 절차를 사유에 적는다.
 - **ACCOUNT**: BG 세션은 이 호스트의 CLI 로그인을, DESKTOP 세션은 Claude 앱의 계정을 따른다(카드의 ACCOUNT 아래 한 줄). atc는 계정 정보를 읽지 않는다.
 - **2b 전달 경고**: DISPATCH 카드와 IN FLIGHT 줄의 AIRCRAFT 옆에 `MODE default ≠ OCC auto` 같은 노란 표시가 뜨면, 그 세션의 permission mode가 OCC와 다르다는 뜻이다. FLIGHT PLAN 메시지가 그 세션에서 사용자 승인 대기로 잡혀 NO READBACK이 될 수 있다. 데스크톱 세션이면 앱에서 메시지를 승인하거나 모드를 맞춘다. 막지는 않는다.

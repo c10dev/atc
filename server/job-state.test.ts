@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { blockedAlerts, type Job, parseJob, readJob, settleJob, sinceOf } from "./job-state.ts";
+import { BLOCKED_NEXT, blockedAlerts, blockedNextOf, type Job, parseJob, readJob, settleJob, sinceOf } from "./job-state.ts";
 
 // 2026-09-29(Claude Code 2.1.284)의 state.json 모양. intent는 CREW BRIEFING 전체라 읽으면 안 된다
 const base = {
@@ -200,4 +200,16 @@ test("parseJob: writtenAt은 updatedAt, 없으면 파일 mtime, 둘 다 없으�
   assert.equal(parseJob({ state: "blocked", updatedAt: "2026-09-29T07:44:00.000Z" }, null, Date.parse("2026-09-29T07:50:00.000Z"))?.writtenAt, "2026-09-29T07:44:00.000Z");
   assert.equal(parseJob({ state: "blocked" }, null, Date.parse("2026-09-29T07:50:00.000Z"))?.writtenAt, "2026-09-29T07:50:00.000Z");
   assert.equal(parseJob({ state: "blocked" })?.writtenAt, null);
+});
+
+// ATC-301: 기본이 아닌 폴더의 세션이면 BLOCKED 경보가 카드가 복사하는 것과 같은 attach 명령을 적는다
+test("BLOCKED 경보: 기본 폴더는 전과 같은 글, 기본이 아닌 폴더는 CLAUDE_CONFIG_DIR가 붙은 실제 명령", () => {
+  const now = Date.parse("2026-09-29T03:00:00.000Z");
+  const job: Job = { state: "blocked", detail: "d", needs: "n", suggestedReply: null, since: new Date(now - 5 * 60_000).toISOString() };
+  const msg = (extra: object) => blockedAlerts([{ id: "s1", name: "TEAM_I", job, ...extra }], now, 3)[0].message;
+  assert.ok(msg({ jobId: "efbbe208" }).endsWith(BLOCKED_NEXT)); // 기본 폴더: 변함없음
+  assert.ok(msg({}).endsWith(BLOCKED_NEXT));
+  assert.ok(msg({ jobId: "efbbe208", attachDir: "/home/c10/.claude-acct-1" }).endsWith("SUPERVISOR가 `CLAUDE_CONFIG_DIR=/home/c10/.claude-acct-1 claude attach efbbe208`로 붙어 답하거나 메시지를 보낸다"));
+  assert.match(blockedNextOf(null, "/x"), /CLAUDE_CONFIG_DIR=\/x claude attach <id>/); // jobId를 모르면 자리표시
+  assert.equal(blockedNextOf("j", null), BLOCKED_NEXT);
 });

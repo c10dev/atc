@@ -9,6 +9,7 @@ import { type TalkEvent, talkEventsOf } from "../briefs.ts";
 import { type EndedSession, normalEndOf } from "../restarting.ts";
 import { type Fact, factsOf, type Health, type HealthConfig, healthOf, mergeHealth } from "../health.ts";
 import { sessionProcOf } from "../session-proc.ts";
+import { attachDirOf } from "../session-origin.ts";
 import { readJob, settleJob } from "../job-state.ts";
 import { kanaAtOf, lastMessageOf } from "../judges/report.ts";
 import { type Activity, type ActivityTrack, activityFromTrack, activityTrackOf } from "../activity.ts";
@@ -25,7 +26,13 @@ interface SessionFile {
   jobId?: string; // kind가 bg일 때 ~/.claude/jobs/<jobId>(ATC-99)
   entrypoint?: string; // claude-desktop·cli
   account?: string; // 읽은 폴더의 ACCOUNT 라벨(ATC-146). 파일에는 없고 reader가 붙인다. 등록부가 없으면 없다
-  configDir?: string; // 읽은 폴더(서버 안에서만 쓴다. 스냅샷에는 싣지 않는다)
+  configDir?: string; // 읽은 폴더(서버 안에서만 쓴다. 스냅샷에는 싣지 않는다. 기본이 아닌 폴더의 background 세션만 attachDir로 싣는다, ATC-301)
+}
+
+// background 세션이 기본이 아닌 폴더에서 읽혔으면 그 폴더(ATC-301, 순수). attach 명령이 CLAUDE_CONFIG_DIR로 붙인다
+export function attachDirField(s: Pick<SessionFile, "kind" | "configDir">, defaultDir = config.claudeDir, home = config.home): { attachDir?: string } {
+  const dir = s.kind === "bg" || s.kind === "background" ? attachDirOf(s.configDir, defaultDir, home) : undefined;
+  return dir ? { attachDir: dir } : {};
 }
 
 // 세션 파일의 kind·jobId(ATC-98, 순수). bg는 background, interactive는 그대로, 없거나 모르는 값이면 아무것도 없다. jobId는 background에만
@@ -107,6 +114,7 @@ export function readClaudeSessions(folders: readonly AccountFolder[] = accountFo
       ...(proc ? { origin: proc.origin, permissionMode: proc.permissionMode } : {}),
       ...(s.account ? { account: s.account } : {}),
       ...sessionKindOf(s),
+      ...attachDirField(s),
       // 백그라운드 job 상태(ATC-99): 살아 있는 bg 세션만. 파일은 mtime으로 캐시하고 읽기만 한다
       ...(alive && s.kind === "bg" ? { job: settleJob(readJob(s.jobId, join(s.configDir ?? config.claudeDir, "jobs")), lastActiveAt) ?? null } : {}),
     };

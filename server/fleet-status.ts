@@ -71,7 +71,7 @@ export interface FleetRow {
   // 세션 출처(ATC-76): BG·DESKTOP·TERM과 permission mode. 세션이 없으면 null
   origin: ReturnType<typeof originBadgeOf>;
   // 백그라운드 세션(ATC-98): jobId(모르면 null). 살아 있는 세션이 없거나 백그라운드가 아니면 null
-  background: { jobId: string | null } | null;
+  background: { jobId: string | null; attachDir?: string } | null;
 }
 
 // 목록 줄: 상태 순서, 같은 상태 안에서는 AIRPORT(없으면 뒤), 그다음 REGISTRATION
@@ -107,7 +107,7 @@ export function fleetRows(aircraft: readonly AircraftView[], now: number): Fleet
         : a.sessionName
           ? { label: "이름", title: renameHintOf(a.sessionName, a.registration), conflict: false }
           : null,
-      origin: originBadgeOf(a.background ? "background" : a.origin, a.permissionMode, a.background?.jobId),
+      origin: originBadgeOf(a.background ? "background" : a.origin, a.permissionMode, a.background?.jobId, a.background?.attachDir),
       background: a.background ?? null,
     };
   });

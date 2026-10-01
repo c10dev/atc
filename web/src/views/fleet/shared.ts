@@ -35,6 +35,7 @@ export interface SessionRow {
   kind: string; // background | interactive
   status?: string;
   stale?: boolean; // 멈췄는데 Claude Code가 아직 목록에 둔 job(ATC-93). 살아 있는 세션이 아니다
+  attachDir?: string; // 기본이 아닌 폴더의 background 세션이면 그 폴더(ATC-301). attach 명령이 CLAUDE_CONFIG_DIR로 붙인다
 }
 export interface SessionBrief {
   max: number;
