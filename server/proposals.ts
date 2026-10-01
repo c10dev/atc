@@ -207,6 +207,7 @@ export interface Proposal {
   hold: string[]; // DISPATCH가 선행 FLIGHT로 지정한 HOLD (본문에만 있던 blocks 관계)
   holdAt: string | null; // HOLD를 건 시각. hold가 비어 있으면 선행 FLIGHT 없는 HOLD(사람 결정 대기 등, 사유는 note)
   message: string | null; // 보낸 FLIGHT PLAN 문구
+  sentVia?: "fresh-start"; // FRESH START(ATC-73)가 새 세션의 첫 프롬프트로 보냈다. 없으면 OCC가 메시지로 보냄(옛 기록 포함)
   departedStand: string | null;
   departedVia?: "stand" | "readback" | "report"; // DEPARTED 근거: STAND가 생김 | STAND 없는 FLIGHT의 READBACK | STAND를 못 본 채 ARRIVED 보고로 끝남(ATC-266, accepted에서 arrived)
   arrivedNote?: string; // STAND 없는 FLIGHT의 ARRIVED 보고(결과 링크나 한 줄)
@@ -245,7 +246,7 @@ export type Op =
   | ({ op: "crosscheck"; id: string } & CrosscheckLine)
   | { op: "approve"; id: string; at: string; via?: Via; blind?: true }
   | { op: "reject"; id: string; at: string; reason: string | null; via?: Via; reasonCodes?: string[]; blind?: true }
-  | { op: "send"; id: string; at: string; message: string }
+  | { op: "send"; id: string; at: string; message: string; via?: "fresh-start" } // via: FRESH START(ATC-73)가 새 세션의 첫 프롬프트로 보냄. 없으면 OCC의 메시지
   | { op: "accept"; id: string; at: string }
   | { op: "decline"; id: string; at: string; reason: string } // CAPTAIN의 UNABLE D-xxxx(ATC-122)도 이것
   | { op: "undelivered"; id: string; at: string; reason: string } // OCC의 SendMessage가 실패함(ATC-183). sent를 approved로 돌린다. SUPERVISOR 판정이 아니다
@@ -406,7 +407,10 @@ export function fold(ops: Op[]): Proposal[] {
     p.timeline[next] = o.at;
     delete p.awaitSupervisor; // READBACK·거절·RECALL·만료 어느 쪽이든 대기는 끝났다
     if ("reason" in o && o.reason) p.reason = o.reason;
-    if (o.op === "send") p.message = o.message;
+    if (o.op === "send") {
+      p.message = o.message;
+      if (o.via) p.sentVia = o.via;
+    }
     if (o.op === "recall") {
       p.recallReason = o.reason;
       p.recallMessage = o.message;
@@ -1060,11 +1064,29 @@ export function readOps(file = FILE): Op[] {
   return ops;
 }
 
-function append(ops: Op[]) {
+export function append(ops: Op[]) {
   if (!ops.length) return;
   mkdirSync(dirname(FILE), { recursive: true });
   appendFileSync(FILE, ops.map((o) => JSON.stringify(o)).join("\n") + "\n");
-  for (const o of ops) record({ t: o.at, kind: "dispatch", op: o.op, id: o.id });
+  for (const o of ops) record({ t: o.at, kind: "dispatch", op: o.op, id: o.id, ...(o.op === "send" && o.via ? { via: o.via } : {}) });
+}
+
+// 보낼 FLIGHT PLAN 문구. release(OCC가 보냄)와 FRESH START(ATC-73, 새 세션의 첫 프롬프트)가 같이 쓴다
+// DIRECT 지시서에 옮길 이슈 본문(Linear 읽기 전용). 못 읽어도 보낸다 — 완료 기준은 링크를 따르라고 적힌다
+// 이슈 댓글 중 SUPERVISOR가 쓴 것은 NOTES FROM THE ISSUE로 함께 간다(ATC-271)
+export async function flightPlanMessageOf(p: Proposal, s: Pick<Snapshot, "tickets">): Promise<string> {
+  const detail = (await fetchIssueDetail(p.flight).catch(() => null)) as Record<string, unknown> & { comments: unknown[] } | null;
+  const description = detail ? descriptionOf(detail) : null;
+  const notes = detail ? flightPlanNotesOf(detail.comments as IssueComment[], loadDispatchConfig().issueNotes, typeof detail.url === "string" ? detail.url : null) : [];
+  return formatFlightPlan(p, s.tickets.find((t) => t.key === p.flight), p.aircraftName ?? "", description, Date.now(), notes);
+}
+
+// DIRECT 지시서(GET /api/dispatch/flight/:key/brief?to=). FLEET 카드의 LAUNCH with a FLIGHT(ATC-73)도 첫 프롬프트에 이것을 쓴다
+export async function directBriefOf(key: string, to: string | null): Promise<string> {
+  const d = (await fetchIssueDetail(key)) as Record<string, unknown>;
+  const url = typeof d.url === "string" ? d.url : null;
+  const notes = flightPlanNotesOf(d.comments as IssueComment[], loadDispatchConfig().issueNotes, url);
+  return formatAssignment({ key, title: typeof d.title === "string" ? d.title : null, url }, descriptionOf(d), to, notes);
 }
 
 export function allProposals(): Proposal[] {
@@ -1360,6 +1382,8 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
         // 재송신: 이미 보낸 제안이면 같은 문구를 다시 돌려준다. 받을 세션이 없으면 그것도 보내지 않는다(ATC-183)
         if (p.status === "sent") {
           const snap = await getSnapshot();
+          // FRESH START(ATC-73)가 새 세션의 첫 프롬프트로 보낸 것은 다시 보내지 않는다(같은 계획이 두 번 간다)
+          if (p.sentVia === "fresh-start") return c.json({ error: "FRESH START가 새 세션의 첫 프롬프트로 이미 보냄 — 다시 보내지 않는다. READBACK을 기다린다" }, 409);
           const gone = noLiveSessionWhyOf(p, snap, loadDispatchConfig().teamPattern) ?? crossAccountWhyOf(p, snap, loadDispatchConfig().teamPattern);
           if (gone) return c.json({ error: gone }, 409);
           return c.json({ proposal: p, sendTo: p.aircraftName, message: p.message });
@@ -1373,12 +1397,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
         if (waits) return c.json({ error: waits }, 409);
         const bad = closed("send");
         if (bad) return bad;
-        // DIRECT 지시서에 옮길 이슈 본문(Linear 읽기 전용). 못 읽어도 보낸다 — 완료 기준은 링크를 따르라고 적힌다
-        // 이슈 댓글 중 SUPERVISOR가 쓴 것은 NOTES FROM THE ISSUE로 함께 간다(ATC-271)
-        const detail = (await fetchIssueDetail(p.flight).catch(() => null)) as Record<string, unknown> & { comments: unknown[] } | null;
-        const description = detail ? descriptionOf(detail) : null;
-        const notes = detail ? flightPlanNotesOf(detail.comments as IssueComment[], loadDispatchConfig().issueNotes, typeof detail.url === "string" ? detail.url : null) : [];
-        const message = formatFlightPlan(p, s.tickets.find((t) => t.key === p.flight), p.aircraftName ?? "", description, Date.now(), notes);
+        const message = await flightPlanMessageOf(p, s);
         append([{ op: "send", id, at, message }]);
         const sent = allProposals().find((x) => x.id === id)!;
         return c.json({ proposal: sent, sendTo: sent.aircraftName, message: sent.message });
@@ -1503,12 +1522,8 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
   app.get("/api/dispatch/flight/:key/brief", async (c) => {
     const key = c.req.param("key").toUpperCase();
     try {
-      const d = (await fetchIssueDetail(key)) as Record<string, unknown>;
       const to = c.req.query("to")?.trim().toUpperCase() || null;
-      const url = typeof d.url === "string" ? d.url : null;
-      const notes = flightPlanNotesOf(d.comments as IssueComment[], loadDispatchConfig().issueNotes, url);
-      const text = formatAssignment({ key, title: typeof d.title === "string" ? d.title : null, url }, descriptionOf(d), to, notes);
-      return c.json({ key, brief: "DIRECT", text });
+      return c.json({ key, brief: "DIRECT", text: await directBriefOf(key, to) });
     } catch (e) {
       return c.json({ error: String((e as Error).message ?? e) }, 502);
     }

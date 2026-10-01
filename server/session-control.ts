@@ -473,7 +473,7 @@ export interface ControlResult {
 
 // LAUNCH: FLEET 카드 버튼과 FLEET PLAN 승인(8.7), DISPATCH launch 카드 승인(ATC-129)이 같이 쓴다. 결과는 FLIGHT RECORDER에 by와 함께 남는다.
 // proposal: launch 카드로 띄웠으면 그 제안 id(기록에 남는다)
-export async function launchAircraft(s: Snapshot, registration: string, options: { permissionMode?: unknown; model?: unknown; lastModel?: string | null; account?: unknown; lastAccount?: string | null }, by: string, proposal?: string): Promise<ControlResult> {
+export async function launchAircraft(s: Snapshot, registration: string, options: { permissionMode?: unknown; model?: unknown; lastModel?: string | null; account?: unknown; lastAccount?: string | null; promptOf?: (briefing: string) => string; flight?: string }, by: string, proposal?: string): Promise<ControlResult> {
   const reg = regKey(registration);
   const cfg = loadDispatchConfig();
   const a = fleetView(s, loadFleet(), cfg.teamPattern).find((x) => x.registration === reg);
@@ -493,12 +493,12 @@ export async function launchAircraft(s: Snapshot, registration: string, options:
     if (account && read.failed.includes(account.label)) throw new ControlError(`ACCOUNT ${account.label}의 세션 목록을 읽지 못함 — 이미 떠 있는지 몰라 띄우지 않는다`, 502);
     // 모델(ATC-279): 양식에 적은 것 > AIRCRAFT > AIRPORT > 기본 > 마지막 LAUNCH(lastModel) > 없음. 모든 AIRCRAFT LAUNCH 길이 여기를 지난다
     const picked = launchModelOf({ registration: reg, airport: a.base ?? null, explicit: typeof options.model === "string" ? options.model : null, last: options.lastModel ?? null, setting: loadFleet().launchModel });
-    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: crewBriefing(a, repo, cfg.mode, true), permissionMode: options.permissionMode, model: picked.model }, rows, MAX_LAUNCHED, account, (row) => idleMinOfRow(row, s.sessions), Object.keys(loadFleet().aircraft));
+    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: ((b) => (options.promptOf ? options.promptOf(b) : b))(crewBriefing(a, repo, cfg.mode, true)), permissionMode: options.permissionMode, model: picked.model }, rows, MAX_LAUNCHED, account, (row) => idleMinOfRow(row, s.sessions), Object.keys(loadFleet().aircraft));
     const r = await claude(plan.args, plan.cwd, { scope: true, configDir: plan.configDir });
     const jobId = jobIdOf(r.out);
     const ok = r.ok && !!jobId;
     const error = ok ? undefined : /not trusted/i.test(r.out) ? `${plan.cwd}를 신뢰하지 않음 — 그 폴더에서 claude를 한 번 열어 trust를 수락한다` : r.out.slice(0, 300) || "claude --bg 실패";
-    record({ t, kind: "fleet", op: "launch", aircraft: reg, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model ?? undefined, modelFrom: plan.model ? picked.from : "none", ...(plan.account ? { account: plan.account } : {}), error, ...(proposal ? { proposal } : {}) });
+    record({ t, kind: "fleet", op: "launch", aircraft: reg, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model ?? undefined, modelFrom: plan.model ? picked.from : "none", ...(plan.account ? { account: plan.account } : {}), error, ...(proposal ? { proposal } : {}), ...(options.flight ? { flight: options.flight } : {}) });
     return ok ? { ok, status: 200, jobId: jobId!, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model, modelFrom: plan.model ? picked.from : "none", account: plan.account } : { ok, status: 502, error };
   } catch (e) {
     // 띄우기 전에 거절된 것(상한, 이미 떠 있음, RETIRED …)도 launch 카드로 온 것이면 남긴다
@@ -769,8 +769,22 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
   app.post("/api/fleet/:registration/launch", async (c: Context) => {
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
     const reg = regKey(c.req.param("registration"));
-    const body = await c.req.json().catch(() => ({}));
-    const r = await launchAircraft(await getSnapshot(), reg, body, "SUPERVISOR");
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    // LAUNCH with a FLIGHT(ATC-73): 첫 프롬프트 = CREW BRIEFING + DIRECT 지시서(/api/dispatch/flight/<FLIGHT>/brief?to=<REG>)
+    let withFlight: { promptOf: (briefing: string) => string; flight: string } | undefined;
+    if (body.flight !== undefined && body.flight !== null && body.flight !== "") {
+      const flight = typeof body.flight === "string" ? body.flight.trim().toUpperCase() : "";
+      if (!/^[A-Z][A-Z0-9]*-\d+$/.test(flight)) return c.json({ error: "FLIGHT는 이슈 키(예: ATC-73)" }, 400);
+      try {
+        const [{ directBriefOf }, { launchWithFlightPromptOf }] = await Promise.all([import("./proposals.ts"), import("./fresh-start.ts")]);
+        const brief = await directBriefOf(flight, reg);
+        withFlight = { promptOf: (b) => launchWithFlightPromptOf(b, brief), flight };
+      } catch (e) {
+        return c.json({ error: `${flight}의 지시서를 읽지 못함 — ${String((e as Error).message ?? e)}. 띄우지 않았다` }, 502);
+      }
+    }
+    const { promptOf: _p, flight: _f, ...opts } = body; // 본문의 promptOf·flight는 옵션으로 넘기지 않는다(함수는 서버만 만든다)
+    const r = await launchAircraft(await getSnapshot(), reg, { ...opts, ...(withFlight ?? {}) }, "SUPERVISOR");
     if (!r.ok) return c.json({ error: r.error }, r.status as 400);
     return c.json({ ok: true, registration: reg, jobId: r.jobId, cwd: r.cwd, permissionMode: r.permissionMode, model: r.model, modelFrom: r.modelFrom, account: r.account });
   });

@@ -686,9 +686,10 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **폴더 신뢰.** Claude Code는 trust 질문을 수락하지 않은 폴더에서 백그라운드 세션을 거절한다. atc는 그 사실을 알리고 trust 설정은 건드리지 않는다. 그 저장소에서 `claude`를 한 번 열어 수락한다.
 - **브리핑의 STAND 규칙(ATC-252).** LAUNCH가 넘기는 CREW BRIEFING(붙여 넣는 것은 아님)에는 AIRPORT와 상관없이 같은 STAND 문단이 들어간다. STAND는 `EnterWorktree name=<key>-<짧은 이름>`으로 열고(`<repo>/.claude/worktrees/`, 브랜치 `worktree-…`), `cp -al <repo>/node_modules <stand>/node_modules`, 다음 FLIGHT 전에 `ExitWorktree action=keep`, `.claude/worktrees/` 밖의 `EnterWorktree path=`는 쓰지 않는다(승인을 물어 백그라운드 세션이 멈춘다). 다른 워크트리 폴더를 정한 저장소 규칙보다 앞선다. 그래도 멈추면 need가 "Entering worktree"와 맞을 때 NEEDS YOU 줄에 "STAND outside .claude/worktrees — attach and approve; see CREW BRIEFING"이 붙는다(`server/stand-hint.ts`).
 - **기록.** LAUNCH·STOP마다 FLIGHT RECORDER에 `{kind: "fleet", op: "launch" | "stop", aircraft, by: "SUPERVISOR", ok, jobId, cwd, permissionMode, model, error}` 한 줄.
+- **FLIGHT와 함께 LAUNCH(ATC-73).** 세션이 없는 카드의 ▾ 옵션 블록에 FLIGHT 칸(선택)이 있다. 적으면 `POST /api/fleet/:registration/launch`가 `flight`를 받고, 첫 프롬프트가 CREW BRIEFING에 이어 DIRECT 지시서(`GET /api/dispatch/flight/<FLIGHT>/brief?to=<REG>`, `directBriefOf`)다. 지시서를 읽지 못하면 띄우지 않는다(502). `launchPlanOf`의 거절과 상한은 그대로다. FLIGHT RECORDER `fleet` `launch` 줄에 `flight`가 남는다.
 - **화면.** 세션이 없는 카드에 **LAUNCH**(permission mode, 선택 모델, 상한 대비 백그라운드 수). 살아 있는 세션마다 출처(`BG`·`DESKTOP`·`TERM`)와 permission mode(8.5.2), 백그라운드 세션이면 **STOP**도. 백그라운드 세션을 모는 AIRCRAFT를 퇴역시키면 세션도 멈출지 묻는다.
 
-아직 만들지 않음: 쉬는 세션의 자동 STOP(FLEET PLAN 4단계. 그림자 제안과 승인 운용은 8.6·8.7에서 만듦), FLIGHT 도중 오래 도는 세션의 정기 정비로서 RESTART(쉬는 AIRCRAFT는 REFRESH, 8.6, ATC-69), 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, ATC-46, [fuel.md](fuel.md)).
+아직 만들지 않음: 쉬는 세션의 자동 STOP(FLEET PLAN 4단계. 그림자 제안과 승인 운용은 8.6·8.7에서 만듦), FLIGHT 도중 오래 도는 세션의 정기 정비로서 RESTART(배정이 먼저 온 쉬지 못한 AIRCRAFT는 8.6의 FRESH START, ATC-73)(쉬는 AIRCRAFT는 REFRESH, 8.6, ATC-69), 새 COMPLEMENT로 다시 띄우는 CREW CHANGE, AIRCRAFT별 사용량 예산(FUEL, ATC-46, [fuel.md](fuel.md)).
 
 #### 8.5.1 관제 세션(2026-09-28 만듦)
 
@@ -1004,6 +1005,15 @@ FLIGHT를 마친 팀은 그 대화를 통째로 들고 있다. 2026-09-28에 TEA
 - **승인.** 백그라운드 세션은 RESTART 단계로 실행한다(8.5 STOP, 그다음 마지막 LAUNCH의 permission mode·모델로 LAUNCH). 데스크톱·터미널 세션은 승인이 거절된다(409). 카드에 그 세션에서 `/clear`하고 CREW BRIEFING을 붙여 넣으라는 글과 **CREW BRIEFING 복사** 버튼이 있고, 승인 운용에서는 **했음**이 동의로 닫는다. 승인 운용에서 받는 유일한 동의다.
 - **API.** `GET /api/fleet`은 AIRCRAFT마다 살아 있는 세션(여럿이면 가장 최근)의 `context: {contextTokens, window, at, pct, model, windowSource, compacted}`를 준다. `GET /api/fuel`은 세션마다, AIRCRAFT마다(기간 안 가장 최근 세션) 같은 것을 준다. 크기는 최근 7일에 바뀐 대화 기록으로 세고 60초 동안 같은 값을 쓴다.
 - **화면.** FLEET 목록에 CONTEXT 열(`502k / 1M`, 40 %부터 색), 카드에 `context 502k / 1M (50%)` 줄과 시각·창의 근거가 보인다. ATC-81이 둘을 FOB로 바꿨다(아래).
+
+### FRESH START 만든 것 (ATC-73)
+
+REFRESH는 AIRCRAFT가 쉬는 동안에만 나와서, 배정이 먼저 오면 REFRESH가 사라진다. 2026-10-01에 F-0019가 TEAM_F(728k)에 REFRESH를 냈는데 같은 분에 D-0354가 ATC-311을 배정해 F-0019가 "조건이 풀림"으로 닫혔고, TEAM_F는 794k 대화를 턴마다 다시 읽으며 그 FLIGHT를 날았다. FRESH START는 바로 그 순간의 STOP과 LAUNCH이고, 첫 프롬프트가 그 일이다. DISPATCH 쪽은 [dispatch.ko.md](dispatch.ko.md) "FRESH START 만든 것 (ATC-73)".
+
+- **내는 조건**(`freshStartVerdictOf`, 순수, `server/fresh-start.ts`): AIRCRAFT의 살아 있는 세션이 **백그라운드**다(데스크톱·터미널·모름은 멈추지 않는다. 사유를 보인다). 대화가 REFRESH 기준(`refreshTokens` 300k, 창을 알면 `refreshPct`, REFRESH와 같은 `overRefreshThreshold`)을 넘었다. 끝나지 않은 FLIGHT의 STAND가 없다(ARRIVED한 FLIGHT의 STAND는 괜찮다). AIRCRAFT가 idle(턴 중 아님)이고 RETIRED·AOG가 아니다. 아니면 DISPATCH 카드는 버튼 없이 사유만 보인다.
+- **순서**(`runFreshStart`): STOP(8.5, 세션이 `claude agents`에서 빠질 때까지 기다림), 이어서 `launchAircraft`로 LAUNCH — `launchPlanOf`, 상한, ACCOUNT 규칙, LAUNCH MODEL이 다른 LAUNCH와 똑같이 걸리고 permission mode·모델은 마지막 LAUNCH와 같다 — 첫 프롬프트는 CREW BRIEFING, 구분선, FLIGHT PLAN. 제안은 LAUNCH가 성공한 뒤에야 보낸 것으로 센다. STOP이 실패하면 아무 일도 없다. LAUNCH가 거절되면 세션은 멈춘 채고 제안은 `approved` 그대로다(보낸 것이 없다): FLEET 카드에서 LAUNCH하거나 카드를 CANCEL한다.
+- **SUPERVISOR만.** LAUNCH와 같은 Origin 검사(`fromThisApp`). 관제 세션의 CLI에는 없다(403). 자동으로 하지 않는다: FLEET PLAN이 제안하지도 실행하지도 않는다.
+- **기록.** STOP과 LAUNCH는 늘 쓰던 FLIGHT RECORDER `fleet` 줄(`op: "stop"`, `op: "launch"`, LAUNCH에는 `proposal`)이다. FRESH START는 `dispatch` 줄 `{op: "fresh-start", id, via: "fresh-start", flight, aircraft, by, stage: "stop" | "launch" | "send", ok, jobId, error}`를 더하고, `send` 줄에 `via`가 붙는다.
 
 ### FOB as built (ATC-81)
 

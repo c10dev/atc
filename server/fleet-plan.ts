@@ -590,6 +590,13 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
   return { candidates: out, demand, flaps: rep.flaps };
 }
 
+// 대화가 REFRESH 기준(refreshTokens 또는 창의 refreshPct)을 넘었나. FRESH START(ATC-73)도 같은 기준을 쓴다(순수)
+// 창을 짐작만 했으면(200k 기본) 몫은 사실이 아니다 — 토큰 기준만
+export function overRefreshThreshold(c: Pick<ContextSize, "contextTokens" | "windowSource" | "pct">, cfg: Pick<FleetPlanConfig, "refreshTokens" | "refreshPct">): boolean {
+  if (c.contextTokens === null) return false;
+  return c.contextTokens >= cfg.refreshTokens || (c.windowSource !== "default" && c.pct !== null && c.pct >= cfg.refreshPct);
+}
+
 // REFRESH를 낼 때의 사유. 조건이 맞지 않으면 null(순수).
 // PARKED나 HOLDING(쉬는 세션)이고, 쥔 STAND가 모두 ARRIVED한 FLIGHT 것이고, 열린 PR이 없고, 이번 계획에서 FLIGHT를 받지 않고,
 // 최근 LAUNCH가 minDwell 안이 아니고, 대화가 refreshTokens나 창의 refreshPct를 넘으면
@@ -607,10 +614,7 @@ export function refreshOf(
   const arrived = new Set(i.logbook.filter((e) => e.aircraft === a.registration && e.flight).map((e) => e.flight));
   const open = a.flying.filter((k) => !arrived.has(k));
   if (open.length) return null;
-  // 창을 짐작만 했으면(200k 기본) 몫은 사실이 아니다 — 토큰 기준만
-  const overTokens = c.contextTokens >= cfg.refreshTokens;
-  const overPct = c.windowSource !== "default" && c.pct !== null && c.pct >= cfg.refreshPct;
-  if (!overTokens && !overPct) return null;
+  if (!overRefreshThreshold(c, cfg)) return null;
   const saving = refreshSavingOf(c, i.prices ?? null);
   const last = i.logbook.filter((e) => e.aircraft === a.registration).sort((x, y) => x.arrivedAt.localeCompare(y.arrivedAt)).at(-1);
   const threshold = `기준 ${tokensShort(cfg.refreshTokens)}${c.windowSource === "default" ? "" : ` 또는 ${Math.round(cfg.refreshPct * 100)}%`}`;

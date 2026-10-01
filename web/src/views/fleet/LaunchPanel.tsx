@@ -16,7 +16,7 @@ export interface LaunchInfo {
   accounts: LaunchAccountRow[];
   launchAccount: string | null; // LAUNCH ACCOUNT(ATC-239): AIRCRAFT용 설정. 서버가 등록부에 있는 것만 준다
 }
-export type LaunchInput = { permissionMode: string; model: string; account?: string };
+export type LaunchInput = { permissionMode: string; model: string; account?: string; flight?: string }; // flight(ATC-73): 첫 프롬프트에 CREW BRIEFING에 이어 그 FLIGHT의 DIRECT 지시서
 
 // 이름 없는 LAUNCH가 쓸 값(서버와 같은 순서). caption은 버튼 옆 흐린 글, refused는 그 ACCOUNT가 거절된 사유
 export function launchDefaultsOf(a: AircraftView, info: LaunchInfo | null, control: SessionBrief | null, launchModel?: LaunchModelSetting) {
@@ -56,13 +56,15 @@ export function LaunchOptions({
   const chosenRefused = accounts.find((x) => x.label === chosen)?.refused ?? null;
   const [permissionMode, setPermissionMode] = useState(d.permissionMode);
   const [model, setModel] = useState("");
+  const [flight, setFlight] = useState("");
+  const flightOk = !flight.trim() || /^[A-Za-z][A-Za-z0-9]*-\d+$/.test(flight.trim());
   const ref = useRef<HTMLFormElement>(null);
   useEffect(() => {
     ref.current?.querySelector<HTMLElement>("select, input")?.focus({ preventScroll: true });
   }, []);
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    onLaunch({ permissionMode, model: model.trim(), ...(account ? { account } : {}) });
+    onLaunch({ permissionMode, model: model.trim(), ...(account ? { account } : {}), ...(flight.trim() ? { flight: flight.trim().toUpperCase() } : {}) });
   };
   const key = (e: KeyboardEvent) => {
     if (e.key !== "Escape") return;
@@ -101,9 +103,14 @@ export function LaunchOptions({
           {chosenRefused && <span className="fl-error"> {chosenRefused}</span>}
         </label>
       )}
+      <label>
+        FLIGHT{" "}
+        <input className="fl-input mono" value={flight} onChange={(e) => setFlight(e.target.value)} placeholder="선택 — 예: ATC-73" aria-label="FLIGHT" aria-invalid={!flightOk} title="적으면 첫 프롬프트가 CREW BRIEFING에 이어 그 FLIGHT의 DIRECT 지시서(/api/dispatch/flight/<FLIGHT>/brief)다" />
+        {!flightOk && <span className="fl-error"> 이슈 키(예: ATC-73)</span>}
+      </label>
       {d.cap && <p className="fl-launch-note faint">{d.cap}</p>}
       <div className="fl-actions">
-        <button type="submit" className="fl-btn primary" disabled={busy || Boolean(chosenRefused)}>
+        <button type="submit" className="fl-btn primary" disabled={busy || Boolean(chosenRefused) || !flightOk}>
           {busy ? "띄우는 중…" : "이 옵션으로 LAUNCH"}
         </button>
       </div>

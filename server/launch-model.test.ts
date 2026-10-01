@@ -79,8 +79,8 @@ test("표시: 설정이 맞을 때만 next LAUNCH model, 출처를 적는다", (
 test("LAUNCH 길 목록: launchAircraft를 부르는 곳과 --model을 붙이는 곳", () => {
   const files = readdirSync(new URL(".", import.meta.url)).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
   const callers = files.filter((f) => /\blaunchAircraft\(/.test(readFileSync(new URL(f, import.meta.url), "utf8")) && f !== "session-control.ts").sort();
-  // DISPATCH launch 카드·RESUME(index.ts), FLEET PLAN 단계와 LAUNCH ACCOUNT APPLY NOW(fleet-plan-run.ts). FLEET LAUNCH 버튼은 session-control.ts의 라우트
-  assert.deepEqual(callers, ["fleet-plan-run.ts", "index.ts"]);
+  // DISPATCH launch 카드·RESUME(index.ts), FLEET PLAN 단계와 LAUNCH ACCOUNT APPLY NOW(fleet-plan-run.ts). FRESH START(fresh-start-run.ts, ATC-73). FLEET LAUNCH 버튼은 session-control.ts의 라우트
+  assert.deepEqual(callers, ["fleet-plan-run.ts", "fresh-start-run.ts", "index.ts"]);
   const modelArgs = files.filter((f) => /"--model"/.test(readFileSync(new URL(f, import.meta.url), "utf8"))).sort();
   assert.deepEqual(modelArgs, ["session-control.ts"]);
   const sc = readFileSync(new URL("session-control.ts", import.meta.url), "utf8");

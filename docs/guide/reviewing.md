@@ -68,6 +68,8 @@ OCC가 Linear에 쓸 변경을 초안으로 남긴다. 지금은 S1이라 Linear
 
 승인했지만 아직 보내지 않은 카드는 진행 중 목록의 **CANCEL…**을 누르고 확인한다(보낸 뒤에는 RECALL). 카드는 `SUPERVISOR가 취소함`으로 닫히고 같은 짝은 24시간 다시 제안되지 않는다.
 
+받을 AIRCRAFT의 대화가 커서(FLEET의 FOB가 호박색·경고색, REFRESH 기준 300k 또는 창의 40 %) 새 세션으로 시작하게 하고 싶으면 같은 줄의 **FRESH START…**를 누르고 확인한다. atc가 그 백그라운드 세션을 멈추고, 첫 프롬프트가 CREW BRIEFING에 이어 이 FLIGHT PLAN인 새 세션을 띄운다. 그 FLIGHT PLAN은 보낸 것으로 기록되고(`FRESH START로 보냄`) OCC는 다시 보내지 않으며, READBACK부터는 평소와 같다. 버튼은 세션이 **백그라운드**이고 대화가 기준을 넘었고 끝나지 않은 FLIGHT의 STAND가 없고 턴 중이 아닐 때만 나온다. 아니면 그 줄에 이유(`FRESH START 불가 — …`)가 보인다. 데스크톱·터미널 세션은 atc가 멈추지 않으니 그 세션에서 `/clear`하고 CREW BRIEFING을 붙여 넣는다. 띄우기가 거절되면(백그라운드 세션 상한 등) 세션은 멈춘 채고 카드는 승인된 그대로이니, FLEET에서 LAUNCH하거나 CANCEL한다. 자동으로는 하지 않는다.
+
 2b에서 FLIGHT PLAN을 보냈거나 CAPTAIN이 READBACK했는데 거둬들여야 하면(우선순위가 바뀜, 잘못 배정됨 등), DISPATCH 탭 진행 중 목록의 **RECALL…**을 누르고 사유를 적는다.
 
 - OCC가 CAPTAIN에게 RECALL 문구를 보낸다. CAPTAIN은 작업을 멈추고 STAND(워크트리)를 정리하지 않은 채 두고 "READBACK D-xxxx RECALL"로 답한다. 그러면 RECALLED가 된다.

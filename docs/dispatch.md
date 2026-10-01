@@ -393,6 +393,15 @@ An approved card that has not been sent yet (`approved`) holds its AIRCRAFT and 
 - **The FLIGHT becomes a parent issue.** `syncOps` runs the parent check (5.1.1) on approved cards too, as on open ones. If the FLIGHT gained a child (or is named as another FLIGHT's `parent`), the card is SUPERSEDED on the next reconcile with the reason `상위 이슈 — 하위 N건을 묶음` and the AIRCRAFT is free.
 - **The SUPERVISOR cancels it.** "CANCEL…" on the in-flight card asks for one confirmation, then `POST /api/dispatch/proposals/:id/cancel`. The server accepts it only from the screen (the request's Origin; a control session's CLI has none → 403) and only for `approved` (`sent` and later → 409; use RECALL). The card becomes SUPERSEDED with the reason `SUPERVISOR가 취소함`. It is a human decision, so the 24-hour pair rule applies: the same FLIGHT–AIRCRAFT pair is not proposed again for 24 hours.
 
+## FRESH START as built (ATC-73)
+
+An approved ASSIGN whose AIRCRAFT carries a large conversation can be sent as a fresh session: the SUPERVISOR presses **FRESH START…** on the in-flight card (next to CANCEL…) and confirms in the row below. atc STOPs the background session and LAUNCHes a new one whose first prompt is the CREW BRIEFING followed by the FLIGHT PLAN. The rules for when it is offered, the steps and the records are in [fleet.md](fleet.md) 8.6 "FRESH START as built (ATC-73)".
+
+- **API.** `GET /api/dispatch/fresh-start` returns `{verdicts: {"D-xxxx": {ok, why?}}}` for every `approved` non-`launch` ASSIGN (read only; the card shows `FRESH START 불가 — <why>` when `ok` is false). `POST /api/dispatch/proposals/:id/fresh-start` (SUPERVISOR's screen only, approval mode, `approved` ASSIGN that is not a `launch` card, no ground stop on its AIRPORT) runs it and returns the proposal.
+- **Timeline.** After the LAUNCH succeeded the proposal gets `{op: "send", id, at, message, via: "fresh-start"}` (the stored message is the FLIGHT PLAN text, as OCC's would be; `Proposal.sentVia`). From there it is an ordinary `sent` card: READBACK, DEPARTED, LOGBOOK and FUEL attribution do not look at how it was sent. The card shows `FRESH START로 보냄`. Older readers ignore the new field; the log stays append-only.
+- **OCC never sends it again.** `dispatch release` on a `sent` card with `sentVia: "fresh-start"` answers 409 (`FRESH START가 새 세션의 첫 프롬프트로 이미 보냄`) instead of returning the text for a resend, so the overdue-resend rule in `occ/…/flight-plan.md` cannot deliver the same FLIGHT PLAN twice; OCC reports it to the SUPERVISOR. send-guard and the other guards are unchanged.
+- **A LAUNCH card is different.** A `launch` card (no live session) already LAUNCHes on approve and OCC sends after the session is up; FRESH START is not offered there.
+
 ## RECALL
 
 A FLIGHT PLAN that was sent (`sent`), read back (`accepted`), or read back as a STAND-free FLIGHT that has not ARRIVED (`departed` with `departedVia: "readback"`) can be pulled back by the SUPERVISOR. This is decision 4 of [atfm.md](atfm.md): it is built before any automatic assignment.
