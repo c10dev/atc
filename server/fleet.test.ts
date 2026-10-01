@@ -171,6 +171,8 @@ test("CREW BRIEFING: 등록번호·폴더·팀원·자격·교신 규칙을 담�
   assert.ok(text.includes("READBACK C-xxxx"));
   assert.ok(text.includes("in Korean. Never Japanese or Chinese. Messages to other sessions stay English (ATC-126)."));
   assert.ok(!text.includes("READBACK D-xxxx"));
+  assert.ok(text.includes("EnterWorktree name=<key>-<short name>"), "STAND 문단(ATC-252)");
+  assert.ok(text.includes("EnterWorktree path= outside <repo>/.claude/worktrees/"));
   assert.ok(crewBriefing(a, null, "approval").includes("READBACK D-xxxx"));
 });
 
