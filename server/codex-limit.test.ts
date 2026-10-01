@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildPulls, codexUnavailableOf, type GhPull, repoCodexOf } from "./landing.ts";
+import { codexWhyEn } from "./landing-en.ts";
 
 // ATC-312: 저장소의 Codex 한도 안내가 계속되는 동안 새 head는 6시간을 기다리지 않고 REVIEW로 간다
 const HOUR = 3_600_000;
@@ -11,7 +12,7 @@ const HEAD = "b".repeat(40);
 
 const pr = (over: Partial<GhPull> = {}): GhPull => ({
   number: 10, title: "Change a thing", url: "https://github.com/o/r/pull/10", headRefName: "claude/atc-10", headRefOid: HEAD, baseRefName: "main",
-  isDraft: false, mergeStateStatus: "CLEAN", reviewDecision: null, createdAt: at(-1), author: { login: "x" }, statusCheckRollup: [], reviews: [], labels: [],
+  isDraft: false, mergeStateStatus: "CLEAN", reviewDecision: null, createdAt: at(-1), author: { login: "x" }, statusCheckRollup: [{ __typename: "CheckRun", name: "check", status: "COMPLETED", conclusion: "SUCCESS" }], reviews: [], labels: [],
   codex: { headAt: at(2), thumbsAt: null, lastComment: null }, files: ["a.ts"], body: "", ...over,
 });
 const other = (codex: GhPull["codex"], reviews: GhPull["reviews"] = []): GhPull => pr({ number: 11, headRefOid: "c".repeat(40), codex, reviews });
@@ -65,4 +66,32 @@ test("제외 PR(FLIGHT 없음, SEC)은 저장소가 한도여도 extReview가 ex
   assert.equal(sec.extReview?.status, "excluded");
   // 제외가 아니면 REVIEW 대기
   assert.equal(build(pr(), "ATC-10", []).extReview?.status, "waiting");
+});
+
+// REVIEW 통과 뒤: 창이 끝나거나 다른 PR에 Codex 신호가 와도 그 head는 한도로 남아 CLEARED가 APPROACH로 돌아가지 않는다
+const withReview = (g: GhPull, others: GhPull[], nowH: number) => {
+  const review = { at: at(2.5), repo: "o/r", number: g.number, head: g.headRefOid, verdict: "pass" as const, text: "ok", by: "REVIEW", model: "m", family: "claude-sonnet", p0: 0, p1: 0, p2: 0 };
+  return buildPulls([{ repo: "/r/proj", pulls: [g, ...others] }], [], [], new Map(), () => "ATC-10", at(nowH), { silentMs: SIX, limitMs: SIX, reviews: [review], ticketLabelsOf: () => [] }).find((x) => x.number === g.number)!;
+};
+const NOTICE = other({ headAt: at(0), thumbsAt: null, lastComment: { at: at(1), limit: true } });
+
+test("REVIEW 통과가 있는 head: 안내 창(6시간)이 끝나도 한도로 남아 CLEARED를 유지한다", () => {
+  const p = pr();
+  assert.equal(withReview(p, [NOTICE], 3).landing, "CLEARED");
+  const later = withReview(p, [NOTICE], 7.5); // 안내(1h)+6h는 지났고, head(2h)+6h는 아직
+  assert.deepEqual([later.codexUnavailable?.why, later.codexUnavailable?.scope, later.landing], ["limit", "repo", "CLEARED"]);
+});
+
+test("REVIEW 통과 뒤 다른 PR에 Codex 리뷰·👍이 와도 이 head는 CLEARED로 남는다. REVIEW가 없으면 Codex를 기다린다", () => {
+  const p = pr();
+  const back = other({ headAt: at(0), thumbsAt: at(4), lastComment: { at: at(1), limit: true } }, [{ author: { login: "chatgpt-codex-connector" }, state: "COMMENTED", submittedAt: at(4), commit: { oid: "c".repeat(40) } }]);
+  assert.equal(withReview(p, [back], 5).landing, "CLEARED");
+  const noReview = buildPulls([{ repo: "/r/proj", pulls: [p, back] }], [], [], new Map(), () => "ATC-10", at(5), { silentMs: SIX, limitMs: SIX, reviews: [], ticketLabelsOf: () => [] }).find((x) => x.number === 10)!;
+  assert.equal(noReview.codexUnavailable ?? null, null);
+});
+
+test("영어 이유 글: 저장소 한도는 시각을 싣는다", () => {
+  assert.equal(codexWhyEn("limit", 6, "2026-10-01T06:29:00.000Z"), "Codex limit (repository, 06:29Z~)");
+  assert.equal(codexWhyEn("limit", 6), "Codex limit");
+  assert.equal(codexWhyEn("silent", 6), "Codex silent for 6 hours");
 });

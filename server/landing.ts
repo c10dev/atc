@@ -212,7 +212,7 @@ export function repoCodexOf(pulls: readonly Pick<GhPull, "codex" | "reviews">[])
   }
   return { limitAt: latest(limits), signalAt: latest(signals) };
 }
-export function codexUnavailableOf(pr: ReviewInput & Pick<GhPull, "createdAt">, now: number, silentMs: number, repo?: { codex: RepoCodex; limitMs: number }): CodexUnavailable | null {
+export function codexUnavailableOf(pr: ReviewInput & Pick<GhPull, "createdAt">, now: number, silentMs: number, repo?: { codex: RepoCodex; limitMs: number; reviewed?: boolean }): CodexUnavailable | null {
   const c = pr.codex;
   if (!c || hasHeadReview(pr) || codexFindings(pr) || codexThumbsPass(pr)) return null;
   if (c.lastComment?.limit && atOrAfter(c.lastComment.at, c.headAt)) return { why: "limit", since: c.lastComment.at };
@@ -220,7 +220,8 @@ export function codexUnavailableOf(pr: ReviewInput & Pick<GhPull, "createdAt">, 
   if (c.lastComment && atOrAfter(c.lastComment.at, base)) return null; // Codex가 이 head 뒤에 말했다(한도 아님)
   // 저장소의 한도 안내가 아직 유효하다: 창 안에 있고 그 뒤 Codex의 진짜 신호가 없다(어느 PR의 안내든, head보다 먼저여도)
   const lim = repo?.codex.limitAt;
-  if (lim && now - Date.parse(lim) <= repo.limitMs && !after(repo.codex.signalAt, lim)) return { why: "limit", since: lim, scope: "repo" };
+  // 이 head에 착륙 리뷰(REVIEW)가 이미 있으면 창이 끝나거나 다른 PR에 Codex 신호가 와도 한도로 둔다: 그 리뷰가 head의 리뷰라서, 한도가 풀렸다고 CLEARED가 APPROACH로 돌아가지 않게
+  if (lim && (repo.reviewed || (now - Date.parse(lim) <= repo.limitMs && !after(repo.codex.signalAt, lim)))) return { why: "limit", since: lim, scope: "repo" };
   const quietUntil = Date.parse(base) + silentMs;
   return now >= quietUntil ? { why: "silent", since: new Date(quietUntil).toISOString() } : null;
 }
@@ -624,7 +625,7 @@ export function buildPulls(
   const seen = new Set<string>();
   const out: PullRequest[] = [];
   for (const { repo, pulls, defaultBranch } of sources) {
-    const repoCodex = ext?.limitMs ? { codex: repoCodexOf(pulls), limitMs: ext.limitMs } : undefined;
+    const repoLimit = ext?.limitMs ? { codex: repoCodexOf(pulls), limitMs: ext.limitMs } : undefined;
     for (const gh of pulls) {
       const stand = workspaces.find((w) => w.repo === repo && w.branch === gh.headRefName) ?? null;
       const ticketKey = ticketKeyOf(gh);
@@ -635,7 +636,7 @@ export function buildPulls(
       const exclusion = gate ? (gate.hard ?? (allowSec ? null : gate.security)) : null;
       // main 병합만 한 head: 이전 커밋의 리뷰를 잇는다(ATC-31). 이으면 REVIEW 대기열에 넣지 않는다
       const carried = ext && slug ? carriedReviewOf(gh, ext.reviews.filter((r) => r.repo === slug && r.number === gh.number), Boolean(gate) && !exclusion) : null;
-      let unavailable = ext && slug && !carried ? codexUnavailableOf(gh, Date.parse(now), ext.silentMs, repoCodex) : null;
+      let unavailable = ext && slug && !carried ? codexUnavailableOf(gh, Date.parse(now), ext.silentMs, repoLimit && { ...repoLimit, reviewed: landingReviewOf(ext.reviews, slug, gh.number, gh.headRefOid) !== null }) : null;
       if (ext && slug && !carried && !unavailable) {
         const since = ext.fastTrack?.(repo, gh.number, gh.headRefOid);
         if (since && codexUnavailableOf(gh, Date.parse(now), 0)) unavailable = { why: "autoland", since };
