@@ -1,6 +1,6 @@
 ---
 name: ui-review
-description: Use when a FLIGHT changes atc's web screen (web/src) or the ANNUNCIATOR app screens, before the PR, or when asked to audit one tab. Reviews the changed screens against atc's design language (docs/design-language.md section 5) and two vendored rule sets, and prints a findings block for the PR body. Not for server, hooks or docs-only FLIGHTs.
+description: Use when a FLIGHT changes atc's web screen (web/src) or the ANNUNCIATOR app screens, before the PR, or when asked to audit one tab. Reviews the changed screens against atc's design language (docs/design-language.md section 5) and two vendored rule sets, clicks through the running screen to catch layout shifts, and prints a findings block for the PR body. Not for server, hooks or docs-only FLIGHTs.
 ---
 
 # ui-review
@@ -27,6 +27,34 @@ Sources, commits and licences: `THIRD_PARTY_NOTICES.md` at the repository root. 
 - `diff` (default): the screens a FLIGHT changed. Take the changed files from `git diff --name-only origin/main...HEAD`, keep `web/src/**` and the ANNUNCIATOR screen files, and read each changed component with its CSS. Review only what the diff touches and what it renders next to; do not audit the whole tab.
 - `audit`: one whole tab (name it, for example `audit DISPATCH`). Read the tab's view file, the CSS it imports and the shared pieces it uses (`ui.tsx`, `styles.css` tokens). For runtime evidence start a test server (see "Evidence" below). This is the mode for ATC-285-style audits.
 
+## Runtime step: layout stability (run it early, in `diff` and `audit`)
+
+Run this **once the screen renders, before polishing**. Why: in ATC-309, 7 of 8 dashboards built by sessions moved their layout when a filter, chip or row was clicked, and no other measure (axe, hit targets, focus, keyboard) saw it; ATC-296 found this skill running at turns 46 to 55 of 53 to 63, too late to change anything. The standard CLS metric cannot see it: shifts within 500 ms of input are `hadRecentInput` and left out. A bounding-box diff around each click can.
+
+The probe is [references/layout-probe.js](references/layout-probe.js): plain browser JS, run through the Playwright MCP `browser_evaluate`. No dependency is added.
+
+1. Start the screen (for atc: a test server, see "Evidence") and open it with `browser_navigate`. Wait until it has data.
+2. `browser_evaluate` with the **whole contents of `layout-probe.js`** as `function`. It installs `window.__lp`. Run it again after any click that navigates (the page loses `__lp`; the "before" boxes are kept in `sessionStorage`).
+3. `() => __lp.idle("main")` (use the screen's root selector). Whatever moves with no click (a clock, a live feed) is ignored from here on.
+4. `() => __lp.controls("main")` lists what to click: tabs, sort headers, buttons and chips, checks, selects, rows, details, same-app links. Go through all of them, view controls first.
+5. For each control: reload (or click it back), install if needed, `() => __lp.mark("main")`, click with `browser_click` (`browser_select_option` for a select), then `() => __lp.check("<label>", {target: "<sel>", expectInsert: <true for a row, detail or editor that is meant to open>})`. For an in-page click one call does all three: `() => __lp.step("<sel>", {expectInsert})`.
+6. **Never click an action that writes or sends** (STOP, LAUNCH, RESTART, DELETE, SEND, APPROVE, MERGE, SAVE, APPLY, unfollow …). View controls only. Use fake data and a temporary `HOME`, so no real session is on the screen.
+
+`check` returns the elements that moved or resized by 1 px or more, grouped, with a likely cause. The intended change is not reported: the clicked control's own state, and whatever changed **inside** the region where content appeared or disappeared (a detail panel, a table body), unless the clicked control is inside it too. Severity: **Blocker** = a landmark, column, sibling or container that was not the target moved or resized by 2 px or more (1 px for a header, nav, form, table or table head); **Note** = smaller shifts, the target itself, rows added or removed, an intended open.
+
+| Cause the probe names | Fix |
+|---|---|
+| table column width changes | fixed column widths or `table-layout: fixed`; `tabular-nums` |
+| a sibling's width or position changes | reserve the width of the thing that changes (fixed width, `min-width`, `tabular-nums`) |
+| pushed by inserted content (a badge, ×, count, panel) | reserve the space, or overlay instead of insert |
+| border or padding changes on the active state | keep the same box: border always present (transparent when off), or outline / box-shadow |
+| font-weight changes on the active state | do not change weight, or reserve the bold width (`::after` bold-text trick) |
+| scrollbar appears or disappears | `scrollbar-gutter: stable` |
+| text wraps or its height changes | `overflow-wrap`, `min-width: 0`, or a fixed-line layout |
+| a container's height follows the swapped content | `min-height` on the list area, or scroll the list inside a fixed-height box |
+
+Limits: it compares boxes, not pixels, so a static misalignment (an × button not aligned) is invisible to it; it clicks one control at a time from a clean state, so shifts that need two steps are not found; boxes inside an inner scroll container are compared in page coordinates. Report what it could not click as **Not verified**.
+
 ## Proof gate (every finding)
 
 A finding is kept only if it has all three, and survives your attempt to falsify it:
@@ -44,7 +72,7 @@ Severity: **Blocker** (breaks a section 5 line, makes a control inaccessible or 
 - Prefer reading: `grep -n` the CSS for the property, count the components, trace the keyboard path through the handlers.
 - For runtime facts start a test server on a free port (7702, else 7703 or 7704) with `ATC_GITHUB=off`, a temporary `ATC_STATE_DIR` holding only copies of `airports.json` and `fleet.json`, and a PID file, exactly as root `CLAUDE.md` "검증" says. Kill it with `kill "$(cat <pid file>)"` only. Never touch 7700 or `~/.local/state/atc/`.
 - **No screenshots in the PR or in any branch** (public repository). Describe what you saw in words. Never send messages to real team sessions while testing.
-- A check you did not run is **Not verified**, with what remains. Do not imply an uninspected surface was reviewed.
+- A check you did not run is **Not verified**, with what remains. Do not imply an uninspected surface was reviewed. If no screen could be started, the layout-stability row says so and the verdict lists it.
 
 ## What to look for (short list; the references hold the rules)
 
@@ -60,6 +88,7 @@ Section 5 line by line first. Then, in this order: focus and keyboard (visible f
 | Area | Inspected | Result |
 |---|---|---|
 | Section 5 checklist | lines applied: … | n findings / Clear |
+| Layout stability (runtime step) | controls clicked: n of m | n findings / Clear / Not verified (reason) |
 | Focus and keyboard | … | n findings / Clear / Not reviewed (reason) |
 | Targets, forms, states | … | … |
 | Long and empty content | … | … |
