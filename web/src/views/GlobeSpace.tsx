@@ -3,7 +3,7 @@ import { flightKeyOf } from "../../../server/detail.ts";
 import type { GlobeScene } from "../../../server/globe.ts";
 import { headingOf, layoutBodies, missedLoop, ORBIT, PARK, parkLoop, pointOf, type Polar, polarOf, routeOf, SPACE_SIZE, starsOf, type XY } from "../../../server/space.ts";
 import { f1 } from "./globe-draw.ts";
-import { fadeOf, flightMarks, flightNumber, flightTip, toneOf } from "./GlobeFlights.tsx";
+import { fadeOf, flightNumber, flightTip, splitMarks, toneOf, waitsOnSupervisor } from "./GlobeFlights.tsx";
 import "./GlobeSpace.css";
 
 // GLOBE G4(ATC-261, docs/globe.md 5): 같은 장면(GET /api/globe)을 우주로 그린다. 지구 = 홈 AIRPORT, 행성 = 다른 AIRPORT,
@@ -77,10 +77,11 @@ export function SpaceView({ scene, motion, now }: { scene: GlobeScene; motion: b
           const anim = motion && loop && f.state !== "nordo";
           const route = f.state === "boarding" || f.state === "arrived" || f.state === "taxi" ? "" : dOf(routeOf(f.outbound).map((q) => pointOf(b, b.r, q)));
           const key = flightKeyOf(f.key);
-          const marks = flightMarks(f);
+          const marks = splitMarks(f);
           const glyph = (
             <>
               <circle className="globe-plane-hit" r={14} />
+              {waitsOnSupervisor(f) && <circle className="globe-sup-ring" r={12} />}
               <path className={`globe-plane tone-${tone}${f.state === "nordo" ? " nordo" : ""}`} d="M0 -9 L6 8 L0 4 L-6 8 Z" transform={anim ? "rotate(90)" : undefined} />
             </>
           );
@@ -99,7 +100,8 @@ export function SpaceView({ scene, motion, now }: { scene: GlobeScene; motion: b
               )}
               <text className={`globe-plane-label tone-${tone}`} x={f1(at.x + 12)} y={f1(at.y + 22)}>
                 {flightNumber(f.key)}
-                {marks && <tspan className="globe-plane-mark"> {marks}</tspan>}
+                {marks.rest && <tspan className="globe-plane-mark"> {marks.rest}</tspan>}
+                {marks.sup && <tspan className="globe-plane-sup"> SUP</tspan>}
               </text>
             </>
           );

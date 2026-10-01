@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { flightKeyOf } from "../../../server/detail.ts";
+import type { LandWhy } from "../../../server/land-by.ts";
 import {
   ARRIVED_FADE_MIN,
   circuitOf,
@@ -41,9 +42,26 @@ export function toneOf(f: GlobeFlight): "radar" | "amber" | "faint" {
   return "radar";
 }
 
-// 지구본과 SPACE가 같은 글을 쓰도록 한 곳에서 만든다(G4)
-export const flightMarks = (f: GlobeFlight) => [f.state === "goAround" ? "GA" : f.state === "nordo" ? "NORDO" : "", f.late ? "LATE" : "", f.reverted ? "REVERTED" : ""].filter(Boolean).join(" ");
-export const flightTip = (f: GlobeFlight) => `${f.callsign ?? "STAND 없음"} · ${flightNumber(f.key)} · ${STATE_LABEL[f.state]}${f.late ? " (길어짐)" : ""}${f.blocks.length ? ` — ${f.blocks.join(", ")}` : ""}`;
+// 착륙을 SUPERVISOR가 해 줘야 하나(ATC-300): 서버가 TOWER와 같은 landByOf로 정한 것을 그대로 읽는다. 화면은 규칙을 갖지 않는다
+export const waitsOnSupervisor = (f: GlobeFlight) => f.landBy === "supervisor";
+// landWhy 코드의 글(land-by.ts의 LandWhy)
+export const LAND_WHY: Record<LandWhy, string> = {
+  user: "user 등급",
+  escalate: "MCC ESCALATE",
+  hold: "SUPERVISOR HOLD",
+  mode: "MCC가 착륙시키지 않는 모드",
+  "tier-unknown": "등급을 아직 모름",
+  "teams-merge-off": "팀이 머지하지 않는 AIRPORT",
+};
+export const LAND_BY_LABEL = { mcc: "MCC", supervisor: "SUPERVISOR", holder: "TEAM" } as const;
+export const landWhyText = (f: GlobeFlight) => (f.landWhy ? LAND_WHY[f.landWhy] : "");
+
+// 지구본과 SPACE가 같은 글을 쓰도록 한 곳에서 만든다(G4). SUP은 SUPERVISOR가 머지해야 착륙하는 FLIGHT(ATC-300)
+export const flightMarks = (f: GlobeFlight) => [f.state === "goAround" ? "GA" : f.state === "nordo" ? "NORDO" : "", f.late ? "LATE" : "", waitsOnSupervisor(f) ? "SUP" : "", f.reverted ? "REVERTED" : ""].filter(Boolean).join(" ");
+// 호박색 표시(GA·LATE·…)와 SUP을 나눈다: SUP은 SUPERVISOR가 해 줘야 하는 일이라 CAUTION의 호박색을 빌리지 않고 --cyan으로 그린다(design-language 2번)
+export const splitMarks = (f: GlobeFlight) => ({ rest: flightMarks(f).split(" ").filter((m) => m && m !== "SUP").join(" "), sup: waitsOnSupervisor(f) });
+export const flightTip = (f: GlobeFlight) =>
+  `${f.callsign ?? "STAND 없음"} · ${flightNumber(f.key)} · ${STATE_LABEL[f.state]}${f.late ? " (길어짐)" : ""}${f.blocks.length ? ` — ${f.blocks.join(", ")}` : ""}${waitsOnSupervisor(f) ? ` · SUPERVISOR 머지 대기 — ${landWhyText(f) || "SUPERVISOR"}` : ""}`;
 export const fadeOf = (f: GlobeFlight, now: number) => (f.state === "arrived" && f.fadeFrom ? clamp(1 - (now - Date.parse(f.fadeFrom)) / (ARRIVED_FADE_MIN * 60_000), 0, 1) : 1);
 
 interface Placed {
@@ -111,11 +129,12 @@ export function FlightsLayer({ scene, positions, view, C, R, motion, now }: { sc
         const loop = p.path ? p.path.map((q) => toPx(q, view, C, R)) : [];
         const loopD = loop.length ? `M${loop.map((q) => `${f1(q.x)} ${f1(q.y)}`).join("L")}${p.f.state === "hold" ? "Z" : ""}` : "";
         const key = flightKeyOf(p.f.key);
-        const marks = flightMarks(p.f);
+        const marks = splitMarks(p.f);
         const tip = flightTip(p.f);
         const glyph = (
           <>
             <circle className="globe-plane-hit" r={14} />
+            {waitsOnSupervisor(p.f) && <circle className="globe-sup-ring" r={12} />}
             <path className={`globe-plane tone-${p.tone}${p.f.state === "nordo" ? " nordo" : ""}`} d="M0 -9 L6 8 L0 4 L-6 8 Z" transform={anim ? "rotate(90)" : undefined} />
           </>
         );
@@ -134,7 +153,8 @@ export function FlightsLayer({ scene, positions, view, C, R, motion, now }: { sc
             )}
             <text className={`globe-plane-label tone-${p.tone}`} x={f1(px.x + 12)} y={f1(px.y + 22)}>
               {flightNumber(p.f.key)}
-              {marks && <tspan className="globe-plane-mark"> {marks}</tspan>}
+              {marks.rest && <tspan className="globe-plane-mark"> {marks.rest}</tspan>}
+              {marks.sup && <tspan className="globe-plane-sup"> SUP</tspan>}
             </text>
           </>
         );
@@ -172,6 +192,12 @@ export function FlightRows({ flights }: { flights: readonly GlobeFlight[] }) {
                   {f.reverted && <em> 되돌려짐</em>}
                 </span>
                 {f.blocks.length > 0 && <span className="globe-row-parked">{f.blocks.join(" · ")}</span>}
+                {f.landBy && (
+                  <span className={`globe-row-landby${waitsOnSupervisor(f) ? " is-sup" : ""}`}>
+                    LAND BY <b>{LAND_BY_LABEL[f.landBy]}</b>
+                    {waitsOnSupervisor(f) && landWhyText(f) && <> · {landWhyText(f)}</>}
+                  </span>
+                )}
               </li>
             );
           })}

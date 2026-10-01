@@ -306,3 +306,7 @@
     display: none;
   }
 }
+
+.ga-plane-mark {
+  fill: var(--amber);
+}

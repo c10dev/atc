@@ -24,7 +24,7 @@ import {
 } from "../../../server/globe-radio.ts";
 import type { Transmission } from "../../../server/radio.ts";
 import { f1 } from "./globe-draw.ts";
-import { flightNumber, STATE_LABEL, toneOf } from "./GlobeFlights.tsx";
+import { flightNumber, flightTip, splitMarks, toneOf, waitsOnSupervisor } from "./GlobeFlights.tsx";
 import "./GlobeRadio.css";
 
 // GLOBE G7(ATC-268, docs/globe.md 3.9): 한 AIRPORT를 가까이서 본 그림(#globe/<CODE>). STANDs는 게이트, 활주로 하나, 시설은 OCC·TOWER·MCC(와 PREFLIGHT 교신이 있으면 CROSSCHECK).
@@ -230,16 +230,20 @@ export function AirportView({ code, scene, txs, motion, now }: { code: string; s
 
 function Plane({ f, spot }: { f: GlobeFlight; spot: Spot }) {
   const tone = toneOf(f);
-  const tip = `${f.callsign ?? "STAND 없음"} · ${flightNumber(f.key)} · ${STATE_LABEL[f.state]}`;
+  const tip = flightTip(f);
+  const marks = splitMarks(f);
   const body = (
     <>
       <title>{tip}</title>
       <g transform={`translate(${f1(spot.x)} ${f1(spot.y)}) rotate(${f1(spot.heading)})`}>
         <circle className="ga-plane-hit" r={14} />
+        {waitsOnSupervisor(f) && <circle className="globe-sup-ring" r={12} />}
         <path className={`ga-plane tone-${tone}`} d={PLANE} />
       </g>
       <text className={`ga-plane-label tone-${tone}`} x={f1(spot.x + 12)} y={f1(spot.y + 22)}>
         {flightNumber(f.key)}
+        {marks.rest && <tspan className="ga-plane-mark"> {marks.rest}</tspan>}
+        {marks.sup && <tspan className="globe-plane-sup"> SUP</tspan>}
       </text>
     </>
   );
