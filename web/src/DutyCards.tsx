@@ -298,10 +298,7 @@ function RelayOffer({ item }: { item: QueueItem }) {
   if (!o) return null;
   return (
     <div className="hd" role="group" aria-label={`${o.type} PR #${o.pr} RELAY`}>
-      <p className="hd-title">
-        {o.type} · PR #{o.pr}
-        {o.flight ? ` (${o.flight})` : ""} — 이 STAND{o.standName ? ` ${o.standName}` : ""}를 쥔 AIRCRAFT가 없다. TOWER가 보내지 못한다
-      </p>
+      <p className="hd-title">이 STAND{o.standName ? ` ${o.standName}` : ""}를 쥔 AIRCRAFT가 없다. TOWER가 보내지 못한다</p>
       <p className="hd-how">{o.to ? `${o.to}가 이 FLIGHT를 날았다. 다른 AIRCRAFT를 고를 수 있다` : "이 FLIGHT를 난 AIRCRAFT를 모른다. REGISTRATION을 쓴다"}</p>
       <pre className="hd-cmd mono">{o.text}</pre>
       <div className="du-actions">
