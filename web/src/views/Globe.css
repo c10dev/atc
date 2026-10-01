@@ -160,3 +160,98 @@
   font-size: var(--text-sm);
   color: var(--faint);
 }
+
+/* G2: FLIGHT의 바퀴와 비행기. 색은 :root 토큰만 */
+.globe-side {
+  display: grid;
+  gap: var(--space-3);
+}
+.globe-route {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-dasharray: 3 5;
+  opacity: 0.45;
+  pointer-events: none;
+}
+.globe-hold {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  opacity: 0.8;
+  pointer-events: none;
+}
+.tone-radar {
+  stroke: var(--radar);
+  color: var(--radar);
+}
+.tone-amber {
+  stroke: var(--amber);
+  color: var(--amber);
+}
+.tone-faint {
+  stroke: var(--faint);
+  color: var(--faint);
+}
+.globe-plane {
+  stroke: none;
+}
+.globe-plane.tone-radar {
+  fill: var(--radar);
+}
+.globe-plane.tone-amber {
+  fill: var(--amber);
+}
+.globe-plane.tone-faint {
+  fill: var(--faint);
+}
+.globe-plane.nordo {
+  stroke: var(--alert);
+  stroke-width: 1.5;
+}
+.globe-plane-hit {
+  fill: transparent;
+}
+.globe-flight {
+  cursor: pointer;
+}
+.globe-plane-label {
+  stroke: var(--bg);
+  stroke-width: 3px;
+  paint-order: stroke;
+  font-size: 14px;
+  font-weight: 600;
+}
+.globe-plane-label.tone-radar {
+  fill: var(--radar);
+}
+.globe-plane-label.tone-amber {
+  fill: var(--amber);
+}
+.globe-plane-label.tone-faint {
+  fill: var(--faint);
+}
+.globe-plane-mark {
+  fill: var(--amber);
+}
+.globe-flight-rows b {
+  font-weight: 600;
+}
+.globe-flight-rows b.tone-radar {
+  color: var(--radar);
+  stroke: none;
+}
+.globe-flight-rows b.tone-amber {
+  color: var(--amber);
+  stroke: none;
+}
+.globe-flight-rows b.tone-faint {
+  color: var(--faint);
+  stroke: none;
+}
+.globe-flight-rows em {
+  font-style: normal;
+  color: var(--amber);
+}
+.globe-flight-rows a {
+  color: inherit;
+}

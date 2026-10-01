@@ -3,7 +3,7 @@
 | 탭 | 주소 | 보는 것 | 할 수 있는 것 |
 |---|---|---|---|
 | RADAR | `#radar` | 세션 ─ STAND ─ FLIGHT 3열을 선으로 연결. 주인 없는 STAND, STAND 없는 진행 FLIGHT 강조. ARRIVED·취소된 FLIGHT의 STAND와 그것만 쥔 AIRCRAFT는 기본으로 접고 툴바에 `ARRIVED STAND N 숨김`을 보임 | 전체 보기 전환, `ARRIVED STAND 포함` |
-| GLOBE | `#globe` | 읽기 전용 정사영 지구본(ATC-254). SUPERVISOR의 위치를 가운데 두고 AIRPORT를 안정된 자리에, AIRPORT마다 FLIGHT가 없는 AIRCRAFT(base 기준)를 작은 비행기 표시로 놓는다(여럿이면 ×수). 밤 영역은 지금 시각(UTC)의 해 위치로 그린다. 옆 목록은 같은 내용을 글로 적은 것이다. FLIGHT, OUTSTATION·REPOSITION 호, SPACE 테마는 아직 없다 | HOME AIRPORT 고르기, 위도·경도 입력, 내 위치 사용(1°로 반올림해 저장), 위치 지우기, 끌어서 돌리기, 휠·두 손가락 확대, 홈으로, AIRPORT를 끌어 옮기기(이 브라우저에만 기억), AIRPORT 위치 되돌리기 |
+| GLOBE | `#globe` | 읽기 전용 정사영 지구본(ATC-254). SUPERVISOR의 위치를 가운데 두고 AIRPORT를 안정된 자리에, AIRPORT마다 FLIGHT가 없는 AIRCRAFT(base 기준)를 작은 비행기 표시로 놓는다(여럿이면 ×수). 진행 중인 FLIGHT는 자기 AIRPORT에서 뜨고 내리는 바퀴를 도는 비행기로 그린다(ATC-260). 밤 영역은 지금 시각(UTC)의 해 위치로 그린다. 옆 목록은 같은 내용을 글로 적은 것이다. OUTSTATION·REPOSITION 호와 SPACE 테마는 아직 없다 | HOME AIRPORT 고르기, 위도·경도 입력, 내 위치 사용(1°로 반올림해 저장), 위치 지우기, 끌어서 돌리기, 휠·두 손가락 확대, 홈으로, AIRPORT를 끌어 옮기기(이 브라우저에만 기억), AIRPORT 위치 되돌리기, 비행기를 눌러 FLIGHT 서랍 열기 |
 | STRIPS | `#strips` | 맨 위 HUMAN CHECK(사람 확인을 기다리는 PR, 있을 때만)와 LANDING SEQUENCE(열린 PR), 세션마다 FLIGHT STRIP(쥔 STAND가 모두 ARRIVED·취소된 FLIGHT의 것인 AIRCRAFT는 맨 아래 접힌 `GATE CLEANUP`에 모임. 미완 FLIGHT의 STAND를 쥔 NORDO는 NORDO에 그대로): 상태, 쥔 STAND, FLIGHT(없으면 AD HOC), STAND의 PR 착륙 배지, 마지막 교신 | PR 링크 열기, 막는 조건 펼치기 |
 | FIDS | `#board` | Linear 상태 열별 FLIGHT 카드와 점유 팀 배지. ARRIVED는 기본으로 STAND가 남은 것과 가장 최근 갱신된 10건만 보이고, 맨 아래 `ARRIVED N more · 전체 보기` 줄이 그 자리에서 나머지를 펼친다(누를 때마다 접기와 펼치기, 저장하지 않음). 표시 옵션의 "SCHEDULED · ARRIVED · CANCELLED 포함"을 켜면 전부 보인다. 목록과 보드가 같다. 목록 보기에서는 REMARKS 옆에 그 FLIGHT의 가장 늦은 이정표(`ON 04:02`)가 보이고, 행에 마우스를 올리면 OUT·OFF·ON·IN 넷이 나온다(OOOI, concepts의 FLIGHT FOLLOWING) | 표시 옵션(목록·보드, 포함 범위), ARRIVED 펼치기 |
 | AIRPORTS | `#airports` | 저장소 등록부, 소속 AIRCRAFT, OUTSTATION으로 와 있는 AIRCRAFT | AIRPORT 개설·코드 변경·폐쇄, 팀 머지 켜고 끄기(끄면 그 AIRPORT는 팀에게 LAND를 내지 않고 SUPERVISOR가 머지) |
@@ -33,14 +33,22 @@ TARGETS·ROUTE를 바꾸는 것은 지금처럼 FLEET 탭에서 SUPERVISOR가 �
 
 ## GLOBE
 
-SUPERVISOR의 위치를 가운데 둔 읽기 전용 지구본이다(설계: `docs/globe.md`). 서버는 장면(`GET /api/globe`: AIRPORT의 자리, 세워 둔 AIRCRAFT)만 주고, 화면이 지구본에 그린다.
+SUPERVISOR의 위치를 가운데 둔 읽기 전용 지구본이다(설계: `docs/globe.md`). 서버는 장면(`GET /api/globe`: AIRPORT의 자리, 세워 둔 AIRCRAFT, 나는 FLIGHT)만 주고, 화면이 지구본에 그린다.
 
 - **위치는 이 브라우저에만 있다.** 위치, HOME, 옮긴 AIRPORT, 시점은 `localStorage`의 `atc.globe` 한 곳에만 저장한다. 서버로 보내지 않고 기록하지도 않는다. 위치를 정하지 않으면 브라우저의 UTC 오프셋으로 경도만 맞추고 위도는 0이다(일부러 거칠다). "내 위치 사용"은 브라우저가 알려 준 위치를 1°로 반올림해 저장한다. 도시 검색은 없다(외부 요청이 필요하다). 화면을 남에게 보여 줄 때는 위도·경도 칸과 지구본의 가운데 점에 위치가 드러난다.
 - **HOME AIRPORT**는 지구본에서 위치(가운데 점) 자리에 놓인다. 기본은 살아 있는 세션이 가장 많은 AIRPORT이고, 목록에서 다른 곳을 고를 수 있다. 다른 AIRPORT는 HOME에서 본 방위와 거리(12°~30°)를 AIRPORT id에서 정해서 놓는다. 그래서 새로고침하거나 날이 바뀌어도 같은 자리이고, 서로 9°보다 가깝지 않게 밀어 놓는다. AIRPORT를 끌어 옮기면 그 자리를 이 브라우저가 기억하고, "AIRPORT 위치 되돌리기"로 지운다.
 - **세워 둔 AIRCRAFT**: 지금 STAND를 쥔 FLIGHT가 없는 AIRCRAFT를 base AIRPORT 옆에 작은 비행기로 놓는다(여럿이면 ×수). base가 없거나 퇴역한 AIRCRAFT는 그리지 않는다. AIRPORT 위에 마우스를 올리면 콜사인이 뜬다. 오른쪽 목록에도 같은 내용이 있다(스크린 리더, 좁은 화면).
+- **FLIGHT**(ATC-260): 진행 중인 FLIGHT마다 비행기 하나가 자기 AIRPORT에서 떠서 같은 AIRPORT로 내리는 바퀴(출발 → 회전점 → IAF → 최종 → 활주로 → 게이트)를 돈다. 나가는 방향은 FLIGHT 번호에서 정하고 같은 AIRPORT의 다른 FLIGHT와 겹치지 않게 벌린다. 바퀴의 크기는 가장 가까운 다른 AIRPORT까지 거리에 맞춘다. 비행기 옆에 FLIGHT 번호가 붙는다. 위치는 STRIPS의 진행 막대와 같은 모델이다. **사실만** 그린다: 지난 이정표(OUT·OFF·ON·IN)가 구간을 정하고, 추정은 지금 구간 안에서 그 구간이 보통 걸린 시간(p75)에 견준 위치뿐이다. 보통 시간을 모르면 구간의 처음에 서 있다. 퍼센트도 도착 시각도 없다.
+  - **ENROUTE**(초록): OUT 뒤 PR 전. 구간 안 위치로 IAF 쪽으로 간다. 보통보다 길어지면(`길어짐`, `LATE`) 호박색으로 바뀌고 IAF 앞에서 멈춘다(홀딩이 아니다).
+  - **HOLDING**(호박): AIRCRAFT가 STAND를 쥔 채 쉬고 있거나(idle), 그 FLIGHT에 열린 HOLD CLEARANCE가 있으면 지금 자리에서 레이스트랙을 돈다. 착륙 대기 중 PR이 막혀 있으면(APPROACH) IAF에서 돌고, 막는 조건 코드(`checks-pending` 등)가 툴팁과 목록에 붙는다.
+  - **FINAL**(초록): PR이 CLEARED. IAF에서 활주로로, 위치는 착륙 대기 구간 안의 막대 위치.
+  - **GO AROUND**(`GA`, 호박): 최근 30분 안에 GO AROUND CLEARANCE가 나갔거나 PR이 `dirty`·`behind`로 막혔다. 최종에서 올라 한 바퀴 돌아 IAF로 돌아오는 고리로 그린다. 새 head가 CLEARED가 되면 FINAL로 돌아온다.
+  - **TAXI**: 머지(ON) 뒤 RTS가 서비스에 넣기를 기다린다(MCC AIRPORT만). **ARRIVED**: IN(RTS가 없는 FLIGHT는 ON)부터 게이트에서 30분 동안 서서히 사라진다. 되돌려진 PR은 `되돌려짐`으로 목록에 적힌다.
+  - **NORDO**: 세션이 죽었다. 멈춘 자리에 회색 비행기로 서고 `NORDO`가 붙는다. **BOARDING**: STAND는 있고 아직 OUT이 없다.
+  - 비행기를 누르면 FLIGHT 서랍(`#flight/<KEY>`)이 열린다. 오른쪽 FLIGHTS 목록에 콜사인, FLIGHT, AIRPORT, 상태, 막는 조건이 같은 내용으로 있다. 홀딩과 고어라운드는 `motion`이 켜져 있을 때만 돈다(꺼져 있으면 멈춘 그림). AIRPORT를 모르는 FLIGHT는 그리지 않는다. 그려진 FLIGHT의 AIRCRAFT는 "세워 둔" 표시에서 빠진다.
 - **밤 영역**은 UTC 시각(위 설명 줄에 적힌 분)의 해 위치로 그린다. 10초마다 다시 셈하고, 숨은 탭에서는 멈춘다.
 - 조작: 끌기(돌리기), 휠·두 손가락(확대, 1~8배), "홈으로"(위치를 가운데로, 확대 1배). 애니메이션을 끈 설정(`motion` 꺼짐)이면 "홈으로"는 바로 옮긴다.
-- 지구본의 육지는 Natural Earth 1:110m(공개 도메인)를 줄여 화면 파일 안에 넣은 것이다. 외부 요청은 없다. 이 화면 첫 방문 때만 GLOBE 화면 파일(약 17 KB)을 더 받는다.
+- 지구본의 육지는 Natural Earth 1:110m(공개 도메인)를 줄여 화면 파일 안에 넣은 것이다. 외부 요청은 없다. 이 화면 첫 방문 때만 GLOBE 화면 파일(약 19 KB)을 더 받는다.
 
 ## STRIPS의 진행 막대
 

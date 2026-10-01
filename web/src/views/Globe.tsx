@@ -17,6 +17,8 @@ import {
   type XY,
 } from "../../../server/globe.ts";
 import { LAND } from "./globe-land.ts";
+import { f1, pathOf, SIZE } from "./globe-draw.ts";
+import { FlightRows, FlightsLayer } from "./GlobeFlights.tsx";
 import "./Globe.css";
 
 // GLOBE(ATC-254, docs/globe.md): atc의 AIRPORT를 정사영 지구본에 놓고 AIRPORT마다 세워 둔 AIRCRAFT를 보인다. 읽기만 한다.
@@ -24,7 +26,6 @@ import "./Globe.css";
 // 서버로 보내지도, 기록하지도 않는다. 색은 :root 토큰만 쓴다.
 
 const KEY = "atc.globe";
-const SIZE = 1000; // SVG 좌표계(viewBox)
 const R0 = 440; // 줌 1에서 지구본 반지름
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 8;
@@ -101,11 +102,6 @@ const GRATICULE: LatLon[][] = (() => {
 })();
 
 // ── 그리기 도우미 ────────────────────────────────────────────────────
-const f1 = (n: number) => n.toFixed(1);
-function pathOf(rings: XY[][], close: boolean, cx: number, cy: number, r: number): string {
-  return rings.map((pts) => pts.map((p, i) => `${i ? "L" : "M"}${f1(cx + p.x * r)} ${f1(cy - p.y * r)}`).join("") + (close ? "Z" : "")).join("");
-}
-
 // 화면 점(SVG 좌표) → 원판 좌표
 function discOf(svg: SVGSVGElement, clientX: number, clientY: number, r: number): XY {
   const box = svg.getBoundingClientRect();
@@ -228,6 +224,8 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
   }, []);
 
   const onDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    // 비행기는 링크라서 누르기를 가로채지 않는다(포인터 캡처가 click을 svg로 돌려 버린다)
+    if ((e.target as Element).closest?.("[data-flight]")) return;
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 2) {
@@ -323,6 +321,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
       })),
     [scene],
   );
+  const flights = scene?.flights ?? [];
   const atText = new Date(minute * 60_000).toISOString().slice(11, 16);
   const moved = Object.keys(saved.overrides ?? {}).length;
 
@@ -376,7 +375,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
           className="globe-svg"
           viewBox={`0 0 ${SIZE} ${SIZE}`}
           role="img"
-          aria-label={`지구본. AIRPORT ${rows.length}곳${rows.some((r) => r.parked.length) ? `, 세워 둔 AIRCRAFT ${rows.reduce((n, r) => n + r.parked.length, 0)}대` : ""}. 같은 내용이 오른쪽 목록에 있다.`}
+          aria-label={`지구본. AIRPORT ${rows.length}곳${rows.some((r) => r.parked.length) ? `, 세워 둔 AIRCRAFT ${rows.reduce((n, r) => n + r.parked.length, 0)}대` : ""}${flights.length ? `, 나는 FLIGHT ${flights.length}개` : ""}. 같은 내용이 오른쪽 목록에 있다.`}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={onUp}
@@ -427,11 +426,13 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
               </g>
             );
           })}
+          {scene && flights.length > 0 && <FlightsLayer scene={scene} positions={positions} view={view} C={C} R={R} motion={motion} now={now} />}
           {(() => {
             const h = project(hub, view);
             return h.depth > 0 ? <circle className="globe-hub" cx={C + h.x * R} cy={C - h.y * R} r={2.5} /> : null;
           })()}
         </svg>
+        <div className="globe-side">
         <section className="globe-rows" aria-label="AIRPORT 목록">
           <h2 className="globe-rows-head">AIRPORTS</h2>
           {rows.length === 0 ? (
@@ -452,6 +453,8 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
           )}
           <p className="globe-hint">끌어서 돌리고, 휠이나 두 손가락으로 확대한다. AIRPORT를 끌면 그 자리를 이 브라우저에 기억한다.</p>
         </section>
+        <FlightRows flights={flights} />
+        </div>
       </div>
     </div>
   );
