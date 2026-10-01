@@ -1,3 +1,6 @@
+import { EMPTY_MILESTONES, type Milestones } from "./milestones.ts";
+import type { FlightProgress } from "./progress.ts";
+
 // GLOBE(ATC-254, docs/globe.md): 지구본의 계산. 순수 함수만 두고 그리는 것과 나눈다(server/progress.ts처럼 브라우저에서도 쓴다).
 // node 모듈과 상태 파일을 끌어오지 않는다. 각도는 도(degree), 위도 lat(−90..90)·경도 lon(−180..180).
 // 이 모듈은 SUPERVISOR의 위치를 모른다. 장소는 허브(홈 AIRPORT)에 대한 방위와 호 거리로만 셈하고, 허브를 어디에 둘지는 화면이 정한다.
@@ -313,6 +316,83 @@ export function placeAirports(hub: LatLon, places: readonly Place[], overrides: 
   return out;
 }
 
+// ── FLIGHT의 바퀴(circuit)의 모양(G2, docs/globe.md 3.2) ───────────────────────
+// 서버가 준 outbound 방위와 AIRPORT 자리·활주로 방향으로 화면이 그린다. 점들은 큰 원 위의 꼭짓점이고 pointAlong이 꼭짓점 사이를 slerp한다.
+//   cruise: 출발(AIRPORT) → 회전점(outbound로 size°) → IAF(활주로 뒤쪽)
+//   final:  IAF → AIRPORT 위 활주로
+//   taxi:   활주로 끝 → 게이트
+//   missed: 최종의 끝 가까이에서 활주로 위로 날아 올라 한 바퀴 돌아 IAF로 돌아오는 고리(GO AROUND)
+export const RUNWAY_HALF = 1.1; // 활주로 반 길이(도). 화면의 활주로 선과 같다
+export interface Circuit {
+  gate: LatLon;
+  runwayStart: LatLon;
+  runwayEnd: LatLon;
+  iaf: LatLon;
+  cruise: LatLon[];
+  final: LatLon[];
+  taxi: LatLon[];
+  missed: LatLon[];
+}
+
+// 바퀴의 크기: 가장 가까운 다른 AIRPORT까지 거리의 0.35배, 2°~7°. 다른 AIRPORT가 없으면 거리를 20°로 친다.
+export const circuitSize = (nearestDeg: number | null) => clamp(0.35 * (nearestDeg ?? 20), 2, 7);
+
+export function circuitOf(airport: LatLon, runway: number, outbound: number, size: number): Circuit {
+  const runwayStart = destination(airport, runway + 180, RUNWAY_HALF);
+  const runwayEnd = destination(airport, runway, RUNWAY_HALF);
+  const gate = destination(airport, runway + 90, 0.6);
+  const iaf = destination(runwayStart, runway + 180, 0.55 * size);
+  const turn = destination(airport, outbound, size);
+  const finalPoint = slerp(iaf, airport, 0.8);
+  const m1 = destination(runwayEnd, runway, 0.3 * size);
+  const m2 = destination(m1, runway + 90, 0.4 * size);
+  return {
+    gate,
+    runwayStart,
+    runwayEnd,
+    iaf,
+    cruise: [airport, turn, iaf],
+    final: [iaf, airport],
+    taxi: [runwayEnd, gate],
+    missed: [finalPoint, m1, m2, iaf],
+  };
+}
+
+// 꺾은선 위의 점과 그 자리의 진행 방위. t는 0..1(전체 길이 몫). 점이 하나뿐이면 그 점
+export function pointAlong(path: readonly LatLon[], t: number): { at: LatLon; heading: number } {
+  if (path.length === 0) return { at: { lat: 0, lon: 0 }, heading: 0 };
+  if (path.length === 1) return { at: path[0], heading: 0 };
+  const lens = path.slice(1).map((p, i) => distanceDeg(path[i], p));
+  const total = lens.reduce((a, b) => a + b, 0);
+  const at = (u: number): LatLon => {
+    let d = clamp(u, 0, 1) * total;
+    for (let i = 0; i < lens.length; i++) {
+      if (d <= lens[i] || i === lens.length - 1) return slerp(path[i], path[i + 1], lens[i] > 0 ? clamp(d / lens[i], 0, 1) : 0);
+      d -= lens[i];
+    }
+    return path[path.length - 1];
+  };
+  const here = at(t);
+  const ahead = t < 0.98 ? at(t + 0.02) : null;
+  return { at: here, heading: ahead ? bearingDeg(here, ahead) : bearingDeg(at(t - 0.02), here) };
+}
+
+// 홀딩 레이스트랙(오른쪽 선회). center를 가운데로 heading 방향으로 length°, 너비 width°. 닫힌 꼭짓점 열
+export function racetrack(center: LatLon, heading: number, length: number, width: number, arcSteps = 6): LatLon[] {
+  const at = (u: number, v: number) => destination(destination(center, heading, u), heading + 90, v);
+  const pts: LatLon[] = [at(-length / 2, -width / 2), at(length / 2, -width / 2)];
+  for (let i = 1; i < arcSteps; i++) {
+    const a = (Math.PI * i) / arcSteps; // 끝 반원: 오른쪽(−v)에서 왼쪽(+v)으로
+    pts.push(at(length / 2 + (width / 2) * Math.sin(a), -(width / 2) * Math.cos(a)));
+  }
+  pts.push(at(length / 2, width / 2), at(-length / 2, width / 2));
+  for (let i = 1; i < arcSteps; i++) {
+    const a = (Math.PI * i) / arcSteps;
+    pts.push(at(-length / 2 - (width / 2) * Math.sin(a), (width / 2) * Math.cos(a)));
+  }
+  return pts;
+}
+
 // ── GET /api/globe의 장면(G1: airports[]와 parked[]) ──────────────────
 export interface GlobeAirportIn {
   id: string;
@@ -336,6 +416,147 @@ export interface GlobeScene {
   home: string | null; // AIRPORT 코드
   airports: { id: string; code: string; name: string; bearing: number; distance: number; runway: number }[];
   parked: { registration: string; callsign: string; airport: string }[];
+  flights: GlobeFlight[]; // G2
+}
+
+// ── FLIGHT의 장면(G2, docs/globe.md 3.2·3.3) ───────────────────────────
+// FLIGHT는 자기 AIRPORT에서 떠서 같은 AIRPORT로 내리는 한 바퀴(circuit)를 돈다. 서버는 상태와 그 구간 안의 위치 t만 정하고,
+// 바퀴의 모양(출발 → 회전점 → IAF → 최종 → 활주로 → 게이트)은 화면이 AIRPORT 자리와 outbound 방위로 그린다.
+// 위치 t는 진행 막대(server/progress.ts)의 marker에서만 온다(추정은 지금 구간 안에서만). 추정이 없으면 t = 0이고 퍼센트·ETA는 어디에도 없다.
+export type GlobeFlightState = "boarding" | "cruise" | "hold" | "final" | "goAround" | "taxi" | "arrived" | "nordo";
+
+export interface GlobeFlight {
+  key: string;
+  airport: string; // AIRPORT 코드
+  aircraft: string | null; // REGISTRATION. STAND를 쥔 AIRCRAFT가 없으면 null
+  callsign: string | null;
+  state: GlobeFlightState;
+  t: number; // 0..1, 그 상태의 구간 안. cruise: 출발→IAF, hold: 그 바퀴 위의 점(IAF면 1), final: IAF→활주로, 나머지는 0
+  outbound: number; // 나가는 방위(0..360). FLIGHT key의 해시를, 같은 AIRPORT의 다른 FLIGHT에서 떨어지게 밀어서
+  late: boolean; // 지금 구간이 보통 범위의 p75를 넘었다(IAF 앞에서 멈춘다)
+  blocks: string[]; // 착륙을 막는 조건 코드(APPROACH일 때)
+  fadeFrom: string | null; // arrived: 서서히 사라지기 시작한 시각(ISO). IN, RTS가 없으면 ON
+  reverted: boolean; // ON의 PR이 되돌려졌다
+}
+
+export const CRUISE_CAP = 0.9; // cruise·final의 t는 IAF·활주로 앞에서 멈춘다(도착은 마일스톤이 알려 주는 것)
+export const ARRIVED_FADE_MIN = 30;
+export const GO_AROUND_MIN = 30;
+const OUTBOUND_MIN_SEP = 25;
+
+export interface GlobeAircraftState {
+  registration: string;
+  callsign: string;
+  status: "busy" | "idle" | "dead" | "absent";
+  flying: string[]; // 지금 STAND를 쥔 FLIGHT key
+}
+export interface GlobeFlightsIn {
+  now: number;
+  tickets: readonly { key: string; stateType: string }[];
+  workspaces: readonly { ticketKey: string | null; repo: string; isMain: boolean }[];
+  pulls: readonly { ticketKey: string | null; repo: string; landing: "CLEARED" | "APPROACH"; blocks: readonly { code: string }[] }[];
+  clearances: readonly { type: string; flight: string | null; at: string; cancelledAt: string | null }[];
+  aircraft: readonly GlobeAircraftState[];
+  milestones: Readonly<Record<string, Milestones>>;
+  progress: Readonly<Record<string, FlightProgress>>;
+}
+
+const SEGMENT_INDEX: Record<string, number> = { work: 0, landing: 1, rts: 2, done: 3 };
+const CLOSED_TICKET = new Set(["completed", "canceled", "duplicate"]);
+const isConflictBlock = (code: string) => code === "dirty" || code === "behind";
+const clamp01 = (x: number) => clamp(x, 0, 1);
+
+// 같은 AIRPORT의 FLIGHT끼리 나가는 방위가 겹치지 않게: key 순서로 하나씩, 이미 정한 것과 25°보다 가까우면 37°씩 돌린다.
+// 앞선 key의 방위는 뒤에 오는 key가 늘어도 바뀌지 않는다.
+export function outboundBearings(keys: readonly string[]): Map<string, number> {
+  const out = new Map<string, number>();
+  const taken: number[] = [];
+  for (const key of [...new Set(keys)].sort()) {
+    let b = hash32(`${key}#out`) % 360;
+    const apart = (x: number) => taken.every((t) => Math.abs(((x - t + 540) % 360) - 180) >= OUTBOUND_MIN_SEP);
+    for (let k = 0; k < 12 && !apart(b); k++) b = (b + 37) % 360;
+    taken.push(b);
+    out.set(key, b);
+  }
+  return out;
+}
+
+// 열린 HOLD: 그 FLIGHT의 HOLD CLEARANCE가 있고 그 뒤에 CONTINUE·LAND가 없다(취소된 것은 세지 않는다)
+function holdIsOpen(key: string, clearances: GlobeFlightsIn["clearances"]): boolean {
+  const mine = clearances.filter((c) => c.flight === key && !c.cancelledAt).sort((a, b) => a.at.localeCompare(b.at));
+  const lastHold = mine.findLast((c) => c.type === "HOLD");
+  return Boolean(lastHold && !mine.some((c) => (c.type === "CONTINUE" || c.type === "LAND") && c.at > lastHold.at));
+}
+const recentGoAround = (key: string, clearances: GlobeFlightsIn["clearances"], now: number) =>
+  clearances.some((c) => c.type === "GO AROUND" && c.flight === key && !c.cancelledAt && now >= Date.parse(c.at) && now - Date.parse(c.at) < GO_AROUND_MIN * 60_000);
+
+// 지금 STAND를 쥐었거나 진행 중이거나 막 도착한 FLIGHT마다 한 줄. 순수 함수.
+export function flightsOf(input: GlobeFlightsIn, airports: readonly GlobeAirportIn[]): GlobeFlight[] {
+  const { now } = input;
+  const codeOfRepo = (repo: string | null | undefined) => airports.find((a) => a.repo === repo)?.code ?? null;
+  const keys = new Set<string>([...Object.keys(input.progress), ...input.aircraft.flatMap((a) => a.flying)]);
+  const rows: Omit<GlobeFlight, "outbound">[] = [];
+  for (const key of [...keys].sort()) {
+    const ws = input.workspaces.find((w) => w.ticketKey === key && !w.isMain);
+    const pull = input.pulls.find((p) => p.ticketKey === key) ?? null;
+    const airport = codeOfRepo(ws?.repo) ?? codeOfRepo(pull?.repo);
+    if (!airport) continue; // 어느 AIRPORT인지 모르면 놓을 자리가 없다
+    const holder = input.aircraft.find((a) => a.flying.includes(key)) ?? null;
+    const m = input.milestones[key] ?? EMPTY_MILESTONES;
+    const p = input.progress[key] ?? null;
+    const closed = CLOSED_TICKET.has(input.tickets.find((t) => t.key === key)?.stateType ?? "");
+    const base = { key, airport, aircraft: holder?.registration ?? null, callsign: holder?.callsign ?? null, late: Boolean(p?.late), blocks: [] as string[], fadeFrom: null as string | null, reverted: Boolean(m.reverted) };
+
+    // 끝난 FLIGHT: 30분 동안 게이트에서 서서히 사라진다
+    if (p?.segment === "done") {
+      const from = m.in ?? m.on ?? m.out;
+      if (!from || now - Date.parse(from) >= ARRIVED_FADE_MIN * 60_000) continue;
+      rows.push({ ...base, state: "arrived", t: 0, fadeFrom: from, late: false });
+      continue;
+    }
+    if (closed) continue; // 이미 닫힌 이슈의 지난 FLIGHT는 그리지 않는다
+    // OUT이 없으면 STAND만 쥔 채 게이트에서 출발을 기다린다
+    if (!p) {
+      if (holder) rows.push({ ...base, state: holder.status === "dead" ? "nordo" : "boarding", t: 0 });
+      continue;
+    }
+    // 구간 안의 위치: 진행 막대 marker가 (구간 번호 + 구간 안 몫)/4다. 추정이 없으면 몫은 0
+    const frac = p.marker === null ? 0 : clamp01(p.marker * 4 - (SEGMENT_INDEX[p.segment] ?? 0));
+    const cruiseT = Math.min(frac, CRUISE_CAP);
+    const blocks = pull && pull.landing === "APPROACH" ? pull.blocks.map((b) => b.code) : [];
+    const holdOpen = holdIsOpen(key, input.clearances);
+    const goAround = Boolean(pull && pull.landing !== "CLEARED" && (pull.blocks.some((b) => isConflictBlock(b.code)) || recentGoAround(key, input.clearances, now)));
+    let state: GlobeFlightState;
+    let t = 0;
+    if (holder?.status === "dead") {
+      state = "nordo";
+      t = p.segment === "work" ? cruiseT : p.segment === "landing" ? 1 : 0;
+    } else if (p.segment === "rts") {
+      state = "taxi";
+    } else if (p.segment === "landing") {
+      if (goAround) state = "goAround";
+      else if (blocks.length || holdOpen) {
+        state = "hold";
+        t = 1;
+      } else {
+        state = "final";
+        t = cruiseT;
+      }
+    } else if (holder?.status === "idle" || holdOpen) {
+      state = "hold";
+      t = cruiseT;
+    } else {
+      state = "cruise";
+      t = cruiseT;
+    }
+    rows.push({ ...base, state, t, blocks });
+  }
+  // 나가는 방위: AIRPORT마다 key 순서로
+  const outbound = new Map<string, number>();
+  for (const code of new Set(rows.map((r) => r.airport))) {
+    for (const [k, b] of outboundBearings(rows.filter((r) => r.airport === code).map((r) => r.key))) outbound.set(`${code}|${k}`, b);
+  }
+  return rows.map((r) => ({ ...r, outbound: outbound.get(`${r.airport}|${r.key}`)! }));
 }
 
 // 홈 AIRPORT의 기본값: 살아 있는 세션이 가장 많은 곳, 없으면 코드순 첫 곳. 같은 수면 코드순
@@ -351,13 +572,16 @@ export function defaultHome(airports: readonly GlobeAirportIn[], sessions: reado
 
 // 열린 AIRPORT만 받는다(폐쇄·경로 없음은 부르는 쪽이 뺀다). home이 모르는 코드면 기본값을 쓴다.
 // parked는 FLIGHT가 없는 AIRCRAFT의 base. base가 없거나 모르는 AIRPORT면 그리지 않는다.
-export function globeSceneOf(input: { at: Date; airports: readonly GlobeAirportIn[]; sessions: readonly GlobeSessionIn[]; aircraft: readonly GlobeAircraftIn[]; home?: string | null }): GlobeScene {
+// flights가 있으면 FLIGHT(G2)를 얹고, 그려진 FLIGHT의 AIRCRAFT는 세워 두지 않는다. 없으면 flights는 비고 parked는 flying 표시로 가른다(G1).
+export function globeSceneOf(input: { at: Date; airports: readonly GlobeAirportIn[]; sessions: readonly GlobeSessionIn[]; aircraft: readonly GlobeAircraftIn[]; home?: string | null; flights?: GlobeFlightsIn }): GlobeScene {
   const { airports } = input;
   const def = defaultHome(airports, input.sessions);
   const home = input.home && airports.some((a) => a.code === input.home) ? input.home : def;
   const homeId = airports.find((a) => a.code === home)?.id ?? null;
   const places = new Map(layoutAirports(airports.map((a) => a.id), homeId).map((p) => [p.id, p]));
   const codes = new Set(airports.map((a) => a.code));
+  const flights = input.flights ? flightsOf(input.flights, airports) : [];
+  const drawn = new Set(flights.flatMap((f) => (f.aircraft ? [f.aircraft] : [])));
   return {
     at: input.at.toISOString(),
     home,
@@ -368,8 +592,9 @@ export function globeSceneOf(input: { at: Date; airports: readonly GlobeAirportI
         return { id: a.id, code: a.code, name: a.name, bearing: p.bearing, distance: p.distance, runway: p.runway };
       }),
     parked: input.aircraft
-      .filter((x) => !x.flying && !x.retired && x.base && codes.has(x.base))
+      .filter((x) => (input.flights ? !drawn.has(x.registration) : !x.flying) && !x.retired && x.base && codes.has(x.base))
       .map((x) => ({ registration: x.registration, callsign: x.callsign, airport: x.base! }))
       .sort((a, b) => (a.registration < b.registration ? -1 : 1)),
+    flights,
   };
 }

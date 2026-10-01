@@ -41,7 +41,7 @@ To see Linear tickets too, put `LINEAR_API_KEY` in `.env.local`. For always-on o
 | Screen | What it shows |
 |---|---|
 | RADAR (`#radar`) | Three columns — session ─ worktree ─ ticket — joined by lines. Highlights worktrees with no owner and in-progress tickets with no worktree |
-| GLOBE (`#globe`) | Read-only orthographic globe centred on the SUPERVISOR's location (kept in this browser only): AIRPORTs at stable places, parked AIRCRAFT at their base AIRPORT, the day/night terminator. Scene from `GET /api/globe` |
+| GLOBE (`#globe`) | Read-only orthographic globe centred on the SUPERVISOR's location (kept in this browser only): AIRPORTs at stable places, parked AIRCRAFT at their base AIRPORT, FLIGHTs flying circuits from their AIRPORT (state and place from the OOOI progress model), the day/night terminator. Scene from `GET /api/globe` |
 | FLIGHT STRIPS (`#strips`) | One card per session (ALPHA…, Codex sessions): state, the worktrees it holds, linked tickets |
 | FIDS (`#board`) | Ticket cards in Linear state columns, with a badge for the team holding each one |
 | Metrics (`#metrics`) | Operating metrics from the FLIGHT RECORDER, the stage 2 readiness check, 5-minute sample trends, a daily table |
