@@ -161,6 +161,46 @@
 .fw-dot.is-na i {
   border-color: transparent;
 }
+/* F2: 막힌 점·글(amber)과 다음 할 일 칩. 막힘은 색만이 아니라 "막힘" 글자로도 보인다 */
+.fw-dot.is-stuck i {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 2px var(--amber);
+}
+.fw-stuck {
+  color: var(--amber);
+}
+.fw-chip {
+  margin-left: auto;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--cyan);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--cyan);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-decoration: none;
+  cursor: pointer;
+}
+.fw-chip.is-write {
+  background: var(--panel-2);
+}
+.fw-chip:hover:not(:disabled),
+.fw-chip:focus-visible {
+  background: var(--panel-3);
+}
+.fw-chip.is-moved {
+  border-color: var(--line-strong);
+  color: var(--muted);
+  cursor: default;
+}
+.fw-chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.fw-row-error {
+  grid-column: 1 / -1;
+  font-size: var(--text-xs);
+}
 .fw-step {
   display: none;
   font-size: var(--text-xs);

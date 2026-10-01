@@ -12,6 +12,7 @@ import { followingNow } from "./following.ts";
 import { loadFleet } from "./fleet.ts";
 import { loadLogbook } from "./logbook.ts";
 import { loadMcc } from "./mcc.ts";
+import { mccLandInfoCached } from "./mcc-run.ts";
 import { milestonesNow, progressNow } from "./milestones-run.ts";
 import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
@@ -59,6 +60,9 @@ export function followNow(s: Snapshot, now = Date.now()) {
   } catch {
     plan = null; // 계획을 못 만들어도 보드는 그린다(Todo 사유만 비운다)
   }
+  // MCC AIRPORT에서 SUPERVISOR가 머지할 PR(캐시된 등급만 읽는다, GitHub를 부르지 않는다). 등급을 모르면 merge 칩을 내지 않는다
+  const land = mccLandInfoCached(s);
+  const userPulls = new Set<number>(land ? [...land.tiers].filter(([, v]) => v.tier === "user").map(([n]) => n).concat(land.escalated) : []);
   const bundles = followBoardOf({
     parents,
     tickets: s.tickets,
@@ -70,9 +74,12 @@ export function followNow(s: Snapshot, now = Date.now()) {
     progress: progressNow(s, milestones, now),
     plan,
     noDeploy,
+    userPulls,
+    airports: s.airports.map((a) => ({ code: a.code, repo: a.repo })),
     now,
   });
-  return { at: new Date(now).toISOString(), linear: s.linear.fetchedAt, stages: [...FOLLOW_STAGES], parents, bundles };
+  const next = bundles.reduce((n, b) => n + b.next, 0); // 머리 NEXT n: 따라가는 모든 번들의 다음 할 일 수
+  return { at: new Date(now).toISOString(), linear: s.linear.fetchedAt, stages: [...FOLLOW_STAGES], parents, bundles, next };
 }
 
 export function mountFollow(app: Hono, getSnapshot: () => Promise<Snapshot>) {
