@@ -171,6 +171,13 @@ test("CREW BRIEFING: 등록번호·폴더·팀원·자격·교신 규칙을 담�
   assert.ok(text.includes("READBACK C-xxxx"));
   assert.ok(text.includes("in Korean. Never Japanese or Chinese. Messages to other sessions stay English (ATC-126)."));
   assert.ok(!text.includes("READBACK D-xxxx"));
+  assert.ok(!text.includes("EnterWorktree"), "STAND 문단은 백그라운드 세션에만(ATC-252)");
+  const bg = crewBriefing(a, "/home/c10/projects/vocado_nextjs", "shadow", true);
+  assert.ok(bg.includes("EnterWorktree name=<key>-<short name>"));
+  assert.ok(bg.includes("This rule wins over any repository rule that names a different worktree folder"));
+  assert.ok(bg.includes("Never use EnterWorktree path= outside <repo>/.claude/worktrees/"));
+  assert.ok(bg.includes("cp -al <repo>/node_modules <stand>/node_modules"));
+  assert.ok(bg.includes("ExitWorktree action=keep"));
   assert.ok(crewBriefing(a, null, "approval").includes("READBACK D-xxxx"));
 });
 

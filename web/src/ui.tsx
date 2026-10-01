@@ -1,6 +1,7 @@
 import type { Airport, Session } from "../../server/model.ts";
 import type { Job } from "../../server/job-state.ts";
 import { type Activity, activityParts } from "../../server/activity.ts";
+import { standNeedsHint } from "../../server/stand-hint.ts";
 import { callsign } from "./aviation.ts";
 import { type Index, sessionLocation } from "./derive.ts";
 import "./ui.css";
@@ -79,6 +80,7 @@ export function NeedsYou({ job, className = "" }: { job: Job | null | undefined;
   return (
     <span className={`needs-you mono ${className}`.trim()} title={[job.detail, job.since ? `since ${job.since.slice(11, 16)}Z` : "", "SUPERVISOR가 `claude attach <id>`로 붙어 답하거나 메시지를 보낸다"].filter(Boolean).join(" — ")}>
       NEEDS YOU{job.needs ? <span className="needs-you-text"> · {job.needs}</span> : null}
+      {standNeedsHint(job.needs) ? <span className="needs-you-text"> · {standNeedsHint(job.needs)}</span> : null}
     </span>
   );
 }

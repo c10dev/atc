@@ -34,6 +34,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 
 - 답하는 법: 터미널에서 `claude attach <job id>`로 그 세션에 붙어 답하거나, 그 세션에 메시지를 보낸다. 카드에 세션이 제안한 답(`제안된 답`)이 보이면 `복사`로 가져다 쓸 수 있다.
 - atc는 답을 보내지 않는다. 표시하고 알릴 뿐이고, 답할지는 사람이 정한다.
+- `approve Entering worktree`로 멈추면 `STAND outside .claude/worktrees — attach and approve; see CREW BRIEFING`이 같이 보인다. 팀이 `.claude/worktrees/` 밖으로 워크트리를 열려 한 것이다. `claude attach`로 붙어 승인하면 이어 간다. atc가 띄운 팀의 CREW BRIEFING에는 STAND를 `EnterWorktree name=…`으로 열라는 규칙이 들어 있어 보통은 멈추지 않는다.
 - 답을 받으면 세션이 `working`이 되어 표시와 경보가 저절로 사라진다. 이때는 흐린 글씨로 세션이 하는 일이 보인다.
 
 ## 세션이 멈췄을 때: AIRCRAFT health
