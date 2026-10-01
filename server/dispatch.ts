@@ -314,6 +314,10 @@ const localStamp = (iso: string) => {
 export const pairBlockedWhy = (id: string, until: string) => `24시간 안에 제안된 짝(${id}) — ${localStamp(until)}부터 다시`;
 // 거절 사유가 FLIGHT 자체의 문제인 칩. 이 중 하나라도 있으면 그 짝이 아니라 FLIGHT 전체를 보류한다.
 // wrong-aircraft(그 AIRCRAFT만의 문제)와 other, 칩 없음은 짝만 24시간 막는다.
+// 상위 이슈 제외 사유. planner와 syncOps(승인된 카드의 SUPERSEDED 사유, ATC-272)가 같은 문구를 쓴다
+export const parentWhyOf = (t: Ticket, tickets: Ticket[]) =>
+  `상위 이슈 — 하위 ${new Set([...t.children, ...tickets.filter((x) => x.parent === t.key).map((x) => x.key)]).size}건을 묶음`;
+
 export const FLIGHT_HOLD_CODES = ["already-done", "parent-issue", "waiting-on-prior", "needs-human", "no-priority", "out-of-repo"] as const;
 const chipLabel = (code: string) => REASON_CODES.find((r) => r.code === code)?.label ?? code;
 export const flightHeldWhy = (id: string, codes: string[], until: string) =>
@@ -525,8 +529,7 @@ export function planDispatch(
   const overlapHolders = files.holders.filter((h) => inFlight(h.flight));
   // 상위 이슈(하위 이슈를 묶는 컨테이너)는 그 자체로 작업 대상이 아니다.
   const parents = parentKeysOf(s.tickets);
-  const childrenOf = (t: Ticket) => new Set([...t.children, ...s.tickets.filter((x) => x.parent === t.key).map((x) => x.key)]).size;
-  const parentWhy = (t: Ticket) => `상위 이슈 — 하위 ${childrenOf(t)}건을 묶음`;
+  const parentWhy = (t: Ticket) => parentWhyOf(t, s.tickets);
 
   // ── AIRCRAFT ──
   // 진행 중인 제안을 STAND가 필요한 것과 없는 것(SURVEY·CHECK)으로 가른다. 모르는 FLIGHT는 STAND가 필요한 쪽으로 본다.

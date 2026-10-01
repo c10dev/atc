@@ -66,6 +66,8 @@ OCC가 Linear에 쓸 변경을 초안으로 남긴다. 지금은 S1이라 Linear
 
 ## RECALL: 보낸 FLIGHT PLAN 거둬들이기
 
+승인했지만 아직 보내지 않은 카드는 진행 중 목록의 **CANCEL…**을 누르고 확인한다(보낸 뒤에는 RECALL). 카드는 `SUPERVISOR가 취소함`으로 닫히고 같은 짝은 24시간 다시 제안되지 않는다.
+
 2b에서 FLIGHT PLAN을 보냈거나 CAPTAIN이 READBACK했는데 거둬들여야 하면(우선순위가 바뀜, 잘못 배정됨 등), DISPATCH 탭 진행 중 목록의 **RECALL…**을 누르고 사유를 적는다.
 
 - OCC가 CAPTAIN에게 RECALL 문구를 보낸다. CAPTAIN은 작업을 멈추고 STAND(워크트리)를 정리하지 않은 채 두고 "READBACK D-xxxx RECALL"로 답한다. 그러면 RECALLED가 된다.

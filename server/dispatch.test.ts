@@ -1265,3 +1265,35 @@ test("파일 겹침 holder: ARRIVED한 FLIGHT의 파일은 더 겹치지 않는�
   assert.equal(factor(after, "VOC-41", "overlap")?.value, 0); // LOGBOOK ARRIVED: 더 겹치지 않는다
   assert.deepEqual(after.overlapHolds, []);
 });
+
+test("승인된 카드의 FLIGHT가 상위 이슈가 되면 SUPERSEDED(상위 이슈 사유), 하위가 없으면 그대로(ATC-272)", async () => {
+  const { fold, syncOps } = await import("./proposals.ts");
+  const at = new Date(NOW - 60_000).toISOString();
+  const existing = fold([
+    { op: "create", id: "D-0001", at, kind: "ASSIGN", flight: "VOC-270", aircraft: "c", aircraftName: "TEAM_C", airport: "VCDO", score: 1, factors: [] },
+    { op: "approve", id: "D-0001", at },
+  ]);
+  const plan = {
+    at, assign: [], release: [], hold: [], excluded: [], slots: [],
+    aircraft: [{ id: "c", name: "TEAM_C", callsign: "CHARLIE", airport: "VCDO", available: true, reason: "", reserved: null }],
+  };
+  const sync = (tickets: Ticket[]) => syncOps(existing, plan, { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 2);
+  assert.deepEqual(sync([ticket("VOC-270")]), []);
+  // 하위가 parent로 지목하는 경우
+  const byChild = sync([ticket("VOC-270"), ticket("VOC-271", { parent: "VOC-270" })]);
+  assert.deepEqual(byChild.map((o) => `${o.op}:${o.id}`), ["supersede:D-0001"]);
+  assert.equal((byChild[0] as { reason: string }).reason, "상위 이슈 — 하위 1건을 묶음");
+  // Linear children으로 지목되는 경우
+  const byChildren = sync([ticket("VOC-270", { children: ["VOC-271", "VOC-272"] })]);
+  assert.equal((byChildren[0] as { reason: string }).reason, "상위 이슈 — 하위 2건을 묶음");
+});
+
+test("CANCEL: approved만 SUPERSEDED할 수 있다(sent 이후는 canApply가 막는다, ATC-272)", async () => {
+  const { canApply, fold } = await import("./proposals.ts");
+  const at = new Date(NOW).toISOString();
+  const base = [{ op: "create" as const, id: "D-0001", at, kind: "ASSIGN" as const, flight: "VOC-1", aircraft: "c", aircraftName: "TEAM_C", airport: "VCDO", score: 1, factors: [] }];
+  const approved = fold([...base, { op: "approve", id: "D-0001", at }])[0];
+  const sent = fold([...base, { op: "approve", id: "D-0001", at }, { op: "send", id: "D-0001", at, message: "m" }])[0];
+  assert.equal(canApply(approved, "supersede"), true);
+  assert.equal(canApply(sent, "supersede"), false);
+});

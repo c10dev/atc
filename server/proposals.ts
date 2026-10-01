@@ -26,6 +26,7 @@ import {
   loadDispatchConfig,
   mccAirportNow,
   NO_PRIORITY_WHY,
+  parentWhyOf,
   noProjectWhy,
   type Plan,
   PRIORITY_NAME,
@@ -57,7 +58,7 @@ import { type DispatchMarks, dispatchMarksOf, loadJudges, readJudgeLines } from 
 import { loadLogbook, loadPricedLogbook } from "./logbook.ts";
 import type { FuelWatch } from "./fuel-watch.ts";
 import { confirmCodesOf, confirmReasonOf, type Preflight, preflightOf, preflightOps } from "./preflight.ts";
-import type { Snapshot, Ticket } from "./model.ts";
+import { parentKeysOf, type Snapshot, type Ticket } from "./model.ts";
 import { composeReason, parseReasonCodes, REASON_CODES, ReasonCodeError, reasonCountsOf } from "./reasons.ts";
 import { readiness2bOf, readinessFiles } from "./readiness.ts";
 import { record } from "./recorder.ts";
@@ -144,6 +145,8 @@ export const AIRCRAFT_WHY = "AIRCRAFT 불가";
 export const STOPPED_WHY = "AIRCRAFT 멈춤";
 // 보냈는데 닿지 않아(ATC-183) AIRCRAFT가 더는 후보가 아니라 닫힘. SUPERVISOR 판정이 아니라 24시간 짝 규칙을 시작하지 않는다
 export const DELIVERY_FAILED_WHY = `${AIRCRAFT_WHY}: 전달 실패`;
+// SUPERVISOR가 승인된 카드를 화면에서 취소함(ATC-272). 사람 판정이라 24시간 짝 규칙이 시작된다
+export const CANCELLED_WHY = "SUPERVISOR가 취소함";
 // 받을 세션이 없어 FLIGHT PLAN을 보내지 않는다(ATC-183)
 export const NO_SESSION_SEND_WHY = "AIRCRAFT 세션 없음 — 보내지 않음 (LAUNCH 필요)";
 
@@ -560,6 +563,7 @@ export function syncOps(
     const reg = regOf(p);
     return reg ? aircraftOf.get(reg) : undefined;
   };
+  const parents = parentKeysOf(s.tickets);
   const releasing = new Set(plan.release.map((r) => r.flight));
   const standOf = new Map(s.workspaces.filter((w) => w.ticketKey).map((w) => [w.ticketKey!, w.path]));
   // 계획이 이미 FLIGHT를 뺀 이유(상위 이슈, HOLD, 라벨, STAND 있음 …). SUPERSEDED 사유로 그대로 쓴다:
@@ -577,6 +581,7 @@ export function syncOps(
     // FLIGHT가 이미 끝났거나 누가 작업 중이면 AIRCRAFT 사정보다 그것이 먼저다
     const done = worked(p.flight);
     if (done) return done;
+    if (parents.has(p.flight)) return parentWhyOf(stateOf.get(p.flight)!, s.tickets);
     const ac = acOf(p);
     if (ac?.stopped && !canTakeNow(ac, t)) return `${STOPPED_WHY} — ${ac.name} — ${ac.reason}`;
     if (!ac || !canTakeNow(ac, t)) return p.undelivered ? `${DELIVERY_FAILED_WHY} — ${p.undelivered.reason}` : `${AIRCRAFT_WHY}: ${ac?.reason ?? "세션 없음"}`;
@@ -596,6 +601,7 @@ export function syncOps(
   // 승인됐지만 아직 안 보낸 ASSIGN이 여전히 유효한가(FLIGHT가 Todo이고 AIRCRAFT가 배정 가능)
   const stillValid = (p: Proposal) =>
     !isHeld(p) &&
+    !parents.has(p.flight) &&
     stateOf.get(p.flight)?.stateType === "unstarted" &&
     !stateOf.get(p.flight)?.takenBy &&
     !worked(p.flight) &&
@@ -1047,7 +1053,7 @@ const baseOfFleet = (fleet: ReturnType<typeof loadFleet>, teamPattern: string) =
 
 // POST /api/dispatch/proposals/:id/<동작>. 2b 점검표(readiness.ts)도 이 목록으로 RECALL·ARRIVED 창구를 확인한다
 export const DISPATCH_ACTIONS = [
-  "verdict", "note", "briefing", "hold", "unhold", "requeue", "confirm-hold", "codes", "approve", "reject", "release", "accept", "decline", "standby", "await-supervisor", "undelivered", "recall", "recall-send", "recalled", "arrived",
+  "verdict", "note", "briefing", "hold", "unhold", "requeue", "confirm-hold", "codes", "approve", "reject", "release", "accept", "decline", "standby", "await-supervisor", "undelivered", "cancel", "recall", "recall-send", "recalled", "arrived",
 ] as const;
 // HELD 제안에 SUPERVISOR 판정을 받지 않는다(PREFLIGHT, ATC-3): 대기열로 돌린 뒤 판정하거나 FLIGHT 보류를 확정한다
 const JUDGE_ACTIONS: readonly DispatchAction[] = ["verdict", "approve", "reject"];
@@ -1319,6 +1325,13 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
         if (!reason) return c.json({ error: "undelivered에는 사유(reason)가 필요함" }, 400);
         if (reason.length > 300) return c.json({ error: "사유는 300자 이내" }, 400);
         append([{ op: "undelivered", id, at, reason }]);
+      } else if (name === "cancel") {
+        // 승인됐지만 아직 안 보낸 카드(approved)를 SUPERVISOR가 닫는다(ATC-272). 화면에서만(관제 세션의 CLI는 Origin이 없다). 보낸 뒤는 RECALL
+        if (!fromThisApp(c)) return c.json({ error: "CANCEL은 SUPERVISOR가 화면에서 한다" }, 403);
+        if (p.status !== "approved") return c.json({ error: `CANCEL은 승인된(approved) 카드에만 — 지금 ${p.status}${p.status === "sent" ? ". 보낸 FLIGHT PLAN은 RECALL" : ""}` }, 409);
+        const bad = closed("supersede");
+        if (bad) return bad;
+        append([{ op: "supersede", id, at, reason: CANCELLED_WHY }]);
       } else if (name === "recall") {
         // SUPERVISOR만(화면·API). OCC의 atcctl에는 이 명령이 없다. 출발 중지와 상관없이 받는다(회수는 안전 쪽 동작)
         const reason = reasonOf(body);
