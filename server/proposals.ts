@@ -42,6 +42,7 @@ import {
 } from "./dispatch.ts";
 import { teamOfKey } from "./linear-keys.ts";
 import { fleetKeyOf, regKey } from "./registration.ts";
+import { unreachableWhy } from "./account-reach.ts";
 import { RESTARTING_TEXT } from "./restarting.ts";
 import { applyGroundStops, enforcedStops, groundStopWhy } from "./atfm.ts";
 import { classLabel, classOf, needsStand } from "./crew.ts";
@@ -509,17 +510,30 @@ export function noLiveSessionWhyOf(p: Pick<Proposal, "launch" | "registration" |
   return `${p.aircraftName ?? reg}: ${NO_SESSION_SEND_WHY}`;
 }
 
+// ACCOUNT 사이 전달(ATC-251): OCC와 받을 AIRCRAFT의 관찰한 ACCOUNT가 다르면 FLIGHT PLAN이 닿지 않는다. 한쪽이라도 모르면 막지 않는다
+export function crossAccountWhyOf(p: Pick<Proposal, "launch" | "registration" | "aircraftName"> & Partial<Pick<Proposal, "aircraft">>, s: Pick<Snapshot, "sessions">, teamPattern?: string): string | null {
+  if (p.launch) return null;
+  const reg = regOfProposal(p, teamPattern);
+  if (!reg) return null;
+  const live = (x: Snapshot["sessions"][number]) => x.status !== "dead";
+  const to = s.sessions.find((x) => live(x) && regKey(x.name, teamPattern) === reg);
+  const from = s.sessions.find((x) => live(x) && x.name === "OCC");
+  return unreachableWhy({ fromName: "OCC", from: from?.account, toName: p.aircraftName ?? reg, to: to?.account });
+}
+
 // RESTARTING(ATC-91): /clear 뒤 첫 메시지를 기다리는 AIRCRAFT의 열린·승인된 ASSIGN → 카드가 보일 글.
 // LAUNCHING(ATC-129): LAUNCH한 launch 카드의 AIRCRAFT에 아직 세션이 없다(계획에 absent로 남음)
-export function waitingOf(proposals: Proposal[], plan: Pick<Plan, "aircraft">, teamPattern?: string): Record<string, string> {
+export function waitingOf(proposals: Proposal[], plan: Pick<Plan, "aircraft">, teamPattern?: string, sessions?: Pick<Snapshot, "sessions">): Record<string, string> {
   const restarting = new Set(plan.aircraft.filter((a) => a.restarting).map((a) => regOfAircraft(a, teamPattern)));
   const absent = new Set(plan.aircraft.filter((a) => a.launch).map((a) => regOfAircraft(a, teamPattern)));
   const out: Record<string, string> = {};
+  let crossWhy: string | null;
   for (const p of proposals) {
     if (p.kind !== "ASSIGN" || (p.status !== "proposed" && p.status !== "approved")) continue;
     const reg = regOfProposal(p, teamPattern) ?? "";
     if (restarting.has(reg)) out[p.id] = RESTARTING_TEXT;
     else if (p.status === "approved" && p.launched?.ok && absent.has(reg)) out[p.id] = LAUNCHING_TEXT;
+    else if (sessions && p.kind === "ASSIGN" && (crossWhy = crossAccountWhyOf(p, sessions, teamPattern))) out[p.id] = `ACCOUNT 불일치 — ${crossWhy}`; // ATC-251: 보내기 전에 카드가 먼저 말한다
   }
   return out;
 }
@@ -1095,7 +1109,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
         return [t.key, { ...info, cls: classLabel(cls), clsDefault: !cls.explicit.type && !cls.explicit.wake, tails: [...tailsOf(t)] }];
       }),
     );
-    const waiting = waitingOf(proposals, plan, cfg.teamPattern);
+    const waiting = waitingOf(proposals, plan, cfg.teamPattern, s);
     // LAUNCH on approve(ATC-129): 상한은 살아 있는 백그라운드 세션 + 승인됐지만 아직 세션이 없는 launch 카드
     const launchCap = launchCapOf(s.sessions, proposals, launcher?.max ?? 0, cfg.teamPattern);
     return c.json({
@@ -1278,7 +1292,8 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
         if (p.kind !== "ASSIGN") return c.json({ error: "RELEASE 제안은 보내지 않는다" }, 400);
         // 재송신: 이미 보낸 제안이면 같은 문구를 다시 돌려준다. 받을 세션이 없으면 그것도 보내지 않는다(ATC-183)
         if (p.status === "sent") {
-          const gone = noLiveSessionWhyOf(p, await getSnapshot(), loadDispatchConfig().teamPattern);
+          const snap = await getSnapshot();
+          const gone = noLiveSessionWhyOf(p, snap, loadDispatchConfig().teamPattern) ?? crossAccountWhyOf(p, snap, loadDispatchConfig().teamPattern);
           if (gone) return c.json({ error: gone }, 409);
           return c.json({ proposal: p, sendTo: p.aircraftName, message: p.message });
         }
@@ -1287,7 +1302,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
         if (stop) return c.json({ error: `${groundStopWhy(stop)} — 풀릴 때까지 보내지 않는다` }, 409);
         const s = await getSnapshot();
         // /clear 뒤 첫 메시지를 기다리는 AIRCRAFT에는 아직 받을 세션이 없다(ATC-91). 승인은 그대로 두고 새 세션이 뜬 뒤에 보낸다
-        const waits = restartingWhyOf(p, s, loadDispatchConfig().teamPattern) ?? launchReleaseWhyOf(p, s, loadDispatchConfig().teamPattern) ?? noLiveSessionWhyOf(p, s, loadDispatchConfig().teamPattern);
+        const waits = restartingWhyOf(p, s, loadDispatchConfig().teamPattern) ?? launchReleaseWhyOf(p, s, loadDispatchConfig().teamPattern) ?? noLiveSessionWhyOf(p, s, loadDispatchConfig().teamPattern) ?? crossAccountWhyOf(p, s, loadDispatchConfig().teamPattern);
         if (waits) return c.json({ error: waits }, 409);
         const bad = closed("send");
         if (bad) return bad;

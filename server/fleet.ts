@@ -23,6 +23,7 @@ import type { Activity } from "./activity.ts";
 import { flightDetailOf, liveViewOf } from "./fleet-live.ts";
 import { accountFolders, observedLabelsOn } from "./accounts.ts";
 import { effectiveLaunchAccount, launchSettingOf } from "./launch-account.ts";
+import { launchSplitWarning, unreachableAircraft, unreachableAircraftWarning } from "./account-reach.ts";
 import { readRecords } from "./recorder.ts";
 
 export { flightDetailOf };
@@ -485,13 +486,16 @@ function languageOf(sessions: Snapshot["sessions"], reg: string, teamPattern: st
 }
 
 // LAUNCH ACCOUNT의 보이는 모양(ATC-239): 등록부에 있는 라벨만 설정으로 보이고, 없는 라벨은 경고로
-export function launchAccountView(fleet: Pick<FleetFile, "launchAccount">) {
+// ATC-251: AIRCRAFT용과 관제 세션용이 갈라졌거나, 돌고 있는 AIRCRAFT가 OCC와 다른 ACCOUNT에 있으면 경고(OCC가 닿지 못한다)
+export function launchAccountView(fleet: Pick<FleetFile, "launchAccount">, sessions: Pick<Snapshot, "sessions">["sessions"] = [], teamPattern?: string) {
   const folders = accountFolders();
   const reg = observedLabelsOn(folders) ? folders.map((f) => f.label) : [];
   const setting = launchSettingOf(fleet.launchAccount);
   const a = effectiveLaunchAccount(setting, "aircraft", reg);
   const c = effectiveLaunchAccount(setting, "control", reg);
-  return { aircraft: a.label, control: c.label, warnings: [a.warning, c.warning].filter((w): w is string => w !== null) };
+  const occ = sessions.find((x) => x.status !== "dead" && x.name === "OCC")?.account;
+  const stray = unreachableAircraft(occ, sessions.filter((x) => x.status !== "dead" && registrationOf(x.name, teamPattern)).map((x) => ({ name: registrationOf(x.name, teamPattern) as string, account: x.account })));
+  return { aircraft: a.label, control: c.label, warnings: [a.warning, c.warning, launchSplitWarning({ aircraft: a.label, control: c.label }), unreachableAircraftWarning(occ, stray)].filter((w): w is string => w !== null) };
 }
 
 // contextOf: REGISTRATION → CONTEXT SIZE(ATC-69). fuel-run.ts가 이 파일을 부르므로 index.ts가 넘긴다
@@ -516,7 +520,7 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>, cont
     return c.json({
       ratings: RATINGS,
       fuelAccounts: s.fuelAccounts ?? [], // ACCOUNT마다 FUEL과 구성원(AIRCRAFT·관제 세션, ATC-60)
-      launchAccount: launchAccountView(fleet), // LAUNCH ACCOUNT(ATC-239): 지금 설정과 경고. 머리에 작게 보인다
+      launchAccount: launchAccountView(fleet, s.sessions, cfg.teamPattern), // LAUNCH ACCOUNT(ATC-239): 지금 설정과 경고. 머리에 작게 보인다
       defaults: fleet.defaults,
       projects,
       aircraft,
