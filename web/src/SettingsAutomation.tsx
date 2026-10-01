@@ -230,6 +230,17 @@ const REVIEW_WARN = {
   deepseek: "⚠ 보안 PR도 REVIEW 세션(Claude Sonnet)이 리뷰한다. .env·비밀·키 경로와 FLIGHT 없는 PR은 계속 보내지 않는다. 저장 값 이름 deepseek은 옛 이름이다.",
 } as const;
 const REVIEW_LABELS = { deepseek: reviewLabel("deepseek") };
+const AUTO_APPROVE_WARN = {
+  off: "off(기본): ASSIGN과 SCHEDULE 초안은 SUPERVISOR가 하나씩 누른다.",
+  shadow: "shadow: 서버가 CROSSCHECK가 agree한 카드를 \"승인했을 것\"이라고 auto-approve.jsonl에만 적는다. 아무것도 승인하지 않는다.",
+  on: "⚠ 서버가 CROSSCHECK가 agree한 열린 ASSIGN(LAUNCH 아님)과 SCHEDULE 초안을 스스로 승인한다(via auto). blind 표본·HELD·disagree·주의(caution) 카드와 FUEL hold인 AIRCRAFT는 SUPERVISOR 몫이고, 하루 상한을 넘으면 기다린다.",
+} as const;
+const AUTO_LAUNCH_WARN = {
+  off: "off(기본): launch 카드(ABSENT·RESUME)는 SUPERVISOR가 화면에서 승인한다.",
+  shadow: "shadow: 승인과 LAUNCH 조건을 모두 갖춘 launch 카드를 \"띄웠을 것\"이라고 auto-approve.jsonl에만 적는다. 아무것도 띄우지 않는다.",
+  on: "⚠ 서버가 launch 카드를 스스로 승인하고 세션을 띄운다(사용량을 쓴다). CROSSCHECK agree, blind·HELD 아님, 상한(ATC_MAX_LAUNCHED)이 안 참, ACCOUNT가 FUEL hold 아님, LAUNCH 막힘 아님, 실패한 REGISTRATION은 쉼, 하루 상한 안일 때만.",
+} as const;
+
 const fuelWarn = (f: { infoPct: number; holdPct: number }) =>
   ({
     off: `off(기본): FUEL은 FLEET 줄과 TOWER·OCC INFO(${f.infoPct}%)에만 보인다. statusline hook이 있어야 값이 들어온다.`,
@@ -521,6 +532,37 @@ export function OperationsSettings({ server, save }: { server: Loaded; save: Sav
               </>
             );
           }}
+        </ServerRows>
+      </Block>
+
+      <Block code="AUTO APPROVE" label="일치 기반 자동 승인(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) =>
+            s.dispatchAuto ? (
+              <>
+                <EditRow
+                  label="ASSIGN·SCHEDULE"
+                  env="autoApprove"
+                  value={s.dispatchAuto.approve}
+                  note={`dispatch.json · 하루 ${s.dispatchAuto.approveMax}건까지(굴러가는 24시간) · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈`}
+                  input={{ kind: "select", options: ["off", "shadow", "on"] }}
+                  guard={guardOf("autoApprove", s.dispatchAuto.approve, AUTO_APPROVE_WARN)}
+                  onSave={(v) => save({ autoApprove: v as "off" | "shadow" | "on" })}
+                />
+                <ModeLines modes={["off", "shadow", "on"] as const} current={s.dispatchAuto.approve} lines={AUTO_APPROVE_WARN} />
+                <EditRow
+                  label="launch 카드"
+                  env="autoApproveLaunch"
+                  value={s.dispatchAuto.launch}
+                  note={`dispatch.json · 하루 ${s.dispatchAuto.launchMax}번까지, 실패한 REGISTRATION은 ${s.dispatchAuto.backoffMin}분 쉼 · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈`}
+                  input={{ kind: "select", options: ["off", "shadow", "on"] }}
+                  guard={guardOf("autoApproveLaunch", s.dispatchAuto.launch, AUTO_LAUNCH_WARN)}
+                  onSave={(v) => save({ autoApproveLaunch: v as "off" | "shadow" | "on" })}
+                />
+                <ModeLines modes={["off", "shadow", "on"] as const} current={s.dispatchAuto.launch} lines={AUTO_LAUNCH_WARN} />
+              </>
+            ) : null
+          }
         </ServerRows>
       </Block>
 

@@ -19,8 +19,9 @@ export interface Crosscheck {
 // 옛 기록에는 없다(undefined 그대로 — 채워 넣지 않는다).
 // "atfm"은 3단계 자동 판정이다(서버 안에서만 붙인다). 모든 사람 판정 점검과 일치율에서 뺀다(docs/atfm.md 원칙 2).
 // "preflight"는 SUPERVISOR가 PREFLIGHT HOLD를 확정한 기록이다(ATC-3). 판정이 아니라 사람 판정 점검에서 뺀다.
-export type Via = "crosscheck" | "manual" | "atfm" | "preflight";
-// API 입력: "crosscheck"만 그대로, 나머지(없음·"atfm" 포함)는 manual — 밖에서 atfm이라고 적을 수 없다
+// "auto"는 서버가 CROSSCHECK 일치만 보고 스스로 승인한 기록이다(ATC-334, docs/autonomy.md C14). 사람 판정이 아니라 모든 사람 판정 점검과 일치율에서 뺀다.
+export type Via = "crosscheck" | "manual" | "atfm" | "preflight" | "auto";
+// API 입력: "crosscheck"만 그대로, 나머지(없음·"atfm"·"auto" 포함)는 manual — 밖에서 atfm이나 auto라고 적을 수 없다
 export const viaOf = (body: { via?: unknown }): Via => (body.via === "crosscheck" ? "crosscheck" : "manual");
 
 // 사람이 내린 판정: shadow의 agreed/disagreed, approval의 approved/rejected

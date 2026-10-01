@@ -353,6 +353,24 @@ What was built:
 
 Not solved: a worker that has just crashed is pid-less for the seconds before the daemon respawns it, so a `blocked` row can look STALE for that moment (the same exposure `done` rows had). A LAUNCH approved in that window could start a second session. This was not measured further.
 
+### Agreement-based approval as built (ATC-334)
+
+[autonomy.md](autonomy.md) C14 and WO-16 steps 1 and 2: the server approves a card by itself when CROSSCHECK agrees, so the SUPERVISOR no longer clicks each one. Two switches in `dispatch.json`, both **off by default**, changed only from the settings window (OPERATIONS, "AUTO APPROVE", `PUT /api/settings` behind the `fromThisApp` check). There is no `atcctl` command and no other route, so a control session cannot turn it on (K3); the `on` choice asks for a confirmation like the other ⚠ switches.
+
+| Switch | Values | What it covers |
+|---|---|---|
+| `autoApprove` | `off`, `shadow`, `on` | An open ASSIGN card that is not a launch card, and a SCHEDULE draft |
+| `autoApproveLaunch` | `off`, `shadow`, `on` | A launch card (ABSENT AIRCRAFT or RESUME): approve and LAUNCH in the same step |
+
+- **`off`** changes nothing. **`shadow`** only appends `would-approve` or `would-launch` lines to `auto-approve.jsonl` (once per card) and approves nothing. **`on`** approves with `via: "auto"` (a new value that no API can send; the FLIGHT RECORDER line says `by: "auto"`) and writes an `approve` line to `auto-approve.jsonl`.
+- **A card qualifies** only when DISPATCH is in `approval` mode, the card is open, SETTLED and not HELD, its CROSSCHECK mark is `agree`, it is **not in the blind sample** (the same 1-in-5 hash as the SUPERVISOR's, `server/blind.ts`), the OCC has not put a caution on it and its AIRCRAFT's ACCOUNT is not under a FUEL hold. The pure rule is `assignWhyNot` in `server/auto-approve.ts`. Disagree cards, blind cards, HELD cards and cautions stay with the SUPERVISOR exactly as before.
+- **SCHEDULE drafts** follow the same rule (agree, not blind, SCHEDULE in `approval` mode); TARGET and ROUTE (shadow-only kinds) are never approved. Release and apply stay with OCC as before.
+- **Daily cap:** at most `autoApproveMax` (default 40) automatic approvals in any rolling 24 hours, ASSIGN and SCHEDULE together; the 41st card waits for the SUPERVISOR. `shadow` counts its would-lines, so it shows what the cap would do.
+- **Launch cards** need every one of these on top of the common conditions: `launchCapOf` not full (`ATC_MAX_LAUNCHED`), the AIRCRAFT not `stuck` (ATC-213), the REGISTRATION not in back-off (a LAUNCH for it failed in the last `autoLaunchBackoffMin`, default 30, whoever clicked), and fewer than `autoLaunchMax` automatic LAUNCHes (default 6) in 24 hours. The approval and LAUNCH go through the same `approveLaunch`, called inside the server (no HTTP route); `POST /api/dispatch/proposals/:id/approve` keeps its `fromThisApp` check for launch cards. The `launch` line and the FLIGHT RECORDER carry `by: "auto"`. A failed LAUNCH closes the card as SUPERSEDED as always and starts the back-off.
+- **Not human decisions:** `via: "auto"` is left out of `humanOf`, the 2b gate (20 verdicts at 80%), the CROSSCHECK match rate and the one-click rate, like `atfm` and `preflight`; SCHEDULE's gate leaves it out too.
+- **Where it runs:** `server/auto-approve-run.ts`, once a minute from `index.ts`, one pass at a time. It re-reads the card right before writing, so a click that came first wins.
+- **Not in this step:** FLEET PLAN, CREW CHANGE and network kinds (later WO-16 steps).
+
 ## 7. What to add to atc
 
 | Where | What |

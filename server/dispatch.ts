@@ -57,7 +57,20 @@ export interface DispatchConfig {
   restartGraceMin: number;
   // SETTLED(ATC-117): 열린 제안이 이만큼(분) 지내야 OCC 메모·BRIEFING과 CROSSCHECK mark를 받는다. 승인된 제안은 곧장. 0이면 예전처럼 곧장
   settleMin: number;
+  // 일치 기반 자동 승인(ATC-334, docs/autonomy.md C14). 스위치는 설정 창(fromThisApp)에서만 바꾼다 — atcctl 명령이 없다(K3). 기본 off
+  autoApprove: AutoMode; // ASSIGN(LAUNCH 아님)과 SCHEDULE 초안: CROSSCHECK가 agree면 서버가 승인(via "auto")
+  autoApproveLaunch: AutoMode; // launch 카드(ABSENT·RESUME): 상한·FUEL hold·막힘·실패 뒤 대기·하루 상한을 모두 지킬 때만
+  autoApproveMax: number; // 자동 승인 하루(굴러가는 24시간) 상한. ASSIGN과 SCHEDULE을 같이 센다
+  autoLaunchMax: number; // 자동 LAUNCH 하루 상한
+  autoLaunchBackoffMin: number; // LAUNCH가 실패한 REGISTRATION은 이만큼(분) 자동으로 다시 승인하지 않는다
 }
+export type AutoMode = "off" | "shadow" | "on";
+export const AUTO_MODES: readonly AutoMode[] = ["off", "shadow", "on"];
+// 모르는 값은 off — 깨진 파일이 자동 승인을 켜지 않게
+export const autoModeOf = (v: unknown): AutoMode => (AUTO_MODES.includes(v as AutoMode) ? (v as AutoMode) : "off");
+export const DEFAULT_AUTO_APPROVE_MAX = 40;
+export const DEFAULT_AUTO_LAUNCH_MAX = 6;
+export const DEFAULT_AUTO_LAUNCH_BACKOFF_MIN = 30;
 export type ExternalReviewSecurity = "exclude" | "deepseek";
 export const EXTERNAL_REVIEW_SECURITY: readonly ExternalReviewSecurity[] = ["exclude", "deepseek"];
 
@@ -83,6 +96,11 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   fuel: DEFAULT_FUEL,
   restartGraceMin: DEFAULT_RESTART_GRACE_MIN,
   settleMin: DEFAULT_SETTLE_MIN,
+  autoApprove: "off",
+  autoApproveLaunch: "off",
+  autoApproveMax: DEFAULT_AUTO_APPROVE_MAX,
+  autoLaunchMax: DEFAULT_AUTO_LAUNCH_MAX,
+  autoLaunchBackoffMin: DEFAULT_AUTO_LAUNCH_BACKOFF_MIN,
 };
 
 const CONFIG_FILE = join(config.stateDir, "dispatch.json");
@@ -113,6 +131,18 @@ export function saveFuelHold(hold: boolean, file = CONFIG_FILE) {
   renameSync(tmp, file);
 }
 
+// autoApprove·autoApproveLaunch만 바꿔 저장한다(설정 창, ATC-334). 다른 설정은 그대로 둔다
+export function saveAutoApprove(key: "autoApprove" | "autoApproveLaunch", mode: AutoMode, file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, [key]: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
 // mode만 바꿔 저장한다. 사용자가 적어 둔 다른 설정은 그대로 둔다.
 export function saveDispatchMode(mode: DispatchConfig["mode"], file = CONFIG_FILE) {
   let user: Record<string, unknown> = {};
@@ -136,6 +166,8 @@ export function notesConfigOf(raw: unknown): NotesConfig {
   };
 }
 
+const nonNegInt = (v: unknown, d: number) => (typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : d);
+
 export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
   try {
     const user = JSON.parse(readFileSync(file, "utf8"));
@@ -158,6 +190,12 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       restartGraceMin: typeof user.restartGraceMin === "number" && Number.isFinite(user.restartGraceMin) && user.restartGraceMin > 0 ? user.restartGraceMin : d.restartGraceMin,
       // 0은 켜지 않는다는 뜻이라 받는다. 음수·숫자가 아닌 값은 기본으로
       settleMin: typeof user.settleMin === "number" && Number.isFinite(user.settleMin) && user.settleMin >= 0 ? user.settleMin : d.settleMin,
+      // 자동 승인(ATC-334): 모르는 값은 off, 상한은 0 이상 정수(0이면 자동으로는 아무것도 승인하지 않는다), 아니면 기본으로
+      autoApprove: autoModeOf(user.autoApprove),
+      autoApproveLaunch: autoModeOf(user.autoApproveLaunch),
+      autoApproveMax: nonNegInt(user.autoApproveMax, d.autoApproveMax),
+      autoLaunchMax: nonNegInt(user.autoLaunchMax, d.autoLaunchMax),
+      autoLaunchBackoffMin: nonNegInt(user.autoLaunchBackoffMin, d.autoLaunchBackoffMin),
     };
   } catch {
     return DEFAULT_DISPATCH_CONFIG;
