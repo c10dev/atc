@@ -1,6 +1,6 @@
 # GLOBE: atc's AIRCRAFT over a 3D globe, and a SPACE theme
 
-Status (2026-10-01): design draft from the idea [#280](https://github.com/chaehy5665/atc/issues/280). Nothing is built. The SUPERVISOR decided the route model, the tab, the priority and the split between atc and the Mac app on 2026-10-01 (section 9). Work orders follow section 7 (G1–G8): parent [ATC-253](https://linear.app/vocado/issue/ATC-253), G1 [ATC-254](https://linear.app/vocado/issue/ATC-254), G2 [ATC-260](https://linear.app/vocado/issue/ATC-260), G3 [ATC-263](https://linear.app/vocado/issue/ATC-263), G4 [ATC-261](https://linear.app/vocado/issue/ATC-261), G5 [ATC-262](https://linear.app/vocado/issue/ATC-262), G6 [ATC-264](https://linear.app/vocado/issue/ATC-264), G7 [ATC-268](https://linear.app/vocado/issue/ATC-268), G8 [ATC-269](https://linear.app/vocado/issue/ATC-269). Related RADIO step: [ATC-267](https://linear.app/vocado/issue/ATC-267) (PREFLIGHT frequency). All are in Backlog until the SUPERVISOR releases G1.
+Status (2026-10-01): design draft from the idea [#280](https://github.com/chaehy5665/atc/issues/280). Nothing is built. The SUPERVISOR decided the route model, the tab, the priority and the split between atc and the Mac app on 2026-10-01 (section 9). Work orders follow section 7 (G1–G8): parent [ATC-253](https://linear.app/vocado/issue/ATC-253), G1 [ATC-254](https://linear.app/vocado/issue/ATC-254), G2 [ATC-260](https://linear.app/vocado/issue/ATC-260), G3 [ATC-263](https://linear.app/vocado/issue/ATC-263), G4 [ATC-261](https://linear.app/vocado/issue/ATC-261), G5 [ATC-262](https://linear.app/vocado/issue/ATC-262), G6 [ATC-264](https://linear.app/vocado/issue/ATC-264), G7 [ATC-268](https://linear.app/vocado/issue/ATC-268), G8 [ATC-269](https://linear.app/vocado/issue/ATC-269), G9 [ATC-302](https://linear.app/vocado/issue/ATC-302) (world tour, 3.2). Related RADIO step: [ATC-267](https://linear.app/vocado/issue/ATC-267) (PREFLIGHT frequency). All are in Backlog until the SUPERVISOR releases G1.
 
 **LANDING tier of G1–G4: `auto`.** GLOBE is a read-only screen, a pure module and one read-only route (`GET /api/globe`). It adds no route that writes, no state file and no package (section 2, principle 4). G5 and G6 are in the atc-app repository, where the SUPERVISOR merges every PR.
 
@@ -39,12 +39,33 @@ Verified in the code on `origin/main` (2026-10-01).
 - **Other AIRPORTs** sit around the hub at a bearing and a distance from a stable hash of the AIRPORT `id` (distance 12°–30° of arc, bearing anywhere). A pure layout nudges AIRPORTs that land closer than a minimum separation (order by `id`, so the nudge is stable). The SUPERVISOR may drag an AIRPORT to another place; the override is saved in `localStorage` by AIRPORT `id`. Closed and missing AIRPORTs are not drawn.
 - Each AIRPORT is drawn as a small aerodrome symbol with its four-letter code, and a short runway whose heading also comes from the hash.
 
-### 3.2 A FLIGHT is a circuit from its AIRPORT and back
+### 3.2 A FLIGHT is a trip from its AIRPORT to a real airport (world tour, G9)
 
-Decided (section 8): a FLIGHT departs its AIRPORT and lands at the same AIRPORT, as it does in atc (work starts on a STAND and ends in that AIRPORT's main branch). Its route is a closed loop: **departure → outbound leg → turn point → inbound leg → IAF** (initial approach fix) **→ final → runway → gate**.
+Decided 2026-10-01 (section 9). This replaces the first model, in which a FLIGHT flew a circuit from its AIRPORT and back. G2 built that circuit ("G2 as built"), and it stays on screen until G9 ([ATC-302](https://linear.app/vocado/issue/ATC-302)) lands. The new model:
 
-- The outbound bearing comes from a hash of the FLIGHT key, nudged away from the other FLIGHTs at the same AIRPORT (stable order by key). The loop size is a fixed fraction of the distance to the nearest other AIRPORT, so circuits do not overlap AIRPORTs.
-- Long great-circle arcs are kept for real moves between AIRPORTs (3.4).
+- **A FLIGHT departs its own AIRPORT** (where its code lives) **and flies to a real airport somewhere in the world.** It lands and fades out there. The next FLIGHT of the same AIRCRAFT departs from its AIRPORT again; AIRCRAFT do not continue from their last destination.
+- **The distance stands for the typical duration** of similar FLIGHTs. It is not an arrival time, and the tooltip says so. The duration is `p75(work) + p75(landing)` from `typicalDurations` (`server/progress.ts`, TYPE×WAKE → WAKE → AIRPORT), which is the same model that gives the plane its place (principle 2). The server turns it into a `range` band. The bands keep the range stable while samples come and go:
+
+  | Typical duration (p75 work + p75 landing) | `range` |
+  |---|---|
+  | under 30 min | 15° |
+  | 30 min – 1 h | 25° |
+  | 1 – 2 h | 35° |
+  | 2 – 4 h | 45° |
+  | 4 – 8 h | 55° |
+  | 8 h or more | 65° |
+  | no samples | 25°, `rangeKnown: false` |
+
+  Token estimates (TRIP FUEL) were considered and not chosen. They are on a different scale from the plane's place, so the two could disagree.
+- **The destination is chosen on the client** (principle 3: the server never sees a location). A pure, browser-safe step in `server/globe.ts`, called after `placeOnLand`, works on the same bundled airport list (`globe-geo.ts`):
+  1. Take the airports at `range` ± 5° from the origin AIRPORT's placed point.
+  2. Leave out the airports the AIRPORTs occupy (and anything within 3° of them) and the destinations already pinned by other drawn FLIGHTs.
+  3. Prefer airports within 85° of the hub, so a trip stays on the visible side when the globe is centred on the hub.
+  4. Pick the one whose bearing from the origin is closest to the FLIGHT's `outbound`.
+  5. If none is left, widen to ± 10°, then ± 15°. If still none, use the great-circle point at `outbound` and `range` (it may be at sea).
+- **Pinned for the whole FLIGHT.** The chosen destination is saved in `localStorage` (`atc.globe` → `dest[key]`, inside `try`/`catch`) and reused until the FLIGHT leaves the scene, when it is pruned. A destination never moves during a FLIGHT, even when the band changes or other FLIGHTs come and go. With storage unavailable, the step is still deterministic for the same inputs.
+- **Track.** The great circle from the origin to the destination (`slerp`), with the **approach fix** at 85 % of the track. Cruise runs from the origin to the approach fix, final from the approach fix to the destination. The outbound bearing still comes from the hash of the FLIGHT key, nudged as in G2, so it sets the direction of travel.
+- Real moves between AIRPORTs (OUTSTATION, REPOSITION) keep their own great-circle arcs (3.4). SPACE (section 5) and the AIRPORT view (3.9) keep their own drawings; this section is about the globe.
 
 ### 3.3 From facts to the picture
 
@@ -53,18 +74,18 @@ The FLIGHT's AIRCRAFT is the one holding a STAND whose `ticketKey` is the FLIGHT
 | Fact | Source | Drawn as |
 |---|---|---|
 | FLIGHT has a STAND but no OUT | milestones | At the gate, nose out ("boarding") |
-| `work` segment (OUT→OFF), AIRCRAFT `airborne` | progress | Flying the loop. Position along departure→IAF is the marker inside `work` (elapsed / p75, capped at the IAF). No estimate: at the departure end |
-| `late` in `work` | progress | Stops short of the IAF and the label turns amber. No holding pattern (holding means waiting, below) |
+| `work` segment (OUT→OFF), AIRCRAFT `airborne` | progress | Flying the track (3.2). Position along origin → approach fix is the marker inside `work` (elapsed / p75, capped short of the approach fix). No estimate: at the origin |
+| `late` in `work` | progress | Stops short of the approach fix and the label turns amber. No holding pattern (holding means waiting, below) |
 | AIRCRAFT `holding` (idle with the STAND), or an open `HOLD` CLEARANCE for the FLIGHT | snapshot | Holding pattern (racetrack) at its current point |
 | AIRCRAFT `nordo` | snapshot | Grey, no animation, label `NORDO` |
-| `landing` segment (OFF→ON), PR `CLEARED` | progress, `pulls` | On final from the IAF to the runway; position from the `landing` marker |
-| `landing` segment, PR `APPROACH` (blocked) | `pulls[].blocks` | Holding at the IAF. Block codes (CI, review, behind …) in the tooltip and the text row |
-| `GO AROUND` CLEARANCE for the FLIGHT in the last 30 min, or a `landing.conflict` event | `clearances` | One missed-approach loop from final back to the IAF, mark `GA` until the new head is CLEARED |
-| ON (merged) | milestones | Touchdown. In `rts` (ON→IN, MCC AIRPORT only) it taxis to the gate |
-| IN, or ON where no RTS follows (`done`) | milestones | At the gate, fades out over 30 min. `reverted` adds a mark |
+| `landing` segment (OFF→ON), PR `CLEARED` | progress, `pulls` | On final from the approach fix to the destination; position from the `landing` marker |
+| `landing` segment, PR `APPROACH` (blocked) | `pulls[].blocks` | Holding at the approach fix. Block codes (CI, review, behind …) in the tooltip and the text row |
+| `GO AROUND` CLEARANCE for the FLIGHT in the last 30 min, or a `landing.conflict` event | `clearances` | One missed-approach loop at the destination back to the approach fix, mark `GA` until the new head is CLEARED |
+| ON (merged) | milestones | Touchdown at the destination. In `rts` (ON→IN, MCC AIRPORT only) it taxis to the gate there |
+| IN, or ON where no RTS follows (`done`) | milestones | At the destination gate, fades out over 30 min. `reverted` adds a mark |
 | AIRCRAFT without a FLIGHT | snapshot, `fleet` | Small parked mark at its base AIRPORT (count when several) |
 
-A click on a plane opens the FLIGHT drawer (`#flight/<KEY>`, as `OpenFlight` in `web/src/FlightLink.tsx` does). The tooltip carries the AIRCRAFT's callsign, status and STAND, as RADAR's blocks do. A plane without a FLIGHT key in the drawer format is not a link.
+A click on a plane opens the FLIGHT drawer (`#flight/<KEY>`, as `OpenFlight` in `web/src/FlightLink.tsx` does). The tooltip carries the AIRCRAFT's callsign, status and STAND, as RADAR's blocks do. From G9 it also names the destination (IATA code) and says that the distance stands for the typical duration of similar FLIGHTs, not an arrival time; the FLIGHTS list gets a `DEST` column. A plane without a FLIGHT key in the drawer format is not a link.
 
 ### 3.4 Moves between AIRPORTs (great circles)
 
@@ -94,7 +115,7 @@ Read-only, no `Origin` check needed (it writes nothing). G1 builds it with `airp
 
 - `at`, `home`.
 - `airports[]`: `id`, `code`, `name`, and `bearing`/`distance` (degrees of arc) from the hub. The home AIRPORT has distance 0. Each client places them from its own hub location; manual overrides stay on the client.
-- `flights[]`: `key`, `airport`, `aircraft` (REGISTRATION or `null`), `state` (one row of 3.3: `boarding`, `cruise`, `hold`, `final`, `goAround`, `taxi`, `arrived`, `nordo`), `t` in 0..1 along the leg of that state, `outbound` bearing, `late`, `blocks` (landing block codes) and `fadeFrom` (ISO, for `arrived`).
+- `flights[]`: `key`, `airport`, `aircraft` (REGISTRATION or `null`), `state` (one row of 3.3: `boarding`, `cruise`, `hold`, `final`, `goAround`, `taxi`, `arrived`, `nordo`), `t` in 0..1 along the leg of that state, `outbound` bearing, `late`, `blocks` (landing block codes) and `fadeFrom` (ISO, for `arrived`). G9 adds `range` (degrees of arc, the band of 3.2) and `rangeKnown` (`false` when there were no samples). The destination itself is not in the scene: it depends on the location, so each client chooses it (3.2).
 - `parked[]`: REGISTRATION and base AIRPORT for AIRCRAFT without a FLIGHT.
 - `moves[]` (G3): `kind` (`outstation`, `reposition`), `aircraft`, `from`, `to`, `t`, `endedAt`.
 
@@ -195,7 +216,7 @@ A toggle in the GLOBE toolbar (`GLOBE | SPACE`, saved in `localStorage`; the `ni
 
 The web tab is built first because team sessions can build and check it. After G2 the Mac app gets a native **GLOBE window** as an N8 candidate (atc-app `docs/design.md` 10.6, "it must stay visible while the SUPERVISOR works elsewhere"):
 
-- SwiftUI `Map` with the satellite style at realistic elevation, zoomed out to the globe. Real imagery and coastlines come from MapKit; the window draws AIRPORTs, circuits, planes and great-circle tracks as map annotations and polylines (`MKGeodesicPolyline` for arcs) from `GET /api/globe`. The day/night terminator is a polygon overlay computed in `ATCCore` (pure, tested on Linux).
+- SwiftUI `Map` with the satellite style at realistic elevation, zoomed out to the globe. Real imagery and coastlines come from MapKit; the window draws AIRPORTs, FLIGHT tracks to their destinations (3.2, with the same destination step and airport list as the web, ported to `ATCCore`), planes and great-circle tracks as map annotations and polylines (`MKGeodesicPolyline` for arcs) from `GET /api/globe`. The day/night terminator is a polygon overlay computed in `ATCCore` (pure, tested on Linux).
 - The location comes from CoreLocation on the Mac, or from the same typed coordinates, and stays in the app's own preferences (principle 3). The server never sees it.
 - Read-only, like the rest of the app before N5. A click opens the FLIGHT in the atc window (N7).
 - **Two modes.** `MAP` is the information view: the same states and text rows as the web tab. `CINEMATIC` is the animated, game-like view (6.1).
@@ -229,8 +250,9 @@ Each step is one issue. Each PR adds a changelog fragment pair and describes the
 | G6 | **ATCA `CINEMATIC` mode** (6.1). Camera orbit, follow and tour; banked planes, trails, touchdown and departure effects; honest motion; Reduce Motion and pause rules | The game-like view of the same traffic | atc-app (SUPERVISOR merges) |
 | G7 | **Radio on the globe and the AIRPORT view** (3.9). Pure transmission → station/plane mapping with tests, pulses on the globe, the aerodrome view, from `GET /api/radio` | The control interaction around departures and landings is visible | auto |
 | G8 | **CINEMATIC follows the radio** (6.2). Camera cuts to the talking plane, `head` subtitles, sound via the R4 monitor | A landing reads as the conversation it is | atc-app (SUPERVISOR merges) |
+| G9 | **World tour** (3.2). `range` and `rangeKnown` in the scene from the band table; the pure destination step on the client with tests; destinations pinned per FLIGHT; the great-circle track with the approach fix replaces the circuit; one placement function shared by the plane layer and the radio layer; `DEST` in the tooltip and the FLIGHTS list | Every FLIGHT flies from its AIRPORT to a real airport at a distance that stands for its typical duration | auto |
 
-- G1 has no dependencies. G2 needs G1. G3 and G4 need G2 and can go in either order. G5 needs G2 (G3 for moves), and is picked as an N8 candidate by the SUPERVISOR. G6 needs G5. G7 needs G2. G8 needs G6. ATC-267 (RADIO PREFLIGHT) blocks nothing and is blocked by nothing; G7 and G8 show PREFLIGHT once it exists.
+- G1 has no dependencies. G2 needs G1. G3 and G4 need G2 and can go in either order. G5 needs G2 (G3 for moves), and is picked as an N8 candidate by the SUPERVISOR. G6 needs G5. G7 needs G2. G8 needs G6. G9 needs G2, and waits for G3 (ATC-263) and the SUPERVISOR landing mark (ATC-300), which change the same files; G5 waits for G9 so the Mac app ports the tour, not the circuit. ATC-267 (RADIO PREFLIGHT) blocks nothing and is blocked by nothing; G7 and G8 show PREFLIGHT once it exists.
 - Checks for G1–G4: `npm test`, `npx tsc --noEmit -p .`, `npx vite build`, and the GLOBE chunk size from the build output in the PR. On a 7702 test server (`ATC_GITHUB=off`, copied `airports.json` and `fleet.json`), open the tab with Playwright with a **made-up location** typed into the fields (never the real one), and describe what was seen in the PR in words. No screenshots (public repository, and a screenshot of this screen would show a location).
 
 ## 8. Risks
@@ -238,13 +260,17 @@ Each step is one issue. Each PR adds a changelog fragment pair and describes the
 | Risk | Mitigation |
 |---|---|
 | The SUPERVISOR's location leaks | `localStorage` only, rounded to 1°, a forget button. Tests and PR checks use made-up coordinates. No screenshots of this tab anywhere (the root `CLAUDE.md` already forbids them in PRs) |
-| The picture claims more than atc knows | Positions come only from the progress model's marker; no estimate means the start of the segment. Late stops short of the IAF instead of inventing a landing time |
+| The picture claims more than atc knows | Positions come only from the progress model's marker; no estimate means the start of the segment. Late stops short of the approach fix instead of inventing a landing time |
 | Bundle and CPU cost | Lazy tab, land data inside the GLOBE chunk only, no package. 1 Hz position updates, 30 fps cap only while dragging or animating, stop when hidden, still frame with motion off |
 | Clutter with many FLIGHTs at one AIRPORT | Bearings spread by stable nudging; labels collapse to the FLIGHT number when circuits overlap; the text rows always list everything |
 | Looks broken in a theme | Colours only from `:root` tokens; the PR checks at least two themes |
 | Hash places put two AIRPORTs on top of each other | Minimum separation in the layout, plus the drag override |
 | The web and the Mac app drift | Both draw `GET /api/globe`; neither computes states or places. Only drawing differs |
 | CINEMATIC motion reads as progress atc does not know | Position only from the scene's `t`; between refetches the plane flies in place (6.1). No percentage, ETA or countdown |
+| A destination jumps during a FLIGHT (the band changes, or another FLIGHT leaves) | The destination is pinned per FLIGHT on the client (3.2) and only pruned when the FLIGHT leaves the scene. Bands, not raw minutes, so the range rarely changes |
+| The distance reads as an arrival time | It is a band of the typical duration of similar FLIGHTs; the tooltip says so, and the position still comes only from `t` and stops short of the approach fix by estimate |
+| Trips go over the horizon | Destinations prefer airports within 85° of the hub; the track is clipped at the horizon like any other line, and the SUPERVISOR can rotate the globe |
+| The web and the Mac app choose different destinations | Same step, same airport list and same rule in `ATCCore` (G5). Pins are per client, so a FLIGHT first seen at different moments can still differ; the FLIGHT, its state and `t` are always the same |
 | The Mac window cannot be checked by teams | The scene logic is on the server and in `ATCCore`, both tested on Linux. The window itself is small and is checked by the SUPERVISOR on the Mac before merging |
 
 ## 9. Decisions
@@ -252,12 +278,13 @@ Each step is one issue. Each PR adds a changelog fragment pair and describes the
 **Made (SUPERVISOR):**
 
 - 2026-09-30: "real aircraft" means atc's own AIRCRAFT drawn as planes. Real-world air traffic (ADS-B) is out of scope.
-- 2026-10-01: **Route model:** a FLIGHT is a circuit from its AIRPORT and back (3.2); great-circle arcs are only for real moves between AIRPORTs (3.4). This differs from the idea's wording ("a transfer orbit from Earth to its planet"): in SPACE a FLIGHT orbits its own body, and transfer orbits are for OUTSTATION and REPOSITION.
+- 2026-10-01: ~~**Route model:** a FLIGHT is a circuit from its AIRPORT and back (3.2);~~ superseded later the same day by the world tour (below); great-circle arcs are only for real moves between AIRPORTs (3.4). This differs from the idea's wording ("a transfer orbit from Earth to its planet"): in SPACE a FLIGHT orbits its own body, and transfer orbits are for OUTSTATION and REPOSITION.
 - 2026-10-01: **Placement:** a new tab `#globe` right after RADAR, lazy-loaded.
 - 2026-10-01: **Priority** of the work orders: Low.
 - 2026-10-01: **Web first, then the Mac app (option A).** The scene is computed on the server and served read-only (3.8). The web tab (G1–G4) comes first; a native MapKit GLOBE window in ATCA (G5) follows as an N8 candidate. Alternatives that were not chosen: the Mac app only (every visual change needs a build on the Mac, and only the SUPERVISOR can check it), and the web only. G1 waits in Backlog until the SUPERVISOR releases it.
 - 2026-10-01: **The game-like view lives in the Mac app.** The web GLOBE stays a light SVG information view (G1–G4). An animated, game-like view on a real globe is `CINEMATIC` mode in the ATCA window (6.1, G6), because MapKit brings the real Earth without a package, a bundled texture or a `user`-tier PR in atc. Not chosen: a three.js CINEMATIC mode on the web, and a WebGL web GLOBE from G1. The web draws inline SVG with a hand-written orthographic projection and no package (principle 4).
 
+- 2026-10-01: **World tour replaces the circuit** (3.2, G9 [ATC-302](https://linear.app/vocado/issue/ATC-302)). A FLIGHT departs its own AIRPORT and flies to a real airport, leaving out the places the AIRPORTs occupy. Chosen: replace the circuit (not a second mode); distance from the typical duration (progress p75), not from tokens (TRIP FUEL); every FLIGHT departs from its own AIRPORT (AIRCRAFT do not continue from the last destination). G5 (ATC-262) went back to Backlog to port the tour after G9.
 - 2026-10-01: **Show the control interaction.** Departures and landings show the exchange with OCC, TOWER and MCC from RADIO (G7 on the web, G8 in CINEMATIC). CROSSCHECK's check before departure joins RADIO as a PREFLIGHT frequency (ATC-267) instead of being read by GLOBE directly.
 
 **Proposed here, for the SUPERVISOR to accept or change:**
@@ -268,4 +295,4 @@ Each step is one issue. Each PR adds a changelog fragment pair and describes the
 
 ## Not built yet
 
-Everything in section 7 (G1–G8), and the PREFLIGHT frequency (ATC-267).
+Everything in section 7 (G1–G9), and the PREFLIGHT frequency (ATC-267).
