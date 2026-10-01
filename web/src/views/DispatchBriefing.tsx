@@ -1,6 +1,8 @@
+import { Check } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import type { Proposal } from "../../../server/proposals.ts";
 import { type ColdCache, type TripFuel, tripLabel, usd } from "../../../server/fuel-view.ts";
+import { Icon } from "../Icon.tsx";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import "./DispatchBriefing.css";
@@ -54,11 +56,13 @@ export function BriefingLines({ p, title, info }: { p: Proposal; title: string |
   );
 }
 
-// 사실 줄: 모델 없이 서버가 계산한 것. 열린 카드의 CROSSCHECK는 칩에 있으니 HELD 카드에서만 줄에 넣는다
+// 사실 줄: 모델 없이 서버가 계산한 것. 열린 카드의 CROSSCHECK는 칩에 있으니 HELD 카드에서만 줄에 넣는다.
+// 판단에 걸리는 것(선행 미완료, COLD CACHE, CROSSCHECK 반대)은 보이게 두고, 나머지는 개수 뒤로 접는다(원칙 7, ATC-315)
 export function FactsLine({ info, now, aircraft, showCrosscheck }: { info: CardBrief | undefined; now: number; aircraft: string | null; showCrosscheck: boolean }) {
   if (!info) return null;
   const f = info.facts;
   const items: ReactNode[] = [];
+  const warned = new Set<string>(); // 접지 않는 항목의 key
   if (f.priority !== null) items.push(<span key="p">PRIORITY {f.priority ? `${f.priority} ${PRIORITY[f.priority] ?? ""}` : PRIORITY[0]}</span>);
   if (f.waitDays !== null) items.push(<span key="w">대기 {f.waitDays}일</span>);
   if (f.route)
@@ -70,13 +74,15 @@ export function FactsLine({ info, now, aircraft, showCrosscheck }: { info: CardB
       </span>,
     );
   else items.push(<span key="r" className="faint">ROUTE 없음</span>);
-  for (const b of f.blockers)
+  for (const b of f.blockers) {
+    if (!b.done) warned.add(`b-${b.key}`);
     items.push(
       <span key={`b-${b.key}`} className={b.done ? "dp-fact-ok" : "dp-fact-warn"}>
         선행 {flightNumber(b.key)} {b.state ?? "상태 모름"}
-        {b.done ? " ✓" : ""}
+        {b.done && <> <Icon icon={Check} /></>}
       </span>,
     );
+  }
   if (aircraft)
     items.push(
       f.recent.length ? (
@@ -106,26 +112,42 @@ export function FactsLine({ info, now, aircraft, showCrosscheck }: { info: CardB
       ),
     );
   }
+  if (f.coldCache) warned.add("cc");
   if (f.coldCache)
     items.push(
       <span key="cc" className="dp-fact-warn" title="경고만 한다 — FLIGHT PLAN을 막지 않는다">
         {f.coldCache.text}
       </span>,
     );
+  if (showCrosscheck && f.crosscheck) warned.add("x");
   if (showCrosscheck && f.crosscheck)
     items.push(
       <span key="x" className={f.crosscheck.verdict === "agree" ? "dp-fact-ok" : "dp-fact-warn"}>
         CROSSCHECK {f.crosscheck.verdict === "agree" ? "동의" : "반대"}: {f.crosscheck.reason}
       </span>,
     );
-  return (
-    <p className="dp-facts" aria-label="사실">
-      {items.map((x, i) => (
-        <span key={i} className="dp-fact">
+  const keyOf = (x: ReactNode) => String((x as { key?: string }).key ?? "");
+  const shown = items.filter((x) => warned.has(keyOf(x)));
+  const folded = items.filter((x) => !warned.has(keyOf(x)));
+  const line = (xs: ReactNode[], label: string) => (
+    <p className="dp-facts" aria-label={label}>
+      {xs.map((x) => (
+        <span key={keyOf(x)} className="dp-fact">
           {x}
         </span>
       ))}
     </p>
+  );
+  return (
+    <>
+      {shown.length > 0 && line(shown, "걸리는 사실")}
+      {folded.length > 0 && (
+        <details className="dp-facts-fold">
+          <summary>사실 {folded.length}</summary>
+          {line(folded, "사실")}
+        </details>
+      )}
+    </>
   );
 }
 

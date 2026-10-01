@@ -3,7 +3,6 @@
   margin-top: var(--space-3);
   padding: var(--space-3) var(--space-4) var(--space-2);
   background: var(--panel);
-  border: 1px solid var(--line);
   border-radius: var(--radius);
   font-size: var(--text-sm);
 }
@@ -19,9 +18,7 @@
   flex: none;
   margin-left: auto;
   padding: 0 var(--space-3);
-  border-color: var(--cyan);
-  color: var(--cyan);
-  font: 700 var(--text-2xs) var(--mono);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.12em;
 }
 .atfm-error {
@@ -29,9 +26,9 @@
 }
 
 /* 접는 구역 */
+/* 구역 사이는 선 없이 간격으로(줄 선과 겹치지 않게, 3.5.4) */
 .atfm-sec {
-  padding: var(--space-1-5) 0;
-  border-top: 1px solid var(--line);
+  padding: var(--space-2) 0 var(--space-1-5);
 }
 .atfm-head + .atfm-sec,
 .atfm-error + .atfm-sec {
@@ -39,8 +36,7 @@
 }
 .atfm-sec > summary {
   cursor: pointer;
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.14em;
+  font: 600 var(--text-xs) var(--sans);
   color: var(--faint);
 }
 .atfm-sec > summary em {
@@ -76,7 +72,7 @@
   color: var(--muted);
 }
 .atfm-list li.is-enforced {
-  color: var(--alert);
+  color: var(--text);
 }
 .atfm-trigger {
   font-weight: 600;
@@ -95,18 +91,15 @@
 .atfm-tag {
   flex: none;
   padding: 0 var(--space-1);
-  border: 1px dashed var(--line-strong);
+  background: var(--panel-3);
   border-radius: var(--radius-sm);
   color: var(--faint);
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.1em;
+  font: 700 var(--text-xs) var(--sans);
 }
 .atfm-tag.t-on {
-  border: 1px solid var(--alert);
   color: var(--alert);
 }
 .atfm-tag.t-warn {
-  border: 1px solid var(--amber);
   color: var(--amber);
 }
 
@@ -154,11 +147,8 @@
   color: var(--text);
   box-shadow: inset 0 -2px 0 currentColor;
 }
-.atfm-seg-btn.m-shadow[aria-pressed="true"] {
-  color: var(--cyan);
-}
 .atfm-seg-btn.m-on[aria-pressed="true"] {
-  color: var(--alert);
+  color: var(--amber);
 }
 .atfm-seg-btn:disabled {
   opacity: 0.45;
@@ -209,14 +199,13 @@
 .atfm-head-mini {
   margin-right: var(--space-2);
   color: var(--faint);
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.1em;
+  font: 600 var(--text-xs) var(--sans);
 }
 .atfm-main b {
   color: var(--text);
 }
 .atfm-main.c-success {
-  color: var(--radar);
+  color: var(--muted);
 }
 .atfm-main.c-failure {
   color: var(--alert);
@@ -230,11 +219,11 @@
 
 /* 머지 슬롯 */
 .atfm-slot {
-  font: 700 var(--text-2xs) var(--mono);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.08em;
 }
 .sl-in-slot .atfm-slot {
-  color: var(--cyan);
+  color: var(--muted);
 }
 .sl-waiting-slot .atfm-slot {
   color: var(--amber);
@@ -258,7 +247,7 @@
   color: var(--alert);
 }
 .atfm-ok {
-  color: var(--radar);
+  color: var(--text);
   font-weight: 600;
 }
 .atfm-codes {
@@ -268,14 +257,15 @@
 }
 .atfm-code {
   padding: 0 var(--space-1);
-  border: 1px solid var(--line-strong);
+  background: var(--panel-3);
   border-radius: var(--radius-sm);
   color: var(--muted);
-  font: 600 var(--text-2xs) var(--mono);
+  font: 600 var(--text-xs) var(--mono);
   cursor: help;
 }
 /* 화면에서는 숨기고 스크린 리더에는 남긴다 */
 .atfm-sr {
+  font-family: var(--sans);
   position: absolute;
   width: 1px;
   height: 1px;
@@ -300,22 +290,20 @@
   border-top: 1px solid var(--line);
 }
 .atfm-turn-value {
-  font: 700 var(--text-md) var(--mono);
+  font: 600 var(--text-md) var(--sans);
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 .atfm-turn-target {
   padding-left: var(--space-2);
-  font: var(--text-sm) var(--mono);
+  font: var(--text-sm) var(--sans);
   color: var(--faint);
 }
 .atfm-turn-state {
-  font: 700 var(--text-sm) var(--mono);
-}
-.atfm-turn .s-pass .atfm-turn-state {
-  color: var(--radar);
+  font: 600 var(--text-sm) var(--sans);
 }
 .atfm-turn .s-fail .atfm-turn-state {
-  color: var(--alert);
+  color: var(--amber);
 }
 .atfm-turn .s-insufficient .atfm-turn-state {
   color: var(--faint);

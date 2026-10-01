@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { StateMark } from "./Mark.tsx";
 import { Icon } from "../Icon.tsx";
 import { nextLaunchLabel } from "../../../server/launch-note.ts";
 import { type LaunchModelSetting, NEXT_MODEL_TITLE, nextModelNote } from "../../../server/launch-model.ts";
@@ -584,7 +585,9 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
           </ul>
         </div>
         <div>
-          <h2 className="label">HOLD_DEPARTURE · 제외</h2>
+          <h2 className="label">
+            HOLD_DEPARTURE <em>제외</em>
+          </h2>
           <ul className="dp-list">
             {plan.hold.map((h) => (
               <li key={h.flight}>
@@ -1195,7 +1198,7 @@ function Gate({ gate, labelOf, stats, judges }: { gate: Brief["gate"]; labelOf: 
       state: gate.decided < 5 ? "insufficient" : rateOk ? "pass" : "fail",
     },
   ] as const;
-  const mark = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족" } as const;
+  const mark = { pass: "충족", fail: "미달", insufficient: "데이터 부족" } as const;
   const xc = gate.crosscheck; // 옛 서버면 없음
   const one = xc?.oneClick;
   const pf = gate.preflight; // 옛 서버면 없음
@@ -1214,7 +1217,7 @@ function Gate({ gate, labelOf, stats, judges }: { gate: Brief["gate"]; labelOf: 
             <span className="dp-gate-label">{r.label}</span>
             <span className="dp-gate-value">{r.value}</span>
             <span className="dp-gate-target">기준 {r.target}</span>
-            <span className="dp-gate-state">{mark[r.state]}</span>
+            <span className="dp-gate-state"><StateMark state={r.state}>{mark[r.state]}</StateMark></span>
           </li>
         ))}
         {pf && (
@@ -1259,7 +1262,7 @@ function Gate({ gate, labelOf, stats, judges }: { gate: Brief["gate"]; labelOf: 
           byModelRows(xc.byModel).map(([id, r]) => (
             <li key={id} className="s-info dp-gate-xc-model" title={`CROSSCHECK 일치 · 모델 계열 ${id}${id === "unknown" ? " (모델 기록 전의 mark — ATFM 기준에 세지 않음)" : " (경로별 이름을 묶음 — 원래 이름은 칩에)"} · ${r.matched}/${r.marked}`}>
               <span className="dp-gate-label">
-                <span className="dp-gate-xc-name">└ {modelLabel(id)}</span>
+                <span className="dp-gate-xc-name">{modelLabel(id)}</span>
                 <span className="dp-gate-xc-count">
                   {r.matched}/{r.marked}
                 </span>
@@ -1335,7 +1338,7 @@ function Gate({ gate, labelOf, stats, judges }: { gate: Brief["gate"]; labelOf: 
 }
 
 function Gate3({ gate }: { gate: Brief["gate3"] }) {
-  const mark = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족" } as const;
+  const mark = { pass: "충족", fail: "미달", insufficient: "데이터 부족" } as const;
   const few = gate.dispatched < 3;
   const rows = [
     { label: "보낸 FLIGHT PLAN", value: `${gate.dispatched}건`, target: `≥ ${gate.target.dispatched}건`, state: gate.dispatched >= gate.target.dispatched ? "pass" : "fail" },
@@ -1363,13 +1366,13 @@ function Gate3({ gate }: { gate: Brief["gate3"] }) {
             <span className="dp-gate-label">{r.label}</span>
             <span className="dp-gate-value">{r.value}</span>
             <span className="dp-gate-target">기준 {r.target}</span>
-            <span className="dp-gate-state">{mark[r.state]}</span>
+            <span className="dp-gate-state"><StateMark state={r.state}>{mark[r.state]}</StateMark></span>
           </li>
         ))}
         {gate.standFree && gate.standFree.readBack > 0 && (
           <li className="s-info dp-gate-sub" title="STAND 없는 FLIGHT(SURVEY·CHECK)는 READBACK에서 바로 DEPARTED — 게이트 비율에 세지 않음">
             <span className="dp-gate-label">
-              └ STAND 없는 FLIGHT · READBACK {gate.standFree.readBack} · ARRIVED {gate.standFree.arrived}
+              STAND 없는 FLIGHT · READBACK {gate.standFree.readBack} · ARRIVED {gate.standFree.arrived}
             </span>
             <span className="dp-gate-value">
               {gate.standFree.arrived}/{gate.standFree.readBack}
@@ -1380,7 +1383,7 @@ function Gate3({ gate }: { gate: Brief["gate3"] }) {
         )}
         {gate.standFree?.timely && gate.standFree.timely.total > 0 && (
           <li className="s-info dp-gate-sub" title="일이 끝난 시각(ARRIVED 후보의 증거, 보고만이면 ARRIVED 시각)에서 24시간 안에 ARRIVED한 비율. 24시간 넘게 확인 안 된 후보는 놓친 것(최근 30일)">
-            <span className="dp-gate-label">└ STAND 없는 FLIGHT · 일이 끝난 뒤 24시간 안 ARRIVED</span>
+            <span className="dp-gate-label">STAND 없는 FLIGHT · 일이 끝난 뒤 24시간 안 ARRIVED</span>
             <span className="dp-gate-value">
               {gate.standFree.timely.within}/{gate.standFree.timely.total}
             </span>

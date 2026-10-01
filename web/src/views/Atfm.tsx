@@ -2,6 +2,7 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import { atfmAlertOf } from "../readiness-line.ts";
+import { StateMark } from "./Mark.tsx";
 import "./Atfm.css";
 
 // ATFM 3단계(docs/atfm.md). 대부분 그림자 운용: 계산해서 보여 주기만 한다.
@@ -111,7 +112,7 @@ const TRIGGER_TEXT: Record<Trigger, string> = {
 };
 const MAIN_TEXT: Record<MainView["state"], string> = { success: "success", failure: "failure", pending: "pending", none: "CI 없음" };
 const MODE_TEXT: Record<StopMode, string> = { off: "꺼짐", shadow: "그림자", on: "켜짐" };
-const TURN_MARK: Record<TurnState, string> = { pass: "✓ 충족", fail: "✗ 미달", insufficient: "○ 데이터 부족", check: "△ 확인 필요" };
+const TURN_TEXT: Record<TurnState, string> = { pass: "충족", fail: "미달", insufficient: "데이터 부족", check: "확인 필요" };
 // 켜면 멈추는 것(확인 문구에 씀)
 const ON_EFFECT = "켜면 해당 AIRPORT에 새 ASSIGN과 LAND가 멈춘다.";
 const WAVE_ON_EFFECT = "켜면 해당 AIRPORT에 새 ASSIGN과 LAND가 멈춘다. 실패가 몰린 체크가 그 뒤 PR 2개에서 통과해야 풀린다.";
@@ -467,13 +468,13 @@ function SlotFigures({ lands, behind }: { lands: AtfmBrief["data"]["lands"]; beh
             return (
               <li key={a}>
                 <span className="apt">{a}</span>
-                <span className="mono" title="같은 저장소의 다른 LAND와 겹쳐 살아 있던 LAND / 나간 LAND">
+                <span className="tn" title="같은 저장소의 다른 LAND와 겹쳐 살아 있던 LAND / 나간 LAND">
                   동시 LAND {l ? `${l.concurrent}/${l.lands}` : "0/0"}
                 </span>
-                <span className="mono faint" title="LAND에서 머지까지 중앙값 · LAND 뒤 30분 안에 머지되지 않은 LAND">
+                <span className="tn faint" title="LAND에서 머지까지 중앙값 · LAND 뒤 30분 안에 머지되지 않은 LAND">
                   LAND→머지 {l?.mergedMedianMin == null ? "—" : `${l.mergedMedianMin}분`} · 30분 초과 {l?.timeouts ?? 0} ·
                 </span>
-                <span className="mono faint" title={b ? `머지 ${b.merges} · BEHIND ${b.behind}` : undefined}>
+                <span className="tn faint" title={b ? `머지 ${b.merges} · BEHIND ${b.behind}` : undefined}>
                   BEHIND/머지 {b?.perMerge == null ? "—" : b.perMerge}
                 </span>
               </li>
@@ -549,7 +550,7 @@ function AutoSection({ title, view, caps, withAircraft }: { title: string; view:
               <span className="mono">{o.flight ? flightNumber(o.flight) : "—"}</span>
               {withAircraft && <span>{o.aircraft ?? "—"}</span>}
               {o.eligible ? (
-                <span className="atfm-ok">✓ 대상</span>
+                <span className="atfm-ok"><StateMark state="pass">대상</StateMark></span>
               ) : (
                 <span className="atfm-codes">
                   {o.failed.map((f) => (
@@ -571,7 +572,7 @@ function AutoSection({ title, view, caps, withAircraft }: { title: string; view:
               <span>{r.label}</span>
               <span className="atfm-turn-value">{r.value}</span>
               <span className="atfm-turn-target">기준 {r.target}</span>
-              <span className="atfm-turn-state">{TURN_MARK[r.status]}</span>
+              <span className="atfm-turn-state"><StateMark state={r.status}>{TURN_TEXT[r.status]}</StateMark></span>
             </li>
           ))}
         </ul>
