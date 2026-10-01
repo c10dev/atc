@@ -334,7 +334,7 @@
 }
 .dp-factor-detail {
   padding-left: var(--space-2) !important;
-  max-width: 140px;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

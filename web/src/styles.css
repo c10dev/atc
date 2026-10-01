@@ -78,12 +78,17 @@
 
   /* 글자 크기: 7단계만 쓴다. 영문 약호(대문자·고정폭)는 10, 한국어 본문은 11 이상 */
   --text-2xs: 10px; /* 대문자 약호, 캡션 */
-  --text-xs: 11px; /* 보조 설명, 칩 */
+  --text-xs: 12px; /* 보조 설명, 칩(기본 밀도 12, compact 11. DL7) */
   --text-sm: 12px; /* 표·카드의 부가 정보 */
-  --text-md: 13px; /* 본문 */
+  --text-md: 14px; /* 본문(기본 밀도 14, compact 13. DL7) */
   --text-lg: 15px; /* FLIGHT NUMBER, 콜사인 강조 */
   --text-xl: 18px; /* 상단 수치, FLIGHT STRIPS 콜사인 */
   --text-2xl: 24px; /* 지표 큰 숫자 */
+
+  /* 움직임(3.5 Craft 8): 호버·누름은 fast, 열고 닫고 접는 것은 base, 곡선은 하나. 늘 도는 생동감 애니메이션(ping·sweep·flap 등)은 자기 시간을 쓴다 */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
 
   /* 모서리: 칩 2, 컨트롤 4, 패널·카드 8, 알약 모양 999. 원은 50%. 테마가 값만 바꾼다 */
   --radius-sm: 2px;
@@ -142,6 +147,31 @@ button {
 .mono {
   font-family: var(--mono);
   font-size: var(--text-sm);
+}
+/* 숫자(3.5 Craft 7): 바뀌거나 열로 서는 숫자는 자릿수 너비를 맞춘다(옆 칸이 흔들리지 않게). 본문 글에는 쓰지 않는다.
+   `font:` 줄임 속성은 이 값을 되돌리므로 뒤에 오는 규칙을 이기려고 !important를 쓴다 */
+.tn,
+.readout b,
+.readout.clock,
+.cell .val,
+.cell .sub,
+.fl-r-elapsed,
+.fl-r-last,
+.fl-r-week,
+.fl-r-ctx,
+.fl-r-burn,
+.fl-actuals,
+.fl-ctx,
+.fc-count,
+.dp-score,
+.dp-age,
+.dp-count,
+.sc-age,
+.sc-cand-count,
+.fp-age,
+.du-since,
+.activity-ago {
+  font-variant-numeric: tabular-nums !important;
 }
 .muted {
   color: var(--muted);
@@ -220,8 +250,8 @@ button {
   height: 13px;
   color: var(--faint);
   transition:
-    color 0.15s,
-    transform 0.3s;
+    color var(--dur-fast) var(--ease),
+    transform var(--dur-base) var(--ease);
 }
 .brand:hover .brand-gear {
   color: var(--text);
@@ -894,7 +924,7 @@ button {
   fill: none;
   stroke-width: 1.6;
   opacity: 0.85;
-  transition: opacity 0.12s;
+  transition: opacity var(--dur-fast) var(--ease);
 }
 .map-lines path.is-lit {
   opacity: 1;
@@ -926,8 +956,8 @@ button {
   font-family: var(--mono);
   cursor: default;
   transition:
-    opacity 0.12s,
-    border-color 0.12s;
+    opacity var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
 }
 .blk::before,
 .blk::after {
@@ -2208,8 +2238,8 @@ a.ticket:hover {
   scroll-margin-top: var(--space-2);
   border-radius: var(--radius-sm);
   transition:
-    background-color 0.4s,
-    box-shadow 0.4s;
+    background-color var(--dur-base) var(--ease),
+    box-shadow var(--dur-base) var(--ease);
 }
 .settings-section.is-found {
   background: color-mix(in srgb, var(--tab-on) 10%, transparent);
@@ -3053,6 +3083,8 @@ a.ticket:hover {
    Material 밀도 규칙: 켜는 사람이 고른다, 한 단계에 4px, 높이만 줄이고 화면 여백(gutter)은 그대로,
    설정 창·메뉴·경보처럼 잠깐 보는 것은 줄이지 않는다. 테마 규칙보다 뒤에 둔다. */
 :root[data-density="compact"] {
+  --text-xs: 11px;
+  --text-md: 13px;
   --gap-item: var(--space-1);
   --flap-w: 13px;
   --flap-h: 18px;
