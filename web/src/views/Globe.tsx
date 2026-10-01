@@ -22,6 +22,7 @@ import { LAND } from "./globe-land.ts";
 import { AIRPORTS, TZ_CITY } from "./globe-geo.ts";
 import { f1, pathOf, SIZE } from "./globe-draw.ts";
 import { FlightRows, FlightsLayer } from "./GlobeFlights.tsx";
+import { MoveRows, MovesLayer } from "./GlobeMoves.tsx";
 import { SpaceView } from "./GlobeSpace.tsx";
 import "./Globe.css";
 
@@ -337,6 +338,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
     [scene],
   );
   const flights = scene?.flights ?? [];
+  const moves = scene?.moves ?? [];
   const atText = new Date(minute * 60_000).toISOString().slice(11, 16);
   const moved = Object.keys(saved.overrides ?? {}).length;
 
@@ -406,7 +408,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
           className="globe-svg"
           viewBox={`0 0 ${SIZE} ${SIZE}`}
           role="img"
-          aria-label={`지구본. AIRPORT ${rows.length}곳${rows.some((r) => r.parked.length) ? `, 세워 둔 AIRCRAFT ${rows.reduce((n, r) => n + r.parked.length, 0)}대` : ""}${flights.length ? `, 나는 FLIGHT ${flights.length}개` : ""}. 같은 내용이 오른쪽 목록에 있다.`}
+          aria-label={`지구본. AIRPORT ${rows.length}곳${rows.some((r) => r.parked.length) ? `, 세워 둔 AIRCRAFT ${rows.reduce((n, r) => n + r.parked.length, 0)}대` : ""}${flights.length ? `, 나는 FLIGHT ${flights.length}개` : ""}${moves.length ? `, AIRPORT 사이 이동 ${moves.length}건` : ""}. 같은 내용이 오른쪽 목록에 있다.`}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={onUp}
@@ -457,6 +459,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
               </g>
             );
           })}
+          {scene && moves.length > 0 && <MovesLayer scene={scene} positions={positions} view={view} C={C} R={R} now={now} />}
           {scene && flights.length > 0 && <FlightsLayer scene={scene} positions={positions} view={view} C={C} R={R} motion={motion} now={now} />}
           {(() => {
             const h = project(hub, view);
@@ -486,6 +489,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
           <p className="globe-hint">{mode === "space" ? "지구는 홈 AIRPORT, 행성은 다른 AIRPORT다. 궤도의 자리는 AIRPORT의 거리 순위와 방위로 정해져 날마다 같다." : "끌어서 돌리고, 휠이나 두 손가락으로 확대한다. AIRPORT를 끌면 그 자리를 이 브라우저에 기억한다."}</p>
         </section>
         <FlightRows flights={flights} />
+        <MoveRows moves={moves} />
         </div>
       </div>
     </div>
