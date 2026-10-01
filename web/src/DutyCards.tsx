@@ -5,6 +5,7 @@ import type { FleetProposal } from "../../server/fleet-plan.ts";
 import type { QueueItem, SupervisorQueue } from "../../server/supervisor-queue.ts";
 import { timeAgo } from "./derive.ts";
 import { isManual, WILL_DO } from "./views/FleetPlan.tsx";
+import "./Relay.css";
 
 // DUTY 카드와 QUEUE 줄(ATC-230, docs/duty.md 3.2·4·5장 D3). 카드는 큐 줄 자체이고, 버튼은 이 화면이 기존 길을 부르는 것이다.
 // DUTY는 버튼을 누르지 못한다. 서버에는 DUTY·atcctl이 부를 수 있는 승인·거절·머지·보내기 길이 없다(인라인 버튼의 길은 모두 Origin 검사).
@@ -218,10 +219,81 @@ function UpdateButton({ onDone }: { onDone: () => void }) {
   );
 }
 
+// UNDELIVERED(ATC-271): 닿지 못한 글을 손으로 전하는 카드. 글(복사)과 한 걸음(복사할 명령이나 할 일)을 보인다.
+// "손으로 전했음"은 RELAY·CLEARANCE에만 있다(FLIGHT PLAN은 세션이 돌아오면 다시 나가고, 그때 큐에서 빠진다)
+function CopyButton({ value, label, what }: { value: string; label: string; what: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="dr-btn"
+      aria-label={`${what} 복사`}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          /* 클립보드를 못 쓰면 글을 직접 복사한다 */
+        }
+      }}
+    >
+      {copied ? "복사됨" : label}
+    </button>
+  );
+}
+
+function HandDelivery({ item, onDone }: { item: QueueItem; onDone: () => void }) {
+  const h = item.hand;
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (!h) return null;
+  const markable = h.source === "RELAY" || h.source === "CLEARANCE";
+  const mark = async () => {
+    setBusy(true);
+    setErr(null);
+    const r = await post(h.source === "RELAY" ? `/api/relay/${encodeURIComponent(h.id)}/hand` : `/api/clearances/${encodeURIComponent(h.id)}/hand`, {});
+    setBusy(false);
+    if (!r.ok) return void setErr(r.error ?? "실패");
+    onDone();
+  };
+  return (
+    <div className="hd" role="group" aria-label={`${h.id} 손으로 전하기`}>
+      <p className="hd-title">{h.card.title}</p>
+      <p className="hd-how">{h.card.how}{h.text === null ? ". 보낼 글은 FLIGHT 카드의 DIRECT 지시서" : ""}</p>
+      {h.card.command && <pre className="hd-cmd mono">{h.card.command}</pre>}
+      {h.text && <pre className="hd-cmd mono">{h.text}</pre>}
+      {(h.card.jobId || h.card.folder) && (
+        <p className="hd-meta mono">
+          {h.card.session ?? h.to}
+          {h.card.jobId ? ` · job ${h.card.jobId}` : ""}
+          {h.card.folder ? ` · ${h.card.folder}` : ""}
+        </p>
+      )}
+      <div className="du-actions">
+        {h.card.command && <CopyButton value={h.card.command} label="명령 복사" what="attach 명령" />}
+        {h.text && <CopyButton value={h.text} label="글 복사" what="글" />}
+        {h.card.step === "launch" && (
+          <a className="dr-btn" href="#fleet">
+            FLEET에서 LAUNCH
+          </a>
+        )}
+        {markable && (
+          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void mark()}>
+            손으로 전했음
+          </button>
+        )}
+      </div>
+      {err && <p className="du-err">{err}</p>}
+    </div>
+  );
+}
+
 // 카드와 QUEUE 줄이 같이 쓰는 버튼 칸
 function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardAction[]; onDone: () => void }) {
   return (
     <>
+      {item.hand && <HandDelivery item={item} onDone={onDone} />}
       {actions.map((a, n) =>
         a.type === "link" ? (
           <div className="du-actions" key={n}>

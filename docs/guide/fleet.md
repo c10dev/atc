@@ -229,6 +229,10 @@ atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude C
 - LAUNCH·STOP은 모두 FLIGHT RECORDER에 남는다. DISPATCH 카드 승인으로 띄운 것은 그 제안 번호(D-xxxx)도 남는다.
 - **백그라운드 세션은 60분쯤 쉬면 끝난다**: Claude Code가 마지막 턴 뒤 60분쯤 쉰 백그라운드 세션을 거둔다(`~/.claude/daemon.log`의 `bg retire …: idle 60m`). 대화는 남는다. 관제 세션은 `/loop`가 몇 분마다 돌아 끝나지 않는다. 끝난 AIRCRAFT는 NOT IN SERVICE로 보이지만 DISPATCH 후보로 남아, 그 카드를 승인하면 atc가 다시 띄운다(판정하기의 "LAUNCH 카드와 RESUME 카드"). atc는 세션을 붙잡아 두려고 메시지를 보내지 않는다.
 
+## RELAY: AIRCRAFT에게 글 보내기
+
+카드(와 PR 서랍)의 **RELAY…**는 SUPERVISOR가 AIRCRAFT에게 짧은 글을 보내는 길입니다. 글은 **영어**로 쓰고(세션끼리 주고받는 글은 영어입니다), 종류는 `INFO`(알림, ROGER로 답함)나 `INSTRUCTION`(지시, READBACK이나 UNABLE로 답함)입니다. **보내기…**를 누르면 받는 AIRCRAFT·종류·글을 한 번 더 보여 주고, **보내기 확인**을 눌러야 나갑니다. 글은 TOWER가 CLEARANCE로 **고치지 않고** 그대로 보냅니다(다음 tick에). PR 서랍의 RELAY…는 그 PR의 현재 head에 리뷰 지적이 있으면 FIX 글이 채워진 채로 열립니다. 카드의 RELAY…에서 **이슈 댓글 넣기**는 그 FLIGHT에 SUPERVISOR가 단 Linear 댓글을 글로 채웁니다(FLIGHT PLAN을 보낸 뒤 단 댓글을 전할 때). 닿지 못하면 DUTY 서랍의 QUEUE에 손으로 전하는 카드가 뜹니다([DUTY 채팅](duty.md)).
+
 ## FLEET PLAN: atc의 제안
 
 카드 위의 FLEET PLAN 블록은 atc가 팀을 언제 띄우고, 멈추고, 쉬게 하고, 퇴역시키자고 하는지 보여 준다. 지금은 **그림자**다. atc는 제안만 하고, SUPERVISOR는 **동의**·**반대**로 판정만 한다. 실제로 띄우거나 멈추는 것은 여전히 카드의 버튼으로 한다.

@@ -403,7 +403,10 @@ test("sendOutput: SEND에 머리 한 줄만 먼저 내고 전체 문구는 로�
 
 test("CAPTAIN의 답(ATC-122): <ID> [-- 사유]. unable만 사유가 필요하고 나머지는 ID 뒤에 아무것도 받지 않는다", async () => {
   const { parseAnswerArgs, CLEARANCE_ANSWERS } = await import("./atcctl.mjs");
-  assert.deepEqual(CLEARANCE_ANSWERS, ["readback", "roger", "unable", "standby", "cancel"]);
+  assert.deepEqual(CLEARANCE_ANSWERS, ["readback", "roger", "unable", "standby", "cancel", "undeliverable"]);
+  // undeliverable(ATC-271): 사유가 필요하다
+  assert.deepEqual(parseAnswerArgs("undeliverable", ["c-0301", "--", "No", "session", "named", "TEAM_Z"]), { id: "C-0301", reason: "No session named TEAM_Z" });
+  assert.throws(() => parseAnswerArgs("undeliverable", ["C-0301"]), /사유가 필요함/);
   assert.deepEqual(parseAnswerArgs("roger", ["c-0007"]), { id: "C-0007" });
   assert.deepEqual(parseAnswerArgs("standby", ["D-0003"]), { id: "D-0003" });
   assert.deepEqual(parseAnswerArgs("unable", ["C-0007", "--", "PR이", "아직", "CI", "중"]), { id: "C-0007", reason: "PR이 아직 CI 중" });
@@ -455,4 +458,14 @@ test("issue: GO AROUND는 따옴표·하이픈·띄어 쓴 세 꼴 모두 같은
   assert.deepEqual(parseIssue(["TEAM_X", "go-around", ...tail]), want);
   assert.deepEqual(parseIssue(["TEAM_X", "GO", "AROUND", ...tail]), want);
   assert.equal(parseIssue(["TEAM_X", "land", "--", "x"]).type, "LAND");
+});
+
+test("relay(ATC-271): issued <R> <C>, undeliverable <R> -- <사유>. 만드는 명령은 없다", async () => {
+  const { parseRelayArgs } = await import("./atcctl.mjs");
+  assert.deepEqual(parseRelayArgs(["issued", "r-0001", "c-0301"]), { action: "issued", id: "R-0001", clearance: "C-0301" });
+  assert.deepEqual(parseRelayArgs(["undeliverable", "R-0001", "--", "No", "session"]), { action: "undeliverable", id: "R-0001", reason: "No session" });
+  assert.throws(() => parseRelayArgs(["create", "TEAM_G", "hi"]), /만드는 것은 SUPERVISOR가 화면에서만/);
+  assert.throws(() => parseRelayArgs(["issued", "R-0001"]), /CLEARANCE ID/);
+  assert.throws(() => parseRelayArgs(["issued", "TEAM_G", "C-0301"]), /relay ID/);
+  assert.throws(() => parseRelayArgs(["undeliverable", "R-0001"]), /사유가 필요함/);
 });

@@ -45,13 +45,14 @@ export function manualHash(dir) {
 const manualFile = (dir) => join(STATE, "manuals", `${dir.replace(/[^A-Za-z0-9._-]+/g, "_")}.sha`);
 
 // CLEARANCE에 기록하는 답(ATC-122)과 출력
-export const CLEARANCE_ANSWERS = ["readback", "roger", "unable", "standby", "cancel"];
+export const CLEARANCE_ANSWERS = ["readback", "roger", "unable", "standby", "cancel", "undeliverable"];
 const CLEARANCE_ANSWER_TEXT = {
   readback: "READBACK 확인",
   roger: "ROGER 확인",
   unable: "UNABLE — 다시 보내지 않고 SUPERVISOR에게 보고",
   standby: "STANDBY",
   cancel: "취소",
+  undeliverable: "닿지 못해 닫음 — SUPERVISOR QUEUE에 손으로 전하는 카드가 뜬다",
 };
 
 const USAGE = `사용법:
@@ -65,6 +66,12 @@ const USAGE = `사용법:
   node atcctl.mjs unable <C-0007> -- <사유>  팀이 UNABLE함(닫힌다. 다시 보내지 않고 SUPERVISOR에게 보고)
   node atcctl.mjs standby <C-0007>          팀이 STANDBY함(W/U만. 열린 채 overdue 10분을 한 번 다시 센다)
   node atcctl.mjs cancel <C-0007>           CLEARANCE 취소
+  node atcctl.mjs undeliverable <C-0007> -- <사유>
+                                            SendMessage가 닿지 못해 CLEARANCE를 닫음(취소와 달리 SUPERVISOR QUEUE에 손으로 전하는 카드가 뜬다)
+  node atcctl.mjs relay issued <R-0001> <C-0301>
+                                            SUPERVISOR RELAY(brief의 relays[])를 CLEARANCE로 보낸 뒤 표시(본문이 같아야 한다)
+  node atcctl.mjs relay undeliverable <R-0001> -- <사유>
+                                            relay가 닿지 못했다(SUPERVISOR QUEUE에 손으로 전하는 카드가 뜬다). relay를 만드는 명령은 없다 — SUPERVISOR가 화면에서만
   node atcctl.mjs manual check              이 폴더의 CLAUDE.md·/tick(절차 파일 포함)이 마지막 ack 뒤 바뀌었는지 (UNCHANGED | CHANGED)
   node atcctl.mjs manual ack                지금 규정을 다시 읽었다고 기록
   node atcctl.mjs squelch <역할>            SQUELCH 판정(tower|mcc|occ|crosscheck|review)을 hook과 같이 받아 출력: OPEN <reason> | QUIET since HH:MM (n). 디버깅용
@@ -432,12 +439,25 @@ export function parseBriefingArgs(args) {
 export function parseAnswerArgs(verb, args) {
   const [id, ...rest] = args;
   if (!id || id === "--") throw new Error(`${verb}에는 ID가 필요함`);
-  if (verb !== "unable" && verb !== "await-supervisor" && verb !== "undelivered") {
+  if (verb !== "unable" && verb !== "await-supervisor" && verb !== "undelivered" && verb !== "undeliverable") {
     if (rest.length) throw new Error(`알 수 없는 인자 ${rest.join(" ")}`);
     return { id: id.toUpperCase() };
   }
   if (rest[0] !== "--" || !rest.slice(1).join(" ").trim()) throw new Error(verb === "undelivered" ? "undelivered에는 -- 뒤에 SendMessage 도구가 돌려준 메시지가 필요함" : `${verb}에는 -- 뒤에 CAPTAIN의 사유가 필요함`);
   return { id: id.toUpperCase(), reason: rest.slice(1).join(" ").trim() };
+}
+
+// relay issued <R-0001> <C-0301> | relay undeliverable <R-0001> -- <사유> → { id, action, clearance?, reason? }(ATC-271). 만드는 명령은 없다
+export function parseRelayArgs(args) {
+  const [action, id, ...rest] = args;
+  if (action !== "issued" && action !== "undeliverable") throw new Error("relay 명령은 issued|undeliverable (relay를 만드는 것은 SUPERVISOR가 화면에서만)");
+  if (!id || id === "--" || !/^R-\d+$/i.test(id)) throw new Error("relay ID(R-0001)가 필요함");
+  if (action === "issued") {
+    if (rest.length !== 1 || !/^C-\d+$/i.test(rest[0])) throw new Error("issued에는 보낸 CLEARANCE ID(C-0301)가 필요함");
+    return { action, id: id.toUpperCase(), clearance: rest[0].toUpperCase() };
+  }
+  if (rest[0] !== "--" || !rest.slice(1).join(" ").trim()) throw new Error("undeliverable에는 -- 뒤에 사유가 필요함");
+  return { action, id: id.toUpperCase(), reason: rest.slice(1).join(" ").trim() };
 }
 
 // crew-change <brief|send|readback|unable|standby> [<CC-0001>] [-- <사유>] → { action, id, reason? }. 승인(approve)은 SUPERVISOR 몫이라 없다
@@ -999,6 +1019,10 @@ if (isMain) {
     } else if (cmd === "squelch") {
       if (args.length !== 1 || !SQUELCH_ROLES.includes(args[0])) throw new Error(`역할은 ${SQUELCH_ROLES.join("|")} 중 하나`);
       console.log(await squelchLine(args[0]));
+    } else if (cmd === "relay") {
+      const r = parseRelayArgs(args);
+      const out = await call("POST", `/api/relay/${encodeURIComponent(r.id)}/${r.action}`, r.action === "issued" ? { clearance: r.clearance } : { reason: r.reason });
+      console.log(`${out.relay.id} ${out.relay.status}${out.relay.clearance ? ` (${out.relay.clearance})` : ""}`);
     } else if (CLEARANCE_ANSWERS.includes(cmd) && args[0]) {
       // CLEARANCE의 답(ATC-122). 이 CLEARANCE가 받지 않는 답이면 서버가 사유와 함께 거절한다(ROGER는 R만, STANDBY는 W/U만)
       const { id, reason } = cmd === "cancel" ? { id: args[0].toUpperCase() } : parseAnswerArgs(cmd, args);

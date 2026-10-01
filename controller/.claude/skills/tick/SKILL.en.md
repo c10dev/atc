@@ -9,6 +9,7 @@
 0. `node atcctl.mjs manual check`. On `CHANGED`, reread `CLAUDE.md` and this file, run `node atcctl.mjs manual ack`, then continue under the reread manual.
 1. If messages from team sessions arrived before this pass, handle them first. For "READBACK C-xxxx" run `node atcctl.mjs readback C-xxxx`, for "ROGER C-xxxx" `roger C-xxxx`, for "UNABLE C-xxxx — reason" `unable C-xxxx -- <reason>` (and put it on the SUPERVISOR report list), for "STANDBY C-xxxx" `standby C-xxxx`. Put refusals and questions without the fixed form on the list to report to the SUPERVISOR.
 2. Run `node atcctl.mjs brief`. If it has `reset: true`, the server restarted, so go by the current state (`open`, `landingQueue`) rather than `events`. `landingQueue[].info`, `goAround` and `fix` are built from state (they compare with the last INFO, GO AROUND and FIX body), so handle them by their `action` in this pass too (ATC-128, ATC-270). A server restart that drops the events no longer drops what must be sent, and what already went out is not sent again.
+2a. If `relays[]` (SUPERVISOR RELAY, ATC-271) has entries, send the text unchanged as the SUPERVISOR RELAY row of CLAUDE.md says and mark it with `relay issued`. If it cannot be delivered, mark it with `undeliverable` and `relay undeliverable`.
 3. Apply the decision rules table in CLAUDE.md from the top. When a CLEARANCE is needed:
    - `node atcctl.mjs issue <session> <TYPE> --stand <STAND> --flight <FLIGHT> -- <text>`
    - Send the text below `---` verbatim with SendMessage to the `SEND TO` session in the output.

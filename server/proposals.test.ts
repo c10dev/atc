@@ -287,6 +287,15 @@ test("FLIGHT PLAN 문구(DIRECT): 이슈 본문에서 목표·완료 기준·이
   assert.ok(msg.split("\n")[1] === "BRIEF: DIRECT");
 });
 
+test("FLIGHT PLAN 문구(ATC-271): notes는 지시서 뒤에 들어가고, 없으면 블록이 없다", () => {
+  const [p] = fold([create("D-0010", "VOC-201", "b", 10)]);
+  const notes = ["NOTES FROM THE ISSUE (comments by the SUPERVISOR, newest last):", "> Carry over point one."];
+  const msg = formatFlightPlan({ ...p, airport: "VCDO" }, { title: "버튼", url: "u", priority: 3 }, "TEAM_F", "## 목표\n정리", Date.now(), notes);
+  assert.ok(msg.includes("Done when: Follow the done criteria in the issue body (link).\nNOTES FROM THE ISSUE (comments by the SUPERVISOR, newest last):\n> Carry over point one."), msg);
+  assert.ok(msg.indexOf("NOTES FROM THE ISSUE") < msg.indexOf("PILOT'S DISCRETION"));
+  assert.ok(!formatFlightPlan({ ...p, airport: "VCDO" }, { title: "버튼", url: "u", priority: 3 }, "TEAM_F", "## 목표\n정리").includes("NOTES FROM THE ISSUE"));
+});
+
 test("FLIGHT PLAN 문구: HOLD가 있으면 선행 FLIGHT 줄이 들어간다", () => {
   const [p] = fold([create("D-0008", "VOC-192", "b", 10), { op: "hold", id: "D-0008", at: iso(9), blockedBy: ["VOC-180"] }]);
   const msg = formatFlightPlan({ ...p, airport: "VCDO" }, { title: "별도 이슈", url: "u", priority: 2 }, "TEAM_F");

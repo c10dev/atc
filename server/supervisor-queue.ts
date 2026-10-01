@@ -1,17 +1,18 @@
 import { blockedAlerts, type Job } from "./job-state.ts";
 import type { LandBy } from "./land-by.ts";
-import type { PullRequest, Session } from "./model.ts";
+import type { Clearance, PullRequest, Session } from "./model.ts";
 import type { Proposal } from "./proposals.ts";
 import type { FleetProposal } from "./fleet-plan.ts";
 import type { ScheduleMode, ScheduleOp } from "./schedule.ts";
 import { waitsOnHuman } from "./human-check.ts";
+import { type HandCard, handCardOf, liveSessionOf, type Relay } from "./relay.ts";
 import type { UpdateKind } from "./update.ts";
 
 // SUPERVISOR QUEUE(ATC-194, docs/ui-visibility.md 3.1, docs/duty.md Q1): SUPERVISOR의 결정을 기다리는 것 하나의 목록.
 // 새 감지는 없다 — 화면이 이미 쓰는 상태를 그대로 읽는다. 항목은 밑의 상태가 바뀔 때만 사라진다(읽음·미룸 없음).
 // 순수 함수만. 자료 모으기는 supervisor-queue-run.ts. `title`은 atc 말(FLIGHT key·REGISTRATION·PR 번호)만 쓰고 티켓·PR 제목은 싣지 않는다.
 
-export const QUEUE_KINDS = ["PROPOSAL", "SCHEDULE", "FLEET PLAN", "HUMAN CHECK", "LANDING", "UPDATE", "NEEDS YOU", "GO"] as const;
+export const QUEUE_KINDS = ["PROPOSAL", "SCHEDULE", "FLEET PLAN", "HUMAN CHECK", "LANDING", "UPDATE", "NEEDS YOU", "UNDELIVERED", "GO"] as const;
 export type QueueKind = (typeof QUEUE_KINDS)[number];
 
 export interface QueueItem {
@@ -20,18 +21,34 @@ export interface QueueItem {
   since: string | null; // 이 일이 기다리기 시작한 시각(ISO). 모르면 null
   title: string;
   hash: string; // 그 항목이 있는 화면 주소
+  hand?: HandItem; // UNDELIVERED: 손으로 전하는 카드(ATC-271)
+}
+
+// 닿지 못한 글(SUPERVISOR RELAY·CLEARANCE·FLIGHT PLAN)을 SUPERVISOR가 손으로 전하는 카드의 자료. text가 null이면 복사할 글이 없다(FLIGHT PLAN은 FLIGHT 카드의 DIRECT 지시서)
+export interface HandItem {
+  source: "RELAY" | "CLEARANCE" | "FLIGHT PLAN";
+  id: string;
+  to: string;
+  reason: string;
+  text: string | null;
+  card: HandCard;
 }
 
 export interface QueueInput {
-  proposals: Pick<Proposal, "id" | "kind" | "status" | "flight" | "aircraftName" | "holdAt" | "statusAt" | "awaitSupervisor">[];
+  proposals: Pick<Proposal, "id" | "kind" | "status" | "flight" | "aircraftName" | "holdAt" | "statusAt" | "awaitSupervisor" | "undelivered">[];
   schedule: { mode: ScheduleMode; ops: Pick<ScheduleOp, "id" | "kind" | "flight" | "status" | "statusAt">[] };
   // FLEET PLAN: 열린 제안과, 최근 주기가 아직 그것을 내는지(isStale의 결과)
   fleetPlan: (Pick<FleetProposal, "id" | "kind" | "aircraft" | "status" | "at"> & { stale: boolean })[];
   // landBy: TOWER가 쓰는 landByOf의 결과. "supervisor"이고 CLEARED면 SUPERVISOR가 머지한다
   pulls: (Pick<PullRequest, "repo" | "number" | "head" | "draft" | "landing" | "humanCheck" | "ticketKey"> & { landBy: LandBy })[];
   update: { kind: UpdateKind; deployed: string | null; main: string | null; mainCi: string; at: string } | null;
-  sessions: Pick<Session, "id" | "name" | "job" | "lastActiveAt">[];
+  sessions: (Pick<Session, "id" | "name" | "job" | "lastActiveAt"> & Partial<Pick<Session, "status" | "origin" | "jobId" | "account">>)[];
   blockedMin: number;
+  // 손으로 전하는 카드(ATC-271): 모두 없으면 카드가 없다
+  relays?: Pick<Relay, "id" | "to" | "kind" | "text" | "status" | "statusAt" | "reason">[];
+  clearances?: Pick<Clearance, "id" | "toName" | "type" | "text" | "undeliverableAt" | "undeliverableReason" | "handAt">[];
+  folders?: { label: string; dir: string }[]; // ACCOUNT 라벨 → 폴더(등록부)
+  defaultDir?: string; // ~/.claude
 }
 
 const short = (sha: string | null | undefined) => (sha ? sha.slice(0, 7) : "?");
@@ -81,6 +98,28 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
   for (const a of blockedAlerts(inp.sessions, now, inp.blockedMin)) {
     const s = byId.get(a.sessionIds[0]);
     out.push({ kind: "NEEDS YOU", key: a.sessionIds[0], since: (s?.job as Job | null | undefined)?.since ?? null, title: s?.name ?? a.sessionIds[0], hash: "#fleet" });
+  }
+
+  // UNDELIVERED(ATC-271): 닿지 못한 글은 조용히 닫지 않고 손으로 전하는 카드를 둔다. 상태가 바뀌면(손으로 전했다고 표시·답이 옴·다시 보냄) 사라진다
+  const handFor = (to: string, reason: string) => {
+    const t = liveSessionOf(inp.sessions.map((x) => ({ ...x, status: x.status ?? "idle" })), to);
+    const dir = inp.folders?.find((f) => f.label === t?.account)?.dir ?? null;
+    return handCardOf(to, reason, { session: t, folderDir: dir, defaultDir: inp.defaultDir ?? "" });
+  };
+  for (const r of inp.relays ?? []) {
+    if (r.status !== "undeliverable") continue;
+    const reason = r.reason ?? "undeliverable";
+    out.push({ kind: "UNDELIVERED", key: r.id, since: r.statusAt, title: `RELAY ${r.id} → ${r.to}`, hash: "#fleet", hand: { source: "RELAY", id: r.id, to: r.to, reason, text: r.text, card: handFor(r.to, reason) } });
+  }
+  for (const c of inp.clearances ?? []) {
+    if (!c.undeliverableAt || c.handAt || now - Date.parse(c.undeliverableAt) > 3 * 86_400_000) continue;
+    const reason = c.undeliverableReason ?? "undeliverable";
+    out.push({ kind: "UNDELIVERED", key: c.id, since: c.undeliverableAt, title: `${c.type} ${c.id} → ${c.toName}`, hash: "#radar", hand: { source: "CLEARANCE", id: c.id, to: c.toName, reason, text: c.text, card: handFor(c.toName, reason) } });
+  }
+  for (const p of inp.proposals) {
+    if (!p.undelivered || p.status !== "approved" || !p.aircraftName) continue;
+    const reason = p.undelivered.reason;
+    out.push({ kind: "UNDELIVERED", key: `${p.id}|${p.undelivered.at}`, since: p.undelivered.at, title: `FLIGHT PLAN ${p.flight} → ${p.aircraftName}`, hash: "#dispatch", hand: { source: "FLIGHT PLAN", id: p.id, to: p.aircraftName, reason, text: null, card: handFor(p.aircraftName, reason) } });
   }
 
   // GO: CAPTAIN이 SUPERVISOR의 go를 기다린다(sent인 동안만 awaitSupervisor가 있다)

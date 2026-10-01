@@ -1,0 +1,125 @@
+/* SUPERVISOR RELAY(ATC-271): 글 입력·확인 칸과 손으로 전하는 카드. 색·글꼴은 :root 토큰만 */
+.rl {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  font-size: var(--text-sm);
+}
+.rl-kind {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.rl-label {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.rl-opt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 24px;
+}
+.rl-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--scope);
+  color: var(--text);
+  font-size: var(--text-xs);
+  resize: vertical;
+}
+.rl-count {
+  margin: 0;
+  font-size: var(--text-xs);
+  text-align: right;
+}
+.rl-sum {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.rl-text {
+  margin: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--scope);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.rl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.rl-bad {
+  margin: 0;
+  color: var(--alert);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.rl-ok {
+  margin: 0;
+  color: var(--radar);
+  overflow-wrap: anywhere;
+}
+.rl-why {
+  font-size: var(--text-xs);
+}
+
+/* 손으로 전하는 카드(SUPERVISOR QUEUE의 UNDELIVERED) */
+.hd {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin-top: var(--space-1);
+}
+.hd-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.hd-how {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.hd-cmd {
+  margin: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--scope);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.hd-meta {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+
+/* FLEET 카드: 열린 RELAY 칸은 머리의 버튼 줄 아래에 가로로 꽉 차게 */
+.fl-head-actions .rl {
+  order: 10;
+  flex: 1 1 100%;
+  width: 100%;
+  box-sizing: border-box;
+}

@@ -65,6 +65,7 @@ import { record } from "./recorder.ts";
 import { closingLine, overdueBase, responseOf } from "./response.ts";
 import { activeWaypointsOf, loadRoutes } from "./routes.ts";
 import { readLinearProjects } from "./sources/linear-projects.ts";
+import { flightPlanNotesOf, type IssueComment } from "./issue-notes.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 import { DIRECT_LINE, directLines, directSectionsOf, DISCRETION_LINE, FINISH_LINE, formatAssignment } from "./briefs.ts";
 import { type Delivery, deliveryOf } from "./session-origin.ts";
@@ -800,7 +801,7 @@ export const descriptionOf = (d: Record<string, unknown>): string | null => (typ
 // CAPTAIN에게 보낼 FLIGHT PLAN. send-guard는 DISPATCH가 이 문구를 그대로 보내는지 확인한다.
 // DIRECT 지시서(ATC-32): 이슈 본문(description)에서 목표·완료 기준·이 작업만의 제약만 옮기고, 끝까지 한 번에 날게 한다.
 // 본문을 못 읽었으면(null) 완료 기준은 링크의 이슈 본문을 따르라고 적는다.
-export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "url" | "priority"> | undefined, sessionName: string, description: string | null = null, now = Date.now()): string {
+export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "url" | "priority"> | undefined, sessionName: string, description: string | null = null, now = Date.now(), notes: readonly string[] = []): string {
   const sign = callsign({ name: sessionName });
   const who = sign === sessionName ? sessionName : `${sign} (${sessionName})`;
   const note = p.note ? `DISPATCH note: ${p.caution ? "CAUTION · " : ""}${p.note}` : p.caution ? "DISPATCH note: CAUTION" : null;
@@ -814,6 +815,7 @@ export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "ur
     // RESUME 카드(ATC-129): 처음부터 다시 하지 말고 STAND·브랜치·마지막 커밋에서 이어서
     ...(p.resume ? resumeLines(p.resume, now) : []),
     ...directLines(directSectionsOf(description)),
+    ...notes,
     note,
     hold,
     DISCRETION_LINE,
@@ -1372,8 +1374,11 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
         const bad = closed("send");
         if (bad) return bad;
         // DIRECT 지시서에 옮길 이슈 본문(Linear 읽기 전용). 못 읽어도 보낸다 — 완료 기준은 링크를 따르라고 적힌다
-        const description = await fetchIssueDetail(p.flight).then((d) => descriptionOf(d)).catch(() => null);
-        const message = formatFlightPlan(p, s.tickets.find((t) => t.key === p.flight), p.aircraftName ?? "", description, Date.now());
+        // 이슈 댓글 중 SUPERVISOR가 쓴 것은 NOTES FROM THE ISSUE로 함께 간다(ATC-271)
+        const detail = (await fetchIssueDetail(p.flight).catch(() => null)) as Record<string, unknown> & { comments: unknown[] } | null;
+        const description = detail ? descriptionOf(detail) : null;
+        const notes = detail ? flightPlanNotesOf(detail.comments as IssueComment[], loadDispatchConfig().issueNotes, typeof detail.url === "string" ? detail.url : null) : [];
+        const message = formatFlightPlan(p, s.tickets.find((t) => t.key === p.flight), p.aircraftName ?? "", description, Date.now(), notes);
         append([{ op: "send", id, at, message }]);
         const sent = allProposals().find((x) => x.id === id)!;
         return c.json({ proposal: sent, sendTo: sent.aircraftName, message: sent.message });
@@ -1500,7 +1505,9 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
     try {
       const d = (await fetchIssueDetail(key)) as Record<string, unknown>;
       const to = c.req.query("to")?.trim().toUpperCase() || null;
-      const text = formatAssignment({ key, title: typeof d.title === "string" ? d.title : null, url: typeof d.url === "string" ? d.url : null }, descriptionOf(d), to);
+      const url = typeof d.url === "string" ? d.url : null;
+      const notes = flightPlanNotesOf(d.comments as IssueComment[], loadDispatchConfig().issueNotes, url);
+      const text = formatAssignment({ key, title: typeof d.title === "string" ? d.title : null, url }, descriptionOf(d), to, notes);
       return c.json({ key, brief: "DIRECT", text });
     } catch (e) {
       return c.json({ error: String((e as Error).message ?? e) }, 502);

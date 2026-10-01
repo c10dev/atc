@@ -40,6 +40,8 @@ export function actionsOf(item: Pick<QueueItem, "kind" | "key">, airports: reado
       const ap = pr && airports.find((a) => repoName(a.repo) === pr.repo || a.name === pr.repo);
       return [pr && ap ? { type: "link", label: `PR #${pr.number} 열기`, hash: `#pr/${ap.code}/${pr.number}` } : { type: "link", label: "STRIPS에서 보기", hash: "#strips" }];
     }
+    case "UNDELIVERED":
+      return [{ type: "link", label: "AIRCRAFT 보기(FLEET)", hash: "#fleet" }];
     case "NEEDS YOU":
     case "GO":
       return [{ type: "link", label: "AIRCRAFT 보기(FLEET)", hash: "#fleet" }];

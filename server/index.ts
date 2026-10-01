@@ -10,6 +10,7 @@ import { mountAutoland, runAutoland } from "./autoland-run.ts";
 import { mountJudges, runJudges } from "./judges/run.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
+import { mountRelay } from "./relay-run.ts";
 import { mountLandingReview } from "./landing-review.ts";
 import { mccLandInfo, mountMcc, rtsState } from "./mcc-run.ts";
 import { mountMilestones, runMilestones } from "./milestones-run.ts";
@@ -169,6 +170,7 @@ const getSnapshot = async () => current ?? (current = await buildSnapshot());
 app.get("/api/snapshot", async (c) => c.json(await getSnapshot()));
 app.get("/api/version", (c) => c.json(version()));
 mountController(app, getSnapshot, eventLog, (s) => fuelWatch(s), mccLandInfo);
+mountRelay(app, getSnapshot); // SUPERVISOR RELAY(ATC-271): 화면에서 AIRCRAFT에게 보내는 글. 만들기는 화면의 클릭뿐(fromThisApp)
 mountLandingReview(app, getSnapshot);
 mountHumanCheck(app, getSnapshot);
 mountAirports(app);

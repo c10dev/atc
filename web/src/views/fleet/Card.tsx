@@ -13,6 +13,7 @@ import type { RulesView } from "../../../../server/rules-state.ts";
 import { isBackground, manualStepsOf, originBadgeOf } from "../../../../server/session-origin.ts";
 import { flightNumber } from "../../aviation.ts";
 import { OpenFlight } from "../../FlightLink.tsx";
+import { RelayBox } from "../../Relay.tsx";
 import { timeAgo } from "../../derive.ts";
 import { ActivityLine, JobDetail, NeedsYou, SuggestedReply } from "../../ui.tsx";
 import { formatClock, useSettings } from "../../settings.ts";
@@ -338,6 +339,7 @@ export function Card({
           <button className="fl-btn" onClick={(e) => onBriefing(e.currentTarget)}>
             CREW BRIEFING
           </button>
+          <RelayBox to={a.registration} flight={(a.flying[0] as string | undefined) ?? kept[0]?.key ?? null} notesFlight={(a.flying[0] as string | undefined) ?? kept[0]?.key ?? null} btnClass="fl-btn" />
           <button className="fl-btn" onClick={onEdit}>
             고치기
           </button>
