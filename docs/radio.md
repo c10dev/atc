@@ -179,6 +179,7 @@ Why here: RADIO is where the texts the server sends to sessions are collected, a
 - **Once per subject.** `qrhSweep` (pure) takes the conditions that are true now and the keys already written and still open. It writes a line for a new key, nothing for a key already open, and drops a key that is no longer true, so a condition that returns is named again. Two codes of one checklist with the same subject (`undelivered` and `overdue` on one proposal) give one line. After a restart the open keys are rebuilt from the last 24 hours of lines, so a condition that is still true is not written twice.
 - **Run and read.** `server/qrh-run.ts` sweeps from the server tick (at most every 10 s; it reads values the server already computes). `GET /api/qrh/named?since=<ISO or ms>` returns `{ since, count, lines }` (default the last 24 h; read only). It is its own route because no existing read endpoint carries FLIGHT RECORDER lines.
 - **Not here.** No change to any text, brief field or guard, and no UI.
+- **See also** [skills.md](skills.md) for all skills, sub-agents and rulebook checklists, and how their use is measured.
 
 ## Not built yet
 

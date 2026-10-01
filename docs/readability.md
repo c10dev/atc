@@ -130,6 +130,8 @@ Files: `server/skill-calls.ts` (pure: scan, usage, match), `server/skill-calls-r
 - Skill calls inside sub-agent runs are not counted for the session; only the session's own calls are.
 - The daily job runs 40 seconds after the server starts and then hourly; it does nothing when no day is missing.
 
+See [skills.md](skills.md) for what the reader counts and how the endpoint fits with the skills and the rulebook.
+
 ## Not built yet
 
 - **A screen** (a READABILITY view or a section of RADIO) and DOCS text for it.
