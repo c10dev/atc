@@ -86,7 +86,7 @@ Linear가 최근 45일 안에 바뀐 이슈만 읽기 때문에 오래된 이슈
 |---|---|---|
 | 줄이 **풀 수 있음(READY)**이 됨 | QUEUE | CALL |
 | 줄의 제안이 **승인을 기다림** | QUEUE(같은 제안의 "SUPERVISOR 대기" 줄은 따로 안 나옴) | CALL |
-| 줄이 **막힘**(FLIGHT FOLLOWING의 지연·불일치. 단계마다 한 줄) | ALERTS | CAUTION |
+| 줄이 **막힘**(줄의 `막힘` 표시 전부: 제안 없이 Todo 30분, 승인 뒤 발송 없음 10분, 착륙 뒤 배포 없음 15분, READBACK 없음, FLIGHT FOLLOWING의 지연·불일치. 단계마다 한 줄) | ALERTS | CAUTION |
 | **GO AROUND**, ROLLBACK 뒤에도 배포 안 된 착륙, 되돌려진 PR | ALERTS | WARNING |
 | 착륙(ON), 배포(IN) | LOG(하루) | 조용함 |
 
