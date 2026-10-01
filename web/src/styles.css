@@ -104,6 +104,16 @@
   --space-8: 32px;
   --space-12: 48px;
   --gutter: var(--space-6); /* 화면 좌우 여백 */
+  /* 쌓임 순서(낮은 것부터). 새 z-index는 이 토큰만 쓴다(css-lint). 숫자를 바꾸면 순서가 바뀌니 사이에 끼울 때만 값을 고른다 */
+  --z-base: 0; /* 별 배경 */
+  --z-raised: 1; /* 같은 층 위로 살짝: 표 고정 열, 툴팁, 테마 장식 위 */
+  --z-float: 5; /* 경보 줄, 카드 메뉴 */
+  --z-sticky: 10; /* 위에 붙는 콘솔(로고·카운터·탭) */
+  --z-menu: 20; /* 표시 옵션 메뉴 */
+  --z-popover: 30; /* 알림 종 목록 */
+  --z-overlay: 40; /* 설정 창 뒤판 */
+  --z-drawer: 60; /* FLIGHT·PR 서랍 뒤판 */
+  --z-drawer-panel: 61; /* 서랍 본체 */
   --gap-item: var(--space-2); /* 카드·FLIGHT STRIPS·데이터 블록 사이 */
   --gap-column: var(--space-4); /* 열 사이 */
   --gap-section: var(--space-8); /* 베이·구역 사이 */
@@ -186,7 +196,7 @@ button {
 .console {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: var(--z-sticky);
   display: flex;
   align-items: stretch;
   height: var(--console-h);
@@ -519,7 +529,7 @@ button {
   max-height: 34vh;
   overflow: auto;
   position: relative;
-  z-index: 5;
+  z-index: var(--z-float);
   background: var(--panel-3);
   border-bottom: 1px solid var(--line-strong);
   box-shadow: var(--shadow-3);
@@ -1546,7 +1556,7 @@ a.ticket:hover {
   position: absolute;
   top: calc(100% + var(--space-2));
   right: 0;
-  z-index: 20;
+  z-index: var(--z-menu);
   width: 300px;
   padding: var(--space-3);
   border: 1px solid var(--line-strong);
@@ -1974,7 +1984,7 @@ a.ticket:hover {
     repeating-linear-gradient(0deg, transparent 0 29px, rgba(140, 160, 210, 0.04) 29px 30px);
 }
 :root[data-theme="cockpit"] .map {
-  z-index: 1;
+  z-index: var(--z-raised);
 }
 :root[data-theme="cockpit"] .tab[aria-selected="true"] {
   box-shadow: inset 0 0 0 1.5px var(--cyan);
@@ -2022,7 +2032,7 @@ a.ticket:hover {
 .settings-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: var(--z-overlay);
   display: grid;
   place-items: center;
   padding: var(--space-8) var(--space-4);
@@ -2729,11 +2739,11 @@ a.ticket:hover {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 0;
+  z-index: var(--z-base);
 }
 :root[data-theme="night"] .app {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-raised);
 }
 :root[data-theme="night"] .console,
 :root[data-theme="night"] .alerts,

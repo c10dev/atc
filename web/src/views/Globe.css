@@ -102,7 +102,7 @@
 }
 .globe-code {
   fill: var(--text);
-  font-size: 18px;
+  font-size: var(--text-xl);
   font-weight: 600;
   paint-order: stroke;
   stroke: var(--bg);

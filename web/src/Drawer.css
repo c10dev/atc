@@ -2,7 +2,7 @@
 .dr-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: var(--z-drawer);
   background: rgba(0, 0, 0, 0.35);
 }
 .dr {
@@ -10,7 +10,7 @@
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: 61;
+  z-index: var(--z-drawer-panel);
   width: min(560px, 100vw);
   overflow-y: auto;
   padding: var(--space-4) var(--gutter) var(--space-12);
@@ -31,7 +31,7 @@
   border-radius: 4px;
   background: var(--panel-2);
   color: var(--text);
-  font-size: 18px;
+  font-size: var(--text-xl);
   line-height: 1;
   cursor: pointer;
 }

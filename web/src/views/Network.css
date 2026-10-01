@@ -79,7 +79,7 @@
 .nw-table tbody th {
   position: sticky;
   left: 0;
-  z-index: 1;
+  z-index: var(--z-raised);
   padding: var(--space-2) var(--space-3);
   text-align: left;
   font: 600 var(--text-sm) var(--sans);
@@ -95,7 +95,7 @@
 .nw-table thead th:first-child {
   position: sticky;
   left: 0;
-  z-index: 1;
+  z-index: var(--z-raised);
   background: linear-gradient(var(--panel-2), var(--panel-2)), var(--bg);
 }
 .nw-table tbody th.mono {
