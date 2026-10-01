@@ -42,6 +42,7 @@ const prWords = (pr: number | undefined) => (Number.isInteger(pr) && pr! > 0 ? `
 function stationWord(station: string, freq: string, aircraft: string | undefined): string | null {
   if (station === "TOWER") return "Tower";
   if (station === "MCC") return "Ground";
+  if (station === "CROSSCHECK") return "Crosscheck";
   if (station === "OCC") return freq === "COMPANY" ? "Company" : "Delivery";
   if (station === "ALL") return null;
   const who = whoWords(aircraft) || clean(station.replace(/ \(.*\)$/, ""));
@@ -63,6 +64,11 @@ export function radioPhraseOf(t: Pick<Transmission, "freq" | "from" | "to" | "ai
     const what = t.kind === "INSPECTION" ? INSPECTION[t.result ?? ""] : t.kind === "LAND" ? LAND[t.result ?? ""] : t.kind === "ESCALATE" ? "escalate" : t.kind === "RTS" ? RTS[t.result ?? ""] : undefined;
     if (!what) return null;
     return finish([speaker, what, t.kind === "RTS" ? null : prWords(t.pr)]);
+  }
+  if (t.freq === "PREFLIGHT") {
+    // 호출이 아닌 안내: 판정(agree·disagree)은 result 필드에서만, 사유 글은 읽지 않는다
+    const verb = t.kind === "CROSSCHECK" ? (t.result === "agree" || t.result === "disagree" ? t.result : null) : t.kind === "PREFLIGHT HOLD" ? "preflight hold" : t.kind === "HOLD" ? "hold" : null;
+    return verb ? finish([speaker, verb, flight]) : null;
   }
   if (t.replyTo) {
     const verb = REPLY_VERB[t.kind];

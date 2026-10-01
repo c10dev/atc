@@ -12,6 +12,7 @@ atc의 세션끼리 오간 교신(TOWER의 CLEARANCE와 팀의 READBACK, OCC의 
 | **TOWER** | CLEARANCE(LAND, GO AROUND, INFO …)와 READBACK·ROGER·UNABLE·STANDBY |
 | **GROUND** | MCC의 INSPECTION, LAND, ESCALATE, RTS 시작과 결과 |
 | **COMPANY** | CREW CHANGE와 그 READBACK, CAPTAIN의 ARRIVED 보고 |
+| **PREFLIGHT** | 출발 전 점검: CROSSCHECK의 agree·disagree 판정, PREFLIGHT HOLD, OCC의 HOLD. 호출이 아니라서 답을 기다리지 않고 overdue도 없습니다 |
 
 맨 위 칩으로 주파수를 고릅니다. 여러 개를 함께 켤 수 있고, `MONITOR ALL`은 넷 다 듣는 것입니다. 전부 끄면 다시 전부 봅니다. **AIRPORT**와 **AIRCRAFT**로도 거를 수 있습니다. 고른 값은 이 브라우저에 기억합니다(`atc.radio.*`, 저장소를 못 쓰면 전부 보기).
 

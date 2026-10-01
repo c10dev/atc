@@ -81,8 +81,10 @@ test("localStorage: 저장·복원, 못 읽으면 전부 보기", () => {
   assert.equal(loadFilter(null), ALL_FILTER);
   assert.equal(loadFilter({ getItem: () => { throw new Error("blocked"); } }), ALL_FILTER);
   mem.set("atc.radio.freqs", "not json");
-  assert.deepEqual([...loadFilter(st).freqs].length, 4);
+  assert.deepEqual([...loadFilter(st).freqs].length, 5);
   mem.set("atc.radio.freqs", JSON.stringify(["NOPE"]));
-  assert.deepEqual([...loadFilter(st).freqs].length, 4);
+  assert.deepEqual([...loadFilter(st).freqs].length, 5);
+  mem.set("atc.radio.freqs", JSON.stringify(["DELIVERY", "TOWER", "GROUND", "COMPANY"])); // 다섯째 주파수 전에 저장된 전부 보기
+  assert.equal(loadFilter(st).freqs.size, 5);
   assert.doesNotThrow(() => saveFilter({ setItem: () => { throw new Error("full"); }, removeItem: () => {} }, ALL_FILTER));
 });

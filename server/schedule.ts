@@ -126,7 +126,7 @@ export interface ScheduleOp {
   via?: Via; // SUPERVISOR 판정을 어떻게 내렸나(옛 기록에는 없다)
 }
 
-type LogLine =
+export type LogLine =
   | { op: "draft"; id: string; at: string; kind: ScheduleKind; flight: string | null; payload: SchedulePayload; reason: string }
   | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null; via?: Via }
   | { op: "supersede"; id: string; at: string; reason: string }
@@ -270,6 +270,9 @@ function readLines(file = FILE()): LogLine[] {
   }
   return out;
 }
+
+// 기록 줄 그대로(RADIO가 CROSSCHECK mark를 교신으로 읽는다)
+export const readScheduleLines = (file = FILE()) => readLines(file);
 
 // 접은 SCHEDULE 작업 전부(CHECKRIDE가 받아들인 CLASSIFY의 rating을 읽는다)
 export const loadScheduleOps = (file = FILE()) => fold(readLines(file));
