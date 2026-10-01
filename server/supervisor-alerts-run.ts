@@ -8,6 +8,7 @@ import { type ControlName, controlNameOf } from "./crew.ts";
 import type { Snapshot } from "./model.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { allProposals } from "./proposals.ts";
+import { followNow, loadFollow } from "./follow-run.ts";
 import { registrationOf } from "./registration.ts";
 import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { CONTROL_SESSIONS, controlDirOf, MAX_LAUNCHED } from "./session-control.ts";
@@ -85,7 +86,18 @@ export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
     overCap: overCapNow(),
     ...repositionAlertInputs(rs, now),
     waiting: waitStuckNow(),
+    follow: followAlertInput(s, now),
   });
+}
+
+// FOLLOW(ATC-278): follow.json에 든 번들의 줄. 접힌 번들은 뺀다. 따라가는 것이 없으면 보드를 셈하지 않는다
+function followAlertInput(s: Snapshot, now: number) {
+  if (!loadFollow().parents.length) return { rows: [], now };
+  try {
+    return { rows: followNow(s, now).bundles.filter((b) => !b.folded).flatMap((b) => b.rows), now };
+  } catch {
+    return { rows: [], now }; // 보드를 못 만들어도 다른 알림은 그대로
+  }
 }
 
 // 스냅샷이 새로 나올 때 부른다. 바뀐 것이 있으면 `alert` 이벤트를 돌려주고, 아니면 null

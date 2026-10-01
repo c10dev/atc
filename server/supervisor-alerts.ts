@@ -1,5 +1,6 @@
 import { type AlertLevel, alertLevel } from "./alert-level.ts";
 import type { FollowItem } from "./following.ts";
+import type { FollowRow } from "./follow.ts";
 import type { Alert, PullRequest, Session, Ticket, Workspace } from "./model.ts";
 import type { LandBy } from "./land-by.ts";
 import type { RtsRecord } from "./mcc.ts";
@@ -15,7 +16,7 @@ import { type CapIdleHint, idleText } from "./other-background.ts";
 // 순수 함수만. 읽기는 supervisor-alerts-run.ts
 
 // 알림 종류(화면 설정에서 종류별로 켠다)
-export const ALERT_GROUPS = ["health", "alert", "following", "pending", "land", "rts", "recycle", "reposition"] as const;
+export const ALERT_GROUPS = ["health", "alert", "following", "pending", "land", "rts", "recycle", "reposition", "follow"] as const;
 export type AlertGroup = (typeof ALERT_GROUPS)[number];
 
 // 어디로 가나(ATC-197, docs/alerting.md 3.1): alerts(지금 있는 조건, 풀릴 때까지), queue(SUPERVISOR가 결정할 것), log(일어난 일)
@@ -44,7 +45,7 @@ export interface SupervisorAlert {
 // ── 목적지 규칙(ATC-197, docs/alerting.md 3.1) ──
 // key의 첫 마디로 정하고, 마디가 더 필요한 것은 아래 함수가 가른다. 새 key 종류를 더하면 DEST_PREFIXES와 여기에도 규칙을 더해야 한다(시험이 이 파일의 key 모양을 읽어 확인한다).
 // 순수 함수: 읽는 것은 key와, land 항목의 landBy(PR → 누가 착륙시키나, land-by.ts)뿐이다. 등급 규칙을 새로 두지 않고 landByOf(=deploy/landing-tier.mjs의 등급)를 그대로 쓴다
-export const DEST_PREFIXES = ["alert", "pending", "following", "land", "rts", "recycle", "cap", "control", "reposition"] as const;
+export const DEST_PREFIXES = ["alert", "pending", "following", "land", "rts", "recycle", "cap", "control", "reposition", "follow"] as const;
 export function destOf(item: Pick<SupervisorAlert, "key">, landBy?: ReadonlyMap<string, LandBy>): AlertDest {
   const p = item.key.split("|");
   switch (p[0]) {
@@ -70,6 +71,8 @@ export function destOf(item: Pick<SupervisorAlert, "key">, landBy?: ReadonlyMap<
       return "alerts";
     case "reposition":
       return p[1] === "stuck" ? "alerts" : "log"; // reposition|stuck|<aircraft>는 조건, 나머지는 결과
+    case "follow": // FOLLOW(ATC-278, docs/follow.md 3.5): ready·approve는 SUPERVISOR의 몫(queue), landed·deployed는 일어난 일(log), stuck·failed는 조건(alerts)
+      return p[1] === "ready" || p[1] === "approve" ? "queue" : p[1] === "landed" || p[1] === "deployed" ? "log" : "alerts";
     default:
       return "alerts"; // 모르는 종류는 SUPERVISOR가 놓치지 않게 alerts에. 시험이 이 경우를 막는다
   }
@@ -126,6 +129,10 @@ export function repositionStuckOf(repositions: readonly RepositionRecordLike[], 
   return out.sort((a, b) => compareRegistration(a.aircraft, b.aircraft)); // ATC-181: REGISTRATION 정렬
 }
 
+// FOLLOW(ATC-278): 따라가는 번들의 줄. followBoardOf의 줄을 그대로 읽는다(단계를 다시 세지 않는다). folded 번들의 줄은 넣지 않는다
+export type FollowAlertRow = Pick<FollowRow, "key" | "title" | "finished" | "current" | "stages" | "issues" | "proposal" | "ready" | "goAround" | "reverted">;
+export const FOLLOW_LOG_WINDOW_MS = 24 * 3_600_000; // landed·deployed 항목이 남는 시간(그 단계의 시각부터). 시각을 모르면 번들이 접힐 때까지
+
 export interface AlertsInput {
   sessions: Pick<Session, "id" | "name" | "status" | "health">[];
   alerts: Alert[];
@@ -150,7 +157,11 @@ export interface AlertsInput {
   landBy?: ReadonlyMap<string, LandBy>;
   capIdle?: CapIdleHint[]; // 상한 때문에 LAUNCH가 막힌 채 120분 넘게 논 그 밖의 백그라운드 세션(ATC-184). 알리기만 한다
   schedule?: { mode: ScheduleMode; ops: Pick<ScheduleOp, "id" | "kind" | "flight" | "status" | "statusAt">[] };
+  follow?: { rows: FollowAlertRow[]; now: number }; // FOLLOW(ATC-278): follow.json에 든 번들의 줄. 없으면 follow 항목 없음
 }
+
+// F2가 stuck 한계를 줄에 더하기 전까지(ATC-277) stuck은 FLIGHT FOLLOWING 문제 중 warn만이다. await-supervisor는 결정 대기라 following 그룹이 queue로 보낸다
+export const stuckIssuesOf = (row: Pick<FollowAlertRow, "issues" | "finished">) => (row.finished ? [] : row.issues.filter((i) => i.severity === "warn" && !DUPLICATED.has(i.code) && i.code !== "await-supervisor"));
 
 // FOLLOWING 문제 가운데 다른 경로가 이미 알리는 것은 뺀다: health·stranded는 ALERT가, landing-wait는 PR 항목이 알린다
 const DUPLICATED = new Set<string>(["health", "stranded", "landing-wait"]);
@@ -216,9 +227,14 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
   }
 
   // 3) FLIGHT FOLLOWING 문제(warn은 CAUTION, info는 ADVISORY)
+  // follow|stuck가 같은 문제를 줄 단위로 알리는 FLIGHT는 following 항목을 내지 않는다(이중 알림 없음, ATC-278)
+  const followRows = new Map((inp.follow?.rows ?? []).map((r) => [r.key, r]));
+  const followStuck = new Set([...followRows.values()].filter((r) => stuckIssuesOf(r).length).map((r) => r.key));
+  const followProposals = new Set([...followRows.values()].flatMap((r) => (r.proposal ? [r.proposal] : [])));
   for (const f of inp.following) {
     for (const i of f.issues) {
       if (DUPLICATED.has(i.code)) continue;
+      if (followStuck.has(f.flight) && i.severity === "warn" && i.code !== "await-supervisor") continue;
       out.push({
         key: `following|${i.key}`,
         group: "following",
@@ -237,9 +253,10 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
   // 4) SUPERVISOR가 판정할 DISPATCH 제안(HOLD 걸린 것은 사람 결정을 기다리는 게 아니라 선행 FLIGHT를 기다린다)
   for (const p of inp.proposals) {
     if (p.holdAt !== null || (p.status !== "proposed" && p.status !== "agreed" && p.status !== "disagreed")) continue;
+    // 따라가는 줄의 제안은 follow|approve로 낸다(pending|proposal을 대신한다, 이중 알림 없음)
     out.push({
-      key: `pending|proposal|${p.id}`,
-      group: "pending",
+      key: followProposals.has(p.id) ? `follow|approve|${p.id}` : `pending|proposal|${p.id}`,
+      group: followProposals.has(p.id) ? "follow" : "pending",
       level: "advisory",
       cue: "call",
       aircraft: p.aircraftName,
@@ -390,6 +407,30 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       link: "#fleet",
       since: r.since,
     });
+  }
+
+  // 9) FOLLOW(ATC-278, docs/follow.md 3.5): 따라가는 줄의 변화. 줄은 followBoardOf가 이미 센 것이다 — 여기서 단계를 다시 세지 않는다
+  if (inp.follow) {
+    const now = inp.follow.now;
+    const rtsBad = inp.rts && (inp.rts.result === "rollback" || inp.rts.result === "failed") ? inp.rts : null;
+    const recent = (at: string | null) => !at || now - Date.parse(at) < FOLLOW_LOG_WINDOW_MS;
+    const title = (r: FollowAlertRow) => `${r.key}${r.title ? ` ${r.title}` : ""}`;
+    for (const r of inp.follow.rows) {
+      const base = { group: "follow" as const, aircraft: null, flight: r.key, link: "#follow" };
+      if (r.ready && !r.finished) out.push({ ...base, key: `follow|ready|${r.key}`, level: "advisory", cue: "call", text: `${title(r)} — 풀 수 있음(READY)`, next: "FOLLOW 탭에서 Todo로 푼다", since: null });
+      const stuck = stuckIssuesOf(r);
+      if (stuck.length) {
+        out.push({ ...base, key: `follow|stuck|${r.key}|${r.current ?? "todo"}`, level: "caution", cue: null, text: `${title(r)} — 막힘: ${stuck[0]!.text}${stuck.length > 1 ? ` (외 ${stuck.length - 1}건)` : ""}`, next: NEXT_BY_ISSUE[stuck[0]!.code] ?? "FOLLOW 탭에서 그 FLIGHT를 확인한다", since: null });
+      }
+      // 실패: GO AROUND, ROLLBACK 뒤에도 배포되지 않은 착륙, 되돌려진 ON. 한 줄에 사유를 모은다
+      const why: string[] = [];
+      if (r.goAround && !r.finished) why.push(`GO AROUND ${r.goAround.id}${r.goAround.readbackAt ? "" : " (READBACK 대기)"}`);
+      if (rtsBad && r.stages.landed.done && !r.stages.deployed.done && !r.stages.deployed.na && (!r.stages.landed.at || r.stages.landed.at <= rtsBad.at)) why.push(`RTS ${rtsBad.result.toUpperCase()}`);
+      if (r.reverted) why.push(`PR #${r.reverted.number}로 되돌려짐`);
+      if (why.length) out.push({ ...base, key: `follow|failed|${r.key}`, level: "warning", cue: null, text: `${title(r)} — ${why.join(" · ")}`, next: "FOLLOW 탭에서 그 FLIGHT의 기록을 보고 결정한다", since: r.reverted?.at ?? null });
+      if (!r.stages.landed.na && r.stages.landed.done && recent(r.stages.landed.at)) out.push({ ...base, key: `follow|landed|${r.key}`, level: null, cue: null, text: `${title(r)} — 착륙(ON)`, next: "", since: r.stages.landed.at });
+      if (!r.stages.deployed.na && r.stages.deployed.done && recent(r.stages.deployed.at)) out.push({ ...base, key: `follow|deployed|${r.key}`, level: null, cue: null, text: `${title(r)} — 배포(IN)`, next: "", since: r.stages.deployed.at });
+    }
   }
 
   // 같은 key는 한 번만(먼저 나온 것). 마지막에 목적지(dest)를 붙인다

@@ -136,6 +136,16 @@ Quiet hours and per-group switches apply as for every other group. atc-app gets 
 - **Plan.** `GET /api/follow` builds the DISPATCH plan the same way `GET /api/dispatch/brief` does (pure `planDispatch`, no writes) only to explain Todo rows without a proposal; if that fails the board still draws.
 - **Not in F1.** Next-action chips, the three new stuck limits, `NEXT n` (F2); alerts (F3). Rows are therefore not re-sorted by stuck yet.
 
+### F3 as built (ATC-278)
+
+- **Where.** The `follow` group in `ALERT_GROUPS` (`server/supervisor-alerts.ts`), fed by `follow` on `AlertsInput`: the rows of every followed bundle that is not `folded`, read from `followNow` (`server/supervisor-alerts-run.ts`). Stages are not computed again. When `follow.json` is empty the board is not computed.
+- **Row fields added (additive).** `ready` (Backlog and `isReady`, same test as the `풀 수 있음` text), `goAround` (a live GO AROUND clearance: id, READBACK time) and `reverted` (the revert PR of the ON).
+- **Keys.** `follow|ready|<KEY>` (queue, `advisory`, cue `call`: the row is READY and not finished); `follow|approve|<D-id>` (queue, `advisory`, cue `call`: the row's proposal waits for the SUPERVISOR; it **replaces** `pending|proposal|<D-id>`, so there is no second line); `follow|stuck|<KEY>|<stage>` (alerts, `caution`); `follow|failed|<KEY>` (alerts, `warning`); `follow|landed|<KEY>` and `follow|deployed|<KEY>` (log, no level, no cue). `destOf` has a `follow` case and `DEST_PREFIXES` lists it, so the existing test that reads the key shapes covers it.
+- **Stuck without F2.** F2 is not on main, so `stuck` is the FLIGHT FOLLOWING issues already on the row: severity `warn` and not `await-supervisor` (that one is a decision wait and stays with the `following` group, going to the queue). One line per row and stage (`<stage>` is the row's `current`, `todo` when none); the text is the first issue and `(외 n건)`. The `following|…` items for those same issues are not emitted for a followed FLIGHT (no double line); the `info` issues and `await-supervisor` stay `following`. When F2 adds its limits to the row, `stuckIssuesOf` is the one place to extend.
+- **Failed.** One key per row, reasons joined with ` · `: a live GO AROUND (not for a finished row), the latest RTS is `rollback` or `failed` and the row landed before it and is not deployed (`RTS ROLLBACK`), the ON was reverted (`PR #n로 되돌려짐`).
+- **Landed and deployed.** While the stage stamp is under 24 hours old (no stamp: until the bundle folds). Stages that are `na` give nothing.
+- **Consumers.** The SUPERVISOR SUMMARY counts `follow|approve|` with `pending|proposal|` in `pending.dispatch`, and the DISPATCH tab's refetch key (`web/src/dispatch-alerts.ts`) includes `follow|approve|`. The settings switch is the existing per-group list (`ALERT_GROUPS`), default on.
+
 ## 6. Implementation order
 
 Each step is one issue. Each PR adds a changelog fragment pair and describes the tab in `docs/guide/screens.md` (Korean) and, for F1, a short page in `docs/guide/` on following work (added to `DOC_NAV`).
