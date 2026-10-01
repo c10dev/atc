@@ -453,7 +453,18 @@ export function entryIntoService(
 }
 
 // CREW BRIEFING: 새 세션에 붙여 넣을 시작 지시문. 에이전트끼리 주고받는 글이라 영어로 쓴다(ATC-126). 항공 용어와 머리말은 그대로.
-export function crewBriefing(a: AircraftView, repo: string | null, mode: "shadow" | "approval"): string {
+// STAND 문단(ATC-252): 백그라운드(`claude --bg`) 세션에만. 저장소 CLAUDE.md의 다른 워크트리 폴더 규칙보다 앞선다
+const STAND_PARAGRAPH = [
+  "STAND (your worktree; background sessions only)",
+  "- Before your first code edit, open your STAND with the EnterWorktree tool: EnterWorktree name=<key>-<short name>. It lands in <repo>/.claude/worktrees/ on branch worktree-<key>-<short name> and needs no permission prompt; do not ask the SUPERVISOR to approve it.",
+  "- This rule wins over any repository rule that names a different worktree folder (for example /home/c10/projects/worktrees/…), because a background session has nobody to answer the prompt that rule causes.",
+  "- Never use EnterWorktree path= outside <repo>/.claude/worktrees/ and never create a worktree with git worktree add: both raise an approval prompt and the session stalls on \"approve Entering worktree\".",
+  "- node_modules: cp -al <repo>/node_modules <stand>/node_modules.",
+  "- For the next FLIGHT, ExitWorktree action=keep, then EnterWorktree with a new name.",
+  "",
+];
+
+export function crewBriefing(a: AircraftView, repo: string | null, mode: "shadow" | "approval", background = false): string {
   const crew = a.complement.map((m) => `- ${m.position}: ${m.agent}${m.limits?.length ? ` (${m.limits.join(", ")})` : ""}`);
   const lines = [
     `[ATC FLEET] CREW BRIEFING · ${a.callsign} (${a.registration})${a.base ? ` · AIRPORT ${a.base}` : ""}`,
@@ -468,10 +479,7 @@ export function crewBriefing(a: AircraftView, repo: string | null, mode: "shadow
     "",
     "Write what the SUPERVISOR reads (your turn text in this session, questions, summaries) in Korean. Never Japanese or Chinese. Messages to other sessions stay English (ATC-126).",
     "",
-    "STAND (your worktree)",
-    "- Before your first code edit, open your STAND with the EnterWorktree tool: EnterWorktree name=<key>-<short name>. This works in any repository and needs no permission prompt; do not ask the SUPERVISOR to approve it.",
-    "- Do not enter a worktree with EnterWorktree path= outside <repo>/.claude/worktrees/ and do not create one with git worktree add: both raise an approval prompt that stalls a background session. For the next FLIGHT, ExitWorktree action=keep, then EnterWorktree with a new name.",
-    "",
+    ...(background ? STAND_PARAGRAPH : []),
     "Assignments and messages",
     `- Issues labeled tail:${a.registration} in Linear are this team's. Only the CAPTAIN writes to Linear.`,
     "- When atc TOWER sends a CLEARANCE starting with [ATC C-xxxx], answer that message with READBACK C-xxxx.",
