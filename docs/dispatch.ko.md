@@ -212,13 +212,15 @@ atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER
 CAPTAIN(STAND 없는 FLIGHT만): 마쳤다고 보고 → OCC: atcctl dispatch arrived D-0003 -- '<결과 링크나 한 줄>' → atc: ARRIVED
 ```
 
-제안 상태: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)`(2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED`(2b), STAND 없는 FLIGHT는 `… → ACCEPTED → DEPARTED → ARRIVED`, 곁가지 `REJECTED`, `DECLINED`(CAPTAIN 사유), `SUPERSEDED`(사람이 직접 배정했거나 상황이 바뀜), `EXPIRED`(24시간). SUPERVISOR 판정 없이 24시간 넘게 `PROPOSED`·`SHADOW_AGREE`·`SHADOW_DISAGREE`로 남은 제안은 ASSIGN·RELEASE 모두 "24시간 판정 없음" 사유로 만료된다(ATC-152. HOLD 걸린 제안은 만료가 없고, `APPROVED`는 전달 만료 규칙이 따로 있다). `HOLD`가 걸린 `PROPOSED` ASSIGN은 주 흐름에서 빠져, 풀릴 때까지 HELD 목록에서 기다린다(24시간 만료 없음). SUPERVISOR는 이것을 판정하지 않는다(6.2).
+제안 상태: `PROPOSED → (SHADOW_AGREE | SHADOW_DISAGREE)`(2a), `PROPOSED → APPROVED → SENT → ACCEPTED → DEPARTED`(2b), STAND 없는 FLIGHT는 `… → ACCEPTED → DEPARTED → ARRIVED`, 곁가지 `REJECTED`, `DECLINED`(CAPTAIN 사유), `SUPERSEDED`(사람이 직접 배정했거나 상황이 바뀜), `CLOSED`(보낸 뒤 FLIGHT가 Linear에서 이미 Done·Canceled·Duplicate, ATC-266), `EXPIRED`(24시간). SUPERVISOR 판정 없이 24시간 넘게 `PROPOSED`·`SHADOW_AGREE`·`SHADOW_DISAGREE`로 남은 제안은 ASSIGN·RELEASE 모두 "24시간 판정 없음" 사유로 만료된다(ATC-152. HOLD 걸린 제안은 만료가 없고, `APPROVED`는 전달 만료 규칙이 따로 있다). `HOLD`가 걸린 `PROPOSED` ASSIGN은 주 흐름에서 빠져, 풀릴 때까지 HELD 목록에서 기다린다(24시간 만료 없음). SUPERVISOR는 이것을 판정하지 않는다(6.2).
 
 **STAND 없는 FLIGHT**(2026-09-27 구현, 규칙은 [fleet.ko.md](fleet.ko.md) 5.1.1). STAND가 필요한 FLIGHT는 PR이 머지돼 LOGBOOK에 오르면 끝이라 atc가 더 따라가지 않는다. SURVEY·CHECK는 STAND도, 대개 PR도 없어서 이렇게 한다.
 
 - **READBACK에 DEPARTED.** `POST …/accept`가 `accept`와 `depart`(`stand: null`, `via: "readback"`)를 같은 시각에 남긴다. 제안에는 `departedStand: null`, `departedVia: "readback"`이 붙는다(STAND로 DEPARTED하면 `departedVia: "stand"`). FLIGHT 라벨은 그때 읽는다. 모르는 FLIGHT는 STAND가 필요한 쪽으로 보고, `accepted`에 남은 STAND 없는 제안은 다음 동기화에 DEPARTED가 된다.
 - **CAPTAIN 보고로 ARRIVED.** OCC가 `atcctl dispatch arrived D-xxxx -- '<결과 링크나 한 줄>'`(`POST …/arrived {note}`, 500자)로 적는다. 제안은 `status: "arrived"`, `arrivedNote`, `arrivedUrl`(보고의 첫 링크)을 갖는다. STAND 없이 `departed`인 제안만 ARRIVED할 수 있다.
 - **ARRIVED까지 잡아 둔다.** `inFlight`에 남고 AIRCRAFT·FLIGHT를 계속 잡으며, 만료·SUPERSEDED 없다. 보고 없이 24시간이 지나면 `overdue`에 든다. `sent`·`accepted`처럼 RECALL할 수 있다.
+- **끝난 FLIGHT는 CLOSED(ATC-266).** `sent`·`accepted`·STAND 없는 `departed` 카드의 FLIGHT가 Linear에서 Done·Canceled·Duplicate가 되면 다음 동기화가 op `close`, 상태 `closed`, 사유 `FLIGHT 상태가 바뀜(<상태>)`로 닫는다. 사유는 RECENT 목록과 FOLLOWING에 하루 보인다(FOLLOWING은 이 카드의 지연을 세지 않는다). `recalling` 카드는 RECALL의 READBACK이 남아 있어 이렇게 닫지 않고, STAND가 있는 `departed`는 LOGBOOK(머지)이 끝낸다. Done인 FLIGHT는 STAND를 본 적 없는 카드(또는 STAND 없는 `departed`)에 `dispatch report`로 기록한 ARRIVED 보고나 머지된 PR이 있으면 닫는 대신 `arrived`로 끝내고, 보고가 없는 STAND 없는 FLIGHT는 보고를 기다린다. 닫힌 카드는 같은 짝을 다시 제안할 때 superseded처럼 센다: 24시간 짝 규칙은 그대로다.
+- **`accepted`에서 `dispatch arrived`(ATC-266).** `accepted` 카드도 FLIGHT가 STAND 없는 종류이거나, STAND를 본 적이 없고(DEPARTURE LOG 줄도 워크트리도 없음) 그 FLIGHT의 ARRIVED 보고가 있으면 `arrived`를 받는다. 카드에는 `departedVia: "report"`가 붙고 `timeline.departed`는 없어서 FOLLOWING은 STAND 없는 FLIGHT로 읽고 LOGBOOK 줄은 쓰지 않는다. 아니면 사유와 함께 409로 거절한다.
 - **gate3.** STAND 없는 READBACK은 READBACK 비율에는 넣고 DEPARTED 비율에서는 뺀다. 정의상 DEPARTED라 넣으면 비율이 저절로 오른다. `gate3.standFree`가 그 READBACK·ARRIVED 수를 따로 보인다.
 
 #### 6.1 최근 짝과 판정 대기 제안 지키기

@@ -30,7 +30,7 @@ interface FollowItem {
   source: "dispatch" | "tail";
   standFree?: boolean; // STAND 없는 FLIGHT(SURVEY·CHECK): READBACK → DEPARTED → ARRIVED
   arrival?: { note: string; url: string | null } | null; // STAND 없는 FLIGHT의 ARRIVED 보고
-  proposal: { id: string; status: string } | null;
+  proposal: { id: string; status: string; closeReason?: string } | null;
   wake: "L" | "M" | "H" | "J";
   expectMin: number;
   stages: Record<Stage, string | null>;
@@ -200,6 +200,7 @@ function FollowRow({ f, now }: { f: FollowItem; now: number }) {
           {f.source === "dispatch" && f.proposal ? (
             <span className="ff-tag" title="DISPATCH 제안으로 배정">
               DISPATCH {f.proposal.id} {f.proposal.status}
+              {f.proposal.closeReason ? ` — ${f.proposal.closeReason}` : ""}
             </span>
           ) : (
             <span className="ff-tag" title="tail: 라벨로 직접 배정(DISPATCH 제안 없음)">

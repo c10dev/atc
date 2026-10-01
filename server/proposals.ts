@@ -69,6 +69,7 @@ import { fetchIssueDetail } from "./sources/linear.ts";
 import { DIRECT_LINE, directLines, directSectionsOf, DISCRETION_LINE, FINISH_LINE, formatAssignment } from "./briefs.ts";
 import { type Delivery, deliveryOf } from "./session-origin.ts";
 import { fromThisApp } from "./origin.ts";
+import { type ArrivalReport, foldReports, readReports } from "./arrival-report.ts";
 import { readDepartures } from "./departures.ts";
 import {
   approveLaunch,
@@ -132,6 +133,7 @@ export type ProposalStatus =
   | "recalling" // SUPERVISOR가 RECALL 요청, RECALL 문구의 READBACK 대기
   | "recalled" // CAPTAIN이 RECALL을 READBACK함. FLIGHT는 다시 후보(같은 짝은 24시간 제안하지 않음)
   | "superseded"
+  | "closed" // 보낸 뒤의 FLIGHT가 Linear에서 이미 끝남(Done·Canceled·Duplicate, ATC-266). 되돌릴 일이 없는 정리
   | "expired";
 
 // 제안의 AIRCRAFT를 가리키는 키. 새 기록은 registration, 옛 기록은 그때의 세션 이름(aircraftName)에서 읽는다(ATC-91)
@@ -205,7 +207,7 @@ export interface Proposal {
   holdAt: string | null; // HOLD를 건 시각. hold가 비어 있으면 선행 FLIGHT 없는 HOLD(사람 결정 대기 등, 사유는 note)
   message: string | null; // 보낸 FLIGHT PLAN 문구
   departedStand: string | null;
-  departedVia?: "stand" | "readback"; // DEPARTED 근거: STAND가 생김 | STAND 없는 FLIGHT의 READBACK
+  departedVia?: "stand" | "readback" | "report"; // DEPARTED 근거: STAND가 생김 | STAND 없는 FLIGHT의 READBACK | STAND를 못 본 채 ARRIVED 보고로 끝남(ATC-266, accepted에서 arrived)
   arrivedNote?: string; // STAND 없는 FLIGHT의 ARRIVED 보고(결과 링크나 한 줄)
   arrivedUrl?: string; // 보고에 든 첫 링크
   recallReason?: string; // SUPERVISOR의 RECALL 사유
@@ -254,6 +256,7 @@ export type Op =
   | { op: "recall"; id: string; at: string; reason: string; message: string } // SUPERVISOR 요청
   | { op: "recalled"; id: string; at: string } // CAPTAIN이 RECALL을 READBACK
   | { op: "supersede"; id: string; at: string; reason: string }
+  | { op: "close"; id: string; at: string; reason: string } // 보낸 뒤 FLIGHT가 이미 끝나 정리(ATC-266). sent·accepted·STAND 없는 departed에만
   | { op: "expire"; id: string; at: string; reason?: string };
 
 type StatusOp = Exclude<Op["op"], "create" | "note" | "brief" | "hold" | "crosscheck" | "preflight" | "requeue" | "recode" | "standby" | "launch" | "await-supervisor" | "undelivered">;
@@ -265,9 +268,10 @@ const NEXT: Partial<Record<ProposalStatus, Partial<Record<StatusOp, ProposalStat
   agreed: { expire: "expired" },
   disagreed: { expire: "expired" },
   approved: { send: "sent", supersede: "superseded", expire: "expired" },
-  sent: { accept: "accepted", decline: "declined", recall: "recalling", expire: "expired" },
-  accepted: { depart: "departed", recall: "recalling", expire: "expired" },
-  departed: { arrived: "arrived", recall: "recalling" }, // STAND 없이 DEPARTED한 것만(canApply)
+  sent: { accept: "accepted", decline: "declined", recall: "recalling", close: "closed", expire: "expired" },
+  // accepted의 arrived: STAND를 못 본 채 ARRIVED 보고가 있는 FLIGHT(ATC-266, arrivedWhyNot가 route에서 검사)
+  accepted: { depart: "departed", arrived: "arrived", recall: "recalling", close: "closed", expire: "expired" },
+  departed: { arrived: "arrived", recall: "recalling", close: "closed" }, // STAND 없이 DEPARTED한 것만(canApply)
   recalling: { recalled: "recalled", expire: "expired" },
 };
 
@@ -393,6 +397,7 @@ export function fold(ops: Op[]): Proposal[] {
     }
     if (!canApply(p, o.op)) continue;
     let next = NEXT[p.status]![o.op]!;
+    const prev = p.status;
     if (o.op === "verdict" && o.verdict === "disagree") next = "disagreed";
     if (p.status === "proposed") p.decidedAt = o.at;
     p.status = next;
@@ -404,6 +409,11 @@ export function fold(ops: Op[]): Proposal[] {
     if (o.op === "recall") {
       p.recallReason = o.reason;
       p.recallMessage = o.message;
+    }
+    if (o.op === "arrived" && prev === "accepted") {
+      // STAND를 본 적 없이 보고로 끝난 FLIGHT. FOLLOWING·LOGBOOK이 STAND 있는 FLIGHT로 읽지 않게 근거를 남긴다
+      p.departedStand = null;
+      p.departedVia = "report";
     }
     if (o.op === "depart") {
       p.departedStand = o.stand;
@@ -541,6 +551,46 @@ export function waitingOf(proposals: Proposal[], plan: Pick<Plan, "aircraft">, t
   return out;
 }
 
+// 보낸 뒤(sent·accepted·STAND 없는 departed)의 제안을 FLIGHT가 이미 끝났을 때 정리한다(ATC-266). 순수.
+// - Canceled·Duplicate: close. 하던 일이 없어졌다.
+// - Completed: STAND를 본 적 없는 accepted나 STAND 없이 departed한 것은 ARRIVED 보고(dispatch report)나 머지된 PR이 있으면 arrived로, 없으면 STAND 없는 FLIGHT는 보고를 기다리게 그대로 둔다
+//   (STAND가 있는 accepted는 depart가 먼저). 그 밖(sent, STAND 없는 FLIGHT가 아닌 accepted)은 close
+// - recalling은 건드리지 않는다: RECALL의 READBACK이 남아 있다. STAND가 있는 departed는 LOGBOOK(머지)이 끝낸다
+export function inFlightDoneOp(
+  p: Proposal,
+  t: Pick<Ticket, "stateType" | "state" | "labels"> | undefined,
+  ctx: { at: string; standNow: boolean; report?: Pick<ArrivalReport, "pr" | "result">; landedPr?: string },
+): Op | null {
+  if (p.kind !== "ASSIGN" || !t || !DONE_STATES.has(t.stateType)) return null;
+  const airborneFree = isStandFreeAirborne(p);
+  if (p.status !== "sent" && p.status !== "accepted" && !airborneFree) return null;
+  const why = stateChangedWhy(t.state);
+  if (t.stateType !== "completed") return { op: "close", id: p.id, at: ctx.at, reason: why };
+  const sawStand = Boolean(p.timeline.departed) || ctx.standNow;
+  if (p.status === "accepted" && sawStand) return null; // STAND가 있으면 depart가 먼저(PR 머지는 LOGBOOK이 ARRIVED)
+  if (p.status !== "sent" && (ctx.report || ctx.landedPr)) {
+    const note = ctx.report ? (ctx.report.pr !== null ? `PR #${ctx.report.pr} (ARRIVED 보고)` : `RESULT ${ctx.report.result} (ARRIVED 보고)`) : `PR ${ctx.landedPr} 머지됨(LOGBOOK)`;
+    return { op: "arrived", id: p.id, at: ctx.at, note };
+  }
+  if (airborneFree || (p.status === "accepted" && standFreeTicket(t))) return null; // STAND 없는 FLIGHT는 ARRIVED 보고를 기다린다
+  return { op: "close", id: p.id, at: ctx.at, reason: why };
+}
+
+// dispatch arrived가 accepted·departed에서 받는 조건(ATC-266). 받을 수 없으면 사유, 받으면 null. 순수
+// accepted: STAND 없는 FLIGHT(SURVEY·CHECK), 또는 STAND를 본 적 없고 ARRIVED 보고(dispatch report)가 기록된 FLIGHT
+export function arrivedWhyNot(
+  p: Pick<Proposal, "status" | "departedVia" | "timeline">,
+  t: Pick<Ticket, "labels"> | undefined,
+  ctx: { standNow: boolean; departureSeen: boolean; report: boolean },
+): string | null {
+  if (p.status === "departed" && p.departedVia !== "readback") return "STAND가 있는 FLIGHT는 LOGBOOK(PR 머지)으로 ARRIVED — dispatch arrived는 STAND 없는 FLIGHT만";
+  if (p.status !== "accepted") return null;
+  if (standFreeTicket(t)) return null;
+  if (p.timeline.departed || ctx.standNow || ctx.departureSeen) return "STAND가 있는(또는 있었던) FLIGHT는 LOGBOOK(PR 머지)으로 ARRIVED — accepted에서 dispatch arrived는 STAND 없는 FLIGHT만";
+  if (!ctx.report) return "STAND를 본 적 없는 FLIGHT는 ARRIVED 보고가 먼저 — `dispatch report`로 기록한 뒤 dispatch arrived";
+  return null;
+}
+
 // 새 계획과 열린 제안을 맞춘다. 순수 함수: 추가할 op만 돌려준다.
 export function syncOps(
   existing: Proposal[],
@@ -550,6 +600,7 @@ export function syncOps(
   now: number,
   seq: number,
   landed: Landed = new Map(),
+  reports: Map<string, Pick<ArrivalReport, "pr" | "result">> = new Map(),
 ): Op[] {
   const at = new Date(now).toISOString();
   const ops: Op[] = [];
@@ -625,6 +676,14 @@ export function syncOps(
   // AIRCRAFT에 점수가 충분히 높은 새 제안이 실제로 만들어질 때만 닫는다(판정할 기회를 잃지 않게).
   const contested: Proposal[] = [];
   for (const p of existing) {
+    // 보낸 뒤 FLIGHT가 이미 끝났으면(Done·Canceled·Duplicate) 닫는다. recalling은 RECALL READBACK이 남아 건드리지 않는다(ATC-266)
+    if (p.status === "sent" || p.status === "accepted" || p.status === "departed") {
+      const done = inFlightDoneOp(p, stateOf.get(p.flight), { at, standNow: standOfTicket.has(p.flight), report: reports.get(p.flight), landedPr: landed.get(p.flight) });
+      if (done) {
+        ops.push(done);
+        continue;
+      }
+    }
     if (p.status === "proposed") {
       if (isHeld(p)) {
         // DISPATCH가 잡아 둔 HOLD는 24시간 만료가 없다. 대신 풀리는 조건이 있다:
@@ -1027,7 +1086,7 @@ export function runDispatch(s: Snapshot, now = Date.now()): Plan {
   // 켜진 GROUND STOP이 걸린 AIRPORT의 ASSIGN은 계획에서 뺀다(docs/atfm.md 6장). 열린 제안은 그 사유로 SUPERSEDED
   const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes, mccAirportNow()), s.atfm?.groundStops ?? []);
   const seq = ops.filter((o) => o.op === "create").length;
-  append(syncOps(existing, plan, s, cfg, now, seq, landed));
+  append(syncOps(existing, plan, s, cfg, now, seq, landed, foldReports(readReports())));
   return plan;
 }
 
@@ -1374,8 +1433,15 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
         const note = typeof body.note === "string" ? body.note.trim() : "";
         if (!note) return c.json({ error: "arrived에는 CAPTAIN 보고(note: 결과 링크나 한 줄)가 필요함" }, 400);
         if (note.length > 500) return c.json({ error: "보고는 500자 이내" }, 400);
-        if (p.status === "departed" && !isStandFreeAirborne(p))
-          return c.json({ error: "STAND가 있는 FLIGHT는 LOGBOOK(PR 머지)으로 ARRIVED — dispatch arrived는 STAND 없는 FLIGHT만" }, 409);
+        {
+          const snap = await getSnapshot();
+          const why = arrivedWhyNot(p, snap.tickets.find((t) => t.key === p.flight), {
+            standNow: snap.workspaces.some((w) => w.ticketKey === p.flight),
+            departureSeen: readDepartures().some((d) => d.flight === p.flight),
+            report: foldReports(readReports()).has(p.flight),
+          });
+          if (why) return c.json({ error: why }, 409);
+        }
         const bad = closed("arrived");
         if (bad) return bad;
         append([{ op: "arrived", id, at, note }]);

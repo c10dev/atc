@@ -660,7 +660,7 @@ test("STAND 없는 FLIGHT 전이: accepted → departed(readback) → arrived, �
   assert.equal(q.arrivedUrl, undefined);
 });
 
-test("ARRIVED는 STAND 없이 DEPARTED한 것에만: STAND DEPARTED·accepted·sent에서는 무시, STAND DEPARTED는 RECALL도 안 됨", () => {
+test("ARRIVED는 STAND 없이 DEPARTED한 것과 accepted(ATC-266, 서버가 조건을 본다)에만: STAND DEPARTED·sent에서는 무시, STAND DEPARTED는 RECALL도 안 됨", () => {
   const arrived: Op = { op: "arrived", id: "D-0001", at: iso(5), note: "n" };
   const standDeparted = fold([...sentOps("D-0001", "VOC-1", 60), { op: "accept", id: "D-0001", at: iso(50) }, { op: "depart", id: "D-0001", at: iso(40), stand: "/w/VOC-1" }, arrived])[0];
   assert.equal(standDeparted.status, "departed");
@@ -668,17 +668,18 @@ test("ARRIVED는 STAND 없이 DEPARTED한 것에만: STAND DEPARTED·accepted·s
   assert.equal(isInFlight(standDeparted), false);
   assert.equal(canApply(standDeparted, "arrived"), false);
   assert.equal(canApply(standDeparted, "recall"), false);
-  assert.equal(fold([...sentOps("D-0001", "VOC-1", 60), { op: "accept", id: "D-0001", at: iso(50) }, arrived])[0].status, "accepted");
+  assert.equal(fold([...sentOps("D-0001", "VOC-1", 60), { op: "accept", id: "D-0001", at: iso(50) }, arrived])[0].status, "arrived"); // ATC-266: 보고가 있는 accepted는 arrived(proposals-close.test.ts)
   assert.equal(fold([...sentOps("D-0001", "VOC-1", 60), arrived])[0].status, "sent");
 });
 
-test("동기화: STAND 없이 DEPARTED한 제안은 만료·SUPERSEDED 없이 ARRIVED까지 둔다(30일, FLIGHT 상태가 바뀌어도, AIRCRAFT가 AIRBORNE이어도)", () => {
+test("동기화: STAND 없이 DEPARTED한 제안은 만료·SUPERSEDED 없이 ARRIVED까지 둔다(30일, FLIGHT가 끝나지 않은 채 상태가 바뀌어도, AIRCRAFT가 AIRBORNE이어도). 끝난 FLIGHT(Canceled)는 닫는다(ATC-266)", () => {
   const ops = [...sentOps("D-0001", "VOC-1", 30 * 24 * 60), { op: "accept" as const, id: "D-0001", at: iso(30 * 24 * 60 - 1) }, { op: "depart" as const, id: "D-0001", at: iso(30 * 24 * 60 - 1), stand: null, via: "readback" as const }];
   const existing = fold(ops);
   const plan = planOf({ aircraft: [{ id: "b", name: "TEAM_B", callsign: "BRAVO", airport: "VCDO", available: false, reason: "AIRBORNE", reserved: null }] });
-  for (const tickets of [[lt("VOC-1", "SURVEY")], [lt("VOC-1", "SURVEY", "started", "In Progress")], [lt("VOC-1", "SURVEY", "canceled", "Canceled")], []]) {
+  for (const tickets of [[lt("VOC-1", "SURVEY")], [lt("VOC-1", "SURVEY", "started", "In Progress")], []]) {
     assert.deepEqual(syncOps(existing, plan, { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1), []);
   }
+  assert.deepEqual(syncOps(existing, plan, { tickets: [lt("VOC-1", "SURVEY", "canceled", "Canceled")], workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1), [{ op: "close", id: "D-0001", at: iso(0), reason: "FLIGHT 상태가 바뀜(Canceled)" }]);
   // STAND가 나중에 생겨도 departed(readback)는 그대로
   assert.deepEqual(syncOps(existing, plan, { tickets: [lt("VOC-1", "SURVEY")], workspaces: [ws("VOC-1")] }, DEFAULT_DISPATCH_CONFIG, NOW, 1), []);
 });
