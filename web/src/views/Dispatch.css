@@ -14,11 +14,10 @@
 .dp-error {
   color: var(--alert);
 }
-/* AIRPORT 코드는 DISPATCH에서 색 없이: 칸 하나 값이라 면 한 단계로만 구분한다 */
+/* AIRPORT 코드(색은 공용 .apt가 이미 중립, ATC-313): DISPATCH에서는 테두리 대신 면 한 단계, 크기는 12px */
 .dispatch .apt {
   border: 0;
   background: var(--panel-3);
-  color: var(--muted);
   font-size: var(--text-xs);
   line-height: 1.4;
 }
