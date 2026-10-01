@@ -268,6 +268,7 @@ function Line({ t, now, clock, expanded, onToggle }: { t: Transmission; now: num
       {st?.kind === "open" && <span className="rd-state">답 대기 {ageText(st.ageMs)}</span>}
       {st?.kind === "overdue" && <span className="rd-state is-overdue">NO REPLY · {ageText(st.ageMs)}째 답 없음</span>}
       {t.orphan && <span className="rd-state is-orphan">호출 기록 없음</span>}
+      {st?.kind === "overdue" && t.reason && <span className="rd-reason">{t.reason}</span>}
       {t.kind === "UNABLE" && <span className="rd-state is-unable">UNABLE</span>}
       {t.body && (
         <button type="button" className="rd-more" aria-expanded={expanded} aria-controls={bodyId} onClick={() => onToggle(t.id)}>

@@ -15,7 +15,7 @@ const line = (at: string, state: string) => JSON.stringify({ at, state, detail: 
 
 test("working: 상태와 한 줄만, needs·suggestedReply 없음", () => {
   const j = parseJob({ ...base, state: "working", detail: "PR 리뷰 중" }, null);
-  assert.deepEqual(j, { state: "working", detail: "PR 리뷰 중", needs: null, suggestedReply: null, since: "2026-09-29T02:29:10.000Z", tempo: "idle", writtenAt: "2026-09-29T02:29:10.000Z" });
+  assert.deepEqual(j, { state: "working", detail: "PR 리뷰 중", needs: null, suggestedReply: null, pendingNeeds: null, since: "2026-09-29T02:29:10.000Z", tempo: "idle", writtenAt: "2026-09-29T02:29:10.000Z" });
 });
 
 test("blocked: needs·suggestedReply를 싣는다", () => {
@@ -42,7 +42,7 @@ test("모르는 state·모양은 null, 모르는 필드는 무시", () => {
   assert.equal(parseJob([]), null);
   const j = parseJob({ ...base, state: "working", futureField: { a: 1 }, detail: 5 });
   assert.equal(j?.detail, "");
-  assert.deepEqual(Object.keys(j!).sort(), ["detail", "needs", "since", "state", "suggestedReply", "tempo", "writtenAt"]);
+  assert.deepEqual(Object.keys(j!).sort(), ["detail", "needs", "pendingNeeds", "since", "state", "suggestedReply", "tempo", "writtenAt"]);
 });
 
 test("intent·output·providerEnv·linkScanPath는 결과 어디에도 없다", () => {

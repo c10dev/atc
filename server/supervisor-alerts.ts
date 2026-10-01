@@ -1,4 +1,7 @@
 import { type AlertLevel, alertLevel } from "./alert-level.ts";
+import { pendingLevelOf, pendingNeedsOf, pendingTextOf, type WaitingCall } from "./pending.ts";
+import { registrationOf } from "./registration.ts";
+import { attachCommandOf } from "./session-origin.ts";
 import type { FollowItem } from "./following.ts";
 import type { FollowRow } from "./follow.ts";
 import type { Alert, PullRequest, Session, Ticket, Workspace } from "./model.ts";
@@ -134,7 +137,7 @@ export type FollowAlertRow = Pick<FollowRow, "key" | "title" | "finished" | "cur
 export const FOLLOW_LOG_WINDOW_MS = 24 * 3_600_000; // landed·deployed 항목이 남는 시간(그 단계의 시각부터). 시각을 모르면 번들이 접힐 때까지
 
 export interface AlertsInput {
-  sessions: Pick<Session, "id" | "name" | "status" | "health">[];
+  sessions: (Pick<Session, "id" | "name" | "status" | "health"> & Partial<Pick<Session, "job" | "jobId" | "attachDir">>)[];
   alerts: Alert[];
   workspaces: (Pick<Workspace, "path" | "ticketKey"> & Partial<Pick<Workspace, "name">>)[];
   tickets: Pick<Ticket, "key" | "stateType">[];
@@ -157,6 +160,8 @@ export interface AlertsInput {
   landBy?: ReadonlyMap<string, LandBy>;
   capIdle?: CapIdleHint[]; // 상한 때문에 LAUNCH가 막힌 채 120분 넘게 논 그 밖의 백그라운드 세션(ATC-184). 알리기만 한다
   schedule?: { mode: ScheduleMode; ops: Pick<ScheduleOp, "id" | "kind" | "flight" | "status" | "statusAt">[] };
+  // PENDING approval(ATC-327): 지금(now)과 CAUTION으로 올리는 분(pendingMin), AIRCRAFT(REGISTRATION)별로 기다리는 RADIO 호출. 없으면 전과 같다(ADVISORY)
+  pending?: { now: number; pendingMin: number; calls: ReadonlyMap<string, WaitingCall[]>; teamPattern?: string };
   follow?: { rows: FollowAlertRow[]; now: number }; // FOLLOW(ATC-278): follow.json에 든 번들의 줄. 없으면 follow 항목 없음
 }
 
@@ -236,18 +241,24 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
     });
   }
 
-  // 2) PENDING: 도구 호출이 승인을 기다린다(SUPERVISOR를 기다리는 새 항목)
+  // 2) PENDING: 도구 호출이 승인을 기다린다(SUPERVISOR를 기다리는 새 항목).
+  // ATC-327: pendingMin분이 지났거나 그 AIRCRAFT에게 가는 열린 호출이 있으면 CAUTION(키는 그대로라 ACK가 이어진다), 아니면 ADVISORY. 청하는 것(needs)과 붙는 명령을 보인다
   for (const s of inp.sessions) {
     if (s.status === "dead" || s.health?.code !== "PENDING") continue;
+    const reg = registrationOf(s.name, inp.pending?.teamPattern);
+    const calls = (reg && inp.pending?.calls.get(reg)) || [];
+    const now = inp.pending?.now ?? Date.now();
+    const level = inp.pending ? pendingLevelOf({ since: s.health.since, now, pendingMin: inp.pending.pendingMin, calls: calls.length }) : "advisory";
+    const needs = pendingNeedsOf(s);
     out.push({
       key: `pending|tool|${s.id}|${s.health.since}`,
       group: "pending",
-      level: "advisory",
+      level,
       cue: "call",
       aircraft: s.name,
       flight: null,
-      text: `${s.name} — PENDING: ${s.health.detail}`,
-      next: s.health.next,
+      text: inp.pending ? pendingTextOf({ name: s.name, since: s.health.since, now, calls, needs }) : `${s.name} — PENDING: ${s.health.detail}`,
+      next: s.jobId ? `${s.health.next} — ${attachCommandOf(s.jobId, s.attachDir)}` : s.health.next,
       link: "#strips",
       since: s.health.since,
     });

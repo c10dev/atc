@@ -35,6 +35,7 @@ export interface Transmission {
   replyTo?: string; // 답이면 호출의 id
   open?: true; // 호출인데 아직 닫는 답이 없음
   overdueAt?: string; // open이고 이 시각을 넘으면 overdue(기존 규칙)
+  reason?: string; // open인 호출의 받는 쪽이 도구 승인을 기다리는 중이면 그 사유(ATC-327). 서버가 붙인다(annotatePending), 기록에서 나온 것이 아니다
   orphan?: true; // 답인데 호출 기록이 없음(남겨 두고 표시)
   undelivered?: string; // 보냈지만 닿지 않았다고 OCC가 알림(ATC-183): 그 사유. 이 호출은 닫혔고 다시 보내면 같은 id의 새 호출이 생긴다
   closedBy?: ClosedBy; // 답 없이 닫힌 호출이 어떻게 닫혔나(READABILITY가 취소를 무응답에서 뺀다, ATC-176)
@@ -321,7 +322,7 @@ export function selectRadio(all: readonly Transmission[], q: RadioQuery): Transm
 }
 
 // SSE용: 지난번에 보낸 서명과 비교해 새로 생겼거나 바뀐(답이 붙어 open이 풀림, STANDBY로 overdueAt이 밀림) 교신만
-export const txKey = (t: Transmission) => JSON.stringify([t.open ?? false, t.overdueAt ?? null, t.orphan ?? false]);
+export const txKey = (t: Transmission) => JSON.stringify([t.open ?? false, t.overdueAt ?? null, t.orphan ?? false, t.reason ?? null]);
 export function changedRadio(prev: ReadonlyMap<string, string>, all: readonly Transmission[]): Transmission[] {
   return all.filter((t) => prev.get(t.id) !== txKey(t));
 }
