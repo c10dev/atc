@@ -73,7 +73,7 @@ export function goAroundEvents(prev: Snapshot, next: Snapshot): Draft[] {
   return out;
 }
 
-const sameStand = (c: Clearance, p: Pick<PullRequest, "standPath" | "ticketKey">) => Boolean((p.standPath && c.stand === p.standPath) || (!c.stand && p.ticketKey && c.flight === p.ticketKey));
+export const sameStand = (c: Clearance, p: Pick<PullRequest, "standPath" | "ticketKey">) => Boolean((p.standPath && c.stand === p.standPath) || (!c.stand && p.ticketKey && c.flight === p.ticketKey));
 
 // 이 head에 이미 나간 GO AROUND(취소되지 않은 것)
 export function goAroundSent(p: Pick<PullRequest, "head" | "standPath" | "ticketKey" | "createdAt">, clearances: readonly Clearance[]): Clearance | undefined {

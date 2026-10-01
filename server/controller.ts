@@ -11,6 +11,7 @@ import { healthLabel } from "./health.ts";
 import { infoTextOf } from "./landing-en.ts";
 import { fuelInfos } from "./fuel-remaining.ts";
 import type { FuelWatch } from "./fuel-watch.ts";
+import { fixOf, infoOf } from "./fix.ts";
 import { goAroundOf } from "./go-around.ts";
 import { type LandBy, landByOf, type MccLandInfo } from "./land-by.ts";
 import { inSequence, pullKey, reviewerOf } from "./landing.ts";
@@ -106,6 +107,8 @@ export function buildBrief(
     const repoSeq = seq ? lane.indexOf(p) + 1 : null;
     const airport = codeOf(p.repo) ?? null;
     // 누가 착륙시키나(ATC-151). holder가 아니면 TOWER는 팀에 LAND를 내지 않는다. 순서(repoSeq)는 MCC에도 뜻이 있어 그대로 둔다
+    const holderCount = p.standPath ? active.filter((c) => c.workspacePath === p.standPath).length : 0;
+    const infoText = infoTextOf(p.number, p.blocks.filter((b) => !b.findings).map((b) => b.en));
     const landBy: LandBy = landByOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false);
     return {
       seq,
@@ -117,8 +120,13 @@ export function buildBrief(
       stand: stand?.name ?? null,
       holders: p.standPath ? active.filter((c) => c.workspacePath === p.standPath).map((c) => label(c.sessionId)) : [],
       blocks: p.blocks,
-      // APPROACH에서 TOWER가 holders에게 INFO 본문으로 그대로 쓴다(영어, ATC-174). blocks[].text는 화면용 한국어라 팀에 보내지 않는다
-      infoText: p.landing === "APPROACH" ? infoTextOf(p.number, p.blocks.map((b) => b.en)) : null,
+      // APPROACH에서 TOWER가 holders에게 INFO 본문으로 그대로 쓴다(영어, ATC-174). blocks[].text는 화면용 한국어라 팀에 보내지 않는다.
+      // 리뷰 지적(review-findings)은 FIX가 맡아서 여기서 뺀다(ATC-270)
+      infoText: p.landing === "APPROACH" ? infoText : null,
+      // 막힘 INFO를 보낼지(ATC-270): 마지막 INFO 본문과 비교해 상태로 정한다. 서버가 재시작돼 이벤트가 없어도(reset) 같다
+      info: infoOf(p, { clearances, holders: holderCount }),
+      // 리뷰 지적(MCC INSPECTION·REVIEW·Codex·이어받은 리뷰)을 고치라는 지시(ATC-270). action "send"면 TOWER가 holders에게 FIX로 text 그대로 보낸다
+      fix: fixOf(p, { clearances, holders: holderCount, now }),
       readyAt: p.readyAt,
       // CODEX UNAVAILABLE(ATC-7·27): Codex 한도·무응답이면 착륙 리뷰 상태. review는 착륙 리뷰 통과로 CLEARED일 때 리뷰어("SONNET" → "REVIEW: SONNET (Codex 한도)")
       codex: p.codexUnavailable ?? null,
@@ -129,7 +137,7 @@ export function buildBrief(
       repoSeq,
       landBy,
       // PR이 base와 충돌·뒤처졌거나 LAND 문구의 앞 PR이 머지됨(ATC-128). action "send"면 TOWER가 holders에게 GO AROUND로 text 그대로 보낸다
-      goAround: goAroundOf(p, { clearances, events: since.events, pulls: s.pulls, lastLand, holders: p.standPath ? active.filter((c) => c.workspacePath === p.standPath).length : 0, now }),
+      goAround: goAroundOf(p, { clearances, events: since.events, pulls: s.pulls, lastLand, holders: holderCount, now }),
       landText: repoSeq && landBy === "holder" ? landTextOf(repoSeq, airport, p.number, fl, repoSeq > 1 ? lane[repoSeq - 2].number : null, p.codexFindings?.ok ? p.codexFindings.p3 : 0) : null,
       // 쌓인 PR(base가 기본 브랜치가 아님, ATC-29): CLEARED가 되지 않고 LAND를 내지 않는다. stack.chain은 아래부터
       stacked: p.blocks.some((b) => b.code === "stacked"),

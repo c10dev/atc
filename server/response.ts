@@ -12,6 +12,7 @@ export type Answer = "READBACK" | "ROGER" | "UNABLE" | "STANDBY";
 const CLEARANCE_ATTR: Record<ClearanceType, ResponseAttr> = {
   LAND: "W/U",
   "GO AROUND": "W/U", // 행동 지시(ATC-128): 합치고 풀고 push하거나 UNABLE
+  FIX: "W/U", // 행동 지시(ATC-270): 리뷰 지적을 고치고 push하거나 UNABLE
   HOLD: "W/U",
   CONTINUE: "W/U",
   INFO: "R",

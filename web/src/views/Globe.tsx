@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useSettings } from "../settings.ts";
 import { type GlobeMode, modeOf } from "../../../server/space.ts";
+import { airportOfHash } from "../../../server/globe-radio.ts";
 import {
   clamp,
   clipPolyline,
@@ -21,8 +22,10 @@ import {
 import { LAND } from "./globe-land.ts";
 import { AIRPORTS, TZ_CITY } from "./globe-geo.ts";
 import { f1, pathOf, SIZE } from "./globe-draw.ts";
+import { AirportView } from "./GlobeAirport.tsx";
 import { FlightRows, FlightsLayer } from "./GlobeFlights.tsx";
 import { MoveRows, MovesLayer } from "./GlobeMoves.tsx";
+import { RadioLayer, useRadioFeed } from "./GlobeRadio.tsx";
 import { SpaceView } from "./GlobeSpace.tsx";
 import "./Globe.css";
 
@@ -148,6 +151,15 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
   const drag = useRef<{ kind: "globe"; x: number; y: number } | { kind: "airport"; id: string } | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef(0);
+  const down = useRef<{ code: string; x: number; y: number } | null>(null); // AIRPORT를 눌렀나(끌지 않고 뗐으면 AIRPORT 뷰로, G7)
+  const [hash, setHash] = useState(() => location.hash);
+  useEffect(() => {
+    const on = () => setHash(location.hash);
+    addEventListener("hashchange", on);
+    return () => removeEventListener("hashchange", on);
+  }, []);
+  const airportCode = airportOfHash(hash); // #globe/<CODE>: AIRPORT 뷰(G7)
+  const { txs } = useRadioFeed();
 
   const update = useCallback((patch: (s: Saved) => Saved) => setSaved((s) => patch(s)), []);
   useEffect(() => storeSaved(saved), [saved]);
@@ -251,6 +263,8 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
       return;
     }
     const airport = (e.target as Element).closest?.("[data-airport]")?.getAttribute("data-airport");
+    const code = airport ? scene?.airports.find((a) => a.id === airport)?.code : undefined;
+    down.current = code ? { code, x: e.clientX, y: e.clientY } : null;
     drag.current = airport ? { kind: "airport", id: airport } : { kind: "globe", x: e.clientX, y: e.clientY };
   };
   const onMove = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -281,6 +295,10 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
     setView((v) => ({ ...v, lon: normLon(v.lon - dx / Math.max(0.25, Math.cos((v.lat * Math.PI) / 180))), lat: clamp(v.lat + dy, -PITCH_MAX, PITCH_MAX) }));
   };
   const onUp = (e: ReactPointerEvent<SVGSVGElement>) => {
+    // 끌지 않고 뗀 AIRPORT는 가까이서 본다(#globe/<CODE>). 5px 넘게 움직였으면 끌어 옮긴 것이다
+    const d = down.current;
+    down.current = null;
+    if (d && e.type === "pointerup" && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 5) location.hash = `globe/${d.code}`;
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinch.current = 0;
     if (pointers.current.size === 0) drag.current = null;
@@ -341,6 +359,14 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
   const moves = scene?.moves ?? [];
   const atText = new Date(minute * 60_000).toISOString().slice(11, 16);
   const moved = Object.keys(saved.overrides ?? {}).length;
+
+  if (airportCode) {
+    return (
+      <div className="globe">
+        {scene ? <AirportView code={airportCode} scene={scene} txs={txs} motion={motion} now={now} /> : <p className="empty">{error ? "GLOBE 장면을 읽지 못했다." : "불러오는 중…"}</p>}
+      </div>
+    );
+  }
 
   return (
     <div className="globe">
@@ -461,6 +487,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
           })}
           {scene && moves.length > 0 && <MovesLayer scene={scene} positions={positions} view={view} C={C} R={R} now={now} />}
           {scene && flights.length > 0 && <FlightsLayer scene={scene} positions={positions} view={view} C={C} R={R} motion={motion} now={now} />}
+          {scene && txs.length > 0 && <RadioLayer scene={scene} txs={txs} positions={positions} view={view} C={C} R={R} motion={motion} now={now} />}
           {(() => {
             const h = project(hub, view);
             return h.depth > 0 ? <circle className="globe-hub" cx={C + h.x * R} cy={C - h.y * R} r={2.5} /> : null;
@@ -476,7 +503,11 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
             <ul>
               {rows.map((r) => (
                 <li key={r.id}>
-                  <span className="globe-row-code">{r.code}</span>
+                  <span className="globe-row-code">
+                    <a href={`#globe/${r.code}`} aria-label={`${r.code} AIRPORT를 가까이서 보기`}>
+                      {r.code}
+                    </a>
+                  </span>
                   <span className="globe-row-name">
                     {r.name}
                     {r.home && <em> HOME</em>}
@@ -486,7 +517,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
               ))}
             </ul>
           )}
-          <p className="globe-hint">{mode === "space" ? "지구는 홈 AIRPORT, 행성은 다른 AIRPORT다. 궤도의 자리는 AIRPORT의 거리 순위와 방위로 정해져 날마다 같다." : "끌어서 돌리고, 휠이나 두 손가락으로 확대한다. AIRPORT를 끌면 그 자리를 이 브라우저에 기억한다."}</p>
+          <p className="globe-hint">{mode === "space" ? "지구는 홈 AIRPORT, 행성은 다른 AIRPORT다. 궤도의 자리는 AIRPORT의 거리 순위와 방위로 정해져 날마다 같다." : "끌어서 돌리고, 휠이나 두 손가락으로 확대한다. AIRPORT를 끌면 그 자리를 이 브라우저에 기억하고, 누르면 가까이서 본다."}</p>
         </section>
         <FlightRows flights={flights} />
         <MoveRows moves={moves} />
