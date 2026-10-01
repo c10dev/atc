@@ -1,4 +1,5 @@
 import { nextLaunchLabel } from "../../../server/launch-note.ts";
+import { type LaunchModelSetting, NEXT_MODEL_TITLE, nextModelNote } from "../../../server/launch-model.ts";
 import { createContext, Fragment, type KeyboardEvent, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ArrivalSuggestion } from "../../../server/standfree.ts";
 import type { DispatchConfig, Plan } from "../../../server/dispatch.ts";
@@ -236,6 +237,8 @@ async function post(path: string, body: unknown) {
 // 2b 전달(ATC-76): 카드·IN FLIGHT 줄이 AIRCRAFT의 permission mode 경고를 읽는다
 // LAUNCH ACCOUNT(AIRCRAFT용, ATC-257): launch 카드를 승인하면 이 ACCOUNT로 뜬다. 없으면 각 home
 const LaunchAcctCtx = createContext<string | null>(null);
+// LAUNCH MODEL(ATC-279): launch 카드를 승인하면 이 설정으로 모델이 정해진다(AIRCRAFT > AIRPORT > 기본)
+const LaunchModelCtx = createContext<LaunchModelSetting | null>(null);
 const DeliveryCtx = createContext<Record<string, Delivery>>({});
 function DeliveryWarn({ aircraft }: { aircraft: string | null | undefined }) {
   const d = useContext(DeliveryCtx)[aircraft ?? ""];
@@ -294,12 +297,17 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
   const following = useFollowing(refreshKey);
   const [foldOpen, setFoldOpen] = useFoldOpen("dispatch");
   const [launchAcct, setLaunchAcct] = useState<string | null>(null);
+  const [launchModel, setLaunchModel] = useState<LaunchModelSetting | null>(null);
   useEffect(() => {
     let alive = true;
     fetch("/api/fleet/launch-accounts")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => alive && setLaunchAcct(d?.launchAccount?.aircraft ?? null))
       .catch(() => alive && setLaunchAcct(null));
+    fetch("/api/fleet/launch-model")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => alive && setLaunchModel(d?.launchModel ?? null))
+      .catch(() => alive && setLaunchModel(null));
     return () => {
       alive = false;
     };
@@ -438,6 +446,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
 
   return (
     <LaunchAcctCtx.Provider value={launchAcct}>
+    <LaunchModelCtx.Provider value={launchModel}>
     <DeliveryCtx.Provider value={brief.delivery ?? {}}>
     <ConfirmCtx.Provider value={brief.confirm ?? {}}>
     <section className="dispatch">
@@ -651,6 +660,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
     </section>
     </ConfirmCtx.Provider>
     </DeliveryCtx.Provider>
+    </LaunchModelCtx.Provider>
     </LaunchAcctCtx.Provider>
   );
 }
@@ -930,6 +940,7 @@ function LaunchLines({ p, launch, now }: { p: Proposal; launch: string | undefin
   const failed = p.launched && !p.launched.ok ? p.launched : null;
   const text = p.status === "proposed" ? launch : undefined; // 승인 뒤에는 기다림 글(waiting)이 대신한다
   const next = nextLaunchLabel(useContext(LaunchAcctCtx));
+  const model = nextModelNote({ registration: (p.registration ?? p.aircraftName ?? "").toUpperCase(), airport: p.airport ?? null, setting: useContext(LaunchModelCtx) });
   if (!r && !text && !failed) return null;
   return (
     <div className="dp-launch">
@@ -945,6 +956,7 @@ function LaunchLines({ p, launch, now }: { p: Proposal; launch: string | undefin
               <span className="dp-launch-text" title="이 AIRCRAFT는 세션이 없다(백그라운드 세션이 쉬다 거둬짐). 승인하면 FLEET LAUNCH와 같은 옵션으로 띄운 뒤 FLIGHT PLAN을 보낸다">
                 absent · {text}
                 {next && <> · <span className="mono" title="설정 → ACCOUNTS의 LAUNCH ACCOUNT. 승인하면 각 home 대신 이 ACCOUNT로 뜬다">{next}</span></>}
+                {model && <> · <span className="mono" title={NEXT_MODEL_TITLE}>{model}</span></>}
               </span>
             ) : (
               <span className="dp-launch-text is-full">{text}</span>

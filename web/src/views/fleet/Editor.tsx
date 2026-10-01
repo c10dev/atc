@@ -14,7 +14,7 @@ export function Editor({
   a: AircraftView;
   brief: FleetBrief;
   onCancel: () => void;
-  onSave: (patch: Record<string, unknown>) => Promise<boolean>;
+  onSave: (patch: Record<string, unknown>, launchModel?: string) => Promise<boolean>; // launchModel: 이 AIRCRAFT의 LAUNCH MODEL(ATC-279). 바뀌었을 때만 넘긴다
 }) {
   const [ratings, setRatings] = useState<Rating[]>(a.ratings);
   const [ratingsDefault, setRatingsDefault] = useState(a.ratingsIsDefault);
@@ -27,6 +27,8 @@ export function Editor({
   const [crew, setCrew] = useState<CrewMember[]>(a.complement);
   const [note, setNote] = useState(a.note ?? "");
   const [account, setAccount] = useState(a.accountIsDefault ? "" : (a.account ?? ""));
+  const modelNow = brief.launchModel?.aircraft?.[a.registration.toUpperCase()] ?? "";
+  const [launchModel, setLaunchModel] = useState(modelNow);
 
   const toggle = <T,>(list: T[], x: T) => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x]);
   const projects = [...new Set([...brief.projects, ...routes])];
@@ -45,7 +47,7 @@ export function Editor({
       targets: Object.values(targets).every((v) => v == null) ? null : targets,
       note: note.trim() || null,
       account: account.trim().toLowerCase() || null,
-    });
+    }, launchModel.trim() === modelNow ? undefined : launchModel.trim());
   };
 
   return (
@@ -148,6 +150,12 @@ export function Editor({
           aria-label="ACCOUNT"
         />
         <span className="faint fl-hint">사용 한도를 같이 쓰는 AIRCRAFT에 같은 라벨(main, pro-2 …). email은 쓰지 않는다. 비우면 {DEFAULT_ACCOUNT}</span>
+      </fieldset>
+
+      <fieldset className="fl-field">
+        <legend>LAUNCH MODEL</legend>
+        <input className="fl-input" value={launchModel} maxLength={60} onChange={(e) => setLaunchModel(e.target.value)} placeholder="opus · sonnet · claude-opus-5-5 …" aria-label="LAUNCH MODEL" />
+        <span className="faint fl-hint">이 AIRCRAFT를 다음에 띄울 때 `--model`로 넘긴다(AIRPORT·기본 설정보다 먼저). 비우면 설정 → ACCOUNTS의 LAUNCH MODEL을 따른다. 돌고 있는 세션은 옮기지 않는다</span>
       </fieldset>
 
       <fieldset className="fl-field">

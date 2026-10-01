@@ -46,6 +46,7 @@ import type { Snapshot } from "./model.ts";
 import { mountDetail } from "./detail-run.ts";
 import { mountIdeas } from "./ideas-run.ts";
 import { mountFlightState } from "./flight-state-run.ts";
+import { mountFollow } from "./follow-run.ts";
 import { mountPrMerge } from "./pr-merge-run.ts";
 import { mountSchedule } from "./schedule.ts";
 import { mountSettings } from "./settings.ts";
@@ -179,7 +180,7 @@ mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   max: MAX_LAUNCHED,
   launch: (s, reg, proposal, resume) => {
     const a = s.absent?.find((x) => x.registration === reg);
-    return launchAircraft(s, reg, { permissionMode: a?.permissionMode, model: a?.model, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, "SUPERVISOR", proposal);
+    return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, "SUPERVISOR", proposal);
   },
 }, (s, now, inFlight) => {
   // ATC-169: 머지됐는데 도착 보고가 없는 FLIGHT와 OCC 재시작 안전 시점(읽기만)
@@ -204,6 +205,7 @@ mountFlightState(app); // FLIGHT 상태 버튼(DUTY G3): SUPERVISOR 클릭만 Li
 mountDetail(app, getSnapshot); // FLIGHT·PR drawer(DUTY G1): 읽기 전용, 60초 캐시
 mountIdeas(app); // IDEAS 서랍(DUTY G4): atc 저장소 idea 이슈 읽기 전용, 60초 캐시
 mountFollowing(app, getSnapshot);
+mountFollow(app, getSnapshot); // FOLLOW F1(ATC-276): 따라가는 번들의 줄별 단계(읽기만)와 follow.json 설정(Origin 검사)
 mountRadio(app); // RADIO R1(ATC-170): 기록된 교신을 합친 목록(읽기만)
 mountReadability(app); // READABILITY R0(ATC-176): 교신 질의 하루 기록(readability.jsonl)과 오늘의 부분 지표
 startReadability();

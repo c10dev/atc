@@ -339,7 +339,7 @@ const repositionEventsOf = (now: number): RepositionEvent[] =>
 
 const executing = new Set<string>(); // 제안 id. 두 번 눌러도 한 번만 실행한다
 
-async function runStep(step: ExecStep, by: string, getSnapshot: () => Promise<Snapshot>): Promise<StepResult> {
+export async function runStep(step: ExecStep, by: string, getSnapshot: () => Promise<Snapshot>): Promise<StepResult> {
   const reg = step.registration;
   const t = () => new Date().toISOString();
   const patch = (op: "aog" | "return" | "retire", body: Record<string, unknown>): StepResult => {
@@ -374,7 +374,7 @@ async function runStep(step: ExecStep, by: string, getSnapshot: () => Promise<Sn
       }
     }
     case "launch": {
-      const r = await launchAircraft(await getSnapshot(), reg, { permissionMode: step.permissionMode, model: step.model, ...(step.account ? { account: step.account } : {}) }, by);
+      const r = await launchAircraft(await getSnapshot(), reg, { permissionMode: step.permissionMode, model: step.model, lastModel: step.lastModel ?? null, ...(step.account ? { account: step.account } : {}) }, by);
       return { action: "launch", registration: reg, ok: r.ok, ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.error ? { error: r.error } : {}) };
     }
     case "stop": {
@@ -567,7 +567,7 @@ export async function moveAircraftAccount(reg: string, to: string, by: string, g
   let opts: { permissionMode?: string; model?: string } | undefined;
   for (const r of readRecords(now - 30 * DAY)) if (r.kind === "fleet" && r.op === "launch" && r.ok && regKey(r.aircraft, cfg.teamPattern) === regKey(reg, cfg.teamPattern)) opts = { permissionMode: r.permissionMode, model: r.model };
   const steps: StepResult[] = [];
-  for (const step of [{ action: "stop", registration: reg }, { action: "launch", registration: reg, permissionMode: opts?.permissionMode ?? "auto", model: opts?.model ?? null, account: to }] as ExecStep[]) {
+  for (const step of [{ action: "stop", registration: reg }, { action: "launch", registration: reg, permissionMode: opts?.permissionMode ?? "auto", model: null, lastModel: opts?.model ?? null, account: to }] as ExecStep[]) {
     const r = await runStep(step, by, getSnapshot);
     steps.push(r);
     if (!r.ok) break;

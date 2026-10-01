@@ -127,6 +127,15 @@ Quiet hours and per-group switches apply as for every other group. atc-app gets 
 - `server/follow-run.ts`: `GET /api/follow` (read-only, from the snapshot and the existing readers) and `POST /api/follow {parent, on}` (`fromThisApp`, writes `follow.json` only, refuses keys that are not issue keys). Clients refetch on the existing snapshot SSE event, at most every 10 s.
 - `server/supervisor-alerts.ts`: the `follow` group (F3).
 
+### F1 as built (ATC-276)
+
+- **Files.** `server/follow.ts` (pure: `followBoardOf`, `followRowOf`, `bundleKeysOf`, `chainOrder`, `follow.json` parse/toggle), `server/follow-run.ts` (`GET /api/follow`, `GET /api/follow/list`, `POST /api/follow`), `web/src/views/Follow.tsx` + `Follow.css`, the `FOLLOW` toggle in `web/src/Drawer.tsx`.
+- **Row.** Nine stage cells `{done, at, na}`, `current` (last reached), `finished`, `now`, FLIGHT FOLLOWING `issues` (same codes and words), `history` (stage stamps plus resets, oldest first). `na` marks stages a FLIGHT does not have: STAND-free FLIGHTs skip `pr`..`deployed` and finish at ARRIVED; a `tail:` FLIGHT skips `proposed`..`readback`; `deployed` is `na` for FLIGHTs known to belong to a non-MCC AIRPORT (LOGBOOK line or open PR), and applies when the AIRPORT is unknown.
+- **Reset.** The row follows the latest ASSIGN proposal that is not `declined`, `recalled`, `superseded`, `rejected` or `expired`; those stay in `history` and, with no live proposal, give the `now` text when DISPATCH has no reason of its own.
+- **Bundle.** `children` plus `parent` back-links plus `related` (both directions); a parent with none is a bundle of one. `n / m 완료 · k 비행 중` where in flight means sent or later and not finished. A bundle whose rows are all finished is `done`; one day after its last stamp it is `folded` (rendered collapsed).
+- **Plan.** `GET /api/follow` builds the DISPATCH plan the same way `GET /api/dispatch/brief` does (pure `planDispatch`, no writes) only to explain Todo rows without a proposal; if that fails the board still draws.
+- **Not in F1.** Next-action chips, the three new stuck limits, `NEXT n` (F2); alerts (F3). Rows are therefore not re-sorted by stuck yet.
+
 ## 6. Implementation order
 
 Each step is one issue. Each PR adds a changelog fragment pair and describes the tab in `docs/guide/screens.md` (Korean) and, for F1, a short page in `docs/guide/` on following work (added to `DOC_NAV`).

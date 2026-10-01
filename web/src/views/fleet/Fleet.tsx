@@ -97,9 +97,11 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
     load();
   }, [load, refreshKey]);
 
-  const save = async (reg: string, patch: Record<string, unknown>) => {
+  // model: 이 AIRCRAFT의 LAUNCH MODEL(ATC-279). undefined면 건드리지 않고, ""이면 지운다
+  const save = async (reg: string, patch: Record<string, unknown>, model?: string) => {
     try {
       await api("PATCH", `/api/fleet/${encodeURIComponent(reg)}`, patch);
+      if (model !== undefined) await api("PUT", "/api/fleet/launch-model", { aircraft: { [reg]: model || null } });
       setEditing(null);
       await load();
       return true;
@@ -196,7 +198,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
   const cardOf = (a: AircraftView, variant: "detail" | "card") => (
     <Fragment key={a.registration}>
       {editing === a.registration ? (
-        <Editor a={a} brief={brief} onCancel={() => setEditing(null)} onSave={(p) => save(a.registration, p)} />
+        <Editor a={a} brief={brief} onCancel={() => setEditing(null)} onSave={(p, model) => save(a.registration, p, model)} />
       ) : (
         <Card
           a={a}
@@ -213,6 +215,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
           windowDays={brief.observedWindowDays}
           dispatchMode={brief.dispatchMode}
           launchAccount={brief.launchAccount?.aircraft}
+          launchModel={brief.launchModel}
           onCrewChanged={load}
         />
       )}
@@ -221,6 +224,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
           key={`launch-${a.registration}`}
           a={a}
           control={control}
+          launchModel={brief.launchModel}
           opener={launching.opener}
           onCancel={() => setLaunching(null)}
           onLaunch={(input) => launch(a.registration, input)}
@@ -279,6 +283,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
         <StatusList
           rows={fleetRows(inService, Date.now())}
           launchAccount={brief.launchAccount?.aircraft}
+          launchModel={brief.launchModel}
           open={open}
           onToggle={toggleOpen}
           absent={(reg) => {

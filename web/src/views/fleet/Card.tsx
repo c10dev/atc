@@ -5,6 +5,7 @@ import { RESTARTING_TEXT } from "../../../../server/restarting.ts";
 import { contextBadgeOf } from "../../../../server/fuel-context.ts";
 import { fuelLabel, fuelTitle } from "../../../../server/fuel-remaining.ts";
 import { NEXT_LAUNCH_TITLE } from "../../../../server/launch-note.ts";
+import { type LaunchModelSetting, NEXT_MODEL_TITLE, nextModelNote } from "../../../../server/launch-model.ts";
 import { usd } from "../../../../server/fuel-view.ts";
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel } from "../../../../server/health.ts";
 import { conflictHintOf, IDEA_SUPERSEDED, renameHintOf } from "../../../../server/registration.ts";
@@ -165,6 +166,7 @@ export function Card({
   windowDays,
   dispatchMode,
   launchAccount,
+  launchModel,
   onCrewChanged,
 }: {
   a: AircraftView;
@@ -181,8 +183,10 @@ export function Card({
   windowDays?: number;
   dispatchMode?: string;
   launchAccount?: string | null; // LAUNCH ACCOUNT(AIRCRAFT용, ATC-257)
+  launchModel?: LaunchModelSetting; // LAUNCH MODEL(ATC-279)
   onCrewChanged: () => void;
 }) {
+  const nextModel = nextModelNote({ registration: a.registration, airport: a.base ?? null, setting: launchModel }); // ATC-279
   // 세션 출처(ATC-76): BG·DESKTOP·TERM과 permission mode. BG id는 툴팁에
   // 백그라운드면 세션 파일의 jobId가 우선(ATC-98, 스냅샷). 없으면 claude agents의 id
   const origin = originBadgeOf(a.background ? "background" : a.origin, a.permissionMode, a.background?.jobId ?? session?.id);
@@ -390,6 +394,12 @@ export function Card({
               <span title={NEXT_LAUNCH_TITLE}>
                 {" "}
                 · next LAUNCH {nextLaunch}
+              </span>
+            )}
+            {nextModel && (
+              <span title={NEXT_MODEL_TITLE}>
+                {" "}
+                · {nextModel}
               </span>
             )}
           </p>

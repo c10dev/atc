@@ -213,7 +213,7 @@ test("executionOf REPOSITION: STOP → base 쓰기 → LAUNCH, 마지막 LAUNCH�
   assert.deepEqual(r.steps, [
     { action: "stop", registration: "TEAM_F" },
     { action: "base", registration: "TEAM_F", base: "DSGN" },
-    { action: "launch", registration: "TEAM_F", permissionMode: "acceptEdits", model: "opus" },
+    { action: "launch", registration: "TEAM_F", permissionMode: "acceptEdits", model: null, lastModel: "opus" }, // ATC-279: 마지막 LAUNCH의 모델은 lastModel(설정이 먼저)
   ]);
 });
 
