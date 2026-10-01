@@ -52,7 +52,7 @@ export interface FollowItem {
   source: "dispatch" | "tail"; // DISPATCH 제안 또는 tail: 라벨(사람이 직접 배정)
   standFree: boolean; // STAND 없는 FLIGHT: 단계는 READBACK → DEPARTED → ARRIVED(PR·CLEARED 없음)
   arrival: { note: string; url: string | null } | null; // STAND 없는 FLIGHT의 ARRIVED 보고
-  proposal: { id: string; status: Proposal["status"] } | null;
+  proposal: { id: string; status: Proposal["status"]; closeReason?: string } | null; // closeReason: closed 카드의 사유(ATC-266)
   dispatched?: boolean; // DISPATCH가 FLIGHT PLAN을 보냈다(제안 timeline에 sent, ATC-152·169)
   wake: Wake;
   expectMin: number;
@@ -166,12 +166,12 @@ const isReview = (t: Ticket | undefined) => Boolean(t && /review/i.test(t.state)
 const isDone = (t: Ticket | undefined) => t?.stateType === "completed";
 const isClosed = (t: Ticket | undefined) => Boolean(t && (t.stateType === "completed" || t.stateType === "canceled" || t.stateType === "duplicate"));
 
-// 따라갈 FLIGHT: accepted·departed·recalling인 ASSIGN(STAND 없는 FLIGHT는 arrived도 하루 보인다),
+// 따라갈 FLIGHT: accepted·departed·recalling인 ASSIGN(STAND 없는 FLIGHT는 arrived도 하루 보인다. 끝난 FLIGHT 때문에 닫힌 closed도 하루 사유와 함께 보이고 지연은 세지 않는다, ATC-266),
 // 그리고 2b 전이라도 tail:이 붙은 In Progress FLIGHT
-export function targetsOf(inp: Pick<FollowInput, "proposals" | "tickets">): { flight: string; proposal: Proposal | null; aircraft: string | null }[] {
+export function targetsOf(inp: Pick<FollowInput, "proposals" | "tickets"> & { now?: number }): { flight: string; proposal: Proposal | null; aircraft: string | null }[] {
   const out = new Map<string, { flight: string; proposal: Proposal | null; aircraft: string | null }>();
   const live = inp.proposals
-    .filter((p) => p.kind === "ASSIGN" && (p.status === "accepted" || p.status === "departed" || p.status === "recalling" || p.status === "arrived" || (p.status === "sent" && p.awaitSupervisor)))
+    .filter((p) => p.kind === "ASSIGN" && (p.status === "accepted" || p.status === "departed" || p.status === "recalling" || p.status === "arrived" || (p.status === "sent" && p.awaitSupervisor) || (p.status === "closed" && inp.now !== undefined && inp.now - Date.parse(p.statusAt) < UNABLE_KEEP_MS)))
     .sort((a, b) => a.statusAt.localeCompare(b.statusAt));
   for (const p of live) out.set(p.flight, { flight: p.flight, proposal: p, aircraft: p.aircraftName });
   for (const t of inp.tickets) {
@@ -199,7 +199,7 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
     .sort((a, b) => b.arrivedAt.localeCompare(a.arrivedAt))[0];
   const mergedOpenedAt = merged ? iso(Date.parse(merged.arrivedAt) - merged.landingWaitMin * MIN) : null;
   // STAND 없는 FLIGHT: 제안이 READBACK으로 DEPARTED했거나, (tail: FLIGHT처럼 제안이 없으면) FLIGHT TYPE이 SURVEY·CHECK
-  const standFree = proposal ? proposal.departedVia === "readback" || (!proposal.timeline.departed && standFreeTicket(t)) : standFreeTicket(t);
+  const standFree = proposal ? proposal.departedVia === "readback" || proposal.departedVia === "report" || (!proposal.timeline.departed && standFreeTicket(t)) : standFreeTicket(t);
 
   const stages: Record<Stage, string | null> = standFree
     ? {
@@ -240,6 +240,9 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
   if (!standFree && isDone(t) && !merged) issues.push({ code: "done-not-merged", kind: "mismatch", severity: "warn", text: `Linear는 ${t!.state}인데 ${open ? `PR #${open.number}이 머지되지 않음` : "머지된 PR이 없음"}`, since: t!.updatedAt ?? iso(inp.now) });
   if (!standFree && merged && t && !isClosed(t)) issues.push({ code: "merged-not-done", kind: "mismatch", severity: "info", text: `PR #${merged.pr.number}은 머지됐는데 Linear는 ${t.state} — CLOSE 초안 대상`, since: merged.arrivedAt });
 
+  // 닫힌 카드(ATC-266)는 이미 정리됐으니 지연·불일치를 세지 않는다. 사유만 보인다
+  if (proposal?.status === "closed") issues.length = 0;
+
   // AWAITING SUPERVISOR(ATC-120): CAPTAIN이 READBACK도 거절도 아닌 채 사용자의 go를 기다린다. key에 제안을 넣어 제안마다 한 번 보고한다
   if (proposal?.status === "sent" && proposal.awaitSupervisor)
     issues.push({ code: "await-supervisor", kind: "delay", severity: "warn", text: `${proposal.aircraftName ?? "CAPTAIN"}가 ${proposal.id}에서 SUPERVISOR의 go를 기다림 — ${proposal.awaitSupervisor.reason}. SUPERVISOR가 그 세션에서 직접 go를 친다(atc는 보내지 않는다)`, since: proposal.awaitSupervisor.at });
@@ -253,7 +256,7 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
     source: proposal ? "dispatch" : "tail",
     standFree,
     arrival: proposal?.arrivedNote ? { note: proposal.arrivedNote, url: proposal.arrivedUrl ?? null } : null,
-    proposal: proposal ? { id: proposal.id, status: proposal.status } : null,
+    proposal: proposal ? { id: proposal.id, status: proposal.status, ...(proposal.status === "closed" && proposal.reason ? { closeReason: proposal.reason } : {}) } : null,
     dispatched: Boolean(proposal?.timeline.sent),
     wake: cls.wake,
     expectMin,

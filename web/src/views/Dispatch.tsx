@@ -198,6 +198,7 @@ const statusText: Record<Proposal["status"] | "arrived", string> = {
   departed: "DEPARTED",
   arrived: "ARRIVED",
   superseded: "SUPERSEDED",
+  closed: "CLOSED",
   expired: "EXPIRED",
   recalling: "RECALL 중",
   recalled: "RECALLED",
