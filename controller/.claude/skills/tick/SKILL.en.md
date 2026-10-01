@@ -6,13 +6,16 @@
 
 **Description:** One ATC pass — read the atc brief, issue CLEARANCEs and reports according to the decision rules in CLAUDE.md, then advance the cursor. Run it with `/loop 3m /tick`.
 
-0. `node atcctl.mjs manual check`. On `CHANGED`, reread `CLAUDE.md` and this file, run `node atcctl.mjs manual ack`, then continue under the reread manual.
+0. `node atcctl.mjs tick tower`. It does the manual check (`manual check`), the brief, and, when there is nothing to do, the `ack`, in one call. The output decides:
+   - `TICK QUIET tower — …`: nothing to act on, and the ack is already done. Do nothing more; go to step 5 (ATC LOG "특이 사항 없음", "nothing to report"). Do not call the brief again.
+   - `CHANGED …` first means the manual changed (no ack was made). Reread `CLAUDE.md` and this file, run `node atcctl.mjs manual ack`, then handle the brief printed after it under the reread manual.
+   - `TICK ACT tower`: `REASONS:` is the kind of work this pass has, and below it is the `brief` output (JSON) as is. Continue from step 1. If there is a `NOTE: … 서버가 판정하지 못했다` ("the server could not decide"), read it with `node atcctl.mjs brief` and work the old way.
 1. If messages from team sessions arrived before this pass, handle them first. For "READBACK C-xxxx" run `node atcctl.mjs readback C-xxxx`, for "ROGER C-xxxx" `roger C-xxxx`, for "UNABLE C-xxxx — reason" `unable C-xxxx -- <reason>` (and put it on the SUPERVISOR report list), for "STANDBY C-xxxx" `standby C-xxxx`. Put refusals and questions without the fixed form on the list to report to the SUPERVISOR.
-2. Run `node atcctl.mjs brief`. If it has `reset: true`, the server restarted, so go by the current state (`open`, `landingQueue`) rather than `events`. In that pass, don't send block INFOs for APPROACH PRs (they may have been sent already). `landingQueue[].goAround` is built from state, so handle it by its `action` in this pass too (ATC-128).
+2. Read the brief printed in step 0. If it has `reset: true`, the server restarted, so go by the current state (`open`, `landingQueue`) rather than `events`. In that pass, don't send block INFOs for APPROACH PRs (they may have been sent already). `landingQueue[].goAround` is built from state, so handle it by its `action` in this pass too (ATC-128).
 3. Apply the decision rules table in CLAUDE.md from the top. When a CLEARANCE is needed:
    - `node atcctl.mjs issue <session> <TYPE> --stand <STAND> --flight <FLIGHT> -- <text>`
    - Send the text below `---` verbatim with SendMessage to the `SEND TO` session in the output.
-4. When everything is handled, run `node atcctl.mjs ack <cursor from the brief>`.
+4. When everything is handled, run `node atcctl.mjs ack <cursor from the brief>`. (Already done on `TICK QUIET`.)
 5. Leave a line or two of ATC LOG. If nothing happened, "특이 사항 없음" ("nothing to report").
 
 When a call is unclear, don't issue a CLEARANCE in step 3; leave it in the ATC LOG as a request for the SUPERVISOR to confirm.

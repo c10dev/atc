@@ -72,7 +72,11 @@ export interface ReadStats {
 }
 // 계정 폴더마다 projects/<폴더>/<sessionId>.jsonl(맨 위 파일만. 하위 폴더의 sub-agent 기록은 부모 기록의 Agent 호출로 센다).
 // sinceMs 뒤에 바뀐 파일만 읽고, 파일마다 크기·mtime으로 캐시한다
-export function readSessionCalls(sinceMs: number, roots: readonly string[] = projectsRoots(), repoRoot = REPO_ROOT, stats?: ReadStats): SessionCalls[] {
+// opts.uses: 도구 호출의 시각도 담는다(SQUELCH opens 표, ATC-297). 그때는 관제 세션 폴더만 읽는다(파일이 적다). 캐시는 따로다
+export interface ReadOpts {
+  uses?: boolean;
+}
+export function readSessionCalls(sinceMs: number, roots: readonly string[] = projectsRoots(), repoRoot = REPO_ROOT, stats?: ReadStats, opts: ReadOpts = {}): SessionCalls[] {
   const roleOfDir = new Map(Object.entries(ROLE_DIRS).map(([role, d]) => [projectDirName(join(repoRoot, d)), role]));
   const out: SessionCalls[] = [];
   let files = 0;
@@ -84,6 +88,7 @@ export function readSessionCalls(sinceMs: number, roots: readonly string[] = pro
       continue;
     }
     for (const d of dirs) {
+      if (opts.uses && !roleOfDir.has(d)) continue;
       let names: string[] = [];
       try {
         names = readdirSync(join(root, d)).filter((f) => f.endsWith(".jsonl"));
@@ -100,12 +105,13 @@ export function readSessionCalls(sinceMs: number, roots: readonly string[] = pro
             continue;
           }
           files++;
-          let hit = fileCache.get(path);
+          const cacheKey = opts.uses ? `${path}|uses` : path;
+          let hit = fileCache.get(cacheKey);
           if (!hit || hit.size !== st.size || hit.mtimeMs !== st.mtimeMs) {
-            const scan = emptyScan();
+            const scan = emptyScan(opts.uses);
             forEachLine(path, (l) => scanLine(l, scan));
-            hit = { size: st.size, mtimeMs: st.mtimeMs, s: { session: f.slice(0, -".jsonl".length), reg: scan.reg, role: roleOfDir.get(d) ?? null, calls: scan.calls, turns: scan.turns } };
-            fileCache.set(path, hit);
+            hit = { size: st.size, mtimeMs: st.mtimeMs, s: { session: f.slice(0, -".jsonl".length), reg: scan.reg, role: roleOfDir.get(d) ?? null, calls: scan.calls, turns: scan.turns, ...(scan.uses ? { uses: scan.uses } : {}) } };
+            fileCache.set(cacheKey, hit);
           }
           out.push(hit.s);
         } catch {}

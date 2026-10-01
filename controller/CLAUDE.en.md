@@ -17,6 +17,7 @@ The user is the SUPERVISOR. When a call is unclear, don't issue a CLEARANCE — 
 
 | Command | What it does |
 |---|---|
+| `node atcctl.mjs tick tower` | First step of `/tick` (ATC-297): `manual check` + the brief + the `ack` when there is nothing to do, in one call. `TICK QUIET tower — …` (done) · `TICK ACT tower` + `REASONS:` + the brief · `CHANGED …` first when the manual changed (no ack) |
 | `node atcctl.mjs brief` | Changes since the last ack (`events`) and the current state (`open`, `landingQueue`, `github`, `clearances`, `traffic`) |
 | `node atcctl.mjs ack <cursor>` | Marks the brief as handled. The next brief only gives changes after that |
 | `node atcctl.mjs issue <session> <TYPE> [--stand <STAND>] [--flight <FLIGHT>] -- <text>` | Records a CLEARANCE and returns the recipient and the message to send |

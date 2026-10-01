@@ -9,6 +9,9 @@ export const isRole = (x: string): x is Role => (ROLES as readonly string[]).inc
 
 export type Mode = "off" | "shadow" | "on";
 export const MODES: readonly Mode[] = ["off", "shadow", "on"];
+// 지문 버전(ATC-297): v1은 지금 쓰는 것, v2는 후보. 역할마다 고르고 기본은 v1. v2는 v1 옆에서 그림자로 같이 돈다
+export type Fingerprint = "v1" | "v2";
+export const FINGERPRINTS: readonly Fingerprint[] = ["v1", "v2"];
 export const DEFAULT_HEARTBEAT_MIN = 50; // 1시간 캐시가 식기 전에 한 번(docs/squelch.md 5장)
 
 // 응답 본문(brief JSON)은 서버가 이미 만든 모양 그대로 들어온다. 필드가 빠져도 죽지 않게 느슨하게 읽는다.
@@ -151,6 +154,62 @@ export function project(role: Role, inputs: Inputs): unknown {
     case "review":
       return projectReview(inputs.reviews);
   }
+}
+
+// ── 지문 v2(ATC-297): v1에서 "바뀌어도 할 일이 아닌" 필드를 빼거나 거칠게 만든 후보 ──
+// 근거는 운영 브리핑을 20초 간격으로 읽어 투영이 흔들리는 필드를 본 것이다(docs/squelch.md "Fingerprint v2 and opens-by-field as built").
+// 여기 적힌 것만 v1과 다르고, 나머지 역할은 v1 그대로다. 그림자 로그(`would`)가 쌓여 틀린 skip이 0일 때만 SUPERVISOR가 역할별로 v2를 켠다.
+export const INFO_ONLY_EVENTS = new Set(["handoff", "away.started", "away.ended"]); // controller/CLAUDE.md: ATC LOG에 적기만 하는 사건
+// "BLOCKED — TOWER이 5분째 …"처럼 시간이 글에 박힌 경보는 분마다 문구가 바뀐다. 기간 표현만 지운다(`5분째`, `2h07m`, `24분`)
+export const stripDurations = (s: string): string => s.replace(/\d+\s*분째/g, "N분째").replace(/\d+\s*분/g, "N분").replace(/\d+h\d*m?/g, "Nh").replace(/\d+m\b/g, "Nm");
+
+function projectTowerV2(b: J) {
+  const v1 = projectTower(b);
+  const kinds = new Map<string, string>(arr(b?.events).map((e) => [String(e?.id), String(e?.kind)]));
+  return {
+    ...v1,
+    // 할 일이 아닌 사건(handoff, away.*)은 새로 와도 지문을 바꾸지 않는다. 사건은 ack 전이라 다음에 열린 tick에서 그대로 보인다
+    events: v1.events.filter((id) => !INFO_ONLY_EVENTS.has(kinds.get(id) ?? "")),
+    open: {
+      ...v1.open,
+      // level: "info"인 건강 상태(PENDING·DENIED·짧은 THROTTLE)는 ATC LOG에만 적는다
+      health: v1.open.health.filter((h) => h.level !== "info"),
+      healthAlerts: v1.open.healthAlerts.map((m) => (typeof m === "string" ? stripDurations(m) : m)),
+    },
+  };
+}
+
+export function projectV2(role: Role, inputs: Inputs): unknown {
+  return role === "tower" ? projectTowerV2(inputs.brief) : project(role, inputs);
+}
+
+// 두 투영에서 바뀐 필드 경로(값은 적지 않는다). 객체의 배열은 `a[].b`로 합쳐 원소별 값의 집합이 달라졌는지 본다
+function leaves(x: unknown, path: string, out: Map<string, string[]>) {
+  if (Array.isArray(x)) {
+    if (!x.length) {
+      if (!out.has(`${path}[]`)) out.set(`${path}[]`, []);
+      return;
+    }
+    for (const v of x) leaves(v, `${path}[]`, out);
+  } else if (x && typeof x === "object") {
+    for (const k of Object.keys(x as object).sort()) leaves((x as Record<string, unknown>)[k], path ? `${path}.${k}` : k, out);
+  } else {
+    if (path === "" && x == null) return; // 투영이 없는 쪽(null)은 필드가 없는 것으로 본다
+    const l = out.get(path) ?? [];
+    l.push(JSON.stringify(x) ?? "null");
+    out.set(path, l);
+  }
+}
+export function changedFields(prev: unknown, next: unknown, max = 30): string[] {
+  const a = new Map<string, string[]>();
+  const b = new Map<string, string[]>();
+  leaves(prev, "", a);
+  leaves(next, "", b);
+  const out: string[] = [];
+  for (const k of new Set([...a.keys(), ...b.keys()])) {
+    if ((a.get(k) ?? []).slice().sort().join("\u0000") !== (b.get(k) ?? []).slice().sort().join("\u0000")) out.push(k || "(root)");
+  }
+  return out.sort().slice(0, max);
 }
 
 // 키를 정렬한 JSON. 같은 내용이면 키 순서와 상관없이 같은 문자열이다
