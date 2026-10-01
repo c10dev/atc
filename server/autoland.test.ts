@@ -7,8 +7,10 @@ import type { MainStatus } from "./atfm.ts";
 import {
   type AutolandConfig,
   type AutolandState,
+  checkWarningsOf,
   DEFAULT_AUTOLAND,
   EMPTY_STATE,
+  getCheckWarnings,
   type InFlight,
   latchGroundStops,
   loadAutoland,
@@ -17,6 +19,7 @@ import {
   parseAutoland,
   planAutoland,
   saveAutoland,
+  setCheckWarnings,
   settleOf,
   writeResultOf,
 } from "./autoland.ts";
@@ -261,6 +264,71 @@ test("GROUND STOP: stays until the SUPERVISOR clears it, and a cleared SHA does 
   const cleared = st({ clearedShas: [sha(900)] });
   assert.equal(latchGroundStops(DEFAULT_AUTOLAND, [AIRPORTS[0]], [main(["Application Check"])], cleared, "t").length, 0);
   assert.equal(latchGroundStops(DEFAULT_AUTOLAND, [AIRPORTS[0]], [main(["Application Check"], sha(902))], cleared, "t").length, 1);
+});
+
+// ── ATC-330: applicationCheck는 체크 런 이름이거나 그 체크를 돌리는 워크플로 이름 ──
+
+const mainWf = (over: Partial<MainStatus>): MainStatus => ({ ...main([]), ...over });
+
+test("GROUND STOP: a failing check run whose workflow is the configured name latches", () => {
+  const cfgWf = { applicationCheck: "app-check" };
+  const m = mainWf({ state: "failure", failing: ["build"], workflowsFailing: ["app-check"], names: ["build", "app-check"] });
+  const stops = latchGroundStops(cfgWf, [AIRPORTS[0]], [m], st(), "t");
+  assert.equal(stops.length, 1);
+  assert.deepEqual(stops[0].failing, ["build", "app-check"]);
+  // 대소문자는 무시한다
+  assert.equal(latchGroundStops({ applicationCheck: "App-Check" }, [AIRPORTS[0]], [m], st(), "t").length, 1);
+});
+
+test("GROUND STOP: a passing workflow of that name does not latch", () => {
+  const cfgWf = { applicationCheck: "app-check" };
+  // 다른 워크플로의 체크만 실패
+  const other = mainWf({ state: "failure", failing: ["lint"], workflowsFailing: ["lint-workflow"], names: ["lint", "lint-workflow", "build", "app-check"] });
+  assert.equal(latchGroundStops(cfgWf, [AIRPORTS[0]], [other], st(), "t").length, 0);
+  // 전부 초록
+  assert.equal(latchGroundStops(cfgWf, [AIRPORTS[0]], [mainWf({ names: ["build", "app-check"] })], st(), "t").length, 0);
+  // 부분 일치는 걸지 않는다
+  const partial = mainWf({ state: "failure", failing: ["build"], workflowsFailing: ["app-check-extra"], names: ["build", "app-check-extra"] });
+  assert.equal(latchGroundStops(cfgWf, [AIRPORTS[0]], [partial], st(), "t").length, 0);
+});
+
+test("GROUND STOP: the exact check-run name still latches without workflow data", () => {
+  // 워크플로를 못 읽은 head(workflowsFailing·names 없음)도 예전처럼 체크 런 이름으로 건다
+  assert.equal(latchGroundStops({ applicationCheck: "build" }, [AIRPORTS[0]], [main(["build"])], st(), "t").length, 1);
+});
+
+test("GROUND STOP: a SHA the SUPERVISOR cleared does not re-latch on a workflow-name match", () => {
+  const cfgWf = { applicationCheck: "app-check" };
+  const m = mainWf({ state: "failure", failing: ["build"], workflowsFailing: ["app-check"], names: ["build", "app-check"] });
+  assert.equal(latchGroundStops(cfgWf, [AIRPORTS[0]], [m], st({ clearedShas: [sha(900)] }), "t").length, 0);
+  assert.equal(latchGroundStops(cfgWf, [AIRPORTS[0]], [{ ...m, sha: sha(903) }], st({ clearedShas: [sha(900)] }), "t").length, 1);
+});
+
+test("check warning: a configured name that matches no check run or workflow on main", () => {
+  const cfgWf = { applicationCheck: "app-check" };
+  const none = mainWf({ names: ["build", "lint-workflow"] });
+  assert.deepEqual(checkWarningsOf(cfgWf, [AIRPORTS[0]], [none]), [{ airport: "VCDO", sha: sha(900), check: "app-check" }]);
+  // 체크 런 이름이든 워크플로 이름이든 맞으면 경고 없음
+  assert.equal(checkWarningsOf(cfgWf, [AIRPORTS[0]], [mainWf({ names: ["build", "app-check"] })]).length, 0);
+  assert.equal(checkWarningsOf({ applicationCheck: "build" }, [AIRPORTS[0]], [none]).length, 0);
+  // 실패 목록에 있으면 맞은 것
+  assert.equal(checkWarningsOf(cfgWf, [AIRPORTS[0]], [mainWf({ state: "failure", failing: ["app-check"], names: ["x"] })]).length, 0);
+});
+
+test("check warning: none when the names are unknown, checks are pending or absent, or no head is known", () => {
+  const cfgWf = { applicationCheck: "app-check" };
+  assert.equal(checkWarningsOf(cfgWf, [AIRPORTS[0]], [mainWf({})]).length, 0); // names 없음(워크플로를 못 읽음)
+  assert.equal(checkWarningsOf(cfgWf, [AIRPORTS[0]], [mainWf({ state: "pending", names: ["build"] })]).length, 0);
+  assert.equal(checkWarningsOf(cfgWf, [AIRPORTS[0]], [mainWf({ state: "none", names: [] })]).length, 0);
+  assert.equal(checkWarningsOf(cfgWf, [AIRPORTS[0]], [mainWf({ sha: null, names: ["build"] })]).length, 0);
+  assert.equal(checkWarningsOf(cfgWf, [AIRPORTS[0]], []).length, 0);
+});
+
+test("check warning store: set and read", () => {
+  setCheckWarnings([{ airport: "VCDO", sha: sha(900), check: "app-check" }]);
+  assert.equal(getCheckWarnings().length, 1);
+  setCheckWarnings([]);
+  assert.equal(getCheckWarnings().length, 0);
 });
 
 test("GROUND STOP stops both modes", () => {

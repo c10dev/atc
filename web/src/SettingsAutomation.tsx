@@ -112,7 +112,7 @@ const JUDGE_WARN = {
   shadow: "⚠ 새 CLASSIFY 초안, 열린 DISPATCH ASSIGN, 끝난 atc AIRCRAFT 턴마다 판정해 둔다(결과는 SUPERVISOR 판정 뒤에만 보임). 반출 범위는 replay와 같다.",
 } as const;
 
-// AUTOLAND GROUND STOP: main의 post-merge Application Check가 빨가 두 모드가 멈춤. SUPERVISOR가 확인하고 푼다
+// AUTOLAND GROUND STOP: main의 post-merge 체크(applicationCheck: 체크 런 이름이나 워크플로 이름)가 빨가 두 모드가 멈춤. SUPERVISOR가 확인하고 푼다
 function GroundStopRow({ stop, check, refresh }: { stop: ServerSettings["autoland"]["groundStops"][number]; check: string; refresh: () => Promise<SaveResult> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -434,6 +434,19 @@ export function LandingSettings({ server, save }: { server: Loaded; save: Save }
               <ModeLines modes={["off", "delegate"] as const} current={s.autoland.reviewedSecurity} lines={AUTOLAND_REVIEW_WARN} />
               {s.autoland.groundStops.map((g) => (
                 <GroundStopRow key={g.airport} stop={g} check={s.autoland.applicationCheck} refresh={() => save({})} />
+              ))}
+              {s.autoland.applicationCheckWarnings.map((w) => (
+                <div className="config-row" key={`check-${w.airport}`}>
+                  <dt>
+                    GROUND STOP 체크 <code className="config-env">{w.airport}</code>
+                  </dt>
+                  <dd>
+                    <code className="config-env">{w.check}</code>
+                  </dd>
+                  <p className="config-note is-warn">
+                    main({w.sha.slice(0, 7)})에 이 이름의 체크 런도 워크플로도 없음 — 이 체크가 실패해도 GROUND STOP이 걸리지 않는다. autoland.json의 applicationCheck를 체크 런 이름이나 워크플로 이름에 맞춘다
+                  </p>
+                </div>
               ))}
             </>
           )}

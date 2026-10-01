@@ -252,7 +252,8 @@ export function mergeExclusionOf(x: MergeExclusionInput): string | null {
 }
 
 // GROUND STOP 걸기: 맡은 AIRPORT의 main head에서 applicationCheck가 실패했고, SUPERVISOR가 그 SHA로 푼 적이 없으면.
-// 이미 걸린 AIRPORT는 그대로 둔다(풀릴 때까지 남는다)
+// applicationCheck는 체크 런 이름이거나 그 체크를 돌리는 워크플로 이름이다(ATC-330): 실패한 체크 런의 이름이나, 그 런이 속한 워크플로의 이름과 같으면 건다
+// (대소문자 무시, 정확히 같을 때만). 이미 걸린 AIRPORT는 그대로 둔다(풀릴 때까지 남는다)
 export function latchGroundStops(
   cfg: Pick<AutolandConfig, "applicationCheck">,
   airports: readonly { code: string; repo: string }[],
@@ -266,10 +267,35 @@ export function latchGroundStops(
     if (out.some((s) => s.airport === a.code)) continue;
     const m = mains.find((x) => x.repo === a.repo);
     if (!m?.sha || st.clearedShas.includes(m.sha)) continue;
-    if (m.failing.some((f) => f.toLowerCase() === check)) out.push({ airport: a.code, repo: a.repo, sha: m.sha, failing: m.failing, at: now });
+    const failing = [...new Set([...m.failing, ...(m.workflowsFailing ?? [])])];
+    if (failing.some((f) => f.toLowerCase() === check)) out.push({ airport: a.code, repo: a.repo, sha: m.sha, failing, at: now });
   }
   return out;
 }
+
+// 경고(ATC-330): applicationCheck가 main head의 체크 런 이름에도 워크플로 이름에도 없으면 GROUND STOP은 영영 걸리지 않는다.
+// 체크가 다 떴고(pending·none 아님) 이름을 읽을 수 있었는데 하나도 안 맞을 때만 알린다
+export interface CheckWarning {
+  airport: string;
+  sha: string;
+  check: string;
+}
+export function checkWarningsOf(cfg: Pick<AutolandConfig, "applicationCheck">, airports: readonly { code: string; repo: string }[], mains: readonly MainStatus[]): CheckWarning[] {
+  const check = cfg.applicationCheck.toLowerCase();
+  const out: CheckWarning[] = [];
+  for (const a of airports) {
+    const m = mains.find((x) => x.repo === a.repo);
+    if (!m?.sha || !m.names || (m.state !== "success" && m.state !== "failure")) continue;
+    if (m.names.some((n) => n.toLowerCase() === check) || m.failing.some((f) => f.toLowerCase() === check)) continue;
+    out.push({ airport: a.code, sha: m.sha, check: cfg.applicationCheck });
+  }
+  return out;
+}
+
+// 마지막 주기의 경고(메모리만 — 설정 창이 읽는다. autoland-state.json 형식은 바꾸지 않는다). 재시작 뒤엔 첫 주기(90초)까지 비어 있다
+let lastCheckWarnings: CheckWarning[] = [];
+export const setCheckWarnings = (w: CheckWarning[]) => void (lastCheckWarnings = w);
+export const getCheckWarnings = (): readonly CheckWarning[] => lastCheckWarnings;
 
 const UPDATE_STUCK_MS = 10 * 60_000; // update-branch 뒤 head가 이만큼 안 바뀌면 포기
 const CI_TIMEOUT_MS = 90 * 60_000; // 갱신한 head의 CI를 이만큼 넘게 기다리면 다음으로

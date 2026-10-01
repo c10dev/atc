@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { type MainStatus, mainStateOf } from "../atfm.ts";
+import { type MainStatus, mainStateOf, workflowNamesOf } from "../atfm.ts";
 import { loadAutoland } from "../autoland.ts";
 import { type CarryCandidate, type CodexSignal, codexFindings, codexThumbsPass, firstReach, fixesKeyOf, reachTargetsOf, mergeOnlyChain, sameChange, type GhPull, type GhThread, hasHeadReview, isCodexBot, type MergedElsewhere, needsCodexSignal } from "../landing.ts";
 import type { GhCommit } from "../briefs.ts";
@@ -407,10 +407,34 @@ async function readMain(repo: string, slug: string, knownSha: string | null, exp
   const branch = await defaultBranchOf(slug);
   const sha = knownSha ?? (await gh(["api", `repos/${slug}/commits/${branch}`, "--jq", ".sha"])).trim();
   if (!sha) throw new Error("기본 브랜치 head를 모름");
-  const runs = tsv(await gh(["api", `repos/${slug}/commits/${sha}/check-runs?per_page=100`, "--jq", '.check_runs[] | [.name, .status, (.conclusion // "")] | @tsv']))
-    .map(([name, status, conclusion]) => ({ name, status, conclusion: conclusion || null }));
+  const runs = tsv(await gh(["api", `repos/${slug}/commits/${sha}/check-runs?per_page=100`, "--jq", '.check_runs[] | [.name, .status, (.conclusion // ""), (.check_suite.id // "")] | @tsv']))
+    .map(([name, status, conclusion, suite]) => ({ name, status, conclusion: conclusion || null, suite: suite ? Number(suite) : null }));
   const combined = JSON.parse(await gh(["api", `repos/${slug}/commits/${sha}/status`, "--jq", "{statuses: [.statuses[] | {context, state}]}"])) as { statuses: { context: string; state: string }[] };
-  return { repo, slug, branch, sha, ...mainStateOf(runs, combined.statuses, expectCheck), at: new Date().toISOString() };
+  const suites = await readWorkflows(slug, sha, runs.flatMap((r) => (r.suite == null ? [] : [r.suite])));
+  return { repo, slug, branch, sha, ...mainStateOf(runs, combined.statuses, expectCheck), ...workflowNamesOf(runs, combined.statuses, suites), at: new Date().toISOString() };
+}
+
+// check suite → 워크플로 이름(ATC-330, 읽기 전용 gh api). 저장소마다 최신 main head의 것만 둔다. 새 head면 Actions runs를 한 번 읽고,
+// 같은 head에 아직 모르는 suite가 나타났을 때(늦게 뜬 워크플로)만 다시 읽는다 — 매 폴링마다 부르지 않는다. 실패하면 5분 동안 다시 부르지 않고 null(모름)
+const WORKFLOW_RETRY_MS = 5 * 60_000;
+const workflowCache = new Map<string, { sha: string; suites: Map<number, string | null>; failedAt: number }>();
+async function readWorkflows(slug: string, sha: string, suiteIds: number[]): Promise<ReadonlyMap<number, string | null> | null> {
+  let c = workflowCache.get(slug);
+  if (!c || c.sha !== sha) {
+    c = { sha, suites: new Map(), failedAt: 0 };
+    workflowCache.set(slug, c);
+  }
+  if (suiteIds.some((id) => !c.suites.has(id))) {
+    if (Date.now() - c.failedAt < WORKFLOW_RETRY_MS) return null;
+    try {
+      const byId = new Map(tsv(await gh(["api", `repos/${slug}/actions/runs?head_sha=${sha}&per_page=100`, "--jq", ".workflow_runs[] | [.check_suite_id, .name] | @tsv"])).map(([id, name]) => [Number(id), name] as const));
+      for (const id of suiteIds) c.suites.set(id, byId.get(id) ?? null);
+    } catch {
+      c.failedAt = Date.now();
+      return null;
+    }
+  }
+  return c.suites;
 }
 
 export async function listMerged(repo: string, limit = 30): Promise<{ slug: string; pulls: GhMerged[] } | null> {
