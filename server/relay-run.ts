@@ -9,7 +9,12 @@ import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { bustQueue } from "./queue-bust.ts";
 import { record } from "./recorder.ts";
-import { foldRelays, liveSessionOf, nextRelayId, type Relay, type RelayOp, relayInputOf, unreachableWhy } from "./relay.ts";
+import { readReports } from "./arrival-report.ts";
+import { loadDispatchConfig } from "./dispatch.ts";
+import { readDepartures } from "./departures.ts";
+import { allProposals } from "./proposals.ts";
+import { registrationOf } from "./registration.ts";
+import { clearanceTypeOf, foldRelays, type LastAircraftInput, liveSessionOf, nextRelayId, type Relay, type RelayOp, relayInputOf, unreachableWhy } from "./relay.ts";
 
 // SUPERVISOR RELAY(ATC-271)의 쓰기·읽기. 계산은 relay.ts(순수). 추가만 하는 relays.jsonl(create → issued → undeliverable | hand)을 접어 상태를 만든다.
 // 만드는 길은 이 화면의 클릭뿐이다(fromThisApp, 아니면 403). atcctl에는 만드는 명령이 없고, TOWER는 issued·undeliverable만 표시한다.
@@ -40,6 +45,12 @@ function append(op: RelayOp, file = FILE()) {
 
 export const allRelays = (): Relay[] => foldRelays(readRelayOps(), allClearances());
 
+// 그 FLIGHT를 난 AIRCRAFT를 찾는 자료(lastAircraftOf): DEPARTURE LOG, 제안, ARRIVED 보고
+export function lastAircraftSources(): LastAircraftInput {
+  const teamPattern = loadDispatchConfig().teamPattern;
+  return { departures: readDepartures(), proposals: allProposals(), reports: readReports(), regOf: (n) => registrationOf(n, teamPattern) };
+}
+
 const DAY = 86_400_000;
 // 화면용: 아직 닫히지 않았거나(queued·issued·undeliverable) 하루 안에 닫힌 것
 export const recentRelays = (now = Date.now()) => allRelays().filter((r) => r.status === "queued" || r.status === "issued" || r.status === "undeliverable" || now - Date.parse(r.statusAt) < DAY);
@@ -56,13 +67,19 @@ export function mountRelay(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const fleet = loadFleet();
     const known = new Set([...Object.keys(fleet.aircraft), ...s.sessions.map((x) => x.name)].map((n) => n.toUpperCase()));
     if (!known.has(input.to.toUpperCase())) return c.json({ error: `${input.to}는 알려진 AIRCRAFT가 아님` }, 400);
+    // GO AROUND·FIX RELAY(ATC-308)의 STAND: 아는 워크스페이스(경로나 이름)만 받아 경로로 저장한다
+    if (input.stand) {
+      const ws = s.workspaces.find((w) => w.path === input.stand || w.name === input.stand);
+      if (!ws) return c.json({ error: `${input.stand}는 알려진 STAND가 아님` }, 400);
+      input.stand = ws.path;
+    }
     const at = new Date().toISOString();
     const ops = readRelayOps();
     const id = nextRelayId(ops);
     const target = liveSessionOf(s.sessions, input.to);
     const tower = liveSessionOf(s.sessions, "TOWER");
     append({ op: "create", id, at, ...input });
-    record({ t: at, kind: "relay", op: "create", id, by: "supervisor", to: input.to, relayKind: input.kind, flight: input.flight });
+    record({ t: at, kind: "relay", op: "create", id, by: "supervisor", to: input.to, relayKind: input.kind, flight: input.flight, ...(input.type ? { type: input.type, stand: input.stand ?? null } : {}) });
     const why = unreachableWhy(target, tower);
     if (why) {
       append({ op: "undeliverable", id, at, reason: why });
@@ -82,6 +99,9 @@ export function mountRelay(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const cl = allClearances().find((x) => x.id === clearance);
     if (!cl) return c.json({ error: "clearance(C-xxxx)가 필요함 — 먼저 atcctl issue로 보낸다" }, 400);
     if (cl.toName.toUpperCase() !== r.to.toUpperCase()) return c.json({ error: `${clearance}는 ${cl.toName}에게 간 CLEARANCE라 ${r.to}의 relay가 아님` }, 409);
+    // STAND에 묶은 relay(ATC-308)는 그 type·STAND로 나간 CLEARANCE여야 goAroundSent·fixSent가 보낸 것으로 읽는다
+    if (r.type && cl.type !== clearanceTypeOf(r)) return c.json({ error: `${clearance}는 ${cl.type} CLEARANCE라 ${r.type} relay가 아님` }, 409);
+    if (r.stand && cl.stand !== r.stand) return c.json({ error: `${clearance}의 STAND(${cl.stand ?? "없음"})가 relay의 STAND(${r.stand})와 다름 — atcctl issue에 --stand를 준다` }, 409);
     if (cl.text !== r.text) return c.json({ error: `${clearance}의 본문이 relay와 다름 — relay는 고치지 않고 그대로 보낸다` }, 409);
     const at = new Date().toISOString();
     append({ op: "issued", id, at, clearance });

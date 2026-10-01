@@ -35,6 +35,7 @@ export function actionsOf(item: Pick<QueueItem, "kind" | "key">, airports: reado
       return [{ type: "link", label: "SCHEDULE에서 판정", hash: "#schedule" }];
     case "HUMAN CHECK":
       return [{ type: "link", label: "STRIPS에서 보기", hash: "#strips" }];
+    case "RELAY": // key가 LANDING과 같은 `<저장소>#<번호>@…`
     case "LANDING": {
       const pr = prOfKey(item.key);
       const ap = pr && airports.find((a) => repoName(a.repo) === pr.repo || a.name === pr.repo);

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { DEFAULT_NOTES, flightPlanNotesOf, type IssueComment } from "../../server/issue-notes.ts";
-import { RELAY_KINDS, RELAY_MAX_CHARS, type Relay, type RelayKind, relayInputOf } from "../../server/relay.ts";
+import { RELAY_KINDS, RELAY_MAX_CHARS, type Relay, type RelayKind, type RelayType, relayInputOf } from "../../server/relay.ts";
 import "./Relay.css";
 
 // SUPERVISOR RELAY(ATC-271): AIRCRAFT에게 짧은 글을 보낸다. 글은 TOWER가 CLEARANCE로 그대로 보낸다(영어, ATC-126).
@@ -20,7 +20,10 @@ const STATUS_TEXT: Record<Relay["status"], string> = {
 };
 
 export function RelayBox({
-  to,
+  to: toProp,
+  type = null,
+  stand = null,
+  editableTo = false,
   flight = null,
   pr = null,
   text = null,
@@ -30,6 +33,9 @@ export function RelayBox({
   disabledWhy = null,
 }: {
   to: string | null;
+  type?: RelayType | null; // GO AROUND·FIX를 그대로 전한다(ATC-308): 종류 선택 없이 이 type의 CLEARANCE로 나간다
+  stand?: string | null; // type과 함께 그 PR의 STAND에 묶는다
+  editableTo?: boolean; // STAND를 쥔 AIRCRAFT가 없을 때: to는 제안이고 SUPERVISOR가 다른 REGISTRATION으로 고칠 수 있다
   flight?: string | null;
   pr?: number | null;
   text?: string | null; // 미리 채울 글(PR 서랍: 리뷰 지적의 FIX 본문)
@@ -39,6 +45,8 @@ export function RelayBox({
   disabledWhy?: string | null;
 }) {
   const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState(toProp ?? "");
+  const to = editableTo ? picked.trim().toUpperCase() : (toProp ?? "");
   const [k, setK] = useState<RelayKind>(pr != null && text ? "instruction" : kind);
   const [body, setBody] = useState(text ?? "");
   const [step, setStep] = useState<"edit" | "confirm" | "done">("edit");
@@ -46,7 +54,7 @@ export function RelayBox({
   const [err, setErr] = useState<string | null>(null);
   const [sent, setSent] = useState<Relay | null>(null);
 
-  if (!to) return null;
+  if (!editableTo && !to) return null;
   if (disabledWhy) {
     return (
       <span className="faint rl-why" title={disabledWhy}>
@@ -54,7 +62,7 @@ export function RelayBox({
       </span>
     );
   }
-  const check = body.trim() ? relayInputOf({ to, kind: k, text: body, flight, pr }) : { error: "" };
+  const check = body.trim() ? relayInputOf({ to, kind: type ? "instruction" : k, text: body, flight, pr, ...(type ? { type, stand } : {}) }) : { error: "" };
   const problem = "error" in check ? check.error : null;
   const reset = () => {
     setOpen(false);
@@ -85,7 +93,7 @@ export function RelayBox({
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch("/api/relay", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ to, kind: k, text: body.trim(), flight, pr }) });
+      const res = await fetch("/api/relay", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ to, kind: type ? "instruction" : k, text: body.trim(), flight, pr, ...(type ? { type, stand } : {}) }) });
       const d = (await res.json().catch(() => ({}))) as { relay?: Relay; error?: string };
       if (!res.ok || !d.relay) throw new Error(d.error ?? `HTTP ${res.status}`);
       setSent(d.relay);
@@ -100,13 +108,13 @@ export function RelayBox({
 
   if (!open) {
     return (
-      <button type="button" className={btnClass} onClick={() => setOpen(true)} title={`${to}에게 글을 보낸다. TOWER가 CLEARANCE로 그대로 전한다`}>
+      <button type="button" className={btnClass} onClick={() => setOpen(true)} title={`${to || "AIRCRAFT"}에게 글을 보낸다. TOWER가 CLEARANCE로 그대로 전한다`}>
         RELAY…
       </button>
     );
   }
   return (
-    <div className="rl" role="group" aria-label={`${to}에게 RELAY`}>
+    <div className="rl" role="group" aria-label={`${to || "AIRCRAFT"}에게 RELAY`}>
       {step === "done" && sent ? (
         <>
           <p className={sent.status === "undeliverable" ? "rl-bad" : "rl-ok"}>
@@ -120,7 +128,7 @@ export function RelayBox({
       ) : step === "confirm" ? (
         <>
           <p className="rl-sum">
-            받는 AIRCRAFT <b className="mono">{to}</b> · <b>{KIND_LABEL[k]}</b>
+            받는 AIRCRAFT <b className="mono">{to}</b> · <b>{type ?? KIND_LABEL[k]}</b>
             {flight ? <> · FLIGHT <b className="mono">{flight}</b></> : null}
             {pr != null ? <> · PR <b className="mono">#{pr}</b></> : null}. TOWER가 이 글을 고치지 않고 CLEARANCE로 보낸다.
           </p>
@@ -137,16 +145,30 @@ export function RelayBox({
         </>
       ) : (
         <>
-          <fieldset className="rl-kind">
-            <legend className="rl-label">종류</legend>
-            {RELAY_KINDS.map((x) => (
-              <label key={x} className="rl-opt" title={KIND_HELP[x]}>
-                <input type="radio" name={`rl-kind-${to}-${pr ?? ""}`} checked={k === x} onChange={() => setK(x)} /> {KIND_LABEL[x]} <span className="faint">{KIND_HELP[x]}</span>
+          {editableTo && (
+            <>
+              <label className="rl-label" htmlFor={`rl-to-${pr ?? ""}`}>
+                받는 AIRCRAFT <span className="faint">{toProp ? "(그 FLIGHT를 난 AIRCRAFT. 다른 REGISTRATION으로 고칠 수 있다)" : "(그 FLIGHT를 난 AIRCRAFT를 모른다. REGISTRATION을 쓴다)"}</span>
               </label>
-            ))}
-          </fieldset>
+              <input id={`rl-to-${pr ?? ""}`} className="rl-input mono" value={picked} spellCheck={false} onChange={(e) => setPicked(e.target.value)} placeholder="TEAM_X" />
+            </>
+          )}
+          {type ? (
+            <p className="rl-label">
+              종류 <b>{type}</b> <span className="faint">TOWER의 글을 그대로 보낸다. 이 PR의 STAND에 묶는다</span>
+            </p>
+          ) : (
+            <fieldset className="rl-kind">
+              <legend className="rl-label">종류</legend>
+              {RELAY_KINDS.map((x) => (
+                <label key={x} className="rl-opt" title={KIND_HELP[x]}>
+                  <input type="radio" name={`rl-kind-${to}-${pr ?? ""}`} checked={k === x} onChange={() => setK(x)} /> {KIND_LABEL[x]} <span className="faint">{KIND_HELP[x]}</span>
+                </label>
+              ))}
+            </fieldset>
+          )}
           <label className="rl-label" htmlFor={`rl-text-${to}-${pr ?? ""}`}>
-            글 <span className="faint">(영어로 쓴다. 세션끼리 주고받는 글은 영어, ATC-126)</span>
+            글 <span className="faint">{type ? "(TOWER의 글. 고치지 않고 그대로 보낸다)" : "(영어로 쓴다. 세션끼리 주고받는 글은 영어, ATC-126)"}</span>
           </label>
           <textarea
             id={`rl-text-${to}-${pr ?? ""}`}
@@ -155,6 +177,7 @@ export function RelayBox({
             value={body}
             maxLength={RELAY_MAX_CHARS + 200}
             spellCheck={false}
+            readOnly={type !== null}
             onChange={(e) => setBody(e.target.value)}
             placeholder="Short, plain English…"
           />
@@ -164,7 +187,7 @@ export function RelayBox({
           {problem && <p className="rl-bad">{problem}</p>}
           {err && <p className="rl-bad">{err}</p>}
           <div className="rl-actions">
-            <button type="button" className={`${btnClass} primary is-primary`} disabled={busy || !body.trim() || problem !== null} onClick={() => setStep("confirm")}>
+            <button type="button" className={`${btnClass} primary is-primary`} disabled={busy || !to || !body.trim() || problem !== null} onClick={() => setStep("confirm")}>
               보내기…
             </button>
             {notesFlight && (

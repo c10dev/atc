@@ -6,13 +6,14 @@ import type { FleetProposal } from "./fleet-plan.ts";
 import type { ScheduleMode, ScheduleOp } from "./schedule.ts";
 import { waitsOnHuman } from "./human-check.ts";
 import { type HandCard, handCardOf, liveSessionOf, type Relay } from "./relay.ts";
+import type { RelayOffer } from "./relay-offer.ts";
 import type { UpdateKind } from "./update.ts";
 
 // SUPERVISOR QUEUE(ATC-194, docs/ui-visibility.md 3.1, docs/duty.md Q1): SUPERVISOR의 결정을 기다리는 것 하나의 목록.
 // 새 감지는 없다 — 화면이 이미 쓰는 상태를 그대로 읽는다. 항목은 밑의 상태가 바뀔 때만 사라진다(읽음·미룸 없음).
 // 순수 함수만. 자료 모으기는 supervisor-queue-run.ts. `title`은 atc 말(FLIGHT key·REGISTRATION·PR 번호)만 쓰고 티켓·PR 제목은 싣지 않는다.
 
-export const QUEUE_KINDS = ["PROPOSAL", "SCHEDULE", "FLEET PLAN", "HUMAN CHECK", "LANDING", "UPDATE", "NEEDS YOU", "UNDELIVERED", "GO"] as const;
+export const QUEUE_KINDS = ["PROPOSAL", "SCHEDULE", "FLEET PLAN", "HUMAN CHECK", "LANDING", "UPDATE", "NEEDS YOU", "RELAY", "UNDELIVERED", "GO"] as const;
 export type QueueKind = (typeof QUEUE_KINDS)[number];
 
 export interface QueueItem {
@@ -22,6 +23,7 @@ export interface QueueItem {
   title: string;
   hash: string; // 그 항목이 있는 화면 주소
   hand?: HandItem; // UNDELIVERED: 손으로 전하는 카드(ATC-271)
+  offer?: RelayOffer; // RELAY: STAND를 쥔 세션이 없는 GO AROUND·FIX를 SUPERVISOR가 전하는 카드(ATC-308)
 }
 
 // 닿지 못한 글(SUPERVISOR RELAY·CLEARANCE·FLIGHT PLAN)을 SUPERVISOR가 손으로 전하는 카드의 자료. text가 null이면 복사할 글이 없다(FLIGHT PLAN은 FLIGHT 카드의 DIRECT 지시서)
@@ -49,6 +51,7 @@ export interface QueueInput {
   clearances?: Pick<Clearance, "id" | "toName" | "type" | "text" | "undeliverableAt" | "undeliverableReason" | "handAt">[];
   folders?: { label: string; dir: string }[]; // ACCOUNT 라벨 → 폴더(등록부)
   defaultDir?: string; // ~/.claude
+  relayOffers?: RelayOffer[]; // relay-offer.ts의 결과(없으면 RELAY 카드가 없다)
 }
 
 const short = (sha: string | null | undefined) => (sha ? sha.slice(0, 7) : "?");
@@ -98,6 +101,11 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
   for (const a of blockedAlerts(inp.sessions, now, inp.blockedMin)) {
     const s = byId.get(a.sessionIds[0]);
     out.push({ kind: "NEEDS YOU", key: a.sessionIds[0], since: (s?.job as Job | null | undefined)?.since ?? null, title: s?.name ?? a.sessionIds[0], hash: "#fleet" });
+  }
+
+  // RELAY(ATC-308): STAND를 쥔 세션이 없어 TOWER가 못 보내는 GO AROUND·FIX. head가 바뀌거나 PR이 닫히거나 쥔 세션이 생기면(offer가 없어지면) 사라진다
+  for (const o of inp.relayOffers ?? []) {
+    out.push({ kind: "RELAY", key: o.key, since: null, title: `${o.type} PR #${o.pr}${o.flight ? ` (${o.flight})` : ""}${o.to ? ` → ${o.to}` : ""}`, hash: o.airport ? `#pr/${o.airport}/${o.pr}` : "#strips", offer: o });
   }
 
   // UNDELIVERED(ATC-271): 닿지 못한 글은 조용히 닫지 않고 손으로 전하는 카드를 둔다. 상태가 바뀌면(손으로 전했다고 표시·답이 옴·다시 보냄) 사라진다
