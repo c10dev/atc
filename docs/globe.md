@@ -1,6 +1,6 @@
 # GLOBE: atc's AIRCRAFT over a 3D globe, and a SPACE theme
 
-Status (2026-10-01): design draft from the idea [#280](https://github.com/chaehy5665/atc/issues/280). Nothing is built. The SUPERVISOR decided the route model, the tab, the priority and the split between atc and the Mac app on 2026-10-01 (section 9). Work orders follow section 7: parent [ATC-253](https://linear.app/vocado/issue/ATC-253), G1 [ATC-254](https://linear.app/vocado/issue/ATC-254), G2 [ATC-260](https://linear.app/vocado/issue/ATC-260), G3 [ATC-263](https://linear.app/vocado/issue/ATC-263), G4 [ATC-261](https://linear.app/vocado/issue/ATC-261), G5 [ATC-262](https://linear.app/vocado/issue/ATC-262), G6 [ATC-264](https://linear.app/vocado/issue/ATC-264). All are in Backlog until the SUPERVISOR releases G1.
+Status (2026-10-01): design draft from the idea [#280](https://github.com/chaehy5665/atc/issues/280). Nothing is built. The SUPERVISOR decided the route model, the tab, the priority and the split between atc and the Mac app on 2026-10-01 (section 9). Work orders follow section 7 (G1–G8): parent [ATC-253](https://linear.app/vocado/issue/ATC-253), G1 [ATC-254](https://linear.app/vocado/issue/ATC-254), G2 [ATC-260](https://linear.app/vocado/issue/ATC-260), G3 [ATC-263](https://linear.app/vocado/issue/ATC-263), G4 [ATC-261](https://linear.app/vocado/issue/ATC-261), G5 [ATC-262](https://linear.app/vocado/issue/ATC-262), G6 [ATC-264](https://linear.app/vocado/issue/ATC-264), G7 [ATC-268](https://linear.app/vocado/issue/ATC-268), G8 [ATC-269](https://linear.app/vocado/issue/ATC-269). Related RADIO step: [ATC-267](https://linear.app/vocado/issue/ATC-267) (PREFLIGHT frequency). All are in Backlog until the SUPERVISOR releases G1.
 
 **LANDING tier of G1–G4: `auto`.** GLOBE is a read-only screen, a pure module and one read-only route (`GET /api/globe`). It adds no route that writes, no state file and no package (section 2, principle 4). G5 and G6 are in the atc-app repository, where the SUPERVISOR merges every PR.
 
@@ -100,6 +100,24 @@ Read-only, no `Origin` check needed (it writes nothing). G1 builds it with `airp
 
 Clients refetch once per snapshot minute (like `useMilestones`) and animate in between. The scene is a few kilobytes, so the Mac app can read it as cheaply as the web.
 
+### 3.9 Radio on the globe and the AIRPORT view (G7)
+
+The interaction with the control sessions during departure and landing is already recorded and merged by RADIO ([radio.md](radio.md), `GET /api/radio`, the `radio` SSE topic): each transmission has `freq`, `from`, `to`, `aircraft`, `flight`, `airport`, `kind`, `head`, and for calls `open`/`overdueAt`. GLOBE draws it; it adds no data.
+
+| Phase | atc event | Frequency | Station |
+|---|---|---|---|
+| Check before departure | CROSSCHECK mark, PREFLIGHT HOLD | PREFLIGHT ([ATC-267](https://linear.app/vocado/issue/ATC-267), not built yet) | CROSSCHECK |
+| At the gate, departure | FLIGHT PLAN → READBACK (OUT) | DELIVERY | OCC |
+| En route | HOLD, INFO, TRAFFIC CLEARANCEs | TOWER | TOWER |
+| Approach | LAND, GO AROUND → READBACK/UNABLE | TOWER | TOWER |
+| Runway | MCC INSPECTION → LAND (merge = ON) | GROUND | MCC |
+| Taxi in | RTS started → ok (IN), ROLLBACK | GROUND | MCC |
+| Arrival report | ARRIVED | COMPANY | OCC |
+
+- **On the globe:** transmissions of the last 2 minutes are short radio pulses between the AIRPORT and the plane. An open call blinks until its reply and turns amber past `overdueAt`.
+- **AIRPORT view** (`#globe/<CODE>`, click an AIRPORT): STANDs as gates on an apron, a taxiway and a runway; OCC, TOWER and MCC (and CROSSCHECK once PREFLIGHT exists) as facilities; planes placed by their scene state; each recent transmission as a line from facility to plane with its `head`. `body` shows only on click; voice stays template-only (RADIO principle 3). A short list links to the RADIO tab filtered to that AIRPORT.
+- Interactions RADIO does not carry are not drawn. They join RADIO first (as PREFLIGHT does in ATC-267), so the RADIO tab and GLOBE always agree. Unknown frequencies map to a generic station instead of failing.
+
 ### G1 as built (ATC-254)
 
 - **Pure module** `server/globe.ts` (browser-safe, tested in `server/globe.test.ts`): `project`/`unproject` (orthographic, unit disc), `clipPolyline` and `clipRing` (cut at the horizon; a ring that crosses the horizon several times is closed along the limb counter-clockwise, each exit joined to the next entry counter-clockwise, so a continent crossing the edge several times still fills correctly), `slerp`, `destination`, `bearingDeg`, `distanceDeg`, `subsolarPoint` (right ascension minus sidereal time, so the equation of time is inside; about 0.05°), `nightRing`, `layoutAirports` and `placeAirports`, `defaultHome` and `globeSceneOf`.
@@ -146,6 +164,10 @@ The game-like view of the same scene. It is presentation only; it adds no data a
 - **Calm by default.** It follows the system's Reduce Motion setting (a still frame), caps the frame rate, pauses when the window is hidden or occluded and in Low Power Mode. No sound (RADIO already owns sound).
 - Its own issue after the `MAP` window, so the SUPERVISOR can use the information view first.
 
+### 6.2 CINEMATIC follows the radio (G8)
+
+In CINEMATIC, a new transmission about a plane on the scene moves the camera to that plane (at most one cut per 15 s; the SUPERVISOR's own camera wins until released) and shows its `head` as a subtitle with station and callsign. Sound stays with the RADIO monitor (R4, ATC-173); the window plays nothing itself. With Reduce Motion, subtitles only.
+
 ## 7. Implementation order
 
 Each step is one issue. Each PR adds a changelog fragment pair and describes the screen in `docs/guide/screens.md` (Korean); G1 adds the GLOBE row.
@@ -158,8 +180,10 @@ Each step is one issue. Each PR adds a changelog fragment pair and describes the
 | G4 | **SPACE theme.** The second web renderer of the same scene (section 5), the toggle and its default | GLOBE and SPACE show the same traffic | auto |
 | G5 | **ATCA GLOBE window, `MAP` mode** (atc-app repository, section 6). MapKit globe drawing `GET /api/globe`, terminator in `ATCCore` | A native globe window on the Mac | atc-app (SUPERVISOR merges) |
 | G6 | **ATCA `CINEMATIC` mode** (6.1). Camera orbit, follow and tour; banked planes, trails, touchdown and departure effects; honest motion; Reduce Motion and pause rules | The game-like view of the same traffic | atc-app (SUPERVISOR merges) |
+| G7 | **Radio on the globe and the AIRPORT view** (3.9). Pure transmission → station/plane mapping with tests, pulses on the globe, the aerodrome view, from `GET /api/radio` | The control interaction around departures and landings is visible | auto |
+| G8 | **CINEMATIC follows the radio** (6.2). Camera cuts to the talking plane, `head` subtitles, sound via the R4 monitor | A landing reads as the conversation it is | atc-app (SUPERVISOR merges) |
 
-- G1 has no dependencies. G2 needs G1. G3 and G4 need G2 and can go in either order. G5 needs G2 (G3 for moves), and is picked as an N8 candidate by the SUPERVISOR. G6 needs G5.
+- G1 has no dependencies. G2 needs G1. G3 and G4 need G2 and can go in either order. G5 needs G2 (G3 for moves), and is picked as an N8 candidate by the SUPERVISOR. G6 needs G5. G7 needs G2. G8 needs G6. ATC-267 (RADIO PREFLIGHT) blocks nothing and is blocked by nothing; G7 and G8 show PREFLIGHT once it exists.
 - Checks for G1–G4: `npm test`, `npx tsc --noEmit -p .`, `npx vite build`, and the GLOBE chunk size from the build output in the PR. On a 7702 test server (`ATC_GITHUB=off`, copied `airports.json` and `fleet.json`), open the tab with Playwright with a **made-up location** typed into the fields (never the real one), and describe what was seen in the PR in words. No screenshots (public repository, and a screenshot of this screen would show a location).
 
 ## 8. Risks
@@ -187,6 +211,8 @@ Each step is one issue. Each PR adds a changelog fragment pair and describes the
 - 2026-10-01: **Web first, then the Mac app (option A).** The scene is computed on the server and served read-only (3.8). The web tab (G1–G4) comes first; a native MapKit GLOBE window in ATCA (G5) follows as an N8 candidate. Alternatives that were not chosen: the Mac app only (every visual change needs a build on the Mac, and only the SUPERVISOR can check it), and the web only. G1 waits in Backlog until the SUPERVISOR releases it.
 - 2026-10-01: **The game-like view lives in the Mac app.** The web GLOBE stays a light SVG information view (G1–G4). An animated, game-like view on a real globe is `CINEMATIC` mode in the ATCA window (6.1, G6), because MapKit brings the real Earth without a package, a bundled texture or a `user`-tier PR in atc. Not chosen: a three.js CINEMATIC mode on the web, and a WebGL web GLOBE from G1. The web draws inline SVG with a hand-written orthographic projection and no package (principle 4).
 
+- 2026-10-01: **Show the control interaction.** Departures and landings show the exchange with OCC, TOWER and MCC from RADIO (G7 on the web, G8 in CINEMATIC). CROSSCHECK's check before departure joins RADIO as a PREFLIGHT frequency (ATC-267) instead of being read by GLOBE directly.
+
 **Proposed here, for the SUPERVISOR to accept or change:**
 
 - Default location from the UTC offset, Geolocation rounded to 1° (CoreLocation in G5), no city search.
@@ -195,4 +221,4 @@ Each step is one issue. Each PR adds a changelog fragment pair and describes the
 
 ## Not built yet
 
-Everything in section 7 (G1–G6).
+Everything in section 7 (G1–G8), and the PREFLIGHT frequency (ATC-267).
