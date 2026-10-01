@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { fidsRows, FIDS_ARRIVED_CAP } from "../fids-rows.ts";
+import { FIDS_GROUP_CAP, type FoldedGroup, foldGroup, shortAge } from "../fids-rows.ts";
 import { latestMilestone, type Milestones, milestoneTitle } from "../../../server/milestones.ts";
 import type { Snapshot, Ticket, TicketColumn } from "../../../server/model.ts";
 import {
@@ -30,13 +30,20 @@ export function Tickets({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
     (c) => showClosed || (c.type !== "canceled" && c.type !== "duplicate" && c.type !== "backlog"),
   );
   const shownStates = new Set(columns.map((c) => c.name));
-  // ARRIVED는 최근 FIDS_ARRIVED_CAP개와 STAND가 남은 것만(ATC-112). "more" 줄을 누르면 그 자리에서 ARRIVED 전체(이 화면에서만, 저장하지 않음). fidsClosed는 전부(전과 같다)
-  const [arrivedOpen, setArrivedOpen] = useState(false);
-  const { rows, moreArrived } = fidsRows(snapshot.tickets.filter((t) => shownStates.has(t.state)), idx, showClosed || arrivedOpen);
-  const more = { count: moreArrived, open: arrivedOpen && !showClosed, toggle: () => setArrivedOpen((v) => !v) };
-  const lastDone = columns.filter((c) => c.type === "completed").at(-1)?.name;
+  // 그룹(목록은 비행 단계, 보드는 상태 열)은 앞 FIDS_GROUP_CAP개만 보이고 "N more"로 그 자리에서 펼친다(ATC-316).
+  // 이 화면에서만 열고 저장하지 않는다. AIRCRAFT가 맡았거나 경고가 걸린 FLIGHT는 접혀도 보인다.
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (key: string) =>
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  const pinned = (t: Ticket) => occupantsOf(t.key, idx).length > 0 || (idx.alertsByTicket.get(t.key)?.length ?? 0) > 0;
+  const fold = (key: string, rows: Ticket[]): Fold => ({ key, ...foldGroup(rows, pinned, openGroups.has(key)), total: rows.length, open: openGroups.has(key), toggle: () => toggle(key) });
   const byActivity = (a: Ticket, b: Ticket) =>
     occupantsOf(b.key, idx).length - occupantsOf(a.key, idx).length || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
+  const rows = snapshot.tickets.filter((t) => shownStates.has(t.state));
 
   return (
     <section>
@@ -51,9 +58,11 @@ export function Tickets({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
       </div>
       {settings.fidsView === "list" ? (
         <DepartureBoard
-          more={more}
-          tickets={[...rows]
-            .sort((a, b) => LIST_ORDER.indexOf(phaseTone(a)) - LIST_ORDER.indexOf(phaseTone(b)) || byActivity(a, b))}
+          groups={LIST_ORDER.flatMap((tone) => {
+            const group = rows.filter((t) => phaseTone(t) === tone).sort(byActivity);
+            return group.length ? [{ label: flightPhase(group[0]), tone, ...fold(tone, group) }] : [];
+          })}
+          total={rows.length}
           idx={idx}
           clock={settings.clock}
           now={now}
@@ -62,7 +71,7 @@ export function Tickets({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
       ) : (
         <div className="board">
           {columns.map((col) => (
-            <Column key={col.name} col={col} tickets={rows.filter((t) => t.state === col.name).sort(byActivity)} idx={idx} more={col.name === lastDone ? more : undefined} />
+            <Column key={col.name} col={col} fold={fold(col.name, rows.filter((t) => t.state === col.name).sort(byActivity))} idx={idx} />
           ))}
         </div>
       )}
@@ -70,16 +79,17 @@ export function Tickets({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
   );
 }
 
-// ARRIVED "more" 줄(ATC-112): 가려진 수를 알리고 그 자리에서 펼친다(펼친 뒤엔 다시 접는다)
-interface MoreArrived {
-  count: number;
+// 접힌 그룹(ATC-316, ATC-112의 ARRIVED "more" 줄을 모든 그룹으로): 가려진 수를 알리고 그 자리에서 펼친다(펼친 뒤엔 다시 접는다)
+interface Fold extends FoldedGroup<Ticket> {
+  key: string;
+  total: number; // 접기 전 그룹의 FLIGHT 수(머리에 보인다)
   open: boolean;
   toggle: () => void;
 }
-function MoreButton({ more }: { more: MoreArrived }) {
+function MoreButton({ fold, label }: { fold: Fold; label: string }) {
   return (
-    <button type="button" className="fids-more-btn" aria-expanded={more.open} onClick={more.toggle}>
-      {more.open ? `ARRIVED 최근 ${FIDS_ARRIVED_CAP}건만 · 접기` : `ARRIVED ${more.count} more · 전체 보기`}
+    <button type="button" className="fids-more-btn" aria-expanded={fold.open} onClick={fold.toggle}>
+      {fold.open ? `${label} · 접기` : `${label} ${fold.hidden} more · 전체 보기`}
     </button>
   );
 }
@@ -143,14 +153,22 @@ function ViewOptions({ settings }: { settings: Settings }) {
   );
 }
 
+interface ListGroup extends Fold {
+  label: string;
+  tone: PhaseTone;
+}
+
+const showMore = (f: Fold) => f.hidden > 0 || (f.open && f.total > FIDS_GROUP_CAP);
+
 // 목록 보기: 실제 DEPARTURES 안내판. TIME · FLIGHT · DESTINATION · AIRCRAFT · STAND · PRI · REMARKS
-function DepartureBoard({ tickets, idx, clock, now, more, milestones }: { tickets: Ticket[]; idx: Index; clock: Settings["clock"]; now: number; more: MoreArrived; milestones: ReadonlyMap<string, Milestones> }) {
+// 비행 단계마다 머리 줄(이름과 FLIGHT 수)이 있고 그룹은 접힌다. 860px 아래에서는 행이 한 줄 카드가 된다.
+function DepartureBoard({ groups, total, idx, clock, now, milestones }: { groups: ListGroup[]; total: number; idx: Index; clock: Settings["clock"]; now: number; milestones: ReadonlyMap<string, Milestones> }) {
   return (
     <div className="fids-list">
       <header className="fids-list-head">
         <span className="fids-list-title">DEPARTURES</span>
         <span className="fids-list-meta">
-          <SplitFlap bare text={String(tickets.length).padStart(2, "0")} /> FLIGHTS ·{" "}
+          <SplitFlap bare text={String(total).padStart(2, "0")} /> FLIGHTS ·{" "}
           <SplitFlap bare text={formatClock(now, clock)} />
         </span>
       </header>
@@ -179,26 +197,34 @@ function DepartureBoard({ tickets, idx, clock, now, more, milestones }: { ticket
               </th>
             </tr>
           </thead>
-          <tbody>
-            {tickets.map((t) => (
-              <DepartureRow key={t.key} ticket={t} idx={idx} clock={clock} milestones={milestones.get(t.key) ?? null} />
-            ))}
-            {(more.count > 0 || more.open) && (
-              <tr className="fids-more">
-                <td colSpan={7}>
-                  <MoreButton more={more} />
-                </td>
+          {groups.map((g) => (
+            <tbody key={g.key} className={`fids-group tone-${g.tone}`}>
+              <tr className="fids-group-head">
+                <th colSpan={7} scope="rowgroup">
+                  <span className="fids-group-name">{g.label}</span>
+                  <span className="count">{String(g.total).padStart(2, "0")}</span>
+                </th>
               </tr>
-            )}
-          </tbody>
+              {g.rows.map((t) => (
+                <DepartureRow key={t.key} ticket={t} idx={idx} clock={clock} now={now} milestones={milestones.get(t.key) ?? null} />
+              ))}
+              {showMore(g) && (
+                <tr className="fids-more">
+                  <td colSpan={7}>
+                    <MoreButton fold={g} label={g.label} />
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          ))}
         </table>
-        {tickets.length === 0 && <p className="empty fids-empty">표시할 편이 없음</p>}
+        {total === 0 && <p className="empty fids-empty">표시할 편이 없음</p>}
       </div>
     </div>
   );
 }
 
-function DepartureRow({ ticket: t, idx, clock, milestones }: { ticket: Ticket; idx: Index; clock: Settings["clock"]; milestones: Milestones | null }) {
+function DepartureRow({ ticket: t, idx, clock, now, milestones }: { ticket: Ticket; idx: Index; clock: Settings["clock"]; now: number; milestones: Milestones | null }) {
   const latest = latestMilestone(milestones);
   const occupants = occupantsOf(t.key, idx);
   const workspaces = idx.workspacesByTicket.get(t.key) ?? [];
@@ -207,11 +233,11 @@ function DepartureRow({ ticket: t, idx, clock, milestones }: { ticket: Ticket; i
   const tone = phaseTone(t);
   const stand = workspaces[0];
   return (
-    <tr className={`tone-${tone}${occupants.length ? " is-occupied" : ""}`} title={latest ? milestoneTitle(milestones, (iso) => formatClock(iso, clock)) : undefined}>
+    <tr className={`fids-row tone-${tone}${occupants.length ? " is-occupied" : ""}`} title={latest ? milestoneTitle(milestones, (iso) => formatClock(iso, clock)) : undefined}>
       <td className="col-time mono">
         <SplitFlap bare text={t.updatedAt ? formatClock(t.updatedAt, clock) : "—"} />
       </td>
-      <td>
+      <td className="col-flight">
         <SplitFlap text={flightNumber(t.key)} title={t.key} />
       </td>
       <td className="fids-dest">
@@ -226,10 +252,10 @@ function DepartureRow({ ticket: t, idx, clock, milestones }: { ticket: Ticket; i
       <td className="fids-aircraft">
         {occupants.length ? occupants.map((s) => <SessionBadge key={s.id} session={s} />) : <span className="none">—</span>}
       </td>
-      <td className="col-stand mono" title={workspaces.map((w) => w.path).join("\n")}>
+      <td className="col-stand mono" title={workspaces.length > 1 ? workspaces.map((w) => w.path).join("\n") : undefined}>
         {stand ? (
           <>
-            <AirportCode airport={idx.airportByRepo.get(stand.repo)} /> {stand.name}
+            <AirportCode airport={idx.airportByRepo.get(stand.repo)} plain /> {stand.name}
             {workspaces.length > 1 && <span className="faint"> +{workspaces.length - 1}</span>}
           </>
         ) : (
@@ -239,8 +265,9 @@ function DepartureRow({ ticket: t, idx, clock, milestones }: { ticket: Ticket; i
       <td className="col-pri">
         <PriorityMark priority={t.priority} />
       </td>
-      <td className="fids-remark">
-        <span className="remark" title={t.state}>
+      <td className="col-age mono">{shortAge(t.updatedAt, now)}</td>
+      <td className={`fids-remark${latest || noContact ? " has-extra" : ""}`}>
+        <span className="remark">
           <SplitFlap bare text={flightPhase(t)} />
         </span>
         {latest && (
@@ -258,19 +285,19 @@ function DepartureRow({ ticket: t, idx, clock, milestones }: { ticket: Ticket; i
   );
 }
 
-function Column({ col, tickets, idx, more }: { col: TicketColumn; tickets: Ticket[]; idx: Index; more?: MoreArrived }) {
+function Column({ col, fold, idx }: { col: TicketColumn; fold: Fold; idx: Index }) {
   return (
     <div className={`column tone-${phaseTone(col)}`}>
-      <header className="column-head" title={col.name}>
+      <header className="column-head">
         <span className="column-code">{flightPhase(col)}</span>
         {flightPhase(col).toLowerCase() !== col.name.toLowerCase() && <span className="column-alias">{col.name}</span>}
-        <span className="count">{String(tickets.length).padStart(2, "0")}</span>
+        <span className="count">{String(fold.total).padStart(2, "0")}</span>
       </header>
       <div className="column-body">
-        {tickets.map((t) => (
+        {fold.rows.map((t) => (
           <TicketCard key={t.key} ticket={t} idx={idx} />
         ))}
-        {more && (more.count > 0 || more.open) && <MoreButton more={more} />}
+        {showMore(fold) && <MoreButton fold={fold} label={col.name} />}
       </div>
     </div>
   );

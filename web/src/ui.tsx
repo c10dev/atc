@@ -8,10 +8,11 @@ import { type Index, sessionLocation } from "./derive.ts";
 import "./ui.css";
 
 // 저장소 = AIRPORT 코드(대문자 4자). 마우스를 올리면 저장소 이름과 경로.
-export function AirportCode({ airport }: { airport: Airport | null | undefined }) {
+// plain: 툴팁 없이(FIDS처럼 줄마다 붙는 곳. 저장소 경로는 숫자뿐인 툴팁이라 화면에 두지 않는다)
+export function AirportCode({ airport, plain = false }: { airport: Airport | null | undefined; plain?: boolean }) {
   if (!airport) return null;
   return (
-    <span className="apt" title={`${airport.name} (${airport.repo})`}>
+    <span className="apt" title={plain ? undefined : `${airport.name} (${airport.repo})`}>
       {airport.code}
     </span>
   );
