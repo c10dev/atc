@@ -86,7 +86,6 @@
 /* 태그(출처·AIRPORT·STALE·TYPE RATING): 중립 — line-strong 테두리, muted 글 */
 .fl-card .fl-origin,
 .fl-card .fl-origin.o-background,
-.fl-card .apt,
 .fl-card .fl-stale-mark,
 .fl-card .fl-chip,
 .fl-card .fl-chip.r-SEC {
@@ -99,9 +98,15 @@
   letter-spacing: 0;
   white-space: nowrap;
 }
-.fl-card .apt,
 .fl-card .fl-chip {
   font-family: var(--mono);
+}
+/* AIRPORT 코드의 색·테두리는 공용 .apt 규칙. 카드에서는 크기만 맞춘다 */
+.fl-card .apt {
+  margin-left: 0;
+  font: 400 var(--text-xs) var(--mono);
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 .fl-card .fl-origin.o-unknown,
 .fl-card .fl-stale-mark {
