@@ -1,4 +1,5 @@
 import { AlertBell, SoundLockChip } from "./AlertBell.tsx";
+import { FollowNext } from "./FollowNext.tsx";
 import { drawerOfHash, type DrawerRef } from "../../server/detail.ts";
 import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showNewVersion } from "../../server/version.ts";
@@ -170,6 +171,7 @@ export function App({ build }: { build: string }) {
           <Readout code="AIRBORNE" value={busy} tone="radar" />
           <Readout code="STANDS" label="점유" value={stands} />
           <Readout code="ENROUTE" value={inProgress} />
+          <FollowNext refreshKey={snapshot?.at ?? ""} />
           {duty.status?.enabled && (
             <button
               className="readout is-button duty-readout"

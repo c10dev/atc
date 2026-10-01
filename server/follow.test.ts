@@ -234,3 +234,93 @@ test("toggleParent: 더하기·빼기는 멱등", () => {
   assert.deepEqual(toggleParent(f, "ATC-1", false).parents, []);
   assert.equal(toggleParent(f, "ATC-9", false), f);
 });
+
+// ── F2: 막힘(3.3)과 다음 할 일(3.4) ──
+
+test("막힘: 우선순위 있는 Todo가 제안 없이 30분, HOLD·우선순위 없음·tail은 아니다", () => {
+  const plan = { excluded: [], hold: [{ flight: "ATC-3", blockedBy: ["ATC-9"] }], unserved: [] } as unknown as FollowInput["plan"];
+  const tickets = [ticket("ATC-1", { updatedAt: ago(31) }), ticket("ATC-2", { updatedAt: ago(29) }), ticket("ATC-3", { updatedAt: ago(90) }), ticket("ATC-4", { priority: 0, updatedAt: ago(90) })];
+  const row = (k: string) => followRowOf(k, base({ tickets, plan }));
+  assert.equal(row("ATC-1").stuck?.code, "todo-no-proposal");
+  assert.equal(row("ATC-1").stuck?.stage, "proposed");
+  assert.equal(row("ATC-2").stuck, null); // 29분
+  assert.equal(row("ATC-3").stuck, null); // 선행 FLIGHT를 기다리는 HOLD
+  assert.equal(row("ATC-4").stuck, null); // 우선순위 없음은 다음 할 일(priority)이지 막힘이 아니다
+  // 되돌림(RECALL 등) 뒤에는 되돌린 때부터 센다
+  const reset = proposal("D-0001", "ATC-1", "recalled", { proposed: ago(500) }, { statusAt: ago(5) });
+  assert.equal(followRowOf("ATC-1", base({ tickets, plan, proposals: [reset] })).stuck, null);
+});
+
+test("막힘: 승인 뒤 발송 없음 10분, 발송 뒤 READBACK 없음 10분", () => {
+  const tickets = [ticket("ATC-1"), ticket("ATC-2"), ticket("ATC-3")];
+  const approved = (id: string, f: string, min: number) => proposal(id, f, "approved", { proposed: ago(60), approved: ago(min) }, { statusAt: ago(min) });
+  const r1 = followRowOf("ATC-1", base({ tickets, proposals: [approved("D-1", "ATC-1", 11)] }));
+  assert.equal(r1.stuck?.code, "approved-not-sent");
+  assert.equal(r1.stuck?.stage, "approved");
+  assert.equal(followRowOf("ATC-2", base({ tickets, proposals: [approved("D-2", "ATC-2", 9)] })).stuck, null);
+  const sent = proposal("D-3", "ATC-3", "sent", { proposed: ago(60), approved: ago(40), sent: ago(12) }, { statusAt: ago(12) });
+  const r3 = followRowOf("ATC-3", base({ tickets, proposals: [sent] }));
+  assert.equal(r3.stuck?.code, "sent-no-readback");
+  assert.equal(r3.next?.kind, "look");
+  assert.equal(r3.next?.href, "#radio");
+});
+
+test("막힘: 착륙(ON) 뒤 배포(IN) 없음 15분. MCC AIRPORT가 아닌 곳은 아니다", () => {
+  const tickets = [ticket("ATC-1", { state: "In Progress", stateType: "started" })];
+  const m = (min: number) => new Map([["ATC-1", ms({ on: ago(min) })]]);
+  assert.equal(followRowOf("ATC-1", base({ tickets, milestones: m(16) })).stuck?.code, "landed-not-deployed");
+  assert.equal(followRowOf("ATC-1", base({ tickets, milestones: m(14) })).stuck, null);
+  assert.equal(followRowOf("ATC-1", base({ tickets, milestones: m(60), noDeploy: new Set(["ATC-1"]) })).stuck, null);
+  assert.equal(followRowOf("ATC-1", base({ tickets, milestones: m(60) })).next?.href, "#strips");
+});
+
+test("막힘: FLIGHT FOLLOWING의 pr-not-cleared·landing-wait를 그대로 쓴다", () => {
+  const tickets = [ticket("ATC-1", { state: "In Progress", stateType: "started" })];
+  const proposals = [proposal("D-1", "ATC-1", "departed", { proposed: ago(900), approved: ago(890), sent: ago(880), accepted: ago(870), departed: ago(860) })];
+  const inp = withFollowing(base({ tickets, proposals, pulls: [pr(10, "ATC-1", { createdAt: ago(600) })], milestones: new Map([["ATC-1", ms({ off: ago(600) })]]) }));
+  const row = followRowOf("ATC-1", inp);
+  assert.equal(row.stuck?.code, "pr-not-cleared");
+  assert.equal(row.stuck?.stage, "pr");
+});
+
+test("막힌 줄은 번들 맨 위로, 나머지는 사슬 순서 그대로", () => {
+  const tickets = [
+    ticket("ATC-1", { children: ["ATC-2", "ATC-3", "ATC-4"] }),
+    ticket("ATC-2", { parent: "ATC-1", updatedAt: ago(5) }),
+    ticket("ATC-3", { parent: "ATC-1", updatedAt: ago(5) }),
+    ticket("ATC-4", { parent: "ATC-1", updatedAt: ago(90) }),
+  ];
+  const [b] = followBoardOf({ ...base({ tickets }), parents: ["ATC-1"] });
+  assert.deepEqual(b.rows.map((r) => r.key), ["ATC-4", "ATC-2", "ATC-3"]);
+  assert.equal(b.stuck, 1);
+});
+
+test("다음 할 일: release → priority → approve → human-check/merge → look 순으로 하나", () => {
+  const backlog = ticket("ATC-1", { state: "Backlog", stateType: "backlog", blockedBy: ["ATC-9"] });
+  const done = ticket("ATC-9", { state: "Done", stateType: "completed" });
+  const next = (k: string, over: Partial<Omit<FollowInput, "parents">> = {}) => followRowOf(k, base({ tickets: [backlog, done, ticket("ATC-2", { priority: 0 }), ticket("ATC-3", { updatedAt: ago(1) }), ticket("ATC-4", { state: "In Progress", stateType: "started", updatedAt: ago(1) })], ...over })).next;
+  assert.deepEqual(next("ATC-1"), { kind: "release", label: "Todo로", href: null });
+  assert.equal(next("ATC-2")?.kind, "priority");
+  assert.equal(next("ATC-2")?.href, "#flight/ATC-2");
+  // 막는 이슈가 남은 Backlog는 release가 아니다
+  assert.equal(followRowOf("ATC-1", base({ tickets: [backlog, ticket("ATC-9")] })).next, null);
+  const waiting = proposal("D-5", "ATC-3", "proposed", { proposed: ago(3) });
+  assert.deepEqual(next("ATC-3", { proposals: [waiting] }), { kind: "approve", label: "승인하러 D-5", href: "#dispatch", proposal: "D-5" });
+  assert.equal(next("ATC-3", { proposals: [{ ...waiting, holdAt: ago(1) }] }), null); // HELD는 승인 대기가 아니다
+  const airports = [{ code: "ATCC", repo: "/p/atc" }];
+  const cleared = pr(7, "ATC-4", { landing: "CLEARED", blocks: [], readyAt: ago(5) });
+  assert.equal(next("ATC-4", { pulls: [cleared], airports }), null); // auto 등급은 MCC가 착륙시킨다
+  assert.deepEqual(next("ATC-4", { pulls: [cleared], airports, userPulls: new Set([7]) }), { kind: "merge", label: "머지 #7", href: "#pr/ATCC/7" });
+  const human = pr(8, "ATC-4", { humanCheck: { required: true, classes: ["CHOICE"], state: "pending", sha: null, carriedFrom: null } });
+  assert.equal(next("ATC-4", { pulls: [human], airports })?.kind, "human-check");
+});
+
+test("끝난 줄에는 막힘도 다음 할 일도 없다. 머리 수는 번들의 합", () => {
+  const tickets = [ticket("ATC-1", { state: "Done", stateType: "completed", updatedAt: ago(500) })];
+  const row = followRowOf("ATC-1", base({ tickets }));
+  assert.equal(row.finished, true);
+  assert.equal(row.stuck, null);
+  assert.equal(row.next, null);
+  const board = followBoardOf({ ...base({ tickets: [ticket("ATC-2", { state: "Backlog", stateType: "backlog" }), ticket("ATC-3", { priority: 0 })] }), parents: ["ATC-2", "ATC-3"] });
+  assert.equal(board.reduce((n, b) => n + b.next, 0), 1); // 막는 이슈 없는 Backlog(ATC-2)는 isReady가 아니라 없고, 우선순위 없는 Todo(ATC-3)만 priority
+});
