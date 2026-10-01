@@ -9,6 +9,7 @@ import { authStatusOf } from "./account-health.ts";
 import { cleanEnv, cleanPath } from "./clean-env.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { crewBriefing, FleetError, fleetView, loadFleet, saveControlAccount, saveLaunchAccount } from "./fleet.ts";
+import { launchSplitWarning } from "./account-reach.ts";
 import { effectiveLaunchAccount, launchSettingOf, launchSettingPatchOf } from "./launch-account.ts";
 import { fleetKeyOf } from "./registration.ts";
 import { accountsLabeled, CONTROL_NAMES, controlAccountOf, type FleetFile } from "./crew.ts";
@@ -709,7 +710,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
     return c.json({
       // LAUNCH ACCOUNT(ATC-239): 지금 설정(등록부에 없는 라벨은 null)과 경고
       launchAccount: { aircraft: eff.aircraft.label, control: eff.control.label },
-      launchAccountWarnings: [eff.aircraft.warning, eff.control.warning].filter((w): w is string => w !== null),
+      launchAccountWarnings: [eff.aircraft.warning, eff.control.warning, launchSplitWarning({ aircraft: eff.aircraft.label, control: eff.control.label })].filter((w): w is string => w !== null),
       accounts: observedLabelsOn(folders)
         ? folders.map((f) => {
             const st = statuses.get(f.label);
@@ -731,7 +732,8 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
     if (!r.ok) return c.json({ error: r.error }, r.status);
     saveLaunchAccount(r.next);
     console.log(`[atc] launch account: aircraft=${r.next.aircraft ?? "(각 home)"} control=${r.next.control ?? "(각 home)"}`);
-    return c.json({ ok: true, launchAccount: { aircraft: r.next.aircraft ?? null, control: r.next.control ?? null } });
+    const split = launchSplitWarning(r.next); // ATC-251: 갈라진 설정은 저장되지만 경고한다
+    return c.json({ ok: true, launchAccount: { aircraft: r.next.aircraft ?? null, control: r.next.control ?? null }, launchAccountWarnings: split ? [split] : [] });
   });
 
   app.post("/api/fleet/:registration/launch", async (c: Context) => {

@@ -453,7 +453,7 @@ function LaunchAccountRow({ registryKey }: { registryKey: string }) {
     try {
       const res = await fetch("/api/fleet/launch-account", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [kind]: value || null }) });
       const body = await res.json().catch(() => ({}));
-      if (res.ok) setView((v) => (v ? { ...v, launchAccount: body.launchAccount, launchAccountWarnings: [] } : v));
+      if (res.ok) setView((v) => (v ? { ...v, launchAccount: body.launchAccount, launchAccountWarnings: Array.isArray(body.launchAccountWarnings) ? body.launchAccountWarnings : [] } : v));
       else setError((body as { error?: string }).error ?? `HTTP ${res.status}`);
     } catch {
       setError("서버에 연결할 수 없음");

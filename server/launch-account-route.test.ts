@@ -76,11 +76,24 @@ test("PUT: 등록부에 없는 라벨은 409, 모르는 칸·빈 본문·깨진 
   assert.match(((await r.json()) as { error: string }).error, /등록부가 비어 있음/);
 });
 
+test("PUT: 갈라진 설정은 저장되고 경고가 돌아온다, 같게 맞추면 경고가 없다(ATC-251)", async () => {
+  writeFleet(DIRS);
+  const a = await put({ aircraft: "acct-1" });
+  assert.deepEqual(((await a.json()) as { launchAccountWarnings: string[] }).launchAccountWarnings, []); // 관제가 각 home이면 알 수 없다
+  const split = await put({ control: "acct-3" });
+  assert.equal(split.status, 200);
+  const body = (await split.json()) as { launchAccountWarnings: string[] };
+  assert.equal(body.launchAccountWarnings.length, 1);
+  assert.match(body.launchAccountWarnings[0]!, /AIRCRAFT acct-1, 관제 세션 acct-3/);
+  assert.deepEqual(((await (await put({ control: "acct-1" })).json()) as { launchAccountWarnings: string[] }).launchAccountWarnings, []);
+});
+
 test("GET: 등록부에서 지워진 라벨은 효과가 없고(null) 경고가 붙는다. 다시 등록하면 돌아온다", async () => {
   writeFleet(DIRS, { launchAccount: { aircraft: "acct-3", control: "acct-1" } });
   const ok = await get();
   assert.deepEqual(ok.launchAccount, { aircraft: "acct-3", control: "acct-1" });
-  assert.deepEqual(ok.launchAccountWarnings, []);
+  assert.equal(ok.launchAccountWarnings.length, 1); // ATC-251: AIRCRAFT acct-3 / 관제 acct-1은 갈라졌다
+  assert.match(ok.launchAccountWarnings[0]!, /LAUNCH ACCOUNT가 갈라졌다\(AIRCRAFT acct-3, 관제 세션 acct-1\)/);
   assert.deepEqual(ok.accounts.map((x) => x.label).sort(), ["acct-1", "acct-2", "acct-3"]);
   assert.ok(ok.accounts.every((x) => x.refused === null));
   const { "acct-3": _gone, ...rest } = DIRS;
