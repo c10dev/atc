@@ -110,6 +110,26 @@ Files: `server/readability.ts` (pure), `server/readability-run.ts` (reads, write
 - The daily job runs 20 seconds after the server starts and then hourly; it does nothing when no day is missing. Today is never written; it is computed on request.
 - `GET /api/readability` reads the records, the transcripts and `git log` on each request. It is not meant for a polling screen; R1 will decide whether to cache.
 
+### Skill-call reader as built (ATC-289)
+
+The rulebook survey ([research/skill-rulebook.md](research/skill-rulebook.md) 5.6) measures **named → opened**: of the `qrh.named` FLIGHT RECORDER lines (ATC-288), how many were followed by a `Skill` call to that checklist in the same turn. This reader provides the transcript side. It does not change what any session sends.
+
+Files: `server/skill-calls.ts` (pure: scan, usage, match), `server/skill-calls-run.ts` (reads transcripts, writes the daily line, mounts the route), tests in `server/skill-calls.test.ts` and `server/skill-calls-run.test.ts` (small fixture transcripts in a temp folder; no test reads a real `~/.claude*` folder).
+
+- **What is kept.** From each top-level transcript `projects/<folder>/<sessionId>.jsonl` of every account folder: the session id, the session name (`agent-name` line, for example `TEAM_G`), the role when the folder is a control session folder, the name and time of each `Skill` call (with the plugin namespace, for example `atc-rulebook:qrh-04-go-around`), the name (`subagent_type`) and time of each `Agent`/`Task` call, and the start times of user turns. No message text and no tool input other than that name. Sub-agent transcripts are not read; the parent's `Agent` call counts.
+- **Memory.** Files are streamed in 1 MB blocks. Only files changed since the window start are read, each is cached by size and mtime, and only the small extracted records are kept. Limits: 3000 files, 256 MB a file, 32 MB a line (over the limit it is skipped).
+- **Match (pure).** For a `qrh.named` line, the session is found by session id, by registration (`Team G` and `TEAM_G` are the same) or by control role. The window runs from the line's time to the next user turn, at most `OPEN_WINDOW_MS` (10 minutes). Outcomes: `opened` (a `Skill` whose name, after any `plugin:` prefix, equals the id), `opened-other` (another `qrh-*`), `not-opened`, and `no-transcript` (no session found; it is left out of the rate's denominator). `openedRate = opened / (named − noTranscript)`, `null` when that is 0. Until `qrh.named` lines exist the counts are all zero.
+- **Daily record.** `skill-usage.jsonl` in the state folder, append-only, one line per UTC day from 2026-10-01: `skills` (calls by name), `agents` (calls by sub-agent type), `bySession`, `sessions`, and `qrh` `{ named, opened, openedOther, notOpened, noTranscript, openedRate }`. A day is written after it ends plus the match window, so the last `qrh.named` of the day has its full window; it is never written twice.
+- **API.** `GET /api/skills/usage?days=N` (a separate route, because the lines are about sessions, not radio; `days` as in `/api/readability`) returns `{ at, days: [stored lines], today: { day, partial: true, window, …same fields } }`. Today is computed on the request. No screen.
+
+**PILOT'S DISCRETION.**
+
+- The brief says "before its next user turn". The server's text reaches the session as a user turn a moment after `t`, so a turn that starts within 60 seconds of `t` (`GRACE_MS`) is taken as the one that carried the text and is not a boundary. Tool results, system-injected skill bodies (`isMeta`) and sidechain lines are not user turns.
+- The ten-minute cap (`OPEN_WINDOW_MS`) also applies when no later user turn exists.
+- `no-transcript` is its own count instead of `not-opened`, so a missing transcript does not look like a session that ignored the checklist.
+- Skill calls inside sub-agent runs are not counted for the session; only the session's own calls are.
+- The daily job runs 40 seconds after the server starts and then hourly; it does nothing when no day is missing.
+
 ## Not built yet
 
 - **A screen** (a READABILITY view or a section of RADIO) and DOCS text for it.
