@@ -23,7 +23,8 @@ function writeOpen(id: string, open: boolean) {
 }
 
 // summary: 접힌 채 보이는 한 줄(비 상호작용 요소만). children이 없으면 접을 것이 없는 줄이라 버튼 없이 같은 격자로 그린다
-export function Fold({ id, label, summary, tone, children }: { id: string; label: string; summary: ReactNode; tone?: "short"; children?: ReactNode }) {
+// name: 머리 버튼의 접근 가능한 이름(요약 안의 요소가 많아 이름이 길어질 때). 없으면 라벨 + 요약
+export function Fold({ id, label, summary, tone, name, children }: { id: string; label: string; summary: ReactNode; tone?: "short"; name?: string; children?: ReactNode }) {
   const [open, setOpen] = useState(() => Boolean(children) && readOpen()[id] === true);
   const bodyId = useId();
   const sum = <span className={`fl-fold-sum${tone === "short" ? " fl-short" : ""}`}>{summary}</span>;
@@ -43,6 +44,7 @@ export function Fold({ id, label, summary, tone, children }: { id: string; label
         type="button"
         className="fl-fold-head"
         aria-expanded={open}
+        aria-label={name}
         aria-controls={bodyId}
         onClick={() => {
           writeOpen(id, !open);

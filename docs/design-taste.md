@@ -39,7 +39,7 @@ v1 rests on one category (dashboards) and one round: one variant per reference, 
 
 | Point | What the card does |
 |---|---|
-| 1 Focal | NOW is the one focal block under the alert band: the FLIGHT key and its title on one line, the state line (working or idle, last tool, age) and the FOB bar. |
+| 1 Focal | NOW is the one focal block under the alert band: the FLIGHT key and its title on one line, the state line (working or idle, last tool, age), the context FOB, and the ACCOUNT usage bar (labelled USAGE: the account limit shared by every AIRCRAFT on it, not the context FOB). |
 | 2 Readable | Information text on the card uses `--muted` instead of `--faint` (the card used `faint` for "claude-opus-5-5 ×37 5시간 전", "14일 안 씀", targets, captions). Measured on the card surface: `--text` 14.3 / 16.6 / 16.8, `--muted` 8.2 / 9.6 / 9.2, `--faint` 5.8 / 6.7 / 6.4 (Radar / Glass Cockpit / Night Sky). No token fails 4.5:1, so no global token changes. |
 | 3 Grid | Every folded section is one row: label column (`--fl-label-w`), value column, chevron. Numbers in the opened sections are right-aligned `tabular-nums`. |
 | 4 History | LOGBOOK is a strip of the last 14 FLIGHTs, oldest to newest: on time (neutral), late (amber), no PR (outlined), UNEXPECTED or reverted (alert), no expectation (line-strong). Each bar has an accessible label; the opened section holds the table. |

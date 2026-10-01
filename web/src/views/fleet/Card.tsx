@@ -118,6 +118,19 @@ function LogStrip({ a }: { a: AircraftView }) {
   );
 }
 
+// LOGBOOK 접힘 머리의 접근 가능한 이름: 막대마다의 라벨(아래 표에 같은 말이 있다)이 이어붙지 않게 결과별 수 한 줄로
+function logbookName(a: AircraftView) {
+  const fuelOf = new Map((a.fuelRecent ?? []).map((f) => [f.key, f]));
+  const bars = stripOf(a.actuals.recent);
+  const n: Record<string, number> = {};
+  for (const e of bars) {
+    const o = logOutcomeOf(e, fuelOf.get(e.key)?.verdict);
+    n[o] = (n[o] ?? 0) + 1;
+  }
+  const parts = (Object.keys(LOG_OUTCOME_TEXT) as (keyof typeof LOG_OUTCOME_TEXT)[]).filter((o) => n[o]).map((o) => `${LOG_OUTCOME_TEXT[o]} ${n[o]}`);
+  return `LOGBOOK, 최근 FLIGHT ${bars.length}건: ${parts.join(" · ")}`;
+}
+
 function LogTable({ a }: { a: AircraftView }) {
   const x = a.actuals;
   const [more, setMore] = useState(false);
@@ -185,7 +198,7 @@ function LogTable({ a }: { a: AircraftView }) {
   );
 }
 
-// FOB 막대(ATC-287·325): ACCOUNT 사용량. NOW의 초점 줄에 있고, 목록 행 아래(detail)에서는 ACCOUNT 칸에 둔다. 80%(info)부터 amber, 95%(hold)부터 alert
+// USAGE 막대(ATC-287·325): ACCOUNT 사용 한도(FUEL REMAINING, 같은 ACCOUNT의 모든 AIRCRAFT가 같이 쓴다). 맥락 창의 FOB가 아니다(그것은 NOW의 ContextLine). NOW의 초점 줄에 있고, 목록 행 아래(detail)에서는 NOW가 짧아 ACCOUNT 칸에 둔다. 80%(info)부터 amber, 95%(hold)부터 alert
 // FUEL 요약의 cache: CAPTAIN/CREW 둘 다 알면 `99/97%`, 하나만 알면 그 하나, 모르면 —
 function cacheText(c: { captain?: number | null; crew?: number | null } | null | undefined) {
   const p = (v: number) => Math.round(v * 100);
@@ -195,10 +208,10 @@ function cacheText(c: { captain?: number | null; crew?: number | null } | null |
   return "—";
 }
 
-function FobBar({ fuel, now }: { fuel: NonNullable<AircraftView["fuel"]>; now: number }) {
+function UsageBar({ fuel, now }: { fuel: NonNullable<AircraftView["fuel"]>; now: number }) {
   return (
     <div role="img" className={`fl-usage lv-${fuel.level}`} title={fuelTitle(fuel, now)} aria-label={fuelLabel(fuel, now)}>
-      <span className="fl-usage-k">FOB</span>
+      <span className="fl-usage-k">USAGE</span>
       <span className="fl-bar" aria-hidden="true">
         <i style={{ width: `${Math.max(0, Math.min(100, fuel.top.pct))}%` }} />
       </span>
@@ -366,7 +379,7 @@ export function Card({
   // 백그라운드가 아닌 세션(ATC-76): atc가 멈추거나 다시 띄우지 않는다 — 손 절차
   if (a.origin && !isBackground(a.origin)) alerts.push(<li key="manual" className="fl-origin-note faint">{manualStepsOf(a.origin, a.registration, "stop")}</li>);
 
-  // NOW(초점 하나, ATC-325): 무엇을 나는가(키 + 제목 한 줄) · 상태(일하는 중·마지막 도구·시각) · FOB 막대. 목록 행 아래(detail)는 행이 이미 보여 주니 뺀다
+  // NOW(초점 하나, ATC-325): 무엇을 나는가(키 + 제목 한 줄) · 상태(일하는 중·마지막 도구·시각) · 맥락 FOB(ContextLine) · ACCOUNT USAGE 막대. 목록 행 아래(detail)는 행이 이미 보여 주니 뺀다
   const flyingNow = a.flights.filter((f) => !f.kept && a.flying.includes(f.key));
   const nowCol: ReactNode[] = [];
   if (!detail && a.flying.length > 0) {
@@ -385,7 +398,7 @@ export function Card({
     );
   }
   if (!detail && a.status !== "absent" && a.activity) nowCol.push(<ActivityLine key="activity" activity={a.activity} now={now} className="fl-activity" />);
-  if (!detail && a.fuel) nowCol.push(<FobBar key="fob" fuel={a.fuel} now={now} />);
+  if (!detail && a.fuel) nowCol.push(<UsageBar key="usage" fuel={a.fuel} now={now} />);
   if (kept.length > 0) {
     nowCol.push(
       <ul key="kept" className="fl-kept">
@@ -584,7 +597,7 @@ export function Card({
                     </span>
                   )}
                 </p>
-                {detail && a.fuel && <FobBar fuel={a.fuel} now={now} />}
+                {detail && a.fuel && <UsageBar fuel={a.fuel} now={now} />}
               </>
             ) : undefined}
           </Fold>
@@ -598,7 +611,7 @@ export function Card({
             {a.note && <p className="fl-note">{a.note}</p>}
           </Fold>
           {x.recent.length ? (
-            <Fold id="logbook" label="LOGBOOK" summary={<><LogStrip a={a} /><span className="fl-strip-n tn">{x.recent.length}</span></>}>
+            <Fold id="logbook" label="LOGBOOK" name={logbookName(a)} summary={<><LogStrip a={a} /><span className="fl-strip-n tn">{x.recent.length}</span></>}>
               <LogTable a={a} />
             </Fold>
           ) : (
@@ -614,6 +627,7 @@ export function Card({
 // ⋯ 메뉴(ATC-280·325): 고치기·ATTACH 복사·AOG·퇴역. 버튼 + aria-expanded, 화살표로 옮기고 Escape·바깥 클릭·Tab으로 닫으며 닫을 때 초점은 버튼으로
 function MoreMenu({ aog, onEdit, attach, onAog, onRetire }: { aog: boolean; onEdit: () => void; attach: string | null; onAog: () => void; onRetire: () => void }) {
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const id = useId();
@@ -662,8 +676,19 @@ function MoreMenu({ aog, onEdit, attach, onAog, onRetire }: { aog: boolean; onEd
             고치기
           </button>
           {attach && (
-            <button type="button" role="menuitem" className="fl-btn" title={attach} aria-label={`${attach} 복사`} onClick={run(() => void copyText(attach))}>
-              ATTACH 복사
+            <button
+              type="button"
+              role="menuitem"
+              className="fl-btn"
+              title={attach}
+              aria-label={`${attach} 복사`}
+              onClick={async () => {
+                const ok = await copyText(attach);
+                setCopied(ok ? "ok" : "fail");
+                setTimeout(() => setCopied(null), 1500);
+              }}
+            >
+              {copied === "ok" ? "복사됨" : copied === "fail" ? "복사 못 함 — 툴팁의 명령을 직접" : "ATTACH 복사"}
             </button>
           )}
           <button type="button" role="menuitem" className="fl-btn" onClick={run(onAog)}>
@@ -679,11 +704,12 @@ function MoreMenu({ aog, onEdit, attach, onAog, onRetire }: { aog: boolean; onEd
 }
 
 // BG 세션을 여는 명령을 복사한다(ATC-98). 복사가 막힌 환경에서는 조용히 넘어가고, 명령은 메뉴 항목 툴팁에 그대로 있다
-async function copyText(text: string) {
+async function copyText(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
+    return true;
   } catch {
-    // 클립보드를 못 쓰면 툴팁의 명령을 직접 복사한다
+    return false; // 클립보드를 못 쓰면 툴팁의 명령을 직접 복사한다
   }
 }
 
