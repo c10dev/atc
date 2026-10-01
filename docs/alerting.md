@@ -42,6 +42,8 @@ Status (2026-09-30): design draft for [ATC-195](https://linear.app/vocado/issue/
 
 ## 2. Principles
 
+> The screen-wide design rules, including principle 8 below, are gathered in [design-language.md](design-language.md) (adopted 2026-10-01). The alerting-specific principles stay here.
+
 1. **One question per place.**
    - MASTER: *is there something new?*
    - ALERTS: *what is wrong now?*

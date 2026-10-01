@@ -24,6 +24,8 @@ Measured on the running atc on 2026-09-29 at 1600×1000, and read from the code.
 
 ## 2. Principles
 
+> Adopted on 2026-10-01 through [design-language.md](design-language.md) (DL6), which now holds these principles with a review check each. The list below is kept as written; the rest of this document stays a draft.
+
 1. **Quiet when normal.** A screen with nothing to act on shows a few words and no color. Color, motion and counts are for things a person can act on.
 2. **One place for what needs me.** Everything that waits on the SUPERVISOR is one list with one count. Each row links to where it is decided.
 3. **Never hide, only fold.** Every existing view stays reachable. A fold shows a count and one click opens it; nothing is deleted or moved out of reach.
