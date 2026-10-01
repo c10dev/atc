@@ -23,7 +23,7 @@ The SUPERVISOR wants something that keeps finding what atc should fix or build n
 ## Summary
 
 1. **Most of what a finder would find is already in data atc holds**: the snapshot (0 extra Linear calls), the docs and the append-only records. One pass over all of it took about 0.15 s of CPU and 2 REST calls to GitHub.
-2. **Model-free detectors give usable but narrow output.** Of 15 detectors run, 3 are worth building first (STATUS MARKS, PARENT CLOSABLE, IDEA ADOPTED) and 3 more are cheap (CHANGELOG PILE, MCC ESCALATE RECURRENCE, UNLABELLED). The rest were empty, duplicated an existing screen, or were too noisy without judgment.
+2. **Model-free detectors give usable but narrow output.** Of 23 detectors run, 3 are worth building first (STATUS MARKS, PARENT CLOSABLE, IDEA ADOPTED) and 3 more are cheap (CHANGELOG PILE, MCC ESCALATE RECURRENCE, UNLABELLED). The rest were empty, duplicated an existing screen, or were too noisy without judgment.
 3. **The judgment-needing signals** ("Not built yet" items with no issue, repeated review comments, manual friction) are real but are prose. They should come **second**, after the noise controls and the acceptance measure exist.
 4. **Recommendation: Option A in shadow, then A feeds E.** A deterministic server `findings` list, behind a read-only API, recorded as "would show", with the SUPERVISOR's verdict chips as the measure. No new session, no model, no authority. Section 3 compares the options; section 4 gives the findings path.
 

@@ -23,7 +23,7 @@ SUPERVISOR는 자신이 알아차리기를 기다리지 않고, atc가 무엇을
 ## 요약
 
 1. **찾을 거리의 대부분은 atc가 이미 가진 자료에 있다.** snapshot(Linear 추가 호출 0), 문서, 추가만 하는 기록. 전체를 한 번 훑는 데 CPU 약 0.15초와 GitHub REST 2회가 들었다.
-2. **모델 없는 감지기도 쓸 만하지만 좁다.** 돌린 감지기 15개 중 먼저 만들 것은 3개(STATUS MARKS, PARENT CLOSABLE, IDEA ADOPTED), 싼 것은 3개(CHANGELOG PILE, MCC ESCALATE RECURRENCE, UNLABELLED)다. 나머지는 비었거나 이미 있는 화면과 겹치거나 판단 없이는 시끄러웠다.
+2. **모델 없는 감지기도 쓸 만하지만 좁다.** 돌린 감지기 23개 중 먼저 만들 것은 3개(STATUS MARKS, PARENT CLOSABLE, IDEA ADOPTED), 싼 것은 3개(CHANGELOG PILE, MCC ESCALATE RECURRENCE, UNLABELLED)다. 나머지는 비었거나 이미 있는 화면과 겹치거나 판단 없이는 시끄러웠다.
 3. **판단이 필요한 신호**("Not built yet" 항목인데 이슈 없음, 반복되는 리뷰 댓글, 매뉴얼 마찰)는 실제로 있지만 산문이다. 잡음 통제와 수용률 측정이 생긴 **뒤 두 번째**로 한다.
 4. **권고: A를 shadow로, 그다음 A가 E를 먹인다.** 읽기만 하는 API 뒤의 결정적 서버 `findings` 목록, "보였을 것"으로 기록, SUPERVISOR의 판정 chip을 측정으로 쓴다. 새 세션도 모델도 권한도 없다. 3절이 선택지를 비교하고 4절이 발견의 길을 준다.
 
