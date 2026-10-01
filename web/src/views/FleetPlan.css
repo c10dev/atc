@@ -16,14 +16,10 @@
 .fp-mode {
   margin-left: var(--space-1-5);
   padding: 0 var(--space-1-5);
-  color: var(--cyan);
-  border: 1px solid var(--cyan);
+  color: var(--muted);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  font: 600 var(--text-2xs) var(--mono);
-}
-.fp-mode.is-approval {
-  color: var(--amber);
-  border-color: var(--amber);
+  font: 400 var(--text-xs) var(--sans);
 }
 .fp-meta {
   display: flex;
@@ -37,7 +33,7 @@
   margin-left: auto;
 }
 .fp-ready {
-  color: var(--radar);
+  color: var(--muted);
 }
 .fp-demand {
   display: flex;
@@ -92,17 +88,8 @@
   padding: var(--space-2) var(--space-3);
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--faint);
+  border-left: 3px solid transparent; /* 평소엔 막대가 없고 AOG·RETIRE만 색(ATC-317) */
   border-radius: var(--radius);
-}
-.fp-row.k-LAUNCH,
-.fp-row.k-ENTRY {
-  border-left-color: var(--radar);
-}
-.fp-row.k-STOP,
-.fp-row.k-RESTART,
-.fp-row.k-REFRESH {
-  border-left-color: var(--cyan);
 }
 .fp-row.k-AOG {
   border-left-color: var(--amber);
@@ -121,15 +108,6 @@
   font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.08em;
   color: var(--muted);
-}
-.k-LAUNCH .fp-kind,
-.k-ENTRY .fp-kind {
-  color: var(--radar);
-}
-.k-STOP .fp-kind,
-.k-RESTART .fp-kind,
-.k-REFRESH .fp-kind {
-  color: var(--cyan);
 }
 .k-AOG .fp-kind {
   color: var(--amber);
@@ -186,7 +164,7 @@
   gap: var(--space-1-5);
 }
 .fp-status.st-agreed {
-  color: var(--radar);
+  color: var(--muted);
 }
 .fp-status.st-disagreed {
   color: var(--alert);
@@ -208,7 +186,7 @@
   font-size: var(--text-sm);
 }
 .fp-status.st-executed {
-  color: var(--radar);
+  color: var(--muted);
 }
 .fp-status.st-failed {
   color: var(--alert);

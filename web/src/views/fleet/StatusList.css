@@ -16,8 +16,8 @@
 .fl-list-head {
   min-height: 28px;
   border-bottom: 1px solid var(--line);
-  color: var(--faint);
-  font: 600 var(--text-2xs) var(--mono);
+  color: var(--muted);
+  font: 600 var(--text-xs) var(--mono);
   letter-spacing: 0.1em;
 }
 .fl-rows {
@@ -33,7 +33,7 @@
   min-height: 38px;
   background: transparent;
   border: 0;
-  border-left: 3px solid var(--faint);
+  border-left: 3px solid transparent; /* 평소엔 막대가 없다(ATC-317). 아래 줄만 경보에 색 */
   color: var(--text);
   font: var(--text-sm) var(--sans);
   text-align: left;
@@ -46,12 +46,6 @@
 .fl-row:focus-visible {
   outline: 2px solid var(--cyan);
   outline-offset: -2px;
-}
-.st-AIRBORNE .fl-row {
-  border-left-color: var(--radar);
-}
-.st-HOLDING .fl-row {
-  border-left-color: var(--cyan);
 }
 .st-NORDO .fl-row,
 .st-AOG .fl-row {
@@ -70,26 +64,36 @@
 .fl-r-id .mono {
   font-size: var(--text-xs);
 }
+/* 상태는 카드처럼 점과 말(ATC-317): 말은 늘 회색, 점만 색 — 일하는 세션 radar, NEEDS YOU blue, AOG amber, NORDO alert, 나머지는 회색 */
 .fl-r-status {
-  font: 600 var(--text-2xs) var(--mono);
-  letter-spacing: 0.1em;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font: 600 var(--text-xs) var(--sans);
   color: var(--muted);
 }
-.st-AIRBORNE .fl-r-status {
-  color: var(--radar);
+.fl-r-status::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--faint);
 }
-.st-HOLDING .fl-r-status {
-  color: var(--cyan);
+.st-AIRBORNE .fl-r-status::before {
+  background: var(--radar);
 }
-.st-RESTARTING .fl-r-status {
-  color: var(--cyan);
+.st-NEEDS-YOU .fl-r-status::before {
+  background: var(--blue);
 }
-.st-NORDO .fl-r-status,
-.st-AOG .fl-r-status {
-  color: var(--alert);
+.st-AOG .fl-r-status::before {
+  background: var(--amber);
+}
+.st-NORDO .fl-r-status::before {
+  background: var(--alert);
 }
 .fl-r-flight .mono {
-  color: var(--radar);
+  color: var(--text);
 }
 .fl-r-title {
   color: var(--muted);
@@ -126,7 +130,7 @@
   border-radius: var(--radius-sm);
   font: 600 var(--text-2xs) var(--mono);
   letter-spacing: 0.06em;
-  color: var(--cyan);
+  color: var(--muted);
 }
 .fl-r-health.lv-alert {
   border-color: var(--amber);
@@ -164,10 +168,10 @@
 .fl-r-name {
   margin-left: var(--space-1-5);
   padding: 0 var(--space-1);
-  border: 1px dashed var(--amber);
+  border: 1px dashed var(--line-strong);
   border-radius: var(--radius-sm);
   font-size: var(--text-2xs);
-  color: var(--amber);
+  color: var(--muted);
 }
 .fl-r-name.is-conflict {
   border-style: solid;

@@ -24,11 +24,8 @@
   padding: var(--space-2) var(--space-3);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--faint);
+  border-left: 3px solid transparent; /* 평소(GRANT)엔 막대가 없고 REVIEW·BLOCKED만 색(ATC-317) */
   border-radius: var(--radius);
-}
-.cr-row.st-GRANT {
-  border-left-color: var(--radar);
 }
 .cr-row.st-REVIEW {
   border-left-color: var(--alert);
@@ -49,9 +46,6 @@
   color: var(--muted);
   font: 600 var(--text-2xs) var(--mono);
   letter-spacing: 0.08em;
-}
-.st-GRANT .cr-status {
-  color: var(--radar);
 }
 .st-REVIEW .cr-status {
   color: var(--alert);
@@ -96,7 +90,7 @@
   text-decoration: underline;
 }
 .cr-source {
-  color: var(--cyan);
+  color: var(--muted);
 }
 .cr-date {
   margin-left: auto;
