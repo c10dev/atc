@@ -165,6 +165,22 @@ A toggle in the GLOBE toolbar (`GLOBE | SPACE`, saved in `localStorage`; the `ni
 - **Moves between AIRPORTs** (OUTSTATION, REPOSITION) are **transfer orbits**: a half ellipse from one body's orbit to the other's.
 - HOLD, NORDO, GO AROUND and the text rows work as on the globe. There is no day/night terminator; the background is a static starfield (not the animated `Starfield`, to keep one animation per screen).
 
+### G4 as built (ATC-261)
+
+- **Same scene, second renderer.** `GET /api/globe` and `server/globe.ts` are unchanged. The GLOBE toolbar has a `GLOBE | SPACE` toggle (a `segmented` radio group). The choice is saved in `atc.globe` as `mode`; with nothing saved the `night` (Night Sky) app theme opens in SPACE and every other theme in GLOBE (`modeOf`). SPACE replaces the globe drawing only: the AIRPORTS and FLIGHTS lists beside it, the HOME select and the data are the same. The globe-only controls (location fields, "home", "reset AIRPORT places") and the location note are hidden in SPACE.
+- **Pure module** `server/space.ts` (browser-safe, tested in `server/space.test.ts`): `layoutBodies`, `polarOf`, `headingOf`, `missedLoop`, `parkLoop`, `routeOf`, `pointOf`, `starsOf`, `modeOf`. **View** `web/src/views/GlobeSpace.tsx` (+ `GlobeSpace.css`, inside the GLOBE chunk). `GlobeFlights.tsx` now exports the helpers both views share (`toneOf`, `flightTip`, `flightMarks`, `flightNumber`, `fadeOf`), so state label, tone, tooltip, link and fade are the same code in both views.
+- **Bodies.** Earth is the home AIRPORT, at the centre (if the scene has no `home`, the AIRPORT with the smallest `distance`). The others are planets on circular orbits: orbit radius by the **rank** of the scene `distance` (ties by `id`), evenly spaced between 190 and 450 px of a 1000 px view; angle = scene `bearing` (0° up, clockwise). Both come from the scene, so a planet stays in the same place from day to day for the same set of AIRPORTs; adding or removing an AIRPORT can shift the ranks of the others.
+- **FLIGHT around its own body** (`polarOf`, polar around the body: radius in body radii, angle 0° up clockwise; the pad is the surface at `outbound`): `boarding` and `arrived` stand on the pad, nose out; `cruise` is the launch and the orbit (radius rises to 2.3 over the first 20 % of `t`, then 300° of arc in `t`); `hold` is a **parking orbit** at 3.0 on the angle of its `t` (the plane circles it with motion on); `final` is the descent from the orbit to the pad over the remaining 60°, touchdown at `t = 1`; `goAround` is one climb-and-return loop from near the surface; `taxi` is on the pad; `nordo` is where it stopped on the orbit, grey with the NORDO outline. `t` is the scene's `t`; nothing is estimated in the browser.
+- **Background.** A static starfield (90 stars from a fixed seed, `starsOf`), not the animated `Starfield.tsx`. The only repeating motion is the hold and go-around loops, and only with `settings.motion` on. No day/night terminator. Colours are `:root` tokens (`--scope`, `--text`, `--line`, `--cyan`, `--radar`, and the plane tones from G2).
+- **Not in G4.** Transfer orbits for moves: `moves[]` (G3) is not in the scene on main yet, so SPACE draws no OUTSTATION or REPOSITION track. Add a half ellipse between the two bodies' orbits when it lands. Planets cannot be dragged or zoomed, and there is no AIRPORT view (G7).
+
+**PILOT'S DISCRETION.**
+
+- Orbit radii use the rank of `distance` (as the issue says) and are spaced evenly, so the ring gap does not show the real distance. The ring order does.
+- A parked AIRCRAFT is the small plane mark beside its planet, as on the globe.
+- The parking orbit is outside the flight orbit (3.0 against 2.3 body radii) so a holding plane and a flying plane at one body do not share a line.
+- The choice of view is saved in the existing key `atc.globe`; a first visit in `night` opens SPACE, and once the SUPERVISOR picks a view (either one) it wins over the theme.
+
 ## 6. The ATCA globe window (G5)
 
 The web tab is built first because team sessions can build and check it. After G2 the Mac app gets a native **GLOBE window** as an N8 candidate (atc-app `docs/design.md` 10.6, "it must stay visible while the SUPERVISOR works elsewhere"):

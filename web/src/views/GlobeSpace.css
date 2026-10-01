@@ -1,0 +1,38 @@
+/* GLOBE SPACE(ATC-261): 같은 장면을 우주로. 색은 styles.css의 :root 토큰만 쓴다. 비행기·경로·라벨은 Globe.css의 클래스를 그대로 쓴다. */
+.space-svg {
+  width: min(100%, 78vh);
+  aspect-ratio: 1;
+  justify-self: center;
+  border-radius: var(--radius-md);
+}
+.space-sky {
+  fill: var(--scope);
+}
+.space-stars circle {
+  fill: var(--text);
+}
+.space-ring {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 2 8;
+  opacity: 0.8;
+}
+.space-orbit {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+  opacity: 0.9;
+}
+.space-park {
+  stroke-dasharray: 4 6;
+}
+.space-planet {
+  fill: var(--panel);
+  stroke: var(--cyan);
+  stroke-width: 2;
+}
+.space-body.home .space-planet {
+  stroke: var(--radar);
+  stroke-width: 3;
+}

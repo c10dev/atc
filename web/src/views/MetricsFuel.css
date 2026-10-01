@@ -262,7 +262,7 @@
 .mf-tip {
   position: absolute;
   top: var(--space-2);
-  z-index: 1;
+  z-index: var(--z-raised);
   display: grid;
   gap: var(--space-0-5);
   padding: var(--space-1-5) var(--space-2);

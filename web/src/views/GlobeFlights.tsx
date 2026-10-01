@@ -32,14 +32,19 @@ export const STATE_LABEL: Record<GlobeFlightState, string> = {
   arrived: "ARRIVED",
   nordo: "NORDO",
 };
-const flightNumber = (key: string) => key.replace("-", "");
+export const flightNumber = (key: string) => key.replace("-", "");
 
 // 상태 → 색 토큰(:root). hold·goAround·late는 호박, 나는 중은 레이더, 나머지는 흐리게
-function toneOf(f: GlobeFlight): "radar" | "amber" | "faint" {
+export function toneOf(f: GlobeFlight): "radar" | "amber" | "faint" {
   if (f.state === "nordo" || f.state === "boarding" || f.state === "arrived") return "faint";
   if (f.state === "hold" || f.state === "goAround" || f.late) return "amber";
   return "radar";
 }
+
+// 지구본과 SPACE가 같은 글을 쓰도록 한 곳에서 만든다(G4)
+export const flightMarks = (f: GlobeFlight) => [f.state === "goAround" ? "GA" : f.state === "nordo" ? "NORDO" : "", f.late ? "LATE" : "", f.reverted ? "REVERTED" : ""].filter(Boolean).join(" ");
+export const flightTip = (f: GlobeFlight) => `${f.callsign ?? "STAND 없음"} · ${flightNumber(f.key)} · ${STATE_LABEL[f.state]}${f.late ? " (길어짐)" : ""}${f.blocks.length ? ` — ${f.blocks.join(", ")}` : ""}`;
+export const fadeOf = (f: GlobeFlight, now: number) => (f.state === "arrived" && f.fadeFrom ? clamp(1 - (now - Date.parse(f.fadeFrom)) / (ARRIVED_FADE_MIN * 60_000), 0, 1) : 1);
 
 interface Placed {
   f: GlobeFlight;
@@ -84,7 +89,7 @@ export function FlightsLayer({ scene, positions, view, C, R, motion, now }: { sc
         ({ at, heading } = pointAlong(c.missed, 0.5));
         path = c.missed;
       }
-      const fade = f.state === "arrived" && f.fadeFrom ? clamp(1 - (now - Date.parse(f.fadeFrom)) / (ARRIVED_FADE_MIN * 60_000), 0, 1) : 1;
+      const fade = fadeOf(f, now);
       const route = f.state === "boarding" || f.state === "arrived" || f.state === "taxi" ? [] : [...c.cruise, ...c.final];
       out.push({ f, tone: toneOf(f), at, heading, path, route, opacity: 0.25 + 0.75 * fade });
     }
@@ -106,8 +111,8 @@ export function FlightsLayer({ scene, positions, view, C, R, motion, now }: { sc
         const loop = p.path ? p.path.map((q) => toPx(q, view, C, R)) : [];
         const loopD = loop.length ? `M${loop.map((q) => `${f1(q.x)} ${f1(q.y)}`).join("L")}${p.f.state === "hold" ? "Z" : ""}` : "";
         const key = flightKeyOf(p.f.key);
-        const marks = [p.f.state === "goAround" ? "GA" : p.f.state === "nordo" ? "NORDO" : "", p.f.late ? "LATE" : "", p.f.reverted ? "REVERTED" : ""].filter(Boolean).join(" ");
-        const tip = `${p.f.callsign ?? "STAND 없음"} · ${flightNumber(p.f.key)} · ${STATE_LABEL[p.f.state]}${p.f.late ? " (길어짐)" : ""}${p.f.blocks.length ? ` — ${p.f.blocks.join(", ")}` : ""}`;
+        const marks = flightMarks(p.f);
+        const tip = flightTip(p.f);
         const glyph = (
           <>
             <circle className="globe-plane-hit" r={14} />

@@ -89,7 +89,7 @@ Charts use the series tokens (`--series-captain`, `--series-crew`), not the sign
 
 ### 3.3 Type, space and shape
 
-- **Type.** `--mono` for codes, IDs, numbers, times and aviation terms. `--sans` for Korean sentences and explanations. Sizes from `--text-2xs` (uppercase codes, captions) to `--text-2xl` (headline numbers). Body is `--text-md` (13 px). Numbers that are compared in columns should use tabular figures (`font-variant-numeric: tabular-nums`; not used anywhere in `styles.css` yet).
+- **Type.** `--mono` for codes, IDs, numbers, times and aviation terms. `--sans` for Korean sentences and explanations. Sizes from `--text-2xs` (uppercase codes, captions) to `--text-2xl` (headline numbers). Body is `--text-md` (14 px; 13 px in the compact density). Numbers that change or are compared in columns use tabular figures (the `.tn` utility and the list next to it in `styles.css`, see L5a as built).
 - **Space.** The 4 px scale (`--space-*`). Inside a block `--gap-item` (8 px), between columns `--gap-column` (16 px), between sections `--gap-section` (32 px).
 - **Shape.** Radius 2 px for chips and tags, 4 px for controls, 8 px for panels and cards, pill for toggles and counts. A level or state shape (dot, triangle, dashed border) is never only a colour change.
 
@@ -162,6 +162,8 @@ An empty list says what would be there in one faint line (`LOGBOOK에 ARRIVED �
 
 For a PR that changes a screen in atc or ANNUNCIATOR. Copy the lines that apply into the PR body and answer each in one line.
 
+Running atc sessions get the diff of this file on their next turn when it changes on `origin/main` (the rules-drift hook wired in `.claude/settings.json`, ATC-295; [hooks/README.md](../hooks/README.md) "Wired in atc").
+
 - [ ] Normal state: no signal colour, no motion, no "all fine" line (1).
 - [ ] Levels readable in greyscale; NEEDS YOU not amber (2).
 - [ ] Signal tokens used only for their meaning in 3.2 (3).
@@ -174,7 +176,7 @@ For a PR that changes a screen in atc or ANNUNCIATOR. Copy the lines that apply 
 - [ ] Readable with motion off (10).
 - [ ] Nothing needed for a decision lives only in a tooltip (11).
 - [ ] At most five visible buttons per card; destructive actions confirmed (12).
-- [ ] Tokens only (13).
+- [ ] Tokens only (13). `npm test` checks the web part (`server/css-lint.ts`, `server/css-lint.test.ts`): new literal colours, px/rem font sizes, `z-index` that is not `var(--z-…)`, `transition: all` and `outline: none` without a `:focus-visible` rule fail against the baseline `web/css-lint-baseline.json`. When a count drops, lower the baseline in the same PR with `node server/css-lint.ts --update`; never raise it to accept a new violation.
 - [ ] Keyboard path checked (14).
 - [ ] Craft (3.5): normal state has no coloured blocks; mono only for IDs, codes and numbers; three text sizes per card; no inner borders; one left edge per column; icons from the set; `tabular-nums` on changing numbers; motion from the tokens.
 
@@ -192,6 +194,16 @@ The `ui-review` skill (`.claude/skills/ui-review/`, run by `atc-task` before a s
 | L5a | Craft tokens: `--dur-*`, `--ease`, `tabular-nums` utility, DL7 sizes, the icon set (3.5) | `web/src/styles.css`, one component | `auto` (`package.json` for the icon set: `user`) |
 | L5b | Craft pass on the FLEET card as the reference card, together with [ATC-280](https://linear.app/vocado/issue/ATC-280) | web | `auto` |
 | L6 | Tooltip pass: move tooltips that carry the only copy of a decision value onto the screen (principle 11) | web | `auto` |
+
+### L5a as built (ATC-283)
+
+CSS only, in `web/src/styles.css` (plus one cell width in `Dispatch.css`); no colour, layout or component structure changed.
+
+- **Sizes (DL7).** `--text-md` 13 → **14 px** and `--text-xs` 11 → **12 px** in the default density; `:root[data-density="compact"]` sets them back to 13 and 11. `--text-2xs`, `--text-sm` and `--text-lg` and up are unchanged (so `--text-sm` and `--text-xs` are both 12 px in the default density).
+- **Motion tokens.** `--dur-fast: 120ms`, `--dur-base: 200ms`, `--ease: cubic-bezier(0.2, 0, 0, 1)`. The interaction transitions (settings gear, map line hover, block hover, the "found" highlight) use them; the repeating liveness animations (ping, sweep, flaps, ticker, twinkle, blink) keep their own durations. `data-motion="off"` still stops everything (no running infinite animation on RADAR, FLEET, FIDS or DISPATCH).
+- **Numbers.** A `.tn` utility and one selector list in `styles.css` apply `font-variant-numeric: tabular-nums` to the header readouts and clock, STRIPS values and ages, FLEET list cells and card actuals, DISPATCH score and age, SCHEDULE age and counts, FLEET PLAN age, DUTY since and the activity age. It is `!important` because a later `font:` shorthand resets the value. METRICS keeps its own rules.
+- **DISPATCH factor detail** cell: `max-width` 140 → 160 px so the larger caption size does not truncate more of it.
+- **Not done here:** the icon set (L5a second half, `package.json`, `user` tier).
 
 ### Not built yet
 

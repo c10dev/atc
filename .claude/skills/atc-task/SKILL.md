@@ -55,6 +55,9 @@ cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-
 - 기록은 추가만 하는 JSONL, 설정은 원자적으로 바꿔 쓰는 JSON이다.
 - 화면 색과 글꼴은 `web/src/styles.css`의 `:root` 토큰만 쓴다.
 - guard(`*guard*.mjs`)의 막는 조건을 약하게 만들어야 하면 먼저 일을 맡긴 세션에 묻는다(SUPERVISOR 결정).
+- 방법 skill(파일럿 ATC-282, 가져온 것은 `THIRD_PARTY_NOTICES.md`): FLIGHT가 버그·실패하는 테스트·회귀이면 코드를 바꾸기 전에 Skill 도구로 `diagnosing-bugs`를 부른다. 그 단계(feedback loop → 재현·최소화 → 가설 → fix)는 이 흐름 안에서 돌고 STAND·검증·PR·보고 흐름은 바뀌지 않는다.
+- 어디에 있는지, 어떻게 도는지 찾으려고 코드를 넓게 읽기 전에 `codebase-locator`(경로만 돌려줌)와 `codebase-analyzer`(`file:line`으로 설명) sub-agent에 찾기를 맡기고, 메인 컨텍스트에는 그 결과만 둔다.
+- 충돌하면 루트 `CLAUDE.md` > `atc-task` > 가져온 skill·agent 순으로 따른다.
 
 ## 4. 문서 점검표
 
