@@ -1,6 +1,6 @@
 # Design language: how atc and ANNUNCIATOR look and behave
 
-> Status (2026-10-01): draft, not adopted. Written in an ENGINEERING session at the SUPERVISOR's request ("is there a document on the design and UI philosophy?"). The answer was no: the rules sit in the "Principles" sections of several design drafts and in comments in `web/src/styles.css`. This draft collects them into one place for the atc web screen (AIRPORT ATCC) and the ANNUNCIATOR menu bar app (AIRPORT ATCA, [chaehy5665/atc-app](https://github.com/chaehy5665/atc-app)). It adds the parts that were missing: how much a screen may show, when to fold and when to delete, and how the two clients stay alike. Nothing here is built by this document. Section 9 lists the decisions it needs.
+> Status (2026-10-01): draft, not adopted. Written in an ENGINEERING session at the SUPERVISOR's request ("is there a document on the design and UI philosophy?"). The answer was no: the rules sit in the "Principles" sections of several design drafts and in comments in `web/src/styles.css`. This draft collects them into one place for the atc web screen (AIRPORT ATCC) and the ANNUNCIATOR menu bar app (AIRPORT ATCA, [chaehy5665/atc-app](https://github.com/chaehy5665/atc-app)). It adds the parts that were missing: how much a screen may show, when to fold and when to delete, and how the two clients stay alike. Nothing here is built by this document. Section 9 lists the decisions it needs. On 2026-10-01 the SUPERVISOR approved a FLEET card mockup that applies sections 2 and 3.5, and chose to build it that way (ATC-280); DL1–DL9 are still open.
 
 Related: [ui-visibility.md](ui-visibility.md) (visibility review, draft), [alerting.md](alerting.md) (MASTER, ALERTS, QUEUE, LOG), [research/aviation-signals.md](research/aviation-signals.md) (alerting philosophy, sounds), [mac-app.md](mac-app.md) and atc-app `docs/design.md` (the app), [guide/screens.md](guide/screens.md) (what each tab shows today).
 
@@ -77,7 +77,7 @@ Each layer is one step brighter and has a stronger border (`--line`, `--line-str
 
 | Token | Meaning | Not for |
 |---|---|---|
-| `--alert` | WARNING, LOSS OF SEPARATION, NORDO, failure, destructive action | Emphasis, a number that is only high |
+| `--alert` | WARNING, LOSS OF SEPARATION, NORDO, failure, destructive action | Emphasis, a number that is only high, a kind or rating (the `SEC` TYPE RATING chip is neutral) |
 | `--amber` | CAUTION, HOLDING, CLEARED TO LAND, below target, needs attention soon | Information, selection |
 | `--radar` | AIRBORNE, ENROUTE, live and healthy, primary action | Decoration, "done" (done is neutral) |
 | `--cyan` | APPROACH, information, links, a state the SUPERVISOR set on purpose | Warnings |
