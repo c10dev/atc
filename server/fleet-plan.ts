@@ -6,7 +6,6 @@ import type { PriceTable } from "./fuel-cost.ts";
 import { type FuelRemaining, fuelUsedText, membersText } from "./fuel-remaining.ts";
 import { hhmm } from "./health.ts";
 import type { LogEntry } from "./logbook.ts";
-import { GATE } from "./proposals.ts";
 import { isFlap, type RepositionEvent } from "./reposition.ts";
 import { compareRegistration, regKey } from "./registration.ts";
 import { MAX_LAUNCHED, PERMISSION_MODES, type PermissionMode } from "./session-control.ts";
@@ -809,7 +808,9 @@ export function syncFleetPlan(
   return ops;
 }
 
-// 그림자 게이트: DISPATCH·SCHEDULE과 같은 기준(20건, 합의율 80%). 종류마다 건수도 보인다
+// 그림자 게이트(ATC-273): FLEET PLAN만 5건·합의율 80%. DISPATCH·SCHEDULE은 proposals.ts GATE(20건, 80%)로 그대로다.
+// 제안이 드물어(2026-09-28부터 7건) 20건을 채우려면 너무 오래 걸린다. 종류마다 건수도 보인다
+export const FLEET_PLAN_GATE = { decided: 5, agreement: 0.8 } as const;
 // 승인 운용에서 승인(실행 중·실행됨·실패)은 동의로 센다
 const AGREED: FleetProposalStatus[] = ["agreed", "executing", "executed", "failed"];
 export function fleetPlanGateOf(all: FleetProposal[]) {
@@ -822,7 +823,7 @@ export function fleetPlanGateOf(all: FleetProposal[]) {
       return [k, { decided: mine.length, agreed: mine.filter((p) => AGREED.includes(p.status)).length }];
     }),
   ) as Record<FleetPlanKind, { decided: number; agreed: number }>;
-  return { decided: decided.length, agreed, agreement, target: GATE, ready: decided.length >= GATE.decided && agreement !== null && agreement >= GATE.agreement, byKind };
+  return { decided: decided.length, agreed, agreement, target: FLEET_PLAN_GATE, ready: decided.length >= FLEET_PLAN_GATE.decided && agreement !== null && agreement >= FLEET_PLAN_GATE.agreement, byKind };
 }
 
 // ── 승인 운용(8.7): 승인하면 실행할 단계 ──

@@ -247,7 +247,7 @@ atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude C
 - **FUEL**: ACCOUNT마다 한 줄이다(2026-09-29부터 FLEET PLAN이 아니라 AIRCRAFT 목록 아래 FUEL ACCOUNT 블록에 있다. FLEET PLAN의 같은 줄은 옛 서버일 때만 보인다). 가장 많이 쓴 창과 reset, 그 ACCOUNT의 AIRCRAFT와 관제 세션이다. 95 %(hold 수준)를 넘은 ACCOUNT의 AIRCRAFT는 LAUNCH하지 않고(`LAUNCH·ENTRY 제안 안 함`), 수요 줄에 `FUEL 사용 100% (account acct-1) until 21:48Z — TEAM_Q`처럼 이유가 적힌다. 맞는 다른 AIRCRAFT가 있으면 그것을 제안하고, 맞는 AIRCRAFT가 모두 막혔으면 ENTRY도 내지 않는다(새 세션은 이 기기에 로그인된 계정으로 열리는데 atc는 그 계정을 모른다). 맞는 등록 AIRCRAFT가 아예 없어 내는 ENTRY는 새 AIRCRAFT를 `default` ACCOUNT로 세고, `default`가 hold면 내지 않는다. 80 %(info)부터는 제안은 하되 사유에 FUEL 줄(`fuel`)이 붙는다. 열린 LAUNCH·ENTRY의 ACCOUNT가 hold가 되면 그 제안은 FUEL 사유로 닫힌다. 이것은 DISPATCH HOLD 스위치와 상관없다. 스위치는 DISPATCH만 정한다.
 - 조건이 두 주기(10분) 이어져야 제안이 되고, LAUNCH·ENTRY는 120분 이어져야 된다. 그 전에는 "지켜보는 중"에 보인다. 조건이 풀리면 제안은 저절로 닫힌다(조건 풀림).
 - **반대**를 누르면 이유를 적을 수 있다(선택). 판정한 제안은 24시간 다시 나오지 않는다. 띄우거나 멈춘 지 2시간 안에는 반대 제안(LAUNCH ↔ STOP)을 내지 않는다.
-- 판정이 20건이 넘고 동의가 80% 이상이면 게이트를 통과한다. 그러면 블록 오른쪽의 **승인 운용 켜기**가 눌린다.
+- FLEET PLAN은 판정이 5건 이상이고 동의가 80% 이상이면 게이트를 통과한다(DISPATCH·SCHEDULE은 그대로 20건, 80%). 그러면 블록 오른쪽의 **승인 운용 켜기**가 눌린다.
 
 ### 승인 운용
 

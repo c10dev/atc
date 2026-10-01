@@ -1,3 +1,4 @@
+import { GATE } from "./proposals.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_FLEET } from "./crew.ts";
@@ -312,7 +313,7 @@ test("foldFleetPlan: 닫힌 제안은 다시 바뀌지 않는다", () => {
   assert.equal(all[0].status, "agreed");
 });
 
-test("fleetPlanGateOf: 20건·80%, 종류마다 건수", () => {
+test("fleetPlanGateOf: 20건에서도 80%이면 통과하고 종류마다 건수를 센다", () => {
   const at = new Date(NOW).toISOString();
   const ops: FleetPlanOp[] = [];
   for (let n = 1; n <= 20; n++) {
@@ -325,7 +326,28 @@ test("fleetPlanGateOf: 20건·80%, 종류마다 건수", () => {
   assert.equal(g.agreement, 0.8);
   assert.equal(g.ready, true);
   assert.deepEqual(g.byKind.RETIRE, { decided: 10, agreed: 6 });
-  assert.equal(fleetPlanGateOf(foldFleetPlan(ops.slice(0, 38))).ready, false);
+  assert.equal(fleetPlanGateOf(foldFleetPlan(ops.slice(0, 38))).ready, true); // 19건, 80%도 5건 이상이면 통과
+});
+
+test("fleetPlanGateOf(ATC-273): FLEET PLAN은 5건·80%, DISPATCH 게이트는 20건 그대로", () => {
+  const at = new Date(NOW).toISOString();
+  const run = (n: number, disagree: number) => {
+    const ops: FleetPlanOp[] = [];
+    for (let i = 1; i <= n; i++) {
+      const id = `F-${String(i).padStart(4, "0")}`;
+      ops.push({ op: "create", id, key: `STOP|T${i}`, kind: "STOP", aircraft: `T${i}`, airport: "ATCC", reasons: [], at });
+      ops.push({ op: "verdict", id, verdict: i <= disagree ? "disagree" : "agree", by: "SUPERVISOR", at });
+    }
+    return fleetPlanGateOf(foldFleetPlan(ops));
+  };
+  assert.deepEqual(run(5, 0).target, { decided: 5, agreement: 0.8 });
+  assert.equal(run(4, 0).ready, false); // 판정 4건은 아직
+  assert.equal(run(5, 0).ready, true);
+  assert.equal(run(5, 1).ready, true); // 4/5 = 80%
+  assert.equal(run(5, 2).ready, false); // 3/5 = 60%
+  assert.equal(run(7, 1).ready, true); // 실제 7건(6/7)
+  assert.equal(GATE.decided, 20); // DISPATCH·SCHEDULE은 그대로
+  assert.equal(GATE.agreement, 0.8);
 });
 
 // ── 3단계: 승인 운용(8.7) ──
