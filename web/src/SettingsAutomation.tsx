@@ -16,6 +16,12 @@ const AUTOLAND_WARN = {
   merge: "⚠ 위임된 PR(보안·Risk·HUMAN CHECK·UI change 블록 없음·FLIGHT 없음·HOLD 제외)을 정확한 head로 atc가 머지. vocado AGENTS.md에 AUTOLAND 예외를 적은 뒤에만 켤 것.",
 } as const;
 
+// AUTOLAND 머지 리뷰의 보안 위임(ATC-328)
+const AUTOLAND_REVIEW_WARN = {
+  off: "꺼짐(기본): 머지 리뷰 pass는 리뷰 조건만 채운다. rating:SEC·보안 게이트 PR은 SUPERVISOR가 머지한다.",
+  delegate: "⚠ 이 head에 머지 리뷰 pass가 있는 rating:SEC·보안 게이트 PR을 AUTOLAND merge가 머지한다. 비밀·키·마이그레이션·SQL 경로, Risk 라벨, FLIGHT 없음은 그대로 SUPERVISOR.",
+} as const;
+
 // MCC 모드마다 한 줄(docs/mcc.md). findings 댓글은 모든 모드에서 남긴다
 const MCC_WARN = {
   shadow: "기본: MCC는 INSPECTION하고 착륙·RTS는 would로만 남긴다. 머지·배포는 사용자.",
@@ -416,6 +422,16 @@ export function LandingSettings({ server, save }: { server: Loaded; save: Save }
                 onSave={(v) => save({ autolandMode: v as "off" | "update" | "merge" })}
               />
               <ModeLines modes={["off", "update", "merge"] as const} current={s.autoland.mode} lines={AUTOLAND_WARN} />
+              <EditRow
+                label="머지 리뷰 위임"
+                env="autoland.reviewedSecurity"
+                value={s.autoland.reviewedSecurity}
+                note="autoland.json · 맡은 AIRPORT에서 REVIEW 세션이 atc에 남긴 이 head의 머지 리뷰 pass가 착륙 리뷰다. 이 스위치는 보안 게이트 PR까지 위임할지 정한다 — 이 화면에서만 바꾼다, 관제 세션은 못 바꿈"
+                input={{ kind: "select", options: ["off", "delegate"] }}
+                guard={guardOf("autolandReview", s.autoland.reviewedSecurity, AUTOLAND_REVIEW_WARN)}
+                onSave={(v) => save({ autolandReviewedSecurity: v as "off" | "delegate" })}
+              />
+              <ModeLines modes={["off", "delegate"] as const} current={s.autoland.reviewedSecurity} lines={AUTOLAND_REVIEW_WARN} />
               {s.autoland.groundStops.map((g) => (
                 <GroundStopRow key={g.airport} stop={g} check={s.autoland.applicationCheck} refresh={() => save({})} />
               ))}

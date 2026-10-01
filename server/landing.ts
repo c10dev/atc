@@ -2,7 +2,7 @@ import type { Alert, LandingBlockCode, PullRequest, ReviewFindings, Workspace } 
 import { humanCheckStatusOf, uiChangeOf } from "./human-check.ts";
 import {
   behindEn, blockedEn, carriedFindingsEn, carriedWhoEn, changesRequestedEn, checksFailedEn, checksPendingEn, codexFindingsEn, codexP3OpenEn, codexWhyEn, countsEn,
-  dirtyEn, draftEn, extFindingsEn, losEn, mccFindingsEn, mergeUnknownEn, noChecksEn, noReviewEn, noteExcludedEn, noteLimitEn, noteMccEn, noteReviewEn, noteWaitingEn,
+  dirtyEn, draftEn, extFindingsEn, losEn, mccFindingsEn, mergeFindingsEn, mergeUnknownEn, noChecksEn, noReviewEn, noteExcludedEn, noteLimitEn, noteMccEn, noteReviewEn, noteWaitingEn,
   reviewStaleEn, stackedEn,
 } from "./landing-en.ts";
 
@@ -259,6 +259,12 @@ export function securityPathOf(files: readonly string[]): { tag: string; path: s
   const secret = secretPathOf(files);
   return secret ? { tag: "비밀·키 경로", path: secret } : null;
 }
+// 머지 리뷰를 AUTOLAND AIRPORT의 기록(autoland-reviews.jsonl)으로 받아 쓰는 PR인가(ATC-328): 비밀·키·FLIGHT 없음(hard)은 어느 모드에서든 아니고,
+// 보안 규칙(security)은 reviewedSecurity가 delegate일 때만 맞다. buildPulls(착륙 판단)와 기록을 받는 경로가 같은 조건을 쓴다
+export const mergeReviewGateOk = (gate: { hard: string | null; security: string | null } | null, reviewedSecurity: "off" | "delegate"): boolean =>
+  Boolean(gate && !gate.hard && (!gate.security || reviewedSecurity === "delegate"));
+// 마이그레이션·SQL 경로(ATC-328). reviewedSecurity가 delegate여도 AUTOLAND가 머지하지 않는다. 없으면 null
+export const migrationPathOf = (files: readonly string[]): string | null => files.find((f) => /(^|\/)(supabase\/)?migrations?\//i.test(f) || /\.sql$/i.test(f)) ?? null;
 // 제목·본문의 보안 키워드. EXECUTE는 SQL 권한이라 대문자만(영어 문장의 execute는 뺀다)
 const SECURITY_WORDS = /\b(security|privileges?|rls|grant(?:s|ed|ing)?|revok(?:e|es|ed|ing)|definer|admission|auth|authn|authz|authentication|authorization|acl|exposure|exposed)\b/i;
 // vocado PR 템플릿의 판에 박힌 줄은 키워드를 보지 않는다: "Contracts Preserved / Changed"의 바뀌지 않은 줄
@@ -338,6 +344,9 @@ export const severityOf = (text: string) => {
 // 이 PR의 이 head에 대한 마지막 착륙 리뷰
 export const landingReviewOf = (reviews: readonly LandingReview[], repo: string, number: number, head: string): LandingReview | null =>
   reviews.filter((r) => r.repo === repo && r.number === number && r.head === head).at(-1) ?? null;
+// AUTOLAND AIRPORT의 머지 리뷰(ATC-328, autoland-reviews.jsonl 한 줄). 모양은 착륙 리뷰와 같다. 기록은 REVIEW 세션 guard가 붙인 모델로만 남는다
+export type MergeReview = LandingReview;
+export const mergeReviewOf = (reviews: readonly MergeReview[], repo: string, number: number, head: string): MergeReview | null => landingReviewOf(reviews, repo, number, head);
 export const reviewPasses = (r: LandingReview | null) => Boolean(r && r.verdict === "pass" && !r.p0 && !r.p1);
 
 // PR 한 줄에 붙는 외부 리뷰 상태. Codex를 쓸 수 있으면 null. 제외 PR은 외부 리뷰의 pass가 있어도 excluded(착륙 근거가 아니다)
@@ -456,6 +465,8 @@ export function codexThumbsPass(pr: ReviewInput, c: CodexSignal | undefined = pr
 // MCC가 맡은 저장소(atc)의 PR: 이 head의 INSPECTION이 리뷰를 대신한다(docs/mcc.md 5장)
 export interface MccReviewContext {
   review: { verdict: "pass" | "findings"; text: string; p0: number; p1: number; p2: number } | null;
+  // 있으면 MCC INSPECTION이 아니라 AUTOLAND AIRPORT의 머지 리뷰(ATC-328)다. 기록한 쪽의 이름(예: "REVIEW")
+  by?: string;
 }
 export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs = 6 * 3_600_000, carried?: CarriedReview | null, mcc?: MccReviewContext): Block[] {
   const author = pr.author?.login ?? null;
@@ -503,6 +514,10 @@ export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs =
   if (mcc?.review?.verdict === "pass") return out;
   if (mcc?.review) {
     const r = mcc.review;
+    if (mcc.by) {
+      out.push(block("review-findings", `${mcc.by} 머지 리뷰 지적(head ${short(pr.headRefOid)}, P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}): ${clip(r.text, 400)} — 반영 후 새 head에서 다시`, mergeFindingsEn(mcc.by, short(pr.headRefOid), [r.p0, r.p1, r.p2], clip(r.text, 400)), { source: "review", by: mcc.by, counts: [r.p0, r.p1, r.p2], text: r.text, from: null }));
+      return out;
+    }
     out.push(block("review-findings", `MCC INSPECTION 지적(head ${short(pr.headRefOid)}, P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}): ${clip(r.text, 400)} — 반영 후 새 head에서 다시`, mccFindingsEn(short(pr.headRefOid), [r.p0, r.p1, r.p2], clip(r.text, 400)), { source: "mcc", by: "MCC INSPECTION", counts: [r.p0, r.p1, r.p2], text: r.text, from: null }));
     return out;
   }
@@ -619,6 +634,8 @@ export function buildPulls(
     fastTrack?: (repo: string, number: number, head: string) => string | null;
     // MCC가 맡은 저장소(docs/mcc.md): 그 저장소 PR은 이 head의 INSPECTION이 리뷰를 대신한다
     mcc?: { repo: string; reviewOf: (number: number, head: string) => MccReviewContext["review"] };
+    // AUTOLAND AIRPORT의 머지 리뷰(ATC-328): atc에 기록한 이 head의 리뷰가 착륙 리뷰다. repos: 맡은 AIRPORT 저장소
+    autoland?: { repos: readonly string[]; reviewedSecurity: "off" | "delegate"; reviews: readonly MergeReview[] };
   },
 ): PullRequest[] {
   const losStands = new Set(alerts.filter((a) => a.kind === "conflict" && a.workspacePath).map((a) => a.workspacePath!));
@@ -634,10 +651,15 @@ export function buildPulls(
       const gate = ext && slug ? externalGateOf({ flight: ticketKey, ticketLabels: ext.ticketLabelsOf(ticketKey), prLabels: (gh.labels ?? []).map((l) => l.name), files: gh.files ?? null, texts: [gh.title, gh.body, ext.ticketTitleOf?.(ticketKey)] }) : null;
       const allowSec = ext?.security === "deepseek";
       const exclusion = gate ? (gate.hard ?? (allowSec ? null : gate.security)) : null;
-      // main 병합만 한 head: 이전 커밋의 리뷰를 잇는다(ATC-31). 이으면 REVIEW 대기열에 넣지 않는다
-      const carried = ext && slug ? carriedReviewOf(gh, ext.reviews.filter((r) => r.repo === slug && r.number === gh.number), Boolean(gate) && !exclusion) : null;
-      let unavailable = ext && slug && !carried ? codexUnavailableOf(gh, Date.parse(now), ext.silentMs, repoLimit && { ...repoLimit, reviewed: landingReviewOf(ext.reviews, slug, gh.number, gh.headRefOid) !== null }) : null;
-      if (ext && slug && !carried && !unavailable) {
+      // AUTOLAND AIRPORT의 머지 리뷰(ATC-328): 기록이 이 head의 착륙 리뷰다. 외부 리뷰 제외(비밀·키 경로, FLIGHT 없음)는 어느 모드에서든
+      // 근거가 아니고, 보안 규칙은 reviewedSecurity가 delegate일 때만 근거다. 그 밖에는 오늘과 같다
+      const al = ext?.autoland && slug && ext.autoland.repos.includes(repo) && !gh.isDraft && mergeReviewGateOk(gate, ext.autoland.reviewedSecurity) ? ext.autoland : null;
+      const alReviews = al ? al.reviews.filter((r) => r.repo === slug && r.number === gh.number) : [];
+      const mergeRev = al ? mergeReviewOf(alReviews, slug!, gh.number, gh.headRefOid) : null;
+      // main 병합만 한 head: 이전 커밋의 리뷰를 잇는다(ATC-31). 이으면 REVIEW 대기열에 넣지 않는다. 이 head에 머지 리뷰가 있으면 그것이 먼저다
+      const carried = ext && slug && !mergeRev ? carriedReviewOf(gh, [...ext.reviews.filter((r) => r.repo === slug && r.number === gh.number), ...alReviews], (Boolean(gate) && !exclusion) || Boolean(al)) : null;
+      let unavailable = ext && slug && !carried && !mergeRev ? codexUnavailableOf(gh, Date.parse(now), ext.silentMs, repoLimit && { ...repoLimit, reviewed: landingReviewOf(ext.reviews, slug, gh.number, gh.headRefOid) !== null }) : null;
+      if (ext && slug && !carried && !unavailable && !mergeRev) {
         const since = ext.fastTrack?.(repo, gh.number, gh.headRefOid);
         if (since && codexUnavailableOf(gh, Date.parse(now), 0)) unavailable = { why: "autoland", since };
       }
@@ -649,7 +671,9 @@ export function buildPulls(
             review: landingReviewOf(ext!.reviews, slug!, gh.number, gh.headRefOid),
           }
         : undefined;
-      const mcc = ext?.mcc && ext.mcc.repo === repo ? { review: ext.mcc.reviewOf(gh.number, gh.headRefOid) } : undefined;
+      const mcc: MccReviewContext | undefined = ext?.mcc && ext.mcc.repo === repo ? { review: ext.mcc.reviewOf(gh.number, gh.headRefOid) } : mergeRev ? { review: mergeRev, by: mergeRev.by } : undefined;
+      // 이 head(또는 main 병합만 한 이전 커밋)의 머지 리뷰: 화면 줄과 AUTOLAND merge 제외 판단에 쓴다
+      const heldReview = mergeRev ?? (carried?.by === "review" ? mergeReviewOf(alReviews, slug!, gh.number, carried.from) : null);
       const blocks = landingBlocks(gh, Boolean(stand && losStands.has(stand.path)), ctx, ext?.silentMs, carried, mcc);
       // 쌓인 PR: base가 기본 브랜치가 아니면 CLEARED가 되지 않는다(아래 PR이 먼저 기본 브랜치에 들어간 뒤 base를 바꾼다)
       const stack = defaultBranch ? stackOf(gh, pulls, defaultBranch) : null;
@@ -689,6 +713,8 @@ export function buildPulls(
         externalExclusion: ext && slug ? exclusion : undefined,
         // 이어받은 리뷰(ATC-31): 스트립 "REVIEW: … (carried from R, main merge only)", landing.cleared 기록의 carriedFrom
         carried: carried ?? null,
+        mergeReviewTarget: Boolean(al),
+        mergeReview: al && heldReview ? { by: heldReview.by, verdict: heldReview.verdict, at: heldReview.at, p0: heldReview.p0, p1: heldReview.p1, p2: heldReview.p2, pass: reviewPasses(heldReview) && !carried?.findings, carriedFrom: mergeRev ? null : (carried?.from ?? null) } : null,
         stack,
         // HUMAN CHECK(ATC-37): class PR의 사람 확인. 기록한 SHA가 main 병합만 한 이전 커밋이면 잇는다(ATC-31)
         uiChange: ui,

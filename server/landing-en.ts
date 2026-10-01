@@ -30,6 +30,8 @@ export const carriedFindingsEn = (who: string, from: string) =>
   `${who} findings remain on the earlier commit ${from} (only main merges since) — fix and get a re-review`;
 export const mccFindingsEn = (head: string, p: [number, number, number], text: string) =>
   `MCC INSPECTION findings (head ${head}, P0 ${p[0]} · P1 ${p[1]} · P2 ${p[2]}): ${text} — fix and re-inspect on the new head`;
+export const mergeFindingsEn = (by: string, head: string, p: [number, number, number], text: string) =>
+  `${by} merge-review findings (head ${head}, P0 ${p[0]} · P1 ${p[1]} · P2 ${p[2]}): ${text} — fix and get a re-review on the new head`;
 export const extFindingsEn = (reviewer: string, security: boolean, whyEn: string, head: string, p: [number, number, number], text: string) =>
   `${reviewer} findings (${security ? "security, " : ""}${whyEn}, head ${head}, P0 ${p[0]} · P1 ${p[1]} · P2 ${p[2]}): ${text} — fix and get a re-review on the new head`;
 

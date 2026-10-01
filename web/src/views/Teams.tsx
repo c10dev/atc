@@ -367,6 +367,22 @@ function CarriedTag({ pr }: { pr: PullRequest }) {
   );
 }
 
+// AUTOLAND AIRPORT의 머지 리뷰(ATC-328): atc에 기록된 이 head의 리뷰. 누가 남겼고 판정이 무엇인지 보인다
+function MergeReviewTag({ pr }: { pr: PullRequest }) {
+  const m = pr.mergeReview;
+  if (!m) return null;
+  const from = m.carriedFrom?.slice(0, 7);
+  return (
+    <span
+      className={`pr-extreview ${m.pass ? "is-pass" : "is-findings"}`}
+      title={`머지 리뷰 ${m.verdict} · ${m.by} · ${m.at}\nP0 ${m.p0} · P1 ${m.p1} · P2 ${m.p2}${from ? `\n${from}의 리뷰를 이어받음(그 뒤 main 병합뿐, PR의 변경은 그대로)` : ""}`}
+    >
+      {m.pass ? `MERGE REVIEW: ${m.by} pass` : `MERGE REVIEW: ${m.by} findings`}
+      {from ? ` (carried from ${from})` : ""}
+    </span>
+  );
+}
+
 // Codex P3 지적만 남고 모두 해결·답글이면 착륙을 막지 않는다(ATC-28). 그때 남은 수를 보인다
 function CodexP3Tag({ pr }: { pr: PullRequest }) {
   const f = pr.codexFindings;
@@ -519,6 +535,7 @@ function PrLanding({ pr, landing }: { pr: PullRequest; landing: LandingIndex }) 
         <PrLink pr={pr} />
         <ExtReviewTag pr={pr} />
         <CarriedTag pr={pr} />
+        <MergeReviewTag pr={pr} />
         <CodexP3Tag pr={pr} />
         <HumanCheckTag pr={pr} />
         <AutolandTag pr={pr} landing={landing} />
@@ -576,7 +593,7 @@ function LandingSequence({
         </div>
         <div className="ls-pr">
           <div className="ls-title">
-            <PrLink pr={pr} airport={idx.airportByRepo.get(pr.repo)?.code} /> <ExtReviewTag pr={pr} /> <CarriedTag pr={pr} /> <CodexP3Tag pr={pr} /> <HumanCheckTag pr={pr} /> <AutolandTag pr={pr} landing={landing} />{" "}
+            <PrLink pr={pr} airport={idx.airportByRepo.get(pr.repo)?.code} /> <ExtReviewTag pr={pr} /> <CarriedTag pr={pr} /> <MergeReviewTag pr={pr} /> <CodexP3Tag pr={pr} /> <HumanCheckTag pr={pr} /> <AutolandTag pr={pr} landing={landing} />{" "}
             <HoldButton pr={pr} landing={landing} /> <span title={pr.title}>{pr.title}</span>
           </div>
           {pr.landing !== "CLEARED" && pr.blocks.length > 0 && (

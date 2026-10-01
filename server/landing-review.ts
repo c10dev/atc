@@ -2,9 +2,11 @@ import { appendFileSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Hono } from "hono";
 import { config } from "./config.ts";
+import { loadAutoland } from "./autoland.ts";
+import { appendRecord } from "./autoland-run.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { modelFamily } from "./crosscheck.ts";
-import { type LandingReview, externalGateOf, severityOf, slugOfUrl } from "./landing.ts";
+import { type LandingReview, type MergeReview, externalGateOf, severityOf, slugOfUrl } from "./landing.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { record } from "./recorder.ts";
 import { fetchReviewSource } from "./sources/github.ts";
@@ -20,8 +22,8 @@ const BODY_MAX = 8_000;
 const ISSUE_MAX = 6_000;
 
 // 파일이 바뀌었을 때만 다시 읽는다(스냅샷마다 부른다)
-let cache: { key: string; reviews: LandingReview[] } | null = null;
-export function readLandingReviews(file = FILE): LandingReview[] {
+const caches = new Map<string, { key: string; reviews: LandingReview[] }>();
+function readReviewsFile(file: string): LandingReview[] {
   let key = "";
   try {
     const st = statSync(file);
@@ -29,6 +31,7 @@ export function readLandingReviews(file = FILE): LandingReview[] {
   } catch {
     return [];
   }
+  const cache = caches.get(file);
   if (cache?.key === key) return cache.reviews;
   const reviews: LandingReview[] = [];
   for (const line of readFileSync(file, "utf8").split("\n")) {
@@ -37,14 +40,18 @@ export function readLandingReviews(file = FILE): LandingReview[] {
       reviews.push(JSON.parse(line));
     } catch {}
   }
-  cache = { key, reviews };
+  caches.set(file, { key, reviews });
   return reviews;
 }
+export const readLandingReviews = (file = FILE): LandingReview[] => readReviewsFile(file);
+// AUTOLAND AIRPORT의 머지 리뷰(ATC-328). 추가만 하는 JSONL. 파일은 호출 때 정한다(config.stateDir가 시험에서 바뀐다)
+export const mergeReviewsFile = () => join(config.stateDir, "autoland-reviews.jsonl");
+export const readMergeReviews = (file = mergeReviewsFile()): MergeReview[] => readReviewsFile(file);
 
-function appendReview(r: LandingReview) {
-  mkdirSync(dirname(FILE), { recursive: true });
-  appendFileSync(FILE, `${JSON.stringify(r)}\n`);
-  record({ t: r.at, kind: "landing", op: `landing-review:${r.verdict}`, id: `${r.repo}#${r.number}` });
+function appendReview(r: LandingReview, file = FILE, op = "landing-review") {
+  mkdirSync(dirname(file), { recursive: true });
+  appendFileSync(file, `${JSON.stringify(r)}\n`);
+  record({ t: r.at, kind: "landing", op: `${op}:${r.verdict}`, id: `${r.repo}#${r.number}` });
 }
 
 export class ReviewError extends Error {
@@ -76,6 +83,14 @@ export function assertReviewTarget(p: PullRequest) {
   if (p.draft) throw new ReviewError(`#${p.number}는 Draft — 착륙 리뷰 대상 아님`, 409);
   if (!p.extReview) throw new ReviewError(`#${p.number}는 Codex를 쓸 수 있음(또는 이미 리뷰됨) — 착륙 리뷰 대상 아님`, 409);
   if (p.extReview.status === "excluded") throw new ReviewError(`외부 리뷰 제외 — ${p.extReview.reason}`, 403);
+}
+
+// AUTOLAND가 맡은 AIRPORT의 열린 PR이면 그 AIRPORT 코드(ATC-328). 거기서는 이 head의 머지 리뷰가 착륙 리뷰라 Codex 상태와 상관없이 남긴다
+export function autolandAirportOf(s: Pick<Snapshot, "airports">, p: Pick<PullRequest, "repo" | "draft" | "mergeReviewTarget">): string | null {
+  // buildPulls가 정한 같은 조건(mergeReviewGateOk): 아니면 옛 경로(assertReviewTarget, landing-reviews.jsonl)
+  if (p.draft || !p.mergeReviewTarget) return null;
+  const code = s.airports.find((a) => a.repo === p.repo)?.code;
+  return code && loadAutoland().airports.includes(code) ? code : null;
 }
 
 // 리뷰 입력 검사: head는 지금 head(짧은 SHA도 됨), verdict pass|findings, text 필수.
@@ -159,7 +174,8 @@ export function mountLandingReview(app: Hono, getSnapshot: () => Promise<Snapsho
     try {
       const s = await getSnapshot();
       const p = findPull(s.pulls, c.req.param("repo"), Number(c.req.param("pr")));
-      assertReviewTarget(p);
+      const al = autolandAirportOf(s, p);
+      if (!al) assertReviewTarget(p);
       const slug = slugOfUrl(p.url)!;
       const src = await fetchReviewSource(slug, p.number);
       if (src.headRefOid !== p.head) throw new ReviewError(`head가 바뀜(${src.headRefOid.slice(0, 7)}) — atc가 다시 읽은 뒤(90초 안) 리뷰한다`, 409);
@@ -182,7 +198,8 @@ export function mountLandingReview(app: Hono, getSnapshot: () => Promise<Snapsho
         texts: [src.title, src.body, issue.title, desc],
       });
       // 비밀·키 경로와 FLIGHT 없음은 어느 모드에서든, 보안 규칙은 스위치가 "deepseek"(옛 이름: 보안 PR도 REVIEW에 보냄)이 아니면 보내지 않는다(ATC-30)
-      const allowSecurity = loadDispatchConfig().externalReview.security === "deepseek";
+      // AUTOLAND AIRPORT는 reviewedSecurity가 delegate여도 보안 게이트 PR의 자료를 준다(ATC-328). 비밀·키 경로는 그래도 막는다
+      const allowSecurity = loadDispatchConfig().externalReview.security === "deepseek" || (Boolean(al) && loadAutoland().reviewedSecurity === "delegate");
       const exclusion = gate.hard ?? (allowSecurity ? null : gate.security);
       if (exclusion) throw new ReviewError(`외부 리뷰 제외 — ${exclusion}`, 403);
       const flight = { key: p.ticketKey, title: issue.title ?? null, url: issue.url ?? null, ...sectionsOf(desc), description: capText(desc, ISSUE_MAX) };
@@ -215,8 +232,16 @@ export function mountLandingReview(app: Hono, getSnapshot: () => Promise<Snapsho
       const body = await c.req.json().catch(() => ({}));
       const s = await getSnapshot();
       const p = findPull(s.pulls, c.req.param("repo"), Number(c.req.param("pr")));
-      assertReviewTarget(p);
+      const al = autolandAirportOf(s, p);
+      if (!al) assertReviewTarget(p);
       const r = parseReview(body, p, new Date().toISOString());
+      if (al) {
+        // AUTOLAND AIRPORT의 머지 리뷰(ATC-328): autoland-reviews.jsonl. by는 받지 않고 REVIEW로 고정한다
+        const m: MergeReview = { ...r, by: "REVIEW" };
+        appendReview(m, mergeReviewsFile(), "merge-review");
+        appendRecord({ op: "merge-review", mode: loadAutoland().mode, airport: al, slug: m.repo, number: m.number, head: m.head, result: m.verdict, detail: `${m.by} · P0 ${m.p0} · P1 ${m.p1} · P2 ${m.p2}` });
+        return c.json({ review: m });
+      }
       appendReview(r);
       return c.json({ review: r });
     } catch (e) {

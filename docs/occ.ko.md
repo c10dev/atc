@@ -449,6 +449,18 @@ vocado `main`의 `strict` 때문에 머지가 있을 때마다 다른 열린 PR�
   - ATC-27·30은 그대로다: `buildPulls`가 지금 스위치로 외부 리뷰 제외를 다시 본다. 제외 PR은 대기열에 넣지 않고, 스트립에 "AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(migrations)"로 보인다.
   - head마다 한 번(`autoland-state.json`의 `reviewRequests`). 기록은 `op: "review-request"`에 `via`(`codex`, `deepseek`, `supervisor`). 리뷰가 붙을 때까지 스트립에 "AUTOLAND: review requested (codex|deepseek)"가 보인다. AUTOLAND가 `update`나 `merge`이고 그 AIRPORT가 GROUND STOP이 아닐 때만 한다.
 
+#### 머지 리뷰: atc에 기록한 리뷰가 착륙 리뷰다 (ATC-328)
+
+AUTOLAND가 맡은 AIRPORT(`autoland.json`의 `airports`)에서는 PR head에 atc로 기록한 리뷰가 Codex 상태와 상관없이 그 head의 착륙 리뷰다. `pass`는 그 head의 `no-review`(와 `review-stale`)를 LANDING SEQUENCE·TOWER 브리프·`/api/autoland`에서 풀고, `findings`는 P0/P1/P2 수와 함께 `review-findings`로 보인다. 범위는 기록이 가리키는 head 하나다:
+
+- **head에 묶임**: 기록은 자기 PR·자기 head의 막힘만 푼다. 새 head는 새 리뷰가 필요하다. 다만 ATC-31 잇기는 그대로다. main 병합만 한 head는 리뷰를 이어받고(`carriedFrom`), main이 PR 자신의 파일을 바꿨으면(잇기가 바뀐 파일과 blob을 이미 비교한다) 리뷰는 옛 것이다. 이 head의 새 기록은 이어받은 것보다 앞서고, 같은 head에서는 마지막 기록이 이긴다.
+- **적용 범위**: Draft PR, AUTOLAND 목록 밖 저장소, 외부 리뷰 게이트가 빼는 PR(FLIGHT 없음, `.env`·비밀·키 경로. 보안 규칙 PR은 `reviewedSecurity`가 `delegate`일 때만)에는 쓰이지 않는다. 게이트가 빼는 PR의 기록은 남지만 무시되므로 오늘의 제외는 그대로다.
+- **누가 기록하나, 왜 팀 세션은 못 하나**: REVIEW 관제 세션이 이미 있는 명령으로 한다: `node atcctl.mjs landing review <repo>#<PR> --head <sha> --verdict pass|findings -- <리뷰>`(같은 경로의 `GET`이 자료). MCC INSPECTION과 Codex 한도 때 착륙 리뷰가 쓰는 기존 "guard가 붙은 관제 세션 CLI" 모델이고, guard는 바꾸지 않았고 새 경로도 없다. REVIEW guard(`controller/guard.mjs`)가 세션 자신의 기록에서 실제 모델을 읽어 `ATC_REVIEW_MODEL`로 붙이고, 서버는 Claude Sonnet 모델이 없는 기록을 거절하며, 호출자의 `by`를 받지 않고(기록의 `by`는 늘 `REVIEW`), PR의 현재 head만 받는다. 팀 세션은 REVIEW guard 아래에서 돌지 않으니 모델이 붙지 않고 서버는 모델 없는 본문을 거절한다. **한계**: 서버는 호출자를 인증하지 않는다. 호스트의 프로세스가 JSON을 직접 만들어 `model`을 꾸며 보내는 것은 서버가 막지 못한다. 기존 REVIEW·MCC 기록과 같은 경계다. 피해를 막는 것은 이렇다: 기록은 AUTOLAND AIRPORT 목록 밖에서는 아무것도 채우지 못하고, 비밀·키 경로는 위임되지 않으며, 아래 스위치는 기본 꺼짐이고 설정 창에서만 바뀌고, AUTOLAND는 머지 직전에 PR과 기록 파일을 다시 읽고, 모든 기록이 시각·모델·수와 함께 추가만 하는 파일에 남아 SUPERVISOR가 점검할 수 있다.
+- **기록**: 상태 폴더의 `autoland-reviews.jsonl`(추가만): `at`, `repo`(owner/name), `number`, `head`, `verdict`, `text`, `p0`, `p1`, `p2`, `by`(`REVIEW`), `model`, `family`. 기록마다 `autoland.jsonl`에도 `op: "merge-review"` 한 줄(result = 판정)이 남는다. 기록은 고치거나 지우지 않고, 같은 head의 뒤 기록이 앞 기록의 효과를 대신한다.
+- **화면**: 착륙 스트립에 `MERGE REVIEW: REVIEW pass`나 `… findings`가 보인다(툴팁에 시각·수·내용, 이어받았으면 `carried from <sha>`). TOWER 브리프의 `landingQueue[]`에는 `by`·`verdict`·수·`carriedFrom`을 담은 `mergeReview`가 있다.
+- **스위치 `reviewedSecurity`**(`autoland.json`): `"off"`(기본, 모르는 값은 off) 또는 `"delegate"`. SUPERVISOR만 바꾼다: 설정 창 → AUTOMATION → LANDING의 AUTOLAND 블록 "머지 리뷰 위임" 줄, 한 줄 ⚠ 경고(`PUT /api/settings {autolandReviewedSecurity}`, localhost `Origin`만, `autolandMode`와 같다). `atcctl` 명령은 없다. `off`면 `mergeExclusionOf`는 전과 똑같다. `delegate`면 head에 머지 리뷰 `pass`(직접 또는 이어받음)가 있는 PR은 `rating:SEC`와 보안 게이트(auth·session·admission·RLS·policy·middleware 경로, 보안 키워드)로 더는 제외되지 않고, 다른 제외가 없으면 AUTOLAND `merge`가 머지할 수 있다. `delegate`여도 계속 제외: `.env`·비밀·키 경로, 마이그레이션·SQL 경로(`migrations/`, `*.sql`), `Risk…` 라벨, FLIGHT 없음, HOLD, 못 읽은 파일 목록, HUMAN CHECK. `findings`, 기록 없음, 다른 head의 기록은 계속 제외. 스위치를 바꾸면 `op: "reviewed-security"`로 남는다.
+- **머지 직전**: 기존의 head·라벨·파일 재확인에 더해 `doMerge`가 `autoland-reviews.jsonl`을 다시 읽는다. 그 head(이어받았으면 이어받은 커밋)의 마지막 기록이 여전히 `pass`여야 하고, 아니면 제외 사유와 함께 건너뛴다.
+
 ### 9.8 HUMAN CHECK: CHOICE·ACCOUNT·DEVICE PR만 사람을 기다린다 (2026-09-28, ATC-37)
 
 ATC-39 리서치([research/human-preview.ko.md](research/human-preview.ko.md)) 뒤로, 사람이 꼭 봐야 하는 UI PR은 세 class뿐이다. 애플리케이션 저장소의 PR 본문에 짧은 `## UI change` 블록이 있고, atc는 거기서 아래 칸만 읽는다.

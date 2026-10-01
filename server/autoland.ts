@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import type { MainStatus } from "./atfm.ts";
 import { config } from "./config.ts";
 import { humanCheckExclusionOf, humanCheckStatusOf, uiChangeOf } from "./human-check.ts";
-import { externalGateOf, pullKey } from "./landing.ts";
+import { externalGateOf, migrationPathOf, pullKey } from "./landing.ts";
 import type { LandingBlockCode, PullRequest } from "./model.ts";
 
 // AUTOLAND(ATC-34). vocado main 규칙이 strict라 머지가 있을 때마다 다른 PR이 behind가 되고, SUPERVISOR가 PR마다
@@ -17,6 +17,10 @@ import type { LandingBlockCode, PullRequest } from "./model.ts";
 export type AutolandMode = "off" | "update" | "merge";
 export const AUTOLAND_MODES: readonly AutolandMode[] = ["off", "update", "merge"];
 export type MergeMethod = "squash" | "merge" | "rebase";
+// reviewedSecurity(ATC-328): off(기본)면 보안 게이트 PR은 SUPERVISOR 몫(오늘과 같음). delegate면 이 head에 머지 리뷰 pass가 있는 PR의
+// rating:SEC·보안 경로·보안 키워드 제외를 풀어 AUTOLAND가 머지한다. 비밀·키·마이그레이션·SQL 경로, Risk 라벨, FLIGHT 없음은 그대로 막는다
+export type ReviewedSecurity = "off" | "delegate";
+export const REVIEWED_SECURITY: readonly ReviewedSecurity[] = ["off", "delegate"];
 
 export interface AutolandHold {
   repo: string; // AIRPORT 본 체크아웃 경로(PullRequest.repo)
@@ -31,6 +35,7 @@ export interface AutolandConfig {
   mergeMethod: MergeMethod; // merge 모드의 머지 방식(vocado는 squash)
   applicationCheck: string; // GROUND STOP을 거는 main의 post-merge 체크 이름
   holds: AutolandHold[]; // SUPERVISOR가 HOLD한 PR: merge가 머지하지 않는다
+  reviewedSecurity: ReviewedSecurity; // 머지 리뷰 pass가 보안 게이트 PR의 위임 근거가 되나(ATC-328). 설정 창에서만 바꾼다
 }
 
 export const DEFAULT_AUTOLAND: AutolandConfig = {
@@ -39,6 +44,7 @@ export const DEFAULT_AUTOLAND: AutolandConfig = {
   mergeMethod: "squash",
   applicationCheck: "Application Check",
   holds: [],
+  reviewedSecurity: "off",
 };
 
 // 갱신하고 CI를 기다리는 PR. AIRPORT마다 하나
@@ -106,6 +112,7 @@ export function parseAutoland(raw: unknown): AutolandConfig {
     mergeMethod: pick(r.mergeMethod, ["squash", "merge", "rebase"] as const, d.mergeMethod),
     applicationCheck: typeof r.applicationCheck === "string" && r.applicationCheck.trim() ? r.applicationCheck.trim() : d.applicationCheck,
     holds,
+    reviewedSecurity: pick(r.reviewedSecurity, REVIEWED_SECURITY, d.reviewedSecurity),
   };
 }
 
@@ -144,7 +151,7 @@ export function saveAutolandState(st: AutolandState, file = STATE_FILE()) {
 // 기록 한 줄(autoland.jsonl, 추가만). 갱신·머지·결과·GROUND STOP·스위치·HOLD를 모두 남긴다
 export interface AutolandRecord {
   at: string;
-  op: "update" | "merge" | "settle" | "groundstop" | "groundstop-clear" | "mode" | "hold" | "unhold" | "skip" | "review-request";
+  op: "update" | "merge" | "settle" | "groundstop" | "groundstop-clear" | "mode" | "reviewed-security" | "merge-review" | "hold" | "unhold" | "skip" | "review-request";
   mode: AutolandMode;
   airport?: string;
   slug?: string;
@@ -218,20 +225,27 @@ export interface MergeExclusionInput {
   flightTitle?: string | null;
   head: string; // HUMAN CHECK는 이 head에 묶인다(ATC-37)
   carryFrom?: readonly string[]; // main 병합만 한 head의 이전 커밋(ATC-31). 거기 기록한 HUMAN CHECK를 잇는다
+  reviewedSecurity?: ReviewedSecurity; // 없으면 off
+  mergeReviewPass?: boolean; // 이 head(main 병합만 했으면 이전 커밋)에 atc에 기록된 머지 리뷰 pass가 있나(ATC-328)
 }
 const RISK_ANY = /^risk\b/i;
 // merge 모드에서 AUTOLAND가 머지하지 않고 SUPERVISOR에게 남기는 까닭. null이면 위임된 PR
 export function mergeExclusionOf(x: MergeExclusionInput): string | null {
   if (x.held) return "SUPERVISOR HOLD";
   if (!x.flight) return "FLIGHT 없음";
-  if (x.ticketLabels.some((l) => l.toLowerCase() === "rating:sec")) return "rating:SEC";
+  // 위임(ATC-328): 스위치가 delegate이고 이 head에 머지 리뷰 pass가 있을 때만 rating:SEC·보안 게이트를 푼다. 마이그레이션·SQL 경로는 그래도 막는다
+  const delegated = x.reviewedSecurity === "delegate" && x.mergeReviewPass === true;
+  if (!delegated && x.ticketLabels.some((l) => l.toLowerCase() === "rating:sec")) return "rating:SEC";
   const risk = [...x.ticketLabels, ...x.prLabels].find((l) => RISK_ANY.test(l.trim()));
   if (risk) return risk.trim();
   if (!x.files) return "바뀐 파일을 아직 못 읽음";
   // ATC-27 보안 게이트: 비밀·키 경로, migration·SQL·auth·admission·RLS 등 보안 경로, 보안 키워드
   const gate = externalGateOf({ flight: x.flight, ticketLabels: x.ticketLabels, prLabels: x.prLabels, files: x.files, texts: [x.title, x.body, x.flightTitle] });
   if (gate.hard) return gate.hard;
-  if (gate.security) return `보안 게이트: ${gate.security}`;
+  if (delegated) {
+    const mig = migrationPathOf(x.files);
+    if (mig) return `보안 게이트: 마이그레이션·SQL 경로 ${mig}(위임 안 함)`;
+  } else if (gate.security) return `보안 게이트: ${gate.security}`;
   // HUMAN CHECK(ATC-37): `## UI change` class가 CHOICE·ACCOUNT·DEVICE면 이 head에 done일 때까지. 블록이 없으면 모름 → 머지하지 않는다
   const ui = uiChangeOf(x.body);
   return humanCheckExclusionOf(ui, humanCheckStatusOf(ui, x.head, x.carryFrom));

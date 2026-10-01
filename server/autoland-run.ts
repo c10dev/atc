@@ -21,13 +21,15 @@ import {
   planAutoland,
   RECORD_FILE,
   type ReviewRequest,
+  type ReviewedSecurity,
   reviewRequestOf,
   saveAutoland,
   saveAutolandState,
   settleOf,
   writeResultOf,
 } from "./autoland.ts";
-import { pullKey, slugOfUrl } from "./landing.ts";
+import { mergeReviewOf, pullKey, reviewPasses, slugOfUrl } from "./landing.ts";
+import { readMergeReviews } from "./landing-review.ts";
 import { assertGithubOn } from "./github-switch.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
@@ -75,6 +77,14 @@ export function setAutolandMode(mode: AutolandMode) {
   if (cfg.mode === mode) return;
   saveAutoland({ ...cfg, mode });
   appendRecord({ op: "mode", mode, detail: `${cfg.mode} → ${mode}` });
+}
+
+// reviewedSecurity 스위치(ATC-328, SUPERVISOR만: 설정 창 PUT /api/settings의 autolandReviewedSecurity). 관제 세션 CLI에는 명령이 없다
+export function setReviewedSecurity(v: ReviewedSecurity) {
+  const cfg = loadAutoland();
+  if (cfg.reviewedSecurity === v) return;
+  saveAutoland({ ...cfg, reviewedSecurity: v });
+  appendRecord({ op: "reviewed-security", mode: cfg.mode, detail: `${cfg.reviewedSecurity} → ${v}` });
 }
 
 let running = false;
@@ -208,6 +218,14 @@ interface FreshPull {
   files: { path: string }[] | null;
 }
 
+// 이 head의 머지 리뷰 pass가 기록 파일에 있나: 이 head의 마지막 기록이 pass거나, 이어받았으면(main 병합만) 그 이전 커밋의 마지막 기록이 pass(ATC-328)
+export function mergeReviewPassOn(slug: string, p: Pick<PullRequest, "number" | "head" | "mergeReview">, reviews = readMergeReviews()): boolean {
+  const mr = p.mergeReview;
+  if (!mr) return false;
+  const at = mr.carriedFrom ?? p.head;
+  return reviewPasses(mergeReviewOf(reviews, slug, p.number, at)) && mr.pass;
+}
+
 async function doMerge(plan: AirportPlan, p: PullRequest, st: AutolandState, s: Snapshot) {
   const cfg = stillAllowed(plan, ["merge"]);
   const slug = slugOfUrl(p.url);
@@ -236,6 +254,9 @@ async function doMerge(plan: AirportPlan, p: PullRequest, st: AutolandState, s: 
           head: fresh.headRefOid,
           // 스냅숏에서 이 head(위에서 같음을 확인)가 잇는 HUMAN CHECK 커밋만(ATC-31·37)
           carryFrom: p.humanCheck?.carriedFrom ? [p.humanCheck.carriedFrom] : [],
+          reviewedSecurity: cfg.reviewedSecurity,
+          // 머지 직전에 머지 리뷰가 지금도 이 head에 있는지 파일에서 다시 본다(head가 같음은 위에서 확인). main 병합만 해서 이어받은 것은 그 이전 커밋의 기록
+          mergeReviewPass: mergeReviewPassOn(slug, p),
         });
     if (why) {
       st.skip.push(headKey(p));
