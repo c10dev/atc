@@ -100,6 +100,13 @@ Status (2026-09-30): design draft for [ATC-195](https://linear.app/vocado/issue/
   - `reposition|stuck|<aircraft>` (CAUTION, `reposition`): the AIRCRAFT's last REPOSITION record is a failure at stage `launch` (the base moved, the LAUNCH failed) and no live session has that REGISTRATION. Looks back 24 h.
 - The three items show in the BELL as ordinary conditions until A3, and they count in the summary `counts` and `master` like any other item.
 
+### PENDING approval that lasts, as built (ATC-327)
+
+- **Level by time or by waiting calls.** `pending|tool|<session>|<since>` is ADVISORY under `pendingMin` (default 10, env `ATC_HEALTH_PENDING_MIN`, `health.pendingMin`) and CAUTION from then on. It is CAUTION at once when the AIRCRAFT has at least one open RADIO call from TOWER, OCC or MCC (a CLEARANCE, FLIGHT PLAN, RECALL or CREW CHANGE). The key does not change, so an ACK carries over and the level only rises. Pure `pendingLevelOf` in `server/pending.ts`; the calls come from `readRadio()` (read only). A dead session is ignored.
+- **What it asks.** Claude Code writes `state: working` together with `needs: "approve Write: …"` for a session standing on an approval prompt. `parseJob` keeps it as `pendingNeeds` (only for `working`; the `blocked` rules of ATC-133 and ATC-138 are unchanged) and it is shown only while the session's health is `PENDING` (`pendingNeedsOf`). The item text reads `TEAM_O — PENDING approval 5h45m · 3 calls waiting (GO AROUND C-0291, FLIGHT PLAN D-0336, D-0340) · approve Write: …` and `next` adds the attach command of the card (with `CLAUDE_CONFIG_DIR` for a non-default folder). FLEET rows, the FLEET card's alert band and STRIPS show `PENDING · <needs>` in `--blue`.
+- **RADIO.** An open call whose receiver is PENDING gets `reason: "receiver waiting for approval since 04:07Z"` from the server (`annotatePending`); the NO REPLY line shows it as one faint line.
+- **MASTER and counts.** The item counts in the summary `counts` and lights MASTER only from CAUTION on. The BELL already counted every item with the `call` cue, so it shows the ADVISORY PENDING item too; that is unchanged. Nothing new is sent to any session.
+
 ### 3.2 MASTER (attention)
 
 - **The light** is at the BELL's place in the header. It is off, MASTER CAUTION (amber) or MASTER WARNING (red). It lights when a new key arrives at `dest: alerts` with WARNING or CAUTION, and stays lit until it is ACKed.

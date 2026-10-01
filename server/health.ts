@@ -29,6 +29,7 @@ export interface HealthConfig {
   deniedWindowMin: number;
   stalledMin: number; // In Progress FLIGHT를 쥔 AIRCRAFT가 idle로 이만큼 지나면 STALLED(ATC-86)
   blockedMin?: number; // 백그라운드 job이 blocked로 이만큼 지나면 BLOCKED 경보(ATC-99). 없으면 기본
+  pendingMin?: number; // 도구 승인 대기(PENDING)가 이만큼 지나면 CAUTION(ATC-327). 없으면 기본. 기다리는 호출이 있으면 바로 CAUTION
 }
 
 export const DEFAULT_HEALTH: HealthConfig = {
@@ -41,6 +42,7 @@ export const DEFAULT_HEALTH: HealthConfig = {
   deniedWindowMin: 10,
   stalledMin: 60,
   blockedMin: 3,
+  pendingMin: 10,
 };
 
 // 대화 기록 한 줄에서 뽑은 사실. 본문은 없다(오류 한 줄만)

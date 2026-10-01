@@ -8,7 +8,7 @@ import { type LaunchModelSetting, NEXT_MODEL_TITLE, nextModelNote } from "../../
 import { flightNumber } from "../../aviation.ts";
 import { OpenFlight } from "../../FlightLink.tsx";
 import { timeAgo } from "../../derive.ts";
-import { ActivityLine, JobDetail, NeedsYou } from "../../ui.tsx";
+import { ActivityLine, JobDetail, NeedsYou, PendingApproval } from "../../ui.tsx";
 import { type AbsentMark, AbsentChip } from "./Absent.tsx";
 import { ContextCell } from "./Context.tsx";
 import { pct } from "./shared.ts";
@@ -147,6 +147,7 @@ export function StatusList({
                 <span className="fl-r-status">{r.status}</span>
                 <span className={`fl-r-flight${(r.flight?.detail && (r.flight.kept || r.health)) || r.restarting ? " has-detail" : ""}`} title={r.flight ? `${r.flight.key}${r.flight.title ? ` ${r.flight.title}` : ""}${r.more ? ` 외 ${r.more}건` : ""}${r.flight.detail && (r.flight.kept || r.health) ? ` — ${flightDetailText(r.flight.detail, now).text}` : ""}` : undefined}>
                   <NeedsYou job={r.job} attach={r.origin?.attach} />
+                  <PendingApproval job={r.job} health={r.health} attach={r.origin?.attach} />
                   {r.health && (
                     <span className={`fl-r-health lv-${r.health.level}`} title={`${r.health.detail} — ${r.health.next}`}>
                       {r.health.label}

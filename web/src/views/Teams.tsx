@@ -16,7 +16,7 @@ import { OpenFlight } from "../FlightLink.tsx";
 import { activeFirst, hasActiveClaim, type Index, isGateCleanup, sortSessions, timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { attachCommandOf } from "../../../server/session-origin.ts";
-import { ActivityLine, AirportCode, AwayTag, NeedsYou, SessionPlace } from "../ui.tsx";
+import { ActivityLine, AirportCode, AwayTag, NeedsYou, PendingApproval, SessionPlace } from "../ui.tsx";
 import { type MilestoneData, useMilestones } from "../useMilestones.ts";
 import { FlightProgressBar } from "./FlightProgress.tsx";
 import { HumanCheckQueue, HumanCheckTag } from "./HumanCheck.tsx";
@@ -157,6 +157,7 @@ function Strip({
           <span className="type">{agentCode[s.agent]}</span>
           <AwayTag airports={idx.awayBySession.get(s.id)} />
           <NeedsYou job={s.job} attach={s.jobId ? attachCommandOf(s.jobId, s.attachDir) : null} />
+          <PendingApproval job={s.job} health={s.health} attach={s.jobId ? attachCommandOf(s.jobId, s.attachDir) : null} />
         </div>
         <ActivityLine activity={s.activity} now={now} />
         <div className="sub">

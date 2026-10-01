@@ -58,5 +58,6 @@ export const config = {
     deniedWindowMin: Number(env.ATC_HEALTH_DENIED_WINDOW_MIN || 10),
     stalledMin: Number(env.ATC_HEALTH_STALLED_MIN || 60),
     blockedMin: Number(env.ATC_HEALTH_BLOCKED_MIN || 3),
+    pendingMin: Number(env.ATC_HEALTH_PENDING_MIN || 10),
   },
 };

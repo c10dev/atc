@@ -15,6 +15,7 @@ export interface Job {
   detail: string; // Claude Code가 적은 한 줄
   needs: string | null; // blocked일 때 사람에게 필요한 것
   suggestedReply: string | null; // 보여 주고 복사만 한다. atc는 어디에도 보내지 않는다
+  pendingNeeds?: string | null; // state가 working인데 needs가 있는 것("approve Write: …", ATC-327). health가 PENDING일 때만 보인다(pendingNeedsOf). blocked의 needs 규칙(ATC-133·138)과 따로 둔다
   since: string | null; // 지금 state가 시작된 시각(timeline.jsonl), 없으면 state.json의 updatedAt
   tempo?: string | null; // state.json의 tempo(active·idle·blocked …). blocked가 끝났는지 가리는 데 쓴다(ATC-133)
   writtenAt?: string | null; // state.json을 마지막으로 쓴 시각(updatedAt, 없으면 파일 mtime). 지금 needs·detail이 적힌 때라서 "가장 최근의 기다림"을 가린다(ATC-138)
@@ -61,6 +62,7 @@ export function parseJob(raw: unknown, timelineTail?: string | null, mtimeMs?: n
     detail: clean(r.detail, DETAIL_MAX) ?? "",
     needs: state === "blocked" ? clean(r.needs, DETAIL_MAX) : null,
     suggestedReply: state === "blocked" ? clean(r.suggestedReply, REPLY_MAX) : null,
+    pendingNeeds: state === "working" ? clean(r.needs, DETAIL_MAX) : null,
     since: sinceOf(timelineTail, state) ?? isoOf(r.updatedAt),
     tempo: clean(r.tempo, 20),
     writtenAt: isoOf(r.updatedAt) ?? (mtimeMs != null && Number.isFinite(mtimeMs) ? new Date(mtimeMs).toISOString() : null),
