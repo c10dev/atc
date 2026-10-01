@@ -21,6 +21,8 @@ Procedure moved from [`CLAUDE.md`](../../../CLAUDE.en.md). Read it in `/tick` st
 | `node ../controller/atcctl.mjs schedule draft ROUTE <TEAM_X> [--add <project>]… [--remove <project>]… -- <reason>` | Draft a change to an AIRCRAFT's ROUTE. Add only Linear projects that are not finished; remove only projects on its ROUTE now |
 | `node ../controller/atcctl.mjs schedule slip-ack [<key>]…` | Record the WAYPOINT slip warnings (`slips` in `schedule brief`) as reported. Without a key, every warning that is fresh now. A reported warning doesn't become fresh again, unless it clears and comes back |
 | `node ../controller/atcctl.mjs schedule route-ack ["<ROUTE>"]…` | Record the "ROUTE without WAYPOINTs" notices (`routesWithoutWaypoints` in `schedule brief`) as reported. Without a ROUTE, every notice that is fresh now. See "ROUTEs without WAYPOINTs" |
+| `node ../controller/atcctl.mjs schedule charter-seen <CR-0001> -- '<would draft: title / team / why>'` / `schedule charter-seen <CR-0001> --draft <S-0001>` | (ATC-233, OCC only) Record that you have seen a CHARTER REQUEST in the `duty` section of `schedule brief`. In `shadow` write only the draft you would make and make none. In `on` run `schedule draft NEW` first, then record that draft's number. See "CHARTER DESK" below and "CHARTER REQUESTs from DUTY" |
+| `node ../controller/atcctl.mjs schedule wip -- '<request summary>'` / `schedule wip touch <W-0001> [-- '<summary>']` / `schedule wip done <W-0001>` | (ATC-169) Keep a CHARTER REQUEST on the server while it is being worked out. It is not a draft: it does not count toward the 5 open drafts and has no verdict or release. The server drops it after 24 hours untouched. See "CHARTER DESK" below |
 | `node ../controller/atcctl.mjs schedule release <S-0001>` | (S2) Release an approved operation and print its Linear calls as `CALL n/m · <tool>` with the JSON input. If already released, print the same CALLs again |
 
 ## SCHEDULE drafts (S1, shadow operation)
@@ -35,11 +37,6 @@ Each pass, pick from `candidates` in `schedule brief`. FLIGHTs that already have
 | `candidates.tail`: an open FLIGHT a team is flying with no `tail:` label. Each entry has the `registration` and its `evidence` (`STAND`, `DEPARTURE LOG` or `READBACK`, with the record) | `TAIL`, as in "Before a TAIL" below. atc never drafts from this list; OCC decides |
 | `candidates.waypoint`: per ROUTE, the WAYPOINTs not yet passed (`waypoints`, with exit criteria) and the open FLIGHTs on none of them (`flights`) | `WAYPOINT`, as in "Before a WAYPOINT" below, only when an exit criterion clearly covers the FLIGHT. atc never drafts from this list |
 
-| Axis | Values ([`../docs/fleet.md`](../../../../docs/fleet.md) section 4) |
-|---|---|
-| TYPE | `BUILD` implement and open a PR · `MAINT` upkeep, infra, CI, tests with no behavior change · `TEST` a trial that may be thrown away · `SURVEY` research or docs, no code · `CHECK` review or verification, the output is a verdict · `FERRY` mechanical move with no design decision, docs fix of 5 lines or less |
-| WAKE | `L` one file or a few lines, under an hour · `M` one feature or fix with tests, one PR · `H` several modules, migration or security surface, several review rounds · `J` crosses teams or AIRPORTs and needs a design first; must be split |
-| RATING | `SEC` DB, migration, RLS, auth, permissions, security, rights, deployment, payment · `UI` screens, components, accessibility · `DATA` language data, pipelines, content, analytics · `DOCS` docs, rule files. May be more than one |
 
 
 ### Before a CLOSE
@@ -106,6 +103,10 @@ A WAYPOINT is a milestone of a ROUTE (a Linear project, `../docs/routes.md`). A 
 - On an error (`이미 그렇게 되어 있음` "already so", `Todo·Backlog가 아님` "not Todo or Backlog", etc.), don't retry; put it in the OCC LOG.
 - Drafting the same FLIGHT and kind again supersedes the earlier draft. Don't redraft unless the judgment changed.
 - A draft expires after 3 days without a verdict, and is superseded when the FLIGHT leaves Todo or Backlog or the change shows up in Linear (atc does this). A CLOSE is superseded when Linear shows Done or Canceled, or the PR is reverted. A TAIL follows the last line of "Before a TAIL", a WAYPOINT the last line of "Before a WAYPOINT".
+
+#### WAYPOINT slips
+
+`slips` holds WAYPOINT slip warnings. Only for warnings with `fresh: true`, write one line each (`text`) in the OCC LOG, report them to the SUPERVISOR, then run `node ../controller/atcctl.mjs schedule slip-ack`. Don't report again what was already reported (`fresh: false`). If `slips` is `null`, the milestones could not be read: skip it. Send the team no message and write no draft because of a slip.
 
 ## SCHEDULE release (S2, only when `mode` in `schedule brief` is approval)
 

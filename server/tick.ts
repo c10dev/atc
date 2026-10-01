@@ -71,10 +71,26 @@ function mccActionable(q: J): Actionable {
   return { act: reasons.length > 0, reasons: [...new Set(reasons)], info: 0 };
 }
 
-function occActionable(i: Inputs): Actionable {
+// OCC의 상태에서 오는 "한 번만 알린다 / 하루에 한 번 본다" 줄(ATC-298): 도착 보고 누락(`arrivalMissing`의 due), 앞 세션이 다듬던 CHARTER REQUEST(`wip`),
+// 24시간 안에 TARGET·ROUTE 초안이 없을 때의 NETWORK 점검(날짜마다 한 번만). TOWER와 같이 세션에 이미 보인 key는 seen에 두고, 처음 보이는 것만 할 일이다
+const DAY = 86_400_000;
+export function occKeysOf(i: Inputs, nowMs: number): string[] {
+  const keys: string[] = [];
+  for (const m of arr((i.dispatch as J)?.arrivalMissing)) if (m?.due === true) keys.push(`arrival-missing:${m.flight}`);
+  for (const w of arr((i.schedule as J)?.wip)) keys.push(`wip:${w?.id}`);
+  const ops = [...arr((i.schedule as J)?.open), ...arr((i.schedule as J)?.recent)];
+  const recentDraft = ops.some((o) => (o?.kind === "TARGET" || o?.kind === "ROUTE") && nowMs - Date.parse(o?.at) < DAY);
+  if (!recentDraft && (i.schedule as J)?.mode !== undefined) keys.push(`target-route:${new Date(nowMs).toISOString().slice(0, 10)}`);
+  return [...new Set(keys)].sort();
+}
+
+function occActionable(i: Inputs, seen: ReadonlySet<string>, nowMs: number): Actionable {
   const p = project("occ", i) as J;
   const reasons: string[] = [];
   const add = (cond: boolean, why: string) => cond && reasons.push(why);
+  add(p.schedule.inProgress.length > 0, "schedule-release"); // S2: 승인된 것을 발부하고, released는 반영될 때까지 다시 본다
+  add(arr((i.schedule as J)?.duty?.charters).length > 0, "charter-request"); // DUTY의 CHARTER REQUEST는 `charter-seen`으로 기록할 때까지 구역에 남는다
+  for (const k of occKeysOf(i, nowMs)) if (!seen.has(k)) reasons.push(`new:${k.slice(0, k.indexOf(":"))}`);
   add(p.needsNote.length > 0, "needs-note");
   add(p.inFlight.some((x: string) => /:(approved|recalling)$/.test(x)), "send-plan");
   add(p.overdue.length > 0, "overdue");
@@ -90,7 +106,7 @@ function occActionable(i: Inputs): Actionable {
 }
 
 // seen: 이미 세션에 한 번 보인 상태 항목의 key(TOWER만 쓴다). 모르면 비어 있고, 그러면 있는 항목이 모두 새 것이라 할 일이 된다
-export function actionable(role: Role, inputs: Inputs, seen: ReadonlySet<string> = new Set()): Actionable {
+export function actionable(role: Role, inputs: Inputs, seen: ReadonlySet<string> = new Set(), nowMs = Date.now()): Actionable {
   try {
     switch (role) {
       case "tower":
@@ -98,7 +114,7 @@ export function actionable(role: Role, inputs: Inputs, seen: ReadonlySet<string>
       case "mcc":
         return mccActionable(inputs.queue);
       case "occ":
-        return occActionable(inputs);
+        return occActionable(inputs, seen, nowMs);
       case "crosscheck": {
         const p = project("crosscheck", inputs) as J;
         const reasons = [...(p.dispatch.length ? ["dispatch"] : []), ...(p.schedule.length ? ["schedule"] : [])];

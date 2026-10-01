@@ -27,8 +27,6 @@ When the SUPERVISOR changes the CREW COMPLEMENT of an in-service AIRCRAFT, atc w
 | The CAPTAIN replies "UNABLE CC-xxxx — reason" | `crew-change unable CC-xxxx -- <the reason as given>`. Don't resend; report to the SUPERVISOR (it stays in `unable` of `crew-change brief` for a day). Whether to undo the COMPLEMENT change is the SUPERVISOR's call |
 | The CAPTAIN replies "STANDBY CC-xxxx" | `crew-change standby CC-xxxx`. Don't resend; wait |
 | A sent one in `overdue` (no READBACK for over 10 minutes after sending; from the first STANDBY if there is one) | Get the same text with `crew-change send <CC-xxxx>` and send it **once** more. If there's still nothing, report to the SUPERVISOR |
-| `pending` | Nothing to do (waiting for the SUPERVISOR). OCC doesn't approve or chase it |
-| send-guard blocks it, or `crew-change send` refuses | Don't retry with changed text or recipient; report to the SUPERVISOR |
 | The SendMessage result is `success:false` (ATC-183) | Don't send again in the same tick. Don't write "sent" in the OCC LOG; write "undelivered" and the tool's message, and report to the SUPERVISOR. CREW CHANGE has no `undelivered` command: it is already recorded as sent, but the `overdue` (10 minutes) rule resends **once**, so no record needs to be undone |
 
 - In `shadow` (2a), skip this section. The SUPERVISOR copies the CREW CHANGE from the FLEET card and pastes it directly.

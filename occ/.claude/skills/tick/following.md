@@ -15,12 +15,7 @@
 
 ### 바퀴마다: `atcctl following`
 
-atc가 배정된 FLIGHT의 진행을 따라간다(읽기 전용). 대상은 둘이다.
-
-- accepted·departed·recalling인 DISPATCH ASSIGN
-- 2b 전이라도 `tail:`이 붙은 In Progress FLIGHT(사람이 직접 배정한 것)
-
-단계는 READBACK → DEPARTED(STAND·착수 기록) → PR 열림 → CLEARED → ARRIVED(LOGBOOK)이고, 문제(`issues`)는 이렇다.
+atc가 배정된 FLIGHT의 진행을 따라간다(읽기 전용). 단계는 READBACK → DEPARTED(STAND·착수 기록) → PR 열림 → CLEARED → ARRIVED(LOGBOOK)이고, 문제(`issues`)는 이렇다.
 
 | code | 뜻 | 보고 |
 |---|---|---|

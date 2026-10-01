@@ -2,7 +2,7 @@
 
 **한국어** · [English](schedule.en.md)
 
-[`CLAUDE.md`](../../../CLAUDE.md)에서 옮긴 절차다. `/tick` 5·6단계에서 `schedule brief`에 후보(`candidates.tail`·`candidates.waypoint` 포함)·`waypointGaps`·`routesWithoutWaypoints`의 새 알림이나 S2 발부할 것이 있을 때, TARGET·ROUTE 초안을 볼 차례일 때, 그리고 CHARTER REQUEST가 왔을 때 Read한다. 역할과 하지 않는 것은 `CLAUDE.md`가 정한다.
+[`CLAUDE.md`](../../../CLAUDE.md)에서 옮긴 절차다. `/tick` 5·6단계에서 `schedule brief`에 후보(`candidates.tail`·`candidates.waypoint` 포함)·`waypointGaps`·`slips`·`routesWithoutWaypoints`의 새 알림이나 S2 발부할 것이 있을 때, TARGET·ROUTE 초안을 볼 차례일 때, 그리고 CHARTER REQUEST가 왔을 때 Read한다. 역할과 하지 않는 것은 `CLAUDE.md`가 정한다.
 
 ## 명령
 
@@ -19,6 +19,8 @@
 | `node ../controller/atcctl.mjs schedule draft ROUTE <TEAM_X> [--add <프로젝트>]… [--remove <프로젝트>]… -- <근거>` | AIRCRAFT의 ROUTE 변경 초안. 더하는 것은 끝나지 않은 Linear 프로젝트, 빼는 것은 지금 ROUTE에 있는 것 |
 | `node ../controller/atcctl.mjs schedule slip-ack [<key>]…` | 보고한 WAYPOINT 지연 경고(`schedule brief`의 `slips`)를 적는다. key가 없으면 지금 fresh 전부. 같은 경고는 다시 fresh가 되지 않고, 풀렸다가 다시 생기면 다시 fresh다 |
 | `node ../controller/atcctl.mjs schedule route-ack ["<ROUTE>"]…` | 보고한 "WAYPOINT 없는 ROUTE"(`schedule brief`의 `routesWithoutWaypoints`)를 적는다. ROUTE가 없으면 지금 fresh 전부. 아래 "WAYPOINT 없는 ROUTE" |
+| `node ../controller/atcctl.mjs schedule charter-seen <CR-0001> -- '<would draft: 제목 / 팀 / 이유>'` / `schedule charter-seen <CR-0001> --draft <S-0001>` | (ATC-233, OCC만) `schedule brief`의 `duty` 구역에 있는 CHARTER REQUEST를 봤다고 기록한다. `shadow`면 만들었을 초안만 적고 초안은 만들지 않는다. `on`이면 `schedule draft NEW`를 한 뒤 그 초안 번호를 적는다. 아래 "CHARTER DESK"와 "DUTY의 CHARTER REQUEST" |
+| `node ../controller/atcctl.mjs schedule wip -- '<요청 요약>'` / `schedule wip touch <W-0001> [-- '<요약>']` / `schedule wip done <W-0001>` | (ATC-169) CHARTER REQUEST를 다듬는 동안 서버에 한 줄로 둔다. 초안이 아니라서 열린 초안 5건 한도에 들지 않고 판정·발부와 무관하다. 24시간 손대지 않으면 서버가 버린다. 아래 "CHARTER DESK" |
 | `node ../controller/atcctl.mjs schedule release <S-0001>` | (S2) 승인된 작업을 발부하고 Linear 호출을 `CALL n/m · <도구>`와 JSON 입력으로 출력. 이미 발부됐으면 같은 CALL을 다시 준다 |
 
 ## SCHEDULE 초안 (S1, 그림자 운용)
@@ -33,11 +35,6 @@
 | `candidates.tail`: `tail:` 라벨 없이 팀이 몰고 있는 열린 FLIGHT. 항목마다 `registration`과 `evidence`(`STAND`, `DEPARTURE LOG`, `READBACK`과 그 기록) | `TAIL`. 아래 "TAIL 전에"대로. atc는 이 후보로 초안을 쓰지 않는다 — OCC가 판단해 쓴다 |
 | `candidates.waypoint`: ROUTE마다 지나지 않은 WAYPOINT(`waypoints`, 완료 기준 포함)와 어느 WAYPOINT에도 없는 열린 FLIGHT(`flights`) | `WAYPOINT`. 아래 "WAYPOINT 전에"대로, 완료 기준이 그 FLIGHT를 분명히 덮을 때만. atc는 이 후보로 초안을 쓰지 않는다 |
 
-| 축 | 값 (`../docs/fleet.md` 4장) |
-|---|---|
-| TYPE | `BUILD` 구현하고 PR · `MAINT` 동작이 안 바뀌는 정비·인프라·CI·테스트 · `TEST` 버릴 수도 있는 시험 · `SURVEY` 조사·문서, 코드 없음 · `CHECK` 리뷰·검증, 결과가 판정 · `FERRY` 설계 결정 없는 기계적 이동, 5줄 이하 문서 수정 |
-| WAKE | `L` 파일 하나·몇 줄, 1시간 미만 · `M` 기능·수정 하나와 테스트, PR 하나 · `H` 여러 모듈, 마이그레이션·보안 면, 리뷰 여러 번 · `J` 팀·AIRPORT를 넘고 설계가 먼저, 나눠야 함 |
-| RATING | `SEC` DB·마이그레이션·RLS·인증·권한·보안·권리·배포·결제 · `UI` 화면·컴포넌트·접근성 · `DATA` 언어 데이터·파이프라인·콘텐츠·분석 · `DOCS` 문서·규칙 파일. 여럿일 수 있다 |
 
 
 ### CLOSE 전에
@@ -83,7 +80,7 @@ WAYPOINT는 ROUTE(Linear 프로젝트)의 마일스톤이다(`../docs/routes.md`
 
 ### CLASSIFY 전에
 
-1. **기준을 읽는다.** 그 바퀴에 CLASSIFY를 쓰기 전에 `../docs/fleet.md`를 Read로 열어 4.1 FLIGHT TYPE, 4.2 WAKE CATEGORY, 4.3 TYPE RATING을 읽는다. 위 표는 요약일 뿐이다.
+1. **기준을 읽는다.** 그 바퀴에 CLASSIFY를 쓰기 전에 `../docs/fleet.md`를 Read로 열어 4.1 FLIGHT TYPE, 4.2 WAKE CATEGORY, 4.3 TYPE RATING을 읽는다. 
 2. **예시를 본다.** `schedule brief`의 `examples`는 SUPERVISOR의 최근 판정이다(`proposed`는 OCC가 냈던 분류, `draft`는 그때 근거, `reason`은 거절 사유). **거절 사유와 같은 실수를 되풀이하지 않는다.** 예: "FLIGHT TYPE은 MAINT — 수정 허용 범위가 tests·CI 게이트뿐, 제품 동작 변경 없음(4.1)", "WAKE는 L — 파일 하나·두 규칙, 새 테스트 없음(4.2)".
 3. **FLIGHT TYPE은 이 순서로 정한다**(4.1). 앞에서 맞으면 거기서 멈춘다.
 
@@ -104,6 +101,10 @@ WAYPOINT는 ROUTE(Linear 프로젝트)의 마일스톤이다(`../docs/routes.md`
 - 오류(`이미 그렇게 되어 있음`, `Todo·Backlog가 아님` 등)가 나면 다시 시도하지 말고 OCC LOG에 적는다.
 - 같은 FLIGHT·종류의 초안을 다시 쓰면 앞의 초안은 SUPERSEDED가 된다. 판단이 바뀐 게 아니면 다시 쓰지 않는다.
 - 초안은 3일 동안 판정이 없으면 EXPIRED, FLIGHT가 Todo·Backlog를 벗어나거나 Linear에 반영되면 SUPERSEDED가 된다(atc가 한다). CLOSE는 Linear가 Done·Canceled가 되거나 PR이 되돌려지면 SUPERSEDED다. TAIL은 위 "TAIL 전에" 끝 줄대로다. WAYPOINT는 "WAYPOINT 전에" 끝 줄대로다.
+
+#### WAYPOINT 지연
+
+`slips`는 WAYPOINT 지연 경고다. `fresh: true`인 경고만 하나에 한 줄(`text`)로 OCC LOG에 적고 SUPERVISOR에게 보고한 뒤 `node ../controller/atcctl.mjs schedule slip-ack`. 이미 보고한 것(`fresh: false`)은 다시 보고하지 않는다. `slips`가 `null`이면 마일스톤을 못 읽은 것이니 건너뛴다. 팀에 메시지를 보내지 않고, 지연 때문에 초안을 쓰지 않는다.
 
 ## SCHEDULE 발부 (S2, `schedule brief`의 `mode`가 approval일 때만)
 
