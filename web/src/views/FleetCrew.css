@@ -2,7 +2,7 @@
 .fc-obs {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-1);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -17,6 +17,20 @@
 }
 .fc-obs .fl-pos {
   flex: none;
+  min-width: 96px;
+}
+/* 관측 줄: 위치·agent 아래 한 줄씩(모델 ×횟수 · 마지막) */
+.fc-seens {
+  display: flex;
+  flex: 1 0 100%;
+  flex-direction: column;
+  padding-left: 96px;
+  font-size: var(--text-xs);
+}
+.fc-seen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-1-5);
 }
 .fc-model {
   font: var(--text-xs) var(--mono);
@@ -26,27 +40,19 @@
   font: var(--text-xs) var(--mono);
 }
 .fc-last {
-  margin-left: auto;
   font-size: var(--text-xs);
 }
-
-.fc-drift {
-  margin: 0;
-  color: var(--amber);
-  font-size: var(--text-xs);
-  overflow-wrap: anywhere;
-}
-.fc-drift.is-unused {
-  color: var(--muted);
-}
-.fc-drift-mark {
+/* 선언에 없는 관측은 amber, 기간 안에 안 쓴 선언은 흐리게 */
+.fc-tag {
+  font-size: var(--text-2xs);
   font-weight: 600;
 }
-.fc-drift-mark::after {
-  content: ":";
+.fc-tag.is-undeclared {
+  color: var(--amber);
 }
-.fc-drift .mono {
-  font-size: var(--text-xs);
+.fc-tag.is-unused {
+  color: var(--faint);
+  font-weight: 400;
 }
 .fc-note {
   margin: 0;

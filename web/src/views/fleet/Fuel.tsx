@@ -64,64 +64,56 @@ export function RecentFuel({ f }: { f: FuelRecentView | undefined }) {
   );
 }
 
-// FLEET 카드의 FUEL(ATC-56): 최근 14일 ARRIVED FLIGHT. 값이 없는 칸은 "—"(0이 아니다)
-export function FuelBlock({ a }: { a: AircraftView }) {
+// FLEET 카드의 FUEL(ATC-56, 줄이기 ATC-280): 최근 14일 ARRIVED FLIGHT. 값이 없는 칸은 "—"(0이 아니다)
+// 평소 두 줄(NET/FLT, CACHE HIT). 셋째 줄은 TRIP FUEL 넘음·LEAK·CREW 경고가 있을 때만. 건수·값 없는 모델·CREW 몫은 툴팁
+export function FuelSummary({ a }: { a: AircraftView }) {
   const f = a.fuelBurn;
   if (!f) return null;
   const t = a.targets;
   const costShort = t.fuelPerFlight != null && f.netPerFlight !== null && f.netPerFlight > t.fuelPerFlight;
   const cacheShort = t.cacheHit != null && f.cacheHit?.total != null && f.cacheHit.total < t.cacheHit;
   const hitText = (v: number | null | undefined) => (v == null ? "—" : pct(v));
+  const counts = [
+    `ARRIVED ${f.arrived} · fuel ${f.withFuel} · 값 ${f.priced}`,
+    f.checked > 0 ? `TRIP FUEL 넘음 ${f.unexpected}/${f.checked}` : null,
+    f.unpriced.length ? `값 없는 모델: ${f.unpriced.join(", ")}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const warn = f.crewWarnings?.length ? f.crewWarnings.map((w) => `${CREW_WARNING_LABEL[w.kind]} ${w.count}`).join(" · ") : null;
+  const leak = f.leaks.length ? `${f.leaks.map((l) => `${LEAK_LABEL[l.rule]} ${tokensText(l.tokens)}`).join(" · ")}${f.leakCost ? ` (${usd(f.leakCost)})` : ""}` : null;
   return (
     <>
-      <h3 className="fl-sub">
+      <h3 className="fl-sub" title={counts}>
         FUEL <span className="faint">최근 {f.days}일</span>
       </h3>
       {f.withFuel === 0 ? (
         <p className="fl-line faint">ARRIVED {f.arrived}건 중 fuel이 있는 FLIGHT 없음 — 옛 LOGBOOK 줄에는 fuel이 없다</p>
       ) : (
         <>
-          <p className="fl-actuals">
-            <span className={costShort ? "fl-short" : undefined} title="값을 매긴 FLIGHT의 평균. NET은 LEAK을 뺀 것">
-              FUEL COST {f.costPerFlight === null ? "—" : `${usd(f.costPerFlight)}/FLT`}
-              {f.netPerFlight !== null && ` · NET ${usd(f.netPerFlight)}`}
-              {t.fuelPerFlight != null && <span className="faint"> (목표 NET {usd(t.fuelPerFlight)} 이하)</span>}
+          <p className="fl-actuals" title={`값을 매긴 FLIGHT의 평균. NET은 LEAK을 뺀 것. FUEL COST ${f.costPerFlight === null ? "—" : `${usd(f.costPerFlight)}/FLT`}`}>
+            <span className={costShort ? "fl-short" : undefined}>
+              NET {f.netPerFlight === null ? "—" : `${usd(f.netPerFlight)}/FLT`}
+              {t.fuelPerFlight != null && <span className="faint"> (목표 {usd(t.fuelPerFlight)} 이하)</span>}
             </span>
           </p>
-          <p className="fl-actuals">
+          <p className="fl-actuals" title={`값을 매긴 FLIGHT의 FUEL COST 가운데 CREW(서브에이전트) 몫 ${f.crewShare === null ? "—" : pct(f.crewShare)}. CREW 출력은 하한`}>
             <span className={cacheShort ? "fl-short" : undefined}>
               CACHE HIT CAPTAIN {hitText(f.cacheHit?.captain)} · CREW {hitText(f.cacheHit?.crew)}
               {t.cacheHit != null && <span className="faint"> (목표 {pct(t.cacheHit)})</span>}
             </span>
-            {" · "}
-            <span title="값을 매긴 FLIGHT의 FUEL COST 가운데 CREW(서브에이전트) 몫. CREW 출력은 하한">CREW 몫 {f.crewShare === null ? "—" : pct(f.crewShare)}</span>
           </p>
-          <p className="fl-actuals faint">
-            ARRIVED {f.arrived} · fuel {f.withFuel} · 값 {f.priced}
-            {f.checked > 0 && (
-              <>
-                {" · "}TRIP FUEL 넘음 <span className={f.unexpected ? "fl-bad" : undefined}>{f.unexpected}</span>/{f.checked}
-              </>
-            )}
-          </p>
-          <p className="fl-actuals faint">
-            LEAK{" "}
-            {f.leaks.length
-              ? f.leaks.map((l) => `${LEAK_LABEL[l.rule]} ${tokensText(l.tokens)}`).join(" · ")
-              : "없음"}
-            {f.leakCost ? ` (${usd(f.leakCost)})` : ""}
-          </p>
-          <p className="fl-actuals faint" title="CREW(서브에이전트) 사용의 낭비 신호(FUEL F7). LEAK에는 넣지 않는다. F7 전 LOGBOOK 줄은 재지 않았다">
-            CREW 경고{" "}
-            {f.crewWarnings === null ? (
-              "— (잰 FLIGHT 없음)"
-            ) : f.crewWarnings.length ? (
-              <span className="fl-short">{f.crewWarnings.map((w) => `${CREW_WARNING_LABEL[w.kind]} ${w.count}`).join(" · ")}</span>
-            ) : (
-              "없음"
-            )}
-          </p>
-          {f.unpriced.length > 0 && <p className="fl-actuals faint">값 없는 모델: {f.unpriced.join(", ")}</p>}
+          {(f.unexpected > 0 || leak || warn) && (
+            <p className="fl-actuals" title="TRIP FUEL 넘음, LEAK, CREW(서브에이전트) 사용의 낭비 신호(FUEL F7). CREW 경고는 LEAK에 넣지 않는다. F7 전 LOGBOOK 줄은 재지 않았다">
+              {f.unexpected > 0 && (
+                <span className="fl-bad">
+                  TRIP FUEL 넘음 {f.unexpected}/{f.checked}
+                </span>
+              )}
+              {leak && <span className="fl-short"> LEAK {leak}</span>}
+              {warn && <span className="fl-short"> CREW 경고 {warn}</span>}
+            </p>
+          )}
         </>
       )}
     </>

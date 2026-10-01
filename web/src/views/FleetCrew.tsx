@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
 import type { CrewFields, PendingCrewChange } from "../../../server/crew-change.ts";
-import type { CrewDrift, ObservedMember } from "../../../server/crew-observed.ts";
+import type { ObservedMember } from "../../../server/crew-observed.ts";
 import type { AircraftView } from "../../../server/fleet.ts";
 import { timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import "./FleetCrew.css";
 
-// FLEET 카드의 CREW 관측과 CREW CHANGE 대기. 설계: docs/fleet.md.
+// FLEET 카드의 CREW 표(선언 + 관측)와 CREW CHANGE 대기. 설계: docs/fleet.md.
 // 관측 CREW는 세션 메타데이터(agent type·시각)만 읽은 결과다. 대화 내용은 읽지 않는다.
 // CREW CHANGE: 그림자 운용(shadow)이면 SUPERVISOR가 복사해 붙여 넣고 "전달함"을 누른다.
 // 승인 운용(approval, 2b)이면 SUPERVISOR 승인 → OCC가 보냄(sent) → CAPTAIN의 READBACK CC-xxxx로 닫힌다.
@@ -21,70 +21,64 @@ type Change = PendingCrewChange &
 type Mode = "shadow" | "approval";
 
 
-export function FleetCrew({
-  a,
-  windowDays,
-  dispatchMode,
-  onChanged,
-}: {
-  a: AircraftView;
-  windowDays?: number;
-  dispatchMode?: string;
-  onChanged: () => unknown;
-}) {
+// CREW 표 하나(ATC-280): 선언한 POSITION마다 한 줄, 그 줄에 관측(모델 ×횟수 · 마지막)을 붙인다.
+// 선언에 없는 관측은 따로 한 줄(amber), 기간 안에 안 쓴 선언은 흐린 꼬리표. 옛 서버(observedCrew 없음)면 선언만 그린다
+export function CrewTable({ a, windowDays }: { a: AircraftView; windowDays?: number }) {
   const x = a as Crew;
-  const mode: Mode = dispatchMode === "approval" ? "approval" : "shadow";
+  const days = windowDays ?? 14;
+  const now = Date.now();
+  const observed = x.observedCrew; // undefined: 옛 서버, null: 관측 못 함
+  const unused = new Set(x.crewDrift?.unused ?? []);
+  const seen = (m: ObservedMember) => (
+    <span className="fc-seen" key={`${m.agentType}/${m.model}`}>
+      {m.model && <span className="faint fc-model">{m.model}</span>}
+      <span className="fc-count" title={`최근 ${days}일 ${m.count}회`}>
+        ×{m.count}
+      </span>
+      <span className="faint fc-last" title={m.lastAt ?? undefined}>
+        {timeAgo(m.lastAt, now)}
+      </span>
+    </span>
+  );
+  const extra = (observed ?? []).filter((m) => !m.position); // 선언에 없음
   return (
     <>
-      {x.observedCrew !== undefined && <Observed crew={x.observedCrew} drift={x.crewDrift ?? null} days={windowDays ?? 14} registration={a.registration} />}
-      {x.pendingCrewChange && (
-        <CrewChange key={x.pendingCrewChange.id} registration={a.registration} change={x.pendingCrewChange} mode={mode} onChanged={onChanged} />
-      )}
+      <h3 className="fl-sub" title="세션 메타데이터(agent type·시각)만 읽음 — 대화 내용은 읽지 않는다">
+        CREW {a.complementIsDefault && <em>기본값</em>} {observed !== undefined && <em>관측 최근 {days}일</em>}
+      </h3>
+      <ul className="fc-obs" aria-label={`${a.registration} CREW${observed ? ` · 최근 ${days}일 관측` : ""}`}>
+        {a.complement.map((m, i) => {
+          const mine = (observed ?? []).filter((o) => o.position === m.position);
+          return (
+            <li key={`${m.position}/${i}`}>
+              <span className="fl-pos">{m.position}</span>
+              <span className="mono">{m.agent}</span>
+              {m.limits?.length ? <span className="fl-limits">{m.limits.join(" · ")}</span> : null}
+              {observed && unused.has(m.position) && <span className="fc-tag is-unused" title={`선언했지만 최근 ${days}일 안에 관측되지 않음`}>{days}일 안 씀</span>}
+              {mine.length > 0 && <span className="fc-seens">{mine.map(seen)}</span>}
+            </li>
+          );
+        })}
+        {extra.map((m) => (
+          <li key={`x/${m.agentType}/${m.model}`}>
+            <span className="fl-pos">—</span>
+            <span className="mono">{m.agentType}</span>
+            <span className="fc-tag is-undeclared" title="관측됐지만 CREW COMPLEMENT에 없음">선언에 없음</span>
+            <span className="fc-seens">{seen(m)}</span>
+          </li>
+        ))}
+      </ul>
+      {observed === null && <p className="fl-line faint">관측 없음</p>}
     </>
   );
 }
 
-function Observed({ crew, drift, days, registration }: { crew: ObservedMember[] | null; drift: CrewDrift | null; days: number; registration: string }) {
-  const now = Date.now();
-  const undeclared = drift?.undeclared ?? [];
-  const unused = drift?.unused ?? [];
-  return (
-    <>
-      <h3 className="fl-sub">
-        OBSERVED CREW <em>최근 {days}일</em>
-      </h3>
-      {crew?.length ? (
-        <ul className="fc-obs" aria-label={`${registration} 최근 ${days}일 관측 CREW`}>
-          {crew.map((m) => (
-            <li key={`${m.agentType}/${m.model}`}>
-              <span className="fl-pos">{m.position ?? "—"}</span>
-              <span className="mono">{m.agentType}</span>
-              {m.model && <span className="faint fc-model">{m.model}</span>}
-              <span className="fc-count" title={`최근 ${days}일 ${m.count}회`}>
-                ×{m.count}
-              </span>
-              <span className="faint fc-last" title={m.lastAt ?? undefined}>
-                {timeAgo(m.lastAt, now)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="fl-line faint">관측 없음</p>
-      )}
-      {undeclared.length > 0 && (
-        <p className="fc-drift">
-          <span className="fc-drift-mark">선언에 없음</span> <span className="mono">{undeclared.join(", ")}</span>
-        </p>
-      )}
-      {unused.length > 0 && (
-        <p className="fc-drift is-unused">
-          <span className="fc-drift-mark">최근 {days}일 안 씀</span> <span className="mono">{unused.join(", ")}</span>
-        </p>
-      )}
-      <p className="fc-note faint">세션 메타데이터(agent type·시각)만 읽음 — 대화 내용은 읽지 않는다</p>
-    </>
-  );
+// 대기 중인 CREW CHANGE(없으면 아무것도 그리지 않는다). 동작은 그대로
+export function CrewChangePending({ a, dispatchMode, onChanged }: { a: AircraftView; dispatchMode?: string; onChanged: () => unknown }) {
+  const x = a as Crew;
+  const mode: Mode = dispatchMode === "approval" ? "approval" : "shadow";
+  if (!x.pendingCrewChange) return null;
+  return <CrewChange key={x.pendingCrewChange.id} registration={a.registration} change={x.pendingCrewChange} mode={mode} onChanged={onChanged} />;
 }
 
 const HEAD: Record<Stage, string> = {
