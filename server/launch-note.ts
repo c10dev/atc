@@ -5,3 +5,10 @@ export function nextLaunchNote(launch: string | null | undefined, home: string |
   if (!launch || launch === home) return null;
   return `next LAUNCH ${launch} (home ${home ?? "default"})`;
 }
+
+// home을 모르는 곳(DISPATCH launch 카드)용: 승인하면 이 ACCOUNT로 뜬다
+export function nextLaunchLabel(launch: string | null | undefined): string | null {
+  return launch ? `next LAUNCH ${launch}` : null;
+}
+
+export const NEXT_LAUNCH_TITLE = "다음 LAUNCH가 쓸 ACCOUNT. 설정 → ACCOUNTS의 LAUNCH ACCOUNT가 home을 덮는다. 돌고 있는 세션은 옮기지 않는다";

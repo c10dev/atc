@@ -1,7 +1,7 @@
 import { ReportChip } from "./ReportMark.tsx";
 import type { ReactNode } from "react";
 import { elapsedText, type FleetRow, flightDetailText } from "../../../../server/fleet-status.ts";
-import { nextLaunchNote } from "../../../../server/launch-note.ts";
+import { NEXT_LAUNCH_TITLE, nextLaunchNote } from "../../../../server/launch-note.ts";
 import { flightNumber } from "../../aviation.ts";
 import { OpenFlight } from "../../FlightLink.tsx";
 import { timeAgo } from "../../derive.ts";
@@ -90,6 +90,7 @@ export function StatusList({
         {rows.map((r) => {
           const isOpen = open.has(r.registration);
           const gone = absent?.(r.registration) ?? null;
+          const next = nextLaunchNote(launchAccount, r.account);
           return (
             <FleetRowShell
               key={r.registration}
@@ -114,9 +115,9 @@ export function StatusList({
                       </span>
                     )
                   )}
-                  {nextLaunchNote(launchAccount, r.account) && (
-                    <span className="fl-r-acct mono" title="다음 LAUNCH가 쓸 ACCOUNT. 설정 → ACCOUNTS의 LAUNCH ACCOUNT가 home을 덮는다. 돌고 있는 세션은 옮기지 않는다">
-                      {nextLaunchNote(launchAccount, r.account)}
+                  {next && (
+                    <span className="fl-r-acct mono" title={NEXT_LAUNCH_TITLE}>
+                      {next}
                     </span>
                   )}
                   {r.origin && (
