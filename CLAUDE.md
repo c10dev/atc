@@ -47,6 +47,7 @@ atc 코드를 고치는 세션(팀 세션, ENGINEERING 세션, 사용자와 직�
 - 서버는 Hono, 화면은 Vite + React 19. 계산은 순수 함수로 두고 입출력과 나눈다.
 - 기록은 추가만 하는 JSONL(`proposals.jsonl`, `clearances.jsonl`, `schedule.jsonl`, `flight-recorder/`)이고, 설정·등록부는 원자적으로 바꿔 쓰는 JSON이다.
 - 화면 색·글꼴은 `web/src/styles.css`의 `:root` 토큰만 쓴다(테마를 따라간다).
+- 화면을 바꾸는 PR은 `docs/design-language.md`(원칙과 3.5 Craft)를 따르고, 5절 점검표 가운데 해당하는 줄에 PR 본문에서 한 줄씩 답한다.
 - 코드 주석은 주변처럼 한국어로 짧게 쓴다.
 
 ## 용어와 문서

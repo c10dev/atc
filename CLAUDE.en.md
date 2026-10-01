@@ -49,6 +49,7 @@ Rules for sessions that change atc's code (team sessions, the ENGINEERING sessio
 - Server: Hono. UI: Vite + React 19. Keep calculations in pure functions, separate from I/O.
 - Records are append-only JSONL (`proposals.jsonl`, `clearances.jsonl`, `schedule.jsonl`, `flight-recorder/`); settings and registries are JSON rewritten atomically.
 - UI colors and fonts use only the `:root` tokens in `web/src/styles.css` (so themes apply).
+- PRs that change a screen follow `docs/design-language.md` (principles and 3.5 Craft) and answer the lines of its section 5 checklist that apply, one line each, in the PR body.
 - Code comments are short and in Korean, like the surrounding code.
 
 ## Terms and docs
