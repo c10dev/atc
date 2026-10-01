@@ -18,7 +18,7 @@ import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { record } from "./recorder.ts";
 import { regKey, sameReg } from "./registration.ts";
-import { isBackground, manualStepsOf, permissionModeOf, type SessionOrigin } from "./session-origin.ts";
+import { attachDirOf, isBackground, manualStepsOf, permissionModeOf, type SessionOrigin } from "./session-origin.ts";
 import { sessionProcOf } from "./session-proc.ts";
 import { readJob, settleJob } from "./job-state.ts";
 import { ttlCache } from "./agents-cache.ts";
@@ -50,6 +50,8 @@ export interface AgentRow {
   stale?: boolean;
   // atc가 붙인다(ATC-147): 이 줄을 읽은 폴더의 ACCOUNT 라벨. 등록부가 없으면 없다(폴더가 ~/.claude 하나)
   account?: string;
+  // atc가 붙인다(ATC-301): 기본이 아닌 폴더에서 읽은 줄이면 그 폴더. claude attach가 CLAUDE_CONFIG_DIR로 붙인다
+  attachDir?: string;
 }
 
 // ── STALE(ATC-93) ──
@@ -397,6 +399,8 @@ export async function agentRowsOf(folders: readonly AccountFolder[] = accountFol
     for (const row of list) {
       if (row.kind === "background" && row.pid == null && row.status == null && row.id) row.stale = isStaleRow(row, jobStateOf(row.id, [join(f.dir, "jobs")]), now);
       if (labeled) row.account = f.label;
+      const attachDir = row.kind === "background" ? attachDirOf(f.dir, config.claudeDir) : undefined;
+      if (attachDir) row.attachDir = attachDir;
     }
     rows.push(...list);
   }

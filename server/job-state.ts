@@ -1,6 +1,7 @@
 import { closeSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { accountFolders } from "./accounts.ts";
+import { attachCommandOf } from "./session-origin.ts";
 
 // 백그라운드 job 상태(ATC-99, docs/fleet.md 8.5.2): Claude Code가 ~/.claude/jobs/<jobId>/state.json에 적는 job의 state·detail·needs.
 // 읽기만 한다(쓰기·삭제·잠금 없음). Claude Code 내부 파일이라 모르는 모양은 null로 물러난다(2.1.284 기준).
@@ -159,7 +160,12 @@ export interface BlockedAlert {
   sessionIds: string[];
 }
 export const BLOCKED_NEXT = "SUPERVISOR가 `claude attach <id>`로 붙어 답하거나 메시지를 보낸다";
-export function blockedAlerts(xs: { id: string; name: string; job?: Job | null; jobId?: string | null; lastActiveAt?: string | null }[], now: number, minMin: number): BlockedAlert[] {
+// 기본이 아닌 폴더(attachDir)의 세션이면 카드가 복사하는 것과 같은 명령을 적는다(ATC-301). 기본 폴더면 전과 같은 글
+export function blockedNextOf(jobId?: string | null, attachDir?: string | null): string {
+  if (!attachDir) return BLOCKED_NEXT;
+  return BLOCKED_NEXT.replace("claude attach <id>", attachCommandOf(jobId || "<id>", attachDir));
+}
+export function blockedAlerts(xs: { id: string; name: string; job?: Job | null; jobId?: string | null; attachDir?: string | null; lastActiveAt?: string | null }[], now: number, minMin: number): BlockedAlert[] {
   const out: BlockedAlert[] = [];
   for (const x of xs) {
     const j = settleJob(x.job, x.lastActiveAt);
@@ -170,7 +176,7 @@ export function blockedAlerts(xs: { id: string; name: string; job?: Job | null; 
     out.push({
       key: `health|BLOCKED|${x.id}`,
       sessionIds: [x.id],
-      message: `BLOCKED — ${x.name}이 ${min}분째 사람을 기다림: ${j.needs ?? "(내용 없음)"} — ${BLOCKED_NEXT}`,
+      message: `BLOCKED — ${x.name}이 ${min}분째 사람을 기다림: ${j.needs ?? "(내용 없음)"} — ${blockedNextOf(x.jobId, x.attachDir)}`,
     });
   }
   return out;

@@ -75,10 +75,11 @@ export function PriorityMark({ priority }: { priority: number }) {
 }
 
 // NEEDS YOU(ATC-99): 백그라운드 job이 blocked면 사람의 답을 기다린다. needs가 글, detail은 툴팁. 읽기만 한다
-export function NeedsYou({ job, className = "" }: { job: Job | null | undefined; className?: string }) {
+// attach: 카드가 복사하는 것과 같은 명령(ATC-301, 기본이 아닌 폴더면 CLAUDE_CONFIG_DIR가 붙는다). 모르면 `claude attach <id>`
+export function NeedsYou({ job, attach, className = "" }: { job: Job | null | undefined; attach?: string | null; className?: string }) {
   if (job?.state !== "blocked") return null;
   return (
-    <span className={`needs-you mono ${className}`.trim()} title={[job.detail, job.since ? `since ${job.since.slice(11, 16)}Z` : "", "SUPERVISOR가 `claude attach <id>`로 붙어 답하거나 메시지를 보낸다"].filter(Boolean).join(" — ")}>
+    <span className={`needs-you mono ${className}`.trim()} title={[job.detail, job.since ? `since ${job.since.slice(11, 16)}Z` : "", `SUPERVISOR가 \`${attach || "claude attach <id>"}\`로 붙어 답하거나 메시지를 보낸다`].filter(Boolean).join(" — ")}>
       NEEDS YOU{job.needs ? <span className="needs-you-text"> · {job.needs}</span> : null}
       {standNeedsHint(job.needs) ? <span className="needs-you-text"> · {standNeedsHint(job.needs)}</span> : null}
     </span>

@@ -36,6 +36,7 @@ export interface Session {
   kind?: "background" | "interactive";
   account?: string; // 이 세션이 있는 폴더의 ACCOUNT 라벨(ATC-146, 관찰한 값). 등록부에 폴더가 없으면 없다
   jobId?: string; // kind가 background일 때 세션 파일의 jobId(`claude attach <jobId>`)
+  attachDir?: string; // background 세션이 기본이 아닌 폴더에 있을 때 그 폴더(ATC-301). attach 명령이 CLAUDE_CONFIG_DIR로 붙인다. 기본 폴더면 없다
   permissionMode?: string | null; // 명령줄의 --permission-mode, 백그라운드면 LAUNCH 기록. 모르면 null
   // 한도로 잘리거나(cut LIMIT) 한도가 풀렸는데 멈췄거나(RESUME) 멈춘(STALLED) AIRCRAFT가 쥔 FLIGHT 중, 점유(claimTtl)가 지나 claims에서 빠진 것.
   // FLEET 줄이 FLIGHT를 잃지 않게 한다(ATC-86). 그 밖에는 없다

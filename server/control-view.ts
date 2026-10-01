@@ -5,7 +5,7 @@ import { originBadgeOf, type SessionOrigin } from "./session-origin.ts";
 
 // FLEET 탭 CONTROL SESSIONS 구역의 계산(ATC-130). 줄마다 live 배지와 버튼, 새로 읽는 간격. 화면(web/src/views/fleet/ControlSessions.tsx)은 이 결과를 그리기만 한다.
 // API(/api/control/sessions)와 그 모양은 그대로다(docs/fleet.md 8.5.1).
-export type ControlLive = { id?: string; name?: string; kind: string; status?: string; tmux?: string; job?: Job | null };
+export type ControlLive = { id?: string; name?: string; kind: string; status?: string; tmux?: string; job?: Job | null; attachDir?: string };
 // SQUELCH의 마지막 판정(ATC-127, 헤더 CONTROL 띠): 마지막 tick 시각과 마지막 OPEN 뒤 QUIET 수. 옛 서버 응답이나 SQUELCH 기록이 없으면 없다
 export type SquelchLast = { lastAt: string; open: boolean; reason: string; openedAt: string | null; quietSince: string | null; quietCount: number };
 export type ControlSession = { name: string; dir: string | null; prompt: string | null; launch: "bg" | null; blocked: string | null; live: ControlLive[]; stale?: { id?: string; name?: string }[]; squelch?: SquelchLast | null };
@@ -164,7 +164,7 @@ export function controlRow2Of(c: ControlSession, x: ControlExtras = {}): Control
     method: r.how,
     permission,
     model: dominantModelOf(x.fuel?.models),
-    origin: originKind ? originBadgeOf(originKind, permission, bg?.id ?? null) : null,
+    origin: originKind ? originBadgeOf(originKind, permission, bg?.id ?? null, bg?.attachDir) : null,
     accountDiffers: false,
     methodDiffers: false,
     permissionDiffers: false,

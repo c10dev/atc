@@ -143,6 +143,13 @@ test("flightDetailText: 마지막 커밋과 나이, origin에 있나, PR(없으�
   assert.deepEqual(flightDetailText({ commit: null, pushed: null, pr: null }, NOW), { text: "no worktree · no PR", unpushed: false });
 });
 
+// ATC-301: 기본이 아닌 폴더의 BG 줄은 그 폴더가 붙은 attach를 복사한다
+test("row: a background AIRCRAFT in a non-default folder copies CLAUDE_CONFIG_DIR=… claude attach", () => {
+  const [other, plain] = fleetRows([view("TEAM_A", { origin: "background", background: { jobId: "job-1234", attachDir: "/home/c10/.claude-acct-1" } }), view("TEAM_B", { origin: "background", background: { jobId: "job-5678" } })], NOW);
+  assert.equal(other.origin?.attach, "CLAUDE_CONFIG_DIR=/home/c10/.claude-acct-1 claude attach job-1234");
+  assert.equal(plain.origin?.attach, "claude attach job-5678");
+});
+
 // ATC-98: BG chip
 test("row: BG chip carries the jobId and a `claude attach` tooltip only for a background AIRCRAFT", () => {
   const [bg, inter, none] = fleetRows([view("TEAM_A", { origin: "background", background: { jobId: "job-1234" } }), view("TEAM_B", { origin: "terminal", background: null }), view("TEAM_C")], NOW);
