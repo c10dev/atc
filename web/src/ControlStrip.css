@@ -105,3 +105,15 @@
     display: inline-flex;
   }
 }
+/* 모든 관제 세션이 내려가 있을 때(ATC-255): 복구 안내. down 색 + 글자로 알린다 */
+.cs-recovery {
+  flex: none;
+  padding: var(--space-0-5) var(--space-2);
+  border: 1px solid var(--alert);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  color: var(--alert);
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}

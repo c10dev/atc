@@ -705,6 +705,21 @@ The same LAUNCH and STOP work for atc's own control sessions, from the FLEET tab
 - **Idle hint.** While the cap is full and a DISPATCH launch card waits for it, an other background session idle for more than 120 minutes raises one ADVISORY SUPERVISOR alert, `cap|other|<id>` (group `recycle`, link `#fleet/control`), naming it and the refused LAUNCH. It never stops anything.
 - **Not done.** The FLEET PLAN `blocked` text still says only `백그라운드 세션 N/max — 상한`.
 
+#### 8.5.4 CONTROL SESSIONS bulk actions as built (ATC-255)
+
+One confirmed click brings the control sessions (TOWER, OCC, MCC, CROSSCHECK, REVIEW) to a known good state: all running, on the intended ACCOUNT, in a fixed order. Nothing new starts or stops a session: every action is the FLEET LAUNCH, the FLEET STOP or the CONTROL RECYCLE relaunch (`launchControl`, `stopControl`, `performRecycle`). No guard changed.
+
+- **Four actions.** **LAUNCH ALL** starts the sessions that are not running. **RESTART ALL** is STOP → LAUNCH for each session running as `claude --bg`, and LAUNCHes the ones that are not running, so the result is all running. **STOP ALL** stops them. **ALIGN** restarts only the sessions whose ACCOUNT drifted. The buttons sit under the CONTROL group header; each opens a preview first.
+- **Order.** TOWER, OCC, MCC, CROSSCHECK, REVIEW (the CLEARANCE and FLIGHT PLAN flow first, the verifiers last), one session at a time. STOP ALL goes the other way, REVIEW first. LAUNCH, RESTART and ALIGN stop at the first failure (the order matters); STOP ALL keeps taking the rest down.
+- **Intended ACCOUNT.** The one a LAUNCH would use now: the LAUNCH ACCOUNT for control sessions, else the session's ACCOUNT label in `fleet.json`, else the default folder. Drift is a live `claude --bg` session whose observed ACCOUNT differs (TOWER on `acct-3`, intended `acct-1`). With no ACCOUNT registry there is no drift.
+- **Preview.** `GET /api/control/bulk?op=launch|restart|stop|align` (read only; the `claude agents` read must succeed, otherwise `502` and nothing is planned): per session the order, the action, the reason, `from → to` and the drift. A session is skipped with a reason when it is already running (LAUNCH), not running (STOP, ALIGN), a tmux or desktop session atc cannot restart, or when the target ACCOUNT refuses (logged out, FUEL hold, `maxLaunched`).
+- **Held rows.** STOP and RESTART rows that would lose work (the job is mid-turn or waiting for a person, or a CONTROL RECYCLE safe-moment block: RTS, TOWER events or overdue CLEARANCEs, OCC unsent FLIGHT PLANs or open CREW CHANGEs, MCC landing) are held. They run only when the SUPERVISOR ticks "proceed anyway" (`force`). LAUNCH has nothing to lose.
+- **Confirm and run.** `POST /api/control/bulk` `{ op, expect, force? }` (SUPERVISOR only: this app's Origin and JSON). `expect` is the `{ session: action }` the screen previewed; a session whose current action differs is not touched. One run at a time (`409`).
+- **Results and records.** The panel shows every session's result. FLIGHT RECORDER: each `control` `launch`, `stop` or `recycle` line (RESTART and ALIGN write `recycle` with the reason `CONTROL BULK RESTART|ALIGN: from → to`), and one `control` `bulk` line per run (`bulk`, `force`, counts, per-session results).
+- **Recovery banner.** When none of the control sessions that can be launched is live (for example after a host reboot), the header CONTROL strip shows `모두 내려감 · LAUNCH ALL` and the CONTROL group shows a banner with a LAUNCH ALL preview button. A list that could not be read shows nothing. atc does not launch anything on its own.
+- **Pilot's discretion.** The order above; RESTART ALL also launches what is not running; held rows need `force`.
+- **Not done.** No SUPERVISOR alert or sound for the all-down state, no automatic recovery, no AIRCRAFT bulk actions (out of scope).
+
 
 ### RESTARTING as built (ATC-91)
 

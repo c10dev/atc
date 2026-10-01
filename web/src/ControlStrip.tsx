@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CONTROL_POLL_MS, type ControlList } from "../../server/control-view.ts";
 import { controlStripOf, controlStripSummary, type StripChip, type StripState } from "../../server/control-strip.ts";
 import type { Snapshot } from "../../server/model.ts";
+import { allControlDown } from "../../server/control-bulk.ts";
 import { controlMemo, fetchControlList } from "./controlData.ts";
 import { timeAgo } from "./derive.ts";
 import "./ControlStrip.css";
@@ -65,6 +66,11 @@ export function ControlStrip({ snapshot, now }: { snapshot: Snapshot | null; now
           <Chip key={c.name} chip={c} now={now} />
         ))}
       </div>
+      {allControlDown(list?.sessions) && (
+        <button type="button" className="cs-recovery" onClick={open} title="관제 세션이 하나도 떠 있지 않다. FLEET의 CONTROL SESSIONS에서 LAUNCH ALL을 미리 본다">
+          모두 내려감 · LAUNCH ALL
+        </button>
+      )}
       <button type="button" className={`cs-fold cs-tone-${sum.tone}`} title={chips.map((c) => `${c.code} ${c.state}`).join(" · ")} onClick={open}>
         <b>CTRL</b>
         <i className="cs-dot" aria-hidden="true" />

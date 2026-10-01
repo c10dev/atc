@@ -22,6 +22,7 @@ import { fuelWatch } from "./fuel-watch.ts";
 import { mountFleetPlan, runFleetPlan } from "./fleet-plan-run.ts";
 import { launchAircraft, MAX_LAUNCHED, mountSessionControl } from "./session-control.ts";
 import { mountApplyNow } from "./apply-now-run.ts";
+import { mountControlBulk } from "./control-bulk-run.ts";
 import { defaultActDeps, mountControlRecycle, runControlRecycle } from "./control-recycle-run.ts";
 import { readCursor } from "./controller.ts";
 import { loadMcc, mccDeploys, readMccRecords } from "./mcc.ts";
@@ -234,6 +235,7 @@ const recycleFacts = {
 const recycleAct = defaultActDeps(() => current?.fuelAccounts);
 // LAUNCH ACCOUNT APPLY NOW(ATC-244): 같은 안전 조건·같은 STOP → LAUNCH. 기다리는 APPLY는 RECYCLE 주기에 이어 간다
 const applyNow = mountApplyNow(app, getSnapshot, { facts: recycleFacts, act: recycleAct });
+mountControlBulk(app, getSnapshot, { facts: recycleFacts, act: defaultActDeps(() => current?.fuelAccounts, "SUPERVISOR") }); // CONTROL SESSIONS 일괄 동작(ATC-255): 미리 보기는 읽기만, 실행은 Origin 검사
 setInterval(() => {
   if (!current) return;
   const s = current;

@@ -362,3 +362,83 @@
   font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.06em;
 }
+
+/* CONTROL SESSIONS 일괄 동작(ATC-255). 색·글꼴·간격은 :root 토큰만 */
+.fl-bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+.fl-bulk {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+  min-width: 0;
+}
+.fl-bulk-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.fl-bulk-head .label {
+  margin: 0;
+}
+.fl-bulk-sum,
+.fl-bulk-drift {
+  margin: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.fl-bulk-drift {
+  color: var(--amber);
+}
+.fl-bulk-rows {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fl-bulk-row {
+  display: grid;
+  grid-template-columns: auto minmax(5.5rem, auto) 4.5rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.fl-bulk-row.is-skip {
+  color: var(--faint);
+}
+.fl-bulk-row.is-held,
+.fl-bulk-row.is-fail {
+  color: var(--amber);
+}
+.fl-bulk-row.is-ok {
+  color: var(--radar);
+}
+.fl-bulk-force {
+  font-size: var(--text-xs);
+  color: var(--amber);
+}
+.fl-bulk-recovery {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-sm);
+  color: var(--alert);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  .fl-bulk-row {
+    grid-template-columns: auto 1fr;
+  }
+  .fl-bulk-row > :nth-child(4) {
+    grid-column: 1 / -1;
+  }
+}
