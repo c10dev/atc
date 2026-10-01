@@ -130,7 +130,7 @@ export function repositionStuckOf(repositions: readonly RepositionRecordLike[], 
 }
 
 // FOLLOW(ATC-278): 따라가는 번들의 줄. followBoardOf의 줄을 그대로 읽는다(단계를 다시 세지 않는다). folded 번들의 줄은 넣지 않는다
-export type FollowAlertRow = Pick<FollowRow, "key" | "title" | "finished" | "current" | "stages" | "issues" | "proposal" | "ready" | "goAround" | "reverted">;
+export type FollowAlertRow = Pick<FollowRow, "key" | "title" | "finished" | "current" | "stages" | "issues" | "proposal" | "ready" | "goAround" | "reverted" | "stuck">;
 export const FOLLOW_LOG_WINDOW_MS = 24 * 3_600_000; // landed·deployed 항목이 남는 시간(그 단계의 시각부터). 시각을 모르면 번들이 접힐 때까지
 
 export interface AlertsInput {
@@ -160,8 +160,27 @@ export interface AlertsInput {
   follow?: { rows: FollowAlertRow[]; now: number }; // FOLLOW(ATC-278): follow.json에 든 번들의 줄. 없으면 follow 항목 없음
 }
 
-// F2가 stuck 한계를 줄에 더하기 전까지(ATC-277) stuck은 FLIGHT FOLLOWING 문제 중 warn만이다. await-supervisor는 결정 대기라 following 그룹이 queue로 보낸다
+// 줄의 FLIGHT FOLLOWING 문제 가운데 알릴 것: warn만. await-supervisor는 결정 대기라 following 그룹이 queue로 보내고, landing-wait·health·stranded는 DUPLICATED로 뺀다
 export const stuckIssuesOf = (row: Pick<FollowAlertRow, "issues" | "finished">) => (row.finished ? [] : row.issues.filter((i) => i.severity === "warn" && !DUPLICATED.has(i.code) && i.code !== "await-supervisor"));
+
+// 줄 하나의 follow|stuck(ATC-304, F4). 줄의 F2 막힘 표시(row.stuck)가 있으면 그것을 쓴다: 단계는 stuck.stage, 글은 stuck.text, 시각은 stuck.since.
+// F2의 새 한도(Todo 30분, 승인 뒤 발송 없음 10분, ON 뒤 IN 없음 15분)와 READBACK 지연이 이렇게 알림이 된다. landing-wait는 PR 항목이 알리니 줄을 내지 않는다(없으면 FLIGHT FOLLOWING 문제로 돌아간다).
+// 표시가 없거나 landing-wait면 F3의 길: warn 문제 가운데 첫 것, 단계는 row.current. 같은 문제를 두 번 세지 않으려고, 표시가 문제 하나를 가리키면(no-pr, pr-not-cleared, undelivered) 그 문제는 "외 n건"에서 뺀다
+export interface FollowStuckLine {
+  stage: string;
+  text: string;
+  more: number;
+  since: string | null;
+  code: string | null; // F2 표시의 code, 문제에서 온 줄이면 그 문제의 code
+}
+export function stuckLineOf(row: Pick<FollowAlertRow, "issues" | "finished" | "current" | "stuck">): FollowStuckLine | null {
+  if (row.finished) return null;
+  const issues = stuckIssuesOf(row);
+  const m = row.stuck && row.stuck.code !== "landing-wait" ? row.stuck : null;
+  if (m) return { stage: m.stage, text: m.text, more: issues.filter((i) => i.code !== m.code).length, since: m.since, code: m.code };
+  if (!issues.length) return null;
+  return { stage: row.current ?? "todo", text: issues[0]!.text, more: issues.length - 1, since: null, code: issues[0]!.code };
+}
 
 // FOLLOWING 문제 가운데 다른 경로가 이미 알리는 것은 뺀다: health·stranded는 ALERT가, landing-wait는 PR 항목이 알린다
 const DUPLICATED = new Set<string>(["health", "stranded", "landing-wait"]);
@@ -173,6 +192,14 @@ const NEXT_BY_ISSUE: Partial<Record<string, string>> = {
   launch: "LAUNCH 실패 사유를 보고 다시 띄운다",
   undelivered: "그 AIRCRAFT 세션을 확인한다(없으면 LAUNCH). 승인은 그대로라 세션이 돌아오면 다시 보낸다",
   fuel: "ACCOUNT의 FUEL을 확인한다",
+};
+
+// F2의 막힘 표시(code)마다 다음 한 걸음(ATC-304). FLIGHT FOLLOWING 문제와 같은 code(undelivered 등)는 NEXT_BY_ISSUE를 쓴다
+const NEXT_BY_STUCK: Partial<Record<string, string>> = {
+  "approved-not-sent": "DISPATCH 탭에서 발송을 확인한다(승인했는데 OCC가 아직 보내지 않았다)",
+  "landed-not-deployed": "UPDATE 바와 RTS 상태를 확인한다(착륙했는데 배포(IN)가 없다)",
+  "todo-no-proposal": "DISPATCH 탭에서 이 FLIGHT가 제안이 되지 않은 이유(제외 사유)를 확인한다",
+  "sent-no-readback": "RADIO 탭에서 FLIGHT PLAN의 READBACK을 확인한다(AIRCRAFT 세션이 받았는지)",
 };
 
 // STAND 이름(ATC-152): 워크트리 이름, 없으면 경로의 마지막 마디
@@ -229,7 +256,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
   // 3) FLIGHT FOLLOWING 문제(warn은 CAUTION, info는 ADVISORY)
   // follow|stuck가 같은 문제를 줄 단위로 알리는 FLIGHT는 following 항목을 내지 않는다(이중 알림 없음, ATC-278)
   const followRows = new Map((inp.follow?.rows ?? []).map((r) => [r.key, r]));
-  const followStuck = new Set([...followRows.values()].filter((r) => stuckIssuesOf(r).length).map((r) => r.key));
+  const followStuck = new Set([...followRows.values()].filter((r) => stuckLineOf(r)).map((r) => r.key));
   const followProposals = new Set([...followRows.values()].flatMap((r) => (r.proposal ? [r.proposal] : [])));
   for (const f of inp.following) {
     for (const i of f.issues) {
@@ -418,9 +445,9 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
     for (const r of inp.follow.rows) {
       const base = { group: "follow" as const, aircraft: null, flight: r.key, link: "#follow" };
       if (r.ready && !r.finished) out.push({ ...base, key: `follow|ready|${r.key}`, level: "advisory", cue: "call", text: `${title(r)} — 풀 수 있음(READY)`, next: "FOLLOW 탭에서 Todo로 푼다", since: null });
-      const stuck = stuckIssuesOf(r);
-      if (stuck.length) {
-        out.push({ ...base, key: `follow|stuck|${r.key}|${r.current ?? "todo"}`, level: "caution", cue: null, text: `${title(r)} — 막힘: ${stuck[0]!.text}${stuck.length > 1 ? ` (외 ${stuck.length - 1}건)` : ""}`, next: NEXT_BY_ISSUE[stuck[0]!.code] ?? "FOLLOW 탭에서 그 FLIGHT를 확인한다", since: null });
+      const stuck = stuckLineOf(r);
+      if (stuck) {
+        out.push({ ...base, key: `follow|stuck|${r.key}|${stuck.stage}`, level: "caution", cue: null, text: `${title(r)} — 막힘: ${stuck.text}${stuck.more > 0 ? ` (외 ${stuck.more}건)` : ""}`, next: (stuck.code && (NEXT_BY_STUCK[stuck.code] ?? NEXT_BY_ISSUE[stuck.code])) || "FOLLOW 탭에서 그 FLIGHT를 확인한다", since: stuck.since });
       }
       // 실패: GO AROUND, ROLLBACK 뒤에도 배포되지 않은 착륙, 되돌려진 ON. 한 줄에 사유를 모은다
       const why: string[] = [];

@@ -21,6 +21,7 @@ const row = (key: string, over: Partial<FollowAlertRow> = {}): FollowAlertRow =>
   ready: false,
   goAround: null,
   reverted: null,
+  stuck: null,
   ...over,
 });
 const withStages = (over: Partial<FollowAlertRow["stages"]>): FollowAlertRow["stages"] => ({ ...row("x").stages, ...over });
@@ -154,4 +155,71 @@ test("종류 설정: follow가 목록에 있고 기본은 켜짐, 저장된 설�
   assert.ok(GROUP_LABEL.follow);
   assert.equal(parsePrefs({ groups: { rts: false } }).groups.follow, true);
   assert.equal(parsePrefs({ groups: { follow: false } }).groups.follow, false);
+});
+
+// ATC-304 (F4): follow|stuck은 줄의 F2 막힘 표시(row.stuck)를 읽는다
+const mark = (code: NonNullable<FollowAlertRow["stuck"]>["code"], stage: NonNullable<FollowAlertRow["stuck"]>["stage"], text: string, since: string | null = iso(20)): FollowAlertRow["stuck"] => ({ code, stage, text, since });
+const stuckKeys = (items: { key: string }[]) => items.map((a) => a.key).filter((k) => k.startsWith("follow|stuck|"));
+
+test("F4: F2의 새 한도 셋은 각각 follow|stuck을 정확히 하나, 단계는 F2의 stage, 글과 시각은 표시의 것", () => {
+  const cases: [NonNullable<FollowAlertRow["stuck"]>["code"], NonNullable<FollowAlertRow["stuck"]>["stage"], string, RegExp][] = [
+    ["approved-not-sent", "approved", "승인 12분 · 발송 없음", /DISPATCH 탭에서 발송을 확인/],
+    ["landed-not-deployed", "landed", "착륙 20분 · 배포(IN) 없음", /UPDATE 바와 RTS/],
+    ["todo-no-proposal", "proposed", "제안 없이 Todo 40분", /제외 사유/],
+  ];
+  for (const [code, stage, text, next] of cases) {
+    const r = row("ATC-5", { current: code === "landed-not-deployed" ? "landed" : "todo", stuck: mark(code, stage, text) });
+    const out = run([r]);
+    assert.deepEqual(stuckKeys(out), [`follow|stuck|ATC-5|${stage}`], code);
+    const a = out.find((x) => x.key.startsWith("follow|stuck|"))!;
+    assert.equal(a.dest, "alerts");
+    assert.equal(a.level, "caution");
+    assert.equal(a.since, iso(20));
+    assert.ok(a.text.includes(text), code);
+    assert.match(a.next, next, code);
+  }
+});
+
+test("F4: key의 단계는 row.current가 아니라 stuck.stage", () => {
+  // 승인했지만 발송 전: 줄은 approved까지 닿았고(current approved) 표시의 단계도 approved. Todo 한도는 current가 todo인데 단계는 proposed
+  const out = run([row("ATC-5", { current: "todo", stuck: mark("todo-no-proposal", "proposed", "제안 없이 Todo 40분") })]);
+  assert.deepEqual(stuckKeys(out), ["follow|stuck|ATC-5|proposed"]);
+});
+
+test("F4: 표시가 가리키는 문제는 (외 n건)에서 빠지고, 다른 warn 문제만 센다", () => {
+  const issue = (code: string, text: string) => ({ code: code as never, severity: "warn" as const, text });
+  const r = row("ATC-5", { current: "readback", stuck: mark("no-pr", "readback", "STAND는 있는데 2시간 동안 PR 없음"), issues: [issue("no-pr", "STAND는 있는데 2시간 동안 PR 없음"), issue("no-departure", "착수 없음")] });
+  const a = run([r]).find((x) => x.key === "follow|stuck|ATC-5|readback")!;
+  assert.match(a.text, /막힘: STAND는 있는데 2시간 동안 PR 없음 \(외 1건\)/);
+  // 표시만 있고 다른 문제가 없으면 외 n건이 없다
+  assert.doesNotMatch(run([row("ATC-5", { stuck: mark("approved-not-sent", "approved", "승인 12분 · 발송 없음") })]).find((x) => x.key.startsWith("follow|stuck|"))!.text, /외 \d+건/);
+});
+
+test("F4: landing-wait 표시는 follow|stuck을 내지 않는다(PR 항목이 알린다). 다른 warn 문제가 있으면 F3의 길로", () => {
+  const lw = row("ATC-5", { current: "ci", stuck: mark("landing-wait", "ci", "PR이 CLEARED 뒤 90분 착륙하지 않음"), issues: [{ code: "landing-wait", severity: "info", text: "착륙 대기" }] });
+  assert.deepEqual(stuckKeys(run([lw])), []);
+  const withWarn = row("ATC-5", { current: "ci", stuck: mark("landing-wait", "ci", "PR이 CLEARED 뒤 90분 착륙하지 않음"), issues: [{ code: "no-arrival", severity: "warn", text: "ARRIVED 보고 없음" }] });
+  assert.deepEqual(stuckKeys(run([withWarn])), ["follow|stuck|ATC-5|ci"]);
+});
+
+test("F4: await-supervisor는 결정 대기라 following에 남고 follow|stuck을 내지 않는다", () => {
+  const following: AlertsInput["following"] = [{ flight: "ATC-5", aircraft: "TEAM_K", issues: [{ code: "await-supervisor", kind: "delay", severity: "warn", text: "go 대기", since: iso(30), key: "ATC-5|await-supervisor|D-1" }] }];
+  const out = run([row("ATC-5", { current: "readback", issues: [{ code: "await-supervisor", severity: "warn", text: "go 대기" }] })], { following });
+  assert.deepEqual(stuckKeys(out), []);
+  assert.ok(out.some((a) => a.key === "following|ATC-5|await-supervisor|D-1"));
+});
+
+test("F4: 막힘이 새 한도 하나뿐인 FLIGHT도 following의 warn 줄을 중복으로 내지 않는다(이중 줄 없음)", () => {
+  const following: AlertsInput["following"] = [{ flight: "ATC-5", aircraft: "TEAM_K", issues: [{ code: "no-departure", kind: "delay", severity: "warn", text: "착수 없음", since: iso(30), key: "ATC-5|no-departure" }] }];
+  const out = run([row("ATC-5", { current: "readback", stuck: mark("approved-not-sent", "approved", "승인 12분 · 발송 없음"), issues: [{ code: "no-departure", severity: "warn", text: "착수 없음" }] })], { following });
+  assert.deepEqual(stuckKeys(out), ["follow|stuck|ATC-5|approved"]);
+  assert.ok(!out.some((a) => a.key === "following|ATC-5|no-departure"), "following이 같은 줄에 또 냈다");
+  assert.match(out.find((a) => a.key.startsWith("follow|stuck|"))!.text, /\(외 1건\)/);
+});
+
+test("F4: 끝난 줄과 막히지 않은 줄은 follow|stuck이 없다. 조건이 풀리면(표시가 사라지면) 사라진다", () => {
+  assert.deepEqual(stuckKeys(run([row("ATC-5", { finished: true, stuck: mark("landed-not-deployed", "landed", "착륙 20분") })])), []);
+  const on = run([row("ATC-5", { stuck: mark("todo-no-proposal", "proposed", "제안 없이 Todo 40분") })]);
+  const d = diffAlerts(new Map(on.map((x) => [x.key, x])), run([row("ATC-5")]));
+  assert.deepEqual(d.cleared, ["follow|stuck|ATC-5|proposed"]);
 });
