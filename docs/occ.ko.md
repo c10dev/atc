@@ -375,6 +375,16 @@ OCC는 머리만 보내고, send-guard가 atc가 저장한 문구를 바꿔 넣�
 - **착륙 규칙**(`reviewBlocks`): **제외되지 않은** CODEX UNAVAILABLE PR에서, 현재 head의 P0·P1 없는 `pass`는 head 리뷰로 쳐서 CLEARED TO LAND가 될 수 있다. 스트립에는 "REVIEW: DEEPSEEK (Codex 한도)"(또는 "Codex 무응답". 이름은 기록의 계열)로 보인다. 제외된 PR에는 기록이 무엇이든 외부 pass가 근거가 되지 않는다: Muse pass로 CLEARED였던 PR은 APPROACH로 돌아갔다. `findings`는 등급과 리뷰 글이 든 `review-findings` 막힘이 되어("DEEPSEEK 지적(Codex 한도, head abc1234, P0 0 · P1 1 · P2 0): …") TOWER가 Codex 지적처럼 CAPTAIN에게 전한다. 새 head는 새 리뷰가 필요하다. Codex가 돌아와 head를 리뷰하면(👍나 지적) Codex가 이긴다. `changes-requested`는 그대로 막는다.
 - guard와 settings를 바꾸므로 이 PR들은 `user` 등급이다.
 
+### head를 넘는 Codex 한도 구현 내용 (ATC-312)
+
+Codex 한도 안내는 그것이 달린 PR의, 그 PR의 현재 head 뒤에 달린 것만 한도로 셌다. 그래서 안내 뒤에 push한 head나 다른 PR에 달린 안내는 Codex가 쓸 수 없다는 걸 알면서도 6시간을 기다렸다. 이제 저장소 수준 신호가 정한다.
+
+- **규칙**(`codexUnavailableOf`, `repoCodexOf`, 순수, `server/landing.ts`). head에 Codex 리뷰·Codex 👍·지적·통과한 사람 리뷰가 없고 head 뒤 Codex 댓글도 없는 PR은, 저장소의 가장 늦은 한도 안내(열린 PR의 마지막 Codex 댓글이 "usage limits")가 지금부터 `ATC_CODEX_LIMIT_HOURS`(기본 6, `server/config.ts`) 안에 있고 그 뒤 저장소에 Codex의 진짜 신호(Codex 리뷰·지적·👍·한도 아닌 댓글)가 없으면 한도로 본다. 안내가 head보다 먼저여도 된다. 결과는 `{why: "limit", since: <안내 시각>, scope: "repo"}`다. 새 `why` 값은 없다: AUTOLAND(`codexLimited`)와 REVIEW 대기열이 이미 `why: "limit"`을 읽어서, 저장소 한도의 head는 같은 PR의 안내와 똑같이 Codex 대신 REVIEW에 요청된다. 최근 안내가 없으면 6시간 `silent` 규칙이 그대로 남는다.
+- **새 GitHub 호출 없음.** 안내와 신호의 시각은 `attachCodex`가 이미 읽은 것(`codex.lastComment`, `codex.thumbsAt`, PR의 `reviews`)에서 뽑는다. Codex 신호를 읽지 않은 PR(Draft, 이미 리뷰가 있는 head)은 보태는 것이 없어서, 한도가 조금 더 오래 가는 쪽으로만 틀릴 뿐 없는 한도를 만들지 않는다.
+- **그대로.** 외부 리뷰 제외(FLIGHT 없음, rating:SEC·Risk, 비밀 경로, 보안 스위치)가 우선이다: 그런 PR은 `extReview: excluded`로 SUPERVISOR에게 간다. 리뷰 잇기(ATC-31)와 AUTOLAND의 재리뷰 요청(ATC-38)은 건드리지 않고, REVIEW와 그 guard도 그대로다.
+- **보이는 것.** 스트립과 블록 글에 "Codex 한도(저장소, 06:29Z~)"가 보이고, TOWER brief의 `landingQueue[].codex`에 `scope: "repo"`, `since`, `label`("Codex limit (repository, 06:29Z~)")이 실린다.
+- **만들지 않은 것:** 창보다 오래된 안내는 무시한다. 저장소별 스위치는 없다.
+
 ### 9.3 Codex 지적의 등급: P3만 남은 head는 막지 않는다 (2026-09-27, ATC-28)
 
 vocado #394는 수정 → `@codex review` → 더 작은 새 지적(P2, 그다음 P3) → 수정 → …을 되풀이했다. Codex는 리뷰할 때마다 조금 더 작은 것을 찾는데, 착륙 규칙은 head의 Codex COMMENTED 리뷰를 등급과 상관없이 `review-findings`로 막았다. SUPERVISOR는 P3만 남은 지적은 착륙을 막지 않는다고 정했다.

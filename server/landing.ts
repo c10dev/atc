@@ -191,13 +191,36 @@ const findingCounts = (s: CodexFindingSummary) =>
 export interface CodexUnavailable {
   why: "limit" | "silent" | "autoland"; // autoland: AUTOLAND가 재리뷰를 요청했는데 Codex가 30분 동안 답하지 않음(ATC-38)
   since: string; // 한도 댓글 시각 | 조용해진 지 silentMs가 지난 시각 | AUTOLAND가 REVIEW로 넘긴 시각
+  scope?: "repo"; // ATC-312: 이 PR의 head 뒤 댓글이 아니라 저장소의 한도 안내가 계속되고 있어서 한도(why는 "limit" 그대로)
 }
-export function codexUnavailableOf(pr: ReviewInput & Pick<GhPull, "createdAt">, now: number, silentMs: number): CodexUnavailable | null {
+
+// 저장소 수준 Codex 신호(ATC-312): 이미 읽은 PR별 신호에서 뽑는다(GitHub 호출 없음).
+// limitAt: 저장소의 가장 늦은 한도 안내(PR의 마지막 Codex 댓글이 "usage limits"). signalAt: 가장 늦은 진짜 신호(리뷰·지적·👍·한도 아닌 댓글)
+export interface RepoCodex {
+  limitAt: string | null;
+  signalAt: string | null;
+}
+export function repoCodexOf(pulls: readonly Pick<GhPull, "codex" | "reviews">[]): RepoCodex {
+  const latest = (ts: (string | null | undefined)[]) => ts.filter((t): t is string => Boolean(t)).sort().at(-1) ?? null;
+  const limits: string[] = [];
+  const signals: (string | null | undefined)[] = [];
+  for (const p of pulls) {
+    const c = p.codex;
+    if (c?.lastComment) (c.lastComment.limit ? limits : signals).push(c.lastComment.at);
+    signals.push(c?.thumbsAt);
+    for (const r of p.reviews ?? []) if (isCodexBot(r.author?.login)) signals.push(r.submittedAt);
+  }
+  return { limitAt: latest(limits), signalAt: latest(signals) };
+}
+export function codexUnavailableOf(pr: ReviewInput & Pick<GhPull, "createdAt">, now: number, silentMs: number, repo?: { codex: RepoCodex; limitMs: number }): CodexUnavailable | null {
   const c = pr.codex;
   if (!c || hasHeadReview(pr) || codexFindings(pr) || codexThumbsPass(pr)) return null;
   if (c.lastComment?.limit && atOrAfter(c.lastComment.at, c.headAt)) return { why: "limit", since: c.lastComment.at };
   const base = [c.headAt, pr.createdAt].filter(Boolean).sort().at(-1)!;
   if (c.lastComment && atOrAfter(c.lastComment.at, base)) return null; // Codex가 이 head 뒤에 말했다(한도 아님)
+  // 저장소의 한도 안내가 아직 유효하다: 창 안에 있고 그 뒤 Codex의 진짜 신호가 없다(어느 PR의 안내든, head보다 먼저여도)
+  const lim = repo?.codex.limitAt;
+  if (lim && now - Date.parse(lim) <= repo.limitMs && !after(repo.codex.signalAt, lim)) return { why: "limit", since: lim, scope: "repo" };
   const quietUntil = Date.parse(base) + silentMs;
   return now >= quietUntil ? { why: "silent", since: new Date(quietUntil).toISOString() } : null;
 }
@@ -340,7 +363,7 @@ export function extReviewStateOf(ctx: ExtReviewContext | undefined): ExtReviewSt
 }
 const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n)}…` : t);
 const codexWhy = (u: CodexUnavailable, silentMs: number) =>
-  u.why === "limit" ? "Codex 한도" : u.why === "autoland" ? "AUTOLAND 재리뷰 — Codex 30분 무응답" : `Codex ${Math.round(silentMs / 3_600_000)}시간 응답 없음`;
+  u.why === "limit" ? (u.scope === "repo" ? `Codex 한도(저장소, ${u.since.slice(11, 16)}Z~)` : "Codex 한도") : u.why === "autoland" ? "AUTOLAND 재리뷰 — Codex 30분 무응답" : `Codex ${Math.round(silentMs / 3_600_000)}시간 응답 없음`;
 
 type Block = PullRequest["blocks"][number];
 const block = (code: LandingBlockCode, text: string, en: string, findings?: ReviewFindings): Block => (findings ? { code, text, en, findings } : { code, text, en });
@@ -488,12 +511,12 @@ export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs =
   if (ms?.status === "pass") return out;
   if (ms?.status === "findings") {
     const r = ms.review!;
-    out.push(block("review-findings", `${reviewerOf(r.family)} 지적(${ms.security ? "보안, " : ""}${codexWhy(ext!.unavailable!, silentMs)}, head ${short(pr.headRefOid)}, P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}): ${clip(r.text, 400)} — 반영 후 새 head에서 재리뷰`, extFindingsEn(reviewerOf(r.family), Boolean(ms.security), codexWhyEn(ext!.unavailable!.why, Math.round(silentMs / 3_600_000)), short(pr.headRefOid), [r.p0, r.p1, r.p2], clip(r.text, 400)), { source: "review", by: reviewerOf(r.family), counts: [r.p0, r.p1, r.p2], text: r.text, from: null }));
+    out.push(block("review-findings", `${reviewerOf(r.family)} 지적(${ms.security ? "보안, " : ""}${codexWhy(ext!.unavailable!, silentMs)}, head ${short(pr.headRefOid)}, P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}): ${clip(r.text, 400)} — 반영 후 새 head에서 재리뷰`, extFindingsEn(reviewerOf(r.family), Boolean(ms.security), codexWhyEn(ext!.unavailable!.why, Math.round(silentMs / 3_600_000), ext!.unavailable!.scope ? ext!.unavailable!.since : null), short(pr.headRefOid), [r.p0, r.p1, r.p2], clip(r.text, 400)), { source: "review", by: reviewerOf(r.family), counts: [r.p0, r.p1, r.p2], text: r.text, from: null }));
     return out;
   }
   const limited = Boolean(c?.lastComment?.limit && atOrAfter(c.lastComment.at, c.headAt));
   const silentH = Math.round(silentMs / 3_600_000);
-  const whyEn = () => codexWhyEn(ext!.unavailable!.why, silentH);
+  const whyEn = () => codexWhyEn(ext!.unavailable!.why, silentH, ext!.unavailable!.scope ? ext!.unavailable!.since : null);
   const noteEn =
     ms?.status === "excluded"
       ? noteExcludedEn(whyEn(), ms.reason)
@@ -586,6 +609,7 @@ export function buildPulls(
   // Codex 한도 때 착륙 리뷰(ATC-7·27). 없으면 예전처럼(Codex·사람 리뷰만)
   ext?: {
     silentMs: number;
+    limitMs?: number; // ATC-312: 저장소 한도 안내가 유효한 시간. 없으면 저장소 수준 판단을 하지 않는다
     reviews: readonly LandingReview[];
     ticketLabelsOf: (key: string | null) => string[];
     ticketTitleOf?: (key: string | null) => string | null;
@@ -600,6 +624,7 @@ export function buildPulls(
   const seen = new Set<string>();
   const out: PullRequest[] = [];
   for (const { repo, pulls, defaultBranch } of sources) {
+    const repoCodex = ext?.limitMs ? { codex: repoCodexOf(pulls), limitMs: ext.limitMs } : undefined;
     for (const gh of pulls) {
       const stand = workspaces.find((w) => w.repo === repo && w.branch === gh.headRefName) ?? null;
       const ticketKey = ticketKeyOf(gh);
@@ -610,7 +635,7 @@ export function buildPulls(
       const exclusion = gate ? (gate.hard ?? (allowSec ? null : gate.security)) : null;
       // main 병합만 한 head: 이전 커밋의 리뷰를 잇는다(ATC-31). 이으면 REVIEW 대기열에 넣지 않는다
       const carried = ext && slug ? carriedReviewOf(gh, ext.reviews.filter((r) => r.repo === slug && r.number === gh.number), Boolean(gate) && !exclusion) : null;
-      let unavailable = ext && slug && !carried ? codexUnavailableOf(gh, Date.parse(now), ext.silentMs) : null;
+      let unavailable = ext && slug && !carried ? codexUnavailableOf(gh, Date.parse(now), ext.silentMs, repoCodex) : null;
       if (ext && slug && !carried && !unavailable) {
         const since = ext.fastTrack?.(repo, gh.number, gh.headRefOid);
         if (since && codexUnavailableOf(gh, Date.parse(now), 0)) unavailable = { why: "autoland", since };

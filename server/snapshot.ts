@@ -227,6 +227,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     // Codex 한도 때 착륙 리뷰(ATC-7·27): FLIGHT 라벨·제목, PR 경로·제목·본문으로 외부 리뷰 제외를 보고, 이 head의 착륙 리뷰를 찾는다
     {
       silentMs: config.codexSilentMs,
+      limitMs: config.codexLimitMs,
       reviews: readLandingReviews(),
       ticketLabelsOf: (key) => tickets.find((t) => t.key === key)?.labels ?? [],
       ticketTitleOf: (key) => tickets.find((t) => t.key === key)?.title ?? null,
