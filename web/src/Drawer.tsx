@@ -103,6 +103,54 @@ function StateMove({ d, onMoved }: { d: IssueDetail; onMoved: () => void }) {
   );
 }
 
+// FOLLOW 토글(ATC-276): 하위 이슈가 있는 이슈를 FOLLOW 탭에 올리고 내린다. 목록은 서버의 follow.json
+function FollowToggle({ k }: { k: string }) {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/follow/list")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b: { parents?: string[] } | null) => live && setOn(b ? Boolean(b.parents?.includes(k)) : null))
+      .catch(() => live && setOn(null));
+    return () => {
+      live = false;
+    };
+  }, [k]);
+  if (on === null) return null;
+  const toggle = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/follow", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parent: k, on: !on }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(body.error ?? `HTTP ${res.status}`));
+      setOn(!on);
+    } catch (e) {
+      setErr(String((e as Error).message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="dr-row">
+      <dt>FOLLOW</dt>
+      <dd className="dr-move">
+        <button type="button" className={`dr-btn${on ? "" : " is-primary"}`} disabled={busy} onClick={() => void toggle()} aria-pressed={on}>
+          {on ? "FOLLOWING ✓" : "FOLLOW"}
+        </button>
+        {on && (
+          <a href="#follow" className="faint">
+            FOLLOW 탭 열기
+          </a>
+        )}
+        {err && <span className="dr-error">{err}</span>}
+      </dd>
+    </div>
+  );
+}
+
 function Flight({ k, now }: { k: string; now: number }) {
   const [rev, setRev] = useState(0);
   const l = useDetail<IssueDetail>(`/api/flight/${k}/detail${rev ? `?r=${rev}` : ""}`);
@@ -126,6 +174,7 @@ function Flight({ k, now }: { k: string; now: number }) {
           </dd>
         </div>
         <StateMove d={d} onMoved={() => setRev((n) => n + 1)} />
+        {d.children.length > 0 && <FollowToggle k={d.key} />}
         <div className="dr-row">
           <dt>우선순위</dt>
           <dd>{PRIORITY[d.priority] ?? "—"}</dd>
