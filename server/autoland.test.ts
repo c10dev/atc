@@ -50,8 +50,8 @@ const pr = (number: number, blocks: LandingBlockCode[] = [], over: Partial<PullR
 });
 const cfg = (over: Partial<AutolandConfig> = {}): AutolandConfig => ({ ...DEFAULT_AUTOLAND, mode: "update", ...over });
 const st = (over: Partial<AutolandState> = {}): AutolandState => ({ ...structuredClone(EMPTY_STATE), ...over });
-const plan = (c: AutolandConfig, pulls: PullRequest[], s = st(), exclusionOf: (p: PullRequest) => string | null = () => null) =>
-  planAutoland({ cfg: c, airports: AIRPORTS, pulls, st: s, exclusionOf });
+const plan = (c: AutolandConfig, pulls: PullRequest[], s = st(), exclusionOf: (p: PullRequest) => string | null = () => null, now = Date.parse("2026-09-28T01:01:00Z")) =>
+  planAutoland({ cfg: c, airports: AIRPORTS, pulls, st: s, exclusionOf, now });
 const vcdo = (v: ReturnType<typeof plan>) => v.airports.find((a) => a.airport === "VCDO")!;
 
 // ── 스위치 ──
@@ -270,4 +270,68 @@ test("GROUND STOP stops both modes", () => {
     assert.equal(vcdo(v).status, "groundstop", mode);
     assert.match(vcdo(v).text, /GROUND STOP/);
   }
+});
+
+// ── SUPERVISOR 몫 CLEARED의 유예 시간(ATC-331) ──
+
+const T0 = Date.parse("2026-09-28T01:00:00Z");
+const MIN = 60_000;
+const ready = (n: number, at: string) => pr(n, [], { readyAt: at });
+const mergeCfg = () => cfg({ mode: "merge" });
+const excl = (...nums: number[]) => (p: PullRequest) => (nums.includes(p.number) ? "rating:SEC" : null);
+
+test("grace: delegated CLEARED still merges first", () => {
+  const v = plan(mergeCfg(), [ready(1, "2026-09-28T01:00:00Z"), pr(2, ["behind"])], st(), excl(), T0 + 600 * MIN);
+  assert.equal(vcdo(v).status, "merge");
+  assert.equal(vcdo(v).number, 1);
+});
+
+test("grace: excluded CLEARED inside the window waits", () => {
+  const v = plan(mergeCfg(), [ready(1, "2026-09-28T01:00:00Z"), pr(2, ["behind"])], st(), excl(1), T0 + 14 * MIN);
+  assert.equal(vcdo(v).status, "waiting");
+  assert.equal(vcdo(v).number, 1);
+  assert.match(vcdo(v).text, /1분 안에/);
+});
+
+test("grace: excluded CLEARED past the window lets the next behind-only PR update, one in flight", () => {
+  const pulls = [ready(1, "2026-09-28T01:00:00Z"), pr(2, ["behind"]), pr(3, ["behind"])];
+  const v = plan(mergeCfg(), pulls, st(), excl(1), T0 + 15 * MIN);
+  assert.equal(vcdo(v).status, "update");
+  assert.equal(vcdo(v).number, 2);
+  assert.match(v.pulls[`${VCDO}#1`]?.text ?? "", /^SUPERVISOR 머지 — rating:SEC/);
+  assert.match(v.pulls[`${VCDO}#1`]?.text ?? "", /15분 지남/);
+  // 갱신이 비행 중이면 그것만 기다린다
+  const f: InFlight = { airport: "VCDO", repo: VCDO, slug: "o/r", number: 2, fromHead: sha(2), at: "x" };
+  assert.equal(vcdo(plan(mergeCfg(), pulls, st({ inflight: [f] }), excl(1), T0 + 15 * MIN)).status, "inflight");
+});
+
+test("grace: update mode CLEARED is the SUPERVISOR's and also expires", () => {
+  const pulls = [ready(1, "2026-09-28T01:00:00Z"), pr(2, ["behind"])];
+  assert.equal(vcdo(plan(cfg(), pulls, st(), excl(), T0 + 5 * MIN)).status, "waiting");
+  assert.equal(vcdo(plan(cfg(), pulls, st(), excl(), T0 + 20 * MIN)).status, "update");
+});
+
+test("grace: HOLD behaves as before", () => {
+  const held = cfg({ holds: [{ repo: VCDO, number: 1, at: "x" }] });
+  const v = plan(held, [ready(1, "2026-09-28T01:00:00Z"), pr(2, ["behind"])], st(), excl(), T0 + MIN);
+  assert.equal(vcdo(v).status, "update");
+  assert.equal(vcdo(v).number, 2);
+});
+
+test("grace: two excluded CLEARED PRs count from the oldest readyAt", () => {
+  const pulls = [ready(1, "2026-09-28T01:00:00Z"), ready(2, "2026-09-28T01:30:00Z"), pr(3, ["behind"])];
+  // 가장 오래된 #1이 지났으면 #2가 아직 창 안이어도 갱신한다
+  assert.equal(vcdo(plan(mergeCfg(), pulls, st(), excl(1, 2), T0 + 20 * MIN)).status, "update");
+  // 순서가 뒤섞여 들어와도 가장 오래된 것 기준
+  const v = plan(mergeCfg(), [pulls[1], pulls[0], pulls[2]], st(), excl(1, 2), T0 + 10 * MIN);
+  assert.equal(vcdo(v).status, "waiting");
+  assert.equal(vcdo(v).number, 1);
+});
+
+test("grace: window is configurable and optional in autoland.json", () => {
+  assert.equal(parseAutoland({}).supervisorGraceMinutes, undefined);
+  assert.equal(parseAutoland({ supervisorGraceMinutes: 5 }).supervisorGraceMinutes, 5);
+  assert.equal(parseAutoland({ supervisorGraceMinutes: "x" }).supervisorGraceMinutes, undefined);
+  const v = plan(cfg({ supervisorGraceMinutes: 5 }), [ready(1, "2026-09-28T01:00:00Z"), pr(2, ["behind"])], st(), excl(), T0 + 6 * MIN);
+  assert.equal(vcdo(v).status, "update");
 });

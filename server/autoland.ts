@@ -36,7 +36,11 @@ export interface AutolandConfig {
   applicationCheck: string; // GROUND STOP을 거는 main의 post-merge 체크 이름
   holds: AutolandHold[]; // SUPERVISOR가 HOLD한 PR: merge가 머지하지 않는다
   reviewedSecurity: ReviewedSecurity; // 머지 리뷰 pass가 보안 게이트 PR의 위임 근거가 되나(ATC-328). 설정 창에서만 바꾼다
+  supervisorGraceMinutes?: number; // SUPERVISOR 몫 CLEARED PR이 갱신 대기열을 막는 시간(ATC-331). 없으면 15분. 옛 파일도 읽힌다
 }
+
+// SUPERVISOR 몫으로 남은 CLEARED PR이 readyAt부터 갱신 대기열을 막는 시간(분). 지나면 HOLD처럼 비켜 준다
+export const DEFAULT_SUPERVISOR_GRACE_MINUTES = 15;
 
 export const DEFAULT_AUTOLAND: AutolandConfig = {
   mode: "off",
@@ -113,6 +117,7 @@ export function parseAutoland(raw: unknown): AutolandConfig {
     applicationCheck: typeof r.applicationCheck === "string" && r.applicationCheck.trim() ? r.applicationCheck.trim() : d.applicationCheck,
     holds,
     reviewedSecurity: pick(r.reviewedSecurity, REVIEWED_SECURITY, d.reviewedSecurity),
+    ...(typeof r.supervisorGraceMinutes === "number" && Number.isFinite(r.supervisorGraceMinutes) && r.supervisorGraceMinutes >= 0 ? { supervisorGraceMinutes: r.supervisorGraceMinutes } : {}),
   };
 }
 
@@ -330,11 +335,12 @@ export interface PlanInput {
   pulls: readonly PullRequest[]; // orderPulls 순서(CLEARED는 readyAt 순, APPROACH는 연 순서)
   st: AutolandState;
   exclusionOf: (p: PullRequest) => string | null; // merge 모드의 제외 사유(HOLD 포함)
+  now?: number; // 유예 시간 계산용(ms). 없으면 지금
 }
 
 // AIRPORT마다 이번에 할 일 하나와 PR마다 표시. 한 AIRPORT에서 한 번에 하나만:
-// GROUND STOP → 비행 중인 갱신 → (merge) 위임된 CLEARED 머지 → HOLD 안 한 CLEARED가 머지를 기다리면 대기 → behind만 남은 첫 PR 갱신
-export function planAutoland({ cfg, airports, pulls, st, exclusionOf }: PlanInput): AutolandView {
+// GROUND STOP → 비행 중인 갱신 → (merge) 위임된 CLEARED 머지 → HOLD 안 한 CLEARED가 머지를 기다리면 대기(SUPERVISOR 몫은 유예 시간까지만) → behind만 남은 첫 PR 갱신
+export function planAutoland({ cfg, airports, pulls, st, exclusionOf, now = Date.now() }: PlanInput): AutolandView {
   const view: AutolandView = { mode: cfg.mode, airports: [], pulls: {}, holds: cfg.holds.map((h) => pullKey(h)), exclusions: {} };
   if (cfg.mode === "off") return view;
   const skip = new Set([...st.skip, ...st.merged]);
@@ -392,11 +398,25 @@ export function planAutoland({ cfg, airports, pulls, st, exclusionOf }: PlanInpu
       }
     }
     // runway: HOLD하지 않은 CLEARED PR이 있으면 그것이 먼저 머지돼야 한다(지금 갱신하면 그 머지 뒤 다시 behind가 된다)
-    const waiting = cleared.find((p) => !isHeld(cfg, p));
+    // 위임된 CLEARED(merge 모드, 제외 없음)는 오늘처럼 계속 기다린다. SUPERVISOR 몫(update 모드의 CLEARED, merge 모드의 제외)은
+    // 가장 오래된 readyAt부터 유예 시간(ATC-331)까지만 막고, 지나면 HOLD처럼 비켜 behind만 남은 PR을 갱신한다. 한 번에 하나는 그대로
+    const open = cleared.filter((p) => !isHeld(cfg, p));
+    const delegated = cfg.mode === "merge" ? open.find((p) => !view.exclusions[pullKey(p)]) : undefined;
+    const graceMs = (cfg.supervisorGraceMinutes ?? DEFAULT_SUPERVISOR_GRACE_MINUTES) * 60_000;
+    const readyMs = (p: PullRequest) => (p.readyAt ? Date.parse(p.readyAt) : NaN);
+    const mineToSup = open.filter((p) => p !== delegated && (cfg.mode !== "merge" || view.exclusions[pullKey(p)]));
+    // readyAt를 모르면(NaN) 만료로 치지 않는다: 오늘처럼 기다린다
+    const oldest = mineToSup.reduce<PullRequest | undefined>((o, p) => (!o || !(readyMs(o) <= readyMs(p)) ? p : o), undefined);
+    const expired = !delegated && oldest !== undefined && readyMs(oldest) + graceMs <= now;
+    const waiting = delegated ?? (expired ? undefined : oldest);
     if (waiting) {
-      view.airports.push(plan("waiting", `AUTOLAND: waiting — #${waiting.number} CLEARED, SUPERVISOR 머지 대기(머지하거나 HOLD하면 다음 PR을 갱신)`, waiting));
+      const left = !delegated && Number.isFinite(readyMs(waiting)) ? Math.max(1, Math.ceil((readyMs(waiting) + graceMs - now) / 60_000)) : null;
+      view.airports.push(
+        plan("waiting", `AUTOLAND: waiting — #${waiting.number} CLEARED, SUPERVISOR 머지 대기(${left === null ? "머지하거나 HOLD하면" : `${left}분 안에 머지하거나 HOLD하지 않으면`} 다음 PR을 갱신)`, waiting),
+      );
       continue;
     }
+    for (const p of mineToSup) if (expired) tag(p, "supervisor", `${view.pulls[pullKey(p)]?.text ?? "SUPERVISOR 머지"} · 대기 ${cfg.supervisorGraceMinutes ?? DEFAULT_SUPERVISOR_GRACE_MINUTES}분 지남 — 갱신은 계속`);
     const next = queue.find((p) => !skip.has(headKey(p)));
     if (next) {
       tag(next, "update", "AUTOLAND: updating");
