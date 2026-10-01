@@ -41,6 +41,7 @@ Linear 티켓까지 보려면 `.env.local`에 `LINEAR_API_KEY`를 넣는다. 상
 | 화면 | 보여주는 것 |
 |---|---|
 | RADAR (`#radar`) | 세션 ─ 워크트리 ─ 티켓 3열을 선으로 연결. 주인 없는 워크트리, 워크트리 없는 진행 티켓을 강조 |
+| GLOBE (`#globe`) | SUPERVISOR의 위치(이 브라우저에만 저장)를 가운데 둔 읽기 전용 정사영 지구본: 안정된 자리의 AIRPORT, base AIRPORT에 세워 둔 AIRCRAFT, 낮과 밤 경계. 장면은 `GET /api/globe` |
 | FLIGHT STRIPS (`#strips`) | 세션(ALPHA…, Codex 세션)마다 카드 하나. 상태, 점유 중인 워크트리, 연결된 티켓 |
 | FIDS (`#board`) | Linear 상태 열에 티켓 카드. 카드에 점유 팀 배지 |
 | 지표 (`#metrics`) | FLIGHT RECORDER 기록으로 본 운용 지표, 2단계 진입 점검, 5분 표본 추이, 일별 표 |

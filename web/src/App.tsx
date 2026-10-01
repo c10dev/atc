@@ -21,6 +21,7 @@ import type { Index } from "./derive.ts";
 
 // 첫 화면(RADAR)만 메인 번들에 두고, 나머지 탭은 처음 열 때 불러온다(청크마다 그 탭의 CSS·라이브러리까지, 예: DOCS의 marked).
 type SnapProps = { snapshot: Snapshot; idx: Index; now: number };
+const Globe = lazyTab<{ refreshKey: string }>(() => import("./views/Globe.tsx"), "Globe");
 const Teams = lazyTab<SnapProps>(() => import("./views/Teams.tsx"), "Teams");
 const Tickets = lazyTab<SnapProps>(() => import("./views/Tickets.tsx"), "Tickets");
 const Airports = lazyTab<{ snapshot: Snapshot }>(() => import("./views/Airports.tsx"), "Airports");
@@ -38,6 +39,7 @@ const IdeasDrawer = lazy(() => import("./IdeasDrawer.tsx"));
 
 const TABS = [
   { id: "radar", code: "RADAR" },
+  { id: "globe", code: "GLOBE" },
   { id: "strips", code: "STRIPS" },
   { id: "board", code: "FIDS" },
   { id: "airports", code: "AIRPORTS" },
@@ -294,6 +296,8 @@ function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number) {
   switch (tab) {
     case "radar":
       return <MapView snapshot={snapshot} idx={idx} now={now} />;
+    case "globe":
+      return <Globe refreshKey={refreshKey} />;
     case "strips":
       return <Teams snapshot={snapshot} idx={idx} now={now} />;
     case "airports":

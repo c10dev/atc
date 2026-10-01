@@ -37,6 +37,7 @@ import { loadLogbook, mountLogbook, runLogbook } from "./logbook.ts";
 import { diffSnapshots, EventLog, isWarm } from "./events.ts";
 import { mountMetrics } from "./metrics.ts";
 import { mountNetwork } from "./network.ts";
+import { mountGlobe } from "./globe-api.ts";
 import { mountRoutes } from "./routes.ts";
 import { refreshOverlap } from "./overlap-run.ts";
 import { allProposals, DISPATCH_MS, mountDispatch, runDispatch } from "./proposals.ts";
@@ -195,6 +196,7 @@ mountFleetPlan(app, getSnapshot);
 mountCheckride(app, getSnapshot);
 mountLogbook(app);
 mountNetwork(app, getSnapshot);
+mountGlobe(app, getSnapshot);
 mountRoutes(app, getSnapshot);
 mountSchedule(app, getSnapshot, allProposals);
 mountPrMerge(app, getSnapshot); // PR MERGE 버튼(DUTY G2): SUPERVISOR 클릭만, user 등급 CLEARED PR만 GitHub에 머지한다
