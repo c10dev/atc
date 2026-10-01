@@ -72,6 +72,7 @@ export const READ_ONLY = [
   ["server/sources/github.ts", "gh pr list·view·diff, gh issue list·view와 GET api만 읽음"],
   ["server/standfree-run.ts", "gh api GET(리뷰·코멘트·파일)만 읽음"],
   ["server/sources/linear.ts", "Linear GraphQL query만(mutation 없음)"],
+  ["server/sources/supabase-migrations.ts", "Supabase Management API GET 하나: 호스티드 DB가 적용한 마이그레이션 버전만 읽음(SQL·적용·쓰기 없음, ATC-329)"],
   ["server/sources/linear-labels.ts", "Linear GraphQL query만(mutation 없음)"],
   ["server/sources/linear-projects.ts", "Linear GraphQL query만(mutation 없음)"],
   ["server/judges/engines.ts", "판정 엔진에 묻기만 함(POST지만 상태를 바꾸지 않음)"],

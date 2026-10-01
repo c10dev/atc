@@ -4,6 +4,7 @@ import type { MainStatus } from "./atfm.ts";
 import { config } from "./config.ts";
 import { humanCheckExclusionOf, humanCheckStatusOf, uiChangeOf } from "./human-check.ts";
 import { externalGateOf, migrationPathOf, pullKey } from "./landing.ts";
+import type { MigrationGate } from "./migration-gate.ts";
 import type { LandingBlockCode, PullRequest } from "./model.ts";
 
 // AUTOLAND(ATC-34). vocado main 규칙이 strict라 머지가 있을 때마다 다른 PR이 behind가 되고, SUPERVISOR가 PR마다
@@ -226,6 +227,7 @@ export interface MergeExclusionInput {
   head: string; // HUMAN CHECK는 이 head에 묶인다(ATC-37)
   carryFrom?: readonly string[]; // main 병합만 한 head의 이전 커밋(ATC-31). 거기 기록한 HUMAN CHECK를 잇는다
   reviewedSecurity?: ReviewedSecurity; // 없으면 off
+  migrationGate?: MigrationGate; // hostedDb가 있는 AIRPORT만(ATC-329). 없으면 오늘과 같다
   mergeReviewPass?: boolean; // 이 head(main 병합만 했으면 이전 커밋)에 atc에 기록된 머지 리뷰 pass가 있나(ATC-328)
 }
 const RISK_ANY = /^risk\b/i;
@@ -243,8 +245,11 @@ export function mergeExclusionOf(x: MergeExclusionInput): string | null {
   const gate = externalGateOf({ flight: x.flight, ticketLabels: x.ticketLabels, prLabels: x.prLabels, files: x.files, texts: [x.title, x.body, x.flightTitle] });
   if (gate.hard) return gate.hard;
   if (delegated) {
-    const mig = migrationPathOf(x.files);
-    if (mig) return `보안 게이트: 마이그레이션·SQL 경로 ${mig}(위임 안 함)`;
+    // 마이그레이션 게이트(ATC-329): 새 마이그레이션이 전부 호스티드 DB에 이미 적혔으면 그 파일들은 막지 않는다. 그 밖의 마이그레이션·SQL 경로는 그대로 막는다
+    const g = x.migrationGate;
+    const covered = g?.involved && g.ok ? new Set(g.paths) : null;
+    const mig = migrationPathOf(covered ? x.files.filter((f) => !covered.has(f)) : x.files);
+    if (mig) return `보안 게이트: 마이그레이션·SQL 경로 ${mig}(위임 안 함)${g?.involved && !g.ok ? ` — 마이그레이션 게이트: ${g.reason}` : ""}`;
   } else if (gate.security) return `보안 게이트: ${gate.security}`;
   // HUMAN CHECK(ATC-37): `## UI change` class가 CHOICE·ACCOUNT·DEVICE면 이 head에 done일 때까지. 블록이 없으면 모름 → 머지하지 않는다
   const ui = uiChangeOf(x.body);

@@ -80,17 +80,24 @@ const headDates = new Map<string, string>();
 // 같은 head에 그 뒤 Codex 지적이 새로 달리면 캐시가 통과하지 않으니 다시 읽는다.
 const thumbsOk = new Map<string, CodexSignal>();
 // head에 Codex 리뷰가 없는 PR의 바뀐 파일 경로(키: 저장소#번호@sha). 외부 리뷰 제외(보안 경로) 판단에 쓴다(ATC-7·27)
-const filesByHead = new Map<string, string[]>();
+const filesByHead = new Map<string, { path: string; status: string }[]>();
 
-async function filesOf(slug: string, pr: GhPull): Promise<string[]> {
+// 캐시 없이 읽은 바뀐 파일과 상태(added·modified·removed·renamed). AUTOLAND가 머지 직전에 마이그레이션 게이트를 다시 볼 때도 쓴다(GET만)
+export async function listPullFiles(slug: string, number: number): Promise<{ path: string; status: string }[]> {
+  return tsv(await gh(["api", "--paginate", `repos/${slug}/pulls/${number}/files?per_page=100`, "--jq", ".[] | [.filename, .status] | @tsv"])).map(([path, status]) => ({ path, status }));
+}
+
+async function filesWithStatusOf(slug: string, pr: GhPull) {
   const key = `${slug}#${pr.number}@${pr.headRefOid}`;
   let files = filesByHead.get(key);
   if (!files) {
-    files = tsv(await gh(["api", "--paginate", `repos/${slug}/pulls/${pr.number}/files?per_page=100`, "--jq", ".[] | [.filename] | @tsv"])).map(([f]) => f);
+    files = await listPullFiles(slug, pr.number);
     filesByHead.set(key, files);
   }
   return files;
 }
+
+const filesOf = async (slug: string, pr: GhPull): Promise<string[]> => (await filesWithStatusOf(slug, pr)).map((f) => f.path);
 
 // head 리뷰가 없거나 head에 Codex 지적이 있는 PR의 Codex 신호: head committer 시각, Codex 👍 시각, Codex 마지막 댓글(한도 안내인지)
 async function codexSignal(slug: string, pr: GhPull): Promise<CodexSignal> {
@@ -219,7 +226,9 @@ async function attachChanged(slug: string, pulls: GhPull[], errors: string[]) {
     await Promise.all(
       pulls.slice(i, i + 4).map(async (p) => {
         try {
-          p.changed = await filesOf(slug, p);
+          const rows = await filesWithStatusOf(slug, p);
+          p.changed = rows.map((f) => f.path);
+          p.added = rows.filter((f) => f.status === "added").map((f) => f.path);
         } catch (e) {
           const err = e as Error & { stderr?: string };
           errors.push(`${slug}#${p.number} 겹침용 파일: ${(err.stderr?.trim() || err.message).split("\n")[0]}`);
