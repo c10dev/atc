@@ -1,6 +1,8 @@
+import { Check } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import type { Proposal } from "../../../server/proposals.ts";
 import { type ColdCache, type TripFuel, tripLabel, usd } from "../../../server/fuel-view.ts";
+import { Icon } from "../Icon.tsx";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import "./DispatchBriefing.css";
@@ -74,7 +76,7 @@ export function FactsLine({ info, now, aircraft, showCrosscheck }: { info: CardB
     items.push(
       <span key={`b-${b.key}`} className={b.done ? "dp-fact-ok" : "dp-fact-warn"}>
         선행 {flightNumber(b.key)} {b.state ?? "상태 모름"}
-        {b.done ? " ✓" : ""}
+        {b.done && <> <Icon icon={Check} /></>}
       </span>,
     );
   if (aircraft)

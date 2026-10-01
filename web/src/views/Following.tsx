@@ -1,4 +1,6 @@
+import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Icon } from "../Icon.tsx";
 import type { Milestones } from "../../../server/milestones.ts";
 import { milestoneLine, milestoneTitle } from "../../../server/milestones.ts";
 import { flightNumber } from "../aviation.ts";
@@ -101,7 +103,7 @@ export function FollowingAlert({ brief, now, onOpenFull }: { brief: FollowBrief 
           FLIGHT FOLLOWING <em>지연·불일치 {rows.length}건</em>
         </h2>
         <button type="button" className="dp-btn ff-full" onClick={onOpenFull}>
-          전체 FLIGHT FOLLOWING ↓
+          전체 FLIGHT FOLLOWING <Icon icon={ChevronDown} />
         </button>
       </header>
       <ul className="ff-list">

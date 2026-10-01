@@ -3,7 +3,6 @@
   margin-top: var(--space-4);
   padding: var(--space-2) var(--space-4);
   background: var(--panel);
-  border: 1px solid var(--line);
   border-radius: var(--radius);
 }
 .rf-line {
@@ -14,18 +13,17 @@
   cursor: pointer;
   font-size: var(--text-sm);
 }
-/* 접힘 표시(flex라 기본 표식이 사라져 직접 그린다) */
-.rf-line::before {
-  content: "▸";
+/* 접힘 표시: Lucide 쉐브론(ReadinessFold.tsx의 Icon, 스타일은 Dispatch.css). 열리면 돈다 */
+.rf-line .ico {
+  align-self: center;
   color: var(--faint);
-  font-size: var(--text-xs);
+  transition: transform var(--dur-base) var(--ease);
 }
-.rf[open] > .rf-line::before {
-  content: "▾";
+.rf[open] > .rf-line .ico {
+  transform: rotate(90deg);
 }
 .rf-title {
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.14em;
+  font: 600 var(--text-xs) var(--sans);
   color: var(--faint);
 }
 .rf-part {
@@ -35,9 +33,6 @@
 .rf-part b {
   font-weight: 600;
   color: var(--text);
-}
-.rf-part.s-ok .rf-mark {
-  color: var(--radar);
 }
 .rf-part.s-bad .rf-mark,
 .rf-part.s-bad b {

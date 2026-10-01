@@ -1,4 +1,6 @@
+import { Check, ChevronRight, X } from "lucide-react";
 import { type ReactNode, useCallback, useState } from "react";
+import { Icon } from "../Icon.tsx";
 import { type LinePart, partText } from "../readiness-line.ts";
 import "./ReadinessFold.css";
 
@@ -34,11 +36,12 @@ export function ReadinessFold({ id, open, onOpenChange, parts, children }: { id:
   return (
     <details className="rf" id={id} open={open} onToggle={(e) => e.currentTarget.open !== open && onOpenChange(e.currentTarget.open)}>
       <summary className="rf-line" aria-label={`READINESS ${parts.map(partText).join(", ")}`}>
+        <Icon icon={ChevronRight} />
         <span className="rf-title">READINESS</span>
         {parts.map((p) => (
           <span key={p.id} className={`rf-part s-${p.state}`}>
             <span className="rf-label">{p.label}</span> <b>{p.value}</b>
-            {p.mark && <span className="rf-mark"> {p.mark}</span>}
+            {p.mark && <span className="rf-mark"> <Icon icon={p.mark === "✓" ? Check : X} /></span>}
           </span>
         ))}
       </summary>

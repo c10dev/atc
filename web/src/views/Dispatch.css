@@ -2,48 +2,51 @@
 .dispatch .toolbar {
   margin-bottom: var(--space-4);
 }
+/* Craft(3.5, ATC-315): 글자 크기는 12(캡션)·14(값)·15(제목) 셋만. 약호 머리글도 12px다 */
 .dispatch .label {
   margin-top: var(--space-6);
+  font-size: var(--text-xs);
+}
+/* 우선순위 표시(공용 .prio)도 12px로 */
+.dispatch .prio {
+  font-size: var(--text-xs);
 }
 .dp-error {
   color: var(--alert);
 }
+/* AIRPORT 코드는 DISPATCH에서 색 없이: 칸 하나 값이라 면 한 단계로만 구분한다 */
+.dispatch .apt {
+  border: 0;
+  background: var(--panel-3);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
 
+/* 모드 표시: SUPERVISOR가 정한 상태. 색 없이 글자 굵기로만 */
 .dp-mode {
   display: inline-block;
   margin-right: var(--space-2);
-  padding: 0 var(--space-1-5);
-  border: 1px solid currentColor;
-  border-radius: var(--radius-sm);
-  font: 700 var(--text-2xs) var(--mono);
+  color: var(--text);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.14em;
 }
 .dp-mode.m-shadow {
-  color: var(--cyan);
-}
-.dp-mode.m-approval {
-  color: var(--amber);
+  color: var(--muted);
 }
 
 .dispatch .toolbar .dp-mode-switch {
   flex: none;
   padding: 0 var(--space-3);
-  border-color: var(--amber);
-  color: var(--amber);
-}
-.dispatch .toolbar .dp-mode-switch.back {
-  border-color: var(--cyan);
-  color: var(--cyan);
 }
 
-/* 진입 점검(2b, 3) */
+/* 진입 점검(2b, 3): 면 한 단계, 줄 구분은 위 선 하나 */
 .dp-gate + .dp-gate {
   margin-top: var(--space-3);
 }
 .dp-gate {
   padding: var(--space-3) var(--space-4) var(--space-2);
   background: var(--panel);
-  border: 1px solid var(--line);
   border-radius: var(--radius);
 }
 .dp-gate .label {
@@ -66,23 +69,23 @@
 .dp-gate li:first-child {
   border-top: 0;
 }
+/* 문장과 한글 표시는 sans, 숫자만 mono(3.5.2) */
 .dp-gate-value {
-  font: 700 var(--text-md) var(--mono);
+  font: 600 var(--text-md) var(--sans);
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 .dp-gate-target {
   padding-left: var(--space-2);
-  font: var(--text-sm) var(--mono);
+  font: var(--text-sm) var(--sans);
   color: var(--faint);
 }
 .dp-gate-state {
-  font: 700 var(--text-sm) var(--mono);
+  font: 600 var(--text-sm) var(--sans);
 }
-.dp-gate .s-pass .dp-gate-state {
-  color: var(--radar);
-}
+/* 충족은 중립(done은 색이 없다). 미달만 amber(3.2: 기준 아래) */
 .dp-gate .s-fail .dp-gate-state {
-  color: var(--alert);
+  color: var(--amber);
 }
 .dp-gate .s-insufficient .dp-gate-state {
   color: var(--faint);
@@ -97,16 +100,17 @@
 .dp-slot {
   padding: var(--space-1) var(--space-3);
   background: var(--panel);
-  border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  font: var(--text-sm) var(--mono);
+  font: var(--text-sm) var(--sans);
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
 .dp-slot b {
-  color: var(--cyan);
+  color: var(--text);
+  font-weight: 600;
 }
 
-/* 제안 카드 */
+/* 제안 카드: 면 한 단계(테두리 없음). 왼쪽 띠는 CAUTION만(3.5.1) */
 .dp-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -118,19 +122,10 @@
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   background: var(--panel);
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--cyan);
   border-radius: var(--radius);
 }
-.dp-card.k-RELEASE {
-  border-left-color: var(--amber);
-}
 .dp-card.is-caution {
-  border-color: var(--alert);
-  border-left-color: var(--alert);
-}
-.dp-card.is-held {
-  border-left-color: var(--muted);
+  border-left: 3px solid var(--amber);
 }
 
 /* DISPATCH가 선행 FLIGHT로 잡아 둔 제안 */
@@ -146,21 +141,17 @@
   color: var(--muted);
 }
 .dp-hold-mark {
-  padding: 0 var(--space-1);
-  border: 1px solid var(--muted);
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  font: 700 var(--text-2xs) var(--mono);
+  color: var(--faint);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.1em;
 }
 
-/* 거절 사유: 카드 안 폼(SCHEDULE 탭과 같은 모양). 칩은 여러 개 고를 수 있다. */
+/* 거절 사유: 카드 안 폼(SCHEDULE 탭과 같은 모양). 칩은 여러 개 고를 수 있다. 위 선 없이 간격으로 나눈다 */
 .dp-reject {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   padding-top: var(--space-2);
-  border-top: 1px solid var(--line);
 }
 .dp-chips {
   display: flex;
@@ -170,7 +161,7 @@
 .dp-chip {
   padding: var(--space-1) var(--space-2);
   background: var(--panel-2);
-  border: 1px solid var(--line-strong);
+  border: 0;
   border-radius: var(--radius-pill);
   color: var(--muted);
   font: var(--text-sm) var(--sans);
@@ -180,9 +171,11 @@
   background: var(--panel-3);
   color: var(--text);
 }
+/* 고른 칩: 면 한 단계 위와 굵기(색이 아니라 모양으로) */
 .dp-chip.is-on {
-  border-color: var(--alert);
-  color: var(--alert);
+  background: var(--panel-3);
+  color: var(--text);
+  font-weight: 600;
 }
 .dp-memo-label {
   font-size: var(--text-sm);
@@ -214,13 +207,11 @@
   gap: var(--space-2);
   font-size: var(--text-xs);
 }
+/* 종류(ASSIGN·RELEASE)는 색이 아니라 글자로 */
 .dp-kind {
-  font: 700 var(--text-2xs) var(--mono);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.14em;
-  color: var(--cyan);
-}
-.k-RELEASE .dp-kind {
-  color: var(--amber);
+  color: var(--muted);
 }
 .dp-age {
   margin-left: auto;
@@ -247,8 +238,8 @@
 .dp-wait {
   display: block;
   margin-top: var(--space-1);
-  color: var(--cyan);
-  font: var(--text-2xs) var(--mono);
+  color: var(--muted);
+  font: var(--text-xs) var(--sans);
 }
 /* LAUNCH on approve·RESUME(ATC-129) */
 .dp-launch {
@@ -265,19 +256,16 @@
   margin: 0;
 }
 .dp-launch-text {
-  color: var(--cyan);
-  font: var(--text-2xs) var(--mono);
+  color: var(--muted);
+  font: var(--text-xs) var(--sans);
   overflow-wrap: anywhere;
 }
 .dp-launch-text.is-full {
   color: var(--amber);
 }
 .dp-resume-mark {
-  padding: 0 var(--space-1);
-  border: 1px solid var(--amber);
-  border-radius: var(--radius-sm);
-  color: var(--amber);
-  font: 700 var(--text-2xs) var(--mono);
+  color: var(--text);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.1em;
   white-space: nowrap;
 }
@@ -288,7 +276,6 @@
   margin: 0;
   padding: var(--space-1-5) var(--space-2);
   background: var(--panel-2);
-  border-left: 2px solid var(--amber);
   border-radius: var(--radius-md);
   font-size: var(--text-xs);
 }
@@ -320,7 +307,7 @@
 }
 .dp-score {
   margin-left: auto;
-  font: 600 var(--text-2xl) var(--sans);
+  font: 600 var(--text-lg) var(--mono);
   color: var(--text);
 }
 .dp-factors {
@@ -344,15 +331,15 @@
   width: 30%;
   padding: 0 var(--space-2) !important;
 }
+/* 점수 막대: 더한 점수는 muted, 뺀 점수는 faint(색 없이 밝기 차이) */
 .dp-factor-bar span {
   display: block;
   height: 6px;
   border-radius: var(--radius-sm);
-  background: var(--cyan);
-  opacity: 0.7;
+  background: var(--muted);
 }
 .dp-factor-bar span.neg {
-  background: var(--alert);
+  background: var(--faint);
 }
 .dp-factors .num {
   text-align: right;
@@ -366,12 +353,10 @@
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
 }
+/* CAUTION은 amber(3.2). 테두리 없이 글자만 */
 .dp-caution {
-  padding: 0 var(--space-1);
-  border: 1px solid var(--alert);
-  border-radius: var(--radius-sm);
-  color: var(--alert);
-  font: 700 var(--text-2xs) var(--mono);
+  color: var(--amber);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.1em;
 }
 .dp-actions {
@@ -400,15 +385,11 @@
   color: var(--muted);
 }
 /* HELD(PREFLIGHT) 카드: 대기열로 / FLIGHT 보류 확정 */
-.dp-btn.requeue {
-  border-color: var(--radar);
-  color: var(--radar);
-}
 .dp-btn.confirm-hold {
   color: var(--muted);
 }
 
-/* AIRCRAFT · HOLD_DEPARTURE 목록 */
+/* AIRCRAFT · HOLD_DEPARTURE 목록: 면 한 단계, 줄 구분은 위 선 하나 */
 .dp-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -419,7 +400,6 @@
   padding: var(--space-2) var(--space-3);
   list-style: none;
   background: var(--panel);
-  border: 1px solid var(--line);
   border-radius: var(--radius);
   font-size: var(--text-sm);
 }
@@ -436,21 +416,17 @@
 .dp-list b {
   font-family: var(--mono);
 }
-.dp-list li.is-available b {
-  color: var(--radar);
-}
 .dp-list-note {
   margin-left: auto;
   color: var(--muted);
   text-align: right;
 }
 
-/* 최근 결정 */
+/* 최근 결정·IN FLIGHT 표: 바깥 테두리 없이 면 한 단계, 머리 아래 선과 줄 선만 */
 .dp-table {
   width: 100%;
   border-collapse: collapse;
   background: var(--panel);
-  border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
   font-size: var(--text-sm);
@@ -458,8 +434,7 @@
 .dp-table th {
   padding: var(--space-1-5) var(--space-3);
   text-align: left;
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.12em;
+  font: 600 var(--text-xs) var(--sans);
   color: var(--faint);
   background: var(--panel-2);
   border-bottom: 1px solid var(--line);
@@ -471,12 +446,7 @@
 .dp-table tr:last-child td {
   border-bottom: 0;
 }
-.dp-table .s-agreed .dp-result {
-  color: var(--radar);
-}
-.dp-table .s-disagreed .dp-result {
-  color: var(--alert);
-}
+/* 결과 글자는 색 없이(기록이다). 흐린 것은 이미 닫힌 것 */
 .dp-table .s-superseded .dp-result,
 .dp-table .s-expired .dp-result {
   color: var(--faint);
@@ -485,7 +455,7 @@
   color: var(--muted);
   overflow-wrap: anywhere;
 }
-/* 최근 결정의 사유 칩과 한 번 클릭 표시 */
+/* 최근 결정의 사유 칩과 한 번 클릭 표시: 테두리 없이 면 한 단계 */
 .dp-recent-tags {
   display: inline-flex;
   flex-wrap: wrap;
@@ -495,7 +465,7 @@
 }
 .dp-reason-tag {
   padding: 0 var(--space-1-5);
-  border: 1px solid var(--line-strong);
+  background: var(--panel-3);
   border-radius: var(--radius-pill);
   color: var(--muted);
   font-size: var(--text-xs);
@@ -503,10 +473,10 @@
 }
 .dp-via {
   padding: 0 var(--space-1);
-  border: 1px dashed var(--line-strong);
+  background: var(--panel-3);
   border-radius: var(--radius-sm);
   color: var(--faint);
-  font: 700 var(--text-2xs) var(--mono);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.1em;
   white-space: nowrap;
 }
@@ -581,63 +551,41 @@
   .dp-c-reason::before {
     content: attr(data-label) " ";
     color: var(--faint);
-    font: 700 var(--text-2xs) var(--mono);
-    letter-spacing: 0.1em;
+    font: 600 var(--text-xs) var(--sans);
   }
 }
 
-/* IN FLIGHT: 승인 뒤 진행 중 */
-.dp-inflight .s-approved .dp-result {
-  color: var(--cyan);
-}
-.dp-inflight .s-sent .dp-result {
-  color: var(--amber);
-}
-.dp-inflight .s-accepted .dp-result {
-  color: var(--radar);
-}
+/* IN FLIGHT: 승인 뒤 진행 중. 상태 글자는 색 없이, 늦은 것(overdue)과 RECALL 대기만 색 */
 .dp-inflight tr.is-overdue td {
   background: var(--blk-los-bg);
 }
 .dp-overdue {
   margin-left: var(--space-2);
-  padding: 0 var(--space-1);
-  border: 1px solid var(--alert);
-  border-radius: var(--radius-sm);
   color: var(--alert);
-  font: 700 var(--text-2xs) var(--mono);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.1em;
 }
-.dp-table .s-approved .dp-result,
-.dp-table .s-departed .dp-result {
-  color: var(--radar);
-}
-.dp-table .s-rejected .dp-result,
-.dp-table .s-declined .dp-result {
-  color: var(--alert);
-}
 
-/* FLIGHT 분류: FLIGHT TYPE · WAKE · 필요한 TYPE RATING · TAIL ASSIGNMENT (docs/fleet.md) */
+/* FLIGHT 분류: FLIGHT TYPE · WAKE · 필요한 TYPE RATING · TAIL ASSIGNMENT (docs/fleet.md). 코드라 mono, 색 없이 */
 .dp-class {
   margin: 0;
-  color: var(--cyan);
+  color: var(--muted);
   font: 600 var(--text-xs) var(--mono);
   letter-spacing: 0.06em;
 }
 .dp-class.is-default {
-  color: var(--muted);
+  color: var(--faint);
 }
 
-/* CROSSCHECK: 다른 모델의 임시 판정. agree는 radar, disagree는 alert. 사람 판정과 헷갈리지 않게 점선. */
+/* CROSSCHECK: 다른 모델의 임시 판정. 면 한 단계(테두리 없음), 색은 반대(disagree) 글자에만. 사람 판정과는 CROSSCHECK 글자로 구분. */
 /* CROSSCHECK가 아직 보지 않은 제안 */
 .dp-xc-wait {
   margin: 0;
   padding: var(--space-1) var(--space-2);
-  border: 1px dashed var(--line-strong);
+  background: var(--panel-2);
   border-radius: var(--radius-md);
   color: var(--faint);
-  font: 600 var(--text-xs) var(--mono);
-  letter-spacing: 0.05em;
+  font: 600 var(--text-xs) var(--sans);
 }
 .dp-xc {
   display: flex;
@@ -646,25 +594,22 @@
   gap: var(--space-1-5);
   margin: 0;
   padding: var(--space-1) var(--space-2);
-  border: 1px dashed var(--line-strong);
-  border-left: 2px solid currentColor;
+  background: var(--panel-2);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
 }
-.dp-xc.v-agree {
-  color: var(--radar);
-}
-.dp-xc.v-disagree {
-  color: var(--alert);
+.dp-xc.v-disagree .dp-xc-verdict {
+  color: var(--amber);
 }
 .dp-xc-mark {
   flex: none;
   color: var(--faint);
-  font: 700 var(--text-2xs) var(--mono);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.12em;
 }
 .dp-xc-verdict {
   flex: none;
+  color: var(--text);
   font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.06em;
 }
@@ -681,7 +626,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--faint);
-  font: var(--text-2xs) var(--mono);
+  font: var(--text-xs) var(--mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -694,8 +639,9 @@
 .dp-xc-codes {
   flex: none;
   padding: 0 var(--space-1-5);
-  border: 1px dashed currentColor;
+  background: var(--panel-3);
   border-radius: var(--radius-pill);
+  color: var(--muted);
   font-size: var(--text-xs);
 }
 .dp-xc-reason {
@@ -708,21 +654,14 @@
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+/* CROSSCHECK에 동의: 사람 판정과 구분하려고 점선 버튼(버튼 테두리라 중첩이 아니다) */
 .dp-btn.dp-xc-accept {
   border-style: dashed;
-}
-.dp-btn.dp-xc-accept.v-agree {
-  border-color: var(--radar);
-  color: var(--radar);
-}
-.dp-btn.dp-xc-accept.v-disagree {
-  border-color: var(--alert);
-  color: var(--alert);
 }
 .dp-xc-mini {
   display: block;
   color: var(--faint);
-  font: var(--text-2xs) var(--mono);
+  font: var(--text-xs) var(--mono);
   letter-spacing: 0.08em;
 }
 
@@ -735,19 +674,17 @@
   color: var(--faint);
   font-weight: 400;
 }
-/* 거절 사유 코드별 건수: 한 줄로 촘촘히(좁으면 접힘) */
+/* 거절 사유 코드별 건수: 한 줄로 촘촘히(좁으면 접힘). 선 대신 간격 */
 .dp-gate-reasons {
-  margin: 0;
+  margin: var(--space-2) 0 0;
   padding: var(--space-1-5) 0;
-  border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: var(--text-sm);
 }
 .dp-gate-reasons-head {
   margin-right: var(--space-2);
   color: var(--faint);
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.1em;
+  font: 600 var(--text-xs) var(--sans);
 }
 .dp-gate-reason b {
   font-family: var(--mono);
@@ -756,13 +693,12 @@
 .dp-gate-note {
   margin: var(--space-1) 0;
   padding-top: var(--space-2);
-  border-top: 1px solid var(--line);
   font-size: var(--text-xs);
 }
 /* 거절 사유 → 배정 규칙: 칩별 건수와 planner가 그 사유를 스스로 거르나 */
 .dp-gate-rules {
   padding: var(--space-1-5) 0;
-  border-top: 1px solid var(--line);
+  margin-top: var(--space-2);
 }
 .dp-gate-rules .dp-gate-reasons-head {
   margin: 0 0 var(--space-1);
@@ -792,15 +728,15 @@
   color: var(--text);
   font-family: var(--mono);
 }
+/* planner가 거르는 정도: 한글 글자, 색 없이 밝기로(자동 > 일부 > 사람만) */
 .dp-gate-auto {
-  font: 600 var(--text-2xs) var(--mono);
-  letter-spacing: 0.05em;
+  font: 600 var(--text-xs) var(--sans);
 }
 .dp-gate-auto.a-auto {
-  color: var(--radar);
+  color: var(--text);
 }
 .dp-gate-auto.a-partial {
-  color: var(--amber);
+  color: var(--muted);
 }
 .dp-gate-auto.a-manual {
   color: var(--faint);
@@ -817,6 +753,7 @@
   display: flex;
   gap: var(--space-1-5);
   min-width: 0;
+  padding-left: var(--space-3); /* └ 대신 들여쓰기 */
   font-size: var(--text-xs);
 }
 .dp-gate-xc-name {
@@ -834,19 +771,14 @@
   font: var(--text-sm) var(--mono);
 }
 
-/* RECALL: SUPERVISOR가 보낸 FLIGHT PLAN을 거둬들임(recalling → recalled) */
-.dp-inflight .s-recalling .dp-result,
-.dp-table .s-recalled .dp-result {
+/* RECALL: SUPERVISOR가 보낸 FLIGHT PLAN을 거둬들임(recalling → recalled). 기다리는 중(recalling)만 amber */
+.dp-inflight .s-recalling .dp-result {
   color: var(--amber);
 }
 .dp-c-act {
   width: 1%;
   white-space: nowrap;
   text-align: right;
-}
-.dp-btn.dp-recall-btn {
-  border-color: var(--amber);
-  color: var(--amber);
 }
 .dp-c-act .dp-btn {
   flex: 0 0 auto;
@@ -858,11 +790,8 @@
   gap: var(--space-0-5) var(--space-2);
 }
 .dp-recall-mark {
-  padding: 0 var(--space-1);
-  border: 1px solid var(--amber);
-  border-radius: var(--radius-sm);
   color: var(--amber);
-  font: 700 var(--text-2xs) var(--mono);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.1em;
 }
 .dp-recall-text {
@@ -906,17 +835,12 @@
   white-space: nowrap;
 }
 
-/* 2b 켜기 점검표: 표시만(모드 버튼은 그대로). 다 준비되면 접힌다 */
+/* 2b 켜기 점검표: 표시만(모드 버튼은 그대로). 다 준비되면 접힌다. 면 한 단계, 색은 준비 안 된 항목에만 */
 .dp-rd {
   margin-bottom: var(--space-3);
   padding: var(--space-2) var(--space-4);
   background: var(--panel);
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--amber);
   border-radius: var(--radius);
-}
-.dp-rd.is-ready {
-  border-left-color: var(--radar);
 }
 .dp-rd-head {
   display: flex;
@@ -925,26 +849,22 @@
   gap: var(--space-1) var(--space-2);
   cursor: pointer;
 }
-/* 접힘 표시(flex라 기본 표식이 사라져 직접 그린다) */
-.dp-rd-head::before {
-  content: "▸";
+/* 접힘 표시: Lucide 쉐브론(Icon). 열리면 돈다 */
+.dp-rd-head .ico {
+  align-self: center;
   color: var(--faint);
-  font-size: var(--text-xs);
+  transition: transform var(--dur-base) var(--ease);
 }
-.dp-rd[open] > .dp-rd-head::before {
-  content: "▾";
+.dp-rd[open] > .dp-rd-head .ico {
+  transform: rotate(90deg);
 }
 .dp-rd-title {
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.14em;
+  font: 600 var(--text-xs) var(--sans);
   color: var(--faint);
 }
 .dp-rd-sum {
   color: var(--muted);
   font-size: var(--text-sm);
-}
-.dp-rd.is-ready .dp-rd-sum {
-  color: var(--radar);
 }
 .dp-rd-note {
   margin: var(--space-1-5) 0 0;
@@ -964,24 +884,15 @@
   padding: var(--space-1-5) 0;
   border-top: 1px solid var(--line);
 }
+/* 상태 글자(한글): 준비됨은 중립, 안 됨은 amber, 확인 필요는 amber에 글자로 구분 */
 .dp-rd-badge {
   justify-self: start;
-  padding: 0 var(--space-1-5);
-  border: 1px solid currentColor;
-  border-radius: var(--radius-sm);
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.04em;
+  color: var(--muted);
+  font: 600 var(--text-xs) var(--sans);
   white-space: nowrap;
 }
-.dp-rd-item.s-ready .dp-rd-badge {
-  color: var(--radar);
-}
-.dp-rd-item.s-not-ready .dp-rd-badge {
-  color: var(--alert);
-}
-/* 확인 필요는 점선으로도 구분 */
+.dp-rd-item.s-not-ready .dp-rd-badge,
 .dp-rd-item.s-check .dp-rd-badge {
-  border-style: dashed;
   color: var(--amber);
 }
 .dp-rd-body {
@@ -1007,7 +918,7 @@
   font: var(--text-xs) var(--mono);
   overflow-wrap: anywhere;
 }
-/* 다른 저장소 CLAUDE.md에 붙여 넣을 문장 */
+/* 다른 저장소 CLAUDE.md에 붙여 넣을 문장: 면 한 단계 */
 .dp-rd-paste {
   display: flex;
   flex-direction: column;
@@ -1015,13 +926,11 @@
   margin-top: var(--space-1);
   padding: var(--space-1-5) var(--space-2);
   background: var(--panel-2);
-  border: 1px dashed var(--line-strong);
   border-radius: var(--radius-md);
 }
 .dp-rd-paste-head {
   color: var(--faint);
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.1em;
+  font: 600 var(--text-xs) var(--sans);
 }
 .dp-rd-code {
   display: block;
@@ -1069,15 +978,13 @@
 .dp-overdue {
   white-space: nowrap;
 }
-.dp-table .s-arrived .dp-result {
-  color: var(--phase-arrived);
-}
 /* 진입 점검 STAGE 3의 STAND 없는 FLIGHT 줄: 위 줄 밑에 작게 */
 .dp-gate li.dp-gate-sub {
   padding: 0 0 var(--space-1);
   border-top: 0;
 }
 .dp-gate-sub .dp-gate-label {
+  padding-left: var(--space-3); /* └ 대신 들여쓰기 */
   font-size: var(--text-xs);
 }
 .dp-gate .dp-gate-sub .dp-gate-value {
@@ -1150,8 +1057,6 @@
   margin-bottom: var(--space-3);
   padding: var(--space-2) var(--space-3);
   background: var(--panel);
-  border: 1px solid var(--line);
-  border-left: 2px solid var(--radar);
   border-radius: var(--radius);
 }
 .dp-agree-head {
@@ -1161,7 +1066,7 @@
 }
 .dp-agree-head b {
   font-family: var(--mono);
-  color: var(--radar);
+  color: var(--text);
 }
 .dp-agree-list {
   display: grid;
@@ -1186,11 +1091,14 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  background: transparent;
-  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border: 0;
   border-radius: var(--radius-md);
   color: var(--muted);
   cursor: pointer;
+}
+.dp-agree-toggle:hover {
+  background: var(--panel-3);
 }
 .dp-agree-toggle:focus-visible {
   outline: 2px solid var(--cyan);
@@ -1208,7 +1116,7 @@
 .dp-agree-fn {
   flex: none;
   font-size: var(--text-sm);
-  color: var(--cyan);
+  color: var(--muted);
 }
 .dp-agree-ac {
   flex: none;
@@ -1230,18 +1138,16 @@
   gap: var(--space-2);
   margin: 0;
   padding: var(--space-1) var(--space-2);
-  border: 1px dashed var(--line-strong);
+  background: var(--panel-2);
   border-radius: var(--radius-md);
   color: var(--muted);
   font-size: var(--text-xs);
 }
+/* blue는 HANDOFF 전용(3.2)이라 중립 글자로 */
 .dp-blind-mark {
   flex: none;
-  padding: 0 var(--space-1);
-  border: 1px solid var(--blue);
-  border-radius: var(--radius-sm);
-  color: var(--blue);
-  font: 700 var(--text-2xs) var(--mono);
+  color: var(--text);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.1em;
 }
 
@@ -1250,12 +1156,8 @@
   margin-top: var(--space-0-5);
 }
 .dp-candidate-mark {
-  padding: 0 var(--space-1);
-  border: 1px dashed currentColor;
-  border-radius: var(--radius-sm);
-  font: 700 var(--text-2xs)/16px var(--mono);
-  letter-spacing: 0.04em;
-  color: var(--amber);
+  font: 600 var(--text-xs) var(--sans);
+  color: var(--text);
 }
 .dp-candidates {
   display: grid;
@@ -1263,7 +1165,6 @@
   margin: 0 0 var(--space-4);
   padding: var(--space-2) var(--space-3);
   list-style: none;
-  border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--panel);
   font-size: var(--text-sm);
@@ -1283,11 +1184,8 @@
 }
 /* 2b 전달(ATC-76): AIRCRAFT의 permission mode가 OCC와 다름 — FLIGHT PLAN이 붙들릴 수 있음. 막지 않는다 */
 .dp-delivery {
-  padding: 0 var(--space-1);
-  border: 1px dashed var(--amber);
-  border-radius: var(--radius-sm);
   color: var(--amber);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 
@@ -1300,7 +1198,6 @@
   margin: 0;
   padding: var(--space-1-5) var(--space-2);
   background: var(--panel-2);
-  border: 1px dashed var(--amber);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
 }
@@ -1313,7 +1210,7 @@
 }
 .dp-confirm-mark {
   color: var(--amber);
-  font: 700 var(--text-2xs) var(--mono);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.1em;
 }
 .dp-confirm-note {
@@ -1360,7 +1257,7 @@
   display: block;
   margin-top: var(--space-1);
   color: var(--amber);
-  font: var(--text-2xs) var(--mono);
+  font: var(--text-xs) var(--sans);
   overflow-wrap: anywhere;
 }
 .dp-await-reason {
