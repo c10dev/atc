@@ -1,10 +1,10 @@
 # GLOBE: atc's AIRCRAFT over a 3D globe, and a SPACE theme
 
-Status (2026-10-01): design draft from the idea [#280](https://github.com/chaehy5665/atc/issues/280). Nothing is built. The SUPERVISOR decided the route model, the tab and the priority on 2026-10-01 (section 8). Work orders G1–G4 follow section 6.
+Status (2026-10-01): design draft from the idea [#280](https://github.com/chaehy5665/atc/issues/280). Nothing is built. The SUPERVISOR decided the route model, the tab, the priority and the split between atc and the Mac app on 2026-10-01 (section 9). Work orders follow section 7: parent [ATC-253](https://linear.app/vocado/issue/ATC-253), G1 [ATC-254](https://linear.app/vocado/issue/ATC-254), G2 [ATC-260](https://linear.app/vocado/issue/ATC-260), G3 [ATC-263](https://linear.app/vocado/issue/ATC-263), G4 [ATC-261](https://linear.app/vocado/issue/ATC-261), G5 [ATC-262](https://linear.app/vocado/issue/ATC-262), G6 [ATC-264](https://linear.app/vocado/issue/ATC-264). All are in Backlog until the SUPERVISOR releases G1.
 
-**LANDING tier of every step: `auto`.** GLOBE is a read-only screen plus a pure module. It adds no server route that writes, no state file and no package (section 2, principle 4).
+**LANDING tier of G1–G4: `auto`.** GLOBE is a read-only screen, a pure module and one read-only route (`GET /api/globe`). It adds no route that writes, no state file and no package (section 2, principle 4). G5 and G6 are in the atc-app repository, where the SUPERVISOR merges every PR.
 
-Related: [dispatch.md](dispatch.md) ("FLIGHT FOLLOWING: milestones as built", "STRIPS progress bar as built"), [fleet.md](fleet.md) (base AIRPORT, OUTSTATION, REPOSITION 8.6), [ui-visibility.md](ui-visibility.md).
+Related: [dispatch.md](dispatch.md) ("FLIGHT FOLLOWING: milestones as built", "STRIPS progress bar as built"), [fleet.md](fleet.md) (base AIRPORT, OUTSTATION, REPOSITION 8.6), [ui-visibility.md](ui-visibility.md), [mac-app.md](mac-app.md), atc-app `docs/design.md` (10.6 N8).
 
 ## 1. Current facts
 
@@ -18,14 +18,15 @@ Verified in the code on `origin/main` (2026-10-01).
 - **Drawing conventions.** Views draw inline SVG and take colours only from the `:root` tokens in `web/src/styles.css` (themes `radar`, `cockpit`, `night` (Night Sky) …). `settings.motion` (default off under `prefers-reduced-motion`) turns animation off. `web/src/Starfield.tsx` caps an always-on canvas at 30 fps and stops when the tab is hidden.
 - **No map library and no geographic data** in the repository. `package.json` has no d3, three.js or topojson.
 - **Browser storage.** The settings (`web/src/settings.ts`) and alert state already live in `localStorage`, read and written inside `try`/`catch`.
+- **The Mac app (ATCA, atc-app repository).** ANNUNCIATOR targets macOS 14 with no dependencies. Its atc window (N7) hosts the whole web UI in a WKWebView, so the web GLOBE tab shows there too. Native screens are N8: design only, picked by the SUPERVISOR after using N7, and only for screens that need the OS or must stay visible while the SUPERVISOR works elsewhere (atc-app `docs/design.md` 10.6). Team sessions build only the Linux `ATCCore` package; the app target is built in CI and on the SUPERVISOR's Mac, and only the SUPERVISOR sees its screens. MapKit on macOS 14 has a satellite map style with realistic elevation, which shows the Earth as a globe when zoomed out (to be confirmed on the Mac in G5).
 
 ## 2. Principles
 
-1. **Read-only, like RADAR and NETWORK.** GLOBE shows what atc already knows. It sends nothing to sessions, changes no state, and adds no server data in G1–G3.
+1. **Read-only, like RADAR and NETWORK.** GLOBE shows what atc already knows. It sends nothing to sessions and changes no state. The only server addition is one read-only route, `GET /api/globe` (3.8), computed from data atc already has.
 2. **Facts from the milestones, estimates only inside the current segment.** A plane's place on its route is the STRIPS progress model (`server/progress.ts`), not a new guess. No percentage, no ETA. Where the model has no estimate, the plane stops at the start of the segment, as the bar's marker does.
-3. **The location stays in the browser.** The SUPERVISOR's location and any AIRPORT positions they pick live only in `localStorage`. They are never sent to the server, written to state files, or put into PRs, issues, logs or screenshots (the repository is public). Without a location, GLOBE uses a default (section 3.6).
+3. **The location stays on the client.** The SUPERVISOR's location and any AIRPORT positions they pick live only in the browser's `localStorage` (or, for G5, in the Mac app). They are never sent to the server, written to state files, or put into PRs, issues, logs or screenshots (the repository is public). The scene route works in coordinates relative to the hub, so it never needs the location. Without a location, GLOBE uses a default (section 3.6).
 4. **No new package and no external request.** The projection, great circles and the day/night terminator are a few pure functions. Coastlines are Natural Earth 1:110m land (public domain), simplified and shipped inside the GLOBE chunk. No tile server, no geocoder, no CDN. Adding a package would make the PR `user` tier (`package*.json`) and is not needed for an orthographic globe.
-5. **One scene model, two drawings.** A pure function turns the snapshot into a **scene**: places (AIRPORTs), and for each FLIGHT a route, a state and a position `t` along it. The globe and the SPACE theme are two renderers of the same scene (section 5). Calculation is tested with `node:test`; drawing is not.
+5. **The server computes the scene, clients draw it.** A pure function on the server turns the snapshot into a **scene**: places (AIRPORTs relative to the hub), and for each FLIGHT a route, a state and a position `t` along it. `GET /api/globe` serves it (3.8). The web globe, the SPACE theme and the ATCA window are renderers of the same scene, so they cannot disagree (the Mac app's principle "the server decides, clients show"). Calculation is tested with `node:test`; drawing is not.
 6. **Stable from snapshot to snapshot.** AIRPORT places and route bearings come from hashes of stable ids (AIRPORT `id`, FLIGHT key), so planes do not jump when another FLIGHT appears.
 7. **Quiet when nothing is flying.** Parked AIRCRAFT are small marks at their AIRPORT. ARRIVED FLIGHTs fade out like the Dark cockpit rule on RADAR. Theme tokens only, `settings.motion` respected, 30 fps cap, stop when hidden.
 8. **A text equivalent.** The same scene is listed as rows next to the globe (callsign, FLIGHT, state, AIRPORT), for screen readers and narrow screens.
@@ -87,6 +88,18 @@ A click on a plane opens the FLIGHT drawer (`#flight/<KEY>`, as `OpenFlight` in 
 
 Drag to rotate, wheel or pinch to zoom (clamped), a "home" button to centre on the hub. Hover or focus shows the tooltip; Tab moves through planes in the text-row order.
 
+### 3.8 The scene route: `GET /api/globe`
+
+Read-only, no `Origin` check needed (it writes nothing). G1 builds it with `airports[]` and `parked[]`; G2 adds `flights[]`, G3 `moves[]`. Query `?home=<AIRPORT code>` picks the home AIRPORT; without it the server uses the default in 3.1. It reads only what the snapshot, the milestones/progress and `fleet.json` already hold; it calls no GitHub or Linear beyond them.
+
+- `at`, `home`.
+- `airports[]`: `id`, `code`, `name`, and `bearing`/`distance` (degrees of arc) from the hub. The home AIRPORT has distance 0. Each client places them from its own hub location; manual overrides stay on the client.
+- `flights[]`: `key`, `airport`, `aircraft` (REGISTRATION or `null`), `state` (one row of 3.3: `boarding`, `cruise`, `hold`, `final`, `goAround`, `taxi`, `arrived`, `nordo`), `t` in 0..1 along the leg of that state, `outbound` bearing, `late`, `blocks` (landing block codes) and `fadeFrom` (ISO, for `arrived`).
+- `parked[]`: REGISTRATION and base AIRPORT for AIRCRAFT without a FLIGHT.
+- `moves[]` (G3): `kind` (`outstation`, `reposition`), `aircraft`, `from`, `to`, `t`, `endedAt`.
+
+Clients refetch once per snapshot minute (like `useMilestones`) and animate in between. The scene is a few kilobytes, so the Mac app can read it as cheaply as the web.
+
 ## 4. Rendering
 
 - **Orthographic projection in inline SVG.** Rotate unit vectors by the view's yaw and pitch, keep the front hemisphere, project to x/y. Clip land polygons and tracks at the horizon (split segments where they cross it). Sphere fill, graticule every 30°, land, night cap, then tracks and planes.
@@ -103,21 +116,43 @@ A toggle in the GLOBE toolbar (`GLOBE | SPACE`, saved in `localStorage`; the `ni
 - **Moves between AIRPORTs** (OUTSTATION, REPOSITION) are **transfer orbits**: a half ellipse from one body's orbit to the other's.
 - HOLD, NORDO, GO AROUND and the text rows work as on the globe. There is no day/night terminator; the background is a static starfield (not the animated `Starfield`, to keep one animation per screen).
 
-## 6. Implementation order
+## 6. The ATCA globe window (G5)
+
+The web tab is built first because team sessions can build and check it. After G2 the Mac app gets a native **GLOBE window** as an N8 candidate (atc-app `docs/design.md` 10.6, "it must stay visible while the SUPERVISOR works elsewhere"):
+
+- SwiftUI `Map` with the satellite style at realistic elevation, zoomed out to the globe. Real imagery and coastlines come from MapKit; the window draws AIRPORTs, circuits, planes and great-circle tracks as map annotations and polylines (`MKGeodesicPolyline` for arcs) from `GET /api/globe`. The day/night terminator is a polygon overlay computed in `ATCCore` (pure, tested on Linux).
+- The location comes from CoreLocation on the Mac, or from the same typed coordinates, and stays in the app's own preferences (principle 3). The server never sees it.
+- Read-only, like the rest of the app before N5. A click opens the FLIGHT in the atc window (N7).
+- **Two modes.** `MAP` is the information view: the same states and text rows as the web tab. `CINEMATIC` is the animated, game-like view (6.1).
+- The window is its own issue in the Linear project `atc-app`, merged by the SUPERVISOR after they check it on the Mac (nobody else can see it). The SPACE theme stays web-only unless the SUPERVISOR asks for it there.
+
+### 6.1 CINEMATIC mode
+
+The game-like view of the same scene. It is presentation only; it adds no data and no new meaning.
+
+- **Camera.** A slow orbit of the globe when nothing is selected. Selecting a plane (or the "tour" button, which steps through the FLIGHTs in progress every 20 s) flies the camera to it with MapKit's camera animation and follows it at an oblique angle. Esc or a drag hands the camera back to the SUPERVISOR.
+- **Planes and trails.** A plane symbol that banks in turns and climbs or descends by state; a fading trail behind airborne planes; a holding racetrack drawn as it is flown; a short touchdown flash on ON and a departure from the gate on OUT.
+- **Honest motion (principle 2 still applies).** The point on the route still comes only from the scene's `t`. Between two scene refetches a plane eases towards the new `t` and then **keeps flying in place** (a small loop or hold at that point), so smooth motion never suggests progress atc does not know. No percentage, no ETA, no countdown. Late stays amber.
+- **Calm by default.** It follows the system's Reduce Motion setting (a still frame), caps the frame rate, pauses when the window is hidden or occluded and in Low Power Mode. No sound (RADIO already owns sound).
+- Its own issue after the `MAP` window, so the SUPERVISOR can use the information view first.
+
+## 7. Implementation order
 
 Each step is one issue. Each PR adds a changelog fragment pair and describes the screen in `docs/guide/screens.md` (Korean); G1 adds the GLOBE row.
 
 | # | Step | Output | Tier |
 |---|---|---|---|
-| G1 | **Globe and places.** Pure module `server/globe.ts` (browser-safe, like `server/progress.ts`) with tests: orthographic projection and horizon clipping, slerp, destination point by bearing and distance, subsolar point and terminator, AIRPORT layout with hashed places, minimum separation and overrides. Simplified Natural Earth land. The `#globe` tab after RADAR (lazy), location (3.6), home AIRPORT picker, drag/zoom/home, AIRPORTs, parked AIRCRAFT at their base, the text rows | A globe centred on the SUPERVISOR with AIRPORTs and parked AIRCRAFT; no FLIGHTs yet | auto |
-| G2 | **FLIGHTs on circuits.** Pure `globeSceneOf` (snapshot + milestones/progress + fleet → routes, states, `t`) with tests for every row of 3.3. Planes, holding, final, go-around, touchdown, taxi, fade-out, click targets | Every FLIGHT in progress flies its circuit with the right state | auto |
-| G3 | **Moves between AIRPORTs.** OUTSTATION and REPOSITION great-circle tracks (3.4), from the snapshot and `GET /api/fleet/plan` | Cross-AIRPORT movement is visible | auto |
-| G4 | **SPACE theme.** The second renderer of the same scene (section 5), the toggle and its default | GLOBE and SPACE show the same traffic | auto |
+| G1 | **Globe, places and the scene route.** Pure module `server/globe.ts` (browser-safe, like `server/progress.ts`) with tests: orthographic projection and horizon clipping, slerp, destination point by bearing and distance, subsolar point and terminator, AIRPORT layout relative to the hub with hashed places and minimum separation. `GET /api/globe` with `airports[]` and `parked[]` (3.8). Simplified Natural Earth land. The `#globe` tab after RADAR (lazy), location (3.6), home AIRPORT picker, client-side position overrides, drag/zoom/home, AIRPORTs, parked AIRCRAFT at their base, the text rows | A globe centred on the SUPERVISOR with AIRPORTs and parked AIRCRAFT; no FLIGHTs yet | auto |
+| G2 | **FLIGHTs on circuits.** Pure `globeSceneOf` on the server (snapshot + milestones/progress + fleet → places, routes, states, `t`) with tests for every row of 3.3, added to `GET /api/globe` as `flights[]` (3.8). The web tab draws planes, holding, final, go-around, touchdown, taxi, fade-out and click targets | Every FLIGHT in progress flies its circuit with the right state | auto |
+| G3 | **Moves between AIRPORTs.** `moves[]` in the scene (OUTSTATION from the snapshot, REPOSITION from the FLEET PLAN record) and their great-circle tracks on the web (3.4) | Cross-AIRPORT movement is visible | auto |
+| G4 | **SPACE theme.** The second web renderer of the same scene (section 5), the toggle and its default | GLOBE and SPACE show the same traffic | auto |
+| G5 | **ATCA GLOBE window, `MAP` mode** (atc-app repository, section 6). MapKit globe drawing `GET /api/globe`, terminator in `ATCCore` | A native globe window on the Mac | atc-app (SUPERVISOR merges) |
+| G6 | **ATCA `CINEMATIC` mode** (6.1). Camera orbit, follow and tour; banked planes, trails, touchdown and departure effects; honest motion; Reduce Motion and pause rules | The game-like view of the same traffic | atc-app (SUPERVISOR merges) |
 
-- G1 has no dependencies. G2 needs G1. G3 and G4 need G2 and can go in either order.
-- Checks for every step: `npm test`, `npx tsc --noEmit -p .`, `npx vite build`, and the GLOBE chunk size from the build output in the PR. On a 7702 test server (`ATC_GITHUB=off`, copied `airports.json` and `fleet.json`), open the tab with Playwright with a **made-up location** typed into the fields (never the real one), and describe what was seen in the PR in words. No screenshots (public repository, and a screenshot of this screen would show a location).
+- G1 has no dependencies. G2 needs G1. G3 and G4 need G2 and can go in either order. G5 needs G2 (G3 for moves), and is picked as an N8 candidate by the SUPERVISOR. G6 needs G5.
+- Checks for G1–G4: `npm test`, `npx tsc --noEmit -p .`, `npx vite build`, and the GLOBE chunk size from the build output in the PR. On a 7702 test server (`ATC_GITHUB=off`, copied `airports.json` and `fleet.json`), open the tab with Playwright with a **made-up location** typed into the fields (never the real one), and describe what was seen in the PR in words. No screenshots (public repository, and a screenshot of this screen would show a location).
 
-## 7. Risks
+## 8. Risks
 
 | Risk | Mitigation |
 |---|---|
@@ -127,8 +162,11 @@ Each step is one issue. Each PR adds a changelog fragment pair and describes the
 | Clutter with many FLIGHTs at one AIRPORT | Bearings spread by stable nudging; labels collapse to the FLIGHT number when circuits overlap; the text rows always list everything |
 | Looks broken in a theme | Colours only from `:root` tokens; the PR checks at least two themes |
 | Hash places put two AIRPORTs on top of each other | Minimum separation in the layout, plus the drag override |
+| The web and the Mac app drift | Both draw `GET /api/globe`; neither computes states or places. Only drawing differs |
+| CINEMATIC motion reads as progress atc does not know | Position only from the scene's `t`; between refetches the plane flies in place (6.1). No percentage, ETA or countdown |
+| The Mac window cannot be checked by teams | The scene logic is on the server and in `ATCCore`, both tested on Linux. The window itself is small and is checked by the SUPERVISOR on the Mac before merging |
 
-## 8. Decisions
+## 9. Decisions
 
 **Made (SUPERVISOR):**
 
@@ -136,14 +174,15 @@ Each step is one issue. Each PR adds a changelog fragment pair and describes the
 - 2026-10-01: **Route model:** a FLIGHT is a circuit from its AIRPORT and back (3.2); great-circle arcs are only for real moves between AIRPORTs (3.4). This differs from the idea's wording ("a transfer orbit from Earth to its planet"): in SPACE a FLIGHT orbits its own body, and transfer orbits are for OUTSTATION and REPOSITION.
 - 2026-10-01: **Placement:** a new tab `#globe` right after RADAR, lazy-loaded.
 - 2026-10-01: **Priority** of the work orders: Low.
+- 2026-10-01: **Web first, then the Mac app (option A).** The scene is computed on the server and served read-only (3.8). The web tab (G1–G4) comes first; a native MapKit GLOBE window in ATCA (G5) follows as an N8 candidate. Alternatives that were not chosen: the Mac app only (every visual change needs a build on the Mac, and only the SUPERVISOR can check it), and the web only. G1 waits in Backlog until the SUPERVISOR releases it.
+- 2026-10-01: **The game-like view lives in the Mac app.** The web GLOBE stays a light SVG information view (G1–G4). An animated, game-like view on a real globe is `CINEMATIC` mode in the ATCA window (6.1, G6), because MapKit brings the real Earth without a package, a bundled texture or a `user`-tier PR in atc. Not chosen: a three.js CINEMATIC mode on the web, and a WebGL web GLOBE from G1. The web draws inline SVG with a hand-written orthographic projection and no package (principle 4).
 
 **Proposed here, for the SUPERVISOR to accept or change:**
 
-- Inline SVG with a hand-written orthographic projection, no package (principle 4). three.js / globe.gl only if G1 shows SVG is not enough, as a separate `user`-tier decision.
-- Default location from the UTC offset, Geolocation rounded to 1°, no city search.
+- Default location from the UTC offset, Geolocation rounded to 1° (CoreLocation in G5), no city search.
 - Home AIRPORT default: where most live sessions are.
 - SPACE as a toggle inside GLOBE, not a separate tab.
 
 ## Not built yet
 
-Everything in section 6 (G1–G4).
+Everything in section 7 (G1–G6).
