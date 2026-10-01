@@ -20,7 +20,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - **FOB**(FUEL ON BOARD)는 그 AIRCRAFT가 실제로 지고 있는 연료, 곧 맥락 창의 남은 몫이다. 계정 사용 한도(아래 FUEL)와 다르다. 사용 한도는 같은 ACCOUNT의 모든 AIRCRAFT가 같이 쓰니 줄에는 싣지 않는다. 크기는 마지막 CAPTAIN 요청이 읽고 쓴 토큰이다(CREW는 세지 않음). 창은 세션이 스스로 말하면 그것이다(CLI 세션은 statusline이 알려 주고, 데스크톱 세션은 마지막 `/model` 출력에서 읽는다). 말이 없으면 대화 기록에 `[1m]`이 적히지 않아서, 200k를 넘는 요청을 한 번 보면 1M으로 짐작한다. 카드에는 `FOB 50% · 504k / 1M`과 그 시각이 보이고, 마우스를 올리면 창을 어떻게 정했는지 나온다(세션이 알림, `/model` 출력, 설정, 짐작). 짐작이 틀리면 `~/.local/state/atc/fleet-plan.json`에 `"contextWindows": {"claude-opus-5-5": 1000000}`처럼 적는다.
 - 순서는 AIRBORNE → HOLDING → PARKED → RESTARTING, 그다음 NORDO · AOG · NOT IN SERVICE. 같은 상태 안에서는 AIRPORT 순서다.
 - 팀 세션에서 `/clear`를 하면 세션이 끝나고 같은 이름의 새 세션이 다음 지시와 함께 뜬다. 그 사이 30분(`dispatch.json`의 `restartGraceMin`)까지는 줄이 RESTARTING으로 `세션 없음 — /clear 뒤 첫 메시지 대기`라고 보이고, 승인해 둔 DISPATCH 제안은 닫히지 않고 기다린다. 새 세션이 뜨면 그 제안이 그대로 나간다. 30분이 지나도 안 뜨면 예전처럼 NOT IN SERVICE가 되고 제안은 "세션 없음"으로 닫힌다. OCC가 그 사이 FLIGHT PLAN을 보내려 하면 atc가 막는다.
-- 줄을 누르면(키보드 Enter·Space도) 그 AIRCRAFT의 카드가 아래에 펼쳐진다. 카드는 행의 전체 폭을 쓰고, 위에서 아래로 **머리 → 경보 띠 → 네 칸 본문**이다. 머리 한 줄에 이름·REGISTRATION·base·STATUS·출처 칩(`BG`·`DESKTOP`)과, 멈췄는데 목록에 남은 job이 있으면 `STALE n` 칩이 있고, 오른쪽에 LAUNCH · ATTACH 복사 · STOP · CREW BRIEFING · 고치기 버튼과 `⋯` 메뉴가 있다. **AOG와 퇴역은 `⋯` 메뉴에 있다**(키보드로 열고 ↑↓로 고르고 Esc로 닫는다). 경보 띠는 켜진 것만 한 줄씩 보인다: NEEDS YOU(제안된 답 포함), AOG, ACCOUNT HOLD, REPORT 판정, 세션 이름 문제, 세션 없음·RESTARTING, RULES 미확인, LANGUAGE, 백그라운드가 아닌 세션의 손 절차. 하나도 없으면 띠가 없다. 본문 네 칸은 **NOW**(팀이 쥔 HOLDING FLIGHT, 일하는 job의 설명. 비면 칸이 없다) · **CREW**(CREW 표, TYPE RATING, ROUTE) · **ACCOUNT · FUEL** · **PERFORMANCE**(TARGETS, 실적, LOGBOOK, 메모)이고, 폭에 따라 4칸·2칸·1칸으로 줄어든다. 목록 행 아래의 카드는 행이 이미 보이는 FLYING·활동·FOB를 되풀이하지 않는다("카드" 보기에는 NOW에 그대로 있다). 값이 없는 칸(TYPE RATING·ROUTE·TARGETS가 비었을 때)은 그리지 않는다(고치기에서는 그대로 고친다). 다시 누르면 접힌다.
+- 줄을 누르면(키보드 Enter·Space도) 그 AIRCRAFT의 카드가 아래에 펼쳐진다. 카드는 행의 전체 폭을 쓰고, 위에서 아래로 **머리 → 경보 띠 → 네 칸 본문**이다. 머리 한 줄에 이름·REGISTRATION·base·STATUS(작은 점과 말. 점만 색이 있다: 일하는 중 초록, NEEDS YOU 파랑, AOG 노랑, NORDO 빨강, 나머지 회색)·출처 태그(`BG`·`DESKTOP`)와, 멈췄는데 목록에 남은 job이 있으면 `STALE n` 칩이 있고, 오른쪽에 LAUNCH · ATTACH 복사 · STOP · CREW BRIEFING · 고치기 버튼과 `⋯` 메뉴가 있다. **AOG와 퇴역은 `⋯` 메뉴에 있다**(키보드로 열고 ↑↓로 고르고 Esc로 닫는다). 경보 띠는 켜진 것만 한 줄씩 보인다: NEEDS YOU(제안된 답 포함), AOG, ACCOUNT HOLD, REPORT 판정, 세션 이름 문제, 세션 없음·RESTARTING, RULES 미확인, LANGUAGE, 백그라운드가 아닌 세션의 손 절차. 하나도 없으면 띠가 없다. 평소 상태의 카드는 색이 없다(태그와 `SEC` 칩도 같은 회색 테두리): 색은 상태 점과 경보에만 나온다. AOG와 CAUTION(노랑)·WARNING(빨강) 경보가 있는 카드는 왼쪽 안쪽에 그 색의 막대가 생기고, NEEDS YOU가 있으면 경보 띠에 파란 막대가 생긴다. 본문 네 칸은 **NOW**(팀이 쥔 HOLDING FLIGHT, 일하는 job의 설명. 비면 칸이 없다) · **CREW**(CREW 표, TYPE RATING, ROUTE) · **ACCOUNT · FUEL** · **PERFORMANCE**(실적, LOGBOOK, 메모)이고, 폭에 따라 4칸·2칸·1칸으로 줄어든다(960px 넘는 카드에서는 칸 사이에 가는 세로선이 있다). 목표(TARGETS)는 따로 줄을 두지 않고 각 값 옆에 흐린 `목표 …`로 붙는다. 목록 행 아래의 카드는 행이 이미 보이는 FLYING·활동·FOB를 되풀이하지 않는다("카드" 보기에는 NOW에 그대로 있다). 값이 없는 칸(TYPE RATING·ROUTE·TARGETS가 비었을 때)은 그리지 않는다(고치기에서는 그대로 고친다). 다시 누르면 접힌다.
 - 오른쪽 위 **목록 / 카드**로 예전처럼 모든 카드를 펼친 보기로 바꿀 수 있다. 고른 보기는 이 브라우저에 기억한다(기억하지 못하면 목록).
 - 좁은 화면에서는 한 줄이 두 줄로 접힌다: 위는 AIRCRAFT · AIRPORT · STATUS, 아래는 FLYING · 경과 · 마지막 활동 · 이번 주 health 표시가 있는 줄은 FLYING이 한 줄을 다 쓰고, 경과부터는 셋째 줄로 내려간다.
 
@@ -97,7 +97,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 `LIMIT`은 이미 막힌 뒤에 뜬다. FUEL은 막히기 전에 ACCOUNT가 한도를 얼마나 썼는지 보여 준다.
 
 - **켜기(한 번, SUPERVISOR)**: `~/.claude/settings.json`에 atc의 statusline 명령을 넣는다([hooks/README.ko.md](../../hooks/README.ko.md#fuel-statusline)). 그러면 Claude Code 아래 상태 줄에 `FUEL 5h 82% · 7d 40%`가 보이고, 같은 숫자가 atc에 남는다. 계정 정보는 남기지 않고 숫자만 남긴다.
-- **FUEL 블록과 카드**: `사용 82% · resets 21:00Z`. 가장 많이 쓴 창(5시간·주간)에서 **쓴** 몫과 그 창이 풀리는 시각이다. 남은 몫이 아니다. 80 % 아래는 회색, 80 %부터 노랑, 95 %부터 빨강. 마우스를 올리면 창마다의 값과, 어느 AIRCRAFT가 언제 적은 값인지 나온다.
+- **FUEL 블록과 카드**: `사용 82% · resets 21:00Z`(카드에서는 얇은 회색 막대와 `82%`, `resets 21:00Z`). 가장 많이 쓴 창(5시간·주간)에서 **쓴** 몫과 그 창이 풀리는 시각이다. 남은 몫이 아니다. 80 % 아래는 회색, 80 %부터 노랑, 95 %부터 빨강(카드의 막대도 같다). 마우스를 올리면 창마다의 값과, 어느 AIRCRAFT가 언제 적은 값인지 나온다.
 - **FLEET 줄**에는 이 숫자를 싣지 않는다(위 FOB가 줄의 연료다). 95 %(hold 수준)를 넘은 ACCOUNT의 AIRCRAFT에만 FLYING 칸에 `HOLD · FUEL (account pro-2) until 21:00Z` 표시가 붙는다. 배정이 막힌다는 표시다.
 - 같은 ACCOUNT의 AIRCRAFT는 같은 값을 보인다(가장 새로 적힌 값). ACCOUNT 라벨이 없으면 AIRCRAFT마다 자기 세션의 값만 보인다.
 - **관제 세션도 센다**: TOWER, OCC, CROSSCHECK, MCC, ENGINEERING도 같은 계정의 한도를 쓴다. FLEET 탭 CONTROL SESSIONS 구역에서 세션마다 **ACCOUNT**를 적어 둔다(AIRCRAFT와 같은 라벨 형식). 적지 않으면 라벨이 하나라도 있을 때 `default`로 센다. 관제 세션이 한도를 많이 써도 붙들리는 것은 같은 ACCOUNT의 AIRCRAFT뿐이고, 관제 세션은 멈추지 않는다.
@@ -114,10 +114,10 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 위 FUEL REMAINING이 "한도를 얼마나 썼나"라면, 이것은 "끝낸 FLIGHT가 얼마나 들었나"다. LOGBOOK 줄에 적힌 토큰에 지금 가격표로 값을 매긴다. 보여 주기만 하고 DISPATCH 점수·배정에는 쓰지 않는다.
 
 - **FLEET 줄의 FUEL 14일 칸**: `$6.10/FLT · CACHE 93%`. 최근 14일 ARRIVED FLIGHT의 FLIGHT당 FUEL COST(달러, 목록가 기준)와 CACHE HIT. 마우스를 올리면 NET, CREW 몫, 큰 LEAK, 값 없는 모델이 나온다. 좁은 화면에서는 줄 맨 아래 한 줄이 된다.
-- **카드의 FUEL 블록**(최근 14일): 두 줄이다. `NET $x/FLT`(LEAK을 뺀 값, 목표가 있으면 옆에)와 `CACHE HIT CAPTAIN · CREW`. TRIP FUEL을 넘은 FLIGHT, LEAK, CREW 경고(HEAVY PREFIX, COLD CREW …)가 있을 때만 셋째 줄이 붙는다. FUEL COST, 건수(ARRIVED·fuel·값), 값 없는 모델, CREW 몫은 마우스를 올리면 나온다.
+- **카드의 FUEL 블록**(최근 14일): 두 줄이다. 라벨·값 줄 `NET/FLT $x`(LEAK을 뺀 값)와 `CACHE HIT CAPTAIN · CREW`이고, 목표가 있으면 값 옆에 흐린 `목표 ≤ $8.00`·`목표 95%`가 붙는다. TRIP FUEL을 넘은 FLIGHT, LEAK, CREW 경고(HEAVY PREFIX, COLD CREW …)가 있을 때만 셋째 줄이 붙는다. FUEL COST, 건수(ARRIVED·fuel·값), 값 없는 모델, CREW 몫은 마우스를 올리면 나온다.
 - **최근 FLIGHT**: 각 FLIGHT 아래 줄에 `NET $2.76 LEAK $0.39 TRIP ✓`. `TRIP ✓`은 비슷한 FLIGHT들의 범위(TRIP FUEL p90) 안, `UNEXPECTED`는 넘었다는 뜻이다. 값이 없는 모델뿐이면 토큰(`4.6M tok`)만 보인다.
 - **없는 값은 0이 아니라 `—`**: FUEL 기록이 생기기 전 FLIGHT(`FUEL —`), 가격표에 없는 모델(DeepSeek 등), 비교할 FLIGHT가 모자란 TRIP FUEL은 비워 둔다.
-- **TARGETS**: 고치기에서 `FLIGHT당 NET $ … 이하`와 `CACHE HIT … %`를 정할 수 있다. 못 미치면 FUEL 블록의 그 값이 노란색이 된다. 다른 TARGETS처럼 표시만 한다.
+- **TARGETS**: 고치기에서 `FLIGHT당 NET $ … 이하`와 `CACHE HIT … %`를 정할 수 있다. 못 미치면 FUEL 블록의 그 값이 노란색이 되고, 목표는 값 옆에 흐린 글씨로 보인다. 다른 TARGETS처럼 표시만 한다.
 
 ## 팀 프로필
 
@@ -144,11 +144,11 @@ LOGBOOK은 AIRCRAFT가 끝낸(ARRIVED) FLIGHT의 기록이다. atc가 10분마�
 
 | 줄 | 뜻 |
 |---|---|
-| 이번 주 3/3 | 이번 주(월요일 0시부터) ARRIVED 수 / 목표. 목표보다 적으면 노란색 |
-| 정시 67% (목표 80%) | 최근 14일 FLIGHT 중 팀 소요 시간이 기대치 안인 비율. 목표보다 낮으면 노란색 |
-| 되돌림 · LOS | 0보다 클 때만 같은 줄에 빨간색으로 붙는다 |
+| 이번 주 `3` 목표 5 | 이번 주(월요일 0시부터) ARRIVED 수, 목표는 옆에. 목표보다 적으면 노란색 |
+| 정시 `67%` 목표 80% | 최근 14일 FLIGHT 중 팀 소요 시간이 기대치 안인 비율. 목표보다 낮으면 노란색 |
+| 되돌림 · LOS | 0보다 클 때만 줄로 나오고 빨간색이다 |
 | (마우스를 올리면) | 최근 14일 ARRIVED 수, 되돌림, LOS, 착륙 대기 중앙값 |
-| LOGBOOK | 최근 FLIGHT 5건(더 있으면 `더 보기`): FLIGHT(AD HOC), PR 번호, 팀 소요 시간(모르면 `—`), `+`착륙 대기, ON TIME / DELAYED, REVERTED, LOS, 날짜. FLIGHT를 누르면 PR이 열린다 |
+| LOGBOOK | 작은 표, 최근 FLIGHT 5건(더 있으면 `더 보기`): FLIGHT(AD HOC), PR 번호, 소요(모르면 `—`, 늦으면 노란색이고 마우스를 올리면 DELAYED, `+`착륙 대기), NET, 날짜. 숫자 칸은 오른쪽 맞춤. REVERTED·LOS는 빨간색. ON TIME 글자는 없다(툴팁에만). FLIGHT를 누르면 PR이 열린다 |
 
 기대 block time은 `wake` 라벨이 있으면 L 60분 · M 4시간 · H 2일이다. 라벨이 없거나 J거나 AD HOC이면 같은 FLIGHT TYPE·WAKE로 끝난 다른 FLIGHT(3건 이상)의 중앙값과 비교하고, 모자라면 정시율에서 뺀다. 실적은 보여 주기만 하고 배정 점수에는 쓰지 않는다.
 
