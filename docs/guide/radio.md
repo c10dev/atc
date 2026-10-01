@@ -75,7 +75,7 @@ FIX PR #320 (ATC-257): MCC INSPECTION returned FINDINGS on head a090f16 (P0 0 ·
   — When received, reply to this message with "ROGER C-0012".
   ```
 
-- 같은 본문으로는 다시 보내지 않는다. atc가 마지막 INFO 본문과 상태를 비교해 정하므로 서버가 재시작돼도 빠지거나 두 번 가지 않는다(ATC-270). CI 진행 중이나 GitHub 계산 중처럼 기다리면 풀리는 것은 알리지 않는다. 리뷰 지적은 INFO가 아니라 아래 FIX가 맡는다.
+- 같은 본문으로는 다시 보내지 않는다. atc가 막힘 코드로 정하므로(마지막 INFO 끝의 `[blocks: …]` 표지와 견준다) 서버가 재시작돼도 빠지거나 두 번 가지 않고, CI가 끝나거나 head가 바뀌어도 같은 막힘이면 다시 가지 않는다(ATC-270). CI 진행 중이나 GitHub 계산 중처럼 기다리면 풀리는 것은 알리지 않는다. 리뷰 지적은 INFO가 아니라 아래 FIX가 맡는다.
 - 팀은 ROGER만 하고, 고치는 방법은 CAPTAIN이 정한다. 막힘이 풀리면 PR은 저절로 CLEARED TO LAND가 되고 그때 `LAND`가 온다.
 - **GROUND STOP**(3단계 출발 중지, 스위치로 켰을 때만): 그 AIRPORT에는 `LAND`가 나가지 않는다. 시작할 때 CLEARED PR의 팀에 `HOLD`("GROUND STOP: <사유> — LAND 보류")가, 풀릴 때 `CONTINUE`("GROUND STOP 풀림 — LANDING SEQUENCE대로 진행")가 간다. 그 AIRPORT에는 새 배정도 나가지 않는다.
 

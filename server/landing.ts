@@ -466,7 +466,7 @@ export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs =
       : sum.p0 || sum.p1 || sum.p2
         ? `Codex 지적 있음(head ${short(pr.headRefOid)}, ${findingCounts(sum)}) — 반영 후 재리뷰 필요`
         : `Codex P3 지적 ${sum.p3}건 중 ${sum.open}건이 해결·답글 없음(head ${short(pr.headRefOid)}) — 스레드를 resolve하거나 답글을 달면 P3는 착륙을 막지 않음`;
-    out.push(block("review-findings", text, en, { source: "codex", by: null, counts: sum && (sum.p0 || sum.p1 || sum.p2) ? [sum.p0, sum.p1, sum.p2] : null, text: null, from: null }));
+    out.push(block("review-findings", text, en, { source: "codex", by: "Codex", counts: sum && (sum.p0 || sum.p1 || sum.p2) ? [sum.p0, sum.p1, sum.p2] : null, text: null, from: null, ...(sum && !(sum.p0 || sum.p1 || sum.p2) ? { p3Only: true as const } : {}) }));
     return out;
   }
   if (hasHeadReview(pr) || thumbsOk) return out;

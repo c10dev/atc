@@ -124,7 +124,7 @@ export function buildBrief(
       // 리뷰 지적(review-findings)은 FIX가 맡아서 여기서 뺀다(ATC-270)
       infoText: p.landing === "APPROACH" ? infoText : null,
       // 막힘 INFO를 보낼지(ATC-270): 마지막 INFO 본문과 비교해 상태로 정한다. 서버가 재시작돼 이벤트가 없어도(reset) 같다
-      info: infoOf(p, infoText, { clearances, holders: holderCount }),
+      info: infoOf(p, { clearances, holders: holderCount }),
       // 리뷰 지적(MCC INSPECTION·REVIEW·Codex·이어받은 리뷰)을 고치라는 지시(ATC-270). action "send"면 TOWER가 holders에게 FIX로 text 그대로 보낸다
       fix: fixOf(p, { clearances, holders: holderCount, now }),
       readyAt: p.readyAt,

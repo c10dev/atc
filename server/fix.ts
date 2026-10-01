@@ -1,4 +1,5 @@
 import { sameStand } from "./go-around.ts";
+import { infoTextOf } from "./landing-en.ts";
 import type { Clearance, PullRequest, ReviewFindings } from "./model.ts";
 
 // FIX(ATC-270): APPROACH PR의 현재 head에 review-findings 막힘이 있으면 그 PR의 STAND를 쥔 세션에 줄 행동 지시. 순수 함수만 둔다.
@@ -31,11 +32,13 @@ export function fixTextOf(x: { pr: number; head: string; flight: string | null; 
   const who = `PR #${x.pr}${x.flight ? ` (${x.flight})` : ""}`;
   const head = x.head.slice(0, 7);
   const tail = `Fix them on the same branch, or say in the PR body why one stays (PILOT'S DISCRETION); run the checks and push; ${RE_REVIEW[f.source]}. Reply READBACK, or UNABLE with the reason. head ${head}`;
+  // Codex의 P3만 남은 경우: 코드를 고칠 일이 아니라 스레드를 해결하거나 답글을 다는 일이다
+  if (f.p3Only) return `FIX ${who}: ${x.en}. Resolve each thread or reply to it on the PR (${x.url}); no code change is needed for P3. Reply READBACK, or UNABLE with the reason. head ${head}`;
   if (!f.counts) return `FIX ${who}: ${x.en}. ${tail}`;
   const [p0, p1, p2] = f.counts;
   const crit = criticalLinesOf(f.text, p0, p1);
   const lines = crit.length ? ` ${crit.map((l) => l.replace(/[.\s]+$/, "")).join("; ")}.` : "";
-  const rest = p2 > 0 ? ` ${reNew(p2, "P2 finding")} in the full text on the PR: ${x.url}.` : f.text ? ` Full text on the PR: ${x.url}.` : "";
+  const rest = p2 > 0 ? ` ${reNew(p2, "P2 finding")} in the full text on the PR: ${x.url}.` : ` Details on the PR: ${x.url}.`;
   return `FIX ${who}: ${f.by ?? "review"} returned FINDINGS on head ${head} (P0 ${p0} · P1 ${p1} · P2 ${p2}).${lines}${rest} ${tail}`;
 }
 
@@ -80,18 +83,25 @@ export function fixOf(p: PullRequest, x: { clearances: readonly Clearance[]; hol
 }
 
 // APPROACH INFO(막힘 알림)도 상태로 정한다. 지적(review-findings)은 FIX가 맡으니 INFO에서 뺀다.
-// TOWER가 알리지 않는 막힘(체크 진행·머지 계산·LOS·충돌·뒤처짐)만 있으면 보낼 것이 없다. 마지막 INFO 본문과 같으면 이미 나간 것이다
+// 예전 규칙(events.ts diffLanding)처럼 알릴 막힘(코드)이 새로 생길 때만 보낸다. 본문에는 막힘마다 head·체크 이름·시간이 들어 있어 흔들리므로
+// 본문이 아니라 본문 끝의 `[blocks: a,b]` 표지(코드 집합)로 마지막 INFO와 견준다. 체크 진행·머지 계산·LOS·충돌·뒤처짐은 알리지 않는다
 export const QUIET_CODES = new Set(["checks-pending", "merge-unknown", "los", "dirty", "behind"]);
 export interface Info {
   text: string;
   action: "send" | "sent" | "log";
   clearance: string | null;
 }
-export function infoOf(p: PullRequest, text: string | null, x: { clearances: readonly Clearance[]; holders: number }): Info | null {
-  if (p.landing !== "APPROACH" || !text) return null;
-  if (!p.blocks.some((b) => !b.findings && !QUIET_CODES.has(b.code))) return null;
+const MARK = /\[blocks: ([a-z0-9,-]+)\]\s*$/;
+export function infoOf(p: PullRequest, x: { clearances: readonly Clearance[]; holders: number }): Info | null {
+  if (p.landing !== "APPROACH") return null;
+  const live = p.blocks.filter((b) => !b.findings && !QUIET_CODES.has(b.code));
+  if (!live.length) return null;
+  const codes = [...new Set(live.map((b) => b.code))].sort();
+  const text = `${infoTextOf(p.number, live.map((b) => b.en))} [blocks: ${codes.join(",")}]`;
   const last = x.clearances.findLast((c) => c.type === "INFO" && !c.cancelledAt && c.at >= p.createdAt && sameStand(c, p));
-  if (last && last.text === text) return { text, action: "sent", clearance: last.id };
+  // 마지막 INFO가 이 코드를 모두 알렸으면 이미 나간 것(표지가 없는 옛 INFO는 알 수 없어 다시 보낸다)
+  const told = new Set(last?.text.match(MARK)?.[1]?.split(",") ?? []);
+  if (last && codes.every((c) => told.has(c))) return { text, action: "sent", clearance: last.id };
   if (!x.holders) return { text, action: "log", clearance: null };
   return { text, action: "send", clearance: null };
 }

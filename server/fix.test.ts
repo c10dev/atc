@@ -81,18 +81,39 @@ test("fixOf: holder가 없으면 SUPERVISOR, 한 시간 안 세 번째 FIX도 SU
   assert.equal(fixOf(pr(), ctx({ clearances: three, now: T0 + 70 * 60_000 }))!.action, "send");
 });
 
-test("infoOf: 마지막 INFO 본문과 비교한다(서버 재시작과 상관없이), 지적만 있으면 INFO 없음", () => {
-  const p = pr({}, null, ["no-review"]);
-  const text = "PR #320 cannot land yet: no-review";
-  assert.deepEqual(infoOf(p, text, { clearances: [], holders: 1 }), { text, action: "send", clearance: null });
-  const info = clr({ id: "C-0009", type: "INFO", text });
-  assert.deepEqual(infoOf(p, text, { clearances: [info], holders: 1 }), { text, action: "sent", clearance: "C-0009" });
-  // 본문이 달라졌다(막힘이 바뀜) → 다시
-  assert.equal(infoOf(p, `${text} · blocked`, { clearances: [info], holders: 1 })!.action, "send");
+test("infoOf: 알릴 막힘 코드가 새로 생길 때만 보낸다(본문이 흔들려도 다시 가지 않는다), 지적만 있으면 INFO 없음", () => {
+  const noRev = pr({}, null, ["no-review"]);
+  const send = infoOf(noRev, { clearances: [], holders: 1 })!;
+  assert.deepEqual([send.action, send.clearance], ["send", null]);
+  assert.match(send.text, /^PR #320 cannot land yet: no-review \[blocks: no-review\]$/);
+  const info = clr({ id: "C-0009", type: "INFO", text: send.text });
+  assert.deepEqual([infoOf(noRev, { clearances: [info], holders: 1 })!.action, infoOf(noRev, { clearances: [info], holders: 1 })!.clearance], ["sent", "C-0009"]);
+  // CI가 끝나(checks-pending이 사라짐) 본문 문구가 달라지거나 같은 막힘으로 새 head가 와도 다시 보내지 않는다
+  const volatile = { ...pr({ head: "c222222abcdef0" }, null, ["checks-pending"]), blocks: [{ code: "checks-pending" as const, text: "", en: "CI in progress: a, b" }, { code: "no-review" as const, text: "", en: "no review: waiting for the MCC INSPECTION of head c222222" }] };
+  assert.equal(infoOf(volatile, { clearances: [info], holders: 1 })!.action, "sent");
+  assert.equal(infoOf(pr({}, null, ["no-review"]), { clearances: [info], holders: 1 })!.action, "sent");
+  // 새 막힘 코드가 생기면 다시. 막힘이 줄기만 하면 다시 보내지 않는다
+  const two = infoOf(pr({}, null, ["no-review", "blocked"]), { clearances: [info], holders: 1 })!;
+  assert.equal(two.action, "send");
+  assert.match(two.text, /\[blocks: blocked,no-review\]$/);
+  const infoTwo = clr({ id: "C-0010", type: "INFO", text: two.text });
+  assert.equal(infoOf(noRev, { clearances: [infoTwo], holders: 1 })!.action, "sent");
+  // 표지가 없는 옛 INFO는 알 수 없어 한 번 다시 보낸다
+  assert.equal(infoOf(noRev, { clearances: [clr({ type: "INFO", text: "PR #320 cannot land yet: no-review" })], holders: 1 })!.action, "send");
   // holder가 없으면 ATC LOG만
-  assert.equal(infoOf(p, text, { clearances: [], holders: 0 })!.action, "log");
-  // 알리지 않는 막힘만(체크 진행 등)이면 없다. 지적은 FIX 몫이라 INFO를 만들지 않는다
-  assert.equal(infoOf(pr({}, null, ["checks-pending"]), "PR #320 cannot land yet: checks-pending", { clearances: [], holders: 1 }), null);
-  assert.equal(infoOf(pr(), null, { clearances: [], holders: 1 }), null);
-  assert.equal(infoOf(pr({ landing: "CLEARED", blocks: [] }), text, { clearances: [], holders: 1 }), null);
+  assert.equal(infoOf(noRev, { clearances: [], holders: 0 })!.action, "log");
+  // 알리지 않는 막힘만(체크 진행 등)이거나 지적뿐이면 INFO가 없다. 지적은 FIX 몫
+  assert.equal(infoOf(pr({}, null, ["checks-pending"]), { clearances: [], holders: 1 }), null);
+  assert.equal(infoOf(pr(), { clearances: [], holders: 1 }), null);
+  assert.equal(infoOf(pr({ landing: "CLEARED", blocks: [] }), { clearances: [], holders: 1 }), null);
+});
+
+test("fixTextOf: Codex는 이름과 PR 주소를 늘 적고, P3만 남으면 스레드를 해결·답글하라고 한다", () => {
+  const codex: ReviewFindings = { source: "codex", by: "Codex", counts: [0, 1, 0], text: null, from: null };
+  const t = fixTextOf({ pr: 7, head: "abcdef0123", flight: null, url: "https://x/pull/7", findings: codex, en: "" });
+  assert.match(t, /^FIX PR #7: Codex returned FINDINGS on head abcdef0 \(P0 0 · P1 1 · P2 0\)\. Details on the PR: https:\/\/x\/pull\/7\./);
+  const p3: ReviewFindings = { source: "codex", by: "Codex", counts: null, text: null, from: null, p3Only: true };
+  const u = fixTextOf({ pr: 7, head: "abcdef0123", flight: null, url: "https://x/pull/7", findings: p3, en: "2 of 3 Codex P3 findings on head abcdef0 have no resolution or reply" });
+  assert.match(u, /Resolve each thread or reply to it on the PR \(https:\/\/x\/pull\/7\); no code change is needed for P3\./);
+  assert.doesNotMatch(u, /re-reviews/);
 });

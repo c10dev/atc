@@ -160,10 +160,11 @@ export interface Alert {
 // counts: P0·P1·P2 수(모르면 null), text: 지적 본문(없으면 null), from: carried의 이전 커밋 7자리
 export interface ReviewFindings {
   source: "mcc" | "review" | "codex" | "carried";
-  by: string | null; // 지적한 쪽의 이름("MCC INSPECTION", 착륙 리뷰어 이름). codex·carried는 null
+  by: string | null; // 지적한 쪽의 이름("MCC INSPECTION", 착륙 리뷰어 이름). codex는 "Codex", carried는 null
   counts: [number, number, number] | null;
   text: string | null;
   from: string | null;
+  p3Only?: true; // Codex: P0~P2는 없고 해결·답글 없는 P3 스레드만(고칠 코드가 아니라 스레드를 닫는 일)
 }
 
 export type ClearanceType = "TRAFFIC" | "HOLD" | "CONTINUE" | "LAND" | "GO AROUND" | "FIX" | "REPORT" | "INFO";
