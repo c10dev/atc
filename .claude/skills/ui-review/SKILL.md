@@ -1,6 +1,6 @@
 ---
 name: ui-review
-description: Use when a FLIGHT changes atc's web screen (web/src) or the ANNUNCIATOR app screens, before the PR, or when asked to audit one tab. Reviews the changed screens against atc's design language (docs/design-language.md section 5) a softer taste layer (docs/design-taste.md) and two vendored rule sets, clicks through the running screen to catch layout shifts, and prints a findings block for the PR body. Not for server, hooks or docs-only FLIGHTs.
+description: Use when a FLIGHT changes atc's web screen (web/src) or the ANNUNCIATOR app screens, before the PR, or when asked to audit one tab. Reviews the changed screens against atc's design language (docs/design-language.md section 5), a softer taste brief (docs/design-taste.md) and two vendored rule sets, clicks through the running screen to catch layout shifts, and prints a findings block for the PR body. Not for server, hooks or docs-only FLIGHTs.
 ---
 
 # ui-review
@@ -11,19 +11,25 @@ A review tool for screen changes. It answers the section 5 checklist of [docs/de
 
 1. Root `CLAUDE.md`.
 2. `docs/design-language.md`: the principles, 3.5 Craft and the section 5 checklist. **Do not copy it into your output; cite its numbers** (`3.5.4`, `principle 11`). It stays the single source.
-3. `docs/design-taste.md` (the taste brief): a softer third layer, below. A tendency from one round by one person, so it never outranks layers 1 and 2 and never produces a Blocker.
+3. `docs/design-taste.md` (the taste brief), a softer third layer (see "Taste layer"). It is a tendency, not a rule: `docs/design-language.md` wins wherever the two disagree. As with the design language, **cite its point numbers** (`taste 1`, `taste 4`) and never copy them into the output. It will be revised after more categories are judged, so do not freeze v1: read the points from the file every time, and name the version in the output row.
 4. The vendored references, below. They only add rules.
 
 A value the design language decided is **a decision, not a defect**: never report it, whatever a vendored rule says. Where a vendored rule and the design language disagree, the reference line is marked `CONFLICT`. Do not apply a `CONFLICT` line and do not decide it: list it under **Conflicts seen** in your output (once per rule, with the file and line it would have hit) and move on. The SUPERVISOR decides after the ATC-285 audit.
 
 ## Taste layer (layer 3)
 
-Read [docs/design-taste.md](../../../docs/design-taste.md) before reviewing. It holds five numbered points (1 one focal element, 2 readable before quiet, 3 alignment and whitespace over density, 4 status-page form for history, 5 detail on demand). **Cite the point number only** (`taste 2`); never copy the brief's text into the output, and never quote its evidence. Read its status line: it is a tendency, revised when another category is judged.
+Read [docs/design-taste.md](../../../docs/design-taste.md) before reviewing: its numbered points and its status line (a tendency; the version `vN` goes into the output row). Cite the point number only.
 
-- **Severity cap.** A taste finding is **Should-fix** or **Note**, never a Blocker, and never makes the verdict Block. It still needs the proof gate below (contract = the point number, evidence = `file:line` plus a runtime or measured fact, correction in tokens). "Feels busy" is not evidence; a count is (equal-weight sections, text tokens and their measured ratio, left edges, height against the viewport).
-- **Conflict rule.** Where a taste point disagrees with `docs/design-language.md`, the design language wins. Do not apply the point and do not decide it: list it under **Conflicts seen** as `taste N vs <design-language rule>` with the file and line it would have hit (the SUPERVISOR decides). A value the design language decided is a decision, not a taste finding.
-- **Where taste looks.** Point 1: how many blocks compete at the same weight and size, and whether the card or view fits the viewport. Point 2: information text on a token weaker than `--muted` (measure the ratio in all three themes; the tokens are in `web/src/styles.css`). Point 3: label column width and left edge per section, numbers `tabular-nums` and right-aligned. Point 4: a history shown as a table where a bar row would answer "has it been OK lately?", and bars without a label. Point 5: sections that are long and always open, folds without a summary, a fold that moves anything above or beside it (the layout-stability step below measures it).
-- **Not a taste finding:** anything already in the section 5 checklist or the vendored rules (report it there), and anything that is a design-language decision.
+- **Severity.** A finding whose only contract is a taste point is at most **Should-fix**, and is a **Note in `diff` mode unless the diff introduced it** (old code the FLIGHT did not touch is a Note). Never a Blocker, and taste alone never gives the verdict Block. **Exceptions:** point 2 when the text fails 4.5:1 keeps the severity of that accessibility contract (it is not a taste finding then; report it with the checklist), and point 5's shift part is not reported twice: it is measured by the layout-stability step, and the taste row cites that result.
+- **Proof gate.** Taste findings pass the same gate as any finding (contract = the point number, evidence = `file:line` plus a counted or measured fact, correction in tokens). "Feels busy" is not evidence.
+- **Conflicts.** Where a taste point and the design language disagree, the finding is not applied: list it under **Conflicts seen** (`taste N vs <rule>`, with the file and line it would have hit), the same as a vendored `CONFLICT` line. The SUPERVISOR decides. Known examples (PR 381): focal size vs the three-text-sizes rule in 3.5; right-aligned numbers vs summary sentences.
+- **Checks** (one or two lines per point; each has an evidence form):
+  - **taste 1 Focal.** Name the focal element of each changed view. If there is none, or more than one competes (same size and weight, near the top), that is the finding.
+  - **taste 2 Readable.** Information text styled with `--faint` or a lower-contrast token is a finding. To get numbers, run a few lines of relative-luminance JS through `browser_evaluate` per theme: resolve the text colour and its surface with `getComputedStyle`, convert each channel `c/255` with `c <= 0.03928 ? c/12.92 : ((c+0.055)/1.055)**2.4`, `L = 0.2126 R + 0.7152 G + 0.0722 B`, ratio `(Lmax+0.05)/(Lmin+0.05)`. No new dependency.
+  - **taste 3 Alignment.** Label and value columns share one left edge per card or section, and numbers are right-aligned `tabular-nums`. Evidence is the CSS (`grid-template-columns`, a shared width token) or the left `x` of the label boxes from the probe snapshot.
+  - **taste 4 History.** A table that answers "has it been OK lately?" with no strip or summary above it is a **Note**, not more.
+  - **taste 5 Detail.** Folded sections show a one-line summary; for the shift, cite the layout-stability result.
+- **Not a taste finding:** anything already in the section 5 checklist or the vendored rules (report it there once), and a value the design language decided.
 - Cap: at most 3 taste findings in `diff`, 6 in `audit`; merge repeats.
 
 References (read both before reviewing):
@@ -100,7 +106,7 @@ Section 5 line by line first. Then, in this order: focus and keyboard (visible f
 |---|---|---|
 | Section 5 checklist | lines applied: … | n findings / Clear |
 | Layout stability (runtime step) | controls clicked: n of m | n findings / Clear / Not verified (reason) |
-| Taste (layer 3, `docs/design-taste.md`) | points checked: 1 to 5 | n findings (Should-fix or Note) / Clear / Not reviewed (reason) |
+| Taste brief (`docs/design-taste.md` vN) | points applied: … | n findings (Should-fix or Note) / Clear / Not reviewed (reason) |
 | Focus and keyboard | … | n findings / Clear / Not reviewed (reason) |
 | Targets, forms, states | … | … |
 | Long and empty content | … | … |
