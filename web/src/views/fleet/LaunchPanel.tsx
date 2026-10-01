@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { AircraftView } from "../../../../server/fleet.ts";
+import { type LaunchModelSetting, launchModelOf } from "../../../../server/launch-model.ts";
 import type { SessionBrief } from "./shared.ts";
 import { usePanelFocus } from "./usePanelFocus.ts";
 
@@ -7,12 +8,14 @@ import { usePanelFocus } from "./usePanelFocus.ts";
 export function LaunchPanel({
   a,
   control,
+  launchModel,
   opener,
   onCancel,
   onLaunch,
 }: {
   a: AircraftView;
   control: SessionBrief;
+  launchModel?: LaunchModelSetting; // LAUNCH MODEL(ATC-279): 양식을 비워 두면 서버가 이 설정으로 정한다
   opener: HTMLElement | null;
   onCancel: () => void;
   onLaunch: (input: { permissionMode: string; model: string; account?: string }) => Promise<string | null>;
@@ -35,6 +38,8 @@ export function LaunchPanel({
       alive = false;
     };
   }, []);
+  // 비워 두면 서버가 AIRCRAFT > AIRPORT > 기본 설정으로 정한다(양식에 적으면 그것이 먼저)
+  const preset = launchModelOf({ registration: a.registration, airport: a.base ?? null, setting: launchModel });
   const homeLabel = (accounts.find((x) => x.label === a.account) ?? accounts[0])?.label ?? null; // home 라벨이 등록부에 없으면 서버도 ~/.claude로 가므로 첫 줄로 보인다
   const dflt = launchAccount ?? homeLabel; // 서버가 이름 없는 LAUNCH에 쓸 ACCOUNT와 같다
   const chosen = account ?? dflt;
@@ -84,7 +89,7 @@ export function LaunchPanel({
       </label>
       <label>
         모델{" "}
-        <input className="fl-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="기본값" aria-label="모델" />
+        <input className="fl-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder={preset.model ? `${preset.model} (LAUNCH MODEL)` : "폴더 기본"} aria-label="모델" />
       </label>
       {accounts.length > 0 && (
         <label>

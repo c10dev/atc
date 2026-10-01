@@ -8,7 +8,8 @@ import { type AccountFolder, accountFolders, folderOfAccount, observedLabelsOn }
 import { authStatusOf } from "./account-health.ts";
 import { cleanEnv, cleanPath } from "./clean-env.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
-import { crewBriefing, FleetError, fleetView, loadFleet, saveControlAccount, saveLaunchAccount } from "./fleet.ts";
+import { crewBriefing, FleetError, fleetView, loadFleet, saveControlAccount, saveLaunchAccount, saveLaunchModel } from "./fleet.ts";
+import { launchModelOf, launchModelPatchOf, launchModelSettingOf, MODEL_CHOICES } from "./launch-model.ts";
 import { launchSplitWarning } from "./account-reach.ts";
 import { effectiveLaunchAccount, launchSettingOf, launchSettingPatchOf } from "./launch-account.ts";
 import { fleetKeyOf } from "./registration.ts";
@@ -461,13 +462,14 @@ export interface ControlResult {
   cwd?: string;
   permissionMode?: PermissionMode;
   model?: string | null;
+  modelFrom?: string; // 모델을 어디서 골랐나(launch-model.ts ModelFrom, ATC-279)
   account?: string | null; // 띄운 ACCOUNT 라벨(등록부가 없으면 없다)
   error?: string;
 }
 
 // LAUNCH: FLEET 카드 버튼과 FLEET PLAN 승인(8.7), DISPATCH launch 카드 승인(ATC-129)이 같이 쓴다. 결과는 FLIGHT RECORDER에 by와 함께 남는다.
 // proposal: launch 카드로 띄웠으면 그 제안 id(기록에 남는다)
-export async function launchAircraft(s: Snapshot, registration: string, options: { permissionMode?: unknown; model?: unknown; account?: unknown; lastAccount?: string | null }, by: string, proposal?: string): Promise<ControlResult> {
+export async function launchAircraft(s: Snapshot, registration: string, options: { permissionMode?: unknown; model?: unknown; lastModel?: string | null; account?: unknown; lastAccount?: string | null }, by: string, proposal?: string): Promise<ControlResult> {
   const reg = regKey(registration);
   const cfg = loadDispatchConfig();
   const a = fleetView(s, loadFleet(), cfg.teamPattern).find((x) => x.registration === reg);
@@ -485,13 +487,15 @@ export async function launchAircraft(s: Snapshot, registration: string, options:
     const statuses = await accountStatusesOf(s.fuelAccounts, folders);
     const account = launchAccountOf({ requested: options.account, preferred: loadFleet().launchAccount?.aircraft ?? null, fallback: options.lastAccount ?? null, home, folders, status: (l) => statuses.get(l) ?? null });
     if (account && read.failed.includes(account.label)) throw new ControlError(`ACCOUNT ${account.label}의 세션 목록을 읽지 못함 — 이미 떠 있는지 몰라 띄우지 않는다`, 502);
-    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: crewBriefing(a, repo, cfg.mode, true), permissionMode: options.permissionMode, model: options.model }, rows, MAX_LAUNCHED, account, (row) => idleMinOfRow(row, s.sessions), Object.keys(loadFleet().aircraft));
+    // 모델(ATC-279): 양식에 적은 것 > AIRCRAFT > AIRPORT > 기본 > 마지막 LAUNCH(lastModel) > 없음. 모든 AIRCRAFT LAUNCH 길이 여기를 지난다
+    const picked = launchModelOf({ registration: reg, airport: a.base ?? null, explicit: typeof options.model === "string" ? options.model : null, last: options.lastModel ?? null, setting: loadFleet().launchModel });
+    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: crewBriefing(a, repo, cfg.mode, true), permissionMode: options.permissionMode, model: picked.model }, rows, MAX_LAUNCHED, account, (row) => idleMinOfRow(row, s.sessions), Object.keys(loadFleet().aircraft));
     const r = await claude(plan.args, plan.cwd, { scope: true, configDir: plan.configDir });
     const jobId = jobIdOf(r.out);
     const ok = r.ok && !!jobId;
     const error = ok ? undefined : /not trusted/i.test(r.out) ? `${plan.cwd}를 신뢰하지 않음 — 그 폴더에서 claude를 한 번 열어 trust를 수락한다` : r.out.slice(0, 300) || "claude --bg 실패";
-    record({ t, kind: "fleet", op: "launch", aircraft: reg, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model ?? undefined, ...(plan.account ? { account: plan.account } : {}), error, ...(proposal ? { proposal } : {}) });
-    return ok ? { ok, status: 200, jobId: jobId!, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model, account: plan.account } : { ok, status: 502, error };
+    record({ t, kind: "fleet", op: "launch", aircraft: reg, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model ?? undefined, modelFrom: plan.model ? picked.from : "none", ...(plan.account ? { account: plan.account } : {}), error, ...(proposal ? { proposal } : {}) });
+    return ok ? { ok, status: 200, jobId: jobId!, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model, modelFrom: plan.model ? picked.from : "none", account: plan.account } : { ok, status: 502, error };
   } catch (e) {
     // 띄우기 전에 거절된 것(상한, 이미 떠 있음, RETIRED …)도 launch 카드로 온 것이면 남긴다
     if (e instanceof ControlError) {
@@ -736,13 +740,35 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
     return c.json({ ok: true, launchAccount: { aircraft: r.next.aircraft ?? null, control: r.next.control ?? null }, launchAccountWarnings: split ? [split] : [] });
   });
 
+  // LAUNCH MODEL(ATC-279): 지금 설정과 고를 수 있는 AIRPORT·AIRCRAFT(설정 창 표). 읽기만
+  app.get("/api/fleet/launch-model", async (c: Context) => {
+    const s = await getSnapshot();
+    const fleet = loadFleet();
+    return c.json({ launchModel: launchModelSettingOf(fleet.launchModel), choices: MODEL_CHOICES, airports: s.airports.map((a) => a.code), aircraft: Object.keys(fleet.aircraft).sort() });
+  });
+
+  // LAUNCH MODEL을 바꾼다(ATC-279). SUPERVISOR만: 이 화면 Origin과 JSON Content-Type이 있어야 받는다(fromThisApp).
+  // 본문에 적힌 칸만 바꾼다. null·""은 지운다("폴더 기본"). 바뀐 칸마다 FLIGHT RECORDER에 한 줄(from·to·by). 돌고 있는 세션은 옮기지 않는다
+  app.put("/api/fleet/launch-model", async (c: Context) => {
+    if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
+    const s = await getSnapshot();
+    const fleet = loadFleet();
+    const r = launchModelPatchOf(launchModelSettingOf(fleet.launchModel), await c.req.json().catch(() => null), { airports: s.airports.map((a) => a.code), aircraft: Object.keys(fleet.aircraft) });
+    if (!r.ok) return c.json({ error: r.error }, r.status);
+    saveLaunchModel(r.next);
+    const t = new Date().toISOString();
+    for (const ch of r.changes) record({ t, kind: "launch-model", by: "SUPERVISOR", scope: ch.scope, ...(ch.key ? { key: ch.key } : {}), from: ch.from, to: ch.to });
+    console.log(`[atc] launch model: default=${r.next.default ?? "(폴더 기본)"} airports=${Object.keys(r.next.airports ?? {}).length} aircraft=${Object.keys(r.next.aircraft ?? {}).length}`);
+    return c.json({ ok: true, launchModel: r.next });
+  });
+
   app.post("/api/fleet/:registration/launch", async (c: Context) => {
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
     const reg = regKey(c.req.param("registration"));
     const body = await c.req.json().catch(() => ({}));
     const r = await launchAircraft(await getSnapshot(), reg, body, "SUPERVISOR");
     if (!r.ok) return c.json({ error: r.error }, r.status as 400);
-    return c.json({ ok: true, registration: reg, jobId: r.jobId, cwd: r.cwd, permissionMode: r.permissionMode, model: r.model, account: r.account });
+    return c.json({ ok: true, registration: reg, jobId: r.jobId, cwd: r.cwd, permissionMode: r.permissionMode, model: r.model, modelFrom: r.modelFrom, account: r.account });
   });
 
   app.post("/api/fleet/:registration/stop", async (c: Context) => {

@@ -470,7 +470,7 @@ test("executionOf STOP·RESTART: 백그라운드 세션만. RESTART는 마지막
   const plan = executionOf(r.p, {}, ctx({ latest: r.latest, lastLaunch: new Map([["TEAM_H", { permissionMode: "acceptEdits", model: "sonnet" }]]) }));
   assert.deepEqual(plan.steps, [
     { action: "stop", registration: "TEAM_H" },
-    { action: "launch", registration: "TEAM_H", permissionMode: "acceptEdits", model: "sonnet" },
+    { action: "launch", registration: "TEAM_H", permissionMode: "acceptEdits", model: null, lastModel: "sonnet" }, // ATC-279: 마지막 LAUNCH의 모델은 lastModel(설정이 먼저)
   ]);
 });
 
@@ -884,6 +884,17 @@ test("ACCOUNT CHANGE: 열린 제안은 AIRCRAFT가 FLIGHT를 받거나 옛 ACCOU
   assert.equal(isStale(all[0], [other], at(-MIN), NOW), true);
 });
 
+test("executionOf RESTART(ATC-279): 양식에 적은 모델은 model(우선), 마지막 LAUNCH의 모델은 lastModel(설정이 하나도 안 맞을 때만)", () => {
+  const r = openOf("F-0002", "RESTART", "TEAM_H");
+  const last = new Map([["TEAM_H", { permissionMode: "acceptEdits", model: "sonnet" }]]);
+  const typed = executionOf(r.p, { model: "claude-opus-5-5" }, ctx({ latest: r.latest, lastLaunch: last }));
+  assert.deepEqual(typed.steps[1], { action: "launch", registration: "TEAM_H", permissionMode: "acceptEdits", model: "claude-opus-5-5", lastModel: "sonnet" });
+  const blank = executionOf(r.p, { model: "" }, ctx({ latest: r.latest, lastLaunch: last }));
+  assert.deepEqual(blank.steps[1], { action: "launch", registration: "TEAM_H", permissionMode: "acceptEdits", model: null, lastModel: "sonnet" });
+  const none = executionOf(r.p, {}, ctx({ latest: r.latest }));
+  assert.deepEqual(none.steps[1], { action: "launch", registration: "TEAM_H", permissionMode: "auto", model: null });
+});
+
 test("executionOf ACCOUNT CHANGE: 옛 ACCOUNT에서 STOP 뒤 새 ACCOUNT에서 LAUNCH(마지막 LAUNCH의 옵션). FLIGHT 중·백그라운드 아님·옮길 ACCOUNT 없음은 거절", () => {
   const [c] = changes(changeBase());
   const p = foldFleetPlan([created("F-0001", "ACCOUNT CHANGE", "TEAM_H", { account: c.account } as Partial<FleetPlanOp>)])[0];
@@ -892,7 +903,7 @@ test("executionOf ACCOUNT CHANGE: 옛 ACCOUNT에서 STOP 뒤 새 ACCOUNT에서 L
   const plan = executionOf(p, {}, ok({ lastLaunch: new Map([["TEAM_H", { permissionMode: "acceptEdits", model: "sonnet" }]]) }));
   assert.deepEqual(plan.steps, [
     { action: "stop", registration: "TEAM_H" },
-    { action: "launch", registration: "TEAM_H", permissionMode: "acceptEdits", model: "sonnet", account: "acct-3" },
+    { action: "launch", registration: "TEAM_H", permissionMode: "acceptEdits", model: null, lastModel: "sonnet", account: "acct-3" },
   ]);
   // 승인하는 사이 FLIGHT를 받았으면 거절(최근 주기가 아직 안 봤어도)
   assert.match(refused(() => executionOf(p, {}, ok({ aircraft: [view("TEAM_H", { flying: ["ATC-7"] })] }))), /^409 TEAM_H가 FLIGHT 중\(ATC-7\) — 살아 있는 FLIGHT는 옮기지 않는다/);

@@ -5,6 +5,7 @@ import type { FolderHealth } from "../../server/account-health.ts";
 import type { LoginView } from "../../server/account-login.ts";
 import type { MemoryFolderView } from "../../server/account-memory.ts";
 import type { AccountsRegistry } from "../../server/accounts.ts";
+import type { LaunchModelSetting } from "../../server/launch-model.ts";
 import { Block, StatusChip } from "./SettingsServer.tsx";
 
 // AGENTS 탭의 ACCOUNTS 블록(ATC-146, docs/accounts.md). 라벨과 Claude Code 설정 폴더만 적는다(email·토큰은 없다). 저장은 SUPERVISOR만(서버가 Origin을 본다).
@@ -149,6 +150,7 @@ export function AccountsBlock() {
         {error && <span className="settings-hint acct-err"> {error}</span>}
       </div>
       <LaunchAccountRow registryKey={data ? Object.keys(data.registry).join(",") : ""} />
+      <LaunchModelRow />
       <AddAccount dirty={dirty} folders={data?.folders ?? []} onAdded={(d) => {
           load(d);
           void loadMemory();
@@ -495,6 +497,127 @@ function LaunchAccountRow({ registryKey }: { registryKey: string }) {
           ⚠ {w}
         </p>
       ))}
+      {error && <p className="settings-hint acct-err">{error}</p>}
+    </>
+  );
+}
+
+// LAUNCH MODEL(ATC-279, docs/fleet.md): AIRCRAFT LAUNCH가 `--model`로 넘길 모델. 기본, AIRPORT별, (FLEET 카드 편집에서) AIRCRAFT별.
+// 비우면 "폴더 기본": `--model`을 붙이지 않고 ACCOUNT·프로젝트 settings가 정한다(전과 같다). 다음 LAUNCH에만 쓴다. 저장은 SUPERVISOR만(JSON Content-Type을 꼭 보낸다).
+interface LaunchModelView {
+  launchModel: LaunchModelSetting;
+  choices: string[];
+  airports: string[];
+  aircraft: string[];
+}
+function ModelPick({ label, value, choices, disabled, onCommit }: { label: string; value: string; choices: readonly string[]; disabled: boolean; onCommit: (v: string | null) => void }) {
+  const custom = value !== "" && !choices.includes(value);
+  const [typing, setTyping] = useState(false);
+  const [text, setText] = useState(custom ? value : "");
+  useEffect(() => {
+    setText(custom ? value : "");
+    setTyping(false);
+  }, [value, custom]);
+  const OTHER = "__other";
+  return (
+    <span className="acct-model-pick">
+      <select
+        className="mono"
+        aria-label={`LAUNCH MODEL — ${label}`}
+        value={typing || custom ? OTHER : value}
+        disabled={disabled}
+        onChange={(e) => {
+          if (e.target.value === OTHER) setTyping(true);
+          else {
+            setTyping(false);
+            onCommit(e.target.value || null);
+          }
+        }}
+      >
+        <option value="">폴더 기본</option>
+        {choices.map((m) => (
+          <option key={m} value={m}>
+            {m}
+          </option>
+        ))}
+        <option value={OTHER}>직접 입력…</option>
+      </select>
+      {(typing || custom) && (
+        <input
+          className="mono"
+          aria-label={`LAUNCH MODEL 직접 입력 — ${label}`}
+          value={text}
+          maxLength={60}
+          placeholder="모델 별칭이나 ID"
+          disabled={disabled}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => text.trim() !== value && onCommit(text.trim() || null)}
+          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+        />
+      )}
+    </span>
+  );
+}
+function LaunchModelRow() {
+  const [view, setView] = useState<LaunchModelView | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/fleet/launch-model")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((d: LaunchModelView) => alive && setView(d))
+      .catch(() => alive && setError("LAUNCH MODEL을 읽지 못함"));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const change = async (patch: Record<string, unknown>) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/fleet/launch-model", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) setView((v) => (v ? { ...v, launchModel: body.launchModel ?? {} } : v));
+      else setError((body as { error?: string }).error ?? `HTTP ${res.status}`);
+    } catch {
+      setError("서버에 연결할 수 없음");
+    } finally {
+      setSaving(false);
+    }
+  };
+  if (!view) return error ? <p className="settings-hint acct-err">{error}</p> : null;
+  const m = view.launchModel;
+  const overrides = Object.entries(m.aircraft ?? {});
+  return (
+    <>
+      <h4 className="label acct-registry">
+        LAUNCH MODEL <em>AIRCRAFT를 다음에 띄울 때 `--model`로 넘긴다 · 돌고 있는 세션은 옮기지 않는다 · 비우면 폴더 기본</em>
+      </h4>
+      <label className="acct-launch-row">
+        <span>기본</span>
+        <ModelPick label="기본" value={m.default ?? ""} choices={view.choices} disabled={saving} onCommit={(v) => void change({ default: v })} />
+      </label>
+      {view.airports.map((code) => (
+        <label key={code} className="acct-launch-row">
+          <span>AIRPORT {code}</span>
+          <ModelPick label={`AIRPORT ${code}`} value={m.airports?.[code] ?? ""} choices={view.choices} disabled={saving} onCommit={(v) => void change({ airports: { [code]: v } })} />
+        </label>
+      ))}
+      {overrides.length > 0 && (
+        <p className="settings-hint">
+          AIRCRAFT별(FLEET 카드의 고치기에서 정한다):{" "}
+          {overrides.map(([reg, model]) => (
+            <button key={reg} type="button" className="acct-model-chip mono" disabled={saving} title={`${reg}의 LAUNCH MODEL을 지운다`} aria-label={`${reg} ${model} 지우기`} onClick={() => void change({ aircraft: { [reg]: null } })}>
+              {reg} {model} ×
+            </button>
+          ))}
+        </p>
+      )}
+      <p className="settings-hint">
+        우선순위: LAUNCH 양식에 적은 모델 &gt; AIRCRAFT &gt; AIRPORT &gt; 기본 &gt; (아무것도 없으면) 마지막 LAUNCH의 모델 &gt; 폴더 기본. 설정은 FLEET 행·카드와 DISPATCH launch 카드에 `next LAUNCH model`로 보인다. 관제 세션과 crew 서브에이전트의 모델은 이 설정이 아니다.
+      </p>
+      <p className="settings-hint">Opus는 Sonnet보다 토큰당 비용이 크다. 한도는 FUEL의 ACCOUNT별 보기에서 지켜본다(FUEL에 따라 저절로 바꾸지는 않는다).</p>
       {error && <p className="settings-hint acct-err">{error}</p>}
     </>
   );

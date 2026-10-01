@@ -46,6 +46,8 @@ export interface FleetFile {
   accounts?: Record<string, { configDir: string; maxLaunched?: number }>;
   // LAUNCH ACCOUNT(ATC-239, launch-account.ts): 이름을 대지 않은 다음 LAUNCH가 쓸 ACCOUNT. 선택 항목 — 없으면 각 home. 옛 빌드는 이 칸을 읽지 않고 그대로 둔다
   launchAccount?: { aircraft?: string; control?: string };
+  // LAUNCH MODEL(ATC-279, launch-model.ts): AIRCRAFT LAUNCH가 `--model`로 넘길 모델(기본·AIRPORT별·AIRCRAFT별). 선택 항목 — 없으면 `--model`을 붙이지 않는다. 옛 빌드는 이 칸을 읽지 않고 그대로 둔다
+  launchModel?: { default?: string; airports?: Record<string, string>; aircraft?: Record<string, string> };
 }
 
 // vocado CLAUDE.md의 팀원 규칙을 옮긴 기본 CREW COMPLEMENT.
