@@ -1,3 +1,5 @@
+import { ChevronRight, X } from "lucide-react";
+import { Icon, IconButton } from "./Icon.tsx";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type Chat, type ChatItem, headLine } from "../../server/duty-chat.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
@@ -35,7 +37,7 @@ function Item({ it, ctx }: { it: ChatItem; ctx: CardCtx }) {
     case "tool":
       return (
         <div className={`du-tool mono${it.error ? " is-error" : ""}`}>
-          ▸ {it.name}
+          <Icon icon={ChevronRight} /> {it.name}
           {it.summary && <> · {it.summary}</>}
           {it.error && <> · 거절됨</>}
         </div>
@@ -172,9 +174,7 @@ export default function DutyDrawer({ chat, onClose, airports, refreshKey, now }:
                   NEW SHIFT
                 </button>
               ))}
-            <button className="dr-close du-close" onClick={onClose} aria-label="닫기">
-              ×
-            </button>
+            <IconButton className="dr-close du-close" onClick={onClose} label="닫기" icon={X} size={16} />
           </div>
         </header>
 

@@ -1,3 +1,5 @@
+import { X } from "lucide-react";
+import { IconButton } from "../Icon.tsx";
 import { type KeyboardEvent, useEffect, useState } from "react";
 import "./RouteMap.css";
 
@@ -261,9 +263,7 @@ function Detail({ w, route, windowDays, onClose }: { w: Waypoint; route: Route; 
         <strong>{w.name}</strong>
         <span className={`rm-chip rm-chip-${w.state}`}>{STATE_KO[w.state]}</span>
         {w.late && <span className="rm-chip rm-chip-late">지연</span>}
-        <button type="button" className="rm-close" onClick={onClose} aria-label="WAYPOINT 닫기">
-          ✕
-        </button>
+        <IconButton className="rm-close" onClick={onClose} label="WAYPOINT 닫기" icon={X} size={16} />
       </header>
       <dl className="rm-facts">
         <dt>진행률</dt>

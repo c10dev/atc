@@ -1,3 +1,5 @@
+import { ArrowLeft } from "lucide-react";
+import { Icon } from "../Icon.tsx";
 import { useMemo, useState } from "react";
 import type { GlobeFlight, GlobeScene } from "../../../server/globe.ts";
 import {
@@ -94,7 +96,7 @@ export function AirportView({ code, scene, txs, motion, now }: { code: string; s
     return (
       <section className="ga" aria-label={`AIRPORT ${code}`}>
         <a className="ga-back" href="#globe">
-          ← GLOBE
+          <Icon icon={ArrowLeft} /> GLOBE
         </a>
         <p className="empty">{code} AIRPORT를 찾지 못했다(닫혔거나 이름이 다르다).</p>
       </section>
@@ -108,7 +110,7 @@ export function AirportView({ code, scene, txs, motion, now }: { code: string; s
     <section className="ga" aria-label={`AIRPORT ${code}`}>
       <header className="ga-head">
         <a className="ga-back" href="#globe">
-          ← GLOBE
+          <Icon icon={ArrowLeft} /> GLOBE
         </a>
         <h2 className="ga-title">
           <span className="mono">{apt.code}</span> {apt.name}

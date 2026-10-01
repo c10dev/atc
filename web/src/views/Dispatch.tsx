@@ -1,3 +1,5 @@
+import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { Icon } from "../Icon.tsx";
 import { nextLaunchLabel } from "../../../server/launch-note.ts";
 import { type LaunchModelSetting, NEXT_MODEL_TITLE, nextModelNote } from "../../../server/launch-model.ts";
 import { createContext, Fragment, type KeyboardEvent, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
@@ -901,7 +903,7 @@ function CandidateLine({ c, now }: { c: ArrivalSuggestion; now: number }) {
         {KIND_TEXT[c.kind]} · <time dateTime={c.evidence.at}>{timeAgo(c.evidence.at, now)}</time>
       </span>
       <a className="dp-life-link" href={c.evidence.url} target="_blank" rel="noreferrer" aria-label={`${c.flight} ARRIVED 후보 증거 열기 (새 탭)`}>
-        증거 ↗
+        증거 <Icon icon={ExternalLink} />
       </a>
     </span>
   );
@@ -1027,7 +1029,7 @@ function StatusLabel({ p }: { p: Proposal }) {
       {note && !bare && <span className="dp-life-note dp-life-report">{note}</span>}
       {url && (
         <a className="dp-life-link" href={url} target="_blank" rel="noreferrer" title={url} aria-label={`${p.id} ARRIVED 보고 열기 (새 탭)`}>
-          보고 ↗
+          보고 <Icon icon={ExternalLink} />
         </a>
       )}
       {!note && !url && <span className="dp-life-note">보고 없음</span>}
@@ -1430,7 +1432,7 @@ function AgreeLane({
                   aria-label={`${p.id} ${isOpen ? "접기" : "카드 펼치기"}`}
                   onClick={() => setOpen(isOpen ? null : p.id)}
                 >
-                  {isOpen ? "▾" : "▸"}
+                  <Icon icon={isOpen ? ChevronDown : ChevronRight} />
                 </button>
                 <span className="dp-agree-what" title={what}>
                   {what}

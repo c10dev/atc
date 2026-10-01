@@ -1,3 +1,5 @@
+import { ExternalLink } from "lucide-react";
+import { Icon } from "./Icon.tsx";
 import { useEffect, useState } from "react";
 import { ApplyNow } from "./ApplyNow.tsx";
 import type { AddPreview, AddResult } from "../../server/account-add.ts";
@@ -404,7 +406,7 @@ function LoginPanel({ label, onDone }: { label: string; onDone: (v: LoginView) =
       {s === "waiting-code" && view?.url && (
         <>
           <p className="settings-hint">
-            ① <a href={view.url} target="_blank" rel="noreferrer noopener">브라우저에서 {label} 계정으로 로그인 ↗</a> ② 페이지에 나온 코드를 붙여 넣는다(10분 안).
+            ① <a href={view.url} target="_blank" rel="noreferrer noopener">브라우저에서 {label} 계정으로 로그인 <Icon icon={ExternalLink} /></a> ② 페이지에 나온 코드를 붙여 넣는다(10분 안).
           </p>
           <div className="acct-edit">
             <input className="mono" aria-label={`${label} 로그인 코드`} placeholder="코드" autoComplete="off" spellCheck={false} maxLength={2048} value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && code.trim() && void submit()} />
