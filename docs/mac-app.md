@@ -19,7 +19,7 @@ Related: [guide/menubar.md](guide/menubar.md) (the SwiftBar plugin and the SSH f
 ## 2. Principles
 
 1. **The server decides, clients show.** Counts, levels, texts and "what is pending" are computed once, in a pure server function. The browser, the SwiftBar plugin and the app all read the same result.
-2. **Read only.** Nothing here adds a write route or changes who may write. Writes from the app need a real authentication design first (atc-app N5), with `Risk: Security`, as its own atc issue.
+2. **Read only.** Nothing here adds a write route or changes who may write. Writes from the app need a real authentication design first (atc-app N5), with `Risk: Security`, as its own atc issue. The draft is [app-token.md](app-token.md) (ATC-250, proposed): a token for MERGE only.
 3. **Additive and backward compatible.** New endpoints and an opt-in query parameter only. The browser's default behaviour doesn't change.
 4. **Small payloads for a menu bar.** A client that only needs alerts doesn't receive 340 KB snapshots.
 
