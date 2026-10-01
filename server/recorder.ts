@@ -56,6 +56,8 @@ export type RecordLine =
   | { t: string; kind: "control"; op: "recycle-caps" | "recycle-auto"; by: string; session: string; from: number | boolean | null; to: number | boolean | null }
   // LAUNCH ACCOUNT APPLY NOW(ATC-244): SUPERVISOR가 한 번 눌러 세션을 옮긴 요약(세션마다의 사건은 account-change·recycle). op pending은 기다림의 끝(expired·done·changed)
   | { t: string; kind: "apply-now"; op: "apply" | "pending-end"; by: string; aircraft: string | null; control: string | null; moved: number; failed: number; waiting: number; skipped: number; note?: string }
+  // CONTROL SESSIONS 일괄 동작(ATC-255): SUPERVISOR가 한 번 확인하고 누른 LAUNCH ALL·RESTART ALL·STOP ALL·ALIGN의 요약(세션마다의 사건은 launch·stop·recycle 줄). held는 안전 조건으로 하지 않은 것
+  | { t: string; kind: "control"; op: "bulk"; by: string; bulk: "launch" | "restart" | "stop" | "align"; force: boolean; ok: boolean; done: number; failed: number; held: number; skipped: number; results: { name: string; action: string; ok: boolean; held?: boolean; skipped?: string; from?: string | null; to?: string | null; jobId?: string; error?: string }[] }
   // 그 밖의 백그라운드 세션 STOP(ATC-184): AIRCRAFT도 관제 세션도 아닌 세션을 SUPERVISOR가 FLEET 탭에서 멈춤
   | { t: string; kind: "other"; op: "stop"; session: string; by: string; ok: boolean; jobId: string; cwd?: string; account?: string; error?: string }
   | { t: string; kind: "atfm"; op: string; id?: string; airport?: string; data?: Record<string, unknown> };

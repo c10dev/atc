@@ -18,6 +18,8 @@ import { EditRow, type SaveResult } from "../../SettingsServer.tsx";
 import { JobDetail, NeedsYou } from "../../ui.tsx";
 import { timeAgo } from "../../derive.ts";
 import { type ControlAccounts, controlMemo } from "../../controlData.ts";
+import { allControlDown, type BulkOp } from "../../../../server/control-bulk.ts";
+import { BulkBar, BulkPanel, RecoveryBanner } from "./ControlBulk.tsx";
 import { ContextCell } from "./Context.tsx";
 import { FleetListHead, FleetRowShell } from "./StatusList.tsx";
 
@@ -52,6 +54,7 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
   const [accounts, setAccounts] = useState<ControlAccounts | null>(memo.accounts);
   const [fuel, setFuel] = useState<Map<string, ControlFuelInfo>>(fuelMemo.byName);
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const [bulk, setBulk] = useState<BulkOp | null>(null); // 일괄 동작 미리 보기(ATC-255)
   const autoOpened = useRef(new Set<string>());
   const inflight = useRef(false);
 
@@ -289,6 +292,10 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
         </p>
       )}
       {error && <p className="fl-c-warn is-error">{error}</p>}
+      {/* 일괄 동작(ATC-255): 모두 내려가 있으면(호스트 재부팅 뒤 등) 복구 배너 */}
+      {allControlDown(list?.sessions) && !bulk && <RecoveryBanner onLaunchAll={() => setBulk("launch")} />}
+      <BulkBar onOpen={setBulk} disabled={busy !== null} />
+      {bulk && <BulkPanel key={bulk} op={bulk} onClose={() => setBulk(null)} onDone={() => load(true)} />}
       <ul className="fl-rows">
         {rows.map((r) => (
           <FleetRowShell

@@ -323,7 +323,8 @@ export async function applyControlFactsOf(s: Snapshot, d: FactDeps, rows?: Agent
 }
 
 // 한 세션을 목표 ACCOUNT로 STOP → LAUNCH. RECYCLE과 같은 한 번에 한 세션 잠금을 쓴다. 기록: RECYCLE 줄(by SUPERVISOR, reason에 APPLY NOW)
-export async function applyNowControl(d: ActDeps, name: string, to: string, by: string): Promise<{ ok: boolean; error?: string; jobId?: string }> {
+// ATC-255: CONTROL BULK의 RESTART·ALIGN도 같은 길이다(to가 null이면 LAUNCH ACCOUNT·라벨이 정한 곳, label은 기록의 reason 머리)
+export async function applyNowControl(d: ActDeps, name: string, to: string | null, by: string, label = "APPLY NOW"): Promise<{ ok: boolean; error?: string; jobId?: string }> {
   if (busy || recycling) return { ok: false, error: `${recycling ?? "CONTROL RECYCLE"}가 재시작 중 — 끝난 뒤 다시` };
   busy = true;
   recycling = name;
@@ -332,7 +333,7 @@ export async function applyNowControl(d: ActDeps, name: string, to: string, by: 
     const bg = spec ? controlRowsOf(spec, await agentRows(), controlDirOf(spec)).find((r) => r.kind === "background" && r.id && !r.stale) : undefined;
     if (!spec || !bg) return { ok: false, error: `${name}: 떠 있는 claude --bg 세션이 없음` };
     const context = contextOfRow(bg, config.claudeDir, configDirOfRow(bg)) ?? 0;
-    const r = await performRecycle(d, { id: bg.id, pid: bg.pid, account: to }, name, context, `APPLY NOW: ${bg.account ?? "?"} → ${to}`);
+    const r = await performRecycle(d, { id: bg.id, pid: bg.pid, account: to ?? undefined }, name, context, `${label}: ${bg.account ?? "?"} → ${to ?? "(default)"}`);
     record(toLine(r, by));
     return { ok: r.ok, ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.error ? { error: r.error } : {}) };
   } finally {
@@ -342,15 +343,15 @@ export async function applyNowControl(d: ActDeps, name: string, to: string, by: 
 }
 
 // 실제 stop·launch·읽기를 묶은 기본 ActDeps. stopControl·launchControl은 FLEET의 STOP·LAUNCH 버튼과 같은 함수다
-export const defaultActDeps = (fuelAccounts: () => Snapshot["fuelAccounts"]): ActDeps => ({
+export const defaultActDeps = (fuelAccounts: () => Snapshot["fuelAccounts"], by = "RECYCLE"): ActDeps => ({
   stop: async (name) => {
-    const r = await stopControl(name, "RECYCLE");
+    const r = await stopControl(name, by);
     return { ok: r.ok, error: r.error };
   },
   rowsOf: () => agentRows(),
   pidAlive: pidAliveOf,
   launch: async (name, account) => {
-    const r = await launchControl(name, "RECYCLE", account, fuelAccounts());
+    const r = await launchControl(name, by, account, fuelAccounts());
     return { ok: r.ok, jobId: r.jobId, account: r.account, error: r.error };
   },
   sleep: (ms) => new Promise((res) => setTimeout(res, ms)),

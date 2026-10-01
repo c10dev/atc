@@ -768,6 +768,21 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **놀고 있는 자리 힌트.** 상한이 찬 채 DISPATCH launch 카드가 자리를 기다리는 동안 120분 넘게 논 그 밖의 백그라운드 세션이 있으면, 그 세션과 막힌 LAUNCH를 적은 ADVISORY SUPERVISOR 알림 하나(`cap|other|<id>`, 그룹 `recycle`, 링크 `#fleet/control`)가 뜬다. 아무것도 멈추지 않는다.
 - **하지 않은 것.** FLEET PLAN의 `blocked` 글은 아직 `백그라운드 세션 N/max — 상한`만 적는다.
 
+#### 8.5.4 CONTROL SESSIONS 일괄 동작 as built (ATC-255)
+
+한 번 확인하면 관제 세션(TOWER, OCC, MCC, CROSSCHECK, REVIEW)을 알려진 좋은 상태로 만든다: 모두 떠 있고, 맞는 ACCOUNT에서, 정해진 순서로. 새로 세션을 띄우거나 멈추는 길은 없다. 동작은 모두 FLEET의 LAUNCH·STOP이나 CONTROL RECYCLE의 재시작과 같은 함수(`launchControl`, `stopControl`, `performRecycle`)다. guard는 바꾸지 않았다.
+
+- **동작 넷.** **LAUNCH ALL**은 떠 있지 않은 세션을 띄운다. **RESTART ALL**은 `claude --bg`로 도는 세션마다 STOP → LAUNCH를 하고 떠 있지 않은 세션은 LAUNCH해서 결과가 "모두 떠 있음"이 되게 한다. **STOP ALL**은 멈춘다. **ALIGN**은 ACCOUNT가 어긋난 세션만 다시 띄운다. 버튼은 CONTROL 그룹 머리 아래에 있고, 누르면 먼저 미리 보기가 열린다.
+- **순서.** TOWER, OCC, MCC, CROSSCHECK, REVIEW(CLEARANCE·FLIGHT PLAN 흐름이 먼저, 검증 쪽이 나중), 한 번에 한 세션. STOP ALL은 반대로 REVIEW부터 내린다. LAUNCH·RESTART·ALIGN은 첫 실패에서 멈추고(순서가 있는 일), STOP ALL은 실패해도 나머지를 내린다.
+- **intended ACCOUNT.** 지금 LAUNCH하면 쓸 ACCOUNT: 관제 세션의 LAUNCH ACCOUNT, 없으면 `fleet.json`의 그 세션 ACCOUNT 라벨, 없으면 default 폴더. drift는 살아 있는 `claude --bg` 세션의 관찰한 ACCOUNT가 다른 것이다(TOWER는 `acct-3`, intended는 `acct-1`). ACCOUNT 등록부가 없으면 drift도 없다.
+- **미리 보기.** `GET /api/control/bulk?op=launch|restart|stop|align`(읽기만. `claude agents`를 못 읽으면 `502`이고 계획하지 않는다): 세션마다 순서·동작·이유·`from → to`·drift. 이미 떠 있음(LAUNCH), 떠 있지 않음(STOP·ALIGN), atc가 다시 띄울 수 없는 tmux·데스크톱 세션, 목표 ACCOUNT가 거절함(로그인 안 됨, FUEL hold, `maxLaunched`)이면 사유와 함께 건너뛴다.
+- **보류 행.** 잃는 것이 있는 STOP·RESTART 행(job이 턴 도중이거나 사람을 기다림, CONTROL RECYCLE의 안전한 순간 조건: RTS, TOWER 이벤트·overdue CLEARANCE, OCC의 안 나간 FLIGHT PLAN·열린 CREW CHANGE, MCC 착륙 중)은 보류다. SUPERVISOR가 "알고도 진행"(`force`)을 눌러야 한다. LAUNCH는 잃을 것이 없다.
+- **확인과 실행.** `POST /api/control/bulk` `{ op, expect, force? }`(SUPERVISOR만: 이 화면 Origin·JSON). `expect`는 화면이 미리 본 `{ 세션: 동작 }`이고, 지금 동작이 다른 세션은 건드리지 않는다. 한 번에 하나(`409`).
+- **결과와 기록.** 패널이 세션마다 결과를 보인다. FLIGHT RECORDER: 세션마다 `control` `launch`·`stop`·`recycle` 줄(RESTART·ALIGN은 reason `CONTROL BULK RESTART|ALIGN: from → to`인 `recycle`)과, 한 번 실행에 `control` `bulk` 요약 한 줄(`bulk`, `force`, 개수, 세션별 결과).
+- **복구 배너.** LAUNCH할 수 있는 관제 세션이 하나도 떠 있지 않으면(예: 호스트 재부팅 뒤) 헤더 CONTROL 띠에 `모두 내려감 · LAUNCH ALL`, CONTROL 그룹에 LAUNCH ALL 미리 보기 버튼이 있는 배너가 뜬다. 목록을 못 읽었으면 아무것도 보이지 않는다. atc가 스스로 띄우지는 않는다.
+- **PILOT'S DISCRETION.** 위의 순서, RESTART ALL이 떠 있지 않은 것도 LAUNCH함, 보류 행은 `force`가 있어야 함.
+- **하지 않은 것.** 모두 내려갔을 때의 SUPERVISOR 알림·소리, 자동 복구, AIRCRAFT 일괄 동작(범위 밖).
+
 
 ### RESTARTING as built (ATC-91)
 
