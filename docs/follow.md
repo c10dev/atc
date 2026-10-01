@@ -1,6 +1,6 @@
 # FOLLOW: a live board for the work the SUPERVISOR handed out
 
-Status (2026-10-01): design draft. Nothing is built. The SUPERVISOR asked for it on 2026-10-01 after spending much of a session asking "현재 상황" and "배정됐나" about one bundle of work (GLOBE, ATC-253). They chose a new tab and asked for the design and work orders (section 8). Work orders follow section 6: parent [ATC-275](https://linear.app/vocado/issue/ATC-275), F1 [ATC-276](https://linear.app/vocado/issue/ATC-276), F2 [ATC-277](https://linear.app/vocado/issue/ATC-277), F3 [ATC-278](https://linear.app/vocado/issue/ATC-278).
+Status (2026-10-01): F1–F3 built and in service (ATC-276, ATC-277, ATC-278; PRs [#335](https://github.com/chaehy5665/atc/pull/335), [#342](https://github.com/chaehy5665/atc/pull/342), [#341](https://github.com/chaehy5665/atc/pull/341)); see the "as built" sections after section 5. One follow-up is open: F4 [ATC-304](https://linear.app/vocado/issue/ATC-304) (the stuck alert reads F2's limits). The SUPERVISOR asked for it on 2026-10-01 after spending much of a session asking "현재 상황" and "배정됐나" about one bundle of work (GLOBE, ATC-253). They chose a new tab and asked for the design and work orders (section 8). Work orders follow section 6: parent [ATC-275](https://linear.app/vocado/issue/ATC-275), F1 [ATC-276](https://linear.app/vocado/issue/ATC-276), F2 [ATC-277](https://linear.app/vocado/issue/ATC-277), F3 [ATC-278](https://linear.app/vocado/issue/ATC-278), F4 [ATC-304](https://linear.app/vocado/issue/ATC-304).
 
 **LANDING tier of every step: `auto`.** FOLLOW is a read-only route, one small settings file the screen writes through an Origin-checked route, a screen, and alert keys. Its only Linear write is the existing FLIGHT state button route (`POST /api/flight/:key/state`, DUTY G3); FOLLOW adds no new write path to Linear, GitHub or sessions.
 
@@ -159,9 +159,10 @@ Each step is one issue. Each PR adds a changelog fragment pair and describes the
 
 | # | Step | Output | Tier |
 |---|---|---|---|
-| F1 | **Board.** `follow.json` and `POST /api/follow`, pure `followBoardOf` with stages and now text (3.1–3.3), `GET /api/follow`, the `#follow` tab, the FLIGHT drawer toggle | The SUPERVISOR sees where every issue of a bundle is, including approved-not-sent and landed-not-deployed | auto |
-| F2 | **Next actions and stuck.** The chips of 3.4 (`release` through the existing state route), the three new stuck limits, the header `NEXT n` | The board tells the SUPERVISOR what to do and flags what is stuck | auto |
-| F3 | **Alerts.** The `follow` group of 3.5 with its settings switch | The SUPERVISOR is told about READY, stuck, landed, deployed and failures without looking | auto |
+| F1 ✅ | **Board.** `follow.json` and `POST /api/follow`, pure `followBoardOf` with stages and now text (3.1–3.3), `GET /api/follow`, the `#follow` tab, the FLIGHT drawer toggle | The SUPERVISOR sees where every issue of a bundle is, including approved-not-sent and landed-not-deployed | auto |
+| F2 ✅ | **Next actions and stuck.** The chips of 3.4 (`release` through the existing state route), the three new stuck limits, the header `NEXT n` | The board tells the SUPERVISOR what to do and flags what is stuck | auto |
+| F3 ✅ | **Alerts.** The `follow` group of 3.5 with its settings switch | The SUPERVISOR is told about READY, stuck, landed, deployed and failures without looking | auto |
+| F4 | **Stuck alerts from F2.** `follow\|stuck\|…` reads the row's `stuck` (F2) instead of only the FLIGHT FOLLOWING issues, so the three new limits alert too ([ATC-304](https://linear.app/vocado/issue/ATC-304)) | The approved-not-sent, landed-not-deployed and Todo-without-proposal gaps reach the SUPERVISOR without looking | auto |
 
 - F1 has no dependencies. F2 and F3 need F1 and can go in either order.
 - Checks for every step: `npm test`, `npx tsc --noEmit -p .`, `npx vite build`; a 7702 test server (`ATC_GITHUB=off`, temp state folder with copied `airports.json` and `fleet.json` and sample `proposals.jsonl`/`clearances.jsonl` lines, never the real state folder) with Playwright, described in the PR in words; no screenshots.
@@ -194,4 +195,4 @@ Each step is one issue. Each PR adds a changelog fragment pair and describes the
 
 ## Not built yet
 
-Everything in section 6 (F1–F3).
+- F4 ([ATC-304](https://linear.app/vocado/issue/ATC-304)): `follow|stuck|<KEY>|<stage>` still comes only from the FLIGHT FOLLOWING issues on the row (`stuckIssuesOf`), so the three limits F2 added (Todo without a proposal 30 min, approved-not-sent 10 min, landed-not-deployed 15 min) show as 막힘 on the FOLLOW tab but raise no alert.
