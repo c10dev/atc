@@ -14,6 +14,7 @@ const USER = [
   [/^\.claude\//, "루트 .claude/(팀 세션 skill·설정)"], // 루트 skill은 팀 세션 지침이라 CLAUDE.md와 같다
   [/^CLAUDE(\.en)?\.md$/, "루트 CLAUDE.md"],
   [/^\.github\//, "CI"],
+  [/^rulebook\//, "규정집(에이전트 절차, plugin)"], // 모든 AIRCRAFT·관제 세션이 따르는 글이라 루트 .claude/ skill과 같다(ATC-286). 폴더 이름만 든 경로(docs/rulebook.md)는 해당 없음
   [/^package(-lock)?\.json$/, "의존성"],
   [/^hooks\//, "팀 세션 hook"],
   [/^deploy\/(?!README)/, "배포·등급 규칙"],
