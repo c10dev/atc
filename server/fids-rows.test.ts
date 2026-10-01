@@ -1,59 +1,61 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { FIDS_ARRIVED_CAP, fidsRows } from "../web/src/fids-rows.ts";
-import type { Ticket } from "./model.ts";
+import { FIDS_GROUP_CAP, foldGroup, shortAge } from "../web/src/fids-rows.ts";
 
-const iso = (i: number) => new Date(Date.parse("2026-09-29T00:00:00Z") - i * 3_600_000).toISOString();
-const t = (key: string, stateType: Ticket["stateType"], age = 0): Ticket => ({ key, stateType, state: stateType === "completed" ? "Done" : "In Progress", updatedAt: iso(age) }) as Ticket;
-const arrived = (n: number) => Array.from({ length: n }, (_, i) => t(`A-${i}`, "completed", i)); // A-0이 가장 최근
-const noStand = { workspacesByTicket: new Map<string, unknown[]>() };
+const rows = (n: number) => Array.from({ length: n }, (_, i) => `F-${i}`);
+const none = () => false;
 
-test("상수는 10", () => assert.equal(FIDS_ARRIVED_CAP, 10));
+test("상한은 5", () => assert.equal(FIDS_GROUP_CAP, 5));
 
-test("ARRIVED 30건 → 최근 10건만 보이고 20건 more", () => {
-  const r = fidsRows(arrived(30), noStand, false);
-  assert.equal(r.rows.length, 10);
-  assert.equal(r.moreArrived, 20);
-  assert.deepEqual(r.rows.map((x) => x.key), Array.from({ length: 10 }, (_, i) => `A-${i}`));
+test("12행 → 앞 5행만 보이고 7행 hidden", () => {
+  const r = foldGroup(rows(12), none, false);
+  assert.deepEqual(r.rows, rows(5));
+  assert.equal(r.hidden, 7);
 });
 
-test("STAND가 남은 ARRIVED는 오래됐어도 항상 보인다", () => {
-  const r = fidsRows(arrived(30), { workspacesByTicket: new Map([["A-25", [{}]]]) }, false);
-  assert.equal(r.rows.length, 11);
-  assert.ok(r.rows.some((x) => x.key === "A-25"));
-  assert.equal(r.moreArrived, 19);
+test("상한 이하면 접지 않는다", () => {
+  assert.equal(foldGroup(rows(5), none, false).hidden, 0);
+  assert.deepEqual(foldGroup(rows(3), none, false).rows, rows(3));
+  assert.deepEqual(foldGroup([], none, false), { rows: [], hidden: 0 });
 });
 
-test("최근 10건 안에 STAND 있는 것은 두 번 세지 않는다", () => {
-  const r = fidsRows(arrived(30), { workspacesByTicket: new Map([["A-3", [{}]]]) }, false);
-  assert.equal(r.rows.length, 10);
-  assert.equal(r.moreArrived, 20);
+test("pinned 행(AIRCRAFT·경고)은 상한 밖에 있어도 보이고 순서를 지킨다", () => {
+  const r = foldGroup(rows(12), (x) => x === "F-9" || x === "F-7", false);
+  assert.deepEqual(r.rows, [...rows(5), "F-7", "F-9"]);
+  assert.equal(r.hidden, 5);
 });
 
-test("showClosed면 전부, more 줄 없음", () => {
-  const r = fidsRows(arrived(30), noStand, true);
-  assert.equal(r.rows.length, 30);
-  assert.equal(r.moreArrived, 0);
+test("상한 안의 pinned는 두 번 세지 않는다", () => {
+  const r = foldGroup(rows(12), (x) => x === "F-2", false);
+  assert.equal(r.rows.length, 5);
+  assert.equal(r.hidden, 7);
 });
 
-test("ARRIVED 10건 이하면 more 줄이 없다", () => {
-  assert.equal(fidsRows(arrived(10), noStand, false).moreArrived, 0);
-  const r = fidsRows(arrived(3), noStand, false);
-  assert.equal(r.rows.length, 3);
-  assert.equal(r.moreArrived, 0);
+test("open이면 전부, hidden 0", () => {
+  const r = foldGroup(rows(12), none, true);
+  assert.deepEqual(r.rows, rows(12));
+  assert.equal(r.hidden, 0);
 });
 
-test("ARRIVED가 아닌 행은 모두 남고 순서를 지킨다", () => {
-  const list = [t("F-1", "started"), ...arrived(12), t("F-2", "unstarted"), t("F-3", "started")];
-  const r = fidsRows(list, noStand, false);
-  assert.deepEqual(r.rows.filter((x) => x.stateType !== "completed").map((x) => x.key), ["F-1", "F-2", "F-3"]);
-  assert.equal(r.moreArrived, 2);
-  assert.equal(r.rows[0].key, "F-1");
+test("cap을 바꿀 수 있다", () => {
+  const r = foldGroup(rows(12), none, false, 2);
+  assert.deepEqual(r.rows, rows(2));
+  assert.equal(r.hidden, 10);
 });
 
-test("갱신 시각이 없는 ARRIVED는 가장 오래된 것으로 본다", () => {
-  const list = [...arrived(10), { ...t("NOAT", "completed"), updatedAt: null } as Ticket];
-  const r = fidsRows(list, noStand, false);
-  assert.equal(r.moreArrived, 1);
-  assert.ok(!r.rows.some((x) => x.key === "NOAT"));
+test("shortAge: now · m · h · d", () => {
+  const now = Date.parse("2026-10-01T12:00:00Z");
+  const ago = (s: number) => new Date(now - s * 1000).toISOString();
+  assert.equal(shortAge(ago(10), now), "now");
+  assert.equal(shortAge(ago(5 * 60), now), "5m");
+  assert.equal(shortAge(ago(3 * 3600), now), "3h");
+  assert.equal(shortAge(ago(2 * 86_400), now), "2d");
+  assert.equal(shortAge(null, now), "—");
+  assert.equal(shortAge(ago(-60), now), "now"); // 미래 시각은 0으로 막는다
+});
+
+test("입력을 바꾸지 않는다", () => {
+  const input = rows(12);
+  foldGroup(input, none, false);
+  assert.deepEqual(input, rows(12));
 });
