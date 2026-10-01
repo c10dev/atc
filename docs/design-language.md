@@ -1,6 +1,6 @@
 # Design language: how atc and ANNUNCIATOR look and behave
 
-> Status (2026-10-01): draft, not adopted. Written in an ENGINEERING session at the SUPERVISOR's request ("is there a document on the design and UI philosophy?"). The answer was no: the rules sit in the "Principles" sections of several design drafts and in comments in `web/src/styles.css`. This draft collects them into one place for the atc web screen (AIRPORT ATCC) and the ANNUNCIATOR menu bar app (AIRPORT ATCA, [chaehy5665/atc-app](https://github.com/chaehy5665/atc-app)). It adds the parts that were missing: how much a screen may show, when to fold and when to delete, and how the two clients stay alike. Nothing here is built by this document. Section 9 lists the decisions it needs. On 2026-10-01 the SUPERVISOR approved a FLEET card mockup that applies sections 2 and 3.5, and chose to build it that way (ATC-280); DL1–DL9 are still open.
+> Status (2026-10-01): **adopted.** The SUPERVISOR decided DL1–DL9 as recommended (section 9) on 2026-10-01. Written in an ENGINEERING session at the SUPERVISOR's request ("is there a document on the design and UI philosophy?"). The answer was no: the rules sit in the "Principles" sections of several design drafts and in comments in `web/src/styles.css`. This draft collects them into one place for the atc web screen (AIRPORT ATCC) and the ANNUNCIATOR menu bar app (AIRPORT ATCA, [chaehy5665/atc-app](https://github.com/chaehy5665/atc-app)). It adds the parts that were missing: how much a screen may show, when to fold and when to delete, and how the two clients stay alike. The document itself builds nothing; section 6 lists the steps that apply it. The SUPERVISOR also approved a FLEET card mockup that applies sections 2 and 3.5, and chose to build it that way (ATC-280).
 
 Related: [ui-visibility.md](ui-visibility.md) (visibility review, draft), [alerting.md](alerting.md) (MASTER, ALERTS, QUEUE, LOG), [research/aviation-signals.md](research/aviation-signals.md) (alerting philosophy, sounds), [mac-app.md](mac-app.md) and atc-app `docs/design.md` (the app), [guide/screens.md](guide/screens.md) (what each tab shows today).
 
@@ -10,7 +10,7 @@ Related: [ui-visibility.md](ui-visibility.md) (visibility review, draft), [alert
 
 | Place | What it says | State |
 |---|---|---|
-| [ui-visibility.md](ui-visibility.md) section 2 | Quiet when normal; one place for what needs me; never hide, only fold; decide where the context is; same words everywhere; static beats moving | Draft, **not adopted**. Parts moved into alerting.md and duty.md |
+| [ui-visibility.md](ui-visibility.md) section 2 | Quiet when normal; one place for what needs me; never hide, only fold; decide where the context is; same words everywhere; static beats moving | Draft. Section 2 adopted through this document (DL6, 2026-10-01); other parts moved into alerting.md and duty.md |
 | [alerting.md](alerting.md) section 2 | One question per place; every item in one place; ACK means one thing; two numbers; the cockpit model; server decides, clients show | Draft |
 | `web/src/styles.css` `:root` comments | Four surface layers; the faintest text keeps 4.5:1 on every layer; one signal colour, one meaning; themes change values only | Code comments |
 | [research/aviation-signals.md](research/aviation-signals.md) section 5 | FAA AC 25.1322-1: few distinct tones, ACK silences, nuisance alerts destroy trust, remove the alert when the condition clears | Research |
@@ -108,13 +108,13 @@ Sections 2 to 3.4 decide *what* a screen shows. This section decides how calm an
 2. **Font roles.** `--mono` for things a person might copy or compare character by character: IDs, codes, keys, numbers, times, model names, commands. `--sans` for names, sentences and labels a person reads. Uppercase letter-spaced codes (`.label`, `.fl-sub`) only for section headings, at most one level of them per card.
    - *Check:* no Korean sentence and no list of names is set in mono; no card has more than one level of uppercase headings.
 3. **Three sizes per block.** Each card or panel uses at most three text sizes: the **title** (`--text-lg`, 600), the **value** (`--text-md`), and the **caption** (`--text-xs`, `--faint`). Weight adds contrast inside the same size (600 for names and values that matter, 400 otherwise).
-   - *Decision DL7:* raise body text from 13 px to 14 px and captions from 11 px to 12 px in the default density. `compact` keeps today's sizes.
+   - *Decided (DL7):* raise body text from 13 px to 14 px and captions from 11 px to 12 px in the default density. `compact` keeps today's sizes.
    - *Check:* a card uses three sizes or fewer.
 4. **Border budget.** Group by space and by surface step (section 3.1), not by lines. A card has one outer border or one surface step, not both plus inner rules. Lines are for tables, inputs and the one divider between a header and its body.
    - *Check:* no border inside a card except table rows, inputs and the header divider.
 5. **Spacing rhythm.** Inside a block, related lines sit `--space-1` to `--space-2` apart; blocks inside a card `--space-4`; cards `--space-3` to `--space-4`; sections `--gap-section`. Padding inside a card is at least `--space-4` on every side. Things that line up (labels, values, numbers) share one left edge.
    - *Check:* the label column and the value column of a card each have one left edge.
-6. **One icon set.** Web: one outline set (proposal: Lucide, MIT) at 14 and 16 px with a 1.5 px stroke. App: SF Symbols. Text glyphs (`▸ ▾ ✓ ⋯ ✈`) are replaced where an icon exists. An icon-only control has an accessible name (principle 14).
+6. **One icon set.** Web: one outline set, **Lucide** (MIT, DL8) at 14 and 16 px with a 1.5 px stroke. App: SF Symbols. Text glyphs (`▸ ▾ ✓ ⋯ ✈`) are replaced where an icon exists. An icon-only control has an accessible name (principle 14).
    - *Check:* the PR adds no new text glyph used as an icon.
 7. **Numbers.** `font-variant-numeric: tabular-nums` on every number that changes or sits in a column. Numbers in tables align right; units stay with the number (`32%`, `$4.34`, `287k`).
    - *Check:* changing numbers do not shift their neighbours.
@@ -182,8 +182,8 @@ For a PR that changes a screen in atc or ANNUNCIATOR. Copy the lines that apply 
 
 | Step | What | Where | Tier |
 |---|---|---|---|
-| L0 | Adopt this document, with the section 9 answers | this file | `auto` |
-| L1 | Mark [ui-visibility.md](ui-visibility.md) section 2 and [alerting.md](alerting.md) section 2 as gathered here (a link, not a copy), and point atc-app `docs/design.md` section 3 here | docs | `auto` |
+| L0 ✅ | Adopt this document, with the section 9 answers (2026-10-01) | this file | `auto` |
+| L1 | Mark [ui-visibility.md](ui-visibility.md) section 2 and [alerting.md](alerting.md) section 2 as gathered here (a link, not a copy) ✅, and point atc-app `docs/design.md` section 3 here | docs | `auto` |
 | L2 | [ATC-280](https://linear.app/vocado/issue/ATC-280) (FLEET card) and [ATC-222](https://linear.app/vocado/issue/ATC-222) (menu bar) cite this document and use the section 5 checklist | the two work orders | — |
 | L3 | A one-line rule in root `CLAUDE.md` and atc-app `CLAUDE.md`: screen PRs follow `docs/design-language.md` and answer the checklist | `CLAUDE.md` | `user` |
 | L4 | An audit of each tab against the checklist, one work order per tab that fails, ordered by words per screen (DISPATCH, FIDS, SCHEDULE first) | Linear | — |
@@ -193,7 +193,7 @@ For a PR that changes a screen in atc or ANNUNCIATOR. Copy the lines that apply 
 
 ### Not built yet
 
-All of it.
+Everything except L0 and the atc half of L1: the atc-app pointer (L1), the two `CLAUDE.md` lines (L3, a separate `user`-tier PR), the tab audit (L4), the Craft tokens and the Lucide icon set (L5a), the FLEET card (L5b, in progress as ATC-280) and the tooltip pass (L6).
 
 ## 7. Risks
 
@@ -216,13 +216,13 @@ All of it.
 
 ## 9. Decisions (SUPERVISOR)
 
-Recommended answers in bold.
+Decided by the SUPERVISOR on 2026-10-01: every row as recommended (the bold answer).
 
-| # | Question | Proposal |
+| # | Question | Decision (2026-10-01) |
 |---|---|---|
 | DL1 | One document for both atc and ANNUNCIATOR, kept in the atc repository | **Yes**; atc-app links to it |
 | DL2 | The delete / fold / show rule (principle 7) settles "never hide, only fold" versus "remove what is not needed" | **Yes**: delete only constant text, empty placeholders and normal-state confirmations; fold the rest |
-| DL3 | Tooltip rule (principle 11) | **Adopt**, applied to new PRs now and to old screens through L5 |
+| DL3 | Tooltip rule (principle 11) | **Adopt**, applied to new PRs now and to old screens through L6 |
 | DL4 | At most five visible buttons per card | **Yes**, the rest in `⋯` |
 | DL5 | Add the one-line rule to both `CLAUDE.md` files (L3) | **Yes**, after DL1–DL4 |
 | DL6 | Adopt ui-visibility section 2 through this document (its other sections stay a draft) | **Yes** |
