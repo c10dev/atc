@@ -209,14 +209,15 @@ function FollowRow({ f, now }: { f: FollowItem; now: number }) {
               tail:
             </span>
           )}
-          <span className="ff-tag" title={`WAKE ${f.wake} · 기대 ${f.expectMin}분`}>
-            WAKE {f.wake}
+          <span className="ff-tag" title="WAKE와 이 WAKE의 기대 소요 시간">
+            WAKE {f.wake} · {f.expectMin}분
           </span>
         </span>
       </div>
 
       <div className="ff-track">
         <StageBar f={f} now={now} />
+        {f.stageAt && <span className="faint ff-stage-at">지금 단계 {timeAgo(f.stageAt, now)}</span>}
         {f.arrival && (
           <span className="ff-pr" title={`ARRIVED 보고: ${f.arrival.note}`}>
             {f.arrival.url ? (
@@ -258,6 +259,7 @@ function FollowIssues({ f, now }: { f: FollowItem; now: number }) {
             <li key={i.key} className={`k-${i.kind} s-${i.severity}`} title={`${clock(i.since)}부터`}>
               <span className="ff-kind">{KIND_TEXT[i.kind] ?? i.kind}</span>
               <span className="ff-text">{i.text}</span>
+              <span className="faint ff-since">{timeAgo(i.since, now)}</span>
               {i.fresh ? (
                 <span className="ff-tag t-new" title="OCC가 아직 보고하지 않음">
                   NEW
