@@ -1,3 +1,5 @@
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { Icon } from "../../Icon.tsx";
 import { ReportChip } from "./ReportMark.tsx";
 import type { ReactNode } from "react";
 import { elapsedText, type FleetRow, flightDetailText } from "../../../../server/fleet-status.ts";
@@ -33,7 +35,7 @@ export function FleetRowShell({
       <button className="fl-row" aria-expanded={isOpen} aria-controls={detailId} onClick={onToggle}>
         {cells}
         <span className="fl-r-chev" aria-hidden="true">
-          {isOpen ? "▾" : "▸"}
+          <Icon icon={isOpen ? ChevronDown : ChevronRight} />
         </span>
       </button>
       {isOpen && (

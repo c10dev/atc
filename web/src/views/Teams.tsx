@@ -1,3 +1,5 @@
+import { ExternalLink } from "lucide-react";
+import { Icon } from "../Icon.tsx";
 import { useState } from "react";
 import type { AutolandView, PullTagKind } from "../../../server/autoland.ts";
 import type { Claim, Clearance, LandingBlockCode, PullRequest, Session, Snapshot } from "../../../server/model.ts";
@@ -458,7 +460,7 @@ function PrLink({ pr, airport }: { pr: PullRequest; airport?: string }) {
       aria-label={`PR #${pr.number}: ${pr.title}`}
       title={`${pr.title}\n${pr.base} ← ${pr.branch}`}
     >
-      {airport ? "↗" : `#${pr.number}`}
+      {airport ? <Icon icon={ExternalLink} /> : `#${pr.number}`}
     </a>
   );
   return airport ? (

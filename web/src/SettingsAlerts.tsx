@@ -1,3 +1,5 @@
+import { Play } from "lucide-react";
+import { IconButton } from "./Icon.tsx";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import type { VoiceStatusAll as VoiceStatus } from "../../server/tts.ts";
 import { inApp } from "./host.ts";
@@ -133,9 +135,7 @@ function BrowserAlertsSettings({ save }: { save: Save }) {
                 <input type="checkbox" checked={prefs.sounds[n]} onChange={(e) => updatePrefs((p) => ({ ...p, sounds: { ...p.sounds, [n]: e.target.checked } }))} />
                 {SOUND_LABEL[n]}
               </label>
-              <button className="alert-preview" onClick={() => previewSound(n)} aria-label={`${SOUND_LABEL[n]} 들어 보기`}>
-                ▶
-              </button>
+              <IconButton className="alert-preview" onClick={() => previewSound(n)} label={`${SOUND_LABEL[n]} 들어 보기`} icon={Play} />
             </div>
           ))}
           <button className="alert-preview" onClick={stopSound}>

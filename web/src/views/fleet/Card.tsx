@@ -1,3 +1,5 @@
+import { Copy, Ellipsis } from "lucide-react";
+import { Icon } from "../../Icon.tsx";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import type { AircraftView } from "../../../../server/fleet.ts";
 import { fleetStatusOf, flightDetailText } from "../../../../server/fleet-status.ts";
@@ -492,11 +494,7 @@ function MoreMenu({ aog, onAog, onRetire }: { aog: boolean; onAog: () => void; o
   return (
     <div className="fl-more-menu">
       <button ref={btn} type="button" className="fl-btn" aria-haspopup="menu" aria-expanded={open} aria-controls={id} aria-label="더 보기" onClick={() => setOpen(!open)}>
-        <svg className="fl-ico" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-          <circle cx="3.5" cy="8" r="0.6" />
-          <circle cx="8" cy="8" r="0.6" />
-          <circle cx="12.5" cy="8" r="0.6" />
-        </svg>
+        <Icon icon={Ellipsis} />
       </button>
       {open && (
         <div ref={box} id={id} role="menu" className="fl-menu" onKeyDown={key}>
@@ -526,10 +524,7 @@ function CopyAttach({ command }: { command: string }) {
   };
   return (
     <button type="button" className="fl-btn fl-copy-attach mono" title={command} aria-label={`${command} 복사`} onClick={copy}>
-      <svg className="fl-ico" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
-        <path d="M10.5 5.5V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />
-      </svg>
+      <Icon icon={Copy} />
       {copied ? "복사됨" : "ATTACH 복사"}
     </button>
   );

@@ -1,3 +1,5 @@
+import { ExternalLink } from "lucide-react";
+import { Icon } from "../Icon.tsx";
 import { useEffect, useRef, useState } from "react";
 
 // 2b 켜기 점검표: 서버(/api/dispatch/brief의 readiness2b)가 준 항목을 보이기만 한다.
@@ -96,7 +98,7 @@ function Item({ item }: { item: ReadinessItem }) {
             {...(external(item.link) ? { target: "_blank", rel: "noreferrer" } : {})}
           >
             {linkText(item.link)}
-            {external(item.link) && <span aria-hidden> ↗</span>}
+            {external(item.link) && <> <Icon icon={ExternalLink} /></>}
           </a>
         )}
       </div>

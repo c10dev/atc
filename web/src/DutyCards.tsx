@@ -1,3 +1,5 @@
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { Icon } from "./Icon.tsx";
 import { useCallback, useEffect, useState } from "react";
 import { type CardAction, actionsOf, cardKey, cardViewOf, queueHeadOf } from "../../server/duty-card.ts";
 import type { ChatItem } from "../../server/duty-chat.ts";
@@ -449,7 +451,7 @@ export function QueueRow({ queue, ctx }: { queue: SupervisorQueue | null; ctx: C
   return (
     <section className="du-queue" aria-label="SUPERVISOR QUEUE">
       <button type="button" className="du-queue-head mono" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        <span aria-hidden="true">{open ? "▾" : "▸"}</span> {queueHeadOf(queue.counts, items.length)}
+        <Icon icon={open ? ChevronDown : ChevronRight} /> {queueHeadOf(queue.counts, items.length)}
       </button>
       {open && (
         <ul className="du-queue-list">

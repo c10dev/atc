@@ -1,3 +1,5 @@
+import { ExternalLink, X } from "lucide-react";
+import { Icon, IconButton } from "./Icon.tsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DrawerRef, IssueDetail, IssueRef, PrDetail } from "../../server/detail.ts";
 import type { MergeInfo } from "../../server/pr-merge.ts";
@@ -228,7 +230,7 @@ function Flight({ k, now }: { k: string; now: number }) {
       {d.url && (
         <p className="dr-ext">
           <a href={d.url} target="_blank" rel="noreferrer">
-            Linear에서 열기 ↗
+            Linear에서 열기 <Icon icon={ExternalLink} />
           </a>
         </p>
       )}
@@ -409,7 +411,7 @@ function Pr({ airport, number, now }: { airport: string; number: number; now: nu
       {d.url && (
         <p className="dr-ext">
           <a href={d.url} target="_blank" rel="noreferrer">
-            GitHub에서 열기 ↗
+            GitHub에서 열기 <Icon icon={ExternalLink} />
           </a>
         </p>
       )}
@@ -460,9 +462,7 @@ export default function Drawer({ target, onClose, now }: { target: Extract<Drawe
     <>
       <div className="dr-backdrop" onClick={onClose} />
       <aside className="dr" role="dialog" aria-modal="true" aria-label={target.kind === "flight" ? `FLIGHT ${target.key}` : `PR ${target.number}`} tabIndex={-1} ref={ref}>
-        <button className="dr-close" onClick={onClose} aria-label="닫기">
-          ×
-        </button>
+        <IconButton className="dr-close" onClick={onClose} label="닫기" icon={X} size={16} />
         {target.kind === "flight" ? <Flight k={target.key} now={now} /> : <Pr airport={target.airport} number={target.number} now={now} />}
       </aside>
     </>

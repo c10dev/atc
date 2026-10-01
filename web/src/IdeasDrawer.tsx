@@ -1,3 +1,5 @@
+import { ArrowLeft, ExternalLink, X } from "lucide-react";
+import { Icon, IconButton } from "./Icon.tsx";
 import { useEffect, useRef, useState } from "react";
 import type { DrawerRef } from "../../server/detail.ts";
 import type { IdeaDetail, IdeaRow } from "../../server/ideas.ts";
@@ -100,7 +102,7 @@ function One({ n, now, gate }: { n: number; now: number; gate: DutyGate }) {
     return (
       <>
         <p className="dr-crumb mono">
-          <a href="#ideas">← IDEAS</a>
+          <a href="#ideas"><Icon icon={ArrowLeft} /> IDEAS</a>
         </p>
         <p className="dr-note dr-error">{l.off ? "GitHub이 꺼져 있어 idea를 읽지 못한다. " : ""}{l.message}</p>
       </>
@@ -109,7 +111,7 @@ function One({ n, now, gate }: { n: number; now: number; gate: DutyGate }) {
   return (
     <>
       <p className="dr-crumb mono">
-        <a href="#ideas">← IDEAS</a> · #{d.number}
+        <a href="#ideas"><Icon icon={ArrowLeft} /> IDEAS</a> · #{d.number}
       </p>
       <h2 className="dr-title">{d.title}</h2>
       <dl className="dr-meta">
@@ -142,7 +144,7 @@ function One({ n, now, gate }: { n: number; now: number; gate: DutyGate }) {
       {d.url && (
         <p className="dr-ext">
           <a href={d.url} target="_blank" rel="noreferrer">
-            ↗ GitHub
+            <Icon icon={ExternalLink} /> GitHub
           </a>
         </p>
       )}
@@ -179,9 +181,7 @@ export default function IdeasDrawer({ target, onClose, now, gate }: { target: Ta
     <>
       <div className="dr-backdrop" onClick={onClose} />
       <aside className="dr" role="dialog" aria-modal="true" aria-label={target.kind === "idea" ? `IDEA #${target.number}` : "IDEAS"} tabIndex={-1} ref={ref}>
-        <button className="dr-close" onClick={onClose} aria-label="닫기">
-          ×
-        </button>
+        <IconButton className="dr-close" onClick={onClose} label="닫기" icon={X} size={16} />
         {target.kind === "idea" ? <One n={target.number} now={now} gate={gate} /> : <List now={now} />}
       </aside>
     </>

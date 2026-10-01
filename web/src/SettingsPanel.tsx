@@ -1,3 +1,5 @@
+import { X } from "lucide-react";
+import { IconButton } from "./Icon.tsx";
 import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Snapshot } from "../../server/model.ts";
@@ -132,9 +134,7 @@ export function SettingsPanel({
           <span className="settings-title">
             SETTINGS <em>설정</em>
           </span>
-          <button className="settings-close" onClick={onClose} aria-label="설정 닫기">
-            ×
-          </button>
+          <IconButton className="settings-close" onClick={onClose} label="설정 닫기" icon={X} size={16} />
         </header>
         <div className="settings-body">
           <nav className="settings-nav" aria-label="설정 종류">

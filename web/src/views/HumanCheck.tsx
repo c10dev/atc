@@ -1,3 +1,5 @@
+import { ExternalLink } from "lucide-react";
+import { Icon } from "../Icon.tsx";
 import { useEffect, useState } from "react";
 import type { HumanCheckStatus } from "../../../server/human-check.ts";
 import type { PullRequest } from "../../../server/model.ts";
@@ -180,7 +182,7 @@ function HumanRow({ pr, idx, nameOf }: { pr: PullRequest; idx: Index; nameOf: (i
         <div className="hc-preview">
           {ui.preview ? (
             <a href={ui.preview} target="_blank" rel="noreferrer noopener">
-              Preview ↗
+              Preview <Icon icon={ExternalLink} />
             </a>
           ) : (
             <span className="hc-error">Preview URL 없음</span>
