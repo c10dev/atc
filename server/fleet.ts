@@ -23,6 +23,7 @@ import type { Activity } from "./activity.ts";
 import { flightDetailOf, liveViewOf } from "./fleet-live.ts";
 import { accountFolders, observedLabelsOn } from "./accounts.ts";
 import { effectiveLaunchAccount, launchSettingOf } from "./launch-account.ts";
+import { launchModelSettingOf } from "./launch-model.ts";
 import { launchSplitWarning, unreachableAircraft, unreachableAircraftWarning } from "./account-reach.ts";
 import { readRecords } from "./recorder.ts";
 
@@ -80,7 +81,19 @@ export function loadFleet(file = fleetFile()): FleetFile {
     ...(raw.control && typeof raw.control === "object" ? { control: raw.control } : {}), // 관제 세션 ACCOUNT(ATC-60). 옛 파일엔 없다
     ...(raw.accounts && typeof raw.accounts === "object" ? { accounts: raw.accounts } : {}), // ACCOUNT 등록부(ATC-146). 읽는 쪽은 accounts.ts loadAccounts가 검사한다
     ...(Object.keys(launchSettingOf(raw.launchAccount)).length ? { launchAccount: launchSettingOf(raw.launchAccount) } : {}), // LAUNCH ACCOUNT(ATC-239). 모양이 맞는 칸만
+    ...(Object.keys(launchModelSettingOf(raw.launchModel)).length ? { launchModel: launchModelSettingOf(raw.launchModel) } : {}), // LAUNCH MODEL(ATC-279). 모양이 맞는 칸만
   };
+}
+
+// LAUNCH MODEL을 바꿔 쓴다(ATC-279). 검사는 부르는 쪽(launchModelPatchOf). 다른 항목은 그대로, 비면 항목을 지운다
+export function saveLaunchModel(setting: NonNullable<FleetFile["launchModel"]>, file = fleetFile()) {
+  const raw = readRaw(file);
+  const next: Partial<FleetFile> = { ...raw, launchModel: setting };
+  if (!Object.keys(setting).length) delete next.launchModel;
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n");
+  renameSync(tmp, file);
 }
 
 // LAUNCH ACCOUNT를 바꿔 쓴다(ATC-239). 검사는 부르는 쪽(launchSettingPatchOf). 다른 항목은 그대로, 비면 항목을 지운다
@@ -533,6 +546,7 @@ export function mountFleet(app: Hono, getSnapshot: () => Promise<Snapshot>, cont
       ratings: RATINGS,
       fuelAccounts: s.fuelAccounts ?? [], // ACCOUNT마다 FUEL과 구성원(AIRCRAFT·관제 세션, ATC-60)
       launchAccount: launchAccountView(fleet, s.sessions, cfg.teamPattern), // LAUNCH ACCOUNT(ATC-239): 지금 설정과 경고. 머리에 작게 보인다
+      launchModel: launchModelSettingOf(fleet.launchModel), // LAUNCH MODEL(ATC-279): 기본·AIRPORT별·AIRCRAFT별. 다음 LAUNCH 표시와 설정 창이 읽는다
       defaults: fleet.defaults,
       projects,
       aircraft,

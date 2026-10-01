@@ -41,7 +41,7 @@ export type RecordLine =
   // 세션 조종: LAUNCH·STOP 결과(docs/fleet.md 8.5). FLEET PLAN 승인(8.7)은 entry·aog·return·retire도, by는 "FLEET PLAN F-0001"
   // proposal: DISPATCH launch 카드 승인으로 띄웠으면 그 제안 id(ATC-129)
   // reposition(ATC-179): AIRCRAFT의 base를 옮김(STOP·base 쓰기·LAUNCH를 한 사건으로). by는 supervisor | auto, stage는 실패한 단계(precheck는 STOP 전 거절)
-  | { t: string; kind: "fleet"; op: "launch" | "stop" | "entry" | "aog" | "return" | "retire" | "account-change" | "reposition"; aircraft: string; by: string; ok: boolean; jobId?: string; cwd?: string; permissionMode?: string; model?: string; account?: string; from?: string; to?: string; error?: string; proposal?: string; stage?: "stop" | "base" | "launch" | "precheck" }
+  | { t: string; kind: "fleet"; op: "launch" | "stop" | "entry" | "aog" | "return" | "retire" | "account-change" | "reposition"; aircraft: string; by: string; ok: boolean; jobId?: string; cwd?: string; permissionMode?: string; model?: string; modelFrom?: string; account?: string; from?: string; to?: string; error?: string; proposal?: string; stage?: "stop" | "base" | "launch" | "precheck" }
   // REPOSITION 스위치와 그림자(ATC-179): mode는 스위치 바꿈(auto가 flapping으로 approval이 되면 by auto), would는 shadow의 "옮겼을 것"
   | { t: string; kind: "reposition"; op: "mode"; by: string; from: string; to: string; reason?: string }
   | { t: string; kind: "reposition"; op: "would"; aircraft: string; from: string; to: string; reasons: string[] }
@@ -60,6 +60,8 @@ export type RecordLine =
   | { t: string; kind: "control"; op: "bulk"; by: string; bulk: "launch" | "restart" | "stop" | "align"; force: boolean; ok: boolean; done: number; failed: number; held: number; skipped: number; results: { name: string; action: string; ok: boolean; held?: boolean; skipped?: string; from?: string | null; to?: string | null; jobId?: string; error?: string }[] }
   // 그 밖의 백그라운드 세션 STOP(ATC-184): AIRCRAFT도 관제 세션도 아닌 세션을 SUPERVISOR가 FLEET 탭에서 멈춤
   | { t: string; kind: "other"; op: "stop"; session: string; by: string; ok: boolean; jobId: string; cwd?: string; account?: string; error?: string }
+  // LAUNCH MODEL을 바꿈(ATC-279): 설정 창에서 SUPERVISOR가 한 칸을 바꿀 때마다 한 줄. scope default는 key 없음
+  | { t: string; kind: "launch-model"; by: string; scope: "default" | "airport" | "aircraft"; key?: string; from: string | null; to: string | null }
   | { t: string; kind: "atfm"; op: string; id?: string; airport?: string; data?: Record<string, unknown> };
 
 const DIR = join(config.stateDir, "flight-recorder");

@@ -3165,6 +3165,28 @@ a.ticket:hover {
   color: var(--text);
   font-size: var(--text-sm);
 }
+.acct-model-pick { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); max-width: 100%; }
+.acct-model-pick select,
+.acct-model-pick input {
+  max-width: 100%;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.acct-model-chip {
+  margin: 0 var(--space-1) var(--space-1) 0;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
 .acct-edit input,
 .acct-add input:not([type="checkbox"]),
 .acct-login input {

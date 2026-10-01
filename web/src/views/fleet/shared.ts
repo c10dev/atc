@@ -1,5 +1,6 @@
 import type { AircraftView, CrewMember, FleetFile, Rating } from "../../../../server/fleet.ts";
 import type { FuelRemaining } from "../../../../server/fuel-remaining.ts";
+import type { LaunchModelSetting } from "../../../../server/launch-model.ts";
 
 // FLEET 탭 여러 파일이 같이 쓰는 타입과 도우미(GET /api/fleet, /api/fleet/sessions)
 
@@ -24,6 +25,7 @@ export interface FleetBrief {
   dispatchMode?: "shadow" | "approval"; // CREW CHANGE 승인은 approval(2b)에서만(옛 서버엔 없음)
   fuelAccounts?: FuelRemaining[]; // ACCOUNT마다 FUEL과 구성원(ATC-60, 옛 서버엔 없음)
   launchAccount?: { aircraft: string | null; control: string | null; warnings: string[] }; // LAUNCH ACCOUNT(ATC-239, 옛 서버엔 없음)
+  launchModel?: LaunchModelSetting; // LAUNCH MODEL(ATC-279): 기본·AIRPORT별·AIRCRAFT별(옛 서버엔 없음)
 }
 
 // GET /api/fleet/sessions: REGISTRATION 이름의 세션(claude agents --json)

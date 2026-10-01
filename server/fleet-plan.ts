@@ -679,7 +679,7 @@ export interface ApproveOptions {
 }
 export type ExecStep =
   | { action: "entry"; registration: string; configuration: ConfigurationId; base: string; account?: string }
-  | { action: "launch"; registration: string; permissionMode: PermissionMode; model: string | null; account?: string }
+  | { action: "launch"; registration: string; permissionMode: PermissionMode; model: string | null; lastModel?: string | null; account?: string } // model: 양식에 적은 것만. lastModel: 마지막 LAUNCH의 모델(설정이 하나도 안 맞을 때만 쓴다, ATC-279)
   | { action: "stop"; registration: string }
   | { action: "base"; registration: string; base: string } // REPOSITION(ATC-179): fleet.json의 base를 바꾼다
   | { action: "aog"; registration: string; reason: string; until: string | null }
@@ -872,10 +872,11 @@ export function executionOf(p: FleetProposal, input: Record<string, unknown>, ct
   const launchOptions = (fallback?: { permissionMode?: string; model?: string }) => {
     const mode = (input.permissionMode ?? fallback?.permissionMode ?? "auto") as PermissionMode;
     if (!PERMISSION_MODES.includes(mode)) throw new PlanError(`permission mode는 ${PERMISSION_MODES.join(" | ")}`, 400);
-    const raw = input.model === undefined ? (fallback?.model ?? "") : input.model;
-    const model = typeof raw === "string" && raw.trim() ? raw.trim() : null;
+    // 모델(ATC-279): 양식에 적은 것만 model이다(우선). 비워 두면 launchAircraft가 AIRCRAFT > AIRPORT > 기본 설정을 먼저 보고, 마지막 LAUNCH의 모델(lastModel)은 그다음이다
+    const model = typeof input.model === "string" && input.model.trim() ? input.model.trim() : null;
     if (model && !/^[\w.:[\]-]+$/.test(model)) throw new PlanError(`모델 이름이 이상함: ${model}`, 400);
-    return { permissionMode: mode, model };
+    const lastModel = fallback?.model?.trim() || null;
+    return { permissionMode: mode, model, ...(lastModel ? { lastModel } : {}) };
   };
   const needAircraft = () => {
     if (!a) throw new PlanError(`FLEET에 없음: ${reg}`, 404);

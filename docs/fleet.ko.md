@@ -957,6 +957,17 @@ SUPERVISOR는 AIRCRAFT용 **LAUNCH ACCOUNT**를 정할 수 있다(설정 창 ACC
 - `fuelOfPlan`은 LAUNCH·ENTRY 제안의 FUEL을 LAUNCH ACCOUNT의 것으로 읽는다(STOP은 AIRCRAFT 자신의 것).
 - 설정 때문에 돌고 있는 세션이 옮겨 가지는 않는다. ACCOUNT CHANGE는 여전히 AIRCRAFT마다 SUPERVISOR가 승인한다. 설정을 끄면 위의 것은 모두 전과 같다.
 
+### LAUNCH MODEL (ATC-279)
+
+SUPERVISOR는 AIRCRAFT LAUNCH가 쓸 모델을, ACCOUNT 폴더나 프로젝트 `settings.json`에 맡기지 않고 고를 수 있다(설정 창 ACCOUNTS, LAUNCH ACCOUNT 아래). `fleet.json`의 `launchModel` = `{ default?, airports?: { CODE: 모델 }, aircraft?: { REG: 모델 } }`이고, 옛 빌드가 읽지 않는 추가 칸이다. 값은 Claude Code 별칭(`opus`, `sonnet`, `haiku`, 뒤에 `[1m]`)이나 전체 ID(`^[\w.:[\]-]+$`)다. 비어 있으면(처음 값) 전처럼 `--model`을 붙이지 않는다.
+
+- **정하는 곳은 하나.** `launchAircraft`(`server/session-control.ts`)가 순수 함수 `launchModelOf`(`server/launch-model.ts`)를 불러서, FLEET LAUNCH, DISPATCH launch 카드 승인과 RESUME(`server/index.ts`), FLEET PLAN 단계와 LAUNCH ACCOUNT APPLY NOW(`server/fleet-plan-run.ts`) 모든 AIRCRAFT LAUNCH 길이 같은 규칙을 쓴다. 부르는 곳의 목록과 `--model`을 만드는 곳이 하나뿐임은 테스트가 고정한다.
+- **우선순위.** LAUNCH 양식·FLEET PLAN 승인 양식에 적은 모델(`form`) > AIRCRAFT(`aircraft`) > 그 AIRPORT(`airport`) > 기본(`default`) > 마지막 LAUNCH의 모델(`last`) > 없음(`none`). 마지막 LAUNCH의 모델(RESTART, ACCOUNT CHANGE, REPOSITION, APPLY NOW, DISPATCH 카드가 전에 재사용하던 값)은 맞는 설정이 하나도 없을 때만 쓴다: 설정이 SUPERVISOR의 지금 뜻이다. 양식 칸이 비어 있으면 이름을 안 댄 것이다. LAUNCH 단계에는 `model`(양식)과 `lastModel`(마지막 LAUNCH)이 따로 실린다.
+- **기록.** FLIGHT RECORDER의 `fleet launch` 줄에 `model`(실제로 넘긴 값)과 `modelFrom`(`form|aircraft|airport|default|last|none`)이 있다. 설정을 바꿀 때마다 `launch-model` 줄이 한 줄 남는다(`scope` default|airport|aircraft, `key`, `from`, `to`, `by`).
+- **API.** `GET /api/fleet/launch-model`(설정, 고를 모델, AIRPORT, AIRCRAFT)과 바꿀 칸만 적는 `PUT /api/fleet/launch-model`(`null`·`""`은 지움. 등록되지 않은 AIRPORT·AIRCRAFT 409, 잘못된 값 400, 이 화면 Origin이 없으면 403). `GET /api/fleet`에 `launchModel`이 실린다.
+- **화면.** 설정 → ACCOUNTS → **LAUNCH MODEL**: 기본 고르개(폴더 기본, `opus`, `sonnet`, `haiku`, `claude-opus-5-5`, `claude-sonnet-5-5`, 직접 입력), AIRPORT마다 고르개, AIRCRAFT별 값의 칩(FLEET 카드 고치기에서 정하고 눌러서 지운다), 우선순위 한 줄과 FUEL 안내(Opus는 토큰당 비용이 크다. 저절로 바꾸지는 않는다). FLEET 행·카드에는 설정이 맞을 때 `next LAUNCH model <모델> (<출처>)`가, DISPATCH launch 카드에도 같은 글이 보이고, LAUNCH 패널의 모델 칸은 설정을 placeholder로 보인다.
+- **여기서 하지 않는 것.** 관제 세션 모델, crew 서브에이전트 모델(`CLAUDE_CODE_SUBAGENT_MODEL`), 돌고 있는 세션 옮기기(다음 LAUNCH 때 새 모델을 쓴다). ACCOUNT·프로젝트 `settings.json`은 건드리지 않는다. 돌고 있는 세션이 실제로 쓰는 모델은 행에 보이지 않는다(만들지 않음: 글은 다음 LAUNCH가 쓸 모델을 말한다).
+
 ### REPOSITION (ATC-179)
 
 FLEET PLAN의 새 종류: 쉬는 AIRCRAFT의 base를, FLIGHT가 기다리는데 소속 AIRCRAFT가 없는 AIRPORT로 옮긴다. DISPATCH가 AIRCRAFT를 자기 base AIRPORT의 FLIGHT와만 짝짓기 때문에([dispatch.ko.md](dispatch.ko.md) 4) 다른 AIRPORT에서 쉬는 AIRCRAFT는 그 FLIGHT를 받지 못한다. 살아 있는 세션은 저장소를 바꿀 수 없다(시작한 폴더의 `CLAUDE.md`를 읽는다). 그래서 옮기기는 STOP → 새 base 쓰기 → 목표 AIRPORT 저장소에서 LAUNCH다.
