@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildBrief, landTextOf } from "./controller.ts";
-import { landByOf, type MccLandInfo } from "./land-by.ts";
+import { landByOf, landDecisionOf, type MccLandInfo } from "./land-by.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 
 // 누가 착륙시키나(ATC-151). MCC AIRPORT(ATCC)의 PR만 바뀌고 다른 AIRPORT(VCDO)는 옛 LAND 흐름 그대로다.
@@ -103,4 +103,35 @@ test("브리핑: airports의 teamsMerge false인 AIRPORT만 supervisor이고 lan
   assert.deepEqual([1, 2].map((n) => at(n).landText), [null, null]);
   assert.equal(at(5).landText, landTextOf(1, "VCDO", 5, "ATC5", null));
   assert.deepEqual([1, 5, 2].map((n) => [at(n).seq, at(n).repoSeq]), [[1, 1], [2, 1], [3, 2]]); // 순서는 그대로
+});
+
+// ATC-300: 이유 코드는 판정과 같은 갈래에서 나온다. landByOf는 landDecisionOf의 by일 뿐이고, why는 supervisor일 때만 있다
+test("landDecisionOf: 코드마다 이유, hold가 escalate보다 먼저, mcc·holder에는 이유가 없다", () => {
+  const d = (n: number, m: MccLandInfo | null, repo = ATC, teamsMerge = true) => landDecisionOf(pr(repo, n), m, teamsMerge);
+  assert.deepEqual(d(1, info({}, { 1: "user" })), { by: "supervisor", why: "user" });
+  assert.deepEqual(d(2, info({ escalated: [2] }, { 2: "auto" })), { by: "supervisor", why: "escalate" });
+  assert.deepEqual(d(3, info({ holds: [3] }, { 3: "auto" })), { by: "supervisor", why: "hold" });
+  assert.deepEqual(d(4, info({ holds: [4], escalated: [4] }, { 4: "user" })), { by: "supervisor", why: "hold" });
+  assert.deepEqual(d(5, info({ mode: "shadow" }, { 5: "user" })), { by: "supervisor", why: "mode" }); // 모드가 먼저
+  assert.deepEqual(d(6, info({}, {})), { by: "supervisor", why: "tier-unknown" });
+  assert.deepEqual(d(7, info({}, { 7: "auto" }), ATC), { by: "mcc", why: null });
+  assert.deepEqual(d(8, null, VCDO), { by: "holder", why: null });
+  assert.deepEqual(d(9, null, VCDO, false), { by: "supervisor", why: "teams-merge-off" });
+  assert.deepEqual(d(10, info({}, { 10: "auto" }), VCDO), { by: "holder", why: null });
+  // head가 달라진 등급(옛 값)
+  assert.deepEqual(landDecisionOf({ repo: ATC, number: 11, head: "changed" }, info({}, { 11: "auto" }), true), { by: "supervisor", why: "tier-unknown" });
+});
+
+test("landDecisionOf: 어떤 입력에서도 by는 landByOf와 같고, why가 있는 것은 supervisor뿐이다(코드와 이유가 어긋나지 않는다)", () => {
+  const modes = ["shadow", "rts", "land", "land+rts"] as const;
+  for (const mode of modes)
+    for (const repo of [ATC, VCDO])
+      for (const teamsMerge of [true, false])
+        for (const flags of [{}, { holds: [1] }, { escalated: [1] }, { holds: [1], escalated: [1] }])
+          for (const tier of [undefined, "auto", "flagged", "user"] as const) {
+            const m = info({ mode, ...flags }, tier ? { 1: tier } : {});
+            const x = landDecisionOf(pr(repo, 1), m, teamsMerge);
+            assert.equal(x.by, landByOf(pr(repo, 1), m, teamsMerge));
+            assert.equal(x.why !== null, x.by === "supervisor");
+          }
 });

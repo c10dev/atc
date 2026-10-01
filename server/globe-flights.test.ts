@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { landDecisionOf, type MccLandInfo } from "./land-by.ts";
 import { ARRIVED_FADE_MIN, CRUISE_CAP, flightsOf, globeSceneOf, GO_AROUND_MIN, outboundBearings, type GlobeFlightsIn } from "./globe.ts";
 import type { Milestones } from "./milestones.ts";
 import type { FlightProgress, Segment } from "./progress.ts";
@@ -73,7 +74,7 @@ test("3.3 cruise, 추정 없음: t는 0이고 어디에도 퍼센트나 ETA가 �
   const f = one(input({ progress: { "ATC-1": prog("work", null, { elapsedMin: 12 }) } }));
   assert.equal(f.state, "cruise");
   assert.equal(f.t, 0);
-  assert.deepEqual(Object.keys(f).sort(), ["aircraft", "airport", "blocks", "callsign", "fadeFrom", "key", "late", "outbound", "reverted", "state", "t"]);
+  assert.deepEqual(Object.keys(f).sort(), ["aircraft", "airport", "blocks", "callsign", "fadeFrom", "key", "landBy", "landWhy", "late", "outbound", "reverted", "state", "t"]);
 });
 
 test("3.3 cruise, late: IAF 앞에서 멈추고(t ≤ CRUISE_CAP) late가 켜진다. 홀딩이 아니다", () => {
@@ -286,4 +287,78 @@ test("racetrack: 닫힌 타원 — 길이 방향으로 length, 폭 방향으로 
   assert.ok(r.length >= 10);
   // 모든 꼭짓점이 중심에서 length/2 + width/2 안에 있다
   assert.ok(r.every((p) => distanceDeg(c, p) <= 1.5));
+});
+
+// ── ATC-300: 누가 착륙시키나 ──
+const MCC_REPO = "/p/atc";
+const mccInfo = (over: Partial<MccLandInfo> = {}, tiers: Record<number, "auto" | "flagged" | "user"> = {}): MccLandInfo => ({
+  repo: MCC_REPO, mode: "land+rts", holds: [], escalated: [], tiers: new Map(Object.entries(tiers).map(([n, tier]) => [Number(n), { head: `head${n}`, tier }])), ...over,
+});
+// 열린 PR 하나가 landing 구간에서 APPROACH인 FLIGHT. 번호·head가 있어야 landBy를 셈한다
+const landing = (mcc: MccLandInfo | null, num: number, over: { repo?: string; head?: string; landing?: "CLEARED" | "APPROACH"; teamsMerge?: boolean } = {}) =>
+  one(
+    input({
+      milestones: { "ATC-1": ms({ out: ago(60), off: ago(20) }) },
+      progress: { "ATC-1": prog("landing", 0.2) },
+      pulls: [{ ...pull(over.landing ?? "APPROACH", over.landing === "CLEARED" ? [] : ["no-review"]), repo: over.repo ?? MCC_REPO, number: num, head: over.head ?? `head${num}` }],
+      land: (p) => landDecisionOf(p, mcc, over.teamsMerge ?? true),
+    }),
+  );
+
+test("ATC-300 landBy·landWhy: landWhy 코드마다 FLIGHT 하나(user, escalate, hold, mode, tier-unknown, teams-merge-off), 그리고 mcc와 holder", () => {
+  const cases: [string, ReturnType<typeof landing>, string | null, string | null][] = [
+    ["user", landing(mccInfo({}, { 1: "user" }), 1), "supervisor", "user"],
+    ["escalate", landing(mccInfo({ escalated: [2] }, { 2: "auto" }), 2), "supervisor", "escalate"],
+    ["hold", landing(mccInfo({ holds: [3] }, { 3: "auto" }), 3), "supervisor", "hold"],
+    ["mode", landing(mccInfo({ mode: "shadow" }, { 4: "auto" }), 4), "supervisor", "mode"],
+    ["tier-unknown", landing(mccInfo({}, {}), 5), "supervisor", "tier-unknown"],
+    ["teams-merge-off", landing(null, 6, { repo: "/p/abcd", teamsMerge: false }), "supervisor", "teams-merge-off"],
+    ["mcc auto", landing(mccInfo({}, { 7: "auto" }), 7), "mcc", null],
+    ["mcc flagged", landing(mccInfo({}, { 8: "flagged" }), 8), "mcc", null],
+    ["holder", landing(mccInfo({}, { 9: "auto" }), 9, { repo: "/p/abcd" }), "holder", null],
+  ];
+  for (const [name, f, by, why] of cases) assert.deepEqual([f.landBy, f.landWhy], [by, why], name);
+});
+
+test("ATC-300 landBy: 등급을 잰 뒤 head가 바뀌었으면(옛 등급) supervisor와 tier-unknown", () => {
+  const f = landing(mccInfo({}, { 1: "auto" }), 1, { head: "newhead" });
+  assert.deepEqual([f.landBy, f.landWhy], ["supervisor", "tier-unknown"]);
+});
+
+test("ATC-300 landBy: CLEARED인 final도 SUPERVISOR가 머지해야 하면 표시한다(user 등급)", () => {
+  const f = landing(mccInfo({}, { 1: "user" }), 1, { landing: "CLEARED" });
+  assert.equal(f.state, "final");
+  assert.deepEqual([f.landBy, f.landWhy], ["supervisor", "user"]);
+});
+
+test("ATC-300 landBy: landing 구간 밖(cruise, boarding, taxi, arrived, nordo)과 열린 PR이 없으면 null, land 콜백이 없어도 null", () => {
+  const land = (p: { repo: string; number: number; head: string }) => landDecisionOf(p, mccInfo({}, { 1: "user" }), true);
+  const pr1 = { ...pull("APPROACH", ["no-review"]), number: 1, head: "head1" };
+  const none = { landBy: null, landWhy: null };
+  const pick = (f: ReturnType<typeof one>) => ({ landBy: f.landBy, landWhy: f.landWhy });
+  // work 구간에 열린 PR이 (먼저) 있어도 cruise
+  assert.deepEqual(pick(one(input({ pulls: [pr1], land }))), none);
+  // OUT 전 boarding
+  assert.deepEqual(pick(one(input({ milestones: {}, progress: {}, land }))), none);
+  // rts(taxi)
+  assert.deepEqual(pick(one(input({ milestones: { "ATC-1": ms({ out: ago(90), off: ago(60), on: ago(10) }) }, progress: { "ATC-1": prog("rts", 0) }, land }))), none);
+  // done(arrived)
+  assert.deepEqual(pick(one(input({ milestones: { "ATC-1": ms({ out: ago(90), off: ago(60), on: ago(20), in: ago(10) }) }, progress: { "ATC-1": prog("done", null) }, land }))), none);
+  // 죽은 세션(nordo)
+  assert.deepEqual(pick(one(input({ aircraft: [air("TEAM_A", "dead", ["ATC-1"])], milestones: { "ATC-1": ms({ out: ago(60), off: ago(20) }) }, progress: { "ATC-1": prog("landing", 0.2) }, pulls: [pr1], land }))), none);
+  // landing 구간인데 PR이 없다(열린 HOLD로 홀딩)
+  assert.deepEqual(pick(one(input({ milestones: { "ATC-1": ms({ out: ago(60), off: ago(20) }) }, progress: { "ATC-1": prog("landing", 0.2) }, clearances: [clr("HOLD", 5)], land }))), none);
+  // land 콜백이 없으면(G1·옛 호출) landing 구간의 PR이 있어도 null
+  assert.deepEqual(pick(one(input({ milestones: { "ATC-1": ms({ out: ago(60), off: ago(20) }) }, progress: { "ATC-1": prog("landing", 0.2) }, pulls: [pr1] }))), none);
+  // PR 번호·head를 모르는 입력(옛 테스트 모양)은 셈하지 않는다
+  assert.deepEqual(pick(one(input({ milestones: { "ATC-1": ms({ out: ago(60), off: ago(20) }) }, progress: { "ATC-1": prog("landing", 0.2) }, pulls: [pull("APPROACH", ["no-review"])], land }))), none);
+});
+
+test("ATC-300 goAround도 landBy를 싣는다(GO AROUND 뒤에도 누가 착륙시키는지)", () => {
+  const f = one(input({
+    milestones: { "ATC-1": ms({ out: ago(60), off: ago(20) }) }, progress: { "ATC-1": prog("landing", 0.2) },
+    pulls: [{ ...pull("APPROACH", ["dirty"]), number: 1, head: "head1" }], land: (p) => landDecisionOf(p, mccInfo({}, { 1: "user" }), true),
+  }));
+  assert.equal(f.state, "goAround");
+  assert.deepEqual([f.landBy, f.landWhy], ["supervisor", "user"]);
 });

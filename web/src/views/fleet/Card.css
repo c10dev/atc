@@ -1,36 +1,48 @@
-/* FLEET 카드(Card.tsx, 편집기 제외). 색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다). */
+/* FLEET 카드(Card.tsx, 편집기 제외). 색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다).
+   ATC-287(디자인 언어 3.5 Craft): 이 카드가 기준 카드다. 평소 상태는 회색 — 색은 상태 점과 경보에만. 글꼴 역할(sans 글·mono 코드와 숫자),
+   글자 크기 셋(제목 lg · 값 md · 캡션 xs), 한 단계의 대문자 제목(칸 제목), 숫자는 .tn. 다른 FLEET 패널이 같이 쓰는 클래스(.fl-btn .fl-chip .fl-origin .fl-sub)는
+   여기서 .fl-card 안에서만 다시 정한다(밖은 L4 점검에서). */
 .fl-card {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1-5);
-  padding: var(--space-3) var(--space-4);
+  gap: var(--space-3);
+  padding: var(--space-4);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--faint);
   border-radius: var(--radius);
+  font-size: var(--text-md);
 }
-.fl-card.s-busy {
-  border-left-color: var(--radar);
+/* 안쪽 막대: AOG와 경보 띠에 CAUTION(amber)·WARNING(alert)이 있을 때만 */
+.fl-card.is-aog,
+.fl-card.fl-tone-amber {
+  box-shadow: inset 3px 0 0 var(--amber);
 }
-.fl-card.s-idle {
-  border-left-color: var(--cyan);
+.fl-card.fl-tone-alert {
+  box-shadow: inset 3px 0 0 var(--alert);
 }
-.fl-card.s-dead {
-  border-left-color: var(--alert);
+/* .mono는 전역에서 sm 크기를 준다 — 카드 안에서는 둘러싼 글 크기를 따른다(크기 셋만 쓴다) */
+.fl-card .mono {
+  font-size: inherit;
+}
+.fl-card .faint {
+  font-size: var(--text-xs);
 }
 
-/* 머리(ATC-280): 왼쪽 이름·상태·배지, 오른쪽 버튼. 좁으면 줄을 바꾼다 */
+/* 머리: 이름·상태·태그 | 버튼. 머리 아래 선 하나(이 카드의 유일한 안쪽 가로선) */
 .fl-head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-1-5) var(--space-3);
+  gap: var(--space-2) var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line);
 }
 .fl-id {
   display: flex;
   flex: 1 1 auto;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-1) var(--space-2);
   min-width: 0;
 }
@@ -40,138 +52,161 @@
   margin-left: auto;
 }
 .fl-callsign {
-  font: 700 var(--text-md) var(--mono);
-  letter-spacing: 0.08em;
+  font: 600 var(--text-lg) var(--sans);
 }
+.fl-card .fl-head .mono.faint {
+  font-size: var(--text-md);
+}
+/* 상태 = 작은 점 + 말. 점만 색이다 */
 .fl-status {
-  color: var(--muted);
-  font: 600 var(--text-2xs) var(--mono);
-  letter-spacing: 0.1em;
-}
-.fl-flying {
-  margin: 0;
-  color: var(--radar);
-  font: var(--text-sm) var(--mono);
-}
-/* ACTIVITY(ATC-97): FLYING 아래 한 줄 */
-.fl-activity {
-  color: var(--muted);
-  font-size: var(--text-xs);
-}
-/* 멈춘 AIRCRAFT가 점유(claimTtl) 뒤에도 쥐고 있는 FLIGHT(ATC-86) */
-.fl-kept {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  color: var(--cyan);
-  font: var(--text-sm) var(--mono);
-}
-.fl-kept .fl-r-detail {
-  margin-left: var(--space-2);
-  color: var(--muted);
-  font-size: var(--text-2xs);
-}
-.fl-kept .fl-r-detail.is-unpushed {
-  color: var(--amber);
-}
-/* RULES(ATC-42): 규칙 파일 확인 상태. 뒤처지면 경고색 */
-.fl-rules {
-  margin: 0;
-  font: var(--text-2xs) var(--mono);
-  letter-spacing: 0.08em;
-  overflow-wrap: anywhere;
-}
-.fl-rules.is-behind {
-  color: var(--amber);
-}
-
-.fl-limits {
-  margin-left: var(--space-2);
-  color: var(--faint);
-  font-size: var(--text-xs);
-}
-
-.fl-chips {
-  display: flex;
-  flex-wrap: wrap;
+  display: inline-flex;
+  align-items: center;
   gap: var(--space-1-5);
-}
-.fl-note {
   color: var(--muted);
+  font: 600 var(--text-xs) var(--sans);
+}
+.fl-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.fl-dot.is-live {
+  background: var(--radar);
+}
+.fl-dot.is-needs {
+  background: var(--blue);
+}
+.fl-dot.is-amber {
+  background: var(--amber);
+}
+.fl-dot.is-alert {
+  background: var(--alert);
+}
+/* 태그(출처·AIRPORT·STALE·TYPE RATING): 중립 — line-strong 테두리, muted 글 */
+.fl-card .fl-origin,
+.fl-card .fl-origin.o-background,
+.fl-card .apt,
+.fl-card .fl-stale-mark,
+.fl-card .fl-chip,
+.fl-card .fl-chip.r-SEC {
+  margin-left: 0;
+  padding: 0 var(--space-1-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font: 400 var(--text-xs) var(--sans);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.fl-card .apt,
+.fl-card .fl-chip {
+  font-family: var(--mono);
+}
+.fl-card .fl-origin.o-unknown,
+.fl-card .fl-stale-mark {
+  border-style: dashed;
+}
+.fl-card .fl-origin-mode {
+  color: var(--faint);
+}
+.fl-card .fl-chip {
+  border-radius: var(--radius-pill);
+  font-weight: 600;
 }
 
-/* TARGETS 실적(LOGBOOK) */
-.fl-actuals {
-  margin: 0;
-  font: var(--text-sm) var(--mono);
+/* 버튼: 투명 바탕, 1px line-strong 테두리, 4px 모서리, 호버 panel-3. LAUNCH만 radar */
+.fl-card .fl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  height: 28px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  font: 600 var(--text-xs) var(--sans);
+  transition: background-color var(--dur-fast) var(--ease);
 }
-.fl-actuals.faint {
-  font-size: var(--text-xs);
+.fl-card .fl-btn:hover {
+  background: var(--panel-3);
 }
-.fl-short {
-  color: var(--amber);
+.fl-card .fl-btn.primary {
+  border-color: var(--radar);
+  color: var(--radar);
 }
-.fl-log {
+.fl-card .fl-btn.danger {
+  color: var(--alert);
+}
+.fl-card .fl-copy-attach {
+  font-family: var(--sans);
+}
+.fl-ico {
+  flex: none;
+}
+
+/* 경보 띠: 켜진 것만 한 줄씩. 면 한 단계(panel-2), 테두리 없음. NEEDS YOU가 있으면 blue 안쪽 막대 */
+.fl-alerts {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin: var(--space-1) 0 0;
-  padding: 0;
-  list-style: none;
-  font: var(--text-xs) var(--mono);
-}
-.fl-log li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-1-5);
-}
-.fl-log-flight {
-  color: var(--text);
-  text-decoration: none;
-}
-.fl-log-flight:hover,
-.fl-log-flight:focus-visible {
-  color: var(--cyan);
-  text-decoration: underline;
-}
-.fl-log-date {
-  margin-left: auto;
-}
-.fl-ontime {
-  color: var(--radar);
-}
-.fl-late {
-  color: var(--amber);
-}
-.fl-card.is-aog {
-  border-left-color: var(--amber);
-}
-.fl-aog {
+  gap: var(--space-1);
   margin: 0;
-  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel-2);
+  border-radius: var(--radius-md);
+  list-style: none;
+}
+.fl-alerts.has-needs {
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+.fl-alerts > li {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+}
+.fl-alerts .fl-report {
+  margin: 0;
+  font-size: var(--text-md);
+}
+.fl-card .needs-you {
+  border-color: var(--blue);
+  color: var(--blue);
+  font: 600 var(--text-xs) var(--sans);
+  letter-spacing: 0;
+}
+.fl-card .needs-you-text {
+  font: 400 var(--text-md) var(--sans);
+}
+.fl-card .needs-you-reply,
+.fl-card .needs-you-copy {
+  font-size: var(--text-xs);
+}
+.fl-card .needs-you-reply code {
+  font-size: var(--text-xs);
 }
 .fl-aog-mark {
-  padding: 0 var(--space-1);
+  padding: 0 var(--space-1-5);
   border: 1px solid var(--amber);
   border-radius: var(--radius-sm);
   color: var(--amber);
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.1em;
+  font: 600 var(--text-xs) var(--sans);
 }
-/* ACCOUNT HOLD(ATC-51): 같은 ACCOUNT의 LIMIT으로 붙들림 */
-.fl-acct-hold {
-  margin: 0;
-  font: 600 var(--text-xs) var(--mono);
-  color: var(--amber);
-}
-/* 세션 이름(ATC-67): 정식 REGISTRATION이 아닌 이름, 같은 REGISTRATION으로 읽히는 세션 여럿 */
+.fl-aog,
+.fl-acct-hold,
 .fl-rename,
-.fl-name-conflict {
+.fl-name-conflict,
+.fl-absent,
+.fl-origin-note,
+.fl-rules {
   margin: 0;
-  font-size: var(--text-xs);
-  color: var(--amber);
+  letter-spacing: 0;
+  font: var(--text-md) var(--sans);
   overflow-wrap: anywhere;
+}
+.fl-acct-hold,
+.fl-rename,
+.fl-rules.is-behind {
+  color: var(--amber);
 }
 .fl-name-conflict {
   color: var(--alert);
@@ -179,27 +214,115 @@
 .fl-name-conflict a {
   margin-left: var(--space-1);
 }
-.fl-absent {
-  margin: 0;
-  font-size: var(--text-xs);
-}
-/* 세션 없는 백그라운드 AIRCRAFT(ATC-129) */
 .fl-absent.is-launch {
-  color: var(--cyan);
+  color: var(--muted);
 }
 .fl-absent.is-resume {
   color: var(--amber);
 }
-/* 백그라운드가 아닌 세션의 손 절차(ATC-76) */
 .fl-origin-note {
-  margin: 0;
   font-size: var(--text-xs);
 }
-/* FOB(ATC-81): 창에 남은 몫 60 % 이하 amber, 30 % 이하 alert */
-.fl-ctx {
-  margin: var(--space-1) 0 0;
-  font: var(--text-xs) var(--mono);
+.fl-report {
+  margin: var(--space-1-5) 0;
   color: var(--muted);
+}
+.fl-report-mark {
+  margin-right: var(--space-1);
+  color: var(--faint);
+  font: 600 var(--text-xs) var(--sans);
+}
+.fl-report-btns {
+  display: inline-flex;
+  gap: var(--space-1);
+  margin-left: var(--space-1);
+}
+.fl-report-btns .fl-btn.is-on {
+  border-color: var(--line-strong);
+  background: var(--panel-3);
+  color: var(--text);
+}
+
+/* 본문: 칸은 넓으면 4, 중간 2, 좁으면 1. 칸 사이 세로선은 한 줄에 다 놓이는 넓이(960px)부터 */
+.fl-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+}
+.fl-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+@container (min-width: 960px) {
+  .fl-col + .fl-col {
+    padding-left: var(--space-4);
+    border-left: 1px solid var(--line);
+  }
+}
+/* 대문자 제목은 한 단계 — 칸 제목(칸의 첫 제목)만. 칸 안의 하위 제목(TYPE RATING·ROUTE·FUEL·LOGBOOK)은 sans 캡션 */
+.fl-card .fl-sub {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  color: var(--muted);
+  font: 600 var(--text-xs) var(--sans);
+  letter-spacing: 0;
+}
+.fl-card .fl-col > .fl-sub:first-child {
+  margin-top: 0;
+  color: var(--faint);
+  font-family: var(--mono);
+  letter-spacing: 0.1em;
+}
+.fl-card .fl-sub em,
+.fl-card .fl-sub .faint {
+  color: var(--faint);
+  font: 400 var(--text-xs) var(--sans);
+  font-style: normal;
+  letter-spacing: 0;
+}
+
+/* NOW: FLYING·HOLDING은 글색(--text), FLIGHT 번호만 mono */
+.fl-flying {
+  margin: 0;
+  color: var(--text);
+}
+.fl-activity {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.fl-card .activity {
+  font: 400 var(--text-xs) var(--sans);
+}
+.fl-card .activity-what {
+  font-family: var(--mono);
+}
+.fl-card .activity .activity-dot,
+.fl-card .activity.is-tool .activity-dot,
+.fl-card .activity.is-model .activity-dot {
+  background: var(--faint);
+}
+.fl-kept {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text);
+}
+.fl-kept .fl-r-detail {
+  margin-left: var(--space-2);
+  color: var(--muted);
+  font: 400 var(--text-xs) var(--sans);
+}
+.fl-kept .fl-r-detail.is-unpushed {
+  color: var(--amber);
+}
+.fl-ctx {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-xs) var(--mono);
 }
 .fl-ctx.lv-info {
   color: var(--amber);
@@ -208,87 +331,146 @@
   color: var(--alert);
 }
 
-/* STALE(ATC-93): 멈췄는데 Claude Code가 아직 목록에 둔 job */
-.fl-stale-mark {
-  padding: 0 var(--space-1);
-  border: 1px dashed currentColor;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-2xs);
+/* CREW 표 옆 한계 문구 등 */
+.fl-card .fl-pos {
+  min-width: 96px;
   color: var(--muted);
+  font-family: var(--sans);
 }
-
-/* REPORT 판정 줄(ATC-89): 분류와 맞음·틀림 표시 */
-.fl-report {
-  margin: var(--space-1-5) 0;
-  color: var(--muted);
-  font-size: var(--text-sm);
-}
-.fl-report-mark {
-  margin-right: var(--space-1);
+.fl-limits {
+  margin-left: var(--space-2);
   color: var(--faint);
-  font-size: var(--text-2xs);
-  letter-spacing: 0.08em;
+  font: var(--text-xs) var(--sans);
 }
-.fl-report-btns {
-  display: inline-flex;
-  gap: var(--space-1);
-  margin-left: var(--space-1);
+.fl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
 }
-.fl-report-btns .fl-btn.is-on {
-  border-color: var(--cyan);
-  color: var(--cyan);
+.fl-card .fl-line {
+  font-size: var(--text-md);
+}
+.fl-card .fl-line.faint {
+  font-size: var(--text-xs);
+}
+.fl-note {
+  color: var(--muted);
 }
 
-/* 경보 띠(ATC-280): 켜진 것만 한 줄씩. 하나도 없으면 그리지 않는다 */
-.fl-alerts {
+/* 라벨·값 줄: 라벨 sans muted, 값 mono(.tn), 목표는 값 옆 흐린 캡션 */
+.fl-kv {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-2);
   margin: 0;
-  padding: var(--space-1-5) var(--space-2);
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  list-style: none;
 }
-.fl-alerts > li {
+.fl-kv-k {
+  flex: none;
+  min-width: 96px;
+  color: var(--muted);
+}
+.fl-kv-v {
+  color: var(--text);
+}
+.fl-kv-t {
+  color: var(--faint);
+  font-size: var(--text-xs);
+}
+.fl-short,
+.fl-kv-v.fl-short {
+  color: var(--amber);
+}
+.fl-kv-v.fl-bad {
+  color: var(--alert);
+}
+.fl-late {
+  color: var(--amber);
+}
+
+/* ACCOUNT 사용: 얇은 중립 막대 + 32% + resets. 80%(info)부터 amber, 95%(hold)부터 alert */
+.fl-usage {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin: 0;
-  min-width: 0;
-  font-size: var(--text-sm);
+}
+.fl-bar {
+  flex: 0 1 96px;
+  height: 4px;
+  min-width: 48px;
+  background: var(--line);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.fl-bar i {
+  display: block;
+  height: 100%;
+  background: var(--muted);
+}
+.fl-usage.lv-info .fl-bar i {
+  background: var(--amber);
+}
+.fl-usage.lv-info b {
+  color: var(--amber);
+}
+.fl-usage.lv-hold .fl-bar i {
+  background: var(--alert);
+}
+.fl-usage.lv-hold b {
+  color: var(--alert);
+}
+
+/* LOGBOOK 표: FLIGHT · PR · 소요 · NET · 날짜. 숫자 칸은 오른쪽 맞춤. 줄 사이 가는 선만 */
+.fl-log {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+.fl-log th {
+  padding: 0 0 var(--space-1);
+  color: var(--faint);
+  font-weight: 400;
+  text-align: left;
+}
+.fl-log td {
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--line);
+  vertical-align: top;
   overflow-wrap: anywhere;
 }
-.fl-alerts .fl-report {
-  margin: 0;
+.fl-log td:first-child,
+.fl-log td:last-child {
+  white-space: nowrap;
 }
-
-/* 본문 네 칸: 넓으면 4칸, 중간 2칸, 좁은 폭(390px·300px 카드)은 1칸. 가로 스크롤 없음 */
-.fl-body {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--space-2) var(--space-4);
+.fl-log .r {
+  padding-left: var(--space-2);
+  text-align: right;
 }
-.fl-col {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1-5);
-  min-width: 0;
+.fl-log td:nth-child(2) {
+  padding-left: var(--space-2);
 }
-.fl-col > .fl-sub:first-child {
-  margin-top: 0;
+.fl-log-flight {
+  color: var(--text);
+  text-decoration: none;
 }
-
-/* LOGBOOK 더 보기 */
-.fl-more {
+.fl-log-flight:hover,
+.fl-log-flight:focus-visible {
+  color: var(--text);
+  text-decoration: underline;
+}
+.fl-card .fl-more {
   align-self: flex-start;
   padding: 0;
   background: none;
   border: 0;
-  color: var(--cyan);
-  font-size: var(--text-xs);
+  color: var(--muted);
+  font: 400 var(--text-xs) var(--sans);
   cursor: pointer;
 }
-.fl-more:hover,
-.fl-more:focus-visible {
+.fl-card .fl-more:hover,
+.fl-card .fl-more:focus-visible {
+  color: var(--text);
   text-decoration: underline;
 }
 
@@ -310,6 +492,42 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
 }
-.fl-menu .fl-btn {
+.fl-card .fl-menu .fl-btn {
+  justify-content: flex-start;
   text-align: left;
+}
+
+/* 선언에 없는 관측은 정상 상태의 태그이므로 중립(색은 경보에만) */
+.fl-card .fc-tag.is-undeclared {
+  color: var(--muted);
+}
+
+/* CREW CHANGE 대기(FleetCrew.css)도 카드 안에서는 같은 규칙: 대문자 글자 사이 띄움 없음, 캡션 크기 */
+.fl-card .fc-change-head,
+.fl-card .fc-overdue,
+.fl-card .fc-note,
+.fl-card .fc-tag {
+  font-family: var(--sans);
+  font-size: var(--text-xs);
+  letter-spacing: 0;
+}
+.fl-card .fc-note {
+  font-size: var(--text-xs);
+}
+.fl-card .fc-change-head em {
+  font-size: var(--text-xs);
+}
+.fl-card .fc-obs,
+.fl-card .fc-diff,
+.fl-card .fc-impact {
+  font-size: var(--text-md);
+}
+.fl-card .fc-seens,
+.fl-card .fc-last,
+.fl-card .fc-count,
+.fl-card .fc-model {
+  font-size: var(--text-xs);
+}
+.fl-card .fc-change .fl-actions {
+  padding-top: 0;
 }

@@ -2,23 +2,47 @@ import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } fr
 import { join } from "node:path";
 import type { Hono } from "hono";
 import { config } from "./config.ts";
-import { DEFAULT_HEARTBEAT_MIN, decide, fingerprint, type Inputs, isRole, type Mode, MODES, naturalReason, project, type Role, ROLES } from "./squelch.ts";
+import {
+  changedFields,
+  DEFAULT_HEARTBEAT_MIN,
+  decide,
+  type Fingerprint,
+  FINGERPRINTS,
+  fingerprint,
+  type Inputs,
+  isRole,
+  type Mode,
+  MODES,
+  naturalReason,
+  project,
+  projectV2,
+  type Role,
+  ROLES,
+} from "./squelch.ts";
 
 // SQUELCH I/O와 API(docs/squelch.md 5장). 이 이슈(S1)에서는 아무 hook도 부르지 않고, 기본 모드는 shadow라 어떤 tick도 버리지 않는다.
+// ATC-297: v2 지문(squelch.ts)이 v1 옆에서 그림자로 돈다. 역할마다 config.fingerprint가 v2일 때만 v2가 판정을 정한다(기본 v1).
+// v2가 실패하면 v1로 판정하고, v1이 실패하면 열린다(아래 catch).
 
 const REPO_ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 // 역할이 도는 폴더(atcctl manual check가 세션의 cwd로 보는 곳)
 export const ROLE_DIRS: Record<Role, string> = { tower: "controller", mcc: "mcc", occ: "occ", crosscheck: "crosscheck", review: "review" };
 
-export interface RoleState {
+// 지난 열린 통과: 지문과 시각, 그리고 그때의 투영(필드 경로만 비교하려고. 값은 로그에 쓰지 않는다)
+export interface Pass {
   fp: string | null;
   openedAt: string | null;
+  proj?: unknown;
+}
+export interface RoleState extends Pass {
   quietSince: string | null;
   quietCount: number;
+  v2?: Pass; // v2 지문의 지난 열린 통과(그림자 또는 판정)
 }
 export interface SquelchConfig {
   mode: Mode;
   heartbeatMin: Record<Role, number>;
+  fingerprint: Record<Role, Fingerprint>; // 역할마다 판정에 쓸 지문. 기본 v1
 }
 export interface SquelchFile {
   config: SquelchConfig;
@@ -29,10 +53,17 @@ const stateFile = () => join(config.stateDir, "squelch.json");
 const logFile = () => join(config.stateDir, "squelch.jsonl");
 
 export function defaultConfig(): SquelchConfig {
-  return { mode: "shadow", heartbeatMin: Object.fromEntries(ROLES.map((r) => [r, DEFAULT_HEARTBEAT_MIN])) as Record<Role, number> };
+  return {
+    mode: "shadow",
+    heartbeatMin: Object.fromEntries(ROLES.map((r) => [r, DEFAULT_HEARTBEAT_MIN])) as Record<Role, number>,
+    fingerprint: Object.fromEntries(ROLES.map((r) => [r, "v1"])) as Record<Role, Fingerprint>,
+  };
 }
 
-// 없거나 깨진 파일, 모르는 값은 기본값으로 읽는다(모드는 shadow로 — 모르면 버리지 않는다)
+const passOf = (s: any): Pass | undefined =>
+  s && typeof s === "object" ? { fp: typeof s.fp === "string" ? s.fp : null, openedAt: typeof s.openedAt === "string" ? s.openedAt : null, ...(s.proj !== undefined ? { proj: s.proj } : {}) } : undefined;
+
+// 없거나 깨진 파일, 모르는 값은 기본값으로 읽는다(모드는 shadow로, 지문은 v1로 — 모르면 버리지 않고, 후보를 켜지 않는다)
 export function readState(): SquelchFile {
   const out: SquelchFile = { config: defaultConfig(), roles: {} };
   let raw: any;
@@ -45,13 +76,16 @@ export function readState(): SquelchFile {
   for (const r of ROLES) {
     const m = raw?.config?.heartbeatMin?.[r];
     if (typeof m === "number" && Number.isFinite(m) && m > 0) out.config.heartbeatMin[r] = m;
+    const f = raw?.config?.fingerprint?.[r];
+    if (FINGERPRINTS.includes(f)) out.config.fingerprint[r] = f;
     const s = raw?.roles?.[r];
     if (s && typeof s === "object") {
+      const v2 = passOf(s.v2);
       out.roles[r] = {
-        fp: typeof s.fp === "string" ? s.fp : null,
-        openedAt: typeof s.openedAt === "string" ? s.openedAt : null,
+        ...passOf(s)!,
         quietSince: typeof s.quietSince === "string" ? s.quietSince : null,
         quietCount: Number.isInteger(s.quietCount) && s.quietCount > 0 ? s.quietCount : 0,
+        ...(v2 ? { v2 } : {}),
       };
     }
   }
@@ -66,7 +100,21 @@ export function writeState(file: SquelchFile) {
   renameSync(tmp, stateFile());
 }
 
-function appendLog(line: { t: string; role: string; open: boolean; reason: string; fp: string | null }) {
+// 판정 한 줄. fields·fields2는 바뀐 필드 경로만(값 없음). would는 v2가 on이었다면 어땠을지(open | quiet)
+export interface LogLine {
+  t: string;
+  role: string;
+  open: boolean;
+  reason: string;
+  fp: string | null;
+  fingerprint?: Fingerprint;
+  fp2?: string;
+  would?: "open" | "quiet";
+  reason2?: string;
+  fields?: string[];
+  fields2?: string[];
+}
+function appendLog(line: LogLine) {
   mkdirSync(config.stateDir, { recursive: true });
   appendFileSync(logFile(), `${JSON.stringify(line)}\n`);
 }
@@ -112,22 +160,53 @@ export interface Outcome {
   quietCount: number;
 }
 
-// 한 번의 판정. 상태는 "on이었다면"의 흐름을 따른다: 열려야 했던 통과만 마지막 통과로 적고, QUIET이면 세기만 올린다
+// 한 번의 판정. 상태는 "on이었다면"의 흐름을 따른다: 열려야 했던 통과만 마지막 통과로 적고, QUIET이면 세기만 올린다.
+// v1 흐름과 v2 흐름은 따로 흐른다. 판정은 역할의 config.fingerprint(기본 v1)가 정하고, 다른 쪽은 would로만 적는다
 export async function squelchRun(role: Role, get: Fetcher, now = Date.now(), manual: (r: Role) => Promise<boolean> = manualChangedOf): Promise<Outcome> {
   const file = readState();
-  const fp = fingerprint(project(role, await gatherInputs(role, get)));
+  const inputs = await gatherInputs(role, get);
+  const proj1 = project(role, inputs);
+  const fp = fingerprint(proj1);
+  // v2는 후보다: 계산이 실패하면 없는 것으로 보고 v1로 판정한다
+  let proj2: unknown = null;
+  let fp2: string | null = null;
+  try {
+    proj2 = projectV2(role, inputs);
+    fp2 = fingerprint(proj2);
+  } catch {}
   const s = file.roles[role];
-  const last = s?.fp && s.openedAt ? { fp: s.fp, openedAt: s.openedAt } : null;
-  const input = { fp, last, now, heartbeatMin: file.config.heartbeatMin[role], manualChanged: await manual(role) };
-  const d = decide({ ...input, mode: file.config.mode });
+  const manualChanged = await manual(role);
+  const heartbeatMin = file.config.heartbeatMin[role];
+  const last1 = s?.fp && s.openedAt ? { fp: s.fp, openedAt: s.openedAt } : null;
+  const last2 = s?.v2?.fp && s.v2.openedAt ? { fp: s.v2.fp, openedAt: s.v2.openedAt } : null;
+  const nat1 = naturalReason({ fp, last: last1, now, heartbeatMin, manualChanged });
+  const nat2 = fp2 === null ? undefined : naturalReason({ fp: fp2, last: last2, now, heartbeatMin, manualChanged });
+  const live: Fingerprint = file.config.fingerprint[role] === "v2" && fp2 !== null ? "v2" : "v1";
+  const liveNat = live === "v2" ? (nat2 ?? null) : nat1;
+  const d = decide({ fp: live === "v2" ? fp2! : fp, last: live === "v2" ? last2 : last1, now, heartbeatMin, manualChanged, mode: file.config.mode });
   const iso = new Date(now).toISOString();
   let next: RoleState;
   if (file.config.mode === "off") next = s ?? { fp: null, openedAt: null, quietSince: null, quietCount: 0 };
-  else if (naturalReason(input)) next = { fp, openedAt: iso, quietSince: null, quietCount: 0 };
-  else next = { fp: s!.fp, openedAt: s!.openedAt, quietSince: s!.quietSince ?? iso, quietCount: (s!.quietCount ?? 0) + 1 };
+  else {
+    next = {
+      ...(nat1 ? { fp, openedAt: iso, proj: proj1 } : { fp: s!.fp, openedAt: s!.openedAt, ...(s!.proj !== undefined ? { proj: s!.proj } : {}) }),
+      ...(liveNat ? { quietSince: null, quietCount: 0 } : { quietSince: s!.quietSince ?? iso, quietCount: (s!.quietCount ?? 0) + 1 }),
+    };
+    if (fp2 !== null && nat2) next.v2 = { fp: fp2, openedAt: iso, proj: proj2 };
+    else if (s?.v2) next.v2 = s.v2;
+  }
   file.roles[role] = next;
   writeState(file);
-  appendLog({ t: iso, role, open: d.open, reason: d.reason, fp });
+  const line: LogLine = { t: iso, role, open: d.open, reason: d.reason, fp, fingerprint: live };
+  if (fp2 !== null) {
+    line.fp2 = fp2;
+    line.would = nat2 ? "open" : "quiet";
+    line.reason2 = nat2 ?? "quiet";
+  }
+  // 신호로 열린 통과는 무엇이 바뀌었는지(필드 경로만)
+  if (nat1 === "signal" && s?.proj !== undefined) line.fields = changedFields(s.proj, proj1);
+  if (nat2 === "signal" && s?.v2?.proj !== undefined) line.fields2 = changedFields(s.v2.proj, proj2);
+  appendLog(line);
   return { open: d.open, reason: d.reason, quietSince: next.quietSince, quietCount: next.quietCount };
 }
 
@@ -144,8 +223,17 @@ export function mountSquelch(app: Hono, deps: SquelchDeps = {}) {
       return r.json();
     });
 
-  // 모드·하트비트와 역할별 마지막 통과(S5 화면이 읽는다)
-  app.get("/api/squelch", (c) => c.json(readState()));
+  // 모드·하트비트와 역할별 마지막 통과(S5 화면이 읽는다). 지난 통과의 투영(proj)은 크고 값이 들어 있어 내보내지 않는다
+  app.get("/api/squelch", (c) => {
+    const f = readState();
+    const roles = Object.fromEntries(
+      Object.entries(f.roles).map(([r, s]) => {
+        const { proj: _p, v2, ...rest } = s!;
+        return [r, { ...rest, ...(v2 ? { v2: { fp: v2.fp, openedAt: v2.openedAt } } : {}) }];
+      }),
+    );
+    return c.json({ config: f.config, roles });
+  });
 
   // 절대 막지 않는다: 어떤 오류든 200 fail-open. 모르는 역할만 404
   app.post("/api/squelch/:role", async (c) => {

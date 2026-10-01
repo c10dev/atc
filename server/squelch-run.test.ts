@@ -67,7 +67,7 @@ test("호출마다 jsonl 한 줄: { t, role, open, reason, fp }", async () => {
   await post("mcc"); // 다른 역할(stub은 review 모양을 주지만 죽지 않는다)
   const l = lines();
   assert.equal(l.length, 3);
-  assert.deepEqual(Object.keys(l[0]).sort(), ["fp", "open", "reason", "role", "t"]);
+  assert.deepEqual(Object.keys(l[0]).sort(), ["fingerprint", "fp", "fp2", "open", "reason", "reason2", "role", "t", "would"]); // ATC-297: v2 그림자 칸이 더해졌다
   assert.deepEqual(l.map((x) => x.role), ["review", "review", "mcc"]);
   assert.match(l[0].fp, /^[0-9a-f]{64}$/);
   assert.equal(l[0].fp, l[1].fp);
@@ -144,7 +144,8 @@ test("상태 파일은 원자적으로 쓴다: 임시 파일이 남지 않고, �
   assert.equal(j.config.mode, "shadow");
   assert.equal(j.config.heartbeatMin.tower, 50);
   assert.equal(j.config.heartbeatMin.review, 50);
-  assert.deepEqual(Object.keys(j.roles.review).sort(), ["fp", "openedAt", "quietCount", "quietSince"]);
+  assert.deepEqual(Object.keys(j.roles.review).sort(), ["fp", "openedAt", "proj", "quietCount", "quietSince", "v2"]);
+  assert.deepEqual(j.config.fingerprint, { tower: "v1", mcc: "v1", occ: "v1", crosscheck: "v1", review: "v1" }); // 기본은 모두 v1
   writeFileSync(file("squelch.json"), "{ 깨짐");
   assert.equal(readState().config.mode, "shadow");
   assert.equal((await (await post("review")).json()).reason, "shadow:first"); // 깨진 파일 뒤에도 열린다

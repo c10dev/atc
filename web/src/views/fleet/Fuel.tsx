@@ -2,6 +2,7 @@ import type { AircraftView } from "../../../../server/fleet.ts";
 import { ACCOUNT_EFFECT } from "../../../../server/control-view.ts";
 import { type FuelRemaining, fuelLabel, fuelTitle } from "../../../../server/fuel-remaining.ts";
 import { CREW_WARNING_LABEL, LEAK_LABEL, tokensText, usd } from "../../../../server/fuel-view.ts";
+import { Kv } from "./Kv.tsx";
 import { pct } from "./shared.ts";
 import "./Fuel.css";
 
@@ -42,8 +43,9 @@ export function FuelAccounts({ accounts }: { accounts: FuelRemaining[] }) {
 
 // 최근 FLIGHT 한 줄의 FUEL(ATC-56): FUEL COST(없으면 토큰)·NET·LEAK, TRIP FUEL 안이었나. fuel 없는 옛 줄은 "FUEL —"
 type FuelRecentView = NonNullable<AircraftView["fuelRecent"]>[number];
+// LOGBOOK 표의 NET 칸(ATC-287): 값만($2.76). TRIP 안이면 아무것도 덧붙이지 않고(툴팁에만), LEAK·UNEXPECTED만 amber로 보인다
 export function RecentFuel({ f }: { f: FuelRecentView | undefined }) {
-  if (!f || f.tokens === null) return <span className="fl-log-fuel faint" title="이 FLIGHT의 LOGBOOK 줄에 fuel이 없다(FUEL F4 전이거나 대화 기록을 찾지 못함)">FUEL —</span>;
+  if (!f || f.tokens === null) return <span className="fl-log-fuel faint" title="이 FLIGHT의 LOGBOOK 줄에 fuel이 없다(FUEL F4 전이거나 대화 기록을 찾지 못함)">—</span>;
   const trip = f.trip.p50 !== null && f.trip.p90 !== null ? `TRIP FUEL ${usd(f.trip.p50)}–${usd(f.trip.p90)} (${f.trip.level} ${f.trip.group}, ${f.trip.samples}건)` : "TRIP FUEL 없음(비교할 FLIGHT가 모자람)";
   const title = [
     `FUEL BURN ${tokensText(f.tokens)} 토큰`,
@@ -52,20 +54,21 @@ export function RecentFuel({ f }: { f: FuelRecentView | undefined }) {
     f.leakTokens !== null && `LEAK ${tokensText(f.leakTokens)} 토큰${f.leakCost !== null ? ` ${usd(f.leakCost)}` : ""}`,
     f.unpriced.length ? `값 없음: ${f.unpriced.join(", ")}` : null,
     trip,
+    f.verdict === "inside" ? "TRIP FUEL 안" : f.verdict === "unexpected" ? "TRIP FUEL 넘음(UNEXPECTED)" : null,
   ]
     .filter(Boolean)
     .join(" · ");
   return (
     <span className="fl-log-fuel" title={title}>
-      {f.net !== null ? `NET ${usd(f.net)}` : `${tokensText(f.tokens)} tok`}
+      {f.net !== null ? usd(f.net) : `${tokensText(f.tokens)} tok`}
       {f.leakCost ? <span className="fl-short"> LEAK {usd(f.leakCost)}</span> : null}
-      {f.verdict === "unexpected" ? <span className="fl-late"> UNEXPECTED</span> : f.verdict === "inside" ? <span className="fl-ontime"> TRIP ✓</span> : null}
+      {f.verdict === "unexpected" ? <span className="fl-late"> UNEXPECTED</span> : null}
     </span>
   );
 }
 
-// FLEET 카드의 FUEL(ATC-56, 줄이기 ATC-280): 최근 14일 ARRIVED FLIGHT. 값이 없는 칸은 "—"(0이 아니다)
-// 평소 두 줄(NET/FLT, CACHE HIT). 셋째 줄은 TRIP FUEL 넘음·LEAK·CREW 경고가 있을 때만. 건수·값 없는 모델·CREW 몫은 툴팁
+// FLEET 카드의 FUEL(ATC-56, 줄이기 ATC-280, 라벨·값 ATC-287): 최근 14일 ARRIVED FLIGHT. 값이 없는 칸은 "—"(0이 아니다)
+// 평소 두 줄(NET/FLT, CACHE HIT), 목표는 값 옆 캡션. 셋째 줄부터는 TRIP FUEL 넘음·LEAK·CREW 경고가 있을 때만. 건수·값 없는 모델·CREW 몫은 툴팁
 export function FuelSummary({ a }: { a: AircraftView }) {
   const f = a.fuelBurn;
   if (!f) return null;
@@ -91,28 +94,36 @@ export function FuelSummary({ a }: { a: AircraftView }) {
         <p className="fl-line faint">ARRIVED {f.arrived}건 중 fuel이 있는 FLIGHT 없음 — 옛 LOGBOOK 줄에는 fuel이 없다</p>
       ) : (
         <>
-          <p className="fl-actuals" title={`값을 매긴 FLIGHT의 평균. NET은 LEAK을 뺀 것. FUEL COST ${f.costPerFlight === null ? "—" : `${usd(f.costPerFlight)}/FLT`}`}>
-            <span className={costShort ? "fl-short" : undefined}>
-              NET {f.netPerFlight === null ? "—" : `${usd(f.netPerFlight)}/FLT`}
-              {t.fuelPerFlight != null && <span className="faint"> (목표 {usd(t.fuelPerFlight)} 이하)</span>}
-            </span>
-          </p>
-          <p className="fl-actuals" title={`값을 매긴 FLIGHT의 FUEL COST 가운데 CREW(서브에이전트) 몫 ${f.crewShare === null ? "—" : pct(f.crewShare)}. CREW 출력은 하한`}>
-            <span className={cacheShort ? "fl-short" : undefined}>
-              CACHE HIT CAPTAIN {hitText(f.cacheHit?.captain)} · CREW {hitText(f.cacheHit?.crew)}
-              {t.cacheHit != null && <span className="faint"> (목표 {pct(t.cacheHit)})</span>}
-            </span>
-          </p>
-          {(f.unexpected > 0 || leak || warn) && (
-            <p className="fl-actuals" title="TRIP FUEL 넘음, LEAK, CREW(서브에이전트) 사용의 낭비 신호(FUEL F7). CREW 경고는 LEAK에 넣지 않는다. F7 전 LOGBOOK 줄은 재지 않았다">
-              {f.unexpected > 0 && (
-                <span className="fl-bad">
-                  TRIP FUEL 넘음 {f.unexpected}/{f.checked}
-                </span>
-              )}
-              {leak && <span className="fl-short"> LEAK {leak}</span>}
-              {warn && <span className="fl-short"> CREW 경고 {warn}</span>}
-            </p>
+          <Kv
+            label="NET/FLT"
+            tone={costShort ? "short" : undefined}
+            target={t.fuelPerFlight != null ? `목표 ≤ ${usd(t.fuelPerFlight)}` : undefined}
+            title={`값을 매긴 FLIGHT의 평균. NET은 LEAK을 뺀 것. FUEL COST ${f.costPerFlight === null ? "—" : `${usd(f.costPerFlight)}/FLT`}`}
+          >
+            {f.netPerFlight === null ? "—" : usd(f.netPerFlight)}
+          </Kv>
+          <Kv
+            label="CACHE HIT"
+            tone={cacheShort ? "short" : undefined}
+            target={t.cacheHit != null ? `목표 ${pct(t.cacheHit)}` : undefined}
+            title={`값을 매긴 FLIGHT의 FUEL COST 가운데 CREW(서브에이전트) 몫 ${f.crewShare === null ? "—" : pct(f.crewShare)}. CREW 출력은 하한`}
+          >
+            CAPTAIN {hitText(f.cacheHit?.captain)} · CREW {hitText(f.cacheHit?.crew)}
+          </Kv>
+          {f.unexpected > 0 && (
+            <Kv label="TRIP FUEL 넘음" tone="bad" title="비슷한 FLIGHT들의 범위(TRIP FUEL p90)를 넘은 FLIGHT 수">
+              {f.unexpected}/{f.checked}
+            </Kv>
+          )}
+          {leak && (
+            <Kv label="LEAK" tone="short" title="다시 쓴 토큰(캐시 낭비 신호)">
+              {leak}
+            </Kv>
+          )}
+          {warn && (
+            <Kv label="CREW 경고" tone="short" title="CREW(서브에이전트) 사용의 낭비 신호(FUEL F7). LEAK에는 넣지 않는다. F7 전 LOGBOOK 줄은 재지 않았다">
+              {warn}
+            </Kv>
           )}
         </>
       )}

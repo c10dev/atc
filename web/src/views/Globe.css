@@ -233,6 +233,26 @@
 .globe-plane-mark {
   fill: var(--amber);
 }
+/* ATC-300: SUPERVISOR가 머지해야 착륙하는 FLIGHT. 글 표시 SUP에 더해 비행기 둘레의 --cyan 고리(SUPERVISOR가 정해 줘야 하는 상태). 색만으로 구분하지 않는다 */
+.globe-sup-ring {
+  fill: none;
+  stroke: var(--cyan);
+  stroke-width: 1.5;
+}
+.globe-plane-sup {
+  fill: var(--cyan);
+}
+.globe-row-landby {
+  grid-column: 2;
+  color: var(--faint);
+}
+.globe-row-landby b {
+  font-weight: 600;
+}
+.globe-row-landby.is-sup,
+.globe-row-landby.is-sup b {
+  color: var(--cyan);
+}
 .globe-flight-rows b {
   font-weight: 600;
 }
@@ -254,4 +274,30 @@
 }
 .globe-flight-rows a {
   color: inherit;
+}
+
+/* G3: AIRPORT 사이의 큰 원 호(OUTSTATION, REPOSITION). 색은 :root 토큰만 */
+.globe-move-arc {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  opacity: 0.7;
+  pointer-events: none;
+}
+.globe-move-arc.reposition {
+  stroke-dasharray: 2 5;
+}
+.globe-move {
+  pointer-events: none;
+}
+.globe-move-rows b {
+  font-weight: 600;
+}
+.globe-move-rows b.tone-amber {
+  color: var(--amber);
+  stroke: none;
+}
+.globe-move-rows b.tone-faint {
+  color: var(--faint);
+  stroke: none;
 }

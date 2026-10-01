@@ -52,7 +52,9 @@ import { mountPrMerge } from "./pr-merge-run.ts";
 import { mountSchedule } from "./schedule.ts";
 import { mountSettings } from "./settings.ts";
 import { mountAccounts } from "./accounts-run.ts";
+import { mountSquelchOpens } from "./squelch-opens-run.ts";
 import { mountSquelch } from "./squelch-run.ts";
+import { mountTick } from "./tick-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
 import { mountQrh, runQrh } from "./qrh-run.ts";
@@ -259,6 +261,8 @@ mountSettings(app);
 mountAccounts(app);
 mountJudges(app);
 mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다
+mountSquelchOpens(app); // SQUELCH opens-by-field(ATC-297): 어떤 필드가 tick을 열었고 그 tick이 일을 했는지(읽기만)
+mountTick(app); // `atcctl tick <역할>`(ATC-297): 브리핑에 할 일이 있는가(읽기만)
 
 mountSupervisorQueue(app, getSnapshot, () => update.status()); // SUPERVISOR QUEUE(ATC-194, 읽기만)
 mountDuty(app, getSnapshot, () => update.status(), (l) => duty().recordDraft(l)); // DUTY L0(ATC-219): brief 읽기와 초안 붙이기(밖으로 나가는 동작 없음)
