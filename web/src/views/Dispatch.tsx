@@ -370,6 +370,22 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
     }
   };
 
+  // SUPERVISOR가 승인됐지만 아직 안 보낸 카드를 닫는다(ATC-272). 확인 단계는 카드 안(InFlightRow)에서 거친다. 성공하면 true
+  const cancel = async (p: Proposal) => {
+    setBusy(p.id);
+    try {
+      await post(`/api/dispatch/proposals/${p.id}/cancel`, {});
+      await load();
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      await load();
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
   // HELD(PREFLIGHT) 한 번 클릭: 대기열로(같은 제안을 판정 대기로) | FLIGHT 보류 확정(모든 AIRCRAFT에서 24시간, 이슈가 바뀌면 풀림)
   const heldAction = async (p: Proposal, action: "requeue" | "confirm-hold") => {
     setBusy(p.id);
@@ -535,7 +551,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
             </thead>
             <tbody>
               {brief.inFlight.map((p) => (
-                <InFlightRow key={p.id} p={p} flight={flights[p.flight]} waiting={brief.waiting?.[p.id]} now={now} overdue={brief.overdue.includes(p.id)} mode={brief.mode} busy={busy === p.id} onRecall={recall} candidate={(brief.arrivalCandidates ?? []).find((c) => c.proposal === p.id)} />
+                <InFlightRow key={p.id} p={p} flight={flights[p.flight]} waiting={brief.waiting?.[p.id]} now={now} overdue={brief.overdue.includes(p.id)} mode={brief.mode} busy={busy === p.id} onRecall={recall} onCancel={cancel} candidate={(brief.arrivalCandidates ?? []).find((c) => c.proposal === p.id)} />
               ))}
             </tbody>
           </table>
@@ -647,6 +663,7 @@ function InFlightRow({
   mode,
   busy,
   onRecall,
+  onCancel,
   candidate,
   waiting,
 }: {
@@ -658,9 +675,16 @@ function InFlightRow({
   mode: DispatchConfig["mode"];
   busy: boolean;
   onRecall: (p: Proposal, reason: string) => Promise<boolean>;
+  onCancel: (p: Proposal) => Promise<boolean>;
   candidate?: ArrivalSuggestion;
 }) {
   const [open, setOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const cancelBtn = useRef<HTMLButtonElement>(null);
+  const closeCancel = () => {
+    setCancelling(false);
+    requestAnimationFrame(() => cancelBtn.current?.focus());
+  };
   const btn = useRef<HTMLButtonElement>(null);
   const formId = `dp-${p.id}-recall`;
   const close = () => {
@@ -723,8 +747,51 @@ function InFlightRow({
               RECALL…
             </button>
           )}
+          {p.status === "approved" && !cancelling && (
+            <button
+              ref={cancelBtn}
+              className="dp-btn dp-recall-btn"
+              disabled={busy}
+              aria-label={`${p.id} ${flightNumber(p.flight)} CANCEL — 확인`}
+              onClick={() => setCancelling(true)}
+            >
+              CANCEL…
+            </button>
+          )}
         </td>
       </tr>
+      {cancelling && p.status === "approved" && (
+        <tr className="dp-recall-row">
+          <td colSpan={6}>
+            <form
+              className="dp-reject dp-recall-form"
+              aria-label={`${p.id} CANCEL 확인`}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  closeCancel();
+                }
+              }}
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!busy && (await onCancel(p))) setCancelling(false);
+              }}
+            >
+              <p className="dp-recall-help">
+                {p.id}(<OpenFlight k={p.flight} />)는 아직 {p.aircraftName}에 보내지 않았다. CANCEL하면 카드가 SUPERVISOR 취소로 닫히고 AIRCRAFT와 FLIGHT가 풀린다. 같은 짝은 24시간 다시 제안하지 않는다.
+              </p>
+              <div className="dp-actions">
+                <button type="button" className="dp-btn" autoFocus onClick={closeCancel} disabled={busy}>
+                  취소
+                </button>
+                <button type="submit" className="dp-btn dp-recall-btn is-confirm" disabled={busy}>
+                  CANCEL 확인
+                </button>
+              </div>
+            </form>
+          </td>
+        </tr>
+      )}
       {open && canRecall(p) && (
         <tr className="dp-recall-row">
           <td colSpan={6}>
