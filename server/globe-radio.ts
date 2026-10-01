@@ -2,6 +2,7 @@
 // 브라우저에서도 쓰므로 node 모듈을 끌어오지 않고 타입만 가져온다. 새 데이터도 새 상태도 없다 — 기록된 것만 그린다.
 // 모르는 주파수·종류가 와도 깨지지 않는다(일반 스테이션으로 그린다).
 import type { GlobeFlight, GlobeFlightState } from "./globe.ts";
+import { compareRegistration } from "./registration.ts";
 import type { Transmission } from "./radio.ts";
 
 const MIN = 60_000;
@@ -161,7 +162,7 @@ export interface Gated {
 }
 export function assignGates(flights: readonly GlobeFlight[], parked: readonly { registration: string }[]): Gated {
   const fl = [...flights].sort((a, b) => a.key.localeCompare(b.key));
-  const pk = [...parked].sort((a, b) => a.registration.localeCompare(b.registration));
+  const pk = [...parked].sort((a, b) => compareRegistration(a.registration, b.registration));
   const all = gatePoints(Math.max(4, fl.length + pk.length));
   const gf = new Map<string, Pt>();
   const gp = new Map<string, Pt>();
