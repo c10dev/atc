@@ -5,6 +5,8 @@ import { GithubOffError } from "./github-switch.ts";
 import { flightKeyOf, makeCache, prRefOf, shapeIssue, shapePr, type IssueDetail, type PrDetail } from "./detail.ts";
 import { loadAutoland } from "./autoland.ts";
 import { escalationOf, inspectionOf, loadMcc, readMccRecords, tierOfFiles } from "./mcc.ts";
+import { allClearances } from "./clearances.ts";
+import { fixOf } from "./fix.ts";
 import { type MergeInfo, mergeInfoOf, mergeMethodOf } from "./pr-merge.ts";
 import type { Snapshot } from "./model.ts";
 import { fetchPrView, slugOf } from "./sources/github.ts";
@@ -74,7 +76,12 @@ export function mountDetail(app: Hono, getSnapshot: () => Promise<Snapshot>) {
               mergeMethodOf(airport.code, cfg.airport, loadAutoland().mergeMethod),
             )
           : null;
-      return c.json({ ...d, airport: airport.code, landing, merge });
+      // RELAY… 줄(ATC-271): 이 PR의 STAND를 쥔 AIRCRAFT와, 현재 head에 리뷰 지적이 있으면 FIX 본문(TOWER가 보내는 글과 같다). 없으면 빈 글
+      const holder = polled?.standPath ? snap.claims.find((x) => x.state === "active" && x.workspacePath === polled.standPath) : undefined;
+      const holders = polled?.standPath ? snap.claims.filter((x) => x.state === "active" && x.workspacePath === polled.standPath).length : 0;
+      const fix = polled ? fixOf(polled, { clearances: allClearances(), holders, now: Date.now() }) : null;
+      const relay = polled ? { to: snap.sessions.find((x) => x.id === holder?.sessionId)?.name ?? null, flight: polled.ticketKey, pr: polled.number, text: fix?.text ?? null } : null;
+      return c.json({ ...d, airport: airport.code, landing, merge, relay });
     } catch (e) {
       if (e instanceof GithubOffError) return c.json({ error: e.message, off: true }, 503);
       return c.json({ error: String((e as Error).message ?? e) }, 502);

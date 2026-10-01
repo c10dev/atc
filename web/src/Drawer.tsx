@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { DrawerRef, IssueDetail, IssueRef, PrDetail } from "../../server/detail.ts";
 import type { MergeInfo } from "../../server/pr-merge.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
+import { RelayBox } from "./Relay.tsx";
 import { flightNumber } from "./aviation.ts";
 import { timeAgo } from "./derive.ts";
 import "./Drawer.css";
@@ -251,7 +252,7 @@ function Flight({ k, now }: { k: string; now: number }) {
 
 const CHECK_MARK = { pass: "✓", fail: "✗", pending: "…", skipped: "–" } as const;
 
-type PrView = PrDetail & { airport: string; merge: MergeInfo | null };
+type PrView = PrDetail & { airport: string; merge: MergeInfo | null; relay: { to: string | null; flight: string | null; pr: number; text: string | null } | null };
 
 // MERGE(DUTY G2): SUPERVISOR의 클릭 하나가 user 등급 CLEARED PR을 화면이 보여 준 head 그대로 머지한다. 누르면 등급·head·방식을 보이고 한 번 더 묻는다.
 // 서버는 눌린 뒤 지금 GitHub 자료로 다시 판정한다(head가 움직였으면 409와 새 head)
@@ -379,6 +380,15 @@ function Pr({ airport, number, now }: { airport: string; number: number; now: nu
           </>
         )}
         <MergeRow d={d} airport={airport} note={merged} onDone={(n) => (setMerged(n), setRev((x) => x + 1))} />
+        {d.relay?.to && d.state === "OPEN" && (
+          <div className="dr-row">
+            <dt>RELAY</dt>
+            <dd>
+              <RelayBox to={d.relay.to} flight={d.relay.flight} pr={d.relay.pr} text={d.relay.text} btnClass="dr-btn" />
+              {d.relay.text && <span className="faint"> 리뷰 지적의 FIX 글이 채워진다</span>}
+            </dd>
+          </div>
+        )}
         <div className="dr-row">
           <dt>리뷰</dt>
           <dd>{d.reviewDecision ?? "결정 없음"}</dd>

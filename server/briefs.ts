@@ -185,13 +185,14 @@ export function directLines(s: DirectSections): string[] {
 }
 
 // 사용자나 다른 세션이 팀에 붙여 넣을 DIRECT 배정 문구(GET /api/dispatch/flight/:key/brief). FLIGHT PLAN과 같은 모양
-export function formatAssignment(t: { key: string; title: string | null; url: string | null }, description: string | null, to: string | null): string {
+export function formatAssignment(t: { key: string; title: string | null; url: string | null }, description: string | null, to: string | null, notes: readonly string[] = []): string {
   return [
     to ? `[→ ${to}] ${t.key}` : t.key,
     DIRECT_LINE,
     t.title,
     t.url,
     ...directLines(directSectionsOf(description)),
+    ...notes,
     DISCRETION_LINE,
     `— If you take it, answer "READBACK ${t.key}"; if you cannot, answer with the reason. Tell me the PR number when you open it.`,
     FINISH_LINE,

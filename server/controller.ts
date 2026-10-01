@@ -3,7 +3,11 @@ import { join } from "node:path";
 import type { Hono } from "hono";
 import { callsign, flightNumber } from "./callsign.ts";
 import { awayOperations } from "./away.ts";
-import { allClearances, CLEARANCE_TYPES, isClearanceOverdue, isPending, issueClearance, markClearance } from "./clearances.ts";
+import { allClearances, CLEARANCE_TYPES, isClearanceOverdue, isPending, issueClearance, markClearance, markClearanceHand } from "./clearances.ts";
+import { fromThisApp } from "./origin.ts";
+import { bustQueue } from "./queue-bust.ts";
+import { type Relay, relayBriefOf } from "./relay.ts";
+import { allRelays } from "./relay-run.ts";
 import { config } from "./config.ts";
 import type { EventLog } from "./events.ts";
 import { type AtfmConfig, DEFAULT_ATFM, enforcedStops, landOf, loadAtfm, slotHoldOf, slotLimitOf, slotsOf } from "./atfm.ts";
@@ -48,6 +52,7 @@ export function buildBrief(
   atfm: AtfmConfig = DEFAULT_ATFM,
   fuel: FuelWatch | null = null,
   mcc: MccLandInfo | null = null, // MCC AIRPORT의 모드·HOLD·ESCALATE·등급(ATC-151). 없으면 모든 AIRPORT가 holder
+  relays: readonly Relay[] = [], // SUPERVISOR RELAY(ATC-271): 보내지 않은(queued) 것만 brief에 실린다
 ) {
   const sessionById = new Map(s.sessions.map((x) => [x.id, x]));
   const label = (id: string) => sessionLabel(sessionById.get(id), id);
@@ -223,6 +228,8 @@ export function buildBrief(
       stranded: (s.stranded ?? []).map((x) => ({ flight: flight(x.flight), key: x.flight, pr: x.number, url: x.url, base: x.base, mergedAt: x.mergedAt, message: alertsOf("stranded").find((a) => a.ticketKey === x.flight)?.message ?? null })),
     },
     landingQueue,
+    // SUPERVISOR가 화면에서 AIRCRAFT에게 보낸 글(ATC-271). TOWER는 text를 고치지 않고 type의 CLEARANCE로 그대로 보낸 뒤 `atcctl relay issued`로 표시한다
+    relays: relayBriefOf(relays, now),
     // ATFM 출발 중지. enforced만 실제로 막는다(나머지는 그림자)
     groundStops: (s.atfm?.groundStops ?? []).map((g) => ({ airport: g.airport, trigger: g.trigger, kind: g.kind, enforced: g.enforced, text: g.text, since: g.since })),
     github: s.github,
@@ -295,7 +302,7 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
     const since = log.since(c.req.query("cursor") ?? readCursor(consumer));
     const s = await getSnapshot();
     const mcc = await (mccInfo?.(s) ?? Promise.resolve(null)).catch(() => null); // 예상 못 한 오류면 옛 흐름(holder)으로. 등급을 못 읽은 것은 mccInfo가 tiers에서 빼서 supervisor가 된다
-    return c.json(buildBrief(s, since, allClearances(), Date.now(), loadAtfm(), watchFuel?.(s) ?? null, mcc));
+    return c.json(buildBrief(s, since, allClearances(), Date.now(), loadAtfm(), watchFuel?.(s) ?? null, mcc, allRelays()));
   });
 
   app.post("/api/controller/ack", async (c) => {
@@ -327,12 +334,22 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
   });
 
   // CAPTAIN의 답을 TOWER가 기록한다(ATC-122). unable은 본문에 reason. 이 메시지에 받을 수 없는 답이면 409
-  for (const op of ["readback", "roger", "unable", "standby", "cancel"] as const) {
+  for (const op of ["readback", "roger", "unable", "standby", "cancel", "undeliverable"] as const) {
     app.post(`/api/clearances/:id/${op}`, async (c) => {
-      const body = op === "unable" ? await c.req.json().catch(() => ({})) : {};
+      const body = op === "unable" || op === "undeliverable" ? await c.req.json().catch(() => ({})) : {};
       const r = markClearance(c.req.param("id").toUpperCase(), op, typeof body.reason === "string" ? body.reason : undefined);
       if (!r) return c.json({ error: "그런 CLEARANCE가 없음" }, 404);
+      if (!("error" in r) && op === "undeliverable") bustQueue();
       return "error" in r ? c.json(r, 409) : c.json({ clearance: r });
     });
   }
+
+  // SUPERVISOR가 닿지 못한 CLEARANCE를 손으로 전했다고 표시한다(ATC-271). 화면에서만(atcctl은 Origin이 없다)
+  app.post("/api/clearances/:id/hand", (c) => {
+    if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다(SUPERVISOR 전용)" }, 403);
+    const r = markClearanceHand(c.req.param("id").toUpperCase());
+    if (!r) return c.json({ error: "그런 CLEARANCE가 없음" }, 404);
+    if (!("error" in r)) bustQueue();
+    return "error" in r ? c.json(r, 409) : c.json({ clearance: r });
+  });
 }

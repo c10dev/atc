@@ -9,12 +9,12 @@ import { type Answer, answerError, overdueBase, responseOf } from "./response.ts
 const FILE = join(config.stateDir, "clearances.jsonl");
 export const CLEARANCE_TYPES: ClearanceType[] = ["TRAFFIC", "HOLD", "CONTINUE", "LAND", "GO AROUND", "FIX", "REPORT", "INFO"];
 
-type Base = Omit<Clearance, "readbackAt" | "cancelledAt" | "ackWord" | "unableAt" | "unableReason" | "standbyAt" | "standbys">;
+type Base = Omit<Clearance, "readbackAt" | "cancelledAt" | "ackWord" | "unableAt" | "unableReason" | "standbyAt" | "standbys" | "undeliverableAt" | "undeliverableReason" | "handAt">;
 export type ClearanceOp =
   | ({ op: "issue" } & Base)
-  | { op: "readback" | "roger" | "standby" | "cancel"; id: string; at: string }
-  | { op: "unable"; id: string; at: string; reason: string };
-export type ClearanceAnswerOp = "readback" | "roger" | "unable" | "standby" | "cancel";
+  | { op: "readback" | "roger" | "standby" | "cancel" | "hand"; id: string; at: string }
+  | { op: "unable" | "undeliverable"; id: string; at: string; reason: string };
+export type ClearanceAnswerOp = "readback" | "roger" | "unable" | "standby" | "cancel" | "undeliverable";
 
 // 닫힌 CLEARANCE(READBACK·ROGER·UNABLE·취소)에는 더 답하지 않는다. 먼저 온 닫힘만 남는다.
 // 취소는 전처럼 READBACK 뒤에도 된다(LAND를 거둘 때, ATFM이 cancelledAt을 읽는다)
@@ -32,6 +32,19 @@ export function fold(ops: ClearanceOp[]): Clearance[] {
     if (!c) continue;
     if (o.op === "cancel") {
       c.cancelledAt ??= o.at;
+      continue;
+    }
+    if (o.op === "hand") {
+      if (c.undeliverableAt) c.handAt ??= o.at;
+      continue;
+    }
+    // 닿지 못함(ATC-271): 답을 받지 못한 CLEARANCE를 사유와 함께 닫는다. 이미 닫혔으면 기록만 지나간다
+    if (o.op === "undeliverable") {
+      if (!isClosed(c)) {
+        c.cancelledAt = o.at;
+        c.undeliverableAt = o.at;
+        c.undeliverableReason = o.reason;
+      }
       continue;
     }
     if (isClosed(c)) continue;
@@ -93,12 +106,13 @@ export function issueClearance(input: Omit<Clearance, "id" | "at" | "readbackAt"
   return fold([...ops, issued]).find((c) => c.id === issued.id)!;
 }
 
-const ANSWER: Record<Exclude<ClearanceAnswerOp, "cancel">, Answer> = { readback: "READBACK", roger: "ROGER", unable: "UNABLE", standby: "STANDBY" };
+const ANSWER: Record<Exclude<ClearanceAnswerOp, "cancel" | "undeliverable">, Answer> = { readback: "READBACK", roger: "ROGER", unable: "UNABLE", standby: "STANDBY" };
 
 // 이 CLEARANCE에 이 답을 기록할 수 있나(순수). 안 되면 사유.
 // 이미 READBACK·ROGER로 닫힌 것에 다시 온 READBACK·ROGER는 그대로 받는다(전처럼, 기록은 더하지 않는다)
 export function clearanceAnswerError(c: Clearance, op: ClearanceAnswerOp): string | null {
   if (op === "cancel") return null;
+  if (op === "undeliverable") return c.readbackAt || c.unableAt || c.cancelledAt ? `${c.id}는 이미 닫힘` : null;
   if ((op === "readback" || op === "roger") && c.readbackAt && !c.unableAt && !c.cancelledAt) return null;
   if (c.readbackAt || c.unableAt || c.cancelledAt) {
     const how = c.cancelledAt ? "취소됨" : c.unableAt ? "UNABLE로 닫힘" : c.ackWord === "ROGER" ? "ROGER로 닫힘" : "READBACK으로 닫힘";
@@ -112,11 +126,20 @@ export function markClearance(id: string, op: ClearanceAnswerOp, reason?: string
   if (!current) return null;
   const error = clearanceAnswerError(current, op);
   if (error) return { error };
-  if (op === "unable") {
-    if (!reason?.trim()) return { error: "UNABLE에는 CAPTAIN의 사유가 필요함" };
-    append({ op, id, at: new Date().toISOString(), reason: reason.trim() });
+  if (op === "unable" || op === "undeliverable") {
+    if (!reason?.trim()) return { error: op === "unable" ? "UNABLE에는 CAPTAIN의 사유가 필요함" : "undeliverable에는 사유가 필요함" };
+    append({ op, id, at: new Date().toISOString(), reason: reason.trim().slice(0, 300) });
   } else if (!((op === "readback" || op === "roger") && current.readbackAt)) {
     append({ op, id, at: new Date().toISOString() });
   }
   return allClearances().find((c) => c.id === id)!;
+}
+
+// SUPERVISOR가 닿지 못한 CLEARANCE를 손으로 전했다고 표시한다(ATC-271). undeliverable로 닫힌 것만
+export function markClearanceHand(id: string): Clearance | { error: string } | null {
+  const c = allClearances().find((x) => x.id === id);
+  if (!c) return null;
+  if (!c.undeliverableAt) return { error: `${id}는 undeliverable이 아님` };
+  if (!c.handAt) append({ op: "hand", id, at: new Date().toISOString() });
+  return allClearances().find((x) => x.id === id)!;
 }

@@ -14,6 +14,7 @@ import type { QrhNamedLine } from "./qrh.ts";
 // - checkride: SUPERVISOR의 TYPE RATING 부여·회수와 그 근거(checkride.ts)
 // - fleet: SUPERVISOR가 AIRCRAFT 세션을 띄우거나 멈춤(session-control.ts)
 // - qrh: 서버가 체크리스트를 부를 조건을 처음 본 때(ATC-288, shadow: 보내는 글은 바뀌지 않는다). subject마다 풀릴 때까지 한 줄(qrh.ts)
+// - relay: SUPERVISOR RELAY(ATC-271)의 만들기·issued·undeliverable·hand. 글은 싣지 않는다
 // - milestone: FLIGHT의 OOOI(ATC-123, milestone.out|off|on|in)를 처음 본 때. t는 이정표가 일어난 시각, seenAt은 atc가 처음 본 시각. FLIGHT·이정표마다 한 줄
 
 export interface Sample {
@@ -34,6 +35,8 @@ export type RecordLine =
   | QrhNamedLine
   | { t: string; kind: "dispatch"; op: string; id: string }
   | { t: string; kind: "schedule"; op: string; id: string }
+  // SUPERVISOR RELAY(ATC-271): 화면에서 만든 relay와 그 뒤의 표시. 글(text)은 relays.jsonl에만 있고 여기에는 적지 않는다. by는 만든 쪽(supervisor), 표시한 쪽(TOWER 또는 supervisor)
+  | { t: string; kind: "relay"; op: "create" | "issued" | "undeliverable" | "hand"; id: string; by: string; to?: string; relayKind?: string; flight?: string | null; clearance?: string; reason?: string }
   | { t: string; kind: "flight"; op: "state"; flight: string; by: string; ok: boolean; from: string; to: string; error?: string } // SUPERVISOR가 FLIGHT 상태 버튼으로 Linear 상태를 옮김(DUTY G3). 실패도 적는다
   | { t: string; kind: "pr"; op: "merge"; by: "supervisor"; airport: string; number: number; head: string; ok: boolean; result: string; method?: string; error?: string } // SUPERVISOR가 PR 서랍의 MERGE 버튼으로 user 등급 PR을 머지함(DUTY G2). 거절·실패도 적는다
   | { t: string; kind: "duty"; op: "stand" | "stand-done" | "linear"; by: "DUTY"; ok: boolean; name?: string; action?: "create" | "update" | "comment"; key?: string; state?: string; error?: string } // DUTY L1(D7a): STAND 만들기·치우기, Linear 쓰기(본문은 적지 않는다). 거절·실패도 적는다

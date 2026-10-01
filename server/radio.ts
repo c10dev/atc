@@ -116,10 +116,11 @@ export function radioOf(input: RadioInput, teamPattern = DEFAULT_TEAM_PATTERN): 
       continue;
     }
     const call = clr.get(o.id);
-    if (o.op === "cancel") {
+    if (o.op === "cancel" || o.op === "undeliverable") {
       if (call) close(call, "cancel"); // 취소는 교신이 아니라 호출을 거두는 것
       continue;
     }
+    if (o.op === "hand") continue; // SUPERVISOR의 표시이지 교신이 아니다(ATC-271)
     const w = clrWho.get(o.id) ?? { station: "?" };
     const kind = REPLY_KIND[o.op];
     reply(call, o.id, o.op, {

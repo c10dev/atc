@@ -5,7 +5,11 @@ import { DEFAULT_HEALTH } from "./health.ts";
 import { landByOf } from "./land-by.ts";
 import { mccLandInfo } from "./mcc-run.ts";
 import type { Snapshot } from "./model.ts";
+import { accountFolders } from "./accounts.ts";
+import { allClearances } from "./clearances.ts";
 import { allProposals } from "./proposals.ts";
+import { queueEpoch } from "./queue-bust.ts";
+import { allRelays } from "./relay-run.ts";
 import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { type QueueInput, type SupervisorQueue, supervisorQueueView } from "./supervisor-queue.ts";
 import type { UpdateStatus } from "./update.ts";
@@ -26,18 +30,22 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
     update: st ? { kind: st.kind, deployed: st.deployed, main: st.main, mainCi: st.mainCi, at: st.at } : null,
     sessions: s.sessions.filter((x) => x.status !== "dead"),
     blockedMin: config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!,
+    relays: allRelays(),
+    clearances: allClearances(),
+    folders: accountFolders().map((f) => ({ label: f.label, dir: f.dir })),
+    defaultDir: config.claudeDir,
   };
 }
 
-let cache: { at: number; view: SupervisorQueue } | null = null;
+let cache: { at: number; epoch: number; view: SupervisorQueue } | null = null;
 
 export function mountSupervisorQueue(app: Hono, getSnapshot: () => Promise<Snapshot>, updateStatus: () => Promise<UpdateStatus | null>) {
   app.get("/api/supervisor/queue", async (c) => {
     const now = Date.now();
-    if (cache && now - cache.at < CACHE_MS) return c.json(cache.view);
+    if (cache && cache.epoch === queueEpoch() && now - cache.at < CACHE_MS) return c.json(cache.view);
     const s = await getSnapshot();
     const view = supervisorQueueView(await collectQueueInput(s, updateStatus, now), now);
-    cache = { at: now, view };
+    cache = { at: now, epoch: queueEpoch(), view };
     return c.json(view);
   });
 }

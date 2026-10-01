@@ -53,6 +53,7 @@ function towerActionable(b: J, seen: ReadonlySet<string>): Actionable {
       if (a === "send" || a === "supervisor") reasons.push(why);
     }
   }
+  if (arr(b.relays).length) reasons.push("relay"); // SUPERVISOR RELAY(ATC-271): 아직 안 보낸 relay가 있다. TICK QUIET이면 TOWER가 읽지 않는다
   if (arr(b.clearances?.overdue).length) reasons.push("overdue-clearance");
   if (arr(b.open?.conflicts).length && !arr(b.clearances?.pending).length) reasons.push("conflict");
   for (const k of persistentKeysOf(b)) if (!seen.has(k)) reasons.push(`new:${k.slice(0, k.indexOf(":"))}`);

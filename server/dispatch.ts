@@ -1,3 +1,4 @@
+import { DEFAULT_NOTES, type NotesConfig } from "./issue-notes.ts";
 import { DEFAULT_RESTART_GRACE_MIN, restartingReason } from "./restarting.ts";
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -30,6 +31,8 @@ export interface DispatchConfig {
   teamAirports: Record<string, string | null>;
   // DISPATCH·SCHEDULE 후보가 되는 Linear 팀. 비었으면 주 팀(LINEAR_TEAM_KEY)만. 나머지 팀은 보여 주기만(RADAR·FIDS·NETWORK)
   candidateTeams: string[];
+  // FLIGHT PLAN·DIRECT 지시서에 싣는 이슈 댓글(ATC-271): users는 SUPERVISOR 대신 쓰는 Linear 사용자(displayName). 비면 봇·연동이 아닌 댓글 모두
+  issueNotes: NotesConfig;
   slots: {
     perTeam: number;
     airborne: Record<string, number>; // AIRPORT별 동시 AIRBORNE 한도
@@ -68,6 +71,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   },
   teamAirports: { ATC: "ATCC" },
   candidateTeams: [],
+  issueNotes: DEFAULT_NOTES,
   slots: { perTeam: 1, airborne: { VCDO: 4 }, defaultAirborne: 2, openProposals: 5, openReleases: 5 },
   weights: { priority: 3, wait: 0.5, unblock: 2, affinity: 1, conflict: -2, route: 1, waypoint: 1, overlap: -1, sameTeam: 1 },
   overlap: DEFAULT_OVERLAP,
@@ -121,6 +125,17 @@ export function saveDispatchMode(mode: DispatchConfig["mode"], file = CONFIG_FIL
   renameSync(tmp, file);
 }
 
+// 양수가 아니면 기본으로
+export function notesConfigOf(raw: unknown): NotesConfig {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const pos = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : d);
+  return {
+    users: Array.isArray(r.users) ? r.users.filter((u): u is string => typeof u === "string" && u.trim() !== "").map((u) => u.trim()) : DEFAULT_NOTES.users,
+    maxComments: pos(r.maxComments, DEFAULT_NOTES.maxComments),
+    maxChars: pos(r.maxChars, DEFAULT_NOTES.maxChars),
+  };
+}
+
 export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
   try {
     const user = JSON.parse(readFileSync(file, "utf8"));
@@ -130,6 +145,7 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       ...user,
       projectAirports: { ...d.projectAirports, ...user.projectAirports },
       teamAirports: { ...d.teamAirports, ...user.teamAirports },
+      issueNotes: notesConfigOf(user.issueNotes),
       candidateTeams: Array.isArray(user.candidateTeams) ? user.candidateTeams.map((k: unknown) => String(k).toUpperCase()) : d.candidateTeams,
       slots: { ...d.slots, ...user.slots, airborne: { ...d.slots.airborne, ...user.slots?.airborne } },
       weights: { ...d.weights, ...user.weights },

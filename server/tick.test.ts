@@ -152,3 +152,9 @@ test("GET /api/tick/:role: 판정과 브리핑을 주고, 모르는 역할은 40
   // 다섯 역할 모두 라우트가 있다
   for (const role of ROLES) assert.notEqual((await app.request(`/api/tick/${role}`)).status, 404);
 });
+
+test("tower: 아직 안 보낸 SUPERVISOR RELAY가 있으면 할 일이다(ATC-271)", () => {
+  const r = actionable("tower", { brief: tower({ relays: [{ id: "R-0001", to: "TEAM_G", type: "INFO", text: "hi" }] }) });
+  assert.deepEqual([r.act, r.reasons], [true, ["relay"]]);
+  assert.equal(actionable("tower", { brief: tower({ relays: [] }) }).act, false);
+});
