@@ -294,6 +294,7 @@ function SupervisorConfirm({ id }: { id: string }) {
 
 export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number }) {
   const [brief, setBrief] = useState<Brief | null>(null);
+  const [fresh, setFresh] = useState<Record<string, { ok: boolean; why?: string }>>({}); // FRESH START(ATC-73): 승인된 ASSIGN마다 할 수 있나
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // 판정을 보내는 중인 제안(두 번 누름 방지)
   const atfm = useAtfm(refreshKey);
@@ -322,6 +323,11 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setBrief(await res.json());
       setError(null);
+      // 승인된 ASSIGN의 FRESH START 판정(읽기만). 못 읽어도 카드는 그대로 둔다
+      fetch("/api/dispatch/fresh-start")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => setFresh(d?.verdicts ?? {}))
+        .catch(() => setFresh({}));
     } catch (e) {
       setError((e as Error).message);
     }
@@ -387,6 +393,22 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
     setBusy(p.id);
     try {
       await post(`/api/dispatch/proposals/${p.id}/cancel`, {});
+      await load();
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      await load();
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // FRESH START(ATC-73): 승인된 ASSIGN을 받을 세션을 STOP하고 CREW BRIEFING + FLIGHT PLAN을 첫 프롬프트로 새로 LAUNCH한다. 확인 단계는 카드 안(InFlightRow)에서 거친다. 성공하면 true
+  const freshStart = async (p: Proposal) => {
+    setBusy(p.id);
+    try {
+      await post(`/api/dispatch/proposals/${p.id}/fresh-start`, {});
       await load();
       return true;
     } catch (e) {
@@ -564,7 +586,7 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
             </thead>
             <tbody>
               {brief.inFlight.map((p) => (
-                <InFlightRow key={p.id} p={p} flight={flights[p.flight]} waiting={brief.waiting?.[p.id]} now={now} overdue={brief.overdue.includes(p.id)} mode={brief.mode} busy={busy === p.id} onRecall={recall} onCancel={cancel} candidate={(brief.arrivalCandidates ?? []).find((c) => c.proposal === p.id)} />
+                <InFlightRow key={p.id} p={p} flight={flights[p.flight]} waiting={brief.waiting?.[p.id]} now={now} overdue={brief.overdue.includes(p.id)} mode={brief.mode} busy={busy === p.id} onRecall={recall} onCancel={cancel} fresh={fresh[p.id]} onFreshStart={freshStart} candidate={(brief.arrivalCandidates ?? []).find((c) => c.proposal === p.id)} />
               ))}
             </tbody>
           </table>
@@ -680,6 +702,8 @@ function InFlightRow({
   busy,
   onRecall,
   onCancel,
+  fresh,
+  onFreshStart,
   candidate,
   waiting,
 }: {
@@ -692,10 +716,18 @@ function InFlightRow({
   busy: boolean;
   onRecall: (p: Proposal, reason: string) => Promise<boolean>;
   onCancel: (p: Proposal) => Promise<boolean>;
+  fresh?: { ok: boolean; why?: string };
+  onFreshStart: (p: Proposal) => Promise<boolean>;
   candidate?: ArrivalSuggestion;
 }) {
   const [open, setOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [freshing, setFreshing] = useState(false);
+  const freshBtn = useRef<HTMLButtonElement>(null);
+  const closeFresh = () => {
+    setFreshing(false);
+    requestAnimationFrame(() => freshBtn.current?.focus());
+  };
   const cancelBtn = useRef<HTMLButtonElement>(null);
   const closeCancel = () => {
     setCancelling(false);
@@ -747,6 +779,16 @@ function InFlightRow({
             </span>
           )}
           {(p.status === "approved" || p.status === "sent") && <SupervisorConfirm id={p.id} />}
+          {p.status === "approved" && fresh && !fresh.ok && (
+            <span className="dp-wait dp-fresh-why" title="FRESH START를 할 수 없는 이유">
+              FRESH START 불가 — {fresh.why}
+            </span>
+          )}
+          {p.status === "sent" && p.sentVia === "fresh-start" && (
+            <span className="dp-wait" title="새 세션의 첫 프롬프트로 보냈다. OCC는 다시 보내지 않는다">
+              FRESH START로 보냄
+            </span>
+          )}
           {candidate && <CandidateLine c={candidate} now={now} />}
           {overdue && <span className="dp-overdue">{overdueText(p)}</span>}
         </td>
@@ -763,7 +805,19 @@ function InFlightRow({
               RECALL…
             </button>
           )}
-          {p.status === "approved" && !cancelling && (
+          {p.status === "approved" && fresh?.ok && !freshing && !cancelling && (
+            <button
+              ref={freshBtn}
+              className="dp-btn dp-fresh-btn"
+              disabled={busy}
+              aria-label={`${p.id} ${flightNumber(p.flight)} FRESH START — 확인`}
+              title="대화가 큰 세션을 멈추고, CREW BRIEFING + FLIGHT PLAN을 첫 프롬프트로 새로 띄운다"
+              onClick={() => setFreshing(true)}
+            >
+              FRESH START…
+            </button>
+          )}
+          {p.status === "approved" && !cancelling && !freshing && (
             <button
               ref={cancelBtn}
               className="dp-btn dp-recall-btn"
@@ -776,6 +830,38 @@ function InFlightRow({
           )}
         </td>
       </tr>
+      {freshing && p.status === "approved" && (
+        <tr className="dp-recall-row">
+          <td colSpan={6}>
+            <form
+              className="dp-reject dp-recall-form"
+              aria-label={`${p.id} FRESH START 확인`}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  closeFresh();
+                }
+              }}
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!busy && (await onFreshStart(p))) setFreshing(false);
+              }}
+            >
+              <p className="dp-recall-help">
+                {p.aircraftName}의 백그라운드 세션을 STOP하고 새 세션을 LAUNCH합니다. 새 세션의 첫 프롬프트가 CREW BRIEFING에 이어 {p.id}({flightNumber(p.flight)})의 FLIGHT PLAN이라 OCC는 다시 보내지 않습니다. 이전 대화는 남지만(claude attach) 새 세션은 이어받지 않습니다.
+              </p>
+              <div className="dp-actions">
+                <button type="button" className="dp-btn" autoFocus onClick={closeFresh} disabled={busy}>
+                  취소
+                </button>
+                <button type="submit" className="dp-btn dp-fresh-btn is-confirm" disabled={busy}>
+                  FRESH START 확인
+                </button>
+              </div>
+            </form>
+          </td>
+        </tr>
+      )}
       {cancelling && p.status === "approved" && (
         <tr className="dp-recall-row">
           <td colSpan={6}>

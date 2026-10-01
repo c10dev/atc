@@ -41,6 +41,7 @@
 | `dispatch release`가 `… LAUNCHING — 새 세션을 기다림 …`이나 `… RESTARTING …`(세션 없음 — /clear 뒤 첫 메시지 대기)으로 거절(launch 카드를 승인해 atc가 띄운 새 세션이 아직 없음, ATC-129·91) | 보내지 않는다. 승인은 그대로다. 다음 바퀴에 다시 `dispatch release`한다 — 새 세션이 뜨면 전처럼 나간다. 세션을 띄우거나 깨우는 메시지를 따로 보내지 않는다 |
 | `dispatch release`가 `AIRCRAFT 세션 없음 — 보내지 않음 (LAUNCH 필요)`로 거절(그 AIRCRAFT에 살아 있는 세션이 없고 launch 카드도 아님, ATC-183) | 보내지 않는다. 승인은 그대로다. OCC LOG에 적고 SUPERVISOR 보고(LAUNCH는 SUPERVISOR가 FLEET에서). 세션이 돌아오면 다음 바퀴에 다시 `dispatch release`한다. 이 거절이 오면 SendMessage하지 않으니 `undelivered`도 필요 없다 |
 | `dispatch release`가 `… LAUNCH 실패 …`로 거절, 또는 `following`에 `launch` 문제 | 보내지 않는다. SUPERVISOR 보고(다시 승인하거나 FLEET에서 LAUNCH하는 것은 SUPERVISOR 몫) |
+| `dispatch release`가 `FRESH START가 새 세션의 첫 프롬프트로 이미 보냄 …`으로 거절(그 카드는 SUPERVISOR가 FRESH START로 보냈다: FLIGHT PLAN이 새 세션의 첫 프롬프트였다, ATC-73) | **다시 보내지 않는다.** 같은 계획이 두 번 가면 안 된다. `overdue`에 든 sent라도 마찬가지다. SUPERVISOR 보고 한 줄(READBACK 없음)만 한다. 카드의 `sentVia`가 `fresh-start`이면 처음부터 `release`하지 않는다 |
 
 RELEASE 제안은 승인돼도 보내지 않는다(SUPERVISOR가 Linear에서 정리).
 ## 도착 후보와 도착 보고 누락 (`dispatch brief`)

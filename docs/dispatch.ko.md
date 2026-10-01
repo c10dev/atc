@@ -393,6 +393,15 @@ Claude Code 2.1.285에서 scratch job으로 쟀다(빈 폴더에서 `claude --bg
 - **FLIGHT가 상위 이슈가 됨.** `syncOps`가 열린 카드처럼 승인된 카드에도 상위 이슈 검사(5.1.1)를 한다. FLIGHT에 하위 이슈가 생겼거나 다른 FLIGHT의 `parent`로 지목되면 다음 reconcile에 사유 `상위 이슈 — 하위 N건을 묶음`으로 SUPERSEDED되고 AIRCRAFT가 풀린다.
 - **SUPERVISOR가 취소함.** 진행 중 카드의 "CANCEL…"이 확인을 한 번 묻고 `POST /api/dispatch/proposals/:id/cancel`을 부른다. 서버는 화면에서 온 요청(Origin)만 받고(관제 세션의 CLI는 Origin이 없어 403), `approved`만 받는다(`sent` 이후는 409, RECALL을 쓴다). 카드는 사유 `SUPERVISOR가 취소함`으로 SUPERSEDED된다. 사람의 판정이라 24시간 짝 규칙이 적용되어 같은 FLIGHT–AIRCRAFT 짝은 24시간 다시 제안하지 않는다.
 
+## FRESH START 만든 것 (ATC-73)
+
+대화가 큰 AIRCRAFT에 승인된 ASSIGN은 새 세션으로 보낼 수 있다: SUPERVISOR가 진행 중 카드의 **FRESH START…**(CANCEL… 옆)를 누르고 아래 줄에서 확인한다. atc가 백그라운드 세션을 STOP하고, 첫 프롬프트가 CREW BRIEFING에 이어 FLIGHT PLAN인 새 세션을 LAUNCH한다. 내는 조건·순서·기록은 [fleet.ko.md](fleet.ko.md) 8.6 "FRESH START 만든 것 (ATC-73)".
+
+- **API.** `GET /api/dispatch/fresh-start`는 승인된(`approved`) launch 아닌 ASSIGN마다 `{verdicts: {"D-xxxx": {ok, why?}}}`를 준다(읽기만. `ok`가 false면 카드에 `FRESH START 불가 — <why>`). `POST /api/dispatch/proposals/:id/fresh-start`(SUPERVISOR 화면만, approval 모드, launch 카드가 아닌 `approved` ASSIGN, 그 AIRPORT에 출발 중지 없음)가 실행하고 제안을 돌려준다.
+- **타임라인.** LAUNCH가 성공한 뒤 제안에 `{op: "send", id, at, message, via: "fresh-start"}`가 붙는다(저장되는 message는 OCC가 보냈을 때와 같은 FLIGHT PLAN 문구, `Proposal.sentVia`). 그 뒤는 평범한 `sent` 카드다: READBACK·DEPARTED·LOGBOOK·FUEL 귀속은 어떻게 보냈는지 보지 않는다. 카드에 `FRESH START로 보냄`이 보인다. 옛 읽기는 새 칸을 무시하고, 기록은 계속 추가만 한다.
+- **OCC는 다시 보내지 않는다.** `sentVia: "fresh-start"`인 `sent` 카드에 `dispatch release`는 재송신 문구를 주는 대신 409(`FRESH START가 새 세션의 첫 프롬프트로 이미 보냄`)로 답한다. 그래서 `occ/…/flight-plan.md`의 overdue 재송신 규칙이 같은 FLIGHT PLAN을 두 번 넣을 수 없고, OCC는 SUPERVISOR에게 보고한다. send-guard와 다른 guard는 그대로다.
+- **launch 카드는 다르다.** 세션이 없는 `launch` 카드는 승인하면 이미 LAUNCH하고 새 세션이 뜬 뒤 OCC가 보낸다. FRESH START는 거기에 나오지 않는다.
+
 ## RECALL
 
 보냈거나(`sent`) READBACK 받은(`accepted`) FLIGHT PLAN, 그리고 READBACK으로 DEPARTED했지만 아직 ARRIVED하지 않은 STAND 없는 FLIGHT(`departed`, `departedVia: "readback"`)를 SUPERVISOR가 거둬들인다. [atfm.ko.md](atfm.ko.md)의 결정 4에 따라 자동 배정보다 먼저 만들었다.

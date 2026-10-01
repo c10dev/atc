@@ -33,7 +33,7 @@ export type RecordLine =
   | { t: string; kind: "ack"; consumer: string }
   | { t: string; kind: "milestone"; milestone: Milestone; flight: string; at: string; seenAt: string }
   | QrhNamedLine
-  | { t: string; kind: "dispatch"; op: string; id: string }
+  | { t: string; kind: "dispatch"; op: string; id: string; via?: string; flight?: string; aircraft?: string; by?: string; ok?: boolean; stage?: "stop" | "launch" | "send"; jobId?: string; error?: string }
   | { t: string; kind: "schedule"; op: string; id: string }
   // SUPERVISOR RELAY(ATC-271): 화면에서 만든 relay와 그 뒤의 표시. 글(text)은 relays.jsonl에만 있고 여기에는 적지 않는다. by는 만든 쪽(supervisor), 표시한 쪽(TOWER 또는 supervisor)
   | { t: string; kind: "relay"; op: "create" | "issued" | "undeliverable" | "hand"; id: string; by: string; to?: string; relayKind?: string; flight?: string | null; clearance?: string; reason?: string }
@@ -47,7 +47,7 @@ export type RecordLine =
   // 세션 조종: LAUNCH·STOP 결과(docs/fleet.md 8.5). FLEET PLAN 승인(8.7)은 entry·aog·return·retire도, by는 "FLEET PLAN F-0001"
   // proposal: DISPATCH launch 카드 승인으로 띄웠으면 그 제안 id(ATC-129)
   // reposition(ATC-179): AIRCRAFT의 base를 옮김(STOP·base 쓰기·LAUNCH를 한 사건으로). by는 supervisor | auto, stage는 실패한 단계(precheck는 STOP 전 거절)
-  | { t: string; kind: "fleet"; op: "launch" | "stop" | "entry" | "aog" | "return" | "retire" | "account-change" | "reposition"; aircraft: string; by: string; ok: boolean; jobId?: string; cwd?: string; permissionMode?: string; model?: string; modelFrom?: string; account?: string; from?: string; to?: string; error?: string; proposal?: string; stage?: "stop" | "base" | "launch" | "precheck" }
+  | { t: string; kind: "fleet"; op: "launch" | "stop" | "entry" | "aog" | "return" | "retire" | "account-change" | "reposition"; aircraft: string; by: string; ok: boolean; jobId?: string; cwd?: string; permissionMode?: string; model?: string; modelFrom?: string; account?: string; from?: string; to?: string; error?: string; proposal?: string; flight?: string; stage?: "stop" | "base" | "launch" | "precheck" }
   // REPOSITION 스위치와 그림자(ATC-179): mode는 스위치 바꿈(auto가 flapping으로 approval이 되면 by auto), would는 shadow의 "옮겼을 것"
   | { t: string; kind: "reposition"; op: "mode"; by: string; from: string; to: string; reason?: string }
   | { t: string; kind: "reposition"; op: "would"; aircraft: string; from: string; to: string; reasons: string[] }

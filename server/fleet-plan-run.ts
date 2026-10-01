@@ -403,7 +403,7 @@ export async function runStep(step: ExecStep, by: string, getSnapshot: () => Pro
 }
 
 // RESTART: 멈춘 세션이 claude agents에서 빠질 때까지 잠깐 기다린다(곧바로 띄우면 "이미 떠 있음"으로 거절될 수 있다)
-async function goneFromAgents(reg: string, tries = 10) {
+export async function goneFromAgents(reg: string, tries = 10) {
   for (let n = 0; n < tries; n++) {
     const rows = liveRowsOf(await agentRows().catch(() => []));
     if (!rows.some((r) => regKey(r.name) === regKey(reg))) return;

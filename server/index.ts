@@ -21,6 +21,7 @@ import { mountFleet } from "./fleet.ts";
 import { addLogbookFuel, aircraftContexts, mountFuel } from "./fuel-run.ts";
 import { fuelWatch } from "./fuel-watch.ts";
 import { mountFleetPlan, runFleetPlan } from "./fleet-plan-run.ts";
+import { mountFreshStart } from "./fresh-start-run.ts";
 import { launchAircraft, MAX_LAUNCHED, mountSessionControl } from "./session-control.ts";
 import { mountApplyNow } from "./apply-now-run.ts";
 import { mountControlBulk } from "./control-bulk-run.ts";
@@ -201,6 +202,7 @@ mountFleet(app, getSnapshot, (sessions, teamPattern) => aircraftContexts(session
 mountFuel(app, getSnapshot, loadLogbook);
 mountSessionControl(app, getSnapshot);
 mountFleetPlan(app, getSnapshot);
+mountFreshStart(app, getSnapshot); // FRESH START(ATC-73): 승인된 ASSIGN을 새 세션의 첫 프롬프트로(SUPERVISOR 클릭만)
 mountCheckride(app, getSnapshot);
 mountLogbook(app);
 mountNetwork(app, getSnapshot);
