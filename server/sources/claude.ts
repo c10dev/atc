@@ -30,8 +30,8 @@ interface SessionFile {
 }
 
 // background 세션이 기본이 아닌 폴더에서 읽혔으면 그 폴더(ATC-301, 순수). attach 명령이 CLAUDE_CONFIG_DIR로 붙인다
-export function attachDirField(s: Pick<SessionFile, "kind" | "configDir">, defaultDir = config.claudeDir): { attachDir?: string } {
-  const dir = s.kind === "bg" || s.kind === "background" ? attachDirOf(s.configDir, defaultDir) : undefined;
+export function attachDirField(s: Pick<SessionFile, "kind" | "configDir">, defaultDir = config.claudeDir, home = config.home): { attachDir?: string } {
+  const dir = s.kind === "bg" || s.kind === "background" ? attachDirOf(s.configDir, defaultDir, home) : undefined;
   return dir ? { attachDir: dir } : {};
 }
 

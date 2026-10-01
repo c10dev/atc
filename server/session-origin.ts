@@ -62,10 +62,21 @@ export function originBadgeOf(origin: SessionOrigin | null | undefined, permissi
 }
 // 백그라운드 세션을 여는 명령. claude attach는 CLAUDE_CONFIG_DIR 폴더의 job만 본다(없으면 ~/.claude). configDir가 있으면(기본이 아닌 폴더) 앞에 붙인다(ATC-301)
 export const attachCommandOf = (jobId: string, configDir?: string | null) => `${configDir ? `CLAUDE_CONFIG_DIR=${shellWordOf(configDir)} ` : ""}claude attach ${jobId}`;
-// 셸이 한 낱말로 읽도록: 안전한 글자뿐이면 그대로, 아니면 작은따옴표로 감싼다
-export const shellWordOf = (v: string) => (/^[\w@%+=:,./-]+$/.test(v) ? v : `'${v.replace(/'/g, `'\\''`)}'`);
-// 세션을 읽은 폴더가 기본(~/.claude)이 아닐 때만 그 폴더. 기본이면 undefined라 명령은 그대로다(ATC-301)
-export const attachDirOf = (configDir: string | null | undefined, defaultDir: string): string | undefined => (configDir && configDir !== defaultDir ? configDir : undefined);
+// 셸이 한 낱말로 읽도록: 안전한 글자뿐이면 그대로, 아니면 작은따옴표로 감싼다. 앞의 `~/`는 따옴표 밖에 둬야 셸이 홈으로 푼다
+export function shellWordOf(v: string): string {
+  if (v === "~") return v;
+  if (v.startsWith("~/")) return `~/${shellWordOf(v.slice(2))}`;
+  return /^[\w@%+=:,./-]+$/.test(v) ? v : `'${v.replace(/'/g, `'\\''`)}'`;
+}
+// 홈 아래 경로는 `~`로 줄인다(ATC-301). 홈 밖이면 그대로
+export function homeShortOf(dir: string, home: string): string {
+  const h = home.replace(/\/+$/, "");
+  if (!h) return dir;
+  if (dir === h) return "~";
+  return dir.startsWith(`${h}/`) ? `~${dir.slice(h.length)}` : dir;
+}
+// 세션을 읽은 폴더가 기본(~/.claude)이 아닐 때만 그 폴더(home이 있으면 `~`로 줄여서). 기본이면 undefined라 명령은 그대로다(ATC-301)
+export const attachDirOf = (configDir: string | null | undefined, defaultDir: string, home = ""): string | undefined => (configDir && configDir !== defaultDir ? homeShortOf(configDir, home) : undefined);
 
 // 백그라운드가 아닌 세션을 멈추거나 새로 시작하는 손 절차(atc가 하지 않는다). action: stop(멈춤), restart(새 CREW BRIEFING으로 다시), refresh(대화 비우기)
 export function manualStepsOf(origin: SessionOrigin | null | undefined, reg: string, action: "stop" | "restart" | "refresh"): string {

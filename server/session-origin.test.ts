@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attachCommandOf, attachDirOf, deliveryOf, launchModeOf, manualStepsOf, originBadgeOf, originOf, permissionModeOf, shellWordOf } from "./session-origin.ts";
+import { attachCommandOf, attachDirOf, deliveryOf, homeShortOf, launchModeOf, manualStepsOf, originBadgeOf, originOf, permissionModeOf, shellWordOf } from "./session-origin.ts";
 import { deliveryMapOf } from "./proposals.ts";
 import type { Session } from "./model.ts";
 
@@ -101,6 +101,19 @@ test("attach 명령: 기본 폴더는 그대로, 기본이 아닌 폴더는 CLAU
   assert.equal(attachDirOf("/home/c10/.claude", "/home/c10/.claude"), undefined);
   assert.equal(attachDirOf(undefined, "/home/c10/.claude"), undefined);
   assert.equal(attachDirOf("/home/c10/.claude-acct-1", "/home/c10/.claude"), "/home/c10/.claude-acct-1");
+});
+
+test("홈 줄이기: 홈 아래는 ~로, 홈 밖·비슷한 접두어는 그대로, ~/는 따옴표 밖에 둔다", () => {
+  assert.equal(homeShortOf("/home/c10/.claude-acct-1", "/home/c10"), "~/.claude-acct-1");
+  assert.equal(homeShortOf("/home/c10/.claude-acct-1", "/home/c10/"), "~/.claude-acct-1");
+  assert.equal(homeShortOf("/home/c10", "/home/c10"), "~");
+  assert.equal(homeShortOf("/home/c100/.claude", "/home/c10"), "/home/c100/.claude"); // 접두어만 같은 다른 폴더
+  assert.equal(homeShortOf("/srv/.claude-x", "/home/c10"), "/srv/.claude-x");
+  assert.equal(homeShortOf("/home/c10/.claude-a", ""), "/home/c10/.claude-a"); // 홈을 모르면 그대로
+  assert.equal(attachDirOf("/home/c10/.claude-acct-1", "/home/c10/.claude", "/home/c10"), "~/.claude-acct-1");
+  assert.equal(attachDirOf("/home/c10/.claude", "/home/c10/.claude", "/home/c10"), undefined); // 기본은 줄이기 전에 가른다
+  assert.equal(attachCommandOf("a5b15069", "~/.claude-acct-1"), "CLAUDE_CONFIG_DIR=~/.claude-acct-1 claude attach a5b15069");
+  assert.equal(shellWordOf("~/my dir"), "~/'my dir'");
 });
 
 test("표시: 기본이 아닌 폴더의 BG 칩은 툴팁과 attach에 CLAUDE_CONFIG_DIR를 싣고, BG가 아니면 폴더를 무시한다", () => {

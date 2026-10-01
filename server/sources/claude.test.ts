@@ -76,8 +76,10 @@ test("sessionKindOf: bg는 background와 jobId, interactive와 kind 없음·모�
 // ATC-301: 기본이 아닌 폴더의 background 세션만 attachDir를 싣는다
 test("attachDirField: bg가 기본이 아닌 폴더에서 읽힌 때만 그 폴더", () => {
   const def = "/home/c10/.claude";
-  assert.deepEqual(attachDirField({ kind: "bg", configDir: "/home/c10/.claude-acct-1" }, def), { attachDir: "/home/c10/.claude-acct-1" });
+  assert.deepEqual(attachDirField({ kind: "bg", configDir: "/home/c10/.claude-acct-1" }, def, ""), { attachDir: "/home/c10/.claude-acct-1" }); // 홈을 모르면 그대로
   assert.deepEqual(attachDirField({ kind: "bg", configDir: def }, def), {});
   assert.deepEqual(attachDirField({ kind: "interactive", configDir: "/home/c10/.claude-acct-1" }, def), {});
   assert.deepEqual(attachDirField({ kind: "bg" }, def), {});
+  // 홈 아래면 `~`로 줄인다(ATC-301)
+  assert.deepEqual(attachDirField({ kind: "bg", configDir: "/home/c10/.claude-acct-1" }, def, "/home/c10"), { attachDir: "~/.claude-acct-1" });
 });

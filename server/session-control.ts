@@ -399,7 +399,7 @@ export async function agentRowsOf(folders: readonly AccountFolder[] = accountFol
     for (const row of list) {
       if (row.kind === "background" && row.pid == null && row.status == null && row.id) row.stale = isStaleRow(row, jobStateOf(row.id, [join(f.dir, "jobs")]), now);
       if (labeled) row.account = f.label;
-      const attachDir = row.kind === "background" ? attachDirOf(f.dir, config.claudeDir) : undefined;
+      const attachDir = row.kind === "background" ? attachDirOf(f.dir, config.claudeDir, config.home) : undefined;
       if (attachDir) row.attachDir = attachDir;
     }
     rows.push(...list);
