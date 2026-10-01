@@ -1,0 +1,18 @@
+{
+  "web/src/Drawer.css": {
+    "color-literal": 1,
+    "outline-none": 1
+  },
+  "web/src/Starfield.tsx": {
+    "color-literal": 2
+  },
+  "web/src/styles.css": {
+    "color-literal": 43
+  },
+  "web/src/views/Follow.css": {
+    "font-size-px": 1
+  },
+  "web/src/views/Globe.css": {
+    "font-size-px": 2
+  }
+}
