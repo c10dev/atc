@@ -27,7 +27,12 @@ function towerActionable(b: J): Actionable {
   for (const q of arr(b.landingQueue)) {
     const holder = q?.landBy === undefined || q?.landBy === null || q?.landBy === "holder";
     if (q?.landing === "CLEARED" && holder && !q?.groundStop && !q?.slotHold && !q?.landClearance) reasons.push("land");
-    if (q?.goAround && q.goAround.action !== "sent") reasons.push("go-around"); // send·supervisor만. sent는 이 head에 이미 나갔다
+    // 상태에서 만든 지시(ATC-128, ATC-270): action이 send(보낸다)·supervisor(보고한다)일 때만 할 일이다.
+    // sent는 이미 나갔고, info의 log는 ATC LOG에만 남기는 것이라(매 바퀴 같다) 할 일로 세지 않는다
+    for (const [key, why] of [["goAround", "go-around"], ["info", "approach-info"], ["fix", "fix"]] as const) {
+      const a = q?.[key]?.action;
+      if (a === "send" || a === "supervisor") reasons.push(why);
+    }
   }
   if (arr(b.clearances?.overdue).length) reasons.push("overdue-clearance");
   if (arr(b.open?.conflicts).length && !arr(b.clearances?.pending).length) reasons.push("conflict");

@@ -79,6 +79,7 @@ cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-
   - `.env.local`은 복사하거나 출력하지 않는다.
   - 다른 팀이 7702를 쓰고 있으면 7703이나 7704를 쓴다.
 - 화면을 바꿨으면 Playwright로 4개 폭(390, 768, 1280, 1600) × 3개 테마(`radar`, `night`, `cockpit`)를 본다. 가로 넘침이 없는지도 확인한다.
+- 화면 FLIGHT(`web/`나 ANNUNCIATOR 화면을 바꾸는 FLIGHT)는 PR 전에 Skill 도구로 `ui-review`(mode `diff`)를 부른다(ATC-293, 가져온 규칙은 `THIRD_PARTY_NOTICES.md`). 그 출력 블록을 PR 본문의 `docs/design-language.md` 5절 점검표 답 옆에 그대로 붙이고, Blocker는 고치거나 보고의 `BLOCKED`에 적는다. 디자인 언어가 정한 값은 결함이 아니고, `CONFLICT`로 표시된 가져온 규칙은 따르지 않고 블록의 "Conflicts seen"에만 적는다. 스크린샷은 올리지 않는다.
 - 시험 중에 실제 팀 세션에 메시지를 보내지 않는다.
 - 끝나면 서버를 끄고 임시 폴더와 스크린샷을 지운다.
 
@@ -118,4 +119,4 @@ BLOCKED none | <막힌 점 한 줄씩>
 - `TIER`는 6절 등급, `DISCRETION`은 PILOT'S DISCRETION으로 고른 것의 수(줄마다 무엇을 왜), `BLOCKED`는 막힌 점이나 SUPERVISOR가 결정할 일이다. tsc나 build가 실패했으면 ✓ 대신 ✗와 이유를 적는다.
 - 고정 줄 뒤 자유 요약에는: 한 일 3~5개, 명세와 다르게 한 점, `flagged`면 바뀐 관제 규칙, 검증 결과(시험 서버와 Playwright에서 확인한 것. 스크린샷은 올리지 않고 글로, 공개 저장소, 루트 CLAUDE.md), PR 링크.
 
-같은 파일을 고치는 다른 ATC 작업이 먼저 머지되면, `origin/main` 위로 rebase하고 force-with-lease로 다시 올린 뒤 알린다. TOWER가 `GO AROUND`(ATC-128)를 보내면 이 일을 바로 한다: `READBACK C-xxxx` → rebase(또는 병합) → 충돌 조각을 대화에 보이기 → 5절 검증 → `git push --force-with-lease` → PR 본문에 푼 내용. 두 PR이 같은 동작을 다르게 바꿨으면 풀지 말고 `UNABLE C-xxxx — 사유`.
+같은 파일을 고치는 다른 ATC 작업이 먼저 머지되면, `origin/main` 위로 rebase하고 force-with-lease로 다시 올린 뒤 알린다. TOWER가 `FIX`(ATC-270)를 보내면(PR의 현재 head에 리뷰 지적이 있다) `READBACK C-xxxx` → 같은 브랜치에서 지적을 고친다(안 고칠 것은 PR 본문에 이유를 적는다) → 5절 검증 → push → 일을 맡긴 세션에 보고. 못 고치면 `UNABLE C-xxxx — 사유`. INFO처럼 ROGER만 하고 기다리지 않는다. TOWER가 `GO AROUND`(ATC-128)를 보내면 이 일을 바로 한다: `READBACK C-xxxx` → rebase(또는 병합) → 충돌 조각을 대화에 보이기 → 5절 검증 → `git push --force-with-lease` → PR 본문에 푼 내용. 두 PR이 같은 동작을 다르게 바꿨으면 풀지 말고 `UNABLE C-xxxx — 사유`.

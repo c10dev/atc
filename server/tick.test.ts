@@ -55,6 +55,9 @@ test("TOWER: 할 일이 있는 경우마다 act와 이유", () => {
     ["CLEARED, landBy가 없는 옛 서버 모양", tower({ landingQueue: [q({ landing: "CLEARED" })] }), "land"],
     ["GO AROUND를 보내야 함", tower({ landingQueue: [q({ landing: "APPROACH", goAround: { action: "send", text: "t" } })] }), "go-around"],
     ["GO AROUND를 SUPERVISOR에게 보고", tower({ landingQueue: [q({ goAround: { action: "supervisor", why: "no-holder" } })] }), "go-around"],
+    ["막힘 INFO를 보내야 함(ATC-270)", tower({ landingQueue: [q({ info: { action: "send", text: "PR #7 cannot land yet" } })] }), "approach-info"],
+    ["리뷰 지적 FIX를 보내야 함(ATC-270)", tower({ landingQueue: [q({ fix: { action: "send", text: "FIX" } })] }), "fix"],
+    ["FIX를 SUPERVISOR에게 보고", tower({ landingQueue: [q({ fix: { action: "supervisor", why: "repeat" } })] }), "fix"],
     ["READBACK 늦음", tower({ clearances: { pending: ["C-1"], overdue: ["C-1"] } }), "overdue-clearance"],
     ["충돌에 CLEARANCE가 아직 없음", tower({}, { conflicts: [{ stand: "s", sessions: ["A", "B"] }] }), "conflict"],
   ];
@@ -73,6 +76,10 @@ test("TOWER: 할 일이 없는 CLEARED(MCC·SUPERVISOR 착륙, GROUND STOP, 슬�
     q({ landing: "CLEARED", landBy: "holder", slotHold: true }),
     q({ landing: "CLEARED", landBy: "holder", landClearance: { id: "C-9", readBack: false } }),
     q({ goAround: { action: "sent" } }),
+    q({ info: { action: "sent", text: "t" } }), // 이미 알렸다
+    q({ info: { action: "log", text: "t" } }), // STAND를 쥔 세션이 없어 ATC LOG에만(매 바퀴 같다)
+    q({ fix: { action: "sent", text: "t" } }),
+    q({ info: null, fix: null, goAround: null }),
   ];
   for (const e of quiet) assert.equal(actionable("tower", { brief: tower({ landingQueue: [e] }) }).act, false, JSON.stringify(e));
   // 충돌이 있어도 이미 READBACK 대기 CLEARANCE가 있으면 새로 보내지 않는다

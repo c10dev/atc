@@ -79,6 +79,8 @@ test("projectV2(tower): handoff·away 사건, info 건강 상태, 경보의 기�
     tower({ events: [{ id: 5, kind: "groundstop.started" }] }),
     tower({}, { health: [{ name: "TEAM_O", code: "HUNG", level: "alert", since: "x" }] }),
     tower({ clearances: { pending: [], overdue: ["C-0001"] } }),
+    tower({ landingQueue: [{ airport: "ATCC", pr: { number: 1, head: "abc" }, landing: "APPROACH", blocks: [], fix: { action: "send" } }] }), // ATC-270: 같은 head에서 지시가 생기는 경우도 v1이 못 본다
+    tower({ landingQueue: [{ airport: "ATCC", pr: { number: 1, head: "abc" }, landing: "APPROACH", blocks: [], info: { action: "supervisor" } }] }),
     tower({ landingQueue: [{ airport: "ATCC", pr: { number: 1, head: "abc" }, landing: "CLEARED", blocks: [] }] }),
   ]) assert.notEqual(fp2(act), fp2(base)); // 할 일은 v2도 바뀐다
   // 다른 역할은 v1 그대로

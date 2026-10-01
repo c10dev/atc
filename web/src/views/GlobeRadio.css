@@ -1,0 +1,308 @@
+/* GLOBE G7: 지구본 위의 전파와 AIRPORT 뷰. 색·글꼴·간격·움직임은 styles.css의 :root 토큰만 쓴다.
+   열림은 --cyan, 늦음은 --amber, 답함은 --radar. 색만이 아니라 선의 모양(깜박임·점선)과 목록의 OPEN/LATE 글자로도 구분된다. */
+
+/* ── 지구본 위의 전파 ── */
+.globe-pulse {
+  pointer-events: none;
+}
+.globe-pulse.tone-cyan {
+  stroke: var(--cyan);
+  color: var(--cyan);
+}
+.globe-pulse-line {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-dasharray: 2 4;
+  opacity: 0.7;
+}
+.globe-pulse circle {
+  fill: none;
+  stroke-width: 1.5;
+}
+.globe-pulse .globe-pulse-dot {
+  fill: currentColor;
+  stroke: none;
+}
+.globe-pulse.is-answered .globe-pulse-line {
+  opacity: 0.45;
+}
+.globe-pulse.is-overdue .globe-pulse-line {
+  stroke-dasharray: none;
+  opacity: 0.9;
+}
+@keyframes ga-blink {
+  50% {
+    opacity: 0.2;
+  }
+}
+.globe-pulse.is-open.is-moving,
+.ga-line.is-open.is-moving {
+  animation: ga-blink 1s steps(2, jump-none) infinite;
+}
+
+/* ── AIRPORT 뷰 ── */
+.ga {
+  display: grid;
+  gap: var(--space-3);
+}
+.ga-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+}
+.ga-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+.ga-title em {
+  font-style: normal;
+  color: var(--radar);
+  font-size: var(--text-xs);
+}
+.ga-back {
+  color: var(--cyan);
+  text-decoration: none;
+  font-size: var(--text-sm);
+}
+.ga-back:hover,
+.ga-back:focus-visible {
+  text-decoration: underline;
+}
+.ga-rwy {
+  font-size: var(--text-xs);
+}
+.ga-svg {
+  width: 100%;
+  height: auto;
+  max-height: 78vh;
+  background: var(--scope);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.ga-apron {
+  fill: var(--panel);
+  stroke: var(--line);
+}
+.ga-taxiway {
+  stroke: var(--line-strong);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+.ga-runway {
+  fill: var(--panel-2);
+  stroke: var(--line-strong);
+}
+.ga-centerline {
+  stroke: var(--faint);
+  stroke-width: 2;
+  stroke-dasharray: 14 10;
+}
+.ga-label {
+  fill: var(--faint);
+  font-size: var(--text-xs);
+}
+.ga-gate {
+  fill: none;
+  stroke: var(--line-strong);
+}
+.ga-hold {
+  fill: none;
+  stroke: var(--amber);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  opacity: 0.8;
+}
+
+/* 시설 */
+.ga-facility rect {
+  fill: var(--panel-2);
+  stroke: var(--line-strong);
+}
+.ga-facility.is-generic rect {
+  stroke-dasharray: 4 3;
+}
+.ga-fac-name {
+  fill: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.ga-fac-sub {
+  fill: var(--faint);
+  font-size: var(--text-2xs);
+}
+
+/* 비행기 */
+.ga-plane {
+  stroke: none;
+}
+.ga-plane.tone-radar,
+.ga-plane.tone-amber,
+.ga-plane.tone-faint {
+  stroke: none;
+}
+.ga-plane.tone-radar {
+  fill: var(--radar);
+}
+.ga-plane.tone-amber {
+  fill: var(--amber);
+}
+.ga-plane.tone-faint {
+  fill: var(--faint);
+}
+.ga-plane.is-parked path {
+  fill: var(--faint);
+}
+.ga-plane-hit {
+  fill: transparent;
+}
+.ga-flight {
+  cursor: pointer;
+}
+.ga-plane-label {
+  stroke: var(--bg);
+  stroke-width: 2;
+  paint-order: stroke;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.ga-plane-label.tone-radar {
+  fill: var(--radar);
+}
+.ga-plane-label.tone-amber {
+  fill: var(--amber);
+}
+.ga-plane-label.tone-faint {
+  fill: var(--faint);
+}
+
+/* 시설에서 비행기까지의 선과 head 한 줄 */
+.ga-line line {
+  stroke: var(--radar);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 4;
+  opacity: 0.7;
+}
+.ga-line.is-open line {
+  stroke: var(--cyan);
+}
+.ga-line.is-overdue line {
+  stroke: var(--amber);
+  stroke-dasharray: none;
+  opacity: 0.9;
+}
+.ga-line line.ga-line-hit {
+  stroke: transparent;
+  stroke-width: 14;
+  stroke-dasharray: none;
+  cursor: pointer;
+  pointer-events: stroke;
+}
+.ga-line.is-on line:not(.ga-line-hit) {
+  stroke-width: 3;
+  opacity: 1;
+}
+.ga-line text {
+  fill: var(--muted);
+  font-size: var(--text-2xs);
+  stroke: var(--scope);
+  stroke-width: 3;
+  paint-order: stroke;
+  pointer-events: none;
+}
+.ga-line.is-overdue text {
+  fill: var(--amber);
+}
+
+/* 눌렀을 때만 보이는 body */
+.ga-detail {
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+.ga-detail pre {
+  margin: var(--space-1) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  color: var(--muted);
+}
+
+/* 최근 교신 목록 */
+.ga-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.ga-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--cyan);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.ga-link:hover,
+.ga-link:focus-visible {
+  text-decoration: underline;
+}
+.ga-list ul {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+}
+.ga-row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: baseline;
+  width: 100%;
+  padding: var(--space-1) 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.ga-row:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: -2px;
+}
+.ga-st {
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.08em;
+}
+.ga-head-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ga-state {
+  font-style: normal;
+  font-size: var(--text-2xs);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--cyan);
+  border-radius: var(--radius-sm);
+  color: var(--cyan);
+}
+.ga-state.is-overdue {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+@media (max-width: 600px) {
+  .ga-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .ga-st {
+    display: none;
+  }
+}

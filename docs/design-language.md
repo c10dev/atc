@@ -180,6 +180,8 @@ Running atc sessions get the diff of this file on their next turn when it change
 - [ ] Keyboard path checked (14).
 - [ ] Craft (3.5): normal state has no coloured blocks; mono only for IDs, codes and numbers; three text sizes per card; no inner borders; one left edge per column; icons from the set; `tabular-nums` on changing numbers; motion from the tokens.
 
+The `ui-review` skill (`.claude/skills/ui-review/`, run by `atc-task` before a screen PR) runs this checklist and adds the vendored rules for focus, forms, states, hit targets and long content; where a vendored rule disagrees with this document it is marked `CONFLICT` and not applied until decided.
+
 ## 6. Implementation order
 
 | Step | What | Where | Tier |

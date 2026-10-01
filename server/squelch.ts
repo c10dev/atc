@@ -166,8 +166,14 @@ export const stripDurations = (s: string): string => s.replace(/\d+\s*분째/g, 
 function projectTowerV2(b: J) {
   const v1 = projectTower(b);
   const kinds = new Map<string, string>(arr(b?.events).map((e) => [String(e?.id), String(e?.kind)]));
+  // 상태에서 만든 지시(goAround·info·fix)가 보내야 할 상태(send·supervisor)인 PR. v1은 이 상태를 보지 않으니, 더 엄격한 쪽(열림)으로 더한다
+  const actions = arr(b?.landingQueue)
+    .flatMap((q) => (["goAround", "info", "fix"] as const).map((k) => (q?.[k]?.action === "send" || q?.[k]?.action === "supervisor" ? `${q.airport ?? ""}#${q.pr?.number ?? ""}:${k}:${q[k].action}` : null)))
+    .filter((x): x is string => x !== null)
+    .sort();
   return {
     ...v1,
+    actions,
     // 할 일이 아닌 사건(handoff, away.*)은 새로 와도 지문을 바꾸지 않는다. 사건은 ack 전이라 다음에 열린 tick에서 그대로 보인다
     events: v1.events.filter((id) => !INFO_ONLY_EVENTS.has(kinds.get(id) ?? "")),
     open: {

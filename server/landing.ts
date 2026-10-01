@@ -1,4 +1,4 @@
-import type { Alert, LandingBlockCode, PullRequest, Workspace } from "./model.ts";
+import type { Alert, LandingBlockCode, PullRequest, ReviewFindings, Workspace } from "./model.ts";
 import { humanCheckStatusOf, uiChangeOf } from "./human-check.ts";
 import {
   behindEn, blockedEn, carriedFindingsEn, carriedWhoEn, changesRequestedEn, checksFailedEn, checksPendingEn, codexFindingsEn, codexP3OpenEn, codexWhyEn, countsEn,
@@ -343,7 +343,7 @@ const codexWhy = (u: CodexUnavailable, silentMs: number) =>
   u.why === "limit" ? "Codex 한도" : u.why === "autoland" ? "AUTOLAND 재리뷰 — Codex 30분 무응답" : `Codex ${Math.round(silentMs / 3_600_000)}시간 응답 없음`;
 
 type Block = PullRequest["blocks"][number];
-const block = (code: LandingBlockCode, text: string, en: string): Block => ({ code, text, en });
+const block = (code: LandingBlockCode, text: string, en: string, findings?: ReviewFindings): Block => (findings ? { code, text, en, findings } : { code, text, en });
 const short = (oid: string) => oid.slice(0, 7);
 const names = (xs: string[]) => (xs.length > 3 ? `${xs.slice(0, 3).join(", ")} 외 ${xs.length - 3}개` : xs.join(", "));
 
@@ -466,20 +466,20 @@ export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs =
       : sum.p0 || sum.p1 || sum.p2
         ? `Codex 지적 있음(head ${short(pr.headRefOid)}, ${findingCounts(sum)}) — 반영 후 재리뷰 필요`
         : `Codex P3 지적 ${sum.p3}건 중 ${sum.open}건이 해결·답글 없음(head ${short(pr.headRefOid)}) — 스레드를 resolve하거나 답글을 달면 P3는 착륙을 막지 않음`;
-    out.push(block("review-findings", text, en));
+    out.push(block("review-findings", text, en, { source: "codex", by: "Codex", counts: sum && (sum.p0 || sum.p1 || sum.p2) ? [sum.p0, sum.p1, sum.p2] : null, text: null, from: null, ...(sum && !(sum.p0 || sum.p1 || sum.p2) ? { p3Only: true as const } : {}) }));
     return out;
   }
   if (hasHeadReview(pr) || thumbsOk) return out;
   // 이전 커밋 R의 리뷰를 이어받음(ATC-31): R 뒤로 main 병합뿐이고 PR 자신의 변경이 같다. 통과면 막지 않고, 지적이면 지적으로 막는다
   if (carried && !carried.findings) return out;
   if (carried?.findings) {
-    out.push(block("review-findings", `${carriedWho(carried)} 지적이 이전 커밋 ${short(carried.from)}에 남아 있음(그 뒤 main 병합만) — 반영 후 재리뷰 필요`, carriedFindingsEn(carriedWhoEn(carried.by), short(carried.from))));
+    out.push(block("review-findings", `${carriedWho(carried)} 지적이 이전 커밋 ${short(carried.from)}에 남아 있음(그 뒤 main 병합만) — 반영 후 재리뷰 필요`, carriedFindingsEn(carriedWhoEn(carried.by), short(carried.from)), { source: "carried", by: null, counts: null, text: null, from: short(carried.from) }));
     return out;
   }
   if (mcc?.review?.verdict === "pass") return out;
   if (mcc?.review) {
     const r = mcc.review;
-    out.push(block("review-findings", `MCC INSPECTION 지적(head ${short(pr.headRefOid)}, P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}): ${clip(r.text, 400)} — 반영 후 새 head에서 다시`, mccFindingsEn(short(pr.headRefOid), [r.p0, r.p1, r.p2], clip(r.text, 400))));
+    out.push(block("review-findings", `MCC INSPECTION 지적(head ${short(pr.headRefOid)}, P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}): ${clip(r.text, 400)} — 반영 후 새 head에서 다시`, mccFindingsEn(short(pr.headRefOid), [r.p0, r.p1, r.p2], clip(r.text, 400)), { source: "mcc", by: "MCC INSPECTION", counts: [r.p0, r.p1, r.p2], text: r.text, from: null }));
     return out;
   }
   // Codex를 쓸 수 없으면 착륙 리뷰(현재 head, P0·P1 없음)가 리뷰를 대신한다. 새 head는 새 리뷰가 필요하다.
@@ -488,7 +488,7 @@ export function reviewBlocks(pr: ReviewInput, ext?: ExtReviewContext, silentMs =
   if (ms?.status === "pass") return out;
   if (ms?.status === "findings") {
     const r = ms.review!;
-    out.push(block("review-findings", `${reviewerOf(r.family)} 지적(${ms.security ? "보안, " : ""}${codexWhy(ext!.unavailable!, silentMs)}, head ${short(pr.headRefOid)}, P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}): ${clip(r.text, 400)} — 반영 후 새 head에서 재리뷰`, extFindingsEn(reviewerOf(r.family), Boolean(ms.security), codexWhyEn(ext!.unavailable!.why, Math.round(silentMs / 3_600_000)), short(pr.headRefOid), [r.p0, r.p1, r.p2], clip(r.text, 400))));
+    out.push(block("review-findings", `${reviewerOf(r.family)} 지적(${ms.security ? "보안, " : ""}${codexWhy(ext!.unavailable!, silentMs)}, head ${short(pr.headRefOid)}, P0 ${r.p0} · P1 ${r.p1} · P2 ${r.p2}): ${clip(r.text, 400)} — 반영 후 새 head에서 재리뷰`, extFindingsEn(reviewerOf(r.family), Boolean(ms.security), codexWhyEn(ext!.unavailable!.why, Math.round(silentMs / 3_600_000)), short(pr.headRefOid), [r.p0, r.p1, r.p2], clip(r.text, 400)), { source: "review", by: reviewerOf(r.family), counts: [r.p0, r.p1, r.p2], text: r.text, from: null }));
     return out;
   }
   const limited = Boolean(c?.lastComment?.limit && atOrAfter(c.lastComment.at, c.headAt));
