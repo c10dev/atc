@@ -3,6 +3,7 @@
 | 탭 | 주소 | 보는 것 | 할 수 있는 것 |
 |---|---|---|---|
 | RADAR | `#radar` | 세션 ─ STAND ─ FLIGHT 3열을 선으로 연결. 주인 없는 STAND, STAND 없는 진행 FLIGHT 강조. ARRIVED·취소된 FLIGHT의 STAND와 그것만 쥔 AIRCRAFT는 기본으로 접고 툴바에 `ARRIVED STAND N 숨김`을 보임 | 전체 보기 전환, `ARRIVED STAND 포함` |
+| GLOBE | `#globe` | 읽기 전용 정사영 지구본(ATC-254). SUPERVISOR의 위치를 가운데 두고 AIRPORT를 안정된 자리에, AIRPORT마다 FLIGHT가 없는 AIRCRAFT(base 기준)를 작은 비행기 표시로 놓는다(여럿이면 ×수). 밤 영역은 지금 시각(UTC)의 해 위치로 그린다. 옆 목록은 같은 내용을 글로 적은 것이다. FLIGHT, OUTSTATION·REPOSITION 호, SPACE 테마는 아직 없다 | HOME AIRPORT 고르기, 위도·경도 입력, 내 위치 사용(1°로 반올림해 저장), 위치 지우기, 끌어서 돌리기, 휠·두 손가락 확대, 홈으로, AIRPORT를 끌어 옮기기(이 브라우저에만 기억), AIRPORT 위치 되돌리기 |
 | STRIPS | `#strips` | 맨 위 HUMAN CHECK(사람 확인을 기다리는 PR, 있을 때만)와 LANDING SEQUENCE(열린 PR), 세션마다 FLIGHT STRIP(쥔 STAND가 모두 ARRIVED·취소된 FLIGHT의 것인 AIRCRAFT는 맨 아래 접힌 `GATE CLEANUP`에 모임. 미완 FLIGHT의 STAND를 쥔 NORDO는 NORDO에 그대로): 상태, 쥔 STAND, FLIGHT(없으면 AD HOC), STAND의 PR 착륙 배지, 마지막 교신 | PR 링크 열기, 막는 조건 펼치기 |
 | FIDS | `#board` | Linear 상태 열별 FLIGHT 카드와 점유 팀 배지. ARRIVED는 기본으로 STAND가 남은 것과 가장 최근 갱신된 10건만 보이고, 맨 아래 `ARRIVED N more · 전체 보기` 줄이 그 자리에서 나머지를 펼친다(누를 때마다 접기와 펼치기, 저장하지 않음). 표시 옵션의 "SCHEDULED · ARRIVED · CANCELLED 포함"을 켜면 전부 보인다. 목록과 보드가 같다. 목록 보기에서는 REMARKS 옆에 그 FLIGHT의 가장 늦은 이정표(`ON 04:02`)가 보이고, 행에 마우스를 올리면 OUT·OFF·ON·IN 넷이 나온다(OOOI, concepts의 FLIGHT FOLLOWING) | 표시 옵션(목록·보드, 포함 범위), ARRIVED 펼치기 |
 | AIRPORTS | `#airports` | 저장소 등록부, 소속 AIRCRAFT, OUTSTATION으로 와 있는 AIRCRAFT | AIRPORT 개설·코드 변경·폐쇄, 팀 머지 켜고 끄기(끄면 그 AIRPORT는 팀에게 LAND를 내지 않고 SUPERVISOR가 머지) |
@@ -29,6 +30,17 @@ ROUTE·AIRCRAFT·추세를 한 화면에서 보는 읽기 전용 개요다. 아�
 - Linear·GitHub·LOGBOOK 중 못 읽은 것이 있으면 그 표시가 뜬다. 그 출처에서 온 숫자는 비거나 0일 수 있다.
 
 TARGETS·ROUTE를 바꾸는 것은 지금처럼 FLEET 탭에서 SUPERVISOR가 한다. OCC가 변경 초안을 내는 흐름은 설계만 있다(`docs/fleet.ko.md` 7.4).
+
+## GLOBE
+
+SUPERVISOR의 위치를 가운데 둔 읽기 전용 지구본이다(설계: `docs/globe.md`). 서버는 장면(`GET /api/globe`: AIRPORT의 자리, 세워 둔 AIRCRAFT)만 주고, 화면이 지구본에 그린다.
+
+- **위치는 이 브라우저에만 있다.** 위치, HOME, 옮긴 AIRPORT, 시점은 `localStorage`의 `atc.globe` 한 곳에만 저장한다. 서버로 보내지 않고 기록하지도 않는다. 위치를 정하지 않으면 브라우저의 UTC 오프셋으로 경도만 맞추고 위도는 0이다(일부러 거칠다). "내 위치 사용"은 브라우저가 알려 준 위치를 1°로 반올림해 저장한다. 도시 검색은 없다(외부 요청이 필요하다). 화면을 남에게 보여 줄 때는 위도·경도 칸과 지구본의 가운데 점에 위치가 드러난다.
+- **HOME AIRPORT**는 지구본에서 위치(가운데 점) 자리에 놓인다. 기본은 살아 있는 세션이 가장 많은 AIRPORT이고, 목록에서 다른 곳을 고를 수 있다. 다른 AIRPORT는 HOME에서 본 방위와 거리(12°~30°)를 AIRPORT id에서 정해서 놓는다. 그래서 새로고침하거나 날이 바뀌어도 같은 자리이고, 서로 9°보다 가깝지 않게 밀어 놓는다. AIRPORT를 끌어 옮기면 그 자리를 이 브라우저가 기억하고, "AIRPORT 위치 되돌리기"로 지운다.
+- **세워 둔 AIRCRAFT**: 지금 STAND를 쥔 FLIGHT가 없는 AIRCRAFT를 base AIRPORT 옆에 작은 비행기로 놓는다(여럿이면 ×수). base가 없거나 퇴역한 AIRCRAFT는 그리지 않는다. AIRPORT 위에 마우스를 올리면 콜사인이 뜬다. 오른쪽 목록에도 같은 내용이 있다(스크린 리더, 좁은 화면).
+- **밤 영역**은 UTC 시각(위 설명 줄에 적힌 분)의 해 위치로 그린다. 10초마다 다시 셈하고, 숨은 탭에서는 멈춘다.
+- 조작: 끌기(돌리기), 휠·두 손가락(확대, 1~8배), "홈으로"(위치를 가운데로, 확대 1배). 애니메이션을 끈 설정(`motion` 꺼짐)이면 "홈으로"는 바로 옮긴다.
+- 지구본의 육지는 Natural Earth 1:110m(공개 도메인)를 줄여 화면 파일 안에 넣은 것이다. 외부 요청은 없다. 이 화면 첫 방문 때만 GLOBE 화면 파일(약 17 KB)을 더 받는다.
 
 ## STRIPS의 진행 막대
 

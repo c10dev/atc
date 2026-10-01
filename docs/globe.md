@@ -100,6 +100,16 @@ Read-only, no `Origin` check needed (it writes nothing). G1 builds it with `airp
 
 Clients refetch once per snapshot minute (like `useMilestones`) and animate in between. The scene is a few kilobytes, so the Mac app can read it as cheaply as the web.
 
+### G1 as built (ATC-254)
+
+- **Pure module** `server/globe.ts` (browser-safe, tested in `server/globe.test.ts`): `project`/`unproject` (orthographic, unit disc), `clipPolyline` and `clipRing` (cut at the horizon; a ring that crosses the horizon several times is closed along the limb counter-clockwise, each exit joined to the next entry counter-clockwise, so a continent crossing the edge several times still fills correctly), `slerp`, `destination`, `bearingDeg`, `distanceDeg`, `subsolarPoint` (right ascension minus sidereal time, so the equation of time is inside; about 0.05°), `nightRing`, `layoutAirports` and `placeAirports`, `defaultHome` and `globeSceneOf`.
+- **Layout.** `layoutAirports(ids, homeId)` works with the hub at (0°, 0°) and returns `bearing`, `distance` and a `runway` heading per AIRPORT `id`. Bearing is from `hash32(id#brg)` (FNV-1a), distance 12°–30° from `hash32(id#dst)`. AIRPORTs are placed in `id` order and a new one that lands within 9° of an earlier one is turned by 47° (up to 8 times per lap) and then pushed 2.5° further out (up to 4 laps, 40° at most). Adding an `id` that sorts last never moves the others. `placeAirports(hub, places, overrides)` is the client step: hub position plus bearing and distance, with a dragged place winning.
+- **Route** `GET /api/globe[?home=<code>]` (`server/globe-api.ts`): `at`, `home`, `airports[]` (`id`, `code`, `name`, `bearing`, `distance`, `runway`) and `parked[]` (`registration`, `callsign`, `airport`). It reads the snapshot and `fleet.json` only (via `fleetView`). It takes no location and writes nothing. `callsign` comes with the row so the GLOBE chunk does not pull the callsign rules into the main bundle. A `home` that is not an open AIRPORT code falls back to the default.
+- **Parked** are the AIRCRAFT of `fleet.json` that are not retired, hold no STAND (and keep no FLIGHT), and whose `base` is an open AIRPORT.
+- **Land** is `web/src/views/globe-land.ts`: Natural Earth 1:110m land, outer rings, Douglas–Peucker 0.25°, rounded to 0.1°, stored as integers ×10 and reversed to counter-clockwise (the source is clockwise). 113 rings, 2522 points, about 10 KB gzipped.
+- **View** `web/src/views/Globe.tsx` (own lazy chunk, own CSS). Everything the SUPERVISOR sets lives in `localStorage` key `atc.globe` (`loc`, `home`, `overrides`, `view`), read and written inside `try`/`catch`; geolocation is rounded to 1° before saving. The night cap is recomputed every 10 s while the tab is visible. Colours are `:root` tokens only.
+- Not in G1: FLIGHTs (G2), moves (G3), SPACE (G4).
+
 ## 4. Rendering
 
 - **Orthographic projection in inline SVG.** Rotate unit vectors by the view's yaw and pitch, keep the front hemisphere, project to x/y. Clip land polygons and tracks at the horizon (split segments where they cross it). Sphere fill, graticule every 30°, land, night cap, then tracks and planes.
