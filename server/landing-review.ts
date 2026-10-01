@@ -86,8 +86,9 @@ export function assertReviewTarget(p: PullRequest) {
 }
 
 // AUTOLAND가 맡은 AIRPORT의 열린 PR이면 그 AIRPORT 코드(ATC-328). 거기서는 이 head의 머지 리뷰가 착륙 리뷰라 Codex 상태와 상관없이 남긴다
-export function autolandAirportOf(s: Pick<Snapshot, "airports">, p: Pick<PullRequest, "repo" | "draft">): string | null {
-  if (p.draft) return null;
+export function autolandAirportOf(s: Pick<Snapshot, "airports">, p: Pick<PullRequest, "repo" | "draft" | "mergeReviewTarget">): string | null {
+  // buildPulls가 정한 같은 조건(mergeReviewGateOk): 아니면 옛 경로(assertReviewTarget, landing-reviews.jsonl)
+  if (p.draft || !p.mergeReviewTarget) return null;
   const code = s.airports.find((a) => a.repo === p.repo)?.code;
   return code && loadAutoland().airports.includes(code) ? code : null;
 }

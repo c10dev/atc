@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { DEFAULT_AUTOLAND, mergeExclusionOf, type MergeExclusionInput, parseAutoland } from "./autoland.ts";
 import { mergeReviewPassOn } from "./autoland-run.ts";
 import { buildPulls, type GhPull, type MergeReview } from "./landing.ts";
-import { parseReview, ReviewError, readMergeReviews } from "./landing-review.ts";
+import { autolandAirportOf, parseReview, ReviewError, readMergeReviews } from "./landing-review.ts";
 import type { PullRequest } from "./model.ts";
 
 // ATC-328: AUTOLAND AIRPORT에서 atc에 기록한 머지 리뷰가 이 head의 착륙 리뷰다. 시험은 가짜 저장소·가짜 기록만 쓴다.
@@ -213,4 +213,26 @@ test("mergeReviewPassOn: the record file must still say pass for the head (or th
   const carried = { ...pr, mergeReview: { ...pr.mergeReview, carriedFrom: OLD } };
   assert.equal(mergeReviewPassOn(SLUG, carried, [rev({ head: OLD })]), true);
   assert.equal(mergeReviewPassOn(SLUG, carried, [pass]), false); // 이어받은 커밋의 기록이 아니다
+});
+
+// ── 기록을 받는 경로는 buildPulls와 같은 조건(mergeReviewGateOk)을 쓴다 ──
+
+test("records are diverted to the merge-review file only for PRs buildPulls counts them for (off: no security-gate PRs; delegate: yes; hard gate: never)", () => {
+  const snap = { airports: [{ code: "VCDO", repo: REPO }] } as Parameters<typeof autolandAirportOf>[0];
+  const target = (g: GhPull, o: Parameters<typeof build>[1] = {}) => autolandAirportOf(snap, build(g, o));
+  assert.equal(target(gh()), "VCDO");
+  // off: 보안 게이트 PR은 옛 경로(assertReviewTarget, landing-reviews.jsonl) — 오늘과 같다
+  assert.equal(target(gh(), { labels: ["rating:SEC"] }), null);
+  assert.equal(target(gh({ files: ["src/lib/auth/session.ts"] })), null);
+  assert.equal(target(gh({ body: "Tighten auth checks" })), null);
+  // delegate: 보안 게이트 PR도 머지 리뷰 기록
+  assert.equal(target(gh(), { labels: ["rating:SEC"], reviewedSecurity: "delegate" }), "VCDO");
+  assert.equal(target(gh({ files: ["src/lib/auth/session.ts"] }), { reviewedSecurity: "delegate" }), "VCDO");
+  // hard(비밀·키 경로, FLIGHT 없음)는 어느 모드에서든 아님
+  assert.equal(target(gh({ files: ["config/secrets/app.json"] }), { reviewedSecurity: "delegate" }), null);
+  // AUTOLAND 밖 저장소, Draft
+  assert.equal(target(gh(), { repos: [] }), null);
+  assert.equal(target(gh({ isDraft: true })), null);
+  // 지금 PR이 그 AIRPORT 코드가 아닌 목록에 없으면(스냅샷에 AIRPORT가 없음) 아님
+  assert.equal(autolandAirportOf({ airports: [] } as unknown as Parameters<typeof autolandAirportOf>[0], build(gh())), null);
 });

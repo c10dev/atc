@@ -259,6 +259,10 @@ export function securityPathOf(files: readonly string[]): { tag: string; path: s
   const secret = secretPathOf(files);
   return secret ? { tag: "비밀·키 경로", path: secret } : null;
 }
+// 머지 리뷰를 AUTOLAND AIRPORT의 기록(autoland-reviews.jsonl)으로 받아 쓰는 PR인가(ATC-328): 비밀·키·FLIGHT 없음(hard)은 어느 모드에서든 아니고,
+// 보안 규칙(security)은 reviewedSecurity가 delegate일 때만 맞다. buildPulls(착륙 판단)와 기록을 받는 경로가 같은 조건을 쓴다
+export const mergeReviewGateOk = (gate: { hard: string | null; security: string | null } | null, reviewedSecurity: "off" | "delegate"): boolean =>
+  Boolean(gate && !gate.hard && (!gate.security || reviewedSecurity === "delegate"));
 // 마이그레이션·SQL 경로(ATC-328). reviewedSecurity가 delegate여도 AUTOLAND가 머지하지 않는다. 없으면 null
 export const migrationPathOf = (files: readonly string[]): string | null => files.find((f) => /(^|\/)(supabase\/)?migrations?\//i.test(f) || /\.sql$/i.test(f)) ?? null;
 // 제목·본문의 보안 키워드. EXECUTE는 SQL 권한이라 대문자만(영어 문장의 execute는 뺀다)
@@ -649,7 +653,7 @@ export function buildPulls(
       const exclusion = gate ? (gate.hard ?? (allowSec ? null : gate.security)) : null;
       // AUTOLAND AIRPORT의 머지 리뷰(ATC-328): 기록이 이 head의 착륙 리뷰다. 외부 리뷰 제외(비밀·키 경로, FLIGHT 없음)는 어느 모드에서든
       // 근거가 아니고, 보안 규칙은 reviewedSecurity가 delegate일 때만 근거다. 그 밖에는 오늘과 같다
-      const al = ext?.autoland && slug && ext.autoland.repos.includes(repo) && !gh.isDraft && gate && !gate.hard && (!gate.security || ext.autoland.reviewedSecurity === "delegate") ? ext.autoland : null;
+      const al = ext?.autoland && slug && ext.autoland.repos.includes(repo) && !gh.isDraft && mergeReviewGateOk(gate, ext.autoland.reviewedSecurity) ? ext.autoland : null;
       const alReviews = al ? al.reviews.filter((r) => r.repo === slug && r.number === gh.number) : [];
       const mergeRev = al ? mergeReviewOf(alReviews, slug!, gh.number, gh.headRefOid) : null;
       // main 병합만 한 head: 이전 커밋의 리뷰를 잇는다(ATC-31). 이으면 REVIEW 대기열에 넣지 않는다. 이 head에 머지 리뷰가 있으면 그것이 먼저다
@@ -709,6 +713,7 @@ export function buildPulls(
         externalExclusion: ext && slug ? exclusion : undefined,
         // 이어받은 리뷰(ATC-31): 스트립 "REVIEW: … (carried from R, main merge only)", landing.cleared 기록의 carriedFrom
         carried: carried ?? null,
+        mergeReviewTarget: Boolean(al),
         mergeReview: al && heldReview ? { by: heldReview.by, verdict: heldReview.verdict, at: heldReview.at, p0: heldReview.p0, p1: heldReview.p1, p2: heldReview.p2, pass: reviewPasses(heldReview) && !carried?.findings, carriedFrom: mergeRev ? null : (carried?.from ?? null) } : null,
         stack,
         // HUMAN CHECK(ATC-37): class PR의 사람 확인. 기록한 SHA가 main 병합만 한 이전 커밋이면 잇는다(ATC-31)

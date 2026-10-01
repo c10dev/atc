@@ -263,6 +263,7 @@ export interface PullRequest {
   changed?: string[]; // PR이 고친 파일(ATC-71 읽기, 못 읽었으면 없음). GO AROUND가 머지된 PR과 겹친 파일을 적는다(ATC-128)
   createdAt: string; // PR을 연 시각 (APPROACH 정렬, LAND CLEARANCE 짝짓기)
   carried?: CarriedReview | null; // main 병합만 한 head에 이어받은 이전 커밋의 리뷰(ATC-31)
+  mergeReviewTarget?: boolean; // AUTOLAND AIRPORT의 머지 리뷰를 받는 PR(ATC-328): 맡은 AIRPORT, Draft 아님, 외부 리뷰 게이트가 허용(보안은 delegate일 때만)
   // AUTOLAND AIRPORT의 머지 리뷰(ATC-328): 이 head(carriedFrom이 있으면 main 병합만 한 이전 커밋)에 atc에 기록된 리뷰. 없으면 null
   mergeReview?: { by: string; verdict: "pass" | "findings"; at: string; p0: number; p1: number; p2: number; pass: boolean; carriedFrom: string | null } | null;
   stack?: { base: number | null; chain: number[] } | null; // 쌓인 PR의 사슬(아래부터, ATC-29). base: 바로 아래 열린 PR
