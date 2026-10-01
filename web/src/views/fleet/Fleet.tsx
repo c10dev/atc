@@ -193,13 +193,14 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
   const absentMark = (a: AircraftView) => (a.status === "absent" && !a.restarting ? absentMarkOf(snapshot.absent?.find((x) => x.registration === a.registration), Boolean(a.aog), Date.now()) : null);
   // AIRCRAFT 한 대의 지금 카드(고치는 중이면 편집기). 목록에서 펼칠 때와 카드 보기에서 같이 쓴다.
   // 그 카드가 연 패널(LAUNCH, CREW BRIEFING)은 카드 바로 아래에 붙는다(ATC-61)
-  const cardOf = (a: AircraftView) => (
+  const cardOf = (a: AircraftView, variant: "detail" | "card") => (
     <Fragment key={a.registration}>
       {editing === a.registration ? (
         <Editor a={a} brief={brief} onCancel={() => setEditing(null)} onSave={(p) => save(a.registration, p)} />
       ) : (
         <Card
           a={a}
+          variant={variant}
           onEdit={() => (setError(null), setEditing(a.registration))}
           onBriefing={(opener) => showBriefing(a.registration, opener, "card")}
           onAog={() => toggleAog(a)}
@@ -286,7 +287,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
           }}
           detail={(reg) => {
             const a = inService.find((x) => x.registration === reg);
-            return a ? cardOf(a) : null;
+            return a ? cardOf(a, "detail") : null;
           }}
         >
           {/* CONTROL 그룹은 같은 격자로 이어진다(ATC-132) */}
@@ -295,7 +296,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
       ) : (
         <>
           {/* 카드 보기이거나 운항 중인 AIRCRAFT가 없으면 CONTROL 그룹이 혼자 선다(StatusList는 빈 목록에서 그룹을 그리지 않는다) */}
-          {layout === "cards" && <div className="fl-cards">{inService.map(cardOf)}</div>}
+          {layout === "cards" && <div className="fl-cards">{inService.map((a) => cardOf(a, "card"))}</div>}
           <div className="fl-list fl-list-solo">
             <ControlSessions snapshot={snapshot} attached={false} />
           </div>

@@ -19,17 +19,31 @@
   border-left-color: var(--alert);
 }
 
+/* 머리(ATC-280): 왼쪽 이름·상태·배지, 오른쪽 버튼. 좁으면 줄을 바꾼다 */
 .fl-head {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-3);
+}
+.fl-id {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--space-2);
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+.fl-head-actions {
+  margin: 0;
+  padding: 0;
+  margin-left: auto;
 }
 .fl-callsign {
   font: 700 var(--text-md) var(--mono);
   letter-spacing: 0.08em;
 }
 .fl-status {
-  margin-left: auto;
   color: var(--muted);
   font: 600 var(--text-2xs) var(--mono);
   letter-spacing: 0.1em;
@@ -67,22 +81,10 @@
   letter-spacing: 0.08em;
   overflow-wrap: anywhere;
 }
-.fl-rules.is-current {
-  color: var(--faint);
-}
 .fl-rules.is-behind {
   color: var(--amber);
 }
 
-.fl-crew {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: var(--text-sm);
-}
 .fl-limits {
   margin-left: var(--space-2);
   color: var(--faint);
@@ -235,4 +237,79 @@
 .fl-report-btns .fl-btn.is-on {
   border-color: var(--cyan);
   color: var(--cyan);
+}
+
+/* 경보 띠(ATC-280): 켜진 것만 한 줄씩. 하나도 없으면 그리지 않는다 */
+.fl-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-1-5) var(--space-2);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  list-style: none;
+}
+.fl-alerts > li {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.fl-alerts .fl-report {
+  margin: 0;
+}
+
+/* 본문 네 칸: 넓으면 4칸, 중간 2칸, 좁은 폭(390px·300px 카드)은 1칸. 가로 스크롤 없음 */
+.fl-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-2) var(--space-4);
+}
+.fl-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+.fl-col > .fl-sub:first-child {
+  margin-top: 0;
+}
+
+/* LOGBOOK 더 보기 */
+.fl-more {
+  align-self: flex-start;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--cyan);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.fl-more:hover,
+.fl-more:focus-visible {
+  text-decoration: underline;
+}
+
+/* ⋯ 메뉴: AOG·퇴역 */
+.fl-more-menu {
+  position: relative;
+}
+.fl-menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 120px;
+  padding: var(--space-1);
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+}
+.fl-menu .fl-btn {
+  text-align: left;
 }

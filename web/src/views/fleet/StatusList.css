@@ -211,9 +211,7 @@
   background: var(--panel-2);
   border-top: 1px dashed var(--line);
 }
-.fl-detail .fl-card {
-  max-width: 720px;
-}
+/* 펼친 카드는 행의 전체 폭을 쓴다(ATC-280: 720px 상한을 없앴다) */
 
 /* 좁은 화면: 가로 스크롤 없이 두 줄로 접는다(1줄: AIRCRAFT·AIRPORT·STATUS, 2줄: FLYING·경과·마지막 활동·이번 주). 머리 줄은 숨긴다 */
 @media (max-width: 860px) {
