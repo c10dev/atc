@@ -39,7 +39,7 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
     blockedMin: config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!,
     relays,
     clearances,
-    relayOffers: relayOffersOf(s, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now }),
+    relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now }),
     folders: accountFolders().map((f) => ({ label: f.label, dir: f.dir })),
     defaultDir: config.claudeDir,
   };
