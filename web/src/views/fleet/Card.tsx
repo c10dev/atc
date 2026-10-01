@@ -496,7 +496,7 @@ export function Card({
             )}
           </p>
           {a.fuel && (
-            <div role="img" className={`fl-usage lv-${a.fuel.level}${a.fuel.top.pct >= 80 && a.fuel.level === "ok" ? " lv-info" : ""}`} title={fuelTitle(a.fuel, now)} aria-label={fuelLabel(a.fuel, now)}>
+            <div role="img" className={`fl-usage lv-${a.fuel.level}`} title={fuelTitle(a.fuel, now)} aria-label={fuelLabel(a.fuel, now)}>
               <span className="fl-bar" aria-hidden="true">
                 <i style={{ width: `${Math.max(0, Math.min(100, a.fuel.top.pct))}%` }} />
               </span>
