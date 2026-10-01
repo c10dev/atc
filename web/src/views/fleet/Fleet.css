@@ -10,6 +10,7 @@
 .fl-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  align-items: start; /* 한 카드를 펼쳐도 같은 줄의 다른 카드가 늘어나 움직이지 않는다(ATC-325) */
   gap: var(--space-3);
 }
 .fl-sub {

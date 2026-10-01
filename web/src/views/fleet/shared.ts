@@ -64,3 +64,16 @@ export async function api(method: string, path: string, body?: unknown) {
 }
 
 export const pct = (x: number) => `${Math.round(x * 100)}%`;
+
+// LOGBOOK 띠(ATC-325)의 막대 하나가 말하는 결과. unexpected: TRIP FUEL 넘음이나 되돌림, nopr: PR 없이 ARRIVED(STAND 없는 FLIGHT),
+// late: 기대 block time을 넘음, ontime: 안, unknown: 기대치나 소요 시간을 모름. 순수 함수: 색이 아니라 말이 이 값에서 나온다
+export type LogOutcome = "unexpected" | "nopr" | "late" | "ontime" | "unknown";
+export const LOG_OUTCOME_TEXT: Record<LogOutcome, string> = { unexpected: "UNEXPECTED", nopr: "PR 없음", late: "지연", ontime: "정시", unknown: "기대치 없음" };
+export function logOutcomeOf(e: { pr?: unknown; onTime: boolean | null; reverted: boolean }, verdict?: string | null): LogOutcome {
+  if (verdict === "unexpected" || e.reverted) return "unexpected";
+  if (!e.pr) return "nopr";
+  if (e.onTime === false) return "late";
+  return e.onTime === true ? "ontime" : "unknown";
+}
+// 띠에 그리는 최근 FLIGHT: 가장 새것 n개를 시간 순으로(왼쪽이 오래된 것)
+export const stripOf = <T,>(recent: readonly T[], n = 14): T[] => recent.slice(0, n).reverse();
