@@ -7,7 +7,7 @@
 **Description:** One ATC pass — read the atc brief, issue CLEARANCEs and reports according to the decision rules in CLAUDE.md, then advance the cursor. Run it with `/loop 3m /tick`.
 
 0. `node atcctl.mjs tick tower`. It does the manual check (`manual check`), the brief, and, when there is nothing to do, the `ack`, in one call. The output decides:
-   - `TICK QUIET tower — …`: nothing to act on, and the ack is already done. Do nothing more; go to step 5 (ATC LOG "특이 사항 없음", "nothing to report"). Do not call the brief again.
+   - `TICK QUIET tower — …`: nothing to act on in the brief, and the ack is already done. Do not call the brief again. Still do step 1 (record the READBACK, ROGER, UNABLE and STANDBY replies from team sessions that arrived before this pass), then go to step 5 (ATC LOG "특이 사항 없음", "nothing to report").
    - `CHANGED …` first means the manual changed (no ack was made). Reread `CLAUDE.md` and this file, run `node atcctl.mjs manual ack`, then handle the brief printed after it under the reread manual.
    - `TICK ACT tower`: `REASONS:` is the kind of work this pass has, and below it is the `brief` output (JSON) as is. Continue from step 1. If there is a `NOTE: … 서버가 판정하지 못했다` ("the server could not decide"), read it with `node atcctl.mjs brief` and work the old way.
 1. If messages from team sessions arrived before this pass, handle them first. For "READBACK C-xxxx" run `node atcctl.mjs readback C-xxxx`, for "ROGER C-xxxx" `roger C-xxxx`, for "UNABLE C-xxxx — reason" `unable C-xxxx -- <reason>` (and put it on the SUPERVISOR report list), for "STANDBY C-xxxx" `standby C-xxxx`. Put refusals and questions without the fixed form on the list to report to the SUPERVISOR.

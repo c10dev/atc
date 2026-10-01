@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Hono } from "hono";
 import { ROLES } from "./squelch.ts";
-import { actionable, actLine, quietLine } from "./tick.ts";
+import { actionable, persistentKeysOf } from "./tick.ts";
 import { mountTick } from "./tick-run.ts";
 
 // 실제 브리핑 모양(필요한 필드만). 조용한 것과 할 일이 있는 것을 역할마다 만든다
@@ -24,7 +24,7 @@ test("TOWER: 아무것도 없으면 조용하다", () => {
   assert.deepEqual(actionable("tower", { brief: tower() }), { act: false, reasons: [], info: 0 });
 });
 
-test("TOWER: 쌓인 APPROACH PR, 지속되는 info 건강 상태, NORDO·UNIDENTIFIED처럼 이미 보고한 열린 항목만으로는 조용하다", () => {
+test("TOWER: 쌓인 APPROACH PR와 이미 한 번 보인(seen) 열린 항목(NORDO·UNIDENTIFIED·FUEL)만으로는 조용하다", () => {
   const b = tower(
     { landingQueue: [q({}), q({ pr: { number: 8, head: "def" }, landing: "APPROACH", blocks: [{ code: "stacked" }] })] },
     {
@@ -35,14 +35,13 @@ test("TOWER: 쌓인 APPROACH PR, 지속되는 info 건강 상태, NORDO·UNIDENT
       fuel: [{ key: "k" }],
     },
   );
-  assert.equal(actionable("tower", { brief: b }).act, false);
+  assert.equal(actionable("tower", { brief: b }, new Set(persistentKeysOf(b))).act, false); // 이미 보인 항목
+  assert.equal(actionable("tower", { brief: b }).act, true); // 처음 보이면 새 것이라 act
 });
 
 test("TOWER: ATC LOG에 적기만 하는 사건(handoff, away.*)만 있으면 조용하고 ack되는 수를 알린다", () => {
   const a = actionable("tower", { brief: tower({ events: [{ id: 1, kind: "handoff" }, { id: 2, kind: "away.started" }] }) });
   assert.deepEqual(a, { act: false, reasons: [], info: 2 });
-  assert.equal(quietLine("tower", a), "TICK QUIET tower — nothing to act on (2 info events acked)");
-  assert.equal(quietLine("tower", { act: false, reasons: [], info: 0 }), "TICK QUIET tower — nothing to act on");
 });
 
 test("TOWER: 할 일이 있는 경우마다 act와 이유", () => {
@@ -131,10 +130,6 @@ test("CROSSCHECK·REVIEW: 대기 중인 것이 있으면 act", () => {
   assert.deepEqual(actionable("crosscheck", { dispatch: { crosscheck: { pending: [{ id: "D-1" }] } }, schedule: { crosscheck: { pending: [{ id: "S-1" }] } } }).reasons, ["dispatch", "schedule"]);
   assert.equal(actionable("review", { reviews: { pending: [], excluded: [], recent: [] } }).act, false);
   assert.deepEqual(actionable("review", { reviews: { pending: [{ pr: "atc#1", head: "a" }] } }), { act: true, reasons: ["pending"], info: 0 });
-});
-
-test("actLine: 이유를 한 줄로", () => {
-  assert.equal(actLine("tower", { act: true, reasons: ["land", "event:landing.cleared"], info: 0 }), "TICK ACT tower\nREASONS: land, event:landing.cleared");
 });
 
 test("GET /api/tick/:role: 판정과 브리핑을 주고, 모르는 역할은 404, 오류는 act: true", async () => {

@@ -45,6 +45,8 @@ test("stripDurations: 기간 표현만 지운다(5분째, 2h07m, 24분), 번호�
   assert.equal(stripDurations("PENDING approval 2h07m"), "PENDING approval Nh");
   assert.equal(stripDurations("THROTTLE 45m"), "THROTTLE Nm");
   assert.equal(stripDurations("no durations"), "no durations");
+  // 낱말의 일부인 수는 건드리지 않는다(MCC 지적: 너무 넓음)
+  for (const keep of ["v45m build", "PR #45meters", "TEAM_5h", "model 5h2", "ab12m"]) assert.equal(stripDurations(keep), keep, keep);
 });
 
 test("changedFields: 바뀐 필드 경로만(값 없음). 객체의 배열은 a[].b로 합치고, 순서만 다르면 같다", () => {

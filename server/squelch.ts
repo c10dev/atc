@@ -161,7 +161,7 @@ export function project(role: Role, inputs: Inputs): unknown {
 // 여기 적힌 것만 v1과 다르고, 나머지 역할은 v1 그대로다. 그림자 로그(`would`)가 쌓여 틀린 skip이 0일 때만 SUPERVISOR가 역할별로 v2를 켠다.
 export const INFO_ONLY_EVENTS = new Set(["handoff", "away.started", "away.ended"]); // controller/CLAUDE.md: ATC LOG에 적기만 하는 사건
 // "BLOCKED — TOWER이 5분째 …"처럼 시간이 글에 박힌 경보는 분마다 문구가 바뀐다. 기간 표현만 지운다(`5분째`, `2h07m`, `24분`)
-export const stripDurations = (s: string): string => s.replace(/\d+\s*분째/g, "N분째").replace(/\d+\s*분/g, "N분").replace(/\d+h\d*m?/g, "Nh").replace(/\d+m\b/g, "Nm");
+export const stripDurations = (s: string): string => s.replace(/\d+\s*분째/g, "N분째").replace(/\d+\s*분(?![가-힣])/g, "N분").replace(/\b\d+h(?:\d{1,2}m)?\b/g, "Nh").replace(/\b\d+m\b/g, "Nm");
 
 function projectTowerV2(b: J) {
   const v1 = projectTower(b);

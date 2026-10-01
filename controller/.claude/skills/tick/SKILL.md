@@ -8,7 +8,7 @@ description: ATC 한 바퀴 — atc 브리핑을 읽고 CLAUDE.md 판단 기준�
 **한국어** · [English](SKILL.en.md)
 
 0. `node atcctl.mjs tick tower`. 규정 확인(`manual check`), 브리핑, 할 일이 없을 때의 `ack`을 한 번에 한다. 출력이 정한다:
-   - `TICK QUIET tower — …`: 할 일이 없고 이미 ack까지 됐다. 아무것도 더 하지 말고 5단계(ATC LOG "특이 사항 없음")로 간다. 브리핑을 다시 부르지 않는다.
+   - `TICK QUIET tower — …`: 브리핑에 할 일이 없고 이미 ack까지 됐다. 브리핑을 다시 부르지 않는다. 그래도 1단계(이번 바퀴 전에 팀 세션에서 온 READBACK·ROGER·UNABLE·STANDBY 답을 기록)는 하고, 그다음 5단계(ATC LOG "특이 사항 없음")로 간다.
    - `CHANGED …`가 먼저 나오면 규정이 바뀐 것이다(ack는 하지 않았다). `CLAUDE.md`와 이 파일을 다시 읽고 `node atcctl.mjs manual ack`한 뒤, 이어서 찍힌 브리핑을 다시 읽은 규정대로 처리한다.
    - `TICK ACT tower`: `REASONS:`가 이번에 할 일의 종류이고 그 아래가 `brief` 출력(JSON) 그대로다. 1단계부터 이어서 한다. `NOTE: … 서버가 판정하지 못했다`가 있으면 `node atcctl.mjs brief`로 직접 읽고 옛 방식대로 한다.
 1. 이번 바퀴 전에 팀 세션에서 온 메시지가 있으면 먼저 처리한다. "READBACK C-xxxx"는 `node atcctl.mjs readback C-xxxx`, "ROGER C-xxxx"는 `roger C-xxxx`, "UNABLE C-xxxx — 사유"는 `unable C-xxxx -- <사유>`(그리고 SUPERVISOR 보고 목록에), "STANDBY C-xxxx"는 `standby C-xxxx`. 정한 형식이 아닌 거부·질문은 SUPERVISOR 보고 목록에 올린다.

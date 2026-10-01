@@ -1,4 +1,4 @@
-import { INFO_ONLY_EVENTS, type Inputs, project, type Role } from "./squelch.ts";
+import { INFO_ONLY_EVENTS, type Inputs, project, type Role, stripDurations } from "./squelch.ts";
 
 // 조용한 tick(ATC-297, docs/squelch.md): 관제 세션의 `/tick`이 읽는 브리핑에 할 일이 있는가. 순수 함수만 둔다.
 // 판단 기준은 각 역할 CLAUDE.md의 표다. 확신이 없으면 act: true다(조용하다고 잘못 말하는 쪽이 비싸다):
@@ -13,8 +13,27 @@ export interface Actionable {
 type J = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 const arr = (x: J): J[] => (Array.isArray(x) ? x : []);
 
+// 판단 기준표에서 "새 key가 보이면 한 번 알린다 / 새로 생겼을 때 보고한다"인 줄은 사건이 아니라 상태에서 온다. 상태는 사라질 때까지 브리핑에 남으니,
+// 그 항목이 이미 한 번 세션에 보였는지(seen)를 서버가 기억하고, 처음 보이는 것만 할 일로 센다(tick-run.ts가 seen을 저장한다).
+// 일부러 넣지 않은 줄: open.coldCache(보낼 CLEARANCE가 있을 때 곁들이는 것이라 혼자서는 할 일이 없다), open.fuelError(ATC LOG에만),
+// traffic[].away·open.health의 info 단계(ATC LOG에만), groundStops·slotHold(LAND를 내지 않을 뿐이고 새 지시는 사건이나 `reset`이 데려온다), codex·review 필드(LAND·info·fix가 데려온다).
+export function persistentKeysOf(b: J): string[] {
+  if (!b || typeof b !== "object") return [];
+  const keys: string[] = [];
+  for (const f of arr(b.open?.fuel)) keys.push(`fuel:${f?.key}`);
+  for (const f of arr(b.open?.fuelLeaks)) keys.push(`fuel-leak:${f?.key}`);
+  if (b.github?.error) keys.push(`github-error:${String(typeof b.github.error === "string" ? b.github.error : JSON.stringify(b.github.error)).slice(0, 200)}`);
+  for (const q of arr(b.landingQueue)) if (q?.extReview?.status === "excluded") keys.push(`ext-excluded:${q.airport ?? ""}#${q.pr?.number ?? ""}`);
+  for (const x of arr(b.open?.stranded)) keys.push(`stranded:${x?.key}#${x?.pr}`);
+  for (const o of arr(b.open?.orphans)) keys.push(`orphan:${o?.stand}`);
+  for (const u of arr(b.open?.unattended)) keys.push(`unattended:${u?.stand}`);
+  for (const n of arr(b.open?.noContact)) keys.push(`no-contact:${n}`);
+  for (const h of arr(b.open?.health)) if (h?.level === "alert") keys.push(`health:${h?.name}|${h?.code}`);
+  for (const a of arr(b.open?.healthAlerts)) keys.push(`health-alert:${stripDurations(String(a?.message ?? ""))}`);
+  return [...new Set(keys)].sort();
+}
 
-function towerActionable(b: J): Actionable {
+function towerActionable(b: J, seen: ReadonlySet<string>): Actionable {
   if (!b || typeof b !== "object" || !Array.isArray(b.events)) return { act: true, reasons: ["bad-brief"], info: 0 };
   const reasons: string[] = [];
   let info = 0;
@@ -36,6 +55,7 @@ function towerActionable(b: J): Actionable {
   }
   if (arr(b.clearances?.overdue).length) reasons.push("overdue-clearance");
   if (arr(b.open?.conflicts).length && !arr(b.clearances?.pending).length) reasons.push("conflict");
+  for (const k of persistentKeysOf(b)) if (!seen.has(k)) reasons.push(`new:${k.slice(0, k.indexOf(":"))}`);
   return { act: reasons.length > 0, reasons: [...new Set(reasons)], info };
 }
 
@@ -69,11 +89,12 @@ function occActionable(i: Inputs): Actionable {
   return { act: reasons.length > 0, reasons, info: 0 };
 }
 
-export function actionable(role: Role, inputs: Inputs): Actionable {
+// seen: 이미 세션에 한 번 보인 상태 항목의 key(TOWER만 쓴다). 모르면 비어 있고, 그러면 있는 항목이 모두 새 것이라 할 일이 된다
+export function actionable(role: Role, inputs: Inputs, seen: ReadonlySet<string> = new Set()): Actionable {
   try {
     switch (role) {
       case "tower":
-        return towerActionable(inputs.brief);
+        return towerActionable(inputs.brief, seen);
       case "mcc":
         return mccActionable(inputs.queue);
       case "occ":
@@ -91,12 +112,4 @@ export function actionable(role: Role, inputs: Inputs): Actionable {
   } catch {
     return { act: true, reasons: ["error"], info: 0 };
   }
-}
-
-// atcctl이 찍는 한 줄. 조용하면 한 줄이 전부다
-export function quietLine(role: Role, a: Actionable): string {
-  return `TICK QUIET ${role} — nothing to act on${a.info ? ` (${a.info} info event${a.info > 1 ? "s" : ""} acked)` : ""}`;
-}
-export function actLine(role: Role, a: Actionable): string {
-  return `TICK ACT ${role}\nREASONS: ${a.reasons.join(", ") || "-"}`;
 }
