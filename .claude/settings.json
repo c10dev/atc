@@ -11,6 +11,40 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/hooks/rules-drift.mjs\"; [ -f \"$f\" ] || f=/home/c10/projects/atc/hooks/rules-drift.mjs; \"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$f\" start --ref origin/main --files CLAUDE.md,AGENTS.md,docs/design-language.md,.claude/skills/atc-task/SKILL.md; exit 0",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/hooks/rules-drift.mjs\"; [ -f \"$f\" ] || f=/home/c10/projects/atc/hooks/rules-drift.mjs; \"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$f\" check --ref origin/main --files CLAUDE.md,AGENTS.md,docs/design-language.md,.claude/skills/atc-task/SKILL.md; exit 0",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/hooks/rules-drift.mjs\"; [ -f \"$f\" ] || f=/home/c10/projects/atc/hooks/rules-drift.mjs; \"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$f\" check --ref origin/main --files CLAUDE.md,AGENTS.md,docs/design-language.md,.claude/skills/atc-task/SKILL.md; exit 0",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

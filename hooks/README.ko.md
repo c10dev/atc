@@ -83,6 +83,21 @@ matcher는 `paths.mjs`의 `WORK_TOOLS`와 같게 둔다. 읽기 도구(Read, Gre
 - **상태**: `~/.local/state/atc/rules-ack/<sessionId>.json`(`root`, `ref`, `files`, 확인한 해시 `acked`, `startedAt`, `checkedAt`, `changedAt`)과 `rules-ack/blobs/<sha256>`(diff용 내용). `start`마다 7일 동안 확인이 없던 세션 기록과, 어느 기록도 가리키지 않는 내용을 지운다.
 - **FLEET**: AIRCRAFT 카드마다 살아 있는 세션들의 상태가 보인다. "RULES current", 또는 "RULES 미확인 since <시각>"과 파일(시각은 마지막 변경: ref의 마지막 커밋이나 파일 mtime)이다. atc가 기록과 지금 파일을 직접 비교하므로, 쉬고 있는 세션도 뒤처졌으면 그렇게 보인다. 기록이 없는 AIRCRAFT에는 아무것도 보이지 않는다.
 
+### atc에 걸린 것
+
+atc 자신의 `.claude/settings.json`(ATC-295)이 atc 체크아웃이나 그 STAND(워크트리)에서 연 모든 세션에 이 hook을 건다. 그래서 돌고 있는 AIRCRAFT가 규칙 파일이 바뀔 때 diff를 받는다:
+
+| 이벤트 | 모드 |
+|---|---|
+| `SessionStart` | `start` |
+| `UserPromptSubmit`, `PostToolUse`(matcher `*`) | `check` |
+
+- **파일:** `--files CLAUDE.md,AGENTS.md,docs/design-language.md,.claude/skills/atc-task/SKILL.md`와 `--ref origin/main`. STAND가 무엇을 체크아웃했든 파일은 `origin/main`을 따른다. atc에는 지금 `AGENTS.md`가 없다(없는 파일도 한 상태라, 생기면 diff로 보인다). `.claude/skills/atc-task/SKILL.md`는 **감시한다**: 팀 세션의 작업 절차라서, 바뀌면 `CLAUDE.md`가 바뀔 때처럼 돌고 있는 AIRCRAFT에 닿아야 한다.
+- **명령:** `kill-guard` 항목과 같은 `$CLAUDE_PROJECT_DIR` / main 체크아웃 폴백(`f="$CLAUDE_PROJECT_DIR/hooks/rules-drift.mjs"; [ -f "$f" ] || f=/home/c10/projects/atc/hooks/rules-drift.mjs`). `--root`는 주지 않으므로 hook은 `$CLAUDE_PROJECT_DIR`(STAND), 없으면 hook의 `cwd`를 쓴다.
+- **절대 막지 않는다:** 오류가 나면 hook은 아무것도 출력하지 않고 exit 0이며(Fail open 참조), 명령도 `; exit 0`으로 끝난다. node나 hook 파일이 없어도 프롬프트나 도구 호출을 막지 못한다. fail-closed(`|| exit 2`)인 `kill-guard`와 반대다. `hooks/rules-drift-settings.test.mjs`가 둘 다 확인한다.
+- **긴 파일:** `docs/design-language.md`는 길다. 크게 고치면 150줄 상한에 닿아 세션에게 파일을 다시 Read하라고 알린다. 의도한 대체 동작이다.
+- 머지 뒤 새로 LAUNCH한 atc AIRCRAFT는 FLEET 카드에 "RULES current"로 보인다. 머지 전에 시작한 세션은 새 항목의 기준이 첫 턴까지 없다(첫 `check`가 조용히 기준을 적는다).
+
 ### 설치(vocado)
 
 SUPERVISOR가 아래 항목을 vocado `.claude/settings.json`에 합친다(기계 경로를 저장소에 넣고 싶지 않으면 `.claude/settings.local.json`). context가 그 턴에 들어가도록 동기 hook으로 두고, `timeout`으로 시간을 묶는다.
