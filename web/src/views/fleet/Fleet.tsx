@@ -20,7 +20,7 @@ import { Card } from "./Card.tsx";
 import { Editor } from "./Editor.tsx";
 import { EntryForm } from "./EntryForm.tsx";
 import { FuelAccounts } from "./Fuel.tsx";
-import { LaunchPanel } from "./LaunchPanel.tsx";
+import type { LaunchInfo, LaunchInput } from "./LaunchPanel.tsx";
 import { type FleetBrief, type SessionBrief, api } from "./shared.ts";
 import { StatusList } from "./StatusList.tsx";
 
@@ -59,7 +59,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
   const [briefing, setBriefing] = useState<{ registration: string; text: string; opener: HTMLElement | null; from: "card" | "entry" } | null>(null);
   const [control, setControl] = useState<SessionBrief | null>(null);
   const [controlError, setControlError] = useState<string | null>(null);
-  const [launching, setLaunching] = useState<{ a: AircraftView; opener: HTMLElement | null } | null>(null);
+  const [launchInfo, setLaunchInfo] = useState<LaunchInfo | null>(null); // 거절된 ACCOUNT와 LAUNCH ACCOUNT(카드의 LAUNCH 캡션·옵션)
   const [layout, setLayout] = useState<Layout>(loadLayout);
   // #fleet/TEAM_G로 오면 그 줄을 펼쳐 둔다(METRICS FUEL 개요의 링크, ATC-137)
   const [open, setOpen] = useState<ReadonlySet<string>>(() => {
@@ -91,6 +91,13 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
     } catch (e) {
       setControl(null);
       setControlError((e as Error).message);
+    }
+    // LAUNCH가 기본값으로 쓸 ACCOUNT와 거절 사유. 못 읽어도 LAUNCH는 된다(서버가 거절한다)
+    try {
+      const d = await api("GET", "/api/fleet/launch-accounts");
+      setLaunchInfo({ accounts: d.accounts ?? [], launchAccount: d.launchAccount?.aircraft ?? null });
+    } catch {
+      setLaunchInfo(null);
     }
   }, []);
   useEffect(() => {
@@ -144,11 +151,10 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
   const sessionOf = (reg: string) => control?.sessions.find((x) => !x.stale && (x.name ?? "").toUpperCase() === reg) ?? null;
   const staleOf = (reg: string) => control?.sessions.filter((x) => x.stale && (x.name ?? "").toUpperCase() === reg) ?? [];
 
-  // 실패하면 사유를 돌려준다. 패널 안에 보인다(맨 위 오류 줄은 목록 아래쪽에서 안 보인다)
-  const launch = async (reg: string, input: { permissionMode: string; model: string; account?: string }): Promise<string | null> => {
+  // 실패하면 사유를 돌려준다. 카드의 경보 띠에 보인다(맨 위 오류 줄은 목록 아래쪽에서 안 보인다). input이 없으면 빈 본문 — 서버가 기본값으로 띄운다
+  const launch = async (reg: string, input?: LaunchInput): Promise<string | null> => {
     try {
-      await api("POST", `/api/fleet/${encodeURIComponent(reg)}/launch`, input);
-      setLaunching(null);
+      await api("POST", `/api/fleet/${encodeURIComponent(reg)}/launch`, input ?? {});
       await load();
       return null;
     } catch (e) {
@@ -210,24 +216,15 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
           session={control ? sessionOf(a.registration) : undefined}
           stale={staleOf(a.registration)}
           absent={absentMark(a)}
-          onLaunch={(opener) => (setError(null), setLaunching({ a, opener }))}
+          onLaunch={(input) => (setError(null), launch(a.registration, input))}
+          control={control}
+          launchInfo={launchInfo}
+          launchModel={brief.launchModel}
           onStop={() => stop(a)}
           windowDays={brief.observedWindowDays}
           dispatchMode={brief.dispatchMode}
           launchAccount={brief.launchAccount?.aircraft}
-          launchModel={brief.launchModel}
           onCrewChanged={load}
-        />
-      )}
-      {launching?.a.registration === a.registration && control && (
-        <LaunchPanel
-          key={`launch-${a.registration}`}
-          a={a}
-          control={control}
-          launchModel={brief.launchModel}
-          opener={launching.opener}
-          onCancel={() => setLaunching(null)}
-          onLaunch={(input) => launch(a.registration, input)}
         />
       )}
       {briefing?.from === "card" && briefing.registration === a.registration && (

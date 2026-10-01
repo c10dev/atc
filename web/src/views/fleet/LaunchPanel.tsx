@@ -1,82 +1,76 @@
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import type { AircraftView } from "../../../../server/fleet.ts";
 import { type LaunchModelSetting, launchModelOf } from "../../../../server/launch-model.ts";
 import type { SessionBrief } from "./shared.ts";
-import { usePanelFocus } from "./usePanelFocus.ts";
 
-// LAUNCH: 그 AIRCRAFT의 세션을 `claude --bg`로 띄우는 패널(docs/fleet.md 8.5). 카드 바로 아래에 열린다
-export function LaunchPanel({
+// LAUNCH(docs/fleet.md 8.5, ATC-310): 카드의 LAUNCH는 한 번 눌러 기본값으로 띄운다. 옵션은 카드 안의 ▾에서 열린다.
+// 기본값은 서버가 정하는 것과 같다: permission mode는 첫 번째(auto), 모델은 LAUNCH MODEL, ACCOUNT는 LAUNCH ACCOUNT(없으면 home)
+
+export interface LaunchAccountRow {
+  label: string;
+  refused: string | null;
+  running: number;
+  maxLaunched: number | null;
+}
+export interface LaunchInfo {
+  accounts: LaunchAccountRow[];
+  launchAccount: string | null; // LAUNCH ACCOUNT(ATC-239): AIRCRAFT용 설정. 서버가 등록부에 있는 것만 준다
+}
+export type LaunchInput = { permissionMode: string; model: string; account?: string };
+
+// 이름 없는 LAUNCH가 쓸 값(서버와 같은 순서). caption은 버튼 옆 흐린 글, refused는 그 ACCOUNT가 거절된 사유
+export function launchDefaultsOf(a: AircraftView, info: LaunchInfo | null, control: SessionBrief | null, launchModel?: LaunchModelSetting) {
+  const accounts = info?.accounts ?? [];
+  const homeLabel = (accounts.find((x) => x.label === a.account) ?? accounts[0])?.label ?? null; // home 라벨이 등록부에 없으면 서버도 ~/.claude로 가므로 첫 줄로 보인다
+  const account = info?.launchAccount ?? homeLabel;
+  const refused = accounts.find((x) => x.label === account)?.refused ?? null;
+  const model = launchModelOf({ registration: a.registration, airport: a.base ?? null, setting: launchModel }).model;
+  const permissionMode = control?.permissionModes[0] ?? "auto";
+  const caption = [account, model, permissionMode].filter(Boolean).join(" · ");
+  const cap = control ? `백그라운드 세션 ${control.launched ?? control.sessions.filter((x) => x.kind === "background" && !x.stale).length}/${control.max}${control.holders ? ` — ${control.holders}` : ""}` : "";
+  return { account, refused, model, permissionMode, caption, cap };
+}
+
+// ▾로 여는 옵션 블록: 카드 머리 아래 가로로 꽉 차게, 중립 면. 같은 세 칸(permission mode, 모델, ACCOUNT)과 "이 옵션으로 LAUNCH"
+export function LaunchOptions({
   a,
   control,
+  info,
   launchModel,
-  opener,
-  onCancel,
+  busy,
   onLaunch,
+  onClose,
 }: {
   a: AircraftView;
   control: SessionBrief;
-  launchModel?: LaunchModelSetting; // LAUNCH MODEL(ATC-279): 양식을 비워 두면 서버가 이 설정으로 정한다
-  opener: HTMLElement | null;
-  onCancel: () => void;
-  onLaunch: (input: { permissionMode: string; model: string; account?: string }) => Promise<string | null>;
+  info: LaunchInfo | null;
+  launchModel?: LaunchModelSetting;
+  busy: boolean;
+  onLaunch: (input: LaunchInput) => void;
+  onClose: () => void; // Esc나 ▾로 닫는다. 초점은 ▾로 돌아간다(부르는 쪽)
 }) {
-  // ACCOUNT 고르개(ATC-147): 등록부가 있을 때만. 거절 사유가 있는 ACCOUNT는 고를 수 없고 사유를 보인다
-  const [accounts, setAccounts] = useState<{ label: string; refused: string | null; running: number; maxLaunched: number | null }[]>([]);
-  const [account, setAccount] = useState<string | null>(null); // null = 기본(LAUNCH ACCOUNT가 있으면 그것, 없으면 home)
-  const [launchAccount, setLaunchAccount] = useState<string | null>(null); // LAUNCH ACCOUNT(ATC-239): AIRCRAFT용 설정. 서버가 등록부에 있는 것만 준다
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/fleet/launch-accounts")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!alive || !d) return;
-        setAccounts(d.accounts ?? []);
-        setLaunchAccount(d.launchAccount?.aircraft ?? null);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
-  // 비워 두면 서버가 AIRCRAFT > AIRPORT > 기본 설정으로 정한다(양식에 적으면 그것이 먼저)
-  const preset = launchModelOf({ registration: a.registration, airport: a.base ?? null, setting: launchModel });
-  const homeLabel = (accounts.find((x) => x.label === a.account) ?? accounts[0])?.label ?? null; // home 라벨이 등록부에 없으면 서버도 ~/.claude로 가므로 첫 줄로 보인다
-  const dflt = launchAccount ?? homeLabel; // 서버가 이름 없는 LAUNCH에 쓸 ACCOUNT와 같다
-  const chosen = account ?? dflt;
+  const accounts = info?.accounts ?? [];
+  const d = launchDefaultsOf(a, info, control, launchModel);
+  const [account, setAccount] = useState<string | null>(null); // null = 기본
+  const chosen = account ?? d.account;
   const chosenRefused = accounts.find((x) => x.label === chosen)?.refused ?? null;
-  const [permissionMode, setPermissionMode] = useState(control.permissionModes[0] ?? "auto");
+  const [permissionMode, setPermissionMode] = useState(d.permissionMode);
   const [model, setModel] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { ref, close, onKeyDown } = usePanelFocus<HTMLFormElement>(opener, onCancel);
-  const submitRef = useRef<HTMLButtonElement>(null);
-  // 실패 사유가 붙으면 패널이 길어진다. 다시 보이게 하고, 누르는 동안 막혔던 LAUNCH로 초점을 되돌린다
+  const ref = useRef<HTMLFormElement>(null);
   useEffect(() => {
-    if (!error) return;
-    ref.current?.scrollIntoView({ block: "nearest" });
-    submitRef.current?.focus({ preventScroll: true });
-  }, [error, ref]);
-  const launched = control.sessions.filter((x) => x.kind === "background" && !x.stale).length; // STALE은 상한에 세지 않는다(ATC-93)
-  const submit = async (e: FormEvent) => {
+    ref.current?.querySelector<HTMLElement>("select, input")?.focus({ preventScroll: true });
+  }, []);
+  const submit = (e: FormEvent) => {
     e.preventDefault();
-    setBusy(true);
-    setError(null);
-    const err = await onLaunch({ permissionMode, model: model.trim(), ...(account ? { account } : {}) });
-    // 성공하면 패널이 닫힌다(언마운트). 실패일 때만 사유를 보인다
-    if (err) {
-      setError(err);
-      setBusy(false);
-    }
+    onLaunch({ permissionMode, model: model.trim(), ...(account ? { account } : {}) });
+  };
+  const key = (e: KeyboardEvent) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    onClose();
   };
   return (
-    <form ref={ref} className="fl-entry fl-launch fl-panel" onSubmit={submit} onKeyDown={onKeyDown} aria-label={`${a.registration} LAUNCH`}>
-      <h2 className="label">
-        LAUNCH <em>{a.callsign} ({a.registration}) · AIRPORT {a.base ?? "—"}</em>
-      </h2>
-      <p className="fl-entry-preview faint">
-        그 AIRPORT 저장소에서 백그라운드 세션을 띄우고 CREW BRIEFING을 첫 지시로 넣는다. 세션은 사용량 한도를 쓴다. 지금 백그라운드 세션 {control.launched ?? launched}/
-        {control.max}{control.holders ? ` — ${control.holders}` : ""}.
-      </p>
+    <form ref={ref} className="fl-launch-opts" onSubmit={submit} onKeyDown={key} aria-label={`${a.registration} LAUNCH 옵션`}>
       <label>
         permission mode{" "}
         <select className="fl-input" value={permissionMode} onChange={(e) => setPermissionMode(e.target.value)} aria-label="permission mode">
@@ -89,17 +83,17 @@ export function LaunchPanel({
       </label>
       <label>
         모델{" "}
-        <input className="fl-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder={preset.model ? `${preset.model} (LAUNCH MODEL)` : "폴더 기본"} aria-label="모델" />
+        <input className="fl-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder={d.model ? `${d.model} (LAUNCH MODEL)` : "폴더 기본"} aria-label="모델" />
       </label>
       {accounts.length > 0 && (
         <label>
           ACCOUNT{" "}
-          <select className="fl-input" value={chosen ?? ""} onChange={(e) => setAccount(e.target.value === dflt ? null : e.target.value)} aria-label="ACCOUNT">
+          <select className="fl-input" value={chosen ?? ""} onChange={(e) => setAccount(e.target.value === d.account ? null : e.target.value)} aria-label="ACCOUNT">
             {accounts.map((x) => (
               <option key={x.label} value={x.label} disabled={x.refused !== null}>
                 {x.label}
                 {x.label === a.account ? " (home)" : ""}
-                {x.label === launchAccount ? " (LAUNCH ACCOUNT)" : ""}
+                {x.label === info?.launchAccount ? " (LAUNCH ACCOUNT)" : ""}
                 {x.refused ? ` — ${x.refused}` : ""}
               </option>
             ))}
@@ -107,17 +101,10 @@ export function LaunchPanel({
           {chosenRefused && <span className="fl-error"> {chosenRefused}</span>}
         </label>
       )}
-      {error && (
-        <p className="fl-error fl-panel-error" role="alert">
-          LAUNCH 못 함: {error}
-        </p>
-      )}
+      {d.cap && <p className="fl-launch-note faint">{d.cap}</p>}
       <div className="fl-actions">
-        <button type="button" className="fl-btn" onClick={close}>
-          취소
-        </button>
-        <button ref={submitRef} type="submit" className="fl-btn primary" disabled={busy || Boolean(chosenRefused)}>
-          {busy ? "띄우는 중…" : "LAUNCH"}
+        <button type="submit" className="fl-btn primary" disabled={busy || Boolean(chosenRefused)}>
+          {busy ? "띄우는 중…" : "이 옵션으로 LAUNCH"}
         </button>
       </div>
     </form>

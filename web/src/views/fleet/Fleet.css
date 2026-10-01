@@ -141,9 +141,12 @@
   grid-column: 1 / -1;
   margin-bottom: 0;
 }
+/* 카드 아래에 남은 패널(CREW BRIEFING): 행의 전체 폭, 빌린 amber 막대 없이 중립(ATC-310) */
 .fl-detail .fl-panel {
-  max-width: 720px;
   margin: var(--space-2) 0 0;
+}
+.fl-briefing.fl-panel {
+  border-left: 1px solid var(--line);
 }
 .fl-panel-error {
   width: 100%;
