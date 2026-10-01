@@ -76,6 +76,7 @@ cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-
   - `.env.local`은 복사하거나 출력하지 않는다.
   - 다른 팀이 7702를 쓰고 있으면 7703이나 7704를 쓴다.
 - 화면을 바꿨으면 Playwright로 4개 폭(390, 768, 1280, 1600) × 3개 테마(`radar`, `night`, `cockpit`)를 본다. 가로 넘침이 없는지도 확인한다.
+- 화면 FLIGHT(`web/`나 ANNUNCIATOR 화면을 바꾸는 FLIGHT)는 PR 전에 Skill 도구로 `ui-review`(mode `diff`)를 부른다(ATC-293, 가져온 규칙은 `THIRD_PARTY_NOTICES.md`). 그 출력 블록을 PR 본문의 `docs/design-language.md` 5절 점검표 답 옆에 그대로 붙이고, Blocker는 고치거나 보고의 `BLOCKED`에 적는다. 디자인 언어가 정한 값은 결함이 아니고, `CONFLICT`로 표시된 가져온 규칙은 따르지 않고 블록의 "Conflicts seen"에만 적는다. 스크린샷은 올리지 않는다.
 - 시험 중에 실제 팀 세션에 메시지를 보내지 않는다.
 - 끝나면 서버를 끄고 임시 폴더와 스크린샷을 지운다.
 
