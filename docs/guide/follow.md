@@ -78,11 +78,21 @@ Linear가 최근 45일 안에 바뀐 이슈만 읽기 때문에 오래된 이슈
 | `살펴보기` | 발송·READBACK 단계나 착륙 뒤 배포 단계에서 막힘 | 발송·READBACK은 RADIO, 착륙 뒤는 STRIPS로 갑니다 |
 
 화면 맨 위 `NEXT n`은 따라가는 모든 번들의 칩 개수이고, 누르면 FOLLOW 탭으로 갑니다. 0이면 보이지 않습니다.
+## 알림
+
+따라가는 번들의 중요한 변화는 알림이 됩니다([알림 받기](alerts.md)의 FOLLOW 종류. 설정 → 알림에서 종류별로 끌 수 있고 기본은 켜짐이며, 조용한 시간은 다른 종류처럼 적용됩니다).
+
+| 일 | 어디에 | 소리 |
+|---|---|---|
+| 줄이 **풀 수 있음(READY)**이 됨 | QUEUE | CALL |
+| 줄의 제안이 **승인을 기다림** | QUEUE(같은 제안의 "SUPERVISOR 대기" 줄은 따로 안 나옴) | CALL |
+| 줄이 **막힘**(FLIGHT FOLLOWING의 지연·불일치. 단계마다 한 줄) | ALERTS | CAUTION |
+| **GO AROUND**, ROLLBACK 뒤에도 배포 안 된 착륙, 되돌려진 PR | ALERTS | WARNING |
+| 착륙(ON), 배포(IN) | LOG(하루) | 조용함 |
+
+조건이 풀리면 항목은 저절로 사라집니다. 막힘은 FLIGHT FOLLOWING이 이미 알리던 문제를 줄 단위로 한 번만 알리는 것이라, 따라가는 줄의 같은 문제는 "FLIGHT FOLLOWING" 종류로 또 나오지 않습니다.
 
 ## 끝난 번들
 
 모든 줄이 끝나면(Done이고 배포까지 갔거나 배포 단계가 없음, 또는 Canceled) 번들 제목줄에 `완료`가 붙습니다. 하루가 지나면 접힌 채로 남고, 제목줄을 누르면 펼쳐집니다.
 
-## 아직 없는 것
-
-알림은 이후 단계입니다([설계](https://github.com/chaehy5665/atc/blob/main/docs/follow.md)).

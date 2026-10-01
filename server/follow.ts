@@ -64,6 +64,10 @@ export interface FollowRow {
   tail: boolean;
   stuck: FollowStuck | null;
   next: FollowNext | null; // 한 줄에 최대 하나(3.4의 순서)
+  // F3(ATC-278, 알림이 읽는다. 더하기만 한 칸): 풀 수 있는 Backlog, 살아 있는 GO AROUND, 되돌려진 ON
+  ready: boolean;
+  goAround: { id: string; readbackAt: string | null } | null;
+  reverted: { number: number; at: string } | null;
 }
 
 export interface FollowBundle {
@@ -153,6 +157,9 @@ export function followRowOf(key: string, inp: Omit<FollowInput, "parents">): Fol
   const tl = live?.timeline ?? {};
   const fin = isFinishedType(t?.stateType);
   const noDeploy = inp.noDeploy.has(key);
+  const backlog = t?.stateType === "backlog" || t?.stateType === "triage";
+  const ready = Boolean(t && backlog && isReady(t.stateType, t.blockedBy.map((k) => inp.tickets.find((x) => x.key === k)?.stateType ?? null)));
+  const go = inp.clearances.filter((x) => x.type === "GO AROUND" && x.flight === key && !x.cancelledAt).sort((a, b) => b.at.localeCompare(a.at))[0];
 
   const started = Boolean(t && t.stateType !== "backlog" && t.stateType !== "triage" && t.stateType !== "unknown");
   const proposedAt = live ? (tl.proposed ?? live.at) : null;
@@ -215,6 +222,9 @@ export function followRowOf(key: string, inp: Omit<FollowInput, "parents">): Fol
     tail,
     stuck,
     next: finished ? null : nextOf({ key, t, live, pull, item, stuck, tail, inp }),
+    ready,
+    goAround: go ? { id: go.id, readbackAt: go.readbackAt ?? null } : null,
+    reverted: m?.reverted ? { number: m.reverted.number, at: m.reverted.at } : null,
   };
 }
 
