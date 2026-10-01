@@ -384,6 +384,13 @@ Not solved: a worker that has just crashed is pid-less for the seconds before th
 | Assigning risky work too lightly | Body review and CAUTION by the DISPATCH session; CAUTION proposals stay excluded from auto-approval even in stage 3 |
 | DISPATCH touching code or Linear | Guard (atc CLI and jq only), Linear through a read-only MCP only |
 
+## CANCEL an approved card (ATC-272)
+
+An approved card that has not been sent yet (`approved`) holds its AIRCRAFT and FLIGHT until it is sent or 24 hours pass. Two ways close it early:
+
+- **The FLIGHT becomes a parent issue.** `syncOps` runs the parent check (5.1.1) on approved cards too, as on open ones. If the FLIGHT gained a child (or is named as another FLIGHT's `parent`), the card is SUPERSEDED on the next reconcile with the reason `상위 이슈 — 하위 N건을 묶음` and the AIRCRAFT is free.
+- **The SUPERVISOR cancels it.** "CANCEL…" on the in-flight card asks for one confirmation, then `POST /api/dispatch/proposals/:id/cancel`. The server accepts it only from the screen (the request's Origin; a control session's CLI has none → 403) and only for `approved` (`sent` and later → 409; use RECALL). The card becomes SUPERSEDED with the reason `SUPERVISOR가 취소함`. It is a human decision, so the 24-hour pair rule applies: the same FLIGHT–AIRCRAFT pair is not proposed again for 24 hours.
+
 ## RECALL
 
 A FLIGHT PLAN that was sent (`sent`), read back (`accepted`), or read back as a STAND-free FLIGHT that has not ARRIVED (`departed` with `departedVia: "readback"`) can be pulled back by the SUPERVISOR. This is decision 4 of [atfm.md](atfm.md): it is built before any automatic assignment.

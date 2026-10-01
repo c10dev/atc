@@ -384,6 +384,13 @@ Claude Code 2.1.285에서 scratch job으로 쟀다(빈 폴더에서 `claude --bg
 | 위험 작업을 가볍게 배정 | DISPATCH 세션의 본문 검토와 CAUTION, CAUTION 제안은 3단계에서도 자동 승인 대상에서 제외 |
 | DISPATCH가 코드·Linear를 건드림 | guard(atc CLI·jq만), Linear는 읽기 전용 MCP만 허용 |
 
+## 승인된 카드 CANCEL (ATC-272)
+
+아직 보내지 않은 승인된 카드(`approved`)는 보내거나 24시간이 지날 때까지 AIRCRAFT와 FLIGHT를 잡아 둔다. 일찍 닫는 길이 둘이다:
+
+- **FLIGHT가 상위 이슈가 됨.** `syncOps`가 열린 카드처럼 승인된 카드에도 상위 이슈 검사(5.1.1)를 한다. FLIGHT에 하위 이슈가 생겼거나 다른 FLIGHT의 `parent`로 지목되면 다음 reconcile에 사유 `상위 이슈 — 하위 N건을 묶음`으로 SUPERSEDED되고 AIRCRAFT가 풀린다.
+- **SUPERVISOR가 취소함.** 진행 중 카드의 "CANCEL…"이 확인을 한 번 묻고 `POST /api/dispatch/proposals/:id/cancel`을 부른다. 서버는 화면에서 온 요청(Origin)만 받고(관제 세션의 CLI는 Origin이 없어 403), `approved`만 받는다(`sent` 이후는 409, RECALL을 쓴다). 카드는 사유 `SUPERVISOR가 취소함`으로 SUPERSEDED된다. 사람의 판정이라 24시간 짝 규칙이 적용되어 같은 FLIGHT–AIRCRAFT 짝은 24시간 다시 제안하지 않는다.
+
 ## RECALL
 
 보냈거나(`sent`) READBACK 받은(`accepted`) FLIGHT PLAN, 그리고 READBACK으로 DEPARTED했지만 아직 ARRIVED하지 않은 STAND 없는 FLIGHT(`departed`, `departedVia: "readback"`)를 SUPERVISOR가 거둬들인다. [atfm.ko.md](atfm.ko.md)의 결정 4에 따라 자동 배정보다 먼저 만들었다.
