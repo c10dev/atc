@@ -15,6 +15,7 @@
 
 | 명령 | 하는 일 |
 |---|---|
+| `node atcctl.mjs tick tower` | `/tick`의 첫 단계(ATC-297): `manual check` + 브리핑 + 할 일이 없을 때의 `ack`을 한 번에. `TICK QUIET tower — …`(끝) · `TICK ACT tower` + `REASONS:` + 브리핑 · 규정이 바뀌었으면 `CHANGED …`를 먼저(ack 없음) |
 | `node atcctl.mjs brief` | 지난 ack 이후 변화(`events`)와 현재 상태(`open`, `landingQueue`, `github`, `clearances`, `traffic`) |
 | `node atcctl.mjs ack <cursor>` | 브리핑 처리 완료. 다음 brief는 그 뒤 변화만 준다 |
 | `node atcctl.mjs issue <세션> <TYPE> [--stand <STAND>] [--flight <FLIGHT>] -- <내용>` | CLEARANCE를 기록하고 보낼 대상과 문구를 돌려준다 |

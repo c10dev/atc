@@ -14,13 +14,23 @@ export interface SessionCalls {
   role: string | null; // 관제 세션 폴더에서 온 기록이면 tower·occ …
   calls: Call[];
   turns: string[]; // 사용자 차례(사람·다른 세션의 메시지)가 시작된 시각. 도구 결과와 시스템이 끼운 메시지는 아니다
+  uses?: string[]; // 모든 도구 호출의 시각(이름 없이). 요청했을 때만 담는다(ATC-297)
 }
-export type ScanState = { reg: string | null; calls: Call[]; turns: string[] };
+export type ScanState = { reg: string | null; calls: Call[]; turns: string[]; uses?: string[] };
 
-export const emptyScan = (): ScanState => ({ reg: null, calls: [], turns: [] });
+export const emptyScan = (withUses = false): ScanState => ({ reg: null, calls: [], turns: [], ...(withUses ? { uses: [] } : {}) });
 
-// 한 줄을 읽어 ScanState에 더한다. 큰 줄을 JSON으로 풀지 않으려고 낱말로 먼저 거른다
+// 한 줄을 읽어 ScanState에 더한다. 큰 줄을 JSON으로 풀지 않으려고 낱말로 먼저 거른다.
+// st.uses가 있으면(SQUELCH의 opens 표, ATC-297) 도구를 부를 때마다 그 시각 하나만 더한다: 이름도 입력도 읽지 않는다
 export function scanLine(line: string, st: ScanState): void {
+  if (st.uses && line.includes('"type":"assistant"') && !line.includes('"isSidechain":true')) {
+    const n = line.split('"type":"tool_use"').length - 1;
+    if (n > 0) {
+      let at: string | null = null;
+      for (const m of line.matchAll(/"timestamp":"([^"]+)"/g)) at = m[1]!; // 줄 맨 끝쪽의 것이 줄 자신의 시각이다
+      if (at) for (let i = 0; i < n; i++) st.uses.push(at);
+    }
+  }
   if (line.includes('"type":"agent-name"')) {
     try {
       const o = JSON.parse(line) as { type?: string; agentName?: unknown };

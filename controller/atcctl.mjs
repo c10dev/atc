@@ -44,6 +44,27 @@ export function manualHash(dir) {
 }
 const manualFile = (dir) => join(STATE, "manuals", `${dir.replace(/[^A-Za-z0-9._-]+/g, "_")}.sha`);
 
+// `tick <역할>`(ATC-297): manual check, 브리핑, ack을 한 번에. 조용한 tick은 한 줄이다.
+// 서버의 GET /api/tick/<역할>이 `actionable`(할 일이 있는가)과 브리핑을 준다. 여기서는 줄을 만들고 ack할 cursor만 정한다(순수).
+// manual: { changed, line } — `manual check`와 같은 비교. 규정이 바뀌었으면 그 줄을 먼저 찍고 절대 ack하지 않는다(세션이 규정을 다시 읽도록)
+export function tickPlan(role, manual, res) {
+  const lines = [];
+  const forced = Boolean(manual?.changed);
+  if (forced) lines.push(manual.line);
+  const act = forced || res?.act !== false; // 모르면 할 일이다
+  if (!act) {
+    const n = Number.isInteger(res.info) && res.info > 0 ? res.info : 0;
+    lines.push(`TICK QUIET ${role} — nothing to act on${n ? ` (${n} info event${n > 1 ? "s" : ""} acked)` : ""}`);
+    const cursor = role === "tower" && res.brief?.cursor !== undefined && res.brief?.cursor !== null ? String(res.brief.cursor) : null;
+    return { lines, ack: cursor };
+  }
+  const reasons = [...(forced ? ["manual-changed"] : []), ...(Array.isArray(res?.reasons) ? res.reasons.map(String) : [])];
+  lines.push(`TICK ACT ${role}`, `REASONS: ${reasons.join(", ") || "-"}`);
+  if (res?.error) lines.push(`NOTE: ${String(res.error).slice(0, 160)} — 서버가 판정하지 못했다. \`brief\`로 직접 읽는다`);
+  if (res?.brief) lines.push(JSON.stringify(res.brief, null, 1));
+  return { lines, ack: null }; // 할 일이 있으면 세션이 처리한 뒤 직접 `ack <cursor>`
+}
+
 // CLEARANCE에 기록하는 답(ATC-122)과 출력
 export const CLEARANCE_ANSWERS = ["readback", "roger", "unable", "standby", "cancel"];
 const CLEARANCE_ANSWER_TEXT = {
@@ -67,6 +88,7 @@ const USAGE = `사용법:
   node atcctl.mjs cancel <C-0007>           CLEARANCE 취소
   node atcctl.mjs manual check              이 폴더의 CLAUDE.md·/tick(절차 파일 포함)이 마지막 ack 뒤 바뀌었는지 (UNCHANGED | CHANGED)
   node atcctl.mjs manual ack                지금 규정을 다시 읽었다고 기록
+  node atcctl.mjs tick <역할>               한 바퀴를 한 번에: manual check + 브리핑 + (할 일이 없으면) ack. TICK QUIET <역할> — … | TICK ACT <역할> + 이유 + 브리핑. 규정이 바뀌었으면 CHANGED를 먼저 찍고 ack하지 않는다
   node atcctl.mjs squelch <역할>            SQUELCH 판정(tower|mcc|occ|crosscheck|review)을 hook과 같이 받아 출력: OPEN <reason> | QUIET since HH:MM (n). 디버깅용
 
 DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은 SUPERVISOR)
@@ -996,6 +1018,23 @@ if (isMain) {
       } else {
         throw new Error("duty brief | flight <KEY> | pr <AIRPORT> <번호> | idea <번호> | card <kind> <key> | note -- '<규칙>' [--until <iso>] | charter -- '<영어 요청>' | stand <이름> | stand-done <이름> | linear create|update|comment …");
       }
+    } else if (cmd === "tick") {
+      if (args.length !== 1 || !SQUELCH_ROLES.includes(args[0])) throw new Error(`역할은 ${SQUELCH_ROLES.join("|")} 중 하나`);
+      const dir = process.cwd();
+      const nowHash = manualHash(dir);
+      let last = "";
+      try {
+        last = readFileSync(manualFile(dir), "utf8").trim();
+      } catch {}
+      const manual = {
+        changed: last !== nowHash,
+        line: `CHANGED ${nowHash.slice(0, 8)} — CLAUDE.md와 .claude/skills/tick/SKILL.md를 다시 읽은 뒤 \`manual ack\`${manualFiles(dir).length > MANUAL.length ? ". 절차 파일은 그 단계에서 다시 Read" : ""}`,
+      };
+      // 서버가 대답하지 못해도 조용하다고 하지 않는다: 오류는 할 일(TICK ACT)로 바꾸고 세션이 옛 방식으로 읽게 한다
+      const res = await call("GET", `/api/tick/${args[0]}`).catch((e) => ({ act: true, reasons: ["error"], error: e?.message ?? String(e) }));
+      const plan = tickPlan(args[0], manual, res);
+      for (const l of plan.lines) console.log(l);
+      if (plan.ack !== null) await call("POST", "/api/controller/ack", { consumer: "controller", cursor: plan.ack });
     } else if (cmd === "squelch") {
       if (args.length !== 1 || !SQUELCH_ROLES.includes(args[0])) throw new Error(`역할은 ${SQUELCH_ROLES.join("|")} 중 하나`);
       console.log(await squelchLine(args[0]));
