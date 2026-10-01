@@ -3,7 +3,6 @@
   margin-top: var(--space-3);
   padding: var(--space-3) var(--space-4) var(--space-2);
   background: var(--panel);
-  border: 1px solid var(--line);
   border-radius: var(--radius);
   font-size: var(--text-sm);
 }
@@ -19,9 +18,8 @@
 .bf-range {
   display: inline-flex;
   padding: var(--space-0-5);
-  border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
-  background: var(--panel);
+  background: var(--panel-2);
 }
 .bf-range button {
   padding: var(--space-0-5) var(--space-2);
@@ -71,25 +69,11 @@
 .bf-table td {
   color: var(--text);
 }
+/* 종류(VECTORS·DIRECT·SOLO·CREW)는 글자로 구분하고 색은 쓰지 않는다 */
 .bf-kind {
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.08em;
-}
-.bf-kind.is-vectors,
-.bf-tag.is-vectors {
   color: var(--muted);
-}
-.bf-kind.is-direct,
-.bf-tag.is-direct {
-  color: var(--cyan);
-}
-.bf-kind.is-solo,
-.bf-tag.is-solo {
-  color: var(--radar);
-}
-.bf-kind.is-crew,
-.bf-tag.is-crew {
-  color: var(--amber);
+  font: 700 var(--text-xs) var(--mono);
+  letter-spacing: 0.08em;
 }
 /* 2×2(네 칸): 머리글은 좁을 때 약호(V·SOLO), 지표 이름 칸을 줄인다 */
 .bf-narrow {
@@ -154,8 +138,9 @@
 .bf-tag {
   flex: none;
   padding: 0 var(--space-1);
-  border: 1px solid currentColor;
+  background: var(--panel-3);
   border-radius: var(--radius-sm);
-  font: 700 var(--text-2xs) var(--mono);
+  color: var(--muted);
+  font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.08em;
 }

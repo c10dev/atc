@@ -121,7 +121,7 @@ export function BriefsPanel({ refreshKey }: { refreshKey: string }) {
                 {m.label}
               </th>
               {cols.map((c) => (
-                <td key={c.key} className="mono">
+                <td key={c.key} className="tn">
                   {m.show(c.stats)}
                 </td>
               ))}

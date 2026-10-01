@@ -6,7 +6,6 @@
   margin: 0;
   padding: var(--space-2);
   background: var(--panel-2);
-  border-left: 2px solid var(--cyan);
   border-radius: var(--radius-md);
   font-size: var(--text-md);
 }
@@ -26,7 +25,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  border-left-color: var(--faint);
 }
 .dp-brief.is-waiting p {
   margin: 0;
@@ -40,12 +38,8 @@
 }
 .dp-brief-tag {
   align-self: flex-start;
-  padding: 0 var(--space-1);
-  border: 1px solid var(--faint);
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.1em;
+  color: var(--faint);
+  font: 600 var(--text-xs) var(--sans);
 }
 
 /* 사실 줄: 서버가 계산한 것만 */
@@ -61,26 +55,31 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+/* 통과(선행 끝남 등)는 중립, 걸리는 것만 amber */
 .dp-fact-ok {
-  color: var(--radar);
+  color: var(--muted);
 }
 .dp-fact-warn {
   color: var(--amber);
 }
 
-/* 접어 둔 자세히 */
-.dp-more {
+/* 접어 둔 자세히와 사실(개수가 머리에 보인다). 둘 다 summary는 키보드로 연다 */
+.dp-more,
+.dp-facts-fold {
   font-size: var(--text-xs);
 }
-.dp-more summary {
+.dp-more summary,
+.dp-facts-fold summary {
   cursor: pointer;
   color: var(--muted);
 }
-.dp-more summary:focus-visible {
+.dp-more summary:focus-visible,
+.dp-facts-fold summary:focus-visible {
   outline: 2px solid var(--cyan);
   outline-offset: 2px;
 }
-.dp-more[open] summary {
+.dp-more[open] summary,
+.dp-facts-fold[open] summary {
   margin-bottom: var(--space-2);
 }
 .dp-more > * + * {
@@ -89,8 +88,7 @@
 .dp-more-h {
   margin: var(--space-2) 0 var(--space-1);
   color: var(--muted);
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.12em;
+  font: 600 var(--text-xs) var(--sans);
 }
 .dp-body {
   max-height: 320px;

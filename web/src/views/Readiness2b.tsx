@@ -1,4 +1,4 @@
-import { ExternalLink } from "lucide-react";
+import { Check, ChevronRight, CircleQuestionMark, ExternalLink, type LucideIcon, X } from "lucide-react";
 import { Icon } from "../Icon.tsx";
 import { useEffect, useRef, useState } from "react";
 
@@ -15,11 +15,11 @@ export interface ReadinessItem {
   suggestion?: string; // 다른 저장소 CLAUDE.md에 붙여 넣을 문장(detail 끝 "추가할 문장: …"과 같다)
 }
 
-// 색만으로 전하지 않게 기호와 글자를 같이 쓴다
-const STATUS: Record<ReadinessStatus, { mark: string; text: string }> = {
-  ready: { mark: "✓", text: "준비됨" },
-  "not-ready": { mark: "✗", text: "안 됨" },
-  check: { mark: "?", text: "확인 필요" },
+// 색만으로 전하지 않게 아이콘과 글자를 같이 쓴다
+const STATUS: Record<ReadinessStatus, { icon: LucideIcon; text: string }> = {
+  ready: { icon: Check, text: "준비됨" },
+  "not-ready": { icon: X, text: "안 됨" },
+  check: { icon: CircleQuestionMark, text: "확인 필요" },
 };
 // 모르는 상태 값은 확인 필요로 본다
 const statusOf = (s: string): ReadinessStatus => (s in STATUS ? (s as ReadinessStatus) : "check");
@@ -60,9 +60,10 @@ export function Readiness2b({ items, mode }: { items: ReadinessItem[]; mode: "sh
   return (
     <details className={`dp-rd${allReady ? " is-ready" : ""}`} open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary className="dp-rd-head">
+        <Icon icon={ChevronRight} />
         <span className="dp-rd-title">2b 켜기 점검표</span>
         <span className="dp-rd-sum">
-          {allReady ? `✓ 모두 준비됨 ${ready}/${items.length}` : `${ready}/${items.length} 준비됨 · ${parts.filter((t) => !t.startsWith(STATUS.ready.text)).join(" · ")}`}
+          {allReady ? <><Icon icon={Check} /> {`모두 준비됨 ${ready}/${items.length}`}</> : `${ready}/${items.length} 준비됨 · ${parts.filter((t) => !t.startsWith(STATUS.ready.text)).join(" · ")}`}
         </span>
       </summary>
       <p className="dp-rd-note">
@@ -83,7 +84,7 @@ function Item({ item }: { item: ReadinessItem }) {
   return (
     <li className={`dp-rd-item s-${s}`}>
       <span className="dp-rd-badge">
-        <span aria-hidden>{STATUS[s].mark}</span> {STATUS[s].text}
+        <Icon icon={STATUS[s].icon} /> {STATUS[s].text}
       </span>
       <div className="dp-rd-body">
         <span className="dp-rd-label">{item.label}</span>
