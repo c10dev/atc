@@ -275,3 +275,29 @@
 .globe-flight-rows a {
   color: inherit;
 }
+
+/* G3: AIRPORT 사이의 큰 원 호(OUTSTATION, REPOSITION). 색은 :root 토큰만 */
+.globe-move-arc {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  opacity: 0.7;
+  pointer-events: none;
+}
+.globe-move-arc.reposition {
+  stroke-dasharray: 2 5;
+}
+.globe-move {
+  pointer-events: none;
+}
+.globe-move-rows b {
+  font-weight: 600;
+}
+.globe-move-rows b.tone-amber {
+  color: var(--amber);
+  stroke: none;
+}
+.globe-move-rows b.tone-faint {
+  color: var(--faint);
+  stroke: none;
+}
