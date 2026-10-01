@@ -33,6 +33,10 @@ import {
 import { mergeReviewOf, pullKey, reviewPasses, slugOfUrl } from "./landing.ts";
 import { readMergeReviews } from "./landing-review.ts";
 import { assertGithubOn } from "./github-switch.ts";
+import { hostedDbOfAirport } from "./airports.ts";
+import { type MigrationGate, migrationGateOf } from "./migration-gate.ts";
+import { listPullFiles } from "./sources/github.ts";
+import { readAppliedFor } from "./sources/supabase-migrations.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 
@@ -243,6 +247,16 @@ async function doMerge(plan: AirportPlan, p: PullRequest, st: AutolandState, s: 
     }
     const ticket = p.ticketKey ? s.tickets.find((t) => t.key === p.ticketKey) : undefined;
     const files = fresh.files && fresh.files.length < 100 ? fresh.files.map((f) => f.path) : null; // 100개(한도)면 다 못 봤다
+    // 마이그레이션 게이트(ATC-329): hostedDb가 있는 AIRPORT는 머지 직전에 파일 상태와 호스티드 DB의 적용 버전을 캐시 없이 새로 읽는다. 읽기만 한다
+    const db = hostedDbOfAirport(p.repo);
+    let migrationGate: MigrationGate | undefined;
+    if (db) {
+      const rows = await listPullFiles(slug, p.number).catch(() => null);
+      const paths = rows ? rows.map((f) => f.path) : files;
+      const touches = (paths ?? []).some((f) => f.startsWith(`${db.migrationsDir}/`));
+      const applied = touches ? await readAppliedFor(db) : null;
+      migrationGate = migrationGateOf({ hostedDb: db, files: paths, added: rows ? rows.filter((f) => f.status === "added").map((f) => f.path) : null, applied });
+    }
     const why = fresh.isDraft
       ? "Draft"
       : mergeExclusionOf({
@@ -258,6 +272,7 @@ async function doMerge(plan: AirportPlan, p: PullRequest, st: AutolandState, s: 
           // 스냅숏에서 이 head(위에서 같음을 확인)가 잇는 HUMAN CHECK 커밋만(ATC-31·37)
           carryFrom: p.humanCheck?.carriedFrom ? [p.humanCheck.carriedFrom] : [],
           reviewedSecurity: cfg.reviewedSecurity,
+          migrationGate,
           // 머지 직전에 머지 리뷰가 지금도 이 head에 있는지 파일에서 다시 본다(head가 같음은 위에서 확인). main 병합만 해서 이어받은 것은 그 이전 커밋의 기록
           mergeReviewPass: mergeReviewPassOn(slug, p),
         });

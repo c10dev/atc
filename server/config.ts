@@ -27,6 +27,8 @@ export const config = {
   // 앞 세션이 이만큼 안에서 손을 떼면 HANDOFF, 둘이 이보다 오래 겹치면 충돌.
   handoffGraceMs: Number(env.ATC_HANDOFF_GRACE_MIN || 5) * 60_000,
   linearApiKey: env.LINEAR_API_KEY || "",
+  // AUTOLAND 마이그레이션 게이트(ATC-329): 호스티드 DB 적용 버전을 읽는 토큰. 읽기에만 쓰고 로그·기록·화면에 쓰지 않는다
+  supabaseAccessToken: env.SUPABASE_ACCESS_TOKEN || "",
   linearTeamKey: (env.LINEAR_TEAM_KEY || "VOC").toUpperCase(), // 주 팀
   // 읽는 팀 전부(주 팀이 맨 앞). LINEAR_TEAM_KEYS=VOC,ATC. 없으면 주 팀 하나
   linearTeamKeys: parseTeamKeys(env.LINEAR_TEAM_KEY || "VOC", env.LINEAR_TEAM_KEYS),

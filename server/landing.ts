@@ -65,6 +65,7 @@ export interface GhPull {
   labels?: { name: string }[] | null;
   codex?: CodexSignal; // atc가 붙인다. 없으면 아직 안 읽었음
   files?: string[]; // atc가 붙인다(Codex 리뷰가 head에 없는 PR만). 외부 리뷰 제외(보안 경로) 판단용
+  added?: string[]; // changed 가운데 새로 더한 파일(ATC-329 마이그레이션 게이트). 못 읽으면 없다
   changed?: string[]; // atc가 붙인다(열린 PR 모두, head별 캐시). 파일 겹침(ATC-71)과 DIRTY 기록용. 못 읽으면 없다
   body?: string | null;
   threads?: GhThread[]; // atc가 붙인다(head에 Codex 지적이 있거나 BLOCKED인 PR만). 없으면 아직 안 읽었음

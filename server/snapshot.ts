@@ -1,6 +1,8 @@
 import { config } from "./config.ts";
 import { type Alert, type Claim, parentKeysOf, type Session, type Snapshot, type Ticket } from "./model.ts";
-import { resolveAirports } from "./airports.ts";
+import { hostedDbOfAirport, resolveAirports } from "./airports.ts";
+import { migrationGateOf } from "./migration-gate.ts";
+import { readAppliedCached } from "./sources/supabase-migrations.ts";
 import { recentClearances } from "./clearances.ts";
 import { type Occupancy, resolveOccupancy } from "./occupancy.ts";
 import { healthOfSession, inferTranscriptClaim, readClaudeSessions, readEndedSessions, readHookClaims } from "./sources/claude.ts";
@@ -281,6 +283,16 @@ export async function buildSnapshot(): Promise<Snapshot> {
   }
 
   // AUTOLAND(ATC-34): AIRPORT마다 다음 할 일과 PR마다 표시. merge 모드면 CLEARED PR의 제외 사유(HOLD, FLIGHT, 라벨, 보안 게이트, HUMAN CHECK)
+  // 마이그레이션 게이트(ATC-329): hostedDb가 있는 AIRPORT에서 CLEARED PR이 migrationsDir 아래를 바꿀 때만 적용 버전을 읽는다(90초 캐시, 표시용. 머지 직전에는 새로 읽는다)
+  const applied = new Map<string, string[] | null>();
+  if (alCfg.mode === "merge") {
+    for (const a of airports.open.filter((x) => alCfg.airports.includes(x.code))) {
+      const db = hostedDbOfAirport(a.repo);
+      if (!db) continue;
+      const touches = pulls.some((p) => p.repo === a.repo && p.landing === "CLEARED" && (github.byRepo.get(a.repo)?.find((g) => g.number === p.number)?.files ?? []).some((f) => f.startsWith(`${db.migrationsDir}/`)));
+      if (touches) applied.set(a.repo, await readAppliedCached(db));
+    }
+  }
   const autoland = planAutoland({
     cfg: alCfg,
     airports: airports.open.map((a) => ({ code: a.code, repo: a.repo })),
@@ -301,6 +313,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
         head: p.head,
         carryFrom: raw?.humanCarryFrom ?? (raw?.carryFrom ?? []).map((c) => c.sha),
         reviewedSecurity: alCfg.reviewedSecurity,
+        migrationGate: migrationGateOf({ hostedDb: hostedDbOfAirport(p.repo), files: raw?.files ?? null, added: raw?.added ?? null, applied: applied.get(p.repo) ?? null }),
         mergeReviewPass: p.mergeReview?.pass === true,
       });
     },

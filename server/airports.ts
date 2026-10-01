@@ -7,6 +7,7 @@ import { config } from "./config.ts";
 import type { Context, Hono } from "hono";
 import type { Airport, AirportStatus } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
+import { type HostedDb, hostedDbOf } from "./migration-gate.ts";
 
 // 저장소 = AIRPORT. 등록부(~/.local/state/atc/airports.json)가 AIRPORT 목록의 기준이다.
 // - projectsDir 아래 git 저장소는 자동으로 개설되고, 그 밖의 저장소는 API로 개설한다.
@@ -110,6 +111,12 @@ export function loadRegistry(): { entries: AirportEntry[]; exists: boolean } {
   } catch {
     return { entries: [], exists: false };
   }
+}
+
+// AIRPORT의 hostedDb 설정(ATC-329). 상태 폴더의 airports.json에만 있고 저장소에는 없다. 화면·API는 쓰지 못한다(손으로만 고친다)
+export function hostedDbOfAirport(repo: string): HostedDb | null {
+  const e = loadRegistry().entries.find((x) => x.path === repo && !x.closed);
+  return hostedDbOf((e as { hostedDb?: unknown } | undefined)?.hostedDb);
 }
 
 function saveRegistry(entries: AirportEntry[]) {
