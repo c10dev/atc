@@ -211,6 +211,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
           onStop={() => stop(a)}
           windowDays={brief.observedWindowDays}
           dispatchMode={brief.dispatchMode}
+          launchAccount={brief.launchAccount?.aircraft}
           onCrewChanged={load}
         />
       )}
@@ -276,6 +277,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
       {layout === "list" && inService.length > 0 ? (
         <StatusList
           rows={fleetRows(inService, Date.now())}
+          launchAccount={brief.launchAccount?.aircraft}
           open={open}
           onToggle={toggleOpen}
           absent={(reg) => {
