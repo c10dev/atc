@@ -53,7 +53,7 @@ export function summaryOf(inp: SummaryInput): SupervisorSummary {
     at: inp.at,
     master: counts.warning ? "warning" : counts.caution ? "caution" : null,
     counts,
-    pending: { dispatch: count(inp.items, "pending|proposal|"), humanCheck: count(inp.items, "pending|humancheck|"), tool: count(inp.items, "pending|tool|"), schedule: count(inp.items, "pending|schedule|") },
+    pending: { dispatch: count(inp.items, "pending|proposal|") + count(inp.items, "follow|approve|"), humanCheck: count(inp.items, "pending|humancheck|"), tool: count(inp.items, "pending|tool|"), schedule: count(inp.items, "pending|schedule|") },
     fuel: topFuelOf(inp.fuelAccounts),
     rts: inp.rts ? { result: inp.rts.result, at: inp.rts.at, from: inp.rts.from, to: inp.rts.to } : null,
     working: inp.working,
