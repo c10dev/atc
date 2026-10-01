@@ -1,6 +1,6 @@
 ---
 name: ui-review
-description: Use when a FLIGHT changes atc's web screen (web/src) or the ANNUNCIATOR app screens, before the PR, or when asked to audit one tab. Reviews the changed screens against atc's design language (docs/design-language.md section 5) and two vendored rule sets, clicks through the running screen to catch layout shifts, and prints a findings block for the PR body. Not for server, hooks or docs-only FLIGHTs.
+description: Use when a FLIGHT changes atc's web screen (web/src) or the ANNUNCIATOR app screens, before the PR, or when asked to audit one tab. Reviews the changed screens against atc's design language (docs/design-language.md section 5) a softer taste layer (docs/design-taste.md) and two vendored rule sets, clicks through the running screen to catch layout shifts, and prints a findings block for the PR body. Not for server, hooks or docs-only FLIGHTs.
 ---
 
 # ui-review
@@ -11,9 +11,20 @@ A review tool for screen changes. It answers the section 5 checklist of [docs/de
 
 1. Root `CLAUDE.md`.
 2. `docs/design-language.md`: the principles, 3.5 Craft and the section 5 checklist. **Do not copy it into your output; cite its numbers** (`3.5.4`, `principle 11`). It stays the single source.
-3. The vendored references, below. They only add rules.
+3. `docs/design-taste.md` (the taste brief): a softer third layer, below. A tendency from one round by one person, so it never outranks layers 1 and 2 and never produces a Blocker.
+4. The vendored references, below. They only add rules.
 
 A value the design language decided is **a decision, not a defect**: never report it, whatever a vendored rule says. Where a vendored rule and the design language disagree, the reference line is marked `CONFLICT`. Do not apply a `CONFLICT` line and do not decide it: list it under **Conflicts seen** in your output (once per rule, with the file and line it would have hit) and move on. The SUPERVISOR decides after the ATC-285 audit.
+
+## Taste layer (layer 3)
+
+Read [docs/design-taste.md](../../../docs/design-taste.md) before reviewing. It holds five numbered points (1 one focal element, 2 readable before quiet, 3 alignment and whitespace over density, 4 status-page form for history, 5 detail on demand). **Cite the point number only** (`taste 2`); never copy the brief's text into the output, and never quote its evidence. Read its status line: it is a tendency, revised when another category is judged.
+
+- **Severity cap.** A taste finding is **Should-fix** or **Note**, never a Blocker, and never makes the verdict Block. It still needs the proof gate below (contract = the point number, evidence = `file:line` plus a runtime or measured fact, correction in tokens). "Feels busy" is not evidence; a count is (equal-weight sections, text tokens and their measured ratio, left edges, height against the viewport).
+- **Conflict rule.** Where a taste point disagrees with `docs/design-language.md`, the design language wins. Do not apply the point and do not decide it: list it under **Conflicts seen** as `taste N vs <design-language rule>` with the file and line it would have hit (the SUPERVISOR decides). A value the design language decided is a decision, not a taste finding.
+- **Where taste looks.** Point 1: how many blocks compete at the same weight and size, and whether the card or view fits the viewport. Point 2: information text on a token weaker than `--muted` (measure the ratio in all three themes; the tokens are in `web/src/styles.css`). Point 3: label column width and left edge per section, numbers `tabular-nums` and right-aligned. Point 4: a history shown as a table where a bar row would answer "has it been OK lately?", and bars without a label. Point 5: sections that are long and always open, folds without a summary, a fold that moves anything above or beside it (the layout-stability step below measures it).
+- **Not a taste finding:** anything already in the section 5 checklist or the vendored rules (report it there), and anything that is a design-language decision.
+- Cap: at most 3 taste findings in `diff`, 6 in `audit`; merge repeats.
 
 References (read both before reviewing):
 
@@ -89,6 +100,7 @@ Section 5 line by line first. Then, in this order: focus and keyboard (visible f
 |---|---|---|
 | Section 5 checklist | lines applied: … | n findings / Clear |
 | Layout stability (runtime step) | controls clicked: n of m | n findings / Clear / Not verified (reason) |
+| Taste (layer 3, `docs/design-taste.md`) | points checked: 1 to 5 | n findings (Should-fix or Note) / Clear / Not reviewed (reason) |
 | Focus and keyboard | … | n findings / Clear / Not reviewed (reason) |
 | Targets, forms, states | … | … |
 | Long and empty content | … | … |
@@ -99,10 +111,11 @@ Section 5 line by line first. Then, in this order: focus and keyboard (visible f
 | Severity | Location | Contract | Evidence | Before | After |
 |---|---|---|---|---|---|
 | Blocker | `web/src/views/X.tsx:42` | 3.5.4 border budget | 3 inner rules in `.card` | … | … |
+| Note | `web/src/views/Y.css:10` | taste 2 | `.tag` text on `--faint`, 5.8:1 | `color: var(--faint)` | `color: var(--muted)` |
 
 **Conflicts seen** (not applied, for the SUPERVISOR)
 
-| Vendored rule | Design language | Where it would have hit |
+| Vendored rule or taste point | Design language | Where it would have hit |
 |---|---|---|
 
 **Considered but rejected**
@@ -112,7 +125,7 @@ Section 5 line by line first. Then, in this order: focus and keyboard (visible f
 
 **Verification**: the commands and interactions run, with what was observed. A check not run is **Not verified** + what remains.
 
-**Verdict**: Block (a Blocker remains) · Needs changes (only Should-fix or Note remain) · Approve (nothing actionable). List every Not verified item beside the verdict.
+**Verdict**: Block (a Blocker remains) · Needs changes (only Should-fix or Note remain) · Approve (nothing actionable). Taste findings alone never give Block. List every Not verified item beside the verdict.
 ```
 
 When there are no findings, omit the findings table, write "No actionable findings", and keep Verification, Considered but rejected and Verdict.
@@ -120,5 +133,6 @@ When there are no findings, omit the findings table, write "No actionable findin
 ## After the review
 
 - Fix every Blocker, or write it in the report as `BLOCKED` with the reason. Do not ship a Blocker silently.
-- Should-fix and Note items are fixed when cheap and otherwise stay in the block; the PR body keeps the block as written.
+- Should-fix and Note items (taste findings included) are fixed when cheap and otherwise stay in the block; the PR body keeps the block as written.
+- A taste point that a FLIGHT cannot satisfy without breaking the design language is a conflict to list, not a reason to bend the screen.
 - New candidate rules that are not in the design language (for example a hit-target size) are **not** added to it here. They are a SUPERVISOR decision.

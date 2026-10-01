@@ -29,7 +29,7 @@ Cut: a widget wall ("too dense") and a near-black page ("dim, hard to read"). Am
 
 ## Status of this brief
 
-v1 rests on one category (dashboards) and one round: one variant per reference, scores by one person. Treat it as a tendency and revise it when another category is judged. Nothing here is checked by a tool yet; wiring it into `ui-review` is proposed in the ATC-325 PR (`.claude/` is tier `user`).
+v1 rests on one category (dashboards) and one round: one variant per reference, scores by one person. Treat it as a tendency and revise it when another category is judged. `ui-review` reads this brief as a third, softer layer (ATC-326): its findings are Should-fix or Note, never a Blocker, and cite the point number only. Where a point disagrees with design-language, the skill lists the conflict and does not apply it.
 
 ## Precedence
 
