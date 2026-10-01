@@ -463,6 +463,7 @@ export interface GlobeScene {
   airports: { id: string; code: string; name: string; bearing: number; distance: number; runway: number }[];
   parked: { registration: string; callsign: string; airport: string }[];
   flights: GlobeFlight[]; // G2
+  moves: GlobeMove[]; // G3
 }
 
 // ── FLIGHT의 장면(G2, docs/globe.md 3.2·3.3) ───────────────────────────
@@ -605,6 +606,85 @@ export function flightsOf(input: GlobeFlightsIn, airports: readonly GlobeAirport
   return rows.map((r) => ({ ...r, outbound: outbound.get(`${r.airport}|${r.key}`)! }));
 }
 
+// ── AIRPORT 사이의 옮김(G3, docs/globe.md 3.4) ─────────────────────────
+// 진짜로 AIRCRAFT를 AIRPORT 사이로 옮기는 것은 둘뿐이다: OUTSTATION(다른 AIRPORT에서 일함)과 REPOSITION(base를 옮김). 큰 원 호로 그린다.
+// 서버는 어디서 어디로, 얼마나 왔나(t)만 정한다. 진행을 알 길이 없으면 중간점을 지어내지 않는다: t는 0(새 LAUNCH 전)이거나 1(그 뒤).
+export type GlobeMoveKind = "outstation" | "reposition";
+export const MOVE_FADE_MIN = 120; // 끝난 옮김의 흔적이 남는 시간(분)
+export const REPOSITION_STALE_MIN = 60; // 승인했는데 이만큼 지나도 안 끝난 실행은 그리지 않는다(실행이 끊긴 것)
+
+export interface GlobeMove {
+  kind: GlobeMoveKind;
+  aircraft: string; // REGISTRATION
+  callsign: string | null;
+  from: string; // AIRPORT 코드(옛 base)
+  to: string; // AIRPORT 코드
+  t: number; // 0..1, from→to 호 위의 몫. outstation은 늘 1(목적지에 있다)
+  endedAt: string | null; // 끝난 시각(흔적이 MOVE_FADE_MIN 동안 옅어진다). 아직 가는 중이면 null
+  failed: boolean; // REPOSITION의 실행이 끝까지 가지 못했다(base는 바뀌었는데 LAUNCH가 실패한 것 포함)
+  proposal: string | null; // REPOSITION이면 FLEET PLAN 제안 id
+}
+
+export interface GlobeMovesIn {
+  now: number;
+  callsigns: Readonly<Record<string, string>>; // REGISTRATION → 콜사인
+  // OUTSTATION: 세션의 소속 저장소와 지금 일하는 다른 저장소(server/away.ts awayOperations)
+  away: { registration: string; fromRepo: string; toRepo: string }[];
+  // FLEET PLAN의 REPOSITION 제안(foldFleetPlan의 줄에서 필요한 칸만)
+  repositions: {
+    id: string;
+    kind: string;
+    aircraft: string | null;
+    from?: string;
+    airport: string | null;
+    status: string;
+    approval: { at: string } | null;
+    execution: { at: string; ok: boolean } | null;
+  }[];
+}
+
+export function movesOf(input: GlobeMovesIn, airports: readonly GlobeAirportIn[]): GlobeMove[] {
+  const byRepo = new Map(airports.map((a) => [a.repo, a.code]));
+  const codes = new Set(airports.map((a) => a.code));
+  const { now } = input;
+  const out: GlobeMove[] = [];
+  const seen = new Set<string>();
+  for (const w of input.away) {
+    const from = byRepo.get(w.fromRepo);
+    const to = byRepo.get(w.toRepo);
+    if (!from || !to || from === to) continue;
+    const key = `${w.registration}|${to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ kind: "outstation", aircraft: w.registration, callsign: input.callsigns[w.registration] ?? null, from, to, t: 1, endedAt: null, failed: false, proposal: null });
+  }
+  out.sort((a, b) => (a.aircraft < b.aircraft ? -1 : a.aircraft > b.aircraft ? 1 : a.to < b.to ? -1 : 1));
+  const rep: GlobeMove[] = [];
+  for (const p of input.repositions) {
+    if (p.kind !== "REPOSITION" || !p.aircraft || !p.from || !p.airport || p.from === p.airport || !codes.has(p.from) || !codes.has(p.airport)) continue;
+    const base = { kind: "reposition" as const, aircraft: p.aircraft, callsign: input.callsigns[p.aircraft] ?? null, from: p.from, to: p.airport, proposal: p.id };
+    if (p.status === "executing") {
+      // 승인했고 아직 끝나지 않았다: 새 LAUNCH 전이라 t는 0
+      if (!p.approval || now - Date.parse(p.approval.at) > REPOSITION_STALE_MIN * 60_000) continue;
+      rep.push({ ...base, t: 0, endedAt: null, failed: false });
+    } else if ((p.status === "executed" || p.status === "failed") && p.execution) {
+      if (now - Date.parse(p.execution.at) >= MOVE_FADE_MIN * 60_000) continue;
+      const ok = p.status === "executed" && p.execution.ok;
+      rep.push({ ...base, t: ok ? 1 : 0, endedAt: p.execution.at, failed: !ok });
+    }
+  }
+  rep.sort((a, b) => ((a.proposal ?? "") < (b.proposal ?? "") ? -1 : 1));
+  return [...out, ...rep];
+}
+
+// 큰 원 호를 n+1개 점으로(양 끝 포함). 화면은 점마다 s의 sin으로 살짝 띄운다(arcLift)
+export function arcOf(a: LatLon, b: LatLon, n = 48): LatLon[] {
+  return Array.from({ length: n + 1 }, (_, i) => slerp(a, b, i / n));
+}
+// 호 위의 s(0..1)에서 지구 반지름에 대한 높이 몫. 양 끝은 땅, 가운데가 가장 높다(비행처럼 보이게, 지상 궤적이 아니게)
+export const ARC_PEAK = 0.06;
+export const arcLift = (s: number, peak = ARC_PEAK) => peak * Math.sin(Math.PI * clamp(s, 0, 1));
+
 // 홈 AIRPORT의 기본값: 살아 있는 세션이 가장 많은 곳, 없으면 코드순 첫 곳. 같은 수면 코드순
 export function defaultHome(airports: readonly GlobeAirportIn[], sessions: readonly GlobeSessionIn[]): string | null {
   const count = new Map<string, number>();
@@ -619,7 +699,7 @@ export function defaultHome(airports: readonly GlobeAirportIn[], sessions: reado
 // 열린 AIRPORT만 받는다(폐쇄·경로 없음은 부르는 쪽이 뺀다). home이 모르는 코드면 기본값을 쓴다.
 // parked는 FLIGHT가 없는 AIRCRAFT의 base. base가 없거나 모르는 AIRPORT면 그리지 않는다.
 // flights가 있으면 FLIGHT(G2)를 얹고, 그려진 FLIGHT의 AIRCRAFT는 세워 두지 않는다. 없으면 flights는 비고 parked는 flying 표시로 가른다(G1).
-export function globeSceneOf(input: { at: Date; airports: readonly GlobeAirportIn[]; sessions: readonly GlobeSessionIn[]; aircraft: readonly GlobeAircraftIn[]; home?: string | null; flights?: GlobeFlightsIn }): GlobeScene {
+export function globeSceneOf(input: { at: Date; airports: readonly GlobeAirportIn[]; sessions: readonly GlobeSessionIn[]; aircraft: readonly GlobeAircraftIn[]; home?: string | null; flights?: GlobeFlightsIn; moves?: GlobeMovesIn }): GlobeScene {
   const { airports } = input;
   const def = defaultHome(airports, input.sessions);
   const home = input.home && airports.some((a) => a.code === input.home) ? input.home : def;
@@ -642,5 +722,6 @@ export function globeSceneOf(input: { at: Date; airports: readonly GlobeAirportI
       .map((x) => ({ registration: x.registration, callsign: x.callsign, airport: x.base! }))
       .sort((a, b) => (a.registration < b.registration ? -1 : 1)),
     flights,
+    moves: input.moves ? movesOf(input.moves, airports) : [],
   };
 }
