@@ -162,6 +162,8 @@ An empty list says what would be there in one faint line (`LOGBOOKÏóê ARRIVED Í∏
 
 For a PR that changes a screen in atc or ANNUNCIATOR. Copy the lines that apply into the PR body and answer each in one line.
 
+Running atc sessions get the diff of this file on their next turn when it changes on `origin/main` (the rules-drift hook wired in `.claude/settings.json`, ATC-295; [hooks/README.md](../hooks/README.md) "Wired in atc").
+
 - [ ] Normal state: no signal colour, no motion, no "all fine" line (1).
 - [ ] Levels readable in greyscale; NEEDS YOU not amber (2).
 - [ ] Signal tokens used only for their meaning in 3.2 (3).

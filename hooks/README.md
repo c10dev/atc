@@ -83,6 +83,21 @@ To turn it off, remove the entry. The `claims/` folder can be deleted at any tim
 - **State**: `~/.local/state/atc/rules-ack/<sessionId>.json` (`root`, `ref`, `files`, `acked` hashes, `startedAt`, `checkedAt`, `changedAt`) and `rules-ack/blobs/<sha256>` (content for diffs). Each `start` removes session records with no check for 7 days, and content no record points to.
 - **FLEET**: each AIRCRAFT card shows its live sessions' state. It reads "RULES current", or "RULES 미확인 since <time>" with the files (the time of the last change: the ref's last commit, or the file's mtime). atc compares the records with the current files itself, so an idle session shows as behind too. An AIRCRAFT with no record shows nothing.
 
+### Wired in atc
+
+atc's own `.claude/settings.json` (ATC-295) runs the hook for every session opened in the atc checkout or one of its STANDs (worktrees), so a running AIRCRAFT gets the diff when a rules file changes:
+
+| Event | Mode |
+|---|---|
+| `SessionStart` | `start` |
+| `UserPromptSubmit`, `PostToolUse` (matcher `*`) | `check` |
+
+- **Files:** `--files CLAUDE.md,AGENTS.md,docs/design-language.md,.claude/skills/atc-task/SKILL.md` with `--ref origin/main`, so the files follow `origin/main` whatever the STAND has checked out. `AGENTS.md` does not exist in atc today (a missing file is a state of its own; the diff shows it if it appears). `.claude/skills/atc-task/SKILL.md` **is** watched: it is the team sessions' task procedure, and a change to it should reach a running AIRCRAFT the same way a `CLAUDE.md` change does.
+- **Command:** the same `$CLAUDE_PROJECT_DIR` / main-checkout fallback as the `kill-guard` entry (`f="$CLAUDE_PROJECT_DIR/hooks/rules-drift.mjs"; [ -f "$f" ] || f=/home/c10/projects/atc/hooks/rules-drift.mjs`). `--root` is not given, so the hook uses `$CLAUDE_PROJECT_DIR` (the STAND), then the hook's `cwd`.
+- **Never blocks:** the hook exits 0 and prints nothing on any error (see Fail open), and the command ends with `; exit 0`, so even a missing node or hook file cannot stop a prompt or a tool call. This is the opposite of `kill-guard`, which is fail-closed (`|| exit 2`). `hooks/rules-drift-settings.test.mjs` checks both.
+- **Long files:** `docs/design-language.md` is long. A large edit hits the 150-line cap and the session is told to Read the file again, which is the intended fallback.
+- After a merge, a newly launched atc AIRCRAFT shows "RULES current" on its FLEET card; a session started before the merge has no baseline for the new entries until its first turn (the first `check` records the baseline silently).
+
 ### Install (vocado)
 
 The SUPERVISOR merges these entries into vocado `.claude/settings.json` (or `.claude/settings.local.json` to keep the machine paths out of the repo). The hook is synchronous so the context reaches the turn, and `timeout` bounds it:
