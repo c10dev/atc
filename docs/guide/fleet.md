@@ -36,6 +36,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - atc는 답을 보내지 않는다. 표시하고 알릴 뿐이고, 답할지는 사람이 정한다.
 - `approve Entering worktree`로 멈추면 `STAND outside .claude/worktrees — attach and approve; see CREW BRIEFING`이 같이 보인다. 팀이 `.claude/worktrees/` 밖으로 워크트리를 열려 한 것이다. `claude attach`로 붙어 승인하면 이어 간다. atc가 띄운 팀의 CREW BRIEFING에는 STAND를 `EnterWorktree name=…`으로 열라는 규칙이 들어 있어 보통은 멈추지 않는다.
 - 답을 받으면 세션이 `working`이 되어 표시와 경보가 저절로 사라진다. 이때는 흐린 글씨로 세션이 하는 일이 보인다.
+- **승인 프롬프트에 서 있는 세션**은 Claude Code가 `working`으로 적고 `needs`에 `approve Write: …`를 함께 적는다(`blocked`가 아니다). 이때는 `NEEDS YOU`가 아니라 `PENDING · approve Write: …`(파란색)가 줄·카드(경보 띠)에 붙고, 10분이 지나면 SUPERVISOR 알림이 CAUTION으로 오른다. 그 세션에게 가는 호출이 답을 못 받고 있으면 바로 오르고 글에 `1 call waiting (FLIGHT PLAN D-0336)`처럼 적힌다. 승인은 늘 SUPERVISOR가 그 세션에서 한다. atc는 아무것도 보내지 않는다.
 
 ## 세션이 멈췄을 때: AIRCRAFT health
 
@@ -52,7 +53,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 | `MODEL` | 고른 모델이나 경로가 없음 | 모델을 고쳐 다시 띄운다. 그대로 재시도하지 않는다 |
 | `CONTEXT` | 대화가 너무 길어 이어갈 수 없음 | 새 CREW BRIEFING으로 다시 띄우고, STAND와 PR을 넘겨받게 한다 |
 | `PROVIDER` | ocx·OpenAI 호환 경로의 오류 | 기본 경로로 다시 띄운다 |
-| `PENDING` | 도구 승인을 기다림(멈춘 순간 세션이 알려 줌) | 그 세션에서 승인하거나 거절한다 |
+| `PENDING` | 도구 승인을 기다림(멈춘 순간 세션이 알려 줌). **10분이 지나면 CAUTION**(그 AIRCRAFT에게 가는 호출이 답을 못 받고 있으면 바로). 세션이 청하는 것은 줄과 카드에 `PENDING · approve Write: …`(파란색)로, 붙는 명령은 카드에 함께 보인다 | 그 세션에서 승인하거나 거절한다. 터미널에서는 카드에 보이는 `claude attach <job id>`(기본이 아닌 폴더면 `CLAUDE_CONFIG_DIR=… `이 붙은 것)로 붙는다 |
 | `UNANSWERED` | 지시에 10분 넘게 대답이 없음 | 지시를 다시 보낸다. atc는 스스로 보내지 않는다 |
 | `HUNG` | 작업 중인데 30분 넘게 기록이 없음 | 세션을 들여다본다. 계속되면 다시 띄운다 |
 | `DENIED` | 10분 안에 거부·hook 막힘이 3번 넘음 | permission 규칙으로 허용하거나 다시 브리핑한다 |

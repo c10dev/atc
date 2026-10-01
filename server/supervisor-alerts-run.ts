@@ -9,6 +9,10 @@ import type { Snapshot } from "./model.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { allProposals } from "./proposals.ts";
 import { followNow, loadFollow } from "./follow-run.ts";
+import { config } from "./config.ts";
+import { DEFAULT_HEALTH } from "./health.ts";
+import { pendingSinceByAircraft, waitingCallsByAircraft } from "./pending.ts";
+import { readRadio, setRadioPendingSource } from "./radio-run.ts";
 import { registrationOf } from "./registration.ts";
 import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { CONTROL_SESSIONS, controlDirOf, MAX_LAUNCHED } from "./session-control.ts";
@@ -87,7 +91,19 @@ export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
     ...repositionAlertInputs(rs, now),
     waiting: waitStuckNow(),
     follow: followAlertInput(s, now),
+    pending: pendingInput(s, now, teamPattern),
   });
+}
+
+// PENDING approval(ATC-327): 승인을 기다리는 세션이 없으면 기록을 읽지 않는다. 있으면 그 AIRCRAFT에게 가는 열린 RADIO 호출을 센다(읽기만)
+function pendingInput(s: Snapshot, now: number, teamPattern: string) {
+  const pendingMin = config.health.pendingMin ?? DEFAULT_HEALTH.pendingMin!;
+  if (!s.sessions.some((x) => x.status !== "dead" && x.health?.code === "PENDING")) return { now, pendingMin, calls: new Map(), teamPattern };
+  try {
+    return { now, pendingMin, calls: waitingCallsByAircraft(readRadio()), teamPattern };
+  } catch {
+    return { now, pendingMin, calls: new Map(), teamPattern }; // 교신 기록을 못 읽어도 시간 규칙은 그대로
+  }
 }
 
 // FOLLOW(ATC-278): follow.json에 든 번들의 줄. 접힌 번들은 뺀다. 따라가는 것이 없으면 보드를 셈하지 않는다
@@ -102,6 +118,9 @@ function followAlertInput(s: Snapshot, now: number) {
 
 // 스냅샷이 새로 나올 때 부른다. 바뀐 것이 있으면 `alert` 이벤트를 돌려주고, 아니면 null
 export function runSupervisorAlerts(s: Snapshot, now = Date.now()): AlertEvent | null {
+  // RADIO의 NO REPLY 사유(ATC-327): 받는 AIRCRAFT가 승인을 기다리는 중인지. 스냅샷마다 새로 정한다(간격 제한 앞에서)
+  const pendingSince = pendingSinceByAircraft(s.sessions, loadDispatchConfig().teamPattern);
+  setRadioPendingSource((reg) => pendingSince.get(reg) ?? null);
   if (now - lastAt < GAP_MS) return null;
   lastAt = now;
   const items = collectAlerts(s, now);

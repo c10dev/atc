@@ -46,6 +46,11 @@
   font-weight: 400;
   letter-spacing: 0;
 }
+/* PENDING approval(ATC-327): 사람의 결정을 기다림이라 --alert가 아니라 --blue */
+.needs-you.is-pending {
+  border-color: var(--blue);
+  color: var(--blue);
+}
 .job-detail {
   display: inline-block;
   max-width: 100%;

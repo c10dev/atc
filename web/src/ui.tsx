@@ -1,4 +1,5 @@
 import type { Airport, Session } from "../../server/model.ts";
+import { pendingNeedsOf } from "../../server/pending.ts";
 import type { Job } from "../../server/job-state.ts";
 import { type Activity, activityParts } from "../../server/activity.ts";
 import { standNeedsHint } from "../../server/stand-hint.ts";
@@ -82,6 +83,18 @@ export function NeedsYou({ job, attach, className = "" }: { job: Job | null | un
     <span className={`needs-you mono ${className}`.trim()} title={[job.detail, job.since ? `since ${job.since.slice(11, 16)}Z` : "", `SUPERVISOR가 \`${attach || "claude attach <id>"}\`로 붙어 답하거나 메시지를 보낸다`].filter(Boolean).join(" — ")}>
       NEEDS YOU{job.needs ? <span className="needs-you-text"> · {job.needs}</span> : null}
       {standNeedsHint(job.needs) ? <span className="needs-you-text"> · {standNeedsHint(job.needs)}</span> : null}
+    </span>
+  );
+}
+
+// PENDING approval(ATC-327): 세션이 도구 승인 프롬프트에 서 있고 Claude Code가 청하는 것을 적어 두었으면(state가 working이어도) 그 한 줄을 보인다.
+// NEEDS YOU와 같은 모양, 색은 --blue(사람의 결정을 기다림, 오류가 아님). attach: 카드가 복사하는 것과 같은 명령. 읽기만 한다 — 승인은 SUPERVISOR가 그 세션에서 한다
+export function PendingApproval({ job, health, attach, className = "" }: { job: Job | null | undefined; health?: { code: string } | null; attach?: string | null; className?: string }) {
+  const needs = pendingNeedsOf({ health, job });
+  if (!needs) return null;
+  return (
+    <span className={`needs-you is-pending mono ${className}`.trim()} title={`SUPERVISOR가 \`${attach || "claude attach <id>"}\`로 붙어 승인하거나 거절한다`}>
+      PENDING<span className="needs-you-text"> · {needs}</span>
     </span>
   );
 }

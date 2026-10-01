@@ -13,7 +13,7 @@ atc가 이미 찾아내는 것을 알릴 뿐, 새로 찾아내지는 않습니�
 | AIRCRAFT health | LIMIT(끊김), `RESUME 필요`, `STALLED`, NETWORK | 등급에 따름 |
 | ALERT | CONTACT가 끊긴 STAND, STAND 충돌, 머지됐는데 main에 안 닿음 | 등급에 따름 |
 | FLIGHT FOLLOWING | CAPTAIN이 SUPERVISOR의 go를 기다림, UNABLE, LAUNCH 실패 | 등급에 따름 |
-| SUPERVISOR 대기 | 도구 승인을 기다리는 PENDING, 판정할 DISPATCH 제안, HUMAN CHECK, 그리고 SCHEDULE이 **approval 모드**일 때 판정을 기다리는 SCHEDULE 작업(초안·동의·반대 상태). shadow 모드의 SCHEDULE은 게이트 판정이라 알리지 않습니다 | CALL |
+| SUPERVISOR 대기 | 도구 승인을 기다리는 PENDING(10분이 지나면 **CAUTION**으로 오른다. 그 AIRCRAFT에게 가는 FLIGHT PLAN·CLEARANCE 같은 호출이 답을 못 받고 있으면 바로 CAUTION이고 글에 그 호출이 든다. 10분 전이고 기다리는 호출이 없으면 ADVISORY 그대로. 글에는 세션이 청하는 것(`approve Write: …`)과 붙는 명령이 함께 나온다), 판정할 DISPATCH 제안, HUMAN CHECK, 그리고 SCHEDULE이 **approval 모드**일 때 판정을 기다리는 SCHEDULE 작업(초안·동의·반대 상태). shadow 모드의 SCHEDULE은 게이트 판정이라 알리지 않습니다 | CALL |
 | PR 착륙 가능 | CLEARED TO LAND가 된 PR | 조용함 |
 | RTS 결과 | RETURN TO SERVICE 성공·거절·ROLLBACK·실패 | 성공은 DONE, 실패·ROLLBACK은 WARNING, 거절은 CAUTION |
 | CONTROL RECYCLE 대기 | 컨텍스트가 CAP을 넘었는데 `waitAlertMin`(기본 60분) 넘게 재시작하지 못함. 막는 것이 글에 적힌다 | CAUTION. 기다리거나, 괜찮으면 FLEET의 CONTROL SESSIONS에서 손으로 STOP·LAUNCH |

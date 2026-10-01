@@ -8,10 +8,21 @@ import { readScheduleLines } from "./schedule.ts";
 import { radioPhraseOf, parseVoiceOverrides, voiceOf } from "./radio-phrase.ts";
 import { statusOf, type TtsConfig, VOICE_NAME } from "./tts.ts";
 import { ttsConfigNow, wavFor } from "./voice-run.ts";
+import { annotatePending } from "./pending.ts";
 import { changedRadio, parseRadioQuery, radioOf, selectRadio, txKey, type Transmission } from "./radio.ts";
+
+// 받는 AIRCRAFT가 도구 승인을 기다리는 중인지(ATC-327): REGISTRATION → PENDING이 시작된 시각. index.ts가 스냅샷으로 정한다. 없으면 사유를 붙이지 않는다
+let pendingSource: (reg: string) => string | null = () => null;
+export function setRadioPendingSource(f: (reg: string) => string | null) {
+  pendingSource = f;
+}
 
 // RADIO R1(ATC-170): 기록을 읽어 교신 목록을 만든다. 파일을 읽기만 하고 아무것도 쓰지 않는다.
 export function readRadio(): Transmission[] {
+  return annotatePending(readRadioRaw(), (reg) => pendingSource(reg));
+}
+
+function readRadioRaw(): Transmission[] {
   return radioOf({
     clearances: readClearanceOps(),
     proposals: readProposalOps(),

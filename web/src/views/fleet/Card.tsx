@@ -17,7 +17,8 @@ import { flightNumber } from "../../aviation.ts";
 import { OpenFlight } from "../../FlightLink.tsx";
 import { RelayBox } from "../../Relay.tsx";
 import { timeAgo } from "../../derive.ts";
-import { ActivityLine, JobDetail, NeedsYou, SuggestedReply } from "../../ui.tsx";
+import { ActivityLine, JobDetail, NeedsYou, PendingApproval, SuggestedReply } from "../../ui.tsx";
+import { pendingNeedsOf } from "../../../../server/pending.ts";
 import { formatClock, useSettings } from "../../settings.ts";
 import { CrewChangePending, CrewTable } from "../FleetCrew.tsx";
 import type { AbsentMark } from "./Absent.tsx";
@@ -311,6 +312,14 @@ export function Card({
         <NeedsYou job={a.job} attach={origin?.attach} />
         {a.job.detail && <span className="fl-line faint"> {a.job.detail}</span>}
         <SuggestedReply job={a.job} />
+      </li>,
+    );
+  }
+  if (pendingNeedsOf(a)) {
+    alerts.push(
+      <li key="pending" className="fl-needs-you">
+        <PendingApproval job={a.job} health={a.health} attach={origin?.attach} />
+        {origin?.attach && <span className="fl-line faint mono"> {origin.attach}</span>}
       </li>,
     );
   }

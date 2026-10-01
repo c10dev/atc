@@ -158,6 +158,12 @@
   border-left: 3px solid var(--amber);
   padding-left: var(--space-2);
 }
+/* NO REPLY의 사유(ATC-327): 한 줄, 흐리게. 서버가 정한 글을 그대로 그린다 */
+.rd-reason {
+  flex-basis: 100%;
+  color: var(--faint);
+  font-size: var(--text-xs);
+}
 .rd-link {
   color: var(--blue);
   font-size: var(--text-xs);
