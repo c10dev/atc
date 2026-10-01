@@ -2,6 +2,8 @@ import type { Hono } from "hono";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { fleetView, loadFleet } from "./fleet.ts";
 import { globeSceneOf } from "./globe.ts";
+import { landDecisionOf } from "./land-by.ts";
+import { mccLandInfoCached } from "./mcc-run.ts";
 import { milestonesNow, progressNow } from "./milestones-run.ts";
 import type { Snapshot } from "./model.ts";
 
@@ -14,6 +16,8 @@ export function mountGlobe(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const now = Date.now();
     const views = fleetView(s, loadFleet(), loadDispatchConfig().teamPattern);
     const milestones = milestonesNow(s, now);
+    // 누가 착륙시키나(ATC-300): TOWER·SUPERVISOR QUEUE·알림과 같은 landByOf를 캐시된 등급으로만 부른다(GitHub·Linear를 더 부르지 않는다)
+    const mcc = mccLandInfoCached(s);
     return c.json(
       globeSceneOf({
         at: new Date(now),
@@ -30,6 +34,7 @@ export function mountGlobe(app: Hono, getSnapshot: () => Promise<Snapshot>) {
           aircraft: views.filter((a) => !a.retired).map((a) => ({ registration: a.registration, callsign: a.callsign, status: a.status, flying: a.flying })),
           milestones: Object.fromEntries(milestones),
           progress: progressNow(s, milestones, now),
+          land: (p) => landDecisionOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false),
         },
       }),
     );
