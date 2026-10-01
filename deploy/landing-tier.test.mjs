@@ -45,6 +45,20 @@ test("설정·지침·CI·의존성·hook·배포는 user", () => {
   assert.equal(tierOf(["deploy/README.md", "deploy/README.ko.md"]).tier, "auto");
 });
 
+test("rulebook/(에이전트 절차 plugin, ATC-286)은 user, 이름만 든 경로는 그대로", () => {
+  for (const f of ["rulebook/.claude-plugin/plugin.json", "rulebook/skills/qrh-04-go-around/SKILL.md", "rulebook/skills/x/SKILL.md", "rulebook/README.md"]) {
+    const r = tierOf([f]);
+    assert.equal(r.tier, "user", f);
+    assert.equal(r.reasons[0].why, "규정집(에이전트 절차, plugin)");
+  }
+  assert.equal(tierOf(["server/proposals.ts", "rulebook/skills/x/SKILL.md"]).tier, "user");
+  // 폴더가 맨 위가 아니거나 이름만 같으면 지금과 같다
+  assert.equal(tierOf(["docs/rulebook.md"]).tier, "auto");
+  assert.equal(tierOf(["docs/rulebook/index.md"]).tier, "auto");
+  assert.equal(tierOf(["web/src/rulebook/x.ts"]).tier, "auto");
+  assert.equal(tierOf(["rulebook.md"]).tier, "auto");
+});
+
 test("DUTY L1(D7a): claude/duty-* 브랜치의 PR도 바뀐 파일 경로로만 등급이 정해진다(문서는 auto, 자기 권한 파일은 user)", () => {
   assert.equal(tierOf(["docs/charter-desk.md", "docs/charter-desk.ko.md", "changelog.d/x.md"]).tier, "auto", "DUTY의 설계 문서 PR은 MCC가 착륙시킨다");
   assert.equal(tierOf(["docs/charter-desk.md", "duty/settings.json"]).tier, "user");
