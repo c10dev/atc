@@ -10,6 +10,7 @@ import {
   type AutolandMode,
   type AutolandRecord,
   type AutolandState,
+  checkWarningsOf,
   escalateOf,
   headKey,
   type InFlight,
@@ -25,6 +26,7 @@ import {
   reviewRequestOf,
   saveAutoland,
   saveAutolandState,
+  setCheckWarnings,
   settleOf,
   writeResultOf,
 } from "./autoland.ts";
@@ -114,6 +116,7 @@ async function cycle(s: Snapshot) {
     appendRecord({ op: "groundstop", mode: cfg.mode, airport: g.airport, head: g.sha, result: "stopped", detail: `main ${g.failing.join(", ")} 실패` });
   }
   st.groundStops = stops;
+  setCheckWarnings(checkWarningsOf(cfg, covered, s.atfm.mains)); // applicationCheck가 main에서 어떤 체크·워크플로 이름과도 안 맞으면 설정 창이 알린다(ATC-330)
 
   // 갱신한 PR 정리: 닫힘·CI 끝남(CLEARED나 다른 막힘)·시간 초과
   const settled: { f: InFlight; p: PullRequest }[] = [];

@@ -2,7 +2,7 @@ import { chmodSync, existsSync, readFileSync, renameSync, statSync, writeFileSyn
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { Hono } from "hono";
-import { AUTOLAND_MODES, type AutolandMode, loadAutoland, loadAutolandState, REVIEWED_SECURITY, type ReviewedSecurity } from "./autoland.ts";
+import { AUTOLAND_MODES, type AutolandMode, type CheckWarning, getCheckWarnings, loadAutoland, loadAutolandState, REVIEWED_SECURITY, type ReviewedSecurity } from "./autoland.ts";
 import { setAutolandMode, setReviewedSecurity } from "./autoland-run.ts";
 import { config } from "./config.ts";
 import { accountFolders, observedLabelsOn } from "./accounts.ts";
@@ -44,7 +44,7 @@ export interface ServerSettings {
   // FUEL REMAINING(ATC-55): dispatch.json fuel. hold는 DISPATCH HOLD 스위치(D3, 기본 꺼짐), 임계값은 쓴 몫 %
   fuel: { hold: boolean; infoPct: number; holdPct: number };
   // AUTOLAND(ATC-34): autoland.json의 스위치와 맡은 AIRPORT, 걸린 GROUND STOP
-  autoland: { mode: AutolandMode; reviewedSecurity: ReviewedSecurity; airports: string[]; applicationCheck: string; groundStops: { airport: string; sha: string; failing: string[]; at: string }[] };
+  autoland: { mode: AutolandMode; reviewedSecurity: ReviewedSecurity; airports: string[]; applicationCheck: string; groundStops: { airport: string; sha: string; failing: string[]; at: string }[]; applicationCheckWarnings: CheckWarning[] };
   // MCC(docs/mcc.md): mcc.json의 스위치와 맡은 AIRPORT
   mcc: { mode: MccMode; airport: string };
   // FLEET PLAN REPOSITION(ATC-179): fleet-plan.json. 기본 shadow. auto는 ⚠(하루 dailyMax 상한, flapping이면 approval로 돌아옴)
@@ -116,7 +116,7 @@ export function readServerSettings(): ServerSettings {
     fuel: loadDispatchConfig().fuel,
     autoland: (() => {
       const a = loadAutoland();
-      return { mode: a.mode, reviewedSecurity: a.reviewedSecurity, airports: a.airports, applicationCheck: a.applicationCheck, groundStops: loadAutolandState().groundStops.map(({ airport, sha, failing, at }) => ({ airport, sha, failing, at })) };
+      return { mode: a.mode, reviewedSecurity: a.reviewedSecurity, airports: a.airports, applicationCheck: a.applicationCheck, groundStops: loadAutolandState().groundStops.map(({ airport, sha, failing, at }) => ({ airport, sha, failing, at })), applicationCheckWarnings: [...getCheckWarnings()] };
     })(),
     mcc: (() => {
       const m = loadMcc();

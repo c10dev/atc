@@ -23,6 +23,7 @@ import {
   slotsOf,
   type SlotView,
   undoneOf,
+  workflowNamesOf,
 } from "./atfm.ts";
 import type { AircraftView } from "./fleet.ts";
 import type { GhPull } from "./landing.ts";
@@ -99,6 +100,27 @@ test("기본 브랜치 상태(ATC-121): 늘 도는 체크가 이 SHA에 아직 �
   assert.deepEqual(mainStateOf([], [], null), { state: "none", failing: [], checks: 0 });
   assert.deepEqual(mainStateOf([], []), { state: "none", failing: [], checks: 0 });
   assert.equal(mainStateOf([{ name: "codex", status: "completed", conclusion: "success" }], []).state, "success");
+});
+
+test("workflowNamesOf(ATC-330): 실패한 체크 런의 워크플로 이름과 보이는 이름 전부", () => {
+  const runs = [
+    { name: "build", conclusion: "failure", suite: 1 },
+    { name: "test", conclusion: "success", suite: 1 },
+    { name: "deploy-preview", conclusion: "failure", suite: 2 }, // 워크플로가 아닌 앱의 suite
+    { name: "lint", conclusion: "success", suite: 3 },
+  ];
+  const suites = new Map<number, string | null>([[1, "app-check"], [2, null], [3, "lint-workflow"]]);
+  const r = workflowNamesOf(runs, [{ context: "ci/external" }], suites);
+  assert.deepEqual(r.workflowsFailing, ["app-check"]);
+  assert.deepEqual(r.names, ["build", "test", "deploy-preview", "lint", "ci/external", "app-check", "lint-workflow"]);
+  // 실패가 없으면 워크플로도 없다
+  assert.deepEqual(workflowNamesOf([{ name: "build", conclusion: "success", suite: 1 }], [], suites).workflowsFailing, []);
+  // suite id가 없는 런(commit status처럼)은 이름만
+  assert.deepEqual(workflowNamesOf([{ name: "build", conclusion: "failure" }], [], suites), { workflowsFailing: [], names: ["build"] });
+});
+
+test("workflowNamesOf: 워크플로를 못 읽었으면(null) 아무것도 말하지 않는다 — 모름", () => {
+  assert.deepEqual(workflowNamesOf([{ name: "build", conclusion: "failure", suite: 1 }], [], null), {});
 });
 
 test("CI 소요 시간: 체크가 모두 끝났을 때 가장 이른 시작 → 가장 늦은 끝", () => {

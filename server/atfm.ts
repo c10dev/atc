@@ -151,9 +151,27 @@ export interface MainStatus {
   failing: string[];
   checks: number;
   at: string;
+  // ATC-330: 실패한 체크 런이 속한 워크플로 이름(AUTOLAND GROUND STOP의 applicationCheck가 체크 이름이든 워크플로 이름이든 걸리게).
+  // names: 이 head에서 보이는 체크 런·commit status·워크플로 이름 전부. 워크플로를 못 읽었으면 둘 다 없다(모름 — 경고도 하지 않는다)
+  workflowsFailing?: string[];
+  names?: string[];
 }
 
 const FAIL = new Set(["failure", "timed_out", "cancelled", "action_required", "startup_failure", "error"]);
+
+// 체크 런 → 워크플로 이름(순수). suites: check suite id → 워크플로 이름(워크플로가 아닌 앱의 suite는 null). null이면 못 읽음.
+// 실패한 체크 런의 suite가 가리키는 워크플로가 workflowsFailing, 보이는 이름 전부가 names
+export function workflowNamesOf(
+  runs: { name: string; conclusion: string | null; suite?: number | null }[],
+  statuses: { context: string }[],
+  suites: ReadonlyMap<number, string | null> | null,
+): Pick<MainStatus, "workflowsFailing" | "names"> {
+  if (!suites) return {};
+  const failing = runs.filter((r) => FAIL.has(String(r.conclusion).toLowerCase()) && r.suite != null).map((r) => suites.get(r.suite!) ?? null);
+  const workflows = runs.map((r) => (r.suite != null ? suites.get(r.suite) ?? null : null));
+  const keep = (xs: (string | null)[]) => [...new Set(xs.filter((x): x is string => Boolean(x)))];
+  return { workflowsFailing: keep(failing), names: keep([...runs.map((r) => r.name), ...statuses.map((s) => s.context), ...workflows]) };
+}
 
 // check-runs(name·status·conclusion)와 commit status(context·state)로 head 상태를 정한다(순수).
 // expectCheck: 이 저장소가 main에서 늘 돌리는 체크 이름(MCC AIRPORT의 ciCheck). 그 체크가 이 SHA에 아직 없으면 — 새 커밋이라 체크가 뜨기 전 —

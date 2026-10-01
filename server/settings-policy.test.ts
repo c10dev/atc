@@ -5,7 +5,7 @@ import type { ServerSettings } from "./settings.ts";
 
 const settings = (over: Partial<Pick<ServerSettings, "autoland" | "mcc" | "review" | "fuel">> & { jev?: string } = {}) =>
   ({
-    autoland: { mode: "off", reviewedSecurity: "off", airports: [], applicationCheck: "", groundStops: [] },
+    autoland: { mode: "off", reviewedSecurity: "off", airports: [], applicationCheck: "", groundStops: [], applicationCheckWarnings: [] },
     mcc: { mode: "shadow", airport: "ATCC" },
     review: { security: "exclude" },
     fuel: { hold: false, infoPct: 80, holdPct: 95 },
@@ -18,7 +18,7 @@ test("modeLine: 여섯 스위치를 한 줄로, 기본은 모두 꺼짐", () => 
 });
 
 test("modeSegments: ⚠ 모드만 warn, REVIEW deepseek는 보이는 이름으로", () => {
-  const segs = modeSegments(settings({ autoland: { mode: "merge", reviewedSecurity: "delegate", airports: [], applicationCheck: "", groundStops: [] }, mcc: { mode: "land", airport: "ATCC" }, review: { security: "deepseek" }, fuel: { hold: true, infoPct: 80, holdPct: 95 }, jev: "shadow" }));
+  const segs = modeSegments(settings({ autoland: { mode: "merge", reviewedSecurity: "delegate", airports: [], applicationCheck: "", groundStops: [], applicationCheckWarnings: [] }, mcc: { mode: "land", airport: "ATCC" }, review: { security: "deepseek" }, fuel: { hold: true, infoPct: 80, holdPct: 95 }, jev: "shadow" }));
   assert.deepEqual(segs.map((x) => x.warn), [true, true, true, true, true, true]);
   assert.equal(modeLine(segs), "AUTOLAND merge · AUTOLAND REVIEW delegate · MCC land · JEV shadow · FUEL HOLD on · REVIEW sonnet (deepseek)");
   assert.deepEqual(modeSegments(settings()).map((x) => x.warn), [false, false, false, false, false, false]);
