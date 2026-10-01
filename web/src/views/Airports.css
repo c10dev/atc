@@ -109,7 +109,7 @@
   background: transparent;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  color: var(--cyan);
+  color: var(--text);
   font: 700 var(--text-sm) var(--mono);
   letter-spacing: 0.1em;
   cursor: pointer;
