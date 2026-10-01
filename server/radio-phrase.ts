@@ -13,6 +13,7 @@ const clean = (s: string) => s.replace(PHRASE_CHARS, " ").replace(/\s+/g, " ").r
 const CALL_VERB: Record<string, string> = {
   LAND: "land",
   "GO AROUND": "go around",
+  FIX: "fix",
   HOLD: "hold",
   CONTINUE: "continue",
   INFO: "information",

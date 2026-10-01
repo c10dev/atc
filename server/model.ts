@@ -156,7 +156,17 @@ export interface Alert {
 }
 
 // CLEARANCE. TOWER 세션이 atc에 기록하고 팀 세션에 메시지로 보낸다. 팀이 READBACK하면 readbackAt이 찍힌다.
-export type ClearanceType = "TRAFFIC" | "HOLD" | "CONTINUE" | "LAND" | "GO AROUND" | "REPORT" | "INFO";
+// review-findings 막힘이 들고 있는 구조 자료(ATC-270). FIX 지시(server/fix.ts)가 상태에서 글을 다시 만드는 데 쓴다.
+// counts: P0·P1·P2 수(모르면 null), text: 지적 본문(없으면 null), from: carried의 이전 커밋 7자리
+export interface ReviewFindings {
+  source: "mcc" | "review" | "codex" | "carried";
+  by: string | null; // 지적한 쪽의 이름("MCC INSPECTION", 착륙 리뷰어 이름). codex·carried는 null
+  counts: [number, number, number] | null;
+  text: string | null;
+  from: string | null;
+}
+
+export type ClearanceType = "TRAFFIC" | "HOLD" | "CONTINUE" | "LAND" | "GO AROUND" | "FIX" | "REPORT" | "INFO";
 
 export interface Clearance {
   id: string; // "C-0007"
@@ -242,7 +252,7 @@ export interface PullRequest {
   standPath: string | null; // 그 브랜치를 체크아웃한 워크트리 path
   draft: boolean;
   landing: "CLEARED" | "APPROACH";
-  blocks: { code: LandingBlockCode; text: string; en: string }[]; // text: 화면용 한국어 한 줄, en: 팀에 보내는 영어 한 줄(ATC-174)
+  blocks: { code: LandingBlockCode; text: string; en: string; findings?: ReviewFindings }[]; // text: 화면용 한국어 한 줄, en: 팀에 보내는 영어 한 줄(ATC-174)
   readyAt: string | null; // 이 head에서 모든 조건이 처음 맞은 시각. CLEARED일 때만
   changed?: string[]; // PR이 고친 파일(ATC-71 읽기, 못 읽었으면 없음). GO AROUND가 머지된 PR과 겹친 파일을 적는다(ATC-128)
   createdAt: string; // PR을 연 시각 (APPROACH 정렬, LAND CLEARANCE 짝짓기)

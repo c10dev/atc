@@ -28,7 +28,7 @@ Wait until DELTA finishes
 ```
 
 - 팀 리더는 끝줄이 청하는 답으로 답한다(위 "답하는 말"). 형식 없이 거부하거나 질문하면 TOWER가 SUPERVISOR에게 전한다.
-- 종류: TRAFFIC · HOLD · CONTINUE · LAND · GO AROUND · REPORT · INFO. LAND·GO AROUND·HOLD·CONTINUE는 W/U, INFO·TRAFFIC·REPORT는 R(끝줄이 `ROGER C-xxxx`를 청한다).
+- 종류: TRAFFIC · HOLD · CONTINUE · LAND · GO AROUND · FIX · REPORT · INFO. LAND·GO AROUND·FIX·HOLD·CONTINUE는 W/U, INFO·TRAFFIC·REPORT는 R(끝줄이 `ROGER C-xxxx`를 청한다).
 
 ## GO AROUND: base와 어긋난 PR
 
@@ -42,6 +42,18 @@ GO AROUND: PR #194 (ATC-89) head 1a2b3c4 conflicts with base after #190, #192 me
 - SUPERVISOR는 팀이 풀지 못할 때만 듣는다: UNABLE, 받을 세션이 없음, 같은 PR에 한 시간 안 두 번째 GO AROUND.
 - 같은 head에는 한 번만 나간다. 새로 push한 head가 아직 충돌이면 다시 나갈 수 있다(한 시간 안이면 SUPERVISOR 몫). atc는 충돌을 스스로 풀지 않는다. 감지하고 알릴 뿐이다.
 
+## FIX: 리뷰 지적
+
+APPROACH PR의 현재 head에 리뷰 지적(MCC INSPECTION, REVIEW, Codex, 이어받은 리뷰)이 있으면 atc는 그 PR의 STAND를 쥔 팀에 `FIX`를 보낸다(ATC-270). INFO가 아니라 **행동 지시**다. 문구는 서버가 만들고 TOWER는 그대로 보낸다. P0·P1 지적은 줄을 자르지 않고 싣고, P2는 개수와 PR 주소만 적는다:
+
+```
+FIX PR #320 (ATC-257): MCC INSPECTION returned FINDINGS on head a090f16 (P0 0 · P1 1 · P2 3). P1: server/x.ts:10 … 3 P2 findings in the full text on the PR: https://github.com/…/pull/320. Fix them on the same branch, or say in the PR body why one stays (PILOT'S DISCRETION); run the checks and push; MCC re-inspects the new head. Reply READBACK, or UNABLE with the reason. head a090f16
+```
+
+- 팀 리더는 `READBACK C-xxxx`로 답하고, 같은 브랜치에서 고치고(안 고칠 것은 PR 본문에 이유), 검사를 돌려 push한다. 못 하면 `UNABLE C-xxxx — 사유`. 늦으면 다른 READBACK처럼 overdue 규칙을 따른다.
+- 상태에서 만든다: 서버가 재시작돼 TOWER가 이벤트를 놓쳐도(`reset`) 지적이 있는 head는 FIX를 받는다. 같은 head에는 한 번만 나가고, 새로 push한 head에 지적이 또 나오면 다시 나간다.
+- SUPERVISOR는 받을 세션이 없을 때, 한 시간 안에 같은 PR에 세 번째 FIX가 나갈 때, 팀이 UNABLE로 답할 때만 듣는다.
+
 ## LAND와 LANDING 막힘 알림
 
 - `LAND`는 **CLEARED TO LAND**인 PR에만 나간다([개념](concepts.md)의 LANDING SEQUENCE). 받는 쪽은 그 PR의 STAND를 쥔 팀이다. 문구는 atc 서버가 만들고 TOWER는 그대로 보낸다. 번호는 같은 저장소·같은 base의 CLEARED PR 안에서 센 순번이다. 다른 저장소의 PR이 머지돼도 rebase할 필요가 없어서다:
@@ -54,7 +66,7 @@ GO AROUND: PR #194 (ATC-89) head 1a2b3c4 conflicts with base after #190, #192 me
 
   1번은 바로 머지해도 된다. 2번부터는 같은 저장소의 바로 앞 PR이 머지되기를 기다렸다가 rebase하고 LANDING한다. FLIGHT가 없는 PR은 괄호 부분이 빠진다.
 - MCC AIRPORT(ATCC)의 PR은 `LAND`를 받지 않는다(ATC-151). 그 저장소의 착륙은 MCC(`land`·`land+rts` 모드에서 `auto`·`flagged` 등급)나 SUPERVISOR(`user` 등급, ESCALATE·HOLD, `shadow`·`rts` 모드, 등급을 아직 모를 때)의 몫이라 브리핑의 `landBy`가 `mcc`·`supervisor`이고 `landText`가 `null`이다. 충돌(GO AROUND)은 그대로 팀에 간다. 다른 AIRPORT는 위와 같다. AIRPORTS 화면에서 "팀 머지"를 끈 AIRPORT(예: 팀이 머지하지 않는 앱 저장소)도 `landBy`가 `supervisor`라 `LAND`가 나가지 않는다(ATC-154).
-- APPROACH인 PR은 `LAND`를 받지 않는다. CAPTAIN이 손써야 할 막힘(CI 실패, head 리뷰 없음, Codex 지적, Codex 한도, 변경 요청, rebase·충돌 등)이 새로 생기면 TOWER가 `INFO`로 알린다:
+- APPROACH인 PR은 `LAND`를 받지 않는다. CAPTAIN이 손써야 할 막힘(CI 실패, head 리뷰 없음, Codex 한도, 변경 요청 등)이 새로 생기면 TOWER가 `INFO`로 알린다:
 
   ```
   [ATC C-0012] ECHO (TEAM_E) · INFO
@@ -63,7 +75,7 @@ GO AROUND: PR #194 (ATC-89) head 1a2b3c4 conflicts with base after #190, #192 me
   — When received, reply to this message with "ROGER C-0012".
   ```
 
-- 같은 막힘으로는 다시 보내지 않는다. CI 진행 중이나 GitHub 계산 중처럼 기다리면 풀리는 것은 알리지 않는다.
+- 같은 본문으로는 다시 보내지 않는다. atc가 마지막 INFO 본문과 상태를 비교해 정하므로 서버가 재시작돼도 빠지거나 두 번 가지 않는다(ATC-270). CI 진행 중이나 GitHub 계산 중처럼 기다리면 풀리는 것은 알리지 않는다. 리뷰 지적은 INFO가 아니라 아래 FIX가 맡는다.
 - 팀은 ROGER만 하고, 고치는 방법은 CAPTAIN이 정한다. 막힘이 풀리면 PR은 저절로 CLEARED TO LAND가 되고 그때 `LAND`가 온다.
 - **GROUND STOP**(3단계 출발 중지, 스위치로 켰을 때만): 그 AIRPORT에는 `LAND`가 나가지 않는다. 시작할 때 CLEARED PR의 팀에 `HOLD`("GROUND STOP: <사유> — LAND 보류")가, 풀릴 때 `CONTINUE`("GROUND STOP 풀림 — LANDING SEQUENCE대로 진행")가 간다. 그 AIRPORT에는 새 배정도 나가지 않는다.
 
