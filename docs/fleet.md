@@ -793,7 +793,7 @@ Two things follow. VCDO throughput is bounded by landing, not by the number of t
 
 **Principles** (from how airlines run fleet planning, crew control and maintenance; sources at the end of this section):
 
-1. **Propose with reasons, the SUPERVISOR decides.** Airline optimizers (crew pairing and rostering, disruption recovery) produce ranked options with explicit trade-offs, and ops control approves. FLEET PLAN proposals carry reason codes with numbers, and start in shadow: agree or disagree only, the same gate as DISPATCH and SCHEDULE (20 verdicts, 80% agreement) before approval mode.
+1. **Propose with reasons, the SUPERVISOR decides.** Airline optimizers (crew pairing and rostering, disruption recovery) produce ranked options with explicit trade-offs, and ops control approves. FLEET PLAN proposals carry reason codes with numbers, and start in shadow: agree or disagree only, the DISPATCH and SCHEDULE gate (20 verdicts, 80% agreement) before approval mode; FLEET PLAN's own gate was lowered to 5 verdicts at 80% by ATC-273 (8.7, decision 1).
 2. **Automate only what is reversible.** Of all fleet actions only STOP of an idle, atc-launched background session can undo itself (the conversation is kept and resumes). It is the only candidate for automation, after approval mode has run, behind a switch with a daily cap and an automatic off condition. LAUNCH spends usage; RETIREMENT, TYPE RATING and CREW CHANGE are never automatic.
 3. **Capacity follows demand and the runway.** No LAUNCH is proposed for an AIRPORT under GROUND STOP, or where landing is the bottleneck (landing-wait median above the median block time, or open PRs already filling the merge slots).
 4. **Keep a reserve.** Like airline standby crews, each AIRPORT with demand keeps `reserve` AIRCRAFT PARKED (default 1). Demand beyond the reserve suggests LAUNCH; idle capacity beyond it suggests STOP.
@@ -1034,7 +1034,7 @@ Not built yet: step 4 (automatic STOP); CROSSCHECK marks on FLEET PLAN proposals
 
 **Decisions (2026-09-28, SUPERVISOR): all as proposed.**
 
-1. **Turn-on condition:** the shadow gate as it is (20 verdicts, 80%).
+1. **Turn-on condition:** the shadow gate as it is (20 verdicts, 80%). *Changed by ATC-273: FLEET PLAN only, 5 verdicts at 80% agreement (`FLEET_PLAN_GATE` in `server/fleet-plan.ts`), because proposals are rare (7 verdicts in three days). The DISPATCH and SCHEDULE gates stay 20 / 80%.*
 2. **Switch location:** its own file `fleet-plan.json`, so DISPATCH and FLEET PLAN switch independently.
 3. **LAUNCH default permission mode on approval:** `auto`, the same as the LAUNCH button.
 4. **RETIRE stops the background session:** yes by default, with a checkbox to keep it.

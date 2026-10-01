@@ -856,7 +856,7 @@ ACCOUNT 폴더를 등록하면([accounts.md](accounts.md) 5.2) 등록된 어느 
 
 **원칙**(항공사의 fleet planning, crew control, 정비 방식에서. 출처는 이 절 끝):
 
-1. **근거와 함께 제안하고, SUPERVISOR가 정한다.** 항공사의 최적화 도구(crew pairing·rostering, disruption recovery)는 장단점을 밝힌 선택지를 순위대로 내고, 운항 통제가 승인한다. FLEET PLAN 제안에는 숫자가 붙은 사유 코드가 달리고, 그림자 운용으로 시작한다. agree·disagree만 하고, DISPATCH·SCHEDULE과 같은 게이트(판정 20건, 합의율 80%)를 넘어야 승인 운용으로 간다.
+1. **근거와 함께 제안하고, SUPERVISOR가 정한다.** 항공사의 최적화 도구(crew pairing·rostering, disruption recovery)는 장단점을 밝힌 선택지를 순위대로 내고, 운항 통제가 승인한다. FLEET PLAN 제안에는 숫자가 붙은 사유 코드가 달리고, 그림자 운용으로 시작한다. agree·disagree만 하고, DISPATCH·SCHEDULE의 게이트(판정 20건, 합의율 80%)를 넘어야 승인 운용으로 간다. FLEET PLAN의 게이트는 ATC-273으로 판정 5건, 80%로 낮췄다(8.7 결정 1).
 2. **되돌릴 수 있는 것만 자동으로.** FLEET 동작 중 스스로 되돌릴 수 있는 것은 atc가 띄운 쉬는 백그라운드 세션의 STOP뿐이다(대화가 남고 다시 이어진다). 자동화 후보는 이것 하나이고, 승인 운용을 거친 뒤 스위치·하루 상한·스스로 꺼지는 조건 뒤에 둔다. LAUNCH는 사용량을 쓰고, RETIREMENT·TYPE RATING·CREW CHANGE는 자동으로 하지 않는다.
 3. **용량은 수요와 활주로를 따른다.** GROUND STOP인 AIRPORT, 또는 착륙이 병목인 AIRPORT(착륙 대기 중앙값이 block time 중앙값보다 길거나, 열린 PR이 이미 머지 슬롯을 채움)에는 LAUNCH를 제안하지 않는다.
 4. **예비를 둔다.** 항공사의 대기 승무원처럼, 수요가 있는 AIRPORT마다 `reserve`대(기본 1)를 PARKED로 둔다. 예비를 넘는 수요는 LAUNCH를, 예비를 넘는 유휴는 STOP을 부른다.
@@ -1097,7 +1097,7 @@ ATC-69는 대화 기록에 `[1m]`이 남지 않아 창을 짐작했다. ATC-85�
 
 **결정(2026-09-28, SUPERVISOR): 모두 제안대로.**
 
-1. **켜는 조건:** 그림자 게이트 그대로(판정 20건, 80%).
+1. **켜는 조건:** 그림자 게이트 그대로(판정 20건, 80%). *ATC-273으로 바뀜: FLEET PLAN만 판정 5건, 합의율 80%(`server/fleet-plan.ts`의 `FLEET_PLAN_GATE`). 제안이 드물어서다(사흘에 판정 7건). DISPATCH·SCHEDULE 게이트는 20건·80% 그대로다.*
 2. **스위치 위치:** 별도 파일 `fleet-plan.json`. DISPATCH와 FLEET PLAN을 따로 켠다.
 3. **승인할 때 LAUNCH의 기본 permission mode:** `auto`. LAUNCH 버튼과 같다.
 4. **RETIRE가 백그라운드 세션을 멈추나:** 기본으로 멈추고, 체크를 풀면 남긴다.
