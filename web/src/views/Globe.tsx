@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useSettings } from "../settings.ts";
+import { type GlobeMode, modeOf } from "../../../server/space.ts";
 import {
   clamp,
   clipPolyline,
@@ -21,6 +22,7 @@ import { LAND } from "./globe-land.ts";
 import { AIRPORTS, TZ_CITY } from "./globe-geo.ts";
 import { f1, pathOf, SIZE } from "./globe-draw.ts";
 import { FlightRows, FlightsLayer } from "./GlobeFlights.tsx";
+import { SpaceView } from "./GlobeSpace.tsx";
 import "./Globe.css";
 
 // GLOBE(ATC-254, docs/globe.md): atc의 AIRPORT를 정사영 지구본에 놓고 AIRPORT마다 세워 둔 AIRCRAFT를 보인다. 읽기만 한다.
@@ -43,6 +45,7 @@ interface Saved {
   home?: string; // 홈 AIRPORT 코드. 없으면 서버 기본값
   overrides?: Record<string, LatLon>; // AIRPORT id → 옮긴 자리
   view?: View;
+  mode?: GlobeMode; // GLOBE | SPACE(G4). 없으면 night 테마만 SPACE로 연다
 }
 
 const finite = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
@@ -66,6 +69,7 @@ function loadSaved(): Saved {
     }
     const v = raw.view as View | undefined;
     if (v && finite(v.lat) && finite(v.lon) && finite(v.zoom)) out.view = { lat: clamp(v.lat, -PITCH_MAX, PITCH_MAX), lon: normLon(v.lon), zoom: clamp(v.zoom, ZOOM_MIN, ZOOM_MAX) };
+    if (raw.mode === "globe" || raw.mode === "space") out.mode = raw.mode;
     return out;
   } catch {
     return {};
@@ -128,10 +132,11 @@ interface Row {
 }
 
 export function Globe({ refreshKey }: { refreshKey: string }) {
-  const { motion } = useSettings();
+  const { motion, theme } = useSettings();
   const [saved, setSaved] = useState<Saved>(loadSaved);
   const [scene, setScene] = useState<GlobeScene | null>(null);
   const [error, setError] = useState(false);
+  const mode = modeOf(saved.mode, theme);
   const hub = saved.loc ?? defaultLoc();
   const [view, setView] = useState<View>(() => saved.view ?? { ...hub, zoom: 1 });
   const [now, setNow] = useState(Date.now());
@@ -231,7 +236,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [mode]);
 
   const onDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     // 비행기는 링크라서 누르기를 가로채지 않는다(포인터 캡처가 click을 svg로 돌려 버린다)
@@ -338,6 +343,13 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
   return (
     <div className="globe">
       <div className="globe-bar">
+        <div className="segmented globe-mode" role="radiogroup" aria-label="보기">
+          {(["globe", "space"] as const).map((m) => (
+            <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => update((s) => ({ ...s, mode: m }))}>
+              {m === "globe" ? "GLOBE" : "SPACE"}
+            </button>
+          ))}
+        </div>
         <label className="globe-field">
           <span>HOME</span>
           <select value={saved.home ?? ""} onChange={(e) => update((s) => ({ ...s, home: e.target.value || undefined }))} aria-label="홈 AIRPORT">
@@ -349,6 +361,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
             ))}
           </select>
         </label>
+        {mode === "globe" && (
         <div className="globe-loc">
           <label className="globe-field">
             <span>LAT</span>
@@ -365,21 +378,29 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
             위치 지우기
           </button>
         </div>
+        )}
+        {mode === "globe" && (
         <button type="button" onClick={() => goHome()}>
           홈으로
         </button>
-        {moved > 0 && (
+        )}
+        {mode === "globe" && moved > 0 && (
           <button type="button" onClick={() => update((s) => ({ ...s, overrides: undefined }))}>
             AIRPORT 위치 되돌리기
           </button>
         )}
       </div>
+      {mode === "globe" && (
       <p className="globe-note">
         {saved.loc ? "위치는 이 브라우저에만 저장한다(서버로 보내지 않는다)." : "위치를 정하지 않아 시간대로 경도만 맞췄다(위도 0). 아래에서 정할 수 있다. 위치는 이 브라우저에만 저장한다."} 밤 영역은 {atText} UTC 기준.
         {geoMsg && <strong role="status"> {geoMsg}</strong>}
       </p>
+      )}
       {error && !scene && <p className="empty">GLOBE 장면을 읽지 못했다.</p>}
       <div className="globe-body">
+        {mode === "space" ? (
+          scene ? <SpaceView scene={scene} motion={motion} now={now} /> : <p className="empty">{error ? "GLOBE 장면을 읽지 못했다." : "불러오는 중…"}</p>
+        ) : (
         <svg
           ref={svgRef}
           className="globe-svg"
@@ -442,6 +463,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
             return h.depth > 0 ? <circle className="globe-hub" cx={C + h.x * R} cy={C - h.y * R} r={2.5} /> : null;
           })()}
         </svg>
+        )}
         <div className="globe-side">
         <section className="globe-rows" aria-label="AIRPORT 목록">
           <h2 className="globe-rows-head">AIRPORTS</h2>
@@ -461,7 +483,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
               ))}
             </ul>
           )}
-          <p className="globe-hint">끌어서 돌리고, 휠이나 두 손가락으로 확대한다. AIRPORT를 끌면 그 자리를 이 브라우저에 기억한다.</p>
+          <p className="globe-hint">{mode === "space" ? "지구는 홈 AIRPORT, 행성은 다른 AIRPORT다. 궤도의 자리는 AIRPORT의 거리 순위와 방위로 정해져 날마다 같다." : "끌어서 돌리고, 휠이나 두 손가락으로 확대한다. AIRPORT를 끌면 그 자리를 이 브라우저에 기억한다."}</p>
         </section>
         <FlightRows flights={flights} />
         </div>
