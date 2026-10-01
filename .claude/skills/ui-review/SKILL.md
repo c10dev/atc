@@ -1,6 +1,6 @@
 ---
 name: ui-review
-description: Use when a FLIGHT changes atc's web screen (web/src) or the ANNUNCIATOR app screens, before the PR, or when asked to audit one tab. Reviews the changed screens against atc's design language (docs/design-language.md section 5) and two vendored rule sets, clicks through the running screen to catch layout shifts, and prints a findings block for the PR body. Not for server, hooks or docs-only FLIGHTs.
+description: Use when a FLIGHT changes atc's web screen (web/src) or the ANNUNCIATOR app screens, before the PR, or when asked to audit one tab. Reviews the changed screens against atc's design language (docs/design-language.md section 5), a softer taste brief (docs/design-taste.md) and two vendored rule sets, clicks through the running screen to catch layout shifts, and prints a findings block for the PR body. Not for server, hooks or docs-only FLIGHTs.
 ---
 
 # ui-review
@@ -11,9 +11,26 @@ A review tool for screen changes. It answers the section 5 checklist of [docs/de
 
 1. Root `CLAUDE.md`.
 2. `docs/design-language.md`: the principles, 3.5 Craft and the section 5 checklist. **Do not copy it into your output; cite its numbers** (`3.5.4`, `principle 11`). It stays the single source.
-3. The vendored references, below. They only add rules.
+3. `docs/design-taste.md` (the taste brief), a softer third layer (see "Taste layer"). It is a tendency, not a rule: `docs/design-language.md` wins wherever the two disagree. As with the design language, **cite its point numbers** (`taste 1`, `taste 4`) and never copy them into the output. It will be revised after more categories are judged, so do not freeze v1: read the points from the file every time, and name the version in the output row.
+4. The vendored references, below. They only add rules.
 
 A value the design language decided is **a decision, not a defect**: never report it, whatever a vendored rule says. Where a vendored rule and the design language disagree, the reference line is marked `CONFLICT`. Do not apply a `CONFLICT` line and do not decide it: list it under **Conflicts seen** in your output (once per rule, with the file and line it would have hit) and move on. The SUPERVISOR decides after the ATC-285 audit.
+
+## Taste layer (layer 3)
+
+Read [docs/design-taste.md](../../../docs/design-taste.md) before reviewing: its numbered points and its status line (a tendency; the version `vN` goes into the output row). Cite the point number only.
+
+- **Severity.** A finding whose only contract is a taste point is at most **Should-fix**, and is a **Note in `diff` mode unless the diff introduced it** (old code the FLIGHT did not touch is a Note). Never a Blocker, and taste alone never gives the verdict Block. **Exceptions:** point 2 when the text fails 4.5:1 keeps the severity of that accessibility contract (it is not a taste finding then; report it with the checklist), and point 5's shift part is not reported twice: it is measured by the layout-stability step, and the taste row cites that result.
+- **Proof gate.** Taste findings pass the same gate as any finding (contract = the point number, evidence = `file:line` plus a counted or measured fact, correction in tokens). "Feels busy" is not evidence.
+- **Conflicts.** Where a taste point and the design language disagree, the finding is not applied: list it under **Conflicts seen** (`taste N vs <rule>`, with the file and line it would have hit), the same as a vendored `CONFLICT` line. The SUPERVISOR decides. Known examples (PR 381): focal size vs the three-text-sizes rule in 3.5; right-aligned numbers vs summary sentences.
+- **Checks** (one or two lines per point; each has an evidence form):
+  - **taste 1 Focal.** Name the focal element of each changed view. If there is none, or more than one competes (same size and weight, near the top), that is the finding.
+  - **taste 2 Readable.** Information text styled with `--faint` or a lower-contrast token is a finding. To get numbers, run a few lines of relative-luminance JS through `browser_evaluate` per theme: resolve the text colour and its surface with `getComputedStyle`, convert each channel `c/255` with `c <= 0.03928 ? c/12.92 : ((c+0.055)/1.055)**2.4`, `L = 0.2126 R + 0.7152 G + 0.0722 B`, ratio `(Lmax+0.05)/(Lmin+0.05)`. No new dependency.
+  - **taste 3 Alignment.** Label and value columns share one left edge per card or section, and numbers are right-aligned `tabular-nums`. Evidence is the CSS (`grid-template-columns`, a shared width token) or the left `x` of the label boxes from the probe snapshot.
+  - **taste 4 History.** A table that answers "has it been OK lately?" with no strip or summary above it is a **Note**, not more.
+  - **taste 5 Detail.** Folded sections show a one-line summary; for the shift, cite the layout-stability result.
+- **Not a taste finding:** anything already in the section 5 checklist or the vendored rules (report it there once), and a value the design language decided.
+- Cap: at most 3 taste findings in `diff`, 6 in `audit`; merge repeats.
 
 References (read both before reviewing):
 
@@ -89,6 +106,7 @@ Section 5 line by line first. Then, in this order: focus and keyboard (visible f
 |---|---|---|
 | Section 5 checklist | lines applied: … | n findings / Clear |
 | Layout stability (runtime step) | controls clicked: n of m | n findings / Clear / Not verified (reason) |
+| Taste brief (`docs/design-taste.md` vN) | points applied: … | n findings (Should-fix or Note) / Clear / Not reviewed (reason) |
 | Focus and keyboard | … | n findings / Clear / Not reviewed (reason) |
 | Targets, forms, states | … | … |
 | Long and empty content | … | … |
@@ -99,10 +117,11 @@ Section 5 line by line first. Then, in this order: focus and keyboard (visible f
 | Severity | Location | Contract | Evidence | Before | After |
 |---|---|---|---|---|---|
 | Blocker | `web/src/views/X.tsx:42` | 3.5.4 border budget | 3 inner rules in `.card` | … | … |
+| Note | `web/src/views/Y.css:10` | taste 2 | `.tag` text on `--faint`, 5.8:1 | `color: var(--faint)` | `color: var(--muted)` |
 
 **Conflicts seen** (not applied, for the SUPERVISOR)
 
-| Vendored rule | Design language | Where it would have hit |
+| Vendored rule or taste point | Design language | Where it would have hit |
 |---|---|---|
 
 **Considered but rejected**
@@ -112,7 +131,7 @@ Section 5 line by line first. Then, in this order: focus and keyboard (visible f
 
 **Verification**: the commands and interactions run, with what was observed. A check not run is **Not verified** + what remains.
 
-**Verdict**: Block (a Blocker remains) · Needs changes (only Should-fix or Note remain) · Approve (nothing actionable). List every Not verified item beside the verdict.
+**Verdict**: Block (a Blocker remains) · Needs changes (only Should-fix or Note remain) · Approve (nothing actionable). Taste findings alone never give Block. List every Not verified item beside the verdict.
 ```
 
 When there are no findings, omit the findings table, write "No actionable findings", and keep Verification, Considered but rejected and Verdict.
@@ -120,5 +139,6 @@ When there are no findings, omit the findings table, write "No actionable findin
 ## After the review
 
 - Fix every Blocker, or write it in the report as `BLOCKED` with the reason. Do not ship a Blocker silently.
-- Should-fix and Note items are fixed when cheap and otherwise stay in the block; the PR body keeps the block as written.
+- Should-fix and Note items (taste findings included) are fixed when cheap and otherwise stay in the block; the PR body keeps the block as written.
+- A taste point that a FLIGHT cannot satisfy without breaking the design language is a conflict to list, not a reason to bend the screen.
 - New candidate rules that are not in the design language (for example a hit-target size) are **not** added to it here. They are a SUPERVISOR decision.
