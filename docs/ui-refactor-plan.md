@@ -158,7 +158,7 @@ Other structure findings:
 | | | | | D7 | ATC-434 |
 | | | | | D8 | ATC-420 |
 
-Each unit is one PR. The tier is `auto` unless noted; `deploy/landing-tier.mjs` decides from the changed paths. Sizes are S, M and L as in Linear.
+Each unit is one PR. The tier is `auto` unless noted; `deploy/landing-tier.mjs` decides from the changed paths. Sizes S, M and L here are the Linear wake labels L, M and H.
 
 **Done when — common to every unit:**
 
