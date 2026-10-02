@@ -165,6 +165,17 @@ P3·P5 행을 자른다(K3, 2026-10-02 SUPERVISOR 승인: "live first"). `server
 
 SUPERVISOR가 2026-10-02에 승인한 K3 완화: 서버가 planner 필터와 상한을 통과한 모든 ASSIGN·launch 카드를 승인한다. CROSSCHECK 단계, blind 표본, SUPERVISOR 카드가 없다. 스위치는 `dispatch.json`의 `autoDispatch`(기본 on, `fromThisApp`로 SUPERVISOR만, 깨진 파일은 off). 늦게 드러나는 결과는 MISFIRE(`/api/dispatch/misfire`, DISPATCH 탭)로 센다. 4절 P1·P2 행은 더는 SUPERVISOR QUEUE에 오르지 않으므로 leak counter의 PROPOSAL 종류는 0으로 떨어져야 한다. 자세한 것은 [dispatch.md](dispatch.md) "Automatic DISPATCH as built".
 
+### SUPERVISOR 자격 구현 (ATC-373)
+
+통제 C12를 PR로 SUPERVISOR가 고르게 하는 모양, **짝짓기 해시**로 만들었다. localhost `Origin`은 아무것도 증명하지 못한다: 호스트의 어느 프로세스든 그 헤더를 쓸 수 있기 때문이다. 그래서 SUPERVISOR 전용 라우트는 SUPERVISOR 자신의 화면만 가진 비밀도 요구한다.
+
+- **비밀이 있는 곳.** atc 화면(또는 ANNUNCIATOR 앱)이 무작위 256비트 비밀을 만들어 그 기기의 저장소에만 둔다: Mac 브라우저의 `localStorage`, 앱이면 키체인. 쓰기마다 `X-ATC-Supervisor` 헤더로 보낸다. 서버는 비밀을 저장하지도 출력하지도 로그하지도 않고 sha256 해시만 안다.
+- **해시가 있는 곳.** `/etc/atc/supervisor.sha256`(`ATC_SUPERVISOR_HASH_FILE`로 바꾼다), 한 줄에 해시 하나라 기기를 여럿 짝지을 수 있다. 파일은 root 소유이고 그룹·모두에게 쓰기가 없어야 한다. 서비스 사용자로 도는 세션은 읽을 수는 있어도 고치지 못한다(호스트에 비밀번호 없는 `sudo`가 없다). 파일이 없거나 비었거나 사용자 소유이거나 쓰기가 열려 있으면 **짝짓기 전이거나 믿을 수 없는 상태라 SUPERVISOR 전용 쓰기는 모두 거절한다**(fail-closed). `ATC_SUPERVISOR_ALLOW_USER_FILE=1`은 시험 서버에서만 사용자 소유 파일을 받는다.
+- **막는 것.** `supervisorGate`가 어느 라우트보다 먼저 돈다. `/api/` 아래 `POST`·`PUT`·`PATCH`·`DELETE`는 모두 자격이 필요하다. 단, 에이전트가 `atcctl`·SQUELCH로 정당하게 하는 쓰기의 허용 목록(`server/supervisor-auth.ts`, `server/supervisor-auth.test.ts`가 `controller/atcctl.mjs`와 맞는지 읽어서 확인한다)은 뺀다. 그래서 1.4 점검에서 아무 검사도 없던 라우트(DISPATCH 승인·거절, RECALL 만들기, DISPATCH·SCHEDULE 모드 스위치, SCHEDULE 승인·거절, 모든 ATFM 라우트)와 나중에 찾는 라우트도 기본으로 막힌다. 새 쓰기 라우트는 누가 일부러 허용 목록에 넣을 때까지 SUPERVISOR 전용이다. 라우트마다의 `Origin` 검사는 두 번째 층으로 남는다. 읽기는 막지 않는다.
+- **짝짓기.** 서버가 이 기기를 받아들이지 않으면(`GET /api/supervisor/auth`가 `unpaired`·`missing`·`invalid`·`insecure`) 화면에 막대가 뜬다. "자격 만들기"가 비밀을 만들고 호스트에서 한 번 실행할 명령 하나를 보여 준다(해시만 담긴다): `sudo install -d /etc/atc && echo <해시> | sudo tee -a /etc/atc/supervisor.sha256`. ANNUNCIATOR도 자기 비밀로 똑같이 한다.
+- **한계를 그대로 적는다.** 이것은 호스트에서 요청을 위조하는 세션을 막는다. root가 될 수 있는 세션(호스트 사용자가 `docker`·`sudo` 그룹이다: `docker`는 `/etc`를 마운트할 수 있고 `sudo`는 지금 비밀번호가 필요하다), 서비스 코드나 유닛 파일을 고치고 재시작을 기다리는 세션, SUPERVISOR의 Mac을 읽는 세션은 막지 못한다. 이것들은 이 검사가 아니라 착륙 규칙(K3)의 일이다. 비밀은 SSH 터널과 loopback에서 평문으로 지나가는데, 같은 사용자의 프로세스는 추가 권한 없이 그것을 엿볼 수 없다.
+- **바꾸지 않은 것.** `atcctl`과 guard: 허용 목록의 라우트로 에이전트가 하는 일은 그대로 된다. 기록 형식은 바꾸지 않았다.
+
 ## 5. 보완 통제
 
 통제마다 무엇을 알아채는지, 얼마나 빠른지, 스스로 무엇을 하는지, 무엇을 보고하는지 적는다. 사람의 결정을 대신하는 통제는 C1, C2, C4, C6, C10, C14, C15, C16이고 나머지는 이들을 받친다.
