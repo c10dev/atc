@@ -66,7 +66,7 @@ Keep these; the units below must not regress them.
 | `styles.css:411-483, 858-867, 1144, 1180, 1245, 1272, 1279, 1552` | About 15 of the 43 baselined colour literals sit in base rules, so they do not follow the theme:<ul><li>`.tone-alert`</li><li>`.ticker`, `.is-serious`, `-head`</li><li>`.prio`, `.prio-2`</li><li>`.los-tag`</li><li>`.fp.is-nocontact`</li><li>`.bay-rail`</li><li>`.strip.is-parked .holder` `#6b7280`</li><li>`.strip.is-los .holder`</li><li>`.fl-shade`</li></ul> |
 | `settings.ts:11,18,25` | 15 hex values for the theme swatches in settings. They copy theme tokens and can drift from `styles.css`. css-lint scans only `.css` and `.tsx`, so it never sees them. `SettingsPanel.tsx:231` passes them into `style`. |
 | `Starfield.tsx:5,74,93-94` | Canvas colours (`TINTS`, `addColorStop("rgba(…)")`) are not caught by the lint. `:148-149` (SVG) is baselined. |
-| `styles.css` `:root` | **Type scale.**<ul><li>`--text-xs` and `--text-sm` are both 12 px, so the "7 steps" are 6.</li><li>There is no weight token, and four weights are in use: 700 ×96, 600 ×79, 400 ×20, 500 ×17. Craft 3.5.3 names only 600 and 400.</li><li>Five `em` font sizes pass the lint by design: `Docs.css:94,101,106` and `Drawer.css:46,167`.</li></ul> |
+| `styles.css` `:root` | **Type scale.**<ul><li>`--text-xs` and `--text-sm` are both 12 px in the default density. That is decided (DL7): compact sets `--text-xs` back to 11 px, so the two differ there. Not a finding; noted because the scale comment says "7단계".</li><li>There is no weight token, and four weights are in use: 700 ×96, 600 ×79, 400 ×20, 500 ×17. Craft 3.5.3 names only 600 and 400.</li><li>Five `em` font sizes pass the lint by design: `Docs.css:94,101,106` and `Drawer.css:46,167`.</li></ul> |
 | cockpit and night theme blocks | `--magenta` (cockpit), `--gold` and `--display` (night) exist only inside their theme and have no `:root` default. They are safe today, because each is used only in its own theme's rules. Night keeps the base `--flap-ink` and patches the flaps by selector (`styles.css:1745-1752`). |
 | all CSS | **26 `@media` queries at 13 widths:**<ul><li>860 / 861 (the main one)</li><li>640, 600, 480</li><li>one-offs: 700 (`Follow.css`), 720 (settings), 760 (Docs, Globe), 960, 1100, 1180</li><li>`ControlStrip.css:89,100`: 1761 and **767**, against the 861 / 1760 pairs used everywhere else</li></ul>There is no query below 480 and none for `pointer: coarse` or `hover: none`. |
 | `App.tsx:256`, `Ticker.tsx`, `AlertBell.tsx` | **No live region** on the alert strip `ul.alerts`, the ticker or the bell count. About 45 `role="alert"` / `role="status"` exist elsewhere. The RADIO log is `aria-live="off"` on purpose. |
@@ -210,7 +210,7 @@ It also checks Craft 3.5 on that screen: colour budget, font roles, three sizes,
 | **D5** | Tooltip pass (L6, old C3): move tooltips that hold the only copy of a decision value onto the screen. | Q10 |
 | **D6** | Mono for IDs, codes and numbers only (old C2); replace the 36 text glyphs with Lucide icons (old C5). | — (can start any time after U6) |
 | **D7** | A light theme and `prefers-color-scheme`. | Q3; only if chosen |
-| **D8** | Font-weight tokens or fewer weights; the `--text-xs` / `--text-sm` duplicate. | Q11, Q12 |
+| **D8** | Font-weight tokens or fewer weights; the 10 px floor for codes. | Q11, Q12 |
 
 ## 5. Order and dependencies
 
@@ -241,14 +241,14 @@ Each question blocks the unit named after it. The recommendation is a starting p
 | Q2 | Which breakpoints does atc keep? (D2) | Today 13 widths. Proposed set: 860 (layout collapses), 600 (drawers and small panels), 480 (single column). Retire 640, 700, 720, 760, 767, 960, 1100, 1180; 1760 stays for the header only | 860 / 600 / 480, plus 1760 for the header |
 | Q3 | Is a light theme, or following `prefers-color-scheme`, in scope? (D7) | (a) no, atc stays dark; (b) a light theme as a fourth choice; (c) a light theme picked automatically by the OS | (a) for this plan; a light theme is its own design draft |
 | Q4 | Touch targets: what is the minimum? (D3) | (a) keep the 24 px desktop minimum; (b) 44 px under `@media (pointer: coarse)` only; (c) 44 px everywhere | (b): the SUPERVISOR also reads atc on a phone, and (b) leaves the desktop console dense |
-| Q5 | Should a saved motion setting override the OS's reduced-motion request? (D4) | (a) the OS always wins when it asks for less; (b) the saved choice wins (today) | (a): principle 10 names both switches |
+| Q5 | Should a saved motion setting override the OS's reduced-motion request? design-language section 1 says the `motion` setting follows the OS by default, and principle 10 says both switches stop motion; the code does the first only. (D4) | (a) the OS always wins when it asks for less; (b) the saved choice wins (today) | (a): principle 10 names both switches |
 | Q6 | What should the lint extension check? (U4) | Spacing literals, radius literals, `em` font sizes, colour literals in `.ts`; any subset | All four |
 | Q7 | Off-scale spacing values (1, 2.5, 3, 10, 14, 20, 22 px): snap them to the scale or add tokens? (U10) | (a) snap to the nearest step; (b) add tokens for the ones that recur; (c) allow 1 px hairlines only | (a) plus (c) |
 | Q8 | Button primitive: a CSS class or a React component, and which modifier names? (U5) | (a) CSS class `.btn` with `.is-primary` / `.is-danger`; (b) a `<Button variant>` component in `ui.tsx` | (a): smallest change, and `is-` is already the commonest naming in the code |
 | Q9 | Rename FLEET's `fl-` prefix, which FLIGHTS also uses? (S4) | (a) leave it; (b) rename FLIGHTS' few classes (`fl-view`, `fl-views`) to `ft-`; (c) rename FLEET's | (b): FLIGHTS has the fewer classes |
 | Q10 | Tooltip pass scope, now that DISPATCH has gone (238 `title=` left)? (D5) | (a) only tooltips that hold a number or a state not on the screen; (b) every tooltip | (a), as principle 11 says |
 | Q11 | Font weights: add tokens, or cut the weights in use (700, 600, 500, 400)? (D8) | (a) tokens for 400 / 600 / 700; (b) retire 500 (17 uses) and keep literals | (a) |
-| Q12 | Is 10 px `--text-2xs` (95 uses, for uppercase codes) acceptable, and should `--text-xs` and `--text-sm` (both 12 px) be merged? (D8) | (a) keep 10 px for codes only and merge the two 12 px tokens; (b) raise the floor to 11 px | (a); Korean text already stays at 11 px or more |
+| Q12 | Is 10 px `--text-2xs` (95 uses, for uppercase codes) acceptable? (D8) | (a) keep 10 px for uppercase codes only; (b) raise the floor to 11 px | (a); Korean text already stays at 11 px or more. `--text-xs` and `--text-sm` stay two tokens (DL7 keeps them apart in compact) |
 
 ## 7. Not covered
 
