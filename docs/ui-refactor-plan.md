@@ -1,6 +1,6 @@
 # UI refactor plan: the web screen against the design system
 
-> Status (2026-10-02): **survey and plan; the twelve questions are decided** (section 6, the SUPERVISOR's answers on 2026-10-02). Nothing here changes a screen. Written in an ENGINEERING session at the SUPERVISOR's request ("전체 UI를 디자인 시스템에 맞춰 일관되게 개선한다 — 지금은 조사와 계획만"). Audited commit: `origin/main` `bbb1c70`. The work units in section 4 are proposals for DUTY or ENGINEERING to file in Linear. Check Linear for an existing issue before filing each one: the duplicate check could not be run from this session.
+> Status (2026-10-02): **survey and plan; the twelve questions are decided** (section 6, the SUPERVISOR's answers on 2026-10-02). Nothing here changes a screen. Written in an ENGINEERING session at the SUPERVISOR's request ("전체 UI를 디자인 시스템에 맞춰 일관되게 개선한다 — 지금은 조사와 계획만"). Audited commit: `origin/main` `bbb1c70`. The work units in section 4 are filed in Linear as ATC-405 to ATC-434 under the parent ATC-404 (section 4 has the map).
 
 Related:
 - [design-language.md](design-language.md): the rules, the 3.5 Craft section and the section 5 checklist. This plan applies them; it adds no new rule.
@@ -141,6 +141,23 @@ Other structure findings:
 
 ## 4. Work units
 
+**Filed (2026-10-02).** Parent [ATC-404](https://linear.app/vocado/issue/ATC-404). U1, U2, U3, D1 and D4 were released to Todo; the rest wait in Backlog behind their blockers and show as READY on the RELEASE screen once those are done. Priority Medium for all.
+
+| Unit | Issue | Unit | Issue | Unit | Issue |
+|---|---|---|---|---|---|
+| U1 | ATC-405 | U9 | ATC-415 | S6 | ATC-430 |
+| U2 | ATC-406 | U10 | ATC-416 | S7 | ATC-431 |
+| U3 | ATC-407 | S1 | ATC-422 | S8 | ATC-432 |
+| U4 | ATC-410 | S2 | ATC-423 | S9 | ATC-433 |
+| U5 | ATC-411 | S3a | ATC-424 | D1 | ATC-408 |
+| U6 | ATC-412 | S3b | ATC-425 | D2 | ATC-421 |
+| U7 | ATC-413 | S3c | ATC-426 | D3 | ATC-417 |
+| U8 | ATC-414 | S3d | ATC-427 | D4 | ATC-409 |
+| | | S4 | ATC-428 | D5 | ATC-418 |
+| | | S5 | ATC-429 | D6 | ATC-419 |
+| | | | | D7 | ATC-434 |
+| | | | | D8 | ATC-420 |
+
 Each unit is one PR. The tier is `auto` unless noted; `deploy/landing-tier.mjs` decides from the changed paths. Sizes are S, M and L as in Linear.
 
 **Done when — common to every unit:**
@@ -263,4 +280,3 @@ The twelve questions of the first draft, answered by the SUPERVISOR in the ENGIN
 
   Each screen unit measures them for its screen.
 - **The production screen (7700)** was not opened.
-- **Linear.** Whether a unit already has an issue. Check before filing.
