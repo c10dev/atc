@@ -1,6 +1,6 @@
 # Layout: atc's screens after the arrow
 
-Status (2026-10-02): design draft. The SUPERVISOR chose the direction on 2026-10-02 ("추천대로 진행", section 6). Nothing here is built. This draft replaces [ui-visibility.md](ui-visibility.md) 3.2 (tabs by task) and its open decision 4, and sets the order of [design-language.md](design-language.md) step L4 (the tab audit). Written in an ENGINEERING session; DUTY or ENGINEERING update the status after merge.
+Status (2026-10-02): **Y1–Y6 built** (section 4). The SUPERVISOR chose the direction on 2026-10-02 ("추천대로 진행", section 6). **Section 7 (the shell: rail, sidebar, drawer, CONTROL panel) decided 2026-10-02, not built.** This draft replaces [ui-visibility.md](ui-visibility.md) 3.2 (tabs by task) and its open decision 4, and sets the order of [design-language.md](design-language.md) step L4 (the tab audit). Written in an ENGINEERING session; DUTY or ENGINEERING update the status after merge.
 
 Related: [autonomy.md](autonomy.md) principles 1, 9 and 10 (the arrow, brakes, direction), [design-language.md](design-language.md) (how a screen looks and behaves), [design-taste.md](design-taste.md), [duty.md](duty.md) 7 (the SUPERVISOR QUEUE in the DUTY drawer), [guide/screens.md](guide/screens.md) (what each tab shows today).
 
@@ -160,7 +160,7 @@ Order rationale (decision D3): firing has no home and is used every day, so it c
 
 ### Not built yet
 
-Nothing from section 4 (Y1–Y6 are built).
+Nothing from section 4 (Y1–Y6 are built). The shell around the five screens is section 7 (Z1–Z6).
 
 ## 5. Risks
 
@@ -184,3 +184,114 @@ Open:
 
 1. Whether the SUPERVISOR QUEUE stays in the DUTY drawer as well as on HOME. Proposed: both. The drawer is the quick view from any tab; HOME is the working view.
 2. The name of HOME. atc uses aviation words; a better name can come with Y2.
+
+## 7. Shell: rail, sidebar, drawer and CONTROL panel
+
+Decided by the SUPERVISOR on 2026-10-02, over three rounds on a private structure mockup at their real width (about 1000 px) with example data. Rounds 2 and 3 answered with a screenshot and a list. Nothing in this section is built; Z1–Z6 below are the steps.
+
+### 7.1 Today
+
+- **One header holds everything.**
+  - `App.tsx` `header.console` holds:
+    - the brand button (opens settings)
+    - the tab row (HOME, RELEASE, FLIGHTS, FLEET, METRICS)
+    - the readouts (AIRBORNE, STANDS, ENROUTE, FOLLOW next)
+    - the DUTY button (`#duty`), HANDOFF and ALERTS, the bell (`AlertBell`)
+    - GLOBE, HELP, the sound lock, the clock and LINK
+    - the CONTROL strip (`ControlStrip.tsx`, one chip per control session)
+  - The ticker and the ALERT list sit under it.
+- **The control sessions live in two places.** The header strip shows chips only; clicking one opens `#fleet/control`, the CONTROL SESSIONS group inside FLEET (`views/fleet/ControlSessions.tsx`), where LAUNCH and STOP are.
+- **RADIO is a FLIGHTS view** (`#flights/radio`, Y4), and a FLIGHT's thread is in its drawer.
+- **The FLIGHT, PR, DUTY and IDEAS drawers open over the screen** from the right.
+- **Nothing groups the work by AIRPORT** except inside each screen.
+
+### 7.2 The shell
+
+```
++------+---------------+-------------------------------+--------------+
+| atc  | FLIGHTS  N  ? | [=] FLYING 29 WAITING 2  DUTY |  FLIGHT or   |
+| HOME | > ATCC        |                               |  DUTY drawer |
+| REL  |   ATC-435 *   |          the screen           |   (docked)   |
+| FLT  |   ATC-410 *   |                               |              |
+| RADIO| > APTB        |                               |              |
+| FLEET|   ...         |-------------------------------|              |
+| MTRX |               | ^ CONTROL 2  MCC NEEDS  XCK.. |              |
+| SV   |               |   sessions | selected thread  |              |
++------+---------------+-------------------------------+--------------+
+  rail    sidebar       top bar / screen / CONTROL       drawer
+```
+N = notifications (Linear, GitHub, atc), ? = search, [=] = sidebar fold, * = live session. The rail shows icons; the words above stand for them.
+
+- **Rail (left, icons only).**
+  - The screens: HOME, RELEASE, FLIGHTS, RADIO, FLEET, METRICS.
+  - At the foot: GLOBE, HELP and settings (a SUPERVISOR mark, replacing the brand button).
+  - Each icon has a tooltip and an accessible name. A count badge shows only what needs the SUPERVISOR (QUEUE items on HOME, READY on RELEASE).
+- **Sidebar (next to the rail, folds).**
+  - The list inside the selected screen:
+    - FLIGHTS and FLEET: FLIGHTs and AIRCRAFT grouped under their AIRPORT, a dot for a live session
+    - RELEASE: READY by AIRPORT
+    - RADIO: stations (control sessions, AIRCRAFT) as filters
+    - METRICS: its sub-views
+    - HOME: QUEUE, ALERTS and BRAKES as anchors
+  - A button at the left of the top bar folds it; the choice is remembered in the browser.
+  - The sidebar header holds the **notifications** (Linear, GitHub, atc), left of **search**. Search filters the sidebar list.
+- **Top bar.** The readouts and the ALERT line as today. **DUTY** sits at the right and opens the DUTY drawer.
+- **Drawer (right, docked).**
+  - The FLIGHT / PR, DUTY and IDEAS drawers share one docked column; opening one closes the other.
+  - The column takes width from the screen instead of covering it.
+  - It keeps the dialog behaviour of ATC-406 where it makes sense for a docked region. Escape closes it, and focus returns to the opener.
+- **CONTROL panel (bottom of the screen column, VS Code style).**
+  - It holds the control sessions only: the table (state, last tick, model, what it is doing, LAUNCH / STOP) beside the selected session's recent radio.
+  - Folded by default. Its one-line header is today's CONTROL strip: sessions that need the SUPERVISOR (NEEDS, DOWN) first, as chips with a word, then the rest.
+  - It opens from its arrow, from a chip, or with Ctrl+\`. Its height is dragged and remembered. It never opens by itself (design-language principle 1).
+
+### 7.3 Width
+
+| Width | Behaviour |
+|---|---|
+| ≥ 1280 px | Rail, sidebar, screen and drawer all fit; opening a drawer keeps the sidebar |
+| 861–1279 px (the SUPERVISOR's ~1000 px) | While a drawer is open the sidebar folds (the screen would be about 370 px wide otherwise) and comes back when the drawer closes; the remembered choice is not changed |
+| ≤ 860 px | The rail becomes a bottom tab bar with labels. The sidebar opens over the screen from the left. The drawer covers the screen. The CONTROL panel is a sheet from the bottom. Its header shows only the NEEDS / DOWN chips and `OK n` for the rest, and its table becomes a two-line list per session |
+
+The breakpoint is the 860 px of decision Q2 in [ui-refactor-plan.md](ui-refactor-plan.md); no new width is added.
+
+### 7.4 What moves
+
+| From | To | Address |
+|---|---|---|
+| Tab row in the header | Rail | unchanged (`#home` …) |
+| Brand button (settings) | Settings mark at the rail foot | unchanged |
+| GLOBE, HELP buttons in the readouts | Rail foot | unchanged |
+| CONTROL strip in the header | CONTROL panel header | — |
+| CONTROL SESSIONS group in FLEET | CONTROL panel body | `#fleet/control` opens the panel |
+| RADIO view of FLIGHTS | RADIO screen on the rail | `#radio`; `#flights/radio` keeps working (`LEGACY_HASH`) |
+| DUTY readout | DUTY button at the right of the top bar, opening the docked drawer | `#duty` unchanged |
+| Bell in the readouts | Sidebar header, with Linear and GitHub | — |
+| Drawers over the screen | Docked column | unchanged (`#flight/<KEY>` …) |
+
+### 7.5 Steps
+
+Each step is one work order and one PR, filed under [ATC-404](https://linear.app/vocado/issue/ATC-404) on 2026-10-02. They are in Backlog, and each shows as READY on the RELEASE screen once its blockers are done; Z1 waits for ATC-435 (`web/src/kit/`). A step moves a part and removes the old copy in the same PR (principle 5). Each step:
+- uses the `web/src/kit/` primitives where they exist ([design-system.md](design-system.md));
+- updates `docs/guide/screens.md`;
+- is checked at about 1000, 1280 and 390 px in the three themes, described in words.
+
+| Step | What | Needs |
+|---|---|---|
+| Z1 ([ATC-442](https://linear.app/vocado/issue/ATC-442)) | **Shell grid, rail and top bar.** The tab row becomes the icon rail (Lucide, tooltips, names); settings, GLOBE and HELP move to the rail foot; the readouts and DUTY form the top bar; ≤ 860 px uses the bottom tab bar | — |
+| Z2 ([ATC-443](https://linear.app/vocado/issue/ATC-443)) | **Screen sidebar.** The per-screen list (AIRPORT groups, live dots), the fold button and its remembered state, search filtering the list | Z1 |
+| Z3 ([ATC-444](https://linear.app/vocado/issue/ATC-444)) | **Docked drawer.** FLIGHT / PR, DUTY and IDEAS share a docked column; the 861–1279 px fold rule; ≤ 860 px cover | Z1, ATC-406 (done) |
+| Z4 ([ATC-446](https://linear.app/vocado/issue/ATC-446)) | **RADIO on the rail.** `#radio` becomes a screen with station filters in the sidebar; the FLIGHTS RADIO view and its copy are removed; `#flights/radio` maps to `#radio` | Z2 |
+| Z5 ([ATC-445](https://linear.app/vocado/issue/ATC-445)) | **CONTROL panel.** The CONTROL strip and the CONTROL SESSIONS group move into the bottom panel; folded by default, resize, Ctrl+\`, the ≤ 860 px sheet and `OK n`; `#fleet/control` opens it | Z1 |
+| Z6 ([ATC-447](https://linear.app/vocado/issue/ATC-447)) | **Notifications.** A read-only server route groups what needs the SUPERVISOR by source (Linear, GitHub, atc); the server decides what counts (design-language principle 4). The sidebar header shows the three icons with counts and lists. With the sidebar folded, one total sits beside the fold button | Z2 |
+
+The header unit of the refactor plan (S8, ATC-432) waits for Z1: its stylesheet move and live regions apply to the top bar Z1 builds.
+
+### 7.6 Decisions (SUPERVISOR, 2026-10-02)
+
+- **E1.** The rail holds icons only, and a sidebar beside it lists what is inside the selected screen, grouped by AIRPORT. The SUPERVISOR gave a screenshot of a desktop chat app as the model.
+- **E2.** The FLIGHT drawer is docked on the right ("오른쪽 고정").
+- **E3.** The bottom panel holds CONTROL only. RADIO goes to the left ("radio 는 좌측으로"); DUTY takes the notifications' old place at the top right and opens in the drawer ("duty는 알림 자리에(duty 는 서랍에서 열리도록)").
+- **E4.** Notifications (Linear, GitHub, atc) sit left of search ("알림은 검색 좌측에"). With the sidebar folded, one total beside the fold button: the session's recommendation, accepted with "진행".
+- **E5.** At narrow widths the CONTROL header shows only the sessions that need the SUPERVISOR and `OK n` for the rest. This answers the clipped chips in the SUPERVISOR's 390 px screenshot.
+- **E6.** Between 861 and 1279 px an open drawer folds the sidebar until it closes (the session's proposal in the mockup, accepted with "진행").
