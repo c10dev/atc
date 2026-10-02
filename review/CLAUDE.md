@@ -20,10 +20,12 @@ CROSSCHECK(Claude Opus)는 DISPATCH·SCHEDULE 예비 판정만 한다. 착륙 �
 | 명령 | 하는 일 |
 |---|---|
 | `node ../controller/atcctl.mjs landing queue` | 리뷰를 기다리는 PR(`pending`), 외부 리뷰에서 뺀 PR(`excluded`와 사유), 최근 리뷰(`recent`) |
-| `node ../controller/atcctl.mjs landing review <owner/name>#<PR>` | 리뷰 자료: PR 제목·본문, FLIGHT의 완료 기준(`flight.acceptance`)과 금지 사항(`flight.forbidden`), 바뀐 파일, `head`, diff(길면 잘리고 `diffTruncated: true`) |
+| `node ../controller/atcctl.mjs landing review <owner/name>#<PR>` | 리뷰 자료: PR 제목·본문, FLIGHT의 완료 기준(`flight.acceptance`)과 금지 사항(`flight.forbidden`), 바뀐 파일, `head`, diff(길면 잘리고 `diffTruncated: true`), `diffSource`(`pr-diff` 또는 `files-api`), `removedFiles` |
 | `node ../controller/atcctl.mjs landing review <owner/name>#<PR> --head <sha> --verdict pass\|findings -- '<리뷰>'` | 그 head에 리뷰 기록 |
 | Read `../docs/…` | 필요할 때 설계 문서 |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
+
+`diffTruncated: true`면 본 범위를 리뷰 글에 적고, 잘린 부분에 위험이 있을 수 있으면 findings(P1)로 남긴다. `diffSource`가 `files-api`면 GitHub가 너무 큰 diff(20,000줄 넘음)를 거절해 atc가 파일별 patch를 이어 붙인 자료다: `diffTruncated`는 늘 true이고(patch가 빠진 파일이 있을 수 있다), 지워진 파일은 patch 없이 `removedFiles`에 이름만 있다. 이름만 있는 파일과 patch가 빠진 파일은 본 것으로 치지 않고, 그 파일에 위험이 있을 수 있으면 pass하지 않는다.
 
 리뷰 기록 명령은 guard가 이 세션의 기록에서 **실제 모델**을 확인한 뒤에만 실행된다. Claude Sonnet(`claude-sonnet-…`)이 아니면 막힌다 — 막히면 기록하지 말고 LOG에 "모델 확인에서 막힘"이라고 적는다. 기록에 남는 모델 이름도 guard가 붙인다. `--model`이나 명령 앞 환경 변수로 적으려 하지 않는다(막힌다). 기록 명령은 파이프·이어 쓰기 없이 단독으로 쓴다.
 
