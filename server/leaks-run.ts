@@ -13,6 +13,9 @@ import type { UpdateStatus } from "./update.ts";
 export const LEAKS_FILE = () => join(config.stateDir, "leaks.jsonl");
 export const TICK_MS = 60_000;
 
+// 큐 입력이 다 모였나(순수): 켜져 있는 GitHub·Linear가 한 번은 읽혔다
+export const leakInputReady = (s: Pick<Snapshot, "github" | "linear">) => !(s.github.enabled && !s.github.fetchedAt) && !(s.linear.enabled && !s.linear.fetchedAt);
+
 export function readLeaks(file = LEAKS_FILE()): LeakRecord[] {
   if (!existsSync(file)) return [];
   const out: LeakRecord[] = [];
@@ -43,11 +46,11 @@ export function mountLeaks(app: Hono, getSnapshot: () => Promise<Snapshot>, upda
     try {
       const now = Date.now();
       const s = await getSnapshot();
-      // GitHub를 아직 못 읽었으면 PR 항목이 통째로 빠져 있다: 열지도 닫지도 않는다
-      if (s.github.enabled && !s.github.fetchedAt) return;
-      const inp = await collectQueueInput(s, updateStatus, now);
       open ??= openFromRecords(readLeaks(), now);
-      appendLeaks(reconcile(open, leakItemsOf(supervisorQueueOf(inp, now), inp), now));
+      // GitHub·Linear를 아직 못 읽었으면(RTS 재시작 직후 첫 스냅샷) PR·FLIGHT 항목이 통째로 빠져 있다: 열지도 닫지도 않고, 열린 leak은 기다림이 이어진다(ATC-385)
+      const ready = leakInputReady(s);
+      const inp = await collectQueueInput(s, updateStatus, now);
+      appendLeaks(reconcile(open, leakItemsOf(supervisorQueueOf(inp, now), inp), now, ready));
     } catch (e) {
       console.warn(`[atc] leaks: ${e instanceof Error ? e.message : e}`);
     } finally {
