@@ -152,7 +152,8 @@
   --console-h: 48px;
   --rail-w: 56px; /* 왼쪽 아이콘 레일(ATC-442) */
   --bar-h: 56px; /* ≤860px의 아래 탭 줄 */
-  --sidebar-w: 0px; /* 사이드바 열(Z2가 채우기 전에는 접혀 있다) */
+  --sidebar-w: 0px;
+  --sidebar-open-w: 260px; /* 열린 사이드바의 너비: .has-sidebar인 .shell이 --sidebar-w로 쓴다(ATC-443). 접히면 --sidebar-w는 0 */
   --drawer-w: 0px; /* 서랍 열(Z3가 채우기 전에는 접혀 있다) */
 
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;

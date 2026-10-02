@@ -17,7 +17,7 @@ import { readGithub } from "./sources/github.ts";
 import { readLinear } from "./sources/linear.ts";
 import { buildPulls, strandedMessage, strandedOf } from "./landing.ts";
 import { loadMcc, readMccRecords, reviewOfHead } from "./mcc.ts";
-import { loadDispatchConfig } from "./dispatch.ts";
+import { airportOfTicket, loadDispatchConfig } from "./dispatch.ts";
 import { allProposals } from "./proposals.ts";
 import { awaitSupervisorAlerts } from "./supervisor-confirm.ts";
 import { accountOf, CONTROL_DIRS, type ControlName, controlAccountOf, controlNameOf } from "./crew.ts";
@@ -172,6 +172,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
   const alerts = buildAlerts(sessions, workspaces, tickets, claims, occupancy);
   const fleet = loadFleet();
   const dispatchCfg = loadDispatchConfig();
+  // 화면 사이드바가 AIRPORT별로 묶는다(ATC-443). DISPATCH가 쓰는 같은 규칙이라 화면에 따로 규칙을 두지 않는다(원칙 4)
+  for (const t of tickets) t.airport = airportOfTicket(t, dispatchCfg);
   const team = new RegExp(dispatchCfg.teamPattern, "i");
   // 관찰한 ACCOUNT가 있으면 그것(ATC-146), 등록부가 없으면 home 라벨. 라벨을 쓰지 않는 등록부(accountOf가 null)는 그대로 null
   const accountOfSession = (x: Session) => (x.status !== "dead" && team.test(x.name) ? (accountOf(fleet, x.name) === null ? null : (x.account ?? accountOf(fleet, x.name))) : null);

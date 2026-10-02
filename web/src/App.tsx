@@ -19,6 +19,7 @@ import { HelpMenu } from "./HelpMenu.tsx";
 import { GlobeMode } from "./GlobeMode.tsx";
 import { PanelLeft } from "lucide-react";
 import { Icon } from "./kit/Icon.tsx";
+import { Sidebar, loadSidebarFolded, saveSidebarFolded, useNarrow } from "./Sidebar.tsx";
 import { Rail, RAIL_SCREENS } from "./Rail.tsx";
 import type { SettingsTab } from "../../server/settings-policy.ts";
 import { lazyTab, TabBoundary, TabLoading } from "./lazyTab.tsx";
@@ -71,6 +72,20 @@ export function App({ build }: { build: string }) {
   const closeSettings = useCallback(() => (setSettingsOpen(false), setSettingsTab(null)), []);
   const settings = useSettings();
   const idx = useMemo(() => (snapshot ? buildIndex(snapshot) : null), [snapshot]);
+  // 화면 사이드바(ATC-443, Z2): 넓은 폭에서는 접힘을 이 브라우저에 기억하고, ≤ 860px에서는 눌렀을 때만 화면 위로 열린다
+  const narrow = useNarrow();
+  const [sbFolded, setSbFolded] = useState(loadSidebarFolded);
+  const [sbOver, setSbOver] = useState(false);
+  const sbShown = narrow ? sbOver : !sbFolded;
+  const toggleSidebar = () => {
+    if (narrow) return setSbOver((v) => !v);
+    const next = !sbFolded;
+    setSbFolded(next);
+    saveSidebarFolded(next);
+  };
+  const closeSidebarOver = useCallback(() => setSbOver(false), []);
+  // 레일로 화면을 바꾸면 화면 위로 열린 사이드바는 닫는다
+  useEffect(() => setSbOver(false), [tab]);
 
   // FLIGHT·PR 서랍(#flight/<KEY>, #pr/<AIRPORT>/<번호>): 탭 위에 열리고, 탭은 그대로다
   const [drawer, setDrawer] = useState<DrawerRef | null>(() => drawerOfHash(location.hash));
@@ -158,7 +173,7 @@ export function App({ build }: { build: string }) {
   const brandTitle = `ATC · LOCAL CONTROL · ${location.port || "80"}`;
   const brandMark = settings.theme === "night" ? <MoonIcon /> : <ScopeIcon />;
   return (
-    <div className="app shell" data-drawer={drawerKind ?? undefined}>
+    <div className={`app shell${sbShown ? (narrow ? " sidebar-over" : " has-sidebar") : ""}`} data-drawer={drawerKind ?? undefined}>
       {settings.theme === "night" && <Starfield motion={settings.motion} meteors={settings.meteors} />}
       <Rail
         tab={tab}
@@ -174,11 +189,14 @@ export function App({ build }: { build: string }) {
       >
         {settingsOpen && <SettingsPanel key={settingsTab ?? "last"} settings={settings} snapshot={snapshot} onClose={closeSettings} openTab={settingsTab} />}
       </Rail>
-      {/* 사이드바(Z2)·서랍 열(Z3)·아래 패널(Z5) 자리. 그 단계가 오기 전에는 비어 있고 접혀 있다 */}
-      <aside className="sidebar" hidden />
+      {/* 사이드바(Z2). 서랍 열(Z3)·아래 패널(Z5) 자리는 그 단계가 오기 전에는 비어 있고 접혀 있다 */}
+      <aside className="sidebar" id="screen-sidebar" aria-label="화면 목록" hidden={!sbShown}>
+        {sbShown && <Sidebar screen={tab} snapshot={snapshot} idx={idx} refreshKey={snapshot?.at.slice(0, 16) ?? ""} over={narrow} onPick={closeSidebarOver} onClose={closeSidebarOver} />}
+      </aside>
+      {narrow && sbOver && <button type="button" className="sidebar-scrim" aria-label="목록 닫기" tabIndex={-1} onClick={closeSidebarOver} />}
       <div className="shell-main">
         <header className="console">
-          <button type="button" className="fold-btn" aria-label="사이드바 접기" aria-disabled="true" title="사이드바가 생기면 여기서 접는다" tabIndex={-1}>
+          <button type="button" className="fold-btn" aria-label={sbShown ? "사이드바 접기" : "사이드바 펴기"} aria-expanded={sbShown} aria-controls="screen-sidebar" title={sbShown ? "사이드바 접기" : "사이드바 펴기"} onClick={toggleSidebar}>
             <Icon icon={PanelLeft} size={16} />
           </button>
           <span className="top-brand" aria-hidden="true">

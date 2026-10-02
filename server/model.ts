@@ -100,6 +100,7 @@ export interface Ticket {
   url: string | null;
   updatedAt: string | null;
   project: string | null;
+  airport?: string | null; // 이 FLIGHT의 AIRPORT 코드(DISPATCH와 같은 규칙, airportOfTicket). 어디에도 속하지 않으면 null (ATC-443)
   labels: string[];
   createdAt: string | null;
   startedAt: string | null; // started 상태(ENROUTE 등)에 들어간 시각
