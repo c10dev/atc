@@ -1,6 +1,7 @@
 // DUTY REVIEW 런타임(ATC-396, docs/duty.md): 주기마다 신호를 읽고, 트리거가 서면 DUTY 턴을 서버가 시작한다.
 // 외부에 나가는 동작: DUTY 세션(`claude -p`)에 글을 쓴다(duty-run.ts). 스위치(duty.json review)는 SUPERVISOR만 설정 창에서 바꾼다. 기본 켜짐, DUTY가 꺼져 있으면 돌지 않는다.
 // 기록은 duty-reviews.jsonl(추가만): 점검 한 줄, 제안 한 줄. 세기는 GET /api/duty/review.
+import { openEffectLines } from "./effect-check-run.ts";
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Hono } from "hono";
@@ -50,6 +51,7 @@ export interface ReviewDeps {
   releases: () => ReleaseLine[];
   openLeaks: (now: number) => { title: string; sinceMs: number }[];
   alerts: () => { level: string; text: string }[];
+  effects?: () => string[]; // 열린 EFFECT CHECK 평결(not improved·worse, ATC-402). 없으면 빈 목록
   cfg?: () => ReturnType<typeof loadDutyConfig>; // 시험용
   now: () => number;
   startedAt: number;
@@ -105,7 +107,7 @@ export async function reviewTick(d: ReviewDeps, state: { idleSince: number | nul
     .slice(0, 10)
     .map((a) => `${a.level}: ${a.text.slice(0, 160)}`);
   const open = snap.tickets.filter((t) => t.stateType !== "completed" && t.stateType !== "canceled").map((t) => ({ key: t.key, title: t.title }));
-  const text = reviewPromptOf({ id, trigger: dec.trigger, detail: dec.detail ?? "", signals, linear: cfg.l1, landing: landingLinesOf(brief), alerts: alertLines, openIssues: open });
+  const text = reviewPromptOf({ id, trigger: dec.trigger, detail: dec.detail ?? "", signals, linear: cfg.l1, landing: landingLinesOf(brief), alerts: alertLines, effects: d.effects?.() ?? [], openIssues: open });
   const line = `DUTY REVIEW ${id} · ${dec.trigger} · ${dec.detail ?? ""}`.slice(0, 300);
   currentReview = id; // 턴 시작 전에 세운다: 첫 도구 호출이 이 id를 본다
   const r = await rt.sendReview(text, line);
@@ -133,6 +135,7 @@ export function mountDutyReview(app: Hono, snapshot: () => Promise<Snapshot>, de
     releases: () => readReleaseLines(),
     openLeaks: openLeaksNow,
     alerts: () => currentAlerts().map((a) => ({ level: a.level ?? "", text: a.text ?? "" })),
+    effects: deps.effects ?? openEffectLines,
     now: Date.now,
     startedAt: Date.now(),
     ...deps,

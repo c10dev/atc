@@ -6,6 +6,7 @@ import { apiGet, apiSend } from "../api.ts";
 import { alertLevelLabel, flightNumber } from "../aviation.ts";
 import { buildIndex, timeAgo } from "../derive.ts";
 import { Actions, useQueue } from "../DutyCards.tsx";
+import { EffectRow, effectBad, useEffects } from "../EffectVerdict.tsx";
 import { FlightBrakes } from "../FlightBrakes.tsx";
 import { OpenFlight } from "../FlightLink.tsx";
 import { homeAlertsOf, prNameOf, type ScheduleHome, scheduleHomeOf, SLIP_LABEL, slipLineOf, stuckRowsOf } from "../home-rows.ts";
@@ -54,6 +55,7 @@ export function Home({ refreshKey, now, snapshot, onOpenSettings }: { refreshKey
       <HomeQueue refreshKey={refreshKey} now={now} snapshot={snapshot} />
       <HomeAlerts />
       <HomeStuck refreshKey={refreshKey} now={now} />
+      <HomeEffects refreshKey={refreshKey} now={now} />
       <HomeSchedule data={schedule.data} now={now} />
       <Brakes atfm={atfm} alertOn={alertOn} now={now} onOpenSettings={onOpenSettings} schedule={schedule} />
     </section>
@@ -222,6 +224,31 @@ function HomeSchedule({ data, now }: { data: ScheduleHome | null; now: number })
         </section>
       )}
     </>
+  );
+}
+
+// EFFECT CHECK(ATC-402): 배포한 FLIGHT가 목표를 못 맞춘 평결(not improved·worse, 틀렸다고 표시하지 않은 것). 없으면 아무것도 그리지 않는다
+function HomeEffects({ refreshKey, now }: { refreshKey: string; now: number }) {
+  const { view, set } = useEffects(null, refreshKey);
+  const rows = (view?.verdicts ?? []).filter((v) => effectBad(v) && !v.wrong);
+  if (rows.length === 0) return null;
+  return (
+    <section className="hm-sec" aria-label="EFFECT CHECK">
+      <h2 className="label">
+        EFFECT <em>{rows.length} · 평결 {view?.misfire.verdicts ?? 0}건 중 틀림 {view?.misfire.wrong ?? 0}</em>
+      </h2>
+      <ul className="hm-list">
+        {rows.map((v) => (
+          <li key={v.flight} className="hm-row">
+            <div className="hm-head">
+              <OpenFlight k={v.flight} label={flightNumber(v.flight)} />
+              <span className="hm-since faint">배포 {timeAgo(v.deployedAt, now)}</span>
+            </div>
+            <EffectRow v={v} now={now} onView={set} />
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
