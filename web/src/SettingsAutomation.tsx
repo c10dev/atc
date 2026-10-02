@@ -499,7 +499,7 @@ export function LandingSettings({ server, save }: { server: Loaded; save: Save }
                   note={
                     a.why
                       ? `켤 수 없음 — ${a.why}`
-                      : "⚠ 켜면 AUTOLAND 주기가 CLEARED PR의 새 마이그레이션을 시험 DB에 먼저 적용하고, 통과하면 복원점을 만든 뒤 실전 DB에 적용한다. 이 화면에서만 바꾼다 — 세션은 못 바꿈. 실패하면 실전은 그대로이고 PR은 머지되지 않는다"
+                      : "⚠ 켜면 AUTOLAND 주기가 CLEARED PR의 새 마이그레이션을 시험 DB에 먼저 적용하고, 통과하면 호스팅 제공자에 이미 있는 PITR·최근 백업을 확인한 뒤(atc가 만들지 않음) 실전 DB에 적용한다. 실전 적용 전의 실패는 실전이 그대로이고 PR은 머지되지 않는다. 실전 적용이 중간에 실패하거나 적용 뒤 검사가 실패하면 실전이 바뀐 채로 남고(live-changed, 자동 복원 없음) 사람이 복원을 정한다. 시험 DB는 실패해도 되돌리지 않아, 다음 리허설 전에 실전에서 다시 가져와야 한다. 이 화면에서만 바꾼다 — 세션은 못 바꿈"
                   }
                   input={{ kind: "select", options: ["off", "on"] }}
                   onSave={(v) => save({ migrateRehearsal: { [a.code]: v === "on" } })}

@@ -16,8 +16,9 @@ test("문장 나누기: 따옴표·달러 본문·주석 안의 세미콜론은 
 test("분류: 추가형, DML, 파괴적, 분류 불가", () => {
   assert.equal(classify("create table public.songs (id int)").kind, "additive");
   assert.equal(classify("alter table public.songs add column x int").kind, "additive");
-  assert.equal(classify("create or replace function f() returns int as $$ select 1 $$ language sql").kind, "additive");
-  assert.equal(classify("grant select on public.songs to anon").kind, "additive");
+  assert.equal(classify("create function f() returns int as $$ select 1 $$ language sql").kind, "additive");
+  assert.equal(classify("create or replace function f() returns int as $$ select 1 $$ language sql").kind, "sensitive");
+  assert.equal(classify("grant select on public.songs to anon").kind, "sensitive");
   assert.equal(classify("insert into public.settings (k) values ('a')").kind, "dml");
   for (const s of ["drop table t", "truncate t", "revoke all on t from anon", "alter table t drop column c", "alter table t rename to u", "alter table t alter column c type bigint", "delete from t", "update t set a = 1"])
     assert.equal(classify(s).kind, "destructive", s);
@@ -27,6 +28,26 @@ test("분류: 추가형, DML, 파괴적, 분류 불가", () => {
 });
 
 const f = (sql: string) => [{ path: "m/1_a.sql", sql }];
+
+test("선언 검사: 접근·기존 동작을 바꾸는 문장은 선언이 그 낱말을 적어야 통과한다", () => {
+  const cases: [string, string][] = [
+    ["create policy p on public.songs for select using (true);", "policy"],
+    ["grant select on public.songs to anon;", "grant"],
+    ["create role r;", "role"],
+    ["create function f() returns int security definer as $$ select 1 $$ language sql;", "security"],
+    ["alter table public.songs owner to postgres;", "owner"],
+    ["create or replace view public.v as select 1;", "replace"],
+  ];
+  for (const [sql, word] of cases) {
+    assert.equal(declarationCheck(f(sql), K1).ok, false, sql);
+    assert.equal(declarationCheck(f(sql), `${K1}; ${word}`).ok, true, sql);
+  }
+});
+
+test("hasWhere: 큰따옴표 식별자 \"where\" 열은 WHERE가 아니다", () => {
+  assert.equal(classify('update public.t set "where" = 1').kind, "destructive");
+  assert.equal(classify('delete from public.t where "where" = 1').kind, "dml");
+});
 
 test("선언 검사: K1이 없으면 멈춘다", () => {
   assert.equal(declarationCheck(f("create table t (a int);"), "K3 only").ok, false);

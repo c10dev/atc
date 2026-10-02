@@ -602,17 +602,17 @@ DISPATCH는 SUPERVISOR가 발권한("화살을 쏜", [autonomy.md](autonomy.md) 
 
 순서는 정해져 있고 처음 실패에서 멈춘다:
 
-1. **선언 검사**(`server/migration-declare.ts`, 순수). 새 SQL을 발권 때 선언한 K1 효과와 견준다: 이슈의 `## K effects` 절이고, 발권 기록(ATC-362)의 해시가 지금 본문과 같을 때만 받는다. K1이 선언되지 않았거나, 파괴적 문장(DROP, TRUNCATE, REVOKE, 이름 바꿈, 열 타입 변경, DISABLE RLS, WHERE 없는 UPDATE·DELETE), 분류할 수 없는 문장, 선언이 그 표를 적지 않은 DML이 있으면 멈춘다. 추가형 DDL은 K1이 선언돼 있으면 통과한다. 기계 검사는 이 종류에는 강하고 논리(틀린 WHERE, backfill)에는 약하다. 그것은 리허설과 복원점의 몫이다.
+1. **선언 검사**(`server/migration-declare.ts`, 순수). 새 SQL을 발권 때 선언한 K1 효과와 견준다: 이슈의 `## K effects` 절이고, 발권 기록(ATC-362)의 해시가 지금 본문과 같을 때만 받는다. K1이 선언되지 않았거나, 파괴적 문장(DROP, TRUNCATE, REVOKE, 이름 바꿈, 열 타입 변경, DISABLE RLS, WHERE 없는 UPDATE·DELETE), 분류할 수 없는 문장, 선언이 그 표를 적지 않은 DML이 있으면 멈춘다. 추가형 DDL은 K1이 선언돼 있으면 통과한다. 접근을 넓히거나 기존 동작을 바꾸는 문장(정책, GRANT, 역할, SECURITY, OWNER TO, CREATE OR REPLACE)은 선언이 그 낱말(`policy`·`grant`·`role`·`security`·`owner`·`replace`)도 적었을 때만 통과한다. 기계 검사는 이 종류에는 강하고 논리(틀린 WHERE, backfill)에는 약하다. 그것은 리허설과 복원점의 몫이다.
 2. **리허설.** 시험 DB가 실전과 같은 마이그레이션 버전이어야 한다(실전에서 다시 가져오는 일은 atc 밖에서 하고, atc는 그것이 됐는지만 확인). 그다음 파일마다 버전 줄과 함께 한 트랜잭션으로 적용하고, AIRPORT의 `smoke` 질의를 돌린다.
-3. **복원점.** 호스팅 제공자에서 읽는다: PITR이 켜져 있으면 그것, 아니면 `maxBackupAgeHours`(기본 24) 안의 가장 새 완료 백업. 없으면 멈춘다. atc가 백업을 만들지는 않는다.
+3. **복원점.** 만들지 않고 확인한다: 호스팅 제공자에서 읽는다: PITR이 켜져 있으면 그것, 아니면 `maxBackupAgeHours`(기본 24) 안의 가장 새 완료 백업. 없으면 멈춘다. atc가 백업을 만들지는 않는다.
 4. **실전 적용.** 파일마다 한 트랜잭션: 파일의 문장들(자체 BEGIN·COMMIT은 뗌)과 그 파일의 version·name 그대로의 버전 줄.
 5. **적용 뒤 검사.** 버전 줄이 있고, `public`의 함수 본문 해시와 grant가 시험 DB와 같고, `healthUrl`이 있으면 200.
 
-- **결과.** `stopped`: 실전 그대로(4단계 전의 실패, 4단계의 첫 파일 실패). `live-changed`: 4단계에서 일부 파일을 적용한 뒤 실패했거나 5단계가 실패. 기록에 복원점이 있다. 자동 복원은 하지 않는다(아래 "Not built yet"). 같은 head는 다시 하지 않고, 새 head가 새 시도이며 FLIGHT는 새 arrow로 돌아온다.
+- **결과.** `stopped`: 실전 그대로(4단계 전의 실패, 4단계의 첫 파일 실패). `live-changed`: 4단계에서 일부 파일을 적용한 뒤 실패했거나 5단계가 실패. 기록에 복원점이 있다. 자동 복원은 하지 않는다(아래 "Not built yet"). 같은 head는 다시 하지 않고, 새 head가 새 시도다. 이유는 `migrations.jsonl`, AUTOLAND 기록, `GET /api/migrate`에 보이고, FLIGHT를 새 arrow로 돌려보내는 것은 만들지 않았다(아래). 시험 DB는 되돌리지 않는다: 리허설 단계 뒤에서 멈추면 시험 DB가 실전보다 앞서 있고, 그 AIRPORT의 다음 리허설은 누군가 atc 밖에서 다시 가져올 때까지 "시험 DB가 실전과 같은 버전이 아님"에서 멈춘다.
 - **스위치.** AIRPORT마다 하나, `migrate.json`. `PUT /api/settings`의 `migrateRehearsal: {코드: bool}`로만 바꾼다(`fromThisApp`, `atcctl` 명령 없음, 설정 창에 MIGRATE 블록). `hostedDb.testProjectRef`와 `SUPABASE_MIGRATE_TOKEN`이 있는 AIRPORT만 켤 수 있다. 기본 꺼짐.
 - **자격 증명(K2).** `.env.local`의 `SUPABASE_MIGRATE_TOKEN`(읽기 전용 `SUPABASE_ACCESS_TOKEN`과 따로). SUPERVISOR가 둔다. 요청 머리에만 쓰고 오류·기록은 `redact`를 거친다. 출력·로그·복사·전송하지 않는다.
 - **형식.** 모두 추가: `hostedDb.testProjectRef`·`smoke`·`healthUrl`·`maxBackupAgeHours`, `migrate.json`, `migrations.jsonl`, `autoland.jsonl`의 op `migrate`.
-- **Not built yet.** 실전 적용 실패 뒤 자동 복원, 복원점을 그때 만들기, 시험 DB를 실전에서 다시 가져오기, 앱 점검 명령(SQL 질의만), 자체 호스팅 시험 DB(호스팅 제공자의 project ref만), 적용 전 뒤쪽 제외(HUMAN CHECK) 확인. 복원점에 쓰는 백업 목록 응답 모양은 실제 API로 확인하지 못했다.
+- **Not built yet.** 멈춘 뒤 FLIGHT를 새 arrow로 돌려보내기, 실전 적용 실패 뒤 자동 복원, 복원점을 그때 만들기, 시험 DB를 실전에서 다시 가져오기, 앱 점검 명령(SQL 질의만), 자체 호스팅 시험 DB(호스팅 제공자의 project ref만), 적용 전 뒤쪽 제외(HUMAN CHECK) 확인. 복원점에 쓰는 백업 목록 응답 모양은 실제 API로 확인하지 못했다.
 
 ## 살아 있는 세션으로 주소를 정하기와 전달 실패, 만든 것 (ATC-353)
 

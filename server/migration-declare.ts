@@ -4,15 +4,17 @@
 //  - K1이 선언되지 않았으면 멈춘다(undeclared).
 //  - 추가형 DDL(CREATE, ALTER … ADD, ENABLE RLS, GRANT, COMMENT …)은 K1이 선언돼 있으면 통과한다.
 //  - DROP·TRUNCATE·REVOKE·열 타입 변경·이름 바꿈·DISABLE RLS, WHERE 없는 UPDATE·DELETE는 파괴적이라 멈춘다.
+//  - 접근을 넓히거나 기존 동작을 바꾸는 문장(정책, GRANT, 역할, SECURITY, OWNER TO, CREATE OR REPLACE)은 선언 글이 그 낱말(policy·grant·role·security·owner·replace)을 적었을 때만 통과한다.
 //  - INSERT·UPDATE·DELETE(DML)는 선언 글이 그 표 이름을 적었을 때만 통과한다.
 //  - 위에 없는 문장은 분류할 수 없어 멈춘다.
 
-export type StatementKind = "additive" | "dml" | "destructive" | "unknown" | "txn";
+export type StatementKind = "additive" | "sensitive" | "dml" | "destructive" | "unknown" | "txn";
 
 export interface Classified {
   sql: string; // 문장 앞부분(오류 표시용, 최대 80자)
   kind: StatementKind;
   table?: string; // dml의 대상 표(소문자, 스키마 뺌)
+  needs?: string; // sensitive: 선언 글에 이 낱말이 있어야 통과한다
   why?: string;
 }
 
@@ -90,6 +92,15 @@ const ADDITIVE = [
   /^create or replace\b/,
   /^alter (table|view|function|sequence) [\w."(),\s]+ owner to\b/,
 ];
+// 접근·기존 동작을 바꾸는 추가형: 선언이 그 낱말을 적어야 한다. 머리(240자) 안의 SECURITY DEFINER까지 본다
+const SENSITIVE: [RegExp, string][] = [
+  [/^(create (or replace )?policy|alter policy)\b/, "policy"],
+  [/^grant\b/, "grant"],
+  [/^(create|alter) role\b/, "role"],
+  [/\bsecurity (definer|invoker)\b|^alter function [\w."(),\s]+ security\b/, "security"],
+  [/\bowner to\b/, "owner"],
+  [/^create or replace\b/, "replace"],
+];
 const TXN = /^(begin|commit|end|start transaction)\b/;
 
 export function classify(stmt: string): Classified {
@@ -113,6 +124,8 @@ export function classify(stmt: string): Classified {
   if ((m = /^delete from (only )?([\w."]+)/.exec(head))) {
     return hasWhere(stmt) ? { sql, kind: "dml", table: bare(m[2]!) } : { sql, kind: "destructive", table: bare(m[2]!), why: "WHERE 없는 DELETE" };
   }
+  const sens = SENSITIVE.find(([r]) => r.test(head));
+  if (sens && (ADDITIVE.some((r) => r.test(head)) || /^alter role\b/.test(head))) return { sql, kind: "sensitive", needs: sens[1] };
   if (ADDITIVE.some((r) => r.test(head))) return { sql, kind: "additive" };
   return { sql, kind: "unknown", why: "분류할 수 없는 문장" };
 }
@@ -123,7 +136,8 @@ function hasWhere(stmt: string): boolean {
     .replace(/--[^\n]*/g, " ")
     .replace(/\/\*[\s\S]*?\*\//g, " ")
     .replace(/\$([A-Za-z_]\w*)?\$[\s\S]*?\$\1\$/g, " ")
-    .replace(/'(?:[^']|'')*'/g, " ");
+    .replace(/'(?:[^']|'')*'/g, " ")
+    .replace(/"(?:[^"]|"")*"/g, " "); // 큰따옴표 식별자("where" 열)도 걷어 낸다
   return /\bwhere\b/i.test(stripped);
 }
 
@@ -149,6 +163,8 @@ export function declarationCheck(files: readonly { path: string; sql: string }[]
         stopped.push({ file: f.path, sql: c.sql, why: "K1 효과가 선언되지 않음" });
       } else if (c.kind === "destructive" || c.kind === "unknown") {
         stopped.push({ file: f.path, sql: c.sql, why: c.why ?? "" });
+      } else if (c.kind === "sensitive" && !new RegExp(`\\b${c.needs}`, "i").test(declared)) {
+        stopped.push({ file: f.path, sql: c.sql, why: `선언에 \`${c.needs}\`가 없음(접근·기존 동작을 바꾸는 문장)` });
       } else if (c.kind === "dml" && !(c.table && mentions(declared, c.table))) {
         stopped.push({ file: f.path, sql: c.sql, why: `선언에 없는 DML(표 ${c.table ?? "?"})` });
       }
