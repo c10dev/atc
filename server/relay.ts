@@ -1,3 +1,4 @@
+import { causeOf, resolveRecipient } from "./address.ts";
 import type { Clearance, ClearanceType, Session } from "./model.ts";
 
 // SUPERVISOR RELAY(ATC-271): SUPERVISOR가 화면에서 AIRCRAFT에게 짧은 글을 보내는 길. 순수 함수만(파일은 relay-run.ts).
@@ -25,14 +26,18 @@ export interface Relay {
   statusAt: string;
   clearance: string | null; // "C-0301"
   reason: string | null; // undeliverable의 사유
+  cause?: string | null; // undeliverable의 원인 분류(ATC-353, address.ts CAUSES). 옛 기록에는 없다
+  toSessionId?: string; // 만들 때 찾은 받는 세션(ATC-353). 이름은 바뀌어도 id는 남는다
+  toJobId?: string;
+  toAccount?: string;
   answer: string | null; // delivered일 때 CAPTAIN의 답: "READBACK" | "ROGER" | "UNABLE — <사유>"
 }
 
-type CreateOp = Omit<Relay, "status" | "statusAt" | "clearance" | "reason" | "answer">;
+type CreateOp = Omit<Relay, "status" | "statusAt" | "clearance" | "reason" | "answer" | "cause">;
 export type RelayOp =
   | ({ op: "create" } & CreateOp)
   | { op: "issued"; id: string; at: string; clearance: string }
-  | { op: "undeliverable"; id: string; at: string; reason: string }
+  | { op: "undeliverable"; id: string; at: string; reason: string; cause?: string }
   | { op: "hand"; id: string; at: string }; // SUPERVISOR가 손으로 전했다고 표시(카드를 닫는다)
 
 // 글자에 일본어·중국어·한국어가 있으면 거절(팀은 영어를 읽는다, ATC-126). 화면도 같은 말을 한다
@@ -95,7 +100,7 @@ export function relayInputOf(body: unknown): RelayInput | { error: string } {
 export const clearanceTypeOf = (r: Pick<Relay, "kind" | "pr"> & { type?: RelayType }): ClearanceType => (r.type ? r.type : r.kind === "info" ? "INFO" : r.pr != null ? "FIX" : "CONTINUE");
 
 // 기록(ops)을 접어 지금 상태를 만든다. clearances를 주면 issued를 CAPTAIN의 답에 따라 delivered·undeliverable로 바꿔 보인다
-export function foldRelays(ops: readonly RelayOp[], clearances: readonly Pick<Clearance, "id" | "readbackAt" | "ackWord" | "unableAt" | "unableReason" | "cancelledAt" | "undeliverableAt" | "undeliverableReason">[] = []): Relay[] {
+export function foldRelays(ops: readonly RelayOp[], clearances: readonly Pick<Clearance, "id" | "readbackAt" | "ackWord" | "unableAt" | "unableReason" | "cancelledAt" | "undeliverableAt" | "undeliverableReason" | "undeliverableCause">[] = []): Relay[] {
   const byId = new Map<string, Relay>();
   for (const o of ops) {
     if (o.op === "create") {
@@ -106,14 +111,14 @@ export function foldRelays(ops: readonly RelayOp[], clearances: readonly Pick<Cl
     const r = byId.get(o.id);
     if (!r) continue;
     if (o.op === "issued" && r.status === "queued") Object.assign(r, { status: "issued", statusAt: o.at, clearance: o.clearance });
-    else if (o.op === "undeliverable" && (r.status === "queued" || r.status === "issued")) Object.assign(r, { status: "undeliverable", statusAt: o.at, reason: o.reason });
+    else if (o.op === "undeliverable" && (r.status === "queued" || r.status === "issued")) Object.assign(r, { status: "undeliverable", statusAt: o.at, reason: o.reason, cause: causeOf(o.reason, o.cause) });
     else if (o.op === "hand" && r.status === "undeliverable") Object.assign(r, { status: "hand", statusAt: o.at });
   }
   const cl = new Map(clearances.map((c) => [c.id, c]));
   for (const r of byId.values()) {
     const c = r.clearance ? cl.get(r.clearance) : undefined;
     if (r.status !== "issued" || !c) continue;
-    if (c.undeliverableAt) Object.assign(r, { status: "undeliverable", statusAt: c.undeliverableAt, reason: c.undeliverableReason ?? `${c.id} could not be delivered` });
+    if (c.undeliverableAt) Object.assign(r, { status: "undeliverable", statusAt: c.undeliverableAt, reason: c.undeliverableReason ?? `${c.id} could not be delivered`, cause: causeOf(c.undeliverableReason, c.undeliverableCause) });
     else if (c.readbackAt) Object.assign(r, { status: "delivered", statusAt: c.readbackAt, answer: c.ackWord ?? "READBACK" });
     else if (c.unableAt) Object.assign(r, { status: "delivered", statusAt: c.unableAt, answer: `UNABLE — ${c.unableReason ?? "no reason"}` });
     else if (c.cancelledAt) Object.assign(r, { status: "undeliverable", statusAt: c.cancelledAt, reason: `${c.id} was cancelled before an answer` });
@@ -179,10 +184,11 @@ export function unreachableWhy(target: Pick<Session, "name" | "account"> | null,
 }
 
 // TOWER의 brief에 실리는 줄: 아직 보내지 않은 relay. text는 고치지 않고 그대로 CLEARANCE로
-export function relayBriefOf(relays: readonly Relay[], now = Date.now()) {
+// sessions를 주면 보낼 때의 살아 있는 세션(id·job id·ACCOUNT)을 덧붙인다(ATC-353, 선택 필드). 이름이 바뀌었어도 만들 때 저장한 id로 찾는다
+export function relayBriefOf(relays: readonly Relay[], now = Date.now(), sessions: readonly Pick<Session, "id" | "name" | "status" | "jobId" | "account" | "lastActiveAt">[] = [], teamPattern?: string) {
   return relays
     .filter((r) => r.status === "queued")
-    .map((r) => ({ id: r.id, to: r.to, kind: r.kind, type: clearanceTypeOf(r), flight: r.flight, pr: r.pr, ...(r.stand ? { stand: r.stand } : {}), text: r.text, ageMin: Math.round((now - Date.parse(r.at)) / 60_000) }));
+    .map((r) => ({ ...relaySendAddressOf(r, sessions, teamPattern), id: r.id, to: r.to, kind: r.kind, type: clearanceTypeOf(r), flight: r.flight, pr: r.pr, ...(r.stand ? { stand: r.stand } : {}), text: r.text, ageMin: Math.round((now - Date.parse(r.at)) / 60_000) }));
 }
 
 // ── 받을 AIRCRAFT 제안(ATC-308, 순수) ──────────────────────────────────
@@ -211,4 +217,12 @@ export function lastAircraftOf(flight: string | null, x: LastAircraftInput): str
   const rep = x.reports.filter((r) => r.flight === flight && r.proposal).sort((a, b) => a.at.localeCompare(b.at)).at(-1);
   const p = rep ? x.proposals.find((q) => q.id === rep.proposal) : undefined;
   return p ? regOfProposal(p) : null;
+}
+
+// relay의 보낼 때 받는 이: 만들 때 저장한 세션 id → job id → REGISTRATION 순으로 찾는다. 못 찾으면 필드 없음(TOWER가 그대로 `to`로 보내고 실패하면 undeliverable)
+export interface SendAddress { sendTo?: string; sendToId?: string; sendToJobId?: string; sendToAccount?: string }
+export function relaySendAddressOf(r: Pick<Relay, "to" | "toSessionId" | "toJobId">, sessions: readonly Pick<Session, "id" | "name" | "status" | "jobId" | "account" | "lastActiveAt">[], teamPattern?: string): SendAddress {
+  if (!sessions.length) return {};
+  const x = resolveRecipient(sessions, { sessionId: r.toSessionId, jobId: r.toJobId, registration: r.to }, teamPattern);
+  return x.ok ? { sendTo: x.session.name, sendToId: x.session.id, ...(x.session.jobId ? { sendToJobId: x.session.jobId } : {}), ...(x.session.account ? { sendToAccount: x.session.account } : {}) } : {};
 }
