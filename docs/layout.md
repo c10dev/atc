@@ -92,16 +92,16 @@ The tab row is then five: HOME, RELEASE, FLIGHTS, FLEET, METRICS.
 
 ## 4. Implementation order
 
-Each step is one work order and one PR. The tier is `auto` unless a step touches a `user` path. Each step updates `docs/guide/` (at least `screens.md`), adds a changelog fragment, and follows the design-language checklist. Its Playwright pass runs at the SUPERVISOR's real width (about 1000 px), as well as at 1280 and 390 px, with seeded data.
+Each step is one work order (filed 2026-10-02, linked below) and one PR. The tier is `auto` unless a step touches a `user` path. Each step updates `docs/guide/` (at least `screens.md`), adds a changelog fragment, and follows the design-language checklist. Its Playwright pass runs at the SUPERVISOR's real width (about 1000 px), as well as at 1280 and 390 px, with seeded data.
 
 | Step | What | Needs |
 |---|---|---|
-| Y1 | **RELEASE screen.** Move the release block out of DISPATCH into `#release` and add the candidates (READY issues and agent proposals) next to the unreleased Todo issues. DISPATCH links there until Y2. | ATC-362 ✅ |
-| Y2 | **HOME, and DISPATCH taken apart.** Create `#home` with the queue, ALERTs and the brakes row. Move ATFM and the departure stop to the brakes row, CANCEL / RECALL to the FLIGHT row and drawer, MISFIRE to METRICS. Remove the verdict, CROSSCHECK and BLIND UI. The assignment history becomes a record in the FLIGHT drawer. `#dispatch` goes to `#home`. | ATC-367 ✅, ATC-371 |
-| Y3 | **SCHEDULE taken apart.** LATE WAYPOINTS to HOME. NEW drafts to RELEASE candidates. Remove the verdict UI and READINESS. `#schedule` goes to `#home`. | ATC-370 |
-| Y4 | **FLIGHTS.** One screen with list, board and radar views, built from FOLLOW, STRIPS, FIDS and RADAR. RADIO becomes a sub-view and a drawer thread. HUMAN CHECK items move to HOME. Old addresses map to the views. | Y2 |
-| Y5 | **METRICS.** Take in NETWORK and MISFIRE from every automatic lane. | Y2, Y3 |
-| Y6 | **Small moves.** AIRPORTS into settings, GLOBE to the view mode, DOCS to the help menu, the default tab to `#home`. The tab row is now five. | Y4 |
+| Y1 ([ATC-376](https://linear.app/vocado/issue/ATC-376)) | **RELEASE screen.** Move the release block out of DISPATCH into `#release` and add the candidates (READY issues and agent proposals) next to the unreleased Todo issues. DISPATCH links there until Y2. | ATC-362 ✅ |
+| Y2 ([ATC-377](https://linear.app/vocado/issue/ATC-377)) | **HOME, and DISPATCH taken apart.** Create `#home` with the queue, ALERTs and the brakes row. Move ATFM and the departure stop to the brakes row, CANCEL / RECALL to the FLIGHT row and drawer, MISFIRE to METRICS. Remove the verdict, CROSSCHECK and BLIND UI. The assignment history becomes a record in the FLIGHT drawer. `#dispatch` goes to `#home`. | ATC-367 ✅, ATC-371 |
+| Y3 ([ATC-378](https://linear.app/vocado/issue/ATC-378)) | **SCHEDULE taken apart.** LATE WAYPOINTS to HOME. NEW drafts to RELEASE candidates. Remove the verdict UI and READINESS. `#schedule` goes to `#home`. | ATC-370 |
+| Y4 ([ATC-379](https://linear.app/vocado/issue/ATC-379)) | **FLIGHTS.** One screen with list, board and radar views, built from FOLLOW, STRIPS, FIDS and RADAR. RADIO becomes a sub-view and a drawer thread. HUMAN CHECK items move to HOME. Old addresses map to the views. | Y2 |
+| Y5 ([ATC-380](https://linear.app/vocado/issue/ATC-380)) | **METRICS.** Take in NETWORK and MISFIRE from every automatic lane. | Y2, Y3 |
+| Y6 ([ATC-381](https://linear.app/vocado/issue/ATC-381)) | **Small moves.** AIRPORTS into settings, GLOBE to the view mode, DOCS to the help menu, the default tab to `#home`. The tab row is now five. | Y4 |
 
 Order rationale (decision D3): firing has no home and is used every day, so it comes first. The two views whose job is gone hold most of the code and most of the words, so they go next; HOME is built in Y2 because the parts taken out of DISPATCH need a place to land. FLIGHTS changes the most habits, so it comes once the rest has settled.
 
