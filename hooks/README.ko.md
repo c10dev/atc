@@ -265,3 +265,5 @@ atc가 점유로 HANDOFF와 충돌을 판정하는 방법은 저장소 [README](
 ## Policy hook (`policy.mjs`)
 
 `policy.mjs`는 atc가 모든 AIRCRAFT LAUNCH에 `claude --bg --settings`로 더하는 `PermissionRequest` hook이다(ATC-369. `.claude/settings.json`에는 없어서 관제 세션과 직접 여는 세션은 받지 않는다). 권한 프롬프트가 뜰 호출마다 허용이나 거절로 답한다: AIRCRAFT의 STAND 안은 허용, 나머지(Claude 설정 폴더, STAND 밖 쓰기, 운영 상태, Playwright가 아닌 MCP 도구 …)는 거절. 거절은 한 줄(시각, REGISTRATION, 세션, 도구, class. 명령·경로 본문 없음)씩 `<상태 폴더>/policy-denials.jsonl`에 남는다. fail-closed. 인자: `--state <폴더> --aircraft <REGISTRATION>`. 규칙과 화면은 [docs/fleet.ko.md](../docs/fleet.ko.md) "AIRCRAFT policy hook과 STALE STOP as built (ATC-369)"에 있다. `policy.test.mjs`가 허용·거절 경우를 확인한다.
+
+일부러 한 선택(ATC-369 검토): `kill <pid>`는 test-server가 저장한 PID로 서버를 끄는 길이라 늘 허용한다. 이름·패턴 kill과 `systemctl … atc`는 `kill-guard.mjs`가 막는다. 그래서 운영 7700의 PID를 직접 적은 `kill`은 두 hook 모두 못 막는다(hook은 PID가 누구 것인지 모른다). `source <atc>/.env.local`은 허용하고 그 파일의 `cat`은 거절한다: source는 값을 자식의 환경에만 싣고 출력하지 않는(test-server 처방) 것이고 읽기는 비밀이라 거절한다. hook은 모든 AIRCRAFT에 걸린다(vocado 팀도). 목록에 없는 명령·MCP 도구(`pnpm`, `psql`, `supabase`, `docker`, Playwright와 Linear 말고 다른 MCP)는 전에는 사람에게 물었을 호출이 이제 거절되므로, atc 밖 AIRCRAFT를 처음 LAUNCH한 뒤 거절 class를 본다.

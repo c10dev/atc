@@ -295,11 +295,14 @@ function commandVerdict(words, ctx) {
     }
     case "source":
     case ".": {
+      // 일부러 허용(ATC-369 검토): `source <atc>/.env.local`은 test-server 처방(.env.local을 자식 프로세스 환경에만 싣는다)이라 허용한다. 읽기(cat 등)는 비밀이라 거절하므로 둘이 달라 보이지만 뜻은 같다: 값을 출력하지 않고 환경에만 싣는 것만 열어 둔다
       const f = operands(args)[0] ?? "";
       return /^\/home\/[^/]+\/projects\/atc\/\.env\.local$/.test(f) ? allow("source-env") : deny("source");
     }
     case "kill":
-      return allow("kill"); // 이름·패턴 kill은 hooks/kill-guard.mjs가 따로 막는다
+      // 일부러 허용(ATC-369 검토): `kill <pid>`는 test-server가 저장한 PID를 끄는 길이라 늘 허용한다. 이름·패턴 kill과 systemctl atc는 hooks/kill-guard.mjs가 막는다.
+      // 알려진 틈: 운영 7700의 PID를 직접 적은 kill은 이 hook도 kill-guard도 막지 않는다(자동 분류기는 사람에게 물었을 호출). 이것을 막으려면 PID 소유를 알아야 해서 여기서는 하지 않는다
+      return allow("kill");
     default:
       return allow(name);
   }

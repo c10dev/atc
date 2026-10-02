@@ -36,6 +36,11 @@ test("FLIGHT not finished: no arrival, an arrival before this session, or anothe
   assert.deepEqual(staleStopOf(base({ flights: ["ATC-369", "ATC-370"] }), now), { stop: false, why: "open-flight" });
 });
 
+test("startedAt unknown: past arrivals are not this session's, so it is not stopped (DIRECT and AD HOC work)", () => {
+  assert.deepEqual(staleStopOf(base({ startedAt: null }), now), { stop: false, why: "no-arrival" });
+  assert.deepEqual(staleStopOf(base({ startedAt: "garbage" }), now), { stop: false, why: "no-arrival" });
+});
+
 test("only atc's own background sessions", () => {
   assert.deepEqual(staleStopOf(base({ background: false }), now), { stop: false, why: "not-background" });
 });
