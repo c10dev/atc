@@ -24,17 +24,14 @@ import { readJob, settleJob } from "./job-state.ts";
 import { ttlCache } from "./agents-cache.ts";
 import { readSquelchLast, squelchOfName } from "./squelch-last.ts";
 import { capHoldersOf, capHoldersText, type OtherBackground, otherBackgroundOf } from "./other-background.ts";
+import { launchWithFlightPromptOf } from "./fresh-start.ts";
 
 // 세션 조종(docs/fleet.md 8.5). atc가 `claude --bg`로 AIRCRAFT 세션을 띄우고 `claude stop`으로 멈춘다.
 // SUPERVISOR가 FLEET 탭에서 누를 때만 한다(Origin 검사). 관제 세션의 atcctl은 부를 수 없다.
 
-// bypassPermissions는 두지 않는다: 띄운 세션이 권한 확인 없이 도는 길을 atc가 열지 않는다
-export const PERMISSION_MODES = ["auto", "acceptEdits", "default"] as const;
-export type PermissionMode = (typeof PERMISSION_MODES)[number];
-export const DEFAULT_PERMISSION_MODE: PermissionMode = "auto";
-
-// 동시에 살아 있는 atc가 띄운 세션 수 상한(비용). ATC_MAX_LAUNCHED로 바꾼다
-export const MAX_LAUNCHED = Number(process.env.ATC_MAX_LAUNCHED) || 6;
+import { DEFAULT_PERMISSION_MODE, MAX_LAUNCHED, PERMISSION_MODES, type PermissionMode } from "./launch-limits.ts";
+export { DEFAULT_PERMISSION_MODE, MAX_LAUNCHED, PERMISSION_MODES };
+export type { PermissionMode };
 
 // `claude agents --json`의 한 줄
 export interface AgentRow {
@@ -776,7 +773,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
       const flight = typeof body.flight === "string" ? body.flight.trim().toUpperCase() : "";
       if (!/^[A-Z][A-Z0-9]*-\d+$/.test(flight)) return c.json({ error: "FLIGHT는 이슈 키(예: ATC-73)" }, 400);
       try {
-        const [{ directBriefOf }, { launchWithFlightPromptOf }] = await Promise.all([import("./proposals.ts"), import("./fresh-start.ts")]);
+        const { directBriefOf } = await import("./proposals.ts");
         const brief = await directBriefOf(flight, reg);
         withFlight = { promptOf: (b) => launchWithFlightPromptOf(b, brief), flight };
       } catch (e) {

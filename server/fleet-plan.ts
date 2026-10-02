@@ -8,7 +8,7 @@ import { hhmm } from "./health.ts";
 import type { LogEntry } from "./logbook.ts";
 import { isFlap, type RepositionEvent } from "./reposition.ts";
 import { compareRegistration, regKey } from "./registration.ts";
-import { MAX_LAUNCHED, PERMISSION_MODES, type PermissionMode } from "./session-control.ts";
+import { MAX_LAUNCHED, PERMISSION_MODES, type PermissionMode } from "./launch-limits.ts";
 import { isBackground, manualStepsOf, type SessionOrigin } from "./session-origin.ts";
 
 // FLEET PLAN(docs/fleet.md 8.6): 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·REFRESH·AOG·RETIRE를 제안한다.

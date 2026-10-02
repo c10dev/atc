@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import type { Hono } from "hono";
 import {
@@ -31,6 +30,7 @@ import {
   writeResultOf,
 } from "./autoland.ts";
 import { mergeReviewOf, pullKey, reviewPasses, slugOfUrl } from "./landing.ts";
+import { appendRecord } from "./autoland-record.ts";
 import { readMergeReviews } from "./landing-review.ts";
 import { assertGithubOn } from "./github-switch.ts";
 import { hostedDbOfAirport } from "./airports.ts";
@@ -50,14 +50,6 @@ const gh = async (args: string[]) => {
   assertGithubOn();
   return (await run("gh", args, { timeout: 60_000, maxBuffer: 16 << 20 })).stdout;
 };
-
-export function appendRecord(r: Omit<AutolandRecord, "at"> & { at?: string }) {
-  const line: AutolandRecord = { at: r.at ?? new Date().toISOString(), ...r } as AutolandRecord;
-  const file = RECORD_FILE();
-  mkdirSync(dirname(file), { recursive: true });
-  appendFileSync(file, JSON.stringify(line) + "\n");
-  if (["update", "merge", "groundstop", "groundstop-clear", "mode", "review-request"].includes(line.op)) console.log(`[atc] autoland ${line.op}${line.number ? ` #${line.number}` : ""}${line.result ? ` ${line.result}` : ""}${line.detail ? ` — ${line.detail}` : ""}`);
-}
 
 export function readRecords(limit = 50): AutolandRecord[] {
   try {

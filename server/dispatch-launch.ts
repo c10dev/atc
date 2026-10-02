@@ -1,8 +1,8 @@
 import type { Departure } from "./departures.ts";
-import { type AssignPlan, type Factor, type Landed, tailsOf } from "./dispatch.ts";
+import type { AssignPlan, Factor, Landed } from "./dispatch.ts";
 import { type Fact, factsOf, hhmm } from "./health.ts";
 import { isControlName } from "./crew.ts";
-import type { Session, Snapshot } from "./model.ts";
+import type { Session, Snapshot, Ticket } from "./model.ts";
 import type { Op, Proposal } from "./proposals.ts";
 import { regKey } from "./registration.ts";
 import { CAP_IDLE_MIN, type CapIdleHint, capHoldersOf, capHoldersText, capIdleHintsOf, isAircraftName } from "./other-background.ts";
@@ -335,4 +335,14 @@ export function resumeLines(r: ResumeInfo, now: number): string[] {
     `STAND ${r.stand ?? "unknown"} · branch ${r.branch ?? "unknown"} · ${commit}`,
     r.report ? `CAPTAIN's last report: ${r.report}` : null,
   ].filter((l): l is string => Boolean(l));
+}
+
+// `tail:`(옛 `lane:`) 라벨이 가리키는 REGISTRATION들. dispatch.ts에서 옮겼다(ATC-338): dispatch.ts가 이 파일을 가져오고 이 파일은 dispatch.ts를 값으로 가져오지 않는다.
+export const LANE_CUTOFF = Date.parse("2026-10-10T00:00:00+09:00");
+const TAIL_LABEL = /^(tail|lane):\s*(\S+)$/i;
+const TAIL_ONLY = /^(tail):\s*(\S+)$/i;
+export function tailsOf(t: Pick<Ticket, "labels">, now = Date.now()): Set<string> {
+  const re = now < LANE_CUTOFF ? TAIL_LABEL : TAIL_ONLY;
+  const regs = t.labels.map((l) => re.exec(l.trim())?.[2]).filter(Boolean) as string[];
+  return new Set(regs.map((r) => regKey(r))); // `tail:team-g`도 TEAM_G(ATC-67)
 }
