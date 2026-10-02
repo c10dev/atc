@@ -78,7 +78,7 @@
   cursor: pointer;
 }
 
-/* ACTIVITY(ATC-97): 지금 하는 일 한 줄. idle은 흐리게. 색은 :root 토큰만 */
+/* ACTIVITY(ATC-97): 지금 하는 일 한 줄. idle은 흐린 글자색으로(투명도로 흐리게 하지 않는다, ATC-408). 색은 :root 토큰만 */
 .activity {
   display: flex;
   align-items: center;
@@ -110,11 +110,14 @@
   background: var(--cyan);
 }
 .activity.is-idle {
-  opacity: 0.55;
+  color: var(--faint);
 }
 .strip .activity {
   margin-top: var(--space-0-5);
   color: var(--paper-ink);
+}
+.strip .activity.is-idle {
+  color: var(--paper-muted);
 }
 .strip .activity.is-tool .activity-dot {
   background: var(--stamp-blue);

@@ -71,7 +71,7 @@ Each principle has a check that a reviewer can apply to a PR.
 | 2 | `--panel-2` | Cards, expanded details |
 | 3 | `--panel-3` | Hover, popovers, menus |
 
-Each layer is one step brighter and has a stronger border (`--line`, `--line-strong`). Text has three levels: `--text` (values, names), `--muted` (secondary values), `--faint` (labels, ages, captions). The faintest text keeps 4.5:1 on every layer in every theme.
+Each layer is one step brighter and has a stronger border (`--line`, `--line-strong`). Text has three levels: `--text` (values, names), `--muted` (secondary values), `--faint` (labels, ages, captions). The faintest text keeps 4.5:1 on every layer in every theme; `server/theme-contrast.test.ts` checks `--faint` and `--muted` on every layer and `--paper-muted` on a parked strip, compositing the translucent Night Sky layers (ATC-408). Text is never dimmed with `opacity`; a quieter state uses a quieter token.
 
 ### 3.2 Signal colours
 
