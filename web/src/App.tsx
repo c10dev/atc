@@ -7,7 +7,8 @@ import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useM
 import { showNewVersion } from "../../server/version.ts";
 import { alertCode, alertLabel, alertLevel, alertLevelLabel, alertMessage, callsign, flightNumber, groupAlerts, HANDOFF_LABEL } from "./aviation.ts";
 import { buildIndex, timeAgo } from "./derive.ts";
-import { ControlStrip } from "./ControlStrip.tsx";
+import { ControlPanel } from "./ControlPanel.tsx";
+import { opensControlPanel } from "../../server/control-panel.ts";
 import { NewVersionBar } from "./NewVersion.tsx";
 import { UpdateBar, useUpdate } from "./UpdateBar.tsx";
 import { SupervisorPairing, useSupervisorAuth } from "./SupervisorPairing.tsx";
@@ -83,6 +84,8 @@ export function App({ build }: { build: string }) {
   // DUTY 서랍(#duty, ATC-220): 어느 탭 위에서도 열린다. 꺼져 있으면 헤더에 readout이 없고, 주소로 열면 꺼짐 안내만 보인다
   const duty = useDuty();
   const [dutyOpen, setDutyOpen] = useState(() => location.hash === "#duty");
+  // #fleet/control과 #control은 아래 CONTROL 패널을 연다(ATC-445). 올라가는 숫자가 "열어라"는 신호다
+  const [controlSignal, setControlSignal] = useState(() => (opensControlPanel(location.hash) ? 1 : 0));
   const closeDuty = useCallback(() => {
     setDutyOpen(false);
     history.replaceState(null, "", `#${tabRef.current}`);
@@ -103,6 +106,14 @@ export function App({ build }: { build: string }) {
       setDrawer(d);
       const isDuty = location.hash === "#duty";
       setDutyOpen(isDuty);
+      // CONTROL 패널 주소: 화면은 그대로(옛 #fleet/control은 FLEET), 패널만 열고 주소는 화면 주소로 되돌린다
+      if (opensControlPanel(location.hash)) {
+        const to: Tab = headOf(location.hash) === "fleet" ? "fleet" : tabRef.current;
+        setTab(to);
+        history.replaceState(null, "", `#${to}`);
+        setControlSignal((n) => n + 1);
+        return;
+      }
       // #globe는 창, #airports는 설정 창의 AIRPORTS(ATC-381): 탭은 그대로다
       const head = headOf(location.hash);
       setGlobeOpen(head === "globe");
@@ -228,7 +239,6 @@ export function App({ build }: { build: string }) {
               <span>DUTY · {dutyWord}</span>
             </button>
           )}
-          <ControlStrip snapshot={snapshot} now={now} />
         </header>
 
         <SupervisorPairing auth={supervisorAuth} />
@@ -295,7 +305,9 @@ export function App({ build }: { build: string }) {
             </>
           )}
         </main>
-        <section className="panel-area" hidden />
+        <section className="panel-area">
+          <ControlPanel snapshot={snapshot} now={now} openSignal={controlSignal} />
+        </section>
       </div>
       {globeOpen && snapshot && (
         <TabBoundary key="globe" stale={false}>

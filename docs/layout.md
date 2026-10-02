@@ -307,6 +307,17 @@ The header unit of the refactor plan (S8, ATC-432) waits for Z1: its stylesheet 
 - **Removed in the same PR.** The tab row, the brand button, the settings gear and their CSS (`.tabs`, `.tab*`, `.brand*`, the 861–1760 px second-row rule and the 860 px tab grid), and the `GLOBE` and `HELP` readouts.
 - **Tokens added** to `:root`: `--rail-w`, `--bar-h`, `--sidebar-w`, `--drawer-w`.
 
+### Z5 as built (ATC-445)
+
+- **Panel** (`web/src/ControlPanel.tsx`, `ControlPanel.css`) fills `section.panel-area` at the foot of the main column. It replaces `ControlStrip.tsx` (deleted) in the top bar and the CONTROL SESSIONS group of FLEET (`ControlSessions` is now drawn by the panel; `Fleet.tsx` no longer renders it).
+- **Header** (always one line): an arrow button (`aria-expanded`, `Ctrl+\``), `CONTROL` with the number of sessions that need the SUPERVISOR (NEEDS and DOWN), then one chip per session, DOWN, NEEDS, LATE, WORKING, OK in that order. Every chip has a dot and a word (`OK`, `WORKING`, `NEEDS`, `LATE`, `DOWN`) and the age of the last tick. The all-DOWN recovery button (ATC-255) stays here. At 860 px and narrower the header shows only the NEEDS, DOWN and LATE chips and one `OK n` chip for the rest.
+- **Body** (when open): the CONTROL SESSIONS table of before (state, last tick, model, what it is doing, LAUNCH / STOP, ACCOUNT edit) at the left and, at the right, the selected session's recent radio (`GET /api/radio`, last 6 hours, what it sent or received, read only). With no selection it shows the first chip's session. At 860 px and narrower the panel opens as a sheet from the bottom, above the tab bar, with the table as the two-line list FLEET already uses and the radio below it.
+- **Opening.** Folded by default and never opened by the page itself. It opens from the arrow, from a chip (which also selects that session), with `Ctrl+\`` (a second press closes it) and from an address: `#fleet/control` (the old address, kept for the settings link and the server alert links) opens the panel on the FLEET screen, and `#control` opens it on the current screen. The address is then reset to the screen's own. Escape closes it and returns focus to the arrow (an Escape inside an edit field only cancels the edit).
+- **Height.** Drag the top edge or focus it and press Arrow Up / Down (24 px). The height is clamped to 160 px to 70 % of the window and remembered in this browser (`localStorage`, `atc.controlPanelHeight`; the panel works without it). The default is 320 px.
+- **Reading.** The header chips are read every `CONTROL_POLL_MS` (60 s) while the tab is visible, as the strip was. The table and the radio are mounted only while the panel is open, so they read only then.
+- **Pure parts** (`server/control-panel.ts`, `server/control-panel.test.ts`): chip order, `needingCount`, `narrowChipsOf` (`OK n`), height clamp and stored value, the Ctrl+\` test, `controlRadioOf`, `opensControlPanel`.
+- **Pilot's discretion.** LATE chips stay visible at narrow widths (hiding a late session inside `OK n` would be wrong). A new `#control` address was added next to `#fleet/control`.
+
 ### Z3 as built (ATC-444)
 
 - **One column.** `div.drawer-col` (the last grid area from Z1) now holds the FLIGHT / PR, DUTY and IDEAS drawers. `App.tsx` renders one of them at a time (DUTY first), so opening one closes the other; their addresses (`#flight/<KEY>`, `#pr/<AIRPORT>/<n>`, `#duty`, `#ideas`, `#idea/<n>`) are unchanged. The column is `hidden` when no drawer is open.

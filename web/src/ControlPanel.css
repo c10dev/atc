@@ -1,0 +1,212 @@
+/* 아래 CONTROL 패널(ATC-445, docs/layout.md 7.2·Z5). 접힌 한 줄 머리 = 옛 헤더 CONTROL 띠. 색은 :root 토큰만: ok radar, working cyan, needs·late amber, down alert.
+   점 옆에 상태 글자가 늘 붙는다(색만으로 알리지 않는다). 머리는 화면 열 맨 아래에 붙어 있고(sticky) 열면 그 위로 몸통이 자란다. */
+.panel-area {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
+}
+.cp {
+  display: flex;
+  flex-direction: column;
+  background: var(--chrome);
+  border-top: 1px solid var(--line-strong);
+}
+.cp-grip {
+  height: var(--space-2);
+  margin-top: calc(-1 * var(--space-1));
+  cursor: ns-resize;
+  touch-action: none;
+}
+.cp-grip:hover,
+.cp-grip:focus-visible {
+  background: var(--panel-3);
+  outline: 2px solid var(--cyan);
+  outline-offset: -2px;
+}
+.cp-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-1) var(--gutter);
+}
+.cp-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-0-5) var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cp-toggle:hover {
+  color: var(--text);
+}
+.cp-toggle:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+.cp-label {
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.14em;
+}
+.cp-count {
+  min-width: 1.6em;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  font: 700 var(--text-2xs) var(--mono);
+  text-align: center;
+}
+.cp-count.is-needs {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.cp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  flex: 1;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+.cp-chip {
+  --cp-tone: var(--radar);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-0-5) var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  color: var(--muted);
+  font: 400 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cp-chip:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.cp-chip:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+.cp-chip.is-selected {
+  border-color: var(--cyan);
+}
+.cp-chip b {
+  color: var(--text);
+  letter-spacing: 0.1em;
+}
+.cp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cp-tone);
+}
+.cp-word {
+  color: var(--cp-tone);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.cp-working {
+  --cp-tone: var(--cyan);
+}
+.cp-needs,
+.cp-late {
+  --cp-tone: var(--amber);
+  border-color: color-mix(in srgb, var(--amber) 55%, var(--line));
+}
+.cp-down {
+  --cp-tone: var(--alert);
+  border-color: color-mix(in srgb, var(--alert) 60%, var(--line));
+}
+/* 모든 관제 세션이 내려가 있을 때(ATC-255): 복구 안내. down 색 + 글자로 알린다 */
+.cp-recovery {
+  flex: none;
+  padding: var(--space-0-5) var(--space-2);
+  border: 1px solid var(--alert);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  color: var(--alert);
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+/* 몸통: 표(왼쪽) 옆에 고른 세션의 교신(오른쪽). 높이는 위쪽 가장자리로 정한다 */
+.cp-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+  min-height: 0;
+  overflow: hidden;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+.cp-table {
+  min-width: 0;
+  overflow: auto;
+  padding: var(--space-2) var(--gutter);
+}
+.cp-radio {
+  min-width: 0;
+  overflow: auto;
+  padding: var(--space-2) var(--space-4);
+  border-left: 1px solid var(--line);
+  font-size: var(--text-sm);
+}
+.cp-radio-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cp-radio-line {
+  margin: 0 0 var(--space-1);
+  overflow-wrap: anywhere;
+}
+.cp-radio-line.is-reply {
+  padding-left: var(--space-3);
+}
+.cp-radio-all {
+  margin: var(--space-2) 0 0;
+}
+.fl-row.is-selected {
+  box-shadow: inset 2px 0 0 var(--text);
+}
+
+/* ≤ 860px: 아래 탭 줄 위에 선다. 머리는 손이 필요한 칩과 OK n만, 몸통은 아래에서 올라오는 시트이고 교신은 표 아래로 간다 */
+@media (max-width: 860px) {
+  .panel-area {
+    bottom: calc(var(--bar-h) + env(safe-area-inset-bottom));
+  }
+  .cp.is-open {
+    position: fixed;
+    inset: auto 0 calc(var(--bar-h) + env(safe-area-inset-bottom)) 0;
+    z-index: var(--z-popover);
+    max-height: 75dvh;
+    box-shadow: var(--shadow-3);
+  }
+  .cp-head {
+    padding: var(--space-1) var(--space-3);
+  }
+  .cp-ago {
+    display: none;
+  }
+  .cp-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: min-content;
+    overflow: auto;
+  }
+  .cp-table {
+    overflow: visible;
+    padding: var(--space-2) var(--space-3);
+  }
+  .cp-radio {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    overflow: visible;
+  }
+}

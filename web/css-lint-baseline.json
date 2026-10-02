@@ -1,7 +1,4 @@
 {
-  "web/src/ControlStrip.css": {
-    "token-family": 1
-  },
   "web/src/Drawer.css": {
     "font-size-em": 3,
     "outline-none": 1,

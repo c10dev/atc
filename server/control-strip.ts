@@ -1,7 +1,7 @@
 import type { ControlLive, ControlSession } from "./control-view.ts";
 import type { Session } from "./model.ts";
 
-// 헤더 CONTROL 띠의 계산(ATC-127). 브라우저에서도 도는 순수 함수만 둔다(타입만 import). 화면은 web/src/ControlStrip.tsx.
+// 헤더 CONTROL 띠의 계산(ATC-127). 브라우저에서도 도는 순수 함수만 둔다(타입만 import). 화면은 web/src/ControlPanel.tsx(ATC-445).
 // 관제 세션마다 칩 하나: FLEET CONTROL SESSIONS가 아는 것(배지·job·NEEDS YOU)과 snapshot의 마지막 활동·health, SQUELCH의 마지막 tick.
 
 export const STRIP_CODES: Record<string, string> = { TOWER: "TWR", OCC: "OCC", MCC: "MCC", CROSSCHECK: "XCHK", REVIEW: "REV", ENGINEERING: "ENG" };
