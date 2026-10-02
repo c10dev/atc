@@ -11,32 +11,15 @@
   flex-wrap: wrap;
   gap: var(--space-2);
 }
-.fb-btn {
-  min-height: 30px;
-  padding: var(--space-1) var(--space-3);
-  background: var(--panel-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-  color: var(--text);
-  font: 600 var(--text-sm) var(--sans);
-  cursor: pointer;
-}
-.fb-btn:hover:not(:disabled) {
-  background: var(--panel-3);
-}
-.fb-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-.fb-btn.is-recall {
+.fb .btn.is-recall {
   color: var(--amber);
   border-color: var(--amber);
 }
-.fb-btn.is-fresh {
+.fb .btn.is-fresh {
   color: var(--cyan);
   border-color: var(--cyan);
 }
-.fb-btn.is-confirm {
+.fb .btn.is-confirm {
   background: var(--panel-3);
 }
 .fb-note {

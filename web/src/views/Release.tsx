@@ -222,25 +222,25 @@ export function Release({ refreshKey }: { refreshKey: string }) {
                   {discarding === f.key ? (
                     <>
                       <input className="rl-reason" aria-label={`${f.key}를 버리는 사유`} placeholder="버리는 사유(선택)" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy !== null} />
-                      <button type="button" className="rl-btn" disabled={busy !== null} onClick={() => discard(f)}>
+                      <button type="button" className="btn" disabled={busy !== null} onClick={() => discard(f)}>
                         버리기
                       </button>
-                      <button type="button" className="rl-btn is-quiet" disabled={busy !== null} onClick={() => { setDiscarding(null); setReason(""); }}>
+                      <button type="button" className="btn is-quiet" disabled={busy !== null} onClick={() => { setDiscarding(null); setReason(""); }}>
                         취소
                       </button>
                     </>
                   ) : (
                     <>
                       {f.priority > 0 ? (
-                        <button type="button" className="rl-btn" disabled={busy !== null} onClick={() => fireFiled(f)} aria-label={`${f.key} 발권: Todo로 옮기고 발권`}>
+                        <button type="button" className="btn" disabled={busy !== null} onClick={() => fireFiled(f)} aria-label={`${f.key} 발권: Todo로 옮기고 발권`}>
                           발권
                         </button>
                       ) : (
-                        <a className="rl-btn is-link" href={`#flight/${f.key}`} title="우선순위가 없으면 DISPATCH가 배정하지 않습니다. FLIGHT 서랍에서 먼저 정합니다">
+                        <a className="btn is-link" href={`#flight/${f.key}`} title="우선순위가 없으면 DISPATCH가 배정하지 않습니다. FLIGHT 서랍에서 먼저 정합니다">
                           우선순위 먼저
                         </a>
                       )}
-                      <button type="button" className="rl-btn is-quiet" disabled={busy !== null} onClick={() => { setDiscarding(f.key); setReason(""); }} aria-label={`${f.key} 버리기`} title="Canceled로 옮기고 사유를 이슈에 남깁니다">
+                      <button type="button" className="btn is-quiet" disabled={busy !== null} onClick={() => { setDiscarding(f.key); setReason(""); }} aria-label={`${f.key} 버리기`} title="Canceled로 옮기고 사유를 이슈에 남깁니다">
                         버림…
                       </button>
                     </>
@@ -262,11 +262,11 @@ export function Release({ refreshKey }: { refreshKey: string }) {
                 <span className="faint rl-kind">READY</span>
                 <KEffects text={r.kEffects} k3={r.k3} />
                 {r.priority > 0 ? (
-                  <button type="button" className="rl-btn" disabled={busy !== null} onClick={() => fireReady(r)} aria-label={`${r.key} 발권: Todo로 옮기고 발권`}>
+                  <button type="button" className="btn" disabled={busy !== null} onClick={() => fireReady(r)} aria-label={`${r.key} 발권: Todo로 옮기고 발권`}>
                     발권
                   </button>
                 ) : (
-                  <a className="rl-btn is-link" href={`#flight/${r.key}`} title="우선순위가 없으면 DISPATCH가 배정하지 않습니다. FLIGHT 서랍에서 먼저 정합니다">
+                  <a className="btn is-link" href={`#flight/${r.key}`} title="우선순위가 없으면 DISPATCH가 배정하지 않습니다. FLIGHT 서랍에서 먼저 정합니다">
                     우선순위 먼저
                   </a>
                 )}
@@ -283,7 +283,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
                 <span className="rl-title" title={p.reason}>{p.title}</span>
                 <span className="faint rl-kind">SCHEDULE NEW</span>
                 <KEffects text={p.kEffects} />
-                <a className="rl-btn is-link" href="#home" title="아직 이슈가 아닙니다. HOME의 QUEUE에서 승인하면 Backlog 이슈가 생기고(SCHEDULE AUTO가 켜져 있으면 서버가 승인합니다), 그 뒤 이 화면의 제안 줄로 올라와 한 번의 클릭으로 발권합니다">
+                <a className="btn is-link" href="#home" title="아직 이슈가 아닙니다. HOME의 QUEUE에서 승인하면 Backlog 이슈가 생기고(SCHEDULE AUTO가 켜져 있으면 서버가 승인합니다), 그 뒤 이 화면의 제안 줄로 올라와 한 번의 클릭으로 발권합니다">
                   HOME에서 승인
                 </a>
               </li>
@@ -305,15 +305,15 @@ export function Release({ refreshKey }: { refreshKey: string }) {
               {confirm ? (
                 <span className="rl-confirm">
                   <span>위 {data.unreleased.length}개의 목표·완료 기준·K 효과를 승인하고 DISPATCH가 배정하게 합니다. 이 승인은 한 번이고 이후 사람 단계는 없습니다.</span>
-                  <button type="button" className="rl-btn" disabled={busy !== null} onClick={releaseAll}>
+                  <button type="button" className="btn" disabled={busy !== null} onClick={releaseAll}>
                     {data.gate.on ? `${data.unreleased.length}개 발권` : `${data.unreleased.length}개 발권하고 gate 켜기`}
                   </button>
-                  <button type="button" className="rl-btn is-quiet" disabled={busy !== null} onClick={() => setConfirm(false)}>
+                  <button type="button" className="btn is-quiet" disabled={busy !== null} onClick={() => setConfirm(false)}>
                     취소
                   </button>
                 </span>
               ) : (
-                <button type="button" className="rl-btn" disabled={busy !== null} onClick={() => setConfirm(true)}>
+                <button type="button" className="btn" disabled={busy !== null} onClick={() => setConfirm(true)}>
                   모두 발권…
                 </button>
               )}
@@ -328,7 +328,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
                   <span className="rl-title">{r.title}</span>
                   <span className="faint rl-kind">{r.why ? `발권 거둠 — ${r.why}` : r.state === "stale" ? "발권 뒤 내용이 바뀜" : "Todo"}</span>
                   <KEffects text={r.kEffects} k3={r.k3} />
-                  <button type="button" className="rl-btn" disabled={busy !== null} onClick={() => releaseTodo(r)} aria-label={`${r.key} 발권`}>
+                  <button type="button" className="btn" disabled={busy !== null} onClick={() => releaseTodo(r)} aria-label={`${r.key} 발권`}>
                     발권
                   </button>
                 </li>
@@ -355,7 +355,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
                   {r.words ? ` · “${r.words.slice(0, 80)}”` : ""}
                 </span>
                 <KEffects text={r.kEffects} />
-                <button type="button" className="rl-btn" disabled={busy !== null} onClick={() => confirmK(r)} aria-label={`${r.key} K 효과 확인`}>
+                <button type="button" className="btn" disabled={busy !== null} onClick={() => confirmK(r)} aria-label={`${r.key} K 효과 확인`}>
                   K 효과 확인
                 </button>
               </li>
