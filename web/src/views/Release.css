@@ -120,6 +120,20 @@
   letter-spacing: 0.12em;
   color: var(--faint);
 }
+.rl-k3 {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--muted);
+}
+.rl-k3 b {
+  margin-right: var(--space-1);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--faint);
+}
+.rl-k3.is-bad {
+  color: var(--text);
+}
 .rl-recent li {
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr) auto auto;

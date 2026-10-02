@@ -97,6 +97,8 @@ export interface K3Declaration {
 const MAX_CONTROL = 200;
 const MAX_FILES = 20;
 const FILE_RE = /^(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+-][A-Za-z0-9._@+/-]*$/; // 공백·글롭(*?[])·절대 경로·`..` 없음
+// `K3: none`처럼 효과가 없다고 적은 줄(ATC-398): hold되지만 효과가 없었으니 nuisance로 센다
+const NO_EFFECT_RE = /^\s*(?:[-*+]\s+)?K3\s*:?\s*(?:none|no|n\/a|nil|없음|해당 없음|[-—–])\s*\.?\s*$/i;
 const LINE_RE = /^\s*(?:[-*+]\s+)?K3\s*\[([^\]]+)\]\s*:\s*(.+?)\s*\|\s*files?\s*:\s*(.+?)\s*$/i;
 
 // Linear는 본문을 Markdown으로 저장하며 기호 앞에 역슬래시를 둔다(`K3\[Security Weaken\]: …`, `k3\_allow.ts`).
@@ -104,7 +106,7 @@ const LINE_RE = /^\s*(?:[-*+]\s+)?K3\s*\[([^\]]+)\]\s*:\s*(.+?)\s*\|\s*files?\s*
 export const unescapeMarkdown = (line: string): string => line.replace(/\\([!-/:-@[-`{-~])/g, "$1");
 
 // 본문 `## K effects`에서 K3 선언을 읽는다. 모양이 맞지 않는 `K3` 줄은 unparsed로 센다(항목을 만들지 않는다: 닫는 쪽으로 틀린다)
-export function k3DeclarationsOf(description: string | null | undefined): { declared: K3Declaration[]; unparsed: number } {
+export function k3DeclarationsOf(description: string | null | undefined): { declared: K3Declaration[]; unparsed: number; lines: number; none: number } {
   const section = (() => {
     // release.ts sectionsOf는 글을 한 줄로 뭉치므로 줄 단위가 필요한 이 읽기는 `## K effects` 절(같은 절 이름 규칙)만 따로 자른다
     let cur = false;
@@ -122,19 +124,23 @@ export function k3DeclarationsOf(description: string | null | undefined): { decl
   })();
   const declared: K3Declaration[] = [];
   let unparsed = 0;
+  let lines = 0;
+  let none = 0;
   for (const line of section) {
     if (!/^\s*(?:[-*+]\s+)?K3\b/i.test(line)) continue;
+    lines++;
     const m = LINE_RE.exec(line);
     const label = m ? K3_LABELS.find((l) => l.toLowerCase() === m[1]!.trim().toLowerCase()) : undefined;
     const control = m ? m[2]!.replace(/\s+/g, " ").trim() : "";
     const files = m ? [...new Set(m[3]!.split(",").map((f) => f.trim().replace(/^`|`$/g, "")).filter(Boolean))] : [];
     if (!label || !control || control.length > MAX_CONTROL || !files.length || files.length > MAX_FILES || !files.every((f) => FILE_RE.test(f))) {
       unparsed++;
+      if (NO_EFFECT_RE.test(line)) none++;
       continue;
     }
     declared.push({ label, control, files });
   }
-  return { declared, unparsed };
+  return { declared, unparsed, lines, none };
 }
 
 // 발권 id: 어느 발권(FLIGHT·승인한 내용의 해시)이 이 항목을 낳았나. 발권 기록에는 따로 id가 없어 FLIGHT와 해시로 쓴다
@@ -181,18 +187,75 @@ export interface K3Launch {
 export const DEFAULTS_MARK = "$defaults";
 export const settingsOf = (entries: readonly string[]) => JSON.stringify({ autoMode: { allow: [DEFAULTS_MARK, ...entries] } });
 
+// 이 발권이 K3 allow를 줄 수 있나: 지금 본문과 같은 발권이고 채널이 K3_CHANNELS다
+export const k3ReleaseGrants = (flight: string, hash: string | null | undefined, view: ReleaseView | null | undefined): boolean => {
+  if (!view || releaseStateOf(flight, hash, view) !== "released") return false;
+  const record = view.records[flight];
+  return !!record && K3_CHANNELS.includes(record.channel);
+};
+
 // 이 FLIGHT가 새로 띄워야 하는 K3 FLIGHT인가(선언이 읽히고 발권됐다). 아니면 null: 전과 같은 LAUNCH
 export function k3LaunchOf(input: { flight: string; declared: readonly K3Declaration[] | undefined; hash: string | null | undefined; releases: ReleaseView | null | undefined; repo: string }): K3Launch | null {
   const view = input.releases;
-  if (!view || releaseStateOf(input.flight, input.hash, view) !== "released") return null;
-  const record = view.records[input.flight];
-  if (!record) return null;
   // attested 발권은 agent가 쓸 수 있는 글이다(원칙 6·7): allow 항목을 만들지 않는다. 화면 클릭과 DUTY 채팅(서버가 SUPERVISOR의 글로 읽은 것)만
-  if (!K3_CHANNELS.includes(record.channel)) return null;
+  if (!k3ReleaseGrants(input.flight, input.hash, view)) return null;
+  const record = view!.records[input.flight]!;
   const declared = input.declared ?? [];
   if (!declared.length) return null;
   const release = releaseIdOf(input.flight, record);
   const stand = standOf(input.repo, input.flight);
   const entries = declared.map((d) => allowEntryOf(d, { flight: input.flight, release, stand }));
   return { flight: input.flight, release, stand, entries, settings: settingsOf(entries) };
+}
+
+// ── K3 hold(ATC-398): `## K effects`에 `K3` 줄이 있는데 allow 없이 떠날 FLIGHT는 보내지 않는다 ──
+// 줄 수·읽히지 않은 줄 수·"효과 없음"으로 적은 줄 수. Linear 원천이 이슈 본문에서 읽는다(줄이 없으면 칸이 없다)
+export interface K3Check {
+  lines: number;
+  unparsed: number;
+  none: number;
+}
+export const k3CheckOf = (description: string | null | undefined): { check?: K3Check; declared: K3Declaration[] } => {
+  const r = k3DeclarationsOf(description);
+  return { declared: r.declared, ...(r.lines ? { check: { lines: r.lines, unparsed: r.unparsed, none: r.none } } : {}) };
+};
+
+export type K3HoldCode = "not-declaration" | "release-on-screen";
+export interface K3Hold {
+  code: K3HoldCode;
+  why: string; // DISPATCH 제외 사유
+  fix: string; // 고치는 길
+  nuisance: boolean; // 선언한 효과가 없는 줄(`K3: none`)에 걸린 hold: 오작동(nuisance)으로 센다
+}
+export const K3_NOT_DECLARATION_WHY = "K3 줄이 선언이 아님(not a declaration) — 보내지 않음";
+export const K3_NOT_DECLARATION_FIX = "`## K effects`의 줄을 `K3[<라벨>]: <바꾸는 통제> | files: <경로>` 꼴로 고치거나, 효과가 없으면 `K3`로 시작하는 줄을 지운다";
+export const K3_RELEASE_WHY = "K3 선언은 읽혔지만 이 발권으로는 allow를 못 줌 — release on the screen(RELEASE 화면에서 발권해야 보냄)";
+export const K3_RELEASE_FIX = "RELEASE 화면에서 발권하거나 DUTY 채팅에서 직접 발권한다. 세션이 증언한 발권(attested)은 allow를 주지 않는다";
+
+export function k3HoldOf(input: { check?: K3Check | undefined; declared?: readonly K3Declaration[] | undefined; flight: string; hash: string | null | undefined; releases: ReleaseView | null | undefined }): K3Hold | null {
+  const c = input.check;
+  if (!c || !c.lines) return null;
+  if (c.unparsed > 0) return { code: "not-declaration", why: K3_NOT_DECLARATION_WHY, fix: K3_NOT_DECLARATION_FIX, nuisance: c.unparsed === c.none && !(input.declared ?? []).length };
+  if (!k3ReleaseGrants(input.flight, input.hash, input.releases)) return { code: "release-on-screen", why: K3_RELEASE_WHY, fix: K3_RELEASE_FIX, nuisance: false };
+  return null;
+}
+
+// RELEASE 화면이 클릭 전에 보이는 K3 상태(ATC-398): 줄이 읽히나, 지금 발권이 allow를 주나, 발권하면 주나
+export interface K3Status {
+  lines: number;
+  declared: number;
+  unparsed: number;
+  labels: K3Label[];
+  parses: boolean;
+  grants: boolean; // 지금 발권이 allow를 준다(화면·DUTY 채팅 발권이고 본문이 같다)
+  willGrant: boolean; // 줄이 읽히면 화면에서 발권했을 때 allow를 준다
+  hold: K3HoldCode | null;
+}
+export function k3StatusOf(input: { check?: K3Check | undefined; declared?: readonly K3Declaration[] | undefined; flight: string; hash: string | null | undefined; releases: ReleaseView | null | undefined }): K3Status | null {
+  const c = input.check;
+  if (!c || !c.lines) return null;
+  const declared = input.declared ?? [];
+  const parses = c.unparsed === 0 && declared.length > 0;
+  const grants = parses && k3ReleaseGrants(input.flight, input.hash, input.releases);
+  return { lines: c.lines, declared: declared.length, unparsed: c.unparsed, labels: [...new Set(declared.map((d) => d.label))], parses, grants, willGrant: parses, hold: k3HoldOf(input)?.code ?? null };
 }

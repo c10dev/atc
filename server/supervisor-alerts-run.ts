@@ -1,5 +1,6 @@
 import { overCapNow, waitStuckNow } from "./control-recycle-run.ts";
 import { readRecords } from "./recorder.ts";
+import { k3HoldOf } from "./k3-allow.ts";
 import { type EndedKey, followingNow } from "./following.ts";
 import { endsTrackable, endsView, type EndsView, firstSeenOf, trackEnds } from "./alert-ends.ts";
 import { appendReappeared, loadEnds, readReappeared, saveEnds } from "./alert-ends-run.ts";
@@ -107,6 +108,18 @@ export function endsNow(s: Snapshot, now = Date.now()): EndsView {
   return { ...endsView(ends, readReappeared(), now), caution: { before: cautions(collectWith(s, now, false)), after: cautions(collectWith(s, now, true)) } };
 }
 
+// DISPATCH가 K3 hold로 보내지 않는 Todo FLIGHT(ATC-398). 스위치가 꺼져 있으면 없다.
+// 발권 전의 FLIGHT는 RELEASE 화면이 K3 상태를 보이므로(발권하면 allow를 준다) 읽히지 않는 줄과, 이미 allow를 못 주는 채널로 발권된 FLIGHT만 알린다
+function k3HoldsOf(s: Snapshot): { flight: string; text: string; fix: string }[] {
+  if (loadDispatchConfig().k3Hold === "off") return [];
+  return s.tickets.flatMap((t) => {
+    if (!t.k3Check || t.stateType !== "unstarted") return [];
+    const h = k3HoldOf({ check: t.k3Check, declared: t.k3, flight: t.key, hash: t.releaseHash, releases: s.releases });
+    if (!h || (h.code === "release-on-screen" && !s.releases?.records[t.key])) return [];
+    return [{ flight: t.key, text: h.why, fix: h.fix }];
+  });
+}
+
 function collectItems(s: Snapshot, now: number, following: ReturnType<typeof followingNow>, unowned: Parameters<typeof supervisorAlertsOf>[0]["unowned"]): SupervisorAlert[] {
   const proposals = allProposals();
   const teamPattern = loadDispatchConfig().teamPattern;
@@ -129,6 +142,7 @@ function collectItems(s: Snapshot, now: number, following: ReturnType<typeof fol
     rts: rtsNow.last,
     rtsHalted: rtsHaltedOf(rtsNow.stop, rtsNow.last),
     revertStops: stoppedAirports().map((l) => ({ airport: l.airport ?? "?", at: l.at, detail: l.detail ?? "" })),
+    k3Holds: k3HoldsOf(s),
     controlDown: controlDownOf(recyclesAll, running.control),
     repositionStuck: repositionStuckOf(repositionsAll, running.aircraft),
     landBy: landByMap(s),

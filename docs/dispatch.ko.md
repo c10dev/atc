@@ -670,6 +670,7 @@ K3: Claude Code auto-mode classifier가 FLIGHT에 무엇을 바꾸게 둘지 정
 - **새 AIRCRAFT.** 돌고 있는 세션은 새 `--settings`를 받지 못하므로, 플래너는 이런 FLIGHT를 그 FLIGHT를 위해 띄우는 AIRCRAFT(launch 카드)에만 짝짓는다.
 - **서버만.** `launchAircraft`는 항목을 옵션이 아니라 서버가 만든 별도 인자로 받고, LAUNCH 라우트는 요청 본문의 `settings`·`k3`를 버린다. LAUNCH를 시작하는 라우트는 SUPERVISOR 라우트 인증(ATC-373)이 지킨다.
 - **기록.** FLIGHT RECORDER의 `launch` 줄에 `flight`와 `k3: { release, stand, entries }`가 남는다.
+- **K3 hold(ATC-398).** `## K effects`에 `K3` 줄이 있는데 항목 없이 떠날 FLIGHT는 보내지 않는다. planner가 이유와 고치는 길을 붙여 제외한다: 읽히지 않는 줄은 "not a declaration"(줄을 고친다), `screen`·`duty-chat`이 아닌 발권(또는 그 뒤 본문이 바뀜)은 "release on the screen". 같은 이유가 HOME 알림과, 쏘기 전 RELEASE 줄에 보인다. 스위치 `dispatch.json`의 `k3Hold`(기본 켜짐, 설정 창에서만), 오작동 카운터는 `GET /api/releases`의 `k3Hold.nuisance`·`k3Hold.miss`. [autonomy.ko.md](autonomy.ko.md) C9.
 
 ## 착륙만 기다리는 PR은 AIRCRAFT의 슬롯을 쓰지 않는다 (ATC-387)
 
