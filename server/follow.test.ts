@@ -30,7 +30,7 @@ const base = (over: Partial<Omit<FollowInput, "parents">>): Omit<FollowInput, "p
 // FLIGHT FOLLOWING 항목을 같은 입력으로 만든다(FOLLOW는 다시 세지 않고 읽는다)
 const withFollowing = (inp: Omit<FollowInput, "parents">): Omit<FollowInput, "parents"> => ({
   ...inp,
-  following: followingOf({ proposals: [...inp.proposals], tickets: [...inp.tickets], workspaces: [], pulls: [...inp.pulls], logbook: [], departures: [], now: NOW, milestones: new Map(inp.milestones) }),
+  following: followingOf({ proposals: [...inp.proposals], tickets: [...inp.tickets], workspaces: [], pulls: [...inp.pulls], logbook: [], departures: [], now: NOW, endRules: false, milestones: new Map(inp.milestones) }),
 });
 
 test("번들: 하위 이슈 + related, 하위가 없으면 자기 하나", () => {

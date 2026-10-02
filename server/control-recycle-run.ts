@@ -109,7 +109,7 @@ const TEN_MIN = READBACK_OVERDUE_MS;
 // 읽지 못하면 막는다(fail-closed)
 export function occSafetyOf(s: Snapshot, now: number): RestartSafety {
   try {
-    const arrivalMissing = arrivalMissingOf(followingNow(s, now), foldReports(readReports()), now);
+    const arrivalMissing = arrivalMissingOf(followingNow(s, now, undefined, false), foldReports(readReports()), now);
     return restartSafetyOf({ inFlight: allProposals().filter(isInFlight), arrivalMissing, wip: wipView(readWips(), now), now });
   } catch (e) {
     return { safe: false, blockers: [{ code: "approved", id: "?", text: `dispatch 안전 조건을 읽지 못함(${e instanceof Error ? e.message : String(e)})` }] };

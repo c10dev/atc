@@ -94,9 +94,8 @@ test("불일치: In Review·Done인데 PR 없음·안 머지됨, 머지됐는데
   const dep = [proposal("D-1", "VOC-1", "departed", { accepted: ago(30), departed: ago(20) })];
   assert.deepEqual(codes({ proposals: dep, tickets: [ticket("VOC-1", { state: "In Review" })] }), ["review-no-pr:warn"]);
   assert.deepEqual(codes({ proposals: dep, tickets: [ticket("VOC-1", { state: "In Review" })], pulls: [pr(21, "VOC-1")] }), []);
-  assert.deepEqual(codes({ proposals: dep, tickets: [ticket("VOC-1", { state: "Done", stateType: "completed" })] }), ["done-not-merged:warn"]);
-  const open = followingOf(input({ proposals: dep, tickets: [ticket("VOC-1", { state: "Done", stateType: "completed" })], pulls: [pr(21, "VOC-1")] }))[0];
-  assert.match(open.issues[0].text, /PR #21이 머지되지 않음/);
+  // Done·Canceled인 FLIGHT는 따라가지 않는다(ATC-385): done-not-merged는 더 이상 나오지 않는다
+  assert.deepEqual(followingOf(input({ proposals: dep, tickets: [ticket("VOC-1", { state: "Done", stateType: "completed" })] })), []);
   const merged = followingOf(input({ proposals: dep, tickets: [ticket("VOC-1")], logbook: [logEntry("VOC-1", 30)] }))[0];
   assert.equal(merged.stage, "arrived");
   assert.equal(merged.stages.prOpened, ago(50)); // 머지 − 착륙 대기
@@ -109,8 +108,11 @@ test("불일치: In Review·Done인데 PR 없음·안 머지됨, 머지됐는데
 test("ARRIVED하고 Linear도 끝난 FLIGHT는 하루 보이고 빠진다", () => {
   const done = [ticket("VOC-1", { state: "Done", stateType: "completed" })];
   const dep = [proposal("D-1", "VOC-1", "departed", { accepted: ago(3000), departed: ago(2900) })];
-  assert.equal(followingOf(input({ proposals: dep, tickets: done, logbook: [logEntry("VOC-1", 60)] })).length, 1);
-  assert.equal(followingOf(input({ proposals: dep, tickets: done, logbook: [logEntry("VOC-1", 25 * 60)] })).length, 0);
+  // 티켓이 닫히면 ARRIVED 직후라도 바로 빠진다(ATC-385). 열려 있는 티켓은 ARRIVED 뒤 하루 보인다
+  assert.equal(followingOf(input({ proposals: dep, tickets: done, logbook: [logEntry("VOC-1", 60)] })).length, 0);
+  const open = [ticket("VOC-1", { state: "In Review" })];
+  assert.equal(followingOf(input({ proposals: dep, tickets: open, logbook: [logEntry("VOC-1", 60)] })).length, 1);
+  assert.equal(followingOf(input({ proposals: dep, tickets: open, logbook: [logEntry("VOC-1", 25 * 60)] })).length, 1, "열려 있는 티켓은 하루가 지나도 남는다");
 });
 
 test("반복 보고 막기: 보고한 key는 fresh가 아니고, 풀리면 지워져 다시 생기면 fresh", () => {
@@ -136,7 +138,7 @@ test("STAND 없는 FLIGHT(SURVEY·CHECK): READBACK → DEPARTED → ARRIVED, PR�
   assert.match(f.issues[0].text, /ARRIVED 보고 없음\(STAND 없는 SURVEY\)/);
   // CAPTAIN 보고로 ARRIVED: 보고 내용이 붙고, Linear가 In Review·Done이어도 PR 불일치를 보지 않는다
   const arrived = { ...proposal("D-1", "VOC-1", "arrived", { accepted: ago(500), departed: ago(500), arrived: ago(30) }), departedVia: "readback" as const, arrivedNote: "조사 결과 https://x/doc", arrivedUrl: "https://x/doc" };
-  [f] = followingOf(input({ proposals: [arrived], tickets: [ticket("VOC-1", { labels: ["type:SURVEY"], state: "Done", stateType: "completed" })] }));
+  [f] = followingOf(input({ proposals: [arrived], tickets: [ticket("VOC-1", { labels: ["type:SURVEY"], state: "In Review" })] }));
   assert.equal(f.stage, "arrived");
   assert.equal(f.stages.arrived, ago(30));
   assert.deepEqual(f.arrival, { note: "조사 결과 https://x/doc", url: "https://x/doc" });
