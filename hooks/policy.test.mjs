@@ -277,3 +277,12 @@ test("gh api and curl read the method in every spelling and fail closed on an un
   ok(bash("curl -sI localhost:7700/api/x"));
   ok(bash("curl -XPOST http://localhost:7702/api/x"));
 });
+
+// ATC-369 검토 6: sed의 w·e·r 명령과 jq의 파일 읽기
+test("sed scripts that write, read or run commands (w, W, e, E, r, R, s///w, s///e) and jq file reads are denied", () => {
+  for (const c of ["sed 'w out.txt' a", "sed -n '1,3w out' a", "sed '/x/w out' a", "sed 's/a/b/w out' a", "sed 's/a/b/e' a", "sed '$r /etc/passwd' a", "sed -e 'e id' a", "sed -e p -e 'w x' a", "sed --expression='1e id' a", "sed -f s.sed a", "sed --file=s.sed a"]) no(bash(c), /sed:script/);
+  for (const c of ["sed 's/foo/bar/g' a", "sed -n '1,5p' a", "sed -n '/error/p' a", "sed 's#a/b#c/d#g' a", "sed '/^#/d' a", "sed -e 's/a/b/;s/c/d/g' a", "sed 'y/abc/xyz/' a", "sed '/w/p' a", "sed -i 's/we/er/' a"]) ok(bash(c));
+  for (const c of ["jq --rawfile x /etc/passwd . a", "jq --slurpfile x s.json . a", "jq -f p.jq a", "jq '$ENV.HOME' a", "jq 'env' a", "jq 'input_filename' a", "jq 'import \"x\" as x; .' a"]) no(bash(c), /jq:file-read|read:/);
+  ok(bash("jq -r '.name' package.json"));
+  ok(bash("jq '.scripts | keys' package.json"));
+});

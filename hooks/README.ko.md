@@ -275,3 +275,5 @@ git(세 번째 검토): 읽기만 하는 동사(`status`, `diff`, `log`, `show`,
 네 번째 검토: `gh pr checkout`은 작업 폴더의 브랜치를 바꾸므로 `git switch`처럼 STAND 안에서만 허용한다. `cp`는 목적지뿐 아니라 원본도 분류해서, 비밀(`.env*`, ssh 키)과 Claude 설정 폴더는 STAND 안으로 복사해 읽을 수 없다. PR에 하는 `gh api -X PATCH`는 `body` 필드만 바꿀 수 있다. `AskUserQuestion`은 사람을 기다리므로 거절한다. `source <저장소>/.env.local`은 그 STAND가 속한 저장소(STAND 경로로 구한다)와 atc의 기본 자리에서만 허용한다.
 
 다섯 번째 검토: `gh api`와 `curl`의 HTTP 메서드는 모든 철자(`-X POST`, `-XPOST`, `-sXPOST`, `--method POST`, `--method=POST`, `--request=POST`)로 읽는다. GET·HEAD가 아닌 메서드는 쓰기이고, 모르는 철자는 `gh api`에서는 거절(`gh-api-method`), `curl`에서는 쓰기로 본다. 그래서 `curl -XPOST localhost:7700/...`과 `gh api -XDELETE ...`는 거절된다.
+
+여섯 번째 검토: 파일을 쓰거나 읽거나 명령을 돌릴 수 있는 `sed` 스크립트(`w`, `W`, `e`, `E`, `r`, `R`, `s///`의 `w`·`e` 플래그)와 `sed -f`는 거절한다(`sed:script-io`, `sed:script-file`). `jq`의 `--rawfile`, `--slurpfile`, `--argfile`, `-f`, `-L`과 `import`·`include`·`env`·`$ENV`·`input_filename`을 쓰는 필터도 거절한다(`jq:file-read`).

@@ -138,6 +138,24 @@ function fileOperandsOf(name, args) {
   return out;
 }
 
+// sed 스크립트의 w·W·e·E·r·R(파일 쓰기·읽기, 명령 실행)과 `s///w`·`s///e` 플래그는 STAND 규칙을 지킬 수 없다(ATC-369 검토): 쓰지 않는 스크립트만 허용한다.
+// s///·y///의 본문과 /정규식/ 주소를 걷어 내고 남은 글에 그 글자가 있으면 거절한다. -f(스크립트 파일)는 내용을 모르니 거절
+export function sedScriptUnsafe(script) {
+  let t = String(script);
+  t = t.replace(/s(.)(?:\\.|(?!\1)[^\n])*\1(?:\\.|(?!\1)[^\n])*\1([A-Za-z0-9]*)/g, (_m, _d, flags) => (/[weWE]/.test(flags) ? " W " : " s ")); // 플래그에 w·e가 있으면 남겨서 걸리게
+  t = t.replace(/y(.)(?:\\.|(?!\1)[^\n])*\1(?:\\.|(?!\1)[^\n])*\1/g, " y ");
+  t = t.replace(/\\(.)(?:\\.|(?!\1)[^\n])*\1/g, " "); // \cREGEXc 주소
+  t = t.replace(/\/(?:\\.|[^/\\\n])*\//g, " "); // /REGEX/ 주소
+  return /[wWeErR]/.test(t);
+}
+
+// jq의 파일 읽기: --rawfile·--slurpfile·--argfile·-f·-L, 필터의 import·include·$ENV·env·input_filename
+export function jqUnsafe(args) {
+  if (args.some((a) => /^(--rawfile|--slurpfile|--argfile|--from-file|-L|--library-path|-f)(=|$)/.test(a) || /^-[A-Za-z]*f$/.test(a))) return true;
+  const filter = operands(args)[0] ?? "";
+  return /\b(import|include|input_filename|env|getpath\(\$__prog)\b|\$ENV|\$__loc__/.test(filter);
+}
+
 function gitVerdict(args, ctx) {
   let i = 0;
   let cwd = ctx.cwd;
@@ -327,7 +345,14 @@ function commandVerdict(words, ctx) {
     }
     case "find":
       return args.some((a) => /^-(exec|execdir|ok|okdir|delete|fprint|fprintf|fls)$/.test(a)) ? deny("find:exec") : allow("find");
+    case "jq":
+      return jqUnsafe(args) ? deny("jq:file-read") : allow("jq");
     case "sed": {
+      // 스크립트: -e·--expression 값, 없으면 첫 비옵션. -f·--file은 거절
+      if (args.some((a) => /^(-f|--file)(=|$)/.test(a) || /^-[A-Za-z]*f$/.test(a))) return deny("sed:script-file");
+      const scripts = args.flatMap((a, k) => (/^(-e|--expression)$/.test(a) ? [args[k + 1] ?? ""] : /^--expression=/.test(a) ? [a.replace(/^--expression=/, "")] : /^-[A-Za-z]*e$/.test(a) ? [args[k + 1] ?? ""] : []));
+      if (!scripts.length && operands(args)[0] !== undefined) scripts.push(operands(args)[0]);
+      if (scripts.some(sedScriptUnsafe)) return deny("sed:script-io");
       const inplace = args.some((a) => /^-[a-zA-Z]*i/.test(a) || a === "--in-place" || a.startsWith("--in-place="));
       if (!inplace) return allow("sed");
       // 파일 인자: 첫 번째 비옵션은 스크립트
