@@ -35,7 +35,7 @@ function List({ now }: { now: number }) {
               <span className="id-meta faint">
                 {i.updatedAt ? timeAgo(i.updatedAt, now) : "—"} · 댓글 {i.comments}
                 {i.labels.filter((x) => x !== "idea").map((x) => (
-                  <span key={x} className="dr-chip">
+                  <span key={x} className="chip dr-chip">
                     {x}
                   </span>
                 ))}
@@ -135,7 +135,7 @@ function One({ n, now, gate }: { n: number; now: number; gate: DutyGate }) {
           <dt>라벨</dt>
           <dd className="dr-chips">
             {d.labels.map((x) => (
-              <span key={x} className="dr-chip">
+              <span key={x} className="chip dr-chip">
                 {x}
               </span>
             ))}

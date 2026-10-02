@@ -69,7 +69,7 @@ export function AlertBell({ onNavigate }: { onNavigate?: () => void }) {
               {items.map((a) => (
                 <li key={a.key} className={`bell-item lv-${a.level ?? "none"}${acked.includes(a.key) ? " is-acked" : ""}`}>
                   <button className="bell-open" onClick={() => go(a)}>
-                    <span className="code-chip">{a.level ? alertLevelLabel[a.level] : a.cue === "call" ? "CALL" : "INFO"}</span>
+                    <span className="tag code-chip" data-tone="inherit">{a.level ? alertLevelLabel[a.level] : a.cue === "call" ? "CALL" : "INFO"}</span>
                     <span className="mono">{[a.aircraft, a.flight].filter(Boolean).join(" · ") || a.group.toUpperCase()}</span>
                     <span className="bell-text">{a.text}</span>
                     {a.next && <span className="muted">→ {a.next}</span>}

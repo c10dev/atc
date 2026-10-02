@@ -94,6 +94,8 @@
 
 /* ACTIVITY(ATC-97): 지금 하는 일 한 줄. idle은 흐린 글자색으로(투명도로 흐리게 하지 않는다, ATC-408). 색은 :root 토큰만 */
 .activity {
+  --dot-ink: currentColor;
+  --dot-size: 6px;
   display: flex;
   align-items: center;
   min-width: 0;
@@ -110,18 +112,13 @@
   white-space: pre;
 }
 .activity-dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
   margin-right: var(--space-1);
-  border-radius: 50%;
-  background: currentColor;
 }
-.activity.is-tool .activity-dot {
-  background: var(--radar);
+.activity.is-tool {
+  --dot-ink: var(--radar);
 }
-.activity.is-model .activity-dot {
-  background: var(--cyan);
+.activity.is-model {
+  --dot-ink: var(--cyan);
 }
 .activity.is-idle {
   color: var(--faint);
@@ -133,9 +130,9 @@
 .strip .activity.is-idle {
   color: var(--paper-muted);
 }
-.strip .activity.is-tool .activity-dot {
-  background: var(--stamp-blue);
+.strip .activity.is-tool {
+  --dot-ink: var(--stamp-blue);
 }
-.strip .activity.is-model .activity-dot {
-  background: var(--stamp-amber);
+.strip .activity.is-model {
+  --dot-ink: var(--stamp-amber);
 }
