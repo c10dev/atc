@@ -1,6 +1,6 @@
 # 화면 안내
 
-**탭 줄**에는 일하는 화면만 있다(2026-10-02, ATC-381): HOME · RELEASE · FLIGHTS · FLEET · METRICS(그리고 NETWORK는 METRICS가 이어받을 때까지 남아 있다). 기본 화면은 HOME이다. 나머지는 이렇게 연다.
+**탭 줄**에는 일하는 화면만 있다(2026-10-02, ATC-381): HOME · RELEASE · FLIGHTS · FLEET · METRICS(NETWORK는 METRICS의 하위 화면이다, ATC-380). 기본 화면은 HOME이다. 나머지는 이렇게 연다.
 
 - **GLOBE**: 헤더의 **GLOBE** 버튼(또는 `#globe`, `#globe/<AIRPORT>`)이 현재 화면 위에 꽉 찬 보기 모드로 연다. Esc나 닫기 버튼으로 닫으면 열기 전 화면으로 돌아온다.
 - **AIRPORTS**: 설정 창(왼쪽 위 로고)의 **AIRPORTS** 분류. `#airports`도 그 분류를 연다. 등록부, 개설·코드 변경·폐쇄, 팀 머지 스위치가 그대로 있다.
