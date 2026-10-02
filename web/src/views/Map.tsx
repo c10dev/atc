@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Session, Snapshot, Ticket, Workspace } from "../../../server/model.ts";
 import { hasActiveClaim, type Index, isGateCleanup, isParkedAtGate, sortSessions, timeAgo } from "../derive.ts";
-import { AirportCode, AwayTag, SessionPlace } from "../ui.tsx";
+import { AirportCode, AwayTag, SessionPlace } from "../badges.tsx";
 import { aircraftStatus, aircraftStatusCode, aircraftStatusLabel, callsign, flightNumber, flightPhase, phaseCode, phaseTone } from "../aviation.ts";
 
 interface Edge {

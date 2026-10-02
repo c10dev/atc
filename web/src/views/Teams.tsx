@@ -1,5 +1,5 @@
 import { ExternalLink } from "lucide-react";
-import { Icon } from "../Icon.tsx";
+import { Icon } from "../kit/Icon.tsx";
 import { useState } from "react";
 import type { AutolandView, PullTagKind } from "../../../server/autoland.ts";
 import type { Claim, Clearance, LandingBlockCode, PullRequest, Session, Snapshot } from "../../../server/model.ts";
@@ -16,7 +16,7 @@ import { OpenFlight } from "../FlightLink.tsx";
 import { activeFirst, hasActiveClaim, type Index, isGateCleanup, sortSessions, timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { attachCommandOf } from "../../../server/session-origin.ts";
-import { ActivityLine, AirportCode, AwayTag, NeedsYou, PendingApproval, SessionPlace } from "../ui.tsx";
+import { ActivityLine, AirportCode, AwayTag, NeedsYou, PendingApproval, SessionPlace } from "../badges.tsx";
 import { type MilestoneData, useMilestones } from "../useMilestones.ts";
 import { FlightProgressBar } from "./FlightProgress.tsx";
 import { HumanCheckTag } from "./HumanCheck.tsx";

@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { Icon } from "../../Icon.tsx";
+import { Icon } from "../../kit/Icon.tsx";
 import { ReportChip } from "./ReportMark.tsx";
 import type { ReactNode } from "react";
 import { elapsedText, type FleetRow, flightDetailText } from "../../../../server/fleet-status.ts";
@@ -8,7 +8,7 @@ import { type LaunchModelSetting, NEXT_MODEL_TITLE, nextModelNote } from "../../
 import { flightNumber } from "../../aviation.ts";
 import { OpenFlight } from "../../FlightLink.tsx";
 import { timeAgo } from "../../derive.ts";
-import { ActivityLine, JobDetail, NeedsYou, PendingApproval } from "../../ui.tsx";
+import { ActivityLine, JobDetail, NeedsYou, PendingApproval } from "../../badges.tsx";
 import { type AbsentMark, AbsentChip } from "./Absent.tsx";
 import { ContextCell } from "./Context.tsx";
 import { pct } from "./shared.ts";

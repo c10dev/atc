@@ -1,5 +1,5 @@
 import { ArrowLeft } from "lucide-react";
-import { Icon } from "../Icon.tsx";
+import { Icon } from "../kit/Icon.tsx";
 import { useMemo, useState } from "react";
 import type { GlobeFlight, GlobeScene } from "../../../server/globe.ts";
 import {

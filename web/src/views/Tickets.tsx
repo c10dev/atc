@@ -16,7 +16,7 @@ import { type Index, occupantsOf, timeAgo } from "../derive.ts";
 import { formatClock, type Settings, updateSettings, useSettings } from "../settings.ts";
 import { SplitFlap } from "../SplitFlap.tsx";
 import { useMilestones } from "../useMilestones.ts";
-import { AirportCode, PriorityMark, SessionBadge } from "../ui.tsx";
+import { AirportCode, PriorityMark, SessionBadge } from "../badges.tsx";
 
 // DEPARTURES 순서: 곧 LANDING할 FLIGHT가 위로
 const LIST_ORDER: PhaseTone[] = ["cleared", "approach", "enroute", "filed", "triage", "scheduled", "arrived", "canceled"];

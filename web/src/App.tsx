@@ -18,7 +18,7 @@ import { SettingsPanel } from "./SettingsPanel.tsx";
 import { HelpMenu } from "./HelpMenu.tsx";
 import { GlobeMode } from "./GlobeMode.tsx";
 import { Globe as GlobeIcon } from "lucide-react";
-import { Icon } from "./Icon.tsx";
+import { Icon } from "./kit/Icon.tsx";
 import type { SettingsTab } from "../../server/settings-policy.ts";
 import { lazyTab, TabBoundary, TabLoading } from "./lazyTab.tsx";
 import { useNow, useSnapshot } from "./useSnapshot.ts";

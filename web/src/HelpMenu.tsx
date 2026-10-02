@@ -1,6 +1,6 @@
 import { CircleHelp } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Icon } from "./Icon.tsx";
+import { Icon } from "./kit/Icon.tsx";
 import "./alerts.css";
 
 // 도움말 메뉴(ATC-381, docs/layout.md Y6): DOCS는 탭이 아니라 여기서 연다. 주소 #docs/<쪽>은 그대로 열린다.
