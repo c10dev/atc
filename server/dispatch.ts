@@ -13,6 +13,7 @@ import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
 import { REASON_CODES } from "./reasons.ts";
 import { ABSENT_REASON, cutHoldWhy, LANE_CUTOFF, type ResumeInfo, stuckHintOf, tailsOf } from "./dispatch-launch.ts";
+import { k3LaunchOf } from "./k3-allow.ts";
 import { DEFAULT_TEAM_PATTERN, fleetKeyOf, regKey } from "./registration.ts";
 import { DEFAULT_MCC, loadMcc } from "./mcc.ts";
 import { supervisorConfirmOf } from "./supervisor-confirm.ts";
@@ -983,7 +984,8 @@ export function planDispatch(
       .flatMap((t) => {
         const tails = tailsOf(t, now);
         return aircraft
-          .filter((ac) => ok(ac, t) && fitsRoom(ac, t) && (!tails.size || tails.has(regOf(ac.name))) && (!sameTeamOnly.has(t.key) || regOf(ac.name) === sameTeamOnly.get(t.key)) && qualifies(ac, t.cls) && independent(ac, t.ind) && notBlocked(ac, t))
+          // K3 발권(ATC-372): 선언한 K3 효과가 있는 FLIGHT는 새로 띄우는 AIRCRAFT(launch 카드)만 받는다. 돌고 있는 세션은 새 `--settings`를 받지 못한다
+          .filter((ac) => (ac.launch || !k3LaunchOf({ flight: t.key, declared: t.k3, hash: t.releaseHash, releases: s.releases, repo: "" })) && ok(ac, t) && fitsRoom(ac, t) && (!tails.size || tails.has(regOf(ac.name))) && (!sameTeamOnly.has(t.key) || regOf(ac.name) === sameTeamOnly.get(t.key)) && qualifies(ac, t.cls) && independent(ac, t.ind) && notBlocked(ac, t))
           .map((ac) => {
             hadPair.add(t.key);
             const sc = score(t, ac);

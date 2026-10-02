@@ -109,6 +109,7 @@ export interface Ticket {
   parent: string | null; // 상위 이슈 key (Linear parent)
   children: string[]; // 하위 이슈 key (Linear children)
   kEffects?: string | null; // 본문 `## K effects` 절의 글(앞 400자, 발권 화면이 클릭 전에 보인다, ATC-376). 절이 없으면 null
+  k3?: { label: import("./k3-allow.ts").K3Label; control: string; files: string[] }[]; // 본문 `## K effects`의 읽힌 K3 선언(ATC-372, k3-allow.ts). 없으면 빈 칸
   releaseHash?: string | null; // 본문(목표·완료 기준·K 효과)의 해시(ATC-362 발권 기록이 승인한 내용과 견준다). 본문이 없으면 null
 }
 

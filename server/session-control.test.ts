@@ -26,6 +26,12 @@ test("launchPlanOf: 모델과 권한 모드를 고를 수 있다", () => {
   assert.equal(p.model, "opus");
 });
 
+test("launchPlanOf: settings는 --settings로 브리핑 앞에 실린다(ATC-372)", () => {
+  const settings = '{"autoMode":{"allow":["$defaults","x"]}}';
+  assert.deepEqual(launchPlanOf({ ...base, settings }, []).args, ["--bg", "-n", "TEAM_K", "--permission-mode", "auto", "--settings", settings, base.briefing]);
+  assert.ok(!launchPlanOf(base, []).args.includes("--settings"));
+});
+
 test("launchPlanOf: bypassPermissions와 이상한 모델 이름은 거절", () => {
   refused(() => launchPlanOf({ ...base, permissionMode: "bypassPermissions" }, []), 400, /permission mode/);
   refused(() => launchPlanOf({ ...base, model: "opus --dangerously-skip-permissions" }, []), 400, /모델/);

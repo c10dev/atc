@@ -24,6 +24,7 @@ import { addLogbookFuel, aircraftContexts, mountFuel } from "./fuel-run.ts";
 import { fuelWatch } from "./fuel-watch.ts";
 import { mountFleetPlan, runFleetPlan } from "./fleet-plan-run.ts";
 import { mountFreshStart } from "./fresh-start-run.ts";
+import { type K3Declaration, k3LaunchOf } from "./k3-allow.ts";
 import { launchAircraft, MAX_LAUNCHED, mountSessionControl } from "./session-control.ts";
 import { mountApplyNow } from "./apply-now-run.ts";
 import { mountControlBulk } from "./control-bulk-run.ts";
@@ -192,9 +193,13 @@ mountHumanCheck(app, getSnapshot);
 mountAirports(app);
 mountMetrics(app);
 // launch 카드의 LAUNCH(화면의 승인과 서버의 자동 승인이 같이 쓴다). by는 FLIGHT RECORDER에 남는 주체
-const launchForCard = (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string) => {
+const launchForCard = (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string, flight: string) => {
   const a = s.absent?.find((x) => x.registration === reg);
-  return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, by, proposal);
+  // K3 발권(ATC-372): 화면·DUTY 채팅 발권이 선언한 K3 효과면 새 세션에 그 선언만큼의 autoMode.allow를 준다. 서버가 발권 기록에서만 만든다
+  // STAND는 그 AIRCRAFT의 base 저장소 아래에 생기므로 저장소는 launchAircraft가 정한 뒤에 넘겨받는다
+  const t = s.tickets.find((x) => x.key === flight);
+  const k3 = t ? (repo: string) => k3LaunchOf({ flight, declared: t.k3 as K3Declaration[] | undefined, hash: t.releaseHash, releases: s.releases, repo }) : undefined;
+  return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, by, proposal, k3);
 };
 mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   candidates: standFreeCandidates,
@@ -204,7 +209,7 @@ mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   // LAUNCH on approve(ATC-129): FLEET LAUNCH와 같은 길. 옵션은 그 AIRCRAFT의 마지막 atc LAUNCH와 같게.
   // ACCOUNT: RESUME은 끊긴 ACCOUNT를 이름으로 댄다. 다른 카드는 이름을 대지 않아 LAUNCH ACCOUNT가 먼저고, 마지막 ACCOUNT는 그다음이다(ATC-239)
   max: MAX_LAUNCHED,
-  launch: (s, reg, proposal, resume) => launchForCard(s, reg, proposal, resume, "SUPERVISOR"),
+  launch: (s, reg, proposal, resume, flight) => launchForCard(s, reg, proposal, resume, "SUPERVISOR", flight),
 }, (s, now, inFlight) => {
   // ATC-169: 머지됐는데 도착 보고가 없는 FLIGHT와 OCC 재시작 안전 시점(읽기만)
   const arrivalMissing = arrivalMissingOf(followingNow(s, now, undefined, false), foldReports(readReports()), now);
@@ -255,7 +260,7 @@ setInterval(() => {
 // 서버 안에서만 돈다(HTTP 길도 atcctl 명령도 없다). 1분에 한 번
 setInterval(() => {
   if (!current) return;
-  void runAutoApprove(current, { max: MAX_LAUNCHED, launch: (s, reg, proposal, resume) => launchForCard(s, reg, proposal, resume, "auto") }).catch((e) => console.error("[atc] auto approve failed:", e));
+  void runAutoApprove(current, { max: MAX_LAUNCHED, launch: (s, reg, proposal, resume, flight) => launchForCard(s, reg, proposal, resume, "auto", flight) }).catch((e) => console.error("[atc] auto approve failed:", e));
 }, 60_000).unref();
 // SCHEDULE 초안 자동 적용(ATC-370, docs/autonomy.md P5): 스위치 schedule.json auto(기본 on)가 켜져 있으면 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW 초안을 사람 판정 없이 승인한다. 1분에 한 번
 setInterval(() => {
