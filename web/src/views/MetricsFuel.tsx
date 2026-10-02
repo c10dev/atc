@@ -12,6 +12,7 @@ import { MetricsFuelTrend, SummaryChange, type TrendData, type TrendState, Usage
 import "./MetricsFuel.css";
 import { apiGet } from "../api.ts";
 import { Empty } from "../kit/Empty.tsx";
+import { Loading } from "../kit/Loading.tsx";
 
 // FUEL 개요(ATC-137, docs/fuel.md "FUEL overview as built"): METRICS 탭 안 #metrics/fuel. 읽기만 한다.
 // /api/fuel과 /api/logbook은 열 때, 기간을 바꿀 때, 새로고침 버튼을 누를 때만 읽는다(스냅샷마다 읽지 않는다).
@@ -86,7 +87,7 @@ export function MetricsFuel({ snapshot }: { snapshot: Snapshot | null }) {
         </p>
       )}
       {!fuel ? (
-        st.loading ? <Empty>불러오는 중…</Empty> : null
+        st.loading ? <Loading>불러오는 중…</Loading> : null
       ) : fuel.requests === 0 ? (
         <Empty className="mf-empty">이 기간({fuel.days}일)에 읽은 요청이 없다 — ~/.claude/projects의 대화 기록에 그 기간 기록이 없다.</Empty>
       ) : (

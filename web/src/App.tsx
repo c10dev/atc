@@ -28,6 +28,7 @@ import { readoutState } from "../../server/duty-chat.ts";
 import type { Snapshot } from "../../server/model.ts";
 import type { Index } from "./derive.ts";
 import { Empty } from "./kit/Empty.tsx";
+import { ApproachScene } from "./ApproachScene.tsx";
 
 // 첫 화면(RADAR)만 메인 번들에 두고, 나머지 탭은 처음 열 때 불러온다(청크마다 그 탭의 CSS·라이브러리까지, 예: DOCS의 marked).
 const Flights = lazyTab<{ snapshot: Snapshot; idx: Index; now: number; refreshKey: string }>(() => import("./views/Flights.tsx"), "Flights");
@@ -68,6 +69,11 @@ export function App({ build }: { build: string }) {
   const [settingsOpen, setSettingsOpen] = useState(() => headOf(location.hash) === "airports");
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(() => (headOf(location.hash) === "airports" ? "airports" : null));
   const [globeOpen, setGlobeOpen] = useState(() => headOf(location.hash) === "globe");
+  // 첫 불러오기의 장면(ATC-453): 늦을 때만 보이고(sceneSeen), 첫 스냅샷이 오면 문턱 불빛이 켜진 채 사라진다(introDone)
+  const [introDone, setIntroDone] = useState(false);
+  const [sceneSeen, setSceneSeen] = useState(false);
+  const showScene = useCallback(() => setSceneSeen(true), []);
+  const sceneGone = useCallback(() => setIntroDone(true), []);
   const closeSettings = useCallback(() => (setSettingsOpen(false), setSettingsTab(null)), []);
   const settings = useSettings();
   const idx = useMemo(() => (snapshot ? buildIndex(snapshot) : null), [snapshot]);
@@ -264,17 +270,18 @@ export function App({ build }: { build: string }) {
         )}
 
         <main className="main">
+          {!introDone && !(connection === "lost" && !snapshot) && <ApproachScene ready={Boolean(snapshot && idx)} onShow={showScene} onGone={sceneGone} />}
           {!snapshot || !idx ? (
-            <Empty>{connection === "lost" ? "서버에 연결할 수 없음" : "불러오는 중…"}</Empty>
+            connection === "lost" ? <Empty>서버에 연결할 수 없음</Empty> : null
           ) : (
             // 탭마다 오류 경계를 새로 둔다(한 탭의 오류·못 불러온 청크가 다른 탭을 막지 않게)
-            <>
+            <div className={sceneSeen && !introDone ? "main-enter" : undefined}>
               {/* 처음 도착하는 탭(HOME, ATC-377)의 맨 위 */}
               {tab === "home" && <SinceLook refreshKey={snapshot.at.slice(0, 16)} />}
               <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
                 <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now, () => setSettingsOpen(true))}</Suspense>
               </TabBoundary>
-            </>
+            </div>
           )}
         </main>
         <section className="panel-area" hidden />

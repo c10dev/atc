@@ -31,6 +31,7 @@ import { ReportLine } from "./ReportMark.tsx";
 import { Fold } from "./Fold.tsx";
 import { LOG_OUTCOME_TEXT, type SessionBrief, type SessionRow, logOutcomeOf, pct, ratingHelp, stripOf } from "./shared.ts";
 import "./Card.css";
+import { Lights } from "../../kit/Loading.tsx";
 
 // AIRCRAFT 한 대의 카드(ATC-280): 머리(이름·상태·버튼) → 경보 띠(있을 때만) → 네 칸 본문(NOW · CREW · ACCOUNT·FUEL · PERFORMANCE).
 // variant detail은 목록 행 아래(FLYING·활동·FOB는 행이 이미 보인다), card는 "카드" 보기(전부)
@@ -489,7 +490,12 @@ export function Card({
               <span className="fl-split" role="group" aria-label="LAUNCH">
                 {!optsOpen && (
                   <button type="button" className="fl-btn primary fl-split-main" disabled={launchBusy || Boolean(defaults.refused)} onClick={() => runLaunch()}>
-                    {launchBusy ? "띄우는 중…" : "LAUNCH"}
+                    {launchBusy ? (
+            <>
+              <Lights />
+              띄우는 중…
+            </>
+          ) : "LAUNCH"}
                   </button>
                 )}
                 <button

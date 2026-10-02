@@ -5,6 +5,7 @@ import "./Network.css";
 import { RouteMap } from "./RouteMap.tsx";
 import { apiGet } from "../api.ts";
 import { Empty } from "../kit/Empty.tsx";
+import { Loading } from "../kit/Loading.tsx";
 import { TableScroll } from "../kit/TableScroll.tsx";
 import { dotShapeOf } from "../kit/dot.ts";
 
@@ -177,7 +178,7 @@ export function Network({ refreshKey }: { refreshKey: string }) {
         </p>
       )}
       {!data ? (
-        !error && <Empty>불러오는 중…</Empty>
+        !error && <Loading>불러오는 중…</Loading>
       ) : (
         <>
           <Sources sources={data.sources} />

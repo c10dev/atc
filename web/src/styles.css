@@ -674,6 +674,7 @@ button {
 }
 
 .main {
+  position: relative; /* 첫 불러오기 장면(ApproachScene)이 겹쳐 사라진다 */
   padding: var(--space-4) var(--gutter) var(--space-12);
 }
 

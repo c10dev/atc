@@ -4,6 +4,7 @@ import { type KeyboardEvent, useEffect, useState } from "react";
 import "./RouteMap.css";
 import { apiGet } from "../api.ts";
 import { Empty } from "../kit/Empty.tsx";
+import { Loading } from "../kit/Loading.tsx";
 
 // ROUTE MAP: ROUTE(Linear 프로젝트)마다 WAYPOINT(마일스톤)를 가로 경로로. 읽기만 한다.
 // 계산(상태·FLIGHT·ETA)은 서버(server/routes.ts)가 하고 여기서는 그리기만 한다. 설계: docs/routes.md
@@ -115,7 +116,7 @@ export function RouteMap({ refreshKey }: { refreshKey: string }) {
         </ul>
       )}
       {!data ? (
-        !error && <Empty>불러오는 중…</Empty>
+        !error && <Loading>불러오는 중…</Loading>
       ) : !data.routes.length ? (
         <Empty className="nw-empty">보여 줄 ROUTE가 없음</Empty>
       ) : (

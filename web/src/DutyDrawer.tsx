@@ -1,5 +1,6 @@
 import { ChevronRight, X } from "lucide-react";
 import { Icon, IconButton } from "./kit/Icon.tsx";
+import { Loading } from "./kit/Loading.tsx";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDialog } from "./kit/useDialog.ts";
 import { type Chat, type ChatItem, headLine } from "../../server/duty-chat.ts";
@@ -198,7 +199,7 @@ export default function DutyDrawer({ chat, onClose, airports, refreshKey, now }:
                   <p className="du-text">{chat.streaming}</p>
                 </div>
               )}
-              {thinking && !chat.streaming && <div className="du-thinking">DUTY가 답하는 중…</div>}
+              {thinking && !chat.streaming && <Loading className="du-thinking">DUTY가 답하는 중…</Loading>}
               {st.state === "down" && (
                 <div className="du-notice is-error">
                   DUTY가 내려가 있습니다{st.error ? `: ${st.error}` : ""}.{st.blocked ? " 연달아 실패해 멈췄습니다. NEW SHIFT로 다시 시작합니다." : " 다음 글을 보내면 다시 띄웁니다."}
