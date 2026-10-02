@@ -20,7 +20,6 @@ export const ALLOWED_CYCLES: string[] = [
 ];
 // 오늘의 화면→Node 값 import 사슬. "web 파일 -> … -> node:xxx" 형식. 새 항목을 더하지 않는다.
 export const ALLOWED_WEB_NODE_CHAINS: string[] = [
-  "web/src/views/fleet/ReportMark.tsx -> server/judges/report.ts -> server/judges/classify.ts -> server/briefs.ts -> server/landing.ts -> server/human-check.ts -> node:path",
 ];
 
 type Edge = { to: string; spec: string };
