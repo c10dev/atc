@@ -17,7 +17,7 @@ Ranked by the SUPERVISOR, with the tags they gave:
 | 5 | an edge-network page of dense KPIs | alignment |
 | 6 | a serverless-database page | type hierarchy, alignment, detail flow |
 
-Cut: a widget wall ("too dense") and a near-black page ("dim, hard to read"). Among real products the SUPERVISOR kept the GitHub, OpenAI and Cloudflare status pages, shadcn and Tabler, and cut a dense metrics-panel wall.
+Cut: a widget wall ("too dense") and a near-black page ("dim, hard to read"). Among real products the SUPERVISOR kept the GitHub, OpenAI and Cloudflare status pages, shadcn and Tabler, and cut a dense metrics-panel wall. Every reference with its verdict, including later ones, is listed in [research/ui-references.md](research/ui-references.md).
 
 ## The brief
 
