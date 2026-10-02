@@ -263,3 +263,38 @@ test("발권 fire: Todo로 옮긴 뒤 screen 발권을 적는다. 옮기기가 �
   assert.deepEqual(moves, [["ATC-1", "Backlog"], ["ATC-1", "Backlog"]]);
   assert.deepEqual(h.lines.map((l) => (l.op === "release" ? [l.flight, l.channel, l.via] : l.op)), [["ATC-1", "screen", "click"]]);
 });
+
+// ATC-391: attested 발권의 K 효과 확인(화면 클릭만)
+const K3 = [{ label: "Security Weaken" as const, control: "hook for x", files: ["hooks/x.mjs"] }];
+
+test("길: k-confirm은 Origin 없는 요청을 받지 않고, 화면 클릭만 attested 발권에 K 확인 한 줄을 적는다", async () => {
+  const h = harness([tk("ATC-1", { k3: K3 })]);
+  await h.post("/api/releases/attest", { flight: "ATC-1", session: "OCC", words: "release it" });
+  assert.equal((await h.post("/api/releases/k-confirm", { flight: "ATC-1", hash: "hash-ATC-1" })).status, 403);
+  assert.equal((await h.post("/api/releases/k-confirm", { flight: "ATC-1", hash: "hash-ATC-1" }, { origin: "https://evil.example" })).status, 403);
+  assert.equal(h.lines.length, 1);
+  const r = await h.post("/api/releases/k-confirm", { flight: "ATC-1", hash: "hash-ATC-1" }, FROM_SCREEN);
+  assert.equal(r.status, 200);
+  assert.deepEqual(h.lines.map((l) => l.op), ["release", "k-confirm"]);
+  assert.equal(foldReleases(h.lines).records["ATC-1"]!.kConfirm?.hash, "hash-ATC-1");
+  assert.equal((await h.post("/api/releases/k-confirm", { flight: "ATC-1", hash: "hash-ATC-1" }, FROM_SCREEN)).status, 409); // 이미 확인
+});
+
+test("길: K 선언이 없거나 attested가 아니거나 없는 FLIGHT의 발권은 K 확인을 받지 않는다", async () => {
+  const h = harness([tk("ATC-1"), tk("ATC-2", { k3: K3 })]);
+  await h.post("/api/releases/attest", { flight: "ATC-1", session: "OCC", words: "w" });
+  assert.equal((await h.post("/api/releases/k-confirm", { flight: "ATC-1", hash: "hash-ATC-1" }, FROM_SCREEN)).status, 409); // 선언 없음
+  await h.post("/api/releases", { flight: "ATC-2", hash: "hash-ATC-2" }, FROM_SCREEN);
+  assert.equal((await h.post("/api/releases/k-confirm", { flight: "ATC-2", hash: "hash-ATC-2" }, FROM_SCREEN)).status, 409); // screen 발권은 확인이 필요 없다
+  assert.equal((await h.post("/api/releases/k-confirm", { flight: "ATC-9", hash: "x" }, FROM_SCREEN)).status, 404);
+});
+
+test("RELEASE 화면 자료: K 효과를 선언한 attested 발권만 kPending에 오르고, 확인하면 빠진다", async () => {
+  const tickets = [tk("ATC-1", { k3: K3, kEffects: "K3[Security Weaken]: hook for x | files: hooks/x.mjs" }), tk("ATC-2")];
+  const h = harness(tickets);
+  await h.post("/api/releases/attest", { flight: "ATC-1", session: "OCC", words: "release" });
+  await h.post("/api/releases/attest", { flight: "ATC-2", session: "OCC", words: "release" });
+  assert.deepEqual(releaseView(snap(tickets), h.deps).kPending.map((r) => r.key), ["ATC-1"]);
+  await h.post("/api/releases/k-confirm", { flight: "ATC-1", hash: "hash-ATC-1" }, FROM_SCREEN);
+  assert.deepEqual(releaseView(snap(tickets), h.deps).kPending, []);
+});

@@ -13,6 +13,18 @@ atc를 고친 PR을 머지한 뒤 운영 서비스(7700)에 반영하는 방법�
 
 이 버튼은 user 등급 PR만 머지한다. auto-merge는 켜지 않고, 머지 방식은 AIRPORT의 것(atc 저장소는 merge 커밋)이다. GitHub 화면에서 머지해도 전과 같다.
 
+### 발권 때 승인한 K 효과 안의 user 등급 PR은 MCC가 착륙시킵니다
+
+K3 효과(guard, hook, `.claude/` …)를 고치는 FLIGHT는 **발권할 때 한 번** 승인합니다([RELEASE 화면](screens.md)). 이슈 본문 `## K effects`에 `K3[Security Weaken]: <바꾸는 통제> | files: <경로, …>` 줄로 선언해 두고, RELEASE 화면에서 그 선언을 보고 발권(화면 클릭·DUTY 채팅 `RELEASE ATC-n`)하면, 그 선언한 파일 안에서 만든 `user` 등급 PR은 **머지 때 사람 단계 없이** INSPECTION `pass`와 CI 뒤 MCC가 착륙시킵니다(ATC-391). 그 PR에는 위 `MERGE…` 버튼을 누를 필요가 없습니다. 반대로 이런 PR은 계속 사용자 몫이고, PR 서랍과 MCC의 `blocks`에 이유가 보입니다:
+
+- 선언하지 않은 `user` 등급 파일을 바꿨다(새 화살: 선언을 고쳐 다시 발권), 마이그레이션·비밀 경로를 바꿨다.
+- MCC가 의심으로 ESCALATE했거나 P0·P1 지적이 있다.
+- 이 검사 자체(`server/mcc*.ts`, `k-approval.ts`, `release*.ts`, `deploy/`, `mcc/` …)를 바꾸는 PR.
+- 발권이 없거나, 발권 뒤에 이슈 본문이 바뀌었다.
+- 발권이 **attested뿐**이다(다른 세션이 "SUPERVISOR가 말했다"고 증언한 것): RELEASE 화면의 **K 효과 확인**에 뜨고, 클릭 한 번으로 K 권한을 줍니다. 이 클릭도 발권 때의 일입니다.
+
+설정 창 AUTOMATION → MCC의 **K APPROVAL**이 이 길의 스위치입니다(기본 `on`, `off`면 전처럼 모든 `user` PR을 사용자가 머지). 그 아래에 최근 7일 날짜별로 이렇게 착륙한 PR 수와, 그 가운데 자동 되돌림 PR이 열린 수·ROLLBACK이 난 수가 보입니다. 이렇게 착륙한 PR은 `mcc.jsonl`의 `land` 줄에 발권 id(`<FLIGHT>@<해시>`)가 남습니다.
+
 ## UPDATE 막대
 
 서비스가 `origin/main`보다 뒤이면 콘솔 바로 아래에 막대가 뜬다.

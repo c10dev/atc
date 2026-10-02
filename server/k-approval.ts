@@ -24,13 +24,11 @@ export const CHECK_PATHS: readonly string[] = [
   "server/supervisor-auth.ts",
   "server/settings.ts", // 스위치를 쓰는 길
   "deploy/",
-  "mcc/",
-  "controller/guard.mjs",
-  "occ/send-guard.mjs",
+  "mcc/", // MCC의 매뉴얼·inspector·guard
 ];
 export const checkPathOf = (files: readonly string[]): string | null => files.find((f) => CHECK_PATHS.some((p) => (p.endsWith("/") ? f.startsWith(p) : f === p))) ?? null;
 
-export type KCode = "off" | "check-itself" | "no-flight" | "no-release" | "stale" | "attested-only" | "no-declaration" | "unreadable-declaration" | "beyond-declaration" | "k1-k2";
+export type KCode = "off" | "check-itself" | "no-flight" | "flight-closed" | "no-release" | "stale" | "attested-only" | "no-declaration" | "unreadable-declaration" | "beyond-declaration" | "k1-k2";
 export type KVerdict =
   | { ok: true; release: string; flight: string; channel: ReleaseChannel; effects: string[]; files: string[] }
   | { ok: false; code: KCode; why: string; files?: string[] };
@@ -42,6 +40,7 @@ export interface KInput {
   userFiles: readonly string[]; // landing-tier가 user로 본 파일
   declared: readonly K3Declaration[] | undefined; // 이슈 본문의 읽힌 K3 선언
   unparsed: number; // 읽히지 않은 K3 줄 수
+  stateType?: string | null; // FLIGHT 이슈의 상태 종류(unstarted·started·completed·canceled …). 끝난 FLIGHT의 발권은 더 착륙시키지 않는다
   hash: string | null | undefined; // 지금 이슈 본문의 해시
   releases: ReleaseView | null | undefined;
 }
@@ -58,6 +57,8 @@ export function kApprovalOf(x: KInput): KVerdict {
   const k12 = migrationPathOf([...x.files]) ?? secretPathOf(x.files);
   if (k12) return no("k1-k2", `K1·K2 경로(${k12})는 아직 이 길로 착륙시키지 않음 — 사용자가 머지`);
   if (!x.flight) return no("no-flight", "PR에 FLIGHT가 없어 발권 기록을 찾을 수 없음");
+  // 한 발권은 FLIGHT가 열려 있는 동안만 K 권한을 준다: 끝났거나 취소된 FLIGHT의 이름을 빌려 같은 파일을 다시 고치는 PR은 새 화살이다
+  if (x.stateType === "completed" || x.stateType === "canceled") return no("flight-closed", `${x.flight}는 이미 끝났거나 취소됨 — 그 발권은 더 착륙시키지 않음`);
   const state = releaseStateOf(x.flight, x.hash, x.releases);
   if (state === "unreleased") return no("no-release", `${x.flight}에 발권 기록이 없음`);
   if (state === "stale") return no("stale", `${x.flight}는 발권 뒤 목표·완료 기준·K 효과가 바뀜 — 다시 발권`);
@@ -77,3 +78,43 @@ export function kApprovalOf(x: KInput): KVerdict {
 
 // L3 문구에 붙이는 한 줄
 export const kWhyOf = (v: KVerdict | null | undefined): string => (v && !v.ok ? `K 승인 아님: ${v.why}` : "");
+
+// ── 센다(ATC-391): K 승인으로 착륙한 PR과 그 뒤 ──
+// 착륙한 날 기준. reverted: 그 PR의 자동 되돌림 PR이 열렸다(auto-revert.jsonl의 revert-opened). rolledBack: 착륙한 뒤 처음 나온 RTS 결과가 ROLLBACK이다(그 PR을 실은 배포가 되돌려짐).
+// 사람이 GitHub에서 손으로 되돌린 것은 알 수 없어 세지 못한다.
+export interface KLanded {
+  at: string;
+  pr: number;
+  release: string;
+}
+export interface KDay {
+  day: string; // 착륙한 UTC 날짜
+  landed: number;
+  reverted: number;
+  rolledBack: number;
+}
+export function kLandDaysOf(
+  lands: readonly KLanded[],
+  reverts: readonly { op: string; pr?: number }[],
+  rts: readonly { at: string; result: string }[],
+  days: number,
+  now: number,
+): KDay[] {
+  const out = new Map<string, KDay>();
+  for (let i = days - 1; i >= 0; i--) {
+    const day = new Date(now - i * 86_400_000).toISOString().slice(0, 10);
+    out.set(day, { day, landed: 0, reverted: 0, rolledBack: 0 });
+  }
+  const revertedPrs = new Set(reverts.filter((l) => l.op === "revert-opened" && l.pr != null).map((l) => l.pr as number));
+  const outcomes = rts.filter((r) => r.result === "ok" || r.result === "rollback").sort((a, b) => a.at.localeCompare(b.at));
+  const seen = new Set<string>();
+  for (const l of lands) {
+    const d = out.get(l.at.slice(0, 10));
+    if (!d || seen.has(`${l.pr}`)) continue;
+    seen.add(`${l.pr}`);
+    d.landed++;
+    if (revertedPrs.has(l.pr)) d.reverted++;
+    if (outcomes.find((r) => r.at > l.at)?.result === "rollback") d.rolledBack++;
+  }
+  return [...out.values()];
+}

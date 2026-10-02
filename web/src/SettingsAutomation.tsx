@@ -279,6 +279,10 @@ const AUTO_REVERT_WARN = {
   off: "off: main이 빨개져도 atc는 되돌리지 않는다. GROUND STOP과 MCC 멈춤은 사람이 읽고 푼다.",
   on: "⚠ 기본 켜짐. lander가 머지해 main을 빨갛게 만든 PR을 atc가 되돌리는 PR을 연다(AIRPORT마다 하나, 같은 리뷰·CI로 착륙, 다음 초록 head가 GROUND STOP을 푼다). 되돌리기 전에 실패한 체크를 같은 head에서 한 번 다시 돌려 flake면 아무것도 하지 않고, 다시 빨갛고 그 PR 자신의 head가 초록이었을 때만 되돌린다. 사람의 머지·마이그레이션(K1)·user 등급(K3) PR은 되돌리지 않고 DUTY에게 알린다. 1시간 안에 빨간 head가 둘이면 멈추고 AUTOLAND merge → update, MCC 착륙 끔으로 내린다.",
 } as const;
+const K_APPROVAL_WARN = {
+  off: "off: user 등급 PR은 K 효과를 발권 때 승인했어도 사용자가 머지한다.",
+  on: "⚠ 기본 켜짐. 발권(화면 클릭·DUTY 채팅)에 선언한 K3 효과 안에서 만든 user 등급 PR은 INSPECTION pass와 CI 뒤 MCC가 착륙시킨다(사용자 머지 없음). attested 발권만으로는 안 되고 RELEASE 화면에서 한 번 확인해야 한다. 선언을 넘는 변경·ESCALATE·P0/P1·이 검사를 바꾸는 PR·마이그레이션·비밀 경로는 사용자 몫이다.",
+} as const;
 const AUTO_APPROVE_WARN = {
   off: "off(기본): ASSIGN과 SCHEDULE 초안은 SUPERVISOR가 하나씩 누른다.",
   shadow: "shadow: 서버가 CROSSCHECK가 agree한 카드를 \"승인했을 것\"이라고 auto-approve.jsonl에만 적는다. 아무것도 승인하지 않는다.",
@@ -539,6 +543,32 @@ export function LandingSettings({ server, save }: { server: Loaded; save: Save }
                 onSave={(v) => save({ mccMode: v as "shadow" | "land" | "land+rts" | "rts" })}
               />
               <ModeLines modes={["shadow", "land", "land+rts", "rts"] as const} current={s.mcc.mode} lines={MCC_WARN} />
+              {s.mcc.kApproval ? (
+                <>
+                  <EditRow
+                    label="K APPROVAL"
+                    env="mccKApproval"
+                    value={s.mcc.kApproval}
+                    note="mcc.json · 이 화면에서만 바꾼다 — MCC 세션은 못 바꿈 · 발권 때 승인한 K 효과 안에서 만든 user 등급 PR을 MCC가 착륙시킨다"
+                    input={{ kind: "select", options: ["on", "off"] }}
+                    guard={guardOf("kApproval", s.mcc.kApproval, K_APPROVAL_WARN)}
+                    onSave={(v) => save({ mccKApproval: v as "on" | "off" })}
+                  />
+                  <ModeLines modes={["off", "on"] as const} current={s.mcc.kApproval} lines={K_APPROVAL_WARN} />
+                  {(s.mcc.kDays ?? []).some((d) => d.landed > 0) ? (
+                    <ul className="dp-misfire">
+                      {[...(s.mcc.kDays ?? [])]
+                        .reverse()
+                        .filter((d) => d.landed > 0)
+                        .map((d) => (
+                          <li key={d.day}>
+                            <span className="mono">{d.day}</span> K 승인 착륙 <b>{d.landed}</b> · revert <b>{d.reverted}</b> · ROLLBACK <b>{d.rolledBack}</b>
+                          </li>
+                        ))}
+                    </ul>
+                  ) : null}
+                </>
+              ) : null}
             </>
           )}
         </ServerRows>

@@ -2,7 +2,7 @@ import type { ServerSettings } from "./settings.ts";
 
 // 설정 창의 계산(ATC-131). SUPERVISOR 정책 스위치(AUTOMATION: LANDING·OPERATIONS)의 "지금 모드 한 줄", ⚠ 모드로 올릴 때 확인이 필요한지, 마지막 분류 기억, 설정 찾기.
 // 저장 값과 PUT /api/settings는 그대로다. 여기는 화면에 보이는 이름과 판단만 다룬다.
-export type PolicyKey = "autoland" | "autolandReview" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle" | "duty" | "dutyCharter" | "dutyReview" | "autoApprove" | "autoApproveLaunch" | "autoDispatch" | "scheduleAuto" | "fleetPlanAuto" | "autoRevert";
+export type PolicyKey = "autoland" | "autolandReview" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle" | "duty" | "dutyCharter" | "dutyReview" | "autoApprove" | "autoApproveLaunch" | "autoDispatch" | "scheduleAuto" | "fleetPlanAuto" | "autoRevert" | "kApproval";
 
 // ⚠ 모드(올리면 atc가 더 많이 쓰거나 밖으로 내보낸다). 화면의 경고 문구가 ⚠로 시작하는 모드와 같다
 export const RISKY: Record<PolicyKey, readonly string[]> = {
@@ -21,6 +21,7 @@ export const RISKY: Record<PolicyKey, readonly string[]> = {
   scheduleAuto: ["on"], // 서버가 SCHEDULE 초안(CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW)을 사람 판정 없이 승인한다(ATC-370). 기본 on, off는 SUPERVISOR 몫
   fleetPlanAuto: ["on"], // 서버가 FLEET PLAN 제안(LAUNCH·STOP·RESTART·REFRESH·AOG)을 사람 승인 없이 실행한다(ATC-370). 기본 on, off는 SUPERVISOR 몫
   autoDispatch: ["on"], // 서버가 필터·상한을 통과한 ASSIGN·launch를 CROSSCHECK·사람 없이 승인한다(ATC-367, K3). 기본 on이라 ⚠로 보이고, 껐다 다시 켤 때 확인한다
+  kApproval: ["on"], // MCC가 발권 때 승인한 K 효과 안의 user 등급 PR을 사용자 머지 없이 착륙시킨다(ATC-391, K3). 기본 on이라 ⚠로 보이고, 껐다 다시 켤 때 확인한다
   autoRevert: ["on"], // atc가 lander 머지가 깬 main의 revert PR을 스스로 열고, 두 번째 빨간 head에는 lane을 한 단계 낮춘다(되돌리기 전에 실패한 체크를 한 번 다시 돌린다. 기본 on, off는 SUPERVISOR 몫)
   autoApproveLaunch: ["on"], // 서버가 launch 카드를 스스로 승인하고 세션을 띄운다(상한·FUEL hold·막힘·실패 뒤 대기·하루 상한을 지킬 때만)
 };
@@ -54,6 +55,7 @@ export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "revie
     seg("autoland", "AUTOLAND", s.autoland.mode),
     ...(s.autoland.reviewedSecurity ? [seg("autolandReview", "AUTOLAND REVIEW", s.autoland.reviewedSecurity)] : []),
     seg("mcc", "MCC", s.mcc.mode),
+    ...(s.mcc.kApproval ? [seg("kApproval", "K APPROVAL", s.mcc.kApproval)] : []),
     seg("jev", "JEV", s.judges?.jev.mode ?? "off"),
     seg("fuelHold", "FUEL HOLD", s.fuel?.hold ? "on" : "off"),
     seg("review", "REVIEW", s.review.security, reviewLabel(s.review.security)),

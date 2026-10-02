@@ -1,4 +1,4 @@
-import { type KVerdict, kApprovalOf } from "./k-approval.ts";
+import { type KLanded, kApprovalOf, kLandDaysOf, type KVerdict } from "./k-approval.ts";
 import { execFile } from "node:child_process";
 import { userInfo } from "node:os";
 import { join } from "node:path";
@@ -90,6 +90,14 @@ export function setMccMode(mode: MccMode) {
   appendMccRecord({ op: "mode", at: new Date().toISOString(), mode, detail: `${cfg.mode} → ${mode}` });
 }
 
+// K 승인 착륙 스위치(ATC-391): 설정 창에서 SUPERVISOR만(PUT /api/settings의 mccKApproval, fromThisApp). 바꾼 것은 mcc.jsonl에 mode 줄로 남긴다
+export function setKApproval(mode: "on" | "off") {
+  const cfg = loadMcc();
+  if (cfg.kApproval === mode) return;
+  saveMcc({ ...cfg, kApproval: mode });
+  appendMccRecord({ op: "mode", at: new Date().toISOString(), mode: cfg.mode, detail: `kApproval ${cfg.kApproval} → ${mode}` });
+}
+
 // MCC가 맡은 AIRPORT: 저장소 경로, GitHub slug, 기본 브랜치와 그 CI
 export function airportOf(s: Snapshot) {
   const cfg = loadMcc();
@@ -128,7 +136,7 @@ const tierCached = async (slug: string, n: number, head: string) => (await tierE
 // K 승인 판정(ATC-391, k-approval.ts): 이 PR의 FLIGHT 발권과 선언, 바뀐 파일로. 티켓·발권은 스냅샷에서 읽는다(GitHub 호출 없음)
 export function kVerdictOf(s: Pick<Snapshot, "tickets" | "releases">, flight: string | null, e: TierEntry, mode: "on" | "off"): KVerdict {
   const t = flight ? s.tickets.find((x) => x.key === flight) : undefined;
-  return kApprovalOf({ mode, flight, files: e.files, userFiles: e.userFiles, declared: t?.k3, unparsed: t?.k3Unparsed ?? 0, hash: t?.releaseHash, releases: s.releases });
+  return kApprovalOf({ mode, flight, files: e.files, userFiles: e.userFiles, declared: t?.k3, unparsed: t?.k3Unparsed ?? 0, stateType: t?.stateType, hash: t?.releaseHash, releases: s.releases });
 }
 
 // TOWER 브리핑의 landBy 자료(ATC-151): MCC AIRPORT의 저장소·모드·HOLD·ESCALATE와 열린 PR의 등급.
@@ -550,4 +558,11 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
     appendMccRecord({ op: b.hold ? "hold" : "unhold", at: new Date().toISOString(), pr });
     return c.json({ holds });
   });
+}
+
+// K 승인으로 착륙한 PR의 날짜별 수(ATC-391): 설정 창 MCC 줄 아래. 기록만 읽는다
+export function kLandDays(days = 7, now = Date.now()) {
+  const lands: KLanded[] = [];
+  for (const r of readMccRecords()) if (r.op === "land" && r.result === "ok" && r.k) lands.push({ at: r.at, pr: r.pr, release: r.k.release });
+  return kLandDaysOf(lands, readAutoRevertLines(), readJsonl<RtsRecord>(RTS_FILE()), days, now);
 }

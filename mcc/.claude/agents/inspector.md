@@ -59,4 +59,4 @@ TEXT:
 <the INSPECTION text, at most 4000 characters, no single quote characters: PASS or FINDINGS, then the P lines, then "Scope read: ..." (which files you read line by line, which only by title) and the P2s>
 ```
 
-`escalate` means the PR should go to the user (tier `user`); fill `ESCALATE`. Use the head sha from the packet you read, not the one MCC gave you if they differ, and say so in TEXT.
+`escalate` means the PR should go to the user because of doubt (a state format, something hard to revert, a change that seems to go beyond what the FLIGHT declared); fill `ESCALATE`. Do not escalate for tier `user` alone: the packet's `kApproval` says whether the SUPERVISOR already approved these K effects at release (`ok: true`), and the server, not you, decides who lands (ATC-391). Use the head sha from the packet you read, not the one MCC gave you if they differ, and say so in TEXT.
