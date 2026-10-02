@@ -7,11 +7,12 @@ import type { Hono } from "hono";
 import { applyGroundStops } from "./atfm.ts";
 import { config } from "./config.ts";
 import { landedOf, loadDispatchConfig, mccAirportNow, planDispatch, readFlightHistory } from "./dispatch.ts";
-import { type FollowFile, FOLLOW_STAGES, followBoardOf, parseFollowBody, parseFollowFile, toggleParent } from "./follow.ts";
+import { arrowsBundleOf, type FollowFile, FOLLOW_STAGES, followBoardOf, parseFollowBody, parseFollowFile, toggleParent } from "./follow.ts";
 import { followingNow } from "./following.ts";
 import { loadFleet } from "./fleet.ts";
 import { loadLogbook } from "./logbook.ts";
 import { loadMcc } from "./mcc.ts";
+import { readReleaseView } from "./release-store.ts";
 import { mccLandInfoCached } from "./mcc-run.ts";
 import { milestonesNow, progressNow } from "./milestones-run.ts";
 import type { Snapshot } from "./model.ts";
@@ -63,8 +64,7 @@ export function followNow(s: Snapshot, now = Date.now()) {
   // MCC AIRPORT에서 SUPERVISOR가 머지할 PR(캐시된 등급만 읽는다, GitHub를 부르지 않는다). 등급을 모르면 merge 칩을 내지 않는다
   const land = mccLandInfoCached(s);
   const userPulls = new Set<number>(land ? [...land.tiers].filter(([, v]) => v.tier === "user").map(([n]) => n).concat(land.escalated) : []);
-  const bundles = followBoardOf({
-    parents,
+  const rest = {
     tickets: s.tickets,
     proposals,
     pulls: s.pulls,
@@ -77,7 +77,18 @@ export function followNow(s: Snapshot, now = Date.now()) {
     userPulls,
     airports: s.airports.map((a) => ({ code: a.code, repo: a.repo })),
     now,
-  });
+  };
+  const manual = followBoardOf({ parents, ...rest });
+  // ATC-382: 발권한 FLIGHT는 FOLLOW 클릭 없이 따라간다(SUPERVISOR의 화살표). 손으로 따라가는 번들에 이미 줄이 있는 FLIGHT는 거기에만 둔다
+  const held = new Set(manual.flatMap((b) => b.rows.map((r) => r.key)));
+  let arrows = null;
+  try {
+    const released = Object.values(readReleaseView().records).filter((r) => !held.has(r.flight)).map((r) => ({ flight: r.flight, at: r.at }));
+    arrows = released.length ? arrowsBundleOf(released, rest) : null;
+  } catch {
+    arrows = null; // 발권 기록을 못 읽어도 손으로 따라가는 번들은 그대로
+  }
+  const bundles = arrows ? [arrows, ...manual] : manual;
   const next = bundles.reduce((n, b) => n + b.next, 0); // 머리 NEXT n: 따라가는 모든 번들의 다음 할 일 수
   return { at: new Date(now).toISOString(), linear: s.linear.fetchedAt, stages: [...FOLLOW_STAGES], parents, bundles, next };
 }

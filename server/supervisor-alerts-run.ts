@@ -9,6 +9,7 @@ import type { Snapshot } from "./model.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { allProposals } from "./proposals.ts";
 import { followNow, loadFollow } from "./follow-run.ts";
+import { readReleaseView } from "./release-store.ts";
 import { config } from "./config.ts";
 import { DEFAULT_HEALTH } from "./health.ts";
 import { pendingSinceByAircraft, waitingCallsByAircraft } from "./pending.ts";
@@ -107,9 +108,9 @@ function pendingInput(s: Snapshot, now: number, teamPattern: string) {
   }
 }
 
-// FOLLOW(ATC-278): follow.json에 든 번들의 줄. 접힌 번들은 뺀다. 따라가는 것이 없으면 보드를 셈하지 않는다
+// FOLLOW(ATC-278): follow.json에 든 번들의 줄과, 발권한 FLIGHT의 줄(ATC-382, SUPERVISOR의 화살표). 접힌 번들은 뺀다. 따라가는 것이 없으면 보드를 셈하지 않는다
 function followAlertInput(s: Snapshot, now: number) {
-  if (!loadFollow().parents.length) return { rows: [], now };
+  if (!loadFollow().parents.length && !Object.keys(readReleaseView().records).length) return { rows: [], now };
   try {
     return { rows: followNow(s, now).bundles.filter((b) => !b.folded).flatMap((b) => b.rows), now };
   } catch {
