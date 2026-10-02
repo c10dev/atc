@@ -103,24 +103,43 @@ export interface EffectDeps {
   releaseOf: (flight: string) => string | null;
 }
 
-// 본문의 측정 해석 캐시(한 시간): 평결을 낼 때가 아직 먼 FLIGHT의 본문을 주기마다 다시 읽지 않는다
+// 본문의 측정 해석 캐시(하루): 착륙한 작업 지시서는 고치지 않으므로(후속 이슈로 간다) None·절 없음·잘못된 모양도 하루 동안 다시 읽지 않는다
 const parseCache = new Map<string, { at: number; measure: Measure | null }>();
 export const resetEffectCache = () => parseCache.clear();
-const PARSE_TTL = 3_600_000;
+const PARSE_TTL = DAY;
+const MIN_WINDOW_MS = DAY; // 창은 1d 이상이라 배포 뒤 하루가 안 지난 FLIGHT는 본문을 읽어도 평결을 낼 수 없다
+
+// 마지막 주기가 본문을 못 읽고 넘긴 FLIGHT 수(굶은 점검이 화면에 보이게)
+let lastSkipped = 0;
+export const skippedCount = () => lastSkipped;
 
 export async function runEffectCheck(d: EffectDeps): Promise<{ written: number; fetched: number }> {
   const out = { written: 0, fetched: 0 };
   if (!d.on()) return out;
   const now = d.now();
   const have = new Set(d.lines().filter((l) => l.ev === "verdict").map((l) => l.flight));
-  const cands = [...d.deployed()].filter(([f, at]) => !have.has(f) && now - at <= LOOKBACK_DAYS * DAY).sort((a, b) => a[1] - b[1]);
+  const fresh = (f: string) => {
+    const c = parseCache.get(f);
+    return !!c && now - c.at <= PARSE_TTL;
+  };
+  // 아직 읽지 않은(또는 캐시가 지난) FLIGHT를 먼저, 그 안에서는 최근 배포 먼저: 다음에 창이 지나는 것이 먼저 읽힌다. 읽은 것은 하루 캐시라 후보 수가 많아도 몇 주기 안에 모두 한 번씩 본다
+  const cands = [...d.deployed()]
+    .filter(([f, at]) => !have.has(f) && now - at <= LOOKBACK_DAYS * DAY && now - at >= MIN_WINDOW_MS)
+    .sort((a, b) => Number(fresh(a[0])) - Number(fresh(b[0])) || b[1] - a[1]);
+  let skipped = 0;
   for (const [flight, deployedAt] of cands) {
     let c = parseCache.get(flight);
     if (!c || now - c.at > PARSE_TTL) {
-      if (out.fetched >= MAX_FETCH) continue;
+      if (out.fetched >= MAX_FETCH) {
+        skipped++;
+        continue;
+      }
       out.fetched++;
       const body = await d.body(flight).catch(() => null);
-      if (body === null) continue; // 못 읽었다: 다음 주기에
+      if (body === null) {
+        skipped++;
+        continue; // 못 읽었다: 다음 주기에
+      }
       const p = measureOf(body);
       c = { at: now, measure: p.kind === "measure" ? p.measure : null }; // None·절 없음·잘못된 모양은 평결이 없다
       parseCache.set(flight, c);
@@ -131,6 +150,7 @@ export async function runEffectCheck(d: EffectDeps): Promise<{ written: number; 
     d.append({ v: 1, ev: "verdict", at: new Date(now).toISOString(), flight, release: d.releaseOf(flight), deployedAt: new Date(deployedAt).toISOString(), metric: `${m.source}:${m.name}`, direction: m.direction, windowDays: m.windowDays, before: j.before, after: j.after, verdict: j.verdict, reason: j.reason });
     out.written++;
   }
+  lastSkipped = skipped;
   return out;
 }
 
@@ -170,7 +190,7 @@ export const realDeps = (s: Snapshot): EffectDeps => ({
 
 export function viewOf(lines = readEffectLines()) {
   const verdicts = foldEffects(lines);
-  return { on: loadEffectSwitch() === "on", verdicts, misfire: effectMisfireOf(verdicts), open: openBadOf(verdicts).map((v) => v.flight) };
+  return { on: loadEffectSwitch() === "on", verdicts, misfire: effectMisfireOf(verdicts), open: openBadOf(verdicts).map((v) => v.flight), skipped: lastSkipped };
 }
 
 // DUTY REVIEW가 읽는 줄: 열린 not improved·worse 평결(ATC-402)

@@ -11,6 +11,7 @@ export interface EffectView {
   verdicts: EffectVerdict[];
   misfire: { verdicts: number; wrong: number; share: number | null };
   open: string[];
+  skipped: number; // 본문을 읽지 못하고 넘긴 FLIGHT 수(0이 아니면 점검이 아직 다 돌지 못했다)
 }
 
 export function useEffects(flight: string | null, refreshKey: string) {

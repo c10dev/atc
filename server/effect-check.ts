@@ -14,6 +14,8 @@ export interface Measure {
 }
 export type MeasureParse = { kind: "measure"; measure: Measure } | { kind: "none" } | { kind: "missing" } | { kind: "invalid"; reason: string };
 export const WINDOW_MAX_DAYS = 30;
+export const NAME_MAX = 32;
+const NAME_RE = new RegExp(`^[A-Za-z0-9][A-Za-z0-9 _:-]{0,${NAME_MAX - 1}}$`);
 
 // 본문의 `## Measure` 절(다음 `#` 제목 앞까지). 없으면 null
 export function measureSectionOf(description: string | null | undefined): string | null {
@@ -40,6 +42,7 @@ export function measureOf(description: string | null | undefined): MeasureParse 
   const name = nameParts.join(":").trim();
   if (!(MEASURE_SOURCES as readonly string[]).includes(src.toLowerCase())) return { kind: "invalid", reason: `모르는 측정 종류 ${src}(${MEASURE_SOURCES.join("·")})` };
   if (!name) return { kind: "invalid", reason: "metric에 이름이 없음(source:name)" };
+  if (!NAME_RE.test(name)) return { kind: "invalid", reason: `metric 이름은 글자·숫자·-·_·:·공백 ${NAME_MAX}자까지` }; // 본문의 글이 DUTY REVIEW 프롬프트에 산문으로 들어가지 못하게
   if (dir !== "down" && dir !== "up") return { kind: "invalid", reason: "direction은 down 또는 up" };
   const w = /^(\d{1,2})\s*d(ays?)?$/i.exec(win ?? "");
   const windowDays = w ? Number(w[1]) : 0;
