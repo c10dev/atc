@@ -9,7 +9,7 @@ Related: [guide/menubar.md](guide/menubar.md) (the SwiftBar plugin and the SSH f
 ## 1. Current facts
 
 - The server listens only on `127.0.0.1:7700`. The Mac reaches it through an SSH local forward kept up by a launchd agent ([guide/menubar.md](guide/menubar.md)).
-- atc has no login. SUPERVISOR-only writes are guarded by a browser Origin check (`server/origin.ts`). That check stops other sites' browser requests. It is not access control, because a direct client can send `Origin: http://localhost`.
+- atc has no login for reads. SUPERVISOR-only writes need two things (ATC-373, [autonomy.md](autonomy.md)): the browser Origin check (`server/origin.ts`), which stops other sites' browser requests but is not access control because a direct client can send `Origin: http://localhost`, and a secret that only the SUPERVISOR's own device holds, sent as `X-ATC-Supervisor` and matched against a root-owned hash file on the host. A client that writes (ANNUNCIATOR) makes its own random secret, keeps it in the Mac keychain, and pairs the same way as the web screen: show the user the hash and the one `sudo` command that adds it to `/etc/atc/supervisor.sha256`. `GET /api/supervisor/auth` (send the header) answers `valid`, `invalid`, `missing`, `unpaired` or `insecure`. A read-only client such as the menu bar plugin needs none of this.
 - **What a client reads today:**
   - `/api/supervisor-alerts`: 40 KB, `items[]` with `key`, `group`, `level`, `cue`, `aircraft`, `flight`, `text`, `next`, `link`, `since`;
   - `/api/events` (SSE): `version`, `snapshot`, `alert`, and `ping` (one at once on every connect, then every 25 s; ATC-210). **Each `snapshot` event is the whole snapshot, 340 KB.**

@@ -71,6 +71,13 @@ export function releaseHashOf(description: string | null | undefined): string | 
   return createHash("sha256").update(body).digest("hex").slice(0, 16);
 }
 
+// 발권 화면이 클릭 전에 보이는 선언한 K 효과(ATC-376). 절이 없으면 null
+export const K_EFFECTS_MAX = 400;
+export function kEffectsOf(description: string | null | undefined): string | null {
+  const k = sectionsOf(description).k;
+  return k ? k.slice(0, K_EFFECTS_MAX) : null;
+}
+
 export function foldReleases(lines: readonly ReleaseLine[]): ReleaseView {
   const records: Record<string, ReleaseRecord> = {};
   let armedAt: string | null = null;

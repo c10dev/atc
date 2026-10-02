@@ -8,6 +8,7 @@ import { buildIndex, timeAgo } from "./derive.ts";
 import { ControlStrip } from "./ControlStrip.tsx";
 import { NewVersionBar } from "./NewVersion.tsx";
 import { UpdateBar, useUpdate } from "./UpdateBar.tsx";
+import { SupervisorPairing, useSupervisorAuth } from "./SupervisorPairing.tsx";
 import { MoonIcon, Starfield } from "./Starfield.tsx";
 import { Ticker } from "./Ticker.tsx";
 import { formatClock, useSettings } from "./settings.ts";
@@ -30,6 +31,7 @@ const Airports = lazyTab<{ snapshot: Snapshot }>(() => import("./views/Airports.
 const Fleet = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/fleet/Fleet.tsx"), "Fleet");
 const Metrics = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/Metrics.tsx"), "Metrics");
 const Network = lazyTab<{ refreshKey: string }>(() => import("./views/Network.tsx"), "Network");
+const Release = lazyTab<{ refreshKey: string }>(() => import("./views/Release.tsx"), "Release");
 const Dispatch = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Dispatch.tsx"), "Dispatch");
 const Schedule = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Schedule.tsx"), "Schedule");
 const Radio = lazyTab<Record<string, never>>(() => import("./views/Radio.tsx"), "Radio");
@@ -49,6 +51,7 @@ const TABS = [
   { id: "fleet", code: "FLEET" },
   { id: "metrics", code: "METRICS" },
   { id: "network", code: "NETWORK" },
+  { id: "release", code: "RELEASE" },
   { id: "dispatch", code: "DISPATCH" },
   { id: "schedule", code: "SCHEDULE" },
   { id: "radio", code: "RADIO" },
@@ -72,6 +75,7 @@ export function App({ build }: { build: string }) {
   const { snapshot, connection, serverBuild } = useSnapshot();
   const now = useNow();
   const update = useUpdate(connection);
+  const supervisorAuth = useSupervisorAuth();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -213,6 +217,7 @@ export function App({ build }: { build: string }) {
         <ControlStrip snapshot={snapshot} now={now} />
       </header>
 
+      <SupervisorPairing auth={supervisorAuth} />
       <UpdateBar update={update} />
       <NewVersionBar own={build} server={serverBuild} />
 
@@ -314,6 +319,8 @@ function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number) {
       return <Metrics refreshKey={refreshKey} snapshot={snapshot} />;
     case "network":
       return <Network refreshKey={refreshKey} />;
+    case "release":
+      return <Release refreshKey={refreshKey} />;
     case "dispatch":
       return <Dispatch refreshKey={refreshKey} now={now} />;
     case "schedule":

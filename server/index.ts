@@ -1,3 +1,4 @@
+import { supervisorGate, verdictFor } from "./supervisor-auth.ts";
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { serve } from "@hono/node-server";
@@ -44,6 +45,7 @@ import { mountRoutes } from "./routes.ts";
 import { refreshOverlap } from "./overlap-run.ts";
 import { allProposals, DISPATCH_MS, mountDispatch, runDispatch } from "./proposals.ts";
 import { runAutoApprove } from "./auto-approve-run.ts";
+import { mountAutonomyAuto, runAutoSchedule, scheduleMisfires } from "./autonomy-auto-run.ts";
 import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
 import { mountDetail } from "./detail-run.ts";
@@ -172,6 +174,10 @@ async function tick() {
 
 const app = new Hono();
 
+// SUPERVISOR 자격(ATC-373): /api 아래 쓰기는 에이전트가 쓰는 길(atcctl 등, supervisor-auth.ts의 허용 목록) 말고는 모두 SUPERVISOR의 비밀을 요구한다. 어느 라우트보다 먼저 건다
+app.use("/api/*", supervisorGate());
+app.get("/api/supervisor/auth", (c) => c.json({ verdict: verdictFor(c) })); // 이 요청의 자격이 맞는지(valid·invalid·missing·unpaired·insecure). 해시와 비밀은 싣지 않는다
+
 const getSnapshot = async () => current ?? (current = await buildSnapshot());
 
 app.get("/api/snapshot", async (c) => c.json(await getSnapshot()));
@@ -215,6 +221,7 @@ mountNetwork(app, getSnapshot);
 mountGlobe(app, getSnapshot);
 mountRoutes(app, getSnapshot);
 mountSchedule(app, getSnapshot, allProposals);
+mountAutonomyAuto(app);
 mountPrMerge(app, getSnapshot); // PR MERGE 버튼(DUTY G2): SUPERVISOR 클릭만, user 등급 CLEARED PR만 GitHub에 머지한다
 mountReleases(app, getSnapshot); // 발권 기록(ATC-362): 화면 클릭·일괄 확인(Origin 검사)과 attested 증언
 mountFlightState(app); // FLIGHT 상태 버튼(DUTY G3): SUPERVISOR 클릭만 Linear에 쓴다
@@ -246,6 +253,16 @@ setInterval(() => {
 setInterval(() => {
   if (!current) return;
   void runAutoApprove(current, { max: MAX_LAUNCHED, launch: (s, reg, proposal, resume) => launchForCard(s, reg, proposal, resume, "auto") }).catch((e) => console.error("[atc] auto approve failed:", e));
+}, 60_000).unref();
+// SCHEDULE 초안 자동 적용(ATC-370, docs/autonomy.md P5): 스위치 schedule.json auto(기본 on)가 켜져 있으면 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW 초안을 사람 판정 없이 승인한다. 1분에 한 번
+setInterval(() => {
+  if (!current) return;
+  try {
+    runAutoSchedule();
+    scheduleMisfires(current);
+  } catch (e) {
+    console.error("[atc] auto schedule failed:", e);
+  }
 }, 60_000).unref();
 // CONTROL RECYCLE(ATC-166): 스위치가 off(기본)면 아무것도 하지 않는다. shadow는 "재시작했을 것"만 FLIGHT RECORDER에 남긴다. 1분에 한 번
 const recycleFacts = {

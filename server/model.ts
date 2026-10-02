@@ -108,6 +108,7 @@ export interface Ticket {
   related: string[];
   parent: string | null; // 상위 이슈 key (Linear parent)
   children: string[]; // 하위 이슈 key (Linear children)
+  kEffects?: string | null; // 본문 `## K effects` 절의 글(앞 400자, 발권 화면이 클릭 전에 보인다, ATC-376). 절이 없으면 null
   releaseHash?: string | null; // 본문(목표·완료 기준·K 효과)의 해시(ATC-362 발권 기록이 승인한 내용과 견준다). 본문이 없으면 null
 }
 

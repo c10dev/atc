@@ -7,7 +7,7 @@ import type { Hono } from "hono";
 import { config } from "./config.ts";
 import { flightKeyOf } from "./detail.ts";
 import { forgetIssue } from "./detail-run.ts";
-import { type MoveIssue, moveVerdict, parseMoveBody } from "./flight-state.ts";
+import { type MoveBody, type MoveIssue, moveVerdict, parseMoveBody } from "./flight-state.ts";
 import { fromThisApp } from "./origin.ts";
 import { record } from "./recorder.ts";
 import { applyIssueState, fetchMoveIssue } from "./sources/linear-write.ts";
@@ -22,6 +22,31 @@ export interface StateDeps {
 }
 const defaultDeps: StateDeps = { fetchIssue: fetchMoveIssue, apply: applyIssueState, record, forget: forgetIssue, teams: config.linearTeamKeys, now: () => new Date() };
 
+export type MoveResult = { ok: true; key: string; from: string; to: string; type: string } | { ok: false; status: 400 | 403 | 404 | 409 | 502 | 503; error: string };
+
+// 상태 한 번 옮기기(판정 → Linear 쓰기 → FLIGHT RECORDER 한 줄). 상태 버튼과 RELEASE 화면의 발권(release-run.ts)이 같이 쓴다
+export async function moveFlight(key: string, move: MoveBody, deps: StateDeps = defaultDeps): Promise<MoveResult> {
+  const { from, to } = move;
+  const log = (ok: boolean, error?: string) => deps.record({ t: deps.now().toISOString(), kind: "flight", op: "state", flight: key, by: "SUPERVISOR", ok, from, to, ...(error ? { error } : {}) });
+  try {
+    const issue = await deps.fetchIssue(key);
+    if (!issue) return { ok: false, status: 404, error: `${key}를 찾을 수 없음` };
+    const v = moveVerdict(issue, move, deps.teams);
+    if (!v.ok) {
+      log(false, v.error);
+      return { ok: false, status: v.status, error: v.error };
+    }
+    const now = await deps.apply(issue.id, v.stateId);
+    deps.forget(key);
+    log(true);
+    return { ok: true, key, from, to: now.name, type: now.type };
+  } catch (e) {
+    const msg = String((e as Error).message ?? e);
+    log(false, msg);
+    return { ok: false, status: /미연결/.test(msg) ? 503 : 502, error: msg };
+  }
+}
+
 export function mountFlightState(app: Hono, deps: StateDeps = defaultDeps) {
   app.post("/api/flight/:key/state", async (c) => {
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다(SUPERVISOR 전용)" }, 403);
@@ -29,24 +54,8 @@ export function mountFlightState(app: Hono, deps: StateDeps = defaultDeps) {
     if (!key) return c.json({ error: "FLIGHT key 형식이 아님" }, 400);
     const parsed = parseMoveBody(await c.req.json().catch(() => null));
     if (!parsed.ok) return c.json({ error: parsed.error }, 400);
-    const { from, to } = parsed.move;
-    const log = (ok: boolean, error?: string) => deps.record({ t: deps.now().toISOString(), kind: "flight", op: "state", flight: key, by: "SUPERVISOR", ok, from, to, ...(error ? { error } : {}) });
-    try {
-      const issue = await deps.fetchIssue(key);
-      if (!issue) return c.json({ error: `${key}를 찾을 수 없음` }, 404);
-      const v = moveVerdict(issue, parsed.move, deps.teams);
-      if (!v.ok) {
-        log(false, v.error);
-        return c.json({ error: v.error }, v.status);
-      }
-      const now = await deps.apply(issue.id, v.stateId);
-      deps.forget(key);
-      log(true);
-      return c.json({ ok: true, key, from, to: now.name, type: now.type });
-    } catch (e) {
-      const msg = String((e as Error).message ?? e);
-      log(false, msg);
-      return c.json({ error: msg }, /미연결/.test(msg) ? 503 : 502);
-    }
+    const r = await moveFlight(key, parsed.move, deps);
+    if (!r.ok) return c.json({ error: r.error }, r.status);
+    return c.json({ ok: true, key: r.key, from: r.from, to: r.to, type: r.type });
   });
 }
