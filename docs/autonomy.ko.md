@@ -76,7 +76,7 @@ SUPERVISOR만 부를 수 있는 라우트는 localhost `Origin`을 검사하고(
    *강제:* 일부 구현. 경로 등급, 올리기만 하는 `Risk:`·`rating:` 라벨과 키워드, head에 묶인 판정, DUTY의 데이터 울타리는 있다. 1.5의 위반이 남아 있다.
 7. **모든 결정은 판정한 것에 묶이고 결과와 이어진다.** 판정은 기계든 사람이든 정확한 입력(head SHA나 내용 해시)과 그 FLIGHT의 내보내기를 붙여 추가하고, 하지 않기로 한 결정은 시작할 때와 끝날 때 남긴다.
    *강제:* 일부 구현. head는 `mcc.jsonl`, 리뷰 로그, `autoland.jsonl`, `human-checks.jsonl`, `rts.jsonl`, FLIGHT RECORDER의 landing·ATFM 이벤트에, FLIGHT 키는 proposals·clearances·judges에 있다. 내용 해시, clearances의 head, 내보내기 id, 제외의 시작·끝 줄(WO-1)은 없다.
-8. **먼저 켜고, 그다음 조정.** 통제는 끄는 스위치, 오작동 카운터, 켜기 전에 적은 한도와 함께 바로 켜고 실제 숫자로 조정한다. 되돌릴 수 없는 변경은 먼저 사본에서 리허설한다(C20).
+8. **먼저 켜고, 그다음 조정.** 통제는 끄는 스위치, 오작동 카운터, 켜기 전에 적은 한도와 함께 바로 켜고 실제 숫자로 조정한다. 라이브 데이터 변경은 먼저 사본에서 리허설한다(C20).
    *강제:* 일부 구현. AUTOLAND, MCC, judge에는 끄는 스위치가 있다. 통제별 오작동 카운터, 적어 둔 한도, migration 리허설은 없다.
 9. **brake는 멈추기만 하고, SUPERVISOR만 걸고 푼다.** HOLD, CANCEL, RECALL, STOP, 수동 GROUND STOP, 모드 내리기는 언제든 올 수 있고 아무것도 이를 기다리지 않는다. 풀면 화살은 승인된 봉투로 돌아가고, 그 너머의 재개나 시스템이 건 정지를 푸는 것은 새 화살이나 K3 풀기다.
    *강제:* 일부 구현. AUTOLAND·MCC hold, GROUND STOP 해제, DISPATCH CANCEL, 세션 STOP, 설정은 Origin을 검사한다. RECALL 생성, DISPATCH·SCHEDULE 모드 전환, ATFM 라우트는 하지 않고(C12), 모든 레인이 모든 brake를 지키는지 보는 CI 시험이 없다.
@@ -138,8 +138,8 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 | P6 | 전달 안 된 FLIGHT PLAN과 CLEARANCE의 손 전달 | 전달하지 못한 메시지 | undelivered 10줄 | **automate** | C14: 전달 재시도와, 그래도 안 되면 DUTY 알림 |
 | P7 | NEEDS YOU: 도구 승인 프롬프트에서 막힌 세션 | 권한 결정을 기다리는 세션 | 경보라서 여기서 세지 않음 | 권한 자체는 **keep**(K3: 권한). 내보낸 뒤의 프롬프트는 leak(원칙 1). 방향에 대한 막힌 질문은 정해 둔 기본값으로 가거나 새 화살로 돌아온다(원칙 10) | C9 |
 | P8 | SUPERVISOR CONFIRM AT AIRCRAFT(`user` 등급 FLIGHT의 go) | go 없이 진행하는 `user` 등급 FLIGHT | 1줄 | **keep**(K3) | C9 |
-| P9 | DISPATCH, SCHEDULE, FLEET PLAN, ATFM, CONTROL RECYCLE, FUEL hold, REPOSITION, JEV, SQUELCH 모드 전환 | 측정 전에 자동화를 켬 | judges 모드 1줄 | **keep**(K3) | C6 |
-| P10 | ATFM 스위치와 `s3` | shadow 한 주 전의 자동 동작 | 세지 않음 | **keep**(K3) | C6 |
+| P9 | DISPATCH, SCHEDULE, FLEET PLAN, ATFM, CONTROL RECYCLE, FUEL hold, REPOSITION, JEV, SQUELCH 모드 전환 | 측정 전에 자동화를 켬 | judges 모드 1줄 | 올리는 것은 **keep**(K3), 방향을 계산하는 풀기(원칙 3). 내리는 것은 brake(원칙 9) | C6, C12 |
+| P10 | ATFM 스위치와 `s3` | shadow 한 주 전의 자동 동작 | 세지 않음 | 올리는 것은 **keep**(K3). 내리는 것은 brake | C6, C12 |
 | P11 | ATFM 수동 GROUND STOP, GROUND DELAY | 손으로 출발을 멈춤 | not logged | **brake** | 없음 |
 | P12 | ADD ACCOUNT, LOGIN, SHARE MEMORY(`accounts-run.ts`) | 자격 증명 | not logged | **keep**(K2) | C9 |
 | P13 | CHECKRIDE rating 부여(SEC rating이 SEC 작업을 맡을 수 있는 팀을 정한다) | 추천만으로 팀이 권한을 얻음 | not logged | 부여는 **keep**(K3), 회수는 조이는 것. 질문 D6(d) | C9 |
@@ -235,7 +235,7 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 
 - **WO-4 둘째 리뷰 레인.** 다른 벤더 리뷰어가 AIRPORT head마다 카운터와 함께 실제로 리뷰한다. 불일치를 기록한다. 등급 `flagged`.
 - **WO-5 리뷰어 쪽 분류.** 머지 리뷰 판정에 이유가 붙은 `securityBoundary`가 생기고 키워드·경로·라벨 결과 옆에 기록된다. 등급 `flagged`.
-- **WO-6 breaker v0.** 주기가 빨간 head와 revert를 세고, 문턱을 넘으면 AUTOLAND가 스스로 `merge`에서 `update`로 내려가 알림을 한 번 보낸다. 다시 올리는 것은 SUPERVISOR뿐. 등급 `user`(AUTOLAND 규칙: 이 PR은 SUPERVISOR가 머지한다).
+- **WO-6 breaker v0.** 주기가 빨간 head와 revert를 세고, 문턱을 넘으면 AUTOLAND가 스스로 `merge`에서 `update`로 내려가 알림을 한 번 보낸다. 다시 올리는 것은 SUPERVISOR뿐이다. 다만 거짓으로 밝혀진 trip은 저절로 다시 열린다(D12). 등급 `user`(AUTOLAND 규칙: 이 PR은 SUPERVISOR가 머지한다).
 - **WO-7 AIRPORT의 `main` push마다 시험**(통제 C3, VOC 이슈). atc 밖.
 - **WO-8 SUPERVISOR 전용 라우트 모두에 Origin 검사**(통제 C12, 1.4절). 등급 `user`(자율을 지키는 서버 라우트, 결정 D10).
 - 모두 스위치와 카운터를 달고 켠다. 한도: 2단계 참고.

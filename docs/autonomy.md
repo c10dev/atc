@@ -76,7 +76,7 @@ Each principle states one invariant in at most two sentences, followed by what e
    *Enforced by:* partly built. Path tiers, raise-only `Risk:` and `rating:` labels and keywords, head-bound verdicts and DUTY's data fence exist; the violations listed in 1.5 remain.
 7. **Every decision is bound to what it judged and joins to its outcome.** Each verdict, machine or human, is appended with its exact input (a head SHA or a content hash) and its FLIGHT's release, and a decision not to act is logged when it starts and when it ends.
    *Enforced by:* partly built. Heads are recorded in `mcc.jsonl`, the review logs, `autoland.jsonl`, `human-checks.jsonl`, `rts.jsonl` and the FLIGHT RECORDER landing and ATFM events, and the FLIGHT key in proposals, clearances and judges; content hashes, a head on clearances, a release id and exclusion start and end lines (WO-1) are missing.
-8. **Live first, then adjust.** A control goes live at once with its off switch, its misfire counter and a limit written before it is turned on, and is tuned from live counts; an irreversible change is rehearsed on a copy first (C20).
+8. **Live first, then adjust.** A control goes live at once with its off switch, its misfire counter and a limit written before it is turned on, and is tuned from live counts; a change to live data is rehearsed on a copy first (C20).
    *Enforced by:* partly built. AUTOLAND, MCC and the judges have off switches; per-control misfire counters, written limits and the migration rehearsal do not exist.
 9. **A brake only stops, and only the SUPERVISOR pulls or releases it.** HOLD, CANCEL, RECALL, STOP, a manual GROUND STOP and switching a mode down can come at any time and nothing waits for them; releasing one returns the arrow to its approved envelope, while anything beyond that, or a stop the system set, is a new arrow or a K3 loosening.
    *Enforced by:* partly built. The AUTOLAND and MCC holds, the GROUND STOP clear, DISPATCH CANCEL, session STOP and the settings check Origin; RECALL creation, the DISPATCH and SCHEDULE mode switches and the ATFM routes do not (C12), and no CI test checks that every lane honors every brake.
@@ -138,8 +138,8 @@ Every place where atc requires or offers a human decision, grouped by area (a su
 | P6 | UNDELIVERED FLIGHT PLAN and CLEARANCE hand delivery | A message that could not be delivered | 10 undelivered rows | **automate** | C14: retry of the delivery and a DUTY alert when it still fails |
 | P7 | NEEDS YOU: a session blocked on a tool approval prompt | A session waiting on a permission decision | alerts, not counted here | **keep** (K3: a permission) for the permission itself; a prompt after release is a leak (principle 1); a blocked question about direction proceeds on a stated default or comes back as a new arrow (principle 10) | C9 |
 | P8 | SUPERVISOR CONFIRM AT AIRCRAFT (go for a `user`-tier FLIGHT) | A `user`-tier FLIGHT proceeding without a go | 1 row | **keep** (K3) | C9 |
-| P9 | DISPATCH, SCHEDULE, FLEET PLAN, ATFM, CONTROL RECYCLE, FUEL hold, REPOSITION, JEV, SQUELCH mode switches | Turning automation on before it is measured | 1 judges mode row | **keep** (K3) | C6 |
-| P10 | ATFM switches and `s3` | Auto-actions before the shadow week | not counted | **keep** (K3) | C6 |
+| P9 | DISPATCH, SCHEDULE, FLEET PLAN, ATFM, CONTROL RECYCLE, FUEL hold, REPOSITION, JEV, SQUELCH mode switches | Turning automation on before it is measured | 1 judges mode row | **keep** (K3) for switching up, a loosening with computed direction (principle 3); switching down is a brake (principle 9) | C6, C12 |
+| P10 | ATFM switches and `s3` | Auto-actions before the shadow week | not counted | **keep** (K3) for switching up; switching down is a brake | C6, C12 |
 | P11 | ATFM manual GROUND STOP, GROUND DELAY | Stopping departures by hand | not logged | **brake** | none |
 | P12 | ADD ACCOUNT, LOGIN, SHARE MEMORY (`accounts-run.ts`) | Credentials | not logged | **keep** (K2) | C9 |
 | P13 | CHECKRIDE rating grant (SEC ratings decide who may take SEC work) | A team getting a permission by a recommendation | not logged | **keep** (K3) grant, revoke is a tightening; **question** D6 | C9 |
@@ -235,7 +235,7 @@ A control lands before the gate it replaces is removed, and every step names its
 
 - **WO-4 Second review lane.** A different-vendor reviewer reviews each AIRPORT head, live with its counter; disagreements logged. Tier `flagged`.
 - **WO-5 Reviewer-side classification.** The merge-review verdict gains `securityBoundary` with a reason, logged beside the keyword, path and label results. Tier `flagged`.
-- **WO-6 Breaker v0.** A cycle counts red heads and reverts; past a threshold AUTOLAND drops from `merge` to `update` by itself and alerts once; only the SUPERVISOR raises it again. Tier `user` (an AUTOLAND rule: the SUPERVISOR merges this one).
+- **WO-6 Breaker v0.** A cycle counts red heads and reverts; past a threshold AUTOLAND drops from `merge` to `update` by itself and alerts once; only the SUPERVISOR raises it again, except that a disproved trip reopens by itself (D12). Tier `user` (an AUTOLAND rule: the SUPERVISOR merges this one).
 - **WO-7 `main` tests on every push** on the AIRPORT (control C3; a VOC issue). Outside atc.
 - **WO-8 Origin check on every SUPERVISOR-only route** (control C12, section 1.4). Tier `user` (server routes that guard autonomy; decision D10).
 - Each goes live with its switch and counter. Limits: see step 2.
