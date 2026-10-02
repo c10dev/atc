@@ -93,7 +93,7 @@ Three layers (survey [5.1](research/skill-rulebook.md)):
 | **Named → opened rate** | same route, field `qrh`: `{ named, opened, openedOther, notOpened, noTranscript, openedRate }` | of the `qrh.named` lines, how many were followed by a `Skill` call to that id within the same turn (at most 10 minutes). `openedRate = opened / (named − noTranscript)`. All zero until `qrh.named` lines exist, and until the rulebook is loaded nothing can be opened. See [readability.md](readability.md) "Skill-call reader as built (ATC-289)" |
 | ATC-282 pilot (`diagnosing-bugs`, `codebase-locator`, `codebase-analyzer`) | same route: `skills["diagnosing-bugs"]`, `agents["codebase-locator"]`, `agents["codebase-analyzer"]` and `bySession` | how often and by which team the pilot items were called each day. The repository holds **no target number** for the pilot; the counts say whether they are used, not whether they helped |
 
-Not verified: whether a `/loop … /tick` or a typed slash command shows up as a `Skill` call in transcripts, so `skills["tick"]` may be missing for the control sessions. There is no screen for any of these; the endpoints are the only view.
+Verified 2026-10-02 ([research/skill-pilot-readout.md](research/skill-pilot-readout.md)): a `/loop … /tick` shows up as a `Skill` call named `tick`, once per loop (re)start and not once per firing (16 on 2026-10-01 for five control sessions, while TOWER's 3-minute loop fires about 480 times a day), so `skills["tick"]` is not a count of ticks. Calls a sub-agent makes are not counted, and a typed slash command is a user message, not a `Skill` call. There is no screen for any of these; the endpoints are the only view.
 
 ## 7. Revision and drift
 

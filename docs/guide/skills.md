@@ -35,7 +35,7 @@ atc 세션이 일하는 방법은 세 가지 파일에 나뉘어 있습니다: �
 | `GET /api/skills/usage?days=N` | 하루마다 어떤 skill·sub-agent가 몇 번, 어느 세션에서 불렸는지(`skills`, `agents`, `bySession`). `qrh`에는 "이름을 불렀을 때 실제로 연 비율"(`openedRate`)이 들어 있습니다. 이름과 시각만 읽고 대화 내용은 읽지 않습니다 |
 | `GET /api/qrh/named?since=` | 서버가 체크리스트를 부를 조건을 처음 본 기록(shadow) |
 
-규정집이 로드되기 전에는 `openedRate`가 비어 있는 것이 정상입니다. `diagnosing-bugs`와 `codebase-*`의 시범 사용량은 `skills`와 `agents`의 이름으로 봅니다. 쓰인 횟수만 알려 줄 뿐 도움이 됐는지는 말해 주지 않습니다. 관제 세션의 `/tick`이 이 수에 잡히는지는 아직 확인하지 못했습니다.
+규정집이 로드되기 전에는 `openedRate`가 비어 있는 것이 정상입니다. `diagnosing-bugs`와 `codebase-*`의 시범 사용량은 `skills`와 `agents`의 이름으로 봅니다. 쓰인 횟수만 알려 줄 뿐 도움이 됐는지는 말해 주지 않습니다. 관제 세션의 `/tick`은 `tick`이라는 이름으로 잡히지만 루프를 (다시) 시작할 때마다 한 번이지 한 바퀴마다가 아니므로, 그 수는 tick 횟수가 아닙니다(2026-10-02 확인, [시범 점검](https://github.com/chaehy5665/atc/blob/main/docs/research/skill-pilot-readout.ko.md)).
 
 ## 바뀌면 어떻게 알려지나
 
