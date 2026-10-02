@@ -77,7 +77,7 @@ Linear가 최근 45일 안에 바뀐 이슈만 읽기 때문에 오래된 이슈
 |---|---|---|
 | `Todo로` | Backlog이고 막는 이슈가 모두 끝남 | **Linear 상태를 Backlog → Todo로 바꿉니다.** FLIGHT 서랍의 상태 버튼과 같은 길이고, 한 번에 한 줄이며 일괄은 없습니다. 그새 상태가 바뀌었으면 서버가 거절하고 그 글이 줄 아래에 나옵니다 |
 | `우선순위 정하기` | Todo인데 우선순위가 없어 DISPATCH가 배정하지 않음 | FLIGHT 서랍을 엽니다(Linear에서 정합니다) |
-| `승인하러 D-0012` | 제안이 SUPERVISOR의 승인을 기다림 | DISPATCH 탭으로 갑니다 |
+| `승인하러 D-0012` | 제안이 SUPERVISOR의 승인을 기다림(자동 운항이 꺼져 있을 때) | HOME의 QUEUE로 갑니다 |
 | `HUMAN CHECK #n` · `머지 #n` | 사람의 확인이 남은 PR, 또는 CLEARED인데 SUPERVISOR가 머지할 PR(`user` 등급) | PR 서랍을 엽니다 |
 | `살펴보기` | 발송·READBACK 단계나 착륙 뒤 배포 단계에서 막힘 | 발송·READBACK은 RADIO, 착륙 뒤는 STRIPS로 갑니다 |
 

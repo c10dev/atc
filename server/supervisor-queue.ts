@@ -66,7 +66,7 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
   for (const p of inp.proposals) {
     if (p.status !== "proposed" || (p.kind === "ASSIGN" && p.holdAt !== null)) continue;
     if (inp.autoDispatch && p.kind === "ASSIGN") continue; // ASSIGN·launch 카드는 서버가 승인한다(ATC-367). RELEASE는 그대로 SUPERVISOR 몫
-    out.push({ kind: "PROPOSAL", key: p.id, since: p.statusAt, title: `${p.kind} ${p.flight}${p.aircraftName ? ` → ${p.aircraftName}` : ""}`, hash: "#dispatch" });
+    out.push({ kind: "PROPOSAL", key: p.id, since: p.statusAt, title: `${p.kind} ${p.flight}${p.aircraftName ? ` → ${p.aircraftName}` : ""}`, hash: "#home" });
   }
 
   // SCHEDULE: approval 모드에서 판정을 기다리는 draft. shadow는 게이트 판정이라 SUPERVISOR 결정이 아니다
@@ -129,7 +129,7 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
   for (const p of inp.proposals) {
     if (!p.undelivered || p.status !== "approved" || !p.aircraftName) continue;
     const reason = p.undelivered.reason;
-    out.push({ kind: "UNDELIVERED", key: `${p.id}|${p.undelivered.at}`, since: p.undelivered.at, title: `FLIGHT PLAN ${p.flight} → ${p.aircraftName}`, hash: "#dispatch", hand: { source: "FLIGHT PLAN", id: p.id, to: p.aircraftName, reason, text: null, card: handFor(p.aircraftName, reason) } });
+    out.push({ kind: "UNDELIVERED", key: `${p.id}|${p.undelivered.at}`, since: p.undelivered.at, title: `FLIGHT PLAN ${p.flight} → ${p.aircraftName}`, hash: "#home", hand: { source: "FLIGHT PLAN", id: p.id, to: p.aircraftName, reason, text: null, card: handFor(p.aircraftName, reason) } });
   }
 
   // GO: CAPTAIN이 SUPERVISOR의 go를 기다린다(sent인 동안만 awaitSupervisor가 있다)

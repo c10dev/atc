@@ -1308,6 +1308,13 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
   });
 
   // send-guard가 쓰는 단건 조회
+  // 한 FLIGHT의 배정 기록(ATC-377): FLIGHT 서랍이 읽는다. 읽기만, 최근 것이 먼저, 20건까지
+  app.get("/api/dispatch/proposals", (c) => {
+    const flight = (c.req.query("flight") ?? "").trim().toUpperCase();
+    if (!/^[A-Z][A-Z0-9]*-\d+$/.test(flight)) return c.json({ error: "flight=ATC-n 형식이 필요함" }, 400);
+    const proposals = allProposals().filter((p) => p.flight === flight).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 20);
+    return c.json({ flight, mode: loadDispatchConfig().mode, proposals });
+  });
   app.get("/api/dispatch/proposals/:id", (c) => {
     const p = allProposals().find((x) => x.id === c.req.param("id").toUpperCase());
     return p ? c.json({ proposal: p, mode: loadDispatchConfig().mode }) : c.json({ error: "그런 제안이 없음" }, 404);

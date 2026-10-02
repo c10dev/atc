@@ -8,19 +8,18 @@ const AIRPORTS = [{ name: "atc", code: "ATCC", repo: "/home/c10/projects/atc" }]
 const row = (kind: QueueItem["kind"], key: string): QueueItem => ({ kind, key, since: "2026-09-30T00:00:00.000Z", title: `${kind} ${key}`, hash: "#x" });
 const t = "2026-09-30T00:00:00.000Z";
 
-test("인라인 버튼은 FLEET PLAN과 UPDATE뿐이고, 나머지는 링크다(GO도 링크)", () => {
+test("인라인 버튼은 FLEET PLAN·UPDATE·PROPOSAL(승인·거절, ATC-377)뿐이고, 나머지는 링크다(GO도 링크)", () => {
   for (const kind of QUEUE_KINDS) {
     const a = actionsOf({ kind, key: "atc#7@abc" }, AIRPORTS);
     const inline = a.some((x) => x.type === "inline");
-    assert.equal(inline, kind === "FLEET PLAN" || kind === "UPDATE", kind);
+    assert.equal(inline, kind === "FLEET PLAN" || kind === "UPDATE" || kind === "PROPOSAL", kind);
     assert.ok(a.length >= 1);
   }
   assert.deepEqual(actionsOf({ kind: "GO", key: "P-1" }, AIRPORTS), [{ type: "link", label: "AIRCRAFT 보기(FLEET)", hash: "#fleet" }]);
 });
 
-test("링크 주소: PROPOSAL·SCHEDULE·HUMAN CHECK는 탭, LANDING은 PR 서랍(AIRPORT 코드), NEEDS YOU는 FLEET", () => {
+test("링크 주소: SCHEDULE·HUMAN CHECK는 탭, LANDING은 PR 서랍(AIRPORT 코드), NEEDS YOU는 FLEET", () => {
   const hash = (kind: QueueItem["kind"], key: string) => (actionsOf({ kind, key }, AIRPORTS)[0] as { hash: string }).hash;
-  assert.equal(hash("PROPOSAL", "P-1"), "#dispatch");
   assert.equal(hash("SCHEDULE", "S-1"), "#schedule");
   assert.equal(hash("HUMAN CHECK", "atc#7@abc"), "#strips");
   assert.equal(hash("LANDING", "atc#7@abc"), "#pr/ATCC/7");

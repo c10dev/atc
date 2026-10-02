@@ -48,7 +48,7 @@ test("PROPOSAL: only proposed and not held; judged, sent and held proposals stay
   assert.deepEqual(q.map((i) => i.key).sort(), ["D-1", "D-5"]);
   assert.equal(q.find((i) => i.key === "D-1")!.title, "ASSIGN ATC1 → TEAM_A");
   assert.equal(q.find((i) => i.key === "D-5")!.title, "RELEASE ATC1");
-  assert.ok(q.every((i) => i.hash === "#dispatch"));
+  assert.ok(q.every((i) => i.hash === "#home"));
 });
 
 test("SCHEDULE: draft ops in approval mode only", () => {

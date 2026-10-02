@@ -33,7 +33,7 @@ const Fleet = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("
 const Metrics = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/Metrics.tsx"), "Metrics");
 const Network = lazyTab<{ refreshKey: string }>(() => import("./views/Network.tsx"), "Network");
 const Release = lazyTab<{ refreshKey: string }>(() => import("./views/Release.tsx"), "Release");
-const Dispatch = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Dispatch.tsx"), "Dispatch");
+const Home = lazyTab<{ refreshKey: string; now: number; snapshot: Snapshot; onOpenSettings: () => void }>(() => import("./views/Home.tsx"), "Home");
 const Schedule = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Schedule.tsx"), "Schedule");
 const Radio = lazyTab<Record<string, never>>(() => import("./views/Radio.tsx"), "Radio");
 const Docs = lazyTab<Record<string, never>>(() => import("./views/Docs.tsx"), "Docs");
@@ -43,6 +43,7 @@ const DutyDrawer = lazy(() => import("./DutyDrawer.tsx"));
 const IdeasDrawer = lazy(() => import("./IdeasDrawer.tsx"));
 
 const TABS = [
+  { id: "home", code: "HOME" },
   { id: "radar", code: "RADAR" },
   { id: "follow", code: "FOLLOW" },
   { id: "globe", code: "GLOBE" },
@@ -53,7 +54,6 @@ const TABS = [
   { id: "metrics", code: "METRICS" },
   { id: "network", code: "NETWORK" },
   { id: "release", code: "RELEASE" },
-  { id: "dispatch", code: "DISPATCH" },
   { id: "schedule", code: "SCHEDULE" },
   { id: "radio", code: "RADIO" },
   { id: "docs", code: "DOCS" },
@@ -61,7 +61,8 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"];
 
 // 이전 주소(#map, #teams, #tickets) 북마크도 열리게 한다.
-const LEGACY_HASH: Record<string, Tab> = { map: "radar", teams: "strips", tickets: "board" };
+// #dispatch는 HOME이 이어받았다(ATC-377): 큐와 메뉴 막대의 옛 링크도 HOME을 연다
+const LEGACY_HASH: Record<string, Tab> = { map: "radar", teams: "strips", tickets: "board", dispatch: "home" };
 
 const connectionLabel = { live: "실시간", connecting: "연결 중", lost: "끊김" } as const;
 
@@ -277,7 +278,7 @@ export function App({ build }: { build: string }) {
             {/* 처음 도착하는 탭(기본 탭)의 맨 위. HOME이 생기면(ATC-377) 그쪽 맨 위로 옮긴다 */}
             {tab === "radar" && <SinceLook refreshKey={snapshot.at.slice(0, 16)} />}
             <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
-              <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now)}</Suspense>
+              <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now, () => setSettingsOpen(true))}</Suspense>
             </TabBoundary>
           </>
         )}
@@ -305,7 +306,7 @@ export function App({ build }: { build: string }) {
 }
 
 // 탭 이름 → view. 하위 경로(#docs/requesting)는 그 view가 location.hash에서 읽는다.
-function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number) {
+function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number, onOpenSettings: () => void) {
   const refreshKey = snapshot.at.slice(0, 16);
   switch (tab) {
     case "radar":
@@ -326,8 +327,8 @@ function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number) {
       return <Network refreshKey={refreshKey} />;
     case "release":
       return <Release refreshKey={refreshKey} />;
-    case "dispatch":
-      return <Dispatch refreshKey={refreshKey} now={now} />;
+    case "home":
+      return <Home refreshKey={refreshKey} now={now} snapshot={snapshot} onOpenSettings={onOpenSettings} />;
     case "schedule":
       return <Schedule refreshKey={refreshKey} now={now} />;
     case "radio":

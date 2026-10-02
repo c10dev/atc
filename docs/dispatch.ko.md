@@ -626,6 +626,22 @@ K3: DISPATCH가 사람이나 CROSSCHECK 없이 나는 것을 SUPERVISOR가 2026-
 - **형식.** `dispatch.json`의 `autoDispatch`·`autoCardTtlMin`과 SUPERSEDE 사유 `AUTO_STALE_WHY`는 추가다. 기록 형식은 바뀌지 않는다.
 - **아직 아님.** SETTLED를 기다리는 동안 있는 DISPATCH 카드에는 agree 줄과 CROSSCHECK mark가 여전히 그려진다.
 
+## DISPATCH 화면은 없어졌다 (ATC-377)
+
+DISPATCH가 자기 카드를 스스로 승인하므로(ATC-367) 판정 화면이던 탭을 해체했다([layout.md](layout.md) Y2). planner, 제안 기록, 모든 길은 그대로이고 화면만 옮겼다:
+
+| DISPATCH 탭에 있던 것 | 지금 |
+|---|---|
+| 열린 ASSIGN·launch 카드의 승인·거절 | HOME(`#home`)의 SUPERVISOR QUEUE. 자동 운항 스위치가 꺼져 있을 때만, RELEASE 카드는 늘 |
+| CROSSCHECK 동의 묶음·칩, BLIND 표본, HELD(PREFLIGHT) 버튼 | 없앴다 |
+| IN FLIGHT: CANCEL, RECALL, FRESH START | FOLLOW 줄과 FLIGHT 서랍(`web/src/FlightBrakes.tsx`) |
+| FLIGHT의 배정 이력(RECENT) | FLIGHT 서랍의 `배정 기록`(`GET /api/dispatch/proposals?flight=KEY`) |
+| ATFM 블록(GROUND STOP, 수동 출발 중지, 슬롯)과 2a/2b 전환 | HOME의 BRAKES 줄 |
+| MISFIRE | METRICS → OPERATIONS |
+| 2b 점검·게이트·FLIGHT FOLLOWING 블록, 슬롯·제외 목록 | 없앴다(FOLLOW 줄이 왜 배정되지 않았는지 보인다) |
+
+`#dispatch`는 HOME을 연다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

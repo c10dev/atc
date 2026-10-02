@@ -56,7 +56,7 @@ test("follow|approve|<D-id>: 따라가는 줄의 제안은 pending|proposal을 �
   const a = out.find((x) => x.key === "follow|approve|D-1")!;
   assert.equal(a.dest, "queue");
   assert.equal(a.cue, "call");
-  assert.equal(a.link, "#dispatch");
+  assert.equal(a.link, "#home");
   assert.equal(a.ask, "assign");
   assert.equal(a.aircraft, "TEAM_K");
   // follow가 없으면 전과 같다

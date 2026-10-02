@@ -3,7 +3,7 @@
 import type { QueueItem, QueueKind } from "./supervisor-queue.ts";
 
 export type CardAction =
-  | { type: "inline"; op: "fleet-plan" | "update" } // 이 화면의 기존 길을 부르는 버튼(SUPERVISOR의 결정)
+  | { type: "inline"; op: "fleet-plan" | "update" | "proposal" } // 이 화면의 기존 길을 부르는 버튼(SUPERVISOR의 결정)
   | { type: "link"; label: string; hash: string }; // 그 화면을 연다. 판정은 거기서 한다
 
 export type CardView =
@@ -22,7 +22,7 @@ export function prOfKey(key: string): { repo: string; number: number } | null {
   return m ? { repo: m[1]!, number: Number(m[2]) } : null;
 }
 
-// 큐 줄 하나의 버튼. 인라인은 FLEET PLAN(동의·거절·승인)과 UPDATE뿐. GO는 서버에 SUPERVISOR의 길이 없어 AIRCRAFT 링크다
+// 큐 줄 하나의 버튼. 인라인은 FLEET PLAN(동의·거절·승인), UPDATE, DISPATCH 카드(승인·거절, ATC-377)뿐. GO는 서버에 SUPERVISOR의 길이 없어 AIRCRAFT 링크다
 export function actionsOf(item: Pick<QueueItem, "kind" | "key">, airports: readonly AirportRef[]): CardAction[] {
   switch (item.kind) {
     case "FLEET PLAN":
@@ -30,7 +30,7 @@ export function actionsOf(item: Pick<QueueItem, "kind" | "key">, airports: reado
     case "UPDATE":
       return [{ type: "inline", op: "update" }];
     case "PROPOSAL":
-      return [{ type: "link", label: "DISPATCH에서 판정", hash: "#dispatch" }];
+      return [{ type: "inline", op: "proposal" }]; // 자동 운항이 꺼져 있거나 RELEASE 카드: 큐 줄에서 승인·거절(ATC-377)
     case "SCHEDULE":
       return [{ type: "link", label: "SCHEDULE에서 판정", hash: "#schedule" }];
     case "HUMAN CHECK":

@@ -303,7 +303,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       flight: p.flight,
       text: `제안 ${p.id} — ${p.flight}${p.aircraftName ? ` → ${p.aircraftName}` : ""} ${p.kind === "RELEASE" ? "RELEASE " : ""}판정 대기`,
       next: "DISPATCH 탭에서 승인하거나 거절한다",
-      link: "#dispatch",
+      link: "#home",
       since: p.statusAt,
       ask: p.kind === "RELEASE" ? "release" : "assign",
     });

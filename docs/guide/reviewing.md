@@ -2,43 +2,20 @@
 
 atc의 자동화는 **그림자 운용**에서 시작한다. 제안과 초안을 만들어 화면에만 보이고, 사용자가 "승인했을 것 / 거절했을 것"을 표시해 품질을 잰다. 기준(20건, 합의율 80%)이 차면 다음 단계로 간다.
 
-## DISPATCH 탭: 배정 제안
+## HOME: 남은 승인과 brake
 
-5분마다 atc가 "어떤 FLIGHT를 어떤 AIRCRAFT에" 계획하고, OCC가 제안마다 티켓 본문을 읽어 BRIEFING·메모·CAUTION·HOLD를 단다. 티켓 내용을 기억하지 못해도 카드만 보고 판정할 수 있게 위에서 아래로 읽는다.
+2026-10-02부터 DISPATCH는 사람 없이 난다: 서버가 필터와 상한을 통과한 ASSIGN·launch 카드를 스스로 승인한다([screens](screens.md)). 그래서 DISPATCH 탭은 없고, 사용자에게 남은 일은 **HOME**(`#home`) 한 곳에 모였다. 옛 `#dispatch` 주소(북마크, 큐와 메뉴 막대의 링크)도 HOME을 엽니다. 아무 일이 없으면 HOME에는 맨 아래 brake 줄만 있습니다.
 
-| 카드에서 볼 것 | 뜻 |
-|---|---|
-| BRIEFING(맨 위 세 줄) | OCC가 쓴 쉬운 한국어 세 줄. **무슨 일**(끝나면 무엇이 달라지나), **왜 이 AIRCRAFT**(기지·TYPE RATING·같은 ROUTE 최근 FLIGHT), **걸리는 점**(선행·위험·사람이 정할 것) |
-| `BRIEFING 대기` | OCC가 아직 세 줄을 쓰지 않았다. 대신 제목과 본문 첫 문장이 보인다. 다음 tick에 채워진다 |
-| 사실 줄 | 서버가 계산한 것(모델 없음): PRIORITY, 대기 일수, ROUTE와 WAYPOINT("Beta Ready WAYPOINT(지금 구간) · 남은 3건 중 하나"), 선행 FLIGHT와 상태(끝났으면 초록 ✓, 아니면 주황), 그 AIRCRAFT가 같은 ROUTE에서 최근 맡은 FLIGHT, TRIP FUEL(비슷한 FLIGHT가 든 NET FUEL COST의 p50–p90과 어느 단계로 묶었는지: `TRIP FUEL $5.28–$15.6 · TYPE×WAKE BUILD·M (6)`, 모자라면 `TRIP FUEL —`), 그 AIRCRAFT가 캐시가 식은 채 HOLDING이면 COLD CACHE 경고(주황). TRIP FUEL과 COLD CACHE는 판정을 돕는 참고일 뿐 점수·배정에 들지 않는다. HELD 카드에는 CROSSCHECK 판정과 사유도 붙는다 |
-| 점수 요소 · 본문 · 메모(접힘) | 누르면(키보드는 Enter) 점수 요소 표, OCC 메모, 티켓 본문 전체가 열린다. 본문은 열 때 Linear에서 읽는다. CAUTION 표시는 접혀 있어도 카드 머리에 보인다 |
-| FLIGHT → AIRCRAFT, 점수 | 우선순위·대기 일수·풀어 주는 FLIGHT·팀 적합도·충돌 위험·파일 겹침(곧 고칠 파일을 날고 있는 FLIGHT가 이미 바꿈)·ROUTE·지금 WAYPOINT(그 ROUTE의 지금 구간 마일스톤에 붙은 FLIGHT)를 합친 점수. 요소별 점수는 접힌 자세히에 있다 |
-| 분류 줄 | `BUILD · M · SEC · tail:TEAM_E`. 라벨이 없으면 회색 "(기본값)" |
-| OCC 메모 | 본문에서 찾은 제약. CAUTION이면 보안·DB·사람 결정 대기 |
-| HELD 목록 | 아직 시작할 상태가 아닌 제안(PREFLIGHT). CROSSCHECK가 FLIGHT 칩으로 disagree했거나 OCC가 HOLD한 것. 판정하지 않는다(아래 PREFLIGHT) |
-| `CROSSCHECK 대기` | CROSSCHECK가 아직 보지 않은 제안. mark가 있는 제안 뒤에 온다 |
-| CROSSCHECK 동의 묶음(ASSIGN 맨 위) | CROSSCHECK가 agree한 카드가 한 줄씩 모인다: 무슨 일 · FLIGHT · → AIRCRAFT · [동의]. [동의]는 "CROSSCHECK에 동의"와 같은 한 번 클릭 판정이다. ▸(키보드 Enter)로 펼치면 전체 카드가 보이고, 거절은 거기서 칩과 함께 한다. "모두 동의" 버튼은 일부러 없다 |
-| `BLIND` | 약 5장에 1장은 판정할 때까지 CROSSCHECK 판정을 숨긴다(제안 ID로 정해져 새로고침해도 같다). 카드를 보고 직접 판정한다. CROSSCHECK가 agree해도 묶음에 들어가지 않고, 한 번 클릭 버튼도 없다 |
-| `STAND 없이` 줄 | STAND 규칙 밖으로 준 SURVEY·CHECK. 받는 팀이 다른 FLIGHT의 STAND를 쥔 HOLDING이어도 나온다. 점수는 0 |
-| `CHECK 독립성` 줄 | CHECK마다 붙는다. 검토 대상을 만든 팀을 뺐으면 그 팀 이름, 모르면 "확인 못 함". 점수는 0 |
+| 구역 | 무엇이 보이나 | 할 수 있는 것 |
+|---|---|---|
+| QUEUE | 사용자의 결정을 기다리는 것(SUPERVISOR QUEUE 전체). 설정의 **DISPATCH 자동 운항**을 끄면 ASSIGN·launch 카드가 줄로 옵니다. RELEASE 카드(STAND 없이 7일 넘게 ENROUTE인 FLIGHT를 Todo로 되돌릴지)도 같습니다 | 줄의 **승인**·**거절**(누르면 줄 안에서 한 번 확인합니다. 거절은 사유를 적을 수 있고 같은 짝은 24시간 다시 제안하지 않습니다). 다른 줄(FLEET PLAN, UPDATE, 머지 …)의 버튼도 같은 자리입니다 |
+| ALERTS | WARNING과 CAUTION 알림 | 눌러서 그 항목으로 갑니다 |
+| STUCK | 막힌 FLIGHT 줄([FOLLOW](follow.md)의 막힘 한도를 넘은 것)과 이유 | 줄에서 **CANCEL…**(승인했지만 아직 안 보낸 카드), **RECALL…**(보낸 FLIGHT PLAN) |
+| BRAKES | 늘 있는 중립 줄: `GROUND STOP n` · `수동 출발 중지 n`, 자동화 스위치의 지금 상태 한 줄, DISPATCH 모드 | **ATFM…**(GROUND STOP 스위치, 수동 출발 중지, ATFM OFF, 머지 슬롯), **STOP ALL…**(관제 세션 모두 내림. 미리 보기를 먼저 봅니다), DISPATCH 2a↔2b 전환, **스위치 설정**(설정 창) |
 
-- **승인했을 것**: 이 배정이 맞다고 보면.
-- **`SUPERVISOR CONFIRM AT AIRCRAFT`**(카드의 점선 상자): 이 FLIGHT가 사용자 등급 파일(guard, `.claude/`, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`)을 만질 것으로 예측됐다는 표시다. 승인은 그대로 되고, 승인 확인 창에도 같은 내용이 뜬다. 승인하면 그 AIRCRAFT는 파일을 고치기 전에 세션에서 직접 사용자에게 go를 묻는다. 상자에 경로, 그 세션에 붙여 넣을 한 줄(복사 버튼), 세션을 여는 법(`claude agents`에서 그 REGISTRATION 선택)이 있다. 그 한 줄을 붙여 넣어 go를 주는 것은 사용자이고, atc와 OCC는 대신 보내지 않는다.
-- **`AWAITING SUPERVISOR`**(IN FLIGHT 줄과 FLIGHT FOLLOWING, 경보): CAPTAIN이 READBACK도 거절도 아닌 채 사용자의 go를 기다린다고 답했다. 그 세션에서 go를 주면(또는 READBACK이 오면) 풀린다.
-- **거절했을 것**: 카드 안에 거절 양식이 열린다. 사유 칩을 여러 개 고를 수 있고, 필요하면 메모를 덧붙인다(칩·메모 없이도 기록은 되지만 사유가 있어야 나중에 쓸모가 있다). Esc로 닫는다. 칩은 이미 완료됨 · 상위 이슈(하위로 나뉨) · 선행 FLIGHT·PR 대기 · 사람 결정 필요 · 우선순위 미정 · 저장소 밖 작업 · AIRCRAFT 부적합 · 기타다. 기록되는 사유는 `이미 완료됨 · 저장소 밖 작업 — 메모`처럼 칩 이름 뒤에 메모가 붙은 한 줄이라, CROSSCHECK와 OCC도 그 글을 그대로 읽는다. 승인 운용(2b)의 거절도 같다.
-- **칩이 차단 범위를 정한다**: FLIGHT 자체의 문제인 칩(이미 완료됨 · 상위 이슈 · 선행 FLIGHT·PR 대기 · 사람 결정 필요 · 우선순위 미정 · 저장소 밖 작업)이 하나라도 있으면 그 FLIGHT가 **모든 팀**에서 빠진다. 제외 목록에 `FLIGHT 보류 — 사람 결정 필요 (D-0023 판정) — 이슈가 바뀌거나 09-28 14:00부터 다시`처럼 뜨고, 24시간이 지나거나 Linear 이슈가 판정 뒤에 바뀌면(본문 수정, 댓글, 우선순위) 다시 후보가 된다. AIRCRAFT 부적합 · 기타 · 칩 없음이면 그 팀과의 짝만 24시간 막고 다른 팀에는 바로 제안될 수 있다. 그러니 "이 팀이라서"인지 "이 일이라서"인지 먼저 가르고 칩을 고른다.
-- **거절 사유 → 배정 규칙**(점검 패널): 칩을 고른 거절마다 칩별로 센다. 줄마다 건수, 최근 예시 FLIGHT, 그리고 planner가 그 사유를 이미 스스로 거르는지(자동 거름 · 일부 거름 · 사람만)가 보인다. 마우스를 올리면 어떤 규칙으로 거르는지 나온다. "사람만"이나 "일부 거름"인 칩이 쌓이면 새 규칙을 만들 차례다. 칩이 생기기 전의 거절은 세지 않는다.
-- **이미 끝났거나 작업 중인 FLIGHT는 제안하지 않는다**: LOGBOOK에 PR 머지가 기록된 FLIGHT(Linear가 아직 Todo여도)와 열린 PR이 있는 FLIGHT는 "제외" 목록에 `이미 완료됨 — PR vocado_nextjs#400 머지됨(LOGBOOK)`, `열린 PR #412 있음`으로 뜬다. 이미 열린 제안은 이 사유로 닫힌다(SUPERSEDED). 그러니 이런 제안을 "이미 완료됨"으로 거절할 일은 줄어든다. PR을 되돌리면 다시 후보가 된다.
-- **HOLDING 팀에 가는 SURVEY·CHECK**: `type:SURVEY`나 `type:CHECK` 라벨이 붙은 FLIGHT는 워크트리가 필요 없어서, 이미 다른 FLIGHT를 들고 있는(HOLDING) 팀에도 하나까지 제안된다. AIRBORNE(지금 일하는 중)인 팀에는 가지 않는다. 판정할 때는 "그 팀이 지금 하던 일을 두고 이걸 볼 여유가 있나", "SURVEY·CHECK 라벨이 맞나"를 본다. 라벨 없는 FLIGHT는 BUILD로 보므로 이 길로 오지 않는다.
-- **CHECK는 만든 팀에 가지 않는다**: LOGBOOK, 열린 PR의 STAND, 워크트리 점유, 청구 기록에서 검토 대상을 만든 팀을 찾아 뺀다. 대상은 Linear 관계와 제목(FLIGHT key, `PR #400`)에서만 찾으므로 본문에만 적혀 있으면 모른다. `CHECK 독립성: 확인 못 함`이면 받는 팀이 그 대상을 만들지 않았는지 직접 확인하고, 만든 팀이면 "AIRCRAFT 부적합"으로 거절한다. 만든 팀만 남으면 제안 대신 "제외" 목록에 `CHECK 독립성 — …`으로 뜬다.
-- 조건부로 승인하고 싶으면(예: "PR #393 머지 뒤") HOLD로 두는 게 맞다.
-- **PREFLIGHT — HELD는 판정하지 않는다**: 티켓이 아직 시작할 상태가 아닌 제안은 대기열에 오지 않고 HELD로 간다. CROSSCHECK가 FLIGHT 칩(이미 완료됨 · 상위 이슈 · 선행 FLIGHT·PR 대기 · 사람 결정 필요 · 우선순위 미정 · 저장소 밖 작업)으로 disagree하면 서버가 곧바로 보내고(카드에 `PREFLIGHT`, 모델과 칩), OCC가 HOLD하면 전처럼 간다(`HOLD`와 메모). AIRCRAFT 부적합 · 기타는 팀 선택 문제라 대기열에 남는다. HELD 카드에는 판정 버튼 대신 둘이 있다.
-  - **대기열로**: 걸러진 게 틀렸다고 보면. 같은 제안이 대기열로 돌아와 판정을 기다리고(24시간은 지금부터), 다시 HOLD되지 않는다.
-  - **FLIGHT 보류 확정**: 맞게 걸렀으면. 제안이 닫히고 그 FLIGHT가 모든 팀에서 24시간(이슈가 바뀌면 그 전까지) 빠진다. 선행 FLIGHT를 기다리는 HOLD에는 이 버튼이 없다(선행이 끝나면 저절로 풀린다).
-  - 둘 다 판정이 아니라 2b 게이트(판정 건수·합의율)에 세지 않는다. 점검 패널의 `PREFLIGHT HELD n건 · 준비율`이 따로 보여 준다: 준비율은 HOLD 없이 판정까지 가서 준비 안 됨 거절도 아니었던 제안의 비율, 즉 들어오는 티켓이 얼마나 준비돼 있었나다.
-- **게이트는 팀 선택만 잰다**: 사유 칩이 모두 FLIGHT 칩(이미 완료됨 · 상위 이슈 · 선행 FLIGHT·PR 대기 · 사람 결정 필요 · 우선순위 미정 · 저장소 밖 작업)인 거절은 판정 건수와 합의율에서 빠지고 "준비 안 됨 거절 n건 (게이트 제외)"으로 따로 보인다. AIRCRAFT 부적합이나 기타가 하나라도 있거나 칩이 없으면 게이트에 센다. 그러니 "이 팀이라서" 거절할 때는 AIRCRAFT 부적합을 꼭 고른다. 칩 없이 한 예전 거절에는 나중에 칩을 달 수 있다(`POST /api/dispatch/proposals/<D-xxxx>/codes`, 거절한 제안에만). 이것은 게이트 계산만 바꾸고 FLIGHT 보류는 걸지 않는다.
-- **2b 진입 점검**: 판정 20건 이상, 합의율 80% 이상(준비 안 됨 거절 제외). 켜면 승인한 제안이 FLIGHT PLAN으로 CAPTAIN에게 간다.
-- **2b 켜기 점검표**: 켜기 전에 볼 항목이 준비됨·안 됨·확인 필요로 보인다. 2a 게이트, RECALL, send-guard, AIRPORT마다 하나씩 있는 READBACK 규칙(vocado READBACK 규칙, atc READBACK 규칙, …), STAND 없는 FLIGHT, CREW CHANGE 발부, 알려진 빈틈 순서다. AIRPORT READBACK 규칙은 그 저장소 CLAUDE.md가 FLIGHT PLAN(`[DISPATCH D-xxxx]` → `READBACK D-xxxx`)과 CREW CHANGE(`[OCC CC-xxxx]` → `READBACK CC-xxxx`)를 다 다뤄야 "준비됨"이고, "안 됨"이면 그 저장소 CLAUDE.md에 더할 문장이 함께 나온다(vocado `CLAUDE.md`는 SUPERVISOR가 고치고, 다른 AIRPORT는 그 팀이 고친다). send-guard는 서버가 테스트를 돌리지 않아 늘 "확인 필요"다(`node --test occ/send-guard.test.mjs`). 점검표는 보여 주기만 하고, 켜는 것은 SUPERVISOR다.
+배정의 이력은 **FLIGHT 서랍**의 `배정 기록`에서 읽습니다: 제안마다 단계 시각, 사유, 그리고 지금 할 수 있는 CANCEL…·RECALL…·**FRESH START…**. 자동 승인한 카드가 나중에 틀렸다고 드러난 몫은 **METRICS**의 MISFIRE에 날짜별로 있습니다. FOLLOW의 각 줄에도 같은 CANCEL…·RECALL…이 있습니다.
+
+사라진 것: 카드를 하나씩 판정하는 화면, CROSSCHECK 동의 묶음과 BLIND 표본, HELD(PREFLIGHT) 목록, 2b 진입 점검(READINESS)과 DISPATCH 쪽 FLIGHT FOLLOWING 블록. 모두 자동 운항이 대신하거나 FOLLOW·METRICS가 이미 보여 주는 것입니다.
 
 ## SCHEDULE 탭: 티켓 초안
 
@@ -66,11 +43,11 @@ OCC가 Linear에 쓸 변경을 초안으로 남긴다. 지금은 S1이라 Linear
 
 ## RECALL: 보낸 FLIGHT PLAN 거둬들이기
 
-승인했지만 아직 보내지 않은 카드는 진행 중 목록의 **CANCEL…**을 누르고 확인한다(보낸 뒤에는 RECALL). 카드는 `SUPERVISOR가 취소함`으로 닫히고 같은 짝은 24시간 다시 제안되지 않는다.
+승인했지만 아직 보내지 않은 카드는 FOLLOW 줄이나 FLIGHT 서랍(배정 기록)의 **CANCEL…**을 누르고 확인한다(보낸 뒤에는 RECALL). 카드는 `SUPERVISOR가 취소함`으로 닫히고 같은 짝은 24시간 다시 제안되지 않는다.
 
-받을 AIRCRAFT의 대화가 커서(FLEET의 FOB가 호박색·경고색, REFRESH 기준 300k 또는 창의 40 %) 새 세션으로 시작하게 하고 싶으면 같은 줄의 **FRESH START…**를 누르고 확인한다. atc가 그 백그라운드 세션을 멈추고, 첫 프롬프트가 CREW BRIEFING에 이어 이 FLIGHT PLAN인 새 세션을 띄운다. 그 FLIGHT PLAN은 보낸 것으로 기록되고(`FRESH START로 보냄`) OCC는 다시 보내지 않으며, READBACK부터는 평소와 같다. 버튼은 세션이 **백그라운드**이고 대화가 기준을 넘었고 끝나지 않은 FLIGHT의 STAND가 없고 턴 중이 아닐 때만 나온다. 아니면 그 줄에 이유(`FRESH START 불가 — …`)가 보인다. 데스크톱·터미널 세션은 atc가 멈추지 않으니 그 세션에서 `/clear`하고 CREW BRIEFING을 붙여 넣는다. 띄우기가 거절되면(백그라운드 세션 상한 등) 세션은 멈춘 채고 카드는 승인된 그대로이니, FLEET에서 LAUNCH하거나 CANCEL한다. 자동으로는 하지 않는다.
+받을 AIRCRAFT의 대화가 커서(FLEET의 FOB가 호박색·경고색, REFRESH 기준 300k 또는 창의 40 %) 새 세션으로 시작하게 하고 싶으면 같은 카드의 **FRESH START…**(FLIGHT 서랍)를 누르고 확인한다. atc가 그 백그라운드 세션을 멈추고, 첫 프롬프트가 CREW BRIEFING에 이어 이 FLIGHT PLAN인 새 세션을 띄운다. 그 FLIGHT PLAN은 보낸 것으로 기록되고(`FRESH START로 보냄`) OCC는 다시 보내지 않으며, READBACK부터는 평소와 같다. 버튼은 세션이 **백그라운드**이고 대화가 기준을 넘었고 끝나지 않은 FLIGHT의 STAND가 없고 턴 중이 아닐 때만 나온다. 아니면 그 줄에 이유(`FRESH START 불가 — …`)가 보인다. 데스크톱·터미널 세션은 atc가 멈추지 않으니 그 세션에서 `/clear`하고 CREW BRIEFING을 붙여 넣는다. 띄우기가 거절되면(백그라운드 세션 상한 등) 세션은 멈춘 채고 카드는 승인된 그대로이니, FLEET에서 LAUNCH하거나 CANCEL한다. 자동으로는 하지 않는다.
 
-2b에서 FLIGHT PLAN을 보냈거나 CAPTAIN이 READBACK했는데 거둬들여야 하면(우선순위가 바뀜, 잘못 배정됨 등), DISPATCH 탭 진행 중 목록의 **RECALL…**을 누르고 사유를 적는다.
+2b에서 FLIGHT PLAN을 보냈거나 CAPTAIN이 READBACK했는데 거둬들여야 하면(우선순위가 바뀜, 잘못 배정됨 등), FOLLOW 줄이나 FLIGHT 서랍의 **RECALL…**을 누르고 사유를 적는다.
 
 - OCC가 CAPTAIN에게 RECALL 문구를 보낸다. CAPTAIN은 작업을 멈추고 STAND(워크트리)를 정리하지 않은 채 두고 "READBACK D-xxxx RECALL"로 답한다. 그러면 RECALLED가 된다.
 - RECALL 중에는 "RECALL 중"으로 보이고, 10분 넘게 답이 없으면 "RECALL READBACK 없음 10분+"가 뜬다.
