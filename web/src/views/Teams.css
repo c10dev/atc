@@ -282,9 +282,6 @@
 .ls-group.is-draft .ls-list {
   color: var(--muted);
 }
-.ls-group.is-draft .pr-badge {
-  opacity: 0.8;
-}
 
 :root[data-theme="night"] .pr-badge,
 :root[data-theme="night"] .pr-count {

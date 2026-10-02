@@ -60,6 +60,8 @@ export function classify(i: LeakItem): Verdict {
       return leak("L18", "C15");
     case "UNDELIVERED":
       return leak("P6", "C14");
+    case "BACKLOG":
+      return leak("P16", "C14"); // 제안이 SUPERVISOR의 발권을 기다린다(ATC-401). 센다: 기다림이 보이게
     case "GO":
       return exempt("K3", "P8");
   }
@@ -242,6 +244,8 @@ export function leakItemsOf(items: readonly QueueItem[], inp: QueueInput): LeakI
       case "PROPOSAL":
       case "GO":
         return { ...i, flight: prop.get(i.key)?.flight ?? null };
+      case "BACKLOG":
+        return { ...i, flight: i.key };
       case "UNDELIVERED":
         return { ...i, flight: i.hand?.source === "FLIGHT PLAN" ? (prop.get(i.hand.id)?.flight ?? null) : null };
       case "SCHEDULE":

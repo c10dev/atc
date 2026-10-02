@@ -171,3 +171,11 @@ test("leakView: 닫혔다 같은 since로 다시 열린 줄(입력이 끊긴 옛
   const x = leakView([rec("open", 0), rec("close", 5), rec("open", 6, { since: at(6) })] as never, ms(30));
   assert.equal(x.totals.count, 2);
 });
+
+test("BACKLOG(ATC-401): 제안이 SUPERVISOR의 발권을 기다리면 leak으로 센다(gate P16)", () => {
+  const v = classify(item({ kind: "BACKLOG", key: "ATC-3", title: "ATC-3 ← DUTY REVIEW R-0007", hash: "#release" }));
+  assert.ok(v.leak && v.gate === "P16" && v.control.id === "C14");
+  const inp = { proposals: [], schedule: { mode: "approval", ops: [] }, sessions: [], pulls: [] } as unknown as QueueInput;
+  const [li] = leakItemsOf([{ kind: "BACKLOG", key: "ATC-3", since: at(0), title: "x", hash: "#release" }], inp);
+  assert.equal(li!.flight, "ATC-3");
+});

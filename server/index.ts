@@ -50,7 +50,7 @@ import { loadRoutes } from "./routes-load.ts";
 import { mountRoutes } from "./routes-run.ts";
 import { refreshOverlap } from "./overlap-run.ts";
 import { allProposals, DISPATCH_MS, mountDispatch, runDispatch } from "./proposals.ts";
-import { runAutoApprove } from "./auto-approve-run.ts";
+import { runApprovedRelaunch, runAutoApprove } from "./auto-approve-run.ts";
 import { mountAutonomyAuto, runAutoSchedule, scheduleMisfires } from "./autonomy-auto-run.ts";
 import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
@@ -71,6 +71,7 @@ import { mountStatus } from "./status-run.ts";
 import { currentAlerts, endsNow, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
 import { mountQrh, runQrh } from "./qrh-run.ts";
 import { mountDuty } from "./duty-api.ts";
+import { mountMigrate } from "./migrate-api.ts";
 import { mountReleases, releaseFromChat } from "./release-run.ts";
 import { duty, mountDutyRun } from "./duty-run.ts";
 import { defaultL1Deps, mountDutyL1 } from "./duty-l1-run.ts";
@@ -254,6 +255,7 @@ mountMilestones(app, getSnapshot);
 mountQrh(app); // QRH shadow(ATC-288): qrh.named 줄을 읽기만 한다
 mountAtfm(app, getSnapshot);
 mountAutoland(app, getSnapshot);
+mountMigrate(app); // 마이그레이션 리허설 기록 읽기(ATC-368). 스위치는 설정 창(PUT /api/settings)뿐
 mountMcc(app, getSnapshot, () => head);
 const update = mountUpdate(app, getSnapshot, () => head); // UPDATE bar(ATC-82)
 // 자동 RTS(ATC-84): mcc 모드가 rts·land+rts일 때만 일한다. 그 밖의 모드나 시험 서버는 아무것도 하지 않는다
@@ -267,7 +269,10 @@ setInterval(() => {
 // 서버 안에서만 돈다(HTTP 길도 atcctl 명령도 없다). 1분에 한 번
 setInterval(() => {
   if (!current) return;
-  void runAutoApprove(current, { max: MAX_LAUNCHED, launch: (s, reg, proposal, resume, flight) => launchForCard(s, reg, proposal, resume, "auto", flight) }).catch((e) => console.error("[atc] auto approve failed:", e));
+  const deps = { max: MAX_LAUNCHED, launch: (s: Snapshot, reg: string, proposal: string, resume: boolean, flight: string) => launchForCard(s, reg, proposal, resume, "auto", flight) };
+  void runAutoApprove(current, deps).catch((e) => console.error("[atc] auto approve failed:", e));
+  // 승인됐는데 세션이 없는 ASSIGN 카드(ATC-388): LAUNCH하거나 닫는다. 스위치와 상관없다(SUPERVISOR 승인이 이미 있다)
+  void runApprovedRelaunch(current, deps).catch((e) => console.error("[atc] approved relaunch failed:", e));
 }, 60_000).unref();
 // SCHEDULE 초안 자동 적용(ATC-370, docs/autonomy.md P5): 스위치 schedule.json auto(기본 on)가 켜져 있으면 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW 초안을 사람 판정 없이 승인한다. 1분에 한 번
 setInterval(() => {

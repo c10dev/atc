@@ -113,7 +113,7 @@
 }
 .globe-parked text {
   fill: var(--muted);
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 .globe-hub {
   fill: var(--amber);
@@ -218,7 +218,7 @@
   stroke: var(--bg);
   stroke-width: 3px;
   paint-order: stroke;
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 .globe-plane-label.tone-radar {

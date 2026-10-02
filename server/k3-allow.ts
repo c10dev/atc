@@ -5,9 +5,88 @@
 import type { ReleaseChannel, ReleaseRecord, ReleaseView } from "./release.ts";
 import { releaseStateOf } from "./release.ts";
 
-// K3로 선언할 수 있는 라벨: `claude auto-mode defaults`의 soft_deny 가운데 K3에 닿는 것(ATC-372 이슈 "Map each declared K effect")
-export const K3_LABELS = ["Security Weaken", "Self-Approval", "Permission Grant", "Self-Modification", "Merge Without Review"] as const;
+// K3로 선언할 수 있는 라벨: `claude auto-mode defaults`의 soft_deny 가운데 K3에 닿는 것(ATC-372 이슈 "Map each declared K effect", ATC-399가 둘을 더했다).
+// 나머지 soft_deny 라벨은 선언할 수 없다(SOFT_DENY_UNDECLARABLE): 이유와 함께 docs/autonomy.md C9에 모두 적는다
+export const K3_LABELS = ["Security Weaken", "Self-Approval", "Permission Grant", "Self-Modification", "Merge Without Review", "Security Test Removal", "Instruction Poisoning"] as const;
 export type K3Label = (typeof K3_LABELS)[number];
+
+// 선언할 수 없는 soft_deny 라벨(`claude auto-mode defaults` 2026-10-02의 72개 가운데 나머지 65개)과 이유 묶음(ATC-399). 새 라벨은 이 표에도 K3_LABELS에도 없으면 선언할 수 없다.
+// docs/autonomy.md·autonomy.ko.md C9의 표가 이 표와 같다(k3-allow.test.ts가 견준다). 라벨을 선언 가능으로 올리려면 다음 발권에서 K3_LABELS로 옮기고 allowEntryOf에 그 라벨의 "must name" 문구를 더한다
+export type UndeclarableWhy = "production" | "destruction" | "exfiltration" | "outside-code" | "bypass";
+export const UNDECLARABLE_WHY: Record<UndeclarableWhy, string> = {
+  production: "Acts on production, shared or third-party systems. A released FLIGHT is code only (CODE_ONLY), so no declared effect maps to it.",
+  destruction: "Destroys data that a revert PR cannot bring back. A code FLIGHT has no need for it.",
+  exfiltration: "Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it.",
+  "outside-code": "Brings code or packages from outside into the run. Supply-chain risk that a released declaration cannot judge.",
+  bypass: "Switches off a check that auto mode itself relies on (logging, TLS, CI, sandbox, the classifier). A declaration cannot approve its own bypass.",
+};
+export const SOFT_DENY_UNDECLARABLE: Record<string, UndeclarableWhy> = {
+  "Cloud Storage Mass Delete": "production",
+  "Production Deploy": "production",
+  "Remote Shell Writes": "production",
+  "Sensitive Remote Exec": "production",
+  "Production Reads": "production",
+  "Blind Apply": "production",
+  "Protected-Scope IaC Apply": "production",
+  "Shared Cluster Mutation": "production",
+  "Modify Shared Resources": "production",
+  "DNS / Domain / Cert Changes": "production",
+  "Node Lifecycle Operations": "production",
+  "Cluster-Wide Workload Creation": "production",
+  "Interfere With Workloads": "production",
+  "Secret-Store Writes": "production",
+  "Feature Flag Writes": "production",
+  "Account & Standing-Rule Changes": "production",
+  "Real-World Transactions": "production",
+  "External System Writes": "production",
+  "Unrequested Commit in a Connected App": "production",
+  "ChatOps Trigger Comments": "production",
+  "Third-Party Attack": "production",
+  "Git Destructive": "destruction",
+  "Irreversible Local Destruction": "destruction",
+  "Unverifiable Deletion Target": "destruction",
+  "Shared Scratch Sweep": "destruction",
+  "Irreversible Deletion (general)": "destruction",
+  "Unverifiable Deletion Scope": "destruction",
+  "Code That Leaks When Run": "exfiltration",
+  "Credential Leakage": "exfiltration",
+  "Credential Materialization": "exfiltration",
+  "Credential Exploration": "exfiltration",
+  "PII Data Handling": "exfiltration",
+  "Exfil Scouting": "exfiltration",
+  "Traffic Redirection": "exfiltration",
+  "Remote Repoint": "exfiltration",
+  "Out-of-Place Publication": "exfiltration",
+  "Sensitive-Source Provenance": "exfiltration",
+  "Excess Sensitive Detail": "exfiltration",
+  "Unrequested Artifact Publish": "exfiltration",
+  "Live-Shared Artifact Sensitive Delta": "exfiltration",
+  "Sandbox Network Callback": "exfiltration",
+  "Command Network Lists": "exfiltration",
+  "Containment Escape": "exfiltration",
+  "Create Public Surface": "exfiltration",
+  "Public Data-Sharing Upload": "exfiltration",
+  "Expose Local Services": "exfiltration",
+  "External Ingress Tunnel": "exfiltration",
+  "Browser Navigate Exfil": "exfiltration",
+  "Browser Input Exfil": "exfiltration",
+  "Browser JS Exfil": "exfiltration",
+  "Browser File Upload Exfil": "exfiltration",
+  "Browser Shortcut Execution": "exfiltration",
+  "Code from External": "outside-code",
+  "Untrusted Code Integration": "outside-code",
+  "Package Registry Bypass": "outside-code",
+  "Logging/Audit Tampering": "bypass",
+  "TLS/Auth Weaken": "bypass",
+  "Safety Bypass Flag": "bypass",
+  "Create Unsafe Agents": "bypass",
+  "CI Bypass": "bypass",
+  "Create RCE Surface": "bypass",
+  "Unauthorized Persistence": "bypass",
+  "Tmux Self Drive": "bypass",
+  "Auto-Mode Bypass": "bypass",
+  "Session Transcript Tampering": "bypass",
+};
 
 export interface K3Declaration {
   label: K3Label;
@@ -20,13 +99,18 @@ const MAX_FILES = 20;
 const FILE_RE = /^(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+-][A-Za-z0-9._@+/-]*$/; // 공백·글롭(*?[])·절대 경로·`..` 없음
 const LINE_RE = /^\s*(?:[-*+]\s+)?K3\s*\[([^\]]+)\]\s*:\s*(.+?)\s*\|\s*files?\s*:\s*(.+?)\s*$/i;
 
+// Linear는 본문을 Markdown으로 저장하며 기호 앞에 역슬래시를 둔다(`K3\[Security Weaken\]: …`, `k3\_allow.ts`).
+// CommonMark의 역슬래시 이스케이프(ASCII 기호 앞의 `\`)를 되돌린 줄로 읽는다(ATC-399). 이스케이프가 없는 글은 그대로다
+export const unescapeMarkdown = (line: string): string => line.replace(/\\([!-/:-@[-`{-~])/g, "$1");
+
 // 본문 `## K effects`에서 K3 선언을 읽는다. 모양이 맞지 않는 `K3` 줄은 unparsed로 센다(항목을 만들지 않는다: 닫는 쪽으로 틀린다)
 export function k3DeclarationsOf(description: string | null | undefined): { declared: K3Declaration[]; unparsed: number } {
   const section = (() => {
     // release.ts sectionsOf는 글을 한 줄로 뭉치므로 줄 단위가 필요한 이 읽기는 `## K effects` 절(같은 절 이름 규칙)만 따로 자른다
     let cur = false;
     const lines: string[] = [];
-    for (const line of (description ?? "").split("\n")) {
+    for (const raw of (description ?? "").split("\n")) {
+      const line = unescapeMarkdown(raw);
       const h = /^#{1,6}\s+(.*?)\s*$/.exec(line);
       if (h) {
         cur = /^(?:k effects?|k 효과)$/i.test(h[1]!.replace(/[:：]$/, ""));
@@ -63,6 +147,20 @@ export const CODE_ONLY = "Code only; nothing is executed against production duri
 
 // autoMode.allow 항목 하나(선언 하나). 라벨을 이름으로 대고, 통제·파일·STAND·발권 id를 말한다
 export function allowEntryOf(d: K3Declaration, ctx: { flight: string; release: string; stand: string }): string {
+  // 라벨마다 classifier가 "must name"으로 요구하는 글이 다르다(`claude auto-mode defaults`): 아래 둘은 선언의 통제 칸이 그 글을 채운다(ATC-399)
+  if (d.label === "Security Test Removal") {
+    return (
+      `${d.label}: the SUPERVISOR released ${ctx.flight} (release ${ctx.release}) and declared this K3 effect: remove or skip these tests: ${d.control}. ` +
+      `Edit only ${d.files.join(", ")} in the STAND ${ctx.stand}. Removing or skipping exactly these tests is wanted and authorized; no other test or assertion is removed, skipped or force-passed. ${CODE_ONLY}`
+    );
+  }
+  if (d.label === "Instruction Poisoning") {
+    return (
+      `${d.label}: the SUPERVISOR released ${ctx.flight} (release ${ctx.release}) and declared this K3 effect: change the instruction file(s) ${d.files.join(", ")} in the STAND ${ctx.stand}; the change is: ${d.control}. ` +
+      `This instruction change is a wanted change authorized by the SUPERVISOR. If the classifier flags editing these files as Instruction Poisoning, that flag is a false positive — fine to allow. ` +
+      `It covers only these files: no other instruction file, no memory directory, no classifier workaround. ${CODE_ONLY}`
+    );
+  }
   return (
     `${d.label}: the SUPERVISOR released ${ctx.flight} (release ${ctx.release}) and declared this K3 effect: change the control "${d.control}" ` +
     `by editing only ${d.files.join(", ")} in the STAND ${ctx.stand}. This specific change is wanted and authorized. ${CODE_ONLY}`

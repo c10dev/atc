@@ -191,6 +191,15 @@ test("길: attest로 screen 채널을 흉내 낼 수 없다(channel 값은 읽�
   assert.ok(h.lines[0]!.op === "release" && (h.lines[0] as { channel: string }).channel === "attested");
 });
 
+test("접기: 거둔 발권은 제안으로 돌아오고 이유가 남으며, 다시 발권하면 지운다(ATC-368)", () => {
+  const v = foldReleases([rel("A-1", "h1"), { op: "revoke", flight: "A-1", at: "t", reason: "리허설 멈춤", by: "migration-rehearsal" }]);
+  assert.equal(releaseStateOf("A-1", "h1", v), "unreleased");
+  assert.equal(v.revoked?.["A-1"]?.reason, "리허설 멈춤");
+  const again = foldReleases([rel("A-1", "h1"), { op: "revoke", flight: "A-1", at: "t", reason: "x", by: "m" }, rel("A-1", "h1")]);
+  assert.equal(releaseStateOf("A-1", "h1", again), "released");
+  assert.equal(again.revoked?.["A-1"], undefined);
+});
+
 test("DUTY 채팅 글: RELEASE 줄이 있으면 duty-chat 채널로 적는다", async () => {
   const h = harness([tk("ATC-1"), tk("ATC-2", { stateType: "started" })]);
   const keys = await releaseFromChat("RELEASE ATC-1 ATC-2", h.deps.snapshot, h.deps);
@@ -262,4 +271,91 @@ test("발권 fire: Todo로 옮긴 뒤 screen 발권을 적는다. 옮기기가 �
   assert.equal((await post({ flight: "ATC-1", hash: "hash-ATC-1" })).status, 200);
   assert.deepEqual(moves, [["ATC-1", "Backlog"], ["ATC-1", "Backlog"]]);
   assert.deepEqual(h.lines.map((l) => (l.op === "release" ? [l.flight, l.channel, l.via] : l.op)), [["ATC-1", "screen", "click"]]);
+});
+
+// ── 제안(ATC-401): DUTY REVIEW·SCHEDULE NEW가 Backlog에 올린 이슈를 RELEASE 화면이 보이고 한 번의 클릭으로 쏘거나 버린다 ──
+const SRC = (...keys: string[]) => () => new Map(keys.map((k) => [k, { by: "DUTY REVIEW R-0007", at: "2026-10-02T08:00:00.000Z" }]));
+
+test("제안(ATC-401): 막는 이슈가 없는 DUTY REVIEW 제안은 목록에 들어 쏘면 Todo로 옮기고 screen 발권을 적는다", async () => {
+  const moved: [string, string][] = [];
+  const { h, post } = fireHarness([backlog("ATC-1", { blockedBy: [], kEffects: "K3: x" })], async (k, from) => (moved.push([k, from]), { ok: true }));
+  h.deps.proposalSources = SRC("ATC-1");
+  const v = releaseView(snap([backlog("ATC-1", { blockedBy: [], kEffects: "K3: x" })]), h.deps);
+  assert.deepEqual(v.filed.map((f) => [f.key, f.by, f.at, f.priority, f.kEffects]), [["ATC-1", "DUTY REVIEW R-0007", "2026-10-02T08:00:00.000Z", 2, "K3: x"]]);
+  assert.equal(v.ready.length, 0, "READY에 이중으로 오르지 않는다");
+  assert.equal((await post({ flight: "ATC-1", hash: "hash-ATC-1" })).status, 200);
+  assert.deepEqual(moved, [["ATC-1", "Backlog"]]);
+  assert.deepEqual(h.lines.map((l) => (l.op === "release" ? [l.flight, l.channel] : l.op)), [["ATC-1", "screen"]]);
+});
+
+test("제안(ATC-401): 열린 이슈가 막는 제안은 목록에 없고 쏠 수도 없다. 막는 이슈가 끝나면 나타난다", async () => {
+  const open = [tk("ATC-9", { state: "In Progress", stateType: "started" }), backlog("ATC-1", { blockedBy: ["ATC-9"] })];
+  const { h, post } = fireHarness(open, async () => ({ ok: true }));
+  h.deps.proposalSources = SRC("ATC-1");
+  const v = releaseView(snap(open), h.deps);
+  assert.deepEqual([v.filed.length, v.ready.length], [0, 0]);
+  assert.equal((await post({ flight: "ATC-1" })).status, 409);
+  assert.equal(h.lines.length, 0);
+  const freed = releaseView(snap([done("ATC-9"), backlog("ATC-1", { blockedBy: ["ATC-9"] })]), h.deps);
+  assert.deepEqual(freed.filed.map((f) => f.key), ["ATC-1"], "막는 이슈가 끝나면 제안으로 나타난다(READY와 이중이 아니다)");
+  assert.equal(freed.ready.length, 0);
+});
+
+test("제안(ATC-401): SUPERVISOR가 만든 Backlog 이슈는 제안으로 나오지 않는다(막는 이슈가 끝난 것은 READY로만)", () => {
+  const h = harness([]);
+  h.deps.proposalSources = SRC("ATC-1");
+  const mine = [done("ATC-90"), backlog("ATC-5", { blockedBy: ["ATC-90"] }), backlog("ATC-6", { blockedBy: [] }), backlog("ATC-1", { blockedBy: [] })];
+  const v = releaseView(snap(mine), h.deps);
+  assert.deepEqual(v.filed.map((f) => f.key), ["ATC-1"]);
+  assert.deepEqual(v.ready.map((r) => r.key), ["ATC-5"]);
+});
+
+test("제안(ATC-401): 우선순위가 없는 제안은 옮기지 않고 사유를 말한다", async () => {
+  const moved: string[] = [];
+  const t = backlog("ATC-1", { blockedBy: [], priority: 0 });
+  const { h, post } = fireHarness([t], async (k) => (moved.push(k), { ok: true }));
+  h.deps.proposalSources = SRC("ATC-1");
+  const r = await post({ flight: "ATC-1", hash: "hash-ATC-1" });
+  assert.equal(r.status, 409);
+  assert.match(((await r.json()) as { error: string }).error, /우선순위/);
+  assert.deepEqual(moved, []);
+  assert.equal(h.lines.length, 0);
+  assert.equal(releaseView(snap([t]), h.deps).filed[0]!.priority, 0, "목록에는 있고 화면이 우선순위가 없다고 말한다");
+});
+
+function discardHarness(tickets: Ticket[], discard: NonNullable<ReleaseDeps["discard"]>) {
+  const h = harness(tickets);
+  h.deps.discard = discard;
+  h.deps.proposalSources = SRC("ATC-1");
+  const app = new Hono();
+  mountReleases(app, h.deps.snapshot, h.deps);
+  const post = (body: unknown, headers: Record<string, string> = FROM_SCREEN) =>
+    app.request("/api/releases/discard", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
+  return { h, post };
+}
+
+test("제안 버리기(ATC-401): Origin이 있어야 하고, 제안이 아닌 이슈는 못 버리며, 사유를 줄여 넘긴다", async () => {
+  const calls: [string, string, string][] = [];
+  const { post } = discardHarness([backlog("ATC-1", { blockedBy: [] }), backlog("ATC-2", { blockedBy: [] })], async (k, from, reason) => (calls.push([k, from, reason]), { ok: true }));
+  assert.equal((await post({ flight: "ATC-1" }, {})).status, 403);
+  assert.equal((await post({ flight: "ATC-2" })).status, 409, "SUPERVISOR가 만든 이슈는 제안이 아니다");
+  assert.equal((await post({ flight: "ATC-1", hash: "stale" })).status, 409);
+  assert.deepEqual(calls, []);
+  const ok = await post({ flight: "ATC-1", hash: "hash-ATC-1", reason: "  already\n covered   by ATC-12  " });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(calls, [["ATC-1", "Backlog", "already covered by ATC-12"]]);
+  const none = await post({ flight: "ATC-1" });
+  assert.equal(none.status, 200);
+  assert.equal(calls[1]![2], "no reason given");
+});
+
+test("제안 버리기(ATC-401): 옮기기가 실패하면 실패를 그대로 돌려주고, 사유 댓글만 실패하면 경고와 함께 성공한다", async () => {
+  const { post } = discardHarness([backlog("ATC-1", { blockedBy: [] })], async () => ({ ok: false, status: 502, error: "linear down" }));
+  const bad = await post({ flight: "ATC-1" });
+  assert.equal(bad.status, 502);
+  assert.equal(((await bad.json()) as { error: string }).error, "linear down");
+  const { post: p2 } = discardHarness([backlog("ATC-1", { blockedBy: [] })], async () => ({ ok: true, warning: "comment failed" }));
+  const warn = await p2({ flight: "ATC-1" });
+  assert.equal(warn.status, 200);
+  assert.deepEqual(await warn.json(), { discarded: "ATC-1", warning: "comment failed" });
 });

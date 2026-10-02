@@ -5,6 +5,11 @@ export interface HostedDb {
   provider: "supabase";
   projectRef: string;
   migrationsDir: string;
+  // 마이그레이션 리허설(ATC-368)용 추가 칸. 손으로 고치는 airports.json에만 둔다. 모두 없어도 된다(없으면 리허설은 준비되지 않음)
+  testProjectRef?: string; // 시험 DB(실전에서 다시 가져온 DB나 호스팅 제공자의 DB 브랜치)의 project ref
+  smoke?: { name: string; sql: string; expectRows?: boolean }[]; // 리허설 뒤 시험 DB에서 돌리는 앱 점검 질의
+  healthUrl?: string; // 적용 뒤 앱 건강 확인(GET, 200이어야 함). https만
+  maxBackupAgeHours?: number; // 복원점으로 인정하는 백업의 최대 나이(PITR이 꺼져 있을 때). 기본 24
 }
 
 export const DEFAULT_MIGRATIONS_DIR = "supabase/migrations";
@@ -17,7 +22,19 @@ export function hostedDbOf(raw: unknown): HostedDb | null {
   if (r.provider !== "supabase" || typeof r.projectRef !== "string" || !REF.test(r.projectRef)) return null;
   const dir = typeof r.migrationsDir === "string" ? r.migrationsDir.trim().replace(/^\/+|\/+$/g, "") : "";
   if (r.migrationsDir !== undefined && (!dir || dir.split("/").includes(".."))) return null;
-  return { provider: "supabase", projectRef: r.projectRef, migrationsDir: dir || DEFAULT_MIGRATIONS_DIR };
+  const out: HostedDb = { provider: "supabase", projectRef: r.projectRef, migrationsDir: dir || DEFAULT_MIGRATIONS_DIR };
+  // 리허설 칸(ATC-368): 모양이 틀린 칸은 빼고 나머지는 그대로(그 칸이 없으면 리허설이 준비되지 않았다고 보일 뿐이다)
+  if (typeof r.testProjectRef === "string" && REF.test(r.testProjectRef) && r.testProjectRef !== r.projectRef) out.testProjectRef = r.testProjectRef;
+  if (Array.isArray(r.smoke)) {
+    const smoke = r.smoke.flatMap((c) => {
+      const x = c as { name?: unknown; sql?: unknown; expectRows?: unknown } | null;
+      return x && typeof x.name === "string" && typeof x.sql === "string" && x.sql.trim() ? [{ name: x.name.slice(0, 60), sql: x.sql, ...(x.expectRows === true ? { expectRows: true } : {}) }] : [];
+    });
+    if (smoke.length) out.smoke = smoke;
+  }
+  if (typeof r.healthUrl === "string" && /^https:\/\//.test(r.healthUrl)) out.healthUrl = r.healthUrl;
+  if (typeof r.maxBackupAgeHours === "number" && Number.isFinite(r.maxBackupAgeHours) && r.maxBackupAgeHours > 0) out.maxBackupAgeHours = r.maxBackupAgeHours;
+  return out;
 }
 
 // 파일 이름 `<version>_<name>.sql`의 version(숫자). 아니면 null
@@ -34,6 +51,9 @@ export interface MigrationGate {
   missing: string[]; // 호스티드 DB에 아직 없는 버전
   paths: string[]; // 게이트가 맡은(새 마이그레이션) 파일
 }
+
+// 게이트 사유의 앞머리: 새 마이그레이션이 호스티드 DB에 아직 없을 때
+const MISSING_REASON_PREFIX = "호스티드 DB에 아직 없는 마이그레이션";
 
 const none: MigrationGate = { involved: false, ok: true, reason: null, versions: [], missing: [], paths: [] };
 
@@ -53,6 +73,6 @@ export function migrationGateOf(x: { hostedDb: HostedDb | null; files: readonly 
   if (!x.applied) return fail("호스티드 DB의 적용 버전을 못 읽음(모름은 제외)", { versions, paths: [...under] });
   const have = new Set(x.applied);
   const missing = versions.filter((v) => !have.has(v));
-  if (missing.length) return fail(`호스티드 DB에 아직 없는 마이그레이션 ${missing.length}개`, { versions, missing, paths: [...under] });
+  if (missing.length) return fail(`${MISSING_REASON_PREFIX} ${missing.length}개`, { versions, missing, paths: [...under] });
   return { involved: true, ok: true, reason: null, versions, missing: [], paths: [...under] };
 }

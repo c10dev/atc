@@ -151,6 +151,8 @@ export const regOfProposal = (p: Pick<Proposal, "registration" | "aircraftName">
 
 // SUPERSEDED 사유의 앞머리: AIRCRAFT 사정으로 닫힘
 export const AIRCRAFT_WHY = "AIRCRAFT 불가";
+// 승인된 ASSIGN의 AIRCRAFT에 세션이 없는 채 approvedWaitMin이 지나 닫음(ATC-388). 판정이 아니라서 24시간 짝 규칙을 시작하지 않는다
+export const APPROVED_NO_SESSION_WHY = "승인 뒤 세션 없음";
 // 멈춘 AIRCRAFT(RESUME·STALLED, 끝나지 않은 In Progress FLIGHT, ATC-90)로 닫힘. SUPERVISOR 판정이 아니라 24시간 짝 규칙을 시작하지 않는다
 export const STOPPED_WHY = "AIRCRAFT 멈춤";
 // 보냈는데 닿지 않아(ATC-183) AIRCRAFT가 더는 후보가 아니라 닫힘. SUPERVISOR 판정이 아니라 24시간 짝 규칙을 시작하지 않는다
@@ -261,6 +263,7 @@ export type Op =
   | { op: "undelivered"; id: string; at: string; reason: string; cause?: string } // OCC의 SendMessage가 실패함(ATC-183). sent를 approved로 돌린다. SUPERVISOR 판정이 아니다
   | { op: "standby"; id: string; at: string } // CAPTAIN의 STANDBY D-xxxx(ATC-122). 상태는 sent 그대로
   | { op: "launch"; id: string; at: string; ok: boolean; by: string; jobId?: string; error?: string } // launch 카드 승인 때의 LAUNCH 결과(ATC-129). 상태는 그대로
+  | { op: "relaunch"; id: string; at: string } // 승인된 ASSIGN의 AIRCRAFT에 세션이 없어 서버가 LAUNCH하기로 함(ATC-388). 그 카드가 launch 카드가 된다(상태는 그대로)
   | { op: "await-supervisor"; id: string; at: string; reason: string } // CAPTAIN이 사용자의 go를 기다림(ATC-120). 상태는 sent 그대로, awaitSupervisor만 붙는다
   | { op: "depart"; id: string; at: string; stand: string | null; via?: "readback" } // stand null: STAND 없는 FLIGHT의 READBACK
   | { op: "arrived"; id: string; at: string; note: string } // STAND 없는 FLIGHT: CAPTAIN 보고
@@ -270,7 +273,7 @@ export type Op =
   | { op: "close"; id: string; at: string; reason: string } // 보낸 뒤 FLIGHT가 이미 끝나 정리(ATC-266). sent·accepted·STAND 없는 departed에만
   | { op: "expire"; id: string; at: string; reason?: string };
 
-type StatusOp = Exclude<Op["op"], "create" | "note" | "brief" | "hold" | "crosscheck" | "preflight" | "requeue" | "recode" | "standby" | "launch" | "await-supervisor" | "undelivered">;
+type StatusOp = Exclude<Op["op"], "create" | "note" | "brief" | "hold" | "crosscheck" | "preflight" | "requeue" | "recode" | "standby" | "launch" | "relaunch" | "await-supervisor" | "undelivered">;
 
 // 상태 전이 규칙. 여기 없는 전이는 무시한다(API도 같은 규칙으로 검사한다).
 const NEXT: Partial<Record<ProposalStatus, Partial<Record<StatusOp, ProposalStatus>>>> = {
@@ -375,6 +378,11 @@ export function fold(ops: Op[]): Proposal[] {
       if (p.status !== "sent") continue;
       p.standbyAt ??= o.at;
       p.standbys = (p.standbys ?? 0) + 1;
+      continue;
+    }
+    if (o.op === "relaunch") {
+      // 승인된 ASSIGN(launch 카드 아님)만(ATC-388). 이 뒤로 launch 카드와 같은 길이다: LAUNCH 결과(op launch), LAUNCHING 기다림, 유예가 지나면 SUPERSEDED
+      if (p.kind === "ASSIGN" && p.status === "approved" && !p.launch) p.launch = true;
       continue;
     }
     if (o.op === "launch") {
@@ -535,6 +543,23 @@ export function noLiveSessionWhyOf(p: Pick<Proposal, "launch" | "registration" |
   const reg = regOfProposal(p, teamPattern);
   if (!reg || s.sessions.some((x) => x.status !== "dead" && regKey(x.name, teamPattern) === reg)) return null;
   return `${p.aircraftName ?? reg}: ${NO_SESSION_SEND_WHY}`;
+}
+
+// 승인됐는데 AIRCRAFT에 살아 있는 세션이 없는 ASSIGN(ATC-388): 서버가 LAUNCH하거나(auto-approve-run.ts runApprovedRelaunch) waitMin 뒤 닫는다.
+// waiting: 지금 기다리는 수, overdue: 그중 waitMin을 넘긴 수(서버가 닫기 전에 이 수가 0보다 크면 LAUNCH도 닫기도 안 되고 있다는 신호), closed24h: 지난 24시간에 이 사유로 닫은 수
+export function approvedNoSessionOf(proposals: readonly Proposal[], s: Pick<Snapshot, "sessions">, now: number, waitMin: number, teamPattern?: string) {
+  const live = (reg: string) => s.sessions.some((x) => x.status !== "dead" && regKey(x.name, teamPattern) === reg);
+  const waiting = proposals.filter((p) => {
+    const reg = regOfProposal(p, teamPattern);
+    return p.kind === "ASSIGN" && p.status === "approved" && Boolean(reg) && !live(reg!);
+  });
+  const age = (p: Proposal) => now - Date.parse(p.timeline.approved ?? p.statusAt);
+  return {
+    waiting: waiting.length,
+    overdue: waiting.filter((p) => age(p) > waitMin * 60_000).length,
+    closed24h: proposals.filter((p) => p.status === "superseded" && (p.reason ?? "").startsWith(APPROVED_NO_SESSION_WHY) && now - Date.parse(p.statusAt) < 86_400_000).length,
+    waitMin,
+  };
 }
 
 // 보낼 때의 받는 이(ATC-353): 그 REGISTRATION의 살아 있는 세션. sendTo는 그대로 제안의 aircraftName이다 — OCC의 send-guard가 받는 이를 이 이름과 비교하므로 바꾸지 않는다.
@@ -1287,6 +1312,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       // launch 카드(proposal.launch)마다 "LAUNCH on approve", 상한이 찬 열린 카드는 기다린다는 글(ATC-129)
       launch: launchViewOf([...open, ...held, ...inFlight], launchCap),
       launchCap,
+      approvedNoSession: approvedNoSessionOf(proposals, s, now, cfg.approvedWaitMin, cfg.teamPattern), // ATC-388
       briefs: await cardBriefsOf([...open, ...held], s, proposals, logbook, now, fuel, routesOf),
       inFlight,
       overdue: overdueOf(proposals, now),

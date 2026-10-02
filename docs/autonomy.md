@@ -145,6 +145,7 @@ Every place where atc requires or offers a human decision, grouped by area (a su
 | P13 | CHECKRIDE rating grant (SEC ratings decide who may take SEC work) | A team getting a permission by a recommendation | not logged | **keep** (K3) grant, revoke is a tightening; **question** D6 | C9 |
 | P14 | Workspace trust prompt, one time per repository | A session in an untrusted folder | not counted | **keep** (K3) | none |
 | P15 | LAUNCH, STOP, AOG, RETIRE, ENTRY of AIRCRAFT by hand | Fleet shape and usage | FLEET PLAN counts above | **direction** (fleet design); a STOP of work in flight is a brake (principle 9) | none |
+| P16 | A Backlog proposal waiting for the SUPERVISOR on the RELEASE screen (DUTY REVIEW, SCHEDULE NEW; fire = Todo and a `screen` release, or discard = Canceled; [ATC-401](https://linear.app/vocado/issue/ATC-401)) | A proposal going into work that nobody chose | counted from the first day it ships (`BACKLOG` queue rows) | **keep** (the arrow, principle 10): the SUPERVISOR fires. Counted as a wait so it stays visible, not as a gate to remove. It is not a signal for DUTY REVIEW (a review does not start because proposals wait) | C14 (as P5) |
 
 ### 4.4 Direction, DUTY and guards
 
@@ -256,6 +257,87 @@ The auto-revert lane (control C4, WO-10 pulled forward) is **on from the start (
 - **Counted per day** (`GET /api/auto-revert`-style numbers in the settings window, under the AUTO REVERT row, last 7 UTC days): reverts opened, flakes caught (red, then green on re-run), misfires, and the `hold` and `stop` lines. A **misfire** is a reverted PR merged back unchanged within 24 hours of its revert landing: either a revert of atc's revert PR (GitHub's branch name `revert-<our revert PR>-…`) or a PR whose files and resulting blob hashes are the same as the original's. It is written once as a `misfire` line, and the DUTY brief shows it.
 - **Off switch.** The SUPERVISOR's `off` stays: with it off atc reads nothing and writes nothing for this lane.
 - Not built: the first half of WO-10 (a revert proposed as a draft for the SUPERVISOR to see); the lane acts at once, guarded by the flake re-run, the green-PR-head check, the K1 and K3 holds and the breaker. A flake that hides a real break is not caught by a re-run that happens to pass; the breaker is the net for that.
+
+### C9: which K3 labels can be declared (ATC-399)
+
+The server builds a classifier allow entry only from a K3 declaration in the form `K3[<label>]: <control> | files: <paths>` (`server/k3-allow.ts`, [dispatch.md](dispatch.md) "K3 releases reach the classifier"). Linear stores the line with escaped brackets (`K3\[Security Weaken\]: …`); the Markdown escapes are undone before the line is read. A label that is not in the first group below is not declarable: the line counts as unparsed, builds no entry, and the FLIGHT stays under the classifier. The list is every `soft_deny` label of `claude auto-mode defaults` as of 2026-10-02 (72 labels; 7 declarable). A later release adds a label by moving it into `K3_LABELS` and giving its entry the text its "must name" asks for.
+
+| soft_deny label | K3 declaration | Why / what the entry names |
+|---|---|---|
+| Git Destructive | not declarable | Destroys data that a revert PR cannot bring back. A code FLIGHT has no need for it. |
+| Code That Leaks When Run | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Code from External | not declarable | Brings code or packages from outside into the run. Supply-chain risk that a declaration cannot judge. |
+| Cloud Storage Mass Delete | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Production Deploy | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Remote Shell Writes | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Sensitive Remote Exec | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Production Reads | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Blind Apply | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Protected-Scope IaC Apply | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Logging/Audit Tampering | not declarable | Switches off a check that auto mode relies on (logging, TLS, CI, sandbox, the classifier). A declaration cannot approve its own bypass. |
+| Permission Grant | **declarable** | the grant: who gets which permission |
+| Account & Standing-Rule Changes | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| TLS/Auth Weaken | not declarable | Switches off a check that auto mode relies on (logging, TLS, CI, sandbox, the classifier). A declaration cannot approve its own bypass. |
+| Secret-Store Writes | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| DNS / Domain / Cert Changes | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Security Weaken | **declarable** | the control being weakened, and the files that change it |
+| Security Test Removal | **declarable** | which tests are removed or skipped (the control field names them) |
+| Safety Bypass Flag | not declarable | Switches off a check that auto mode relies on (logging, TLS, CI, sandbox, the classifier). A declaration cannot approve its own bypass. |
+| Create Unsafe Agents | not declarable | Switches off a check that auto mode relies on (logging, TLS, CI, sandbox, the classifier). A declaration cannot approve its own bypass. |
+| Interfere With Workloads | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Shared Cluster Mutation | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| CI Bypass | not declarable | Switches off a check that auto mode relies on (logging, TLS, CI, sandbox, the classifier). A declaration cannot approve its own bypass. |
+| Modify Shared Resources | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Irreversible Local Destruction | not declarable | Destroys data that a revert PR cannot bring back. A code FLIGHT has no need for it. |
+| Unverifiable Deletion Target | not declarable | Destroys data that a revert PR cannot bring back. A code FLIGHT has no need for it. |
+| Shared Scratch Sweep | not declarable | Destroys data that a revert PR cannot bring back. A code FLIGHT has no need for it. |
+| Irreversible Deletion (general) | not declarable | Destroys data that a revert PR cannot bring back. A code FLIGHT has no need for it. |
+| Unverifiable Deletion Scope | not declarable | Destroys data that a revert PR cannot bring back. A code FLIGHT has no need for it. |
+| Create RCE Surface | not declarable | Switches off a check that auto mode relies on (logging, TLS, CI, sandbox, the classifier). A declaration cannot approve its own bypass. |
+| Expose Local Services | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| External Ingress Tunnel | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Credential Leakage | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Credential Materialization | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Credential Exploration | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| PII Data Handling | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Exfil Scouting | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Traffic Redirection | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Remote Repoint | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Out-of-Place Publication | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Sensitive-Source Provenance | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Excess Sensitive Detail | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Unrequested Artifact Publish | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Live-Shared Artifact Sensitive Delta | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Sandbox Network Callback | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Command Network Lists | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Containment Escape | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Create Public Surface | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Public Data-Sharing Upload | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Untrusted Code Integration | not declarable | Brings code or packages from outside into the run. Supply-chain risk that a declaration cannot judge. |
+| Package Registry Bypass | not declarable | Brings code or packages from outside into the run. Supply-chain risk that a declaration cannot judge. |
+| Unauthorized Persistence | not declarable | Switches off a check that auto mode relies on (logging, TLS, CI, sandbox, the classifier). A declaration cannot approve its own bypass. |
+| Self-Modification | **declarable** | the permission or consent change that is wanted |
+| Tmux Self Drive | not declarable | Switches off a check that auto mode relies on (logging, TLS, CI, sandbox, the classifier). A declaration cannot approve its own bypass. |
+| Instruction Poisoning | **declarable** | that the instruction file edit is a wanted change, so a flag on it is a false positive (the control field says what changes) |
+| Auto-Mode Bypass | not declarable | Switches off a check that auto mode relies on (logging, TLS, CI, sandbox, the classifier). A declaration cannot approve its own bypass. |
+| Session Transcript Tampering | not declarable | Switches off a check that auto mode relies on (logging, TLS, CI, sandbox, the classifier). A declaration cannot approve its own bypass. |
+| Unrequested Commit in a Connected App | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| External System Writes | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Merge Without Review | **declarable** | the merge that skips review |
+| Self-Approval | **declarable** | the approval that the change removes or self-grants |
+| ChatOps Trigger Comments | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Feature Flag Writes | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Node Lifecycle Operations | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Cluster-Wide Workload Creation | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Real-World Transactions | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Third-Party Attack | not declarable | Acts on production, shared or third-party systems. A released FLIGHT is code only, so no declared effect maps to it. |
+| Browser Navigate Exfil | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Browser Input Exfil | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Browser JS Exfil | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Browser File Upload Exfil | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+| Browser Shortcut Execution | not declarable | Moves secrets or data out of the sandbox, or opens a way in or out. No declared code change needs it. |
+
+What the two newest entries name (the classifier's "must name" text): *Security Test Removal* names which tests are removed or skipped; *Instruction Poisoning* says the flagged instruction file edit is a wanted change the SUPERVISOR authorized, so a flag on it is a false positive, and it covers only the declared files (no other instruction file, no memory directory). Every entry also names the control, the files, the STAND and the release id.
 
 ## 6. The three kept gates, declared at release
 

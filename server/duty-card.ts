@@ -60,6 +60,8 @@ export function actionsOf(item: Pick<QueueItem, "kind" | "key">, airports: reado
     }
     case "UNDELIVERED":
       return [{ type: "link", label: "AIRCRAFT 보기(FLEET)", hash: "#fleet" }];
+    case "BACKLOG":
+      return [{ type: "link", label: "RELEASE에서 발권·버리기", hash: "#release" }]; // 제안(ATC-401): 한 번의 클릭으로 쏘거나 버린다
     case "NEEDS YOU":
     case "GO":
       return [{ type: "link", label: "AIRCRAFT 보기(FLEET)", hash: "#fleet" }];
