@@ -1,4 +1,4 @@
-# RADIO 탭
+# RADIO (FLIGHTS 화면의 보기, `#flights/radio`)
 
 atc의 세션끼리 오간 교신(TOWER의 CLEARANCE와 팀의 READBACK, OCC의 FLIGHT PLAN과 CAPTAIN의 답, MCC의 착륙과 RTS)을 **글로 따라 읽는** 화면입니다. 공항 관제 주파수를 스캐너로 듣는 것과 같습니다. 보기만 하고, 보내기·ACK·승인 버튼은 없습니다. 원하면 새로 오는 교신을 무전 소리로 읽어 줄 수도 있습니다(아래 "듣기", 기본은 꺼짐).
 

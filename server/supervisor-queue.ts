@@ -89,14 +89,14 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
     if (pr.draft) continue;
     const id = `${repoName(pr.repo)}#${pr.number}`;
     const tag = `PR #${pr.number}${pr.ticketKey ? ` ${pr.ticketKey}` : ""}`;
-    if (waitsOnHuman(pr.humanCheck)) out.push({ kind: "HUMAN CHECK", key: `${id}@${pr.head}`, since: null, title: tag, hash: "#strips" });
+    if (waitsOnHuman(pr.humanCheck)) out.push({ kind: "HUMAN CHECK", key: `${id}@${pr.head}`, since: null, title: tag, hash: "#home" });
     // MCC나 팀이 아니라 SUPERVISOR가 머지할 CLEARED PR(user 등급·ESCALATE·HOLD·MCC가 안 착륙시키는 모드·등급을 모름)
-    if (pr.landing === "CLEARED" && pr.landBy === "supervisor") out.push({ kind: "LANDING", key: `${id}@${pr.head}`, since: null, title: tag, hash: "#strips" });
+    if (pr.landing === "CLEARED" && pr.landBy === "supervisor") out.push({ kind: "LANDING", key: `${id}@${pr.head}`, since: null, title: tag, hash: "#flights" });
   }
 
   // UPDATE: 서비스가 origin/main보다 뒤이고 main CI가 통과했다(UPDATE 바의 [업데이트] 상태)
   if (inp.update?.kind === "available" && inp.update.mainCi === "ok") {
-    out.push({ kind: "UPDATE", key: short(inp.update.main), since: inp.update.at, title: `${short(inp.update.deployed)} → ${short(inp.update.main)}`, hash: "#radar" });
+    out.push({ kind: "UPDATE", key: short(inp.update.main), since: inp.update.at, title: `${short(inp.update.deployed)} → ${short(inp.update.main)}`, hash: "#home" });
   }
 
   // NEEDS YOU: 백그라운드 job이 blocked로 blockedMin분 넘게 사람을 기다린다(ALERT와 같은 함수)
@@ -125,7 +125,7 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
   for (const c of inp.clearances ?? []) {
     if (!c.undeliverableAt || c.handAt || now - Date.parse(c.undeliverableAt) > 3 * 86_400_000) continue;
     const reason = c.undeliverableReason ?? "undeliverable";
-    out.push({ kind: "UNDELIVERED", key: c.id, since: c.undeliverableAt, title: `${c.type} ${c.id} → ${c.toName}`, hash: "#radar", hand: { source: "CLEARANCE", id: c.id, to: c.toName, reason, text: c.text, card: handFor(c.toName, reason) } });
+    out.push({ kind: "UNDELIVERED", key: c.id, since: c.undeliverableAt, title: `${c.type} ${c.id} → ${c.toName}`, hash: "#home", hand: { source: "CLEARANCE", id: c.id, to: c.toName, reason, text: c.text, card: handFor(c.toName, reason) } });
   }
   for (const p of inp.proposals) {
     if (!p.undelivered || p.status !== "approved" || !p.aircraftName) continue;

@@ -51,7 +51,7 @@ export function HumanCheckQueue({ pulls, idx, nameOf }: { pulls: PullRequest[]; 
   );
 }
 
-function HumanRow({ pr, idx, nameOf }: { pr: PullRequest; idx: Index; nameOf: (id: string) => string }) {
+export function HumanRow({ pr, idx, nameOf }: { pr: PullRequest; idx: Index; nameOf: (id: string) => string }) {
   const slug = slugOf(pr.url);
   const ui = pr.uiChange!;
   const hc = pr.humanCheck!;

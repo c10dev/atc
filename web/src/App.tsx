@@ -1,5 +1,6 @@
 import { AlertBell, SoundLockChip } from "./AlertBell.tsx";
 import { FollowNext } from "./FollowNext.tsx";
+import { canonicalHash } from "./legacy-hash.ts";
 import { SinceLook } from "./SinceLook.tsx";
 import { drawerOfHash, type DrawerRef } from "../../server/detail.ts";
 import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -18,16 +19,12 @@ import { lazyTab, TabBoundary, TabLoading } from "./lazyTab.tsx";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
 import { useDuty } from "./useDuty.ts";
 import { readoutState } from "../../server/duty-chat.ts";
-import { MapView } from "./views/Map.tsx";
 import type { Snapshot } from "../../server/model.ts";
 import type { Index } from "./derive.ts";
 
 // 첫 화면(RADAR)만 메인 번들에 두고, 나머지 탭은 처음 열 때 불러온다(청크마다 그 탭의 CSS·라이브러리까지, 예: DOCS의 marked).
-type SnapProps = { snapshot: Snapshot; idx: Index; now: number };
-const Follow = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Follow.tsx"), "Follow");
+const Flights = lazyTab<{ snapshot: Snapshot; idx: Index; now: number; refreshKey: string }>(() => import("./views/Flights.tsx"), "Flights");
 const Globe = lazyTab<{ refreshKey: string }>(() => import("./views/Globe.tsx"), "Globe");
-const Teams = lazyTab<SnapProps>(() => import("./views/Teams.tsx"), "Teams");
-const Tickets = lazyTab<SnapProps>(() => import("./views/Tickets.tsx"), "Tickets");
 const Airports = lazyTab<{ snapshot: Snapshot }>(() => import("./views/Airports.tsx"), "Airports");
 const Fleet = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/fleet/Fleet.tsx"), "Fleet");
 const Metrics = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/Metrics.tsx"), "Metrics");
@@ -35,7 +32,6 @@ const Network = lazyTab<{ refreshKey: string }>(() => import("./views/Network.ts
 const Release = lazyTab<{ refreshKey: string }>(() => import("./views/Release.tsx"), "Release");
 const Home = lazyTab<{ refreshKey: string; now: number; snapshot: Snapshot; onOpenSettings: () => void }>(() => import("./views/Home.tsx"), "Home");
 const Schedule = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Schedule.tsx"), "Schedule");
-const Radio = lazyTab<Record<string, never>>(() => import("./views/Radio.tsx"), "Radio");
 const Docs = lazyTab<Record<string, never>>(() => import("./views/Docs.tsx"), "Docs");
 // 서랍은 처음 열 때 불러온다(Markdown 렌더러까지 그 청크에)
 const Drawer = lazy(() => import("./Drawer.tsx"));
@@ -44,33 +40,26 @@ const IdeasDrawer = lazy(() => import("./IdeasDrawer.tsx"));
 
 const TABS = [
   { id: "home", code: "HOME" },
-  { id: "radar", code: "RADAR" },
-  { id: "follow", code: "FOLLOW" },
+  { id: "flights", code: "FLIGHTS" },
   { id: "globe", code: "GLOBE" },
-  { id: "strips", code: "STRIPS" },
-  { id: "board", code: "FIDS" },
   { id: "airports", code: "AIRPORTS" },
   { id: "fleet", code: "FLEET" },
   { id: "metrics", code: "METRICS" },
   { id: "network", code: "NETWORK" },
   { id: "release", code: "RELEASE" },
   { id: "schedule", code: "SCHEDULE" },
-  { id: "radio", code: "RADIO" },
   { id: "docs", code: "DOCS" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
-// 이전 주소(#map, #teams, #tickets) 북마크도 열리게 한다.
-// #dispatch는 HOME이 이어받았다(ATC-377): 큐와 메뉴 막대의 옛 링크도 HOME을 연다
-const LEGACY_HASH: Record<string, Tab> = { map: "radar", teams: "strips", tickets: "board", dispatch: "home" };
-
 const connectionLabel = { live: "실시간", connecting: "연결 중", lost: "끊김" } as const;
 
-// 주소 #탭 또는 #탭/하위(예: #docs/requesting). 하위 경로는 그 탭이 읽는다.
+// 주소 #탭 또는 #탭/하위(예: #docs/requesting, #flights/board). 하위 경로는 그 탭이 읽는다.
 function initialTab(): Tab {
+  const canon = canonicalHash(location.hash);
+  if (canon) history.replaceState(null, "", canon);
   const hash = location.hash.slice(1).split("/")[0];
-  if (hash in LEGACY_HASH) return LEGACY_HASH[hash];
-  return TABS.some((t) => t.id === hash) ? (hash as Tab) : "radar";
+  return TABS.some((t) => t.id === hash) ? (hash as Tab) : "home";
 }
 
 export function App({ build }: { build: string }) {
@@ -275,8 +264,8 @@ export function App({ build }: { build: string }) {
         ) : (
           // 탭마다 오류 경계를 새로 둔다(한 탭의 오류·못 불러온 청크가 다른 탭을 막지 않게)
           <>
-            {/* 처음 도착하는 탭(기본 탭)의 맨 위. HOME이 생기면(ATC-377) 그쪽 맨 위로 옮긴다 */}
-            {tab === "radar" && <SinceLook refreshKey={snapshot.at.slice(0, 16)} />}
+            {/* 처음 도착하는 탭(HOME, ATC-377)의 맨 위 */}
+            {tab === "home" && <SinceLook refreshKey={snapshot.at.slice(0, 16)} />}
             <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
               <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now, () => setSettingsOpen(true))}</Suspense>
             </TabBoundary>
@@ -309,14 +298,10 @@ export function App({ build }: { build: string }) {
 function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number, onOpenSettings: () => void) {
   const refreshKey = snapshot.at.slice(0, 16);
   switch (tab) {
-    case "radar":
-      return <MapView snapshot={snapshot} idx={idx} now={now} />;
-    case "follow":
-      return <Follow refreshKey={snapshot.at} now={now} />;
+    case "flights":
+      return <Flights snapshot={snapshot} idx={idx} now={now} refreshKey={snapshot.at} />;
     case "globe":
       return <Globe refreshKey={refreshKey} />;
-    case "strips":
-      return <Teams snapshot={snapshot} idx={idx} now={now} />;
     case "airports":
       return <Airports snapshot={snapshot} />;
     case "fleet":
@@ -331,12 +316,10 @@ function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number, onOpenSe
       return <Home refreshKey={refreshKey} now={now} snapshot={snapshot} onOpenSettings={onOpenSettings} />;
     case "schedule":
       return <Schedule refreshKey={refreshKey} now={now} />;
-    case "radio":
-      return <Radio />;
     case "docs":
       return <Docs />;
     default:
-      return <Tickets snapshot={snapshot} idx={idx} now={now} />;
+      return <Home refreshKey={refreshKey} now={now} snapshot={snapshot} onOpenSettings={onOpenSettings} />;
   }
 }
 

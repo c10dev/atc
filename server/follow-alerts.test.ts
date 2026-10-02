@@ -34,7 +34,7 @@ test("follow|ready|<KEY>: queue, cue call. 풀 수 있게 되면 한 번, 풀리
   assert.equal(a.dest, "queue");
   assert.equal(a.cue, "call");
   assert.equal(a.group, "follow");
-  assert.equal(a.link, "#follow");
+  assert.equal(a.link, "#flights");
   assert.match(a.text, /ATC-5 제목 ATC-5 — 풀 수 있음/);
   // 풀었다: ready가 꺼진다 → 사라진다
   const d = diffAlerts(new Map(on.map((x) => [x.key, x])), run([row("ATC-5", { ready: false })]));

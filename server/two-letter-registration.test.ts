@@ -70,7 +70,7 @@ test("RADIO: 두 글자 콜사인의 문구와 목소리, FLEET 링크, AIRCRAFT
   assert.equal(voiceOf(tx({ freq: "DELIVERY" }), [...voices].reverse()), v); // 안정적
   assert.equal(hashOf("ROMEO ALPHA"), hashOf("ROMEO ALPHA"));
   assert.notEqual(hashOf("ROMEO ALPHA"), hashOf("ROMEO"));
-  assert.deepEqual(linksOf(tx({ id: "C-9" })).map((l) => l.href), ["#strips", "#fleet/TEAM_RA"]);
+  assert.deepEqual(linksOf(tx({ id: "C-9" })).map((l) => l.href), ["#flights", "#fleet/TEAM_RA"]);
   assert.deepEqual(optionsOf([tx({ aircraft: "TEAM_AA" }), tx({ aircraft: "TEAM_Z" }), tx({ aircraft: "TEAM_B" })], "aircraft"), ["TEAM_B", "TEAM_Z", "TEAM_AA"]);
 });
 

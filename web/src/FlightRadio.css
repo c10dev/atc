@@ -1,0 +1,20 @@
+/* FLIGHT 서랍의 RADIO 스레드(ATC-379). 중립 색, 답은 들여쓰기 */
+.fr-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fr-row {
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--line);
+}
+.fr-row:first-child {
+  border-top: 0;
+}
+.fr-line {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.fr-line.is-reply {
+  padding-left: var(--space-4);
+}

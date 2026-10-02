@@ -6,6 +6,7 @@ import type { MergeInfo } from "../../server/pr-merge.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
 import { RelayBox } from "./Relay.tsx";
 import { FlightDispatch } from "./FlightDispatch.tsx";
+import { FlightRadio } from "./FlightRadio.tsx";
 import { flightNumber } from "./aviation.ts";
 import { timeAgo } from "./derive.ts";
 import "./Drawer.css";
@@ -146,8 +147,8 @@ function FollowToggle({ k }: { k: string }) {
           {on ? "FOLLOWING ✓" : "FOLLOW"}
         </button>
         {on && (
-          <a href="#follow" className="faint">
-            FOLLOW 탭 열기
+          <a href="#flights" className="faint">
+            FLIGHTS 열기
           </a>
         )}
         {err && <span className="dr-error">{err}</span>}
@@ -237,6 +238,7 @@ function Flight({ k, now }: { k: string; now: number }) {
         </p>
       )}
       <FlightDispatch k={d.key} now={now} />
+      <FlightRadio k={d.key} />
       <h3 className="dr-h">본문</h3>
       {d.description ? <Md src={d.description} /> : <p className="dr-note">본문 없음</p>}
       {d.descriptionTruncated && <p className="dr-note">본문이 길어 앞부분만 보인다.</p>}

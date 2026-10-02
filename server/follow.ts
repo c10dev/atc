@@ -301,8 +301,8 @@ function nextOf(c: NextCtx): FollowNext | null {
     if (waitsOnHuman(pull.humanCheck)) return { kind: "human-check", label: `HUMAN CHECK #${pull.number}`, href };
     if (pull.landing === "CLEARED" && inp.userPulls?.has(pull.number)) return { kind: "merge", label: `머지 #${pull.number}`, href };
   }
-  if (stuck && (stuck.stage === "sent" || stuck.stage === "readback")) return { kind: "look", label: "살펴보기", href: "#radio" };
-  if (stuck && stuck.stage === "landed") return { kind: "look", label: "살펴보기", href: "#strips" };
+  if (stuck && (stuck.stage === "sent" || stuck.stage === "readback")) return { kind: "look", label: "살펴보기", href: "#flights/radio" };
+  if (stuck && stuck.stage === "landed") return { kind: "look", label: "살펴보기", href: "#flights" };
   return null;
 }
 
