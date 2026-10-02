@@ -25,6 +25,14 @@ OCC는 사용자가 요청했을 때만 새 티켓 초안을 쓴다. 스스로 �
 
 일이 끝난 뒤 Linear 정리도 OCC가 돕는다: PR이 머지됐는데(LOGBOOK에 ARRIVED) 이슈가 열려 있으면 `CLOSE` 초안을 쓴다. 이슈 상태는 사용자가 Linear에서 직접 Done으로 바꾼다([판정하기](reviewing.md)). 팀 PR 본문에 `Fixes VOC-n`을 쓰게 하면(일부만이면 `Part of VOC-n`) CLOSE 후보가 정확해진다.
 
+## 발권(RELEASE): DISPATCH가 배정할 FLIGHT 정하기
+
+Todo에 있는 FLIGHT도 **발권**해야 DISPATCH가 배정한다. 발권이 없는 Todo FLIGHT는 제안일 뿐이고, DISPATCH 탭 맨 위 RELEASE 패널에 목록으로 나온다.
+
+- 한 건은 줄 끝의 **발권** 버튼, 이미 Todo에 있는 것들은 **모두 발권…**을 눌러 한 번에 확인한다. 이 화면의 클릭만 화면 발권이 된다. agent는 만들 수 없다.
+- 첫 일괄 확인부터 발권한 FLIGHT만 배정한다(그 전에는 지금처럼 배정한다). 발권한 뒤 이슈의 목표·완료 기준·K 효과가 바뀌면 다시 발권해야 한다.
+- DUTY 채팅에 `RELEASE ATC-n`(또는 `발권 ATC-n`) 한 줄을 쓰면 DUTY 채팅 발권으로 기록된다. 다른 세션에 말로 발권했다면 그 세션이 `attested`로 증언하고, RELEASE 패널이 세션마다 그 수를 보여 준다. 증언은 서버가 확인할 수 없으니 가끔 확인한다.
+
 ## 팀에 직접 맡길 때
 
 - 누구에게 맡길지는 FLEET 탭에서 고른다: 필요한 TYPE RATING을 갖고, 가능하면 ROUTE(담당 프로젝트)가 맞고, PARKED인 팀.

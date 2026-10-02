@@ -582,6 +582,20 @@ A PR whose STAND has no live holder and that has a pending GO AROUND or FIX used
 - **Unchanged:** the new holder never merges, and the AIRPORT merge rules and LANDING CLEARANCE tiers stay as they are. A PR with no pending GO AROUND or FIX gets no holder card.
 - **Not built:** a message to DUTY (the DUTY brief only lists the PR); choosing among several rated AIRCRAFT by load.
 
+## Release record as built (ATC-362)
+
+DISPATCH assigns only FLIGHTs the SUPERVISOR has released ("fired the arrow", [autonomy.md](autonomy.md) principles 1 and 10). A Todo FLIGHT with no release record is a proposal: DISPATCH skips it with the reason `발권 기록 없음 — 제안 상태, SUPERVISOR가 발권(RELEASE)해야 배정`, and the SUPERVISOR releases it with one click in the RELEASE panel at the top of the DISPATCH tab. The record is `releases.jsonl` (state folder, append-only).
+
+- **What a release carries.** The FLIGHT, the channel, the time, and `hash`: a 16-hex SHA-256 of the issue's `## Goal`, `## Done when` and `## K effects` sections (the whole body when none of the three exists; `Ticket.releaseHash`, read with the Linear board, additive). If the body changes after the release, the hash no longer matches, the FLIGHT is a proposal again (`발권 뒤 목표·완료 기준이 바뀜`) and must be released again. A release carries only the destination and the declared K effects; priority is a separate rule that stays.
+- **Channels.**
+  - `screen`: a click on the RELEASE panel (`POST /api/releases {flight, hash}`). The server accepts it only from this app (`fromThisApp`, else 403), the same check as the FLIGHT state button, so no agent can create one. The screen sends the hash it showed; if the issue changed since, the server answers 409.
+  - `duty-chat`: the SUPERVISOR's own words in the DUTY chat. A line `RELEASE ATC-n [ATC-m …]` or `발권 ATC-n` in a message sent through the Origin-checked `/api/duty/message` records a release with the message text (first 500 characters). DUTY itself cannot write it: it has no `atcctl` command for this and the DUTY guard is unchanged.
+  - `attested`: the SUPERVISOR's words to another session (ENGINEERING, desktop), attested by that session with `atcctl release attest <FLIGHT> --session <name> -- <their words>` (`POST /api/releases/attest`). The server cannot check the words (an attestation is agent-written text and could be false), so the record says `attested`, keeps the session name and the words, and the RELEASE panel counts attested releases per session for spot checks. `channel` in the request body is ignored: attest never produces a `screen` record.
+- **Bulk confirmation.** The FLIGHTs already in Todo are released with one confirmation: "모두 발권…" lists the unreleased FLIGHTs and releases the list the screen showed (`POST /api/releases/bulk {flights: [{key, hash}]}`, Origin-checked; one that changed since is skipped and reported). The same click writes the `arm` line.
+- **When the gate is on.** `dispatch.json` `releaseGate`: `"auto"` (default) turns the gate on at the first bulk confirmation, so landing this changes nothing until the SUPERVISOR has confirmed the Todo FLIGHTs they want flown; `"on"` always; `"off"` never. Absent or unknown values mean `auto`.
+- **Formats.** `releases.jsonl`, `Ticket.releaseHash`, `Snapshot.releases` and `releaseGate` are additive. `atcctl release [brief]` reads the view. Nothing in the DUTY guard, the root rules or any guard changed.
+- **Not decided here.** Whether CROSSCHECK-approved SCHEDULE NEW drafts land in Backlog, and whether the priority rule stays once a release record exists ([ATC-334](https://linear.app/vocado/issue/ATC-334)). ATC-363 reads the record.
+
 ## DIRECT briefs (ATC-32)
 
 Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.
