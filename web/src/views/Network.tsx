@@ -4,6 +4,7 @@ import "./Metrics.css";
 import "./Network.css";
 import { RouteMap } from "./RouteMap.tsx";
 import { apiGet } from "../api.ts";
+import { Empty } from "../kit/Empty.tsx";
 
 // 4단계 NETWORK: ROUTE(Linear 프로젝트)·AIRCRAFT·28일 추이를 한눈에. 읽기만 한다.
 // 차트는 METRICS와 같은 모양(인라인 SVG, 계열 하나)으로 그린다.
@@ -174,7 +175,7 @@ export function Network({ refreshKey }: { refreshKey: string }) {
         </p>
       )}
       {!data ? (
-        !error && <p className="empty">불러오는 중…</p>
+        !error && <Empty>불러오는 중…</Empty>
       ) : (
         <>
           <Sources sources={data.sources} />
@@ -239,7 +240,7 @@ function Routes({ routes }: { routes: RouteRow[] }) {
         ROUTES <em>Linear 프로젝트별 · 열린 FLIGHT, 최근 14일 ARRIVED</em>
       </h2>
       {!routes.length ? (
-        <p className="empty nw-empty">보여 줄 ROUTE가 없음 — FLEET에서 AIRCRAFT에 ROUTE(Linear 프로젝트)를 정하면 여기 나온다.</p>
+        <Empty className="nw-empty">보여 줄 ROUTE가 없음 — FLEET에서 AIRCRAFT에 ROUTE(Linear 프로젝트)를 정하면 여기 나온다.</Empty>
       ) : (
         <Scroll label="ROUTES 표">
           <table className="mx-table nw-table">
@@ -309,7 +310,7 @@ function Aircraft({ aircraft }: { aircraft: AircraftRow[] }) {
         AIRCRAFT <em>TARGETS 대비 실적 · 정시율·LANDING 대기·되돌림·LOS는 최근 14일</em>
       </h2>
       {!aircraft.length ? (
-        <p className="empty nw-empty">운항 중인 AIRCRAFT가 없음 — FLEET 탭의 ENTRY INTO SERVICE로 등록한다.</p>
+        <Empty className="nw-empty">운항 중인 AIRCRAFT가 없음 — FLEET 탭의 ENTRY INTO SERVICE로 등록한다.</Empty>
       ) : (
         <>
           <Scroll label="AIRCRAFT 표">
@@ -413,7 +414,7 @@ function Trends({ days, gates, windowDays }: { days: DayRow[]; gates: GateRow[];
         TRENDS <em>최근 {windowDays}일 · 서버 날짜</em>
       </h2>
       {noDays ? (
-        <p className="empty nw-empty">최근 {windowDays}일 ARRIVED 기록이 없음 — LOGBOOK에 머지된 PR이 쌓이면 그려진다.</p>
+        <Empty className="nw-empty">최근 {windowDays}일 ARRIVED 기록이 없음 — LOGBOOK에 머지된 PR이 쌓이면 그려진다.</Empty>
       ) : (
         <div className="mx-trends">
           {flow.map((s) => (
@@ -425,7 +426,7 @@ function Trends({ days, gates, windowDays }: { days: DayRow[]; gates: GateRow[];
         GATES <em>DISPATCH·SCHEDULE 결정, 일치율, CROSSCHECK 일치(은퇴 — 옛 기록)</em>
       </h3>
       {noGates ? (
-        <p className="empty nw-empty">최근 {windowDays}일 DISPATCH·SCHEDULE 결정과 옛 CROSSCHECK 기록이 없음.</p>
+        <Empty className="nw-empty">최근 {windowDays}일 DISPATCH·SCHEDULE 결정과 옛 CROSSCHECK 기록이 없음.</Empty>
       ) : (
         <div className="mx-trends">
           {gate.map((s) => (
@@ -453,7 +454,7 @@ function Spark({ s, dates }: { s: Series; dates: string[] }) {
         <figcaption>
           <span className="mx-trend-code">{s.code}</span> {s.label}
         </figcaption>
-        <p className="empty nw-trend-empty">기록 없음</p>
+        <Empty className="nw-trend-empty">기록 없음</Empty>
       </figure>
     );
   }

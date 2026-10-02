@@ -8,6 +8,7 @@ import type { Save } from "./SettingsServer.tsx";
 import { ALERT_GROUPS, GROUP_LABEL, SOUND_LABEL, SOUND_NAMES } from "./supervisor-alerts.ts";
 import "./alerts.css";
 import { apiGet } from "./api.ts";
+import { Segmented } from "./kit/Segmented.tsx";
 
 // 설정 창의 알림 탭(ATC-87). 알림(브라우저 Notification)과 소리(Web Audio)는 각자 따로 켜고, 둘 다 이 브라우저에만 저장되며 기본은 꺼짐이다.
 // 음성 콜아웃(ATC-140): 서버가 로컬 TTS 엔진으로 만든 WAV를 무전 체인으로 들려준다. 켜기·무전 효과는 이 브라우저에, 엔진·목소리는 서버 설정(.env.local)에 둔다
@@ -247,17 +248,5 @@ function Section({ code, label, hint, children }: { code: string; label: string;
       {children}
       {hint && <p className="settings-hint">{hint}</p>}
     </section>
-  );
-}
-
-function Segmented<T extends boolean>({ label, value, options, onChange }: { label: string; value: T; options: [T, string][]; onChange: (value: T) => void }) {
-  return (
-    <div className="segmented" role="radiogroup" aria-label={label}>
-      {options.map(([v, text]) => (
-        <button key={String(v)} role="radio" aria-checked={value === v} onClick={() => onChange(v)}>
-          {text}
-        </button>
-      ))}
-    </div>
   );
 }

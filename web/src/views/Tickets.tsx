@@ -17,6 +17,7 @@ import { formatClock, type Settings, updateSettings, useSettings } from "../sett
 import { SplitFlap } from "../SplitFlap.tsx";
 import { useMilestones } from "../useMilestones.ts";
 import { AirportCode, PriorityMark, SessionBadge } from "../badges.tsx";
+import { Empty } from "../kit/Empty.tsx";
 
 // DEPARTURES 순서: 곧 LANDING할 FLIGHT가 위로
 const LIST_ORDER: PhaseTone[] = ["cleared", "approach", "enroute", "filed", "triage", "scheduled", "arrived", "canceled"];
@@ -218,7 +219,7 @@ function DepartureBoard({ groups, total, idx, clock, now, milestones }: { groups
             </tbody>
           ))}
         </table>
-        {total === 0 && <p className="empty fids-empty">표시할 편이 없음</p>}
+        {total === 0 && <Empty className="fids-empty">표시할 편이 없음</Empty>}
       </div>
     </div>
   );
