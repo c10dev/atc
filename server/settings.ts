@@ -55,7 +55,7 @@ export interface ServerSettings {
   // 음성 콜아웃(ATC-140): 고른 엔진과 목소리(.env.local). 설치된 목소리 목록은 GET /api/voice/status
   voice: { engine: string; voice: string };
   // DUTY(ATC-220): duty.json. 기본 꺼짐. 켜면 SUPERVISOR가 첫 글을 보낼 때 이 서버가 `claude -p`를 띄운다(ACCOUNT의 FUEL을 쓴다)
-  duty: Pick<DutyConfig, "enabled" | "account" | "idleMin" | "charter"> & { accountWarning: string | null }; // accountWarning: 등록부에 없는 ACCOUNT라 ~/.claude로 돈다(ATC-242)
+  duty: Pick<DutyConfig, "enabled" | "account" | "idleMin" | "charter" | "l1"> & { accountWarning: string | null }; // accountWarning: 등록부에 없는 ACCOUNT라 ~/.claude로 돈다(ATC-242)
   judges: { jev: { mode: JudgeMode; engine: "stub" | "jev"; apiKeySet: boolean; lastRunAt: string | null; lastError: string | null; judged: number } };
 }
 
@@ -79,6 +79,7 @@ export interface SettingsPatch {
   controlRecycleAuto?: Record<string, boolean>; // 세션 이름 → 자동 재시작 대상인가(OCC 기본 false, 측정·알림만). SUPERVISOR만
   fleetPlanReposition?: RepositionMode; // fleet-plan.json에 쓴다(ATC-179). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   dutyCharter?: "off" | "shadow" | "on"; // duty.json의 charter(ATC-233): DUTY가 만든 CHARTER REQUEST를 OCC가 읽는 정도. SUPERVISOR만(이 화면 Origin)
+  dutyL1?: "off" | "on"; // duty.json의 l1(ATC-349): DUTY가 자기 STAND·Linear 쓰기 길을 여는 스위치. 에이전트 자신의 힘을 넓히므로 SUPERVISOR만(이 화면 Origin이 있어야 받는다). atcctl·관제 세션 길은 없다
   dutyAccount?: string; // duty.json의 account(ATC-242): 등록부의 라벨만. 바뀌면 다음 글부터 새 대화. SUPERVISOR만
   dutyEnabled?: "off" | "on"; // duty.json에 쓴다(ATC-220). SUPERVISOR만: 이 화면 Origin이 있어야 받는다. 끄면 실행 중인 프로세스가 끝난다
   judgesJev?: JudgeMode; // judges.json에 쓴다(ATC-36). SUPERVISOR만: 이 화면 Origin이 있어야 받는다. 데이터 반출을 켜는 스위치
@@ -125,7 +126,7 @@ export function readServerSettings(): ServerSettings {
     controlRecycle: loadRecycle(),
     fleetPlan: { reposition: loadReposition().mode, repositionDailyMax: loadReposition().dailyMax },
     voice: { engine: config.ttsEngine, voice: config.ttsVoice },
-    duty: (({ enabled, account, idleMin, charter }) => ({ enabled, account, idleMin, charter, accountWarning: effectiveDutyFolder(account, accountFolders(), config.claudeDir).warning }))(loadDutyConfig()),
+    duty: (({ enabled, account, idleMin, charter, l1 }) => ({ enabled, account, idleMin, charter, l1, accountWarning: effectiveDutyFolder(account, accountFolders(), config.claudeDir).warning }))(loadDutyConfig()),
     judges: { jev: { mode: loadJudges().jev, engine: engineName(), apiKeySet: Boolean(config.typesafeApiKey), ...judgeStatus.jev } },
   };
 }
@@ -238,7 +239,7 @@ export function mountSettings(app: Hono) {
     // judgesJev는 judges.json에 쓴다(ATC-36)
     // mccMode는 mcc.json에 쓴다(docs/mcc.md)
     // fuelHold는 dispatch.json fuel.hold에 쓴다(ATC-55)
-    const { reviewSecurity, autolandMode, autolandReviewedSecurity, judgesJev, mccMode, fuelHold, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, dutyEnabled, dutyCharter, dutyAccount, ...rest } = body as Record<string, unknown>;
+    const { reviewSecurity, autolandMode, autolandReviewedSecurity, judgesJev, mccMode, fuelHold, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, dutyEnabled, dutyCharter, dutyL1, dutyAccount, ...rest } = body as Record<string, unknown>;
     if (fuelHold !== undefined && fuelHold !== "off" && fuelHold !== "on") return c.json({ errors: { fuelHold: `off 또는 on` } }, 400);
     if (reviewSecurity !== undefined && !EXTERNAL_REVIEW_SECURITY.includes(reviewSecurity as ExternalReviewSecurity))
       return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
@@ -264,6 +265,7 @@ export function mountSettings(app: Hono) {
     const dutyAcct = dutyAccount === undefined ? null : dutyAccountPatchOf(dutyAccount, observedLabelsOn(accountFolders()) ? accountFolders().map((f) => f.label) : []);
     if (dutyAcct && !dutyAcct.ok) return c.json({ errors: { dutyAccount: dutyAcct.error } }, 400);
     if (dutyCharter !== undefined && dutyCharter !== "off" && dutyCharter !== "shadow" && dutyCharter !== "on") return c.json({ errors: { dutyCharter: `off, shadow, on 중 하나` } }, 400);
+    if (dutyL1 !== undefined && dutyL1 !== "off" && dutyL1 !== "on") return c.json({ errors: { dutyL1: `off 또는 on` } }, 400);
     const { env, errors } = validatePatch(rest);
     if (Object.keys(errors).length) return c.json({ errors }, 400);
     if (Object.keys(env).length) {
@@ -282,9 +284,10 @@ export function mountSettings(app: Hono) {
     if (controlRecycleMode !== undefined) setRecycleMode(controlRecycleMode as RecycleMode);
     if (dutyEnabled !== undefined) await setDutyConfig({ enabled: dutyEnabled === "on" });
     if (dutyCharter !== undefined) await setDutyConfig({ charter: dutyCharter });
+    if (dutyL1 !== undefined) await setDutyConfig({ l1: dutyL1 === "on" });
     if (dutyAcct?.ok) await setDutyConfig({ account: dutyAcct.label });
     console.log(
-      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(fuelHold !== undefined ? [`fuel.hold=${fuelHold}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(autolandReviewedSecurity !== undefined ? [`autoland.reviewedSecurity=${autolandReviewedSecurity}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : []), ...(dutyEnabled !== undefined ? [`duty.enabled=${dutyEnabled}`] : []), ...(dutyCharter !== undefined ? [`duty.charter=${dutyCharter}`] : []), ...(dutyAcct?.ok ? [`duty.account=${dutyAcct.label}`] : [])].join(", ")}`,
+      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(fuelHold !== undefined ? [`fuel.hold=${fuelHold}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(autolandReviewedSecurity !== undefined ? [`autoland.reviewedSecurity=${autolandReviewedSecurity}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : []), ...(dutyEnabled !== undefined ? [`duty.enabled=${dutyEnabled}`] : []), ...(dutyCharter !== undefined ? [`duty.charter=${dutyCharter}`] : []), ...(dutyL1 !== undefined ? [`duty.l1=${dutyL1}`] : []), ...(dutyAcct?.ok ? [`duty.account=${dutyAcct.label}`] : [])].join(", ")}`,
     );
     return c.json(readServerSettings());
   });

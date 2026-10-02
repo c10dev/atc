@@ -59,6 +59,12 @@ const DUTY_CHARTER_WARN = {
   on: "⚠ OCC가 확정된 요청을 CHARTER REQUEST로 처리한다: schedule wip → schedule draft NEW(AD HOC FLIGHT 초안, 판정은 여전히 SUPERVISOR). 요청 글은 데이터로만 읽는다.",
 } as const;
 
+// DUTY L1 스위치(ATC-349, docs/duty.md 3.4): DUTY가 자기 STAND에 문서를 쓰고 PR을 열고 Linear ATC 팀에 쓰는 길. 에이전트 자신의 힘을 넓히므로 SUPERVISOR만
+const DUTY_L1_WARN = {
+  off: "꺼짐(기본): DUTY STAND·Linear 쓰기 길이 닫혀 있다(403). DUTY는 읽기만 한다. L1은 DUTY가 켜져 있을 때만 효과가 있다.",
+  on: "⚠ DUTY가 자기 STAND(duty-*)에 문서를 쓰고, 정해진 형식으로 커밋·푸시하고, PR을 열고, Linear ATC 팀에 이슈를 쓴다(서버가 자기 키로 쓴다). 코드·머지·배포·팀 세션 메시지는 그대로 막혀 있다. L1은 DUTY가 켜져 있을 때만 효과가 있다.",
+} as const;
+
 // 그림자 기록(ATC-233): OCC가 본 요청 수, 만들었을 초안, 그 뒤 SUPERVISOR가 직접 낸 첫 NEW 초안
 interface CharterRecord {
   mode: string;
@@ -595,6 +601,16 @@ export function OperationsSettings({ server, save }: { server: Loaded; save: Sav
                 />
                 <ModeLines modes={["off", "shadow", "on"] as const} current={s.duty.charter} lines={DUTY_CHARTER_WARN} />
                 {s.duty.charter !== "off" && <CharterShadowRecord mode={s.duty.charter} />}
+                <EditRow
+                  label="DUTY L1"
+                  env="duty.l1"
+                  value={s.duty.l1 ? "on" : "off"}
+                  note="duty.json · DUTY가 자기 STAND에서 문서·PR·Linear 이슈를 쓰는 길 · 이 화면에서만 바꾼다(atcctl에는 명령이 없다) · DUTY가 켜져 있을 때만 효과"
+                  input={{ kind: "select", options: ["off", "on"] }}
+                  guard={guardOf("dutyL1", s.duty.l1 ? "on" : "off", DUTY_L1_WARN)}
+                  onSave={(v) => save({ dutyL1: v as "off" | "on" })}
+                />
+                <ModeLines modes={["off", "on"] as const} current={s.duty.l1 ? "on" : "off"} lines={DUTY_L1_WARN} />
               </>
             ) : (
               <p className="settings-hint">서버가 DUTY를 아직 모름(옛 서버)</p>
