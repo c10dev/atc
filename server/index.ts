@@ -61,6 +61,7 @@ import { buildSnapshot } from "./snapshot.ts";
 import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
 import { mountQrh, runQrh } from "./qrh-run.ts";
 import { mountDuty } from "./duty-api.ts";
+import { mountMigrate } from "./migrate-api.ts";
 import { mountReleases, releaseFromChat } from "./release-run.ts";
 import { duty, mountDutyRun } from "./duty-run.ts";
 import { mountDutyL1 } from "./duty-l1-run.ts";
@@ -231,6 +232,7 @@ mountMilestones(app, getSnapshot);
 mountQrh(app); // QRH shadow(ATC-288): qrh.named 줄을 읽기만 한다
 mountAtfm(app, getSnapshot);
 mountAutoland(app, getSnapshot);
+mountMigrate(app); // 마이그레이션 리허설 기록 읽기(ATC-368). 스위치는 설정 창(PUT /api/settings)뿐
 mountMcc(app, getSnapshot, () => head);
 const update = mountUpdate(app, getSnapshot, () => head); // UPDATE bar(ATC-82)
 // 자동 RTS(ATC-84): mcc 모드가 rts·land+rts일 때만 일한다. 그 밖의 모드나 시험 서버는 아무것도 하지 않는다

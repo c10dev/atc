@@ -481,6 +481,31 @@ export function LandingSettings({ server, save }: { server: Loaded; save: Save }
         <MccGatePanel />
       </Block>
 
+      <Block code="MIGRATE" label="마이그레이션 리허설(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) => (
+            <>
+              {s.migrate.airports.length === 0 && <p className="mcc-gate-note">hostedDb가 있는 AIRPORT 없음(airports.json)</p>}
+              {s.migrate.airports.map((a) => (
+                <EditRow
+                  key={a.code}
+                  label={a.code}
+                  env={`migrate.${a.code}`}
+                  value={a.enabled ? "on" : "off"}
+                  note={
+                    a.why
+                      ? `켤 수 없음 — ${a.why}`
+                      : "⚠ 켜면 AUTOLAND 주기가 CLEARED PR의 새 마이그레이션을 시험 DB에 먼저 적용하고, 통과하면 복원점을 만든 뒤 실전 DB에 적용한다. 이 화면에서만 바꾼다 — 세션은 못 바꿈. 실패하면 실전은 그대로이고 PR은 머지되지 않는다"
+                  }
+                  input={{ kind: "select", options: ["off", "on"] }}
+                  onSave={(v) => save({ migrateRehearsal: { [a.code]: v === "on" } })}
+                />
+              ))}
+            </>
+          )}
+        </ServerRows>
+      </Block>
+
       <Block code="REVIEW" label="Codex 한도 때 착륙 리뷰">
         <ServerRows server={server}>
           {(s) => (

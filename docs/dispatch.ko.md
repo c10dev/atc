@@ -596,6 +596,24 @@ DISPATCH는 SUPERVISOR가 발권한("화살을 쏜", [autonomy.md](autonomy.md) 
 - **형식.** `releases.jsonl`, `Ticket.releaseHash`, `Snapshot.releases`, `releaseGate`는 모두 추가다. `atcctl release [brief]`가 읽는다. DUTY guard, 루트 규칙, 다른 guard는 바뀌지 않았다.
 - **여기서 정하지 않은 것.** CROSSCHECK가 승인한 SCHEDULE NEW 초안이 Backlog로 가는지, 발권 기록이 생긴 뒤에도 우선순위 규칙이 남는지([ATC-334](https://linear.app/vocado/issue/ATC-334)). ATC-363이 이 기록을 읽는다.
 
+## 마이그레이션 리허설 (ATC-368, as built)
+
+호스티드 DB가 있는 AIRPORT(`airports.json`의 `hostedDb`, ATC-329)에서 PR의 새 마이그레이션이 사람 단계 없이 실전 DB에 닿는다. AUTOLAND 주기(`server/autoland-run.ts`)가 머지 전에 한 주기에 PR 하나를 리허설한다: 스위치가 켜진 AIRPORT의 CLEARED PR 가운데 막힌 것이 "새 마이그레이션이 호스티드 DB에 아직 없음"뿐이고 이 head로 시도한 적이 없는 것. 성공하면 실전에 적용하고, 다음 주기에 ATC-329 게이트가 통과해 AUTOLAND가 머지한다(적용이 머지보다 먼저). 모든 단계는 PR head와 마이그레이션 버전과 함께 `migrations.jsonl`(상태 폴더, 추가만)에, 요약 한 줄은 `autoland.jsonl`(`op: "migrate"`)에 남는다. `GET /api/migrate`가 스위치와 기록을 읽는다.
+
+순서는 정해져 있고 처음 실패에서 멈춘다:
+
+1. **선언 검사**(`server/migration-declare.ts`, 순수). 새 SQL을 발권 때 선언한 K1 효과와 견준다: 이슈의 `## K effects` 절이고, 발권 기록(ATC-362)의 해시가 지금 본문과 같을 때만 받는다. K1이 선언되지 않았거나, 파괴적 문장(DROP, TRUNCATE, REVOKE, 이름 바꿈, 열 타입 변경, DISABLE RLS, WHERE 없는 UPDATE·DELETE), 분류할 수 없는 문장, 선언이 그 표를 적지 않은 DML이 있으면 멈춘다. 추가형 DDL은 K1이 선언돼 있으면 통과한다. 기계 검사는 이 종류에는 강하고 논리(틀린 WHERE, backfill)에는 약하다. 그것은 리허설과 복원점의 몫이다.
+2. **리허설.** 시험 DB가 실전과 같은 마이그레이션 버전이어야 한다(실전에서 다시 가져오는 일은 atc 밖에서 하고, atc는 그것이 됐는지만 확인). 그다음 파일마다 버전 줄과 함께 한 트랜잭션으로 적용하고, AIRPORT의 `smoke` 질의를 돌린다.
+3. **복원점.** 호스팅 제공자에서 읽는다: PITR이 켜져 있으면 그것, 아니면 `maxBackupAgeHours`(기본 24) 안의 가장 새 완료 백업. 없으면 멈춘다. atc가 백업을 만들지는 않는다.
+4. **실전 적용.** 파일마다 한 트랜잭션: 파일의 문장들(자체 BEGIN·COMMIT은 뗌)과 그 파일의 version·name 그대로의 버전 줄.
+5. **적용 뒤 검사.** 버전 줄이 있고, `public`의 함수 본문 해시와 grant가 시험 DB와 같고, `healthUrl`이 있으면 200.
+
+- **결과.** `stopped`: 실전 그대로(4단계 전의 실패, 4단계의 첫 파일 실패). `live-changed`: 4단계에서 일부 파일을 적용한 뒤 실패했거나 5단계가 실패. 기록에 복원점이 있다. 자동 복원은 하지 않는다(아래 "Not built yet"). 같은 head는 다시 하지 않고, 새 head가 새 시도이며 FLIGHT는 새 arrow로 돌아온다.
+- **스위치.** AIRPORT마다 하나, `migrate.json`. `PUT /api/settings`의 `migrateRehearsal: {코드: bool}`로만 바꾼다(`fromThisApp`, `atcctl` 명령 없음, 설정 창에 MIGRATE 블록). `hostedDb.testProjectRef`와 `SUPABASE_MIGRATE_TOKEN`이 있는 AIRPORT만 켤 수 있다. 기본 꺼짐.
+- **자격 증명(K2).** `.env.local`의 `SUPABASE_MIGRATE_TOKEN`(읽기 전용 `SUPABASE_ACCESS_TOKEN`과 따로). SUPERVISOR가 둔다. 요청 머리에만 쓰고 오류·기록은 `redact`를 거친다. 출력·로그·복사·전송하지 않는다.
+- **형식.** 모두 추가: `hostedDb.testProjectRef`·`smoke`·`healthUrl`·`maxBackupAgeHours`, `migrate.json`, `migrations.jsonl`, `autoland.jsonl`의 op `migrate`.
+- **Not built yet.** 실전 적용 실패 뒤 자동 복원, 복원점을 그때 만들기, 시험 DB를 실전에서 다시 가져오기, 앱 점검 명령(SQL 질의만), 자체 호스팅 시험 DB(호스팅 제공자의 project ref만), 적용 전 뒤쪽 제외(HUMAN CHECK) 확인. 복원점에 쓰는 백업 목록 응답 모양은 실제 API로 확인하지 못했다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

@@ -596,6 +596,24 @@ DISPATCH assigns only FLIGHTs the SUPERVISOR has released ("fired the arrow", [a
 - **Formats.** `releases.jsonl`, `Ticket.releaseHash`, `Snapshot.releases` and `releaseGate` are additive. `atcctl release [brief]` reads the view. Nothing in the DUTY guard, the root rules or any guard changed.
 - **Not decided here.** Whether CROSSCHECK-approved SCHEDULE NEW drafts land in Backlog, and whether the priority rule stays once a release record exists ([ATC-334](https://linear.app/vocado/issue/ATC-334)). ATC-363 reads the record.
 
+## Migration rehearsal as built (ATC-368)
+
+For an AIRPORT with a hosted database (`hostedDb` in `airports.json`, ATC-329), a PR's new migrations reach the live database with no human step. The AUTOLAND cycle (`server/autoland-run.ts`) runs a rehearsal before merge for one PR per cycle: a CLEARED PR on an AIRPORT whose switch is on, whose only exclusion is "new migrations not yet applied on the hosted DB", and whose head has not been tried. Success applies the migrations to live, so the next cycle's ATC-329 gate passes and AUTOLAND merges (the apply comes before the merge). Every step is written to `migrations.jsonl` (state folder, append-only) with the PR head and the migration versions, and a summary line to `autoland.jsonl` (`op: "migrate"`). `GET /api/migrate` reads both the switches and the records.
+
+Steps, in this order; the first failure stops the run:
+
+1. **Declaration check** (`server/migration-declare.ts`, pure). The new SQL is compared with the K1 effect declared at release: the `## K effects` section of the issue, accepted only if the release record's hash (ATC-362) still matches the issue body. No K1 declared, a destructive statement (DROP, TRUNCATE, REVOKE, a rename, a column type change, DISABLE RLS, an UPDATE or DELETE without WHERE), a statement that cannot be classified, or a DML statement whose table the declaration does not name, stops the run. Additive DDL passes once K1 is declared. A machine check is strong for these classes and weak for logic (a wrong WHERE, a backfill); those are left to the rehearsal and the restore point.
+2. **Rehearsal.** The test DB must be at the same migration versions as live (the refresh from live is done outside atc; atc only checks that it happened), then each file is applied to it in one transaction together with its version row, then the AIRPORT's `smoke` queries run.
+3. **Restore point.** Read from the hosting provider: PITR when enabled, otherwise the newest completed backup within `maxBackupAgeHours` (default 24). None means stop. atc does not create backups itself.
+4. **Live apply.** Per file, one transaction: the file's statements (its own BEGIN/COMMIT removed) plus the version row with the file's exact version and name.
+5. **Post-apply check.** The version rows exist, function-body hashes and grants in `public` equal the test DB's, and `healthUrl` answers 200 when set.
+
+- **Outcomes.** `stopped`: live untouched (any failure before step 4, or in step 4 on the first file). `live-changed`: step 4 failed after some file applied, or step 5 failed; the record carries the restore point. atc does not restore automatically (not built, see below). The head is not retried; a new head is a new attempt, and the FLIGHT comes back as a new arrow.
+- **Switch.** One per AIRPORT in `migrate.json`, changed only by `PUT /api/settings` `migrateRehearsal: {CODE: bool}` (`fromThisApp`; no `atcctl` command; the settings window has a MIGRATE block). It can be turned on only when the AIRPORT has `hostedDb.testProjectRef` and `SUPABASE_MIGRATE_TOKEN` is set. Off by default.
+- **Credentials (K2).** `SUPABASE_MIGRATE_TOKEN` in `.env.local`, separate from the read-only `SUPABASE_ACCESS_TOKEN`. The SUPERVISOR sets it. It goes only into the request header; errors and records are passed through `redact`. Nothing prints, logs, copies or sends it.
+- **Formats.** All additive: `hostedDb.testProjectRef`, `smoke`, `healthUrl`, `maxBackupAgeHours`; `migrate.json`; `migrations.jsonl`; `autoland.jsonl` op `migrate`.
+- **Not built yet.** Automatic restore after a failed live apply; creating a restore point on demand; refreshing the test DB from live; app smoke commands (only SQL queries); a self-hosted test DB (only a hosting-provider project ref); checking later exclusions (HUMAN CHECK) before applying. The backup-list response shape used for the restore point is unverified against the live API.
+
 ## DIRECT briefs (ATC-32)
 
 Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.

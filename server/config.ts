@@ -29,6 +29,8 @@ export const config = {
   linearApiKey: env.LINEAR_API_KEY || "",
   // AUTOLAND 마이그레이션 게이트(ATC-329): 호스티드 DB 적용 버전을 읽는 토큰. 읽기에만 쓰고 로그·기록·화면에 쓰지 않는다
   supabaseAccessToken: env.SUPABASE_ACCESS_TOKEN || "",
+  // 마이그레이션 리허설(ATC-368, K2): 시험·실전 DB에 SQL을 보내는 토큰. SUPERVISOR가 .env.local에 둔다. 읽기 토큰과 따로이고, 로그·기록·화면·메시지에 쓰지 않는다
+  supabaseMigrateToken: env.SUPABASE_MIGRATE_TOKEN || "",
   linearTeamKey: (env.LINEAR_TEAM_KEY || "VOC").toUpperCase(), // 주 팀
   // 읽는 팀 전부(주 팀이 맨 앞). LINEAR_TEAM_KEYS=VOC,ATC. 없으면 주 팀 하나
   linearTeamKeys: parseTeamKeys(env.LINEAR_TEAM_KEY || "VOC", env.LINEAR_TEAM_KEYS),

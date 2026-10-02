@@ -34,6 +34,9 @@ import { appendRecord } from "./autoland-record.ts";
 import { readMergeReviews } from "./landing-review.ts";
 import { assertGithubOn } from "./github-switch.ts";
 import { hostedDbOfAirport } from "./airports.ts";
+import { rehearsalPass } from "./migrate-run.ts";
+import { redact } from "./sources/supabase-sql.ts";
+import { config } from "./config.ts";
 import { type MigrationGate, migrationGateOf } from "./migration-gate.ts";
 import { listPullFiles } from "./sources/github.ts";
 import { readAppliedFor } from "./sources/supabase-migrations.ts";
@@ -145,6 +148,9 @@ async function cycle(s: Snapshot) {
   });
   // 맡지 않게 된 AIRPORT의 비행 기록은 지운다
   st.inflight = st.inflight.filter((f) => cfg.airports.includes(f.airport));
+
+  // 마이그레이션 리허설(ATC-368): 스위치가 켜진 AIRPORT의 CLEARED PR 하나를 시험 DB에서 리허설하고 통과하면 실전에 적용한다. 머지보다 먼저, 실패해도 던지지 않는다
+  await rehearsalPass(s, { mode: cfg.mode, airports: cfg.airports, stopped: (a) => st.groundStops.some((g) => g.airport === a) }).catch((e) => console.error("[atc] migrate rehearsal failed:", redact(String((e as Error)?.message ?? e), config.supabaseMigrateToken).slice(0, 200)));
 
   if (cfg.mode !== "off") {
     const exclusions = s.autoland?.exclusions ?? {};
