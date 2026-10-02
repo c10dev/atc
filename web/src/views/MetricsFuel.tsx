@@ -8,6 +8,7 @@ import {
   type SortKey, summaryOf, topFlightsOf,
 } from "../fuel-overview.ts";
 import { FuelAccounts } from "./fleet/Fuel.tsx";
+import { MetricsFuelTrend, SummaryChange, type TrendData, type TrendState, UsageToday, useUsageTrend } from "./MetricsFuelTrend.tsx";
 import "./MetricsFuel.css";
 import { apiGet } from "../api.ts";
 
@@ -31,6 +32,7 @@ export function MetricsFuel({ snapshot }: { snapshot: Snapshot | null }) {
   const [days, setDays] = useState<number>(FUEL_DEFAULT_WINDOW);
   const [st, setSt] = useState<State>({ days: FUEL_DEFAULT_WINDOW, fuel: null, entries: [], loading: true, error: null });
   const [tick, setTick] = useState(0); // 새로고침 버튼
+  const trend = useUsageTrend(days, tick); // ATC-389: 어제·지난 기간·최근 주와 견주기(요약 줄과 USAGE가 같이 쓴다)
 
   useEffect(() => {
     let alive = true;
@@ -72,6 +74,8 @@ export function MetricsFuel({ snapshot }: { snapshot: Snapshot | null }) {
         </button>
       </div>
 
+      <UsageToday trend={trend} />
+
       {st.error && (
         <p className="mx-error" role="alert">
           FUEL을 불러오지 못함: {st.error}{" "}
@@ -85,14 +89,16 @@ export function MetricsFuel({ snapshot }: { snapshot: Snapshot | null }) {
       ) : fuel.requests === 0 ? (
         <p className="empty mf-empty">이 기간({fuel.days}일)에 읽은 요청이 없다 — ~/.claude/projects의 대화 기록에 그 기간 기록이 없다.</p>
       ) : (
-        <Body fuel={fuel} entries={st.entries} snapshot={snapshot} />
+        <Body fuel={fuel} entries={st.entries} snapshot={snapshot} trend={trend} />
       )}
     </section>
   );
 }
 
-function Body({ fuel, entries, snapshot }: { fuel: FuelData; entries: LogbookFuelEntry[]; snapshot: Snapshot | null }) {
+function Body({ fuel, entries, snapshot, trend }: { fuel: FuelData; entries: LogbookFuelEntry[]; snapshot: Snapshot | null; trend: TrendState }) {
   const sum = summaryOf(fuel.totals, fuel.requests);
+  // 지난 기간 줄은 같은 기간의 추세일 때만(기간을 바꾸는 사이 앞 기간 값이 붙지 않게)
+  const prev: TrendData | null = trend.data && trend.data.days === fuel.days ? trend.data : null;
   return (
     <>
       <section className="mf-sum" aria-label="요약">
@@ -100,6 +106,7 @@ function Body({ fuel, entries, snapshot }: { fuel: FuelData; entries: LogbookFue
           <div>
             <dt>FUEL COST</dt>
             <dd>{money(sum.total)}</dd>
+            <dd className="mf-kpi-prev"><SummaryChange trend={prev} metric="cost" /></dd>
           </div>
           <div>
             <dt>CAPTAIN</dt>
@@ -118,6 +125,7 @@ function Body({ fuel, entries, snapshot }: { fuel: FuelData; entries: LogbookFue
           <div>
             <dt>요청</dt>
             <dd>{sum.requests.toLocaleString("en-US")}</dd>
+            <dd className="mf-kpi-prev"><SummaryChange trend={prev} metric="requests" /></dd>
           </div>
           <div>
             <dt title="비용 − 값이 매겨진 LEAK">NET</dt>
@@ -129,6 +137,8 @@ function Body({ fuel, entries, snapshot }: { fuel: FuelData; entries: LogbookFue
         </p>
         <p className="faint mf-note">{PRICE_NOTE}</p>
       </section>
+
+      <MetricsFuelTrend trend={trend} />
 
       {snapshot?.fuelAccounts?.length ? <FuelAccounts accounts={snapshot.fuelAccounts} /> : null}
 
