@@ -57,8 +57,19 @@ export function holderOf(x: HolderInput): HolderChoice {
   const free = x.aircraft.filter(takes).sort((a, b) => Number(a.launch === true) - Number(b.launch === true) || compareRegistration(a.registration, b.registration));
   if (free[0]) return { kind: "assign", flight, registration: free[0].registration, resumed: false, launch: free[0].launch === true, why: need.length ? `TYPE RATING ${need.join("+")}` : "free AIRCRAFT" };
 
-  const why = last && lastAc ? `${last}: ${qualified(lastAc) ? lastAc.reason : `no ${need.join("+")} rating`}` : need.length ? `no free AIRCRAFT with ${need.join("+")} rating` : "no free AIRCRAFT";
-  return { kind: "relay", flight, why };
+  return { kind: "relay", flight, why: relayWhyOf({ need, airport: x.airport, aircraft: x.aircraft, last, lastAc, qualified, here }) };
+}
+
+// RELAY 카드에 보이는 사유(ATC-392): SUPERVISOR가 왜 자기에게 왔는지 본다. 그 AIRPORT에 AIRCRAFT가 없음 → 필요한 TYPE RATING이 없음 → 있는데 못 받는 사유(한도·진행 중 등)
+function relayWhyOf(c: { need: Rating[]; airport: string | null; aircraft: readonly HolderAircraft[]; last: string | null; lastAc: HolderAircraft | undefined; qualified: (a: HolderAircraft) => boolean; here: (a: HolderAircraft) => boolean }): string {
+  const rating = c.need.join("+");
+  const there = c.aircraft.filter(c.here);
+  const at = c.airport ?? "this AIRPORT";
+  if (c.last && c.lastAc && !c.qualified(c.lastAc)) return `${c.last}: no ${rating} rating`;
+  if (!there.length) return `no AIRCRAFT at ${at}`;
+  const able = there.filter(c.qualified);
+  if (!able.length) return `no AIRCRAFT with ${rating} rating at ${at}`;
+  return `none can take it now: ${able.slice(0, 3).map((a) => `${a.registration} ${a.reason || "busy"}`).join("; ")}`;
 }
 
 // PR 하나의 처리 키(저장소 이름#번호)와 head·type을 합친 카드 키. 같은 head·type은 한 번만 제안한다
@@ -76,14 +87,16 @@ export interface PrHolder {
   branch: string;
   stand: string | null;
   resumed: boolean; // 그 FLIGHT를 난 AIRCRAFT가 이어받는다
+  since?: string; // 이 GO AROUND·FIX가 필요해진 시각(ISO, ATC-392). READBACK까지의 시간을 이것으로 잰다. 옛 카드에는 없다
 }
 
-export type HolderRoute = HolderChoice["kind"];
+// wait: 끝난 카드의 다시 제안 대기(RETRY_AFTER_MS). SUPERVISOR 카드가 아니다
+export type HolderRoute = HolderChoice["kind"] | "wait";
 
 export interface HolderPlans {
   plans: AssignPlan[];
   // offerKey(PR, type) → 어디로 갔나. relay만 SUPERVISOR QUEUE의 RELAY 카드가 된다
-  routes: Map<string, { kind: HolderRoute; pr: number; repo: string; flight: string | null }>;
+  routes: Map<string, { kind: HolderRoute; pr: number; repo: string; flight: string | null; why?: string }>;
 }
 
 export interface HolderPlanInput {
@@ -100,16 +113,33 @@ export interface HolderPlanInput {
 }
 
 const repoName = (repo: string) => repo.replace(/\/+$/, "").split("/").pop() || repo;
-// 같은 head·type의 카드가 어디까지 왔나. live: 판정 대기·승인·진행 중(계획에 그대로 둔다). dead: 거절·UNABLE·RECALL 등으로 끝난 카드(또 제안하지 않고 SUPERVISOR가 정한다, RELAY 카드).
+// 같은 head·type의 카드가 어디까지 왔나. live: 판정 대기·승인·진행 중(계획에 그대로 둔다). dead: 거절·UNABLE·RECALL 등으로 끝난 카드.
+// dead는 RETRY_AFTER_MS 뒤에 같은 head로 다시 제안한다(그동안은 wait, SUPERVISOR 카드 없음). 새 head는 key가 달라 바로 제안한다. 한 head에 MAX_TRIES번 끝나면 그때부터 RELAY(SUPERVISOR)다.
 // superseded·expired는 없는 것으로 보고 다시 제안할 수 있다
 const LIVE = new Set(["proposed", "agreed", "disagreed", "approved", "sent", "accepted", "departed", "recalling"]);
-const cardOf = (existing: readonly Proposal[], key: string): { live: Proposal } | { dead: true } | null => {
+export const RETRY_AFTER_MS = 30 * 60_000;
+export const MAX_TRIES = 3;
+const cardOf = (existing: readonly Proposal[], key: string, now: number): { live: Proposal } | { dead: "wait" | "relay"; why: string } | null => {
   const mine = existing.filter((p) => p.prHolder?.key === key && p.status !== "superseded" && p.status !== "expired");
   const live = mine.find((p) => LIVE.has(p.status));
-  return live ? { live } : mine.length ? { dead: true } : null;
+  if (live) return { live };
+  if (!mine.length) return null;
+  const last = mine.reduce((a, b) => (Date.parse(b.statusAt) > Date.parse(a.statusAt) ? b : a));
+  if (mine.length >= MAX_TRIES) return { dead: "relay", why: `${mine.length} cards for this head ended (last ${last.id} ${last.status})` };
+  const wait = Date.parse(last.statusAt) + RETRY_AFTER_MS - now;
+  return wait > 0 ? { dead: "wait", why: `${last.id} ${last.status}; retry in ${Math.ceil(wait / 60_000)}m` } : null;
 };
 // 열린 제안(판정 대기·승인됨)을 쥔 AIRCRAFT. 새 PR HOLDER 카드를 얹지 않는다
 const OPEN = new Set(["proposed", "agreed", "disagreed", "approved"]);
+
+// 이 GO AROUND·FIX가 필요해진 시각(ATC-392): GO AROUND는 그 head의 landing.conflict·prevMerged 이벤트, FIX는 review-findings가 막힌 landing.blocked 이벤트.
+// 이벤트 기록은 메모리라 재시작 뒤에는 없다 — 그때는 카드를 만드는 지금으로 잰다(짧게 잡힌다)
+export function pendingSinceOf(p: Pick<PullRequest, "repo" | "number" | "head">, type: string, events: readonly TrafficEvent[], fallback: string): string {
+  const head = p.head.slice(0, 7);
+  const mine = events.filter((e) => e.pull === p.number && (e.repo === undefined || repoName(e.repo) === repoName(p.repo)));
+  const hit = type === "FIX" ? mine.filter((e) => e.kind === "landing.blocked" && e.blocks?.includes("review-findings")) : mine.filter((e) => (e.kind === "landing.conflict" || e.kind === "landing.prevMerged") && e.head === head);
+  return hit.at(-1)?.at ?? fallback;
+}
 
 export function holderPlansOf(s: Pick<Snapshot, "pulls" | "claims" | "workspaces" | "airports" | "tickets">, x: HolderPlanInput): HolderPlans {
   const routes: HolderPlans["routes"] = new Map();
@@ -135,11 +165,11 @@ export function holderPlansOf(s: Pick<Snapshot, "pulls" | "claims" | "workspaces
     const key = holderKey(p.number, p.head, pick.type);
     const rkey = offerKey(p, pick.type);
     const repo = repoName(p.repo);
-    const card = cardOf(x.existing, key);
+    const card = cardOf(x.existing, key, x.now);
     if (card) {
       const flight = p.ticketKey ?? null;
       if ("dead" in card) {
-        routes.set(rkey, { kind: "relay", pr: p.number, repo, flight }); // 거절된 holder: 같은 head에 또 제안하지 않고 SUPERVISOR에게(RELAY 카드)
+        routes.set(rkey, { kind: card.dead, pr: p.number, repo, flight, why: card.why }); // 끝난 holder 카드: 잠시 기다렸다 다시 제안(wait), 한 head에 여러 번 끝났으면 SUPERVISOR에게(RELAY 카드)
         continue;
       }
       routes.set(rkey, { kind: "assign", pr: p.number, repo, flight });
@@ -150,7 +180,7 @@ export function holderPlansOf(s: Pick<Snapshot, "pulls" | "claims" | "workspaces
     }
     const airport = s.airports.find((a) => a.repo === p.repo)?.code ?? null;
     const choice = holderOf({ pull: p, airport, tickets: s.tickets, aircraft: base(), lastAircraftOf: (f) => lastAircraftOf(f, x.lastAircraft), keyFromBranch: x.keyFromBranch });
-    routes.set(rkey, { kind: choice.kind, pr: p.number, repo, flight: choice.kind === "duty" ? null : choice.flight });
+    routes.set(rkey, { kind: choice.kind, pr: p.number, repo, flight: choice.kind === "duty" ? null : choice.flight, why: choice.why });
     if (choice.kind !== "assign") continue;
     used.add(choice.registration);
     const ac = x.aircraft.find((a) => regOfAircraft(a, x.teamPattern) === choice.registration)!;
@@ -165,7 +195,7 @@ export function holderPlansOf(s: Pick<Snapshot, "pulls" | "claims" | "workspaces
       score: 0,
       factors: [factor],
       ...(choice.launch ? { launch: true as const } : {}),
-      prHolder: { key, pr: p.number, repo, head: p.head.slice(0, 7), type: pick.type === "FIX" ? "FIX" : "GO AROUND", text: pick.text, reason: pick.reason, branch: p.branch, stand: p.standPath && wsByPath.has(p.standPath) ? p.standPath : null, resumed: choice.resumed },
+      prHolder: { key, pr: p.number, repo, head: p.head.slice(0, 7), type: pick.type === "FIX" ? "FIX" : "GO AROUND", text: pick.text, reason: pick.reason, branch: p.branch, stand: p.standPath && wsByPath.has(p.standPath) ? p.standPath : null, resumed: choice.resumed, since: pendingSinceOf(p, pick.type, x.events, new Date(x.now).toISOString()) },
     });
   }
   return { plans, routes };

@@ -22,6 +22,7 @@ export interface RelayOffer {
   text: string; // TOWER의 글, 고치지 않는다
   to: string | null; // 제안하는 받는 AIRCRAFT(REGISTRATION). 모르면 null: SUPERVISOR가 고른다
   reason: string; // GO AROUND의 이유(dirty·behind·prevMerged) 또는 FIX의 지적 출처
+  noHolder: string | null; // PR HOLDER가 이 카드를 SUPERVISOR에게 넘긴 사유(ATC-392): 그 AIRPORT에 AIRCRAFT 없음, TYPE RATING 없음, 한도·진행 중 등. 모르면 null
 }
 
 export interface OfferInput {
@@ -31,7 +32,7 @@ export interface OfferInput {
   lastAircraft: LastAircraftInput;
   now: number;
   // PR HOLDER(ATC-354, pr-holder.ts)의 경로. 주면 relay로 간 PR만 카드가 된다(AIRCRAFT가 이어받거나 DUTY로 가면 SUPERVISOR 카드가 없다). 안 주면 지금처럼 모두
-  holderRoutes?: ReadonlyMap<string, { kind: string }> | null;
+  holderRoutes?: ReadonlyMap<string, { kind: string; why?: string }> | null;
 }
 
 type OfferSnapshot = Pick<Snapshot, "pulls" | "claims" | "workspaces" | "airports">;
@@ -69,7 +70,8 @@ export function relayOffersOf(s: OfferSnapshot, x: OfferInput): RelayOffer[] {
   for (const p of s.pulls.filter(inSequence)) {
     const pick = noHolderPickOf(p, s, x);
     if (!pick || taken(x.relays, pick.type, p.number, p.head.slice(0, 7))) continue;
-    if (x.holderRoutes !== undefined && x.holderRoutes?.get(offerKey(p, pick.type))?.kind !== "relay") continue; // 아직 계산 전이거나 AIRCRAFT·DUTY가 맡는다
+    const route = x.holderRoutes?.get(offerKey(p, pick.type));
+    if (x.holderRoutes !== undefined && route?.kind !== "relay") continue; // 아직 계산 전이거나 AIRCRAFT·DUTY가 맡는다
     const ws = p.standPath ? wsByPath.get(p.standPath) : undefined;
     out.push({
       key: offerKey(p, pick.type),
@@ -84,6 +86,7 @@ export function relayOffersOf(s: OfferSnapshot, x: OfferInput): RelayOffer[] {
       text: pick.text,
       to: lastAircraftOf(p.ticketKey ?? null, x.lastAircraft),
       reason: pick.reason,
+      noHolder: route?.why ?? null,
     });
   }
   return out.sort((a, b) => a.key.localeCompare(b.key));

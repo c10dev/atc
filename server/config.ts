@@ -37,6 +37,8 @@ export const config = {
   // Codex 신호 없이 이 시간이 지나면 CODEX UNAVAILABLE로 보고 REVIEW 세션 리뷰로 넘긴다(ATC-7)
   codexSilentMs: Number(env.ATC_CODEX_SILENT_HOURS || 6) * 3_600_000,
   // 저장소에서 Codex 한도 안내가 이 시간 안에 있었고 그 뒤 진짜 Codex 신호가 없으면, 그 저장소의 새 head는 한도로 본다(ATC-312)
+  // 저장소 어느 PR에도 Codex 신호가 없고 그 동안 PR이 이만큼 기다렸으면 그 저장소의 Codex는 조용하다고 보고 기다리는 PR·새 head를 곧바로 REVIEW로 보낸다(ATC-386, 분)
+  codexLaneSilentMs: Number(env.ATC_CODEX_LANE_SILENT_MIN || 30) * 60_000,
   codexLimitMs: Number(env.ATC_CODEX_LIMIT_HOURS || 6) * 3_600_000,
   linearTeamName: env.LINEAR_TEAM_NAME || "Vocado", // S2에서 새 이슈를 만들 Linear 팀 이름(MCP save_issue의 team)
   // 판정 계열 Jev(ATC-36): TypeSafe API 키. 로그·출력·기록에 쓰지 않는다. ATC_JUDGE_ENGINE=stub이면 녹화 응답(네트워크 없음)

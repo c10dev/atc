@@ -334,7 +334,7 @@ function ExtReviewTag({ pr }: { pr: PullRequest }) {
   const m = pr.extReview;
   if (!m) return null;
   // 스위치로 보낸 보안 PR(ATC-30)은 "보안, "을 붙여 외부 리뷰에 기댄 착륙임을 보인다
-  const codex = `${m.security ? "보안, " : ""}${pr.codexUnavailable?.why === "silent" ? "Codex 무응답" : pr.codexUnavailable?.why === "autoland" ? "AUTOLAND 재리뷰" : pr.codexUnavailable?.scope === "repo" ? `Codex 한도(저장소, ${pr.codexUnavailable.since.slice(11, 16)}Z~)` : "Codex 한도"}`;
+  const codex = `${m.security ? "보안, " : ""}${pr.codexUnavailable?.why === "silent" ? "Codex 무응답" : pr.codexUnavailable?.why === "autoland" ? "AUTOLAND 재리뷰" : pr.codexUnavailable?.why === "lane" ? `Codex 저장소 무응답(${pr.codexUnavailable.since.slice(11, 16)}Z~)` : pr.codexUnavailable?.scope === "repo" ? `Codex 한도(저장소, ${pr.codexUnavailable.since.slice(11, 16)}Z~)` : "Codex 한도"}`;
   const r = m.review;
   const who = r ? reviewerOf(r.family) : "";
   const text =
