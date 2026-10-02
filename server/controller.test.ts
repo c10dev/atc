@@ -129,7 +129,7 @@ test("브리핑: 충돌은 먼저 들어온 순, LANDING SEQUENCE, NO READBACK C
 });
 
 test("LAND 문구: 같은 저장소·base의 첫 PR은 지금 LANDING, 그 뒤는 앞 PR 머지 뒤 rebase, AIRPORT·FLIGHT 없으면 괄호 없음", () => {
-  assert.equal(landTextOf(1, "VCDO", 389, "VOC52", null), "LANDING sequence 1 (VCDO): PR #389 (VOC52). Clear to LAND now — check that base is current before merging.");
+  assert.equal(landTextOf(1, "VCDO", 389, "VOC52", null), "LANDING sequence 1 (VCDO): PR #389 (VOC52). Clear to LAND now. Check that base is current before you merge.");
   assert.equal(landTextOf(2, "VCDO", 393, "VOC191", 389), "LANDING sequence 2 (VCDO): PR #393 (VOC191). Rebase and LAND after the PR ahead (#389) merges.");
   assert.equal(landTextOf(3, null, 40, null, 393), "LANDING sequence 3: PR #40. Rebase and LAND after the PR ahead (#393) merges.");
 });
@@ -158,13 +158,13 @@ test("브리핑: CLEARED PR에만 landText, 순서와 앞 PR은 같은 저장소
   const q = buildBrief(s, { events: [], reset: false, cursor: "e:0" }, [], T0).landingQueue;
   const byPr = new Map(q.map((x) => [x.pr.number, x]));
   assert.deepEqual([21, 5, 23, 6, 24].map((n) => [byPr.get(n)!.seq, byPr.get(n)!.repoSeq]), [[1, 1], [2, 1], [3, 2], [4, 2], [5, 1]]);
-  assert.equal(byPr.get(21)!.landText, "LANDING sequence 1 (VCDO): PR #21 (VOC52). Clear to LAND now — check that base is current before merging.");
-  assert.equal(byPr.get(5)!.landText, "LANDING sequence 1 (TNNS): PR #5. Clear to LAND now — check that base is current before merging.");
+  assert.equal(byPr.get(21)!.landText, "LANDING sequence 1 (VCDO): PR #21 (VOC52). Clear to LAND now. Check that base is current before you merge.");
+  assert.equal(byPr.get(5)!.landText, "LANDING sequence 1 (TNNS): PR #5. Clear to LAND now. Check that base is current before you merge.");
   assert.equal(byPr.get(22)!.landText, null); // APPROACH
   assert.equal(byPr.get(22)!.repoSeq, null);
   assert.equal(byPr.get(23)!.landText, "LANDING sequence 2 (VCDO): PR #23 (VOC191). Rebase and LAND after the PR ahead (#21) merges.");
   assert.equal(byPr.get(6)!.landText, "LANDING sequence 2 (TNNS): PR #6. Rebase and LAND after the PR ahead (#5) merges.");
-  assert.equal(byPr.get(24)!.landText, "LANDING sequence 1 (VCDO): PR #24. Clear to LAND now — check that base is current before merging."); // 다른 base
+  assert.equal(byPr.get(24)!.landText, "LANDING sequence 1 (VCDO): PR #24. Clear to LAND now. Check that base is current before you merge."); // 다른 base
 });
 
 test("세션 찾기: 이름·콜사인·ID, 겹치는 이름은 거절", () => {
@@ -183,10 +183,10 @@ test("CLEARANCE 문구: 콜사인·STAND·FLIGHT·W/U 끝줄(HOLD는 READBACK·U
   };
   assert.equal(
     formatClearance(c, snapshot()),
-    '[ATC C-0007] BRAVO (TEAM_B) · HOLD\nSTAND vocado-voc-175 · FLIGHT VOC175\nDELTA 작업이 끝날 때까지 대기\n— Send your reply to the session name "TOWER" (SendMessage to: "TOWER"), not to the from address: the address changes when TOWER restarts.\n— Reply to this message with "READBACK C-0007" if you take it, "UNABLE C-0007 — reason" if you cannot, or "STANDBY C-0007" if you need time.',
+    '[ATC C-0007] BRAVO (TEAM_B) · HOLD\nSTAND vocado-voc-175 · FLIGHT VOC175\nDELTA 작업이 끝날 때까지 대기\n— Send your reply to the session name "TOWER" (SendMessage to: "TOWER"). Do not send it to the from address. The address changes when TOWER restarts.\n— Reply to this message with "READBACK C-0007" if you take it. Reply with "UNABLE C-0007 — reason" if you cannot. Reply with "STANDBY C-0007" if you need time.',
   );
   // INFO·TRAFFIC·REPORT는 R: ROGER만 청한다(ATC-122)
-  assert.ok(formatClearance({ ...c, type: "INFO" }, snapshot()).endsWith('— When received, reply to this message with "ROGER C-0007".'));
+  assert.ok(formatClearance({ ...c, type: "INFO" }, snapshot()).endsWith('— Reply to this message with "ROGER C-0007" when you receive it.'));
 });
 
 test("OUTSTATION: 소속 AIRPORT 밖 STAND 점유, HANDOFF된 것과 소속 모르는 세션은 제외", async () => {

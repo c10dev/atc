@@ -77,7 +77,7 @@ test("P3만: 모두 해결·답글이면 CLEARED(요약 ok, LAND 글에 남은 P
   assert.deepEqual(codes(cleared), []);
   const sum = codexFindingSummaryOf(codexHeadFindingsOf(cleared)!);
   assert.deepEqual(sum, { p0: 0, p1: 0, p2: 0, p3: 2, unmarked: 0, open: 0, ok: true });
-  assert.equal(landTextOf(1, "VCDO", 394, "VOC178", null, sum.p3), "LANDING sequence 1 (VCDO): PR #394 (VOC178). Clear to LAND now — check that base is current before merging. Codex P3 findings left: 2 (resolved or answered; they do not block landing).");
+  assert.equal(landTextOf(1, "VCDO", 394, "VOC178", null, sum.p3), "LANDING sequence 1 (VCDO): PR #394 (VOC178). Clear to LAND now. Check that base is current before you merge. Codex P3 findings left: 2. They are resolved or answered. They do not block landing.");
   // 답글만 있고 미해결: atc는 막지 않지만 GitHub "스레드 해결 필수"가 BLOCKED로 막는다 — 그 까닭을 보인다
   const answered = pr394([p3(false, "Out of scope; tracked in VOC-190")], { mergeStateStatus: "BLOCKED" });
   assert.deepEqual(codes(answered), ["blocked"]);
