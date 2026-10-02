@@ -23,9 +23,14 @@ export const CHECK_PATHS: readonly string[] = [
   "server/origin.ts", // 스위치를 SUPERVISOR만 바꾸게 하는 검사
   "server/supervisor-auth.ts",
   "server/settings.ts", // 스위치를 쓰는 길
+  "server/index.ts", // supervisorGate를 거는 곳
+  "server/landing.ts", // migrationPathOf·secretPathOf: k1-k2를 가르는 규칙
+  "server/sources/linear.ts", // K3 선언과 발권 해시를 읽는 곳
+  ".github/", // L4가 보는 CI 체크 자체
   "deploy/",
   "mcc/", // MCC의 매뉴얼·inspector·guard
 ];
+// 등급과 상관없이 쓴다: landing-tier에서 auto인 파일(이 파일 자신 포함)을 고치는 PR도 SUPERVISOR 몫이다(mcc.ts landBlocksOf가 모든 등급에 L3를 건다)
 export const checkPathOf = (files: readonly string[]): string | null => files.find((f) => CHECK_PATHS.some((p) => (p.endsWith("/") ? f.startsWith(p) : f === p))) ?? null;
 
 export type KCode = "off" | "check-itself" | "no-flight" | "flight-closed" | "no-release" | "stale" | "attested-only" | "no-declaration" | "unreadable-declaration" | "beyond-declaration" | "k1-k2";

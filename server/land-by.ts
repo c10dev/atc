@@ -12,13 +12,13 @@ export interface MccLandInfo {
   holds: readonly number[]; // SUPERVISOR HOLD가 걸린 PR 번호
   escalated: readonly number[]; // MCC가 ESCALATE한 PR 번호(head가 바뀌어도 남는다)
   // MCC가 이미 재는 등급(deploy/landing-tier.mjs를 tierOfFiles로). head가 다르면 옛 값이라 쓰지 않는다
-  tiers: ReadonlyMap<number, { head: string; tier: "auto" | "flagged" | "user"; k?: true }>; // k: user 등급이지만 발권 때 승인한 K 효과 안이라 MCC가 착륙시킨다(ATC-391)
+  tiers: ReadonlyMap<number, { head: string; tier: "auto" | "flagged" | "user"; k?: true; check?: true }>; // k: user 등급이지만 발권 때 승인한 K 효과 안이라 MCC가 착륙시킨다(ATC-391)
 }
 
 // SUPERVISOR가 착륙시키는 이유(ATC-300). landBy가 "supervisor"일 때만 있고, 판정과 같은 갈래에서 정해져 코드와 이유가 어긋나지 않는다.
 //   user — user 등급 / escalate — MCC가 ESCALATE / hold — SUPERVISOR HOLD / mode — MCC 모드가 착륙시키지 않음(shadow·rts)
 //   tier-unknown — 등급을 아직 모르거나 head가 바뀌어 옛 값 / teams-merge-off — 이 AIRPORT는 팀이 머지하지 않는다(ATC-154)
-export type LandWhy = "user" | "escalate" | "hold" | "mode" | "tier-unknown" | "teams-merge-off";
+export type LandWhy = "user" | "check" | "escalate" | "hold" | "mode" | "tier-unknown" | "teams-merge-off";
 export interface LandDecision {
   by: LandBy;
   why: LandWhy | null; // by가 supervisor일 때만
@@ -33,6 +33,7 @@ export function landDecisionOf(p: { repo: string; number: number; head: string }
   if (mcc.escalated.includes(p.number)) return { by: "supervisor", why: "escalate" };
   const t = mcc.tiers.get(p.number);
   if (!t || t.head !== p.head) return { by: "supervisor", why: "tier-unknown" }; // 등급을 아직 모르면 팀에 LAND를 내지 않는다
+  if (t.check) return { by: "supervisor", why: "check" }; // K 승인 검사 자체를 바꾸는 PR은 어느 등급이든(ATC-391)
   return t.tier === "user" && !t.k ? { by: "supervisor", why: "user" } : { by: "mcc", why: null };
 }
 

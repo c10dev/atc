@@ -4,7 +4,7 @@ import type { QueueInput, QueueItem } from "./supervisor-queue.ts";
 // 큐 항목마다 leak인지 exempt인지, 어느 gate 행(autonomy.md 4절)인지 정한다. leak은 열릴 때와 닫힐 때만 한 줄씩 남긴다(주기마다 아님).
 // 순수 함수만. 자료 모으기와 파일은 leaks-run.ts.
 
-export type LeakWhy = "user" | "escalate" | "hold" | "mode" | "tier-unknown" | "teams-merge-off";
+export type LeakWhy = "user" | "check" | "escalate" | "hold" | "mode" | "tier-unknown" | "teams-merge-off";
 
 // 큐 항목 + 분류에 필요한 덤. 큐 자체(QueueItem)는 건드리지 않고 leaks-run이 덧붙인다
 export interface LeakItem extends QueueItem {
@@ -49,7 +49,7 @@ export function classify(i: LeakItem): Verdict {
       return leak("L10", "C10");
     case "LANDING":
       if (i.landWhy === "hold") return exempt("brake", "L20");
-      if (i.landWhy === "user") return exempt("K3", "L14"); // user 등급: 보수적으로 K3 승인으로 본다(L13의 package*.json은 가르지 못한다)
+      if (i.landWhy === "user" || i.landWhy === "check") return exempt("K3", "L14"); // check: K 승인 검사 자체를 바꾸는 PR(ATC-391)도 K3다; // user 등급: 보수적으로 K3 승인으로 본다(L13의 package*.json은 가르지 못한다)
       if (i.landWhy === "escalate") return leak("L11", "C13");
       return leak("L14", "C9"); // mode·tier-unknown·teams-merge-off: 사람이 머지 단추를 누른다
     case "UPDATE":

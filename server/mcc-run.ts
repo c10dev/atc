@@ -1,4 +1,4 @@
-import { type KLanded, kApprovalOf, kLandDaysOf, type KVerdict } from "./k-approval.ts";
+import { checkPathOf, type KLanded, kApprovalOf, kLandDaysOf, type KVerdict } from "./k-approval.ts";
 import { execFile } from "node:child_process";
 import { userInfo } from "node:os";
 import { join } from "node:path";
@@ -117,10 +117,11 @@ interface TierEntry {
   tier: "auto" | "flagged" | "user";
   files: string[];
   userFiles: string[];
+  checkPath: string | null; // k-approval.ts CHECK_PATHS에 든 파일(ATC-391): 등급과 상관없이 SUPERVISOR 몫
 }
 const tierCache = new Map<string, TierEntry>();
 const tierKey = (slug: string, n: number, head: string) => `${slug}#${n}@${head}`;
-const tierEntryOf = (tier: { tier: "auto" | "flagged" | "user"; reasons: { file: string; tier: string }[] }, files: string[]): TierEntry => ({ tier: tier.tier, files, userFiles: tier.reasons.filter((r) => r.tier === "user").map((r) => r.file) });
+const tierEntryOf = (tier: { tier: "auto" | "flagged" | "user"; reasons: { file: string; tier: string }[] }, files: string[]): TierEntry => ({ tier: tier.tier, files, userFiles: tier.reasons.filter((r) => r.tier === "user").map((r) => r.file), checkPath: checkPathOf(files) });
 async function tierEntryCached(slug: string, n: number, head: string): Promise<TierEntry> {
   const k = tierKey(slug, n, head);
   const hit = tierCache.get(k);
@@ -147,7 +148,7 @@ export async function mccLandInfo(s: Snapshot): Promise<MccLandInfo | null> {
   if (!a?.repo) return null;
   const records = readMccRecords();
   const escalated = [...new Set(records.filter((r) => r.op === "escalate").map((r) => (r as { pr: number }).pr))];
-  const tiers = new Map<number, { head: string; tier: "auto" | "flagged" | "user"; k?: true }>();
+  const tiers = new Map<number, { head: string; tier: "auto" | "flagged" | "user"; k?: true; check?: true }>();
   let slug: string | null = null;
   try {
     slug = airportOf(s).slug;
@@ -156,7 +157,7 @@ export async function mccLandInfo(s: Snapshot): Promise<MccLandInfo | null> {
     for (const p of s.pulls.filter((x) => x.repo === a.repo && !x.draft)) {
       try {
         const e = await tierEntryCached(slug, p.number, p.head);
-        tiers.set(p.number, { head: p.head, tier: e.tier, ...(e.tier === "user" && kVerdictOf(s, p.ticketKey, e, cfg.kApproval).ok ? { k: true as const } : {}) });
+        tiers.set(p.number, { head: p.head, tier: e.tier, ...(e.checkPath ? { check: true as const } : e.tier === "user" && kVerdictOf(s, p.ticketKey, e, cfg.kApproval).ok ? { k: true as const } : {}) });
       } catch {}
     }
   }
@@ -170,7 +171,7 @@ export function mccLandInfoCached(s: Snapshot): MccLandInfo | null {
   const a = s.airports.find((x) => x.code === cfg.airport);
   if (!a?.repo) return null;
   const escalated = [...new Set(readMccRecords().filter((r) => r.op === "escalate").map((r) => (r as { pr: number }).pr))];
-  const tiers = new Map<number, { head: string; tier: "auto" | "flagged" | "user"; k?: true }>();
+  const tiers = new Map<number, { head: string; tier: "auto" | "flagged" | "user"; k?: true; check?: true }>();
   let slug: string | null = null;
   try {
     slug = airportOf(s).slug;
@@ -178,7 +179,7 @@ export function mccLandInfoCached(s: Snapshot): MccLandInfo | null {
   if (slug) {
     for (const p of s.pulls.filter((x) => x.repo === a.repo && !x.draft)) {
       const e = tierCache.get(tierKey(slug, p.number, p.head));
-      if (e) tiers.set(p.number, { head: p.head, tier: e.tier, ...(e.tier === "user" && kVerdictOf(s, p.ticketKey, e, cfg.kApproval).ok ? { k: true as const } : {}) });
+      if (e) tiers.set(p.number, { head: p.head, tier: e.tier, ...(e.checkPath ? { check: true as const } : e.tier === "user" && kVerdictOf(s, p.ticketKey, e, cfg.kApproval).ok ? { k: true as const } : {}) });
     }
   }
   return { repo: a.repo, mode: cfg.mode, holds: cfg.holds, escalated, tiers };
@@ -244,6 +245,7 @@ async function judge(s: Snapshot, number: number, head?: string) {
     tier,
     tierReasons: [...new Set(reasons.map((r) => r.why))],
     escalated,
+    checkPath: entry.checkPath,
     kApproval,
     ci,
     ciCheck: ap.cfg.ciCheck,

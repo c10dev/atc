@@ -193,6 +193,7 @@ export interface LandInput {
   tier: "auto" | "flagged" | "user";
   tierReasons: string[];
   escalated: { reason: string } | null;
+  checkPath?: string | null; // 이 PR이 K 승인 검사 자체를 바꾸는 파일(k-approval.ts CHECK_PATHS). 등급과 상관없이 L3: 늘 사용자가 머지(ATC-391)
   kApproval?: KVerdict | null; // K 승인 판정(ATC-391, k-approval.ts). ok면 user 등급의 L3를 푼다. ESCALATE(의심)는 늘 막는다
   ci: CiState;
   ciCheck: string;
@@ -215,6 +216,7 @@ export function landBlocksOf(x: LandInput): LandBlock[] {
   if (x.pr.base !== x.defaultBranch) out.push({ code: "L2", text: `base가 ${x.defaultBranch}이 아님(${x.pr.base})` });
   if (!x.pr.head.startsWith(x.head.toLowerCase()) || x.head.length < 7) out.push({ code: "L2", text: `head가 움직임(지금 ${short(x.pr.head)}) — 새 head로 다시` });
   if (x.escalated) out.push({ code: "L3", text: `ESCALATE됨 — 사용자가 머지(${x.escalated.reason})` });
+  else if (x.checkPath && x.tier !== "user") out.push({ code: "L3", text: `K 승인 검사 자체를 바꾸는 PR(${x.checkPath}) — 사용자가 머지` });
   else if (x.tier === "user" && !x.kApproval?.ok) out.push({ code: "L3", text: `user 등급 — 사용자가 머지(${x.tierReasons.join(", ") || "경로 규칙"})${x.kApproval ? ` · ${kWhyOf(x.kApproval)}` : ""}` });
   if (x.ci === "none") out.push({ code: "L4", text: `head에 CI ${x.ciCheck}가 없음` });
   else if (x.ci === "pending") out.push({ code: "L4", text: `CI ${x.ciCheck} 진행 중` });

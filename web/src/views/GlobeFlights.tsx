@@ -47,6 +47,7 @@ export const waitsOnSupervisor = (f: GlobeFlight) => f.landBy === "supervisor";
 // landWhy 코드의 글(land-by.ts의 LandWhy)
 export const LAND_WHY: Record<LandWhy, string> = {
   user: "user 등급",
+  check: "K 승인 검사 자체를 바꾸는 PR",
   escalate: "MCC ESCALATE",
   hold: "SUPERVISOR HOLD",
   mode: "MCC가 착륙시키지 않는 모드",
