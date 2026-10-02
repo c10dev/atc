@@ -145,6 +145,7 @@ Every place where atc requires or offers a human decision, grouped by area (a su
 | P13 | CHECKRIDE rating grant (SEC ratings decide who may take SEC work) | A team getting a permission by a recommendation | not logged | **keep** (K3) grant, revoke is a tightening; **question** D6 | C9 |
 | P14 | Workspace trust prompt, one time per repository | A session in an untrusted folder | not counted | **keep** (K3) | none |
 | P15 | LAUNCH, STOP, AOG, RETIRE, ENTRY of AIRCRAFT by hand | Fleet shape and usage | FLEET PLAN counts above | **direction** (fleet design); a STOP of work in flight is a brake (principle 9) | none |
+| P16 | A Backlog proposal waiting for the SUPERVISOR on the RELEASE screen (DUTY REVIEW, SCHEDULE NEW; fire = Todo and a `screen` release, or discard = Canceled; [ATC-401](https://linear.app/vocado/issue/ATC-401)) | A proposal going into work that nobody chose | counted from the first day it ships (`BACKLOG` queue rows) | **keep** (the arrow, principle 10): the SUPERVISOR fires. Counted as a wait so it stays visible, not as a gate to remove. It is not a signal for DUTY REVIEW (a review does not start because proposals wait) | C14 (as P5) |
 
 ### 4.4 Direction, DUTY and guards
 
