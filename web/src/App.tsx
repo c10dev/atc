@@ -8,6 +8,7 @@ import { buildIndex, timeAgo } from "./derive.ts";
 import { ControlStrip } from "./ControlStrip.tsx";
 import { NewVersionBar } from "./NewVersion.tsx";
 import { UpdateBar, useUpdate } from "./UpdateBar.tsx";
+import { SupervisorPairing, useSupervisorAuth } from "./SupervisorPairing.tsx";
 import { MoonIcon, Starfield } from "./Starfield.tsx";
 import { Ticker } from "./Ticker.tsx";
 import { formatClock, useSettings } from "./settings.ts";
@@ -72,6 +73,7 @@ export function App({ build }: { build: string }) {
   const { snapshot, connection, serverBuild } = useSnapshot();
   const now = useNow();
   const update = useUpdate(connection);
+  const supervisorAuth = useSupervisorAuth();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -213,6 +215,7 @@ export function App({ build }: { build: string }) {
         <ControlStrip snapshot={snapshot} now={now} />
       </header>
 
+      <SupervisorPairing auth={supervisorAuth} />
       <UpdateBar update={update} />
       <NewVersionBar own={build} server={serverBuild} />
 

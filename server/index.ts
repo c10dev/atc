@@ -1,3 +1,4 @@
+import { supervisorGate, verdictFor } from "./supervisor-auth.ts";
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { serve } from "@hono/node-server";
@@ -171,6 +172,10 @@ async function tick() {
 }
 
 const app = new Hono();
+
+// SUPERVISOR 자격(ATC-373): /api 아래 쓰기는 에이전트가 쓰는 길(atcctl 등, supervisor-auth.ts의 허용 목록) 말고는 모두 SUPERVISOR의 비밀을 요구한다. 어느 라우트보다 먼저 건다
+app.use("/api/*", supervisorGate());
+app.get("/api/supervisor/auth", (c) => c.json({ verdict: verdictFor(c) })); // 이 요청의 자격이 맞는지(valid·invalid·missing·unpaired·insecure). 해시와 비밀은 싣지 않는다
 
 const getSnapshot = async () => current ?? (current = await buildSnapshot());
 
