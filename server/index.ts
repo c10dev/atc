@@ -9,6 +9,7 @@ import { streamSSE } from "hono/streaming";
 import { mountAirports } from "./airports.ts";
 import { mountAtfm, runAtfm } from "./atfm-run.ts";
 import { mountAutoland, runAutoland } from "./autoland-run.ts";
+import { runAutoRevert } from "./auto-revert-run.ts";
 import { mountJudges, runJudges } from "./judges/run.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
@@ -152,6 +153,7 @@ async function tick() {
     if (isWarm(next)) runMilestones(next); // OOOI(ATC-123): 처음 본 이정표를 FLIGHT RECORDER에 한 번(1분에 한 번, 이미 있는 기록만 읽는다)
     if (isWarm(next)) runStandFree(next); // 5분마다 STAND 없는 FLIGHT의 ARRIVED 후보(ATC-72). ARRIVED는 OCC가 확인해 적는다
     if (isWarm(next)) runAtfm(next); // 출발 중지 시작·끝, 1분마다 ATFM 데이터와 그림자 판정(docs/atfm.md)
+    if (isWarm(next)) runAutoRevert(next); // 자동 되돌림(ATC-351): 스위치 off(기본)면 아무것도 읽지 않는다. AUTOLAND보다 먼저 돌아 같은 주기의 GROUND STOP을 본다
     if (isWarm(next)) runAutoland(next); // AUTOLAND(ATC-34): GitHub을 새로 읽을 때마다 갱신·머지 한 주기(스위치가 off면 GROUND STOP만 본다)
     if (isWarm(next)) runJudges(next); // 판정 계열(ATC-36): 스위치가 off가 아닐 때만 1분에 한 번, CLASSIFY 초안 몇 건
     if (isWarm(next)) runQrh(next); // QRH shadow(ATC-288): 서버가 체크리스트를 부를 조건을 처음 본 때만 FLIGHT RECORDER에 한 줄. 보내는 글은 바뀌지 않는다

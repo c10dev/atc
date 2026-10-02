@@ -423,6 +423,9 @@ async function readMain(repo: string, slug: string, knownSha: string | null, exp
   return { repo, slug, branch, sha, ...mainStateOf(runs, combined.statuses, expectCheck), ...workflowNamesOf(runs, combined.statuses, suites), at: new Date().toISOString() };
 }
 
+// main의 이전 커밋 하나의 CI 상태(ATC-351, 읽기 전용): 자동 되돌림이 마지막 초록 head를 찾을 때 쓴다
+export const readCommitState = (repo: string, slug: string, sha: string, expectCheck: string | null = null) => readMain(repo, slug, sha, expectCheck);
+
 // check suite → 워크플로 이름(ATC-330, 읽기 전용 gh api). 저장소마다 최신 main head의 것만 둔다. 새 head면 Actions runs를 한 번 읽고,
 // 같은 head에 아직 모르는 suite가 나타났을 때(늦게 뜬 워크플로)만 다시 읽는다 — 매 폴링마다 부르지 않는다. 실패하면 5분 동안 다시 부르지 않고 null(모름)
 const WORKFLOW_RETRY_MS = 5 * 60_000;
