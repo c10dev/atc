@@ -24,6 +24,7 @@ import { PolicyLine } from "./PolicyLine.tsx";
 import { type FleetBrief, type SessionBrief, api } from "./shared.ts";
 import { StatusList } from "./StatusList.tsx";
 import { Empty } from "../../kit/Empty.tsx";
+import { Loading } from "../../kit/Loading.tsx";
 
 // FLEET: 팀(AIRCRAFT)마다 CREW COMPLEMENT, TYPE RATING, ROUTE, TARGETS. 설계: docs/fleet.md.
 // 팀 빌딩: ENTRY INTO SERVICE(새 AIRCRAFT), CONFIGURATION(팀 구성 템플릿), CREW BRIEFING(세션 시작 지시문),
@@ -204,7 +205,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
     [brief, snapshot],
   );
 
-  if (!brief) return <Empty>{error ? `불러오지 못함: ${error}` : "불러오는 중…"}</Empty>;
+  if (!brief) return error ? <Empty>{`불러오지 못함: ${error}`}</Empty> : <Loading>불러오는 중…</Loading>;
   const inService = aircraft.filter((a) => !a.retired);
   const retired = aircraft.filter((a) => a.retired);
   // 세션이 없을 때만: LAUNCH on approve 또는 RESUME after LIMIT(ATC-129)

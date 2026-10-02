@@ -11,6 +11,7 @@ import { SingleLane } from "./SingleLane.tsx";
 import "./Metrics.css";
 import { apiGet } from "../api.ts";
 import { Empty } from "../kit/Empty.tsx";
+import { Loading } from "../kit/Loading.tsx";
 import { TableScroll } from "../kit/TableScroll.tsx";
 
 // 1.5단계 운용 지표. FLIGHT RECORDER 기록으로 2단계(DISPATCH)로 넘어갈지 판단한다.
@@ -135,7 +136,7 @@ function Operations({ refreshKey }: { refreshKey: string }) {
         </p>
       )}
       {!data ? (
-        <Empty>불러오는 중…</Empty>
+        <Loading>불러오는 중…</Loading>
       ) : (
         <>
           <Readiness data={data} />

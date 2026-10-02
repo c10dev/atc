@@ -3,6 +3,7 @@ import type { LeakKindRow, LeakView } from "../../../server/leaks.ts";
 import { apiGet } from "../api.ts";
 import "./MetricsLeaks.css";
 import { Empty } from "../kit/Empty.tsx";
+import { Loading } from "../kit/Loading.tsx";
 
 // LEAKS(ATC-363, docs/autonomy.md): 릴리스 뒤에도 사람이 거친 단계를 kind별로 센 7일 표. 읽기만 한다.
 // "통제 있음"은 그 gate 행을 대신할 통제가 이미 도는 것, "통제 없음"은 아직 없어 사람이 붙잡힌 것(그 통제가 서면 사라질 것).
@@ -39,7 +40,7 @@ export function MetricsLeaks({ refreshKey }: { refreshKey: string }) {
         </p>
       )}
       {!data ? (
-        <Empty>불러오는 중…</Empty>
+        <Loading>불러오는 중…</Loading>
       ) : data.totals.count === 0 ? (
         <Empty>7일 동안 기록된 leak 없음.</Empty>
       ) : (
