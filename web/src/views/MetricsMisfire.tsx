@@ -4,6 +4,7 @@ import { apiGet } from "../api.ts";
 import { timeAgo } from "../derive.ts";
 import { AutoMisfire } from "./AutoMisfire.tsx";
 import { Empty } from "../kit/Empty.tsx";
+import { TableScroll } from "../kit/TableScroll.tsx";
 
 // METRICS → MISFIRE(ATC-380, docs/layout.md Y5): 사람 없이 도는 레인(DISPATCH, SCHEDULE, FLEET PLAN)이 한 일 가운데 나중에 틀렸다고 드러난 몫.
 // 레인마다 한 줄(한 일·misfire·몫), 그 밑에 DISPATCH의 날짜별 줄과 SCHEDULE·FLEET PLAN의 최근 misfire. 읽기만 한다.
@@ -44,8 +45,8 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
       {lanes.length === 0 ? (
         !error && <Empty>불러오는 중…</Empty>
       ) : (
-        <div className="mx-scroll" role="region" aria-label="레인별 MISFIRE 표" tabIndex={0}>
-        <table className="mx-table" aria-label="레인별 MISFIRE">
+        <TableScroll label="레인별 MISFIRE 표">
+        <table className="kit-table" aria-label="레인별 MISFIRE">
           <thead>
             <tr>
               <th scope="col">LANE</th>
@@ -70,7 +71,7 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
             ))}
           </tbody>
         </table>
-        </div>
+        </TableScroll>
       )}
       <AutoMisfire refreshKey={refreshKey} />
       {recent.length > 0 && (
