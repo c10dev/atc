@@ -1,6 +1,7 @@
 import { ChevronRight, X } from "lucide-react";
 import { Icon, IconButton } from "./Icon.tsx";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useDialog } from "./useDialog.ts";
 import { type Chat, type ChatItem, headLine } from "../../server/duty-chat.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
 import { type Airports, type CardCtx, DraftCard, DutyCard, QueueRow, useCharters, useDecisions, useQueue } from "./DutyCards.tsx";
@@ -108,12 +109,7 @@ export default function DutyDrawer({ chat, onClose, airports, refreshKey, now }:
     reloadCharters,
   };
 
-  useEffect(() => {
-    ref.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    addEventListener("keydown", onKey);
-    return () => removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useDialog(ref, onClose);
 
   useLayoutEffect(() => {
     const el = logRef.current;

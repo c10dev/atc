@@ -2,7 +2,7 @@
 
 **탭 줄**에는 일하는 화면만 있다(2026-10-02, ATC-381): HOME · RELEASE · FLIGHTS · FLEET · METRICS(NETWORK는 METRICS의 하위 화면이다, ATC-380). 기본 화면은 HOME이다. 나머지는 이렇게 연다.
 
-- **GLOBE**: 헤더의 **GLOBE** 버튼(또는 `#globe`, `#globe/<AIRPORT>`)이 현재 화면 위에 꽉 찬 보기 모드로 연다. Esc나 닫기 버튼으로 닫으면 열기 전 화면으로 돌아온다.
+- **GLOBE**: 헤더의 **GLOBE** 버튼(또는 `#globe`, `#globe/<AIRPORT>`)이 현재 화면 위에 꽉 찬 보기 모드로 연다. Esc나 닫기 버튼으로 닫으면 열기 전 화면으로 돌아오고, 포커스도 GLOBE 버튼으로 돌아간다. Tab은 창 안에서만 돌며, 공항 화면의 선은 Tab으로 가서 Enter·Space로 고른다. 서랍(FLIGHT·PR·DUTY·IDEAS)도 같다: Tab이 안에서만 돌고, 닫으면 연 곳으로 돌아가며, DUTY 입력칸의 Esc는 칸만 벗어난다.
 - **AIRPORTS**: 설정 창(왼쪽 위 로고)의 **AIRPORTS** 분류. `#airports`도 그 분류를 연다. 등록부, 개설·코드 변경·폐쇄, 팀 머지 스위치가 그대로 있다.
 - **DOCS**: 헤더의 **HELP** 메뉴(사용 안내, 화면 안내, 문제 해결, 변경 기록). `#docs`와 `#docs/<쪽>` 주소는 그대로 열린다.
 
