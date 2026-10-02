@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { LogEntry } from "./logbook.ts";
 import type { Ticket } from "./model.ts";
-import { dayKey } from "./network.ts";
+import { dayKey } from "./day-key.ts";
 import { activeWaypointsOf, buildRoutes, completedIn, criteriaOf, etaOf, isBlocked, isLate, phaseOf, waypointStates } from "./routes.ts";
 import { mergeByTeam, type Milestone, type MilestoneIssue, toGoal, toMilestone } from "./sources/linear-projects.ts";
 

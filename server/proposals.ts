@@ -55,7 +55,7 @@ import { type Briefing, BriefingError, factsOf, leadOf, parseBriefing, waypointI
 import { loadFleet } from "./fleet.ts";
 import { type DispatchMeasured, dispatchStatsOf } from "./judges/dispatch.ts";
 import { type DispatchMarks, dispatchMarksOf, loadJudges, readJudgeLines } from "./judges/store.ts";
-import { loadLogbook, loadPricedLogbook } from "./logbook.ts";
+import { type LogEntry, loadLogbook, loadPricedLogbook } from "./logbook.ts";
 import type { FuelWatch } from "./fuel-watch.ts";
 import { confirmCodesOf, confirmReasonOf, type Preflight, preflightOf, preflightOps } from "./preflight.ts";
 import { parentKeysOf, type Snapshot, type Ticket, type TrafficEvent } from "./model.ts";
@@ -63,7 +63,7 @@ import { composeReason, parseReasonCodes, REASON_CODES, ReasonCodeError, reasonC
 import { readiness2bOf, readinessFiles } from "./readiness.ts";
 import { record } from "./recorder.ts";
 import { closingLine, overdueBase, responseOf } from "./response.ts";
-import { activeWaypointsOf, loadRoutes } from "./routes.ts";
+import { activeWaypointsOf, type Route } from "./routes.ts";
 import { readLinearProjects } from "./sources/linear-projects.ts";
 import { flightPlanNotesOf, type IssueComment } from "./issue-notes.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
@@ -1158,8 +1158,8 @@ export function runDispatch(s: Snapshot, now = Date.now(), events: () => readonl
 // ── API ──
 
 // 열린·HELD 카드의 사실 줄(서버 계산)과, BRIEFING이 없으면 본문 첫 문장(ATC-4)
-async function cardBriefsOf(cards: Proposal[], s: Snapshot, all: Proposal[], logbook: ReturnType<typeof loadPricedLogbook>, now: number, fuel: FuelWatch | null) {
-  const routes = await loadRoutes(s, logbook, now);
+async function cardBriefsOf(cards: Proposal[], s: Snapshot, all: Proposal[], logbook: ReturnType<typeof loadPricedLogbook>, now: number, fuel: FuelWatch | null, routesOf: RoutesLoader) {
+  const routes = await routesOf(s, logbook, now);
   const index = waypointIndex(routes);
   const flying = all.filter((p) => isInFlight(p) || isStandFreeAirborne(p)).map((p) => ({ flight: p.flight, aircraftName: p.aircraftName, at: p.statusAt }));
   const ctx = { now, tickets: s.tickets, routes, entries: logbook, flying, coldCache: fuel?.coldCache ?? [] };
@@ -1209,7 +1209,10 @@ export interface DispatchLauncher {
   launch: (s: Snapshot, registration: string, proposal: string, resume: boolean) => Promise<{ ok: boolean; jobId?: string; error?: string }>; // resume: RESUME 카드(끊긴 ACCOUNT에서 다시)
 }
 
-export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, watchFuel?: (s: Snapshot) => FuelWatch, standFree?: StandFreeHooks, launcher?: DispatchLauncher, briefExtras?: (s: Snapshot, now: number, inFlight: Proposal[]) => Record<string, unknown>) {
+// 카드 사실 줄의 ROUTE·WAYPOINT(routes-load.ts loadRoutes). routes-load.ts가 이 파일을 불러 순환이 되므로 index.ts가 넘긴다(ATC-337)
+export type RoutesLoader = (s: Snapshot, entries: LogEntry[], now: number) => Promise<Route[]>;
+
+export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, watchFuel: ((s: Snapshot) => FuelWatch) | undefined, standFree: StandFreeHooks | undefined, launcher: DispatchLauncher | undefined, briefExtras: ((s: Snapshot, now: number, inFlight: Proposal[]) => Record<string, unknown>) | undefined, routesOf: RoutesLoader) {
   app.get("/api/dispatch/brief", async (c) => {
     const s = await getSnapshot();
     const cfg = loadDispatchConfig();
@@ -1253,7 +1256,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       // launch 카드(proposal.launch)마다 "LAUNCH on approve", 상한이 찬 열린 카드는 기다린다는 글(ATC-129)
       launch: launchViewOf([...open, ...held, ...inFlight], launchCap),
       launchCap,
-      briefs: await cardBriefsOf([...open, ...held], s, proposals, logbook, now, fuel),
+      briefs: await cardBriefsOf([...open, ...held], s, proposals, logbook, now, fuel, routesOf),
       inFlight,
       overdue: overdueOf(proposals, now),
       recent,
