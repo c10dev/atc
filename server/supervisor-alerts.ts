@@ -48,7 +48,7 @@ export interface SupervisorAlert {
 // ── 목적지 규칙(ATC-197, docs/alerting.md 3.1) ──
 // key의 첫 마디로 정하고, 마디가 더 필요한 것은 아래 함수가 가른다. 새 key 종류를 더하면 DEST_PREFIXES와 여기에도 규칙을 더해야 한다(시험이 이 파일의 key 모양을 읽어 확인한다).
 // 순수 함수: 읽는 것은 key와, land 항목의 landBy(PR → 누가 착륙시키나, land-by.ts)뿐이다. 등급 규칙을 새로 두지 않고 landByOf(=deploy/landing-tier.mjs의 등급)를 그대로 쓴다
-export const DEST_PREFIXES = ["alert", "pending", "following", "land", "rts", "recycle", "cap", "control", "reposition", "follow"] as const;
+export const DEST_PREFIXES = ["alert", "pending", "following", "land", "rts", "recycle", "cap", "control", "reposition", "follow", "revert"] as const;
 export function destOf(item: Pick<SupervisorAlert, "key">, landBy?: ReadonlyMap<string, LandBy>): AlertDest {
   const p = item.key.split("|");
   switch (p[0]) {
@@ -69,6 +69,8 @@ export function destOf(item: Pick<SupervisorAlert, "key">, landBy?: ReadonlyMap<
     case "recycle":
       return p[1] === "over" || p[1] === "wait" ? "alerts" : "log"; // recycle|<session>|<t>는 결과
     case "cap":
+      return "alerts";
+    case "revert": // revert|stop|<airport>|<at>: breaker가 lane을 낮췄다(ATC-351). SUPERVISOR만 다시 올린다
       return "alerts";
     case "control": // control|down|<session>: 멈춘 채인 관제 세션
       return "alerts";
@@ -156,6 +158,7 @@ export interface AlertsInput {
   overCap?: (OverCap & { since: string })[]; // CAP을 넘었지만 자동 재시작 대상이 아닌 세션(OCC)
   // ATC-197: 상태에서 만드는 조건 항목 셋(각각 순수 함수 rtsHaltedOf·controlDownOf·repositionStuckOf의 결과)과, land 항목의 목적지를 가르는 PR별 landBy(`<repo>#<번호>` → 누가 착륙시키나)
   rtsHalted?: RtsHalted | null;
+  revertStops?: { airport: string; at: string; detail: string }[]; // 자동 되돌림 breaker가 멈춘 AIRPORT(ATC-351). 스위치를 다시 고르면 사라진다
   controlDown?: ControlDown[];
   repositionStuck?: RepositionStuck[];
   landBy?: ReadonlyMap<string, LandBy>;
@@ -455,6 +458,20 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       next: "원인을 본 뒤 설정 창에서 MCC 모드를 다시 고른다(docs/mcc.md 6). 그때까지 배포되지 않는다",
       link: "#radar",
       since: inp.rtsHalted.since,
+    });
+  }
+  for (const r of inp.revertStops ?? []) {
+    out.push({
+      key: `revert|stop|${r.airport}|${r.at}`,
+      group: "land",
+      level: "warning",
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: `자동 되돌림 멈춤(${r.airport}) — ${r.detail}`,
+      next: "원인을 본 뒤 lane(AUTOLAND·MCC)과 설정 창의 AUTO REVERT 스위치를 다시 고른다. 그때까지 되돌리지 않는다",
+      link: "#radar",
+      since: r.at,
     });
   }
   for (const c of inp.controlDown ?? []) {

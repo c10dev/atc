@@ -20,6 +20,7 @@ import { registrationOf } from "./registration.ts";
 import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { CONTROL_SESSIONS, controlDirOf, MAX_LAUNCHED } from "./session-control.ts";
 import { capIdleNow } from "./dispatch-launch.ts";
+import { stoppedAirports } from "./auto-revert-run.ts";
 import { type AlertEvent, alertKeyOf, controlDownOf, diffAlerts, repositionStuckOf, rtsHaltedOf, type SupervisorAlert, DUPLICATED, supervisorAlertsOf, UNOWNED_KINDS } from "./supervisor-alerts.ts";
 import { sinceLookNow } from "./since-look-run.ts";
 import { summaryKey, summaryOf, type SupervisorSummary, workingOf } from "./supervisor-summary.ts";
@@ -126,6 +127,7 @@ function collectItems(s: Snapshot, now: number, following: ReturnType<typeof fol
     pulls: s.pulls ?? [],
     rts: rtsNow.last,
     rtsHalted: rtsHaltedOf(rtsNow.stop, rtsNow.last),
+    revertStops: stoppedAirports().map((l) => ({ airport: l.airport ?? "?", at: l.at, detail: l.detail ?? "" })),
     controlDown: controlDownOf(recyclesAll, running.control),
     repositionStuck: repositionStuckOf(repositionsAll, running.aircraft),
     landBy: landByMap(s),
