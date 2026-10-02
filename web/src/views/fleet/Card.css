@@ -766,3 +766,7 @@ button.fl-fold-head:focus-visible .fl-fold-k {
   color: inherit;
   cursor: pointer;
 }
+/* STAND 없는 FLIGHT의 안내 글(ATC-324): 한글 문장이라 sans, 크기는 옆 칸의 .mono(--text-sm)와 맞춘다 */
+.fl-log .fl-log-note {
+  font-size: var(--text-sm);
+}

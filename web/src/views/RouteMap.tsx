@@ -151,7 +151,7 @@ function RouteCard({ route, windowDays }: { route: Route; windowDays: number }) 
       <header className="rm-head">
         <span className="rm-name">{route.project}</span>
         <span className="mono muted">{pct(route.progress)}</span>
-        {route.targetDate && <span className="mono muted">목표 {route.targetDate}</span>}
+        {route.targetDate && <span className="muted">목표 <span className="mono">{route.targetDate}</span></span>}
         <OpenCounts open={route.open} />
         {route.aircraft.length > 0 && <span className="mono rm-ac">✈ {route.aircraft.join(" · ")}</span>}
         <span className="muted rm-rate" title={`최근 ${windowDays}일에 끝난 FLIGHT(LOGBOOK ARRIVED·Linear 완료)`}>

@@ -488,7 +488,7 @@ export function DutyCard({ it, ctx }: { it: Extract<ChatItem, { kind: "card" }>;
         <span className="du-kind">{v.item.kind}</span>
         <span className="du-since">{timeAgo(v.item.since, ctx.now)}</span>
       </div>
-      <p className="du-card-title mono">{v.item.title}</p>
+      <p className="du-card-title">{v.item.title}</p>
       <Actions item={v.item} actions={v.actions} onDone={() => ctx.markHandled(k)} />
     </div>
   );
@@ -604,7 +604,7 @@ export function QueueRow({ queue, ctx }: { queue: SupervisorQueue | null; ctx: C
                 <span className="du-kind">{i.kind}</span>
                 <span className="du-since">{timeAgo(i.since, ctx.now)}</span>
               </div>
-              <p className="du-card-title mono">{i.title}</p>
+              <p className="du-card-title">{i.title}</p>
               <Actions item={i} actions={actionsOf(i, ctx.airports)} onDone={() => ctx.markHandled(cardKey({ queueKind: i.kind, key: i.key }))} />
             </li>
           ))}

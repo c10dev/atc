@@ -172,7 +172,7 @@ function LogTable({ a }: { a: AircraftView }) {
                   {e.los > 0 && <span className="fl-bad"> LOS {e.los}</span>}
                 </td>
                 {/* STAND 없는 FLIGHT(ATC-72): PR 대신 확인한 증거 */}
-                <td className="muted tn mono">{e.pr ? `#${e.pr.number}` : e.standFree?.arrivedVia === "confirmed-suggestion" ? "STAND 없음 · 후보 확인" : "STAND 없음 · 보고"}</td>
+                <td className={`muted tn${e.pr ? " mono" : " fl-log-note"}`}>{e.pr ? `#${e.pr.number}` : e.standFree?.arrivedVia === "confirmed-suggestion" ? "STAND 없음 · 후보 확인" : "STAND 없음 · 보고"}</td>
                 <td className="r tn mono" title={blockTitle}>
                   <span className={e.onTime === false ? "fl-late" : undefined}>{e.blockMin == null ? "—" : blockTime(e.blockMin)}</span>
                   {e.landingWaitMin != null && (

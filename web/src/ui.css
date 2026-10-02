@@ -43,6 +43,7 @@
   vertical-align: bottom;
 }
 .needs-you-text {
+  font-family: var(--sans); /* needs는 사람이 읽는 글(C2): 이름·코드가 아니라 문장 */
   font-weight: 400;
   letter-spacing: 0;
 }
