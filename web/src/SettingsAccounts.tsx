@@ -56,7 +56,7 @@ export function AccountsBlock() {
   const [usage, setUsage] = useState<Record<string, PlanUsageView>>({}); // ATC-348: 폴더 라벨 → 요금제 한도의 쓴 몫·남은 몫(서버가 정한 수준)
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const loadUsage = () =>
-    fetch("/api/accounts/usage")
+    apiGet("/api/accounts/usage")
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d: { usage: Record<string, PlanUsageView> }) => setUsage(d.usage))
       .catch(() => {});
@@ -64,7 +64,7 @@ export function AccountsBlock() {
     setRefreshing(label);
     setError(null);
     try {
-      const res = await fetch(`/api/accounts/${encodeURIComponent(label)}/usage`, { method: "POST", headers: { "Content-Type": "application/json" } });
+      const res = await apiSend("POST", `/api/accounts/${encodeURIComponent(label)}/usage`);
       const body = await res.json();
       if (res.ok) setUsage((body as { usage: Record<string, PlanUsageView> }).usage);
       else setError(body.error ?? `HTTP ${res.status}`);
