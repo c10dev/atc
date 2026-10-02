@@ -21,7 +21,7 @@
 | 상태 | 뜻 |
 |---|---|
 | AIRBORNE | 세션이 일하는 중 |
-| HOLDING | 대기 중인데 끝나지 않은 FLIGHT의 STAND를 쥐고 있음 |
+| HOLDING | 대기 중인데 끝나지 않은 FLIGHT의 STAND를 쥐고 있음. PR이 열려 착륙만 기다리는 FLIGHT는 슬롯을 쓰지 않아, 그 AIRCRAFT는 다음 FLIGHT를 새 STAND에서 받는다(기다리는 PR은 AIRCRAFT마다 2건까지, `dispatch.json`의 `slots.waitingPr`) |
 | PARKED | 대기 중, 쥔 STAND 없음 — 새 일을 받을 수 있음 |
 | NORDO | 세션이 죽었는데 점유가 남음 |
 | AOG | FLEET에서 잠시 운항 중지로 둠(배정 안 함) |
