@@ -41,7 +41,7 @@ test("FLIGHT FOLLOWING: warn은 CAUTION, info는 ADVISORY, health·stranded·lan
 test("제안 판정 대기는 CALL, HOLD 걸린 제안과 끝난 제안은 알리지 않는다", () => {
   const out = supervisorAlertsOf(base({ proposals: [proposal(), proposal({ id: "D-0002", status: "sent" }), proposal({ id: "D-0003", holdAt: "2026-09-29T00:00:00Z" }), proposal({ id: "D-0004", status: "agreed", kind: "RELEASE" })] }));
   assert.deepEqual(keys(out), ["pending|proposal|D-0001", "pending|proposal|D-0004"]);
-  assert.ok(out.every((a) => a.cue === "call" && a.link === "#dispatch"));
+  assert.ok(out.every((a) => a.cue === "call" && a.link === "#home"));
   assert.match(out[1].text, /RELEASE/);
 });
 

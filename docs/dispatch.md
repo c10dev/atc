@@ -626,6 +626,22 @@ K3: the SUPERVISOR approved on 2026-10-02 (attested on the issue and confirmed i
 - **Formats.** `autoDispatch` and `autoCardTtlMin` in `dispatch.json` and the `AUTO_STALE_WHY` supersede reason are additive. No log changes.
 - **Not built.** The agree lane and CROSSCHECK marks are still drawn on the DISPATCH cards that exist during the settle window.
 
+## The DISPATCH screen is gone (ATC-377)
+
+DISPATCH approves its own cards (ATC-367), so the tab that held the verdict UI was taken apart ([layout.md](layout.md) Y2). The planner, the proposal log and every route are unchanged; only the screen moved:
+
+| Was in the DISPATCH tab | Now |
+|---|---|
+| Open ASSIGN and launch cards, approve / reject | the SUPERVISOR QUEUE on HOME (`#home`), only when the auto-dispatch switch is off; RELEASE cards always |
+| CROSSCHECK agree lane and chips, BLIND sample, HELD (PREFLIGHT) buttons | removed |
+| IN FLIGHT: CANCEL, RECALL, FRESH START | FOLLOW rows and the FLIGHT drawer (`web/src/FlightBrakes.tsx`) |
+| Assignment history of a FLIGHT (RECENT) | FLIGHT drawer, `배정 기록` (`GET /api/dispatch/proposals?flight=KEY`) |
+| ATFM block (GROUND STOP, manual departure stop, slots) and the 2a/2b switch | HOME, BRAKES row |
+| MISFIRE | METRICS → OPERATIONS |
+| 2b readiness, gate and FLIGHT FOLLOWING blocks, slot and EXCLUDED readouts | removed (FOLLOW rows show why a FLIGHT is not assigned) |
+
+`#dispatch` opens HOME.
+
 ## DIRECT briefs (ATC-32)
 
 Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.

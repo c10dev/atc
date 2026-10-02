@@ -194,7 +194,7 @@ CREW 표의 두 표시:
 - 아직 운항 전인 AIRCRAFT는 CREW CHANGE 없이 CREW BRIEFING에 새 구성이 들어간다.
 - CAPTAIN이 SUPERVISOR가 읽는 글에 일본어를 쓰면 카드에 `LANGUAGE`가 뜨고 FLIGHT FOLLOWING에도 참고로 나온다(ATC-150). 새 CREW BRIEFING에는 "SUPERVISOR가 읽는 글은 한국어" 줄이 들어 있으니 그 세션에 다시 보내면 된다. atc가 대신 보내지는 않는다.
 
-기록은 `~/.local/state/atc/crew-changes.jsonl`에 추가만 한다. 2b를 켜기 전에 DISPATCH 탭 "2b 켜기 점검표"의 **CREW CHANGE 발부**와 배정 대상 AIRPORT마다 있는 **READBACK 규칙**(`[OCC CC-xxxx]` → `READBACK CC-xxxx`까지)을 확인한다.
+기록은 `~/.local/state/atc/crew-changes.jsonl`에 추가만 한다. 2b를 켜기 전에 CREW CHANGE가 발부되는지와, 배정 대상 AIRPORT마다 있는 **READBACK 규칙**(`[OCC CC-xxxx]` → `READBACK CC-xxxx`까지)을 확인한다.
 
 ## 새 팀 들이기
 

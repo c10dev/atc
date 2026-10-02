@@ -27,7 +27,7 @@ OCC는 사용자가 요청했을 때만 새 티켓 초안을 쓴다. 스스로 �
 
 ## 발권(RELEASE): DISPATCH가 배정할 FLIGHT 정하기
 
-Todo에 있는 FLIGHT도 **발권**해야 DISPATCH가 배정한다. 발권이 없는 Todo FLIGHT는 제안일 뿐이다. 발권은 **RELEASE 탭**(`#release`) 한 곳에서 한다. DISPATCH 탭에는 발권 블록이 없고 RELEASE로 가는 링크만 있다.
+Todo에 있는 FLIGHT도 **발권**해야 DISPATCH가 배정한다. 발권이 없는 Todo FLIGHT는 제안일 뿐이다. 발권은 **RELEASE 탭**(`#release`) 한 곳에서 한다. DISPATCH 탭은 없어졌다(HOME이 이어받았다).
 
 RELEASE 탭은 위에서부터 셋이다.
 

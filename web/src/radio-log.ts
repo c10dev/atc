@@ -104,7 +104,7 @@ export function linksOf(t: Transmission): Link[] {
   const out: Link[] = [];
   const id = baseId(t.replyTo ?? t.id);
   if (t.pr) out.push({ href: `${REPO_URL}/pull/${t.pr}`, label: `PR #${t.pr}` });
-  else if (/^D-\d+/.test(id)) out.push({ href: "#dispatch", label: id });
+  else if (/^D-\d+/.test(id)) out.push({ href: "#home", label: id });
   else if (/^CC-\d+/.test(id) && t.aircraft) out.push({ href: `#fleet/${encodeURIComponent(t.aircraft)}`, label: id });
   else if (/^C-\d+/.test(id)) out.push({ href: "#strips", label: id });
   if (t.aircraft && TEAM_REGISTRATION.test(t.aircraft) && !out.some((l) => l.href.startsWith("#fleet/"))) out.push({ href: `#fleet/${encodeURIComponent(t.aircraft)}`, label: t.aircraft });

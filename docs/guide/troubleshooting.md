@@ -33,7 +33,7 @@ guard가 막은 것이다(fail-closed). 관제 세션은 다시 시도하지 않
 
 ## 제안이 잘 안 나온다
 
-DISPATCH 탭의 "제외" 목록에 이유가 있다. 흔한 이유:
+FOLLOW 줄의 "지금 글"(`우선순위 없음`, `HOLD — …`, `AIRCRAFT 없음 (…)`)에 DISPATCH가 배정하지 않은 이유가 있다. 흔한 이유:
 
 - 우선순위 없음 → Linear에서 우선순위를 정한다(또는 SCHEDULE의 PRIORITIZE 초안을 보고).
 - 상위 이슈 → 하위 이슈가 작업이다.

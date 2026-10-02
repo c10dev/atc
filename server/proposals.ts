@@ -1139,6 +1139,11 @@ export async function directBriefOf(key: string, to: string | null): Promise<str
   return formatAssignment({ key, title: typeof d.title === "string" ? d.title : null, url }, descriptionOf(d), to, notes);
 }
 
+// 한 FLIGHT의 제안 기록: 최근 것이 먼저, limit건까지(ATC-377)
+export function proposalsOfFlight<T extends Pick<Proposal, "flight" | "at">>(all: readonly T[], flight: string, limit = 20): T[] {
+  return all.filter((p) => p.flight === flight).sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
+}
+
 export function allProposals(): Proposal[] {
   return fold(readOps());
 }
@@ -1305,6 +1310,13 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       // SUPERVISOR CONFIRM AT AIRCRAFT(ATC-120): 카드·승인 창이 보일 표시와 붙여 넣을 한 줄. 승인을 막지 않는다
       confirm: Object.fromEntries([...open, ...held, ...inFlight].flatMap((p) => { const v = confirmViewOf(p); return v ? [[p.id, v]] : []; })),
     });
+  });
+
+  // 한 FLIGHT의 배정 기록(ATC-377): FLIGHT 서랍이 읽는다. 읽기만
+  app.get("/api/dispatch/proposals", (c) => {
+    const flight = (c.req.query("flight") ?? "").trim().toUpperCase();
+    if (!/^[A-Z][A-Z0-9]*-\d+$/.test(flight)) return c.json({ error: "flight=ATC-n 형식이 필요함" }, 400);
+    return c.json({ flight, mode: loadDispatchConfig().mode, proposals: proposalsOfFlight(allProposals(), flight) });
   });
 
   // send-guard가 쓰는 단건 조회

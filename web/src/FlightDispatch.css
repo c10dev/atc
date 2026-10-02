@@ -1,0 +1,35 @@
+/* FLIGHT 서랍의 배정 기록(ATC-377). 면 한 단계, 줄 구분은 위 선 하나. 색은 :root 토큰만 */
+.fd-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fd-row {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--line);
+}
+.fd-row:first-child {
+  border-top: 0;
+}
+.fd-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+}
+.fd-status {
+  font: 700 var(--text-xs) var(--mono);
+  letter-spacing: 0.08em;
+}
+.fd-steps,
+.fd-reason {
+  margin: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.fd-reason {
+  color: var(--muted);
+}

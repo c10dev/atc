@@ -1,0 +1,110 @@
+/* HOME(ATC-377): 정상이면 brake 줄만 있다. 면 한 단계, 줄 구분은 위 선 하나. 색은 :root 토큰만 */
+.home {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 1100px;
+}
+.hm-sec .label {
+  margin: 0 0 var(--space-2);
+}
+.hm-list {
+  margin: 0;
+  padding: 0 var(--space-4);
+  list-style: none;
+  background: var(--panel);
+  border-radius: var(--radius);
+}
+.hm-row {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.hm-row:first-child {
+  border-top: 0;
+}
+.hm-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+}
+.hm-kind {
+  font: 700 var(--text-xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+.hm-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.hm-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: var(--text-sm) var(--sans);
+  text-align: left;
+  cursor: pointer;
+}
+.hm-atext {
+  overflow-wrap: anywhere;
+}
+.hm-brakes {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--panel);
+  border-radius: var(--radius);
+}
+.hm-brow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.hm-brow .label {
+  margin: 0;
+}
+.hm-chip {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.hm-chip b {
+  color: var(--text);
+}
+.hm-switches {
+  flex: 1 1 280px;
+  min-width: 0;
+  font: var(--text-xs) var(--mono);
+  overflow-wrap: anywhere;
+}
+.hm-btn {
+  min-height: 30px;
+  padding: var(--space-1) var(--space-3);
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font: 600 var(--text-sm) var(--sans);
+  cursor: pointer;
+}
+.hm-btn:hover {
+  background: var(--panel-3);
+}
+.hm-btn.is-stop {
+  color: var(--alert);
+  border-color: var(--alert);
+}
+.hm-error {
+  margin: 0;
+  color: var(--alert);
+  font-size: var(--text-sm);
+}

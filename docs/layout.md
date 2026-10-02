@@ -113,6 +113,17 @@ Order rationale (decision D3): firing has no home and is used every day, so it c
 - SCHEDULE NEW drafts are listed but cannot be fired from here: they are not issues yet, and the verdict UI stays in SCHEDULE until Y3 (ATC-378). DUTY's issue drafts show up as Backlog READY issues. The `duty-drafts.jsonl` entries are queue cards and notes, not issues, so they are not listed.
 - DISPATCH lost its release block and shows a link to `#release`. Routes and checks of ATC-362 are unchanged.
 
+### Y2 as built (ATC-377)
+
+- `#home` is a tab, placed first (the default tab stays RADAR until Y6): `web/src/views/Home.tsx`. Sections that have nothing to show are not drawn; the brakes row is always there. `#dispatch` opens HOME (`LEGACY_HASH`); the queue, alert and FOLLOW links that pointed at `#dispatch` now say `#home`.
+  - **QUEUE** is the SUPERVISOR QUEUE with the same buttons as the DUTY drawer's QUEUE (`Actions` in `DutyCards.tsx`). A PROPOSAL item has **승인** / **거절** (inline, one confirmation, the same `/approve`, `/reject` routes, `/verdict` in 2a). With the auto-dispatch switch on, only RELEASE cards appear; with it off, ASSIGN and launch cards come back here.
+  - **ALERTS** are WARNING and CAUTION items whose destination is `alerts`, minus `follow|stuck` (shown as **STUCK** rows, with the row's CANCEL and RECALL).
+  - **BRAKES**: GROUND STOP and manual departure stop counts, `ATFM…` (the existing ATFM panel; its exception block opens at the top when a stop is enforced), `STOP ALL…` (the control sessions' STOP ALL preview and run, moved from FLEET's bulk bar), the automation switches' state (the policy line of the settings window), the DISPATCH 2a↔2b switch, and a link to the settings window.
+- DISPATCH is gone. `Dispatch.tsx`, its CSS and `DispatchBriefing`, `Following` and `Readiness2b` (used only by it) are deleted. Gone with them: the per-card verdict, the CROSSCHECK agree lane and chips, BLIND, HELD (PREFLIGHT) and its two buttons, the 2b readiness block, the DISPATCH-side FLIGHT FOLLOWING block, the slot and EXCLUDED readouts, the launch ACCOUNT and MODEL lines and the SUPERVISOR CONFIRM AT AIRCRAFT box (its queue item, GO, stays).
+- **CANCEL, RECALL and FRESH START** moved to `web/src/FlightBrakes.tsx`, used by the FOLLOW rows (`FollowRow.proposalInfo`, additive) and the FLIGHT drawer. The drawer gets a `배정 기록` block (`web/src/FlightDispatch.tsx`, `GET /api/dispatch/proposals?flight=KEY`, read-only) with each proposal's stage times, reason and brakes.
+- **MISFIRE** and the single-lane landings block (ATC-386) are blocks in METRICS → OPERATIONS (`AutoMisfire`, `SingleLane`).
+- Routes of approve, reject, cancel, recall, fresh-start, mode and ATFM are unchanged; `GET /api/settings` gains `dispatchAuto.mode`.
+
 ### Not built yet
 
 Everything (Y1–Y6).
