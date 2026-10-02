@@ -4,6 +4,7 @@
 // 실패하면 이 head로는 다시 하지 않는다(head가 움직이면 새 head로 다시). 실전 DB는 4단계 전에는 읽기만 하고, 모든 단계는 migrations.jsonl에 남는다.
 // 비밀: 토큰은 config에서 SqlRunner로만 간다. 기록·로그·오류에는 싣지 않는다(supabase-sql.ts의 redact).
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -40,7 +41,11 @@ export interface MigrateRecord {
   status?: RunStatus;
   detail: string;
   restorePoint?: string | null;
+  files?: { version: string; sha: string }[]; // run: 이번 시도가 다룬 마이그레이션 파일의 내용 해시. 적용 뒤 파일이 바뀌었는지 보려고 남긴다
 }
+
+// 전체 기록: 보류는 "영구"여야 해서 끝 줄만 보지 않는다(한 번에 6줄 남짓이라 커지지 않는다)
+export const ALL = Number.MAX_SAFE_INTEGER;
 
 export function readMigrateRecords(limit = 100, file = RECORD()): MigrateRecord[] {
   try {
@@ -71,6 +76,26 @@ export const triedHead = (records: readonly MigrateRecord[], slug: string, numbe
 
 // exclusionNow의 결과를 "다른 제외 사유"로: head가 움직였으면 낡은 head의 SQL을 실전에 적용하지 않도록 사유를 돌려준다
 export const otherReasonOf = (r: { moved: string | null; why: string | null }): string | null => (r.moved ? `head가 움직임(${r.moved.slice(0, 7)})` : r.why);
+
+export const shaOf = (sql: string): string => createHash("sha256").update(sql).digest("hex").slice(0, 16);
+
+// 이 PR의 마이그레이션 파일이 실전에 적용(또는 일부 적용)된 것과 같은가(ATC-368). head가 바뀌어도 버전이 그대로면 ATC-329 게이트는 "이미 적용"으로 통과해 버리므로,
+// 리허설이 다룬 파일의 내용 해시와 지금 파일을 견준다. 이 PR의 어느 head에서든 live-changed가 있었으면 사람이 풀 때까지(SUPERVISOR가 직접 머지) 멈춘다.
+// 사유를 돌려준다(없으면 null)
+export function driftReason(records: readonly MigrateRecord[], slug: string, number: number, current: readonly { version: string; sha: string }[]): string | null {
+  const mine = records.filter((r) => r.kind === "run" && r.slug === slug && r.number === number);
+  if (mine.some((r) => r.status === "live-changed")) return "마이그레이션 리허설이 실전을 바꾼 채 멈춤(live-changed) — 사람이 풀 때까지 머지하지 않음";
+  const last = [...mine].reverse().find((r) => r.status === "applied" && r.files);
+  if (!last?.files) return null;
+  const now = new Map(current.map((f) => [f.version, f.sha]));
+  const changed = last.files.filter((f) => now.get(f.version) !== f.sha).map((f) => f.version);
+  return changed.length ? `실전에 적용한 뒤 마이그레이션 파일이 바뀜(${changed.join(", ")}) — 실전과 다른 SQL이라 머지하지 않음` : null;
+}
+
+// 이 head의 마이그레이션 파일 버전과 내용 해시(머지 직전 비교용). 읽지 못하면 던진다
+export async function migrationShasOf(slug: string, number: number, head: string, db: HostedDb): Promise<{ version: string; sha: string }[]> {
+  return (await filesOf(slug, number, head, db)).map((f) => ({ version: f.version, sha: shaOf(f.sql) }));
+}
 
 // 이 head의 리허설이 끝까지 가지 못했나(migrations.jsonl의 마지막 run이 applied가 아님). st.skip은 500개로 잘려 나가지만 이 기록은 남으므로 머지 직전에 이것도 본다
 export const rehearsalHeld = (records: readonly MigrateRecord[], slug: string, number: number, head: string): boolean => {
@@ -158,7 +183,7 @@ export async function rehearseOne(p: PullRequest, airport: string, db: HostedDb,
   for (const s of r.steps) note({ kind: "step", step: s.step, ok: s.ok, detail: redact(s.detail, token), at: s.at }, versions);
   const last = r.steps[r.steps.length - 1];
   const detail = redact(r.status === "applied" ? "실전에 적용됨 — 다음 주기에 AUTOLAND 마이그레이션 게이트가 통과해 머지" : `${r.failedStep}에서 멈춤: ${last?.detail ?? ""}`, token);
-  note({ kind: "run", status: r.status, detail, restorePoint: r.restorePoint }, versions);
+  note({ kind: "run", status: r.status, detail, restorePoint: r.restorePoint, files: files.map((f) => ({ version: f.version, sha: shaOf(f.sql) })) }, versions);
   return r;
 }
 
@@ -177,7 +202,7 @@ const defaultPassIo: PassIo = {
   switches: () => loadMigrate().airports,
   hostedDb: hostedDbOfAirport,
   token: () => config.supabaseMigrateToken,
-  records: () => readMigrateRecords(500),
+  records: () => readMigrateRecords(ALL),
   gate: async (slug, number, db) => {
     const rows = await listPullFiles(slug, number);
     return migrationGateOf({ hostedDb: db, files: rows.map((f) => f.path), added: rows.filter((f) => f.status === "added").map((f) => f.path), applied: await readAppliedFor(db) });

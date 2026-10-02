@@ -34,7 +34,7 @@ import { appendRecord } from "./autoland-record.ts";
 import { readMergeReviews } from "./landing-review.ts";
 import { assertGithubOn } from "./github-switch.ts";
 import { hostedDbOfAirport } from "./airports.ts";
-import { otherReasonOf, readMigrateRecords, rehearsalHeld, rehearsalPass } from "./migrate-run.ts";
+import { ALL, driftReason, migrationShasOf, otherReasonOf, readMigrateRecords, rehearsalHeld, rehearsalPass } from "./migrate-run.ts";
 import { redact } from "./sources/supabase-sql.ts";
 import { config } from "./config.ts";
 import { type MigrationGate, migrationGateOf } from "./migration-gate.ts";
@@ -311,10 +311,21 @@ async function doMerge(plan: AirportPlan, p: PullRequest, st: AutolandState, s: 
       return;
     }
     // 마이그레이션 리허설이 멈춘 head(ATC-368)는 머지하지 않는다. st.skip이 잘려 나가도 migrations.jsonl이 남는다
-    if (rehearsalHeld(readMigrateRecords(500), slug, p.number, p.head)) {
+    const migRecords = readMigrateRecords(ALL);
+    if (rehearsalHeld(migRecords, slug, p.number, p.head)) {
       st.skip.push(headKey(p));
       appendRecord({ op: "skip", ...base, result: "excluded", detail: "마이그레이션 리허설이 멈춘 head" });
       return;
+    }
+    // 이 PR에 리허설 기록이 있으면(다른 head 포함) 지금 파일을 실전에 적용한 것과 견준다: 같은 버전으로 파일만 고친 head는 ATC-329 게이트가 통과해 버린다
+    const migDb = hostedDbOfAirport(p.repo);
+    if (migDb && migRecords.some((r) => r.kind === "run" && r.slug === slug && r.number === p.number)) {
+      const drift = driftReason(migRecords, slug, p.number, await migrationShasOf(slug, p.number, p.head, migDb));
+      if (drift) {
+        st.skip.push(headKey(p));
+        appendRecord({ op: "skip", ...base, result: "excluded", detail: drift });
+        return;
+      }
     }
     // 정확한 head만 머지한다(sha: gh pr merge --match-head-commit과 같은 조건). auto-merge를 켜지 않는다
     await gh(["api", "-X", "PUT", `repos/${slug}/pulls/${p.number}/merge`, "-f", `sha=${p.head}`, "-f", `merge_method=${cfg.mergeMethod}`]);

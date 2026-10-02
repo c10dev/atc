@@ -156,7 +156,8 @@ export function readServerSettings(): ServerSettings {
       airports: loadRegistry()
         .entries.filter((e) => !e.closed && hostedDbOfAirport(e.path))
         .map((e) => ({ code: e.code, enabled: loadMigrate().airports[e.code.toUpperCase()] === true, why: notReadyWhy(hostedDbOfAirport(e.path), config.supabaseMigrateToken) })),
-    },    judges: { jev: { mode: loadJudges().jev, engine: engineName(), apiKeySet: Boolean(config.typesafeApiKey), ...judgeStatus.jev } },
+    },
+    judges: { jev: { mode: loadJudges().jev, engine: engineName(), apiKeySet: Boolean(config.typesafeApiKey), ...judgeStatus.jev } },
   };
 }
 

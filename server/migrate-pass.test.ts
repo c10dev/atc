@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { pullKey } from "./landing.ts";
-import { type MigrateRecord, otherReasonOf, type PassIo, rehearsalHeld, rehearsalPass } from "./migrate-run.ts";
+import { ALL, driftReason, type MigrateRecord, otherReasonOf, shaOf, type PassIo, rehearsalHeld, rehearsalPass } from "./migrate-run.ts";
 import { classify, declarationCheck } from "./migration-declare.ts";
 import { hostedDbOf, type MigrationGate } from "./migration-gate.ts";
 import type { RunResult } from "./migration-rehearsal.ts";
@@ -77,6 +77,25 @@ test("rehearsalHeld: 마지막 run이 applied가 아닌 head만(st.skip이 잘�
   assert.equal(rehearsalHeld([run("h1", "stopped"), run("h1", "applied")], "o/n", 7, "h1"), false);
   assert.equal(rehearsalHeld([run("h1", "stopped")], "o/n", 7, "h2"), false);
   assert.equal(rehearsalHeld([], "o/n", 7, "h1"), false);
+});
+
+test("driftReason: live-changed가 있었던 PR은 어느 head든 멈추고, applied 뒤 파일 내용이 바뀌면 멈춘다", () => {
+  const run = (head: string, status: string, files?: { version: string; sha: string }[]) => ({ kind: "run", slug: "o/n", number: 7, head, status, ...(files ? { files } : {}) }) as MigrateRecord;
+  const A = [{ version: "1", sha: "aaa" }];
+  assert.match(driftReason([run("h1", "live-changed", A)], "o/n", 7, A)!, /live-changed/);
+  assert.match(driftReason([run("h1", "live-changed", A)], "o/n", 7, [{ version: "1", sha: "bbb" }])!, /live-changed/, "새 head가 같은 버전으로 고쳐도");
+  assert.equal(driftReason([run("h1", "applied", A)], "o/n", 7, A), null);
+  assert.match(driftReason([run("h1", "applied", A)], "o/n", 7, [{ version: "1", sha: "bbb" }])!, /적용한 뒤 마이그레이션 파일이 바뀜\(1\)/);
+  assert.match(driftReason([run("h1", "applied", A)], "o/n", 7, [])!, /바뀜\(1\)/, "파일이 사라져도");
+  assert.equal(driftReason([run("h1", "stopped", A)], "o/n", 7, [{ version: "1", sha: "bbb" }]), null, "실전이 그대로였던 시도는 해당 없음");
+  assert.equal(driftReason([run("h1", "applied", A)], "o/n", 8, [{ version: "1", sha: "bbb" }]), null, "다른 PR");
+  assert.equal(driftReason([], "o/n", 7, A), null);
+  assert.equal(shaOf("a"), shaOf("a"));
+  assert.notEqual(shaOf("a"), shaOf("b"));
+});
+
+test("rehearsalHeld: 기록이 아무리 많아도 전체를 본다(ALL은 끝 줄 제한이 아니다)", () => {
+  assert.ok(ALL > 1_000_000);
 });
 
 test("선언 검사: 파일 중간의 COMMIT·BEGIN은 멈추고, 맨 앞 BEGIN·맨 뒤 COMMIT은 통과한다", () => {
