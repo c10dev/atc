@@ -11,6 +11,7 @@ import { SingleLane } from "./SingleLane.tsx";
 import "./Metrics.css";
 import { apiGet } from "../api.ts";
 import { Empty } from "../kit/Empty.tsx";
+import { TableScroll } from "../kit/TableScroll.tsx";
 
 // 1.5단계 운용 지표. FLIGHT RECORDER 기록으로 2단계(DISPATCH)로 넘어갈지 판단한다.
 
@@ -296,8 +297,8 @@ function Daily({ data }: { data: MetricsData }) {
       <h2 className="label">
         DAILY <em>UTC 날짜</em>
       </h2>
-      <div className="mx-scroll" role="region" aria-label="일별 표" tabIndex={0}>
-      <table className="mx-table">
+      <TableScroll label="일별 표">
+      <table className="kit-table">
         <thead>
           <tr>
             <th>날짜</th>
@@ -325,7 +326,7 @@ function Daily({ data }: { data: MetricsData }) {
           ))}
         </tbody>
       </table>
-      </div>
+      </TableScroll>
     </>
   );
 }

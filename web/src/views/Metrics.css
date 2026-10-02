@@ -225,54 +225,6 @@
   color: var(--faint);
 }
 
-/* 일별·MISFIRE 표: 좁은 폭에서는 이 상자 안에서만 가로로 넘긴다(키보드로도 넘기게 초점을 받는다) */
-.mx-scroll {
-  max-width: 100%;
-  overflow-x: auto;
-  border-radius: var(--radius);
-  scrollbar-width: thin;
-  scrollbar-color: var(--line-strong) transparent;
-}
-.mx-scroll:focus-visible {
-  outline: 2px solid var(--cyan);
-  outline-offset: 2px;
-}
-.mx-scroll .mx-table td {
-  white-space: nowrap;
-}
-
-/* 일별 표 */
-.mx-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
-  font-size: var(--text-sm);
-}
-.mx-table th {
-  padding: var(--space-2) var(--space-3);
-  text-align: left;
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.12em;
-  color: var(--faint);
-  background: var(--panel-2);
-  border-bottom: 1px solid var(--line);
-  white-space: nowrap;
-}
-.mx-table td {
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--line);
-}
-.mx-table tr:last-child td {
-  border-bottom: 0;
-}
-.mx-table .num {
-  text-align: right;
-  font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
-}
 .mx-on {
   color: var(--radar);
   font: 700 var(--text-xs) var(--mono);

@@ -56,7 +56,7 @@
     "radius-literal": 2
   },
   "web/src/views/Metrics.css": {
-    "radius-literal": 5,
+    "radius-literal": 3,
     "spacing-literal": 5
   },
   "web/src/views/MetricsFuel.css": {
@@ -67,7 +67,7 @@
     "radius-literal": 1
   },
   "web/src/views/Network.css": {
-    "radius-literal": 2,
+    "radius-literal": 1,
     "spacing-literal": 1
   },
   "web/src/views/Radio.css": {

@@ -1,0 +1,51 @@
+/* 표 하나(kit, ATC-413, docs/design-system.md L1): 머리 줄, 줄 구분선, 숫자 칸. 의미 토큰과 --layer만 쓴다: 도메인 토큰·리터럴·화면 클래스는 없다.
+   숫자 칸은 th·td에 .num(오른쪽 맞춤, tabular-nums, 단위는 숫자 뒤에 붙여 쓴다: Craft 3.5.7). 화면은 칸 너비·줄 높이 같은 배치만 자기 클래스로 더한다 */
+.kit-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--layer);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  font-size: var(--text-sm);
+}
+.kit-table th {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--faint);
+  background: var(--layer-hover);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.kit-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+.kit-table tr:last-child td {
+  border-bottom: 0;
+}
+.kit-table .num {
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+/* 좁은 화면에서 표를 넘기는 상자(TableScroll)에 들어가면 칸 안 글자를 접지 않는다 */
+.kit-scroll .kit-table td {
+  white-space: nowrap;
+}
+
+/* 넓은 표를 담는 상자: 이 안에서만 가로로 넘기고, 키보드로도 넘기게 초점을 받는다 */
+.kit-scroll {
+  position: relative; /* 안쪽의 화면 밖 글자가 상자를 벗어나 쪽 전체를 넓히지 않게 */
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-lg);
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.kit-scroll:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}

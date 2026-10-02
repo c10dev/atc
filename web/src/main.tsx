@@ -4,6 +4,7 @@ import { App } from "./App.tsx";
 import { initSettings } from "./settings.ts";
 import "./styles.css";
 import "./kit/Button.css";
+import "./kit/Table.css";
 
 // 첫 화면부터 저장된 설정(테마, 애니메이션)으로 그린다.
 initSettings();

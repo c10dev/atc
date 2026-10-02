@@ -3133,7 +3133,7 @@ a.ticket:hover {
 /* 표: FIDS 목록, AIRPORT, 지표 */
 :root[data-density="compact"] .fids-table td,
 :root[data-density="compact"] .apt-table td,
-:root[data-density="compact"] .mx-table td {
+:root[data-density="compact"] .kit-table td {
   padding-top: var(--space-1);
   padding-bottom: var(--space-1);
 }

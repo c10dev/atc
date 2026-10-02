@@ -96,6 +96,12 @@ Rules:
 - `web/src/kit/Segmented.tsx` (`.segmented`): the two settings copies in one component; `role="radiogroup"`, one tab stop, arrow keys, Home and End select (`nextSegment`). The ATFM switch row in `Atfm.tsx` is a different control (a labelled switch with three modes) and stays.
 - `--layer` and `--layer-hover` are defined on `:root` (`--panel`, `--panel-2`); a container may redefine them for its children. Segmented reads them; no kit file uses a domain token, a literal or a screen class.
 
+#### U7 as built (ATC-413)
+
+- `web/src/kit/Table.css` (`.kit-table`): the base table: header row, row divider, `tabular-nums`, and `.num` on `th` and `td` for right-aligned numbers (Craft 3.5.7). It reads `--layer` and `--layer-hover`; no domain token, literal or screen class. `web/src/kit/TableScroll.tsx` (`.kit-scroll`) is the one scroll region for a wide table: a named `role="region"` with a tab stop.
+- `mx-table` (METRICS DAILY and MISFIRE, NETWORK) and the NETWORK-only `Scroll` / `.nw-scroll` / `.mx-scroll` are gone; screens keep only layout (`.nw-table` turns the collapse off so row heads can stick). The ROUTE map line uses `.kit-scroll` as well.
+- Four tables are still separate styles: `apt-table`, `bf-table`, `mf-table`, `fids-table`; they move to the base in later units.
+
 ### L2 Patterns
 
 The patterns of design-language section 4: row and expanded detail, card (header, alert band, body grid, folded history), section (heading plus body), queue item, status row.
