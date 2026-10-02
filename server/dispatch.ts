@@ -16,6 +16,7 @@ import { ABSENT_REASON, cutHoldWhy, LANE_CUTOFF, type ResumeInfo, stuckHintOf, t
 import { DEFAULT_TEAM_PATTERN, fleetKeyOf, regKey } from "./registration.ts";
 import { DEFAULT_MCC, loadMcc } from "./mcc.ts";
 import { supervisorConfirmOf } from "./supervisor-confirm.ts";
+import { NOT_RELEASED_WHY, releaseGateOn, releaseStateOf, STALE_RELEASE_WHY, type ReleaseGateMode } from "./release.ts";
 
 // 2단계 DISPATCH: 어떤 FLIGHT를 어떤 AIRCRAFT에 보낼지 계산한다(순수 함수 planDispatch).
 // 제안을 기록하고 보이는 것은 proposals.ts, 설계는 docs/dispatch.md.
@@ -63,6 +64,8 @@ export interface DispatchConfig {
   autoApproveMax: number; // 자동 승인 하루(굴러가는 24시간) 상한. ASSIGN과 SCHEDULE을 같이 센다
   autoLaunchMax: number; // 자동 LAUNCH 하루 상한
   autoLaunchBackoffMin: number; // LAUNCH가 실패한 REGISTRATION은 이만큼(분) 자동으로 다시 승인하지 않는다
+  // 발권 gate(ATC-362): 발권 기록이 없는 Todo FLIGHT는 제안일 뿐이라 배정하지 않는다. "auto"(기본)는 일괄 확인(arm) 뒤부터, "on"은 항상, "off"는 끔
+  releaseGate: ReleaseGateMode;
 }
 export type AutoMode = "off" | "shadow" | "on";
 export const AUTO_MODES: readonly AutoMode[] = ["off", "shadow", "on"];
@@ -101,6 +104,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   autoApproveMax: DEFAULT_AUTO_APPROVE_MAX,
   autoLaunchMax: DEFAULT_AUTO_LAUNCH_MAX,
   autoLaunchBackoffMin: DEFAULT_AUTO_LAUNCH_BACKOFF_MIN,
+  releaseGate: "auto",
 };
 
 const CONFIG_FILE = join(config.stateDir, "dispatch.json");
@@ -196,6 +200,8 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       autoApproveMax: nonNegInt(user.autoApproveMax, d.autoApproveMax),
       autoLaunchMax: nonNegInt(user.autoLaunchMax, d.autoLaunchMax),
       autoLaunchBackoffMin: nonNegInt(user.autoLaunchBackoffMin, d.autoLaunchBackoffMin),
+      // 모르는 값은 기본("auto")으로
+      releaseGate: user.releaseGate === "on" || user.releaseGate === "off" ? user.releaseGate : "auto",
     };
   } catch {
     return DEFAULT_DISPATCH_CONFIG;
@@ -742,6 +748,7 @@ export function planDispatch(
   const independent = (ac: AircraftState, ind: Independence | null) => !ind || !ind.builders.has(regOf(ac.name));
   const notIndependentWhy = (ind: Independence) =>
     `CHECK 독립성 — 검토 대상을 만든 ${[...ind.builders.keys()].join(", ")} 말고 이 CHECK를 날 AIRCRAFT 없음 (${independenceDetail(ind)})`;
+  const gateOn = releaseGateOn(cfg.releaseGate ?? "auto", s.releases?.armedAt);
   for (const t of s.tickets) {
     if (t.stateType !== "unstarted") continue;
     if (!isCandidateTicket(t, candidates)) continue; // 보여 주기만 하는 팀(설정 candidateTeams)
@@ -793,6 +800,14 @@ export function planDispatch(
       const parked = reserved.held?.get(t.key);
       excluded.push({ flight: t.key, reason: parked ? `HOLD ${parked}` : `진행 중인 제안 ${held}` });
       continue;
+    }
+    // 발권 gate(ATC-362): 발권 기록이 없으면 제안이다. 본문이 발권 뒤에 바뀌었으면 다시 발권해야 한다
+    if (gateOn) {
+      const rs = releaseStateOf(t.key, t.releaseHash, s.releases);
+      if (rs !== "released") {
+        excluded.push({ flight: t.key, reason: rs === "stale" ? STALE_RELEASE_WHY : NOT_RELEASED_WHY });
+        continue;
+      }
     }
     // 우선순위가 비어 있으면 사람이 아직 언제 할지 정하지 않은 것이다
     if (!t.priority) {

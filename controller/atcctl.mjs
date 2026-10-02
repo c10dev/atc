@@ -123,6 +123,10 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
   node atcctl.mjs dispatch undelivered <D-0003> -- <사유>
                                             (2b) SendMessage가 실패했다(success:false)고 OCC가 알림(ATC-183). sent를 approved로 돌려 세션이 돌아오면 다시 release한다.
                                             같은 tick에 다시 보내지 않는다. SUPERVISOR 판정이 아니라 24시간 짝 규칙을 시작하지 않고, CAUTION 경보가 하나 뜬다
+  node atcctl.mjs release [brief]           발권(RELEASE) 기록·gate·발권 없는 Todo FLIGHT 읽기(ATC-362)
+  node atcctl.mjs release attest <ATC-362> --session <세션 이름> -- <SUPERVISOR가 한 말 그대로>
+                                            SUPERVISOR가 이 세션에 직접 한 발권의 말을 증언한다(attested로 표시, 세션마다 센다).
+                                            화면 클릭 발권은 만들 수 없다(서버가 Origin을 검사). 자기 판단으로 발권하지 않는다
   node atcctl.mjs dispatch recall-send <D-0003>
                                             (2b) SUPERVISOR가 RECALL을 요청한 제안의 SEND TO·SEND(머리 한 줄)와 RECALL 문구 출력(재송신도 같은 문구)
   node atcctl.mjs dispatch recalled <D-0003>
@@ -910,6 +914,18 @@ if (isMain) {
       const { id, reason } = parseAnswerArgs("undelivered", args.slice(1));
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(id)}/undelivered`, { reason });
       console.log(`${r.proposal.id} UNDELIVERED — ${r.proposal.status}로 돌림. 이 tick에 다시 보내지 않고, OCC LOG에 sent로 쓰지 않는다`);
+    } else if (cmd === "release" && args[0] === "attest") {
+      // 발권 증언(ATC-362): SUPERVISOR가 다른 세션에 한 말을 그 세션이 증언한다. 서버는 말을 확인하지 못해 attested로 표시하고 세션마다 센다
+      const [, flight, ...rest] = args;
+      const si = rest.indexOf("--session");
+      const di = rest.indexOf("--");
+      const session = si >= 0 ? rest[si + 1] : "";
+      const words = di >= 0 ? rest.slice(di + 1).join(" ").trim() : "";
+      if (!flight || !session || !words) throw new Error("사용법: release attest <FLIGHT> --session <세션 이름> -- <SUPERVISOR가 한 말 그대로>");
+      const r = await call("POST", "/api/releases/attest", { flight, session, words });
+      console.log(`${r.release.flight} RELEASED (attested by ${r.release.session}) — 해시 ${r.release.hash}. 화면 클릭이나 DUTY 채팅 발권이 아니다`);
+    } else if (cmd === "release" && (args[0] === undefined || args[0] === "brief")) {
+      console.log(JSON.stringify(await call("GET", "/api/releases"), null, 1));
     } else if (cmd === "crew-change") {
       const { action, id, reason } = parseCrewChange(args);
       if (action === "brief") {

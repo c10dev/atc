@@ -1,0 +1,59 @@
+/* RELEASE(ATC-362): 면 한 단계, 줄 구분은 위 선 하나. 색은 :root 토큰만 */
+.rl {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  background: var(--panel);
+  border-radius: var(--radius);
+}
+.rl .label {
+  margin-top: 0;
+}
+.rl-error {
+  margin: 0 0 var(--space-2);
+  color: var(--alert);
+}
+.rl-none,
+.rl-attested {
+  margin: var(--space-1) 0;
+}
+.rl-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+.rl-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.rl-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rl-list li {
+  display: grid;
+  grid-template-columns: 88px auto minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1-5) 0;
+  border-top: 1px solid var(--line);
+}
+.rl-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .rl-list li {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+  }
+  .rl-list li > .faint {
+    display: none;
+  }
+}
