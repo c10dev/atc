@@ -224,6 +224,10 @@ A fourth MCC mode, `rts`: the SUPERVISOR merges atc PRs by hand, and the atc ser
 - **ROLLBACK** stops the server's RTS like MCC's, until the SUPERVISOR picks the MCC mode again.
 - PILOT'S DISCRETION: the pass runs every 30 s (the snapshot refreshes about every 20 s); after a `refused` RTS the server does not retry the same `main` (the refusal needs a person); `rts` mode's `would-land` records use `detail: "rts"`; root `CLAUDE.md` is `user` tier and is not changed here (it describes `land+rts`, the mode in use).
 
+### Auto-revert and the MCC AIRPORT as built (ATC-351)
+
+When a merge MCC made turns the default branch red, the auto-revert lane ([autonomy.md](autonomy.md), "C4 as built") may open a revert PR (switch `autoRevert`, off by default). The revert PR is judged like any PR (L2 to L8). The one change: `landBlocksOf` gets `groundStop: null` for it when the stop is the ATFM `main-broken` trigger, the lane is `on` and the PR is a revert PR atc opened (branch `revert-<n>-...` and a line in `auto-revert.jsonl`); every other GROUND STOP trigger and every other condition still blocks it. A revert PR that changes a `user`-tier path is never opened (K3 `hold`), so the `user` tier still means the SUPERVISOR merges. The breaker lowers MCC landing (`land` to `shadow`, `land+rts` to `rts`) through `setMccMode`, which writes the usual `mode` record, and only the SUPERVISOR raises it again.
+
 ## 7. Records and switches
 
 - `~/.local/state/atc/mcc.json` (atomic): `mode` `shadow` (default) | `land` | `land+rts` | `rts`, `holds` (PR numbers). It is changed only from the settings window (AUTOMATION tab, MCC row), like AUTOLAND. `atcctl` has no command for it.

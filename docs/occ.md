@@ -418,6 +418,8 @@ With `strict` on vocado's `main`, every merge puts the other open PRs `behind`, 
   - ATC-27/30 still decide: `buildPulls` re-checks the external-review exclusion with the current switch. An excluded PR is not queued, and the strip says "AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(migrations)".
   - One request per head (`autoland-state.json` `reviewRequests`), recorded as `op: "review-request"` with `via` (`codex`, `deepseek` or `supervisor`). The strip shows "AUTOLAND: review requested (codex|deepseek)" until a review lands. Only while AUTOLAND is `update` or `merge` and the AIRPORT is not in GROUND STOP.
 
+- **Auto-revert (ATC-351)**: with the `autoRevert` switch `on` (settings window; off by default), a merge AUTOLAND made that turns `main` red gets a revert PR, which AUTOLAND merges even while its GROUND STOP is latched (it is the way out; review, CI and the exclusion list still apply, and it needs no FLIGHT). The latched stop is then cleared by atc when the next head is green. PRs that touch migration or `user`-tier paths and human merges are never reverted automatically (a `hold` line, shown to DUTY). A second new red head within an hour lowers AUTOLAND `merge` to `update` and stops the lane until the SUPERVISOR picks the switch again. Full rules: [autonomy.md](autonomy.md) "C4 as built".
+
 #### Merge review: a review recorded in atc counts as the landing review (ATC-328)
 
 On an AUTOLAND AIRPORT (the `airports` list of `autoland.json`) a review recorded in atc for a PR head is that head's landing review, whatever Codex is doing. A `pass` clears `no-review` (and `review-stale`) for that head on LANDING SEQUENCE, the TOWER brief and `/api/autoland`; `findings` shows as `review-findings` with the P0/P1/P2 counts. It is scoped to the head it names:

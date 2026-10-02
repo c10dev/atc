@@ -23,6 +23,8 @@ export interface DutyBriefInput {
   // 켜져 있는 정해 둔 결정 전체(오래된 것이 먼저). 싣는 수는 decisionsMax
   decisions?: { id: string; text: string; until: string | null }[];
   decisionsMax?: number;
+  // 자동 되돌림(ATC-351, docs/autonomy.md C4): DUTY가 알림으로 받는 기록 줄(최근 것이 뒤). SUPERVISOR 알림이 아니다
+  revert?: string[];
 }
 
 export interface DutyBrief {
@@ -96,6 +98,7 @@ export function dutyBriefOf(inp: DutyBriefInput, maxChars: number = DEFAULT_BRIE
     { name: "DECISIONS", lines: [`STANDING DECISIONS ${all.length} (set by the SUPERVISOR; the only rules in force)`, ...decisionRows] },
     { name: "QUEUE", lines: [`QUEUE ${inp.queue.count}${counts ? ` · ${counts}` : ""}`, ...oldest, ...(inp.queue.count > oldest.length ? [`  … ${inp.queue.count - oldest.length} more in GET /api/supervisor/queue`] : [])] },
     { name: "ALERTS", lines: [`ALERTS ${inp.alerts.length} needing action`, ...alertRows, ...(inp.alerts.length > alertRows.length ? [`  … ${inp.alerts.length - alertRows.length} more`] : [])] },
+    { name: "REVERT", lines: [`AUTO-REVERT ${(inp.revert ?? []).length} recent`, ...(inp.revert ?? []).map((l) => `  ${oneLine(l, 200)}`)] },
     { name: "FLEET", lines: [`FLEET ${inp.fleet.length} AIRCRAFT`, ...fleetRows] },
     { name: "FUEL", lines: [`FUEL ${inp.fuel.length} ACCOUNT`, ...fuelRows] },
     { name: "FLIGHTS", lines: [`FLIGHTS in progress ${inp.flights.length}`, ...flightRows] },

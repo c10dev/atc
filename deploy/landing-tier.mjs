@@ -47,12 +47,14 @@ export const SIDE_EFFECT = [
   ["server/account-login.ts", "claude auth login 실행(코드를 stdin으로), 로그인 뒤 .claude.json 온보딩 칸 셋 쓰기(ATC-187). .credentials.json은 열지 않음"],
   ["server/flight-state-run.ts", "FLIGHT 상태 버튼(POST /api/flight/:key/state): SUPERVISOR 클릭만 Linear 상태를 옮김(DUTY G3)"],
   ["server/accounts-run.ts", "ADD ACCOUNT·LOGIN·REFRESH 시점(POST /api/accounts/add, /api/accounts/:label/login, /api/accounts/:label/usage, SUPERVISOR만)"],
+  ["server/auto-revert-run.ts", "자동 되돌림(ATC-351): lander 머지가 깬 main의 revert PR 열기(gh api graphql revertPullRequest), breaker가 AUTOLAND·MCC 모드를 낮춤, FIX relay 쓰기 — 스위치 off 기본, shadow는 기록만"],
   ["server/index.ts", "AUTOLAND 한 주기 실행 배선(머지·브랜치 갱신 시점)"],
 ];
 // 부작용을 일으키는 export(이름, 정의한 파일, 하는 일). 이것을 import하는 server 파일은 SIDE_EFFECT나 READ_ONLY에 올라야 한다(landing-tier.test.mjs)
 export const SIDE_EFFECT_HELPERS = [
   ["startRtsUnit", "server/mcc-run.ts", "atc-rts 유닛 시작(운영 7700 배포)"],
   ["runAutoland", "server/autoland-run.ts", "AUTOLAND 한 주기: PR 머지·브랜치 갱신·코멘트"],
+  ["runAutoRevert", "server/auto-revert-run.ts", "자동 되돌림 한 주기: revert PR 열기·lane 낮추기"],
   ["recordHumanCheck", "server/human-check-run.ts", "PR 본문 수정·코멘트"],
   ["renderPhrase", "server/tts.ts", "외부 TTS 명령(piper·espeak-ng·Kokoro) 실행"],
   ["launchAircraft", "server/session-control.ts", "AIRCRAFT 세션 시작"],

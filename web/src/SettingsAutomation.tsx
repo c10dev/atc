@@ -227,6 +227,11 @@ const REVIEW_WARN = {
   deepseek: "⚠ 보안 PR도 REVIEW 세션(Claude Sonnet)이 리뷰한다. .env·비밀·키 경로와 FLIGHT 없는 PR은 계속 보내지 않는다. 저장 값 이름 deepseek은 옛 이름이다.",
 } as const;
 const REVIEW_LABELS = { deepseek: reviewLabel("deepseek") };
+const AUTO_REVERT_WARN = {
+  off: "off(기본): main이 빨개져도 atc는 되돌리지 않는다. GROUND STOP과 MCC 멈춤은 사람이 읽고 푼다.",
+  shadow: "shadow: lander(MCC·AUTOLAND)가 머지한 PR이 main을 깼다면 \"되돌렸을 것\"이라고 auto-revert.jsonl에만 적는다(head·머지·실패한 체크). PR도 알림도 없다.",
+  on: "⚠ lander가 머지해 main을 빨갛게 만든 PR의 revert PR을 atc가 연다(AIRPORT마다 하나, 같은 리뷰·CI로 착륙, 다음 초록 head가 GROUND STOP을 푼다). 사람의 머지·마이그레이션(K1)·user 등급(K3) PR은 되돌리지 않고 DUTY에게 알린다. 1시간 안에 빨간 head가 둘이면 멈추고 AUTOLAND merge → update, MCC 착륙 끔으로 내린다.",
+} as const;
 const AUTO_APPROVE_WARN = {
   off: "off(기본): ASSIGN과 SCHEDULE 초안은 SUPERVISOR가 하나씩 누른다.",
   shadow: "shadow: 서버가 CROSSCHECK가 agree한 카드를 \"승인했을 것\"이라고 auto-approve.jsonl에만 적는다. 아무것도 승인하지 않는다.",
@@ -479,6 +484,27 @@ export function LandingSettings({ server, save }: { server: Loaded; save: Save }
           )}
         </ServerRows>
         <MccGatePanel />
+      </Block>
+
+      <Block code="AUTO REVERT" label="main이 빨개지면 lander 머지 자동 되돌림(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) =>
+            s.autoRevert ? (
+              <>
+                <EditRow
+                  label="AUTO REVERT"
+                  env="autoRevert"
+                  value={s.autoRevert.mode}
+                  note={`auto-revert.json · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈${s.autoRevert.stopped.length ? ` · 멈춤: ${s.autoRevert.stopped.map((x) => `${x.airport}(${x.detail})`).join(", ")} — 스위치를 다시 고르면 풀린다` : ""}`}
+                  input={{ kind: "select", options: ["off", "shadow", "on"] }}
+                  guard={guardOf("autoRevert", s.autoRevert.mode, AUTO_REVERT_WARN)}
+                  onSave={(v) => save({ autoRevert: v as "off" | "shadow" | "on" })}
+                />
+                <ModeLines modes={["off", "shadow", "on"] as const} current={s.autoRevert.mode} lines={AUTO_REVERT_WARN} />
+              </>
+            ) : null
+          }
+        </ServerRows>
       </Block>
 
       <Block code="REVIEW" label="Codex 한도 때 착륙 리뷰">

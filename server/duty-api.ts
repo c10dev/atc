@@ -20,6 +20,7 @@ import { currentAlerts } from "./supervisor-alerts-run.ts";
 import { collectQueueInput } from "./supervisor-queue-run.ts";
 import { supervisorQueueView } from "./supervisor-queue.ts";
 import type { UpdateStatus } from "./update.ts";
+import { dutyLineOf, readAutoRevertLines } from "./auto-revert.ts";
 
 const DRAFTS_FILE = () => join(config.stateDir, "duty-drafts.jsonl");
 const DUTY_CONFIG_FILE = () => join(config.stateDir, "duty.json");
@@ -129,6 +130,7 @@ export function mountDuty(app: Hono, getSnapshot: () => Promise<Snapshot>, updat
     };
     input.decisions = decisionsOf(decisionLines(), now).active.map((d) => ({ id: d.id, text: d.text, until: d.until }));
     input.decisionsMax = loadBriefDecisions();
+    input.revert = readAutoRevertLines().filter((l) => now - Date.parse(l.at) < 24 * 3_600_000).flatMap((l) => dutyLineOf(l) ?? []).slice(-8);
     return c.json(dutyBriefOf(input, loadBriefMaxChars()));
   });
 

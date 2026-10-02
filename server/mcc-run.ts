@@ -40,6 +40,7 @@ import {
 import type { MccLandInfo } from "./land-by.ts";
 import { loadLogbook, prEntries } from "./logbook.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
+import { isRevertPr, loadAutoRevert, readAutoRevertLines } from "./auto-revert.ts";
 import { fromThisApp } from "./origin.ts";
 import { assertGithubOn } from "./github-switch.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
@@ -98,7 +99,7 @@ export function airportOf(s: Snapshot) {
   if (!slug) throw new MccError(`${cfg.airport}의 GitHub 저장소를 아직 모름 — atc가 GitHub을 읽은 뒤(90초 안) 다시`, 409);
   const mainCi: CiState = !main?.sha ? "none" : main.state === "success" ? "ok" : main.state === "pending" ? "pending" : main.state === "none" ? "none" : "failed";
   const stop = s.atfm.groundStops.find((g) => g.airport === cfg.airport && g.kind === "stop" && g.enforced && g.land !== false);
-  return { cfg, repo: a.repo, slug, defaultBranch: main?.branch ?? "main", main: main?.sha ?? null, mainReadAt: main?.at ?? null, mainCi, groundStop: stop ? stop.text : null };
+  return { cfg, repo: a.repo, slug, defaultBranch: main?.branch ?? "main", main: main?.sha ?? null, mainReadAt: main?.at ?? null, mainCi, groundStop: stop ? stop.text : null, groundStopTrigger: stop ? stop.trigger : null };
 }
 
 // 등급 캐시(PR 번호 + head → 등급). 등급은 바뀐 파일로만 정하므로 head가 같으면 같다. judge()와 landBy(ATC-151)가 함께 쓴다 — 등급을 두 갈래로 재지 않는다
@@ -217,7 +218,8 @@ async function judge(s: Snapshot, number: number, head?: string) {
     ciCheck: ap.cfg.ciCheck,
     inspection,
     held: ap.cfg.holds.includes(number),
-    groundStop: ap.groundStop,
+    // 자동 되돌림(ATC-351)이 연 revert PR은 main 깨짐 stop을 푸는 길이라 그 stop에는 막히지 않는다(다른 stop·리뷰·CI는 그대로)
+    groundStop: ap.groundStopTrigger === "main-broken" && loadAutoRevert().mode === "on" && isRevertPr(readAutoRevertLines(), ap.cfg.airport, number, pr.head.ref) ? null : ap.groundStop,
     rtsBlocked: rts.stop,
   });
   return { ap, pr, files, tier, reasons, ci, inspection, escalated, blocks };

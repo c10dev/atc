@@ -156,6 +156,20 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 | C15 | **FLIGHT 연결.** FLIGHT 없는 PR은 브랜치 이름으로 이슈에 잇거나 하나를 연다. 못 만들면 DUTY에게 간다. | 추적 불가한 일 | PR을 열 때 | 잇거나 연다 | 연결 안 된 PR |
 | C16 | **배포 보강.** 필수 체크로서의 의존성 리뷰, 재시작 전 RTS 안의 `npm ci`(이미 있는 health check와 ROLLBACK과 함께), health check가 찾은 죽은 백그라운드 세션 재기동. | 서비스를 깨는 의존성 변경, 배포로 잃은 세션 | 배포 때 | 설치, 검사, rollback, 재기동 | rollback이나 재기동이 필요했던 배포 |
 
+### C4 구현 결과 (ATC-351)
+
+자동 revert 레인(통제 C4, WO-10을 앞당김)이 스위치 하나 `autoRevert` 뒤에 있다: `off`(기본, 모르는 값도 off), `shadow`, `on`. 설정 창(LANDING 탭의 "AUTO REVERT", `on`은 확인 단계)에서만, `fromThisApp` 설정 길(`PUT /api/settings {autoRevert}`)로 바꾼다. `atcctl` 명령은 없다. 규칙은 순수 함수(`server/auto-revert.ts`의 `revertDecisionOf`, 시험 있음)이고, GitHub을 읽고 쓰는 주기는 `server/auto-revert-run.ts`다. 상태는 `auto-revert.json`(스위치)과 추가만 하는 `auto-revert.jsonl`이다. 둘 다 새 파일이라 기존 형식은 바뀌지 않는다.
+
+- **시작.** GitHub을 읽을 때마다(90초) AUTOLAND가 맡은 AIRPORT와 MCC AIRPORT마다, 기본 브랜치 head가 빨가면. head에서 CI가 초록이던 마지막 커밋까지 거슬러 올라가(최대 15커밋, 커밋마다 읽기 전용 상태 호출 하나) 그 뒤에 머지된 것을 본다.
+- **어느 머지.** `autoland.jsonl`(`merge` ok)이나 `mcc.jsonl`(`land` ok)에 기록이 있고 GitHub이 그 PR의 머지 커밋이라고 확인한 머지만. 가장 새 머지부터 되돌린다. 그 revert PR이 착륙한 뒤에도 head가 빨가면 다음 주기에 다음으로 새 머지를 되돌린다(revert 머지는 건너뛰고 되돌리지 않는다). 마지막 초록 뒤에 lander 머지가 아닌 커밋(사람의 머지, 직접 push, 읽지 못한 것)이 하나라도 있으면 짐작하지 않고 `hold` 줄을 쓴다.
+- **K1·K3.** 되돌릴 PR이 마이그레이션·SQL 경로(`migrationPathOf`)나 착륙 등급이 `user`인 경로(guard, `.claude/`, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/` …)를 고쳤거나 파일을 읽지 못했으면 `hold` 줄을 쓰고 거기서 멈춘다. 더 오래된 머지로 건너뛰지 않는다.
+- **revert PR.** GraphQL `revertPullRequest`(Draft 아님, force-push·브랜치 삭제·admin 우회 없음). 제목 `Revert PR #n: main went red (auto-revert)`(ATC key가 없어 이슈를 닫지 않는다), 본문에 실패한 체크를 적는다. AIRPORT마다 하나만. 다른 PR과 같은 리뷰·CI를 거친다. MCC AIRPORT의 main 깨짐 GROUND STOP과 AUTOLAND의 걸린 GROUND STOP이 막지 않는 유일한 PR이다(그것이 나가는 길이라서). 나머지 조건(리뷰, CI, base, 등급, HOLD)은 그대로다. GitHub의 revert 브랜치 이름 `revert-<n>-...`이고 `auto-revert.jsonl`에 줄이 있어야 한다. AUTOLAND는 FLIGHT 없이도 받는다.
+- **풀기.** ATFM의 main 깨짐 stop은 head가 다시 초록이면 끝난다. AUTOLAND의 걸린 stop은 atc가 revert PR을 연 head에서 걸렸고 다음 head가 초록일 때만 atc가 푼다(기록 `groundstop-clear`, detail `auto-revert`). SUPERVISOR나 다른 이유로 건 stop은 그대로 둔다.
+- **breaker.** 1시간 안에 새 빨간 head가 둘째로 나오면 `stop` 줄을 쓴다. atc 자신의 revert 머지가 빨간 것은 세지 않아서 여러 머지를 거치는 연쇄는 한 사고다. `stop`은 AUTOLAND `merge`를 `update`로, MCC 착륙을 끄고(`land`는 `shadow`, `land+rts`는 `rts`), SUPERVISOR 알림 하나(`revert|stop|<airport>|<at>`)를 올리고, SUPERVISOR가 `autoRevert` 스위치를 다시 고를 때까지 되돌리지 않는다. AUTOLAND·MCC를 다시 올리는 것은 SUPERVISOR의 스위치로 남는다.
+- **알리기.** SUPERVISOR가 아니라 DUTY에게: `hold`·`revert-opened`·`revert-failed`·`revert-landed`·`stop` 줄이 DUTY brief(`AUTO-REVERT` 구역, 최근 24시간)에 들어간다. 되돌린 PR의 FLIGHT는 마지막으로 그 일을 한 AIRCRAFT에게 FIX relay(`relays.jsonl`, TOWER가 보낸다)를 받고, 실패한 체크가 적힌다. 담당을 못 찾으면 그렇다고 `fix` 줄을 쓰고, 이슈를 되돌리는 것은 DUTY가 한다(atc는 Linear에 쓰지 않는다).
+- **`shadow`**는 `would-revert` 줄(head, 머지, 실패한 체크)만 쓴다.
+- 만들지 않은 것: WO-10의 앞 절반(SUPERVISOR가 볼 Draft revert 제안). `on`이면 레인이 바로 움직이므로 `shadow`가 측정 단계다: `on`을 고르기 전에 `would-revert` 줄을 실제 빨간 head와 맞춰 본다.
+
 ## 6. 남는 세 게이트를 한 번 클릭 승인으로
 
 이상적으로는 승인마다 PR을 읽는 대신 버튼 하나다. 한 화면이 셋을 맡는다: 기존 SUPERVISOR QUEUE 행(`LANDING`)과 PR drawer, 그리고 ANNUNCIATOR 알림 하나. 서버는 승인을 40자 head SHA 전체에 묶고, 새 head가 오면 만료시키며, 클릭 때 조건을 다시 확인한다(기존 DUTY G2 MERGE가 `mergeVerdictOf`에서 한다). 낡은 카드의 클릭은 거절된다.
