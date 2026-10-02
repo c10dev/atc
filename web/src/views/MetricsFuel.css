@@ -101,7 +101,7 @@
   align-items: center;
   min-width: 24px;
   min-height: 24px;
-  margin-block: -5px;
+  margin-block: calc(-1 * var(--space-1) - var(--space-0-5) / 2); /* -5px: 머리줄 높이 그대로(눌리는 칸 24px − 글자 줄) */
   padding: 0;
   border: 0;
   background: transparent;
