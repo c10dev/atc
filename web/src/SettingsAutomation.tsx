@@ -52,6 +52,54 @@ const DUTY_WARN = {
   on: "⚠ 헤더의 DUTY 서랍에서 글을 보내면 이 서버가 `claude -p` 프로세스를 띄운다(ACCOUNT의 FUEL을 쓴다). 유휴 시간이 지나면 끝나고 다음 글이 이어서 띄운다. DUTY는 읽기만 하고, 글은 소리로 읽지 않는다.",
 } as const;
 
+// DUTY REVIEW 스위치(ATC-396, docs/duty.md): 서버가 SUPERVISOR의 글 없이 DUTY 점검 턴을 시작한다
+const DUTY_REVIEW_WARN = {
+  off: "꺼짐: 서버가 DUTY 턴을 스스로 시작하지 않는다. 점검과 병목 분석은 SUPERVISOR가 DUTY 채팅에서 부탁해야 한다.",
+  on: "⚠ 기본: 정기적으로, 또는 놀고 있는 AIRCRAFT가 일감을 두고 이어지거나 leak이 오래 열려 있으면 서버가 DUTY 턴을 시작한다(DUTY가 켜져 있을 때, ACCOUNT의 FUEL을 쓴다). DUTY는 채팅에 한국어 요약을 남기고 제안을 Backlog 이슈로만 만든다. Todo로 올려 쏘는 것은 RELEASE 화면에서 SUPERVISOR가 한다.",
+} as const;
+
+// 하루 세기(ATC-396): 점검, 만든 제안, 발권된 제안, 버려진 제안
+interface ReviewView {
+  on: boolean;
+  dutyEnabled: boolean;
+  linear: boolean;
+  last: { id: string; at: string; trigger: string; detail: string } | null;
+  days: { day: string; reviews: number; proposals: number; fired: number; discarded: number }[];
+}
+function DutyReviewRecord({ on }: { on: boolean }) {
+  const [v, setV] = useState<ReviewView | null>(null);
+  useEffect(() => {
+    let alive = true;
+    apiGet("/api/duty/review")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: ReviewView) => alive && setV(d))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [on]);
+  if (!v) return null;
+  const days = v.days.slice(-7);
+  return (
+    <div className="config-note" aria-label="DUTY REVIEW 기록">
+      <p>
+        {v.last ? `마지막 점검 ${v.last.id} · ${v.last.trigger} · ${v.last.detail}` : "아직 점검한 적 없음"}
+        {!v.dutyEnabled && " · DUTY가 꺼져 있어 돌지 않는다"}
+        {v.dutyEnabled && !v.linear && " · Linear 쓰기(duty.json l1)가 꺼져 있어 제안은 채팅 요약에만 남는다"}
+      </p>
+      {days.length > 0 && (
+        <ul className="config-list" aria-label="하루 세기(Z)">
+          {days.map((d) => (
+            <li key={d.day}>
+              <code>{d.day}</code> 점검 {d.reviews} · 제안 {d.proposals} · 발권 {d.fired} · 버림 {d.discarded}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // DUTY CHARTER 스위치(ATC-233, docs/duty.md 3.4·D5): DUTY가 만들고 SUPERVISOR가 확정한 CHARTER REQUEST를 OCC가 읽는 정도
 const DUTY_CHARTER_WARN = {
   off: "꺼짐(기본): 확정한 요청은 줄에 서지만 OCC의 schedule brief에는 나오지 않는다(카드에 \"switch is off — kept as a draft\").",
@@ -679,6 +727,17 @@ export function OperationsSettings({ server, save }: { server: Loaded; save: Sav
                 />
                 <ModeLines modes={["off", "on"] as const} current={s.duty.enabled ? "on" : "off"} lines={DUTY_WARN} />
                 <DutyAccountRow current={s.duty.account} warning={s.duty.accountWarning} save={save} />
+                <EditRow
+                  label="DUTY REVIEW"
+                  env="duty.review"
+                  value={s.duty.review ? "on" : "off"}
+                  note="duty.json · 서버가 스스로 DUTY 점검 턴을 시작한다(주기·트리거) · 이 화면에서만 바꾼다(SUPERVISOR 전용)"
+                  input={{ kind: "select", options: ["off", "on"] }}
+                  guard={guardOf("dutyReview", s.duty.review ? "on" : "off", DUTY_REVIEW_WARN)}
+                  onSave={(v) => save({ dutyReview: v as "off" | "on" })}
+                />
+                <ModeLines modes={["off", "on"] as const} current={s.duty.review ? "on" : "off"} lines={DUTY_REVIEW_WARN} />
+                {s.duty.enabled && <DutyReviewRecord on={s.duty.review} />}
                 <EditRow
                   label="DUTY CHARTER"
                   env="duty.charter"

@@ -317,3 +317,81 @@ test("길: STAND 만들기·치우기는 기록되고(by DUTY), 잘못된 이름
     s.done();
   }
 });
+
+// ── REVIEW 턴과 --blocked-by (ATC-396) ──
+const createBody = { action: "create", title: "Speed up the thing", body: "## Goal\nx", priority: 3 };
+
+test("REVIEW 턴: 제안은 Backlog만(Todo는 만들기도 올리기도 403), 비슷한 열린 이슈가 있으면 409, 만든 제안은 알린다", async () => {
+  const s = scratch();
+  try {
+    const app = new Hono();
+    const { calls, o } = fake();
+    const proposed: [string, string][] = [];
+    let similar: string | null = null;
+    const { d } = deps(s.repo, { ...o, reviewTurn: () => true, openSimilar: async () => similar, onProposal: (k, t) => void proposed.push([k, t]) });
+    mountDutyL1(app, d);
+    const todo = await post(app, "/api/duty/linear", { ...createBody, state: "Todo" });
+    assert.equal(todo.status, 403);
+    assert.match(((await todo.json()) as { error: string }).error, /Backlog/);
+    assert.equal((await post(app, "/api/duty/linear", { action: "update", key: "ATC-7", state: "Todo" })).status, 403);
+    assert.equal(calls.length, 0);
+    similar = "ATC-55";
+    const dup = await post(app, "/api/duty/linear", { ...createBody, state: "Backlog" });
+    assert.equal(dup.status, 409);
+    assert.match(((await dup.json()) as { error: string }).error, /ATC-55/);
+    assert.equal(calls.length, 0);
+    similar = null;
+    const ok = await post(app, "/api/duty/linear", { ...createBody, state: "Backlog" });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(proposed, [["ATC-99", "Speed up the thing"]]);
+    assert.equal((calls[0]![1] as { stateId: string }).stateId, "sb");
+  } finally {
+    s.done();
+  }
+});
+
+test("REVIEW 턴이 아니면(SUPERVISOR의 글에 답하는 중) Todo도 만들 수 있고 중복 검사·제안 알림은 없다", async () => {
+  const s = scratch();
+  try {
+    const app = new Hono();
+    const { calls, o } = fake();
+    const proposed: string[] = [];
+    const { d } = deps(s.repo, { ...o, reviewTurn: () => false, openSimilar: async () => "ATC-55", onProposal: (k) => void proposed.push(k) });
+    mountDutyL1(app, d);
+    assert.equal((await post(app, "/api/duty/linear", { ...createBody, state: "Todo" })).status, 200);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(proposed, []);
+  } finally {
+    s.done();
+  }
+});
+
+test("blockedBy: 막는 FLIGHT를 먼저 읽고, 이슈를 만든 뒤 막는 관계를 건다. 없는 FLIGHT면 이슈를 만들지 않는다", async () => {
+  const s = scratch();
+  try {
+    const app = new Hono();
+    const { calls, o } = fake();
+    const rels: [string, string][] = [];
+    const { d } = deps(s.repo, {
+      ...o,
+      issue: async (k) => (k === "ATC-7" ? { id: "i7", key: "ATC-7", team: "ATC", state: { name: "Todo", type: "unstarted" }, labels: [], states: [] } : k === "ATC-99" ? { id: "i99", key: "ATC-99", team: "ATC", state: { name: "Backlog", type: "backlog" }, labels: [], states: [] } : null),
+      blocks: async (blocker, blocked) => void rels.push([blocker, blocked]),
+    });
+    mountDutyL1(app, d);
+    const missing = await post(app, "/api/duty/linear", { ...createBody, blockedBy: ["ATC-12"] });
+    assert.equal(missing.status, 404);
+    assert.equal(calls.length, 0);
+    const ok = await post(app, "/api/duty/linear", { ...createBody, blockedBy: ["ATC-7"] });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { ok: true, key: "ATC-99", url: "https://linear.app/x/ATC-99", state: "Backlog", blockedBy: ["ATC-7"] });
+    assert.deepEqual(rels, [["i7", "i99"]]);
+    // 관계가 실패하면 이슈는 남고 경고가 온다
+    const { d: d2 } = deps(s.repo, { ...o, issue: d.issue, blocks: async () => Promise.reject(new Error("relation refused")) });
+    const app2 = new Hono();
+    mountDutyL1(app2, d2);
+    const warn = (await (await post(app2, "/api/duty/linear", { ...createBody, blockedBy: ["ATC-7"] })).json()) as { ok: boolean; key: string; warning?: string };
+    assert.ok(warn.ok && warn.key === "ATC-99" && /relation refused/.test(warn.warning ?? ""));
+  } finally {
+    s.done();
+  }
+});
