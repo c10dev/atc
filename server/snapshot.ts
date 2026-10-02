@@ -16,7 +16,7 @@ import { readWorkspaces, ticketKeyFromBranch, ticketKeyFromTitle } from "./sourc
 import { readGithub } from "./sources/github.ts";
 import { readLinear } from "./sources/linear.ts";
 import { buildPulls, strandedMessage, strandedOf } from "./landing.ts";
-import { inspectionOf, loadMcc, readMccRecords } from "./mcc.ts";
+import { loadMcc, readMccRecords, reviewOfHead } from "./mcc.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { allProposals } from "./proposals.ts";
 import { awaitSupervisorAlerts } from "./supervisor-confirm.ts";
@@ -242,7 +242,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
         const repo = airports.open.find((a) => a.code === loadMcc().airport)?.repo;
         if (!repo) return undefined;
         const records = readMccRecords();
-        return { repo, reviewOf: (number: number, head: string) => inspectionOf(records, number, head) };
+        return { repo, reviewOf: (number: number, head: string) => reviewOfHead(records, number, head) };
       })(),
       // AUTOLAND AIRPORT의 머지 리뷰(ATC-328): atc에 기록한 이 head의 리뷰가 착륙 리뷰
       autoland: { repos: airports.open.filter((a) => alCfg.airports.includes(a.code)).map((a) => a.repo), reviewedSecurity: alCfg.reviewedSecurity, reviews: readMergeReviews() },
