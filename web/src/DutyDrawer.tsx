@@ -6,6 +6,7 @@ import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
 import { type Airports, type CardCtx, DraftCard, DutyCard, QueueRow, useCharters, useDecisions, useQueue } from "./DutyCards.tsx";
 import "./Drawer.css";
 import "./DutyDrawer.css";
+import { apiSend } from "./api.ts";
 
 // DUTY 서랍(#duty, ATC-220, docs/duty.md 4장). 대화, 카드(ATC-230, D3), 채팅 위의 접힌 QUEUE 줄.
 // 서랍 껍데기와 닫는 방법(Esc, 배경, ×, Back)은 FLIGHT·PR 서랍(Drawer.tsx)과 같다. DUTY의 글은 소리로 읽지 않는다.
@@ -55,7 +56,7 @@ function Item({ it, ctx }: { it: ChatItem; ctx: CardCtx }) {
 
 async function post(path: string, body: unknown): Promise<{ ok: boolean; status: number; error?: string; queued?: boolean }> {
   try {
-    const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const res = await apiSend("POST", path, body);
     const j = (await res.json().catch(() => ({}))) as { error?: string; queued?: boolean };
     return { ok: res.ok, status: res.status, error: j.error ?? (res.ok ? undefined : `HTTP ${res.status}`), queued: j.queued };
   } catch (e) {

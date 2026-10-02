@@ -10,6 +10,7 @@ import { formatClock, useSettings } from "../settings.ts";
 import { PriorityMark } from "../ui.tsx";
 import { ReadinessFold, useFoldOpen } from "./ReadinessFold.tsx";
 import "./Schedule.css";
+import { apiGet, apiSend } from "../api.ts";
 
 // OCC SCHEDULE — OCC가 Linear에 쓸 변경(CLASSIFY 라벨, PRIORITIZE 우선순위, TAIL tail:TEAM_X, WAYPOINT 마일스톤, NEW 새 이슈, CLOSE 닫기)을 초안으로 남긴다.
 // CLOSE는 이슈 상태를 바꾸는 일이라 OCC가 발부하지 않고, 승인되면 SUPERVISOR가 Linear에서 직접 Done으로 바꾼다.
@@ -226,7 +227,7 @@ function payloadText(op: ScheduleOp): string {
 const axisLabel = (labels: string[], axis: "type" | "wake") => labels.find((l) => new RegExp(`^${axis}\\s*:`, "i").test(l.trim())) ?? null;
 
 async function post(path: string, body: unknown) {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const res = await apiSend("POST", path, body);
   const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
   if (!res.ok || data.error) throw Object.assign(new Error(data.error ?? `HTTP ${res.status}`), { status: res.status });
   return data;
@@ -242,7 +243,7 @@ export function Schedule({ refreshKey, now }: { refreshKey: string; now: number 
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/schedule/brief");
+      const res = await apiGet("/api/schedule/brief");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setBrief(await res.json());
       setError(null);

@@ -6,6 +6,7 @@ import type { IdeaDetail, IdeaRow } from "../../server/ideas.ts";
 import { timeAgo } from "./derive.ts";
 import { Md, useDetail } from "./Drawer.tsx";
 import "./Drawer.css";
+import { apiSend } from "./api.ts";
 
 // IDEAS 서랍(#ideas, #ideas/<번호>, DUTY G4): atc 저장소의 열린 idea 이슈를 읽기만 한다. 서랍 껍데기와 닫는 방법은 FLIGHT·PR 서랍과 같다.
 // ADOPT는 서버가 만든 고정 문구를 DUTY에 보낸다(기존 /api/duty/message). GitHub에는 아무것도 쓰지 않는다.
@@ -57,7 +58,7 @@ function Adopt({ d, gate }: { d: IdeaDetail; gate: DutyGate }) {
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch("/api/duty/message", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: d.adopt }) });
+      const res = await apiSend("POST", "/api/duty/message", { text: d.adopt });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(body.error ?? `HTTP ${res.status}`));
       location.hash = "#duty";

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiGet, apiSend } from "./api.ts";
 
 // LAUNCH ACCOUNT APPLY NOW(ATC-244, docs/accounts.md): 설정 창 ACCOUNTS와 FLEET 머리글이 같이 쓴다.
 // 눌러도 바로 옮기지 않는다: 지금 계획을 새로 읽어 행동별로 보이고, 확인해야 STOP → LAUNCH를 한다(SUPERVISOR만, 서버가 이 화면 Origin·JSON을 본다).
@@ -46,7 +47,7 @@ export function ApplyNow({ refreshKey, onDone, compact = false }: { refreshKey?:
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [pending, setPending] = useState<PlanView["pending"]>(null);
   const read = async () => {
-    const r = await fetch("/api/fleet/apply-now");
+    const r = await apiGet("/api/fleet/apply-now");
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return (await r.json()) as PlanView;
   };
@@ -80,7 +81,7 @@ export function ApplyNow({ refreshKey, onDone, compact = false }: { refreshKey?:
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/fleet/apply-now", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: true, launchAccount: plan.launchAccount }) });
+      const res = await apiSend("POST", "/api/fleet/apply-now", { confirm: true, launchAccount: plan.launchAccount });
       const body = (await res.json().catch(() => ({}))) as Outcome & { pending?: PlanView["pending"] };
       if (!res.ok) setError(body.error ?? `HTTP ${res.status}`);
       else {
@@ -97,7 +98,7 @@ export function ApplyNow({ refreshKey, onDone, compact = false }: { refreshKey?:
   const cancelPending = async () => {
     setBusy(true);
     try {
-      await fetch("/api/fleet/apply-now/pending", { method: "DELETE", headers: { "Content-Type": "application/json" } });
+      await apiSend("DELETE", "/api/fleet/apply-now/pending");
       setPending(null);
     } finally {
       setBusy(false);

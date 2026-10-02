@@ -1,4 +1,5 @@
 import { type ControlList, controlPollDue } from "../../server/control-view.ts";
+import { apiGet } from "./api.ts";
 
 // /api/control/sessions를 읽는 값의 모듈 공유(ATC-127). 헤더 CONTROL 띠(ControlStrip)와 FLEET의 CONTROL SESSIONS(ControlSessions)가 같은 값과 같은 "마지막으로 읽은 시각"을 쓴다.
 // 값(list)만 나눈다. 띠의 "마지막으로 읽은 시각"(at)은 띠만 쓰고, FLEET 구역은 자기 시각으로 60초마다 읽는다(ACCOUNT도 읽어야 하므로).
@@ -12,7 +13,7 @@ export function fetchControlList(force = false): Promise<ControlList | null> {
   if (inflight) return inflight;
   if (!controlPollDue(controlMemo.at, Date.now(), force)) return Promise.resolve(controlMemo.list);
   controlMemo.at = Date.now();
-  inflight = fetch(`/api/control/sessions${force ? "?fresh=1" : ""}`)
+  inflight = apiGet(`/api/control/sessions${force ? "?fresh=1" : ""}`)
     .then(async (res) => {
       if (res.ok) controlMemo.list = (await res.json()) as ControlList;
       return controlMemo.list;

@@ -23,6 +23,7 @@ import { FollowingAlert, FollowingPanel, useFollowing } from "./Following.tsx";
 import { ReadinessFold, useFoldOpen } from "./ReadinessFold.tsx";
 import { BriefsPanel } from "./Briefs.tsx";
 import "./Dispatch.css";
+import { apiGet, apiSend } from "../api.ts";
 
 // 2단계 DISPATCH. shadow(2a): 제안은 화면에만 보이고 아무에게도 보내지 않는다.
 // approval(2b): SUPERVISOR가 승인하면 OCC 세션(DISPATCH)이 FLIGHT PLAN을 CAPTAIN에게 보낸다.
@@ -231,7 +232,7 @@ const overdueText = (p: Proposal) =>
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 
 async function post(path: string, body: unknown) {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const res = await apiSend("POST", path, body);
   const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
   if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
   return data;
@@ -304,11 +305,11 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
   const [launchModel, setLaunchModel] = useState<LaunchModelSetting | null>(null);
   useEffect(() => {
     let alive = true;
-    fetch("/api/fleet/launch-accounts")
+    apiGet("/api/fleet/launch-accounts")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => alive && setLaunchAcct(d?.launchAccount?.aircraft ?? null))
       .catch(() => alive && setLaunchAcct(null));
-    fetch("/api/fleet/launch-model")
+    apiGet("/api/fleet/launch-model")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => alive && setLaunchModel(d?.launchModel ?? null))
       .catch(() => alive && setLaunchModel(null));
@@ -319,12 +320,12 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/dispatch/brief");
+      const res = await apiGet("/api/dispatch/brief");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setBrief(await res.json());
       setError(null);
       // 승인된 ASSIGN의 FRESH START 판정(읽기만). 못 읽어도 카드는 그대로 둔다
-      fetch("/api/dispatch/fresh-start")
+      apiGet("/api/dispatch/fresh-start")
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => setFresh(d?.verdicts ?? {}))
         .catch(() => setFresh({}));

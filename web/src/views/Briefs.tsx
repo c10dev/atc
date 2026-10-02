@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { BriefKind, BriefRow, BriefStats, CrewMode, GridKey } from "../../../server/briefs.ts";
 import { flightNumber } from "../aviation.ts";
 import "./Briefs.css";
+import { apiGet } from "../api.ts";
 
 // VECTORS 대 DIRECT(ATC-32, docs/dispatch.md "DIRECT briefs"), SOLO 대 CREW(ATC-33). LOGBOOK의 measured 줄로
 // 지시서 종류별·SOLO·CREW별·둘을 겹친 2×2로 중간 질문·READBACK → PR·P0–P2 지적·PR 뒤 수정 커밋을 나란히 보여 주기만 한다.
@@ -59,7 +60,7 @@ export function BriefsPanel({ refreshKey }: { refreshKey: string }) {
   // 서버에 비교가 없거나(404) 실패하면 아무것도 그리지 않는다
   useEffect(() => {
     let alive = true;
-    fetch(`/api/logbook/briefs?days=${days}`)
+    apiGet(`/api/logbook/briefs?days=${days}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d) => alive && setData(d?.stats ? d : null))
       .catch(() => alive && setData(null));

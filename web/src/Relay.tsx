@@ -2,6 +2,7 @@ import { useState } from "react";
 import { DEFAULT_NOTES, flightPlanNotesOf, type IssueComment } from "../../server/issue-notes.ts";
 import { RELAY_KINDS, RELAY_MAX_CHARS, type Relay, type RelayKind, type RelayType, relayInputOf } from "../../server/relay.ts";
 import "./Relay.css";
+import { apiGet, apiSend } from "./api.ts";
 
 // SUPERVISOR RELAY(ATC-271): AIRCRAFT에게 짧은 글을 보낸다. 글은 TOWER가 CLEARANCE로 그대로 보낸다(영어, ATC-126).
 // 보내기 전에 받는 AIRCRAFT·종류·글을 한 번 더 보여 주고 묻는다. 닿지 못하면 SUPERVISOR QUEUE에 손으로 전하는 카드가 뜬다.
@@ -76,7 +77,7 @@ export function RelayBox({
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch(`/api/dispatch/flight/${encodeURIComponent(notesFlight)}`);
+      const res = await apiGet(`/api/dispatch/flight/${encodeURIComponent(notesFlight)}`);
       const d = (await res.json()) as { comments?: IssueComment[]; url?: string; error?: string };
       if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
       const lines = flightPlanNotesOf(d.comments, DEFAULT_NOTES, d.url ?? null);
@@ -93,7 +94,7 @@ export function RelayBox({
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch("/api/relay", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ to, kind: type ? "instruction" : k, text: body.trim(), flight, pr, ...(type ? { type, stand } : {}) }) });
+      const res = await apiSend("POST", "/api/relay", { to, kind: type ? "instruction" : k, text: body.trim(), flight, pr, ...(type ? { type, stand } : {}) });
       const d = (await res.json().catch(() => ({}))) as { relay?: Relay; error?: string };
       if (!res.ok || !d.relay) throw new Error(d.error ?? `HTTP ${res.status}`);
       setSent(d.relay);

@@ -28,6 +28,7 @@ import { MoveRows, MovesLayer } from "./GlobeMoves.tsx";
 import { RadioLayer, useRadioFeed } from "./GlobeRadio.tsx";
 import { SpaceView } from "./GlobeSpace.tsx";
 import "./Globe.css";
+import { apiGet } from "../api.ts";
 
 // GLOBE(ATC-254, docs/globe.md): atc의 AIRPORT를 정사영 지구본에 놓고 AIRPORT마다 세워 둔 AIRCRAFT를 보인다. 읽기만 한다.
 // 계산은 server/globe.ts(순수), 장면은 GET /api/globe. SUPERVISOR의 위치·홈·옮긴 AIRPORT·시점은 이 브라우저의 localStorage(atc.globe)에만 둔다.
@@ -173,7 +174,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
   const home = saved.home;
   useEffect(() => {
     let live = true;
-    fetch(`/api/globe${home ? `?home=${encodeURIComponent(home)}` : ""}`)
+    apiGet(`/api/globe${home ? `?home=${encodeURIComponent(home)}` : ""}`)
       .then((r) => (r.ok ? (r.json() as Promise<GlobeScene>) : Promise.reject(new Error(String(r.status)))))
       .then((s) => {
         if (!live) return;

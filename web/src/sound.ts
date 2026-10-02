@@ -1,5 +1,6 @@
 import { playRadioVoice, type RadioPlayback, radioSpecOf } from "./radio.ts";
 import type { SoundName } from "./supervisor-alerts.ts";
+import { apiGet } from "./api.ts";
 
 // SUPERVISOR alerts(ATC-87)의 소리. Web Audio로 합성한다: 오디오 파일도 CDN도 없다. FAA AC 25.1322-1 부록 2를 따라 넷뿐이고,
 // 서로 높이와 리듬이 다르고, 200–1500 Hz 안이며, 시작과 끝을 램프로 만든다. 녹음이나 제조사 소리는 쓰지 않는다.
@@ -83,7 +84,7 @@ export function createPlayer(getCtor: () => Ctor | undefined = () => (globalThis
   // 서버가 만든 WAV를 받아 디코드한다. 못 받으면(엔진 없음·목소리 없음 등) 이유를 돌려준다
   const fetchVoice = async (url: string): Promise<{ buffer: AudioBuffer } | { error: string }> => {
     try {
-      const res = await fetch(url);
+      const res = await apiGet(url);
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         return { error: body.error ?? `음성을 받지 못함(${res.status})` };
