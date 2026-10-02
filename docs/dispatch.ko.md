@@ -204,8 +204,8 @@ DISPATCH 세션: FLIGHT PLAN을 CAPTAIN에게 SendMessage
   FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High
   <티켓 제목과 URL, 이슈에서 옮긴 Goal·Done when·Constraints, DISPATCH note>
   <PILOT'S DISCRETION 줄>
-  — Reply to this message with "READBACK D-0003" if you take it, "UNABLE D-0003 — reason" if you cannot, or "STANDBY D-0003" if you need time.(ATC-122)
-  Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision. ("DIRECT briefs" 참고)
+  — Reply to this message with "READBACK D-0003" if you take it. Reply with "UNABLE D-0003 — reason" if you cannot. Reply with "STANDBY D-0003" if you need time.(ATC-122)
+  Carry the work through to the end. Stop and ask only for what needs a SUPERVISOR decision. ("DIRECT briefs" 참고)
 CAPTAIN: READBACK → Linear In Progress, STAND 준비(지금 규칙 그대로)
 atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER처럼 재확인
      STAND 없는 FLIGHT(SURVEY·CHECK): READBACK 자체로 DEPARTED(기다릴 STAND가 없다)
@@ -444,11 +444,11 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 
   ```
   [DISPATCH D-0003] RECALL · BRAVO (TEAM_B)
-  FLIGHT VOC193 · AIRPORT VCDO — this FLIGHT PLAN is withdrawn.
+  FLIGHT VOC193 · AIRPORT VCDO. This FLIGHT PLAN is withdrawn.
   <티켓 제목>
   사유: <SUPERVISOR의 사유>
-  Stop work. Do not clean up the STAND (worktree); leave it as is — so another AIRCRAFT can pick it up.
-  — When received, reply to this message with "READBACK D-0003 RECALL".
+  Stop work. Do not clean up the STAND (worktree). Leave it as it is. Then another AIRCRAFT can pick it up.
+  — Reply to this message with "READBACK D-0003 RECALL" when you receive it.
   ```
 
   답장에 RECALL을 붙이게 해서(`READBACK D-0003 RECALL`) FLIGHT PLAN의 `READBACK D-0003`과 헷갈리지 않는다.
@@ -596,6 +596,28 @@ DISPATCH는 SUPERVISOR가 발권한("화살을 쏜", [autonomy.md](autonomy.md) 
 - **형식.** `releases.jsonl`, `Ticket.releaseHash`, `Snapshot.releases`, `releaseGate`는 모두 추가다. `atcctl release [brief]`가 읽는다. DUTY guard, 루트 규칙, 다른 guard는 바뀌지 않았다.
 - **여기서 정하지 않은 것.** CROSSCHECK가 승인한 SCHEDULE NEW 초안이 Backlog로 가는지, 발권 기록이 생긴 뒤에도 우선순위 규칙이 남는지([ATC-334](https://linear.app/vocado/issue/ATC-334)). ATC-363이 이 기록을 읽는다.
 
+## 살아 있는 세션으로 주소를 정하기와 전달 실패, 만든 것 (ATC-353)
+
+FLIGHT PLAN·CLEARANCE·RELAY는 만들 때 저장한 이름으로 주소를 정했기 때문에, 재시작·이름 바꾸기·ACCOUNT 이동 뒤에는 아무도 답하지 않는 이름으로 갔다. 메시지 문구와 guard가 읽는 머리는 그대로이고, 바뀐 것은 누구에게 가는가와 실패한 뒤의 길뿐이다. 기록은 모두 새 선택 필드만 더한다.
+
+- **보낼 때 정한다**(`server/address.ts`, 순수). `resolveRecipient`가 저장한 세션 id → job id → REGISTRATION → (다른 것이 없을 때만) 정확한 세션 이름 순으로 살아 있는 세션을 찾는다. 제목은 받는 이로 거절한다(`looksLikeTitle`: 공백, `#`, 따옴표, `ATC-353` 같은 이슈 키, 40자 초과. cause `bad-recipient`). `standHolderOf`는 STAND를 쥔 살아 있는 세션을 준다. `POST /api/clearances`는 `to` 없이 `stand`만 오면 이것을 쓴다. 이름이 바뀐 세션도 id로 찾고, 이름이 겹치면 가장 최근에 움직인 살아 있는 세션이다.
+- **보이는 곳.** FLIGHT PLAN의 보내기 답(`release`, `recall-send`)에 `sendTo`(그대로: 제안의 `aircraftName`. `occ/send-guard.mjs`가 받는 이를 이 이름과 비교한다)와 선택 필드 `sendToName`(살아 있는 세션의 지금 이름)·`sendToId`·`sendToJobId`·`sendToAccount`가 있다. `POST /api/clearances`는 제목인 `to`를 거절하고 같은 필드를 돌려준다. RELAY는 만들 때 `toSessionId`·`toJobId`·`toAccount`를 저장하고, TOWER의 brief는 그 id로 큐에 있는 relay마다 살아 있는 `sendTo…` 필드를 주고, TOWER 매뉴얼은 `sendToId`가 있으면 그것으로 `issue`하라고 한다. `POST /api/clearances`는 `to`를 이름·콜사인·세션 id로 먼저, 그다음 REGISTRATION(가장 최근의 살아 있는 세션)으로 찾고, 그래도 없을 때만 제목이라고 거절한다. 같은 이름의 살아 있는 세션이 둘이면 모호하다고 거절한다.
+- **실패 뒤의 길: 있는 것.** 닿지 못한 글은 원인과 함께 기록되고, 손으로 전하는 `UNDELIVERED` 카드는 전처럼 곧바로 뜬다. 이미 아는 ACCOUNT 사이 실패도 늦추지 않는다.
+- **아직 안 만든 것.** 재시도(그 AIRCRAFT의 다음 CHECK IN이나 relaunch 뒤) → DISPATCH의 RESUME·LAUNCH 제안 → DUTY 카드 → 그다음에야 SUPERVISOR 카드로 가는 단계 길은 아직 없는 행위자(CLEARANCE·RELAY의 재시도 트리거, DUTY 카드)가 필요하다. 그것이 생기기 전에는 카드를 붙잡아 두지 않는다: 아무도 모르는 채 붙잡힌 카드는 전보다 늦다. 닿지 못한 FLIGHT PLAN은 이미 `approved`로 돌아가 다음 release가 다시 보내고, 세션이 없는 AIRCRAFT의 launch 카드는 DISPATCH 계획이 이미 낸다.
+- **원인.** `undelivered`(FLIGHT PLAN)·`undeliverable`(CLEARANCE·RELAY)는 선택 `cause`를 받는다. 없으면 사유에서 읽는다(`causeOf`): `absent`, `cross-account`, `tower-down`, `restarting`, `bad-recipient`, `stale-address`, `other`. `cause` / `undeliverableCause`로 저장한다.
+- **READABILITY.** 하루 기록의 모든 bucket에 `undelivered: { n, causes }`가 있다. 닿지 못한 것으로 닫힌 호출(`Transmission.undelivered`·`undeliveredCause`)에서 센다. undeliverable로 닫힌 CLEARANCE는 RADIO에서 `cancel` 대신 `undelivered`로 닫히지만, 둘 다 거둔 호출이라 다른 수는 바뀌지 않는다.
+
+## DISPATCH 자동 운항 구현 내용 (ATC-367)
+
+K3: DISPATCH가 사람이나 CROSSCHECK 없이 나는 것을 SUPERVISOR가 2026-10-02에 승인했다(이슈에 인용됐고 TEAM_G 세션에서 직접 확인). live first, shadow 없음([autonomy.md](autonomy.md) 원칙 1·5).
+
+- **서버가 하는 일.** `runAutoApprove`가 1분마다, planner 자신의 필터(`settleMin` 동안 SETTLED, HELD 아님, 발권된 FLIGHT, FUEL hold 아님)와 기존 상한(`ATC_MAX_LAUNCHED`, 하루 승인·LAUNCH 상한, LAUNCH 실패 뒤 대기, LAUNCH 막힘)을 통과한 열린 ASSIGN·launch 카드를 모두 승인한다. CROSSCHECK mark, blind 표본, CAUTION 메모는 보지 않는다(메모는 FLIGHT PLAN 글에 실려 간다). 승인은 `via: "auto"`다.
+- **SUPERVISOR 카드 없음.** ASSIGN·launch 카드는 SUPERVISOR QUEUE와 판정 대기 알림에서 빠진다. 갈 수 없는 카드(상한이 참, FUEL hold)는 `autoCardTtlMin`(기본 60분) 뒤 `자동 운항: 승인되지 못함` 사유로 SUPERSEDED되고, 이 사유는 churned라 그 짝이 곧바로 다시 후보가 되어 planner가 다시 제안한다. CROSSCHECK의 DISPATCH 브리핑은 비어 있다. RELEASE 카드와 SCHEDULE 초안, 그 CROSSCHECK는 그대로다. 손으로 누르는 승인·거절 버튼은 brake로 남는다.
+- **스위치 하나.** `dispatch.json`의 `autoDispatch`: `"on"`(이게 들어간 뒤 기본) 또는 `"off"`. SUPERVISOR만 바꾼다: 설정 → AUTOMATION → AUTO APPROVE, Origin을 확인하는 설정 길(`fromThisApp`)로만. `atcctl` 명령은 없다. 깨진 `dispatch.json`은 `off`로 읽는다. `off`면 옛 `autoApprove`·`autoApproveLaunch` 모드(CROSSCHECK가 agree한 카드만, ATC-334)가 전처럼 돌고 SCHEDULE 초안은 계속 `autoApprove`가 정한다.
+- **MISFIRE.** `GET /api/dispatch/misfire?days=7`과 DISPATCH 탭 맨 위 MISFIRE 블록이, 서버가 승인한 ASSIGN 카드 가운데 나중에 틀렸다고 드러난 것(거절·UNABLE, RECALL, 보낸 뒤 SUPERSEDED, AIRCRAFT 불가로 SUPERSEDED)을 승인한 UTC 날짜별로 그날 승인 대비 몫으로 센다. 카드는 한 번만 센다.
+- **형식.** `dispatch.json`의 `autoDispatch`·`autoCardTtlMin`과 SUPERSEDE 사유 `AUTO_STALE_WHY`는 추가다. 기록 형식은 바뀌지 않는다.
+- **아직 아님.** SETTLED를 기다리는 동안 있는 DISPATCH 카드에는 agree 줄과 CROSSCHECK mark가 여전히 그려진다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.
@@ -612,7 +634,7 @@ AUTOPILOT이라는 말은 쓰지 않는다. 기계가 날고 조종사는 지켜
 
 늘 지키는 규칙은 제자리(vocado `CLAUDE.md`·`AGENTS.md`, atc `CLAUDE.md`, guard, 브랜치 보호, 승인 게이트)에 두고 지시서에 되풀이하지 않는다. 그것들이 그대로라서 짧은 지시서가 안전하다.
 
-**지시서.** 모든 지시서의 둘째 줄은 `BRIEF: DIRECT`다. 그다음 FLIGHT, 제목과 링크, 이슈 본문에서 옮긴 세 칸(`server/briefs.ts` `directSectionsOf`): `Goal:`, `Done when:`, `Constraints:`로 이름 붙인다(ATC-126: 지시서 글은 영어). 이슈 본문에서는 `목표`(Goal·Outcome), `완료 기준`(Acceptance·Done criteria·Done when·Exit criteria), `이 작업만의 제약`(Constraints·Hard constraints·금지·Forbidden·Invariants·Not in scope) 칸을 찾는다. 칸의 글은 쓴 그대로 싣는다(ATC-58): Linear의 역슬래시 이스케이프를 풀고(`\~31 K` → `~31 K`), `linear.app/<워크스페이스>/issue/<KEY>/…`로 가는 이슈 링크는 key만 남긴다(`ATC-46`. 글을 따로 쓴 링크는 `the design (ATC-46)`처럼 글도 남긴다). Linear가 `linear.app/<워크스페이스>/review/…` 링크로 둔 PR 언급은 링크 글만 남긴다(`chaehy5665/atc#134`, ATC-70). 코드 스팬과 펜스 블록 안은 그대로다. 한 줄짜리 칸이 목록 항목이면 이름표 다음 줄에 싣는다. 완료 기준과 제약은 자르지 않고 모두 싣는다. 목표만 푼 글 기준 600자에서 줄 경계로 자른다(ATC-35). 세 칸을 합쳐 4,000자를 넘으면 일부만 싣지 않고, 목표만 두고 `Read the full done criteria and constraints in the issue body.`라고 적는다. 첫 항목 뒤에서 잘린 목록은 뒤따르는 규칙을 가리기 때문이다. 보통 이슈는 들어간다: ATC-34 본문(약 3,200자)이 시험 fixture다. 허용 범위, 배경, 확인 방법은 링크의 이슈에 둔다. 완료 기준 칸이 없으면 이슈의 완료 기준을 따르라고 적는다. 끝은 PILOT'S DISCRETION 줄, READBACK 요청, `Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision.`
+**지시서.** 모든 지시서의 둘째 줄은 `BRIEF: DIRECT`다. 그다음 FLIGHT, 제목과 링크, 이슈 본문에서 옮긴 세 칸(`server/briefs.ts` `directSectionsOf`): `Goal:`, `Done when:`, `Constraints:`로 이름 붙인다(ATC-126: 지시서 글은 영어). 이슈 본문에서는 `목표`(Goal·Outcome), `완료 기준`(Acceptance·Done criteria·Done when·Exit criteria), `이 작업만의 제약`(Constraints·Hard constraints·금지·Forbidden·Invariants·Not in scope) 칸을 찾는다. 칸의 글은 쓴 그대로 싣는다(ATC-58): Linear의 역슬래시 이스케이프를 풀고(`\~31 K` → `~31 K`), `linear.app/<워크스페이스>/issue/<KEY>/…`로 가는 이슈 링크는 key만 남긴다(`ATC-46`. 글을 따로 쓴 링크는 `the design (ATC-46)`처럼 글도 남긴다). Linear가 `linear.app/<워크스페이스>/review/…` 링크로 둔 PR 언급은 링크 글만 남긴다(`chaehy5665/atc#134`, ATC-70). 코드 스팬과 펜스 블록 안은 그대로다. 한 줄짜리 칸이 목록 항목이면 이름표 다음 줄에 싣는다. 완료 기준과 제약은 자르지 않고 모두 싣는다. 목표만 푼 글 기준 600자에서 줄 경계로 자른다(ATC-35). 세 칸을 합쳐 4,000자를 넘으면 일부만 싣지 않고, 목표만 두고 `Read the full done criteria and constraints in the issue body.`라고 적는다. 첫 항목 뒤에서 잘린 목록은 뒤따르는 규칙을 가리기 때문이다. 보통 이슈는 들어간다: ATC-34 본문(약 3,200자)이 시험 fixture다. 허용 범위, 배경, 확인 방법은 링크의 이슈에 둔다. 완료 기준 칸이 없으면 이슈의 완료 기준을 따르라고 적는다. 끝은 PILOT'S DISCRETION 줄, READBACK 요청, `Carry the work through to the end. Stop and ask only for what needs a SUPERVISOR decision.`
 
 - **FLIGHT PLAN**(`formatFlightPlan`): `dispatch release`가 Linear에서 이슈 본문을 읽고(읽기 전용) 지시서를 제안의 `message`로 저장한다. Linear를 못 읽어도 세 칸 없이 보낸다. send-guard는 전처럼 저장된 문구와 비교한다.
 - **다른 세션의 배정**(ENGINEERING, 사람): `GET /api/dispatch/flight/:key/brief?to=TEAM_X`가 같은 모양의 문구를 `{key, brief: "DIRECT", text}`로 준다. 손으로 쓴 지시서도 `BRIEF: DIRECT` 줄만 있으면 된다.

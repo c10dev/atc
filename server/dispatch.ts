@@ -65,6 +65,11 @@ export interface DispatchConfig {
   autoApproveMax: number; // 자동 승인 하루(굴러가는 24시간) 상한. ASSIGN과 SCHEDULE을 같이 센다
   autoLaunchMax: number; // 자동 LAUNCH 하루 상한
   autoLaunchBackoffMin: number; // LAUNCH가 실패한 REGISTRATION은 이만큼(분) 자동으로 다시 승인하지 않는다
+  // DISPATCH 자동 운항(ATC-367, K3): "on"이면 서버가 필터와 상한을 통과한 모든 ASSIGN·launch 카드를 승인한다 — CROSSCHECK·blind 표본·SUPERVISOR 카드 없음. 기본 on(live first),
+  // 스위치는 설정 창(fromThisApp)에서만 바꾼다. 깨진 파일은 off로 읽는다. autoApprove·autoApproveLaunch(ATC-334)는 off일 때와 SCHEDULE 초안에만 쓴다
+  autoDispatch: AutoDispatch;
+  // 자동 운항에서 승인되지 못한 열린 카드가 이만큼(분) 지나면 만료되고 planner가 다시 제안한다(SUPERVISOR에게 가지 않는다)
+  autoCardTtlMin: number;
   // 발권 gate(ATC-362): 발권 기록이 없는 Todo FLIGHT는 제안일 뿐이라 배정하지 않는다. "auto"(기본)는 일괄 확인(arm) 뒤부터, "on"은 항상, "off"는 끔
   releaseGate: ReleaseGateMode;
   // STALE STOP(ATC-369): FLIGHT가 끝났는데(머지·ARRIVED) PENDING·HUNG으로 30분 남은 AIRCRAFT를 서버가 멈춘다. 기본 on(live first). 끄는 것은 SUPERVISOR만(설정 창, fromThisApp)
@@ -74,6 +79,8 @@ export type AutoMode = "off" | "shadow" | "on";
 export const AUTO_MODES: readonly AutoMode[] = ["off", "shadow", "on"];
 // 모르는 값은 off — 깨진 파일이 자동 승인을 켜지 않게
 export const autoModeOf = (v: unknown): AutoMode => (AUTO_MODES.includes(v as AutoMode) ? (v as AutoMode) : "off");
+export type AutoDispatch = "off" | "on";
+export const DEFAULT_AUTO_CARD_TTL_MIN = 60;
 export const DEFAULT_AUTO_APPROVE_MAX = 40;
 export const DEFAULT_AUTO_LAUNCH_MAX = 6;
 export const DEFAULT_AUTO_LAUNCH_BACKOFF_MIN = 30;
@@ -107,6 +114,8 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   autoApproveMax: DEFAULT_AUTO_APPROVE_MAX,
   autoLaunchMax: DEFAULT_AUTO_LAUNCH_MAX,
   autoLaunchBackoffMin: DEFAULT_AUTO_LAUNCH_BACKOFF_MIN,
+  autoDispatch: "on",
+  autoCardTtlMin: DEFAULT_AUTO_CARD_TTL_MIN,
   releaseGate: "auto",
   staleStop: "on",
 };
@@ -148,6 +157,18 @@ export function saveAutoApprove(key: "autoApprove" | "autoApproveLaunch", mode: 
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify({ ...user, [key]: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
+// autoDispatch만 바꿔 저장한다(설정 창, ATC-367). 다른 설정은 그대로 둔다
+export function saveAutoDispatch(mode: AutoDispatch, file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, autoDispatch: mode }, null, 2) + "\n");
   renameSync(tmp, file);
 }
 
@@ -216,13 +237,17 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       autoApproveMax: nonNegInt(user.autoApproveMax, d.autoApproveMax),
       autoLaunchMax: nonNegInt(user.autoLaunchMax, d.autoLaunchMax),
       autoLaunchBackoffMin: nonNegInt(user.autoLaunchBackoffMin, d.autoLaunchBackoffMin),
+      // 자동 운항(ATC-367): 파일에 "off"라고 적었을 때만 끈다(적지 않았으면 기본 on)
+      autoDispatch: user.autoDispatch === "off" ? "off" : "on",
+      autoCardTtlMin: typeof user.autoCardTtlMin === "number" && Number.isFinite(user.autoCardTtlMin) && user.autoCardTtlMin > 0 ? user.autoCardTtlMin : d.autoCardTtlMin,
       // 모르는 값은 기본("auto")으로
       releaseGate: user.releaseGate === "on" || user.releaseGate === "off" ? user.releaseGate : "auto",
       // STALE STOP(ATC-369): off만 끈다. 모르는 값은 on
       staleStop: user.staleStop === "off" ? "off" : "on",
     };
-  } catch {
-    return DEFAULT_DISPATCH_CONFIG;
+  } catch (e) {
+    // 파일이 없으면 기본. 있는데 못 읽으면(깨짐) 자동 운항은 끈다 — 깨진 파일이 사람 없는 승인을 켜 두지 않게(ATC-367)
+    return (e as NodeJS.ErrnoException)?.code === "ENOENT" ? DEFAULT_DISPATCH_CONFIG : { ...DEFAULT_DISPATCH_CONFIG, autoDispatch: "off" };
   }
 }
 

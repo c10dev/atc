@@ -47,10 +47,11 @@ export interface QueueInput {
   sessions: (Pick<Session, "id" | "name" | "job" | "lastActiveAt"> & Partial<Pick<Session, "status" | "origin" | "jobId" | "account">>)[];
   blockedMin: number;
   // 손으로 전하는 카드(ATC-271): 모두 없으면 카드가 없다
-  relays?: Pick<Relay, "id" | "to" | "kind" | "text" | "status" | "statusAt" | "reason">[];
-  clearances?: Pick<Clearance, "id" | "toName" | "type" | "text" | "undeliverableAt" | "undeliverableReason" | "handAt">[];
+  relays?: Pick<Relay, "id" | "to" | "kind" | "text" | "status" | "statusAt" | "reason" | "cause">[];
+  clearances?: Pick<Clearance, "id" | "toName" | "type" | "text" | "undeliverableAt" | "undeliverableReason" | "undeliverableCause" | "handAt">[];
   folders?: { label: string; dir: string }[]; // ACCOUNT 라벨 → 폴더(등록부)
   defaultDir?: string; // ~/.claude
+  autoDispatch?: boolean; // 자동 운항(ATC-367): 서버가 ASSIGN 카드를 승인하므로 SUPERVISOR 큐에 올리지 않는다
   relayOffers?: RelayOffer[]; // relay-offer.ts의 결과(없으면 RELAY 카드가 없다)
 }
 
@@ -64,6 +65,7 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
   // PROPOSAL: SUPERVISOR가 판정할 DISPATCH 제안. HOLD 걸린 것은 선행 FLIGHT를 기다리는 것이라 뺀다(DISPATCH 화면의 open과 같다)
   for (const p of inp.proposals) {
     if (p.status !== "proposed" || (p.kind === "ASSIGN" && p.holdAt !== null)) continue;
+    if (inp.autoDispatch && p.kind === "ASSIGN") continue; // ASSIGN·launch 카드는 서버가 승인한다(ATC-367). RELEASE는 그대로 SUPERVISOR 몫
     out.push({ kind: "PROPOSAL", key: p.id, since: p.statusAt, title: `${p.kind} ${p.flight}${p.aircraftName ? ` → ${p.aircraftName}` : ""}`, hash: "#dispatch" });
   }
 

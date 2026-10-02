@@ -16,6 +16,19 @@ const reply = (callId: string, kind: string, at: string, over: Partial<Transmiss
 const tr = (first: string, at: string, over: Partial<TranscriptReply> = {}): TranscriptReply => ({ at, from: "TEAM_G", to: "TOWER", first, length: 120, lines: 1, ...over });
 const run = (txs: Transmission[], replies: TranscriptReply[] = [], events: TrafficEvent[] = [], window = DAY) => readabilityOf(txs, replies, events, window);
 
+test("닿지 못한 호출은 원인별로 센다(ATC-353), 원인이 없으면 사유 글에서 읽는다", () => {
+  const txs = [
+    call("D-1", T("10:00"), { kind: "FLIGHT PLAN", freq: "DELIVERY", from: "OCC", undelivered: "no live session by that name", closedBy: "undelivered", open: undefined }),
+    call("C-2", T("11:00"), { undelivered: "x", undeliveredCause: "cross-account", closedBy: "undelivered", open: undefined }),
+    call("C-3", T("12:00")),
+  ];
+  const r = run(txs);
+  assert.equal(r.total.undelivered.n, 2);
+  assert.equal(r.total.undelivered.causes.absent, 1);
+  assert.equal(r.total.undelivered.causes["cross-account"], 1);
+  assert.equal(r.total.withdrawn, 2);
+});
+
 test("statOf: 중앙값(짝수는 가운데 둘의 평균)과 p90(가장 가까운 순위)", () => {
   assert.deepEqual(statOf([]), { n: 0, medianMs: null, p90Ms: null });
   assert.deepEqual(statOf([5]), { n: 1, medianMs: 5, p90Ms: 5 });
