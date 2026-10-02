@@ -71,13 +71,13 @@ cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-
 ## 5. 검증
 
 - `npm test`, `npx tsc --noEmit -p .`, `npx vite build`
-- 끝까지 확인할 때는 시험 서버를 띄운다: `(set -a; . /home/c10/projects/atc/.env.local; set +a; ATC_GITHUB=off ATC_STATE_DIR=<임시 폴더> ATC_PORT=7702 exec node server/index.ts) & echo $! > <임시 폴더>/server.pid`
-  - `ATC_GITHUB=off`는 서버가 GitHub(`gh`)를 부르지 않게 한다(시험 서버가 SUPERVISOR의 토큰으로 폴링하지 않게). 확인이 실제 PR 자료를 필요로 할 때만 빼고, 그때는 짧게만 돌린다.
+- 끝까지 확인할 때는 Skill 도구로 `test-server`를 부른다(ATC-357). 그 skill의 스크립트가 빈 포트(7702-7799)와 임시 상태 폴더로 시험 서버를 띄우고, `ATC_GITHUB=off`, 저장한 PID로만 끄기, 폴더와 포트 잠금 치우기를 한꺼번에 한다. 운영 7700과 운영 상태 폴더는 요청해도 거절한다. 두 FLIGHT가 동시에 써도 포트가 겹치지 않는다. 확인이 실제 PR 자료를 필요로 할 때만 `ATC_GITHUB`를 빼고, 그때는 짧게만 돌린다.
+- skill 없이 직접 띄워야 하면 루트 `CLAUDE.md` "검증"의 명령을 그대로 쓴다: `(set -a; . /home/c10/projects/atc/.env.local; set +a; ATC_GITHUB=off ATC_STATE_DIR=<임시 폴더> ATC_PORT=<7702-7799> exec node server/index.ts) & echo $! > <임시 폴더>/server.pid`
   - 직접 만든 실행 스크립트도 PID 파일을 반드시 쓴다.
   - 끌 때는 `kill "$(cat <임시 폴더>/server.pid)"`만 쓴다. `pkill`·`killall`·`kill $(pgrep …)`처럼 이름·패턴으로 죽이지 않고, 내가 띄우지 않은 프로세스는 건드리지 않는다(운영 7700이 죽는다, 2026-09-29 사고. `hooks/kill-guard.mjs`가 막는다).
   - 임시 폴더에는 등록부(`airports.json`, `fleet.json`)만 복사한다.
   - `.env.local`은 복사하거나 출력하지 않는다.
-  - 다른 팀이 7702를 쓰고 있으면 7703이나 7704를 쓴다.
+  - 다른 팀이 쓰는 포트(`ss -ltn`)는 피한다.
 - 화면을 바꿨으면 Playwright로 4개 폭(390, 768, 1280, 1600) × 3개 테마(`radar`, `night`, `cockpit`)를 본다. 가로 넘침이 없는지도 확인한다.
 - 화면 FLIGHT(`web/`나 ANNUNCIATOR 화면을 바꾸는 FLIGHT)는 PR 전에 Skill 도구로 `ui-review`(mode `diff`)를 부른다(ATC-293, 가져온 규칙은 `THIRD_PARTY_NOTICES.md`). 그 출력 블록을 PR 본문의 `docs/design-language.md` 5절 점검표 답 옆에 그대로 붙이고, Blocker는 고치거나 보고의 `BLOCKED`에 적는다. 디자인 언어가 정한 값은 결함이 아니고, `CONFLICT`로 표시된 가져온 규칙은 따르지 않고 블록의 "Conflicts seen"에만 적는다. 스크린샷은 올리지 않는다.
 - 시험 중에 실제 팀 세션에 메시지를 보내지 않는다.
