@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bundleKeysOf, chainOrder, type FollowInput, followBoardOf, followRowOf, parseFollowBody, parseFollowFile, toggleParent } from "./follow.ts";
+import { arrowsBundleOf, ARROWS_KEY, bundleKeysOf, chainOrder, type FollowInput, followBoardOf, followRowOf, parseFollowBody, parseFollowFile, toggleParent } from "./follow.ts";
 import { followingOf } from "./following.ts";
 import type { Milestones } from "./milestones.ts";
 import type { PullRequest, Ticket } from "./model.ts";
@@ -323,4 +323,41 @@ test("끝난 줄에는 막힘도 다음 할 일도 없다. 머리 수는 번들�
   assert.equal(row.next, null);
   const board = followBoardOf({ ...base({ tickets: [ticket("ATC-2", { state: "Backlog", stateType: "backlog" }), ticket("ATC-3", { priority: 0 })] }), parents: ["ATC-2", "ATC-3"] });
   assert.equal(board.reduce((n, b) => n + b.next, 0), 1); // 막는 이슈 없는 Backlog(ATC-2)는 isReady가 아니라 없고, 우선순위 없는 Todo(ATC-3)만 priority
+});
+
+// ── ATC-382: SUPERVISOR의 화살표(발권한 FLIGHT를 FOLLOW 클릭 없이 따라간다) ──
+test("화살표: 발권한 FLIGHT마다 FOLLOW와 같은 줄(단계 점·지금 글)을 만들고, 막힌 줄이 맨 위, 없으면 null", () => {
+  const tickets = [ticket("ATC-1", { updatedAt: ago(60) }), ticket("ATC-2", { updatedAt: ago(5) }), ticket("ATC-3"), ticket("ATC-99")];
+  const b = arrowsBundleOf([{ flight: "ATC-1", at: ago(90) }, { flight: "ATC-2", at: ago(30) }, { flight: "ATC-404", at: ago(10) }], base({ tickets }))!;
+  assert.equal(b.parent, ARROWS_KEY);
+  assert.equal(b.arrows, true);
+  assert.deepEqual(b.rows.map((r) => r.key), ["ATC-1", "ATC-2"]); // 막힌 ATC-1(Todo 60분, 제안 없음)이 위, 스냅샷에 없는 FLIGHT는 빠진다
+  assert.equal(b.rows[0].stuck?.code, "todo-no-proposal");
+  assert.ok(b.rows.every((r) => r.arrow === true));
+  assert.equal(b.rows[1].now, followRowOf("ATC-2", base({ tickets })).now); // FOLLOW와 같은 글
+  assert.equal(b.total, 2);
+  assert.equal(b.stuck, 1);
+  assert.equal(arrowsBundleOf([], base({ tickets })), null);
+  assert.equal(arrowsBundleOf([{ flight: "ATC-404", at: ago(1) }], base({ tickets })), null);
+});
+
+test("화살표: 발권을 다시 하면 가장 나중 것으로, 끝난 줄은 하루 뒤 빠진다(IN 시각 기준), 방금 끝난 줄은 남는다", () => {
+  const done = ticket("ATC-5", { state: "Done", stateType: "completed" });
+  const mk = (inMin: number) => base({ tickets: [done], milestones: new Map([["ATC-5", ms({ off: ago(inMin + 60), on: ago(inMin + 20), in: ago(inMin) })]]) });
+  const recent = arrowsBundleOf([{ flight: "ATC-5", at: ago(1000) }], mk(60))!;
+  assert.equal(recent.rows[0].finished, true);
+  assert.equal(recent.done, true);
+  assert.equal(arrowsBundleOf([{ flight: "ATC-5", at: ago(3000) }], mk(25 * 60)), null);
+  const dup = arrowsBundleOf([{ flight: "ATC-2", at: ago(500) }, { flight: "ATC-2", at: ago(5) }], base({ tickets: [ticket("ATC-2")] }))!;
+  assert.equal(dup.rows.length, 1);
+});
+
+test("화살표: PR 없는 FLIGHT의 ARRIVED 시각이 줄에 실린다(arrivedAt)", () => {
+  const t = ticket("ATC-6", { state: "In Progress", stateType: "started" });
+  const arrived = ago(5);
+  const following = [{ flight: "ATC-6", source: "tail", standFree: true, stages: { arrived, readback: ago(60), departed: ago(60) }, issues: [] }] as never;
+  const row = followRowOf("ATC-6", base({ tickets: [t], following }));
+  assert.equal(row.arrivedAt, arrived);
+  assert.equal(row.finished, true);
+  assert.equal(followRowOf("ATC-1", base({ tickets: [ticket("ATC-1")] })).arrivedAt, null);
 });
