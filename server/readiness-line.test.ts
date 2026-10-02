@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { atfmAlertOf, dispatchLineParts, followingExceptions, lineText, scheduleLineParts } from "../web/src/readiness-line.ts";
+import { atfmAlertOf, dispatchLineParts, followingExceptions, lineText } from "../web/src/readiness-line.ts";
 
 const gate = { decided: 12, agreement: 0.92, target: { decided: 20, agreement: 0.85 }, crosscheck: { matched: 28, marked: 30, rate: 0.93 } };
 const items = (...s: string[]) => s.map((status, i) => ({ id: `i${i}`, status }));
@@ -41,12 +41,6 @@ test("옛 서버: 필드가 없으면 그 조각만 빠지고 던지지 않는�
   assert.equal(lineText(dispatchLineParts({ gate: { decided: 12, target: gate.target } })), "READINESS · gate 12/20 ✗ · agree —");
   assert.equal(lineText(dispatchLineParts({ readiness2b: { items: [] }, gate: { ...gate, crosscheck: undefined } })), "READINESS · gate 12/20 ✗ · agree 92% ✓");
   assert.equal(lineText(dispatchLineParts({ gate: { ...gate, crosscheck: {} } })), "READINESS · gate 12/20 ✗ · agree 92% ✓ · CROSSCHECK —");
-  assert.equal(lineText(scheduleLineParts({})), "READINESS");
-});
-
-test("SCHEDULE 한 줄: gate, agree, CROSSCHECK, WAYPOINT 없는 ROUTE", () => {
-  assert.equal(lineText(scheduleLineParts({ gate, routesWithoutWaypoints: [{}, {}] })), "READINESS · gate 12/20 ✗ · agree 92% ✓ · CROSSCHECK 93% · WAYPOINT 없는 ROUTE 2");
-  assert.equal(lineText(scheduleLineParts({ gate, routesWithoutWaypoints: null })), "READINESS · gate 12/20 ✗ · agree 92% ✓ · CROSSCHECK 93%");
 });
 
 test("ATFM 예외: 걸린 GROUND STOP이나 main CI 실패", () => {

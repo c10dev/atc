@@ -989,6 +989,25 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
     return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, close: closeInfoOut, closeManual, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes), waypointGaps, waypointEtas, slips, routesWithoutWaypoints, judges, wip: wipView(readWips(), now), ...dutyPart() });
   });
 
+  // HOME(ATC-378, docs/layout.md Y3)이 읽는 가벼운 보기: SCHEDULE 탭이 없어졌으니 남은 것만 — 모드, 지연 WAYPOINT(예외), Linear에서 직접 Done으로 바꿀 CLOSE. 읽기만 한다
+  app.get("/api/schedule/home", async (c) => {
+    const s = await getSnapshot();
+    const ops = await current(s);
+    const now = Date.now();
+    const lp = await loadLinearProjects();
+    const routes = lp.milestones ? await loadRoutes(s, loadLogbook(), now) : null;
+    const slipList = routes ? slipsOf(waypointEtasOf(routes), now) : null;
+    const reported = loadSlipsReported();
+    const slips = slipList ? slipList.map((x) => ({ ...x, reportedAt: reported.reported[x.key] ?? null })) : null;
+    const byKey = new Map(s.tickets.map((t) => [t.key, t]));
+    const closeManual = ops
+      .filter((x) => x.kind === "CLOSE" && (x.status === "approved" || (x.status === "agreed" && now - Date.parse(x.statusAt) < 7 * 86_400_000)))
+      .filter((x) => !DONE_STATES.has(byKey.get(x.flight ?? "")?.stateType ?? "completed"))
+      .sort((a, b) => a.statusAt.localeCompare(b.statusAt))
+      .map((x) => ({ id: x.id, flight: x.flight, status: x.status, statusAt: x.statusAt, title: byKey.get(x.flight ?? "")?.title ?? null, url: byKey.get(x.flight ?? "")?.url ?? null, pr: (x.payload as ClosePayload).pr }));
+    return c.json({ mode: loadScheduleMode(), slips, closeManual });
+  });
+
   // 진행 중인 CHARTER REQUEST(ATC-169): 다듬는 동안 서버에 한 줄로 둔다. 초안이 아니다(5건 한도·판정·발부와 무관). 새 OCC가 schedule brief의 wip로 이어받는다
   const wipFail = (e: unknown) => {
     if (e instanceof WipError) return { body: { error: e.message }, status: e.status as 400 | 404 | 409 };

@@ -166,8 +166,8 @@ export function Release({ refreshKey }: { refreshKey: string }) {
                 <span className="rl-title" title={p.reason}>{p.title}</span>
                 <span className="faint rl-kind">SCHEDULE NEW</span>
                 <KEffects text={p.kEffects} />
-                <a className="rl-btn is-link" href="#schedule" title="아직 이슈가 아닙니다. 지금은 SCHEDULE에서 승인하면 Backlog 이슈가 생기고, 그 뒤 여기서 발권합니다">
-                  SCHEDULE에서 승인
+                <a className="rl-btn is-link" href="#home" title="아직 이슈가 아닙니다. HOME의 QUEUE에서 승인하면 Backlog 이슈가 생기고(SCHEDULE AUTO가 켜져 있으면 서버가 승인합니다), 그 뒤 여기서 발권합니다">
+                  HOME에서 승인
                 </a>
               </li>
             ))}
