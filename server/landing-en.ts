@@ -11,11 +11,11 @@ export const changesRequestedEn = (requesters: string[]) =>
   requesters.length ? `changes requested (CHANGES_REQUESTED) by ${namesEn(requesters)} still stand` : "a change request (CHANGES_REQUESTED) still stands";
 export const noReviewEn = (noteEn: string) => `no review: ${noteEn}`;
 export const reviewStaleEn = (oldHead: string, noteEn: string) => `the only review is on an earlier commit ${oldHead}: ${noteEn}`;
-export const behindEn = () => "behind base: rebase needed";
-export const dirtyEn = () => "conflicts with base: resolve the conflicts";
+export const behindEn = () => "behind base. Rebase it";
+export const dirtyEn = () => "conflicts with base. Resolve the conflicts";
 export const blockedEn = (unresolvedThreads?: number) =>
   unresolvedThreads
-    ? `GitHub branch protection blocks the merge — ${unresolvedThreads} unresolved review thread${unresolvedThreads === 1 ? "" : "s"} (threads must be resolved before merging)`
+    ? `GitHub branch protection blocks the merge. ${unresolvedThreads} review thread${unresolvedThreads === 1 ? " is" : "s are"} not resolved. Resolve all threads before you merge`
     : "GitHub branch protection blocks the merge";
 export const mergeUnknownEn = () => "GitHub is still computing whether the PR can merge";
 export const losEn = () => "a LOSS OF SEPARATION is open on the STAND";
@@ -23,17 +23,17 @@ export const losEn = () => "a LOSS OF SEPARATION is open on the STAND";
 // 등급을 알 수 있는 Codex 지적 요약의 영어 개수. counts는 "P0 1 · P2 2" 꼴(등급 이름은 영어 그대로)
 export const countsEn = (counts: string, unmarked: number) => counts + (unmarked ? ` (${unmarked} without a severity mark counted as P2)` : "");
 export const codexFindingsEn = (head: string, countsE: string | null) =>
-  countsE ? `Codex findings on head ${head} (${countsE}) — fix and get a re-review` : `Codex findings on head ${head} — fix and get a re-review`;
+  countsE ? `Codex findings on head ${head} (${countsE}). Fix them and get a re-review` : `Codex findings on head ${head}. Fix them and get a re-review`;
 export const codexP3OpenEn = (head: string, p3: number, open: number) =>
-  `${open} of ${p3} Codex P3 finding${p3 === 1 ? "" : "s"} on head ${head} ${open === 1 ? "has" : "have"} no resolution or reply — resolving the thread or replying lifts the block`;
+  `${open} of ${p3} Codex P3 finding${p3 === 1 ? "" : "s"} on head ${head} ${open === 1 ? "has" : "have"} no resolution or reply. Resolve the thread or reply to lift the block`;
 export const carriedFindingsEn = (who: string, from: string) =>
-  `${who} findings remain on the earlier commit ${from} (only main merges since) — fix and get a re-review`;
+  `${who} findings remain on the earlier commit ${from}. Only main merges came after it. Fix them and get a re-review`;
 export const mccFindingsEn = (head: string, p: [number, number, number], text: string) =>
-  `MCC INSPECTION findings (head ${head}, P0 ${p[0]} · P1 ${p[1]} · P2 ${p[2]}): ${text} — fix and re-inspect on the new head`;
+  `MCC INSPECTION findings (head ${head}, P0 ${p[0]} · P1 ${p[1]} · P2 ${p[2]}): ${text}. Fix them and re-inspect on the new head`;
 export const mergeFindingsEn = (by: string, head: string, p: [number, number, number], text: string) =>
-  `${by} merge-review findings (head ${head}, P0 ${p[0]} · P1 ${p[1]} · P2 ${p[2]}): ${text} — fix and get a re-review on the new head`;
+  `${by} merge-review findings (head ${head}, P0 ${p[0]} · P1 ${p[1]} · P2 ${p[2]}): ${text}. Fix them and get a re-review on the new head`;
 export const extFindingsEn = (reviewer: string, security: boolean, whyEn: string, head: string, p: [number, number, number], text: string) =>
-  `${reviewer} findings (${security ? "security, " : ""}${whyEn}, head ${head}, P0 ${p[0]} · P1 ${p[1]} · P2 ${p[2]}): ${text} — fix and get a re-review on the new head`;
+  `${reviewer} findings (${security ? "security, " : ""}${whyEn}, head ${head}, P0 ${p[0]} · P1 ${p[1]} · P2 ${p[2]}): ${text}. Fix them and get a re-review on the new head`;
 
 // 외부 리뷰 제외·보안 사유(externalGateOf가 한국어로 만든 값)의 영어. 아는 꼴이 아니고 한글이 남으면 자리표시로 바꾼다
 export function gateReasonEn(reason: string | null): string {
@@ -48,9 +48,9 @@ export function gateReasonEn(reason: string | null): string {
 }
 
 // no-review·review-stale 뒤에 붙는 사유
-export const noteExcludedEn = (whyEn: string, reason: string | null) => `${whyEn} — excluded from external review (${gateReasonEn(reason)}) — needs a Codex or SUPERVISOR review`;
-export const noteWaitingEn = (whyEn: string, security: string | null) => `${whyEn} — waiting for the landing review (REVIEW session${security ? `, security PR: ${gateReasonEn(security)}` : ""})`;
-export const noteLimitEn = () => "Codex limit — needs a human review";
+export const noteExcludedEn = (whyEn: string, reason: string | null) => `${whyEn}. Excluded from external review (${gateReasonEn(reason)}). Needs a Codex or SUPERVISOR review`;
+export const noteWaitingEn = (whyEn: string, security: string | null) => `${whyEn}. Waiting for the landing review (REVIEW session${security ? `, security PR: ${gateReasonEn(security)}` : ""})`;
+export const noteLimitEn = () => "Codex limit. Needs a human review";
 export const noteMccEn = (head: string) => `waiting for the MCC INSPECTION of head ${head}`;
 export const noteReviewEn = (head: string, oldThumbs: boolean) => `head ${head} needs a review${oldThumbs ? " (the Codex thumbs-up is for an earlier commit)" : ""}`;
 
@@ -61,9 +61,9 @@ export const carriedWhoEn = (by: string) => (by === "human" ? "human APPROVED" :
 
 // 쌓인 PR. 한국어 stackedText와 같은 인자
 export function stackedEn(pr: { number: number; baseRefName: string }, stack: { base: number | null; chain: number[] } | null, defaultBranch: string): string {
-  if (!stack?.base) return `stacked PR — base is not ${defaultBranch} (${pr.baseRefName}); change the base to ${defaultBranch} before it can land`;
+  if (!stack?.base) return `stacked PR: the base is not ${defaultBranch} (${pr.baseRefName}). Change the base to ${defaultBranch} before it can land`;
   const ahead = stack.chain.slice(0, stack.chain.indexOf(pr.number));
-  return `stacked PR — after ${ahead.map((n) => `#${n}`).join(", ")} lands in ${defaultBranch}, the base moves to ${defaultBranch} (${stack.chain.map((n) => `#${n}`).join(" → ")})`;
+  return `stacked PR: after ${ahead.map((n) => `#${n}`).join(", ")} lands in ${defaultBranch}, the base moves to ${defaultBranch} (${stack.chain.map((n) => `#${n}`).join(" → ")})`;
 }
 
 // TOWER가 holders에게 보내는 APPROACH INFO 본문(영어). 막힘이 없으면 null

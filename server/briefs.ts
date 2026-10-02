@@ -9,8 +9,8 @@ import type { GhThread, LandingReview } from "./landing.ts";
 export type BriefKind = "DIRECT" | "VECTORS";
 export const BRIEF_KINDS: BriefKind[] = ["VECTORS", "DIRECT"];
 export const DIRECT_LINE = "BRIEF: DIRECT";
-export const FINISH_LINE = "Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision.";
-export const DISCRETION_LINE = "Where it is ambiguous, use PILOT'S DISCRETION: pick a reasonable default and record it in the PR.";
+export const FINISH_LINE = "Carry the work through to the end. Stop and ask only for what needs a SUPERVISOR decision.";
+export const DISCRETION_LINE = "If something is not clear, use PILOT'S DISCRETION. Pick a reasonable default and record it in the PR.";
 
 // 지시서 머리 줄. `BRIEF: DIRECT`가 있으면 DIRECT, `BRIEF: VECTORS`면 VECTORS, 없으면 null
 export function briefLineOf(text: string): BriefKind | null {
@@ -195,7 +195,7 @@ export function formatAssignment(t: { key: string; title: string | null; url: st
     ...directLines(directSectionsOf(description)),
     ...notes,
     DISCRETION_LINE,
-    `— If you take it, answer "READBACK ${t.key}"; if you cannot, answer with the reason. Tell me the PR number when you open it.`,
+    `— If you take it, answer "READBACK ${t.key}". If you cannot, answer with the reason. Tell me the PR number when you open it.`,
     FINISH_LINE,
   ]
     .filter(Boolean)
