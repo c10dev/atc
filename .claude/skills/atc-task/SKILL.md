@@ -120,3 +120,19 @@ BLOCKED none | <막힌 점 한 줄씩>
 - 고정 줄 뒤 자유 요약에는: 한 일 3~5개, 명세와 다르게 한 점, `flagged`면 바뀐 관제 규칙, 검증 결과(시험 서버와 Playwright에서 확인한 것. 스크린샷은 올리지 않고 글로, 공개 저장소, 루트 CLAUDE.md), PR 링크.
 
 같은 파일을 고치는 다른 ATC 작업이 먼저 머지되면, `origin/main` 위로 rebase하고 force-with-lease로 다시 올린 뒤 알린다. TOWER가 `FIX`(ATC-270)를 보내면(PR의 현재 head에 리뷰 지적이 있다) `READBACK C-xxxx` → 같은 브랜치에서 지적을 고친다(안 고칠 것은 PR 본문에 이유를 적는다) → 5절 검증 → push → 일을 맡긴 세션에 보고. 못 고치면 `UNABLE C-xxxx — 사유`. INFO처럼 ROGER만 하고 기다리지 않는다. TOWER가 `GO AROUND`(ATC-128)를 보내면 이 일을 바로 한다: `READBACK C-xxxx` → rebase(또는 병합) → 충돌 조각을 대화에 보이기 → 5절 검증 → `git push --force-with-lease` → PR 본문에 푼 내용. 두 PR이 같은 동작을 다르게 바꿨으면 풀지 말고 `UNABLE C-xxxx — 사유`.
+
+## 9. Gotchas
+
+앞선 FLIGHT가 겪은 실패 중 어느 규칙에도 없는 것만 둔다. 항목마다 `origin/main`에서 참이어야 하고, 코드로 없앨 수 있으면 코드를 고치고 항목을 지운다.
+
+- `server/config.ts`는 import할 때 환경을 읽는다(`ATC_STATE_DIR`, `HOME`). 테스트가 `process.env`를 먼저 정하지 않고 정적 import하면 운영 상태 폴더 `~/.local/state/atc/`를 읽는다. 2026-09-30에 그렇게 읽은 테스트가 호스트 OOM을 내 모든 백그라운드 세션이 멈췄다(PR #272). `server/reposition-run.test.ts`처럼 임시 폴더를 환경에 넣고 동적으로 import한다. config 주입(ATC-343)이 들어가면 이 항목을 지운다.
+- 부분만 끝내는 PR은 제목에 `ATC-n`을 넣지 않는다(7절의 `(ATC-n)`은 이슈를 끝내는 PR 몫). 제목의 key는 머지 때 Linear 이슈를 닫는다. 본문은 `Refs ATC-n`.
+- `gh pr edit --body-file`은 GraphQL "Projects (classic)" 오류로 실패한다. `gh api -X PATCH repos/chaehy5665/atc/pulls/<n> -F body=@<파일>`을 쓴다.
+- Playwright MCP는 스크린샷을 `/tmp/playwright-mcp/` 아래 절대 경로로만 저장한다(`~/.claude/playwright-mcp.json`의 `outputDir`). 상대 경로나 다른 경로를 쓰면 PNG가 STAND나 main 체크아웃(공개 저장소)에 떨어진다. 커밋 전에 두 곳의 `git status`에서 남은 PNG를 확인한다.
+- `cp -al node_modules`는 같은 파일시스템에서만 된다. `/tmp`(tmpfs)에는 안 된다.
+- `origin/main`은 FLIGHT 도중 여러 번 움직인다. 끝까지 확인(시험 서버·Playwright) 전에 한 번, PR 직전에 한 번 `git fetch`하고 rebase한다.
+- Playwright 루프에서 해시만 다른 같은 URL로 `page.goto`하면 다시 불러오지 않아 React 상태(열린 설정 창 등)가 남는다. `/?i=${n}#tab`처럼 쿼리를 바꾼다.
+
+### 새 gotcha 제안
+
+`.claude/`를 곁에서 고치지 않는다. 겪은 실패가 위에도 규칙에도 없으면 8절 보고의 자유 요약에 한 줄을 더한다: `GOTCHA? <사실 한 줄> · <증거: PR, 파일:줄, 날짜>`. 받은 세션(OCC, ENGINEERING)이 참인지 확인해 이 절에 넣는 PR(등급 `user`)을 올린다. 이 절을 직접 고치는 PR은 항목마다 코드·실행으로 확인한 근거를 본문에 적는다.
