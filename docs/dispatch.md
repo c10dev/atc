@@ -6,7 +6,7 @@ DISPATCH proposes **which FLIGHT (Linear ticket) to send to which AIRCRAFT (team
 
 > Status: the DISPATCH session merged into the OCC session (`atc/occ/`, [occ.md](occ.md)) on 2026-09-26; the work below is unchanged. 2a (shadow operation) running; 2b (approval operation) implemented behind `mode` and off by default (2026-09-26). See "Turning on 2b". Decisions are listed under "Decisions" at the end.
 >
-> Settled while implementing: under the 1-FLIGHT-per-TEAM rule, a HOLDING AIRCRAFT that holds the STAND of an unfinished FLIGHT is never assigned a FLIGHT that needs a STAND, however long it has been idle (the "30 minutes" rule in 5.1 is not used). It can take one `SURVEY` or `CHECK`, which need no STAND ([fleet.md](fleet.md) 5.1, 2026-09-27). RELEASE only looks at projects mapped to an AIRPORT (code work).
+> Settled while implementing: under the 1-FLIGHT-per-TEAM rule, a HOLDING AIRCRAFT that holds the STAND of an unfinished FLIGHT is never assigned a FLIGHT that needs a STAND, however long it has been idle (the "30 minutes" rule in 5.1 is not used). It can take one `SURVEY` or `CHECK`, which need no STAND ([fleet.md](fleet.md) 5.1, 2026-09-27). RELEASE only looks at projects mapped to an AIRPORT (code work). Since ATC-387 a FLIGHT that only waits to land (open PR, nothing for the AIRCRAFT to do) no longer counts against that rule; see "Waiting PRs do not use the AIRCRAFT's slot".
 
 ## 1. Current facts
 
@@ -643,6 +643,45 @@ K3: the SUPERVISOR approved on 2026-10-02 (attested on the issue and confirmed i
 - **MISFIRE.** `GET /api/dispatch/misfire?days=7` and a MISFIRE block at the top of the DISPATCH tab count, per UTC day of approval, the server-approved ASSIGN cards that later turned out wrong, as a share of that day's approvals: declined or UNABLE, RECALLed, superseded after it was sent, or superseded because the AIRCRAFT was unfit. A card counts once.
 - **Formats.** `autoDispatch` and `autoCardTtlMin` in `dispatch.json` and the `AUTO_STALE_WHY` supersede reason are additive. No log changes.
 - **Not built.** The agree lane and CROSSCHECK marks are still drawn on the DISPATCH cards that exist during the settle window.
+
+## The DISPATCH screen is gone (ATC-377)
+
+DISPATCH approves its own cards (ATC-367), so the tab that held the verdict UI was taken apart ([layout.md](layout.md) Y2). The planner, the proposal log and every route are unchanged; only the screen moved:
+
+| Was in the DISPATCH tab | Now |
+|---|---|
+| Open ASSIGN and launch cards, approve / reject | the SUPERVISOR QUEUE on HOME (`#home`), only when the auto-dispatch switch is off; RELEASE cards always |
+| CROSSCHECK agree lane and chips, BLIND sample, HELD (PREFLIGHT) buttons | removed |
+| IN FLIGHT: CANCEL, RECALL, FRESH START | FOLLOW rows and the FLIGHT drawer (`web/src/FlightBrakes.tsx`) |
+| Assignment history of a FLIGHT (RECENT) | FLIGHT drawer, `배정 기록` (`GET /api/dispatch/proposals?flight=KEY`) |
+| ATFM block (GROUND STOP, manual departure stop, slots) and the 2a/2b switch | HOME, BRAKES row |
+| MISFIRE | METRICS → OPERATIONS |
+| 2b readiness, gate and FLIGHT FOLLOWING blocks, slot and EXCLUDED readouts | removed (FOLLOW rows show why a FLIGHT is not assigned) |
+
+`#dispatch` opens HOME.
+
+## K3 releases reach the classifier, as built (ATC-372)
+
+K3: this decides what the Claude Code auto-mode classifier lets a FLIGHT change, and it changes LAUNCH flags ([autonomy.md](autonomy.md) C9). Only the server builds the entries, from the release record.
+
+- **Declaration.** In the issue's `## K effects` section, one line per effect: `K3[<label>]: <the control being changed> | files: <path>, <path>`. `<label>` is one of `Security Weaken`, `Self-Approval`, `Permission Grant`, `Self-Modification`, `Merge Without Review` (the classifier's soft_deny labels). Paths are repo-relative, no globs, no `..`. A `K3` line that does not fit is ignored (no entry): the FLIGHT stays under the classifier.
+- **When entries are built.** The FLIGHT's release is in the `screen` or `duty-chat` channel and its hash still matches the issue body. An `attested` release never builds an entry, because an agent can write an attestation (`k3LaunchOf` in `server/k3-allow.ts`).
+- **What a launch passes.** `--settings '{"autoMode":{"allow":["$defaults", <entry>…]}}'`, one entry per declaration, naming the label, the control, the files, the STAND (`<repo>/.claude/worktrees/<flight>-*`) and the release id (`<FLIGHT>@<hash>`), and stating "Code only; nothing is executed against production during the FLIGHT". `$defaults` is not an entry: without it `allow` replaces the classifier's built-in allow list. Nothing else is added: no static allow in ACCOUNT settings, no `bypassPermissions`, nothing through the policy hook.
+- **A fresh AIRCRAFT.** A running session cannot take new `--settings`, so the planner pairs such a FLIGHT only with an AIRCRAFT that is launched for it (a launch card).
+- **Only the server.** `launchAircraft` takes the entries as a separate server-built argument, not as an option, and the LAUNCH route drops `settings` and `k3` from the request body. Supervisor-route authentication (ATC-373) protects the routes that start a launch.
+- **Record.** The FLIGHT RECORDER `launch` line carries `flight` and `k3: { release, stand, entries }`.
+
+## Waiting PRs do not use the AIRCRAFT's slot (ATC-387)
+
+An AIRCRAFT whose FLIGHT only waits to land does not sit idle. Before, a started FLIGHT with an open PR kept its AIRCRAFT "stopped" until the PR merged; now it does not count against the slot.
+
+- **"Only waits to land"** (`waitsToLandOf`, `server/dispatch.ts`): every open PR of the FLIGHT is not a Draft, has no open FIX or GO AROUND CLEARANCE for the FLIGHT, and carries no block the AIRCRAFT could act on. Allowed blocks: none (CLEARED), `checks-pending`, `no-review`, `review-stale`, `stacked`, `merge-unknown` (`WAITING_BLOCKS`). Any other block (`checks-failed`, `review-findings`, `changes-requested`, `dirty`, `behind`, `blocked`, `no-checks`, `los`, `draft`, or a code added later) means there is something to do, so the FLIGHT keeps using the slot. A FLIGHT with no PR keeps the slot.
+- **Effect**: a waiting FLIGHT is left out of `holding` (the `perTeam` load), out of the open-FLIGHT count and out of the "stopped" reason, for AIRCRAFT with a session and for ABSENT ones (`tail:`). `AircraftState.waiting` lists them (the `reason` reads `착륙 대기 PR n건 … 다음 FLIGHT는 새 STAND`). A FLIGHT that is working (no PR yet, a failing check, findings, a FIX) still uses the slot, so one AIRCRAFT still works on one FLIGHT.
+- **Cap**: `dispatch.json` `slots.waitingPr` (default 2). An AIRCRAFT holding that many waiting PRs is not assigned a STAND FLIGHT until one lands (STAND-free SURVEY and CHECK still go).
+- **New STAND**: the AIRCRAFT starts the next FLIGHT in a new STAND and keeps the earlier one. The ASSIGN card stores `waitingFlights`, and the FLIGHT PLAN gets one line: the earlier FLIGHT only waits to land in its own STAND, start this one in a NEW STAND, and handle a FIX or GO AROUND for the earlier PR in the earlier STAND.
+- **FIX and GO AROUND still arrive**: TOWER sends them to the sessions holding the PR's STAND by claim. A claim goes stale after `ATC_CLAIM_TTL_MIN` (180), so `keptStandClaims` (`server/snapshot.ts`) keeps the stale claim of a live session on a STAND that has an open PR (one per STAND, the session that touched it last; a STAND another session holds now is left alone). It is added after conflicts, alerts and health are computed, so only the holder lookups see it. The CLEARANCE carries the earlier STAND, so the AIRCRAFT handles it there.
+- **Measured**: a FIX or GO AROUND CLEARANCE records `elsewhere` when it is issued: the other started FLIGHT the target session holds in a different STAND, or `null`. METRICS → OPERATIONS adds the tile `FIX·GO AROUND READBACK` with the median to READBACK for AIRCRAFT busy on another FLIGHT against those that were not (`clearances.fixReadback`); older CLEARANCEs without the field are in neither group.
+- **Formats** (additive): `slots.waitingPr`, `Proposal.waitingFlights`, `Clearance.elsewhere`, `clearances.fixReadback`.
 
 ## DIRECT briefs (ATC-32)
 

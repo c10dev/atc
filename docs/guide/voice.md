@@ -135,7 +135,7 @@ ATC_TTS_KOKORO_MODEL=/home/you/.local/share/kokoro/model
 
 ## RADIO 듣기
 
-같은 엔진과 무전 체인으로 RADIO 탭의 `LISTEN`도 읽습니다([RADIO 탭](radio-tab.md)). 알림과 다른 점:
+같은 엔진과 무전 체인으로 FLIGHTS의 RADIO 보기의 `LISTEN`도 읽습니다([RADIO](radio-tab.md)). 알림과 다른 점:
 
 - 읽는 것은 새로 들어오는 **교신**입니다. 문구는 교신의 필드(스테이션, 콜사인, 종류, FLIGHT)로만 만든 틀이고, 기록된 본문은 읽지 않습니다.
 - 기본은 꺼짐이고, 알림 소리 설정과 따로 이 브라우저에 기억합니다.

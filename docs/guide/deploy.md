@@ -37,6 +37,17 @@ MCC 모드가 `rts`나 `land+rts`이면 서버가 할 때(main CI 통과, 5분 �
 | 업데이트 실패 · 사유 | 재시작 뒤 상태 확인을 통과하지 못했다. 유닛이 ROLLBACK을 했으면 아래 |
 | **RTS 중지 — ROLLBACK 뒤** | 직전 커밋으로 되돌렸다. 원인을 본 뒤 설정 창 AUTOMATION → LANDING의 MCC 줄에서 모드를 다시 고르면 풀린다 |
 
+## main이 빨개지면: 자동 되돌림(AUTO REVERT)
+
+MCC나 AUTOLAND가 머지한 PR 때문에 main의 CI가 빨개지면 atc가 그 머지의 **revert PR을 스스로 연다**(ATC-351·394, [autonomy.md](../autonomy.md) "C4 구현 결과"). 처음부터 켜져 있다. 사람이 할 일은 보통 없다.
+
+- **flake는 되돌리지 않는다.** 되돌리기 전에 실패한 GitHub Actions run을 같은 head에서 **한 번 다시 돌린다.** 다시 돌려 초록이면 flake라서 아무것도 하지 않고 "flake 잡음"으로만 센다. 다시 빨갛고 그 PR 자신의 head가 머지 전에 초록이었을 때만 revert PR을 연다. 다시 돌릴 수 없는 체크(Actions가 아님)나 45분 안에 안 끝나는 재실행은 짐작하지 않고 DUTY에게 알린다(`hold`).
+- **revert PR은 보통 PR처럼 리뷰와 CI를 거쳐** 착륙한다(GROUND STOP이 걸려 있어도 이 PR만은 막지 않는다). 다음 초록 head가 GROUND STOP을 푼다. 되돌린 PR의 FLIGHT를 난 AIRCRAFT에게 FIX가 간다.
+- **하지 않는 것.** 사람이 머지한 커밋이 범위에 있거나, 마이그레이션(K1)이나 user 등급 경로(K3)를 고친 PR이면 되돌리지 않고 DUTY brief에 `AUTO-REVERT HOLD` 줄을 남긴다.
+- **멈춤(breaker).** 1시간 안에 새 빨간 head가 둘째로 나오면 레인이 멈추고 AUTOLAND `merge`는 `update`로, MCC 착륙은 끔으로 내려간다. 알림(ALERTS)에 `revert|stop`이 뜬다. 설정 창 AUTOMATION → LANDING의 **AUTO REVERT**에서 스위치를 다시 고르면(같은 값을 다시 골라도) 풀린다. AUTOLAND와 MCC를 다시 올리는 것은 SUPERVISOR의 스위치다.
+- **끄기.** 같은 줄의 스위치를 `off`로 두면 atc는 되돌리지 않고 GROUND STOP과 MCC 멈춤은 사람이 읽고 푼다.
+- **결과 읽기.** AUTO REVERT 줄 아래에 최근 7일의 날짜별 `revert`·`flake 잡음`·`misfire`가 보인다. misfire는 되돌린 PR이 24시간 안에 그대로 다시 머지된 것이다(revert의 revert, 또는 같은 파일): 되돌림이 틀렸다는 신호이니 DUTY brief의 `AUTO-REVERT misfire` 줄을 본다.
+
 ## 사람이 배포할 때
 
 막대가 버튼 대신 "사람이 배포" 사유를 보이면 손으로 한다. 그 범위(서비스 커밋 ~ `origin/main`)가 RTS가 하지 않는 것을 바꿨기 때문이다.

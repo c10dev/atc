@@ -34,7 +34,7 @@ export function runQrh(s: Snapshot, now = Date.now()) {
     overdue: overdueOf(proposals, now),
     undelivered: undeliveredOf(proposals, now),
     clearances: s.clearances ?? [],
-    arrivalMissing: arrivalMissingOf(followingNow(s, now), foldReports(readReports()), now),
+    arrivalMissing: arrivalMissingOf(followingNow(s, now, undefined, false), foldReports(readReports()), now),
     regOf: (name) => regKey(name, tp),
   });
   const swept = qrhSweep(conditions, open ?? seedOpen(now), new Date(now).toISOString());

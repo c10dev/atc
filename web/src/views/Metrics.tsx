@@ -5,6 +5,8 @@ import type { Sample } from "../../../server/recorder.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { MetricsFuel } from "./MetricsFuel.tsx";
 import { MetricsLeaks } from "./MetricsLeaks.tsx";
+import { AutoMisfire } from "./AutoMisfire.tsx";
+import { SingleLane } from "./SingleLane.tsx";
 import "./Metrics.css";
 import { apiGet } from "../api.ts";
 
@@ -123,6 +125,8 @@ function Operations({ refreshKey }: { refreshKey: string }) {
         <>
           <Readiness data={data} />
           <KpiRow data={data} />
+          <AutoMisfire refreshKey={refreshKey} />
+          <SingleLane refreshKey={refreshKey} />
           <h2 className="label">
             TRENDS <em>5분 표본</em>
           </h2>
@@ -175,6 +179,15 @@ function KpiRow({ data }: { data: MetricsData }) {
   const tiles = [
     { label: "READBACK 비율", value: pct(c.readbackRate), sub: `READBACK ${c.readBack} / CLEARANCE ${c.issued - c.cancelled} · 중앙값 ${mins(c.readbackMedianMin)}` },
     { label: "CLEARANCE", value: String(c.issued), sub: types || "CLEARANCE 없음" },
+    ...(c.fixReadback && c.fixReadback.elsewhere.n + c.fixReadback.direct.n > 0
+      ? [
+          {
+            label: "FIX·GO AROUND READBACK(중앙값)",
+            value: mins(c.fixReadback.elsewhere.medianMin),
+            sub: `다른 FLIGHT 중 ${c.fixReadback.elsewhere.readBack}/${c.fixReadback.elsewhere.n}건 · 바로 ${mins(c.fixReadback.direct.medianMin)} (${c.fixReadback.direct.readBack}/${c.fixReadback.direct.n}건)`,
+          },
+        ]
+      : []),
     { label: "LOSS OF SEPARATION", value: String(data.conflicts.count), sub: `지속 중앙값 ${mins(data.conflicts.medianMin)} · 열린 ${data.conflicts.open}` },
     { label: "HANDOFF", value: String(data.handoffs), sub: `OUTSTATION 시작 ${data.away}` },
     {

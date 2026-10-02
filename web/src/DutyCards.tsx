@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Icon } from "./Icon.tsx";
 import { useCallback, useEffect, useState } from "react";
-import { type CardAction, actionsOf, cardKey, cardViewOf, queueHeadOf } from "../../server/duty-card.ts";
+import { type CardAction, actionsOf, cardKey, cardViewOf, proposalAskOf, queueHeadOf } from "../../server/duty-card.ts";
 import type { ChatItem } from "../../server/duty-chat.ts";
 import type { FleetProposal } from "../../server/fleet-plan.ts";
 import type { QueueItem, SupervisorQueue } from "../../server/supervisor-queue.ts";
@@ -183,6 +183,65 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
   );
 }
 
+// DISPATCH 카드(ATC-377): 자동 운항이 꺼져 있을 때의 ASSIGN·launch 카드와 RELEASE 카드의 승인·거절. DISPATCH 탭이 하던 같은 길(/approve·/reject, 2a면 /verdict)을 부른다.
+// 누르면 카드 안에서 한 번 확인한다. 모드는 누를 때 서버에서 읽는다
+function ProposalButtons({ id, card, onDone }: { id: string; card: QueueItem["card"]; onDone: () => void }) {
+  const [ask, setAsk] = useState<"approve" | "reject" | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async () => {
+    if (!ask) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const got = await apiGet(`/api/dispatch/proposals/${encodeURIComponent(id)}`);
+      const info = (await got.json().catch(() => ({}))) as { mode?: string; error?: string };
+      if (!got.ok) throw new Error(info.error ?? `HTTP ${got.status}`);
+      const payload = { via: "manual", reason: ask === "reject" ? reason.trim() || null : null };
+      const base = `/api/dispatch/proposals/${encodeURIComponent(id)}`;
+      const r = info.mode === "approval" ? await post(`${base}/${ask}`, payload) : await post(`${base}/verdict`, { verdict: ask === "approve" ? "agree" : "disagree", ...payload });
+      if (!r.ok) throw new Error(r.error ?? "실패");
+      setAsk(null);
+      onDone();
+    } catch (e) {
+      setErr(String((e as Error).message ?? e));
+    }
+    setBusy(false);
+  };
+  if (ask)
+    return (
+      <div className="du-confirm" role="group" aria-label={`${id} 확인`}>
+        <p className="du-hint">
+          {proposalAskOf(id, ask, card)}
+        </p>
+        {ask === "reject" && <input className="du-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="이유(선택)" aria-label="이유(선택)" maxLength={500} />}
+        <div className="du-actions">
+          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void run()}>
+            확인
+          </button>
+          <button type="button" className="dr-btn" disabled={busy} onClick={() => (setAsk(null), setErr(null))}>
+            취소
+          </button>
+        </div>
+        {err && <p className="du-err">{err}</p>}
+      </div>
+    );
+  return (
+    <>
+      <div className="du-actions">
+        <button type="button" className="dr-btn" onClick={() => setAsk("reject")}>
+          거절
+        </button>
+        <button type="button" className="dr-btn is-primary" onClick={() => setAsk("approve")}>
+          승인
+        </button>
+      </div>
+      {err && <p className="du-err">{err}</p>}
+    </>
+  );
+}
+
 // UPDATE: UPDATE 바와 같은 길(/api/update/start). 누르면 카드 안에서 한 번 확인한다
 function UpdateButton({ onDone }: { onDone: () => void }) {
   const [ask, setAsk] = useState(false);
@@ -311,7 +370,7 @@ function RelayOffer({ item }: { item: QueueItem }) {
 }
 
 // 카드와 QUEUE 줄이 같이 쓰는 버튼 칸
-function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardAction[]; onDone: () => void }) {
+export function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardAction[]; onDone: () => void }) {
   return (
     <>
       {item.hand && <HandDelivery item={item} onDone={onDone} />}
@@ -325,6 +384,8 @@ function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardActi
           </div>
         ) : a.op === "fleet-plan" ? (
           <FleetPlanButtons key={n} id={item.key} onDone={onDone} />
+        ) : a.op === "proposal" ? (
+          <ProposalButtons key={n} id={item.key} card={item.card} onDone={onDone} />
         ) : (
           <UpdateButton key={n} onDone={onDone} />
         ),

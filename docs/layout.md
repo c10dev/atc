@@ -113,9 +113,30 @@ Order rationale (decision D3): firing has no home and is used every day, so it c
 - SCHEDULE NEW drafts are listed but cannot be fired from here: they are not issues yet, and the verdict UI stays in SCHEDULE until Y3 (ATC-378). DUTY's issue drafts show up as Backlog READY issues. The `duty-drafts.jsonl` entries are queue cards and notes, not issues, so they are not listed.
 - DISPATCH lost its release block and shows a link to `#release`. Routes and checks of ATC-362 are unchanged.
 
+### Y2 as built (ATC-377)
+
+- `#home` is a tab, placed first (the default tab stays RADAR until Y6): `web/src/views/Home.tsx`. Sections that have nothing to show are not drawn; the brakes row is always there. `#dispatch` opens HOME (`LEGACY_HASH`); the queue, alert and FOLLOW links that pointed at `#dispatch` now say `#home`.
+  - **QUEUE** is the SUPERVISOR QUEUE with the same buttons as the DUTY drawer's QUEUE (`Actions` in `DutyCards.tsx`). A PROPOSAL item has **승인** / **거절** (inline, one confirmation, the same `/approve`, `/reject` routes, `/verdict` in 2a). With the auto-dispatch switch on, only RELEASE cards appear; with it off, ASSIGN and launch cards come back here.
+  - **ALERTS** are WARNING and CAUTION items whose destination is `alerts`, minus `follow|stuck` (shown as **STUCK** rows, with the row's CANCEL and RECALL).
+  - **BRAKES**: GROUND STOP and manual departure stop counts, `ATFM…` (the existing ATFM panel; its exception block opens at the top when a stop is enforced), `STOP ALL…` (the control sessions' STOP ALL preview and run, moved from FLEET's bulk bar), the automation switches' state (the policy line of the settings window), the DISPATCH 2a↔2b switch, and a link to the settings window.
+- DISPATCH is gone. `Dispatch.tsx`, its CSS and `DispatchBriefing`, `Following` and `Readiness2b` (used only by it) are deleted. Gone with them: the per-card verdict, the CROSSCHECK agree lane and chips, BLIND, HELD (PREFLIGHT) and its two buttons, the 2b readiness block, the DISPATCH-side FLIGHT FOLLOWING block, the slot and EXCLUDED readouts, the launch ACCOUNT and MODEL lines and the SUPERVISOR CONFIRM AT AIRCRAFT box (its queue item, GO, stays).
+- **CANCEL, RECALL and FRESH START** moved to `web/src/FlightBrakes.tsx`, used by the FOLLOW rows (`FollowRow.proposalInfo`, additive) and the FLIGHT drawer. The drawer gets a `배정 기록` block (`web/src/FlightDispatch.tsx`, `GET /api/dispatch/proposals?flight=KEY`, read-only) with each proposal's stage times, reason and brakes.
+- **MISFIRE** and the single-lane landings block (ATC-386) are blocks in METRICS → OPERATIONS (`AutoMisfire`, `SingleLane`).
+- Routes of approve, reject, cancel, recall, fresh-start, mode and ATFM are unchanged; `GET /api/settings` gains `dispatchAuto.mode`.
+
+### Y4 as built (ATC-379)
+
+- `#flights` is a tab (`web/src/views/Flights.tsx`), placed after HOME. A row of views at the top picks the view; the address says which: `#flights` (LIST, default), `#flights/board`, `#flights/radar`, `#flights/radio`. FOLLOW, STRIPS, FIDS, RADAR and RADIO are gone from the tab row. Their old addresses (`#follow`, `#strips`, `#board`, `#radar`, `#radio`, and the older `#map`, `#teams`, `#tickets`) open the matching view (`web/src/legacy-hash.ts`, `canonicalHash`): `#follow` and `#strips` open LIST, `#board` BOARD, `#radar` RADAR, `#radio` the RADIO log.
+- **LIST** is FOLLOW's bundles and rows with its stage dots, now with the PR's landing badge (`CLEARED TO LAND`, `APPROACH` and the blocker count, STACKED) on the row of a FLIGHT that has an open PR. Under the list: the LANDING SEQUENCE (with the AUTOLAND lines and HOLD buttons) and a folded **AIRCRAFT STRIPS** block (the old STRIPS bays, GATE CLEANUP and progress bars, unchanged). **BOARD** is FIDS with its own list/board switch; **RADAR** is the old RADAR; **RADIO** is the old RADIO tab (filters, replay, listening).
+- **HUMAN CHECK** moved to HOME. The queue item (`HUMAN CHECK`, hash `#home`) draws the PR's evidence and the PASS / FAIL form inline (`HumanRow`) instead of a link to STRIPS.
+- **A FLIGHT's radio thread** shows in the FLIGHT drawer (`web/src/FlightRadio.tsx`): the calls whose `flight` is that FLIGHT and their replies for the last 7 days; the block is not drawn when there are none, and it links to `#flights/radio`.
+- **Server links** now point at the new places: the queue's HUMAN CHECK and UPDATE and UNDELIVERED items to `#home`, LANDING to `#flights`; alert links `#strips` / `#follow` to `#flights` and `#radar` to `#home`; FOLLOW chips `#flights` and `#flights/radio`; the menu bar's RTS and overflow lines to `#home`.
+- **The default tab is HOME** now (RADAR was the default and no longer exists); the SINCE LAST LOOK line (ATC-383) is at the top of HOME.
+- **Dropped:** the page titles `FOLLOW`, `STRIPS`, `FIDS`, `RADAR`, `RADIO` and the HUMAN CHECK block's `CHOICE·ACCOUNT·DEVICE PR만…` hint line. The strips are no longer a first-level view: they sit in the folded block of LIST.
+
 ### Not built yet
 
-Everything (Y1–Y6).
+Y3 (SCHEDULE taken apart), Y5, Y6. The tab row still has GLOBE, AIRPORTS, NETWORK, SCHEDULE and DOCS until those steps land.
 
 ## 5. Risks
 

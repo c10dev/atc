@@ -42,6 +42,7 @@ import { listPullFiles } from "./sources/github.ts";
 import { readAppliedFor } from "./sources/supabase-migrations.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
+import { clearableStops, isRevertPr, loadAutoRevert, readAutoRevertLines } from "./auto-revert.ts";
 
 // AUTOLAND 실행부(ATC-34). GitHub을 새로 읽을 때마다(90초) 한 주기: GROUND STOP 걸기 → 갱신한 PR 정리 → AIRPORT마다 할 일 하나.
 // GitHub에 쓰는 호출은 셋뿐이다: update 모드의 update-branch(expected_head_sha), merge 모드의 위임 PR 정확한 head 머지(sha),
@@ -115,6 +116,12 @@ async function cycle(s: Snapshot) {
     appendRecord({ op: "groundstop", mode: cfg.mode, airport: g.airport, head: g.sha, result: "stopped", detail: `main ${g.failing.join(", ")} 실패` });
   }
   st.groundStops = stops;
+  // 자동 되돌림(ATC-351, on): 우리가 revert PR을 연 빨간 head의 stop은 다음 초록 head에서 스스로 푼다. 사람이 건 stop은 그대로
+  for (const g of clearableStops(loadAutoRevert().mode, st.groundStops, s.atfm.mains, readAutoRevertLines())) {
+    st.groundStops = st.groundStops.filter((x) => x !== g);
+    st.clearedShas.push(g.sha);
+    appendRecord({ op: "groundstop-clear", mode: cfg.mode, airport: g.airport, head: g.sha, result: "cleared", detail: "auto-revert: 다음 head가 초록" });
+  }
   setCheckWarnings(checkWarningsOf(cfg, covered, s.atfm.mains)); // applicationCheck가 main에서 어떤 체크·워크플로 이름과도 안 맞으면 설정 창이 알린다(ATC-330)
 
   // 갱신한 PR 정리: 닫힘·CI 끝남(CLEARED나 다른 막힘)·시간 초과
@@ -166,7 +173,8 @@ async function cycle(s: Snapshot) {
 
   if (cfg.mode !== "off") {
     const exclusions = s.autoland?.exclusions ?? {};
-    const view = planAutoland({ cfg, airports: airportsOf(s), pulls: s.pulls, st, exclusionOf: (p) => (pullKey(p) in exclusions ? exclusions[pullKey(p)] : "제외 여부를 아직 계산하지 않음") });
+    const revertLines = loadAutoRevert().mode === "on" ? readAutoRevertLines() : [];
+    const view = planAutoland({ cfg, airports: airportsOf(s), pulls: s.pulls, st, revert: (p) => isRevertPr(revertLines, airportOfRepo(p.repo), p.number, p.branch), exclusionOf: (p) => (pullKey(p) in exclusions ? exclusions[pullKey(p)] : "제외 여부를 아직 계산하지 않음") });
     for (const plan of view.airports) {
       const p = s.pulls.find((x) => x.repo === plan.repo && x.number === plan.number);
       if (!p) continue;
@@ -196,10 +204,10 @@ async function requestReview(r: ReviewRequest, mode: AutolandMode, airport: stri
 }
 
 // 쓰기 직전에 스위치와 GROUND STOP을 다시 본다(주기 사이에 SUPERVISOR가 끄거나 main이 빨개졌으면 쓰지 않는다)
-function stillAllowed(plan: AirportPlan, need: AutolandMode[]): AutolandConfig | null {
+function stillAllowed(plan: AirportPlan, need: AutolandMode[], revert = false): AutolandConfig | null {
   const cfg = loadAutoland();
   if (!need.includes(cfg.mode) || !cfg.airports.includes(plan.airport)) return null;
-  if (loadAutolandState().groundStops.some((g) => g.airport === plan.airport)) return null;
+  if (!revert && loadAutolandState().groundStops.some((g) => g.airport === plan.airport)) return null;
   return cfg;
 }
 
@@ -246,7 +254,7 @@ export function mergeReviewPassOn(slug: string, p: Pick<PullRequest, "number" | 
 // 머지 직전의 제외 판정 하나: PR을 다시 읽어 head·Draft·라벨·본문·파일로 제외 목록을 다시 본다(90초 전 자료로 머지하지 않게).
 // assumeApplied(ATC-368): 마이그레이션 리허설이 "이 PR이 마이그레이션 때문에만 막혔나"를 보려고 쓴다. 호스티드 DB에 아직 없는 새 마이그레이션을 적용된 것으로 치고
 // 나머지 제외(HUMAN CHECK, 다른 SQL 경로, 보안 …)가 남는지 본다. 남으면 실전에 쓰지 않는다 — 머지되지 않을 코드를 위해 실전을 바꾸지 않게
-async function exclusionNow(p: PullRequest, s: Snapshot, cfg: AutolandConfig, slug: string, assumeApplied = false): Promise<{ moved: string | null; why: string | null }> {
+async function exclusionNow(p: PullRequest, s: Snapshot, cfg: AutolandConfig, slug: string, assumeApplied = false, isRevert = false): Promise<{ moved: string | null; why: string | null }> {
   const fresh = JSON.parse(await gh(["pr", "view", String(p.number), "--repo", slug, "--json", "headRefOid,isDraft,title,body,labels,files"])) as FreshPull;
   if (fresh.headRefOid !== p.head) return { moved: fresh.headRefOid, why: null };
   const ticket = p.ticketKey ? s.tickets.find((t) => t.key === p.ticketKey) : undefined;
@@ -266,7 +274,7 @@ async function exclusionNow(p: PullRequest, s: Snapshot, cfg: AutolandConfig, sl
     ? "Draft"
     : mergeExclusionOf({
         held: isHeld(cfg, p),
-        flight: p.ticketKey,
+        flight: p.ticketKey ?? (isRevert ? "AUTO-REVERT" : null),
         ticketLabels: ticket?.labels ?? [],
         prLabels: (fresh.labels ?? []).map((l) => l.name),
         files,
@@ -285,12 +293,14 @@ async function exclusionNow(p: PullRequest, s: Snapshot, cfg: AutolandConfig, sl
 }
 
 async function doMerge(plan: AirportPlan, p: PullRequest, st: AutolandState, s: Snapshot) {
-  const cfg = stillAllowed(plan, ["merge"]);
+  // 자동 되돌림이 연 revert PR(ATC-351)이면 GROUND STOP 중에도, FLIGHT 없이도 머지 후보다(리뷰·CI·제외 목록의 나머지는 그대로)
+  const isRevert = loadAutoRevert().mode === "on" && isRevertPr(readAutoRevertLines(), plan.airport, p.number, p.branch);
+  const cfg = stillAllowed(plan, ["merge"], isRevert);
   const slug = slugOfUrl(p.url);
   if (!cfg || !slug) return;
   const base = { mode: cfg.mode, airport: plan.airport, slug, number: p.number, head: p.head };
   try {
-    const { moved, why } = await exclusionNow(p, s, cfg, slug);
+    const { moved, why } = await exclusionNow(p, s, cfg, slug, false, isRevert);
     if (moved) {
       appendRecord({ op: "merge", ...base, result: "rejected", detail: `head가 움직임(${moved.slice(0, 7)}) — 다음 주기에 다시 봄` });
       return;

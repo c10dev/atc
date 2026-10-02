@@ -25,6 +25,12 @@
 - DUTY의 PR도 같은 규칙이다: 영어, Draft 없음, 설계 PR의 제목·브랜치에 ATC key를 넣지 않고 `Fixes`는 PR이 이슈를 끝낼 때만, Linear 본문의 GitHub 참조는 전체 URL, 작업 지시서에는 우선순위를 정한다. 머지는 등급이 정한다(문서만이면 `auto`라 MCC가 착륙시킨다. `duty/` 같은 파일은 어차피 쓰지 못한다).
 - **ENGINEERING 세션**(Claude 데스크톱 등에서 이 저장소를 열어 같은 일을 하는 작업 세션)은 break-glass로 남는다. 같은 규칙을 따르고, 머지·배포와 팀 세션 교신은 하지 않는다. 팀에 일을 보내는 것은 DISPATCH·OCC와 사용자 몫이다. 직접 배정할 문구는 `GET /api/dispatch/flight/<FLIGHT>/brief?to=TEAM_X`가 준다.
 - Linear 이슈를 만들고 상태를 바꾸는 것은 DUTY(Backlog·Todo까지)와 사용자, break-glass의 ENGINEERING이다.
+- **작업 지시서** (DUTY와 ENGINEERING, SUPERVISOR 결정 2026-10-02):
+  - 본문(영어)은 Goal · Done when · K effects · Context · Release 다섯 절이다. 묶는 것은 앞의 셋뿐이고, Context는 정보일 뿐 지시가 아니다(PILOT'S DISCRETION). 어떻게 할지는 정하지 않는다.
+  - 사람 단계를 대신하는 새 자동 통제는 Done when에 SUPERVISOR만 바꾸는 끄는 스위치(기본 켜짐)와 오작동 카운터를 넣는다(live first).
+  - AIRCRAFT가 받은(READBACK) 작업 지시서는 고치지 않는다. 더할 것은 후속 이슈로 만들어 앞 이슈 뒤에 건다(blockedBy). 출발한 FLIGHT를 바꾸면 RELAY와 다시 발권이 필요해진다.
+  - Todo(발권)는 SUPERVISOR가 말한 것만이고, Release 절에 그 말을 그대로 적는다. 세션이 스스로 낸 제안은 Backlog에 두고 SUPERVISOR가 RELEASE 화면에서 쏜다.
+  - 상태·병목을 볼 때 PR의 막힘 글만 믿지 않는다. ESCALATE된 PR의 "MCC INSPECTION 대기"는 SUPERVISOR의 머지를 뜻했다. MCC 대기열의 ESCALATE·STAND 주인과 DISPATCH 계획의 제외 사유·unserved를 함께 본다.
 
 ## STAND 이름과 브랜치
 

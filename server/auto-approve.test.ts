@@ -154,7 +154,7 @@ test("정책 줄: 두 스위치가 보이고 on만 확인이 필요하다", () =
     autoland: { mode: "off", reviewedSecurity: "off", airports: [], applicationCheck: "", groundStops: [], applicationCheckWarnings: [] },
     mcc: { mode: "shadow", airport: "ATCC" },
     review: { security: "exclude" },
-    dispatchAuto: { auto: "on", approve: "on", launch: "shadow", approveMax: 40, launchMax: 6, backoffMin: 30 },
+    dispatchAuto: { mode: "approval", auto: "on", approve: "on", launch: "shadow", approveMax: 40, launchMax: 6, backoffMin: 30 },
   });
   const auto = segs.filter((x) => x.key === "autoApprove" || x.key === "autoApproveLaunch");
   assert.deepEqual(auto.map((x) => [x.label, x.value, x.warn]), [["AUTO APPROVE", "on", true], ["AUTO LAUNCH", "shadow", false]]);

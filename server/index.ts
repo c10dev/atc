@@ -9,6 +9,7 @@ import { streamSSE } from "hono/streaming";
 import { mountAirports } from "./airports.ts";
 import { mountAtfm, runAtfm } from "./atfm-run.ts";
 import { mountAutoland, runAutoland } from "./autoland-run.ts";
+import { runAutoRevert } from "./auto-revert-run.ts";
 import { mountJudges, runJudges } from "./judges/run.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
@@ -24,6 +25,7 @@ import { addLogbookFuel, aircraftContexts, mountFuel } from "./fuel-run.ts";
 import { fuelWatch } from "./fuel-watch.ts";
 import { mountFleetPlan, runFleetPlan } from "./fleet-plan-run.ts";
 import { mountFreshStart } from "./fresh-start-run.ts";
+import { type K3Declaration, k3LaunchOf } from "./k3-allow.ts";
 import { launchAircraft, MAX_LAUNCHED, mountSessionControl } from "./session-control.ts";
 import { mountApplyNow } from "./apply-now-run.ts";
 import { mountControlBulk } from "./control-bulk-run.ts";
@@ -63,7 +65,7 @@ import { mountSquelch } from "./squelch-run.ts";
 import { mountTick } from "./tick-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { mountSinceLook } from "./since-look-run.ts";
-import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
+import { currentAlerts, endsNow, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
 import { mountQrh, runQrh } from "./qrh-run.ts";
 import { mountDuty } from "./duty-api.ts";
 import { mountMigrate } from "./migrate-api.ts";
@@ -153,6 +155,7 @@ async function tick() {
     if (isWarm(next)) runMilestones(next); // OOOI(ATC-123): 처음 본 이정표를 FLIGHT RECORDER에 한 번(1분에 한 번, 이미 있는 기록만 읽는다)
     if (isWarm(next)) runStandFree(next); // 5분마다 STAND 없는 FLIGHT의 ARRIVED 후보(ATC-72). ARRIVED는 OCC가 확인해 적는다
     if (isWarm(next)) runAtfm(next); // 출발 중지 시작·끝, 1분마다 ATFM 데이터와 그림자 판정(docs/atfm.md)
+    if (isWarm(next)) runAutoRevert(next); // 자동 되돌림(ATC-351): 스위치 off면 아무것도 읽지 않는다(기본은 on, ATC-394). AUTOLAND보다 먼저 돌아 같은 주기의 GROUND STOP을 본다
     if (isWarm(next)) runAutoland(next); // AUTOLAND(ATC-34): GitHub을 새로 읽을 때마다 갱신·머지 한 주기(스위치가 off면 GROUND STOP만 본다)
     if (isWarm(next)) runJudges(next); // 판정 계열(ATC-36): 스위치가 off가 아닐 때만 1분에 한 번, CLASSIFY 초안 몇 건
     if (isWarm(next)) runQrh(next); // QRH shadow(ATC-288): 서버가 체크리스트를 부를 조건을 처음 본 때만 FLIGHT RECORDER에 한 줄. 보내는 글은 바뀌지 않는다
@@ -193,9 +196,13 @@ mountHumanCheck(app, getSnapshot);
 mountAirports(app);
 mountMetrics(app);
 // launch 카드의 LAUNCH(화면의 승인과 서버의 자동 승인이 같이 쓴다). by는 FLIGHT RECORDER에 남는 주체
-const launchForCard = (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string) => {
+const launchForCard = (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string, flight: string) => {
   const a = s.absent?.find((x) => x.registration === reg);
-  return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, by, proposal);
+  // K3 발권(ATC-372): 화면·DUTY 채팅 발권이 선언한 K3 효과면 새 세션에 그 선언만큼의 autoMode.allow를 준다. 서버가 발권 기록에서만 만든다
+  // STAND는 그 AIRCRAFT의 base 저장소 아래에 생기므로 저장소는 launchAircraft가 정한 뒤에 넘겨받는다
+  const t = s.tickets.find((x) => x.key === flight);
+  const k3 = t ? (repo: string) => k3LaunchOf({ flight, declared: t.k3 as K3Declaration[] | undefined, hash: t.releaseHash, releases: s.releases, repo }) : undefined;
+  return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, by, proposal, k3);
 };
 mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   candidates: standFreeCandidates,
@@ -205,10 +212,10 @@ mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   // LAUNCH on approve(ATC-129): FLEET LAUNCH와 같은 길. 옵션은 그 AIRCRAFT의 마지막 atc LAUNCH와 같게.
   // ACCOUNT: RESUME은 끊긴 ACCOUNT를 이름으로 댄다. 다른 카드는 이름을 대지 않아 LAUNCH ACCOUNT가 먼저고, 마지막 ACCOUNT는 그다음이다(ATC-239)
   max: MAX_LAUNCHED,
-  launch: (s, reg, proposal, resume) => launchForCard(s, reg, proposal, resume, "SUPERVISOR"),
+  launch: (s, reg, proposal, resume, flight) => launchForCard(s, reg, proposal, resume, "SUPERVISOR", flight),
 }, (s, now, inFlight) => {
   // ATC-169: 머지됐는데 도착 보고가 없는 FLIGHT와 OCC 재시작 안전 시점(읽기만)
-  const arrivalMissing = arrivalMissingOf(followingNow(s, now), foldReports(readReports()), now);
+  const arrivalMissing = arrivalMissingOf(followingNow(s, now, undefined, false), foldReports(readReports()), now);
   const wip = wipView(readWips(), now);
   return { arrivalMissing, restartSafety: restartSafetyOf({ inFlight, arrivalMissing, wip, now }) };
 }, loadRoutes);
@@ -257,7 +264,7 @@ setInterval(() => {
 // 서버 안에서만 돈다(HTTP 길도 atcctl 명령도 없다). 1분에 한 번
 setInterval(() => {
   if (!current) return;
-  void runAutoApprove(current, { max: MAX_LAUNCHED, launch: (s, reg, proposal, resume) => launchForCard(s, reg, proposal, resume, "auto") }).catch((e) => console.error("[atc] auto approve failed:", e));
+  void runAutoApprove(current, { max: MAX_LAUNCHED, launch: (s, reg, proposal, resume, flight) => launchForCard(s, reg, proposal, resume, "auto", flight) }).catch((e) => console.error("[atc] auto approve failed:", e));
 }, 60_000).unref();
 // SCHEDULE 초안 자동 적용(ATC-370, docs/autonomy.md P5): 스위치 schedule.json auto(기본 on)가 켜져 있으면 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW 초안을 사람 판정 없이 승인한다. 1분에 한 번
 setInterval(() => {
@@ -310,6 +317,7 @@ mountDutyL1(app); // DUTY D7a: STAND 만들기·치우기와 Linear 쓰기(duty.
 mountDutyRun(app, undefined, (text) => void releaseFromChat(text, getSnapshot).catch(() => {})); // DUTY D2(ATC-220): 글 보내기·중단·NEW SHIFT(Origin 검사)·기록·상태. duty.json enabled가 꺼져 있으면 아무것도 띄우지 않는다
 mountSinceLook(app, getSnapshot, currentAlerts); // SINCE YOU LAST LOOKED(ATC-383): 본 뒤 바뀐 것의 수(읽기)와 마지막 본 시각 옮기기(SUPERVISOR 화면만)
 app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); // 지금 있는 알림 key 전체(읽기만)
+app.get("/api/supervisor-alerts/ends", (c) => (current ? c.json(endsNow(current)) : c.json({ error: "snapshot not ready" }, 503))); // 끝 규칙이 뺀 알림과 24시간 안에 돌아온 수, 같은 상태의 CAUTION 전후(읽기만, ATC-385)
 
 // 알림 요약(ATC-153, 읽기만): 메뉴 막대·브라우저·atc-app이 같은 숫자를 읽는다. 아직 스냅샷이 없으면 503
 app.get("/api/supervisor-summary", (c) => (current ? c.json(summaryNow(current)) : c.json({ error: "snapshot not ready" }, 503)));

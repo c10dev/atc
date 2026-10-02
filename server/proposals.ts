@@ -236,6 +236,7 @@ export interface Proposal {
   launched?: LaunchResult; // 승인 때 한 LAUNCH의 결과(op launch)
   resume?: ResumeInfo; // RESUME 카드(ATC-129): 사용 한도로 끊긴 FLIGHT를 같은 REGISTRATION이 이어서 한다
   prHolder?: PrHolder; // PR HOLDER 카드(ATC-354): STAND를 쥔 세션이 없는 PR의 GO AROUND·FIX를 이어받는다. 이 카드는 머지하지 않는다
+  waitingFlights?: string[]; // 이 카드를 낼 때 그 AIRCRAFT가 착륙만 기다리던 FLIGHT(ATC-387). FLIGHT PLAN이 "새 STAND에서 시작" 줄을 싣는다. 옛 기록에는 없다
   supervisorConfirm?: string[]; // SUPERVISOR CONFIRM AT AIRCRAFT(ATC-120): 예측 경로 중 사용자 등급 파일. 표시만 하고 승인을 막지 않는다. 옛 기록에는 없다
   undelivered?: { at: string; reason: string; n: number; cause?: string }; // 보낸 FLIGHT PLAN이 닿지 않았다고 OCC가 알림(ATC-183, op undelivered). 마지막 시각·사유와 횟수. 상태가 바뀌어도 지우지 않는다
   awaitSupervisor?: { at: string; reason: string }; // CAPTAIN이 READBACK도 거절도 아닌 채 사용자의 go를 기다림(ATC-120). sent인 동안만 — 상태가 바뀌면(READBACK 등) 지운다
@@ -805,7 +806,7 @@ export function syncOps(
         replaced.add(p.id);
         open--;
       }
-      ops.push({ op: "create", id, at, kind: "ASSIGN", flight: a.flight, aircraft: a.aircraft, aircraftName: a.aircraftName, registration: reg, airport: a.airport, score: a.score, factors: a.factors, ...(a.launch ? { launch: true as const } : {}), ...(a.supervisorConfirm?.length ? { supervisorConfirm: a.supervisorConfirm } : {}) });
+      ops.push({ op: "create", id, at, kind: "ASSIGN", flight: a.flight, aircraft: a.aircraft, aircraftName: a.aircraftName, registration: reg, airport: a.airport, score: a.score, factors: a.factors, ...(a.launch ? { launch: true as const } : {}), ...(a.supervisorConfirm?.length ? { supervisorConfirm: a.supervisorConfirm } : {}), ...(a.waiting?.length ? { waitingFlights: a.waiting } : {}) });
       open++;
       continue;
     }
@@ -846,6 +847,10 @@ export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "ur
   const who = sign === sessionName ? sessionName : `${sign} (${sessionName})`;
   const note = p.note ? `DISPATCH note: ${p.caution ? "CAUTION · " : ""}${p.note}` : p.caution ? "DISPATCH note: CAUTION" : null;
   const hold = p.hold.length ? `HOLD: start after the preceding FLIGHT ${p.hold.map(flightNumber).join(", ")} is done` : null;
+  // 이 AIRCRAFT가 착륙만 기다리는 FLIGHT를 쥐고 있다(ATC-387): 새 FLIGHT는 새 STAND에서, 앞 STAND는 FIX·GO AROUND를 위해 남긴다
+  const waiting = p.waitingFlights?.length
+    ? `STAND: ${p.waitingFlights.map(flightNumber).join(", ")} only waits to land in its own STAND. Start this FLIGHT in a NEW STAND (a new worktree) and keep the earlier one. A FIX or GO AROUND for the earlier PR still reaches you: handle it in the earlier STAND, then return to this FLIGHT`
+    : null;
   return [
     `[DISPATCH ${p.id}] FLIGHT PLAN · ${who}`,
     DIRECT_LINE,
@@ -859,6 +864,7 @@ export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "ur
     ...notes,
     note,
     hold,
+    waiting,
     DISCRETION_LINE,
     closingLine("flight-plan", responseOf("flight-plan"), p.id),
     FINISH_LINE,
@@ -1139,6 +1145,11 @@ export async function directBriefOf(key: string, to: string | null): Promise<str
   return formatAssignment({ key, title: typeof d.title === "string" ? d.title : null, url }, descriptionOf(d), to, notes);
 }
 
+// 한 FLIGHT의 제안 기록: 최근 것이 먼저, limit건까지(ATC-377)
+export function proposalsOfFlight<T extends Pick<Proposal, "flight" | "at">>(all: readonly T[], flight: string, limit = 20): T[] {
+  return all.filter((p) => p.flight === flight).sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
+}
+
 export function allProposals(): Proposal[] {
   return fold(readOps());
 }
@@ -1230,7 +1241,7 @@ export function deliveryMapOf(s: Pick<Snapshot, "sessions">, proposals: Pick<Pro
 // index.ts가 session-control.ts를 넘긴다. 이 승인 말고는 카드로 세션을 띄우는 길이 없다
 export interface DispatchLauncher {
   max: number;
-  launch: (s: Snapshot, registration: string, proposal: string, resume: boolean) => Promise<{ ok: boolean; jobId?: string; error?: string }>; // resume: RESUME 카드(끊긴 ACCOUNT에서 다시)
+  launch: (s: Snapshot, registration: string, proposal: string, resume: boolean, flight: string) => Promise<{ ok: boolean; jobId?: string; error?: string }>; // resume: RESUME 카드(끊긴 ACCOUNT에서 다시). flight: 카드의 FLIGHT(K3 발권이면 새 세션에 allow 항목을 준다, ATC-372)
 }
 
 // 카드 사실 줄의 ROUTE·WAYPOINT(routes-load.ts loadRoutes). routes-load.ts가 이 파일을 불러 순환이 되므로 index.ts가 넘긴다(ATC-337)
@@ -1305,6 +1316,13 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       // SUPERVISOR CONFIRM AT AIRCRAFT(ATC-120): 카드·승인 창이 보일 표시와 붙여 넣을 한 줄. 승인을 막지 않는다
       confirm: Object.fromEntries([...open, ...held, ...inFlight].flatMap((p) => { const v = confirmViewOf(p); return v ? [[p.id, v]] : []; })),
     });
+  });
+
+  // 한 FLIGHT의 배정 기록(ATC-377): FLIGHT 서랍이 읽는다. 읽기만
+  app.get("/api/dispatch/proposals", (c) => {
+    const flight = (c.req.query("flight") ?? "").trim().toUpperCase();
+    if (!/^[A-Z][A-Z0-9]*-\d+$/.test(flight)) return c.json({ error: "flight=ATC-n 형식이 필요함" }, 400);
+    return c.json({ flight, mode: loadDispatchConfig().mode, proposals: proposalsOfFlight(allProposals(), flight) });
   });
 
   // send-guard가 쓰는 단건 조회
@@ -1433,7 +1451,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
             cap: launchCapOf(s.sessions, allProposals(), launcher.max, tp),
             approve: { op: "approve", id, at, via, ...blind },
             append,
-            launch: () => launcher.launch(s, reg, id, !!p.resume),
+            launch: () => launcher.launch(s, reg, id, !!p.resume, p.flight),
             now: () => new Date().toISOString(),
           });
           if (!r.ok) return c.json({ error: r.error, proposal: allProposals().find((x) => x.id === id) }, r.status as 409);
