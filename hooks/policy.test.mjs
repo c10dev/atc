@@ -187,3 +187,31 @@ test("an inline git config (-c) runs commands and is denied", () => {
   no(bash("git -ccore.pager=x log"), /git-c/);
   ok(bash("git log -3"));
 });
+
+// ATC-369 검토 2: 운영 폴더(STAND 밖)에서 상태를 바꾸는 git, 공유 stash, 원격 브랜치 삭제
+test("state-changing git needs the STAND as the working directory, also after cd or -C", () => {
+  const MAIN = "/home/c10/projects/atc";
+  for (const c of ["git switch x", "git checkout -b y", "git merge origin/main", "git pull", "git commit -am x", "git rebase origin/main", "git branch -D z", "git fetch", "git add -A"]) no(bash(c, MAIN), /outside-stand/);
+  no(bash(`cd ${MAIN} && git switch x`), /outside-stand/);
+  no(bash(`cd ${MAIN}/server && git checkout main`), /outside-stand/);
+  no(bash(`cd /home/c10/projects/worktrees/other && git commit -m x`), /outside-stand|cd:/);
+  no(bash("git switch x", "/tmp"), /outside-stand/);
+  ok(bash("git status", MAIN));
+  ok(bash("git log -3 --oneline", MAIN));
+  ok(bash("git diff origin/main...HEAD --stat", MAIN));
+  ok(bash("git switch x"));
+  ok(bash("git commit -m x"));
+  ok(bash(`cd ${STAND}/server && git add -A`));
+});
+
+test("git stash only lists and shows (one stash is shared by every worktree); a push refspec cannot delete a branch", () => {
+  no(bash("git stash apply"), /git:stash/);
+  no(bash("git stash drop"), /git:stash/);
+  no(bash("git stash pop"), /git:stash/);
+  no(bash("git stash"), /git:stash/);
+  ok(bash("git stash list"));
+  ok(bash("git stash show -p"));
+  no(bash("git push origin :other-branch"), /push-delete/);
+  no(bash("git push origin --delete other-branch"), /force-push/);
+  ok(bash("git push -u origin worktree-atc-9-demo"));
+});

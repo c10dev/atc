@@ -84,6 +84,8 @@ const PATH_READERS = new Set(["cat", "head", "tail", "ls", "wc", "stat", "file",
 const NPM_OK = new Set(["test", "run", "ci", "install", "i", "ls", "view", "outdated", "exec", "pack", "prune", "rebuild", "start"]);
 const NPX_OK = new Set(["tsc", "vite", "playwright", "tsx", "prettier", "eslint"]);
 const GIT_OK = new Set(["status", "diff", "log", "show", "add", "commit", "push", "fetch", "pull", "merge", "rebase", "checkout", "switch", "branch", "restore", "rev-parse", "rev-list", "ls-files", "ls-tree", "cherry-pick", "apply", "remote", "blame", "show-ref", "merge-base", "diff-tree", "grep", "mv", "rm", "reset", "describe", "shortlog", "name-rev", "for-each-ref", "cat-file", "config", "tag", "notes", "stash", "worktree", "symbolic-ref", "update-index", "count-objects", "whatchanged", "range-diff", "check-ignore", "format-patch", "am", "revert", "version", "help", "ls-remote", "diff-index", "diff-files", "hash-object", "mktemp"]);
+// 읽기만 하는 git 동사: STAND 밖(운영 폴더 포함)에서도 허용한다. 나머지는 상태를 바꾸므로 cwd가 AIRCRAFT의 STAND 안일 때만(ATC-369 검토, CLAUDE.md: 운영 폴더에서 브랜치를 바꾸지 않는다)
+const GIT_READ = new Set(["status", "diff", "log", "show", "rev-parse", "rev-list", "ls-files", "ls-tree", "blame", "show-ref", "merge-base", "diff-tree", "grep", "describe", "shortlog", "name-rev", "for-each-ref", "cat-file"]);
 const GH_OK = new Set(["pr create", "pr view", "pr list", "pr checks", "pr diff", "pr status", "pr comment", "pr ready", "pr checkout", "run list", "run view", "issue view", "issue list", "repo view", "auth status"]);
 const LOCAL_URL = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::(\d+))?(?:[/?#]|$)/i;
 
@@ -154,14 +156,22 @@ function gitVerdict(args, ctx) {
   const rest = args.slice(i + 1);
   if (!sub) return allow();
   if (!GIT_OK.has(sub)) return deny(`git:${sub}`);
+  // 상태를 바꾸는 동사(add commit push fetch pull merge rebase checkout switch branch restore reset cherry-pick apply remote config tag …)는 대상 cwd가 STAND 안일 때만.
+  // `cd <운영 폴더> && git switch x`도 cd가 ctx.cwd를 옮기므로 여기서 걸린다
+  if (!GIT_READ.has(sub)) {
+    const here = real(resolve(cwd));
+    if (!ctx.stand || !within(here, real(ctx.stand))) return deny(`git:${sub}:outside-stand`);
+  }
   if (sub === "clean") return deny("git:clean");
-  if (sub === "stash" && !["list", "show", "apply", "drop"].includes(rest[0] ?? "")) return deny("git:stash");
+  // stash는 모든 워크트리가 함께 쓴다: apply·drop은 다른 세션의 항목을 건드릴 수 있어 읽기(list·show)만(CLAUDE.md의 stash 규칙)
+  if (sub === "stash" && !["list", "show"].includes(rest[0] ?? "")) return deny("git:stash");
   if (sub === "worktree" && !["list", "prune"].includes(rest[0] ?? "")) return deny("git:worktree");
   if (sub === "config" && !rest.some((a) => ["--get", "--get-all", "--list", "-l", "--get-regexp"].includes(a))) return deny("git:config-write");
   if (sub === "reset" && rest.includes("--hard") && !ctx.stand) return deny("git:reset-hard");
   if (sub === "push") {
     if (rest.some((a) => a === "--force" || a === "-f" || a === "--delete" || a === "-d" || a === "--mirror" || /^\+/.test(a) || (/^-[a-z]*f/.test(a) && !a.startsWith("--")))) return deny("git:force-push");
     if (rest.some((a) => /(^|:)(refs\/heads\/)?(main|master)$/.test(a))) return deny("git:push-main");
+    if (rest.some((a) => /^:./.test(a))) return deny("git:push-delete"); // `:branch`는 원격 브랜치를 지운다
   }
   return allow("git");
 }
