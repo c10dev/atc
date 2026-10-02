@@ -63,3 +63,15 @@ export function resolveOccupancy(
   handoffs.sort((a, b) => b.at.localeCompare(a.at));
   return { handoffs, conflicts, orphans };
 }
+
+// PR의 STAND를 쥔 세션의 active 점유(ATC-440). 끝난 세션(status "dead", 위 orphan과 같은 기준)의 점유는 홀더가 아니다:
+// 죽은 세션에게는 GO AROUND·FIX가 닿지 않으므로 홀더 카드로 돌려야 한다. 세션을 모르면(sessions에 없음) 살아 있는 것으로 본다
+export function liveHolderClaims<T extends Pick<Claim, "state" | "workspacePath" | "sessionId">>(
+  claims: readonly T[],
+  standPath: string | null | undefined,
+  sessions: readonly Pick<Session, "id" | "status">[] | undefined,
+): T[] {
+  if (!standPath) return [];
+  const dead = new Set((sessions ?? []).filter((x) => x.status === "dead").map((x) => x.id));
+  return claims.filter((c) => c.state === "active" && c.workspacePath === standPath && !dead.has(c.sessionId));
+}

@@ -25,6 +25,7 @@ import { inSequence, pullKey, reviewerOf } from "./landing.ts";
 import { record } from "./recorder.ts";
 import { closingLine, responseOf } from "./response.ts";
 import type { Clearance, ClearanceType, Session, Snapshot, TrafficEvent } from "./model.ts";
+import { liveHolderClaims } from "./occupancy.ts";
 
 // CONTROLLER(1단계, 조언 모드)가 쓰는 API. atc는 판단하지 않고, 브리핑을 주고 CLEARANCE·READBACK을 기록만 한다.
 
@@ -115,7 +116,7 @@ export function buildBrief(
     const repoSeq = seq ? lane.indexOf(p) + 1 : null;
     const airport = codeOf(p.repo) ?? null;
     // 누가 착륙시키나(ATC-151). holder가 아니면 TOWER는 팀에 LAND를 내지 않는다. 순서(repoSeq)는 MCC에도 뜻이 있어 그대로 둔다
-    const holderCount = p.standPath ? active.filter((c) => c.workspacePath === p.standPath).length : 0;
+    const holderCount = liveHolderClaims(active, p.standPath, s.sessions).length; // 끝난 세션의 점유는 홀더가 아니다(ATC-440)
     const infoText = infoTextOf(p.number, p.blocks.filter((b) => !b.findings).map((b) => b.en));
     const landBy: LandBy = landByOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false);
     return {
