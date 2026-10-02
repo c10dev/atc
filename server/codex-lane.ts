@@ -83,6 +83,7 @@ export function singleLaneCauseOf(p: { landing: string; codexUnavailable?: { why
 
 export interface LandedLine {
   t: string; // 착륙(머지) 시각
+  airport: string; // 어느 AIRPORT의 저장소인가(PR 번호는 저장소마다 따로 센다)
   number: number;
   head: string;
 }
@@ -94,12 +95,12 @@ export interface LaneDay {
 }
 
 const dayOf = (iso: string) => iso.slice(0, 10);
-const keyOf = (number: number, head: string) => `${number}@${head.slice(0, 7)}`;
+const keyOf = (airport: string, number: number, head: string) => `${airport}#${number}@${head.slice(0, 7)}`;
 
-// 날짜별 수: 착륙한 PR(머지 성공 기록)을 센 다음, 같은 PR·head의 단일 레인 기록이 있으면 single로 센다. 오래된 날부터
-export function laneDaysOf(landed: readonly LandedLine[], lines: readonly SingleLaneLine[], days: number, now: number): LaneDay[] {
+// 날짜별 수: 착륙한 PR(머지 성공 기록)을 센 다음, 같은 저장소·PR·head의 단일 레인 기록이 있으면 single로 센다. 오래된 날부터. airportOf: 단일 레인 기록의 저장소 경로 → AIRPORT 코드
+export function laneDaysOf(landed: readonly LandedLine[], lines: readonly SingleLaneLine[], days: number, now: number, airportOf: (repo: string) => string = (repo) => repo): LaneDay[] {
   const single = new Map<string, SingleLaneLine>();
-  for (const l of lines) single.set(keyOf(l.number, l.head), l);
+  for (const l of lines) single.set(keyOf(airportOf(l.repo), l.number, l.head), l);
   const out = new Map<string, LaneDay>();
   for (let i = days - 1; i >= 0; i--) {
     const day = dayOf(new Date(now - i * 86_400_000).toISOString());
@@ -108,7 +109,7 @@ export function laneDaysOf(landed: readonly LandedLine[], lines: readonly Single
   const seen = new Set<string>();
   for (const l of landed) {
     const d = out.get(dayOf(l.t));
-    const k = keyOf(l.number, l.head);
+    const k = keyOf(l.airport, l.number, l.head);
     if (!d || seen.has(k)) continue;
     seen.add(k);
     d.landed++;

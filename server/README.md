@@ -18,7 +18,7 @@ npm test           # node --test for server/**/*.test.ts, hooks and controller
 
 1. `buildSnapshot()` (`snapshot.ts`) reads the sources, joins session ─ claim ─ worktree ─ ticket, decides handoffs and conflicts (`occupancy.ts`), computes alerts and checks each open PR for CLEARED TO LAND (`landing.ts`).
 2. `diffSnapshots()` (`events.ts`) turns the difference from the previous snapshot into events; each is written to the FLIGHT RECORDER.
-3. Every 5 minutes, once the snapshot is warm (Linear, git and GitHub read at least once), it records a traffic sample and runs DISPATCH (`runDispatch`).
+3. Once the snapshot is warm (Linear, git and GitHub read at least once) it runs the tick jobs declared in `jobs/` in their `order` (traffic sample and DISPATCH every 5 minutes, then departures, LOGBOOK, OOOI, STAND-free, ATFM, AUTOLAND, judges, QRH). `jobs/` also holds the 30 s and 60 s timers and the two start-once jobs; `index.ts` lists none of them ([docs/switches.md](../docs/switches.md)).
 4. If anything besides the timestamp changed, the snapshot goes to every SSE listener.
 
 Each tick also checks `web/dist/index.html` (only re-read when its mtime or size changes) for the entry script the page loads, `/assets/index-<hash>.js`. That path is the build id: a restart with the same bundle keeps it, a rebuild changes it, even without a restart. No build gives `null`.
@@ -40,7 +40,9 @@ Each tick also checks `web/dist/index.html` (only re-read when its mtime or size
 
 | File | Role |
 |---|---|
-| `index.ts` | Entry: tick loop, SSE, mounts the APIs, serves `web/dist` |
+| `index.ts` | Entry: tick loop, SSE, mounts the APIs, serves `web/dist`, starts the job runner |
+| `switch-def.ts`, `switch-registry.ts`, `switches/` | SWITCH REGISTRY (ATC-393, [docs/switches.md](../docs/switches.md)): one file per SUPERVISOR switch (`defineSwitch`: key, values, default, ⚠ modes, warnings, window row, `read`/`save`/`record`). The registry reads the folder; `settings.ts` (`PUT`/`GET /api/settings`), `settings-policy.ts` (mode line, ⚠ confirmation, search) and the settings window read the declarations |
+| `job-def.ts`, `job-registry.ts`, `jobs/`, `declarations.ts` | JOB REGISTRY (ATC-393): one file per periodic server job (`defineJob`: `every`, `tick` or `start`). `createJobRunner` runs the tick jobs in order and starts the timers; `provideService` hands a job what it cannot import. `declarations.ts` is the shared folder reader |
 | `config.ts` | Loads `.env.local` and environment variables ([deploy](../deploy/README.md#configuration)) |
 | `model.ts` | Shared types: `Session`, `Airport`, `Workspace`, `Ticket`, `Claim`, `Handoff`, `Alert`, `Clearance`, `TrafficEvent`, `PullRequest`, `LandingBlockCode`, `Snapshot`. The web UI imports these directly |
 | `snapshot.ts` | Merges sources, keeps fresh claims only, computes alerts and `pulls`. Snapshot fields: `linear` and `github` status (`{enabled, error, fetchedAt}`), `sessions`, `workspaces`, `tickets`, `columns`, `airports`, `claims`, `handoffs`, `alerts`, `clearances`, `pulls` (open PRs, CLEARED first) |

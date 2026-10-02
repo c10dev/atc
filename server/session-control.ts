@@ -802,3 +802,9 @@ export function controlAccountsView(fleet: Pick<FleetFile, "aircraft" | "control
     rows: CONTROL_NAMES.map((name) => ({ name, label: fleet.control?.[name]?.account ?? null, account: controlAccountOf(fleet, name) })),
   };
 }
+
+// launch 카드의 LAUNCH(화면의 승인과 서버의 자동 승인이 같이 쓴다, ATC-393에서 index.ts에서 옮김). by는 FLIGHT RECORDER에 남는 주체. 옵션은 그 AIRCRAFT의 마지막 atc LAUNCH와 같게
+export const launchForCard = (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string) => {
+  const a = s.absent?.find((x) => x.registration === reg);
+  return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, by, proposal);
+};

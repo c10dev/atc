@@ -221,8 +221,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
     return alCfg.mode !== "off" && Boolean(code) && alCfg.airports.includes(code!) && !alSt.groundStops.some((g) => g.airport === code);
   };
   const fastTrack = fastTrackOf(alSt.reviewRequests);
-  // 조용한 리뷰 레인(ATC-386): 저장소 수준 판단. GitHub을 읽은 저장소만, 전이는 codex-lane.jsonl에 한 줄씩
-  const laneSilent = laneStates(github.byRepo, Date.now());
+  // 조용한 리뷰 레인(ATC-386): 저장소 수준 판단. GitHub을 읽은 저장소 가운데 Codex를 쓰는 저장소만(MCC AIRPORT는 INSPECTION이 리뷰), 전이는 codex-lane.jsonl에 한 줄씩. 스위치 codex-lane.json이 off면 쉰다(ATC-393)
+  const laneSilent = laneStates(github.byRepo, Date.now(), undefined, (repo) => repo !== mccAirport?.repo);
   const pulls = buildPulls(
     repos.filter((r) => github.byRepo.has(r)).map((repo) => ({ repo, pulls: github.byRepo.get(repo)!, defaultBranch: github.defaultByRepo.get(repo) ?? null })),
     workspaces,

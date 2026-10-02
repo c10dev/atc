@@ -18,7 +18,7 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 
 1. `buildSnapshot()`(`snapshot.ts`)이 소스를 읽어 세션 ─ 점유 ─ 워크트리 ─ 티켓을 잇고, HANDOFF·충돌을 판정하고(`occupancy.ts`), 경보를 계산하고, 열린 PR마다 CLEARED TO LAND 조건을 따진다(`landing.ts`).
 2. `diffSnapshots()`(`events.ts`)가 직전 스냅샷과의 차이를 이벤트로 만들고, 이벤트마다 FLIGHT RECORDER에 기록한다.
-3. 스냅샷이 준비되면(Linear·git·GitHub을 한 번 이상 읽은 뒤) 5분마다 교통량 표본을 남기고 DISPATCH(`runDispatch`)를 돌린다.
+3. 스냅샷이 따뜻해지면(Linear·git·GitHub를 한 번 이상 읽은 뒤) `jobs/`에 선언한 tick 일을 `order` 순서로 돌린다(교통 표본과 DISPATCH는 5분마다, 이어서 착수 기록, LOGBOOK, OOOI, STAND 없는 FLIGHT, ATFM, AUTOLAND, 판정, QRH). 30초·60초 타이머와 한 번만 시작하는 일 둘도 `jobs/`에 있고, `index.ts`는 어느 것도 하나씩 적지 않는다([docs/switches.md](../docs/switches.md)).
 4. 시각 말고 바뀐 것이 있으면 SSE 구독자 모두에게 스냅샷을 보낸다.
 
 tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 때만 다시 읽음). 화면이 불러오는 진입 스크립트 `/assets/index-<hash>.js`가 빌드 정체(build)다. 같은 번들로 재시작하면 그대로고, 다시 빌드하면 재시작하지 않아도 바뀐다. 빌드가 없으면 `null`.
@@ -40,7 +40,9 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 
 | 파일 | 역할 |
 |---|---|
-| `index.ts` | 진입점: tick 반복, SSE, API 연결, `web/dist` 제공 |
+| `index.ts` | 진입점: tick 반복, SSE, API 연결, `web/dist` 제공, 일 실행기 시작 |
+| `switch-def.ts`, `switch-registry.ts`, `switches/` | SWITCH REGISTRY(ATC-393, [docs/switches.md](../docs/switches.md)): SUPERVISOR 스위치마다 파일 하나(`defineSwitch`: key, 값, 기본값, ⚠ 모드, 경고, 설정 창 줄, `read`·`save`·`record`). 레지스트리가 폴더를 읽고, `settings.ts`(`PUT`·`GET /api/settings`), `settings-policy.ts`(정책 한 줄, ⚠ 확인, 찾기)와 설정 창이 선언을 읽는다 |
+| `job-def.ts`, `job-registry.ts`, `jobs/`, `declarations.ts` | JOB REGISTRY(ATC-393): 주기로 도는 서버 일마다 파일 하나(`defineJob`: `every`·`tick`·`start`). `createJobRunner`가 tick 일을 순서대로 돌리고 타이머를 시작하며, `provideService`가 일이 import할 수 없는 것을 넘긴다. `declarations.ts`는 두 레지스트리가 같이 쓰는 폴더 읽기 |
 | `config.ts` | `.env.local`과 환경 변수 읽기([deploy](../deploy/README.ko.md#설정)) |
 | `model.ts` | 공용 타입: `Session`, `Airport`, `Workspace`, `Ticket`, `Claim`, `Handoff`, `Alert`, `Clearance`, `TrafficEvent`, `PullRequest`, `LandingBlockCode`, `Snapshot`. 웹 화면이 그대로 가져다 쓴다 |
 | `snapshot.ts` | 소스 병합, TTL 안의 점유만 남기기, 경보와 `pulls` 계산. 스냅샷 필드: `linear`·`github` 상태(`{enabled, error, fetchedAt}`), `sessions`, `workspaces`, `tickets`, `columns`, `airports`, `claims`, `handoffs`, `alerts`, `clearances`, `pulls`(열린 PR, CLEARED 먼저) |

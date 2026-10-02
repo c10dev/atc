@@ -47,7 +47,8 @@ export const SIDE_EFFECT = [
   ["server/account-login.ts", "claude auth login 실행(코드를 stdin으로), 로그인 뒤 .claude.json 온보딩 칸 셋 쓰기(ATC-187). .credentials.json은 열지 않음"],
   ["server/flight-state-run.ts", "FLIGHT 상태 버튼(POST /api/flight/:key/state): SUPERVISOR 클릭만 Linear 상태를 옮김(DUTY G3)"],
   ["server/accounts-run.ts", "ADD ACCOUNT·LOGIN·REFRESH 시점(POST /api/accounts/add, /api/accounts/:label/login, /api/accounts/:label/usage, SUPERVISOR만)"],
-  ["server/index.ts", "AUTOLAND 한 주기 실행 배선(머지·브랜치 갱신 시점)"],
+  ["server/jobs/autoland.ts", "AUTOLAND 한 주기 실행 배선(머지·브랜치 갱신 시점, ATC-393에서 index.ts에서 옮김)"],
+  ["server/index.ts", "서버 진입: 라우트와 주기 일 실행기(jobs/)를 연결하고 서비스 시작 커밋을 읽는다. 일 하나하나의 부작용은 jobs/의 파일마다(AUTOLAND는 위)"],
 ];
 // 부작용을 일으키는 export(이름, 정의한 파일, 하는 일). 이것을 import하는 server 파일은 SIDE_EFFECT나 READ_ONLY에 올라야 한다(landing-tier.test.mjs)
 export const SIDE_EFFECT_HELPERS = [
