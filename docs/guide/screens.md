@@ -121,7 +121,7 @@ FLIGHT 번호(`ATC206`)나 STRIPS의 PR 번호를 누르면 화면 오른쪽에 
 - **PR 서랍**(주소 `#pr/ATCC/281`): 브랜치, 작성자, 착륙 상태와 막는 조건, 등급(TIER), MCC INSPECTION, 리뷰 결정, 체크, 본문, 바뀐 파일(100개까지). 착륙 상태·등급·INSPECTION은 atc가 폴링하는 열린 PR만 보인다.
 - **MERGE**(PR 서랍): MCC AIRPORT(atc 저장소)의 **user 등급**(또는 MCC가 ESCALATE한) PR이 CLEARED TO LAND일 때만 `MERGE…` 버튼이 뜬다. 누르면 "TIER user · head e726794 · merge 방식. GitHub에 바로 머지한다."를 한 번 더 묻고, [머지 확인]을 눌러야 머지한다. 서버는 눌린 뒤 지금 GitHub 자료로 다시 판정한다: 서랍이 보여 준 head가 그대로일 때만(움직였으면 409와 새 head가 뜨고 머지하지 않는다), PR이 열려 있고 Draft·fork가 아니고 SUPERVISOR HOLD가 없고 atc가 그 head를 CLEARED로 볼 때만 머지한다. 머지는 그 head(sha)에 고정하고 auto-merge는 켜지 않는다. **auto·flagged 등급 PR은 여기서 머지하지 않는다**(MCC의 몫이라 버튼도 없다). 후보인데 지금 안 되면 버튼 자리에 까닭이 보인다. 이 화면에서 누른 클릭만 받고(세션·CLI는 못 한다), 시도마다 FLIGHT RECORDER에 한 줄(누가·PR·head·결과, 거절도) 남는다. 머지한 뒤의 배포는 [배포하기](deploy.md).
 - 본문과 댓글의 Markdown은 안전하게 그린다: HTML 태그는 글자로 보이고, 이미지는 링크로만 남고, 링크는 새 탭에서 열린다.
-- Esc, 바깥 클릭, ×로 닫는다. 브라우저 뒤로 가기도 닫는다. 서랍은 열 때 한 번 읽고 60초 동안 기억한다(백그라운드로 다시 읽지 않는다). `ATC_GITHUB=off`인 서버에서는 PR 서랍이 "GitHub이 꺼져 있다"고 알린다.
+- 서랍(FLIGHT·PR, DUTY, IDEAS)은 화면 오른쪽의 한 칸을 나눠 쓴다(ATC-444): 화면을 덮지 않고 화면에서 너비를 가져가므로 열어 둔 채 줄을 눌러 다른 FLIGHT로 바꿀 수 있다. 하나를 열면 다른 하나는 닫힌다. 861–1279px에서는 서랍이 열려 있는 동안 사이드바가 접히고(기억한 선택은 그대로), 860px 이하에서는 서랍이 화면을 덮는다. Esc나 ×로 닫는다(화면의 글 입력칸에서 누른 Esc는 서랍을 닫지 않는다. 서랍 안 입력칸에서는 칸만 벗어난다). 닫으면 연 컨트롤로 포커스가 돌아온다. 바깥 클릭으로는 닫히지 않고, Tab은 서랍 안에 갇히지 않는다(860px 이하의 덮는 서랍은 갇힌다). 브라우저 뒤로 가기도 닫는다. 서랍은 열 때 한 번 읽고 60초 동안 기억한다(백그라운드로 다시 읽지 않는다). `ATC_GITHUB=off`인 서버에서는 PR 서랍이 "GitHub이 꺼져 있다"고 알린다.
 - 지금 번호를 눌러 열리는 곳: FLIGHTS(LANDING SEQUENCE의 FLIGHT와 PR 번호), HOME(HUMAN CHECK·STUCK), DISPATCH 표·후보·승인 기록, FOLLOWING, FLEET(카드·목록). 이미 다른 링크(Linear) 안에 있는 번호는 그 링크 그대로다. 주소를 직접 써도 열린다.
 
 ## DUTY 서랍

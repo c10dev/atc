@@ -1,7 +1,7 @@
 import { ChevronRight, X } from "lucide-react";
 import { Icon, IconButton } from "./kit/Icon.tsx";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useDialog } from "./kit/useDialog.ts";
+import { useDialog, useDocked } from "./kit/useDialog.ts";
 import { type Chat, type ChatItem, headLine } from "../../server/duty-chat.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
 import { type Airports, type CardCtx, DraftCard, DutyCard, QueueRow, useCharters, useDecisions, useQueue } from "./DutyCards.tsx";
@@ -109,7 +109,8 @@ export default function DutyDrawer({ chat, onClose, airports, refreshKey, now }:
     reloadCharters,
   };
 
-  useDialog(ref, onClose);
+  const docked = useDocked();
+  useDialog(ref, onClose, undefined, { trap: !docked, restore: false });
 
   useLayoutEffect(() => {
     const el = logRef.current;
@@ -146,107 +147,104 @@ export default function DutyDrawer({ chat, onClose, airports, refreshKey, now }:
 
   const off = st !== null && !st.enabled;
   return (
-    <>
-      <div className="dr-backdrop" onClick={onClose} />
-      <aside className="dr dr-duty" role="dialog" aria-modal="true" aria-label="DUTY" tabIndex={-1} ref={ref}>
-        <header className="du-head">
-          <p className="dr-crumb mono du-title">{st ? headLine(st) : "DUTY"}</p>
-          <div className="du-head-actions">
-            <a className="dr-btn du-ideas" href="#ideas">
-              IDEAS
-            </a>
-            {st?.enabled &&
-              (askShift ? (
-                <>
-                  <span className="du-ask">지금 대화를 끝내고 새로 시작합니다.</span>
-                  <button type="button" className="dr-btn is-primary" onClick={() => void newShift()}>
-                    확인
-                  </button>
-                  <button type="button" className="dr-btn" onClick={() => setAskShift(false)}>
-                    취소
-                  </button>
-                </>
-              ) : (
-                <button type="button" className="dr-btn" onClick={() => setAskShift(true)}>
-                  NEW SHIFT
+    <aside className="dr dr-duty" role="dialog" aria-modal={!docked} aria-label="DUTY" tabIndex={-1} ref={ref}>
+      <header className="du-head">
+        <p className="dr-crumb mono du-title">{st ? headLine(st) : "DUTY"}</p>
+        <div className="du-head-actions">
+          <a className="dr-btn du-ideas" href="#ideas">
+            IDEAS
+          </a>
+          {st?.enabled &&
+            (askShift ? (
+              <>
+                <span className="du-ask">지금 대화를 끝내고 새로 시작합니다.</span>
+                <button type="button" className="dr-btn is-primary" onClick={() => void newShift()}>
+                  확인
                 </button>
-              ))}
-            <IconButton className="dr-close du-close" onClick={onClose} label="닫기" icon={X} size={16} />
-          </div>
-        </header>
+                <button type="button" className="dr-btn" onClick={() => setAskShift(false)}>
+                  취소
+                </button>
+              </>
+            ) : (
+              <button type="button" className="dr-btn" onClick={() => setAskShift(true)}>
+                NEW SHIFT
+              </button>
+            ))}
+          <IconButton className="dr-close du-close" onClick={onClose} label="닫기" icon={X} size={16} />
+        </div>
+      </header>
 
-        {st === null && <p className="dr-note du-pad">불러오는 중…</p>}
-        {off && <p className="dr-note du-pad">DUTY가 꺼져 있습니다. 설정 → OPERATIONS → DUTY에서 켭니다.</p>}
-        {st?.enabled && (
-          <>
-            <QueueRow queue={queue} ctx={ctx} />
-            <div
-              className="du-log"
-              ref={logRef}
-              onScroll={(e) => {
-                const el = e.currentTarget;
-                stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-              }}
-            >
-              {chat.items.length === 0 && !chat.streaming && <p className="dr-note">아직 대화가 없습니다. 아래에 써서 보내세요.</p>}
-              {chat.items.map((it) => (
-                <Item key={it.id} it={it} ctx={ctx} />
-              ))}
-              {chat.streaming && (
-                <div className="du-msg du-duty is-streaming">
-                  <span className="du-who">DUTY</span>
-                  <p className="du-text">{chat.streaming}</p>
-                </div>
-              )}
-              {thinking && !chat.streaming && <div className="du-thinking">DUTY가 답하는 중…</div>}
-              {st.state === "down" && (
-                <div className="du-notice is-error">
-                  DUTY가 내려가 있습니다{st.error ? `: ${st.error}` : ""}.{st.blocked ? " 연달아 실패해 멈췄습니다. NEW SHIFT로 다시 시작합니다." : " 다음 글을 보내면 다시 띄웁니다."}
-                </div>
-              )}
-            </div>
-
-            <footer className="du-foot">
-              {note && <p className={`du-note${note.tone === "error" ? " is-error" : ""}`}>{note.text}</p>}
-              {st.queued > 0 && <p className="du-note">대기 중인 글 {st.queued}</p>}
-              {image && (
-                <p className="du-attach mono">
-                  ▣ {image.name}{" "}
-                  <button type="button" className="dr-btn" onClick={() => setImage(null)}>
-                    빼기
-                  </button>
-                </p>
-              )}
-              <div className="du-input">
-                <textarea
-                  value={text}
-                  rows={2}
-                  placeholder="DUTY에게 — Enter 보내기, Shift+Enter 줄바꿈, 그림 붙여넣기"
-                  aria-label="DUTY에게 보낼 글"
-                  onChange={(e) => setText(e.target.value)}
-                  onPaste={(e) => void onPaste(e)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      void send();
-                    }
-                  }}
-                />
-                <div className="du-buttons">
-                  <button type="button" className="dr-btn is-primary" disabled={busy || st.blocked || (!text.trim() && !image)} onClick={() => void send()}>
-                    보내기
-                  </button>
-                  {thinking && (
-                    <button type="button" className="dr-btn du-stop" onClick={() => void post("/api/duty/stop", {})}>
-                      중단
-                    </button>
-                  )}
-                </div>
+      {st === null && <p className="dr-note du-pad">불러오는 중…</p>}
+      {off && <p className="dr-note du-pad">DUTY가 꺼져 있습니다. 설정 → OPERATIONS → DUTY에서 켭니다.</p>}
+      {st?.enabled && (
+        <>
+          <QueueRow queue={queue} ctx={ctx} />
+          <div
+            className="du-log"
+            ref={logRef}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+            }}
+          >
+            {chat.items.length === 0 && !chat.streaming && <p className="dr-note">아직 대화가 없습니다. 아래에 써서 보내세요.</p>}
+            {chat.items.map((it) => (
+              <Item key={it.id} it={it} ctx={ctx} />
+            ))}
+            {chat.streaming && (
+              <div className="du-msg du-duty is-streaming">
+                <span className="du-who">DUTY</span>
+                <p className="du-text">{chat.streaming}</p>
               </div>
-            </footer>
-          </>
-        )}
-      </aside>
-    </>
+            )}
+            {thinking && !chat.streaming && <div className="du-thinking">DUTY가 답하는 중…</div>}
+            {st.state === "down" && (
+              <div className="du-notice is-error">
+                DUTY가 내려가 있습니다{st.error ? `: ${st.error}` : ""}.{st.blocked ? " 연달아 실패해 멈췄습니다. NEW SHIFT로 다시 시작합니다." : " 다음 글을 보내면 다시 띄웁니다."}
+              </div>
+            )}
+          </div>
+
+          <footer className="du-foot">
+            {note && <p className={`du-note${note.tone === "error" ? " is-error" : ""}`}>{note.text}</p>}
+            {st.queued > 0 && <p className="du-note">대기 중인 글 {st.queued}</p>}
+            {image && (
+              <p className="du-attach mono">
+                ▣ {image.name}{" "}
+                <button type="button" className="dr-btn" onClick={() => setImage(null)}>
+                  빼기
+                </button>
+              </p>
+            )}
+            <div className="du-input">
+              <textarea
+                value={text}
+                rows={2}
+                placeholder="DUTY에게 — Enter 보내기, Shift+Enter 줄바꿈, 그림 붙여넣기"
+                aria-label="DUTY에게 보낼 글"
+                onChange={(e) => setText(e.target.value)}
+                onPaste={(e) => void onPaste(e)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    void send();
+                  }
+                }}
+              />
+              <div className="du-buttons">
+                <button type="button" className="dr-btn is-primary" disabled={busy || st.blocked || (!text.trim() && !image)} onClick={() => void send()}>
+                  보내기
+                </button>
+                {thinking && (
+                  <button type="button" className="dr-btn du-stop" onClick={() => void post("/api/duty/stop", {})}>
+                    중단
+                  </button>
+                )}
+              </div>
+            </div>
+          </footer>
+        </>
+      )}
+    </aside>
   );
 }

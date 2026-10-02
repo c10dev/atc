@@ -212,8 +212,7 @@
     grid-template-areas: "main";
     padding-bottom: calc(var(--bar-h) + env(safe-area-inset-bottom));
   }
-  .shell > .sidebar,
-  .shell > .drawer-col {
+  .shell > .sidebar {
     display: none;
   }
   .rail {

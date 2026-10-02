@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { escapeAction, isTextEntry, trapMove } from "../web/src/kit/dialog-focus.ts";
+import { dockedEscapeAction, escapeAction, isTextEntry, trapMove } from "../web/src/kit/dialog-focus.ts";
 
 test("trapMove: Tab wraps at the ends and enters from outside", () => {
   assert.equal(trapMove(2, 3, false), "first");
@@ -28,4 +28,12 @@ test("escapeAction: closes, but a text field only gives up focus", () => {
   assert.equal(escapeAction("Escape", { tagName: "ASIDE" }, true, false), "ignore");
   assert.equal(escapeAction("Escape", { tagName: "ASIDE" }, false, true), "ignore");
   assert.equal(escapeAction("Enter", { tagName: "ASIDE" }, false, false), "ignore");
+});
+
+test("dockedEscapeAction: a text field outside the drawer is not the drawer's business (ATC-444)", () => {
+  assert.equal(dockedEscapeAction("Escape", { tagName: "INPUT" }, false, false, false), "ignore");
+  assert.equal(dockedEscapeAction("Escape", { tagName: "TEXTAREA" }, false, false, true), "leave-field");
+  assert.equal(dockedEscapeAction("Escape", { tagName: "BUTTON" }, false, false, false), "close");
+  assert.equal(dockedEscapeAction("Escape", { tagName: "BODY" }, false, false, false), "close");
+  assert.equal(dockedEscapeAction("Escape", { tagName: "INPUT" }, true, false, true), "ignore");
 });
