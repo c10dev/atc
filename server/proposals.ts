@@ -42,7 +42,7 @@ import {
   workedWhy,
 } from "./dispatch.ts";
 import { teamOfKey } from "./linear-keys.ts";
-import { fleetKeyOf, regKey } from "./registration.ts";
+import { fleetKeyOf, regKey, registrationOf } from "./registration.ts";
 import { unreachableWhy } from "./account-reach.ts";
 import { RESTARTING_TEXT } from "./restarting.ts";
 import { applyGroundStops, enforcedStops, groundStopWhy } from "./atfm.ts";
@@ -58,7 +58,7 @@ import { type DispatchMarks, dispatchMarksOf, loadJudges, readJudgeLines } from 
 import { loadLogbook, loadPricedLogbook } from "./logbook.ts";
 import type { FuelWatch } from "./fuel-watch.ts";
 import { confirmCodesOf, confirmReasonOf, type Preflight, preflightOf, preflightOps } from "./preflight.ts";
-import { parentKeysOf, type Snapshot, type Ticket } from "./model.ts";
+import { parentKeysOf, type Snapshot, type Ticket, type TrafficEvent } from "./model.ts";
 import { composeReason, parseReasonCodes, REASON_CODES, ReasonCodeError, reasonCountsOf } from "./reasons.ts";
 import { readiness2bOf, readinessFiles } from "./readiness.ts";
 import { record } from "./recorder.ts";
@@ -72,6 +72,10 @@ import { type Delivery, deliveryOf } from "./session-origin.ts";
 import { fromThisApp } from "./origin.ts";
 import { type ArrivalReport, foldReports, readReports } from "./arrival-report.ts";
 import { readDepartures } from "./departures.ts";
+import { allClearances } from "./clearances.ts";
+import { holderLines, holderPlansOf, type PrHolder } from "./pr-holder.ts";
+import { setHolderRoutes } from "./pr-holder-state.ts";
+import { ticketKeyFromBranch } from "./sources/git.ts";
 import {
   approveLaunch,
   LAUNCH_FAILED_WHY,
@@ -228,6 +232,7 @@ export interface Proposal {
   launch?: true; // 세션이 없는 백그라운드 AIRCRAFT의 카드(ATC-129): SUPERVISOR가 승인하면 LAUNCH하고, 새 세션이 뜬 뒤 OCC가 보낸다
   launched?: LaunchResult; // 승인 때 한 LAUNCH의 결과(op launch)
   resume?: ResumeInfo; // RESUME 카드(ATC-129): 사용 한도로 끊긴 FLIGHT를 같은 REGISTRATION이 이어서 한다
+  prHolder?: PrHolder; // PR HOLDER 카드(ATC-354): STAND를 쥔 세션이 없는 PR의 GO AROUND·FIX를 이어받는다. 이 카드는 머지하지 않는다
   supervisorConfirm?: string[]; // SUPERVISOR CONFIRM AT AIRCRAFT(ATC-120): 예측 경로 중 사용자 등급 파일. 표시만 하고 승인을 막지 않는다. 옛 기록에는 없다
   undelivered?: { at: string; reason: string; n: number }; // 보낸 FLIGHT PLAN이 닿지 않았다고 OCC가 알림(ATC-183, op undelivered). 마지막 시각·사유와 횟수. 상태가 바뀌어도 지우지 않는다
   awaitSupervisor?: { at: string; reason: string }; // CAPTAIN이 READBACK도 거절도 아닌 채 사용자의 go를 기다림(ATC-120). sent인 동안만 — 상태가 바뀌면(READBACK 등) 지운다
@@ -674,6 +679,13 @@ export function syncOps(
     return pr ? landedWhy(pr) : null;
   };
   const resumePlanned = new Set((plan.resume ?? []).map((r) => `${r.flight}|${regOfAssign(r, tp)}`));
+  // PR HOLDER 카드(ATC-354): 계획에 아직 같은 PR·head·type·AIRCRAFT가 있어야 유효하다. FLIGHT 상태(started)와 열린 PR은 이 카드의 전제라 일반 ASSIGN의 사유로 닫지 않는다
+  const holderPlanned = new Set((plan.holders ?? []).map((h) => `${h.prHolder!.key}|${regOfAssign(h, tp)}`));
+  const holderWhy = (p: Proposal): string | null => {
+    if (holderPlanned.has(`${p.prHolder!.key}|${regOf(p)}`)) return null;
+    const ac = acOf(p);
+    return ac && canTakeNow(ac, stateOf.get(p.flight)) ? "PR HOLDER 불필요 — PR이 머지·닫힘, 쥔 세션이 생김, head가 바뀜 또는 다른 AIRCRAFT가 더 맞음" : `${AIRCRAFT_WHY}: ${ac?.reason ?? "세션 없음"}`;
+  };
 
   let open = 0;
   let openRelease = 0;
@@ -704,7 +716,10 @@ export function syncOps(
       }
       // 대기열로 돌린 제안은 돌린 때부터 24시간
       if (now - Date.parse(p.requeuedAt ?? p.at) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at, reason: NO_VERDICT_WHY });
-      else if (p.resume) {
+      else if (p.prHolder) {
+        const reason = holderWhy(p);
+        if (reason && !waits(p, reason)) ops.push({ op: "supersede", id: p.id, at, reason });
+      } else if (p.resume) {
         // 열린 제안 수(openProposals)에 세지 않는다. 세션이 다시 떴으면 그 세션에서 ATC-86대로("계속")
         const ac = acOf(p);
         const gone = ac && !ac.launch ? `${AIRCRAFT_WHY}: 세션이 다시 떴음 — RESUME은 그 세션에서 SUPERVISOR가 "계속"(ATC-86)` : `${AIRCRAFT_WHY}: RESUME 조건이 더는 맞지 않음(${ac?.reason ?? "세션 없음"})`;
@@ -730,7 +745,10 @@ export function syncOps(
       // LAUNCH했는데 유예가 지나도 세션이 없다(계획에 아직 absent)
       else if (acOf(p)?.launch && launchTimedOut(p, now, cfg.restartGraceMin)) ops.push({ op: "supersede", id: p.id, at, reason: launchTimeoutWhy(cfg.restartGraceMin) });
       else if (acOf(p)?.launch && launchMissing(p, now, cfg.restartGraceMin)) ops.push({ op: "supersede", id: p.id, at, reason: launchMissingWhy(cfg.restartGraceMin) });
-      else if (p.resume) {
+      else if (p.prHolder) {
+        const reason = holderWhy(p);
+        if (reason && !waits(p, reason)) ops.push({ op: "supersede", id: p.id, at, reason });
+      } else if (p.resume) {
         const reason = resumeWhy(p);
         if (reason) ops.push({ op: "supersede", id: p.id, at, reason });
       } else if (!stillValid(p)) {
@@ -790,6 +808,11 @@ export function syncOps(
     resumed.add(resumeKey(r.flight, r.resume.cutAt));
     ops.push({ op: "create", id: nextId(), at, kind: "ASSIGN", flight: r.flight, aircraft: r.aircraft, aircraftName: r.aircraftName, registration: regOfAssign(r, tp), airport: r.airport, score: r.score, factors: r.factors, launch: true, resume: r.resume });
   }
+  // PR HOLDER 카드(ATC-354): PR·head·type마다 한 번. 열린 제안 수에 세지 않는다(PR이 멈추지 않게)
+  for (const h of plan.holders ?? []) {
+    if (existing.some((x) => x.prHolder?.key === h.prHolder!.key && x.status !== "superseded" && x.status !== "expired")) continue;
+    ops.push({ op: "create", id: nextId(), at, kind: "ASSIGN", flight: h.flight, aircraft: h.aircraft, aircraftName: h.aircraftName, registration: regOfAssign(h, tp), airport: h.airport || null, score: h.score, factors: h.factors, ...(h.launch ? { launch: true as const } : {}), prHolder: h.prHolder });
+  }
   for (const r of plan.release) {
     if (openRelease >= cfg.slots.openReleases) break;
     if (seen.has(`R|${r.flight}`)) continue;
@@ -818,6 +841,7 @@ export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "ur
     ticket?.url ?? null,
     // RESUME 카드(ATC-129): 처음부터 다시 하지 말고 STAND·브랜치·마지막 커밋에서 이어서
     ...(p.resume ? resumeLines(p.resume, now) : []),
+    ...(p.prHolder ? holderLines(p.prHolder) : []),
     ...directLines(directSectionsOf(description)),
     ...notes,
     note,
@@ -1094,7 +1118,7 @@ export function allProposals(): Proposal[] {
 }
 
 // 서버 tick에서 5분마다 부른다.
-export function runDispatch(s: Snapshot, now = Date.now()): Plan {
+export function runDispatch(s: Snapshot, now = Date.now(), events: () => readonly TrafficEvent[] = () => []): Plan {
   const cfg = loadDispatchConfig();
   const ops = readOps();
   // PREFLIGHT: FLIGHT 칩 disagree mark가 달린 열린 제안을 먼저 HELD로(배포 전에 달린 mark 포함). 계획이 그 FLIGHT를 잡아 두게 먼저 적는다
@@ -1109,6 +1133,10 @@ export function runDispatch(s: Snapshot, now = Date.now()): Plan {
   const resumes = resumePlansOf(s, readDepartures(), landed, now, baseOfFleet(fleet, cfg.teamPattern));
   // 켜진 GROUND STOP이 걸린 AIRPORT의 ASSIGN은 계획에서 뺀다(docs/atfm.md 6장). 열린 제안은 그 사유로 SUPERSEDED
   const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes, mccAirportNow()), s.atfm?.groundStops ?? []);
+  // PR HOLDER(ATC-354): 계획의 AIRCRAFT 상태로 STAND를 쥔 세션이 없는 PR의 GO AROUND·FIX를 이어받을 AIRCRAFT를 고른다. 결과 경로는 RELAY 카드와 DUTY brief가 읽는다
+  const holders = holderPlansOf(s, { clearances: allClearances(), events: events(), existing, lastAircraft: { departures: readDepartures(), proposals: existing, reports: readReports(), regOf: (n) => registrationOf(n, cfg.teamPattern) }, fleet, aircraft: plan.aircraft, teamPattern: cfg.teamPattern, keyFromBranch: ticketKeyFromBranch, now });
+  plan.holders = holders.plans;
+  setHolderRoutes(holders.routes);
   const seq = ops.filter((o) => o.op === "create").length;
   append(syncOps(existing, plan, s, cfg, now, seq, landed, foldReports(readReports())));
   return plan;

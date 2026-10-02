@@ -11,6 +11,7 @@ import { allProposals } from "./proposals.ts";
 import { queueEpoch } from "./queue-bust.ts";
 import { allRelays, lastAircraftSources } from "./relay-run.ts";
 import { relayOffersOf } from "./relay-offer.ts";
+import { holderRoutes } from "./pr-holder-state.ts";
 import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { type QueueInput, type SupervisorQueue, supervisorQueueView } from "./supervisor-queue.ts";
 import type { UpdateStatus } from "./update.ts";
@@ -39,7 +40,7 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
     blockedMin: config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!,
     relays,
     clearances,
-    relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now }),
+    relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now, holderRoutes: holderRoutes() ?? new Map() }),
     folders: accountFolders().map((f) => ({ label: f.label, dir: f.dir })),
     defaultDir: config.claudeDir,
   };
