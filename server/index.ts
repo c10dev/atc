@@ -48,7 +48,7 @@ import { loadRoutes } from "./routes-load.ts";
 import { mountRoutes } from "./routes-run.ts";
 import { refreshOverlap } from "./overlap-run.ts";
 import { allProposals, DISPATCH_MS, mountDispatch, runDispatch } from "./proposals.ts";
-import { runAutoApprove } from "./auto-approve-run.ts";
+import { runApprovedRelaunch, runAutoApprove } from "./auto-approve-run.ts";
 import { mountAutonomyAuto, runAutoSchedule, scheduleMisfires } from "./autonomy-auto-run.ts";
 import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
@@ -264,7 +264,10 @@ setInterval(() => {
 // 서버 안에서만 돈다(HTTP 길도 atcctl 명령도 없다). 1분에 한 번
 setInterval(() => {
   if (!current) return;
-  void runAutoApprove(current, { max: MAX_LAUNCHED, launch: (s, reg, proposal, resume, flight) => launchForCard(s, reg, proposal, resume, "auto", flight) }).catch((e) => console.error("[atc] auto approve failed:", e));
+  const deps = { max: MAX_LAUNCHED, launch: (s: Snapshot, reg: string, proposal: string, resume: boolean, flight: string) => launchForCard(s, reg, proposal, resume, "auto", flight) };
+  void runAutoApprove(current, deps).catch((e) => console.error("[atc] auto approve failed:", e));
+  // 승인됐는데 세션이 없는 ASSIGN 카드(ATC-388): LAUNCH하거나 닫는다. 스위치와 상관없다(SUPERVISOR 승인이 이미 있다)
+  void runApprovedRelaunch(current, deps).catch((e) => console.error("[atc] approved relaunch failed:", e));
 }, 60_000).unref();
 // SCHEDULE 초안 자동 적용(ATC-370, docs/autonomy.md P5): 스위치 schedule.json auto(기본 on)가 켜져 있으면 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW 초안을 사람 판정 없이 승인한다. 1분에 한 번
 setInterval(() => {

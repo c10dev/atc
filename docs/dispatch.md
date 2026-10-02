@@ -673,6 +673,16 @@ K3: this changes the control-session roster and loosens the approval rules that 
 - **No rule waits on a mark.** `auto-approve.ts` lost its `no-crosscheck` and `disagree` skips (DISPATCH ASSIGN, launch and SCHEDULE; blind, caution, HELD, FUEL hold and the caps are unchanged). ATFM A7 is dropped and S3 keeps only the section-citation test (`server/atfm.ts`); the two "CROSSCHECK match" rows are gone from the ATFM turn-on checklists. The server no longer files a PREFLIGHT HOLD from a disagree mark, and `POST /api/dispatch/proposals/:id/crosscheck` and `POST /api/schedule/ops/:id/crosscheck` answer 410. The briefs' `crosscheck` block is always empty.
 - **History stays.** Old marks, `preflight` ops, chips on old cards, NETWORK GATES (labelled as retired) and `gate.crosscheck` still read. The `crosscheck/` folder and `controller/guard.mjs` are untouched.
 
+## An approved card without a session, as built (ATC-388)
+
+Case D-0441: an ASSIGN card to TEAM_K was approved while TEAM_K was ABSENT (no live session). It was not a launch card, so nothing launched TEAM_K and `POST …/release` refused to send into nothing; the card sat `approved`. Now an approved ASSIGN always ends in a departure, a LAUNCH or a closed card.
+
+- **LAUNCH.** Every minute, besides the AUTO APPROVE pass, the server looks at approved ASSIGN cards (not launch cards) whose AIRCRAFT has no live session and is not RESTARTING (`runApprovedRelaunch`, `server/auto-approve-run.ts`). When the AIRCRAFT is ABSENT and every launch limit allows it, it appends a `relaunch` op (the card becomes a launch card), LAUNCHes through the same path as a launch card (`by: "auto"`, a `launch` line in `auto-approve.jsonl`) and the FLIGHT PLAN follows once the new session is up (`LAUNCHING`). It runs whatever the AUTO APPROVE and AUTO DISPATCH switches say: the SUPERVISOR's approval is already there. DISPATCH must be in approval mode.
+- **Limits.** The launch-card rules (`launchWhyNot`): `ATC_MAX_LAUNCHED` (`cap-full`), the FUEL hold, a stuck LAUNCH, the wait after a failed LAUNCH (`autoLaunchBackoffMin`), the daily LAUNCH limit (`autoLaunchMax`), and a LIMIT cut that has not reset (`limit`). An AIRCRAFT atc never launched (`no-absent`) cannot be launched.
+- **If it cannot launch.** The card waits. After `approvedWaitMin` (`dispatch.json`, default 15 minutes after the approval) it is closed as SUPERSEDED with `승인 뒤 세션 없음 — LAUNCH 못 함(<limit>)…`. That is not a verdict and does not start the 24-hour pair rule, so the FLIGHT goes back to the planner and may get another AIRCRAFT. A LAUNCH that fails closes the card with `LAUNCH 실패 — …` like any launch card.
+- **Counted.** The DISPATCH brief has `approvedNoSession: { waiting, overdue, closed24h, waitMin }`: approved cards waiting for a session, those waiting longer than `approvedWaitMin` (this should stay 0 once the pass runs), and cards closed for this reason in the last 24 hours.
+- **Formats.** The `relaunch` op and `approvedWaitMin` are additive. Nothing else changes in `proposals.jsonl`.
+
 ## DIRECT briefs (ATC-32)
 
 Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.

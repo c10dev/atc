@@ -673,6 +673,16 @@ K3: 관제 세션 목록을 바꾸고 mark를 기다리던 승인 규칙을 푼�
 - **mark를 기다리는 규칙 없음.** `auto-approve.ts`에서 `no-crosscheck`·`disagree` 건너뛰기를 뺐다(DISPATCH ASSIGN·launch·SCHEDULE. blind, 주의, HELD, FUEL hold, 상한은 그대로). ATFM A7은 없애고 S3는 절 인용 검사만 남긴다(`server/atfm.ts`). ATFM 켜기 점검의 "CROSSCHECK 일치" 두 줄도 뺐다. 서버는 disagree mark로 PREFLIGHT HOLD를 걸지 않고, `POST /api/dispatch/proposals/:id/crosscheck`와 `POST /api/schedule/ops/:id/crosscheck`는 410으로 답한다. brief의 `crosscheck` 블록은 늘 비어 있다.
 - **기록은 남는다.** 옛 mark, `preflight` op, 옛 카드의 칩, NETWORK GATES(은퇴로 표시), `gate.crosscheck`는 그대로 읽힌다. `crosscheck/` 폴더와 `controller/guard.mjs`는 건드리지 않았다.
 
+## 세션 없는 AIRCRAFT에 승인된 카드, 만든 것 (ATC-388)
+
+D-0441 사례: TEAM_K에게 낸 ASSIGN 카드를 TEAM_K가 ABSENT(살아 있는 세션 없음)일 때 승인했다. launch 카드가 아니라 아무도 TEAM_K를 띄우지 않았고, `POST …/release`는 없는 곳으로 보내지 않아 카드가 `approved`로 남았다. 이제 승인된 ASSIGN은 늘 출발, LAUNCH, 닫힌 카드 가운데 하나로 끝난다.
+
+- **LAUNCH.** 1분마다 AUTO APPROVE 주기와 별도로, 서버가 승인된 ASSIGN 카드(launch 카드 아님) 가운데 AIRCRAFT에 살아 있는 세션이 없고 RESTARTING도 아닌 것을 본다(`runApprovedRelaunch`, `server/auto-approve-run.ts`). AIRCRAFT가 ABSENT이고 LAUNCH 상한이 모두 허락하면 `relaunch` op를 적고(카드가 launch 카드가 된다) launch 카드와 같은 길로 LAUNCH한 뒤(`by: "auto"`, `auto-approve.jsonl`의 `launch` 줄) 새 세션이 뜨면 FLIGHT PLAN이 간다(`LAUNCHING`). AUTO APPROVE·AUTO DISPATCH 스위치와 상관없이 돈다: SUPERVISOR의 승인이 이미 있다. DISPATCH가 approval 모드여야 한다.
+- **상한.** launch 카드의 규칙(`launchWhyNot`): `ATC_MAX_LAUNCHED`(`cap-full`), FUEL hold, LAUNCH 막힘, 실패 뒤 대기(`autoLaunchBackoffMin`), 하루 LAUNCH 상한(`autoLaunchMax`), reset 전인 LIMIT cut(`limit`). atc가 띄운 적 없는 AIRCRAFT(`no-absent`)는 띄울 수 없다.
+- **띄울 수 없으면.** 카드는 기다린다. `approvedWaitMin`(`dispatch.json`, 기본 승인 뒤 15분)이 지나면 `승인 뒤 세션 없음 — LAUNCH 못 함(<상한>)…` 사유로 SUPERSEDED로 닫는다. 판정이 아니라서 24시간 짝 규칙을 시작하지 않으므로 FLIGHT는 planner로 돌아가 다른 AIRCRAFT를 받을 수 있다. LAUNCH가 실패하면 다른 launch 카드처럼 `LAUNCH 실패 — …`로 닫는다.
+- **센다.** DISPATCH brief의 `approvedNoSession: { waiting, overdue, closed24h, waitMin }`: 세션을 기다리는 승인 카드 수, 그중 `approvedWaitMin`을 넘긴 수(이 주기가 돌면 0으로 남아야 한다), 지난 24시간에 이 사유로 닫은 수.
+- **형식.** `relaunch` op와 `approvedWaitMin`은 추가다. `proposals.jsonl`의 다른 것은 바뀌지 않는다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.
