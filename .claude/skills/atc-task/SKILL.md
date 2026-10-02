@@ -90,13 +90,22 @@ git diff --name-only origin/main...HEAD | node deploy/landing-tier.mjs
 ```
 
 - `auto`나 `flagged`: CI(`check`)가 통과하고 MCC INSPECTION이 `pass`면 MCC가 착륙시키고, `land+rts` 모드(2026-09-29부터)라 RETURN TO SERVICE로 배포까지 한다. 사용자가 먼저 머지해도 된다. `flagged`면 PR 본문과 보고에 바뀐 관제 규칙과 외부 부작용 파일을 따로 적는다.
-- `user`: 사용자가 머지한다. guard, 루트 `.claude/`, 루트 `CLAUDE.md`, `.github/`, 의존성, `hooks/`, `deploy/`를 바꾸면 이 등급이다.
+- `user`: 사용자가 머지한다. guard, 루트 `.claude/`, 루트 `CLAUDE.md`, `.github/`, 의존성, `hooks/`, `deploy/`를 바꾸면 이 등급이다. `user`거나 ESCALATE될 PR은 7절의 Behavior change 절이 꼭 있어야 한다.
 
 ## 7. PR
 
 - 커밋 메시지와 PR 제목, 본문은 영어로 쓴다. attribution 줄은 넣지 않는다.
 - PR 제목 끝은 `(ATC-<n>)`, 본문 첫 줄은 `Fixes ATC-<n>`이다. 후속 PR은 `Refs ATC-<n>`.
 - 본문에 요약, 명세와 다르게 한 점, PILOT'S DISCRETION으로 고른 기본값, 등급, 시험 계획(`[x]` 체크)을 적는다. 끝은 `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- **`user` 등급이거나 ESCALATE될 PR(SUPERVISOR가 승인하는 PR)은 본문에 "Behavior change" 절**을 둔다(ATC-360). SUPERVISOR가 diff를 읽지 않고 atc의 동작이 무엇이 바뀌는지 보게 하는 그림이다. 절 안에 ``` 코드 블록 하나: `BEFORE`와 `AFTER` 두 줄(또는 mermaid `flowchart`)에 트리거 → 단계 → 결과를 화살표로 잇고 바뀐 곳에 `*`를 붙인다. 이미지는 올리지 않는다(공개 저장소). PR 서랍은 코드 블록을 그대로 보여 준다. 동작이 바뀌지 않으면 한 줄 `Behavior change: none`. 그림은 diff와 같아야 한다. MCC INSPECTION이 그림이 없거나 diff와 어긋나면 P1로 지적한다. 예:
+
+  ````
+  ## Behavior change
+  ```
+  BEFORE: PR opened → MCC INSPECTION → pass → user tier: wait for SUPERVISOR
+  AFTER:  PR opened → MCC INSPECTION* (also checks the diagram) → pass → user tier: wait for SUPERVISOR
+  ```
+  ````
 - 머지하지 않는다.
 
 ## 8. 보고

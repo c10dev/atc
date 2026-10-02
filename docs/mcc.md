@@ -68,6 +68,7 @@ CI already runs tests, types and the build. The INSPECTION is what CI can't see,
 - Nothing from vocado's internals, no secrets, no screenshots (public repository).
 - Records stay append-only JSONL and settings stay atomically written JSON. A change to an operating-state format → ESCALATE.
 - The change does what the PR body and the ATC issue say, and nothing else.
+- A PR the SUPERVISOR approves (tier `user` or ESCALATE) has a "Behavior change" section: one text before/after diagram, or `Behavior change: none` (ATC-360). A missing section, a diagram that contradicts the diff, or `none` on a PR whose diff changes behaviour is P1.
 
 `findings` blocks the landing until a new head passes. The server also posts them as a PR comment (`**MCC INSPECTION — findings** …`), in every mode including shadow, so the author sees them on the PR as well as on the atc screen. A comment is information; it merges and deploys nothing. MCC doesn't message team sessions.
 
