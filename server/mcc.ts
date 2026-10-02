@@ -1,7 +1,7 @@
-import { type KVerdict, kWhyOf } from "./k-approval.ts";
 import { appendFileSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { config } from "./config.ts";
+import { type KVerdict, kWhyOf } from "./k-approval.ts";
 import { severityOf } from "./landing.ts";
 
 // MCC(docs/mcc.md): atc 자신의 PR을 INSPECTION하고, 규칙이 허락하면 착륙시키고, 7700을 새 코드로 RETURN TO SERVICE한다.
@@ -81,7 +81,7 @@ export type MccRecord =
   | { op: "escalate"; at: string; pr: number; head: string; reason: string; model?: string }
   | { op: "land" | "would-land"; at: string; pr: number; head: string; tier: string; result: "ok" | "rejected" | "failed"; detail?: string; model?: string; k?: { release: string; flight: string; channel: string } } // k: K 승인으로 착륙한 user 등급 PR의 발권 id(ATC-391)
   | { op: "rts" | "would-rts"; at: string; from: string | null; to: string; result: "started" | "failed"; detail?: string; model?: string; by?: "supervisor" | "server" }
-  | { op: "mode"; at: string; mode: MccMode; detail: string }
+  | { op: "mode"; at: string; mode: MccMode; detail: string; kApproval?: "on" | "off" } // kApproval: K 승인 착륙 스위치를 바꾼 줄(ATC-391). mode는 그때의 MCC 모드 그대로
   | { op: "hold" | "unhold"; at: string; pr: number };
 
 export function appendMccRecord(r: MccRecord, file = RECORD_FILE()) {
@@ -193,7 +193,7 @@ export interface LandInput {
   tier: "auto" | "flagged" | "user";
   tierReasons: string[];
   escalated: { reason: string } | null;
-  checkPath?: string | null; // 이 PR이 K 승인 검사 자체를 바꾸는 파일(k-approval.ts CHECK_PATHS). 등급과 상관없이 L3: 늘 사용자가 머지(ATC-391)
+  checkPath?: string | null; // 이 PR이 K 승인 검사 자체를 바꾸는 파일(k-approval.ts CHECK_CORE). 등급과 상관없이 L3: 늘 사용자가 머지(ATC-391)
   kApproval?: KVerdict | null; // K 승인 판정(ATC-391, k-approval.ts). ok면 user 등급의 L3를 푼다. ESCALATE(의심)는 늘 막는다
   ci: CiState;
   ciCheck: string;

@@ -1,4 +1,3 @@
-import { checkPathOf, type KLanded, kApprovalOf, kLandDaysOf, type KVerdict } from "./k-approval.ts";
 import { execFile } from "node:child_process";
 import { userInfo } from "node:os";
 import { join } from "node:path";
@@ -7,6 +6,7 @@ import type { Hono } from "hono";
 import { writeResultOf } from "./autoland.ts";
 import { config } from "./config.ts";
 import { loadRecycle } from "./control-recycle.ts";
+import { corePathOf, type KLanded, kApprovalOf, kLandDaysOf, type KVerdict } from "./k-approval.ts";
 import { slugOfUrl } from "./landing.ts";
 import { capText, sectionsOf } from "./landing-review.ts";
 import {
@@ -95,7 +95,7 @@ export function setKApproval(mode: "on" | "off") {
   const cfg = loadMcc();
   if (cfg.kApproval === mode) return;
   saveMcc({ ...cfg, kApproval: mode });
-  appendMccRecord({ op: "mode", at: new Date().toISOString(), mode: cfg.mode, detail: `kApproval ${cfg.kApproval} → ${mode}` });
+  appendMccRecord({ op: "mode", at: new Date().toISOString(), mode: cfg.mode, kApproval: mode, detail: `kApproval ${cfg.kApproval} → ${mode}` });
 }
 
 // MCC가 맡은 AIRPORT: 저장소 경로, GitHub slug, 기본 브랜치와 그 CI
@@ -117,11 +117,11 @@ interface TierEntry {
   tier: "auto" | "flagged" | "user";
   files: string[];
   userFiles: string[];
-  checkPath: string | null; // k-approval.ts CHECK_PATHS에 든 파일(ATC-391): 등급과 상관없이 SUPERVISOR 몫
+  checkPath: string | null; // k-approval.ts CHECK_CORE에 든 파일(ATC-391): 등급과 상관없이 SUPERVISOR 몫
 }
 const tierCache = new Map<string, TierEntry>();
 const tierKey = (slug: string, n: number, head: string) => `${slug}#${n}@${head}`;
-const tierEntryOf = (tier: { tier: "auto" | "flagged" | "user"; reasons: { file: string; tier: string }[] }, files: string[]): TierEntry => ({ tier: tier.tier, files, userFiles: tier.reasons.filter((r) => r.tier === "user").map((r) => r.file), checkPath: checkPathOf(files) });
+const tierEntryOf = (tier: { tier: "auto" | "flagged" | "user"; reasons: { file: string; tier: string }[] }, files: string[]): TierEntry => ({ tier: tier.tier, files, userFiles: tier.reasons.filter((r) => r.tier === "user").map((r) => r.file), checkPath: corePathOf(files) });
 async function tierEntryCached(slug: string, n: number, head: string): Promise<TierEntry> {
   const k = tierKey(slug, n, head);
   const hit = tierCache.get(k);

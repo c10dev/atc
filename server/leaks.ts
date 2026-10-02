@@ -49,7 +49,8 @@ export function classify(i: LeakItem): Verdict {
       return leak("L10", "C10");
     case "LANDING":
       if (i.landWhy === "hold") return exempt("brake", "L20");
-      if (i.landWhy === "user" || i.landWhy === "check") return exempt("K3", "L14"); // check: K 승인 검사 자체를 바꾸는 PR(ATC-391)도 K3다; // user 등급: 보수적으로 K3 승인으로 본다(L13의 package*.json은 가르지 못한다)
+      // user 등급: 보수적으로 K3 승인으로 본다(L13의 package*.json은 가르지 못한다). check: K 승인 검사 자체를 바꾸는 PR(ATC-391)도 K3다
+      if (i.landWhy === "user" || i.landWhy === "check") return exempt("K3", "L14");
       if (i.landWhy === "escalate") return leak("L11", "C13");
       return leak("L14", "C9"); // mode·tier-unknown·teams-merge-off: 사람이 머지 단추를 누른다
     case "UPDATE":

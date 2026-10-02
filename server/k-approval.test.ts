@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CHECK_PATHS, checkPathOf, type KInput, kApprovalOf, kLandDaysOf } from "./k-approval.ts";
+import { CHECK_CONTEXT, CHECK_CORE, CHECK_PATHS, checkPathOf, corePathOf, type KInput, kApprovalOf, kLandDaysOf } from "./k-approval.ts";
 import type { K3Declaration } from "./k3-allow.ts";
 import { landDecisionOf, type MccLandInfo } from "./land-by.ts";
 import { type LandInput, landBlocksOf, parseMcc } from "./mcc.ts";
@@ -161,21 +161,32 @@ test("landDecisionOf: a user-tier PR with K approval is MCC's; without it, the S
   assert.equal(landDecisionOf(p, { ...info(true), mode: "shadow" }, true).why, "mode");
 });
 
-test("a PR that changes the check but touches no user-tier file (landing tier auto) still stays with the SUPERVISOR", async () => {
+test("a PR that changes the check's own rules but touches no user-tier file (landing tier auto) still stays with the SUPERVISOR", async () => {
   const { tierOf } = (await import(new URL("../deploy/landing-tier.mjs", import.meta.url).href)) as { tierOf: (f: string[]) => { tier: string } };
-  for (const f of ["server/k-approval.ts", "server/k3-allow.ts", "server/land-by.ts", "server/release.ts", "server/index.ts", "server/landing.ts", "server/sources/linear.ts"]) {
-    // 이 파일들은 landing-tier에서 user가 아니라서(auto·flagged) 옛 판정만으로는 INSPECTION 한 번에 착륙했다
+  for (const f of CHECK_CORE) {
+    // 이 파일들은 대부분 landing-tier에서 user가 아니라서(auto·flagged) user 등급 판정에만 맡기면 INSPECTION 한 번에 착륙했다
     assert.notEqual(tierOf([f]).tier, "user", f);
-    const checkPath = checkPathOf([f]);
+    const checkPath = corePathOf([f]);
     assert.equal(checkPath, f, f);
     const blocks = landBlocksOf(land({ tier: "auto", tierReasons: [], checkPath }));
     assert.ok(blocks.some((b) => b.code === "L3" && /K 승인 검사 자체/.test(b.text)), f);
   }
   // 검사와 상관없는 auto 파일은 전처럼 착륙한다
-  assert.deepEqual(landBlocksOf(land({ tier: "auto", tierReasons: [], checkPath: checkPathOf(["server/other.ts", "docs/x.md"]) })).map((b) => b.code), []);
-  // .github/는 user 등급이고 검사 경로이기도 하다: 선언해도 check-itself
-  const gh = kApprovalOf(input([rel("screen")], { files: [".github/workflows/ci.yml"], userFiles: [".github/workflows/ci.yml"], declared: [{ label: "Self-Modification", control: "ci", files: [".github/workflows/ci.yml"] }] }));
-  assert.ok(!gh.ok && gh.code === "check-itself");
+  assert.deepEqual(landBlocksOf(land({ tier: "auto", tierReasons: [], checkPath: corePathOf(["server/other.ts", "docs/x.md"]) })).map((b) => b.code), []);
+});
+
+test("the files the check leans on (CHECK_CONTEXT: index.ts, settings.ts, landing.ts, linear.ts, .github/, deploy/, mcc/ …) block only a K-approved landing, not every PR that touches them", () => {
+  for (const f of ["server/index.ts", "server/settings.ts", "server/landing.ts", "server/sources/linear.ts", "server/origin.ts", "server/supervisor-auth.ts"]) {
+    assert.equal(corePathOf([f]), null, `${f} must not put an L3 on every tier (most route PRs touch it)`);
+    assert.equal(checkPathOf([f]), f, f); // user 등급 PR의 K 승인에는 막는다
+    assert.deepEqual(landBlocksOf(land({ tier: "auto", tierReasons: [], checkPath: corePathOf([f]) })).map((b) => b.code), [], f);
+  }
+  for (const f of CHECK_CONTEXT) assert.ok(CHECK_PATHS.includes(f), f);
+  // 선언한 .github/·settings.ts 변경도 K 승인으로는 착륙하지 않는다
+  for (const f of [".github/workflows/ci.yml", "server/settings.ts", "mcc/CLAUDE.md", "deploy/landing-tier.mjs"]) {
+    const v = kApprovalOf(input([rel("screen")], { files: [f], userFiles: [f], declared: [{ label: "Self-Modification", control: "x", files: [f] }] }));
+    assert.ok(!v.ok && v.code === "check-itself", f);
+  }
 });
 
 test("landDecisionOf: a check-changing PR is the SUPERVISOR's at any tier", () => {

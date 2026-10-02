@@ -9,9 +9,13 @@ import { type ReleaseChannel, type ReleaseView, releaseStateOf } from "./release
 // 선언은 ATC-372가 읽는 모양 하나뿐이다: 이슈 본문 `## K effects`의 `K3[<라벨>]: <바꾸는 통제> | files: <경로, …>` 줄(k3-allow.ts). K1(마이그레이션·상태 기록)과 K2(비밀·권리)를 읽는 선언은 아직 없어서,
 // 그런 경로가 diff에 있으면 이 길로는 착륙시키지 않는다(SUPERVISOR 몫). 선언한 파일 밖의 user 등급 파일이 있으면 선언을 넘은 것이다(새 화살).
 
-// 이 검사 자체를 바꾸는 파일: 그런 PR은 선언이 있어도 늘 SUPERVISOR 몫이다(스스로를 승인하지 않는다, 원칙 3). 이 목록 파일도 목록에 든다.
+// 이 검사 자체를 바꾸는 파일(스스로를 승인하지 않는다, 원칙 3). 둘로 나눈다:
+//  CHECK_CORE: 검사의 규칙과 길 그 자체. 이 파일을 고친 PR은 **어느 착륙 등급이든** SUPERVISOR 몫이다(landBlocksOf가 모든 등급에 L3를 건다).
+//    landing-tier에서 대부분 auto·flagged라서, 여기를 user 등급 판정에만 맡기면 규칙을 푸는 PR이 INSPECTION 한 번으로 착륙한다. 이 목록 파일도 목록에 든다.
+//  CHECK_CONTEXT: 검사가 기대는 곳(스위치를 바꾸는 길, 선언을 읽는 곳, 경로 규칙, CI). 많은 PR이 건드려서(server/index.ts는 거의 모든 라우트 PR) 모든 등급에 L3를 걸지 않고,
+//    user 등급 PR이 K 승인으로 착륙하려 할 때만 막는다(check-itself).
 // 경로가 `/`로 끝나면 그 폴더 전체
-export const CHECK_PATHS: readonly string[] = [
+export const CHECK_CORE: readonly string[] = [
   "server/k-approval.ts",
   "server/k3-allow.ts",
   "server/mcc.ts",
@@ -20,6 +24,8 @@ export const CHECK_PATHS: readonly string[] = [
   "server/release.ts",
   "server/release-run.ts",
   "server/release-store.ts",
+];
+export const CHECK_CONTEXT: readonly string[] = [
   "server/origin.ts", // 스위치를 SUPERVISOR만 바꾸게 하는 검사
   "server/supervisor-auth.ts",
   "server/settings.ts", // 스위치를 쓰는 길
@@ -30,8 +36,10 @@ export const CHECK_PATHS: readonly string[] = [
   "deploy/",
   "mcc/", // MCC의 매뉴얼·inspector·guard
 ];
-// 등급과 상관없이 쓴다: landing-tier에서 auto인 파일(이 파일 자신 포함)을 고치는 PR도 SUPERVISOR 몫이다(mcc.ts landBlocksOf가 모든 등급에 L3를 건다)
-export const checkPathOf = (files: readonly string[]): string | null => files.find((f) => CHECK_PATHS.some((p) => (p.endsWith("/") ? f.startsWith(p) : f === p))) ?? null;
+export const CHECK_PATHS: readonly string[] = [...CHECK_CORE, ...CHECK_CONTEXT];
+const hit = (paths: readonly string[], files: readonly string[]) => files.find((f) => paths.some((p) => (p.endsWith("/") ? f.startsWith(p) : f === p))) ?? null;
+export const checkPathOf = (files: readonly string[]): string | null => hit(CHECK_PATHS, files); // user 등급 PR의 K 승인 판정이 쓴다(check-itself)
+export const corePathOf = (files: readonly string[]): string | null => hit(CHECK_CORE, files); // 모든 등급의 L3(mcc-run.ts judge)
 
 export type KCode = "off" | "check-itself" | "no-flight" | "flight-closed" | "no-release" | "stale" | "attested-only" | "no-declaration" | "unreadable-declaration" | "beyond-declaration" | "k1-k2";
 export type KVerdict =
