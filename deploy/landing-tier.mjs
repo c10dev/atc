@@ -32,6 +32,8 @@ const FLAGGED = [
 // 명령을 돌리거나 GET 아닌 fetch를 하는 server 파일은 여기나 READ_ONLY에 반드시 올라야 한다(landing-tier.test.mjs).
 export const SIDE_EFFECT = [
   ["server/autoland-run.ts", "PR 머지·브랜치 갱신·코멘트(gh api)"],
+  ["server/sources/supabase-sql.ts", "Supabase Management API POST: 시험·실전 호스티드 DB에 SQL 실행(마이그레이션 리허설, ATC-368, K1·K2)"],
+  ["server/migrate-run.ts", "마이그레이션 리허설 실행: gh로 PR 파일을 읽고 supabase-sql로 시험·실전 DB에 적용(ATC-368, K1·K2)"],
   ["server/mcc-run.ts", "PR 머지·INSPECTION 코멘트·atc-rts 유닛 시작"],
   ["server/human-check-run.ts", "PR 본문 수정·코멘트(gh api)"],
   ["server/sources/linear-write.ts", "Linear GraphQL mutation: 이슈 상태 옮기기(DUTY G3), 이슈 만들기·고치기·댓글(DUTY D7a). 서버가 Linear에 쓰는 유일한 파일"],
@@ -52,6 +54,7 @@ export const SIDE_EFFECT = [
   ["server/account-login.ts", "claude auth login 실행(코드를 stdin으로), 로그인 뒤 .claude.json 온보딩 칸 셋 쓰기(ATC-187). .credentials.json은 열지 않음"],
   ["server/flight-state-run.ts", "FLIGHT 상태 버튼(POST /api/flight/:key/state): SUPERVISOR 클릭만 Linear 상태를 옮김(DUTY G3)"],
   ["server/accounts-run.ts", "ADD ACCOUNT·LOGIN·REFRESH 시점(POST /api/accounts/add, /api/accounts/:label/login, /api/accounts/:label/usage, SUPERVISOR만)"],
+  ["server/stale-stop-run.ts", "STALE STOP(ATC-369): FLIGHT가 끝났는데 PENDING·HUNG으로 30분 남은 AIRCRAFT 세션 정지 시점(스위치 기본 on, 끄는 것은 SUPERVISOR만)"],
   ["server/auto-revert-run.ts", "자동 되돌림(ATC-351): lander 머지가 깬 main의 revert PR 열기(gh api graphql revertPullRequest), breaker가 AUTOLAND·MCC 모드를 낮춤, FIX relay 쓰기 — 스위치 기본 on(처음부터 켜짐, shadow 없음), 되돌리기 전에 실패한 체크를 한 번 다시 돌림(workflow rerun)"],
   ["server/jobs/auto-revert.ts", "자동 되돌림 한 주기 실행 배선(revert PR 열기·lane 낮추기 시점, ATC-351)"],
   ["server/jobs/autoland.ts", "AUTOLAND 한 주기 실행 배선(머지·브랜치 갱신 시점, ATC-393에서 index.ts에서 옮김)"],

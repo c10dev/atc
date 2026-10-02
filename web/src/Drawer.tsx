@@ -1,6 +1,7 @@
 import { ExternalLink, X } from "lucide-react";
 import { Icon, IconButton } from "./Icon.tsx";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useDialog } from "./useDialog.ts";
 import type { DrawerRef, IssueDetail, IssueRef, PrDetail } from "../../server/detail.ts";
 import type { MergeInfo } from "../../server/pr-merge.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
@@ -459,13 +460,7 @@ function Pr({ airport, number, now }: { airport: string; number: number; now: nu
 export default function Drawer({ target, onClose, now }: { target: Extract<DrawerRef, { kind: "flight" | "pr" }>; onClose: () => void; now: number }) {
   const ref = useRef<HTMLElement>(null);
   const id = target.kind === "flight" ? target.key : `${target.airport}/${target.number}`;
-  useEffect(() => {
-    ref.current?.focus();
-    ref.current?.scrollTo({ top: 0 });
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    addEventListener("keydown", onKey);
-    return () => removeEventListener("keydown", onKey);
-  }, [id, onClose]);
+  useDialog(ref, onClose, id);
   return (
     <>
       <div className="dr-backdrop" onClick={onClose} />

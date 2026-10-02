@@ -3,7 +3,7 @@ import { IconButton } from "./Icon.tsx";
 import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Snapshot } from "../../server/model.ts";
-import { formatClock, type Settings, THEMES, updateSettings } from "./settings.ts";
+import { formatClock, type SettingsView, THEMES, updateSettings } from "./settings.ts";
 import { type SettingsEntry, type SettingsTab, settingsSearch, settingsTabOf } from "../../server/settings-policy.ts";
 import { Airports } from "./views/Airports.tsx";
 import { AccountsBlock } from "./SettingsAccounts.tsx";
@@ -50,7 +50,7 @@ export function SettingsPanel({
   onClose,
   openTab,
 }: {
-  settings: Settings;
+  settings: SettingsView;
   snapshot: Snapshot | null;
   onClose: () => void;
   openTab?: SettingsTab | null; // 주소(#airports)가 이 분류로 연다(ATC-381)
@@ -211,7 +211,7 @@ export function SettingsPanel({
   );
 }
 
-function DisplaySettings({ settings }: { settings: Settings }) {
+function DisplaySettings({ settings }: { settings: SettingsView }) {
   const now = Date.now();
   return (
     <>
@@ -240,10 +240,10 @@ function DisplaySettings({ settings }: { settings: Settings }) {
         </div>
       </Section>
 
-      <Section code="MOTION" label="애니메이션" hint="RADAR 스위프, 별, 깜빡임">
+      <Section code="MOTION" label="애니메이션" hint={settings.osReduceMotion ? "운영체제가 움직임 줄이기를 요청해 지금은 꺼져 있다. 그 요청이 이 설정보다 우선한다" : "RADAR 스위프, 별, 깜빡임. 운영체제가 움직임 줄이기를 요청하면 이 설정과 상관없이 꺼진다"}>
         <Segmented
           label="애니메이션"
-          value={settings.motion}
+          value={settings.motionSaved}
           options={[
             [true, "켜기"],
             [false, "끄기"],

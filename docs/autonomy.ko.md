@@ -145,6 +145,7 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 | P13 | CHECKRIDE rating 부여(SEC rating이 SEC 작업을 맡을 수 있는 팀을 정한다) | 추천만으로 팀이 권한을 얻음 | not logged | 부여는 **keep**(K3), 회수는 조이는 것. 질문 D6(d) | C9 |
 | P14 | workspace trust 프롬프트, 저장소마다 한 번 | 믿지 않는 폴더의 세션 | 세지 않음 | **keep**(K3) | 없음 |
 | P15 | AIRCRAFT의 LAUNCH, STOP, AOG, RETIRE, ENTRY를 손으로 | 플릿의 모양과 사용량 | 위 FLEET PLAN 개수 | **direction**(플릿 설계). 비행 중인 일의 STOP은 brake(원칙 9) | 없음 |
+| P16 | RELEASE 화면에서 SUPERVISOR를 기다리는 Backlog 제안(DUTY REVIEW, SCHEDULE NEW. 쏘기 = Todo와 `screen` 발권, 버리기 = Canceled, [ATC-401](https://linear.app/vocado/issue/ATC-401)) | 아무도 고르지 않은 제안이 일이 되는 것 | 나가는 날부터 센다(`BACKLOG` 큐 줄) | **keep**(화살, 원칙 10): SUPERVISOR가 쏜다. 없앨 게이트가 아니라 기다림이 보이게 세는 것. DUTY REVIEW의 트리거 신호는 아니다(제안이 기다린다고 점검이 시작되지 않는다) | C14(P5와 같다) |
 
 ### 4.4 방향, DUTY, guard
 
@@ -256,6 +257,97 @@ SUPERVISOR가 2026-10-02에 승인한 K3 완화: 서버가 planner 필터와 상
 - **날짜별로 센다**(설정 창 AUTO REVERT 줄 아래, 최근 7일 UTC): 연 revert, 잡은 flake(빨갛다가 다시 돌리니 초록), misfire, `hold`·`stop` 줄. **misfire**는 되돌린 PR이 revert가 착륙한 뒤 24시간 안에 그대로 다시 머지된 것이다: atc의 revert PR을 되돌린 PR(GitHub 브랜치 이름 `revert-<우리 revert PR>-…`)이거나, 파일과 바뀐 뒤 blob 해시가 원래 PR과 같은 PR이다. `misfire` 줄을 한 번 쓰고 DUTY brief가 보인다.
 - **끄는 스위치.** SUPERVISOR의 `off`는 그대로 있다: 끄면 이 레인은 아무것도 읽지도 쓰지도 않는다.
 - 만들지 않은 것: WO-10의 앞 절반(SUPERVISOR가 볼 Draft revert 제안). 레인은 바로 움직이되 flake 재실행, PR head 초록 확인, K1·K3 hold, breaker가 지킨다. 우연히 통과한 재실행이 진짜 깨짐을 가리는 경우는 재실행이 못 잡는다: 그 그물은 breaker다.
+
+### C9: 선언할 수 있는 K3 라벨 (ATC-399)
+
+서버는 `K3[<라벨>]: <통제> | files: <경로>` 꼴의 K3 선언으로만 classifier allow 항목을 만든다(`server/k3-allow.ts`, [dispatch.ko.md](dispatch.ko.md) "K3 발권이 classifier에 닿는 길"). Linear는 이 줄을 대괄호를 이스케이프해 저장한다(`K3\[Security Weaken\]: …`). 줄을 읽기 전에 Markdown 이스케이프를 되돌린다. 아래 표에서 선언 가능이 아닌 라벨은 선언할 수 없다: 그 줄은 읽히지 않은 것으로 세어 항목을 만들지 않고, FLIGHT는 classifier 아래에 남는다. 표는 2026-10-02의 `claude auto-mode defaults`에 있는 `soft_deny` 라벨 전부다(72개, 선언 가능 7개). 다음 발권에서 라벨을 `K3_LABELS`로 옮기고 그 라벨의 "must name"이 요구하는 글을 항목에 넣으면 더해진다.
+
+| soft_deny 라벨 | K3 선언 | 이유 / 항목이 적는 것 |
+|---|---|---|
+| Git Destructive | 선언 불가 | revert PR로 되살릴 수 없는 데이터를 없앤다. 코드 FLIGHT에는 필요가 없다. |
+| Code That Leaks When Run | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Code from External | 선언 불가 | 밖의 코드나 패키지를 실행에 들인다. 선언이 판단할 수 없는 공급망 위험이다. |
+| Cloud Storage Mass Delete | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Production Deploy | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Remote Shell Writes | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Sensitive Remote Exec | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Production Reads | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Blind Apply | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Protected-Scope IaC Apply | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Logging/Audit Tampering | 선언 불가 | auto mode가 기대는 검사(로그, TLS, CI, 샌드박스, classifier)를 끈다. 선언이 자기 우회를 승인할 수는 없다. |
+| Permission Grant | **선언 가능** | 허가: 누가 어떤 권한을 얻는가 |
+| Account & Standing-Rule Changes | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| TLS/Auth Weaken | 선언 불가 | auto mode가 기대는 검사(로그, TLS, CI, 샌드박스, classifier)를 끈다. 선언이 자기 우회를 승인할 수는 없다. |
+| Secret-Store Writes | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| DNS / Domain / Cert Changes | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Security Weaken | **선언 가능** | 약해지는 통제와 그것을 바꾸는 파일 |
+| Security Test Removal | **선언 가능** | 어떤 테스트를 없애거나 건너뛰는가(통제 칸이 그것을 적는다) |
+| Safety Bypass Flag | 선언 불가 | auto mode가 기대는 검사(로그, TLS, CI, 샌드박스, classifier)를 끈다. 선언이 자기 우회를 승인할 수는 없다. |
+| Create Unsafe Agents | 선언 불가 | auto mode가 기대는 검사(로그, TLS, CI, 샌드박스, classifier)를 끈다. 선언이 자기 우회를 승인할 수는 없다. |
+| Interfere With Workloads | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Shared Cluster Mutation | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| CI Bypass | 선언 불가 | auto mode가 기대는 검사(로그, TLS, CI, 샌드박스, classifier)를 끈다. 선언이 자기 우회를 승인할 수는 없다. |
+| Modify Shared Resources | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Irreversible Local Destruction | 선언 불가 | revert PR로 되살릴 수 없는 데이터를 없앤다. 코드 FLIGHT에는 필요가 없다. |
+| Unverifiable Deletion Target | 선언 불가 | revert PR로 되살릴 수 없는 데이터를 없앤다. 코드 FLIGHT에는 필요가 없다. |
+| Shared Scratch Sweep | 선언 불가 | revert PR로 되살릴 수 없는 데이터를 없앤다. 코드 FLIGHT에는 필요가 없다. |
+| Irreversible Deletion (general) | 선언 불가 | revert PR로 되살릴 수 없는 데이터를 없앤다. 코드 FLIGHT에는 필요가 없다. |
+| Unverifiable Deletion Scope | 선언 불가 | revert PR로 되살릴 수 없는 데이터를 없앤다. 코드 FLIGHT에는 필요가 없다. |
+| Create RCE Surface | 선언 불가 | auto mode가 기대는 검사(로그, TLS, CI, 샌드박스, classifier)를 끈다. 선언이 자기 우회를 승인할 수는 없다. |
+| Expose Local Services | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| External Ingress Tunnel | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Credential Leakage | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Credential Materialization | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Credential Exploration | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| PII Data Handling | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Exfil Scouting | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Traffic Redirection | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Remote Repoint | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Out-of-Place Publication | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Sensitive-Source Provenance | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Excess Sensitive Detail | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Unrequested Artifact Publish | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Live-Shared Artifact Sensitive Delta | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Sandbox Network Callback | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Command Network Lists | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Containment Escape | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Create Public Surface | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Public Data-Sharing Upload | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Untrusted Code Integration | 선언 불가 | 밖의 코드나 패키지를 실행에 들인다. 선언이 판단할 수 없는 공급망 위험이다. |
+| Package Registry Bypass | 선언 불가 | 밖의 코드나 패키지를 실행에 들인다. 선언이 판단할 수 없는 공급망 위험이다. |
+| Unauthorized Persistence | 선언 불가 | auto mode가 기대는 검사(로그, TLS, CI, 샌드박스, classifier)를 끈다. 선언이 자기 우회를 승인할 수는 없다. |
+| Self-Modification | **선언 가능** | 원하는 권한·동의 변경 |
+| Tmux Self Drive | 선언 불가 | auto mode가 기대는 검사(로그, TLS, CI, 샌드박스, classifier)를 끈다. 선언이 자기 우회를 승인할 수는 없다. |
+| Instruction Poisoning | **선언 가능** | 지침 파일 편집이 원하는 변경이라서, 이에 대한 경고는 오탐이라는 것(통제 칸이 무엇이 바뀌는지 적는다) |
+| Auto-Mode Bypass | 선언 불가 | auto mode가 기대는 검사(로그, TLS, CI, 샌드박스, classifier)를 끈다. 선언이 자기 우회를 승인할 수는 없다. |
+| Session Transcript Tampering | 선언 불가 | auto mode가 기대는 검사(로그, TLS, CI, 샌드박스, classifier)를 끈다. 선언이 자기 우회를 승인할 수는 없다. |
+| Unrequested Commit in a Connected App | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| External System Writes | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Merge Without Review | **선언 가능** | 리뷰 없이 머지하는 것 |
+| Self-Approval | **선언 가능** | 변경이 없애거나 스스로 주는 승인 |
+| ChatOps Trigger Comments | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Feature Flag Writes | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Node Lifecycle Operations | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Cluster-Wide Workload Creation | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Real-World Transactions | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Third-Party Attack | 선언 불가 | 운영·공유·제3자 시스템에 손댄다. 발권된 FLIGHT는 코드만 다루므로 선언할 효과가 없다. |
+| Browser Navigate Exfil | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Browser Input Exfil | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Browser JS Exfil | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Browser File Upload Exfil | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+| Browser Shortcut Execution | 선언 불가 | 비밀이나 데이터를 샌드박스 밖으로 내거나 안팎의 길을 연다. 선언할 코드 변경에 필요한 일이 아니다. |
+
+새로 더한 둘의 항목이 적는 것(classifier의 "must name" 글): *Security Test Removal*은 어떤 테스트를 없애거나 건너뛰는지 적고, *Instruction Poisoning*은 표시된 지침 파일 편집이 SUPERVISOR가 허락한 원하는 변경이라서 그 경고는 오탐이라는 것과, 선언한 파일만 덮는다는 것(다른 지침 파일·memory 폴더는 아니다)을 적는다. 모든 항목은 통제, 파일, STAND, 발권 id도 적는다.
+
+### C9, 만든 것: K3 hold (ATC-398)
+
+K3 효과가 있는 작업 지시서의 FLIGHT는 그 효과의 classifier allow를 갖고 떠나거나 떠나지 않는다. SUPERVISOR가 이미 푼 효과에서 classifier 거부로 FLIGHT 도중에 멈추는 일이 없다.
+
+- **작업 지시서.** K3 효과는 `## K effects`에 선언 한 줄씩, `K3[<라벨>]: <바꾸는 통제> | files: <저장소 기준 경로>`이고 `<라벨>`은 `K3_LABELS` 가운데 하나다. K3 효과가 없는 작업 지시서에는 `K3`로 시작하는 줄이 없다. K3 작업 지시서는 RELEASE 화면이나 DUTY 채팅에서 발권한다. 세션은 발권을 증언하지 않는다(세션이 이슈를 만들고 SUPERVISOR가 쏜다). 규칙: `docs/rules.ko.md` "작업 지시서"와 DUTY 매뉴얼.
+- **Hold.** `## K effects`에 `K3` 줄이 있는데 allow 항목 없이 떠날 FLIGHT는 DISPATCH가 보내지 않는다: 읽히지 않는 줄(이유 "not a declaration": `K3:` 뒤 산문, `K3: none` 등), 또는 `K3_CHANNELS`에 없는 채널의 발권(이유 "release on the screen"). 이유와 고치는 길은 DISPATCH 제외 사유로 보이고, Todo FLIGHT는 HOME 알림(`alert|k3-hold|<FLIGHT>`, hold 되어 있는 동안)도 올린다. 발권 전 FLIGHT는 알림이 아니라 RELEASE 화면이 K3 상태를 보인다.
+- **RELEASE 화면.** SUPERVISOR가 쏘기 전에 `K3` 줄이 있는 FLIGHT의 줄이 선언이 읽히는지, 발권이 allow를 주는지(지금, 또는 화면에서 쏘면)를 보인다.
+- **끄는 스위치.** `dispatch.json`의 `k3Hold`, 기본 켜짐, 설정 창(K3 HOLD, `fromThisApp`)에서만 바꾼다(`atcctl` 명령 없음). 깨진 파일은 켜짐으로 읽는다.
+- **오작동 카운터**(RELEASE 화면 맨 위, `GET /api/releases`의 `k3Hold`): *nuisance*는 `K3` 줄이 효과 없음으로 적힌(`K3: none`) FLIGHT에 걸린 hold, *miss*는 allow 없이 떠난(`launch` 기록에 `k3`가 없는) K3 FLIGHT의 AIRCRAFT가 classifier 거부(세션 health `DENIED`)로 멈춘 것이다(7일 안).
 
 ## 6. 남는 세 게이트를 내보낼 때 선언으로
 

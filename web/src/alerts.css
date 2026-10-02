@@ -81,8 +81,10 @@
 .bell-item.lv-none {
   border-left-color: var(--line-strong);
 }
+/* 확인한 항목: 투명도 대신 한 층 낮은 바탕과 흐린 글자(ATC-408). ACK 버튼이 없는 것으로도 구별된다 */
 .bell-item.is-acked {
-  opacity: 0.6;
+  background: var(--panel);
+  color: var(--muted);
 }
 .bell-open {
   display: grid;

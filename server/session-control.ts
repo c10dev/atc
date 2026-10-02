@@ -30,11 +30,38 @@ import { launchWithFlightPromptOf } from "./fresh-start.ts";
 // 세션 조종(docs/fleet.md 8.5). atc가 `claude --bg`로 AIRCRAFT 세션을 띄우고 `claude stop`으로 멈춘다.
 // SUPERVISOR가 FLEET 탭에서 누를 때만 한다(Origin 검사). 관제 세션의 atcctl은 부를 수 없다.
 
+import { policySettingsOf } from "./policy-hook.ts";
 import { DEFAULT_PERMISSION_MODE, MAX_LAUNCHED, PERMISSION_MODES, type PermissionMode } from "./launch-limits.ts";
 export { DEFAULT_PERMISSION_MODE, MAX_LAUNCHED, PERMISSION_MODES };
 export type { PermissionMode };
 
 // `claude agents --json`의 한 줄
+// `--settings`는 한 번만 준다(ATC-369 policy hook과 ATC-372 K3 autoMode.allow가 함께 온다): 두 JSON을 합친다.
+// 객체는 키별로 합치고 배열은 이어 붙인다. 하나만 있으면 그대로 준다. 읽을 수 없는 JSON은 합치지 않고 건너뛴다(policy hook은 늘 우리가 만든 JSON이다)
+export function mergeSettingsJson(...parts: (string | undefined)[]): string | null {
+  const merge = (a: unknown, b: unknown): unknown => {
+    if (Array.isArray(a) && Array.isArray(b)) return [...a, ...b];
+    if (a && b && typeof a === "object" && typeof b === "object" && !Array.isArray(a) && !Array.isArray(b)) {
+      const out: Record<string, unknown> = { ...(a as Record<string, unknown>) };
+      for (const [k, v] of Object.entries(b as Record<string, unknown>)) out[k] = k in out ? merge(out[k], v) : v;
+      return out;
+    }
+    return b;
+  };
+  let acc: unknown = null;
+  for (const p of parts) {
+    if (!p) continue;
+    try {
+      acc = acc === null ? JSON.parse(p) : merge(acc, JSON.parse(p));
+    } catch {}
+  }
+  return acc === null ? null : JSON.stringify(acc);
+}
+const settingsArgOf = (...parts: (string | undefined)[]): string[] => {
+  const j = mergeSettingsJson(...parts);
+  return j ? ["--settings", j] : [];
+};
+
 export interface AgentRow {
   id?: string; // 백그라운드 세션의 짧은 id
   sessionId: string;
@@ -83,6 +110,7 @@ export interface LaunchInput {
   briefing: string;
   permissionMode?: unknown;
   model?: unknown;
+  policySettings?: string; // `--settings`에 줄 JSON: AIRCRAFT policy hook(ATC-369). 없으면 싣지 않는다(시험용). LAUNCH 길(launchAircraft)은 늘 준다
   settings?: string; // `--settings`로 줄 JSON(ATC-372): 서버가 발권 기록에서 만든 K3 FLIGHT의 autoMode.allow뿐. 요청 본문에서는 받지 않는다
 }
 
@@ -119,7 +147,7 @@ export function launchPlanOf(input: LaunchInput, rows: AgentRow[], max = MAX_LAU
   if (!PERMISSION_MODES.includes(mode as PermissionMode)) throw new ControlError(`permission mode는 ${PERMISSION_MODES.join(" | ")}`, 400);
   const model = typeof input.model === "string" && input.model.trim() ? input.model.trim() : null;
   if (model && !/^[\w.:[\]-]+$/.test(model)) throw new ControlError(`모델 이름이 이상함: ${model}`, 400);
-  const args = ["--bg", "-n", reg, "--permission-mode", mode as string, ...(model ? ["--model", model] : []), ...(input.settings ? ["--settings", input.settings] : []), input.briefing];
+  const args = ["--bg", "-n", reg, "--permission-mode", mode as string, ...(model ? ["--model", model] : []), ...settingsArgOf(input.policySettings, input.settings), input.briefing];
   return { registration: reg, cwd: input.repo, permissionMode: mode as PermissionMode, model, args, account: account?.label ?? null, configDir: configDirOf(account) };
 }
 
@@ -495,7 +523,7 @@ export async function launchAircraft(s: Snapshot, registration: string, options:
     if (account && read.failed.includes(account.label)) throw new ControlError(`ACCOUNT ${account.label}의 세션 목록을 읽지 못함 — 이미 떠 있는지 몰라 띄우지 않는다`, 502);
     // 모델(ATC-279): 양식에 적은 것 > AIRCRAFT > AIRPORT > 기본 > 마지막 LAUNCH(lastModel) > 없음. 모든 AIRCRAFT LAUNCH 길이 여기를 지난다
     const picked = launchModelOf({ registration: reg, airport: a.base ?? null, explicit: typeof options.model === "string" ? options.model : null, last: options.lastModel ?? null, setting: loadFleet().launchModel });
-    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: ((b) => (options.promptOf ? options.promptOf(b) : b))(crewBriefing(a, repo, cfg.mode, true)), permissionMode: options.permissionMode, model: picked.model, ...(k3 ? { settings: k3.settings } : {}) }, rows, MAX_LAUNCHED, account, (row) => idleMinOfRow(row, s.sessions), Object.keys(loadFleet().aircraft));
+    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: ((b) => (options.promptOf ? options.promptOf(b) : b))(crewBriefing(a, repo, cfg.mode, true)), permissionMode: options.permissionMode, model: picked.model, policySettings: policySettingsOf(reg), ...(k3 ? { settings: k3.settings } : {}) }, rows, MAX_LAUNCHED, account, (row) => idleMinOfRow(row, s.sessions), Object.keys(loadFleet().aircraft));
     const r = await claude(plan.args, plan.cwd, { scope: true, configDir: plan.configDir });
     const jobId = jobIdOf(r.out);
     const ok = r.ok && !!jobId;

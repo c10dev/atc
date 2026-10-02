@@ -13,7 +13,7 @@ import type { UpdateKind } from "./update.ts";
 // 새 감지는 없다 — 화면이 이미 쓰는 상태를 그대로 읽는다. 항목은 밑의 상태가 바뀔 때만 사라진다(읽음·미룸 없음).
 // 순수 함수만. 자료 모으기는 supervisor-queue-run.ts. `title`은 atc 말(FLIGHT key·REGISTRATION·PR 번호)만 쓰고 티켓·PR 제목은 싣지 않는다.
 
-export const QUEUE_KINDS = ["PROPOSAL", "SCHEDULE", "FLEET PLAN", "HUMAN CHECK", "LANDING", "UPDATE", "NEEDS YOU", "RELAY", "UNDELIVERED", "GO"] as const;
+export const QUEUE_KINDS = ["PROPOSAL", "SCHEDULE", "FLEET PLAN", "HUMAN CHECK", "LANDING", "UPDATE", "NEEDS YOU", "RELAY", "UNDELIVERED", "GO", "BACKLOG"] as const;
 export type QueueKind = (typeof QUEUE_KINDS)[number];
 
 export interface QueueItem {
@@ -56,6 +56,8 @@ export interface QueueInput {
   defaultDir?: string; // ~/.claude
   autoDispatch?: boolean; // 자동 운항(ATC-367): 서버가 ASSIGN 카드를 승인하므로 SUPERVISOR 큐에 올리지 않는다
   relayOffers?: RelayOffer[]; // relay-offer.ts의 결과(없으면 RELAY 카드가 없다)
+  // 제안(ATC-401): atc가 Backlog에 올렸고 SUPERVISOR가 아직 쏘거나 버리지 않은 이슈(release-proposals.ts의 filedProposalsOf). 없으면 BACKLOG 줄이 없다
+  backlog?: { key: string; by: string; at: string }[];
 }
 
 const short = (sha: string | null | undefined) => (sha ? sha.slice(0, 7) : "?");
@@ -112,6 +114,9 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
   for (const o of inp.relayOffers ?? []) {
     out.push({ kind: "RELAY", key: o.key, since: null, title: `${o.type} PR #${o.pr}${o.flight ? ` (${o.flight})` : ""}${o.to ? ` → ${o.to}` : ""}`, hash: o.airport ? `#pr/${o.airport}/${o.pr}` : "#strips", offer: o });
   }
+
+  // BACKLOG(ATC-401): DUTY REVIEW·SCHEDULE NEW가 Backlog에 올린 제안. RELEASE 화면에서 한 번의 클릭으로 쏘거나 버린다. 쏘거나 버리면(Todo·Canceled) 사라진다
+  for (const b of inp.backlog ?? []) out.push({ kind: "BACKLOG", key: b.key, since: b.at, title: `${b.key} ← ${b.by}`, hash: "#release" });
 
   // UNDELIVERED(ATC-271): 닿지 못한 글은 조용히 닫지 않고 손으로 전하는 카드를 둔다. 상태가 바뀌면(손으로 전했다고 표시·답이 옴·다시 보냄) 사라진다
   const handFor = (to: string, reason: string) => {

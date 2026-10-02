@@ -42,7 +42,7 @@
   letter-spacing: 0.1em;
 }
 .dr-title {
-  margin: 0 var(--space-8, 40px) var(--space-3) 0;
+  margin: 0 var(--space-8) var(--space-3) 0;
   font-size: 1.25em;
   line-height: 1.3;
 }

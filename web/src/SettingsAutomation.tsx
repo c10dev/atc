@@ -334,6 +334,37 @@ function SwitchRow({ sw, save }: { sw: SwitchView; save: Save }) {
   );
 }
 
+// 마이그레이션 리허설(ATC-368): AIRPORT마다 줄 하나. 자료(data)는 스위치 선언이 준다
+interface MigrateView {
+  tokenSet: boolean;
+  airports: { code: string; enabled: boolean; why: string | null }[];
+}
+function MigrateRows({ sw, save }: { sw: SwitchView; save: Save }) {
+  const m = sw.data as MigrateView;
+  return (
+    <>
+      {m.airports.length === 0 && <p className="mcc-gate-note">hostedDb가 있는 AIRPORT 없음(airports.json)</p>}
+      {m.airports.map((a) => (
+        <EditRow
+          key={a.code}
+          label={a.code}
+          env={`migrate.${a.code}`}
+          value={a.enabled ? "on" : "off"}
+          note={
+            a.why
+              ? `켤 수 없음 — ${a.why}`
+              : "⚠ 켜면 AUTOLAND 주기가 CLEARED PR의 새 마이그레이션을 시험 DB에 먼저 적용하고, 통과하면 호스팅 제공자에 이미 있는 PITR·최근 백업을 확인한 뒤(atc가 만들지 않음) 실전 DB에 적용한다. 실전 적용 전의 실패는 실전이 그대로이고 PR은 머지되지 않는다. 실전 적용이 중간에 실패하거나 적용 뒤 검사가 실패하면 실전이 바뀐 채로 남고(live-changed, 자동 복원 없음) 사람이 복원을 정한다. 시험 DB는 실패해도 되돌리지 않아, 다음 리허설 전에 실전에서 다시 가져와야 한다. 이 화면에서만 바꾼다 — 세션은 못 바꿈"
+          }
+          input={{ kind: "select", options: ["off", "on"] }}
+          onSave={(v) => save({ migrateRehearsal: { [a.code]: v === "on" } })}
+        />
+      ))}
+    </>
+  );
+}
+// 기본 줄(EditRow 하나) 대신 자기 줄을 그리는 스위치. 키는 스위치 key
+const CUSTOM_ROWS: Record<string, (sw: SwitchView, save: Save) => ReactNode> = { migrateRehearsal: (sw, save) => <MigrateRows sw={sw} save={save} /> };
+
 // 스위치 줄 뒤에 붙는, 자기 데이터가 있는 화면. 키는 스위치 key
 // DUTY REVIEW 기록(ATC-396): 마지막 점검과 하루 세기(점검, 만든 제안, 발권된 제안, 버려진 제안)
 interface ReviewView {
@@ -480,7 +511,7 @@ function SwitchBlocks({ group, server, save }: { group: SwitchView["group"]; ser
               {(s) =>
                 mine.map((sw) => (
                   <Fragment key={sw.key}>
-                    <SwitchRow sw={sw} save={save} />
+                    {CUSTOM_ROWS[sw.key] ? CUSTOM_ROWS[sw.key](sw, save) : <SwitchRow sw={sw} save={save} />}
                     {EXTRAS[sw.key]?.(s, save)}
                   </Fragment>
                 ))

@@ -195,7 +195,7 @@
 }
 .fl-layout-btn {
   height: 26px;
-  padding: 0 var(--space-2-5, var(--space-3));
+  padding: 0 var(--space-3);
   background: transparent;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -354,6 +354,26 @@
   border-radius: var(--radius-sm);
   color: var(--muted);
   font: 400 var(--text-xs) var(--sans);
+}
+/* AIRCRAFT POLICY(ATC-369): PENDING 수(0이 정상)와 policy hook이 거절한 class. PENDING은 사람의 결정을 기다림이라 --alert가 아니라 --blue */
+.fl-policy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-1) 0;
+  font-size: var(--text-xs);
+}
+.fl-la-chip.is-warn {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.fl-policy-class {
+  color: var(--muted);
+}
+.fl-policy-class b {
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* CONTROL SESSIONS 일괄 동작(ATC-255). 색·글꼴·간격은 :root 토큰만 */

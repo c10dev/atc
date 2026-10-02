@@ -1,7 +1,7 @@
 import { config } from "../config.ts";
 import type { MoveIssue } from "../flight-state.ts";
 
-// Linear에 쓰는 유일한 파일(외부 부작용). G3: 이슈 하나의 상태를 옮긴다(부르는 곳은 flight-state-run.ts의 SUPERVISOR 클릭 하나). D7a: DUTY의 이슈 만들기·고치기·댓글(duty-l1-run.ts).
+// Linear에 쓰는 유일한 파일(외부 부작용). G3: 이슈 하나의 상태를 옮긴다(부르는 곳은 flight-state-run.ts의 SUPERVISOR 클릭 하나). D7a: DUTY의 이슈 만들기·고치기·댓글(duty-l1-run.ts. ATC-401: 제안 버리기의 사유 댓글과 이슈 읽기도 SUPERVISOR 클릭 하나로 release-run.ts가 부른다).
 // 다른 source 파일(linear.ts, linear-labels.ts, linear-projects.ts)은 query만 한다. 토큰은 서버 안에만 있고 화면으로 나가지 않는다.
 const ENDPOINT = "https://api.linear.app/graphql";
 

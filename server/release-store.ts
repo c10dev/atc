@@ -13,7 +13,7 @@ export function readReleaseLines(file = RELEASES_FILE()): ReleaseLine[] {
     if (!raw.trim()) continue;
     try {
       const j = JSON.parse(raw) as ReleaseLine;
-      if (j && (j.op === "release" || j.op === "arm")) out.push(j);
+      if (j && (j.op === "release" || j.op === "arm" || j.op === "revoke")) out.push(j);
     } catch {} // 깨진 줄은 건너뛴다
   }
   return out;

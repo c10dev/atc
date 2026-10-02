@@ -71,8 +71,42 @@
 .rl-list li > .rl-btn {
   grid-area: btn;
 }
-.rl-list li > .rl-k {
+.rl-list li > .rl-k,
+.rl-list li > .rl-sub {
   grid-area: k;
+}
+.rl-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+  color: var(--muted);
+  font: var(--text-sm) var(--sans);
+}
+.rl-warn {
+  color: var(--text);
+}
+.rl-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  justify-content: flex-end;
+}
+.rl-list li > .rl-acts {
+  grid-area: btn;
+}
+.rl-reason {
+  min-height: 30px;
+  min-width: 0;
+  width: 220px;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font: var(--text-sm) var(--sans);
 }
 .rl-k {
   min-width: 0;
@@ -85,6 +119,20 @@
   font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.12em;
   color: var(--faint);
+}
+.rl-k3 {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--muted);
+}
+.rl-k3 b {
+  margin-right: var(--space-1);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--faint);
+}
+.rl-k3.is-bad {
+  color: var(--text);
 }
 .rl-recent li {
   display: grid;

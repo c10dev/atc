@@ -34,6 +34,9 @@ import { appendRecord } from "./autoland-record.ts";
 import { readMergeReviews } from "./landing-review.ts";
 import { assertGithubOn } from "./github-switch.ts";
 import { hostedDbOfAirport } from "./airports.ts";
+import { ALL, driftReason, migrationShasOf, otherReasonOf, readMigrateRecords, rehearsalHeld, rehearsalPass } from "./migrate-run.ts";
+import { redact } from "./sources/supabase-sql.ts";
+import { config } from "./config.ts";
 import { type MigrationGate, migrationGateOf } from "./migration-gate.ts";
 import { listPullFiles } from "./sources/github.ts";
 import { readAppliedFor } from "./sources/supabase-migrations.ts";
@@ -153,6 +156,21 @@ async function cycle(s: Snapshot) {
   // 맡지 않게 된 AIRPORT의 비행 기록은 지운다
   st.inflight = st.inflight.filter((f) => cfg.airports.includes(f.airport));
 
+  // 마이그레이션 리허설(ATC-368): 스위치가 켜진 AIRPORT의 CLEARED PR 하나를 시험 DB에서 리허설하고 통과하면 실전에 적용한다. 머지보다 먼저, 실패해도 던지지 않는다
+  await rehearsalPass(s, {
+    mode: cfg.mode,
+    airports: cfg.airports,
+    stopped: (a) => st.groundStops.some((g) => g.airport === a),
+    // 마이그레이션 말고 다른 제외가 남는 PR은 실전에 쓰지 않는다. 리허설이 멈춘 head는 이 주기부터 머지하지 않는다(실전이 이미 바뀌었어도)
+    otherExclusion: async (p) => {
+      const slug = slugOfUrl(p.url);
+      if (!slug) return "PR 주소를 읽지 못함";
+      // head가 움직였으면 이 PR의 SQL은 방금 읽은 것과 다를 수 있다. 낡은 head를 실전에 적용하지 않는다
+      return otherReasonOf(await exclusionNow(p, s, cfg, slug, true));
+    },
+    hold: (p) => void st.skip.push(headKey(p)),
+  }).catch((e) => console.error("[atc] migrate rehearsal failed:", redact(String((e as Error)?.message ?? e), config.supabaseMigrateToken).slice(0, 200)));
+
   if (cfg.mode !== "off") {
     const exclusions = s.autoland?.exclusions ?? {};
     const revertLines = loadAutoRevert().mode === "on" ? readAutoRevertLines() : [];
@@ -233,6 +251,47 @@ export function mergeReviewPassOn(slug: string, p: Pick<PullRequest, "number" | 
   return reviewPasses(mergeReviewOf(reviews, slug, p.number, at)) && mr.pass;
 }
 
+// 머지 직전의 제외 판정 하나: PR을 다시 읽어 head·Draft·라벨·본문·파일로 제외 목록을 다시 본다(90초 전 자료로 머지하지 않게).
+// assumeApplied(ATC-368): 마이그레이션 리허설이 "이 PR이 마이그레이션 때문에만 막혔나"를 보려고 쓴다. 호스티드 DB에 아직 없는 새 마이그레이션을 적용된 것으로 치고
+// 나머지 제외(HUMAN CHECK, 다른 SQL 경로, 보안 …)가 남는지 본다. 남으면 실전에 쓰지 않는다 — 머지되지 않을 코드를 위해 실전을 바꾸지 않게
+async function exclusionNow(p: PullRequest, s: Snapshot, cfg: AutolandConfig, slug: string, assumeApplied = false, isRevert = false): Promise<{ moved: string | null; why: string | null }> {
+  const fresh = JSON.parse(await gh(["pr", "view", String(p.number), "--repo", slug, "--json", "headRefOid,isDraft,title,body,labels,files"])) as FreshPull;
+  if (fresh.headRefOid !== p.head) return { moved: fresh.headRefOid, why: null };
+  const ticket = p.ticketKey ? s.tickets.find((t) => t.key === p.ticketKey) : undefined;
+  const files = fresh.files && fresh.files.length < 100 ? fresh.files.map((f) => f.path) : null; // 100개(한도)면 다 못 봤다
+  // 마이그레이션 게이트(ATC-329): hostedDb가 있는 AIRPORT는 머지 직전에 파일 상태와 호스티드 DB의 적용 버전을 캐시 없이 새로 읽는다. 읽기만 한다
+  const db = hostedDbOfAirport(p.repo);
+  let migrationGate: MigrationGate | undefined;
+  if (db) {
+    const rows = await listPullFiles(slug, p.number).catch(() => null);
+    const paths = rows ? rows.map((f) => f.path) : files;
+    const touches = (paths ?? []).some((f) => f.startsWith(`${db.migrationsDir}/`));
+    const applied = touches ? await readAppliedFor(db) : null;
+    migrationGate = migrationGateOf({ hostedDb: db, files: paths, added: rows ? rows.filter((f) => f.status === "added").map((f) => f.path) : null, applied });
+    if (assumeApplied && migrationGate.involved && !migrationGate.ok && migrationGate.missing.length) migrationGate = { ...migrationGate, ok: true, reason: null, missing: [] };
+  }
+  const why = fresh.isDraft
+    ? "Draft"
+    : mergeExclusionOf({
+        held: isHeld(cfg, p),
+        flight: p.ticketKey ?? (isRevert ? "AUTO-REVERT" : null),
+        ticketLabels: ticket?.labels ?? [],
+        prLabels: (fresh.labels ?? []).map((l) => l.name),
+        files,
+        title: fresh.title,
+        body: fresh.body,
+        flightTitle: ticket?.title ?? null,
+        head: fresh.headRefOid,
+        // 스냅숏에서 이 head(위에서 같음을 확인)가 잇는 HUMAN CHECK 커밋만(ATC-31·37)
+        carryFrom: p.humanCheck?.carriedFrom ? [p.humanCheck.carriedFrom] : [],
+        reviewedSecurity: cfg.reviewedSecurity,
+        migrationGate,
+        // 머지 직전에 머지 리뷰가 지금도 이 head에 있는지 파일에서 다시 본다(head가 같음은 위에서 확인). main 병합만 해서 이어받은 것은 그 이전 커밋의 기록
+        mergeReviewPass: mergeReviewPassOn(slug, p),
+      });
+  return { moved: null, why };
+}
+
 async function doMerge(plan: AirportPlan, p: PullRequest, st: AutolandState, s: Snapshot) {
   // 자동 되돌림이 연 revert PR(ATC-351)이면 GROUND STOP 중에도, FLIGHT 없이도 머지 후보다(리뷰·CI·제외 목록의 나머지는 그대로)
   const isRevert = loadAutoRevert().mode === "on" && isRevertPr(readAutoRevertLines(), plan.airport, p.number, p.branch);
@@ -241,47 +300,32 @@ async function doMerge(plan: AirportPlan, p: PullRequest, st: AutolandState, s: 
   if (!cfg || !slug) return;
   const base = { mode: cfg.mode, airport: plan.airport, slug, number: p.number, head: p.head };
   try {
-    // 머지 직전에 PR을 다시 읽어 head·Draft·라벨·본문·파일로 제외 목록을 다시 본다(90초 전 자료로 머지하지 않게)
-    const fresh = JSON.parse(await gh(["pr", "view", String(p.number), "--repo", slug, "--json", "headRefOid,isDraft,title,body,labels,files"])) as FreshPull;
-    if (fresh.headRefOid !== p.head) {
-      appendRecord({ op: "merge", ...base, result: "rejected", detail: `head가 움직임(${fresh.headRefOid.slice(0, 7)}) — 다음 주기에 다시 봄` });
+    const { moved, why } = await exclusionNow(p, s, cfg, slug, false, isRevert);
+    if (moved) {
+      appendRecord({ op: "merge", ...base, result: "rejected", detail: `head가 움직임(${moved.slice(0, 7)}) — 다음 주기에 다시 봄` });
       return;
     }
-    const ticket = p.ticketKey ? s.tickets.find((t) => t.key === p.ticketKey) : undefined;
-    const files = fresh.files && fresh.files.length < 100 ? fresh.files.map((f) => f.path) : null; // 100개(한도)면 다 못 봤다
-    // 마이그레이션 게이트(ATC-329): hostedDb가 있는 AIRPORT는 머지 직전에 파일 상태와 호스티드 DB의 적용 버전을 캐시 없이 새로 읽는다. 읽기만 한다
-    const db = hostedDbOfAirport(p.repo);
-    let migrationGate: MigrationGate | undefined;
-    if (db) {
-      const rows = await listPullFiles(slug, p.number).catch(() => null);
-      const paths = rows ? rows.map((f) => f.path) : files;
-      const touches = (paths ?? []).some((f) => f.startsWith(`${db.migrationsDir}/`));
-      const applied = touches ? await readAppliedFor(db) : null;
-      migrationGate = migrationGateOf({ hostedDb: db, files: paths, added: rows ? rows.filter((f) => f.status === "added").map((f) => f.path) : null, applied });
-    }
-    const why = fresh.isDraft
-      ? "Draft"
-      : mergeExclusionOf({
-          held: isHeld(cfg, p),
-          flight: p.ticketKey ?? (isRevert ? "AUTO-REVERT" : null),
-          ticketLabels: ticket?.labels ?? [],
-          prLabels: (fresh.labels ?? []).map((l) => l.name),
-          files,
-          title: fresh.title,
-          body: fresh.body,
-          flightTitle: ticket?.title ?? null,
-          head: fresh.headRefOid,
-          // 스냅숏에서 이 head(위에서 같음을 확인)가 잇는 HUMAN CHECK 커밋만(ATC-31·37)
-          carryFrom: p.humanCheck?.carriedFrom ? [p.humanCheck.carriedFrom] : [],
-          reviewedSecurity: cfg.reviewedSecurity,
-          migrationGate,
-          // 머지 직전에 머지 리뷰가 지금도 이 head에 있는지 파일에서 다시 본다(head가 같음은 위에서 확인). main 병합만 해서 이어받은 것은 그 이전 커밋의 기록
-          mergeReviewPass: mergeReviewPassOn(slug, p),
-        });
     if (why) {
       st.skip.push(headKey(p));
       appendRecord({ op: "skip", ...base, result: "excluded", detail: why });
       return;
+    }
+    // 마이그레이션 리허설이 멈춘 head(ATC-368)는 머지하지 않는다. st.skip이 잘려 나가도 migrations.jsonl이 남는다
+    const migRecords = readMigrateRecords(ALL);
+    if (rehearsalHeld(migRecords, slug, p.number, p.head)) {
+      st.skip.push(headKey(p));
+      appendRecord({ op: "skip", ...base, result: "excluded", detail: "마이그레이션 리허설이 멈춘 head" });
+      return;
+    }
+    // 이 PR에 리허설 기록이 있으면(다른 head 포함) 지금 파일을 실전에 적용한 것과 견준다: 같은 버전으로 파일만 고친 head는 ATC-329 게이트가 통과해 버린다
+    const migDb = hostedDbOfAirport(p.repo);
+    if (migDb && migRecords.some((r) => r.kind === "run" && r.slug === slug && r.number === p.number)) {
+      const drift = driftReason(migRecords, slug, p.number, await migrationShasOf(slug, p.number, p.head, migDb));
+      if (drift) {
+        st.skip.push(headKey(p));
+        appendRecord({ op: "skip", ...base, result: "excluded", detail: drift });
+        return;
+      }
     }
     // 정확한 head만 머지한다(sha: gh pr merge --match-head-commit과 같은 조건). auto-merge를 켜지 않는다
     await gh(["api", "-X", "PUT", `repos/${slug}/pulls/${p.number}/merge`, "-f", `sha=${p.head}`, "-f", `merge_method=${cfg.mergeMethod}`]);

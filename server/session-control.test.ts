@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type AgentRow, CONTROL_SESSIONS, ControlError, controlDirOf, controlLaunchPlanOf, controlRowsOf, controlSpecOf, controlStopTargetOf, inServiceCgroup, isControlRow, launchCommandOf, parentPidOf, tmuxPaneOf, jobIdOf, launchPlanOf, launchBlockOf, findBin, stopTargetOf, isStaleRow, liveRowsOf, controlStaleOf, jobStateOf, STALE_MIN_AGE_MS } from "./session-control.ts";
+import { type AgentRow, mergeSettingsJson, CONTROL_SESSIONS, ControlError, controlDirOf, controlLaunchPlanOf, controlRowsOf, controlSpecOf, controlStopTargetOf, inServiceCgroup, isControlRow, launchCommandOf, parentPidOf, tmuxPaneOf, jobIdOf, launchPlanOf, launchBlockOf, findBin, stopTargetOf, isStaleRow, liveRowsOf, controlStaleOf, jobStateOf, STALE_MIN_AGE_MS } from "./session-control.ts";
+import { settingsOf as k3SettingsOf } from "./k3-allow.ts";
+import { policySettingsOf } from "./policy-hook.ts";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -254,4 +256,30 @@ test("팀 LAUNCH: 같은 이름의 STALE 유령이 막지 않고, 상한에 세�
   refused(() => launchPlanOf(input, [{ ...liveIdle, name: "TEAM_H" }], 1), 409, /상한 1/);
   refused(() => stopTargetOf("TEAM_G", [g]), 409, /STALE 3bf04645만 있음/);
   refused(() => stopTargetOf("TEAM_G", []), 404, /떠 있지 않음/);
+});
+
+// ATC-369 policy hook와 ATC-372 K3 autoMode.allow는 같은 `--settings` 하나로 온다
+test("mergeSettingsJson: hook과 autoMode.allow를 한 JSON으로, 하나만 있으면 그대로, 없으면 null", () => {
+  const policy = JSON.stringify({ hooks: { PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: "node a" }] }] } });
+  const k3 = JSON.stringify({ autoMode: { allow: ["$defaults", "x"] } });
+  const merged = JSON.parse(mergeSettingsJson(policy, k3)!);
+  assert.deepEqual(Object.keys(merged).sort(), ["autoMode", "hooks"]);
+  assert.deepEqual(merged.autoMode.allow, ["$defaults", "x"]);
+  assert.equal(merged.hooks.PreToolUse.length, 1);
+  assert.equal(mergeSettingsJson(policy, undefined), policy);
+  assert.equal(mergeSettingsJson(undefined, undefined), null);
+  // 같은 키의 배열은 이어 붙는다
+  assert.deepEqual(JSON.parse(mergeSettingsJson('{"a":{"l":[1]}}', '{"a":{"l":[2]}}')!), { a: { l: [1, 2] } });
+});
+
+// 실제 policy hook 설정과 K3 설정을 합쳐도 PermissionRequest hook이 그대로 남는다(ATC-369 검토)
+test("mergeSettingsJson keeps the real PermissionRequest hook when the K3 autoMode.allow settings are merged in", () => {
+  const policy = policySettingsOf("TEAM_H", "/tmp/atc-state", "/x/hooks/policy.mjs");
+  const k3 = k3SettingsOf(["Bash(cp:*)"]);
+  for (const merged of [JSON.parse(mergeSettingsJson(policy, k3)!), JSON.parse(mergeSettingsJson(k3, policy)!)]) {
+    assert.equal(merged.hooks.PermissionRequest.length, 1);
+    assert.match(merged.hooks.PermissionRequest[0].hooks[0].command, /policy\.mjs.*--aircraft 'TEAM_H'/);
+    assert.equal(merged.hooks.PermissionRequest[0].hooks[0].timeout, 10);
+    assert.deepEqual(merged.autoMode.allow.at(-1), "Bash(cp:*)");
+  }
 });

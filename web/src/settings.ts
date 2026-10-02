@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { motionOn } from "./motion.ts";
 
 // 화면 설정. 이 브라우저에만 저장된다(서버·다른 기기와 공유하지 않음).
 // 테마는 styles.css의 :root[data-theme="…"] 토큰 묶음과 짝을 이룬다.
@@ -29,7 +30,7 @@ export type Theme = (typeof THEMES)[number]["id"];
 
 export interface Settings {
   theme: Theme;
-  motion: boolean; // 애니메이션(스위프, 별, 깜빡임)
+  motion: boolean; // 애니메이션(스위프, 별, 깜빡임) 저장된 선택. 화면은 SettingsView.motion(OS 움직임 줄이기 반영)을 쓴다
   clock: "utc" | "local"; // 시각 표시: 06:24Z 또는 15:24L
   density: "comfortable" | "compact"; // 밀도: 한 단계(4px)씩 낮춰 한 화면에 더 많이
   meteors: boolean; // Night Sky 유성
@@ -40,9 +41,15 @@ export interface Settings {
 const KEY = "atc.settings";
 const LEGACY_THEME_KEY = "atc.theme";
 
+// 저장된 설정에 더해 화면이 실제로 쓰는 값. motion은 OS의 움직임 줄이기까지 따진 값이다(ATC-409).
+export interface SettingsView extends Settings {
+  motionSaved: boolean; // 설정 창에서 고른 값(저장되는 값)
+  osReduceMotion: boolean; // 운영체제가 움직임 줄이기를 요청 중
+}
+
+// 움직임 기본값은 켬. OS의 움직임 줄이기는 저장된 값과 상관없이 살아 있는 동안 늘 이긴다(motionOn).
 function defaults(): Settings {
-  const reduce = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  return { theme: "radar", motion: !reduce, clock: "utc", density: "comfortable", meteors: true, fidsView: "list", fidsClosed: false };
+  return { theme: "radar", motion: true, clock: "utc", density: "comfortable", meteors: true, fidsView: "list", fidsClosed: false };
 }
 
 function load(): Settings {
@@ -59,8 +66,15 @@ function load(): Settings {
   }
 }
 
+const reduceQuery = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
+let osReduce = reduceQuery?.matches ?? false;
 let current = load();
+let view = viewOf(current, osReduce);
 const listeners = new Set<() => void>();
+
+function viewOf(s: Settings, reduce: boolean): SettingsView {
+  return { ...s, motion: motionOn(s.motion, reduce), motionSaved: s.motion, osReduceMotion: reduce };
+}
 
 function apply(s: Settings) {
   const root = document.documentElement;
@@ -69,29 +83,39 @@ function apply(s: Settings) {
   root.dataset.density = s.density;
 }
 
+function changed() {
+  view = viewOf(current, osReduce);
+  apply(view);
+  for (const fn of listeners) fn();
+}
+
 export function initSettings() {
-  apply(current);
+  apply(view);
+  // 창이 열려 있는 동안 OS 설정이 바뀌어도 새로 고침 없이 따른다
+  reduceQuery?.addEventListener("change", (e) => {
+    osReduce = e.matches;
+    changed();
+  });
 }
 
 export function updateSettings(patch: Partial<Settings>) {
   current = { ...current, ...patch };
-  apply(current);
   try {
     localStorage.setItem(KEY, JSON.stringify(current));
     localStorage.removeItem(LEGACY_THEME_KEY);
   } catch {
     // 저장만 못 할 뿐 화면은 바뀐다
   }
-  for (const fn of listeners) fn();
+  changed();
 }
 
-export function useSettings(): Settings {
+export function useSettings(): SettingsView {
   return useSyncExternalStore(
     (fn) => {
       listeners.add(fn);
       return () => listeners.delete(fn);
     },
-    () => current,
+    () => view,
   );
 }
 

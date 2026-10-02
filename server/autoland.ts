@@ -157,7 +157,7 @@ export function saveAutolandState(st: AutolandState, file = STATE_FILE()) {
 // 기록 한 줄(autoland.jsonl, 추가만). 갱신·머지·결과·GROUND STOP·스위치·HOLD를 모두 남긴다
 export interface AutolandRecord {
   at: string;
-  op: "update" | "merge" | "settle" | "groundstop" | "groundstop-clear" | "mode" | "reviewed-security" | "merge-review" | "hold" | "unhold" | "skip" | "review-request";
+  op: "update" | "merge" | "settle" | "groundstop" | "groundstop-clear" | "mode" | "reviewed-security" | "merge-review" | "hold" | "unhold" | "skip" | "review-request" | "migrate";
   mode: AutolandMode;
   airport?: string;
   slug?: string;

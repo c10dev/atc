@@ -55,6 +55,8 @@ import { mountFollow } from "./follow-run.ts";
 import { mountPrMerge } from "./pr-merge-run.ts";
 import { mountSchedule } from "./schedule.ts";
 import { mountSettings } from "./settings.ts";
+import { mountMigrate } from "./migrate-api.ts";
+import { mountPolicy } from "./policy-run.ts";
 import { mountAccounts } from "./accounts-run.ts";
 import { mountSquelchOpens } from "./squelch-opens-run.ts";
 import { mountSquelch } from "./squelch-run.ts";
@@ -220,6 +222,7 @@ mountMilestones(app, getSnapshot);
 mountQrh(app); // QRH shadow(ATC-288): qrh.named 줄을 읽기만 한다
 mountAtfm(app, getSnapshot);
 mountAutoland(app, getSnapshot);
+mountMigrate(app); // 마이그레이션 리허설 기록 읽기(ATC-368). 스위치는 설정 창(PUT /api/settings)뿐
 mountMcc(app, getSnapshot, () => head);
 const update = mountUpdate(app, getSnapshot, () => head); // UPDATE bar(ATC-82)
 // CONTROL RECYCLE(ATC-166)의 안전 조건·동작: 라우트(APPLY NOW·일괄 동작)와 주기 일(server/jobs/control-recycle.ts)이 같이 쓴다
@@ -247,6 +250,7 @@ provideService("applyNow", applyNow);
 provideService("recycleDeps", { facts: recycleFacts, act: recycleAct });
 mountControlRecycle(app);
 mountSettings(app);
+mountPolicy(app, getSnapshot); // AIRCRAFT policy hook(ATC-369): PENDING 수와 거절을 class별로(읽기만)
 mountAccounts(app, getSnapshot);
 mountJudges(app);
 mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다
