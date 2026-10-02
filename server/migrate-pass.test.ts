@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { pullKey } from "./landing.ts";
-import { type MigrateRecord, type PassIo, rehearsalPass } from "./migrate-run.ts";
-import { classify } from "./migration-declare.ts";
+import { type MigrateRecord, otherReasonOf, type PassIo, rehearsalHeld, rehearsalPass } from "./migrate-run.ts";
+import { classify, declarationCheck } from "./migration-declare.ts";
 import { hostedDbOf, type MigrationGate } from "./migration-gate.ts";
 import type { RunResult } from "./migration-rehearsal.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
@@ -59,6 +59,38 @@ test("rehearsalPass: 스위치·모드·GROUND STOP·시도한 head·다른 제�
     await x.run();
     assert.equal(x.calls.rehearse, 0, JSON.stringify(over));
   }
+});
+
+test("otherReasonOf: head가 움직였으면 사유가 된다(낡은 head의 SQL을 적용하지 않는다)", () => {
+  assert.match(otherReasonOf({ moved: "abcdef0123", why: null })!, /head가 움직임\(abcdef0\)/);
+  assert.equal(otherReasonOf({ moved: null, why: null }), null);
+  assert.equal(otherReasonOf({ moved: null, why: "HUMAN CHECK" }), "HUMAN CHECK");
+});
+
+test("rehearsalHeld: 마지막 run이 applied가 아닌 head만(st.skip이 잘려도 남는 기록)", () => {
+  const run = (head: string, status: string) => ({ kind: "run", slug: "o/n", number: 7, head, status }) as MigrateRecord;
+  assert.equal(rehearsalHeld([run("h1", "live-changed")], "o/n", 7, "h1"), true);
+  assert.equal(rehearsalHeld([run("h1", "stopped")], "o/n", 7, "h1"), true);
+  assert.equal(rehearsalHeld([run("h1", "applied")], "o/n", 7, "h1"), false);
+  assert.equal(rehearsalHeld([run("h1", "stopped"), run("h1", "applied")], "o/n", 7, "h1"), false);
+  assert.equal(rehearsalHeld([run("h1", "stopped")], "o/n", 7, "h2"), false);
+  assert.equal(rehearsalHeld([], "o/n", 7, "h1"), false);
+});
+
+test("선언 검사: 파일 중간의 COMMIT·BEGIN은 멈추고, 맨 앞 BEGIN·맨 뒤 COMMIT은 통과한다", () => {
+  const K1 = "K1: adds public.t";
+  const f = (sql: string) => [{ path: "m/1_a.sql", sql }];
+  assert.equal(declarationCheck(f("begin; create table public.t (a int); commit;"), K1).ok, true);
+  const mid = declarationCheck(f("begin; create table public.t (a int); commit; begin; create table public.u (a int); commit;"), K1);
+  assert.equal(mid.ok, false);
+  assert.match(mid.stopped[0]!.why, /트랜잭션 문장/);
+  assert.equal(declarationCheck(f("create table public.t (a int); commit; create table public.u (a int);"), K1).ok, false);
+});
+
+test("선언 검사: CREATE EXTENSION은 선언이 extension을 적어야 통과한다", () => {
+  const f = [{ path: "m/1_a.sql", sql: 'create extension if not exists "pgcrypto";' }];
+  assert.equal(declarationCheck(f, "K1: adds public.t").ok, false);
+  assert.equal(declarationCheck(f, "K1: adds extension pgcrypto").ok, true);
 });
 
 test("rehearsalPass: 멈추면(live-changed 포함) 이 head는 머지 후보에서 뺀다", async () => {

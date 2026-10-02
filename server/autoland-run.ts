@@ -34,7 +34,7 @@ import { appendRecord } from "./autoland-record.ts";
 import { readMergeReviews } from "./landing-review.ts";
 import { assertGithubOn } from "./github-switch.ts";
 import { hostedDbOfAirport } from "./airports.ts";
-import { rehearsalPass } from "./migrate-run.ts";
+import { otherReasonOf, readMigrateRecords, rehearsalHeld, rehearsalPass } from "./migrate-run.ts";
 import { redact } from "./sources/supabase-sql.ts";
 import { config } from "./config.ts";
 import { type MigrationGate, migrationGateOf } from "./migration-gate.ts";
@@ -157,7 +157,9 @@ async function cycle(s: Snapshot) {
     // 마이그레이션 말고 다른 제외가 남는 PR은 실전에 쓰지 않는다. 리허설이 멈춘 head는 이 주기부터 머지하지 않는다(실전이 이미 바뀌었어도)
     otherExclusion: async (p) => {
       const slug = slugOfUrl(p.url);
-      return slug ? (await exclusionNow(p, s, cfg, slug, true)).why : "PR 주소를 읽지 못함";
+      if (!slug) return "PR 주소를 읽지 못함";
+      // head가 움직였으면 이 PR의 SQL은 방금 읽은 것과 다를 수 있다. 낡은 head를 실전에 적용하지 않는다
+      return otherReasonOf(await exclusionNow(p, s, cfg, slug, true));
     },
     hold: (p) => void st.skip.push(headKey(p)),
   }).catch((e) => console.error("[atc] migrate rehearsal failed:", redact(String((e as Error)?.message ?? e), config.supabaseMigrateToken).slice(0, 200)));
@@ -296,6 +298,12 @@ async function doMerge(plan: AirportPlan, p: PullRequest, st: AutolandState, s: 
     if (why) {
       st.skip.push(headKey(p));
       appendRecord({ op: "skip", ...base, result: "excluded", detail: why });
+      return;
+    }
+    // 마이그레이션 리허설이 멈춘 head(ATC-368)는 머지하지 않는다. st.skip이 잘려 나가도 migrations.jsonl이 남는다
+    if (rehearsalHeld(readMigrateRecords(500), slug, p.number, p.head)) {
+      st.skip.push(headKey(p));
+      appendRecord({ op: "skip", ...base, result: "excluded", detail: "마이그레이션 리허설이 멈춘 head" });
       return;
     }
     // 정확한 head만 머지한다(sha: gh pr merge --match-head-commit과 같은 조건). auto-merge를 켜지 않는다

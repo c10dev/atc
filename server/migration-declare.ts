@@ -82,7 +82,7 @@ const headOf = (stmt: string) =>
 const bare = (name: string) => name.replace(/"/g, "").split(".").pop()!.trim();
 
 const ADDITIVE = [
-  /^create (or replace )?(unique )?(table|index|view|materialized view|function|procedure|trigger|type|extension|schema|sequence|policy|domain|role)\b/,
+  /^create (or replace )?(unique )?(table|index|view|materialized view|function|procedure|trigger|type|schema|sequence|policy|domain|role)\b/,
   /^create (temp|temporary|unlogged) table\b/,
   /^alter table (if exists )?(only )?[\w."]+ (add column|add constraint|add primary key|add foreign key|add unique|add check|enable row level security|force row level security|enable trigger|alter column [\w"]+ (set default|drop default|set not null|drop not null)|owner to)\b/,
   /^alter policy\b/,
@@ -97,6 +97,7 @@ const SENSITIVE: [RegExp, string][] = [
   [/^(create (or replace )?policy|alter policy)\b/, "policy"],
   [/^grant\b/, "grant"],
   [/^(create|alter) role\b/, "role"],
+  [/^create extension\b/, "extension"],
   [/^alter function [\w."(),\s]+ security\b/, "security"],
   [/\bowner to\b/, "owner"],
   [/^create or replace\b/, "replace"],
@@ -126,7 +127,7 @@ export function classify(stmt: string): Classified {
   }
   // SECURITY DEFINER는 달러 본문 뒤(`as $$ … $$ language sql security definer`)에도 올 수 있어 본문을 걷어 낸 전체 문장에서 본다
   const sens = SENSITIVE.find(([r]) => r.test(head)) ?? (/\bsecurity (definer|invoker)\b/.test(unquoted(stmt).replace(/\s+/g, " ").toLowerCase()) ? ([/./, "security"] as [RegExp, string]) : undefined);
-  if (sens && (ADDITIVE.some((r) => r.test(head)) || /^alter role\b/.test(head))) return { sql, kind: "sensitive", needs: sens[1] };
+  if (sens && (ADDITIVE.some((r) => r.test(head)) || /^(alter role|create extension)\b/.test(head))) return { sql, kind: "sensitive", needs: sens[1] };
   if (ADDITIVE.some((r) => r.test(head))) return { sql, kind: "additive" };
   return { sql, kind: "unknown", why: "분류할 수 없는 문장" };
 }
@@ -157,9 +158,19 @@ export function declarationCheck(files: readonly { path: string; sql: string }[]
   let statements = 0;
   const k1 = /\bK1\b/i.test(declared);
   for (const f of files) {
-    for (const s of splitStatements(f.sql)) {
+    const all = splitStatements(f.sql);
+    // 맨 앞 BEGIN과 맨 뒤 COMMIT은 적용기가 떼어 내고 한 트랜잭션으로 감싼다(bodyStatements). 그 밖의 트랜잭션 문장(파일 중간의 COMMIT·BEGIN 등)은
+    // 감싼 트랜잭션 밖에서 일부를 확정해 버려 "실전은 그대로"가 거짓이 되므로 멈춘다
+    const lead = all.length > 0 && /^(begin|start transaction)\b/.test(headOf(all[0]!)) ? 1 : 0;
+    const tail = all.length > lead && /^(commit|end)\b/.test(headOf(all[all.length - 1]!)) ? 1 : 0;
+    for (const [i, s] of all.entries()) {
       const c = classify(s);
-      if (c.kind === "txn") continue;
+      if (c.kind === "txn") {
+        if (i < lead || i >= all.length - tail) continue;
+        statements++;
+        stopped.push({ file: f.path, sql: c.sql, why: "파일 중간의 트랜잭션 문장(적용기가 감싼 트랜잭션 밖에서 확정됨)" });
+        continue;
+      }
       statements++;
       if (!k1) {
         stopped.push({ file: f.path, sql: c.sql, why: "K1 효과가 선언되지 않음" });

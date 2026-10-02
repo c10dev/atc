@@ -610,7 +610,7 @@ DISPATCH는 SUPERVISOR가 발권한("화살을 쏜", [autonomy.md](autonomy.md) 
 
 순서는 정해져 있고 처음 실패에서 멈춘다:
 
-1. **선언 검사**(`server/migration-declare.ts`, 순수). 새 SQL을 발권 때 선언한 K1 효과와 견준다: 이슈의 `## K effects` 절이고, 발권 기록(ATC-362)의 해시가 지금 본문과 같을 때만 받는다. K1이 선언되지 않았거나, 파괴적 문장(DROP, TRUNCATE, REVOKE, 이름 바꿈, 열 타입 변경, DISABLE RLS, WHERE 없는 UPDATE·DELETE), 분류할 수 없는 문장, 선언이 그 표를 적지 않은 DML이 있으면 멈춘다. 추가형 DDL은 K1이 선언돼 있으면 통과한다. 접근을 넓히거나 기존 동작을 바꾸는 문장(정책, GRANT, 역할, SECURITY, OWNER TO, CREATE OR REPLACE)은 선언이 그 낱말(`policy`·`grant`·`role`·`security`·`owner`·`replace`)도 적었을 때만 통과한다. 기계 검사는 이 종류에는 강하고 논리(틀린 WHERE, backfill)에는 약하다. 그것은 리허설과 복원점의 몫이다.
+1. **선언 검사**(`server/migration-declare.ts`, 순수). 새 SQL을 발권 때 선언한 K1 효과와 견준다: 이슈의 `## K effects` 절이고, 발권 기록(ATC-362)의 해시가 지금 본문과 같을 때만 받는다. K1이 선언되지 않았거나, 파괴적 문장(DROP, TRUNCATE, REVOKE, 이름 바꿈, 열 타입 변경, DISABLE RLS, WHERE 없는 UPDATE·DELETE), 분류할 수 없는 문장, 선언이 그 표를 적지 않은 DML이 있으면 멈춘다. 추가형 DDL은 K1이 선언돼 있으면 통과한다. 접근을 넓히거나 기존 동작을 바꾸는 문장(정책, GRANT, 역할, 확장, SECURITY, OWNER TO, CREATE OR REPLACE)은 선언이 그 낱말(`policy`·`grant`·`role`·`extension`·`security`·`owner`·`replace`)도 적었을 때만 통과한다. 맨 앞 BEGIN과 맨 뒤 COMMIT이 아닌 트랜잭션 문장도 멈춘다: 적용기가 파일마다 자체 트랜잭션으로 감싸므로 파일 중간의 COMMIT은 그 일부를 감싼 트랜잭션 밖에서 확정해 버린다. 기계 검사는 이 종류에는 강하고 논리(틀린 WHERE, backfill)에는 약하다. 그것은 리허설과 복원점의 몫이다.
 2. **리허설.** 시험 DB가 실전과 같은 마이그레이션 버전이어야 한다(실전에서 다시 가져오는 일은 atc 밖에서 하고, atc는 그것이 됐는지만 확인). 그다음 파일마다 버전 줄과 함께 한 트랜잭션으로 적용하고, AIRPORT의 `smoke` 질의를 돌린다.
 3. **복원점.** 만들지 않고 확인한다: 호스팅 제공자에서 읽는다: PITR이 켜져 있으면 그것, 아니면 `maxBackupAgeHours`(기본 24) 안의 가장 새 완료 백업. 없으면 멈춘다. atc가 백업을 만들지는 않는다.
 4. **실전 적용.** 파일마다 한 트랜잭션: 파일의 문장들(자체 BEGIN·COMMIT은 뗌)과 그 파일의 version·name 그대로의 버전 줄.

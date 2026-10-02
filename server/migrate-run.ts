@@ -69,6 +69,15 @@ function append(r: MigrateRecord, file = RECORD()) {
 export const triedHead = (records: readonly MigrateRecord[], slug: string, number: number, head: string) =>
   records.some((r) => r.kind === "run" && r.slug === slug && r.number === number && r.head === head);
 
+// exclusionNow의 결과를 "다른 제외 사유"로: head가 움직였으면 낡은 head의 SQL을 실전에 적용하지 않도록 사유를 돌려준다
+export const otherReasonOf = (r: { moved: string | null; why: string | null }): string | null => (r.moved ? `head가 움직임(${r.moved.slice(0, 7)})` : r.why);
+
+// 이 head의 리허설이 끝까지 가지 못했나(migrations.jsonl의 마지막 run이 applied가 아님). st.skip은 500개로 잘려 나가지만 이 기록은 남으므로 머지 직전에 이것도 본다
+export const rehearsalHeld = (records: readonly MigrateRecord[], slug: string, number: number, head: string): boolean => {
+  const runs = records.filter((r) => r.kind === "run" && r.slug === slug && r.number === number && r.head === head);
+  return runs.length > 0 && runs[runs.length - 1]!.status !== "applied";
+};
+
 const gh = async (args: string[]) => {
   assertGithubOn();
   return (await run("gh", args, { timeout: 60_000, maxBuffer: 16 << 20 })).stdout;

@@ -133,7 +133,7 @@ export async function rehearse(files: readonly MigrationFile[], io: RehearsalIo)
     restorePoint = await io.restorePoint();
     done("restore-point", true, restorePoint);
   } catch (e) {
-    return stop("restore-point", `복원점을 못 만듦: ${msg(e)}`);
+    return stop("restore-point", `복원점을 확인하지 못함: ${msg(e)}`);
   }
 
   // 4. 실전 적용: 파일마다 한 트랜잭션. 하나라도 실패하면 거기서 멈춘다(앞 파일은 이미 적용됨)
