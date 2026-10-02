@@ -3,7 +3,7 @@
 import type { QueueItem, QueueKind } from "./supervisor-queue.ts";
 
 export type CardAction =
-  | { type: "inline"; op: "fleet-plan" | "update" } // 이 화면의 기존 길을 부르는 버튼(SUPERVISOR의 결정)
+  | { type: "inline"; op: "fleet-plan" | "update" | "proposal" } // 이 화면의 기존 길을 부르는 버튼(SUPERVISOR의 결정)
   | { type: "link"; label: string; hash: string }; // 그 화면을 연다. 판정은 거기서 한다
 
 export type CardView =
@@ -22,7 +22,15 @@ export function prOfKey(key: string): { repo: string; number: number } | null {
   return m ? { repo: m[1]!, number: Number(m[2]) } : null;
 }
 
-// 큐 줄 하나의 버튼. 인라인은 FLEET PLAN(동의·거절·승인)과 UPDATE뿐. GO는 서버에 SUPERVISOR의 길이 없어 AIRCRAFT 링크다
+// DISPATCH 카드(ATC-377)를 승인·거절하면 무슨 일이 일어나는지 한 문장. 카드의 종류가 가른다: ASSIGN은 FLIGHT PLAN, launch는 세션 LAUNCH가 먼저, RELEASE는 승인에서 끝(FLIGHT PLAN 없음)
+export function proposalAskOf(id: string, ask: "approve" | "reject", card: Pick<NonNullable<QueueItem["card"]>, "kind" | "launch"> | undefined): string {
+  if (ask === "reject") return `${id}를 거절합니다. 같은 짝은 24시간 다시 제안하지 않습니다.`;
+  if (card?.kind === "RELEASE") return `${id}를 승인하면 이 FLIGHT의 RELEASE(STAND 없이 오래 ENROUTE인 FLIGHT의 정리)가 승인됩니다. FLIGHT PLAN은 보내지 않고, Linear에서의 정리는 SUPERVISOR가 합니다.`;
+  if (card?.launch) return `${id}를 승인하면 atc가 세션이 없는 AIRCRAFT를 LAUNCH하고(사용량을 씁니다), 새 세션이 뜬 뒤 DISPATCH가 FLIGHT PLAN을 보냅니다.`;
+  return `${id}를 승인하면 DISPATCH가 그 AIRCRAFT에게 FLIGHT PLAN을 보냅니다.`;
+}
+
+// 큐 줄 하나의 버튼. 인라인은 FLEET PLAN(동의·거절·승인), UPDATE, DISPATCH 카드(승인·거절, ATC-377)뿐. GO는 서버에 SUPERVISOR의 길이 없어 AIRCRAFT 링크다
 export function actionsOf(item: Pick<QueueItem, "kind" | "key">, airports: readonly AirportRef[]): CardAction[] {
   switch (item.kind) {
     case "FLEET PLAN":
@@ -30,7 +38,7 @@ export function actionsOf(item: Pick<QueueItem, "kind" | "key">, airports: reado
     case "UPDATE":
       return [{ type: "inline", op: "update" }];
     case "PROPOSAL":
-      return [{ type: "link", label: "DISPATCH에서 판정", hash: "#dispatch" }];
+      return [{ type: "inline", op: "proposal" }]; // 자동 운항이 꺼져 있거나 RELEASE 카드: 큐 줄에서 승인·거절(ATC-377)
     case "SCHEDULE":
       return [{ type: "link", label: "SCHEDULE에서 판정", hash: "#schedule" }];
     case "HUMAN CHECK":

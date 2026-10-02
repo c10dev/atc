@@ -5,6 +5,8 @@ import type { Sample } from "../../../server/recorder.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { MetricsFuel } from "./MetricsFuel.tsx";
 import { MetricsLeaks } from "./MetricsLeaks.tsx";
+import { AutoMisfire } from "./AutoMisfire.tsx";
+import { SingleLane } from "./SingleLane.tsx";
 import "./Metrics.css";
 import { apiGet } from "../api.ts";
 
@@ -123,6 +125,8 @@ function Operations({ refreshKey }: { refreshKey: string }) {
         <>
           <Readiness data={data} />
           <KpiRow data={data} />
+          <AutoMisfire refreshKey={refreshKey} />
+          <SingleLane refreshKey={refreshKey} />
           <h2 className="label">
             TRENDS <em>5분 표본</em>
           </h2>

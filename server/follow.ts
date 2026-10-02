@@ -60,6 +60,7 @@ export interface FollowRow {
   issues: { code: FollowIssue["code"]; severity: FollowIssue["severity"]; text: string }[]; // FLIGHT FOLLOWING의 문제(같은 코드·같은 글)
   history: { at: string; text: string }[]; // 단계 시각과 RECALL·거절·SUPERSEDED 같은 되돌림, 시각순
   proposal: string | null; // 지금 이 줄을 이끄는 제안 D-xxxx
+  proposalInfo: { id: string; status: Proposal["status"]; aircraftName: string | null; departedStand: string | null; departedVia: Proposal["departedVia"] | null } | null; // 줄의 CANCEL·RECALL이 쓴다(ATC-377, 더하기만 한 칸)
   standFree: boolean;
   tail: boolean;
   stuck: FollowStuck | null;
@@ -223,6 +224,7 @@ export function followRowOf(key: string, inp: Omit<FollowInput, "parents">): Fol
     issues,
     history,
     proposal: live?.id ?? null,
+    proposalInfo: live ? { id: live.id, status: live.status, aircraftName: live.aircraftName ?? null, departedStand: live.departedStand ?? null, departedVia: live.departedVia ?? null } : null,
     standFree,
     tail,
     stuck,
@@ -292,7 +294,7 @@ function nextOf(c: NextCtx): FollowNext | null {
   if (t.stateType === "backlog" && isReady(t.stateType, t.blockedBy.map((k) => inp.tickets.find((x) => x.key === k)?.stateType ?? null)))
     return { kind: "release", label: "Todo로", href: null };
   if (t.stateType === "unstarted" && t.priority === 0 && !live && !c.tail) return { kind: "priority", label: "우선순위 정하기", href: `#flight/${c.key}` };
-  if (live?.status === "proposed" && live.holdAt == null) return { kind: "approve", label: `승인하러 ${live.id}`, href: "#dispatch", proposal: live.id };
+  if (live?.status === "proposed" && live.holdAt == null) return { kind: "approve", label: `승인하러 ${live.id}`, href: "#home", proposal: live.id };
   if (pull) {
     const code = inp.airports?.find((a) => a.repo === pull.repo)?.code;
     const href = code ? `#pr/${code}/${pull.number}` : null;

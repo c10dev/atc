@@ -23,6 +23,7 @@ export interface QueueItem {
   title: string;
   hash: string; // 그 항목이 있는 화면 주소
   hand?: HandItem; // UNDELIVERED: 손으로 전하는 카드(ATC-271)
+  card?: { kind: Proposal["kind"]; launch: boolean }; // PROPOSAL: 승인하면 무슨 일이 일어나는지 가르는 것(ASSIGN은 FLIGHT PLAN, launch는 LAUNCH 먼저, RELEASE는 FLIGHT PLAN 없음, ATC-377)
   offer?: RelayOffer; // RELAY: STAND를 쥔 세션이 없는 GO AROUND·FIX를 SUPERVISOR가 전하는 카드(ATC-308)
 }
 
@@ -37,7 +38,7 @@ export interface HandItem {
 }
 
 export interface QueueInput {
-  proposals: Pick<Proposal, "id" | "kind" | "status" | "flight" | "aircraftName" | "holdAt" | "statusAt" | "awaitSupervisor" | "undelivered">[];
+  proposals: (Pick<Proposal, "id" | "kind" | "status" | "flight" | "aircraftName" | "holdAt" | "statusAt" | "awaitSupervisor" | "undelivered"> & Partial<Pick<Proposal, "launch">>)[];
   schedule: { mode: ScheduleMode; ops: Pick<ScheduleOp, "id" | "kind" | "flight" | "status" | "statusAt">[] };
   // FLEET PLAN: 열린 제안과, 최근 주기가 아직 그것을 내는지(isStale의 결과)
   fleetPlan: (Pick<FleetProposal, "id" | "kind" | "aircraft" | "status" | "at"> & { stale: boolean })[];
@@ -66,7 +67,7 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
   for (const p of inp.proposals) {
     if (p.status !== "proposed" || (p.kind === "ASSIGN" && p.holdAt !== null)) continue;
     if (inp.autoDispatch && p.kind === "ASSIGN") continue; // ASSIGN·launch 카드는 서버가 승인한다(ATC-367). RELEASE는 그대로 SUPERVISOR 몫
-    out.push({ kind: "PROPOSAL", key: p.id, since: p.statusAt, title: `${p.kind} ${p.flight}${p.aircraftName ? ` → ${p.aircraftName}` : ""}`, hash: "#dispatch" });
+    out.push({ kind: "PROPOSAL", key: p.id, since: p.statusAt, title: `${p.kind} ${p.flight}${p.aircraftName ? ` → ${p.aircraftName}` : ""}`, hash: "#home", card: { kind: p.kind, launch: Boolean(p.launch) } });
   }
 
   // SCHEDULE: approval 모드에서 판정을 기다리는 draft. shadow는 게이트 판정이라 SUPERVISOR 결정이 아니다
@@ -129,7 +130,7 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
   for (const p of inp.proposals) {
     if (!p.undelivered || p.status !== "approved" || !p.aircraftName) continue;
     const reason = p.undelivered.reason;
-    out.push({ kind: "UNDELIVERED", key: `${p.id}|${p.undelivered.at}`, since: p.undelivered.at, title: `FLIGHT PLAN ${p.flight} → ${p.aircraftName}`, hash: "#dispatch", hand: { source: "FLIGHT PLAN", id: p.id, to: p.aircraftName, reason, text: null, card: handFor(p.aircraftName, reason) } });
+    out.push({ kind: "UNDELIVERED", key: `${p.id}|${p.undelivered.at}`, since: p.undelivered.at, title: `FLIGHT PLAN ${p.flight} → ${p.aircraftName}`, hash: "#home", hand: { source: "FLIGHT PLAN", id: p.id, to: p.aircraftName, reason, text: null, card: handFor(p.aircraftName, reason) } });
   }
 
   // GO: CAPTAIN이 SUPERVISOR의 go를 기다린다(sent인 동안만 awaitSupervisor가 있다)

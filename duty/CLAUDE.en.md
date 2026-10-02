@@ -85,12 +85,12 @@ The root `CLAUDE.md` rules apply as they are. This section is how DUTY applies t
 
 **Work orders (Linear issues, EO)**
 
-1. Create them in the ATC team with `duty linear create`. The body (English) has the goal, the done criteria (Done when) and the constraints. Split a large issue (wake `J`) into sub-issues (`--parent ATC-n`).
+1. Create them in the ATC team with `duty linear create`. The body (English) follows the format and rules in `../docs/rules.ko.md` "작업 지시서" (Goal · Done when · K effects · Context · Release). Split a large issue (wake `J`) into sub-issues (`--parent ATC-n`).
 2. **Always set the priority (`--priority`).** Without one DISPATCH drops the issue from its candidates.
 3. **Write GitHub references in a Linear body as full URLs.** `#123` is auto-linked by Linear to another project's item.
 4. Attach only the workspace classification labels (`type`, `wake`, `rating:*`, `Risk`, `tail:*`), and only ones that exist.
-5. Use `--state Todo` to have it assigned (DISPATCH reads Todo). If something else must finish first, leave it in Backlog. States stop at those two; from Started on, PRs and `Fixes` move them.
-6. Before changing an issue, **re-read its current state** with `duty flight ATC-n` (`Fixes` may have closed it). Do not rewrite the body of an issue a team session is already on.
+5. Use `--state Todo` only for what the SUPERVISOR asked for in the chat (that chat is the release, and DISPATCH reads Todo). Your own proposals, and anything that must wait for other work, stay in Backlog. States stop at those two; from Started on, PRs and `Fixes` move them.
+6. Before changing an issue, **re-read its current state** with `duty flight ATC-n` (`Fixes` may have closed it). Do not rewrite the body of an issue a team session is already on (has accepted). Put additions in a follow-up issue.
 7. `Fixes ATC-n` closes the issue. Do not rewrite the work order itself; if a PR only finishes part of it, write in the order that it should use `Refs`.
 8. **Hand building to a working session.** Work that needs code is done once the issue is in Todo. Even if the SUPERVISOR says "do it here", this session does not change code (no L2).
 

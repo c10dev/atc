@@ -305,7 +305,7 @@ test("다음 할 일: release → priority → approve → human-check/merge →
   // 막는 이슈가 남은 Backlog는 release가 아니다
   assert.equal(followRowOf("ATC-1", base({ tickets: [backlog, ticket("ATC-9")] })).next, null);
   const waiting = proposal("D-5", "ATC-3", "proposed", { proposed: ago(3) });
-  assert.deepEqual(next("ATC-3", { proposals: [waiting] }), { kind: "approve", label: "승인하러 D-5", href: "#dispatch", proposal: "D-5" });
+  assert.deepEqual(next("ATC-3", { proposals: [waiting] }), { kind: "approve", label: "승인하러 D-5", href: "#home", proposal: "D-5" });
   assert.equal(next("ATC-3", { proposals: [{ ...waiting, holdAt: ago(1) }] }), null); // HELD는 승인 대기가 아니다
   const airports = [{ code: "ATCC", repo: "/p/atc" }];
   const cleared = pr(7, "ATC-4", { landing: "CLEARED", blocks: [], readyAt: ago(5) });
