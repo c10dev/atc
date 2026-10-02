@@ -82,7 +82,7 @@
   --text-sm: 12px; /* 표·카드의 부가 정보 */
   --text-md: 14px; /* 본문(기본 밀도 14, compact 13. DL7) */
   --text-lg: 15px; /* FLIGHT NUMBER, 콜사인 강조 */
-  --text-xl: 18px; /* 상단 수치, FLIGHT STRIPS 콜사인 */
+  --text-xl: 18px; /* 상단 수치 */
   --text-2xl: 24px; /* 지표 큰 숫자 */
 
   /* 움직임(3.5 Craft 8): 호버·누름은 fast, 열고 닫고 접는 것은 base, 곡선은 하나. 늘 도는 생동감 애니메이션(ping·sweep·flap 등)은 자기 시간을 쓴다 */
@@ -170,14 +170,8 @@ button {
 .fl-r-week,
 .fl-r-ctx,
 .fl-r-burn,
-.fl-actuals,
 .fl-ctx,
 .fc-count,
-.dp-score,
-.dp-age,
-.dp-count,
-.sc-age,
-.sc-cand-count,
 .fp-age,
 .du-since,
 .activity-ago {
@@ -334,9 +328,6 @@ button {
 .tab-code {
   font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.16em;
-}
-.tab-label {
-  font-size: var(--text-xs);
 }
 .tab[aria-selected="true"] {
   color: var(--tab-on);
@@ -1056,7 +1047,8 @@ a.blk[href] {
   flex: none;
 }
 .strip .apt {
-  border-color: var(--paper-line);
+  padding: 0;
+  border: 0;
   color: var(--paper-ink);
 }
 .blk-code {
@@ -1280,10 +1272,11 @@ a.blk[href] {
 .strip-id {
   min-width: 0;
   padding: var(--space-2) var(--space-3);
-  border-left: 1px solid var(--paper-line);
+  /* 구분선 대신 면 단차(ATC-320): 콜사인 칸만 한 단 어둡게 */
+  background: color-mix(in srgb, var(--paper-ink) 6%, transparent);
 }
 .cs {
-  font: 700 var(--text-xl)/1.15 var(--mono);
+  font: 700 var(--text-lg)/1.15 var(--mono);
   letter-spacing: 0.08em;
   white-space: nowrap;
   overflow: hidden;
@@ -1327,7 +1320,6 @@ a.blk[href] {
 .cell {
   min-width: 0;
   padding: var(--space-2) var(--space-3);
-  border-left: 1px solid var(--paper-line);
 }
 .cap {
   display: block;
@@ -1428,11 +1420,6 @@ a.val:hover {
   font: 700 var(--text-sm) var(--mono);
   letter-spacing: 0.18em;
   color: var(--tone);
-  white-space: nowrap;
-}
-.column-label {
-  font-weight: 600;
-  color: var(--fids-title);
   white-space: nowrap;
 }
 .column-alias {
@@ -1614,6 +1601,7 @@ a.ticket:hover {
   right: 0;
   z-index: var(--z-menu);
   width: 300px;
+  max-width: calc(100vw - 2 * var(--space-4));
   padding: var(--space-3);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-lg);
@@ -1720,7 +1708,6 @@ a.ticket:hover {
   color: var(--faint);
 }
 /* 비행 단계 머리 줄(ATC-316): 이름은 단계 색(상태), 수는 중립. 그룹은 앞 5건만 보이고 "N more"로 펼친다 */
-.fids-table th.fids-group-th,
 .fids-group-head th {
   padding: var(--space-2) var(--space-3);
   border-top: 2px solid var(--tone);
@@ -1867,7 +1854,7 @@ a.ticket:hover {
   }
 }
 
-/* 탭이 헤더 한 줄에 다 안 들어가는 폭(탭 10개, 로고+탭+수치 ≈ 1740px): 탭을 헤더 둘째 줄로 */
+/* 탭이 헤더 한 줄에 다 안 들어가는 폭(탭 6개 + 로고 + 수치, 1760px 이하): 탭을 헤더 둘째 줄로 */
 @media (min-width: 861px) and (max-width: 1760px) {
   .console {
     height: auto;
@@ -3456,8 +3443,6 @@ a.ticket:hover {
 .acct-env legend { padding: 0 4px; }
 .acct-env label { display: inline-flex; align-items: center; gap: 4px; }
 .acct-done { margin-top: 8px; }
-.acct-next { margin: 4px 0 0; padding-left: 20px; }
-.acct-next li { margin: 3px 0; }
 .acct-add .mono, .acct-folder .mono { overflow-wrap: anywhere; }
 .acct-login { margin: 4px 0 2px; }
 /* PLAN · USAGE(ATC-348): 요금제와 한도 창마다 쓴 몫. 보통 수준은 무채색, INFO부터 amber, HOLD부터 alert(서버가 정한 수준) */

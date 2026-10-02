@@ -10,6 +10,7 @@ import { DEFAULT_DISPATCH_CONFIG, type DispatchConfig, loadDispatchConfig } from
 import type { Snapshot } from "./model.ts";
 import { type Op, type Proposal, fold, gateOf, humanOf } from "./proposals.ts";
 import { modeSegments, needsConfirm } from "./settings-policy.ts";
+import { swOf, switchViews } from "./test-switch-views.ts";
 import type { ScheduleOp } from "./schedule.ts";
 
 const NOW = Date.parse("2026-10-01T12:00:00.000Z");
@@ -149,16 +150,11 @@ test("via auto는 사람 판정이 아니다: humanOf·게이트에서 빠진다
 });
 
 test("정책 줄: 두 스위치가 보이고 on만 확인이 필요하다", () => {
-  assert.equal(needsConfirm("autoApprove", "off", "on"), true);
-  assert.equal(needsConfirm("autoApprove", "off", "shadow"), false);
-  assert.equal(needsConfirm("autoApproveLaunch", "shadow", "on"), true);
-  assert.equal(needsConfirm("autoApproveLaunch", "on", "off"), false);
-  const segs = modeSegments({
-    autoland: { mode: "off", reviewedSecurity: "off", airports: [], applicationCheck: "", groundStops: [], applicationCheckWarnings: [] },
-    mcc: { mode: "shadow", airport: "ATCC" },
-    review: { security: "exclude" },
-    dispatchAuto: { mode: "approval", auto: "on", approve: "on", launch: "shadow", approveMax: 40, launchMax: 6, backoffMin: 30 },
-  });
+  assert.equal(needsConfirm(swOf("autoApprove"), "off", "on"), true);
+  assert.equal(needsConfirm(swOf("autoApprove"), "off", "shadow"), false);
+  assert.equal(needsConfirm(swOf("autoApproveLaunch"), "shadow", "on"), true);
+  assert.equal(needsConfirm(swOf("autoApproveLaunch"), "on", "off"), false);
+  const segs = modeSegments(switchViews({ autoDispatch: "on", autoApprove: "on", autoApproveLaunch: "shadow" }));
   const auto = segs.filter((x) => x.key === "autoApprove" || x.key === "autoApproveLaunch");
   assert.deepEqual(auto.map((x) => [x.label, x.value, x.warn]), [["AUTO APPROVE", "on", true], ["AUTO LAUNCH", "shadow", false]]);
 });

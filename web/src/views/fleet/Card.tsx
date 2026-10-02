@@ -17,6 +17,7 @@ import { flightNumber } from "../../aviation.ts";
 import { OpenFlight } from "../../FlightLink.tsx";
 import { RelayBox } from "../../Relay.tsx";
 import { timeAgo } from "../../derive.ts";
+import { jobKnownText } from "../../../../server/job-age.ts";
 import { ActivityLine, JobDetail, NeedsYou, PendingApproval, SuggestedReply } from "../../ui.tsx";
 import { pendingNeedsOf } from "../../../../server/pending.ts";
 import { formatClock, useSettings } from "../../settings.ts";
@@ -171,7 +172,7 @@ function LogTable({ a }: { a: AircraftView }) {
                   {e.los > 0 && <span className="fl-bad"> LOS {e.los}</span>}
                 </td>
                 {/* STAND 없는 FLIGHT(ATC-72): PR 대신 확인한 증거 */}
-                <td className="muted tn mono">{e.pr ? `#${e.pr.number}` : e.standFree?.arrivedVia === "confirmed-suggestion" ? "STAND 없음 · 후보 확인" : "STAND 없음 · 보고"}</td>
+                <td className={`muted tn${e.pr ? " mono" : " fl-log-note"}`}>{e.pr ? `#${e.pr.number}` : e.standFree?.arrivedVia === "confirmed-suggestion" ? "STAND 없음 · 후보 확인" : "STAND 없음 · 보고"}</td>
                 <td className="r tn mono" title={blockTitle}>
                   <span className={e.onTime === false ? "fl-late" : undefined}>{e.blockMin == null ? "—" : blockTime(e.blockMin)}</span>
                   {e.landingWaitMin != null && (
@@ -310,7 +311,7 @@ export function Card({
     alerts.push(
       <li key="needs" className="fl-needs-you">
         <NeedsYou job={a.job} attach={origin?.attach} />
-        {a.job.detail && <span className="fl-line faint"> {a.job.detail}</span>}
+        {a.job.detail && <span className="fl-line faint"> {a.job.detail} · {jobKnownText(a.job, now)}</span>}
         <SuggestedReply job={a.job} />
       </li>,
     );

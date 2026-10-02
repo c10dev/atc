@@ -1,36 +1,14 @@
-import type { ServerSettings } from "./settings.ts";
+import type { SwitchView } from "./switch-def.ts";
 
 // 설정 창의 계산(ATC-131). SUPERVISOR 정책 스위치(AUTOMATION: LANDING·OPERATIONS)의 "지금 모드 한 줄", ⚠ 모드로 올릴 때 확인이 필요한지, 마지막 분류 기억, 설정 찾기.
 // 저장 값과 PUT /api/settings는 그대로다. 여기는 화면에 보이는 이름과 판단만 다룬다.
-export type PolicyKey = "autoland" | "autolandReview" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle" | "duty" | "dutyCharter" | "dutyReview" | "effectCheck" | "autoApprove" | "autoApproveLaunch" | "autoDispatch" | "scheduleAuto" | "fleetPlanAuto" | "autoRevert" | "kApproval";
+// 스위치 목록·⚠ 모드·이름은 server/switches/의 선언에서 온다(ATC-393): GET /api/settings의 `switches`(SwitchView)를 받아 쓴다. 이 파일에는 스위치마다 적는 줄이 없다.
 
-// ⚠ 모드(올리면 atc가 더 많이 쓰거나 밖으로 내보낸다). 화면의 경고 문구가 ⚠로 시작하는 모드와 같다
-export const RISKY: Record<PolicyKey, readonly string[]> = {
-  autoland: ["update", "merge"],
-  autolandReview: ["delegate"], // 머지 리뷰 pass가 rating:SEC·보안 게이트 PR의 AUTOLAND 머지 근거가 된다(ATC-328)
-  mcc: ["land", "land+rts", "rts"], // rts도 ⚠: 사용자가 머지한 main을 서버가 스스로 배포한다(MCC_WARN)
-  jev: ["replay", "shadow"], // 티켓 제목과 허용한 칸이 TypeSafe로 나간다
-  fuelHold: ["on"],
-  review: ["deepseek"], // 보안 PR도 REVIEW 세션에 보낸다
-  reposition: ["auto"], // atc가 쉬는 AIRCRAFT의 base를 스스로 옮긴다(멈추고 다른 저장소에서 다시 띄움)
-  recycle: ["on"], // atc가 관제 세션을 스스로 STOP·LAUNCH한다(shadow는 기록만)
-  dutyCharter: ["on"], // OCC가 DUTY의 CHARTER REQUEST를 SCHEDULE 초안으로 만든다(shadow는 만들었을 초안만 기록)
-  dutyReview: ["on"], // 서버가 SUPERVISOR의 글 없이 DUTY 턴을 시작해 운영을 점검하고 Backlog 제안을 남긴다(ATC-396). 기본 on이라 ⚠로 보이고, 껐다 다시 켤 때 확인한다
-  duty: ["on"], // 서버가 `claude -p` 프로세스를 띄우고 ACCOUNT의 FUEL을 쓴다(SUPERVISOR가 글을 보낼 때만)
-  autoApprove: ["on"], // 서버가 SETTLED ASSIGN·SCHEDULE 초안을 스스로 승인한다(CROSSCHECK mark는 보지 않는다, ATC-371. shadow는 기록만, blind·HELD·주의는 그대로 SUPERVISOR 몫)
-  effectCheck: [], // 재기만 한다(아무것도 바꾸지 않는다): 켜도 꺼도 확인 창이 필요 없다(ATC-402)
-  scheduleAuto: ["on"], // 서버가 SCHEDULE 초안(CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW)을 사람 판정 없이 승인한다(ATC-370). 기본 on, off는 SUPERVISOR 몫
-  fleetPlanAuto: ["on"], // 서버가 FLEET PLAN 제안(LAUNCH·STOP·RESTART·REFRESH·AOG)을 사람 승인 없이 실행한다(ATC-370). 기본 on, off는 SUPERVISOR 몫
-  autoDispatch: ["on"], // 서버가 필터·상한을 통과한 ASSIGN·launch를 사람 없이 승인한다(ATC-367, K3). 기본 on이라 ⚠로 보이고, 껐다 다시 켤 때 확인한다
-  kApproval: ["on"], // MCC가 발권 때 승인한 K 효과 안의 user 등급 PR을 사용자 머지 없이 착륙시킨다(ATC-391, K3). 기본 on이라 ⚠로 보이고, 껐다 다시 켤 때 확인한다
-  autoRevert: ["on"], // atc가 lander 머지가 깬 main의 revert PR을 스스로 열고, 두 번째 빨간 head에는 lane을 한 단계 낮춘다(되돌리기 전에 실패한 체크를 한 번 다시 돌린다. 기본 on, off는 SUPERVISOR 몫)
-  autoApproveLaunch: ["on"], // 서버가 launch 카드를 스스로 승인하고 세션을 띄운다(상한·FUEL hold·막힘·실패 뒤 대기·하루 상한을 지킬 때만)
-};
-
-export const isRisky = (key: PolicyKey, mode: string): boolean => RISKY[key].includes(mode);
+// ⚠ 모드(올리면 atc가 더 많이 쓰거나 밖으로 내보낸다). 화면의 경고 문구가 ⚠로 시작하는 모드와 같다. 목록은 스위치 선언의 risky
+export const isRisky = (sw: Pick<SwitchView, "risky">, mode: string): boolean => sw.risky.includes(mode);
 
 // 지금 모드에서 to로 옮길 때 확인 단계가 필요한가. 같은 값이면 저장할 것이 없고, ⚠ 모드로 가면(⚠에서 ⚠로도) 늘 확인한다. 내리는 것은 그대로 저장
-export const needsConfirm = (key: PolicyKey, from: string, to: string): boolean => from !== to && isRisky(key, to);
+export const needsConfirm = (sw: Pick<SwitchView, "risky">, from: string, to: string): boolean => from !== to && isRisky(sw, to);
 
 // CONTROL RECYCLE의 세션별 auto 스위치(ATC-175): alert → auto로 올리면 mode `on`처럼 ⚠ 확인이 필요하다(모든 세션). 내리는 것은 확인 없이 저장.
 // OCC는 문구가 따로다: 도착 보고 틈과 CHARTER REQUEST가 닫힌 뒤(ATC-169)에만 켠다
@@ -40,36 +18,18 @@ export function recycleAutoGuardOf(session: string, wasAuto: boolean, to: "auto"
   return { line: session === "OCC" ? `${base} OCC는 도착 보고 기록·wip CHARTER REQUEST 매뉴얼(ATC-169)이 돌고 있을 때만 켠다.` : base, warn: true };
 }
 
-// REVIEW의 보이는 이름. 저장 값은 dispatch.json의 `deepseek` 그대로다(옛 이름, 뜻은 "REVIEW 세션에 보냄")
-export const reviewLabel = (v: string): string => (v === "deepseek" ? "sonnet (deepseek)" : v);
-
 export interface ModeSegment {
-  key: PolicyKey;
-  label: string; // AUTOLAND, MCC, JEV, FUEL HOLD, REVIEW
+  key: string;
+  label: string; // AUTOLAND, MCC, JEV, FUEL HOLD, REVIEW …
   value: string; // 보이는 값
   warn: boolean;
 }
-// 탭 맨 위 한 줄: `AUTOLAND off · MCC land · JEV off · FUEL HOLD off · REVIEW exclude`. ⚠ 모드는 warn
-export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "review"> & Partial<Pick<ServerSettings, "judges" | "fuel" | "controlRecycle" | "fleetPlan" | "duty" | "dispatchAuto" | "autonomyAuto" | "autoRevert" | "effectCheck">>): ModeSegment[] {
-  const seg = (key: PolicyKey, label: string, mode: string, value = mode): ModeSegment => ({ key, label, value, warn: isRisky(key, mode) });
-  return [
-    seg("autoland", "AUTOLAND", s.autoland.mode),
-    ...(s.autoland.reviewedSecurity ? [seg("autolandReview", "AUTOLAND REVIEW", s.autoland.reviewedSecurity)] : []),
-    seg("mcc", "MCC", s.mcc.mode),
-    ...(s.mcc.kApproval ? [seg("kApproval", "K APPROVAL", s.mcc.kApproval)] : []),
-    seg("jev", "JEV", s.judges?.jev.mode ?? "off"),
-    seg("fuelHold", "FUEL HOLD", s.fuel?.hold ? "on" : "off"),
-    seg("review", "REVIEW", s.review.security, reviewLabel(s.review.security)),
-    ...(s.controlRecycle ? [seg("recycle", "CONTROL RECYCLE", s.controlRecycle.mode)] : []),
-    ...(s.fleetPlan ? [seg("reposition", "REPOSITION", s.fleetPlan.reposition)] : []),
-    ...(s.duty ? [seg("duty", "DUTY", s.duty.enabled ? "on" : "off")] : []),
-    ...(s.duty?.charter ? [seg("dutyCharter", "DUTY CHARTER", s.duty.charter)] : []),
-    ...(s.duty && typeof s.duty.review === "boolean" ? [seg("dutyReview", "DUTY REVIEW", s.duty.review ? "on" : "off")] : []),
-    ...(s.autoRevert ? [seg("autoRevert", "AUTO REVERT", s.autoRevert.mode)] : []),
-    ...(s.effectCheck ? [seg("effectCheck", "EFFECT CHECK", s.effectCheck)] : []),
-    ...(s.autonomyAuto ? [seg("scheduleAuto", "SCHEDULE AUTO", s.autonomyAuto.schedule), seg("fleetPlanAuto", "FLEET PLAN AUTO", s.autonomyAuto.fleetPlan)] : []),
-    ...(s.dispatchAuto ? [seg("autoApprove", "AUTO APPROVE", s.dispatchAuto.approve), seg("autoApproveLaunch", "AUTO LAUNCH", s.dispatchAuto.launch), seg("autoDispatch", "AUTO DISPATCH", s.dispatchAuto.auto)] : []),
-  ];
+// 탭 맨 위 한 줄: `AUTOLAND off · MCC land · JEV off · FUEL HOLD off · REVIEW exclude`. ⚠ 모드는 warn. 줄에 보이지 않는 스위치(세션별 CAP 같은 구조)는 뺀다
+export function modeSegments(switches: readonly SwitchView[]): ModeSegment[] {
+  return switches
+    .filter((x) => x.line)
+    .sort((a, b) => a.lineOrder - b.lineOrder || a.key.localeCompare(b.key))
+    .map((x) => ({ key: x.key, label: x.label, value: x.display[x.value] ?? x.value, warn: isRisky(x, x.value) }));
 }
 export const modeLine = (segs: readonly ModeSegment[]): string => segs.map((x) => `${x.label} ${x.value}`).join(" · ");
 
@@ -108,19 +68,23 @@ export const SETTINGS_INDEX: readonly SettingsEntry[] = [
   { tab: "alerts", code: "NOTIFY", label: "브라우저 알림", words: "notification 알림 권한" },
   { tab: "alerts", code: "SOUND", label: "소리", words: "warning caution call 방해 금지 quiet 톤" },
   { tab: "alerts", code: "VOICE", label: "음성 콜아웃", words: "tts piper espeak kokoro 목소리 무전 radio" },
-  { tab: "landing", code: "AUTOLAND", label: "착륙 자동화", words: "update merge ground stop autoland.mode" },
-  { tab: "landing", code: "MCC", label: "atc 착륙·RETURN TO SERVICE", words: "shadow land rts land+rts rollback 배포 shadow gate mcc.mode" },
-  { tab: "landing", code: "REVIEW", label: "Codex 한도 때 착륙 리뷰", words: "보안 pr sonnet deepseek exclude externalReview.security" },
-  { tab: "operations", code: "FUEL", label: "사용 한도 HOLD", words: "dispatch hold 사용량 한도 fuel.hold" },
-  { tab: "landing", code: "AUTO REVERT", label: "main이 빨개지면 lander 머지 자동 되돌림", words: "revert 되돌림 main red 빨간 breaker autoRevert flake groundstop" },
-  { tab: "operations", code: "AUTO APPROVE", label: "일치 기반 자동 승인", words: "dispatch schedule agree blind launch 자동 승인 autoApprove autoApproveLaunch via auto" },
-  { tab: "operations", code: "EFFECT CHECK", label: "배포 효과 확인(## Measure 평결)", words: "effect check measure 평결 improved not improved worse too little data 효과 측정 effect-check.json 틀림 misfire" },
-  { tab: "operations", code: "SCHEDULE·FLEET PLAN AUTO", label: "SCHEDULE·FLEET PLAN 자동 적용", words: "schedule fleet plan 자동 적용 사람 없이 off on misfire 오작동 scheduleAuto fleetPlanAuto schedule.auto fleet-plan.auto backlog" },
-  { tab: "operations", code: "REPOSITION", label: "소속 AIRPORT 옮기기", words: "base fleet plan approval auto fleet-plan.reposition" },
-  { tab: "operations", code: "CONTROL RECYCLE", label: "관제 세션 자동 재시작", words: "cap 컨텍스트 context 재시작 auto alert controlRecycle.mode" },
-  { tab: "operations", code: "DUTY", label: "DUTY 채팅(atc 안의 대화 상대)", words: "duty chat 채팅 서랍 drawer claude acct-2 duty.enabled 대화 shift charter 차터 duty.charter CHARTER REQUEST OCC" },
-  { tab: "operations", code: "JUDGES", label: "판정 계열", words: "jev typesafe replay shadow judges.jev" },
 ];
+
+// 정책 스위치의 블록(landing·operations)은 선언에서 온다(ATC-393): 같은 블록 code의 스위치를 한 항목으로 모으고, 찾을 말은 이어 붙인다.
+// 정적 항목 뒤에 searchOrder 순으로 놓는다
+export function settingsIndexOf(switches: readonly SwitchView[]): SettingsEntry[] {
+  const blocks = new Map<string, { entry: SettingsEntry; order: number; words: string[] }>();
+  for (const sw of [...switches].sort((a, b) => a.order - b.order || a.key.localeCompare(b.key))) {
+    const b = blocks.get(sw.block.code);
+    if (b) {
+      if (sw.block.words) b.words.push(sw.block.words);
+      continue;
+    }
+    blocks.set(sw.block.code, { entry: { tab: sw.group, code: sw.block.code, label: sw.block.label, words: "" }, order: sw.block.searchOrder, words: sw.block.words ? [sw.block.words] : [] });
+  }
+  const fromSwitches = [...blocks.values()].sort((a, b) => a.order - b.order || a.entry.code.localeCompare(b.entry.code)).map((b) => ({ ...b.entry, words: b.words.join(" ") }));
+  return [...SETTINGS_INDEX, ...fromSwitches];
+}
 
 // 찾기: 빈칸으로 나눈 말이 모두 코드·이름·찾을 말 안에 있는 블록. 대소문자는 가리지 않는다.
 // 코드가 첫 말로 시작하는 블록을 앞에, 나머지는 색인 순서대로

@@ -168,7 +168,7 @@ export function AirportView({ code, scene, txs, motion, now }: { code: string; s
           );
         })}
 
-        <g className="ga-lines" aria-hidden="true">
+        <g className="ga-lines">
           {lines.map(({ p, from, to }, i) => {
             // MCC의 방송 선은 한 점(활주로 가운데)으로 모여 글이 겹친다: 가장 새것에만 글을 달고 나머지는 선과 목록에
             const labelled = Boolean(p.plane) || !lines.slice(i + 1).some((o) => !o.p.plane);
@@ -176,7 +176,11 @@ export function AirportView({ code, scene, txs, motion, now }: { code: string; s
             const my = (from.y + to.y) / 2;
             const on = picked === p.tx.id;
             return (
-              <g key={p.tx.id} className={`ga-line is-${p.state}${on ? " is-on" : ""}${motion && p.state !== "answered" ? " is-moving" : ""}`} onClick={() => setPicked(on ? null : p.tx.id)}>
+              <g key={p.tx.id} className={`ga-line is-${p.state}${on ? " is-on" : ""}${motion && p.state !== "answered" ? " is-moving" : ""}`} role="button" tabIndex={0} aria-pressed={on} aria-label={p.tx.head} onClick={() => setPicked(on ? null : p.tx.id)} onKeyDown={(e) => {
+                  if (e.key !== "Enter" && e.key !== " ") return;
+                  e.preventDefault();
+                  setPicked(on ? null : p.tx.id);
+                }}>
                 <title>{p.tx.head}</title>
                 <line x1={f1(from.x)} y1={f1(from.y)} x2={f1(to.x)} y2={f1(to.y)} />
                 <line className="ga-line-hit" x1={f1(from.x)} y1={f1(from.y)} x2={f1(to.x)} y2={f1(to.y)} />

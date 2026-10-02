@@ -1,6 +1,7 @@
 import { ArrowLeft, ExternalLink, X } from "lucide-react";
 import { Icon, IconButton } from "./Icon.tsx";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useDialog } from "./useDialog.ts";
 import type { DrawerRef } from "../../server/detail.ts";
 import type { IdeaDetail, IdeaRow } from "../../server/ideas.ts";
 import { timeAgo } from "./derive.ts";
@@ -171,13 +172,7 @@ function One({ n, now, gate }: { n: number; now: number; gate: DutyGate }) {
 export default function IdeasDrawer({ target, onClose, now, gate }: { target: Target; onClose: () => void; now: number; gate: DutyGate }) {
   const ref = useRef<HTMLElement>(null);
   const id = target.kind === "idea" ? String(target.number) : "list";
-  useEffect(() => {
-    ref.current?.focus();
-    ref.current?.scrollTo({ top: 0 });
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    addEventListener("keydown", onKey);
-    return () => removeEventListener("keydown", onKey);
-  }, [id, onClose]);
+  useDialog(ref, onClose, id);
   return (
     <>
       <div className="dr-backdrop" onClick={onClose} />

@@ -46,7 +46,7 @@ test("mccKApproval: 이 화면(Origin) 밖의 요청은 403이고 스위치는 �
 test("mccKApproval: off로 바꾸면 mcc.json에 쓰고 mcc.jsonl에 kApproval이 든 mode 줄이 한 줄 남는다. 같은 값은 줄을 더하지 않는다", async () => {
   const res = await put({ mccKApproval: "off" });
   assert.equal(res.status, 200);
-  assert.equal(((await res.json()) as { mcc: { kApproval: string } }).mcc.kApproval, "off");
+  assert.equal(((await res.json()) as { switches: { key: string; value: string }[] }).switches.find((x) => x.key === "mccKApproval")?.value, "off");
   assert.equal(JSON.parse(readFileSync(join(config.stateDir, "mcc.json"), "utf8")).kApproval, "off");
   const lines = modeLines();
   assert.equal(lines.length, 1);
@@ -62,11 +62,12 @@ test("mccKApproval: off로 바꾸면 mcc.json에 쓰고 mcc.jsonl에 kApproval�
   assert.equal(modeLines().length, 2);
 });
 
-test("설정 읽기: mcc.kApproval과 7일 수(kDays)가 함께 온다", async () => {
-  const j = (await (await app.request("/api/settings")).json()) as { mcc: { kApproval: string; kDays: { day: string; landed: number }[] } };
-  assert.equal(j.mcc.kApproval, "on");
-  assert.equal(j.mcc.kDays.length, 7);
-  assert.ok(j.mcc.kDays.every((d) => d.landed === 0));
+test("설정 읽기: mccKApproval 스위치의 값과 7일 수(data.days)가 함께 온다", async () => {
+  const j = (await (await app.request("/api/settings")).json()) as { switches: { key: string; value: string; data?: { days: { day: string; landed: number }[] } }[] };
+  const sw = j.switches.find((x) => x.key === "mccKApproval")!;
+  assert.equal(sw.value, "on");
+  assert.equal(sw.data!.days.length, 7);
+  assert.ok(sw.data!.days.every((d) => d.landed === 0));
 });
 
 // ── 자격 문(ATC-373)이 이 길을 막는다: 허용 목록(에이전트가 쓰는 길)에 없는 쓰기는 모두 SUPERVISOR 자격이 있어야 한다 ──

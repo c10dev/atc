@@ -261,3 +261,19 @@ atc가 점유로 HANDOFF와 충돌을 판정하는 방법은 저장소 [README](
 `kill <pid>`, `kill "$(cat <임시 폴더>/server.pid)"`, `systemctl … atc-rts`, 읽기만 하는 `systemctl status`는 막지 않는다. 낱말만 들어 있는 명령(`echo 'pkill …'`, `grep`)도 통과한다. hook 입력을 읽거나 해석하지 못하면 막는다. 설정 항목은 `… || exit 2`이고, 프로젝트 폴더에 hook이 없으면(관제 폴더) main 체크아웃의 것(`/home/c10/projects/atc/hooks/kill-guard.mjs`)으로 돌아, hook이 없을 때는 통과하지 않고 막는다.
 
 이 저장소에서 연 세션만 덮는다. 다른 저장소(vocado)의 세션에는 그 저장소 설정에 같은 hook이 있어야 한다.
+
+## Policy hook (`policy.mjs`)
+
+`policy.mjs`는 atc가 모든 AIRCRAFT LAUNCH에 `claude --bg --settings`로 더하는 `PermissionRequest` hook이다(ATC-369. `.claude/settings.json`에는 없어서 관제 세션과 직접 여는 세션은 받지 않는다). 권한 프롬프트가 뜰 호출마다 허용이나 거절로 답한다: AIRCRAFT의 STAND 안은 허용, 나머지(Claude 설정 폴더, STAND 밖 쓰기, 운영 상태, Playwright가 아닌 MCP 도구 …)는 거절. 거절은 한 줄(시각, REGISTRATION, 세션, 도구, class. 명령·경로 본문 없음)씩 `<상태 폴더>/policy-denials.jsonl`에 남는다. fail-closed. 인자: `--state <폴더> --aircraft <REGISTRATION>`. 규칙과 화면은 [docs/fleet.ko.md](../docs/fleet.ko.md) "AIRCRAFT policy hook과 STALE STOP as built (ATC-369)"에 있다. `policy.test.mjs`가 허용·거절 경우를 확인한다.
+
+일부러 한 선택(ATC-369 검토): `kill <pid>`는 test-server가 저장한 PID로 서버를 끄는 길이라 늘 허용한다. 이름·패턴 kill과 `systemctl … atc`는 `kill-guard.mjs`가 막는다. 그래서 운영 7700의 PID를 직접 적은 `kill`은 두 hook 모두 못 막는다(hook은 PID가 누구 것인지 모른다). `source <atc>/.env.local`은 허용하고 그 파일의 `cat`은 거절한다: source는 값을 자식의 환경에만 싣고 출력하지 않는(test-server 처방) 것이고 읽기는 비밀이라 거절한다. hook은 모든 AIRCRAFT에 걸린다(vocado 팀도). 목록에 없는 명령·MCP 도구(`pnpm`, `psql`, `supabase`, `docker`, Playwright 말고는 모든 MCP, Linear도 포함)는 전에는 사람에게 물었을 호출이 이제 거절되므로, atc 밖 AIRCRAFT를 처음 LAUNCH한 뒤 거절 class를 본다.
+
+두 번째 검토 뒤에 막은 것: `node -e`·`--eval`·`-p`·`-r`, `python3 -c`·`-`, stdin 코드(heredoc)와 `awk`·`less`·`more`는 거절한다. `node`·`python3`는 스크립트 파일만 돌리고 그 경로도 다른 인자처럼 분류한다. 읽기 명령(`cat`, `head`, `tail`, `ls`, `wc`, `stat`, `file`, `du`, `diff`, `sort`, `find`, `grep`, `rg`, `sed`, `jq`, `cut` ...)의 파일 인자는 모두 cwd 기준으로 풀어 분류하므로 `cat docs/../../.claude/x`, `jq . ~/.claude/x`도 거절된다(`grep`·`rg`·`sed`·`jq`의 첫 인자는 패턴·스크립트·필터). 인라인 git 설정(`git -c ...`)은 명령을 돌릴 수 있어 거절한다. `SendMessage`는 `OCC`·`TOWER`·`ENGINEERING`에게만 허용한다. 그대로 믿는 것: STAND 안의 스크립트와 `npm` 스크립트는 전처럼 돈다.
+
+git(세 번째 검토): 읽기만 하는 동사(`status`, `diff`, `log`, `show`, `rev-parse`, `rev-list`, `ls-files`, `blame`, `grep` ...)는 어디서나 허용한다. 나머지 동사(`add`, `commit`, `push`, `fetch`, `pull`, `merge`, `rebase`, `checkout`, `switch`, `branch`, `restore`, `reset` ...)는 `cd`나 `git -C`를 거친 작업 폴더가 AIRCRAFT의 STAND 안일 때만 허용한다. 그래서 `cd /home/c10/projects/atc && git switch x`는 거절된다(`git:<동사>:outside-stand`). `git stash`는 list·show만(stash는 모든 워크트리가 함께 쓴다). `:`로 시작하는 push refspec(원격 브랜치 삭제)은 `--delete`처럼 거절한다. MCP: Playwright 말고는 모든 `mcp__` 도구를 거절한다. Linear MCP도 거절이다.
+
+네 번째 검토: `gh pr checkout`은 작업 폴더의 브랜치를 바꾸므로 `git switch`처럼 STAND 안에서만 허용한다. `cp`는 목적지뿐 아니라 원본도 분류해서, 비밀(`.env*`, ssh 키)과 Claude 설정 폴더는 STAND 안으로 복사해 읽을 수 없다. PR에 하는 `gh api -X PATCH`는 `body` 필드만 바꿀 수 있다. `AskUserQuestion`은 사람을 기다리므로 거절한다. `source <저장소>/.env.local`은 그 STAND가 속한 저장소(STAND 경로로 구한다)와 atc의 기본 자리에서만 허용한다.
+
+다섯 번째 검토: `gh api`와 `curl`의 HTTP 메서드는 모든 철자(`-X POST`, `-XPOST`, `-sXPOST`, `--method POST`, `--method=POST`, `--request=POST`)로 읽는다. GET·HEAD가 아닌 메서드는 쓰기이고, 모르는 철자는 `gh api`에서는 거절(`gh-api-method`), `curl`에서는 쓰기로 본다. 그래서 `curl -XPOST localhost:7700/...`과 `gh api -XDELETE ...`는 거절된다.
+
+여섯 번째 검토: 파일을 쓰거나 읽거나 명령을 돌릴 수 있는 `sed` 스크립트(`w`, `W`, `e`, `E`, `r`, `R`, `s///`의 `w`·`e` 플래그)와 `sed -f`는 거절한다(`sed:script-io`, `sed:script-file`). `jq`의 `--rawfile`, `--slurpfile`, `--argfile`, `-f`, `-L`과 `import`·`include`·`env`·`$ENV`·`input_filename`을 쓰는 필터도 거절한다(`jq:file-read`).

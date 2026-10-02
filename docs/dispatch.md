@@ -670,6 +670,7 @@ K3: this decides what the Claude Code auto-mode classifier lets a FLIGHT change,
 - **A fresh AIRCRAFT.** A running session cannot take new `--settings`, so the planner pairs such a FLIGHT only with an AIRCRAFT that is launched for it (a launch card).
 - **Only the server.** `launchAircraft` takes the entries as a separate server-built argument, not as an option, and the LAUNCH route drops `settings` and `k3` from the request body. Supervisor-route authentication (ATC-373) protects the routes that start a launch.
 - **Record.** The FLIGHT RECORDER `launch` line carries `flight` and `k3: { release, stand, entries }`.
+- **K3 hold (ATC-398).** A FLIGHT that has a `K3` line in `## K effects` but would launch without an entry is not sent. The planner excludes it with a reason and a fix: a line that does not parse is "not a declaration" (rewrite the line), a release that is not from `screen` or `duty-chat` (or a body that changed since) is "release on the screen". The same reason goes to a HOME alert and, before the click, to the RELEASE row. Switch `k3Hold` in `dispatch.json` (default on, settings window only); misfire counter in `GET /api/releases` (`k3Hold.nuisance`, `k3Hold.miss`). See [autonomy.md](autonomy.md) C9.
 
 ## Waiting PRs do not use the AIRCRAFT's slot (ATC-387)
 

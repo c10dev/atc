@@ -10,6 +10,8 @@
 import type { Context, Hono } from "hono";
 import { isReady } from "./detail.ts";
 import { candidateTeamsOf, isCandidateTicket, loadDispatchConfig } from "./dispatch.ts";
+import { type K3Status, k3StatusOf } from "./k3-allow.ts";
+import { k3MisfiresNow } from "./k3-hold-run.ts";
 import { moveFlight } from "./flight-state-run.ts";
 import { type Snapshot, type Ticket, parentKeysOf } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
@@ -51,6 +53,7 @@ export interface ReleaseDeps {
   // 제안(ATC-401): atc가 Backlog에 올린 이슈의 출처(DUTY REVIEW·SCHEDULE NEW), 버리기(Canceled로 옮기고 사유를 이슈에 남긴다)
   proposalSources?: () => Map<string, ProposalSource>;
   discard?: (key: string, from: string, reason: string) => Promise<MoveOutcome & { warning?: string }>;
+  k3Misfires?: (s: Snapshot) => { nuisance: string[]; miss: { flight: string; aircraft: string; t: string }[] }; // 시험이 채운다(없으면 기록과 세션에서 센다)
 }
 type MoveOutcome = { ok: true } | { ok: false; status: 400 | 403 | 404 | 409 | 502 | 503; error: string };
 export const DISCARD_REASON_MAX = 500;
@@ -114,7 +117,9 @@ const readyOf = (s: Snapshot, teams: Set<string>) => {
   const typeOf = (k: string) => s.tickets.find((x) => x.key === k)?.stateType ?? null;
   return s.tickets.filter((t) => isCandidateTicket(t, teams) && !parents.has(t.key) && isReady(t.stateType, t.blockedBy.map(typeOf)));
 };
-const rowOf = (t: Ticket, state: "ready" | "unreleased" | "stale", why: string | null = null) => ({ key: t.key, why, title: t.title, hash: t.releaseHash ?? null, priority: t.priority, kEffects: t.kEffects ?? null, state });
+// K3 줄이 있는 FLIGHT가 클릭 전에 보이는 상태(ATC-398): 선언이 읽히나, 지금 발권이 allow를 주나. 줄이 없으면 null
+const k3Of = (t: Ticket, view: ReturnType<typeof foldReleases>): K3Status | null => k3StatusOf({ check: t.k3Check, declared: t.k3, flight: t.key, hash: t.releaseHash, releases: view });
+const rowOf = (t: Ticket, view: ReturnType<typeof foldReleases>, state: "ready" | "unreleased" | "stale", why: string | null = null) => ({ key: t.key, why, title: t.title, hash: t.releaseHash ?? null, priority: t.priority, kEffects: t.kEffects ?? null, k3: k3Of(t, view), state });
 const WEEK = 7 * 86_400_000;
 
 export function releaseView(s: Snapshot, d: ReleaseDeps) {
@@ -123,12 +128,12 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
   const cands = candidatesOf(s, d.teams());
   const unreleased = bulkTargets(cands, view).map((t) => {
     const full = cands.find((c) => c.key === t.key)!;
-    return rowOf(full, releaseStateOf(t.key, t.releaseHash, view) as "unreleased" | "stale", view.revoked?.[t.key]?.reason ?? null);
+    return rowOf(full, view, releaseStateOf(t.key, t.releaseHash, view) as "unreleased" | "stale", view.revoked?.[t.key]?.reason ?? null);
   });
   // 제안(ATC-401)은 따로 보인다: 막는 이슈가 모두 끝난 제안이 READY에도 오르지 않게 뺀다
-  const filed = filedProposalsOf(s.tickets, d.proposalSources?.() ?? new Map(), d.teams());
+  const filed = filedProposalsOf(s.tickets, d.proposalSources?.() ?? new Map(), d.teams()).map((f) => ({ ...f, k3: ((t) => (t ? k3Of(t, view) : null))(s.tickets.find((x) => x.key === f.key)) }));
   const filedKeys = new Set(filed.map((f) => f.key));
-  const ready = readyOf(s, d.teams()).filter((t) => !filedKeys.has(t.key)).map((t) => rowOf(t, "ready"));
+  const ready = readyOf(s, d.teams()).filter((t) => !filedKeys.has(t.key)).map((t) => rowOf(t, view, "ready"));
   const titleOf = (k: string) => s.tickets.find((t) => t.key === k)?.title ?? null;
   const records = Object.values(view.records).sort((a, b) => b.at.localeCompare(a.at));
   const since = d.now().getTime() - WEEK;
@@ -148,6 +153,7 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
   }));
   const released = cands.filter((t) => releaseStateOf(t.key, t.releaseHash, view) === "released").map((t) => ({ key: t.key, ...view.records[t.key]! }));
   return {
+    k3Hold: { mode: loadDispatchConfig().k3Hold ?? "on", ...((m) => ({ nuisance: m.nuisance, miss: m.miss }))(d.k3Misfires ? d.k3Misfires(s) : k3MisfiresNow(s, loadDispatchConfig().teamPattern)) },
     gate: { mode: d.gateMode(), on: releaseGateOn(d.gateMode(), view.armedAt), armedAt: view.armedAt },
     ready,
     filed,

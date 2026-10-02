@@ -51,6 +51,17 @@ These were picked from their READMEs and code, not from looking at the running s
 | [dagster-io/dagster](https://github.com/dagster-io/dagster) (UI) | A run timeline and status per asset | FLIGHTS, METRICS |
 | [palantir/blueprint](https://github.com/palantir/blueprint), [elastic/eui](https://github.com/elastic/eui) | Design systems made for dense desktop data | all |
 
+For the design-system layers ([design-system.md](../design-system.md), survey [design-system-layers.md](design-system-layers.md), 2026-10-02). These are about structure, not a look:
+
+| Reference | What to take | atc place |
+|---|---|---|
+| [primer/primitives](https://github.com/primer/primitives), [primer/stylelint-config](https://github.com/primer/stylelint-config) | A declared contrast table checked in every theme; a lint that lets each property take only its token family | tokens, checks |
+| [radix-ui/colors](https://github.com/radix-ui/colors) | A numbered neutral ramp where each step has one job (background, component rest / hover / pressed, borders, solid, text) | tokens, themes |
+| [carbon-design-system/carbon](https://github.com/carbon-design-system/carbon) | A contextual layer token a container sets for its children | tokens, primitives |
+| [grafana/grafana](https://github.com/grafana/grafana) `packages/grafana-data/src/themes` | A theme as a small input; a pure function derives hover, text and border | themes |
+| [How we redesigned the Linear UI](https://linear.app/now/how-we-redesigned-the-linear-ui) | Themes from three inputs (base, accent, contrast) in LCH | themes, the light theme |
+| [Vercel Geist colors](https://vercel.com/geist/colors), [materials](https://vercel.com/geist/materials) | Slots by job (component background, border, text); named surface presets | tokens, primitives |
+
 Not candidates:
 - [BloopAI/vibe-kanban](https://github.com/BloopAI/vibe-kanban): its README announces it is sunsetting (2026-10-02).
 - [stravu/crystal](https://github.com/stravu/crystal): it is now Nimbalyst.

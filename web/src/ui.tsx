@@ -1,6 +1,7 @@
 import type { Airport, Session } from "../../server/model.ts";
 import { pendingNeedsOf } from "../../server/pending.ts";
 import type { Job } from "../../server/job-state.ts";
+import { jobKnownText } from "../../server/job-age.ts";
 import { type Activity, activityParts } from "../../server/activity.ts";
 import { standNeedsHint } from "../../server/stand-hint.ts";
 import { callsign } from "./aviation.ts";
@@ -115,7 +116,8 @@ export function ActivityLine({ activity, now, className = "" }: { activity: Acti
 }
 
 // working 중인 백그라운드 job의 한 줄(Claude Code가 적은 detail)
-export function JobDetail({ job }: { job: Job | null | undefined }) {
+// 지금 하는 일이 아니라 job이 마지막으로 적은 것이라 나이를 붙인다(ATC-369): "… · last known, 17 h ago"
+export function JobDetail({ job, now = Date.now() }: { job: Job | null | undefined; now?: number }) {
   if (job?.state !== "working") return null;
   const st = job.settled;
   if (st) {
@@ -125,7 +127,11 @@ export function JobDetail({ job }: { job: Job | null | undefined }) {
     return <span className="job-detail faint" title={tip}>working</span>;
   }
   if (!job.detail) return null;
-  return <span className="job-detail faint" title="백그라운드 job의 detail(Claude Code가 적음)">{job.detail}</span>;
+  return (
+    <span className="job-detail faint" title="백그라운드 job의 detail(Claude Code가 마지막으로 적은 한 줄). 지금 하는 일이 아니다">
+      {job.detail} · {jobKnownText(job, now)}
+    </span>
+  );
 }
 
 // suggestedReply: 복사만 한다. atc는 어디에도 보내지 않는다

@@ -310,3 +310,12 @@
 .ga-plane-mark {
   fill: var(--amber);
 }
+
+/* 키보드로 고른 선(ATC-406): SVG <g>에는 outline이 안 보여 선을 굵게 한다 */
+.ga-line:focus {
+  outline: none;
+}
+.ga-line:focus-visible line:not(.ga-line-hit) {
+  stroke-width: 3;
+  opacity: 1;
+}

@@ -13,7 +13,7 @@ import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
 import { REASON_CODES } from "./reasons.ts";
 import { ABSENT_REASON, cutHoldWhy, LANE_CUTOFF, type ResumeInfo, stuckHintOf, tailsOf } from "./dispatch-launch.ts";
-import { k3LaunchOf } from "./k3-allow.ts";
+import { k3HoldOf, k3LaunchOf } from "./k3-allow.ts";
 import { DEFAULT_TEAM_PATTERN, fleetKeyOf, regKey } from "./registration.ts";
 import { DEFAULT_MCC, loadMcc } from "./mcc.ts";
 import { supervisorConfirmOf } from "./supervisor-confirm.ts";
@@ -77,7 +77,13 @@ export interface DispatchConfig {
   approvedWaitMin: number;
   // 발권 gate(ATC-362): 발권 기록이 없는 Todo FLIGHT는 제안일 뿐이라 배정하지 않는다. "auto"(기본)는 일괄 확인(arm) 뒤부터, "on"은 항상, "off"는 끔
   releaseGate: ReleaseGateMode;
+  // STALE STOP(ATC-369): FLIGHT가 끝났는데(머지·ARRIVED) PENDING·HUNG으로 30분 남은 AIRCRAFT를 서버가 멈춘다. 기본 on(live first). 끄는 것은 SUPERVISOR만(설정 창, fromThisApp)
+  staleStop: "on" | "off";
+  // K3 hold(ATC-398): "on"(기본)이면 `## K effects`에 K3 줄이 있는데 allow 없이 떠날 FLIGHT를 보내지 않는다(읽히지 않는 줄, 화면·DUTY 채팅이 아닌 발권).
+  // 스위치는 설정 창(fromThisApp)에서만 바꾼다 — atcctl 명령이 없다(K3). 깨진 파일은 on으로 읽는다(닫는 쪽)
+  k3Hold: K3HoldMode;
 }
+export type K3HoldMode = "on" | "off";
 export type AutoMode = "off" | "shadow" | "on";
 export const AUTO_MODES: readonly AutoMode[] = ["off", "shadow", "on"];
 // 모르는 값은 off — 깨진 파일이 자동 승인을 켜지 않게
@@ -122,6 +128,8 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   autoCardTtlMin: DEFAULT_AUTO_CARD_TTL_MIN,
   approvedWaitMin: DEFAULT_APPROVED_WAIT_MIN,
   releaseGate: "auto",
+  staleStop: "on",
+  k3Hold: "on",
 };
 
 const CONFIG_FILE = join(config.stateDir, "dispatch.json");
@@ -164,6 +172,18 @@ export function saveAutoApprove(key: "autoApprove" | "autoApproveLaunch", mode: 
   renameSync(tmp, file);
 }
 
+// k3Hold만 바꿔 저장한다(설정 창, ATC-398). 다른 설정은 그대로 둔다
+export function saveK3Hold(mode: K3HoldMode, file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, k3Hold: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
 // autoDispatch만 바꿔 저장한다(설정 창, ATC-367). 다른 설정은 그대로 둔다
 export function saveAutoDispatch(mode: AutoDispatch, file = CONFIG_FILE) {
   let user: Record<string, unknown> = {};
@@ -173,6 +193,18 @@ export function saveAutoDispatch(mode: AutoDispatch, file = CONFIG_FILE) {
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify({ ...user, autoDispatch: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
+// staleStop만 바꿔 저장한다(설정 창, ATC-369). 다른 설정은 그대로 둔다
+export function saveStaleStop(mode: "on" | "off", file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, staleStop: mode }, null, 2) + "\n");
   renameSync(tmp, file);
 }
 
@@ -235,6 +267,10 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       autoCardTtlMin: typeof user.autoCardTtlMin === "number" && Number.isFinite(user.autoCardTtlMin) && user.autoCardTtlMin > 0 ? user.autoCardTtlMin : d.autoCardTtlMin,
       // 모르는 값은 기본("auto")으로
       releaseGate: user.releaseGate === "on" || user.releaseGate === "off" ? user.releaseGate : "auto",
+      // STALE STOP(ATC-369): off만 끈다. 모르는 값은 on
+      staleStop: user.staleStop === "off" ? "off" : "on",
+      // K3 hold(ATC-398): 파일에 "off"라고 적었을 때만 끈다
+      k3Hold: user.k3Hold === "off" ? "off" : "on",
     };
   } catch (e) {
     // 파일이 없으면 기본. 있는데 못 읽으면(깨짐) 자동 운항은 끈다 — 깨진 파일이 사람 없는 승인을 켜 두지 않게(ATC-367)
@@ -871,6 +907,14 @@ export function planDispatch(
       const rs = releaseStateOf(t.key, t.releaseHash, s.releases);
       if (rs !== "released") {
         excluded.push({ flight: t.key, reason: rs === "stale" ? STALE_RELEASE_WHY : NOT_RELEASED_WHY });
+        continue;
+      }
+    }
+    // K3 hold(ATC-398): K3 줄이 있는데 allow 없이 떠날 FLIGHT는 보내지 않는다. 이유와 고치는 길은 제외 사유에 그대로 보인다
+    if ((cfg.k3Hold ?? "on") === "on") {
+      const hold = k3HoldOf({ check: t.k3Check, declared: t.k3, flight: t.key, hash: t.releaseHash, releases: s.releases });
+      if (hold) {
+        excluded.push({ flight: t.key, reason: `${hold.why} — ${hold.fix}` });
         continue;
       }
     }

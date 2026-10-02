@@ -339,6 +339,16 @@ The server builds a classifier allow entry only from a K3 declaration in the for
 
 What the two newest entries name (the classifier's "must name" text): *Security Test Removal* names which tests are removed or skipped; *Instruction Poisoning* says the flagged instruction file edit is a wanted change the SUPERVISOR authorized, so a flag on it is a false positive, and it covers only the declared files (no other instruction file, no memory directory). Every entry also names the control, the files, the STAND and the release id.
 
+### C9 as built: the K3 hold (ATC-398)
+
+A FLIGHT whose work order has a K3 effect leaves with the classifier allow for that effect, or it does not leave. It never stops mid-FLIGHT on a classifier denial for an effect the SUPERVISOR already released.
+
+- **Work order.** Each K3 effect is one declaration line in `## K effects`, `K3[<label>]: <control it changes> | files: <repo-relative paths>`, with `<label>` one of `K3_LABELS`. A work order with no K3 effect has no line that starts with `K3`. A K3 work order is released on the RELEASE screen or in DUTY chat; a session never attests its release (the session creates the issue, the SUPERVISOR fires it). Rules: `docs/rules.ko.md` "작업 지시서" and the DUTY manual.
+- **Hold.** DISPATCH does not send a FLIGHT that has a `K3` line in `## K effects` but would launch without an allow entry: a line that does not parse (reason "not a declaration", e.g. prose after `K3:` or `K3: none`), or a release that is not from a channel in `K3_CHANNELS` (reason "release on the screen"). The reason and the fix are the DISPATCH exclusion reason; a Todo FLIGHT also raises a HOME alert (`alert|k3-hold|<FLIGHT>`, shown while it is held). An unreleased FLIGHT is not an alert: it shows its K3 state on the RELEASE screen.
+- **RELEASE screen.** Before the SUPERVISOR fires a FLIGHT that has a `K3` line, its row shows whether the declaration parses and whether the release grants the allow (now, or once fired on the screen).
+- **Off switch.** `k3Hold` in `dispatch.json`, on by default, changed only in the settings window (K3 HOLD, `fromThisApp`; no `atcctl` command). A broken file reads as on.
+- **Misfire counter** (RELEASE screen header; `GET /api/releases`, `k3Hold`): *nuisance* is a hold on a FLIGHT whose `K3` line declared no effect (`K3: none`); *miss* is a K3 FLIGHT that departed without an allow (its `launch` line has no `k3`) and whose AIRCRAFT stopped on a classifier denial (session health `DENIED`), within 7 days.
+
 ## 6. The three kept gates, declared at release
 
 Under the arrow (principles 1, 4 and 10) a K1–K3 effect is approved once, when the SUPERVISOR releases the FLIGHT, not at merge. The release declares the effect, and the release record (C18) binds the approval to a hash of the declaration (principle 7). After release a floor compares the built content with the declaration. A FLIGHT whose built change goes beyond it (an undeclared K path, a wider change, a statement the floor cannot classify) stops and comes back as a new arrow with the built content attached; that new arrow is the card. Nothing waits on the SUPERVISOR at merge time. The release stays minimal: the destination and the declared K effects, no path list and no per-FLIGHT budget (caps are C11).

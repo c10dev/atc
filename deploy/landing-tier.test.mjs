@@ -164,7 +164,7 @@ test("import 스캔: 이름·통째·동적 import와 다른 파일의 같은 �
   assert.deepEqual(helperImports('import { startRtsUnit, gh } from "./mcc-run.ts";', f), ["startRtsUnit"]);
   assert.deepEqual(helperImports('import {\n  type AgentRow,\n  launchAircraft as launch,\n  liveRowsOf,\n} from "./session-control.ts";', f), ["launchAircraft"]);
   assert.deepEqual(helperImports('export { stopControl } from "./session-control.ts";', f), ["stopControl"]);
-  assert.deepEqual(helperImports('import * as sc from "./session-control.ts";', f).sort(), ["launchAircraft", "launchControl", "stopAircraft", "stopControl"]);
+  assert.deepEqual(helperImports('import * as sc from "./session-control.ts";', f).sort(), ["launchAircraft", "launchControl", "launchForCard", "stopAircraft", "stopControl"]);
   assert.deepEqual(helperImports('const m = await import("./autoland-run.ts");', f), ["runAutoland"]);
   assert.deepEqual(helperImports('import { setMccMode } from "./mcc-run.ts";', f), []);
   assert.deepEqual(helperImports('import { startRtsUnit } from "./other.ts";', f), []);
@@ -188,4 +188,28 @@ test("가장 높은 등급을 쓰고 이유를 남긴다", () => {
   const r = tierOf(["server/a.ts", "occ/CLAUDE.md", "controller/guard.mjs", ""]);
   assert.equal(r.tier, "user");
   assert.deepEqual(r.reasons.map((x) => x.tier), ["flagged", "user"]);
+});
+
+// 주기 서버 일과 스위치 선언(ATC-393): 서비스 이름(provideService/serviceOf)으로 부르는 부작용은 import 스캔이 못 본다. 그래서 폴더째 flagged다.
+// server/jobs/의 파일은 모두(새 파일도) 최소 flagged: 자동 RTS·자동 승인·LAUNCH·재시작 타이머를 auto로 바꾸는 PR이 없다
+test("server/jobs/는 flagged, server/switches/의 모든 파일은 user이고, 이유는 폴더나 외부 부작용이다", () => {
+  for (const dir of ["server/jobs", "server/switches"]) {
+    const files = readdirSync(dir).filter((f) => f.endsWith(".ts"));
+    assert.ok(files.length > 0, dir);
+    for (const f of files) {
+      const r = tierOf([`${dir}/${f}`]);
+      // jobs/는 flagged, switches/는 user(기본값·⚠ 모드를 바꾸는 PR은 SUPERVISOR가 머지한다)
+      assert.equal(r.tier, dir.endsWith("jobs") ? "flagged" : "user", `${dir}/${f}`);
+      assert.match(r.reasons[0].why, dir.endsWith("jobs") ? /주기 서버 일|외부 부작용/ : /스위치 선언/); // 목록에 오른 파일은 더 구체적인 이유(외부 부작용)
+    }
+  }
+  assert.equal(tierOf(["server/jobs/brand-new-timer.ts"]).tier, "flagged"); // 아직 없는 파일도
+});
+
+test("서비스로 부르는 일의 부작용: launchForCard는 helper 목록에 있고, ctx.service를 쓰는 일 파일도 flagged", () => {
+  assert.ok(SIDE_EFFECT_HELPERS.some(([name, file]) => name === "launchForCard" && file === "server/session-control.ts"));
+  for (const f of readdirSync("server/jobs").filter((x) => x.endsWith(".ts"))) {
+    const text = readFileSync(`server/jobs/${f}`, "utf8");
+    if (/ctx\.service[(<]/.test(text) || /launchForCard/.test(text)) assert.equal(tierOf([`server/jobs/${f}`]).tier, "flagged", f);
+  }
 });

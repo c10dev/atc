@@ -137,7 +137,7 @@ const tierCached = async (slug: string, n: number, head: string) => (await tierE
 // K 승인 판정(ATC-391, k-approval.ts): 이 PR의 FLIGHT 발권과 선언, 바뀐 파일로. 티켓·발권은 스냅샷에서 읽는다(GitHub 호출 없음)
 export function kVerdictOf(s: Pick<Snapshot, "tickets" | "releases">, flight: string | null, e: TierEntry, mode: "on" | "off"): KVerdict {
   const t = flight ? s.tickets.find((x) => x.key === flight) : undefined;
-  return kApprovalOf({ mode, flight, files: e.files, userFiles: e.userFiles, declared: t?.k3, unparsed: t?.k3Unparsed ?? 0, stateType: t?.stateType, hash: t?.releaseHash, releases: s.releases });
+  return kApprovalOf({ mode, flight, files: e.files, userFiles: e.userFiles, declared: t?.k3, unparsed: t?.k3Check?.unparsed ?? 0, stateType: t?.stateType, hash: t?.releaseHash, releases: s.releases });
 }
 
 // TOWER 브리핑의 landBy 자료(ATC-151): MCC AIRPORT의 저장소·모드·HOLD·ESCALATE와 열린 PR의 등급.
