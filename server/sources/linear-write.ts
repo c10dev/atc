@@ -79,8 +79,9 @@ export interface DutyTeam {
   states: { id: string; name: string; type: string }[];
   labels: { id: string; name: string }[];
 }
-const TEAM_QUERY = `query DutyTeam($key: String!) {
-  teams(filter: { key: { eq: $key } }) { nodes { id key states(first: 30) { nodes { id name type } } labels(first: 250) { nodes { id name } } } }
+// teams에는 first를 준다(ATC-400): 생략하면 Linear가 기본 50개로 곱해 states·labels(250)와 곱한 값이 복잡도 한도(10000)를 넘어 "Query too complex"로 거절된다. 팀 하나만 읽는다
+export const TEAM_QUERY = `query DutyTeam($key: String!) {
+  teams(first: 1, filter: { key: { eq: $key } }) { nodes { id key states(first: 30) { nodes { id name type } } labels(first: 250) { nodes { id name } } } }
   issueLabels(first: 250, filter: { team: { null: true } }) { nodes { id name } }
 }`;
 // ATC 팀의 id·상태·라벨(팀 라벨과 워크스페이스 라벨). 없으면 null

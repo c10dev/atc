@@ -2,7 +2,7 @@ import type { ServerSettings } from "./settings.ts";
 
 // 설정 창의 계산(ATC-131). SUPERVISOR 정책 스위치(AUTOMATION: LANDING·OPERATIONS)의 "지금 모드 한 줄", ⚠ 모드로 올릴 때 확인이 필요한지, 마지막 분류 기억, 설정 찾기.
 // 저장 값과 PUT /api/settings는 그대로다. 여기는 화면에 보이는 이름과 판단만 다룬다.
-export type PolicyKey = "autoland" | "autolandReview" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle" | "duty" | "dutyCharter" | "dutyReview" | "autoApprove" | "autoApproveLaunch" | "autoDispatch" | "scheduleAuto" | "fleetPlanAuto" | "autoRevert";
+export type PolicyKey = "autoland" | "autolandReview" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle" | "duty" | "dutyCharter" | "dutyReview" | "effectCheck" | "autoApprove" | "autoApproveLaunch" | "autoDispatch" | "scheduleAuto" | "fleetPlanAuto" | "autoRevert";
 
 // ⚠ 모드(올리면 atc가 더 많이 쓰거나 밖으로 내보낸다). 화면의 경고 문구가 ⚠로 시작하는 모드와 같다
 export const RISKY: Record<PolicyKey, readonly string[]> = {
@@ -18,6 +18,7 @@ export const RISKY: Record<PolicyKey, readonly string[]> = {
   dutyReview: ["on"], // 서버가 SUPERVISOR의 글 없이 DUTY 턴을 시작해 운영을 점검하고 Backlog 제안을 남긴다(ATC-396). 기본 on이라 ⚠로 보이고, 껐다 다시 켤 때 확인한다
   duty: ["on"], // 서버가 `claude -p` 프로세스를 띄우고 ACCOUNT의 FUEL을 쓴다(SUPERVISOR가 글을 보낼 때만)
   autoApprove: ["on"], // 서버가 SETTLED ASSIGN·SCHEDULE 초안을 스스로 승인한다(CROSSCHECK mark는 보지 않는다, ATC-371. shadow는 기록만, blind·HELD·주의는 그대로 SUPERVISOR 몫)
+  effectCheck: [], // 재기만 한다(아무것도 바꾸지 않는다): 켜도 꺼도 확인 창이 필요 없다(ATC-402)
   scheduleAuto: ["on"], // 서버가 SCHEDULE 초안(CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW)을 사람 판정 없이 승인한다(ATC-370). 기본 on, off는 SUPERVISOR 몫
   fleetPlanAuto: ["on"], // 서버가 FLEET PLAN 제안(LAUNCH·STOP·RESTART·REFRESH·AOG)을 사람 승인 없이 실행한다(ATC-370). 기본 on, off는 SUPERVISOR 몫
   autoDispatch: ["on"], // 서버가 필터·상한을 통과한 ASSIGN·launch를 사람 없이 승인한다(ATC-367, K3). 기본 on이라 ⚠로 보이고, 껐다 다시 켤 때 확인한다
@@ -48,7 +49,7 @@ export interface ModeSegment {
   warn: boolean;
 }
 // 탭 맨 위 한 줄: `AUTOLAND off · MCC land · JEV off · FUEL HOLD off · REVIEW exclude`. ⚠ 모드는 warn
-export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "review"> & Partial<Pick<ServerSettings, "judges" | "fuel" | "controlRecycle" | "fleetPlan" | "duty" | "dispatchAuto" | "autonomyAuto" | "autoRevert">>): ModeSegment[] {
+export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "review"> & Partial<Pick<ServerSettings, "judges" | "fuel" | "controlRecycle" | "fleetPlan" | "duty" | "dispatchAuto" | "autonomyAuto" | "autoRevert" | "effectCheck">>): ModeSegment[] {
   const seg = (key: PolicyKey, label: string, mode: string, value = mode): ModeSegment => ({ key, label, value, warn: isRisky(key, mode) });
   return [
     seg("autoland", "AUTOLAND", s.autoland.mode),
@@ -63,6 +64,7 @@ export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "revie
     ...(s.duty?.charter ? [seg("dutyCharter", "DUTY CHARTER", s.duty.charter)] : []),
     ...(s.duty && typeof s.duty.review === "boolean" ? [seg("dutyReview", "DUTY REVIEW", s.duty.review ? "on" : "off")] : []),
     ...(s.autoRevert ? [seg("autoRevert", "AUTO REVERT", s.autoRevert.mode)] : []),
+    ...(s.effectCheck ? [seg("effectCheck", "EFFECT CHECK", s.effectCheck)] : []),
     ...(s.autonomyAuto ? [seg("scheduleAuto", "SCHEDULE AUTO", s.autonomyAuto.schedule), seg("fleetPlanAuto", "FLEET PLAN AUTO", s.autonomyAuto.fleetPlan)] : []),
     ...(s.dispatchAuto ? [seg("autoApprove", "AUTO APPROVE", s.dispatchAuto.approve), seg("autoApproveLaunch", "AUTO LAUNCH", s.dispatchAuto.launch), seg("autoDispatch", "AUTO DISPATCH", s.dispatchAuto.auto)] : []),
   ];
@@ -110,6 +112,7 @@ export const SETTINGS_INDEX: readonly SettingsEntry[] = [
   { tab: "operations", code: "FUEL", label: "사용 한도 HOLD", words: "dispatch hold 사용량 한도 fuel.hold" },
   { tab: "landing", code: "AUTO REVERT", label: "main이 빨개지면 lander 머지 자동 되돌림", words: "revert 되돌림 main red 빨간 breaker autoRevert flake groundstop" },
   { tab: "operations", code: "AUTO APPROVE", label: "일치 기반 자동 승인", words: "dispatch schedule agree blind launch 자동 승인 autoApprove autoApproveLaunch via auto" },
+  { tab: "operations", code: "EFFECT CHECK", label: "배포 효과 확인(## Measure 평결)", words: "effect check measure 평결 improved not improved worse too little data 효과 측정 effect-check.json 틀림 misfire" },
   { tab: "operations", code: "SCHEDULE·FLEET PLAN AUTO", label: "SCHEDULE·FLEET PLAN 자동 적용", words: "schedule fleet plan 자동 적용 사람 없이 off on misfire 오작동 scheduleAuto fleetPlanAuto schedule.auto fleet-plan.auto backlog" },
   { tab: "operations", code: "REPOSITION", label: "소속 AIRPORT 옮기기", words: "base fleet plan approval auto fleet-plan.reposition" },
   { tab: "operations", code: "CONTROL RECYCLE", label: "관제 세션 자동 재시작", words: "cap 컨텍스트 context 재시작 auto alert controlRecycle.mode" },

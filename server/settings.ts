@@ -25,6 +25,7 @@ import { dutyAccountPatchOf, effectiveDutyFolder } from "./duty-account.ts";
 import { setDutyConfig } from "./duty-run.ts";
 import { fromThisApp } from "./origin.ts";
 import { AUTO_SWITCHES, type AutoSwitch } from "./autonomy-auto.ts";
+import { loadEffectSwitch, saveEffectSwitch } from "./effect-check-run.ts";
 import { loadAutoSwitch, saveAutoSwitch } from "./autonomy-auto-run.ts";
 import { resetTicketPattern } from "./sources/git.ts";
 import { resetLinear } from "./sources/linear.ts";
@@ -53,6 +54,8 @@ export interface ServerSettings {
   dispatchAuto: { mode: "shadow" | "approval"; auto: "off" | "on"; approve: AutoMode; launch: AutoMode; approveMax: number; launchMax: number; backoffMin: number };
   // SCHEDULE·FLEET PLAN 자동 적용(ATC-370): schedule.json·fleet-plan.json의 auto(기본 on). 사람 판정 없이 서버가 적용한다. 끄는 것은 SUPERVISOR만
   autonomyAuto: { schedule: AutoSwitch; fleetPlan: AutoSwitch };
+  // EFFECT CHECK(ATC-402): effect-check.json의 on(기본 on). 배포한 FLIGHT가 `## Measure`에 적은 것을 바꿨는지 재고 평결을 남긴다(아무것도 바꾸지 않는다). 끄는 것은 SUPERVISOR만
+  effectCheck: AutoSwitch;
   // AUTOLAND(ATC-34): autoland.json의 스위치와 맡은 AIRPORT, 걸린 GROUND STOP
   autoland: { mode: AutolandMode; reviewedSecurity: ReviewedSecurity; airports: string[]; applicationCheck: string; groundStops: { airport: string; sha: string; failing: string[]; at: string }[]; applicationCheckWarnings: CheckWarning[] };
   // MCC(docs/mcc.md): mcc.json의 스위치와 맡은 AIRPORT
@@ -89,6 +92,7 @@ export interface SettingsPatch {
   autoDispatch?: "off" | "on"; // dispatch.json에 쓴다(ATC-367, K3). 켜면 서버가 필터·상한을 통과한 ASSIGN·launch를 CROSSCHECK·사람 없이 승인한다. SUPERVISOR만(이 화면 Origin), atcctl 명령 없음
   scheduleAuto?: AutoSwitch; // schedule.json의 auto(ATC-370). SUPERVISOR만: 이 화면 Origin이 있어야 받는다(atcctl 명령은 없다, K3)
   fleetPlanAuto?: AutoSwitch; // fleet-plan.json의 auto(ATC-370). 위와 같다
+  effectCheck?: AutoSwitch; // effect-check.json의 on(ATC-402). SUPERVISOR만(자격이 있는 요청), atcctl 명령은 없다
   autolandMode?: AutolandMode; // autoland.json에 쓴다(ATC-34). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   autoRevert?: AutoRevertMode; // auto-revert.json에 쓴다(ATC-351). SUPERVISOR만: 이 화면 Origin이 있어야 받는다(atcctl 명령은 없다, K3)
   autolandReviewedSecurity?: ReviewedSecurity; // autoland.json의 reviewedSecurity(ATC-328). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
@@ -137,6 +141,7 @@ export function readServerSettings(): ServerSettings {
     staleStop: loadDispatchConfig().staleStop,
     dispatchAuto: (({ mode, autoDispatch, autoApprove, autoApproveLaunch, autoApproveMax, autoLaunchMax, autoLaunchBackoffMin }) => ({ mode, auto: autoDispatch, approve: autoApprove, launch: autoApproveLaunch, approveMax: autoApproveMax, launchMax: autoLaunchMax, backoffMin: autoLaunchBackoffMin }))(loadDispatchConfig()),
     autonomyAuto: { schedule: loadAutoSwitch("schedule"), fleetPlan: loadAutoSwitch("fleetPlan") },
+    effectCheck: loadEffectSwitch(),
     autoland: (() => {
       const a = loadAutoland();
       return { mode: a.mode, reviewedSecurity: a.reviewedSecurity, airports: a.airports, applicationCheck: a.applicationCheck, groundStops: loadAutolandState().groundStops.map(({ airport, sha, failing, at }) => ({ airport, sha, failing, at })), applicationCheckWarnings: [...getCheckWarnings()] };
@@ -262,7 +267,7 @@ export function mountSettings(app: Hono) {
     // judgesJev는 judges.json에 쓴다(ATC-36)
     // mccMode는 mcc.json에 쓴다(docs/mcc.md)
     // fuelHold는 dispatch.json fuel.hold에 쓴다(ATC-55)
-    const { reviewSecurity, autolandMode, autolandReviewedSecurity, autoRevert, judgesJev, mccMode, fuelHold, autoApprove, autoApproveLaunch, autoDispatch, staleStop, scheduleAuto, fleetPlanAuto, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, dutyEnabled, dutyCharter, dutyReview, dutyAccount, ...rest } = body as Record<string, unknown>;
+    const { reviewSecurity, autolandMode, autolandReviewedSecurity, autoRevert, judgesJev, mccMode, fuelHold, autoApprove, autoApproveLaunch, autoDispatch, staleStop, scheduleAuto, fleetPlanAuto, effectCheck, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, dutyEnabled, dutyCharter, dutyReview, dutyAccount, ...rest } = body as Record<string, unknown>;
     if (fuelHold !== undefined && fuelHold !== "off" && fuelHold !== "on") return c.json({ errors: { fuelHold: `off 또는 on` } }, 400);
     if (autoApprove !== undefined && !AUTO_MODES.includes(autoApprove as AutoMode)) return c.json({ errors: { autoApprove: `off, shadow, on 중 하나` } }, 400);
     if (autoApproveLaunch !== undefined && !AUTO_MODES.includes(autoApproveLaunch as AutoMode)) return c.json({ errors: { autoApproveLaunch: `off, shadow, on 중 하나` } }, 400);
@@ -270,6 +275,7 @@ export function mountSettings(app: Hono) {
     if (staleStop !== undefined && staleStop !== "off" && staleStop !== "on") return c.json({ errors: { staleStop: `off 또는 on` } }, 400);
     if (scheduleAuto !== undefined && !AUTO_SWITCHES.includes(scheduleAuto as AutoSwitch)) return c.json({ errors: { scheduleAuto: `off 또는 on` } }, 400);
     if (fleetPlanAuto !== undefined && !AUTO_SWITCHES.includes(fleetPlanAuto as AutoSwitch)) return c.json({ errors: { fleetPlanAuto: `off 또는 on` } }, 400);
+    if (effectCheck !== undefined && !AUTO_SWITCHES.includes(effectCheck as AutoSwitch)) return c.json({ errors: { effectCheck: `off 또는 on` } }, 400);
     if (reviewSecurity !== undefined && !EXTERNAL_REVIEW_SECURITY.includes(reviewSecurity as ExternalReviewSecurity))
       return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
     if (autolandMode !== undefined && !AUTOLAND_MODES.includes(autolandMode as AutolandMode)) return c.json({ errors: { autolandMode: `off, update, merge 중 하나` } }, 400);
@@ -314,6 +320,7 @@ export function mountSettings(app: Hono) {
     }
     if (scheduleAuto !== undefined) saveAutoSwitch("schedule", scheduleAuto as AutoSwitch);
     if (fleetPlanAuto !== undefined) saveAutoSwitch("fleetPlan", fleetPlanAuto as AutoSwitch);
+    if (effectCheck !== undefined) saveEffectSwitch(effectCheck as AutoSwitch);
     if (autolandMode !== undefined) setAutolandMode(autolandMode as AutolandMode);
     if (autoRevert !== undefined) setAutoRevertMode(autoRevert as AutoRevertMode);
     if (autolandReviewedSecurity !== undefined) setReviewedSecurity(autolandReviewedSecurity as ReviewedSecurity);

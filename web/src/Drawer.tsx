@@ -6,6 +6,7 @@ import type { MergeInfo } from "../../server/pr-merge.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
 import { RelayBox } from "./Relay.tsx";
 import { FlightDispatch } from "./FlightDispatch.tsx";
+import { FlightEffect } from "./EffectVerdict.tsx";
 import { FlightRadio } from "./FlightRadio.tsx";
 import { flightNumber } from "./aviation.ts";
 import { timeAgo } from "./derive.ts";
@@ -237,6 +238,7 @@ function Flight({ k, now }: { k: string; now: number }) {
           </a>
         </p>
       )}
+      <FlightEffect k={d.key} now={now} />
       <FlightDispatch k={d.key} now={now} />
       <FlightRadio k={d.key} />
       <h3 className="dr-h">본문</h3>

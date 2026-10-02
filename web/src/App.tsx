@@ -31,7 +31,6 @@ import type { Index } from "./derive.ts";
 const Flights = lazyTab<{ snapshot: Snapshot; idx: Index; now: number; refreshKey: string }>(() => import("./views/Flights.tsx"), "Flights");
 const Fleet = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/fleet/Fleet.tsx"), "Fleet");
 const Metrics = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/Metrics.tsx"), "Metrics");
-const Network = lazyTab<{ refreshKey: string }>(() => import("./views/Network.tsx"), "Network");
 const Release = lazyTab<{ refreshKey: string }>(() => import("./views/Release.tsx"), "Release");
 const Home = lazyTab<{ refreshKey: string; now: number; snapshot: Snapshot; onOpenSettings: () => void }>(() => import("./views/Home.tsx"), "Home");
 const Docs = lazyTab<Record<string, never>>(() => import("./views/Docs.tsx"), "Docs");
@@ -41,14 +40,13 @@ const DutyDrawer = lazy(() => import("./DutyDrawer.tsx"));
 const IdeasDrawer = lazy(() => import("./IdeasDrawer.tsx"));
 
 // 화면(주소 #<id>가 여는 것). 탭 줄에 보이는 것은 ROW뿐이다(ATC-381, docs/layout.md Y6): DOCS는 도움말 메뉴, GLOBE는 보기 모드, AIRPORTS는 설정 창으로 옮겼다.
-// NETWORK(Y5)는 METRICS가 이어받을 때까지 탭으로 남는다
+// NETWORK는 METRICS의 하위 화면이다(ATC-380): #network는 #metrics/network를 연다
 const TABS = [
   { id: "home", code: "HOME" },
   { id: "release", code: "RELEASE" },
   { id: "flights", code: "FLIGHTS" },
   { id: "fleet", code: "FLEET" },
   { id: "metrics", code: "METRICS" },
-  { id: "network", code: "NETWORK" },
   { id: "docs", code: "DOCS" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
@@ -206,7 +204,7 @@ export function App({ build }: { build: string }) {
             <span>HANDOFF</span>
           </button>
           <button
-            className={`readout is-button${serious ? " tone-alert" : actionable.length ? " tone-amber" : ""}`}
+            className={`readout is-button readout-alerts${serious ? " tone-alert" : actionable.length ? " tone-amber" : ""}`}
             onClick={() => setAlertsOpen((v) => !v)}
             aria-expanded={alertsOpen}
           >
@@ -338,8 +336,6 @@ function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number, onOpenSe
       return <Fleet refreshKey={refreshKey} snapshot={snapshot} />;
     case "metrics":
       return <Metrics refreshKey={refreshKey} snapshot={snapshot} />;
-    case "network":
-      return <Network refreshKey={refreshKey} />;
     case "release":
       return <Release refreshKey={refreshKey} />;
     case "home":

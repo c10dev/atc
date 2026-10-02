@@ -143,6 +143,14 @@ Order rationale (decision D3): firing has no home and is used every day, so it c
 - NEW drafts stay RELEASE candidates (Y1); their link now says `HOME에서 승인`.
 - Removed with the tab: the S1 verdict screen, CROSSCHECK chips, judge-family chips, the CANDIDATES, IN PROGRESS and RECENT tables and the READINESS fold (S2 gate numbers, ROUTES WITHOUT WAYPOINTS). In S1 a draft is not a queue item (as before), so with SCHEDULE AUTO off and S1 on nobody judges it and it expires after 3 days. The server routes (`/verdict`, `/crosscheck`, `/brief`) are unchanged.
 
+### Y5 as built (ATC-380)
+
+- METRICS has five sub-views, chosen by the address (`web/src/views/Metrics.tsx`): `#metrics` OPERATIONS, `#metrics/leaks` LEAKS, `#metrics/misfire` MISFIRE, `#metrics/fuel` FUEL, `#metrics/network` NETWORK. NETWORK is no longer a tab; `#network` opens `#metrics/network` (`web/src/legacy-hash.ts`). `Network.tsx` is unchanged and rendered inside METRICS.
+- **MISFIRE** (`views/MetricsMisfire.tsx`, pure rows in `web/src/misfire-rows.ts`) takes the block that sat under OPERATIONS and covers every automatic lane for the last 7 days: one row per lane (switch, what the server did, MISFIRE, share; FLEET PLAN also shows failed applies), then the DISPATCH daily lines (`/api/dispatch/misfire`, unchanged) and the latest 10 SCHEDULE and FLEET PLAN misfires (`/api/autonomy/auto`, unchanged). No server change.
+- The single-lane landings block (ATC-386) stays in OPERATIONS.
+- Menu bar and server links to `#network`: none existed in `web/src`, `server` or `menubar`; only old bookmarks reach it.
+- With NETWORK gone from the tab row, the row is HOME, RELEASE, FLIGHTS, FLEET and METRICS (Y6 left it in until this step).
+
 ### Y6 as built (ATC-381)
 
 - The tab row shows HOME, RELEASE, FLIGHTS, FLEET and METRICS, plus NETWORK until METRICS takes it in (Y5); SCHEDULE left with Y3. The default tab was already `#home` (ATC-379).
@@ -152,7 +160,7 @@ Order rationale (decision D3): firing has no home and is used every day, so it c
 
 ### Not built yet
 
-Y5, Y6. The tab row still has GLOBE, AIRPORTS, NETWORK and DOCS until those steps land.
+Nothing from section 4 (Y1–Y6 are built).
 
 ## 5. Risks
 

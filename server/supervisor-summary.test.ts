@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type AlertsInput, supervisorAlertsOf } from "./supervisor-alerts.ts";
+import { waitingOnPersonOf } from "./waiting-person.ts";
 import { DEFAULT_TOPICS, parseTopics, summaryKey, summaryOf, type SummaryInput, topFuelOf, workingOf } from "./supervisor-summary.ts";
 
 const AT = "2026-09-30T00:00:00.000Z";
-const input = (over: Partial<SummaryInput> = {}): SummaryInput => ({ items: [], fuelAccounts: [], rts: null, working: { aircraft: 0, control: 0 }, at: AT, ...over });
+const input = (over: Partial<SummaryInput> = {}): SummaryInput => ({ items: [], waiting: [], fuelAccounts: [], rts: null, working: { aircraft: 0, control: 0 }, at: AT, ...over });
 const item = (key: string, level: SummaryInput["items"][number]["level"], cue: SummaryInput["items"][number]["cue"] = null, aircraft: string | null = null) => ({ key, level, cue, aircraft });
 const win = (name: string, pct: number) => ({ name: name as "five_hour", pct, resetsAt: "2026-09-30T05:00:00Z" });
 
@@ -32,13 +33,15 @@ test("counts는 알림 목록의 등급과 같다(supervisorAlertsOf의 실제 �
     pulls: [{ repo: "/r", number: 7, title: "T", head: "abc", landing: "CLEARED", draft: false, ticketKey: "ATC-7", humanCheck: { required: true, state: "waiting" } as never }],
     rts: { at: "2026-09-29T02:00:00Z", from: "aaaaaaa1", to: "bbbbbbb2", result: "rollback", detail: "x" },
   } satisfies AlertsInput);
-  const s = summaryOf(input({ items: list }));
+  // 사람을 기다리는 AIRCRAFT는 TEAM_G(도구 승인 프롬프트)뿐이다. TEAM_B의 DISPATCH 카드는 판정을 기다리는 것이라 needsYou가 아니라 pending.dispatch로만 센다(ATC-374)
+  const waiting = waitingOnPersonOf({ sessions: [{ id: "s1", name: "TEAM_G", status: "busy", health: { code: "PENDING", since: "2026-09-29T01:00:00Z" } }], proposals: [], now: Date.parse("2026-09-29T03:00:00Z"), blockedMin: 3 });
+  const s = summaryOf(input({ items: list, waiting }));
   const n = (l: string) => list.filter((a) => a.level === l).length;
   assert.deepEqual(s.counts, { warning: n("warning"), caution: n("caution"), advisory: n("advisory") });
   assert.ok(s.counts.warning >= 2 && s.counts.caution >= 1 && s.counts.advisory >= 3); // 목록이 세 등급을 다 가진다
   assert.equal(s.master, "warning");
   assert.deepEqual(s.pending, { dispatch: 1, humanCheck: 1, tool: 1, schedule: 0 });
-  assert.deepEqual(s.needsYou, ["TEAM_B", "TEAM_G"]); // cue call이고 이름이 있는 것만(HUMAN CHECK는 이름 없음), 중복 없이 정렬
+  assert.deepEqual(s.needsYou, ["TEAM_G"]);
 });
 
 test("pending은 key 종류별로 센다", () => {

@@ -94,6 +94,9 @@ export function foldReleases(lines: readonly ReleaseLine[]): ReleaseView {
 // gate가 켜졌나. auto(기본): 일괄 확인(arm)을 한 뒤부터. on: 항상. off: 끔(발권 없이도 배정)
 export const releaseGateOn = (mode: ReleaseGateMode, armedAt: string | null | undefined): boolean => mode === "on" || (mode === "auto" && Boolean(armedAt));
 
+// 발권 기록의 id(ATC-402): FLIGHT와 발권한 시각. leak 기록과 EFFECT CHECK 평결이 "이 FLIGHT를 이 발권으로 쏘았다"를 이어 붙이는 열쇠다
+export const releaseIdOf = (r: Pick<ReleaseRecord, "flight" | "at">): string => `${r.flight}@${r.at}`;
+
 export type ReleaseState = "released" | "unreleased" | "stale";
 
 // 발권 기록과 지금 이슈 본문의 해시. 지금 해시를 모르면(본문 없음) 기록이 있는 것으로 본다
