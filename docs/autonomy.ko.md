@@ -151,6 +151,10 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 
 기록은 `kind`, `gate`, `control`, `controlBuilt`, `flight`, `since`와, ATC-362 릴리스 기록이 생기기 전까지 `null`인 `release` 칸을 담는다. 어느 통제가 섰는지는 `leaks.ts`의 `CONTROLS` 표가 정한다. 통제가 서면 거기 플래그만 고치고, 그 뒤의 새 leak은 "통제 있음"으로 간다.
 
+### DISPATCH 자동 운항 구현 (ATC-367)
+
+SUPERVISOR가 2026-10-02에 승인한 K3 완화: 서버가 planner 필터와 상한을 통과한 모든 ASSIGN·launch 카드를 승인한다. CROSSCHECK 단계, blind 표본, SUPERVISOR 카드가 없다. 스위치는 `dispatch.json`의 `autoDispatch`(기본 on, `fromThisApp`로 SUPERVISOR만, 깨진 파일은 off). 늦게 드러나는 결과는 MISFIRE(`/api/dispatch/misfire`, DISPATCH 탭)로 센다. 4절 P1·P2 행은 더는 SUPERVISOR QUEUE에 오르지 않으므로 leak counter의 PROPOSAL 종류는 0으로 떨어져야 한다. 자세한 것은 [dispatch.md](dispatch.md) "Automatic DISPATCH as built".
+
 ## 5. 보완 통제
 
 통제마다 무엇을 알아채는지, 얼마나 빠른지, 스스로 무엇을 하는지, 무엇을 보고하는지 적는다. 사람의 결정을 대신하는 통제는 C1, C2, C4, C6, C10, C14, C15, C16이고 나머지는 이들을 받친다.

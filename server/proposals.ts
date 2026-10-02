@@ -114,6 +114,8 @@ const DAY = 86_400_000;
 export const PROPOSAL_TTL_MS = DAY;
 // SUPERVISOR 판정 없이 24시간이 지나 닫는 사유(ATC-152). DISPATCH 탭의 닫힌 목록이 그대로 보인다
 export const NO_VERDICT_WHY = "24시간 판정 없음";
+// 자동 운항(ATC-367)이 한동안 승인하지 못한 열린 ASSIGN: 사람에게 가지 않고 닫아 planner가 다시 제안한다(churned라 24시간 짝 차단에서 뺀다)
+export const AUTO_STALE_WHY = "자동 운항: 승인되지 못함";
 export const DISPATCH_MS = 5 * 60_000;
 export const GATE = { decided: 20, agreement: 0.8 };
 // 2b → 3(ATFM) 제안 기준
@@ -456,7 +458,7 @@ function pairUntil(p: Pick<Proposal, "at" | "timeline" | "requeuedAt">, now: num
 // "더 나은 배정으로 바뀜"으로 닫힌 제안은 판정받지 못한 것이다. 24시간 규칙에서 빼 다시 후보가 되게 한다
 // LAUNCH 실패(ATC-129)도 판정이 아니다: 다음 계획에 같은 카드가 다시 나와 SUPERVISOR가 다시 승인할 수 있다(스스로 다시 띄우지는 않는다)
 const churned = (p: Pick<Proposal, "status" | "reason">) =>
-  p.status === "superseded" && [BETTER_WHY, STOPPED_WHY, LAUNCH_FAILED_WHY, DELIVERY_FAILED_WHY].some((w) => (p.reason ?? "").startsWith(w));
+  p.status === "superseded" && [BETTER_WHY, STOPPED_WHY, LAUNCH_FAILED_WHY, DELIVERY_FAILED_WHY, AUTO_STALE_WHY].some((w) => (p.reason ?? "").startsWith(w));
 // 판정 대기 중인 제안을 바꾸려면 새 제안 점수가 이만큼(비율) 높아야 한다
 export const REPLACE_MARGIN = 0.2;
 
@@ -725,6 +727,8 @@ export function syncOps(
       }
       // 대기열로 돌린 제안은 돌린 때부터 24시간
       if (now - Date.parse(p.requeuedAt ?? p.at) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at, reason: NO_VERDICT_WHY });
+      else if (cfg.autoDispatch === "on" && p.kind === "ASSIGN" && now - Date.parse(p.requeuedAt ?? p.at) > cfg.autoCardTtlMin * 60_000)
+        ops.push({ op: "supersede", id: p.id, at, reason: `${AUTO_STALE_WHY} (${cfg.autoCardTtlMin}분)` });
       else if (p.prHolder) {
         const reason = holderWhy(p);
         if (reason && !waits(p, reason)) ops.push({ op: "supersede", id: p.id, at, reason });
@@ -1261,7 +1265,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       arrivalCandidates: standFree?.candidates() ?? [],
       // OCC 재시작 안전(ATC-169): arrivalMissing(머지됐는데 도착 보고가 없는 FLIGHT)과 restartSafety(지금 STOP·LAUNCH해도 잃는 것이 없나)
       ...(briefExtras?.(s, now, inFlight) ?? {}),
-      crosscheck: crosscheckBriefOf(proposals, now, cfg.settleMin),
+      crosscheck: crosscheckBriefOf(cfg.autoDispatch === "on" ? [] : proposals, now, cfg.settleMin), // 자동 운항(ATC-367)이면 DISPATCH에 CROSSCHECK 단계가 없다
       judges: judgesBriefOf(proposals, recent, dispatchMarksOf(readJudgeLines()), loadJudges().jev),
       // 2b 켜기 점검표(표시만)
       readiness2b: readiness2bNow(gate, now, files),

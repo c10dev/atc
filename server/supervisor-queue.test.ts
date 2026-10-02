@@ -143,3 +143,9 @@ test("view: count, per-kind counts and the timestamp", () => {
   assert.equal(v.counts.LANDING, 1);
   assert.equal(queueCountsOf(v.items).GO, 0);
 });
+
+test("auto dispatch (ATC-367): ASSIGN and launch cards stay off the queue, RELEASE still shows", () => {
+  const inp = { ...empty(), proposals: [proposal({ id: "D-1" }), proposal({ id: "D-2", kind: "RELEASE", aircraftName: null })] };
+  assert.deepEqual(supervisorQueueOf(inp, NOW).map((i) => i.key), ["D-1", "D-2"]);
+  assert.deepEqual(supervisorQueueOf({ ...inp, autoDispatch: true }, NOW).map((i) => i.key), ["D-2"]);
+});

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig, type Plan } from "./dispatch.ts";
 import type { Ticket, Workspace } from "./model.ts";
 import { parentKeysOf } from "./model.ts";
-import { canApply, crosscheckBriefOf, NO_VERDICT_WHY, DEFAULT_SETTLE_MIN, fold, settledItemsOf, settledOf, settlesInMin, withSettled, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, recentFlightsOf, recentPairsOf, reservedOf, syncOps } from "./proposals.ts";
+import { AUTO_STALE_WHY, canApply, crosscheckBriefOf, NO_VERDICT_WHY, DEFAULT_SETTLE_MIN, fold, settledItemsOf, settledOf, settlesInMin, withSettled, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, recentFlightsOf, recentPairsOf, reservedOf, syncOps } from "./proposals.ts";
 import { takenByOf, toTicket } from "./sources/linear.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
@@ -1044,4 +1044,19 @@ test("만료(ATC-152): 24시간 넘게 proposed·agreed·disagreed면 '24시간 
   // 승인된 제안과 HOLD는 canApply 밖: 승인된 제안의 전달 만료는 따로 있는 규칙이다
   assert.equal(canApply(existing.find((p) => p.id === "D-0007")!, "expire"), true);
   assert.equal(existing.find((p) => p.id === "D-0006")!.holdAt !== null, true);
+});
+
+test("자동 운항(ATC-367): 승인되지 못한 열린 ASSIGN은 TTL이 지나면 SUPERSEDED로 닫혀 짝이 바로 다시 후보가 된다, HELD·꺼짐은 그대로", () => {
+  const cfg = { ...DEFAULT_DISPATCH_CONFIG, autoDispatch: "on" as const, autoCardTtlMin: 60 };
+  const existing = fold([create("D-0001", "VOC-1", "b", 90), create("D-0002", "VOC-2", "b", 30), create("D-0003", "VOC-3", "b", 90), { op: "hold", id: "D-0003", at: iso(80), blockedBy: ["VOC-1"] }]);
+  const tickets = ["VOC-1", "VOC-2", "VOC-3"].map((k) => t(k));
+  const plan = planOf({ assign: tickets.map((x) => assign(x.key, "b")) });
+  const all = syncOps(existing, plan, { tickets, workspaces: [] }, cfg, NOW, 10);
+  const ops = all.filter((o) => o.op === "supersede" && o.id === "D-0001");
+  assert.equal(ops.length, 1);
+  assert.ok(ops[0].op === "supersede" && ops[0].reason.startsWith(AUTO_STALE_WHY));
+  assert.deepEqual(all.filter((o) => o.id === "D-0002"), []); // 아직 TTL 안
+  assert.deepEqual(syncOps(existing, plan, { tickets, workspaces: [] }, { ...cfg, autoDispatch: "off" }, NOW, 10).filter((o) => o.id === "D-0001"), []);
+  const closed = fold([create("D-0001", "VOC-1", "b", 90), { op: "supersede", id: "D-0001", at: iso(0), reason: `${AUTO_STALE_WHY} (60분)` }]);
+  assert.equal(recentPairsOf(closed, NOW).size, 0); // churned라 24시간 짝 차단에 들지 않는다
 });
