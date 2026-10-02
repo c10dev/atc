@@ -606,7 +606,7 @@ DISPATCH는 SUPERVISOR가 발권한("화살을 쏜", [autonomy.md](autonomy.md) 
 
 ## 마이그레이션 리허설 (ATC-368, as built)
 
-호스티드 DB가 있는 AIRPORT(`airports.json`의 `hostedDb`, ATC-329)에서 PR의 새 마이그레이션이 사람 단계 없이 실전 DB에 닿는다. AUTOLAND 주기(`server/autoland-run.ts`)가 머지 전에 한 주기에 PR 하나를 리허설한다: 스위치가 켜진 AIRPORT의 CLEARED PR 가운데 막힌 것이 "새 마이그레이션이 호스티드 DB에 아직 없음"뿐이고 이 head로 시도한 적이 없는 것. 성공하면 실전에 적용하고, 다음 주기에 ATC-329 게이트가 통과해 AUTOLAND가 머지한다(적용이 머지보다 먼저). 모든 단계는 PR head와 마이그레이션 버전과 함께 `migrations.jsonl`(상태 폴더, 추가만)에, 요약 한 줄은 `autoland.jsonl`(`op: "migrate"`)에 남는다. `GET /api/migrate`가 스위치와 기록을 읽는다.
+호스티드 DB가 있는 AIRPORT(`airports.json`의 `hostedDb`, ATC-329)에서 PR의 새 마이그레이션이 사람 단계 없이 실전 DB에 닿는다. AUTOLAND 주기(`server/autoland-run.ts`)가 머지 전에 한 주기에 PR 하나를 리허설한다: 스위치가 켜진 AIRPORT의 CLEARED PR 가운데 막힌 것이 "새 마이그레이션이 호스티드 DB에 아직 없음"뿐이고 이 head로 시도한 적이 없는 것. 그 사유는 AUTOLAND가 그 PR을 위임했을 때(`reviewedSecurity`가 `delegate`이고 머지 리뷰 통과)에만 나온다. 아니면 일반 보안 게이트가 막아 리허설은 돌지 않는다. "뿐"은 쓰기 전에 확인한다: PR을 다시 읽어 새 마이그레이션이 적용된 것으로 치고 제외 전체를 다시 계산하고, HUMAN CHECK, 다른 SQL 경로, HOLD 같은 제외가 하나라도 남으면 실전을 건드리지 않는다. 멈춘 실행은(실전이 이미 바뀌었어도) 그 head를 AUTOLAND의 머지 후보에서도 뺀다(버전 줄이 이미 있어 ATC-329 게이트가 통과할 수 있기 때문). 성공하면 실전에 적용하고, 다음 주기에 ATC-329 게이트가 통과해 AUTOLAND가 머지한다(적용이 머지보다 먼저). 모든 단계는 PR head와 마이그레이션 버전과 함께 `migrations.jsonl`(상태 폴더, 추가만)에, 요약 한 줄은 `autoland.jsonl`(`op: "migrate"`)에 남는다. `GET /api/migrate`가 스위치와 기록을 읽는다.
 
 순서는 정해져 있고 처음 실패에서 멈춘다:
 
@@ -620,7 +620,7 @@ DISPATCH는 SUPERVISOR가 발권한("화살을 쏜", [autonomy.md](autonomy.md) 
 - **스위치.** AIRPORT마다 하나, `migrate.json`. `PUT /api/settings`의 `migrateRehearsal: {코드: bool}`로만 바꾼다(`fromThisApp`, `atcctl` 명령 없음, 설정 창에 MIGRATE 블록). `hostedDb.testProjectRef`와 `SUPABASE_MIGRATE_TOKEN`이 있는 AIRPORT만 켤 수 있다. 기본 꺼짐.
 - **자격 증명(K2).** `.env.local`의 `SUPABASE_MIGRATE_TOKEN`(읽기 전용 `SUPABASE_ACCESS_TOKEN`과 따로). SUPERVISOR가 둔다. 요청 머리에만 쓰고 오류·기록은 `redact`를 거친다. 출력·로그·복사·전송하지 않는다.
 - **형식.** 모두 추가: `hostedDb.testProjectRef`·`smoke`·`healthUrl`·`maxBackupAgeHours`, `migrate.json`, `migrations.jsonl`, `autoland.jsonl`의 op `migrate`.
-- **Not built yet.** 실전 적용 실패 뒤 자동 복원, 복원점을 그때 만들기, 시험 DB를 실전에서 다시 가져오기, 앱 점검 명령(SQL 질의만), 자체 호스팅 시험 DB(호스팅 제공자의 project ref만), 적용 전 뒤쪽 제외(HUMAN CHECK) 확인. 복원점에 쓰는 백업 목록 응답 모양은 실제 API로 확인하지 못했다.
+- **Not built yet.** 실전 적용 실패 뒤 자동 복원, 복원점을 그때 만들기, 시험 DB를 실전에서 다시 가져오기, 앱 점검 명령(SQL 질의만), 자체 호스팅 시험 DB(호스팅 제공자의 project ref만). 복원점에 쓰는 백업 목록 응답 모양은 실제 API로 확인하지 못했다.
 
 ## 살아 있는 세션으로 주소를 정하기와 전달 실패, 만든 것 (ATC-353)
 

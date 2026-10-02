@@ -97,7 +97,7 @@ const SENSITIVE: [RegExp, string][] = [
   [/^(create (or replace )?policy|alter policy)\b/, "policy"],
   [/^grant\b/, "grant"],
   [/^(create|alter) role\b/, "role"],
-  [/\bsecurity (definer|invoker)\b|^alter function [\w."(),\s]+ security\b/, "security"],
+  [/^alter function [\w."(),\s]+ security\b/, "security"],
   [/\bowner to\b/, "owner"],
   [/^create or replace\b/, "replace"],
 ];
@@ -124,22 +124,24 @@ export function classify(stmt: string): Classified {
   if ((m = /^delete from (only )?([\w."]+)/.exec(head))) {
     return hasWhere(stmt) ? { sql, kind: "dml", table: bare(m[2]!) } : { sql, kind: "destructive", table: bare(m[2]!), why: "WHERE 없는 DELETE" };
   }
-  const sens = SENSITIVE.find(([r]) => r.test(head));
+  // SECURITY DEFINER는 달러 본문 뒤(`as $$ … $$ language sql security definer`)에도 올 수 있어 본문을 걷어 낸 전체 문장에서 본다
+  const sens = SENSITIVE.find(([r]) => r.test(head)) ?? (/\bsecurity (definer|invoker)\b/.test(unquoted(stmt).replace(/\s+/g, " ").toLowerCase()) ? ([/./, "security"] as [RegExp, string]) : undefined);
   if (sens && (ADDITIVE.some((r) => r.test(head)) || /^alter role\b/.test(head))) return { sql, kind: "sensitive", needs: sens[1] };
   if (ADDITIVE.some((r) => r.test(head))) return { sql, kind: "additive" };
   return { sql, kind: "unknown", why: "분류할 수 없는 문장" };
 }
 
-// 따옴표·달러 본문·주석을 지운 문장에 `where`가 낱말로 있나
-function hasWhere(stmt: string): boolean {
-  const stripped = stmt
+// 따옴표·달러 본문·주석을 지운 문장
+const unquoted = (stmt: string): string =>
+  stmt
     .replace(/--[^\n]*/g, " ")
     .replace(/\/\*[\s\S]*?\*\//g, " ")
     .replace(/\$([A-Za-z_]\w*)?\$[\s\S]*?\$\1\$/g, " ")
     .replace(/'(?:[^']|'')*'/g, " ")
     .replace(/"(?:[^"]|"")*"/g, " "); // 큰따옴표 식별자("where" 열)도 걷어 낸다
-  return /\bwhere\b/i.test(stripped);
-}
+
+// 따옴표·달러 본문·주석을 지운 문장에 `where`가 낱말로 있나
+const hasWhere = (stmt: string): boolean => /\bwhere\b/i.test(unquoted(stmt));
 
 export interface DeclarationResult {
   ok: boolean;

@@ -13,7 +13,7 @@ import { config } from "./config.ts";
 import { assertGithubOn } from "./github-switch.ts";
 import { pullKey, slugOfUrl } from "./landing.ts";
 import { loadMigrate, notReadyWhy } from "./migrate-config.ts";
-import { type HostedDb, MISSING_REASON_PREFIX, migrationGateOf, migrationVersionOf } from "./migration-gate.ts";
+import { type HostedDb, MISSING_REASON_PREFIX, type MigrationGate, migrationGateOf, migrationVersionOf } from "./migration-gate.ts";
 import { type MigrationFile, type RehearsalIo, type RunResult, type RunStatus, rehearse, type StepRecord } from "./migration-rehearsal.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { releaseHashOf, sectionsOf } from "./release.ts";
@@ -152,32 +152,74 @@ export async function rehearseOne(p: PullRequest, airport: string, db: HostedDb,
   return r;
 }
 
+// rehearsalPass가 바깥 세계를 만나는 곳. 시험은 가짜를 넣는다(실제 DB·GitHub 호출 없음)
+export interface PassIo {
+  switches: () => Record<string, boolean>;
+  hostedDb: (repo: string) => HostedDb | null;
+  token: () => string;
+  records: () => MigrateRecord[];
+  gate: (slug: string, number: number, db: HostedDb) => Promise<MigrationGate>; // 이 head를 캐시 없이 새로 읽은 게이트
+  rehearse: (p: PullRequest, airport: string, db: HostedDb) => Promise<RunResult | null>;
+  note: (r: Parameters<typeof appendRecord>[0]) => void;
+}
+const defaultPassIo: PassIo = {
+  switches: () => loadMigrate().airports,
+  hostedDb: hostedDbOfAirport,
+  token: () => config.supabaseMigrateToken,
+  records: () => readMigrateRecords(500),
+  gate: async (slug, number, db) => {
+    const rows = await listPullFiles(slug, number);
+    return migrationGateOf({ hostedDb: db, files: rows.map((f) => f.path), added: rows.filter((f) => f.status === "added").map((f) => f.path), applied: await readAppliedFor(db) });
+  },
+  rehearse: (p, airport, db) => rehearseOne(p, airport, db),
+  note: appendRecord,
+};
+
 // AUTOLAND 주기에서: 이번 주기에 리허설할 PR 하나를 골라 돌린다. 스위치가 켜진 AIRPORT의 CLEARED PR 가운데 막힌 것이 마이그레이션 게이트뿐인 것
-export async function rehearsalPass(s: Snapshot, o: { mode: string; airports: readonly string[]; stopped: (airport: string) => boolean }): Promise<void> {
+// (AUTOLAND가 이 PR을 위임해 머지 리뷰까지 통과했을 때만 그 사유가 나온다: reviewedSecurity가 delegate여야 한다)
+export async function rehearsalPass(
+  s: Snapshot,
+  o: {
+    mode: string;
+    airports: readonly string[];
+    stopped: (airport: string) => boolean;
+    otherExclusion: (p: PullRequest) => Promise<string | null>; // 마이그레이션을 적용된 것으로 쳐도 남는 제외 사유(없으면 null)
+    hold: (p: PullRequest) => void; // 이 head는 머지 후보에서 뺀다
+  },
+  io: PassIo = defaultPassIo,
+): Promise<void> {
   if (o.mode !== "merge") return;
-  const sw = loadMigrate().airports;
+  const sw = io.switches();
   const exclusions = s.autoland?.exclusions ?? {};
-  const records = readMigrateRecords(500);
+  const records = io.records();
   for (const a of s.airports) {
     if (!sw[a.code] || !o.airports.includes(a.code) || o.stopped(a.code)) continue;
-    const db = hostedDbOfAirport(a.repo);
-    if (notReadyWhy(db, config.supabaseMigrateToken) || !db) continue;
+    const db = io.hostedDb(a.repo);
+    if (notReadyWhy(db, io.token()) || !db) continue;
     for (const p of s.pulls.filter((x) => x.repo === a.repo && x.landing === "CLEARED" && !x.draft)) {
       const slug = slugOfUrl(p.url);
       const why = exclusions[pullKey(p)];
       if (!slug || typeof why !== "string" || !why.includes(`마이그레이션 게이트: ${MISSING_REASON_PREFIX}`) || triedHead(records, slug, p.number, p.head)) continue;
       // 지금 이 head를 새로 읽어 확인한다(캐시 없이): 새 마이그레이션이 정말 아직 없나
-      let gate;
+      let gate: MigrationGate;
       try {
-        const rows = await listPullFiles(slug, p.number);
-        const applied = await readAppliedFor(db);
-        gate = migrationGateOf({ hostedDb: db, files: rows.map((f) => f.path), added: rows.filter((f) => f.status === "added").map((f) => f.path), applied });
+        gate = await io.gate(slug, p.number, db);
       } catch {
         continue;
       }
       if (!gate.involved || gate.ok || !gate.missing.length) continue;
-      const r = await rehearseOne(p, a.code, db);
-      appendRecord({ op: "migrate", mode: "merge", airport: a.code, slug, number: p.number, head: p.head, result: r?.status === "applied" ? "ok" : r?.status === "live-changed" ? "failed" : "excluded", detail: r ? (r.status === "applied" ? "마이그레이션 리허설 통과, 실전에 적용" : `마이그레이션 리허설 ${r.failedStep}에서 멈춤(${r.status})`) : "마이그레이션 파일을 못 읽음" });
+      // 막힌 것이 마이그레이션뿐일 때만: 다른 제외(HUMAN CHECK, 다른 SQL 경로 …)가 남으면 실전을 바꾸지 않는다
+      let other: string | null;
+      try {
+        other = await o.otherExclusion(p);
+      } catch {
+        continue;
+      }
+      if (other) continue;
+      const r = await io.rehearse(p, a.code, db);
+      // 멈췄으면(실전이 이미 바뀌었어도) 이 head는 머지하지 않는다. 적용 뒤 검사가 실패하면 버전 줄이 이미 있어 ATC-329 게이트가 통과해 버리기 때문이다
+      if (r?.status !== "applied") o.hold(p);
+      io.note({ op: "migrate", mode: "merge", airport: a.code, slug, number: p.number, head: p.head, result: r?.status === "applied" ? "ok" : r?.status === "live-changed" ? "failed" : "excluded", detail: r ? (r.status === "applied" ? "마이그레이션 리허설 통과, 실전에 적용" : `마이그레이션 리허설 ${r.failedStep}에서 멈춤(${r.status})`) : "마이그레이션 파일을 못 읽음" });
       return; // 한 주기에 하나
     }
   }
