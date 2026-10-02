@@ -14,10 +14,10 @@
   --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.5);
   --shadow-3: 0 10px 30px rgba(0, 0, 0, 0.6);
 
-  /* 글자: 가장 흐린 글자도 모든 층에서 4.5:1 이상 */
+  /* 글자: 가장 흐린 글자도 모든 층에서 4.5:1 이상(server/theme-contrast.test.ts가 지킨다). 글자를 opacity로 흐리게 하지 않는다 */
   --text: #dde6ee;
   --muted: #a3b0bf;
-  --faint: #8494a6;
+  --faint: #8797a9;
 
   /* 신호: 색 하나에 뜻 하나 */
   --radar: #3ef08f; /* AIRBORNE, ENROUTE */
@@ -53,7 +53,7 @@
   --paper: #ece6d3;
   --paper-parked: #bdb8a8;
   --paper-ink: #1b2127;
-  --paper-muted: #5a6066;
+  --paper-muted: #42484e;
   --paper-line: rgba(27, 33, 39, 0.16);
   --paper-shadow:
     0 1px 0 rgba(255, 255, 255, 0.25) inset,
@@ -1266,7 +1266,6 @@ a.blk[href] {
 }
 .strip.is-parked {
   background: var(--paper-parked);
-  opacity: 0.8;
 }
 .strip.is-parked .holder {
   background: #6b7280;
@@ -1320,8 +1319,10 @@ a.blk[href] {
 .leg + .leg {
   border-top: 1px dashed var(--paper-line);
 }
-.leg.is-handed-off {
-  opacity: 0.5;
+/* 넘겨준 구간: 투명도 대신 흐린 잉크(ATC-408) */
+.leg.is-handed-off,
+.leg.is-handed-off .val {
+  color: var(--paper-muted);
 }
 .cell {
   min-width: 0;
@@ -1931,17 +1932,33 @@ a.ticket:hover {
   :root[data-theme="night"] .tabs .tab {
     padding: 0 var(--space-2);
   }
+  /* ≤860px: 가로로 밀지 않고 줄을 바꾼다(ATC-364, DL8). 칸은 72px 이상으로 늘어나 한 줄을 채우고, 소리 잠금 칩은 한 줄을 다 쓴다.
+     칸 사이 선은 border가 아니라 왼선·윗선 box-shadow라 줄 맨 앞 칸의 왼선은 화면 밖에 그려지고 칸의 크기는 그대로다 */
   .readouts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
     width: 100%;
     margin-left: 0;
     border-top: 1px solid var(--line);
-    overflow-x: auto;
+    overflow: visible;
   }
   .readout {
-    flex: 1;
-    min-width: 72px;
+    min-width: 0;
     align-items: flex-start;
     padding: var(--space-2) var(--space-3);
+    border-left: 0;
+    box-shadow: -1px 0 0 var(--line), 0 -1px 0 var(--line);
+  }
+  /* ALERTS는 늘 첫 줄(줄이 몇 개로 갈라져도) */
+  .readout.readout-alerts {
+    order: -1;
+  }
+  .readouts > .sound-lock {
+    grid-column: 1 / -1;
+    justify-self: start;
+    max-width: calc(100% - var(--space-6));
+    margin: var(--space-2) var(--space-3);
+    white-space: normal;
   }
   .readout em,
   .readout.clock {
@@ -2887,7 +2904,7 @@ a.ticket:hover {
 
   --text: #eef0ff;
   --muted: #aab3d9;
-  --faint: #8a93c0;
+  --faint: #929bc8;
 
   --radar: #ffd98a; /* 금색 별 */
   --amber: #9ec2ff; /* 푸른 별: HOLDING */

@@ -292,6 +292,10 @@ const SCHEDULE_AUTO_WARN = {
   off: "off: SCHEDULE 초안은 SUPERVISOR(또는 일치 기반 자동 승인)가 승인한다.",
   on: "⚠ 기본: 서버가 열린 SCHEDULE 초안 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW를 사람 판정 없이 승인한다(via auto). NEW는 Backlog에 제안으로만 생기고 SUPERVISOR가 풀어 준다. ROUTE·TARGET·PRIORITIZE는 제안으로 남는다. 하루 상한을 넘으면 기다린다.",
 } as const;
+const EFFECT_CHECK_WARN = {
+  off: "off: 배포한 FLIGHT의 평결을 내지 않는다. 이미 낸 평결은 그대로 보인다.",
+  on: "기본: 배포한 FLIGHT가 작업 지시서 `## Measure`에 적은 것(leak·misfire·알림·CLEARANCE 수)을 배포 앞뒤 같은 기간으로 견줘 improved·not improved·worse·too little data 하나를 남긴다. 재기만 하고 아무것도 바꾸지 않는다. not improved·worse는 HOME에 보이고 틀렸다고 표시할 수 있다(그 수가 오작동 카운터).",
+} as const;
 const FLEET_PLAN_AUTO_WARN = {
   off: "off: FLEET PLAN 제안은 SUPERVISOR가 FLEET 화면에서 승인한다.",
   on: "⚠ 기본: 서버가 FLEET PLAN 제안 LAUNCH·STOP·RESTART·REFRESH·AOG를 사람 승인 없이 실행한다(세션을 띄우고 멈춘다). FUEL hold·ATC_MAX_LAUNCHED·하루 상한을 지키고, ENTRY·ACCOUNT CHANGE·REPOSITION·RETIRE·RETURN은 제안으로 남는다.",
@@ -575,6 +579,31 @@ export function LandingSettings({ server, save }: { server: Loaded; save: Save }
         <MccGatePanel />
       </Block>
 
+      <Block code="MIGRATE" label="마이그레이션 리허설(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) => (
+            <>
+              {s.migrate.airports.length === 0 && <p className="mcc-gate-note">hostedDb가 있는 AIRPORT 없음(airports.json)</p>}
+              {s.migrate.airports.map((a) => (
+                <EditRow
+                  key={a.code}
+                  label={a.code}
+                  env={`migrate.${a.code}`}
+                  value={a.enabled ? "on" : "off"}
+                  note={
+                    a.why
+                      ? `켤 수 없음 — ${a.why}`
+                      : "⚠ 켜면 AUTOLAND 주기가 CLEARED PR의 새 마이그레이션을 시험 DB에 먼저 적용하고, 통과하면 호스팅 제공자에 이미 있는 PITR·최근 백업을 확인한 뒤(atc가 만들지 않음) 실전 DB에 적용한다. 실전 적용 전의 실패는 실전이 그대로이고 PR은 머지되지 않는다. 실전 적용이 중간에 실패하거나 적용 뒤 검사가 실패하면 실전이 바뀐 채로 남고(live-changed, 자동 복원 없음) 사람이 복원을 정한다. 시험 DB는 실패해도 되돌리지 않아, 다음 리허설 전에 실전에서 다시 가져와야 한다. 이 화면에서만 바꾼다 — 세션은 못 바꿈"
+                  }
+                  input={{ kind: "select", options: ["off", "on"] }}
+                  onSave={(v) => save({ migrateRehearsal: { [a.code]: v === "on" } })}
+                />
+              ))}
+            </>
+          )}
+        </ServerRows>
+      </Block>
+
       <Block code="AUTO REVERT" label="main이 빨개지면 lander 머지 자동 되돌림(SUPERVISOR 전용)">
         <ServerRows server={server}>
           {(s) =>
@@ -657,6 +686,27 @@ export function OperationsSettings({ server, save }: { server: Loaded; save: Sav
               </>
             );
           }}
+        </ServerRows>
+      </Block>
+
+      <Block code="EFFECT CHECK" label="배포 효과 확인(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) =>
+            s.effectCheck ? (
+              <>
+                <EditRow
+                  label="평결"
+                  env="effect-check.on"
+                  value={s.effectCheck}
+                  note="effect-check.json · 평결은 effect-verdicts.jsonl에 추가만 한다 · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈"
+                  input={{ kind: "select", options: ["off", "on"] }}
+                  guard={guardOf("effectCheck", s.effectCheck, EFFECT_CHECK_WARN)}
+                  onSave={(v) => save({ effectCheck: v as "off" | "on" })}
+                />
+                <ModeLines modes={["off", "on"] as const} current={s.effectCheck} lines={EFFECT_CHECK_WARN} />
+              </>
+            ) : null
+          }
         </ServerRows>
       </Block>
 

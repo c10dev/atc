@@ -19,6 +19,12 @@ export interface ReviewSignals {
 }
 
 const KEY = /^[A-Z][A-Z0-9]*-\d+$/;
+
+// 점검 트리거의 leak 신호에서 뺄 큐 종류(ATC-401). BACKLOG는 DUTY의 제안이 SUPERVISOR의 발권을 기다리는 것이다: 그 기다림이 점검을 부르면
+// 점검이 제안을 더 올리고 제안이 기다림을 더 만드는 고리가 된다. 제안을 쏘는 것은 SUPERVISOR의 화살(원칙 10)이다
+export const REVIEW_LEAK_SKIP_KINDS: ReadonlySet<string> = new Set(["BACKLOG"]);
+export const reviewLeaksOf = (open: readonly { kind: string; title: string; since: string }[]): { title: string; sinceMs: number }[] =>
+  open.filter((o) => !REVIEW_LEAK_SKIP_KINDS.has(o.kind)).map((o) => ({ title: o.title, sinceMs: Date.parse(o.since) })).filter((x) => Number.isFinite(x.sinceMs));
 const STUCK_WHY = [NOT_RELEASED_WHY, STALE_RELEASE_WHY, "우선순위"]; // 배정을 못 받는 이유 가운데 "일감은 있다"는 뜻인 것
 
 interface DispatchLike {
@@ -113,6 +119,7 @@ export interface ReviewPromptInput {
   linear: boolean; // duty.json l1: 꺼져 있으면 이슈를 쓸 수 없다
   landing: string[]; // 착륙 대기열 줄(PR, 누가 착륙시키나, 막힘)
   alerts: string[];
+  effects?: string[]; // 열린 EFFECT CHECK 평결(not improved·worse): 배포한 FLIGHT가 목표를 못 맞췄다(ATC-402)
   openIssues: { key: string; title: string }[]; // 이미 열려 있는 일(중복 제안을 막으려고 준다)
 }
 
@@ -138,16 +145,19 @@ export function reviewPromptOf(x: ReviewPromptInput): string {
     list(x.landing),
     "live alerts:",
     list(x.alerts),
+    "open EFFECT CHECK verdicts (a deployed FLIGHT that did not move what its ## Measure named; the SUPERVISOR has not marked them wrong):",
+    list(x.effects ?? []),
     "",
     "DO:",
     "1. Name the bottleneck, if there is one, and its evidence (PR numbers, FLIGHT keys, minutes). Use only what the commands and the facts show.",
     "2. Reply with a short summary in Korean, at most 8 lines. If nothing needs doing, say that in one line.",
     x.linear
-      ? `3. For each fix worth doing, create one ATC issue with node ../controller/atcctl.mjs duty linear create --state Backlog --priority <1-4> --title '<English>' [--blocked-by ATC-n] -- '<body>'. At most ${PROPOSALS_MAX}. The body is the work-order format in ../docs/rules.ko.md (Goal, Done when, K effects, Context, Release) and its Context has an Evidence section: what you saw, with numbers and keys. Use --blocked-by when the fix must wait for a FLIGHT that is already accepted.`
+      ? `3. For each fix worth doing, create one ATC issue with node ../controller/atcctl.mjs duty linear create --state Backlog --priority <1-4> --title '<English>' [--blocked-by ATC-n] --body-file <path>. Do not put the body on the command line: a multi-line body with ## headings is blocked by Claude Code's Bash check. Write it with the Write tool to .issue-bodies/<slug>.md inside your DUTY STAND (.claude/worktrees/duty-<name>/; make one once with node ../controller/atcctl.mjs duty stand <name> if you have none) and pass that path to --body-file; atcctl refuses a file outside the STAND and deletes the file after it succeeds. At most ${PROPOSALS_MAX}. The body is the work-order format in ../docs/rules.ko.md (Goal, Done when, K effects, Measure, Context, Release; Measure is \`metric: <source>:<name>\`, \`direction: down|up\`, \`window: <n>d\` for something atc already records, or \`None\`) and its Context has an Evidence section: what you saw, with numbers and keys. Use --blocked-by when the fix must wait for a FLIGHT that is already accepted.`
       : "3. Linear writes are off (duty.json l1). Do not create issues. List the proposals in your summary, each with its evidence.",
-    "4. Never set Todo. The server refuses it in this turn. A proposal stays in Backlog until the SUPERVISOR fires it on the RELEASE screen.",
+    "4. Never set Todo. The server refuses it in this turn. A proposal stays in Backlog. The RELEASE screen lists it (once no open issue blocks it) with your name, the time, its priority and its K effects, and the SUPERVISOR fires it with one click or discards it. A proposal with no priority cannot be fired, so always set --priority.",
     "5. Do not propose what an open issue already covers (the list below). The server refuses a near-duplicate title and tells you the key; comment on that issue instead if you have new evidence.",
-    "6. Do not change the DUTY chat topic, do not send messages to other sessions, do not approve or decide anything.",
+    "6. If an EFFECT CHECK verdict above says a FLIGHT did not improve or made it worse, you may propose one follow-up for it (the same rules: Backlog, evidence, no duplicate). The server adds no trigger for this: it is one more input to this review.",
+    "7. Do not change the DUTY chat topic, do not send messages to other sessions, do not approve or decide anything.",
     "",
     `open ATC issues (${Math.min(x.openIssues.length, OPEN_ISSUES_MAX)} of ${x.openIssues.length}):`,
     x.openIssues.slice(0, OPEN_ISSUES_MAX).map((i) => `${i.key} ${i.title.slice(0, 90)}`).join("\n") || "none",

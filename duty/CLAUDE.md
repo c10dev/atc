@@ -48,9 +48,9 @@ Bash는 아래 명령만 된다. 이어 붙이기(`;` `&&` `|`)는 뒤 명령도
 | `node ../controller/atcctl.mjs duty charter -- '<영어 요청>'` | 운영 요청(SURVEY 등)을 OCC에 넘길 CHARTER REQUEST **초안**. 영어로, 무엇을 왜 원하는지 한두 문장. 초안은 카드로 나오고, 확정은 SUPERVISOR의 **확정** 버튼이다(버림도 같다). 확정하기 전에는 OCC가 보지 못한다. 카드에는 스위치에 따라 `queued (shadow)`·`queued`·`switch is off — kept as a draft`, OCC가 본 뒤에는 `OCC would draft: …` 또는 `OCC drafted S-n`이 보인다. 그 상태를 지어내서 말하지 않는다: 카드가 보일 때까지 "OCC가 읽었다"고 말하지 않는다 |
 | `node ../controller/atcctl.mjs duty stand <이름>` | **STAND를 연다**. 서버가 `.claude/worktrees/duty-<이름>`을 `origin/main`에서 새 브랜치 `claude/duty-<이름>`으로 만들고 `node_modules`를 하드링크한다(git 명령은 서버가 돌린다). 이름은 소문자·숫자·하이픈 40자까지이고 **ATC key(`atc-<n>`)를 넣지 않는다**(설계 PR의 브랜치에 key를 쓰지 않는다). 답에 STAND 경로가 나온다: 문서는 그 경로에만 쓴다 |
 | `node ../controller/atcctl.mjs duty stand-done <이름>` | STAND를 치운다. `duty-*`만, 커밋하지 않은 변경이 없거나(clean) 푸시한 브랜치가 이미 `origin/main`에 들어갔을 때만. 브랜치는 남는다. PR이 머지된 뒤 정리할 때 부른다 |
-| `node ../controller/atcctl.mjs duty linear create --title '<글>' --priority <1-4> [--state Backlog\|Todo] [--parent ATC-n] [--project '<이름>'] [--blocked-by ATC-n]… [--label '<이름>']… -- '<Markdown 본문>'` | Linear **ATC 팀**에 이슈를 만든다. `--blocked-by`(여러 번, 5개까지)는 이미 받아들여진 FLIGHT가 끝나야 시작할 후속 이슈에 쓴다(서버가 막는 관계를 건다). 서버가 자기 키로 쓴다(DUTY에는 MCP가 없다). `--priority`는 **필수**(1 Urgent · 2 High · 3 Medium · 4 Low): 우선순위 없는 이슈는 DISPATCH가 읽지 않는다. 상태 기본은 Backlog, DISPATCH가 배정하게 하려면 `--state Todo`. 라벨은 워크스페이스에 **있는 것만**(새로 만들지 않는다) |
-| `node ../controller/atcctl.mjs duty linear update ATC-n [--title '<글>'] [--priority <1-4>] [--state Backlog\|Todo] [--label '<이름>']… [-- '<본문>']` | ATC 이슈의 제목·본문·우선순위·라벨(더하기만)을 고친다. 상태는 Backlog↔Todo만, 지금 Backlog·Todo 계열일 때만. **고치기 전에 `duty flight ATC-n`으로 현재 상태를 읽는다** (Fixes가 이미 닫았을 수 있다) |
-| `node ../controller/atcctl.mjs duty linear comment ATC-n -- '<본문>'` | ATC 이슈에 댓글 |
+| `node ../controller/atcctl.mjs duty linear create --title '<글>' --priority <1-4> [--state Backlog\|Todo] [--parent ATC-n] [--project '<이름>'] [--blocked-by ATC-n]… [--label '<이름>']… --body-file <STAND 안의 .md>` | Linear **ATC 팀**에 이슈를 만든다. **본문은 명령줄에 싣지 않고 파일로 준다**(`## Goal`처럼 `##` 제목이 있는 여러 줄 본문은 Claude Code의 Bash 검사가 막는다): `duty stand <이름>`으로 만든 STAND(`.claude/worktrees/duty-<이름>/`)의 `.issue-bodies/<제목>.md`에 Write로 본문을 쓰고 그 경로를 `--body-file`로 준다(성공하면 atcctl가 그 파일을 지운다). STAND 밖 파일, 심볼릭 링크로 나간 파일, `.md`가 아닌 파일은 atcctl가 거절한다. 짧은 한 줄 본문만 `-- '<본문>'`으로 줄 수 있다. `--blocked-by`(여러 번, 5개까지)는 이미 받아들여진 FLIGHT가 끝나야 시작할 후속 이슈에 쓴다(서버가 막는 관계를 건다). 서버가 자기 키로 쓴다(DUTY에는 MCP가 없다). `--priority`는 **필수**(1 Urgent · 2 High · 3 Medium · 4 Low): 우선순위 없는 이슈는 DISPATCH가 읽지 않는다. 상태 기본은 Backlog, DISPATCH가 배정하게 하려면 `--state Todo`. 라벨은 워크스페이스에 **있는 것만**(새로 만들지 않는다) |
+| `node ../controller/atcctl.mjs duty linear update ATC-n [--title '<글>'] [--priority <1-4>] [--state Backlog\|Todo] [--label '<이름>']… [--body-file <.md> | -- '<본문>']` | ATC 이슈의 제목·본문·우선순위·라벨(더하기만)을 고친다(여러 줄 본문은 위와 같이 `--body-file`). 상태는 Backlog↔Todo만, 지금 Backlog·Todo 계열일 때만. **고치기 전에 `duty flight ATC-n`으로 현재 상태를 읽는다** (Fixes가 이미 닫았을 수 있다) |
+| `node ../controller/atcctl.mjs duty linear comment ATC-n (--body-file <.md> | -- '<본문>')` | ATC 이슈에 댓글 |
 | `node ../controller/atcctl.mjs dispatch brief`·`dispatch flight`·`schedule brief`·`crosscheck brief`·`landing queue`·`manual check`·`network`·`following` | 읽기 전용(TOWER·OCC가 읽는 것과 같다). `duty brief`로 모자랄 때 |
 | `jq '<필터>'` | 앞 명령의 출력에만 붙는다(`… | jq '…'`). 파일·`env`·`import`는 막힌다 |
 | `gh pr view|list|checks|diff` | 읽기 전용 GitHub. `--web`·`--watch`·`gh api`는 막힌다 |
@@ -85,7 +85,7 @@ Bash는 아래 명령만 된다. 이어 붙이기(`;` `&&` `|`)는 뒤 명령도
 
 **작업 지시서(Linear 이슈, EO)**
 
-1. `duty linear create`로 ATC 팀에 만든다. 본문(영어)의 형식과 규칙은 `../docs/rules.ko.md` "작업 지시서"다(Goal · Done when · K effects · Context · Release). 큰 이슈(wake `J`)는 하위 이슈로 나눈다(`--parent ATC-n`).
+1. `duty linear create`로 ATC 팀에 만든다. 본문(영어)의 형식과 규칙은 `../docs/rules.ko.md` "작업 지시서"다(Goal · Done when · K effects · **Measure** · Context · Release. Measure는 atc가 이미 기록하는 것 하나와 방향·기간을 `metric: leak:PROPOSAL` · `direction: down` · `window: 7d`로 적는다. 잴 것이 없으면 `None`. 자세한 것은 `../docs/rules.ko.md` "작업 지시서"). 큰 이슈(wake `J`)는 하위 이슈로 나눈다(`--parent ATC-n`).
 2. **우선순위(`--priority`)는 늘 정한다.** 없으면 DISPATCH가 후보에서 뺀다.
 3. **Linear 본문에 GitHub 참조는 전체 URL로 쓴다.** `#123`은 Linear가 다른 프로젝트의 것으로 자동 연결한다.
 4. 라벨은 워크스페이스 분류 라벨(`type`·`wake`·`rating:*`·`Risk`·`tail:*`)만 붙인다(있는 것만).

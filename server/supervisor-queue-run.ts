@@ -9,6 +9,9 @@ import type { Snapshot, TrafficEvent } from "./model.ts";
 import { accountFolders } from "./accounts.ts";
 import { allClearances } from "./clearances.ts";
 import { allProposals } from "./proposals.ts";
+import { candidateTeamsOf } from "./dispatch.ts";
+import { readReviewLines } from "./duty-review-store.ts";
+import { filedProposalsOf, proposalSourcesOf } from "./release-proposals.ts";
 import { queueEpoch } from "./queue-bust.ts";
 import { allRelays, lastAircraftSources } from "./relay-run.ts";
 import { relayOffersOf } from "./relay-offer.ts";
@@ -43,9 +46,11 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
     update: st ? { kind: st.kind, deployed: st.deployed, main: st.main, mainCi: st.mainCi, at: st.at } : null,
     sessions: s.sessions.filter((x) => x.status !== "dead"),
     blockedMin: config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!,
+    teamPattern: loadDispatchConfig().teamPattern,
     relays,
     clearances,
     relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now, holderRoutes: holderRoutes() ?? new Map() }),
+    backlog: filedProposalsOf(s.tickets, proposalSourcesOf(readReviewLines(), loadScheduleOps()), candidateTeamsOf(loadDispatchConfig())).map((f) => ({ key: f.key, by: f.by, at: f.at })),
     folders: accountFolders().map((f) => ({ label: f.label, dir: f.dir })),
     defaultDir: config.claudeDir,
   };

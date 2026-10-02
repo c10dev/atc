@@ -73,7 +73,7 @@ test("follow가 만든 approve도 SUMMARY의 DISPATCH 승인 대기에 세고, D
       { id: "D-2", kind: "ASSIGN", status: "proposed", flight: "ATC-6", aircraftName: "TEAM_L", holdAt: null, statusAt: iso(5) },
     ],
   });
-  const s = summaryOf({ items, fuelAccounts: [], rts: null, working: { aircraft: 0, control: 0 }, at: iso(0) });
+  const s = summaryOf({ items, waiting: [], fuelAccounts: [], rts: null, working: { aircraft: 0, control: 0 }, at: iso(0) });
   assert.equal(s.pending.dispatch, 2);
   assert.equal(proposalAlertKey(items), "follow|approve|D-1,pending|proposal|D-2");
 });

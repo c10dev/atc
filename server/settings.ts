@@ -24,7 +24,10 @@ import { type DutyConfig, loadDutyConfig } from "./duty-config.ts";
 import { dutyAccountPatchOf, effectiveDutyFolder } from "./duty-account.ts";
 import { setDutyConfig } from "./duty-run.ts";
 import { fromThisApp } from "./origin.ts";
+import { hostedDbOfAirport, loadRegistry } from "./airports.ts";
+import { loadMigrate, notReadyWhy, setMigrateAirport } from "./migrate-config.ts";
 import { AUTO_SWITCHES, type AutoSwitch } from "./autonomy-auto.ts";
+import { loadEffectSwitch, saveEffectSwitch } from "./effect-check-run.ts";
 import { loadAutoSwitch, saveAutoSwitch } from "./autonomy-auto-run.ts";
 import { resetTicketPattern } from "./sources/git.ts";
 import { resetLinear } from "./sources/linear.ts";
@@ -52,6 +55,8 @@ export interface ServerSettings {
   dispatchAuto: { mode: "shadow" | "approval"; auto: "off" | "on"; approve: AutoMode; launch: AutoMode; approveMax: number; launchMax: number; backoffMin: number };
   // SCHEDULE·FLEET PLAN 자동 적용(ATC-370): schedule.json·fleet-plan.json의 auto(기본 on). 사람 판정 없이 서버가 적용한다. 끄는 것은 SUPERVISOR만
   autonomyAuto: { schedule: AutoSwitch; fleetPlan: AutoSwitch };
+  // EFFECT CHECK(ATC-402): effect-check.json의 on(기본 on). 배포한 FLIGHT가 `## Measure`에 적은 것을 바꿨는지 재고 평결을 남긴다(아무것도 바꾸지 않는다). 끄는 것은 SUPERVISOR만
+  effectCheck: AutoSwitch;
   // AUTOLAND(ATC-34): autoland.json의 스위치와 맡은 AIRPORT, 걸린 GROUND STOP
   autoland: { mode: AutolandMode; reviewedSecurity: ReviewedSecurity; airports: string[]; applicationCheck: string; groundStops: { airport: string; sha: string; failing: string[]; at: string }[]; applicationCheckWarnings: CheckWarning[] };
   // MCC(docs/mcc.md): mcc.json의 스위치와 맡은 AIRPORT
@@ -65,6 +70,8 @@ export interface ServerSettings {
   // 판정 계열(ATC-36): judges.json의 스위치, 엔진, 키가 있는지(값은 내보내지 않음), 마지막 실행
   // 음성 콜아웃(ATC-140): 고른 엔진과 목소리(.env.local). 설치된 목소리 목록은 GET /api/voice/status
   voice: { engine: string; voice: string };
+  // 마이그레이션 리허설(ATC-368, K1·K2): hostedDb가 있는 AIRPORT마다 스위치. 켜려면 시험 DB와 토큰이 있어야 한다(why가 이유). 토큰은 있는지만
+  migrate: { tokenSet: boolean; airports: { code: string; enabled: boolean; why: string | null }[] };
   // DUTY(ATC-220): duty.json. 기본 꺼짐. 켜면 SUPERVISOR가 첫 글을 보낼 때 이 서버가 `claude -p`를 띄운다(ACCOUNT의 FUEL을 쓴다)
   duty: Pick<DutyConfig, "enabled" | "account" | "idleMin" | "charter" | "review"> & { accountWarning: string | null }; // accountWarning: 등록부에 없는 ACCOUNT라 ~/.claude로 돈다(ATC-242)
   judges: { jev: { mode: JudgeMode; engine: "stub" | "jev"; apiKeySet: boolean; lastRunAt: string | null; lastError: string | null; judged: number } };
@@ -87,6 +94,7 @@ export interface SettingsPatch {
   autoDispatch?: "off" | "on"; // dispatch.json에 쓴다(ATC-367, K3). 켜면 서버가 필터·상한을 통과한 ASSIGN·launch를 CROSSCHECK·사람 없이 승인한다. SUPERVISOR만(이 화면 Origin), atcctl 명령 없음
   scheduleAuto?: AutoSwitch; // schedule.json의 auto(ATC-370). SUPERVISOR만: 이 화면 Origin이 있어야 받는다(atcctl 명령은 없다, K3)
   fleetPlanAuto?: AutoSwitch; // fleet-plan.json의 auto(ATC-370). 위와 같다
+  effectCheck?: AutoSwitch; // effect-check.json의 on(ATC-402). SUPERVISOR만(자격이 있는 요청), atcctl 명령은 없다
   autolandMode?: AutolandMode; // autoland.json에 쓴다(ATC-34). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   autoRevert?: AutoRevertMode; // auto-revert.json에 쓴다(ATC-351). SUPERVISOR만: 이 화면 Origin이 있어야 받는다(atcctl 명령은 없다, K3)
   autolandReviewedSecurity?: ReviewedSecurity; // autoland.json의 reviewedSecurity(ATC-328). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
@@ -100,6 +108,7 @@ export interface SettingsPatch {
   dutyAccount?: string; // duty.json의 account(ATC-242): 등록부의 라벨만. 바뀌면 다음 글부터 새 대화. SUPERVISOR만
   dutyReview?: "off" | "on"; // duty.json의 review(ATC-396): 서버가 SUPERVISOR의 글 없이 DUTY 점검 턴을 시작하는 스위치. 기본 on. SUPERVISOR만(이 화면 Origin)
   dutyEnabled?: "off" | "on"; // duty.json에 쓴다(ATC-220). SUPERVISOR만: 이 화면 Origin이 있어야 받는다. 끄면 실행 중인 프로세스가 끝난다
+  migrateRehearsal?: Record<string, boolean>; // migrate.json에 쓴다(ATC-368, K1·K2). AIRPORT 코드 → 켜짐. 켜기는 시험 DB와 토큰이 준비된 AIRPORT만. SUPERVISOR만(이 화면 Origin, atcctl 명령 없음)
   judgesJev?: JudgeMode; // judges.json에 쓴다(ATC-36). SUPERVISOR만: 이 화면 Origin이 있어야 받는다. 데이터 반출을 켜는 스위치
 }
 export type SettingsErrors = Partial<Record<keyof SettingsPatch, string>>;
@@ -135,6 +144,7 @@ export function readServerSettings(): ServerSettings {
     fuel: loadDispatchConfig().fuel,
     dispatchAuto: (({ mode, autoDispatch, autoApprove, autoApproveLaunch, autoApproveMax, autoLaunchMax, autoLaunchBackoffMin }) => ({ mode, auto: autoDispatch, approve: autoApprove, launch: autoApproveLaunch, approveMax: autoApproveMax, launchMax: autoLaunchMax, backoffMin: autoLaunchBackoffMin }))(loadDispatchConfig()),
     autonomyAuto: { schedule: loadAutoSwitch("schedule"), fleetPlan: loadAutoSwitch("fleetPlan") },
+    effectCheck: loadEffectSwitch(),
     autoland: (() => {
       const a = loadAutoland();
       return { mode: a.mode, reviewedSecurity: a.reviewedSecurity, airports: a.airports, applicationCheck: a.applicationCheck, groundStops: loadAutolandState().groundStops.map(({ airport, sha, failing, at }) => ({ airport, sha, failing, at })), applicationCheckWarnings: [...getCheckWarnings()] };
@@ -148,6 +158,12 @@ export function readServerSettings(): ServerSettings {
     fleetPlan: { reposition: loadReposition().mode, repositionDailyMax: loadReposition().dailyMax },
     voice: { engine: config.ttsEngine, voice: config.ttsVoice },
     duty: (({ enabled, account, idleMin, charter, review }) => ({ enabled, account, idleMin, charter, review, accountWarning: effectiveDutyFolder(account, accountFolders(), config.claudeDir).warning }))(loadDutyConfig()),
+    migrate: {
+      tokenSet: Boolean(config.supabaseMigrateToken),
+      airports: loadRegistry()
+        .entries.filter((e) => !e.closed && hostedDbOfAirport(e.path))
+        .map((e) => ({ code: e.code, enabled: loadMigrate().airports[e.code.toUpperCase()] === true, why: notReadyWhy(hostedDbOfAirport(e.path), config.supabaseMigrateToken) })),
+    },
     judges: { jev: { mode: loadJudges().jev, engine: engineName(), apiKeySet: Boolean(config.typesafeApiKey), ...judgeStatus.jev } },
   };
 }
@@ -260,13 +276,14 @@ export function mountSettings(app: Hono) {
     // judgesJev는 judges.json에 쓴다(ATC-36)
     // mccMode는 mcc.json에 쓴다(docs/mcc.md)
     // fuelHold는 dispatch.json fuel.hold에 쓴다(ATC-55)
-    const { reviewSecurity, autolandMode, autolandReviewedSecurity, autoRevert, judgesJev, mccMode, mccKApproval, fuelHold, autoApprove, autoApproveLaunch, autoDispatch, scheduleAuto, fleetPlanAuto, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, dutyEnabled, dutyCharter, dutyReview, dutyAccount, ...rest } = body as Record<string, unknown>;
+    const { reviewSecurity, autolandMode, autolandReviewedSecurity, autoRevert, judgesJev, mccMode, mccKApproval, fuelHold, autoApprove, autoApproveLaunch, autoDispatch, scheduleAuto, fleetPlanAuto, effectCheck, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, dutyEnabled, dutyCharter, dutyReview, dutyAccount, migrateRehearsal, ...rest } = body as Record<string, unknown>;
     if (fuelHold !== undefined && fuelHold !== "off" && fuelHold !== "on") return c.json({ errors: { fuelHold: `off 또는 on` } }, 400);
     if (autoApprove !== undefined && !AUTO_MODES.includes(autoApprove as AutoMode)) return c.json({ errors: { autoApprove: `off, shadow, on 중 하나` } }, 400);
     if (autoApproveLaunch !== undefined && !AUTO_MODES.includes(autoApproveLaunch as AutoMode)) return c.json({ errors: { autoApproveLaunch: `off, shadow, on 중 하나` } }, 400);
     if (autoDispatch !== undefined && autoDispatch !== "off" && autoDispatch !== "on") return c.json({ errors: { autoDispatch: `off 또는 on` } }, 400);
     if (scheduleAuto !== undefined && !AUTO_SWITCHES.includes(scheduleAuto as AutoSwitch)) return c.json({ errors: { scheduleAuto: `off 또는 on` } }, 400);
     if (fleetPlanAuto !== undefined && !AUTO_SWITCHES.includes(fleetPlanAuto as AutoSwitch)) return c.json({ errors: { fleetPlanAuto: `off 또는 on` } }, 400);
+    if (effectCheck !== undefined && !AUTO_SWITCHES.includes(effectCheck as AutoSwitch)) return c.json({ errors: { effectCheck: `off 또는 on` } }, 400);
     if (reviewSecurity !== undefined && !EXTERNAL_REVIEW_SECURITY.includes(reviewSecurity as ExternalReviewSecurity))
       return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
     if (autolandMode !== undefined && !AUTOLAND_MODES.includes(autolandMode as AutolandMode)) return c.json({ errors: { autolandMode: `off, update, merge 중 하나` } }, 400);
@@ -294,6 +311,21 @@ export function mountSettings(app: Hono) {
     const dutyAcct = dutyAccount === undefined ? null : dutyAccountPatchOf(dutyAccount, observedLabelsOn(accountFolders()) ? accountFolders().map((f) => f.label) : []);
     if (dutyAcct && !dutyAcct.ok) return c.json({ errors: { dutyAccount: dutyAcct.error } }, 400);
     if (dutyCharter !== undefined && dutyCharter !== "off" && dutyCharter !== "shadow" && dutyCharter !== "on") return c.json({ errors: { dutyCharter: `off, shadow, on 중 하나` } }, 400);
+    // 마이그레이션 리허설 스위치(ATC-368): {AIRPORT 코드: true|false}. 켜기는 시험 DB와 토큰이 준비된 AIRPORT만
+    const migrateChanges: { code: string; on: boolean; db: ReturnType<typeof hostedDbOfAirport> }[] = [];
+    if (migrateRehearsal !== undefined) {
+      const m = migrateRehearsal as Record<string, unknown>;
+      if (!m || typeof m !== "object" || Array.isArray(m) || !Object.keys(m).length || Object.values(m).some((v) => typeof v !== "boolean"))
+        return c.json({ errors: { migrateRehearsal: `AIRPORT 코드 → true 또는 false` } }, 400);
+      const entries = loadRegistry().entries.filter((e) => !e.closed);
+      for (const [code, on] of Object.entries(m)) {
+        const e = entries.find((x) => x.code.toUpperCase() === code.toUpperCase());
+        const db = e ? hostedDbOfAirport(e.path) : null;
+        if (!e || !db) return c.json({ errors: { migrateRehearsal: `${code}: hostedDb가 있는 AIRPORT가 아님` } }, 400);
+        if (on === true && notReadyWhy(db, config.supabaseMigrateToken)) return c.json({ errors: { migrateRehearsal: `${code}: ${notReadyWhy(db, config.supabaseMigrateToken)}` } }, 400);
+        migrateChanges.push({ code, on: on as boolean, db });
+      }
+    }
     const { env, errors } = validatePatch(rest);
     if (Object.keys(errors).length) return c.json({ errors }, 400);
     if (Object.keys(env).length) {
@@ -307,6 +339,7 @@ export function mountSettings(app: Hono) {
     if (autoDispatch !== undefined) saveAutoDispatch(autoDispatch);
     if (scheduleAuto !== undefined) saveAutoSwitch("schedule", scheduleAuto as AutoSwitch);
     if (fleetPlanAuto !== undefined) saveAutoSwitch("fleetPlan", fleetPlanAuto as AutoSwitch);
+    if (effectCheck !== undefined) saveEffectSwitch(effectCheck as AutoSwitch);
     if (autolandMode !== undefined) setAutolandMode(autolandMode as AutolandMode);
     if (autoRevert !== undefined) setAutoRevertMode(autoRevert as AutoRevertMode);
     if (autolandReviewedSecurity !== undefined) setReviewedSecurity(autolandReviewedSecurity as ReviewedSecurity);
@@ -317,12 +350,13 @@ export function mountSettings(app: Hono) {
     if (controlRecycleCaps !== undefined) setRecycleCaps(controlRecycleCaps as Record<string, number | null>);
     if (controlRecycleAuto !== undefined) setRecycleAuto(controlRecycleAuto as Record<string, boolean>);
     if (controlRecycleMode !== undefined) setRecycleMode(controlRecycleMode as RecycleMode);
+    for (const ch of migrateChanges) setMigrateAirport(ch.code, ch.on, ch.db, config.supabaseMigrateToken);
     if (dutyEnabled !== undefined) await setDutyConfig({ enabled: dutyEnabled === "on" });
     if (dutyCharter !== undefined) await setDutyConfig({ charter: dutyCharter });
     if (dutyReview !== undefined) await setDutyConfig({ review: dutyReview === "on" });
     if (dutyAcct?.ok) await setDutyConfig({ account: dutyAcct.label });
     console.log(
-      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(fuelHold !== undefined ? [`fuel.hold=${fuelHold}`] : []), ...(autoApprove !== undefined ? [`autoApprove=${autoApprove}`] : []), ...(autoApproveLaunch !== undefined ? [`autoApproveLaunch=${autoApproveLaunch}`] : []), ...(autoDispatch !== undefined ? [`autoDispatch=${autoDispatch}`] : []), ...(scheduleAuto !== undefined ? [`schedule.auto=${scheduleAuto}`] : []), ...(fleetPlanAuto !== undefined ? [`fleet-plan.auto=${fleetPlanAuto}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(autoRevert !== undefined ? [`autoRevert=${autoRevert}`] : []), ...(autolandReviewedSecurity !== undefined ? [`autoland.reviewedSecurity=${autolandReviewedSecurity}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : []), ...(mccKApproval !== undefined ? [`mcc.kApproval=${mccKApproval}`] : []), ...(dutyEnabled !== undefined ? [`duty.enabled=${dutyEnabled}`] : []), ...(dutyCharter !== undefined ? [`duty.charter=${dutyCharter}`] : []), ...(dutyReview !== undefined ? [`duty.review=${dutyReview}`] : []), ...(dutyAcct?.ok ? [`duty.account=${dutyAcct.label}`] : [])].join(", ")}`,
+      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(fuelHold !== undefined ? [`fuel.hold=${fuelHold}`] : []), ...(autoApprove !== undefined ? [`autoApprove=${autoApprove}`] : []), ...(autoApproveLaunch !== undefined ? [`autoApproveLaunch=${autoApproveLaunch}`] : []), ...(autoDispatch !== undefined ? [`autoDispatch=${autoDispatch}`] : []), ...(scheduleAuto !== undefined ? [`schedule.auto=${scheduleAuto}`] : []), ...(fleetPlanAuto !== undefined ? [`fleet-plan.auto=${fleetPlanAuto}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(autoRevert !== undefined ? [`autoRevert=${autoRevert}`] : []), ...(autolandReviewedSecurity !== undefined ? [`autoland.reviewedSecurity=${autolandReviewedSecurity}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : []), ...(mccKApproval !== undefined ? [`mcc.kApproval=${mccKApproval}`] : []), ...(dutyEnabled !== undefined ? [`duty.enabled=${dutyEnabled}`] : []), ...migrateChanges.map((m) => `migrate.${m.code}=${m.on ? "on" : "off"}`), ...(dutyCharter !== undefined ? [`duty.charter=${dutyCharter}`] : []), ...(dutyReview !== undefined ? [`duty.review=${dutyReview}`] : []), ...(dutyAcct?.ok ? [`duty.account=${dutyAcct.label}`] : [])].join(", ")}`,
     );
     return c.json(readServerSettings());
   });

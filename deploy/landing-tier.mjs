@@ -27,6 +27,8 @@ const FLAGGED = [[/^(controller|occ|crosscheck|review|mcc|dispatch|duty)\//, "�
 // 명령을 돌리거나 GET 아닌 fetch를 하는 server 파일은 여기나 READ_ONLY에 반드시 올라야 한다(landing-tier.test.mjs).
 export const SIDE_EFFECT = [
   ["server/autoland-run.ts", "PR 머지·브랜치 갱신·코멘트(gh api)"],
+  ["server/sources/supabase-sql.ts", "Supabase Management API POST: 시험·실전 호스티드 DB에 SQL 실행(마이그레이션 리허설, ATC-368, K1·K2)"],
+  ["server/migrate-run.ts", "마이그레이션 리허설 실행: gh로 PR 파일을 읽고 supabase-sql로 시험·실전 DB에 적용(ATC-368, K1·K2)"],
   ["server/mcc-run.ts", "PR 머지·INSPECTION 코멘트·atc-rts 유닛 시작"],
   ["server/human-check-run.ts", "PR 본문 수정·코멘트(gh api)"],
   ["server/sources/linear-write.ts", "Linear GraphQL mutation: 이슈 상태 옮기기(DUTY G3), 이슈 만들기·고치기·댓글(DUTY D7a). 서버가 Linear에 쓰는 유일한 파일"],

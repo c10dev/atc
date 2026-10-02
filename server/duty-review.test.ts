@@ -2,7 +2,7 @@ import "./test-hermetic.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseDutyConfig } from "./duty-config.ts";
-import { decideReview, nextReviewId, openSimilarKey, PROPOSALS_MAX, REVIEW_DAILY_MAX, reviewDaysOf, reviewKeyOf, reviewPromptOf, type ReviewConfig, type ReviewLine, type ReviewMemo, type ReviewSignals, signalsOf } from "./duty-review.ts";
+import { decideReview, nextReviewId, openSimilarKey, PROPOSALS_MAX, REVIEW_DAILY_MAX, REVIEW_LEAK_SKIP_KINDS, reviewDaysOf, reviewKeyOf, reviewLeaksOf, reviewPromptOf, type ReviewConfig, type ReviewLine, type ReviewMemo, type ReviewSignals, signalsOf } from "./duty-review.ts";
 import type { Ticket } from "./model.ts";
 import { NOT_RELEASED_WHY } from "./release.ts";
 
@@ -169,4 +169,23 @@ test("decideReview: DUTY ACCOUNT의 FUEL이 HOLD면 서버가 시작하는 턴�
   const many: ReviewMemo[] = Array.from({ length: REVIEW_DAILY_MAX }, (_, i) => ({ at: NOW - (31 + i) * MIN, trigger: "schedule", key: "" }));
   assert.equal(decideReview({ ...due, lastAt: NOW - 31 * MIN, history: many, signals: { ...calm, leakMin: 500, leakTitle: "x" } }).why, "cap");
   assert.equal(decideReview({ ...due, history: many.slice(1) }).run, true);
+});
+
+test("reviewLeaksOf(ATC-401): 제안이 기다리는 BACKLOG leak은 점검 트리거의 leak 신호가 아니다 — 고리를 막는다", () => {
+  const since = (agoMin: number) => new Date(NOW - agoMin * MIN).toISOString();
+  const open = [
+    { kind: "BACKLOG", title: "ATC-9 ← DUTY REVIEW R-0007", since: since(600) }, // 가장 오래된 기다림
+    { kind: "LANDING", title: "PR #9 ATC-9", since: since(90) },
+    { kind: "UPDATE", title: "abc → def", since: since(10) },
+  ];
+  const leaks = reviewLeaksOf(open);
+  assert.deepEqual(leaks.map((l) => l.title), ["PR #9 ATC-9", "abc → def"]);
+  // 신호로는 BACKLOG가 가장 오래 기다려도 LANDING이 가장 오래된 leak이다
+  assert.deepEqual([signalsOf(null, leaks, NOW).leakMin, signalsOf(null, leaks, NOW).leakTitle], [90, "PR #9 ATC-9"]);
+  // BACKLOG만 기다리면 leak 신호가 없고, 한 주기 결정은 leak 점검을 하지 않는다(정기 간격이 안 지났으면 조용하다)
+  const only = signalsOf(null, reviewLeaksOf([open[0]!]), NOW);
+  assert.deepEqual([only.leakMin, only.leakTitle], [null, null]);
+  const d = decideReview({ now: NOW, lastAt: NOW - 60 * MIN, busy: false, cfg, signals: only, idleSince: null });
+  assert.deepEqual([d.run, d.why], [false, "quiet"]);
+  assert.ok(REVIEW_LEAK_SKIP_KINDS.has("BACKLOG") && REVIEW_LEAK_SKIP_KINDS.size === 1);
 });

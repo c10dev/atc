@@ -15,6 +15,7 @@ interface Row {
   priority: number;
   kEffects: string | null;
   state: "ready" | "unreleased" | "stale";
+  why?: string | null; // 발권을 거둔 이유(마이그레이션 리허설이 멈춤 등)
 }
 interface Proposal {
   id: string;
@@ -43,9 +44,20 @@ interface Recent {
   session: string | null;
 }
 type Channel = "screen" | "duty-chat" | "attested";
+// atc가 Backlog에 올린 제안(ATC-401): DUTY REVIEW·SCHEDULE NEW. 쏘거나 버릴 때까지 여기 있다
+interface Filed {
+  key: string;
+  title: string;
+  hash: string | null;
+  priority: number;
+  kEffects: string | null;
+  by: string;
+  at: string;
+}
 interface ReleaseData {
   gate: { mode: "auto" | "on" | "off"; on: boolean; armedAt: string | null };
   ready: Row[];
+  filed: Filed[];
   proposals: Proposal[];
   unreleased: Row[];
   kPending?: KPending[];
@@ -87,6 +99,8 @@ export function Release({ refreshKey }: { refreshKey: string }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirm, setConfirm] = useState(false);
+  const [discarding, setDiscarding] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -119,6 +133,13 @@ export function Release({ refreshKey }: { refreshKey: string }) {
       setBusy(null);
     }
   };
+  const fireFiled = (f: Filed) => run(f.key, () => send("/api/releases/fire", { flight: f.key, hash: f.hash }));
+  const discard = (f: Filed) =>
+    run(f.key, async () => {
+      await send("/api/releases/discard", { flight: f.key, hash: f.hash, reason });
+      setDiscarding(null);
+      setReason("");
+    });
   const fireReady = (r: Row) => run(r.key, () => send("/api/releases/fire", { flight: r.key, hash: r.hash }));
   const releaseTodo = (r: Row) => run(r.key, () => send("/api/releases", { flight: r.key, hash: r.hash }));
   const confirmK = (r: KPending) => run(`k-${r.key}`, () => send("/api/releases/k-confirm", { flight: r.key, hash: r.hash }));
@@ -131,7 +152,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
       ? "발권 gate 꺼짐(dispatch.json releaseGate) — 발권 없이도 배정합니다"
       : "일괄 확인을 하면 이때부터 발권한 FLIGHT만 배정합니다. 그 전까지는 발권 없이도 배정합니다";
   const attested = Object.entries(data.attested);
-  const candidates = data.ready.length + data.proposals.length;
+  const candidates = data.filed.length + data.ready.length + data.proposals.length;
 
   return (
     <div className="rl-screen">
@@ -144,7 +165,56 @@ export function Release({ refreshKey }: { refreshKey: string }) {
         <h3 className="label">
           후보 <em>{candidates ? `${candidates}건` : "없음"}</em>
         </h3>
-        {candidates === 0 && <p className="faint rl-none">발권할 후보 없음 — 막는 FLIGHT가 모두 끝난 Backlog 이슈와 에이전트 제안이 여기 옵니다</p>}
+        {candidates === 0 && <p className="faint rl-none">발권할 후보 없음 — DUTY REVIEW·SCHEDULE NEW가 올린 Backlog 제안과 막는 FLIGHT가 모두 끝난 Backlog 이슈가 여기 옵니다</p>}
+        {data.filed.length > 0 && (
+          <ul className="rl-list" aria-label="제안">
+            {data.filed.map((f) => (
+              <li key={f.key}>
+                <b>
+                  <OpenFlight k={f.key} />
+                </b>
+                <PriorityMark priority={f.priority} />
+                <span className="rl-title">{f.title}</span>
+                <span className="faint rl-kind">제안</span>
+                <span className="rl-sub">
+                  <span className="rl-who" title="누가 언제 제안했나">
+                    {f.by} · <span className="mono">{clock(f.at)}</span>
+                  </span>
+                  <KEffects text={f.kEffects} />
+                  {f.priority <= 0 && <span className="rl-warn">우선순위가 없어 Todo로 옮기지 않습니다(DISPATCH가 건너뜁니다). 먼저 정합니다</span>}
+                </span>
+                <span className="rl-acts">
+                  {discarding === f.key ? (
+                    <>
+                      <input className="rl-reason" aria-label={`${f.key}를 버리는 사유`} placeholder="버리는 사유(선택)" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy !== null} />
+                      <button type="button" className="rl-btn" disabled={busy !== null} onClick={() => discard(f)}>
+                        버리기
+                      </button>
+                      <button type="button" className="rl-btn is-quiet" disabled={busy !== null} onClick={() => { setDiscarding(null); setReason(""); }}>
+                        취소
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {f.priority > 0 ? (
+                        <button type="button" className="rl-btn" disabled={busy !== null} onClick={() => fireFiled(f)} aria-label={`${f.key} 발권: Todo로 옮기고 발권`}>
+                          발권
+                        </button>
+                      ) : (
+                        <a className="rl-btn is-link" href={`#flight/${f.key}`} title="우선순위가 없으면 DISPATCH가 배정하지 않습니다. FLIGHT 서랍에서 먼저 정합니다">
+                          우선순위 먼저
+                        </a>
+                      )}
+                      <button type="button" className="rl-btn is-quiet" disabled={busy !== null} onClick={() => { setDiscarding(f.key); setReason(""); }} aria-label={`${f.key} 버리기`} title="Canceled로 옮기고 사유를 이슈에 남깁니다">
+                        버림…
+                      </button>
+                    </>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
         {data.ready.length > 0 && (
           <ul className="rl-list" aria-label="READY Backlog">
             {data.ready.map((r) => (
@@ -178,7 +248,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
                 <span className="rl-title" title={p.reason}>{p.title}</span>
                 <span className="faint rl-kind">SCHEDULE NEW</span>
                 <KEffects text={p.kEffects} />
-                <a className="rl-btn is-link" href="#home" title="아직 이슈가 아닙니다. HOME의 QUEUE에서 승인하면 Backlog 이슈가 생기고(SCHEDULE AUTO가 켜져 있으면 서버가 승인합니다), 그 뒤 여기서 발권합니다">
+                <a className="rl-btn is-link" href="#home" title="아직 이슈가 아닙니다. HOME의 QUEUE에서 승인하면 Backlog 이슈가 생기고(SCHEDULE AUTO가 켜져 있으면 서버가 승인합니다), 그 뒤 이 화면의 제안 줄로 올라와 한 번의 클릭으로 발권합니다">
                   HOME에서 승인
                 </a>
               </li>
@@ -221,7 +291,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
                   </b>
                   <PriorityMark priority={r.priority} />
                   <span className="rl-title">{r.title}</span>
-                  <span className="faint rl-kind">{r.state === "stale" ? "발권 뒤 내용이 바뀜" : "Todo"}</span>
+                  <span className="faint rl-kind">{r.why ? `발권 거둠 — ${r.why}` : r.state === "stale" ? "발권 뒤 내용이 바뀜" : "Todo"}</span>
                   <KEffects text={r.kEffects} />
                   <button type="button" className="rl-btn" disabled={busy !== null} onClick={() => releaseTodo(r)} aria-label={`${r.key} 발권`}>
                     발권
