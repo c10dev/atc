@@ -261,3 +261,7 @@ atc가 점유로 HANDOFF와 충돌을 판정하는 방법은 저장소 [README](
 `kill <pid>`, `kill "$(cat <임시 폴더>/server.pid)"`, `systemctl … atc-rts`, 읽기만 하는 `systemctl status`는 막지 않는다. 낱말만 들어 있는 명령(`echo 'pkill …'`, `grep`)도 통과한다. hook 입력을 읽거나 해석하지 못하면 막는다. 설정 항목은 `… || exit 2`이고, 프로젝트 폴더에 hook이 없으면(관제 폴더) main 체크아웃의 것(`/home/c10/projects/atc/hooks/kill-guard.mjs`)으로 돌아, hook이 없을 때는 통과하지 않고 막는다.
 
 이 저장소에서 연 세션만 덮는다. 다른 저장소(vocado)의 세션에는 그 저장소 설정에 같은 hook이 있어야 한다.
+
+## Policy hook (`policy.mjs`)
+
+`policy.mjs`는 atc가 모든 AIRCRAFT LAUNCH에 `claude --bg --settings`로 더하는 `PermissionRequest` hook이다(ATC-369. `.claude/settings.json`에는 없어서 관제 세션과 직접 여는 세션은 받지 않는다). 권한 프롬프트가 뜰 호출마다 허용이나 거절로 답한다: AIRCRAFT의 STAND 안은 허용, 나머지(Claude 설정 폴더, STAND 밖 쓰기, 운영 상태, Playwright가 아닌 MCP 도구 …)는 거절. 거절은 한 줄(시각, REGISTRATION, 세션, 도구, class. 명령·경로 본문 없음)씩 `<상태 폴더>/policy-denials.jsonl`에 남는다. fail-closed. 인자: `--state <폴더> --aircraft <REGISTRATION>`. 규칙과 화면은 [docs/fleet.ko.md](../docs/fleet.ko.md) "AIRCRAFT policy hook과 STALE STOP as built (ATC-369)"에 있다. `policy.test.mjs`가 허용·거절 경우를 확인한다.

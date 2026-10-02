@@ -38,6 +38,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - `approve Entering worktree`로 멈추면 `STAND outside .claude/worktrees — attach and approve; see CREW BRIEFING`이 같이 보인다. 팀이 `.claude/worktrees/` 밖으로 워크트리를 열려 한 것이다. `claude attach`로 붙어 승인하면 이어 간다. atc가 띄운 팀의 CREW BRIEFING에는 STAND를 `EnterWorktree name=…`으로 열라는 규칙이 들어 있어 보통은 멈추지 않는다.
 - 답을 받으면 세션이 `working`이 되어 표시와 경보가 저절로 사라진다. 이때는 흐린 글씨로 세션이 하는 일이 보인다.
 - **승인 프롬프트에 서 있는 세션**은 Claude Code가 `working`으로 적고 `needs`에 `approve Write: …`를 함께 적는다(`blocked`가 아니다). 이때는 `NEEDS YOU`가 아니라 `PENDING · approve Write: …`(파란색)가 줄·카드(경보 띠)에 붙고, 10분이 지나면 SUPERVISOR 알림이 CAUTION으로 오른다. 그 세션에게 가는 호출이 답을 못 받고 있으면 바로 오르고 글에 `1 call waiting (FLIGHT PLAN D-0336)`처럼 적힌다. 승인은 늘 SUPERVISOR가 그 세션에서 한다. atc는 아무것도 보내지 않는다.
+- **AIRCRAFT는 사람에게 도구 승인을 묻지 않는다**(ATC-369). atc가 띄우는 AIRCRAFT에는 policy hook이 실려, 프롬프트가 뜰 호출을 hook이 정한다: STAND 안의 알려진 안전한 동작은 허용, 나머지(Claude 설정 폴더 쓰기, STAND 밖 쓰기, 운영 상태 …)는 거절하고 class별로 센다. FLEET 머리에 `PENDING 0 · DENIED 24h n · STALE STOP on`이 보이고, PENDING이 0이 아니면 파랗게 바뀐다. 또 FLIGHT가 머지·ARRIVED인데 PENDING·HUNG으로 30분 남은 AIRCRAFT는 서버가 멈춘다(기본 on, 끄는 곳은 설정 → OPERATIONS → STALE STOP, 당신만). 카드의 job 한 줄은 `… · last known, 17 h ago`처럼 나이와 함께 보인다.
 
 ## 세션이 멈췄을 때: AIRCRAFT health
 

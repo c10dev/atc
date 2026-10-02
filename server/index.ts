@@ -35,6 +35,8 @@ import { foldReports, readReports } from "./arrival-report.ts";
 import { readWips, wipView } from "./charter-wip.ts";
 import { restartSafetyOf } from "./occ-safe.ts";
 import { recordDepartures } from "./departures.ts";
+import { mountPolicy } from "./policy-run.ts";
+import { runStaleStop } from "./stale-stop-run.ts";
 import { loadLogbook, mountLogbook, runLogbook } from "./logbook.ts";
 import { diffSnapshots, EventLog, isWarm } from "./events.ts";
 import { mountMetrics } from "./metrics.ts";
@@ -246,6 +248,11 @@ setInterval(() => {
   if (!current) return;
   void runAutoApprove(current, { max: MAX_LAUNCHED, launch: (s, reg, proposal, resume) => launchForCard(s, reg, proposal, resume, "auto") }).catch((e) => console.error("[atc] auto approve failed:", e));
 }, 60_000).unref();
+// STALE STOP(ATC-369): FLIGHT가 끝났는데 PENDING·HUNG으로 30분 남은 AIRCRAFT를 멈춘다. 스위치(dispatch.json staleStop)는 기본 on, SUPERVISOR만 끈다. 1분에 한 번
+setInterval(() => {
+  if (!current) return;
+  void runStaleStop(current).catch((e) => console.error("[atc] stale stop failed:", e));
+}, 60_000).unref();
 // CONTROL RECYCLE(ATC-166): 스위치가 off(기본)면 아무것도 하지 않는다. shadow는 "재시작했을 것"만 FLIGHT RECORDER에 남긴다. 1분에 한 번
 const recycleFacts = {
   now: Date.now,
@@ -272,6 +279,7 @@ setInterval(() => {
 }, 60_000).unref();
 mountControlRecycle(app);
 mountSettings(app);
+mountPolicy(app, getSnapshot); // AIRCRAFT policy hook(ATC-369): PENDING 수와 거절을 class별로(읽기만)
 mountAccounts(app, getSnapshot);
 mountJudges(app);
 mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다

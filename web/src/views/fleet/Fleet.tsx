@@ -21,6 +21,7 @@ import { Editor } from "./Editor.tsx";
 import { EntryForm } from "./EntryForm.tsx";
 import { FuelAccounts } from "./Fuel.tsx";
 import type { LaunchInfo, LaunchInput } from "./LaunchPanel.tsx";
+import { PolicyLine } from "./PolicyLine.tsx";
 import { type FleetBrief, type SessionBrief, api } from "./shared.ts";
 import { StatusList } from "./StatusList.tsx";
 
@@ -254,6 +255,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
           <ApplyNow compact refreshKey={refreshKey} onDone={load} />
         </p>
       )}
+      <PolicyLine refreshKey={refreshKey} />
       {brief.launchAccount?.warnings.map((w) => (
         <p key={w} className="fl-error">
           {w}

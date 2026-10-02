@@ -1300,6 +1300,20 @@ FLEET PLAN 블록의 FUEL(8.6의 "주간 사용량 줄")은 만들었다(ATC-63)
 - **다시 blocked가 된 job(ATC-138).** `since`는 `timeline.jsonl`에서 `blocked`가 이어진 줄들의 첫 줄이라, 답하고 일하다가 `working` 줄 없이 다시 blocked가 된 job은 옛 `since`를 그대로 갖고, ATC-133의 규칙은 그 뒤 턴을 답으로 읽었다. `settleJob`은 이제 마지막 턴을 `state.json`을 마지막으로 쓴 때(`writtenAt`: `updatedAt`, 없으면 파일 mtime, 그것도 없으면 `since`)와 견준다. 지금 `needs`·`detail`이 적힌 때다. `blocked`가 끝난 것은 `tempo`가 `active`일 때, 또는 마지막 턴이 `writtenAt`+30초 GRACE보다 나중이고 `tempo`가 `blocked`가 아닐 때뿐이다. `tempo: blocked`이고 `needs`가 있으면 뒤에 턴이 이어져도 끝난 것으로 보지 않는다. 경보의 "N분째"는 계속 `since`부터 센다(PILOT'S DISCRETION: `updatedAt`은 새 기다림이 아닌 이유로도 움직여서, 그것으로 세면 진짜 긴 기다림을 가릴 수 있다).
 - **확인한 버전** Claude Code 2.1.284(2026-09-29). Claude Code 내부 파일이라 파일이 없거나 다른 버전이거나 모르는 state면 아무것도 보이지 않고 오류도 내지 않는다.
 
+### AIRCRAFT policy hook과 STALE STOP as built (ATC-369)
+
+어떤 AIRCRAFT도 도구 권한 때문에 사람을 기다리지 않고, FLIGHT가 끝난 AIRCRAFT가 슬롯이나 경보를 계속 쥐고 있지 않는다.
+
+- **policy hook.** `hooks/policy.mjs`는 `PermissionRequest` hook이다. Claude Code는 프롬프트가 뜰 호출에만 이 hook을 부르고, hook은 허용이나 거절로 답한다. `launchAircraft`(AIRCRAFT LAUNCH의 단일 길: FLEET LAUNCH, FLEET PLAN, DISPATCH launch 카드, AUTO LAUNCH, FRESH START, REPOSITION)가 `claude --bg`에 `--settings '{"hooks":{"PermissionRequest":[…]}}'`를 더한다(`server/policy-hook.ts`, `server/policy-hook.test.ts`가 확인). `--settings`는 폴더의 설정에 더해지므로 기존 guard와 hook은 그대로 돌고, permission mode·허용 목록·관제 세션은 건드리지 않는다.
+- **허용**(AIRCRAFT의 STAND 안: `<repo>/.claude/worktrees/<이름>` 또는 `…/projects/worktrees/<이름>`): STAND나 `~/.claude*/jobs/<id>/tmp` 안의 Edit·Write, 프로젝트 폴더 읽기, 일상 Bash(force·stash·clean·worktree add·main push가 아닌 버전 관리 명령, npm test·run·ci·install, tsc·vite·node, 대상이 STAND 안인 cp·mv·rm·mkdir·sed -i·리다이렉션, localhost `curl`(7700 쓰기는 안 됨), `gh pr create·view·list·checks·diff·comment·ready`와 `gh api` GET·PR 본문 PATCH), 다른 `TEAM_*`가 아닌 곳으로의 SendMessage, EnterWorktree와 권한이 필요 없는 도구, localhost의 Playwright.
+- **거절**(기록한다): 나머지 전부. Claude 설정 폴더(`~/.claude*`)와 저장소 메타데이터 폴더 쓰기, STAND 밖이나 STAND에 들어가기 전의 쓰기, `~/.local/state/atc`, `.env*`·ssh 키 읽기, `bash -c`·`eval`·`sudo`·`systemctl`, 읽을 수 없는 명령 치환, MCP 도구(Playwright 제외), WebFetch, 모르는 도구. 거절 메시지는 다시 시도하지 말고 BLOCKED로 보고하라고 알린다.
+- **기록.** 거절마다 `<상태 폴더>/policy-denials.jsonl`에 한 줄: 시각, REGISTRATION, 세션, 도구, **class**(`claude-config`, `rm:outside-stand`, `mcp` …). 명령이나 경로의 본문은 저장하지 않는다. fail-closed: 입력을 읽거나 해석하지 못하면 거절한다.
+- **샌드박스가 아니다.** STAND 안에서 `node`·`npm`이 아무 코드나 도는 것은 전과 같다. hook은 누구에게 묻는지를 정하지, 코드가 무엇을 할 수 있는지를 정하지 않는다. kill-guard와 다른 hook은 그대로다.
+- **화면.** FLEET에 `PENDING <n>`(0이 정상, 아니면 파란색), `DENIED 24h <n>`과 많은 class, `STALE STOP on|off`가 보인다(`GET /api/policy`, 읽기만, `server/policy-run.ts`).
+- **STALE STOP.** `server/stale-stop-run.ts`가 1분에 한 번, health가 30분째 `PENDING`·`HUNG`이고 FLIGHT가 끝난 `claude --bg` AIRCRAFT를 멈춘다(`stopAircraft`라 FLIGHT RECORDER에 `by`가 `auto stale-stop (…)`인 `fleet stop` 줄과 `policy stale-stop` 줄이 남는다). 끝났다는 것은: 이 세션이 뜬 뒤의 LOGBOOK 도착(머지나 ARRIVED)이 있고, 아직 쥔 FLIGHT가 모두 도착한 것이다. STOP이 실패하면 10분 쉰다. 규칙은 `server/stale-stop.ts`(순수).
+- **스위치.** `dispatch.json`의 `staleStop`, 기본 **on**(live first, shadow 없음). 바꾸는 것은 SUPERVISOR만: 설정 → OPERATIONS → STALE STOP, 앱 Origin이 있는 `PUT /api/settings`(`fromThisApp`). `atcctl` 명령은 없다. 바꾸면 `policy stale-stop-mode` 줄이 남는다.
+- **나이가 붙은 job detail.** AIRCRAFT 카드·목록 줄·NEEDS YOU 줄은 백그라운드 job의 `detail`을 지금 하는 일이 아니라 `… · last known, 17 h ago`로 보인다(`server/job-age.ts`). 나이는 `writtenAt`, 없으면 `since`에서 센다.
+
 ### ACTIVITY as built (ATC-97)
 
 살아 있는 Claude AIRCRAFT마다 ACTIVITY 한 줄이 붙는다: 마지막으로 부른 도구, 짧은 라벨, 그 도구가 아직 도는지·모델 응답을 기다리는지·쉬는지, 그리고 그게 언제 시작됐는지. 메시지 본문은 담지 않는다.

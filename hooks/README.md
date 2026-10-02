@@ -259,3 +259,7 @@ It exits 2 (blocks, with the reason on stderr) for:
 It does not block `kill <pid>`, `kill "$(cat <tmp>/server.pid)"`, `systemctl … atc-rts` or read-only `systemctl status`. A command that only mentions the words (`echo 'pkill …'`, `grep`) passes. If the hook input can't be read or parsed, it blocks. The settings entry is `… || exit 2`, and it falls back to the main checkout's copy (`/home/c10/projects/atc/hooks/kill-guard.mjs`) when the project folder has none (a control folder), so a missing hook blocks instead of passing.
 
 Only sessions opened here are covered. A session in another repository (vocado) needs the same hook in its own settings.
+
+## Policy hook (`policy.mjs`)
+
+`policy.mjs` is a `PermissionRequest` hook that atc adds to every AIRCRAFT LAUNCH with `claude --bg --settings` (ATC-369; it is not in `.claude/settings.json`, so control sessions and your own sessions don't get it). It answers allow or deny for each call that would show a permission prompt: allowed inside the AIRCRAFT's STAND, denied for everything else (the Claude config dir, writes outside the STAND, the production state, MCP tools other than Playwright …). Each denial is one line (time, REGISTRATION, session, tool, class; no command or path text) in `<state>/policy-denials.jsonl`. Fail-closed. Arguments: `--state <dir> --aircraft <REGISTRATION>`. The rules and the screen are in [docs/fleet.md](../docs/fleet.md) "AIRCRAFT policy hook and STALE STOP as built (ATC-369)". `policy.test.mjs` covers the allow and deny cases.

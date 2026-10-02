@@ -48,6 +48,9 @@ export type RecordLine =
   // proposal: DISPATCH launch 카드 승인으로 띄웠으면 그 제안 id(ATC-129)
   // reposition(ATC-179): AIRCRAFT의 base를 옮김(STOP·base 쓰기·LAUNCH를 한 사건으로). by는 supervisor | auto, stage는 실패한 단계(precheck는 STOP 전 거절)
   | { t: string; kind: "fleet"; op: "launch" | "stop" | "entry" | "aog" | "return" | "retire" | "account-change" | "reposition"; aircraft: string; by: string; ok: boolean; jobId?: string; cwd?: string; permissionMode?: string; model?: string; modelFrom?: string; account?: string; from?: string; to?: string; error?: string; proposal?: string; flight?: string; stage?: "stop" | "base" | "launch" | "precheck" }
+  // STALE STOP(ATC-369): FLIGHT가 끝난(머지·ARRIVED) AIRCRAFT가 PENDING·HUNG으로 30분 남아 서버가 멈춘 것. ok는 STOP 결과(세션 기록은 fleet stop 줄이 따로 남는다), mode는 스위치 바꿈
+  | { t: string; kind: "policy"; op: "stale-stop"; aircraft: string; ok: boolean; code: "PENDING" | "HUNG"; heldMin: number; flights: string[]; jobId?: string; error?: string }
+  | { t: string; kind: "policy"; op: "stale-stop-mode"; by: string; from: string; to: string }
   // REPOSITION 스위치와 그림자(ATC-179): mode는 스위치 바꿈(auto가 flapping으로 approval이 되면 by auto), would는 shadow의 "옮겼을 것"
   | { t: string; kind: "reposition"; op: "mode"; by: string; from: string; to: string; reason?: string }
   | { t: string; kind: "reposition"; op: "would"; aircraft: string; from: string; to: string; reasons: string[] }

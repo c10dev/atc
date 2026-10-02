@@ -17,6 +17,7 @@ import { flightNumber } from "../../aviation.ts";
 import { OpenFlight } from "../../FlightLink.tsx";
 import { RelayBox } from "../../Relay.tsx";
 import { timeAgo } from "../../derive.ts";
+import { jobKnownText } from "../../../../server/job-age.ts";
 import { ActivityLine, JobDetail, NeedsYou, PendingApproval, SuggestedReply } from "../../ui.tsx";
 import { pendingNeedsOf } from "../../../../server/pending.ts";
 import { formatClock, useSettings } from "../../settings.ts";
@@ -310,7 +311,7 @@ export function Card({
     alerts.push(
       <li key="needs" className="fl-needs-you">
         <NeedsYou job={a.job} attach={origin?.attach} />
-        {a.job.detail && <span className="fl-line faint"> {a.job.detail}</span>}
+        {a.job.detail && <span className="fl-line faint"> {a.job.detail} · {jobKnownText(a.job, now)}</span>}
         <SuggestedReply job={a.job} />
       </li>,
     );
