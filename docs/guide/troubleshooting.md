@@ -46,7 +46,7 @@ FOLLOW 줄의 "지금 글"(`우선순위 없음`, `HOLD — …`, `AIRCRAFT 없�
 atc는 `.env.local`의 `LINEAR_TEAM_KEY`(주 팀)만 읽는다. 팀을 더 읽으려면 설정 창 LINEAR 분류의 **TEAMS**에 쉼표로 적는다(`LINEAR_TEAM_KEYS=VOC,ATC`). 저장하면 바로 다시 읽는다.
 
 - 한 팀을 읽지 못하면 연결 상태에 그 팀과 오류가 나온다. 그 팀은 마지막으로 읽은 티켓을 계속 보인다.
-- 더 읽은 팀의 FLIGHT는 RADAR·STRIPS·FIDS에만 보인다. 그 팀의 프로젝트와 마일스톤은 NETWORK 탭 ROUTE MAP과 HOME의 LATE WAYPOINTS에도 보인다. DISPATCH 제안과 SCHEDULE 초안은 `~/.local/state/atc/dispatch.json`의 `candidateTeams`에 든 팀만 받는다(비면 주 팀만). 그 밖의 팀에 SCHEDULE 초안을 쓰면 "SCHEDULE 후보가 아님"으로 거절된다.
+- 더 읽은 팀의 FLIGHT는 RADAR·STRIPS·FIDS에만 보인다. 그 팀의 프로젝트와 마일스톤은 METRICS → NETWORK의 ROUTE MAP과 HOME의 LATE WAYPOINTS에도 보인다. DISPATCH 제안과 SCHEDULE 초안은 `~/.local/state/atc/dispatch.json`의 `candidateTeams`에 든 팀만 받는다(비면 주 팀만). 그 밖의 팀에 SCHEDULE 초안을 쓰면 "SCHEDULE 후보가 아님"으로 거절된다.
 - 팀의 FLIGHT가 어느 AIRPORT인지는 프로젝트 매핑이 먼저이고, 매핑에 없으면 `teamAirports`(기본 `ATC → ATCC`)를 쓴다.
 - 브랜치·워크트리 이름에는 그 팀의 key를 넣는다(`claude/atc-12-…`, 워크트리 도구는 `worktree-atc-12-…`). 그래야 STAND와 LOGBOOK이 그 FLIGHT를 찾는다.
 

@@ -6,6 +6,7 @@ const LEGACY_HASH: Record<string, string> = {
   tickets: "flights/board",
   dispatch: "home",
   schedule: "home", // SCHEDULE은 HOME이 이어받았다(ATC-378)
+  network: "metrics/network", // NETWORK는 METRICS의 하위 화면이 됐다(ATC-380)
   follow: "flights",
   strips: "flights",
   board: "flights/board",
