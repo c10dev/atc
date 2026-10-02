@@ -129,3 +129,11 @@ test("swiftbar://notify 주소: 플러그인·제목·본문·href, 한글과 |�
   assert.equal(new URL(notifyUrl({ plugin: "atc", item: item("k", "advisory", { cue: "call" }) })).searchParams.get("title"), "atc ADVISORY CALL");
   assert.ok(!url.includes("+"));
 });
+
+test("마지막 본 뒤(ATC-383): 서버의 한 줄을 그대로 보이고, 조용하거나 옛 서버면 줄이 없다", () => {
+  const loud = menu([], { sinceLook: { line: "발권 2 · 막힘 1" } });
+  assert.equal(loud[2], `마지막 본 뒤: 발권 2 · 막힘 1 | href=${BASE}/`);
+  assert.equal(loud[3], "---");
+  assert.equal(loud[4], "지금 알릴 것 없음");
+  assert.deepEqual(menu([], { sinceLook: { line: "" } }), menu([]));
+});
