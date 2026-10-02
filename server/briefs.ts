@@ -1,4 +1,5 @@
-import { findingSeverityOf, type GhThread, isCodexBot, type LandingReview } from "./landing.ts";
+import { findingSeverityOf, isCodexBot } from "./codex-bot.ts";
+import type { GhThread, LandingReview } from "./landing.ts";
 
 // DIRECT·VECTORS 지시서(ATC-32). 설계: docs/dispatch.md "DIRECT briefs".
 // VECTORS: 지금까지의 지시서(번호 붙은 단계, 긴 템플릿, 모호하면 먼저 묻기).

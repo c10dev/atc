@@ -1,4 +1,6 @@
 import type { Alert, LandingBlockCode, PullRequest, ReviewFindings, Workspace } from "./model.ts";
+import { CODEX_BOTS, findingSeverityOf, isCodexBot } from "./codex-bot.ts";
+export { CODEX_BOTS, findingSeverityOf, isCodexBot };
 import { humanCheckStatusOf, uiChangeOf } from "./human-check.ts";
 import {
   behindEn, blockedEn, carriedFindingsEn, carriedWhoEn, changesRequestedEn, checksFailedEn, checksPendingEn, codexFindingsEn, codexP3OpenEn, codexWhyEn, countsEn,
@@ -36,9 +38,6 @@ export interface GhReview {
   commit: { oid: string } | null;
 }
 
-// Codex 자동 리뷰 봇. GraphQL(reviews)은 [bot] 없이, REST(reactions·comments)는 [bot]을 붙여 준다.
-export const CODEX_BOTS = ["chatgpt-codex-connector", "chatgpt-codex-connector[bot]"];
-export const isCodexBot = (login: string | null | undefined) => Boolean(login && CODEX_BOTS.includes(login));
 
 // head 리뷰가 없거나 head에 Codex 지적이 있는 PR에만 따로 읽는 Codex 신호(sources/github.ts)
 export interface CodexSignal {
@@ -141,11 +140,6 @@ export interface GhThread {
   outdated: boolean;
   path: string | null;
   comments: { author: string | null; at: string; commit: string | null; body: string }[]; // commit: 댓글을 단 원래 커밋
-}
-// Codex 인라인 지적의 등급 배지(![P2 Badge](…img.shields.io/badge/P2-yellow…)). 읽지 못하면 null
-export function findingSeverityOf(body: string): 0 | 1 | 2 | 3 | null {
-  const m = /!\[P([0-3]) Badge\]/i.exec(body) ?? /img\.shields\.io\/badge\/P([0-3])-/i.exec(body);
-  return m ? (Number(m[1]) as 0 | 1 | 2 | 3) : null;
 }
 export interface CodexHeadFinding {
   severity: 0 | 1 | 2 | 3; // 표시가 없으면 2로 본다
