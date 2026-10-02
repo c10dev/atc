@@ -2,6 +2,7 @@ import type { FuelRemaining } from "./fuel-remaining.ts";
 import type { RtsRecord } from "./mcc.ts";
 import type { SinceLook } from "./since-look.ts";
 import type { SupervisorAlert } from "./supervisor-alerts.ts";
+import { needsYouOf, type WaitingOnPerson } from "./waiting-person.ts";
 
 // SUPERVISOR SUMMARY(ATC-153, docs/mac-app.md 3): 메뉴 막대·브라우저·atc-app이 같은 숫자를 읽게 서버가 한 번 계산한다.
 // 알림 목록(supervisor-alerts.ts)의 항목에서 세므로 화면 목록과 어긋나지 않는다. 순수 함수만. 읽기는 supervisor-alerts-run.ts
@@ -23,12 +24,13 @@ export interface SupervisorSummary {
   fuel: { label: string; windows: SummaryFuelWindow[] } | null;
   rts: { result: RtsRecord["result"]; at: string; from: string | null; to: string } | null;
   working: { aircraft: number; control: number };
-  needsYou: string[];
+  needsYou: string[]; // 스스로 사람을 기다리는 팀 AIRCRAFT의 이름(ATC-374, waiting-person.ts). 판정을 기다리는 DISPATCH 카드는 여기 없고 pending.dispatch로만 센다
   sinceLook?: SinceLook; // ATC-383: 마지막으로 본 뒤 바뀐 것의 수와 한 줄(v: 1에 더한 칸). summaryOf는 채우지 않고 summaryNow가 채운다
 }
 
 export interface SummaryInput {
   items: Pick<SupervisorAlert, "key" | "level" | "cue" | "aircraft">[];
+  waiting: readonly WaitingOnPerson[]; // SUPERVISOR QUEUE의 NEEDS YOU·GO와 같은 정의(waitingOnPersonOf)
   fuelAccounts: Pick<FuelRemaining, "group" | "account" | "windows">[];
   rts: Pick<RtsRecord, "at" | "from" | "to" | "result"> | null;
   working: { aircraft: number; control: number };
@@ -48,8 +50,8 @@ export function topFuelOf(accounts: SummaryInput["fuelAccounts"]): SupervisorSum
 export function summaryOf(inp: SummaryInput): SupervisorSummary {
   const by = (l: "warning" | "caution" | "advisory") => inp.items.filter((i) => i.level === l).length;
   const counts = { warning: by("warning"), caution: by("caution"), advisory: by("advisory") };
-  // SUPERVISOR를 기다리는 항목(cue call)의 AIRCRAFT 이름. 이름이 없는 항목(HUMAN CHECK)은 pending 수로만 센다
-  const needsYou = [...new Set(inp.items.filter((i) => i.cue === "call" && i.aircraft).map((i) => i.aircraft!))].sort();
+  // 스스로 사람을 기다리는 AIRCRAFT(ATC-374). 판정 카드(pending.dispatch)·HUMAN CHECK는 AIRCRAFT의 기다림이 아니라 센 수로만 있다
+  const needsYou = needsYouOf(inp.waiting);
   return {
     v: SUMMARY_V,
     at: inp.at,

@@ -683,6 +683,14 @@ FLIGHT가 착륙만 기다리는 동안 AIRCRAFT가 놀지 않는다. 전에는 
 - **측정**: FIX·GO AROUND CLEARANCE는 낼 때 `elsewhere`를 남긴다: 그 세션이 다른 STAND에서 쥔 진행 중 FLIGHT, 없으면 `null`. METRICS → OPERATIONS의 `FIX·GO AROUND READBACK` 타일이 다른 FLIGHT를 하던 AIRCRAFT와 아닌 AIRCRAFT의 READBACK 중앙값을 나눠 보인다(`clearances.fixReadback`). 필드가 없는 옛 CLEARANCE는 어느 쪽에도 넣지 않는다.
 - **형식**(추가만): `slots.waitingPr`, `Proposal.waitingFlights`, `Clearance.elsewhere`, `clearances.fixReadback`.
 
+## CROSSCHECK 은퇴, 만든 것 (ATC-371)
+
+K3: 관제 세션 목록을 바꾸고 mark를 기다리던 승인 규칙을 푼다([autonomy.md](autonomy.md) D23, C14). ATC-367과 ATC-370 뒤에 들어가므로 자동 승인이 멈추지 않는다.
+
+- **세션 없음.** `CONTROL_SESSIONS`가 CROSSCHECK를 `retired`로 둔다: 띄우지 않고, 살려 두지(CONTROL BULK) 않고, 재시작하지(기본 CAP·auto 항목 없음) 않고, FLEET의 관제 목록에도 줄이 없다. 아직 떠 있는 CROSSCHECK 세션은 다음 CONTROL RECYCLE 주기에 서버가 한 번 멈춘다(`retired-stop`, 모드와 상관없이, SUPERVISOR 단계 없음). STOP은 그 세션에 여전히 된다.
+- **mark를 기다리는 규칙 없음.** `auto-approve.ts`에서 `no-crosscheck`·`disagree` 건너뛰기를 뺐다(DISPATCH ASSIGN·launch·SCHEDULE. blind, 주의, HELD, FUEL hold, 상한은 그대로). ATFM A7은 없애고 S3는 절 인용 검사만 남긴다(`server/atfm.ts`). ATFM 켜기 점검의 "CROSSCHECK 일치" 두 줄도 뺐다. 서버는 disagree mark로 PREFLIGHT HOLD를 걸지 않고, `POST /api/dispatch/proposals/:id/crosscheck`와 `POST /api/schedule/ops/:id/crosscheck`는 410으로 답한다. brief의 `crosscheck` 블록은 늘 비어 있다.
+- **기록은 남는다.** 옛 mark, `preflight` op, 옛 카드의 칩, NETWORK GATES(은퇴로 표시), `gate.crosscheck`는 그대로 읽힌다. `crosscheck/` 폴더와 `controller/guard.mjs`는 건드리지 않았다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

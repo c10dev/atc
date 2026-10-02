@@ -550,6 +550,8 @@ S2는 구현돼 있고 SCHEDULE `mode`(`~/.local/state/atc/schedule.json`, 기�
 
 ## CROSSCHECK
 
+> **은퇴(ATC-371).** CROSSCHECK 세션은 더 띄우거나 살려 두거나 재시작하지 않고, 서버의 어떤 규칙도 그 mark를 기다리지 않는다. 이 절은 있던 그대로의 역할을 기록으로 남긴 것이고, 옛 mark는 읽힌다.
+
 그림자 판정(DISPATCH 제안과 SCHEDULE 초안)은 SUPERVISOR가 하나씩 정하므로 부담이 크다. 판정을 모델에 넘기면 게이트(판정 20건, 80%)가 모델 둘이 서로 맞는지를 재게 되고, 그건 아무 뜻이 없다. 그래서 일을 나눈다.
 
 - OCC와 다른 계열 모델로 도는 **CROSSCHECK** 세션이 열린 항목마다 먼저 예비 판정(**mark**: `agree`/`disagree`와 한 줄 이유)을 남긴다.

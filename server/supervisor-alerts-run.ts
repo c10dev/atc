@@ -15,6 +15,7 @@ import { readReleaseView } from "./release-store.ts";
 import { config } from "./config.ts";
 import { DEFAULT_HEALTH } from "./health.ts";
 import { pendingSinceByAircraft, waitingCallsByAircraft } from "./pending.ts";
+import { waitingOnPersonOf } from "./waiting-person.ts";
 import { readRadio, setRadioPendingSource } from "./radio-run.ts";
 import { registrationOf } from "./registration.ts";
 import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
@@ -186,6 +187,7 @@ export function summaryNow(s: Snapshot, now = Date.now()): SupervisorSummary {
   const items = currentAlerts();
   const base = summaryOf({
     items,
+    waiting: waitingOnPersonOf({ sessions: s.sessions.filter((x) => x.status !== "dead"), proposals: allProposals(), now, blockedMin: config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!, teamPattern }),
     fuelAccounts: s.fuelAccounts ?? [],
     rts: rtsState(readMccRecords()).last,
     working: workingOf(s.sessions.filter((x) => x.status !== "dead"), (name) => registrationOf(name, teamPattern), CONTROL_SESSIONS.map((c) => c.name)),

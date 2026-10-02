@@ -683,6 +683,14 @@ An AIRCRAFT whose FLIGHT only waits to land does not sit idle. Before, a started
 - **Measured**: a FIX or GO AROUND CLEARANCE records `elsewhere` when it is issued: the other started FLIGHT the target session holds in a different STAND, or `null`. METRICS → OPERATIONS adds the tile `FIX·GO AROUND READBACK` with the median to READBACK for AIRCRAFT busy on another FLIGHT against those that were not (`clearances.fixReadback`); older CLEARANCEs without the field are in neither group.
 - **Formats** (additive): `slots.waitingPr`, `Proposal.waitingFlights`, `Clearance.elsewhere`, `clearances.fixReadback`.
 
+## CROSSCHECK retired, as built (ATC-371)
+
+K3: this changes the control-session roster and loosens the approval rules that waited on a mark ([autonomy.md](autonomy.md) D23, C14). It landed after ATC-367 and ATC-370, so no automatic approval stopped.
+
+- **No session.** `CONTROL_SESSIONS` marks CROSSCHECK `retired`: it is not launched, kept alive (CONTROL BULK) or recycled (no default CAP or auto entry), and it has no row in the FLEET CONTROL list. A CROSSCHECK session still running is stopped once by the server on the next CONTROL RECYCLE tick (`retired-stop`, any mode, no SUPERVISOR step). STOP still works on it.
+- **No rule waits on a mark.** `auto-approve.ts` lost its `no-crosscheck` and `disagree` skips (DISPATCH ASSIGN, launch and SCHEDULE; blind, caution, HELD, FUEL hold and the caps are unchanged). ATFM A7 is dropped and S3 keeps only the section-citation test (`server/atfm.ts`); the two "CROSSCHECK match" rows are gone from the ATFM turn-on checklists. The server no longer files a PREFLIGHT HOLD from a disagree mark, and `POST /api/dispatch/proposals/:id/crosscheck` and `POST /api/schedule/ops/:id/crosscheck` answer 410. The briefs' `crosscheck` block is always empty.
+- **History stays.** Old marks, `preflight` ops, chips on old cards, NETWORK GATES (labelled as retired) and `gate.crosscheck` still read. The `crosscheck/` folder and `controller/guard.mjs` are untouched.
+
 ## DIRECT briefs (ATC-32)
 
 Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.
