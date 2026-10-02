@@ -37,6 +37,8 @@ export type RecordLine =
   | { t: string; kind: "schedule"; op: string; id: string }
   // SUPERVISOR RELAY(ATC-271): 화면에서 만든 relay와 그 뒤의 표시. 글(text)은 relays.jsonl에만 있고 여기에는 적지 않는다. by는 만든 쪽(supervisor), 표시한 쪽(TOWER 또는 supervisor)
   | { t: string; kind: "relay"; op: "create" | "issued" | "undeliverable" | "hand"; id: string; by: string; to?: string; relayKind?: string; flight?: string | null; clearance?: string; reason?: string }
+  // 관제 세션의 DECISION 카드(ATC-352): 올림·답·거둠. 글은 decision-cards.jsonl에만 있다
+  | { t: string; kind: "decision"; op: "create" | "answer" | "withdraw"; id: string; by: string; key?: string; pr?: number | null; role?: string; choice?: number | null }
   | { t: string; kind: "flight"; op: "state"; flight: string; by: string; ok: boolean; from: string; to: string; error?: string } // SUPERVISOR가 FLIGHT 상태 버튼으로 Linear 상태를 옮김(DUTY G3). 실패도 적는다
   | { t: string; kind: "pr"; op: "merge"; by: "supervisor"; airport: string; number: number; head: string; ok: boolean; result: string; method?: string; error?: string } // SUPERVISOR가 PR 서랍의 MERGE 버튼으로 user 등급 PR을 머지함(DUTY G2). 거절·실패도 적는다
   | { t: string; kind: "duty"; op: "stand" | "stand-done" | "linear"; by: "DUTY"; ok: boolean; name?: string; action?: "create" | "update" | "comment"; key?: string; state?: string; error?: string } // DUTY L1(D7a): STAND 만들기·치우기, Linear 쓰기(본문은 적지 않는다). 거절·실패도 적는다

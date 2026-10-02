@@ -5,6 +5,8 @@ import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Hono } from "hono";
 import { config } from "./config.ts";
+import { allDecisions } from "./decision-card-run.ts";
+import { answerLineOf, unackedAnswers } from "./decision-card.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { briefDecisionsOf, briefMaxCharsOf, dutyBriefOf, type DutyBriefInput } from "./duty-brief.ts";
 import { appendCharterLine, charterModeNow, readCharterLines } from "./duty-charters-run.ts";
@@ -129,7 +131,10 @@ export function mountDuty(app: Hono, getSnapshot: () => Promise<Snapshot>, updat
     };
     input.decisions = decisionsOf(decisionLines(), now).active.map((d) => ({ id: d.id, text: d.text, until: d.until }));
     input.decisionsMax = loadBriefDecisions();
-    return c.json(dutyBriefOf(input, loadBriefMaxChars()));
+    const brief = dutyBriefOf(input, loadBriefMaxChars());
+    // SUPERVISOR가 DECISION 카드에 답했다(ATC-352): DUTY는 tick이 없어 brief 끝에 붙인다(읽고 `atcctl decision ack`)
+    const answers = unackedAnswers(allDecisions(), "duty").map(answerLineOf);
+    return c.json(answers.length ? { ...brief, text: `${brief.text}\n${answers.join("\n")}` } : brief);
   });
 
   // 정해 둔 결정(D4). 읽기는 누구나(DUTY의 brief와 같은 자료). 쓰기는 이 화면의 클릭뿐(fromThisApp): atcctl은 Origin이 없어 닿지 못한다

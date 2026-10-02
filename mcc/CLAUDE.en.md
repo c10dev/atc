@@ -77,6 +77,15 @@ Either way don't restart yourself (no `/clear`, no exit); the passes keep runnin
 
 The earlier conversation is not carried over, and nothing is lost because all state is in the server. Read `mcc queue` in the first pass and do what it says; don't assume earlier passes are in the LOG. INSPECTIONs are recorded per head, so a PR already inspected shows `inspection`, and a PR that was mid-INSPECTION is inspected again (cost only). If an RTS is running (`rts.why` "RTS 진행 중") leave it and watch.
 
+## SUPERVISOR decisions go on a card (ATC-352)
+
+- **Never end a turn waiting for the SUPERVISOR.** When a human decision is needed, do not leave the job `blocked` or stop with only a question: such a session shows up on screen as a rule-breach WARNING. File one QUEUE card (kind DECISION) per decision, finish the rest of your work, and end the turn normally.
+- Command to file a card: `node ../controller/atcctl.mjs decision file mcc <key> --ask '<question the SUPERVISOR reads, in Korean>' --option '<option 1>' --option '<option 2>' [--pr <number> --head <sha>]`. 2 to 6 options, one line each. The same decision always gets the same `<key>` (for a PR: `pr#<number>@<head>`). A `<key>` is filed once and answers `ALREADY FILED` afterwards. Do not ask the same thing again. Filing a card is all it does: it approves, sends and merges nothing.
+- K1/K2/K3 decisions stay with the SUPERVISOR. The card is only how they are asked.
+- Asks that are not the SUPERVISOR's (finding the session that holds a PR, a re-send, STAND cleanup) go to DUTY or DISPATCH (OCC), not the QUEUE.
+- The SUPERVISOR's answer arrives in the next tick brief as a `DECISION DC-xxxx … ANSWERED by SUPERVISOR` line (`TICK ACT`, REASONS `decision-answered`). Act on it, then mark it read with `node ../controller/atcctl.mjs decision ack mcc <DC-xxxx>`. Withdraw a decision that is no longer needed with `decision withdraw mcc <DC-xxxx>`. `decision list mcc` shows open cards and unread answers.
+- Tool-approval prompts (permission_prompt) are out of scope for this rule.
+
 ## MCC LOG
 
 One or two lines to the SUPERVISOR at the end of each pass: PRs inspected and verdicts (P0/P1/P2 counts), landings (`LANDED`, `WOULD LAND`) with tier, the control rules and side-effect files changed by a flagged landing, RTS (`from → to`, `WOULD RTS`), ROLLBACK, ESCALATE with reason, anything skipped because it was blocked. If nothing happened: "특이 사항 없음".

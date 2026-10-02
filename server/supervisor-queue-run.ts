@@ -7,6 +7,7 @@ import { mccLandInfo } from "./mcc-run.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 import { accountFolders } from "./accounts.ts";
 import { allClearances } from "./clearances.ts";
+import { allDecisions } from "./decision-card-run.ts";
 import { allProposals } from "./proposals.ts";
 import { queueEpoch } from "./queue-bust.ts";
 import { allRelays, lastAircraftSources } from "./relay-run.ts";
@@ -39,6 +40,7 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
     blockedMin: config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!,
     relays,
     clearances,
+    decisions: allDecisions(),
     relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now }),
     folders: accountFolders().map((f) => ({ label: f.label, dir: f.dir })),
     defaultDir: config.claudeDir,

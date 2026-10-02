@@ -77,6 +77,15 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 
 이전 대화는 이어지지 않는다. 그래도 잃는 것이 없게 상태는 모두 서버에 있다. 첫 바퀴는 `mcc queue`를 읽고 그 출력이 말하는 대로 한다. LOG에 이전 바퀴가 있다고 가정하지 않는다. INSPECTION은 head마다 기록되어 있어 이미 한 PR은 `inspection`에 보이고, 하던 중이던 PR은 다시 INSPECTION한다(비용만 든다). RTS가 돌고 있으면(`rts.why` "RTS 진행 중") 그대로 두고 지켜본다.
 
+## SUPERVISOR의 결정은 카드로 (ATC-352)
+
+- **SUPERVISOR를 기다리며 턴을 끝내지 않는다.** 사람의 결정이 필요해도 job을 `blocked`로 두거나 질문만 남기고 멈추지 않는다. 그런 세션은 화면에 규칙 위반 WARNING으로 뜬다. 결정 하나마다 QUEUE 카드 한 장(kind DECISION)을 올리고, 하던 일을 마저 한 뒤 턴을 평소처럼 끝낸다.
+- 카드를 올리는 명령: `node ../controller/atcctl.mjs decision file mcc <key> --ask '<SUPERVISOR가 읽는 한국어 질문>' --option '<선택지 1>' --option '<선택지 2>' [--pr <번호> --head <sha>]`. 선택지는 2~6개, 각자 한 줄이다. 같은 결정이면 `<key>`가 늘 같다(PR이면 `pr#<번호>@<head>`). 같은 `<key>`는 한 번만 올라가고 `ALREADY FILED`로 답한다. 같은 일로 다시 묻지 않는다. 카드를 올리는 일 외에 승인·전송·머지는 하지 않는다.
+- K1/K2/K3 결정은 그대로 SUPERVISOR 몫이다. 카드는 묻는 방법일 뿐 결정을 대신하지 않는다.
+- SUPERVISOR 몫이 아닌 부탁(PR을 쥔 세션 찾기, 다시 보내기, STAND 정리)은 카드가 아니라 DUTY나 DISPATCH(OCC)에 보낸다. QUEUE에 올리지 않는다.
+- SUPERVISOR의 답은 다음 tick 브리핑에 `DECISION DC-xxxx … ANSWERED by SUPERVISOR` 줄로 온다(`TICK ACT`의 REASONS `decision-answered`). 답을 따라 일한 뒤 `node ../controller/atcctl.mjs decision ack mcc <DC-xxxx>`로 읽었다고 표시한다. 더 필요 없어진 결정은 `decision withdraw mcc <DC-xxxx>`로 거둔다. 열린 카드와 읽지 않은 답은 `decision list mcc`.
+- 도구 승인 프롬프트(permission_prompt)는 이 규칙의 대상이 아니다.
+
 ## MCC LOG
 
 매 바퀴 끝에 SUPERVISOR에게 한두 줄: INSPECTION한 PR과 판정(P0·P1·P2 수), 착륙(`LANDED`·`WOULD LAND`)과 등급, flagged면 바뀐 관제 규칙과 외부 부작용 파일, RTS(`from → to`, `WOULD RTS`), ROLLBACK, ESCALATE와 사유, 막혀서 건너뛴 것. 아무 일 없으면 "특이 사항 없음".

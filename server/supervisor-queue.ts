@@ -1,4 +1,5 @@
-import { blockedAlerts, type Job } from "./job-state.ts";
+import { type Decision } from "./decision-card.ts";
+import { blockedAlerts, isControlSessionName, type Job } from "./job-state.ts";
 import type { LandBy } from "./land-by.ts";
 import type { Clearance, PullRequest, Session } from "./model.ts";
 import type { Proposal } from "./proposals.ts";
@@ -13,7 +14,7 @@ import type { UpdateKind } from "./update.ts";
 // 새 감지는 없다 — 화면이 이미 쓰는 상태를 그대로 읽는다. 항목은 밑의 상태가 바뀔 때만 사라진다(읽음·미룸 없음).
 // 순수 함수만. 자료 모으기는 supervisor-queue-run.ts. `title`은 atc 말(FLIGHT key·REGISTRATION·PR 번호)만 쓰고 티켓·PR 제목은 싣지 않는다.
 
-export const QUEUE_KINDS = ["PROPOSAL", "SCHEDULE", "FLEET PLAN", "HUMAN CHECK", "LANDING", "UPDATE", "NEEDS YOU", "RELAY", "UNDELIVERED", "GO"] as const;
+export const QUEUE_KINDS = ["PROPOSAL", "SCHEDULE", "FLEET PLAN", "HUMAN CHECK", "LANDING", "UPDATE", "NEEDS YOU", "RELAY", "UNDELIVERED", "GO", "DECISION"] as const;
 export type QueueKind = (typeof QUEUE_KINDS)[number];
 
 export interface QueueItem {
@@ -23,6 +24,7 @@ export interface QueueItem {
   title: string;
   hash: string; // 그 항목이 있는 화면 주소
   hand?: HandItem; // UNDELIVERED: 손으로 전하는 카드(ATC-271)
+  decision?: Pick<Decision, "id" | "role" | "ask" | "options" | "pr">; // DECISION: 관제 세션이 올린 결정 하나(ATC-352)
   offer?: RelayOffer; // RELAY: STAND를 쥔 세션이 없는 GO AROUND·FIX를 SUPERVISOR가 전하는 카드(ATC-308)
 }
 
@@ -52,6 +54,7 @@ export interface QueueInput {
   folders?: { label: string; dir: string }[]; // ACCOUNT 라벨 → 폴더(등록부)
   defaultDir?: string; // ~/.claude
   relayOffers?: RelayOffer[]; // relay-offer.ts의 결과(없으면 RELAY 카드가 없다)
+  decisions?: Pick<Decision, "id" | "key" | "role" | "at" | "ask" | "options" | "pr" | "status">[]; // decision-card.ts(열린 카드만 줄이 된다)
 }
 
 const short = (sha: string | null | undefined) => (sha ? sha.slice(0, 7) : "?");
@@ -98,8 +101,10 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
 
   // NEEDS YOU: 백그라운드 job이 blocked로 blockedMin분 넘게 사람을 기다린다(ALERT와 같은 함수)
   const byId = new Map(inp.sessions.map((s) => [s.id, s]));
+  // 관제 세션은 NEEDS YOU가 아니라 규칙 위반 WARNING이다(ATC-352): 그 세션은 카드(DECISION)를 올리고 턴을 끝낸다
   for (const a of blockedAlerts(inp.sessions, now, inp.blockedMin)) {
     const s = byId.get(a.sessionIds[0]);
+    if (s && isControlSessionName(s.name)) continue;
     out.push({ kind: "NEEDS YOU", key: a.sessionIds[0], since: (s?.job as Job | null | undefined)?.since ?? null, title: s?.name ?? a.sessionIds[0], hash: "#fleet" });
   }
 
@@ -134,6 +139,12 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
   for (const p of inp.proposals) {
     if (!p.awaitSupervisor) continue;
     out.push({ kind: "GO", key: p.id, since: p.awaitSupervisor.at, title: `${p.flight}${p.aircraftName ? ` ${p.aircraftName}` : ""}`, hash: "#fleet" });
+  }
+
+  // DECISION(ATC-352): 관제 세션이 올린 결정. 답이 오거나 세션이 거두면 사라진다
+  for (const d of inp.decisions ?? []) {
+    if (d.status !== "open") continue;
+    out.push({ kind: "DECISION", key: d.id, since: d.at, title: `${d.role.toUpperCase()}${d.pr ? ` PR #${d.pr.number}` : ""}: ${d.ask.length > 80 ? `${d.ask.slice(0, 79)}…` : d.ask}`, hash: d.pr ? "#strips" : "#fleet", decision: { id: d.id, role: d.role, ask: d.ask, options: d.options, pr: d.pr } });
   }
 
   return out.sort((a, b) => sinceMs(a) - sinceMs(b) || kindRank(a) - kindRank(b) || a.key.localeCompare(b.key));

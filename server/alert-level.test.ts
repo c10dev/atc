@@ -52,3 +52,8 @@ test("ALERT 목록: 등급 순서, 같은 등급 안에서는 종류별로 묶�
   );
   assert.deepEqual(groupAlerts([], () => "caution"), []);
 });
+
+test("health: 관제 세션 blocked 규칙 위반은 WARNING, 다른 health는 CAUTION (ATC-352)", () => {
+  assert.equal(alertLevel({ kind: "health", key: "health|CONTROL-BLOCKED|s1" }, idx), "warning");
+  assert.equal(alertLevel({ kind: "health", key: "health|BLOCKED|s1" }, idx), "caution");
+});

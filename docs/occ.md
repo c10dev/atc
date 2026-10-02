@@ -471,6 +471,17 @@ SUPERVISOR decision 2026-09-29: atc stops using the `ocx` (opencodex) route for 
 - **Old records**: carrying a review across main-only merges (9.6) accepts landing reviews from the `claude-sonnet-…` family and the older `deepseek…` family (`LANDING_REVIEW_FAMILIES`), still not Muse. The reviewer name on strips and in TOWER's `review` drops the `claude-` prefix: `REVIEW: SONNET (Codex 한도)`. A carried review shows `by: "review"` instead of `"deepseek"`; it is computed, not stored.
 - **Security PRs**: SUPERVISOR decision 2026-09-29: security PRs go to REVIEW too. That is the 9.5 switch, which was already set to send. Its value keeps the old name `"deepseek"` (`dispatch.json` `externalReview.security`), and AUTOLAND keeps `via: "deepseek"` (`autoland-state.json`), so no stored state changes. The hard exclusions (no FLIGHT, secret or key paths) stay.
 
+### Control sessions never end a turn blocked on the SUPERVISOR: DECISION cards (ATC-352)
+
+A control session (TOWER, OCC, MCC, CROSSCHECK, DUTY) runs in the background with nobody attached. A turn that ends `blocked`, waiting for a human, stops the loop until the SUPERVISOR runs `claude attach`. Instead it files the decision and keeps running.
+
+- **Card.** `atcctl decision file <role> <key> --ask '…' --option '…' --option '…' [--pr <n> --head <sha>]` writes one `decision-cards.jsonl` line (`POST /api/decisions`). It shows as one SUPERVISOR QUEUE row of kind `DECISION` (who asks, the question, 2 to 6 options, the PR and head when there is one). The same role and `<key>` is filed once; a second call answers `ALREADY FILED` and the session does not ask again. A withdrawn card can be filed again. The command files a card and nothing else: it approves, sends and merges nothing.
+- **Answer.** The SUPERVISOR picks an option on the card (with an optional note). Only the screen can answer (`fromThisApp`, like RELAY); `atcctl` cannot. The row leaves the QUEUE at once.
+- **Back to the session.** The next `atcctl tick <role>` goes `ACT` with REASONS `decision-answered` and prints `DECISION DC-xxxx [<key>] ANSWERED by SUPERVISOR — option n (…) · note: …` before the brief. DUTY has no tick: the same line ends `atcctl duty brief`. The session acts on it and runs `atcctl decision ack <role> <DC-xxxx>`; until then the line repeats. `decision withdraw` closes a card that is no longer needed, `decision list` shows open cards and unread answers.
+- **Rules.** The five control `CLAUDE.md` files say: never end a turn waiting for the SUPERVISOR; one card per decision; asks that are not the SUPERVISOR's (which session holds a PR, a re-send, STAND cleanup) go to DUTY or DISPATCH, not the QUEUE. K1/K2/K3 decisions stay with the SUPERVISOR: the card only changes how they are asked. Tool-approval prompts (`permission_prompt`) are out of scope.
+- **Rule breach.** A control session whose job state is `blocked` past the usual minutes no longer shows as NEEDS YOU (it is skipped in the QUEUE too). It raises an ALERTS **WARNING** `RULE BREACH — control session <name> blocked …` (key `health|CONTROL-BLOCKED|<id>`) that clears when the state leaves `blocked`. Team sessions keep the normal NEEDS YOU CAUTION.
+- **Guards.** TOWER and OCC already run any `atcctl` command. MCC, CROSSCHECK and DUTY list the `atcctl` subcommands they may run; see the PR for what changed there.
+
 ## 10. What to add to atc
 
 | Where | What |

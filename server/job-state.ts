@@ -156,6 +156,10 @@ function readJobIn(jobId: string, dir: string): Job | null {
 }
 
 // ── 알림: blocked가 minMin분 넘게 이어짐 ──
+// 관제 세션(ATC-352): 사람의 결정이 필요해도 blocked로 턴을 끝내면 안 된다(DECISION 카드를 올린다). 이름으로만 안다
+export const CONTROL_SESSION_NAMES = ["TOWER", "OCC", "MCC", "CROSSCHECK", "DUTY"] as const;
+export const isControlSessionName = (name: string) => (CONTROL_SESSION_NAMES as readonly string[]).includes(name.trim().toUpperCase());
+export const CONTROL_BLOCKED_NEXT = "규칙 위반: 관제 세션은 SUPERVISOR를 기다리며 턴을 끝내지 않는다. `atcctl decision`으로 카드를 올리고 턴을 끝내게 한다(세션을 다시 돌려 규칙을 읽힌다)";
 export interface BlockedAlert {
   key: string;
   message: string;
@@ -175,6 +179,10 @@ export function blockedAlerts(xs: { id: string; name: string; job?: Job | null; 
     const since = j.since ? Date.parse(j.since) : NaN;
     if (!Number.isFinite(since) || now - since < minMin * 60_000) continue;
     const min = Math.floor((now - since) / 60_000);
+    if (isControlSessionName(x.name)) {
+      out.push({ key: `health|CONTROL-BLOCKED|${x.id}`, sessionIds: [x.id], message: `RULE BREACH — 관제 세션 ${x.name}이 ${min}분째 사람을 기다리며 blocked: ${j.needs ?? "(내용 없음)"} — ${CONTROL_BLOCKED_NEXT}` });
+      continue;
+    }
     out.push({
       key: `health|BLOCKED|${x.id}`,
       sessionIds: [x.id],

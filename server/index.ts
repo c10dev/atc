@@ -11,6 +11,7 @@ import { mountJudges, runJudges } from "./judges/run.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { mountRelay } from "./relay-run.ts";
+import { mountDecisionCards } from "./decision-card-run.ts";
 import { mountLandingReview } from "./landing-review.ts";
 import { mccLandInfo, mountMcc, rtsState } from "./mcc-run.ts";
 import { mountMilestones, runMilestones } from "./milestones-run.ts";
@@ -175,6 +176,7 @@ app.get("/api/snapshot", async (c) => c.json(await getSnapshot()));
 app.get("/api/version", (c) => c.json(version()));
 mountController(app, getSnapshot, eventLog, (s) => fuelWatch(s), mccLandInfo);
 mountRelay(app, getSnapshot); // SUPERVISOR RELAY(ATC-271): 화면에서 AIRCRAFT에게 보내는 글. 만들기는 화면의 클릭뿐(fromThisApp)
+mountDecisionCards(app); // 관제 세션의 DECISION 카드(ATC-352): 올리기는 atcctl, 답하기는 화면의 클릭뿐
 mountLandingReview(app, getSnapshot);
 mountHumanCheck(app, getSnapshot);
 mountAirports(app);

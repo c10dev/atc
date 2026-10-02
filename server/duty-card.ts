@@ -43,6 +43,8 @@ export function actionsOf(item: Pick<QueueItem, "kind" | "key">, airports: reado
     }
     case "UNDELIVERED":
       return [{ type: "link", label: "AIRCRAFT 보기(FLEET)", hash: "#fleet" }];
+    case "DECISION":
+      return [{ type: "link", label: "답하기(QUEUE)", hash: "#fleet" }];
     case "NEEDS YOU":
     case "GO":
       return [{ type: "link", label: "AIRCRAFT 보기(FLEET)", hash: "#fleet" }];

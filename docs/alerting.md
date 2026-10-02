@@ -131,6 +131,10 @@ Status (2026-09-30): design draft for [ATC-195](https://linear.app/vocado/issue/
 - Until DUTY's drawer exists, the QUEUE readout opens a small popover with the same rows and links. The drawer replaces the popover later: same component, new place.
 - The count is the number of open rows. Nothing can be ACKed away.
 
+### DECISION cards from control sessions (ATC-352)
+
+A control session that needs a human decision files one QUEUE row of kind `DECISION` (`atcctl decision file`, [occ.md](occ.md) "DECISION cards") instead of ending its turn `blocked`. The row leaves the QUEUE when the SUPERVISOR answers or the session withdraws it. The answer goes back through the next tick brief. A control session that ends `blocked` anyway is a rule breach, not a normal NEEDS YOU: it is an ALERTS **WARNING** (`health|CONTROL-BLOCKED|<id>`, the `warning` level, so it repeats until ACK) and has no NEEDS YOU row. This changes how K1/K2/K3 decisions are asked, not who decides.
+
 ### 3.5 LOG (events)
 
 - The last 50 `dest: log` items, newest first, each with a time, a tone (ok, refused or failed) and a link.

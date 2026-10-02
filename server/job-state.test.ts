@@ -213,3 +213,14 @@ test("BLOCKED 경보: 기본 폴더는 전과 같은 글, 기본이 아닌 폴�
   assert.match(blockedNextOf(null, "/x"), /CLAUDE_CONFIG_DIR=\/x claude attach <id>/); // jobId를 모르면 자리표시
   assert.equal(blockedNextOf("j", null), BLOCKED_NEXT);
 });
+
+test("관제 세션이 blocked면 NEEDS YOU가 아니라 규칙 위반 WARNING 키(ATC-352)", () => {
+  const now = Date.parse("2026-09-29T08:00:00.000Z");
+  const job = stale({ since: "2026-09-29T07:00:00.000Z", writtenAt: "2026-09-29T07:00:00.000Z", needs: "merge PR 7?", tempo: "blocked" });
+  const ctl = blockedAlerts([{ id: "s1", name: "TOWER", job, lastActiveAt: "2026-09-29T07:00:00.000Z" }], now, 3);
+  assert.equal(ctl[0].key, "health|CONTROL-BLOCKED|s1");
+  assert.match(ctl[0].message, /^RULE BREACH — 관제 세션 TOWER/);
+  assert.match(ctl[0].message, /atcctl decision/);
+  assert.equal(blockedAlerts([{ id: "s2", name: "TEAM_E", job, lastActiveAt: "2026-09-29T07:00:00.000Z" }], now, 3)[0].key, "health|BLOCKED|s2");
+  for (const name of ["OCC", "mcc", "CROSSCHECK", "DUTY"]) assert.equal(blockedAlerts([{ id: "s3", name, job, lastActiveAt: "2026-09-29T07:00:00.000Z" }], now, 3)[0].key, "health|CONTROL-BLOCKED|s3");
+});
