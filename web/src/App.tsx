@@ -30,6 +30,7 @@ const Airports = lazyTab<{ snapshot: Snapshot }>(() => import("./views/Airports.
 const Fleet = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/fleet/Fleet.tsx"), "Fleet");
 const Metrics = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/Metrics.tsx"), "Metrics");
 const Network = lazyTab<{ refreshKey: string }>(() => import("./views/Network.tsx"), "Network");
+const Release = lazyTab<{ refreshKey: string }>(() => import("./views/Release.tsx"), "Release");
 const Dispatch = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Dispatch.tsx"), "Dispatch");
 const Schedule = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Schedule.tsx"), "Schedule");
 const Radio = lazyTab<Record<string, never>>(() => import("./views/Radio.tsx"), "Radio");
@@ -49,6 +50,7 @@ const TABS = [
   { id: "fleet", code: "FLEET" },
   { id: "metrics", code: "METRICS" },
   { id: "network", code: "NETWORK" },
+  { id: "release", code: "RELEASE" },
   { id: "dispatch", code: "DISPATCH" },
   { id: "schedule", code: "SCHEDULE" },
   { id: "radio", code: "RADIO" },
@@ -314,6 +316,8 @@ function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number) {
       return <Metrics refreshKey={refreshKey} snapshot={snapshot} />;
     case "network":
       return <Network refreshKey={refreshKey} />;
+    case "release":
+      return <Release refreshKey={refreshKey} />;
     case "dispatch":
       return <Dispatch refreshKey={refreshKey} now={now} />;
     case "schedule":

@@ -1286,3 +1286,10 @@
 .dp-misfire li {
   padding: var(--space-1) 0;
 }
+
+.dp-release-link {
+  margin: var(--space-3) 0 0;
+}
+.dp-release-link a {
+  color: var(--cyan);
+}

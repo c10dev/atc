@@ -105,6 +105,14 @@ Each step is one work order (filed 2026-10-02, linked below) and one PR. The tie
 
 Order rationale (decision D3): firing has no home and is used every day, so it comes first. The two views whose job is gone hold most of the code and most of the words, so they go next; HOME is built in Y2 because the parts taken out of DISPATCH need a place to land. FLIGHTS changes the most habits, so it comes once the rest has settled.
 
+### Y1 as built (ATC-376)
+
+- `#release` is a tab, placed before DISPATCH (`web/src/views/Release.tsx`). Three blocks: **candidates**, **Todo, not released** and **recent releases** (15 rows, and the 7-day count by channel).
+- Candidates are READY Backlog issues (every blocker finished, the rule behind FOLLOW's `Todo로`) and the open SCHEDULE NEW drafts. Each row shows its priority and the K effects declared in the issue body (`kEffects`, from the `## K effects` section; "선언 없음" when it has none).
+- `POST /api/releases/fire` moves a READY issue to Todo (the same Linear write as the state button, `moveFlight`) and records a screen release in one click. It refuses an issue without a priority (DISPATCH would not assign it), a stale hash, and a request without the app's Origin. If the move fails, no release is recorded.
+- SCHEDULE NEW drafts are listed but cannot be fired from here: they are not issues yet, and the verdict UI stays in SCHEDULE until Y3 (ATC-378). DUTY's issue drafts show up as Backlog READY issues. The `duty-drafts.jsonl` entries are queue cards and notes, not issues, so they are not listed.
+- DISPATCH lost its release block and shows a link to `#release`. Routes and checks of ATC-362 are unchanged.
+
 ### Not built yet
 
 Everything (Y1–Y6).
