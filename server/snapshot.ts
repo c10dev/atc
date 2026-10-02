@@ -27,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import { loadFleet } from "./fleet.ts";
 import { fuelAccountsOf, fuelByAircraft, fuelConfigOf, type FuelMember, observeMembers } from "./fuel-remaining.ts";
 import { readFuelHistory, readFuelRecords } from "./fuel-run.ts";
+import { laneStates, recordSingleLanes } from "./codex-lane-run.ts";
 import { readLandingReviews, readMergeReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, holdStops, loadAtfm, readRecordedStops, reviveStops, stopFigures } from "./atfm.ts";
 import { fastTrackOf, isHeld, loadAutoland, loadAutolandState, mergeExclusionOf, planAutoland } from "./autoland.ts";
@@ -220,6 +221,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
     return alCfg.mode !== "off" && Boolean(code) && alCfg.airports.includes(code!) && !alSt.groundStops.some((g) => g.airport === code);
   };
   const fastTrack = fastTrackOf(alSt.reviewRequests);
+  // 조용한 리뷰 레인(ATC-386): 저장소 수준 판단. GitHub을 읽은 저장소만, 전이는 codex-lane.jsonl에 한 줄씩
+  const laneSilent = laneStates(github.byRepo, Date.now());
   const pulls = buildPulls(
     repos.filter((r) => github.byRepo.has(r)).map((repo) => ({ repo, pulls: github.byRepo.get(repo)!, defaultBranch: github.defaultByRepo.get(repo) ?? null })),
     workspaces,
@@ -237,6 +240,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
       // 보안 규칙에만 걸린 PR도 REVIEW 세션에 보낼까(ATC-30, 설정 창). 기본 "exclude", 보내면 옛 이름 "deepseek"
       security: loadDispatchConfig().externalReview.security,
       fastTrack: (repo, number, head) => (alActive(repo) ? fastTrack(repo, number, head) : null),
+      lane: (repo) => laneSilent.get(repo) ?? null,
       // MCC(docs/mcc.md): 맡은 AIRPORT(atc) PR은 이 head의 INSPECTION이 리뷰를 대신한다
       mcc: (() => {
         const repo = airports.open.find((a) => a.code === loadMcc().airport)?.repo;
@@ -248,6 +252,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
       autoland: { repos: airports.open.filter((a) => alCfg.airports.includes(a.code)).map((a) => a.repo), reviewedSecurity: alCfg.reviewedSecurity, reviews: readMergeReviews() },
     },
   );
+
+  recordSingleLanes(pulls); // REVIEW 한 레인으로 CLEARED가 된 PR(ATC-386)
 
   // STALLED와 멈춘 AIRCRAFT의 FLIGHT 유지(ATC-86): 점유·Linear·PR이 모두 읽힌 뒤에
   // REPORT 판정(ATC-89): 세션마다 마지막 판정을 붙인다. 판정 뒤에 다시 움직이기 시작한 세션(busy)에는 붙이지 않는다
