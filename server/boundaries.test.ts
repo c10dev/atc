@@ -16,7 +16,6 @@ export const ALLOWED_CYCLES: string[] = [
   "server/dispatch-launch.ts <-> server/dispatch.ts",
   "server/autoland-run.ts <-> server/landing-review.ts",
   "server/fleet-plan.ts <-> server/fresh-start.ts <-> server/session-control.ts", // 동적 import()로 이어지는 순환
-  "server/atfm-run.ts <-> server/following.ts <-> server/milestones-run.ts <-> server/network-drafts.ts <-> server/network.ts <-> server/proposals.ts <-> server/routes.ts <-> server/schedule-waypoint.ts <-> server/schedule.ts <-> server/standfree-run.ts <-> server/waypoint-gaps.ts <-> server/waypoint-slips.ts",
 ];
 // 오늘의 화면→Node 값 import 사슬. "web 파일 -> … -> node:xxx" 형식. 새 항목을 더하지 않는다.
 export const ALLOWED_WEB_NODE_CHAINS: string[] = [

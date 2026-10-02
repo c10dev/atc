@@ -18,7 +18,7 @@ import { cachedPrBody, fetchPrBody } from "./sources/github.ts";
 import { loadLinearProjects, type Milestone } from "./sources/linear-projects.ts";
 import { isNetworkKind, type NetworkCtx, NetworkDraftError, type NetworkKind, type NetworkPayload, networkChangesOf, networkSupersedeReason, parseNetwork } from "./network-drafts.ts";
 import { routeRows } from "./network.ts";
-import { loadRoutes } from "./routes.ts";
+import { loadRoutes } from "./routes-load.ts";
 import { ofTeams, waypointGapsOf } from "./waypoint-gaps.ts";
 import { parseTail, type TailCtx, TailError, type TailPayload, tailCautionOf, tailChangesOf, tailDiffOf, tailSignalsOf, type TailSignal } from "./schedule-tail.ts";
 import { readDepartures } from "./departures.ts";

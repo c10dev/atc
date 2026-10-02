@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { config } from "./config.ts";
-import { dayKey } from "./network.ts";
+import { dayKey } from "./day-key.ts";
 import type { EtaReason, Route, WaypointState } from "./routes.ts";
 
 // WAYPOINT ETA와 지연 경고(ATC-24). ROUTE MAP이 계산한 ETA·late를 OCC 브리핑(schedule brief)과 SCHEDULE 탭에 옮긴다.

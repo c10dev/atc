@@ -1,20 +1,14 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import type { Hono } from "hono";
-import { config } from "./config.ts";
+import { dayKey } from "./day-key.ts";
 import { compareRegistration } from "./registration.ts";
-import { crosscheckRateOf } from "./crosscheck.ts";
-import { DONE_STATES, loadDispatchConfig } from "./dispatch.ts";
-import { type AircraftView, fleetView, loadFleet } from "./fleet.ts";
-import { ACTUALS_DAYS, type LogEntry, loadLogbook } from "./logbook.ts";
-import { parentKeysOf, type Snapshot, type Ticket } from "./model.ts";
-import { allProposals, humanOf as proposalHuman, type Proposal } from "./proposals.ts";
-import { countsForGate, humanOf as scheduleHuman, loadScheduleOps, type ScheduleOp } from "./schedule.ts";
-import { loadLinearProjects, type ProjectGoal } from "./sources/linear-projects.ts";
-import { GITHUB_OFF_REASON } from "./github-switch.ts";
+import { DONE_STATES } from "./dispatch.ts";
+import type { AircraftView } from "./fleet.ts";
+import { ACTUALS_DAYS, type LogEntry } from "./logbook.ts";
+import { parentKeysOf, type Ticket } from "./model.ts";
+import type { ProjectGoal } from "./sources/linear-projects.ts";
 
 // NETWORK(4단계): ROUTE(Linear 프로젝트)·AIRCRAFT·추세를 한 화면에 모은 읽기 전용 운항 개요.
 // 계산은 모두 스냅샷·LOGBOOK·FLEET·DISPATCH/SCHEDULE 기록 위의 순수 함수다. 아무것도 쓰지 않는다.
+// 게이트 진행 추세와 HTTP는 network-run.ts(순환 import를 끊으려고 나눴다, ATC-337).
 // 설계: docs/fleet.md 7장(TARGETS)과 7.3(NETWORK).
 
 const DAY = 86_400_000;
@@ -70,12 +64,6 @@ const median = (xs: number[]) => {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
 
-// 서버 로컬 날짜(YYYY-MM-DD). weekStartOf와 같은 로컬 시간 기준
-export function dayKey(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 // 오늘을 포함한 최근 n일의 [시작, 끝) 구간, 오래된 날 먼저. 자정은 로컬 시간(서머타임도 setDate로 맞춘다)
 export function dayWindows(now: number, n = NETWORK_DAYS): { date: string; from: number; to: number }[] {
   const out: { date: string; from: number; to: number }[] = [];
@@ -100,7 +88,7 @@ export function openPhase(t: Pick<Ticket, "state" | "stateType">): keyof RouteRo
   return null;
 }
 
-type ViewLike = Pick<AircraftView, "registration" | "callsign" | "status" | "routes" | "targets" | "actuals" | "retired">;
+export type ViewLike = Pick<AircraftView, "registration" | "callsign" | "status" | "routes" | "targets" | "actuals" | "retired">;
 
 // ROUTE별 행. 프로젝트 목록 = 열린 FLIGHT·최근 14일 ARRIVED·AIRCRAFT ROUTE에 나온 프로젝트
 // + Linear 프로젝트 중 끝나지 않은 것(status.type이 completed·canceled면 제외). 바쁜 ROUTE 먼저, 같으면 이름순.
@@ -179,91 +167,5 @@ export function logbookTrend(entries: LogEntry[], now: number, days = NETWORK_DA
       landingWaitMedianMin: median(got.flatMap((e) => e.landingWaitMin ?? [])),
       reverts: entries.filter((e) => e.reverted && inDay(e.revertedBy?.at)).length,
     };
-  });
-}
-
-// 게이트 진행: 날마다 SUPERVISOR 그림자 판정 수(agreed·disagreed — 게이트가 세는 것과 같다)와
-// 그날 끝까지의 누적 합의율. 마지막 날 값은 proposals.gateOf·schedule.gateOf의 agreement와 같다.
-// 승인 단계(2b·S2)의 approve·reject는 게이트처럼 세지 않는다.
-// crosscheckMatch: DISPATCH와 SCHEDULE을 합친 CROSSCHECK 일치율(crosscheckRateOf), 그날 끝까지 사람 판정이 난 것 누적.
-// TARGET·ROUTE(countsForGate가 아닌 것)는 게이트처럼 빼고 센다.
-export function gateTrend(proposals: Proposal[], allOps: ScheduleOp[], now: number, days = NETWORK_DAYS): GateRow[] {
-  const ops = allOps.filter(countsForGate);
-  const shadow = <T>(xs: T[], status: (x: T) => string, at: (x: T) => string | null | undefined) =>
-    xs
-      .filter((x) => status(x) === "agreed" || status(x) === "disagreed")
-      .map((x) => ({ t: Date.parse(at(x) ?? ""), agreed: status(x) === "agreed" }))
-      .filter((x) => Number.isFinite(x.t));
-  const dispatch = shadow(proposals, (p) => p.status, (p) => p.timeline.agreed ?? p.timeline.disagreed);
-  const schedule = shadow(ops, (s) => s.status, (s) => s.decision?.at);
-  const marks = [
-    ...proposals.map((p) => ({ crosscheck: p.crosscheck, human: proposalHuman(p) })),
-    ...ops.map((s) => ({ crosscheck: s.crosscheck, human: scheduleHuman(s) })),
-  ].filter((x) => x.human);
-  const cumulative = (xs: { t: number; agreed: boolean }[], to: number) => {
-    const upto = xs.filter((x) => x.t < to);
-    return upto.length ? upto.filter((x) => x.agreed).length / upto.length : null;
-  };
-  return dayWindows(now, days).map(({ date, from, to }) => {
-    const end = Math.min(to, now + 1);
-    return {
-      date,
-      dispatchDecided: dispatch.filter((x) => x.t >= from && x.t < end).length,
-      dispatchAgreement: cumulative(dispatch, end),
-      scheduleDecided: schedule.filter((x) => x.t >= from && x.t < end).length,
-      scheduleAgreement: cumulative(schedule, end),
-      crosscheckMatch: crosscheckRateOf(marks.filter((x) => Date.parse(x.human!.at) < end)).rate,
-    };
-  });
-}
-
-export interface NetworkInput {
-  now: number;
-  tickets: Ticket[];
-  entries: LogEntry[];
-  views: ViewLike[];
-  goals: ProjectGoal[] | null;
-  proposals: Proposal[];
-  schedule: ScheduleOp[];
-  sources: Network["sources"];
-}
-
-export function buildNetwork(i: NetworkInput): Network {
-  return {
-    at: new Date(i.now).toISOString(),
-    windowDays: NETWORK_DAYS,
-    routes: routeRows(i),
-    aircraft: aircraftRows(i.views),
-    trend: { days: logbookTrend(i.entries, i.now), gates: gateTrend(i.proposals, i.schedule, i.now) },
-    sources: i.sources,
-  };
-}
-
-// ---- 입출력 ----
-
-export function mountNetwork(app: Hono, getSnapshot: () => Promise<Snapshot>) {
-  app.get("/api/network", async (c) => {
-    const s = await getSnapshot();
-    const now = Date.now();
-    const entries = loadLogbook();
-    const views = fleetView(s, loadFleet(), loadDispatchConfig().teamPattern, entries, now);
-    const lp = await loadLinearProjects();
-    return c.json(
-      buildNetwork({
-        now,
-        tickets: s.tickets,
-        entries,
-        views,
-        goals: lp.ok ? lp.projects : null,
-        proposals: allProposals(),
-        schedule: loadScheduleOps(),
-        sources: {
-          linear: s.linear.enabled && Boolean(s.linear.fetchedAt),
-          github: s.github.enabled && Boolean(s.github.fetchedAt),
-          githubOff: s.github.reason === GITHUB_OFF_REASON,
-          logbook: existsSync(join(config.stateDir, "logbook.jsonl")),
-        },
-      }),
-    );
   });
 }
