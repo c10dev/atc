@@ -1,6 +1,6 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
 import type { Snapshot } from "../../server/model.ts";
-import type { ServerSettings, SettingsErrors, SettingsPatch } from "../../server/settings.ts";
+import type { ServerSettings, SettingsErrors, SettingsPatch, SwitchPatchBody } from "../../server/settings.ts";
 import { callsign } from "./aviation.ts";
 import { timeAgo } from "./derive.ts";
 import { apiGet, apiSend } from "./api.ts";
@@ -10,7 +10,7 @@ import { apiGet, apiSend } from "./api.ts";
 
 export type Loaded = { state: "loading" } | { state: "error" } | { state: "ready"; data: ServerSettings };
 export type SaveResult = { ok: true } | { ok: false; error: string };
-export type Save = (patch: SettingsPatch) => Promise<SaveResult>;
+export type Save = (patch: SettingsPatch | SwitchPatchBody) => Promise<SaveResult>;
 
 export function useServerSettings(): { server: Loaded; save: Save } {
   const [server, setServer] = useState<Loaded>({ state: "loading" });

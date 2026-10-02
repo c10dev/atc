@@ -76,8 +76,9 @@ export interface SettingsPatch {
   ttsEngine?: string; // none·piper·espeak·kokoro·stub. .env.local의 ATC_TTS_ENGINE(ATC-140)
   ttsVoice?: string; // 고른 목소리 이름. 비우면 첫 번째. ATC_TTS_VOICE
   // SUPERVISOR 스위치(dispatch.json·autoland.json·mcc.json …)는 server/switches/의 선언이 이름·값·저장을 정한다(ATC-393). 이 목록에는 적지 않는다
-  [declaredSwitch: string]: unknown; // server/switches/에 선언한 스위치의 key와 값(PUT /api/settings는 같은 본문으로 받는다)
 }
+// server/switches/에 선언한 스위치의 key → 값(PUT /api/settings는 같은 본문으로 받는다). SettingsPatch의 key 검사를 흐리지 않게 따로 둔다
+export type SwitchPatchBody = Record<string, unknown>;
 export type SettingsErrors = Partial<Record<keyof SettingsPatch, string>>;
 
 const ENV_FILE = new URL("../.env.local", import.meta.url).pathname;

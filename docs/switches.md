@@ -1,6 +1,6 @@
 # Switch and job registry (ATC-393)
 
-Status: built 2026-10-02. Adding a SUPERVISOR switch or a periodic server job adds **one file** and edits no shared line, so switch PRs stop conflicting with each other.
+Adding a SUPERVISOR switch or a periodic server job adds **one file** and edits no shared line, so switch PRs stop conflicting with each other.
 
 ## Why
 
@@ -43,6 +43,7 @@ Nothing else needs editing: the PUT route, the mode line, the ⚠ confirmation, 
 ## What did not change
 
 - **Guards.** The write path is the same code: `fromThisApp` (this screen's Origin) is checked once, before any switch; nothing about who may write moved. Every switch's values, defaults, confirm steps, warning text, error text and record line are the ones it had; a before/after dump of the settings window HTML and of `GET`/`PUT /api/settings` (defaults, every switch at a ⚠ value, every bad value, the log lines) differs only by the new `switches` field and the `CODEX LANE` switch below.
+- **Tier.** `server/jobs/` and `server/switches/` are flagged as folders in `deploy/landing-tier.mjs` (a job reaches RTS, LAUNCH or a merge through `provideService` names that the import scan cannot see, and a switch file holds a switch's default and how it is saved), so adding or changing one never lands as `auto`. `launchForCard` is a side-effect helper like `launchAircraft`.
 - **Jobs.** Same functions, same cadence and the same order inside the tick (a tick job that throws still stops the rest of that tick, as before). The four `setInterval` jobs keep their 30 s and 60 s periods.
 
 ## CODEX LANE switch (added with this change)
