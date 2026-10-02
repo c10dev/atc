@@ -55,8 +55,8 @@ function appendReview(r: LandingReview, file = FILE, op = "landing-review") {
 }
 
 export class ReviewError extends Error {
-  status: 400 | 403 | 404 | 409;
-  constructor(message: string, status: 400 | 403 | 404 | 409) {
+  status: 400 | 403 | 404 | 409 | 502;
+  constructor(message: string, status: 400 | 403 | 404 | 409 | 502) {
     super(message);
     this.status = status;
   }
@@ -142,7 +142,10 @@ export function capText(text: string, max: number): { text: string; truncated: b
 const REVIEW_GUIDE =
   "diff가 FLIGHT의 완료 기준을 채우는지, 금지 사항을 어기지 않는지, 버그·보안·데이터 손상 위험이 없는지 본다. 지적은 Codex처럼 P0(머지하면 안 됨)·P1(머지 전에 고칠 것)·P2(나중에)로 적는다. P0·P1이 없으면 pass. diff가 잘렸으면 본 범위를 적고, 잘린 부분에 위험이 있을 수 있으면 findings(P1)로 남긴다.";
 
-export function mountLandingReview(app: Hono, getSnapshot: () => Promise<Snapshot>) {
+// 오류의 첫 줄(stderr가 있으면 그것)
+export const firstLine = (e: unknown) => String(((e as { stderr?: string }).stderr || (e as Error)?.message || e) ?? "").trim().split("\n")[0].slice(0, 300) || "원인 모름";
+
+export function mountLandingReview(app: Hono, getSnapshot: () => Promise<Snapshot>, readGh?: (args: string[]) => Promise<string>) {
   const fail = (e: unknown) => {
     if (e instanceof ReviewError) return { body: { error: e.message }, status: e.status };
     throw e;
@@ -177,7 +180,10 @@ export function mountLandingReview(app: Hono, getSnapshot: () => Promise<Snapsho
       const al = autolandAirportOf(s, p);
       if (!al) assertReviewTarget(p);
       const slug = slugOfUrl(p.url)!;
-      const src = await fetchReviewSource(slug, p.number);
+      // GitHub 읽기 실패는 500이 아니라 502와 stderr 첫 줄(ATC-449). 너무 큰 diff는 fetchReviewSource가 files API로 돌아간다
+      const src = await fetchReviewSource(slug, p.number, readGh).catch((e) => {
+        throw new ReviewError(`GitHub 읽기 실패 — ${firstLine(e)}`, 502);
+      });
       if (src.headRefOid !== p.head) throw new ReviewError(`head가 바뀜(${src.headRefOid.slice(0, 7)}) — atc가 다시 읽은 뒤(90초 안) 리뷰한다`, 409);
       // FLIGHT 본문도 보안 키워드를 본다. 읽지 못하면 확인할 수 없으니 보내지 않는다
       let issue: { title?: string; url?: string; description?: string | null };
@@ -214,7 +220,10 @@ export function mountLandingReview(app: Hono, getSnapshot: () => Promise<Snapsho
         flight,
         files: src.files,
         diff: diff.text,
-        diffTruncated: diff.truncated,
+        diffSource: src.diffSource,
+        // files API 자료는 patch가 빠진 파일(너무 큼·이진)이 있을 수 있어 늘 잘린 자료로 본다(ATC-449)
+        diffTruncated: diff.truncated || src.diffSource === "files-api",
+        ...(src.removedFiles.length ? { removedFiles: src.removedFiles } : {}),
         diffChars: diff.chars,
         // 보안 PR(스위치로 보냄): 사유. 리뷰어는 권한·RLS·인증·마이그레이션을 더 엄격히 본다(review/CLAUDE.md)
         security: gate.security,
