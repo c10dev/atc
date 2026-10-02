@@ -60,7 +60,14 @@ const openLeaksNow = (now: number): { title: string; sinceMs: number }[] =>
 
 // 지금 REVIEW 턴이 도는 중이면 id를 기억한다(제안 줄에 붙인다)
 let currentReview: string | null = null;
-export const reviewTurnActive = (rt: () => DutyRuntime = duty) => currentReview !== null && rt().reviewTurn();
+// 턴이 끝났으면 id도 버린다(제안 줄이 지난 점검의 id를 달고 가지 않게)
+export const reviewTurnActive = (rt: () => DutyRuntime = duty) => {
+  if (currentReview !== null && !rt().reviewTurn()) currentReview = null;
+  return currentReview !== null;
+};
+
+// DUTY ACCOUNT의 FUEL이 HOLD 임계값 이상인가(서버가 시작하는 턴은 FUEL을 아낀다). 모르면 false
+export const fuelHoldOf = (snap: Pick<Snapshot, "fuelAccounts">, account: string): boolean => (snap.fuelAccounts ?? []).some((f) => (f.account ?? f.group) === account && f.level === "hold");
 
 export function landingLinesOf(brief: unknown): string[] {
   const q = (brief as { landingQueue?: unknown[] } | null)?.landingQueue;
@@ -80,11 +87,14 @@ export async function reviewTick(d: ReviewDeps, state: { idleSince: number | nul
   const [dispatch, snap] = await Promise.all([d.get("/api/dispatch/brief").catch(() => null), d.snapshot()]);
   if (dispatch === null) return null; // 읽지 못한 채 신호를 지어내지 않는다
   const lines = d.lines();
-  const lastAt = Math.max(d.startedAt, ...lines.filter((l) => l.ev === "review").map((l) => Date.parse(l.at)));
+  // 점검 기록만 본다(서버를 다시 띄워도 정기 점검이 밀리지 않는다: 막 뜬 때는 WARMUP_MS가 막는다)
+  const reviews = lines.flatMap((l) => (l.ev === "review" ? [{ at: Date.parse(l.at), trigger: l.trigger, key: l.key ?? "" }] : []));
+  const lastAt = Math.max(0, ...reviews.map((r) => r.at).filter(Number.isFinite));
   const signals = signalsOf(dispatch, d.openLeaks(now), now);
   const rt = d.rt();
   const st = rt.status();
-  const dec = decideReview({ now, lastAt, busy: st.state !== "idle" || st.queued > 0, cfg, signals, idleSince: state.idleSince });
+  if (currentReview !== null && !rt.reviewTurn()) currentReview = null;
+  const dec = decideReview({ now, lastAt, busy: st.state !== "idle" || st.queued > 0, cfg, signals, idleSince: state.idleSince, history: reviews, fuelHold: fuelHoldOf(snap, cfg.account) });
   state.idleSince = dec.idleSince;
   if (!dec.run || !dec.trigger) return null;
   const id = nextReviewId(lines);
@@ -103,7 +113,7 @@ export async function reviewTick(d: ReviewDeps, state: { idleSince: number | nul
     currentReview = null;
     return null;
   }
-  d.append({ v: 1, ev: "review", id, at: new Date(now).toISOString(), trigger: dec.trigger, detail: (dec.detail ?? "").slice(0, 300) });
+  d.append({ v: 1, ev: "review", id, at: new Date(now).toISOString(), trigger: dec.trigger, detail: (dec.detail ?? "").slice(0, 300), ...(dec.key ? { key: dec.key.slice(0, 500) } : {}) });
   return id;
 }
 

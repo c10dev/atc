@@ -2,7 +2,7 @@ import "./test-hermetic.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseDutyConfig } from "./duty-config.ts";
-import { decideReview, nextReviewId, openSimilarKey, PROPOSALS_MAX, reviewDaysOf, reviewPromptOf, type ReviewConfig, type ReviewLine, type ReviewSignals, signalsOf } from "./duty-review.ts";
+import { decideReview, nextReviewId, openSimilarKey, PROPOSALS_MAX, REVIEW_DAILY_MAX, reviewDaysOf, reviewKeyOf, reviewPromptOf, type ReviewConfig, type ReviewLine, type ReviewMemo, type ReviewSignals, signalsOf } from "./duty-review.ts";
 import type { Ticket } from "./model.ts";
 import { NOT_RELEASED_WHY } from "./release.ts";
 
@@ -127,4 +127,46 @@ test("하루 세기: 점검·제안은 그날, 발권은 제안 뒤의 발권 �
 test("설정: 스위치는 기본 켜짐(live first)이고 false로만 끈다", () => {
   assert.equal(parseDutyConfig(null).review, true);
   assert.equal(parseDutyConfig({ review: false }).review, false);
+});
+
+// ── 되풀이 점검 막기(MCC P1): 바뀌지 않는 상황은 간격마다 점검을 부르지 않는다 ──
+test("decideReview: 열린 채인 leak은 같은 leak으로 reviewEveryMin 안에 다시 점검하지 않고, 새 leak이나 그 뒤에는 한다", () => {
+  const leak: ReviewSignals = { ...calm, leakMin: 200, leakTitle: "LANDING #9" };
+  const memo = (agoMin: number, key: string): ReviewMemo => ({ at: NOW - agoMin * MIN, trigger: "leak", key });
+  // 31분 전에 이 leak으로 점검했다: 간격(30분)은 지났지만 같은 leak이라 기다린다
+  const same = decideReview({ ...base, lastAt: NOW - 31 * MIN, signals: leak, history: [memo(31, "LANDING #9")] });
+  assert.deepEqual([same.run, same.why], [false, "quiet"]);
+  // 다른 leak이 열려 있으면 바로 한다
+  assert.deepEqual([decideReview({ ...base, lastAt: NOW - 31 * MIN, signals: { ...leak, leakTitle: "UPDATE" }, history: [memo(31, "LANDING #9")] }).run], [true]);
+  // 같은 leak이 reviewEveryMin(240분)을 넘겨 열려 있으면 다시 한다
+  assert.equal(decideReview({ ...base, lastAt: NOW - 241 * MIN, signals: leak, history: [memo(241, "LANDING #9")] }).trigger, "leak");
+  // 하루로 세어 보면: 열린 leak 하나가 하루 종일 열려 있어도 6번을 넘지 않는다
+  let t = NOW;
+  const hist: ReviewMemo[] = [];
+  for (let m = 0; m < 24 * 60; m += 5) {
+    t = NOW + m * MIN;
+    const d = decideReview({ ...base, now: t, lastAt: Math.max(0, ...hist.map((h) => h.at)), signals: leak, history: hist });
+    if (d.run) hist.push({ at: t, trigger: d.trigger!, key: d.key ?? "" });
+  }
+  assert.ok(hist.length <= 7, `하루 ${hist.length}번`);
+  assert.deepEqual([...new Set(hist.map((h) => h.trigger))], ["leak"], "같은 leak은 reviewEveryMin마다 한 번");
+});
+
+test("decideReview: 놀고-일감이 같으면 다시 점검하지 않고, AIRCRAFT나 FLIGHT 집합이 바뀌면 한다", () => {
+  const stuck: ReviewSignals = { ...calm, idleAircraft: ["TEAM_A"], waitingFlights: ["ATC-1", "ATC-3"] };
+  const key = reviewKeyOf("idle", stuck);
+  const memo: ReviewMemo = { at: NOW - 40 * MIN, trigger: "idle", key };
+  const args = { ...base, lastAt: NOW - 40 * MIN, idleSince: NOW - 40 * MIN, history: [memo] };
+  assert.equal(decideReview({ ...args, signals: stuck }).run, false, "같은 집합");
+  assert.equal(decideReview({ ...args, signals: { ...stuck, waitingFlights: ["ATC-1", "ATC-4"] } }).trigger, "idle", "다른 FLIGHT 집합");
+  assert.equal(decideReview({ ...args, signals: { ...stuck, idleAircraft: ["TEAM_A", "TEAM_B"] } }).trigger, "idle", "다른 AIRCRAFT 집합");
+  assert.equal(decideReview({ ...args, now: NOW + 210 * MIN, lastAt: NOW - 40 * MIN, idleSince: NOW - 40 * MIN, signals: stuck }).trigger, "idle", "reviewEveryMin(240분)이 지나면 다시");
+});
+
+test("decideReview: DUTY ACCOUNT의 FUEL이 HOLD면 서버가 시작하는 턴을 하지 않고, 하루 상한을 넘기지 않는다", () => {
+  const due = { ...base, lastAt: NOW - 300 * MIN };
+  assert.equal(decideReview({ ...due, fuelHold: true }).why, "fuel");
+  const many: ReviewMemo[] = Array.from({ length: REVIEW_DAILY_MAX }, (_, i) => ({ at: NOW - (31 + i) * MIN, trigger: "schedule", key: "" }));
+  assert.equal(decideReview({ ...due, lastAt: NOW - 31 * MIN, history: many, signals: { ...calm, leakMin: 500, leakTitle: "x" } }).why, "cap");
+  assert.equal(decideReview({ ...due, history: many.slice(1) }).run, true);
 });

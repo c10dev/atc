@@ -55,27 +55,50 @@ export interface ReviewDecision {
   trigger?: ReviewTrigger;
   detail?: string;
   idleSince: number | null; // 호출한 쪽이 다음 주기에 다시 넣는다(놀고-일감 상태가 이어진 시작 시각)
+  key?: string; // idle·leak 트리거가 본 것의 서명(점검 줄에 남는다). 같은 서명은 reviewEveryMin 안에 다시 점검하지 않는다
   why?: string; // run이 false인 이유(시험·화면용)
 }
 
 const MIN = 60_000;
+const DAY = 24 * 60 * MIN;
+export const REVIEW_DAILY_MAX = 12; // 하루 점검 상한(FUEL을 쓰는 서버 시작 턴의 마지막 안전판)
 
-// 지금 점검을 시작할까. lastAt은 마지막 점검 시각(없으면 서버가 뜬 시각을 넣는다: 재시작 직후 곧바로 돌지 않게)
-export function decideReview(x: { now: number; lastAt: number; busy: boolean; cfg: ReviewConfig; signals: ReviewSignals; idleSince: number | null }): ReviewDecision {
+// 지난 점검의 기억(duty-reviews.jsonl의 review 줄). key는 그때 트리거가 본 것의 서명
+export interface ReviewMemo {
+  at: number;
+  trigger: ReviewTrigger;
+  key: string;
+}
+
+// 트리거가 본 것의 서명: idle은 놀고 있는 AIRCRAFT와 기다리는 FLIGHT 집합, leak은 그 leak의 제목. 바뀌지 않는 상황이 간격마다 되풀이 점검을 만들지 않게 한다
+export const reviewKeyOf = (trigger: "idle" | "leak", s: ReviewSignals): string => (trigger === "idle" ? `${s.idleAircraft.join(",")}|${s.waitingFlights.join(",")}` : (s.leakTitle ?? ""));
+
+// 지금 점검을 시작할까. lastAt은 마지막 점검 시각(점검한 적이 없으면 0). 서버가 막 떴을 때는 호출한 쪽의 준비 시간이 막는다.
+// 같은 트리거가 같은 서명을 보고 reviewEveryMin 안에 이미 점검했으면 다시 점검하지 않는다(바뀌지 않는 leak·놀고-일감이 30분마다 점검을 부르지 않게).
+// fuelHold: DUTY ACCOUNT의 FUEL이 HOLD 임계값 이상이면 서버가 시작하는 턴을 하지 않는다(SUPERVISOR의 글에는 그대로 답한다)
+export function decideReview(x: { now: number; lastAt: number; busy: boolean; cfg: ReviewConfig; signals: ReviewSignals; idleSince: number | null; history?: readonly ReviewMemo[]; fuelHold?: boolean }): ReviewDecision {
   const { now, cfg, signals } = x;
+  const history = x.history ?? [];
   // 놀고-일감이 이어진 시간은 점검을 못 하는 때에도 센다
   const stuck = signals.idleAircraft.length > 0 && signals.waitingFlights.length > 0;
   const idleSince = stuck ? (x.idleSince ?? now) : null;
   const out = (r: Omit<ReviewDecision, "idleSince">): ReviewDecision => ({ ...r, idleSince });
   if (!cfg.review) return out({ run: false, why: "off" });
   if (x.busy) return out({ run: false, why: "busy" });
+  if (x.fuelHold) return out({ run: false, why: "fuel" });
   if (now - x.lastAt < cfg.reviewGapMin * MIN) return out({ run: false, why: "gap" });
+  if (history.filter((h) => now - h.at < DAY).length >= REVIEW_DAILY_MAX) return out({ run: false, why: "cap" });
+  const repeated = (trigger: ReviewTrigger, key: string) => history.some((h) => h.trigger === trigger && h.key === key && now - h.at < cfg.reviewEveryMin * MIN);
   if (idleSince !== null && now - idleSince >= cfg.reviewIdleMin * MIN) {
-    const m = Math.floor((now - idleSince) / MIN);
-    return { run: true, trigger: "idle", detail: `${signals.idleAircraft.join(", ")} idle for ${m} min while ${signals.waitingFlights.slice(0, 6).join(", ")} wait${signals.waitingFlights.length > 6 ? ` (+${signals.waitingFlights.length - 6})` : ""}`, idleSince: null };
+    const key = reviewKeyOf("idle", signals);
+    if (!repeated("idle", key)) {
+      const m = Math.floor((now - idleSince) / MIN);
+      return { run: true, trigger: "idle", key, detail: `${signals.idleAircraft.join(", ")} idle for ${m} min while ${signals.waitingFlights.slice(0, 6).join(", ")} wait${signals.waitingFlights.length > 6 ? ` (+${signals.waitingFlights.length - 6})` : ""}`, idleSince: null };
+    }
   }
   if (signals.leakMin !== null && signals.leakMin >= cfg.reviewLeakMin) {
-    return { run: true, trigger: "leak", detail: `${signals.leakTitle ?? "a human step"} held ${signals.leakMin} min`, idleSince };
+    const key = reviewKeyOf("leak", signals);
+    if (!repeated("leak", key)) return { run: true, trigger: "leak", key, detail: `${signals.leakTitle ?? "a human step"} held ${signals.leakMin} min`, idleSince };
   }
   if (now - x.lastAt >= cfg.reviewEveryMin * MIN) return { run: true, trigger: "schedule", detail: `last review ${Math.floor((now - x.lastAt) / MIN)} min ago`, idleSince };
   return out({ run: false, why: "quiet" });
@@ -139,7 +162,7 @@ export function openSimilarKey(title: string, tickets: readonly Ticket[], now: n
 
 // ── 기록(duty-reviews.jsonl, 추가만)과 하루 세기 ──
 export type ReviewLine =
-  | { v: 1; ev: "review"; id: string; at: string; trigger: ReviewTrigger; detail: string }
+  | { v: 1; ev: "review"; id: string; at: string; trigger: ReviewTrigger; detail: string; key?: string }
   | { v: 1; ev: "proposal"; at: string; review: string; key: string; title: string };
 
 export const nextReviewId = (lines: readonly ReviewLine[]): string => {
