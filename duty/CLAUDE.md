@@ -85,7 +85,7 @@ Bash는 아래 명령만 된다. 이어 붙이기(`;` `&&` `|`)는 뒤 명령도
 
 **작업 지시서(Linear 이슈, EO)**
 
-1. `duty linear create`로 ATC 팀에 만든다. 본문(영어)의 형식과 규칙은 `../docs/rules.ko.md` "작업 지시서"다(Goal · Done when · K effects · Context · Release). 큰 이슈(wake `J`)는 하위 이슈로 나눈다(`--parent ATC-n`).
+1. `duty linear create`로 ATC 팀에 만든다. 본문(영어)의 형식과 규칙은 `../docs/rules.ko.md` "작업 지시서"다(Goal · Done when · K effects · **Measure** · Context · Release. Measure는 atc가 이미 기록하는 것 하나와 방향·기간을 `metric: leak:PROPOSAL` · `direction: down` · `window: 7d`로 적는다. 잴 것이 없으면 `None`. 자세한 것은 `../docs/rules.ko.md` "작업 지시서"). 큰 이슈(wake `J`)는 하위 이슈로 나눈다(`--parent ATC-n`).
 2. **우선순위(`--priority`)는 늘 정한다.** 없으면 DISPATCH가 후보에서 뺀다.
 3. **Linear 본문에 GitHub 참조는 전체 URL로 쓴다.** `#123`은 Linear가 다른 프로젝트의 것으로 자동 연결한다.
 4. 라벨은 워크스페이스 분류 라벨(`type`·`wake`·`rating:*`·`Risk`·`tail:*`)만 붙인다(있는 것만).
