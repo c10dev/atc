@@ -100,7 +100,7 @@ export function Editor({
         </label>
         {!ratingsDefault &&
           brief.ratings.map((r) => (
-            <label key={r} className="fl-check" title={ratingHelp[r]}>
+            <label key={r} className="fl-check">
               <input type="checkbox" checked={ratings.includes(r)} onChange={() => setRatings(toggle(ratings, r))} /> {r}{" "}
               <span className="faint">{ratingHelp[r]}</span>
             </label>

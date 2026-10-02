@@ -186,7 +186,7 @@ function BrowserAlertsSettings({ save }: { save: Save }) {
                 const info = (voice.engines ?? []).find((x) => x.engine === e);
                 const off = info !== undefined && !info.available && e !== voice.engine;
                 return (
-                  <option key={e} value={e} disabled={off} title={info?.error?.message}>
+                  <option key={e} value={e} disabled={off}>
                     {info && !info.available ? `${label} — ${info.error?.message ?? "쓸 수 없음"}` : label}
                   </option>
                 );

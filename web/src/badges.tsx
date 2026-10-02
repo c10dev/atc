@@ -19,11 +19,11 @@ export function AirportCode({ airport, plain = false }: { airport: Airport | nul
   );
 }
 
-// OUTSTATION: 소속 AIRPORT 밖 STAND를 점유 중일 때 "OUTSTATION TNNS"
+// OUTSTATION: 소속 AIRPORT 밖 STAND를 점유 중일 때 "OUTSTATION TNNS". 낱말 자체가 상태라 툴팁이 없어도 읽힌다(ATC-418)
 export function AwayTag({ airports }: { airports: Airport[] | undefined }) {
   if (!airports?.length) return null;
   return (
-    <span className="away-tag" title="소속 AIRPORT 밖 STAND에서 작업 중">
+    <span className="away-tag">
       OUTSTATION
       {airports.map((a) => (
         <AirportCode key={a.id} airport={a} />
@@ -42,7 +42,8 @@ export function SessionPlace({ session, idx }: { session: Session; idx: Index })
   );
 }
 
-const statusLabel = { busy: "AIRBORNE", idle: "대기", dead: "NORDO" } as const;
+// 세션 배지의 상태 낱말(ATC-418): 점 색만으로 상태를 말하지 않도록 이름 옆에 글자로도 보인다(원칙 2)
+const statusLabel = { busy: "AIRBORNE", idle: "IDLE", dead: "NORDO" } as const;
 
 export function StatusDot({ status, label }: { status: Session["status"]; label?: string }) {
   const text = label ?? statusLabel[status];
@@ -50,10 +51,12 @@ export function StatusDot({ status, label }: { status: Session["status"]; label?
 }
 
 export function SessionBadge({ session }: { session: Session }) {
+  const state = statusLabel[session.status];
   return (
     <span className={`session-badge is-${session.status}`} title={session.name}>
-      <StatusDot status={session.status} />
+      <StatusDot status={session.status} label={state} />
       {callsign(session)}
+      <span className="sb-state">{state}</span>
     </span>
   );
 }
@@ -77,14 +80,16 @@ export function PriorityMark({ priority }: { priority: number }) {
   );
 }
 
-// NEEDS YOU(ATC-99): 백그라운드 job이 blocked면 사람의 답을 기다린다. needs가 글, detail은 툴팁. 읽기만 한다
-// attach: 카드가 복사하는 것과 같은 명령(ATC-301, 기본이 아닌 폴더면 CLAUDE_CONFIG_DIR가 붙는다). 모르면 `claude attach <id>`
+// NEEDS YOU(ATC-99): 백그라운드 job이 blocked면 사람의 답을 기다린다. needs가 글, 기다린 시각은 화면에 짧게 옆으로. 읽기만 한다
+// attach: 카드가 복사하는 것과 같은 명령(ATC-301, 기본이 아닌 폴더면 CLAUDE_CONFIG_DIR가 붙는다) — 툴팁에 남긴다(카드에는 눈에 보인다)
 export function NeedsYou({ job, attach, className = "" }: { job: Job | null | undefined; attach?: string | null; className?: string }) {
   if (job?.state !== "blocked") return null;
+  const since = job.since ? `${job.since.slice(11, 16)}Z` : null;
   return (
-    <span className={`needs-you mono ${className}`.trim()} title={[job.detail, job.since ? `since ${job.since.slice(11, 16)}Z` : "", `SUPERVISOR가 \`${attach || "claude attach <id>"}\`로 붙어 답하거나 메시지를 보낸다`].filter(Boolean).join(" — ")}>
+    <span className={`needs-you mono ${className}`.trim()} title={[job.detail, attach].filter(Boolean).join(" — ") || undefined}>
       NEEDS YOU{job.needs ? <span className="needs-you-text"> · {job.needs}</span> : null}
       {standNeedsHint(job.needs) ? <span className="needs-you-text"> · {standNeedsHint(job.needs)}</span> : null}
+      {since ? <span className="needs-you-when"> · {since}</span> : null}
     </span>
   );
 }
@@ -102,12 +107,13 @@ export function PendingApproval({ job, health, attach, className = "" }: { job: 
 }
 
 // ACTIVITY(ATC-97): "Bash · Run the test suite · 12s". 도구가 돌면 tool, 모델 대기는 model, idle은 흐리게. 본문은 없다
+// 툴팁은 phase 낱말(tool·model·idle)의 뜻풀이 — 값이 아니라 읽는 법이라 남긴다(ATC-418)
 const PHASE_TIP = { tool: "도구 실행 중", model: "도구 결과 뒤 모델 응답 대기", idle: "턴이 끝나 쉬는 중" } as const;
 export function ActivityLine({ activity, now, className = "" }: { activity: Activity | null | undefined; now: number; className?: string }) {
   if (!activity) return null;
   const { what, ago } = activityParts(activity, now);
   return (
-    <span className={`activity is-${activity.phase} ${className}`.trim()} title={`ACTIVITY — ${PHASE_TIP[activity.phase]}\n${what ? `${what} · ` : ""}${ago}`}>
+    <span className={`activity is-${activity.phase} ${className}`.trim()} title={`ACTIVITY — ${PHASE_TIP[activity.phase]}`}>
       <span className="activity-dot" aria-hidden="true" />
       {what && <span className="activity-what">{what}</span>}
       <span className="activity-ago">{what ? " · " : ""}{ago}</span>
@@ -117,6 +123,7 @@ export function ActivityLine({ activity, now, className = "" }: { activity: Acti
 
 // working 중인 백그라운드 job의 한 줄(Claude Code가 적은 detail)
 // 지금 하는 일이 아니라 job이 마지막으로 적은 것이라 나이를 붙인다(ATC-369): "… · last known, 17 h ago"
+// detail과 나이는 화면에, "지금 하는 일이 아니다"라는 뜻풀이만 툴팁에 (ATC-418)
 export function JobDetail({ job, now = Date.now() }: { job: Job | null | undefined; now?: number }) {
   if (job?.state !== "working") return null;
   const st = job.settled;
@@ -134,13 +141,13 @@ export function JobDetail({ job, now = Date.now() }: { job: Job | null | undefin
   );
 }
 
-// suggestedReply: 복사만 한다. atc는 어디에도 보내지 않는다
+// suggestedReply: 복사만 한다. atc는 어디에도 보내지 않는다. 보내지 않는다는 것도 화면에 보인다(ATC-418)
 export function SuggestedReply({ job }: { job: Job | null | undefined }) {
   if (job?.state !== "blocked" || !job.suggestedReply) return null;
   const copy = () => void navigator.clipboard?.writeText(job.suggestedReply!).catch(() => {});
   return (
-    <p className="needs-you-reply" title="Claude Code가 제안한 답. atc는 보내지 않는다 — 복사해서 그 세션에 직접 붙여 넣는다">
-      <span className="faint">제안된 답 </span>
+    <p className="needs-you-reply">
+      <span className="faint">제안된 답 (atc는 보내지 않는다 — 복사해 그 세션에 붙여 넣는다) </span>
       <code>{job.suggestedReply}</code>{" "}
       <button type="button" className="needs-you-copy" onClick={copy}>
         복사

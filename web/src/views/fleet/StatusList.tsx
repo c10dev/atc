@@ -149,14 +149,12 @@ export function StatusList({
                   <NeedsYou job={r.job} attach={r.origin?.attach} />
                   <PendingApproval job={r.job} health={r.health} attach={r.origin?.attach} />
                   {r.health && (
-                    <span className={`fl-r-health lv-${r.health.level}`} title={`${r.health.detail} — ${r.health.next}`}>
-                      {r.health.label}
-                    </span>
+                    <span className={`fl-r-health lv-${r.health.level}`}>{r.health.label}</span>
                   )}
                   {r.report && <ReportChip r={r.report} />}
                   {r.restarting && (
-                    <span className="fl-r-health" title={`세션이 /clear로 끝났다. ${r.restarting.until.slice(11, 16)}Z까지 새 세션의 첫 메시지를 기다린다`}>
-                      {r.restarting.label}
+                    <span className="fl-r-health">
+                      {r.restarting.label} · {r.restarting.until.slice(11, 16)}Z까지
                     </span>
                   )}
                   <AbsentChip m={gone} />

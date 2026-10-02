@@ -17,8 +17,8 @@ export function absentMarkOf(x: AbsentAircraft | undefined, aog: boolean, now: n
   const c = x.cut;
   if (!c)
     return {
-      label: "absent · LAUNCH on approve",
-      title: `세션 없음(마지막 atc LAUNCH ${utc(x.launchedAt)}). DISPATCH 카드를 승인하면 같은 옵션으로 LAUNCH한 뒤 FLIGHT PLAN을 보낸다`,
+      label: `absent · LAUNCH on approve · 마지막 LAUNCH ${utc(x.launchedAt)}`,
+      title: "DISPATCH 카드를 승인하면 같은 옵션으로 LAUNCH한 뒤 FLIGHT PLAN을 보낸다",
       resume: false,
     };
   const reset = c.resetsAt ? (now < Date.parse(c.resetsAt) ? `reset ${utc(c.resetsAt)}` : "reset 지남") : "reset 모름";

@@ -169,7 +169,7 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
           {approval ? "거절" : "반대"}
         </button>
         {approval ? (
-          <button type="button" className="dr-btn is-primary" disabled={row.stale} title={row.stale ? "조건이 바뀜 — 다음 주기를 기다린다" : undefined} onClick={() => setAsk("approve")}>
+          <button type="button" className="dr-btn is-primary" disabled={row.stale} onClick={() => setAsk("approve")}>
             승인(실행)
           </button>
         ) : (
@@ -177,6 +177,8 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
             동의
           </button>
         )}
+        {/* 승인 모드에서 stale이면 왜 못 누르는지를 화면에 둔다(ATC-418). 그림자 모드의 동작은 그대로 */}
+        {approval && row.stale && <span className="du-hint">조건이 바뀜 — 다음 주기를 기다린다</span>}
       </div>
       {err && <p className="du-err">{err}</p>}
     </>

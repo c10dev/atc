@@ -128,6 +128,8 @@ export function App({ build }: { build: string }) {
   const actionable = alerts.filter((a) => levelOf(a) !== "advisory");
   const serious = actionable.filter((a) => levelOf(a) === "warning").length;
   const advisories = alerts.length - actionable.length;
+  // DUTY readout에 보일 상태 낱말(ATC-418): 점 색만으로는 상태를 알 수 없다. down이면 서랍에 사유가 있다
+  const dutyWord = duty.status ? (readoutState(duty.status) === "down" ? "DOWN" : readoutState(duty.status) === "thinking" ? "THINKING" : "IDLE") : "";
   const nameOf = (id: string) => {
     const session = idx?.sessionById.get(id);
     return session ? callsign(session) : id.slice(0, 8);
@@ -200,12 +202,12 @@ export function App({ build }: { build: string }) {
               onClick={() => void (location.hash = "duty")}
               aria-haspopup="dialog"
               aria-expanded={dutyOpen}
-              title={`DUTY · ${duty.status.state}${duty.status.error ? ` — ${duty.status.error}` : ""}`}
+              title={duty.status.state === "down" && duty.status.error ? duty.status.error : undefined}
             >
               <b className={`duty-dot is-${readoutState(duty.status)}`} aria-hidden="true">
                 ●
               </b>
-              <span>DUTY</span>
+              <span>DUTY · {dutyWord}</span>
             </button>
           )}
           <ControlStrip snapshot={snapshot} now={now} />

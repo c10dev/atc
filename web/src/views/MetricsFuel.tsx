@@ -451,7 +451,7 @@ function Top({ entries, since, tickets }: { entries: LogbookFuelEntry[]; since: 
                     ) : f.verdict === "inside" ? (
                       <span className="mf-verdict" title="TRIP FUEL 안">inside</span>
                     ) : (
-                      <span className="faint" title="비교할 FLIGHT가 모자람">—</span>
+                      <span className="faint">비교 FLIGHT 부족</span>
                     )}
                   </td>
                 </tr>

@@ -57,11 +57,7 @@ export function RelayBox({
 
   if (!editableTo && !to) return null;
   if (disabledWhy) {
-    return (
-      <span className="faint rl-why" title={disabledWhy}>
-        RELAY 없음 — {disabledWhy}
-      </span>
-    );
+    return <span className="faint rl-why">RELAY 없음 — {disabledWhy}</span>;
   }
   const check = body.trim() ? relayInputOf({ to, kind: type ? "instruction" : k, text: body, flight, pr, ...(type ? { type, stand } : {}) }) : { error: "" };
   const problem = "error" in check ? check.error : null;
@@ -109,7 +105,7 @@ export function RelayBox({
 
   if (!open) {
     return (
-      <button type="button" className={btnClass} onClick={() => setOpen(true)} title={`${to || "AIRCRAFT"}에게 글을 보낸다. TOWER가 CLEARANCE로 그대로 전한다`}>
+      <button type="button" className={btnClass} onClick={() => setOpen(true)}>
         RELAY…
       </button>
     );
@@ -162,7 +158,7 @@ export function RelayBox({
             <fieldset className="rl-kind">
               <legend className="rl-label">종류</legend>
               {RELAY_KINDS.map((x) => (
-                <label key={x} className="rl-opt" title={KIND_HELP[x]}>
+                <label key={x} className="rl-opt">
                   <input type="radio" name={`rl-kind-${to}-${pr ?? ""}`} checked={k === x} onChange={() => setK(x)} /> {KIND_LABEL[x]} <span className="faint">{KIND_HELP[x]}</span>
                 </label>
               ))}
