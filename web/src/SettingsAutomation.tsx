@@ -752,6 +752,23 @@ export function OperationsSettings({ server, save }: { server: Loaded; save: Sav
         </ServerRows>
       </Block>
 
+      <Block code="STALE STOP" label="끝난 FLIGHT의 멈춘 AIRCRAFT 정리(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) =>
+            s.staleStop ? (
+              <EditRow
+                label="STALE STOP"
+                env="staleStop"
+                value={s.staleStop}
+                note="dispatch.json · FLIGHT가 머지·ARRIVED인데 PENDING·HUNG으로 30분 남은 AIRCRAFT를 서버가 멈추고 FLIGHT RECORDER에 남긴다 · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈"
+                input={{ kind: "select", options: ["on", "off"] }}
+                onSave={(v) => save({ staleStop: v as "on" | "off" })}
+              />
+            ) : null
+          }
+        </ServerRows>
+      </Block>
+
       <Block code="REPOSITION" label="쉬는 AIRCRAFT의 소속 AIRPORT 옮기기(SUPERVISOR 전용)">
         <ServerRows server={server}>
           {(s) =>
