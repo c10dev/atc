@@ -192,3 +192,31 @@
     width: auto;
   }
 }
+
+/* 도움말 메뉴(ATC-381): BELL 목록과 같은 팝오버, 줄은 제목과 한 줄 설명 */
+.help-list {
+  width: min(280px, calc(100vw - 2 * var(--gutter)));
+  margin: 0;
+  list-style: none;
+}
+.help-item {
+  display: grid;
+  gap: var(--space-0-5);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  text-decoration: none;
+}
+.help-item:hover,
+.help-item:focus-visible {
+  background: var(--panel-2);
+}
+.help-item .muted {
+  font-size: var(--text-xs);
+}
+
+/* 헤더의 보기 모드·도움말 버튼이 열려 있을 때(ATC-381): 색이 아니라 굵기와 밑선 대신 글자색으로만 */
+.readout.is-on b,
+.readout.is-on span {
+  color: var(--tab-on);
+}

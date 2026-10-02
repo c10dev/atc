@@ -143,6 +143,13 @@ Order rationale (decision D3): firing has no home and is used every day, so it c
 - NEW drafts stay RELEASE candidates (Y1); their link now says `HOME에서 승인`.
 - Removed with the tab: the S1 verdict screen, CROSSCHECK chips, judge-family chips, the CANDIDATES, IN PROGRESS and RECENT tables and the READINESS fold (S2 gate numbers, ROUTES WITHOUT WAYPOINTS). In S1 a draft is not a queue item (as before), so with SCHEDULE AUTO off and S1 on nobody judges it and it expires after 3 days. The server routes (`/verdict`, `/crosscheck`, `/brief`) are unchanged.
 
+### Y6 as built (ATC-381)
+
+- The tab row shows HOME, RELEASE, FLIGHTS, FLEET and METRICS, plus NETWORK until METRICS takes it in (Y5); SCHEDULE left with Y3. The default tab was already `#home` (ATC-379).
+- **AIRPORTS** is a settings category (`web/src/SettingsPanel.tsx`, `SETTINGS_INDEX`), rendering the unchanged register view, including the team-merge switch. `#airports` opens the settings window on it and leaves the current tab; the PR-alert links that pointed at `#airports` now point at `#flights` and `#home`.
+- **GLOBE** is a view mode (`web/src/GlobeMode.tsx`): a header button or `#globe` / `#globe/<AIRPORT>` opens a full-screen window over the current screen; Escape or the close button returns to it. `views/Globe.tsx` is unchanged.
+- **DOCS** is opened from a HELP menu in the header (`web/src/HelpMenu.tsx`); `#docs/<page>` still opens the Docs view, which stays a routed screen with no tab selected.
+
 ### Not built yet
 
 Y5, Y6. The tab row still has GLOBE, AIRPORTS, NETWORK and DOCS until those steps land.

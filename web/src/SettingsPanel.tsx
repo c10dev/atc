@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { Snapshot } from "../../server/model.ts";
 import { formatClock, type Settings, THEMES, updateSettings } from "./settings.ts";
 import { type SettingsEntry, type SettingsTab, settingsSearch, settingsTabOf } from "../../server/settings-policy.ts";
+import { Airports } from "./views/Airports.tsx";
 import { AccountsBlock } from "./SettingsAccounts.tsx";
 import { AlertsSettings } from "./SettingsAlerts.tsx";
 import { LandingSettings, OperationsSettings } from "./SettingsAutomation.tsx";
@@ -16,6 +17,7 @@ const TABS: readonly { id: SettingsTab; label: string; sub: string; group?: stri
   { id: "linear", label: "LINEAR", sub: "연결 · 팀" },
   { id: "agents", label: "AGENTS", sub: "SOURCES · STANDS · 콜사인" },
   { id: "accounts", label: "ACCOUNTS", sub: "설정 폴더 · LOGIN · 요금제" },
+  { id: "airports", label: "AIRPORTS", sub: "등록부 · 개설 · 팀 머지 스위치" },
   { id: "alerts", label: "알림", sub: "알림 · 소리 · 음성" },
   { id: "landing", label: "LANDING", sub: "AUTOLAND · MCC · REVIEW", group: "AUTOMATION" },
   { id: "operations", label: "OPERATIONS", sub: "FUEL · REPOSITION · RECYCLE · JEV", group: "AUTOMATION" },
@@ -46,14 +48,16 @@ export function SettingsPanel({
   settings,
   snapshot,
   onClose,
+  openTab,
 }: {
   settings: Settings;
   snapshot: Snapshot | null;
   onClose: () => void;
+  openTab?: SettingsTab | null; // 주소(#airports)가 이 분류로 연다(ATC-381)
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
-  const [tab, setTab] = useState<SettingsTab>(loadTab);
+  const [tab, setTab] = useState<SettingsTab>(() => openTab ?? loadTab());
   const [query, setQuery] = useState("");
   const [jump, setJump] = useState<string | null>(null);
   const chooseTab = (t: SettingsTab) => {
@@ -190,6 +194,8 @@ export function SettingsPanel({
               <AgentSettings snapshot={snapshot} server={server} save={save} onNavigate={onClose} />
             ) : tab === "accounts" ? (
               <AccountsBlock />
+            ) : tab === "airports" ? (
+              snapshot ? <Airports snapshot={snapshot} /> : <p className="settings-hint">불러오는 중…</p>
             ) : tab === "alerts" ? (
               <AlertsSettings save={save} />
             ) : tab === "landing" ? (
