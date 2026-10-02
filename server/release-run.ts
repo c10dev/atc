@@ -1,6 +1,8 @@
 // 발권 기록의 길(ATC-362, docs/autonomy.md 원칙 1·10). 판정은 release.ts(순수), 파일은 release-store.ts.
 // - GET  /api/releases              기록, gate 상태, 발권 없는 FLIGHT 목록, 세션별 attested 수(읽기만)
 // - POST /api/releases              {flight, hash?}  화면 클릭 한 건. 이 화면에서 온 요청만(fromThisApp, 아니면 403): agent·CLI·curl은 Origin이 없어 만들 수 없다
+// - POST /api/releases/fire         {flight, hash?}  READY Backlog FLIGHT나 아직 쏘지 않은 제안(ATC-401): Todo로 옮기고 screen 발권을 한 요청으로 적는다(우선순위가 없으면 옮기지 않는다). 같은 Origin 검사
+// - POST /api/releases/discard      {flight, hash?, reason?}  아직 쏘지 않은 제안을 Canceled로 옮기고 사유를 이슈 댓글로 남긴다(ATC-401). 같은 Origin 검사
 // - POST /api/releases/bulk         {flights: [{key, hash}]}  일괄 확인(이미 Todo에 있는 FLIGHT). 같은 Origin 검사. 이 줄부터 gate가 켜진다(arm)
 // - POST /api/releases/attest       {flight, session, words}  다른 세션에 한 SUPERVISOR의 말을 그 세션이 증언. attested로 표시한다
 // - releaseFromChat(text)           DUTY 채팅에 SUPERVISOR가 직접 쓴 글(Origin 검사를 거친 /api/duty/message)에서 `RELEASE ATC-n`·`발권 ATC-n` 줄을 읽는다

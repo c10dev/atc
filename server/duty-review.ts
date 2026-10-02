@@ -19,6 +19,12 @@ export interface ReviewSignals {
 }
 
 const KEY = /^[A-Z][A-Z0-9]*-\d+$/;
+
+// 점검 트리거의 leak 신호에서 뺄 큐 종류(ATC-401). BACKLOG는 DUTY의 제안이 SUPERVISOR의 발권을 기다리는 것이다: 그 기다림이 점검을 부르면
+// 점검이 제안을 더 올리고 제안이 기다림을 더 만드는 고리가 된다. 제안을 쏘는 것은 SUPERVISOR의 화살(원칙 10)이다
+export const REVIEW_LEAK_SKIP_KINDS: ReadonlySet<string> = new Set(["BACKLOG"]);
+export const reviewLeaksOf = (open: readonly { kind: string; title: string; since: string }[]): { title: string; sinceMs: number }[] =>
+  open.filter((o) => !REVIEW_LEAK_SKIP_KINDS.has(o.kind)).map((o) => ({ title: o.title, sinceMs: Date.parse(o.since) })).filter((x) => Number.isFinite(x.sinceMs));
 const STUCK_WHY = [NOT_RELEASED_WHY, STALE_RELEASE_WHY, "우선순위"]; // 배정을 못 받는 이유 가운데 "일감은 있다"는 뜻인 것
 
 interface DispatchLike {

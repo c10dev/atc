@@ -145,7 +145,7 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 | P13 | CHECKRIDE rating 부여(SEC rating이 SEC 작업을 맡을 수 있는 팀을 정한다) | 추천만으로 팀이 권한을 얻음 | not logged | 부여는 **keep**(K3), 회수는 조이는 것. 질문 D6(d) | C9 |
 | P14 | workspace trust 프롬프트, 저장소마다 한 번 | 믿지 않는 폴더의 세션 | 세지 않음 | **keep**(K3) | 없음 |
 | P15 | AIRCRAFT의 LAUNCH, STOP, AOG, RETIRE, ENTRY를 손으로 | 플릿의 모양과 사용량 | 위 FLEET PLAN 개수 | **direction**(플릿 설계). 비행 중인 일의 STOP은 brake(원칙 9) | 없음 |
-| P16 | RELEASE 화면에서 SUPERVISOR를 기다리는 Backlog 제안(DUTY REVIEW, SCHEDULE NEW. 쏘기 = Todo와 `screen` 발권, 버리기 = Canceled, [ATC-401](https://linear.app/vocado/issue/ATC-401)) | 아무도 고르지 않은 제안이 일이 되는 것 | 나가는 날부터 센다(`BACKLOG` 큐 줄) | **keep**(화살, 원칙 10): SUPERVISOR가 쏜다. 없앨 게이트가 아니라 기다림이 보이게 세는 것 | 없음 |
+| P16 | RELEASE 화면에서 SUPERVISOR를 기다리는 Backlog 제안(DUTY REVIEW, SCHEDULE NEW. 쏘기 = Todo와 `screen` 발권, 버리기 = Canceled, [ATC-401](https://linear.app/vocado/issue/ATC-401)) | 아무도 고르지 않은 제안이 일이 되는 것 | 나가는 날부터 센다(`BACKLOG` 큐 줄) | **keep**(화살, 원칙 10): SUPERVISOR가 쏜다. 없앨 게이트가 아니라 기다림이 보이게 세는 것. DUTY REVIEW의 트리거 신호는 아니다(제안이 기다린다고 점검이 시작되지 않는다) | C14(P5와 같다) |
 
 ### 4.4 방향, DUTY, guard
 

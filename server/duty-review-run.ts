@@ -5,7 +5,7 @@ import type { Hono } from "hono";
 import { loadDutyConfig } from "./duty-config.ts";
 import { appendReviewLine, readReviewLines } from "./duty-review-store.ts";
 import { type DutyRuntime, duty } from "./duty-run.ts";
-import { decideReview, nextReviewId, openSimilarKey, reviewDaysOf, reviewPromptOf, type ReviewLine, signalsOf } from "./duty-review.ts";
+import { decideReview, nextReviewId, openSimilarKey, reviewDaysOf, reviewLeaksOf, reviewPromptOf, type ReviewLine, signalsOf } from "./duty-review.ts";
 import { type OpenLeak, openFromRecords } from "./leaks.ts";
 import { readLeaks } from "./leaks-run.ts";
 import type { Snapshot } from "./model.ts";
@@ -31,8 +31,7 @@ export interface ReviewDeps {
   startedAt: number;
 }
 
-const openLeaksNow = (now: number): { title: string; sinceMs: number }[] =>
-  [...openFromRecords(readLeaks(), now).values()].map((o: OpenLeak) => ({ title: o.rec.title, sinceMs: Date.parse(o.rec.since) })).filter((x) => Number.isFinite(x.sinceMs));
+const openLeaksNow = (now: number): { title: string; sinceMs: number }[] => reviewLeaksOf([...openFromRecords(readLeaks(), now).values()].map((o: OpenLeak) => o.rec));
 
 // 지금 REVIEW 턴이 도는 중이면 id를 기억한다(제안 줄에 붙인다)
 let currentReview: string | null = null;
