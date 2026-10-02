@@ -204,7 +204,7 @@ export function App({ build }: { build: string }) {
             <span>HANDOFF</span>
           </button>
           <button
-            className={`readout is-button${serious ? " tone-alert" : actionable.length ? " tone-amber" : ""}`}
+            className={`readout is-button readout-alerts${serious ? " tone-alert" : actionable.length ? " tone-amber" : ""}`}
             onClick={() => setAlertsOpen((v) => !v)}
             aria-expanded={alertsOpen}
           >
