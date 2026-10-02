@@ -1,5 +1,5 @@
 import { Play } from "lucide-react";
-import { IconButton } from "./Icon.tsx";
+import { IconButton } from "./kit/Icon.tsx";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import type { VoiceStatusAll as VoiceStatus } from "../../server/tts.ts";
 import { inApp } from "./host.ts";

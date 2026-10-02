@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { Icon } from "./Icon.tsx";
+import { Icon } from "./kit/Icon.tsx";
 import { useCallback, useEffect, useState } from "react";
 import { type CardAction, actionsOf, cardKey, cardViewOf, NETWORK_KINDS, proposalAskOf, queueHeadOf, scheduleAskOf } from "../../server/duty-card.ts";
 import type { ChatItem } from "../../server/duty-chat.ts";

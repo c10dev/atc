@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const RULES = ["color-literal", "font-size-px", "z-index-literal", "transition-all", "outline-none"] as const;
+export const RULES = ["color-literal", "font-size-px", "font-size-em", "spacing-literal", "radius-literal", "z-index-literal", "transition-all", "outline-none"] as const;
 export type Rule = (typeof RULES)[number];
 
 export interface Finding {
@@ -19,6 +19,14 @@ export interface Finding {
 const COLOR = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/g;
 const HAS_COLOR = new RegExp(COLOR.source);
 const SIZE_PX = /(?:^|[^\w.-])-?\d*\.?\d+(?:px|rem)\b/;
+const SIZE_EM = /(?:^|[^\w.-])-?\d*\.?\d+em\b/; // rem은 앞이 영문자라 걸리지 않는다
+// 간격 속성(ATC-410, Q6): padding·margin·gap·inset·top/right/bottom/left와 그 세부 속성. 0이 아닌 px 리터럴은 var(--space-…)로
+const SPACING_PROP = /^(?:padding|margin|inset)(?:-[a-z]+)*$|^(?:row-|column-)?gap$|^(?:top|right|bottom|left)$/;
+const PX_NONZERO = /(?:^|[^\w.-])-?(?:0*[1-9]\d*\.?\d*|0*\.\d*[1-9]\d*)px\b/;
+// 둥근 모서리: 세부 속성(border-top-left-radius …)도 같다
+const RADIUS_PROP = /^border(?:-[a-z]+)*-radius$/;
+// var(--radius-…)·50%·0·전역 키워드만 통과
+const RADIUS_OK = /^(?:var\(--radius-[\w-]+\)|50%|0|inherit|initial|unset|revert)$/;
 
 // 같은 길이로 가린다(줄 번호를 지킨다): 주석은 공백, 문자열 안은 공백(따옴표는 남김)
 function blank(text: string, withStrings: boolean): string {
@@ -107,6 +115,11 @@ export function lintCss(raw: string, file: string): Finding[] {
       // font 약식은 크기 칸만 본다: "/15px" 같은 line-height는 font-size가 아니다
       const sizePart = (d.prop === "font" ? value.replace(/\/\s*[^\s]+/, "") : value).replace(/var\([^)]*\)/g, "var()");
       if ((d.prop === "font-size" || d.prop === "font") && SIZE_PX.test(sizePart)) add("font-size-px", d.at, decl);
+      if ((d.prop === "font-size" || d.prop === "font") && SIZE_EM.test(sizePart)) add("font-size-em", d.at, decl);
+      // spacing-literal: 0이 아닌 px(var() 안은 토큰 줄이라 보지 않는다)
+      if (SPACING_PROP.test(d.prop) && PX_NONZERO.test(value.replace(/var\([^)]*\)/g, "var()"))) add("spacing-literal", d.at, decl);
+      // radius-literal: 값 조각마다 var(--radius-…)·50%·0이어야 한다
+      if (RADIUS_PROP.test(d.prop) && value.replace(/!important/i, "").split(/[\s/]+/).filter(Boolean).some((part) => !RADIUS_OK.test(part))) add("radius-literal", d.at, decl);
       // z-index-literal: var(--z-…)만. auto는 쌓임 맥락을 만들지 않아 허용
       if (d.prop === "z-index" && !/var\(--z-[\w-]+\)/.test(value) && value.trim() !== "auto") add("z-index-literal", d.at, decl);
       // transition-all
@@ -174,6 +187,18 @@ export function lintTsx(raw: string, file: string): Finding[] {
   for (const b of styleBlocks(text)) {
     for (const m of b.body.matchAll(COLOR)) add("color-literal", b.at, `style ${m[0]}`);
     for (const m of b.body.matchAll(/\bfontSize\s*:\s*(?:\d|["'`]\s*-?\d*\.?\d+(?:px|rem)\b)/g)) add("font-size-px", b.at, `style ${m[0]}`);
+  }
+  for (const b of styleBlocks(text)) {
+    for (const m of b.body.matchAll(/\bfontSize\s*:\s*["'`]\s*-?\d*\.?\d+em\b/g)) add("font-size-em", b.at, `style ${m[0]}`);
+    // 간격: 숫자 값(React가 px로 읽는다)과 "12px" 문자열. 0과 var(--space-…)는 통과
+    for (const m of b.body.matchAll(/\b((?:padding|margin|inset)(?:Top|Right|Bottom|Left|Inline|Block)?(?:Start|End)?|rowGap|columnGap|gap|top|right|bottom|left)\s*:\s*([^,}]*)/g)) {
+      const v = m[2].replace(/var\([^)]*\)/g, "var()");
+      if (/^\s*-?(?:0*[1-9]\d*\.?\d*|0*\.\d*[1-9]\d*)\s*$/.test(v) || PX_NONZERO.test(v)) add("spacing-literal", b.at, `style ${m[0].trim()}`);
+    }
+    for (const m of b.body.matchAll(/\b(border(?:Top|Bottom)?(?:Left|Right)?Radius)\s*:\s*([^,}]*)/g)) {
+      const v = m[2].trim().replace(/^["'`]|["'`]$/g, "");
+      if (v.split(/[\s/]+/).filter(Boolean).some((part) => !RADIUS_OK.test(part))) add("radius-literal", b.at, `style ${m[0].trim()}`);
+    }
   }
   // SVG 속성의 색 리터럴(fill="#20264a")
   for (const m of text.matchAll(/\b(?:fill|stroke|stopColor|floodColor|lightingColor|color)=\{?["'`](#[0-9a-fA-F]{3,8}\b|(?:rgba?|hsla?|oklch)\()/g)) add("color-literal", m.index!, m[0]);

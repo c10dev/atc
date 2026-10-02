@@ -15,7 +15,7 @@ import {
 import { idleText } from "../../../../server/other-background.ts";
 import type { Snapshot } from "../../../../server/model.ts";
 import { EditRow, type SaveResult } from "../../SettingsServer.tsx";
-import { JobDetail, NeedsYou } from "../../ui.tsx";
+import { JobDetail, NeedsYou } from "../../badges.tsx";
 import { timeAgo } from "../../derive.ts";
 import { type ControlAccounts, controlMemo } from "../../controlData.ts";
 import { allControlDown, type BulkOp } from "../../../../server/control-bulk.ts";

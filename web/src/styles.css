@@ -76,8 +76,8 @@
   --fids-title: #e8e8e8;
   --fids-count: #b0955a;
 
-  /* 글자 크기: 7단계만 쓴다. 영문 약호(대문자·고정폭)는 10, 한국어 본문은 11 이상 */
-  --text-2xs: 10px; /* 대문자 약호, 캡션 */
+  /* 글자 크기: 7단계만 쓴다. 모든 글자는 11 이상 */
+  --text-2xs: 11px; /* 대문자 약호, 캡션 */
   --text-xs: 12px; /* 보조 설명, 칩(기본 밀도 12, compact 11. DL7) */
   --text-sm: 12px; /* 표·카드의 부가 정보 */
   --text-md: 14px; /* 본문(기본 밀도 14, compact 13. DL7) */
@@ -223,7 +223,7 @@ button {
 .label em,
 .readout em,
 .link em {
-  font: 500 var(--text-xs) var(--sans);
+  font: 400 var(--text-xs) var(--sans);
   font-style: normal;
   letter-spacing: 0;
   color: var(--muted);
@@ -293,7 +293,7 @@ button {
 }
 .brand-sector {
   display: block;
-  font: 500 var(--text-2xs) var(--mono);
+  font: 400 var(--text-2xs) var(--mono);
   letter-spacing: 0.14em;
   color: var(--cyan);
 }
@@ -364,7 +364,7 @@ button {
 }
 .readout > span {
   margin-top: var(--space-1);
-  font: 500 var(--text-2xs) var(--mono);
+  font: 400 var(--text-2xs) var(--mono);
   letter-spacing: 0.14em;
   color: var(--muted);
   white-space: nowrap;
@@ -719,7 +719,7 @@ button {
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
-  font: 500 var(--text-xs) var(--mono);
+  font: 400 var(--text-xs) var(--mono);
   color: var(--text);
   overflow-wrap: anywhere;
   user-select: all;
@@ -808,7 +808,7 @@ button {
   padding: 0 var(--space-1-5);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  font: 500 var(--text-2xs) var(--mono);
+  font: 400 var(--text-2xs) var(--mono);
   letter-spacing: 0.06em;
   color: var(--muted);
   white-space: nowrap;
@@ -1105,7 +1105,7 @@ a.blk[href] {
 }
 .stand strong {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: 600;
 }
 /* 빈 STAND: 흐리게 하지 않고 점선 테두리와 흐린 글자로만 구분 */
 .stand.is-free {
@@ -1164,7 +1164,7 @@ a.blk[href] {
   letter-spacing: 0.12em;
 }
 .ph em {
-  font: 500 var(--text-xs) var(--sans);
+  font: 400 var(--text-xs) var(--sans);
   font-style: normal;
   letter-spacing: 0;
 }
@@ -1306,7 +1306,7 @@ a.blk[href] {
 }
 .leg {
   display: grid;
-  grid-template-columns: minmax(170px, 1.1fr) 112px minmax(150px, 1.4fr) 112px minmax(110px, 0.8fr);
+  grid-template-columns: minmax(170px, 1.1fr) 112px minmax(150px, 1.4fr) 124px minmax(110px, 0.8fr);
   min-width: 0;
 }
 .leg + .leg {
@@ -1336,7 +1336,7 @@ a.blk[href] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 500 var(--text-sm) var(--mono);
+  font: 600 var(--text-sm) var(--mono);
 }
 .val.big {
   font-size: var(--text-lg);
@@ -1624,7 +1624,7 @@ a.ticket:hover {
   background: var(--panel);
   color: var(--muted);
   font-size: var(--text-md);
-  font-weight: 500;
+  font-weight: 400;
   cursor: pointer;
 }
 .view-switch button:hover {
@@ -2298,7 +2298,7 @@ a.ticket:hover {
 }
 .settings-title em {
   margin-left: var(--space-2);
-  font: 500 var(--text-sm) var(--sans);
+  font: 400 var(--text-sm) var(--sans);
   font-style: normal;
   letter-spacing: 0;
   color: var(--muted);
@@ -2348,7 +2348,7 @@ a.ticket:hover {
   border-radius: var(--radius-md);
   background: var(--panel-3);
   color: var(--text);
-  font: 500 var(--text-sm) var(--sans);
+  font: 400 var(--text-sm) var(--sans);
 }
 .settings-search:focus-visible {
   outline: 2px solid var(--ring);
@@ -3373,7 +3373,7 @@ a.ticket:hover {
 }
 .acct-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .acct-registry { margin-top: var(--space-4); }
-.acct-registry em { font: 500 var(--text-2xs) var(--sans); font-style: normal; letter-spacing: 0; color: var(--faint); }
+.acct-registry em { font: 400 var(--text-2xs) var(--sans); font-style: normal; letter-spacing: 0; color: var(--faint); }
 .acct-launch-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 4px 0; font-size: var(--text-sm); }
 .acct-launch-row > span { min-width: 6.5em; color: var(--muted); }
 .acct-launch-row select {

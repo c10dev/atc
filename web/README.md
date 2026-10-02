@@ -85,6 +85,7 @@ Themes are sets of CSS tokens under `:root[data-theme="…"]` in `styles.css`; `
 | `src/SplitFlap.tsx` | Solari split-flap characters: cells turn through the drum (space, A–Z, 0–9, `: - . /`), at most 6 flaps, left to right. Tiles fall like real flaps; text without tiles drops in letter by letter. Only flaps on screen move |
 | `src/Ticker.tsx` | Scrolling alert ticker |
 | `src/Starfield.tsx` | Night Sky background (30 fps cap, pauses when hidden) and today's moon phase icon |
-| `src/ui.tsx` | Small shared pieces: AIRPORT code, OUTSTATION tag, session place, status dot, priority mark |
-| `src/styles.css`, `src/ui.css`, `src/views/*.css` | Theme tokens and styles |
+| `src/badges.tsx`, `src/badges.css` | Small shared domain badges: AIRPORT code, OUTSTATION tag, session place, status dot, priority mark |
+| `src/kit/` | Shared building blocks (L1 primitives): `Icon.tsx` (`Icon`, `IconButton`), `useDialog.ts` and `dialog-focus.ts` (dialog focus rules). One `.css` per primitive, a `.tsx` only where behaviour needs one ([design-system.md](../docs/design-system.md)) |
+| `src/styles.css`, `src/views/*.css` | Theme tokens and styles |
 | `src/views/*.tsx` | One file per tab. FLEET is a folder, `src/views/fleet/`, one file per part (page shell, status list, card, FUEL, ENTRY INTO SERVICE, LAUNCH and CREW BRIEFING panels, editor) with its CSS next to it |

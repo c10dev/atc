@@ -1,7 +1,7 @@
 import { ChevronRight, X } from "lucide-react";
-import { Icon, IconButton } from "./Icon.tsx";
+import { Icon, IconButton } from "./kit/Icon.tsx";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useDialog } from "./useDialog.ts";
+import { useDialog } from "./kit/useDialog.ts";
 import { type Chat, type ChatItem, headLine } from "../../server/duty-chat.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
 import { type Airports, type CardCtx, DraftCard, DutyCard, QueueRow, useCharters, useDecisions, useQueue } from "./DutyCards.tsx";

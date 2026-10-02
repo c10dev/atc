@@ -1,5 +1,5 @@
 import { ExternalLink } from "lucide-react";
-import { Icon } from "./Icon.tsx";
+import { Icon } from "./kit/Icon.tsx";
 import { useEffect, useState } from "react";
 import { ApplyNow } from "./ApplyNow.tsx";
 import type { AddPreview, AddResult } from "../../server/account-add.ts";

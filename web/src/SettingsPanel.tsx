@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { IconButton } from "./Icon.tsx";
+import { IconButton } from "./kit/Icon.tsx";
 import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Snapshot } from "../../server/model.ts";

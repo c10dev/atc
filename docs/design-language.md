@@ -19,7 +19,7 @@ Related: [ui-visibility.md](ui-visibility.md) (visibility review, draft), [alert
 
 ### What is built and follows a rule
 
-- **Tokens and themes.** `web/src/styles.css` `:root` defines surfaces (`--bg` < `--chrome` < `--panel` < `--panel-2` < `--panel-3`), text (`--text`, `--muted`, `--faint`), signals (`--radar`, `--amber`, `--cyan`, `--alert`, `--blue`), a type scale (`--text-2xs` 10 px to `--text-2xl` 24 px), a 4 px spacing scale, radii and two font stacks (`--mono` JetBrains Mono, `--sans` Pretendard). Three themes (Radar Console, Glass Cockpit, Night Sky) change only values. Settings add `density` (comfortable, compact), `motion` (on by default; the OS's reduced-motion request always wins, live, ATC-409) and `clock` (UTC, local).
+- **Tokens and themes.** `web/src/styles.css` `:root` defines surfaces (`--bg` < `--chrome` < `--panel` < `--panel-2` < `--panel-3`), text (`--text`, `--muted`, `--faint`), signals (`--radar`, `--amber`, `--cyan`, `--alert`, `--blue`), a type scale (`--text-2xs` 11 px to `--text-2xl` 24 px), a 4 px spacing scale, radii and two font stacks (`--mono` JetBrains Mono, `--sans` Pretendard). Three themes (Radar Console, Glass Cockpit, Night Sky) change only values. Settings add `density` (comfortable, compact), `motion` (on by default; the OS's reduced-motion request always wins, live, ATC-409) and `clock` (UTC, local).
 - **Alert levels** (ATC-110): WARNING red, CAUTION amber, ADVISORY grey; only WARNING and CAUTION count. ANNUNCIATOR shows the same levels with a letter (`W`, `C`, `A`), so a row does not depend on colour alone, and keeps NEEDS YOU in its own accent colour so it is never read as a CAUTION.
 - **Dark cockpit** (ATC-111): RADAR and STRIPS fold finished STANDs into `GATE CLEANUP` by default. FIDS caps ARRIVED (ATC-112).
 - **Decisions first** (ATC-113): DISPATCH and SCHEDULE put "what I must do now" on top and fold READINESS into one line at the bottom.
@@ -89,7 +89,7 @@ Charts use the series tokens (`--series-captain`, `--series-crew`), not the sign
 
 ### 3.3 Type, space and shape
 
-- **Type.** `--mono` for codes, IDs, numbers, times and aviation terms. `--sans` for Korean sentences and explanations. Sizes from `--text-2xs` (uppercase codes, captions) to `--text-2xl` (headline numbers). Body is `--text-md` (14 px; 13 px in the compact density). Numbers that change or are compared in columns use tabular figures (the `.tn` utility and the list next to it in `styles.css`, see L5a as built).
+- **Type.** `--mono` for codes, IDs, numbers, times and aviation terms. `--sans` for Korean sentences and explanations. Sizes from `--text-2xs` (uppercase codes, captions; 11 px) to `--text-2xl` (headline numbers). No text is smaller than 11 px in either density (D8), and the weights in use are 400, 600 and 700 (no 500, no weight tokens). Body is `--text-md` (14 px; 13 px in the compact density). Numbers that change or are compared in columns use tabular figures (the `.tn` utility and the list next to it in `styles.css`, see L5a as built).
 - **Space.** The 4 px scale (`--space-*`). Inside a block `--gap-item` (8 px), between columns `--gap-column` (16 px), between sections `--gap-section` (32 px).
 - **Shape.** Radius 2 px for chips and tags, 4 px for controls, 8 px for panels and cards, pill for toggles and counts. A level or state shape (dot, triangle, dashed border) is never only a colour change.
 
@@ -107,14 +107,14 @@ Sections 2 to 3.4 decide *what* a screen shows. This section decides how calm an
    - *Check:* in the normal state, the coloured pixels in a card are a dot or a word, not a block.
 2. **Font roles.** `--mono` for things a person might copy or compare character by character: IDs, codes, keys, numbers, times, model names, commands. `--sans` for names, sentences and labels a person reads. Uppercase letter-spaced codes (`.label`, `.fl-sub`) only for section headings, at most one level of them per card.
    - *Check:* no Korean sentence and no list of names is set in mono; no card has more than one level of uppercase headings.
-3. **Three sizes per block.** Each card or panel uses at most three text sizes: the **title** (`--text-lg`, 600), the **value** (`--text-md`), and the **caption** (`--text-xs`, `--faint`). Weight adds contrast inside the same size (600 for names and values that matter, 400 otherwise).
+3. **Three sizes per block.** Each card or panel uses at most three text sizes: the **title** (`--text-lg`, 600), the **value** (`--text-md`), and the **caption** (`--text-xs`, `--faint`). Weight adds contrast inside the same size (600 for names and values that matter, 400 otherwise; 700 stays for uppercase codes and headings; 500 is not used, D8).
    - *Decided (DL7):* raise body text from 13 px to 14 px and captions from 11 px to 12 px in the default density. `compact` keeps today's sizes.
    - *Check:* a card uses three sizes or fewer.
 4. **Border budget.** Group by space and by surface step (section 3.1), not by lines. A card has one outer border or one surface step, not both plus inner rules. Lines are for tables, inputs and the one divider between a header and its body.
    - *Check:* no border inside a card except table rows, inputs and the header divider.
 5. **Spacing rhythm.** Inside a block, related lines sit `--space-1` to `--space-2` apart; blocks inside a card `--space-4`; cards `--space-3` to `--space-4`; sections `--gap-section`. Padding inside a card is at least `--space-4` on every side. Things that line up (labels, values, numbers) share one left edge.
    - *Check:* the label column and the value column of a card each have one left edge.
-6. **One icon set.** Web: one outline set, **Lucide** (MIT, DL8) at 14 and 16 px with a 1.5 px stroke. App: SF Symbols. Text glyphs (`▸ ▾ ✓ ⋯ ✈`) are replaced where an icon exists. An icon-only control has an accessible name (principle 14).
+6. **One icon set.** Web: one outline set, **Lucide** (MIT, DL8; `Icon` and `IconButton` in `web/src/kit/Icon.tsx`) at 14 and 16 px with a 1.5 px stroke. App: SF Symbols. Text glyphs (`▸ ▾ ✓ ⋯ ✈`) are replaced where an icon exists. An icon-only control has an accessible name (principle 14).
    - *Check:* the PR adds no new text glyph used as an icon.
 7. **Numbers.** `font-variant-numeric: tabular-nums` on every number that changes or sits in a column. Numbers in tables align right; units stay with the number (`32%`, `$4.34`, `287k`).
    - *Check:* changing numbers do not shift their neighbours.
@@ -176,7 +176,7 @@ Running atc sessions get the diff of this file on their next turn when it change
 - [ ] Readable with motion off (10).
 - [ ] Nothing needed for a decision lives only in a tooltip (11).
 - [ ] At most five visible buttons per card; destructive actions confirmed (12).
-- [ ] Tokens only (13). `npm test` checks the web part (`server/css-lint.ts`, `server/css-lint.test.ts`): new literal colours, px/rem font sizes, `z-index` that is not `var(--z-…)`, `transition: all` and `outline: none` without a `:focus-visible` rule fail against the baseline `web/css-lint-baseline.json`. When a count drops, lower the baseline in the same PR with `node server/css-lint.ts --update`; never raise it to accept a new violation.
+- [ ] Tokens only (13). `npm test` checks the web part (`server/css-lint.ts`, `server/css-lint.test.ts`): new literal colours, px/rem and `em` font sizes, non-zero px literals in `padding`, `margin`, `gap`, `inset` and `top`/`right`/`bottom`/`left` (use `var(--space-…)`), `border-radius` values other than `var(--radius-…)`, `50%` or `0`, `z-index` that is not `var(--z-…)`, `transition: all` and `outline: none` without a `:focus-visible` rule fail against the baseline `web/css-lint-baseline.json`. When a count drops, lower the baseline in the same PR with `node server/css-lint.ts --update`; never raise it to accept a new violation.
 - [ ] Keyboard path checked (14).
 - [ ] Craft (3.5): normal state has no coloured blocks; mono only for IDs, codes and numbers; three text sizes per card; no inner borders; one left edge per column; icons from the set; `tabular-nums` on changing numbers; motion from the tokens.
 
@@ -201,7 +201,7 @@ The `ui-review` skill (`.claude/skills/ui-review/`, run by `atc-task` before a s
 
 CSS only, in `web/src/styles.css` (plus one cell width in `Dispatch.css`); no colour, layout or component structure changed.
 
-- **Sizes (DL7).** `--text-md` 13 → **14 px** and `--text-xs` 11 → **12 px** in the default density; `:root[data-density="compact"]` sets them back to 13 and 11. `--text-2xs`, `--text-sm` and `--text-lg` and up are unchanged (so `--text-sm` and `--text-xs` are both 12 px in the default density).
+- **Sizes (DL7).** `--text-md` 13 → **14 px** and `--text-xs` 11 → **12 px** in the default density; `:root[data-density="compact"]` sets them back to 13 and 11. `--text-2xs` is **11 px** (was 10, D8/Q12), so in the compact density `--text-2xs` and `--text-xs` are both 11 px and nothing is under 11 px; `--text-sm` and `--text-lg` and up are unchanged (so `--text-sm` and `--text-xs` are both 12 px in the default density).
 - **Motion tokens.** `--dur-fast: 120ms`, `--dur-base: 200ms`, `--ease: cubic-bezier(0.2, 0, 0, 1)`. The interaction transitions (settings gear, map line hover, block hover, the "found" highlight) use them; the repeating liveness animations (ping, sweep, flaps, ticker, twinkle, blink) keep their own durations. `data-motion="off"` still stops everything (no running infinite animation on RADAR, FLEET, FIDS or DISPATCH).
 - **Numbers.** A `.tn` utility and one selector list in `styles.css` apply `font-variant-numeric: tabular-nums` to the header readouts and clock, STRIPS values and ages, FLEET list cells and card actuals, DISPATCH score and age, SCHEDULE age and counts, FLEET PLAN age, DUTY since and the activity age. It is `!important` because a later `font:` shorthand resets the value. METRICS keeps its own rules.
 - **DISPATCH factor detail** cell: `max-width` 140 → 160 px so the larger caption size does not truncate more of it.

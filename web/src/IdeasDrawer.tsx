@@ -1,7 +1,7 @@
 import { ArrowLeft, ExternalLink, X } from "lucide-react";
-import { Icon, IconButton } from "./Icon.tsx";
+import { Icon, IconButton } from "./kit/Icon.tsx";
 import { useRef, useState } from "react";
-import { useDialog } from "./useDialog.ts";
+import { useDialog } from "./kit/useDialog.ts";
 import type { DrawerRef } from "../../server/detail.ts";
 import type { IdeaDetail, IdeaRow } from "../../server/ideas.ts";
 import { timeAgo } from "./derive.ts";

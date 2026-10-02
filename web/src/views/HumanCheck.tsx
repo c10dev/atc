@@ -1,12 +1,12 @@
 import { ExternalLink } from "lucide-react";
-import { Icon } from "../Icon.tsx";
+import { Icon } from "../kit/Icon.tsx";
 import { useEffect, useState } from "react";
 import type { HumanCheckStatus } from "../../../server/human-check.ts";
 import type { PullRequest } from "../../../server/model.ts";
 import { flightNumber } from "../aviation.ts";
 import { OpenFlight } from "../FlightLink.tsx";
 import type { Index } from "../derive.ts";
-import { AirportCode } from "../ui.tsx";
+import { AirportCode } from "../badges.tsx";
 import "./HumanCheck.css";
 import { apiGet, apiSend } from "../api.ts";
 

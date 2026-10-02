@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { IconButton } from "../Icon.tsx";
+import { IconButton } from "../kit/Icon.tsx";
 import { type KeyboardEvent, useEffect, useState } from "react";
 import "./RouteMap.css";
 import { apiGet } from "../api.ts";
