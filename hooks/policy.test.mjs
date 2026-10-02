@@ -252,3 +252,28 @@ test("AskUserQuestion waits on a person and is denied; source of the STAND's own
   ok(bash(". /home/c10/projects/other/.env.local", OTHER));
   no(bash(". /home/c10/projects/other/.env.local", STAND), /source/);
 });
+
+// ATC-369 검토 4: HTTP 메서드의 모든 철자(-XPOST, --method=POST, --request=DELETE …)
+test("gh api and curl read the method in every spelling and fail closed on an unknown one", () => {
+  for (const c of [
+    "gh api -XDELETE repos/o/r/git/refs/heads/x",
+    "gh api --method=POST repos/o/r/issues/1/comments",
+    "gh api -X DELETE repos/o/r/git/refs/heads/x",
+    "gh api --method DELETE repos/o/r/git/refs/heads/x",
+    "gh api -XPATCH repos/o/r/pulls/12 -f state=closed",
+    "gh api repos/o/r/issues -X POST",
+    "gh api --method=GET repos/o/r/issues -XPOST",
+  ]) no(bash(c), /gh-api-write/);
+  no(bash("gh api -XFETCH repos/o/r/issues"), /gh-api-method/);
+  no(bash("gh api --method= repos/o/r/issues"), /gh-api-method/);
+  ok(bash("gh api -XGET repos/o/r/pulls/12"));
+  ok(bash("gh api --method=GET repos/o/r/pulls/12"));
+  ok(bash("gh api repos/o/r/pulls/12"));
+  ok(bash("gh api -XPATCH repos/o/r/pulls/12 -f body=x"));
+  ok(bash("gh api --method=PATCH repos/o/r/pulls/12 --raw-field body=x"));
+  for (const c of ["curl -XPOST localhost:7700/api/x", "curl -sXPOST http://localhost:7700/api/x", "curl --request=DELETE localhost:7700/api/x", "curl -X DELETE localhost:7700/api/x", "curl --request PUT localhost:7700/api/x", "curl -XFOO localhost:7700/api/x"]) no(bash(c), /curl:prod-write/);
+  ok(bash("curl -XGET localhost:7700/api/x"));
+  ok(bash("curl --request=GET localhost:7700/api/x"));
+  ok(bash("curl -sI localhost:7700/api/x"));
+  ok(bash("curl -XPOST http://localhost:7702/api/x"));
+});

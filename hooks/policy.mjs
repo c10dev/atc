@@ -176,6 +176,22 @@ function gitVerdict(args, ctx) {
   return allow("git");
 }
 
+// HTTP 메서드를 모든 철자로 읽는다(ATC-369 검토): `-X POST`, `-XPOST`, `-sXPOST`(묶음), `--method POST`, `--method=POST`, `--request=POST`.
+// 돌려주는 값: 적힌 메서드(대문자) 목록. 없으면 빈 목록(기본 GET).
+function methodsOf(args) {
+  const out = [];
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k];
+    let m;
+    if (/^(--method|--request)$/.test(a)) out.push(String(args[++k] ?? "").toUpperCase());
+    else if ((m = a.match(/^--(?:method|request)=(.*)$/))) out.push(m[1].toUpperCase());
+    else if (/^-[A-Za-z]*X$/.test(a)) out.push(String(args[++k] ?? "").toUpperCase()); // -X POST, -sX POST
+    else if ((m = a.match(/^-[A-Za-z]*X(.+)$/))) out.push(m[1].toUpperCase()); // -XPOST, -sXPOST
+  }
+  return out;
+}
+const KNOWN_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
+
 function ghVerdict(args, ctx) {
   const sub = `${args[0] ?? ""} ${args[1] ?? ""}`.trim();
   // `gh pr checkout`은 작업 폴더의 브랜치를 바꾼다: git switch처럼 STAND 안에서만(ATC-369 검토, CLAUDE.md: 운영 폴더에서 브랜치를 바꾸지 않는다)
@@ -183,9 +199,12 @@ function ghVerdict(args, ctx) {
   if (GH_OK.has(sub)) return allow("gh");
   if (args[0] === "api") {
     const rest = args.slice(1);
-    const x = rest.findIndex((a) => a === "-X" || a === "--method");
-    const method = x >= 0 ? (rest[x + 1] ?? "").toUpperCase() : "GET";
-    const endpoint = rest.find((a) => !a.startsWith("-") && a !== rest[x + 1]) ?? "";
+    const methods = methodsOf(rest);
+    if (methods.some((m) => !KNOWN_METHODS.has(m))) return deny("gh-api-method"); // 모르는 철자는 거절(fail-closed)
+    const method = methods.find((m) => m !== "GET") ?? "GET"; // 쓰기 메서드가 하나라도 있으면 그것
+    // 값을 가진 옵션의 값은 엔드포인트가 아니다
+    const valueOf = new Set(rest.flatMap((a, k) => (/^(-X|--method|--request|-f|-F|--field|--raw-field|-H|--header|--input|-q|--jq|-t|--template|--hostname|--cache)$/.test(a) || /^-[A-Za-z]*X$/.test(a) ? [k + 1] : [])));
+    const endpoint = rest.find((a, k) => !a.startsWith("-") && !valueOf.has(k)) ?? "";
     const hasBody = rest.some((a) => /^(-f|-F|--field|--raw-field|--input)$/.test(a));
     if (method === "GET" && !hasBody) return allow("gh-api-get");
     // PR 본문만 바꾼다(gh pr edit 대신): 필드는 body 하나. state·base·title 같은 다른 필드와 --input은 거절(ATC-369 검토)
@@ -203,7 +222,9 @@ function curlVerdict(args, ctx) {
     const full = /^[a-z]+:\/\//i.test(u) ? u : `http://${u}`;
     const m = full.match(LOCAL_URL);
     if (!m) return deny("curl:non-local");
-    const writes = args.some((a, k) => /^(-X|--request)$/.test(a) && !/^GET$/i.test(args[k + 1] ?? "")) || args.some((a) => /^(-d|--data|--data-raw|--data-binary|--data-urlencode|-F|--form|-T|--upload-file|--json)/.test(a));
+    // 메서드는 `-X POST`·`-XPOST`·`--request=POST` 모두 읽고, GET·HEAD가 아니거나 모르는 철자는 쓰기로 본다
+    const methods = methodsOf(args);
+    const writes = methods.some((m) => m !== "GET" && m !== "HEAD") || args.some((a) => /^(-d|--data|--data-raw|--data-binary|--data-urlencode|-F|--form|-T|--upload-file|--json)/.test(a));
     if (writes && (m[1] ?? "80") === "7700") return deny("curl:prod-write"); // 운영 상태는 손대지 않는다
   }
   for (let k = 0; k < args.length; k++) {
