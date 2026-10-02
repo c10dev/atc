@@ -1,10 +1,9 @@
 {
   "web/src/Drawer.css": {
-    "color-literal": 1,
     "font-size-em": 3,
     "outline-none": 1,
-    "radius-literal": 6,
-    "spacing-literal": 4
+    "radius-literal": 5,
+    "spacing-literal": 3
   },
   "web/src/Rail.css": {
     "token-family": 2
@@ -19,8 +18,7 @@
     "spacing-literal": 21
   },
   "web/src/badges.css": {
-    "spacing-literal": 2,
-    "token-family": 2
+    "spacing-literal": 2
   },
   "web/src/styles.css": {
     "color-literal": 19,
@@ -70,7 +68,6 @@
   },
   "web/src/views/MetricsFuel.css": {
     "radius-literal": 3,
-    "spacing-literal": 1,
     "token-family": 3
   },
   "web/src/views/MetricsLeaks.css": {
@@ -98,7 +95,7 @@
   "web/src/views/fleet/Card.css": {
     "radius-literal": 1,
     "spacing-literal": 1,
-    "token-family": 7
+    "token-family": 6
   },
   "web/src/views/fleet/Fleet.css": {
     "radius-literal": 1

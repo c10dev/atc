@@ -7,6 +7,7 @@ import { standNeedsHint } from "../../server/stand-hint.ts";
 import { callsign } from "./aviation.ts";
 import { type Index, sessionLocation } from "./derive.ts";
 import "./badges.css";
+import { dotShapeOf, PHASE_SHAPE } from "./kit/dot.ts";
 
 // 저장소 = AIRPORT 코드(대문자 4자). 마우스를 올리면 저장소 이름과 경로.
 // plain: 툴팁 없이(FIDS처럼 줄마다 붙는 곳. 저장소 경로는 숫자뿐인 툴팁이라 화면에 두지 않는다)
@@ -47,7 +48,7 @@ const statusLabel = { busy: "AIRBORNE", idle: "IDLE", dead: "NORDO" } as const;
 
 export function StatusDot({ status, label }: { status: Session["status"]; label?: string }) {
   const text = label ?? statusLabel[status];
-  return <span className={`dot dot-${status}`} title={text} aria-label={text} />;
+  return <span className={`dot dot-${status}`} data-shape={dotShapeOf(status)} title={text} aria-label={text} />;
 }
 
 export function SessionBadge({ session }: { session: Session }) {
@@ -107,6 +108,7 @@ export function PendingApproval({ job, health, attach, className = "" }: { job: 
 }
 
 // ACTIVITY(ATC-97): "Bash · Run the test suite · 12s". 도구가 돌면 tool, 모델 대기는 model, idle은 흐리게. 본문은 없다
+// 단계는 색이 아니라 점의 모양으로도 보이고(ATC-412: tool 찬 원, model 빈 원, idle 막대) 낭독기에는 글로 읽힌다. 툴팁에만 있지 않다
 // 툴팁은 phase 낱말(tool·model·idle)의 뜻풀이 — 값이 아니라 읽는 법이라 남긴다(ATC-418)
 const PHASE_TIP = { tool: "도구 실행 중", model: "도구 결과 뒤 모델 응답 대기", idle: "턴이 끝나 쉬는 중" } as const;
 export function ActivityLine({ activity, now, className = "" }: { activity: Activity | null | undefined; now: number; className?: string }) {
@@ -114,7 +116,8 @@ export function ActivityLine({ activity, now, className = "" }: { activity: Acti
   const { what, ago } = activityParts(activity, now);
   return (
     <span className={`activity is-${activity.phase} ${className}`.trim()} title={`ACTIVITY — ${PHASE_TIP[activity.phase]}`}>
-      <span className="activity-dot" aria-hidden="true" />
+      <span className="dot activity-dot" data-shape={PHASE_SHAPE[activity.phase]} aria-hidden="true" />
+      <span className="sr-only">{PHASE_TIP[activity.phase]}: </span>
       {what && <span className="activity-what">{what}</span>}
       <span className="activity-ago">{what ? " · " : ""}{ago}</span>
     </span>

@@ -33,14 +33,6 @@
   min-width: 96px;
   color: var(--muted);
 }
-.fl-chip {
-  padding: 0 var(--space-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-pill);
-  color: var(--text);
-  font: 600 var(--text-xs) var(--mono);
-  letter-spacing: 0.08em;
-}
 
 .fl-line,
 .fl-note {

@@ -1,7 +1,7 @@
 import { ArrowLeft, ExternalLink, X } from "lucide-react";
 import { Icon, IconButton } from "./kit/Icon.tsx";
 import { useRef, useState } from "react";
-import { useDialog } from "./kit/useDialog.ts";
+import { useDialog, useDocked } from "./kit/useDialog.ts";
 import type { DrawerRef } from "../../server/detail.ts";
 import type { IdeaDetail, IdeaRow } from "../../server/ideas.ts";
 import { timeAgo } from "./derive.ts";
@@ -35,7 +35,7 @@ function List({ now }: { now: number }) {
               <span className="id-meta faint">
                 {i.updatedAt ? timeAgo(i.updatedAt, now) : "—"} · 댓글 {i.comments}
                 {i.labels.filter((x) => x !== "idea").map((x) => (
-                  <span key={x} className="dr-chip">
+                  <span key={x} className="chip dr-chip">
                     {x}
                   </span>
                 ))}
@@ -135,7 +135,7 @@ function One({ n, now, gate }: { n: number; now: number; gate: DutyGate }) {
           <dt>라벨</dt>
           <dd className="dr-chips">
             {d.labels.map((x) => (
-              <span key={x} className="dr-chip">
+              <span key={x} className="chip dr-chip">
                 {x}
               </span>
             ))}
@@ -172,14 +172,12 @@ function One({ n, now, gate }: { n: number; now: number; gate: DutyGate }) {
 export default function IdeasDrawer({ target, onClose, now, gate }: { target: Target; onClose: () => void; now: number; gate: DutyGate }) {
   const ref = useRef<HTMLElement>(null);
   const id = target.kind === "idea" ? String(target.number) : "list";
-  useDialog(ref, onClose, id);
+  const docked = useDocked();
+  useDialog(ref, onClose, id, { trap: !docked, restore: false });
   return (
-    <>
-      <div className="dr-backdrop" onClick={onClose} />
-      <aside className="dr" role="dialog" aria-modal="true" aria-label={target.kind === "idea" ? `IDEA #${target.number}` : "IDEAS"} tabIndex={-1} ref={ref}>
-        <IconButton className="dr-close" onClick={onClose} label="닫기" icon={X} size={16} />
-        {target.kind === "idea" ? <One n={target.number} now={now} gate={gate} /> : <List now={now} />}
-      </aside>
-    </>
+    <aside className="dr" role="dialog" aria-modal={!docked} aria-label={target.kind === "idea" ? `IDEA #${target.number}` : "IDEAS"} tabIndex={-1} ref={ref}>
+      <IconButton className="dr-close" onClick={onClose} label="닫기" icon={X} size={16} />
+      {target.kind === "idea" ? <One n={target.number} now={now} gate={gate} /> : <List now={now} />}
+    </aside>
   );
 }

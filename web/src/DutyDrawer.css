@@ -2,7 +2,6 @@
 .dr.dr-duty {
   display: flex;
   flex-direction: column;
-  width: min(440px, 100vw);
   padding: 0;
   overflow: hidden;
 }
@@ -313,11 +312,6 @@ button.du-queue-head:focus-visible {
   overflow-y: auto;
 }
 
-@media (max-width: 600px) {
-  .dr.dr-duty {
-    width: 100vw;
-  }
-}
 .dr a.dr-btn.du-ideas {
   text-decoration: none;
   color: var(--text);

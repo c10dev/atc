@@ -381,7 +381,7 @@
 .mft-bars {
   display: flex;
   align-items: flex-end;
-  gap: 3px;
+  gap: var(--space-1);
   height: 36px;
 }
 .mft-cell {

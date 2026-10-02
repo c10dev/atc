@@ -282,7 +282,7 @@ function DepartureRow({ ticket: t, idx, clock, now, milestones }: { ticket: Tick
         {latest?.name !== "out" && milestones?.out && <span className="remark-ms mono">OUT {formatClock(milestones.out, clock)}</span>}
         {milestones?.reverted && <span className="remark-rev">PR 되돌림{reverted}</span>}
         {noContact && (
-          <span className="code-chip alert-no-workspace" title={alertMessage(alerts.find((a) => a.kind === "no-workspace")!, (id) => id)}>
+          <span className="tag code-chip alert-no-workspace" data-tone="inherit" title={alertMessage(alerts.find((a) => a.kind === "no-workspace")!, (id) => id)}>
             NO CONTACT
           </span>
         )}
@@ -335,7 +335,7 @@ function TicketCard({ ticket: t, idx }: { ticket: Ticket; idx: Index }) {
       )}
       {alerts.map((a) => (
         <div key={a.kind} className={`ticket-alert alert-${a.kind}`}>
-          <span className="code-chip">{alertCode[a.kind]}</span>
+          <span className="tag code-chip" data-tone="inherit">{alertCode[a.kind]}</span>
           {alertLabel[a.kind]} · {alertMessage(a, (id) => callsign(idx.sessionById.get(id) ?? { name: id }))}
         </div>
       ))}
