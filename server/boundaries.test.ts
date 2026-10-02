@@ -1,11 +1,12 @@
 import "./test-hermetic.ts";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-// 경계 시험(ATC-335): 값 import 순환이 새로 생기거나, 화면(web/src)이 값 import로 Node 내장 모듈에 닿으면 실패한다.
+// 경계 시험(ATC-335): 값 import 순환이 새로 생기거나, 화면(web/src)이 값 import로 Node 내장 모듈이나 @hono/*에 닿으면 실패한다.
 // 파일을 읽어 import 구문만 해석하는 순수 시험이다(네트워크·상태 폴더 없음). 허용 목록은 줄이기만 한다: 순환을 풀면 항목을 지운다.
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -14,6 +15,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const ALLOWED_CYCLES: string[] = [
   "server/dispatch-launch.ts <-> server/dispatch.ts",
   "server/autoland-run.ts <-> server/landing-review.ts",
+  "server/fleet-plan.ts <-> server/fresh-start.ts <-> server/session-control.ts", // 동적 import()로 이어지는 순환
   "server/atfm-run.ts <-> server/following.ts <-> server/milestones-run.ts <-> server/network-drafts.ts <-> server/network.ts <-> server/proposals.ts <-> server/routes.ts <-> server/schedule-waypoint.ts <-> server/schedule.ts <-> server/standfree-run.ts <-> server/waypoint-gaps.ts <-> server/waypoint-slips.ts",
 ];
 // 오늘의 화면→Node 값 import 사슬. "web 파일 -> … -> node:xxx" 형식. 새 항목을 더하지 않는다.
@@ -23,21 +25,20 @@ export const ALLOWED_WEB_NODE_CHAINS: string[] = [
 
 type Edge = { to: string; spec: string };
 
-function walk(dir: string, out: string[] = []): string[] {
-  for (const e of readdirSync(dir, { withFileTypes: true })) {
-    if (e.name === "node_modules" || e.name.startsWith(".")) continue;
-    const p = join(dir, e.name);
-    if (e.isDirectory()) walk(p, out);
-    else if (/\.(ts|tsx)$/.test(e.name) && !/\.test\.(ts|tsx)$/.test(e.name) && !e.name.endsWith(".d.ts")) out.push(p);
-  }
-  return out;
+// 추적 중인 소스(.ts/.tsx/.mjs)만 본다: 작업 폴더의 추적 안 된 임시 파일이 결과를 바꾸지 않는다. 시험 파일과 .d.ts는 뺀다.
+function trackedSources(): string[] {
+  const out = execFileSync("git", ["-C", root, "ls-files", "-z"], { encoding: "utf8" });
+  return out
+    .split("\0")
+    .filter((f) => /\.(ts|tsx|mjs)$/.test(f) && !/\.test\.(ts|tsx|mjs)$/.test(f) && !f.endsWith(".d.ts"))
+    .map((f) => join(root, f));
 }
 
 function stripComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:'"`\\])\/\/[^\n]*/g, "$1");
 }
 
-// 값 import의 지정자(`import type`과 `export type`은 빼고, `{ type A }`만 있는 구문도 뺀다). 동적 import()는 적재 때 순환을 만들지 않으니 센다 하지 않는다.
+// 값 import의 지정자(`import type`과 `export type`은 빼고, `{ type A }`만 있는 구문도 뺀다). 동적 import("./x.ts")는 값 간선으로 센다(순환을 우회한 자리가 보이게).
 export function valueSpecifiers(src: string): string[] {
   const out: string[] = [];
   const text = stripComments(src);
@@ -57,12 +58,13 @@ export function valueSpecifiers(src: string): string[] {
     }
     out.push(m[4]);
   }
+  for (const m of text.matchAll(/\bimport\(\s*(['"])([^'"\n]+)\1\s*\)/g)) out.push(m[2]);
   return out;
 }
 
 function resolveRel(from: string, spec: string, files: Set<string>): string | null {
   const base = resolve(dirname(from), spec);
-  for (const cand of [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts"), join(base, "index.tsx")]) {
+  for (const cand of [base, `${base}.ts`, `${base}.tsx`, `${base}.mjs`, join(base, "index.ts"), join(base, "index.tsx")]) {
     if (files.has(cand)) return cand;
   }
   return null;
@@ -78,7 +80,7 @@ export function buildGraph(files: Map<string, string>): Graph {
     const es: Edge[] = [];
     const bs: string[] = [];
     for (const spec of valueSpecifiers(src)) {
-      if (spec.startsWith("node:")) bs.push(spec);
+      if (spec.startsWith("node:") || spec.startsWith("@hono/")) bs.push(spec);
       else if (spec.startsWith(".")) {
         const to = resolveRel(file, spec, set);
         if (to) es.push({ to, spec });
@@ -159,17 +161,19 @@ export function webNodeChains(g: Graph, isWeb: (f: string) => boolean): string[]
   return chains;
 }
 
-const name = (f: string) => (f.startsWith("node:") ? f : relative(root, f));
+const name = (f: string) => (f.startsWith("node:") || f.startsWith("@hono/") ? f : relative(root, f));
 const cycleKey = (c: string[]) => c.map(name).join(" <-> ");
 const chainKey = (c: string[]) => c.map(name).join(" -> ");
 
 function loadRepo(): Graph {
   const files = new Map<string, string>();
-  for (const f of [...walk(join(root, "server")), ...walk(join(root, "web", "src"))]) files.set(f, readFileSync(f, "utf8"));
+  for (const f of trackedSources()) files.set(f, readFileSync(f, "utf8"));
   return buildGraph(files);
 }
 
 const webDir = join(root, "web", "src") + "/";
+// 화면 묶음에 들어가는 파일: web/src의 .ts/.tsx. web/src의 .mjs는 빌드 전에 Node로 돌리는 생성 스크립트(globe-geo.gen.mjs)라 뺀다.
+const isBundled = (f: string) => f.startsWith(webDir) && /\.tsx?$/.test(f);
 
 test("값 import 순환은 허용 목록에 있는 것뿐이다", () => {
   const found = findCycles(loadRepo()).map(cycleKey);
@@ -179,8 +183,8 @@ test("값 import 순환은 허용 목록에 있는 것뿐이다", () => {
   assert.deepEqual(gone, [], `풀린 순환이 허용 목록에 남아 있다. 지운다(목록은 줄기만 한다):\n  ${gone.join("\n  ")}`);
 });
 
-test("화면(web/src)은 값 import로 Node 내장 모듈에 닿지 않는다(허용 목록 밖)", () => {
-  const found = webNodeChains(loadRepo(), (f) => f.startsWith(webDir)).map(chainKey);
+test("화면(web/src)은 값 import로 Node 내장 모듈·@hono/*에 닿지 않는다(허용 목록 밖)", () => {
+  const found = webNodeChains(loadRepo(), isBundled).map(chainKey);
   const fresh = found.filter((k) => !ALLOWED_WEB_NODE_CHAINS.includes(k));
   assert.deepEqual(fresh, [], `화면이 Node 입출력에 닿는 새 값 import 사슬:\n  ${fresh.join("\n  ")}\n순수 부분을 별도 모듈로 나누거나 \`import type\`을 쓴다. 허용 목록에 더하지 않는다.`);
   const gone = ALLOWED_WEB_NODE_CHAINS.filter((k) => !found.includes(k));
@@ -190,12 +194,17 @@ test("화면(web/src)은 값 import로 Node 내장 모듈에 닿지 않는다(�
 // 해석기 자체의 시험(합성 소스)
 const g = (o: Record<string, string>) => buildGraph(new Map(Object.entries(o).map(([k, v]) => [`/r/${k}`, v])));
 
-test("해석기: type import와 동적 import는 간선이 아니다", () => {
-  const graph = g({
-    "a.ts": `import type { X } from "./b.ts";\nimport { type Y } from "./b.ts";\nconst m = () => import("./b.ts");`,
+test("해석기: type import는 간선이 아니고 동적 import는 간선이다", () => {
+  const typeOnly = g({
+    "a.ts": `import type { X } from "./b.ts";\nimport { type Y } from "./b.ts";`,
     "b.ts": `import { a } from "./a.ts";`,
   });
-  assert.deepEqual(findCycles(graph), []);
+  assert.deepEqual(findCycles(typeOnly), []);
+  const dynamic = g({
+    "a.ts": `const m = () => import("./b.ts");`,
+    "b.ts": `import { a } from "./a.ts";`,
+  });
+  assert.equal(findCycles(dynamic).length, 1);
 });
 
 test("해석기: 값 import 순환과 재수출 순환을 찾는다", () => {
@@ -217,4 +226,12 @@ test("해석기: web이 값 import로 node:fs에 닿는 사슬을 읽기 쉽게 
   });
   const chains = webNodeChains(graph, (f) => f.startsWith("/r/web/")).map((c) => c.map((f) => (f.startsWith("node:") ? f : f.slice(3))).join(" -> "));
   assert.deepEqual(chains, ["web/src/v.tsx -> server/x.ts -> node:fs"]);
+});
+
+test("해석기: web이 값 import로 @hono/*에 닿는 것도 잡는다", () => {
+  const graph = g({
+    "web/src/v.tsx": `import { f } from "../../server/x.ts";`,
+    "server/x.ts": `import { Hono } from "@hono/node-server";`,
+  });
+  assert.equal(webNodeChains(graph, (f) => f.startsWith("/r/web/")).length, 1);
 });
