@@ -43,6 +43,7 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
       {lanes.length === 0 ? (
         !error && <p className="empty">불러오는 중…</p>
       ) : (
+        <div className="mx-scroll" role="region" aria-label="레인별 MISFIRE 표" tabIndex={0}>
         <table className="mx-table" aria-label="레인별 MISFIRE">
           <thead>
             <tr>
@@ -68,6 +69,7 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
             ))}
           </tbody>
         </table>
+        </div>
       )}
       <AutoMisfire refreshKey={refreshKey} />
       {recent.length > 0 && (

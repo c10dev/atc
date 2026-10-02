@@ -295,6 +295,7 @@ function Daily({ data }: { data: MetricsData }) {
       <h2 className="label">
         DAILY <em>UTC 날짜</em>
       </h2>
+      <div className="mx-scroll" role="region" aria-label="일별 표" tabIndex={0}>
       <table className="mx-table">
         <thead>
           <tr>
@@ -323,6 +324,7 @@ function Daily({ data }: { data: MetricsData }) {
           ))}
         </tbody>
       </table>
+      </div>
     </>
   );
 }
