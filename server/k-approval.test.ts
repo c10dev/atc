@@ -21,6 +21,7 @@ const input = (lines: ReleaseLine[], over: Partial<KInput> = {}): KInput => ({
   userFiles: ["hooks/new-hook.mjs", "hooks/new-hook.test.mjs"],
   declared: DECL,
   unparsed: 0,
+  stateType: "started",
   hash: HASH,
   releases: foldReleases(lines),
   ...over,
@@ -73,6 +74,9 @@ test("no release, a stale release (the issue changed after release), no FLIGHT, 
   assert.equal((kApprovalOf(input([rel("screen")], { stateType: "completed" })) as { code: string }).code, "flight-closed");
   assert.equal((kApprovalOf(input([rel("screen")], { stateType: "canceled" })) as { code: string }).code, "flight-closed");
   assert.ok(kApprovalOf(input([rel("screen")], { stateType: "started" })).ok);
+  assert.ok(kApprovalOf(input([rel("screen")], { stateType: "unstarted" })).ok);
+  // 모르는 상태(없음·null·낯선 값)는 닫는 쪽으로 틀린다
+  for (const st of [undefined, null, "", "triage", "backlog"]) assert.equal((kApprovalOf(input([rel("screen")], { stateType: st })) as { code: string }).code, "flight-closed", String(st));
   assert.equal((kApprovalOf(input([rel("screen")], { declared: [] })) as { code: string }).code, "no-declaration");
   assert.equal((kApprovalOf(input([rel("screen")], { declared: undefined })) as { code: string }).code, "no-declaration");
   assert.equal((kApprovalOf(input([rel("screen")], { unparsed: 1 })) as { code: string }).code, "unreadable-declaration"); // 깨진 선언은 닫는 쪽으로

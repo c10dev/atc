@@ -186,8 +186,9 @@ export function mccLandInfoCached(s: Snapshot): MccLandInfo | null {
 }
 
 const fetchPull = async (slug: string, n: number) => JSON.parse(await gh(["api", `repos/${slug}/pulls/${n}`])) as RestPull;
+// 바뀐 파일 이름. 이름을 바꾼 파일은 옛 이름도 함께 준다(previous_filename): 목록에 든 파일을 옮겨도 옛 이름이 보인다. 지운 파일은 filename에 그대로 있다
 const fetchFiles = async (slug: string, n: number) =>
-  (await gh(["api", "--paginate", `repos/${slug}/pulls/${n}/files?per_page=100`, "--jq", ".[].filename"])).split("\n").filter(Boolean);
+  (await gh(["api", "--paginate", `repos/${slug}/pulls/${n}/files?per_page=100`, "--jq", ".[] | .filename, (.previous_filename // empty)"])).split("\n").filter(Boolean);
 // 이 커밋의 CI 체크(이름이 ciCheck인 check run). 다시 돌았으면 마지막 것
 async function fetchCi(slug: string, sha: string, name: string): Promise<CiState> {
   const rows = (await gh(["api", `repos/${slug}/commits/${sha}/check-runs?check_name=${encodeURIComponent(name)}&per_page=20`, "--jq", ".check_runs[] | [.status, (.conclusion // \"\"), (.started_at // \"\")] | @tsv"]))

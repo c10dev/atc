@@ -53,7 +53,7 @@ export interface KInput {
   userFiles: readonly string[]; // landing-tier가 user로 본 파일
   declared: readonly K3Declaration[] | undefined; // 이슈 본문의 읽힌 K3 선언
   unparsed: number; // 읽히지 않은 K3 줄 수
-  stateType?: string | null; // FLIGHT 이슈의 상태 종류(unstarted·started·completed·canceled …). 끝난 FLIGHT의 발권은 더 착륙시키지 않는다
+  stateType?: string | null; // FLIGHT 이슈의 상태 종류. unstarted·started만 열린 FLIGHT고, 끝났거나 모르면 발권은 K 권한을 주지 않는다
   hash: string | null | undefined; // 지금 이슈 본문의 해시
   releases: ReleaseView | null | undefined;
 }
@@ -71,7 +71,8 @@ export function kApprovalOf(x: KInput): KVerdict {
   if (k12) return no("k1-k2", `K1·K2 경로(${k12})는 아직 이 길로 착륙시키지 않음 — 사용자가 머지`);
   if (!x.flight) return no("no-flight", "PR에 FLIGHT가 없어 발권 기록을 찾을 수 없음");
   // 한 발권은 FLIGHT가 열려 있는 동안만 K 권한을 준다: 끝났거나 취소된 FLIGHT의 이름을 빌려 같은 파일을 다시 고치는 PR은 새 화살이다
-  if (x.stateType === "completed" || x.stateType === "canceled") return no("flight-closed", `${x.flight}는 이미 끝났거나 취소됨 — 그 발권은 더 착륙시키지 않음`);
+  // 열려 있다고 아는 FLIGHT만(unstarted·started). 모르는 상태(없음·null·낯선 값)는 닫는 쪽으로 틀린다
+  if (x.stateType !== "unstarted" && x.stateType !== "started") return no("flight-closed", `${x.flight}의 상태가 열려 있지 않거나 알 수 없음(${x.stateType ?? "모름"}) — 그 발권은 착륙시키지 않음`);
   const state = releaseStateOf(x.flight, x.hash, x.releases);
   if (state === "unreleased") return no("no-release", `${x.flight}에 발권 기록이 없음`);
   if (state === "stale") return no("stale", `${x.flight}는 발권 뒤 목표·완료 기준·K 효과가 바뀜 — 다시 발권`);

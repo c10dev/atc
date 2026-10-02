@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { config } from "./config.ts";
 import { loadMcc, readMccRecords } from "./mcc.ts";
 import { mountSettings } from "./settings.ts";
+import { needsSupervisor, resetHashCache, sha256hex, supervisorGate } from "./supervisor-auth.ts";
 
 // K 승인 착륙 스위치(ATC-391)의 설정 길. 임시 HOME·임시 상태 폴더만 쓴다(운영 상태 폴더는 건드리지 않는다).
 const root = realpathSync(mkdtempSync(join(tmpdir(), "atc-kapproval-")));
@@ -66,4 +67,53 @@ test("설정 읽기: mcc.kApproval과 7일 수(kDays)가 함께 온다", async (
   assert.equal(j.mcc.kApproval, "on");
   assert.equal(j.mcc.kDays.length, 7);
   assert.ok(j.mcc.kDays.every((d) => d.landed === 0));
+});
+
+// ── 자격 문(ATC-373)이 이 길을 막는다: 허용 목록(에이전트가 쓰는 길)에 없는 쓰기는 모두 SUPERVISOR 자격이 있어야 한다 ──
+test("k-confirm and the K-approval switch are behind the SUPERVISOR credential gate (default deny), while attest stays an agent route", () => {
+  assert.equal(needsSupervisor("POST", "/api/releases/k-confirm"), true);
+  assert.equal(needsSupervisor("PUT", "/api/settings"), true);
+  assert.equal(needsSupervisor("POST", "/api/releases/attest"), false); // agent가 쓰는 길: 이것만으로는 K 권한이 없다
+});
+
+test("a forged localhost Origin without the credential gets 403 on k-confirm and on the switch; the right credential reaches the route", async () => {
+  const SECRET = "k-confirm-test-secret-0123456789abcdefghijkl";
+  const file = join(root, "supervisor.sha256");
+  writeFileSync(file, `${sha256hex(SECRET)}\n`);
+  const saved = { f: process.env.ATC_SUPERVISOR_HASH_FILE, u: process.env.ATC_SUPERVISOR_ALLOW_USER_FILE };
+  process.env.ATC_SUPERVISOR_HASH_FILE = file;
+  process.env.ATC_SUPERVISOR_ALLOW_USER_FILE = "1";
+  resetHashCache();
+  try {
+    const gated = new Hono();
+    gated.use("/api/*", supervisorGate());
+    gated.post("/api/releases/k-confirm", (c) => c.json({ reached: true }));
+    gated.put("/api/settings", (c) => c.json({ reached: true }));
+    gated.post("/api/releases/attest", (c) => c.json({ reached: true }));
+    const call = (method: string, path: string, headers: Record<string, string>) => gated.request(path, { method, headers: { "content-type": "application/json", ...headers }, body: "{}" });
+    const forged = { origin: "http://localhost:7700" };
+    assert.equal((await call("POST", "/api/releases/k-confirm", forged)).status, 403);
+    assert.equal((await call("PUT", "/api/settings", forged)).status, 403);
+    assert.equal((await call("POST", "/api/releases/k-confirm", { ...forged, "x-atc-supervisor": "wrong".repeat(10) })).status, 403);
+    assert.equal((await call("POST", "/api/releases/k-confirm", { ...forged, "x-atc-supervisor": SECRET })).status, 200);
+    assert.equal((await call("PUT", "/api/settings", { ...forged, "x-atc-supervisor": SECRET })).status, 200);
+    assert.equal((await call("POST", "/api/releases/attest", {})).status, 200); // agent는 attest만 쓸 수 있다
+  } finally {
+    if (saved.f === undefined) delete process.env.ATC_SUPERVISOR_HASH_FILE;
+    else process.env.ATC_SUPERVISOR_HASH_FILE = saved.f;
+    if (saved.u === undefined) delete process.env.ATC_SUPERVISOR_ALLOW_USER_FILE;
+    else process.env.ATC_SUPERVISOR_ALLOW_USER_FILE = saved.u;
+    resetHashCache();
+  }
+});
+
+test("a corrupt mcc.json fails closed for K approval (off); a missing file is the default (on)", () => {
+  const dir = join(root, "corrupt");
+  mkdirSync(dir, { recursive: true });
+  assert.equal(loadMcc(join(dir, "missing.json")).kApproval, "on");
+  writeFileSync(join(dir, "broken.json"), "{ not json");
+  assert.equal(loadMcc(join(dir, "broken.json")).kApproval, "off");
+  assert.equal(loadMcc(join(dir, "broken.json")).mode, "shadow"); // MCC 모드는 전처럼 기본
+  writeFileSync(join(dir, "ok.json"), JSON.stringify({ mode: "land" }));
+  assert.equal(loadMcc(join(dir, "ok.json")).kApproval, "on");
 });

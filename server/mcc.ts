@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { config } from "./config.ts";
 import { type KVerdict, kWhyOf } from "./k-approval.ts";
@@ -51,7 +51,12 @@ const readJson = (file: string): unknown => {
     return null;
   }
 };
-export const loadMcc = (file = CONFIG_FILE()) => parseMcc(readJson(file));
+// 파일이 있는데 JSON이 깨졌으면 K 승인 착륙은 끈다(ATC-391: 읽을 수 없는 설정이 자동 착륙을 켠 채로 두지 않는다). 파일이 없으면 기본(on)
+export function loadMcc(file = CONFIG_FILE()): MccConfig {
+  const parsed = parseMcc(readJson(file));
+  if (!existsSync(file) || readJson(file) !== null) return parsed;
+  return { ...parsed, kApproval: "off" };
+}
 // 사용자가 적어 둔 다른 키는 그대로 두고 바꾼 것만 쓴다
 export function saveMcc(next: MccConfig, file = CONFIG_FILE()) {
   const user = readJson(file);
