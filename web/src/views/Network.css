@@ -70,7 +70,7 @@
 }
 /* 머리 줄의 한글 풀이: .label em처럼 자간 없이 */
 .nw-table thead em {
-  font: 400 var(--text-xs) var(--sans);
+  font: 500 var(--text-xs) var(--sans);
   font-style: normal;
   letter-spacing: 0;
   color: var(--muted);
@@ -116,7 +116,7 @@
   color: var(--muted);
 }
 .nw-status em {
-  font: 400 var(--text-xs) var(--sans);
+  font: 500 var(--text-xs) var(--sans);
   font-style: normal;
   letter-spacing: 0;
 }
