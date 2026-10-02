@@ -3,16 +3,13 @@ import { awayOperations } from "../../../server/away.ts";
 import type { AirportStatus, Snapshot } from "../../../server/model.ts";
 import { callsign } from "../aviation.ts";
 import "./Airports.css";
+import { apiSend, type ApiMethod } from "../api.ts";
 
 const statusLabel = { open: "OPEN", closed: "CLOSED", missing: "MISSING" } as const;
 const MAX_AC = 4;
 
 async function api(method: string, path: string, body?: unknown) {
-  const res = await fetch(path, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const res = await apiSend(method as ApiMethod, path, body || undefined);
   const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
   if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
   return data;

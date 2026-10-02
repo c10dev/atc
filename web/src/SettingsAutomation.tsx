@@ -4,6 +4,7 @@ import type { ServerSettings } from "../../server/settings.ts";
 import { modeLine, modeSegments, needsConfirm, recycleAutoGuardOf, reviewLabel, type PolicyKey } from "../../server/settings-policy.ts";
 import { timeAgo } from "./derive.ts";
 import { Block, EditNote, EditRow, type Save, type SaveResult, ServerRows, type Loaded } from "./SettingsServer.tsx";
+import { apiGet, apiSend } from "./api.ts";
 
 // 설정 창의 AUTOMATION 묶음(ATC-131): SUPERVISOR 정책 스위치. LANDING(AUTOLAND, MCC, REVIEW)과 OPERATIONS(FUEL, REPOSITION, CONTROL RECYCLE, JUDGES) 두 분류로 나눠 보이고, 둘 다 맨 위에 지금 모드 한 줄.
 // ⚠ 모드로 올릴 때는 그 모드의 경고를 보이고 확인 버튼을 거친다(EditRow guard). 내리는 것은 전과 같이 저장한다.
@@ -67,7 +68,7 @@ function CharterShadowRecord({ mode }: { mode: string }) {
   const [rec, setRec] = useState<CharterRecord | null>(null);
   useEffect(() => {
     let alive = true;
-    fetch("/api/duty/charters")
+    apiGet("/api/duty/charters")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d: CharterRecord) => alive && setRec(d))
       .catch(() => {});
@@ -120,11 +121,7 @@ function GroundStopRow({ stop, check, refresh }: { stop: ServerSettings["autolan
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/autoland/groundstop/clear", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ airport: stop.airport }),
-      });
+      const res = await apiSend("POST", "/api/autoland/groundstop/clear", { airport: stop.airport });
       if (res.ok) await refresh();
       else setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`);
     } catch {
@@ -157,7 +154,7 @@ function MccGatePanel() {
   const [g, setG] = useState<GateLoaded>({ state: "loading" });
   useEffect(() => {
     let alive = true;
-    fetch("/api/mcc/gate")
+    apiGet("/api/mcc/gate")
       .then(async (r) => (r.ok ? r.json() : Promise.reject(((await r.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${r.status}`)))
       .then((gate: MccGate & { error: string | null }) => alive && setG({ state: "ready", gate }))
       .catch((e) => alive && setG({ state: "error", error: typeof e === "string" ? e : "서버에 연결할 수 없음" }));
@@ -271,7 +268,7 @@ function RecycleSessions({ caps, auto, save }: { caps: Record<string, number | n
   useEffect(() => {
     let alive = true;
     const load = () =>
-      fetch("/api/control/recycle")
+      apiGet("/api/control/recycle")
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
         .then((x: RecycleView) => alive && (setV(x), setErr(null)))
         .catch((e) => alive && setErr(e instanceof Error ? e.message : "읽지 못함"));
@@ -338,7 +335,7 @@ function DutyAccountRow({ current, warning, save }: { current: string; warning: 
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
-    fetch("/api/fleet/launch-accounts")
+    apiGet("/api/fleet/launch-accounts")
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d: { accounts: DutyAccountChoice[] }) => alive && setAccounts(d.accounts))
       .catch(() => alive && setAccounts([]));

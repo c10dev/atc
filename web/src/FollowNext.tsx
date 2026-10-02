@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { apiGet } from "./api.ts";
 
 // 머리의 NEXT n(docs/follow.md 3.4): 따라가는 번들 전체에서 다음 할 일이 있는 줄 수. 0이면 보이지 않는다.
 // 수는 서버가 센다(GET /api/follow의 next). 스냅샷이 바뀌면 다시 읽되 10초에 한 번만
@@ -14,7 +15,7 @@ export function FollowNext({ refreshKey }: { refreshKey: string }) {
     timer.current = setTimeout(async () => {
       last.current = Date.now();
       try {
-        const res = await fetch("/api/follow");
+        const res = await apiGet("/api/follow");
         if (res.ok) setN(Number((await res.json()).next) || 0);
       } catch {
         // 못 읽으면 지난 수를 그대로 둔다

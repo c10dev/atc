@@ -9,6 +9,7 @@ import { timeAgo } from "../derive.ts";
 import { followingExceptions } from "../readiness-line.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import "./Following.css";
+import { apiGet } from "../api.ts";
 
 // FLIGHT FOLLOWING(운항 추적, docs/occ.md 8장). 배정된 FLIGHT의 단계와 지연·불일치를 보여 주기만 한다.
 
@@ -77,7 +78,7 @@ export function useFollowing(refreshKey: string): FollowBrief | null {
   // 서버에 FLIGHT FOLLOWING이 없거나(404) 실패하면 아무것도 그리지 않는다
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/following");
+      const res = await apiGet("/api/following");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setBrief(normalize(await res.json()));
     } catch {

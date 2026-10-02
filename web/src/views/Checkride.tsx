@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CheckrideRow, CheckrideStatus } from "../../../server/checkride.ts";
 import { flightNumber } from "../aviation.ts";
 import "./Checkride.css";
+import { apiGet, apiSend } from "../api.ts";
 
 // CHECKRIDE: AIRCRAFT × TYPE RATING마다 LOGBOOK 근거와 부여·재검토 추천(docs/fleet.md 8.2).
 // 추천만 한다. 부여·회수는 SUPERVISOR가 누를 때만 fleet.json에 쓴다.
@@ -24,7 +25,7 @@ export function Checkride({ refreshKey, onChanged }: { refreshKey: string; onCha
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/fleet/checkride");
+      const res = await apiGet("/api/fleet/checkride");
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
       setRows(data.rows);
@@ -42,11 +43,7 @@ export function Checkride({ refreshKey, onChanged }: { refreshKey: string; onCha
     if (!confirm(`${r.callsign}(${r.registration})${action === "grant" ? "에" : "의"} ${r.rating}를 ${what}할까요?\n\n${r.reason}`)) return;
     setBusy(`${r.registration}:${r.rating}`);
     try {
-      const res = await fetch(`/api/fleet/${encodeURIComponent(r.registration)}/checkride`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rating: r.rating, action }),
-      });
+      const res = await apiSend("POST", `/api/fleet/${encodeURIComponent(r.registration)}/checkride`, { rating: r.rating, action });
       const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
       if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
       await load();

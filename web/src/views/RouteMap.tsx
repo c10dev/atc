@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { IconButton } from "../Icon.tsx";
 import { type KeyboardEvent, useEffect, useState } from "react";
 import "./RouteMap.css";
+import { apiGet } from "../api.ts";
 
 // ROUTE MAP: ROUTE(Linear 프로젝트)마다 WAYPOINT(마일스톤)를 가로 경로로. 읽기만 한다.
 // 계산(상태·FLIGHT·ETA)은 서버(server/routes.ts)가 하고 여기서는 그리기만 한다. 설계: docs/routes.md
@@ -82,7 +83,7 @@ export function RouteMap({ refreshKey }: { refreshKey: string }) {
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/routes")
+    apiGet("/api/routes")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d: RoutesData) => alive && (setData({ ...d, routes: Array.isArray(d?.routes) ? d.routes : [] }), setError(null)))
       .catch((e) => alive && setError(String(e.message ?? e)));

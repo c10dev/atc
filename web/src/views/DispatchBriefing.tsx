@@ -6,6 +6,7 @@ import { Icon } from "../Icon.tsx";
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import "./DispatchBriefing.css";
+import { apiGet } from "../api.ts";
 
 // BRIEFING(ATC-4): 티켓 내용을 기억하지 못해도 카드만 보고 판정하게.
 // 맨 위 세 줄은 OCC가 쓰고(없으면 제목과 본문 첫 문장), 사실 줄은 서버가 계산한다. 자세한 것은 접어 둔다.
@@ -157,7 +158,7 @@ export function CardDetails({ flight, children }: { flight: string; children: Re
   const load = () => {
     if (body) return;
     setBody({ text: null, error: null });
-    fetch(`/api/dispatch/flight/${encodeURIComponent(flight)}`)
+    apiGet(`/api/dispatch/flight/${encodeURIComponent(flight)}`)
       .then((r) => r.json())
       .then((d) => setBody(d.error ? { text: null, error: String(d.error) } : { text: typeof d.description === "string" ? d.description : "", error: null }))
       .catch((e) => setBody({ text: null, error: String(e.message ?? e) }));

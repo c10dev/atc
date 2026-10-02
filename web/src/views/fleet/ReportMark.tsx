@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { AircraftView } from "../../../../server/fleet.ts";
 import { REPORT_CLASSES, REPORT_LABEL } from "../../../../server/judges/report.ts";
+import { apiSend } from "../../api.ts";
 
 type Report = NonNullable<AircraftView["report"]>;
 const pct = (p: number) => `${Math.round(p * 100)}%`;
@@ -28,7 +29,7 @@ export function ReportLine({ r }: { r: Report }) {
   }
   const send = async (verdict: "right" | "wrong") => {
     setError(null);
-    const res = await fetch(`/api/judges/report/${encodeURIComponent(r.id)}/mark`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ verdict }) });
+    const res = await apiSend("POST", `/api/judges/report/${encodeURIComponent(r.id)}/mark`, { verdict });
     if (res.ok) setMark(verdict);
     else setError((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
   };

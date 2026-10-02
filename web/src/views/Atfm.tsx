@@ -4,6 +4,7 @@ import { timeAgo } from "../derive.ts";
 import { atfmAlertOf } from "../readiness-line.ts";
 import { StateMark } from "./Mark.tsx";
 import "./Atfm.css";
+import { apiGet, apiSend } from "../api.ts";
 
 // ATFM 3단계(docs/atfm.md). 대부분 그림자 운용: 계산해서 보여 주기만 한다.
 // 켤 수 있는 것은 GROUND STOP 두 가지(main 깨짐, 수동)와 머지 슬롯(7단계: 켜면 TOWER가 in-slot PR에만 LAND)이다.
@@ -124,7 +125,7 @@ const pct = (x: number | null | undefined) => (x === null || x === undefined ? "
 const aptOf = (a: string | null) => a ?? "—";
 
 async function post(path: string, body: unknown) {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const res = await apiSend("POST", path, body);
   const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
   if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
   return data;
@@ -164,7 +165,7 @@ export function useAtfm(refreshKey: string): AtfmState {
   // 서버에 ATFM이 없거나(404) 실패하면 아무것도 그리지 않는다
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/atfm");
+      const res = await apiGet("/api/atfm");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setBrief(normalize(await res.json()));
     } catch {

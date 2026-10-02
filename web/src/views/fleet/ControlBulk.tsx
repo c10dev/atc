@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { BULK_LABEL, type BulkOp, type BulkResult, type BulkRow, heldOf } from "../../../../server/control-bulk.ts";
+import { apiGet, apiSend } from "../../api.ts";
 
 // CONTROL SESSIONS 일괄 동작(ATC-255, docs/fleet.md 8.5.2). 계산은 server/control-bulk.ts(순수), 여기는 미리 보기·확인·결과를 그리기만 한다.
 // 순서: 버튼 → 미리 보기(서버가 지금 사실로 계산, 읽기만) → 확인 한 번 → 실행. 실행은 화면이 미리 본 행동(expect)과 지금 계획이 같은 세션만 한다.
@@ -23,7 +24,7 @@ export function BulkPanel({ op: first, onClose, onDone }: { op: BulkOp; onClose:
     setError(null);
     setForce(false);
     try {
-      const res = await fetch(`/api/control/bulk?op=${o}`);
+      const res = await apiGet(`/api/control/bulk?op=${o}`);
       const body: unknown = await res.json().catch(() => ({}));
       if (res.ok) setPlan(body as Plan);
       else setError(err(body, `HTTP ${res.status}`));
@@ -45,7 +46,7 @@ export function BulkPanel({ op: first, onClose, onDone }: { op: BulkOp; onClose:
     setError(null);
     try {
       const expect = Object.fromEntries(plan.rows.map((r) => [r.name, r.action]));
-      const res = await fetch("/api/control/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op, expect, force }) });
+      const res = await apiSend("POST", "/api/control/bulk", { op, expect, force });
       const body: unknown = await res.json().catch(() => ({}));
       if (res.status === 200 || (body && typeof body === "object" && "results" in body)) setDone(body as Done);
       else setError(err(body, `HTTP ${res.status}`));

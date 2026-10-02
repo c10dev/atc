@@ -1,6 +1,7 @@
 import type { AircraftView, CrewMember, FleetFile, Rating } from "../../../../server/fleet.ts";
 import type { FuelRemaining } from "../../../../server/fuel-remaining.ts";
 import type { LaunchModelSetting } from "../../../../server/launch-model.ts";
+import { apiSend, type ApiMethod } from "../../api.ts";
 
 // FLEET 탭 여러 파일이 같이 쓰는 타입과 도우미(GET /api/fleet, /api/fleet/sessions)
 
@@ -53,11 +54,7 @@ export const ratingHelp: Record<Rating, string> = {
 };
 
 export async function api(method: string, path: string, body?: unknown) {
-  const res = await fetch(path, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const res = await apiSend(method as ApiMethod, path, body || undefined);
   const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
   if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
   return data;
