@@ -19,9 +19,9 @@
     "spacing-literal": 2
   },
   "web/src/styles.css": {
-    "color-literal": 21,
+    "color-literal": 19,
     "radius-literal": 3,
-    "spacing-literal": 37
+    "spacing-literal": 34
   },
   "web/src/views/Airports.css": {
     "radius-literal": 2,
