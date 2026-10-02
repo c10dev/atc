@@ -85,10 +85,12 @@ export const shaOf = (sql: string): string => createHash("sha256").update(sql).d
 export function driftReason(records: readonly MigrateRecord[], slug: string, number: number, current: readonly { version: string; sha: string }[]): string | null {
   const mine = records.filter((r) => r.kind === "run" && r.slug === slug && r.number === number);
   if (mine.some((r) => r.status === "live-changed")) return "마이그레이션 리허설이 실전을 바꾼 채 멈춤(live-changed) — 사람이 풀 때까지 머지하지 않음";
-  const last = [...mine].reverse().find((r) => r.status === "applied" && r.files);
-  if (!last?.files) return null;
+  // 버전마다 처음 적용한 내용의 해시(여러 번 나눠 적용한 PR도 모두 본다)
+  const applied = new Map<string, string>();
+  for (const r of mine) if (r.status === "applied") for (const f of r.files ?? []) if (!applied.has(f.version)) applied.set(f.version, f.sha);
+  if (!applied.size) return null;
   const now = new Map(current.map((f) => [f.version, f.sha]));
-  const changed = last.files.filter((f) => now.get(f.version) !== f.sha).map((f) => f.version);
+  const changed = [...applied].filter(([v, sha]) => now.get(v) !== sha).map(([v]) => v);
   return changed.length ? `실전에 적용한 뒤 마이그레이션 파일이 바뀜(${changed.join(", ")}) — 실전과 다른 SQL이라 머지하지 않음` : null;
 }
 
@@ -176,6 +178,17 @@ export async function rehearseOne(p: PullRequest, airport: string, db: HostedDb,
   } catch (e) {
     const detail = redact(`마이그레이션 파일을 못 읽음: ${String((e as Error).message ?? e)}`, token);
     note({ kind: "run", status: "stopped", detail }, []);
+    return null;
+  }
+  // 이미 실전에 있는 버전은 리허설하지 않는다: 같은 PR에 새 마이그레이션이 더해졌을 때 없는 것만 다룬다(있던 것의 내용은 머지 직전 해시 비교가 지킨다)
+  try {
+    const have = new Set((await io.live.query("select version from supabase_migrations.schema_migrations")).map((x) => String(x.version)));
+    files = files.filter((f) => !have.has(f.version));
+  } catch {
+    // 읽지 못하면 전부 다룬다: rehearse가 같은 목록을 다시 읽고 이미 적용된 것이 있으면 멈춘다
+  }
+  if (!files.length) {
+    note({ kind: "run", status: "stopped", detail: "리허설할 새 마이그레이션이 없음(모두 실전에 있음)" }, []);
     return null;
   }
   const versions = files.map((f) => f.version);

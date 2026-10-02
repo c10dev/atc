@@ -90,6 +90,11 @@ test("driftReason: live-changed가 있었던 PR은 어느 head든 멈추고, app
   assert.equal(driftReason([run("h1", "stopped", A)], "o/n", 7, [{ version: "1", sha: "bbb" }]), null, "실전이 그대로였던 시도는 해당 없음");
   assert.equal(driftReason([run("h1", "applied", A)], "o/n", 8, [{ version: "1", sha: "bbb" }]), null, "다른 PR");
   assert.equal(driftReason([], "o/n", 7, A), null);
+  // 나눠 적용한 PR: 버전마다 처음 적용한 해시를 모두 본다
+  const parts = [run("h1", "applied", [{ version: "1", sha: "aaa" }]), run("h2", "applied", [{ version: "2", sha: "bbb" }])];
+  assert.equal(driftReason(parts, "o/n", 7, [{ version: "1", sha: "aaa" }, { version: "2", sha: "bbb" }]), null);
+  assert.match(driftReason(parts, "o/n", 7, [{ version: "1", sha: "xxx" }, { version: "2", sha: "bbb" }])!, /바뀜\(1\)/);
+  assert.equal(driftReason(parts, "o/n", 7, [{ version: "1", sha: "aaa" }, { version: "2", sha: "bbb" }, { version: "3", sha: "new" }]), null, "새 버전은 다음 리허설 몫");
   assert.equal(shaOf("a"), shaOf("a"));
   assert.notEqual(shaOf("a"), shaOf("b"));
 });

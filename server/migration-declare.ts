@@ -14,7 +14,7 @@ export interface Classified {
   sql: string; // 문장 앞부분(오류 표시용, 최대 80자)
   kind: StatementKind;
   table?: string; // dml의 대상 표(소문자, 스키마 뺌)
-  needs?: string; // sensitive: 선언 글에 이 낱말이 있어야 통과한다
+  needs?: string[]; // sensitive: 선언 글에 이 낱말이 모두 있어야 통과한다
   why?: string;
 }
 
@@ -126,8 +126,10 @@ export function classify(stmt: string): Classified {
     return hasWhere(stmt) ? { sql, kind: "dml", table: bare(m[2]!) } : { sql, kind: "destructive", table: bare(m[2]!), why: "WHERE 없는 DELETE" };
   }
   // SECURITY DEFINER는 달러 본문 뒤(`as $$ … $$ language sql security definer`)에도 올 수 있어 본문을 걷어 낸 전체 문장에서 본다
-  const sens = SENSITIVE.find(([r]) => r.test(head)) ?? (/\bsecurity (definer|invoker)\b/.test(unquoted(stmt).replace(/\s+/g, " ").toLowerCase()) ? ([/./, "security"] as [RegExp, string]) : undefined);
-  if (sens && (ADDITIVE.some((r) => r.test(head)) || /^(alter role|create extension)\b/.test(head))) return { sql, kind: "sensitive", needs: sens[1] };
+  // 맞는 낱말은 모두 필요하다(`create or replace function … security definer`는 replace와 security 둘 다)
+  const needs = new Set(SENSITIVE.filter(([r]) => r.test(head)).map(([, w]) => w));
+  if (/\bsecurity (definer|invoker)\b/.test(unquoted(stmt).replace(/\s+/g, " ").toLowerCase())) needs.add("security");
+  if (needs.size && (ADDITIVE.some((r) => r.test(head)) || /^(alter role|create extension)\b/.test(head))) return { sql, kind: "sensitive", needs: [...needs] };
   if (ADDITIVE.some((r) => r.test(head))) return { sql, kind: "additive" };
   return { sql, kind: "unknown", why: "분류할 수 없는 문장" };
 }
@@ -152,11 +154,19 @@ export interface DeclarationResult {
 
 const mentions = (declared: string, table: string) => new RegExp(`(^|[^\\w])(?:[\\w"]+\\.)?"?${table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"?($|[^\\w])`, "i").test(declared);
 
+// 선언 글의 K1 부분: `K1`부터 다음 `K2`·`K3` 앞까지. K1이 없으면 null
+export function k1Of(declared: string): string | null {
+  const m = /\bK1\b[\s\S]*?(?=\bK[23]\b|$)/i.exec(declared);
+  return m ? m[0] : null;
+}
+
 // files: 새 마이그레이션 파일(경로 → SQL). declared: 이슈 본문 `## K effects` 글
 export function declarationCheck(files: readonly { path: string; sql: string }[], declared: string): DeclarationResult {
   const stopped: DeclarationResult["stopped"] = [];
   let statements = 0;
-  const k1 = /\bK1\b/i.test(declared);
+  // 민감한 낱말과 DML 표 이름은 K1 부분에서만 찾는다(K2·다른 글에 우연히 있는 낱말로 통과하지 않게)
+  const k1text = k1Of(declared);
+  const k1 = k1text !== null;
   for (const f of files) {
     const all = splitStatements(f.sql);
     // 맨 앞 BEGIN과 맨 뒤 COMMIT은 적용기가 떼어 내고 한 트랜잭션으로 감싼다(bodyStatements). 그 밖의 트랜잭션 문장(파일 중간의 COMMIT·BEGIN 등)은
@@ -176,9 +186,10 @@ export function declarationCheck(files: readonly { path: string; sql: string }[]
         stopped.push({ file: f.path, sql: c.sql, why: "K1 효과가 선언되지 않음" });
       } else if (c.kind === "destructive" || c.kind === "unknown") {
         stopped.push({ file: f.path, sql: c.sql, why: c.why ?? "" });
-      } else if (c.kind === "sensitive" && !new RegExp(`\\b${c.needs}`, "i").test(declared)) {
-        stopped.push({ file: f.path, sql: c.sql, why: `선언에 \`${c.needs}\`가 없음(접근·기존 동작을 바꾸는 문장)` });
-      } else if (c.kind === "dml" && !(c.table && mentions(declared, c.table))) {
+      } else if (c.kind === "sensitive" && (c.needs ?? []).some((w) => !new RegExp(`\\b${w}`, "i").test(k1text!))) {
+        const miss = (c.needs ?? []).filter((w) => !new RegExp(`\\b${w}`, "i").test(k1text!));
+        stopped.push({ file: f.path, sql: c.sql, why: `K1 선언에 ${miss.map((w) => `\`${w}\``).join(", ")}가 없음(접근·기존 동작을 바꾸는 문장)` });
+      } else if (c.kind === "dml" && !(c.table && mentions(k1text!, c.table))) {
         stopped.push({ file: f.path, sql: c.sql, why: `선언에 없는 DML(표 ${c.table ?? "?"})` });
       }
     }

@@ -150,7 +150,18 @@ export async function rehearse(files: readonly MigrationFile[], io: RehearsalIo)
     done("live-apply", true, `실전에 적용 ${appliedLive.join(", ")}`);
   } catch (e) {
     await io.live.query("rollback;").catch(() => {}); // 위와 같다: 실패한 파일의 열린 트랜잭션을 닫아 본다
-    return stop("live-apply", `${appliedLive.length ? `적용됨 ${appliedLive.join(", ")} · ` : "실전은 그대로 · "}실패: ${msg(e)}`, appliedLive.length ? "live-changed" : "stopped");
+    // 시간 초과·네트워크 오류는 서버에서 이미 커밋됐을 수 있다. 실전 버전을 다시 읽어 확인하고, 읽지 못하면 바뀐 것으로 본다(ATC-329 게이트가 통과하는 길을 막는다)
+    let committed: string[] = [];
+    let unknown = false;
+    try {
+      const have = versionsOf(await io.live.query(VERSIONS_SQL));
+      committed = versions.filter((v) => have.includes(v) && !appliedLive.includes(v));
+    } catch {
+      unknown = true;
+    }
+    const changed = appliedLive.length > 0 || committed.length > 0 || unknown;
+    const state = [...(appliedLive.length ? [`적용됨 ${appliedLive.join(", ")}`] : []), ...(committed.length ? [`커밋돼 있음 ${committed.join(", ")}`] : []), ...(unknown ? ["실전 상태를 확인하지 못함"] : [])];
+    return stop("live-apply", `${state.length ? `${state.join(" · ")} · ` : "실전은 그대로 · "}실패: ${msg(e)}`, changed ? "live-changed" : "stopped");
   }
 
   // 5. 적용 뒤 검사: 버전 줄, 함수 본문·grant가 시험 DB와 같은지, 앱 건강

@@ -79,6 +79,8 @@ interface FakeOpts {
   liveVersions?: string[];
   failTest?: boolean;
   failLive?: boolean;
+  failLiveCommitted?: boolean; // 실전 요청이 서버에서 커밋된 뒤 응답이 실패한다(시간 초과 등)
+  liveReadFails?: boolean; // 실패 뒤 실전 버전을 다시 읽지 못한다
   liveCatalog?: Row[];
   testCatalog?: Row[];
   restore?: () => Promise<string>;
@@ -89,10 +91,20 @@ function fake(o: FakeOpts = {}) {
   const calls: { db: "test" | "live"; sql: string }[] = [];
   const testV = [...(o.testVersions ?? ["1"])];
   const liveV = [...(o.liveVersions ?? ["1"])];
+  let failedOnce = false;
   const runner = (db: "test" | "live"): SqlRunner => ({
     async query(sql) {
       calls.push({ db, sql });
-      if (sql.includes("schema_migrations order by")) return (db === "test" ? testV : liveV).map((version) => ({ version }));
+      if (sql.includes("schema_migrations order by")) {
+        if (db === "live" && o.liveReadFails && failedOnce) throw new Error("network");
+        return (db === "test" ? testV : liveV).map((version) => ({ version }));
+      }
+      if (db === "live" && sql.startsWith("begin;") && o.failLiveCommitted) {
+        const cv = /values \('(\d+)'/.exec(sql)?.[1];
+        if (cv) liveV.push(cv);
+        failedOnce = true;
+        throw new Error("timeout");
+      }
       if (sql.startsWith("begin;") && ((db === "test" && o.failTest) || (db === "live" && o.failLive))) throw new Error("boom");
       const v = /values \('(\d+)'/.exec(sql)?.[1];
       if (v) (db === "test" ? testV : liveV).push(v); // 적용하면 버전 줄이 생긴다
@@ -164,6 +176,33 @@ test("리허설: 적용 전에 시험 DB와 실전의 카탈로그가 이미 다
   assert.match(r.steps.at(-1)!.detail, /이미 시험 DB와 실전/);
   assert.equal(x.liveWrites(), 0);
   assert.equal(x.calls.filter((c) => c.db === "test" && c.sql.startsWith("begin;")).length, 0, "시험 DB에도 적용하지 않는다");
+});
+
+test("리허설: 실전 요청이 시간 초과로 실패해도 서버에서 커밋됐거나 상태를 알 수 없으면 live-changed", async () => {
+  const committed = fake({ failLiveCommitted: true });
+  const r = await rehearse(FILES, committed.io);
+  assert.deepEqual([r.status, r.failedStep], ["live-changed", "live-apply"]);
+  assert.match(r.steps.at(-1)!.detail, /커밋돼 있음 20260101/);
+  const unknown = fake({ failLiveCommitted: true, liveReadFails: true });
+  const u = await rehearse(FILES, unknown.io);
+  assert.equal(u.status, "live-changed");
+  assert.match(u.steps.at(-1)!.detail, /확인하지 못함/);
+  assert.equal((await rehearse(FILES, fake({ failLive: true }).io)).status, "stopped", "실패했고 버전 줄도 없으면 실전은 그대로");
+});
+
+test("선언 검사: 해당하는 낱말을 모두 요구한다(SECURITY DEFINER 함수를 replace만으로 통과시키지 않는다)", () => {
+  const sql = [{ path: "m/1_a.sql", sql: "create or replace function public.f() returns int as $$ select 1 $$ language sql security definer;" }];
+  assert.equal(declarationCheck(sql, "K1: replace public.f").ok, false);
+  assert.match(declarationCheck(sql, "K1: replace public.f").stopped[0]!.why, /security/);
+  assert.equal(declarationCheck(sql, "K1: replace public.f as security definer").ok, true);
+});
+
+test("선언 검사: 낱말·표 이름은 K1 부분에서만 찾는다(K2 글의 낱말로 통과하지 않는다)", () => {
+  const grant = [{ path: "m/1_a.sql", sql: "grant select on public.t to anon;" }];
+  assert.equal(declarationCheck(grant, "K1: adds public.t. K2: grant of the token").ok, false);
+  assert.equal(declarationCheck(grant, "K2: x. K1: adds public.t with grant").ok, true);
+  const dml = [{ path: "m/1_a.sql", sql: "insert into public.settings (k) values ('a');" }];
+  assert.equal(declarationCheck(dml, "K1: adds public.t. K3: public.settings").ok, false);
 });
 
 test("리허설: 복원점을 못 만들면 실전에 쓰지 않는다", async () => {
