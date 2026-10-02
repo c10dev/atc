@@ -1,7 +1,7 @@
 import { overCapNow, waitStuckNow } from "./control-recycle-run.ts";
 import { readRecords } from "./recorder.ts";
 import { type EndedKey, followingNow } from "./following.ts";
-import { endsView, type EndsView, firstSeenOf, trackEnds } from "./alert-ends.ts";
+import { endsTrackable, endsView, type EndsView, firstSeenOf, trackEnds } from "./alert-ends.ts";
 import { appendReappeared, loadEnds, readReappeared, saveEnds } from "./alert-ends-run.ts";
 import { readMccRecords } from "./mcc.ts";
 import { mccLandInfoCached, rtsState } from "./mcc-run.ts";
@@ -20,7 +20,7 @@ import { registrationOf } from "./registration.ts";
 import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { CONTROL_SESSIONS, controlDirOf, MAX_LAUNCHED } from "./session-control.ts";
 import { capIdleNow } from "./dispatch-launch.ts";
-import { type AlertEvent, alertKeyOf, controlDownOf, diffAlerts, repositionStuckOf, rtsHaltedOf, type SupervisorAlert, supervisorAlertsOf, UNOWNED_KINDS } from "./supervisor-alerts.ts";
+import { type AlertEvent, alertKeyOf, controlDownOf, diffAlerts, repositionStuckOf, rtsHaltedOf, type SupervisorAlert, DUPLICATED, supervisorAlertsOf, UNOWNED_KINDS } from "./supervisor-alerts.ts";
 import { sinceLookNow } from "./since-look-run.ts";
 import { summaryKey, summaryOf, type SupervisorSummary, workingOf } from "./supervisor-summary.ts";
 
@@ -78,11 +78,13 @@ function collectWith(s: Snapshot, now: number, endRules: boolean): { items: Supe
   const ownerless = s.alerts.filter((a) => UNOWNED_KINDS.has(a.kind)).map(alertKeyOf);
   const items = collectItems(s, now, following, endRules ? { now, since: new Map(Object.entries(firstSeenOf(ends.firstSeen, ownerless, now))), ended } : undefined);
   // following 문제의 key는 알림 key로 바꾼다(supervisorAlertsOf가 `following|`을 붙인다)
-  return { items, ended: ended.map((e) => (e.key.startsWith("alert|") ? e : { ...e, key: `following|${e.key}` })) };
+  // 알림이 아니었던 문제(다른 경로가 알리는 health·stranded·landing-wait)는 뺀 것으로 세지 않는다
+  return { items, ended: ended.filter((e) => e.key.startsWith("alert|") || !DUPLICATED.has(e.key.split("|")[1] ?? "")).map((e) => (e.key.startsWith("alert|") ? e : { ...e, key: `following|${e.key}` })) };
 }
 
 export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
   const { items, ended } = collectWith(s, now, true);
+  if (!endsTrackable(s)) return items; // Linear를 아직 못 읽은 주기는 기록하지 않는다(ATC-385)
   try {
     const prev = ends!;
     const t = trackEnds(prev, ended, new Set(items.map((a) => a.key)), now);

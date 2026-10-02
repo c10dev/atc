@@ -60,3 +60,7 @@ export function endsView(state: EndsState, reappeared: readonly Reappeared[], no
   }
   return { v: 1, at: new Date(now).toISOString(), windowHours: REAPPEAR_WINDOW_MS / 3_600_000, rules: [...by].map(([rule, v]) => ({ rule, ...v })).sort((a, b) => a.rule.localeCompare(b.rule)) };
 }
+
+// 끝 규칙의 기록을 갱신해도 되나(순수): 켜져 있는 Linear가 아직 한 번도 읽히지 않았으면(RTS 재시작 직후) 티켓이 비어 있어 닫힌 FLIGHT의 문제가 잠깐 돌아온 것처럼 보인다.
+// 그 주기는 기록하지 않아, 돌아옴으로 잘못 세지 않고 뺀 기록도 그대로 둔다
+export const endsTrackable = (s: { linear: { enabled: boolean; fetchedAt: string | null } }): boolean => !(s.linear.enabled && !s.linear.fetchedAt);

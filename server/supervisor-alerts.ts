@@ -192,7 +192,7 @@ export function stuckLineOf(row: Pick<FollowAlertRow, "issues" | "finished" | "c
 }
 
 // FOLLOWING 문제 가운데 다른 경로가 이미 알리는 것은 뺀다: health·stranded는 ALERT가, landing-wait는 PR 항목이 알린다
-const DUPLICATED = new Set<string>(["health", "stranded", "landing-wait"]);
+export const DUPLICATED = new Set<string>(["health", "stranded", "landing-wait"]);
 
 const NEXT_BY_ISSUE: Partial<Record<string, string>> = {
   "await-supervisor": "그 세션에서 직접 go를 친다",

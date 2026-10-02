@@ -181,7 +181,8 @@ export function unablesOf(
       end(c.flight, c.id, "unable-pr-gone");
       continue;
     }
-    if (rules && clearances.some((o) => o.id !== c.id && o.flight === c.flight && o.type === c.type && o.readbackAt && o.readbackAt > c.unableAt!)) {
+    // 같은 PR을 가리킨 것만 답이다: PR을 가리킨 UNABLE은 다른 PR에 대한 READBACK으로 끝나지 않는다
+    if (rules && clearances.some((o) => o.id !== c.id && o.flight === c.flight && o.type === c.type && o.readbackAt && o.readbackAt > c.unableAt! && (pr === undefined || prOfText(o.text ?? "") === pr))) {
       end(c.flight, c.id, "unable-readback");
       continue;
     }

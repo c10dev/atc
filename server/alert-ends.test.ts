@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { emptyEnds, endsView, firstSeenOf, REAPPEAR_WINDOW_MS, trackEnds } from "./alert-ends.ts";
+import { emptyEnds, endsTrackable, endsView, firstSeenOf, REAPPEAR_WINDOW_MS, trackEnds } from "./alert-ends.ts";
 import { appendReappeared, loadEnds, readReappeared, saveEnds } from "./alert-ends-run.ts";
 import { followingOf, type FollowInput } from "./following.ts";
 import type { Ticket } from "./model.ts";
@@ -136,4 +136,16 @@ test("CAUTION 전후: 같은 상태를 규칙 없이/있이 세어 비교한다"
   // 전: ATC-1 둘(no-departure·done-not-merged) + ATC-5 no-departure + UNABLE 둘(ATC-2·3) + 주인 없는 셋 = 8
   // 후: ATC-5 no-departure + ATC-3의 UNABLE + 주인 없는 하나(1시간째) = 3
   assert.deepEqual([before, after], [8, 3]);
+});
+
+test("끝 규칙 기록: Linear를 아직 못 읽은 주기(RTS 재시작 직후)는 기록하지 않아 거짓 돌아옴을 세지 않는다", () => {
+  const s = (enabled: boolean, fetchedAt: string | null) => ({ linear: { enabled, fetchedAt } });
+  assert.equal(endsTrackable(s(true, null)), false);
+  assert.equal(endsTrackable(s(true, "2026-10-02T12:00:00Z")), true);
+  assert.equal(endsTrackable(s(false, null)), true, "꺼져 있으면 기다릴 것이 없다");
+  // 기록하지 않는 주기에는 trackEnds를 부르지 않으므로, 뺀 기록은 그대로이고 돌아옴은 0이다. 읽힌 뒤 닫힌 FLIGHT가 다시 빠지면 이어서 센다
+  const first = trackEnds(emptyEnds(), [{ key: "following|ATC-1|unable|C-1", rule: "flight-closed" }], new Set(), NOW);
+  const after = trackEnds(first.state, [{ key: "following|ATC-1|unable|C-1", rule: "flight-closed" }], new Set(), NOW + H);
+  assert.deepEqual(after.reappeared, []);
+  assert.equal(after.state.cleared["following|ATC-1|unable|C-1"].at, NOW);
 });

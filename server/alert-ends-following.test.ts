@@ -90,3 +90,11 @@ test("끝 규칙: BLOCKED는 그 FLIGHT의 뒤 보고에 BLOCKED가 없으면 �
   assert.deepEqual(codes(followingOf(input({ tickets: open, arrivalReports: latest(report(ago(60), "CI red")) }))), ["VOC-1|blocked-report"]);
   assert.deepEqual(followingOf(input({ tickets: open, arrivalReports: latest(report(ago(60), "CI red"), report(ago(10), "none")) })), []);
 });
+
+test("끝 규칙: PR을 가리킨 UNABLE은 같은 FLIGHT의 다른 PR에 대한 READBACK으로 끝나지 않는다", () => {
+  const unable = { id: "C-1", flight: "VOC-7", toName: "TEAM_B", unableAt: ago(60), unableReason: "r", type: "GO AROUND" as const, text: "GO AROUND PR #12", readbackAt: null };
+  const other = { id: "C-2", flight: "VOC-7", toName: "TEAM_B", unableAt: null, unableReason: null, type: "GO AROUND" as const, text: "GO AROUND PR #13", readbackAt: ago(10) };
+  const same = { ...other, id: "C-3", text: "GO AROUND PR #12 again" };
+  assert.deepEqual(unablesOf([unable, other], [], NOW, { openPrs: new Set([12, 13]) }).map((u) => u.id), ["C-1"]);
+  assert.deepEqual(unablesOf([unable, same], [], NOW, { openPrs: new Set([12, 13]) }), []);
+});
