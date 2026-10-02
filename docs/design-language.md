@@ -176,7 +176,7 @@ Running atc sessions get the diff of this file on their next turn when it change
 - [ ] Readable with motion off (10).
 - [ ] Nothing needed for a decision lives only in a tooltip (11).
 - [ ] At most five visible buttons per card; destructive actions confirmed (12).
-- [ ] Tokens only (13). `npm test` checks the web part (`server/css-lint.ts`, `server/css-lint.test.ts`): new literal colours, px/rem font sizes, `z-index` that is not `var(--z-…)`, `transition: all` and `outline: none` without a `:focus-visible` rule fail against the baseline `web/css-lint-baseline.json`. When a count drops, lower the baseline in the same PR with `node server/css-lint.ts --update`; never raise it to accept a new violation.
+- [ ] Tokens only (13). `npm test` checks the web part (`server/css-lint.ts`, `server/css-lint.test.ts`): new literal colours, px/rem and `em` font sizes, non-zero px literals in `padding`, `margin`, `gap`, `inset` and `top`/`right`/`bottom`/`left` (use `var(--space-…)`), `border-radius` values other than `var(--radius-…)`, `50%` or `0`, `z-index` that is not `var(--z-…)`, `transition: all` and `outline: none` without a `:focus-visible` rule fail against the baseline `web/css-lint-baseline.json`. When a count drops, lower the baseline in the same PR with `node server/css-lint.ts --update`; never raise it to accept a new violation.
 - [ ] Keyboard path checked (14).
 - [ ] Craft (3.5): normal state has no coloured blocks; mono only for IDs, codes and numbers; three text sizes per card; no inner borders; one left edge per column; icons from the set; `tabular-nums` on changing numbers; motion from the tokens.
 
