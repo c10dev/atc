@@ -1,5 +1,5 @@
 import { blockedAlerts, type Job } from "./job-state.ts";
-import type { LandBy } from "./land-by.ts";
+import type { LandBy, LandWhy } from "./land-by.ts";
 import type { Clearance, PullRequest, Session } from "./model.ts";
 import type { Proposal } from "./proposals.ts";
 import type { FleetProposal } from "./fleet-plan.ts";
@@ -42,7 +42,7 @@ export interface QueueInput {
   // FLEET PLAN: 열린 제안과, 최근 주기가 아직 그것을 내는지(isStale의 결과)
   fleetPlan: (Pick<FleetProposal, "id" | "kind" | "aircraft" | "status" | "at"> & { stale: boolean })[];
   // landBy: TOWER가 쓰는 landByOf의 결과. "supervisor"이고 CLEARED면 SUPERVISOR가 머지한다
-  pulls: (Pick<PullRequest, "repo" | "number" | "head" | "draft" | "landing" | "humanCheck" | "ticketKey"> & { landBy: LandBy })[];
+  pulls: (Pick<PullRequest, "repo" | "number" | "head" | "draft" | "landing" | "humanCheck" | "ticketKey"> & { landBy: LandBy; landWhy?: LandWhy | null })[];
   update: { kind: UpdateKind; deployed: string | null; main: string | null; mainCi: string; at: string } | null;
   sessions: (Pick<Session, "id" | "name" | "job" | "lastActiveAt"> & Partial<Pick<Session, "status" | "origin" | "jobId" | "account">>)[];
   blockedMin: number;
