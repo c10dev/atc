@@ -184,9 +184,9 @@ const findingCounts = (s: CodexFindingSummary) =>
 // CODEX UNAVAILABLE: head에 Codex 리뷰(지적·👍)도 사람 통과 리뷰도 없고, head 뒤에 Codex가 한도 댓글을 남겼거나
 // head(또는 PR을 연 때) 뒤로 silentMs 동안 Codex 신호가 없음. Codex 신호를 아직 안 읽은 PR(Draft 포함)은 null.
 export interface CodexUnavailable {
-  why: "limit" | "silent" | "autoland"; // autoland: AUTOLAND가 재리뷰를 요청했는데 Codex가 30분 동안 답하지 않음(ATC-38)
+  why: "limit" | "silent" | "autoland" | "lane"; // lane: 저장소 전체에서 Codex가 조용하다고 판단해 곧바로 REVIEW로(ATC-386, codex-lane.ts). autoland: AUTOLAND가 재리뷰를 요청했는데 Codex가 30분 동안 답하지 않음(ATC-38)
   since: string; // 한도 댓글 시각 | 조용해진 지 silentMs가 지난 시각 | AUTOLAND가 REVIEW로 넘긴 시각
-  scope?: "repo"; // ATC-312: 이 PR의 head 뒤 댓글이 아니라 저장소의 한도 안내가 계속되고 있어서 한도(why는 "limit" 그대로)
+  scope?: "repo"; // lane은 늘 repo. ATC-312: 이 PR의 head 뒤 댓글이 아니라 저장소의 한도 안내가 계속되고 있어서 한도(why는 "limit" 그대로)
 }
 
 // 저장소 수준 Codex 신호(ATC-312): 이미 읽은 PR별 신호에서 뽑는다(GitHub 호출 없음).
@@ -368,7 +368,7 @@ export function extReviewStateOf(ctx: ExtReviewContext | undefined): ExtReviewSt
 }
 const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n)}…` : t);
 const codexWhy = (u: CodexUnavailable, silentMs: number) =>
-  u.why === "limit" ? (u.scope === "repo" ? `Codex 한도(저장소, ${u.since.slice(11, 16)}Z~)` : "Codex 한도") : u.why === "autoland" ? "AUTOLAND 재리뷰 — Codex 30분 무응답" : `Codex ${Math.round(silentMs / 3_600_000)}시간 응답 없음`;
+  u.why === "limit" ? (u.scope === "repo" ? `Codex 한도(저장소, ${u.since.slice(11, 16)}Z~)` : "Codex 한도") : u.why === "autoland" ? "AUTOLAND 재리뷰 — Codex 30분 무응답" : u.why === "lane" ? `Codex 저장소 무응답(${u.since.slice(11, 16)}Z~)` : `Codex ${Math.round(silentMs / 3_600_000)}시간 응답 없음`;
 
 type Block = PullRequest["blocks"][number];
 const block = (code: LandingBlockCode, text: string, en: string, findings?: ReviewFindings): Block => (findings ? { code, text, en, findings } : { code, text, en });
@@ -627,6 +627,8 @@ export function buildPulls(
     security?: "exclude" | "deepseek"; // dispatch.json externalReview.security(ATC-30). 없으면 "exclude"
     // AUTOLAND가 이 head를 REVIEW로 넘긴 시각(ATC-38). 있으면 6시간을 기다리지 않는다. Codex가 head 뒤에 이미 답했으면 넘기지 않는다
     fastTrack?: (repo: string, number: number, head: string) => string | null;
+    // 이 저장소에서 Codex가 조용하다고 판단한 시각(ATC-386). 있으면 Codex가 이 head 뒤에 말하지 않은 PR은 6시간을 기다리지 않고 REVIEW로 간다
+    lane?: (repo: string) => string | null;
     // MCC가 맡은 저장소(docs/mcc.md): 그 저장소 PR은 이 head의 INSPECTION이 리뷰를 대신한다
     mcc?: { repo: string; reviewOf: (number: number, head: string) => MccReviewContext["review"] };
     // AUTOLAND AIRPORT의 머지 리뷰(ATC-328): atc에 기록한 이 head의 리뷰가 착륙 리뷰다. repos: 맡은 AIRPORT 저장소
@@ -657,6 +659,11 @@ export function buildPulls(
       if (ext && slug && !carried && !unavailable && !mergeRev) {
         const since = ext.fastTrack?.(repo, gh.number, gh.headRefOid);
         if (since && codexUnavailableOf(gh, Date.parse(now), 0)) unavailable = { why: "autoland", since };
+      }
+      // 조용한 레인(ATC-386): 저장소 전체에서 Codex가 조용하면 이 head도 곧바로 REVIEW로. Codex가 이 head 뒤에 이미 말했으면(codexUnavailableOf가 null) 그대로 둔다
+      if (ext && slug && !carried && !unavailable && !mergeRev) {
+        const laneSince = ext.lane?.(repo);
+        if (laneSince && codexUnavailableOf(gh, Date.parse(now), 0)) unavailable = { why: "lane", since: laneSince, scope: "repo" };
       }
       const ctx: ExtReviewContext | undefined = unavailable
         ? {
