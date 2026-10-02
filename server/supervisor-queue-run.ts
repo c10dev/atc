@@ -43,6 +43,7 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
     update: st ? { kind: st.kind, deployed: st.deployed, main: st.main, mainCi: st.mainCi, at: st.at } : null,
     sessions: s.sessions.filter((x) => x.status !== "dead"),
     blockedMin: config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!,
+    teamPattern: loadDispatchConfig().teamPattern,
     relays,
     clearances,
     relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now, holderRoutes: holderRoutes() ?? new Map() }),

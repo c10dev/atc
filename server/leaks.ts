@@ -255,7 +255,7 @@ export function leakItemsOf(items: readonly QueueItem[], inp: QueueInput): LeakI
       case "RELAY":
         return { ...i, flight: i.offer?.flight ?? null };
       case "NEEDS YOU":
-        return { ...i, prompt: /^approve\b/i.test(sess.get(i.key)?.job?.needs ?? "") };
+        return { ...i, prompt: /^approve\b/i.test(sess.get(i.key)?.job?.needs ?? sess.get(i.key)?.job?.pendingNeeds ?? "") };
       default:
         return { ...i };
     }
