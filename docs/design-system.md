@@ -1,6 +1,6 @@
 # Design system: atc's layers (tokens → primitives → patterns → screens)
 
-> Status (2026-10-02): **design draft, not decided.** Written in an ENGINEERING session at the SUPERVISOR's request ("atc 레이어 설계"). Nothing is built. Section 7 lists the decisions the SUPERVISOR has to make. The references behind each choice are in [research/design-system-layers.md](research/design-system-layers.md).
+> Status (2026-10-02): **design draft; S1–S6 decided** by the SUPERVISOR on 2026-10-02, each as recommended (section 7). Written in an ENGINEERING session at the SUPERVISOR's request ("atc 레이어 설계"). Nothing is built. The references behind each choice are in [research/design-system-layers.md](research/design-system-layers.md).
 
 Related:
 - [design-language.md](design-language.md): rules and the section 4 patterns. Those rules still win; this draft only decides where things live and what may use what.
@@ -58,10 +58,10 @@ Read from `origin/main` (`44f59e6`, 2026-10-02).
 
 | Group | What | Rule |
 |---|---|---|
-| **Palette** (proposed, decision S1) | Per theme, a neutral ramp of numbered steps with a job each (Radix-style: 1–2 app background, 3–5 component background rest / hover / pressed, 6–8 borders subtle / interactive / strong, 9–10 solid, 11–12 text low / high), plus the five signal hues | Used only by the semantic group, never by a primitive or a screen |
+| **Palette** (decision S1) | Per theme, a neutral ramp of numbered steps with a job each (Radix-style: 1–2 app background, 3–5 component background rest / hover / pressed, 6–8 borders subtle / interactive / strong, 9–10 solid, 11–12 text low / high), plus the five signal hues | Used only by the semantic group, never by a primitive or a screen |
 | **Semantic** | Surfaces (`--bg`, `--chrome`, `--panel`, `--panel-2`, `--panel-3`), text (`--text`, `--muted`, `--faint`), lines (`--line`, `--line-strong`), signals (`--radar`, `--amber`, `--cyan`, `--alert`, `--blue`), focus ring; scales for type, space, radius, z, motion, density | The only colour group primitives may use. Each theme sets this group, from the palette or directly |
 | **Domain** | `--paper-*`, `--stamp-*`, `--fids-*`, `--flap-*`, `--phase-*`, `--series-*` | Point at semantic tokens where possible (`--phase-enroute: var(--radar)` already does). A theme overrides one only when the domain look differs (paper strips in Radar Console). Used by screens, not by primitives |
-| **Contextual** (proposed, decision S2) | `--layer`, `--layer-hover`, set by a container for its children (Carbon) | Rows, cards and dialogs read `--layer`, so the same primitive works on any surface |
+| **Contextual** (decision S2) | `--layer`, `--layer-hover`, set by a container for its children (Carbon) | Rows, cards and dialogs read `--layer`, so the same primitive works on any surface |
 
 **Contrast pairs.** `server/theme-contrast.test.ts` grows into a declared table of (foreground token, background token, minimum), checked in every theme, as Primer does:
 - text 4.5
@@ -87,7 +87,7 @@ Rules:
 - A primitive's CSS uses semantic and contextual tokens only: no domain token, no literal, no screen class.
 - Its states are attributes: `[aria-pressed]`, `[aria-expanded]`, `[data-tone="alert"]`.
 - Its own adjustable values are local custom properties, e.g. `--btn-h`.
-- Where primitives live is decision S3.
+- Primitives live in `web/src/kit/`, one `.css` per primitive and a `.tsx` where behaviour needs one (decision S3). Today's `web/src/ui.tsx` holds domain badges and is renamed to say so.
 
 ### L2 Patterns
 
@@ -95,7 +95,7 @@ The patterns of design-language section 4: row and expanded detail, card (header
 
 - A pattern is **a composition of primitives plus layout CSS**.
 - It becomes shared code only when two or more screens draw it the same way. Likely candidates: the section heading (`h2.label` and its ten variants) and the card shell (header and alert band, from the FLEET reference card).
-- Otherwise the pattern stays guidance in design-language, and each screen composes it from primitives. This is how Primer, Carbon and EUI treat patterns. Decision S4.
+- Otherwise the pattern stays guidance in design-language, and each screen composes it from primitives. This is how Primer, Carbon and EUI treat patterns (decision S4).
 
 ### L3 Screens
 
@@ -109,10 +109,10 @@ The patterns of design-language section 4: row and expanded detail, card (header
 | Boundary | Check | Status |
 |---|---|---|
 | No literal colour, size, z-index, radius or spacing outside L0 | `server/css-lint.ts` (colour, font size, z-index today; spacing, radius, `em` with U4) | partly built |
-| A property takes only its token family (`color` → text and signal tokens, `background` → surface tokens, `border-color` → line and signal tokens), as Primer's `primer/colors` does | a new css-lint rule, ratcheted like the others | proposed, decision S5 |
-| Primitives use no domain token and no screen class | css-lint, scoped to the primitive files | proposed |
-| A screen imports no other screen's stylesheet; a primitive imports nothing from screens | `server/boundaries.test.ts`, which already parses imports, gains a layer map by path | proposed |
-| Theme blocks hold custom properties only | css-lint: a `:root[data-theme=…]` rule with a selector after it fails | proposed (lands with S9) |
+| A property takes only its token family (`color` → text and signal tokens, `background` → surface tokens, `border-color` → line and signal tokens), as Primer's `primer/colors` does | a new css-lint rule, ratcheted like the others | decided (S5) |
+| Primitives use no domain token and no screen class | css-lint, scoped to the primitive files | to build |
+| A screen imports no other screen's stylesheet; a primitive imports nothing from screens | `server/boundaries.test.ts`, which already parses imports, gains a layer map by path | to build |
+| Theme blocks hold custom properties only | css-lint: a `:root[data-theme=…]` rule with a selector after it fails | to build (with S9) |
 | Contrast pairs in every theme | `server/theme-contrast.test.ts` with a declared pairs table | partly built (ATC-408) |
 
 Each new rule starts with a baseline of today's count and only goes down, as css-lint does now.
@@ -123,7 +123,7 @@ Today each theme is about 55 hand-set values. Two references make themes cheaper
 - **Linear** replaced 98 values per theme with three inputs (base, accent, contrast) in LCH.
 - **Grafana** derives hover, text and border from one main colour with a contrast threshold.
 
-Proposal (decision S1): a theme is a short list of inputs.
+Decided (S1): a theme is a short list of inputs.
 - **Inputs:** background, foreground, the five signal hues, and a contrast level.
 - **Generator:** a pure function produces the palette ramp and the semantic tokens.
 - **Committed output:** the result is written into the theme's block of plain CSS, so no build step runs at load.
@@ -146,20 +146,22 @@ The units of [ui-refactor-plan.md](ui-refactor-plan.md) already cover most of th
 | U9 ATC-415 | colour literals to tokens | literals go into the semantic or domain group by the rules of L0 |
 | S1–S8 ATC-422..432 | screen CSS out of `styles.css` | also: no borrowed stylesheets (the import check), patterns from L2 where shared |
 | S9 ATC-433 | themes in their own files | theme files hold custom properties only (the theme-block check) |
-| D7 ATC-434 | light theme by hand | the light theme as an input set, if S1 chooses the generator |
+| D7 ATC-434 | light theme by hand | the light theme as an input set (S1) |
 | D8 ATC-420 | 11 px floor | unchanged (a type-scale token change) |
-| **new** | — | (a) the layer map in `boundaries.test.ts`; (b) the property → token family lint (S5); (c) the contrast pairs table; (d) the theme generator and its two tests (only if S1 chooses it) |
+| **new** | — | (a) the layer map in `boundaries.test.ts`; (b) the property → token family lint (S5); (c) the contrast pairs table; (d) the theme generator and its two tests, re-expressing the three dark themes with no visible change (S1); (e) the `web/src/kit/` folder and the rename of `ui.tsx` (S3), before U5–U8 |
 
-## 7. Decisions for the SUPERVISOR
+## 7. Decisions (SUPERVISOR, 2026-10-02)
 
-| # | Question | Options | Recommended | Affects |
-|---|---|---|---|---|
-| S1 | How is a theme defined? | (a) as today: each theme sets about 55 semantic values by hand; (b) add a palette tier (a numbered neutral ramp with a job per step) and set semantic tokens from it by hand; (c) a theme is a few inputs, and a pure generator writes the palette and semantic tokens into committed CSS | (c), introduced with no visible change to the three dark themes first; it makes the light theme (D7) and later contrast fixes one-line changes | U9, S9, D7 |
-| S2 | A contextual layer token (`--layer`, set by a container for its children)? | (a) yes; (b) no, primitives read the fixed surface tokens | (a): the same row, card or dialog then works on any layer, and the contrast table checks one pair per layer | U5–U8 |
-| S3 | Where do primitives live? | (a) a folder `web/src/kit/` with one `.css` (and a `.tsx` where needed) per primitive, and today's `ui.tsx` renamed to say it holds domain badges; (b) one shared `primitives.css` plus `ui.tsx`; (c) leave them in `styles.css` and `ui.css` | (a): the import check and the primitive-scoped lint can then work by path | U2, U5–U8, the new import check |
-| S4 | Patterns as code or as guidance? | (a) code only when two or more screens draw one the same way (the section heading and the card shell first); (b) code for every section 4 pattern; (c) guidance only | (a) | S1–S8 |
-| S5 | Add the property → token family lint (as Primer does)? | (a) yes, ratcheted from today's count; (b) no, keep "no literals" only | (a): it is what keeps a screen from painting a background with a text colour, the kind of drift no literal check sees | new unit after U4 |
-| S6 | Keep the current token names or rename by job? | (a) keep `--bg`, `--panel`, `--panel-2`, `--panel-3`, `--text`, `--muted`, `--faint` (they already read as layers and text levels); (b) rename to Radix-style job names | (a): the names already describe layers and levels, a rename touches every stylesheet, and S1's palette can carry the job names underneath | all |
+Asked in the ENGINEERING session; every answer was the recommended option.
+
+| # | Question | Decision | Affects |
+|---|---|---|---|
+| S1 | How is a theme defined? | **A few inputs and a pure generator** (background, foreground, the five signal hues, a contrast level). The palette and semantic tokens are written into committed CSS; a test checks that the CSS equals the generator's output. The three dark themes are re-expressed first with no visible change; the light theme is one more input set | U9, S9, D7 |
+| S2 | A contextual layer token? | **Yes:** a container sets `--layer` / `--layer-hover` for its children | U5–U8 |
+| S3 | Where do primitives live? | **`web/src/kit/`**, one `.css` (and a `.tsx` where needed) per primitive; today's `ui.tsx` is renamed to say it holds domain badges | U2, U5–U8, the import check |
+| S4 | Patterns as code or guidance? | **Code only when two or more screens draw one the same way** (the section heading and the card shell first); the rest stays guidance in design-language section 4 | S1–S8 |
+| S5 | A property → token family lint? | **Yes**, ratcheted from today's count | new unit after U4 |
+| S6 | Rename tokens by job? | **No:** keep `--bg`, `--panel`, `--panel-2`, `--panel-3`, `--text`, `--muted`, `--faint`; the S1 palette carries the job names underneath | all |
 
 ## 8. Risks
 
