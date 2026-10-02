@@ -4,7 +4,7 @@ atc를 고친 PR을 머지한 뒤 운영 서비스(7700)에 반영하는 방법�
 
 ## user 등급 PR 머지하기
 
-`auto`·`flagged` 등급 PR은 CI와 MCC INSPECTION이 통과하면 MCC가 착륙시킨다. **`user` 등급 PR**(guard, `.claude/` 설정, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`를 바꾸거나 MCC가 ESCALATE한 PR)은 사용자가 머지한다. 이제 GitHub로 가지 않고 atc 안에서 할 수 있다.
+`auto`·`flagged` 등급 PR은 CI와 MCC INSPECTION이 통과하면 MCC가 착륙시킨다. **`user` 등급 PR**(guard, `.claude/` 설정, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`를 바꾸거나 MCC가 ESCALATE한 PR)은 사용자가 머지한다. MCC가 PR을 ESCALATE하면 그 head를 본 것으로 세므로(P0·P1이 있으면 지적도 남긴다), PR은 "MCC INSPECTION 대기"가 아니라 사용자가 머지할 CLEARED로 보이고 SUPERVISOR QUEUE의 LANDING과 PR 서랍의 MERGE에 오른다. head가 바뀌면 MCC가 새 head를 다시 본다. ESCALATE는 PR에 남는다. 이제 GitHub로 가지 않고 atc 안에서 할 수 있다.
 
 1. STRIPS의 LANDING SEQUENCE 등에서 PR 번호(`#300`)를 눌러 **PR 서랍**을 연다([화면 안내](screens.md)).
 2. `착륙`이 CLEARED이고 등급이 user이면 `MERGE` 줄에 `MERGE…` 버튼이 있다. 등급, 체크, 본문, 바뀐 파일을 서랍에서 확인한다(diff 검토는 GitHub에서 한다).
