@@ -24,6 +24,14 @@ test("kit/chips.css는 .chip·.tag·.dot 기본과 색을 나르지 않는 점 �
   assert.ok(!/--(?:paper|stamp|fids|flap|phase|series)-/.test(css), "kit은 도메인 토큰을 쓰지 않는다");
 });
 
+test('.tag[data-tone="inherit"]는 바깥 글자색을 그대로 받는다(color: inherit). 커스텀 속성에 inherit을 쓰면 --muted로 떨어진다', () => {
+  const css = read("kit/chips.css");
+  const body = /\.tag\[data-tone="inherit"\] \{([^}]*)\}/.exec(css)?.[1] ?? "";
+  assert.match(body, /(?:^|[\s;])color:\s*inherit\b/, "color: inherit이 없다");
+  assert.ok(!/--tag-ink:\s*inherit/.test(body), "--tag-ink: inherit은 색을 잇지 않는다");
+  assert.match(body, /--tag-line:\s*currentColor/);
+});
+
 test("옛 .code-chip·.dr-chip·.fl-chip·.tag의 자기 규칙은 기본 위에서 다른 점만 남았다", () => {
   const styles = read("styles.css");
   assert.ok(!/^\.code-chip \{/m.test(styles), ".code-chip 기본 규칙이 남았다");

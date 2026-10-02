@@ -57,7 +57,7 @@ button.chip:hover {
 }
 /* 바깥 글자색을 따른다(등급 줄의 .lv-* 색) */
 .tag[data-tone="inherit"] {
-  --tag-ink: inherit;
+  color: inherit; /* 커스텀 속성에 inherit을 쓰면 색이 아니라 그 속성의 부모 값을 따라 --muted로 떨어진다 */
   --tag-line: currentColor;
 }
 
