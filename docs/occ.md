@@ -354,6 +354,18 @@ A Codex usage-limit notice used to count only for the PR it was posted on and on
 - **Visible.** The strip and the block text say "Codex 한도(저장소, 06:29Z~)"; the TOWER brief's `landingQueue[].codex` carries `scope: "repo"`, `since` and a `label` ("Codex limit (repository, 06:29Z~)").
 - **Not built:** a limit notice older than the window is ignored; there is no per-repository switch.
 
+### A silent review lane stops holding PRs, as built (ATC-386)
+
+Landing has two review lanes: Codex (comments, reviews, 👍) and REVIEW (the landing review session). When Codex went quiet for a whole repository, each PR still waited its own 6 hours (`ATC_CODEX_SILENT_HOURS`) from its head before REVIEW took it. Now atc decides per repository that Codex is silent and sends the waiting PRs and new heads to REVIEW at once.
+
+- **Rule** (`laneStepOf`, pure, `server/codex-lane.ts`). A repository is silent when a PR has waited `ATC_CODEX_LANE_SILENT_MIN` minutes (default 30) from its head or creation (an open non-Draft PR whose Codex signal was read) with no Codex signal on it, **and** Codex gave no signal on any PR of the repository since that PR began waiting (a review, findings, a 👍, any comment, including a limit notice). If Codex spoke on another PR meanwhile, only that PR is quiet and the per-PR 6 h rule covers it. A repository with nothing open is never silent: someone must have been waiting.
+- **Effect** (`buildPulls`, `ext.lane`). For a repository in the silent state, a head with no Codex signal after it gets `codexUnavailable: {why: "lane", since, scope: "repo"}` at once. The REVIEW queue, AUTOLAND and the strip read `codexUnavailable` as before, so REVIEW reviews it and its pass is the head's review. A head Codex already answered is not sent.
+- **Persistence and return.** The state is recorded as append-only transitions in `codex-lane.jsonl` (`silent` with the waiting PR numbers and `since`, `speaks`); the repository's last line is its state. It stays silent for new heads until Codex gives any signal in the repository after `since`; then `speaks` is recorded and new heads go back to Codex. Heads already with REVIEW stay with REVIEW (the existing rule).
+- **Unchanged exclusions.** `codexUnavailable` only says "Codex cannot be used"; what REVIEW may not take is decided by the existing gate. Secrets and key paths, no FLIGHT, `rating:SEC` and Risk labels stay `excluded`, and security paths and keywords stay excluded while `externalReview.security` is off. Such a PR goes to the SUPERVISOR as before.
+- **Counted.** When a PR clears on the REVIEW lane alone (`codexUnavailable` set and the REVIEW pass is the head's review) one line goes to `lanes.jsonl` (`repo`, `number`, `head`, `cause`: `lane`, `silent`, `limit` or `autoland`), once per PR and head. `GET /api/landing/lanes?days=N` joins them with the PRs that landed (MCC `land`, AUTOLAND `merge`, the PR drawer MERGE button; successful records only) and gives per UTC day `{landed, single, causes}` plus the repositories silent now. The DISPATCH tab shows the days with a single-lane landing under "한 레인 착륙", next to MISFIRE. A PR merged by hand on GitHub is not in the landed count.
+- **Autonomy rule.** This loosens when one review lane may land a PR (K3, principle 5); the SUPERVISOR approved it at release. It does not lower the REVIEW verdict (P0 and P1 still block) and widens no exclusion.
+- **Not built:** the wait is a fixed setting, not learned; nothing alerts when a repository turns silent beyond the DISPATCH line and the `[atc] codex lane` server log.
+
 ### 9.3 Codex finding severity: P3-only heads don't block (2026-09-27, ATC-28)
 
 vocado #394 went through fix → `@codex review` → a new, smaller finding (P2, then P3) → fix → … Codex finds something a little smaller each round, and the landing rule treated any Codex COMMENTED review on the head as `review-findings`. The SUPERVISOR decided that P3-only findings don't block landing.
@@ -417,6 +429,8 @@ With `strict` on vocado's `main`, every merge puts the other open PRs `behind`, 
   - **Codex limited, or no Codex answer within 30 min** (`escalateOf`): the head goes to the REVIEW (DeepSeek) queue right away (`buildPulls` `fastTrack`, `codexUnavailable.why = "autoland"`, "AUTOLAND 재리뷰 — Codex 30분 무응답"), unless Codex has already answered after the head.
   - ATC-27/30 still decide: `buildPulls` re-checks the external-review exclusion with the current switch. An excluded PR is not queued, and the strip says "AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(migrations)".
   - One request per head (`autoland-state.json` `reviewRequests`), recorded as `op: "review-request"` with `via` (`codex`, `deepseek` or `supervisor`). The strip shows "AUTOLAND: review requested (codex|deepseek)" until a review lands. Only while AUTOLAND is `update` or `merge` and the AIRPORT is not in GROUND STOP.
+
+- **Auto-revert (ATC-351)**: with the `autoRevert` switch `on` (settings window; **on by default**, ATC-394), after the failing check was re-run once on the same head and is red again and the merged PR's own head was green, a merge AUTOLAND made that turns `main` red gets a revert PR, which AUTOLAND merges even while its GROUND STOP is latched (it is the way out; review, CI and the exclusion list still apply, and it needs no FLIGHT). The latched stop is then cleared by atc when the next head is green. PRs that touch migration or `user`-tier paths and human merges are never reverted automatically (a `hold` line, shown to DUTY). A second new red head within an hour lowers AUTOLAND `merge` to `update` and stops the lane until the SUPERVISOR picks the switch again. Full rules: [autonomy.md](autonomy.md) "C4 as built".
 
 #### Merge review: a review recorded in atc counts as the landing review (ATC-328)
 
@@ -497,6 +511,8 @@ S2 is built and sits behind the SCHEDULE `mode` (`~/.local/state/atc/schedule.js
 How it runs: the SUPERVISOR approves (or rejects with a reason) → OCC runs `atcctl schedule release S-xxxx`, which records RELEASED and prints the exact Linear MCP calls (`save_issue`, plus a `save_comment` with the reason for CLASSIFY and PRIORITIZE) → OCC makes each call with the input unchanged; `occ/mcp-guard.mjs` (linear-guard) passes a Linear write only when the mode is approval, the tool and input match a released call exactly, and that call has not passed before (section 6) → on the next Linear read atc marks the operation APPLIED (the change is visible, or for NEW an issue with that title appeared). Approved or released operations that don't land within 3 days expire. Calls only touch plan fields: labels, priority, a new issue's title/body/project/relations, and a comment. Never state or assignee.
 
 ## CROSSCHECK
+
+> **Retired (ATC-371).** The CROSSCHECK session is no longer launched, kept alive or recycled, and no server rule waits on its marks. This section describes the role as it was and is kept as history; old marks stay readable.
 
 Shadow verdicts (DISPATCH proposals and SCHEDULE drafts) are decided one by one by the SUPERVISOR, which is a heavy load. Handing the verdict to a model would make the gate (20 decisions, 80%) measure whether two models agree with each other, which means nothing. So the work is split:
 

@@ -192,7 +192,7 @@ The `ui-review` skill (`.claude/skills/ui-review/`, run by `atc-task` before a s
 | L1 | Mark [ui-visibility.md](ui-visibility.md) section 2 and [alerting.md](alerting.md) section 2 as gathered here (a link, not a copy) ✅, and point atc-app `docs/design.md` section 3 here | docs | `auto` |
 | L2 | [ATC-280](https://linear.app/vocado/issue/ATC-280) (FLEET card) and [ATC-222](https://linear.app/vocado/issue/ATC-222) (menu bar) cite this document and use the section 5 checklist | the two work orders | — |
 | L3 | A one-line rule in root `CLAUDE.md` and atc-app `CLAUDE.md`: screen PRs follow `docs/design-language.md` and answer the checklist | `CLAUDE.md` | `user` |
-| L4 | An audit of each tab against the checklist, one work order per tab that fails, ordered by words per screen (DISPATCH, FIDS, SCHEDULE first) | Linear | — |
+| L4 | An audit of each tab against the checklist, one work order per tab that fails. Since 2026-10-02 the tabs themselves are regrouped by [layout.md](layout.md); the audit follows its order (Y1–Y6) and checks each new screen, not the retired tabs | Linear | — |
 | L5a | Craft tokens: `--dur-*`, `--ease`, `tabular-nums` utility, DL7 sizes, the icon set (3.5) | `web/src/styles.css`, one component | `auto` (`package.json` for the icon set: `user`) |
 | L5b | Craft pass on the FLEET card as the reference card, together with [ATC-280](https://linear.app/vocado/issue/ATC-280) | web | `auto` |
 | L6 | Tooltip pass: move tooltips that carry the only copy of a decision value onto the screen (principle 11) | web | `auto` |

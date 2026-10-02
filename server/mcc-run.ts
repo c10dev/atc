@@ -13,7 +13,7 @@ import {
   type CiState,
   escalationOf,
   inspectionComment,
-  inspectionOf,
+  reviewOfHead,
   landBlocksOf,
   loadMcc,
   mccGateLine,
@@ -40,6 +40,7 @@ import {
 import type { MccLandInfo } from "./land-by.ts";
 import { loadLogbook, prEntries } from "./logbook.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
+import { isRevertPr, loadAutoRevert, readAutoRevertLines } from "./auto-revert.ts";
 import { fromThisApp } from "./origin.ts";
 import { assertGithubOn } from "./github-switch.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
@@ -66,7 +67,7 @@ const QUEUE_MAX = 10; // 한 번에 보는 PR 수(오래된 순)
 const INSPECT_GUIDE =
   "CI(테스트·타입·빌드)는 이미 돈다. CI가 못 보는 것을 본다: 순수 함수와 입출력 분리, 새 동작의 테스트, erasableSyntaxOnly, 화면 색·글꼴은 styles.css 토큰만, 항공 용어는 영어, " +
   "바뀐 동작은 CHANGELOG 조각 한 쌍(changelog.d/*.md·*.ko.md, CHANGELOG.md를 직접 고치면 P2), 설계 문서의 상태 표시(✅·Status 줄·Not built yet)는 ENGINEERING 몫(팀 PR이 고치면 P2), 짝 문서는 두 언어, 사용법이 바뀌면 docs/guide, 공개 저장소라 vocado 내부 사항·비밀·스크린샷 없음, 기록은 추가만 하는 JSONL·설정은 원자적 JSON. " +
-  "diff가 잘렸으면(diffTruncated) 본 범위를 적고 pass하지 않는다. 운영 상태 형식을 바꾸거나 되돌리기 어려우면 ESCALATE. 지적은 P0(머지하면 안 됨)·P1(머지 전에 고칠 것)·P2(나중에). P0·P1이 없으면 pass.";
+  "user 등급이거나 ESCALATE할 PR은 본문에 Behavior change 절(글자 그림 하나, 또는 `Behavior change: none`)이 있어야 하고, 없거나 diff와 어긋나면 P1. diff가 잘렸으면(diffTruncated) 본 범위를 적고 pass하지 않는다. 운영 상태 형식을 바꾸거나 되돌리기 어려우면 ESCALATE. 지적은 P0(머지하면 안 됨)·P1(머지 전에 고칠 것)·P2(나중에). P0·P1이 없으면 pass.";
 
 interface RestPull {
   number: number;
@@ -98,7 +99,7 @@ export function airportOf(s: Snapshot) {
   if (!slug) throw new MccError(`${cfg.airport}의 GitHub 저장소를 아직 모름 — atc가 GitHub을 읽은 뒤(90초 안) 다시`, 409);
   const mainCi: CiState = !main?.sha ? "none" : main.state === "success" ? "ok" : main.state === "pending" ? "pending" : main.state === "none" ? "none" : "failed";
   const stop = s.atfm.groundStops.find((g) => g.airport === cfg.airport && g.kind === "stop" && g.enforced && g.land !== false);
-  return { cfg, repo: a.repo, slug, defaultBranch: main?.branch ?? "main", main: main?.sha ?? null, mainReadAt: main?.at ?? null, mainCi, groundStop: stop ? stop.text : null };
+  return { cfg, repo: a.repo, slug, defaultBranch: main?.branch ?? "main", main: main?.sha ?? null, mainReadAt: main?.at ?? null, mainCi, groundStop: stop ? stop.text : null, groundStopTrigger: stop ? stop.trigger : null };
 }
 
 // 등급 캐시(PR 번호 + head → 등급). 등급은 바뀐 파일로만 정하므로 head가 같으면 같다. judge()와 landBy(ATC-151)가 함께 쓴다 — 등급을 두 갈래로 재지 않는다
@@ -203,7 +204,7 @@ async function judge(s: Snapshot, number: number, head?: string) {
   tierCache.set(tierKey(ap.slug, number, pr.head.sha), tier); // landBy가 같은 등급을 쓴다(ATC-151)
   const ci = await fetchCi(ap.slug, pr.head.sha, ap.cfg.ciCheck);
   const records = readMccRecords();
-  const inspection = inspectionOf(records, number, pr.head.sha);
+  const inspection = reviewOfHead(records, number, pr.head.sha); // ESCALATE한 head도 본 것으로 센다(ATC-390)
   const escalated = escalationOf(records, number);
   const rts = rtsState(records);
   const blocks = landBlocksOf({
@@ -217,7 +218,8 @@ async function judge(s: Snapshot, number: number, head?: string) {
     ciCheck: ap.cfg.ciCheck,
     inspection,
     held: ap.cfg.holds.includes(number),
-    groundStop: ap.groundStop,
+    // 자동 되돌림(ATC-351)이 연 revert PR은 main 깨짐 stop을 푸는 길이라 그 stop에는 막히지 않는다(다른 stop·리뷰·CI는 그대로)
+    groundStop: ap.groundStopTrigger === "main-broken" && loadAutoRevert().mode === "on" && isRevertPr(readAutoRevertLines(), ap.cfg.airport, number, pr.head.ref) ? null : ap.groundStop,
     rtsBlocked: rts.stop,
   });
   return { ap, pr, files, tier, reasons, ci, inspection, escalated, blocks };

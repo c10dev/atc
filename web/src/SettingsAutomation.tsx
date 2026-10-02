@@ -52,6 +52,54 @@ const DUTY_WARN = {
   on: "⚠ 헤더의 DUTY 서랍에서 글을 보내면 이 서버가 `claude -p` 프로세스를 띄운다(ACCOUNT의 FUEL을 쓴다). 유휴 시간이 지나면 끝나고 다음 글이 이어서 띄운다. DUTY는 읽기만 하고, 글은 소리로 읽지 않는다.",
 } as const;
 
+// DUTY REVIEW 스위치(ATC-396, docs/duty.md): 서버가 SUPERVISOR의 글 없이 DUTY 점검 턴을 시작한다
+const DUTY_REVIEW_WARN = {
+  off: "꺼짐: 서버가 DUTY 턴을 스스로 시작하지 않는다. 점검과 병목 분석은 SUPERVISOR가 DUTY 채팅에서 부탁해야 한다.",
+  on: "⚠ 기본: 정기적으로, 또는 놀고 있는 AIRCRAFT가 일감을 두고 이어지거나 leak이 오래 열려 있으면 서버가 DUTY 턴을 시작한다(DUTY가 켜져 있을 때, ACCOUNT의 FUEL을 쓴다). DUTY는 채팅에 한국어 요약을 남기고 제안을 Backlog 이슈로만 만든다. Todo로 올려 쏘는 것은 RELEASE 화면에서 SUPERVISOR가 한다.",
+} as const;
+
+// 하루 세기(ATC-396): 점검, 만든 제안, 발권된 제안, 버려진 제안
+interface ReviewView {
+  on: boolean;
+  dutyEnabled: boolean;
+  linear: boolean;
+  last: { id: string; at: string; trigger: string; detail: string } | null;
+  days: { day: string; reviews: number; proposals: number; fired: number; discarded: number }[];
+}
+function DutyReviewRecord({ on }: { on: boolean }) {
+  const [v, setV] = useState<ReviewView | null>(null);
+  useEffect(() => {
+    let alive = true;
+    apiGet("/api/duty/review")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: ReviewView) => alive && setV(d))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [on]);
+  if (!v) return null;
+  const days = v.days.slice(-7);
+  return (
+    <div className="config-note" aria-label="DUTY REVIEW 기록">
+      <p>
+        {v.last ? `마지막 점검 ${v.last.id} · ${v.last.trigger} · ${v.last.detail}` : "아직 점검한 적 없음"}
+        {!v.dutyEnabled && " · DUTY가 꺼져 있어 돌지 않는다"}
+        {v.dutyEnabled && !v.linear && " · Linear 쓰기(duty.json l1)가 꺼져 있어 제안은 채팅 요약에만 남는다"}
+      </p>
+      {days.length > 0 && (
+        <ul className="config-list" aria-label="하루 세기(Z)">
+          {days.map((d) => (
+            <li key={d.day}>
+              <code>{d.day}</code> 점검 {d.reviews} · 제안 {d.proposals} · 발권 {d.fired} · 버림 {d.discarded}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // DUTY CHARTER 스위치(ATC-233, docs/duty.md 3.4·D5): DUTY가 만들고 SUPERVISOR가 확정한 CHARTER REQUEST를 OCC가 읽는 정도
 const DUTY_CHARTER_WARN = {
   off: "꺼짐(기본): 확정한 요청은 줄에 서지만 OCC의 schedule brief에는 나오지 않는다(카드에 \"switch is off — kept as a draft\").",
@@ -227,19 +275,31 @@ const REVIEW_WARN = {
   deepseek: "⚠ 보안 PR도 REVIEW 세션(Claude Sonnet)이 리뷰한다. .env·비밀·키 경로와 FLIGHT 없는 PR은 계속 보내지 않는다. 저장 값 이름 deepseek은 옛 이름이다.",
 } as const;
 const REVIEW_LABELS = { deepseek: reviewLabel("deepseek") };
+const AUTO_REVERT_WARN = {
+  off: "off: main이 빨개져도 atc는 되돌리지 않는다. GROUND STOP과 MCC 멈춤은 사람이 읽고 푼다.",
+  on: "⚠ 기본 켜짐. lander가 머지해 main을 빨갛게 만든 PR을 atc가 되돌리는 PR을 연다(AIRPORT마다 하나, 같은 리뷰·CI로 착륙, 다음 초록 head가 GROUND STOP을 푼다). 되돌리기 전에 실패한 체크를 같은 head에서 한 번 다시 돌려 flake면 아무것도 하지 않고, 다시 빨갛고 그 PR 자신의 head가 초록이었을 때만 되돌린다. 사람의 머지·마이그레이션(K1)·user 등급(K3) PR은 되돌리지 않고 DUTY에게 알린다. 1시간 안에 빨간 head가 둘이면 멈추고 AUTOLAND merge → update, MCC 착륙 끔으로 내린다.",
+} as const;
 const AUTO_APPROVE_WARN = {
   off: "off(기본): ASSIGN과 SCHEDULE 초안은 SUPERVISOR가 하나씩 누른다.",
-  shadow: "shadow: 서버가 CROSSCHECK가 agree한 카드를 \"승인했을 것\"이라고 auto-approve.jsonl에만 적는다. 아무것도 승인하지 않는다.",
-  on: "⚠ 서버가 CROSSCHECK가 agree한 열린 ASSIGN(LAUNCH 아님)과 SCHEDULE 초안을 스스로 승인한다(via auto). blind 표본·HELD·disagree·주의(caution) 카드와 FUEL hold인 AIRCRAFT는 SUPERVISOR 몫이고, 하루 상한을 넘으면 기다린다.",
+  shadow: "shadow: 서버가 조건을 갖춘 카드를 \"승인했을 것\"이라고 auto-approve.jsonl에만 적는다. 아무것도 승인하지 않는다.",
+  on: "⚠ 서버가 SETTLED 열린 ASSIGN(LAUNCH 아님)과 SCHEDULE 초안을 스스로 승인한다(via auto, CROSSCHECK는 은퇴해 mark를 보지 않는다). blind 표본·HELD·주의(caution) 카드와 FUEL hold인 AIRCRAFT는 SUPERVISOR 몫이고, 하루 상한을 넘으면 기다린다.",
+} as const;
+const SCHEDULE_AUTO_WARN = {
+  off: "off: SCHEDULE 초안은 SUPERVISOR(또는 일치 기반 자동 승인)가 승인한다.",
+  on: "⚠ 기본: 서버가 열린 SCHEDULE 초안 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW를 사람 판정 없이 승인한다(via auto). NEW는 Backlog에 제안으로만 생기고 SUPERVISOR가 풀어 준다. ROUTE·TARGET·PRIORITIZE는 제안으로 남는다. 하루 상한을 넘으면 기다린다.",
+} as const;
+const FLEET_PLAN_AUTO_WARN = {
+  off: "off: FLEET PLAN 제안은 SUPERVISOR가 FLEET 화면에서 승인한다.",
+  on: "⚠ 기본: 서버가 FLEET PLAN 제안 LAUNCH·STOP·RESTART·REFRESH·AOG를 사람 승인 없이 실행한다(세션을 띄우고 멈춘다). FUEL hold·ATC_MAX_LAUNCHED·하루 상한을 지키고, ENTRY·ACCOUNT CHANGE·REPOSITION·RETIRE·RETURN은 제안으로 남는다.",
 } as const;
 const AUTO_DISPATCH_WARN = {
-  off: "off: 열린 ASSIGN·launch 카드는 SUPERVISOR가 DISPATCH 화면에서 하나씩 누르고(아래 두 줄이 정한 만큼은 CROSSCHECK agree 카드를 서버가 승인), 큐와 알림에 다시 나타난다.",
-  on: "⚠ 기본: 서버가 DISPATCH의 필터(SETTLED, HELD 아님, 발권된 FLIGHT)와 상한(FUEL hold, ATC_MAX_LAUNCHED, 하루 상한, 실패 뒤 대기)을 통과한 모든 ASSIGN·launch 카드를 CROSSCHECK·blind 표본·SUPERVISOR 없이 승인한다(via auto). 못 가는 카드는 만료되고 planner가 다시 제안한다. 잘못된 승인은 아래 MISFIRE로 센다.",
+  off: "off: 열린 ASSIGN·launch 카드는 SUPERVISOR가 DISPATCH 화면에서 하나씩 누르고(아래 두 줄이 정한 만큼은 조건을 갖춘 카드를 서버가 승인), 큐와 알림에 다시 나타난다.",
+  on: "⚠ 기본: 서버가 DISPATCH의 필터(SETTLED, HELD 아님, 발권된 FLIGHT)와 상한(FUEL hold, ATC_MAX_LAUNCHED, 하루 상한, 실패 뒤 대기)을 통과한 모든 ASSIGN·launch 카드를 blind 표본·SUPERVISOR 없이 승인한다(via auto). 못 가는 카드는 만료되고 planner가 다시 제안한다. 잘못된 승인은 아래 MISFIRE로 센다.",
 } as const;
 const AUTO_LAUNCH_WARN = {
   off: "off(기본): launch 카드(ABSENT·RESUME)는 SUPERVISOR가 화면에서 승인한다.",
   shadow: "shadow: 승인과 LAUNCH 조건을 모두 갖춘 launch 카드를 \"띄웠을 것\"이라고 auto-approve.jsonl에만 적는다. 아무것도 띄우지 않는다.",
-  on: "⚠ 서버가 launch 카드를 스스로 승인하고 세션을 띄운다(사용량을 쓴다). CROSSCHECK agree, blind·HELD 아님, 상한(ATC_MAX_LAUNCHED)이 안 참, ACCOUNT가 FUEL hold 아님, LAUNCH 막힘 아님, 실패한 REGISTRATION은 쉼, 하루 상한 안일 때만.",
+  on: "⚠ 서버가 launch 카드를 스스로 승인하고 세션을 띄운다(사용량을 쓴다). blind·HELD 아님, 상한(ATC_MAX_LAUNCHED)이 안 참, ACCOUNT가 FUEL hold 아님, LAUNCH 막힘 아님, 실패한 REGISTRATION은 쉼, 하루 상한 안일 때만.",
 } as const;
 
 const fuelWarn = (f: { infoPct: number; holdPct: number }) =>
@@ -485,6 +545,40 @@ export function LandingSettings({ server, save }: { server: Loaded; save: Save }
         <MccGatePanel />
       </Block>
 
+      <Block code="AUTO REVERT" label="main이 빨개지면 lander 머지 자동 되돌림(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) =>
+            s.autoRevert ? (
+              <>
+                <EditRow
+                  label="AUTO REVERT"
+                  env="autoRevert"
+                  value={s.autoRevert.mode}
+                  note={`auto-revert.json · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈${s.autoRevert.stopped.length ? ` · 멈춤: ${s.autoRevert.stopped.map((x) => `${x.airport}(${x.detail})`).join(", ")} — 스위치를 다시 고르면 풀린다` : ""}`}
+                  input={{ kind: "select", options: ["off", "on"] }}
+                  guard={guardOf("autoRevert", s.autoRevert.mode, AUTO_REVERT_WARN)}
+                  onSave={(v) => save({ autoRevert: v as "off" | "on" })}
+                />
+                <ModeLines modes={["off", "on"] as const} current={s.autoRevert.mode} lines={AUTO_REVERT_WARN} />
+                {s.autoRevert.days.some((d) => d.reverts + d.flakes + d.misfires + d.holds + d.stops > 0) ? (
+                  <ul className="dp-misfire">
+                    {[...s.autoRevert.days]
+                      .reverse()
+                      .filter((d) => d.reverts + d.flakes + d.misfires + d.holds + d.stops > 0)
+                      .map((d) => (
+                        <li key={d.day}>
+                          <span className="mono">{d.day}</span> revert <b>{d.reverts}</b> · flake 잡음 <b>{d.flakes}</b> · misfire <b>{d.misfires}</b>
+                          {d.holds + d.stops > 0 ? <span className="faint"> — 알림 {d.holds} · 멈춤 {d.stops}</span> : null}
+                        </li>
+                      ))}
+                  </ul>
+                ) : null}
+              </>
+            ) : null
+          }
+        </ServerRows>
+      </Block>
+
       <Block code="REVIEW" label="Codex 한도 때 착륙 리뷰">
         <ServerRows server={server}>
           {(s) => (
@@ -536,6 +630,37 @@ export function OperationsSettings({ server, save }: { server: Loaded; save: Sav
         </ServerRows>
       </Block>
 
+      <Block code="SCHEDULE·FLEET PLAN AUTO" label="SCHEDULE·FLEET PLAN 사람 없이 적용(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) =>
+            s.autonomyAuto ? (
+              <>
+                <EditRow
+                  label="SCHEDULE"
+                  env="schedule.auto"
+                  value={s.autonomyAuto.schedule}
+                  note="schedule.json · 하루 상한은 dispatch.json autoApproveMax · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈"
+                  input={{ kind: "select", options: ["off", "on"] }}
+                  guard={guardOf("scheduleAuto", s.autonomyAuto.schedule, SCHEDULE_AUTO_WARN)}
+                  onSave={(v) => save({ scheduleAuto: v as "off" | "on" })}
+                />
+                <ModeLines modes={["off", "on"] as const} current={s.autonomyAuto.schedule} lines={SCHEDULE_AUTO_WARN} />
+                <EditRow
+                  label="FLEET PLAN"
+                  env="fleet-plan.auto"
+                  value={s.autonomyAuto.fleetPlan}
+                  note="fleet-plan.json · 하루 LAUNCH 상한은 autoLaunchMax, 전체는 autoApproveMax · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈"
+                  input={{ kind: "select", options: ["off", "on"] }}
+                  guard={guardOf("fleetPlanAuto", s.autonomyAuto.fleetPlan, FLEET_PLAN_AUTO_WARN)}
+                  onSave={(v) => save({ fleetPlanAuto: v as "off" | "on" })}
+                />
+                <ModeLines modes={["off", "on"] as const} current={s.autonomyAuto.fleetPlan} lines={FLEET_PLAN_AUTO_WARN} />
+              </>
+            ) : null
+          }
+        </ServerRows>
+      </Block>
+
       <Block code="AUTO APPROVE" label="DISPATCH 자동 운항·일치 기반 자동 승인(SUPERVISOR 전용)">
         <ServerRows server={server}>
           {(s) =>
@@ -545,7 +670,7 @@ export function OperationsSettings({ server, save }: { server: Loaded; save: Sav
                   label="DISPATCH 자동 운항"
                   env="autoDispatch"
                   value={s.dispatchAuto.auto}
-                  note="dispatch.json · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈. ASSIGN·launch 카드의 승인에서 사람과 CROSSCHECK를 뺀다"
+                  note="dispatch.json · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈. ASSIGN·launch 카드의 승인에서 사람을 뺀다"
                   input={{ kind: "select", options: ["off", "on"] }}
                   guard={guardOf("autoDispatch", s.dispatchAuto.auto, AUTO_DISPATCH_WARN)}
                   onSave={(v) => save({ autoDispatch: v as "off" | "on" })}
@@ -657,6 +782,17 @@ export function OperationsSettings({ server, save }: { server: Loaded; save: Sav
                 />
                 <ModeLines modes={["off", "on"] as const} current={s.duty.enabled ? "on" : "off"} lines={DUTY_WARN} />
                 <DutyAccountRow current={s.duty.account} warning={s.duty.accountWarning} save={save} />
+                <EditRow
+                  label="DUTY REVIEW"
+                  env="duty.review"
+                  value={s.duty.review ? "on" : "off"}
+                  note="duty.json · 서버가 스스로 DUTY 점검 턴을 시작한다(주기·트리거) · 이 화면에서만 바꾼다(SUPERVISOR 전용)"
+                  input={{ kind: "select", options: ["off", "on"] }}
+                  guard={guardOf("dutyReview", s.duty.review ? "on" : "off", DUTY_REVIEW_WARN)}
+                  onSave={(v) => save({ dutyReview: v as "off" | "on" })}
+                />
+                <ModeLines modes={["off", "on"] as const} current={s.duty.review ? "on" : "off"} lines={DUTY_REVIEW_WARN} />
+                {s.duty.enabled && <DutyReviewRecord on={s.duty.review} />}
                 <EditRow
                   label="DUTY CHARTER"
                   env="duty.charter"

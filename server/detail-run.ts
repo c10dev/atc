@@ -4,7 +4,7 @@ import type { Hono } from "hono";
 import { GithubOffError } from "./github-switch.ts";
 import { flightKeyOf, makeCache, prRefOf, shapeIssue, shapePr, type IssueDetail, type PrDetail } from "./detail.ts";
 import { loadAutoland } from "./autoland.ts";
-import { escalationOf, inspectionOf, loadMcc, readMccRecords, tierOfFiles } from "./mcc.ts";
+import { escalationOf, loadMcc, readMccRecords, reviewOfHead, tierOfFiles } from "./mcc.ts";
 import { allClearances } from "./clearances.ts";
 import { fixOf } from "./fix.ts";
 import { noHolderPickOf } from "./relay-offer.ts";
@@ -55,7 +55,7 @@ export function mountDetail(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       let landing: PrDetail["landing"] = null;
       if (polled) {
         const tier = await tierOfFiles(polled.changed ?? d.files.map((f) => f.path)).then((t) => t.tier).catch(() => null);
-        const ins = loadMcc().airport === airport.code ? inspectionOf(readMccRecords(), polled.number, polled.head) : null;
+        const ins = loadMcc().airport === airport.code ? reviewOfHead(readMccRecords(), polled.number, polled.head) : null;
         landing = {
           state: polled.landing,
           blocks: polled.blocks.map((b) => b.en),

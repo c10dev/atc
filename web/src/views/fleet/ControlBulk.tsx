@@ -139,8 +139,8 @@ export function BulkPanel({ op: first, onClose, onDone }: { op: BulkOp; onClose:
 export function BulkBar({ onOpen, disabled }: { onOpen: (op: BulkOp) => void; disabled: boolean }) {
   return (
     <div className="fl-bulk-bar" role="group" aria-label="CONTROL SESSIONS 일괄 동작">
-      {(["launch", "restart", "stop"] as const).map((op) => (
-        <button key={op} type="button" className={`config-btn${op === "stop" ? " is-danger" : ""}`} onClick={() => onOpen(op)} disabled={disabled}>
+      {(["launch", "restart"] as const).map((op) => (
+        <button key={op} type="button" className="config-btn" onClick={() => onOpen(op)} disabled={disabled}>
           {BULK_LABEL[op]}
         </button>
       ))}

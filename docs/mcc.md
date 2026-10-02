@@ -50,6 +50,7 @@ Landing itself keeps the existing words: CLEARED TO LAND, LANDING, ARRIVED.
 1. `atcctl manual check`: reread the manual if it changed.
 2. `atcctl mcc queue`: open atc PRs with head, tier and its reasons, CI `check` on the head, merge state, INSPECTION on the head, holds; plus the commit in service against `origin/main`.
 3. For each PR without an INSPECTION on its head (oldest first, at most 3 a pass): call the `inspector` sub-agent with the PR number and head (section 8.2). It reads the packet (`atcctl mcc packet <PR>`: PR body, changed files, diff, tier reasons, the ATC issue's goal and exit criteria when the branch or body names one) in a fresh context and returns the verdict. MCC copies it into `atcctl mcc inspect <PR> --head <sha> --verdict pass|findings -- '<text>'`, or `atcctl mcc escalate <PR> -- '<reason>'`. MCC reads no packet or diff itself.
+   An ESCALATE also stands for the INSPECTION of the head it was recorded on (ATC-390). When `COUNTS` has no P0 or P1, the server counts that head as a `pass` (`reviewOfHead`, `server/mcc.ts`), so the PR is no longer "waiting for the MCC INSPECTION": it becomes CLEARED, shows as LANDING in the SUPERVISOR QUEUE and as a MERGE button in the PR drawer, and the leak counter counts it (`landWhy: escalate`). When there is a P0 or P1, MCC also records a `findings` INSPECTION on the same head; it comes first, so the PR shows its findings and gets a FIX like any other PR. The ESCALATE stays on the PR when the head moves, but the new head is not inspected until MCC does it: the `mcc queue` shows no INSPECTION for it, and the next pass calls the inspector again. Nothing changes in who merges: the SUPERVISOR still merges an escalated PR.
 4. For each PR the server reports as landable: `atcctl mcc land <PR> --head <sha>`.
 5. If `origin/main` is ahead of the commit in service and its CI passed: `atcctl mcc rts`.
 6. Report to the SUPERVISOR in its own session: each LANDED PR with its tier (for `flagged`, the control rules that changed), each RTS with the commit, each ROLLBACK and ESCALATE with the reason.
@@ -68,6 +69,7 @@ CI already runs tests, types and the build. The INSPECTION is what CI can't see,
 - Nothing from vocado's internals, no secrets, no screenshots (public repository).
 - Records stay append-only JSONL and settings stay atomically written JSON. A change to an operating-state format → ESCALATE.
 - The change does what the PR body and the ATC issue say, and nothing else.
+- A PR the SUPERVISOR approves (tier `user` or ESCALATE) has a "Behavior change" section: one text before/after diagram, or `Behavior change: none` (ATC-360). A missing section, a diagram that contradicts the diff, or `none` on a PR whose diff changes behaviour is P1.
 
 `findings` blocks the landing until a new head passes. The server also posts them as a PR comment (`**MCC INSPECTION — findings** …`), in every mode including shadow, so the author sees them on the PR as well as on the atc screen. A comment is information; it merges and deploys nothing. MCC doesn't message team sessions.
 
@@ -223,6 +225,10 @@ A fourth MCC mode, `rts`: the SUPERVISOR merges atc PRs by hand, and the atc ser
 - **UPDATE bar.** `GET /api/update` carries `auto: {on, nextAt}`. In these modes the bar adds `자동 배포 켜짐`, with `· 다음 HH:MM` while it waits out the 5-minute spacing. The bar itself still shows only when the service is behind. The SUPERVISOR's [업데이트] click keeps working and has no spacing.
 - **ROLLBACK** stops the server's RTS like MCC's, until the SUPERVISOR picks the MCC mode again.
 - PILOT'S DISCRETION: the pass runs every 30 s (the snapshot refreshes about every 20 s); after a `refused` RTS the server does not retry the same `main` (the refusal needs a person); `rts` mode's `would-land` records use `detail: "rts"`; root `CLAUDE.md` is `user` tier and is not changed here (it describes `land+rts`, the mode in use).
+
+### Auto-revert and the MCC AIRPORT as built (ATC-351)
+
+When a merge MCC made turns the default branch red, the auto-revert lane ([autonomy.md](autonomy.md), "C4 as built") may open a revert PR (switch `autoRevert`, on by default since ATC-394; the failing check is re-run once first, see "C4 as built"). The revert PR is judged like any PR (L2 to L8). The one change: `landBlocksOf` gets `groundStop: null` for it when the stop is the ATFM `main-broken` trigger, the lane is `on` and the PR is a revert PR atc opened (branch `revert-<n>-...` and a line in `auto-revert.jsonl`); every other GROUND STOP trigger and every other condition still blocks it. A revert PR that changes a `user`-tier path is never opened (K3 `hold`), so the `user` tier still means the SUPERVISOR merges. The breaker lowers MCC landing (`land` to `shadow`, `land+rts` to `rts`) through `setMccMode`, which writes the usual `mode` record, and only the SUPERVISOR raises it again.
 
 ## 7. Records and switches
 

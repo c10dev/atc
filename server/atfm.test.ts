@@ -214,7 +214,7 @@ const failedCodes = (p: Proposal, ctx = autoCtx()) => autoEligibility(p, ctx).fa
 
 test("자동 배정 대상(A1~A10): 모두 맞으면 대상, 조건마다 빠진다", () => {
   assert.deepEqual(autoEligibility(proposal(), autoCtx()).eligible, true);
-  assert.deepEqual(autoEligibility(proposal(), autoCtx()).checked, ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10"]);
+  assert.deepEqual(autoEligibility(proposal(), autoCtx()).checked, ["A1", "A2", "A3", "A4", "A5", "A6", "A8", "A9", "A10"]);
   assert.deepEqual(failedCodes(proposal(), autoCtx({ ticket: ticket({ labels: ["rating:UI"] }) })), ["A1"]); // 기본값 BUILD·M
   assert.deepEqual(failedCodes(proposal(), autoCtx({ ticket: ticket({ labels: ["type:BUILD", "wake:H", "rating:UI"] }) })), ["A2"]);
   assert.deepEqual(failedCodes(proposal(), autoCtx({ ticket: ticket({ labels: ["type:SURVEY", "wake:L", "rating:UI"] }) })), ["A3"]); // 결정 1
@@ -224,11 +224,9 @@ test("자동 배정 대상(A1~A10): 모두 맞으면 대상, 조건마다 빠진
   assert.deepEqual(failedCodes(proposal(), autoCtx({ ticket: ticket({ project: "Beta Readiness" }) })), ["A6"]);
   assert.deepEqual(failedCodes(proposal(), autoCtx({ ticket: ticket({ project: "Beta Readiness", labels: ["type:BUILD", "wake:M", "tail:TEAM_F"] }) })), []); // tail이 맞으면 ROUTE는 보지 않는다
   assert.deepEqual(failedCodes(proposal(), autoCtx({ ticket: ticket({ labels: ["type:BUILD", "wake:M", "tail:TEAM_B"] }) })), ["A6"]);
-  assert.deepEqual(failedCodes(proposal({ crosscheck: null })), ["A7"]);
-  // OCC와 같은 Sonnet의 agree는 CROSSCHECK로 치지 않는다. 지금 CROSSCHECK(Opus)와 옛 Muse는 된다(2026-09-29)
-  assert.deepEqual(failedCodes(proposal({ crosscheck: { by: "x", model: "claude-sonnet-5-5", verdict: "agree", reason: "r", at: ago(1) } })), ["A7"]);
-  assert.deepEqual(failedCodes(proposal({ crosscheck: { by: "x", model: "claude-opus-5-5", verdict: "agree", reason: "r", at: ago(1) } })), []);
-  assert.deepEqual(failedCodes(proposal({ crosscheck: { by: "x", model: "muse-spark-1.3-contributor", verdict: "disagree", reason: "r", at: ago(1) } })), ["A7"]);
+  // CROSSCHECK mark는 A조건에서 빠졌다(ATC-371): 없거나 disagree여도 대상이다
+  assert.deepEqual(failedCodes(proposal({ crosscheck: null })), []);
+  assert.deepEqual(failedCodes(proposal({ crosscheck: { by: "x", model: "muse-spark-1.3-contributor", verdict: "disagree", reason: "r", at: ago(1) } })), []);
   assert.deepEqual(failedCodes(proposal(), autoCtx({ state: { ...autoCtx().state, available: false } })), ["A8"]);
   const declined = proposal({ id: "D-0000", flight: "VOC-9", status: "declined", timeline: { declined: ago(60) } });
   assert.deepEqual(failedCodes(proposal(), autoCtx({ history: [declined] })), ["A8"]);
@@ -244,7 +242,7 @@ const draft = (over: Partial<ScheduleOp> = {}): ScheduleOp => ({
   crosscheck: { by: "CROSSCHECK", model: "claude-ocx-opencode-go--muse-spark-1.3-contributor", verdict: "agree", reason: "r", at: ago(10) }, ...over,
 } as ScheduleOp);
 
-test("S3 대상(S1~S4): 빈 축에만 더하고, SEC 없고, 허용 모델 agree와 절 인용, Todo·Backlog이고 STAND 없음", () => {
+test("S3 대상(S1~S4): 빈 축에만 더하고, SEC 없고, 절 인용, Todo·Backlog이고 STAND 없음", () => {
   const t = ticket({ labels: ["rating:UI"] });
   const ctx = (over: Partial<Parameters<typeof s3Eligibility>[2]> = {}) => ({ standTickets: new Set<string>(), inFlight: new Set<string>(), cautions: new Set<string>(), ...over });
   const ok = s3Eligibility(draft(), t, ctx());
@@ -256,7 +254,7 @@ test("S3 대상(S1~S4): 빈 축에만 더하고, SEC 없고, 허용 모델 agree
   assert.deepEqual(codes(draft({ payload: { type: "MAINT", ratings: ["SEC"] }, reason: "4.1 MAINT · 4.3 SEC" })), ["S2"]);
   assert.deepEqual(codes(draft(), ticket({ labels: ["Risk:Security"] })), ["S2"]);
   assert.deepEqual(codes(draft({ reason: "4.1 MAINT만 인용" })), ["S3"]); // wake 근거(4.2) 없음
-  assert.deepEqual(codes(draft({ crosscheck: null })), ["S3"]);
+  assert.deepEqual(codes(draft({ crosscheck: null })), []); // CROSSCHECK mark는 보지 않는다(ATC-371)
   assert.deepEqual(codes(draft(), ticket({ labels: [], stateType: "started", state: "In Progress" })), ["S4"]);
   assert.deepEqual(codes(draft(), t, new Set(["VOC-10"])), ["S4"]);
   // SEC는 절대 자동으로: Risk 그룹 라벨, 옛 단독 Risk 라벨, OCC CAUTION, 티켓을 모름

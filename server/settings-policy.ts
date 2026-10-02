@@ -2,7 +2,7 @@ import type { ServerSettings } from "./settings.ts";
 
 // 설정 창의 계산(ATC-131). SUPERVISOR 정책 스위치(AUTOMATION: LANDING·OPERATIONS)의 "지금 모드 한 줄", ⚠ 모드로 올릴 때 확인이 필요한지, 마지막 분류 기억, 설정 찾기.
 // 저장 값과 PUT /api/settings는 그대로다. 여기는 화면에 보이는 이름과 판단만 다룬다.
-export type PolicyKey = "autoland" | "autolandReview" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle" | "duty" | "dutyCharter" | "autoApprove" | "autoApproveLaunch" | "autoDispatch";
+export type PolicyKey = "autoland" | "autolandReview" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle" | "duty" | "dutyCharter" | "dutyReview" | "autoApprove" | "autoApproveLaunch" | "autoDispatch" | "scheduleAuto" | "fleetPlanAuto" | "autoRevert";
 
 // ⚠ 모드(올리면 atc가 더 많이 쓰거나 밖으로 내보낸다). 화면의 경고 문구가 ⚠로 시작하는 모드와 같다
 export const RISKY: Record<PolicyKey, readonly string[]> = {
@@ -15,9 +15,13 @@ export const RISKY: Record<PolicyKey, readonly string[]> = {
   reposition: ["auto"], // atc가 쉬는 AIRCRAFT의 base를 스스로 옮긴다(멈추고 다른 저장소에서 다시 띄움)
   recycle: ["on"], // atc가 관제 세션을 스스로 STOP·LAUNCH한다(shadow는 기록만)
   dutyCharter: ["on"], // OCC가 DUTY의 CHARTER REQUEST를 SCHEDULE 초안으로 만든다(shadow는 만들었을 초안만 기록)
+  dutyReview: ["on"], // 서버가 SUPERVISOR의 글 없이 DUTY 턴을 시작해 운영을 점검하고 Backlog 제안을 남긴다(ATC-396). 기본 on이라 ⚠로 보이고, 껐다 다시 켤 때 확인한다
   duty: ["on"], // 서버가 `claude -p` 프로세스를 띄우고 ACCOUNT의 FUEL을 쓴다(SUPERVISOR가 글을 보낼 때만)
-  autoApprove: ["on"], // 서버가 CROSSCHECK가 agree한 ASSIGN·SCHEDULE 초안을 스스로 승인한다(shadow는 기록만, blind·HELD·disagree는 그대로 SUPERVISOR 몫)
-  autoDispatch: ["on"], // 서버가 필터·상한을 통과한 ASSIGN·launch를 CROSSCHECK·사람 없이 승인한다(ATC-367, K3). 기본 on이라 ⚠로 보이고, 껐다 다시 켤 때 확인한다
+  autoApprove: ["on"], // 서버가 SETTLED ASSIGN·SCHEDULE 초안을 스스로 승인한다(CROSSCHECK mark는 보지 않는다, ATC-371. shadow는 기록만, blind·HELD·주의는 그대로 SUPERVISOR 몫)
+  scheduleAuto: ["on"], // 서버가 SCHEDULE 초안(CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW)을 사람 판정 없이 승인한다(ATC-370). 기본 on, off는 SUPERVISOR 몫
+  fleetPlanAuto: ["on"], // 서버가 FLEET PLAN 제안(LAUNCH·STOP·RESTART·REFRESH·AOG)을 사람 승인 없이 실행한다(ATC-370). 기본 on, off는 SUPERVISOR 몫
+  autoDispatch: ["on"], // 서버가 필터·상한을 통과한 ASSIGN·launch를 사람 없이 승인한다(ATC-367, K3). 기본 on이라 ⚠로 보이고, 껐다 다시 켤 때 확인한다
+  autoRevert: ["on"], // atc가 lander 머지가 깬 main의 revert PR을 스스로 열고, 두 번째 빨간 head에는 lane을 한 단계 낮춘다(되돌리기 전에 실패한 체크를 한 번 다시 돌린다. 기본 on, off는 SUPERVISOR 몫)
   autoApproveLaunch: ["on"], // 서버가 launch 카드를 스스로 승인하고 세션을 띄운다(상한·FUEL hold·막힘·실패 뒤 대기·하루 상한을 지킬 때만)
 };
 
@@ -44,7 +48,7 @@ export interface ModeSegment {
   warn: boolean;
 }
 // 탭 맨 위 한 줄: `AUTOLAND off · MCC land · JEV off · FUEL HOLD off · REVIEW exclude`. ⚠ 모드는 warn
-export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "review"> & Partial<Pick<ServerSettings, "judges" | "fuel" | "controlRecycle" | "fleetPlan" | "duty" | "dispatchAuto">>): ModeSegment[] {
+export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "review"> & Partial<Pick<ServerSettings, "judges" | "fuel" | "controlRecycle" | "fleetPlan" | "duty" | "dispatchAuto" | "autonomyAuto" | "autoRevert">>): ModeSegment[] {
   const seg = (key: PolicyKey, label: string, mode: string, value = mode): ModeSegment => ({ key, label, value, warn: isRisky(key, mode) });
   return [
     seg("autoland", "AUTOLAND", s.autoland.mode),
@@ -57,6 +61,9 @@ export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "revie
     ...(s.fleetPlan ? [seg("reposition", "REPOSITION", s.fleetPlan.reposition)] : []),
     ...(s.duty ? [seg("duty", "DUTY", s.duty.enabled ? "on" : "off")] : []),
     ...(s.duty?.charter ? [seg("dutyCharter", "DUTY CHARTER", s.duty.charter)] : []),
+    ...(s.duty && typeof s.duty.review === "boolean" ? [seg("dutyReview", "DUTY REVIEW", s.duty.review ? "on" : "off")] : []),
+    ...(s.autoRevert ? [seg("autoRevert", "AUTO REVERT", s.autoRevert.mode)] : []),
+    ...(s.autonomyAuto ? [seg("scheduleAuto", "SCHEDULE AUTO", s.autonomyAuto.schedule), seg("fleetPlanAuto", "FLEET PLAN AUTO", s.autonomyAuto.fleetPlan)] : []),
     ...(s.dispatchAuto ? [seg("autoApprove", "AUTO APPROVE", s.dispatchAuto.approve), seg("autoApproveLaunch", "AUTO LAUNCH", s.dispatchAuto.launch), seg("autoDispatch", "AUTO DISPATCH", s.dispatchAuto.auto)] : []),
   ];
 }
@@ -70,7 +77,7 @@ export const settingsTabOf = <T extends string>(stored: string | null | undefine
 };
 
 // 설정 창 왼쪽 메뉴의 분류. landing·operations는 AUTOMATION 묶음(SUPERVISOR 정책 스위치)
-export type SettingsTab = "display" | "linear" | "agents" | "accounts" | "alerts" | "landing" | "operations";
+export type SettingsTab = "display" | "linear" | "agents" | "accounts" | "airports" | "alerts" | "landing" | "operations";
 
 // 설정 찾기의 색인: 블록마다 분류, 제목 코드(화면의 h3), 한국어 이름, 찾을 말(줄 이름·환경 변수·저장 값).
 // 블록을 더하거나 옮기면 여기도 고친다(settings-policy.test.ts가 분류마다 하나 이상인지 본다)
@@ -93,6 +100,7 @@ export const SETTINGS_INDEX: readonly SettingsEntry[] = [
   { tab: "agents", code: "STANDS", label: "점유 규칙", words: "stand handoff airport 폴더 ATC_CLAIM_TTL_MIN ATC_HANDOFF_GRACE_MIN ATC_PROJECTS_DIR 유예" },
   { tab: "agents", code: "CALLSIGNS", label: "콜사인", words: "team 음성 알파벳 alpha" },
   { tab: "accounts", code: "ACCOUNTS", label: "ACCOUNT 폴더", words: "account add login 계정 추가 로그인 CLAUDE_CONFIG_DIR statusline health hook acct plan usage refresh 요금제 한도 사용량" },
+  { tab: "airports", code: "AIRPORTS", label: "AIRPORT 등록부(개설·이름·닫기·팀 머지)", words: "airport 저장소 repo open close rename 개설 이름 코드 teamsMerge 팀 머지 스위치 register ~/projects" },
   { tab: "alerts", code: "NOTIFY", label: "브라우저 알림", words: "notification 알림 권한" },
   { tab: "alerts", code: "SOUND", label: "소리", words: "warning caution call 방해 금지 quiet 톤" },
   { tab: "alerts", code: "VOICE", label: "음성 콜아웃", words: "tts piper espeak kokoro 목소리 무전 radio" },
@@ -100,7 +108,9 @@ export const SETTINGS_INDEX: readonly SettingsEntry[] = [
   { tab: "landing", code: "MCC", label: "atc 착륙·RETURN TO SERVICE", words: "shadow land rts land+rts rollback 배포 shadow gate mcc.mode" },
   { tab: "landing", code: "REVIEW", label: "Codex 한도 때 착륙 리뷰", words: "보안 pr sonnet deepseek exclude externalReview.security" },
   { tab: "operations", code: "FUEL", label: "사용 한도 HOLD", words: "dispatch hold 사용량 한도 fuel.hold" },
-  { tab: "operations", code: "AUTO APPROVE", label: "일치 기반 자동 승인", words: "dispatch schedule crosscheck agree blind launch 자동 승인 autoApprove autoApproveLaunch via auto" },
+  { tab: "landing", code: "AUTO REVERT", label: "main이 빨개지면 lander 머지 자동 되돌림", words: "revert 되돌림 main red 빨간 breaker autoRevert flake groundstop" },
+  { tab: "operations", code: "AUTO APPROVE", label: "일치 기반 자동 승인", words: "dispatch schedule agree blind launch 자동 승인 autoApprove autoApproveLaunch via auto" },
+  { tab: "operations", code: "SCHEDULE·FLEET PLAN AUTO", label: "SCHEDULE·FLEET PLAN 자동 적용", words: "schedule fleet plan 자동 적용 사람 없이 off on misfire 오작동 scheduleAuto fleetPlanAuto schedule.auto fleet-plan.auto backlog" },
   { tab: "operations", code: "REPOSITION", label: "소속 AIRPORT 옮기기", words: "base fleet plan approval auto fleet-plan.reposition" },
   { tab: "operations", code: "CONTROL RECYCLE", label: "관제 세션 자동 재시작", words: "cap 컨텍스트 context 재시작 auto alert controlRecycle.mode" },
   { tab: "operations", code: "DUTY", label: "DUTY 채팅(atc 안의 대화 상대)", words: "duty chat 채팅 서랍 drawer claude acct-2 duty.enabled 대화 shift charter 차터 duty.charter CHARTER REQUEST OCC" },

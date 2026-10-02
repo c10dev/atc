@@ -55,7 +55,7 @@ export const noteMccEn = (head: string) => `waiting for the MCC INSPECTION of he
 export const noteReviewEn = (head: string, oldThumbs: boolean) => `head ${head} needs a review${oldThumbs ? " (the Codex thumbs-up is for an earlier commit)" : ""}`;
 
 export const codexWhyEn = (why: string, silentHours: number, repoSince?: string | null) =>
-  why === "limit" ? (repoSince ? `Codex limit (repository, ${repoSince.slice(11, 16)}Z~)` : "Codex limit") : why === "autoland" ? "AUTOLAND re-review — Codex silent for 30 minutes" : `Codex silent for ${silentHours} hours`;
+  why === "limit" ? (repoSince ? `Codex limit (repository, ${repoSince.slice(11, 16)}Z~)` : "Codex limit") : why === "autoland" ? "AUTOLAND re-review — Codex silent for 30 minutes" : why === "lane" ? `Codex silent across the repository${repoSince ? ` (${repoSince.slice(11, 16)}Z~)` : ""}` : `Codex silent for ${silentHours} hours`;
 
 export const carriedWhoEn = (by: string) => (by === "human" ? "human APPROVED" : by === "codex" ? "Codex" : "REVIEW");
 

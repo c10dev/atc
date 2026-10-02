@@ -1,5 +1,7 @@
 import { AlertBell, SoundLockChip } from "./AlertBell.tsx";
 import { FollowNext } from "./FollowNext.tsx";
+import { canonicalHash } from "./legacy-hash.ts";
+import { SinceLook } from "./SinceLook.tsx";
 import { drawerOfHash, type DrawerRef } from "../../server/detail.ts";
 import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showNewVersion } from "../../server/version.ts";
@@ -8,74 +10,73 @@ import { buildIndex, timeAgo } from "./derive.ts";
 import { ControlStrip } from "./ControlStrip.tsx";
 import { NewVersionBar } from "./NewVersion.tsx";
 import { UpdateBar, useUpdate } from "./UpdateBar.tsx";
+import { SupervisorPairing, useSupervisorAuth } from "./SupervisorPairing.tsx";
 import { MoonIcon, Starfield } from "./Starfield.tsx";
 import { Ticker } from "./Ticker.tsx";
 import { formatClock, useSettings } from "./settings.ts";
 import { SettingsPanel } from "./SettingsPanel.tsx";
+import { HelpMenu } from "./HelpMenu.tsx";
+import { GlobeMode } from "./GlobeMode.tsx";
+import { Globe as GlobeIcon } from "lucide-react";
+import { Icon } from "./Icon.tsx";
+import type { SettingsTab } from "../../server/settings-policy.ts";
 import { lazyTab, TabBoundary, TabLoading } from "./lazyTab.tsx";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
 import { useDuty } from "./useDuty.ts";
 import { readoutState } from "../../server/duty-chat.ts";
-import { MapView } from "./views/Map.tsx";
 import type { Snapshot } from "../../server/model.ts";
 import type { Index } from "./derive.ts";
 
 // 첫 화면(RADAR)만 메인 번들에 두고, 나머지 탭은 처음 열 때 불러온다(청크마다 그 탭의 CSS·라이브러리까지, 예: DOCS의 marked).
-type SnapProps = { snapshot: Snapshot; idx: Index; now: number };
-const Follow = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Follow.tsx"), "Follow");
-const Globe = lazyTab<{ refreshKey: string }>(() => import("./views/Globe.tsx"), "Globe");
-const Teams = lazyTab<SnapProps>(() => import("./views/Teams.tsx"), "Teams");
-const Tickets = lazyTab<SnapProps>(() => import("./views/Tickets.tsx"), "Tickets");
-const Airports = lazyTab<{ snapshot: Snapshot }>(() => import("./views/Airports.tsx"), "Airports");
+const Flights = lazyTab<{ snapshot: Snapshot; idx: Index; now: number; refreshKey: string }>(() => import("./views/Flights.tsx"), "Flights");
 const Fleet = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/fleet/Fleet.tsx"), "Fleet");
 const Metrics = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/Metrics.tsx"), "Metrics");
 const Network = lazyTab<{ refreshKey: string }>(() => import("./views/Network.tsx"), "Network");
-const Dispatch = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Dispatch.tsx"), "Dispatch");
-const Schedule = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Schedule.tsx"), "Schedule");
-const Radio = lazyTab<Record<string, never>>(() => import("./views/Radio.tsx"), "Radio");
+const Release = lazyTab<{ refreshKey: string }>(() => import("./views/Release.tsx"), "Release");
+const Home = lazyTab<{ refreshKey: string; now: number; snapshot: Snapshot; onOpenSettings: () => void }>(() => import("./views/Home.tsx"), "Home");
 const Docs = lazyTab<Record<string, never>>(() => import("./views/Docs.tsx"), "Docs");
 // 서랍은 처음 열 때 불러온다(Markdown 렌더러까지 그 청크에)
 const Drawer = lazy(() => import("./Drawer.tsx"));
 const DutyDrawer = lazy(() => import("./DutyDrawer.tsx"));
 const IdeasDrawer = lazy(() => import("./IdeasDrawer.tsx"));
 
+// 화면(주소 #<id>가 여는 것). 탭 줄에 보이는 것은 ROW뿐이다(ATC-381, docs/layout.md Y6): DOCS는 도움말 메뉴, GLOBE는 보기 모드, AIRPORTS는 설정 창으로 옮겼다.
+// NETWORK(Y5)는 METRICS가 이어받을 때까지 탭으로 남는다
 const TABS = [
-  { id: "radar", code: "RADAR" },
-  { id: "follow", code: "FOLLOW" },
-  { id: "globe", code: "GLOBE" },
-  { id: "strips", code: "STRIPS" },
-  { id: "board", code: "FIDS" },
-  { id: "airports", code: "AIRPORTS" },
+  { id: "home", code: "HOME" },
+  { id: "release", code: "RELEASE" },
+  { id: "flights", code: "FLIGHTS" },
   { id: "fleet", code: "FLEET" },
   { id: "metrics", code: "METRICS" },
   { id: "network", code: "NETWORK" },
-  { id: "dispatch", code: "DISPATCH" },
-  { id: "schedule", code: "SCHEDULE" },
-  { id: "radio", code: "RADIO" },
   { id: "docs", code: "DOCS" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
-
-// 이전 주소(#map, #teams, #tickets) 북마크도 열리게 한다.
-const LEGACY_HASH: Record<string, Tab> = { map: "radar", teams: "strips", tickets: "board" };
+const IN_ROW = (t: Tab) => t !== "docs";
+// 탭이 아닌 보기: #globe(#globe/<AIRPORT>)는 GLOBE 창을, #airports는 설정 창의 AIRPORTS를 연다
+const headOf = (hash: string) => hash.replace(/^#/, "").split("/")[0];
 
 const connectionLabel = { live: "실시간", connecting: "연결 중", lost: "끊김" } as const;
 
-// 주소 #탭 또는 #탭/하위(예: #docs/requesting). 하위 경로는 그 탭이 읽는다.
+// 주소 #탭 또는 #탭/하위(예: #docs/requesting, #flights/board). 하위 경로는 그 탭이 읽는다.
 function initialTab(): Tab {
+  const canon = canonicalHash(location.hash);
+  if (canon) history.replaceState(null, "", canon);
   const hash = location.hash.slice(1).split("/")[0];
-  if (hash in LEGACY_HASH) return LEGACY_HASH[hash];
-  return TABS.some((t) => t.id === hash) ? (hash as Tab) : "radar";
+  return TABS.some((t) => t.id === hash) ? (hash as Tab) : "home";
 }
 
 export function App({ build }: { build: string }) {
   const { snapshot, connection, serverBuild } = useSnapshot();
   const now = useNow();
   const update = useUpdate(connection);
+  const supervisorAuth = useSupervisorAuth();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [alertsOpen, setAlertsOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const [settingsOpen, setSettingsOpen] = useState(() => headOf(location.hash) === "airports");
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(() => (headOf(location.hash) === "airports" ? "airports" : null));
+  const [globeOpen, setGlobeOpen] = useState(() => headOf(location.hash) === "globe");
+  const closeSettings = useCallback(() => (setSettingsOpen(false), setSettingsTab(null)), []);
   const settings = useSettings();
   const idx = useMemo(() => (snapshot ? buildIndex(snapshot) : null), [snapshot]);
 
@@ -96,9 +97,14 @@ export function App({ build }: { build: string }) {
   }, []);
   useEffect(() => {
     // 같은 탭의 하위 경로(#docs/requesting)는 그대로 둔다. 서랍이 열려 있으면 주소를 건드리지 않는다
-    if (drawerOfHash(location.hash) || location.hash === "#duty") return;
-    if (location.hash.slice(1).split("/")[0] !== tab) history.replaceState(null, "", `#${tab}`);
+    if (drawerOfHash(location.hash) || location.hash === "#duty" || headOf(location.hash) === "globe") return;
+    if (headOf(location.hash) !== tab) history.replaceState(null, "", `#${tab}`);
   }, [tab]);
+  // GLOBE 창을 닫으면 열기 전 화면의 주소로 돌아간다
+  const closeGlobe = useCallback(() => {
+    setGlobeOpen(false);
+    history.replaceState(null, "", `#${tabRef.current}`);
+  }, []);
   // 탭 줄이 가로로 넘칠 때 선택한 탭이 보이게(글꼴·수치가 늦게 들어와 폭이 바뀌어도)
   const tabsRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -115,7 +121,16 @@ export function App({ build }: { build: string }) {
       setDrawer(d);
       const isDuty = location.hash === "#duty";
       setDutyOpen(isDuty);
-      if (!d && !isDuty) setTab(initialTab());
+      // #globe는 창, #airports는 설정 창의 AIRPORTS(ATC-381): 탭은 그대로다
+      const head = headOf(location.hash);
+      setGlobeOpen(head === "globe");
+      if (head === "airports") {
+        setSettingsTab("airports");
+        setSettingsOpen(true);
+        history.replaceState(null, "", `#${tabRef.current}`);
+        return;
+      }
+      if (!d && !isDuty && head !== "globe") setTab(initialTab());
     };
     addEventListener("hashchange", onHash);
     return () => removeEventListener("hashchange", onHash);
@@ -158,10 +173,10 @@ export function App({ build }: { build: string }) {
             </span>
             <GearIcon />
           </button>
-          {settingsOpen && <SettingsPanel settings={settings} snapshot={snapshot} onClose={closeSettings} />}
+          {settingsOpen && <SettingsPanel key={settingsTab ?? "last"} settings={settings} snapshot={snapshot} onClose={closeSettings} openTab={settingsTab} />}
         </div>
         <nav className="tabs" role="tablist" ref={tabsRef}>
-          {TABS.map((t) => (
+          {TABS.filter((t) => IN_ROW(t.id)).map((t) => (
             <button key={t.id} role="tab" aria-selected={tab === t.id} className="tab" onClick={() => setTab(t.id)}>
               <span className="tab-code">{t.code}</span>
             </button>
@@ -201,6 +216,13 @@ export function App({ build }: { build: string }) {
             </span>
           </button>
           <AlertBell />
+          <button type="button" className={`readout is-button${globeOpen ? " is-on" : ""}`} onClick={() => (globeOpen ? closeGlobe() : void (location.hash = "globe"))} aria-pressed={globeOpen} aria-label="GLOBE 보기 모드">
+            <b>
+              <Icon icon={GlobeIcon} size={16} />
+            </b>
+            <span>GLOBE</span>
+          </button>
+          <HelpMenu docsOpen={tab === "docs"} />
           <SoundLockChip />
           <div className="readout clock">
             <Clock clock={settings.clock} />
@@ -213,6 +235,7 @@ export function App({ build }: { build: string }) {
         <ControlStrip snapshot={snapshot} now={now} />
       </header>
 
+      <SupervisorPairing auth={supervisorAuth} />
       <UpdateBar update={update} />
       <NewVersionBar own={build} server={serverBuild} />
 
@@ -267,11 +290,22 @@ export function App({ build }: { build: string }) {
           <p className="empty">{connection === "lost" ? "서버에 연결할 수 없음" : "불러오는 중…"}</p>
         ) : (
           // 탭마다 오류 경계를 새로 둔다(한 탭의 오류·못 불러온 청크가 다른 탭을 막지 않게)
-          <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
-            <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now)}</Suspense>
-          </TabBoundary>
+          <>
+            {/* 처음 도착하는 탭(HOME, ATC-377)의 맨 위 */}
+            {tab === "home" && <SinceLook refreshKey={snapshot.at.slice(0, 16)} />}
+            <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
+              <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now, () => setSettingsOpen(true))}</Suspense>
+            </TabBoundary>
+          </>
         )}
       </main>
+      {globeOpen && snapshot && (
+        <TabBoundary key="globe" stale={false}>
+          <Suspense fallback={<TabLoading />}>
+            <GlobeMode refreshKey={snapshot.at.slice(0, 16)} onClose={closeGlobe} />
+          </Suspense>
+        </TabBoundary>
+      )}
       {dutyOpen && (
         <TabBoundary key="duty" stale={false}>
           <Suspense fallback={null}>
@@ -295,35 +329,25 @@ export function App({ build }: { build: string }) {
 }
 
 // 탭 이름 → view. 하위 경로(#docs/requesting)는 그 view가 location.hash에서 읽는다.
-function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number) {
+function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number, onOpenSettings: () => void) {
   const refreshKey = snapshot.at.slice(0, 16);
   switch (tab) {
-    case "radar":
-      return <MapView snapshot={snapshot} idx={idx} now={now} />;
-    case "follow":
-      return <Follow refreshKey={snapshot.at} now={now} />;
-    case "globe":
-      return <Globe refreshKey={refreshKey} />;
-    case "strips":
-      return <Teams snapshot={snapshot} idx={idx} now={now} />;
-    case "airports":
-      return <Airports snapshot={snapshot} />;
+    case "flights":
+      return <Flights snapshot={snapshot} idx={idx} now={now} refreshKey={snapshot.at} />;
     case "fleet":
       return <Fleet refreshKey={refreshKey} snapshot={snapshot} />;
     case "metrics":
       return <Metrics refreshKey={refreshKey} snapshot={snapshot} />;
     case "network":
       return <Network refreshKey={refreshKey} />;
-    case "dispatch":
-      return <Dispatch refreshKey={refreshKey} now={now} />;
-    case "schedule":
-      return <Schedule refreshKey={refreshKey} now={now} />;
-    case "radio":
-      return <Radio />;
+    case "release":
+      return <Release refreshKey={refreshKey} />;
+    case "home":
+      return <Home refreshKey={refreshKey} now={now} snapshot={snapshot} onOpenSettings={onOpenSettings} />;
     case "docs":
       return <Docs />;
     default:
-      return <Tickets snapshot={snapshot} idx={idx} now={now} />;
+      return <Home refreshKey={refreshKey} now={now} snapshot={snapshot} onOpenSettings={onOpenSettings} />;
   }
 }
 

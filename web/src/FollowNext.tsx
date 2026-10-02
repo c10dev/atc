@@ -27,7 +27,7 @@ export function FollowNext({ refreshKey }: { refreshKey: string }) {
   }, [refreshKey]);
   if (n <= 0) return null;
   return (
-    <a className="readout is-button" href="#follow" aria-label={`FOLLOW 다음 할 일 ${n}건`}>
+    <a className="readout is-button" href="#flights" aria-label={`FOLLOW 다음 할 일 ${n}건`}>
       <b>{String(n).padStart(2, "0")}</b>
       <span>NEXT</span>
     </a>

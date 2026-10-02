@@ -78,6 +78,8 @@ HOLD는 24시간 만료가 없고, 다음 경우에 atc가 SUPERSEDED로 푼다(
 
 HELD 제안은 SUPERVISOR가 판정하지 않고 "대기열로"(같은 제안을 판정 대기로) 또는 "FLIGHT 보류 확정"(FLIGHT를 24시간 보류하고 닫음)을 누른다. CROSSCHECK가 FLIGHT 칩으로 disagree한 제안은 서버가 PREFLIGHT HOLD로 먼저 HELD에 보내 둔다(메모만 덧붙여도 된다). **SUPERVISOR가 대기열로 돌린 제안에는 다시 HOLD를 걸지 않는다**(서버도 409로 막는다). 메모로만 남긴다.
 
+PR HOLDER 제안(`prHolder`가 있는 ASSIGN, ATC-354)은 쥔 세션이 없는 PR의 GO AROUND·FIX를 이어받는 카드다. planner가 STAND를 쥔 세션이 없을 때만 내므로, "다른 세션이 연 PR이다"는 이유로 HOLD를 걸거나 SUPERVISOR 확인을 기다리지 않는다(ATC-392). 메모는 PR 번호와 무엇을 이어받는지 한 줄만 달고, 승인된 카드는 다른 승인된 제안처럼 보낸다.
+
 ### "사용자가 정한다" 문구
 
 본문·댓글에 착수를 사람에게 맡기는 문구가 있으면 AIRCRAFT와 상관없이 선행 없는 HOLD를 건다: `dispatch note <D-xxxx> --caution --hold -- "사용자 지시 대기: <문구 인용>"`. 예: "사용자가 정한다", "사용자 지시를 기다린다", "사용자 확인 후", "The user decides when to start", "user decides", "구현은 나중에(사람이 정함)". 사람 손이 필요한 일(사용자 모집·관찰·인터뷰)도 같다. VOC-195는 이렇게 HOLD됐지만 VOC-177·VOC-125는 걸러지지 않아 팀을 바꿔 가며 거절이 되풀이됐다.

@@ -385,6 +385,18 @@ Codex 한도 안내는 그것이 달린 PR의, 그 PR의 현재 head 뒤에 달�
 - **보이는 것.** 스트립과 블록 글에 "Codex 한도(저장소, 06:29Z~)"가 보이고, TOWER brief의 `landingQueue[].codex`에 `scope: "repo"`, `since`, `label`("Codex limit (repository, 06:29Z~)")이 실린다.
 - **만들지 않은 것:** 창보다 오래된 안내는 무시한다. 저장소별 스위치는 없다.
 
+### 조용한 리뷰 레인이 PR을 붙잡지 않는다 구현 내용 (ATC-386)
+
+착륙의 리뷰 레인은 둘이다: Codex(댓글·리뷰·👍)와 REVIEW(착륙 리뷰 세션). Codex가 저장소 전체에서 조용해도 PR마다 자기 head부터 6시간(`ATC_CODEX_SILENT_HOURS`)을 기다린 뒤에야 REVIEW가 맡았다. 이제 atc가 저장소마다 Codex가 조용한지 판단해서, 기다리는 PR과 새 head를 곧바로 REVIEW로 보낸다.
+
+- **규칙**(`laneStepOf`, 순수, `server/codex-lane.ts`). 저장소는 이럴 때 조용하다: 어떤 PR이 head(또는 생성) 뒤로 `ATC_CODEX_LANE_SILENT_MIN`분(기본 30)을 기다렸는데(Codex 신호를 읽은 열린 비 Draft PR) 그 PR에 Codex 신호가 없고, **또한** 그 PR이 기다리기 시작한 뒤로 저장소의 어느 PR에도 Codex 신호(리뷰·지적·👍·댓글, 한도 안내 포함)가 없다. 그 동안 다른 PR에 Codex가 말했다면 이 PR만 조용한 것이라 PR별 6시간 규칙이 맡는다. 열린 PR이 없는 저장소는 조용하다고 보지 않는다: 기다린 PR이 있어야 한다.
+- **효과**(`buildPulls`, `ext.lane`). 조용한 저장소에서 head 뒤에 Codex 신호가 없는 PR은 곧바로 `codexUnavailable: {why: "lane", since, scope: "repo"}`가 된다. REVIEW 대기열·AUTOLAND·스트립은 전처럼 `codexUnavailable`을 읽으므로 REVIEW가 리뷰하고 그 pass가 head의 리뷰다. Codex가 이미 답한 head는 보내지 않는다.
+- **유지와 복귀.** 상태는 `codex-lane.jsonl`에 추가만 하는 전이로 남는다(`silent`: 기다리던 PR 번호와 `since`, `speaks`). 저장소의 마지막 줄이 상태다. `since` 뒤 저장소 어디에든 Codex 신호가 오기 전까지 새 head도 조용한 채로 REVIEW로 가고, 신호가 오면 `speaks`를 적고 새 head는 다시 Codex로 간다. 이미 REVIEW가 있는 head는 REVIEW에 남는다(기존 규칙).
+- **제외는 그대로.** `codexUnavailable`은 "Codex를 쓸 수 없다"만 뜻하고, REVIEW가 받지 않는 것은 기존 gate가 정한다. 비밀·키 경로, FLIGHT 없음, `rating:SEC`·Risk 라벨은 `excluded`로 남고, 보안 경로·키워드는 `externalReview.security`가 꺼져 있는 동안 제외다. 그런 PR은 전처럼 SUPERVISOR에게 간다.
+- **센다.** REVIEW 한 레인만으로 CLEARED가 되면(`codexUnavailable`이 있고 REVIEW의 pass가 그 head의 리뷰) `lanes.jsonl`에 한 줄(`repo`, `number`, `head`, `cause`: `lane`·`silent`·`limit`·`autoland`), PR·head마다 한 번. `GET /api/landing/lanes?days=N`이 착륙한 PR(MCC `land`, AUTOLAND `merge`, PR 서랍의 MERGE 버튼. 성공 기록만)과 이어 UTC 날짜별 `{landed, single, causes}`와 지금 조용한 저장소를 준다. DISPATCH 탭의 MISFIRE 옆 "한 레인 착륙"이 단일 레인 착륙이 있는 날을 보인다. GitHub에서 손으로 머지한 PR은 착륙 수에 들지 않는다.
+- **자율 규칙.** 한 리뷰 레인이 PR을 착륙시켜도 되는 때를 느슨하게 한다(K3, 원칙 5). SUPERVISOR가 릴리스 때 승인했다. REVIEW의 판정을 낮추지 않고(P0·P1은 그대로 막는다) 제외를 넓히지도 않는다.
+- **만들지 않은 것:** 기다리는 시간은 고정 설정이고 배우지 않는다. 저장소가 조용해져도 DISPATCH 줄과 서버 로그(`[atc] codex lane`) 말고는 알리지 않는다.
+
 ### 9.3 Codex 지적의 등급: P3만 남은 head는 막지 않는다 (2026-09-27, ATC-28)
 
 vocado #394는 수정 → `@codex review` → 더 작은 새 지적(P2, 그다음 P3) → 수정 → …을 되풀이했다. Codex는 리뷰할 때마다 조금 더 작은 것을 찾는데, 착륙 규칙은 head의 Codex COMMENTED 리뷰를 등급과 상관없이 `review-findings`로 막았다. SUPERVISOR는 P3만 남은 지적은 착륙을 막지 않는다고 정했다.
@@ -448,6 +460,8 @@ vocado `main`의 `strict` 때문에 머지가 있을 때마다 다른 열린 PR�
   - **Codex가 한도이거나 30분 안에 답이 없으면**(`escalateOf`): 그 head를 곧바로 REVIEW(DeepSeek) 대기열로 넘긴다(`buildPulls`의 `fastTrack`, `codexUnavailable.why = "autoland"`, "AUTOLAND 재리뷰 — Codex 30분 무응답"). head 뒤에 Codex가 이미 답했으면 넘기지 않는다.
   - ATC-27·30은 그대로다: `buildPulls`가 지금 스위치로 외부 리뷰 제외를 다시 본다. 제외 PR은 대기열에 넣지 않고, 스트립에 "AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(migrations)"로 보인다.
   - head마다 한 번(`autoland-state.json`의 `reviewRequests`). 기록은 `op: "review-request"`에 `via`(`codex`, `deepseek`, `supervisor`). 리뷰가 붙을 때까지 스트립에 "AUTOLAND: review requested (codex|deepseek)"가 보인다. AUTOLAND가 `update`나 `merge`이고 그 AIRPORT가 GROUND STOP이 아닐 때만 한다.
+
+- **자동 revert (ATC-351)**: `autoRevert` 스위치가 `on`이고(설정 창, **기본 on**, ATC-394) 실패한 체크를 같은 head에서 다시 돌려도 빨갛고 그 PR 자신의 head가 초록이었으면 AUTOLAND가 머지해 `main`을 빨갛게 만든 머지의 revert PR이 열리고, AUTOLAND는 GROUND STOP이 걸린 중에도 그 PR을 머지한다(나가는 길이라서. 리뷰·CI·제외 목록은 그대로고 FLIGHT는 없어도 된다). 걸린 stop은 다음 head가 초록이면 atc가 푼다. 마이그레이션·`user` 등급 경로를 고친 PR과 사람의 머지는 자동으로 되돌리지 않는다(`hold` 줄, DUTY가 본다). 1시간 안에 새 빨간 head가 둘이면 AUTOLAND `merge`를 `update`로 내리고 SUPERVISOR가 스위치를 다시 고를 때까지 레인이 멈춘다. 규칙 전체: [autonomy.ko.md](autonomy.ko.md) "C4 구현 결과".
 
 #### 머지 리뷰: atc에 기록한 리뷰가 착륙 리뷰다 (ATC-328)
 
@@ -535,6 +549,8 @@ S2는 구현돼 있고 SCHEDULE `mode`(`~/.local/state/atc/schedule.json`, 기�
 승인되거나 release됐는데 3일 안에 적용되지 않은 작업은 만료된다. 호출은 계획 필드만 건드린다: 라벨, 우선순위, 새 이슈의 제목·본문·프로젝트·관계, 댓글. 상태나 담당자는 절대 아니다.
 
 ## CROSSCHECK
+
+> **은퇴(ATC-371).** CROSSCHECK 세션은 더 띄우거나 살려 두거나 재시작하지 않고, 서버의 어떤 규칙도 그 mark를 기다리지 않는다. 이 절은 있던 그대로의 역할을 기록으로 남긴 것이고, 옛 mark는 읽힌다.
 
 그림자 판정(DISPATCH 제안과 SCHEDULE 초안)은 SUPERVISOR가 하나씩 정하므로 부담이 크다. 판정을 모델에 넘기면 게이트(판정 20건, 80%)가 모델 둘이 서로 맞는지를 재게 되고, 그건 아무 뜻이 없다. 그래서 일을 나눈다.
 

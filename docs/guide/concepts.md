@@ -21,7 +21,7 @@
 | 상태 | 뜻 |
 |---|---|
 | AIRBORNE | 세션이 일하는 중 |
-| HOLDING | 대기 중인데 끝나지 않은 FLIGHT의 STAND를 쥐고 있음 |
+| HOLDING | 대기 중인데 끝나지 않은 FLIGHT의 STAND를 쥐고 있음. PR이 열려 착륙만 기다리는 FLIGHT는 슬롯을 쓰지 않아, 그 AIRCRAFT는 다음 FLIGHT를 새 STAND에서 받는다(기다리는 PR은 AIRCRAFT마다 2건까지, `dispatch.json`의 `slots.waitingPr`) |
 | PARKED | 대기 중, 쥔 STAND 없음 — 새 일을 받을 수 있음 |
 | NORDO | 세션이 죽었는데 점유가 남음 |
 | AOG | FLEET에서 잠시 운항 중지로 둠(배정 안 함) |
@@ -81,7 +81,7 @@ CLEARED TO LAND 조건 — 모두 PR의 **최신 커밋(head)** 기준이다.
 - base가 main이 아닌 PR(쌓인 PR)은 CLEARED가 되지 않고 STACKED로 보인다(ATC-29). 아래 PR부터 main에 들어간 뒤 base를 main으로 바꿔야 착륙할 수 있다. FLIGHT의 PR이 main이 아닌 브랜치에 머지돼 main에 닿지 않으면 STRANDED 경보가 선다.
 - 지적에는 P0~P3 배지가 붙는다(표시가 없으면 P2로 본다). head의 지적이 **모두 P3**이고 스레드마다 resolve했거나 답글을 달았으면 막지 않는다(ATC-28). 스트립에 "Codex P3 2건(해결됨) — 착륙 막지 않음"이 뜨고, LAND 글에 남은 P3가 적힌다. P0~P2가 하나라도 있으면 전처럼 막는다.
 - 사람(Codex·작성자 아닌 리뷰어)의 COMMENTED 리뷰는 APPROVED처럼 통과로 친다.
-- Codex가 한도에 걸리면 "usage limits" 댓글을 단다. 이렇게 head 뒤에 한도 댓글이 있거나 6시간 넘게 Codex가 말이 없으면 CODEX UNAVAILABLE이다. 그때는 착륙 리뷰 세션(REVIEW, Claude Sonnet)이 diff를 리뷰하고, 현재 head에 P0·P1 없는 pass를 남기면 그것이 리뷰가 된다. 스트립에 "REVIEW: SONNET (Codex 한도)"로 보인다. 기다리는 동안은 "Codex 한도 · 착륙 리뷰 대기"다. 새 push는 새 리뷰가 필요하고, Codex가 돌아와 리뷰하면 Codex가 이긴다.
+- Codex가 한도에 걸리면 "usage limits" 댓글을 단다. 이렇게 head 뒤에 한도 댓글이 있거나 6시간 넘게 Codex가 말이 없으면 CODEX UNAVAILABLE이다. 그때는 착륙 리뷰 세션(REVIEW, Claude Sonnet)이 diff를 리뷰하고, 현재 head에 P0·P1 없는 pass를 남기면 그것이 리뷰가 된다. 스트립에 "REVIEW: SONNET (Codex 한도)"로 보인다. 기다리는 동안은 "Codex 한도 · 착륙 리뷰 대기"다. 새 push는 새 리뷰가 필요하고, Codex가 돌아와 리뷰하면 Codex가 이긴다. Codex가 저장소 전체에서 30분 넘게(`ATC_CODEX_LANE_SILENT_MIN`) 어느 PR에도 말이 없고 그 동안 기다린 PR이 있으면, 그 저장소의 기다리는 PR과 새 head는 6시간을 기다리지 않고 곧바로 REVIEW로 갑니다(스트립 "Codex 저장소 무응답"). Codex가 다시 말하면 새 head는 Codex로 돌아갑니다. 비밀 경로나 보안 규칙으로 REVIEW가 받지 않는 PR은 전처럼 SUPERVISOR 몫입니다. REVIEW 한 레인으로만 착륙한 PR은 DISPATCH 탭 "한 레인 착륙"에 날짜별로 셉니다.
 - 설정 창 AUTOMATION → LANDING의 REVIEW 줄을 deepseek(옛 이름, 뜻은 "보냄")으로 바꾸면(기본 exclude) 아래 보안 규칙에만 걸린 PR도 REVIEW(Claude Sonnet)에게 가고, pass면 착륙한다("REVIEW: SONNET (보안, Codex 한도)"). `.env`·비밀 경로와 FLIGHT 없는 PR은 어느 경우에도 가지 않는다(ATC-30).
 - 외부 모델에 보내지 않는 PR: FLIGHT가 없는 PR, FLIGHT의 `rating:SEC`·Risk: Security·Rights·Contract 라벨, 그리고 라벨이 없어도 보안 diff(`supabase/migrations`·`functions`, `*.sql`, auth·session·admission, RLS·policy, middleware, `.env`·비밀 경로)나 제목·본문의 보안 키워드(security, privilege, RLS, grant, revoke, EXECUTE, definer, admission, auth, ACL, "use server", exposure). 스트립에 "외부 리뷰 제외 — migrations"처럼 뜨고, Codex나 SUPERVISOR 리뷰를 기다린다. 외부 리뷰의 pass가 이미 있어도 착륙 근거가 되지 않는다.
 - PR 브랜치에 `voc-<번호>`가 없으면 PR 제목 끝의 `(VOC-번호)`로 FLIGHT를 찾는다.

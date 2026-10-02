@@ -1,18 +1,12 @@
-import type { Hono } from "hono";
 import { DONE_STATES } from "./dispatch.ts";
-import { targetsOf } from "./following.ts";
-import { type LogEntry, loadLogbook } from "./logbook.ts";
-import { parentKeysOf, type Snapshot, type Ticket } from "./model.ts";
-import { dayKey } from "./network.ts";
-import { allProposals } from "./proposals.ts";
-import { loadLinearProjects, type Milestone, type ProjectGoal } from "./sources/linear-projects.ts";
-import { atfmView } from "./atfm-run.ts";
-import { loadDispatchConfig } from "./dispatch.ts";
-import { gateOf as dispatchGateOf, readiness2bNow } from "./proposals.ts";
-import { gateOf as scheduleGateOf, loadScheduleMode, loadScheduleOps } from "./schedule.ts";
-import { criterionCheck, type GateCheck, type GateFacts } from "./waypoint-gates.ts";
+import type { LogEntry } from "./logbook.ts";
+import { parentKeysOf, type Ticket } from "./model.ts";
+import { dayKey } from "./day-key.ts";
+import type { Milestone, ProjectGoal } from "./sources/linear-projects.ts";
+import type { GateCheck } from "./waypoint-gates.ts";
 
 // ROUTE MAP: ROUTE(Linear 프로젝트)마다 WAYPOINT(마일스톤)와 그 FLIGHT, ETA. 읽기 전용 순수 함수.
+// 입력을 읽는 쪽은 routes-load.ts, 게이트 사실과 HTTP는 routes-run.ts(순환 import를 끊으려고 나눴다, ATC-337)
 // 설계: docs/routes.md
 
 const DAY = 86_400_000;
@@ -280,56 +274,4 @@ export function buildRoutes(i: RoutesInput): Omit<Routes, "at" | "ok" | "error">
   const load = (r: Route) => r.open.active + r.open.blocked + r.open.planned;
   routes.sort((a, b) => Number(!a.waypoints.length) - Number(!b.waypoints.length) || load(b) - load(a) || a.project.localeCompare(b.project));
   return { milestones: i.milestones !== null, windowDays: RATE_DAYS, routes };
-}
-
-// ---- 입출력 ----
-
-async function routesInput(s: Snapshot, entries: LogEntry[], now: number): Promise<RoutesInput & { lp: Awaited<ReturnType<typeof loadLinearProjects>> }> {
-  const lp = await loadLinearProjects();
-  const aircraftOf = new Map<string, string>();
-  for (const t of targetsOf({ proposals: allProposals(), tickets: s.tickets })) if (t.aircraft) aircraftOf.set(t.flight, t.aircraft);
-  return { lp, now, goals: lp.ok ? lp.projects : null, milestones: lp.milestones, tickets: s.tickets, entries, aircraftOf };
-}
-
-// DISPATCH BRIEFING의 사실 줄(ROUTE·WAYPOINT)이 쓴다
-export async function loadRoutes(s: Snapshot, entries: LogEntry[], now: number): Promise<Route[]> {
-  return buildRoutes(await routesInput(s, entries, now)).routes;
-}
-
-// 완료 기준에 이을 atc 게이트의 지금 상태(6단계). ATFM 켜는 조건 계산이 무거워 60초 캐시
-const FACTS_TTL_MS = 60_000;
-let facts: { at: number; value: GateFacts } | null = null;
-function gateFactsNow(s: Snapshot, now: number): GateFacts {
-  if (facts && now - facts.at < FACTS_TTL_MS) return facts.value;
-  const proposals = allProposals();
-  const dispatchGate = dispatchGateOf(proposals);
-  const value: GateFacts = {
-    dispatchGate,
-    scheduleGate: scheduleGateOf(loadScheduleOps()),
-    readiness: readiness2bNow(dispatchGate, now).items,
-    dispatchMode: loadDispatchConfig().mode,
-    scheduleMode: loadScheduleMode(),
-    autoTurnOn: atfmView(s, undefined, now).auto.turnOn,
-    recalled: proposals.filter((p) => p.timeline.recalled).length,
-  };
-  facts = { at: now, value };
-  return value;
-}
-
-export function mountRoutes(app: Hono, getSnapshot: () => Promise<Snapshot>) {
-  app.get("/api/routes", async (c) => {
-    const now = Date.now();
-    const s = await getSnapshot();
-    const input = await routesInput(s, loadLogbook(), now);
-    // 사실은 게이트와 맞는 기준이 있을 때만 모은다
-    let f: GateFacts | null = null;
-    input.checkOf = (text) => criterionCheck(text, () => (f ??= gateFactsNow(s, now)));
-    const body: Routes = {
-      at: new Date(now).toISOString(),
-      ok: input.lp.ok,
-      error: input.lp.error ?? input.lp.milestonesError,
-      ...buildRoutes(input),
-    };
-    return c.json(body);
-  });
 }

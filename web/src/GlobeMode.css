@@ -1,0 +1,45 @@
+/* GLOBE 보기 모드(ATC-381): 현재 화면 위의 꽉 찬 창. 색은 :root 토큰만 */
+.gm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+}
+.gm-head {
+  position: relative;
+  z-index: var(--z-raised);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--gutter);
+  border-bottom: 1px solid var(--line);
+  background: var(--chrome);
+}
+.gm-title {
+  font: 700 var(--text-xs) var(--mono);
+  letter-spacing: 0.16em;
+}
+.gm-close {
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  min-height: 32px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  cursor: pointer;
+}
+.gm-close:hover {
+  background: var(--panel-2);
+}
+.gm-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-3) var(--gutter);
+}

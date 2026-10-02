@@ -400,7 +400,7 @@ function Trends({ days, gates, windowDays }: { days: DayRow[]; gates: GateRow[];
     { code: "DISPATCH", label: "일치율(누적)", values: gates.map((g) => g.dispatchAgreement), fmt: pct, max: 1, running: true },
     { code: "SCHEDULE", label: "결정", values: gates.map((g) => g.scheduleDecided), fmt: count, sum: true },
     { code: "SCHEDULE", label: "일치율(누적)", values: gates.map((g) => g.scheduleAgreement), fmt: pct, max: 1, running: true },
-    { code: "CROSSCHECK", label: "일치(누적)", values: gates.map((g) => g.crosscheckMatch), fmt: pct, max: 1, running: true },
+    { code: "CROSSCHECK", label: "일치(누적, 은퇴 — 옛 기록)", values: gates.map((g) => g.crosscheckMatch), fmt: pct, max: 1, running: true },
   ];
   const noDays = !days.length || days.every((d) => !d.arrived && !d.reverts && d.landingWaitMedianMin === null);
   const noGates =
@@ -422,10 +422,10 @@ function Trends({ days, gates, windowDays }: { days: DayRow[]; gates: GateRow[];
         </div>
       )}
       <h3 className="label nw-sub">
-        GATES <em>DISPATCH·SCHEDULE 결정, 일치율, CROSSCHECK 일치</em>
+        GATES <em>DISPATCH·SCHEDULE 결정, 일치율, CROSSCHECK 일치(은퇴 — 옛 기록)</em>
       </h3>
       {noGates ? (
-        <p className="empty nw-empty">최근 {windowDays}일 DISPATCH·SCHEDULE 결정과 CROSSCHECK 기록이 없음.</p>
+        <p className="empty nw-empty">최근 {windowDays}일 DISPATCH·SCHEDULE 결정과 옛 CROSSCHECK 기록이 없음.</p>
       ) : (
         <div className="mx-trends">
           {gate.map((s) => (

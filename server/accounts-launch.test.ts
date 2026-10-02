@@ -151,17 +151,28 @@ esac
 chmodSync(BIN, 0o755);
 config.claudeBin = BIN;
 
-// 그 폴더의 daemon이 떠 있는 것처럼: 명령줄에 daemon이 든 프로세스를 하나 띄우고 daemon.status.json에 그 pid를 적는다
-const fakeDaemon = (dir: string) => {
+// 그 폴더의 daemon이 떠 있는 것처럼: 명령줄에 daemon이 든 프로세스를 하나 띄우고 daemon.status.json에 그 pid를 적는다.
+// spawn이 돌려준 직후에는 아직 exec 전이라 명령줄이 부모의 것일 수 있다(daemonUpIn이 그것을 읽어 간헐로 실패했다, ATC-375): 명령줄에 daemon이 보일 때까지 기다린 뒤 status를 쓴다
+const fakeDaemon = async (dir: string) => {
   const k = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)", "daemon"], { stdio: "ignore" });
   kids.push(k);
+  assert.ok(k.pid, "fake daemon을 띄우지 못함");
+  for (let i = 0; ; i++) {
+    let cmd = "";
+    try {
+      cmd = readFileSync(`/proc/${k.pid}/cmdline`, "utf8");
+    } catch {}
+    if (cmd.split("\0").includes("daemon")) break;
+    assert.ok(i < 500, "fake daemon의 exec를 기다리다 5초가 지남");
+    await new Promise((r) => setTimeout(r, 10));
+  }
   mkdirSync(join(dir, "jobs"), { recursive: true });
   writeFileSync(join(dir, "daemon.status.json"), JSON.stringify({ supervisorPid: k.pid }));
 };
 
 test("agentRowsOf: 세 폴더의 줄을 ACCOUNT를 붙여 합친다. daemon이 없는 폴더는 부르지 않고, 못 읽은 폴더는 failed에 라벨만", async () => {
   mkdirSync(D, { recursive: true });
-  fakeDaemon(A1);
+  await fakeDaemon(A1);
   const r1 = await agentRowsOf(FOLDERS.filter((f) => f.label !== "acct-3"));
   assert.deepEqual(r1.rows.map((x) => `${x.name}:${x.account}`), ["TEAM_ONE:acct-1", "TEAM_TWO:acct-1", "TEAM_D:acct-2"]);
   assert.deepEqual(r1.failed, []);
@@ -170,7 +181,7 @@ test("agentRowsOf: 세 폴더의 줄을 ACCOUNT를 붙여 합친다. daemon이 �
   assert.deepEqual(none.rows.length, 3);
   assert.equal(readFileSync(LOG, "utf8").includes(`${A3}|`), false);
   // acct-3의 daemon이 떠 있는데 목록을 못 읽으면 failed
-  fakeDaemon(A3);
+  await fakeDaemon(A3);
   const three = await agentRowsOf(FOLDERS);
   assert.deepEqual(three.rows.map((x) => x.account).sort(), ["acct-1", "acct-1", "acct-2"]);
   assert.deepEqual(three.failed, ["acct-3"]);

@@ -18,7 +18,7 @@ import {
   screenRelease,
   type ReleaseLine,
 } from "./release.ts";
-import { mountReleases, releaseFromChat, releaseView, type ReleaseDeps } from "./release-run.ts";
+import { mountReleases, newProposalsOf, releaseFromChat, releaseView, type ReleaseDeps } from "./release-run.ts";
 
 const BODY = "## Goal\n\nShip it.\n\n## Done when\n\n* A\n* B\n\n## K effects\n\n* K3: tightening\n\n## Context\n\nnotes";
 
@@ -197,4 +197,69 @@ test("DUTY 채팅 글: RELEASE 줄이 있으면 duty-chat 채널로 적는다", 
   assert.deepEqual(keys, ["ATC-1"]);
   assert.ok(h.lines[0]!.op === "release" && (h.lines[0] as { channel: string }).channel === "duty-chat");
   assert.deepEqual(await releaseFromChat("ATC-1 어때요?", h.deps.snapshot, h.deps), []);
+});
+
+// ── RELEASE 화면(ATC-376) ──
+const backlog = (key: string, over: Partial<Ticket> = {}) => tk(key, { state: "Backlog", stateType: "backlog", blockedBy: ["ATC-90"], ...over });
+const done = (key: string) => tk(key, { state: "Done", stateType: "completed" });
+
+test("화면 자료: READY Backlog(막는 FLIGHT가 모두 끝난 것)만 후보, K 효과를 클릭 전에 싣는다", () => {
+  const h = harness([]);
+  const s = snap([done("ATC-90"), backlog("ATC-1", { kEffects: "K3: tightening" }), backlog("ATC-2", { blockedBy: [] }), backlog("ATC-3", { blockedBy: ["ATC-91"] }), tk("ATC-91", { state: "Started", stateType: "started" })]);
+  const v = releaseView(s, { ...h.deps, proposals: () => [] });
+  assert.deepEqual(v.ready.map((r) => [r.key, r.kEffects, r.state]), [["ATC-1", "K3: tightening", "ready"]]);
+});
+
+test("화면 자료: 에이전트 제안(SCHEDULE NEW 초안)과 최근 발권·채널별 7일 수", () => {
+  const h = harness([]);
+  const s = snap([tk("ATC-5", { title: "Five" }), tk("ATC-6")]);
+  const lines: ReleaseLine[] = [
+    rel("ATC-5", "hash-ATC-5", { at: "2026-10-01T10:00:00.000Z" }),
+    rel("ATC-6", "hash-ATC-6", { at: "2026-10-01T11:00:00.000Z", channel: "duty-chat" }),
+    rel("ATC-7", "x", { at: "2026-09-01T00:00:00.000Z", channel: "attested", session: "ENGINEERING" }),
+  ];
+  const proposals = newProposalsOf([
+    { id: "S-1", kind: "NEW", status: "agreed", reason: "r", payload: { title: "New thing", body: "## Goal\n\ng\n\n## K effects\n\nK2: switch", priority: 2 } },
+    { id: "S-2", kind: "NEW", status: "rejected", reason: "r", payload: { title: "Gone", body: "" } },
+    { id: "S-3", kind: "CLASSIFY", status: "draft", reason: "r", payload: {} },
+  ]);
+  const v = releaseView(s, { ...h.deps, lines: () => lines, proposals: () => proposals });
+  assert.deepEqual(v.proposals.map((p) => [p.id, p.title, p.kEffects, p.priority]), [["S-1", "New thing", "K2: switch", 2]]);
+  assert.deepEqual(v.recent.map((r) => [r.key, r.channel, r.title]), [["ATC-6", "duty-chat", "ATC-6"], ["ATC-5", "screen", "Five"], ["ATC-7", "attested", null]]);
+  assert.deepEqual(v.channels, { screen: 1, "duty-chat": 1, attested: 0 });
+});
+
+function fireHarness(tickets: Ticket[], moveToTodo: NonNullable<ReleaseDeps["moveToTodo"]>) {
+  const h = harness(tickets);
+  h.deps.moveToTodo = moveToTodo;
+  const app = new Hono();
+  mountReleases(app, h.deps.snapshot, h.deps);
+  const post = (body: unknown, headers: Record<string, string> = FROM_SCREEN) =>
+    app.request("/api/releases/fire", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
+  return { h, post };
+}
+
+test("발권 fire: Origin 없으면 403, READY가 아니면 409, 우선순위 없으면 옮기지 않는다", async () => {
+  const moved: string[] = [];
+  const { h, post } = fireHarness([done("ATC-90"), backlog("ATC-1"), backlog("ATC-2", { priority: 0 }), backlog("ATC-3", { blockedBy: [] })], async (k) => (moved.push(k), { ok: true }));
+  assert.equal((await post({ flight: "ATC-1" }, {})).status, 403);
+  assert.equal((await post({ flight: "ATC-3" })).status, 409); // 막는 FLIGHT 없음 = READY 아님
+  const noPrio = await post({ flight: "ATC-2" });
+  assert.equal(noPrio.status, 409);
+  assert.match(((await noPrio.json()) as { error: string }).error, /우선순위/);
+  assert.equal((await post({ flight: "ATC-1", hash: "stale" })).status, 409);
+  assert.deepEqual(moved, []);
+  assert.equal(h.lines.length, 0);
+});
+
+test("발권 fire: Todo로 옮긴 뒤 screen 발권을 적는다. 옮기기가 실패하면 발권도 없다", async () => {
+  const moves: [string, string][] = [];
+  let fail = true;
+  const { h, post } = fireHarness([done("ATC-90"), backlog("ATC-1")], async (k, from) => (moves.push([k, from]), fail ? { ok: false, status: 502, error: "linear down" } : { ok: true }));
+  assert.equal((await post({ flight: "ATC-1", hash: "hash-ATC-1" })).status, 502);
+  assert.equal(h.lines.length, 0);
+  fail = false;
+  assert.equal((await post({ flight: "ATC-1", hash: "hash-ATC-1" })).status, 200);
+  assert.deepEqual(moves, [["ATC-1", "Backlog"], ["ATC-1", "Backlog"]]);
+  assert.deepEqual(h.lines.map((l) => (l.op === "release" ? [l.flight, l.channel, l.via] : l.op)), [["ATC-1", "screen", "click"]]);
 });

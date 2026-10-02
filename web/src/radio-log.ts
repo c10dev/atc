@@ -40,6 +40,12 @@ export function optionsOf(txs: readonly Transmission[], key: "airport" | "aircra
   return [...new Set(txs.map((t) => t[key]).filter((v): v is string => Boolean(v)))].sort(key === "aircraft" ? compareRegistration : undefined);
 }
 
+// 한 FLIGHT의 교신(ATC-379, FLIGHT 서랍): flight가 그 FLIGHT인 호출과 그 호출의 답. 답은 flight 칸이 없을 수 있어 호출 id로 따라간다
+export function flightTx(txs: readonly Transmission[], flight: string): Transmission[] {
+  const calls = new Set(txs.filter((t) => !t.replyTo && t.flight === flight).map((t) => t.id));
+  return txs.filter((t) => (t.replyTo ? calls.has(t.replyTo) || t.flight === flight : calls.has(t.id)));
+}
+
 export interface Thread {
   tx: Transmission;
   replies: Transmission[];
@@ -104,9 +110,9 @@ export function linksOf(t: Transmission): Link[] {
   const out: Link[] = [];
   const id = baseId(t.replyTo ?? t.id);
   if (t.pr) out.push({ href: `${REPO_URL}/pull/${t.pr}`, label: `PR #${t.pr}` });
-  else if (/^D-\d+/.test(id)) out.push({ href: "#dispatch", label: id });
+  else if (/^D-\d+/.test(id)) out.push({ href: "#home", label: id });
   else if (/^CC-\d+/.test(id) && t.aircraft) out.push({ href: `#fleet/${encodeURIComponent(t.aircraft)}`, label: id });
-  else if (/^C-\d+/.test(id)) out.push({ href: "#strips", label: id });
+  else if (/^C-\d+/.test(id)) out.push({ href: "#flights", label: id });
   if (t.aircraft && TEAM_REGISTRATION.test(t.aircraft) && !out.some((l) => l.href.startsWith("#fleet/"))) out.push({ href: `#fleet/${encodeURIComponent(t.aircraft)}`, label: t.aircraft });
   return out;
 }

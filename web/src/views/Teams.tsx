@@ -19,13 +19,40 @@ import { attachCommandOf } from "../../../server/session-origin.ts";
 import { ActivityLine, AirportCode, AwayTag, NeedsYou, PendingApproval, SessionPlace } from "../ui.tsx";
 import { type MilestoneData, useMilestones } from "../useMilestones.ts";
 import { FlightProgressBar } from "./FlightProgress.tsx";
-import { HumanCheckQueue, HumanCheckTag } from "./HumanCheck.tsx";
+import { HumanCheckTag } from "./HumanCheck.tsx";
 import "./Teams.css";
 import { apiSend } from "../api.ts";
 
 const BAYS: AircraftStatus[] = ["airborne", "holding", "nordo", "parked"];
 const agentCode = { claude: "CLD", codex: "CDX" } as const;
 
+// FLIGHTS의 목록 보기에 붙는 착륙 순서(ATC-379): STRIPS가 보이던 LANDING SEQUENCE와 GitHub 상태 안내. HUMAN CHECK는 HOME의 큐가 맡는다
+export function FlightsLanding({ snapshot, idx }: { snapshot: Snapshot; idx: Index }) {
+  const pulls = snapshot.pulls ?? [];
+  const github = snapshot.github ?? null;
+  const landing = landingIndex(pulls, snapshot.autoland);
+  const nameOf = (id: string) => {
+    const s = idx.sessionById.get(id);
+    return s ? callsign(s) : id.slice(0, 8);
+  };
+  return (
+    <>
+      {github && !github.enabled && github.reason && (
+        <p className="ls-stale" title={github.reason}>
+          GitHub off · PR 상태를 읽지 않음
+        </p>
+      )}
+      {github?.error && (
+        <p className="ls-stale" title={github.error}>
+          GitHub 조회 실패 · PR 상태가 오래됐을 수 있음
+        </p>
+      )}
+      <LandingSequence pulls={pulls} landing={landing} idx={idx} nameOf={nameOf} />
+    </>
+  );
+}
+
+// 세션마다 스트립(AIRCRAFT bay). FLIGHTS의 목록 보기에서는 접힌 칸에 든다(ATC-379)
 export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; now: number }) {
   const [showAll, setShowAll] = useState(false);
   const all = sortSessions(snapshot.sessions, idx);
@@ -41,9 +68,8 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
   const cleanup = visible.filter((s) => isGateCleanup(s, idx));
   const cleanupIds = new Set(cleanup.map((s) => s.id));
   for (const s of visible) if (!cleanupIds.has(s.id)) bays.get(aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id))))!.push(s);
-  // 옛 서버 스냅샷에는 pulls·github가 없다
+  // 옛 서버 스냅샷에는 pulls가 없다
   const pulls = snapshot.pulls ?? [];
-  const github = snapshot.github ?? null;
   const landing = landingIndex(pulls, snapshot.autoland);
   const ms = useMilestones(snapshot.at.slice(0, 16)); // 진행 막대(ATC-211): 스냅샷이 바뀌는 분마다 한 번
 
@@ -58,18 +84,6 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
           PARKED AIRCRAFT 포함
         </label>
       </div>
-      {github && !github.enabled && github.reason && (
-        <p className="ls-stale" title={github.reason}>
-          GitHub off · PR 상태를 읽지 않음
-        </p>
-      )}
-      {github?.error && (
-        <p className="ls-stale" title={github.error}>
-          GitHub 조회 실패 · PR 상태가 오래됐을 수 있음
-        </p>
-      )}
-      <HumanCheckQueue pulls={pulls} idx={idx} nameOf={nameOf} />
-      <LandingSequence pulls={pulls} landing={landing} idx={idx} nameOf={nameOf} />
       {BAYS.map((bay) => {
         const sessions = bays.get(bay)!;
         if (!sessions.length) return null;
@@ -302,7 +316,7 @@ function blocksTip(pr: PullRequest): string {
 }
 
 // CLEARED TO LAND(호박) 또는 APPROACH(시안) + 막는 조건 수
-function LandingBadge({ pr }: { pr: PullRequest }) {
+export function LandingBadge({ pr }: { pr: PullRequest }) {
   const cleared = pr.landing === "CLEARED";
   const n = pr.blocks.length;
   // 쌓인 PR(base가 기본 브랜치가 아님, ATC-29): CLEARED가 되지 않는다. 사슬을 함께 보인다
@@ -334,7 +348,7 @@ function ExtReviewTag({ pr }: { pr: PullRequest }) {
   const m = pr.extReview;
   if (!m) return null;
   // 스위치로 보낸 보안 PR(ATC-30)은 "보안, "을 붙여 외부 리뷰에 기댄 착륙임을 보인다
-  const codex = `${m.security ? "보안, " : ""}${pr.codexUnavailable?.why === "silent" ? "Codex 무응답" : pr.codexUnavailable?.why === "autoland" ? "AUTOLAND 재리뷰" : pr.codexUnavailable?.scope === "repo" ? `Codex 한도(저장소, ${pr.codexUnavailable.since.slice(11, 16)}Z~)` : "Codex 한도"}`;
+  const codex = `${m.security ? "보안, " : ""}${pr.codexUnavailable?.why === "silent" ? "Codex 무응답" : pr.codexUnavailable?.why === "autoland" ? "AUTOLAND 재리뷰" : pr.codexUnavailable?.why === "lane" ? `Codex 저장소 무응답(${pr.codexUnavailable.since.slice(11, 16)}Z~)` : pr.codexUnavailable?.scope === "repo" ? `Codex 한도(저장소, ${pr.codexUnavailable.since.slice(11, 16)}Z~)` : "Codex 한도"}`;
   const r = m.review;
   const who = r ? reviewerOf(r.family) : "";
   const text =

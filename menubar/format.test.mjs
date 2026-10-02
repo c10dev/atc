@@ -20,7 +20,7 @@ test("빈 알림: 제목 ✈ 0과 FUEL, 색 없음, 항목 자리에 안내", ()
   assert.equal(m[1], "---");
   assert.equal(m[2], "지금 알릴 것 없음");
   assert.ok(m.includes(`DISPATCH 승인 대기 0 | href=${BASE}/#dispatch`));
-  assert.ok(m.includes(`RTS ok 15:21Z · aaaaaaa → bbbbbbb | href=${BASE}/#radar`));
+  assert.ok(m.includes(`RTS ok 15:21Z · aaaaaaa → bbbbbbb | href=${BASE}/#home`));
   assert.ok(m.includes(`일하는 중: AIRCRAFT 2 · 관제 세션 1 | href=${BASE}/#fleet`));
   assert.deepEqual(m.slice(-2), [`Open atc | href=${BASE}/`, "Refresh | refresh=true"]);
 });
@@ -75,7 +75,7 @@ test("한글 문구 속 |는 SwiftBar 구분자라 막는다: 제목 줄에 ` | 
 test("한 등급이 15개를 넘으면 15개만 펼치고 나머지는 한 줄로", () => {
   const m = menu(Array.from({ length: 20 }, (_, n) => item(`c${n}`, "caution", { text: `항목 ${n}` })), withCounts(0, 20, 0));
   assert.equal(m.filter((l) => l.startsWith("항목 ")).length, 15);
-  assert.ok(m.includes(`외 5개 — atc에서 보기 | href=${BASE}/#radar`));
+  assert.ok(m.includes(`외 5개 — atc에서 보기 | href=${BASE}/#home`));
   assert.ok(m.includes("CAUTION 20 | color=#FF9500"));
 });
 
@@ -128,4 +128,12 @@ test("swiftbar://notify 주소: 플러그인·제목·본문·href, 한글과 |�
   assert.equal(u.searchParams.get("href"), `${BASE}/#airports`);
   assert.equal(new URL(notifyUrl({ plugin: "atc", item: item("k", "advisory", { cue: "call" }) })).searchParams.get("title"), "atc ADVISORY CALL");
   assert.ok(!url.includes("+"));
+});
+
+test("마지막 본 뒤(ATC-383): 서버의 한 줄을 그대로 보이고, 조용하거나 옛 서버면 줄이 없다", () => {
+  const loud = menu([], { sinceLook: { line: "발권 2 · 막힘 1" } });
+  assert.equal(loud[2], `마지막 본 뒤: 발권 2 · 막힘 1 | href=${BASE}/`);
+  assert.equal(loud[3], "---");
+  assert.equal(loud[4], "지금 알릴 것 없음");
+  assert.deepEqual(menu([], { sinceLook: { line: "" } }), menu([]));
 });

@@ -18,10 +18,14 @@ import { loadRecycle, RECYCLE_MODES, type RecycleMode, recycleCapOk } from "./co
 import { setRecycleAuto, setRecycleCaps, setRecycleMode } from "./control-recycle-run.ts";
 import { TTS_ENGINES, VOICE_NAME } from "./tts.ts";
 import { setMccMode } from "./mcc-run.ts";
+import { AUTO_REVERT_MODES, type AutoRevertMode, loadAutoRevert, readAutoRevertLines, type RevertDay, revertDaysOf } from "./auto-revert.ts";
+import { setAutoRevertMode, stoppedAirports } from "./auto-revert-run.ts";
 import { type DutyConfig, loadDutyConfig } from "./duty-config.ts";
 import { dutyAccountPatchOf, effectiveDutyFolder } from "./duty-account.ts";
 import { setDutyConfig } from "./duty-run.ts";
 import { fromThisApp } from "./origin.ts";
+import { AUTO_SWITCHES, type AutoSwitch } from "./autonomy-auto.ts";
+import { loadAutoSwitch, saveAutoSwitch } from "./autonomy-auto-run.ts";
 import { resetTicketPattern } from "./sources/git.ts";
 import { resetLinear } from "./sources/linear.ts";
 
@@ -46,11 +50,15 @@ export interface ServerSettings {
   fuel: { hold: boolean; infoPct: number; holdPct: number };
   // 일치 기반 자동 승인(ATC-334): dispatch.json의 autoApprove(ASSIGN·SCHEDULE 초안)와 autoApproveLaunch(launch 카드). 기본 off. 상한은 dispatch.json에서만 바꾼다
   staleStop?: "on" | "off"; // STALE STOP(ATC-369): dispatch.json staleStop
-  dispatchAuto: { auto: "off" | "on"; approve: AutoMode; launch: AutoMode; approveMax: number; launchMax: number; backoffMin: number };
+  dispatchAuto: { mode: "shadow" | "approval"; auto: "off" | "on"; approve: AutoMode; launch: AutoMode; approveMax: number; launchMax: number; backoffMin: number };
+  // SCHEDULE·FLEET PLAN 자동 적용(ATC-370): schedule.json·fleet-plan.json의 auto(기본 on). 사람 판정 없이 서버가 적용한다. 끄는 것은 SUPERVISOR만
+  autonomyAuto: { schedule: AutoSwitch; fleetPlan: AutoSwitch };
   // AUTOLAND(ATC-34): autoland.json의 스위치와 맡은 AIRPORT, 걸린 GROUND STOP
   autoland: { mode: AutolandMode; reviewedSecurity: ReviewedSecurity; airports: string[]; applicationCheck: string; groundStops: { airport: string; sha: string; failing: string[]; at: string }[]; applicationCheckWarnings: CheckWarning[] };
   // MCC(docs/mcc.md): mcc.json의 스위치와 맡은 AIRPORT
   mcc: { mode: MccMode; airport: string };
+  // 자동 되돌림(ATC-351): auto-revert.json의 스위치와 breaker가 멈춘 AIRPORT. 기본 on(ATC-394)
+  autoRevert: { mode: AutoRevertMode; stopped: { airport: string; at: string; detail: string }[]; days: RevertDay[] }; // days: 최근 7일의 날짜별 revert·flake·misfire 수(ATC-394)
   // FLEET PLAN REPOSITION(ATC-179): fleet-plan.json. 기본 shadow. auto는 ⚠(하루 dailyMax 상한, flapping이면 approval로 돌아옴)
   fleetPlan: { reposition: RepositionMode; repositionDailyMax: number };
   // CONTROL RECYCLE(ATC-166): control-recycle.json. 기본 off. caps는 세션 이름 → CAP 토큰(null이면 재시작 안 함)
@@ -59,7 +67,7 @@ export interface ServerSettings {
   // 음성 콜아웃(ATC-140): 고른 엔진과 목소리(.env.local). 설치된 목소리 목록은 GET /api/voice/status
   voice: { engine: string; voice: string };
   // DUTY(ATC-220): duty.json. 기본 꺼짐. 켜면 SUPERVISOR가 첫 글을 보낼 때 이 서버가 `claude -p`를 띄운다(ACCOUNT의 FUEL을 쓴다)
-  duty: Pick<DutyConfig, "enabled" | "account" | "idleMin" | "charter"> & { accountWarning: string | null }; // accountWarning: 등록부에 없는 ACCOUNT라 ~/.claude로 돈다(ATC-242)
+  duty: Pick<DutyConfig, "enabled" | "account" | "idleMin" | "charter" | "review"> & { accountWarning: string | null }; // accountWarning: 등록부에 없는 ACCOUNT라 ~/.claude로 돈다(ATC-242)
   judges: { jev: { mode: JudgeMode; engine: "stub" | "jev"; apiKeySet: boolean; lastRunAt: string | null; lastError: string | null; judged: number } };
 }
 
@@ -79,7 +87,10 @@ export interface SettingsPatch {
   autoApproveLaunch?: AutoMode; // 위와 같다. launch 카드를 서버가 승인하고 LAUNCH한다
   staleStop?: "on" | "off"; // dispatch.json에 쓴다(ATC-369). 끝난 FLIGHT의 PENDING·HUNG AIRCRAFT를 30분 뒤 서버가 멈춘다. SUPERVISOR만: 이 화면 Origin이 있어야 받는다(atcctl 명령은 없다, K3)
   autoDispatch?: "off" | "on"; // dispatch.json에 쓴다(ATC-367, K3). 켜면 서버가 필터·상한을 통과한 ASSIGN·launch를 CROSSCHECK·사람 없이 승인한다. SUPERVISOR만(이 화면 Origin), atcctl 명령 없음
+  scheduleAuto?: AutoSwitch; // schedule.json의 auto(ATC-370). SUPERVISOR만: 이 화면 Origin이 있어야 받는다(atcctl 명령은 없다, K3)
+  fleetPlanAuto?: AutoSwitch; // fleet-plan.json의 auto(ATC-370). 위와 같다
   autolandMode?: AutolandMode; // autoland.json에 쓴다(ATC-34). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
+  autoRevert?: AutoRevertMode; // auto-revert.json에 쓴다(ATC-351). SUPERVISOR만: 이 화면 Origin이 있어야 받는다(atcctl 명령은 없다, K3)
   autolandReviewedSecurity?: ReviewedSecurity; // autoland.json의 reviewedSecurity(ATC-328). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   mccMode?: MccMode; // mcc.json에 쓴다(docs/mcc.md). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   controlRecycleMode?: RecycleMode; // control-recycle.json에 쓴다(ATC-166). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
@@ -88,6 +99,7 @@ export interface SettingsPatch {
   fleetPlanReposition?: RepositionMode; // fleet-plan.json에 쓴다(ATC-179). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   dutyCharter?: "off" | "shadow" | "on"; // duty.json의 charter(ATC-233): DUTY가 만든 CHARTER REQUEST를 OCC가 읽는 정도. SUPERVISOR만(이 화면 Origin)
   dutyAccount?: string; // duty.json의 account(ATC-242): 등록부의 라벨만. 바뀌면 다음 글부터 새 대화. SUPERVISOR만
+  dutyReview?: "off" | "on"; // duty.json의 review(ATC-396): 서버가 SUPERVISOR의 글 없이 DUTY 점검 턴을 시작하는 스위치. 기본 on. SUPERVISOR만(이 화면 Origin)
   dutyEnabled?: "off" | "on"; // duty.json에 쓴다(ATC-220). SUPERVISOR만: 이 화면 Origin이 있어야 받는다. 끄면 실행 중인 프로세스가 끝난다
   judgesJev?: JudgeMode; // judges.json에 쓴다(ATC-36). SUPERVISOR만: 이 화면 Origin이 있어야 받는다. 데이터 반출을 켜는 스위치
 }
@@ -123,7 +135,8 @@ export function readServerSettings(): ServerSettings {
     review: { security: loadDispatchConfig().externalReview.security },
     fuel: loadDispatchConfig().fuel,
     staleStop: loadDispatchConfig().staleStop,
-    dispatchAuto: (({ autoDispatch, autoApprove, autoApproveLaunch, autoApproveMax, autoLaunchMax, autoLaunchBackoffMin }) => ({ auto: autoDispatch, approve: autoApprove, launch: autoApproveLaunch, approveMax: autoApproveMax, launchMax: autoLaunchMax, backoffMin: autoLaunchBackoffMin }))(loadDispatchConfig()),
+    dispatchAuto: (({ mode, autoDispatch, autoApprove, autoApproveLaunch, autoApproveMax, autoLaunchMax, autoLaunchBackoffMin }) => ({ mode, auto: autoDispatch, approve: autoApprove, launch: autoApproveLaunch, approveMax: autoApproveMax, launchMax: autoLaunchMax, backoffMin: autoLaunchBackoffMin }))(loadDispatchConfig()),
+    autonomyAuto: { schedule: loadAutoSwitch("schedule"), fleetPlan: loadAutoSwitch("fleetPlan") },
     autoland: (() => {
       const a = loadAutoland();
       return { mode: a.mode, reviewedSecurity: a.reviewedSecurity, airports: a.airports, applicationCheck: a.applicationCheck, groundStops: loadAutolandState().groundStops.map(({ airport, sha, failing, at }) => ({ airport, sha, failing, at })), applicationCheckWarnings: [...getCheckWarnings()] };
@@ -132,10 +145,11 @@ export function readServerSettings(): ServerSettings {
       const m = loadMcc();
       return { mode: m.mode, airport: m.airport };
     })(),
+    autoRevert: { mode: loadAutoRevert().mode, stopped: stoppedAirports().map((l) => ({ airport: l.airport ?? "?", at: l.at, detail: l.detail ?? "" })), days: revertDaysOf(readAutoRevertLines(), 7, Date.now()) },
     controlRecycle: loadRecycle(),
     fleetPlan: { reposition: loadReposition().mode, repositionDailyMax: loadReposition().dailyMax },
     voice: { engine: config.ttsEngine, voice: config.ttsVoice },
-    duty: (({ enabled, account, idleMin, charter }) => ({ enabled, account, idleMin, charter, accountWarning: effectiveDutyFolder(account, accountFolders(), config.claudeDir).warning }))(loadDutyConfig()),
+    duty: (({ enabled, account, idleMin, charter, review }) => ({ enabled, account, idleMin, charter, review, accountWarning: effectiveDutyFolder(account, accountFolders(), config.claudeDir).warning }))(loadDutyConfig()),
     judges: { jev: { mode: loadJudges().jev, engine: engineName(), apiKeySet: Boolean(config.typesafeApiKey), ...judgeStatus.jev } },
   };
 }
@@ -248,15 +262,18 @@ export function mountSettings(app: Hono) {
     // judgesJev는 judges.json에 쓴다(ATC-36)
     // mccMode는 mcc.json에 쓴다(docs/mcc.md)
     // fuelHold는 dispatch.json fuel.hold에 쓴다(ATC-55)
-    const { reviewSecurity, autolandMode, autolandReviewedSecurity, judgesJev, mccMode, fuelHold, autoApprove, autoApproveLaunch, autoDispatch, staleStop, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, dutyEnabled, dutyCharter, dutyAccount, ...rest } = body as Record<string, unknown>;
+    const { reviewSecurity, autolandMode, autolandReviewedSecurity, autoRevert, judgesJev, mccMode, fuelHold, autoApprove, autoApproveLaunch, autoDispatch, staleStop, scheduleAuto, fleetPlanAuto, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, dutyEnabled, dutyCharter, dutyReview, dutyAccount, ...rest } = body as Record<string, unknown>;
     if (fuelHold !== undefined && fuelHold !== "off" && fuelHold !== "on") return c.json({ errors: { fuelHold: `off 또는 on` } }, 400);
     if (autoApprove !== undefined && !AUTO_MODES.includes(autoApprove as AutoMode)) return c.json({ errors: { autoApprove: `off, shadow, on 중 하나` } }, 400);
     if (autoApproveLaunch !== undefined && !AUTO_MODES.includes(autoApproveLaunch as AutoMode)) return c.json({ errors: { autoApproveLaunch: `off, shadow, on 중 하나` } }, 400);
     if (autoDispatch !== undefined && autoDispatch !== "off" && autoDispatch !== "on") return c.json({ errors: { autoDispatch: `off 또는 on` } }, 400);
     if (staleStop !== undefined && staleStop !== "off" && staleStop !== "on") return c.json({ errors: { staleStop: `off 또는 on` } }, 400);
+    if (scheduleAuto !== undefined && !AUTO_SWITCHES.includes(scheduleAuto as AutoSwitch)) return c.json({ errors: { scheduleAuto: `off 또는 on` } }, 400);
+    if (fleetPlanAuto !== undefined && !AUTO_SWITCHES.includes(fleetPlanAuto as AutoSwitch)) return c.json({ errors: { fleetPlanAuto: `off 또는 on` } }, 400);
     if (reviewSecurity !== undefined && !EXTERNAL_REVIEW_SECURITY.includes(reviewSecurity as ExternalReviewSecurity))
       return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
     if (autolandMode !== undefined && !AUTOLAND_MODES.includes(autolandMode as AutolandMode)) return c.json({ errors: { autolandMode: `off, update, merge 중 하나` } }, 400);
+    if (autoRevert !== undefined && !AUTO_REVERT_MODES.includes(autoRevert as AutoRevertMode)) return c.json({ errors: { autoRevert: `off 또는 on` } }, 400);
     if (autolandReviewedSecurity !== undefined && !REVIEWED_SECURITY.includes(autolandReviewedSecurity as ReviewedSecurity)) return c.json({ errors: { autolandReviewedSecurity: `off 또는 delegate` } }, 400);
     if (judgesJev !== undefined && !JUDGE_MODES.includes(judgesJev as JudgeMode)) return c.json({ errors: { judgesJev: `off, replay, shadow 중 하나` } }, 400);
     if (mccMode !== undefined && !MCC_MODES.includes(mccMode as MccMode)) return c.json({ errors: { mccMode: `shadow, land, land+rts, rts 중 하나` } }, 400);
@@ -275,6 +292,7 @@ export function mountSettings(app: Hono) {
     }
     if (fleetPlanReposition !== undefined && !REPOSITION_MODES.includes(fleetPlanReposition as RepositionMode)) return c.json({ errors: { fleetPlanReposition: `off, shadow, approval, auto 중 하나` } }, 400);
     if (dutyEnabled !== undefined && dutyEnabled !== "off" && dutyEnabled !== "on") return c.json({ errors: { dutyEnabled: `off 또는 on` } }, 400);
+    if (dutyReview !== undefined && dutyReview !== "off" && dutyReview !== "on") return c.json({ errors: { dutyReview: `off 또는 on` } }, 400);
     const dutyAcct = dutyAccount === undefined ? null : dutyAccountPatchOf(dutyAccount, observedLabelsOn(accountFolders()) ? accountFolders().map((f) => f.label) : []);
     if (dutyAcct && !dutyAcct.ok) return c.json({ errors: { dutyAccount: dutyAcct.error } }, 400);
     if (dutyCharter !== undefined && dutyCharter !== "off" && dutyCharter !== "shadow" && dutyCharter !== "on") return c.json({ errors: { dutyCharter: `off, shadow, on 중 하나` } }, 400);
@@ -294,7 +312,10 @@ export function mountSettings(app: Hono) {
       saveStaleStop(staleStop);
       if (from !== staleStop) record({ t: new Date().toISOString(), kind: "policy", op: "stale-stop-mode", by: "SUPERVISOR", from, to: staleStop });
     }
+    if (scheduleAuto !== undefined) saveAutoSwitch("schedule", scheduleAuto as AutoSwitch);
+    if (fleetPlanAuto !== undefined) saveAutoSwitch("fleetPlan", fleetPlanAuto as AutoSwitch);
     if (autolandMode !== undefined) setAutolandMode(autolandMode as AutolandMode);
+    if (autoRevert !== undefined) setAutoRevertMode(autoRevert as AutoRevertMode);
     if (autolandReviewedSecurity !== undefined) setReviewedSecurity(autolandReviewedSecurity as ReviewedSecurity);
     if (judgesJev !== undefined) setJudgeMode("jev", judgesJev as JudgeMode);
     if (mccMode !== undefined) setMccMode(mccMode as MccMode);
@@ -304,9 +325,10 @@ export function mountSettings(app: Hono) {
     if (controlRecycleMode !== undefined) setRecycleMode(controlRecycleMode as RecycleMode);
     if (dutyEnabled !== undefined) await setDutyConfig({ enabled: dutyEnabled === "on" });
     if (dutyCharter !== undefined) await setDutyConfig({ charter: dutyCharter });
+    if (dutyReview !== undefined) await setDutyConfig({ review: dutyReview === "on" });
     if (dutyAcct?.ok) await setDutyConfig({ account: dutyAcct.label });
     console.log(
-      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(fuelHold !== undefined ? [`fuel.hold=${fuelHold}`] : []), ...(autoApprove !== undefined ? [`autoApprove=${autoApprove}`] : []), ...(autoApproveLaunch !== undefined ? [`autoApproveLaunch=${autoApproveLaunch}`] : []), ...(staleStop !== undefined ? [`staleStop=${staleStop}`] : []), ...(autoDispatch !== undefined ? [`autoDispatch=${autoDispatch}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(autolandReviewedSecurity !== undefined ? [`autoland.reviewedSecurity=${autolandReviewedSecurity}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : []), ...(dutyEnabled !== undefined ? [`duty.enabled=${dutyEnabled}`] : []), ...(dutyCharter !== undefined ? [`duty.charter=${dutyCharter}`] : []), ...(dutyAcct?.ok ? [`duty.account=${dutyAcct.label}`] : [])].join(", ")}`,
+      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(fuelHold !== undefined ? [`fuel.hold=${fuelHold}`] : []), ...(autoApprove !== undefined ? [`autoApprove=${autoApprove}`] : []), ...(autoApproveLaunch !== undefined ? [`autoApproveLaunch=${autoApproveLaunch}`] : []), ...(staleStop !== undefined ? [`staleStop=${staleStop}`] : []), ...(autoDispatch !== undefined ? [`autoDispatch=${autoDispatch}`] : []), ...(scheduleAuto !== undefined ? [`schedule.auto=${scheduleAuto}`] : []), ...(fleetPlanAuto !== undefined ? [`fleet-plan.auto=${fleetPlanAuto}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(autoRevert !== undefined ? [`autoRevert=${autoRevert}`] : []), ...(autolandReviewedSecurity !== undefined ? [`autoland.reviewedSecurity=${autolandReviewedSecurity}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : []), ...(dutyEnabled !== undefined ? [`duty.enabled=${dutyEnabled}`] : []), ...(dutyCharter !== undefined ? [`duty.charter=${dutyCharter}`] : []), ...(dutyReview !== undefined ? [`duty.review=${dutyReview}`] : []), ...(dutyAcct?.ok ? [`duty.account=${dutyAcct.label}`] : [])].join(", ")}`,
     );
     return c.json(readServerSettings());
   });

@@ -1,0 +1,348 @@
+import { loadAutoland } from "./autoland.ts";
+import { readRecords as readAutolandRecords, setAutolandMode } from "./autoland-run.ts";
+import {
+  appendAutoRevertLine,
+  type AutoRevertLine,
+  fixTextOf,
+  loadAutoRevert,
+  guardPhaseOf,
+  lowerAutoland,
+  lowerMcc,
+  mergedBackOf,
+  needsRerun,
+  pollStepOf,
+  MISFIRE_WINDOW_MS,
+  prOfSubject,
+  readAutoRevertLines,
+  rerunOf,
+  rerunVerdictOf,
+  type RunState,
+  writeRed,
+  type RevertCommit,
+  revertBodyOf,
+  revertDecisionOf,
+  revertTitleOf,
+  saveAutoRevert,
+  type AutoRevertMode,
+  stoppedOf,
+} from "./auto-revert.ts";
+import { loadMcc, readMccRecords, tierOfFiles } from "./mcc.ts";
+import { errText, gh, setMccMode } from "./mcc-run.ts";
+import { migrationPathOf } from "./landing.ts";
+import type { Snapshot } from "./model.ts";
+import { loadFleet } from "./fleet.ts";
+import { append as appendRelayOp, lastAircraftSources, readRelayOps } from "./relay-run.ts";
+import { lastAircraftOf, nextRelayId, relayInputOf } from "./relay.ts";
+import { record } from "./recorder.ts";
+import { readCommitState } from "./sources/github.ts";
+
+// 자동 되돌림의 실행부(ATC-351, docs/autonomy.md C4). 규칙은 순수 함수(auto-revert.ts)가 정하고, 여기서는 읽고 쓰기만 한다.
+// GitHub에 쓰는 것은 둘뿐이다: revert PR 하나(GraphQL revertPullRequest, Draft 아님)와 AIRPORT 사고마다 하나. force-push·브랜치 삭제·admin 우회·GitHub auto-merge는 없다.
+// 스위치 off면 아무것도 읽지 않는다(기본은 on: shadow 없이 처음부터 켜져 있다, ATC-394). 되돌리기 전에 flake 방어: 실패한 체크를 같은 head에서 한 번 다시 돌린다.
+
+const EXISTING = (lines: readonly AutoRevertLine[], op: AutoRevertLine["op"], airport: string, head: string, pr?: number, detail?: string) =>
+  lines.some((l) => l.op === op && l.airport === airport && l.head === head && (pr === undefined || l.pr === pr) && (detail === undefined || l.detail === detail));
+
+let running = false;
+let lastCycle: string | null = null;
+
+// 스냅샷마다 부르지만 GitHub을 새로 읽었을 때만 한 주기를 돈다(AUTOLAND와 같다)
+export function runAutoRevert(s: Snapshot) {
+  if (running || !s.github.fetchedAt || s.github.fetchedAt === lastCycle) return;
+  if (loadAutoRevert().mode === "off") return;
+  lastCycle = s.github.fetchedAt;
+  running = true;
+  cycle(s)
+    .catch((e) => console.error("[atc] auto-revert failed:", e))
+    .finally(() => (running = false));
+}
+
+// 스위치(SUPERVISOR만: 설정 창 PUT /api/settings의 autoRevert). 바꾸면 breaker 래치가 풀린다(mode 줄)
+export function setAutoRevertMode(mode: AutoRevertMode) {
+  const cfg = loadAutoRevert();
+  if (cfg.mode === mode) {
+    // 같은 값을 다시 골라도 breaker 래치는 풀린다(설정 창·알림이 "스위치를 다시 고르면"이라고 말한다): 멈춘 AIRPORT가 있을 때만 mode 줄을 쓴다
+    if (stoppedAirports().length) appendAutoRevertLine({ op: "mode", detail: `${mode} re-picked; breaker released` });
+    return;
+  }
+  saveAutoRevert({ ...cfg, mode });
+  appendAutoRevertLine({ op: "mode", detail: `${cfg.mode} → ${mode}` });
+}
+
+// lander가 이 AIRPORT에서 머지했다는 기록(PR 번호 → 누가). AUTOLAND는 airport 칸, MCC는 mcc.json의 AIRPORT
+function landersOf(code: string): Map<number, "mcc" | "autoland"> {
+  const out = new Map<number, "mcc" | "autoland">();
+  for (const r of readAutolandRecords(2000)) if (r.op === "merge" && r.result === "ok" && r.airport === code && r.number != null) out.set(r.number, "autoland");
+  if (loadMcc().airport === code) for (const r of readMccRecords()) if (r.op === "land" && r.result === "ok") out.set(r.pr, "mcc");
+  return out;
+}
+
+interface GhCommit {
+  sha: string;
+  subject: string;
+}
+
+async function cycle(s: Snapshot) {
+  const mode = loadAutoRevert().mode;
+  if (mode === "off") return;
+  const codes = new Set([...loadAutoland().airports, loadMcc().airport]);
+  const now = Date.now();
+  for (const code of codes) {
+    const a = s.airports.find((x) => x.code === code);
+    const main = a ? s.atfm.mains.find((m) => m.repo === a.repo) : undefined;
+    if (!a || !main?.sha) continue;
+    let lines = readAutoRevertLines();
+    const slug = main.slug;
+    const open = new Set(s.pulls.filter((p) => p.repo === a.repo).map((p) => p.number));
+
+    // 연 revert PR이 머지된 것을 처음 본 때
+    for (const l of lines.filter((x) => x.op === "revert-opened" && x.airport === code && x.revertPr != null)) {
+      if (open.has(l.revertPr as number) || lines.some((x) => x.op === "revert-landed" && x.revertPr === l.revertPr)) continue;
+      const merged = await gh(["api", `repos/${slug}/pulls/${l.revertPr}`, "--jq", ".merged"]).then((t) => t.trim() === "true").catch(() => false);
+      if (merged) appendAutoRevertLine({ op: "revert-landed", airport: code, head: l.head, pr: l.pr, revertPr: l.revertPr });
+    }
+    lines = readAutoRevertLines();
+    await misfireCheck(code, slug, lines).catch((e) => console.error(`[atc] auto-revert: misfire check failed —`, errText(e)));
+    lines = readAutoRevertLines();
+    if (main.state !== "failure") continue;
+
+    const inflight = lines.some((l) => l.op === "revert-opened" && l.airport === code && l.revertPr != null && open.has(l.revertPr) && !lines.some((x) => x.op === "revert-landed" && x.revertPr === l.revertPr));
+    // 열린 revert PR을 기다리는 중이거나 breaker가 멈췄으면 GitHub을 더 읽지 않는다(90초마다 커밋 열다섯 개를 읽지 않게)
+    if (inflight || stoppedOf(lines, code)) continue;
+    // 이미 이 head로 결정을 냈으면 다시 하지 않는다(flake를 잡은 head도)
+    let phase = guardPhaseOf(lines, code, main.sha);
+    if (phase === "decided") continue;
+
+    // flake 방어: 이 head의 실패한 체크를 다시 돌리는 중이면 결과만 본다(커밋을 다시 읽지 않는다)
+    const guard = rerunOf(lines, code, main.sha);
+    if (phase === "rerunning" && guard.started) {
+      const now2 = await runsOf(slug, (guard.started.runs ?? []).map((r) => r.id)).catch(() => null);
+      if (!now2) continue; // GitHub을 못 읽었다: 다음 주기에
+      const step = pollStepOf(rerunVerdictOf(guard.started.runs ?? [], now2, guard.started.at, now));
+      if (step === "wait") continue;
+      if (step === "flake") {
+        appendAutoRevertLine({ op: "flake", airport: code, head: main.sha, check: guard.started.check, detail: "red, then green on re-run; nothing reverted" });
+        continue;
+      }
+      if (step === "hold") {
+        appendAutoRevertLine({ op: "hold", airport: code, head: main.sha, detail: "the re-run of the failing check did not finish in time; not reverting without knowing it is not a flake" });
+        continue;
+      }
+      phase = "confirmed"; // 다시 돌려도 빨갛다
+    }
+
+    const commits = await commitsOf(code, a.repo, slug, main.sha, lines).catch((e) => {
+      console.error(`[atc] auto-revert: ${code} 커밋을 읽지 못함 —`, errText(e));
+      return null;
+    });
+    if (!commits) continue;
+    const own = commits[0]?.revert === true;
+    if (writeRed(phase, EXISTING(lines, "red", code, main.sha))) {
+      appendAutoRevertLine({ op: "red", airport: code, head: main.sha, check: main.failing.join(", "), own });
+      lines = readAutoRevertLines();
+    }
+    const d = revertDecisionOf({
+      airport: code,
+      head: { sha: main.sha, state: main.state, failing: [...new Set([...main.failing, ...(main.workflowsFailing ?? [])])] },
+      commits,
+      inflight,
+      lines,
+      now,
+      migrationOf: (files) => migrationPathOf([...files]),
+      userTierOf: tierSync,
+    });
+    // revert나 breaker 멈춤은 main이 정말 빨갛다는 것이 전제다: 아직 확인하지 않았으면 먼저 한 번 다시 돌린다(flake는 아무것도 하지 않는다)
+    if (needsRerun(phase, d.act)) {
+      await startRerun(code, slug, main.sha, [...new Set([...main.failing, ...(main.workflowsFailing ?? [])])].join(", "));
+      continue;
+    }
+    await act(mode, code, a.repo, slug, main.sha, d, s);
+  }
+}
+
+// 실패한 GitHub Actions run(이 head)을 다시 돌린다. 다시 돌릴 run이 없으면(Actions가 아닌 체크) 되돌리지 않고 알린다
+async function startRerun(code: string, slug: string, head: string, check: string) {
+  const failed = (await runsForHead(slug, head)).filter((r) => r.status === "completed" && r.conclusion === "failure");
+  if (!failed.length) {
+    appendAutoRevertLine({ op: "hold", airport: code, head, check, detail: "no failing GitHub Actions run to re-run; not reverting without confirming it is not a flake" });
+    return;
+  }
+  const started: { id: number; attempt: number }[] = [];
+  for (const r of failed) {
+    try {
+      await gh(["api", "-X", "POST", `repos/${slug}/actions/runs/${r.id}/rerun-failed-jobs`]);
+      started.push({ id: r.id, attempt: r.attempt });
+    } catch (e) {
+      appendAutoRevertLine({ op: "hold", airport: code, head, check, detail: `could not re-run run ${r.id}: ${errText(e).slice(0, 200)}` });
+      return;
+    }
+  }
+  appendAutoRevertLine({ op: "rerun", airport: code, head, check, runs: started });
+}
+
+const runOfRow = (l: string): RunState => {
+  const [id, attempt, status, conclusion] = l.split("\t");
+  return { id: Number(id), attempt: Number(attempt), status, conclusion: conclusion || null };
+};
+const RUN_JQ = "[.id, .run_attempt, .status, (.conclusion // \"\")] | @tsv";
+async function runsForHead(slug: string, head: string): Promise<RunState[]> {
+  const out = await gh(["api", `repos/${slug}/actions/runs?head_sha=${head}&per_page=50`, "--jq", `.workflow_runs[] | ${RUN_JQ}`]);
+  return out.split("\n").filter(Boolean).map(runOfRow);
+}
+async function runsOf(slug: string, ids: readonly number[]): Promise<RunState[]> {
+  const out: RunState[] = [];
+  for (const id of ids) out.push(runOfRow((await gh(["api", `repos/${slug}/actions/runs/${id}`, "--jq", RUN_JQ])).trim()));
+  return out;
+}
+
+// 되돌린 PR이 24시간 안에 그대로 다시 머지됐나(misfire). 한 번 적으면 더 보지 않는다
+const misfireSeen = new Map<number, number>(); // revert PR → 마지막으로 본 시각. 90초마다 gh를 열 번 넘게 부르지 않게 10분에 한 번만 본다
+const MISFIRE_EVERY_MS = 10 * 60_000;
+async function misfireCheck(code: string, slug: string, lines: readonly AutoRevertLine[]) {
+  const now = Date.now();
+  for (const l of lines.filter((x) => x.op === "revert-landed" && x.airport === code && x.pr != null && x.revertPr != null && now - Date.parse(x.at) <= MISFIRE_WINDOW_MS)) {
+    if (lines.some((x) => x.op === "misfire" && x.pr === l.pr)) continue;
+    if (now - (misfireSeen.get(l.revertPr as number) ?? 0) < MISFIRE_EVERY_MS) continue;
+    misfireSeen.set(l.revertPr as number, now);
+    const fileShas = (n: number) =>
+      gh(["api", "--paginate", `repos/${slug}/pulls/${n}/files?per_page=100`, "--jq", ".[] | [.filename, .sha] | @tsv"])
+        .then((t) => t.split("\n").filter(Boolean).map((r) => ({ filename: r.split("\t")[0], sha: r.split("\t")[1] })))
+        .catch(() => null);
+    const merged = (await gh(["api", `repos/${slug}/pulls?state=closed&sort=updated&direction=desc&per_page=30`, "--jq", ".[] | select(.merged_at != null) | [.number, .head.ref, .merged_at] | @tsv"]))
+      .split("\n")
+      .filter(Boolean)
+      .map((r) => {
+        const [number, branch, mergedAt] = r.split("\t");
+        return { number: Number(number), branch, mergedAt };
+      })
+      .filter((m) => m.number !== l.revertPr && m.number !== l.pr && Date.parse(m.mergedAt) >= Date.parse(l.at) - 60_000);
+    const withFiles = [];
+    for (const m of merged.slice(0, 10)) withFiles.push({ ...m, files: await fileShas(m.number) });
+    const hit = mergedBackOf({ files: await fileShas(l.pr as number) }, l.revertPr as number, new Date(Date.parse(l.at) - 60_000).toISOString(), withFiles);
+    if (hit) appendAutoRevertLine({ op: "misfire", airport: code, pr: l.pr, revertPr: l.revertPr, by2: hit.pr, kind: hit.kind, detail: `reverted PR #${l.pr} came back unchanged as PR #${hit.pr}` });
+  }
+}
+
+// user 등급 판정은 deploy/landing-tier.mjs(비동기 import)라 commitsOf가 미리 구해 둔 결과를 쓴다
+const tierMemo = new Map<string, string | null>();
+const tierKey = (files: readonly string[]) => [...files].sort().join("\n");
+const tierSync = (files: readonly string[]): string | null => (tierMemo.has(tierKey(files)) ? (tierMemo.get(tierKey(files)) ?? null) : "등급을 계산하지 못함");
+
+async function commitsOf(code: string, repo: string, slug: string, head: string, lines: readonly AutoRevertLine[]): Promise<RevertCommit[]> {
+  const rows: GhCommit[] = (
+    await gh(["api", `repos/${slug}/commits?sha=${head}&per_page=15`, "--jq", '.[] | [.sha, (.commit.message | split("\\n")[0])] | @tsv'])
+  )
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => {
+      const [sha, ...rest] = l.split("\t");
+      return { sha, subject: rest.join("\t") };
+    });
+  const landers = landersOf(code);
+  const ours = new Set(lines.filter((l) => l.op === "revert-opened" && l.revertPr != null).map((l) => l.revertPr as number));
+  const out: RevertCommit[] = [];
+  let green = false;
+  for (let i = 0; i < rows.length; i++) {
+    const { sha, subject } = rows[i];
+    let pr = prOfSubject(subject);
+    // PR 번호가 맞는 머지 커밋인지 GitHub에서 확인한다(제목만 믿지 않는다)
+    if (pr != null) {
+      const ok = await gh(["api", `repos/${slug}/pulls/${pr}`, "--jq", "[.merged, .merge_commit_sha] | @tsv"]).then((t) => t.trim() === `true\t${sha}`).catch(() => false);
+      if (!ok) pr = null;
+    }
+    const by = pr != null ? (landers.get(pr) ?? null) : null;
+    const revert = pr != null && ours.has(pr);
+    let files: string[] | null = null;
+    if (pr != null && by !== null && !revert) {
+      files = await gh(["api", "--paginate", `repos/${slug}/pulls/${pr}/files?per_page=100`, "--jq", ".[].filename"]).then((t) => t.split("\n").filter(Boolean)).catch(() => null);
+      if (files) tierMemo.set(tierKey(files), await tierOfFiles(files).then((t) => (t.tier === "user" ? t.reasons.map((r) => r.why).join(", ") || "user" : null)).catch(() => "등급을 계산하지 못함"));
+    }
+    // 마지막 초록 head: head 다음 커밋부터 CI가 초록인 첫 커밋(여기서 그친다)
+    if (i > 0 && !green) {
+      const st = await readCommitState(repo, slug, sha).catch(() => null);
+      green = st?.state === "success";
+    }
+    out.push({ sha, pr, by, revert, green: i > 0 && green, files });
+    if (green) break;
+  }
+  return out;
+}
+
+// 되돌릴 PR 자신의 head 커밋의 CI 상태(머지 전에 초록이었나)
+async function prHeadState(repo: string, slug: string, pr: number): Promise<string> {
+  const sha = (await gh(["api", `repos/${slug}/pulls/${pr}`, "--jq", ".head.sha"])).trim();
+  if (!sha) return "unknown";
+  return (await readCommitState(repo, slug, sha).catch(() => null))?.state ?? "unknown";
+}
+
+async function act(mode: AutoRevertMode, code: string, repo: string, slug: string, head: string, d: ReturnType<typeof revertDecisionOf>, s: Snapshot) {
+  if (d.act === "none") return;
+  // 쓰기 직전에 스위치를 다시 본다(주기 사이에 SUPERVISOR가 끄거나 내렸으면 쓰지 않는다)
+  const live = loadAutoRevert().mode;
+  if (live === "off" || live !== mode) return;
+  if (d.act === "hold") {
+    appendAutoRevertLine({ op: "hold", airport: code, head, pr: d.pr, detail: d.why });
+    return;
+  }
+  if (d.act === "stop") {
+    // breaker: lane을 한 단계 낮춘다(AUTOLAND merge → update, MCC 착륙 끔). 올리는 것은 SUPERVISOR의 스위치다
+    const lowered: string[] = [];
+    const al = lowerAutoland(loadAutoland().mode);
+    if (al) {
+      setAutolandMode(al);
+      lowered.push(`AUTOLAND merge → ${al}`);
+    }
+    const mc = lowerMcc(loadMcc().mode);
+    if (mc) {
+      setMccMode(mc);
+      lowered.push(`MCC landing off (→ ${mc})`);
+    }
+    appendAutoRevertLine({ op: "stop", airport: code, head, detail: `${d.why}${lowered.length ? `; ${lowered.join(", ")}` : "; lanes already low"}` });
+    return;
+  }
+  // revert: 열린 revert PR이 없고 breaker가 멈추지 않았고 실패한 체크가 다시 돌려도 빨갛다는 것을 확인했을 때만 여기까지 온다.
+  // 그리고 되돌릴 PR 자신의 head가 초록이었어야 한다(빨간 채 머지된 PR이 아니라 머지가 main을 깼다는 근거)
+  const prHead = await prHeadState(repo, slug, d.pr).catch(() => "unknown" as const);
+  if (prHead !== "success") {
+    appendAutoRevertLine({ op: "hold", airport: code, head, pr: d.pr, detail: `PR #${d.pr}'s own head was not green (${prHead}); not reverting it` });
+    return;
+  }
+  try {
+    const pr = JSON.parse(await gh(["pr", "view", String(d.pr), "--repo", slug, "--json", "id,url,title,headRefName"])) as { id: string; url: string; title: string; headRefName: string };
+    const q = "mutation($id:ID!,$title:String!,$body:String!){revertPullRequest(input:{pullRequestId:$id,title:$title,body:$body,draft:false}){revertPullRequest{number url}}}";
+    const out = JSON.parse(
+      await gh(["api", "graphql", "-f", `query=${q}`, "-f", `id=${pr.id}`, "-f", `title=${revertTitleOf(d.pr)}`, "-f", `body=${revertBodyOf({ pr: d.pr, prUrl: pr.url, commit: d.commit, head, check: d.check, by: d.by })}`]),
+    ) as { data?: { revertPullRequest?: { revertPullRequest?: { number: number; url: string } } } };
+    const made = out.data?.revertPullRequest?.revertPullRequest;
+    if (!made) throw new Error("GitHub이 revert PR을 돌려주지 않음");
+    appendAutoRevertLine({ op: "revert-opened", airport: code, head, commit: d.commit, pr: d.pr, by: d.by, revertPr: made.number, check: d.check });
+    fixOf(s, code, repo, d.pr, pr.url, pr.title, pr.headRefName, d.check, head, made.number);
+  } catch (e) {
+    appendAutoRevertLine({ op: "revert-failed", airport: code, head, commit: d.commit, pr: d.pr, check: d.check, detail: errText(e).slice(0, 300) });
+  }
+}
+
+// 되돌린 PR의 FLIGHT를 맡은 AIRCRAFT에게 FIX(relay → TOWER가 CLEARANCE로 보낸다). 담당을 못 찾으면 줄만 남겨 DUTY가 본다
+function fixOf(s: Snapshot, code: string, _repo: string, pr: number, prUrl: string, title: string, branch: string, check: string, head: string, revertPr: number) {
+  const m = /\b([A-Za-z][A-Za-z0-9]*-\d+)\b/.exec(title) ?? /\b([A-Za-z][A-Za-z0-9]*-\d+)\b/.exec(branch);
+  const flight = m ? m[1].toUpperCase() : null;
+  const to = flight ? lastAircraftOf(flight, lastAircraftSources()) : null;
+  const known = to ? new Set([...Object.keys(loadFleet().aircraft), ...s.sessions.map((x) => x.name)].map((n) => n.toUpperCase())).has(to.toUpperCase()) : false;
+  if (!flight || !to || !known) {
+    appendAutoRevertLine({ op: "fix", airport: code, head, pr, revertPr, detail: `no holder found${flight ? ` for ${flight}` : " (no FLIGHT key)"}; DUTY to move the issue back` });
+    return;
+  }
+  const input = relayInputOf({ to, kind: "instruction", type: "FIX", pr, flight, text: fixTextOf({ pr, prUrl, flight, check, head, revertPr }) });
+  if ("error" in input) {
+    appendAutoRevertLine({ op: "fix", airport: code, head, pr, revertPr, detail: `FIX not created: ${input.error}` });
+    return;
+  }
+  const at = new Date().toISOString();
+  const id = nextRelayId(readRelayOps());
+  appendRelayOp({ op: "create", id, at, ...input });
+  record({ t: at, kind: "relay", op: "create", id, by: "auto-revert", to: input.to, relayKind: input.kind, flight: input.flight });
+  appendAutoRevertLine({ op: "fix", airport: code, head, pr, revertPr, detail: `FIX relay ${id} to ${to} (${flight})` });
+}
+
+// 설정 창이 보일 한 줄: breaker가 멈춘 AIRPORT
+export const stoppedAirports = (lines = readAutoRevertLines()) => [...new Set(lines.flatMap((l) => (l.op === "stop" && l.airport ? [l.airport] : [])))].flatMap((a) => (stoppedOf(lines, a) ? [stoppedOf(lines, a) as AutoRevertLine] : []));

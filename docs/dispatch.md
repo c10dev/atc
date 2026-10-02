@@ -6,7 +6,7 @@ DISPATCH proposes **which FLIGHT (Linear ticket) to send to which AIRCRAFT (team
 
 > Status: the DISPATCH session merged into the OCC session (`atc/occ/`, [occ.md](occ.md)) on 2026-09-26; the work below is unchanged. 2a (shadow operation) running; 2b (approval operation) implemented behind `mode` and off by default (2026-09-26). See "Turning on 2b". Decisions are listed under "Decisions" at the end.
 >
-> Settled while implementing: under the 1-FLIGHT-per-TEAM rule, a HOLDING AIRCRAFT that holds the STAND of an unfinished FLIGHT is never assigned a FLIGHT that needs a STAND, however long it has been idle (the "30 minutes" rule in 5.1 is not used). It can take one `SURVEY` or `CHECK`, which need no STAND ([fleet.md](fleet.md) 5.1, 2026-09-27). RELEASE only looks at projects mapped to an AIRPORT (code work).
+> Settled while implementing: under the 1-FLIGHT-per-TEAM rule, a HOLDING AIRCRAFT that holds the STAND of an unfinished FLIGHT is never assigned a FLIGHT that needs a STAND, however long it has been idle (the "30 minutes" rule in 5.1 is not used). It can take one `SURVEY` or `CHECK`, which need no STAND ([fleet.md](fleet.md) 5.1, 2026-09-27). RELEASE only looks at projects mapped to an AIRPORT (code work). Since ATC-387 a FLIGHT that only waits to land (open PR, nothing for the AIRCRAFT to do) no longer counts against that rule; see "Waiting PRs do not use the AIRCRAFT's slot".
 
 ## 1. Current facts
 
@@ -575,12 +575,20 @@ When a PR needs a GO AROUND or a FIX and no session holds its STAND, TOWER has n
 A PR whose STAND has no live holder and that has a pending GO AROUND or FIX used to wait for the SUPERVISOR (the `RELAY` card above). Now DISPATCH picks a holder first; the SUPERVISOR is asked only when nobody can take it.
 
 - **Choice** (`holderOf`, `server/pr-holder.ts`, pure). For each landing-queue PR with a pending no-holder GO AROUND or FIX (the same `noHolderPickOf` the RELAY card uses): (1) the AIRCRAFT that flew the FLIGHT (`lastAircraftOf`) if it is free and holds the required TYPE RATING (`resumed`); (2) else a free AIRCRAFT of the PR's AIRPORT whose TYPE RATING covers the FLIGHT (a live session before one that needs a LAUNCH, then by REGISTRATION); (3) else no AIRCRAFT can take it and the `RELAY` card stays. "Free" is the planner's `available` with no reservation, not stopped or restarting, not picked for an ASSIGN or RESUME in this plan, and holding no open (proposed or approved) ASSIGN card. `rating:SEC` and `Risk:` FLIGHTs need `SEC` (`classOf`), so they only go to an AIRCRAFT that holds it, including when the one that flew the FLIGHT does not.
-- **Card.** `holderPlansOf` (same file) turns the choice into `plan.holders`, `runDispatch` adds them after `planDispatch`, and `syncOps` writes an ordinary `ASSIGN` proposal with a `prHolder` field (`key` = PR, head and type, `type`, `text`, `reason`, `branch`, `stand`, `resumed`). It goes through CROSSCHECK and the SUPERVISOR's verdict like any ASSIGN and uses the same launch step when the AIRCRAFT has no session. One card per PR, head and type: a card still in play (proposed through departed) stays in `plan.holders` every run, so `syncOps` does not close and re-create it; one that ended (rejected, UNABLE, recalled) is not proposed again for that head and its PR routes to `relay`; a SUPERSEDED or EXPIRED one can be proposed again. With `autoApprove` on (ATC-334) a PR HOLDER card is approved like any ASSIGN when CROSSCHECK agrees. It does not count against `openProposals`. It stays valid while the plan still names the same PR, head, type and AIRCRAFT; it is SUPERSEDED when a holder appears, the PR closes, the head changes or the AIRCRAFT can no longer take it.
+- **Card.** `holderPlansOf` (same file) turns the choice into `plan.holders`, `runDispatch` adds them after `planDispatch`, and `syncOps` writes an ordinary `ASSIGN` proposal with a `prHolder` field (`key` = PR, head and type, `type`, `text`, `reason`, `branch`, `stand`, `resumed`). It goes through CROSSCHECK and the SUPERVISOR's verdict like any ASSIGN and uses the same launch step when the AIRCRAFT has no session. One card per PR, head and type: a card still in play (proposed through departed) stays in `plan.holders` every run, so `syncOps` does not close and re-create it; one that ended (rejected, UNABLE, recalled) is not proposed again at once (see "Finish before starting" below: it waits, then is proposed again, and after 3 ended cards the PR routes to `relay`); a SUPERSEDED or EXPIRED one can be proposed again. With `autoApprove` on (ATC-334) a PR HOLDER card is approved like any ASSIGN when CROSSCHECK agrees. It does not count against `openProposals`. It stays valid while the plan still names the same PR, head, type and AIRCRAFT; it is SUPERSEDED when a holder appears, the PR closes, the head changes or the AIRCRAFT can no longer take it.
 - **FLIGHT PLAN.** `formatFlightPlan` adds `PR HOLDER — PR #n … You hold it now: continue on branch … · STAND … Do not merge; the landing rules are unchanged.` and the pending text as quoted lines (`> …`). It is the same text TOWER would have sent (`goAroundOf` and `fixOf`).
 - **No FLIGHT.** A PR with no `ticketKey` is linked to its issue by the branch name (`ticketKeyFromBranch`, the key must be a known issue). If none is found it goes to DUTY: the DUTY brief gains an `ORPHAN PRS` section (repository name and number only).
 - **RELAY card.** `relayOffersOf` takes `holderRoutes` (from the last `runDispatch`, `server/pr-holder-state.ts`): only a PR whose route is `relay` gets a card. Before the first run there is no card; without `holderRoutes` the function behaves as in ATC-308.
 - **Unchanged:** the new holder never merges, and the AIRPORT merge rules and LANDING CLEARANCE tiers stay as they are. A PR with no pending GO AROUND or FIX gets no holder card.
 - **Not built:** a message to DUTY (the DUTY brief only lists the PR); choosing among several rated AIRCRAFT by load.
+
+### Finish before starting, as built (ATC-392)
+
+- **Order.** `runDispatch` plans PR holder cards before new ASSIGN cards: it first reads the plan's AIRCRAFT state, picks holders (only RESUME cards come before them), reserves each chosen AIRCRAFT, and plans again. A free AIRCRAFT at the PR's AIRPORT takes the open PR first; new ASSIGN cards go to the AIRCRAFT that are left.
+- **RELAY only when nobody can take it.** The card is for the SUPERVISOR only when `holderOf` finds no AIRCRAFT, and it now shows why (`noHolder`, from the route's `why`): `no AIRCRAFT at <AIRPORT>`, `no AIRCRAFT with <rating> rating at <AIRPORT>`, or `none can take it now: <REGISTRATION and reason>` (for example the launch cap).
+- **Sending.** An approved PR holder card is an ordinary approved ASSIGN. The planner proposes it only when no live session holds the STAND, so OCC does not hold it for a SUPERVISOR confirmation because another session started the PR (`occ/CLAUDE.md`).
+- **Retry.** A holder card that ended (refused, UNABLE, RECALLed) is not proposed again for 30 minutes (route `wait`, no SUPERVISOR card), then the planner proposes it again for the same head. A new head has a new key and is proposed at once. After 3 ended cards for one head the PR goes to RELAY with the reason.
+- **Time to READBACK.** `prHolder.since` is when the GO AROUND or FIX became pending: the head's `landing.conflict` / `landing.prevMerged` event for a GO AROUND, the `landing.blocked` event with `review-findings` for a FIX, or the moment the card is made when the event log has no such event (it is in memory and starts empty after a restart). `holderReadbackOf` gives the count and median minutes from `since` to the holder's READBACK; it is `holderReadback` in the 2b gate (`gate3Of`).
 
 ## Release record as built (ATC-362)
 
@@ -617,6 +625,53 @@ K3: the SUPERVISOR approved on 2026-10-02 (attested on the issue and confirmed i
 - **MISFIRE.** `GET /api/dispatch/misfire?days=7` and a MISFIRE block at the top of the DISPATCH tab count, per UTC day of approval, the server-approved ASSIGN cards that later turned out wrong, as a share of that day's approvals: declined or UNABLE, RECALLed, superseded after it was sent, or superseded because the AIRCRAFT was unfit. A card counts once.
 - **Formats.** `autoDispatch` and `autoCardTtlMin` in `dispatch.json` and the `AUTO_STALE_WHY` supersede reason are additive. No log changes.
 - **Not built.** The agree lane and CROSSCHECK marks are still drawn on the DISPATCH cards that exist during the settle window.
+
+## The DISPATCH screen is gone (ATC-377)
+
+DISPATCH approves its own cards (ATC-367), so the tab that held the verdict UI was taken apart ([layout.md](layout.md) Y2). The planner, the proposal log and every route are unchanged; only the screen moved:
+
+| Was in the DISPATCH tab | Now |
+|---|---|
+| Open ASSIGN and launch cards, approve / reject | the SUPERVISOR QUEUE on HOME (`#home`), only when the auto-dispatch switch is off; RELEASE cards always |
+| CROSSCHECK agree lane and chips, BLIND sample, HELD (PREFLIGHT) buttons | removed |
+| IN FLIGHT: CANCEL, RECALL, FRESH START | FOLLOW rows and the FLIGHT drawer (`web/src/FlightBrakes.tsx`) |
+| Assignment history of a FLIGHT (RECENT) | FLIGHT drawer, `배정 기록` (`GET /api/dispatch/proposals?flight=KEY`) |
+| ATFM block (GROUND STOP, manual departure stop, slots) and the 2a/2b switch | HOME, BRAKES row |
+| MISFIRE | METRICS → OPERATIONS |
+| 2b readiness, gate and FLIGHT FOLLOWING blocks, slot and EXCLUDED readouts | removed (FOLLOW rows show why a FLIGHT is not assigned) |
+
+`#dispatch` opens HOME.
+
+## K3 releases reach the classifier, as built (ATC-372)
+
+K3: this decides what the Claude Code auto-mode classifier lets a FLIGHT change, and it changes LAUNCH flags ([autonomy.md](autonomy.md) C9). Only the server builds the entries, from the release record.
+
+- **Declaration.** In the issue's `## K effects` section, one line per effect: `K3[<label>]: <the control being changed> | files: <path>, <path>`. `<label>` is one of `Security Weaken`, `Self-Approval`, `Permission Grant`, `Self-Modification`, `Merge Without Review` (the classifier's soft_deny labels). Paths are repo-relative, no globs, no `..`. A `K3` line that does not fit is ignored (no entry): the FLIGHT stays under the classifier.
+- **When entries are built.** The FLIGHT's release is in the `screen` or `duty-chat` channel and its hash still matches the issue body. An `attested` release never builds an entry, because an agent can write an attestation (`k3LaunchOf` in `server/k3-allow.ts`).
+- **What a launch passes.** `--settings '{"autoMode":{"allow":["$defaults", <entry>…]}}'`, one entry per declaration, naming the label, the control, the files, the STAND (`<repo>/.claude/worktrees/<flight>-*`) and the release id (`<FLIGHT>@<hash>`), and stating "Code only; nothing is executed against production during the FLIGHT". `$defaults` is not an entry: without it `allow` replaces the classifier's built-in allow list. Nothing else is added: no static allow in ACCOUNT settings, no `bypassPermissions`, nothing through the policy hook.
+- **A fresh AIRCRAFT.** A running session cannot take new `--settings`, so the planner pairs such a FLIGHT only with an AIRCRAFT that is launched for it (a launch card).
+- **Only the server.** `launchAircraft` takes the entries as a separate server-built argument, not as an option, and the LAUNCH route drops `settings` and `k3` from the request body. Supervisor-route authentication (ATC-373) protects the routes that start a launch.
+- **Record.** The FLIGHT RECORDER `launch` line carries `flight` and `k3: { release, stand, entries }`.
+
+## Waiting PRs do not use the AIRCRAFT's slot (ATC-387)
+
+An AIRCRAFT whose FLIGHT only waits to land does not sit idle. Before, a started FLIGHT with an open PR kept its AIRCRAFT "stopped" until the PR merged; now it does not count against the slot.
+
+- **"Only waits to land"** (`waitsToLandOf`, `server/dispatch.ts`): every open PR of the FLIGHT is not a Draft, has no open FIX or GO AROUND CLEARANCE for the FLIGHT, and carries no block the AIRCRAFT could act on. Allowed blocks: none (CLEARED), `checks-pending`, `no-review`, `review-stale`, `stacked`, `merge-unknown` (`WAITING_BLOCKS`). Any other block (`checks-failed`, `review-findings`, `changes-requested`, `dirty`, `behind`, `blocked`, `no-checks`, `los`, `draft`, or a code added later) means there is something to do, so the FLIGHT keeps using the slot. A FLIGHT with no PR keeps the slot.
+- **Effect**: a waiting FLIGHT is left out of `holding` (the `perTeam` load), out of the open-FLIGHT count and out of the "stopped" reason, for AIRCRAFT with a session and for ABSENT ones (`tail:`). `AircraftState.waiting` lists them (the `reason` reads `착륙 대기 PR n건 … 다음 FLIGHT는 새 STAND`). A FLIGHT that is working (no PR yet, a failing check, findings, a FIX) still uses the slot, so one AIRCRAFT still works on one FLIGHT.
+- **Cap**: `dispatch.json` `slots.waitingPr` (default 2). An AIRCRAFT holding that many waiting PRs is not assigned a STAND FLIGHT until one lands (STAND-free SURVEY and CHECK still go).
+- **New STAND**: the AIRCRAFT starts the next FLIGHT in a new STAND and keeps the earlier one. The ASSIGN card stores `waitingFlights`, and the FLIGHT PLAN gets one line: the earlier FLIGHT only waits to land in its own STAND, start this one in a NEW STAND, and handle a FIX or GO AROUND for the earlier PR in the earlier STAND.
+- **FIX and GO AROUND still arrive**: TOWER sends them to the sessions holding the PR's STAND by claim. A claim goes stale after `ATC_CLAIM_TTL_MIN` (180), so `keptStandClaims` (`server/snapshot.ts`) keeps the stale claim of a live session on a STAND that has an open PR (one per STAND, the session that touched it last; a STAND another session holds now is left alone). It is added after conflicts, alerts and health are computed, so only the holder lookups see it. The CLEARANCE carries the earlier STAND, so the AIRCRAFT handles it there.
+- **Measured**: a FIX or GO AROUND CLEARANCE records `elsewhere` when it is issued: the other started FLIGHT the target session holds in a different STAND, or `null`. METRICS → OPERATIONS adds the tile `FIX·GO AROUND READBACK` with the median to READBACK for AIRCRAFT busy on another FLIGHT against those that were not (`clearances.fixReadback`); older CLEARANCEs without the field are in neither group.
+- **Formats** (additive): `slots.waitingPr`, `Proposal.waitingFlights`, `Clearance.elsewhere`, `clearances.fixReadback`.
+
+## CROSSCHECK retired, as built (ATC-371)
+
+K3: this changes the control-session roster and loosens the approval rules that waited on a mark ([autonomy.md](autonomy.md) D23, C14). It landed after ATC-367 and ATC-370, so no automatic approval stopped.
+
+- **No session.** `CONTROL_SESSIONS` marks CROSSCHECK `retired`: it is not launched, kept alive (CONTROL BULK) or recycled (no default CAP or auto entry), and it has no row in the FLEET CONTROL list. A CROSSCHECK session still running is stopped once by the server on the next CONTROL RECYCLE tick (`retired-stop`, any mode, no SUPERVISOR step). STOP still works on it.
+- **No rule waits on a mark.** `auto-approve.ts` lost its `no-crosscheck` and `disagree` skips (DISPATCH ASSIGN, launch and SCHEDULE; blind, caution, HELD, FUEL hold and the caps are unchanged). ATFM A7 is dropped and S3 keeps only the section-citation test (`server/atfm.ts`); the two "CROSSCHECK match" rows are gone from the ATFM turn-on checklists. The server no longer files a PREFLIGHT HOLD from a disagree mark, and `POST /api/dispatch/proposals/:id/crosscheck` and `POST /api/schedule/ops/:id/crosscheck` answer 410. The briefs' `crosscheck` block is always empty.
+- **History stays.** Old marks, `preflight` ops, chips on old cards, NETWORK GATES (labelled as retired) and `gate.crosscheck` still read. The `crosscheck/` folder and `controller/guard.mjs` are untouched.
 
 ## DIRECT briefs (ATC-32)
 

@@ -41,7 +41,7 @@ test("FLIGHT FOLLOWING: warn은 CAUTION, info는 ADVISORY, health·stranded·lan
 test("제안 판정 대기는 CALL, HOLD 걸린 제안과 끝난 제안은 알리지 않는다", () => {
   const out = supervisorAlertsOf(base({ proposals: [proposal(), proposal({ id: "D-0002", status: "sent" }), proposal({ id: "D-0003", holdAt: "2026-09-29T00:00:00Z" }), proposal({ id: "D-0004", status: "agreed", kind: "RELEASE" })] }));
   assert.deepEqual(keys(out), ["pending|proposal|D-0001", "pending|proposal|D-0004"]);
-  assert.ok(out.every((a) => a.cue === "call" && a.link === "#dispatch"));
+  assert.ok(out.every((a) => a.cue === "call" && a.link === "#home"));
   assert.match(out[1].text, /RELEASE/);
 });
 
@@ -104,7 +104,7 @@ test("SCHEDULE: approval 모드에서 열린 작업(draft·agreed·disagreed)마
   const out = supervisorAlertsOf(base({ schedule: { mode: "approval", ops: [sop("S-0001", "draft"), sop("S-0002", "agreed", { kind: "CLASSIFY" }), sop("S-0003", "disagreed", { kind: "NEW", flight: null })] } }));
   assert.deepEqual(keys(out), ["pending|schedule|S-0001", "pending|schedule|S-0002", "pending|schedule|S-0003"]);
   const [a] = out;
-  assert.deepEqual([a.group, a.level, a.cue, a.aircraft, a.flight, a.link, a.since, a.ask], ["pending", "advisory", "call", null, "ATC-146", "#schedule", "2026-09-30T01:00:00Z", "tail"]);
+  assert.deepEqual([a.group, a.level, a.cue, a.aircraft, a.flight, a.link, a.since, a.ask], ["pending", "advisory", "call", null, "ATC-146", "#home", "2026-09-30T01:00:00Z", "tail"]);
   assert.match(a.text, /^SCHEDULE S-0001 — TAIL ATC-146 판정 대기$/);
   assert.equal(out[2].ask, "new");
   assert.match(out[2].text, /^SCHEDULE S-0003 — NEW 판정 대기$/);
