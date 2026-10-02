@@ -66,9 +66,9 @@ export interface ServerSettings {
   // 판정 계열(ATC-36): judges.json의 스위치, 엔진, 키가 있는지(값은 내보내지 않음), 마지막 실행
   // 음성 콜아웃(ATC-140): 고른 엔진과 목소리(.env.local). 설치된 목소리 목록은 GET /api/voice/status
   voice: { engine: string; voice: string };
-  // DUTY(ATC-220): duty.json. 기본 꺼짐. 켜면 SUPERVISOR가 첫 글을 보낼 때 이 서버가 `claude -p`를 띄운다(ACCOUNT의 FUEL을 쓴다)
   // 마이그레이션 리허설(ATC-368, K1·K2): hostedDb가 있는 AIRPORT마다 스위치. 켜려면 시험 DB와 토큰이 있어야 한다(why가 이유). 토큰은 있는지만
   migrate: { tokenSet: boolean; airports: { code: string; enabled: boolean; why: string | null }[] };
+  // DUTY(ATC-220): duty.json. 기본 꺼짐. 켜면 SUPERVISOR가 첫 글을 보낼 때 이 서버가 `claude -p`를 띄운다(ACCOUNT의 FUEL을 쓴다)
   duty: Pick<DutyConfig, "enabled" | "account" | "idleMin" | "charter" | "review"> & { accountWarning: string | null }; // accountWarning: 등록부에 없는 ACCOUNT라 ~/.claude로 돈다(ATC-242)
   judges: { jev: { mode: JudgeMode; engine: "stub" | "jev"; apiKeySet: boolean; lastRunAt: string | null; lastError: string | null; judged: number } };
 }

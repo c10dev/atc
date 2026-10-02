@@ -205,6 +205,26 @@ test("선언 검사: 낱말·표 이름은 K1 부분에서만 찾는다(K2 글�
   assert.equal(declarationCheck(dml, "K1: adds public.t. K3: public.settings").ok, false);
 });
 
+test("리허설: 단계는 끝나는 즉시 알리고, 실전에 쓰기 직전에 표시한다(서버가 도중에 멈춰도 흔적이 남게)", async () => {
+  const x = fake();
+  const seen: string[] = [];
+  x.io.onStep = (s) => void seen.push(`${s.step}:${s.ok}`);
+  x.io.beforeLive = () => void seen.push("before-live");
+  await rehearse(FILES, x.io);
+  assert.deepEqual(seen, ["declaration:true", "rehearsal:true", "restore-point:true", "before-live", "live-apply:true", "post-check:true"]);
+  const early = fake({ declared: null });
+  const e: string[] = [];
+  early.io.beforeLive = () => void e.push("before-live");
+  await rehearse(FILES, early.io);
+  assert.deepEqual(e, [], "실전 앞에서 멈추면 표시도 없다");
+});
+
+test("선언 검사: ALTER FUNCTION … SET(search_path 등)은 replace를 적어야 통과한다", () => {
+  const f = [{ path: "m/1_a.sql", sql: "alter function public.f() set search_path = public;" }];
+  assert.equal(declarationCheck(f, "K1: adds public.t").ok, false);
+  assert.equal(declarationCheck(f, "K1: replace function public.f settings").ok, true);
+});
+
 test("리허설: 복원점을 못 만들면 실전에 쓰지 않는다", async () => {
   const x = fake({ restore: async () => { throw new Error("no backup"); } });
   const r = await rehearse(FILES, x.io);

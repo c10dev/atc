@@ -55,6 +55,8 @@ export interface RehearsalIo {
   restorePoint: () => Promise<string>; // 실전 DB의 복원점(시각이나 백업 표시). 없으면 던진다
   smoke: SmokeCheck[];
   health?: () => Promise<boolean>; // 앱 건강 확인(있을 때만)
+  onStep?: (s: StepRecord) => void; // 단계가 끝나는 즉시(서버가 도중에 멈춰도 기록이 남게)
+  beforeLive?: () => void; // 실전에 쓰기 직전. 이 뒤에 서버가 멈추면 실전이 바뀌었을 수 있다
 }
 
 const VERSIONS_SQL = "select version from supabase_migrations.schema_migrations order by version";
@@ -89,7 +91,11 @@ const msg = (e: unknown) => String((e as Error)?.message ?? e).slice(0, 300);
 export async function rehearse(files: readonly MigrationFile[], io: RehearsalIo): Promise<RunResult> {
   const steps: StepRecord[] = [];
   let restorePoint: string | null = null;
-  const done = (step: Step, ok: boolean, detail: string) => steps.push({ step, ok, detail, at: io.now() });
+  const done = (step: Step, ok: boolean, detail: string) => {
+    const s = { step, ok, detail, at: io.now() };
+    steps.push(s);
+    io.onStep?.(s);
+  };
   const stop = (step: Step, detail: string, status: RunStatus = "stopped"): RunResult => {
     done(step, false, detail);
     return { status, steps, failedStep: step, restorePoint };
@@ -142,6 +148,7 @@ export async function rehearse(files: readonly MigrationFile[], io: RehearsalIo)
 
   // 4. 실전 적용: 파일마다 한 트랜잭션. 하나라도 실패하면 거기서 멈춘다(앞 파일은 이미 적용됨)
   const appliedLive: string[] = [];
+  io.beforeLive?.();
   try {
     for (const f of files) {
       await io.live.query(applySql(f));

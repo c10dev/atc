@@ -101,6 +101,7 @@ const SENSITIVE: [RegExp, string][] = [
   [/^alter function [\w."(),\s]+ security\b/, "security"],
   [/\bowner to\b/, "owner"],
   [/^create or replace\b/, "replace"],
+  [/^alter function [\w."(),\s]+ set\b/, "replace"], // search_path 같은 설정은 기존 함수의 동작을 바꾼다
   [/^create (or replace )?(constraint )?trigger\b/, "trigger"], // 기존 표의 쓰기 동작을 바꾼다
 ];
 const TXN = /^(begin|commit|end|start transaction)\b/;

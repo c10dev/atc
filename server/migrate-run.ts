@@ -192,8 +192,13 @@ export async function rehearseOne(p: PullRequest, airport: string, db: HostedDb,
     return null;
   }
   const versions = files.map((f) => f.version);
-  const r = await rehearse(files, io);
-  for (const s of r.steps) note({ kind: "step", step: s.step, ok: s.ok, detail: redact(s.detail, token), at: s.at }, versions);
+  // 단계는 끝나는 즉시 적는다(서버가 도중에 멈춰도 실전에 쓴 흔적이 남게). 실전에 쓰기 직전에도 한 줄
+  const wired: RehearsalIo = {
+    ...io,
+    onStep: (s) => note({ kind: "step", step: s.step, ok: s.ok, detail: redact(s.detail, token), at: s.at }, versions),
+    beforeLive: () => note({ kind: "step", step: "live-apply", detail: "시작 — 이 줄 뒤에 기록이 끊기면 실전이 바뀌었을 수 있다" }, versions),
+  };
+  const r = await rehearse(files, wired);
   const last = r.steps[r.steps.length - 1];
   const detail = redact(r.status === "applied" ? "실전에 적용됨 — 다음 주기에 AUTOLAND 마이그레이션 게이트가 통과해 머지" : `${r.failedStep}에서 멈춤: ${last?.detail ?? ""}`, token);
   note({ kind: "run", status: r.status, detail, restorePoint: r.restorePoint, files: files.map((f) => ({ version: f.version, sha: shaOf(f.sql) })) }, versions);
