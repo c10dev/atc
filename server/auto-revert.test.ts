@@ -8,7 +8,13 @@ import {
   isRevertPr,
   lowerAutoland,
   lowerMcc,
+  AUTO_REVERT_MODES,
+  mergedBackOf,
   parseAutoRevert,
+  rerunOf,
+  RERUN_WAIT_MS,
+  rerunVerdictOf,
+  revertDaysOf,
   prOfSubject,
   type RevertCommit,
   type RevertInput,
@@ -42,12 +48,14 @@ const input = (commits: RevertCommit[], over: Partial<RevertInput> = {}): Revert
   ...over,
 });
 
-test("스위치: 기본 off, 모르는 값도 off", () => {
-  assert.equal(parseAutoRevert(null).mode, "off");
+test("스위치(ATC-394): 처음부터 켜져 있다. 꺼지는 것은 정확히 off일 때뿐, shadow는 없다", () => {
+  assert.equal(parseAutoRevert(null).mode, "on");
+  assert.equal(parseAutoRevert({}).mode, "on");
   assert.equal(parseAutoRevert({ mode: "on" }).mode, "on");
-  assert.equal(parseAutoRevert({ mode: "shadow" }).mode, "shadow");
-  assert.equal(parseAutoRevert({ mode: "ON" }).mode, "off");
-  assert.equal(parseAutoRevert({ mode: 1 }).mode, "off");
+  assert.equal(parseAutoRevert({ mode: "off" }).mode, "off");
+  assert.equal(parseAutoRevert({ mode: "shadow" }).mode, "on"); // 예전 값은 기본으로
+  assert.equal(parseAutoRevert({ mode: "OFF" }).mode, "on");
+  assert.deepEqual([...AUTO_REVERT_MODES], ["off", "on"]);
 });
 
 test("PR 번호는 머지 커밋과 squash 제목에서만 읽는다", () => {
@@ -190,7 +198,6 @@ test("GROUND STOP은 우리 revert PR이 있던 빨간 head의 stop만, on에서
     { repo: "/r/a", sha: "green2", state: "success" },
   ];
   assert.deepEqual(clearableStops("on", stops, mains, lines).map((s) => s.airport), ["VCDO"]); // ATCC는 사람이 건 stop 같은 것이라 그대로
-  assert.deepEqual(clearableStops("shadow", stops, mains, lines), []);
   assert.deepEqual(clearableStops("off", stops, mains, lines), []);
   // 아직 빨갛거나 같은 head거나 진행 중이면 풀지 않는다
   assert.deepEqual(clearableStops("on", stops, [{ repo: "/r/v", sha: "red1", state: "success" }], lines), []);
@@ -235,7 +242,9 @@ test("글: revert PR 제목에는 ATC key가 없고, FIX·DUTY 글은 영어다"
   assert.match(dutyLineOf({ at: iso(1), op: "hold", airport: "ATCC", head: "123456789", detail: "K3" }) ?? "", /HOLD/);
   assert.match(dutyLineOf({ at: iso(1), op: "stop", airport: "ATCC", detail: "two reds" }) ?? "", /STOP/);
   assert.equal(dutyLineOf({ at: iso(1), op: "red", airport: "ATCC" }), null);
-  assert.equal(dutyLineOf({ at: iso(1), op: "would-revert", airport: "ATCC" }), null); // shadow는 DUTY에게도 알리지 않는다
+  assert.match(dutyLineOf({ at: iso(1), op: "flake", airport: "ATCC", head: "123456789", check: "check" }) ?? "", /flake caught/);
+  assert.match(dutyLineOf({ at: iso(1), op: "misfire", airport: "ATCC", pr: 7, by2: 9, kind: "revert-of-revert" }) ?? "", /merged back unchanged/);
+  assert.equal(dutyLineOf({ at: iso(1), op: "rerun", airport: "ATCC" }), null);
 });
 
 test("설정 창: 스위치 한 줄과 ⚠ 확인, 알림 목적지", () => {
@@ -244,7 +253,82 @@ test("설정 창: 스위치 한 줄과 ⚠ 확인, 알림 목적지", () => {
   assert.equal(seg?.value, "on");
   assert.equal(seg?.warn, true);
   assert.equal(needsConfirm("autoRevert", "off", "on"), true);
-  assert.equal(needsConfirm("autoRevert", "off", "shadow"), false);
+  assert.equal(needsConfirm("autoRevert", "on", "off"), false);
   assert.ok((DEST_PREFIXES as readonly string[]).includes("revert"));
   assert.equal(destOf({ key: "revert|stop|ATCC|2026-10-02T00:00:00.000Z" }), "alerts");
+});
+
+// ── flake 방어(ATC-394) ──
+const T = "2026-10-02T10:00:00.000Z";
+const at = (min: number) => Date.parse(T) + min * 60_000;
+const started = [{ id: 11, attempt: 1 }, { id: 12, attempt: 1 }];
+const run = (id: number, attempt: number, status: string, conclusion: string | null) => ({ id, attempt, status, conclusion });
+
+test("rerunVerdictOf: wait until every re-run run finished; green only when all passed; red if any fails", () => {
+  assert.equal(rerunVerdictOf(started, [run(11, 2, "in_progress", null), run(12, 2, "completed", "success")], T, at(5)), "wait");
+  assert.equal(rerunVerdictOf(started, [run(11, 2, "completed", "success"), run(12, 2, "completed", "success")], T, at(5)), "green"); // flake
+  assert.equal(rerunVerdictOf(started, [run(11, 2, "completed", "success"), run(12, 2, "completed", "failure")], T, at(5)), "red");
+});
+
+test("rerunVerdictOf: a run whose attempt did not move yet still shows the OLD failure, so it is not a verdict", () => {
+  assert.equal(rerunVerdictOf(started, [run(11, 1, "completed", "failure"), run(12, 1, "completed", "failure")], T, at(1)), "wait");
+  assert.equal(rerunVerdictOf(started, [run(11, 1, "completed", "failure"), run(12, 1, "completed", "failure")], T, at(60)), "timeout");
+  assert.equal(rerunVerdictOf(started, [], T, at(1)), "wait");
+  assert.equal(rerunVerdictOf(started, [run(11, 2, "queued", null), run(12, 2, "queued", null)], T, at(RERUN_WAIT_MS / 60_000 + 1)), "timeout");
+});
+
+test("rerunOf: the re-run state of one head", () => {
+  const lines: AutoRevertLine[] = [
+    { at: T, op: "rerun", airport: "ATCC", head: "h1", runs: started },
+    { at: T, op: "rerun", airport: "ATCC", head: "h2", runs: started },
+    { at: T, op: "flake", airport: "ATCC", head: "h2" },
+  ];
+  assert.equal(rerunOf(lines, "ATCC", "h1").started?.runs?.length, 2);
+  assert.equal(rerunOf(lines, "ATCC", "h1").flake, false);
+  assert.equal(rerunOf(lines, "ATCC", "h2").flake, true);
+  assert.equal(rerunOf(lines, "ATCC", "h3").started, null);
+  assert.equal(rerunOf(lines, "OTHR", "h1").started, null);
+});
+
+test("a flake is not a red head: the breaker counts only heads that were red again", () => {
+  // flake는 red 줄을 쓰지 않는다(확인된 빨강만 red). 그래서 한 시간에 flake가 둘이어도 breaker는 멈추지 않는다
+  const lines: AutoRevertLine[] = [
+    { at: iso(1), op: "flake", airport: "VCDO", head: "f1" },
+    { at: iso(2), op: "flake", airport: "VCDO", head: "f2" },
+  ];
+  const d = revertDecisionOf(input([lander("r3", 7), green("g0")], { head: { sha: "r3", state: "failure", failing: ["check"] }, lines }));
+  assert.equal(d.act, "revert"); // 첫 진짜 빨강이라 breaker가 아니라 되돌림
+});
+
+// ── misfire와 날짜별 수 ──
+const files = [{ filename: "a.ts", sha: "s1" }, { filename: "b.ts", sha: "s2" }];
+
+test("mergedBackOf: a revert of our revert, or the same files again, within 24 h counts as a misfire", () => {
+  const revertedAt = "2026-10-02T10:00:00Z";
+  assert.deepEqual(mergedBackOf({ files }, 8, revertedAt, [{ number: 9, branch: "revert-8-abc", mergedAt: "2026-10-02T12:00:00Z" }]), { pr: 9, kind: "revert-of-revert" });
+  assert.deepEqual(mergedBackOf({ files }, 8, revertedAt, [{ number: 10, branch: "fix/x", mergedAt: "2026-10-02T12:00:00Z", files: [...files].reverse() }]), { pr: 10, kind: "same-files" });
+  // 파일이 하나라도 다르면(수정해서 다시 올림) misfire가 아니다
+  assert.equal(mergedBackOf({ files }, 8, revertedAt, [{ number: 10, branch: "fix/x", mergedAt: "2026-10-02T12:00:00Z", files: [files[0]!, { filename: "b.ts", sha: "other" }] }]), null);
+  // 24시간이 지났거나 revert보다 먼저 머지된 것은 아니다
+  assert.equal(mergedBackOf({ files }, 8, revertedAt, [{ number: 9, branch: "revert-8-abc", mergedAt: "2026-10-03T10:30:00Z" }]), null);
+  assert.equal(mergedBackOf({ files }, 8, revertedAt, [{ number: 9, branch: "revert-8-abc", mergedAt: "2026-10-02T09:00:00Z" }]), null);
+  // 원래 파일을 못 읽었으면 revert-of-revert만 본다. 다른 revert PR의 revert는 아니다
+  assert.equal(mergedBackOf({ files: null }, 8, revertedAt, [{ number: 10, branch: "fix/x", mergedAt: "2026-10-02T12:00:00Z", files }]), null);
+  assert.equal(mergedBackOf({ files }, 8, revertedAt, [{ number: 9, branch: "revert-80-abc", mergedAt: "2026-10-02T12:00:00Z" }]), null);
+});
+
+test("revertDaysOf: per UTC day, reverts, flakes caught and misfires", () => {
+  const now = Date.parse("2026-10-02T12:00:00Z");
+  const lines: AutoRevertLine[] = [
+    { at: "2026-10-02T01:00:00Z", op: "revert-opened", airport: "ATCC", revertPr: 5 },
+    { at: "2026-10-02T02:00:00Z", op: "flake", airport: "ATCC" },
+    { at: "2026-10-02T03:00:00Z", op: "flake", airport: "ATCC" },
+    { at: "2026-10-01T09:00:00Z", op: "misfire", airport: "ATCC" },
+    { at: "2026-10-01T10:00:00Z", op: "hold", airport: "ATCC" },
+    { at: "2026-09-20T10:00:00Z", op: "revert-opened", airport: "ATCC" }, // 창 밖
+  ];
+  const days = revertDaysOf(lines, 3, now);
+  assert.deepEqual(days.map((d) => d.day), ["2026-09-30", "2026-10-01", "2026-10-02"]);
+  assert.deepEqual(days[2], { day: "2026-10-02", reverts: 1, flakes: 2, misfires: 0, holds: 0, stops: 0 });
+  assert.deepEqual(days[1], { day: "2026-10-01", reverts: 0, flakes: 0, misfires: 1, holds: 1, stops: 0 });
 });

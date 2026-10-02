@@ -461,7 +461,7 @@ vocado `main`의 `strict` 때문에 머지가 있을 때마다 다른 열린 PR�
   - ATC-27·30은 그대로다: `buildPulls`가 지금 스위치로 외부 리뷰 제외를 다시 본다. 제외 PR은 대기열에 넣지 않고, 스트립에 "AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(migrations)"로 보인다.
   - head마다 한 번(`autoland-state.json`의 `reviewRequests`). 기록은 `op: "review-request"`에 `via`(`codex`, `deepseek`, `supervisor`). 리뷰가 붙을 때까지 스트립에 "AUTOLAND: review requested (codex|deepseek)"가 보인다. AUTOLAND가 `update`나 `merge`이고 그 AIRPORT가 GROUND STOP이 아닐 때만 한다.
 
-- **자동 revert (ATC-351)**: `autoRevert` 스위치가 `on`이면(설정 창, 기본 off) AUTOLAND가 머지해 `main`을 빨갛게 만든 머지의 revert PR이 열리고, AUTOLAND는 GROUND STOP이 걸린 중에도 그 PR을 머지한다(나가는 길이라서. 리뷰·CI·제외 목록은 그대로고 FLIGHT는 없어도 된다). 걸린 stop은 다음 head가 초록이면 atc가 푼다. 마이그레이션·`user` 등급 경로를 고친 PR과 사람의 머지는 자동으로 되돌리지 않는다(`hold` 줄, DUTY가 본다). 1시간 안에 새 빨간 head가 둘이면 AUTOLAND `merge`를 `update`로 내리고 SUPERVISOR가 스위치를 다시 고를 때까지 레인이 멈춘다. 규칙 전체: [autonomy.ko.md](autonomy.ko.md) "C4 구현 결과".
+- **자동 revert (ATC-351)**: `autoRevert` 스위치가 `on`이고(설정 창, **기본 on**, ATC-394) 실패한 체크를 같은 head에서 다시 돌려도 빨갛고 그 PR 자신의 head가 초록이었으면 AUTOLAND가 머지해 `main`을 빨갛게 만든 머지의 revert PR이 열리고, AUTOLAND는 GROUND STOP이 걸린 중에도 그 PR을 머지한다(나가는 길이라서. 리뷰·CI·제외 목록은 그대로고 FLIGHT는 없어도 된다). 걸린 stop은 다음 head가 초록이면 atc가 푼다. 마이그레이션·`user` 등급 경로를 고친 PR과 사람의 머지는 자동으로 되돌리지 않는다(`hold` 줄, DUTY가 본다). 1시간 안에 새 빨간 head가 둘이면 AUTOLAND `merge`를 `update`로 내리고 SUPERVISOR가 스위치를 다시 고를 때까지 레인이 멈춘다. 규칙 전체: [autonomy.ko.md](autonomy.ko.md) "C4 구현 결과".
 
 #### 머지 리뷰: atc에 기록한 리뷰가 착륙 리뷰다 (ATC-328)
 

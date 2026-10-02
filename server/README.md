@@ -234,7 +234,7 @@ Everything lives under `ATC_STATE_DIR` (default `~/.local/state/atc`), outside g
 | `human-checks.jsonl` | `human-check-run.ts` | HUMAN CHECK results the SUPERVISOR recorded: PR, head, pass/fail, classes, note, comment URL, errors (append-only) |
 | `autoland.jsonl` | `autoland-run.ts` | AUTOLAND records: every update, merge, result, GROUND STOP, switch and HOLD change (append-only) |
 | `auto-approve.jsonl` | `auto-approve-run.ts` | Automatic approvals and LAUNCHes (`approve`, `launch`) and the shadow `would-approve` / `would-launch` lines: time, mode, kind, card, REGISTRATION and result (append-only) |
-| `auto-revert.jsonl` | `auto-revert-run.ts` | Auto-revert lane lines (`red`, `would-revert`, `revert-opened`, `revert-failed`, `revert-landed`, `hold`, `stop`, `mode`, `fix`): time, AIRPORT, red head, merge, PR, failing check, detail (append-only) |
+| `auto-revert.jsonl` | `auto-revert-run.ts` | Auto-revert lane lines (`red`, `rerun`, `flake`, `misfire`, `revert-opened`, `revert-failed`, `revert-landed`, `hold`, `stop`, `mode`, `fix`): time, AIRPORT, red head, merge, PR, failing check, detail (append-only) |
 | `judges.json` | `judges/store.ts` | Judge family switches (`jev`: `off`, `replay`, `shadow`; default off). SUPERVISOR only, through Settings (written atomically) |
 | `judges.jsonl` | `judges/run.ts` | Judge marks (`judge`: family, draft, classification, verdict, engine, model, what was sent) and switch changes (`mode`), append-only |
 | `dispatch.json` | you (optional; defaults apply without it) | DISPATCH settings: project → AIRPORT mapping, slots, weights, mode (`shadow` / `approval`) |

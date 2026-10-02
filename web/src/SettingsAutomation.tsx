@@ -228,9 +228,8 @@ const REVIEW_WARN = {
 } as const;
 const REVIEW_LABELS = { deepseek: reviewLabel("deepseek") };
 const AUTO_REVERT_WARN = {
-  off: "off(기본): main이 빨개져도 atc는 되돌리지 않는다. GROUND STOP과 MCC 멈춤은 사람이 읽고 푼다.",
-  shadow: "shadow: lander(MCC·AUTOLAND)가 머지한 PR이 main을 깼다면 \"되돌렸을 것\"이라고 auto-revert.jsonl에만 적는다(head·머지·실패한 체크). PR도 알림도 없다.",
-  on: "⚠ lander가 머지해 main을 빨갛게 만든 PR의 revert PR을 atc가 연다(AIRPORT마다 하나, 같은 리뷰·CI로 착륙, 다음 초록 head가 GROUND STOP을 푼다). 사람의 머지·마이그레이션(K1)·user 등급(K3) PR은 되돌리지 않고 DUTY에게 알린다. 1시간 안에 빨간 head가 둘이면 멈추고 AUTOLAND merge → update, MCC 착륙 끔으로 내린다.",
+  off: "off: main이 빨개져도 atc는 되돌리지 않는다. GROUND STOP과 MCC 멈춤은 사람이 읽고 푼다.",
+  on: "⚠ 기본 켜짐. lander가 머지해 main을 빨갛게 만든 PR을 atc가 되돌리는 PR을 연다(AIRPORT마다 하나, 같은 리뷰·CI로 착륙, 다음 초록 head가 GROUND STOP을 푼다). 되돌리기 전에 실패한 체크를 같은 head에서 한 번 다시 돌려 flake면 아무것도 하지 않고, 다시 빨갛고 그 PR 자신의 head가 초록이었을 때만 되돌린다. 사람의 머지·마이그레이션(K1)·user 등급(K3) PR은 되돌리지 않고 DUTY에게 알린다. 1시간 안에 빨간 head가 둘이면 멈추고 AUTOLAND merge → update, MCC 착륙 끔으로 내린다.",
 } as const;
 const AUTO_APPROVE_WARN = {
   off: "off(기본): ASSIGN과 SCHEDULE 초안은 SUPERVISOR가 하나씩 누른다.",
@@ -508,11 +507,24 @@ export function LandingSettings({ server, save }: { server: Loaded; save: Save }
                   env="autoRevert"
                   value={s.autoRevert.mode}
                   note={`auto-revert.json · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈${s.autoRevert.stopped.length ? ` · 멈춤: ${s.autoRevert.stopped.map((x) => `${x.airport}(${x.detail})`).join(", ")} — 스위치를 다시 고르면 풀린다` : ""}`}
-                  input={{ kind: "select", options: ["off", "shadow", "on"] }}
+                  input={{ kind: "select", options: ["off", "on"] }}
                   guard={guardOf("autoRevert", s.autoRevert.mode, AUTO_REVERT_WARN)}
-                  onSave={(v) => save({ autoRevert: v as "off" | "shadow" | "on" })}
+                  onSave={(v) => save({ autoRevert: v as "off" | "on" })}
                 />
-                <ModeLines modes={["off", "shadow", "on"] as const} current={s.autoRevert.mode} lines={AUTO_REVERT_WARN} />
+                <ModeLines modes={["off", "on"] as const} current={s.autoRevert.mode} lines={AUTO_REVERT_WARN} />
+                {s.autoRevert.days.some((d) => d.reverts + d.flakes + d.misfires + d.holds + d.stops > 0) ? (
+                  <ul className="dp-misfire">
+                    {[...s.autoRevert.days]
+                      .reverse()
+                      .filter((d) => d.reverts + d.flakes + d.misfires + d.holds + d.stops > 0)
+                      .map((d) => (
+                        <li key={d.day}>
+                          <span className="mono">{d.day}</span> revert <b>{d.reverts}</b> · flake 잡음 <b>{d.flakes}</b> · misfire <b>{d.misfires}</b>
+                          {d.holds + d.stops > 0 ? <span className="faint"> — 알림 {d.holds} · 멈춤 {d.stops}</span> : null}
+                        </li>
+                      ))}
+                  </ul>
+                ) : null}
               </>
             ) : null
           }

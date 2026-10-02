@@ -4,24 +4,24 @@ import { config } from "./config.ts";
 
 // 자동 되돌림 줄(ATC-351, docs/autonomy.md C4·WO-10). atc의 lander(MCC·AUTOLAND)가 머지해서 main이 빨개지면 그 머지의 revert PR을 연다.
 // 이 파일은 설정·기록 읽기 쓰기와 순수 결정(revertDecisionOf). GitHub에 쓰는 일과 lane 낮추기는 auto-revert-run.ts.
-// 스위치 autoRevert(off·shadow·on, 기본 off)는 설정 창(fromThisApp)에서만 바꾼다 — atcctl 명령이 없다(K3).
-// shadow는 would-revert 줄만 쓴다(head·머지·실패한 체크). 다른 기록·알림·PR은 없다.
+// 스위치 autoRevert(off·on, 기본 on)는 설정 창(fromThisApp)에서만 바꾼다 — atcctl 명령이 없다(K3). shadow는 없다: 처음부터 켜져 있고(ATC-394), 끄는 것은 SUPERVISOR 몫이다.
+// 되돌리기 전에 실패한 체크를 같은 main head에서 한 번 다시 돌린다(flake 방어). 다시 빨갛고 PR 자신의 head가 초록이었을 때만 되돌린다.
 
-export type AutoRevertMode = "off" | "shadow" | "on";
-export const AUTO_REVERT_MODES: readonly AutoRevertMode[] = ["off", "shadow", "on"];
+export type AutoRevertMode = "off" | "on";
+export const AUTO_REVERT_MODES: readonly AutoRevertMode[] = ["off", "on"];
 
 export interface AutoRevertConfig {
   mode: AutoRevertMode;
 }
-export const DEFAULT_AUTO_REVERT: AutoRevertConfig = { mode: "off" };
+export const DEFAULT_AUTO_REVERT: AutoRevertConfig = { mode: "on" };
 
 const CONFIG_FILE = () => join(config.stateDir, "auto-revert.json");
 export const RECORD_FILE = () => join(config.stateDir, "auto-revert.jsonl");
 
-// 모르는 값은 off — 깨진 파일이 무엇도 켜지 않게
+// 기본 on(ATC-394). 꺼지는 것은 파일에 정확히 "off"가 적혔을 때뿐이다(예전 shadow 값과 모르는 값은 기본). 파일이 없어도 on이다
 export function parseAutoRevert(raw: unknown): AutoRevertConfig {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  return { mode: AUTO_REVERT_MODES.includes(r.mode as AutoRevertMode) ? (r.mode as AutoRevertMode) : DEFAULT_AUTO_REVERT.mode };
+  return { mode: r.mode === "off" ? "off" : DEFAULT_AUTO_REVERT.mode };
 }
 
 const readJson = (file: string): unknown => {
@@ -40,13 +40,15 @@ export function saveAutoRevert(next: AutoRevertConfig, file = CONFIG_FILE()) {
 }
 
 // ── 기록(auto-revert.jsonl, 추가만) ──
-// red: 새 빨간 main head를 처음 본 때(on에서만). own은 우리 revert PR의 머지라는 뜻이라 breaker가 세지 않는다
-// would-revert: shadow에서 되돌렸을 머지. revert-opened/-failed: on에서 revert PR을 열었다/못 열었다. revert-landed: 그 PR이 머지됐음을 처음 봤다
+// red: 새 빨간 main head를 처음 본 때(실패한 체크를 다시 돌려도 빨갛다고 확인한 뒤). own은 우리 revert PR의 머지라는 뜻이라 breaker가 세지 않는다
+// rerun: 실패한 체크를 같은 head에서 한 번 다시 돌리기 시작했다(runs). flake: 다시 돌리니 초록이었다(flake를 잡음, 되돌리지 않고 breaker도 세지 않는다)
+// misfire: 되돌린 PR이 24시간 안에 그대로 다시 머지됐다(kind: revert-of-revert · same-files)
+// revert-opened/-failed: revert PR을 열었다/못 열었다. revert-landed: 그 PR이 머지됐음을 처음 봤다
 // hold: K1·K3·사람의 머지·되돌림의 되돌림처럼 자동으로 하지 않고 알린 것. stop: breaker가 lane을 낮췄다. mode: 스위치를 바꿨다(breaker 래치를 푼다)
 // fix: 되돌린 PR의 FLIGHT 담당에게 FIX를 냈다(relay), duty: DUTY에게 알렸다
 export interface AutoRevertLine {
   at: string;
-  op: "red" | "would-revert" | "revert-opened" | "revert-failed" | "revert-landed" | "hold" | "stop" | "mode" | "fix" | "duty";
+  op: "red" | "rerun" | "flake" | "misfire" | "revert-opened" | "revert-failed" | "revert-landed" | "hold" | "stop" | "mode" | "fix" | "duty";
   airport?: string;
   head?: string; // 빨간 main head
   commit?: string; // 되돌릴 머지 커밋
@@ -55,6 +57,9 @@ export interface AutoRevertLine {
   revertPr?: number; // 연 revert PR
   check?: string; // 실패한 체크
   own?: boolean;
+  runs?: { id: number; attempt: number }[]; // rerun: 다시 돌리기 전의 GitHub Actions run id와 시도 번호
+  by2?: number; // misfire: 그대로 다시 머지한 PR 번호
+  kind?: "revert-of-revert" | "same-files"; // misfire
   detail?: string;
 }
 
@@ -228,6 +233,10 @@ export function dutyLineOf(l: AutoRevertLine): string | null {
       return `AUTO-REVERT #${l.revertPr} landed (${l.airport ?? "?"})`;
     case "hold":
       return `AUTO-REVERT HOLD ${where}: ${l.detail ?? ""}`;
+    case "flake":
+      return `AUTO-REVERT flake caught ${where}: ${l.check ?? "?"} was red, then green on re-run; nothing reverted`;
+    case "misfire":
+      return `AUTO-REVERT misfire: reverted PR #${l.pr} was merged back unchanged within 24 h as PR #${l.by2} (${l.kind})`;
     case "stop":
       return `AUTO-REVERT STOP ${l.airport ?? "?"}: ${l.detail ?? ""} — lane lowered; the SUPERVISOR raises it again`;
     default:
@@ -239,3 +248,83 @@ export function dutyLineOf(l: AutoRevertLine): string | null {
 // 스위치가 on일 때만 쓴다. GROUND STOP과 FLIGHT 없음 예외가 이 PR에만 적용된다
 export const isRevertPr = (lines: readonly AutoRevertLine[], airport: string, number: number, branch: string): boolean =>
   /^revert-\d+-/.test(branch) && lines.some((l) => l.op === "revert-opened" && l.airport === airport && l.revertPr === number);
+
+// ── flake 방어(ATC-394) ──
+// 되돌리기 전에 실패한 체크를 같은 main head에서 한 번 다시 돌린다. 다시 초록이면 flake를 잡은 것이라 되돌리지 않고 breaker도 세지 않는다.
+// 다시 빨갛고 되돌릴 PR 자신의 head가 초록이었을 때만 되돌린다. 다시 돌릴 수 없는 체크(Actions run이 아님)는 확인할 수 없으니 되돌리지 않고 알린다.
+export const RERUN_WAIT_MS = 45 * 60_000;
+export interface RunState {
+  id: number;
+  attempt: number;
+  status: string; // queued | in_progress | completed
+  conclusion: string | null;
+}
+export type RerunVerdict = "wait" | "green" | "red" | "timeout";
+// 순수: 다시 돌린 run들의 지금 상태로 판정. 시도 번호가 올라가지 않은 run은 아직 다시 돌기 전(옛 결과)이라 기다린다
+export function rerunVerdictOf(started: readonly { id: number; attempt: number }[], now: readonly RunState[], startedAt: string, nowMs: number): RerunVerdict {
+  const waited = nowMs - Date.parse(startedAt) > RERUN_WAIT_MS;
+  const fresh = started.map((s) => now.find((r) => r.id === s.id && r.attempt > s.attempt));
+  if (fresh.some((r) => !r || r.status !== "completed")) return waited ? "timeout" : "wait";
+  return fresh.every((r) => r!.conclusion === "success") ? "green" : "red";
+}
+
+// 이 head의 flake 방어 상태: started(rerun 줄) · flake(초록이라 끝) 
+export function rerunOf(lines: readonly AutoRevertLine[], airport: string, head: string): { started: AutoRevertLine | null; flake: boolean } {
+  const mine = lines.filter((l) => l.airport === airport && l.head === head);
+  return { started: mine.filter((l) => l.op === "rerun").at(-1) ?? null, flake: mine.some((l) => l.op === "flake") };
+}
+
+// ── 되돌린 PR이 그대로 다시 머지됨(misfire) ──
+export const MISFIRE_WINDOW_MS = 24 * 3_600_000;
+export interface MergedPr {
+  number: number;
+  branch: string;
+  mergedAt: string;
+}
+type FileSha = { filename: string; sha: string };
+const sameFiles = (a: readonly FileSha[], b: readonly FileSha[]) => a.length > 0 && a.length === b.length && a.every((f) => b.some((g) => g.filename === f.filename && g.sha === f.sha));
+// 순수: revert가 머지된 뒤(revertedAt) 24시간 안에 머지된 PR 가운데 되돌린 것을 그대로 되살린 것. 하나면 그것
+//   revert-of-revert: GitHub이 revert PR을 되돌릴 때 붙이는 브랜치 이름 revert-<revert PR 번호>-…
+//   same-files: 파일 이름과 바뀐 뒤의 blob sha가 원래 PR과 모두 같다(파일을 읽을 수 있을 때만)
+export function mergedBackOf(
+  orig: { files: readonly FileSha[] | null },
+  revertPr: number,
+  revertedAt: string,
+  merged: readonly (MergedPr & { files?: readonly FileSha[] | null })[],
+): { pr: number; kind: "revert-of-revert" | "same-files" } | null {
+  const from = Date.parse(revertedAt);
+  for (const m of merged) {
+    const t = Date.parse(m.mergedAt);
+    if (t < from || t - from > MISFIRE_WINDOW_MS) continue;
+    if (new RegExp(`^revert-${revertPr}-`).test(m.branch)) return { pr: m.number, kind: "revert-of-revert" };
+    if (orig.files && m.files && sameFiles(orig.files, m.files)) return { pr: m.number, kind: "same-files" };
+  }
+  return null;
+}
+
+// ── 날짜별 수(설정 창과 GET /api/auto-revert) ──
+export interface RevertDay {
+  day: string; // UTC 날짜
+  reverts: number; // revert PR을 연 수
+  flakes: number; // 빨갛다가 다시 돌리니 초록: flake를 잡은 수
+  misfires: number; // 되돌린 PR이 24시간 안에 그대로 다시 머지된 수
+  holds: number;
+  stops: number;
+}
+export function revertDaysOf(lines: readonly AutoRevertLine[], days: number, now: number): RevertDay[] {
+  const out = new Map<string, RevertDay>();
+  for (let i = days - 1; i >= 0; i--) {
+    const day = new Date(now - i * 86_400_000).toISOString().slice(0, 10);
+    out.set(day, { day, reverts: 0, flakes: 0, misfires: 0, holds: 0, stops: 0 });
+  }
+  for (const l of lines) {
+    const d = out.get(l.at.slice(0, 10));
+    if (!d) continue;
+    if (l.op === "revert-opened") d.reverts++;
+    else if (l.op === "flake") d.flakes++;
+    else if (l.op === "misfire") d.misfires++;
+    else if (l.op === "hold") d.holds++;
+    else if (l.op === "stop") d.stops++;
+  }
+  return [...out.values()];
+}

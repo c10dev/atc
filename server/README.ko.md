@@ -234,7 +234,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `human-checks.jsonl` | `human-check-run.ts` | SUPERVISOR가 기록한 HUMAN CHECK 결과: PR, head, pass·fail, class, 메모, 댓글 URL, 오류(추가만) |
 | `autoland.jsonl` | `autoland-run.ts` | AUTOLAND 기록: 갱신, 머지, 결과, GROUND STOP, 스위치·HOLD 변경(추가만 함) |
 | `auto-approve.jsonl` | `auto-approve-run.ts` | 자동 승인과 LAUNCH(`approve`, `launch`)와 shadow의 `would-approve`·`would-launch` 줄: 시각, 모드, 종류, 카드, REGISTRATION, 결과(추가만 함) |
-| `auto-revert.jsonl` | `auto-revert-run.ts` | 자동 revert 레인 줄(`red`, `would-revert`, `revert-opened`, `revert-failed`, `revert-landed`, `hold`, `stop`, `mode`, `fix`): 시각, AIRPORT, 빨간 head, 머지, PR, 실패한 체크, 설명(추가만 함) |
+| `auto-revert.jsonl` | `auto-revert-run.ts` | 자동 revert 레인 줄(`red`, `rerun`, `flake`, `misfire`, `revert-opened`, `revert-failed`, `revert-landed`, `hold`, `stop`, `mode`, `fix`): 시각, AIRPORT, 빨간 head, 머지, PR, 실패한 체크, 설명(추가만 함) |
 | `judges.json` | `judges/store.ts` | 판정 계열 스위치(`jev`: `off`·`replay`·`shadow`, 기본 off). SUPERVISOR만, 설정 창에서(원자적으로 바꿔 씀) |
 | `judges.jsonl` | `judges/run.ts` | 판정 계열 mark(`judge`: 계열, 초안, 분류, 판정, 엔진, 모델, 보낸 칸)와 스위치 변경(`mode`), 추가만 함 |
 | `dispatch.json` | 사용자(선택, 없으면 기본값) | DISPATCH 설정: 프로젝트 → AIRPORT 매핑, 슬롯, 가중치, 모드(`shadow` / `approval`) |

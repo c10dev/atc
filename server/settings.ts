@@ -17,7 +17,7 @@ import { loadRecycle, RECYCLE_MODES, type RecycleMode, recycleCapOk } from "./co
 import { setRecycleAuto, setRecycleCaps, setRecycleMode } from "./control-recycle-run.ts";
 import { TTS_ENGINES, VOICE_NAME } from "./tts.ts";
 import { setMccMode } from "./mcc-run.ts";
-import { AUTO_REVERT_MODES, type AutoRevertMode, loadAutoRevert } from "./auto-revert.ts";
+import { AUTO_REVERT_MODES, type AutoRevertMode, loadAutoRevert, readAutoRevertLines, type RevertDay, revertDaysOf } from "./auto-revert.ts";
 import { setAutoRevertMode, stoppedAirports } from "./auto-revert-run.ts";
 import { type DutyConfig, loadDutyConfig } from "./duty-config.ts";
 import { dutyAccountPatchOf, effectiveDutyFolder } from "./duty-account.ts";
@@ -56,7 +56,7 @@ export interface ServerSettings {
   // MCC(docs/mcc.md): mcc.json의 스위치와 맡은 AIRPORT
   mcc: { mode: MccMode; airport: string };
   // 자동 되돌림(ATC-351): auto-revert.json의 스위치와 breaker가 멈춘 AIRPORT. 기본 off
-  autoRevert: { mode: AutoRevertMode; stopped: { airport: string; at: string; detail: string }[] };
+  autoRevert: { mode: AutoRevertMode; stopped: { airport: string; at: string; detail: string }[]; days: RevertDay[] }; // days: 최근 7일의 날짜별 revert·flake·misfire 수(ATC-394)
   // FLEET PLAN REPOSITION(ATC-179): fleet-plan.json. 기본 shadow. auto는 ⚠(하루 dailyMax 상한, flapping이면 approval로 돌아옴)
   fleetPlan: { reposition: RepositionMode; repositionDailyMax: number };
   // CONTROL RECYCLE(ATC-166): control-recycle.json. 기본 off. caps는 세션 이름 → CAP 토큰(null이면 재시작 안 함)
@@ -140,7 +140,7 @@ export function readServerSettings(): ServerSettings {
       const m = loadMcc();
       return { mode: m.mode, airport: m.airport };
     })(),
-    autoRevert: { mode: loadAutoRevert().mode, stopped: stoppedAirports().map((l) => ({ airport: l.airport ?? "?", at: l.at, detail: l.detail ?? "" })) },
+    autoRevert: { mode: loadAutoRevert().mode, stopped: stoppedAirports().map((l) => ({ airport: l.airport ?? "?", at: l.at, detail: l.detail ?? "" })), days: revertDaysOf(readAutoRevertLines(), 7, Date.now()) },
     controlRecycle: loadRecycle(),
     fleetPlan: { reposition: loadReposition().mode, repositionDailyMax: loadReposition().dailyMax },
     voice: { engine: config.ttsEngine, voice: config.ttsVoice },
@@ -267,7 +267,7 @@ export function mountSettings(app: Hono) {
     if (reviewSecurity !== undefined && !EXTERNAL_REVIEW_SECURITY.includes(reviewSecurity as ExternalReviewSecurity))
       return c.json({ errors: { reviewSecurity: `exclude 또는 deepseek` } }, 400);
     if (autolandMode !== undefined && !AUTOLAND_MODES.includes(autolandMode as AutolandMode)) return c.json({ errors: { autolandMode: `off, update, merge 중 하나` } }, 400);
-    if (autoRevert !== undefined && !AUTO_REVERT_MODES.includes(autoRevert as AutoRevertMode)) return c.json({ errors: { autoRevert: `off, shadow, on 중 하나` } }, 400);
+    if (autoRevert !== undefined && !AUTO_REVERT_MODES.includes(autoRevert as AutoRevertMode)) return c.json({ errors: { autoRevert: `off 또는 on` } }, 400);
     if (autolandReviewedSecurity !== undefined && !REVIEWED_SECURITY.includes(autolandReviewedSecurity as ReviewedSecurity)) return c.json({ errors: { autolandReviewedSecurity: `off 또는 delegate` } }, 400);
     if (judgesJev !== undefined && !JUDGE_MODES.includes(judgesJev as JudgeMode)) return c.json({ errors: { judgesJev: `off, replay, shadow 중 하나` } }, 400);
     if (mccMode !== undefined && !MCC_MODES.includes(mccMode as MccMode)) return c.json({ errors: { mccMode: `shadow, land, land+rts, rts 중 하나` } }, 400);

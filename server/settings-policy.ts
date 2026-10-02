@@ -20,7 +20,7 @@ export const RISKY: Record<PolicyKey, readonly string[]> = {
   scheduleAuto: ["on"], // 서버가 SCHEDULE 초안(CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW)을 사람 판정 없이 승인한다(ATC-370). 기본 on, off는 SUPERVISOR 몫
   fleetPlanAuto: ["on"], // 서버가 FLEET PLAN 제안(LAUNCH·STOP·RESTART·REFRESH·AOG)을 사람 승인 없이 실행한다(ATC-370). 기본 on, off는 SUPERVISOR 몫
   autoDispatch: ["on"], // 서버가 필터·상한을 통과한 ASSIGN·launch를 CROSSCHECK·사람 없이 승인한다(ATC-367, K3). 기본 on이라 ⚠로 보이고, 껐다 다시 켤 때 확인한다
-  autoRevert: ["on"], // atc가 lander 머지가 깬 main의 revert PR을 스스로 열고, 두 번째 빨간 head에는 lane을 한 단계 낮춘다(shadow는 would-revert 기록만)
+  autoRevert: ["on"], // atc가 lander 머지가 깬 main의 revert PR을 스스로 열고, 두 번째 빨간 head에는 lane을 한 단계 낮춘다(되돌리기 전에 실패한 체크를 한 번 다시 돌린다. 기본 on, off는 SUPERVISOR 몫)
   autoApproveLaunch: ["on"], // 서버가 launch 카드를 스스로 승인하고 세션을 띄운다(상한·FUEL hold·막힘·실패 뒤 대기·하루 상한을 지킬 때만)
 };
 
@@ -105,7 +105,7 @@ export const SETTINGS_INDEX: readonly SettingsEntry[] = [
   { tab: "landing", code: "MCC", label: "atc 착륙·RETURN TO SERVICE", words: "shadow land rts land+rts rollback 배포 shadow gate mcc.mode" },
   { tab: "landing", code: "REVIEW", label: "Codex 한도 때 착륙 리뷰", words: "보안 pr sonnet deepseek exclude externalReview.security" },
   { tab: "operations", code: "FUEL", label: "사용 한도 HOLD", words: "dispatch hold 사용량 한도 fuel.hold" },
-  { tab: "landing", code: "AUTO REVERT", label: "main이 빨개지면 lander 머지 자동 되돌림", words: "revert 되돌림 main red 빨간 breaker autoRevert would-revert groundstop" },
+  { tab: "landing", code: "AUTO REVERT", label: "main이 빨개지면 lander 머지 자동 되돌림", words: "revert 되돌림 main red 빨간 breaker autoRevert flake groundstop" },
   { tab: "operations", code: "AUTO APPROVE", label: "일치 기반 자동 승인", words: "dispatch schedule crosscheck agree blind launch 자동 승인 autoApprove autoApproveLaunch via auto" },
   { tab: "operations", code: "SCHEDULE·FLEET PLAN AUTO", label: "SCHEDULE·FLEET PLAN 자동 적용", words: "schedule fleet plan 자동 적용 사람 없이 off on misfire 오작동 scheduleAuto fleetPlanAuto schedule.auto fleet-plan.auto backlog" },
   { tab: "operations", code: "REPOSITION", label: "소속 AIRPORT 옮기기", words: "base fleet plan approval auto fleet-plan.reposition" },
