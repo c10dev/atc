@@ -45,7 +45,7 @@ export function FuelAccounts({ accounts }: { accounts: FuelRemaining[] }) {
 type FuelRecentView = NonNullable<AircraftView["fuelRecent"]>[number];
 // LOGBOOK 표의 NET 칸(ATC-287): 값만($2.76). TRIP 안이면 아무것도 덧붙이지 않고(툴팁에만), LEAK·UNEXPECTED만 amber로 보인다
 export function RecentFuel({ f }: { f: FuelRecentView | undefined }) {
-  if (!f || f.tokens === null) return <span className="fl-log-fuel faint">—</span>;
+  if (!f || f.tokens === null) return <span className="fl-log-fuel faint" title="이 FLIGHT의 LOGBOOK 줄에 fuel이 없다(FUEL F4 전이거나 대화 기록을 찾지 못함)">—</span>;
   const trip = f.trip.p50 !== null && f.trip.p90 !== null ? `TRIP FUEL ${usd(f.trip.p50)}–${usd(f.trip.p90)} (${f.trip.level} ${f.trip.group}, ${f.trip.samples}건)` : "TRIP FUEL 없음(비교할 FLIGHT가 모자람)";
   const title = [
     `FUEL BURN ${tokensText(f.tokens)} 토큰`,

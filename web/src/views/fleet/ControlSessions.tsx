@@ -340,7 +340,7 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
                 </span>
                 <span className="fl-r-week" aria-hidden="true" />
                 <ContextCell c={r.fob} />
-                <span className="fl-r-burn mono" title={r.fuel?.title ?? undefined}>
+                <span className="fl-r-burn mono" title={r.fuel?.title ?? "최근 14일 이 세션의 FUEL COST 없음(기록이 없거나 값 없는 모델)"}>
                   {r.fuel ? r.fuel.label : <span className="faint">—</span>}
                 </span>
               </>
@@ -369,10 +369,10 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
                   {o.cwdShort}
                 </code>
                 <span className="fl-other-status">{o.job?.state ?? o.status ?? "?"}</span>
-                <span className="fl-other-idle mono">
+                <span className="fl-other-idle mono" title={o.lastActiveAt ?? undefined}>
                   {idleText(o.idleMin) ?? <span className="faint">idle ?</span>}
                 </span>
-                <span className="fl-other-detail ellipsis">
+                <span className="fl-other-detail ellipsis" title={o.job?.detail || undefined}>
                   {o.job?.detail || <span className="faint">—</span>}
                 </span>
                 {o.account && <span className="fl-r-acct mono">{o.account}</span>}

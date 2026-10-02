@@ -4,7 +4,7 @@ import type { ContextBadge } from "../../../../server/fuel-context.ts";
 
 export function ContextCell({ c }: { c: ContextBadge | null }) {
   return (
-    <span className={`fl-r-ctx mono${c ? ` lv-${c.level}` : ""}`} title={c?.title}>
+    <span className={`fl-r-ctx mono${c ? ` lv-${c.level}` : ""}`} title={c?.title ?? "살아 있는 세션의 최근 7일 기록 없음"}>
       {c ? <ContextShort short={c.short} /> : <span className="faint">—</span>}
     </span>
   );

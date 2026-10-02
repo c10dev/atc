@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { FIDS_GROUP_CAP, type FoldedGroup, foldGroup, shortAge } from "../fids-rows.ts";
-import { latestMilestone, type Milestones } from "../../../server/milestones.ts";
+import { latestMilestone, type Milestones, milestoneTitle } from "../../../server/milestones.ts";
 import type { Snapshot, Ticket, TicketColumn } from "../../../server/model.ts";
 import {
   alertCode,
@@ -237,7 +237,7 @@ function DepartureRow({ ticket: t, idx, clock, now, milestones }: { ticket: Tick
   // OOOI는 title에만 두지 않는다(원칙 11): OUT 시각과 되돌림을 REMARKS에 보인다
   const reverted = milestones?.reverted ? ` #${milestones.reverted.number}` : "";
   return (
-    <tr className={`fids-row tone-${tone}${occupants.length ? " is-occupied" : ""}`}>
+    <tr className={`fids-row tone-${tone}${occupants.length ? " is-occupied" : ""}`} title={latest ? milestoneTitle(milestones, (iso) => formatClock(iso, clock)) : undefined}>
       <td className="col-time mono">
         <SplitFlap bare text={t.updatedAt ? formatClock(t.updatedAt, clock) : "—"} />
       </td>

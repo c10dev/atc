@@ -29,7 +29,7 @@ import { Kv } from "./Kv.tsx";
 import { type LaunchInfo, type LaunchInput, LaunchOptions, launchDefaultsOf } from "./LaunchPanel.tsx";
 import { ReportLine } from "./ReportMark.tsx";
 import { Fold } from "./Fold.tsx";
-import { LOG_OUTCOME_TEXT, type SessionBrief, type SessionRow, logOutcomeOf, pct, stripOf } from "./shared.ts";
+import { LOG_OUTCOME_TEXT, type SessionBrief, type SessionRow, logOutcomeOf, pct, ratingHelp, stripOf } from "./shared.ts";
 import "./Card.css";
 
 // AIRCRAFT 한 대의 카드(ATC-280): 머리(이름·상태·버튼) → 경보 띠(있을 때만) → 네 칸 본문(NOW · CREW · ACCOUNT·FUEL · PERFORMANCE).
@@ -62,7 +62,7 @@ function RepositionNote({ r }: { r: LastReposition | null }) {
 const LOG_ROWS = 5;
 
 // PERFORMANCE(ATC-287): 라벨·값 줄, 목표는 값 옆의 캡션. 되돌림·LOS는 0보다 클 때만.
-// 14일 건수(ARRIVED)와 착륙 대기 중앙값은 줄에 보인다(펼친 곳에서 정하는 값이라 툴팁에만 두지 않는다)
+// 14일 건수(ARRIVED)와 착륙 대기 중앙값(PR을 연 뒤 머지될 때까지, 정시율에는 넣지 않는다)은 이번 주 줄의 캡션에 보인다
 function PerformanceKv({ a }: { a: AircraftView }) {
   const x = a.actuals;
   const t = a.targets;
@@ -73,7 +73,7 @@ function PerformanceKv({ a }: { a: AircraftView }) {
       <Kv
         label="이번 주"
         tone={weekShort ? "short" : undefined}
-        target={[t.flightsPerWeek != null ? `목표 ${t.flightsPerWeek}` : null, `14일 ${x.total}`].filter(Boolean).join(" · ")}
+        target={[t.flightsPerWeek != null ? `목표 ${t.flightsPerWeek}` : null, `14일 ${x.total}`, x.landingWait.medianMin != null ? `착륙 대기 중앙값 ${blockTime(Math.round(x.landingWait.medianMin))}` : null].filter(Boolean).join(" · ")}
       >
         {x.week}
       </Kv>
@@ -488,10 +488,10 @@ export function Card({
             <span className="fl-launch">
               <span className="fl-split" role="group" aria-label="LAUNCH">
                 {!optsOpen && (
-                <button type="button" className="fl-btn primary fl-split-main" disabled={launchBusy || Boolean(defaults.refused)} onClick={() => runLaunch()}>
-                  {launchBusy ? "띄우는 중…" : "LAUNCH"}
-                </button>
-              )}
+                  <button type="button" className="fl-btn primary fl-split-main" disabled={launchBusy || Boolean(defaults.refused)} onClick={() => runLaunch()}>
+                    {launchBusy ? "띄우는 중…" : "LAUNCH"}
+                  </button>
+                )}
                 <button
                   ref={toggleRef}
                   type="button"
@@ -563,7 +563,7 @@ export function Card({
                 {a.ratings.length ? (
                   <span className="fl-chips">
                     {a.ratings.map((r) => (
-                      <span key={r} className={`fl-chip r-${r}`}>
+                      <span key={r} className={`fl-chip r-${r}`} title={ratingHelp[r]}>
                         {r}
                       </span>
                     ))}
