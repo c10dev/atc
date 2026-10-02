@@ -285,25 +285,25 @@ const K_APPROVAL_WARN = {
 } as const;
 const AUTO_APPROVE_WARN = {
   off: "off(기본): ASSIGN과 SCHEDULE 초안은 SUPERVISOR가 하나씩 누른다.",
-  shadow: "shadow: 서버가 CROSSCHECK가 agree한 카드를 \"승인했을 것\"이라고 auto-approve.jsonl에만 적는다. 아무것도 승인하지 않는다.",
-  on: "⚠ 서버가 CROSSCHECK가 agree한 열린 ASSIGN(LAUNCH 아님)과 SCHEDULE 초안을 스스로 승인한다(via auto). blind 표본·HELD·disagree·주의(caution) 카드와 FUEL hold인 AIRCRAFT는 SUPERVISOR 몫이고, 하루 상한을 넘으면 기다린다.",
+  shadow: "shadow: 서버가 조건을 갖춘 카드를 \"승인했을 것\"이라고 auto-approve.jsonl에만 적는다. 아무것도 승인하지 않는다.",
+  on: "⚠ 서버가 SETTLED 열린 ASSIGN(LAUNCH 아님)과 SCHEDULE 초안을 스스로 승인한다(via auto, CROSSCHECK는 은퇴해 mark를 보지 않는다). blind 표본·HELD·주의(caution) 카드와 FUEL hold인 AIRCRAFT는 SUPERVISOR 몫이고, 하루 상한을 넘으면 기다린다.",
 } as const;
 const SCHEDULE_AUTO_WARN = {
   off: "off: SCHEDULE 초안은 SUPERVISOR(또는 일치 기반 자동 승인)가 승인한다.",
-  on: "⚠ 기본: 서버가 열린 SCHEDULE 초안 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW를 사람 판정과 CROSSCHECK 없이 승인한다(via auto). NEW는 Backlog에 제안으로만 생기고 SUPERVISOR가 풀어 준다. ROUTE·TARGET·PRIORITIZE는 제안으로 남는다. 하루 상한을 넘으면 기다린다.",
+  on: "⚠ 기본: 서버가 열린 SCHEDULE 초안 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW를 사람 판정 없이 승인한다(via auto). NEW는 Backlog에 제안으로만 생기고 SUPERVISOR가 풀어 준다. ROUTE·TARGET·PRIORITIZE는 제안으로 남는다. 하루 상한을 넘으면 기다린다.",
 } as const;
 const FLEET_PLAN_AUTO_WARN = {
   off: "off: FLEET PLAN 제안은 SUPERVISOR가 FLEET 화면에서 승인한다.",
   on: "⚠ 기본: 서버가 FLEET PLAN 제안 LAUNCH·STOP·RESTART·REFRESH·AOG를 사람 승인 없이 실행한다(세션을 띄우고 멈춘다). FUEL hold·ATC_MAX_LAUNCHED·하루 상한을 지키고, ENTRY·ACCOUNT CHANGE·REPOSITION·RETIRE·RETURN은 제안으로 남는다.",
 } as const;
 const AUTO_DISPATCH_WARN = {
-  off: "off: 열린 ASSIGN·launch 카드는 SUPERVISOR가 DISPATCH 화면에서 하나씩 누르고(아래 두 줄이 정한 만큼은 CROSSCHECK agree 카드를 서버가 승인), 큐와 알림에 다시 나타난다.",
-  on: "⚠ 기본: 서버가 DISPATCH의 필터(SETTLED, HELD 아님, 발권된 FLIGHT)와 상한(FUEL hold, ATC_MAX_LAUNCHED, 하루 상한, 실패 뒤 대기)을 통과한 모든 ASSIGN·launch 카드를 CROSSCHECK·blind 표본·SUPERVISOR 없이 승인한다(via auto). 못 가는 카드는 만료되고 planner가 다시 제안한다. 잘못된 승인은 아래 MISFIRE로 센다.",
+  off: "off: 열린 ASSIGN·launch 카드는 SUPERVISOR가 DISPATCH 화면에서 하나씩 누르고(아래 두 줄이 정한 만큼은 조건을 갖춘 카드를 서버가 승인), 큐와 알림에 다시 나타난다.",
+  on: "⚠ 기본: 서버가 DISPATCH의 필터(SETTLED, HELD 아님, 발권된 FLIGHT)와 상한(FUEL hold, ATC_MAX_LAUNCHED, 하루 상한, 실패 뒤 대기)을 통과한 모든 ASSIGN·launch 카드를 blind 표본·SUPERVISOR 없이 승인한다(via auto). 못 가는 카드는 만료되고 planner가 다시 제안한다. 잘못된 승인은 아래 MISFIRE로 센다.",
 } as const;
 const AUTO_LAUNCH_WARN = {
   off: "off(기본): launch 카드(ABSENT·RESUME)는 SUPERVISOR가 화면에서 승인한다.",
   shadow: "shadow: 승인과 LAUNCH 조건을 모두 갖춘 launch 카드를 \"띄웠을 것\"이라고 auto-approve.jsonl에만 적는다. 아무것도 띄우지 않는다.",
-  on: "⚠ 서버가 launch 카드를 스스로 승인하고 세션을 띄운다(사용량을 쓴다). CROSSCHECK agree, blind·HELD 아님, 상한(ATC_MAX_LAUNCHED)이 안 참, ACCOUNT가 FUEL hold 아님, LAUNCH 막힘 아님, 실패한 REGISTRATION은 쉼, 하루 상한 안일 때만.",
+  on: "⚠ 서버가 launch 카드를 스스로 승인하고 세션을 띄운다(사용량을 쓴다). blind·HELD 아님, 상한(ATC_MAX_LAUNCHED)이 안 참, ACCOUNT가 FUEL hold 아님, LAUNCH 막힘 아님, 실패한 REGISTRATION은 쉼, 하루 상한 안일 때만.",
 } as const;
 
 const fuelWarn = (f: { infoPct: number; holdPct: number }) =>
@@ -700,7 +700,7 @@ export function OperationsSettings({ server, save }: { server: Loaded; save: Sav
                   label="DISPATCH 자동 운항"
                   env="autoDispatch"
                   value={s.dispatchAuto.auto}
-                  note="dispatch.json · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈. ASSIGN·launch 카드의 승인에서 사람과 CROSSCHECK를 뺀다"
+                  note="dispatch.json · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈. ASSIGN·launch 카드의 승인에서 사람을 뺀다"
                   input={{ kind: "select", options: ["off", "on"] }}
                   guard={guardOf("autoDispatch", s.dispatchAuto.auto, AUTO_DISPATCH_WARN)}
                   onSave={(v) => save({ autoDispatch: v as "off" | "on" })}

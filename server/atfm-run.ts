@@ -306,6 +306,7 @@ export function currentModelRate(items: { crosscheck: { model: string; at: strin
   const r = byModel[family] ?? { marked: 0, matched: 0, rate: null };
   return { model: family, marked: r.marked, matched: r.matched, rate: r.rate };
 }
+// CROSSCHECK 일치 줄은 은퇴로 켜기 점검에서 뺐다(ATC-371). 모델 계열별 옛 일치율(currentModelRate)은 기록으로 남는다
 const rateRow = (id: string, label: string, r: { marked: number; rate: number | null; model?: string } | null, n: number, min: number): Row => ({
   id, label: r?.model ? `${label} · ${r.model}` : label,
   value: r ? `${pct(r.rate)} (${r.marked}건)` : "—",
@@ -353,9 +354,7 @@ export function atfmView(s: Snapshot, cfg: AtfmConfig = loadAtfm(), now = Date.n
 
   const dispatchItems = proposals.map((p) => ({ id: p.id, human: proposalHuman(p), reasonCodes: p.reasonCodes, crosscheck: p.crosscheck }));
   const autoPrecision = precisionOf(new Set([...ids("eligible"), ...auto.filter((e) => e.eligible).map((e) => e.id)]), dispatchItems);
-  const dGate = dispatchGateOf(proposals);
   const g3 = gate3Of(proposals, standFreeTimeliness());
-  const dRate = currentModelRate(proposals, dGate.crosscheck.byModel);
   const logbook = loadLogbook();
   const losRecent = logbook.filter((e) => now - Date.parse(e.arrivedAt) < 14 * DAY && e.los > 0).length;
   const dispatchMode = loadDispatchConfig().mode;
@@ -368,14 +367,11 @@ export function atfmView(s: Snapshot, cfg: AtfmConfig = loadAtfm(), now = Date.n
       target: `≥ ${THRESHOLDS.precision * 100}% · ${THRESHOLDS.precisionN}건 · 막아야 했던 거절 0`,
       status: autoPrecision.decided < THRESHOLDS.precisionN ? "insufficient" : (autoPrecision.rate ?? 0) >= THRESHOLDS.precision && !autoPrecision.bad ? "pass" : "fail",
     },
-    rateRow("crosscheck", "CROSSCHECK 일치(DISPATCH, 지금 모델)", dRate, THRESHOLDS.crosscheckN, THRESHOLDS.crosscheck),
     { id: "los", label: "LOS 없음(14일, LOGBOOK)", value: `${losRecent}건`, target: "0건", status: losRecent ? "fail" : "pass" },
   ];
 
   const scheduleItems = ops.map((o) => ({ id: o.id, human: scheduleHuman(o), crosscheck: o.crosscheck }));
   const s3Precision = precisionOf(new Set([...ids("s3-eligible"), ...s3.filter((e) => e.eligible).map((e) => e.id)]), scheduleItems);
-  const sGate = scheduleGateOf(ops);
-  const sRate = currentModelRate(ops, sGate.crosscheck.byModel);
   // #29 뒤 규칙(근거에 fleet.md 절 인용)으로 쓴 CLASSIFY 초안의 사람 합의
   const cited = ops.filter((o) => o.kind === "CLASSIFY" && /(^|[^\d.])4\.[123](?!\d)/.test(o.reason)).map((o) => scheduleHuman(o)).filter(Boolean);
   const citedAgree = cited.length ? cited.filter((h) => h!.verdict === "agree").length / cited.length : null;
@@ -384,7 +380,6 @@ export function atfmView(s: Snapshot, cfg: AtfmConfig = loadAtfm(), now = Date.n
   const s3TurnOn: Row[] = [
     runRow("s2", "S2 승인 운용 2주 이상", scheduleMode, approvalRunOf(all as { t: string; kind: string; op?: string }[], "schedule", scheduleMode, now)),
     { id: "classify", label: "CLASSIFY 사람 합의(fleet.md 절을 인용한 초안)", value: `${pct(citedAgree)} (${cited.length}건)`, target: "≥ 85% · 20건", status: cited.length < 20 ? "insufficient" : (citedAgree ?? 0) >= 0.85 ? "pass" : "fail" },
-    rateRow("crosscheck", "CROSSCHECK 일치(SCHEDULE, 지금 모델)", sRate, THRESHOLDS.crosscheckN, THRESHOLDS.crosscheck),
     {
       id: "precision", label: "그림자 정확도(대상 중 사람 승인)", value: `${pct(s3Precision.rate)} (${s3Precision.decided}건)`,
       target: `≥ ${THRESHOLDS.precision * 100}% · ${THRESHOLDS.precisionN}건`,

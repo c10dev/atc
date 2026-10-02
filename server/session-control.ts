@@ -164,12 +164,13 @@ export interface ControlSpec {
   prompt: string | null; // 첫 메시지
   flags: string[];
   launch: "bg" | null;
+  retired?: true; // 은퇴한 관제 세션(ATC-371 CROSSCHECK): 띄우지·되살리지·재시작하지 않는다. 남은 세션을 알아보고 멈추기만 한다
 }
 export const CONTROL_SESSIONS: readonly ControlSpec[] = [
   { name: "TOWER", dir: "controller", prompt: "/loop 3m /tick", flags: [], launch: "bg" },
   { name: "OCC", dir: "occ", prompt: "/loop 10m /tick", flags: [], launch: "bg" },
   { name: "MCC", dir: "mcc", prompt: "/loop 5m /tick", flags: ["--strict-mcp-config"], launch: "bg" },
-  { name: "CROSSCHECK", dir: "crosscheck", prompt: "/loop 10m /tick", flags: ["--strict-mcp-config"], launch: "bg" },
+  { name: "CROSSCHECK", dir: "crosscheck", prompt: null, flags: [], launch: null, retired: true },
   { name: "REVIEW", dir: "review", prompt: "/loop 10m /tick", flags: ["--strict-mcp-config"], launch: "bg" },
   { name: "ENGINEERING", dir: null, prompt: null, flags: [], launch: null },
 ];
@@ -212,7 +213,7 @@ export function controlLaunchPlanOf(spec: ControlSpec, rows: AgentRow[], dir: st
 
 // LAUNCH를 막는 이유(순수). ENGINEERING은 배지만
 export function launchBlockOf(spec: ControlSpec): string | null {
-  return spec.launch === null ? "배지만 — 저장소 뿌리에서 연다" : null;
+  return spec.retired ? "은퇴 — 더 띄우지 않는다(ATC-371)" : spec.launch === null ? "배지만 — 저장소 뿌리에서 연다" : null;
 }
 
 // PATH에서 실행 파일을 찾는다(없으면 null)
@@ -555,7 +556,7 @@ export async function launchControl(name: string, by: string, requestedAccount?:
 export async function stopControl(name: string, by: string): Promise<ControlResult> {
   const spec = controlSpecOf(name);
   if (!spec) return { ok: false, status: 404, error: `관제 세션이 아님: ${name}` };
-  if (spec.launch === null) return { ok: false, status: 409, error: `${spec.name}: 배지만 — 그 창에서 닫는다` };
+  if (spec.launch === null && !spec.retired) return { ok: false, status: 409, error: `${spec.name}: 배지만 — 그 창에서 닫는다` };
   const t = new Date().toISOString();
   try {
     const tmux = tmuxBin() ?? "tmux";
@@ -630,7 +631,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
       return c.json({
         // 백그라운드 세션 daemon이 atc 서비스 안에 있으면 atc 재시작(배포·RTS) 때 모든 백그라운드 세션이 죽는다
         daemonInService: inServiceCgroup(daemonCgroups()),
-        sessions: CONTROL_SESSIONS.map((spec) => ({
+        sessions: CONTROL_SESSIONS.filter((spec) => !spec.retired || controlRowsOf(spec, rows, controlDirOf(spec)).length > 0).map((spec) => ({
           name: spec.name,
           dir: spec.dir,
           prompt: spec.prompt,
@@ -803,6 +804,6 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
 export function controlAccountsView(fleet: Pick<FleetFile, "aircraft" | "control">) {
   return {
     labeled: accountsLabeled(fleet),
-    rows: CONTROL_NAMES.map((name) => ({ name, label: fleet.control?.[name]?.account ?? null, account: controlAccountOf(fleet, name) })),
+    rows: CONTROL_NAMES.filter((name) => name !== "CROSSCHECK").map((name) => ({ name, label: fleet.control?.[name]?.account ?? null, account: controlAccountOf(fleet, name) })),
   };
 }

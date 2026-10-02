@@ -57,7 +57,7 @@ import { type DispatchMeasured, dispatchStatsOf } from "./judges/dispatch.ts";
 import { type DispatchMarks, dispatchMarksOf, loadJudges, readJudgeLines } from "./judges/store.ts";
 import { type LogEntry, loadLogbook, loadPricedLogbook } from "./logbook.ts";
 import type { FuelWatch } from "./fuel-watch.ts";
-import { confirmCodesOf, confirmReasonOf, type Preflight, preflightOf, preflightOps } from "./preflight.ts";
+import { confirmCodesOf, confirmReasonOf, type Preflight } from "./preflight.ts";
 import { parentKeysOf, type Snapshot, type Ticket, type TrafficEvent } from "./model.ts";
 import { composeReason, parseReasonCodes, REASON_CODES, ReasonCodeError, reasonCountsOf } from "./reasons.ts";
 import { readiness2bOf, readinessFiles } from "./readiness.ts";
@@ -1158,10 +1158,6 @@ export function allProposals(): Proposal[] {
 export function runDispatch(s: Snapshot, now = Date.now(), events: () => readonly TrafficEvent[] = () => []): Plan {
   const cfg = loadDispatchConfig();
   const ops = readOps();
-  // PREFLIGHT: FLIGHT 칩 disagree mark가 달린 열린 제안을 먼저 HELD로(배포 전에 달린 mark 포함). 계획이 그 FLIGHT를 잡아 두게 먼저 적는다
-  const pre = preflightOps(fold(ops), new Date(now).toISOString());
-  append(pre);
-  ops.push(...pre);
   const existing = fold(ops);
   const logbook = loadLogbook();
   const landed = landedOf(logbook);
@@ -1303,7 +1299,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       arrivalCandidates: standFree?.candidates() ?? [],
       // OCC 재시작 안전(ATC-169): arrivalMissing(머지됐는데 도착 보고가 없는 FLIGHT)과 restartSafety(지금 STOP·LAUNCH해도 잃는 것이 없나)
       ...(briefExtras?.(s, now, inFlight) ?? {}),
-      crosscheck: crosscheckBriefOf(cfg.autoDispatch === "on" ? [] : proposals, now, cfg.settleMin), // 자동 운항(ATC-367)이면 DISPATCH에 CROSSCHECK 단계가 없다
+      crosscheck: crosscheckBriefOf([], now, cfg.settleMin), // CROSSCHECK 은퇴(ATC-371): 표시할 mark 대기가 없다
       judges: judgesBriefOf(proposals, recent, dispatchMarksOf(readJudgeLines()), loadJudges().jev),
       // 2b 켜기 점검표(표시만)
       readiness2b: readiness2bNow(gate, now, files),
@@ -1574,26 +1570,8 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
     app.post(`/api/dispatch/proposals/:id/${name}`, act(name));
   }
 
-  // CROSSCHECK 예비 판정. 판정 권한이 아니라 참고 표시라 mode와 상관없이 받는다
-  app.post("/api/dispatch/proposals/:id/crosscheck", async (c) => {
-    const id = (c.req.param("id") ?? "").toUpperCase();
-    const body = await c.req.json().catch(() => ({}));
-    const p = allProposals().find((x) => x.id === id);
-    if (!p) return c.json({ error: "그런 제안이 없음" }, 404);
-    if (isHeld(p)) return c.json({ error: "HOLD 중인 제안에는 CROSSCHECK를 달지 않는다" }, 409);
-    if (!canCrosscheck(p)) return c.json({ error: `지금 상태(${p.status})에서는 CROSSCHECK를 달 수 없음 — 열린 제안만` }, 409);
-    try {
-      const at = new Date().toISOString();
-      const mark = parseCrosscheck(body, at, REASON_CODES);
-      // FLIGHT 칩 disagree면 서버가 곧바로 PREFLIGHT HOLD를 건다(CROSSCHECK에 새 권한을 주지 않고, mark의 결과로)
-      const pre = preflightOf({ ...p, crosscheck: mark }, at);
-      append([{ op: "crosscheck", id, ...mark }, ...(pre ? [pre] : [])]);
-    } catch (e) {
-      if (e instanceof CrosscheckError) return c.json({ error: e.message }, 400);
-      throw e;
-    }
-    return c.json({ proposal: allProposals().find((x) => x.id === id) });
-  });
+  // CROSSCHECK는 은퇴했다(ATC-371): 새 mark를 받지 않는다. 옛 mark는 기록으로 읽힌다
+  app.post("/api/dispatch/proposals/:id/crosscheck", (c) => c.json({ error: "CROSSCHECK는 은퇴했다(ATC-371) — 새 mark를 받지 않는다" }, 410));
 
   // 2a ↔ 2b 전환. 2b에서는 승인된 FLIGHT PLAN이 CAPTAIN에게 나간다.
   app.post("/api/dispatch/mode", async (c) => {

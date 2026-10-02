@@ -63,7 +63,7 @@ test("controlRecycleOf: auto가 false인 세션(OCC 기본)은 어떤 모드에�
 });
 
 test("parseRecycle: OCC는 기본으로 자동 재시작 제외, 설정으로 켠다", () => {
-  assert.deepEqual(parseRecycle(null).auto, { TOWER: true, OCC: false, MCC: true, CROSSCHECK: true, REVIEW: true });
+  assert.deepEqual(parseRecycle(null).auto, { TOWER: true, OCC: false, MCC: true, REVIEW: true });
   assert.equal(parseRecycle({ auto: { OCC: true, TOWER: "no", NOPE: true } }).auto.OCC, true);
   assert.equal(parseRecycle({ auto: { TOWER: "no" } }).auto.TOWER, true);
 });
