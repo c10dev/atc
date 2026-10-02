@@ -4,8 +4,8 @@ import { DEFAULT_FLEET } from "./crew.ts";
 import type { AircraftState, Plan } from "./dispatch.ts";
 import { DEFAULT_DISPATCH_CONFIG } from "./dispatch.ts";
 import type { LandingBlockCode, PullRequest } from "./model.ts";
-import { fold, formatFlightPlan, syncOps } from "./proposals.ts";
-import { holderKey, holderLines, type HolderAircraft, holderOf, holderPlansOf, type HolderPlanInput } from "./pr-holder.ts";
+import { fold, formatFlightPlan, holderReadbackOf, syncOps } from "./proposals.ts";
+import { holderKey, holderLines, type HolderAircraft, holderOf, holderPlansOf, type HolderPlanInput, MAX_TRIES, pendingSinceOf, RETRY_AFTER_MS } from "./pr-holder.ts";
 import { offerKey, relayOffersOf } from "./relay-offer.ts";
 
 const REPO = "/srv/repo";
@@ -98,7 +98,7 @@ test("이미 같은 head·type의 카드가 있으면(거절 포함) 또 내지 
   const create = { op: "create" as const, id: "D-0001", at: iso(0), kind: "ASSIGN" as const, flight: "ATC-5", aircraft: "TEAM_B", aircraftName: "TEAM_B", airport: "ATCC", score: 0, factors: [], prHolder: first.prHolder };
   const rejected = holderPlansOf(snap([pr(5, ["dirty"])]), hin({ existing: fold([create, { op: "reject", id: "D-0001", at: iso(1), reason: null }]) }));
   assert.equal(rejected.plans.length, 0);
-  assert.equal(rejected.routes.get(offerKey(pr(5, []), "GO AROUND"))!.kind, "relay"); // 거절하면 SUPERVISOR 몫(RELAY 카드)
+  assert.equal(rejected.routes.get(offerKey(pr(5, []), "GO AROUND"))!.kind, "wait"); // 거절하면 잠시 기다린다(SUPERVISOR 카드 없음, ATC-392)
   assert.equal(holderPlansOf(snap([pr(5, ["dirty"])]), hin({ existing: fold([create, { op: "supersede", id: "D-0001", at: iso(1), reason: "x" }]) })).plans.length, 1);
 });
 
@@ -173,4 +173,60 @@ test("열린 제안이나 이번 계획의 ASSIGN을 쥔 AIRCRAFT에는 카드�
   assert.equal(holderPlansOf(s, { ...none, existing: open }).plans[0]!.registration, "TEAM_A"); // 열린 ASSIGN 제안
   assert.equal(holderPlansOf(s, { ...none, existing: open, assigned: ["TEAM_A"] }).plans.length, 0);
   assert.equal(holderPlansOf(s, { ...none, existing: open, assigned: ["TEAM_A"] }).routes.get(offerKey(pr(5, []), "GO AROUND"))!.kind, "relay");
+});
+
+// ── ATC-392: 끝내고 나서 시작한다 ──
+const ended = (first: ReturnType<typeof holderPlansOf>["plans"][number], n: number, endAt: number) =>
+  fold(
+    Array.from({ length: n }, (_, i) => [
+      { op: "create" as const, id: `D-00${i + 1}`, at: iso(i), kind: "ASSIGN" as const, flight: "ATC-5", aircraft: "TEAM_B", aircraftName: "TEAM_B", airport: "ATCC", score: 0, factors: [], prHolder: first.prHolder },
+      { op: "reject" as const, id: `D-00${i + 1}`, at: iso(endAt), reason: null },
+    ]).flat(),
+  );
+
+test("거절·UNABLE로 끝난 카드는 같은 head에 일정 시간 뒤 다시 제안하고, 여러 번 끝나면 RELAY", () => {
+  const first = holderPlansOf(snap([pr(5, ["dirty"])]), hin()).plans[0]!;
+  const key = offerKey(pr(5, []), "GO AROUND");
+  const existing = ended(first, 1, 1);
+  const early = holderPlansOf(snap([pr(5, ["dirty"])]), hin({ existing, now: T0 + 10 * 60_000 }));
+  assert.equal(early.plans.length, 0);
+  assert.equal(early.routes.get(key)!.kind, "wait");
+  assert.match(early.routes.get(key)!.why!, /retry in \d+m/);
+  assert.equal(holderPlansOf(snap([pr(5, ["dirty"])]), hin({ existing, now: T0 + 60_000 + RETRY_AFTER_MS + 1 })).plans.length, 1, "시간이 지나면 다시");
+  const many = holderPlansOf(snap([pr(5, ["dirty"])]), hin({ existing: ended(first, MAX_TRIES, 1), now: T0 + 10 * 3_600_000 }));
+  assert.equal(many.plans.length, 0);
+  assert.equal(many.routes.get(key)!.kind, "relay");
+  assert.match(many.routes.get(key)!.why!, /ended/);
+});
+
+test("RELAY 사유: 그 AIRPORT에 AIRCRAFT 없음 → TYPE RATING 없음 → 못 받는 사유", () => {
+  const why = (a: HolderAircraft[], flight = "ATC-5") => {
+    const c = holderOf(base({ aircraft: a, pull: { number: 5, branch: "x", ticketKey: flight } }));
+    return c.kind === "relay" ? c.why : "";
+  };
+  assert.equal(why([ac("TEAM_A", { airport: "OTHR" })]), "no AIRCRAFT at ATCC");
+  assert.equal(why([ac("TEAM_A")], "ATC-6"), "no AIRCRAFT with SEC rating at ATCC");
+  assert.equal(why([ac("TEAM_A", { free: false, reason: "LAUNCH 한도" })]), "none can take it now: TEAM_A LAUNCH 한도");
+});
+
+test("RELAY 카드는 사유를 싣는다", () => {
+  const s = snap([pr(5, ["dirty"])]);
+  const none = holderPlansOf(s, hin({ lastAircraft: { ...flew, departures: [] }, aircraft: [] }));
+  const offers = relayOffersOf(s, { clearances: [], events: [], relays: [], lastAircraft: flew, now: T0, holderRoutes: none.routes });
+  assert.equal(offers[0]!.noHolder, "no AIRCRAFT at ATCC");
+});
+
+test("필요해진 시각: GO AROUND는 그 head의 conflict 이벤트, FIX는 review-findings가 막힌 이벤트, 없으면 지금", () => {
+  const p = { repo: REPO, number: 5, head: "abcdef1234" };
+  const ev = (kind: string, at: string, over = {}) => ({ id: 1, at, kind, repo: "repo", pull: 5, ...over }) as never;
+  assert.equal(pendingSinceOf(p, "GO AROUND", [ev("landing.conflict", iso(2), { head: "abcdef1" }), ev("landing.conflict", iso(3), { head: "other00" })], iso(9)), iso(2));
+  assert.equal(pendingSinceOf(p, "FIX", [ev("landing.blocked", iso(4), { blocks: ["review-findings"] })], iso(9)), iso(4));
+  assert.equal(pendingSinceOf(p, "FIX", [], iso(9)), iso(9));
+});
+
+test("holder READBACK 시간: 필요해진 시각부터 READBACK(accepted)까지, since 없는 카드는 세지 않는다", () => {
+  const card = (id: string, since: string | undefined, accepted: string | undefined) => ({ id, prHolder: { pr: 5, type: "GO AROUND" as const, ...(since ? { since } : {}) } as never, timeline: accepted ? { accepted } : {} });
+  const r = holderReadbackOf([card("D-1", iso(0), iso(6)), card("D-2", iso(0), iso(12)), card("D-3", undefined, iso(5)), card("D-4", iso(0), undefined)]);
+  assert.equal(r.n, 2);
+  assert.equal(r.medianMin, 9);
 });

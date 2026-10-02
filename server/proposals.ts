@@ -1018,6 +1018,18 @@ const median = (xs: number[]) => {
   return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
 };
 
+// PR HOLDER 카드의 READBACK 시간(ATC-392): PR이 dirty가 되거나 FIX를 받은 때(prHolder.since)부터 holder의 READBACK(accepted)까지 분. since가 없는 옛 카드는 세지 않는다
+export function holderReadbackOf(proposals: readonly Pick<Proposal, "id" | "prHolder" | "timeline">[]) {
+  const rows = proposals.flatMap((p) => {
+    const since = p.prHolder?.since;
+    const at = p.timeline.accepted;
+    if (!since || !at || !Number.isFinite(Date.parse(since)) || Date.parse(at) < Date.parse(since)) return [];
+    return [{ id: p.id, pr: p.prHolder!.pr, type: p.prHolder!.type, min: Math.round(((Date.parse(at) - Date.parse(since)) / 60_000) * 10) / 10 }];
+  });
+  const m = median(rows.map((r) => r.min));
+  return { n: rows.length, medianMin: m === null ? null : Math.round(m * 10) / 10, rows: rows.slice(-20) };
+}
+
 // 2b → 3(ATFM) 점검: 보낸 FLIGHT PLAN 중 READBACK 받은 비율, READBACK까지 걸린 시간, READBACK 뒤 DEPARTED 비율.
 // STAND 없는 FLIGHT는 READBACK이 곧 DEPARTED라 DEPARTED 비율에서 뺀다(넣으면 비율이 저절로 오른다).
 // READBACK 비율에는 넣고, ARRIVED 보고 수는 standFree로 따로 보인다
@@ -1038,6 +1050,7 @@ export function gate3Of(proposals: Proposal[], timely: { within: number; total: 
     declined: dispatched.filter((p) => p.status === "declined").length,
     readbackRate,
     readbackMedianMin: mins === null ? null : Math.round(mins * 10) / 10,
+    holderReadback: holderReadbackOf(proposals),
     departedRate,
     standFree: { readBack: light.length, arrived: light.filter((p) => p.timeline.arrived).length, timely },
     target: GATE3,
@@ -1145,9 +1158,20 @@ export function runDispatch(s: Snapshot, now = Date.now(), events: () => readonl
   const fleet = loadFleet();
   const resumes = resumePlansOf(s, readDepartures(), landed, now, baseOfFleet(fleet, cfg.teamPattern));
   // 켜진 GROUND STOP이 걸린 AIRPORT의 ASSIGN은 계획에서 뺀다(docs/atfm.md 6장). 열린 제안은 그 사유로 SUPERSEDED
-  const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes, mccAirportNow()), s.atfm?.groundStops ?? []);
+  // 끝내고 나서 시작한다(ATC-392): PR HOLDER 카드를 새 ASSIGN보다 먼저 계획한다. 먼저 계획의 AIRCRAFT 상태를 얻어 holder가 쓸 AIRCRAFT를 고르고(RESUME이 고른 것만 빼고),
+  // 그 AIRCRAFT를 예약으로 넣어 계획을 다시 짠다 → 놀고 있는 AIRCRAFT는 열린 PR을 먼저 받고, 새 ASSIGN은 남은 AIRCRAFT에 간다
+  const plan0 = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes, mccAirportNow()), s.atfm?.groundStops ?? []);
   // PR HOLDER(ATC-354): 계획의 AIRCRAFT 상태로 STAND를 쥔 세션이 없는 PR의 GO AROUND·FIX를 이어받을 AIRCRAFT를 고른다. 결과 경로는 RELAY 카드와 DUTY brief가 읽는다
-  const holders = holderPlansOf(s, { clearances: allClearances(), events: events(), existing, lastAircraft: { departures: readDepartures(), proposals: existing, reports: readReports(), regOf: (n) => registrationOf(n, cfg.teamPattern) }, fleet, aircraft: plan.aircraft, teamPattern: cfg.teamPattern, assigned: [...plan.assign, ...(plan.resume ?? [])].map((a) => regOfAssign(a, cfg.teamPattern)), keyFromBranch: ticketKeyFromBranch, now });
+  const holders = holderPlansOf(s, { clearances: allClearances(), events: events(), existing, lastAircraft: { departures: readDepartures(), proposals: existing, reports: readReports(), regOf: (n) => registrationOf(n, cfg.teamPattern) }, fleet, aircraft: plan0.aircraft, teamPattern: cfg.teamPattern, assigned: (plan0.resume ?? []).map((a) => regOfAssign(a, cfg.teamPattern)), keyFromBranch: ticketKeyFromBranch, now });
+  const reserved = reservedOf(existing, now);
+  for (const h of holders.plans) {
+    const reg = regOfAssign(h, cfg.teamPattern);
+    const by = `PR HOLDER #${h.prHolder!.pr}`;
+    if (!reserved.aircraft.has(reg)) reserved.aircraft.set(reg, by);
+    reserved.aircraftFlights?.set(reg, [...new Set([...(reserved.aircraftFlights.get(reg) ?? []), h.flight])]);
+    if (!reserved.flights.has(h.flight)) reserved.flights.set(h.flight, by);
+  }
+  const plan = holders.plans.length ? applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reserved, fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes, mccAirportNow()), s.atfm?.groundStops ?? []) : plan0;
   plan.holders = holders.plans;
   setHolderRoutes(holders.routes);
   const seq = ops.filter((o) => o.op === "create").length;
