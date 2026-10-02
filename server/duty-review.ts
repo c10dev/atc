@@ -145,7 +145,7 @@ export function reviewPromptOf(x: ReviewPromptInput): string {
     x.linear
       ? `3. For each fix worth doing, create one ATC issue with node ../controller/atcctl.mjs duty linear create --state Backlog --priority <1-4> --title '<English>' [--blocked-by ATC-n] -- '<body>'. At most ${PROPOSALS_MAX}. The body is the work-order format in ../docs/rules.ko.md (Goal, Done when, K effects, Context, Release) and its Context has an Evidence section: what you saw, with numbers and keys. Use --blocked-by when the fix must wait for a FLIGHT that is already accepted.`
       : "3. Linear writes are off (duty.json l1). Do not create issues. List the proposals in your summary, each with its evidence.",
-    "4. Never set Todo. The server refuses it in this turn. A proposal stays in Backlog until the SUPERVISOR fires it on the RELEASE screen.",
+    "4. Never set Todo. The server refuses it in this turn. A proposal stays in Backlog. The RELEASE screen lists it (once no open issue blocks it) with your name, the time, its priority and its K effects, and the SUPERVISOR fires it with one click or discards it. A proposal with no priority cannot be fired, so always set --priority.",
     "5. Do not propose what an open issue already covers (the list below). The server refuses a near-duplicate title and tells you the key; comment on that issue instead if you have new evidence.",
     "6. Do not change the DUTY chat topic, do not send messages to other sessions, do not approve or decide anything.",
     "",

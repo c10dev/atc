@@ -1,11 +1,9 @@
 // DUTY REVIEW 런타임(ATC-396, docs/duty.md): 주기마다 신호를 읽고, 트리거가 서면 DUTY 턴을 서버가 시작한다.
 // 외부에 나가는 동작: DUTY 세션(`claude -p`)에 글을 쓴다(duty-run.ts). 스위치(duty.json review)는 SUPERVISOR만 설정 창에서 바꾼다. 기본 켜짐, DUTY가 꺼져 있으면 돌지 않는다.
 // 기록은 duty-reviews.jsonl(추가만): 점검 한 줄, 제안 한 줄. 세기는 GET /api/duty/review.
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import type { Hono } from "hono";
-import { config } from "./config.ts";
 import { loadDutyConfig } from "./duty-config.ts";
+import { appendReviewLine, readReviewLines } from "./duty-review-store.ts";
 import { type DutyRuntime, duty } from "./duty-run.ts";
 import { decideReview, nextReviewId, openSimilarKey, reviewDaysOf, reviewPromptOf, type ReviewLine, signalsOf } from "./duty-review.ts";
 import { type OpenLeak, openFromRecords } from "./leaks.ts";
@@ -15,30 +13,8 @@ import type { ReleaseLine } from "./release.ts";
 import { readReleaseLines } from "./release-store.ts";
 import { currentAlerts } from "./supervisor-alerts-run.ts";
 
-export const REVIEWS_FILE = () => join(config.stateDir, "duty-reviews.jsonl");
 export const TICK_MS = 60_000;
 const WARMUP_MS = 3 * 60_000; // 서버가 뜬 직후(RTS 재시작)에는 스냅샷이 비어 있다: 이만큼 기다린다
-
-export function readReviewLines(file = REVIEWS_FILE()): ReviewLine[] {
-  let raw = "";
-  try {
-    raw = readFileSync(file, "utf8");
-  } catch {
-    return [];
-  }
-  return raw.split("\n").flatMap((l) => {
-    try {
-      const j = JSON.parse(l) as ReviewLine;
-      return j && (j.ev === "review" || j.ev === "proposal") ? [j] : [];
-    } catch {
-      return [];
-    }
-  });
-}
-export function appendReviewLine(line: ReviewLine, file = REVIEWS_FILE()) {
-  mkdirSync(dirname(file), { recursive: true });
-  appendFileSync(file, `${JSON.stringify(line)}\n`);
-}
 
 export type Fetcher = (path: string) => Promise<unknown>;
 export interface ReviewDeps {

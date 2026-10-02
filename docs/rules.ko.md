@@ -29,7 +29,7 @@
   - 본문(영어)은 Goal · Done when · K effects · Context · Release 다섯 절이다. 묶는 것은 앞의 셋뿐이고, Context는 정보일 뿐 지시가 아니다(PILOT'S DISCRETION). 어떻게 할지는 정하지 않는다.
   - 사람 단계를 대신하는 새 자동 통제는 Done when에 SUPERVISOR만 바꾸는 끄는 스위치(기본 켜짐)와 오작동 카운터를 넣는다(live first).
   - AIRCRAFT가 받은(READBACK) 작업 지시서는 고치지 않는다. 더할 것은 후속 이슈로 만들어 앞 이슈 뒤에 건다(blockedBy). 출발한 FLIGHT를 바꾸면 RELAY와 다시 발권이 필요해진다.
-  - Todo(발권)는 SUPERVISOR가 말한 것만이고, Release 절에 그 말을 그대로 적는다. 세션이 스스로 낸 제안은 Backlog에 두고 SUPERVISOR가 RELEASE 화면에서 쏜다.
+  - Todo(발권)는 SUPERVISOR가 말한 것만이고, Release 절에 그 말을 그대로 적는다. 세션이 스스로 낸 제안(DUTY REVIEW·SCHEDULE NEW)은 Backlog에 두고 SUPERVISOR가 RELEASE 화면의 제안 목록에서 한 번의 클릭으로 쏘거나 버린다(ATC-401). 목록에는 우선순위와 K 효과가 보이고, 우선순위가 없으면 Todo로 옮기지 않으니 늘 정한다.
   - 상태·병목을 볼 때 PR의 막힘 글만 믿지 않는다. ESCALATE된 PR의 "MCC INSPECTION 대기"는 SUPERVISOR의 머지를 뜻했다. MCC 대기열의 ESCALATE·STAND 주인과 DISPATCH 계획의 제외 사유·unserved를 함께 본다.
 
 ## STAND 이름과 브랜치
