@@ -3,8 +3,8 @@
     "color-literal": 1,
     "font-size-em": 3,
     "outline-none": 1,
-    "radius-literal": 6,
-    "spacing-literal": 4
+    "radius-literal": 5,
+    "spacing-literal": 3
   },
   "web/src/Relay.css": {
     "radius-literal": 1
