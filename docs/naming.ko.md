@@ -52,7 +52,7 @@ codex/voc-<n>-<slug>      # Codex 세션
 | 세션 이름 | 어디서 | 역할 |
 |---|---|---|
 | `TEAM_X`, 그다음 `TEAM_XX` | 작업마다 워크트리 | AIRCRAFT: FLIGHT를 만들고 PR을 올린다. 한 글자(`TEAM_A` … `TEAM_Z`), 그다음 두 글자(`TEAM_AA` … `TEAM_ZZ`). 콜사인은 글자마다 음성 알파벳 한 단어(`TEAM_RA` → ROMEO ALPHA). [fleet.ko.md](fleet.ko.md) "두 글자 REGISTRATION as built" 참고 |
-| `ENGINEERING` | 이 저장소, 필요할 때 연다 | DUTY L1 이후 break-glass: 데스크톱 세션에서 같은 규칙으로 하는 설계·작업 지시. 머지·배포·팀 교신은 하지 않는다(루트 `CLAUDE.md` "DUTY") |
+| `ENGINEERING` | 이 저장소, 필요할 때 연다 | DUTY L1 이후 break-glass: 데스크톱 세션에서 같은 규칙으로 하는 설계·작업 지시. 머지·배포·팀 교신은 하지 않는다(루트 `CLAUDE.md` "계획·DUTY·Linear", `docs/rules.ko.md` "DUTY") |
 
 - **ENGINEERING**은 항공사의 Technical Services다. 개조와 개선을 설계하고 작업 지시서(Engineering Order, EO)를 낸다. 이 역할에 쓰던 임시 이름 `structure`를 대신한다(GitHub #121, 2026-09-28). `structure`의 다른 역할인 atc PR 착륙·배포는 MCC가 `land` 모드가 될 때까지 사용자가, 그 뒤로는 MCC가 맡는다.
 - 옛 기록은 쓸 때의 이름을 그대로 둔다. 예: LOGBOOK `measured` 줄의 `by: "structure"`.
