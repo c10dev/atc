@@ -116,6 +116,9 @@ export async function rehearse(files: readonly MigrationFile[], io: RehearsalIo)
     const liveBefore = versionsOf(await io.live.query(VERSIONS_SQL));
     const testBefore = versionsOf(await io.test.query(VERSIONS_SQL));
     if (!same(liveBefore, testBefore)) return stop("rehearsal", `시험 DB가 실전과 같은 버전이 아님(실전 ${liveBefore.length}개, 시험 ${testBefore.length}개) — 실전에서 다시 가져와야 함`);
+    // 적용 전 기준선: 시험 DB와 실전의 함수 본문·grant가 이미 다르면(실전에 손으로 고친 것 등) 적용 뒤 검사는 늘 실패한다. 실전이 그대로일 때 여기서 멈춘다
+    const drift = catalogDiff(await io.test.query(CATALOG_SQL), await io.live.query(CATALOG_SQL));
+    if (!drift.same) return stop("rehearsal", `적용 전에 이미 시험 DB와 실전의 함수 본문·grant가 다름(시험에만 ${drift.onlyTest.length}, 실전에만 ${drift.onlyLive.length}) — ${[...drift.onlyTest, ...drift.onlyLive].slice(0, 3).join(" ; ")}`);
     const already = versions.filter((v) => liveBefore.includes(v));
     if (already.length) return stop("rehearsal", `이미 실전에 적용된 버전 ${already.join(", ")}`);
     for (const f of files) await io.test.query(applySql(f));

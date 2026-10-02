@@ -83,6 +83,7 @@ interface FakeOpts {
   testCatalog?: Row[];
   restore?: () => Promise<string>;
   healthy?: boolean;
+  liveDrift?: Row[];
 }
 function fake(o: FakeOpts = {}) {
   const calls: { db: "test" | "live"; sql: string }[] = [];
@@ -95,7 +96,12 @@ function fake(o: FakeOpts = {}) {
       if (sql.startsWith("begin;") && ((db === "test" && o.failTest) || (db === "live" && o.failLive))) throw new Error("boom");
       const v = /values \('(\d+)'/.exec(sql)?.[1];
       if (v) (db === "test" ? testV : liveV).push(v); // 적용하면 버전 줄이 생긴다
-      if (sql.includes("pg_proc")) return db === "test" ? o.testCatalog ?? [{ k: "fn", n: "f()", h: "a" }] : o.liveCatalog ?? [{ k: "fn", n: "f()", h: "a" }];
+      // 카탈로그: 기본은 둘 다 같다. liveCatalog는 실전에 적용한 뒤에만 보이고, liveDrift는 적용 전부터 다르다
+      if (sql.includes("pg_proc")) {
+        const base = [{ k: "fn", n: "f()", h: "a" }];
+        if (db === "test") return o.testCatalog ?? base;
+        return o.liveDrift ? o.liveDrift : liveV.length > (o.liveVersions ?? ["1"]).length ? o.liveCatalog ?? base : base;
+      }
       return [];
     },
   });
@@ -149,6 +155,15 @@ test("리허설: 적용이 실패하면 열린 트랜잭션을 닫으려고 ROLL
   const l = fake({ failLive: true });
   await rehearse(FILES, l.io);
   assert.deepEqual(l.calls.filter((c) => c.sql === "rollback;").map((c) => c.db), ["live"]);
+});
+
+test("리허설: 적용 전에 시험 DB와 실전의 카탈로그가 이미 다르면 실전에 쓰지 않고 rehearsal에서 멈춘다", async () => {
+  const x = fake({ liveDrift: [{ k: "fn", n: "f()", h: "hotfix" }] });
+  const r = await rehearse(FILES, x.io);
+  assert.deepEqual([r.status, r.failedStep], ["stopped", "rehearsal"]);
+  assert.match(r.steps.at(-1)!.detail, /이미 시험 DB와 실전/);
+  assert.equal(x.liveWrites(), 0);
+  assert.equal(x.calls.filter((c) => c.db === "test" && c.sql.startsWith("begin;")).length, 0, "시험 DB에도 적용하지 않는다");
 });
 
 test("리허설: 복원점을 못 만들면 실전에 쓰지 않는다", async () => {
