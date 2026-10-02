@@ -5,6 +5,7 @@ import "./Network.css";
 import { RouteMap } from "./RouteMap.tsx";
 import { apiGet } from "../api.ts";
 import { Empty } from "../kit/Empty.tsx";
+import { dotShapeOf } from "../badges.tsx";
 
 // 4단계 NETWORK: ROUTE(Linear 프로젝트)·AIRCRAFT·28일 추이를 한눈에. 읽기만 한다.
 // 차트는 METRICS와 같은 모양(인라인 SVG, 계열 하나)으로 그린다.
@@ -344,7 +345,7 @@ function Aircraft({ aircraft }: { aircraft: AircraftRow[] }) {
                       {a.callsign && <span className="nw-cs">{a.callsign}</span>}
                     </th>
                     <td className="nw-status">
-                      {a.status in STATUS && a.status !== "absent" && <span className={`dot dot-${a.status}`} aria-hidden />}
+                      {a.status in STATUS && a.status !== "absent" && <span className={`dot dot-${a.status}`} data-shape={dotShapeOf(a.status)} aria-hidden />}
                       {a.status === "idle" ? <em>{STATUS.idle}</em> : (STATUS[a.status] ?? a.status.toUpperCase())}
                     </td>
                     <td className="num">

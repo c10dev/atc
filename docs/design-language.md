@@ -150,6 +150,8 @@ A fold header always says what it holds: `ADVISORY 13`, `ARRIVED 42 more · 전�
 - **Tag** (2 px radius, mono, uppercase): a fixed state or kind (`BG auto`, `STALE`, `AOG`).
 - **Dot**: liveness or a level next to a name. A dot never stands alone without a text or an accessible name.
 
+As built (ATC-412): the three bases are `.chip`, `.tag` and `.dot` in `web/src/kit/chips.css`, loaded before the screen CSS. A screen adds only what differs (`.code-chip`, `.dr-chip`, `.fl-chip` are hook classes next to the base). A tag's colour is `data-tone` (`alert`, `amber`, `radar`, `cyan`, `inherit`), a selectable chip is `aria-pressed`, adjustable values are local properties (`--chip-ink`, `--tag-ink`, `--dot-ink`, `--dot-size`). A dot carries its meaning in its shape as well as its colour: filled (default), ring (`data-shape="ring"`) or dash (`data-shape="dash"`). The activity line uses filled for a running tool, ring for waiting on the model and dash for idle, and a screen-reader-only word names the phase. `server/chips-kit.test.ts` checks that every `.dot` has an accessible name or is hidden.
+
 ### 4.5 Status row group (ANNUNCIATOR)
 
 Secondary status lines (DUTY, GitHub, Linear, RADIO) share one group under the LAMP list. When none of them needs attention, they collapse into one line (`DUTY · GitHub 3 · RADIO TOWER`). A new source joins the group; it does not get its own row in the fixed strip. [ATC-222](https://linear.app/vocado/issue/ATC-222) applies this.

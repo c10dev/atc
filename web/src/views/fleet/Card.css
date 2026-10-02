@@ -445,10 +445,10 @@ button.fl-fold-head:focus-visible .fl-fold-k {
 .fl-card .activity-what {
   font-family: var(--mono);
 }
-.fl-card .activity .activity-dot,
-.fl-card .activity.is-tool .activity-dot,
-.fl-card .activity.is-model .activity-dot {
-  background: var(--faint);
+.fl-card .activity,
+.fl-card .activity.is-tool,
+.fl-card .activity.is-model {
+  --dot-ink: var(--faint);
 }
 .fl-kept {
   margin: 0;

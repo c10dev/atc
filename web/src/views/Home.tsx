@@ -114,7 +114,7 @@ function HomeAlerts() {
         {shown.map((a) => (
           <li key={a.key} className={`hm-row lv-${a.level}`}>
             <button type="button" className="hm-alert" onClick={() => openAlert(a)}>
-              <span className="code-chip">{alertLevelLabel[a.level!]}</span>
+              <span className="tag code-chip" data-tone="inherit">{alertLevelLabel[a.level!]}</span>
               <span className="mono">{[a.aircraft, a.flight].filter(Boolean).join(" · ") || a.group.toUpperCase()}</span>
               <span className="hm-atext">{a.text}</span>
               {a.next && <span className="muted">→ {a.next}</span>}
@@ -168,7 +168,7 @@ function HomeSchedule({ data, now }: { data: ScheduleHome | null; now: number })
             {slips.map((x) => (
               <li key={x.key} className="hm-row">
                 <div className="hm-head">
-                  <span className="code-chip">{SLIP_LABEL[x.code]}</span>
+                  <span className="tag code-chip" data-tone="inherit">{SLIP_LABEL[x.code]}</span>
                   <span className="mono">
                     {x.route} · <b>{x.waypoint}</b>
                   </span>

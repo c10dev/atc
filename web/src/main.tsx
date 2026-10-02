@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import "./kit/chips.css";
 import { App } from "./App.tsx";
 import { initSettings } from "./settings.ts";
 import "./styles.css";

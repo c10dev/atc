@@ -244,7 +244,7 @@ export function App({ build }: { build: string }) {
           <Ticker>
             {actionable.map((a, i) => (
               <span key={i} className={`ticker-item alert-${a.kind} lv-${levelOf(a)}`}>
-                <span className="code-chip">{alertCode[a.kind]}</span>
+                <span className="tag code-chip" data-tone="inherit">{alertCode[a.kind]}</span>
                 {alertLabel[a.kind] !== alertCode[a.kind] && `${alertLabel[a.kind]} · `}
                 <span className="mono">{subjectOf(a)}</span> · {alertMessage(a, nameOf)}
               </span>
@@ -260,7 +260,7 @@ export function App({ build }: { build: string }) {
               <li className={`alert-group lv-${g.level}`}>{alertLevelLabel[g.level]}</li>
               {g.alerts.map((a, i) => (
                 <li key={i} className={`alert alert-${a.kind} lv-${g.level}`}>
-                  <span className="code-chip">{alertCode[a.kind]}</span>
+                  <span className="tag code-chip" data-tone="inherit">{alertCode[a.kind]}</span>
                   {alertLabel[a.kind] !== alertCode[a.kind] && <span className="alert-label">{alertLabel[a.kind]}</span>}
                   <span className="mono">{subjectOf(a)}</span>
                   <span className="muted">{alertMessage(a, nameOf)}</span>
@@ -270,7 +270,7 @@ export function App({ build }: { build: string }) {
           ))}
           {handoffs.map((h) => (
             <li key={`${h.workspacePath}:${h.from}`} className="alert alert-handoff">
-              <span className="code-chip">HO</span>
+              <span className="tag code-chip" data-tone="inherit">HO</span>
               <span className="alert-label">{HANDOFF_LABEL}</span>
               <span className="mono">{h.workspacePath.split("/").pop()}</span>
               <span className="muted">

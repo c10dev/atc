@@ -88,22 +88,9 @@
   gap: var(--space-1);
 }
 .dr-chip {
-  padding: 0 6px;
-  border: 1px solid var(--line-strong);
-  border-radius: 3px;
-  font-size: var(--text-xs);
-  color: var(--muted);
+  --chip-ink: var(--muted);
 }
-.dr-chip.tier-user {
-  color: var(--alert);
-  margin-left: var(--space-2);
-}
-.dr-chip.tier-flagged {
-  color: var(--amber);
-  margin-left: var(--space-2);
-}
-.dr-chip.tier-auto {
-  color: var(--radar);
+.dr-tier {
   margin-left: var(--space-2);
 }
 .dr-note {
@@ -216,8 +203,6 @@ a.fl-link:hover {
 
 .dr-ready {
   margin-left: var(--space-2);
-  color: var(--radar);
-  border-color: var(--radar);
 }
 .dr-move {
   display: flex;

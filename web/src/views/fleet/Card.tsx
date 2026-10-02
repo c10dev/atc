@@ -561,7 +561,7 @@ export function Card({
                 {a.ratings.length ? (
                   <span className="fl-chips">
                     {a.ratings.map((r) => (
-                      <span key={r} className={`fl-chip r-${r}`} title={ratingHelp[r]}>
+                      <span key={r} className={`chip fl-chip r-${r}`} title={ratingHelp[r]}>
                         {r}
                       </span>
                     ))}

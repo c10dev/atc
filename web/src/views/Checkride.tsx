@@ -81,7 +81,7 @@ export function Checkride({ refreshKey, onChanged }: { refreshKey: string; onCha
               <div className="cr-head">
                 <b className="cr-callsign">{r.callsign}</b>
                 <span className="mono faint">{r.registration}</span>
-                <span className={`fl-chip r-${r.rating}`}>{r.rating}</span>
+                <span className={`chip fl-chip r-${r.rating}`}>{r.rating}</span>
                 <span className="cr-status">{LABEL[r.status]}</span>
                 {r.status === "GRANT" && (
                   <button className="fl-btn primary" disabled={busy !== null} onClick={() => act(r, "grant")}>

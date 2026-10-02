@@ -542,14 +542,6 @@ button {
   gap: var(--space-2);
   color: var(--amber);
 }
-.code-chip {
-  flex: none;
-  padding: 0 var(--space-1-5);
-  border: 1px solid currentColor;
-  border-radius: var(--radius-sm);
-  font: 700 var(--text-2xs)/15px var(--mono);
-  letter-spacing: 0.1em;
-}
 /* 등급(ATC-110): WARNING 빨강, CAUTION 호박, ADVISORY 회색 */
 .lv-warning {
   color: var(--alert);
@@ -825,30 +817,13 @@ button {
 }
 
 /* ── 공통 조각 ─────────────────────────── */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 var(--space-1-5);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  font: 400 var(--text-2xs) var(--mono);
-  letter-spacing: 0.06em;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--amber);
-}
+/* 칩·태그·점의 기본은 kit/chips.css. 여기는 세션 상태 점의 색만 */
 .dot-busy {
-  background: var(--radar);
+  --dot-ink: var(--radar);
   animation: ping 1.8s ease-out infinite;
 }
 .dot-dead {
-  background: var(--alert);
+  --dot-ink: var(--alert);
 }
 .session-badge {
   display: inline-flex;
