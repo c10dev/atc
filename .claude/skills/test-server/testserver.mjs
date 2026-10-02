@@ -9,6 +9,7 @@ import { createServer } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseEnv } from "node:util";
 
 export const PROD_PORT = 7700;
 export const PORT_MIN = 7702;
@@ -35,6 +36,25 @@ export function refusal({ port, stateDir, home = homedir() }) {
 export function environMatches(environ, { port, dir }) {
   const kv = new Set(environ.split("\0"));
   return kv.has(`ATC_PORT=${port}`) && kv.has(`ATC_STATE_DIR=${dir}`);
+}
+
+// 순수: 서버 자식의 환경. .env.local 값(dotenv)은 여기에만 들어간다
+export function serverEnv(base, dotenv, { dir, port }) {
+  return { ...base, ...dotenv, ATC_GITHUB: "off", ATC_STATE_DIR: dir, ATC_PORT: String(port), XDG_CACHE_HOME: join(dir, "cache") };
+}
+
+// 순수: 확인 명령의 환경. 서버 비밀(.env.local)은 넣지 않는다
+export function checkEnv(base, { url, port }) {
+  return { ...base, ATC_TEST_URL: url, ATC_TEST_PORT: String(port) };
+}
+
+// process.env를 건드리지 않고 .env.local을 읽는다. 값은 출력하지 않는다
+function readDotenv() {
+  try {
+    return parseEnv(readFileSync(join(homedir(), "projects/atc/.env.local"), "utf8"));
+  } catch {
+    return {};
+  }
 }
 
 const lockRoot = () => join(tmpdir(), "atc-ts-ports");
@@ -104,7 +124,13 @@ export async function start({ port: wanted } = {}) {
     if (why) throw Object.assign(new Error(why), { refused: true });
   }
   const port = await claimPort(wanted);
-  const dir = mkdtempSync(join(tmpdir(), DIR_PREFIX));
+  let dir;
+  try {
+    dir = mkdtempSync(join(tmpdir(), DIR_PREFIX));
+  } catch (e) {
+    releasePort(port); // 폴더를 못 만들면 잠금만 치운다
+    throw e;
+  }
   try {
     const why = refusal({ port, stateDir: dir });
     if (why) throw Object.assign(new Error(why), { refused: true });
@@ -113,23 +139,23 @@ export async function start({ port: wanted } = {}) {
       if (existsSync(src)) cpSync(src, join(dir, f)); // 읽기만. 필요한 등록부만 복사한다
     }
     const root = realpathSync(resolve(fileURLToPath(new URL("../../..", import.meta.url))));
-    try {
-      process.loadEnvFile(join(homedir(), "projects/atc/.env.local")); // 값은 자식 환경으로만 간다. 출력하지 않는다
-    } catch {}
     const child = spawn("node", ["server/index.ts"], {
       cwd: root,
       detached: true,
       stdio: ["ignore", openLog(dir), openLog(dir)],
-      env: { ...process.env, ATC_GITHUB: "off", ATC_STATE_DIR: dir, ATC_PORT: String(port), XDG_CACHE_HOME: join(dir, "cache") },
+      env: serverEnv(process.env, readDotenv(), { dir, port }),
     });
     child.unref();
+    writeFileSync(join(lockRoot(), String(port), "owner"), String(child.pid)); // CLI가 끝나도 서버가 살아 있는 동안 잠금이 유지된다
     writeFileSync(join(dir, "server.pid"), String(child.pid));
     writeFileSync(join(dir, "meta.json"), JSON.stringify({ port, pid: child.pid, owner: process.pid }));
     const url = `http://127.0.0.1:${port}`;
     await waitUp(url);
     return { url, port, dir, pid: child.pid };
   } catch (e) {
-    await stop(dir, { port });
+    try {
+      await stop(dir, { port });
+    } catch {} // 정리 오류가 원래 오류를 가리지 않게 한다
     throw e;
   }
 }
@@ -181,7 +207,7 @@ async function main(argv) {
       let code = 1;
       try {
         code = await new Promise((ok) => {
-          const c = spawn(rest[at + 1], rest.slice(at + 2), { stdio: "inherit", env: { ...process.env, ATC_TEST_URL: s.url, ATC_TEST_PORT: String(s.port) } });
+          const c = spawn(rest[at + 1], rest.slice(at + 2), { stdio: "inherit", env: checkEnv(process.env, s) });
           c.on("exit", (n) => ok(n ?? 1));
           c.on("error", () => ok(127));
         });

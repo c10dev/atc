@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { environMatches, prodStateDir, refusal, DIR_PREFIX } from "./testserver.mjs";
+import { checkEnv, environMatches, serverEnv, prodStateDir, refusal, DIR_PREFIX } from "./testserver.mjs";
 
 const home = "/home/x";
 
@@ -31,4 +31,17 @@ test("environ이 이 시험 서버의 것일 때만 맞다", () => {
   assert.equal(environMatches(env, { port: 7703, dir: "/tmp/atc-ts-a" }), true);
   assert.equal(environMatches(env, { port: 7700, dir: "/tmp/atc-ts-a" }), false);
   assert.equal(environMatches("ATC_PORT=7700\0", { port: 7700, dir: "/tmp/atc-ts-a" }), false);
+});
+
+test(".env.local 값은 서버 환경에만 들어가고 확인 명령 환경에는 들어가지 않는다", () => {
+  const base = { PATH: "/bin" };
+  const dotenv = { LINEAR_API_KEY: "secret" };
+  const srv = serverEnv(base, dotenv, { dir: "/tmp/atc-ts-a", port: 7703 });
+  assert.equal(srv.LINEAR_API_KEY, "secret");
+  assert.equal(srv.ATC_GITHUB, "off");
+  assert.equal(srv.ATC_PORT, "7703");
+  const chk = checkEnv(base, { url: "http://127.0.0.1:7703", port: 7703 });
+  assert.equal("LINEAR_API_KEY" in chk, false);
+  assert.equal(chk.ATC_TEST_URL, "http://127.0.0.1:7703");
+  assert.deepEqual(base, { PATH: "/bin" });
 });
