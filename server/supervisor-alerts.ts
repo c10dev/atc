@@ -74,8 +74,8 @@ export function destOf(item: Pick<SupervisorAlert, "key">, landBy?: ReadonlyMap<
       return "alerts";
     case "reposition":
       return p[1] === "stuck" ? "alerts" : "log"; // reposition|stuck|<aircraft>는 조건, 나머지는 결과
-    case "follow": // FOLLOW(ATC-278, docs/follow.md 3.5): ready·approve는 SUPERVISOR의 몫(queue), landed·deployed는 일어난 일(log), stuck·failed는 조건(alerts)
-      return p[1] === "ready" || p[1] === "approve" ? "queue" : p[1] === "landed" || p[1] === "deployed" ? "log" : "alerts";
+    case "follow": // FOLLOW(ATC-278, docs/follow.md 3.5): ready·approve는 SUPERVISOR의 몫(queue), landed·deployed·arrived는 일어난 일(log), stuck·failed는 조건(alerts)
+      return p[1] === "ready" || p[1] === "approve" ? "queue" : p[1] === "landed" || p[1] === "deployed" || p[1] === "arrived" ? "log" : "alerts";
     default:
       return "alerts"; // 모르는 종류는 SUPERVISOR가 놓치지 않게 alerts에. 시험이 이 경우를 막는다
   }
@@ -133,7 +133,7 @@ export function repositionStuckOf(repositions: readonly RepositionRecordLike[], 
 }
 
 // FOLLOW(ATC-278): 따라가는 번들의 줄. followBoardOf의 줄을 그대로 읽는다(단계를 다시 세지 않는다). folded 번들의 줄은 넣지 않는다
-export type FollowAlertRow = Pick<FollowRow, "key" | "title" | "finished" | "current" | "stages" | "issues" | "proposal" | "ready" | "goAround" | "reverted" | "stuck">;
+export type FollowAlertRow = Pick<FollowRow, "key" | "title" | "finished" | "current" | "stages" | "issues" | "proposal" | "ready" | "goAround" | "reverted" | "stuck"> & Partial<Pick<FollowRow, "arrow" | "arrivedAt">>;
 export const FOLLOW_LOG_WINDOW_MS = 24 * 3_600_000; // landed·deployed 항목이 남는 시간(그 단계의 시각부터). 시각을 모르면 번들이 접힐 때까지
 
 export interface AlertsInput {
@@ -143,6 +143,7 @@ export interface AlertsInput {
   tickets: Pick<Ticket, "key" | "stateType">[];
   following: Pick<FollowItem, "flight" | "aircraft" | "issues">[];
   proposals: Pick<Proposal, "id" | "kind" | "status" | "flight" | "aircraftName" | "holdAt" | "statusAt">[];
+  autoDispatch?: boolean; // 자동 운항(ATC-367): ASSIGN 카드는 서버가 승인하므로 판정 대기 알림이 없다
   pulls: Pick<PullRequest, "repo" | "number" | "title" | "head" | "landing" | "draft" | "ticketKey" | "humanCheck">[];
   rts: Pick<RtsRecord, "at" | "from" | "to" | "result" | "detail"> | null;
   // SCHEDULE 판정(ATC-162): approval 모드에서만 SUPERVISOR 결정을 기다리는 일이다. shadow는 게이트 판정이라 항목이 없다. 없으면 항목 없음
@@ -291,6 +292,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
   // 4) SUPERVISOR가 판정할 DISPATCH 제안(HOLD 걸린 것은 사람 결정을 기다리는 게 아니라 선행 FLIGHT를 기다린다)
   for (const p of inp.proposals) {
     if (p.holdAt !== null || (p.status !== "proposed" && p.status !== "agreed" && p.status !== "disagreed")) continue;
+    if (inp.autoDispatch && p.kind === "ASSIGN") continue;
     // 따라가는 줄의 제안은 follow|approve로 낸다(pending|proposal을 대신한다, 이중 알림 없음)
     out.push({
       key: followProposals.has(p.id) ? `follow|approve|${p.id}` : `pending|proposal|${p.id}`,
@@ -466,8 +468,11 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       if (rtsBad && r.stages.landed.done && !r.stages.deployed.done && !r.stages.deployed.na && (!r.stages.landed.at || r.stages.landed.at <= rtsBad.at)) why.push(`RTS ${rtsBad.result.toUpperCase()}`);
       if (r.reverted) why.push(`PR #${r.reverted.number}로 되돌려짐`);
       if (why.length) out.push({ ...base, key: `follow|failed|${r.key}`, level: "warning", cue: null, text: `${title(r)} — ${why.join(" · ")}`, next: "FOLLOW 탭에서 그 FLIGHT의 기록을 보고 결정한다", since: r.reverted?.at ?? null });
-      if (!r.stages.landed.na && r.stages.landed.done && recent(r.stages.landed.at)) out.push({ ...base, key: `follow|landed|${r.key}`, level: null, cue: null, text: `${title(r)} — 착륙(ON)`, next: "", since: r.stages.landed.at });
+      // 화살표(발권한 FLIGHT, ATC-382)는 끝에서 한 번만 알린다: IN이 남아 있는 동안은 ON을 따로 알리지 않는다
+      if (!r.stages.landed.na && r.stages.landed.done && recent(r.stages.landed.at) && !(r.arrow && !r.stages.deployed.na)) out.push({ ...base, key: `follow|landed|${r.key}`, level: null, cue: null, text: `${title(r)} — 착륙(ON)`, next: "", since: r.stages.landed.at });
       if (!r.stages.deployed.na && r.stages.deployed.done && recent(r.stages.deployed.at)) out.push({ ...base, key: `follow|deployed|${r.key}`, level: null, cue: null, text: `${title(r)} — 배포(IN)`, next: "", since: r.stages.deployed.at });
+      // PR 없는 FLIGHT의 끝은 ARRIVED(ATC-382)
+      if (r.arrow && r.arrivedAt && recent(r.arrivedAt)) out.push({ ...base, key: `follow|arrived|${r.key}`, level: null, cue: null, text: `${title(r)} — 도착(ARRIVED)`, next: "", since: r.arrivedAt });
     }
   }
 

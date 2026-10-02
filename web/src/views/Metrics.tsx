@@ -4,6 +4,7 @@ import type { Snapshot } from "../../../server/model.ts";
 import type { Sample } from "../../../server/recorder.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { MetricsFuel } from "./MetricsFuel.tsx";
+import { MetricsLeaks } from "./MetricsLeaks.tsx";
 import "./Metrics.css";
 import { apiGet } from "../api.ts";
 
@@ -41,8 +42,11 @@ const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%
 const mins = (x: number | null) => (x === null ? "—" : `${x}분`);
 
 // 하위 화면(ATC-137): #metrics는 운용 지표, #metrics/fuel은 FUEL 개요. 주소로 고른다
-type Sub = "ops" | "fuel";
-const subOfHash = (): Sub => (location.hash.slice(1).split("/")[1] === "fuel" ? "fuel" : "ops");
+type Sub = "ops" | "fuel" | "leaks";
+const subOfHash = (): Sub => {
+  const p = location.hash.slice(1).split("/")[1];
+  return p === "fuel" || p === "leaks" ? p : "ops";
+};
 function useSub(): [Sub, (s: Sub) => void] {
   const [sub, setSub] = useState<Sub>(subOfHash);
   useEffect(() => {
@@ -50,7 +54,7 @@ function useSub(): [Sub, (s: Sub) => void] {
     addEventListener("hashchange", on);
     return () => removeEventListener("hashchange", on);
   }, []);
-  return [sub, (s) => (location.hash = s === "fuel" ? "metrics/fuel" : "metrics")];
+  return [sub, (s) => (location.hash = s === "ops" ? "metrics" : `metrics/${s}`)];
 }
 
 export function Metrics({ refreshKey, snapshot }: { refreshKey: string; snapshot?: Snapshot | null }) {
@@ -62,6 +66,7 @@ export function Metrics({ refreshKey, snapshot }: { refreshKey: string; snapshot
           [
             ["ops", "OPERATIONS"],
             ["fuel", "FUEL"],
+            ["leaks", "LEAKS"],
           ] as const
         ).map(([id, label]) => (
           <button key={id} role="tab" aria-selected={sub === id} onClick={() => goSub(id)}>
@@ -69,7 +74,7 @@ export function Metrics({ refreshKey, snapshot }: { refreshKey: string; snapshot
           </button>
         ))}
       </div>
-      {sub === "fuel" ? <MetricsFuel snapshot={snapshot ?? null} /> : <Operations refreshKey={refreshKey} />}
+      {sub === "fuel" ? <MetricsFuel snapshot={snapshot ?? null} /> : sub === "leaks" ? <MetricsLeaks refreshKey={refreshKey} /> : <Operations refreshKey={refreshKey} />}
     </section>
   );
 }

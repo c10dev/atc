@@ -1,5 +1,6 @@
 import type { FuelRemaining } from "./fuel-remaining.ts";
 import type { RtsRecord } from "./mcc.ts";
+import type { SinceLook } from "./since-look.ts";
 import type { SupervisorAlert } from "./supervisor-alerts.ts";
 
 // SUPERVISOR SUMMARY(ATC-153, docs/mac-app.md 3): 메뉴 막대·브라우저·atc-app이 같은 숫자를 읽게 서버가 한 번 계산한다.
@@ -23,6 +24,7 @@ export interface SupervisorSummary {
   rts: { result: RtsRecord["result"]; at: string; from: string | null; to: string } | null;
   working: { aircraft: number; control: number };
   needsYou: string[];
+  sinceLook?: SinceLook; // ATC-383: 마지막으로 본 뒤 바뀐 것의 수와 한 줄(v: 1에 더한 칸). summaryOf는 채우지 않고 summaryNow가 채운다
 }
 
 export interface SummaryInput {

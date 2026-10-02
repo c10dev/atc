@@ -13,9 +13,6 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // 오늘의 값 import 순환(SCC). 멤버를 정렬해 " <-> "로 잇는다. 새 항목을 더하지 않는다.
 export const ALLOWED_CYCLES: string[] = [
-  "server/dispatch-launch.ts <-> server/dispatch.ts",
-  "server/autoland-run.ts <-> server/landing-review.ts",
-  "server/fleet-plan.ts <-> server/fresh-start.ts <-> server/session-control.ts", // 동적 import()로 이어지는 순환
 ];
 // 오늘의 화면→Node 값 import 사슬. "web 파일 -> … -> node:xxx" 형식. 새 항목을 더하지 않는다.
 export const ALLOWED_WEB_NODE_CHAINS: string[] = [

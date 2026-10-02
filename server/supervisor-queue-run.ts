@@ -1,8 +1,9 @@
 import type { Hono } from "hono";
 import { config } from "./config.ts";
 import { openFleetPlanNow } from "./fleet-plan-run.ts";
+import { loadDispatchConfig } from "./dispatch.ts";
 import { DEFAULT_HEALTH } from "./health.ts";
-import { landByOf } from "./land-by.ts";
+import { landDecisionOf } from "./land-by.ts";
 import { mccLandInfo } from "./mcc-run.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 import { accountFolders } from "./accounts.ts";
@@ -11,6 +12,7 @@ import { allProposals } from "./proposals.ts";
 import { queueEpoch } from "./queue-bust.ts";
 import { allRelays, lastAircraftSources } from "./relay-run.ts";
 import { relayOffersOf } from "./relay-offer.ts";
+import { holderRoutes } from "./pr-holder-state.ts";
 import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { type QueueInput, type SupervisorQueue, supervisorQueueView } from "./supervisor-queue.ts";
 import type { UpdateStatus } from "./update.ts";
@@ -31,15 +33,19 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
   const clearances = allClearances();
   return {
     proposals: allProposals(),
+    autoDispatch: loadDispatchConfig().autoDispatch === "on",
     schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
     fleetPlan: openFleetPlanNow(now),
-    pulls: (s.pulls ?? []).map((p) => ({ ...p, landBy: landByOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false) })),
+    pulls: (s.pulls ?? []).map((p) => {
+      const d = landDecisionOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false);
+      return { ...p, landBy: d.by, landWhy: d.why };
+    }),
     update: st ? { kind: st.kind, deployed: st.deployed, main: st.main, mainCi: st.mainCi, at: st.at } : null,
     sessions: s.sessions.filter((x) => x.status !== "dead"),
     blockedMin: config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!,
     relays,
     clearances,
-    relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now }),
+    relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now, holderRoutes: holderRoutes() ?? new Map() }),
     folders: accountFolders().map((f) => ({ label: f.label, dir: f.dir })),
     defaultDir: config.claudeDir,
   };

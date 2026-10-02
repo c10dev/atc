@@ -17,6 +17,7 @@ import { PriorityMark } from "../ui.tsx";
 import { useAlerts } from "../alerts-runtime.ts";
 import { proposalAlertKey } from "../dispatch-alerts.ts";
 import { AtfmAlert, AtfmPanel, useAtfm } from "./Atfm.tsx";
+import { AutoMisfire } from "./AutoMisfire.tsx";
 import { type ReadinessItem, Readiness2b } from "./Readiness2b.tsx";
 import { BriefingLines, CardDetails, type CardBrief, FactsLine } from "./DispatchBriefing.tsx";
 import { FollowingAlert, FollowingPanel, useFollowing } from "./Following.tsx";
@@ -516,6 +517,8 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
         )}
       </div>
 
+      <AutoMisfire refreshKey={String(brief.at ?? now)} />
+
       <h2 className="label">
         ASSIGN <em>FLIGHT → AIRCRAFT</em>
       </h2>
@@ -674,6 +677,10 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       ) : (
         <p className="empty">아직 결정된 제안 없음</p>
       )}
+
+      <p className="dp-release-link faint">
+        화살을 쏘는(발권) 화면은 <a href="#release">RELEASE</a>로 옮겼습니다.
+      </p>
 
       <ReadinessFold id="dp-readiness" open={foldOpen} onOpenChange={setFoldOpen} parts={dispatchLineParts(brief)}>
         {brief.readiness2b?.items?.length ? <Readiness2b items={brief.readiness2b.items} mode={brief.mode} /> : null}

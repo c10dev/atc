@@ -50,6 +50,7 @@ Landing itself keeps the existing words: CLEARED TO LAND, LANDING, ARRIVED.
 1. `atcctl manual check`: reread the manual if it changed.
 2. `atcctl mcc queue`: open atc PRs with head, tier and its reasons, CI `check` on the head, merge state, INSPECTION on the head, holds; plus the commit in service against `origin/main`.
 3. For each PR without an INSPECTION on its head (oldest first, at most 3 a pass): call the `inspector` sub-agent with the PR number and head (section 8.2). It reads the packet (`atcctl mcc packet <PR>`: PR body, changed files, diff, tier reasons, the ATC issue's goal and exit criteria when the branch or body names one) in a fresh context and returns the verdict. MCC copies it into `atcctl mcc inspect <PR> --head <sha> --verdict pass|findings -- '<text>'`, or `atcctl mcc escalate <PR> -- '<reason>'`. MCC reads no packet or diff itself.
+   An ESCALATE also stands for the INSPECTION of the head it was recorded on (ATC-390). When `COUNTS` has no P0 or P1, the server counts that head as a `pass` (`reviewOfHead`, `server/mcc.ts`), so the PR is no longer "waiting for the MCC INSPECTION": it becomes CLEARED, shows as LANDING in the SUPERVISOR QUEUE and as a MERGE button in the PR drawer, and the leak counter counts it (`landWhy: escalate`). When there is a P0 or P1, MCC also records a `findings` INSPECTION on the same head; it comes first, so the PR shows its findings and gets a FIX like any other PR. The ESCALATE stays on the PR when the head moves, but the new head is not inspected until MCC does it: the `mcc queue` shows no INSPECTION for it, and the next pass calls the inspector again. Nothing changes in who merges: the SUPERVISOR still merges an escalated PR.
 4. For each PR the server reports as landable: `atcctl mcc land <PR> --head <sha>`.
 5. If `origin/main` is ahead of the commit in service and its CI passed: `atcctl mcc rts`.
 6. Report to the SUPERVISOR in its own session: each LANDED PR with its tier (for `flagged`, the control rules that changed), each RTS with the commit, each ROLLBACK and ESCALATE with the reason.
@@ -68,6 +69,7 @@ CI already runs tests, types and the build. The INSPECTION is what CI can't see,
 - Nothing from vocado's internals, no secrets, no screenshots (public repository).
 - Records stay append-only JSONL and settings stay atomically written JSON. A change to an operating-state format → ESCALATE.
 - The change does what the PR body and the ATC issue say, and nothing else.
+- A PR the SUPERVISOR approves (tier `user` or ESCALATE) has a "Behavior change" section: one text before/after diagram, or `Behavior change: none` (ATC-360). A missing section, a diagram that contradicts the diff, or `none` on a PR whose diff changes behaviour is P1.
 
 `findings` blocks the landing until a new head passes. The server also posts them as a PR comment (`**MCC INSPECTION — findings** …`), in every mode including shadow, so the author sees them on the PR as well as on the atc screen. A comment is information; it merges and deploys nothing. MCC doesn't message team sessions.
 

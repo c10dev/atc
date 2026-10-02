@@ -133,6 +133,49 @@ Every place where atc requires or offers a human decision, grouped by area (a su
 
 Not gates, left out: clearances between sessions, MCC INSPECTION `findings` (the author fixes, no click), MCC landing conditions L1–L8 and the review lanes themselves (machines), HOLD (brake).
 
+### Leak counter as built (ATC-363)
+
+Counting only; no gate changes. `server/leaks.ts` (pure) decides for each SUPERVISOR QUEUE item whether it is a leak (principle 1) or exempt, and which row of section 4 it belongs to; `server/leaks-run.ts` ticks every 60 s and appends to `leaks.jsonl`, one `open` line when a leak appears and one `close` line (with `heldMin`) when it has been gone for two ticks (a blink in the snapshot is not counted twice). Nothing is written per cycle. `GET /api/leaks?days=7` and METRICS → LEAKS show the last 7 days by kind, split into "its control exists" and "its control is missing".
+
+| Queue kind | Row | Control | Counted |
+|---|---|---|---|
+| PROPOSAL (ASSIGN, RELEASE, CLASSIFY / LAUNCH) | P1 / P2 | C14 / C11 | leak |
+| SCHEDULE, FLEET PLAN | P5, P3 | C14 | leak |
+| HUMAN CHECK | L10 | C10 | leak |
+| LANDING: MCC escalate / SUPERVISOR merges for another reason | L11 / L14 | C13 / C9 | leak |
+| LANDING: `user` tier (K3) / SUPERVISOR HOLD | L14 / L20 | — | exempt (K3, brake) |
+| UPDATE | D1 | RTS (built) | leak, control exists |
+| NEEDS YOU: tool approval prompt / any other block | P7 | — / C9 | exempt (K3) / leak |
+| RELAY, UNDELIVERED | L18, P6 | C15, C14 | leak |
+| GO | P8 | — | exempt (K3) |
+
+A record carries `kind`, `gate`, `control`, `controlBuilt`, `flight`, `since` and a `release` field that stays `null` until the ATC-362 release record exists. The `CONTROLS` table in `leaks.ts` says which controls are built; flip a flag there when a control lands and new leaks move to "its control exists".
+
+### SCHEDULE and FLEET PLAN without a human (ATC-370)
+
+Rows P3 and P5 are cut (K3, approved by the SUPERVISOR on 2026-10-02: "live first"). `server/autonomy-auto.ts` (pure) decides, `server/autonomy-auto-run.ts` reads and writes; both run inside the server only (no HTTP route and no `atcctl` command changes them).
+
+- **SCHEDULE.** Every minute the server approves open drafts of CLASSIFY, TAIL, CLOSE, WAYPOINT and NEW with no SUPERVISOR verdict and no CROSSCHECK agreement (`via: "auto"`; OCC still releases them in the S2 flow). PRIORITIZE, ROUTE and TARGET stay proposals (direction, principle 10). A NEW draft creates its issue in **Backlog** (`state: "Backlog"` in the released call): only the SUPERVISOR releases it to Todo (ATC-362). CLOSE is approved, but atc still never moves an issue to Done (no server or OCC path writes it); it stays on the SCHEDULE tab's "set Done in Linear" list. The existing daily cap `autoApproveMax` counts these approvals together with the CROSSCHECK-agreement ones.
+- **FLEET PLAN.** After each cycle the server runs open LAUNCH, STOP, RESTART, REFRESH and AOG proposals through the same executor as the approve button (`by: "auto"`), so it re-checks the stale test, `ATC_MAX_LAUNCHED`, the FUEL hold and the ACCOUNT login. ENTRY, ACCOUNT CHANGE, REPOSITION (own switch), RETIRE and RETURN stay proposals, and so does a REFRESH of a desktop session. Extra caps: `autoApproveMax` for all auto actions and `autoLaunchMax` for LAUNCH, RESTART and REFRESH in a rolling 24 hours (DISPATCH auto-LAUNCHes count too), and an AIRCRAFT the server touched in the last 30 minutes (failed: 60) is left alone.
+- **Switches.** `schedule.json` `auto` and `fleet-plan.json` `auto`, `on` or `off`, absent = `on` (both are on once this lands). They are written only through `PUT /api/settings` (`scheduleAuto`, `fleetPlanAuto`), which needs the screen's Origin (`fromThisApp`); settings window → OPERATIONS → SCHEDULE·FLEET PLAN AUTO. A change is written to the FLIGHT RECORDER.
+- **Misfires.** `auto-actions.jsonl` records what the server did; `misfires.jsonl` records what was undone, once per event: SCHEDULE: an auto-approved draft that reached APPLIED and whose label or TAIL was reverted, whose CLOSE was reopened, or that a later draft of the same kind on the same FLIGHT contradicts (3-day window); FLEET PLAN: a STOP followed by a LAUNCH of the same AIRCRAFT within 1 hour, a LAUNCH still idle after 1 hour (a snapshot check, so it is an upper bound), or a third RESTART/REFRESH within 6 hours. `GET /api/autonomy/auto?days=14` returns the switches, the counts per day (UTC) and the last 20 events.
+- **Not built.** A screen for the misfire counts (the API and the files are the record for now), a Done path for CLOSE, and the shared STOP rule with ATC-369.
+
+### DISPATCH automatic as built (ATC-367)
+
+K3 loosening, approved by the SUPERVISOR on 2026-10-02: the server approves every ASSIGN and launch card that passes the planner filters and caps; no CROSSCHECK step, no blind sample, no SUPERVISOR card. Switch `dispatch.json` `autoDispatch` (default on, SUPERVISOR-only through `fromThisApp`, damaged file reads as off). The late-outcome count is MISFIRE (`/api/dispatch/misfire`, DISPATCH tab). Rows P1 and P2 of section 4 no longer reach the SUPERVISOR QUEUE, so the leak counter's PROPOSAL class should fall to zero. Details: [dispatch.md](dispatch.md) "Automatic DISPATCH as built".
+
+### SUPERVISOR credential as built (ATC-373)
+
+Control C12 in the form the SUPERVISOR chose through the PR: a **pairing hash**. A localhost `Origin` proves nothing, because any process on the host can write that header, so the SUPERVISOR-only routes now also need a secret that only the SUPERVISOR's own screen holds.
+
+- **Where the secret lives.** The atc page (or the ANNUNCIATOR app) makes a random 256-bit secret and keeps it in that device's own storage: the browser's `localStorage` on the Mac, or the app's keychain. It is sent in the `X-ATC-Supervisor` header with every write. The server never stores it, prints it or logs it; it only knows the sha256 hash.
+- **Where the hash lives.** `/etc/atc/supervisor.sha256` (override `ATC_SUPERVISOR_HASH_FILE`), one hash per line, so several devices can be paired. The file must be owned by root and not group- or world-writable; a session running as the service user can read it but not rewrite it (no passwordless `sudo` on the host). A missing, empty, user-owned or writable file means **unpaired or insecure: every SUPERVISOR-only write is refused** (fail-closed). `ATC_SUPERVISOR_ALLOW_USER_FILE=1` accepts a user-owned file for a test server only.
+- **What is gated.** `supervisorGate` runs before every route. Any `POST`, `PUT`, `PATCH` or `DELETE` under `/api/` needs the credential, **unless** it is on the allow list of writes that agents legitimately make through `atcctl` and SQUELCH (`server/supervisor-auth.ts`, matched by `server/supervisor-auth.test.ts` against `controller/atcctl.mjs`). So the routes the 1.4 sweep found without any check (DISPATCH approve and reject, RECALL creation, the DISPATCH and SCHEDULE mode switches, SCHEDULE approve and reject, every ATFM route) and every route found later are covered by default; a new write route is SUPERVISOR-only until someone adds it to the allow list on purpose. The routes' own `Origin` checks stay as a second layer. Reads are not gated.
+- **Pairing.** The screen shows a bar when the server does not accept this device (`GET /api/supervisor/auth` returns `unpaired`, `missing`, `invalid` or `insecure`). "Create credential" makes the secret and shows one command to run once on the host, with the hash only: `sudo install -d /etc/atc && echo <hash> | sudo tee -a /etc/atc/supervisor.sha256`. ANNUNCIATOR does the same with its own secret.
+- **Limits, stated plainly.** This stops a session that forges requests from the host. It does not stop one that can become root (the host user is in the `docker` and `sudo` groups: `docker` can mount `/etc`; `sudo` needs a password today), one that edits the service's code or unit file and waits for a restart, or one that reads the SUPERVISOR's Mac. Those are K3 matters for the landing rules, not for this check. The secret crosses the SSH tunnel and loopback in clear text, which a same-user process cannot sniff without extra capabilities.
+- **Not changed.** `atcctl` and the guards: what agents may do through the allow-listed routes works as before. No record format changed.
+
 ## 5. Compensating controls
 
 Each control says what it detects, how fast, what it does by itself and what it reports. The controls that replace a human decision are C1, C2, C4, C6, C10, C14, C15 and C16; the others support them.

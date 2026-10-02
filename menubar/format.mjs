@@ -66,6 +66,9 @@ export function titleOf({ summary }) {
 export function menuLines({ alerts, summary, base = DEFAULT_BASE }) {
   const items = itemsOf(alerts);
   const out = [titleOf({ summary }), "---"];
+  // 마지막으로 본 뒤(ATC-383): 서버가 쓴 한 줄. 조용하면(빈 문자열·옛 서버) 줄이 없다. 마커는 SUPERVISOR의 브라우저가 옮긴다(메뉴 막대는 읽기만)
+  const since = summary?.sinceLook?.line;
+  if (typeof since === "string" && since) out.push(line(`마지막 본 뒤: ${since}`, { href: hrefOf(base, "") }), "---");
   if (!items.length) out.push(line("지금 알릴 것 없음"));
   for (const level of LEVEL_ORDER) {
     const group = items.filter((i) => i.level === level);

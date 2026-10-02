@@ -1,5 +1,6 @@
 import { AlertBell, SoundLockChip } from "./AlertBell.tsx";
 import { FollowNext } from "./FollowNext.tsx";
+import { SinceLook } from "./SinceLook.tsx";
 import { drawerOfHash, type DrawerRef } from "../../server/detail.ts";
 import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showNewVersion } from "../../server/version.ts";
@@ -8,6 +9,7 @@ import { buildIndex, timeAgo } from "./derive.ts";
 import { ControlStrip } from "./ControlStrip.tsx";
 import { NewVersionBar } from "./NewVersion.tsx";
 import { UpdateBar, useUpdate } from "./UpdateBar.tsx";
+import { SupervisorPairing, useSupervisorAuth } from "./SupervisorPairing.tsx";
 import { MoonIcon, Starfield } from "./Starfield.tsx";
 import { Ticker } from "./Ticker.tsx";
 import { formatClock, useSettings } from "./settings.ts";
@@ -30,6 +32,7 @@ const Airports = lazyTab<{ snapshot: Snapshot }>(() => import("./views/Airports.
 const Fleet = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/fleet/Fleet.tsx"), "Fleet");
 const Metrics = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/Metrics.tsx"), "Metrics");
 const Network = lazyTab<{ refreshKey: string }>(() => import("./views/Network.tsx"), "Network");
+const Release = lazyTab<{ refreshKey: string }>(() => import("./views/Release.tsx"), "Release");
 const Dispatch = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Dispatch.tsx"), "Dispatch");
 const Schedule = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Schedule.tsx"), "Schedule");
 const Radio = lazyTab<Record<string, never>>(() => import("./views/Radio.tsx"), "Radio");
@@ -49,6 +52,7 @@ const TABS = [
   { id: "fleet", code: "FLEET" },
   { id: "metrics", code: "METRICS" },
   { id: "network", code: "NETWORK" },
+  { id: "release", code: "RELEASE" },
   { id: "dispatch", code: "DISPATCH" },
   { id: "schedule", code: "SCHEDULE" },
   { id: "radio", code: "RADIO" },
@@ -72,6 +76,7 @@ export function App({ build }: { build: string }) {
   const { snapshot, connection, serverBuild } = useSnapshot();
   const now = useNow();
   const update = useUpdate(connection);
+  const supervisorAuth = useSupervisorAuth();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -213,6 +218,7 @@ export function App({ build }: { build: string }) {
         <ControlStrip snapshot={snapshot} now={now} />
       </header>
 
+      <SupervisorPairing auth={supervisorAuth} />
       <UpdateBar update={update} />
       <NewVersionBar own={build} server={serverBuild} />
 
@@ -267,9 +273,13 @@ export function App({ build }: { build: string }) {
           <p className="empty">{connection === "lost" ? "서버에 연결할 수 없음" : "불러오는 중…"}</p>
         ) : (
           // 탭마다 오류 경계를 새로 둔다(한 탭의 오류·못 불러온 청크가 다른 탭을 막지 않게)
-          <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
-            <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now)}</Suspense>
-          </TabBoundary>
+          <>
+            {/* 처음 도착하는 탭(기본 탭)의 맨 위. HOME이 생기면(ATC-377) 그쪽 맨 위로 옮긴다 */}
+            {tab === "radar" && <SinceLook refreshKey={snapshot.at.slice(0, 16)} />}
+            <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
+              <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now)}</Suspense>
+            </TabBoundary>
+          </>
         )}
       </main>
       {dutyOpen && (
@@ -314,6 +324,8 @@ function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number) {
       return <Metrics refreshKey={refreshKey} snapshot={snapshot} />;
     case "network":
       return <Network refreshKey={refreshKey} />;
+    case "release":
+      return <Release refreshKey={refreshKey} />;
     case "dispatch":
       return <Dispatch refreshKey={refreshKey} now={now} />;
     case "schedule":

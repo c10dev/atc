@@ -8,7 +8,7 @@
 1. `node ../controller/atcctl.mjs mcc queue`. Look at `pulls`, `rts` and `groundStop`. If `rts.due` is true, run `node ../controller/atcctl.mjs mcc rts` here first (once, before any landing). If it is stopped after a ROLLBACK, don't; report it.
 2. For each PR without an `inspection` (oldest first, at most 3 a pass):
    - Call Agent with `subagent_type: inspector`. Prompt: `PR <number>, head <head from queue>`. Call several PRs together. **Don't read the packet or the diff in this session** (not `mcc packet`, not `gh pr diff`, not the code around a diff). The standard is CLAUDE.md "How to inspect".
-   - If the reply has `VERDICT: escalate` (or `ESCALATE:` other than `none`): `node ../controller/atcctl.mjs mcc escalate <PR> -- '<ESCALATE reason>'`.
+   - If the reply has `VERDICT: escalate` (or `ESCALATE:` other than `none`): `node ../controller/atcctl.mjs mcc escalate <PR> -- '<ESCALATE reason>'`. If `COUNTS` in the reply has any P0 or P1, also record `mcc inspect <PR> --head <HEAD of the reply> --verdict findings -- '<TEXT>'` on the same head (with no P0 or P1, the ESCALATE alone counts as the INSPECTION of that head, ATC-390).
    - Otherwise `node ../controller/atcctl.mjs mcc inspect <PR> --head <reply HEAD> --verdict <VERDICT> -- '<TEXT>'`, alone. If `HEAD` differs from the queue head, don't record; call again next pass. If the guard blocks it on the model check, stop this pass and log it.
    - If the reply isn't the block or the inspector failed, call once more; if that fails, log it and move on (don't read the PR yourself instead).
 3. Read `mcc queue` again; for each PR with empty `blocks`: `node ../controller/atcctl.mjs mcc land <PR> --head <head>`. On `LAND 안 함`, log the condition.

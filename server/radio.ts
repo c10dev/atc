@@ -1,4 +1,5 @@
 import type { ArrivalReport } from "./arrival-report.ts";
+import { causeOf } from "./address.ts";
 import { callsign } from "./callsign.ts";
 import type { ClearanceOp } from "./clearances.ts";
 import { CREW_CHANGE_READBACK_OVERDUE_MS, type CrewChangeOp } from "./crew-change.ts";
@@ -37,6 +38,7 @@ export interface Transmission {
   overdueAt?: string; // open이고 이 시각을 넘으면 overdue(기존 규칙)
   reason?: string; // open인 호출의 받는 쪽이 도구 승인을 기다리는 중이면 그 사유(ATC-327). 서버가 붙인다(annotatePending), 기록에서 나온 것이 아니다
   orphan?: true; // 답인데 호출 기록이 없음(남겨 두고 표시)
+  undeliveredCause?: string; // 닿지 못한 원인 분류(ATC-353, address.ts CAUSES). undelivered와 함께 있다
   undelivered?: string; // 보냈지만 닿지 않았다고 OCC가 알림(ATC-183): 그 사유. 이 호출은 닫혔고 다시 보내면 같은 id의 새 호출이 생긴다
   closedBy?: ClosedBy; // 답 없이 닫힌 호출이 어떻게 닫혔나(READABILITY가 취소를 무응답에서 뺀다, ATC-176)
 }
@@ -118,7 +120,11 @@ export function radioOf(input: RadioInput, teamPattern = DEFAULT_TEAM_PATTERN): 
     }
     const call = clr.get(o.id);
     if (o.op === "cancel" || o.op === "undeliverable") {
-      if (call) close(call, "cancel"); // 취소는 교신이 아니라 호출을 거두는 것
+      if (call && o.op === "undeliverable") {
+        call.undelivered = o.reason; // 닿지 못함(ATC-271·353): 호출을 거두고 원인을 남긴다. READABILITY가 원인별로 센다
+        call.undeliveredCause = causeOf(o.reason, o.cause);
+        close(call, "undelivered");
+      } else if (call) close(call, "cancel"); // 취소는 교신이 아니라 호출을 거두는 것
       continue;
     }
     if (o.op === "hand") continue; // SUPERVISOR의 표시이지 교신이 아니다(ATC-271)
@@ -162,6 +168,7 @@ export function radioOf(input: RadioInput, teamPattern = DEFAULT_TEAM_PATTERN): 
         p.id = `${o.id}#undelivered${(undelivers.get(o.id) ?? 0) + 1}`;
         undelivers.set(o.id, (undelivers.get(o.id) ?? 0) + 1);
         p.undelivered = o.reason;
+        p.undeliveredCause = causeOf(o.reason, o.cause);
         close(p, "undelivered");
       }
     } else if (o.op === "recall") {

@@ -1,3 +1,4 @@
+import { supervisorGate, verdictFor } from "./supervisor-auth.ts";
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { serve } from "@hono/node-server";
@@ -44,6 +45,8 @@ import { loadRoutes } from "./routes-load.ts";
 import { mountRoutes } from "./routes-run.ts";
 import { refreshOverlap } from "./overlap-run.ts";
 import { allProposals, DISPATCH_MS, mountDispatch, runDispatch } from "./proposals.ts";
+import { runAutoApprove } from "./auto-approve-run.ts";
+import { mountAutonomyAuto, runAutoSchedule, scheduleMisfires } from "./autonomy-auto-run.ts";
 import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
 import { mountDetail } from "./detail-run.ts";
@@ -58,11 +61,15 @@ import { mountSquelchOpens } from "./squelch-opens-run.ts";
 import { mountSquelch } from "./squelch-run.ts";
 import { mountTick } from "./tick-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
+import { mountSinceLook } from "./since-look-run.ts";
 import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
 import { mountQrh, runQrh } from "./qrh-run.ts";
 import { mountDuty } from "./duty-api.ts";
+import { mountReleases, releaseFromChat } from "./release-run.ts";
 import { duty, mountDutyRun } from "./duty-run.ts";
 import { mountDutyL1 } from "./duty-l1-run.ts";
+import { mountLeaks } from "./leaks-run.ts";
+import { mountMisfire } from "./misfire-run.ts";
 import { mountSupervisorQueue } from "./supervisor-queue-run.ts";
 import { parseTopics, type SupervisorSummary } from "./supervisor-summary.ts";
 import { mountRadio, RadioFeed } from "./radio-run.ts";
@@ -136,7 +143,7 @@ async function tick() {
     if (isWarm(next) && Date.now() - lastDispatchAt >= DISPATCH_MS) {
       lastDispatchAt = Date.now();
       void refreshOverlap(next); // 파일 겹침(ATC-71): 이번 주기에 읽은 것은 다음 계획부터 쓴다
-      runDispatch(next);
+      runDispatch(next, Date.now(), () => eventLog.since(null).events); // PR HOLDER(ATC-354)가 GO AROUND 글을 만들 때 TOWER와 같은 사건을 본다
       runFleetPlan(next); // FLEET PLAN(docs/fleet.md 8.6): 같은 주기에 그림자 제안. claude agents를 읽어 기다리지 않는다
     }
     if (isWarm(next)) recordDepartures(next); // FLIGHT의 첫 STAND·claim과 HANDOFF를 착수 기록에(바뀔 때만). 첫 번은 기준선
@@ -169,6 +176,10 @@ async function tick() {
 
 const app = new Hono();
 
+// SUPERVISOR 자격(ATC-373): /api 아래 쓰기는 에이전트가 쓰는 길(atcctl 등, supervisor-auth.ts의 허용 목록) 말고는 모두 SUPERVISOR의 비밀을 요구한다. 어느 라우트보다 먼저 건다
+app.use("/api/*", supervisorGate());
+app.get("/api/supervisor/auth", (c) => c.json({ verdict: verdictFor(c) })); // 이 요청의 자격이 맞는지(valid·invalid·missing·unpaired·insecure). 해시와 비밀은 싣지 않는다
+
 const getSnapshot = async () => current ?? (current = await buildSnapshot());
 
 app.get("/api/snapshot", async (c) => c.json(await getSnapshot()));
@@ -179,6 +190,11 @@ mountLandingReview(app, getSnapshot);
 mountHumanCheck(app, getSnapshot);
 mountAirports(app);
 mountMetrics(app);
+// launch 카드의 LAUNCH(화면의 승인과 서버의 자동 승인이 같이 쓴다). by는 FLIGHT RECORDER에 남는 주체
+const launchForCard = (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string) => {
+  const a = s.absent?.find((x) => x.registration === reg);
+  return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, by, proposal);
+};
 mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   candidates: standFreeCandidates,
   timeliness: () => standFreeTimeliness(),
@@ -187,10 +203,7 @@ mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   // LAUNCH on approve(ATC-129): FLEET LAUNCH와 같은 길. 옵션은 그 AIRCRAFT의 마지막 atc LAUNCH와 같게.
   // ACCOUNT: RESUME은 끊긴 ACCOUNT를 이름으로 댄다. 다른 카드는 이름을 대지 않아 LAUNCH ACCOUNT가 먼저고, 마지막 ACCOUNT는 그다음이다(ATC-239)
   max: MAX_LAUNCHED,
-  launch: (s, reg, proposal, resume) => {
-    const a = s.absent?.find((x) => x.registration === reg);
-    return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, "SUPERVISOR", proposal);
-  },
+  launch: (s, reg, proposal, resume) => launchForCard(s, reg, proposal, resume, "SUPERVISOR"),
 }, (s, now, inFlight) => {
   // ATC-169: 머지됐는데 도착 보고가 없는 FLIGHT와 OCC 재시작 안전 시점(읽기만)
   const arrivalMissing = arrivalMissingOf(followingNow(s, now), foldReports(readReports()), now);
@@ -210,7 +223,9 @@ mountNetwork(app, getSnapshot);
 mountGlobe(app, getSnapshot);
 mountRoutes(app, getSnapshot);
 mountSchedule(app, getSnapshot, allProposals);
+mountAutonomyAuto(app);
 mountPrMerge(app, getSnapshot); // PR MERGE 버튼(DUTY G2): SUPERVISOR 클릭만, user 등급 CLEARED PR만 GitHub에 머지한다
+mountReleases(app, getSnapshot); // 발권 기록(ATC-362): 화면 클릭·일괄 확인(Origin 검사)과 attested 증언
 mountFlightState(app); // FLIGHT 상태 버튼(DUTY G3): SUPERVISOR 클릭만 Linear에 쓴다
 mountDetail(app, getSnapshot); // FLIGHT·PR drawer(DUTY G1): 읽기 전용, 60초 캐시
 mountIdeas(app); // IDEAS 서랍(DUTY G4): atc 저장소 idea 이슈 읽기 전용, 60초 캐시
@@ -235,6 +250,22 @@ setInterval(() => {
     .then((r) => r.started && console.log(`[atc] auto RTS started: ${r.why}`))
     .catch(() => {});
 }, 30_000).unref();
+// 일치 기반 자동 승인(ATC-334, docs/autonomy.md C14): 스위치 autoApprove·autoApproveLaunch가 off(기본)면 아무것도 하지 않는다. shadow는 would-* 줄만, on은 승인.
+// 서버 안에서만 돈다(HTTP 길도 atcctl 명령도 없다). 1분에 한 번
+setInterval(() => {
+  if (!current) return;
+  void runAutoApprove(current, { max: MAX_LAUNCHED, launch: (s, reg, proposal, resume) => launchForCard(s, reg, proposal, resume, "auto") }).catch((e) => console.error("[atc] auto approve failed:", e));
+}, 60_000).unref();
+// SCHEDULE 초안 자동 적용(ATC-370, docs/autonomy.md P5): 스위치 schedule.json auto(기본 on)가 켜져 있으면 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW 초안을 사람 판정 없이 승인한다. 1분에 한 번
+setInterval(() => {
+  if (!current) return;
+  try {
+    runAutoSchedule();
+    scheduleMisfires(current);
+  } catch (e) {
+    console.error("[atc] auto schedule failed:", e);
+  }
+}, 60_000).unref();
 // CONTROL RECYCLE(ATC-166): 스위치가 off(기본)면 아무것도 하지 않는다. shadow는 "재시작했을 것"만 FLIGHT RECORDER에 남긴다. 1분에 한 번
 const recycleFacts = {
   now: Date.now,
@@ -268,9 +299,12 @@ mountSquelchOpens(app); // SQUELCH opens-by-field(ATC-297): 어떤 필드가 tic
 mountTick(app); // `atcctl tick <역할>`(ATC-297): 브리핑에 할 일이 있는가(읽기만)
 
 mountSupervisorQueue(app, getSnapshot, () => update.status(), () => eventLog.since(null).events); // SUPERVISOR QUEUE(ATC-194, 읽기만)
+mountLeaks(app, getSnapshot, () => update.status()); // LEAK COUNTER(ATC-363): 릴리스 뒤에도 사람이 거치는 단계를 leaks.jsonl에 열릴 때·닫힐 때 한 줄씩 센다(세기만)
+mountMisfire(app); // 자동 운항 MISFIRE(ATC-367): 서버가 승인한 카드가 나중에 틀렸다고 드러난 수를 날짜별 승인 대비 몫으로(읽기만)
 mountDuty(app, getSnapshot, () => update.status(), (l) => duty().recordDraft(l)); // DUTY L0(ATC-219): brief 읽기와 초안 붙이기(밖으로 나가는 동작 없음)
 mountDutyL1(app); // DUTY D7a: STAND 만들기·치우기와 Linear 쓰기(duty.json l1이 켜졌을 때만, Origin 있는 요청 거절)
-mountDutyRun(app); // DUTY D2(ATC-220): 글 보내기·중단·NEW SHIFT(Origin 검사)·기록·상태. duty.json enabled가 꺼져 있으면 아무것도 띄우지 않는다
+mountDutyRun(app, undefined, (text) => void releaseFromChat(text, getSnapshot).catch(() => {})); // DUTY D2(ATC-220): 글 보내기·중단·NEW SHIFT(Origin 검사)·기록·상태. duty.json enabled가 꺼져 있으면 아무것도 띄우지 않는다
+mountSinceLook(app, getSnapshot, currentAlerts); // SINCE YOU LAST LOOKED(ATC-383): 본 뒤 바뀐 것의 수(읽기)와 마지막 본 시각 옮기기(SUPERVISOR 화면만)
 app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); // 지금 있는 알림 key 전체(읽기만)
 
 // 알림 요약(ATC-153, 읽기만): 메뉴 막대·브라우저·atc-app이 같은 숫자를 읽는다. 아직 스냅샷이 없으면 503

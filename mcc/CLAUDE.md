@@ -40,7 +40,7 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 
 1. INSPECTION이 필요한 PR마다 Agent를 `subagent_type: inspector`로 부른다. 프롬프트는 `PR <번호>, head <queue의 head>` 한 줄이면 된다. 새 컨텍스트에서 packet을 읽고(잘렸을 때만 `gh pr diff`로 전체 diff), 아래 기준으로 보고, 답을 돌려준다. 같은 바퀴에 여러 PR이면 한 번에 부른다.
 2. 답은 `VERDICT`·`HEAD`·`COUNTS`·`ESCALATE`·`TEXT` 블록이다. 판정을 바꾸거나 덧붙이지 않고 옮긴다:
-   - `VERDICT: escalate` 또는 `ESCALATE:`가 `none`이 아니면 `mcc escalate <PR> -- '<ESCALATE 사유>'`.
+   - `VERDICT: escalate` 또는 `ESCALATE:`가 `none`이 아니면 `mcc escalate <PR> -- '<ESCALATE 사유>'`. ESCALATE는 그 head의 INSPECTION도 겸한다(ATC-390): `COUNTS`의 P0·P1이 0이면 서버가 그 head를 지적 없는 `pass`로 세어 PR이 CLEARED가 되고 사용자가 머지한다. P0나 P1이 하나라도 있으면 같은 head에 `mcc inspect <PR> --head <HEAD> --verdict findings -- '<TEXT>'`도 남긴다(PR 댓글과 FIX가 나간다). ESCALATE는 PR에 남으니, head가 바뀌면 새 head를 평소처럼 INSPECTION한다.
    - `pass`·`findings`면 `mcc inspect <PR> --head <HEAD> --verdict <VERDICT> -- '<TEXT>'`. `HEAD`가 `mcc queue`의 head와 다르면 그 PR은 이번 바퀴에 기록하지 않고 다음 바퀴에 다시 부른다. TEXT에 작은따옴표가 있으면 빼고 쓴다.
 3. 답이 블록 모양이 아니거나 `HEAD`가 없거나 inspector가 실패하면 기록하지 않는다. 한 번 다시 부르고, 그래도 안 되면 MCC LOG에 적고 넘어간다. 이 세션이 직접 읽어서 대신하지 않는다.
 

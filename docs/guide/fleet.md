@@ -239,6 +239,8 @@ atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude C
 
 STAND를 쥔 세션이 없는 PR에 GO AROUND나 FIX가 필요하면 TOWER가 보낼 곳이 없습니다. 이때는 QUEUE에 `RELAY` 줄이 하나 뜹니다(PR과 head마다 하나). 줄에는 TOWER의 글과 그 FLIGHT를 난 AIRCRAFT(제안, 다른 REGISTRATION으로 고칠 수 있음)가 있고, **RELAY…** → **보내기…** → **보내기 확인**으로 한 번 확인하면 TOWER가 그 글을 고치지 않고 `GO AROUND`나 `FIX` CLEARANCE로 그 PR의 STAND에 묶어 보냅니다. PR 서랍의 **RELAY…** 줄도 같은 글을 채워 줍니다. head가 바뀌거나 PR이 닫히거나 쥔 세션이 생기면 줄은 사라집니다.
 
+이 줄은 DISPATCH가 먼저 holder를 찾아 보고 받을 AIRCRAFT가 없을 때만 나옵니다(ATC-354). 그 FLIGHT를 난 AIRCRAFT가 놀고 있거나 TYPE RATING이 맞는 AIRCRAFT가 있으면, QUEUE의 PROPOSAL에 **PR HOLDER** 카드(보통의 ASSIGN)가 먼저 뜹니다. 승인하면 FLIGHT PLAN에 보류 중인 글이 실려 가고, 새 holder는 머지하지 않습니다. 서비스를 다시 띄운 직후 첫 DISPATCH 주기(최대 5분)가 지나기 전에는 `RELAY` 줄이 아직 없을 수 있습니다. 거절한 PR HOLDER 카드의 PR은 같은 head에서 `RELAY` 줄로 돌아옵니다.
+
 ## FLEET PLAN: atc의 제안
 
 카드 위의 FLEET PLAN 블록은 atc가 팀을 언제 띄우고, 멈추고, 쉬게 하고, 퇴역시키자고 하는지 보여 준다. 지금은 **그림자**다. atc는 제안만 하고, SUPERVISOR는 **동의**·**반대**로 판정만 한다. 실제로 띄우거나 멈추는 것은 여전히 카드의 버튼으로 한다.

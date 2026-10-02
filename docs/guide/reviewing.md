@@ -100,6 +100,24 @@ atc가 띄운 백그라운드 AIRCRAFT는 마지막 턴 뒤 60분쯤 쉬면 Clau
 - **RESUME 카드**: 사용 한도로 턴이 잘린 채 세션이 사라진 AIRCRAFT는 한도가 풀린 뒤 같은 FLIGHT·같은 AIRCRAFT의 RESUME 카드로 돌아온다(LAUNCH 카드이기도 하다). 카드에는 STAND(워크트리)와 브랜치, 마지막 커밋, CAPTAIN의 마지막 보고 한 줄이 실린다. 보내는 FLIGHT PLAN은 "resume, don't restart" — 처음부터 다시 하지 말고 거기서 이어서 하라고 적는다. 같은 끊김에는 한 번만 나온다(거절하면 다시 나오지 않는다). 세션이 살아 있는 AIRCRAFT의 `RESUME 필요`는 전처럼 그 세션에서 "계속"을 보낸다.
 - 데스크톱·터미널에서 연 AIRCRAFT는 atc가 띄우지 않으니 세션이 없으면 후보가 아니다.
 
+## 자동 승인(켜면): CROSSCHECK가 agree한 카드는 서버가 승인
+
+설정 창 OPERATIONS의 "AUTO APPROVE"에 스위치 둘이 있고 **기본은 둘 다 off**다. 이 화면에서만 바꾸고(관제 세션은 못 바꾼다) `on`을 고르면 확인을 묻는다. `shadow`는 서버가 "승인했을 것"만 `auto-approve.jsonl`에 적는다. 먼저 shadow로 며칠 보고 켜기를 권한다.
+
+- **ASSIGN·SCHEDULE**(`autoApprove`): 열린 ASSIGN 카드(LAUNCH 아님)와 SCHEDULE 초안을 CROSSCHECK가 agree했으면 서버가 승인한다. 카드에는 승인한 쪽이 `auto`로 남는다(`via auto`).
+- **launch 카드**(`autoApproveLaunch`): LAUNCH 카드와 RESUME 카드를 승인하고 세션을 띄우기까지 서버가 한다. 상한(`ATC_MAX_LAUNCHED`)이 안 찼고, ACCOUNT가 FUEL hold가 아니고, LAUNCH가 막히지 않았고, 방금 LAUNCH가 실패한 AIRCRAFT가 아니고(30분 쉼), 하루 6번 안일 때만 한다.
+- **그래도 SUPERVISOR 몫:** BLIND 표본(5장에 1장), CROSSCHECK가 disagree한 카드, HELD 카드, OCC가 주의를 단 카드, FUEL hold인 AIRCRAFT의 카드. 하루 상한(자동 승인 40건, 굴러가는 24시간)을 넘으면 그 카드는 기다린다.
+- **센 숫자에서 빠진다:** 서버가 한 승인은 사람 판정이 아니라서 게이트(판정 20건에 80%), CROSSCHECK 일치율, 한 번 클릭 비율에 들어가지 않는다.
+
+## SCHEDULE·FLEET PLAN은 사람 없이 돈다(기본 on)
+
+설정 창 OPERATIONS의 "SCHEDULE·FLEET PLAN AUTO"에 스위치 둘(SCHEDULE, FLEET PLAN)이 있고 **기본은 둘 다 on**이다. 끄는 것은 SUPERVISOR뿐이고 이 화면에서만 바뀐다(관제 세션은 못 바꾼다). 켜 두면 승인 줄에 사람이 누를 것이 없다.
+
+- **SCHEDULE:** 서버가 열린 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW 초안을 CROSSCHECK와 상관없이 승인한다(`via auto`). 발부는 OCC가 전처럼 한다. NEW는 **Backlog**에 이슈를 만든다: 풀어서 Todo로 보내는 것은 SUPERVISOR 몫이다. PRIORITIZE, ROUTE, TARGET 변경은 제안으로 남는다. CLOSE는 승인되지만 Done은 여전히 Linear에서 직접 옮긴다.
+- **FLEET PLAN:** 서버가 LAUNCH·STOP·RESTART·REFRESH·AOG 제안을 승인 단추와 같은 길로 실행한다. FUEL hold, `ATC_MAX_LAUNCHED`, 하루 상한(전체 40건, LAUNCH 계열 6번)을 지키고, 방금 건드린 AIRCRAFT는 쉰다. ENTRY·ACCOUNT CHANGE·REPOSITION·RETIRE·RETURN과 데스크톱 세션의 REFRESH는 제안으로 남는다.
+- **오작동 세기:** 서버가 한 일을 사람이나 뒤 초안이 되돌리면 센다(라벨 되돌림, CLOSE 다시 열림, TAIL 바뀜, STOP 뒤 1시간 안 LAUNCH, 1시간 뒤에도 노는 LAUNCH, RESTART 반복). 하루별 개수는 `GET /api/autonomy/auto`에서 본다.
+- 자세한 규칙은 docs/dispatch.md "Agreement-based approval as built (ATC-334)".
+
 ## CROSSCHECK: 예비 판정 먼저 보기
 
 CROSSCHECK 세션이 켜져 있으면, 열린 제안과 초안마다 OCC와 다른 계열의 모델이 예비 판정을 먼저 달아 둔다. 카드의 점선 칩이 그것이다: `CROSSCHECK agree · 본문상 제약 없음`, `CROSSCHECK disagree · 이미 완료됨`.

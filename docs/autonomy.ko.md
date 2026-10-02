@@ -133,6 +133,49 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 
 게이트가 아니라서 뺀 것: 세션 사이의 clearance, MCC INSPECTION `findings`(작성자가 고치고 클릭 없음), MCC 착륙 조건 L1–L8과 리뷰 레인 자체(기계), HOLD(brake).
 
+### Leak counter 구현 (ATC-363)
+
+세기만 하고 게이트는 바꾸지 않는다. `server/leaks.ts`(순수)가 SUPERVISOR QUEUE 항목마다 leak(원칙 1)인지 exempt인지, 4절의 어느 행인지 정하고, `server/leaks-run.ts`가 60초마다 `leaks.jsonl`에 더한다. leak이 생기면 `open` 한 줄, 두 주기 연달아 사라지면 `close` 한 줄(`heldMin` 포함)이다(스냅샷이 잠깐 깜빡여도 두 번 세지 않는다). 주기마다 쓰지 않는다. `GET /api/leaks?days=7`과 METRICS → LEAKS가 지난 7일을 종류별로 "통제 있음"과 "통제 없음"으로 나눠 보인다.
+
+| 큐 kind | 행 | 통제 | 세는 방식 |
+|---|---|---|---|
+| PROPOSAL (ASSIGN·RELEASE·CLASSIFY / LAUNCH) | P1 / P2 | C14 / C11 | leak |
+| SCHEDULE, FLEET PLAN | P5, P3 | C14 | leak |
+| HUMAN CHECK | L10 | C10 | leak |
+| LANDING: MCC ESCALATE / 그 밖의 이유로 SUPERVISOR가 머지 | L11 / L14 | C13 / C9 | leak |
+| LANDING: `user` 등급(K3) / SUPERVISOR HOLD | L14 / L20 | — | exempt (K3, brake) |
+| UPDATE | D1 | RTS(있음) | leak, 통제 있음 |
+| NEEDS YOU: 도구 승인 프롬프트 / 그 밖의 막힘 | P7 | — / C9 | exempt (K3) / leak |
+| RELAY, UNDELIVERED | L18, P6 | C15, C14 | leak |
+| GO | P8 | — | exempt (K3) |
+
+기록은 `kind`, `gate`, `control`, `controlBuilt`, `flight`, `since`와, ATC-362 릴리스 기록이 생기기 전까지 `null`인 `release` 칸을 담는다. 어느 통제가 섰는지는 `leaks.ts`의 `CONTROLS` 표가 정한다. 통제가 서면 거기 플래그만 고치고, 그 뒤의 새 leak은 "통제 있음"으로 간다.
+
+### 사람 없는 SCHEDULE·FLEET PLAN (ATC-370)
+
+P3·P5 행을 자른다(K3, 2026-10-02 SUPERVISOR 승인: "live first"). `server/autonomy-auto.ts`(순수)가 정하고 `server/autonomy-auto-run.ts`가 읽고 쓴다. 둘 다 서버 안에서만 돈다(바꾸는 HTTP 길도 `atcctl` 명령도 없다).
+
+- **SCHEDULE.** 서버가 1분마다 열린 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW 초안을 SUPERVISOR 판정도 CROSSCHECK 일치도 없이 승인한다(`via: "auto"`, 발부는 S2 흐름대로 OCC). PRIORITIZE·ROUTE·TARGET은 제안으로 남는다(방향, 원칙 10). NEW 초안은 이슈를 **Backlog**에 만든다(발부 호출의 `state: "Backlog"`). Todo로 푸는 것은 SUPERVISOR뿐이다(ATC-362). CLOSE는 승인하지만 atc는 여전히 이슈를 Done으로 옮기지 않는다(서버도 OCC도 쓰는 길이 없다): SCHEDULE 탭의 "LINEAR에서 직접 DONE" 목록에 남는다. 하루 상한 `autoApproveMax`가 CROSSCHECK 일치 자동 승인과 함께 센다.
+- **FLEET PLAN.** 서버가 주기마다 열린 LAUNCH·STOP·RESTART·REFRESH·AOG 제안을 승인 단추와 같은 실행기(`by: "auto"`)로 실행한다. 그래서 조건이 바뀜 검사, `ATC_MAX_LAUNCHED`, FUEL hold, ACCOUNT 로그인을 실행기가 다시 본다. ENTRY·ACCOUNT CHANGE·REPOSITION(자기 스위치)·RETIRE·RETURN과 데스크톱 세션의 REFRESH는 제안으로 남는다. 덧붙인 상한: 굴러가는 24시간에 자동 적용 전체 `autoApproveMax`, LAUNCH·RESTART·REFRESH `autoLaunchMax`(DISPATCH 자동 LAUNCH도 함께 센다), 그리고 서버가 30분 안에(실패는 60분) 건드린 AIRCRAFT는 쉰다.
+- **스위치.** `schedule.json`의 `auto`와 `fleet-plan.json`의 `auto`, `on`·`off`, 없으면 `on`(이 PR이 들어가면 둘 다 켜진다). `PUT /api/settings`(`scheduleAuto`, `fleetPlanAuto`)로만 쓰고 화면의 Origin(`fromThisApp`)이 있어야 받는다. 설정 창 → OPERATIONS → SCHEDULE·FLEET PLAN AUTO. 바꾸면 FLIGHT RECORDER에 남는다.
+- **오작동.** `auto-actions.jsonl`은 서버가 한 일, `misfires.jsonl`은 되돌려진 것을 사건마다 한 번 적는다. SCHEDULE: 자동 승인한 초안이 APPLIED가 된 뒤 라벨·TAIL이 되돌려졌거나 CLOSE가 다시 열렸거나 같은 FLIGHT의 같은 종류 뒤 초안이 어긋나는 값을 낸 것(3일 창). FLEET PLAN: STOP 뒤 1시간 안에 같은 AIRCRAFT의 LAUNCH, 1시간 뒤에도 노는 LAUNCH(스냅샷 점검이라 상한 값), 6시간 안의 세 번째 RESTART·REFRESH. `GET /api/autonomy/auto?days=14`가 스위치와 하루별 개수(UTC), 최근 20건을 준다.
+- **만들지 않은 것.** 오작동 개수 화면(지금은 API와 파일이 기록), CLOSE를 Done으로 옮기는 길, ATC-369와 STOP 규칙을 하나로 합치기.
+
+### DISPATCH 자동 운항 구현 (ATC-367)
+
+SUPERVISOR가 2026-10-02에 승인한 K3 완화: 서버가 planner 필터와 상한을 통과한 모든 ASSIGN·launch 카드를 승인한다. CROSSCHECK 단계, blind 표본, SUPERVISOR 카드가 없다. 스위치는 `dispatch.json`의 `autoDispatch`(기본 on, `fromThisApp`로 SUPERVISOR만, 깨진 파일은 off). 늦게 드러나는 결과는 MISFIRE(`/api/dispatch/misfire`, DISPATCH 탭)로 센다. 4절 P1·P2 행은 더는 SUPERVISOR QUEUE에 오르지 않으므로 leak counter의 PROPOSAL 종류는 0으로 떨어져야 한다. 자세한 것은 [dispatch.md](dispatch.md) "Automatic DISPATCH as built".
+
+### SUPERVISOR 자격 구현 (ATC-373)
+
+통제 C12를 PR로 SUPERVISOR가 고르게 하는 모양, **짝짓기 해시**로 만들었다. localhost `Origin`은 아무것도 증명하지 못한다: 호스트의 어느 프로세스든 그 헤더를 쓸 수 있기 때문이다. 그래서 SUPERVISOR 전용 라우트는 SUPERVISOR 자신의 화면만 가진 비밀도 요구한다.
+
+- **비밀이 있는 곳.** atc 화면(또는 ANNUNCIATOR 앱)이 무작위 256비트 비밀을 만들어 그 기기의 저장소에만 둔다: Mac 브라우저의 `localStorage`, 앱이면 키체인. 쓰기마다 `X-ATC-Supervisor` 헤더로 보낸다. 서버는 비밀을 저장하지도 출력하지도 로그하지도 않고 sha256 해시만 안다.
+- **해시가 있는 곳.** `/etc/atc/supervisor.sha256`(`ATC_SUPERVISOR_HASH_FILE`로 바꾼다), 한 줄에 해시 하나라 기기를 여럿 짝지을 수 있다. 파일은 root 소유이고 그룹·모두에게 쓰기가 없어야 한다. 서비스 사용자로 도는 세션은 읽을 수는 있어도 고치지 못한다(호스트에 비밀번호 없는 `sudo`가 없다). 파일이 없거나 비었거나 사용자 소유이거나 쓰기가 열려 있으면 **짝짓기 전이거나 믿을 수 없는 상태라 SUPERVISOR 전용 쓰기는 모두 거절한다**(fail-closed). `ATC_SUPERVISOR_ALLOW_USER_FILE=1`은 시험 서버에서만 사용자 소유 파일을 받는다.
+- **막는 것.** `supervisorGate`가 어느 라우트보다 먼저 돈다. `/api/` 아래 `POST`·`PUT`·`PATCH`·`DELETE`는 모두 자격이 필요하다. 단, 에이전트가 `atcctl`·SQUELCH로 정당하게 하는 쓰기의 허용 목록(`server/supervisor-auth.ts`, `server/supervisor-auth.test.ts`가 `controller/atcctl.mjs`와 맞는지 읽어서 확인한다)은 뺀다. 그래서 1.4 점검에서 아무 검사도 없던 라우트(DISPATCH 승인·거절, RECALL 만들기, DISPATCH·SCHEDULE 모드 스위치, SCHEDULE 승인·거절, 모든 ATFM 라우트)와 나중에 찾는 라우트도 기본으로 막힌다. 새 쓰기 라우트는 누가 일부러 허용 목록에 넣을 때까지 SUPERVISOR 전용이다. 라우트마다의 `Origin` 검사는 두 번째 층으로 남는다. 읽기는 막지 않는다.
+- **짝짓기.** 서버가 이 기기를 받아들이지 않으면(`GET /api/supervisor/auth`가 `unpaired`·`missing`·`invalid`·`insecure`) 화면에 막대가 뜬다. "자격 만들기"가 비밀을 만들고 호스트에서 한 번 실행할 명령 하나를 보여 준다(해시만 담긴다): `sudo install -d /etc/atc && echo <해시> | sudo tee -a /etc/atc/supervisor.sha256`. ANNUNCIATOR도 자기 비밀로 똑같이 한다.
+- **한계를 그대로 적는다.** 이것은 호스트에서 요청을 위조하는 세션을 막는다. root가 될 수 있는 세션(호스트 사용자가 `docker`·`sudo` 그룹이다: `docker`는 `/etc`를 마운트할 수 있고 `sudo`는 지금 비밀번호가 필요하다), 서비스 코드나 유닛 파일을 고치고 재시작을 기다리는 세션, SUPERVISOR의 Mac을 읽는 세션은 막지 못한다. 이것들은 이 검사가 아니라 착륙 규칙(K3)의 일이다. 비밀은 SSH 터널과 loopback에서 평문으로 지나가는데, 같은 사용자의 프로세스는 추가 권한 없이 그것을 엿볼 수 없다.
+- **바꾸지 않은 것.** `atcctl`과 guard: 허용 목록의 라우트로 에이전트가 하는 일은 그대로 된다. 기록 형식은 바꾸지 않았다.
+
 ## 5. 보완 통제
 
 통제마다 무엇을 알아채는지, 얼마나 빠른지, 스스로 무엇을 하는지, 무엇을 보고하는지 적는다. 사람의 결정을 대신하는 통제는 C1, C2, C4, C6, C10, C14, C15, C16이고 나머지는 이들을 받친다.

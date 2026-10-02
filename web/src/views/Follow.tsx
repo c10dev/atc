@@ -160,7 +160,7 @@ function Bundle({ b, stages, now, onUnfollow, busy, rowBusy, rowError, moved, on
   return (
     <details className="fw-bundle" open={!b.folded}>
       <summary>
-        <span className="fw-parent mono">{flightNumber(b.parent)}</span>
+        {b.arrows ? <span className="fw-parent mono">ARROWS</span> : <span className="fw-parent mono">{flightNumber(b.parent)}</span>}
         <span className="fw-btitle">{b.title ?? (b.missing ? "Linear에서 못 읽음" : "—")}</span>
         <span className="fw-sum">
           {b.done ? `완료${b.doneAt ? ` · ${timeAgo(b.doneAt, now)}` : ""}` : `${b.finished} / ${b.total} 완료 · ${b.flying} 비행 중`}
@@ -176,11 +176,13 @@ function Bundle({ b, stages, now, onUnfollow, busy, rowBusy, rowError, moved, on
             ))}
           </ul>
         )}
-        <div className="fw-actions">
-          <button type="button" className="fw-btn" disabled={busy} onClick={onUnfollow}>
-            따라가기 끝내기
-          </button>
-        </div>
+        {!b.arrows && (
+          <div className="fw-actions">
+            <button type="button" className="fw-btn" disabled={busy} onClick={onUnfollow}>
+              따라가기 끝내기
+            </button>
+          </div>
+        )}
       </div>
     </details>
   );
@@ -232,7 +234,7 @@ export function Follow({ refreshKey, now }: { refreshKey: string; now: number })
       </header>
       {msg && <p className="fw-error" role="alert">{msg}</p>}
       {error && !data && <p className="fw-error" role="alert">불러오지 못함: {error}</p>}
-      {data && data.bundles.length === 0 && <p className="empty">따라가는 일이 없다. 상위 이슈 key를 넣거나 FLIGHT 서랍의 FOLLOW 버튼을 누른다.</p>}
+      {data && data.bundles.length === 0 && <p className="empty">따라가는 일이 없다. 발권(RELEASE)한 FLIGHT는 여기에 저절로 나타난다. 상위 이슈 key를 넣거나 FLIGHT 서랍의 FOLLOW 버튼을 누르면 번들도 따라간다.</p>}
       {data?.bundles.map((b) => (
         <Bundle key={b.parent} b={b} stages={data.stages} now={now} busy={busy} rowBusy={rowBusy} rowError={rowError} moved={moved} onRelease={release} onUnfollow={() => void change(b.parent, false)} />
       ))}

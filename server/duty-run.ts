@@ -356,7 +356,7 @@ export async function setDutyConfig(patch: Partial<Pick<DutyConfig, "enabled" | 
   return next;
 }
 
-export function mountDutyRun(app: Hono, rt: () => DutyRuntime = duty) {
+export function mountDutyRun(app: Hono, rt: () => DutyRuntime = duty, onSupervisorText?: (text: string) => void) {
   const gate = (c: Context): Response | null => {
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
     if (!rt().status().enabled) return c.json({ error: "DUTY가 꺼져 있습니다(설정 → DUTY)", off: true }, 409);
@@ -381,6 +381,7 @@ export function mountDutyRun(app: Hono, rt: () => DutyRuntime = duty) {
     if (text.length > TEXT_MAX) return c.json({ error: `글이 너무 깁니다(최대 ${TEXT_MAX}자)` }, 413);
     const r = await rt().send(text, img ? { mediaType: String(img.mediaType), base64: String(img.data) } : undefined);
     if (r.verdict === "refused") return c.json({ error: r.reason }, 409);
+    onSupervisorText?.(text); // 발권 기록(ATC-362): SUPERVISOR가 직접 쓴 글만 이 길로 온다(Origin 검사 뒤)
     if (r.verdict === "queued") return c.json({ queued: true, note: "DUTY is answering — 차례를 기다립니다" }, 202);
     return c.json({ queued: false });
   });

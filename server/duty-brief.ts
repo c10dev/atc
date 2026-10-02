@@ -20,6 +20,8 @@ export interface DutyBriefInput {
   flights: { key: string; state: string }[];
   // ACCOUNT마다 가장 많이 쓴 FUEL 창
   fuel: { account: string; window: string; pct: number; resetsAt: string; level: string }[];
+  // 이어받을 FLIGHT가 없는 PR(ATC-354): 브랜치 이름으로 이슈를 못 찾았고 GO AROUND·FIX가 기다린다. DUTY가 이슈를 만들거나 PR을 정리한다. 저장소 이름과 번호만
+  orphanPrs?: { repo: string; pr: number }[];
   // 켜져 있는 정해 둔 결정 전체(오래된 것이 먼저). 싣는 수는 decisionsMax
   decisions?: { id: string; text: string; until: string | null }[];
   decisionsMax?: number;
@@ -96,6 +98,7 @@ export function dutyBriefOf(inp: DutyBriefInput, maxChars: number = DEFAULT_BRIE
     { name: "DECISIONS", lines: [`STANDING DECISIONS ${all.length} (set by the SUPERVISOR; the only rules in force)`, ...decisionRows] },
     { name: "QUEUE", lines: [`QUEUE ${inp.queue.count}${counts ? ` · ${counts}` : ""}`, ...oldest, ...(inp.queue.count > oldest.length ? [`  … ${inp.queue.count - oldest.length} more in GET /api/supervisor/queue`] : [])] },
     { name: "ALERTS", lines: [`ALERTS ${inp.alerts.length} needing action`, ...alertRows, ...(inp.alerts.length > alertRows.length ? [`  … ${inp.alerts.length - alertRows.length} more`] : [])] },
+    { name: "ORPHAN PRS", lines: [`PRs WITHOUT A FLIGHT ${(inp.orphanPrs ?? []).length} (no issue linked by branch name; a GO AROUND or FIX is waiting)`, ...(inp.orphanPrs ?? []).map((o) => `  ${o.repo}#${o.pr}`)] },
     { name: "FLEET", lines: [`FLEET ${inp.fleet.length} AIRCRAFT`, ...fleetRows] },
     { name: "FUEL", lines: [`FUEL ${inp.fuel.length} ACCOUNT`, ...fuelRows] },
     { name: "FLIGHTS", lines: [`FLIGHTS in progress ${inp.flights.length}`, ...flightRows] },

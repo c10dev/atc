@@ -12,10 +12,12 @@ import { keyInName, keyPatternOf, teamOfKey } from "./linear-keys.ts";
 import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
 import { REASON_CODES } from "./reasons.ts";
-import { ABSENT_REASON, cutHoldWhy, type ResumeInfo, stuckHintOf } from "./dispatch-launch.ts";
+import { ABSENT_REASON, cutHoldWhy, LANE_CUTOFF, type ResumeInfo, stuckHintOf, tailsOf } from "./dispatch-launch.ts";
 import { DEFAULT_TEAM_PATTERN, fleetKeyOf, regKey } from "./registration.ts";
 import { DEFAULT_MCC, loadMcc } from "./mcc.ts";
 import { supervisorConfirmOf } from "./supervisor-confirm.ts";
+import type { PrHolder } from "./pr-holder.ts";
+import { NOT_RELEASED_WHY, releaseGateOn, releaseStateOf, STALE_RELEASE_WHY, type ReleaseGateMode } from "./release.ts";
 
 // 2단계 DISPATCH: 어떤 FLIGHT를 어떤 AIRCRAFT에 보낼지 계산한다(순수 함수 planDispatch).
 // 제안을 기록하고 보이는 것은 proposals.ts, 설계는 docs/dispatch.md.
@@ -57,7 +59,29 @@ export interface DispatchConfig {
   restartGraceMin: number;
   // SETTLED(ATC-117): 열린 제안이 이만큼(분) 지내야 OCC 메모·BRIEFING과 CROSSCHECK mark를 받는다. 승인된 제안은 곧장. 0이면 예전처럼 곧장
   settleMin: number;
+  // 일치 기반 자동 승인(ATC-334, docs/autonomy.md C14). 스위치는 설정 창(fromThisApp)에서만 바꾼다 — atcctl 명령이 없다(K3). 기본 off
+  autoApprove: AutoMode; // ASSIGN(LAUNCH 아님)과 SCHEDULE 초안: CROSSCHECK가 agree면 서버가 승인(via "auto")
+  autoApproveLaunch: AutoMode; // launch 카드(ABSENT·RESUME): 상한·FUEL hold·막힘·실패 뒤 대기·하루 상한을 모두 지킬 때만
+  autoApproveMax: number; // 자동 승인 하루(굴러가는 24시간) 상한. ASSIGN과 SCHEDULE을 같이 센다
+  autoLaunchMax: number; // 자동 LAUNCH 하루 상한
+  autoLaunchBackoffMin: number; // LAUNCH가 실패한 REGISTRATION은 이만큼(분) 자동으로 다시 승인하지 않는다
+  // DISPATCH 자동 운항(ATC-367, K3): "on"이면 서버가 필터와 상한을 통과한 모든 ASSIGN·launch 카드를 승인한다 — CROSSCHECK·blind 표본·SUPERVISOR 카드 없음. 기본 on(live first),
+  // 스위치는 설정 창(fromThisApp)에서만 바꾼다. 깨진 파일은 off로 읽는다. autoApprove·autoApproveLaunch(ATC-334)는 off일 때와 SCHEDULE 초안에만 쓴다
+  autoDispatch: AutoDispatch;
+  // 자동 운항에서 승인되지 못한 열린 카드가 이만큼(분) 지나면 만료되고 planner가 다시 제안한다(SUPERVISOR에게 가지 않는다)
+  autoCardTtlMin: number;
+  // 발권 gate(ATC-362): 발권 기록이 없는 Todo FLIGHT는 제안일 뿐이라 배정하지 않는다. "auto"(기본)는 일괄 확인(arm) 뒤부터, "on"은 항상, "off"는 끔
+  releaseGate: ReleaseGateMode;
 }
+export type AutoMode = "off" | "shadow" | "on";
+export const AUTO_MODES: readonly AutoMode[] = ["off", "shadow", "on"];
+// 모르는 값은 off — 깨진 파일이 자동 승인을 켜지 않게
+export const autoModeOf = (v: unknown): AutoMode => (AUTO_MODES.includes(v as AutoMode) ? (v as AutoMode) : "off");
+export type AutoDispatch = "off" | "on";
+export const DEFAULT_AUTO_CARD_TTL_MIN = 60;
+export const DEFAULT_AUTO_APPROVE_MAX = 40;
+export const DEFAULT_AUTO_LAUNCH_MAX = 6;
+export const DEFAULT_AUTO_LAUNCH_BACKOFF_MIN = 30;
 export type ExternalReviewSecurity = "exclude" | "deepseek";
 export const EXTERNAL_REVIEW_SECURITY: readonly ExternalReviewSecurity[] = ["exclude", "deepseek"];
 
@@ -83,6 +107,14 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   fuel: DEFAULT_FUEL,
   restartGraceMin: DEFAULT_RESTART_GRACE_MIN,
   settleMin: DEFAULT_SETTLE_MIN,
+  autoApprove: "off",
+  autoApproveLaunch: "off",
+  autoApproveMax: DEFAULT_AUTO_APPROVE_MAX,
+  autoLaunchMax: DEFAULT_AUTO_LAUNCH_MAX,
+  autoLaunchBackoffMin: DEFAULT_AUTO_LAUNCH_BACKOFF_MIN,
+  autoDispatch: "on",
+  autoCardTtlMin: DEFAULT_AUTO_CARD_TTL_MIN,
+  releaseGate: "auto",
 };
 
 const CONFIG_FILE = join(config.stateDir, "dispatch.json");
@@ -113,6 +145,30 @@ export function saveFuelHold(hold: boolean, file = CONFIG_FILE) {
   renameSync(tmp, file);
 }
 
+// autoApprove·autoApproveLaunch만 바꿔 저장한다(설정 창, ATC-334). 다른 설정은 그대로 둔다
+export function saveAutoApprove(key: "autoApprove" | "autoApproveLaunch", mode: AutoMode, file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, [key]: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
+// autoDispatch만 바꿔 저장한다(설정 창, ATC-367). 다른 설정은 그대로 둔다
+export function saveAutoDispatch(mode: AutoDispatch, file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, autoDispatch: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
 // mode만 바꿔 저장한다. 사용자가 적어 둔 다른 설정은 그대로 둔다.
 export function saveDispatchMode(mode: DispatchConfig["mode"], file = CONFIG_FILE) {
   let user: Record<string, unknown> = {};
@@ -136,6 +192,8 @@ export function notesConfigOf(raw: unknown): NotesConfig {
   };
 }
 
+const nonNegInt = (v: unknown, d: number) => (typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : d);
+
 export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
   try {
     const user = JSON.parse(readFileSync(file, "utf8"));
@@ -158,9 +216,21 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       restartGraceMin: typeof user.restartGraceMin === "number" && Number.isFinite(user.restartGraceMin) && user.restartGraceMin > 0 ? user.restartGraceMin : d.restartGraceMin,
       // 0은 켜지 않는다는 뜻이라 받는다. 음수·숫자가 아닌 값은 기본으로
       settleMin: typeof user.settleMin === "number" && Number.isFinite(user.settleMin) && user.settleMin >= 0 ? user.settleMin : d.settleMin,
+      // 자동 승인(ATC-334): 모르는 값은 off, 상한은 0 이상 정수(0이면 자동으로는 아무것도 승인하지 않는다), 아니면 기본으로
+      autoApprove: autoModeOf(user.autoApprove),
+      autoApproveLaunch: autoModeOf(user.autoApproveLaunch),
+      autoApproveMax: nonNegInt(user.autoApproveMax, d.autoApproveMax),
+      autoLaunchMax: nonNegInt(user.autoLaunchMax, d.autoLaunchMax),
+      autoLaunchBackoffMin: nonNegInt(user.autoLaunchBackoffMin, d.autoLaunchBackoffMin),
+      // 자동 운항(ATC-367): 파일에 "off"라고 적었을 때만 끈다(적지 않았으면 기본 on)
+      autoDispatch: user.autoDispatch === "off" ? "off" : "on",
+      autoCardTtlMin: typeof user.autoCardTtlMin === "number" && Number.isFinite(user.autoCardTtlMin) && user.autoCardTtlMin > 0 ? user.autoCardTtlMin : d.autoCardTtlMin,
+      // 모르는 값은 기본("auto")으로
+      releaseGate: user.releaseGate === "on" || user.releaseGate === "off" ? user.releaseGate : "auto",
     };
-  } catch {
-    return DEFAULT_DISPATCH_CONFIG;
+  } catch (e) {
+    // 파일이 없으면 기본. 있는데 못 읽으면(깨짐) 자동 운항은 끈다 — 깨진 파일이 사람 없는 승인을 켜 두지 않게(ATC-367)
+    return (e as NodeJS.ErrnoException)?.code === "ENOENT" ? DEFAULT_DISPATCH_CONFIG : { ...DEFAULT_DISPATCH_CONFIG, autoDispatch: "off" };
   }
 }
 
@@ -189,7 +259,7 @@ export function airportOfTicket(t: Pick<Ticket, "key" | "project">, cfg: Pick<Di
 
 export interface Factor {
   // standFree·independence는 0점짜리 표시(점수를 바꾸지 않고 왜 이 짝인지 보여 준다)
-  id: "priority" | "wait" | "unblock" | "affinity" | "conflict" | "route" | "waypoint" | "overlap" | "overlapSame" | "standFree" | "independence" | "resume";
+  id: "priority" | "wait" | "unblock" | "affinity" | "conflict" | "route" | "waypoint" | "overlap" | "overlapSame" | "standFree" | "independence" | "resume" | "holder";
   label: string;
   value: number;
   weight: number;
@@ -209,6 +279,7 @@ export interface AssignPlan {
   launch?: true; // 세션이 없는 백그라운드 AIRCRAFT(ATC-129): 승인하면 LAUNCH 뒤 FLIGHT PLAN
   resume?: ResumeInfo; // RESUME 카드(ATC-129): 사용 한도로 끊긴 FLIGHT를 이어서
   supervisorConfirm?: string[]; // 예측 경로 중 사용자 등급 파일(ATC-120). 있을 때만
+  prHolder?: PrHolder; // PR HOLDER 카드(ATC-354): STAND를 쥔 세션이 없는 PR의 GO AROUND·FIX를 이어받는다
 }
 
 export interface ReleasePlan {
@@ -293,6 +364,7 @@ export interface Plan {
   unserved?: Unserved[];
   // RESUME 카드(ATC-129): 한도로 끊긴 FLIGHT를 같은 REGISTRATION에(launch). 슬롯·열린 제안 수에 세지 않는다
   resume?: AssignPlan[];
+  holders?: AssignPlan[]; // PR HOLDER 카드(ATC-354, pr-holder.ts holderPlansOf). planDispatch 뒤에 runDispatch가 붙인다
 }
 
 // no-aircraft: 자격 있는 AIRCRAFT가 모두 바쁘거나 다른 FLIGHT를 받음, unqualified: 살아 있는 AIRCRAFT 중 자격을 가진 것이 없음,
@@ -405,14 +477,8 @@ export const REASON_FILTERS: Record<string, { auto: "auto" | "partial" | "manual
 // 있으면 그 팀에만 제안한다. 두 배정자(사람의 직접 배정과 DISPATCH)가 같은 FLIGHT를 다른 팀에 주는 일을 막는다.
 // `lane:`은 옛 이름이라 2026-10-10(KST) 전까지 같이 읽고, 제외 사유에 바꾸라고 적는다.
 // 그날부터는 읽지 않는다: `lane:`만 붙은 FLIGHT는 아무 팀에도 주지 않고 제외 사유로 알린다(oldLaneOnly).
-export const LANE_CUTOFF = Date.parse("2026-10-10T00:00:00+09:00");
-const TAIL_LABEL = /^(tail|lane):\s*(\S+)$/i;
-const TAIL_ONLY = /^(tail):\s*(\S+)$/i;
-export function tailsOf(t: Pick<Ticket, "labels">, now = Date.now()): Set<string> {
-  const re = now < LANE_CUTOFF ? TAIL_LABEL : TAIL_ONLY;
-  const regs = t.labels.map((l) => re.exec(l.trim())?.[2]).filter(Boolean) as string[];
-  return new Set(regs.map((r) => regKey(r))); // `tail:team-g`도 TEAM_G(ATC-67)
-}
+// tailsOf·LANE_CUTOFF는 dispatch-launch.ts에 있다(dispatch ↔ dispatch-launch 순환을 풀려고 옮김, ATC-338). 여기서 다시 내보낸다.
+export { LANE_CUTOFF, tailsOf };
 const usesOldLane = (t: Pick<Ticket, "labels">) => t.labels.some((l) => /^lane:/i.test(l.trim()));
 // 끊긴 뒤 남은 `lane:` 라벨(tail:이 없을 때만): 제외 사유 문구, 없으면 null
 export function oldLaneOnly(t: Pick<Ticket, "labels">, now: number): string | null {
@@ -710,6 +776,7 @@ export function planDispatch(
   const independent = (ac: AircraftState, ind: Independence | null) => !ind || !ind.builders.has(regOf(ac.name));
   const notIndependentWhy = (ind: Independence) =>
     `CHECK 독립성 — 검토 대상을 만든 ${[...ind.builders.keys()].join(", ")} 말고 이 CHECK를 날 AIRCRAFT 없음 (${independenceDetail(ind)})`;
+  const gateOn = releaseGateOn(cfg.releaseGate ?? "auto", s.releases?.armedAt);
   for (const t of s.tickets) {
     if (t.stateType !== "unstarted") continue;
     if (!isCandidateTicket(t, candidates)) continue; // 보여 주기만 하는 팀(설정 candidateTeams)
@@ -761,6 +828,14 @@ export function planDispatch(
       const parked = reserved.held?.get(t.key);
       excluded.push({ flight: t.key, reason: parked ? `HOLD ${parked}` : `진행 중인 제안 ${held}` });
       continue;
+    }
+    // 발권 gate(ATC-362): 발권 기록이 없으면 제안이다. 본문이 발권 뒤에 바뀌었으면 다시 발권해야 한다
+    if (gateOn) {
+      const rs = releaseStateOf(t.key, t.releaseHash, s.releases);
+      if (rs !== "released") {
+        excluded.push({ flight: t.key, reason: rs === "stale" ? STALE_RELEASE_WHY : NOT_RELEASED_WHY });
+        continue;
+      }
     }
     // 우선순위가 비어 있으면 사람이 아직 언제 할지 정하지 않은 것이다
     if (!t.priority) {

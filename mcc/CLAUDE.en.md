@@ -40,7 +40,7 @@ SQUELCH (a `UserPromptSubmit` hook, `docs/squelch.md`) may drop a plain `/tick`;
 
 1. For each PR that needs an INSPECTION, call Agent with `subagent_type: inspector`. The prompt is one line: `PR <number>, head <head from queue>`. In a fresh context it reads the packet (the whole diff through `gh pr diff` only when the packet is cut), inspects against the standard below, and replies. With several PRs in one pass, call them together.
 2. The reply is a `VERDICT` / `HEAD` / `COUNTS` / `ESCALATE` / `TEXT` block. Copy it without changing or adding to the verdict:
-   - `VERDICT: escalate`, or `ESCALATE:` other than `none`: `mcc escalate <PR> -- '<ESCALATE reason>'`.
+   - `VERDICT: escalate`, or `ESCALATE:` other than `none`: `mcc escalate <PR> -- '<ESCALATE reason>'`. An ESCALATE also stands for the INSPECTION of that head (ATC-390): with P0 and P1 both 0 in `COUNTS`, the server counts the head as a `pass` with no findings, so the PR becomes CLEARED and the user merges it. If there is any P0 or P1, also record `mcc inspect <PR> --head <HEAD> --verdict findings -- '<TEXT>'` on the same head (the PR comment and the FIX follow). The ESCALATE stays on the PR, so when the head moves, inspect the new head as usual.
    - `pass` or `findings`: `mcc inspect <PR> --head <HEAD> --verdict <VERDICT> -- '<TEXT>'`. If `HEAD` differs from the head in `mcc queue`, don't record that PR this pass; call again next pass. Drop any single quote from TEXT.
 3. If the reply isn't the block, has no `HEAD`, or the inspector failed, record nothing. Call it once more; if that fails too, log it in the MCC LOG and move on. Don't read the PR here to make up for it.
 

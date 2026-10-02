@@ -223,3 +223,33 @@ test("F4: 끝난 줄과 막히지 않은 줄은 follow|stuck이 없다. 조건�
   const d = diffAlerts(new Map(on.map((x) => [x.key, x])), run([row("ATC-5")]));
   assert.deepEqual(d.cleared, ["follow|stuck|ATC-5|proposed"]);
 });
+
+// ── ATC-382: 화살표 줄은 끝에서 한 번만 알린다 ──
+test("follow|landed는 화살표 줄에서 IN이 남아 있는 동안 내지 않는다(IN에서 한 번), IN이 없는 FLIGHT는 ON이 끝이라 낸다", () => {
+  const landed = withStages({ pr: cell(true, iso(60)), ci: cell(true, iso(40)), landed: cell(true, iso(10)) });
+  assert.deepEqual(keys(run([row("ATC-5", { stages: landed, current: "landed" })])), ["follow|landed|ATC-5"]); // 손으로 따라가는 줄은 그대로
+  assert.deepEqual(keys(run([row("ATC-5", { stages: landed, current: "landed", arrow: true })])), []);
+  const noIn = withStages({ pr: cell(true, iso(60)), ci: cell(true, iso(40)), landed: cell(true, iso(10)), deployed: cell(false, null, true) });
+  assert.deepEqual(keys(run([row("ATC-6", { stages: noIn, current: "landed", finished: true, arrow: true })])), ["follow|landed|ATC-6"]);
+  const inDone = withStages({ pr: cell(true, iso(60)), ci: cell(true, iso(40)), landed: cell(true, iso(10)), deployed: cell(true, iso(2)) });
+  const a = run([row("ATC-5", { stages: inDone, current: "deployed", finished: true, arrow: true })]);
+  assert.deepEqual(keys(a), ["follow|deployed|ATC-5"]);
+  assert.equal(a.find((x) => x.key === "follow|deployed|ATC-5")!.dest, "log"); // 조용한 알림
+});
+
+test("follow|arrived|<KEY>: PR 없는 화살표 줄이 ARRIVED하면 조용히 한 번(log), 손으로 따라가는 줄·옛 도착은 내지 않는다", () => {
+  const a = run([row("ATC-7", { finished: true, arrow: true, arrivedAt: iso(3) })]);
+  assert.deepEqual(keys(a), ["follow|arrived|ATC-7"]);
+  assert.equal(a[0].dest, "log");
+  assert.equal(a[0].level, null);
+  assert.match(a[0].text, /ATC-7 제목 ATC-7 — 도착\(ARRIVED\)/);
+  assert.deepEqual(keys(run([row("ATC-7", { finished: true, arrivedAt: iso(3) })])), []);
+  assert.deepEqual(keys(run([row("ATC-7", { finished: true, arrow: true, arrivedAt: iso(48 * 60) })])), []);
+});
+
+test("화살표 줄이 막히면 follow|stuck 하나에 다음 한 걸음이 붙는다", () => {
+  const a = run([row("ATC-8", { arrow: true, stuck: { stage: "approved", code: "approved-not-sent", text: "승인 12분 · 발송 없음", since: iso(12) } })]);
+  const s = a.find((x) => x.key.startsWith("follow|stuck|ATC-8"))!;
+  assert.equal(s.dest, "alerts");
+  assert.ok(s.next.length > 0);
+});

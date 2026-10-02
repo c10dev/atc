@@ -117,6 +117,19 @@ export function inspectionOf(records: readonly MccRecord[], pr: number, head: st
   }
   return null;
 }
+// 이 head의 리뷰(ATC-390): INSPECTION 기록이 있으면 그것, 없고 MCC가 이 head를 ESCALATE했으면 P0·P1 없는 pass로 센다.
+// ESCALATE는 MCC가 이 head를 보고 사용자에게 넘긴다는 뜻이다. P0·P1이 있으면 MCC가 같은 head에 findings INSPECTION도 남기고(mcc/CLAUDE.md), 그 기록이 먼저다.
+// head가 바뀌면 ESCALATE는 PR에 남지만(escalationOf) 리뷰는 아니다: 새 head는 새 INSPECTION이 필요하다
+export function reviewOfHead(records: readonly MccRecord[], pr: number, head: string): Pick<Inspection, "verdict" | "text" | "p0" | "p1" | "p2" | "at"> | null {
+  const inspected = inspectionOf(records, pr, head);
+  if (inspected) return inspected;
+  for (let i = records.length - 1; i >= 0; i--) {
+    const r = records[i];
+    if (r.op === "escalate" && r.pr === pr && r.head === head) return { verdict: "pass", text: `MCC ESCALATE: ${r.reason}`, p0: 0, p1: 0, p2: 0, at: r.at };
+  }
+  return null;
+}
+
 // ESCALATE는 PR에 붙는다(head가 바뀌어도 남는다). 사용자 등급이 되면 사용자가 머지한다
 export function escalationOf(records: readonly MccRecord[], pr: number): { reason: string; head: string; at: string } | null {
   for (let i = records.length - 1; i >= 0; i--) {

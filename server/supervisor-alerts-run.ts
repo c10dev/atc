@@ -9,6 +9,7 @@ import type { Snapshot } from "./model.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { allProposals } from "./proposals.ts";
 import { followNow, loadFollow } from "./follow-run.ts";
+import { readReleaseView } from "./release-store.ts";
 import { config } from "./config.ts";
 import { DEFAULT_HEALTH } from "./health.ts";
 import { pendingSinceByAircraft, waitingCallsByAircraft } from "./pending.ts";
@@ -18,6 +19,7 @@ import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { CONTROL_SESSIONS, controlDirOf, MAX_LAUNCHED } from "./session-control.ts";
 import { capIdleNow } from "./dispatch-launch.ts";
 import { type AlertEvent, controlDownOf, diffAlerts, repositionStuckOf, rtsHaltedOf, type SupervisorAlert, supervisorAlertsOf } from "./supervisor-alerts.ts";
+import { sinceLookNow } from "./since-look-run.ts";
 import { summaryKey, summaryOf, type SupervisorSummary, workingOf } from "./supervisor-summary.ts";
 
 // SUPERVISOR alerts(ATC-87)의 읽기와 상태. 계산은 supervisor-alerts.ts(순수). 여기는 파일을 읽어 입력을 모으고 지난 key 집합을 든다.
@@ -78,6 +80,7 @@ export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
     tickets: s.tickets,
     following: followingNow(s, now),
     proposals,
+    autoDispatch: loadDispatchConfig().autoDispatch === "on",
     capIdle: capIdleNow(s.sessions, proposals, MAX_LAUNCHED, teamPattern, now),
     pulls: s.pulls ?? [],
     rts: rtsNow.last,
@@ -106,9 +109,9 @@ function pendingInput(s: Snapshot, now: number, teamPattern: string) {
   }
 }
 
-// FOLLOW(ATC-278): follow.json에 든 번들의 줄. 접힌 번들은 뺀다. 따라가는 것이 없으면 보드를 셈하지 않는다
+// FOLLOW(ATC-278): follow.json에 든 번들의 줄과, 발권한 FLIGHT의 줄(ATC-382, SUPERVISOR의 화살표). 접힌 번들은 뺀다. 따라가는 것이 없으면 보드를 셈하지 않는다
 function followAlertInput(s: Snapshot, now: number) {
-  if (!loadFollow().parents.length) return { rows: [], now };
+  if (!loadFollow().parents.length && !Object.keys(readReleaseView().records).length) return { rows: [], now };
   try {
     return { rows: followNow(s, now).bundles.filter((b) => !b.folded).flatMap((b) => b.rows), now };
   } catch {
@@ -134,16 +137,18 @@ export function runSupervisorAlerts(s: Snapshot, now = Date.now()): AlertEvent |
   return d.raised.length || d.cleared.length ? { ...d, initial: false, items } : null;
 }
 
-// SUPERVISOR SUMMARY(ATC-153): 지금 있는 알림 목록(currentAlerts)과 스냅샷의 FUEL·세션에서 센다. 파일을 더 읽지 않는다
+// SUPERVISOR SUMMARY(ATC-153): 지금 있는 알림 목록(currentAlerts)과 스냅샷의 FUEL·세션에서 센다. 파일은 sinceLook 칸만 읽는다(5초 캐시)
 export function summaryNow(s: Snapshot, now = Date.now()): SupervisorSummary {
   const teamPattern = loadDispatchConfig().teamPattern;
-  return summaryOf({
-    items: currentAlerts(),
+  const items = currentAlerts();
+  const base = summaryOf({
+    items,
     fuelAccounts: s.fuelAccounts ?? [],
     rts: rtsState(readMccRecords()).last,
     working: workingOf(s.sessions.filter((x) => x.status !== "dead"), (name) => registrationOf(name, teamPattern), CONTROL_SESSIONS.map((c) => c.name)),
     at: new Date(now).toISOString(),
   });
+  return { ...base, sinceLook: sinceLookNow(s, items, now) }; // ATC-383: 발권 기록·OOOI는 5초 캐시 안에서만 읽는다
 }
 
 // 스냅샷이 새로 나올 때 부른다(runSupervisorAlerts 뒤에). 내용이 바뀌었을 때만 새 요약을 돌려준다(첫 번은 늘 돌려준다)

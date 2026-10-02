@@ -21,6 +21,11 @@ const proposal = (o: Partial<QueueInput["proposals"][number]> = {}): QueueInput[
 const pull = (o: Partial<QueueInput["pulls"][number]> = {}): QueueInput["pulls"][number] =>
   ({ repo: "/x/atc", number: 7, head: "abc1234def", draft: false, landing: "APPROACH", humanCheck: null, ticketKey: "ATC-7", landBy: "mcc", ...o }) as QueueInput["pulls"][number];
 
+test("UNDELIVERED (ATC-353): the hand-delivery card shows at once, as before (no stage holds it back)", () => {
+  const p = proposal({ id: "D-0001", status: "approved", aircraftName: "TEAM_A", undelivered: { at: ago(1), reason: "no live session", n: 1, cause: "absent" } });
+  assert.equal(supervisorQueueOf({ ...empty(), proposals: [p] }, NOW).filter((i) => i.kind === "UNDELIVERED").length, 1);
+});
+
 test("empty input gives an empty queue and zero counts for every kind", () => {
   const v = supervisorQueueView(empty(), NOW);
   assert.equal(v.count, 0);
@@ -137,4 +142,10 @@ test("view: count, per-kind counts and the timestamp", () => {
   assert.equal(v.counts.PROPOSAL, 2);
   assert.equal(v.counts.LANDING, 1);
   assert.equal(queueCountsOf(v.items).GO, 0);
+});
+
+test("auto dispatch (ATC-367): ASSIGN and launch cards stay off the queue, RELEASE still shows", () => {
+  const inp = { ...empty(), proposals: [proposal({ id: "D-1" }), proposal({ id: "D-2", kind: "RELEASE", aircraftName: null })] };
+  assert.deepEqual(supervisorQueueOf(inp, NOW).map((i) => i.key), ["D-1", "D-2"]);
+  assert.deepEqual(supervisorQueueOf({ ...inp, autoDispatch: true }, NOW).map((i) => i.key), ["D-2"]);
 });
