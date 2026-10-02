@@ -49,7 +49,7 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
     teamPattern: loadDispatchConfig().teamPattern,
     relays,
     clearances,
-    relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now, holderRoutes: holderRoutes() ?? new Map() }),
+    relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], sessions: s.sessions ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now, holderRoutes: holderRoutes() ?? new Map() }),
     backlog: filedProposalsOf(s.tickets, proposalSourcesOf(readReviewLines(), loadScheduleOps()), candidateTeamsOf(loadDispatchConfig())).map((f) => ({ key: f.key, by: f.by, at: f.at })),
     folders: accountFolders().map((f) => ({ label: f.label, dir: f.dir })),
     defaultDir: config.claudeDir,

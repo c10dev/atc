@@ -2,6 +2,7 @@ import { fixOf } from "./fix.ts";
 import { goAroundOf } from "./go-around.ts";
 import { inSequence } from "./landing.ts";
 import type { Clearance, PullRequest, Snapshot, TrafficEvent } from "./model.ts";
+import { liveHolderClaims } from "./occupancy.ts";
 import { lastAircraftOf, type LastAircraftInput, type Relay, type RelayType } from "./relay.ts";
 
 // RELAY 제안(ATC-308): GO AROUND나 FIX가 있는데 그 PR의 STAND를 쥔 세션이 없어 TOWER가 못 보낼 때(`action: "supervisor"`, `why: "no-holder"`)
@@ -35,7 +36,7 @@ export interface OfferInput {
   holderRoutes?: ReadonlyMap<string, { kind: string; why?: string }> | null;
 }
 
-type OfferSnapshot = Pick<Snapshot, "pulls" | "claims" | "workspaces" | "airports">;
+type OfferSnapshot = Pick<Snapshot, "pulls" | "claims" | "workspaces" | "airports"> & Partial<Pick<Snapshot, "sessions">>;
 
 const repoName = (repo: string) => repo.replace(/\/+$/, "").split("/").pop() || repo;
 export const offerKey = (p: Pick<PullRequest, "repo" | "number" | "head">, type: RelayType) => `${repoName(p.repo)}#${p.number}@${p.head.slice(0, 7)}|${type}`;
@@ -50,9 +51,9 @@ export interface Pick1 {
 }
 
 // 이 PR에 STAND를 쥔 세션이 없을 때 TOWER가 못 보내는 글 하나(GO AROUND가 먼저). 없으면 null. 카드(relayOffersOf)와 PR 서랍이 같은 글을 쓴다
-export function noHolderPickOf(p: PullRequest, s: Pick<Snapshot, "pulls" | "claims">, x: Pick<OfferInput, "clearances" | "events" | "now">): Pick1 | null {
-  const holders = p.standPath ? s.claims.filter((c) => c.state === "active" && c.workspacePath === p.standPath).length : 0;
-  if (holders) return null; // 쥔 세션이 있으면 TOWER가 그에게 보낸다
+export function noHolderPickOf(p: PullRequest, s: Pick<Snapshot, "pulls" | "claims"> & Partial<Pick<Snapshot, "sessions">>, x: Pick<OfferInput, "clearances" | "events" | "now">): Pick1 | null {
+  const holders = liveHolderClaims(s.claims, p.standPath, s.sessions).length; // 끝난 세션의 점유는 홀더가 아니다(ATC-440)
+  if (holders) return null; // 살아 있는 세션이 쥐고 있으면 TOWER가 그에게 보낸다
   // brief와 같이 이 PR을 연 뒤 같은 STAND(없으면 같은 FLIGHT)로 나간 마지막 LAND
   const lastLand = x.clearances
     .filter((c) => c.type === "LAND" && !c.cancelledAt && c.at >= p.createdAt && ((p.standPath && c.stand === p.standPath) || (!c.stand && p.ticketKey && c.flight === p.ticketKey)))
