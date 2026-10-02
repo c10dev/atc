@@ -28,7 +28,7 @@
 
 ### 1.3 기록에 남는 다른 사람의 결정
 
-로그가 시작된 2026-09-26부터의 개수(약 5.5일) [observed]:
+로그가 시작된 2026-09-26부터의 개수(약 5.5일) [observed]. CROSSCHECK 숫자는 기록이다: CROSSCHECK는 퇴역한다(D23).
 
 - DISPATCH: ASSIGN 제안 414건, 승인 315건(클릭 285, CROSSCHECK 일치 30), 기각 7건. CROSSCHECK 판정은 agree 73, disagree 17. LAUNCH 승인 89건은 전부 SUPERVISOR.
 - FLEET PLAN: 승인 5건(LAUNCH나 REFRESH), 만료 15건. SCHEDULE: 초안 28건, CROSSCHECK 판정 26건.
@@ -132,11 +132,11 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 |---|---|---|---|---|---|
 | P1 | ASSIGN, RELEASE, CLASSIFY 승인·기각(`proposals.ts`, [dispatch.ko.md](dispatch.ko.md)) | 틀린 AIRCRAFT-FLIGHT 짝 | 승인 315건(클릭 285), 기각 7건 | **automate**. **Decided(D22):** planner의 결정적 필터와 C11 상한을 통과하는 ASSIGN 카드는 모두 서버가 승인한다. CROSSCHECK 일치도 blind 표본도 없다. RELEASE와 CLASSIFY는 열려 있음 | planner 필터, C11 상한, DISPATCH 오작동 카운트 |
 | P2 | LAUNCH 카드 승인(`proposals.ts`, Origin) | 사용량을 쓰는 세션 시작 | 89건, 전부 SUPERVISOR | **automate**. **Decided(D22):** C11 상한 안의 LAUNCH 카드는 서버가 승인한다 | C11 지출 상한(FUEL hold, `ATC_MAX_LAUNCHED`) |
-| P3 | FLEET PLAN 승인과 판정(`fleet-plan-run.ts`) | 사용량 지출, 낡은 제안 | 승인 5건, 만료 15건 | **automate**: 되돌릴 수 있는 종류(놀고 있는 세션의 STOP)부터, 그다음 상한 아래의 LAUNCH | C14, C11 |
-| P4 | CREW CHANGE 승인과 "전달함"(`crew-change.ts`) | 동의 없이 돌고 있는 팀의 CREW를 바꿈 | not logged | **automate** | C14 |
-| P5 | SCHEDULE 작업 승인·기각·판정(CLASSIFY, NEW, CLOSE, TAIL, WAYPOINT. `schedule.ts`) | 틀린 티켓 수정 | 초안 28건, CROSSCHECK agree 30, disagree 9 | **automate** | C14 |
-| P6 | 전달 안 된 FLIGHT PLAN과 CLEARANCE의 손 전달 | 전달하지 못한 메시지 | undelivered 10줄 | **automate** | C14: 전달 재시도와, 그래도 안 되면 DUTY 알림 |
-| P7 | NEEDS YOU: 도구 승인 프롬프트에서 막힌 세션 | 권한 결정을 기다리는 세션 | 경보라서 여기서 세지 않음 | 권한 자체는 **keep**(K3: 권한). 내보낸 뒤의 프롬프트는 leak(원칙 1). 방향에 대한 막힌 질문은 정해 둔 기본값으로 가거나 새 화살로 돌아온다(원칙 10) | C9 |
+| P3 | FLEET PLAN 승인과 판정(`fleet-plan-run.ts`) | 사용량 지출, 낡은 제안 | 승인 5건, 만료 15건 | **automate**. **Decided(D23):** 사람도 CROSSCHECK 일치도 없이 C11 상한 아래 돌고 오작동을 센다([ATC-370](https://linear.app/vocado/issue/ATC-370)) | C11, 오작동 카운트 |
+| P4 | CREW CHANGE 승인과 "전달함"(`crew-change.ts`) | 동의 없이 돌고 있는 팀의 CREW를 바꿈 | not logged | **automate**. **Decided(D23):** CROSSCHECK 일치 없이, 오작동을 센다 | 오작동 카운트 |
+| P5 | SCHEDULE 작업 승인·기각·판정(CLASSIFY, NEW, CLOSE, TAIL, WAYPOINT. `schedule.ts`) | 틀린 티켓 수정 | 초안 28건, CROSSCHECK agree 30, disagree 9 | **automate**. **Decided(D23):** 사람도 CROSSCHECK 일치도 없이. NEW 초안은 제안으로 Backlog에 두고(원칙 10), ROUTE와 TARGET은 제안으로 남으며, 오작동을 센다([ATC-370](https://linear.app/vocado/issue/ATC-370)) | 오작동 카운트 |
+| P6 | 전달 안 된 FLIGHT PLAN과 CLEARANCE의 손 전달 | 전달하지 못한 메시지 | undelivered 10줄 | **automate** | 살아 있는 세션 id로 전달하고 재시도, 그래도 안 되면 DUTY 알림([ATC-353](https://linear.app/vocado/issue/ATC-353)) |
+| P7 | NEEDS YOU: 도구 승인 프롬프트에서 막힌 세션 | 권한 결정을 기다리는 세션 | 경보라서 여기서 세지 않음 | 권한 규칙 자체는 **keep**(K3). **Decided(D24):** AIRCRAFT는 프롬프트에서 기다리지 않는다. LAUNCH 때 넘기는 atc 정책 hook이 STAND 안의 안전한 동작은 허용하고 나머지는 거절해 세며, FLIGHT가 끝났는데 30분 넘게 PENDING·HUNG인 AIRCRAFT는 멈춘다([ATC-369](https://linear.app/vocado/issue/ATC-369)) | 정책 hook, C12 |
 | P8 | SUPERVISOR CONFIRM AT AIRCRAFT(`user` 등급 FLIGHT의 go) | go 없이 진행하는 `user` 등급 FLIGHT | 1줄 | **keep**(K3) | C9 |
 | P9 | DISPATCH, SCHEDULE, FLEET PLAN, ATFM, CONTROL RECYCLE, FUEL hold, REPOSITION, JEV, SQUELCH 모드 전환 | 측정 전에 자동화를 켬 | judges 모드 1줄 | 올리는 것은 **keep**(K3), 방향을 계산하는 풀기(원칙 3). 내리는 것은 brake(원칙 9) | C6, C12 |
 | P10 | ATFM 스위치와 `s3` | shadow 한 주 전의 자동 동작 | 세지 않음 | 올리는 것은 **keep**(K3). 내리는 것은 brake | C6, C12 |
@@ -163,7 +163,7 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 
 ## 5. 보완 통제
 
-통제마다 무엇을 알아채는지, 얼마나 빠른지, 스스로 무엇을 하는지, 무엇을 보고하는지 적는다. 사람의 결정을 대신하는 통제는 C1, C2, C4, C6, C10, C14, C15, C16이고, C9와 C18은 K1–K3 승인을 내보낼 때로 옮기며, 나머지는 이들을 받친다.
+통제마다 무엇을 알아채는지, 얼마나 빠른지, 스스로 무엇을 하는지, 무엇을 보고하는지 적는다. 사람의 결정을 대신하는 통제는 C1, C2, C4, C6, C10, C15, C16이고(C14는 대체됨), C9와 C18은 K1–K3 승인을 내보낼 때로 옮기며, 나머지는 이들을 받친다.
 
 | ID | 통제 | 알아채는 것 | 속도 | 스스로 하는 일 | 보고 |
 |---|---|---|---|---|---|
@@ -180,7 +180,7 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 | C11 | **지출 상한**: 추가 리뷰와 자동 LAUNCH에 대한 FUEL hold, `ATC_MAX_LAUNCHED`, 하루 리뷰 예산, 우리 세션에 보내는 메시지의 속도 상한(원칙 4). | 비용 폭주, 메시지 홍수 | 결정마다 | 멈춘다 | 머지당 비용, FLIGHT당 메시지 |
 | C12 | **K3 보강.** SUPERVISOR 전용 라우트는 모두 localhost `Origin`을 검사하고(1.4의 라우트), AUTOLAND·MCC·RTS는 리뷰가 어떻든 K3 경로를 건드리는 PR을 거절한다. 규칙 파일은 `deploy/` 아래에 두고 그 파일 자체도 `user` 등급이다. 자율 규칙은 데이터이고 손잡이마다 조이는 방향이 선언돼 있어 변경의 방향을 계산한다(모르면 푸는 것으로 센다. 원칙 3). 리뷰·검사 기록은 자기 레인에서 온 것만 받고, 이슈 댓글 작성자를 SUPERVISOR로 치는 것은 설정으로만 한다(원칙 6). Origin 검사는 사이트 간 요청만 막으므로 SUPERVISOR 전용 라우트에는 실제 인증도 필요하다: 에이전트가 읽을 수 없는 자격 증명, 또는 다른 OS 사용자 아래의 서버(1.5). | SUPERVISOR 전용 동작에 닿거나 자기 한계를 고치거나 자기 리뷰를 기록하는 에이전트 | 요청 때 | 거절 | 거절 수 |
 | C13 | **state 형식 호환 검사.** CI 시험이 이전 state 파일을 새 코드로 읽고, 더하기만 하는 선택 필드만 허용한다. 더하기가 아닌 형식이나 기존 기록 다시 쓰기는 K1이다(D15). | 기존 state를 고아로 만드는 형식 변경 | CI에서 | PR을 실패시킴 | 시험 결과 |
-| C14 | **일치 기반 제안 승인.** CREW CHANGE, SCHEDULE, FLEET PLAN 항목은 CROSSCHECK가 일치하면 승인한다(DISPATCH의 ASSIGN과 LAUNCH는 더 이상 쓰지 않는다, D22). 이미 있는 5건 중 1건 blind 표본은 SUPERVISOR가 읽도록 남기고, C11의 상한을 둔다. | 틀린 짝이나 쓰기 | 제안 때 | 승인하고, 불일치면 보류 | 자동 대 수동 일치 |
+| C14 | **일치 기반 제안 승인.** **Superseded(D22, D23):** DISPATCH, SCHEDULE, FLEET PLAN, CREW CHANGE는 CROSSCHECK 일치 없이 돌고, CROSSCHECK 세션은 퇴역한다([ATC-371](https://linear.app/vocado/issue/ATC-371)). 앞선 설계의 기록으로 남긴다. | — | — | — | — |
 | C15 | **FLIGHT 연결.** FLIGHT 없는 PR은 브랜치 이름으로 이슈에 잇거나 하나를 연다. 못 만들면 DUTY에게 간다. | 추적 불가한 일 | PR을 열 때 | 잇거나 연다 | 연결 안 된 PR |
 | C16 | **배포 보강.** 필수 체크로서의 의존성 리뷰, 재시작 전 RTS 안의 `npm ci`(이미 있는 health check와 ROLLBACK과 함께), health check가 찾은 죽은 백그라운드 세션 재기동. | 서비스를 깨는 의존성 변경, 배포로 잃은 세션 | 배포 때 | 설치, 검사, rollback, 재기동 | rollback이나 재기동이 필요했던 배포 |
 | C17 | **공개 전 검사기.** hook(K3 파일)이 push와 PR 생성마다, 공개 저장소에 닿기 전에 비밀과 비공개 AIRPORT 식별자를 찾는다. | revert가 되돌리지 못하는 공개(원칙 4) | push 때 | 거절. 걸리면 K2 새 화살 | 주간 걸린 수 |
@@ -213,7 +213,7 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 | 머지당 비용(리뷰 토큰, FUEL) | FUEL, judge 로그 |
 | 내보내기: 통로별, K1–K3 효과가 있는 것, 세션별 증언된 것. 봉투를 벗어나 생긴 새 화살 | C18, C9 기록 |
 | 쓴 brake, 종류별(HOLD, CANCEL, RECALL, STOP, 수동 GROUND STOP, 모드 내리기) | `autoland.jsonl`, `mcc.jsonl`, `proposals.jsonl`, `atfm` 기록 |
-| 하루 DISPATCH 오작동: decline, UNABLE, RECALL, 보낸 뒤 대체, 잘못 고른 AIRCRAFT(D22). FLEET PLAN 자동 대 수동 일치 | `proposals.jsonl`, `fleet-plan.jsonl` |
+| 하루 DISPATCH 오작동: decline, UNABLE, RECALL, 보낸 뒤 대체, 잘못 고른 AIRCRAFT(D22). SCHEDULE, FLEET PLAN, CREW CHANGE 오작동(D23) | `proposals.jsonl`, `schedule.jsonl`, `fleet-plan.jsonl` |
 | leak(원칙 1): 내보낸 뒤의 사람 단계, leak 시간과 붙잡힌 일, 맡을 쪽 통제가 섰는지로 나눠 | SUPERVISOR QUEUE와 NEEDS YOU의 열림·닫힘 줄 |
 | 통제와 동작별 오작동, harmful과 nuisance(원칙 2) | 실제 결정 줄을 결과에 이은 것 |
 | revert까지 시간과 그 창의 효과: 보낸 메시지, 전송처별 외부 데이터, 걸린 공개(원칙 4) | C4, C17, `clearances.jsonl` |
@@ -270,8 +270,8 @@ L1, L2, L3, L4가 AIRPORT A에서 **두 레인이 head를 통과시키고 분류
 ### 6단계: 더 많은 AIRPORT와 DISPATCH 승인
 
 - **WO-15 다른 AIRPORT에 AUTOLAND**를 하나씩, 필수 CI 체크와 C3가 있을 때만. 등급 `user`(`autoland.json`의 airports 목록을 AUTOLAND 규칙이 읽는다. SUPERVISOR가 AIRPORT마다 켠다).
-- **WO-16 자동 DISPATCH와 일치 기반 승인.** ASSIGN과 LAUNCH는 planner 필터와 C11 상한 아래 서버가 승인하고([ATC-367](https://linear.app/vocado/issue/ATC-367), D22), CREW CHANGE, SCHEDULE, 그다음 FLEET PLAN은 C14로. 스위치와 카운터를 달고 켜며, 기존 판정 관문(판정 20건에서 80%)은 실제 한도가 된다. 등급 `flagged`.
-- P1과 P2의 실제 한도: 하루 DISPATCH 오작동 비율(decline, UNABLE, RECALL, 보낸 뒤 대체, 잘못 고른 AIRCRAFT)이 스위치를 켜기 전에 적은 한도 아래. 넘으면 스위치가 꺼지고 카드는 SUPERVISOR에게 돌아간다(원칙 2). C14는 SUPERVISOR가 기각한 것을 승인했을 경우가 100건당 2건 이하, 승인한 것을 보류했을 경우는 leak으로 보고한다.
+- **WO-16 사람 없는 제안.** DISPATCH의 ASSIGN과 LAUNCH([ATC-367](https://linear.app/vocado/issue/ATC-367), D22), 그다음 SCHEDULE, FLEET PLAN, CREW CHANGE([ATC-370](https://linear.app/vocado/issue/ATC-370), D23)를 planner 필터와 C11 상한 아래 서버가 승인하고, 그 뒤 CROSSCHECK를 퇴역시킨다([ATC-371](https://linear.app/vocado/issue/ATC-371)). 저마다 스위치와 카운터를 달고 켠다. 등급 `flagged`(ATC-371은 `user`).
+- P1–P5의 실제 한도: 하루 오작동 비율(decline, UNABLE, RECALL, 보낸 뒤 대체, 잘못 고른 AIRCRAFT. SCHEDULE과 FLEET PLAN은 되돌리거나 거절된 수정)이 스위치를 켜기 전에 적은 한도 아래. 넘으면 스위치가 꺼지고 카드는 SUPERVISOR에게 돌아간다(원칙 2).
 
 ### 7단계: 검증 레인, FLIGHT 연결, 배포 뒤 검사
 
@@ -339,4 +339,6 @@ L1, L2, L3, L4가 AIRPORT A에서 **두 레인이 head를 통과시키고 분류
 - **D20 레인 장애.** **Decided:** 레인 둘이 필요한 PR은 레인 하나가 빠지면 리뷰 하나로 통과하고, 단일 리뷰로 기록해 센다(L16).
 - **D21 먼저 켜기.** **Decided:** shadow 실행은 없다. 모든 통제는 끄는 스위치와 오작동 카운터를 달고 켜고, 8절의 측정은 그 실제 한도다. K1 migration은 시험 DB에서 리허설하고(C20), 내보낼 때 승인한 외부 전송처(K2)는 바로 실제로 쓴다.
 - **D22 DISPATCH.** **Decided 2026-10-02:** planner의 결정적 필터와 C11 상한을 통과하는 ASSIGN과 LAUNCH 카드는 모두 서버가 승인한다. CROSSCHECK는 DISPATCH 길에서 빠지고 blind 표본도 없다. SUPERVISOR 전용 끄는 스위치와, 나중 결과로 센 오작동 카운트와 함께 켠다. 2026-10-01 06:00Z 이후 SUPERVISOR의 수동 승인 102건, 기각 2건, 자동 7건이었다[observed].
-- **열려 있음, 결정 안 됨:** DISPATCH의 RELEASE와 CLASSIFY 카드가 D22를 따를지, CROSSCHECK 일치로 승인된 SCHEDULE NEW 초안(C14)을 제안으로 Backlog에 둘지, ATC-362가 제안한 지금 Todo 목록의 한 번 일괄 확인, 백그라운드 AIRCRAFT가 내보낸 뒤 권한 프롬프트를 피하는 방법(상시 허용 목록, 또는 묻는 대신 거절), C7이 단일 리뷰 head를 먼저 감사할지.
+- **D23 SCHEDULE, FLEET PLAN, CREW CHANGE.** **Decided 2026-10-02:** D22의 DISPATCH처럼 사람도 CROSSCHECK 일치도 없이 돈다. NEW 초안은 제안으로 Backlog에 두고 ROUTE와 TARGET은 제안으로 남는다([ATC-370](https://linear.app/vocado/issue/ATC-370)). D22와 D23이 켜지면 CROSSCHECK 세션은 퇴역하고([ATC-371](https://linear.app/vocado/issue/ATC-371)), 지난 판정은 기록으로 남는다.
+- **D24 내보낸 뒤 프롬프트 없음.** **Decided 2026-10-02:** AIRCRAFT의 도구 프롬프트는 LAUNCH 때 넘기는 atc 정책 hook으로 바뀌고, PENDING·HUNG으로 서 있는 끝난 AIRCRAFT는 멈춘다([ATC-369](https://linear.app/vocado/issue/ATC-369)). 관제 세션의 DECISION 카드는 K1–K3에만 쓰고, 그 밖의 결정은 정해 둔 기본값으로 진행하거나 새 화살로 돌아온다([ATC-352](https://linear.app/vocado/issue/ATC-352)).
+- **열려 있음, 결정 안 됨:** DISPATCH의 RELEASE와 CLASSIFY 카드가 D22를 따를지, ATC-362가 제안한 지금 Todo 목록의 한 번 일괄 확인, C7이 단일 리뷰 head를 먼저 감사할지.
