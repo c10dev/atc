@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
-import { useEffect } from "react";
+import { useRef } from "react";
+import { useDialog } from "./useDialog.ts";
 import { IconButton } from "./Icon.tsx";
 import { lazyTab } from "./lazyTab.tsx";
 import "./GlobeMode.css";
@@ -9,13 +10,10 @@ import "./GlobeMode.css";
 const Globe = lazyTab<{ refreshKey: string }>(() => import("./views/Globe.tsx"), "Globe");
 
 export function GlobeMode({ refreshKey, onClose }: { refreshKey: string; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    addEventListener("keydown", onKey);
-    return () => removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const ref = useRef<HTMLDivElement>(null);
+  useDialog(ref, onClose);
   return (
-    <div className="gm-overlay" role="dialog" aria-label="GLOBE">
+    <div className="gm-overlay" role="dialog" aria-modal="true" aria-label="GLOBE" tabIndex={-1} ref={ref}>
       <header className="gm-head">
         <span className="gm-title mono">GLOBE</span>
         <IconButton className="gm-close" onClick={onClose} label="GLOBE 닫기" icon={X} size={16} />
