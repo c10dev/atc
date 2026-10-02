@@ -26,14 +26,40 @@ test("color-literal: styles.css의 :root·테마 블록 토큰 정의는 허용,
   assert.deepEqual(rules(css(":root { color: #fff; }", "web/src/styles.css")), ["color-literal"]); // 토큰 정의가 아니라 선언
 });
 
-test("font-size-px: px·rem 리터럴은 걸리고 var(--text-…)·em·%는 통과, font 약식은 크기 칸만 본다", () => {
+test("font-size-px: px·rem 리터럴은 걸리고 var(--text-…)·%는 통과, font 약식은 크기 칸만 본다", () => {
   assert.deepEqual(rules(css(".a { font-size: 12px; }")), ["font-size-px"]);
   assert.deepEqual(rules(css(".a { font-size: 0.75rem; }")), ["font-size-px"]);
   assert.deepEqual(rules(css(".a { font: 700 11px var(--mono); }")), ["font-size-px"]);
   assert.deepEqual(css(".a { font-size: var(--text-sm); }"), []);
-  assert.deepEqual(css(".a { font-size: 1.2em; } .b { font-size: 90%; } .c { font-size: calc(var(--text-sm) * 1.1); }"), []);
+  assert.deepEqual(css(".b { font-size: 90%; } .c { font-size: calc(var(--text-sm) * 1.1); }"), []);
   assert.deepEqual(css(".a { font: 700 var(--text-2xs)/15px var(--mono); }"), []); // line-height의 px는 font-size가 아니다
   assert.deepEqual(css(".a { line-height: 16px; letter-spacing: 1px; }"), []);
+});
+
+test("font-size-em(ATC-410): font-size와 font 약식의 em은 걸리고 var·%·line-height의 em은 통과", () => {
+  assert.deepEqual(rules(css(".a { font-size: 1.2em; }")), ["font-size-em"]);
+  assert.deepEqual(rules(css(".a { font: 700 0.9em var(--mono); }")), ["font-size-em"]);
+  assert.deepEqual(css(".a { font-size: var(--text-sm); } .b { font-size: 90%; } .c { font: 700 var(--text-xs)/1.4em var(--mono); } .d { padding: 1em; }"), []);
+  assert.deepEqual(rules(css(".a { font-size: 1.5rem; }")), ["font-size-px"]); // rem은 em 규칙이 아니라 font-size-px
+});
+
+test("spacing-literal(ATC-410): 간격 속성의 0이 아닌 px는 걸리고 0·var(--space-…)·em·%는 통과, 토큰 정의는 허용", () => {
+  assert.deepEqual(rules(css(".a { padding: 8px; margin: 0 12px; gap: 4px; }")), ["spacing-literal", "spacing-literal", "spacing-literal"]);
+  assert.equal(rules(css(".a { padding-top: 6px; margin-inline: 2px; row-gap: 3px; column-gap: 3px; inset: 4px; top: -2px; left: 1px; }")).length, 7);
+  assert.deepEqual(rules(css(".a { padding: calc(var(--space-2) + 3px); }")), ["spacing-literal"]);
+  assert.deepEqual(css(".a { padding: 0; margin: 0px auto; gap: var(--space-2); inset: 0; top: 50%; left: 1em; padding: var(--space-1) var(--space-3, 12px); }"), []);
+  assert.deepEqual(css(".a { width: 12px; height: 4px; border: 1px solid var(--line); line-height: 16px; transform: translateX(8px); }"), []); // 간격 속성이 아니다
+  assert.deepEqual(css(":root { --space-3: 12px; --gutter: 24px; }", "web/src/styles.css"), []); // 토큰 정의
+  assert.deepEqual(css(':root[data-theme="night"] { --space-3: 12px; }', "web/src/styles.css"), []);
+});
+
+test("radius-literal(ATC-410): var(--radius-…)·50%·0이 아닌 border-radius는 걸린다, 세부 속성도", () => {
+  assert.deepEqual(rules(css(".a { border-radius: 4px; }")), ["radius-literal"]);
+  assert.deepEqual(rules(css(".a { border-radius: 999px; } .b { border-top-left-radius: 6px; }")), ["radius-literal", "radius-literal"]);
+  assert.deepEqual(rules(css(".a { border-radius: var(--radius-md) 4px; }")), ["radius-literal"]);
+  assert.deepEqual(rules(css(".a { border-radius: 0.5rem; }")), ["radius-literal"]);
+  assert.deepEqual(css(".a { border-radius: var(--radius-md); } .b { border-radius: 50%; } .c { border-radius: var(--radius-sm) var(--radius-sm) 0 0; } .d { border-radius: 0; }"), []);
+  assert.deepEqual(css(":root { --radius-md: 8px; --radius-sm: 4px; }", "web/src/styles.css"), []); // 토큰 정의
 });
 
 test("z-index-literal: var(--z-…)만 통과(auto 포함), 숫자는 걸린다", () => {
@@ -89,6 +115,13 @@ test("tsx: style={{…}}의 색·font-size 리터럴과 SVG 색 속성은 걸리
   assert.equal(tsx('const a = 1;\n<div style={{ color: "#fff" }} />')[0].line, 2);
 });
 
+test("tsx(ATC-410): style의 간격·둥근 모서리·em 글자 크기도 같은 규칙", () => {
+  assert.deepEqual(rules(tsx("<div style={{ padding: 8, marginTop: 4 }} />")), ["spacing-literal", "spacing-literal"]);
+  assert.deepEqual(rules(tsx('<div style={{ gap: "6px", borderRadius: 4, fontSize: "1.1em" }} />')), ["font-size-em", "spacing-literal", "radius-literal"]);
+  assert.deepEqual(tsx('<div style={{ padding: 0, gap: "var(--space-2)", borderRadius: "var(--radius-md)", top: "50%", width: 12 }} />'), []);
+  assert.deepEqual(tsx("<div style={{ borderRadius: '50%' }} />"), []);
+});
+
 test("ratchetOf: 늘었거나 기준선에 없는 칸은 added, 줄어든 칸은 dropped, 같으면 비어 있다", () => {
   const base: Counts = { "web/src/a.css": { "color-literal": 2 }, "web/src/b.css": { "outline-none": 1 } };
   assert.deepEqual(ratchetOf(base, base), { added: [], dropped: [] });
@@ -114,7 +147,7 @@ test("ratchet: web/src의 위반은 web/css-lint-baseline.json보다 늘지 않�
     r.added,
     [],
     `새 CSS 토큰 위반(docs/design-language.md 5절 13번):\n${r.added.map((a) => `${a.file} ${a.rule}: ${a.was} → ${a.now}\n${where(a.file, a.rule)}`).join("\n")}\n` +
-      "색은 var(--…) 토큰, 글자 크기는 var(--text-…), z-index는 var(--z-…), transition은 속성 이름, outline: none에는 :focus-visible 규칙을 쓴다.",
+      "색은 var(--…) 토큰, 글자 크기는 var(--text-…), 간격은 var(--space-…), 둥근 모서리는 var(--radius-…), z-index는 var(--z-…), transition은 속성 이름, outline: none에는 :focus-visible 규칙을 쓴다.",
   );
   assert.deepEqual(r.dropped, [], `위반이 줄었다. 기준선을 낮춘다: node server/css-lint.ts --update\n${r.dropped.map((d) => `${d.file} ${d.rule}: ${d.was} → ${d.now}`).join("\n")}`);
 });

@@ -30,7 +30,7 @@ Read from `origin/main` (`44f59e6`, 2026-10-02).
   - HOME imports `Drawer.css`, `DutyDrawer.css` and `fleet/Fleet.css` to borrow their classes.
   - The night block restyles strips and FIDS by selector.
 - **Checks today:**
-  - `server/css-lint.ts`: colour literals, px font sizes, literal z-index, `transition: all`, `outline: none`; ratcheted by `web/css-lint-baseline.json`.
+  - `server/css-lint.ts`: colour literals, px and em font sizes, literal spacing, literal radius, literal z-index, `transition: all`, `outline: none`; ratcheted by `web/css-lint-baseline.json`.
   - `server/theme-contrast.test.ts` (ATC-408): `--faint` and `--muted` on every layer in every theme, and `--paper-muted` on a parked strip.
   - `server/boundaries.test.ts` (ATC-335): import cycles, and web → Node imports.
   - Nothing checks which layer may use which.
@@ -108,7 +108,7 @@ The patterns of design-language section 4: row and expanded detail, card (header
 
 | Boundary | Check | Status |
 |---|---|---|
-| No literal colour, size, z-index, radius or spacing outside L0 | `server/css-lint.ts` (colour, font size, z-index today; spacing, radius, `em` with U4) | partly built |
+| No literal colour, size, z-index, radius or spacing outside L0 | `server/css-lint.ts` (colour, font size, `em`, spacing, radius, z-index; ATC-410) | built, ratcheted |
 | A property takes only its token family (`color` → text and signal tokens, `background` → surface tokens, `border-color` → line and signal tokens), as Primer's `primer/colors` does | a new css-lint rule, ratcheted like the others | decided (S5) |
 | Primitives use no domain token and no screen class | css-lint, scoped to the primitive files | to build |
 | A screen imports no other screen's stylesheet; a primitive imports nothing from screens | `server/boundaries.test.ts`, which already parses imports, gains a layer map by path | to build |

@@ -1,12 +1,93 @@
 {
   "web/src/Drawer.css": {
     "color-literal": 1,
-    "outline-none": 1
+    "font-size-em": 3,
+    "outline-none": 1,
+    "radius-literal": 6,
+    "spacing-literal": 4
+  },
+  "web/src/Relay.css": {
+    "radius-literal": 1
   },
   "web/src/Starfield.tsx": {
     "color-literal": 2
   },
+  "web/src/alerts.css": {
+    "spacing-literal": 21
+  },
   "web/src/styles.css": {
-    "color-literal": 43
+    "color-literal": 43,
+    "radius-literal": 3,
+    "spacing-literal": 37
+  },
+  "web/src/ui.css": {
+    "spacing-literal": 2
+  },
+  "web/src/views/Airports.css": {
+    "radius-literal": 2,
+    "spacing-literal": 1
+  },
+  "web/src/views/Atfm.css": {
+    "radius-literal": 1
+  },
+  "web/src/views/Briefs.css": {
+    "radius-literal": 1
+  },
+  "web/src/views/Checkride.css": {
+    "radius-literal": 1,
+    "spacing-literal": 1
+  },
+  "web/src/views/Docs.css": {
+    "font-size-em": 4,
+    "radius-literal": 2,
+    "spacing-literal": 4
+  },
+  "web/src/views/FleetCrew.css": {
+    "spacing-literal": 2
+  },
+  "web/src/views/FleetPlan.css": {
+    "radius-literal": 2,
+    "spacing-literal": 4
+  },
+  "web/src/views/Follow.css": {
+    "spacing-literal": 1
+  },
+  "web/src/views/Home.css": {
+    "radius-literal": 2
+  },
+  "web/src/views/Metrics.css": {
+    "radius-literal": 5,
+    "spacing-literal": 5
+  },
+  "web/src/views/MetricsFuel.css": {
+    "radius-literal": 3,
+    "spacing-literal": 1
+  },
+  "web/src/views/MetricsLeaks.css": {
+    "radius-literal": 1
+  },
+  "web/src/views/Network.css": {
+    "radius-literal": 2,
+    "spacing-literal": 1
+  },
+  "web/src/views/Radio.css": {
+    "radius-literal": 3
+  },
+  "web/src/views/Release.css": {
+    "radius-literal": 1
+  },
+  "web/src/views/RouteMap.css": {
+    "radius-literal": 1
+  },
+  "web/src/views/Teams.css": {
+    "radius-literal": 2,
+    "spacing-literal": 3
+  },
+  "web/src/views/fleet/Card.css": {
+    "radius-literal": 1,
+    "spacing-literal": 1
+  },
+  "web/src/views/fleet/Fleet.css": {
+    "radius-literal": 1
   }
 }
