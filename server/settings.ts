@@ -55,7 +55,7 @@ export interface ServerSettings {
   autoland: { mode: AutolandMode; reviewedSecurity: ReviewedSecurity; airports: string[]; applicationCheck: string; groundStops: { airport: string; sha: string; failing: string[]; at: string }[]; applicationCheckWarnings: CheckWarning[] };
   // MCC(docs/mcc.md): mcc.json의 스위치와 맡은 AIRPORT
   mcc: { mode: MccMode; airport: string };
-  // 자동 되돌림(ATC-351): auto-revert.json의 스위치와 breaker가 멈춘 AIRPORT. 기본 off
+  // 자동 되돌림(ATC-351): auto-revert.json의 스위치와 breaker가 멈춘 AIRPORT. 기본 on(ATC-394)
   autoRevert: { mode: AutoRevertMode; stopped: { airport: string; at: string; detail: string }[]; days: RevertDay[] }; // days: 최근 7일의 날짜별 revert·flake·misfire 수(ATC-394)
   // FLEET PLAN REPOSITION(ATC-179): fleet-plan.json. 기본 shadow. auto는 ⚠(하루 dailyMax 상한, flapping이면 approval로 돌아옴)
   fleetPlan: { reposition: RepositionMode; repositionDailyMax: number };

@@ -9,6 +9,10 @@ import {
   lowerAutoland,
   lowerMcc,
   AUTO_REVERT_MODES,
+  guardPhaseOf,
+  needsRerun,
+  pollStepOf,
+  writeRed,
   mergedBackOf,
   parseAutoRevert,
   rerunOf,
@@ -331,4 +335,54 @@ test("revertDaysOf: per UTC day, reverts, flakes caught and misfires", () => {
   assert.deepEqual(days.map((d) => d.day), ["2026-09-30", "2026-10-01", "2026-10-02"]);
   assert.deepEqual(days[2], { day: "2026-10-02", reverts: 1, flakes: 2, misfires: 0, holds: 0, stops: 0 });
   assert.deepEqual(days[1], { day: "2026-10-01", reverts: 0, flakes: 0, misfires: 1, holds: 1, stops: 0 });
+});
+
+// ── flake 방어의 단계(cycle의 길을 정하는 순수 함수) ──
+test("guardPhaseOf: fresh → rerunning → confirmed, and a head already decided (flake, hold, revert, stop) is skipped", () => {
+  const L = (op: AutoRevertLine["op"], head = "h1", airport = "ATCC"): AutoRevertLine => ({ at: T, op, airport, head });
+  assert.equal(guardPhaseOf([], "ATCC", "h1"), "fresh");
+  assert.equal(guardPhaseOf([L("rerun")], "ATCC", "h1"), "rerunning");
+  assert.equal(guardPhaseOf([L("rerun"), L("red")], "ATCC", "h1"), "confirmed");
+  for (const op of ["flake", "hold", "revert-opened", "revert-failed", "stop"] as const) assert.equal(guardPhaseOf([L("rerun"), L(op)], "ATCC", "h1"), "decided", op);
+  // 다른 head·다른 AIRPORT의 줄은 보지 않는다
+  assert.equal(guardPhaseOf([L("flake", "h2"), L("flake", "h1", "OTHR")], "ATCC", "h1"), "fresh");
+});
+
+test("needsRerun: revert and breaker stop wait for a confirmed red; hold and none do not", () => {
+  for (const act of ["revert", "stop"] as const) {
+    assert.equal(needsRerun("fresh", act), true);
+    assert.equal(needsRerun("rerunning", act), true);
+    assert.equal(needsRerun("confirmed", act), false);
+  }
+  for (const act of ["hold", "none"] as const) assert.equal(needsRerun("fresh", act), false);
+});
+
+test("pollStepOf: green is a flake (nothing reverted), a re-run that never finishes holds, red is confirmed", () => {
+  assert.equal(pollStepOf("wait"), "wait");
+  assert.equal(pollStepOf("green"), "flake");
+  assert.equal(pollStepOf("timeout"), "hold");
+  assert.equal(pollStepOf("red"), "confirmed");
+});
+
+test("writeRed: only a confirmed red gets a red line, once (so a flake never counts toward the breaker)", () => {
+  assert.equal(writeRed("fresh", false), false);
+  assert.equal(writeRed("rerunning", false), false);
+  assert.equal(writeRed("confirmed", false), true);
+  assert.equal(writeRed("confirmed", true), false);
+});
+
+test("the whole path on two flaky heads in an hour: no red lines, so the third real red head reverts instead of tripping the breaker", () => {
+  const lines: AutoRevertLine[] = [];
+  for (const head of ["f1", "f2"]) {
+    let phase = guardPhaseOf(lines, "VCDO", head);
+    assert.equal(needsRerun(phase, "revert"), true);
+    lines.push({ at: iso(5), op: "rerun", airport: "VCDO", head });
+    phase = guardPhaseOf(lines, "VCDO", head);
+    assert.equal(pollStepOf("green"), "flake");
+    lines.push({ at: iso(4), op: "flake", airport: "VCDO", head });
+    assert.equal(guardPhaseOf(lines, "VCDO", head), "decided");
+  }
+  assert.equal(lines.some((l) => l.op === "red"), false);
+  const d = revertDecisionOf(input([lander("r3", 7), green("g0")], { head: { sha: "r3", state: "failure", failing: ["check"] }, lines }));
+  assert.equal(d.act, "revert");
 });

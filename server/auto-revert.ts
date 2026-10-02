@@ -328,3 +328,22 @@ export function revertDaysOf(lines: readonly AutoRevertLine[], days: number, now
   }
   return [...out.values()];
 }
+
+// ── flake 방어의 단계(순수, ATC-394) ──
+// cycle이 I/O 사이에서 어느 길로 갈지를 정한다. 시험은 이 함수들로 한다.
+export const DECIDED_OPS: readonly AutoRevertLine["op"][] = ["revert-opened", "revert-failed", "hold", "stop", "flake"];
+export type GuardPhase = "decided" | "confirmed" | "rerunning" | "fresh";
+// decided: 이 head로 이미 결정을 냈다(flake를 잡은 head도). confirmed: 다시 돌려도 빨갛다고 확인해 red 줄이 있다. rerunning: 다시 돌리는 중. fresh: 아직 아무것도 안 했다
+export function guardPhaseOf(lines: readonly AutoRevertLine[], airport: string, head: string): GuardPhase {
+  const mine = lines.filter((l) => l.airport === airport && l.head === head);
+  if (mine.some((l) => DECIDED_OPS.includes(l.op))) return "decided";
+  if (mine.some((l) => l.op === "red")) return "confirmed";
+  return mine.some((l) => l.op === "rerun") ? "rerunning" : "fresh";
+}
+// 다시 돌린 결과(rerunVerdictOf)에 따른 다음 걸음: wait는 다음 주기, flake는 flake 줄을 쓰고 끝, hold는 되돌리지 않고 알림, confirmed는 빨간 것으로 이어 간다
+export type PollStep = "wait" | "flake" | "hold" | "confirmed";
+export const pollStepOf = (v: RerunVerdict): PollStep => (v === "wait" ? "wait" : v === "green" ? "flake" : v === "timeout" ? "hold" : "confirmed");
+// 결정(revertDecisionOf) 뒤: revert와 breaker 멈춤은 빨강이 확인된 뒤에만. 확인 전이면 먼저 다시 돌린다. hold·none은 다시 돌리지 않는다
+export const needsRerun = (phase: GuardPhase, act: RevertDecision["act"]): boolean => phase !== "confirmed" && (act === "revert" || act === "stop");
+// red 줄은 확인된 빨강에만 쓴다(flake는 breaker에 세지 않는다)
+export const writeRed = (phase: GuardPhase, alreadyWritten: boolean): boolean => phase === "confirmed" && !alreadyWritten;

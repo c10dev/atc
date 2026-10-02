@@ -5,15 +5,19 @@ import {
   type AutoRevertLine,
   fixTextOf,
   loadAutoRevert,
+  guardPhaseOf,
   lowerAutoland,
   lowerMcc,
   mergedBackOf,
+  needsRerun,
+  pollStepOf,
   MISFIRE_WINDOW_MS,
   prOfSubject,
   readAutoRevertLines,
   rerunOf,
   rerunVerdictOf,
   type RunState,
+  writeRed,
   type RevertCommit,
   revertBodyOf,
   revertDecisionOf,
@@ -56,7 +60,11 @@ export function runAutoRevert(s: Snapshot) {
 // 스위치(SUPERVISOR만: 설정 창 PUT /api/settings의 autoRevert). 바꾸면 breaker 래치가 풀린다(mode 줄)
 export function setAutoRevertMode(mode: AutoRevertMode) {
   const cfg = loadAutoRevert();
-  if (cfg.mode === mode) return;
+  if (cfg.mode === mode) {
+    // 같은 값을 다시 골라도 breaker 래치는 풀린다(설정 창·알림이 "스위치를 다시 고르면"이라고 말한다): 멈춘 AIRPORT가 있을 때만 mode 줄을 쓴다
+    if (stoppedAirports().length) appendAutoRevertLine({ op: "mode", detail: `${mode} re-picked; breaker released` });
+    return;
+  }
   saveAutoRevert({ ...cfg, mode });
   appendAutoRevertLine({ op: "mode", detail: `${cfg.mode} → ${mode}` });
 }
@@ -102,25 +110,25 @@ async function cycle(s: Snapshot) {
     // 열린 revert PR을 기다리는 중이거나 breaker가 멈췄으면 GitHub을 더 읽지 않는다(90초마다 커밋 열다섯 개를 읽지 않게)
     if (inflight || stoppedOf(lines, code)) continue;
     // 이미 이 head로 결정을 냈으면 다시 하지 않는다(flake를 잡은 head도)
-    if (lines.some((l) => ["revert-opened", "revert-failed", "hold", "stop", "flake"].includes(l.op) && l.airport === code && l.head === main.sha)) continue;
+    let phase = guardPhaseOf(lines, code, main.sha);
+    if (phase === "decided") continue;
 
     // flake 방어: 이 head의 실패한 체크를 다시 돌리는 중이면 결과만 본다(커밋을 다시 읽지 않는다)
-    let confirmed = EXISTING(lines, "red", code, main.sha);
     const guard = rerunOf(lines, code, main.sha);
-    if (!confirmed && guard.started) {
+    if (phase === "rerunning" && guard.started) {
       const now2 = await runsOf(slug, (guard.started.runs ?? []).map((r) => r.id)).catch(() => null);
       if (!now2) continue; // GitHub을 못 읽었다: 다음 주기에
-      const v = rerunVerdictOf(guard.started.runs ?? [], now2, guard.started.at, now);
-      if (v === "wait") continue;
-      if (v === "green") {
+      const step = pollStepOf(rerunVerdictOf(guard.started.runs ?? [], now2, guard.started.at, now));
+      if (step === "wait") continue;
+      if (step === "flake") {
         appendAutoRevertLine({ op: "flake", airport: code, head: main.sha, check: guard.started.check, detail: "red, then green on re-run; nothing reverted" });
         continue;
       }
-      if (v === "timeout") {
+      if (step === "hold") {
         appendAutoRevertLine({ op: "hold", airport: code, head: main.sha, detail: "the re-run of the failing check did not finish in time; not reverting without knowing it is not a flake" });
         continue;
       }
-      confirmed = true; // 다시 돌려도 빨갛다
+      phase = "confirmed"; // 다시 돌려도 빨갛다
     }
 
     const commits = await commitsOf(code, a.repo, slug, main.sha, lines).catch((e) => {
@@ -129,7 +137,7 @@ async function cycle(s: Snapshot) {
     });
     if (!commits) continue;
     const own = commits[0]?.revert === true;
-    if (confirmed && !EXISTING(lines, "red", code, main.sha)) {
+    if (writeRed(phase, EXISTING(lines, "red", code, main.sha))) {
       appendAutoRevertLine({ op: "red", airport: code, head: main.sha, check: main.failing.join(", "), own });
       lines = readAutoRevertLines();
     }
@@ -144,7 +152,7 @@ async function cycle(s: Snapshot) {
       userTierOf: tierSync,
     });
     // revert나 breaker 멈춤은 main이 정말 빨갛다는 것이 전제다: 아직 확인하지 않았으면 먼저 한 번 다시 돌린다(flake는 아무것도 하지 않는다)
-    if (!confirmed && (d.act === "revert" || d.act === "stop")) {
+    if (needsRerun(phase, d.act)) {
       await startRerun(code, slug, main.sha, [...new Set([...main.failing, ...(main.workflowsFailing ?? [])])].join(", "));
       continue;
     }
@@ -188,10 +196,14 @@ async function runsOf(slug: string, ids: readonly number[]): Promise<RunState[]>
 }
 
 // 되돌린 PR이 24시간 안에 그대로 다시 머지됐나(misfire). 한 번 적으면 더 보지 않는다
+const misfireSeen = new Map<number, number>(); // revert PR → 마지막으로 본 시각. 90초마다 gh를 열 번 넘게 부르지 않게 10분에 한 번만 본다
+const MISFIRE_EVERY_MS = 10 * 60_000;
 async function misfireCheck(code: string, slug: string, lines: readonly AutoRevertLine[]) {
   const now = Date.now();
   for (const l of lines.filter((x) => x.op === "revert-landed" && x.airport === code && x.pr != null && x.revertPr != null && now - Date.parse(x.at) <= MISFIRE_WINDOW_MS)) {
     if (lines.some((x) => x.op === "misfire" && x.pr === l.pr)) continue;
+    if (now - (misfireSeen.get(l.revertPr as number) ?? 0) < MISFIRE_EVERY_MS) continue;
+    misfireSeen.set(l.revertPr as number, now);
     const fileShas = (n: number) =>
       gh(["api", "--paginate", `repos/${slug}/pulls/${n}/files?per_page=100`, "--jq", ".[] | [.filename, .sha] | @tsv"])
         .then((t) => t.split("\n").filter(Boolean).map((r) => ({ filename: r.split("\t")[0], sha: r.split("\t")[1] })))
