@@ -60,6 +60,7 @@
 
 .docs-toc button {
   width: 100%;
+  min-height: 24px;
   padding: var(--space-1) 0;
   background: none;
   border: 0;
