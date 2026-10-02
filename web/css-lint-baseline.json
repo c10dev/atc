@@ -1,4 +1,7 @@
 {
+  "web/src/ControlStrip.css": {
+    "token-family": 1
+  },
   "web/src/Drawer.css": {
     "color-literal": 1,
     "font-size-em": 3,
@@ -16,12 +19,14 @@
     "spacing-literal": 21
   },
   "web/src/badges.css": {
-    "spacing-literal": 2
+    "spacing-literal": 2,
+    "token-family": 2
   },
   "web/src/styles.css": {
     "color-literal": 21,
     "radius-literal": 3,
-    "spacing-literal": 37
+    "spacing-literal": 37,
+    "token-family": 33
   },
   "web/src/views/Airports.css": {
     "radius-literal": 2,
@@ -49,6 +54,9 @@
     "radius-literal": 2,
     "spacing-literal": 4
   },
+  "web/src/views/Flights.css": {
+    "token-family": 1
+  },
   "web/src/views/Follow.css": {
     "spacing-literal": 1
   },
@@ -57,18 +65,21 @@
   },
   "web/src/views/Metrics.css": {
     "radius-literal": 5,
-    "spacing-literal": 5
+    "spacing-literal": 5,
+    "token-family": 1
   },
   "web/src/views/MetricsFuel.css": {
     "radius-literal": 3,
-    "spacing-literal": 1
+    "spacing-literal": 1,
+    "token-family": 3
   },
   "web/src/views/MetricsLeaks.css": {
     "radius-literal": 1
   },
   "web/src/views/Network.css": {
     "radius-literal": 2,
-    "spacing-literal": 1
+    "spacing-literal": 1,
+    "token-family": 2
   },
   "web/src/views/Radio.css": {
     "radius-literal": 3
@@ -81,13 +92,18 @@
   },
   "web/src/views/Teams.css": {
     "radius-literal": 2,
-    "spacing-literal": 3
+    "spacing-literal": 3,
+    "token-family": 12
   },
   "web/src/views/fleet/Card.css": {
     "radius-literal": 1,
-    "spacing-literal": 1
+    "spacing-literal": 1,
+    "token-family": 7
   },
   "web/src/views/fleet/Fleet.css": {
     "radius-literal": 1
+  },
+  "web/src/views/fleet/StatusList.css": {
+    "token-family": 5
   }
 }

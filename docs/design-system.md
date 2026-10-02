@@ -30,7 +30,7 @@ Read from `origin/main` (`44f59e6`, 2026-10-02).
   - HOME imports `Drawer.css`, `DutyDrawer.css` and `fleet/Fleet.css` to borrow their classes.
   - The night block restyles strips and FIDS by selector.
 - **Checks today:**
-  - `server/css-lint.ts`: colour literals, px and em font sizes, literal spacing, literal radius, literal z-index, `transition: all`, `outline: none`; ratcheted by `web/css-lint-baseline.json`.
+  - `server/css-lint.ts`: colour literals, px and em font sizes, literal spacing, literal radius, literal z-index, token family per colour property (ATC-437), `transition: all`, `outline: none`; ratcheted by `web/css-lint-baseline.json`.
   - `server/theme-contrast.test.ts` (ATC-408, ATC-438): a declared table of (foreground, background, minimum) pairs checked in every theme found in `styles.css`; see section 4.
   - `server/boundaries.test.ts` (ATC-335): import cycles, and web → Node imports.
   - Nothing checks which layer may use which.
@@ -116,7 +116,7 @@ The patterns of design-language section 4: row and expanded detail, card (header
 | Boundary | Check | Status |
 |---|---|---|
 | No literal colour, size, z-index, radius or spacing outside L0 | `server/css-lint.ts` (colour, font size, `em`, spacing, radius, z-index; ATC-410) | built, ratcheted |
-| A property takes only its token family (`color` → text and signal tokens, `background` → surface tokens, `border-color` → line and signal tokens), as Primer's `primer/colors` does | a new css-lint rule, ratcheted like the others | decided (S5) |
+| A property takes only its token family (`color` → text and signal tokens, `background` → surface tokens, `border-color` → line and signal tokens), as Primer's `primer/colors` does | a new css-lint rule, ratcheted like the others | built (ATC-437): rule `token-family` and the two tables `TOKEN_FAMILIES` and `PROP_FAMILIES` in `server/css-lint.ts`; today's count is in the baseline |
 | Primitives use no domain token and no screen class | css-lint, scoped to the primitive files | to build |
 | A screen imports no other screen's stylesheet; a primitive imports nothing from screens | `server/boundaries.test.ts`, which already parses imports, gains a layer map by path | to build |
 | Theme blocks hold custom properties only | css-lint: a `:root[data-theme=…]` rule with a selector after it fails | to build (with S9) |
