@@ -137,7 +137,7 @@ The light theme (D7) would then be one more input set. The three dark themes wou
 
 ## 6. How the refactor units change
 
-The units of [ui-refactor-plan.md](ui-refactor-plan.md) already cover most of this. The layer model changes where some of them put their output, and adds four small units. Units already accepted by an AIRCRAFT (READBACK) are not edited: additions become follow-up issues, blockedBy the original (`docs/rules.ko.md`, "작업 지시서"). Backlog units not yet released can take the change before they are fired.
+The units of [ui-refactor-plan.md](ui-refactor-plan.md) already cover most of this. The layer model changes where some of them put their output, and adds four small units. Units already accepted by an AIRCRAFT (READBACK) are not edited: additions become follow-up issues, blockedBy the original (`docs/rules.ko.md`, "작업 지시서"). Backlog units not yet released can take the change before they are fired. On 2026-10-02 the decisions were written into the Backlog units U5–U9, S1–S9 and D7 (one Done-when line each, and blockedBy ATC-435 for U5–U8 and ATC-439 for D7); the Todo units U1–U3 were not edited, and ATC-435 moves U2's dialog hook into `kit/` if it lands first.
 
 | Unit | Today | With the layer model |
 |---|---|---|
@@ -148,7 +148,7 @@ The units of [ui-refactor-plan.md](ui-refactor-plan.md) already cover most of th
 | S9 ATC-433 | themes in their own files | theme files hold custom properties only (the theme-block check) |
 | D7 ATC-434 | light theme by hand | the light theme as an input set (S1) |
 | D8 ATC-420 | 11 px floor | unchanged (a type-scale token change) |
-| **new** | — | (a) the layer map in `boundaries.test.ts`; (b) the property → token family lint (S5); (c) the contrast pairs table; (d) the theme generator and its two tests, re-expressing the three dark themes with no visible change (S1); (e) the `web/src/kit/` folder and the rename of `ui.tsx` (S3), before U5–U8 |
+| **new** (filed 2026-10-02) | — | (a) [ATC-436](https://linear.app/vocado/issue/ATC-436) the layer map in `boundaries.test.ts`; (b) [ATC-437](https://linear.app/vocado/issue/ATC-437) the property → token family lint (S5); (c) [ATC-438](https://linear.app/vocado/issue/ATC-438) the contrast pairs table; (d) [ATC-439](https://linear.app/vocado/issue/ATC-439) the theme generator and its two tests, re-expressing the three dark themes with no visible change (S1); (e) [ATC-435](https://linear.app/vocado/issue/ATC-435) the `web/src/kit/` folder and the rename of `ui.tsx` (S3), before U5–U8 |
 
 ## 7. Decisions (SUPERVISOR, 2026-10-02)
 
